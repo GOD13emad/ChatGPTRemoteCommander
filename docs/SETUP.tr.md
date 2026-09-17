@@ -2,6 +2,22 @@
 
 > GitHub deposunun herkese açık olması, herkesin geliştiricinin bilgisayarına bağlanabileceği anlamına gelmez. Yetkili bir Tunnel, Workspace/Plugin erişimi ve hedef bilgisayarda çalışan `tunnel-client` gerekir.
 
+## Tek komutla doğrudan kurulum
+
+Aşağıdaki komutlardan birini PowerShell içine yapıştırın. Standard güvenli varsayılandır; Power Mode güvenilen bir bilgisayarda tam dosya/Shell/process kontrolünü açar.
+
+**Standard:**
+
+```powershell
+& ([scriptblock]::Create((irm 'https://raw.githubusercontent.com/GOD13emad/ChatGPTRemoteCommander/main/install.ps1'))) -InstallPrerequisites -StartServer
+```
+
+**Power Mode:**
+
+```powershell
+& ([scriptblock]::Create((irm 'https://raw.githubusercontent.com/GOD13emad/ChatGPTRemoteCommander/main/install.ps1'))) -InstallPrerequisites -PowerMode -StartServer
+```
+
 ## 1. Windows bilgisayara kurulum
 
 1. Depoyu açın: https://github.com/GOD13emad/ChatGPTRemoteCommander

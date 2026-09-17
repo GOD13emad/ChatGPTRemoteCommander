@@ -21,3 +21,17 @@ Official OpenAI references:
 - https://help.openai.com/en/articles/12584461-developer-mode-and-mcp-apps-in-chatgpt
 - https://platform.openai.com/settings/organization/tunnels
 - https://chatgpt.com/plugins
+
+## One-command install
+
+Standard:
+
+```powershell
+& ([scriptblock]::Create((irm 'https://raw.githubusercontent.com/GOD13emad/ChatGPTRemoteCommander/main/install.ps1'))) -InstallPrerequisites -StartServer
+```
+
+Power Mode on a trusted PC:
+
+```powershell
+& ([scriptblock]::Create((irm 'https://raw.githubusercontent.com/GOD13emad/ChatGPTRemoteCommander/main/install.ps1'))) -InstallPrerequisites -PowerMode -StartServer
+```

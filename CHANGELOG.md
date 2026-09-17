@@ -1,11 +1,13 @@
 # Changelog
 
-## Unreleased
+## 0.2.1 — 2026-09-17
 
 - Added repeatable repository security audit (`npm run audit`) covering current tracked files and Git history.
 - Added `SECURITY_AUDIT.md` with verified findings and privacy notes.
 - Added click-by-click setup guides in 10 languages: English, Persian, Arabic, Turkish, Spanish, French, German, Russian, Simplified Chinese, and Japanese.
 - CI now checks full Git history and runs the security audit after syntax and smoke tests.
+- Added a tested one-command Windows installer with optional prerequisite installation, official tunnel-client checksum verification, Standard/Power Mode selection, local validation, and optional server startup.
+- Added one-command install instructions to all 10 language guides.
 
 ## 0.2.0 — 2026-09-17
 

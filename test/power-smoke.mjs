@@ -9,8 +9,8 @@ import {
 
 const root = path.resolve('test', '.tmp-power-root');
 const backups = path.resolve('test', '.tmp-power-backups');
-await rm(root, { recursive: true, force: true });
-await rm(backups, { recursive: true, force: true });
+await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+await rm(backups, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
 await mkdir(root, { recursive: true });
 const ctx = {
   roots: [root],
@@ -56,5 +56,5 @@ const deleted = await deletePath(ctx, { path: path.join(root, 'moved.txt') });
 assert.ok(deleted.backupPath);
 await assert.rejects(() => deletePath(ctx, { path: path.join(root, 'a'), permanent: true }), /permanent delete is disabled/);
 console.log('POWER_SMOKE_PASS');
-await rm(root, { recursive: true, force: true });
-await rm(backups, { recursive: true, force: true });
+await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+await rm(backups, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });

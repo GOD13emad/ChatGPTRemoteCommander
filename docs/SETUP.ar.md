@@ -2,6 +2,22 @@
 
 > نشر الكود على GitHub لا يعني أن أي شخص يستطيع الاتصال بجهاز المؤلف. يلزم Tunnel مصرح به، وصلاحية Workspace/Plugin، وتشغيل `tunnel-client` على الجهاز الهدف.
 
+## التثبيت المباشر بأمر واحد
+
+ألصق أحد الأمرين في PowerShell. الوضع Standard آمن افتراضياً، وPower Mode يفعّل التحكم الكامل بالملفات وShell والعمليات على جهاز موثوق.
+
+**Standard:**
+
+```powershell
+& ([scriptblock]::Create((irm 'https://raw.githubusercontent.com/GOD13emad/ChatGPTRemoteCommander/main/install.ps1'))) -InstallPrerequisites -StartServer
+```
+
+**Power Mode:**
+
+```powershell
+& ([scriptblock]::Create((irm 'https://raw.githubusercontent.com/GOD13emad/ChatGPTRemoteCommander/main/install.ps1'))) -InstallPrerequisites -PowerMode -StartServer
+```
+
 ## 1. التثبيت على Windows
 
 1. افتح المستودع: https://github.com/GOD13emad/ChatGPTRemoteCommander

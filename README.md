@@ -5,6 +5,21 @@ Windows-first MCP server for controlled project access from ChatGPT through Open
 **Setup guides in 10 languages:** [English](docs/SETUP.en.md) · [فارسی](docs/SETUP.fa.md) · [العربية](docs/SETUP.ar.md) · [Türkçe](docs/SETUP.tr.md) · [Español](docs/SETUP.es.md) · [Français](docs/SETUP.fr.md) · [Deutsch](docs/SETUP.de.md) · [Русский](docs/SETUP.ru.md) · [简体中文](docs/SETUP.zh-CN.md) · [日本語](docs/SETUP.ja.md)
 
 [All setup guides](docs/README.md)
+## One-command Windows install
+
+Paste this into **PowerShell** for a standard safe-by-default install (it installs missing Git/Node.js/PowerShell 7 with `winget`, downloads and verifies the official OpenAI tunnel client, runs tests/audit, and starts the local MCP server):
+
+```powershell
+& ([scriptblock]::Create((irm 'https://raw.githubusercontent.com/GOD13emad/ChatGPTRemoteCommander/main/install.ps1'))) -InstallPrerequisites -StartServer
+```
+
+For trusted machines that need full filesystem/shell/process control, add `-PowerMode`:
+
+```powershell
+& ([scriptblock]::Create((irm 'https://raw.githubusercontent.com/GOD13emad/ChatGPTRemoteCommander/main/install.ps1'))) -InstallPrerequisites -PowerMode -StartServer
+```
+
+The installer never embeds your OpenAI Runtime API key. After local installation, create your own Secure MCP Tunnel and run `connect-chatgpt.ps1` interactively.
 
 ## Features
 
@@ -57,7 +72,7 @@ Filesystem containment is enforced, but command execution is **not an OS sandbox
 
 ## Validation
 
-v0.2.0 passed syntax checks, legacy smoke tests, Power Mode smoke tests, live MCP discovery with 22 tools, full-filesystem write/read testing, direct shell testing, recoverable-delete testing, and Secure MCP Tunnel readiness. Run `pwsh.exe -NoProfile -File .\\test\\security-audit.ps1` before public releases.
+v0.2.1 passed syntax checks, legacy smoke tests, Power Mode smoke tests, live MCP discovery with 22 tools, full-filesystem write/read testing, direct shell testing, recoverable-delete testing, and Secure MCP Tunnel readiness. Run `pwsh.exe -NoProfile -File .\\test\\security-audit.ps1` before public releases.
 
 ## License
 

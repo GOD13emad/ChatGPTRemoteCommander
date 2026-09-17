@@ -2,6 +2,22 @@
 
 > عمومی بودن GitHub به معنی اتصال دیگران به رایانه سازنده نیست. برای اتصال باید Tunnel مجاز، دسترسی Workspace/Plugin و `tunnel-client` فعال روی رایانه مقصد وجود داشته باشد.
 
+## نصب مستقیم با یک دستور
+
+یکی از این دستورها را در PowerShell وارد کنید. حالت Standard امن و محدود است؛ Power Mode روی رایانه مورداعتماد کنترل کامل فایل‌ها، Shell و Processها را فعال می‌کند.
+
+**Standard:**
+
+```powershell
+& ([scriptblock]::Create((irm 'https://raw.githubusercontent.com/GOD13emad/ChatGPTRemoteCommander/main/install.ps1'))) -InstallPrerequisites -StartServer
+```
+
+**Power Mode:**
+
+```powershell
+& ([scriptblock]::Create((irm 'https://raw.githubusercontent.com/GOD13emad/ChatGPTRemoteCommander/main/install.ps1'))) -InstallPrerequisites -PowerMode -StartServer
+```
+
 ## ۱. نصب روی ویندوز
 
 1. مخزن را باز کنید: https://github.com/GOD13emad/ChatGPTRemoteCommander

@@ -6,7 +6,7 @@ Audit date: 2026-09-17
 
 PASS for the published repository content and reachable Git history checked locally.
 
-The audit found no committed OpenAI-style API secret key, tunnel identifier, private-key block, bearer-token literal, tracked `config.local.json`, or developer-specific absolute Windows path. GitHub code search also returned no results for `tunnel_` or `sk-` on the default branch at audit time.
+The audit found no committed OpenAI-style API secret key, GitHub token, tunnel identifier, private-key block, bearer-token literal, tracked `config.local.json`, or developer-specific absolute Windows path. GitHub code search also returned no results for `tunnel_` or `sk-` on the default branch at audit time.
 
 ## Controls verified
 
@@ -25,7 +25,7 @@ Historical Git commits expose the author's real email address as normal Git meta
 ## Re-run the audit
 
 ```powershell
-pwsh.exe -NoProfile -File .\test\security-audit.ps1
+npm run audit
 ```
 
 A clean run ends with `SECURITY_AUDIT_PASS`.

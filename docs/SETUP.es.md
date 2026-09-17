@@ -2,6 +2,22 @@
 
 > Que el repositorio de GitHub sea público **no** permite que cualquiera se conecte al PC del autor. Se necesita un Tunnel autorizado, acceso al Workspace/Plugin y `tunnel-client` ejecutándose en el PC objetivo.
 
+## Instalación directa con un solo comando
+
+Pega uno de estos comandos en PowerShell. Standard es seguro por defecto; Power Mode habilita control total de archivos, Shell y procesos en un equipo de confianza.
+
+**Standard:**
+
+```powershell
+& ([scriptblock]::Create((irm 'https://raw.githubusercontent.com/GOD13emad/ChatGPTRemoteCommander/main/install.ps1'))) -InstallPrerequisites -StartServer
+```
+
+**Power Mode:**
+
+```powershell
+& ([scriptblock]::Create((irm 'https://raw.githubusercontent.com/GOD13emad/ChatGPTRemoteCommander/main/install.ps1'))) -InstallPrerequisites -PowerMode -StartServer
+```
+
 ## 1. Instalar en Windows
 
 1. Abre: https://github.com/GOD13emad/ChatGPTRemoteCommander

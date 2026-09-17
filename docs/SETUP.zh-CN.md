@@ -2,6 +2,22 @@
 
 > GitHub 仓库公开并不代表任何人都能连接作者的电脑。必须具备已授权的 Tunnel、对应 Workspace/Plugin 权限，并且目标电脑上正在运行 `tunnel-client`。
 
+## 一条命令直接安装
+
+将下面任一命令粘贴到 PowerShell。Standard 默认安全；Power Mode 会在受信任的电脑上启用完整文件、Shell 和进程控制。
+
+**Standard:**
+
+```powershell
+& ([scriptblock]::Create((irm 'https://raw.githubusercontent.com/GOD13emad/ChatGPTRemoteCommander/main/install.ps1'))) -InstallPrerequisites -StartServer
+```
+
+**Power Mode:**
+
+```powershell
+& ([scriptblock]::Create((irm 'https://raw.githubusercontent.com/GOD13emad/ChatGPTRemoteCommander/main/install.ps1'))) -InstallPrerequisites -PowerMode -StartServer
+```
+
 ## 1. 在 Windows 上安装
 
 1. 打开仓库：https://github.com/GOD13emad/ChatGPTRemoteCommander
