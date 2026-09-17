@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.3.0 — 2026-09-17
+
+Cross-platform, multi-topology and zero-reentry startup release.
+
+- Added Windows + Linux core runtime support and Linux amd64/arm64 installer paths.
+- Added one account -> many computers and many accounts -> one computer deployment support.
+- Added concurrent-chat stress coverage and path-scoped mutation locking.
+- Added automatic tunnel health-port selection for additional accounts.
+- Added Windows logon supervisor with DPAPI-protected per-profile Runtime API keys.
+- Added Linux supervisor with systemd-user/crontab registration and user-only credential files.
+- Added automatic MCP/tunnel restart supervision after login or transient process failure.
+- Added portable direct executable execution for safe-mode project commands.
+- Added Windows + Ubuntu CI matrix configuration and cross-platform security audit.
+- Validated real Ubuntu/WSL Standard and Power Mode installs, including official OpenAI tunnel-client SHA-256 verification.
+
 ## 0.2.1 — 2026-09-17
 
 - Added repeatable repository security audit (`npm run audit`) covering current tracked files and Git history.

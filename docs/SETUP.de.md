@@ -87,3 +87,23 @@ Für einen Freund oder ein zweites Konto einen separaten Tunnel in dessen Konto/
 - Alte Tool-Liste nach Update: Custom App refreshen oder neu erstellen, damit das aktuelle Schema gescannt wird.
 
 Offizielle Dokumentation: https://developers.openai.com/api/docs/guides/secure-mcp-tunnels und https://help.openai.com/en/articles/12584461-developer-mode-and-mcp-apps-in-chatgpt
+
+## v0.3: mehrere Computer, mehrere Konten, parallele Chats und kein erneutes Eingeben der Tunnel-Daten
+
+- Ein ChatGPT-Konto kann mehrere Computer steuern: Installieren Sie das Projekt auf jedem Computer und erstellen Sie pro Gerät einen eigenen Secure MCP Tunnel.
+- Mehrere ChatGPT-Konten können einen Computer verwenden: Registrieren Sie jedes Konto mit einem eigenen Tunnel Profile; der Health-Port wird automatisch gewählt.
+- Mehrere Chats können denselben MCP gleichzeitig verwenden; Änderungen am selben Pfad werden serialisiert, um Schreibkonflikte zu reduzieren.
+
+Einmalige Registrierung und Autostart unter Windows:
+
+```powershell
+.\enable-autostart.ps1 -Profile chatgpt-remote-commander
+```
+
+Einmalige Registrierung und Autostart unter Linux:
+
+```bash
+./enable-autostart-linux.sh --profile "$(hostname)"
+```
+
+Danach startet der lokale Supervisor den MCP und alle registrierten Tunnel beim Anmelden automatisch. Tunnel ID, lokale Adresse/Port und Runtime API Key müssen nicht erneut eingegeben werden.

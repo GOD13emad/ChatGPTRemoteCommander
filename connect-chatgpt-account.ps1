@@ -1,7 +1,7 @@
 param(
   [Parameter(Mandatory=$false)][string]$TunnelId,
   [Parameter(Mandatory=$true)][string]$Profile,
-  [Parameter(Mandatory=$true)][ValidateRange(1024,65535)][int]$HealthPort
+  [Parameter(Mandatory=$false)][ValidateRange(0,65535)][int]$HealthPort = 0
 )
 $ErrorActionPreference = 'Stop'
 $Root = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -23,8 +23,16 @@ try {
   throw "ChatGPT Remote Commander is not running at $HealthUrl. Start npm start first."
 }
 
-if (Get-NetTCPConnection -State Listen -LocalPort $HealthPort -ErrorAction SilentlyContinue) {
-  throw "HealthPort $HealthPort is already in use. Choose another port, e.g. 47833 or 47834."
+if ($HealthPort -eq 0) {
+  foreach ($candidate in 47832..47931) {
+    if (-not (Get-NetTCPConnection -State Listen -LocalPort $candidate -ErrorAction SilentlyContinue)) {
+      $HealthPort = $candidate
+      break
+    }
+  }
+  if ($HealthPort -eq 0) { throw 'No free tunnel health port found in 47832..47931.' }
+} elseif (Get-NetTCPConnection -State Listen -LocalPort $HealthPort -ErrorAction SilentlyContinue) {
+  throw "HealthPort $HealthPort is already in use. Omit -HealthPort to auto-select one."
 }
 if (-not $TunnelId) { $TunnelId = Read-Host 'Paste OpenAI tunnel_id for this account' }
 if ($TunnelId -notmatch '^tunnel_[A-Za-z0-9_-]+$') { throw 'Invalid tunnel_id format.' }

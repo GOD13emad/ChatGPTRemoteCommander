@@ -64,14 +64,15 @@ function Install-Source {
 }
 function Install-TunnelClient {
   if ($SkipTunnelClient) { return }
-  $toolDir = Join-Path $InstallDir "tools\tunnel-client-v$TunnelClientVersion"
+  $arch = if ($env:PROCESSOR_ARCHITECTURE -match 'ARM64') { 'arm64' } else { 'amd64' }
+  $toolDir = Join-Path $InstallDir "tools\tunnel-client-v$TunnelClientVersion-windows-$arch"
   $exe = Join-Path $toolDir 'tunnel-client.exe'
   if (Test-Path -LiteralPath $exe) {
     Write-Host "Tunnel client already installed: $exe"
     return
   }
   $tag = "v$TunnelClientVersion"
-  $file = "tunnel-client-v$TunnelClientVersion-windows-amd64.zip"
+  $file = "tunnel-client-v$TunnelClientVersion-windows-$arch.zip"
   $base = "https://github.com/openai/tunnel-client/releases/download/$tag"
   $tmp = Join-Path $env:LOCALAPPDATA "ChatGPTRemoteCommander\downloads\$([guid]::NewGuid().ToString('N'))"
   New-Item -ItemType Directory -Force -Path $tmp | Out-Null
@@ -146,7 +147,7 @@ function Test-Installation {
     if ($LASTEXITCODE -ne 0) { throw 'npm run check failed' }
     & npm.cmd test
     if ($LASTEXITCODE -ne 0) { throw 'npm test failed' }
-    & pwsh.exe -NoProfile -File '.\test\security-audit.ps1'
+    & npm.cmd run audit
     if ($LASTEXITCODE -ne 0) { throw 'security audit failed' }
   } finally { Pop-Location }
 }
@@ -181,6 +182,7 @@ Write-Host 'INSTALL_PASS'
 Write-Host "Installed at: $InstallDir"
 Write-Host "Mode: $(if ($PowerMode) {'POWER (full filesystem/shell/process control)'} else {'STANDARD'})"
 Write-Host ''
-Write-Host 'Next: create your own OpenAI Secure MCP Tunnel and Runtime API key, then run:'
-Write-Host "  pwsh.exe -NoProfile -File `"$InstallDir\connect-chatgpt.ps1`""
-Write-Host 'Do not share the Runtime API key. It is entered interactively and hidden.'
+Write-Host 'Next: create your own OpenAI Secure MCP Tunnel and Runtime API key, then enroll it once for automatic startup:'
+Write-Host "  pwsh.exe -NoProfile -File `"$InstallDir\enable-autostart.ps1`" -Profile `"$env:COMPUTERNAME`""
+Write-Host 'After enrollment, later Windows logins start MCP + tunnel automatically; no repeated Tunnel ID/port/key entry is needed.'
+Write-Host 'Do not share the Runtime API key. It is entered locally and stored with Windows DPAPI for this user.'

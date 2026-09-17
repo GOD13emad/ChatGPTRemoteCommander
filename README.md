@@ -1,10 +1,32 @@
 # ChatGPT Remote Commander
 
-Windows-first MCP server for controlled project access from ChatGPT through OpenAI Secure MCP Tunnel.
+Cross-platform Windows + Linux MCP server for controlled remote project and machine access from ChatGPT through OpenAI Secure MCP Tunnel.
 
 **Setup guides in 10 languages:** [English](docs/SETUP.en.md) · [فارسی](docs/SETUP.fa.md) · [العربية](docs/SETUP.ar.md) · [Türkçe](docs/SETUP.tr.md) · [Español](docs/SETUP.es.md) · [Français](docs/SETUP.fr.md) · [Deutsch](docs/SETUP.de.md) · [Русский](docs/SETUP.ru.md) · [简体中文](docs/SETUP.zh-CN.md) · [日本語](docs/SETUP.ja.md)
 
 [All setup guides](docs/README.md)
+## v0.3 topology and zero-reentry startup
+
+v0.3 supports all three deployment patterns: **one ChatGPT account -> multiple computers**, **multiple ChatGPT accounts -> one computer**, and **multiple concurrent chats -> the same computer**. Each computer runs its own MCP server; each account uses its own Secure MCP Tunnel profile; concurrent chat mutations on the same path are serialized to reduce write races.
+
+After the one-time tunnel enrollment, you do **not** need to re-enter the Tunnel ID, local MCP address, health port, or Runtime API key after each login.
+
+### Windows persistent startup
+
+```powershell
+.\enable-autostart.ps1 -Profile chatgpt-remote-commander
+```
+
+For an existing profile, this only asks for the Runtime API key once. It is stored with Windows DPAPI for the current user. An HKCU logon supervisor then starts/restarts the MCP server and every enrolled tunnel profile automatically.
+
+### Linux persistent startup
+
+```bash
+./enable-autostart-linux.sh --profile "$(hostname)"
+```
+
+The Linux helper registers a systemd user service when available, otherwise falls back to `crontab`. Runtime keys are stored outside the repository in a user-only `chmod 600` credential file.
+
 ## One-command Windows install
 
 Paste this into **PowerShell** for a standard safe-by-default install (it installs missing Git/Node.js/PowerShell 7 with `winget`, downloads and verifies the official OpenAI tunnel client, runs tests/audit, and starts the local MCP server):
@@ -19,7 +41,15 @@ For trusted machines that need full filesystem/shell/process control, add `-Powe
 & ([scriptblock]::Create((irm 'https://raw.githubusercontent.com/GOD13emad/ChatGPTRemoteCommander/main/install.ps1'))) -InstallPrerequisites -PowerMode -StartServer
 ```
 
-The installer never embeds your OpenAI Runtime API key. After local installation, create your own Secure MCP Tunnel and run `connect-chatgpt.ps1` interactively.
+The installer never embeds your OpenAI Runtime API key. After creating a Secure MCP Tunnel, run `enable-autostart.ps1` once to enroll the account and enable zero-reentry startup.
+
+## One-command Linux install
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/GOD13emad/ChatGPTRemoteCommander/main/install.sh | bash -s -- --install-prerequisites --start-server
+```
+
+For Power Mode, add `--power-mode`. Linux amd64 and arm64 are supported by the installer when an official OpenAI tunnel-client artifact is available.
 
 ## Features
 
@@ -27,17 +57,18 @@ The installer never embeds your OpenAI Runtime API key. After local installation
 - Configurable allowed filesystem roots
 - Directory listing and UTF-8 text reads
 - Text writes with automatic backup and optional SHA-256 precondition
-- Allowlisted project command execution through `pwsh.exe`
-- JSONL audit log
-- OpenAI Secure MCP Tunnel workflow
-- Tested end-to-end from ChatGPT UI
+- Allowlisted direct executable execution without a shell wrapper
+- Cross-platform Power Mode shell: PowerShell 7 on Windows, Bash-compatible shell on Linux
+- JSONL audit log and recoverable file mutation backups
+- Multi-account / multi-device Secure MCP Tunnel workflow
+- Concurrent-chat path locking for mutating operations
+- Windows and Linux persistent supervisors
 
 ## Requirements
 
-- Windows 10/11
-- PowerShell 7 (`pwsh.exe`)
+- Windows 10/11 with PowerShell 7, or a modern Linux distribution
 - Node.js 22+
-- Git for the Git command examples
+- Git
 - OpenAI Secure MCP Tunnel client and a configured ChatGPT custom plugin/app
 
 ## Quick start
@@ -72,7 +103,7 @@ Filesystem containment is enforced, but command execution is **not an OS sandbox
 
 ## Validation
 
-v0.2.1 passed syntax checks, legacy smoke tests, Power Mode smoke tests, live MCP discovery with 22 tools, full-filesystem write/read testing, direct shell testing, recoverable-delete testing, and Secure MCP Tunnel readiness. Run `pwsh.exe -NoProfile -File .\\test\\security-audit.ps1` before public releases.
+v0.3.0 release gates cover Windows and Linux syntax/install checks, safe and Power Mode smoke tests, concurrent HTTP/chat calls, serialized same-path mutations, secret scanning, and real Ubuntu/WSL Standard + Power installer runs. Use `npm run check`, `npm test`, and `npm run audit` before releases.
 
 ## License
 
@@ -94,12 +125,18 @@ Copy the public configuration to `config.local.json`, enable only the Power Mode
 
 ## Multiple ChatGPT accounts on one PC
 
-One MCP server can serve multiple authorized ChatGPT accounts. Keep the MCP server on `127.0.0.1:47831`, but run one Secure MCP Tunnel process per account with a unique tunnel profile and health port.
+One MCP server can serve multiple authorized ChatGPT accounts. Each account gets its own Secure MCP Tunnel profile. Health ports are auto-selected; no manual IP/port management is required.
 
-Example: keep the owner's existing tunnel on health port `47832`, then connect a second account with:
+Enroll another Windows account once:
 
 ```powershell
-pwsh.exe -NoProfile -File .\connect-chatgpt-account.ps1 -Profile friend-pro -HealthPort 47833
+.\enable-autostart.ps1 -Profile friend-pro
 ```
 
-The script prompts for that account's own `tunnel_id` and Runtime API key. Do not reuse/share Runtime API keys between accounts. A third account can use another profile and port, for example `-Profile account-3 -HealthPort 47834`.
+Enroll another Linux account once:
+
+```bash
+./enable-autostart-linux.sh --profile friend-pro
+```
+
+Each account must use its own tunnel and Runtime API key. The supervisor automatically starts every enrolled profile that points to this local MCP. For one account controlling multiple computers, repeat the installation/enrollment on each computer with a distinct tunnel so each device appears separately in ChatGPT.

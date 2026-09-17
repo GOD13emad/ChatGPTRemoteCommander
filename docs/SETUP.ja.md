@@ -87,3 +87,23 @@ pwsh.exe -NoProfile -File .\connect-chatgpt.ps1
 - 更新後も古い Tool が表示される: Custom App を Refresh または再作成して schema を再スキャンします。
 
 公式ドキュメント: https://developers.openai.com/api/docs/guides/secure-mcp-tunnels および https://help.openai.com/en/articles/12584461-developer-mode-and-mcp-apps-in-chatgpt
+
+## v0.3：複数PC、複数アカウント、同時チャット、トンネル情報の再入力不要
+
+- 1つのChatGPTアカウントから複数のPCを操作できます。各PCにインストールし、デバイスごとに別の Secure MCP Tunnel を作成します。
+- 複数のChatGPTアカウントから1台のPCを利用できます。各アカウントを別の Tunnel Profile で登録し、ヘルスポートは自動選択されます。
+- 複数のチャットから同じMCPを同時に利用できます。同じパスへの変更は書き込み競合を減らすため直列化されます。
+
+Windowsで一度だけ登録して自動起動を有効化：
+
+```powershell
+.\enable-autostart.ps1 -Profile chatgpt-remote-commander
+```
+
+Linuxで一度だけ登録して自動起動を有効化：
+
+```bash
+./enable-autostart-linux.sh --profile "$(hostname)"
+```
+
+登録後は、ローカル supervisor がログイン時にMCPと登録済みトンネルを自動起動します。以後、Tunnel ID、ローカルアドレス/ポート、Runtime API Keyを毎回入力する必要はありません。

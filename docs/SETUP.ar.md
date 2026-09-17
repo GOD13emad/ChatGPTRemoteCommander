@@ -87,3 +87,23 @@ pwsh.exe -NoProfile -File .\connect-chatgpt.ps1
 - أدوات الإصدار الجديد غير ظاهرة: Refresh أو أعد إنشاء التطبيق حتى يعاد فحص schema الأدوات.
 
 المراجع الرسمية: https://developers.openai.com/api/docs/guides/secure-mcp-tunnels و https://help.openai.com/en/articles/12584461-developer-mode-and-mcp-apps-in-chatgpt
+
+## الإصدار 0.3: عدة أجهزة، عدة حسابات، محادثات متزامنة وبدون إدخال النفق كل مرة
+
+- يمكن لحساب ChatGPT واحد التحكم في عدة أجهزة: ثبّت البرنامج على كل جهاز وأنشئ Secure MCP Tunnel منفصلاً لكل جهاز.
+- يمكن لعدة حسابات ChatGPT استخدام جهاز واحد: سجّل كل حساب بملف Tunnel Profile مختلف، وسيتم اختيار منفذ الصحة تلقائياً.
+- يمكن لعدة محادثات استخدام MCP نفسه في الوقت نفسه؛ وتُسلسل عمليات التعديل على المسار نفسه لتقليل تعارض الكتابة.
+
+التسجيل مرة واحدة والتشغيل التلقائي على Windows:
+
+```powershell
+.\enable-autostart.ps1 -Profile chatgpt-remote-commander
+```
+
+التسجيل مرة واحدة والتشغيل التلقائي على Linux:
+
+```bash
+./enable-autostart-linux.sh --profile "$(hostname)"
+```
+
+بعد ذلك يشغّل المشرف المحلي خادم MCP والأنفاق المسجلة تلقائياً عند تسجيل الدخول، ولا تحتاج إلى إعادة إدخال Tunnel ID أو العنوان/المنفذ المحلي أو Runtime API Key.

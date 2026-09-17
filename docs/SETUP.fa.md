@@ -87,3 +87,23 @@ pwsh.exe -NoProfile -File .\connect-chatgpt.ps1
 - ابزارهای نسخه جدید دیده نمی‌شوند: App سفارشی را Refresh یا دوباره Create کنید تا schema جدید اسکن شود.
 
 مراجع رسمی: https://developers.openai.com/api/docs/guides/secure-mcp-tunnels و https://help.openai.com/en/articles/12584461-developer-mode-and-mcp-apps-in-chatgpt
+
+## نسخه ۰٫۳: چند کامپیوتر، چند حساب، چند چت هم‌زمان و بدون ورود تکراری تونل
+
+- یک حساب ChatGPT می‌تواند به چند کامپیوتر متصل شود: روی هر کامپیوتر نصب کنید و برای هر دستگاه یک Secure MCP Tunnel مستقل بسازید.
+- چند حساب ChatGPT می‌توانند از یک کامپیوتر استفاده کنند: هر حساب با Profile تونل جدا ثبت می‌شود و پورت سلامت به‌صورت خودکار انتخاب می‌شود.
+- چند چت می‌توانند هم‌زمان همان MCP را فراخوانی کنند؛ تغییرات روی یک مسیر مشترک به‌صورت سریالی اجرا می‌شوند تا تداخل نوشتن کاهش یابد.
+
+ثبت یک‌باره و اجرای خودکار در ویندوز:
+
+```powershell
+.\enable-autostart.ps1 -Profile chatgpt-remote-commander
+```
+
+ثبت یک‌باره و اجرای خودکار در لینوکس:
+
+```bash
+./enable-autostart-linux.sh --profile "$(hostname)"
+```
+
+پس از این مرحله، ناظر محلی MCP و تونل‌های ثبت‌شده را هنگام ورود به سیستم خودکار اجرا می‌کند و دیگر لازم نیست Tunnel ID، آدرس/پورت محلی یا Runtime API Key را هر بار وارد کنید.

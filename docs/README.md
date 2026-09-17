@@ -35,3 +35,22 @@ Power Mode on a trusted PC:
 ```powershell
 & ([scriptblock]::Create((irm 'https://raw.githubusercontent.com/GOD13emad/ChatGPTRemoteCommander/main/install.ps1'))) -InstallPrerequisites -PowerMode -StartServer
 ```
+
+## v0.3 cross-platform and persistent startup
+
+All guides now also cover Windows + Linux, one account on multiple computers, multiple accounts on one computer, concurrent chats, automatic health-port selection, and zero-reentry startup.
+
+Windows one-time persistent enrollment:
+
+```powershell
+.\enable-autostart.ps1 -Profile chatgpt-remote-commander
+```
+
+Linux install and one-time persistent enrollment:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/GOD13emad/ChatGPTRemoteCommander/main/install.sh | bash -s -- --install-prerequisites --start-server
+./enable-autostart-linux.sh --profile "$(hostname)"
+```
+
+After enrollment, later logins do not require re-entering the Tunnel ID, MCP address, health port, or Runtime API key.

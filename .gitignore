@@ -8,3 +8,5 @@ tools/tunnel-client-v*/
 *.log
 PROJECT_BRAIN.md
 config.local.json
+.runtime/
+connections.local.json

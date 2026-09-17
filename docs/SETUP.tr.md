@@ -87,3 +87,23 @@ Bir arkadaş veya ikinci hesap için o hesap/Workspace içinde ayrı bir Tunnel 
 - Yeni araçlar görünmüyor: özel uygulamayı Refresh edin veya yeniden oluşturun.
 
 Resmî belgeler: https://developers.openai.com/api/docs/guides/secure-mcp-tunnels ve https://help.openai.com/en/articles/12584461-developer-mode-and-mcp-apps-in-chatgpt
+
+## v0.3: birden çok bilgisayar, birden çok hesap, eşzamanlı sohbetler ve tekrar tünel bilgisi girmeden çalışma
+
+- Tek bir ChatGPT hesabı birden çok bilgisayarı kontrol edebilir: her bilgisayara kurun ve her cihaz için ayrı bir Secure MCP Tunnel oluşturun.
+- Birden çok ChatGPT hesabı aynı bilgisayarı kullanabilir: her hesabı farklı bir Tunnel Profile ile kaydedin; sağlık portu otomatik seçilir.
+- Birden çok sohbet aynı MCP'yi eşzamanlı kullanabilir; aynı yol üzerindeki değişiklikler yazma çakışmalarını azaltmak için sıraya alınır.
+
+Windows'ta tek seferlik kayıt ve otomatik başlatma:
+
+```powershell
+.\enable-autostart.ps1 -Profile chatgpt-remote-commander
+```
+
+Linux'ta tek seferlik kayıt ve otomatik başlatma:
+
+```bash
+./enable-autostart-linux.sh --profile "$(hostname)"
+```
+
+Bundan sonra yerel supervisor MCP'yi ve kayıtlı tünelleri oturum açıldığında otomatik başlatır; Tunnel ID, yerel adres/port veya Runtime API Key'i yeniden girmeniz gerekmez.

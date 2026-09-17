@@ -19,7 +19,7 @@ Command execution is not an operating-system sandbox. An allowlisted executable 
 
 ## Secrets
 
-Never commit Runtime API keys, OpenAI credentials, tunnel profiles containing secrets, `.env` files, or audit logs. `connect-chatgpt.ps1` reads the Runtime API key as a hidden SecureString and exports it only to the current process environment.
+Never commit Runtime API keys, OpenAI credentials, tunnel profiles containing secrets, `.env` files, credential stores, or audit logs. Interactive connector scripts keep Runtime API keys out of the repository. For persistent startup, Windows stores each enrolled Runtime API key as a DPAPI-protected value under the current user's LocalAppData; Linux stores it outside the repository in a user-only `chmod 600` credential file. These local stores are machine/user secrets and must not be copied into Git or shared.
 
 ## Reporting
 
@@ -32,6 +32,10 @@ Power Mode is an explicit privileged configuration for trusted machines. It can 
 The public `config.json` ships with Power Mode disabled. Put trusted-machine overrides in gitignored `config.local.json`. On mutation, Power Mode backs up existing targets when practical; permanent delete is separately gated and disabled by default.
 
 The local policy blocks direct shutdown/restart/logoff command patterns and protects critical Windows process names from `kill_process`. These are guardrails, not a security boundary: arbitrary shell/code execution is inherently privileged and can potentially bypass application-level containment. Keep ChatGPT action permissions enabled and expose tunnels only to trusted accounts/workspaces.
+
+## v0.3 concurrency and multi-account notes
+
+v0.3 allows several chats and several authorized tunnel profiles to reach the same local MCP. Mutating operations use path-scoped in-process locks to reduce same-path write races. This is a consistency control, not an authorization boundary: all accounts connected to the same privileged MCP instance inherit that instance's configured capabilities. Use separate restricted MCP instances when different users require different filesystem or shell privileges.
 
 ## Release audit
 

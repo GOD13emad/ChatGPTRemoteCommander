@@ -87,3 +87,23 @@ For a friend or second account, create a separate tunnel in that account/workspa
 - Tool list looks old after a server upgrade: refresh/recreate the custom app so ChatGPT scans the current tool schema.
 
 Official docs: https://developers.openai.com/api/docs/guides/secure-mcp-tunnels and https://help.openai.com/en/articles/12584461-developer-mode-and-mcp-apps-in-chatgpt
+
+## v0.3: multiple computers, multiple accounts, concurrent chats, no repeated tunnel entry
+
+- One ChatGPT account can control multiple computers: install on each computer and create a distinct Secure MCP Tunnel for each device.
+- Multiple ChatGPT accounts can use one computer: enroll each account with a different tunnel profile; health ports are selected automatically.
+- Multiple chats can call the same MCP concurrently; same-path mutations are serialized.
+
+Windows one-time enrollment:
+
+```powershell
+.\enable-autostart.ps1 -Profile chatgpt-remote-commander
+```
+
+Linux one-time enrollment:
+
+```bash
+./enable-autostart-linux.sh --profile "$(hostname)"
+```
+
+After this, the local supervisor starts the MCP and enrolled tunnels automatically. You do not re-enter the Tunnel ID, local address/port, or Runtime API key on later logins.

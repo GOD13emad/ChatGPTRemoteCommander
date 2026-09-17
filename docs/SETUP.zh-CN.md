@@ -87,3 +87,23 @@ pwsh.exe -NoProfile -File .\connect-chatgpt.ps1
 - 升级后仍看到旧工具：Refresh 或重新创建 custom app，让 ChatGPT 重新扫描工具 schema。
 
 官方文档：https://developers.openai.com/api/docs/guides/secure-mcp-tunnels 和 https://help.openai.com/en/articles/12584461-developer-mode-and-mcp-apps-in-chatgpt
+
+## v0.3：多台电脑、多个账号、并发聊天以及无需重复输入隧道信息
+
+- 一个 ChatGPT 账号可以控制多台电脑：在每台电脑上安装本项目，并为每台设备创建独立的 Secure MCP Tunnel。
+- 多个 ChatGPT 账号可以使用同一台电脑：为每个账号注册不同的 Tunnel Profile；健康检查端口会自动选择。
+- 多个聊天可以同时调用同一个 MCP；对同一路径的写入操作会串行化，以减少写入冲突。
+
+Windows 一次注册并自动启动：
+
+```powershell
+.\enable-autostart.ps1 -Profile chatgpt-remote-commander
+```
+
+Linux 一次注册并自动启动：
+
+```bash
+./enable-autostart-linux.sh --profile "$(hostname)"
+```
+
+完成后，本地 supervisor 会在登录时自动启动 MCP 和已注册的隧道。以后无需再次输入 Tunnel ID、本地地址/端口或 Runtime API Key。
