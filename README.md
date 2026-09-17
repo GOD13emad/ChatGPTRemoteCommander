@@ -91,3 +91,15 @@ The local policy blocks automatic shutdown, restart and logoff command patterns.
 ### Local private configuration
 
 Copy the public configuration to `config.local.json`, enable only the Power Mode capabilities you want, and keep that file private. `config.local.json`, audit logs, backups, Runtime API keys, and tunnel credentials must never be committed.
+
+## Multiple ChatGPT accounts on one PC
+
+One MCP server can serve multiple authorized ChatGPT accounts. Keep the MCP server on `127.0.0.1:47831`, but run one Secure MCP Tunnel process per account with a unique tunnel profile and health port.
+
+Example: keep the owner's existing tunnel on health port `47832`, then connect a second account with:
+
+```powershell
+pwsh.exe -NoProfile -File .\connect-chatgpt-account.ps1 -Profile friend-pro -HealthPort 47833
+```
+
+The script prompts for that account's own `tunnel_id` and Runtime API key. Do not reuse/share Runtime API keys between accounts. A third account can use another profile and port, for example `-Profile account-3 -HealthPort 47834`.
