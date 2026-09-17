@@ -1,0 +1,9 @@
+node_modules/
+var/*.jsonl
+test/.tmp-*
+test/chatgpt-plugin-e2e*.txt
+.remote-commander-backups/
+tools/tunnel-client-v*/
+.env
+*.log
+PROJECT_BRAIN.md
