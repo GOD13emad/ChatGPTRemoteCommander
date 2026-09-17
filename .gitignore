@@ -7,3 +7,4 @@ tools/tunnel-client-v*/
 .env
 *.log
 PROJECT_BRAIN.md
+config.local.json

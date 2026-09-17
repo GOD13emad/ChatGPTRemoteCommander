@@ -45,7 +45,7 @@ In ChatGPT, create a custom plugin/app with Connection = Tunnel, select the tunn
 
 ## Tools
 
-`system_status`, `list_directory`, `read_text`, `write_text`, and `run_project_command`.
+Legacy-safe tools: `system_status`, `list_directory`, `read_text`, `write_text`, `run_project_command`. Power Mode adds `power_status`, `file_info`, `read_file`, `write_file`, `create_directory`, `copy_path`, `move_path`, `delete_path`, `search_files`, `run_shell`, `system_info`, `list_processes`, `kill_process`, and persistent terminal tools (`start_terminal`, `read_terminal`, `send_terminal`, `stop_terminal`).
 
 ## Security
 
@@ -58,3 +58,17 @@ The v0.1.0 release passed syntax checks, module smoke tests, direct MCP list/rea
 ## License
 
 MIT — see [LICENSE](LICENSE).
+
+## Power Mode (v0.2)
+
+v0.2 adds an explicit Full-Control mode for trusted machines. The runtime automatically prefers `config.local.json` when present; this file is gitignored. The public `config.json` remains safe-by-default with Power Mode disabled.
+
+On this machine, Power Mode can enable full filesystem access, direct PowerShell execution, process control, binary file I/O, recursive search, recoverable delete, and persistent terminal sessions. Existing files are backed up before Power Mode overwrite/move/delete operations. Permanent delete is separately gated and disabled in the provided local policy.
+
+The local policy blocks automatic shutdown, restart and logoff command patterns. Power Mode is intentionally privileged and is not an OS sandbox. Use ChatGPT action permissions and only expose a tunnel to trusted accounts.
+
+`FORBIDDEN: This conversation does not support developer MCPs` is a ChatGPT conversation-surface gate that occurs before requests reach this server; server code cannot bypass it. Use a fresh MCP-capable chat when that platform gate appears.
+
+### Local private configuration
+
+Copy the public configuration to `config.local.json`, enable only the Power Mode capabilities you want, and keep that file private. `config.local.json`, audit logs, backups, Runtime API keys, and tunnel credentials must never be committed.

@@ -1,13 +1,14 @@
 {
   "name": "chatgpt-remote-commander",
-  "version": "0.1.0",
-  "description": "Local-first Windows MCP server for controlled ChatGPT project access",
+  "version": "0.2.0",
+  "description": "Windows-first MCP remote control server for ChatGPT with auditable Power Mode",
   "type": "module",
   "engines": { "node": ">=22" },
   "scripts": {
-    "start": "node src/server.mjs",
-    "test": "node test/smoke.mjs",
-    "check": "node --check src/server.mjs && node --check src/security.mjs && node --check src/tools.mjs"
+    "start": "node src/server-v0.2.mjs",
+    "start:legacy": "node src/server.mjs",
+    "test": "node test/smoke.mjs && node test/power-smoke.mjs",
+    "check": "node --check src/server-v0.2.mjs && node --check src/power-tools.mjs && node --check src/server.mjs && node --check src/security.mjs && node --check src/tools.mjs"
   },
   "repository": "https://github.com/GOD13emad/ChatGPTRemoteCommander",
   "license": "MIT"

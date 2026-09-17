@@ -24,3 +24,11 @@ Never commit Runtime API keys, OpenAI credentials, tunnel profiles containing se
 ## Reporting
 
 If you find a security issue, report it privately to the repository owner before publishing exploit details.
+
+## Power Mode v0.2
+
+Power Mode is an explicit privileged configuration for trusted machines. It can expose the full filesystem, direct PowerShell execution, process control, binary file I/O, recursive search, and persistent terminal sessions.
+
+The public `config.json` ships with Power Mode disabled. Put trusted-machine overrides in gitignored `config.local.json`. On mutation, Power Mode backs up existing targets when practical; permanent delete is separately gated and disabled by default.
+
+The local policy blocks direct shutdown/restart/logoff command patterns and protects critical Windows process names from `kill_process`. These are guardrails, not a security boundary: arbitrary shell/code execution is inherently privileged and can potentially bypass application-level containment. Keep ChatGPT action permissions enabled and expose tunnels only to trusted accounts/workspaces.
