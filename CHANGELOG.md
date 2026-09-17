@@ -1,18 +1,21 @@
 # Changelog
 
+## Unreleased
+
+- Added repeatable repository security audit (`npm run audit`) covering current tracked files and Git history.
+- Added `SECURITY_AUDIT.md` with verified findings and privacy notes.
+- Added click-by-click setup guides in 10 languages: English, Persian, Arabic, Turkish, Spanish, French, German, Russian, Simplified Chinese, and Japanese.
+- CI now checks full Git history and runs the security audit after syntax and smoke tests.
+
 ## 0.2.0 — 2026-09-17
 
 Power Mode release.
 
-- Added explicit Full-Control Power Mode with safe public defaults and private `config.local.json` override.
-- Added full-filesystem file info/read/write/create/copy/move/delete/search tools.
-- Added direct bounded PowerShell execution with blocked shutdown/restart/logoff patterns.
-- Added process listing/control with protected Windows process names.
-- Added persistent PowerShell terminal sessions with read/send/stop actions.
-- Added binary file base64 I/O and larger configurable bounds.
-- Added pre-mutation backups and soft-delete backups; permanent delete separately gated and disabled locally.
-- Added Power Mode smoke regression and local MCP E2E validation.
-- Runtime now exposes 22 MCP tools in v0.2.
+- Added explicit Power Mode with local-only `config.local.json` preference.
+- Added full-filesystem file I/O, metadata, copy/move/delete, recursive search, direct PowerShell, process controls, and persistent terminal sessions.
+- Public configuration remains safe-by-default with Power Mode disabled.
+- Local policy can keep permanent delete disabled and blocks shutdown/restart/logoff patterns.
+- Added `POWER_SMOKE_PASS` regression coverage and live v0.2 MCP E2E validation.
 
 ## 0.1.0 — 2026-09-17
 

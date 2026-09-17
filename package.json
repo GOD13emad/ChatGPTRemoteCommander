@@ -8,6 +8,7 @@
     "start": "node src/server-v0.2.mjs",
     "start:legacy": "node src/server.mjs",
     "test": "node test/smoke.mjs && node test/power-smoke.mjs",
+    "audit": "pwsh.exe -NoProfile -File test/security-audit.ps1",
     "check": "node --check src/server-v0.2.mjs && node --check src/power-tools.mjs && node --check src/server.mjs && node --check src/security.mjs && node --check src/tools.mjs"
   },
   "repository": "https://github.com/GOD13emad/ChatGPTRemoteCommander",

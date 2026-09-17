@@ -2,6 +2,10 @@
 
 Windows-first MCP server for controlled project access from ChatGPT through OpenAI Secure MCP Tunnel.
 
+**Setup guides in 10 languages:** [English](docs/SETUP.en.md) · [فارسی](docs/SETUP.fa.md) · [العربية](docs/SETUP.ar.md) · [Türkçe](docs/SETUP.tr.md) · [Español](docs/SETUP.es.md) · [Français](docs/SETUP.fr.md) · [Deutsch](docs/SETUP.de.md) · [Русский](docs/SETUP.ru.md) · [简体中文](docs/SETUP.zh-CN.md) · [日本語](docs/SETUP.ja.md)
+
+[All setup guides](docs/README.md)
+
 ## Features
 
 - Loopback-only MCP server by default (`127.0.0.1:47831`)
@@ -49,11 +53,11 @@ Legacy-safe tools: `system_status`, `list_directory`, `read_text`, `write_text`,
 
 ## Security
 
-Filesystem containment is enforced, but command execution is **not an OS sandbox**. An allowlisted executable or project script may itself access resources beyond the configured roots. Treat command execution as privileged. See [SECURITY.md](SECURITY.md).
+Filesystem containment is enforced, but command execution is **not an OS sandbox**. An allowlisted executable or project script may itself access resources beyond the configured roots. Treat command execution as privileged. See [SECURITY.md](SECURITY.md) and the point-in-time [SECURITY_AUDIT.md](SECURITY_AUDIT.md).
 
 ## Validation
 
-The v0.1.0 release passed syntax checks, module smoke tests, direct MCP list/read/write/read-back/command regression, Secure MCP Tunnel doctor/readiness, and ChatGPT UI list/write/read/command calls.
+v0.2.0 passed syntax checks, legacy smoke tests, Power Mode smoke tests, live MCP discovery with 22 tools, full-filesystem write/read testing, direct shell testing, recoverable-delete testing, and Secure MCP Tunnel readiness. Run `pwsh.exe -NoProfile -File .\\test\\security-audit.ps1` before public releases.
 
 ## License
 
