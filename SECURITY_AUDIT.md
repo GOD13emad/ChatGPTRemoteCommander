@@ -20,7 +20,7 @@ The audit found no committed OpenAI-style API secret key, GitHub token, tunnel i
 - Shutdown, restart, and logoff shell patterns remain blocked.
 ## Privacy note
 
-Historical Git commits expose the author's real email address as normal Git metadata. This is not a credential, but it is public metadata. The local repository is now configured to use the GitHub noreply address for future commits. Removing the historical address would require rewriting published Git history and release references, so that was not done automatically.
+Published branch/tag history was rewritten on 2026-09-17 to replace the author/committer email with the GitHub noreply address. Current reachable local and remote history contains only `94546844+GOD13emad@users.noreply.github.com`. A pre-rewrite mirror backup is retained locally outside the published repository for rollback. Git hosting providers may retain unreachable objects/caches temporarily after a force-push; the old address is no longer referenced by the published branch or release tags.
 
 ## Re-run the audit
 
