@@ -241,8 +241,8 @@ A **Plugin** packages workflows, skills, metadata, icons, and optionally a refer
 For a private/workspace plugin:
 1. Create the custom MCP app first.
 2. Obtain either its real App ID (`asdk_app_...`, `connector_...`, or `templated_apps_...`) or the ChatGPT technical identifier such as `plugin_asdk_app_...`.
-3. Prefer the one-command binder/installer: Windows `.\install-work-plugin.ps1 -AppId "plugin_asdk_app_..."`; Linux `./install-work-plugin.sh "plugin_asdk_app_..."`.
-4. The installer strips the `plugin_` wrapper when needed, creates a private app-bound Plugin copy, adds a personal marketplace, installs/enables it through Codex, and verifies `.app.json`.
+3. Prefer the public one-command binder/installer. Windows: `& ([scriptblock]::Create((irm 'https://github.com/GOD13emad/ChatGPTRemoteCommander/releases/latest/download/install-work-plugin.ps1'))) -AppId "plugin_asdk_app_..."`. Linux: `curl -fsSL https://github.com/GOD13emad/ChatGPTRemoteCommander/releases/latest/download/install-work-plugin.sh | bash -s -- "plugin_asdk_app_..."`.
+4. The installer strips the `plugin_` wrapper when needed, creates a private app-bound Plugin copy, downloads the stable latest-Release `plugin-template.zip` automatically when no local template exists, adds a personal marketplace, installs/enables it through Codex, and verifies `.app.json`.
 5. For manual packaging or `@plugin-creator`, follow `WORK_SETUP.md` and `docs/PLUGIN_SETUP.md`.
 
 For public Plugin Directory publication, a Secure MCP Tunnel is not a public distribution endpoint. OpenAI currently requires a stable public HTTPS MCP endpoint for an MCP-backed public plugin submission. See `docs/PLUGIN_SETUP.md`.

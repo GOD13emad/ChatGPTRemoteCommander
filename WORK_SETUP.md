@@ -114,19 +114,21 @@ GitHub marketplace import syncs Plugin content. It does not create the Secure MC
 
 After the custom MCP app exists, use the app's underlying ID or the technical `plugin_...` identifier shown by ChatGPT. The installer normalizes `plugin_asdk_app_...` to the underlying `asdk_app_...` required by `.app.json`.
 
-Windows:
+Windows — public latest Release, no clone required:
 
 ```powershell
-.\install-work-plugin.ps1 -AppId "plugin_asdk_app_YOUR_TECHNICAL_ID"
+& ([scriptblock]::Create((irm 'https://github.com/GOD13emad/ChatGPTRemoteCommander/releases/latest/download/install-work-plugin.ps1'))) -AppId "plugin_asdk_app_YOUR_TECHNICAL_ID"
 ```
 
-Linux:
+Linux — public latest Release, no clone required:
 
 ```bash
-./install-work-plugin.sh "plugin_asdk_app_YOUR_TECHNICAL_ID"
+curl -fsSL https://github.com/GOD13emad/ChatGPTRemoteCommander/releases/latest/download/install-work-plugin.sh | bash -s -- "plugin_asdk_app_YOUR_TECHNICAL_ID"
 ```
 
-The installer creates a private per-user copy of `plugin-template/`, generates the correct `.app.json`, creates a personal marketplace named `chatgpt-remote-commander-personal`, installs the Plugin through Codex, and verifies the binding. It also accepts direct `asdk_app_`, `connector_`, or `templated_apps_` IDs.
+From an existing repository checkout, `.\install-work-plugin.ps1 -AppId "plugin_asdk_app_..."` or `./install-work-plugin.sh "plugin_asdk_app_..."` also works.
+
+The installer creates a private per-user copy of the Plugin template, generates the correct `.app.json`, creates a personal marketplace named `chatgpt-remote-commander-personal`, installs the Plugin through Codex, and verifies the binding. When no local template is available, it automatically downloads the stable `plugin-template.zip` asset from the latest Release. It also accepts direct `asdk_app_`, `connector_`, or `templated_apps_` IDs.
 
 If only manual binding is desired, copy `plugin-template/` privately and run `bind-app.ps1 -AppId "asdk_app_YOUR_ID"` or `bind-app.sh asdk_app_YOUR_ID`.
 

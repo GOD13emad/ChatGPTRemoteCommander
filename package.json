@@ -1,6 +1,6 @@
 {
   "name": "chatgpt-remote-commander",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "description": "Cross-platform MCP remote control server for ChatGPT with multi-account, multi-device and concurrent-chat support",
   "type": "module",
   "engines": { "node": ">=22" },

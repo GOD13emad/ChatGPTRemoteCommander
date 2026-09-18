@@ -33,7 +33,7 @@ If an admin URL contains a form such as `plugin_asdk_app_...`, use the underlyin
 
 ## 3. Prepare a private/workspace app-bound Plugin
 
-Preferred: from the repository root run `install-work-plugin.ps1 -AppId "plugin_asdk_app_..."` on Windows or `./install-work-plugin.sh "plugin_asdk_app_..."` on Linux. These commands accept either the ChatGPT technical `plugin_...` identifier or the underlying App ID, create a private per-user copy, bind it, add a personal marketplace, install the Plugin through Codex, and verify the result.
+Preferred: use the latest-Release one-liner from `WORK_SETUP.md`; no repository checkout is required. The self-contained installer accepts either the ChatGPT technical `plugin_...` identifier or the underlying App ID, downloads `plugin-template.zip` from the latest Release when needed, creates a private per-user copy, binds it, adds a personal marketplace, installs the Plugin through Codex, and verifies the result. The repository-local `install-work-plugin.ps1/.sh` commands remain available for development/offline use with a local template.
 
 OpenAI's `.app.json` format requires the underlying App ID. If the UI/URL shows `plugin_asdk_app_example`, the App ID stored in `.app.json` is `asdk_app_example`.
 

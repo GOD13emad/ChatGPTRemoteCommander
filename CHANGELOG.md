@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.4.2 — 2026-09-18
+
+- Made the app-bound Work Plugin installers self-contained when executed directly from a Release asset or in-memory PowerShell.
+- If no adjacent `plugin-template/` exists, the installers download the generic `plugin-template.zip` asset from the latest Release and clean up temporary files after installation.
+- Added optional `TemplateSource` / `TEMPLATE_SOURCE` overrides for controlled offline/private deployments.
+- Added public one-line Windows and Linux Work Plugin installation commands that need only the registered app technical ID.
+- Release packaging now publishes both stable `plugin-template.zip` and versioned `plugin-template-v0.4.2.zip` assets.
+
+
 ## 0.4.1 — 2026-09-18
 
 - Added one-command app-bound Work Plugin installers for Windows and Linux.

@@ -95,11 +95,11 @@ Follow [START_HERE.md](START_HERE.md) for the current end-to-end flow. Create an
 pwsh.exe -NoProfile -File .\connect-chatgpt.ps1
 ```
 
-On Windows v0.4.1+, `connect-chatgpt.ps1` is the persistent enrollment entry point: it reuses an existing DPAPI-protected credential when available and leaves the background supervisor as the single owner of managed tunnel profiles.
+On Windows v0.4.2+, `connect-chatgpt.ps1` is the persistent enrollment entry point: it reuses an existing DPAPI-protected credential when available and leaves the background supervisor as the single owner of managed tunnel profiles.
 
 In ChatGPT, create a custom MCP **app** with Connection = Tunnel, select the tunnel, use **None / No authentication** for this server, run **Scan Tools**, review permissions, and create the app. See [START_HERE.md](START_HERE.md) for the plan/workspace requirements and FINAL PASS checklist.
 
-For Plugin packaging, icons, app binding, and private/workspace distribution, see [docs/PLUGIN_SETUP.md](docs/PLUGIN_SETUP.md) and [plugin-template](plugin-template/). For ChatGPT Work/Codex, [WORK_SETUP.md](WORK_SETUP.md) includes `@plugin-creator` plus the one-command app-bound installers `install-work-plugin.ps1` / `install-work-plugin.sh`, which accept either the underlying App ID or the `plugin_...` technical identifier shown by ChatGPT.
+For Plugin packaging, icons, app binding, and private/workspace distribution, see [docs/PLUGIN_SETUP.md](docs/PLUGIN_SETUP.md) and [plugin-template](plugin-template/). For ChatGPT Work/Codex, [WORK_SETUP.md](WORK_SETUP.md) includes `@plugin-creator` plus self-contained latest-Release one-command app-bound installers for Windows/Linux. They accept either the underlying App ID or the `plugin_...` technical identifier shown by ChatGPT and automatically fetch the Release Plugin template when no checkout is present.
 
 ## Tools
 
@@ -111,7 +111,7 @@ Filesystem containment is enforced, but command execution is **not an OS sandbox
 
 ## Validation
 
-v0.4.1 includes the cross-platform gates plus canonical AI-assisted onboarding, Standard/Full guidance, persistent enrollment, current custom-app/Plugin instructions, icon assets, installer/update-path validation, and runtime-upgrade validation. Windows and Linux syntax/install checks, safe and Power Mode smoke tests, concurrency tests, and secret scanning remain part of the release gate. Use `npm run check`, `npm test`, and `npm run audit` before releases.
+v0.4.2 includes the cross-platform gates plus canonical AI-assisted onboarding, Standard/Full guidance, persistent enrollment, current custom-app/Plugin instructions, icon assets, installer/update-path validation, and runtime-upgrade validation. Windows and Linux syntax/install checks, safe and Power Mode smoke tests, concurrency tests, and secret scanning remain part of the release gate. Use `npm run check`, `npm test`, and `npm run audit` before releases.
 
 ## License
 
