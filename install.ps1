@@ -140,13 +140,29 @@ function Install-Source {
   Write-Host "Source commit: $head"
 }
 
+function Write-TunnelClientState([string]$ExePath) {
+  $varDir = Join-Path $InstallDir 'var'
+  New-Item -ItemType Directory -Force -Path $varDir | Out-Null
+  $state = [ordered]@{
+    version = $TunnelClientVersion
+    path = [IO.Path]::GetFullPath($ExePath)
+    sha256 = (Get-FileHash -LiteralPath $ExePath -Algorithm SHA256).Hash.ToLowerInvariant()
+    recordedAt = (Get-Date).ToUniversalTime().ToString('o')
+  }
+  $target = Join-Path $varDir 'tunnel-client.json'
+  $tmp = "$target.tmp-$PID"
+  [IO.File]::WriteAllText($tmp, ($state | ConvertTo-Json -Depth 4) + [Environment]::NewLine, [Text.UTF8Encoding]::new($false))
+  Move-Item -LiteralPath $tmp -Destination $target -Force
+}
+
 function Install-TunnelClient {
   if ($SkipTunnelClient) { return }
   $arch = if ($env:PROCESSOR_ARCHITECTURE -match 'ARM64') { 'arm64' } else { 'amd64' }
   $toolDir = Join-Path $InstallDir "tools\tunnel-client-v$TunnelClientVersion-windows-$arch"
   $exe = Join-Path $toolDir 'tunnel-client.exe'
   if (Test-Path -LiteralPath $exe) {
-    Write-Host "Tunnel client already installed: $exe"
+    Write-TunnelClientState $exe
+    Write-Host "Tunnel client already installed and pinned: $exe"
     return
   }
   $tag = "v$TunnelClientVersion"
@@ -166,7 +182,8 @@ function Install-TunnelClient {
     New-Item -ItemType Directory -Force -Path $toolDir | Out-Null
     Expand-Archive -LiteralPath (Join-Path $tmp $file) -DestinationPath $toolDir -Force
     if (-not (Test-Path -LiteralPath $exe)) { throw 'tunnel-client.exe missing after extraction' }
-    Write-Host "Tunnel client verified and installed: $exe"
+    Write-TunnelClientState $exe
+    Write-Host "Tunnel client verified, installed and pinned: $exe"
   } finally {
     Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue
   }
