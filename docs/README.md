@@ -54,3 +54,7 @@ curl -fsSL https://raw.githubusercontent.com/GOD13emad/ChatGPTRemoteCommander/ma
 ```
 
 After enrollment, later logins do not require re-entering the Tunnel ID, MCP address, health port, or Runtime API key.
+
+## Updating
+
+Re-run the same one-command installer you originally used. On Windows v0.3.3+, an active registered installation is detected and updated in place; otherwise new installs keep application source under `%LOCALAPPDATA%\\ChatGPTRemoteCommander\\app` and persistent state in the parent directory. With `-StartServer`, a running v0.3 MCP is upgraded to the installed version without requiring sign-out or reboot.

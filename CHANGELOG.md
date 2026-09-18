@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.3 — 2026-09-18
+
+- Fixed the Windows installer path collision between application source and persistent local state (`credentials` / `downloads`).
+- New installs use `%LOCALAPPDATA%\\ChatGPTRemoteCommander\\app`; state remains under `%LOCALAPPDATA%\\ChatGPTRemoteCommander`.
+- Existing active installations are auto-detected from the Windows logon supervisor and updated in place, preserving custom/source-repo installations.
+- Legacy installs where the state root itself is a Git checkout remain supported.
+- `-StartServer` now upgrades a running v0.3 MCP to the newly installed version when needed, so normal updates do not require sign-out or reboot.
+- Added explicit Git ignore coverage for legacy local `credentials/` and `downloads/` directories.
+
+
 ## 0.3.2 — 2026-09-18
 
 - Converted `connect-chatgpt.ps1` into a persistent-connection compatibility wrapper instead of starting a second foreground tunnel.

@@ -1,5 +1,5 @@
 param(
-  [string]$InstallDir = "$env:LOCALAPPDATA\ChatGPTRemoteCommander",
+  [string]$InstallDir = '',
   [switch]$InstallPrerequisites,
   [switch]$PowerMode,
   [switch]$StartServer,
@@ -18,6 +18,40 @@ function Refresh-Path {
 
 function Require-Windows {
   if ([string]::IsNullOrWhiteSpace($env:WINDIR)) { throw 'This installer currently supports Windows only.' }
+}
+
+function Resolve-InstallDir {
+  if (-not [string]::IsNullOrWhiteSpace($InstallDir)) {
+    $script:InstallDir = [IO.Path]::GetFullPath($InstallDir)
+    return
+  }
+
+  $runKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
+  $runValue = (Get-ItemProperty -Path $runKey -Name 'ChatGPTRemoteCommander' -ErrorAction SilentlyContinue).ChatGPTRemoteCommander
+  if ($runValue) {
+    $m = [regex]::Match([string]$runValue, '-File\s+"([^"]*autostart-windows\.ps1)"', 'IgnoreCase')
+    if (-not $m.Success) {
+      $m = [regex]::Match([string]$runValue, '-File\s+([^\s]+autostart-windows\.ps1)', 'IgnoreCase')
+    }
+    if ($m.Success) {
+      $candidate = Split-Path -Parent $m.Groups[1].Value
+      if (Test-Path -LiteralPath (Join-Path $candidate '.git')) {
+        $script:InstallDir = [IO.Path]::GetFullPath($candidate)
+        Write-Host "Detected active installation from Windows autostart: $InstallDir"
+        return
+      }
+    }
+  }
+
+  $stateRoot = Join-Path $env:LOCALAPPDATA 'ChatGPTRemoteCommander'
+  if (Test-Path -LiteralPath (Join-Path $stateRoot '.git')) {
+    $script:InstallDir = [IO.Path]::GetFullPath($stateRoot)
+    Write-Host "Detected legacy installation: $InstallDir"
+    return
+  }
+
+  $script:InstallDir = Join-Path $stateRoot 'app'
+  Write-Host "Using application directory: $InstallDir"
 }
 
 function Ensure-Command([string]$Name, [string]$WingetId) {
@@ -153,23 +187,58 @@ function Test-Installation {
 }
 function Start-LocalServer {
   if (-not $StartServer) { return }
-  try {
-    $health = Invoke-RestMethod 'http://127.0.0.1:47831/health' -TimeoutSec 2
-    if ($health.ok) {
-      Write-Host 'MCP server is already running and healthy.'
-      return
+
+  $expectedVersion = (Get-Content -LiteralPath (Join-Path $InstallDir 'package.json') -Raw | ConvertFrom-Json).version
+  $health = $null
+  try { $health = Invoke-RestMethod 'http://127.0.0.1:47831/health' -TimeoutSec 2 } catch { }
+
+  if ($health.ok -and $health.version -eq $expectedVersion) {
+    Write-Host "MCP server is already running and healthy at version $expectedVersion."
+    return
+  }
+
+  if ($health.ok -and $health.version -ne $expectedVersion) {
+    Write-Host "Updating running MCP from version $($health.version) to $expectedVersion..."
+    $listener = Get-NetTCPConnection -State Listen -LocalPort 47831 -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($listener) {
+      $proc = Get-CimInstance Win32_Process -Filter "ProcessId=$($listener.OwningProcess)" -ErrorAction SilentlyContinue
+      if ($proc.Name -eq 'node.exe' -and $proc.CommandLine -match 'server-v0\.3\.mjs') {
+        Stop-Process -Id $listener.OwningProcess -Force
+        foreach ($i in 1..20) {
+          Start-Sleep -Milliseconds 500
+          try {
+            $health = Invoke-RestMethod 'http://127.0.0.1:47831/health' -TimeoutSec 1
+            if ($health.ok -and $health.version -eq $expectedVersion) {
+              Write-Host "Supervisor restarted MCP at version $expectedVersion."
+              return
+            }
+          } catch { }
+        }
+      } else {
+        throw "Port 47831 is owned by an unexpected process; refusing to stop it automatically."
+      }
     }
-  } catch { }
+  }
+
   $escaped = $InstallDir.Replace("'", "''")
   $cmd = "Set-Location '$escaped'; `$Host.UI.RawUI.WindowTitle='ChatGPT Remote Commander'; npm start"
   Start-Process -FilePath 'pwsh.exe' -ArgumentList @('-NoExit','-NoProfile','-Command',$cmd) | Out-Null
-  Start-Sleep -Seconds 3
-  $health = Invoke-RestMethod 'http://127.0.0.1:47831/health' -TimeoutSec 5
-  if (-not $health.ok) { throw 'Server window started but health check failed.' }
-  Write-Host "Server started successfully: http://127.0.0.1:47831/mcp"
+
+  foreach ($i in 1..20) {
+    Start-Sleep -Milliseconds 500
+    try {
+      $health = Invoke-RestMethod 'http://127.0.0.1:47831/health' -TimeoutSec 1
+      if ($health.ok -and $health.version -eq $expectedVersion) {
+        Write-Host "Server started successfully at version ${expectedVersion}: http://127.0.0.1:47831/mcp"
+        return
+      }
+    } catch { }
+  }
+  throw "Server startup did not reach expected version $expectedVersion."
 }
 
 Require-Windows
+Resolve-InstallDir
 Ensure-Prerequisites
 Install-Source
 Install-TunnelClient
@@ -182,7 +251,7 @@ Write-Host 'INSTALL_PASS'
 Write-Host "Installed at: $InstallDir"
 Write-Host "Mode: $(if ($PowerMode) {'POWER (full filesystem/shell/process control)'} else {'STANDARD'})"
 Write-Host ''
-Write-Host 'Next: create your own OpenAI Secure MCP Tunnel and Runtime API key, then enroll it once for automatic startup:'
-Write-Host "  pwsh.exe -NoProfile -File `"$InstallDir\enable-autostart.ps1`" -Profile `"$env:COMPUTERNAME`""
-Write-Host 'After enrollment, later Windows logins start MCP + tunnel automatically; no repeated Tunnel ID/port/key entry is needed.'
+Write-Host 'Next: create your own OpenAI Secure MCP Tunnel and Runtime API key, then run once:'
+Write-Host "  pwsh.exe -NoProfile -File `"$InstallDir\connect-chatgpt.ps1`""
+Write-Host 'Persistent enrollment then manages MCP + tunnel automatically; no repeated Tunnel ID/port/key entry is needed.'
 Write-Host 'Do not share the Runtime API key. It is entered locally and stored with Windows DPAPI for this user.'

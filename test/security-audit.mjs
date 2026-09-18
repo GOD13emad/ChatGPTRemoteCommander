@@ -31,7 +31,7 @@ for (const file of tracked) {
 for (const forbidden of ['config.local.json', '.env', 'connections.local.json']) {
   if (tracked.includes(forbidden)) findings.push({ scope: 'CURRENT', type: 'Forbidden tracked file', location: forbidden });
 }
-for (const expectedIgnored of ['config.local.json', '.env', 'connections.local.json']) {
+for (const expectedIgnored of ['config.local.json', '.env', 'connections.local.json', 'credentials/example.dpapi', 'downloads/example.zip']) {
   const ignored = spawnSync('git', ['check-ignore', '-q', '--', expectedIgnored]);
   if (ignored.status !== 0) findings.push({ scope: 'CURRENT', type: 'Expected ignore missing', location: expectedIgnored });
 }

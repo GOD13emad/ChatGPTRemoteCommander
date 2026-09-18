@@ -18,6 +18,8 @@
 & ([scriptblock]::Create((irm 'https://raw.githubusercontent.com/GOD13emad/ChatGPTRemoteCommander/main/install.ps1'))) -InstallPrerequisites -PowerMode -StartServer
 ```
 
+**به‌روزرسانی:** همان دستور نصب را دوباره اجرا کنید. از نسخه 0.3.3 به بعد، نصب فعال ویندوز به‌طور خودکار شناسایی و همان Git checkout به‌روزرسانی می‌شود. در نصب تازه، کد در `%LOCALAPPDATA%\\ChatGPTRemoteCommander\\app` قرار می‌گیرد و credential/download state بیرون از Git checkout نگه داشته می‌شود.
+
 ## ۱. نصب روی ویندوز
 
 1. مخزن را باز کنید: https://github.com/GOD13emad/ChatGPTRemoteCommander

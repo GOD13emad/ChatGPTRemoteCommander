@@ -1,4 +1,28 @@
 import { spawnSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
+
+const windowsInstaller = readFileSync('install.ps1', 'utf8');
+for (const required of [
+  "Join-Path $stateRoot 'app'",
+  'Detected active installation from Windows autostart',
+  'Updating running MCP from version'
+]) {
+  if (!windowsInstaller.includes(required)) {
+    throw new Error(`install.ps1 missing required v0.3.3 behavior: ${required}`);
+  }
+}
+const linuxInstaller = readFileSync('install.sh', 'utf8');
+const linuxEnrollment = readFileSync('enable-autostart-linux.sh', 'utf8');
+for (const required of ['Updating running MCP from version', 'enable-autostart-linux.sh']) {
+  if (!linuxInstaller.includes(required)) {
+    throw new Error(`install.sh missing required v0.3.3 behavior: ${required}`);
+  }
+}
+for (const required of ['Reusing existing local credential', 'doctor bind check skipped']) {
+  if (!linuxEnrollment.includes(required)) {
+    throw new Error(`enable-autostart-linux.sh missing required v0.3.3 behavior: ${required}`);
+  }
+}
 
 function run(file, args) {
   const result = spawnSync(file, args, { encoding: 'utf8' });

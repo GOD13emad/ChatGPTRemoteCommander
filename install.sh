@@ -199,20 +199,44 @@ start_server() {
   [[ "$START_SERVER" == "1" ]] || return 0
   cd "$INSTALL_DIR"
   mkdir -p var
-  if curl -fsS http://127.0.0.1:47831/health 2>/dev/null | grep -q '"ok"'; then
-    echo "MCP server is already healthy."
+  local expected current health pid cwd
+  expected="$(sed -nE 's/.*"version"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p' package.json | head -n1)"
+  health="$(curl -fsS http://127.0.0.1:47831/health 2>/dev/null || true)"
+  current="$(printf '%s' "$health" | sed -nE 's/.*"version":"([^"]+)".*/\1/p')"
+  if [[ -n "$current" && "$current" == "$expected" ]]; then
+    echo "MCP server is already healthy at version $expected."
     return 0
+  fi
+  if [[ -n "$current" && "$current" != "$expected" ]]; then
+    echo "Updating running MCP from version $current to $expected..."
+    for pid in $(pgrep -f 'node .*src/server-v0\.3\.mjs' 2>/dev/null || true); do
+      cwd="$(readlink -f "/proc/$pid/cwd" 2>/dev/null || true)"
+      if [[ "$cwd" == "$(readlink -f "$INSTALL_DIR")" ]]; then
+        kill "$pid" 2>/dev/null || true
+      fi
+    done
+    for _ in $(seq 1 40); do
+      sleep 0.25
+      health="$(curl -fsS http://127.0.0.1:47831/health 2>/dev/null || true)"
+      current="$(printf '%s' "$health" | sed -nE 's/.*"version":"([^"]+)".*/\1/p')"
+      if [[ "$current" == "$expected" ]]; then
+        echo "Supervisor restarted MCP at version $expected."
+        return 0
+      fi
+    done
   fi
   nohup ./run-server.sh > var/server.log 2>&1 &
   echo $! > var/server.pid
   for _ in $(seq 1 40); do
-    if curl -fsS http://127.0.0.1:47831/health 2>/dev/null | grep -q '"ok"'; then
-      echo "MCP server started: http://127.0.0.1:47831/mcp"
+    sleep 0.25
+    health="$(curl -fsS http://127.0.0.1:47831/health 2>/dev/null || true)"
+    current="$(printf '%s' "$health" | sed -nE 's/.*"version":"([^"]+)".*/\1/p')"
+    if [[ "$current" == "$expected" ]]; then
+      echo "MCP server started at version $expected: http://127.0.0.1:47831/mcp"
       return 0
     fi
-    sleep 0.25
   done
-  echo "Server failed to become healthy; see $INSTALL_DIR/var/server.log" >&2
+  echo "Server failed to reach expected version $expected; see $INSTALL_DIR/var/server.log" >&2
   exit 1
 }
 [[ "$(uname -s)" == "Linux" ]] || { echo "This installer supports Linux only. Use install.ps1 on Windows." >&2; exit 1; }
@@ -225,7 +249,8 @@ install_portable_node
 ensure_node_path
 install_tunnel_client
 write_local_config
-chmod +x "$INSTALL_DIR/install.sh" "$INSTALL_DIR/connect-chatgpt-account.sh" "$INSTALL_DIR/run-server.sh"
+chmod +x "$INSTALL_DIR/install.sh" "$INSTALL_DIR/connect-chatgpt-account.sh" "$INSTALL_DIR/run-server.sh" \
+  "$INSTALL_DIR/autostart-linux.sh" "$INSTALL_DIR/enable-autostart-linux.sh" "$INSTALL_DIR/disable-autostart-linux.sh"
 validate_installation
 start_server
 
@@ -235,7 +260,7 @@ echo "Installed at: $INSTALL_DIR"
 echo "Mode: $( [[ "$POWER_MODE" == "1" ]] && echo POWER || echo STANDARD )"
 echo "Device: $(hostname)"
 echo
-echo "Next: create a distinct OpenAI Secure MCP Tunnel for this computer, then run:"
-echo "  $INSTALL_DIR/connect-chatgpt-account.sh --profile $(hostname)"
-echo "For additional ChatGPT accounts on this same computer, run the command again with a different --profile."
-echo "The script auto-selects a free health port. Runtime API keys are prompted securely and are not stored by this project."
+echo "Next: create a distinct OpenAI Secure MCP Tunnel for this computer, then run once:"
+echo "  $INSTALL_DIR/enable-autostart-linux.sh"
+echo "For additional ChatGPT accounts on this same computer, run it again with a different --profile."
+echo "The script auto-selects a free health port and stores the Runtime API key in a user-only local credential file outside the repository."

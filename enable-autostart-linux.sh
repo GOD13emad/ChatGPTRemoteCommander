@@ -56,12 +56,21 @@ if [[ ! -f "$PROFILE_FILE" ]]; then
   [[ -n "$TUNNEL_ID" ]] || { read -r -p 'Paste OpenAI tunnel_id: ' TUNNEL_ID; }
   [[ "$TUNNEL_ID" =~ ^tunnel_[A-Za-z0-9_-]+$ ]] || { echo 'Invalid tunnel_id format.' >&2; exit 1; }
   [[ "$HEALTH_PORT" -ne 0 ]] || HEALTH_PORT="$(free_port)"
+elif [[ "$HEALTH_PORT" -eq 0 ]]; then
+  HEALTH_PORT="$(sed -nE 's/.*listen_addr:[[:space:]]*"?127\.0\.0\.1:([0-9]+).*/\1/p' "$PROFILE_FILE" | head -n1)"
+  HEALTH_PORT="${HEALTH_PORT:-0}"
 fi
-read -r -s -p 'Paste Runtime API key once (stored in a user-only local file): ' RUNTIME_KEY
-echo
-[[ -n "$RUNTIME_KEY" ]] || { echo 'Runtime API key is empty.' >&2; exit 1; }
-printf '%s' "$RUNTIME_KEY" > "$CRED_FILE"
-chmod 600 "$CRED_FILE"
+
+if [[ -f "$CRED_FILE" ]]; then
+  RUNTIME_KEY="$(cat "$CRED_FILE")"
+  echo "Reusing existing local credential for profile $PROFILE."
+else
+  read -r -s -p 'Paste Runtime API key once (stored in a user-only local file): ' RUNTIME_KEY
+  echo
+  [[ -n "$RUNTIME_KEY" ]] || { echo 'Runtime API key is empty.' >&2; exit 1; }
+  printf '%s' "$RUNTIME_KEY" > "$CRED_FILE"
+  chmod 600 "$CRED_FILE"
+fi
 
 export CONTROL_PLANE_API_KEY="$RUNTIME_KEY"
 unset OPENAI_API_KEY || true
@@ -70,7 +79,17 @@ if [[ ! -f "$PROFILE_FILE" ]]; then
     --tunnel-id "$TUNNEL_ID" --mcp-server-url "$MCP_URL" \
     --health-listen-addr "127.0.0.1:$HEALTH_PORT" --force
 fi
-"$TUNNEL_EXE" doctor --profile "$PROFILE" --explain
+READY=0
+if [[ "$HEALTH_PORT" -gt 0 ]]; then
+  if [[ "$(curl -fsS --max-time 2 "http://127.0.0.1:$HEALTH_PORT/readyz" 2>/dev/null || true)" == "ready" ]]; then
+    READY=1
+  fi
+fi
+if [[ "$READY" -eq 1 ]]; then
+  echo "Existing tunnel profile $PROFILE is already ready on health port $HEALTH_PORT; doctor bind check skipped."
+else
+  "$TUNNEL_EXE" doctor --profile "$PROFILE" --explain
+fi
 unset CONTROL_PLANE_API_KEY
 RUNTIME_KEY=''
 

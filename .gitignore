@@ -10,3 +10,5 @@ PROJECT_BRAIN.md
 config.local.json
 .runtime/
 connections.local.json
+/credentials/
+/downloads/
