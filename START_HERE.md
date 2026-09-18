@@ -306,3 +306,8 @@ Continue through install/update, Secure MCP Tunnel, persistent enrollment, ChatG
 - Developer Mode and MCP apps: https://help.openai.com/en/articles/12584461-developer-mode-and-mcp-apps-in-chatgpt
 - Plugins: https://help.openai.com/en/articles/20001256/
 - Plugin packaging: https://developers.openai.com/plugins/build/plugins
+
+
+### GUI backend implementation note
+
+Windows GUI Control uses bounded **synthetic input** in the current interactive user session for mouse and keyboard actions. A submitted input is not considered successful until a fresh screenshot confirms the visible result. It does not bypass Secure Desktop/UAC, the lock screen, protected-input/anti-cheat restrictions, or real-time latency limits.

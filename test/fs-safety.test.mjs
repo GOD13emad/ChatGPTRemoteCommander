@@ -1,13 +1,13 @@
 import assert from 'node:assert/strict';
 import os from 'node:os';
 import path from 'node:path';
-import { mkdtemp, mkdir, readFile, symlink, writeFile, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, realpath, symlink, writeFile, rm } from 'node:fs/promises';
 import { copyPath, movePath, readAnyFile, writeAnyFile } from '../src/power-tools-v0.3.mjs';
 import { withPathLocks, lockStats } from '../src/locks.mjs';
 
-const root = await mkdtemp(path.join(os.tmpdir(), 'rc-fs-root-'));
-const outside = await mkdtemp(path.join(os.tmpdir(), 'rc-fs-outside-'));
-const backups = await mkdtemp(path.join(os.tmpdir(), 'rc-fs-backup-'));
+const root = await realpath(await mkdtemp(path.join(os.tmpdir(), 'rc-fs-root-')));
+const outside = await realpath(await mkdtemp(path.join(os.tmpdir(), 'rc-fs-outside-')));
+const backups = await realpath(await mkdtemp(path.join(os.tmpdir(), 'rc-fs-backup-')));
 const ctx = {
   roots: [root],
   config: {
@@ -65,7 +65,7 @@ try {
     };
     await assert.rejects(
       () => copyPath(fullCtx, { source: outside, destination: path.join(root, 'escape'), overwrite: true }),
-      /relationship is unsafe/
+      /relationship is unsafe|symbolic-link writes are not allowed/
     );
   }
 

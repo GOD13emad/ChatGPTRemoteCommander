@@ -119,3 +119,8 @@ Do not expose a personal Power Mode computer directly to the public internet to 
 - GitHub marketplace import: https://help.openai.com/en/articles/20001504
 - Plugin overview: https://help.openai.com/en/articles/20001256/
 - Secure MCP Tunnel: https://developers.openai.com/api/docs/guides/secure-mcp-tunnels
+
+
+### Native Computer Use fallback
+
+Native Computer Use remains a fallback for graphical tasks when the Remote Commander GUI backend is unavailable, unsupported, or intentionally disabled. It is not a substitute for proving that the selected Remote Commander app reaches the intended computer.
