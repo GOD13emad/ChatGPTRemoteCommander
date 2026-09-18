@@ -22,11 +22,67 @@ function power(ctx) {
   return ctx.config.powerMode;
 }
 
-function resolveTarget(ctx, userPath, base = ctx.roots[0]) {
+function lexicalTarget(ctx, userPath, base = ctx.roots[0]) {
   if (typeof userPath !== 'string' || userPath.length === 0) throw new Error('path is required');
-  const candidate = path.resolve(path.isAbsolute(expandEnv(userPath)) ? expandEnv(userPath) : path.join(base, expandEnv(userPath)));
+  const expanded = expandEnv(userPath);
+  const candidate = path.resolve(path.isAbsolute(expanded) ? expanded : path.join(base, expanded));
   if (power(ctx).fullFilesystem !== true && !isWithin(candidate, ctx.roots)) throw new Error('path is outside allowed roots');
   return candidate;
+}
+
+async function nearestExistingAncestor(candidate) {
+  let cursor = candidate;
+  const suffix = [];
+  while (true) {
+    try { return { ancestor: await realpath(cursor), suffix }; }
+    catch (error) {
+      if (error?.code !== 'ENOENT') throw error;
+      const parent = path.dirname(cursor);
+      if (parent === cursor) throw error;
+      suffix.unshift(path.basename(cursor));
+      cursor = parent;
+    }
+  }
+}
+
+async function resolveExistingTarget(ctx, userPath, base = ctx.roots[0]) {
+  const candidate = lexicalTarget(ctx, userPath, base);
+  if (power(ctx).fullFilesystem === true) return candidate;
+  const resolved = await realpath(candidate);
+  if (!isWithin(resolved, ctx.roots)) throw new Error('resolved path escapes allowed roots');
+  return resolved;
+}
+
+async function resolveWritableTarget(ctx, userPath, base = ctx.roots[0]) {
+  const candidate = lexicalTarget(ctx, userPath, base);
+  if (power(ctx).fullFilesystem === true) return candidate;
+  try {
+    const info = await lstat(candidate);
+    if (info.isSymbolicLink()) throw new Error('symbolic-link writes are not allowed');
+    const resolved = await realpath(candidate);
+    if (!isWithin(resolved, ctx.roots)) throw new Error('resolved path escapes allowed roots');
+    return candidate;
+  } catch (error) {
+    if (error?.code !== 'ENOENT') throw error;
+  }
+  const { ancestor } = await nearestExistingAncestor(path.dirname(candidate));
+  if (!isWithin(ancestor, ctx.roots)) throw new Error('parent path escapes allowed roots');
+  return candidate;
+}
+
+function pathRelation(a, b) {
+  const aa = path.resolve(a);
+  const bb = path.resolve(b);
+  const relAB = path.relative(aa, bb);
+  const relBA = path.relative(bb, aa);
+  const aContainsB = relAB !== '' && !relAB.startsWith('..') && !path.isAbsolute(relAB);
+  const bContainsA = relBA !== '' && !relBA.startsWith('..') && !path.isAbsolute(relBA);
+  return aa === bb ? 'same' : aContainsB ? 'source-ancestor' : bContainsA ? 'destination-ancestor' : 'disjoint';
+}
+
+function assertDisjointPaths(source, destination) {
+  const relation = pathRelation(source, destination);
+  if (relation !== 'disjoint') throw new Error(`source/destination relationship is unsafe: ${relation}`);
 }
 
 function digest(data) {
@@ -106,7 +162,7 @@ export async function powerStatus(ctx) {
   };
 }
 export async function fileInfo(ctx, input) {
-  const target = resolveTarget(ctx, input.path);
+  const target = await resolveExistingTarget(ctx, input.path);
   const info = await lstat(target);
   return {
     path: target,
@@ -121,7 +177,7 @@ export async function fileInfo(ctx, input) {
 }
 
 export async function readAnyFile(ctx, input) {
-  const target = resolveTarget(ctx, input.path);
+  const target = await resolveExistingTarget(ctx, input.path);
   const info = await stat(target);
   if (!info.isFile()) throw new Error('path is not a file');
   const maxBytes = Number(power(ctx).maxFileBytes ?? 8 * 1024 * 1024);
@@ -135,7 +191,7 @@ export async function readAnyFile(ctx, input) {
 }
 
 export async function writeAnyFile(ctx, input) {
-  const target = resolveTarget(ctx, input.path);
+  const target = await resolveWritableTarget(ctx, input.path);
   const encoding = input.encoding === 'base64' ? 'base64' : 'utf8';
   const data = Buffer.from(input.content ?? '', encoding);
   const maxBytes = Number(power(ctx).maxFileBytes ?? 8 * 1024 * 1024);
@@ -160,7 +216,7 @@ export async function writeAnyFile(ctx, input) {
   });
 }
 export async function createDirectory(ctx, input) {
-  const target = resolveTarget(ctx, input.path);
+  const target = await resolveWritableTarget(ctx, input.path);
   return withPathLocks([target], async () => {
     await mkdir(target, { recursive: input.recursive !== false });
     return { path: target, created: true };
@@ -168,51 +224,94 @@ export async function createDirectory(ctx, input) {
 }
 
 export async function copyPath(ctx, input) {
-  const source = resolveTarget(ctx, input.source);
-  const destination = resolveTarget(ctx, input.destination);
+  const source = await resolveExistingTarget(ctx, input.source);
+  const destination = await resolveWritableTarget(ctx, input.destination);
+  assertDisjointPaths(source, destination);
   return withPathLocks([source, destination], async () => {
-    await realpath(source);
+    const sourceNow = await resolveExistingTarget(ctx, source);
+    const destinationNow = await resolveWritableTarget(ctx, destination);
+    assertDisjointPaths(sourceNow, destinationNow);
+    await mkdir(path.dirname(destinationNow), { recursive: true });
+    const stage = path.join(path.dirname(destinationNow), `.rc-stage-${randomUUID()}`);
+    const displaced = path.join(path.dirname(destinationNow), `.rc-displaced-${randomUUID()}`);
     let backupPath = null;
+    let displacedExists = false;
     try {
-      await lstat(destination);
-      if (input.overwrite !== true) throw new Error('destination exists; set overwrite=true');
-      backupPath = await backupExisting(ctx, destination);
-      await rm(destination, { recursive: true, force: true });
+      await cp(sourceNow, stage, { recursive: true, force: false, errorOnExist: true });
+      try {
+        await lstat(destinationNow);
+        if (input.overwrite !== true) throw new Error('destination exists; set overwrite=true');
+        backupPath = await backupExisting(ctx, destinationNow);
+        await rename(destinationNow, displaced);
+        displacedExists = true;
+      } catch (error) {
+        if (error?.code !== 'ENOENT') throw error;
+      }
+      await rename(stage, destinationNow);
+      if (displacedExists) await rm(displaced, { recursive: true, force: true });
+      return { source: sourceNow, destination: destinationNow, backupPath, transactional: true };
     } catch (error) {
-      if (error?.code !== 'ENOENT') throw error;
+      try { await rm(stage, { recursive: true, force: true }); } catch {}
+      if (displacedExists) {
+        try {
+          await rm(destinationNow, { recursive: true, force: true });
+          await rename(displaced, destinationNow);
+        } catch {}
+      }
+      throw error;
     }
-    await mkdir(path.dirname(destination), { recursive: true });
-    await cp(source, destination, { recursive: true, force: false });
-    return { source, destination, backupPath };
   });
 }
 
 export async function movePath(ctx, input) {
-  const source = resolveTarget(ctx, input.source);
-  const destination = resolveTarget(ctx, input.destination);
+  const source = await resolveExistingTarget(ctx, input.source);
+  const destination = await resolveWritableTarget(ctx, input.destination);
+  assertDisjointPaths(source, destination);
   return withPathLocks([source, destination], async () => {
-    await realpath(source);
+    const sourceNow = await resolveExistingTarget(ctx, source);
+    const destinationNow = await resolveWritableTarget(ctx, destination);
+    assertDisjointPaths(sourceNow, destinationNow);
+    await mkdir(path.dirname(destinationNow), { recursive: true });
+    const stage = path.join(path.dirname(destinationNow), `.rc-stage-${randomUUID()}`);
+    const displaced = path.join(path.dirname(destinationNow), `.rc-displaced-${randomUUID()}`);
     let backupPath = null;
+    let displacedExists = false;
+    let promoted = false;
     try {
-      await lstat(destination);
-      if (input.overwrite !== true) throw new Error('destination exists; set overwrite=true');
-      backupPath = await backupExisting(ctx, destination);
-      await rm(destination, { recursive: true, force: true });
+      await cp(sourceNow, stage, { recursive: true, force: false, errorOnExist: true });
+      try {
+        await lstat(destinationNow);
+        if (input.overwrite !== true) throw new Error('destination exists; set overwrite=true');
+        backupPath = await backupExisting(ctx, destinationNow);
+        await rename(destinationNow, displaced);
+        displacedExists = true;
+      } catch (error) {
+        if (error?.code !== 'ENOENT') throw error;
+      }
+      await rename(stage, destinationNow);
+      promoted = true;
+      await rm(sourceNow, { recursive: true, force: true });
+      if (displacedExists) await rm(displaced, { recursive: true, force: true });
+      return { source: sourceNow, destination: destinationNow, backupPath, transactional: true };
     } catch (error) {
-      if (error?.code !== 'ENOENT') throw error;
+      try { await rm(stage, { recursive: true, force: true }); } catch {}
+      if (promoted) {
+        // If source deletion failed, preserve both copies rather than risking data loss.
+        try { await lstat(sourceNow); }
+        catch { try { await rename(destinationNow, sourceNow); promoted = false; } catch {} }
+      }
+      if (displacedExists) {
+        try {
+          await rm(destinationNow, { recursive: true, force: true });
+          await rename(displaced, destinationNow);
+        } catch {}
+      }
+      throw error;
     }
-    await mkdir(path.dirname(destination), { recursive: true });
-    try { await rename(source, destination); }
-    catch (error) {
-      if (error?.code !== 'EXDEV') throw error;
-      await cp(source, destination, { recursive: true, force: false });
-      await rm(source, { recursive: true, force: true });
-    }
-    return { source, destination, backupPath };
   });
 }
 export async function deletePath(ctx, input) {
-  const target = resolveTarget(ctx, input.path);
+  const target = await resolveExistingTarget(ctx, input.path);
   const cfg = power(ctx);
   return withPathLocks([target], async () => {
     await lstat(target);
@@ -256,7 +355,7 @@ async function walkSearch(root, current, input, results, depth) {
 }
 
 export async function searchFiles(ctx, input) {
-  const root = resolveTarget(ctx, input.path ?? '.');
+  const root = await resolveExistingTarget(ctx, input.path ?? '.');
   const pattern = String(input.pattern ?? '');
   const flags = input.ignoreCase === false ? 'g' : 'gi';
   const matcher = input.regex === true ? new RegExp(pattern, flags) : new RegExp(pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), flags);
@@ -271,7 +370,7 @@ export async function searchFiles(ctx, input) {
 }
 export async function runShell(ctx, input) {
   const command = checkShell(ctx, input.command);
-  const cwd = resolveTarget(ctx, input.cwd ?? ctx.roots[0]);
+  const cwd = await resolveExistingTarget(ctx, input.cwd ?? ctx.roots[0]);
   const info = await stat(cwd);
   if (!info.isDirectory()) throw new Error('cwd is not a directory');
   const cfg = power(ctx);
@@ -364,7 +463,7 @@ function terminalSnapshot(session, consume = true) {
 export async function startTerminal(ctx, input) {
   const cfg = power(ctx);
   if (cfg.allowProcessControl !== true || cfg.allowShell !== true) throw new Error('terminal control is disabled');
-  const cwd = resolveTarget(ctx, input.cwd ?? ctx.roots[0]);
+  const cwd = await resolveExistingTarget(ctx, input.cwd ?? ctx.roots[0]);
   const info = await stat(cwd);
   if (!info.isDirectory()) throw new Error('cwd is not a directory');
   const child = spawnShell('', {
