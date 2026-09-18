@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.2 — 2026-09-18
+
+- Converted `connect-chatgpt.ps1` into a persistent-connection compatibility wrapper instead of starting a second foreground tunnel.
+- Re-running the legacy connect command now delegates to the idempotent autostart enrollment flow, reuses the saved DPAPI credential, and leaves the background supervisor as the single tunnel owner.
+- Prevents the common `tunnel-client run failed: -1` confusion caused by launching a duplicate tunnel for an already-managed profile.
+
+
 ## 0.3.1 — 2026-09-18
 
 - Fixed Windows one-time autostart enrollment when the same tunnel profile is already running on its configured health port.

@@ -89,7 +89,7 @@ Create an OpenAI Secure MCP Tunnel and Runtime API key, then keep the local MCP 
 pwsh.exe -NoProfile -File .\connect-chatgpt.ps1
 ```
 
-The script validates local health, configures a `sample_mcp_remote_no_auth` tunnel profile, runs `tunnel-client doctor`, and starts the foreground tunnel. The Runtime API key is entered as a hidden SecureString and is not written into the repository.
+On Windows v0.3.2+, `connect-chatgpt.ps1` is a compatibility entry point for persistent mode: it delegates to the idempotent autostart enrollment flow, reuses an existing DPAPI-protected credential when available, and does not start a duplicate foreground tunnel. The background supervisor remains the single owner of managed tunnel profiles.
 
 In ChatGPT, create a custom plugin/app with Connection = Tunnel, select the tunnel, use no authentication for this server, review permissions, and create the plugin.
 

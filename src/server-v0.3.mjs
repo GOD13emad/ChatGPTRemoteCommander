@@ -9,7 +9,7 @@ import { executePowerTool, powerToolDefinitions } from './power-tools-v0.3.mjs';
 import { lockStats } from './locks.mjs';
 import { expandPathValue, shellName } from './platform.mjs';
 
-const VERSION = '0.3.1';
+const VERSION = '0.3.2';
 const MODERN_VERSION = '2026-07-28';
 const LEGACY_VERSIONS = ['2025-11-25', '2025-06-18', '2025-03-26'];
 const here = path.dirname(fileURLToPath(import.meta.url));
