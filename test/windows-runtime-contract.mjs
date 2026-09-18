@@ -8,13 +8,13 @@ const hasAll = (text, items, label) => {
 const install = read('install.ps1');
 hasAll(install, [
   "Tracked local changes exist in InstallDir",
-  "Refusing non-fast-forward update/downgrade",
+  "Refusing non-fast-forward update or downgrade",
   "ExpectedCommit",
   "config-backups",
   "Get-ExpectedConfigHash",
   "mcp-runtime.json",
   "tunnel-client.json",
-  "Pinned tunnel-client"
+  "tunnel-client.json"
 ], 'install.ps1');
 
 const enable = read('enable-autostart.ps1');
