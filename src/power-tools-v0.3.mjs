@@ -101,6 +101,7 @@ export async function powerStatus(ctx) {
     allowShell: cfg.allowShell === true,
     allowProcessControl: cfg.allowProcessControl === true,
     allowPermanentDelete: cfg.allowPermanentDelete === true,
+    guiControl: cfg.guiControl ?? { enabled: false },
     blockedShellPatterns: cfg.blockedShellPatterns || []
   };
 }
