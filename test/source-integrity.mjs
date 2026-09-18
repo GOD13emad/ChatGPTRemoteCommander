@@ -33,7 +33,7 @@ exact(account, 'CONNECT_ACCOUNT_PASS', 1, 'connect-chatgpt-account.ps1');
 
 for (const [name, text] of [['install',install],['supervisor',supervisor],['enable',enable],['disable',disable],['account',account]]) {
   if (text.includes('\u0000')) throw new Error(name + ' contains NUL');
-  if (/\n\s*\$[A-Za-z][^\n]*\n[\s\S]*\n\s*\1/.test('')) throw new Error('unreachable guard');
+  if (!text.endsWith('\n')) throw new Error(name + ' must end with newline');
 }
 
 console.log('SOURCE_INTEGRITY_PASS');
