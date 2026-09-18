@@ -46,19 +46,17 @@ Important boundaries:
 - Automatic shutdown, restart, and logoff command patterns remain blocked.
 - Full MCP write/modify support in ChatGPT is currently for Business and Enterprise/Edu. Pro custom MCP access is currently read/fetch only.
 
-### GUI / Computer Use boundary
+### Windows GUI Control
 
-Remote Commander controls files, terminals, shell commands, processes, project workflows, and other OS-level operations exposed by its MCP tools. It does **not** currently provide interactive visual control of the local desktop: no live screen perception, mouse movement/clicking, live keyboard/game-controller input, or frame-by-frame GUI interaction.
+On Windows, v0.5 can expose its own graphical-control MCP tools. This is an explicit opt-in on top of Power Mode. Enable it only on a trusted interactive desktop:
 
-Therefore, tasks such as **actually playing a game, operating a graphical application visually, navigating an interactive desktop UI, or reacting to live on-screen content** require **Computer Use / graphical screen-control capability in the same ChatGPT conversation or Work session**.
+```powershell
+.\install.ps1 -PowerMode -GuiControl -StartServer -SkipTunnelClient
+```
 
-If Computer Use is unavailable:
-- say that GUI control is unavailable in the current surface;
-- do not infer visual success from process state, logs, screenshots, or shell output alone;
-- do not claim that Remote Commander by itself played the game or operated the GUI;
-- continue only with supported backend actions such as launching the app, inspecting files/logs/processes, changing supported configuration, or preparing/debugging the environment.
+When enabled and the ChatGPT app is re-scanned, the tool set includes live screenshots, cursor position, absolute/relative mouse movement, click/drag/scroll, Unicode typing, key combinations with hold duration, visible-window listing, and window focus. The assisting model should use a `gui_screenshot → gui action → gui_screenshot` loop and verify visible outcomes rather than assuming success.
 
-If Computer Use is available, combine the two capabilities: Computer Use handles visual screen/mouse/keyboard interaction, while Remote Commander handles filesystem/shell/process/backend operations.
+This removes the previous dependency on a separate Computer Use tool for ordinary Windows GUI workflows. It does **not** bypass Windows secure desktop/UAC, lock-screen boundaries, anti-cheat/protected-input systems, or the latency limits of real-time gameplay. If a target rejects synthetic input or requires lower latency than tool calls can provide, report that limitation rather than claiming success.
 
 ### Optional ChatGPT-side Full permission
 
@@ -79,6 +77,11 @@ Open PowerShell 7 and run:
 ```powershell
 & ([scriptblock]::Create((irm 'https://github.com/GOD13emad/ChatGPTRemoteCommander/releases/latest/download/install.ps1'))) -InstallPrerequisites -PowerMode -StartServer
 ```
+
+
+### Windows — Power Mode + GUI Control
+
+After v0.5 is published as a Release, add `-GuiControl` to the latest-release installer. For the current source branch/main checkout, run `.\install.ps1 -PowerMode -GuiControl -StartServer -SkipTunnelClient`, then refresh/re-scan the ChatGPT app tools. GUI Control is Windows-only in v0.5.
 
 ### Linux — Standard
 
