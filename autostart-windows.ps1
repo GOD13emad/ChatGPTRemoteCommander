@@ -21,7 +21,7 @@ if (-not $created) { exit 0 }
 function Test-McpHealth {
   try {
     $h = Invoke-RestMethod 'http://127.0.0.1:47831/health' -TimeoutSec 2
-    return [bool]$h.ok
+    return [bool]($h.ok -and $h.name -eq 'chatgpt-remote-commander')
   } catch { return $false }
 }
 function Start-McpServer {
@@ -43,17 +43,18 @@ function Start-McpServer {
 }
 
 function Find-TunnelExe {
-  $bundled = Get-ChildItem (Join-Path $Root 'tools') -Filter 'tunnel-client.exe' -File -Recurse -ErrorAction SilentlyContinue |
-    Sort-Object FullName -Descending | Select-Object -First 1
-  if ($bundled) { return $bundled.FullName }
-  $cmd = Get-Command tunnel-client -ErrorAction SilentlyContinue
-  if ($cmd) { return $cmd.Source }
-  throw 'tunnel-client not found'
+  $stateFile = Join-Path $Root 'var\tunnel-client.json'
+  if (-not (Test-Path -LiteralPath $stateFile)) { throw 'Pinned tunnel-client state missing; run install.ps1.' }
+  $state = Get-Content -LiteralPath $stateFile -Raw | ConvertFrom-Json
+  $exe = [IO.Path]::GetFullPath([string]$state.path)
+  if (-not (Test-Path -LiteralPath $exe -PathType Leaf)) { throw 'Pinned tunnel-client executable missing.' }
+  $actual = (Get-FileHash -LiteralPath $exe -Algorithm SHA256).Hash.ToLowerInvariant()
+  if ($actual -ne [string]$state.sha256) { throw 'Pinned tunnel-client SHA256 mismatch.' }
+  return $exe
 }
 
 function CredentialPath([string]$Profile) {
-  $safe = $Profile -replace '[^A-Za-z0-9._-]','_'
-  return Join-Path $CredDir "$safe.dpapi"
+  return Join-Path $CredDir "$Profile.dpapi"
 }
 function Get-ProfileHealthPort([string]$ProfileFile) {
   $text = Get-Content -LiteralPath $ProfileFile -Raw
@@ -69,6 +70,115 @@ function Get-ManagedProfiles {
     $text = Get-Content -LiteralPath $f.FullName -Raw
     if ($text -notmatch 'http://127\.0\.0\.1:47831/mcp') { continue }
     $profile = [IO.Path]::GetFileNameWithoutExtension($f.Name)
+    if ($profile -notmatch '^[A-Za-z0-9][A-Za-z0-9._-]{0,63}
+    $items += [pscustomobject]@{
+      Profile = $profile
+      File = $f.FullName
+      Credential = $cred
+      HealthPort = Get-ProfileHealthPort $f.FullName
+    }
+  }
+  return $items
+}
+
+function TunnelProcessExists([string]$Profile, [string]$Exe) {
+  $escaped = [regex]::Escape($Profile)
+  $expected = [IO.Path]::GetFullPath($Exe)
+  return [bool](Get-CimInstance Win32_Process -Filter "Name='tunnel-client.exe'" -ErrorAction SilentlyContinue |
+    Where-Object {
+      $_.ExecutablePath -and
+      [IO.Path]::GetFullPath([string]$_.ExecutablePath) -eq $expected -and
+      $_.CommandLine -match "--profile(?:=|\s+)$escaped(?:\s|$)"
+    } |
+    Select-Object -First 1)
+}
+function Test-TunnelReady([int]$Port) {
+  if ($Port -le 0) { return $false }
+  try {
+    $response = Invoke-WebRequest -Uri "http://127.0.0.1:$Port/readyz" -UseBasicParsing -TimeoutSec 2
+    return ($response.StatusCode -eq 200 -and $response.Content.Trim() -eq 'ready')
+  } catch { return $false }
+}
+function Start-TunnelProfile($Item) {
+  if (-not (Test-Path -LiteralPath $Item.Credential)) {
+    throw "credential not enrolled for profile $($Item.Profile)"
+  }
+  $exe = Find-TunnelExe
+  if (TunnelProcessExists $Item.Profile $exe) {
+    if (-not (Test-TunnelReady $Item.HealthPort)) { throw "profile $($Item.Profile) process exists but readiness failed" }
+    return
+  }
+  $encrypted = Get-Content -LiteralPath $Item.Credential -Raw
+  $secure = ConvertTo-SecureString $encrypted
+  $plain = [System.Net.NetworkCredential]::new('', $secure).Password
+  try {
+    if ([string]::IsNullOrWhiteSpace($plain)) { throw 'decrypted credential is empty' }
+    $log = Join-Path $VarDir ("tunnel-{0}.log" -f $Item.Profile)
+    $psi = [Diagnostics.ProcessStartInfo]::new()
+    $psi.FileName = $exe
+    $psi.WorkingDirectory = $Root
+    $psi.UseShellExecute = $false
+    $psi.CreateNoWindow = $true
+    [void]$psi.ArgumentList.Add('run')
+    [void]$psi.ArgumentList.Add('--profile')
+    [void]$psi.ArgumentList.Add($Item.Profile)
+    [void]$psi.ArgumentList.Add('--log.file')
+    [void]$psi.ArgumentList.Add($log)
+    $psi.Environment['CONTROL_PLANE_API_KEY'] = $plain
+    [void]$psi.Environment.Remove('OPENAI_API_KEY')
+    $p = [Diagnostics.Process]::Start($psi)
+    $ready = $false
+    foreach ($i in 1..40) {
+      Start-Sleep -Milliseconds 500
+      if (Test-TunnelReady $Item.HealthPort) { $ready = $true; break }
+      if ($p.HasExited) { break }
+    }
+    if (-not $ready) {
+      if (-not $p.HasExited) { Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue }
+      throw "tunnel readiness failed for profile $($Item.Profile)"
+    }
+    Write-SupervisorLog "TUNNEL_READY profile=$($Item.Profile) pid=$($p.Id) port=$($Item.HealthPort)"
+  } finally {
+    $plain = $null
+    $secure = $null
+  }
+}
+$missingLogged = @{}
+try {
+  Write-SupervisorLog "SUPERVISOR_STARTED pid=$PID root=$Root"
+  while ($true) {
+    try {
+      Start-McpServer
+      if (Test-McpHealth) {
+        foreach ($item in Get-ManagedProfiles) {
+          if (-not (Test-Path -LiteralPath $item.Credential)) {
+            if (-not $missingLogged.ContainsKey($item.Profile)) {
+              Write-SupervisorLog "CREDENTIAL_MISSING profile=$($item.Profile)"
+              $missingLogged[$item.Profile] = $true
+            }
+            continue
+          }
+          $missingLogged.Remove($item.Profile)
+          $exe = Find-TunnelExe
+          if (-not (TunnelProcessExists $item.Profile $exe) -or -not (Test-TunnelReady $item.HealthPort)) {
+            Start-TunnelProfile $item
+          }
+        }
+      }
+    } catch {
+      Write-SupervisorLog "SUPERVISOR_ITERATION_ERROR $($_.Exception.Message)"
+    }
+    Start-Sleep -Seconds $IntervalSeconds
+  }
+} finally {
+  Write-SupervisorLog 'SUPERVISOR_STOPPED'
+  if ($created) { try { $mutex.ReleaseMutex() } catch {} }
+  $mutex.Dispose()
+}
+ -or $profile -match '\.\.') {
+      Write-SupervisorLog "PROFILE_SKIPPED_INVALID name=$profile"
+      continue
+    }
     $cred = CredentialPath $profile
     $items += [pscustomobject]@{
       Profile = $profile
