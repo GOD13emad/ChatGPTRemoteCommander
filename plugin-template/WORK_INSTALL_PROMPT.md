@@ -14,7 +14,7 @@ Explain Standard versus Full/Power Mode and let me choose.
 Never ask me to paste Runtime API keys, tunnel credentials, bearer tokens, or private keys into chat.
 Use latest Release installer assets, not cached raw/main installers.
 Do not make network, firewall, VPN, DNS, reboot, shutdown, or logoff changes unless I explicitly request them.
-For live GUI tasks such as actually playing a game, verify that Computer Use / graphical screen control is available in this Work task. Remote Commander alone is backend control and must not be presented as live visual mouse/keyboard/gameplay control.
+For live GUI tasks on Windows, first check whether the registered app exposes `gui_status` and `gui_screenshot`. If present, use Remote Commander's built-in screenshot/mouse/keyboard GUI tools and verify outcomes with screenshots. If absent, use native Computer Use only as an available fallback. Do not claim success for protected or real-time targets without visual evidence.
 
 After the MCP app is registered and system_status works:
 1. if you have an authorized command path to the target computer, prefer the repository's install-work-plugin.ps1/.sh with the registered plugin_asdk_app... technical ID; it creates and installs the app-bound personal Plugin automatically;
