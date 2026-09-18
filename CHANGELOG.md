@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.0 — 2026-09-18
+
+- Added opt-in Windows GUI Control for trusted Power Mode machines.
+- Added MCP image screenshots plus mouse move/delta/click/drag/scroll, Unicode typing, key combinations/holds, visible-window listing, and window focus.
+- Added `-GuiControl` / `-DisableGuiControl` installer policy switches; public configuration remains GUI-disabled by default.
+- Added GUI policy/status reporting, MCP image-content response handling, static release gates, and Plugin/Work GUI workflow guidance.
+- Kept secure desktop/UAC, lock-screen, anti-cheat/protected-input, and real-time latency limitations explicit rather than claiming unsupported control.
+
 ## 0.4.4 — 2026-09-18
 
 - Fixed the public Bash one-line Work Plugin installer when executed via `curl | bash -s`: `BASH_SOURCE[0]` is now expanded safely under `set -u`, eliminating the harmless but confusing unbound-variable warning.
