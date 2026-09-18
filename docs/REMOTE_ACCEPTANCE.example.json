@@ -1,0 +1,15 @@
+{
+  "candidateCommit": "REPLACE_WITH_ACCEPTED_COMMIT_SHA",
+  "checkedAt": "REPLACE_WITH_ISO8601_TIME",
+  "deviceName": "REPLACE_WITH_TARGET_DEVICE",
+  "accounts": [
+    "REPLACE_WITH_ACCOUNT_LABEL_1",
+    "REPLACE_WITH_ACCOUNT_LABEL_2"
+  ],
+  "systemStatusVerified": false,
+  "guiImageRendered": false,
+  "guiInputVisuallyVerified": false,
+  "secondGuiLeaseRefused": false,
+  "credentialHashesUnchanged": false,
+  "notes": "Set booleans true only from exact-commit real Secure MCP Tunnel / ChatGPT evidence. Never put API keys or credential contents here."
+}

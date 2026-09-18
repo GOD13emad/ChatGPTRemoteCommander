@@ -1,19 +1,20 @@
 # Changelog
 
-## 0.5.0 — 2026-09-18
+## 0.5.0 — pending acceptance
 
-- Added opt-in Windows GUI Control for trusted Power Mode machines with MCP image screenshots, mouse move/delta/click/drag/scroll, Unicode typing, bounded key combinations, window discovery/focus, and a local emergency stop.
-- Added a repeatable native Windows GUI E2E gate using a disposable WinForms target. It verifies real screenshot capture, exact-window focus, mouse click, Farsi/Japanese Unicode typing, button activation, post-action screenshot change, cursor restore, and best-effort focus restore.
-- Fixed redirected PowerShell stdin/stdout to explicit UTF-8 so multilingual GUI typing is not corrupted by the host console code page; hardened focus with verified thread-input attachment and safe detach.
-- Pinned release installers to `v0.5.0` by default while keeping explicit source-ref/commit overrides for controlled validation and recovery.
-- Added an exclusive expiring desktop lease and short-lived single-use frame tokens. Every GUI mutation must be based on a fresh screenshot; concurrent chats cannot independently drive the same desktop.
-- Added strict runtime GUI schemas, fixed native dispatch, sanitized helper errors, bounded subprocess/image output, corrected Win32 INPUT layout, DPI/foreground/desktop checks, and an uncertain-outcome latch instead of blind retries.
-- Hardened loopback HTTP admission against untrusted Host/Origin/content-type requests while preserving Secure MCP Tunnel architecture.
-- Hardened Power Mode containment against canonical path/symlink escapes, same/ancestor/descendant copy/move hazards, and parent/child lock races. Copy/move overwrite now stages and rolls back instead of deleting the destination first.
-- Made Windows installer mode transitions real and config-aware: local policy is merged/backed up, Standard disables an existing Power policy, health exposes config identity, and same-version config changes restart the owned MCP.
-- Pinned tunnel-client executable identity with recorded SHA-256, strict profile names, exact TunnelId/HealthPort reuse, post-validation credential persistence, readiness checks, and ownership-safe stop/start.
-- Converted the legacy multi-account foreground connector to the persistent supervisor path.
-- Public configuration remains Power/GUI disabled by default. Secure Desktop/UAC, lock screen, anti-cheat/protected input and high-speed real-time gameplay remain explicit platform limits.
+- Add opt-in native Windows GUI Control with MCP screenshot image content, short-lived exclusive GUI leases, single-use fresh-frame tokens, bounded mouse/keyboard/text/window actions, visible-result verification, physical Escape/local `var/GUI_STOP`, and uncertainty latching.
+- Reject caller-controlled GUI routing and invalid/oversized input with closed runtime schemas; mark mutating GUI actions as destructive.
+- Harden the loopback MCP transport with Host/Origin/content-type admission and no-store responses.
+- Harden restricted Power filesystem containment across symlinks/junctions; use hierarchy-aware canonical mutation locks.
+- Reject copy/move self/ancestor/descendant hazards before mutation and stage replacements with recoverable destination backup/rollback paths.
+- Add deterministic runtime `instanceId` and `configSha256` for process/config ownership checks.
+- Make the Windows installer explicitly transition Standard/Power/GUI modes, preserve unrelated local policy, back up/atomically commit policy changes, refuse dirty tracked source, and install a pinned tag/branch/commit instead of pulling floating `main`.
+- Pin the verified OpenAI tunnel-client executable through an active hash manifest; Windows enrollment/supervision/stop use exact executable/profile/root identity and commit new credentials only after validation.
+- Make the additional Windows account connector use persistent enrollment instead of a duplicate foreground tunnel.
+- Pin Linux installer source/tunnel identity. Equivalent Linux enrollment/supervisor hardening remains an acceptance item and is not overstated.
+- Add behavioral GUI/HTTP and filesystem-safety regression suites plus explicit native/product acceptance gates.
+- Preserve the separate GUI research branch without merging its incompatible contract; v0.5 authority is the audited Windows lease/frame implementation.
+- Release remains gated on exact-snapshot full tests, native Windows GUI acceptance, real Secure MCP Tunnel/ChatGPT image+input verification, installer rollback/credential-preservation tests, and final Release asset/hash verification.
 
 ## 0.4.4 — 2026-09-18
 

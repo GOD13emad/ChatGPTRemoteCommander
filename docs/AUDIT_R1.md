@@ -1,6 +1,6 @@
 # Deep audit R1 — GUI control and release safety
 
-Date: 2026-09-18. Status: **AUDIT COMPLETE / CORRECTIVE BASELINE SUPERSEDED BY v0.5 FINALIZATION BRANCH**.
+Date: 2026-09-18. Status: **AUDIT COMPLETE / CORRECTIVE CANDIDATE / RELEASE BLOCKED**.
 
 This report distinguishes inspected code, executed tests, historical claims and open validation. It is not a security certification. The single corrective objective in R1 is **safe admission and coordination of native GUI requests**. Other product defects below are recorded, not silently bundled into an untested release.
 
@@ -93,20 +93,3 @@ No percentage is assigned to the whole product: remaining gates are not measured
 - MCP tool schema/image content: https://modelcontextprotocol.io/specification/2025-11-25/server/tools
 
 These references support the API/protocol requirements; project defects are derived from the pinned source above. Tests support only the explicitly stated scope.
-
-
-## Finalization follow-up
-
-The release-finalization branch `release/v0.5.0-final` builds on R1 and closes additional code-level findings recorded above:
-
-- A10: restricted Power Mode now resolves existing paths canonically and verifies writable parents against canonical allowed roots.
-- A11: copy/move reject same/ancestor/descendant relationships before mutation and use stage/swap/rollback rather than deleting a destination first.
-- A12: path locks are canonical and hierarchy-aware while preserving concurrency for disjoint paths.
-- A13: Windows local policy is merged and backed up; Standard is a real transition; runtime health includes `configSha256` and config changes trigger restart of only the owned MCP process.
-- A15: Windows profile names are strict, existing TunnelId/HealthPort identity is checked, failed new-profile setup is rolled back, and new DPAPI credentials are persisted only after validation succeeds.
-- A16: tunnel-client path/SHA is pinned in local runtime state, supervisor startup requires real readiness, and stop/start uses executable/profile/root ownership checks.
-- A17: v0.5 product scope chooses one Windows-first `gui_*` contract. The incompatible experimental X11 proposal remains historical and is not merged into the v0.5 product.
-
-A14 is structurally improved with `SourceRef` / `ExpectedCommit`, fast-forward-only updates and tracked-change refusal. A public Release must still publish the exact final commit and assets/checksums before the latest-release URL can be called v0.5 FINAL.
-
-Native Windows acceptance in `docs/GUI_ACCEPTANCE.md` remains required for a measured live-GUI PASS; code review and Node tests are not substitutes for real desktop evidence.

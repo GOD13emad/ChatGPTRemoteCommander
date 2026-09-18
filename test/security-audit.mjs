@@ -11,12 +11,15 @@ function git(args, options = {}) {
 
 const patterns = [
   ['OpenAI-style secret key', new RegExp('s' + 'k-' + '[A-Za-z0-9_-]{20,}', 'i')],
-  ['Tunnel identifier', new RegExp('tunnel' + '_' + '[A-Za-z0-9_-]{16,}', 'i')],
+  ['Tunnel identifier', new RegExp('\\btunnel' + '_' + '[A-Za-z0-9][A-Za-z0-9_-]{15,}\\b')],
   ['Private key block', new RegExp('-----BEGIN ' + '(?:RSA |EC |OPENSSH )?' + 'PRIVATE KEY-----', 'i')],
   ['Bearer token literal', new RegExp('Bearer\\s+' + '[A-Za-z0-9._-]{20,}', 'i')],
   ['GitHub token', new RegExp('gh' + '[pousr]_' + '[A-Za-z0-9]{20,}', 'i')],
   ['Developer Windows path', /C:\\Users\\[^\\\r\n]+\\source\\repos\\ChatGPTRemoteCommander/i]
 ];
+const tunnelSelfTest = new RegExp('\\btunnel' + '_' + '[A-Za-z0-9][A-Za-z0-9_-]{15,}\\b');
+if (!tunnelSelfTest.test('tunnel_1234567890abcdef')) throw new Error('tunnel secret pattern self-test failed');
+if (tunnelSelfTest.test('TUNNEL_MANIFEST_MISSING')) throw new Error('tunnel secret pattern false-positive self-test failed');
 const findings = [];
 const tracked = git(['ls-files', '-z']).split('\0').filter(Boolean);
 for (const file of tracked) {

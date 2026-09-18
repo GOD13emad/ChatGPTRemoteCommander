@@ -50,6 +50,33 @@ export async function safeExistingPath(userPath, roots, base) {
   if (!isWithin(resolved, roots)) throw new Error('resolved path escapes allowed roots');
   return resolved;
 }
+async function nearestExistingPath(candidate) {
+  let cursor = path.resolve(candidate);
+  while (true) {
+    try {
+      await lstat(cursor);
+      return cursor;
+    } catch (error) {
+      if (error?.code !== 'ENOENT') throw error;
+      const parent = path.dirname(cursor);
+      if (parent === cursor) throw new Error('no existing ancestor found');
+      cursor = parent;
+    }
+  }
+}
+
+export async function canonicalPathForLock(candidate) {
+  const absolute = path.resolve(candidate);
+  try {
+    return await realpath(absolute);
+  } catch (error) {
+    if (error?.code !== 'ENOENT') throw error;
+  }
+  const existing = await nearestExistingPath(path.dirname(absolute));
+  const canonicalParent = await realpath(existing);
+  return path.resolve(canonicalParent, path.relative(existing, absolute));
+}
+
 export async function safeWritablePath(userPath, roots, base) {
   const candidate = lexicalPath(userPath, roots, base);
   try {
@@ -61,8 +88,18 @@ export async function safeWritablePath(userPath, roots, base) {
   } catch (error) {
     if (error?.code !== 'ENOENT') throw error;
   }
-  const parent = await realpath(path.dirname(candidate));
-  if (!isWithin(parent, roots)) throw new Error('parent path escapes allowed roots');
+
+  const existing = await nearestExistingPath(path.dirname(candidate));
+  const info = await lstat(existing);
+  if (info.isSymbolicLink()) {
+    const resolvedLink = await realpath(existing);
+    if (!isWithin(resolvedLink, roots)) throw new Error('parent path escapes allowed roots');
+  }
+  const canonicalAncestor = await realpath(existing);
+  if (!isWithin(canonicalAncestor, roots)) throw new Error('parent path escapes allowed roots');
+
+  const projected = path.resolve(canonicalAncestor, path.relative(existing, candidate));
+  if (!isWithin(projected, roots)) throw new Error('writable path escapes allowed roots');
   return candidate;
 }
 

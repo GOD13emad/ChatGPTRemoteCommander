@@ -2,7 +2,7 @@
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "chatgpt-remote-commander",
   "version": "0.5.0",
-  "description": "Operate a trusted computer through a private MCP connection, including optional Windows GUI screenshot/mouse/keyboard control.",
+  "description": "Operate a trusted computer through private MCP, with audited opt-in Windows screen/mouse/keyboard control.",
   "author": {
     "name": "GOD13emad",
     "url": "https://github.com/GOD13emad"
@@ -23,7 +23,7 @@
       "interface": {
         "displayName": "Remote Commander",
         "shortDescription": "Control trusted PCs via MCP",
-        "longDescription": "Use a registered ChatGPT Remote Commander app to inspect projects, run approved tools, perform trusted-machine workflows, and optionally control the Windows GUI through screenshot/mouse/keyboard MCP tools.",
+        "longDescription": "Use the exact registered ChatGPT Remote Commander app to inspect projects, run trusted-machine workflows, and optionally control an authorized Windows desktop. GUI work uses an exclusive short-lived lease, a live screenshot frame, one bounded input action, and a fresh screenshot for visible verification.",
         "developerName": "GOD13emad",
         "category": "Productivity",
         "capabilities": [
@@ -37,7 +37,7 @@
           "Report this computer's Remote Commander status without changing anything.",
           "Inspect my project and explain what needs attention before making changes.",
           "Use Remote Commander to run the requested trusted-machine workflow.",
-          "If GUI Control is enabled, inspect the live desktop with gui_screenshot and perform the requested graphical workflow."
+          "For a graphical task, verify gui_status, acquire gui_session_begin, inspect gui_screenshot, use exactly one lease+frame action, capture again to verify the visible result, and end the GUI session."
         ],
         "brandColor": "#0B5FFF",
         "composerIcon": "./assets/icon.png",

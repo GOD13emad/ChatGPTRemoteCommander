@@ -1,93 +1,85 @@
-import fs from 'node:fs';
 import path from 'node:path';
 
-let nextId = 1;
-const active = new Map();
-const queue = [];
+const active = [];
+const queued = [];
 
-function normalizeCase(value) {
-  return process.platform === 'win32' ? value.toLowerCase() : value;
-}
-
-function canonicalKey(value) {
+function keyFor(value) {
   const resolved = path.resolve(String(value));
-  const suffix = [];
-  let cursor = resolved;
-
-  while (!fs.existsSync(cursor)) {
-    const parent = path.dirname(cursor);
-    if (parent === cursor) break;
-    suffix.unshift(path.basename(cursor));
-    cursor = parent;
-  }
-
-  let base = cursor;
-  try { base = fs.realpathSync.native(cursor); } catch { base = path.resolve(cursor); }
-  return normalizeCase(path.join(base, ...suffix));
+  return process.platform === 'win32' ? resolved.toLowerCase() : resolved;
 }
 
-function isSameOrDescendant(parent, child) {
-  if (parent === child) return true;
-  const rel = path.relative(parent, child);
+function normalizeKeys(values) {
+  return [...new Set(values.filter(Boolean).map(keyFor))].sort();
+}
+
+function isSameOrAncestor(a, b) {
+  if (a === b) return true;
+  const rel = path.relative(a, b);
   return rel !== '' && !rel.startsWith('..') && !path.isAbsolute(rel);
 }
 
-function overlaps(a, b) {
-  return isSameOrDescendant(a, b) || isSameOrDescendant(b, a);
-}
-
-function conflicts(keys) {
-  for (const held of active.values()) {
-    for (const a of keys) {
-      for (const b of held) if (overlaps(a, b)) return true;
+function conflicts(aKeys, bKeys) {
+  for (const a of aKeys) {
+    for (const b of bKeys) {
+      if (isSameOrAncestor(a, b) || isSameOrAncestor(b, a)) return true;
     }
   }
   return false;
 }
 
-function drain() {
-  for (let i = 0; i < queue.length;) {
-    const item = queue[i];
-    if (conflicts(item.keys)) { i += 1; continue; }
-    queue.splice(i, 1);
-    active.set(item.id, item.keys);
-    item.resolve(() => release(item.id));
+function canGrant(keys) {
+  return !active.some((entry) => conflicts(keys, entry.keys));
+}
+
+function drainQueue() {
+  let progressed = true;
+  while (progressed) {
+    progressed = false;
+    for (let i = 0; i < queued.length; i += 1) {
+      const pending = queued[i];
+      if (!canGrant(pending.keys)) continue;
+      queued.splice(i, 1);
+      grant(pending.keys, pending.resolve);
+      progressed = true;
+      break;
+    }
   }
 }
 
-function release(id) {
-  active.delete(id);
-  drain();
+function grant(keys, resolve) {
+  const entry = { keys };
+  active.push(entry);
+  let released = false;
+  resolve(() => {
+    if (released) return;
+    released = true;
+    const index = active.indexOf(entry);
+    if (index >= 0) active.splice(index, 1);
+    drainQueue();
+  });
 }
 
-function acquireMany(values) {
-  const keys = [...new Set(values.filter(Boolean).map(canonicalKey))].sort();
-  if (keys.length === 0) return Promise.resolve(() => {});
-  const id = nextId++;
+function acquire(keys) {
   return new Promise((resolve) => {
-    const item = { id, keys, resolve };
-    if (conflicts(keys)) queue.push(item);
-    else {
-      active.set(id, keys);
-      resolve(() => release(id));
-    }
+    if (canGrant(keys)) grant(keys, resolve);
+    else queued.push({ keys, resolve });
   });
 }
 
 export async function withPathLocks(paths, fn) {
-  const unlock = await acquireMany(paths);
-  try { return await fn(); }
-  finally { unlock(); }
+  const keys = normalizeKeys(paths);
+  if (keys.length === 0) return fn();
+  const release = await acquire(keys);
+  try {
+    return await fn();
+  } finally {
+    release();
+  }
 }
 
 export function lockStats() {
-  return {
-    lockedKeys: [...active.values()].reduce((sum, keys) => sum + keys.length, 0),
-    activeOperations: active.size,
-    queued: queue.length,
-    hierarchyAware: true,
-    canonicalAliases: true
-  };
+  const lockedKeys = new Set(active.flatMap((entry) => entry.keys)).size;
+  return { lockedKeys, activeRequests: active.length, queued: queued.length };
 }
 
-export const __lockInternals = { canonicalKey, overlaps };
+export const __test = { keyFor, normalizeKeys, isSameOrAncestor, conflicts };

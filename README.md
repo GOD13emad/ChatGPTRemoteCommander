@@ -9,9 +9,9 @@ Cross-platform Windows + Linux MCP server for controlled remote project and mach
 **Setup guides in 10 languages:** [English](docs/SETUP.en.md) · [فارسی](docs/SETUP.fa.md) · [العربية](docs/SETUP.ar.md) · [Türkçe](docs/SETUP.tr.md) · [Español](docs/SETUP.es.md) · [Français](docs/SETUP.fr.md) · [Deutsch](docs/SETUP.de.md) · [Русский](docs/SETUP.ru.md) · [简体中文](docs/SETUP.zh-CN.md) · [日本語](docs/SETUP.ja.md)
 
 [All setup guides](docs/README.md)
-## v0.5 controlled desktop automation, hardened runtime ownership, and zero-reentry startup
+## v0.4 topology, guided onboarding, plugin assets, and zero-reentry startup
 
-v0.5 preserves all three deployment patterns: **one ChatGPT account -> multiple computers**, **multiple ChatGPT accounts -> one computer**, and **multiple concurrent chats -> the same computer**. Each computer runs its own MCP server; each account uses its own Secure MCP Tunnel profile; concurrent chat mutations on the same path are serialized to reduce write races.
+v0.4 supports all three deployment patterns: **one ChatGPT account -> multiple computers**, **multiple ChatGPT accounts -> one computer**, and **multiple concurrent chats -> the same computer**. Each computer runs its own MCP server; each account uses its own Secure MCP Tunnel profile; concurrent chat mutations on the same path are serialized to reduce write races.
 
 After the one-time tunnel enrollment, you do **not** need to re-enter the Tunnel ID, local MCP address, health port, or Runtime API key after each login.
 
@@ -68,33 +68,27 @@ For Power Mode, add `--power-mode`. Linux amd64 and arm64 are supported by the i
 - Concurrent-chat path locking for mutating operations
 - Windows and Linux persistent supervisors
 
-## Windows GUI Control (v0.5)
+## Windows GUI Control (v0.5.0)
 
-Windows Power Mode can opt in to **built-in GUI Control**. The MCP itself returns live screenshots as image content and exposes bounded mouse, keyboard, window-focus and coordination tools, so ordinary supported desktop workflows do not require a separate Computer Use surface.
+Trusted Windows Power Mode can opt in to native graphical control. Remote Commander returns the live desktop as MCP image content and exposes bounded window, mouse, keyboard and text-input tools.
 
-Safe visual-control loop:
+The production workflow is evidence-based:
 
 ```text
 gui_status
 → gui_session_begin
 → gui_screenshot(lease)
-→ one gui_* action(lease + single-use frame)
+→ one GUI action(lease + frame)
 → gui_screenshot(lease)
 → verify visible result
 → gui_session_end
 ```
 
-A frame is short-lived and single-use. A second chat cannot take the active desktop lease. GUI actions are never considered successful merely because input was submitted; a fresh screenshot must verify the visible result.
+The GUI lease prevents two chats from independently driving one desktop. Every screenshot produces a short-lived single-use frame, so clicks and typing cannot be replayed against stale visual state. Physical Escape and the owner's local `var/GUI_STOP` are local emergency stops.
 
-Enable it on a trusted Windows checkout with:
+Enable it with the v0.5.0 latest Release installer using `-PowerMode -GuiControl -StartServer`, then refresh/re-scan the Custom App tools.
 
-```powershell
-.\install.ps1 -PowerMode -GuiControl -StartServer -SkipTunnelClient
-```
-
-After enabling, refresh/re-scan the ChatGPT custom app tools. The owner can stop GUI input locally at any time by holding **Escape** or creating `var\GUI_STOP`; the assistant must not remove that stop file remotely.
-
-Limits remain explicit: Windows Secure Desktop/UAC prompts, the lock screen, anti-cheat/protected-input paths, software that rejects synthetic input, and high-speed real-time gameplay are not bypassed. Different trust levels also require separate OS sessions/authorization; multiple tunnel profiles alone are not security isolation.
+This does not bypass Windows Secure Desktop/UAC, lock screens, UIPI, anti-cheat/protected input or high-speed real-time latency limits. GUI input is privileged and should only be enabled for trusted accounts/workspaces.
 
 ## Requirements
 
@@ -139,7 +133,7 @@ Filesystem containment is enforced, but command execution is **not an OS sandbox
 
 ## Validation
 
-v0.5.0 includes GUI contract/coordination, transport-admission, filesystem-safety, runtime-ownership and the cross-platform gates plus canonical AI-assisted onboarding, Standard/Full guidance, persistent enrollment, current custom-app/Plugin instructions, icon assets, installer/update-path validation, and runtime-upgrade validation. Windows and Linux syntax/install checks, safe and Power Mode smoke tests, concurrency tests, and secret scanning remain part of the release gate. Use `npm run check`, `npm test`, and `npm run audit` before releases.
+v0.5.0 includes the cross-platform gates plus canonical AI-assisted onboarding, Standard/Full guidance, persistent enrollment, current custom-app/Plugin instructions, icon assets, installer/update-path validation, and runtime-upgrade validation. Windows and Linux syntax/install checks, safe and Power Mode smoke tests, concurrency tests, and secret scanning remain part of the release gate. Use `npm run check`, `npm test`, and `npm run audit` before releases.
 
 ## License
 

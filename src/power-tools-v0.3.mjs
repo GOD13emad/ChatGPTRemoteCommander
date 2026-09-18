@@ -6,7 +6,9 @@ import {
   appendFile, copyFile, cp, lstat, mkdir, readFile, readdir,
   realpath, rename, rm, stat, writeFile
 } from 'node:fs/promises';
-import { isWithin } from './security-v0.3.mjs';
+import {
+  isWithin, safeExistingPath, safeWritablePath, canonicalPathForLock
+} from './security-v0.3.mjs';
 import { withPathLocks } from './locks.mjs';
 import { IS_WINDOWS, defaultBackupRoot, expandPathValue, shellName, spawnShell } from './platform.mjs';
 
@@ -25,72 +27,53 @@ function power(ctx) {
 function lexicalTarget(ctx, userPath, base = ctx.roots[0]) {
   if (typeof userPath !== 'string' || userPath.length === 0) throw new Error('path is required');
   const expanded = expandEnv(userPath);
-  const candidate = path.resolve(path.isAbsolute(expanded) ? expanded : path.join(base, expanded));
-  if (power(ctx).fullFilesystem !== true && !isWithin(candidate, ctx.roots)) throw new Error('path is outside allowed roots');
-  return candidate;
-}
-
-async function nearestExistingAncestor(candidate) {
-  let cursor = candidate;
-  const suffix = [];
-  while (true) {
-    try { return { ancestor: await realpath(cursor), suffix }; }
-    catch (error) {
-      if (error?.code !== 'ENOENT') throw error;
-      const parent = path.dirname(cursor);
-      if (parent === cursor) throw error;
-      suffix.unshift(path.basename(cursor));
-      cursor = parent;
-    }
-  }
+  return path.resolve(path.isAbsolute(expanded) ? expanded : path.join(base, expanded));
 }
 
 async function resolveExistingTarget(ctx, userPath, base = ctx.roots[0]) {
   const candidate = lexicalTarget(ctx, userPath, base);
-  const resolved = await realpath(candidate);
-  if (power(ctx).fullFilesystem !== true && !isWithin(resolved, ctx.roots)) {
-    throw new Error('resolved path escapes allowed roots');
-  }
-  return resolved;
+  if (power(ctx).fullFilesystem === true) return candidate;
+  return safeExistingPath(candidate, ctx.roots, base);
 }
 
 async function resolveWritableTarget(ctx, userPath, base = ctx.roots[0]) {
   const candidate = lexicalTarget(ctx, userPath, base);
-  try {
-    const info = await lstat(candidate);
-    if (info.isSymbolicLink()) throw new Error('symbolic-link writes are not allowed');
-    const resolved = await realpath(candidate);
-    if (power(ctx).fullFilesystem !== true && !isWithin(resolved, ctx.roots)) {
-      throw new Error('resolved path escapes allowed roots');
-    }
-    return resolved;
-  } catch (error) {
-    if (error?.code !== 'ENOENT') throw error;
-  }
-
-  const parentCandidate = path.dirname(candidate);
-  const { ancestor, suffix } = await nearestExistingAncestor(parentCandidate);
-  if (power(ctx).fullFilesystem !== true && !isWithin(ancestor, ctx.roots)) {
-    throw new Error('parent path escapes allowed roots');
-  }
-
-  const canonicalParent = path.join(ancestor, ...suffix);
-  return path.join(canonicalParent, path.basename(candidate));
+  if (power(ctx).fullFilesystem === true) return candidate;
+  return safeWritablePath(candidate, ctx.roots, base);
 }
 
-function pathRelation(a, b) {
-  const aa = path.resolve(a);
-  const bb = path.resolve(b);
-  const relAB = path.relative(aa, bb);
-  const relBA = path.relative(bb, aa);
-  const aContainsB = relAB !== '' && !relAB.startsWith('..') && !path.isAbsolute(relAB);
-  const bContainsA = relBA !== '' && !relBA.startsWith('..') && !path.isAbsolute(relBA);
-  return aa === bb ? 'same' : aContainsB ? 'source-ancestor' : bContainsA ? 'destination-ancestor' : 'disjoint';
+function comparablePath(value) {
+  const resolved = path.resolve(value);
+  return IS_WINDOWS ? resolved.toLowerCase() : resolved;
 }
 
-function assertDisjointPaths(source, destination) {
-  const relation = pathRelation(source, destination);
-  if (relation !== 'disjoint') throw new Error(`source/destination relationship is unsafe: ${relation}`);
+function isNestedPath(parent, child) {
+  const p = comparablePath(parent);
+  const c = comparablePath(child);
+  if (p === c) return false;
+  const rel = path.relative(p, c);
+  return rel !== '' && !rel.startsWith('..') && !path.isAbsolute(rel);
+}
+
+function assertSafeSourceDestination(source, destination) {
+  const src = comparablePath(source);
+  const dst = comparablePath(destination);
+  if (src === dst) throw new Error('source and destination must be different paths');
+  if (isNestedPath(src, dst)) throw new Error('destination cannot be inside source');
+  if (isNestedPath(dst, src)) throw new Error('destination cannot contain source');
+}
+
+async function exists(target) {
+  try { await lstat(target); return true; }
+  catch (error) { if (error?.code === 'ENOENT') return false; throw error; }
+}
+
+function siblingTemp(target, label) {
+  return path.join(path.dirname(target), `.${path.basename(target)}.rc-${label}-${randomUUID()}`);
+}
+
+async function lockKey(target) {
+  return canonicalPathForLock(target);
 }
 
 function digest(data) {
@@ -99,6 +82,13 @@ function digest(data) {
 function backupRoot(ctx) {
   const configured = power(ctx).backupRoot;
   return path.resolve(configured ? expandEnv(configured) : defaultBackupRoot());
+}
+function assertBackupRootOutsideTarget(ctx, target) {
+  const backup = comparablePath(backupRoot(ctx));
+  const checked = comparablePath(target);
+  if (backup === checked || isNestedPath(checked, backup)) {
+    throw new Error('recoverable mutation refused because backupRoot is inside target');
+  }
 }
 
 function backupName(target) {
@@ -112,6 +102,7 @@ function backupName(target) {
 }
 
 async function backupExisting(ctx, target) {
+  assertBackupRootOutsideTarget(ctx, target);
   try {
     const info = await lstat(target);
     const destination = path.join(backupRoot(ctx), backupName(target));
@@ -121,6 +112,52 @@ async function backupExisting(ctx, target) {
     return destination;
   } catch (error) {
     if (error?.code === 'ENOENT') return null;
+    throw error;
+  }
+}
+
+
+async function stageCopy(source, destination) {
+  const stage = siblingTemp(destination, 'stage');
+  await mkdir(path.dirname(destination), { recursive: true });
+  await cp(source, stage, { recursive: true, force: false, errorOnExist: true });
+  return stage;
+}
+
+async function installStagedDestination(ctx, stage, destination, overwrite) {
+  const destinationExists = await exists(destination);
+  if (destinationExists && overwrite !== true) {
+    await rm(stage, { recursive: true, force: true });
+    throw new Error('destination exists; set overwrite=true');
+  }
+
+  const displaced = destinationExists ? siblingTemp(destination, 'previous') : null;
+  const backupPath = destinationExists ? await backupExisting(ctx, destination) : null;
+  let displacedActive = false;
+  try {
+    if (destinationExists) {
+      await rename(destination, displaced);
+      displacedActive = true;
+    }
+    await rename(stage, destination);
+    if (displacedActive) {
+      await rm(displaced, { recursive: true, force: true });
+      displacedActive = false;
+    }
+    return { backupPath };
+  } catch (error) {
+    try {
+      if (await exists(stage)) await rm(stage, { recursive: true, force: true });
+    } catch { }
+    if (displacedActive) {
+      try {
+        if (await exists(destination)) await rm(destination, { recursive: true, force: true });
+        await rename(displaced, destination);
+        displacedActive = false;
+      } catch (rollbackError) {
+        error.message += `; rollback failed: ${rollbackError.message}`;
+      }
+    }
     throw error;
   }
 }
@@ -204,11 +241,13 @@ export async function writeAnyFile(ctx, input) {
   const data = Buffer.from(input.content ?? '', encoding);
   const maxBytes = Number(power(ctx).maxFileBytes ?? 8 * 1024 * 1024);
   if (data.length > maxBytes) throw new Error(`content exceeds Power Mode maxFileBytes (${maxBytes})`);
-  return withPathLocks([target], async () => {
-    if (input.createParents !== false) await mkdir(path.dirname(target), { recursive: true });
+  const key = await lockKey(target);
+  return withPathLocks([key], async () => {
+    const checked = await resolveWritableTarget(ctx, target);
+    if (input.createParents !== false) await mkdir(path.dirname(checked), { recursive: true });
     let beforeSha256 = null;
     try {
-      const before = await readFile(target);
+      const before = await readFile(checked);
       beforeSha256 = digest(before);
       if (input.expectedSha256 && input.expectedSha256 !== beforeSha256) {
         throw new Error('expectedSha256 does not match current file');
@@ -216,123 +255,96 @@ export async function writeAnyFile(ctx, input) {
     } catch (error) {
       if (error?.code !== 'ENOENT') throw error;
     }
-    const backupPath = await backupExisting(ctx, target);
-    if (input.mode === 'append') await appendFile(target, data);
-    else await writeFile(target, data);
-    const after = await readFile(target);
-    return { path: target, bytes: after.length, beforeSha256, sha256: digest(after), backupPath };
+    const backupPath = await backupExisting(ctx, checked);
+    if (input.mode === 'append') await appendFile(checked, data);
+    else await writeFile(checked, data);
+    const after = await readFile(checked);
+    return { path: checked, bytes: after.length, beforeSha256, sha256: digest(after), backupPath };
   });
 }
+
 export async function createDirectory(ctx, input) {
   const target = await resolveWritableTarget(ctx, input.path);
-  return withPathLocks([target], async () => {
-    await mkdir(target, { recursive: input.recursive !== false });
-    return { path: target, created: true };
+  const key = await lockKey(target);
+  return withPathLocks([key], async () => {
+    const checked = await resolveWritableTarget(ctx, target);
+    await mkdir(checked, { recursive: input.recursive !== false });
+    return { path: checked, created: true };
   });
 }
 
 export async function copyPath(ctx, input) {
   const source = await resolveExistingTarget(ctx, input.source);
   const destination = await resolveWritableTarget(ctx, input.destination);
-  assertDisjointPaths(source, destination);
-  return withPathLocks([source, destination], async () => {
-    const sourceNow = await resolveExistingTarget(ctx, source);
-    const destinationNow = await resolveWritableTarget(ctx, destination);
-    assertDisjointPaths(sourceNow, destinationNow);
-    await mkdir(path.dirname(destinationNow), { recursive: true });
-    const stage = path.join(path.dirname(destinationNow), `.rc-stage-${randomUUID()}`);
-    const displaced = path.join(path.dirname(destinationNow), `.rc-displaced-${randomUUID()}`);
-    let backupPath = null;
-    let displacedExists = false;
-    try {
-      await cp(sourceNow, stage, { recursive: true, force: false, errorOnExist: true });
-      try {
-        await lstat(destinationNow);
-        if (input.overwrite !== true) throw new Error('destination exists; set overwrite=true');
-        backupPath = await backupExisting(ctx, destinationNow);
-        await rename(destinationNow, displaced);
-        displacedExists = true;
-      } catch (error) {
-        if (error?.code !== 'ENOENT') throw error;
-      }
-      await rename(stage, destinationNow);
-      if (displacedExists) await rm(displaced, { recursive: true, force: true });
-      return { source: sourceNow, destination: destinationNow, backupPath, transactional: true };
-    } catch (error) {
-      try { await rm(stage, { recursive: true, force: true }); } catch {}
-      if (displacedExists) {
-        try {
-          await rm(destinationNow, { recursive: true, force: true });
-          await rename(displaced, destinationNow);
-        } catch {}
-      }
-      throw error;
-    }
+  const sourceKey = await lockKey(source);
+  const destinationKey = await lockKey(destination);
+  assertSafeSourceDestination(sourceKey, destinationKey);
+
+  return withPathLocks([sourceKey, destinationKey], async () => {
+    const checkedSource = await resolveExistingTarget(ctx, source);
+    const checkedDestination = await resolveWritableTarget(ctx, destination);
+    const checkedSourceKey = await lockKey(checkedSource);
+    const checkedDestinationKey = await lockKey(checkedDestination);
+    assertSafeSourceDestination(checkedSourceKey, checkedDestinationKey);
+
+    const stage = await stageCopy(checkedSource, checkedDestination);
+    const { backupPath } = await installStagedDestination(ctx, stage, checkedDestination, input.overwrite === true);
+    return { source: checkedSource, destination: checkedDestination, backupPath };
   });
 }
 
 export async function movePath(ctx, input) {
   const source = await resolveExistingTarget(ctx, input.source);
   const destination = await resolveWritableTarget(ctx, input.destination);
-  assertDisjointPaths(source, destination);
-  return withPathLocks([source, destination], async () => {
-    const sourceNow = await resolveExistingTarget(ctx, source);
-    const destinationNow = await resolveWritableTarget(ctx, destination);
-    assertDisjointPaths(sourceNow, destinationNow);
-    await mkdir(path.dirname(destinationNow), { recursive: true });
-    const stage = path.join(path.dirname(destinationNow), `.rc-stage-${randomUUID()}`);
-    const displaced = path.join(path.dirname(destinationNow), `.rc-displaced-${randomUUID()}`);
-    let backupPath = null;
-    let displacedExists = false;
-    let promoted = false;
+  const sourceKey = await lockKey(source);
+  const destinationKey = await lockKey(destination);
+  assertSafeSourceDestination(sourceKey, destinationKey);
+
+  return withPathLocks([sourceKey, destinationKey], async () => {
+    const checkedSource = await resolveExistingTarget(ctx, source);
+    const checkedDestination = await resolveWritableTarget(ctx, destination);
+    const checkedSourceKey = await lockKey(checkedSource);
+    const checkedDestinationKey = await lockKey(checkedDestination);
+    assertSafeSourceDestination(checkedSourceKey, checkedDestinationKey);
+    assertBackupRootOutsideTarget(ctx, checkedSource);
+
+    // Stage a full copy beside the destination. The original source remains intact
+    // until the destination has been backed up/swapped successfully.
+    const stage = await stageCopy(checkedSource, checkedDestination);
+    const { backupPath } = await installStagedDestination(ctx, stage, checkedDestination, input.overwrite === true);
+
     try {
-      await cp(sourceNow, stage, { recursive: true, force: false, errorOnExist: true });
-      try {
-        await lstat(destinationNow);
-        if (input.overwrite !== true) throw new Error('destination exists; set overwrite=true');
-        backupPath = await backupExisting(ctx, destinationNow);
-        await rename(destinationNow, displaced);
-        displacedExists = true;
-      } catch (error) {
-        if (error?.code !== 'ENOENT') throw error;
-      }
-      await rename(stage, destinationNow);
-      promoted = true;
-      await rm(sourceNow, { recursive: true, force: true });
-      if (displacedExists) await rm(displaced, { recursive: true, force: true });
-      return { source: sourceNow, destination: destinationNow, backupPath, transactional: true };
-    } catch (error) {
-      try { await rm(stage, { recursive: true, force: true }); } catch {}
-      if (promoted) {
-        // If source deletion failed, preserve both copies rather than risking data loss.
-        try { await lstat(sourceNow); }
-        catch { try { await rename(destinationNow, sourceNow); promoted = false; } catch {} }
-      }
-      if (displacedExists) {
-        try {
-          await rm(destinationNow, { recursive: true, force: true });
-          await rename(displaced, destinationNow);
-        } catch {}
-      }
-      throw error;
+      await rm(checkedSource, { recursive: true, force: true });
+      return { source: checkedSource, destination: checkedDestination, backupPath, sourceRemoved: true };
+    } catch (cleanupError) {
+      // Prefer an explicit duplicate over risking deletion of the only good copy.
+      return {
+        source: checkedSource, destination: checkedDestination, backupPath,
+        sourceRemoved: false, moveIncomplete: true,
+        warning: 'destination committed but source cleanup failed; both copies were retained'
+      };
     }
   });
 }
+
 export async function deletePath(ctx, input) {
   const target = await resolveExistingTarget(ctx, input.path);
   const cfg = power(ctx);
-  return withPathLocks([target], async () => {
-    await lstat(target);
+  const key = await lockKey(target);
+  return withPathLocks([key], async () => {
+    const checked = await resolveExistingTarget(ctx, target);
+    await lstat(checked);
     if (input.permanent === true) {
       if (cfg.allowPermanentDelete !== true) throw new Error('permanent delete is disabled');
-      await rm(target, { recursive: true, force: true });
-      return { path: target, permanent: true, backupPath: null };
+      await rm(checked, { recursive: true, force: true });
+      return { path: checked, permanent: true, backupPath: null };
     }
-    const backupPath = await backupExisting(ctx, target);
-    await rm(target, { recursive: true, force: true });
-    return { path: target, permanent: false, backupPath };
+    const backupPath = await backupExisting(ctx, checked);
+    await rm(checked, { recursive: true, force: true });
+    return { path: checked, permanent: false, backupPath };
   });
 }
+
 
 async function walkSearch(root, current, input, results, depth) {
   if (results.length >= input.maxResults || depth < 0) return;

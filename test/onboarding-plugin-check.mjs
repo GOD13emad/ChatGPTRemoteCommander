@@ -33,8 +33,9 @@ for (const required of [
   'releases/latest/download/install.sh',
   'docs/PLUGIN_SETUP.md',
   'Windows GUI Control',
-  'gui_screenshot',
-  'synthetic input'
+  'gui_session_begin',
+  'single-use `frame`',
+  'var/GUI_STOP'
 ]) if (!start.includes(required)) fail(`START_HERE missing: ${required}`);
 
 const plugin = JSON.parse(read('plugin-template/plugin.json'));
@@ -57,13 +58,13 @@ if (entry.policy?.installation !== 'INSTALLED_BY_DEFAULT') fail('marketplace plu
 const codexConfig = read('.codex/config.toml');
 if (!codexConfig.includes('[plugins."chatgpt-remote-commander@chatgpt-remote-commander"]') || !codexConfig.includes('enabled = true')) fail('project plugin enablement missing');
 const work = read('WORK_SETUP.md');
-for (const required of ['codex plugin marketplace add GOD13emad/ChatGPTRemoteCommander --ref main','codex plugin add chatgpt-remote-commander@chatgpt-remote-commander','releases/latest/download/install-work-plugin.ps1','releases/latest/download/install-work-plugin.sh','plugin-template.zip','Workspace settings → Plugins','@plugin-creator','plugin_asdk_app_','Do not substitute a fuzzy Plugin Directory search result','GUI Control in Work','gui_screenshot','FINAL PASS in Work']) if (!work.includes(required)) fail(`WORK_SETUP missing ${required}`);
+for (const required of ['codex plugin marketplace add GOD13emad/ChatGPTRemoteCommander --ref main','codex plugin add chatgpt-remote-commander@chatgpt-remote-commander','releases/latest/download/install-work-plugin.ps1','releases/latest/download/install-work-plugin.sh','plugin-template.zip','Workspace settings → Plugins','@plugin-creator','plugin_asdk_app_','Do not substitute a fuzzy Plugin Directory search result','GUI Control in Work','gui_session_begin','gui_screenshot','gui_session_end','FINAL PASS in Work']) if (!work.includes(required)) fail(`WORK_SETUP missing ${required}`);
 const workPrompt = read('plugin-template/WORK_INSTALL_PROMPT.md');
 for (const required of ['Read START_HERE.md first','WORK_SETUP.md','@plugin-creator','install-work-plugin.ps1/.sh','real tool invocation','gui_status','gui_screenshot']) if (!workPrompt.includes(required)) fail(`WORK_INSTALL_PROMPT missing ${required}`);
 const skill = read('plugin-template/skills/remote-commander/SKILL.md');
 for (const required of ['GUI Control workflow','gui_screenshot','gui_mouse_click','real-time/high-speed gameplay']) if (!skill.includes(required)) fail(`remote-commander skill missing ${required}`);
 const pluginSetup = read('docs/PLUGIN_SETUP.md');
-for (const required of ['Windows GUI Control capability','MCP image content','Native Computer Use remains a fallback']) if (!pluginSetup.includes(required)) fail(`PLUGIN_SETUP missing ${required}`);
+for (const required of ['Windows GUI Control capability','MCP image content','GUI lease','not authentication or an OS sandbox']) if (!pluginSetup.includes(required)) fail(`PLUGIN_SETUP missing ${required}`);
 const workPs = read('install-work-plugin.ps1');
 for (const required of ['$MyInvocation.MyCommand.Path','releases/latest/download/plugin-template.zip','TemplateSource','[IO.Path]::IsPathRooted($TemplateSource)','Join-Path (Get-Location).Path $TemplateSource','[IO.Path]::IsPathRooted($InstallRoot)','Join-Path (Get-Location).Path $InstallRoot','plugin_((?:asdk_app_|connector_|templated_apps_)','chatgpt-remote-commander-personal','ChatGPT Remote Commander (Personal)','codex plugin add failed','WORK_PLUGIN_INSTALL_PASS']) if (!workPs.includes(required)) fail(`install-work-plugin.ps1 missing ${required}`);
 const workSh = read('install-work-plugin.sh');
@@ -90,11 +91,11 @@ for (const lang of langs) {
 }
 
 const winDisable=read('disable-autostart.ps1');
-for (const required of ['tunnel-client.exe','server-v0\\.3\\.mjs','credential=']) if (!winDisable.includes(required)) fail(`Windows stop flow missing ${required}`);
+for (const required of ['tunnel-client.active.json','server-v0\\.3\\.mjs','credential=']) if (!winDisable.includes(required)) fail(`Windows stop flow missing ${required}`);
 const linuxDisable=read('disable-autostart-linux.sh');
 for (const required of ['tunnel-client','src/server-v0.3.mjs','--remove-credential']) if (!linuxDisable.includes(required)) fail(`Linux stop flow missing ${required}`);
 const winEnable=read('enable-autostart.ps1');
-for (const required of ['Ensure-McpHealth','MCP was not running; it has been started automatically.']) if (!winEnable.includes(required)) fail(`Windows start flow missing ${required}`);
+for (const required of ['Ensure-McpHealth','MCP was not running; it has been started automatically.','Pinned tunnel-client executable hash mismatch','DPAPI credential committed']) if (!winEnable.includes(required)) fail(`Windows start flow missing ${required}`);
 const linuxEnable=read('enable-autostart-linux.sh');
 for (const required of ['ensure_mcp','MCP was not running; it has been started automatically.']) if (!linuxEnable.includes(required)) fail(`Linux start flow missing ${required}`);
 

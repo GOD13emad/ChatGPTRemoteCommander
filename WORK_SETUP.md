@@ -29,11 +29,18 @@ Full/Power Mode is for a trusted computer. It enables full filesystem access, sh
 
 ### GUI Control in Work
 
-When Windows GUI Control is enabled and the custom MCP app has been re-scanned, Work can control the authorized desktop through Remote Commander itself.
+When `gui_status` reports an available Windows desktop, Work should use Remote Commander's visual-control protocol rather than independent clicks:
 
-Work must use the coordination protocol: `gui_status → gui_session_begin → gui_screenshot(lease) → one action(lease+frame) → gui_screenshot(lease) → verify → gui_session_end`. Frames are short-lived and single-use; never replay an action after a timeout or uncertain native result. If another chat holds the lease, report the busy state rather than stealing or polling aggressively.
+1. `gui_session_begin`;
+2. `gui_screenshot` with the returned lease;
+3. inspect the actual MCP image;
+4. perform exactly one input operation using both `lease` and that screenshot's `frame`;
+5. capture again and verify the visible result;
+6. renew as needed and close with `gui_session_end`.
 
-A separate Computer Use capability is no longer required for ordinary supported Windows GUI workflows. Keep native Computer Use as an optional fallback only when it actually reaches the same authorized computer. Never clear `var\GUI_STOP` remotely, and do not claim success for Secure Desktop/UAC, lock screen, anti-cheat/protected input, or real-time gameplay without visible evidence.
+A busy GUI lease must be respected rather than retried aggressively. A stale or used frame requires a new screenshot. An uncertain native outcome must not be replayed. Physical Escape and local `var/GUI_STOP` belong to the computer owner and must not be bypassed.
+
+Computer Use is optional fallback/complementary tooling; it is not required when the native GUI tools are available on the exact registered computer.
 
 For the least-friction trusted-machine workflow, explain that local Power Mode and ChatGPT App permissions are separate. If the account/workspace exposes an app-specific **Allow all actions** option, the user may explicitly choose it to reduce repeated confirmations. Treat it as elevated risk; do not select it silently. Workspace/action/safety controls still apply.
 

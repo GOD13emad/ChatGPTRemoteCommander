@@ -142,6 +142,19 @@ test('uncertain native outcome suspends further GUI actions; no blind retry', as
   await assert.rejects(s.run('gui_screenshot',{lease:a.lease}),/GUI_OUTCOME_UNCERTAIN/);
   assert.equal((await s.run('gui_status')).uncertain,true);assert.equal(count,3);
 });
+test('clean native precondition refusal consumes frame but does not require restart', async () => {
+  const s=setup({invoke:async r=>{
+    if(r.action==='status') return {ok:true,available:true};
+    if(r.action==='screenshot') return image();
+    throw new Error('GUI_FOREGROUND_CHANGED');
+  }});
+  const a=await prepared(s);
+  await assert.rejects(s.run('gui_mouse_click',{...a,x:-500,y:20}),/GUI_FOREGROUND_CHANGED/);
+  const status=await s.run('gui_status');
+  assert.equal(status.uncertain,false);
+  const shot=await s.run('gui_screenshot',{lease:a.lease});
+  assert.ok(shot.__structuredContent.frame);
+});
 test('concurrent GUI requests are rejected, not queued for stale execution', async () => {
   let unblock;
   const s=setup({invoke:r => r.action==='status' ? Promise.resolve({ok:true,available:true}) : new Promise(resolve=>{unblock=()=>resolve(image());})});

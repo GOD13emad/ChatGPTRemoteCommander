@@ -16,6 +16,16 @@ async function stopped() {
 }
 const sameToken = (a, b) => typeof a === 'string' && typeof b === 'string' && Buffer.byteLength(a) === Buffer.byteLength(b) && timingSafeEqual(Buffer.from(a), Buffer.from(b));
 const bound = (v, low, high, defaultValue) => Number.isSafeInteger(v) ? Math.max(low, Math.min(high, v)) : defaultValue;
+const cleanInputFailures = new Set([
+  'GUI_FOREGROUND_CHANGED','GUI_MONITOR_GEOMETRY_CHANGED','GUI_MONITOR_RANGE','GUI_MONITOR_NOT_OBSERVED',
+  'GUI_POINT_OUTSIDE_MONITOR','GUI_PHYSICAL_MOUSE_HELD','GUI_PHYSICAL_KEY_HELD','GUI_LOCAL_STOP',
+  'GUI_DESKTOP_UNAVAILABLE','GUI_DPI_CONTEXT_FAILED','GUI_WINDOW_SELECTOR_NOT_UNIQUE','GUI_FOCUS_DENIED',
+  'GUI_FOCUS_NOT_CONFIRMED','GUI_MOVE_FAILED','GUI_NATIVE_BUSY','GUI_HELPER_START_FAILED'
+]);
+function nativeOutcomeUncertain(error) {
+  const code = error?.guiCode ?? error?.message;
+  return !cleanInputFailures.has(code);
+}
 
 /** One controller per MCP process. A lease prevents accidental cross-chat input.
  * It is NOT an account/OS sandbox. Another authorized shell or OS user can bypass
@@ -91,7 +101,7 @@ export function createGuiController({ platform = process.platform, now = () => p
       let result;
       try { result = await invoke(request); }
       catch (error) {
-        if (isInput) uncertain = true; // Unknown partial input: local restart/inspection, no blind retry.
+        if (isInput && nativeOutcomeUncertain(error)) uncertain = true; // Only ambiguous partial input hard-latches.
         throw error;
       }
       if (result?.ok !== true) { if (isInput) uncertain = true; throw guiError('GUI_NATIVE_FAILED'); }

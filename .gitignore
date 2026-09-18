@@ -15,3 +15,5 @@ connections.local.json
 /plugin-template/.app.json
 /test/gui-e2e-app/bin/
 /test/gui-e2e-app/obj/
+/var/
+/dist/

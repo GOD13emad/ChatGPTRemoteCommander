@@ -10,11 +10,11 @@ A **Plugin** is packaging around workflows and presentation. It can include skil
 
 ### Windows GUI Control capability
 
-When the registered app exposes the v0.5 `gui_*` tools, the Plugin can perform graphical interaction directly through Remote Commander. Screenshots are MCP image content, while mouse/keyboard/window actions are separate privileged tools guarded by an exclusive lease and a short-lived single-use frame token.
+The v0.5.0 app can return live Windows screenshots as MCP image content and perform window/mouse/keyboard operations. The Plugin workflow must obtain a GUI lease, capture a frame, use that single-use frame for one action, and capture again to verify the visible result.
 
-The Plugin skill must use `gui_session_begin` before capture/input, pass both `lease` and `frame` to one mutation, verify with a new screenshot, and end the lease. It must never clear the owner's local emergency-stop file.
+Only one GUI lease drives the shared desktop at a time. The lease is coordination, **not authentication or an OS sandbox**. Different trust levels require separate authorization/OS sessions, not merely different tunnel profiles.
 
-This is Windows-only and opt-in in v0.5. It does not bypass Secure Desktop/UAC, lock screen, anti-cheat/protected input, or real-time latency constraints. Native Computer Use remains an optional fallback rather than a hard prerequisite.
+Native Computer Use is optional. Secure Desktop/UAC, lock screens, UIPI, anti-cheat/protected input and real-time latency boundaries remain outside the guarantees of these tools.
 
 The repository contains:
 - `plugin-template/plugin.json` — portable Agent Plugins manifest;
@@ -119,8 +119,3 @@ Do not expose a personal Power Mode computer directly to the public internet to 
 - GitHub marketplace import: https://help.openai.com/en/articles/20001504
 - Plugin overview: https://help.openai.com/en/articles/20001256/
 - Secure MCP Tunnel: https://developers.openai.com/api/docs/guides/secure-mcp-tunnels
-
-
-### Native Computer Use fallback
-
-Native Computer Use remains a fallback for graphical tasks when the Remote Commander GUI backend is unavailable, unsupported, or intentionally disabled. It is not a substitute for proving that the selected Remote Commander app reaches the intended computer.

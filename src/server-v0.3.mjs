@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { validateTransport, assertLocalTransport } from './transport-guard.mjs';
 import os from 'node:os';
 import path from 'node:path';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { canonicalizeRoots } from './security-v0.3.mjs';
 import { audit, listDirectory, readText, runProjectCommand, writeText } from './tools-v0.3.mjs';
@@ -23,15 +23,15 @@ let configPath = process.env.REMOTE_COMMANDER_CONFIG || defaultConfigPath;
 if (!process.env.REMOTE_COMMANDER_CONFIG) {
   try { await readFile(localConfigPath, 'utf8'); configPath = localConfigPath; } catch { /* safe public config fallback */ }
 }
-const configRaw = await readFile(configPath, 'utf8');
-const configSha256 = createHash('sha256').update(configRaw).digest('hex');
-const config = JSON.parse(configRaw);
+const configText = await readFile(configPath, 'utf8');
+const configSha256 = createHash('sha256').update(configText).digest('hex');
+const instanceRoot = process.platform === 'win32' ? projectDir.toLowerCase() : projectDir;
+const instanceId = createHash('sha256').update(instanceRoot).digest('hex').slice(0, 24);
+const config = JSON.parse(configText);
 assertLocalTransport(config);
 function expandEnvironment(value) { return expandPathValue(value); }
 config.allowedRoots = config.allowedRoots.map(expandEnvironment);
 const roots = await canonicalizeRoots(config.allowedRoots);
-const runtimeDir = path.resolve(projectDir, 'var');
-const runtimeStatePath = path.join(runtimeDir, 'mcp-runtime.json');
 const ctx = {
   config,
   roots,
@@ -132,14 +132,13 @@ async function executeTool(name, args) {
     case 'system_status':
       await audit(ctx, { action: 'system_status', ok: true });
       return {
-        name: 'chatgpt-remote-commander', version: VERSION,
+        name: 'chatgpt-remote-commander', version: VERSION, instanceId, configSha256,
         deviceName: config.deviceName || os.hostname(),
         platform: process.platform, arch: process.arch, shell: shellName(),
         protocols: [MODERN_VERSION, ...LEGACY_VERSIONS],
         host: config.host, port: config.port, allowedRoots: roots,
         allowedPrograms: config.allowedPrograms,
         concurrency: { httpConcurrent: true, pathMutationLocks: true, ...lockStats() },
-        configSha256,
         powerMode: config.powerMode ?? { enabled: false },
         guiControl: { backendSupported: process.platform === 'win32', availability: 'CHECK_gui_status', enabled: GUI_ENABLED, policy: config.powerMode?.guiControl ?? { enabled: false } }
       };
@@ -282,7 +281,7 @@ const server = http.createServer(async (req, res) => {
     validateTransport(req, config);
     const url = new URL(req.url, `http://${req.headers.host || '127.0.0.1'}`);
     if (req.method === 'GET' && url.pathname === '/health') {
-      return sendJson(res, 200, { ok: true, name: 'chatgpt-remote-commander', version: VERSION, configSha256 });
+      return sendJson(res, 200, { ok: true, name: 'chatgpt-remote-commander', version: VERSION, instanceId, configSha256 });
     }
     if (req.method !== 'POST' || url.pathname !== '/mcp') {
       return sendJson(res, 404, { error: 'not_found' });
@@ -296,21 +295,7 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-server.listen(config.port, config.host, async () => {
-  try {
-    await mkdir(runtimeDir, { recursive: true });
-    await writeFile(runtimeStatePath, JSON.stringify({
-      pid: process.pid,
-      projectDir,
-      version: VERSION,
-      configSha256,
-      host: config.host,
-      port: config.port,
-      startedAt: new Date().toISOString()
-    }, null, 2) + '\n', { mode: 0o600 });
-  } catch (error) {
-    console.error('RUNTIME_STATE_WRITE_FAILED', error.message);
-  }
+server.listen(config.port, config.host, () => {
   console.log(`ChatGPT Remote Commander ${VERSION} listening at http://${config.host}:${config.port}/mcp`);
   console.log(`Allowed roots: ${roots.join(', ')}`);
 });

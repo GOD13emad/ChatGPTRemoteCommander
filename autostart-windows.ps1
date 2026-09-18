@@ -2,182 +2,149 @@ param(
   [ValidateRange(2,300)][int]$IntervalSeconds = 5
 )
 $ErrorActionPreference = 'Stop'
-
-$Root = Split-Path -Parent $MyInvocation.MyCommand.Path
+$Root = [IO.Path]::GetFullPath((Split-Path -Parent $MyInvocation.MyCommand.Path))
 $VarDir = Join-Path $Root 'var'
 $CredDir = Join-Path $env:LOCALAPPDATA 'ChatGPTRemoteCommander\credentials'
 $ProfileDir = Join-Path $env:APPDATA 'tunnel-client'
 New-Item -ItemType Directory -Force -Path $VarDir,$CredDir | Out-Null
 
 function Write-SupervisorLog([string]$Message) {
-  $line = "$(Get-Date -Format o) $Message"
-  Add-Content -LiteralPath (Join-Path $VarDir 'autostart.log') -Value $line -Encoding utf8
-}
-
-function Test-ProfileName([string]$Name) {
-  return ($Name -match '^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$' -and $Name -notmatch '\.\.' -and $Name -notin @('.','..'))
+  Add-Content -LiteralPath (Join-Path $VarDir 'autostart.log') -Value "$(Get-Date -Format o) $Message" -Encoding utf8
 }
 
 $created = $false
-$mutex = [Threading.Mutex]::new($false, 'Local\ChatGPTRemoteCommanderSupervisor', [ref]$created)
-if (-not $created) {
-  exit 0
+$mutexName = 'Local\ChatGPTRemoteCommanderSupervisor-' + ([Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($Root.ToLowerInvariant())))).Substring(0,16)
+$mutex = [Threading.Mutex]::new($false, $mutexName, [ref]$created)
+if (-not $created) { exit 0 }
+
+function Assert-ProfileName([string]$Name) {
+  if ($Name -notmatch '^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$') { throw "Invalid managed profile name: $Name" }
+}
+
+function Get-StringSha256([string]$Value) {
+  return ([Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($Value)))).ToLowerInvariant()
+}
+
+function Get-ExpectedMcpIdentity {
+  $configPath = if (Test-Path -LiteralPath (Join-Path $Root 'config.local.json')) { Join-Path $Root 'config.local.json' } else { Join-Path $Root 'config.json' }
+  return [pscustomobject]@{
+    InstanceId = (Get-StringSha256 $Root.ToLowerInvariant()).Substring(0,24)
+    ConfigSha256 = (Get-FileHash -LiteralPath $configPath -Algorithm SHA256).Hash.ToLowerInvariant()
+    Version = (Get-Content -LiteralPath (Join-Path $Root 'package.json') -Raw | ConvertFrom-Json).version
+  }
+}
+
+function Get-McpHealth {
+  try { return Invoke-RestMethod 'http://127.0.0.1:47831/health' -TimeoutSec 2 } catch { return $null }
 }
 
 function Test-McpHealth {
-  try {
-    $health = Invoke-RestMethod 'http://127.0.0.1:47831/health' -TimeoutSec 2
-    return [bool]($health.ok -and $health.name -eq 'chatgpt-remote-commander')
-  } catch {
-    return $false
-  }
+  $health = Get-McpHealth
+  if (-not $health -or -not $health.ok) { return $false }
+  $expected = Get-ExpectedMcpIdentity
+  return ($health.instanceId -eq $expected.InstanceId -and $health.version -eq $expected.Version -and $health.configSha256 -eq $expected.ConfigSha256)
 }
 
 function Start-McpServer {
-  if (Test-McpHealth) {
-    return
-  }
+  if (Test-McpHealth) { return }
 
   $listener = Get-NetTCPConnection -State Listen -LocalPort 47831 -ErrorAction SilentlyContinue | Select-Object -First 1
   if ($listener) {
-    throw 'Port 47831 is occupied but Remote Commander health is unavailable; supervisor will not stop an unknown process.'
+    $health = Get-McpHealth
+    if ($health) {
+      Write-SupervisorLog "MCP_IDENTITY_MISMATCH expected=$((Get-ExpectedMcpIdentity).InstanceId) actual=$($health.instanceId)"
+    } else {
+      Write-SupervisorLog "MCP_PORT_OCCUPIED pid=$($listener.OwningProcess)"
+    }
+    return
   }
 
   $npm = (Get-Command npm.cmd -ErrorAction Stop).Source
   $out = Join-Path $VarDir 'mcp-autostart.out.log'
   $err = Join-Path $VarDir 'mcp-autostart.err.log'
-
   Start-Process -FilePath $npm -ArgumentList @('start','--silent') -WorkingDirectory $Root -WindowStyle Hidden -RedirectStandardOutput $out -RedirectStandardError $err | Out-Null
 
   foreach ($i in 1..30) {
     Start-Sleep -Milliseconds 500
-    if (Test-McpHealth) {
-      Write-SupervisorLog 'MCP_STARTED'
-      return
-    }
+    if (Test-McpHealth) { Write-SupervisorLog 'MCP_STARTED'; return }
   }
-
-  throw 'MCP_START_TIMEOUT'
+  Write-SupervisorLog 'MCP_START_TIMEOUT'
 }
 
 function Find-TunnelExe {
-  $stateFile = Join-Path $Root 'var\tunnel-client.json'
-  if (-not (Test-Path -LiteralPath $stateFile -PathType Leaf)) {
-    throw 'Pinned tunnel-client state missing; run install.ps1.'
-  }
-
-  $state = Get-Content -LiteralPath $stateFile -Raw | ConvertFrom-Json
-  $exe = [IO.Path]::GetFullPath([string]$state.path)
-  if (-not (Test-Path -LiteralPath $exe -PathType Leaf)) {
-    throw 'Pinned tunnel-client executable missing.'
-  }
-
-  $actual = (Get-FileHash -LiteralPath $exe -Algorithm SHA256).Hash.ToLowerInvariant()
-  if ($actual -ne ([string]$state.sha256).ToLowerInvariant()) {
-    throw 'Pinned tunnel-client SHA256 mismatch.'
-  }
-
-  return $exe
+  $manifestPath = Join-Path $Root 'tools\tunnel-client.active.json'
+  if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) { throw 'Pinned tunnel-client manifest is missing.' }
+  $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+  $candidate = [IO.Path]::GetFullPath((Join-Path $Root ([string]$manifest.relativePath)))
+  if (-not $candidate.StartsWith($Root, [StringComparison]::OrdinalIgnoreCase)) { throw 'Pinned tunnel-client path escapes install root.' }
+  if (-not (Test-Path -LiteralPath $candidate -PathType Leaf)) { throw 'Pinned tunnel-client executable is missing.' }
+  $actual = (Get-FileHash -LiteralPath $candidate -Algorithm SHA256).Hash.ToLowerInvariant()
+  if ($actual -ne ([string]$manifest.sha256).ToLowerInvariant()) { throw 'Pinned tunnel-client hash mismatch.' }
+  return $candidate
 }
 
 function CredentialPath([string]$Profile) {
+  Assert-ProfileName $Profile
   return Join-Path $CredDir "$Profile.dpapi"
 }
 
 function Get-ProfileHealthPort([string]$ProfileFile) {
   $text = Get-Content -LiteralPath $ProfileFile -Raw
-  $match = [regex]::Match($text, 'listen_addr:\s*["'']?127\.0\.0\.1:(\d+)')
-  if ($match.Success) {
-    return [int]$match.Groups[1].Value
-  }
-  return 0
+  $m = [regex]::Match($text, 'listen_addr:\s*["'']?127\.0\.0\.1:(\d+)')
+  if (-not $m.Success) { return 0 }
+  return [int]$m.Groups[1].Value
 }
 
 function Get-ManagedProfiles {
-  if (-not (Test-Path -LiteralPath $ProfileDir)) {
-    return @()
-  }
-
+  if (-not (Test-Path $ProfileDir)) { return @() }
   $items = @()
-  foreach ($file in Get-ChildItem -LiteralPath $ProfileDir -Filter '*.yaml' -File -ErrorAction SilentlyContinue) {
-    $text = Get-Content -LiteralPath $file.FullName -Raw
-    if ($text -notmatch 'http://127\.0\.0\.1:47831/mcp') {
-      continue
-    }
-
-    $profile = [IO.Path]::GetFileNameWithoutExtension($file.Name)
-    if (-not (Test-ProfileName $profile)) {
-      Write-SupervisorLog "PROFILE_SKIPPED_INVALID name=$profile"
-      continue
-    }
-
+  foreach ($f in Get-ChildItem $ProfileDir -Filter '*.yaml' -File -ErrorAction SilentlyContinue) {
+    $profile = [IO.Path]::GetFileNameWithoutExtension($f.Name)
+    try { Assert-ProfileName $profile } catch { Write-SupervisorLog "PROFILE_REJECTED file=$($f.Name)"; continue }
+    $text = Get-Content -LiteralPath $f.FullName -Raw
+    if ($text -notmatch 'http://127\.0\.0\.1:47831/mcp') { continue }
+    $healthPort = Get-ProfileHealthPort $f.FullName
+    if ($healthPort -lt 1) { Write-SupervisorLog "PROFILE_HEALTH_PORT_INVALID profile=$profile"; continue }
     $items += [pscustomobject]@{
       Profile = $profile
-      File = $file.FullName
+      File = $f.FullName
       Credential = CredentialPath $profile
-      HealthPort = Get-ProfileHealthPort $file.FullName
+      HealthPort = $healthPort
     }
   }
-
   return $items
 }
 
-function Test-TunnelReady([int]$Port) {
-  if ($Port -le 0) {
-    return $false
-  }
-
-  try {
-    $response = Invoke-WebRequest -Uri "http://127.0.0.1:$Port/readyz" -UseBasicParsing -TimeoutSec 2
-    return ($response.StatusCode -eq 200 -and $response.Content.Trim() -eq 'ready')
-  } catch {
-    return $false
-  }
-}
-
 function Get-TunnelProcess([string]$Profile, [string]$Exe) {
-  $expected = [IO.Path]::GetFullPath($Exe)
+  Assert-ProfileName $Profile
   $escaped = [regex]::Escape($Profile)
-  $profileRegex = '--profile(?:=|\s+)["'']?' + $escaped + '["'']?(?:\s|$)'
-
+  $exeFull = [IO.Path]::GetFullPath($Exe)
   return Get-CimInstance Win32_Process -Filter "Name='tunnel-client.exe'" -ErrorAction SilentlyContinue |
     Where-Object {
       $_.ExecutablePath -and
-      [IO.Path]::GetFullPath([string]$_.ExecutablePath) -eq $expected -and
-      $_.CommandLine -match $profileRegex
+      [IO.Path]::GetFullPath([string]$_.ExecutablePath) -eq $exeFull -and
+      $_.CommandLine -match ('run\s+--profile\s+(?:"{0}"|{0})(?:\s|$)' -f $escaped)
     } |
     Select-Object -First 1
 }
 
-function Start-TunnelProfile($Item) {
-  if (-not (Test-Path -LiteralPath $Item.Credential -PathType Leaf)) {
-    throw "credential not enrolled for profile $($Item.Profile)"
-  }
-  if ($Item.HealthPort -le 0) {
-    throw "profile $($Item.Profile) has no valid loopback health port"
-  }
+function Test-TunnelReady([int]$Port) {
+  try {
+    $response = Invoke-WebRequest -Uri "http://127.0.0.1:$Port/readyz" -UseBasicParsing -TimeoutSec 2
+    return ($response.StatusCode -eq 200 -and $response.Content.Trim() -eq 'ready')
+  } catch { return $false }
+}
 
-  $exe = Find-TunnelExe
-  $existing = Get-TunnelProcess $Item.Profile $exe
-  if ($existing) {
-    if (Test-TunnelReady $Item.HealthPort) {
-      return
-    }
-    throw "profile $($Item.Profile) process exists but readiness failed"
-  }
-
+function Start-TunnelProfile($Item, [string]$Exe) {
+  if (-not (Test-Path -LiteralPath $Item.Credential -PathType Leaf)) { throw "credential not enrolled for profile $($Item.Profile)" }
   $encrypted = Get-Content -LiteralPath $Item.Credential -Raw
   $secure = ConvertTo-SecureString $encrypted
   $plain = [System.Net.NetworkCredential]::new('', $secure).Password
-
   try {
-    if ([string]::IsNullOrWhiteSpace($plain)) {
-      throw 'decrypted credential is empty'
-    }
-
+    if ([string]::IsNullOrWhiteSpace($plain)) { throw 'decrypted credential is empty' }
     $log = Join-Path $VarDir ("tunnel-{0}.log" -f $Item.Profile)
     $psi = [Diagnostics.ProcessStartInfo]::new()
-    $psi.FileName = $exe
+    $psi.FileName = $Exe
     $psi.WorkingDirectory = $Root
     $psi.UseShellExecute = $false
     $psi.CreateNoWindow = $true
@@ -188,28 +155,18 @@ function Start-TunnelProfile($Item) {
     [void]$psi.ArgumentList.Add($log)
     $psi.Environment['CONTROL_PLANE_API_KEY'] = $plain
     [void]$psi.Environment.Remove('OPENAI_API_KEY')
+    $p = [Diagnostics.Process]::Start($psi)
 
-    $process = [Diagnostics.Process]::Start($psi)
-    $ready = $false
-    foreach ($i in 1..40) {
+    for ($i=1; $i -le 30; $i++) {
       Start-Sleep -Milliseconds 500
       if (Test-TunnelReady $Item.HealthPort) {
-        $ready = $true
-        break
+        Write-SupervisorLog "TUNNEL_STARTED profile=$($Item.Profile) pid=$($p.Id)"
+        return
       }
-      if ($process.HasExited) {
-        break
-      }
+      if ($p.HasExited) { throw "tunnel-client exited early for profile $($Item.Profile)" }
     }
-
-    if (-not $ready) {
-      if (-not $process.HasExited) {
-        Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
-      }
-      throw "tunnel readiness failed for profile $($Item.Profile)"
-    }
-
-    Write-SupervisorLog "TUNNEL_READY profile=$($Item.Profile) pid=$($process.Id) port=$($Item.HealthPort)"
+    try { if (-not $p.HasExited) { Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue } } catch { }
+    throw "tunnel readiness timeout for profile $($Item.Profile)"
   } finally {
     $plain = $null
     $secure = $null
@@ -217,16 +174,14 @@ function Start-TunnelProfile($Item) {
 }
 
 $missingLogged = @{}
+$notReadySince = @{}
 try {
-  Write-SupervisorLog "SUPERVISOR_STARTED pid=$PID root=$Root"
-
+  Write-SupervisorLog "SUPERVISOR_STARTED pid=$PID rootHash=$((Get-ExpectedMcpIdentity).InstanceId)"
   while ($true) {
     try {
       Start-McpServer
-
       if (Test-McpHealth) {
         $exe = Find-TunnelExe
-
         foreach ($item in Get-ManagedProfiles) {
           if (-not (Test-Path -LiteralPath $item.Credential -PathType Leaf)) {
             if (-not $missingLogged.ContainsKey($item.Profile)) {
@@ -237,25 +192,31 @@ try {
           }
 
           [void]$missingLogged.Remove($item.Profile)
-          $process = Get-TunnelProcess $item.Profile $exe
-          if (-not $process -or -not (Test-TunnelReady $item.HealthPort)) {
-            Start-TunnelProfile $item
+          $proc = Get-TunnelProcess $item.Profile $exe
+          if ($proc -and (Test-TunnelReady $item.HealthPort)) {
+            [void]$notReadySince.Remove($item.Profile)
+            continue
           }
+
+          if ($proc) {
+            if (-not $notReadySince.ContainsKey($item.Profile)) { $notReadySince[$item.Profile] = [DateTime]::UtcNow }
+            $age = ([DateTime]::UtcNow - $notReadySince[$item.Profile]).TotalSeconds
+            if ($age -lt 30) { continue }
+            Write-SupervisorLog "TUNNEL_STUCK_RESTART profile=$($item.Profile) pid=$($proc.ProcessId)"
+            Stop-Process -Id $proc.ProcessId -Force -ErrorAction SilentlyContinue
+            [void]$notReadySince.Remove($item.Profile)
+          }
+
+          Start-TunnelProfile $item $exe
         }
       }
     } catch {
       Write-SupervisorLog "SUPERVISOR_ITERATION_ERROR $($_.Exception.Message)"
     }
-
     Start-Sleep -Seconds $IntervalSeconds
   }
 } finally {
   Write-SupervisorLog 'SUPERVISOR_STOPPED'
-  if ($created) {
-    try {
-      $mutex.ReleaseMutex()
-    } catch {
-    }
-  }
+  if ($created) { try { $mutex.ReleaseMutex() } catch {} }
   $mutex.Dispose()
 }

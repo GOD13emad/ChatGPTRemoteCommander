@@ -48,36 +48,28 @@ Important boundaries:
 
 ### Windows GUI Control
 
-On Windows, v0.5 can expose its own graphical-control MCP tools. This is an explicit opt-in on top of Power Mode. Enable it only on a trusted interactive desktop:
+v0.5.0 adds opt-in native GUI control on trusted Windows desktops. Enable it together with Power Mode:
 
 ```powershell
-.\install.ps1 -PowerMode -GuiControl -StartServer -SkipTunnelClient
+& ([scriptblock]::Create((irm 'https://github.com/GOD13emad/ChatGPTRemoteCommander/releases/latest/download/install.ps1'))) -InstallPrerequisites -PowerMode -GuiControl -StartServer
 ```
 
-When enabled and the ChatGPT app is re-scanned, the tool set includes an exclusive desktop lease, live screenshots, cursor position, absolute/relative mouse movement, click/drag/scroll, Unicode typing, validated key combinations, visible-window listing, and exact/unique window focus.
+After update, **Refresh / Scan Tools** on the exact Custom App. A correct GUI-capable app exposes `gui_status`, `gui_session_begin`, `gui_screenshot`, GUI input tools, and `gui_session_end`.
 
-Required workflow:
-1. call `gui_status` and require an available interactive desktop;
-2. acquire `gui_session_begin`;
-3. call `gui_screenshot` with the lease;
-4. inspect the image and keep the returned single-use `frame`;
-5. perform exactly one GUI mutation with both `lease` and `frame`;
-6. capture again and verify the visible result;
-7. renew the lease only while actively working and always end with `gui_session_end`.
+The required visual-control loop is:
 
-Do not queue stale GUI work across chats. The owner can stop GUI input locally with physical Escape or the `var\GUI_STOP` file; the assistant must not clear that stop remotely.
+1. call `gui_status` and require an available interactive Windows desktop;
+2. call `gui_session_begin` to obtain the short-lived exclusive desktop lease;
+3. call `gui_screenshot` with that lease and inspect the returned MCP image;
+4. pass both the same `lease` and that screenshot's single-use `frame` to exactly one GUI action;
+5. call `gui_screenshot` again and verify the visible result;
+6. renew the lease when needed and always finish with `gui_session_end`.
 
+A frame expires quickly and is single-use. Never replay an input after a timeout or uncertain native result; obtain a fresh screenshot instead. Concurrent chats may use filesystem/project tools, but only one GUI lease may drive the desktop at a time.
 
+The owner can stop GUI input locally with physical **Escape** or the local `var/GUI_STOP` file. The assistant must not remove or bypass that stop remotely.
 
-For release/maintainer validation on a trusted interactive Windows desktop, run:
-
-```powershell
-npm run test:gui-native
-```
-
-This opens only the repository's disposable WinForms test window and verifies the full screenshot → focus → click → multilingual typing → click → visual verification workflow. It restores the cursor and attempts to restore the previously focused window before exiting. This native test is intentionally separate from the normal headless test suite because it interacts with the desktop.
-
-This removes the previous dependency on a separate Computer Use tool for ordinary supported Windows GUI workflows. It does **not** bypass Windows Secure Desktop/UAC, lock-screen boundaries, anti-cheat/protected-input systems, or the latency limits of real-time gameplay.
+GUI Control does not bypass Secure Desktop/UAC, the lock screen, UIPI, anti-cheat/protected input, RawInput restrictions, or OS security boundaries. Real-time/high-speed gameplay may exceed model/tool-call latency. Report these limits rather than claiming success.
 
 ### Optional ChatGPT-side Full permission
 
@@ -102,7 +94,11 @@ Open PowerShell 7 and run:
 
 ### Windows — Power Mode + GUI Control
 
-For a v0.5 source checkout, run `.\install.ps1 -PowerMode -GuiControl -StartServer -SkipTunnelClient`, then refresh/re-scan the ChatGPT app tools. For a published v0.5 Release, the same `-GuiControl` switch applies to the Release installer. GUI Control is Windows-only in v0.5.
+```powershell
+& ([scriptblock]::Create((irm 'https://github.com/GOD13emad/ChatGPTRemoteCommander/releases/latest/download/install.ps1'))) -InstallPrerequisites -PowerMode -GuiControl -StartServer
+```
+
+GUI Control is Windows-only in v0.5.0. After installation/update, refresh or re-scan the exact Custom App tools before using the GUI workflow.
 
 ### Linux — Standard
 
@@ -316,8 +312,3 @@ Continue through install/update, Secure MCP Tunnel, persistent enrollment, ChatG
 - Developer Mode and MCP apps: https://help.openai.com/en/articles/12584461-developer-mode-and-mcp-apps-in-chatgpt
 - Plugins: https://help.openai.com/en/articles/20001256/
 - Plugin packaging: https://developers.openai.com/plugins/build/plugins
-
-
-### GUI backend implementation note
-
-Windows GUI Control uses bounded **synthetic input** in the current interactive user session for mouse and keyboard actions. A submitted input is not considered successful until a fresh screenshot confirms the visible result. It does not bypass Secure Desktop/UAC, the lock screen, protected-input/anti-cheat restrictions, or real-time latency limits.
