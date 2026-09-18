@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.4 — 2026-09-18
+
+- Fixed the public Bash one-line Work Plugin installer when executed via `curl | bash -s`: `BASH_SOURCE[0]` is now expanded safely under `set -u`, eliminating the harmless but confusing unbound-variable warning.
+- Kept the v0.4.3 app-identity guardrail, self-contained Release template download, private-path fixes, and exact-app verification unchanged.
+
+
 ## 0.4.3 — 2026-09-18
 
 - Added an explicit app-identity guardrail for Work/Plugin binding: bind only the exact Custom App created for this project's Secure MCP Tunnel and verify its scanned tools include `system_status`.

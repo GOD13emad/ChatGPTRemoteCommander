@@ -2,7 +2,12 @@
 set -euo pipefail
 APP_ID="${1:-}"
 MARKETPLACE_NAME="${MARKETPLACE_NAME:-chatgpt-remote-commander-personal}"
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd || pwd)"
+SOURCE_PATH="${BASH_SOURCE[0]:-}"
+if [[ -n "$SOURCE_PATH" ]]; then
+  SCRIPT_DIR="$(cd "$(dirname "$SOURCE_PATH")" 2>/dev/null && pwd || pwd)"
+else
+  SCRIPT_DIR="$(pwd)"
+fi
 INSTALL_ROOT="${INSTALL_ROOT:-${XDG_DATA_HOME:-$HOME/.local/share}/ChatGPTRemoteCommander/work-plugin}"
 TEMPLATE_SOURCE="${TEMPLATE_SOURCE:-}"
 TEMP_TEMPLATE_ROOT=""
