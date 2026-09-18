@@ -27,13 +27,13 @@ Official OpenAI references:
 Standard:
 
 ```powershell
-& ([scriptblock]::Create((irm 'https://raw.githubusercontent.com/GOD13emad/ChatGPTRemoteCommander/main/install.ps1'))) -InstallPrerequisites -StartServer
+& ([scriptblock]::Create((irm 'https://github.com/GOD13emad/ChatGPTRemoteCommander/releases/latest/download/install.ps1'))) -InstallPrerequisites -StartServer
 ```
 
 Power Mode on a trusted PC:
 
 ```powershell
-& ([scriptblock]::Create((irm 'https://raw.githubusercontent.com/GOD13emad/ChatGPTRemoteCommander/main/install.ps1'))) -InstallPrerequisites -PowerMode -StartServer
+& ([scriptblock]::Create((irm 'https://github.com/GOD13emad/ChatGPTRemoteCommander/releases/latest/download/install.ps1'))) -InstallPrerequisites -PowerMode -StartServer
 ```
 
 ## v0.3 cross-platform and persistent startup
@@ -49,7 +49,7 @@ Windows one-time persistent enrollment:
 Linux install and one-time persistent enrollment:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/GOD13emad/ChatGPTRemoteCommander/main/install.sh | bash -s -- --install-prerequisites --start-server
+curl -fsSL https://github.com/GOD13emad/ChatGPTRemoteCommander/releases/latest/download/install.sh | bash -s -- --install-prerequisites --start-server
 ./enable-autostart-linux.sh --profile "$(hostname)"
 ```
 
@@ -57,4 +57,4 @@ After enrollment, later logins do not require re-entering the Tunnel ID, MCP add
 
 ## Updating
 
-Re-run the same one-command installer you originally used. On Windows v0.3.3+, an active registered installation is detected and updated in place; otherwise new installs keep application source under `%LOCALAPPDATA%\\ChatGPTRemoteCommander\\app` and persistent state in the parent directory. With `-StartServer`, a running v0.3 MCP is upgraded to the installed version without requiring sign-out or reboot.
+Re-run the same one-command installer you originally used. On Windows v0.3.4+, an active registered installation is detected and updated in place; otherwise new installs keep application source under `%LOCALAPPDATA%\\ChatGPTRemoteCommander\\app` and persistent state in the parent directory. With `-StartServer`, a running v0.3 MCP is upgraded to the installed version without requiring sign-out or reboot.

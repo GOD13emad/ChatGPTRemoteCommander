@@ -9,16 +9,16 @@ Paste one of these commands into PowerShell. Standard is safe-by-default; Power 
 **Standard:**
 
 ```powershell
-& ([scriptblock]::Create((irm 'https://raw.githubusercontent.com/GOD13emad/ChatGPTRemoteCommander/main/install.ps1'))) -InstallPrerequisites -StartServer
+& ([scriptblock]::Create((irm 'https://github.com/GOD13emad/ChatGPTRemoteCommander/releases/latest/download/install.ps1'))) -InstallPrerequisites -StartServer
 ```
 
 **Power Mode:**
 
 ```powershell
-& ([scriptblock]::Create((irm 'https://raw.githubusercontent.com/GOD13emad/ChatGPTRemoteCommander/main/install.ps1'))) -InstallPrerequisites -PowerMode -StartServer
+& ([scriptblock]::Create((irm 'https://github.com/GOD13emad/ChatGPTRemoteCommander/releases/latest/download/install.ps1'))) -InstallPrerequisites -PowerMode -StartServer
 ```
 
-**Update:** run the same command again. v0.3.3+ detects an already-active Windows installation and updates that Git checkout in place. New installs keep code under `%LOCALAPPDATA%\\ChatGPTRemoteCommander\\app` and local credentials/download state outside that Git checkout.
+**Update:** run the same command again. v0.3.4+ detects an already-active Windows installation and updates that Git checkout in place. New installs keep code under `%LOCALAPPDATA%\\ChatGPTRemoteCommander\\app` and local credentials/download state outside that Git checkout.
 
 ## 1. Install on the Windows PC
 

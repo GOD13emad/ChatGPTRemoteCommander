@@ -9,13 +9,13 @@
 **Standard:**
 
 ```powershell
-& ([scriptblock]::Create((irm 'https://raw.githubusercontent.com/GOD13emad/ChatGPTRemoteCommander/main/install.ps1'))) -InstallPrerequisites -StartServer
+& ([scriptblock]::Create((irm 'https://github.com/GOD13emad/ChatGPTRemoteCommander/releases/latest/download/install.ps1'))) -InstallPrerequisites -StartServer
 ```
 
 **Power Mode:**
 
 ```powershell
-& ([scriptblock]::Create((irm 'https://raw.githubusercontent.com/GOD13emad/ChatGPTRemoteCommander/main/install.ps1'))) -InstallPrerequisites -PowerMode -StartServer
+& ([scriptblock]::Create((irm 'https://github.com/GOD13emad/ChatGPTRemoteCommander/releases/latest/download/install.ps1'))) -InstallPrerequisites -PowerMode -StartServer
 ```
 
 **به‌روزرسانی:** همان دستور نصب را دوباره اجرا کنید. از نسخه 0.3.3 به بعد، نصب فعال ویندوز به‌طور خودکار شناسایی و همان Git checkout به‌روزرسانی می‌شود. در نصب تازه، کد در `%LOCALAPPDATA%\\ChatGPTRemoteCommander\\app` قرار می‌گیرد و credential/download state بیرون از Git checkout نگه داشته می‌شود.
