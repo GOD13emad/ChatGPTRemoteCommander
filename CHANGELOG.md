@@ -2,11 +2,15 @@
 
 ## 0.5.0 — 2026-09-18
 
-- Added opt-in Windows GUI Control for trusted Power Mode machines.
-- Added MCP image screenshots plus mouse move/delta/click/drag/scroll, Unicode typing, key combinations/holds, visible-window listing, and window focus.
-- Added `-GuiControl` / `-DisableGuiControl` installer policy switches; public configuration remains GUI-disabled by default.
-- Added GUI policy/status reporting, MCP image-content response handling, static release gates, and Plugin/Work GUI workflow guidance.
-- Kept secure desktop/UAC, lock-screen, anti-cheat/protected-input, and real-time latency limitations explicit rather than claiming unsupported control.
+- Added opt-in Windows GUI Control for trusted Power Mode machines with MCP image screenshots, mouse move/delta/click/drag/scroll, Unicode typing, bounded key combinations, window discovery/focus, and a local emergency stop.
+- Added an exclusive expiring desktop lease and short-lived single-use frame tokens. Every GUI mutation must be based on a fresh screenshot; concurrent chats cannot independently drive the same desktop.
+- Added strict runtime GUI schemas, fixed native dispatch, sanitized helper errors, bounded subprocess/image output, corrected Win32 INPUT layout, DPI/foreground/desktop checks, and an uncertain-outcome latch instead of blind retries.
+- Hardened loopback HTTP admission against untrusted Host/Origin/content-type requests while preserving Secure MCP Tunnel architecture.
+- Hardened Power Mode containment against canonical path/symlink escapes, same/ancestor/descendant copy/move hazards, and parent/child lock races. Copy/move overwrite now stages and rolls back instead of deleting the destination first.
+- Made Windows installer mode transitions real and config-aware: local policy is merged/backed up, Standard disables an existing Power policy, health exposes config identity, and same-version config changes restart the owned MCP.
+- Pinned tunnel-client executable identity with recorded SHA-256, strict profile names, exact TunnelId/HealthPort reuse, post-validation credential persistence, readiness checks, and ownership-safe stop/start.
+- Converted the legacy multi-account foreground connector to the persistent supervisor path.
+- Public configuration remains Power/GUI disabled by default. Secure Desktop/UAC, lock screen, anti-cheat/protected input and high-speed real-time gameplay remain explicit platform limits.
 
 ## 0.4.4 — 2026-09-18
 
