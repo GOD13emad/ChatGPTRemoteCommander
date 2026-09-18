@@ -22,8 +22,7 @@ function Require-Windows {
 
 function Resolve-InstallDir {
   if (-not [string]::IsNullOrWhiteSpace($InstallDir)) {
-    $script:InstallDir = [IO.Path]::GetFullPath($InstallDir)
-    return
+    return [IO.Path]::GetFullPath($InstallDir)
   }
 
   $runKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
@@ -36,22 +35,23 @@ function Resolve-InstallDir {
     if ($m.Success) {
       $candidate = Split-Path -Parent $m.Groups[1].Value
       if (Test-Path -LiteralPath (Join-Path $candidate '.git')) {
-        $script:InstallDir = [IO.Path]::GetFullPath($candidate)
-        Write-Host "Detected active installation from Windows autostart: $InstallDir"
-        return
+        $resolved = [IO.Path]::GetFullPath($candidate)
+        Write-Host "Detected active installation from Windows autostart: $resolved"
+        return $resolved
       }
     }
   }
 
   $stateRoot = Join-Path $env:LOCALAPPDATA 'ChatGPTRemoteCommander'
   if (Test-Path -LiteralPath (Join-Path $stateRoot '.git')) {
-    $script:InstallDir = [IO.Path]::GetFullPath($stateRoot)
-    Write-Host "Detected legacy installation: $InstallDir"
-    return
+    $resolved = [IO.Path]::GetFullPath($stateRoot)
+    Write-Host "Detected legacy installation: $resolved"
+    return $resolved
   }
 
-  $script:InstallDir = Join-Path $stateRoot 'app'
-  Write-Host "Using application directory: $InstallDir"
+  $resolved = Join-Path $stateRoot 'app'
+  Write-Host "Using application directory: $resolved"
+  return $resolved
 }
 
 function Ensure-Command([string]$Name, [string]$WingetId) {
@@ -238,7 +238,7 @@ function Start-LocalServer {
 }
 
 Require-Windows
-Resolve-InstallDir
+$InstallDir = Resolve-InstallDir
 Ensure-Prerequisites
 Install-Source
 Install-TunnelClient

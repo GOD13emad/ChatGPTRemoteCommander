@@ -41,7 +41,7 @@ For trusted machines that need full filesystem/shell/process control, add `-Powe
 & ([scriptblock]::Create((irm 'https://raw.githubusercontent.com/GOD13emad/ChatGPTRemoteCommander/main/install.ps1'))) -InstallPrerequisites -PowerMode -StartServer
 ```
 
-The same command is also the update command. On Windows v0.3.3+, the installer first detects an already-active installation from the registered supervisor and updates that Git checkout in place. Otherwise, new source code is installed under `%LOCALAPPDATA%\\ChatGPTRemoteCommander\\app`, while persistent state such as `credentials/` and `downloads/` stays one level above. `-StartServer` upgrades a running v0.3 MCP to the newly installed version when needed. The installer never embeds your OpenAI Runtime API key. After creating a Secure MCP Tunnel, run `enable-autostart.ps1` once to enroll the account and enable zero-reentry startup.
+The same command is also the update command. On Windows v0.3.4+, the installer first detects an already-active installation from the registered supervisor and updates that Git checkout in place. Otherwise, new source code is installed under `%LOCALAPPDATA%\\ChatGPTRemoteCommander\\app`, while persistent state such as `credentials/` and `downloads/` stays one level above. `-StartServer` upgrades a running v0.3 MCP to the newly installed version when needed. The installer never embeds your OpenAI Runtime API key. After creating a Secure MCP Tunnel, run `enable-autostart.ps1` once to enroll the account and enable zero-reentry startup.
 
 ## One-command Linux install
 
@@ -103,7 +103,7 @@ Filesystem containment is enforced, but command execution is **not an OS sandbox
 
 ## Validation
 
-v0.3.3 includes the v0.3 cross-platform gates plus persistent-enrollment, installer/update-path, and runtime-upgrade validation. Windows and Linux syntax/install checks, safe and Power Mode smoke tests, concurrency tests, and secret scanning remain part of the release gate. Use `npm run check`, `npm test`, and `npm run audit` before releases.
+v0.3.4 includes the v0.3 cross-platform gates plus persistent-enrollment, installer/update-path, in-memory `irm` execution, and runtime-upgrade validation. Windows and Linux syntax/install checks, safe and Power Mode smoke tests, concurrency tests, and secret scanning remain part of the release gate. Use `npm run check`, `npm test`, and `npm run audit` before releases.
 
 ## License
 

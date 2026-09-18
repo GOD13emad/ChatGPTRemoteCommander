@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.4 — 2026-09-18
+
+- Fixed Windows installer path resolution when `install.ps1` is executed from an in-memory `irm`/ScriptBlock rather than from a `.ps1` file.
+- `Resolve-InstallDir` now returns the resolved path explicitly and the installer assigns it in the caller scope, avoiding PowerShell `$script:` scope differences.
+- Added validation for the public one-line `irm` install/update execution path.
+
+
 ## 0.3.3 — 2026-09-18
 
 - Fixed the Windows installer path collision between application source and persistent local state (`credentials` / `downloads`).

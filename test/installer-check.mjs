@@ -5,10 +5,11 @@ const windowsInstaller = readFileSync('install.ps1', 'utf8');
 for (const required of [
   "Join-Path $stateRoot 'app'",
   'Detected active installation from Windows autostart',
+  '$InstallDir = Resolve-InstallDir',
   'Updating running MCP from version'
 ]) {
   if (!windowsInstaller.includes(required)) {
-    throw new Error(`install.ps1 missing required v0.3.3 behavior: ${required}`);
+    throw new Error(`install.ps1 missing required v0.3.4 behavior: ${required}`);
   }
 }
 const linuxInstaller = readFileSync('install.sh', 'utf8');
