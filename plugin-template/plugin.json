@@ -1,8 +1,8 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "chatgpt-remote-commander",
-  "version": "0.4.4",
-  "description": "Operate a trusted computer through a private MCP connection.",
+  "version": "0.5.0",
+  "description": "Operate a trusted computer through a private MCP connection, including optional Windows GUI screenshot/mouse/keyboard control.",
   "author": {
     "name": "GOD13emad",
     "url": "https://github.com/GOD13emad"
@@ -10,23 +10,34 @@
   "homepage": "https://github.com/GOD13emad/ChatGPTRemoteCommander",
   "repository": "https://github.com/GOD13emad/ChatGPTRemoteCommander",
   "license": "MIT",
-  "keywords": ["mcp", "remote-control", "developer-tools", "automation"],
+  "keywords": [
+    "mcp",
+    "remote-control",
+    "developer-tools",
+    "automation",
+    "gui-control",
+    "computer-use"
+  ],
   "extensions": {
     "com.openai": {
       "interface": {
         "displayName": "Remote Commander",
         "shortDescription": "Control trusted PCs via MCP",
-        "longDescription": "Use a registered ChatGPT Remote Commander app to inspect projects, run approved tools, and perform trusted-machine workflows through MCP.",
+        "longDescription": "Use a registered ChatGPT Remote Commander app to inspect projects, run approved tools, perform trusted-machine workflows, and optionally control the Windows GUI through screenshot/mouse/keyboard MCP tools.",
         "developerName": "GOD13emad",
         "category": "Productivity",
-        "capabilities": ["Read", "Write"],
+        "capabilities": [
+          "Read",
+          "Write"
+        ],
         "websiteURL": "https://github.com/GOD13emad/ChatGPTRemoteCommander",
         "privacyPolicyURL": "https://github.com/GOD13emad/ChatGPTRemoteCommander/blob/main/PRIVACY.md",
         "termsOfServiceURL": "https://github.com/GOD13emad/ChatGPTRemoteCommander/blob/main/TERMS.md",
         "defaultPrompt": [
           "Report this computer's Remote Commander status without changing anything.",
           "Inspect my project and explain what needs attention before making changes.",
-          "Use Remote Commander to run the requested trusted-machine workflow."
+          "Use Remote Commander to run the requested trusted-machine workflow.",
+          "If GUI Control is enabled, inspect the live desktop with gui_screenshot and perform the requested graphical workflow."
         ],
         "brandColor": "#0B5FFF",
         "composerIcon": "./assets/icon.png",
