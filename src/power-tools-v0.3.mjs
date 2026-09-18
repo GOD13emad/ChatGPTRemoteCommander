@@ -47,27 +47,35 @@ async function nearestExistingAncestor(candidate) {
 
 async function resolveExistingTarget(ctx, userPath, base = ctx.roots[0]) {
   const candidate = lexicalTarget(ctx, userPath, base);
-  if (power(ctx).fullFilesystem === true) return candidate;
   const resolved = await realpath(candidate);
-  if (!isWithin(resolved, ctx.roots)) throw new Error('resolved path escapes allowed roots');
+  if (power(ctx).fullFilesystem !== true && !isWithin(resolved, ctx.roots)) {
+    throw new Error('resolved path escapes allowed roots');
+  }
   return resolved;
 }
 
 async function resolveWritableTarget(ctx, userPath, base = ctx.roots[0]) {
   const candidate = lexicalTarget(ctx, userPath, base);
-  if (power(ctx).fullFilesystem === true) return candidate;
   try {
     const info = await lstat(candidate);
     if (info.isSymbolicLink()) throw new Error('symbolic-link writes are not allowed');
     const resolved = await realpath(candidate);
-    if (!isWithin(resolved, ctx.roots)) throw new Error('resolved path escapes allowed roots');
-    return candidate;
+    if (power(ctx).fullFilesystem !== true && !isWithin(resolved, ctx.roots)) {
+      throw new Error('resolved path escapes allowed roots');
+    }
+    return resolved;
   } catch (error) {
     if (error?.code !== 'ENOENT') throw error;
   }
-  const { ancestor } = await nearestExistingAncestor(path.dirname(candidate));
-  if (!isWithin(ancestor, ctx.roots)) throw new Error('parent path escapes allowed roots');
-  return candidate;
+
+  const parentCandidate = path.dirname(candidate);
+  const { ancestor, suffix } = await nearestExistingAncestor(parentCandidate);
+  if (power(ctx).fullFilesystem !== true && !isWithin(ancestor, ctx.roots)) {
+    throw new Error('parent path escapes allowed roots');
+  }
+
+  const canonicalParent = path.join(ancestor, ...suffix);
+  return path.join(canonicalParent, path.basename(candidate));
 }
 
 function pathRelation(a, b) {
