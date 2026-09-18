@@ -112,7 +112,7 @@ GitHub marketplace import syncs Plugin content. It does not create the Secure MC
 
 ## 6. Preferred one-command app-bound Plugin install
 
-After the custom MCP app exists, use the app's underlying ID or the technical `plugin_...` identifier shown by ChatGPT. The installer normalizes `plugin_asdk_app_...` to the underlying `asdk_app_...` required by `.app.json`.
+After the custom MCP app exists, use the ID from that exact registered **ChatGPT Remote Commander** app: either its underlying App ID or the technical `plugin_...` identifier shown by ChatGPT. Do not substitute a fuzzy Plugin Directory search result or another remote-control app. Before binding, verify the selected app is the one whose tool scan exposed this project's `system_status`/Remote Commander tools. The installer normalizes `plugin_asdk_app_...` to the underlying `asdk_app_...` required by `.app.json`.
 
 Windows — public latest Release, no clone required:
 

@@ -21,7 +21,11 @@ function Normalize-AppId([string]$Value) {
 
 function Resolve-TemplateSource {
   if (-not [string]::IsNullOrWhiteSpace($TemplateSource)) {
-    $candidate = [IO.Path]::GetFullPath($TemplateSource)
+    $candidate = if ([IO.Path]::IsPathRooted($TemplateSource)) {
+      [IO.Path]::GetFullPath($TemplateSource)
+    } else {
+      [IO.Path]::GetFullPath((Join-Path (Get-Location).Path $TemplateSource))
+    }
     if (-not (Test-Path (Join-Path $candidate 'plugin.json'))) { throw "TemplateSource is not a Plugin template: $candidate" }
     return $candidate
   }
@@ -45,7 +49,13 @@ $ResolvedAppId = Normalize-AppId $AppId
 if ($MarketplaceName -notmatch '^[A-Za-z0-9._-]+$') { throw 'MarketplaceName contains unsupported characters.' }
 $Codex = Get-Command codex.exe -ErrorAction SilentlyContinue
 if (-not $Codex) { $Codex = Get-Command codex -ErrorAction Stop }
-if ([string]::IsNullOrWhiteSpace($InstallRoot)) { $InstallRoot = Join-Path $env:LOCALAPPDATA 'ChatGPTRemoteCommander\work-plugin' }
+if ([string]::IsNullOrWhiteSpace($InstallRoot)) {
+  $InstallRoot = Join-Path $env:LOCALAPPDATA 'ChatGPTRemoteCommander\work-plugin'
+} elseif ([IO.Path]::IsPathRooted($InstallRoot)) {
+  $InstallRoot = [IO.Path]::GetFullPath($InstallRoot)
+} else {
+  $InstallRoot = [IO.Path]::GetFullPath((Join-Path (Get-Location).Path $InstallRoot))
+}
 
 try {
   $ResolvedTemplate = Resolve-TemplateSource

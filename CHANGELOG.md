@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.4.3 — 2026-09-18
+
+- Added an explicit app-identity guardrail for Work/Plugin binding: bind only the exact Custom App created for this project's Secure MCP Tunnel and verify its scanned tools include `system_status`.
+- Documented that fuzzy Plugin Directory search results or similarly named remote-control apps must never be substituted for the intended ChatGPT Remote Commander app.
+- Kept the self-contained latest-Release Work Plugin installer flow from v0.4.2 and verified its public one-line Windows path end-to-end with an isolated synthetic app identifier.
+- Clarified that the optional `tunnel-client` Codex Plugin is separate from this project's Plugin and is not a FINAL PASS requirement.
+- Fixed relative `-TemplateSource` and `-InstallRoot` resolution in the Windows Work Plugin installer so controlled offline/private paths resolve from the caller's current PowerShell location rather than the host process directory.
+
+
 ## 0.4.2 — 2026-09-18
 
 - Made the app-bound Work Plugin installers self-contained when executed directly from a Release asset or in-memory PowerShell.

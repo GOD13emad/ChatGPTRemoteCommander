@@ -22,7 +22,7 @@ Do not build the Plugin layer around an app that has not already passed its MCP 
 
 ## 2. Get the registered app ID
 
-The ID used by `.app.json` must identify the registered app, not the plugin.
+The ID used by `.app.json` must identify the exact registered ChatGPT Remote Commander app, not the plugin and not a similarly named Directory app. Verify the app's tool scan contains this project's `system_status` before binding.
 
 Supported app ID prefixes currently include:
 - `asdk_app_`
