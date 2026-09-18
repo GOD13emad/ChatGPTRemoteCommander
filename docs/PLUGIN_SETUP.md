@@ -10,9 +10,11 @@ A **Plugin** is packaging around workflows and presentation. It can include skil
 
 ### Windows GUI Control capability
 
-When the registered app exposes the v0.5 `gui_*` tools, the Plugin can perform graphical interaction directly through Remote Commander: screenshots are returned as MCP image content and mouse/keyboard/window actions are separate tools. The workflow skill must verify visible state with screenshots before and after actions.
+When the registered app exposes the v0.5 `gui_*` tools, the Plugin can perform graphical interaction directly through Remote Commander. Screenshots are MCP image content, while mouse/keyboard/window actions are separate privileged tools guarded by an exclusive lease and a short-lived single-use frame token.
 
-This is Windows-only and opt-in. It does not bypass secure desktop/UAC, lock screen, anti-cheat/protected-input systems, or real-time latency constraints. Native Computer Use remains a fallback rather than a hard prerequisite.
+The Plugin skill must use `gui_session_begin` before capture/input, pass both `lease` and `frame` to one mutation, verify with a new screenshot, and end the lease. It must never clear the owner's local emergency-stop file.
+
+This is Windows-only and opt-in in v0.5. It does not bypass Secure Desktop/UAC, lock screen, anti-cheat/protected input, or real-time latency constraints. Native Computer Use remains an optional fallback rather than a hard prerequisite.
 
 The repository contains:
 - `plugin-template/plugin.json` — portable Agent Plugins manifest;
