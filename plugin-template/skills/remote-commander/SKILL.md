@@ -15,16 +15,20 @@ Before mutation:
 
 For privileged actions, explain the intended change and use the connected app's normal confirmation flow.
 
-## GUI / Computer Use boundary
+## GUI Control workflow
 
-Remote Commander is for filesystem, shell, process, project, and other backend operations exposed by its MCP tools. It does not itself provide interactive visual desktop control.
+If the app exposes `gui_status` and `gui_screenshot`, Remote Commander has built-in Windows GUI Control and should use it directly for supported graphical tasks.
 
-If a task requires seeing and reacting to the live GUI, including actually playing a game:
-1. Check whether Computer Use / graphical desktop control is available in the current ChatGPT conversation or Work task.
-2. If available, use Computer Use for live visual interaction (screen, mouse/clicks, keyboard or controller-style input) and use Remote Commander for filesystem/shell/process/backend operations.
-3. If unavailable, explicitly state that live GUI control is unavailable in the current surface.
-4. Do not simulate or claim GUI/gameplay success from process status, logs, screenshots, shell output, or application launch alone.
-5. You may still launch the application, inspect files/logs/processes, change supported configuration, and prepare/debug the environment.
+For GUI work:
+1. Call `gui_status` and confirm an interactive Windows session.
+2. Call `gui_screenshot` and inspect the returned live image before acting.
+3. Use `gui_focus_window`, `gui_mouse_move`, `gui_mouse_delta`, `gui_mouse_click`, `gui_mouse_drag`, `gui_mouse_scroll`, `gui_type_text`, or `gui_key_press` as needed.
+4. Re-run `gui_screenshot` after meaningful actions and verify the visible outcome.
+5. Prefer normalized relative coordinates for robust clicks when appropriate; use absolute coordinates when exact desktop geometry is known.
+6. For actual gameplay, use held key combinations and relative mouse deltas only when the target accepts synthetic Windows input. Real-time/high-speed gameplay can exceed tool-call latency.
+7. Never claim GUI success from process state or command output alone when screenshots do not verify it.
+
+If the `gui_*` tools are absent, GUI Control is not enabled/scanned for this app. Native Computer Use may be used as a fallback if available.
 
 For repository work:
 - inspect git status before mutation;
