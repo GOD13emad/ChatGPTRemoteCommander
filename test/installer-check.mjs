@@ -2,6 +2,11 @@ import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 
 const windowsInstaller = readFileSync('install.ps1', 'utf8');
+for (const required of ['[switch]$GuiControl','[switch]$DisableGuiControl','guiControl','allowScreenshot','allowMouse','allowKeyboard','allowWindowFocus']) {
+  if (!windowsInstaller.includes(required)) {
+    throw new Error(`install.ps1 missing GUI Control behavior: ${required}`);
+  }
+}
 for (const required of [
   "Join-Path $stateRoot 'app'",
   'Detected active installation from Windows autostart',
@@ -49,7 +54,7 @@ if (process.platform === 'linux') {
   const files = [
     'install.ps1', 'connect-chatgpt-account.ps1', 'connect-chatgpt.ps1',
     'autostart-windows.ps1', 'enable-autostart.ps1', 'disable-autostart.ps1',
-    'install-work-plugin.ps1'
+    'install-work-plugin.ps1', 'tools/gui-control.ps1'
   ];
   for (const file of files) {
     const escaped = file.replaceAll("'", "''");
