@@ -1,310 +1,131 @@
+param([switch]$SelfTest)
 $ErrorActionPreference = 'Stop'
-if (-not $IsWindows) { throw 'GUI control is currently supported on Windows only.' }
-
+Set-StrictMode -Version Latest
+if (-not $IsWindows) { throw 'GUI_WINDOWS_ONLY' }
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
-
-$nativeSource = @'
-using System;
-using System.Collections.Generic;
-using System.Runtime.InteropServices;
-using System.Text;
-
-public static class RcGuiNative {
-  [StructLayout(LayoutKind.Sequential)]
-  public struct POINT { public int X; public int Y; }
-  public sealed class WindowInfo {
-    public long Handle { get; set; }
-    public string Title { get; set; }
-    public int ProcessId { get; set; }
-  }
-  public delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
-
-  [DllImport("user32.dll")] public static extern bool SetCursorPos(int X, int Y);
-  [DllImport("user32.dll")] public static extern bool GetCursorPos(out POINT lpPoint);
-  [DllImport("user32.dll")] static extern void mouse_event(uint flags, uint dx, uint dy, uint data, UIntPtr extra);
-  [DllImport("user32.dll")] static extern void keybd_event(byte vk, byte scan, uint flags, UIntPtr extra);
-  [DllImport("user32.dll", SetLastError=true)] static extern uint SendInput(uint nInputs, INPUT[] inputs, int size);
-  [DllImport("user32.dll")] static extern bool EnumWindows(EnumWindowsProc callback, IntPtr lParam);
-  [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr hWnd);
-  [DllImport("user32.dll", CharSet=CharSet.Unicode)] static extern int GetWindowText(IntPtr hWnd, StringBuilder text, int count);
-  [DllImport("user32.dll")] static extern int GetWindowTextLength(IntPtr hWnd);
-  [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint pid);
-  [DllImport("user32.dll")] static extern bool SetForegroundWindow(IntPtr hWnd);
-  [DllImport("user32.dll")] static extern bool ShowWindow(IntPtr hWnd, int cmd);
-
-  [StructLayout(LayoutKind.Sequential)]
-  public struct INPUT { public uint type; public InputUnion U; }
-  [StructLayout(LayoutKind.Explicit)]
-  public struct InputUnion { [FieldOffset(0)] public KEYBDINPUT ki; }
-  [StructLayout(LayoutKind.Sequential)]
-  public struct KEYBDINPUT {
-    public ushort wVk;
-    public ushort wScan;
-    public uint dwFlags;
-    public uint time;
-    public UIntPtr dwExtraInfo;
-  }
-
-  const uint INPUT_KEYBOARD = 1;
-  const uint MOUSE_MOVE = 0x0001;
-  const uint MOUSE_LEFTDOWN = 0x0002;
-  const uint MOUSE_LEFTUP = 0x0004;
-  const uint MOUSE_RIGHTDOWN = 0x0008;
-  const uint MOUSE_RIGHTUP = 0x0010;
-  const uint MOUSE_MIDDLEDOWN = 0x0020;
-  const uint MOUSE_MIDDLEUP = 0x0040;
-  const uint MOUSE_WHEEL = 0x0800;
-  const uint MOUSE_HWHEEL = 0x1000;
-  const uint KEYEVENTF_KEYUP = 0x0002;
-  const uint KEYEVENTF_UNICODE = 0x0004;
-
-  public static POINT Cursor() {
-    POINT p;
-    if (!GetCursorPos(out p)) throw new InvalidOperationException("GetCursorPos failed");
-    return p;
-  }
-
-  static void MouseFlags(string button, bool down) {
-    uint flag;
-    switch ((button ?? "left").ToLowerInvariant()) {
-      case "right": flag = down ? MOUSE_RIGHTDOWN : MOUSE_RIGHTUP; break;
-      case "middle": flag = down ? MOUSE_MIDDLEDOWN : MOUSE_MIDDLEUP; break;
-      default: flag = down ? MOUSE_LEFTDOWN : MOUSE_LEFTUP; break;
-    }
-    mouse_event(flag, 0, 0, 0, UIntPtr.Zero);
-  }
-
-  public static void Click(string button, int clicks, int intervalMs) {
-    clicks = Math.Max(1, Math.Min(10, clicks));
-    for (int i = 0; i < clicks; i++) {
-      MouseFlags(button, true);
-      System.Threading.Thread.Sleep(20);
-      MouseFlags(button, false);
-      if (i + 1 < clicks) System.Threading.Thread.Sleep(Math.Max(20, intervalMs));
-    }
-  }
-
-  public static void MouseDown(string button) { MouseFlags(button, true); }
-  public static void MouseUp(string button) { MouseFlags(button, false); }
-  public static void MoveRelative(int dx, int dy) {
-    mouse_event(MOUSE_MOVE, unchecked((uint)dx), unchecked((uint)dy), 0, UIntPtr.Zero);
-  }
-  public static void Scroll(int delta, bool horizontal) {
-    mouse_event(horizontal ? MOUSE_HWHEEL : MOUSE_WHEEL, 0, 0, unchecked((uint)delta), UIntPtr.Zero);
-  }
-
-  static byte KeyCode(string name) {
-    if (String.IsNullOrWhiteSpace(name)) throw new ArgumentException("key is required");
-    string n = name.Trim().ToUpperInvariant();
-    switch (n) {
-      case "CTRL": case "CONTROL": return 0x11;
-      case "SHIFT": return 0x10;
-      case "ALT": return 0x12;
-      case "WIN": case "WINDOWS": return 0x5B;
-      case "ENTER": case "RETURN": return 0x0D;
-      case "TAB": return 0x09;
-      case "ESC": case "ESCAPE": return 0x1B;
-      case "SPACE": return 0x20;
-      case "BACKSPACE": return 0x08;
-      case "DELETE": case "DEL": return 0x2E;
-      case "INSERT": case "INS": return 0x2D;
-      case "HOME": return 0x24;
-      case "END": return 0x23;
-      case "PAGEUP": case "PGUP": return 0x21;
-      case "PAGEDOWN": case "PGDN": return 0x22;
-      case "LEFT": return 0x25;
-      case "UP": return 0x26;
-      case "RIGHT": return 0x27;
-      case "DOWN": return 0x28;
-    }
-    if (n.Length == 1) {
-      char c = n[0];
-      if ((c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')) return (byte)c;
-    }
-    int fn;
-    if (n.StartsWith("F") && Int32.TryParse(n.Substring(1), out fn) && fn >= 1 && fn <= 24)
-      return (byte)(0x70 + fn - 1);
-    throw new ArgumentException("unsupported key: " + name);
-  }
-
-  public static void KeyCombo(string[] keys, int holdMs) {
-    if (keys == null || keys.Length == 0) throw new ArgumentException("keys are required");
-    var codes = new List<byte>();
-    foreach (var key in keys) {
-      byte code = KeyCode(key);
-      codes.Add(code);
-      keybd_event(code, 0, 0, UIntPtr.Zero);
-      System.Threading.Thread.Sleep(10);
-    }
-    if (holdMs > 0) System.Threading.Thread.Sleep(Math.Min(holdMs, 5000));
-    for (int i = codes.Count - 1; i >= 0; i--) {
-      keybd_event(codes[i], 0, KEYEVENTF_KEYUP, UIntPtr.Zero);
-      System.Threading.Thread.Sleep(10);
-    }
-  }
-
-  public static void TypeUnicode(string text, int intervalMs) {
-    if (text == null) text = "";
-    intervalMs = Math.Max(0, Math.Min(1000, intervalMs));
-    foreach (char ch in text) {
-      var inputs = new INPUT[] {
-        new INPUT { type = INPUT_KEYBOARD, U = new InputUnion { ki = new KEYBDINPUT { wVk = 0, wScan = ch, dwFlags = KEYEVENTF_UNICODE } } },
-        new INPUT { type = INPUT_KEYBOARD, U = new InputUnion { ki = new KEYBDINPUT { wVk = 0, wScan = ch, dwFlags = KEYEVENTF_UNICODE | KEYEVENTF_KEYUP } } }
-      };
-      if (SendInput((uint)inputs.Length, inputs, Marshal.SizeOf(typeof(INPUT))) != inputs.Length)
-        throw new InvalidOperationException("SendInput Unicode failed");
-      if (intervalMs > 0) System.Threading.Thread.Sleep(intervalMs);
-    }
-  }
-
-  public static List<WindowInfo> ListWindows() {
-    var result = new List<WindowInfo>();
-    EnumWindows((hWnd, lParam) => {
-      if (!IsWindowVisible(hWnd)) return true;
-      int len = GetWindowTextLength(hWnd);
-      if (len <= 0) return true;
-      var sb = new StringBuilder(len + 1);
-      GetWindowText(hWnd, sb, sb.Capacity);
-      string title = sb.ToString();
-      if (String.IsNullOrWhiteSpace(title)) return true;
-      uint pid;
-      GetWindowThreadProcessId(hWnd, out pid);
-      result.Add(new WindowInfo { Handle = hWnd.ToInt64(), Title = title, ProcessId = (int)pid });
-      return true;
-    }, IntPtr.Zero);
-    return result;
-  }
-
-  public static bool FocusWindow(long handle) {
-    IntPtr hWnd = new IntPtr(handle);
-    ShowWindow(hWnd, 9);
-    return SetForegroundWindow(hWnd);
-  }
+Add-Type -Path (Join-Path $PSScriptRoot 'gui-native.cs')
+[RcGuiNative]::AssertLayout()
+if ($SelfTest) {
+    if ([RcGuiNative]::KeyCode('ENTER') -ne 13) { throw 'GUI_KEYMAP_FAILED' }
+    $rejected = $false
+    try { [RcGuiNative]::KeyCode('INVALID') | Out-Null } catch { $rejected = $true }
+    if (-not $rejected) { throw 'GUI_KEYMAP_FAILED' }
+    @{ok=$true; inputSize=[RcGuiNative]::InputSize(); architecture=[Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture.ToString(); nativeLayoutOnly=$true} | ConvertTo-Json -Compress
+    exit 0
 }
-'@
-
-Add-Type -TypeDefinition $nativeSource -Language CSharp
-
-$raw = [Console]::In.ReadToEnd()
-if ([string]::IsNullOrWhiteSpace($raw)) { throw 'GUI request JSON is required on stdin.' }
-$req = $raw | ConvertFrom-Json
-$action = [string]$req.action
-
-function Get-ScreenBounds([int]$screenIndex = 0) {
-  if ($screenIndex -ge 0) {
-    $screens = [System.Windows.Forms.Screen]::AllScreens
-    if ($screenIndex -ge $screens.Length) { throw "screen index out of range: $screenIndex" }
-    return $screens[$screenIndex].Bounds
-  }
-  return [System.Windows.Forms.SystemInformation]::VirtualScreen
-}
-
-function Resolve-Point($request) {
-  $bounds = Get-ScreenBounds ([int]($request.screenIndex ?? 0))
-  $mode = if ($request.coordinateMode) { [string]$request.coordinateMode } else { 'absolute' }
-  if ($mode -eq 'relative') {
-    $rx = [double]$request.x
-    $ry = [double]$request.y
-    if ($rx -lt 0 -or $rx -gt 1 -or $ry -lt 0 -or $ry -gt 1) { throw 'relative x/y must be between 0 and 1' }
-    return @{
-      X = $bounds.Left + [int][Math]::Round($rx * [Math]::Max(0, $bounds.Width - 1))
-      Y = $bounds.Top + [int][Math]::Round($ry * [Math]::Max(0, $bounds.Height - 1))
-    }
-  }
-  return @{ X = [int]$request.x; Y = [int]$request.y }
-}
-
-$result = switch ($action) {
-  'status' {
-    $screens = @()
-    $all = [System.Windows.Forms.Screen]::AllScreens
-    for ($i = 0; $i -lt $all.Length; $i++) {
-      $b = $all[$i].Bounds
-      $screens += @{ index=$i; primary=$all[$i].Primary; deviceName=$all[$i].DeviceName; left=$b.Left; top=$b.Top; width=$b.Width; height=$b.Height }
-    }
-    @{ ok=$true; interactive=[Environment]::UserInteractive; session=[System.Diagnostics.Process]::GetCurrentProcess().SessionId; screens=$screens }
-  }
-  'screenshot' {
-    $bounds = Get-ScreenBounds ([int]($req.screenIndex ?? 0))
-    $bitmap = [System.Drawing.Bitmap]::new($bounds.Width, $bounds.Height)
-    $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
-    try {
-      $graphics.CopyFromScreen($bounds.Left, $bounds.Top, 0, 0, $bitmap.Size)
-      $format = if ($req.format) { ([string]$req.format).ToLowerInvariant() } else { 'jpeg' }
-      $stream = [System.IO.MemoryStream]::new()
-      try {
-        if ($format -eq 'png') {
-          $bitmap.Save($stream, [System.Drawing.Imaging.ImageFormat]::Png); $mime='image/png'
-        } else {
-          $quality=[Math]::Max(25,[Math]::Min(95,[int]($req.quality ?? 75)))
-          $codec=[System.Drawing.Imaging.ImageCodecInfo]::GetImageEncoders() | Where-Object MimeType -eq 'image/jpeg' | Select-Object -First 1
-          $params=[System.Drawing.Imaging.EncoderParameters]::new(1)
-          $params.Param[0]=[System.Drawing.Imaging.EncoderParameter]::new([System.Drawing.Imaging.Encoder]::Quality,[long]$quality)
-          $bitmap.Save($stream,$codec,$params); $mime='image/jpeg'
+$owned = $false
+$mutex = $null
+$oldDpi = [IntPtr]::Zero
+try {
+    $raw = [Console]::In.ReadToEnd()
+    if ($raw.Length -gt 32768) { throw 'GUI_REQUEST_LIMIT' }
+    $req = $raw | ConvertFrom-Json -AsHashtable
+    $actions = @('status','screenshot','cursor','listWindows','move','moveRelative','scroll','click','drag','typeText','keyPress','focusWindow')
+    if ($req['action'] -notin $actions) { throw 'GUI_UNKNOWN_ACTION' }
+    $stop = Join-Path (Split-Path -Parent $PSScriptRoot) 'var\GUI_STOP'
+    # Fixed local path: a request may not replace the local emergency-stop file.
+    $mutex = [Threading.Mutex]::new($false, 'Local\ChatGPTRemoteCommander.GuiInput')
+    try { $owned = $mutex.WaitOne(0) } catch [Threading.AbandonedMutexException] { $owned=$true; throw 'GUI_PREVIOUS_HELPER_ABANDONED' }
+    if (-not $owned) { throw 'GUI_NATIVE_BUSY' }
+    $oldDpi = [RcGuiNative]::SetThreadDpiAwarenessContext([IntPtr]::new(-4))
+    if ($oldDpi -eq [IntPtr]::Zero) { throw 'GUI_DPI_CONTEXT_FAILED' }
+    $available = [RcGuiNative]::Available()
+    if ($req['action'] -eq 'status') {
+        $screens = @()
+        if ($available) {
+            $all=[Windows.Forms.Screen]::AllScreens
+            for($i=0;$i -lt $all.Length;$i++) {
+                $b=$all[$i].Bounds
+                $screens+=@{index=$i;left=$b.Left;top=$b.Top;width=$b.Width;height=$b.Height;primary=$all[$i].Primary}
+            }
         }
-        @{ ok=$true; mimeType=$mime; data=[Convert]::ToBase64String($stream.ToArray()); left=$bounds.Left; top=$bounds.Top; width=$bounds.Width; height=$bounds.Height; screenIndex=[int]($req.screenIndex ?? 0) }
-      } finally { $stream.Dispose() }
-    } finally { $graphics.Dispose(); $bitmap.Dispose() }
-  }
-  'cursor' { $p=[RcGuiNative]::Cursor(); @{ok=$true;x=$p.X;y=$p.Y} }
-  'move' {
-    $p=Resolve-Point $req
-    if(-not [RcGuiNative]::SetCursorPos($p.X,$p.Y)){throw 'SetCursorPos failed'}
-    @{ok=$true;x=$p.X;y=$p.Y}
-  }
-  'moveRelative' {
-    [RcGuiNative]::MoveRelative([int]$req.dx,[int]$req.dy)
-    $p=[RcGuiNative]::Cursor()
-    @{ok=$true;dx=[int]$req.dx;dy=[int]$req.dy;x=$p.X;y=$p.Y}
-  }
-  'scroll' {
-    [RcGuiNative]::Scroll([int]$req.delta,[bool]($req.horizontal ?? $false))
-    @{ok=$true;delta=[int]$req.delta;horizontal=[bool]($req.horizontal ?? $false)}
-  }
-  'click' {
-    $p=Resolve-Point $req
-    if(-not [RcGuiNative]::SetCursorPos($p.X,$p.Y)){throw 'SetCursorPos failed'}
-    [RcGuiNative]::Click([string]($req.button ?? 'left'),[int]($req.clicks ?? 1),[int]($req.intervalMs ?? 120))
-    @{ok=$true;x=$p.X;y=$p.Y;button=[string]($req.button ?? 'left');clicks=[int]($req.clicks ?? 1)}
-  }
-  'drag' {
-    $from=Resolve-Point $req.from; $to=Resolve-Point $req.to
-    $duration=[Math]::Max(50,[Math]::Min(10000,[int]($req.durationMs ?? 500)))
-    $steps=[Math]::Max(2,[Math]::Min(120,[int]($req.steps ?? 24)))
-    [RcGuiNative]::SetCursorPos($from.X,$from.Y)|Out-Null
-    [RcGuiNative]::MouseDown([string]($req.button ?? 'left'))
-    try {
-      for($i=1;$i -le $steps;$i++){
-        $x=[int][Math]::Round($from.X+(($to.X-$from.X)*$i/$steps))
-        $y=[int][Math]::Round($from.Y+(($to.Y-$from.Y)*$i/$steps))
-        [RcGuiNative]::SetCursorPos($x,$y)|Out-Null
-        Start-Sleep -Milliseconds ([Math]::Max(1,[int]($duration/$steps)))
-      }
-    } finally { [RcGuiNative]::MouseUp([string]($req.button ?? 'left')) }
-    @{ok=$true;from=$from;to=$to;durationMs=$duration}
-  }
-  'typeText' {
-    $text=[string]($req.text ?? '')
-    if($text.Length -gt 4096){throw 'text exceeds 4096 characters'}
-    $interval=[Math]::Max(0,[Math]::Min(1000,[int]($req.intervalMs ?? 0)))
-    [RcGuiNative]::TypeUnicode($text,$interval)
-    @{ok=$true;characters=$text.Length;intervalMs=$interval}
-  }
-  'keyPress' {
-    $keys=@($req.keys|ForEach-Object{[string]$_})
-    [RcGuiNative]::KeyCombo($keys,[int]($req.holdMs ?? 0))
-    @{ok=$true;keys=$keys;holdMs=[int]($req.holdMs ?? 0)}
-  }
-  'listWindows' { $items=@([RcGuiNative]::ListWindows()); @{ok=$true;count=$items.Count;windows=$items} }
-  'focusWindow' {
-    $items=@([RcGuiNative]::ListWindows()); $target=$null
-    if($req.handle){$target=$items|Where-Object{$_.Handle -eq [long]$req.handle}|Select-Object -First 1}
-    elseif($req.titleContains){$needle=[string]$req.titleContains;$target=$items|Where-Object{$_.Title.IndexOf($needle,[StringComparison]::OrdinalIgnoreCase)-ge 0}|Select-Object -First 1}
-    if(-not $target){throw 'window not found'}
-    $focused=[RcGuiNative]::FocusWindow([long]$target.Handle)
-    @{ok=$focused;handle=$target.Handle;title=$target.Title;processId=$target.ProcessId}
-  }
-  default { throw "unknown GUI action: $action" }
+        @{ok=$true;available=$available;session=[Diagnostics.Process]::GetCurrentProcess().SessionId;screens=$screens;inputSize=[RcGuiNative]::InputSize()} | ConvertTo-Json -Depth 8 -Compress
+        exit 0
+    }
+    [RcGuiNative]::Guard($stop)
+    function Bounds([int]$index) {
+        $screens=[Windows.Forms.Screen]::AllScreens
+        if($index -lt 0 -or $index -ge $screens.Length) { throw 'GUI_MONITOR_RANGE' }
+        return $screens[$index].Bounds
+    }
+    function Snapshot([int]$index) {
+        $b=Bounds $index
+        return @{screenIndex=$index;bounds=@{left=$b.Left;top=$b.Top;width=$b.Width;height=$b.Height};foreground=[RcGuiNative]::Foreground();processId=[int][RcGuiNative]::ForegroundPid()}
+    }
+    function Point($value,$observed) {
+        $index=[int]($value['screenIndex'] ?? $observed.screenIndex)
+        if($index -ne $observed.screenIndex) { throw 'GUI_MONITOR_NOT_OBSERVED' }
+        $b=Bounds $index
+        if(($value['coordinateMode'] ?? 'absolute') -eq 'relative') {
+            $x=[double]$value['x']; $y=[double]$value['y']
+            if($x -lt 0 -or $x -gt 1 -or $y -lt 0 -or $y -gt 1) { throw 'GUI_RELATIVE_RANGE' }
+            $px=$b.Left+[int][Math]::Round($x*($b.Width-1)); $py=$b.Top+[int][Math]::Round($y*($b.Height-1))
+        } else { $px=[int]$value['x']; $py=[int]$value['y'] }
+        if(-not $b.Contains($px,$py)) { throw 'GUI_POINT_OUTSIDE_MONITOR' }
+        return @{X=$px;Y=$py}
+    }
+    $mutation=$req['action'] -in @('move','moveRelative','scroll','click','drag','typeText','keyPress','focusWindow')
+    if($mutation) {
+        if(-not $req['expected']) { throw 'GUI_EXPECTED_FRAME_REQUIRED' }
+        $observed=$req['expected']
+        $now=Snapshot ([int]$observed.screenIndex)
+        foreach($key in @('left','top','width','height')) { if($observed.bounds[$key] -ne $now.bounds[$key]) { throw 'GUI_MONITOR_GEOMETRY_CHANGED' } }
+        [RcGuiNative]::CheckForeground([string]$observed.foreground,[uint32]$observed.processId)
+    }
+    $result=switch($req['action']) {
+        'screenshot' {
+            $index=[int]($req['screenIndex'] ?? 0)
+            $snapshot=Snapshot $index; $b=Bounds $index
+            if(([long]$b.Width*$b.Height) -gt 33554432 -or $b.Width -le 0 -or $b.Height -le 0) { throw 'GUI_CAPTURE_GEOMETRY_LIMIT' }
+            $maxWidth=[Math]::Min(1920,[Math]::Max(320,[int]($req['maxWidth'] ?? 1600)))
+            $bitmap=$null; $graphics=$null; $scaled=$null; $sg=$null; $stream=$null; $parameters=$null
+            try {
+                $bitmap=[Drawing.Bitmap]::new($b.Width,$b.Height)
+                $graphics=[Drawing.Graphics]::FromImage($bitmap)
+                $graphics.CopyFromScreen($b.Left,$b.Top,0,0,$bitmap.Size)
+                $width=[Math]::Min($b.Width,$maxWidth)
+                $height=[Math]::Max(1,[int][Math]::Round($b.Height*$width/$b.Width))
+                $scaled=[Drawing.Bitmap]::new($width,$height)
+                $sg=[Drawing.Graphics]::FromImage($scaled)
+                $sg.DrawImage($bitmap,0,0,$width,$height)
+                $stream=[IO.MemoryStream]::new()
+                if(($req['format'] ?? 'jpeg') -eq 'png') { $scaled.Save($stream,[Drawing.Imaging.ImageFormat]::Png);$mime='image/png' }
+                else {
+                    $codec=[Drawing.Imaging.ImageCodecInfo]::GetImageEncoders() | Where-Object MimeType -eq 'image/jpeg' | Select-Object -First 1
+                    $parameters=[Drawing.Imaging.EncoderParameters]::new(1)
+                    $parameters.Param[0]=[Drawing.Imaging.EncoderParameter]::new([Drawing.Imaging.Encoder]::Quality,[long][Math]::Min(90,[Math]::Max(25,[int]($req['quality'] ?? 70))))
+                    $scaled.Save($stream,$codec,$parameters);$mime='image/jpeg'
+                }
+                $limit=[Math]::Min(4194304,[Math]::Max(262144,[int]($req['maxBytes'] ?? 2097152)))
+                if($stream.Length -gt $limit) { throw 'GUI_IMAGE_BYTE_LIMIT' }
+                [RcGuiNative]::CheckForeground([string]$snapshot.foreground,[uint32]$snapshot.processId)
+                @{ok=$true;data=[Convert]::ToBase64String($stream.ToArray());mimeType=$mime;width=$width;height=$height;snapshot=$snapshot;capturedAt=[DateTimeOffset]::UtcNow.ToString('o')}
+            } finally { foreach($resource in @($parameters,$stream,$sg,$scaled,$graphics,$bitmap)) { if($resource) {$resource.Dispose()} } }
+        }
+        'cursor' { $p=[RcGuiNative]::Cursor(); @{ok=$true;x=$p.X;y=$p.Y} }
+        'listWindows' { @{ok=$true;windows=@([RcGuiNative]::ListWindows().ToArray())} }
+        'move' { $p=Point $req $observed;[RcGuiNative]::Move($p.X,$p.Y,$stop);@{ok=$true} }
+        'moveRelative' { [RcGuiNative]::Delta([int]$req['dx'],[int]$req['dy'],$stop);@{ok=$true} }
+        'scroll' { [RcGuiNative]::Scroll([int]$req['delta'],[bool]($req['horizontal'] ?? $false),$stop);@{ok=$true} }
+        'click' { $p=Point $req $observed;[RcGuiNative]::Move($p.X,$p.Y,$stop);[RcGuiNative]::Click([string]($req['button'] ?? 'left'),[int]($req['clicks'] ?? 1),[int]($req['intervalMs'] ?? 120),$stop);@{ok=$true} }
+        'drag' { $a=Point $req['from'] $observed;$b=Point $req['to'] $observed;[RcGuiNative]::Drag($a.X,$a.Y,$b.X,$b.Y,[int]($req['durationMs'] ?? 500),[int]($req['steps'] ?? 24),[string]($req['button'] ?? 'left'),$stop);@{ok=$true} }
+        'keyPress' { [RcGuiNative]::KeyCombo([string[]]$req['keys'],[int]($req['holdMs'] ?? 0),$stop);@{ok=$true} }
+        'typeText' { [RcGuiNative]::TypeUnicode([string]$req['text'],[int]($req['intervalMs'] ?? 0),$stop,[string]$observed.foreground,[uint32]$observed.processId);@{ok=$true} }
+        'focusWindow' {
+            $windows=@([RcGuiNative]::ListWindows().ToArray())
+            $matches=if($req['handle']) { @($windows | Where-Object Handle -eq $req['handle']) } else { @($windows | Where-Object {$_.Title.IndexOf([string]$req['titleContains'],[StringComparison]::OrdinalIgnoreCase) -ge 0}) }
+            if($matches.Count -ne 1) { throw 'GUI_WINDOW_SELECTOR_NOT_UNIQUE' }
+            [RcGuiNative]::Focus($matches[0].Handle,$stop);@{ok=$true;handle=$matches[0].Handle}
+        }
+    }
+    $result | ConvertTo-Json -Depth 8 -Compress
+} catch {
+    # No raw exception string (may include typed text, title, or private path).
+    $match=[regex]::Match($_.Exception.ToString(),'GUI_[A-Z0-9_]+')
+    @{ok=$false;error=$(if($match.Success){$match.Value}else{'GUI_NATIVE_FAILED'})} | ConvertTo-Json -Compress
+} finally {
+    if($oldDpi -ne [IntPtr]::Zero) { [void][RcGuiNative]::SetThreadDpiAwarenessContext($oldDpi) }
+    if($owned) { $mutex.ReleaseMutex() }
+    if($mutex) { $mutex.Dispose() }
 }
-$result | ConvertTo-Json -Depth 8 -Compress

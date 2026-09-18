@@ -1,4 +1,5 @@
 import http from 'node:http';
+import { validateTransport, assertLocalTransport } from './transport-guard.mjs';
 import os from 'node:os';
 import path from 'node:path';
 import { readFile } from 'node:fs/promises';
@@ -22,6 +23,7 @@ if (!process.env.REMOTE_COMMANDER_CONFIG) {
   try { await readFile(localConfigPath, 'utf8'); configPath = localConfigPath; } catch { /* safe public config fallback */ }
 }
 const config = JSON.parse(await readFile(configPath, 'utf8'));
+assertLocalTransport(config);
 function expandEnvironment(value) { return expandPathValue(value); }
 config.allowedRoots = config.allowedRoots.map(expandEnvironment);
 const roots = await canonicalizeRoots(config.allowedRoots);
@@ -120,6 +122,7 @@ function rpcError(id, code, message, data) {
   return { jsonrpc: '2.0', id: id ?? null, error };
 }
 async function executeTool(name, args) {
+  if (typeof name !== 'string' || !TOOLS.some(tool => tool.name === name)) throw protocolFailure(200, -32602, 'Unknown tool');
   switch (name) {
     case 'system_status':
       await audit(ctx, { action: 'system_status', ok: true });
@@ -132,7 +135,7 @@ async function executeTool(name, args) {
         allowedPrograms: config.allowedPrograms,
         concurrency: { httpConcurrent: true, pathMutationLocks: true, ...lockStats() },
         powerMode: config.powerMode ?? { enabled: false },
-        guiControl: { available: process.platform === 'win32', enabled: GUI_ENABLED, policy: config.powerMode?.guiControl ?? { enabled: false } }
+        guiControl: { backendSupported: process.platform === 'win32', availability: 'CHECK_gui_status', enabled: GUI_ENABLED, policy: config.powerMode?.guiControl ?? { enabled: false } }
       };
     case 'list_directory':
       return listDirectory(ctx, args);
@@ -263,12 +266,14 @@ function sendJson(res, status, body) {
     res.end();
     return;
   }
+  res.setHeader('Cache-Control', 'no-store');
   const data = Buffer.from(JSON.stringify(body));
   res.writeHead(status, { 'content-type': 'application/json', 'content-length': data.length });
   res.end(data);
 }
 const server = http.createServer(async (req, res) => {
   try {
+    validateTransport(req, config);
     const url = new URL(req.url, `http://${req.headers.host || '127.0.0.1'}`);
     if (req.method === 'GET' && url.pathname === '/health') {
       return sendJson(res, 200, { ok: true, name: 'chatgpt-remote-commander', version: VERSION });

@@ -1,256 +1,117 @@
 import path from 'node:path';
-import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { access } from 'node:fs/promises';
+import { randomBytes, timingSafeEqual } from 'node:crypto';
+import { performance } from 'node:perf_hooks';
+import { GUI_RULES, guiError, guiToolDefinitions, validateGuiInput } from './gui-contract.mjs';
+import { runGuiProcess } from './gui-process.mjs';
+export { guiToolDefinitions };
 
-const here = path.dirname(fileURLToPath(import.meta.url));
-const guiScript = path.resolve(here, '..', 'tools', 'gui-control.ps1');
-
-function guiConfig(ctx) {
-  if (process.platform !== 'win32') throw new Error('GUI Control is currently supported on Windows only');
-  if (ctx.config.powerMode?.enabled !== true) throw new Error('Power Mode is disabled');
-  const cfg = ctx.config.powerMode?.guiControl;
-  if (cfg?.enabled !== true) throw new Error('GUI Control is disabled; re-run installer with -PowerMode -GuiControl');
-  return cfg;
+const project = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const stopFile = path.join(project, 'var', 'GUI_STOP');
+const helper = path.join(project, 'tools', 'gui-control.ps1');
+async function stopped() {
+  try { await access(stopFile); return true; }
+  catch (error) { if (error.code === 'ENOENT') return false; throw guiError('GUI_STOP_CHECK_FAILED'); }
 }
+const sameToken = (a, b) => typeof a === 'string' && typeof b === 'string' && Buffer.byteLength(a) === Buffer.byteLength(b) && timingSafeEqual(Buffer.from(a), Buffer.from(b));
+const bound = (v, low, high, defaultValue) => Number.isSafeInteger(v) ? Math.max(low, Math.min(high, v)) : defaultValue;
 
-async function invokeGui(ctx, request, timeoutMs = 20000) {
-  guiConfig(ctx);
-  const child = spawn('pwsh.exe', ['-NoLogo', '-NoProfile', '-NonInteractive', '-File', guiScript], {
-    windowsHide: true,
-    stdio: ['pipe', 'pipe', 'pipe']
-  });
-
-  let stdout = '';
-  let stderr = '';
-  child.stdout.on('data', (chunk) => { stdout += chunk.toString('utf8'); });
-  child.stderr.on('data', (chunk) => { stderr += chunk.toString('utf8'); });
-  child.stdin.end(JSON.stringify(request));
-
-  let timedOut = false;
-  const timer = setTimeout(() => { timedOut = true; child.kill(); }, timeoutMs);
-  const code = await new Promise((resolve, reject) => {
-    child.once('error', reject);
-    child.once('close', resolve);
-  });
-  clearTimeout(timer);
-
-  if (timedOut) throw new Error('GUI helper timed out');
-  if (code !== 0) throw new Error(stderr.trim() || stdout.trim() || ('GUI helper exited ' + code));
-  const line = stdout.trim().split(/\r?\n/).filter(Boolean).at(-1);
-  if (!line) throw new Error('GUI helper returned no JSON');
-  return JSON.parse(line);
-}
-
-function cap(cfg, key) {
-  if (cfg[key] !== true) throw new Error('GUI capability disabled by policy: ' + key);
-}
-
-const ro = { readOnlyHint: true, destructiveHint: false, openWorldHint: false };
-const act = { readOnlyHint: false, destructiveHint: false, openWorldHint: true };
-
-export const guiToolDefinitions = [
-  {
-    name: 'gui_status',
-    description: 'Report Windows interactive desktop and monitor geometry for GUI Control.',
-    inputSchema: { type: 'object', properties: {}, additionalProperties: false },
-    annotations: ro
-  },
-  {
-    name: 'gui_screenshot',
-    description: 'Capture the live Windows desktop or one monitor and return an MCP image plus coordinate metadata.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        screenIndex: { type: 'integer', minimum: -1, maximum: 32 },
-        format: { type: 'string', enum: ['jpeg', 'png'] },
-        quality: { type: 'integer', minimum: 25, maximum: 95 }
-      },
-      additionalProperties: false
-    },
-    annotations: ro
-  },
-  {
-    name: 'gui_cursor_position',
-    description: 'Return the current Windows mouse cursor position.',
-    inputSchema: { type: 'object', properties: {}, additionalProperties: false },
-    annotations: ro
-  },
-  {
-    name: 'gui_mouse_move',
-    description: 'Move the mouse using absolute desktop coordinates or normalized relative coordinates.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        x: { type: 'number' },
-        y: { type: 'number' },
-        coordinateMode: { type: 'string', enum: ['absolute', 'relative'] },
-        screenIndex: { type: 'integer', minimum: -1, maximum: 32 }
-      },
-      required: ['x', 'y'],
-      additionalProperties: false
-    },
-    annotations: act
-  },
-  {
-    name: 'gui_mouse_delta',
-    description: 'Move the mouse by a relative dx/dy delta, useful for pointer-look style interactions.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        dx: { type: 'integer', minimum: -10000, maximum: 10000 },
-        dy: { type: 'integer', minimum: -10000, maximum: 10000 }
-      },
-      required: ['dx', 'dy'],
-      additionalProperties: false
-    },
-    annotations: act
-  },
-  {
-    name: 'gui_mouse_scroll',
-    description: 'Send vertical or horizontal mouse-wheel input.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        delta: { type: 'integer', minimum: -12000, maximum: 12000 },
-        horizontal: { type: 'boolean' }
-      },
-      required: ['delta'],
-      additionalProperties: false
-    },
-    annotations: act
-  },
-  {
-    name: 'gui_mouse_click',
-    description: 'Move to a desktop or normalized relative coordinate and click a mouse button.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        x: { type: 'number' },
-        y: { type: 'number' },
-        coordinateMode: { type: 'string', enum: ['absolute', 'relative'] },
-        screenIndex: { type: 'integer', minimum: -1, maximum: 32 },
-        button: { type: 'string', enum: ['left', 'right', 'middle'] },
-        clicks: { type: 'integer', minimum: 1, maximum: 10 },
-        intervalMs: { type: 'integer', minimum: 20, maximum: 2000 }
-      },
-      required: ['x', 'y'],
-      additionalProperties: false
-    },
-    annotations: act
-  },
-  {
-    name: 'gui_mouse_drag',
-    description: 'Drag the mouse between two absolute or relative positions.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        from: { type: 'object' },
-        to: { type: 'object' },
-        button: { type: 'string', enum: ['left', 'right', 'middle'] },
-        durationMs: { type: 'integer', minimum: 50, maximum: 10000 },
-        steps: { type: 'integer', minimum: 2, maximum: 120 }
-      },
-      required: ['from', 'to'],
-      additionalProperties: false
-    },
-    annotations: act
-  },
-  {
-    name: 'gui_type_text',
-    description: 'Type Unicode text into the currently focused Windows application.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        text: { type: 'string', maxLength: 4096 },
-        intervalMs: { type: 'integer', minimum: 0, maximum: 1000 }
-      },
-      required: ['text'],
-      additionalProperties: false
-    },
-    annotations: act
-  },
-  {
-    name: 'gui_key_press',
-    description: 'Press a key or key combination such as CTRL+L, ALT+TAB, ENTER, arrows, WASD, or function keys; holdMs supports sustained input.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        keys: { type: 'array', minItems: 1, maxItems: 8, items: { type: 'string' } },
-        holdMs: { type: 'integer', minimum: 0, maximum: 5000 }
-      },
-      required: ['keys'],
-      additionalProperties: false
-    },
-    annotations: act
-  },
-  {
-    name: 'gui_list_windows',
-    description: 'List visible top-level Windows desktop windows with title, handle, and PID.',
-    inputSchema: { type: 'object', properties: {}, additionalProperties: false },
-    annotations: ro
-  },
-  {
-    name: 'gui_focus_window',
-    description: 'Restore and focus a visible Windows window by handle or title substring.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        handle: { type: 'integer' },
-        titleContains: { type: 'string' }
-      },
-      additionalProperties: false
-    },
-    annotations: act
+/** One controller per MCP process. A lease prevents accidental cross-chat input.
+ * It is NOT an account/OS sandbox. Another authorized shell or OS user can bypass
+ * application coordination; distinct trust levels require separate OS sessions.
+ */
+export function createGuiController({ platform = process.platform, now = () => performance.now(), token = () => randomBytes(24).toString('hex'), isStopped = stopped,
+  invoke = request => runGuiProcess(request, { file: 'pwsh.exe', args: ['-NoLogo', '-NoProfile', '-NonInteractive', '-File', helper] }) } = {}) {
+  let session = null;
+  let frame = null;
+  let busy = false;
+  let uncertain = false;
+  function current() {
+    if (session && session.expires <= now()) { session = null; frame = null; }
+    return session;
   }
-];
-
-export async function executeGuiTool(ctx, name, input) {
-  const cfg = guiConfig(ctx);
-  switch (name) {
-    case 'gui_status':
-      return { ...(await invokeGui(ctx, { action: 'status' })), policy: cfg };
-    case 'gui_screenshot': {
-      cap(cfg, 'allowScreenshot');
-      const result = await invokeGui(ctx, { action: 'screenshot', ...input }, 30000);
-      const { data, mimeType, ...meta } = result;
-      return {
-        __mcpContent: [
-          { type: 'image', data, mimeType },
-          { type: 'text', text: JSON.stringify(meta) }
-        ],
-        __structuredContent: meta
-      };
-    }
-    case 'gui_cursor_position':
-      return invokeGui(ctx, { action: 'cursor' });
-    case 'gui_mouse_move':
-      cap(cfg, 'allowMouse');
-      return invokeGui(ctx, { action: 'move', ...input });
-    case 'gui_mouse_delta':
-      cap(cfg, 'allowMouse');
-      return invokeGui(ctx, { action: 'moveRelative', ...input });
-    case 'gui_mouse_scroll':
-      cap(cfg, 'allowMouse');
-      return invokeGui(ctx, { action: 'scroll', ...input });
-    case 'gui_mouse_click':
-      cap(cfg, 'allowMouse');
-      return invokeGui(ctx, { action: 'click', ...input });
-    case 'gui_mouse_drag':
-      cap(cfg, 'allowMouse');
-      return invokeGui(ctx, { action: 'drag', ...input });
-    case 'gui_type_text':
-      cap(cfg, 'allowKeyboard');
-      return invokeGui(ctx, { action: 'typeText', ...input });
-    case 'gui_key_press':
-      cap(cfg, 'allowKeyboard');
-      return invokeGui(ctx, { action: 'keyPress', ...input });
-    case 'gui_list_windows':
-      cap(cfg, 'allowWindowFocus');
-      return invokeGui(ctx, { action: 'listWindows' });
-    case 'gui_focus_window':
-      cap(cfg, 'allowWindowFocus');
-      return invokeGui(ctx, { action: 'focusWindow', ...input });
-    default:
-      throw Object.assign(new Error('Unknown GUI tool: ' + name), { rpcCode: -32602 });
+  function owns(value) {
+    if (!current() || !sameToken(value, session.id)) throw guiError('GUI_LEASE_REQUIRED_OR_EXPIRED');
   }
+  async function execute(ctx, name, raw = {}) {
+    const input = validateGuiInput(name, raw);
+    const rule = GUI_RULES.get(name);
+    const power = ctx.config?.powerMode;
+    const cfg = power?.guiControl ?? {};
+    const enabled = platform === 'win32' && power?.enabled === true && cfg.enabled === true;
+    const blocked = await isStopped();
+    if (name === 'gui_status' && (!enabled || blocked || uncertain)) return {
+      enabled, available: false, blocked, uncertain, busy, leased: !!current(),
+      reason: platform !== 'win32' ? 'WINDOWS_BACKEND_ONLY' : blocked ? 'LOCAL_GUI_STOP' : uncertain ? 'NATIVE_OUTCOME_UNCERTAIN_RESTART_REQUIRED' : 'GUI_DISABLED'
+    };
+    if (!enabled) throw guiError('GUI_DISABLED_OR_UNSUPPORTED');
+    if (blocked) throw guiError('GUI_LOCAL_STOP');
+    if (uncertain) throw guiError('GUI_OUTCOME_UNCERTAIN_RESTART_REQUIRED');
+    // No stale action queue: concurrent work must retry with a NEW observation.
+    if (busy) throw guiError('GUI_BUSY');
+    busy = true;
+    try {
+      if (name === 'gui_session_begin') {
+        if (current()) throw guiError('GUI_LEASE_BUSY');
+        const status = await invoke({ action: 'status', stopFile });
+        if (status.available !== true) throw guiError('GUI_DESKTOP_UNAVAILABLE');
+        session = { id: token(), expires: now() + (input.ttlSeconds ?? 60) * 1000 };
+        frame = null;
+        return { ok: true, lease: session.id, ttlSeconds: input.ttlSeconds ?? 60, coordinationOnly: true };
+      }
+      if (name === 'gui_status') {
+        const status = await invoke({ action: 'status', stopFile });
+        return { ...status, enabled, busy: false, leased: !!current(), backend: 'windows-user32-gdi', policy: {
+          allowScreenshot: cfg.allowScreenshot === true, allowMouse: cfg.allowMouse === true,
+          allowKeyboard: cfg.allowKeyboard === true, allowWindowFocus: cfg.allowWindowFocus === true
+        } };
+      }
+      owns(input.lease);
+      if (name === 'gui_session_renew') {
+        session.expires = now() + (input.ttlSeconds ?? 60) * 1000;
+        return { ok: true, ttlSeconds: input.ttlSeconds ?? 60 };
+      }
+      if (name === 'gui_session_end') { session = null; frame = null; return { ok: true }; }
+      if (cfg[rule.capability] !== true) throw guiError('GUI_CAPABILITY_DISABLED');
+      const isInput = rule.annotations.destructiveHint === true;
+      let observed = null;
+      if (isInput) {
+        if (!frame || !sameToken(input.frame, frame.id) || now() - frame.at > 15000) throw guiError('GUI_FRESH_FRAME_REQUIRED');
+        observed = frame.snapshot;
+        frame = null; // Consume BEFORE attempting injection. Never replay an uncertain action.
+      }
+      const { lease: ignoredLease, frame: ignoredFrame, ...parameters } = input;
+      const request = { ...parameters, action: rule.action, stopFile }; // Fixed dispatch LAST, never user-controllable.
+      if (isInput) request.expected = observed;
+      if (name === 'gui_screenshot') {
+        request.maxWidth = Math.min(parameters.maxWidth ?? 1600, bound(cfg.maxScreenshotWidth, 320, 1920, 1600));
+        request.maxBytes = bound(cfg.maxScreenshotBytes, 262144, 4194304, 2097152);
+      }
+      let result;
+      try { result = await invoke(request); }
+      catch (error) {
+        if (isInput) uncertain = true; // Unknown partial input: local restart/inspection, no blind retry.
+        throw error;
+      }
+      if (result?.ok !== true) { if (isInput) uncertain = true; throw guiError('GUI_NATIVE_FAILED'); }
+      if (name === 'gui_screenshot') {
+        const { data, mimeType, ...meta } = result;
+        if (!['image/jpeg', 'image/png'].includes(mimeType) || typeof data !== 'string' || data.length === 0 || data.length % 4 || data.length > Math.ceil(request.maxBytes / 3) * 4 || !/^[A-Za-z0-9+/]*={0,2}$/.test(data)) throw guiError('GUI_INVALID_IMAGE');
+        const bytes = Buffer.from(data, 'base64');
+        const signature = mimeType === 'image/png' ? bytes.subarray(0, 8).equals(Buffer.from('89504e470d0a1a0a', 'hex')) : bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
+        const snap = meta.snapshot;
+        if (bytes.length > request.maxBytes || !signature || !snap || typeof snap.foreground !== 'string' || !Number.isInteger(snap.processId) || !snap.bounds || ['left','top','width','height'].some(k => !Number.isSafeInteger(snap.bounds[k])) || !Number.isSafeInteger(snap.screenIndex)) throw guiError('GUI_INVALID_IMAGE_METADATA');
+        if (!Number.isSafeInteger(meta.width) || !Number.isSafeInteger(meta.height) || meta.width < 1 || meta.height < 1 || meta.width > request.maxWidth || meta.height > 16384 || snap.bounds.width < 1 || snap.bounds.height < 1) throw guiError('GUI_INVALID_IMAGE_DIMENSIONS');
+        owns(input.lease); // Helper execution must not revive a lease that expired meanwhile.
+        frame = { id: token(), at: now(), snapshot: snap };
+        const structured = { ...meta, frame: frame.id, frameMaxAgeMs: 15000, bytes: bytes.length, mimeType };
+        return { __mcpContent: [{ type: 'image', mimeType, data }, { type: 'text', text: JSON.stringify(structured) }], __structuredContent: structured };
+      }
+      return isInput ? { ...result, submitted: true, visualVerificationRequired: true } : result;
+    } finally { busy = false; }
+  }
+  return { execute };
 }
+const controller = createGuiController();
+export async function executeGuiTool(ctx, name, input) { return controller.execute(ctx, name, input); }
