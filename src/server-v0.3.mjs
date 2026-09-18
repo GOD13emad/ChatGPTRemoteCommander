@@ -1,4 +1,5 @@
 import http from 'node:http';
+import { createHash } from 'node:crypto';
 import { validateTransport, assertLocalTransport } from './transport-guard.mjs';
 import os from 'node:os';
 import path from 'node:path';
@@ -22,7 +23,9 @@ let configPath = process.env.REMOTE_COMMANDER_CONFIG || defaultConfigPath;
 if (!process.env.REMOTE_COMMANDER_CONFIG) {
   try { await readFile(localConfigPath, 'utf8'); configPath = localConfigPath; } catch { /* safe public config fallback */ }
 }
-const config = JSON.parse(await readFile(configPath, 'utf8'));
+const configRaw = await readFile(configPath, 'utf8');
+const configSha256 = createHash('sha256').update(configRaw).digest('hex');
+const config = JSON.parse(configRaw);
 assertLocalTransport(config);
 function expandEnvironment(value) { return expandPathValue(value); }
 config.allowedRoots = config.allowedRoots.map(expandEnvironment);
@@ -134,6 +137,7 @@ async function executeTool(name, args) {
         host: config.host, port: config.port, allowedRoots: roots,
         allowedPrograms: config.allowedPrograms,
         concurrency: { httpConcurrent: true, pathMutationLocks: true, ...lockStats() },
+        configSha256,
         powerMode: config.powerMode ?? { enabled: false },
         guiControl: { backendSupported: process.platform === 'win32', availability: 'CHECK_gui_status', enabled: GUI_ENABLED, policy: config.powerMode?.guiControl ?? { enabled: false } }
       };
@@ -276,7 +280,7 @@ const server = http.createServer(async (req, res) => {
     validateTransport(req, config);
     const url = new URL(req.url, `http://${req.headers.host || '127.0.0.1'}`);
     if (req.method === 'GET' && url.pathname === '/health') {
-      return sendJson(res, 200, { ok: true, name: 'chatgpt-remote-commander', version: VERSION });
+      return sendJson(res, 200, { ok: true, name: 'chatgpt-remote-commander', version: VERSION, configSha256 });
     }
     if (req.method !== 'POST' || url.pathname !== '/mcp') {
       return sendJson(res, 404, { error: 'not_found' });
