@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { validateTransport, assertLocalTransport } from './transport-guard.mjs';
 import os from 'node:os';
 import path from 'node:path';
-import { readFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { canonicalizeRoots } from './security-v0.3.mjs';
 import { audit, listDirectory, readText, runProjectCommand, writeText } from './tools-v0.3.mjs';
@@ -30,6 +30,8 @@ assertLocalTransport(config);
 function expandEnvironment(value) { return expandPathValue(value); }
 config.allowedRoots = config.allowedRoots.map(expandEnvironment);
 const roots = await canonicalizeRoots(config.allowedRoots);
+const runtimeDir = path.resolve(projectDir, 'var');
+const runtimeStatePath = path.join(runtimeDir, 'mcp-runtime.json');
 const ctx = {
   config,
   roots,
@@ -294,7 +296,21 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-server.listen(config.port, config.host, () => {
+server.listen(config.port, config.host, async () => {
+  try {
+    await mkdir(runtimeDir, { recursive: true });
+    await writeFile(runtimeStatePath, JSON.stringify({
+      pid: process.pid,
+      projectDir,
+      version: VERSION,
+      configSha256,
+      host: config.host,
+      port: config.port,
+      startedAt: new Date().toISOString()
+    }, null, 2) + '\n', { mode: 0o600 });
+  } catch (error) {
+    console.error('RUNTIME_STATE_WRITE_FAILED', error.message);
+  }
   console.log(`ChatGPT Remote Commander ${VERSION} listening at http://${config.host}:${config.port}/mcp`);
   console.log(`Allowed roots: ${roots.join(', ')}`);
 });
