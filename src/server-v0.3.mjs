@@ -6,10 +6,11 @@ import { fileURLToPath } from 'node:url';
 import { canonicalizeRoots } from './security-v0.3.mjs';
 import { audit, listDirectory, readText, runProjectCommand, writeText } from './tools-v0.3.mjs';
 import { executePowerTool, powerToolDefinitions } from './power-tools-v0.3.mjs';
+import { executeGuiTool, guiToolDefinitions } from './gui-tools-windows.mjs';
 import { lockStats } from './locks.mjs';
 import { expandPathValue, shellName } from './platform.mjs';
 
-const VERSION = '0.4.4';
+const VERSION = '0.5.0';
 const MODERN_VERSION = '2026-07-28';
 const LEGACY_VERSIONS = ['2025-11-25', '2025-06-18', '2025-03-26'];
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -29,6 +30,7 @@ const ctx = {
   roots,
   auditLog: path.resolve(projectDir, config.auditLog || 'var/audit.jsonl')
 };
+const GUI_ENABLED = process.platform === 'win32' && config.powerMode?.enabled === true && config.powerMode?.guiControl?.enabled === true;
 const TOOLS = [
   {
     name: 'system_status',
@@ -93,7 +95,8 @@ const TOOLS = [
     },
     annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true }
   },
-  ...powerToolDefinitions
+  ...powerToolDefinitions,
+  ...(GUI_ENABLED ? guiToolDefinitions : [])
 ];
 function serverMeta() {
   return { 'io.modelcontextprotocol/serverInfo': { name: 'chatgpt-remote-commander', version: VERSION } };
@@ -128,7 +131,8 @@ async function executeTool(name, args) {
         host: config.host, port: config.port, allowedRoots: roots,
         allowedPrograms: config.allowedPrograms,
         concurrency: { httpConcurrent: true, pathMutationLocks: true, ...lockStats() },
-        powerMode: config.powerMode ?? { enabled: false }
+        powerMode: config.powerMode ?? { enabled: false },
+        guiControl: { available: process.platform === 'win32', enabled: GUI_ENABLED, policy: config.powerMode?.guiControl ?? { enabled: false } }
       };
     case 'list_directory':
       return listDirectory(ctx, args);
@@ -139,6 +143,11 @@ async function executeTool(name, args) {
     case 'run_project_command':
       return runProjectCommand(ctx, args);
     default: {
+      if (name.startsWith('gui_')) {
+        const result = await executeGuiTool(ctx, name, args);
+        await audit(ctx, { action: name, ok: true, powerMode: true, guiControl: true });
+        return result;
+      }
       const result = await executePowerTool(ctx, name, args);
       await audit(ctx, { action: name, ok: true, powerMode: true });
       return result;
@@ -215,7 +224,9 @@ async function handleMessage(req, message) {
     }
     if (message.method === 'tools/call') {
       const result = await executeTool(message.params?.name, message.params?.arguments ?? {});
-      const payload = { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }], structuredContent: result, isError: false };
+      const payload = result?.__mcpContent
+        ? { content: result.__mcpContent, structuredContent: result.__structuredContent ?? {}, isError: false }
+        : { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }], structuredContent: result, isError: false };
       return { status: 200, body: rpcResult(message.id, payload, modern) };
     }
     if (message.method === 'notifications/initialized') {
