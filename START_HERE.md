@@ -46,6 +46,10 @@ Important boundaries:
 - Automatic shutdown, restart, and logoff command patterns remain blocked.
 - Full MCP write/modify support in ChatGPT is currently for Business and Enterprise/Edu. Pro custom MCP access is currently read/fetch only.
 
+### Optional ChatGPT-side Full permission
+
+Local Power Mode controls what the MCP server can do. ChatGPT App permissions separately control when ChatGPT asks before using those actions. On an eligible account/workspace and only for a trusted personal/managed machine, the user may choose the app-specific **Allow all actions** permission to reduce repeated approval prompts. OpenAI marks this as elevated risk. It does not override workspace role access, enabled/disabled actions, provider authorization, or safety protections. If the option is unavailable, use **Allow low-risk actions** or the workspace default and approve higher-impact actions normally.
+
 ## 1. Install or update
 
 ### Windows — Standard
@@ -236,10 +240,10 @@ A **Plugin** packages workflows, skills, metadata, icons, and optionally a refer
 
 For a private/workspace plugin:
 1. Create the custom MCP app first.
-2. Obtain its app ID (`asdk_app_...`, `connector_...`, or `templated_apps_...`).
-3. Copy `plugin-template/` to a private working directory or controlled workspace repository.
-4. Run `bind-app.ps1 -AppId "asdk_app_YOUR_ID"` or `bind-app.sh asdk_app_YOUR_ID` in that private copy.
-5. Import/test the plugin according to `docs/PLUGIN_SETUP.md`.
+2. Obtain either its real App ID (`asdk_app_...`, `connector_...`, or `templated_apps_...`) or the ChatGPT technical identifier such as `plugin_asdk_app_...`.
+3. Prefer the one-command binder/installer: Windows `.\install-work-plugin.ps1 -AppId "plugin_asdk_app_..."`; Linux `./install-work-plugin.sh "plugin_asdk_app_..."`.
+4. The installer strips the `plugin_` wrapper when needed, creates a private app-bound Plugin copy, adds a personal marketplace, installs/enables it through Codex, and verifies `.app.json`.
+5. For manual packaging or `@plugin-creator`, follow `WORK_SETUP.md` and `docs/PLUGIN_SETUP.md`.
 
 For public Plugin Directory publication, a Secure MCP Tunnel is not a public distribution endpoint. OpenAI currently requires a stable public HTTPS MCP endpoint for an MCP-backed public plugin submission. See `docs/PLUGIN_SETUP.md`.
 
@@ -266,6 +270,7 @@ Continue through install/update, Secure MCP Tunnel, persistent enrollment, ChatG
 - OAuth discovery error: this server uses **None / No authentication**, not Mixed/OAuth.
 - `FORBIDDEN: This conversation does not support developer MCPs`: use a fresh MCP-capable chat; this gate occurs before requests reach the local server.
 - Tools look stale after a server upgrade: use the app's Refresh/Scan Tools flow where available, or recreate the draft app if required by your plan/workspace.
+- `CHECK codex_plugin SKIP` from `tunnel-client doctor` is optional and is not a Remote Commander FINAL PASS blocker. The project's own app-bound Plugin is installed through `install-work-plugin.ps1/.sh` or the repository marketplace. On the current Windows v0.0.14 tunnel-client release, the optional `tunnel-client codex plugin install` path can report `binary is not executable`; do not replace or expose the working tunnel just to satisfy that optional check.
 
 ## Official references
 

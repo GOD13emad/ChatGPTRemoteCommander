@@ -31,11 +31,13 @@ Supported app ID prefixes currently include:
 
 If an admin URL contains a form such as `plugin_asdk_app_...`, use the underlying app ID beginning at `asdk_app_`.
 
-## 3. Prepare a private/workspace plugin copy
+## 3. Prepare a private/workspace app-bound Plugin
 
-Copy `plugin-template/` to a private working directory or a controlled workspace repository.
+Preferred: from the repository root run `install-work-plugin.ps1 -AppId "plugin_asdk_app_..."` on Windows or `./install-work-plugin.sh "plugin_asdk_app_..."` on Linux. These commands accept either the ChatGPT technical `plugin_...` identifier or the underlying App ID, create a private per-user copy, bind it, add a personal marketplace, install the Plugin through Codex, and verify the result.
 
-On a private copy, bind the registered app with one of the supplied helpers:
+OpenAI's `.app.json` format requires the underlying App ID. If the UI/URL shows `plugin_asdk_app_example`, the App ID stored in `.app.json` is `asdk_app_example`.
+
+For a manual workflow, copy `plugin-template/` to a private working directory or controlled workspace repository and bind it with one of the supplied helpers:
 
 ```powershell
 .\bind-app.ps1 -AppId "asdk_app_YOUR_ID"
@@ -85,7 +87,9 @@ For supported local ChatGPT Desktop/Codex testing, this repository already expos
 
 For workspace distribution, admins can import a supported GitHub marketplace or publish a local plugin to the workspace. App access and authentication are still controlled by the workspace; importing a plugin does not grant access to the app.
 
-After installing the plugin:
+After installing the plugin, review the included app's permission setting. On an eligible trusted-machine setup, the user may explicitly choose **Allow all actions** for the app to reduce repeated confirmation prompts; OpenAI marks this as elevated risk and workspace/action/safety controls still apply.
+
+Then:
 1. Open a fresh chat.
 2. Select or @mention the plugin/app when needed.
 3. Run `system_status`.

@@ -27,6 +27,8 @@ Work should:
 
 Full/Power Mode is for a trusted computer. It enables full filesystem access, shell execution, process control, binary operations, recursive search, backups, and persistent terminals. It is not an OS sandbox.
 
+For the least-friction trusted-machine workflow, explain that local Power Mode and ChatGPT App permissions are separate. If the account/workspace exposes an app-specific **Allow all actions** option, the user may explicitly choose it to reduce repeated confirmations. Treat it as elevated risk; do not select it silently. Workspace/action/safety controls still apply.
+
 ## 2. Repository Plugin bootstrap
 
 This repository includes:
@@ -108,23 +110,27 @@ An eligible workspace admin can import this repository:
 
 GitHub marketplace import syncs Plugin content. It does not create the Secure MCP Tunnel, create the MCP app, grant app access, or authenticate users. Workspace import also applies workspace policy rather than blindly trusting repository policy values.
 
-## 6. Private/workspace manual app binding
+## 6. Preferred one-command app-bound Plugin install
 
-For a private copy of `plugin-template/`, bind the already-registered app ID with:
+After the custom MCP app exists, use the app's underlying ID or the technical `plugin_...` identifier shown by ChatGPT. The installer normalizes `plugin_asdk_app_...` to the underlying `asdk_app_...` required by `.app.json`.
+
+Windows:
 
 ```powershell
-.\bind-app.ps1 -AppId "asdk_app_YOUR_ID"
+.\install-work-plugin.ps1 -AppId "plugin_asdk_app_YOUR_TECHNICAL_ID"
 ```
 
-or:
+Linux:
 
 ```bash
-./bind-app.sh asdk_app_YOUR_ID
+./install-work-plugin.sh "plugin_asdk_app_YOUR_TECHNICAL_ID"
 ```
 
-The bind helpers accept app IDs beginning with `asdk_app_`, `connector_`, or `templated_apps_`. They create `.app.json` and add `extensions.com.openai.apps = "./.app.json"` to the private copy.
+The installer creates a private per-user copy of `plugin-template/`, generates the correct `.app.json`, creates a personal marketplace named `chatgpt-remote-commander-personal`, installs the Plugin through Codex, and verifies the binding. It also accepts direct `asdk_app_`, `connector_`, or `templated_apps_` IDs.
 
-Do not commit a workspace-specific `.app.json` into this public repository unless that mapping is intentionally public.
+If only manual binding is desired, copy `plugin-template/` privately and run `bind-app.ps1 -AppId "asdk_app_YOUR_ID"` or `bind-app.sh asdk_app_YOUR_ID`.
+
+Do not commit a workspace-specific `.app.json` into this public repository unless that mapping is intentionally public. OpenAI requires the underlying app ID in `.app.json`; a `plugin_asdk_app_...` URL/technical identifier represents the corresponding `asdk_app_...` app.
 
 ## 7. Work operating rules after installation
 
@@ -155,6 +161,8 @@ Do not stop at Plugin creation. Confirm:
 - update and stop/start flows are documented.
 
 If the current surface cannot complete an install/admin action, state exactly which UI approval remains and complete everything else.
+
+The optional Tunnel MCP Codex Plugin reported by `tunnel-client doctor` is separate from ChatGPT Remote Commander. A `codex_plugin SKIP` does not block this project's Plugin or its Secure MCP Tunnel. Do not make FINAL PASS depend on that optional integration.
 
 Official references:
 - https://help.openai.com/en/articles/20001256/

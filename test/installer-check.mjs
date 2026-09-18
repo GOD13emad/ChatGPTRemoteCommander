@@ -37,7 +37,8 @@ function run(file, args) {
 if (process.platform === 'linux') {
   const files = [
     'install.sh', 'connect-chatgpt-account.sh', 'run-server.sh',
-    'autostart-linux.sh', 'enable-autostart-linux.sh', 'disable-autostart-linux.sh'
+    'autostart-linux.sh', 'enable-autostart-linux.sh', 'disable-autostart-linux.sh',
+    'install-work-plugin.sh'
   ];
   for (const file of files) {
     const outcome = run('bash', ['-n', file]);
@@ -47,7 +48,8 @@ if (process.platform === 'linux') {
 } else if (process.platform === 'win32') {
   const files = [
     'install.ps1', 'connect-chatgpt-account.ps1', 'connect-chatgpt.ps1',
-    'autostart-windows.ps1', 'enable-autostart.ps1', 'disable-autostart.ps1'
+    'autostart-windows.ps1', 'enable-autostart.ps1', 'disable-autostart.ps1',
+    'install-work-plugin.ps1'
   ];
   for (const file of files) {
     const escaped = file.replaceAll("'", "''");

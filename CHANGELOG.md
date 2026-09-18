@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.4.1 — 2026-09-18
+
+- Added one-command app-bound Work Plugin installers for Windows and Linux.
+- The installers accept either a real app ID (`asdk_app_`, `connector_`, `templated_apps_`) or the corresponding ChatGPT technical `plugin_...` identifier and normalize it correctly.
+- They create a private per-user Plugin copy, generate `.app.json`, add a personal marketplace, install/enable the Plugin through Codex, and verify the app binding.
+- Added explicit current OpenAI guidance that `.app.json` uses the underlying app ID, not the `plugin_...` wrapper shown in Plugin URLs.
+- Documented the optional tunnel-client Codex Plugin as non-blocking; the Remote Commander Plugin is the required project integration.
+
+
 ## 0.4.0 — 2026-09-18
 
 - Added `START_HERE.md` as the single source of truth for AI-assisted installation from a GitHub link through FINAL PASS.

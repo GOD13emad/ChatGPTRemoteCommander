@@ -7,12 +7,13 @@ const exists = (p) => fs.existsSync(path.join(root, p));
 const fail = (m) => { throw new Error(m); };
 
 const pkg = JSON.parse(read('package.json'));
-if (pkg.version !== '0.4.0') fail('package version must be 0.4.0');
+if (pkg.version !== '0.4.1') fail('package version must be 0.4.1');
 
 for (const p of [
   'START_HERE.md','WORK_SETUP.md','PRIVACY.md','TERMS.md','docs/PLUGIN_SETUP.md',
   'plugin-template/plugin.json','plugin-template/.app.json.example',
   'plugin-template/bind-app.ps1','plugin-template/bind-app.sh',
+  'install-work-plugin.ps1','install-work-plugin.sh',
   'plugin-template/WORK_INSTALL_PROMPT.md','plugin-template/skills/remote-commander/SKILL.md',
   '.agents/plugins/marketplace.json','.codex/config.toml',
   'assets/plugin-icon.png','assets/plugin-logo.png','assets/plugin-icon.svg',
@@ -55,7 +56,11 @@ if (!codexConfig.includes('[plugins."chatgpt-remote-commander@chatgpt-remote-com
 const work = read('WORK_SETUP.md');
 for (const required of ['codex plugin marketplace add GOD13emad/ChatGPTRemoteCommander --ref main','codex plugin add chatgpt-remote-commander@chatgpt-remote-commander','Workspace settings → Plugins','@plugin-creator','plugin_asdk_app_','FINAL PASS in Work']) if (!work.includes(required)) fail(`WORK_SETUP missing ${required}`);
 const workPrompt = read('plugin-template/WORK_INSTALL_PROMPT.md');
-for (const required of ['Read START_HERE.md first','WORK_SETUP.md','@plugin-creator','real tool invocation']) if (!workPrompt.includes(required)) fail(`WORK_INSTALL_PROMPT missing ${required}`);
+for (const required of ['Read START_HERE.md first','WORK_SETUP.md','@plugin-creator','install-work-plugin.ps1/.sh','real tool invocation']) if (!workPrompt.includes(required)) fail(`WORK_INSTALL_PROMPT missing ${required}`);
+const workPs = read('install-work-plugin.ps1');
+for (const required of ['plugin_((?:asdk_app_|connector_|templated_apps_)','chatgpt-remote-commander-personal','ChatGPT Remote Commander (Personal)','codex plugin add failed','WORK_PLUGIN_INSTALL_PASS']) if (!workPs.includes(required)) fail(`install-work-plugin.ps1 missing ${required}`);
+const workSh = read('install-work-plugin.sh');
+for (const required of ['^plugin_((asdk_app_|connector_|templated_apps_)','chatgpt-remote-commander-personal','ChatGPT Remote Commander (Personal)','codex plugin add','WORK_PLUGIN_INSTALL_PASS']) if (!workSh.includes(required)) fail(`install-work-plugin.sh missing ${required}`);
 
 function pngSize(rel) {
   const b = fs.readFileSync(path.join(root, rel));
