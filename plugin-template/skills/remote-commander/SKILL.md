@@ -11,7 +11,7 @@ Before mutation, read the current state, identify the exact target, and keep the
 
 ## GUI Control workflow
 
-This audited candidate is not a released or Windows-validated build. Discover the actual tools before using them. `gui_status` must report an available interactive Windows desktop. Tool discovery, a successful input submission, and a real visible result are different checks.
+Discover the actual tools before using GUI Control. `gui_status` must report an available interactive Windows desktop. Tool discovery, a successful input submission, and a real visible result are different checks.
 
 1. Obtain an exclusive short-lived coordination lease with `gui_session_begin`. Do not take another chat's lease or retry a busy desktop in a loop.
 2. Pass that lease to `gui_screenshot` and inspect the actual returned image, native monitor bounds, foreground handle and process ID. Never infer the target from an old screenshot or process status alone.
@@ -27,4 +27,4 @@ For real-time/high-speed gameplay, synthetic input, rendering, and tool-call lat
 
 ## Repository operations
 
-Inspect git status before changes, do not stage unrelated files, test the changed behavior and regressions, and report measured evidence. For installation/recovery use `START_HERE.md`, but treat `docs/AUDIT_R1.md` and `docs/GUI_ACCEPTANCE.md` as the open release gates for this candidate. Do not promote this audit branch to production or claim FINAL from the scoped Node tests alone.
+Inspect git status before changes, do not stage unrelated files, test the changed behavior and regressions, and report measured evidence. For installation/recovery use `START_HERE.md`. For release engineering and native desktop validation, follow `docs/GUI_ACCEPTANCE.md`; do not claim a Windows GUI PASS without a real screenshot/input/screenshot verification on the target.
