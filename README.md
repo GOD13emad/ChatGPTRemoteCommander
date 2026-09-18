@@ -68,13 +68,19 @@ For Power Mode, add `--power-mode`. Linux amd64 and arm64 are supported by the i
 - Concurrent-chat path locking for mutating operations
 - Windows and Linux persistent supervisors
 
-## GUI / Computer Use boundary
+## Windows GUI Control (v0.5)
 
-ChatGPT Remote Commander provides filesystem, shell, process, Git/build/debug, and automation capabilities exposed by its MCP tools. It does **not** currently provide interactive visual desktop control: it cannot by itself see a live screen, move/click the mouse, send live keyboard/game-controller input, or react frame-by-frame to a graphical interface.
+Windows Power Mode can now opt in to **built-in GUI Control**. When enabled, Remote Commander exposes live screenshot images plus mouse movement/click/drag/scroll, relative mouse deltas, Unicode typing, key combinations/holds, visible-window listing, and window focus directly through MCP. This enables a screenshot → action → screenshot loop without requiring a separate Computer Use tool for ordinary desktop workflows.
 
-For tasks such as **actually playing a game**, operating a GUI by looking at the screen, or performing live visual desktop interaction, **Computer Use / graphical screen control must be available in the current ChatGPT conversation or Work session**. If Computer Use is unavailable, the assistant must say so and must not claim that Remote Commander alone visually played or operated the GUI. It may still launch applications, inspect files/logs/processes, change supported configuration, and prepare or debug the environment.
+Enable it on a trusted Windows source checkout with:
 
-When both capabilities are available, use **Computer Use for visual interaction** and **ChatGPT Remote Commander for filesystem/shell/process/backend operations**.
+```powershell
+.\install.ps1 -PowerMode -GuiControl -StartServer -SkipTunnelClient
+```
+
+After enabling, refresh/re-scan the ChatGPT custom app tools. Look for `gui_status`, `gui_screenshot`, `gui_mouse_click`, `gui_type_text`, and the other `gui_*` tools.
+
+Limits remain honest: Windows secure desktop/UAC prompts, the lock screen, some anti-cheat/protected games, and software that rejects synthetic input may not accept these actions. High-speed real-time games may also exceed LLM/tool-call latency. In those cases, native Computer Use or another authorized low-latency control surface may still be required.
 
 ## Requirements
 
