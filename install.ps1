@@ -2,6 +2,8 @@ param(
   [string]$InstallDir = '',
   [switch]$InstallPrerequisites,
   [switch]$PowerMode,
+  [switch]$GuiControl,
+  [switch]$DisableGuiControl,
   [switch]$StartServer,
   [switch]$SkipTunnelClient,
   [string]$TunnelClientVersion = '0.0.14'
@@ -9,6 +11,10 @@ param(
 $ErrorActionPreference = 'Stop'
 $Repo = 'https://github.com/GOD13emad/ChatGPTRemoteCommander.git'
 $RepoRaw = 'https://raw.githubusercontent.com/GOD13emad/ChatGPTRemoteCommander/main'
+
+if ($GuiControl -and $DisableGuiControl) { throw 'Use only one of -GuiControl or -DisableGuiControl.' }
+if ($GuiControl -and -not $PowerMode) { throw '-GuiControl requires -PowerMode.' }
+$GuiControlWasSpecified = $PSBoundParameters.ContainsKey('GuiControl') -or $PSBoundParameters.ContainsKey('DisableGuiControl')
 
 function Refresh-Path {
   $machine = [Environment]::GetEnvironmentVariable('Path','Machine')
@@ -131,46 +137,64 @@ function Install-TunnelClient {
 function Configure-LocalPolicy {
   $root = Join-Path $env:USERPROFILE 'source\repos'
   New-Item -ItemType Directory -Force -Path $root | Out-Null
+
   if (-not $PowerMode) {
     Write-Host 'Standard mode selected: public config.json remains active; Power Mode is OFF.'
     return
   }
+
   $localConfig = Join-Path $InstallDir 'config.local.json'
-  $json = @'
-{
-  "host": "127.0.0.1",
-  "port": 47831,
-  "allowedRoots": ["%USERPROFILE%\\source\\repos"],
-  "allowedPrograms": ["git", "node", "npm", "npx", "python", "py", "dotnet", "cmake", "ninja"],
-  "maxReadBytes": 524288,
-  "maxWriteBytes": 524288,
-  "maxCommandMs": 120000,
-  "auditLog": "var/audit.jsonl",
-  "powerMode": {
-    "enabled": true,
-    "fullFilesystem": true,
-    "allowShell": true,
-    "allowProcessControl": true,
-    "allowPermanentDelete": false,
-    "backupRoot": "%USERPROFILE%\\.chatgpt-remote-commander\\backups",
-'@
-  $json += @'
-    "maxFileBytes": 33554432,
-    "maxCommandMs": 600000,
-    "maxOutputBytes": 4194304,
-    "maxTerminalBufferBytes": 8388608,
-    "blockedShellPatterns": [
-      "(^|\\s)shutdown(?:\\.exe)?(?:\\s|$)",
-      "Restart-Computer",
-      "Stop-Computer",
-      "(^|\\s)logoff(?:\\.exe)?(?:\\s|$)",
-      "ExitWindowsEx"
-    ]
+  $existingGui = $false
+  if (Test-Path -LiteralPath $localConfig) {
+    try {
+      $existing = Get-Content -LiteralPath $localConfig -Raw | ConvertFrom-Json
+      $existingGui = ($existing.powerMode.guiControl.enabled -eq $true)
+    } catch { }
   }
-}
-'@
+
+  $guiEnabled = if ($GuiControl) { $true } elseif ($DisableGuiControl) { $false } elseif ($GuiControlWasSpecified) { $false } else { $existingGui }
+
+  $policy = [ordered]@{
+    host = '127.0.0.1'
+    port = 47831
+    allowedRoots = @('%USERPROFILE%\source\repos')
+    allowedPrograms = @('git','node','npm','npx','python','py','dotnet','cmake','ninja')
+    maxReadBytes = 524288
+    maxWriteBytes = 524288
+    maxCommandMs = 120000
+    auditLog = 'var/audit.jsonl'
+    powerMode = [ordered]@{
+      enabled = $true
+      fullFilesystem = $true
+      allowShell = $true
+      allowProcessControl = $true
+      allowPermanentDelete = $false
+      backupRoot = '%USERPROFILE%\.chatgpt-remote-commander\backups'
+      maxFileBytes = 33554432
+      maxCommandMs = 600000
+      maxOutputBytes = 4194304
+      maxTerminalBufferBytes = 8388608
+      guiControl = [ordered]@{
+        enabled = [bool]$guiEnabled
+        allowScreenshot = $true
+        allowMouse = $true
+        allowKeyboard = $true
+        allowWindowFocus = $true
+      }
+      blockedShellPatterns = @(
+        '(^|\s)shutdown(?:\.exe)?(?:\s|$)',
+        'Restart-Computer',
+        'Stop-Computer',
+        '(^|\s)logoff(?:\.exe)?(?:\s|$)',
+        'ExitWindowsEx'
+      )
+    }
+  }
+
+  $json = $policy | ConvertTo-Json -Depth 10
   [IO.File]::WriteAllText($localConfig, $json, [Text.UTF8Encoding]::new($false))
   Write-Host "Power Mode local policy created: $localConfig"
+  Write-Host "GUI Control: $(if ($guiEnabled) {'ENABLED'} else {'disabled'})"
   Write-Host 'Permanent delete remains OFF; shutdown/restart/logoff remain blocked.'
 }
 
@@ -249,7 +273,7 @@ Start-LocalServer
 Write-Host ''
 Write-Host 'INSTALL_PASS'
 Write-Host "Installed at: $InstallDir"
-Write-Host "Mode: $(if ($PowerMode) {'POWER (full filesystem/shell/process control)'} else {'STANDARD'})"
+Write-Host "Mode: $(if ($PowerMode) { if ($GuiControl) {'POWER + GUI (filesystem/shell/process + interactive desktop control)'} else {'POWER'} } else {'STANDARD'})"
 Write-Host ''
 Write-Host 'Next: create your own OpenAI Secure MCP Tunnel and Runtime API key, then run once:'
 Write-Host "  pwsh.exe -NoProfile -File `"$InstallDir\connect-chatgpt.ps1`""
