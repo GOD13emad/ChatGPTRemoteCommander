@@ -11,7 +11,13 @@ for (const required of [
   "Join-Path $stateRoot 'app'",
   'Detected active installation from Windows autostart',
   '$InstallDir = Resolve-InstallDir',
-  'Updating running MCP from version'
+  'Tracked local changes exist in InstallDir',
+  'ExpectedCommit',
+  'Get-ExpectedConfigHash',
+  'mcp-runtime.json',
+  'tunnel-client.json',
+  'config-backups',
+  "Mode: $(if ($PowerMode) {'POWER'} else {'STANDARD'})"
 ]) {
   if (!windowsInstaller.includes(required)) {
     throw new Error(`install.ps1 missing required v0.3.4 behavior: ${required}`);
