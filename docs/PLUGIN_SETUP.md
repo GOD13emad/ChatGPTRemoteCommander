@@ -8,6 +8,10 @@ The custom MCP **app** is the registered ChatGPT connection to the Remote Comman
 
 A **Plugin** is packaging around workflows and presentation. It can include skills, icons, prompts, and a reference to an existing registered app.
 
+### Capability boundary: graphical desktop control
+
+The Plugin does not turn Remote Commander into Computer Use. Remote Commander exposes backend machine operations such as files, shell commands, processes, builds, debugging, and automation, but it does not itself provide interactive live-screen perception, mouse/keyboard/game-controller control, or frame-by-frame GUI interaction. Real gameplay and other visually driven GUI tasks require Computer Use / graphical screen control to be available separately in the current ChatGPT/Work surface.
+
 The repository contains:
 - `plugin-template/plugin.json` — portable Agent Plugins manifest;
 - `plugin-template/.app.json.example` — workspace-specific app mapping template;

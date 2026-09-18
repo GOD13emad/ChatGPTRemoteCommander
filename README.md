@@ -68,6 +68,14 @@ For Power Mode, add `--power-mode`. Linux amd64 and arm64 are supported by the i
 - Concurrent-chat path locking for mutating operations
 - Windows and Linux persistent supervisors
 
+## GUI / Computer Use boundary
+
+ChatGPT Remote Commander provides filesystem, shell, process, Git/build/debug, and automation capabilities exposed by its MCP tools. It does **not** currently provide interactive visual desktop control: it cannot by itself see a live screen, move/click the mouse, send live keyboard/game-controller input, or react frame-by-frame to a graphical interface.
+
+For tasks such as **actually playing a game**, operating a GUI by looking at the screen, or performing live visual desktop interaction, **Computer Use / graphical screen control must be available in the current ChatGPT conversation or Work session**. If Computer Use is unavailable, the assistant must say so and must not claim that Remote Commander alone visually played or operated the GUI. It may still launch applications, inspect files/logs/processes, change supported configuration, and prepare or debug the environment.
+
+When both capabilities are available, use **Computer Use for visual interaction** and **ChatGPT Remote Commander for filesystem/shell/process/backend operations**.
+
 ## Requirements
 
 - Windows 10/11 with PowerShell 7, or a modern Linux distribution

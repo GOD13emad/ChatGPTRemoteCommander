@@ -31,7 +31,10 @@ for (const required of [
   'FINAL PASS checklist',
   'releases/latest/download/install.ps1',
   'releases/latest/download/install.sh',
-  'docs/PLUGIN_SETUP.md'
+  'docs/PLUGIN_SETUP.md',
+  'GUI / Computer Use boundary',
+  'actually playing a game',
+  'Computer Use / graphical screen-control capability'
 ]) if (!start.includes(required)) fail(`START_HERE missing: ${required}`);
 
 const plugin = JSON.parse(read('plugin-template/plugin.json'));
@@ -54,9 +57,13 @@ if (entry.policy?.installation !== 'INSTALLED_BY_DEFAULT') fail('marketplace plu
 const codexConfig = read('.codex/config.toml');
 if (!codexConfig.includes('[plugins."chatgpt-remote-commander@chatgpt-remote-commander"]') || !codexConfig.includes('enabled = true')) fail('project plugin enablement missing');
 const work = read('WORK_SETUP.md');
-for (const required of ['codex plugin marketplace add GOD13emad/ChatGPTRemoteCommander --ref main','codex plugin add chatgpt-remote-commander@chatgpt-remote-commander','releases/latest/download/install-work-plugin.ps1','releases/latest/download/install-work-plugin.sh','plugin-template.zip','Workspace settings → Plugins','@plugin-creator','plugin_asdk_app_','Do not substitute a fuzzy Plugin Directory search result','FINAL PASS in Work']) if (!work.includes(required)) fail(`WORK_SETUP missing ${required}`);
+for (const required of ['codex plugin marketplace add GOD13emad/ChatGPTRemoteCommander --ref main','codex plugin add chatgpt-remote-commander@chatgpt-remote-commander','releases/latest/download/install-work-plugin.ps1','releases/latest/download/install-work-plugin.sh','plugin-template.zip','Workspace settings → Plugins','@plugin-creator','plugin_asdk_app_','Do not substitute a fuzzy Plugin Directory search result','GUI / Computer Use boundary in Work','Computer Use / graphical screen control','FINAL PASS in Work']) if (!work.includes(required)) fail(`WORK_SETUP missing ${required}`);
 const workPrompt = read('plugin-template/WORK_INSTALL_PROMPT.md');
-for (const required of ['Read START_HERE.md first','WORK_SETUP.md','@plugin-creator','install-work-plugin.ps1/.sh','real tool invocation']) if (!workPrompt.includes(required)) fail(`WORK_INSTALL_PROMPT missing ${required}`);
+for (const required of ['Read START_HERE.md first','WORK_SETUP.md','@plugin-creator','install-work-plugin.ps1/.sh','real tool invocation','actually playing a game','Computer Use / graphical screen control']) if (!workPrompt.includes(required)) fail(`WORK_INSTALL_PROMPT missing ${required}`);
+const skill = read('plugin-template/skills/remote-commander/SKILL.md');
+for (const required of ['GUI / Computer Use boundary','actually playing a game','live GUI control is unavailable','Do not simulate or claim GUI/gameplay success']) if (!skill.includes(required)) fail(`remote-commander skill missing ${required}`);
+const pluginSetup = read('docs/PLUGIN_SETUP.md');
+for (const required of ['Capability boundary: graphical desktop control','does not turn Remote Commander into Computer Use','Real gameplay']) if (!pluginSetup.includes(required)) fail(`PLUGIN_SETUP missing ${required}`);
 const workPs = read('install-work-plugin.ps1');
 for (const required of ['$MyInvocation.MyCommand.Path','releases/latest/download/plugin-template.zip','TemplateSource','[IO.Path]::IsPathRooted($TemplateSource)','Join-Path (Get-Location).Path $TemplateSource','[IO.Path]::IsPathRooted($InstallRoot)','Join-Path (Get-Location).Path $InstallRoot','plugin_((?:asdk_app_|connector_|templated_apps_)','chatgpt-remote-commander-personal','ChatGPT Remote Commander (Personal)','codex plugin add failed','WORK_PLUGIN_INSTALL_PASS']) if (!workPs.includes(required)) fail(`install-work-plugin.ps1 missing ${required}`);
 const workSh = read('install-work-plugin.sh');

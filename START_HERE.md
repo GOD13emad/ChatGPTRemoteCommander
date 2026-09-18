@@ -46,6 +46,20 @@ Important boundaries:
 - Automatic shutdown, restart, and logoff command patterns remain blocked.
 - Full MCP write/modify support in ChatGPT is currently for Business and Enterprise/Edu. Pro custom MCP access is currently read/fetch only.
 
+### GUI / Computer Use boundary
+
+Remote Commander controls files, terminals, shell commands, processes, project workflows, and other OS-level operations exposed by its MCP tools. It does **not** currently provide interactive visual control of the local desktop: no live screen perception, mouse movement/clicking, live keyboard/game-controller input, or frame-by-frame GUI interaction.
+
+Therefore, tasks such as **actually playing a game, operating a graphical application visually, navigating an interactive desktop UI, or reacting to live on-screen content** require **Computer Use / graphical screen-control capability in the same ChatGPT conversation or Work session**.
+
+If Computer Use is unavailable:
+- say that GUI control is unavailable in the current surface;
+- do not infer visual success from process state, logs, screenshots, or shell output alone;
+- do not claim that Remote Commander by itself played the game or operated the GUI;
+- continue only with supported backend actions such as launching the app, inspecting files/logs/processes, changing supported configuration, or preparing/debugging the environment.
+
+If Computer Use is available, combine the two capabilities: Computer Use handles visual screen/mouse/keyboard interaction, while Remote Commander handles filesystem/shell/process/backend operations.
+
 ### Optional ChatGPT-side Full permission
 
 Local Power Mode controls what the MCP server can do. ChatGPT App permissions separately control when ChatGPT asks before using those actions. On an eligible account/workspace and only for a trusted personal/managed machine, the user may choose the app-specific **Allow all actions** permission to reduce repeated approval prompts. OpenAI marks this as elevated risk. It does not override workspace role access, enabled/disabled actions, provider authorization, or safety protections. If the option is unavailable, use **Allow low-risk actions** or the workspace default and approve higher-impact actions normally.

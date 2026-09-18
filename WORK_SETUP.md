@@ -27,6 +27,12 @@ Work should:
 
 Full/Power Mode is for a trusted computer. It enables full filesystem access, shell execution, process control, binary operations, recursive search, backups, and persistent terminals. It is not an OS sandbox.
 
+### GUI / Computer Use boundary in Work
+
+Remote Commander is a backend/system-control integration, not a live graphical desktop controller. It does not itself provide live screen perception, mouse clicks, keyboard/game-controller input, or frame-by-frame GUI interaction.
+
+For **actual gameplay** or any task that requires seeing and reacting to a graphical interface, Work must first check whether **Computer Use / graphical screen control** is available in the current task. If it is available, use Computer Use for visual interaction and Remote Commander for filesystem/shell/process/backend work. If it is unavailable, state that limitation explicitly and do not claim visual GUI success from logs, screenshots, process status, or shell output alone.
+
 For the least-friction trusted-machine workflow, explain that local Power Mode and ChatGPT App permissions are separate. If the account/workspace exposes an app-specific **Allow all actions** option, the user may explicitly choose it to reduce repeated confirmations. Treat it as elevated risk; do not select it silently. Workspace/action/safety controls still apply.
 
 ## 2. Repository Plugin bootstrap
