@@ -9,9 +9,9 @@ Cross-platform Windows + Linux MCP server for controlled remote project and mach
 **Setup guides in 10 languages:** [English](docs/SETUP.en.md) · [فارسی](docs/SETUP.fa.md) · [العربية](docs/SETUP.ar.md) · [Türkçe](docs/SETUP.tr.md) · [Español](docs/SETUP.es.md) · [Français](docs/SETUP.fr.md) · [Deutsch](docs/SETUP.de.md) · [Русский](docs/SETUP.ru.md) · [简体中文](docs/SETUP.zh-CN.md) · [日本語](docs/SETUP.ja.md)
 
 [All setup guides](docs/README.md)
-## v0.4 topology, guided onboarding, plugin assets, and zero-reentry startup
+## v0.5 controlled desktop automation, hardened runtime ownership, and zero-reentry startup
 
-v0.4 supports all three deployment patterns: **one ChatGPT account -> multiple computers**, **multiple ChatGPT accounts -> one computer**, and **multiple concurrent chats -> the same computer**. Each computer runs its own MCP server; each account uses its own Secure MCP Tunnel profile; concurrent chat mutations on the same path are serialized to reduce write races.
+v0.5 preserves all three deployment patterns: **one ChatGPT account -> multiple computers**, **multiple ChatGPT accounts -> one computer**, and **multiple concurrent chats -> the same computer**. Each computer runs its own MCP server; each account uses its own Secure MCP Tunnel profile; concurrent chat mutations on the same path are serialized to reduce write races.
 
 After the one-time tunnel enrollment, you do **not** need to re-enter the Tunnel ID, local MCP address, health port, or Runtime API key after each login.
 
@@ -70,17 +70,31 @@ For Power Mode, add `--power-mode`. Linux amd64 and arm64 are supported by the i
 
 ## Windows GUI Control (v0.5)
 
-Windows Power Mode can now opt in to **built-in GUI Control**. When enabled, Remote Commander exposes live screenshot images plus mouse movement/click/drag/scroll, relative mouse deltas, Unicode typing, key combinations/holds, visible-window listing, and window focus directly through MCP. This enables a screenshot → action → screenshot loop without requiring a separate Computer Use tool for ordinary desktop workflows.
+Windows Power Mode can opt in to **built-in GUI Control**. The MCP itself returns live screenshots as image content and exposes bounded mouse, keyboard, window-focus and coordination tools, so ordinary supported desktop workflows do not require a separate Computer Use surface.
 
-Enable it on a trusted Windows source checkout with:
+Safe visual-control loop:
+
+```text
+gui_status
+→ gui_session_begin
+→ gui_screenshot(lease)
+→ one gui_* action(lease + single-use frame)
+→ gui_screenshot(lease)
+→ verify visible result
+→ gui_session_end
+```
+
+A frame is short-lived and single-use. A second chat cannot take the active desktop lease. GUI actions are never considered successful merely because input was submitted; a fresh screenshot must verify the visible result.
+
+Enable it on a trusted Windows checkout with:
 
 ```powershell
 .\install.ps1 -PowerMode -GuiControl -StartServer -SkipTunnelClient
 ```
 
-After enabling, refresh/re-scan the ChatGPT custom app tools. Look for `gui_status`, `gui_screenshot`, `gui_mouse_click`, `gui_type_text`, and the other `gui_*` tools.
+After enabling, refresh/re-scan the ChatGPT custom app tools. The owner can stop GUI input locally at any time by holding **Escape** or creating `var\GUI_STOP`; the assistant must not remove that stop file remotely.
 
-Limits remain honest: Windows secure desktop/UAC prompts, the lock screen, some anti-cheat/protected games, and software that rejects synthetic input may not accept these actions. High-speed real-time games may also exceed LLM/tool-call latency. In those cases, native Computer Use or another authorized low-latency control surface may still be required.
+Limits remain explicit: Windows Secure Desktop/UAC prompts, the lock screen, anti-cheat/protected-input paths, software that rejects synthetic input, and high-speed real-time gameplay are not bypassed. Different trust levels also require separate OS sessions/authorization; multiple tunnel profiles alone are not security isolation.
 
 ## Requirements
 
@@ -109,7 +123,7 @@ Follow [START_HERE.md](START_HERE.md) for the current end-to-end flow. Create an
 pwsh.exe -NoProfile -File .\connect-chatgpt.ps1
 ```
 
-On Windows v0.4.4+, `connect-chatgpt.ps1` is the persistent enrollment entry point: it reuses an existing DPAPI-protected credential when available and leaves the background supervisor as the single owner of managed tunnel profiles.
+On Windows v0.5.0+, `connect-chatgpt.ps1` is the persistent enrollment entry point: it reuses an existing DPAPI-protected credential when available and leaves the background supervisor as the single owner of managed tunnel profiles.
 
 In ChatGPT, create a custom MCP **app** with Connection = Tunnel, select the tunnel, use **None / No authentication** for this server, run **Scan Tools**, review permissions, and create the app. See [START_HERE.md](START_HERE.md) for the plan/workspace requirements and FINAL PASS checklist.
 
@@ -125,7 +139,7 @@ Filesystem containment is enforced, but command execution is **not an OS sandbox
 
 ## Validation
 
-v0.4.4 includes the cross-platform gates plus canonical AI-assisted onboarding, Standard/Full guidance, persistent enrollment, current custom-app/Plugin instructions, icon assets, installer/update-path validation, and runtime-upgrade validation. Windows and Linux syntax/install checks, safe and Power Mode smoke tests, concurrency tests, and secret scanning remain part of the release gate. Use `npm run check`, `npm test`, and `npm run audit` before releases.
+v0.5.0 includes GUI contract/coordination, transport-admission, filesystem-safety, runtime-ownership and the cross-platform gates plus canonical AI-assisted onboarding, Standard/Full guidance, persistent enrollment, current custom-app/Plugin instructions, icon assets, installer/update-path validation, and runtime-upgrade validation. Windows and Linux syntax/install checks, safe and Power Mode smoke tests, concurrency tests, and secret scanning remain part of the release gate. Use `npm run check`, `npm test`, and `npm run audit` before releases.
 
 ## License
 
