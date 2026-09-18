@@ -50,13 +50,18 @@ if (-not $ProfileExists) {
   if ($m.Success) { $HealthPort = [int]$m.Groups[1].Value }
 }
 
-$SecureKey = Read-Host 'Paste Runtime API key once (input hidden; saved encrypted for this Windows user)' -AsSecureString
+New-Item -ItemType Directory -Force -Path $CredDir | Out-Null
+if (Test-Path -LiteralPath $CredFile) {
+  $Encrypted = Get-Content -LiteralPath $CredFile -Raw
+  $SecureKey = ConvertTo-SecureString $Encrypted
+  Write-Host "Reusing existing DPAPI credential for profile $Profile."
+} else {
+  $SecureKey = Read-Host 'Paste Runtime API key once (input hidden; saved encrypted for this Windows user)' -AsSecureString
+  $Encrypted = ConvertFrom-SecureString $SecureKey
+  [IO.File]::WriteAllText($CredFile, $Encrypted, [Text.UTF8Encoding]::new($false))
+}
 $PlainKey = [System.Net.NetworkCredential]::new('', $SecureKey).Password
 if ([string]::IsNullOrWhiteSpace($PlainKey)) { throw 'Runtime API key is empty.' }
-
-New-Item -ItemType Directory -Force -Path $CredDir | Out-Null
-$Encrypted = ConvertFrom-SecureString $SecureKey
-[IO.File]::WriteAllText($CredFile, $Encrypted, [Text.UTF8Encoding]::new($false))
 
 try {
   $env:CONTROL_PLANE_API_KEY = $PlainKey
@@ -66,8 +71,23 @@ try {
       --health-listen-addr "127.0.0.1:$HealthPort" --force
     if ($LASTEXITCODE -ne 0) { throw "tunnel-client init failed: $LASTEXITCODE" }
   }
-  & $TunnelExe doctor --profile $Profile --explain
-  if ($LASTEXITCODE -ne 0) { throw "tunnel-client doctor failed: $LASTEXITCODE" }
+  $profilePattern = [regex]::Escape($Profile)
+  $runningProfile = Get-CimInstance Win32_Process -Filter "Name='tunnel-client.exe'" -ErrorAction SilentlyContinue |
+    Where-Object { $_.CommandLine -match "run\s+--profile\s+$profilePattern(?:\s|$)" } |
+    Select-Object -First 1
+  $ready = $false
+  if ($runningProfile -and $HealthPort -gt 0) {
+    try {
+      $response = Invoke-WebRequest -Uri "http://127.0.0.1:$HealthPort/readyz" -UseBasicParsing -TimeoutSec 2
+      $ready = ($response.StatusCode -eq 200 -and $response.Content.Trim() -eq 'ready')
+    } catch { $ready = $false }
+  }
+  if ($ready) {
+    Write-Host "Existing tunnel profile $Profile is already ready on health port $HealthPort; doctor bind check skipped."
+  } else {
+    & $TunnelExe doctor --profile $Profile --explain
+    if ($LASTEXITCODE -ne 0) { throw "tunnel-client doctor failed: $LASTEXITCODE" }
+  }
 } finally {
   Remove-Item Env:CONTROL_PLANE_API_KEY -ErrorAction SilentlyContinue
   $PlainKey = $null

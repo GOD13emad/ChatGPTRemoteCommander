@@ -103,7 +103,7 @@ Filesystem containment is enforced, but command execution is **not an OS sandbox
 
 ## Validation
 
-v0.3.0 release gates cover Windows and Linux syntax/install checks, safe and Power Mode smoke tests, concurrent HTTP/chat calls, serialized same-path mutations, secret scanning, and real Ubuntu/WSL Standard + Power installer runs. Use `npm run check`, `npm test`, and `npm run audit` before releases.
+v0.3.1 includes the v0.3 cross-platform release gates plus idempotent Windows persistent-enrollment validation: an existing DPAPI credential is reused and an already-ready matching tunnel no longer fails enrollment because its own health port is occupied. Windows and Linux syntax/install checks, safe and Power Mode smoke tests, concurrency tests, and secret scanning remain part of the release gate. Use `npm run check`, `npm test`, and `npm run audit` before releases.
 
 ## License
 

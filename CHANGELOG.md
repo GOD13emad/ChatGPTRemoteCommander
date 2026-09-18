@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.1 — 2026-09-18
+
+- Fixed Windows one-time autostart enrollment when the same tunnel profile is already running on its configured health port.
+- Existing DPAPI credentials are reused on reruns, so a failed validation does not require entering the Runtime API key again.
+- Enrollment now recognizes an already-ready matching tunnel and skips the conflicting `doctor` listener bind check.
+- Verified persistent Windows startup registration, MCP auto-restart, and tunnel kill/restart using the DPAPI credential with no repeated Tunnel ID, port, or API-key entry.
+
+
 ## 0.3.0 — 2026-09-17
 
 Cross-platform, multi-topology and zero-reentry startup release.
