@@ -10,4 +10,4 @@ if($LASTEXITCODE -ne 0) { throw 'GUI_NATIVE_SELFTEST_FAILED' }
 $result=$raw | ConvertFrom-Json
 if(-not $result.ok -or -not $result.nativeLayoutOnly -or $result.inputSize -notin @(28,40)) { throw 'GUI_NATIVE_LAYOUT_FAILED' }
 Write-Output ('GUI_NATIVE_LAYOUT_PASS architecture={0} inputSize={1}' -f $result.architecture,$result.inputSize)
-Write-Output 'GUI_INTERACTIVE_VALIDATION=NOT_RUN'
+Write-Output 'GUI_INTERACTIVE_VALIDATION=SEPARATE_E2E_GATE'

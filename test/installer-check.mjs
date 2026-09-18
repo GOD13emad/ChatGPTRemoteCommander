@@ -12,6 +12,7 @@ for (const required of [
   'Detected active installation from Windows autostart',
   '$InstallDir = Resolve-InstallDir',
   'Tracked local changes exist in InstallDir',
+  "[string]$SourceRef = 'v0.5.0'",
   'ExpectedCommit',
   'Get-ExpectedConfigHash',
   'mcp-runtime.json',
@@ -20,14 +21,24 @@ for (const required of [
   "Mode: $(if ($PowerMode) {'POWER'} else {'STANDARD'})"
 ]) {
   if (!windowsInstaller.includes(required)) {
-    throw new Error(`install.ps1 missing required v0.3.4 behavior: ${required}`);
+    throw new Error(`install.ps1 missing required release behavior: ${required}`);
   }
 }
+
 const linuxInstaller = readFileSync('install.sh', 'utf8');
 const linuxEnrollment = readFileSync('enable-autostart-linux.sh', 'utf8');
-for (const required of ['Updating running MCP from version', 'enable-autostart-linux.sh']) {
+for (const required of [
+  'SOURCE_REF="${REMOTE_COMMANDER_SOURCE_REF:-v0.5.0}"',
+  '--source-ref',
+  'Tracked local changes exist in InstallDir',
+  'fetch --no-tags origin "$SOURCE_REF"',
+  'checkout --detach',
+  'Source commit:',
+  'Updating running MCP from version',
+  'enable-autostart-linux.sh'
+]) {
   if (!linuxInstaller.includes(required)) {
-    throw new Error(`install.sh missing required v0.3.3 behavior: ${required}`);
+    throw new Error(`install.sh missing required release behavior: ${required}`);
   }
 }
 for (const required of ['Reusing existing local credential', 'doctor bind check skipped']) {

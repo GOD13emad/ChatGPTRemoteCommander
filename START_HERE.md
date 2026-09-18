@@ -67,6 +67,16 @@ Required workflow:
 
 Do not queue stale GUI work across chats. The owner can stop GUI input locally with physical Escape or the `var\GUI_STOP` file; the assistant must not clear that stop remotely.
 
+
+
+For release/maintainer validation on a trusted interactive Windows desktop, run:
+
+```powershell
+npm run test:gui-native
+```
+
+This opens only the repository's disposable WinForms test window and verifies the full screenshot → focus → click → multilingual typing → click → visual verification workflow. It restores the cursor and attempts to restore the previously focused window before exiting. This native test is intentionally separate from the normal headless test suite because it interacts with the desktop.
+
 This removes the previous dependency on a separate Computer Use tool for ordinary supported Windows GUI workflows. It does **not** bypass Windows Secure Desktop/UAC, lock-screen boundaries, anti-cheat/protected-input systems, or the latency limits of real-time gameplay.
 
 ### Optional ChatGPT-side Full permission

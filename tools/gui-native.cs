@@ -34,6 +34,8 @@ public static class RcGuiNative {
   [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr window);
   [DllImport("user32.dll", CharSet=CharSet.Unicode)] static extern int GetWindowText(IntPtr window, StringBuilder text, int capacity);
   [DllImport("user32.dll")] static extern bool SetForegroundWindow(IntPtr window);
+  [DllImport("user32.dll")] static extern bool BringWindowToTop(IntPtr window);
+  [DllImport("user32.dll", SetLastError=true)] static extern bool AttachThreadInput(uint attach, uint attachTo, bool value);
   [DllImport("user32.dll")] static extern bool ShowWindow(IntPtr window, int command);
   [DllImport("user32.dll", SetLastError=true)] static extern IntPtr OpenInputDesktop(uint flags, bool inherit, uint access);
   [DllImport("user32.dll")] static extern bool CloseDesktop(IntPtr desktop);
@@ -131,9 +133,9 @@ public static class RcGuiNative {
     // Validate the complete UTF-16 string before any injection, even for local callers.
     for(int j=0;j<text.Length;j++) {
       char c=text[j];
-      if(char.IsLowSurrogate(c) || (char.IsHighSurrogate(c) && (j+1>=text.Length || !char.IsLowSurrogate(text[j+1])))) throw new InvalidOperationException("GUI_INVALID_TEXT");
+      if(char.IsLowSurrogate(c) || (char.IsHighSurrogate(c) && (j+1>=text.Length || !char.IsLowSurrogate(text[j+1])))) throw new InvalidOperationException("GUI_INVALID_TEXT_SURROGATE");
       if(char.IsHighSurrogate(c)) j++;
-      else if((char.IsControl(c) && c!='\r' && c!='\n' && c!='\t')) throw new InvalidOperationException("GUI_INVALID_TEXT");
+      else if((char.IsControl(c) && c!='\r' && c!='\n' && c!='\t')) throw new InvalidOperationException("GUI_INVALID_TEXT_CONTROL");
     }
     // Do not let a human-held modifier turn text into global shortcuts.
     foreach(int key in new int[]{0x10,0x11,0x12,0x5B,0x5C}) if((GetAsyncKeyState(key)&0x8000)!=0) throw new InvalidOperationException("GUI_PHYSICAL_KEY_HELD");
@@ -141,7 +143,7 @@ public static class RcGuiNative {
     for(int i=0;i<text.Length;i++) {
       Guard(stop); CheckForeground(foreground,pid);
       char ch=text[i];
-      if(char.IsLowSurrogate(ch) || (char.IsHighSurrogate(ch) && (i+1>=text.Length || !char.IsLowSurrogate(text[i+1])))) throw new InvalidOperationException("GUI_INVALID_TEXT");
+      if(char.IsLowSurrogate(ch) || (char.IsHighSurrogate(ch) && (i+1>=text.Length || !char.IsLowSurrogate(text[i+1])))) throw new InvalidOperationException("GUI_INVALID_TEXT_SURROGATE");
       if(ch=='\n' || ch=='\t') { ushort k=(ushort)(ch=='\n'?0x0D:0x09); Send(Key(k,false),Key(k,true)); }
       else if(char.IsHighSurrogate(ch)) { char low=text[++i]; Send(Key(ch,false,true),Key(ch,true,true),Key(low,false,true),Key(low,true,true)); }
       else Send(Key(ch,false,true),Key(ch,true,true));
@@ -182,8 +184,36 @@ public static class RcGuiNative {
     },IntPtr.Zero); return result;
   }
   public static void Focus(string handle,string stop) {
-    Guard(stop); var window=new IntPtr(Int64.Parse(handle)); ShowWindow(window,9);
-    if(!SetForegroundWindow(window)) throw new InvalidOperationException("GUI_FOCUS_DENIED");
-    Wait(100,stop); if(Foreground()!=handle) throw new InvalidOperationException("GUI_FOCUS_NOT_CONFIRMED");
+    Guard(stop);
+    var window=new IntPtr(Int64.Parse(handle));
+    if(window==IntPtr.Zero || !IsWindowVisible(window)) throw new InvalidOperationException("GUI_WINDOW_NOT_VISIBLE");
+    if(Foreground()==handle) return;
+
+    MouseFree();
+    foreach(int key in new int[]{0x10,0x11,0x12,0x5B,0x5C})
+      if((GetAsyncKeyState(key)&0x8000)!=0) throw new InvalidOperationException("GUI_PHYSICAL_KEY_HELD");
+
+    IntPtr foreground=GetForegroundWindow();
+    uint ignored;
+    uint foregroundThread=foreground==IntPtr.Zero ? 0 : GetWindowThreadProcessId(foreground,out ignored);
+    uint targetThread=GetWindowThreadProcessId(window,out ignored);
+    uint currentThread=GetCurrentThreadId();
+    bool attachedForeground=false, attachedTarget=false;
+    try {
+      if(foregroundThread!=0 && foregroundThread!=currentThread) {
+        attachedForeground=AttachThreadInput(currentThread,foregroundThread,true);
+      }
+      if(targetThread!=0 && targetThread!=currentThread && targetThread!=foregroundThread) {
+        attachedTarget=AttachThreadInput(currentThread,targetThread,true);
+      }
+      ShowWindow(window,9);
+      BringWindowToTop(window);
+      SetForegroundWindow(window);
+      Wait(120,stop);
+      if(Foreground()!=handle) throw new InvalidOperationException("GUI_FOCUS_NOT_CONFIRMED");
+    } finally {
+      if(attachedTarget) AttachThreadInput(currentThread,targetThread,false);
+      if(attachedForeground) AttachThreadInput(currentThread,foregroundThread,false);
+    }
   }
 }

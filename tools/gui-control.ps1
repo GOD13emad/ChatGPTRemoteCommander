@@ -1,6 +1,9 @@
 param([switch]$SelfTest)
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
+$utf8NoBom = [Text.UTF8Encoding]::new($false)
+[Console]::InputEncoding = $utf8NoBom
+[Console]::OutputEncoding = $utf8NoBom
 if (-not $IsWindows) { throw 'GUI_WINDOWS_ONLY' }
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
@@ -54,8 +57,8 @@ try {
         return @{screenIndex=$index;bounds=@{left=$b.Left;top=$b.Top;width=$b.Width;height=$b.Height};foreground=[RcGuiNative]::Foreground();processId=[int][RcGuiNative]::ForegroundPid()}
     }
     function Point($value,$observed) {
-        $index=[int]($value['screenIndex'] ?? $observed.screenIndex)
-        if($index -ne $observed.screenIndex) { throw 'GUI_MONITOR_NOT_OBSERVED' }
+        $index=[int]($value['screenIndex'] ?? $observed['screenIndex'])
+        if($index -ne $observed['screenIndex']) { throw 'GUI_MONITOR_NOT_OBSERVED' }
         $b=Bounds $index
         if(($value['coordinateMode'] ?? 'absolute') -eq 'relative') {
             $x=[double]$value['x']; $y=[double]$value['y']
@@ -69,9 +72,26 @@ try {
     if($mutation) {
         if(-not $req['expected']) { throw 'GUI_EXPECTED_FRAME_REQUIRED' }
         $observed=$req['expected']
-        $now=Snapshot ([int]$observed.screenIndex)
-        foreach($key in @('left','top','width','height')) { if($observed.bounds[$key] -ne $now.bounds[$key]) { throw 'GUI_MONITOR_GEOMETRY_CHANGED' } }
-        [RcGuiNative]::CheckForeground([string]$observed.foreground,[uint32]$observed.processId)
+        try {
+            $observedScreenIndex = [int]$observed['screenIndex']
+            $observedBounds = $observed['bounds']
+            $observedForeground = [string]$observed['foreground']
+            $observedProcessId = [uint32]$observed['processId']
+            if($null -eq $observedBounds) { throw 'missing bounds' }
+        } catch { throw 'GUI_EXPECTED_FRAME_INVALID' }
+
+        $now=Snapshot $observedScreenIndex
+        foreach($key in @('left','top','width','height')) {
+            if($observedBounds[$key] -ne $now['bounds'][$key]) { throw 'GUI_MONITOR_GEOMETRY_CHANGED' }
+        }
+        try {
+            [RcGuiNative]::CheckForeground($observedForeground,$observedProcessId)
+        } catch {
+            $foregroundDiagnostic = @([string]$_,[string]$_.Exception,[string]$_.Exception.Message) -join ' '
+            $foregroundMatch = [regex]::Match($foregroundDiagnostic,'GUI_[A-Z0-9_]+')
+            if($foregroundMatch.Success) { throw $foregroundMatch.Value }
+            throw 'GUI_FOREGROUND_CHECK_FAILED'
+        }
     }
     $result=switch($req['action']) {
         'screenshot' {
@@ -111,19 +131,52 @@ try {
         'click' { $p=Point $req $observed;[RcGuiNative]::Move($p.X,$p.Y,$stop);[RcGuiNative]::Click([string]($req['button'] ?? 'left'),[int]($req['clicks'] ?? 1),[int]($req['intervalMs'] ?? 120),$stop);@{ok=$true} }
         'drag' { $a=Point $req['from'] $observed;$b=Point $req['to'] $observed;[RcGuiNative]::Drag($a.X,$a.Y,$b.X,$b.Y,[int]($req['durationMs'] ?? 500),[int]($req['steps'] ?? 24),[string]($req['button'] ?? 'left'),$stop);@{ok=$true} }
         'keyPress' { [RcGuiNative]::KeyCombo([string[]]$req['keys'],[int]($req['holdMs'] ?? 0),$stop);@{ok=$true} }
-        'typeText' { [RcGuiNative]::TypeUnicode([string]$req['text'],[int]($req['intervalMs'] ?? 0),$stop,[string]$observed.foreground,[uint32]$observed.processId);@{ok=$true} }
+        'typeText' { [RcGuiNative]::TypeUnicode([string]$req['text'],[int]($req['intervalMs'] ?? 0),$stop,[string]$observed['foreground'],[uint32]$observed['processId']);@{ok=$true} }
         'focusWindow' {
-            $windows=@([RcGuiNative]::ListWindows().ToArray())
-            $matches=if($req['handle']) { @($windows | Where-Object Handle -eq $req['handle']) } else { @($windows | Where-Object {$_.Title.IndexOf([string]$req['titleContains'],[StringComparison]::OrdinalIgnoreCase) -ge 0}) }
-            if($matches.Count -ne 1) { throw 'GUI_WINDOW_SELECTOR_NOT_UNIQUE' }
-            [RcGuiNative]::Focus($matches[0].Handle,$stop);@{ok=$true;handle=$matches[0].Handle}
+            try { $windows=@([RcGuiNative]::ListWindows().ToArray()) }
+            catch { throw 'GUI_FOCUS_ENUM_FAILED' }
+
+            $handle = [string]$req['handle']
+            $titleContains = [string]$req['titleContains']
+            try {
+                $matches = if($handle) {
+                    @($windows | Where-Object { [string]$_.Handle -eq $handle })
+                } else {
+                    @($windows | Where-Object { ([string]$_.Title).IndexOf($titleContains,[StringComparison]::OrdinalIgnoreCase) -ge 0 })
+                }
+            } catch { throw 'GUI_FOCUS_MATCH_FAILED' }
+
+            if(@($matches).Count -ne 1) { throw 'GUI_WINDOW_SELECTOR_NOT_UNIQUE' }
+            try {
+                [RcGuiNative]::Focus([string]$matches[0].Handle,$stop)
+            } catch {
+                $focusDiagnostic = @([string]$_,[string]$_.Exception,[string]$_.Exception.Message) -join ' '
+                $focusMatch = [regex]::Match($focusDiagnostic,'GUI_[A-Z0-9_]+')
+                if($focusMatch.Success) { throw $focusMatch.Value }
+                throw 'GUI_FOCUS_INVOKE_FAILED'
+            }
+            @{ok=$true;handle=[string]$matches[0].Handle}
         }
     }
     $result | ConvertTo-Json -Depth 8 -Compress
 } catch {
-    # No raw exception string (may include typed text, title, or private path).
-    $match=[regex]::Match($_.Exception.ToString(),'GUI_[A-Z0-9_]+')
-    @{ok=$false;error=$(if($match.Success){$match.Value}else{'GUI_NATIVE_FAILED'})} | ConvertTo-Json -Compress
+    # Never emit raw exception text: it may contain typed text, a private title, or a path.
+    # Search PowerShell wrapper layers, but return only a stable GUI_* code.
+    $diagnostic = @(
+        [string]$_,
+        [string]$_.Exception,
+        [string]$_.Exception.Message,
+        [string]$_.FullyQualifiedErrorId,
+        [string]$_.CategoryInfo.Reason
+    ) -join ' '
+    $match=[regex]::Match($diagnostic,'GUI_[A-Z0-9_]+')
+    $payload = @{ok=$false;error=$(if($match.Success){$match.Value}else{'GUI_NATIVE_FAILED'})}
+    if($env:RC_GUI_DIAGNOSTIC -eq '1') {
+        $payload['errorType'] = $_.Exception.GetType().FullName
+        $payload['fullyQualifiedErrorId'] = [string]$_.FullyQualifiedErrorId
+        $payload['reason'] = [string]$_.CategoryInfo.Reason
+    }
+    $payload | ConvertTo-Json -Compress
 } finally {
     if($oldDpi -ne [IntPtr]::Zero) { [void][RcGuiNative]::SetThreadDpiAwarenessContext($oldDpi) }
     if($owned) { $mutex.ReleaseMutex() }

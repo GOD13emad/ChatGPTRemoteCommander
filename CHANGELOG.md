@@ -3,6 +3,9 @@
 ## 0.5.0 — 2026-09-18
 
 - Added opt-in Windows GUI Control for trusted Power Mode machines with MCP image screenshots, mouse move/delta/click/drag/scroll, Unicode typing, bounded key combinations, window discovery/focus, and a local emergency stop.
+- Added a repeatable native Windows GUI E2E gate using a disposable WinForms target. It verifies real screenshot capture, exact-window focus, mouse click, Farsi/Japanese Unicode typing, button activation, post-action screenshot change, cursor restore, and best-effort focus restore.
+- Fixed redirected PowerShell stdin/stdout to explicit UTF-8 so multilingual GUI typing is not corrupted by the host console code page; hardened focus with verified thread-input attachment and safe detach.
+- Pinned release installers to `v0.5.0` by default while keeping explicit source-ref/commit overrides for controlled validation and recovery.
 - Added an exclusive expiring desktop lease and short-lived single-use frame tokens. Every GUI mutation must be based on a fresh screenshot; concurrent chats cannot independently drive the same desktop.
 - Added strict runtime GUI schemas, fixed native dispatch, sanitized helper errors, bounded subprocess/image output, corrected Win32 INPUT layout, DPI/foreground/desktop checks, and an uncertain-outcome latch instead of blind retries.
 - Hardened loopback HTTP admission against untrusted Host/Origin/content-type requests while preserving Secure MCP Tunnel architecture.
