@@ -1,0 +1,8 @@
+{
+  "apps": {
+    "remote-commander": {
+      "id": "asdk_app_REPLACE_WITH_YOUR_APP_ID",
+      "required": true
+    }
+  }
+}

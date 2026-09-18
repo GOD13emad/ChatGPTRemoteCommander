@@ -31,12 +31,32 @@ function Find-FreeHealthPort {
   }
   throw 'No free tunnel health port found in 47832..47931.'
 }
-try {
-  $health = Invoke-RestMethod -Uri $HealthUrl -TimeoutSec 3
-  if (-not $health.ok) { throw 'MCP health returned not-ok' }
-} catch {
-  throw "ChatGPT Remote Commander is not running at $HealthUrl. Start npm start first."
+function Test-McpHealth {
+  try {
+    $health = Invoke-RestMethod -Uri $HealthUrl -TimeoutSec 2
+    return [bool]$health.ok
+  } catch { return $false }
 }
+function Ensure-McpHealth {
+  if (Test-McpHealth) { return }
+  $listener = Get-NetTCPConnection -State Listen -LocalPort 47831 -ErrorAction SilentlyContinue | Select-Object -First 1
+  if ($listener) {
+    throw "Port 47831 is already in use but Remote Commander health is unavailable. Refusing to stop an unknown process."
+  }
+  $npm = (Get-Command npm.cmd -ErrorAction Stop).Source
+  $varDir = Join-Path $Root 'var'
+  New-Item -ItemType Directory -Force -Path $varDir | Out-Null
+  Start-Process -FilePath $npm -ArgumentList @('start','--silent') -WorkingDirectory $Root -WindowStyle Hidden -RedirectStandardOutput (Join-Path $varDir 'mcp-connect.out.log') -RedirectStandardError (Join-Path $varDir 'mcp-connect.err.log') | Out-Null
+  foreach ($i in 1..30) {
+    Start-Sleep -Milliseconds 500
+    if (Test-McpHealth) {
+      Write-Host 'MCP was not running; it has been started automatically.'
+      return
+    }
+  }
+  throw "Remote Commander MCP did not become healthy at $HealthUrl. Check var/mcp-connect.err.log."
+}
+Ensure-McpHealth
 
 $TunnelExe = Find-TunnelExe
 $ProfileExists = Test-Path -LiteralPath $ProfileFile

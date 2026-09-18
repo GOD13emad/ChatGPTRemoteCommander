@@ -1,0 +1,37 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "chatgpt-remote-commander",
+  "version": "0.4.0",
+  "description": "Operate a trusted computer through a private MCP connection.",
+  "author": {
+    "name": "GOD13emad",
+    "url": "https://github.com/GOD13emad"
+  },
+  "homepage": "https://github.com/GOD13emad/ChatGPTRemoteCommander",
+  "repository": "https://github.com/GOD13emad/ChatGPTRemoteCommander",
+  "license": "MIT",
+  "keywords": ["mcp", "remote-control", "developer-tools", "automation"],
+  "extensions": {
+    "com.openai": {
+      "interface": {
+        "displayName": "Remote Commander",
+        "shortDescription": "Control trusted PCs via MCP",
+        "longDescription": "Use a registered ChatGPT Remote Commander app to inspect projects, run approved tools, and perform trusted-machine workflows through MCP.",
+        "developerName": "GOD13emad",
+        "category": "Productivity",
+        "capabilities": ["Read", "Write"],
+        "websiteURL": "https://github.com/GOD13emad/ChatGPTRemoteCommander",
+        "privacyPolicyURL": "https://github.com/GOD13emad/ChatGPTRemoteCommander/blob/main/PRIVACY.md",
+        "termsOfServiceURL": "https://github.com/GOD13emad/ChatGPTRemoteCommander/blob/main/TERMS.md",
+        "defaultPrompt": [
+          "Report this computer's Remote Commander status without changing anything.",
+          "Inspect my project and explain what needs attention before making changes.",
+          "Use Remote Commander to run the requested trusted-machine workflow."
+        ],
+        "brandColor": "#0B5FFF",
+        "composerIcon": "./assets/icon.png",
+        "logo": "./assets/logo.png"
+      }
+    }
+  }
+}

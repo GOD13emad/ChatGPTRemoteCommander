@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.4.0 — 2026-09-18
+
+- Added `START_HERE.md` as the single source of truth for AI-assisted installation from a GitHub link through FINAL PASS.
+- Added explicit Standard versus Full/Power Mode guidance, including benefits, boundaries, plan availability, and safe secret handling.
+- Added current ChatGPT custom MCP app creation steps: Developer Mode, Tunnel connection, no-auth selection, Scan Tools, creation, and real `system_status` verification.
+- Added `docs/PLUGIN_SETUP.md`, `WORK_SETUP.md`, a portable Plugin template, repository marketplace, project-level Plugin enablement, app-binding helpers, workflow skill, privacy/terms documents, and ready PNG/SVG visual assets.
+- Replaced outdated foreground-tunnel instructions across the 10 setup-language pages with the persistent supervisor flow and latest Release installer assets.
+- Updated Windows and Linux disable scripts so stopping persistent mode also stops managed tunnel/MCP processes while preserving credentials unless explicitly removed.
+- Updated Windows and Linux enrollment so Start is self-contained: when MCP is stopped, enrollment starts it automatically before restoring persistent supervision; no manual `npm start` is required.
+- Bumped runtime/package version to 0.4.0.
+
+
 ## 0.3.4 — 2026-09-18
 
 - Fixed Windows installer path resolution when `install.ps1` is executed from an in-memory `irm`/ScriptBlock rather than from a `.ps1` file.

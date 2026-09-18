@@ -1,111 +1,108 @@
-# راه‌اندازی کلیک‌به‌کلیک ChatGPT Remote Commander
+# راه‌اندازی فعلی ChatGPT Remote Commander
 
-> عمومی بودن GitHub به معنی اتصال دیگران به رایانه سازنده نیست. برای اتصال باید Tunnel مجاز، دسترسی Workspace/Plugin و `tunnel-client` فعال روی رایانه مقصد وجود داشته باشد.
+> مسیر مرجع و نهایی: [START_HERE.md](../START_HERE.md). اگر این مخزن را به ChatGPT داده‌اید، ابتدا باید همان فایل را بخواند و روش‌های قدیمی را با مسیر فعلی ترکیب نکند.
 
-## نصب مستقیم با یک دستور
+## انتخاب حالت
 
-یکی از این دستورها را در PowerShell وارد کنید. حالت Standard امن و محدود است؛ Power Mode روی رایانه مورداعتماد کنترل کامل فایل‌ها، Shell و Processها را فعال می‌کند.
+**حالت استاندارد** انتخاب امن‌تر برای دسترسی کنترل‌شده به پروژه‌ها است.
 
-**Standard:**
+**حالت کامل / Power Mode** برای رایانه مورداعتماد است و دسترسی کامل فایل‌ها، اجرای Shell، کنترل Process، فایل‌های باینری، پشتیبان‌گیری و Terminal پایدار را فعال می‌کند. حذف دائمی همچنان خاموش است و الگوهای خاموش‌کردن، راه‌اندازی مجدد و خروج خودکار مسدود می‌مانند.
+
+مزیت حالت کامل این است که ChatGPT می‌تواند پروژه را واقعاً بررسی، ویرایش، Build، Test و Debug کند، Processها را مدیریت کند و بدون کپی‌کردن مداوم خروجی Terminal کارهای چندمرحله‌ای را انجام دهد.
+
+این حالت sandbox سیستم‌عامل نیست؛ فقط روی رایانه و حساب مورداعتماد فعالش کنید.
+
+در وضعیت فعلی محصول OpenAI، Full MCP با عملیات write/modify برای Business و Enterprise/Edu ارائه می‌شود. دسترسی custom MCP در Pro فعلاً read/fetch است.
+
+## نصب یا به‌روزرسانی Windows
+
+حالت استاندارد:
 
 ```powershell
 & ([scriptblock]::Create((irm 'https://github.com/GOD13emad/ChatGPTRemoteCommander/releases/latest/download/install.ps1'))) -InstallPrerequisites -StartServer
 ```
 
-**Power Mode:**
+حالت کامل:
 
 ```powershell
 & ([scriptblock]::Create((irm 'https://github.com/GOD13emad/ChatGPTRemoteCommander/releases/latest/download/install.ps1'))) -InstallPrerequisites -PowerMode -StartServer
 ```
 
-**به‌روزرسانی:** همان دستور نصب را دوباره اجرا کنید. از نسخه 0.3.3 به بعد، نصب فعال ویندوز به‌طور خودکار شناسایی و همان Git checkout به‌روزرسانی می‌شود. در نصب تازه، کد در `%LOCALAPPDATA%\\ChatGPTRemoteCommander\\app` قرار می‌گیرد و credential/download state بیرون از Git checkout نگه داشته می‌شود.
+برای Update نیز همان دستور را دوباره اجرا کنید.
 
-## ۱. نصب روی ویندوز
+## نصب یا به‌روزرسانی Linux
 
-1. مخزن را باز کنید: https://github.com/GOD13emad/ChatGPTRemoteCommander
-2. روی **Code** و سپس **Download ZIP** بزنید یا با Git کلون کنید.
-3. پوشه پروژه را استخراج/باز کنید.
-4. در صورت نیاز Node.js 22+ و PowerShell 7 را نصب کنید.
-5. PowerShell 7 را داخل پوشه پروژه باز کنید.
-6. اجرا کنید:
-
-```powershell
-npm run check
-npm test
-npm start
-```
-
-7. این آدرس را باز کنید: http://127.0.0.1:47831/health و مطمئن شوید `ok: true` است.
-
-## ۲. ساخت Secure MCP Tunnel
-
-1. وارد OpenAI Platform شوید.
-2. بروید به: https://platform.openai.com/settings/organization/tunnels
-3. روی **Create tunnel** کلیک کنید.
-4. یک نام مثل `ChatGPT Remote Commander` بدهید.
-5. Platform organization مالک Tunnel را Associate کنید.
-6. ChatGPT workspaceای را که باید Tunnel را ببیند/استفاده کند Associate کنید.
-7. ذخیره کنید و `tunnel_id` را بردارید.
-8. ساخت/ویرایش Tunnel به **Tunnels Read + Manage** و اجرا/انتخاب آن به **Tunnels Read + Use** نیاز دارد.
-## ۳. ساخت Runtime API Key و اجرای Tunnel
-
-1. بروید به: https://platform.openai.com/api-keys
-2. یک Runtime API Key محدود بسازید و فقط مجوزهای لازم Tunnel را بدهید.
-3. این کلید را هرگز در چت، GitHub، اسکرین‌شات یا فایل پروژه قرار ندهید.
-4. در صورت نیاز آخرین tunnel-client را بگیرید: https://github.com/openai/tunnel-client/releases/latest
-5. در حالی که MCP Server روشن است، یک PowerShell 7 دوم باز کنید و اجرا کنید:
-
-```powershell
-pwsh.exe -NoProfile -File .\connect-chatgpt.ps1
-```
-
-6. `tunnel_id` و سپس API Key را وارد کنید. ورود کلید مخفی است.
-7. این پنجره را باز نگه دارید؛ هنگام استفاده ChatGPT، Tunnel باید healthy/ready باشد.
-
-## ۴. ساخت Plugin/App در ChatGPT
-
-1. باز کنید: https://chatgpt.com/plugins
-2. روی **+** کلیک کنید.
-3. نامی مثل `ChatGPT Remote Commander` وارد کنید.
-4. در **Connection** گزینه **Tunnel** را انتخاب کنید.
-5. Tunnel ساخته‌شده را انتخاب کنید یا tunnel ID معتبر را وارد کنید.
-6. برای این سرور Authentication را روی **None / No authentication** بگذارید، نه Mixed/OAuth.
-7. هشدار خطر و Permissionها را مرور کنید.
-8. در صورت نمایش گزینه Scan/Refresh Tools آن را اجرا کنید و سپس **Create** را بزنید.
-9. یک چت جدید باز کنید و App را انتخاب یا `@mention` کنید.
-10. تست کنید: `system_status را اجرا کن و قابلیت‌های فعال را گزارش کن.`
-
-## ۵. Power Mode و دادن دسترسی به حساب دیگر
-
-`config.json` عمومی به‌صورت پیش‌فرض امن است. Full Control فقط باید در `config.local.json` محلی فعال شود؛ این فایل gitignored است. حذف دائمی را خاموش نگه دارید و shutdown/restart/logoff همچنان مسدود می‌ماند.
-
-برای دوست یا حساب دوم، در حساب/Workspace او Tunnel جدا بسازید و همان tunnel-client را روی رایانه مقصد اجرا کنید. Runtime API Key خودتان را به دیگری ندهید. طبق مستندات فعلی OpenAI، Pro برای custom MCP دسترسی read/fetch دارد؛ write/modify کامل فعلاً برای Business و Enterprise/Edu است.
-
-## رفع اشکال
-
-- Tunnel دیده نمی‌شود: Workspace مقصد و مجوز **Tunnels Read + Use** را بررسی کنید.
-- خطای OAuth discovery: Authentication را **None** بگذارید.
-- خطای `FORBIDDEN: This conversation does not support developer MCPs`: یک چت تازه، حتی داخل همان Project، بسازید و App را از ابتدای چت فراخوانی کنید.
-- ابزارهای نسخه جدید دیده نمی‌شوند: App سفارشی را Refresh یا دوباره Create کنید تا schema جدید اسکن شود.
-
-مراجع رسمی: https://developers.openai.com/api/docs/guides/secure-mcp-tunnels و https://help.openai.com/en/articles/12584461-developer-mode-and-mcp-apps-in-chatgpt
-
-## نسخه ۰٫۳: چند کامپیوتر، چند حساب، چند چت هم‌زمان و بدون ورود تکراری تونل
-
-- یک حساب ChatGPT می‌تواند به چند کامپیوتر متصل شود: روی هر کامپیوتر نصب کنید و برای هر دستگاه یک Secure MCP Tunnel مستقل بسازید.
-- چند حساب ChatGPT می‌توانند از یک کامپیوتر استفاده کنند: هر حساب با Profile تونل جدا ثبت می‌شود و پورت سلامت به‌صورت خودکار انتخاب می‌شود.
-- چند چت می‌توانند هم‌زمان همان MCP را فراخوانی کنند؛ تغییرات روی یک مسیر مشترک به‌صورت سریالی اجرا می‌شوند تا تداخل نوشتن کاهش یابد.
-
-ثبت یک‌باره و اجرای خودکار در ویندوز:
-
-```powershell
-.\enable-autostart.ps1 -Profile chatgpt-remote-commander
-```
-
-ثبت یک‌باره و اجرای خودکار در لینوکس:
+استاندارد:
 
 ```bash
-./enable-autostart-linux.sh --profile "$(hostname)"
+curl -fsSL https://github.com/GOD13emad/ChatGPTRemoteCommander/releases/latest/download/install.sh | bash -s -- --install-prerequisites --start-server
 ```
 
-پس از این مرحله، ناظر محلی MCP و تونل‌های ثبت‌شده را هنگام ورود به سیستم خودکار اجرا می‌کند و دیگر لازم نیست Tunnel ID، آدرس/پورت محلی یا Runtime API Key را هر بار وارد کنید.
+کامل:
+
+```bash
+curl -fsSL https://github.com/GOD13emad/ChatGPTRemoteCommander/releases/latest/download/install.sh | bash -s -- --install-prerequisites --power-mode --start-server
+```
+
+## ساخت Secure MCP Tunnel و ثبت دائمی
+
+در https://platform.openai.com/settings/organization/tunnels یک Tunnel بسازید و Runtime API Key ایجاد کنید.
+
+Runtime API Key را **هرگز داخل چت Paste نکنید**. آن را فقط در Prompt مخفی روی رایانه خودتان وارد کنید.
+
+در Windows، مسیر `connect-chatgpt.ps1` که Installer چاپ می‌کند اجرا شود. در نصب تازه معمولاً:
+
+```powershell
+& "$env:LOCALAPPDATA\ChatGPTRemoteCommander\app\connect-chatgpt.ps1"
+```
+
+در Linux:
+
+```bash
+./enable-autostart-linux.sh --profile chatgpt-remote-commander
+```
+
+بعد از ثبت یک‌باره، Supervisor پس‌زمینه MCP و Tunnel را خودکار بالا می‌آورد و در صورت Crash دوباره اجرا می‌کند. دیگر Tunnel ID، پورت یا Runtime API Key در هر بار ورود تکرار نمی‌شود.
+
+## ساخت App سفارشی در ChatGPT
+
+اگر Plan/Workspace اجازه می‌دهد Developer Mode را فعال کنید. سپس از Settings یا Workspace settings → Apps → Create:
+
+1. نام را **ChatGPT Remote Commander** بگذارید.
+2. Connection را **Tunnel** انتخاب کنید.
+3. Tunnel ساخته‌شده را انتخاب کنید.
+4. Authentication را **None / No authentication** بگذارید.
+5. اگر آیکون خواست از [plugin-icon.png](../assets/plugin-icon.png) یا [plugin-logo.png](../assets/plugin-logo.png) استفاده کنید.
+6. **Scan Tools** را اجرا کنید.
+7. Permissionها را بررسی کنید.
+8. **Create** را بزنید.
+9. در Workspace مدیریت‌شده، در صورت نیاز App را برای Roleهای موردنظر Publish/Enable کنید.
+
+بعد یک چت تازه باز کنید، App را انتخاب یا @mention کنید و بنویسید:
+
+`system_status را اجرا کن و mode، version، platform، shell و concurrency را گزارش کن.`
+
+در Power Mode همچنین `power_status` را فقط به‌صورت خواندنی اجرا کنید.
+
+## ساخت Plugin
+
+App سفارشی همان اتصال واقعی به Tunnel است. Plugin لایه بسته‌بندی برای Skill، Prompt، Metadata، آیکون و در صورت نیاز Reference به همان App است.
+
+راهنمای کامل: [PLUGIN_SETUP.md](PLUGIN_SETUP.md)
+
+Template آماده: [plugin-template](../plugin-template/)
+
+برای Plugin خصوصی/Workspace می‌توان App ثبت‌شده را با `.app.json` به Template وصل کرد. Secure MCP Tunnel برای اتصال خصوصی است و برای انتشار عمومی MCP-backed Plugin در Directory باید MCP HTTPS عمومی و پایدار داشته باشید.
+
+## معیار نهایی
+
+نصب فقط وقتی نهایی است که همه این‌ها PASS باشند:
+- `INSTALL_PASS`
+- Health محلی MCP برابر `ok: true`
+- Tunnel آماده باشد
+- Scan Tools موفق باشد
+- از یک چت تازه `system_status` واقعاً روی رایانه مقصد اجرا شود
+- Mode فعال با انتخاب کاربر یکسان باشد
+- هیچ Secret داخل Chat یا Git قرار نگرفته باشد
+
+برای Update، Start، Stop و رفع خطا فقط [START_HERE.md](../START_HERE.md) را مبنا قرار دهید.

@@ -1,5 +1,7 @@
 # Setup Guides — 10 Languages
 
+> Canonical AI-assisted workflow: [START_HERE.md](../START_HERE.md). This is the single current source of truth for end-to-end installation and FINAL PASS.
+
 Choose your language:
 
 - [English](SETUP.en.md)
@@ -13,7 +15,7 @@ Choose your language:
 - [简体中文 / Simplified Chinese](SETUP.zh-CN.md)
 - [日本語 / Japanese](SETUP.ja.md)
 
-Each guide covers installation, Secure MCP Tunnel creation, ChatGPT plugin creation, first tests, Power Mode, friend/second-account access, and troubleshooting.
+English and Persian contain the expanded current flow; the other language pages provide the current commands and point back to the canonical workflow. Plugin packaging and icon/app binding are documented in [PLUGIN_SETUP.md](PLUGIN_SETUP.md). ChatGPT Work packaging/install guidance is in [WORK_SETUP.md](../WORK_SETUP.md).
 
 Official OpenAI references:
 
@@ -36,7 +38,7 @@ Power Mode on a trusted PC:
 & ([scriptblock]::Create((irm 'https://github.com/GOD13emad/ChatGPTRemoteCommander/releases/latest/download/install.ps1'))) -InstallPrerequisites -PowerMode -StartServer
 ```
 
-## v0.3 cross-platform and persistent startup
+## v0.4 cross-platform, persistent startup, and plugin onboarding
 
 All guides now also cover Windows + Linux, one account on multiple computers, multiple accounts on one computer, concurrent chats, automatic health-port selection, and zero-reentry startup.
 
@@ -57,4 +59,4 @@ After enrollment, later logins do not require re-entering the Tunnel ID, MCP add
 
 ## Updating
 
-Re-run the same one-command installer you originally used. On Windows v0.3.4+, an active registered installation is detected and updated in place; otherwise new installs keep application source under `%LOCALAPPDATA%\\ChatGPTRemoteCommander\\app` and persistent state in the parent directory. With `-StartServer`, a running v0.3 MCP is upgraded to the installed version without requiring sign-out or reboot.
+Re-run the same one-command installer you originally used. On Windows v0.4.0+, an active registered installation is detected and updated in place; otherwise new installs keep application source under `%LOCALAPPDATA%\\ChatGPTRemoteCommander\\app` and persistent state in the parent directory. With `-StartServer`, a running v0.3 MCP is upgraded to the installed version without requiring sign-out or reboot.

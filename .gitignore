@@ -12,3 +12,4 @@ config.local.json
 connections.local.json
 /credentials/
 /downloads/
+/plugin-template/.app.json

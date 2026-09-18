@@ -1,13 +1,17 @@
 # ChatGPT Remote Commander
 
+![ChatGPT Remote Commander icon](assets/plugin-icon.png)
+
 Cross-platform Windows + Linux MCP server for controlled remote project and machine access from ChatGPT through OpenAI Secure MCP Tunnel.
+
+> **Giving this repository to ChatGPT for installation? Start with [START_HERE.md](START_HERE.md).** It is the single current source of truth for Standard/Full mode selection, install/update, Secure MCP Tunnel, persistent enrollment, ChatGPT custom app creation, Plugin packaging/install, icon use, real tool testing, autostart, stop/start, and FINAL PASS. For ChatGPT Work/Codex orchestration, also use [WORK_SETUP.md](WORK_SETUP.md).
 
 **Setup guides in 10 languages:** [English](docs/SETUP.en.md) · [فارسی](docs/SETUP.fa.md) · [العربية](docs/SETUP.ar.md) · [Türkçe](docs/SETUP.tr.md) · [Español](docs/SETUP.es.md) · [Français](docs/SETUP.fr.md) · [Deutsch](docs/SETUP.de.md) · [Русский](docs/SETUP.ru.md) · [简体中文](docs/SETUP.zh-CN.md) · [日本語](docs/SETUP.ja.md)
 
 [All setup guides](docs/README.md)
-## v0.3 topology and zero-reentry startup
+## v0.4 topology, guided onboarding, plugin assets, and zero-reentry startup
 
-v0.3 supports all three deployment patterns: **one ChatGPT account -> multiple computers**, **multiple ChatGPT accounts -> one computer**, and **multiple concurrent chats -> the same computer**. Each computer runs its own MCP server; each account uses its own Secure MCP Tunnel profile; concurrent chat mutations on the same path are serialized to reduce write races.
+v0.4 supports all three deployment patterns: **one ChatGPT account -> multiple computers**, **multiple ChatGPT accounts -> one computer**, and **multiple concurrent chats -> the same computer**. Each computer runs its own MCP server; each account uses its own Secure MCP Tunnel profile; concurrent chat mutations on the same path are serialized to reduce write races.
 
 After the one-time tunnel enrollment, you do **not** need to re-enter the Tunnel ID, local MCP address, health port, or Runtime API key after each login.
 
@@ -71,7 +75,9 @@ For Power Mode, add `--power-mode`. Linux amd64 and arm64 are supported by the i
 - Git
 - OpenAI Secure MCP Tunnel client and a configured ChatGPT custom plugin/app
 
-## Quick start
+## Manual/developer start (optional)
+
+Normal users should follow [START_HERE.md](START_HERE.md) and the latest Release installer. For source-level development only:
 
 1. Clone the repository.
 2. Review `config.json`; `%USERPROFILE%` is expanded at runtime.
@@ -83,15 +89,17 @@ For Power Mode, add `--power-mode`. Linux amd64 and arm64 are supported by the i
 The MCP endpoint is `http://127.0.0.1:47831/mcp`.
 ## Connect ChatGPT
 
-Create an OpenAI Secure MCP Tunnel and Runtime API key, then keep the local MCP server running and launch:
+Follow [START_HERE.md](START_HERE.md) for the current end-to-end flow. Create an OpenAI Secure MCP Tunnel and Runtime API key, then run the persistent enrollment entry point:
 
 ```powershell
 pwsh.exe -NoProfile -File .\connect-chatgpt.ps1
 ```
 
-On Windows v0.3.2+, `connect-chatgpt.ps1` is a compatibility entry point for persistent mode: it delegates to the idempotent autostart enrollment flow, reuses an existing DPAPI-protected credential when available, and does not start a duplicate foreground tunnel. The background supervisor remains the single owner of managed tunnel profiles.
+On Windows v0.4.0+, `connect-chatgpt.ps1` is the persistent enrollment entry point: it reuses an existing DPAPI-protected credential when available and leaves the background supervisor as the single owner of managed tunnel profiles.
 
-In ChatGPT, create a custom plugin/app with Connection = Tunnel, select the tunnel, use no authentication for this server, review permissions, and create the plugin.
+In ChatGPT, create a custom MCP **app** with Connection = Tunnel, select the tunnel, use **None / No authentication** for this server, run **Scan Tools**, review permissions, and create the app. See [START_HERE.md](START_HERE.md) for the plan/workspace requirements and FINAL PASS checklist.
+
+For Plugin packaging, icons, app binding, and private/workspace distribution, see [docs/PLUGIN_SETUP.md](docs/PLUGIN_SETUP.md) and [plugin-template](plugin-template/). For a ChatGPT Work flow that uses `@plugin-creator`, creates a personal marketplace entry, and takes the user through the normal Plugin install approval, see [WORK_SETUP.md](WORK_SETUP.md).
 
 ## Tools
 
@@ -103,15 +111,15 @@ Filesystem containment is enforced, but command execution is **not an OS sandbox
 
 ## Validation
 
-v0.3.4 includes the v0.3 cross-platform gates plus persistent-enrollment, installer/update-path, in-memory `irm` execution, and runtime-upgrade validation. Windows and Linux syntax/install checks, safe and Power Mode smoke tests, concurrency tests, and secret scanning remain part of the release gate. Use `npm run check`, `npm test`, and `npm run audit` before releases.
+v0.4.0 includes the cross-platform gates plus canonical AI-assisted onboarding, Standard/Full guidance, persistent enrollment, current custom-app/Plugin instructions, icon assets, installer/update-path validation, and runtime-upgrade validation. Windows and Linux syntax/install checks, safe and Power Mode smoke tests, concurrency tests, and secret scanning remain part of the release gate. Use `npm run check`, `npm test`, and `npm run audit` before releases.
 
 ## License
 
 MIT — see [LICENSE](LICENSE).
 
-## Power Mode (v0.2)
+## Power Mode security model
 
-v0.2 adds an explicit Full-Control mode for trusted machines. The runtime automatically prefers `config.local.json` when present; this file is gitignored. The public `config.json` remains safe-by-default with Power Mode disabled.
+Power Mode is an explicit Full-Control mode for trusted machines. The runtime automatically prefers `config.local.json` when present; this file is gitignored. The public `config.json` remains safe-by-default with Power Mode disabled.
 
 On this machine, Power Mode can enable full filesystem access, direct PowerShell execution, process control, binary file I/O, recursive search, recoverable delete, and persistent terminal sessions. Existing files are backed up before Power Mode overwrite/move/delete operations. Permanent delete is separately gated and disabled in the provided local policy.
 

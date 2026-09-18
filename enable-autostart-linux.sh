@@ -43,10 +43,27 @@ free_port() {
   return 1
 }
 
-curl -fsS --max-time 3 http://127.0.0.1:47831/health | grep -q '"ok"' || {
-  echo 'ChatGPT Remote Commander MCP is not healthy on 127.0.0.1:47831.' >&2
-  exit 1
+mcp_healthy() {
+  curl -fsS --max-time 2 http://127.0.0.1:47831/health 2>/dev/null | grep -q '"ok"[[:space:]]*:[[:space:]]*true'
 }
+ensure_mcp() {
+  mcp_healthy && return 0
+  mkdir -p "$ROOT/var"
+  (
+    cd "$ROOT"
+    nohup npm start --silent >> "$ROOT/var/mcp-connect.out.log" 2>> "$ROOT/var/mcp-connect.err.log" &
+  )
+  for _ in $(seq 1 30); do
+    sleep 0.5
+    if mcp_healthy; then
+      echo 'MCP was not running; it has been started automatically.'
+      return 0
+    fi
+  done
+  echo 'Remote Commander MCP did not become healthy on 127.0.0.1:47831. Check var/mcp-connect.err.log.' >&2
+  return 1
+}
+ensure_mcp
 
 TUNNEL_EXE="$(find_tunnel)" || { echo 'tunnel-client not found; run install.sh first.' >&2; exit 1; }
 mkdir -p "$CRED_DIR"
