@@ -58,6 +58,15 @@ try {
     await writeFile(path.join(outside, 'secret.txt'), 'OUTSIDE');
     await assert.rejects(() => readAnyFile(ctx, { path: path.join(root, 'escape', 'secret.txt') }), /escapes allowed roots/);
     await assert.rejects(() => writeAnyFile(ctx, { path: path.join(root, 'escape', 'new.txt'), content: 'NO' }), /escapes allowed roots/);
+
+    const fullCtx = {
+      ...ctx,
+      config: { powerMode: { ...ctx.config.powerMode, fullFilesystem: true } }
+    };
+    await assert.rejects(
+      () => copyPath(fullCtx, { source: outside, destination: path.join(root, 'escape'), overwrite: true }),
+      /relationship is unsafe/
+    );
   }
 
   const events = [];
