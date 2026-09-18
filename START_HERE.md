@@ -54,9 +54,20 @@ On Windows, v0.5 can expose its own graphical-control MCP tools. This is an expl
 .\install.ps1 -PowerMode -GuiControl -StartServer -SkipTunnelClient
 ```
 
-When enabled and the ChatGPT app is re-scanned, the tool set includes live screenshots, cursor position, absolute/relative mouse movement, click/drag/scroll, Unicode typing, key combinations with hold duration, visible-window listing, and window focus. The assisting model should use a `gui_screenshot → gui action → gui_screenshot` loop and verify visible outcomes rather than assuming success.
+When enabled and the ChatGPT app is re-scanned, the tool set includes an exclusive desktop lease, live screenshots, cursor position, absolute/relative mouse movement, click/drag/scroll, Unicode typing, validated key combinations, visible-window listing, and exact/unique window focus.
 
-This removes the previous dependency on a separate Computer Use tool for ordinary Windows GUI workflows. It does **not** bypass Windows secure desktop/UAC, lock-screen boundaries, anti-cheat/protected-input systems, or the latency limits of real-time gameplay. If a target rejects synthetic input or requires lower latency than tool calls can provide, report that limitation rather than claiming success.
+Required workflow:
+1. call `gui_status` and require an available interactive desktop;
+2. acquire `gui_session_begin`;
+3. call `gui_screenshot` with the lease;
+4. inspect the image and keep the returned single-use `frame`;
+5. perform exactly one GUI mutation with both `lease` and `frame`;
+6. capture again and verify the visible result;
+7. renew the lease only while actively working and always end with `gui_session_end`.
+
+Do not queue stale GUI work across chats. The owner can stop GUI input locally with physical Escape or the `var\GUI_STOP` file; the assistant must not clear that stop remotely.
+
+This removes the previous dependency on a separate Computer Use tool for ordinary supported Windows GUI workflows. It does **not** bypass Windows Secure Desktop/UAC, lock-screen boundaries, anti-cheat/protected-input systems, or the latency limits of real-time gameplay.
 
 ### Optional ChatGPT-side Full permission
 
@@ -81,7 +92,7 @@ Open PowerShell 7 and run:
 
 ### Windows — Power Mode + GUI Control
 
-After v0.5 is published as a Release, add `-GuiControl` to the latest-release installer. For the current source branch/main checkout, run `.\install.ps1 -PowerMode -GuiControl -StartServer -SkipTunnelClient`, then refresh/re-scan the ChatGPT app tools. GUI Control is Windows-only in v0.5.
+For a v0.5 source checkout, run `.\install.ps1 -PowerMode -GuiControl -StartServer -SkipTunnelClient`, then refresh/re-scan the ChatGPT app tools. For a published v0.5 Release, the same `-GuiControl` switch applies to the Release installer. GUI Control is Windows-only in v0.5.
 
 ### Linux — Standard
 
