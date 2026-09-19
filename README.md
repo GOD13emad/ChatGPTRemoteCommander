@@ -139,7 +139,7 @@ Filesystem containment is enforced, but command execution is **not an OS sandbox
 
 ## Validation
 
-v0.5.0 includes GUI contract/coordination, transport-admission, filesystem-safety, runtime-ownership and the cross-platform gates plus canonical AI-assisted onboarding, Standard/Full guidance, persistent enrollment, current custom-app/Plugin instructions, icon assets, installer/update-path validation, and runtime-upgrade validation. Windows and Linux syntax/install checks, safe and Power Mode smoke tests, concurrency tests, and secret scanning remain part of the release gate. Use `npm run check`, `npm test`, and `npm run audit` before releases.
+v0.5.1 retains the v0.5.0 GUI/runtime feature set and adds release-integrity hardening: the concurrency smoke test now preserves the live `var/mcp-runtime.json` ownership marker instead of leaving the temporary test-server identity behind. GUI contract/coordination, transport-admission, filesystem-safety, runtime-ownership, onboarding, persistent enrollment, installer/update validation, concurrency and secret scanning remain release gates. Use `npm run check`, `npm test`, `npm run audit`, and on Windows `npm run test:gui-native` before releases.
 
 ## License
 

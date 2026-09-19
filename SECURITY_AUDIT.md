@@ -1,12 +1,12 @@
 # Security Audit
 
-Audit date: 2026-09-17
+Audit date: 2026-09-19
 
 ## Result
 
-PASS for the published repository content and reachable Git history checked locally.
+PASS for the current published repository content and reachable branch/tag history checked locally after remote-ref synchronization.
 
-The audit found no committed OpenAI-style API secret key, GitHub token, tunnel identifier, private-key block, bearer-token literal, tracked `config.local.json`, or developer-specific absolute Windows path. GitHub code search also returned no results for `tunnel_` or `sk-` on the default branch at audit time.
+The audit found no committed OpenAI-style API secret key, GitHub token, tunnel identifier, private-key block, bearer-token literal, tracked `config.local.json`, or developer-specific absolute Windows path. On 2026-09-19 a stale local tracking ref first exposed an already-sanitized developer-path finding, and the obsolete public `release/v0.5.0-rc1` branch contained tunnel-shaped self-test fixtures inside the audit test itself. The RC1 tip was backed up locally as a Git bundle before that obsolete branch was removed; after `git fetch --prune`, the unchanged audit returned `SECURITY_AUDIT_PASS`. No real Runtime API key or tunnel identifier was recovered from those findings.
 
 ## Controls verified
 
@@ -20,6 +20,7 @@ The audit found no committed OpenAI-style API secret key, GitHub token, tunnel i
 - Shutdown, restart, and logoff shell patterns remain blocked.
 - v0.3 path-scoped mutation locking passed concurrent same-path append testing on Windows and Linux.
 - Windows and Linux installer/parser/test gates passed locally before the v0.3 release candidate was staged.
+- v0.5.1 Windows release gates re-ran successfully on 2026-09-19: `npm run check`, `npm test`, `npm run audit`, and native GUI E2E. The concurrency test now restores the pre-existing runtime ownership marker.
 
 ## Privacy note
 

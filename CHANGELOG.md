@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.1 — 2026-09-19
+
+- Fixed concurrency-test isolation so `npm test` preserves the live `var/mcp-runtime.json` ownership marker instead of leaving the temporary port-47931 test server identity behind.
+- Verified the fix against a live supervised v0.5.x runtime: the runtime-state SHA-256 was identical before and after the full test suite, then controlled MCP recycle restored a self-written marker for the actual port-47831 process.
+- Re-ran `npm run check`, `npm test`, `npm run audit`, and the native Windows GUI E2E gate successfully after the fix.
+- Removed the obsolete public `release/v0.5.0-rc1` branch after creating a local rollback bundle; this removed stale audit-only test fixtures from reachable public branch history and restored `SECURITY_AUDIT_PASS`.
+- Keeps the v0.5.0 GUI/runtime feature set and security boundaries unchanged; this is a maintenance and release-integrity patch.
+
 ## 0.5.0 — 2026-09-18
 
 - Added opt-in Windows GUI Control for trusted Power Mode machines with MCP image screenshots, mouse move/delta/click/drag/scroll, Unicode typing, bounded key combinations, window discovery/focus, and a local emergency stop.

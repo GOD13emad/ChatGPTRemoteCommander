@@ -12,7 +12,7 @@ import { executeGuiTool, guiToolDefinitions } from './gui-tools-windows.mjs';
 import { lockStats } from './locks.mjs';
 import { expandPathValue, shellName } from './platform.mjs';
 
-const VERSION = '0.5.0';
+const VERSION = '0.5.1';
 const MODERN_VERSION = '2026-07-28';
 const LEGACY_VERSIONS = ['2025-11-25', '2025-06-18', '2025-03-26'];
 const here = path.dirname(fileURLToPath(import.meta.url));
