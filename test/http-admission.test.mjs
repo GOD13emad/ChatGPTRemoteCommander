@@ -24,7 +24,7 @@ test('real candidate HTTP dispatcher blocks browser origins and keeps local JSON
     await fs.writeFile(path.join(root,'src','power-tools-v0.3.mjs'),'export const powerToolDefinitions=[]; export const executePowerTool=async()=>({stub:true});');
     await fs.writeFile(path.join(root,'src','locks.mjs'),'export const lockStats=()=>({stub:true});');
     await fs.writeFile(path.join(root,'src','platform.mjs'),'export const expandPathValue=x=>x; export const shellName=()=>"stub";');
-    await fs.writeFile(path.join(root,'config.json'),JSON.stringify({host:'127.0.0.1',port,allowedRoots:[root],allowedPrograms:[],powerMode:{enabled:false}}));
+    await fs.writeFile(path.join(root,'config.json'),JSON.stringify({host:'127.0.0.1',port,allowedRoots:[root],allowedPrograms:[],powerMode:{enabled:true,fullFilesystem:true,guiControl:{enabled:false}}}));
     child=spawn(process.execPath,[path.join(root,'src','server-v0.3.mjs')],{env:{...process.env,REMOTE_COMMANDER_CONFIG:path.join(root,'config.json')},stdio:['ignore','pipe','pipe']});
     let stderr='';child.stderr.on('data',c=>stderr+=c);
     let alive=false;
@@ -36,6 +36,27 @@ test('real candidate HTTP dispatcher blocks browser origins and keeps local JSON
     assert.equal(good.status,200);assert.equal(good.headers.get('cache-control'),'no-store');
     const data=await good.json();assert.equal(data.result.structuredContent.name,'chatgpt-remote-commander');
     assert.equal(data.result.structuredContent.guiControl.availability,'CHECK_gui_status');
+    assert.equal(data.result.structuredContent.allowedRootsEnforced,false);
+    assert.equal(data.result.structuredContent.effectiveAccess.filesystem,'full-filesystem');
+    assert.equal(data.result.structuredContent.effectiveAccess.legacyFiveToolCompatibility,true);
+
+    const listResponse=await fetch(`http://127.0.0.1:${port}/mcp`,{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({jsonrpc:'2.0',id:11,method:'tools/list',params:{}})
+    });
+    const listed=await listResponse.json();
+    const legacyListTool=listed.result.tools.find(tool=>tool.name==='list_directory');
+    const legacyRunTool=listed.result.tools.find(tool=>tool.name==='run_project_command');
+    assert.match(legacyListTool.description,/outside configured allowedRoots/);
+    assert.match(legacyRunTool.description,/outside configured allowedRoots/);
+
+    const initResponse=await fetch(`http://127.0.0.1:${port}/mcp`,{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({jsonrpc:'2.0',id:12,method:'initialize',params:{protocolVersion:'2025-06-18'}})
+    });
+    const initialized=await initResponse.json();
+    assert.match(initialized.result.instructions,/full-filesystem is enabled/);
+    assert.match(initialized.result.instructions,/not an active filesystem boundary/);
     const evil=await send({'Content-Type':'application/json',Origin:'https://untrusted.invalid'});assert.equal(evil.status,403);
     const form=await send({'Content-Type':'text/plain'});assert.equal(form.status,415);
     // Node fetch normalizes Host; use raw http.request and assert the sent header.

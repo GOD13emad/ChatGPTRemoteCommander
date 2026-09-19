@@ -12,7 +12,7 @@ import { executeGuiTool, guiToolDefinitions } from './gui-tools-windows.mjs';
 import { lockStats } from './locks.mjs';
 import { expandPathValue, shellName } from './platform.mjs';
 
-const VERSION = '0.5.1';
+const VERSION = '0.5.2';
 const MODERN_VERSION = '2026-07-28';
 const LEGACY_VERSIONS = ['2025-11-25', '2025-06-18', '2025-03-26'];
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -38,16 +38,24 @@ const ctx = {
   auditLog: path.resolve(projectDir, config.auditLog || 'var/audit.jsonl')
 };
 const GUI_ENABLED = process.platform === 'win32' && config.powerMode?.enabled === true && config.powerMode?.guiControl?.enabled === true;
+const LEGACY_FULL_FILESYSTEM = config.powerMode?.enabled === true && config.powerMode?.fullFilesystem === true;
+
+function operatingInstructions() {
+  if (LEGACY_FULL_FILESYSTEM) {
+    return 'Power Mode full-filesystem is enabled. configured/allowedRoots are Standard Mode roots and the default relative-path base, not an active filesystem boundary. Legacy list_directory/read_text/write_text/run_project_command accept absolute paths outside allowedRoots subject to OS permissions and policy. run_project_command remains executable-allowlisted and Python -c / Node eval-print remain blocked. Prefer read-only inspection before mutation.';
+  }
+  return 'Operate only inside configured project roots. Prefer read-only inspection before mutation. Concurrent chats are supported with per-path mutation locks.';
+}
 const TOOLS = [
   {
     name: 'system_status',
-    description: 'Return server version, allowed roots, command allowlist, and protocol support.',
+    description: 'Return server version, configured roots, effective filesystem access, command allowlist, Power Mode state, and protocol support.',
     inputSchema: { type: 'object', properties: {}, additionalProperties: false },
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false }
   },
   {
     name: 'list_directory',
-    description: 'List a directory inside an allowed project root with bounded recursion.',
+    description: LEGACY_FULL_FILESYSTEM ? 'List a directory with bounded recursion. Power Mode fullFilesystem=true permits absolute paths outside configured allowedRoots.' : 'List a directory inside an allowed project root with bounded recursion.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -61,7 +69,7 @@ const TOOLS = [
   },
   {
     name: 'read_text',
-    description: 'Read a UTF-8 text file inside an allowed root and return its SHA-256 hash.',
+    description: LEGACY_FULL_FILESYSTEM ? 'Read a UTF-8 text file and return its SHA-256 hash. Power Mode fullFilesystem=true permits absolute paths outside configured allowedRoots.' : 'Read a UTF-8 text file inside an allowed root and return its SHA-256 hash.',
     inputSchema: {
       type: 'object',
       properties: { path: { type: 'string', minLength: 1 } },
@@ -72,7 +80,7 @@ const TOOLS = [
   },
   {
     name: 'write_text',
-    description: 'Write or append UTF-8 text inside an allowed root. Existing files are backed up first.',
+    description: LEGACY_FULL_FILESYSTEM ? 'Write or append UTF-8 text. Power Mode fullFilesystem=true permits absolute paths outside configured allowedRoots; existing files are backed up using the Power Mode backup root.' : 'Write or append UTF-8 text inside an allowed root. Existing files are backed up first.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -88,7 +96,7 @@ const TOOLS = [
   },
   {
     name: 'run_project_command',
-    description: 'Run one allowlisted executable directly in an allowed project directory without a shell.',
+    description: LEGACY_FULL_FILESYSTEM ? 'Run one allowlisted executable directly without a shell. Power Mode fullFilesystem=true permits cwd and path arguments outside configured allowedRoots; Python -c and Node eval/print remain blocked.' : 'Run one allowlisted executable directly in an allowed project directory without a shell.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -136,7 +144,19 @@ async function executeTool(name, args) {
         deviceName: config.deviceName || os.hostname(),
         platform: process.platform, arch: process.arch, shell: shellName(),
         protocols: [MODERN_VERSION, ...LEGACY_VERSIONS],
-        host: config.host, port: config.port, allowedRoots: roots,
+        host: config.host, port: config.port,
+        allowedRoots: roots,
+        configuredRoots: roots,
+        allowedRootsEnforced: !LEGACY_FULL_FILESYSTEM,
+        effectiveAccess: {
+          filesystem: LEGACY_FULL_FILESYSTEM ? 'full-filesystem' : 'allowed-roots',
+          legacyFiveToolCompatibility: LEGACY_FULL_FILESYSTEM,
+          legacyFileTools: LEGACY_FULL_FILESYSTEM ? 'full-filesystem' : 'allowed-roots',
+          runProjectCommandCwd: LEGACY_FULL_FILESYSTEM ? 'full-filesystem' : 'allowed-roots',
+          programPolicy: 'allowlist',
+          evalPolicy: 'python-c-and-node-eval-print-blocked',
+          osPermissionsApply: true
+        },
         allowedPrograms: config.allowedPrograms,
         concurrency: { httpConcurrent: true, pathMutationLocks: true, ...lockStats() },
         configSha256,
@@ -216,14 +236,14 @@ async function handleMessage(req, message) {
         protocolVersion,
         capabilities: { tools: {} },
         serverInfo: { name: 'chatgpt-remote-commander', version: VERSION },
-        instructions: 'Operate only inside configured project roots. Multiple chats may call concurrently; mutations are serialized per path.'
+        instructions: operatingInstructions()
       }, false) };
     }
     if (modern && message.method === 'server/discover') {
       return { status: 200, body: rpcResult(message.id, {
         supportedVersions: [MODERN_VERSION],
         capabilities: { tools: {} },
-        instructions: 'Operate only inside configured project roots. Prefer read-only inspection before mutation. Concurrent chats are supported with per-path mutation locks.',
+        instructions: operatingInstructions(),
         ttlMs: 300000,
         cacheScope: 'public'
       }, true) };

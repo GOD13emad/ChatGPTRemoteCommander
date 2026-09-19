@@ -21,6 +21,7 @@ The audit found no committed OpenAI-style API secret key, GitHub token, tunnel i
 - v0.3 path-scoped mutation locking passed concurrent same-path append testing on Windows and Linux.
 - Windows and Linux installer/parser/test gates passed locally before the v0.3 release candidate was staged.
 - v0.5.1 Windows release gates re-ran successfully on 2026-09-19: `npm run check`, `npm test`, `npm run audit`, and native GUI E2E. The concurrency test now restores the pre-existing runtime ownership marker.
+- v0.5.2 restores legacy five-tool full-filesystem behavior only when explicit Power Mode is enabled with `fullFilesystem=true`; Standard Mode root containment remains unchanged. Executable allowlisting and eval/print blocks remain enforced for `run_project_command`.
 
 ## Privacy note
 

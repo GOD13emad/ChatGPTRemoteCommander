@@ -6,9 +6,17 @@ import {
   powerStatus, readAnyFile, runShell, searchFiles,
   startTerminal, readTerminal, stopTerminal, writeAnyFile
 } from '../src/power-tools-v0.3.mjs';
+import {
+  listDirectory as legacyListDirectory,
+  readText as legacyReadText,
+  runProjectCommand as legacyRunProjectCommand,
+  writeText as legacyWriteText
+} from '../src/tools-v0.3.mjs';
 
 const root = path.resolve('test', '.tmp-power-v03-root');
 const backups = path.resolve('test', '.tmp-power-v03-backups');
+const legacyOutside = path.resolve('test', '.tmp-legacy-power-v03-outside');
+const legacyAudit = path.resolve('test', '.tmp-legacy-power-v03-audit.jsonl');
 const cleanup = async (target) => {
   for (let attempt = 0; attempt < 5; attempt += 1) {
     try { await rm(target, { recursive: true, force: true }); return; }
@@ -20,12 +28,22 @@ const cleanup = async (target) => {
 };
 await cleanup(root);
 await cleanup(backups);
+await cleanup(legacyOutside);
+await rm(legacyAudit, { force: true });
+await cleanup(legacyOutside);
+await rm(legacyAudit, { force: true });
 await mkdir(root, { recursive: true });
+await mkdir(legacyOutside, { recursive: true });
 const ctx = {
   roots: [root],
+  auditLog: legacyAudit,
   config: {
+    maxReadBytes: 1024 * 1024,
+    maxWriteBytes: 1024 * 1024,
+    maxCommandMs: 10000,
+    allowedPrograms: ['git', 'node'],
     powerMode: {
-      enabled: true, fullFilesystem: false, allowShell: true,
+      enabled: true, fullFilesystem: true, allowShell: true,
       allowProcessControl: true, allowPermanentDelete: false,
       backupRoot: backups, maxFileBytes: 1024 * 1024,
       maxCommandMs: 10000, maxOutputBytes: 1024 * 1024,
@@ -90,6 +108,41 @@ assert.equal(afterConflict.sha256, before.sha256);
 const deleted = await deletePath(ctx, { path: path.join(root, 'moved.txt') });
 assert.ok(deleted.backupPath);
 await assert.rejects(() => deletePath(ctx, { path: path.join(root, 'a'), permanent: true }), /permanent delete is disabled/);
+
+// Legacy five-tool compatibility: explicit Power Mode fullFilesystem must be effective
+// even when the target is outside configured roots.
+const legacyFile = path.join(legacyOutside, 'legacy.txt');
+let legacyWrite = await legacyWriteText(ctx, { path: legacyFile, content: 'legacy-alpha' });
+assert.equal(legacyWrite.beforeSha256, null);
+const legacyFirstHash = legacyWrite.sha256;
+legacyWrite = await legacyWriteText(ctx, {
+  path: legacyFile, content: 'legacy-beta', expectedSha256: legacyFirstHash
+});
+assert.ok(legacyWrite.backupPath);
+assert.ok(path.resolve(legacyWrite.backupPath).startsWith(path.resolve(backups) + path.sep));
+const legacyRead = await legacyReadText(ctx, { path: legacyFile });
+assert.equal(legacyRead.text, 'legacy-beta');
+const legacyListing = await legacyListDirectory(ctx, { path: legacyOutside, depth: 0, maxEntries: 20 });
+assert.ok(legacyListing.entries.some((entry) => entry.path === 'legacy.txt'));
+assert.equal(legacyListing.entries.some((entry) => entry.path === '.remote-commander-backups'), false);
+
+const legacyScript = path.join(legacyOutside, 'legacy-command.mjs');
+await legacyWriteText(ctx, {
+  path: legacyScript,
+  content: "console.log('LEGACY_POWER_COMMAND_PASS')\n"
+});
+const legacyCommand = await legacyRunProjectCommand(ctx, {
+  program: 'node', args: [legacyScript], cwd: legacyOutside, timeoutMs: 5000
+});
+assert.equal(legacyCommand.exitCode, 0);
+assert.match(legacyCommand.stdout, /LEGACY_POWER_COMMAND_PASS/);
+await assert.rejects(
+  () => legacyRunProjectCommand(ctx, {
+    program: 'node', args: ['--eval=console.log(1)'], cwd: legacyOutside, timeoutMs: 5000
+  }),
+  /eval\/print/
+);
+console.log('LEGACY_POWER_COMPAT_V03_PASS');
 console.log('POWER_SMOKE_V03_PASS');
 await cleanup(root);
 await cleanup(backups);

@@ -45,7 +45,7 @@ async function nearestExistingAncestor(candidate) {
   }
 }
 
-async function resolveExistingTarget(ctx, userPath, base = ctx.roots[0]) {
+export async function resolveExistingTarget(ctx, userPath, base = ctx.roots[0]) {
   const candidate = lexicalTarget(ctx, userPath, base);
   const resolved = await realpath(candidate);
   if (power(ctx).fullFilesystem !== true && !isWithin(resolved, ctx.roots)) {
@@ -54,7 +54,7 @@ async function resolveExistingTarget(ctx, userPath, base = ctx.roots[0]) {
   return resolved;
 }
 
-async function resolveWritableTarget(ctx, userPath, base = ctx.roots[0]) {
+export async function resolveWritableTarget(ctx, userPath, base = ctx.roots[0]) {
   const candidate = lexicalTarget(ctx, userPath, base);
   try {
     const info = await lstat(candidate);

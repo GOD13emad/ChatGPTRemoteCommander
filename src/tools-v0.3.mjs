@@ -11,9 +11,19 @@ import {
   validateCommandArgs,
   validateProgram
 } from './security-v0.3.mjs';
+import { resolveExistingTarget, writeAnyFile } from './power-tools-v0.3.mjs';
 
 export function sha256(data) {
   return createHash('sha256').update(data).digest('hex');
+}
+
+function legacyPowerFullFilesystem(ctx) {
+  return ctx.config.powerMode?.enabled === true && ctx.config.powerMode?.fullFilesystem === true;
+}
+
+async function legacyExistingPath(ctx, userPath, base = ctx.roots[0]) {
+  if (legacyPowerFullFilesystem(ctx)) return resolveExistingTarget(ctx, userPath, base);
+  return safeExistingPath(userPath, ctx.roots, base);
 }
 
 export async function audit(ctx, record) {
@@ -37,7 +47,7 @@ async function walkDirectory(dir, depth, maxEntries, base, out) {
 }
 
 export async function listDirectory(ctx, input) {
-  const target = await safeExistingPath(input.path ?? '.', ctx.roots, ctx.roots[0]);
+  const target = await legacyExistingPath(ctx, input.path ?? '.', ctx.roots[0]);
   const info = await stat(target);
   if (!info.isDirectory()) throw new Error('path is not a directory');
   const depth = Math.max(0, Math.min(Number(input.depth ?? 1), 4));
@@ -48,11 +58,15 @@ export async function listDirectory(ctx, input) {
   return { target, depth, truncated: entries.length >= maxEntries, entries };
 }
 export async function readText(ctx, input) {
-  const target = await safeExistingPath(input.path, ctx.roots, ctx.roots[0]);
+  const fullFilesystem = legacyPowerFullFilesystem(ctx);
+  const target = await legacyExistingPath(ctx, input.path, ctx.roots[0]);
   const info = await stat(target);
   if (!info.isFile()) throw new Error('path is not a file');
-  if (info.size > ctx.config.maxReadBytes) {
-    throw new Error(`file exceeds maxReadBytes (${ctx.config.maxReadBytes})`);
+  const maxReadBytes = Number(fullFilesystem
+    ? (ctx.config.powerMode?.maxFileBytes ?? ctx.config.maxReadBytes ?? 524288)
+    : (ctx.config.maxReadBytes ?? 524288));
+  if (info.size > maxReadBytes) {
+    throw new Error(`file exceeds maxReadBytes (${maxReadBytes})`);
   }
   const buffer = await readFile(target);
   if (buffer.includes(0)) throw new Error('binary files are not supported by read_text');
@@ -63,18 +77,40 @@ export async function readText(ctx, input) {
     sha256: sha256(buffer),
     text
   };
-  await audit(ctx, { action: 'read_text', target, ok: true, bytes: buffer.length });
+  await audit(ctx, { action: 'read_text', target, ok: true, bytes: buffer.length, powerModeFullFilesystem: fullFilesystem });
   return result;
 }
 export async function writeText(ctx, input) {
   if (typeof input.content !== 'string') throw new Error('content must be a string');
+  const fullFilesystem = legacyPowerFullFilesystem(ctx);
   const bytes = Buffer.byteLength(input.content, 'utf8');
-  if (bytes > ctx.config.maxWriteBytes) {
-    throw new Error(`content exceeds maxWriteBytes (${ctx.config.maxWriteBytes})`);
+  const maxWriteBytes = Number(fullFilesystem
+    ? (ctx.config.powerMode?.maxFileBytes ?? ctx.config.maxWriteBytes ?? 524288)
+    : (ctx.config.maxWriteBytes ?? 524288));
+  if (bytes > maxWriteBytes) {
+    throw new Error(`content exceeds maxWriteBytes (${maxWriteBytes})`);
   }
+  const mode = input.mode === 'append' ? 'append' : 'overwrite';
+
+  if (fullFilesystem) {
+    const result = await writeAnyFile(ctx, {
+      path: input.path,
+      content: input.content,
+      mode,
+      expectedSha256: input.expectedSha256,
+      encoding: 'utf8',
+      createParents: false
+    });
+    const adapted = { ...result, mode };
+    await audit(ctx, {
+      action: 'write_text', target: adapted.path, ok: true, mode, bytes,
+      backupPath: adapted.backupPath, powerModeFullFilesystem: true
+    });
+    return adapted;
+  }
+
   const target = await safeWritablePath(input.path, ctx.roots, ctx.roots[0]);
   return withPathLocks([target], async () => {
-    const mode = input.mode === 'append' ? 'append' : 'overwrite';
     let beforeHash = null;
     let backupPath = null;
     try {
@@ -101,11 +137,12 @@ export async function writeText(ctx, input) {
   });
 }
 export async function runProjectCommand(ctx, input) {
+  const fullFilesystem = legacyPowerFullFilesystem(ctx);
   const program = validateProgram(input.program, ctx.config.allowedPrograms);
-  const cwd = await safeExistingPath(input.cwd ?? '.', ctx.roots, ctx.roots[0]);
+  const cwd = await legacyExistingPath(ctx, input.cwd ?? '.', ctx.roots[0]);
   const info = await stat(cwd);
   if (!info.isDirectory()) throw new Error('cwd is not a directory');
-  const args = validateCommandArgs(program, input.args ?? [], cwd, ctx.roots);
+  const args = validateCommandArgs(program, input.args ?? [], cwd, ctx.roots, { fullFilesystem });
   const requested = Number(input.timeoutMs ?? ctx.config.maxCommandMs);
   const timeoutMs = Math.max(1000, Math.min(requested, ctx.config.maxCommandMs));
   const child = spawn(program, args, {
@@ -133,7 +170,7 @@ export async function runProjectCommand(ctx, input) {
   };
   await audit(ctx, {
     action: 'run_project_command', program, args, cwd, ok: !timedOut && outcome.code === 0,
-    exitCode: outcome.code, timedOut
+    exitCode: outcome.code, timedOut, powerModeFullFilesystem: fullFilesystem
   });
   return result;
 }

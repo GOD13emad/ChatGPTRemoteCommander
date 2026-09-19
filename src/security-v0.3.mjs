@@ -76,7 +76,7 @@ export function validateProgram(program, allowedPrograms) {
   if (!allowed.includes(normalized)) throw new Error(`program not allowed: ${program}`);
   return program;
 }
-export function validateCommandArgs(program, args, cwd, roots) {
+export function validateCommandArgs(program, args, cwd, roots, options = {}) {
   if (!Array.isArray(args) || args.some((arg) => typeof arg !== 'string')) {
     throw new Error('args must be an array of strings');
   }
@@ -87,6 +87,8 @@ export function validateCommandArgs(program, args, cwd, roots) {
   if (name === 'node' && args.some((a) => a === '-e' || a.startsWith('-e') || a === '--eval' || a.startsWith('--eval=') || a === '-p' || a.startsWith('-p') || a === '--print' || a.startsWith('--print='))) {
     throw new Error('node eval/print is blocked; run a project script file instead');
   }
+  const fullFilesystem = options.fullFilesystem === true;
+  if (fullFilesystem) return args;
   for (const arg of args) {
     const possible = arg.includes('=') ? arg.slice(arg.indexOf('=') + 1) : arg;
     const absolute = path.isAbsolute(possible) || WIN_ABS.test(possible);

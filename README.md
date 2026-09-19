@@ -139,7 +139,7 @@ Filesystem containment is enforced, but command execution is **not an OS sandbox
 
 ## Validation
 
-v0.5.1 retains the v0.5.0 GUI/runtime feature set and adds release-integrity hardening: the concurrency smoke test now preserves the live `var/mcp-runtime.json` ownership marker instead of leaving the temporary test-server identity behind. GUI contract/coordination, transport-admission, filesystem-safety, runtime-ownership, onboarding, persistent enrollment, installer/update validation, concurrency and secret scanning remain release gates. Use `npm run check`, `npm test`, `npm run audit`, and on Windows `npm run test:gui-native` before releases.
+v0.5.2 retains the v0.5.1 GUI/runtime and release-integrity hardening, and restores Power Mode compatibility for the five legacy MCP tools. When explicit Power Mode has `fullFilesystem=true`, configured `allowedRoots` remain Standard Mode/default-base roots rather than an active filesystem boundary: legacy file tools and `run_project_command` can use absolute paths outside them, while executable allowlisting and the `python -c` / Node eval-print blocks remain enforced. `system_status` exposes the effective access state so clients can distinguish configured roots from enforced roots. Use `npm run check`, `npm test`, `npm run audit`, and on Windows `npm run test:gui-native` before releases.
 
 ## License
 

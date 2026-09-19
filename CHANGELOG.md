@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.5.2 — 2026-09-19
+
+- Restored full-filesystem compatibility for the five legacy MCP tools when explicit Power Mode has `fullFilesystem=true`. `list_directory`, `read_text`, `write_text`, and `run_project_command` can now use absolute paths outside configured `allowedRoots` subject to OS permissions and the existing policy.
+- Kept command hardening intact: `run_project_command` remains executable-allowlisted, while `python -c` and Node eval/print modes remain blocked.
+- Power-mode legacy writes outside configured roots now use the configured Power Mode backup root instead of creating repository-style backup directories beside the target.
+- Added explicit effective-access signaling to `system_status`: `allowedRootsEnforced`, `effectiveAccess.filesystem`, and `legacyFiveToolCompatibility`.
+- Updated MCP tool descriptions and server instructions so clients do not misinterpret configured roots as an active boundary while full-filesystem Power Mode is enabled.
+- Added regression coverage for legacy read/write/list/command access outside configured roots plus HTTP/MCP metadata/instruction consistency.
+
 ## 0.5.1 — 2026-09-19
 
 - Fixed concurrency-test isolation so `npm test` preserves the live `var/mcp-runtime.json` ownership marker instead of leaving the temporary port-47931 test server identity behind.
