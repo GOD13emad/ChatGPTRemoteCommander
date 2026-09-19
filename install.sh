@@ -7,7 +7,7 @@ POWER_MODE=0
 START_SERVER=0
 INSTALL_PREREQS=0
 TUNNEL_VERSION="0.0.14"
-SOURCE_REF="${REMOTE_COMMANDER_SOURCE_REF:-v0.6.5}"
+SOURCE_REF="${REMOTE_COMMANDER_SOURCE_REF:-v0.7.0}"
 EXPECTED_COMMIT="${REMOTE_COMMANDER_EXPECTED_COMMIT:-}"
 CURL_CONNECT_TIMEOUT="${REMOTE_COMMANDER_CURL_CONNECT_TIMEOUT:-15}"
 CURL_MAX_TIME="${REMOTE_COMMANDER_CURL_MAX_TIME:-180}"
@@ -19,7 +19,7 @@ Usage: install.sh [options]
   --install-prerequisites   Install basic OS packages and portable Node 22+ if needed
   --power-mode              Enable local Full-Control policy
   --start-server            Start MCP server with nohup after validation
-  --source-ref REF          Git ref to install (default: v0.6.5)
+  --source-ref REF          Git ref to install (default: v0.7.0)
   --expected-commit SHA     Require the fetched ref to peel to this exact 40-hex commit
   -h, --help                Show help
 USAGE

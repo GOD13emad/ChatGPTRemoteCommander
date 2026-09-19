@@ -321,3 +321,28 @@ Continue through install/update, Secure MCP Tunnel, persistent enrollment, ChatG
 ### GUI backend implementation note
 
 Windows GUI Control uses bounded **synthetic input** in the current interactive user session for mouse and keyboard actions. A submitted input is not considered successful until a fresh screenshot confirms the visible result. It does not bypass Secure Desktop/UAC, the lock screen, protected-input/anti-cheat restrictions, or real-time latency limits.
+
+
+## v0.7 durable workflows and multi-account isolation
+
+For long-running project work, enable durable workflows only after deciding the account boundary. The primary profile can enable its private local store with:
+
+```powershell
+.\configure-durable-workflows.ps1
+```
+
+Additional ChatGPT accounts on the same PC should use a separate local MCP instance before durable memory is enabled:
+
+```powershell
+.\configure-profile-instance.ps1 -Profile "saeed-emad"
+```
+
+or during enrollment:
+
+```powershell
+.\connect-chatgpt-account.ps1 -Profile "saeed-emad" -HealthPort 47833 -Isolate
+```
+
+The isolated secondary profile gets a distinct loopback MCP port, runtime marker, audit log and workflow database. It defaults to Standard Mode with shell/process/GUI/full-filesystem access off. This is an application/configuration boundary, not an OS sandbox; use separate Windows users/VMs for principals with materially different OS-level trust.
+
+Durable workflow state records project goal, acceptance criteria, steps, typed notes, checkpoint evidence hashes and an exact next action. It never automatically replays an uncertain external effect after interruption. Use `workflow_resume` and reconcile evidence deliberately.

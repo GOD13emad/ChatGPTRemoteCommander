@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.7.0 — 2026-09-19
+
+- Add opt-in durable project workflows with crash-safe intent/receipt journaling, checkpoint evidence hashes, resume/reconcile semantics and logical export.
+- Add per-profile local MCP isolation so additional ChatGPT accounts can use distinct ports, configs, audit logs, runtime markers and private workflow databases.
+- Add transactional Windows profile migration that reuses the existing tunnel ID and DPAPI Runtime API credential, validates a candidate MCP with tunnel-client doctor, and rolls back the profile on failure.
+- Keep isolated secondary profiles conservative by default: Standard Mode, no shell/process/GUI/full-filesystem access unless explicitly opted in.
+- Integrate workflow/profile recovery tests into standard release gates.
+
+
 ## 0.6.5 — 2026-09-19
 
 - Fail closed when `expectedSha256` is malformed or targets a missing file; no parent/file creation occurs on a failed precondition.

@@ -10,6 +10,9 @@ The audit found no committed OpenAI-style API secret key, GitHub token, tunnel i
 
 ## Controls verified
 
+- v0.7.0 isolates optional durable-memory stores and local MCP runtime markers per tunnel profile. Additional isolated profiles default to Standard Mode; Power/GUI are explicit opt-ins. Runtime API credentials stay in the existing DPAPI store and are not copied into instance configs.
+- v0.7.0 migration validates the candidate local MCP and a temporary tunnel profile before switching the live profile URL, backs up the profile with a hash check, and restores it on failure.
+
 - `config.local.json` is ignored and is not tracked.
 - `.env`, audit logs, temporary test files, backups, local connection files, and bundled tunnel-client binaries are ignored.
 - Public `config.json` keeps Power Mode disabled by default.
