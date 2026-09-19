@@ -184,6 +184,8 @@ function Start-TunnelProfile($Item) {
     [void]$psi.ArgumentList.Add('run')
     [void]$psi.ArgumentList.Add('--profile')
     [void]$psi.ArgumentList.Add($Item.Profile)
+    [void]$psi.ArgumentList.Add('--profile-dir')
+    [void]$psi.ArgumentList.Add($ProfileDir)
     [void]$psi.ArgumentList.Add('--log.file')
     [void]$psi.ArgumentList.Add($log)
     $psi.Environment['CONTROL_PLANE_API_KEY'] = $plain

@@ -24,7 +24,9 @@ hasAll(enable, [
   "TunnelId does not match the existing profile",
   "HealthPort does not match the existing profile",
   "saved only after tunnel validation passes",
-  "Move-Item -LiteralPath $tmpCred -Destination $CredFile -Force"
+  "Move-Item -LiteralPath $tmpCred -Destination $CredFile -Force",
+  "--profile-dir $ProfileDir",
+  "Test-AnyProfileProcess"
 ], 'enable-autostart.ps1');
 
 const supervisor = read('autostart-windows.ps1');
@@ -33,7 +35,9 @@ hasAll(supervisor, [
   "PROFILE_SKIPPED_INVALID",
   "ExecutablePath",
   "TUNNEL_READY",
-  "Test-TunnelReady"
+  "Test-TunnelReady",
+  "ArgumentList.Add('--profile-dir')",
+  "ArgumentList.Add($ProfileDir)"
 ], 'autostart-windows.ps1');
 
 const disable = read('disable-autostart.ps1');

@@ -89,6 +89,14 @@ function Test-ProfileProcess([string]$Exe, [string]$Name) {
     Select-Object -First 1
 }
 
+function Test-AnyProfileProcess([string]$Name) {
+  $escaped = [regex]::Escape($Name)
+  $profileRegex = '--profile(?:=|\s+)["'']?' + $escaped + '["'']?(?:\s|$)'
+  return Get-CimInstance Win32_Process -Filter "Name='tunnel-client.exe'" -ErrorAction SilentlyContinue |
+    Where-Object { $_.CommandLine -and $_.CommandLine -match $profileRegex } |
+    Select-Object -First 1
+}
+
 function Test-TunnelReady([int]$Port) {
   if ($Port -le 0) { return $false }
   try {
@@ -155,7 +163,7 @@ try {
   $env:CONTROL_PLANE_API_KEY = $PlainKey
 
   if (-not $ProfileExists) {
-    & $TunnelExe init --sample sample_mcp_remote_no_auth --profile $Profile --tunnel-id $TunnelId --mcp-server-url $McpUrl --health-listen-addr "127.0.0.1:$HealthPort" --force
+    & $TunnelExe init --sample sample_mcp_remote_no_auth --profile $Profile --profile-dir $ProfileDir --tunnel-id $TunnelId --mcp-server-url $McpUrl --health-listen-addr "127.0.0.1:$HealthPort" --force
     if ($LASTEXITCODE -ne 0) {
       throw "tunnel-client init failed: $LASTEXITCODE"
     }
@@ -163,12 +171,15 @@ try {
   }
 
   $runningProfile = Test-ProfileProcess $TunnelExe $Profile
+  if (-not $runningProfile) {
+    $runningProfile = Test-AnyProfileProcess $Profile
+  }
   $ready = [bool]($runningProfile -and (Test-TunnelReady $HealthPort))
 
   if ($ready -and -not $PersistCredential) {
     Write-Host "Existing tunnel profile $Profile is already ready on health port $HealthPort; doctor bind check skipped."
   } else {
-    & $TunnelExe doctor --profile $Profile --explain
+    & $TunnelExe doctor --profile $Profile --profile-dir $ProfileDir --explain
     if ($LASTEXITCODE -ne 0) {
       throw "tunnel-client doctor failed: $LASTEXITCODE"
     }
