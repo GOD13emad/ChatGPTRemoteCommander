@@ -11,10 +11,12 @@ import { executePowerTool, powerToolDefinitions } from './power-tools-v0.3.mjs';
 import { executeGuiTool, guiToolDefinitions } from './gui-tools-windows.mjs';
 import { lockStats } from './locks.mjs';
 import { expandPathValue, shellName } from './platform.mjs';
+import { formatToolInputErrors, validateJsonSchema } from './schema-validator.mjs';
 
 const VERSION = '0.5.2';
 const MODERN_VERSION = '2026-07-28';
 const LEGACY_VERSIONS = ['2025-11-25', '2025-06-18', '2025-03-26'];
+const MODERN_CACHE_HINT = Object.freeze({ ttlMs: 30000, cacheScope: 'private' });
 const here = path.dirname(fileURLToPath(import.meta.url));
 const projectDir = path.resolve(here, '..');
 const defaultConfigPath = path.join(projectDir, 'config.json');
@@ -92,7 +94,7 @@ const TOOLS = [
       required: ['path', 'content'],
       additionalProperties: false
     },
-    annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false }
+    annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false }
   },
   {
     name: 'run_project_command',
@@ -125,6 +127,23 @@ function legacyResult(payload) {
   return payload;
 }
 
+function toolDefinition(name) {
+  return typeof name === 'string' ? TOOLS.find(tool => tool.name === name) : undefined;
+}
+
+function toolErrorPayload(message) {
+  return {
+    content: [{ type: 'text', text: String(message) }],
+    isError: true
+  };
+}
+
+function toolSuccessPayload(result) {
+  return result?.__mcpContent
+    ? { content: result.__mcpContent, structuredContent: result.__structuredContent ?? {}, isError: false }
+    : { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }], structuredContent: result, isError: false };
+}
+
 function rpcResult(id, payload, modern) {
   return { jsonrpc: '2.0', id, result: modern ? modernResult(payload) : legacyResult(payload) };
 }
@@ -135,7 +154,7 @@ function rpcError(id, code, message, data) {
   return { jsonrpc: '2.0', id: id ?? null, error };
 }
 async function executeTool(name, args) {
-  if (typeof name !== 'string' || !TOOLS.some(tool => tool.name === name)) throw protocolFailure(200, -32602, 'Unknown tool');
+  if (!toolDefinition(name)) throw protocolFailure(200, -32602, 'Unknown tool');
   switch (name) {
     case 'system_status':
       await audit(ctx, { action: 'system_status', ok: true });
@@ -196,20 +215,42 @@ function protocolFailure(httpStatus, code, message, data) {
   return error;
 }
 
-function isModernRequest(req, message) {
-  const hv = header(req, 'mcp-protocol-version');
-  const bv = message?.params?._meta?.['io.modelcontextprotocol/protocolVersion'];
-  return hv === MODERN_VERSION || bv === MODERN_VERSION;
+function isPlainObject(value) {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
-function validateModern(req, message) {
+
+function classifyProtocol(req, message) {
   const hv = header(req, 'mcp-protocol-version');
   const meta = message?.params?._meta;
   const bv = meta?.['io.modelcontextprotocol/protocolVersion'];
-  if (hv !== MODERN_VERSION || bv !== MODERN_VERSION || hv !== bv) {
-    throw protocolFailure(400, -32020, 'MCP protocol header/body mismatch');
+
+  if (bv !== undefined || hv === MODERN_VERSION) {
+    if (hv !== bv) throw protocolFailure(400, -32020, 'MCP protocol header/body mismatch');
+    if (bv !== MODERN_VERSION) {
+      throw protocolFailure(400, -32022, `Unsupported MCP protocol version: ${String(bv)}`);
+    }
+    return 'modern';
   }
-  if (!meta || typeof meta['io.modelcontextprotocol/clientCapabilities'] !== 'object') {
-    throw protocolFailure(400, -32602, 'Missing modern MCP client capabilities');
+
+  if (hv !== undefined && !LEGACY_VERSIONS.includes(hv)) {
+    throw protocolFailure(400, -32022, `Unsupported MCP protocol version: ${String(hv)}`);
+  }
+  return 'legacy';
+}
+
+function validateModern(req, message) {
+  const meta = message?.params?._meta;
+  const capabilities = meta?.['io.modelcontextprotocol/clientCapabilities'];
+  if (!isPlainObject(capabilities)) {
+    throw protocolFailure(400, -32021, 'Missing required modern MCP client capabilities');
+  }
+  const clientInfo = meta?.['io.modelcontextprotocol/clientInfo'];
+  if (clientInfo !== undefined && (
+    !isPlainObject(clientInfo) ||
+    typeof clientInfo.name !== 'string' ||
+    typeof clientInfo.version !== 'string'
+  )) {
+    throw protocolFailure(400, -32602, 'Malformed modern MCP clientInfo');
   }
   const methodHeader = header(req, 'mcp-method');
   if (methodHeader !== message.method) {
@@ -226,8 +267,17 @@ async function handleMessage(req, message) {
   if (!message || message.jsonrpc !== '2.0' || typeof message.method !== 'string') {
     return { status: 400, body: rpcError(message?.id, -32600, 'Invalid Request') };
   }
-  const modern = isModernRequest(req, message);
-  if (modern) validateModern(req, message);
+  let era;
+  try {
+    era = classifyProtocol(req, message);
+    if (era === 'modern') validateModern(req, message);
+  } catch (error) {
+    return {
+      status: error.httpStatus ?? 400,
+      body: rpcError(message.id, error.rpcCode ?? -32600, error.message, error.rpcData)
+    };
+  }
+  const modern = era === 'modern';
   try {
     if (!modern && message.method === 'initialize') {
       const requested = message.params?.protocolVersion;
@@ -244,21 +294,35 @@ async function handleMessage(req, message) {
         supportedVersions: [MODERN_VERSION],
         capabilities: { tools: {} },
         instructions: operatingInstructions(),
-        ttlMs: 300000,
-        cacheScope: 'public'
+        ...MODERN_CACHE_HINT
       }, true) };
     }
     if (message.method === 'tools/list') {
-      return { status: 200, body: rpcResult(message.id, { tools: TOOLS }, modern) };
-    }
-    if (message.method === 'tools/call') {
-      const result = await executeTool(message.params?.name, message.params?.arguments ?? {});
-      const payload = result?.__mcpContent
-        ? { content: result.__mcpContent, structuredContent: result.__structuredContent ?? {}, isError: false }
-        : { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }], structuredContent: result, isError: false };
+      const payload = modern ? { tools: TOOLS, ...MODERN_CACHE_HINT } : { tools: TOOLS };
       return { status: 200, body: rpcResult(message.id, payload, modern) };
     }
-    if (message.method === 'notifications/initialized') {
+    if (message.method === 'tools/call') {
+      const name = message.params?.name;
+      const definition = toolDefinition(name);
+      if (!definition) throw protocolFailure(200, -32602, 'Unknown tool');
+
+      const args = message.params?.arguments ?? {};
+      const validationErrors = validateJsonSchema(args, definition.inputSchema);
+      if (validationErrors.length > 0) {
+        const messageText = formatToolInputErrors(name, validationErrors);
+        await audit(ctx, { action: 'tool_validation_error', tool: name, ok: false, errors: validationErrors.slice(0, 8) });
+        return { status: 200, body: rpcResult(message.id, toolErrorPayload(messageText), modern) };
+      }
+
+      try {
+        const result = await executeTool(name, args);
+        return { status: 200, body: rpcResult(message.id, toolSuccessPayload(result), modern) };
+      } catch (error) {
+        await audit(ctx, { action: 'tool_error', tool: name, ok: false, error: error.message });
+        return { status: 200, body: rpcResult(message.id, toolErrorPayload(error.message), modern) };
+      }
+    }
+    if (!modern && message.method === 'notifications/initialized') {
       return { status: 202, body: null };
     }
     return { status: 200, body: rpcError(message.id, -32601, 'Method not found') };

@@ -10,9 +10,9 @@
     "start": "node src/server-v0.3.mjs",
     "start:v0.2": "node src/server-v0.2.1.mjs",
     "start:legacy": "node src/server.mjs",
-    "test": "node test/smoke-v0.3.mjs && node test/power-smoke-v0.3.mjs && node test/concurrency-smoke.mjs && node test/fs-safety.test.mjs && node test/gui-control-check.mjs && node test/windows-runtime-contract.mjs && node test/source-integrity.mjs",
+    "test": "node test/smoke-v0.3.mjs && node test/power-smoke-v0.3.mjs && node --test test/mcp-conformance.test.mjs && node test/concurrency-smoke.mjs && node test/fs-safety.test.mjs && node test/gui-control-check.mjs && node test/windows-runtime-contract.mjs && node test/source-integrity.mjs",
     "test:legacy": "node test/smoke.mjs && node test/power-smoke.mjs",
-    "check": "node --check src/server-v0.3.mjs && node --check src/platform.mjs && node --check src/locks.mjs && node --check src/security-v0.3.mjs && node --check src/tools-v0.3.mjs && node --check src/power-tools-v0.3.mjs && node --check src/gui-contract.mjs && node --check src/gui-process.mjs && node --check src/gui-tools-windows.mjs && node --check src/transport-guard.mjs && node test/installer-check.mjs && node test/onboarding-plugin-check.mjs && node test/gui-control-check.mjs && node test/fs-safety.test.mjs && node test/windows-runtime-contract.mjs && node test/source-integrity.mjs",
+    "check": "node --check src/server-v0.3.mjs && node --check src/platform.mjs && node --check src/locks.mjs && node --check src/security-v0.3.mjs && node --check src/schema-validator.mjs && node --check src/tools-v0.3.mjs && node --check src/power-tools-v0.3.mjs && node --check src/gui-contract.mjs && node --check src/gui-process.mjs && node --check src/gui-tools-windows.mjs && node --check src/transport-guard.mjs && node test/installer-check.mjs && node test/onboarding-plugin-check.mjs && node --test test/mcp-conformance.test.mjs && node test/gui-control-check.mjs && node test/fs-safety.test.mjs && node test/windows-runtime-contract.mjs && node test/source-integrity.mjs",
     "audit": "node test/security-audit.mjs",
     "test:gui-native": "node test/gui-native-run.mjs"
   },
