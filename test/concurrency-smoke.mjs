@@ -1,33 +1,45 @@
 import assert from 'node:assert/strict';
 import path from 'node:path';
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { cp, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
 import { spawn } from 'node:child_process';
 
 const root = path.resolve('test', '.tmp-concurrency-root');
+const isolatedApp = path.resolve('test', '.tmp-concurrency-app');
+const isolatedSrc = path.join(isolatedApp, 'src');
 const configPath = path.resolve('test', '.tmp-concurrency-config.json');
-const runtimeStatePath = path.resolve('var', 'mcp-runtime.json');
+const liveRuntimeStatePath = path.resolve('var', 'mcp-runtime.json');
+const isolatedRuntimeStatePath = path.join(isolatedApp, 'var', 'mcp-runtime.json');
 const port = 47931;
 const endpoint = `http://127.0.0.1:${port}/mcp`;
 
-let runtimeStateBefore = null;
-try {
-  runtimeStateBefore = await readFile(runtimeStatePath, 'utf8');
-} catch (error) {
-  if (error.code !== 'ENOENT') throw error;
+async function sha256IfPresent(filePath) {
+  try {
+    const data = await readFile(filePath);
+    return createHash('sha256').update(data).digest('hex');
+  } catch (error) {
+    if (error.code === 'ENOENT') return null;
+    throw error;
+  }
 }
 
+const liveRuntimeStateBefore = await sha256IfPresent(liveRuntimeStatePath);
+
 await rm(root, { recursive: true, force: true });
+await rm(isolatedApp, { recursive: true, force: true });
 await mkdir(root, { recursive: true });
+await mkdir(isolatedApp, { recursive: true });
+await cp(path.resolve('src'), isolatedSrc, { recursive: true });
 const config = {
   host: '127.0.0.1', port, allowedRoots: [root],
   allowedPrograms: ['git', 'node'], maxReadBytes: 524288,
   maxWriteBytes: 524288, maxCommandMs: 30000,
-  auditLog: 'test/.tmp-concurrency-audit.jsonl',
+  auditLog: path.join(root, 'audit.jsonl'),
   powerMode: { enabled: false, fullFilesystem: false, allowShell: false, allowProcessControl: false, allowPermanentDelete: false }
 };
 await writeFile(configPath, JSON.stringify(config, null, 2));
 
-const server = spawn(process.execPath, ['src/server-v0.3.mjs'], {
+const server = spawn(process.execPath, [path.join(isolatedSrc, 'server-v0.3.mjs')], {
   env: { ...process.env, REMOTE_COMMANDER_CONFIG: configPath },
   stdio: ['ignore', 'pipe', 'pipe']
 });
@@ -65,6 +77,10 @@ async function callTool(name, args = {}) {
 
 try {
   await waitForHealth();
+  const isolatedState = JSON.parse(await readFile(isolatedRuntimeStatePath, 'utf8'));
+  assert.equal(isolatedState.port, port);
+  assert.equal(path.resolve(isolatedState.projectDir), isolatedApp);
+
   const readOnlyCalls = Array.from({ length: 40 }, (_, index) =>
     index % 2 === 0 ? callTool('system_status') : callTool('list_directory', { path: root, depth: 0 })
   );
@@ -102,12 +118,14 @@ try {
   ]);
   await rm(root, { recursive: true, force: true });
   await rm(configPath, { force: true });
-  await rm(path.resolve('test', '.tmp-concurrency-audit.jsonl'), { force: true });
-  if (runtimeStateBefore === null) {
-    await rm(runtimeStatePath, { force: true });
-  } else {
-    await writeFile(runtimeStatePath, runtimeStateBefore, 'utf8');
-  }
+  await rm(isolatedApp, { recursive: true, force: true });
+
+  const liveRuntimeStateAfter = await sha256IfPresent(liveRuntimeStatePath);
+  assert.equal(
+    liveRuntimeStateAfter,
+    liveRuntimeStateBefore,
+    'concurrency smoke must never modify or restore the live runtime ownership marker'
+  );
 }
 
 console.log('CONCURRENCY_SMOKE_PASS');

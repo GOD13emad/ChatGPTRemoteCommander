@@ -25,6 +25,7 @@ The audit found no committed OpenAI-style API secret key, GitHub token, tunnel i
 - v0.6.0 adds centralized MCP input-schema validation and correct known-tool `isError` semantics, rejects unsupported/mismatched modern protocol routing, conservatively corrects destructive/open-world tool annotations, and bounds persistent audit-log growth. A scan of the live audit/autostart logs found no OpenAI-style secret, tunnel identifier, GitHub token, bearer token, PEM private key, or Runtime API key assignment pattern.
 - v0.6.1 hardens release-source integrity: annotated tags are peeled to commits before exact identity comparison, Linux gains the same expected-commit gate, and failed fresh installs cannot leave a half-initialized checkout that later masquerades as an installed product.
 - v0.6.2 binds Windows tunnel-client invocations to the explicitly managed profile directory and permits upgrade handoff only when a local `tunnel-client.exe` process for the same profile is actually ready on the profile's configured health port. DPAPI credentials remain in the existing per-user credential store and are not migrated or exposed.
+- v0.6.3 removes live runtime-marker save/restore behavior from the concurrency gate by running its server from a disposable application copy, and adds a loopback-only read-only doctor command that rejects remote hosts, URL credentials, query strings, and redirects.
 
 ## Privacy note
 

@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.6.3 — 2026-09-19
+
+- Isolated the concurrency smoke server inside a disposable application copy so tests never write, restore, or race with the live `var/mcp-runtime.json` ownership marker.
+- Added a hard regression asserting the live ownership-marker SHA-256 is unchanged by the concurrency gate.
+- Added a loopback-only read-only `npm run doctor` diagnostic for health, active server version/device, core tool discovery, optional config SHA-256 comparison, and drift detection.
+- Added doctor regression coverage for healthy state, version drift, missing core tools, URL-secret rejection, remote-host rejection, and timeout/argument validation.
+- Re-ran the full Windows release gate including MCP conformance, audit rotation, filesystem safety, 67/67 GUI contract tests, security audit, and native Windows screenshot/input/focus E2E.
+
 ## 0.6.2 — 2026-09-19
 
 - Fixed Windows tunnel profile path ambiguity by passing the repository-managed profile directory explicitly to tunnel-client init, doctor, and run.
