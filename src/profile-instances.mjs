@@ -36,7 +36,10 @@ export function buildProfileInstance({ baseConfig, profile, port, stateDirectory
   stateDirectory = validateLocalAbsolute(stateDirectory);
   const roots = (allowedRoots ?? baseConfig.allowedRoots);
   if (!Array.isArray(roots) || roots.length < 1 || roots.some(x => typeof x !== 'string' || !x)) throw new Error('PROFILE_INSTANCE_ROOTS_REQUIRED');
-  const programs = safeProgramList(baseConfig.allowedPrograms);
+  const basePrograms = safeProgramList(baseConfig.allowedPrograms);
+  // A general-purpose interpreter/compiler is not a filesystem sandbox. Standard
+  // isolated profiles therefore receive no command allowlist at all.
+  const programs = powerMode === true ? basePrograms : [];
 
   const basePower = baseConfig.powerMode && typeof baseConfig.powerMode === 'object' ? baseConfig.powerMode : {};
   const power = powerMode === true
@@ -57,7 +60,9 @@ export function buildProfileInstance({ baseConfig, profile, port, stateDirectory
     durableWorkflows: {
       enabled: true,
       directory: path.join(stateDirectory, 'workflows'),
-      executionTools: ['system_status', 'list_directory', 'read_text', 'write_text', 'run_project_command']
+      executionTools: powerMode === true
+        ? ['system_status', 'list_directory', 'read_text', 'write_text', 'run_project_command']
+        : ['system_status', 'list_directory', 'read_text', 'write_text']
     }
   };
   const json = JSON.stringify(config, null, 2) + '\n';

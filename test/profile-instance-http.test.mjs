@@ -32,10 +32,12 @@ test('isolated profile server owns separate marker, private memory and conservat
   assert.ok(health,output);assert.equal(health.instance.profile,'fixture-account');assert.equal(health.instance.isolated,true);
   const rpc=async(name,args={})=>{const r=await fetch('http://127.0.0.1:'+p+'/mcp',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/call',params:{name,arguments:args}})});return r.json();};
   const status=await rpc('system_status');assert.equal(status.result.isError,false);const s=status.result.structuredContent;
-  assert.equal(s.instance.profile,'fixture-account');assert.equal(s.powerMode.enabled,false);assert.equal(s.durableWorkflows.enabled,true);
+  assert.equal(s.instance.profile,'fixture-account');assert.equal(s.powerMode.enabled,false);assert.equal(s.durableWorkflows.enabled,true);assert.deepEqual(s.allowedPrograms,[]);
   const list=await fetch('http://127.0.0.1:'+p+'/mcp',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:2,method:'tools/list',params:{}})}).then(r=>r.json());
   const names=list.result.tools.map(x=>x.name);assert.ok(names.includes('workflow_create'));assert.ok(names.includes('run_shell'));
   const blocked=await rpc('run_shell',{command:'echo should-not-run'});assert.equal(blocked.result.isError,true);assert.match(blocked.result.content[0].text,/Power Mode is disabled/);
+  const noCommand=await rpc('run_project_command',{program:'node',args:['--version'],cwd:project});assert.equal(noCommand.result.isError,true);assert.match(noCommand.result.content[0].text,/program not allowed/);
+  const wfStatus=await rpc('workflow_status');assert.equal(wfStatus.result.isError,false);assert.equal(wfStatus.result.structuredContent.executionTools.includes('run_project_command'),false);
   const created=await rpc('workflow_create',{id:'isolated',root:project,goal:'remember safely',acceptance:['resume'],steps:[{id:'one',title:'inspect'}]});assert.equal(created.result.isError,false);
   assert.equal(fs.existsSync(path.join(state,'workflows','workflows.sqlite')),true);
   const marker=JSON.parse(fs.readFileSync(path.join(state,'mcp-runtime.json'),'utf8'));assert.equal(marker.port,p);assert.equal(marker.instance.profile,'fixture-account');

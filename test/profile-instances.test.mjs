@@ -14,6 +14,8 @@ test('isolated standard profile gets separate port/state, memory and conservativ
   assert.equal(out.config.powerMode.fullFilesystem,false);
   assert.equal(out.config.powerMode.allowShell,false);
   assert.equal(out.config.powerMode.guiControl.enabled,false);
+  assert.deepEqual(out.config.allowedPrograms,[]);
+  assert.equal(out.config.durableWorkflows.executionTools.includes('run_project_command'),false);
   assert.match(out.config.durableWorkflows.directory,/workflows$/);
   assert.match(out.config.runtimeState,/mcp-runtime\.json$/);
   assert.equal(out.record.configSha256,out.configSha256);
@@ -26,6 +28,8 @@ test('explicit isolated power still keeps permanent delete off and GUI opt-in',(
   assert.equal(out.config.powerMode.fullFilesystem,true);
   assert.equal(out.config.powerMode.allowPermanentDelete,false);
   assert.equal(out.config.powerMode.guiControl.enabled,false);
+  assert.deepEqual(out.config.allowedPrograms,['git','node']);
+  assert.equal(out.config.durableWorkflows.executionTools.includes('run_project_command'),true);
 });
 
 test('profile, port and local-state guards fail closed',()=>{

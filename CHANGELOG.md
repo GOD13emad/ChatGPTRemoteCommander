@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.7.1 — 2026-09-19
+
+- Security hardening for isolated Standard profiles: command execution allowlist is empty by default, so general-purpose interpreters/compilers cannot escape project-path policy.
+- Remove `run_project_command` from the default durable workflow execution set for Standard isolated profiles. Explicit isolated Power Mode may opt back into the base command allowlist.
+- Keep per-profile memory, runtime markers and tunnel routing unchanged; no credential or Tunnel ID rotation is required.
+
+
 ## 0.7.0 — 2026-09-19
 
 - Add opt-in durable project workflows with crash-safe intent/receipt journaling, checkpoint evidence hashes, resume/reconcile semantics and logical export.

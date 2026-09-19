@@ -10,6 +10,8 @@ The audit found no committed OpenAI-style API secret key, GitHub token, tunnel i
 
 ## Controls verified
 
+- v0.7.1 removes general-purpose command execution from Standard isolated profiles. Their `allowedPrograms` list is empty and default durable workflow execution excludes `run_project_command`; explicit isolated Power Mode is required to inherit the base command allowlist.
+
 - v0.7.0 isolates optional durable-memory stores and local MCP runtime markers per tunnel profile. Additional isolated profiles default to Standard Mode; Power/GUI are explicit opt-ins. Runtime API credentials stay in the existing DPAPI store and are not copied into instance configs.
 - v0.7.0 migration validates the candidate local MCP and a temporary tunnel profile before switching the live profile URL, backs up the profile with a hash check, and restores it on failure.
 

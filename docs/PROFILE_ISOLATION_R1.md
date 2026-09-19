@@ -14,6 +14,7 @@ An isolated additional profile defaults to:
 
 - a distinct MCP port selected from 47834..47931;
 - Power Mode disabled;
+- command execution disabled (`allowedPrograms=[]` and no default workflow `run_project_command`);
 - full-filesystem access disabled;
 - shell/process control disabled;
 - GUI control disabled;
