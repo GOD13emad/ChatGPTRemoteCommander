@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.6.5 — 2026-09-19
+
+- Fail closed when `expectedSha256` is malformed or targets a missing file; no parent/file creation occurs on a failed precondition.
+- Preserve the complete promoted destination and recovery metadata when a move source deletion partially fails; never delete the last complete copy to restore an overwritten target.
+- Add focused recovery regressions for Standard and Power Mode writes/moves.
+
+
 ## 0.6.4 — 2026-09-19
 
 - Bounded Linux external downloads with explicit connect and total timeouts so unavailable TLS/network paths fail deterministically instead of hanging indefinitely.
