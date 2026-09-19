@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.7.2 — 2026-09-19
+
+- Add transactional reconfiguration for existing isolated profiles without changing Tunnel ID, DPAPI credential, MCP port, runtime marker path, or durable workflow store.
+- Add ownership-proven isolated MCP recycle: supervisor may stop a mismatched listener only when runtime marker PID/port/profile/projectDir prove it owns that exact process; unknown listeners remain fail-closed.
+- Add a Windows reconfiguration wrapper with bounded health verification and backup rollback when the new instance does not come healthy.
+- Keep permanent delete disabled; Power Mode and GUI remain explicit opt-ins per isolated profile.
+
+
 ## 0.7.1 — 2026-09-19
 
 - Security hardening for isolated Standard profiles: command execution allowlist is empty by default, so general-purpose interpreters/compilers cannot escape project-path policy.

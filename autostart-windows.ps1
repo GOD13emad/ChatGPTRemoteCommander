@@ -113,10 +113,33 @@ function Get-InstanceRecord([string]$Profile) {
   return [pscustomobject]@{ Profile=$Profile; Port=$port; ConfigPath=$actualConfig; ConfigSha256=$sha; StateDir=$dir }
 }
 
+function Stop-OwnedMcpInstance($Instance, [int]$ListenerPid) {
+  $markerFile = Join-Path $Instance.StateDir 'mcp-runtime.json'
+  if (-not (Test-Path -LiteralPath $markerFile -PathType Leaf)) {
+    throw "instance port $($Instance.Port) occupied without runtime marker; refusing to stop it"
+  }
+  $marker = Get-Content -LiteralPath $markerFile -Raw | ConvertFrom-Json
+  $project = [IO.Path]::GetFullPath([string]$marker.projectDir)
+  $expectedRoot = [IO.Path]::GetFullPath($Root)
+  if ([int]$marker.pid -ne $ListenerPid -or [int]$marker.port -ne $Instance.Port -or
+      [string]$marker.instance.profile -ne $Instance.Profile -or $project -ne $expectedRoot) {
+    throw "instance listener ownership mismatch profile=$($Instance.Profile); refusing to stop it"
+  }
+  Stop-Process -Id $ListenerPid -Force -ErrorAction Stop
+  foreach ($i in 1..20) {
+    Start-Sleep -Milliseconds 250
+    if (-not (Get-NetTCPConnection -State Listen -LocalPort $Instance.Port -ErrorAction SilentlyContinue)) { return }
+  }
+  throw "owned instance did not release port $($Instance.Port)"
+}
+
 function Start-McpInstance($Instance) {
   if (Test-McpHealth $Instance.Port $Instance.ConfigSha256 $Instance.Profile) { return }
   $listener = Get-NetTCPConnection -State Listen -LocalPort $Instance.Port -ErrorAction SilentlyContinue | Select-Object -First 1
-  if ($listener) { throw "instance port $($Instance.Port) occupied by unhealthy/mismatched process; refusing to stop it" }
+  if ($listener) {
+    Stop-OwnedMcpInstance $Instance ([int]$listener.OwningProcess)
+    Write-SupervisorLog "MCP_INSTANCE_RECYCLE profile=$($Instance.Profile) oldPid=$($listener.OwningProcess) port=$($Instance.Port)"
+  }
   $node = (Get-Command node.exe -ErrorAction Stop).Source
   $server = Join-Path $Root 'src\server-v0.3.mjs'
   $psi = [Diagnostics.ProcessStartInfo]::new()
@@ -138,7 +161,6 @@ function Start-McpInstance($Instance) {
   if (-not $process.HasExited) { Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue }
   throw "instance MCP readiness failed profile=$($Instance.Profile)"
 }
-
 function Get-ManagedProfiles {
   if (-not (Test-Path -LiteralPath $ProfileDir)) { return @() }
   $items = @()

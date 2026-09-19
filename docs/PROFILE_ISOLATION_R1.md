@@ -63,6 +63,16 @@ Optional isolated Power Mode is explicit:
 
 GUI requires isolated Power Mode and should only be given to principals trusted to drive the shared desktop.
 
+### Reconfigure an existing isolated profile
+
+Use the supported transaction instead of editing `config.json` or `instance.json` manually:
+
+```powershell
+.\reconfigure-profile-instance.ps1 -Profile "saeed-emad" -PowerMode -GuiControl
+```
+
+The current MCP port and private workflow store are preserved. Config/record files are backed up and rewritten atomically. The supervisor recycles only a marker-proven owned instance. If the new config does not become healthy within the bounded wait, the wrapper restores the backed-up config/record and verifies rollback. Tunnel ID and DPAPI Runtime API credential are unchanged.
+
 ## Transaction and rollback
 
 Migration performs these gates in order:

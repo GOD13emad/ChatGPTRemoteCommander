@@ -139,7 +139,7 @@ Filesystem containment is enforced, but command execution is **not an OS sandbox
 
 ## Validation
 
-v0.7.0 adds durable project workflows and per-profile MCP isolation.v0.7.1 hardens that isolation: Standard isolated profiles have no command-program allowlist and durable workflow execution excludes `run_project_command`; command execution returns only when isolated Power Mode is explicitly enabled.
+v0.7.0 adds durable project workflows and per-profile MCP isolation. v0.7.1 hardens Standard isolated profiles by removing their command-program allowlist. v0.7.2 adds transactional reconfiguration for existing isolated profiles, with config/record backup, memory/runtime path preservation, ownership-proven supervisor recycle, and verified rollback support.
 
  Each isolated account can use a distinct loopback MCP port, config, audit log, runtime marker and private workflow database; secondary profiles default to Standard Mode with GUI/shell/full-filesystem disabled. Workflow actions use intent-before-effect journaling, evidence checkpoints and explicit uncertain-outcome reconciliation with no automatic replay. Use `configure-durable-workflows.ps1` for the primary profile and `configure-profile-instance.ps1 -Profile <name>` (or `connect-chatgpt-account.ps1 -Profile <name> -Isolate`) for additional accounts. This is a local application boundary, not an OS sandbox: use separate Windows users/VMs for principals with different OS-level trust. See `docs/DURABLE_WORKFLOWS_R1.md` and `docs/PROFILE_ISOLATION_R1.md`.
 
