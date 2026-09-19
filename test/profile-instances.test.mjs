@@ -32,6 +32,14 @@ test('explicit isolated power still keeps permanent delete off and GUI opt-in',(
   assert.equal(out.config.durableWorkflows.executionTools.includes('run_project_command'),true);
 });
 
+test('explicit Power+GUI profile journals bounded GUI and power operations without shell/delete/terminal tools',()=>{
+  const out=buildProfileInstance({baseConfig:base,profile:'gui-user',port:47836,stateDirectory:'C:\\State\\gui-user',powerMode:true,guiControl:true});
+  const tools=out.config.durableWorkflows.executionTools;
+  for(const name of ['run_project_command','power_status','file_info','read_file','write_file','create_directory','gui_screenshot','gui_type_text','gui_mouse_click','gui_focus_window']) assert.ok(tools.includes(name),name);
+  for(const name of ['run_shell','delete_path','kill_process','start_terminal','send_terminal','stop_terminal']) assert.equal(tools.includes(name),false,name);
+  assert.equal(out.config.powerMode.guiControl.enabled,true);
+});
+
 test('profile, port and local-state guards fail closed',()=>{
   assert.throws(()=>validateProfileName('../x'),/INVALID_NAME/);
   assert.throws(()=>validateMcpPort(47831),/INVALID_PORT/);

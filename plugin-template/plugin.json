@@ -1,7 +1,7 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "chatgpt-remote-commander",
-  "version": "0.7.2",
+  "version": "0.7.3",
   "description": "Operate a trusted computer through a private MCP connection, including optional Windows GUI screenshot/mouse/keyboard control.",
   "author": {
     "name": "GOD13emad",

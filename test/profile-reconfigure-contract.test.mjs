@@ -13,7 +13,7 @@ test('existing isolated profile reconfiguration is transactional and preserves m
 
 test('supervisor recycles only marker-proven owned isolated listener',()=>{
   const sup=read('autostart-windows.ps1');
-  for(const marker of ['Stop-OwnedMcpInstance','mcp-runtime.json','listener ownership mismatch','refusing to stop it','MCP_INSTANCE_RECYCLE','MCP_INSTANCE_READY']) assert.ok(sup.includes(marker),marker);
+  for(const marker of ['Stop-OwnedMcpInstance','mcp-runtime.json','listener ownership mismatch','refusing to stop it','MCP_INSTANCE_RECYCLE','MCP_INSTANCE_READY','Remove-Item Env:REMOTE_COMMANDER_CONFIG']) assert.ok(sup.includes(marker),marker);
   assert.ok(sup.includes('[int]$marker.pid -ne $ListenerPid'));
   assert.ok(sup.includes('[string]$marker.instance.profile -ne $Instance.Profile'));
   assert.ok(sup.includes('[IO.Path]::GetFullPath([string]$marker.projectDir)'));

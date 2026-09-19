@@ -72,7 +72,7 @@ Only a fixed host-configured tool set can be wrapped. Shell, deletion, process k
 
 Workflow-dispatched filesystem tools are scoped to that workflow's project root even when the containing MCP instance has full Power Mode.
 
-GUI actions, when explicitly allowed, still require the existing lease + fresh frame + foreground + local stop guards. Memory never revives a stale GUI frame or clears an uncertain GUI outcome.
+GUI actions, when explicitly allowed, still require the existing lease + fresh frame + foreground + local stop guards. An isolated profile configured with both Power Mode and GUI can journal the bounded GUI tool set plus scoped power/file operations; shell, delete, process-kill and terminal control remain outside durable workflow execution. Memory never revives a stale GUI frame or clears an uncertain GUI outcome.
 
 ## Multi-account rule
 

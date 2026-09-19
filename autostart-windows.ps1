@@ -4,6 +4,9 @@ param(
   [string]$SelfTestProfile = ''
 )
 $ErrorActionPreference = 'Stop'
+# Never inherit an isolated MCP config into the global supervisor. Primary startup
+# uses the app's normal config selection; isolated instances set their config explicitly.
+Remove-Item Env:REMOTE_COMMANDER_CONFIG -ErrorAction SilentlyContinue
 
 $Root = Split-Path -Parent $MyInvocation.MyCommand.Path
 $VarDir = Join-Path $Root 'var'

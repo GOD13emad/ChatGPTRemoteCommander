@@ -48,6 +48,19 @@ export function buildProfileInstance({ baseConfig, profile, port, stateDirectory
     : { ...basePower, enabled: false, fullFilesystem: false, allowShell: false, allowProcessControl: false,
         allowPermanentDelete: false, guiControl: { ...(basePower.guiControl ?? {}), enabled: false } };
 
+  const executionTools = ['system_status', 'list_directory', 'read_text', 'write_text'];
+  if (powerMode === true) {
+    executionTools.push('run_project_command', 'power_status', 'file_info', 'read_file', 'write_file', 'create_directory');
+  }
+  if (powerMode === true && guiControl === true) {
+    executionTools.push(
+      'gui_status', 'gui_session_begin', 'gui_session_renew', 'gui_session_end',
+      'gui_screenshot', 'gui_list_windows', 'gui_cursor_position',
+      'gui_mouse_move', 'gui_mouse_delta', 'gui_mouse_scroll', 'gui_mouse_click',
+      'gui_mouse_drag', 'gui_type_text', 'gui_key_press', 'gui_focus_window'
+    );
+  }
+
   const config = {
     ...baseConfig,
     port,
@@ -60,9 +73,7 @@ export function buildProfileInstance({ baseConfig, profile, port, stateDirectory
     durableWorkflows: {
       enabled: true,
       directory: path.join(stateDirectory, 'workflows'),
-      executionTools: powerMode === true
-        ? ['system_status', 'list_directory', 'read_text', 'write_text', 'run_project_command']
-        : ['system_status', 'list_directory', 'read_text', 'write_text']
+      executionTools
     }
   };
   const json = JSON.stringify(config, null, 2) + '\n';

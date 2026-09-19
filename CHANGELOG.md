@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.7.3 — 2026-09-19
+
+- Sanitize `REMOTE_COMMANDER_CONFIG` at Windows supervisor startup. A supervisor launched from an isolated MCP context can no longer inherit that profile config into primary MCP startup.
+- Keep isolated MCP launch explicit through `ProcessStartInfo.Environment[REMOTE_COMMANDER_CONFIG]`; primary and per-profile configuration selection are now unambiguous.
+- Add regression coverage to the profile-reconfiguration contract after reproducing the live primary-port timeout caused by inherited environment state.
+- When an isolated profile explicitly enables Power + GUI, durable workflows can journal the bounded power/file and GUI tool subset (including fresh-frame GUI actions) while shell, delete, process-kill and terminal control remain excluded from durable replay.
+
+
 ## 0.7.2 — 2026-09-19
 
 - Add transactional reconfiguration for existing isolated profiles without changing Tunnel ID, DPAPI credential, MCP port, runtime marker path, or durable workflow store.

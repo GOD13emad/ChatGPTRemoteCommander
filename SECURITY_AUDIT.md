@@ -10,6 +10,7 @@ The audit found no committed OpenAI-style API secret key, GitHub token, tunnel i
 
 ## Controls verified
 
+- v0.7.3 clears inherited `REMOTE_COMMANDER_CONFIG` at supervisor startup so a supervisor launched from an isolated MCP context cannot accidentally start the primary server with the isolated profile configuration.
 - v0.7.2 allows explicit Standard ↔ Power/GUI reconfiguration of an already-isolated profile while preserving its port/store identity; supervisor recycle is permitted only after runtime marker/PID/port/profile/project ownership is proven.
 - v0.7.1 removes general-purpose command execution from Standard isolated profiles. Their `allowedPrograms` list is empty and default durable workflow execution excludes `run_project_command`; explicit isolated Power Mode is required to inherit the base command allowlist.
 
