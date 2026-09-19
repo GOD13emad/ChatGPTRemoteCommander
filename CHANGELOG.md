@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.6.2 — 2026-09-19
+
+- Fixed Windows tunnel profile path ambiguity by passing the repository-managed profile directory explicitly to tunnel-client init, doctor, and run.
+- Windows enrollment now recognizes an already-ready tunnel-client process for the same profile during an installation handoff, even when that process belongs to the previous installation path.
+- Preserves the existing `%APPDATA%\\tunnel-client` profile store; no profile migration or secret rewrite is required.
+- Prevents false doctor failures during in-place production promotion when the previous healthy tunnel already owns the profile health port.
+- Added Windows runtime-contract gates for explicit profile-dir binding and upgrade-ready profile detection.
+
 ## 0.6.1 — 2026-09-19
 
 - Fixed exact release identity checks for annotated Git tags by peeling fetched refs to their commit before ExpectedCommit comparison.

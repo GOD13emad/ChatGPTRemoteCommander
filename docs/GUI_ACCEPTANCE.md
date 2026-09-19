@@ -1,6 +1,6 @@
-# GUI acceptance gates — v0.6.1
+# GUI acceptance gates — v0.6.2
 
-The original R1 audit baseline is preserved in `AUDIT_R1.md`. v0.6.1 retains the v0.5.0 Windows GUI implementation and has re-passed the repository's native E2E gate on Emad-PC-Ultimate: layout/self-test, real screen capture, exact-window focus, mouse click, Farsi/Japanese Unicode typing, button activation, screenshot-before/after verification, cursor restore and focus restore. Use `npm run test:gui-native` to repeat that bounded disposable-window validation.
+The original R1 audit baseline is preserved in `AUDIT_R1.md`. v0.6.2 retains the v0.5.0 Windows GUI implementation and has re-passed the repository's native E2E gate on Emad-PC-Ultimate: layout/self-test, real screen capture, exact-window focus, mouse click, Farsi/Japanese Unicode typing, button activation, screenshot-before/after verification, cursor restore and focus restore. Use `npm run test:gui-native` to repeat that bounded disposable-window validation.
 
 These measured Windows results do not waive the remaining release gates below for installer/update/tunnel/ChatGPT integration, Linux regression, multi-monitor/DPI coverage, locked/Secure Desktop behavior, anti-cheat/protected input, or real-time gameplay.
 
