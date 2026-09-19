@@ -15,7 +15,9 @@
     "check": "node --check src/server-v0.3.mjs && node --check src/platform.mjs && node --check src/locks.mjs && node --check src/security-v0.3.mjs && node --check src/schema-validator.mjs && node --check src/tools-v0.3.mjs && node --check src/power-tools-v0.3.mjs && node --check src/gui-contract.mjs && node --check src/gui-process.mjs && node --check src/gui-tools-windows.mjs && node --check src/transport-guard.mjs && node --check tools/doctor.mjs && node test/installer-check.mjs && node --test test/source-ref-peel.test.mjs && node test/onboarding-plugin-check.mjs && node --test test/mcp-conformance.test.mjs test/audit-log.test.mjs test/doctor.test.mjs test/fs-recovery-r1.test.mjs && node test/gui-control-check.mjs && node test/fs-safety.test.mjs && node test/windows-runtime-contract.mjs && node test/source-integrity.mjs",
     "audit": "node test/security-audit.mjs",
     "test:gui-native": "node test/gui-native-run.mjs",
-    "doctor": "node tools/doctor.mjs"
+    "doctor": "node tools/doctor.mjs",
+    "test:workflows": "node --test test/workflow-store.test.mjs test/workflow-tools.test.mjs test/workflow-http.test.mjs",
+    "workflow": "node tools/workflow-cli.mjs"
   },
   "repository": "https://github.com/GOD13emad/ChatGPTRemoteCommander",
   "license": "MIT"

@@ -1,0 +1,1 @@
+{"name":"rc-durable-browser-acceptance","private":true,"type":"module","version":"0.0.0-r1","scripts":{"test":"node smoke.mjs"},"devDependencies":{"@playwright/test":"1.63.0"}}

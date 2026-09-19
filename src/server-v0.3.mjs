@@ -13,6 +13,7 @@ import { lockStats } from './locks.mjs';
 import { expandPathValue, shellName } from './platform.mjs';
 import { formatToolInputErrors, validateJsonSchema } from './schema-validator.mjs';
 
+let workflowTools = null;
 const VERSION = '0.6.5';
 const MODERN_VERSION = '2026-07-28';
 const LEGACY_VERSIONS = ['2025-11-25', '2025-06-18', '2025-03-26'];
@@ -115,6 +116,32 @@ const TOOLS = [
   ...powerToolDefinitions,
   ...(GUI_ENABLED ? guiToolDefinitions : [])
 ];
+// Opt-in only. Baseline tool catalog is unchanged when durable workflows are disabled.
+if (config.durableWorkflows?.enabled === true) {
+  const { createWorkflowTools } = await import('./workflow-tools.mjs');
+  workflowTools = createWorkflowTools({
+    config, roots, device: config.deviceName || os.hostname(), configSha256,
+    lookup: toolDefinition, validateSchema: validateJsonSchema,
+    dispatch: async (name, args, workflow) => {
+      // Further restrict file operations to the project, even in full Power Mode.
+      // Executed programs remain OS processes, NOT sandboxed by these path checks.
+      const scoped = { ...ctx, roots: [workflow.root], config: {
+        ...config, allowedRoots: [workflow.root],
+        powerMode: { ...config.powerMode, fullFilesystem: false }
+      } };
+      switch (name) {
+        case 'system_status': return executeTool(name, args);
+        case 'list_directory': return listDirectory(scoped, args);
+        case 'read_text': return readText(scoped, args);
+        case 'write_text': return writeText(scoped, args);
+        case 'run_project_command': return runProjectCommand(scoped, args);
+        default: return name.startsWith('gui_')
+          ? executeGuiTool(scoped, name, args) : executePowerTool(scoped, name, args);
+      }
+    }
+  });
+  TOOLS.push(...workflowTools.definitions);
+}
 function serverMeta() {
   return { 'io.modelcontextprotocol/serverInfo': { name: 'chatgpt-remote-commander', version: VERSION } };
 }
@@ -155,6 +182,7 @@ function rpcError(id, code, message, data) {
 }
 async function executeTool(name, args) {
   if (!toolDefinition(name)) throw protocolFailure(200, -32602, 'Unknown tool');
+  if (name.startsWith('workflow_')) return workflowTools.execute(name, args);
   switch (name) {
     case 'system_status':
       await audit(ctx, { action: 'system_status', ok: true });
@@ -179,6 +207,7 @@ async function executeTool(name, args) {
         allowedPrograms: config.allowedPrograms,
         concurrency: { httpConcurrent: true, pathMutationLocks: true, ...lockStats() },
         configSha256,
+        durableWorkflows: { enabled: !!workflowTools, revision: workflowTools ? 'durable-workflows-r1' : null, automaticReplay: false },
         powerMode: config.powerMode ?? { enabled: false },
         guiControl: { backendSupported: process.platform === 'win32', availability: 'CHECK_gui_status', enabled: GUI_ENABLED, policy: config.powerMode?.guiControl ?? { enabled: false } }
       };
