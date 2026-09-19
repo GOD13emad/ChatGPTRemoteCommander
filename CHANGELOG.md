@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.8.0 — 2026-09-19
+
+- Introduces a stable loopback MCP router with generation-checked atomic backend switching and exact backend identity pinning.
+- Separates the stable advertised MCP port from private release-slot listener ports without changing the durable workflow policy hash.
+- Adds fail-closed upgrade drain evidence for active mutations, terminal sessions, GUI coordination, and unresolved durable workflow intents.
+- Adds Windows side-by-side release/control-plane tooling for canary validation, rollback, ownership-safe cleanup, and persistent per-profile isolation.
+- Does not claim stateful terminal zero downtime; promotion waits for terminal/session drain until an independent persistent broker is implemented.
+
 ## 0.7.3 — 2026-09-19
 
 - Sanitize `REMOTE_COMMANDER_CONFIG` at Windows supervisor startup. A supervisor launched from an isolated MCP context can no longer inherit that profile config into primary MCP startup.

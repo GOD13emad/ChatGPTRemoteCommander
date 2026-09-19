@@ -1,28 +1,31 @@
 import { spawn } from 'node:child_process';
-import { readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import os from 'node:os';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { createGuiController } from '../src/gui-tools-windows.mjs';
 
 const root=path.resolve('.');
 const dll=path.join(root,'test','gui-e2e-app','bin','Release','net10.0-windows','GuiE2EApp.dll');
-const ready=path.join(root,'var','gui-e2e-ready.json');
-const result=path.join(root,'var','gui-e2e-result.json');
-await rm(ready,{force:true});
-await rm(result,{force:true});
-const child=spawn('dotnet',[dll,ready,result],{cwd:root,windowsHide:false,stdio:['ignore','ignore','pipe']});
+const scratch=await mkdtemp(path.join(os.tmpdir(),'remote-commander-gui-e2e-'));
+const ready=path.join(scratch,'ready.json');
+const result=path.join(scratch,'result.json');
+const dotnet=process.env.REMOTE_COMMANDER_DOTNET_EXE||'dotnet';
+const child=spawn(dotnet,[dll,ready,result],{cwd:root,windowsHide:false,stdio:['ignore','pipe','pipe']});
+let out='';
 let err='';
+child.stdout.on('data',c=>out+=c.toString());
 child.stderr.on('data',c=>err+=c.toString());
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 async function waitJson(file,ms=10000){
   const until=Date.now()+ms;
   while(Date.now()<until){
     try{return JSON.parse(await readFile(file,'utf8'));}catch{}
+    if(child.exitCode!==null) throw new Error('GUI E2E app exited before readiness code='+child.exitCode+' stdout='+out+' stderr='+err);
     await sleep(100);
   }
-  throw new Error('timeout waiting for '+file+' stderr='+err);
+  throw new Error('timeout waiting for '+file+' stdout='+out+' stderr='+err);
 }
-const app=await waitJson(ready);
 const ctx={config:{powerMode:{enabled:true,guiControl:{
   enabled:true,allowScreenshot:true,allowMouse:true,allowKeyboard:true,allowWindowFocus:true,
   maxScreenshotWidth:1000,maxScreenshotBytes:2097152
@@ -31,6 +34,7 @@ const c=createGuiController();
 let lease;
 let originalCursor;
 try {
+  const app=await waitJson(ready);
   console.error('E2E_STEP status');
   const status=await c.execute(ctx,'gui_status',{});
   if(!status.available) throw new Error('GUI not available');
@@ -84,7 +88,7 @@ try {
   shot=await c.execute(ctx,'gui_screenshot',{lease,screenIndex:0,format:'jpeg',quality:60,maxWidth:1000});
   const after=shot.__structuredContent;
   const hashAfter=createHash('sha256').update(Buffer.from(shot.__mcpContent[0].data,'base64')).digest('hex');
-  const verified=applied.ok===true && applied.text===marker && hashBefore!==hashAfter;
+  const interactionVerified=applied.ok===true && applied.text===marker && hashBefore!==hashAfter;
 
   console.error('E2E_STEP restore-cursor');
   await c.execute(ctx,'gui_mouse_move',{
@@ -108,8 +112,10 @@ try {
     }
   }
 
+  const verified=interactionVerified && focusRestored;
   console.log(JSON.stringify({
     verified,
+    interactionVerified,
     marker,
     applied,
     cursorStart:{x:originalCursor.x,y:originalCursor.y},
@@ -123,6 +129,9 @@ try {
   if(!verified) process.exitCode=2;
 } finally {
   if(lease){try{await c.execute(ctx,'gui_session_end',{lease});}catch{}}
-  child.kill();
-  await rm(ready,{force:true});
+  if(child.exitCode===null){
+    child.kill();
+    await Promise.race([new Promise(resolve=>child.once('exit',resolve)),sleep(2000)]);
+  }
+  await rm(scratch,{recursive:true,force:true});
 }

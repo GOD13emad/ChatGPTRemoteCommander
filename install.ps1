@@ -6,13 +6,19 @@ param(
   [switch]$DisableGuiControl,
   [switch]$StartServer,
   [switch]$SkipTunnelClient,
+  [switch]$NonInteractive,
   [string]$TunnelClientVersion = '0.0.14',
-  [string]$SourceRef = 'v0.7.3',
+  [string]$SourceRef = 'v0.8.0',
   [string]$ExpectedCommit = ''
 )
 $ErrorActionPreference = 'Stop'
 
 $Repo = 'https://github.com/GOD13emad/ChatGPTRemoteCommander.git'
+$InstallDirWasExplicit = $PSBoundParameters.ContainsKey('InstallDir')
+$StateRoot = Join-Path $env:LOCALAPPDATA 'ChatGPTRemoteCommander'
+$ControlRoot = Join-Path $StateRoot 'control'
+$ManagedPath = Join-Path $ControlRoot 'managed.json'
+$BlueGreenRegistryPath = 'HKCU:\Software\ChatGPTRemoteCommander\BlueGreen'
 
 if ($GuiControl -and $DisableGuiControl) {
   throw 'Use only one of -GuiControl or -DisableGuiControl.'
@@ -20,10 +26,13 @@ if ($GuiControl -and $DisableGuiControl) {
 if ($GuiControl -and -not $PowerMode) {
   throw '-GuiControl requires -PowerMode.'
 }
-if ($SourceRef -notmatch '^[A-Za-z0-9._/-]{1,128}$') {
+if ($SourceRef -notmatch '^[A-Za-z0-9][A-Za-z0-9._/-]{0,127}$' -or $SourceRef -match '\.\.' -or $SourceRef -match '//') {
   throw 'Invalid -SourceRef.'
 }
-if ($ExpectedCommit -and $ExpectedCommit -notmatch '^[0-9a-fA-F]{40}$') {
+if ([string]::IsNullOrWhiteSpace($ExpectedCommit)) {
+  throw 'EXPECTED_COMMIT_REQUIRED'
+}
+if ($ExpectedCommit -notmatch '^[0-9a-fA-F]{40}$') {
   throw 'Invalid -ExpectedCommit SHA.'
 }
 
@@ -61,16 +70,266 @@ function Resolve-InstallDir {
     }
   }
 
-  $stateRoot = Join-Path $env:LOCALAPPDATA 'ChatGPTRemoteCommander'
-  if (Test-Path -LiteralPath (Join-Path $stateRoot '.git')) {
-    $resolved = [IO.Path]::GetFullPath($stateRoot)
+  if (Test-Path -LiteralPath (Join-Path $StateRoot '.git')) {
+    $resolved = [IO.Path]::GetFullPath($StateRoot)
     Write-Host "Detected legacy installation: $resolved"
     return $resolved
   }
 
-  $resolved = Join-Path $stateRoot 'app'
+  $resolved = Join-Path $StateRoot 'app'
   Write-Host "Using application directory: $resolved"
   return $resolved
+}
+
+function Assert-NoReparseAncestorChain([string]$Path, [string]$Code) {
+  $cursor = [IO.Path]::GetFullPath($Path)
+  while (-not [string]::IsNullOrWhiteSpace($cursor)) {
+    if (Test-Path -LiteralPath $cursor) {
+      $item = Get-Item -LiteralPath $cursor -Force
+      if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -or $item.LinkType) { throw $Code }
+    }
+    $parent = [IO.Directory]::GetParent($cursor)
+    if ($null -eq $parent -or $parent.FullName -eq $cursor) { break }
+    $cursor = $parent.FullName
+  }
+  return [IO.Path]::GetFullPath($Path)
+}
+
+function Assert-SafeLegacyRoot([string]$Path) {
+  $base = [IO.Path]::GetFullPath($StateRoot).TrimEnd('\')
+  $legacy = [IO.Path]::GetFullPath($Path).TrimEnd('\')
+  if ($legacy -eq $base) { throw 'LEGACY_ROOT_EQUALS_STATE_ROOT_REFUSED' }
+  if (-not $legacy.StartsWith($base + '\',[StringComparison]::OrdinalIgnoreCase)) {
+    throw 'LEGACY_ROOT_OUTSIDE_STATE_ROOT_REFUSED'
+  }
+  if (-not (Test-Path -LiteralPath $legacy -PathType Container)) { throw 'LEGACY_ROOT_MISSING' }
+  [void](Assert-NoReparseAncestorChain $legacy 'LEGACY_ROOT_REPARSE_ANCESTOR_REFUSED')
+  $gitMarker = Join-Path $legacy '.git'
+  if (-not (Test-Path -LiteralPath $gitMarker)) { throw 'LEGACY_ROOT_GIT_MARKER_MISSING' }
+  $gitItem = Get-Item -LiteralPath $gitMarker -Force
+  if (($gitItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -or $gitItem.LinkType) {
+    throw 'LEGACY_ROOT_GIT_MARKER_REPARSE_REFUSED'
+  }
+  return $legacy
+}
+
+function Resolve-DeploymentStateSignals(
+  [bool]$ManagedExists,
+  [bool]$RunnerExists,
+  [bool]$ControlExists,
+  [bool]$RegistryExists,
+  [bool]$LegacyExists,
+  [bool]$InstallPathExists,
+  [bool]$ExplicitInstallDir
+) {
+  if ($ManagedExists -or $RegistryExists) {
+    if (-not ($ManagedExists -and $RunnerExists -and $ControlExists -and $RegistryExists)) { throw 'BLUE_GREEN_STATE_PARTIAL' }
+    if ($ExplicitInstallDir) { throw 'BLUE_GREEN_MANAGED_EXPLICIT_INSTALL_DIR_REFUSED' }
+    return 'Managed'
+  }
+  if ($RunnerExists -or $ControlExists) {
+    if (-not ($RunnerExists -and $ControlExists -and $LegacyExists)) { throw 'BLUE_GREEN_STATE_PARTIAL' }
+    return 'Legacy'
+  }
+  if ($LegacyExists) { return 'Legacy' }
+  if ($InstallPathExists) { throw 'LEGACY_INSTALL_STATE_PARTIAL' }
+  return 'Fresh'
+}
+
+function Get-DeploymentState {
+  $runner = Join-Path $ControlRoot 'RUN_BLUEGREEN.ps1'
+  $managedExists = Test-Path -LiteralPath $ManagedPath -PathType Leaf
+  $runnerExists = Test-Path -LiteralPath $runner -PathType Leaf
+  $controlExists = Test-Path -LiteralPath $ControlRoot
+  $registryExists = Test-Path -LiteralPath $BlueGreenRegistryPath
+  $legacyExists = Test-Path -LiteralPath (Join-Path $InstallDir '.git')
+  $installPathExists = Test-Path -LiteralPath $InstallDir
+  $registeredPath = ''
+
+  foreach ($controlFile in @($ManagedPath,$runner)) {
+    if (Test-Path -LiteralPath $controlFile) {
+      [void](Assert-NoReparseAncestorChain $controlFile 'BLUE_GREEN_CONTROL_REPARSE_ANCESTOR_REFUSED')
+    }
+  }
+  if ($registryExists) {
+    $registeredPath = [string](Get-ItemProperty -LiteralPath $BlueGreenRegistryPath -Name ManagedStatePath -ErrorAction SilentlyContinue).ManagedStatePath
+  }
+
+  if (((Test-Path -LiteralPath $ManagedPath) -and -not $managedExists) -or ((Test-Path -LiteralPath $runner) -and -not $runnerExists)) { throw 'BLUE_GREEN_STATE_PARTIAL' }
+  $state = Resolve-DeploymentStateSignals $managedExists $runnerExists $controlExists $registryExists $legacyExists $installPathExists $InstallDirWasExplicit
+  if ($state -eq 'Legacy') {
+    [void](Assert-SafeLegacyRoot $InstallDir)
+    return $state
+  }
+  if ($state -eq 'Managed') {
+    if ([string]::IsNullOrWhiteSpace($registeredPath)) { throw 'BLUE_GREEN_STATE_PARTIAL' }
+    if ([IO.Path]::GetFullPath($registeredPath) -ne [IO.Path]::GetFullPath($ManagedPath)) {
+      throw 'BLUE_GREEN_REGISTRY_MISMATCH'
+    }
+    try {
+      $managed = Get-Content -LiteralPath $ManagedPath -Raw | ConvertFrom-Json
+    } catch {
+      throw 'BLUE_GREEN_MANAGED_STATE_INVALID'
+    }
+    try {
+      $managedMismatch = [int]$managed.schema -ne 1 -or
+        [IO.Path]::GetFullPath([string]$managed.base) -ne [IO.Path]::GetFullPath($StateRoot) -or
+        [IO.Path]::GetFullPath([string]$managed.controlRoot) -ne [IO.Path]::GetFullPath($ControlRoot)
+    } catch {
+      throw 'BLUE_GREEN_MANAGED_STATE_MISMATCH'
+    }
+    if ($managedMismatch) { throw 'BLUE_GREEN_MANAGED_STATE_MISMATCH' }
+    if ($managed.PSObject.Properties.Name -contains 'legacyRoot' -and
+        -not [string]::IsNullOrWhiteSpace([string]$managed.legacyRoot)) {
+      [void](Assert-SafeLegacyRoot ([string]$managed.legacyRoot))
+    }
+  }
+  return $state
+}
+
+function Assert-BlueGreenInvocation([string]$DeploymentState) {
+  if ($ExpectedCommit -notmatch '^[0-9a-fA-F]{40}$') {
+    throw "BLUE_GREEN_EXPECTED_COMMIT_REQUIRED state=$DeploymentState"
+  }
+  $refused = [Collections.Generic.List[string]]::new()
+  if ($DisableGuiControl) { $refused.Add('DisableGuiControl') }
+  if ($SkipTunnelClient) { $refused.Add('SkipTunnelClient') }
+  if ($TunnelClientVersion -ne '0.0.14') { $refused.Add('TunnelClientVersion') }
+  if ($refused.Count -gt 0) {
+    throw "BLUE_GREEN_CONFIG_SWITCH_REFUSED switches=$($refused -join ','): persistent config is preserved; use the dedicated profile workflow."
+  }
+  if ($PowerMode) { Write-Host 'BLUE_GREEN_COMPAT_ASSERTION PowerMode: candidate policy gates must confirm Power Mode.' }
+  if ($GuiControl) { Write-Host 'BLUE_GREEN_COMPAT_ASSERTION GuiControl: candidate policy gates must confirm GUI Control.' }
+  if ($StartServer) { Write-Host 'BLUE_GREEN_COMPAT_ASSERTION StartServer: the stable managed service must be active after validation.' }
+}
+
+function Get-ManagedLegacyRoot {
+  $managed = Get-Content -LiteralPath $ManagedPath -Raw | ConvertFrom-Json
+  if ($managed.PSObject.Properties.Name -contains 'legacyRoot' -and
+      -not [string]::IsNullOrWhiteSpace([string]$managed.legacyRoot)) {
+    return [IO.Path]::GetFullPath([string]$managed.legacyRoot)
+  }
+  return [IO.Path]::GetFullPath((Join-Path $StateRoot 'app'))
+}
+
+function Remove-ExactCandidateStage([string]$Path) {
+  if ([string]::IsNullOrWhiteSpace($Path)) { return }
+  $stagingRoot = [IO.Path]::GetFullPath((Join-Path $StateRoot 'staging')).TrimEnd('\')
+  $full = [IO.Path]::GetFullPath($Path).TrimEnd('\')
+  if ([IO.Path]::GetDirectoryName($full) -ne $stagingRoot -or [IO.Path]::GetFileName($full) -notmatch '^installer-[0-9a-f]{32}$') {
+    throw 'CANDIDATE_STAGE_CLEANUP_PATH_REFUSED'
+  }
+  [void](Assert-NoReparseAncestorChain $stagingRoot 'CANDIDATE_STAGE_CLEANUP_ANCESTOR_REPARSE_REFUSED')
+  if (Test-Path -LiteralPath $full) {
+    $item = Get-Item -LiteralPath $full -Force
+    if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -or $item.LinkType) {
+      throw 'CANDIDATE_STAGE_CLEANUP_REPARSE_POINT_REFUSED'
+    }
+    if (Get-ChildItem -LiteralPath $full -Recurse -Force | Where-Object {
+      ($_.Attributes -band [IO.FileAttributes]::ReparsePoint) -or $_.LinkType
+    } | Select-Object -First 1) {
+      throw 'CANDIDATE_STAGE_CLEANUP_NESTED_REPARSE_POINT_REFUSED'
+    }
+    Remove-Item -LiteralPath $full -Recurse -Force
+  }
+}
+
+function Assert-CandidateCheckout([string]$Candidate, [string]$Commit) {
+  [void](Assert-NoReparseAncestorChain $Candidate 'CANDIDATE_REPARSE_ANCESTOR_REFUSED')
+  $top = (& git.exe -C $Candidate rev-parse --show-toplevel).Trim()
+  if ($LASTEXITCODE -ne 0 -or [IO.Path]::GetFullPath($top) -ne [IO.Path]::GetFullPath($Candidate)) {
+    throw 'CANDIDATE_GIT_ROOT_MISMATCH'
+  }
+  $head = (& git.exe -C $Candidate rev-parse HEAD).Trim().ToLowerInvariant()
+  if ($LASTEXITCODE -ne 0 -or $head -ne $Commit.ToLowerInvariant()) { throw 'CANDIDATE_HEAD_MISMATCH' }
+  $status = @(& git.exe -C $Candidate status --porcelain=v1 --untracked-files=all)
+  if ($LASTEXITCODE -ne 0) { throw 'CANDIDATE_STATUS_FAILED' }
+  if (@($status | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) }).Count -ne 0) {
+    throw 'CANDIDATE_WORKTREE_NOT_CLEAN'
+  }
+  $index = @(& git.exe -C $Candidate ls-files --stage)
+  if ($LASTEXITCODE -ne 0) { throw 'CANDIDATE_INDEX_READ_FAILED' }
+  if ($index | Where-Object { $_ -match '^(120000|160000) ' } | Select-Object -First 1) {
+    throw 'CANDIDATE_SPECIAL_ENTRY_REFUSED'
+  }
+  if (Get-ChildItem -LiteralPath $Candidate -Recurse -Force | Where-Object {
+    ($_.Attributes -band [IO.FileAttributes]::ReparsePoint) -or $_.LinkType
+  } | Select-Object -First 1) {
+    throw 'CANDIDATE_REPARSE_POINT_REFUSED'
+  }
+  foreach ($required in @('RUN_BLUEGREEN.ps1','bluegreen-windows.ps1','bluegreen-supervisor-windows.ps1')) {
+    $requiredPath = Join-Path $Candidate $required
+    if (-not (Test-Path -LiteralPath $requiredPath -PathType Leaf)) {
+      throw "CANDIDATE_BLUE_GREEN_FILE_MISSING file=$required"
+    }
+    $requiredItem = Get-Item -LiteralPath $requiredPath -Force
+    if (($requiredItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -or $requiredItem.LinkType) {
+      throw "CANDIDATE_BLUE_GREEN_FILE_LINK_REFUSED file=$required"
+    }
+    $tracked = @(& git.exe -C $Candidate ls-files --error-unmatch -- $required 2>$null)
+    if ($LASTEXITCODE -ne 0 -or $tracked.Count -ne 1 -or [string]$tracked[0] -ne $required) {
+      throw "CANDIDATE_BLUE_GREEN_FILE_UNTRACKED file=$required"
+    }
+  }
+}
+
+function New-ExactCandidateCheckout {
+  $stagingRoot = Join-Path $StateRoot 'staging'
+  New-Item -ItemType Directory -Force -Path $stagingRoot | Out-Null
+  [void](Assert-NoReparseAncestorChain $stagingRoot 'CANDIDATE_STAGING_REPARSE_POINT_REFUSED')
+  $candidate = Join-Path $stagingRoot "installer-$([guid]::NewGuid().ToString('N'))"
+  New-Item -ItemType Directory -Path $candidate | Out-Null
+  [void](Assert-NoReparseAncestorChain $candidate 'CANDIDATE_REPARSE_ANCESTOR_REFUSED')
+  try {
+    & git.exe -C $candidate init | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw 'candidate git init failed' }
+    & git.exe -C $candidate remote add origin $Repo | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw 'candidate git remote add failed' }
+    & git.exe -C $candidate fetch --depth 1 --no-tags origin $SourceRef | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw "candidate git fetch failed for SourceRef $SourceRef" }
+    $resolved = (& git.exe -C $candidate rev-parse 'FETCH_HEAD^{commit}').Trim().ToLowerInvariant()
+    if ($LASTEXITCODE -ne 0 -or $resolved -notmatch '^[0-9a-f]{40}$') {
+      throw 'Could not peel candidate source ref to a commit.'
+    }
+    if ($resolved -ne $ExpectedCommit.ToLowerInvariant()) {
+      throw "Candidate commit $resolved does not match ExpectedCommit $ExpectedCommit."
+    }
+    & git.exe -C $candidate checkout --detach $resolved | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw 'candidate git checkout failed' }
+    Assert-CandidateCheckout $candidate $resolved
+    return [pscustomobject]@{ root=[IO.Path]::GetFullPath($candidate); commit=$resolved }
+  } catch {
+    Remove-ExactCandidateStage $candidate
+    throw
+  }
+}
+
+function Invoke-BlueGreenDeployment([string]$DeploymentState) {
+  $candidate = New-ExactCandidateCheckout
+  try {
+    Assert-CandidateCheckout $candidate.root $candidate.commit
+    $runner = Join-Path $candidate.root 'RUN_BLUEGREEN.ps1'
+    $mode = if ($DeploymentState -eq 'Managed') { 'Update' } else { 'Bootstrap' }
+    $arguments = @(
+      '-NoLogo','-NoProfile','-ExecutionPolicy','Bypass','-File',$runner,
+      '-CandidateRoot',$candidate.root,'-ExpectedCommit',$candidate.commit,'-Mode',$mode
+    )
+    if ($mode -eq 'Bootstrap') {
+      $arguments += @('-LegacyRoot',$InstallDir)
+    } else {
+      $arguments += @('-LegacyRoot',(Get-ManagedLegacyRoot))
+    }
+    if ($NonInteractive) { $arguments += '-NonInteractive' }
+    & pwsh.exe @arguments
+    if ($LASTEXITCODE -ne 0) { throw "BLUE_GREEN_RUNNER_FAILED exit=$LASTEXITCODE mode=$mode" }
+    Write-Host ''
+    if ($NonInteractive) { Write-Host 'BLUE_GREEN_INSTALL_ACCEPTED'; Write-Host 'The detached receipt must reach state=succeeded and target state must be verified independently before PASS.' }
+    else { Write-Host 'BLUE_GREEN_INSTALL_PASS' }
+    Write-Host "Deployment state: $DeploymentState"
+    Write-Host "Source commit: $($candidate.commit)"
+  } finally {
+    Remove-ExactCandidateStage $candidate.root
+  }
 }
 
 function Ensure-Command([string]$Name, [string]$WingetId) {
@@ -130,7 +389,7 @@ function Install-Source {
     if ($LASTEXITCODE -ne 0 -or $resolved -notmatch '^[0-9a-f]{40}$') {
       throw 'Could not peel fetched source ref to a commit.'
     }
-    if ($ExpectedCommit -and $resolved -ne $ExpectedCommit.ToLowerInvariant()) {
+    if ($resolved -ne $ExpectedCommit.ToLowerInvariant()) {
       throw "Fetched commit $resolved does not match ExpectedCommit $ExpectedCommit."
     }
 
@@ -167,7 +426,7 @@ function Install-Source {
       if ($LASTEXITCODE -ne 0 -or $resolved -notmatch '^[0-9a-f]{40}$') {
         throw 'Could not peel fetched source ref to a commit.'
       }
-      if ($ExpectedCommit -and $resolved -ne $ExpectedCommit.ToLowerInvariant()) {
+      if ($resolved -ne $ExpectedCommit.ToLowerInvariant()) {
         throw "Fetched commit $resolved does not match ExpectedCommit $ExpectedCommit."
       }
 
@@ -182,7 +441,7 @@ function Install-Source {
   }
 
   $head = (& git.exe -C $InstallDir rev-parse HEAD).Trim().ToLowerInvariant()
-  if ($ExpectedCommit -and $head -ne $ExpectedCommit.ToLowerInvariant()) {
+  if ($head -ne $ExpectedCommit.ToLowerInvariant()) {
     throw "Installed HEAD $head does not match ExpectedCommit $ExpectedCommit."
   }
   Write-Host "Source commit: $head"
@@ -509,22 +768,32 @@ function Start-LocalServer {
 
 Require-Windows
 $InstallDir = Resolve-InstallDir
+$deploymentState = Get-DeploymentState
+if ($deploymentState -ne 'Fresh') {
+  Assert-BlueGreenInvocation $deploymentState
+}
 Ensure-Prerequisites
-Install-Source
-Install-TunnelClient
-Configure-LocalPolicy
-Test-Installation
-Start-LocalServer
+if ($deploymentState -eq 'Fresh') {
+  Install-Source
+  Install-TunnelClient
+  Configure-LocalPolicy
+  Test-Installation
+  Start-LocalServer
 
-$effective = Get-Content -LiteralPath (Join-Path $InstallDir 'config.local.json') -Raw | ConvertFrom-Json
+  $effective = Get-Content -LiteralPath (Join-Path $InstallDir 'config.local.json') -Raw | ConvertFrom-Json
 
-Write-Host ''
-Write-Host 'INSTALL_PASS'
-Write-Host "Installed at: $InstallDir"
-Write-Host "Source commit: $((& git.exe -C $InstallDir rev-parse HEAD).Trim())"
-Write-Host "Mode: $(if ($effective.powerMode.enabled) { if ($effective.powerMode.guiControl.enabled) {'POWER + GUI'} else {'POWER'} } else {'STANDARD'})"
-Write-Host ''
-Write-Host 'Next: create or reuse your OpenAI Secure MCP Tunnel and run once:'
-Write-Host ('  pwsh.exe -NoProfile -File "{0}\connect-chatgpt.ps1"' -f $InstallDir)
-Write-Host 'Persistent enrollment manages MCP + tunnel automatically; no repeated Tunnel ID/port/key entry is needed.'
-Write-Host 'Do not share the Runtime API key. It is entered locally and stored with Windows DPAPI for this user.'
+  Write-Host ''
+  Write-Host 'INSTALL_PASS'
+  Write-Host "Installed at: $InstallDir"
+  Write-Host "Source commit: $((& git.exe -C $InstallDir rev-parse HEAD).Trim())"
+  Write-Host "Mode: $(if ($effective.powerMode.enabled) { if ($effective.powerMode.guiControl.enabled) {'POWER + GUI'} else {'POWER'} } else {'STANDARD'})"
+  Write-Host 'BLUE_GREEN_BOOTSTRAP_PENDING'
+  Write-Host 'Complete persistent tunnel enrollment, then rerun the exact pinned release installer to bootstrap blue/green safely.'
+  Write-Host ''
+  Write-Host 'Next: create or reuse your OpenAI Secure MCP Tunnel and run once:'
+  Write-Host ('  pwsh.exe -NoProfile -File "{0}\connect-chatgpt.ps1"' -f $InstallDir)
+  Write-Host 'Persistent enrollment manages MCP + tunnel automatically; no repeated Tunnel ID/port/key entry is needed.'
+  Write-Host 'Do not share the Runtime API key. It is entered locally and stored with Windows DPAPI for this user.'
+} else {
+  Invoke-BlueGreenDeployment $deploymentState
+}

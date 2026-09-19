@@ -9,7 +9,24 @@ Cross-platform Windows + Linux MCP server for controlled remote project and mach
 **Setup guides in 10 languages:** [English](docs/SETUP.en.md) · [فارسی](docs/SETUP.fa.md) · [العربية](docs/SETUP.ar.md) · [Türkçe](docs/SETUP.tr.md) · [Español](docs/SETUP.es.md) · [Français](docs/SETUP.fr.md) · [Deutsch](docs/SETUP.de.md) · [Русский](docs/SETUP.ru.md) · [简体中文](docs/SETUP.zh-CN.md) · [日本語](docs/SETUP.ja.md)
 
 [All setup guides](docs/README.md)
-## v0.5 controlled desktop automation, hardened runtime ownership, and zero-reentry startup
+
+## v0.8 Windows blue/green updates
+
+On an enrolled Windows installation, the release installer stages the exact pinned commit beside the active release, starts each candidate backend on a private loopback port, runs the release and runtime gates, and changes a stable loopback router only after the candidate identity and policy match. Tunnel-facing ports stay fixed; tunnel YAML and DPAPI credentials are reused without copying plaintext secrets.
+
+The first migration from the legacy in-place layout is explicitly **near-zero downtime**, not stateful zero downtime. Later managed updates drain mutations, GUI coordination, durable workflow intents, and owned terminal sessions before a generation-checked router switch. Until an independent terminal/process broker exists, a running owned terminal blocks promotion.
+
+The Windows control plane keeps only one active backend per profile after validation and retains integrity evidence rather than an active old installation. Unknown listeners are never killed. Power-loss durability of the pointer rename is not claimed; invalid or missing state fails closed. See [docs/BLUE_GREEN_R1.md](docs/BLUE_GREEN_R1.md).
+
+### Release channels and canary integrity
+
+`/releases/latest/download/...` is only the convenience channel for the promoted full Release. A GitHub prerelease is not `latest`; while `v0.8.0` is a canary/prerelease, use only `/releases/download/v0.8.0/<asset>` after reconciling the exact 13-asset set, GitHub API SHA-256 digests, `SHA256SUMS.txt`, `release-authority.json`, and the tag's peeled commit. Never use the `latest` commands below to run a prerelease canary.
+
+The published Plugin installers carry the exact Release tag, Plugin-template SHA-256, and exact entry manifest. They fetch that tag's `plugin-template.zip`, verify its whole-file hash, reject traversal/link/set drift, verify every entry, and only then extract. This prevents a canary installer from silently consuming an older or future `latest` template.
+
+Release hashes prove the emitted bytes and their exact Git source. Independent byte-for-byte reproduction across different PowerShell/.NET/OS runtimes is **UNPROVEN and not claimed**.
+
+## Controlled desktop automation, hardened runtime ownership, and zero-reentry startup
 
 v0.5 preserves all three deployment patterns: **one ChatGPT account -> multiple computers**, **multiple ChatGPT accounts -> one computer**, and **multiple concurrent chats -> the same computer**. Each computer runs its own MCP server; each account uses its own Secure MCP Tunnel profile; concurrent chat mutations on the same path are serialized to reduce write races.
 
@@ -31,7 +48,7 @@ For an existing profile, this only asks for the Runtime API key once. It is stor
 
 The Linux helper registers a systemd user service when available, otherwise falls back to `crontab`. Runtime keys are stored outside the repository in a user-only `chmod 600` credential file.
 
-## One-command Windows install
+## One-command fresh Windows install — promoted latest Release
 
 Paste this into **PowerShell** for a standard safe-by-default install (it installs missing Git/Node.js/PowerShell 7 with `winget`, downloads and verifies the official OpenAI tunnel client, runs tests/audit, and starts the local MCP server):
 
@@ -45,7 +62,17 @@ For trusted machines that need full filesystem/shell/process control, add `-Powe
 & ([scriptblock]::Create((irm 'https://github.com/GOD13emad/ChatGPTRemoteCommander/releases/latest/download/install.ps1'))) -InstallPrerequisites -PowerMode -StartServer
 ```
 
-The same command is also the update command. On Windows v0.3.4+, the installer first detects an already-active installation from the registered supervisor and updates that Git checkout in place. Otherwise, new source code is installed under `%LOCALAPPDATA%\\ChatGPTRemoteCommander\\app`, while persistent state such as `credentials/` and `downloads/` stays one level above. `-StartServer` upgrades a running v0.3 MCP to the newly installed version when needed. The installer never embeds your OpenAI Runtime API key. After creating a Secure MCP Tunnel, run `enable-autostart.ps1` once to enroll the account and enable zero-reentry startup.
+A fresh Windows installation uses `%LOCALAPPDATA%\\ChatGPTRemoteCommander\\app` until tunnel enrollment exists. The published installer asset pins its default `ExpectedCommit`; every source-checkout run must pass the exact 40-character commit explicitly. The installer never embeds your OpenAI Runtime API key.
+
+After tunnel enrollment, bootstrap or update with the pinned Release installer without installation-policy switches:
+
+```powershell
+& ([scriptblock]::Create((irm 'https://github.com/GOD13emad/ChatGPTRemoteCommander/releases/latest/download/install.ps1'))) -InstallPrerequisites
+```
+
+The first enrolled run performs the one-time blue/green bootstrap; already-managed installations use side-by-side releases and the stable router. Existing Power/GUI/workflow configuration is preserved byte-for-byte. Reusing a fresh-install command remains compatible: `-PowerMode`, `-GuiControl`, and `-StartServer` act only as assertions that the candidate gates confirm the required Full Power + GUI policy and active managed service. They never change persistent configuration. Blue/green runs reject `-DisableGuiControl`, `-SkipTunnelClient`, and any nondefault `-TunnelClientVersion`; perform separately audited policy changes through the dedicated profile workflow.
+
+Linux installation/update remains the existing in-place flow in v0.8; the blue/green R1 control plane is Windows-only.
 
 ## One-command Linux install
 
@@ -86,13 +113,15 @@ gui_status
 
 A frame is short-lived and single-use. A second chat cannot take the active desktop lease. GUI actions are never considered successful merely because input was submitted; a fresh screenshot must verify the visible result.
 
-Enable it on a trusted Windows checkout with:
+Enable it only during a fresh install on a trusted Windows checkout with:
 
 ```powershell
-.\install.ps1 -PowerMode -GuiControl -StartServer -SkipTunnelClient
+.\install.ps1 -ExpectedCommit (git rev-parse HEAD) -PowerMode -GuiControl -StartServer -SkipTunnelClient
 ```
 
-After enabling, refresh/re-scan the ChatGPT custom app tools. The owner can stop GUI input locally at any time by holding **Escape** or creating `var\GUI_STOP`; the assistant must not remove that stop file remotely.
+On an enrolled blue/green installation, those policy switches do not enable or disable features. `-PowerMode`, `-GuiControl`, and `-StartServer` are compatibility assertions; use the dedicated profile workflow for a policy change.
+
+After enabling, refresh/re-scan the ChatGPT custom app tools. The owner can stop GUI input locally at any time by holding **Escape** or creating the configured stop file. Managed v0.8 installations use `%LOCALAPPDATA%\\ChatGPTRemoteCommander\\control\\GUI_STOP`; legacy/source runs use `var\GUI_STOP`. The assistant must not remove that stop file remotely.
 
 Limits remain explicit: Windows Secure Desktop/UAC prompts, the lock screen, anti-cheat/protected-input paths, software that rejects synthetic input, and high-speed real-time gameplay are not bypassed. Different trust levels also require separate OS sessions/authorization; multiple tunnel profiles alone are not security isolation.
 
@@ -101,6 +130,7 @@ Limits remain explicit: Windows Secure Desktop/UAC prompts, the lock screen, ant
 - Windows 10/11 with PowerShell 7, or a modern Linux distribution
 - Node.js 22+
 - Git
+- .NET 10 SDK for the mandatory Windows native-GUI promotion gate. The gate accepts a PATH installation or `%LOCALAPPDATA%\Microsoft\dotnet\dotnet.exe` and fails closed if SDK major 10 is unavailable.
 - OpenAI Secure MCP Tunnel client and a configured ChatGPT custom plugin/app
 
 ## Manual/developer start (optional)
@@ -138,6 +168,8 @@ Legacy-safe tools: `system_status`, `list_directory`, `read_text`, `write_text`,
 Filesystem containment is enforced, but command execution is **not an OS sandbox**. An allowlisted executable or project script may itself access resources beyond the configured roots. Treat command execution as privileged. See [SECURITY.md](SECURITY.md) and the point-in-time [SECURITY_AUDIT.md](SECURITY_AUDIT.md).
 
 ## Validation
+
+v0.8 adds a stable loopback router, exact release-slot identity, mutation drain evidence, per-profile side-by-side backends, CAS cutover/rollback, and ownership-proven retirement. Static/unit gates do not by themselves prove a live upgrade: release acceptance also requires native GUI E2E on the target Windows desktop and real Secure MCP Tunnel E2E after cutover. Stateful terminal zero downtime remains unproven by design; active sessions block promotion.
 
 v0.7.0 adds durable project workflows and per-profile MCP isolation. v0.7.1 hardens Standard isolated profiles by removing their command-program allowlist. v0.7.2 adds transactional reconfiguration for existing isolated profiles. v0.7.3 hardens supervisor startup so an isolated MCP environment can never leak `REMOTE_COMMANDER_CONFIG` into primary MCP startup; primary config selection is explicitly sanitized while isolated instances continue to receive their config explicitly. For profiles that explicitly opt into Power + GUI, durable workflow journaling also covers the bounded power/file and GUI tool subset while shell, delete, process-kill and terminal control stay outside durable replay.
 

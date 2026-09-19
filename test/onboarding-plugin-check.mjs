@@ -7,7 +7,7 @@ const exists = (p) => fs.existsSync(path.join(root, p));
 const fail = (m) => { throw new Error(m); };
 
 const pkg = JSON.parse(read('package.json'));
-if (pkg.version !== '0.7.3') fail('package version must be 0.7.3');
+if (pkg.version !== '0.8.0') fail('package version must be 0.8.0');
 
 for (const p of [
   'START_HERE.md','WORK_SETUP.md','PRIVACY.md','TERMS.md','docs/PLUGIN_SETUP.md',
@@ -65,9 +65,10 @@ for (const required of ['GUI Control workflow','gui_screenshot','gui_mouse_click
 const pluginSetup = read('docs/PLUGIN_SETUP.md');
 for (const required of ['Windows GUI Control capability','MCP image content','Native Computer Use remains a fallback']) if (!pluginSetup.includes(required)) fail(`PLUGIN_SETUP missing ${required}`);
 const workPs = read('install-work-plugin.ps1');
-for (const required of ['$MyInvocation.MyCommand.Path','releases/latest/download/plugin-template.zip','TemplateSource','[IO.Path]::IsPathRooted($TemplateSource)','Join-Path (Get-Location).Path $TemplateSource','[IO.Path]::IsPathRooted($InstallRoot)','Join-Path (Get-Location).Path $InstallRoot','plugin_((?:asdk_app_|connector_|templated_apps_)','chatgpt-remote-commander-personal','ChatGPT Remote Commander (Personal)','codex plugin add failed','WORK_PLUGIN_INSTALL_PASS']) if (!workPs.includes(required)) fail(`install-work-plugin.ps1 missing ${required}`);
+for (const required of ['$MyInvocation.MyCommand.Path','ChatGPTRemoteCommander/releases/download','__REMOTE_COMMANDER_RELEASE_TAG__','__REMOTE_COMMANDER_PLUGIN_TEMPLATE_SHA256__','__REMOTE_COMMANDER_PLUGIN_TEMPLATE_MANIFEST_BASE64__','PLUGIN_TEMPLATE_SHA256_MISMATCH','PLUGIN_TEMPLATE_ENTRY_INVALID','PLUGIN_TEMPLATE_SET_MISMATCH','PLUGIN_TEMPLATE_ENTRY_HASH_MISMATCH','TemplateSource','[IO.Path]::IsPathRooted($TemplateSource)','Join-Path (Get-Location).Path $TemplateSource','[IO.Path]::IsPathRooted($InstallRoot)','Join-Path (Get-Location).Path $InstallRoot','plugin_((?:asdk_app_|connector_|templated_apps_)','chatgpt-remote-commander-personal','ChatGPT Remote Commander (Personal)','codex plugin add failed','WORK_PLUGIN_INSTALL_PASS']) if (!workPs.includes(required)) fail(`install-work-plugin.ps1 missing ${required}`);
 const workSh = read('install-work-plugin.sh');
-for (const required of ['${BASH_SOURCE[0]:-}','releases/latest/download/plugin-template.zip','TEMPLATE_SOURCE','^plugin_((asdk_app_|connector_|templated_apps_)','chatgpt-remote-commander-personal','ChatGPT Remote Commander (Personal)','codex plugin add','WORK_PLUGIN_INSTALL_PASS']) if (!workSh.includes(required)) fail(`install-work-plugin.sh missing ${required}`);
+for (const required of ['${BASH_SOURCE[0]:-}','ChatGPTRemoteCommander/releases/download','__REMOTE_COMMANDER_RELEASE_TAG__','__REMOTE_COMMANDER_PLUGIN_TEMPLATE_SHA256__','__REMOTE_COMMANDER_PLUGIN_TEMPLATE_MANIFEST_BASE64__','PLUGIN_TEMPLATE_SHA256_MISMATCH','PLUGIN_TEMPLATE_ENTRY_INVALID','PLUGIN_TEMPLATE_SET_MISMATCH','PLUGIN_TEMPLATE_ENTRY_HASH_MISMATCH','TEMPLATE_SOURCE','^plugin_((asdk_app_|connector_|templated_apps_)','chatgpt-remote-commander-personal','ChatGPT Remote Commander (Personal)','codex plugin add','WORK_PLUGIN_INSTALL_PASS']) if (!workSh.includes(required)) fail(`install-work-plugin.sh missing ${required}`);
+for (const [name,text] of [['install-work-plugin.ps1',workPs],['install-work-plugin.sh',workSh]]) if (text.includes('releases/latest/download/plugin-template.zip')) fail(`${name} must not consume a cross-release latest template`);
 
 function pngSize(rel) {
   const b = fs.readFileSync(path.join(root, rel));

@@ -19,7 +19,8 @@ foreach ($file in $tracked) {
   if (-not (Test-Path -LiteralPath $file -PathType Leaf)) { continue }
   try { $text = [IO.File]::ReadAllText((Resolve-Path -LiteralPath $file)) } catch { continue }
   foreach ($entry in $patterns.GetEnumerator()) {
-    if ([regex]::IsMatch($text, $entry.Value, 'IgnoreCase')) {
+    $options = if ($entry.Key -eq 'Tunnel identifier') { [Text.RegularExpressions.RegexOptions]::None } else { [Text.RegularExpressions.RegexOptions]::IgnoreCase }
+    if ([regex]::IsMatch($text, $entry.Value, $options)) {
       $findings += [pscustomobject]@{ Scope='CURRENT'; Type=$entry.Key; Location=$file }
     }
   }

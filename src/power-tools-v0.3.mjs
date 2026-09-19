@@ -13,6 +13,12 @@ import { IS_WINDOWS, defaultBackupRoot, expandPathValue, shellName, spawnShell }
 const terminals = new Map();
 let terminalCounter = 1;
 
+export function terminalStats() {
+  let running = 0;
+  for (const session of terminals.values()) if (session.running) running += 1;
+  return { total: terminals.size, running };
+}
+
 function expandEnv(value) {
   return expandPathValue(value);
 }

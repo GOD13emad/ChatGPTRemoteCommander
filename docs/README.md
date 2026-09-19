@@ -24,7 +24,7 @@ Official OpenAI references:
 - https://platform.openai.com/settings/organization/tunnels
 - https://chatgpt.com/plugins
 
-## One-command install
+## One-command fresh Windows install
 
 Standard:
 
@@ -59,4 +59,10 @@ After enrollment, later logins do not require re-entering the Tunnel ID, MCP add
 
 ## Updating
 
-Re-run the same one-command installer you originally used. On Windows v0.4.4+, an active registered installation is detected and updated in place; otherwise new installs keep application source under `%LOCALAPPDATA%\\ChatGPTRemoteCommander\\app` and persistent state in the parent directory. With `-StartServer`, a running v0.3 MCP is upgraded to the installed version without requiring sign-out or reboot.
+For an enrolled Windows installation, use the pinned Release installer without installation-policy switches:
+
+```powershell
+& ([scriptblock]::Create((irm 'https://github.com/GOD13emad/ChatGPTRemoteCommander/releases/latest/download/install.ps1'))) -InstallPrerequisites
+```
+
+On Windows v0.8, enrolled legacy installations perform a one-time near-zero-downtime bootstrap to a stable router, and later updates stage an exact side-by-side release before cutover. Persistent configuration is preserved byte-for-byte. Existing commands that include `-PowerMode`, `-GuiControl`, or `-StartServer` remain compatible, but those switches are assertions during blue/green execution and do not modify configuration. `-DisableGuiControl`, `-SkipTunnelClient`, and a nondefault `-TunnelClientVersion` are rejected during blue/green execution. Fresh installs remain under `%LOCALAPPDATA%\\ChatGPTRemoteCommander\\app` until tunnel enrollment exists. Linux retains the existing in-place update flow in v0.8. See [START_HERE.md](../START_HERE.md) for gates and limitations.

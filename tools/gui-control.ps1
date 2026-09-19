@@ -26,8 +26,16 @@ try {
     $req = $raw | ConvertFrom-Json -AsHashtable
     $actions = @('status','screenshot','cursor','listWindows','move','moveRelative','scroll','click','drag','typeText','keyPress','focusWindow')
     if ($req['action'] -notin $actions) { throw 'GUI_UNKNOWN_ACTION' }
-    $stop = Join-Path (Split-Path -Parent $PSScriptRoot) 'var\GUI_STOP'
-    # Fixed local path: a request may not replace the local emergency-stop file.
+    $stopOverride = $env:REMOTE_COMMANDER_GUI_STOP_FILE
+    if ([string]::IsNullOrWhiteSpace($stopOverride)) {
+        $stop = Join-Path (Split-Path -Parent $PSScriptRoot) 'var\GUI_STOP'
+    } else {
+        if ($stopOverride.Length -gt 4096 -or -not [IO.Path]::IsPathFullyQualified($stopOverride) -or $stopOverride -match '^(\\\\|//)') {
+            throw 'GUI_STOP_PATH_INVALID'
+        }
+        $stop = [IO.Path]::GetFullPath($stopOverride)
+    }
+    # Fixed trusted environment/local path: a request may not replace the emergency-stop file.
     $mutex = [Threading.Mutex]::new($false, 'Local\ChatGPTRemoteCommander.GuiInput')
     try { $owned = $mutex.WaitOne(0) } catch [Threading.AbandonedMutexException] { $owned=$true; throw 'GUI_PREVIOUS_HELPER_ABANDONED' }
     if (-not $owned) { throw 'GUI_NATIVE_BUSY' }

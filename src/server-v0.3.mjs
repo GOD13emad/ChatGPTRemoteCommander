@@ -1,20 +1,26 @@
 import http from 'node:http';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { validateTransport, assertLocalTransport } from './transport-guard.mjs';
 import os from 'node:os';
 import path from 'node:path';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { access, lstat, mkdir, open, readFile, rename, unlink } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { canonicalizeRoots } from './security-v0.3.mjs';
 import { audit, listDirectory, readText, runProjectCommand, writeText } from './tools-v0.3.mjs';
-import { executePowerTool, powerToolDefinitions } from './power-tools-v0.3.mjs';
-import { executeGuiTool, guiToolDefinitions } from './gui-tools-windows.mjs';
+import * as powerTools from './power-tools-v0.3.mjs';
+import * as guiTools from './gui-tools-windows.mjs';
 import { lockStats } from './locks.mjs';
 import { expandPathValue, shellName } from './platform.mjs';
 import { formatToolInputErrors, validateJsonSchema } from './schema-validator.mjs';
 
+const { executePowerTool, powerToolDefinitions } = powerTools;
+const { executeGuiTool, guiToolDefinitions } = guiTools;
+const terminalStats = powerTools.terminalStats ?? (() => ({ total: 0, running: 0 }));
+const guiCoordinationSnapshot = guiTools.guiCoordinationSnapshot
+  ?? (() => ({ leased: false, busy: false, uncertain: false, frame: false }));
+
 let workflowTools = null;
-const VERSION = '0.7.3';
+const VERSION = '0.8.0';
 const MODERN_VERSION = '2026-07-28';
 const LEGACY_VERSIONS = ['2025-11-25', '2025-06-18', '2025-03-26'];
 const MODERN_CACHE_HINT = Object.freeze({ ttlMs: 30000, cacheScope: 'private' });
@@ -29,21 +35,71 @@ if (!process.env.REMOTE_COMMANDER_CONFIG) {
 const configRaw = await readFile(configPath, 'utf8');
 const configSha256 = createHash('sha256').update(configRaw).digest('hex');
 const config = JSON.parse(configRaw);
-assertLocalTransport(config);
 function expandEnvironment(value) { return expandPathValue(value); }
+function parseListenPort(value) {
+  if (value === undefined) return config.port;
+  if (!/^[1-9][0-9]{0,4}$/.test(value)) throw new Error('REMOTE_COMMANDER_LISTEN_PORT_INVALID');
+  const port = Number(value);
+  if (!Number.isInteger(port) || port > 65535) throw new Error('REMOTE_COMMANDER_LISTEN_PORT_INVALID');
+  return port;
+}
+function absoluteEnvironmentPath(name) {
+  const raw = process.env[name];
+  if (raw === undefined) return null;
+  if (typeof raw !== 'string' || raw.length === 0 || raw.length > 4096 || raw.includes('\0')) throw new Error(`${name}_INVALID`);
+  const expanded = expandEnvironment(raw);
+  if (!path.isAbsolute(expanded)) throw new Error(`${name}_MUST_BE_ABSOLUTE`);
+  return path.normalize(expanded);
+}
+function releaseIdentity() {
+  const commitRaw = process.env.REMOTE_COMMANDER_RELEASE_COMMIT;
+  const slotRaw = process.env.REMOTE_COMMANDER_SLOT_ID;
+  if (commitRaw === undefined && slotRaw === undefined) return { role: 'backend', commit: null, slotId: null };
+  if (typeof commitRaw !== 'string' || !/^[0-9a-f]{40}$/i.test(commitRaw)) throw new Error('REMOTE_COMMANDER_RELEASE_COMMIT_INVALID');
+  if (typeof slotRaw !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(slotRaw) || slotRaw.includes('..')) throw new Error('REMOTE_COMMANDER_SLOT_ID_INVALID');
+  return { role: 'backend', commit: commitRaw.toLowerCase(), slotId: slotRaw };
+}
+const listenPort = parseListenPort(process.env.REMOTE_COMMANDER_LISTEN_PORT);
+const release = Object.freeze(releaseIdentity());
+assertLocalTransport(config, listenPort);
+const backendIdentity = Object.freeze({
+  profile: config.instance?.profile ?? 'default',
+  version: VERSION,
+  configSha256,
+  commit: release.commit,
+  slotId: release.slotId,
+  projectDir,
+  port: listenPort
+});
 config.allowedRoots = config.allowedRoots.map(expandEnvironment);
 const roots = await canonicalizeRoots(config.allowedRoots);
 const runtimeDir = path.resolve(projectDir, 'var');
-const runtimeStatePath = config.runtimeState
+const runtimeStatePath = absoluteEnvironmentPath('REMOTE_COMMANDER_RUNTIME_STATE') ?? (config.runtimeState
   ? path.resolve(expandEnvironment(config.runtimeState))
-  : path.join(runtimeDir, 'mcp-runtime.json');
+  : path.join(runtimeDir, 'mcp-runtime.json'));
+const auditLogPath = absoluteEnvironmentPath('REMOTE_COMMANDER_AUDIT_LOG')
+  ?? path.resolve(projectDir, config.auditLog || 'var/audit.jsonl');
+const drainFilePath = absoluteEnvironmentPath('REMOTE_COMMANDER_DRAIN_FILE');
 const ctx = {
   config,
   roots,
-  auditLog: path.resolve(projectDir, config.auditLog || 'var/audit.jsonl')
+  auditLog: auditLogPath
 };
 const GUI_ENABLED = process.platform === 'win32' && config.powerMode?.enabled === true && config.powerMode?.guiControl?.enabled === true;
 const LEGACY_FULL_FILESYSTEM = config.powerMode?.enabled === true && config.powerMode?.fullFilesystem === true;
+let activeCalls = 0;
+let activeMutations = 0;
+
+async function drainSnapshot() {
+  if (!drainFilePath) return { configured: false, active: false };
+  try {
+    await access(drainFilePath);
+    return { configured: true, active: true };
+  } catch (error) {
+    if (error?.code === 'ENOENT') return { configured: true, active: false };
+    throw new Error('UPGRADE_DRAIN_CHECK_FAILED');
+  }
+}
 
 function operatingInstructions() {
   if (LEGACY_FULL_FILESYSTEM) {
@@ -55,6 +111,12 @@ const TOOLS = [
   {
     name: 'system_status',
     description: 'Return server version, configured roots, effective filesystem access, command allowlist, Power Mode state, and protocol support.',
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+    annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false }
+  },
+  {
+    name: 'upgrade_status',
+    description: 'Return backend identity and drain-readiness counters without exposing terminal output, GUI tokens, or workflow content.',
     inputSchema: { type: 'object', properties: {}, additionalProperties: false },
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false }
   },
@@ -182,6 +244,28 @@ function rpcError(id, code, message, data) {
   if (data !== undefined) error.data = data;
   return { jsonrpc: '2.0', id: id ?? null, error };
 }
+async function buildUpgradeStatus() {
+  const drain = await drainSnapshot();
+  return {
+    role: release.role,
+    releaseCommit: release.commit,
+    slotId: release.slotId,
+    projectDir,
+    backend: { ...backendIdentity },
+    advertisedPort: config.port,
+    backendPort: listenPort,
+    draining: drain.active,
+    drain,
+    activeCalls: Math.max(0, activeCalls - 1),
+    activeMutations,
+    lockStats: lockStats(),
+    terminals: terminalStats(),
+    gui: guiCoordinationSnapshot(),
+    workflows: workflowTools
+      ? { enabled: true, ...workflowTools.upgradeSnapshot() }
+      : { enabled: false, total: 0, running: 0, uncertain: 0 }
+  };
+}
 async function executeTool(name, args) {
   if (!toolDefinition(name)) throw protocolFailure(200, -32602, 'Unknown tool');
   if (name.startsWith('workflow_')) return workflowTools.execute(name, args);
@@ -190,10 +274,12 @@ async function executeTool(name, args) {
       await audit(ctx, { action: 'system_status', ok: true });
       return {
         name: 'chatgpt-remote-commander', version: VERSION,
+        role: release.role, releaseCommit: release.commit, slotId: release.slotId,
+        projectDir, backend: { ...backendIdentity },
         deviceName: config.deviceName || os.hostname(),
         platform: process.platform, arch: process.arch, shell: shellName(),
         protocols: [MODERN_VERSION, ...LEGACY_VERSIONS],
-        host: config.host, port: config.port,
+        host: config.host, port: config.port, advertisedPort: config.port, backendPort: listenPort,
         allowedRoots: roots,
         configuredRoots: roots,
         allowedRootsEnforced: !LEGACY_FULL_FILESYSTEM,
@@ -207,13 +293,15 @@ async function executeTool(name, args) {
           osPermissionsApply: true
         },
         allowedPrograms: config.allowedPrograms,
-        concurrency: { httpConcurrent: true, pathMutationLocks: true, ...lockStats() },
+        concurrency: { httpConcurrent: true, pathMutationLocks: true, activeCalls: Math.max(0, activeCalls - 1), activeMutations, ...lockStats() },
         configSha256,
         instance: config.instance ?? { profile: 'default', isolated: false },
         durableWorkflows: { enabled: !!workflowTools, revision: workflowTools ? 'durable-workflows-r1' : null, automaticReplay: false },
         powerMode: config.powerMode ?? { enabled: false },
         guiControl: { backendSupported: process.platform === 'win32', availability: 'CHECK_gui_status', enabled: GUI_ENABLED, policy: config.powerMode?.guiControl ?? { enabled: false } }
       };
+    case 'upgrade_status':
+      return buildUpgradeStatus();
     case 'list_directory':
       return listDirectory(ctx, args);
     case 'read_text':
@@ -346,12 +434,28 @@ async function handleMessage(req, message) {
         return { status: 200, body: rpcResult(message.id, toolErrorPayload(messageText), modern) };
       }
 
+      const mutating = definition.annotations?.readOnlyHint !== true;
+      let mutationCounted = false;
+      activeCalls += 1;
       try {
+        if (mutating) {
+          // Linearize mutating admission before the asynchronous drain snapshot.
+          // A controller that has installed the fence must observe either this
+          // counter or the rejected call before it can declare the old backend
+          // drained.
+          activeMutations += 1;
+          mutationCounted = true;
+          const drain = await drainSnapshot();
+          if (drain.active) throw new Error('UPGRADE_DRAIN_ACTIVE');
+        }
         const result = await executeTool(name, args);
         return { status: 200, body: rpcResult(message.id, toolSuccessPayload(result), modern) };
       } catch (error) {
         await audit(ctx, { action: 'tool_error', tool: name, ok: false, error: error.message });
         return { status: 200, body: rpcResult(message.id, toolErrorPayload(error.message), modern) };
+      } finally {
+        if (mutationCounted) activeMutations -= 1;
+        activeCalls -= 1;
       }
     }
     if (!modern && message.method === 'notifications/initialized') {
@@ -393,12 +497,52 @@ function sendJson(res, status, body) {
   res.writeHead(status, { 'content-type': 'application/json', 'content-length': data.length });
   res.end(data);
 }
+async function writeRuntimeMarkerAtomic(value) {
+  const directory = path.dirname(runtimeStatePath);
+  await mkdir(directory, { recursive: true });
+  try {
+    const existing = await lstat(runtimeStatePath);
+    if (!existing.isFile() || existing.isSymbolicLink() || existing.nlink > 1) {
+      throw new Error('RUNTIME_STATE_TARGET_INVALID');
+    }
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error;
+  }
+  const temporary = `${runtimeStatePath}.tmp-${process.pid}-${randomUUID()}`;
+  let handle;
+  try {
+    handle = await open(temporary, 'wx', 0o600);
+    await handle.writeFile(JSON.stringify(value, null, 2) + '\n');
+    await handle.sync();
+    await handle.close();
+    handle = null;
+    await rename(temporary, runtimeStatePath);
+    let directoryHandle;
+    try {
+      directoryHandle = await open(directory, 'r');
+      await directoryHandle.sync();
+    } catch (error) {
+      if (!['EACCES', 'EISDIR', 'EINVAL', 'ENOTSUP', 'EPERM'].includes(error.code)) throw error;
+    } finally {
+      await directoryHandle?.close().catch(() => {});
+    }
+  } catch (error) {
+    await handle?.close().catch(() => {});
+    await unlink(temporary).catch(() => {});
+    throw error;
+  }
+}
+let runtimeReady = false;
 const server = http.createServer(async (req, res) => {
   try {
-    validateTransport(req, config);
+    validateTransport(req, config, listenPort);
+    if (!runtimeReady) return sendJson(res, 503, { error: 'runtime_state_not_ready' });
     const url = new URL(req.url, `http://${req.headers.host || '127.0.0.1'}`);
     if (req.method === 'GET' && url.pathname === '/health') {
       return sendJson(res, 200, { ok: true, name: 'chatgpt-remote-commander', version: VERSION, configSha256,
+        role: release.role, releaseCommit: release.commit, slotId: release.slotId,
+        projectDir, backend: { ...backendIdentity },
+        advertisedPort: config.port, backendPort: listenPort,
         instance: config.instance ?? { profile: 'default', isolated: false } });
     }
     if (req.method !== 'POST' || url.pathname !== '/mcp') {
@@ -413,22 +557,30 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-server.listen(config.port, config.host, async () => {
+server.listen(listenPort, config.host, async () => {
   try {
-    await mkdir(path.dirname(runtimeStatePath), { recursive: true });
-    await writeFile(runtimeStatePath, JSON.stringify({
+    await writeRuntimeMarkerAtomic({
       pid: process.pid,
       projectDir,
       version: VERSION,
+      role: release.role,
+      releaseCommit: release.commit,
+      slotId: release.slotId,
+      backend: { ...backendIdentity },
       configSha256,
       instance: config.instance ?? { profile: 'default', isolated: false },
       host: config.host,
       port: config.port,
+      advertisedPort: config.port,
+      backendPort: listenPort,
       startedAt: new Date().toISOString()
-    }, null, 2) + '\n', { mode: 0o600 });
+    });
+    runtimeReady = true;
   } catch (error) {
     console.error('RUNTIME_STATE_WRITE_FAILED', error.message);
+    server.close(() => { process.exitCode = 1; });
+    return;
   }
-  console.log(`ChatGPT Remote Commander ${VERSION} listening at http://${config.host}:${config.port}/mcp`);
+  console.log(`ChatGPT Remote Commander ${VERSION} backend listening at http://${config.host}:${listenPort}/mcp (advertised ${config.port})`);
   console.log(`Allowed roots: ${roots.join(', ')}`);
 });

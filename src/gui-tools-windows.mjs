@@ -8,7 +8,16 @@ import { runGuiProcess } from './gui-process.mjs';
 export { guiToolDefinitions };
 
 const project = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const stopFile = path.join(project, 'var', 'GUI_STOP');
+function guiStopPath() {
+  const override = process.env.REMOTE_COMMANDER_GUI_STOP_FILE;
+  if (override === undefined) return path.join(project, 'var', 'GUI_STOP');
+  if (typeof override !== 'string' || override.length === 0 || override.length > 4096 || override.includes('\0') ||
+      /^(?:\\\\|\/\/)/.test(override) || !path.isAbsolute(override)) {
+    throw new Error('REMOTE_COMMANDER_GUI_STOP_FILE_INVALID');
+  }
+  return path.normalize(override);
+}
+const stopFile = guiStopPath();
 const helper = path.join(project, 'tools', 'gui-control.ps1');
 async function stopped() {
   try { await access(stopFile); return true; }
@@ -33,6 +42,9 @@ export function createGuiController({ platform = process.platform, now = () => p
   }
   function owns(value) {
     if (!current() || !sameToken(value, session.id)) throw guiError('GUI_LEASE_REQUIRED_OR_EXPIRED');
+  }
+  function snapshot() {
+    return { leased: !!current(), busy, uncertain, frame: !!frame };
   }
   async function execute(ctx, name, raw = {}) {
     const input = validateGuiInput(name, raw);
@@ -111,7 +123,8 @@ export function createGuiController({ platform = process.platform, now = () => p
       return isInput ? { ...result, submitted: true, visualVerificationRequired: true } : result;
     } finally { busy = false; }
   }
-  return { execute };
+  return { execute, snapshot };
 }
 const controller = createGuiController();
 export async function executeGuiTool(ctx, name, input) { return controller.execute(ctx, name, input); }
+export function guiCoordinationSnapshot() { return controller.snapshot(); }

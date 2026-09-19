@@ -44,9 +44,22 @@ export function createWorkflowTools({ config, roots, device, configSha256, looku
   if (!Array.isArray(tools) || tools.length > SAFE_KNOWN.size || tools.some(t => !SAFE_KNOWN.has(t))) fail('WORKFLOW_INVALID_TOOL_POLICY');
   const allowed = new Set(tools);
   const store = new WorkflowStore({ directory: settings.directory, allowedRoots: roots, device, configSha256 });
+  function upgradeSnapshot() {
+    const summary = { total: 0, running: 0, uncertain: 0 };
+    for (const { id: workflowId } of store.list()) {
+      const { state } = store.get(workflowId);
+      summary.total += 1;
+      for (const step of state.steps) {
+        if (step.status === 'running') summary.running += 1;
+        else if (step.status === 'uncertain') summary.uncertain += 1;
+      }
+    }
+    return summary;
+  }
   return {
     definitions: WORKFLOW_TOOL_DEFINITIONS,
     close: () => store.close(),
+    upgradeSnapshot,
     async execute(name, args) {
       switch (name) {
         case 'workflow_status': return { ...store.capabilities(), enabled: true, executionTools: [...allowed] };

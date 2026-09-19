@@ -48,10 +48,10 @@ Important boundaries:
 
 ### Windows GUI Control
 
-On Windows, v0.5 can expose its own graphical-control MCP tools. This is an explicit opt-in on top of Power Mode. Enable it only on a trusted interactive desktop:
+On Windows, v0.5+ can expose its own graphical-control MCP tools. This is an explicit opt-in on top of Power Mode. Enable it only during a fresh source-checkout install on a trusted interactive desktop:
 
 ```powershell
-.\install.ps1 -PowerMode -GuiControl -StartServer -SkipTunnelClient
+.\install.ps1 -ExpectedCommit (git rev-parse HEAD) -PowerMode -GuiControl -StartServer -SkipTunnelClient
 ```
 
 When enabled and the ChatGPT app is re-scanned, the tool set includes an exclusive desktop lease, live screenshots, cursor position, absolute/relative mouse movement, click/drag/scroll, Unicode typing, validated key combinations, visible-window listing, and exact/unique window focus.
@@ -65,7 +65,7 @@ Required workflow:
 6. capture again and verify the visible result;
 7. renew the lease only while actively working and always end with `gui_session_end`.
 
-Do not queue stale GUI work across chats. The owner can stop GUI input locally with physical Escape or the `var\GUI_STOP` file; the assistant must not clear that stop remotely.
+Do not queue stale GUI work across chats. The owner can stop GUI input locally with physical Escape. A managed v0.8 installation uses `%LOCALAPPDATA%\\ChatGPTRemoteCommander\\control\\GUI_STOP`; a legacy/source run uses `var\GUI_STOP`. The assistant must not clear that stop remotely.
 
 
 
@@ -83,9 +83,20 @@ This removes the previous dependency on a separate Computer Use tool for ordinar
 
 Local Power Mode controls what the MCP server can do. ChatGPT App permissions separately control when ChatGPT asks before using those actions. On an eligible account/workspace and only for a trusted personal/managed machine, the user may choose the app-specific **Allow all actions** permission to reduce repeated approval prompts. OpenAI marks this as elevated risk. It does not override workspace role access, enabled/disabled actions, provider authorization, or safety protections. If the option is unavailable, use **Allow low-risk actions** or the workspace default and approve higher-impact actions normally.
 
-## 1. Install or update
+## 1. Fresh install or enrolled update
 
-### Windows — Standard
+### Choose the Release channel before running anything
+
+- **Promoted full Release:** the `releases/latest/download/...` commands below are the convenience path.
+- **Canary/prerelease:** GitHub does not make a prerelease `latest`. For `v0.8.0`, use the exact `https://github.com/GOD13emad/ChatGPTRemoteCommander/releases/download/v0.8.0/<asset>` path only.
+- Before a canary executes, obtain the release by exact tag, require the exact 13 expected asset names, reconcile each GitHub API `sha256:` digest, verify `SHA256SUMS.txt`, parse `release-authority.json`, require repository/tag/version/commit/tree and default installer pins to agree, and peel local/remote `v0.8.0` to that same commit. A raw download or successful upload is transport evidence, not acceptance.
+- Build/publish through a draft with every asset attached; after publication require the release to report immutable and preserve its attestation. The prerelease flag may be removed only after both target computers and real Secure MCP Tunnel E2E pass.
+
+The tagged Plugin installers are generated with the same exact tag, the exact `plugin-template.zip` SHA-256, and an exact per-entry manifest. They refuse a mismatched hash, unsafe ZIP path/link, missing/extra/duplicate entry, or entry hash drift before extraction. Do not substitute `latest/plugin-template.zip` during a canary.
+
+The builder records its runtime because independent cross-runtime byte-for-byte reproducibility is **UNPROVEN**. Hash and provenance verification proves the actual published bytes; it is not a reproducible-build claim.
+
+### Fresh Windows install — Standard
 
 Open PowerShell 7 and run:
 
@@ -93,16 +104,33 @@ Open PowerShell 7 and run:
 & ([scriptblock]::Create((irm 'https://github.com/GOD13emad/ChatGPTRemoteCommander/releases/latest/download/install.ps1'))) -InstallPrerequisites -StartServer
 ```
 
-### Windows — Full / Power Mode
+### Fresh Windows install — Full / Power Mode
 
 ```powershell
 & ([scriptblock]::Create((irm 'https://github.com/GOD13emad/ChatGPTRemoteCommander/releases/latest/download/install.ps1'))) -InstallPrerequisites -PowerMode -StartServer
 ```
 
 
-### Windows — Power Mode + GUI Control
+### Fresh Windows install — Power Mode + GUI Control
 
-For a v0.5 source checkout, run `.\install.ps1 -PowerMode -GuiControl -StartServer -SkipTunnelClient`, then refresh/re-scan the ChatGPT app tools. For a published v0.5 Release, the same `-GuiControl` switch applies to the Release installer. GUI Control is Windows-only in v0.5.
+For a source checkout, run `.\install.ps1 -ExpectedCommit (git rev-parse HEAD) -PowerMode -GuiControl -StartServer -SkipTunnelClient`, then refresh/re-scan the ChatGPT app tools. For a published Release fresh install, the same `-GuiControl` switch applies and the asset already contains its exact commit pin. GUI Control is Windows-only.
+
+### Enrolled Windows bootstrap/update — v0.8
+
+Use the pinned Release installer without installation-policy switches:
+
+```powershell
+& ([scriptblock]::Create((irm 'https://github.com/GOD13emad/ChatGPTRemoteCommander/releases/latest/download/install.ps1'))) -InstallPrerequisites
+```
+
+- Fresh installs use the legacy application directory until Secure MCP Tunnel enrollment exists and report `BLUE_GREEN_BOOTSTRAP_PENDING`.
+- The next pinned Release-installer run performs the one-time legacy-to-router bootstrap. This is a bounded near-zero-downtime migration; stateful zero downtime is not claimed.
+- Subsequent updates stage the exact commit, validate it on private loopback ports, drain the active backend, and then switch the stable router with a generation precondition.
+- Every source-checkout run requires the exact 40-character `-ExpectedCommit`. The published Release installer asset supplies its pinned commit automatically.
+- Reusing a fresh-install command is compatible: `-PowerMode`, `-GuiControl`, and `-StartServer` become assertions that candidate gates confirm Full Power + GUI policy and an active managed service. They do not rewrite configuration.
+- Blue/green runs reject `-DisableGuiControl`, `-SkipTunnelClient`, and a nondefault `-TunnelClientVersion`. Make policy changes separately through the dedicated profile workflow.
+- A running owned terminal, active GUI lease/frame, active mutation, or unresolved workflow intent stops promotion. Do not blindly rerun; resolve the reported gate.
+- The managed Windows promotion gate requires a .NET 10 SDK for its native GUI E2E. It discovers either the PATH installation or `%LOCALAPPDATA%\Microsoft\dotnet\dotnet.exe`; a missing SDK fails closed before cutover.
 
 ### Linux — Standard
 
@@ -116,7 +144,7 @@ curl -fsSL --connect-timeout 15 --max-time 180 https://github.com/GOD13emad/Chat
 curl -fsSL --connect-timeout 15 --max-time 180 https://github.com/GOD13emad/ChatGPTRemoteCommander/releases/latest/download/install.sh | bash -s -- --install-prerequisites --power-mode --start-server
 ```
 
-The same command is the update command. Do not delete the credential/state directory before an update.
+The same Linux command is the Linux update command. On Windows, use the separate enrolled bootstrap/update command above. Do not delete the credential/state directory before an update. On Windows, do not delete `control`, `instances`, `credentials`, or the active release; the blue/green runner owns validated retirement.
 
 Expected Windows gate output includes:
 - `INSTALLER_CHECK_PASS`
@@ -124,7 +152,10 @@ Expected Windows gate output includes:
 - `POWER_SMOKE_V03_PASS`
 - `CONCURRENCY_SMOKE_PASS`
 - `SECURITY_AUDIT_PASS`
-- `INSTALL_PASS`
+- `INSTALL_PASS` for a fresh install, or both `BLUE_GREEN_PASS` and `BLUE_GREEN_INSTALL_PASS` for a synchronous interactive managed bootstrap/update
+- `BLUE_GREEN_INSTALL_ACCEPTED` only means that a noninteractive detached managed run was admitted. It is not PASS; require its durable receipt to reach `state=succeeded`, then perform the independent target checks below.
+
+`BLUE_GREEN_PASS` proves only the local gates performed by the runner. Before declaring a deployed release final, independently verify router health, `system_status`, `tools/list`, `workflow_status`, Power/GUI policy, exact device/profile/config/commit identity, and one real call through the Secure MCP Tunnel.
 
 Verify local MCP health:
 
@@ -219,7 +250,8 @@ For an end-to-end non-destructive write test, explicitly choose a disposable tes
 ## 6. FINAL PASS checklist
 
 Do not call setup complete until all applicable checks are true:
-- latest installer completed with `INSTALL_PASS`;
+- latest installer completed with `INSTALL_PASS` for a fresh install, or `BLUE_GREEN_INSTALL_PASS` for a synchronous interactive managed bootstrap/update;
+- for a noninteractive detached managed run, `BLUE_GREEN_INSTALL_ACCEPTED` was followed by a durable receipt with `state=succeeded` and independent target verification;
 - MCP health returns `ok: true`;
 - the tunnel client is ready;
 - persistent enrollment passed;
@@ -233,7 +265,13 @@ Do not call setup complete until all applicable checks are true:
 
 ### Update
 
-Re-run the same latest-release installer command used for installation. Credentials and tunnel profiles are preserved.
+For an enrolled Windows installation, run:
+
+```powershell
+& ([scriptblock]::Create((irm 'https://github.com/GOD13emad/ChatGPTRemoteCommander/releases/latest/download/install.ps1'))) -InstallPrerequisites
+```
+
+Credentials, tunnel profiles, and persistent configuration are preserved. On Linux, re-run the same Linux installer command used for installation.
 
 ### Stop on Windows
 
@@ -279,8 +317,8 @@ A **Plugin** packages workflows, skills, metadata, icons, and optionally a refer
 For a private/workspace plugin:
 1. Create the custom MCP app first.
 2. Obtain either its real App ID (`asdk_app_...`, `connector_...`, or `templated_apps_...`) or the ChatGPT technical identifier such as `plugin_asdk_app_...` from that exact Custom App. Verify its scanned tools include this project's `system_status`; do not bind a similarly named Directory app.
-3. Prefer the public one-command binder/installer. Windows: `& ([scriptblock]::Create((irm 'https://github.com/GOD13emad/ChatGPTRemoteCommander/releases/latest/download/install-work-plugin.ps1'))) -AppId "plugin_asdk_app_..."`. Linux: `curl -fsSL --connect-timeout 15 --max-time 180 https://github.com/GOD13emad/ChatGPTRemoteCommander/releases/latest/download/install-work-plugin.sh | bash -s -- "plugin_asdk_app_..."`.
-4. The installer strips the `plugin_` wrapper when needed, creates a private app-bound Plugin copy, downloads the stable latest-Release `plugin-template.zip` automatically when no local template exists, adds a personal marketplace, installs/enables it through Codex, and verifies `.app.json`.
+3. For a promoted full Release, use the public `latest` binder/installer shown here. For a prerelease canary, first complete the exact-tag verification flow above, then use the corresponding `/releases/download/v0.8.0/install-work-plugin.ps1` or `.sh` asset; never use `latest` for the canary.
+4. The installer strips the `plugin_` wrapper when needed, creates a private app-bound Plugin copy, downloads its own exact tagged and SHA-256-pinned `plugin-template.zip` when no matching local template exists, verifies the exact safe entry set before extraction, adds a personal marketplace, installs/enables it through Codex, and verifies `.app.json`.
 5. For manual packaging or `@plugin-creator`, follow `WORK_SETUP.md` and `docs/PLUGIN_SETUP.md`.
 
 For public Plugin Directory publication, a Secure MCP Tunnel is not a public distribution endpoint. OpenAI currently requires a stable public HTTPS MCP endpoint for an MCP-backed public plugin submission. See `docs/PLUGIN_SETUP.md`.

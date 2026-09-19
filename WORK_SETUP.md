@@ -33,7 +33,7 @@ When Windows GUI Control is enabled and the custom MCP app has been re-scanned, 
 
 Work must use the coordination protocol: `gui_status → gui_session_begin → gui_screenshot(lease) → one action(lease+frame) → gui_screenshot(lease) → verify → gui_session_end`. Frames are short-lived and single-use; never replay an action after a timeout or uncertain native result. If another chat holds the lease, report the busy state rather than stealing or polling aggressively.
 
-A separate Computer Use capability is no longer required for ordinary supported Windows GUI workflows. Keep native Computer Use as an optional fallback only when it actually reaches the same authorized computer. Never clear `var\GUI_STOP` remotely, and do not claim success for Secure Desktop/UAC, lock screen, anti-cheat/protected input, or real-time gameplay without visible evidence.
+A separate Computer Use capability is no longer required for ordinary supported Windows GUI workflows. Keep native Computer Use as an optional fallback only when it actually reaches the same authorized computer. Never clear the configured GUI stop file remotely (`%LOCALAPPDATA%\\ChatGPTRemoteCommander\\control\\GUI_STOP` after v0.8 blue/green bootstrap; `var\GUI_STOP` for legacy/source runs), and do not claim success for Secure Desktop/UAC, lock screen, anti-cheat/protected input, or real-time gameplay without visible evidence.
 
 For the least-friction trusted-machine workflow, explain that local Power Mode and ChatGPT App permissions are separate. If the account/workspace exposes an app-specific **Allow all actions** option, the user may explicitly choose it to reduce repeated confirmations. Treat it as elevated risk; do not select it silently. Workspace/action/safety controls still apply.
 
@@ -122,6 +122,8 @@ GitHub marketplace import syncs Plugin content. It does not create the Secure MC
 
 After the custom MCP app exists, use the ID from that exact registered **ChatGPT Remote Commander** app: either its underlying App ID or the technical `plugin_...` identifier shown by ChatGPT. Do not substitute a fuzzy Plugin Directory search result or another remote-control app. Before binding, verify the selected app is the one whose tool scan exposed this project's `system_status`/Remote Commander tools. The installer normalizes `plugin_asdk_app_...` to the underlying `asdk_app_...` required by `.app.json`.
 
+The `latest` commands below are only for the promoted full Release. A prerelease cannot be GitHub `latest`. During the `v0.8.0` canary, fetch `install-work-plugin.ps1` or `.sh` from `/releases/download/v0.8.0/`, and execute it only after the exact-tag release API digest, `SHA256SUMS.txt`, `release-authority.json`, exact 13-asset set, and peeled tag commit agree. The published installer itself is pinned to `v0.8.0` plus the exact Plugin-template SHA-256 and exact entry manifest; it never falls through to another release's `latest` template.
+
 Windows — public latest Release, no clone required:
 
 ```powershell
@@ -136,7 +138,7 @@ curl -fsSL --connect-timeout 15 --max-time 180 https://github.com/GOD13emad/Chat
 
 From an existing repository checkout, `.\install-work-plugin.ps1 -AppId "plugin_asdk_app_..."` or `./install-work-plugin.sh "plugin_asdk_app_..."` also works.
 
-The installer creates a private per-user copy of the Plugin template, generates the correct `.app.json`, creates a personal marketplace named `chatgpt-remote-commander-personal`, installs the Plugin through Codex, and verifies the binding. When no local template is available, it automatically downloads the stable `plugin-template.zip` asset from the latest Release. It also accepts direct `asdk_app_`, `connector_`, or `templated_apps_` IDs.
+The installer creates a private per-user copy of the Plugin template, generates the correct `.app.json`, creates a personal marketplace named `chatgpt-remote-commander-personal`, installs the Plugin through Codex, and verifies the binding. When no matching local template is available, a published installer downloads `plugin-template.zip` from its own exact Release tag, verifies the whole-file SHA-256, rejects unsafe or non-exact ZIP entries, verifies every entry hash, and only then extracts. It also accepts direct `asdk_app_`, `connector_`, or `templated_apps_` IDs.
 
 If only manual binding is desired, copy `plugin-template/` privately and run `bind-app.ps1 -AppId "asdk_app_YOUR_ID"` or `bind-app.sh asdk_app_YOUR_ID`.
 
