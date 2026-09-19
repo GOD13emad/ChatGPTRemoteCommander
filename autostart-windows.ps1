@@ -1,5 +1,7 @@
 param(
-  [ValidateRange(2,300)][int]$IntervalSeconds = 5
+  [ValidateRange(2,300)][int]$IntervalSeconds = 5,
+  [switch]$SelfTest,
+  [string]$SelfTestProfile = ''
 )
 $ErrorActionPreference = 'Stop'
 
@@ -7,7 +9,8 @@ $Root = Split-Path -Parent $MyInvocation.MyCommand.Path
 $VarDir = Join-Path $Root 'var'
 $CredDir = Join-Path $env:LOCALAPPDATA 'ChatGPTRemoteCommander\credentials'
 $ProfileDir = Join-Path $env:APPDATA 'tunnel-client'
-New-Item -ItemType Directory -Force -Path $VarDir,$CredDir | Out-Null
+$InstanceRoot = Join-Path $env:LOCALAPPDATA 'ChatGPTRemoteCommander\instances'
+New-Item -ItemType Directory -Force -Path $VarDir,$CredDir,$InstanceRoot | Out-Null
 
 function Write-SupervisorLog([string]$Message) {
   $line = "$(Get-Date -Format o) $Message"
@@ -19,45 +22,38 @@ function Test-ProfileName([string]$Name) {
 }
 
 $created = $false
-$mutex = [Threading.Mutex]::new($false, 'Local\ChatGPTRemoteCommanderSupervisor', [ref]$created)
-if (-not $created) {
-  exit 0
+$mutex = $null
+if (-not $SelfTest) {
+  $mutex = [Threading.Mutex]::new($false, 'Local\ChatGPTRemoteCommanderSupervisor', [ref]$created)
+  if (-not $created) { exit 0 }
 }
 
-function Test-McpHealth {
-  try {
-    $health = Invoke-RestMethod 'http://127.0.0.1:47831/health' -TimeoutSec 2
-    return [bool]($health.ok -and $health.name -eq 'chatgpt-remote-commander')
-  } catch {
-    return $false
-  }
+function Get-McpHealth([int]$Port) {
+  try { return Invoke-RestMethod "http://127.0.0.1:$Port/health" -TimeoutSec 2 }
+  catch { return $null }
 }
 
-function Start-McpServer {
-  if (Test-McpHealth) {
-    return
-  }
+function Test-McpHealth([int]$Port,[string]$ExpectedConfigSha='',[string]$ExpectedProfile='') {
+  $h = Get-McpHealth $Port
+  if (-not $h -or -not $h.ok -or $h.name -ne 'chatgpt-remote-commander') { return $false }
+  if ($ExpectedConfigSha -and [string]$h.configSha256 -ne $ExpectedConfigSha) { return $false }
+  if ($ExpectedProfile -and [string]$h.instance.profile -ne $ExpectedProfile) { return $false }
+  return $true
+}
 
+function Start-PrimaryMcp {
+  if (Test-McpHealth 47831) { return }
   $listener = Get-NetTCPConnection -State Listen -LocalPort 47831 -ErrorAction SilentlyContinue | Select-Object -First 1
-  if ($listener) {
-    throw 'Port 47831 is occupied but Remote Commander health is unavailable; supervisor will not stop an unknown process.'
-  }
-
+  if ($listener) { throw 'Port 47831 is occupied but primary Remote Commander health is unavailable; refusing unknown process.' }
   $npm = (Get-Command npm.cmd -ErrorAction Stop).Source
   $out = Join-Path $VarDir 'mcp-autostart.out.log'
   $err = Join-Path $VarDir 'mcp-autostart.err.log'
-
   Start-Process -FilePath $npm -ArgumentList @('start','--silent') -WorkingDirectory $Root -WindowStyle Hidden -RedirectStandardOutput $out -RedirectStandardError $err | Out-Null
-
   foreach ($i in 1..30) {
     Start-Sleep -Milliseconds 500
-    if (Test-McpHealth) {
-      Write-SupervisorLog 'MCP_STARTED'
-      return
-    }
+    if (Test-McpHealth 47831) { Write-SupervisorLog 'MCP_STARTED port=47831 profile=default'; return }
   }
-
-  throw 'MCP_START_TIMEOUT'
+  throw 'MCP_START_TIMEOUT port=47831'
 }
 
 function Find-TunnelExe {
@@ -87,38 +83,81 @@ function CredentialPath([string]$Profile) {
 function Get-ProfileHealthPort([string]$ProfileFile) {
   $text = Get-Content -LiteralPath $ProfileFile -Raw
   $match = [regex]::Match($text, 'listen_addr:\s*["'']?127\.0\.0\.1:(\d+)')
-  if ($match.Success) {
-    return [int]$match.Groups[1].Value
-  }
+  if ($match.Success) { return [int]$match.Groups[1].Value }
   return 0
 }
 
-function Get-ManagedProfiles {
-  if (-not (Test-Path -LiteralPath $ProfileDir)) {
-    return @()
-  }
+function Get-ProfileMcpPort([string]$ProfileFile) {
+  $text = Get-Content -LiteralPath $ProfileFile -Raw
+  $match = [regex]::Match($text, 'url:\s*["'']?http://127\.0\.0\.1:(\d+)/mcp')
+  if ($match.Success) { return [int]$match.Groups[1].Value }
+  return 0
+}
 
+function Get-InstanceRecord([string]$Profile) {
+  if (-not (Test-ProfileName $Profile)) { throw "invalid instance profile $Profile" }
+  $dir = Join-Path $InstanceRoot $Profile
+  $recordFile = Join-Path $dir 'instance.json'
+  if (-not (Test-Path -LiteralPath $recordFile -PathType Leaf)) { return $null }
+  $record = Get-Content -LiteralPath $recordFile -Raw | ConvertFrom-Json
+  if ([int]$record.schema -ne 1 -or $record.enabled -ne $true -or $record.isolated -ne $true -or [string]$record.profile -ne $Profile) { throw "invalid instance record $Profile" }
+  $port = [int]$record.mcpPort
+  if ($port -lt 1024 -or $port -gt 65535 -or $port -eq 47831) { throw "invalid instance port $Profile" }
+  $expectedConfig = [IO.Path]::GetFullPath((Join-Path $dir 'config.json'))
+  $actualConfig = [IO.Path]::GetFullPath([string]$record.configPath)
+  if ($actualConfig -ne $expectedConfig -or -not (Test-Path -LiteralPath $actualConfig -PathType Leaf)) { throw "invalid instance config path $Profile" }
+  $sha = (Get-FileHash -LiteralPath $actualConfig -Algorithm SHA256).Hash.ToLowerInvariant()
+  if ($sha -ne [string]$record.configSha256) { throw "instance config hash mismatch $Profile" }
+  $cfg = Get-Content -LiteralPath $actualConfig -Raw | ConvertFrom-Json
+  if ([int]$cfg.port -ne $port -or [string]$cfg.instance.profile -ne $Profile -or $cfg.instance.isolated -ne $true) { throw "instance config identity mismatch $Profile" }
+  return [pscustomobject]@{ Profile=$Profile; Port=$port; ConfigPath=$actualConfig; ConfigSha256=$sha; StateDir=$dir }
+}
+
+function Start-McpInstance($Instance) {
+  if (Test-McpHealth $Instance.Port $Instance.ConfigSha256 $Instance.Profile) { return }
+  $listener = Get-NetTCPConnection -State Listen -LocalPort $Instance.Port -ErrorAction SilentlyContinue | Select-Object -First 1
+  if ($listener) { throw "instance port $($Instance.Port) occupied by unhealthy/mismatched process; refusing to stop it" }
+  $node = (Get-Command node.exe -ErrorAction Stop).Source
+  $server = Join-Path $Root 'src\server-v0.3.mjs'
+  $psi = [Diagnostics.ProcessStartInfo]::new()
+  $psi.FileName = $node
+  $psi.WorkingDirectory = $Root
+  $psi.UseShellExecute = $false
+  $psi.CreateNoWindow = $true
+  [void]$psi.ArgumentList.Add($server)
+  $psi.Environment['REMOTE_COMMANDER_CONFIG'] = $Instance.ConfigPath
+  $process = [Diagnostics.Process]::Start($psi)
+  foreach ($i in 1..40) {
+    Start-Sleep -Milliseconds 500
+    if (Test-McpHealth $Instance.Port $Instance.ConfigSha256 $Instance.Profile) {
+      Write-SupervisorLog "MCP_INSTANCE_READY profile=$($Instance.Profile) pid=$($process.Id) port=$($Instance.Port)"
+      return
+    }
+    if ($process.HasExited) { break }
+  }
+  if (-not $process.HasExited) { Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue }
+  throw "instance MCP readiness failed profile=$($Instance.Profile)"
+}
+
+function Get-ManagedProfiles {
+  if (-not (Test-Path -LiteralPath $ProfileDir)) { return @() }
   $items = @()
   foreach ($file in Get-ChildItem -LiteralPath $ProfileDir -Filter '*.yaml' -File -ErrorAction SilentlyContinue) {
-    $text = Get-Content -LiteralPath $file.FullName -Raw
-    if ($text -notmatch 'http://127\.0\.0\.1:47831/mcp') {
-      continue
-    }
-
     $profile = [IO.Path]::GetFileNameWithoutExtension($file.Name)
-    if (-not (Test-ProfileName $profile)) {
-      Write-SupervisorLog "PROFILE_SKIPPED_INVALID name=$profile"
-      continue
-    }
-
+    if (-not (Test-ProfileName $profile)) { Write-SupervisorLog "PROFILE_SKIPPED_INVALID name=$profile"; continue }
+    $mcpPort = Get-ProfileMcpPort $file.FullName
+    if ($mcpPort -le 0) { continue }
+    $instance = if ($mcpPort -eq 47831) { $null } else { Get-InstanceRecord $profile }
+    if ($mcpPort -ne 47831 -and (-not $instance -or $instance.Port -ne $mcpPort)) { throw "profile instance missing/mismatched $profile" }
     $items += [pscustomobject]@{
-      Profile = $profile
-      File = $file.FullName
-      Credential = CredentialPath $profile
-      HealthPort = Get-ProfileHealthPort $file.FullName
+      Profile=$profile
+      File=$file.FullName
+      Credential=(CredentialPath $profile)
+      HealthPort=(Get-ProfileHealthPort $file.FullName)
+      McpPort=$mcpPort
+      Instance=$instance
     }
   }
-
   return $items
 }
 
@@ -218,32 +257,39 @@ function Start-TunnelProfile($Item) {
   }
 }
 
+if ($SelfTest) {
+  $profiles = @(Get-ManagedProfiles | ForEach-Object { [pscustomobject]@{ profile=$_.Profile; mcpPort=$_.McpPort; healthPort=$_.HealthPort; isolated=[bool]$_.Instance } })
+  $instance = $null
+  if ($SelfTestProfile) {
+    if (-not (Test-ProfileName $SelfTestProfile)) { throw 'Invalid SelfTestProfile.' }
+    $instance = Get-InstanceRecord $SelfTestProfile
+  }
+  [pscustomobject]@{ ok=$true; profiles=$profiles; instance=$instance } | ConvertTo-Json -Depth 6 -Compress
+  exit 0
+}
+
 $missingLogged = @{}
 try {
   Write-SupervisorLog "SUPERVISOR_STARTED pid=$PID root=$Root"
 
   while ($true) {
     try {
-      Start-McpServer
+      Start-PrimaryMcp
+      $exe = Find-TunnelExe
+      foreach ($item in Get-ManagedProfiles) {
+        if ($item.Instance) { Start-McpInstance $item.Instance }
+        elseif (-not (Test-McpHealth 47831)) { throw 'primary MCP unavailable' }
 
-      if (Test-McpHealth) {
-        $exe = Find-TunnelExe
-
-        foreach ($item in Get-ManagedProfiles) {
-          if (-not (Test-Path -LiteralPath $item.Credential -PathType Leaf)) {
-            if (-not $missingLogged.ContainsKey($item.Profile)) {
-              Write-SupervisorLog "CREDENTIAL_MISSING profile=$($item.Profile)"
-              $missingLogged[$item.Profile] = $true
-            }
-            continue
+        if (-not (Test-Path -LiteralPath $item.Credential -PathType Leaf)) {
+          if (-not $missingLogged.ContainsKey($item.Profile)) {
+            Write-SupervisorLog "CREDENTIAL_MISSING profile=$($item.Profile)"
+            $missingLogged[$item.Profile] = $true
           }
-
-          [void]$missingLogged.Remove($item.Profile)
-          $process = Get-TunnelProcess $item.Profile $exe
-          if (-not $process -or -not (Test-TunnelReady $item.HealthPort)) {
-            Start-TunnelProfile $item
-          }
+          continue
         }
+        [void]$missingLogged.Remove($item.Profile)
+        $process = Get-TunnelProcess $item.Profile $exe
+        if (-not $process -or -not (Test-TunnelReady $item.HealthPort)) { Start-TunnelProfile $item }
       }
     } catch {
       Write-SupervisorLog "SUPERVISOR_ITERATION_ERROR $($_.Exception.Message)"
@@ -253,11 +299,8 @@ try {
   }
 } finally {
   Write-SupervisorLog 'SUPERVISOR_STOPPED'
-  if ($created) {
-    try {
-      $mutex.ReleaseMutex()
-    } catch {
-    }
+  if ($created -and $mutex) {
+    try { $mutex.ReleaseMutex() } catch {}
   }
-  $mutex.Dispose()
+  if ($mutex) { $mutex.Dispose() }
 }

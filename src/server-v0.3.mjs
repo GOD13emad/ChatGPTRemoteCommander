@@ -34,7 +34,9 @@ function expandEnvironment(value) { return expandPathValue(value); }
 config.allowedRoots = config.allowedRoots.map(expandEnvironment);
 const roots = await canonicalizeRoots(config.allowedRoots);
 const runtimeDir = path.resolve(projectDir, 'var');
-const runtimeStatePath = path.join(runtimeDir, 'mcp-runtime.json');
+const runtimeStatePath = config.runtimeState
+  ? path.resolve(expandEnvironment(config.runtimeState))
+  : path.join(runtimeDir, 'mcp-runtime.json');
 const ctx = {
   config,
   roots,
@@ -207,6 +209,7 @@ async function executeTool(name, args) {
         allowedPrograms: config.allowedPrograms,
         concurrency: { httpConcurrent: true, pathMutationLocks: true, ...lockStats() },
         configSha256,
+        instance: config.instance ?? { profile: 'default', isolated: false },
         durableWorkflows: { enabled: !!workflowTools, revision: workflowTools ? 'durable-workflows-r1' : null, automaticReplay: false },
         powerMode: config.powerMode ?? { enabled: false },
         guiControl: { backendSupported: process.platform === 'win32', availability: 'CHECK_gui_status', enabled: GUI_ENABLED, policy: config.powerMode?.guiControl ?? { enabled: false } }
@@ -395,7 +398,8 @@ const server = http.createServer(async (req, res) => {
     validateTransport(req, config);
     const url = new URL(req.url, `http://${req.headers.host || '127.0.0.1'}`);
     if (req.method === 'GET' && url.pathname === '/health') {
-      return sendJson(res, 200, { ok: true, name: 'chatgpt-remote-commander', version: VERSION, configSha256 });
+      return sendJson(res, 200, { ok: true, name: 'chatgpt-remote-commander', version: VERSION, configSha256,
+        instance: config.instance ?? { profile: 'default', isolated: false } });
     }
     if (req.method !== 'POST' || url.pathname !== '/mcp') {
       return sendJson(res, 404, { error: 'not_found' });
@@ -411,12 +415,13 @@ const server = http.createServer(async (req, res) => {
 
 server.listen(config.port, config.host, async () => {
   try {
-    await mkdir(runtimeDir, { recursive: true });
+    await mkdir(path.dirname(runtimeStatePath), { recursive: true });
     await writeFile(runtimeStatePath, JSON.stringify({
       pid: process.pid,
       projectDir,
       version: VERSION,
       configSha256,
+      instance: config.instance ?? { profile: 'default', isolated: false },
       host: config.host,
       port: config.port,
       startedAt: new Date().toISOString()

@@ -88,10 +88,12 @@ export class WorkflowStore {
     if (!Array.isArray(allowedRoots) || !allowedRoots.length) fail('WORKFLOW_ROOTS_REQUIRED');
     this.#roots = allowedRoots.map(r => { noLinks(r); return fs.realpathSync.native(r); });
     if (typeof directory !== 'string' || !path.isAbsolute(directory) || /^(?:\\\\|\/\/)/.test(directory)) fail('WORKFLOW_LOCAL_STORE_REQUIRED');
-    if (!this.#roots.some(r => inside(r, directory))) fail('WORKFLOW_STORE_OUT_OF_SCOPE');
+    // Storage is operator-configured private local state, separate from project roots.
+    // Workflow project/evidence roots remain enforced independently by rootWithin().
     noLinks(directory, false);
     fs.mkdirSync(directory, { recursive: true, mode: 0o700 });
-    const dir = rootWithin(directory, this.#roots);
+    const dir = fs.realpathSync.native(directory);
+    if (!fs.statSync(dir).isDirectory()) fail('WORKFLOW_LOCAL_STORE_REQUIRED');
     this.#dbPath = path.join(dir, 'workflows.sqlite');
     for (const suffix of ['', '-journal', '-wal', '-shm']) {
       noLinks(this.#dbPath + suffix, false);
@@ -131,7 +133,8 @@ export class WorkflowStore {
     return { revision: MODULE_REVISION, schema: STORE_SCHEMA, journal: 'delete', synchronous: 'extra',
       sqliteVersion: this.#db.prepare('SELECT sqlite_version() AS version').get().version,
       node: process.versions.node, automaticReplay: false, scheduler: false, rawArgumentsStored: false,
-      rawOutputsStored: false, authenticationBoundary: false, newScopeBeyondConfiguredRoots: false };
+      rawOutputsStored: false, authenticationBoundary: false, newScopeBeyondConfiguredRoots: false,
+      privateLocalStorage: true };
   }
   #transaction(fn) {
     this.#db.exec('BEGIN IMMEDIATE');
