@@ -1,5 +1,5 @@
 import path from 'node:path';
-import { appendFile, copyFile, mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises';
+import { appendFile, copyFile, mkdir, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { createHash, randomUUID } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { withPathLocks } from './locks.mjs';
@@ -26,10 +26,50 @@ async function legacyExistingPath(ctx, userPath, base = ctx.roots[0]) {
   return safeExistingPath(userPath, ctx.roots, base);
 }
 
-export async function audit(ctx, record) {
+let auditTail = Promise.resolve();
+
+function boundedInteger(value, fallback, minimum, maximum) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.max(minimum, Math.min(Math.trunc(parsed), maximum));
+}
+
+async function rotateAuditLog(ctx, nextBytes) {
+  const maxBytes = boundedInteger(ctx.config.auditMaxBytes, 8 * 1024 * 1024, 64 * 1024, 1024 * 1024 * 1024);
+  const keepFiles = boundedInteger(ctx.config.auditKeepFiles, 3, 1, 20);
+  let currentBytes = 0;
+  try { currentBytes = (await stat(ctx.auditLog)).size; }
+  catch (error) {
+    if (error?.code !== 'ENOENT') throw error;
+  }
+  if (currentBytes === 0 || currentBytes + nextBytes <= maxBytes) {
+    return { rotated: false, maxBytes, keepFiles };
+  }
+
+  await rm(`${ctx.auditLog}.${keepFiles}`, { force: true });
+  for (let index = keepFiles - 1; index >= 1; index -= 1) {
+    try { await rename(`${ctx.auditLog}.${index}`, `${ctx.auditLog}.${index + 1}`); }
+    catch (error) {
+      if (error?.code !== 'ENOENT') throw error;
+    }
+  }
+  try { await rename(ctx.auditLog, `${ctx.auditLog}.1`); }
+  catch (error) {
+    if (error?.code !== 'ENOENT') throw error;
+  }
+  return { rotated: true, maxBytes, keepFiles };
+}
+
+export function audit(ctx, record) {
   const line = JSON.stringify({ ts: new Date().toISOString(), ...record }) + '\n';
-  await mkdir(path.dirname(ctx.auditLog), { recursive: true });
-  await appendFile(ctx.auditLog, line, 'utf8');
+  const nextBytes = Buffer.byteLength(line, 'utf8');
+  const operation = auditTail.then(async () => {
+    await mkdir(path.dirname(ctx.auditLog), { recursive: true });
+    await rotateAuditLog(ctx, nextBytes);
+    await appendFile(ctx.auditLog, line, 'utf8');
+  });
+  auditTail = operation.catch(() => {});
+  return operation;
 }
 async function walkDirectory(dir, depth, maxEntries, base, out) {
   if (out.length >= maxEntries) return;

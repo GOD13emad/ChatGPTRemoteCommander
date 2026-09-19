@@ -18,6 +18,8 @@ for (const required of [
   'mcp-runtime.json',
   'tunnel-client.json',
   'config-backups',
+  'auditMaxBytes',
+  'auditKeepFiles',
   "Mode: $(if ($PowerMode) {'POWER'} else {'STANDARD'})"
 ]) {
   if (!windowsInstaller.includes(required)) {
@@ -35,7 +37,9 @@ for (const required of [
   'checkout --detach',
   'Source commit:',
   'Updating running MCP from version',
-  'enable-autostart-linux.sh'
+  'enable-autostart-linux.sh',
+  '"auditMaxBytes": 8388608',
+  '"auditKeepFiles": 3'
 ]) {
   if (!linuxInstaller.includes(required)) {
     throw new Error(`install.sh missing required release behavior: ${required}`);

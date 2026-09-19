@@ -281,6 +281,12 @@ function Configure-LocalPolicy {
   if (-not $policy.ContainsKey('auditLog')) {
     $policy['auditLog'] = 'var/audit.jsonl'
   }
+  if (-not $policy.ContainsKey('auditMaxBytes')) {
+    $policy['auditMaxBytes'] = 8388608
+  }
+  if (-not $policy.ContainsKey('auditKeepFiles')) {
+    $policy['auditKeepFiles'] = 3
+  }
 
   if (-not $policy.ContainsKey('powerMode') -or $policy['powerMode'] -isnot [System.Collections.IDictionary]) {
     $policy['powerMode'] = @{}

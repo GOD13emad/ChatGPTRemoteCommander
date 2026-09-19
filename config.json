@@ -32,5 +32,7 @@
       "allowKeyboard": true,
       "allowWindowFocus": true
     }
-  }
+  },
+  "auditMaxBytes": 8388608,
+  "auditKeepFiles": 3
 }

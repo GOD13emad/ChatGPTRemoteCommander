@@ -182,6 +182,8 @@ write_local_config() {
   "maxWriteBytes": 524288,
   "maxCommandMs": 120000,
   "auditLog": "var/audit.jsonl",
+  "auditMaxBytes": 8388608,
+  "auditKeepFiles": 3,
   "powerMode": {
     "enabled": $enabled,
     "fullFilesystem": $full,
