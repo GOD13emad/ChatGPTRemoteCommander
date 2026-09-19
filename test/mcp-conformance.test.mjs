@@ -128,7 +128,7 @@ test('dual-era MCP contract, tool validation, cache hints and risk annotations',
     assert.equal(writeTextDef.annotations.destructiveHint, true);
     assert.equal(writeFileDef.annotations.destructiveHint, true);
     assert.equal(createDirDef.annotations.destructiveHint, false);
-    assert.equal(createDirDef.annotations.idempotentHint, true);
+    assert.equal(createDirDef.annotations.idempotentHint, undefined);
     assert.equal(runShellDef.annotations.openWorldHint, true);
 
     const invalidLegacy = await post(port, {

@@ -531,7 +531,7 @@ export async function stopTerminal(ctx, input) {
 }
 
 const ro = { readOnlyHint: true, destructiveHint: false, openWorldHint: false };
-const additive = { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false };
+const additive = { readOnlyHint: false, destructiveHint: false, openWorldHint: false };
 const localDestructive = { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false };
 const openDestructive = { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true };
 
