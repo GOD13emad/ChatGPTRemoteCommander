@@ -199,13 +199,13 @@ export async function readAnyFile(ctx, input) {
 }
 
 export async function writeAnyFile(ctx, input) {
+  if (input.expectedSha256 !== undefined && !/^[a-f0-9]{64}$/.test(input.expectedSha256)) throw new Error('expectedSha256 must be a lowercase 64-hex SHA-256');
   const target = await resolveWritableTarget(ctx, input.path);
   const encoding = input.encoding === 'base64' ? 'base64' : 'utf8';
   const data = Buffer.from(input.content ?? '', encoding);
   const maxBytes = Number(power(ctx).maxFileBytes ?? 8 * 1024 * 1024);
   if (data.length > maxBytes) throw new Error(`content exceeds Power Mode maxFileBytes (${maxBytes})`);
   return withPathLocks([target], async () => {
-    if (input.createParents !== false) await mkdir(path.dirname(target), { recursive: true });
     let beforeSha256 = null;
     try {
       const before = await readFile(target);
@@ -215,7 +215,9 @@ export async function writeAnyFile(ctx, input) {
       }
     } catch (error) {
       if (error?.code !== 'ENOENT') throw error;
+      if (input.expectedSha256 !== undefined) throw new Error('expectedSha256 precondition failed: target does not exist');
     }
+    if (input.createParents !== false) await mkdir(path.dirname(target), { recursive: true });
     const backupPath = await backupExisting(ctx, target);
     if (input.mode === 'append') await appendFile(target, data);
     else await writeFile(target, data);
@@ -285,6 +287,7 @@ export async function movePath(ctx, input) {
     let backupPath = null;
     let displacedExists = false;
     let promoted = false;
+    let sourceDeletionStarted = false;
     try {
       await cp(sourceNow, stage, { recursive: true, force: false, errorOnExist: true });
       try {
@@ -298,10 +301,20 @@ export async function movePath(ctx, input) {
       }
       await rename(stage, destinationNow);
       promoted = true;
+      sourceDeletionStarted = true;
       await rm(sourceNow, { recursive: true, force: true });
       if (displacedExists) await rm(displaced, { recursive: true, force: true });
       return { source: sourceNow, destination: destinationNow, backupPath, transactional: true };
     } catch (error) {
+      if (promoted && sourceDeletionStarted) {
+        // Source deletion may have removed SOME entries before failing. The
+        // destination is now the only complete copy. Never delete it to restore
+        // an overwritten target; keep displaced/backup copies for reconciliation.
+        const recovery = { source: sourceNow, destination: destinationNow,
+          displaced: displacedExists ? displaced : null, backupPath,
+          destinationPreserved: true, sourceMayBePartial: true };
+        throw Object.assign(new Error('MOVE_RECOVERY_REQUIRED ' + JSON.stringify(recovery)), { recovery, cause: error });
+      }
       try { await rm(stage, { recursive: true, force: true }); } catch {}
       if (promoted) {
         // If source deletion failed, preserve both copies rather than risking data loss.

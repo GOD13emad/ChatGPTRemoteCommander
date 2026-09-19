@@ -121,6 +121,7 @@ export async function readText(ctx, input) {
   return result;
 }
 export async function writeText(ctx, input) {
+  if (input.expectedSha256 !== undefined && !/^[a-f0-9]{64}$/.test(input.expectedSha256)) throw new Error('expectedSha256 must be a lowercase 64-hex SHA-256');
   if (typeof input.content !== 'string') throw new Error('content must be a string');
   const fullFilesystem = legacyPowerFullFilesystem(ctx);
   const bytes = Buffer.byteLength(input.content, 'utf8');
@@ -167,6 +168,7 @@ export async function writeText(ctx, input) {
       await copyFile(target, backupPath);
     } catch (error) {
       if (error?.code !== 'ENOENT') throw error;
+      if (input.expectedSha256 !== undefined) throw new Error('expectedSha256 precondition failed: target does not exist');
     }
     if (mode === 'append') await appendFile(target, input.content, 'utf8');
     else await writeFile(target, input.content, 'utf8');
