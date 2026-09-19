@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.6.1 — 2026-09-19
+
+- Fixed exact release identity checks for annotated Git tags by peeling fetched refs to their commit before ExpectedCommit comparison.
+- Added Linux parity for exact expected-commit verification through `--expected-commit` / `REMOTE_COMMANDER_EXPECTED_COMMIT`.
+- Made fresh source acquisition transactional: failed Windows installs remove incomplete fresh checkouts; Linux stages into a temporary checkout and only moves it into place after fetch, peel, expected-commit verification, and checkout succeed.
+- Detects existing incomplete Git installations with no HEAD instead of treating them as valid update targets.
+- Added a regression using a real annotated Git tag to prove raw `FETCH_HEAD` differs from the release commit while `FETCH_HEAD^{commit}` resolves exactly to it.
+- Reproduced and closed the v0.6.0 clean-production installer failure; positive clean install and negative wrong-ExpectedCommit cleanup both PASS.
+
 ## 0.6.0 — 2026-09-19
 
 - Completed real dual-era MCP conformance for legacy 2025 clients and MCP `2026-07-28` stateless clients.
