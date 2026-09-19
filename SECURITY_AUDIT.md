@@ -26,6 +26,7 @@ The audit found no committed OpenAI-style API secret key, GitHub token, tunnel i
 - v0.6.1 hardens release-source integrity: annotated tags are peeled to commits before exact identity comparison, Linux gains the same expected-commit gate, and failed fresh installs cannot leave a half-initialized checkout that later masquerades as an installed product.
 - v0.6.2 binds Windows tunnel-client invocations to the explicitly managed profile directory and permits upgrade handoff only when a local `tunnel-client.exe` process for the same profile is actually ready on the profile's configured health port. DPAPI credentials remain in the existing per-user credential store and are not migrated or exposed.
 - v0.6.3 removes live runtime-marker save/restore behavior from the concurrency gate by running its server from a disposable application copy, and adds a loopback-only read-only doctor command that rejects remote hosts, URL credentials, query strings, and redirects.
+- v0.6.4 bounds Linux external downloads and local health probes with explicit connect/total deadlines, preventing indefinite installer/plugin stalls on partial network failure.
 
 ## Privacy note
 

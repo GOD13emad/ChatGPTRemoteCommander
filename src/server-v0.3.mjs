@@ -13,7 +13,7 @@ import { lockStats } from './locks.mjs';
 import { expandPathValue, shellName } from './platform.mjs';
 import { formatToolInputErrors, validateJsonSchema } from './schema-validator.mjs';
 
-const VERSION = '0.6.3';
+const VERSION = '0.6.4';
 const MODERN_VERSION = '2026-07-28';
 const LEGACY_VERSIONS = ['2025-11-25', '2025-06-18', '2025-03-26'];
 const MODERN_CACHE_HINT = Object.freeze({ ttlMs: 30000, cacheScope: 'private' });

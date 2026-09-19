@@ -11,6 +11,8 @@ fi
 INSTALL_ROOT="${INSTALL_ROOT:-${XDG_DATA_HOME:-$HOME/.local/share}/ChatGPTRemoteCommander/work-plugin}"
 TEMPLATE_SOURCE="${TEMPLATE_SOURCE:-}"
 TEMP_TEMPLATE_ROOT=""
+CURL_CONNECT_TIMEOUT="${REMOTE_COMMANDER_CURL_CONNECT_TIMEOUT:-15}"
+CURL_MAX_TIME="${REMOTE_COMMANDER_CURL_MAX_TIME:-180}"
 
 cleanup() {
   [[ -z "$TEMP_TEMPLATE_ROOT" ]] || rm -rf "$TEMP_TEMPLATE_ROOT"
@@ -32,7 +34,9 @@ resolve_template() {
   local zip="$TEMP_TEMPLATE_ROOT/plugin-template.zip"
   echo 'Local Plugin template not found; downloading latest Release template.' >&2
   command -v curl >/dev/null 2>&1 || { echo 'curl is required to download the Plugin template' >&2; exit 1; }
-  curl -fsSL 'https://github.com/GOD13emad/ChatGPTRemoteCommander/releases/latest/download/plugin-template.zip' -o "$zip"
+  curl --fail --silent --show-error --location \
+    --connect-timeout "$CURL_CONNECT_TIMEOUT" --max-time "$CURL_MAX_TIME" \
+    'https://github.com/GOD13emad/ChatGPTRemoteCommander/releases/latest/download/plugin-template.zip' -o "$zip"
   if command -v unzip >/dev/null 2>&1; then
     unzip -q "$zip" -d "$TEMP_TEMPLATE_ROOT"
   elif command -v python3 >/dev/null 2>&1; then

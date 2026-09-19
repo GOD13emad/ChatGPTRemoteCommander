@@ -107,13 +107,13 @@ For a v0.5 source checkout, run `.\install.ps1 -PowerMode -GuiControl -StartServ
 ### Linux — Standard
 
 ```bash
-curl -fsSL https://github.com/GOD13emad/ChatGPTRemoteCommander/releases/latest/download/install.sh | bash -s -- --install-prerequisites --start-server
+curl -fsSL --connect-timeout 15 --max-time 180 https://github.com/GOD13emad/ChatGPTRemoteCommander/releases/latest/download/install.sh | bash -s -- --install-prerequisites --start-server
 ```
 
 ### Linux — Full / Power Mode
 
 ```bash
-curl -fsSL https://github.com/GOD13emad/ChatGPTRemoteCommander/releases/latest/download/install.sh | bash -s -- --install-prerequisites --power-mode --start-server
+curl -fsSL --connect-timeout 15 --max-time 180 https://github.com/GOD13emad/ChatGPTRemoteCommander/releases/latest/download/install.sh | bash -s -- --install-prerequisites --power-mode --start-server
 ```
 
 The same command is the update command. Do not delete the credential/state directory before an update.
@@ -279,7 +279,7 @@ A **Plugin** packages workflows, skills, metadata, icons, and optionally a refer
 For a private/workspace plugin:
 1. Create the custom MCP app first.
 2. Obtain either its real App ID (`asdk_app_...`, `connector_...`, or `templated_apps_...`) or the ChatGPT technical identifier such as `plugin_asdk_app_...` from that exact Custom App. Verify its scanned tools include this project's `system_status`; do not bind a similarly named Directory app.
-3. Prefer the public one-command binder/installer. Windows: `& ([scriptblock]::Create((irm 'https://github.com/GOD13emad/ChatGPTRemoteCommander/releases/latest/download/install-work-plugin.ps1'))) -AppId "plugin_asdk_app_..."`. Linux: `curl -fsSL https://github.com/GOD13emad/ChatGPTRemoteCommander/releases/latest/download/install-work-plugin.sh | bash -s -- "plugin_asdk_app_..."`.
+3. Prefer the public one-command binder/installer. Windows: `& ([scriptblock]::Create((irm 'https://github.com/GOD13emad/ChatGPTRemoteCommander/releases/latest/download/install-work-plugin.ps1'))) -AppId "plugin_asdk_app_..."`. Linux: `curl -fsSL --connect-timeout 15 --max-time 180 https://github.com/GOD13emad/ChatGPTRemoteCommander/releases/latest/download/install-work-plugin.sh | bash -s -- "plugin_asdk_app_..."`.
 4. The installer strips the `plugin_` wrapper when needed, creates a private app-bound Plugin copy, downloads the stable latest-Release `plugin-template.zip` automatically when no local template exists, adds a personal marketplace, installs/enables it through Codex, and verifies `.app.json`.
 5. For manual packaging or `@plugin-creator`, follow `WORK_SETUP.md` and `docs/PLUGIN_SETUP.md`.
 

@@ -19,7 +19,7 @@ Standard Mode が安全な既定値です。Full/Power Mode は信頼できる P
 **Linux**
 
 ```bash
-curl -fsSL https://github.com/GOD13emad/ChatGPTRemoteCommander/releases/latest/download/install.sh | bash -s -- --install-prerequisites --start-server
+curl -fsSL --connect-timeout 15 --max-time 180 https://github.com/GOD13emad/ChatGPTRemoteCommander/releases/latest/download/install.sh | bash -s -- --install-prerequisites --start-server
 ```
 
 次に Secure MCP Tunnel と Runtime API Key を作成します。API Key をチャットに貼り付けず、ローカルの非表示入力だけに入力してください。ChatGPT で Connection = Tunnel、Authentication = None、Scan Tools を使って Custom App を作成します。

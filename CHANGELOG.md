@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.6.4 — 2026-09-19
+
+- Bounded Linux external downloads with explicit connect and total timeouts so unavailable TLS/network paths fail deterministically instead of hanging indefinitely.
+- Applied the same bounded-download policy to the Linux Work Plugin template fetch and bounded the Linux account connector's local MCP health probe.
+- Added regression contracts so release checks fail if the timeout controls are removed.
+- Reproduced the original failure on WSL2: DNS resolved `nodejs.org` but TLS connection attempts timed out while the old installer waited without a deadline.
+- Retains v0.6.3 read-only doctor diagnostics and isolated concurrency testing, plus all v0.6.2 runtime/tunnel/GUI hardening.
+
 ## 0.6.3 — 2026-09-19
 
 - Isolated the concurrency smoke server inside a disposable application copy so tests never write, restore, or race with the live `var/mcp-runtime.json` ownership marker.

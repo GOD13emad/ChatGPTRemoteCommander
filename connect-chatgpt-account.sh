@@ -22,7 +22,7 @@ while [[ $# -gt 0 ]]; do
 done
 [[ -n "$PROFILE" ]] || { echo "--profile is required" >&2; exit 2; }
 command -v curl >/dev/null || { echo "curl is required" >&2; exit 1; }
-if ! curl -fsS "$HEALTH_URL" | grep -q '"ok"[[:space:]]*:[[:space:]]*true'; then
+if ! curl -fsS --connect-timeout 1 --max-time 3 "$HEALTH_URL" | grep -q '"ok"[[:space:]]*:[[:space:]]*true'; then
   echo "ChatGPT Remote Commander is not healthy at $HEALTH_URL" >&2
   exit 1
 fi

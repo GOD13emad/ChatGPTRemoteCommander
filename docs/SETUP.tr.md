@@ -19,7 +19,7 @@ Standard daha güvenli varsayılandır. Full/Power Mode yalnızca güvenilir bir
 **Linux**
 
 ```bash
-curl -fsSL https://github.com/GOD13emad/ChatGPTRemoteCommander/releases/latest/download/install.sh | bash -s -- --install-prerequisites --start-server
+curl -fsSL --connect-timeout 15 --max-time 180 https://github.com/GOD13emad/ChatGPTRemoteCommander/releases/latest/download/install.sh | bash -s -- --install-prerequisites --start-server
 ```
 
 Sonra Secure MCP Tunnel ve Runtime API Key oluşturun. Anahtarı sohbete yapıştırmayın; yalnızca gizli yerel prompt'a girin. ChatGPT'de Connection = Tunnel, Authentication = None ve Scan Tools ile Custom App oluşturun.

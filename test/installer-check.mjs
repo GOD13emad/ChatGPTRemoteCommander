@@ -12,7 +12,7 @@ for (const required of [
   'Detected active installation from Windows autostart',
   '$InstallDir = Resolve-InstallDir',
   'Tracked local changes exist in InstallDir',
-  "[string]$SourceRef = 'v0.6.3'",
+  "[string]$SourceRef = 'v0.6.4'",
   'ExpectedCommit',
   "rev-parse 'FETCH_HEAD^{commit}'",
   'incomplete Git checkout with no HEAD',
@@ -32,8 +32,10 @@ for (const required of [
 
 const linuxInstaller = readFileSync('install.sh', 'utf8');
 const linuxEnrollment = readFileSync('enable-autostart-linux.sh', 'utf8');
+const linuxPluginInstaller = readFileSync('install-work-plugin.sh', 'utf8');
+const linuxAccountConnector = readFileSync('connect-chatgpt-account.sh', 'utf8');
 for (const required of [
-  'SOURCE_REF="${REMOTE_COMMANDER_SOURCE_REF:-v0.6.3}"',
+  'SOURCE_REF="${REMOTE_COMMANDER_SOURCE_REF:-v0.6.4}"',
   '--source-ref',
   '--expected-commit',
   'REMOTE_COMMANDER_EXPECTED_COMMIT',
@@ -46,10 +48,26 @@ for (const required of [
   'Updating running MCP from version',
   'enable-autostart-linux.sh',
   '"auditMaxBytes": 8388608',
-  '"auditKeepFiles": 3'
+  '"auditKeepFiles": 3',
+  'REMOTE_COMMANDER_CURL_CONNECT_TIMEOUT',
+  'REMOTE_COMMANDER_CURL_MAX_TIME',
+  '--connect-timeout "$CURL_CONNECT_TIMEOUT"',
+  '--max-time "$CURL_MAX_TIME"',
+  'curl_fetch https://nodejs.org/dist/index.json',
+  'curl -fsS --connect-timeout 1 --max-time 2 http://127.0.0.1:47831/health'
 ]) {
   if (!linuxInstaller.includes(required)) {
     throw new Error(`install.sh missing required release behavior: ${required}`);
+  }
+}
+for (const required of ['--connect-timeout "$CURL_CONNECT_TIMEOUT"', '--max-time "$CURL_MAX_TIME"']) {
+  if (!linuxPluginInstaller.includes(required)) {
+    throw new Error(`install-work-plugin.sh missing bounded download behavior: ${required}`);
+  }
+}
+for (const required of ['--connect-timeout 1 --max-time 3']) {
+  if (!linuxAccountConnector.includes(required)) {
+    throw new Error(`connect-chatgpt-account.sh missing bounded health behavior: ${required}`);
   }
 }
 for (const required of ['Reusing existing local credential', 'doctor bind check skipped']) {

@@ -7,8 +7,10 @@ POWER_MODE=0
 START_SERVER=0
 INSTALL_PREREQS=0
 TUNNEL_VERSION="0.0.14"
-SOURCE_REF="${REMOTE_COMMANDER_SOURCE_REF:-v0.6.3}"
+SOURCE_REF="${REMOTE_COMMANDER_SOURCE_REF:-v0.6.4}"
 EXPECTED_COMMIT="${REMOTE_COMMANDER_EXPECTED_COMMIT:-}"
+CURL_CONNECT_TIMEOUT="${REMOTE_COMMANDER_CURL_CONNECT_TIMEOUT:-15}"
+CURL_MAX_TIME="${REMOTE_COMMANDER_CURL_MAX_TIME:-180}"
 
 usage() {
   cat <<'USAGE'
@@ -17,7 +19,7 @@ Usage: install.sh [options]
   --install-prerequisites   Install basic OS packages and portable Node 22+ if needed
   --power-mode              Enable local Full-Control policy
   --start-server            Start MCP server with nohup after validation
-  --source-ref REF          Git ref to install (default: v0.6.3)
+  --source-ref REF          Git ref to install (default: v0.6.4)
   --expected-commit SHA     Require the fetched ref to peel to this exact 40-hex commit
   -h, --help                Show help
 USAGE
@@ -37,7 +39,14 @@ while [[ $# -gt 0 ]]; do
 done
 [[ "$SOURCE_REF" =~ ^[A-Za-z0-9._/-]{1,128}$ ]] || { echo "Invalid --source-ref" >&2; exit 2; }
 [[ -z "$EXPECTED_COMMIT" || "$EXPECTED_COMMIT" =~ ^[0-9a-fA-F]{40}$ ]] || { echo "Invalid --expected-commit SHA" >&2; exit 2; }
+[[ "$CURL_CONNECT_TIMEOUT" =~ ^[1-9][0-9]{0,3}$ ]] || { echo "REMOTE_COMMANDER_CURL_CONNECT_TIMEOUT must be a positive integer" >&2; exit 2; }
+[[ "$CURL_MAX_TIME" =~ ^[1-9][0-9]{0,4}$ ]] || { echo "REMOTE_COMMANDER_CURL_MAX_TIME must be a positive integer" >&2; exit 2; }
 need() { command -v "$1" >/dev/null 2>&1; }
+curl_fetch() {
+  curl --fail --silent --show-error --location \
+    --connect-timeout "$CURL_CONNECT_TIMEOUT" \
+    --max-time "$CURL_MAX_TIME" "$@"
+}
 
 install_os_packages() {
   [[ "$INSTALL_PREREQS" == "1" ]] || return 0
@@ -146,14 +155,14 @@ install_portable_node() {
     *) echo "Unsupported Linux architecture for portable Node: $machine" >&2; exit 1 ;;
   esac
   local index version asset base tmp expected actual
-  index="$(curl -fsSL https://nodejs.org/dist/index.json)"
+  index="$(curl_fetch https://nodejs.org/dist/index.json)"
   version="$(printf '%s' "$index" | grep -oE '"version"[[:space:]]*:[[:space:]]*"v22\.[^"]+"' | head -n1 | sed -E 's/.*"(v22\.[^"]+)"/\1/')"
   [[ -n "$version" ]] || { echo "Could not resolve latest Node 22 release" >&2; exit 1; }
   asset="node-${version}-linux-${node_arch}.tar.xz"
   base="https://nodejs.org/dist/${version}"
   tmp="$(mktemp -d)"
-  curl -fsSL "$base/$asset" -o "$tmp/$asset"
-  curl -fsSL "$base/SHASUMS256.txt" -o "$tmp/SHASUMS256.txt"
+  curl_fetch "$base/$asset" -o "$tmp/$asset"
+  curl_fetch "$base/SHASUMS256.txt" -o "$tmp/SHASUMS256.txt"
   expected="$(awk -v f="$asset" '$2==f {print $1}' "$tmp/SHASUMS256.txt")"
   actual="$(sha256sum "$tmp/$asset" | awk '{print $1}')"
   [[ -n "$expected" && "$actual" == "$expected" ]] || { echo "Node SHA-256 verification failed" >&2; exit 1; }
@@ -190,7 +199,7 @@ install_tunnel_client() {
   tmp="$(mktemp -d)"
   local base="https://github.com/openai/tunnel-client/releases/download/v${TUNNEL_VERSION}"
   curl -fsSL "$base/$asset" -o "$tmp/$asset"
-  curl -fsSL "$base/SHA256SUMS.txt" -o "$tmp/SHA256SUMS.txt"
+  curl_fetch "$base/SHA256SUMS.txt" -o "$tmp/SHA256SUMS.txt"
   expected="$(awk -v f="$asset" '$2==f {print $1}' "$tmp/SHA256SUMS.txt")"
   actual="$(sha256sum "$tmp/$asset" | awk '{print $1}')"
   [[ -n "$expected" && "$actual" == "$expected" ]] || { echo "tunnel-client SHA-256 verification failed" >&2; exit 1; }
@@ -265,7 +274,7 @@ start_server() {
   mkdir -p var
   local expected current health pid cwd
   expected="$(sed -nE 's/.*"version"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p' package.json | head -n1)"
-  health="$(curl -fsS http://127.0.0.1:47831/health 2>/dev/null || true)"
+  health="$(curl -fsS --connect-timeout 1 --max-time 2 http://127.0.0.1:47831/health 2>/dev/null || true)"
   current="$(printf '%s' "$health" | sed -nE 's/.*"version":"([^"]+)".*/\1/p')"
   if [[ -n "$current" && "$current" == "$expected" ]]; then
     echo "MCP server is already healthy at version $expected."
@@ -281,7 +290,7 @@ start_server() {
     done
     for _ in $(seq 1 40); do
       sleep 0.25
-      health="$(curl -fsS http://127.0.0.1:47831/health 2>/dev/null || true)"
+      health="$(curl -fsS --connect-timeout 1 --max-time 2 http://127.0.0.1:47831/health 2>/dev/null || true)"
       current="$(printf '%s' "$health" | sed -nE 's/.*"version":"([^"]+)".*/\1/p')"
       if [[ "$current" == "$expected" ]]; then
         echo "Supervisor restarted MCP at version $expected."
@@ -293,7 +302,7 @@ start_server() {
   echo $! > var/server.pid
   for _ in $(seq 1 40); do
     sleep 0.25
-    health="$(curl -fsS http://127.0.0.1:47831/health 2>/dev/null || true)"
+    health="$(curl -fsS --connect-timeout 1 --max-time 2 http://127.0.0.1:47831/health 2>/dev/null || true)"
     current="$(printf '%s' "$health" | sed -nE 's/.*"version":"([^"]+)".*/\1/p')"
     if [[ "$current" == "$expected" ]]; then
       echo "MCP server started at version $expected: http://127.0.0.1:47831/mcp"

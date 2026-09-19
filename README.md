@@ -50,7 +50,7 @@ The same command is also the update command. On Windows v0.3.4+, the installer f
 ## One-command Linux install
 
 ```bash
-curl -fsSL https://github.com/GOD13emad/ChatGPTRemoteCommander/releases/latest/download/install.sh | bash -s -- --install-prerequisites --start-server
+curl -fsSL --connect-timeout 15 --max-time 180 https://github.com/GOD13emad/ChatGPTRemoteCommander/releases/latest/download/install.sh | bash -s -- --install-prerequisites --start-server
 ```
 
 For Power Mode, add `--power-mode`. Linux amd64 and arm64 are supported by the installer when an official OpenAI tunnel-client artifact is available.
@@ -139,7 +139,7 @@ Filesystem containment is enforced, but command execution is **not an OS sandbox
 
 ## Validation
 
-v0.6.3 retains the v0.6.2 Power Mode/GUI/runtime hardening and verified dual-era MCP interoperability, and adds stronger operational diagnostics and test isolation. Legacy 2025 clients remain supported, while MCP `2026-07-28` clients receive stateless discovery/routing, required `tools/list` cache hints, strict protocol-header validation, closed-schema tool inputs, and tool-level `isError` failures for known-tool validation/runtime errors. The release gate includes a dependency-free real-server conformance test and was additionally exercised against the official `@modelcontextprotocol/client@2.0.0` in legacy, modern-auto, and modern-pinned modes. Persistent audit logs are serialized and bounded/rotated by default. `npm run doctor -- --expected-device <name>` performs a loopback-only read-only health/version/device/tool-catalog drift check against the active server. Use `npm run check`, `npm test`, `npm run audit`, and on Windows `npm run test:gui-native` before releases.
+v0.6.4 retains the v0.6.3 diagnostics/test-isolation and v0.6.2 Power Mode/GUI/runtime hardening, and adds bounded Linux network operations so external-download failures cannot hang indefinitely. Legacy 2025 clients remain supported, while MCP `2026-07-28` clients receive stateless discovery/routing, required `tools/list` cache hints, strict protocol-header validation, closed-schema tool inputs, and tool-level `isError` failures for known-tool validation/runtime errors. The release gate includes a dependency-free real-server conformance test and was additionally exercised against the official `@modelcontextprotocol/client@2.0.0` in legacy, modern-auto, and modern-pinned modes. Linux installer and Plugin downloads use explicit connection/total deadlines; failures return nonzero instead of waiting without a bound. Persistent audit logs are serialized and bounded/rotated by default. `npm run doctor -- --expected-device <name>` performs a loopback-only read-only health/version/device/tool-catalog drift check against the active server. Use `npm run check`, `npm test`, `npm run audit`, and on Windows `npm run test:gui-native` before releases.
 
 ## License
 

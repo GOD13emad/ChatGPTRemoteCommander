@@ -19,7 +19,7 @@ Standard Mode 是更安全的默认选择。Full/Power Mode 只应在可信计�
 **Linux**
 
 ```bash
-curl -fsSL https://github.com/GOD13emad/ChatGPTRemoteCommander/releases/latest/download/install.sh | bash -s -- --install-prerequisites --start-server
+curl -fsSL --connect-timeout 15 --max-time 180 https://github.com/GOD13emad/ChatGPTRemoteCommander/releases/latest/download/install.sh | bash -s -- --install-prerequisites --start-server
 ```
 
 随后创建 Secure MCP Tunnel 和 Runtime API Key。不要把 API Key 粘贴到聊天中，只在本地隐藏提示中输入。然后在 ChatGPT 中创建 Custom App：Connection = Tunnel、Authentication = None，并执行 Scan Tools。

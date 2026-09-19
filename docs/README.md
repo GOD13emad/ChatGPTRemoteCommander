@@ -51,7 +51,7 @@ Windows one-time persistent enrollment:
 Linux install and one-time persistent enrollment:
 
 ```bash
-curl -fsSL https://github.com/GOD13emad/ChatGPTRemoteCommander/releases/latest/download/install.sh | bash -s -- --install-prerequisites --start-server
+curl -fsSL --connect-timeout 15 --max-time 180 https://github.com/GOD13emad/ChatGPTRemoteCommander/releases/latest/download/install.sh | bash -s -- --install-prerequisites --start-server
 ./enable-autostart-linux.sh --profile "$(hostname)"
 ```
 

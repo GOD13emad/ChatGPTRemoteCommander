@@ -131,7 +131,7 @@ Windows — public latest Release, no clone required:
 Linux — public latest Release, no clone required:
 
 ```bash
-curl -fsSL https://github.com/GOD13emad/ChatGPTRemoteCommander/releases/latest/download/install-work-plugin.sh | bash -s -- "plugin_asdk_app_YOUR_TECHNICAL_ID"
+curl -fsSL --connect-timeout 15 --max-time 180 https://github.com/GOD13emad/ChatGPTRemoteCommander/releases/latest/download/install-work-plugin.sh | bash -s -- "plugin_asdk_app_YOUR_TECHNICAL_ID"
 ```
 
 From an existing repository checkout, `.\install-work-plugin.ps1 -AppId "plugin_asdk_app_..."` or `./install-work-plugin.sh "plugin_asdk_app_..."` also works.
