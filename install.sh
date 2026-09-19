@@ -8,6 +8,7 @@ START_SERVER=0
 INSTALL_PREREQS=0
 TUNNEL_VERSION="0.0.14"
 SOURCE_REF="${REMOTE_COMMANDER_SOURCE_REF:-v0.6.0}"
+EXPECTED_COMMIT="${REMOTE_COMMANDER_EXPECTED_COMMIT:-}"
 
 usage() {
   cat <<'USAGE'
@@ -17,6 +18,7 @@ Usage: install.sh [options]
   --power-mode              Enable local Full-Control policy
   --start-server            Start MCP server with nohup after validation
   --source-ref REF          Git ref to install (default: v0.6.0)
+  --expected-commit SHA     Require the fetched ref to peel to this exact 40-hex commit
   -h, --help                Show help
 USAGE
 }
@@ -28,11 +30,13 @@ while [[ $# -gt 0 ]]; do
     --power-mode) POWER_MODE=1; shift ;;
     --start-server) START_SERVER=1; shift ;;
     --source-ref) SOURCE_REF="$2"; shift 2 ;;
+    --expected-commit) EXPECTED_COMMIT="$2"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
     *) echo "Unknown argument: $1" >&2; usage; exit 2 ;;
   esac
 done
 [[ "$SOURCE_REF" =~ ^[A-Za-z0-9._/-]{1,128}$ ]] || { echo "Invalid --source-ref" >&2; exit 2; }
+[[ -z "$EXPECTED_COMMIT" || "$EXPECTED_COMMIT" =~ ^[0-9a-fA-F]{40}$ ]] || { echo "Invalid --expected-commit SHA" >&2; exit 2; }
 need() { command -v "$1" >/dev/null 2>&1; }
 
 install_os_packages() {
@@ -62,8 +66,17 @@ install_source() {
     dirty="$(git -C "$INSTALL_DIR" status --porcelain --untracked-files=no)"
     [[ -z "$dirty" ]] || { echo "Tracked local changes exist in InstallDir; refusing update." >&2; exit 1; }
     git -C "$INSTALL_DIR" fetch --no-tags origin "$SOURCE_REF"
-    resolved="$(git -C "$INSTALL_DIR" rev-parse FETCH_HEAD)"
-    current="$(git -C "$INSTALL_DIR" rev-parse HEAD)"
+    resolved="$(git -C "$INSTALL_DIR" rev-parse 'FETCH_HEAD^{commit}')"
+    [[ "$resolved" =~ ^[0-9a-f]{40}$ ]] || { echo "Could not peel fetched source ref to a commit." >&2; exit 1; }
+    if [[ -n "$EXPECTED_COMMIT" && "${resolved,,}" != "${EXPECTED_COMMIT,,}" ]]; then
+      echo "Fetched commit $resolved does not match expected commit $EXPECTED_COMMIT." >&2
+      exit 1
+    fi
+    current="$(git -C "$INSTALL_DIR" rev-parse HEAD 2>/dev/null || true)"
+    [[ "$current" =~ ^[0-9a-f]{40}$ ]] || {
+      echo "InstallDir contains an incomplete Git checkout with no HEAD. Move/remove that failed installation and retry." >&2
+      exit 1
+    }
     if [[ "$current" != "$resolved" ]]; then
       git -C "$INSTALL_DIR" merge-base --is-ancestor "$current" "$resolved" || {
         echo "Refusing non-fast-forward update or downgrade." >&2; exit 1;
@@ -74,14 +87,44 @@ install_source() {
     echo "Install directory exists but is not a Git repository: $INSTALL_DIR" >&2
     exit 1
   else
-    mkdir -p "$INSTALL_DIR"
-    git -C "$INSTALL_DIR" init
-    git -C "$INSTALL_DIR" remote add origin "$REPO_URL"
-    git -C "$INSTALL_DIR" fetch --depth 1 --no-tags origin "$SOURCE_REF"
-    git -C "$INSTALL_DIR" checkout --detach FETCH_HEAD
+    local stage resolved
+    stage="${INSTALL_DIR}.install.$$"
+    rm -rf "$stage"
+    mkdir -p "$stage"
+    if ! git -C "$stage" init ||
+       ! git -C "$stage" remote add origin "$REPO_URL" ||
+       ! git -C "$stage" fetch --depth 1 --no-tags origin "$SOURCE_REF"; then
+      rm -rf "$stage"
+      echo "Failed to initialize/fetch source; incomplete staging checkout removed." >&2
+      exit 1
+    fi
+    resolved="$(git -C "$stage" rev-parse 'FETCH_HEAD^{commit}' 2>/dev/null || true)"
+    if [[ ! "$resolved" =~ ^[0-9a-f]{40}$ ]]; then
+      rm -rf "$stage"
+      echo "Could not peel fetched source ref to a commit; incomplete staging checkout removed." >&2
+      exit 1
+    fi
+    if [[ -n "$EXPECTED_COMMIT" && "${resolved,,}" != "${EXPECTED_COMMIT,,}" ]]; then
+      rm -rf "$stage"
+      echo "Fetched commit $resolved does not match expected commit $EXPECTED_COMMIT; incomplete staging checkout removed." >&2
+      exit 1
+    fi
+    if ! git -C "$stage" checkout --detach "$resolved"; then
+      rm -rf "$stage"
+      echo "git checkout failed; incomplete staging checkout removed." >&2
+      exit 1
+    fi
+    mv "$stage" "$INSTALL_DIR"
+  fi
+
+  local head
+  head="$(git -C "$INSTALL_DIR" rev-parse HEAD)"
+  if [[ -n "$EXPECTED_COMMIT" && "${head,,}" != "${EXPECTED_COMMIT,,}" ]]; then
+    echo "Installed HEAD $head does not match expected commit $EXPECTED_COMMIT." >&2
+    exit 1
   fi
   echo "Source ref: $SOURCE_REF"
-  echo "Source commit: $(git -C "$INSTALL_DIR" rev-parse HEAD)"
+  echo "Source commit: $head"
 }
 node_major() {
   node -p "process.versions.node.split('.')[0]" 2>/dev/null || echo 0

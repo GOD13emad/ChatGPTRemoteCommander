@@ -126,15 +126,19 @@ function Install-Source {
       throw "git fetch failed for SourceRef $SourceRef"
     }
 
-    $resolved = (& git.exe -C $InstallDir rev-parse FETCH_HEAD).Trim().ToLowerInvariant()
-    if ($resolved -notmatch '^[0-9a-f]{40}$') {
-      throw 'Could not resolve fetched source commit.'
+    $resolved = (& git.exe -C $InstallDir rev-parse 'FETCH_HEAD^{commit}').Trim().ToLowerInvariant()
+    if ($LASTEXITCODE -ne 0 -or $resolved -notmatch '^[0-9a-f]{40}$') {
+      throw 'Could not peel fetched source ref to a commit.'
     }
     if ($ExpectedCommit -and $resolved -ne $ExpectedCommit.ToLowerInvariant()) {
       throw "Fetched commit $resolved does not match ExpectedCommit $ExpectedCommit."
     }
 
-    $current = (& git.exe -C $InstallDir rev-parse HEAD).Trim().ToLowerInvariant()
+    $currentRaw = & git.exe -C $InstallDir rev-parse HEAD 2>$null
+    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($currentRaw)) {
+      throw 'InstallDir contains an incomplete Git checkout with no HEAD. Move/remove that failed installation and retry.'
+    }
+    $current = $currentRaw.Trim().ToLowerInvariant()
     if ($current -ne $resolved) {
       & git.exe -C $InstallDir merge-base --is-ancestor $current $resolved
       if ($LASTEXITCODE -ne 0) {
@@ -150,28 +154,30 @@ function Install-Source {
   } else {
     Write-Host "Installing source ref '$SourceRef' to $InstallDir"
     New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
+    $sourceReady = $false
+    try {
+      & git.exe -C $InstallDir init
+      if ($LASTEXITCODE -ne 0) { throw 'git init failed' }
+      & git.exe -C $InstallDir remote add origin $Repo
+      if ($LASTEXITCODE -ne 0) { throw 'git remote add failed' }
+      & git.exe -C $InstallDir fetch --depth 1 --no-tags origin $SourceRef
+      if ($LASTEXITCODE -ne 0) { throw "git fetch failed for SourceRef $SourceRef" }
 
-    & git.exe -C $InstallDir init
-    if ($LASTEXITCODE -ne 0) {
-      throw 'git init failed'
-    }
-    & git.exe -C $InstallDir remote add origin $Repo
-    if ($LASTEXITCODE -ne 0) {
-      throw 'git remote add failed'
-    }
-    & git.exe -C $InstallDir fetch --depth 1 --no-tags origin $SourceRef
-    if ($LASTEXITCODE -ne 0) {
-      throw "git fetch failed for SourceRef $SourceRef"
-    }
+      $resolved = (& git.exe -C $InstallDir rev-parse 'FETCH_HEAD^{commit}').Trim().ToLowerInvariant()
+      if ($LASTEXITCODE -ne 0 -or $resolved -notmatch '^[0-9a-f]{40}$') {
+        throw 'Could not peel fetched source ref to a commit.'
+      }
+      if ($ExpectedCommit -and $resolved -ne $ExpectedCommit.ToLowerInvariant()) {
+        throw "Fetched commit $resolved does not match ExpectedCommit $ExpectedCommit."
+      }
 
-    $resolved = (& git.exe -C $InstallDir rev-parse FETCH_HEAD).Trim().ToLowerInvariant()
-    if ($ExpectedCommit -and $resolved -ne $ExpectedCommit.ToLowerInvariant()) {
-      throw "Fetched commit $resolved does not match ExpectedCommit $ExpectedCommit."
-    }
-
-    & git.exe -C $InstallDir checkout --detach $resolved
-    if ($LASTEXITCODE -ne 0) {
-      throw 'git checkout failed'
+      & git.exe -C $InstallDir checkout --detach $resolved
+      if ($LASTEXITCODE -ne 0) { throw 'git checkout failed' }
+      $sourceReady = $true
+    } finally {
+      if (-not $sourceReady -and (Test-Path -LiteralPath $InstallDir)) {
+        Remove-Item -LiteralPath $InstallDir -Recurse -Force -ErrorAction SilentlyContinue
+      }
     }
   }
 
