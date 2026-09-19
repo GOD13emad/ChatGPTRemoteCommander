@@ -139,7 +139,7 @@ Filesystem containment is enforced, but command execution is **not an OS sandbox
 
 ## Validation
 
-v0.5.2 retains the v0.5.1 GUI/runtime and release-integrity hardening, and restores Power Mode compatibility for the five legacy MCP tools. When explicit Power Mode has `fullFilesystem=true`, configured `allowedRoots` remain Standard Mode/default-base roots rather than an active filesystem boundary: legacy file tools and `run_project_command` can use absolute paths outside them, while executable allowlisting and the `python -c` / Node eval-print blocks remain enforced. `system_status` exposes the effective access state so clients can distinguish configured roots from enforced roots. Use `npm run check`, `npm test`, `npm run audit`, and on Windows `npm run test:gui-native` before releases.
+v0.6.0 retains the v0.5.2 Power Mode/GUI/runtime hardening and adds verified dual-era MCP interoperability. Legacy 2025 clients remain supported, while MCP `2026-07-28` clients receive stateless discovery/routing, required `tools/list` cache hints, strict protocol-header validation, closed-schema tool inputs, and tool-level `isError` failures for known-tool validation/runtime errors. The release gate includes a dependency-free real-server conformance test and was additionally exercised against the official `@modelcontextprotocol/client@2.0.0` in legacy, modern-auto, and modern-pinned modes. Persistent audit logs are serialized and bounded/rotated by default. Use `npm run check`, `npm test`, `npm run audit`, and on Windows `npm run test:gui-native` before releases.
 
 ## License
 

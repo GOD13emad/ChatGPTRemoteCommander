@@ -12,7 +12,7 @@ for (const required of [
   'Detected active installation from Windows autostart',
   '$InstallDir = Resolve-InstallDir',
   'Tracked local changes exist in InstallDir',
-  "[string]$SourceRef = 'v0.5.2'",
+  "[string]$SourceRef = 'v0.6.0'",
   'ExpectedCommit',
   'Get-ExpectedConfigHash',
   'mcp-runtime.json',
@@ -30,7 +30,7 @@ for (const required of [
 const linuxInstaller = readFileSync('install.sh', 'utf8');
 const linuxEnrollment = readFileSync('enable-autostart-linux.sh', 'utf8');
 for (const required of [
-  'SOURCE_REF="${REMOTE_COMMANDER_SOURCE_REF:-v0.5.2}"',
+  'SOURCE_REF="${REMOTE_COMMANDER_SOURCE_REF:-v0.6.0}"',
   '--source-ref',
   'Tracked local changes exist in InstallDir',
   'fetch --no-tags origin "$SOURCE_REF"',

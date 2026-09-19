@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.6.0 — 2026-09-19
+
+- Completed real dual-era MCP conformance for legacy 2025 clients and MCP `2026-07-28` stateless clients.
+- Added required modern `tools/list` cache hints, strict modern header/body version classification, `Mcp-Method`/`Mcp-Name` routing validation, and modern rejection of the removed `notifications/initialized` lifecycle.
+- Added centralized closed-schema tool-input validation. Known-tool validation/handler failures now return normal MCP tool results with `isError: true`; unknown tools remain JSON-RPC protocol errors.
+- Hardened tool risk annotations so potentially overwriting/destructive file/process/shell operations are conservatively marked destructive/open-world where applicable.
+- Added a dependency-free MCP conformance gate and independently validated the candidate with the official `@modelcontextprotocol/client@2.0.0` in legacy, modern-auto, and modern-pinned modes.
+- Added serialized bounded audit logging with an 8 MiB default segment limit and three retained rotated generations; concurrent-rotation regression verifies parseable, non-duplicated JSONL.
+- Revalidated the existing Power Mode full-filesystem compatibility, concurrency, filesystem safety, runtime ownership, HTTP admission, secret scan, Windows GUI contract, and native screenshot/input/screenshot E2E.
+- Kept OpenAI `tunnel-client v0.0.14` pinned after current-release verification; it remains the published rollout target for MCP 2026-07-28/sessionless tunnel traffic.
+
 ## 0.5.2 — 2026-09-19
 
 - Restored full-filesystem compatibility for the five legacy MCP tools when explicit Power Mode has `fullFilesystem=true`. `list_directory`, `read_text`, `write_text`, and `run_project_command` can now use absolute paths outside configured `allowedRoots` subject to OS permissions and the existing policy.

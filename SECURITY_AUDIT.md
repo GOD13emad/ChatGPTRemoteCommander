@@ -22,6 +22,7 @@ The audit found no committed OpenAI-style API secret key, GitHub token, tunnel i
 - Windows and Linux installer/parser/test gates passed locally before the v0.3 release candidate was staged.
 - v0.5.1 Windows release gates re-ran successfully on 2026-09-19: `npm run check`, `npm test`, `npm run audit`, and native GUI E2E. The concurrency test now restores the pre-existing runtime ownership marker.
 - v0.5.2 restores legacy five-tool full-filesystem behavior only when explicit Power Mode is enabled with `fullFilesystem=true`; Standard Mode root containment remains unchanged. Executable allowlisting and eval/print blocks remain enforced for `run_project_command`.
+- v0.6.0 adds centralized MCP input-schema validation and correct known-tool `isError` semantics, rejects unsupported/mismatched modern protocol routing, conservatively corrects destructive/open-world tool annotations, and bounds persistent audit-log growth. A scan of the live audit/autostart logs found no OpenAI-style secret, tunnel identifier, GitHub token, bearer token, PEM private key, or Runtime API key assignment pattern.
 
 ## Privacy note
 
