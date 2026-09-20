@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.8.1 — 2026-09-20
+
+- Fix Windows auto-update gate execution: the helper parameter named `Args` collided with PowerShell's automatic `$args` variable, causing staged `npm run check` to launch npm without arguments and fail closed before cutover.
+- Add an explicit missing-gate-arguments guard so the updater cannot silently treat an empty gate command as valid.
+- Preserve the v0.8.0 candidate-first safety behavior: the failed updater never reached cutover, so live v0.7.3 production remained unchanged during discovery of this defect.
+
 ## 0.8.0 — 2026-09-20
 
 - Capability Profile v2: explicit Full Power enables every known capability by default and automatically adopts new capabilities on later upgrades; only persistent explicit opt-outs keep individual capabilities disabled.

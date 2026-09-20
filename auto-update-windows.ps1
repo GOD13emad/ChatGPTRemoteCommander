@@ -117,9 +117,10 @@ function Stage-Release([string]$Ref){
   }
   return [pscustomobject]@{Ref=$Ref;Commit=$commit;Version=$version;Dir=$final}
 }
-function Run-Gate([string]$Candidate,[string]$Name,[string[]]$Args){
+function Run-Gate([string]$Candidate,[string]$Name,[string[]]$CommandArgs){
   Log "GATE_START $Name"
-  & npm.cmd @Args
+  if(-not $CommandArgs -or $CommandArgs.Count -lt 1){throw "GATE_ARGUMENTS_MISSING $Name"}
+  & npm.cmd @CommandArgs
   if($LASTEXITCODE-ne 0){throw "GATE_FAIL $Name"}
   Log "GATE_PASS $Name"
 }

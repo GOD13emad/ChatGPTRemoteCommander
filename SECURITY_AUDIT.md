@@ -10,6 +10,7 @@ The audit found no committed OpenAI-style API secret key, GitHub token, tunnel i
 
 ## Controls verified
 
+- v0.8.1 fixes Windows candidate-gate invocation so every staged npm gate receives its intended arguments; empty gate arguments fail closed before any cutover.
 - v0.8.0 Capability Profile v2 persists explicit authority separately from release defaults. Full Power automatically adopts new capabilities across updates; only a persistent disabledCapabilities entry suppresses a capability.
 - v0.8.0 automatic updates are candidate-first: source is staged side-by-side, repository/security/hardware gates run before cutover, workflow state is tested through a consistent shadow copy, and live schema finalization occurs only after canonical MCP and tunnel verification.
 - v0.8.0 stable routing uses loopback-only generation-guarded state and drains old in-flight operations before deleting the prior backend. Post-commit failures stay on the promoted runtime and enter maintenance recovery instead of rolling back to a schema-incompatible old runtime.

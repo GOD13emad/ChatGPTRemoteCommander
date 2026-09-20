@@ -28,10 +28,14 @@ test('auto updater is candidate-first, hardware-gated and commit-point aware',()
     'finalize-workflow-schema.mjs',
     'Promote-Control',
     'Recycle-ControlSupervisor',
+    'GATE_ARGUMENTS_MISSING',
     'SUPERVISOR_RECYCLE_PASS',
     'Cleanup-Releases',
     'PROMOTED_MAINTENANCE_REQUIRED'
   ]) assert.ok(s.includes(marker),marker);
+  assert.ok(s.includes('[string[]]$CommandArgs'), 'gate helper must not bind the PowerShell automatic $args variable');
+  assert.ok(s.includes('& npm.cmd @CommandArgs'), 'gate helper must pass the intended npm argument array');
+  assert.ok(!s.includes('[string[]]$Args'), 'reserved automatic $args name must not be used as a gate parameter');
   const cutover=s.indexOf('if(Test-Path $t.RoutePath)');
   assert.ok(s.indexOf("Run-Gate $stage.Dir 'check'") < cutover, 'gates must precede cutover');
   assert.ok(s.indexOf('Verify-Tunnels') < s.indexOf('$cutoverCommitted=$true'), 'tunnels verified before commit point');
