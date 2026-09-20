@@ -101,3 +101,54 @@ This file is append-only for substantive project claims, decisions, failures, pr
 ## HISTORY — append only
 
 - 2026-09-20 / R1: Created cumulative evidence record for v0.8.4 finalization and promotion.
+
+
+## E011 — Hidden Linux release-gate defect found after v0.8.4
+
+- Context: GitHub Actions appeared red, but GitHub annotations showed hosted jobs never started because the account was billing-locked. To separate infrastructure failure from product behavior, the Ubuntu job was reproduced locally on Ubuntu 24.04 with Node 22.
+- Finding: v0.8.4 npm run check produced four failures in test/profile-instances.test.mjs. All four used Windows-only fixture paths such as C:\State\... while the production validator correctly required POSIX absolute paths on Linux.
+- Root Cause -> Prevention -> Guard -> Regression: OS-specific test fixture -> platform-native fixtureRoot/stateRoot -> production validateLocalAbsolute unchanged -> Windows and Ubuntu/Node22 release gates both exercised.
+- Status/Confidence: Confirmed / high.
+- Reuse targets: CI portability, Linux auto-update release gating, cross-platform testing.
+
+## E012 — v0.8.5 cross-platform validation
+
+- Release commit: 540d7e596686406e102e4a835c9ad4d7745cef5c.
+- Windows clean detached-worktree evidence:
+  - v085-clean-check.log SHA-256 24b73bdf47934dacefe67320ccc06e3fababf3e4ccfdae37ac4476001a000098
+  - v085-clean-test.log SHA-256 a4c1fe62e105b24f96c648b1d6688324eccb3f5e416c1f57ece46fef5a0b9e40
+  - v085-clean-audit.log SHA-256 398ca142ee01b4157e76ef9d2aeec4c7c3780f59ba7982e8e2cb3840c036012f
+  - v085-clean-gui.log SHA-256 3e1ec7902ac9e01c5c1155adca697bedb3dcbf687a7f3a1a3d94b661bec7a83b
+- Ubuntu 24.04 / Node 22 reproduction evidence:
+  - check SHA-256 4756be1c37f38d954f26425c8deee0b5d8dff64b9483013a9d138c15d966138a
+  - test SHA-256 82bd192d45186e6018db840716b37794b529923911684748e847996477f28b67
+  - audit SHA-256 0a9521e03e0436497bca1c2599c36d5d7c9e0ff582be613bfd534b3dee5caa96
+- Native Windows GUI proof again passed real focus/click/Farsi-Japanese Unicode typing/screenshot verification and foreground/cursor restoration.
+- Status/Confidence: Confirmed / high.
+
+## E013 — v0.8.5 promotion and runtime authority
+
+- GitHub Release v0.8.5 is Latest and tag/main at publication resolved to 540d7e596686406e102e4a835c9ad4d7745cef5c.
+- Candidate-only validation returned CANDIDATE_PASS for exactly default and saeed-emad.
+- Automatic updater later acquired the single-writer update mutex, independently reran check/test/audit/native-GUI gates, and completed AUTO_UPDATE_PASS version=0.8.5 commit=540d7e596686406e102e4a835c9ad4d7745cef5c.
+- Post-promotion auto-update returned CURRENT for v0.8.5.
+- Active routes are generation 2:
+  - default canonical 47831 -> backend 48833; config SHA-256 464806e6775e01c2ac95240d9b2a26d9cc5c4638c7caeacc37a730259d1b7f73.
+  - saeed-emad canonical 47834 -> backend 48834; config SHA-256 438453876b955316a7498e3312f66b515e7e8541bbdd8722986d900dcc4604db.
+- Both canonical endpoints pass doctor with 54 tools / 15 GUI tools; both workflow databases report schema 2, integrity ok, scheduler and automatic continuation enabled, and FULL_POWER authority with all 22 current capabilities.
+- Only release directory v0.8.5-540d7e596686 remains after cleanup.
+- Update-log SHA-256 after promotion/current checks: 86f62e09f445c6d72d0ef1a9332ed7306719a00d1957fece302aed40bcf0fb28.
+- Status/Confidence: Confirmed / high.
+
+## E014 — GitHub-hosted CI external gate
+
+- GitHub Actions runs for v0.8.5 are marked failure, but both check-run annotations state: "The job was not started because your account is locked due to a billing issue."
+- The API reports no runner execution and zero workflow steps for the affected jobs.
+- Decision: Do not disable or weaken CI to manufacture green status. Keep this as an external owner gate.
+- Local equivalent Ubuntu/Node22 check/test/audit gates are PASS, but hosted CI remains UNPROVEN until the account billing lock is resolved and the workflow is rerun.
+- Status/Confidence: Confirmed external blocker / high.
+- Exact owner next action: resolve the GitHub billing lock, then rerun the existing CI workflow without product-code changes unless a runner subsequently reveals a real test failure.
+
+## HISTORY — R2 delta
+
+- 2026-09-20 / R2: Added Linux CI reproduction, cross-platform fixture root cause/prevention, v0.8.5 validation/promotion evidence, and explicit GitHub billing-blocked hosted-CI status.

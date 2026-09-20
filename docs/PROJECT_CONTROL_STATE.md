@@ -1,6 +1,6 @@
 # ChatGPT Remote Commander — Project Brain
 
-Brain revision: R1
+Brain revision: R2
 Status: CURRENT
 As of: 2026-09-20
 Project root: %USERPROFILE%\source\repos\ChatGPTRemoteCommander
@@ -14,14 +14,14 @@ DoD for the current release requires: an immutable stable release tag and assets
 
 ## Authoritative current state
 
-- Stable release: v0.8.4
-- Release commit: 4fdfd76143fb3a3ac4d54709223599a613cc3c06
-- Release URL: https://github.com/GOD13emad/ChatGPTRemoteCommander/releases/tag/v0.8.4
+- Stable release: v0.8.5
+- Release commit: 540d7e596686406e102e4a835c9ad4d7745cef5c
+- Release URL: https://github.com/GOD13emad/ChatGPTRemoteCommander/releases/tag/v0.8.5
 - Installed control checkout: %LOCALAPPDATA%\ChatGPTRemoteCommander\app, detached at the release commit.
-- Active release directory: %LOCALAPPDATA%\ChatGPTRemoteCommander\releases\v0.8.4-4fdfd76143fb
-- Only active release directory after cleanup: v0.8.4-4fdfd76143fb.
-- Default canonical router: 127.0.0.1:47831 -> backend 48831.
-- saeed-emad canonical router: 127.0.0.1:47834 -> backend 48832.
+- Active release directory: %LOCALAPPDATA%\ChatGPTRemoteCommander\releases\v0.8.5-540d7e596686
+- Only active release directory after cleanup: v0.8.5-540d7e596686.
+- Default canonical router: 127.0.0.1:47831 -> backend 48833.
+- saeed-emad canonical router: 127.0.0.1:47834 -> backend 48834.
 - Tunnel profile chatgpt-remote-commander targets http://127.0.0.1:47831/mcp.
 - Tunnel profile saeed-emad targets http://127.0.0.1:47834/mcp.
 - Both profiles: FULL_POWER, explicitly authorized, persistAcrossUpdates=true, autoEnableNewCapabilities=true, disabledCapabilities=[].
@@ -29,7 +29,7 @@ DoD for the current release requires: an immutable stable release tag and assets
 - Automatic update channel: stable; enabled; zero-downtime enabled; interval 15 minutes.
 - Durable Workflows: R2, schema/database version 2, database integrity ok, scheduler enabled, autonomous continuation enabled, one-writer-per-root enabled.
 - Windows autostart is registered and a single current supervisor is running from the installed app.
-- Final updater self-check after promotion: AUTO_UPDATE_CURRENT version=0.8.4.
+- Final updater self-check after promotion: AUTO_UPDATE_CURRENT version=0.8.5.
 
 ## Roadmap and state
 
@@ -44,8 +44,13 @@ DoD for the current release requires: an immutable stable release tag and assets
 9. Canonical route/tunnel/workflow/autostart post-validation — Completed.
 10. Auto-update idempotency on current release — Completed: CURRENT.
 11. Project Brain / Knowledge Evidence handoff — CURRENT: completed by this revision.
+12. Cross-platform Linux release-gate portability audit — Completed; v0.8.4 reproduced four Linux fixture failures under Ubuntu 24.04 / Node 22.
+13. Portable profile-instance fixture hotfix — Completed in v0.8.5; production local-path guard unchanged.
+14. Windows + Ubuntu/Node22 validation of v0.8.5 — Completed / PASS.
+15. Candidate-only and automatic blue/green promotion to v0.8.5 — Completed / PASS.
+16. GitHub-hosted CI — OPEN EXTERNAL GATE: jobs are not started because GitHub reports an account billing lock; no runner is assigned.
 
-No release blocker remains for v0.8.4.
+No product/runtime blocker remains for v0.8.5. GitHub-hosted Actions is externally blocked because GitHub reports the repository owner's account is locked due to a billing issue; jobs receive no runner and execute zero steps.
 
 ## Closed failure chain
 
@@ -65,6 +70,7 @@ Verification evidence includes clean repository gates, contract tests, security 
 - The source working directory contains many unrelated untracked GCAD/engineering files. They were not modified or included in the release; all release gates were run from a separate clean detached worktree. Cleanup requires separate ownership/authority and is intentionally deferred.
 - Legacy profile baseline files under instances are not the active routed runtime authority after promotion. The durable route files are authoritative and the supervisor starts routed backends from their active.configPath. Do not delete legacy baselines without a separate rollback-policy change.
 - Workflow health reports runnerConfigured=false; scheduler/continuation state is healthy and this is not a capability-profile regression. Any external host-runner integration is a separate future scope.
+- GitHub Actions hosted CI is currently unavailable because GitHub reports the repository owner's account is locked due to a billing issue. The v0.8.5 Ubuntu job was reproduced locally on Ubuntu 24.04 with Node 22 and check/test/audit PASS, but hosted CI remains UNPROVEN until the owner resolves billing and reruns the workflow.
 
 ## Authoritative evidence locations
 
@@ -72,15 +78,16 @@ Verification evidence includes clean repository gates, contract tests, security 
 - %LOCALAPPDATA%\ChatGPTRemoteCommander\update-logs\auto-update.log
 - %LOCALAPPDATA%\ChatGPTRemoteCommander\routing\default.json
 - %LOCALAPPDATA%\ChatGPTRemoteCommander\routing\saeed-emad.json
-- %LOCALAPPDATA%\ChatGPTRemoteCommander\runtimes\4fdfd76143fb3a3ac4d54709223599a613cc3c06\...
-- %LOCALAPPDATA%\ChatGPTRemoteCommander\update-backups\4fdfd76143fb3a3ac4d54709223599a613cc3c06\...
+- %LOCALAPPDATA%\ChatGPTRemoteCommander\runtimes\540d7e596686406e102e4a835c9ad4d7745cef5c\...
+- %LOCALAPPDATA%\ChatGPTRemoteCommander\update-backups\540d7e596686406e102e4a835c9ad4d7745cef5c\...
 - Clean validation logs listed in PROJECT_KNOWLEDGE_EVIDENCE.md.
-- Git tag v0.8.4 and GitHub Release v0.8.4.
+- Git tag v0.8.5 and GitHub Release v0.8.5.
 
 ## Exact next action
 
-No action is required for the current release. For a future product change, start from this Brain and the exact release commit/tag, create one new change objective, validate in a clean worktree, run candidate-only validation, then promote only after all gates pass. If the updater reports CURRENT, do not force a rerun without a new release or a diagnosed fault.
+No product action is required for the current release. Owner action is required only to restore GitHub-hosted CI by resolving the GitHub billing lock; after that, rerun CI without changing product code unless the runner reveals a new failure. For a future product change, start from this Brain and the exact release commit/tag, create one new change objective, validate in a clean worktree, run candidate-only validation, then promote only after all gates pass. If the updater reports CURRENT, do not force a rerun without a new release or a diagnosed fault.
 
 ## HISTORY — append only
 
 - 2026-09-20 / R1: Established v0.8.4 as the promoted stable baseline on the validated Windows target; both profiles Full Power; zero-downtime routes, durable workflows, tunnels, autostart and auto-update post-check verified. v0.8.3 is superseded.
+- 2026-09-20 / R2: Reproduced the otherwise-hidden Linux CI fixture defect under Ubuntu 24.04 / Node 22, fixed it without relaxing production guards, released and automatically promoted v0.8.5, and recorded GitHub hosted CI as an external billing-blocked gate rather than a product failure.
