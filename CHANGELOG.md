@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.8.5 — 2026-09-20
+
+- Make profile-instance test fixtures platform-native so the release gate uses Windows absolute paths on Windows and POSIX absolute paths on Linux instead of feeding Windows-only fixture paths to the Linux local-path guard.
+- Preserve the production fail-closed local-path validator unchanged; this is a release-gate portability fix, not a relaxation of filesystem authority.
+- Reproduce the GitHub Ubuntu job locally on Ubuntu 24.04 with Node 22 and verify `npm run check`, `npm test`, and `npm run audit` all pass.
+- GitHub-hosted CI remains externally blocked from starting while the repository owner's GitHub account reports a billing lock; jobs receive no runner and execute zero steps.
+
 ## 0.8.4 — 2026-09-20
 
 - Fix Windows updater target discovery so only immediate profile directories are considered; historical `instance.json` files inside profile backup trees can no longer be mistaken for live profiles.
