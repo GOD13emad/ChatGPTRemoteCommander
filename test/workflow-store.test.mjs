@@ -51,6 +51,7 @@ test('dependency gate rejects out-of-order action without invoking host',async()
 test('host policy failure occurs before durable intent',async()=>{const f=fixture();try{f.create();await assert.rejects(f.s.call({id:'sample',stepId:'first',expectedRevision:1,tool:'x',arguments:{}},{validate:async()=>{throw Error('DENY');},dispatch:async()=>{throw Error('unexpected');}}),/DENY/);assert.equal(f.s.get('sample').state.revision,1);}finally{f.dispose();}});
 test('checkpoint detects changed and missing evidence, stops next action',()=>{const f=fixture();try{
  f.create();fs.writeFileSync(path.join(f.root,'proof.txt'),'before');f.s.checkpoint({id:'sample',expectedRevision:1,files:['proof.txt'],nextAction:'Inspect',summary:'Recorded evidence'});
+ const listed=f.s.list().find(x=>x.id==='sample'),snapshot=f.s.get('sample').state;assert.equal(listed.lifecycle,'WAITING');assert.equal(listed.schedulerEnabled,snapshot.scheduler.enabled);
  assert.equal(f.s.resume('sample').readyForNextStep,true);fs.writeFileSync(path.join(f.root,'proof.txt'),'after');assert.ok(f.s.resume('sample').blockers.includes('WORKFLOW_EVIDENCE_STALE'));
  fs.unlinkSync(path.join(f.root,'proof.txt'));assert.ok(f.s.resume('sample').blockers.includes('WORKFLOW_EVIDENCE_UNAVAILABLE'));
 }finally{f.dispose();}});

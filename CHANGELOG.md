@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.8.6 — 2026-09-20
+
+- Make workflow checkpoints atomically synchronize WAITING lifecycle, scheduler enablement and next-run projection in the same SQLite transaction, closing the observed workflow snapshot/scheduler divergence.
+- Add regression coverage that requires checkpointed workflows to report WAITING consistently while preserving automatic continuation when enabled.
+- Harden GitHub Actions with explicit read-only contents permission and full commit-SHA pins for checkout/setup-node instead of floating major-version tags.
+- Prepare publication under GitHub immutable-releases policy so the next published release tag and assets cannot be changed after publication.
+- Preserve direct local-validated GitHub Release publication while the account-level hosted-Actions billing lock remains an external GitHub Support gate.
+
 ## 0.8.5 — 2026-09-20
 
 - Make profile-instance test fixtures platform-native so the release gate uses Windows absolute paths on Windows and POSIX absolute paths on Linux instead of feeding Windows-only fixture paths to the Linux local-path guard.

@@ -1,6 +1,6 @@
-# GUI acceptance gates — v0.8.5
+# GUI acceptance gates — v0.8.6
 
-The v0.8.5 release keeps the bounded Windows GUI lease/frame safety model and integrates it into Full Power's all-on capability profile. A fresh native E2E run on Emad-PC-Ultimate on 2026-09-20 passed real capture, exact-window focus, mouse click, Farsi/Japanese Unicode typing, button activation, before/after screenshot verification, cursor restore and foreground restore (GUI_NATIVE_E2E_PASS). GUI authorization remains an explicit capability that can be persistently opted out while the rest of Full Power stays enabled.
+The v0.8.6 release keeps the bounded Windows GUI lease/frame safety model and integrates it into Full Power's all-on capability profile. A fresh native E2E run on Emad-PC-Ultimate on 2026-09-20 passed real capture, exact-window focus, mouse click, Farsi/Japanese Unicode typing, button activation, before/after screenshot verification, cursor restore and foreground restore (GUI_NATIVE_E2E_PASS). GUI authorization remains an explicit capability that can be persistently opted out while the rest of Full Power stays enabled.
 
 These measured Windows results do not waive the remaining release gates below for installer/update/tunnel/ChatGPT integration, Linux regression, multi-monitor/DPI coverage, locked/Secure Desktop behavior, anti-cheat/protected input, or real-time gameplay.
 

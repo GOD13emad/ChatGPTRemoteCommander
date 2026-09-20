@@ -633,7 +633,11 @@ export class WorkflowStore {
     const committed = this.#mutate(id, expectedRevision, 'checkpoint', s => {
       this.#identity(s);
       s.checkpoint = { evidence, nextAction, summary, at: new Date().toISOString(), revision: expectedRevision + 1 };
-      if (s.lifecycleState !== 'COMPLETED') s.lifecycleState = 'WAITING';
+      if (s.lifecycleState !== 'COMPLETED') {
+        s.lifecycleState = 'WAITING';
+        this.#db.prepare('UPDATE scheduler_jobs SET lifecycle=?,enabled=?,next_run_at=?,updated_at=? WHERE workflow=?')
+          .run(s.lifecycleState,s.scheduler.enabled?1:0,s.scheduler.nextRunAt,new Date().toISOString(),id);
+      }
       return clone(s.checkpoint);
     });
     let brainSync=null, brainError=null;

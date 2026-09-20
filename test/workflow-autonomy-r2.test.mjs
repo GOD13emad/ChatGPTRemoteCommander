@@ -67,6 +67,7 @@ test('B restart preserves durable queue and resumable checkpoint',()=>{
     let s=new WorkflowStore(options(root));create(s,root);
     fs.writeFileSync(path.join(root,'proof.txt'),'stable');
     s.checkpoint({id:'sample',expectedRevision:1,files:['proof.txt'],nextAction:'Run exact next step',summary:'checkpoint'});
+    const queued=s.list().find(x=>x.id==='sample');assert.equal(queued.lifecycle,'WAITING');assert.equal(queued.schedulerEnabled,true);
     const before=s.schedulerStatus();assert.equal(before.pending,1);s.close();
     s=new WorkflowStore(options(root));
     try{
