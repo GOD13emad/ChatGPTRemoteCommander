@@ -175,3 +175,55 @@ This file is append-only for substantive project claims, decisions, failures, pr
 ## HISTORY — R3 delta
 
 - 2026-09-20 / R3: Confirmed the account is already GitHub Free/Copilot Free with no payment history, isolated the stale authorization-hold lock, proved it survives a third zero-step hosted CI attempt, and submitted the official support escalation while keeping the account free.
+
+## E016 — Full live-system deep audit of v0.8.5
+
+- Date/Context: 2026-09-20, full read-only audit of source authority, installed runtime, both profiles, updater/supervisor, tunnels, durable workflows, release artifacts, CI state and support state.
+- Current source authority: `main` and `origin/main` resolved to 12f686544243d2000b5e520d56177572a856b1ef; tracked working tree was clean. The large unrelated untracked GCAD/engineering scratch set remains outside Remote Commander release authority and was intentionally not deleted.
+- Runtime authority: installed app remains detached at release commit 540d7e596686406e102e4a835c9ad4d7745cef5c; only release directory `v0.8.5-540d7e596686` is active.
+- Both canonical doctors PASS:
+  - default 47831 -> 48833: v0.8.5, expected device match, 54 tools / 15 GUI tools, FULL_POWER, no doctor warning.
+  - saeed-emad 47834 -> 48834: v0.8.5, expected device match, 54 tools / 15 GUI tools, FULL_POWER, no doctor warning.
+- Current tunnel readiness: health ports 47832 and 47833 both returned HTTP 200 `ready`.
+- Current updater state: `CURRENT` for v0.8.5; repeated 15-minute supervisor checks continue to return `AUTO_UPDATE_CURRENT` without unnecessary promotion.
+- Current regression rerun:
+  - `npm run check`: PASS.
+  - `npm test`: PASS.
+  - project security audit: `SECURITY_AUDIT_PASS`.
+  - native Windows GUI E2E: PASS with real focus/click/Farsi+Japanese Unicode typing/button activation/screenshot change and successful cursor/foreground restoration.
+  - `git fsck --full --no-reflogs`: exit 0; only unreachable dangling objects were reported, not repository corruption.
+- `npm audit --audit-level=high --omit=dev` could not run because no `package-lock.json` exists (`ENOLOCK`). Current package.json has no declared dependency fields; therefore this is recorded as NOT APPLICABLE/UNPROVEN through npm audit, not as a vulnerability PASS.
+- Tunnel log observations: the default tunnel recovered from transient Cloudflare/control-plane HTTP 502 responses; saeed-emad logged a startup OAuth-discovery metadata warning. Current readiness is PASS for both, so these are non-blocking observations rather than active failures.
+- GitHub Support billing ticket remains Open; no staff reply was visible during this audit. Hosted Actions remains an external blocker and current jobs still execute zero repository steps when the account lock is applied.
+- Provenance: `%LOCALAPPDATA%\ChatGPTRemoteCommander\audit\REMOTE_COMMANDER_DEEP_AUDIT_20260920.json`, SHA-256 `8c7943b53fdc5beeb808361b8f6b17196e57e1c5b90b9c4a1e7d14b097b76cbe`.
+- Status/Confidence: Confirmed / high for current local runtime and release-artifact state; hosted CI remains externally blocked.
+- Reuse targets: release acceptance, incident response, future hardening, account transfer, support handoff.
+
+## E017 — Release and CI supply-chain hardening audit
+
+- Release asset integrity: all 11 downloaded non-checksum assets of GitHub Release v0.8.5 matched `SHA256SUMS.txt` exactly. Present artifact integrity is Confirmed.
+- GitHub Release API reports v0.8.5 `isImmutable=false`; repository immutable-release policy reports `enabled=false`. This contradicts the literal DoD requirement for an immutable stable release.
+- `git verify-tag v0.8.5` reports `no signature found`. The annotated tag itself dereferences correctly to accepted release commit 540d7e596686406e102e4a835c9ad4d7745cef5c. Classification: authenticity hardening gap, not evidence of tampering.
+- `.github/workflows/ci.yml` currently references `actions/checkout@v4` and `actions/setup-node@v4`, not full commit SHAs, and does not declare an explicit top-level/job `permissions` policy.
+- Method evidence:
+  - GitHub Docs, `Preventing changes to your releases`: enabling release immutability prevents changes but applies only to future releases.
+  - GitHub Docs, `Immutable releases`: immutable releases lock associated tags/assets and generate release attestation; recommended publication flow is draft -> attach all assets -> publish.
+  - GitHub Docs, `Secure use reference`: full-length commit SHA is the immutable way to reference an action; grant the GITHUB_TOKEN minimum required permissions.
+  - GitHub Docs, `Managing GitHub Actions settings for a repository`: repositories can require full-length SHA pinning.
+- Decision: do not rewrite or republish v0.8.5 merely to manufacture compliance while hosted CI is externally blocked. Use a separate future hardening change set, then publish the next release under immutable-release policy after hosted CI is restored.
+- Status/Confidence: Confirmed hardening/DoD gap / high.
+- Reuse targets: next release architecture, CI security, supply-chain policy, release DoD.
+
+## E018 — Durable Remote Commander workflow authority reconciliation
+
+- Prestate: `remote-commander-primary` and `remote-commander-saeed-profile` were healthy but their durable checkpoints still stated v0.7.3 as the current published/runtime authority. This was stale project-memory state, not a runtime defect.
+- Mutation objective: reconcile only the two Remote Commander workflow checkpoints to current v0.8.5 evidence. The unrelated `thesis_s3_r257` workflow was explicitly not changed.
+- Poststate: both Remote Commander workflows checkpointed current v0.8.5 evidence and then were explicitly paused. Both now report revision 4, lifecycle `WAITING`, schedulerEnabled=false in `workflow_list`; default scheduler pending count fell to 1 (the untouched thesis workflow) and saeed-emad pending count fell to 0. Their next action points to the external billing gate and a separate future supply-chain hardening change set.
+- Workflow databases remain schema 2 / integrity `ok`; the global scheduler engine remains enabled. `runnerConfigured=false` is an intentional design boundary documented/tested by the implementation and is not treated as failure. Audit found a low-severity consistency gap: `workflow_checkpoint` changes the workflow snapshot lifecycle to `WAITING` but does not update the `scheduler_jobs.lifecycle` row, so `workflow_get` and `workflow_list` can disagree until `workflow_control`/another lifecycle transition synchronizes the scheduler row. Live Remote Commander records are synchronized now; a future regression fix should make checkpoint update both representations atomically.
+- Additional audit observation: root `PROJECT_BRAIN.md` is an untracked legacy/workflow mirror whose historical narrative still contains v0.7.3 statements even though generated workflow sections are current. It is therefore STALE as authority. `docs/PROJECT_CONTROL_STATE.md` remains the authoritative Project Brain.
+- Status/Confidence: Reconciliation PASS / high; legacy mirror hygiene remains deferred.
+- Prevention: future handoff/audit must resolve authority from the tracked Project Brain first and must not treat the untracked legacy workflow mirror as authoritative.
+
+## HISTORY — R4 delta
+
+- 2026-09-20 / R4: Added live v0.8.5 deep-audit evidence, release-asset hash verification, supply-chain/immutability findings, current tunnel/support observations, and reconciliation of stale Remote Commander durable-workflow checkpoints without touching the thesis workflow.

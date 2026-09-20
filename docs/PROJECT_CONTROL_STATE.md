@@ -1,6 +1,6 @@
 # ChatGPT Remote Commander — Project Brain
 
-Brain revision: R3
+Brain revision: R4
 Status: CURRENT
 As of: 2026-09-20
 Project root: %USERPROFILE%\source\repos\ChatGPTRemoteCommander
@@ -30,6 +30,9 @@ DoD for the current release requires: an immutable stable release tag and assets
 - Durable Workflows: R2, schema/database version 2, database integrity ok, scheduler enabled, autonomous continuation enabled, one-writer-per-root enabled.
 - Windows autostart is registered and a single current supervisor is running from the installed app.
 - Final updater self-check after promotion: AUTO_UPDATE_CURRENT version=0.8.5.
+- Deep re-audit on 2026-09-20 reran check, test, security audit, both canonical doctors and native Windows GUI E2E: all PASS; tunnel readiness is PASS for both profiles.
+- Release artifact integrity was reverified by downloading the v0.8.5 assets: all 11 non-checksum assets matched SHA256SUMS.txt exactly.
+- Supply-chain DoD caveat: GitHub reports v0.8.5 isImmutable=false and repository immutable-release policy is disabled; the annotated v0.8.5 tag has no cryptographic Git signature. Therefore v0.8.5 is operationally validated but does not satisfy the literal immutable-release part of the stated DoD.
 
 ## Roadmap and state
 
@@ -48,7 +51,10 @@ DoD for the current release requires: an immutable stable release tag and assets
 13. Portable profile-instance fixture hotfix — Completed in v0.8.5; production local-path guard unchanged.
 14. Windows + Ubuntu/Node22 validation of v0.8.5 — Completed / PASS.
 15. Candidate-only and automatic blue/green promotion to v0.8.5 — Completed / PASS.
-16. GitHub-hosted CI — OPEN EXTERNAL GATE: the account is already GitHub Free and Copilot Free with zero observed usage/payments, but a stale failed payment-authorization hold keeps the account billing-locked. An official GitHub Support ticket is open for server-side lock removal; no runner is assigned until GitHub clears it.
+16. GitHub-hosted CI — OPEN EXTERNAL GATE: the account is already GitHub Free and Copilot Free with zero observed usage/payments, but a stale failed payment-authorization hold keeps the account billing-locked. An official GitHub Support ticket remains open with no staff reply visible in the latest audit; no runner is assigned until GitHub clears it.
+17. Full live-system re-audit — Completed / PASS for runtime, local regression, native GUI, routes, tunnels, updater and release-asset hashes.
+18. Durable Remote Commander workflow authority reconciliation — Completed: default and saeed-emad workflow checkpoints advanced from stale v0.7.3 evidence to v0.8.5 audit evidence, then were explicitly paused so persisted state and scheduler/list both report WAITING with scheduler disabled; unrelated thesis workflow was not changed.
+19. Supply-chain hardening — OPEN: current v0.8.5 release is mutable, tag is unsigned, Actions uses tag-pinned actions and does not explicitly declare minimum workflow permissions. This is a hardening/DoD gap, not evidence of compromise.
 
 No product/runtime blocker remains for v0.8.5. GitHub-hosted Actions is externally blocked by a stale account-level billing lock. Billing UI evidence confirms GitHub Free, Copilot Free, zero observed usage, no payment history, no saved payment method control, and an Invalid payment method - authorization hold failed state. GitHub Support accepted an open billing ticket to clear this server-side lock without activating a paid plan.
 
@@ -71,6 +77,20 @@ No product/runtime blocker remains for v0.8.5. GitHub-hosted Actions is external
 - Hosted CI run attempt 3 was repeated after dismissing the alert; Windows and Ubuntu again executed zero steps and returned the same account-lock annotation.
 - An official GitHub Support ticket was successfully submitted and is open. Its private identifier/URL is retained only in local private evidence, not this public repository.
 - Status: external / server-side / awaiting GitHub Support. Product code and runtime remain PASS.
+## Deep audit R4 — current result
+
+- Core/runtime: PASS. Both canonical endpoints report v0.8.5, FULL_POWER, full filesystem, GUI enabled, 54 tools / 15 GUI tools, and no doctor warnings.
+- Regression: PASS. Current `npm run check`, `npm test`, project security audit, source-integrity/runtime-contract gates and native Windows GUI E2E all passed. Native GUI validated focus, click, multilingual Unicode typing, button activation, screenshot change, cursor restore and foreground restore.
+- Durable workflow databases: PASS for integrity/schema 2. `runnerConfigured=false` is a documented execution boundary, not a failure. The two Remote Commander workflow checkpoints were stale at v0.7.3 and were reconciled to v0.8.5, then explicitly paused; workflow list now reports revision 4 / WAITING / scheduler disabled for both. Audit also exposed a low-severity implementation consistency gap: `workflow_checkpoint` changes snapshot lifecycle to WAITING without synchronizing `scheduler_jobs` until a control transition.
+- Release artifacts: PASS for present integrity; 11/11 downloaded v0.8.5 assets matched `SHA256SUMS.txt`.
+- Release immutability: NOT MET. GitHub API reports repository immutable releases disabled and v0.8.5 `isImmutable=false`. GitHub documents that enabling release immutability applies only to future releases, so this release cannot be retroactively promoted to an immutable one.
+- Tag authenticity: HARDENING OPEN. `git verify-tag v0.8.5` reports no signature. The annotated tag does dereference to the accepted release commit.
+- CI workflow hardening: PARTIAL. `.github/workflows/ci.yml` uses `actions/checkout@v4` and `actions/setup-node@v4` rather than full commit SHAs and does not declare explicit least-privilege `permissions`. GitHub recommends full-SHA action pinning and minimum `GITHUB_TOKEN` permissions.
+- Dependency vulnerability audit: NOT APPLICABLE/UNPROVEN through `npm audit` because no package-lock exists; `npm audit` returned ENOLOCK. The current `package.json` declares no dependency fields, so this is not evidence of a vulnerable dependency.
+- Tunnel observations: both `/readyz` endpoints are currently PASS. The default tunnel recovered from transient control-plane/Cloudflare HTTP 502 responses; saeed-emad logged one startup OAuth-discovery metadata warning but remains ready.
+- Repository hygiene: tracked tree is clean, but the source root contains a large unrelated untracked GCAD/engineering scratch set. It is excluded from release authority and intentionally not deleted without separate ownership authority.
+- Legacy workflow Brain mirror: root `PROJECT_BRAIN.md` is untracked and its historical top section still states v0.7.3, although its generated Remote Commander workflow sections were updated. It is STALE as project authority; `docs/PROJECT_CONTROL_STATE.md` remains the authoritative Project Brain.
+- Overall: operational core and local release validation are PASS, but whole-project FINAL is not yet evidence-backed because hosted CI is externally blocked and the immutable-release DoD is not met.
 ## Verification versus validation
 
 Verification evidence includes clean repository gates, contract tests, security audit, source integrity, native GUI E2E, doctor checks and workflow database integrity. Validation on the target machine includes the candidate-only updater run, exact two-profile discovery, blue/green cutover, canonical router checks, tunnel target checks, autostart continuity and CURRENT no-op behavior.
@@ -93,13 +113,15 @@ Verification evidence includes clean repository gates, contract tests, security 
 - Clean validation logs listed in PROJECT_KNOWLEDGE_EVIDENCE.md.
 - Git tag v0.8.5 and GitHub Release v0.8.5.
 - Private external support evidence: %LOCALAPPDATA%\ChatGPTRemoteCommander\private-evidence\github-billing-support-ticket.json, SHA-256 6b21efb925486ce78f5c419496609b8c9634c65d264c9c0be9cdbb92d30c848e. The public repository intentionally does not expose the private support ticket identifier/URL.
+- Deep audit evidence: %LOCALAPPDATA%\ChatGPTRemoteCommander\audit\REMOTE_COMMANDER_DEEP_AUDIT_20260920.json, SHA-256 8c7943b53fdc5beeb808361b8f6b17196e57e1c5b90b9c4a1e7d14b097b76cbe.
 
 ## Exact next action
 
-No product or billing-plan action is required for the current release: the account is already on GitHub Free. Await GitHub Support clearing the stale server-side billing lock; do not add a payment method or activate a paid plan for this purpose. After Support clears the lock, rerun the existing hosted CI once without product-code changes; only investigate code if a runner then executes steps and reveals a real failure. For a future product change, start from this Brain and the exact release commit/tag, create one new change objective, validate in a clean worktree, run candidate-only validation, then promote only after all gates pass. If the updater reports CURRENT, do not force a rerun without a new release or a diagnosed fault.
+Current critical path has two independent gates. First, await GitHub Support clearing the stale server-side billing lock; do not add a payment method or activate a paid plan for this purpose. After Support clears it, allow one hosted CI run and only investigate code if a runner executes real steps and reveals a failure. Second, before the next release, execute one dedicated supply-chain hardening change set: add explicit least-privilege Actions permissions, replace action tags with verified full commit SHAs, enable immutable releases for future publications, and publish the next release as a draft with all assets before making it immutable. Do not force updater reruns while it reports CURRENT.
 
 ## HISTORY — append only
 
 - 2026-09-20 / R1: Established v0.8.4 as the promoted stable baseline on the validated Windows target; both profiles Full Power; zero-downtime routes, durable workflows, tunnels, autostart and auto-update post-check verified. v0.8.3 is superseded.
 - 2026-09-20 / R2: Reproduced the otherwise-hidden Linux CI fixture defect under Ubuntu 24.04 / Node 22, fixed it without relaxing production guards, released and automatically promoted v0.8.5, and recorded GitHub hosted CI as an external billing-blocked gate rather than a product failure.
 - 2026-09-20 / R3: Proved the GitHub account is already Free with no payment history or paid subscription, isolated the blocker to a stale failed payment-authorization hold, confirmed the lock persists server-side after another zero-step CI rerun, and submitted a private GitHub Support ticket for lock removal without adding a payment method.
+- 2026-09-20 / R4: Performed a full live re-audit; reran local regression/security/native-GUI and both doctor gates; verified 11/11 release assets; identified immutable-release, unsigned-tag and CI-permission/SHA-pinning hardening gaps; reconciled stale Remote Commander durable-workflow checkpoints to v0.8.5; kept the unrelated thesis workflow untouched.
