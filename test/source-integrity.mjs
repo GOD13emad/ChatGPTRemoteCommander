@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import { spawnSync } from 'node:child_process';
 
 const read = (p) => fs.readFileSync(p, 'utf8');
 const count = (text, needle) => text.split(needle).length - 1;
@@ -34,6 +35,21 @@ exact(account, 'CONNECT_ACCOUNT_PASS', 1, 'connect-chatgpt-account.ps1');
 for (const [name, text] of [['install',install],['supervisor',supervisor],['enable',enable],['disable',disable],['account',account]]) {
   if (text.includes('\u0000')) throw new Error(name + ' contains NUL');
   if (!text.endsWith('\n')) throw new Error(name + ' must end with newline');
+}
+
+
+const trackedRuntimeFiles = [
+  'auto-update-windows.ps1','auto-update-linux.sh',
+  'supervisor-routing.ps1','supervisor-routing-linux.sh',
+  'src/capability-profile.mjs','src/stable-router.mjs','src/workflow-autonomy.mjs',
+  'tools/build-candidate-config.mjs','tools/capability-migrate.mjs','tools/copy-workflow-store.mjs',
+  'tools/finalize-workflow-schema.mjs','tools/find-free-port.mjs','tools/hardware-selftest.mjs',
+  'tools/json-field.mjs','tools/router-init.mjs','tools/router-state.mjs','tools/router-status.mjs','tools/router-switch.mjs'
+];
+for (const file of trackedRuntimeFiles) {
+  if (!fs.existsSync(file)) throw new Error('required runtime file missing: ' + file);
+  const r = spawnSync('git',['ls-files','--error-unmatch',file],{encoding:'utf8'});
+  if (r.status !== 0) throw new Error('required runtime file is not Git-tracked: ' + file);
 }
 
 console.log('SOURCE_INTEGRITY_PASS');

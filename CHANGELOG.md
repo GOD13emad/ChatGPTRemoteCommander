@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.8.2 — 2026-09-20
+
+- Include the tracked `tools/build-candidate-config.mjs` runtime helper required by clean staged automatic updates.
+- Harden `test/source-integrity.mjs` so lifecycle/updater runtime dependencies must be Git-tracked, preventing untracked working-tree helpers from making local gates pass while clean release checkouts fail.
+- Includes the v0.8.1 Windows gate-argument fix; v0.8.1 was intentionally not tagged or released after clean-stage validation exposed the missing tracked helper.
+
 ## 0.8.1 — 2026-09-20
 
 - Fix Windows auto-update gate execution: the helper parameter named `Args` collided with PowerShell's automatic `$args` variable, causing staged `npm run check` to launch npm without arguments and fail closed before cutover.
