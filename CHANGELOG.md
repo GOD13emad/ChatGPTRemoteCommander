@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.8.4 — 2026-09-20
+
+- Fix Windows updater target discovery so only immediate profile directories are considered; historical `instance.json` files inside profile backup trees can no longer be mistaken for live profiles.
+- Fail closed when a direct profile directory name disagrees with the profile recorded in its `instance.json`.
+- Add regression coverage that forbids recursive instance discovery. This closes the v0.8.3 `-NoPromote` cleanup failure where archived `saeed-emad` records produced duplicate candidates and an ownership mismatch before any route cutover.
+- v0.8.3 was published but is superseded by this hotfix before production promotion; live v0.7.3 remained authoritative throughout discovery.
+
 ## 0.8.3 — 2026-09-20
 
 - Make native Windows GUI E2E self-contained in clean Git checkouts by creating its ignored runtime `var` directory before launching the fixture app.

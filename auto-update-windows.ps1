@@ -141,19 +141,22 @@ function Get-Targets {
   $primary=Get-PrimaryConfig
   $items+=[pscustomobject]@{Profile='default';CanonicalPort=47831;ExistingConfig=$primary;RoutePath=(Get-RoutePath 'default');InstanceDir=(Join-Path $InstanceRoot 'default')}
   if(Test-Path $InstanceRoot){
-    foreach($recordFile in Get-ChildItem -LiteralPath $InstanceRoot -Filter 'instance.json' -Recurse -File -ErrorAction SilentlyContinue){
+    foreach($profileDir in Get-ChildItem -LiteralPath $InstanceRoot -Directory -ErrorAction SilentlyContinue){
+      $recordFile=Join-Path $profileDir.FullName 'instance.json'
+      if(-not(Test-Path -LiteralPath $recordFile -PathType Leaf)){continue}
       try{
-        $record=Read-Json $recordFile.FullName
+        $record=Read-Json $recordFile
         $profile=[string]$record.profile
         if(-not(Test-ProfileName $profile) -or $profile-eq 'default' -or $record.enabled-ne $true){continue}
+        if($profileDir.Name-ne $profile){throw "PROFILE_DIRECTORY_MISMATCH expected=$profile actual=$($profileDir.Name)"}
         $route=Get-RoutePath $profile
         $cfg=[string]$record.configPath
         if(Test-Path $route){
           $rr=Read-Json $route
           if($rr.active.configPath -and (Test-Path -LiteralPath $rr.active.configPath)){$cfg=[string]$rr.active.configPath}
         }
-        $items+=[pscustomobject]@{Profile=$profile;CanonicalPort=[int]$record.mcpPort;ExistingConfig=$cfg;RoutePath=$route;InstanceDir=(Split-Path -Parent $recordFile.FullName)}
-      }catch{throw "TARGET_DISCOVERY_FAIL $($recordFile.FullName) $($_.Exception.Message)"}
+        $items+=[pscustomobject]@{Profile=$profile;CanonicalPort=[int]$record.mcpPort;ExistingConfig=$cfg;RoutePath=$route;InstanceDir=$profileDir.FullName}
+      }catch{throw "TARGET_DISCOVERY_FAIL $recordFile $($_.Exception.Message)"}
     }
   }
   return @($items|Sort-Object CanonicalPort,Profile)

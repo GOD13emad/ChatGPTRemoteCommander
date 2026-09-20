@@ -4,13 +4,13 @@ Audit date: 2026-09-20
 
 ## Result
 
-PASS for the current v0.8.3 release candidate content and reachable branch/tag history checked locally after remote-ref synchronization.
+PASS for the current v0.8.4 release candidate content and reachable branch/tag history checked locally after remote-ref synchronization.
 
 The audit found no committed OpenAI-style API secret key, GitHub token, lowercase `tunnel_` identifier, private-key block, bearer-token literal, tracked `config.local.json`, or developer-specific absolute Windows path. On 2026-09-19 a stale local tracking ref first exposed an already-sanitized developer-path finding, and the obsolete public `release/v0.5.0-rc1` branch contained tunnel-shaped self-test fixtures inside the audit test itself. On 2026-09-20 the reachable `feature/blue-green-v0.8.0` history exposed an uppercase fail-closed status symbol that the former case-insensitive tunnel regex misclassified as a credential. The detector now follows the canonical lowercase `tunnel_` prefix used by OpenAI Secure MCP Tunnel examples and includes a regression proving lowercase tunnel-shaped values match while uppercase status/error symbols do not. The unchanged broader history scan then returned `SECURITY_AUDIT_PASS`. No real Runtime API key or tunnel identifier was recovered from these findings.
 
 ## Controls verified
 
-- v0.8.3 makes clean-checkout GUI release validation self-contained and makes no-promote candidate cleanup ownership-proven, preventing diagnostic backend leakage.
+- v0.8.4 makes clean-checkout GUI release validation self-contained and makes no-promote candidate cleanup ownership-proven, preventing diagnostic backend leakage.
 - v0.8.2 adds Git-tracked dependency integrity checks for the automatic-update/runtime helper set, closing the gap between a dirty developer working tree and a clean release checkout.
 - v0.8.1 fixes Windows candidate-gate invocation so every staged npm gate receives its intended arguments; empty gate arguments fail closed before any cutover.
 - v0.8.0 Capability Profile v2 persists explicit authority separately from release defaults. Full Power automatically adopts new capabilities across updates; only a persistent disabledCapabilities entry suppresses a capability.
