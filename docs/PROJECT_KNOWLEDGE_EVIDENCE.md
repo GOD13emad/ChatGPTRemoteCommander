@@ -227,3 +227,71 @@ This file is append-only for substantive project claims, decisions, failures, pr
 ## HISTORY — R4 delta
 
 - 2026-09-20 / R4: Added live v0.8.5 deep-audit evidence, release-asset hash verification, supply-chain/immutability findings, current tunnel/support observations, and reconciliation of stale Remote Commander durable-workflow checkpoints without touching the thesis workflow.
+
+## E019 — v0.8.6 workflow-consistency and supply-chain release
+
+- Date/Context: 2026-09-20, release change set from v0.8.5 baseline.
+- Exact release commit: `1a5c7613252b8f98836bcd26861449a792d4651f`.
+- Main code change: `workflow_checkpoint` now updates workflow snapshot lifecycle and the `scheduler_jobs` projection inside the same SQLite transaction, preventing the R4 `workflow_get` / `workflow_list` divergence.
+- Regression: targeted workflow/doctor set passed 47/47 after correcting one test-fixture assumption; full Windows check/test/security subsequently PASS.
+- CI hardening: GitHub Actions top-level `permissions: contents: read`; checkout pinned to `11d5960a326750d5838078e36cf38b85af677262`; setup-node pinned to `49933ea5288caeca8642d1e84afbd3f7d6820020`.
+- No Git signing identity was configured: no `user.signingkey` and no gpg executable were present. Decision: create an annotated unsigned tag rather than inventing an identity/key. GitHub immutable-release integrity is used for this release; signed tag remains separate optional hardening.
+- Status/Confidence: Confirmed / high.
+- Reuse targets: workflow durability, release policy, next-version regression.
+
+## E020 — v0.8.6 clean cross-platform validation
+
+- Windows detached clean worktree at exact release commit:
+  - check log SHA-256 `8cf93819c75627414820155282b4f6ee2883166f5c825cde9305e7536e07a77d`.
+  - test log SHA-256 `30618fd98cfba4566c7f6ae14bc2be5e448ef66652910c6ced464e4ca71479af`.
+  - security audit log SHA-256 `17181ee897aebe337b4429d0287304eb6545f1235906f2c6a6aa328cef4c62d2`.
+  - native GUI E2E log SHA-256 `6e4a96a838b4d07ab48c4330e956340744c39035ee6df4968a0336097388af19`.
+- Native GUI proof: real focus/click, marker `GUI_E2E_PASS_سلام_日本語_123`, button activation, changed screenshot hash, cursor restore and foreground restore.
+- First clean GUI retry was refused while Windows Secure Desktop/UAC was active. Evidence: `consent.exe` existed in the interactive session and `OpenInputDesktop` failed; after Secure Desktop ended, the same clean artifact passed E2E. This is correct fail-closed behavior, not a release defect.
+- Ubuntu 24.04 / Node 22.23.2 cloned the exact public commit and passed `npm run check`, `npm test`, and project security audit.
+- Status/Confidence: Confirmed / high.
+- Reuse targets: Windows/Linux compatibility, GUI safety, release acceptance.
+
+## E021 — First immutable Remote Commander publication
+
+- Repository immutable-release policy was enabled through GitHub before release creation and read back as enabled.
+- v0.8.6 publication followed draft -> attach all assets -> verify -> publish.
+- Draft contained 12 assets. Every GitHub-provided SHA-256 digest matched the corresponding local artifact before publication: 12/12 PASS.
+- Published release state after publication: `isDraft=false`, `isImmutable=true`, tag `v0.8.6`.
+- The tag peels to exact release commit `1a5c7613252b8f98836bcd26861449a792d4651f`; `origin/main` was the same commit at publication.
+- Result: the previous R4 immutable-release DoD gap is closed for v0.8.6 and future releases while the repository policy remains enabled.
+- Status/Confidence: Confirmed / high.
+- Reuse targets: supply-chain DoD, release handbook, distribution.
+
+## E022 — v0.8.6 candidate validation, cutover drain incident and recovery
+
+- Candidate-only updater validation returned `CANDIDATE_PASS` for exactly `default` and `saeed-emad`. Both profiles passed hardware, doctor, shadow workflow-store and live-store compatibility gates.
+- Promotion independently reran check/test/security/native-GUI gates and committed both canonical routes to generation 3 / v0.8.6:
+  - default 47831 -> 48831, config SHA-256 `c9924cfc7f1edba8decff2709506bb49d7cceb3003675ec32ef791b6cdfe824f`.
+  - saeed-emad 47834 -> 48832, config SHA-256 `a3d2f2da1e23e5e97b3047fa91418269f74f2cf98c8d5884bf3753487ee47764`.
+- Post-commit drain incident: the old saeed-emad backend on 48834 retained one router-counted in-flight request past the 60-second drain budget, producing `DRAIN_TIMEOUT profile=saeed-emad` and `PROMOTED_MAINTENANCE_REQUIRED` after routes were already committed.
+- Evidence distinguishing real connection from counter-only drift: Windows TCP state showed an established loopback connection between router PID and owned old backend 48834, created before cutover; router status showed `inflightByPort.48834=1`.
+- The old backend audit showed real activity from another project until seconds before cutover. After timeout, process-tree audit showed no remaining child workload. The old runtime marker exactly matched listener PID 5604, profile `saeed-emad`, port 48834, release v0.8.5 and old project directory.
+- Recovery: only that ownership-proven superseded backend was stopped. The listener disappeared and router in-flight map immediately became empty. No unrelated process/workflow was stopped.
+- The updater's explicit post-commit maintenance path then finalized workflow schemas (already schema 2), promoted the control checkout, recycled the supervisor, removed the superseded release and reported `AUTO_UPDATE_MAINTENANCE_PASS version=0.8.6` followed by `AUTO_UPDATE_CURRENT version=0.8.6`.
+- Final updater evidence:
+  - update log SHA-256 `03bad8c8a612a9e0f0e1c64987e0a1592b121eb07c0bef2ccdeb3c6c92f777d6`.
+  - last-update CURRENT file SHA-256 `d57c293c60ced69853970102162ae57a432d7efc8d67b5c53688af2215c3aca5`.
+- Final runtime: both doctors PASS v0.8.6 / 54 tools / 15 GUI tools; workflow databases schema 2 / integrity ok; both tunnel health ports HTTP 200 ready; app control checkout equals release commit; only release directory `v0.8.6-1a5c7613252b` remains.
+- Root-cause status: confirmed long-lived old HTTP request / drain-timeout mechanism; exact higher-level transport method (for example an SSE-style request) was not captured and remains unverified. Do not label it SSE without new evidence.
+- Prevention proposal for a later updater change set: make post-cutover drain handling explicitly classify bounded request vs long-lived transport, prove ownership/no child mutation, and transition to maintenance without leaving the control checkout stale. This is not required to reopen immutable v0.8.6 publication.
+- Status/Confidence: Promotion and recovery Confirmed / high; exact request type Unverified.
+- Reuse targets: updater drain design, zero-downtime semantics, incident regression.
+
+## E023 — v0.8.6 publication closeout and next phase
+
+- Current updater state: CURRENT v0.8.6.
+- Current runtime authority: FULL_POWER, 22 granted capabilities, `disabledCapabilities=[]`.
+- Current GitHub release: published and immutable.
+- Hosted GitHub Actions remains externally blocked by the pre-existing GitHub account billing lock; local/cross-platform validation is independent and PASS.
+- Project phase transition: publication/hardening milestone closed; next main objective is GUI read-performance latency. Baseline must be measured before mutation and safety invariants (lease, frame freshness, uncertain-outcome suspension, local stop and no blind retry) must remain intact.
+- Status/Confidence: Confirmed / high.
+
+## HISTORY — R5 delta
+
+- 2026-09-20 / R5: Published immutable v0.8.6 from the exact Windows+Ubuntu validated commit, closed workflow scheduler-projection and Actions hardening gaps, promoted both profiles, recovered one ownership-proven post-commit drain timeout through the designed maintenance path, and established GUI read latency as the next phase.

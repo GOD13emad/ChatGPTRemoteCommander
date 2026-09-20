@@ -1,6 +1,6 @@
 # ChatGPT Remote Commander — Project Brain
 
-Brain revision: R4
+Brain revision: R5
 Status: CURRENT
 As of: 2026-09-20
 Project root: %USERPROFILE%\source\repos\ChatGPTRemoteCommander
@@ -14,14 +14,14 @@ DoD for the current release requires: an immutable stable release tag and assets
 
 ## Authoritative current state
 
-- Stable release: v0.8.5
-- Release commit: 540d7e596686406e102e4a835c9ad4d7745cef5c
-- Release URL: https://github.com/GOD13emad/ChatGPTRemoteCommander/releases/tag/v0.8.5
+- Stable release: v0.8.6
+- Release commit: 1a5c7613252b8f98836bcd26861449a792d4651f
+- Release URL: https://github.com/GOD13emad/ChatGPTRemoteCommander/releases/tag/v0.8.6
 - Installed control checkout: %LOCALAPPDATA%\ChatGPTRemoteCommander\app, detached at the release commit.
-- Active release directory: %LOCALAPPDATA%\ChatGPTRemoteCommander\releases\v0.8.5-540d7e596686
-- Only active release directory after cleanup: v0.8.5-540d7e596686.
-- Default canonical router: 127.0.0.1:47831 -> backend 48833.
-- saeed-emad canonical router: 127.0.0.1:47834 -> backend 48834.
+- Active release directory: %LOCALAPPDATA%\ChatGPTRemoteCommander\releases\v0.8.6-1a5c7613252b
+- Only active release directory after cleanup: v0.8.6-1a5c7613252b.
+- Default canonical router: 127.0.0.1:47831 -> backend 48831.
+- saeed-emad canonical router: 127.0.0.1:47834 -> backend 48832.
 - Tunnel profile chatgpt-remote-commander targets http://127.0.0.1:47831/mcp.
 - Tunnel profile saeed-emad targets http://127.0.0.1:47834/mcp.
 - Both profiles: FULL_POWER, explicitly authorized, persistAcrossUpdates=true, autoEnableNewCapabilities=true, disabledCapabilities=[].
@@ -29,7 +29,7 @@ DoD for the current release requires: an immutable stable release tag and assets
 - Automatic update channel: stable; enabled; zero-downtime enabled; interval 15 minutes.
 - Durable Workflows: R2, schema/database version 2, database integrity ok, scheduler enabled, autonomous continuation enabled, one-writer-per-root enabled.
 - Windows autostart is registered and a single current supervisor is running from the installed app.
-- Final updater self-check after promotion: AUTO_UPDATE_CURRENT version=0.8.5.
+- Final updater self-check after promotion/maintenance: AUTO_UPDATE_CURRENT version=0.8.6.
 - Deep re-audit on 2026-09-20 reran check, test, security audit, both canonical doctors and native Windows GUI E2E: all PASS; tunnel readiness is PASS for both profiles.
 - Release artifact integrity was reverified by downloading the v0.8.5 assets: all 11 non-checksum assets matched SHA256SUMS.txt exactly.
 - Supply-chain DoD caveat: GitHub reports v0.8.5 isImmutable=false and repository immutable-release policy is disabled; the annotated v0.8.5 tag has no cryptographic Git signature. Therefore v0.8.5 is operationally validated but does not satisfy the literal immutable-release part of the stated DoD.
@@ -54,9 +54,13 @@ DoD for the current release requires: an immutable stable release tag and assets
 16. GitHub-hosted CI — OPEN EXTERNAL GATE: the account is already GitHub Free and Copilot Free with zero observed usage/payments, but a stale failed payment-authorization hold keeps the account billing-locked. An official GitHub Support ticket remains open with no staff reply visible in the latest audit; no runner is assigned until GitHub clears it.
 17. Full live-system re-audit — Completed / PASS for runtime, local regression, native GUI, routes, tunnels, updater and release-asset hashes.
 18. Durable Remote Commander workflow authority reconciliation — Completed: default and saeed-emad workflow checkpoints advanced from stale v0.7.3 evidence to v0.8.5 audit evidence, then were explicitly paused so persisted state and scheduler/list both report WAITING with scheduler disabled; unrelated thesis workflow was not changed.
-19. Supply-chain hardening — OPEN: current v0.8.5 release is mutable, tag is unsigned, Actions uses tag-pinned actions and does not explicitly declare minimum workflow permissions. This is a hardening/DoD gap, not evidence of compromise.
+19. Supply-chain hardening — Completed for release immutability, least-privilege Actions permission and full-SHA action pinning in v0.8.6; signed Git tag remains optional/open because no signing identity was configured.
+20. v0.8.6 clean Windows + Ubuntu/Node22 validation — Completed / PASS.
+21. v0.8.6 immutable GitHub publication — Completed / PASS.
+22. v0.8.6 candidate validation, generation-3 cutover and post-commit maintenance recovery — Completed / PASS; long-lived old saeed request caused one DRAIN_TIMEOUT and is retained as future updater-regression evidence.
+23. GUI read-performance optimization — ← CURRENT next phase.
 
-No product/runtime blocker remains for v0.8.5. GitHub-hosted Actions is externally blocked by a stale account-level billing lock. Billing UI evidence confirms GitHub Free, Copilot Free, zero observed usage, no payment history, no saved payment method control, and an Invalid payment method - authorization hold failed state. GitHub Support accepted an open billing ticket to clear this server-side lock without activating a paid plan.
+No product/runtime blocker remains for published v0.8.6. GitHub-hosted Actions remains externally blocked by the stale account-level billing lock; local Windows, native-GUI and Ubuntu/Node22 gates are PASS. GitHub Support remains the owner of that external server-side lock.
 
 ## Closed failure chain
 
@@ -66,6 +70,24 @@ No product/runtime blocker remains for v0.8.5. GitHub-hosted Actions is external
 - Security history scan treated an uppercase status symbol as a tunnel identifier. Prevention: canonical lowercase tunnel_ detector plus regression.
 - v0.8.3 candidate cleanup failed with repeated saeed-emad candidates. Root cause: recursive discovery included historical instance.json files inside backup trees. Prevention in v0.8.4: enumerate only immediate profile directories, bind exactly one instance.json per profile directory, and fail closed on directory/profile identity mismatch.
 - A later GUI gate observed GUI_NATIVE_BUSY. Evidence showed the global GUI helper mutex was contended; a controlled run with no competing GUI helper passed full capture/focus/click/Unicode typing/screenshot verification. Existing behavior remains fail-closed; no mutation retry was added to mask uncertain GUI outcomes.
+
+## Current R5 release baseline — v0.8.6
+
+- Published release: v0.8.6 at commit `1a5c7613252b8f98836bcd26861449a792d4651f`.
+- GitHub immutable-release repository policy: enabled before publication.
+- Release publication flow: draft -> all 12 assets uploaded -> GitHub digest comparison 12/12 PASS -> publish.
+- Published release state: `isDraft=false`, `isImmutable=true`; v0.8.6 is the first immutable Remote Commander release.
+- Supply-chain CI hardening included in the release: `permissions: contents: read`; checkout/setup-node are pinned to full commit SHAs instead of floating major tags.
+- Workflow consistency defect from R4 is fixed in source and regression-tested: checkpoint lifecycle and scheduler projection are updated in the same SQLite transaction.
+- Windows source gates: check/test/security PASS. Clean detached Windows checkout: check/test/security/native-GUI E2E PASS.
+- Ubuntu 24.04 / Node 22.23.2 exact public commit: check/test/security PASS.
+- Candidate-only updater on the validated Windows target: CANDIDATE_PASS for exactly default and saeed-emad, both doctor/hardware/shadow/live-store PASS.
+- Cutover committed both canonical routes to generation 3 / v0.8.6. A pre-cutover long-lived request on the old saeed-emad backend did not drain within 60 seconds and produced `DRAIN_TIMEOUT` after commit. The old backend had no child workload; exact marker/listener ownership was verified, it was stopped narrowly, router inflight cleared, and the updater's explicit post-commit maintenance path completed.
+- Post-maintenance state: app control checkout equals release commit; supervisor recycle PASS; only v0.8.6 release directory remains; updater returns CURRENT v0.8.6.
+- Both canonical doctors PASS at v0.8.6; both tunnel `/readyz` endpoints return HTTP 200 ready; workflow databases are schema 2 / integrity ok.
+- Full Power remains unchanged: 22 granted capabilities, no disabled capabilities.
+- Tag is annotated but unsigned because no configured signing key/GPG installation was present. Immutable GitHub release integrity is confirmed; signed-tag identity remains a separate optional hardening item.
+- Next product phase is GUI-read latency/performance. The release baseline is frozen; GUI optimization will start from benchmarked read-only timings before mutation.
 
 ## Open external blocker — GitHub billing state
 
@@ -108,16 +130,16 @@ Verification evidence includes clean repository gates, contract tests, security 
 - %LOCALAPPDATA%\ChatGPTRemoteCommander\update-logs\auto-update.log
 - %LOCALAPPDATA%\ChatGPTRemoteCommander\routing\default.json
 - %LOCALAPPDATA%\ChatGPTRemoteCommander\routing\saeed-emad.json
-- %LOCALAPPDATA%\ChatGPTRemoteCommander\runtimes\540d7e596686406e102e4a835c9ad4d7745cef5c\...
-- %LOCALAPPDATA%\ChatGPTRemoteCommander\update-backups\540d7e596686406e102e4a835c9ad4d7745cef5c\...
+- %LOCALAPPDATA%\ChatGPTRemoteCommander\runtimes\1a5c7613252b8f98836bcd26861449a792d4651f\...
+- %LOCALAPPDATA%\ChatGPTRemoteCommander\update-backups\1a5c7613252b8f98836bcd26861449a792d4651f\...
 - Clean validation logs listed in PROJECT_KNOWLEDGE_EVIDENCE.md.
-- Git tag v0.8.5 and GitHub Release v0.8.5.
+- Git tag v0.8.6 and immutable GitHub Release v0.8.6.
 - Private external support evidence: %LOCALAPPDATA%\ChatGPTRemoteCommander\private-evidence\github-billing-support-ticket.json, SHA-256 6b21efb925486ce78f5c419496609b8c9634c65d264c9c0be9cdbb92d30c848e. The public repository intentionally does not expose the private support ticket identifier/URL.
 - Deep audit evidence: %LOCALAPPDATA%\ChatGPTRemoteCommander\audit\REMOTE_COMMANDER_DEEP_AUDIT_20260920.json, SHA-256 8c7943b53fdc5beeb808361b8f6b17196e57e1c5b90b9c4a1e7d14b097b76cbe.
 
 ## Exact next action
 
-Current critical path has two independent gates. First, await GitHub Support clearing the stale server-side billing lock; do not add a payment method or activate a paid plan for this purpose. After Support clears it, allow one hosted CI run and only investigate code if a runner executes real steps and reveals a failure. Second, before the next release, execute one dedicated supply-chain hardening change set: add explicit least-privilege Actions permissions, replace action tags with verified full commit SHAs, enable immutable releases for future publications, and publish the next release as a draft with all assets before making it immutable. Do not force updater reruns while it reports CURRENT.
+Start the GUI read-performance phase from v0.8.6 without changing the frozen release. First benchmark status/list-windows/screenshot latency and payload size, split process-startup/helper-load/capture/encode/transport costs, then choose the minimum sufficient optimization that preserves lease/frame/uncertain-outcome safety. Keep the GitHub billing-support gate separate; do not block GUI performance work on hosted CI.
 
 ## HISTORY — append only
 
@@ -125,3 +147,4 @@ Current critical path has two independent gates. First, await GitHub Support cle
 - 2026-09-20 / R2: Reproduced the otherwise-hidden Linux CI fixture defect under Ubuntu 24.04 / Node 22, fixed it without relaxing production guards, released and automatically promoted v0.8.5, and recorded GitHub hosted CI as an external billing-blocked gate rather than a product failure.
 - 2026-09-20 / R3: Proved the GitHub account is already Free with no payment history or paid subscription, isolated the blocker to a stale failed payment-authorization hold, confirmed the lock persists server-side after another zero-step CI rerun, and submitted a private GitHub Support ticket for lock removal without adding a payment method.
 - 2026-09-20 / R4: Performed a full live re-audit; reran local regression/security/native-GUI and both doctor gates; verified 11/11 release assets; identified immutable-release, unsigned-tag and CI-permission/SHA-pinning hardening gaps; reconciled stale Remote Commander durable-workflow checkpoints to v0.8.5; kept the unrelated thesis workflow untouched.
+- 2026-09-20 / R5: Released v0.8.6 from exact cross-platform-validated commit; enabled immutable releases; published draft-first with 12/12 asset digests verified; fixed workflow checkpoint/scheduler consistency; hardened Actions SHA pinning/permissions; promoted both profiles to generation 3; recovered one post-commit saeed drain timeout with ownership-proven old-backend stop and official maintenance path; final updater state CURRENT v0.8.6. GUI read latency is the next phase.
