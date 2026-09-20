@@ -17,6 +17,8 @@ Choose your language:
 
 English and Persian contain the expanded current flow; the other language pages provide the current commands and point back to the canonical workflow. Plugin packaging and icon/app binding are documented in [PLUGIN_SETUP.md](PLUGIN_SETUP.md). ChatGPT Work packaging/install guidance is in [WORK_SETUP.md](../WORK_SETUP.md).
 
+Project-control continuity: [PROJECT_CONTROL_STATE.md](PROJECT_CONTROL_STATE.md) is the cumulative Project Brain/current project state and [PROJECT_KNOWLEDGE_EVIDENCE.md](PROJECT_KNOWLEDGE_EVIDENCE.md) is the append-only evidence/decision record.
+
 Official OpenAI references:
 
 - https://developers.openai.com/api/docs/guides/secure-mcp-tunnels
