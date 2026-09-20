@@ -4,10 +4,13 @@ set -euo pipefail
 REPO_URL="${REMOTE_COMMANDER_REPO_URL:-https://github.com/GOD13emad/ChatGPTRemoteCommander.git}"
 INSTALL_DIR="${HOME}/.local/share/ChatGPTRemoteCommander"
 POWER_MODE=0
+STANDARD_MODE=0
+DISABLE_CAPS=()
+ENABLE_CAPS=()
 START_SERVER=0
 INSTALL_PREREQS=0
 TUNNEL_VERSION="0.0.14"
-SOURCE_REF="${REMOTE_COMMANDER_SOURCE_REF:-v0.7.3}"
+SOURCE_REF="${REMOTE_COMMANDER_SOURCE_REF:-v0.8.0}"
 EXPECTED_COMMIT="${REMOTE_COMMANDER_EXPECTED_COMMIT:-}"
 CURL_CONNECT_TIMEOUT="${REMOTE_COMMANDER_CURL_CONNECT_TIMEOUT:-15}"
 CURL_MAX_TIME="${REMOTE_COMMANDER_CURL_MAX_TIME:-180}"
@@ -17,9 +20,12 @@ usage() {
 Usage: install.sh [options]
   --install-dir PATH        Install/update directory
   --install-prerequisites   Install basic OS packages and portable Node 22+ if needed
-  --power-mode              Enable local Full-Control policy
+  --power-mode              Enable Full Power: all current/future capabilities unless explicitly disabled
+  --standard-mode           Explicitly select Standard mode
+  --disable-capability CAP  Explicit capability opt-out (repeatable)
+  --enable-capability CAP   Explicit capability opt-in (repeatable)
   --start-server            Start MCP server with nohup after validation
-  --source-ref REF          Git ref to install (default: v0.7.3)
+  --source-ref REF          Git ref to install (default: v0.8.0)
   --expected-commit SHA     Require the fetched ref to peel to this exact 40-hex commit
   -h, --help                Show help
 USAGE
@@ -30,6 +36,9 @@ while [[ $# -gt 0 ]]; do
     --install-dir) INSTALL_DIR="$2"; shift 2 ;;
     --install-prerequisites) INSTALL_PREREQS=1; shift ;;
     --power-mode) POWER_MODE=1; shift ;;
+    --standard-mode) STANDARD_MODE=1; shift ;;
+    --disable-capability) DISABLE_CAPS+=("$2"); shift 2 ;;
+    --enable-capability) ENABLE_CAPS+=("$2"); shift 2 ;;
     --start-server) START_SERVER=1; shift ;;
     --source-ref) SOURCE_REF="$2"; shift 2 ;;
     --expected-commit) EXPECTED_COMMIT="$2"; shift 2 ;;
@@ -37,6 +46,7 @@ while [[ $# -gt 0 ]]; do
     *) echo "Unknown argument: $1" >&2; usage; exit 2 ;;
   esac
 done
+[[ "$POWER_MODE" == 0 || "$STANDARD_MODE" == 0 ]] || { echo "Use only one of --power-mode or --standard-mode" >&2; exit 2; }
 [[ "$SOURCE_REF" =~ ^[A-Za-z0-9._/-]{1,128}$ ]] || { echo "Invalid --source-ref" >&2; exit 2; }
 [[ -z "$EXPECTED_COMMIT" || "$EXPECTED_COMMIT" =~ ^[0-9a-fA-F]{40}$ ]] || { echo "Invalid --expected-commit SHA" >&2; exit 2; }
 [[ "$CURL_CONNECT_TIMEOUT" =~ ^[1-9][0-9]{0,3}$ ]] || { echo "REMOTE_COMMANDER_CURL_CONNECT_TIMEOUT must be a positive integer" >&2; exit 2; }
@@ -66,6 +76,34 @@ install_os_packages() {
     echo "Unsupported package manager. Install git curl unzip tar xz manually." >&2
     exit 1
   fi
+}
+
+invoke_existing_safe_update() {
+  local temp resolved updater
+  temp="$(mktemp -d)"
+  git -C "$temp" init >/dev/null
+  git -C "$temp" remote add origin "$REPO_URL"
+  git -C "$temp" fetch --depth 1 --no-tags origin "$SOURCE_REF"
+  resolved="$(git -C "$temp" rev-parse 'FETCH_HEAD^{commit}')"
+  [[ "$resolved" =~ ^[0-9a-f]{40}$ ]] || { rm -rf "$temp"; echo 'Updater fetched commit is invalid.' >&2; return 1; }
+  if [[ -n "$EXPECTED_COMMIT" && "${resolved,,}" != "${EXPECTED_COMMIT,,}" ]]; then
+    rm -rf "$temp"
+    echo "Updater commit $resolved does not match expected commit $EXPECTED_COMMIT." >&2
+    return 1
+  fi
+  git -C "$temp" checkout --detach "$resolved" >/dev/null
+  updater="$temp/auto-update-linux.sh"
+  [[ -f "$updater" ]] || { rm -rf "$temp"; echo 'Candidate auto-update-linux.sh is missing.' >&2; return 1; }
+  chmod +x "$updater"
+  local args=(--install-dir "$INSTALL_DIR" --source-ref "$SOURCE_REF" --expected-commit "$resolved" --force)
+  [[ "$POWER_MODE" == 1 ]] && args+=(--power-mode)
+  [[ "$STANDARD_MODE" == 1 ]] && args+=(--standard-mode)
+  local cap
+  for cap in "${DISABLE_CAPS[@]}"; do args+=(--disable-capability "$cap"); done
+  for cap in "${ENABLE_CAPS[@]}"; do args+=(--enable-capability "$cap"); done
+  /bin/bash "$updater" "${args[@]}"
+  rm -rf "$temp"
+  echo "SAFE_UPDATE_PASS commit=$resolved"
 }
 
 install_source() {
@@ -214,50 +252,49 @@ install_tunnel_client() {
 
 write_local_config() {
   local workspace="$HOME/source/repos"
-  mkdir -p "$workspace"
+  local state_root="${XDG_STATE_HOME:-$HOME/.local/state}/chatgpt-remote-commander"
+  local state_dir="$state_root/instances/default"
+  local workflow_dir="$state_dir/workflows"
   local cfg="$INSTALL_DIR/config.local.json"
-  if [[ -f "$cfg" && "$POWER_MODE" != "1" ]]; then
-    echo "Preserving existing local config: $cfg"
-    return 0
-  fi
-  if [[ -f "$cfg" ]]; then cp "$cfg" "$cfg.bak.$(date +%Y%m%d%H%M%S)"; fi
-  local enabled=false full=false shell=false process_control=false
-  if [[ "$POWER_MODE" == "1" ]]; then enabled=true; full=true; shell=true; process_control=true; fi
-  cat > "$cfg" <<EOF_CFG
-{
-  "deviceName": "$(hostname)",
-  "host": "127.0.0.1",
-  "port": 47831,
-  "allowedRoots": ["$workspace"],
-  "allowedPrograms": ["git", "node", "npm", "npx", "python3", "python", "dotnet", "cmake", "ninja"],
-  "maxReadBytes": 524288,
-  "maxWriteBytes": 524288,
-  "maxCommandMs": 120000,
-  "auditLog": "var/audit.jsonl",
-  "auditMaxBytes": 8388608,
-  "auditKeepFiles": 3,
-  "powerMode": {
-    "enabled": $enabled,
-    "fullFilesystem": $full,
-    "allowShell": $shell,
-    "allowProcessControl": $process_control,
-    "allowPermanentDelete": false,
-    "backupRoot": "$HOME/.chatgpt-remote-commander/backups",
-    "maxFileBytes": 33554432,
-    "maxCommandMs": 600000,
-    "maxOutputBytes": 4194304,
-    "maxTerminalBufferBytes": 8388608,
-    "blockedShellPatterns": [
-      "shutdown", "Restart-Computer", "Stop-Computer", "logoff", "ExitWindowsEx",
-      "reboot", "poweroff", "halt", "systemctl.*reboot", "systemctl.*poweroff", "init 0", "init 6"
-    ]
-  }
-}
-EOF_CFG
-  if [[ "$POWER_MODE" == "1" ]]; then
-    echo "Power Mode enabled locally; permanent delete stays OFF."
+  local mode="standard"
+  mkdir -p "$workspace" "$state_dir"
+  [[ "$POWER_MODE" == 1 ]] && mode="full"
+  [[ "$STANDARD_MODE" == 1 ]] && mode="standard"
+
+  local args=(
+    "$INSTALL_DIR/tools/build-candidate-config.mjs"
+    --default "$INSTALL_DIR/config.json"
+    --output "$cfg"
+    --profile-id default
+    --port 47831
+    --state-dir "$state_dir"
+    --workflow-dir "$workflow_dir"
+    --mode "$mode"
+    --device-name "$(hostname)"
+    --allowed-root "$workspace"
+    --allowed-program git
+    --allowed-program node
+    --allowed-program npm
+    --allowed-program npx
+    --allowed-program python3
+    --allowed-program python
+    --allowed-program dotnet
+    --allowed-program cmake
+    --allowed-program ninja
+    --backup-root "$HOME/.chatgpt-remote-commander/backups"
+  )
+  local cap
+  for cap in "${DISABLE_CAPS[@]}"; do args+=(--disable-capability "$cap"); done
+  for cap in "${ENABLE_CAPS[@]}"; do args+=(--enable-capability "$cap"); done
+  node "${args[@]}" >/dev/null
+
+  local tier
+  tier="$(node "$INSTALL_DIR/tools/json-field.mjs" --file "$cfg" --field capabilityProfile.tier)"
+  echo "Local capability profile: $tier"
+  if [[ "$tier" == "FULL_POWER" ]]; then
+    echo "Full Power active: all known capabilities enabled except explicit disabledCapabilities."
   else
-    echo "Standard local policy created; Power Mode is OFF."
+    echo "Standard local policy active."
   fi
 }
 
@@ -317,22 +354,46 @@ install_os_packages
 for cmd in git curl unzip tar sha256sum; do
   need "$cmd" || { echo "$cmd is required; re-run with --install-prerequisites." >&2; exit 1; }
 done
-install_source
-install_portable_node
-ensure_node_path
-install_tunnel_client
-write_local_config
-chmod +x "$INSTALL_DIR/install.sh" "$INSTALL_DIR/connect-chatgpt-account.sh" "$INSTALL_DIR/run-server.sh" \
-  "$INSTALL_DIR/autostart-linux.sh" "$INSTALL_DIR/enable-autostart-linux.sh" "$INSTALL_DIR/disable-autostart-linux.sh"
-validate_installation
-start_server
+
+if [[ -d "$INSTALL_DIR/.git" ]]; then
+  ensure_node_path
+  invoke_existing_safe_update
+else
+  install_source
+  install_portable_node
+  ensure_node_path
+  install_tunnel_client
+  write_local_config
+  chmod +x "$INSTALL_DIR/install.sh" "$INSTALL_DIR/connect-chatgpt-account.sh" "$INSTALL_DIR/run-server.sh" \
+    "$INSTALL_DIR/autostart-linux.sh" "$INSTALL_DIR/supervisor-routing-linux.sh" "$INSTALL_DIR/auto-update-linux.sh" \
+    "$INSTALL_DIR/enable-autostart-linux.sh" "$INSTALL_DIR/disable-autostart-linux.sh"
+  validate_installation
+  start_server
+  if [[ "$START_SERVER" == "1" ]]; then
+    head="$(git -C "$INSTALL_DIR" rev-parse HEAD)"
+    args=(--install-dir "$INSTALL_DIR" --source-ref "$SOURCE_REF" --expected-commit "$head" --force)
+    [[ "$POWER_MODE" == 1 ]] && args+=(--power-mode)
+    [[ "$STANDARD_MODE" == 1 ]] && args+=(--standard-mode)
+    for cap in "${DISABLE_CAPS[@]}"; do args+=(--disable-capability "$cap"); done
+    for cap in "${ENABLE_CAPS[@]}"; do args+=(--enable-capability "$cap"); done
+    /bin/bash "$INSTALL_DIR/auto-update-linux.sh" "${args[@]}"
+  fi
+fi
+
+effective_cfg="$INSTALL_DIR/config.local.json"
+route="${XDG_STATE_HOME:-$HOME/.local/state}/chatgpt-remote-commander/routing/default.json"
+if [[ -f "$route" ]]; then
+  routed_cfg="$(node "$INSTALL_DIR/tools/router-state.mjs" --state "$route" --tsv 2>/dev/null | awk -F '\t' '{print $7}')"
+  [[ -n "$routed_cfg" && -f "$routed_cfg" ]] && effective_cfg="$routed_cfg"
+fi
+mode="$(node "$INSTALL_DIR/tools/json-field.mjs" --file "$effective_cfg" --field capabilityProfile.tier 2>/dev/null || echo STANDARD)"
 
 echo
 echo "INSTALL_PASS"
 echo "Installed at: $INSTALL_DIR"
 echo "Source ref: $SOURCE_REF"
 echo "Source commit: $(git -C "$INSTALL_DIR" rev-parse HEAD)"
-echo "Mode: $( [[ "$POWER_MODE" == "1" ]] && echo POWER || echo STANDARD )"
+echo "Mode: $mode"
 echo "Device: $(hostname)"
 echo
 echo "Next: create a distinct OpenAI Secure MCP Tunnel for this computer, then run once:"

@@ -282,6 +282,8 @@ function Start-TunnelProfile($Item) {
   }
 }
 
+. (Join-Path $Root 'supervisor-routing.ps1')
+
 if ($SelfTest) {
   $profiles = @(Get-ManagedProfiles | ForEach-Object { [pscustomobject]@{ profile=$_.Profile; mcpPort=$_.McpPort; healthPort=$_.HealthPort; isolated=[bool]$_.Instance } })
   $instance = $null
@@ -289,7 +291,7 @@ if ($SelfTest) {
     if (-not (Test-ProfileName $SelfTestProfile)) { throw 'Invalid SelfTestProfile.' }
     $instance = Get-InstanceRecord $SelfTestProfile
   }
-  [pscustomobject]@{ ok=$true; profiles=$profiles; instance=$instance } | ConvertTo-Json -Depth 6 -Compress
+  $routes=@(); foreach($p in @('default')+@($profiles.profile)){try{$r=Get-RouteState $p;if($r){$routes+=[pscustomobject]@{profile=$p;generation=$r.State.generation;active=$r.Active}}}catch{}}; [pscustomobject]@{ ok=$true; profiles=$profiles; instance=$instance; routes=$routes; autoUpdateScript=(Test-Path (Join-Path $Root 'auto-update-windows.ps1')) } | ConvertTo-Json -Depth 8 -Compress
   exit 0
 }
 
@@ -299,10 +301,10 @@ try {
 
   while ($true) {
     try {
-      Start-PrimaryMcp
+      if (-not (Ensure-RoutedProfile 'default' 47831)) { Start-PrimaryMcp }
       $exe = Find-TunnelExe
       foreach ($item in Get-ManagedProfiles) {
-        if ($item.Instance) { Start-McpInstance $item.Instance }
+        if ($item.Instance) { if (-not (Ensure-RoutedProfile $item.Profile $item.McpPort)) { Start-McpInstance $item.Instance } }
         elseif (-not (Test-McpHealth 47831)) { throw 'primary MCP unavailable' }
 
         if (-not (Test-Path -LiteralPath $item.Credential -PathType Leaf)) {
@@ -316,6 +318,7 @@ try {
         $process = Get-TunnelProcess $item.Profile $exe
         if (-not $process -or -not (Test-TunnelReady $item.HealthPort)) { Start-TunnelProfile $item }
       }
+      Start-AutoUpdateIfDue
     } catch {
       Write-SupervisorLog "SUPERVISOR_ITERATION_ERROR $($_.Exception.Message)"
     }

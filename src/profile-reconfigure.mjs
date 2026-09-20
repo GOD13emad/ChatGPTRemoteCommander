@@ -24,7 +24,7 @@ export function reconfigureProfileInstance({ profile, stateDirectory, baseConfig
   if (Number(oldConfig.port) !== Number(oldRecord.mcpPort)) throw new Error('PROFILE_RECONFIGURE_PORT_MISMATCH');
   const baseConfig = JSON.parse(fs.readFileSync(baseConfigPath, 'utf8'));
   const roots = allowedRoots?.length ? allowedRoots : oldConfig.allowedRoots;
-  const built = buildProfileInstance({ baseConfig, profile, port: oldRecord.mcpPort, stateDirectory, allowedRoots: roots, powerMode, guiControl });
+  const built = buildProfileInstance({ baseConfig, existingConfig: oldConfig, profile, port: oldRecord.mcpPort, stateDirectory, allowedRoots: roots, powerMode, guiControl });
   const nextRecord = { ...built.record, configPath: configFile };
 
   if (built.config.durableWorkflows.directory !== oldConfig.durableWorkflows?.directory) {

@@ -8,14 +8,28 @@ const hasAll = (text, items, label) => {
 const install = read('install.ps1');
 hasAll(install, [
   "Tracked local changes exist in InstallDir",
-  "Refusing non-fast-forward update or downgrade",
   "ExpectedCommit",
-  "config-backups",
+  "Invoke-ExistingSafeUpdate",
+  "auto-update-windows.ps1",
+  "capability-migrate.mjs",
+  "update-backups",
   "Get-ExpectedConfigHash",
   "mcp-runtime.json",
   "tunnel-client.json",
-  "tunnel-client.json"
+  "SAFE_UPDATE_PASS"
 ], 'install.ps1');
+
+const updater = read('auto-update-windows.ps1');
+hasAll(updater, [
+  "Local\\ChatGPTRemoteCommanderAutoUpdater",
+  "workflow-shadow",
+  "CANDIDATE_DOCTOR_FAIL",
+  "Verify-Canonical",
+  "Verify-Tunnels",
+  "$cutoverCommitted=$true",
+  "PROMOTED_MAINTENANCE_REQUIRED",
+  "finalize-workflow-schema.mjs"
+], 'auto-update-windows.ps1');
 
 const enable = read('enable-autostart.ps1');
 hasAll(enable, [
@@ -37,8 +51,20 @@ hasAll(supervisor, [
   "TUNNEL_READY",
   "Test-TunnelReady",
   "ArgumentList.Add('--profile-dir')",
-  "ArgumentList.Add($ProfileDir)"
+  "ArgumentList.Add($ProfileDir)",
+  "supervisor-routing.ps1",
+  "Ensure-RoutedProfile",
+  "Start-AutoUpdateIfDue"
 ], 'autostart-windows.ps1');
+
+const routing = read('supervisor-routing.ps1');
+hasAll(routing, [
+  "Get-RouteState",
+  "Start-RoutedBackend",
+  "Start-RouterForRoute",
+  "ROUTER_READY",
+  "AUTO_UPDATE_CHECK_STARTED"
+], 'supervisor-routing.ps1');
 
 const disable = read('disable-autostart.ps1');
 hasAll(disable, [

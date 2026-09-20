@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.8.0 — 2026-09-20
+
+- Capability Profile v2: explicit Full Power enables every known capability by default and automatically adopts new capabilities on later upgrades; only persistent explicit opt-outs keep individual capabilities disabled.
+- Full Power durable orchestration now covers the complete filesystem, shell, process, persistent-terminal and GUI surface while preserving intent-before-effect journaling, operation classification, reconciliation and no blind mutation replay.
+- Durable Workflows R2 adds scheduler state, operation receipts, idempotency keys, one-writer project-root leases, crash recovery, retry/root-cause budgets, user revision overrides, execution-profile persistence, Project Brain synchronization and evidence-backed FINAL completion.
+- Candidate validation uses a consistent shadow workflow database; live schema finalization occurs only after verified cutover, preserving rollback compatibility before the commit point.
+- Candidate-first automatic updates on Windows and Linux stage releases side-by-side, run repository/security/hardware diagnostics before promotion, and leave the active installation untouched when validation fails.
+- Stable loopback routing provides generation-guarded atomic cutover, drains in-flight work on the previous backend, and removes superseded backends/releases after successful drain.
+- Post-commit maintenance recovery and supervisor recycle keep the promoted runtime authoritative without requiring logout or reboot.
+- Stable-channel automatic update checks are enabled by default. Full Power includes automatic and zero-downtime lifecycle capabilities unless explicitly opted out.
+- Linux receives parity for candidate-first install/update, shadow workflow validation, hardware self-test, route recovery and scheduled automatic update checks.
+- Cross-platform release contracts now cover all-on Full Power, persistent opt-outs, router safety, workflow crash/reconcile behavior, Linux shell parsing and native Windows GUI E2E.
+
 ## 0.7.3 — 2026-09-19
 
 - Sanitize `REMOTE_COMMANDER_CONFIG` at Windows supervisor startup. A supervisor launched from an isolated MCP context can no longer inherit that profile config into primary MCP startup.

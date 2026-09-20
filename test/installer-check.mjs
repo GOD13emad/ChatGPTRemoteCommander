@@ -2,17 +2,19 @@ import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 
 const windowsInstaller = readFileSync('install.ps1', 'utf8');
-for (const required of ['[switch]$GuiControl','[switch]$DisableGuiControl','guiControl','allowScreenshot','allowMouse','allowKeyboard','allowWindowFocus']) {
-  if (!windowsInstaller.includes(required)) {
-    throw new Error(`install.ps1 missing GUI Control behavior: ${required}`);
-  }
+const capabilityPolicy = readFileSync('src/capability-profile.mjs', 'utf8');
+for (const required of ['[switch]$GuiControl','[switch]$DisableGuiControl','capability-migrate.mjs','Invoke-ExistingSafeUpdate','auto-update-windows.ps1']) {
+  if (!windowsInstaller.includes(required)) throw new Error(`install.ps1 missing delegated capability/update behavior: ${required}`);
+}
+for (const required of ['guiControl','allowScreenshot','allowMouse','allowKeyboard','allowWindowFocus','allowPermanentDelete','autoEnableNewCapabilities','disabledCapabilities']) {
+  if (!capabilityPolicy.includes(required)) throw new Error(`capability-profile.mjs missing Full Power behavior: ${required}`);
 }
 for (const required of [
   "Join-Path $stateRoot 'app'",
   'Detected active installation from Windows autostart',
   '$InstallDir = Resolve-InstallDir',
   'Tracked local changes exist in InstallDir',
-  "[string]$SourceRef = 'v0.7.3'",
+  "[string]$SourceRef = 'v0.8.0'",
   'ExpectedCommit',
   "rev-parse 'FETCH_HEAD^{commit}'",
   'incomplete Git checkout with no HEAD',
@@ -20,14 +22,23 @@ for (const required of [
   'Get-ExpectedConfigHash',
   'mcp-runtime.json',
   'tunnel-client.json',
-  'config-backups',
-  'auditMaxBytes',
-  'auditKeepFiles',
-  "Mode: $(if ($PowerMode) {'POWER'} else {'STANDARD'})"
+  'update-backups',
+  'SAFE_UPDATE_PASS',
+  'fresh-install routing/bootstrap validation failed',
+  'Capability self-test:',
+  'Mode: $(if ($effective.powerMode.enabled)'
 ]) {
   if (!windowsInstaller.includes(required)) {
     throw new Error(`install.ps1 missing required release behavior: ${required}`);
   }
+}
+
+const publicConfig = JSON.parse(readFileSync('config.json','utf8'));
+if (publicConfig.auditMaxBytes !== 8388608 || publicConfig.auditKeepFiles !== 3) {
+  throw new Error('config.json missing bounded audit defaults');
+}
+if (publicConfig.autoUpdate?.enabled !== true || publicConfig.autoUpdate?.zeroDowntime !== true) {
+  throw new Error('config.json missing automatic update defaults');
 }
 
 const linuxInstaller = readFileSync('install.sh', 'utf8');
@@ -35,7 +46,7 @@ const linuxEnrollment = readFileSync('enable-autostart-linux.sh', 'utf8');
 const linuxPluginInstaller = readFileSync('install-work-plugin.sh', 'utf8');
 const linuxAccountConnector = readFileSync('connect-chatgpt-account.sh', 'utf8');
 for (const required of [
-  'SOURCE_REF="${REMOTE_COMMANDER_SOURCE_REF:-v0.7.3}"',
+  'SOURCE_REF="${REMOTE_COMMANDER_SOURCE_REF:-v0.8.0}"',
   '--source-ref',
   '--expected-commit',
   'REMOTE_COMMANDER_EXPECTED_COMMIT',
@@ -47,8 +58,14 @@ for (const required of [
   'Source commit:',
   'Updating running MCP from version',
   'enable-autostart-linux.sh',
-  '"auditMaxBytes": 8388608',
-  '"auditKeepFiles": 3',
+  'invoke_existing_safe_update',
+  'SAFE_UPDATE_PASS',
+  'build-candidate-config.mjs',
+  'auto-update-linux.sh',
+  'supervisor-routing-linux.sh',
+  '--disable-capability',
+  '--enable-capability',
+  'capabilityProfile.tier',
   'REMOTE_COMMANDER_CURL_CONNECT_TIMEOUT',
   'REMOTE_COMMANDER_CURL_MAX_TIME',
   '--connect-timeout "$CURL_CONNECT_TIMEOUT"',
@@ -88,8 +105,8 @@ function run(file, args) {
 if (process.platform === 'linux') {
   const files = [
     'install.sh', 'connect-chatgpt-account.sh', 'run-server.sh',
-    'autostart-linux.sh', 'enable-autostart-linux.sh', 'disable-autostart-linux.sh',
-    'install-work-plugin.sh'
+    'autostart-linux.sh', 'supervisor-routing-linux.sh', 'auto-update-linux.sh',
+    'enable-autostart-linux.sh', 'disable-autostart-linux.sh', 'install-work-plugin.sh'
   ];
   for (const file of files) {
     const outcome = run('bash', ['-n', file]);
@@ -99,7 +116,7 @@ if (process.platform === 'linux') {
 } else if (process.platform === 'win32') {
   const files = [
     'install.ps1', 'connect-chatgpt-account.ps1', 'connect-chatgpt.ps1',
-    'autostart-windows.ps1', 'enable-autostart.ps1', 'disable-autostart.ps1',
+    'autostart-windows.ps1', 'supervisor-routing.ps1', 'auto-update-windows.ps1', 'enable-autostart.ps1', 'disable-autostart.ps1',
     'install-work-plugin.ps1', 'tools/gui-control.ps1'
   ];
   for (const file of files) {

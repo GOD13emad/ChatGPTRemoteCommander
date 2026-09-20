@@ -1,0 +1,70 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import http from 'node:http';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { startRouter, writeRouterStateAtomic } from '../src/stable-router.mjs';
+
+function temp(){return fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(),'rc-router-')));}
+function listen(server){return new Promise((resolve,reject)=>{server.once('error',reject);server.listen(0,'127.0.0.1',()=>resolve(server.address().port));});}
+function close(server){return new Promise(resolve=>server.close(resolve));}
+async function freePort(){
+ const s=http.createServer();const p=await listen(s);await close(s);return p;
+}
+test('stable router switches atomically and drains in-flight request on old backend',async()=>{
+ const root=temp();let router,a,b;try{
+   let releaseA;const waitA=new Promise(r=>releaseA=r);
+   a=http.createServer(async(req,res)=>{
+     if(req.url==='/slow'){await waitA;res.writeHead(200,{'content-type':'text/plain'});res.end('A-slow');return;}
+     res.writeHead(200,{'content-type':'application/json'});res.end(JSON.stringify({backend:'A',url:req.url}));
+   });
+   b=http.createServer((req,res)=>{res.writeHead(200,{'content-type':'application/json'});res.end(JSON.stringify({backend:'B',url:req.url}));});
+   const aPort=await listen(a),bPort=await listen(b),listenPort=await freePort();
+   const stateFile=path.join(root,'router.json');
+   const baseState={schema:1,profile:'default',generation:1,active:{port:aPort,version:'1.0.0',commit:'a'.repeat(40),configSha256:'1'.repeat(64)},updatedAt:new Date().toISOString()};
+   writeRouterStateAtomic(stateFile,baseState);
+   router=await startRouter({listenPort,stateFile});
+   let r=await fetch('http://127.0.0.1:'+listenPort+'/mcp');assert.equal((await r.json()).backend,'A');
+
+   const slow=fetch('http://127.0.0.1:'+listenPort+'/slow').then(x=>x.text());
+   for(let i=0;i<50;i++){const st=router.status();if(Number(st.inflightByPort[aPort]||0)>0)break;await new Promise(r=>setTimeout(r,10));}
+   assert.equal(Number(router.status().inflightByPort[aPort]||0),1);
+
+   writeRouterStateAtomic(stateFile,{...baseState,generation:2,active:{port:bPort,version:'2.0.0',commit:'b'.repeat(40),configSha256:'2'.repeat(64)},updatedAt:new Date().toISOString()},1);
+   r=await fetch('http://127.0.0.1:'+listenPort+'/mcp');assert.equal((await r.json()).backend,'B');
+   assert.equal(Number(router.status().inflightByPort[aPort]||0),1);
+
+   releaseA();assert.equal(await slow,'A-slow');
+   for(let i=0;i<50&&Number(router.status().inflightByPort[aPort]||0)>0;i++)await new Promise(r=>setTimeout(r,10));
+   assert.equal(Number(router.status().inflightByPort[aPort]||0),0);
+   assert.equal(router.status().state.generation,2);
+ }finally{
+   if(router)await router.close();
+   if(a)await close(a);
+   if(b)await close(b);
+   fs.rmSync(root,{recursive:true,force:true});
+ }
+});
+test('router generation conflict prevents stale cutover',async()=>{
+ const root=temp();try{
+   const stateFile=path.join(root,'router.json');
+   const s={schema:1,profile:'x',generation:3,active:{port:48000,version:'1',commit:'a'.repeat(40),configSha256:'1'.repeat(64)},updatedAt:new Date().toISOString()};
+   writeRouterStateAtomic(stateFile,s);
+   assert.throws(()=>writeRouterStateAtomic(stateFile,{...s,generation:4},2),/GENERATION_CONFLICT/);
+   assert.equal(JSON.parse(fs.readFileSync(stateFile,'utf8')).generation,3);
+ }finally{fs.rmSync(root,{recursive:true,force:true});}
+});
+
+test('upstream failure cannot underflow inflight accounting',async()=>{
+ const root=temp();let router;try{
+   const dead=await freePort(),listenPort=await freePort();
+   const stateFile=path.join(root,'router.json');
+   writeRouterStateAtomic(stateFile,{schema:1,profile:'default',generation:1,active:{port:dead,version:'1',commit:'a'.repeat(40),configSha256:'1'.repeat(64)},updatedAt:new Date().toISOString()});
+   router=await startRouter({listenPort,stateFile});
+   const r=await fetch('http://127.0.0.1:'+listenPort+'/mcp');
+   assert.equal(r.status,502);
+   for(let i=0;i<20&&Number(router.status().inflightByPort[dead]||0)!==0;i++)await new Promise(r=>setTimeout(r,10));
+   assert.equal(Number(router.status().inflightByPort[dead]||0),0);
+ }finally{if(router)await router.close();fs.rmSync(root,{recursive:true,force:true});}
+});

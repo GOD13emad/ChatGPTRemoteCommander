@@ -73,9 +73,11 @@ start_tunnel() {
   log "TUNNEL_STARTED profile=$profile"
 }
 
+. "$ROOT/supervisor-routing-linux.sh"
+
 log "SUPERVISOR_STARTED pid=$$ root=$ROOT"
 while true; do
-  if start_mcp; then
+  if ensure_routed_default || start_mcp; then
     if [[ -d "$PROFILE_DIR" ]]; then
       while IFS= read -r -d '' file; do
         profile_matches "$file" || continue
@@ -84,5 +86,6 @@ while true; do
       done < <(find "$PROFILE_DIR" -maxdepth 1 -type f -name '*.yaml' -print0 2>/dev/null)
     fi
   fi
+  start_auto_update_if_due || true
   sleep "$INTERVAL"
 done

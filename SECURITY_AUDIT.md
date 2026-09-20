@@ -1,6 +1,6 @@
 # Security Audit
 
-Audit date: 2026-09-19
+Audit date: 2026-09-20
 
 ## Result
 
@@ -9,6 +9,11 @@ PASS for the current published repository content and reachable branch/tag histo
 The audit found no committed OpenAI-style API secret key, GitHub token, tunnel identifier, private-key block, bearer-token literal, tracked `config.local.json`, or developer-specific absolute Windows path. On 2026-09-19 a stale local tracking ref first exposed an already-sanitized developer-path finding, and the obsolete public `release/v0.5.0-rc1` branch contained tunnel-shaped self-test fixtures inside the audit test itself. The RC1 tip was backed up locally as a Git bundle before that obsolete branch was removed; after `git fetch --prune`, the unchanged audit returned `SECURITY_AUDIT_PASS`. No real Runtime API key or tunnel identifier was recovered from those findings.
 
 ## Controls verified
+
+- v0.8.0 Capability Profile v2 persists explicit authority separately from release defaults. Full Power automatically adopts new capabilities across updates; only a persistent disabledCapabilities entry suppresses a capability.
+- v0.8.0 automatic updates are candidate-first: source is staged side-by-side, repository/security/hardware gates run before cutover, workflow state is tested through a consistent shadow copy, and live schema finalization occurs only after canonical MCP and tunnel verification.
+- v0.8.0 stable routing uses loopback-only generation-guarded state and drains old in-flight operations before deleting the prior backend. Post-commit failures stay on the promoted runtime and enter maintenance recovery instead of rolling back to a schema-incompatible old runtime.
+- Full Power v0.8.0 intentionally enables permanent deletion and unrestricted shell/process/terminal capability unless explicitly opted out. This is a trusted-machine authority class, not a safety sandbox; OS permissions, protected-process checks, durable operation journaling and no-blind-replay rules still apply.
 
 - v0.7.3 clears inherited `REMOTE_COMMANDER_CONFIG` at supervisor startup so a supervisor launched from an isolated MCP context cannot accidentally start the primary server with the isolated profile configuration.
 - v0.7.2 allows explicit Standard ↔ Power/GUI reconfiguration of an already-isolated profile while preserving its port/store identity; supervisor recycle is permitted only after runtime marker/PID/port/profile/project ownership is proven.
@@ -23,8 +28,7 @@ The audit found no committed OpenAI-style API secret key, GitHub token, tunnel i
 - Full-control settings remain local-only in `config.local.json`.
 - Runtime API keys are never stored in the repository. Windows persistent enrollment stores a DPAPI-protected value in the current user's LocalAppData; Linux persistent enrollment stores a user-only `chmod 600` credential file outside the repository.
 - The MCP server listens on loopback by default; Secure MCP Tunnel provides outbound connectivity without public inbound exposure.
-- Permanent deletion remains disabled by default in Power Mode.
-- Shutdown, restart, and logoff shell patterns remain blocked.
+- Public config.json remains Standard/safe-by-default. When a user explicitly authorizes Full Power, permanent deletion and unrestricted shell execution are enabled unless explicitly disabled in the persisted capability profile.
 - v0.3 path-scoped mutation locking passed concurrent same-path append testing on Windows and Linux.
 - Windows and Linux installer/parser/test gates passed locally before the v0.3 release candidate was staged.
 - v0.5.1 Windows release gates re-ran successfully on 2026-09-19: `npm run check`, `npm test`, `npm run audit`, and native GUI E2E. The concurrency test now restores the pre-existing runtime ownership marker.

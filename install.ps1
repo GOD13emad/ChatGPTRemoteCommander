@@ -2,23 +2,29 @@ param(
   [string]$InstallDir = '',
   [switch]$InstallPrerequisites,
   [switch]$PowerMode,
+  [switch]$StandardMode,
   [switch]$GuiControl,
   [switch]$DisableGuiControl,
+  [string[]]$DisableCapability = @(),
+  [string[]]$EnableCapability = @(),
   [switch]$StartServer,
   [switch]$SkipTunnelClient,
   [string]$TunnelClientVersion = '0.0.14',
-  [string]$SourceRef = 'v0.7.3',
+  [string]$SourceRef = 'v0.8.0',
   [string]$ExpectedCommit = ''
 )
 $ErrorActionPreference = 'Stop'
 
 $Repo = 'https://github.com/GOD13emad/ChatGPTRemoteCommander.git'
 
+if ($PowerMode -and $StandardMode) {
+  throw 'Use only one of -PowerMode or -StandardMode.'
+}
 if ($GuiControl -and $DisableGuiControl) {
   throw 'Use only one of -GuiControl or -DisableGuiControl.'
 }
-if ($GuiControl -and -not $PowerMode) {
-  throw '-GuiControl requires -PowerMode.'
+if ($GuiControl -and $StandardMode) {
+  throw '-GuiControl cannot be combined with -StandardMode.'
 }
 if ($SourceRef -notmatch '^[A-Za-z0-9._/-]{1,128}$') {
   throw 'Invalid -SourceRef.'
@@ -104,6 +110,42 @@ function Ensure-Prerequisites {
   $nodeMajor = [int]((& node.exe --version).Trim().TrimStart('v').Split('.')[0])
   if ($nodeMajor -lt 22) {
     throw "Node.js 22+ is required; found $nodeMajor."
+  }
+}
+
+function Invoke-ExistingSafeUpdate {
+  $temp = Join-Path $env:TEMP ("ChatGPTRemoteCommander-updater-" + $PID + "-" + [guid]::NewGuid().ToString('N'))
+  New-Item -ItemType Directory -Path $temp | Out-Null
+  try {
+    & git.exe -C $temp init | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw 'updater git init failed' }
+    & git.exe -C $temp remote add origin $Repo
+    if ($LASTEXITCODE -ne 0) { throw 'updater git remote failed' }
+    & git.exe -C $temp fetch --depth 1 --no-tags origin $SourceRef
+    if ($LASTEXITCODE -ne 0) { throw "updater fetch failed for $SourceRef" }
+    $commit = (& git.exe -C $temp rev-parse 'FETCH_HEAD^{commit}').Trim().ToLowerInvariant()
+    if ($commit -notmatch '^[0-9a-f]{40}$') { throw 'updater fetched commit invalid' }
+    if ($ExpectedCommit -and $commit -ne $ExpectedCommit.ToLowerInvariant()) {
+      throw "updater commit $commit does not match ExpectedCommit $ExpectedCommit"
+    }
+    & git.exe -C $temp checkout --detach $commit | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw 'updater checkout failed' }
+
+    $updater = Join-Path $temp 'auto-update-windows.ps1'
+    if (-not (Test-Path -LiteralPath $updater -PathType Leaf)) { throw 'candidate auto-update-windows.ps1 missing' }
+    $args = @('-NoLogo','-NoProfile','-ExecutionPolicy','Bypass','-File',$updater,'-InstallDir',$InstallDir,'-SourceRef',$SourceRef,'-ExpectedCommit',$commit,'-Force')
+    if ($PowerMode) { $args += '-PowerMode' }
+    if ($StandardMode) { $args += '-StandardMode' }
+    if ($GuiControl) { $args += '-GuiControl' }
+    if ($DisableGuiControl) { $args += '-DisableGuiControl' }
+    if ($DisableCapability.Count -gt 0) { $args += '-DisableCapability'; $args += $DisableCapability }
+    if ($EnableCapability.Count -gt 0) { $args += '-EnableCapability'; $args += $EnableCapability }
+
+    & pwsh.exe @args
+    if ($LASTEXITCODE -ne 0) { throw "candidate-first update failed: $LASTEXITCODE" }
+    Write-Host "SAFE_UPDATE_PASS commit=$commit"
+  } finally {
+    Remove-Item -LiteralPath $temp -Recurse -Force -ErrorAction SilentlyContinue
   }
 }
 
@@ -269,130 +311,40 @@ function Configure-LocalPolicy {
 
   $localConfig = Join-Path $InstallDir 'config.local.json'
   $publicConfig = Join-Path $InstallDir 'config.json'
-  $basePath = if (Test-Path -LiteralPath $localConfig -PathType Leaf) { $localConfig } else { $publicConfig }
-
-  $policy = Get-Content -LiteralPath $basePath -Raw | ConvertFrom-Json -AsHashtable
-  if (-not $policy) {
-    throw "Could not parse policy: $basePath"
+  $migrator = Join-Path $InstallDir 'tools\capability-migrate.mjs'
+  if (-not (Test-Path -LiteralPath $migrator -PathType Leaf)) {
+    throw 'capability-migrate.mjs is missing.'
   }
 
-  $policy['host'] = '127.0.0.1'
-  $policy['port'] = 47831
-  if (-not $policy.ContainsKey('allowedRoots')) {
-    $policy['allowedRoots'] = @('%USERPROFILE%\source\repos')
-  }
-  if (-not $policy.ContainsKey('allowedPrograms')) {
-    $policy['allowedPrograms'] = @('git','node','npm','npx','python','py','dotnet','cmake','ninja')
-  }
-  if (-not $policy.ContainsKey('auditLog')) {
-    $policy['auditLog'] = 'var/audit.jsonl'
-  }
-  if (-not $policy.ContainsKey('auditMaxBytes')) {
-    $policy['auditMaxBytes'] = 8388608
-  }
-  if (-not $policy.ContainsKey('auditKeepFiles')) {
-    $policy['auditKeepFiles'] = 3
-  }
+  $args = @(
+    $migrator,
+    '--default', $publicConfig,
+    '--output', $localConfig,
+    '--profile-id', 'default',
+    '--backup-root', (Join-Path $InstallDir 'var\update-backups'),
+    '--workflow-dir', (Join-Path $env:LOCALAPPDATA 'ChatGPTRemoteCommander\instances\default\workflows')
+  )
+  if (Test-Path -LiteralPath $localConfig -PathType Leaf) { $args += @('--existing', $localConfig) }
+  if ($PowerMode) { $args += '--request-power' }
+  if ($StandardMode) { $args += '--request-standard' }
+  if ($GuiControl) { $args += '--gui-on' }
+  if ($DisableGuiControl) { $args += '--gui-off' }
+  foreach($cap in $DisableCapability){ $args += @('--disable-capability',$cap) }
+  foreach($cap in $EnableCapability){ $args += @('--enable-capability',$cap) }
 
-  if (-not $policy.ContainsKey('powerMode') -or $policy['powerMode'] -isnot [System.Collections.IDictionary]) {
-    $policy['powerMode'] = @{}
-  }
-  $pm = $policy['powerMode']
+  $node = (Get-Command node.exe -ErrorAction Stop).Source
+  $raw = & $node @args
+  if ($LASTEXITCODE -ne 0) { throw 'Capability/config migration failed.' }
+  try { $migration = $raw | ConvertFrom-Json } catch { throw 'Capability/config migration returned invalid JSON.' }
+  if ($migration.status -ne 'CAPABILITY_MIGRATION_PASS' -or $migration.selfTest.code -ne 'OK') { throw 'CONFIG_REGRESSION' }
 
-  if (-not $pm.ContainsKey('guiControl') -or $pm['guiControl'] -isnot [System.Collections.IDictionary]) {
-    $pm['guiControl'] = @{}
-  }
-  $gui = $pm['guiControl']
-
-  if ($PowerMode) {
-    $pm['enabled'] = $true
-    $pm['fullFilesystem'] = $true
-    $pm['allowShell'] = $true
-    $pm['allowProcessControl'] = $true
-    $pm['allowPermanentDelete'] = $false
-
-    if (-not $pm.ContainsKey('backupRoot')) {
-      $pm['backupRoot'] = '%USERPROFILE%\.chatgpt-remote-commander\backups'
-    }
-    if (-not $pm.ContainsKey('maxFileBytes')) {
-      $pm['maxFileBytes'] = 33554432
-    }
-    if (-not $pm.ContainsKey('maxCommandMs')) {
-      $pm['maxCommandMs'] = 600000
-    }
-    if (-not $pm.ContainsKey('maxOutputBytes')) {
-      $pm['maxOutputBytes'] = 4194304
-    }
-    if (-not $pm.ContainsKey('maxTerminalBufferBytes')) {
-      $pm['maxTerminalBufferBytes'] = 8388608
-    }
-    if (-not $pm.ContainsKey('blockedShellPatterns')) {
-      $pm['blockedShellPatterns'] = @(
-        '(^|\s)shutdown(?:\.exe)?(?:\s|$)',
-        'Restart-Computer',
-        'Stop-Computer',
-        '(^|\s)logoff(?:\.exe)?(?:\s|$)',
-        'ExitWindowsEx'
-      )
-    }
-
-    if ($GuiControl) {
-      $gui['enabled'] = $true
-    } elseif ($DisableGuiControl) {
-      $gui['enabled'] = $false
-    } elseif (-not $gui.ContainsKey('enabled')) {
-      $gui['enabled'] = $false
-    }
-
-    $gui['allowScreenshot'] = $true
-    $gui['allowMouse'] = $true
-    $gui['allowKeyboard'] = $true
-    $gui['allowWindowFocus'] = $true
-    if (-not $gui.ContainsKey('maxScreenshotWidth')) {
-      $gui['maxScreenshotWidth'] = 1600
-    }
-    if (-not $gui.ContainsKey('maxScreenshotBytes')) {
-      $gui['maxScreenshotBytes'] = 2097152
-    }
-  } else {
-    $pm['enabled'] = $false
-    $pm['fullFilesystem'] = $false
-    $pm['allowShell'] = $false
-    $pm['allowProcessControl'] = $false
-    $pm['allowPermanentDelete'] = $false
-    $gui['enabled'] = $false
-  }
-
-  $json = $policy | ConvertTo-Json -Depth 20
-  $newBytes = [Text.UTF8Encoding]::new($false).GetBytes($json + [Environment]::NewLine)
-  $oldHash = if (Test-Path -LiteralPath $localConfig -PathType Leaf) {
-    (Get-FileHash -LiteralPath $localConfig -Algorithm SHA256).Hash
-  } else {
-    ''
-  }
-
-  $tmp = "$localConfig.tmp-$PID"
-  [IO.File]::WriteAllBytes($tmp, $newBytes)
-  $newHash = (Get-FileHash -LiteralPath $tmp -Algorithm SHA256).Hash
-
-  if ($oldHash -ne $newHash) {
-    if (Test-Path -LiteralPath $localConfig -PathType Leaf) {
-      $backupDir = Join-Path $InstallDir 'var\config-backups'
-      New-Item -ItemType Directory -Force -Path $backupDir | Out-Null
-      $stamp = Get-Date -Format 'yyyyMMdd-HHmmss-fff'
-      Copy-Item -LiteralPath $localConfig -Destination (Join-Path $backupDir "config.local.$stamp.json") -Force
-    }
-    Move-Item -LiteralPath $tmp -Destination $localConfig -Force
-  } else {
-    Remove-Item -LiteralPath $tmp -Force
-  }
-
+  $effective = Get-Content -LiteralPath $localConfig -Raw | ConvertFrom-Json
   Write-Host "Local policy active: $localConfig"
-  Write-Host "Mode: $(if ($PowerMode) {'POWER'} else {'STANDARD'})"
-  Write-Host "GUI Control: $(if ($PowerMode -and $gui['enabled']) {'ENABLED'} else {'disabled'})"
-  Write-Host 'Permanent delete remains OFF; shutdown/restart/logoff remain blocked.'
+  Write-Host "Capability profile: $($migration.tier) explicit=$($migration.explicitlyAuthorized) persistent=$($migration.persistAcrossUpdates)"
+  Write-Host "GUI Control: $(if ($effective.powerMode.guiControl.enabled) {'ENABLED'} else {'disabled'})"
+  Write-Host "Permanent delete: $(if ($effective.powerMode.allowPermanentDelete) {'ENABLED'} else {'disabled'})"
+  Write-Host "Capability self-test: $($migration.selfTest.code)"
 }
-
 function Test-Installation {
   Push-Location -LiteralPath $InstallDir
   try {
@@ -510,13 +462,52 @@ function Start-LocalServer {
 Require-Windows
 $InstallDir = Resolve-InstallDir
 Ensure-Prerequisites
-Install-Source
-Install-TunnelClient
-Configure-LocalPolicy
-Test-Installation
-Start-LocalServer
 
-$effective = Get-Content -LiteralPath (Join-Path $InstallDir 'config.local.json') -Raw | ConvertFrom-Json
+$existingInstall = Test-Path -LiteralPath (Join-Path $InstallDir '.git')
+if ($existingInstall) {
+  Invoke-ExistingSafeUpdate
+  $effectivePath = Join-Path $InstallDir 'config.local.json'
+  $route = Join-Path $env:LOCALAPPDATA 'ChatGPTRemoteCommander\routing\default.json'
+  if (Test-Path -LiteralPath $route -PathType Leaf) {
+    try {
+      $routeState = Get-Content -LiteralPath $route -Raw | ConvertFrom-Json
+      if ($routeState.active.configPath -and (Test-Path -LiteralPath ([string]$routeState.active.configPath) -PathType Leaf)) {
+        $effectivePath = [string]$routeState.active.configPath
+      }
+    } catch {}
+  }
+  $effective = Get-Content -LiteralPath $effectivePath -Raw | ConvertFrom-Json
+} else {
+  if ($GuiControl -and -not $PowerMode) { throw '-GuiControl requires -PowerMode for a fresh installation.' }
+  Install-Source
+  Install-TunnelClient
+  Configure-LocalPolicy
+  Test-Installation
+  Start-LocalServer
+  $effective = Get-Content -LiteralPath (Join-Path $InstallDir 'config.local.json') -Raw | ConvertFrom-Json
+
+  if ($StartServer) {
+    $head = (& git.exe -C $InstallDir rev-parse HEAD).Trim().ToLowerInvariant()
+    $updater = Join-Path $InstallDir 'auto-update-windows.ps1'
+    $args = @('-NoLogo','-NoProfile','-ExecutionPolicy','Bypass','-File',$updater,'-InstallDir',$InstallDir,'-SourceRef',$SourceRef,'-ExpectedCommit',$head,'-Force')
+    if ($PowerMode) { $args += '-PowerMode' }
+    if ($StandardMode) { $args += '-StandardMode' }
+    if ($GuiControl) { $args += '-GuiControl' }
+    if ($DisableGuiControl) { $args += '-DisableGuiControl' }
+    if ($DisableCapability.Count -gt 0) { $args += '-DisableCapability'; $args += $DisableCapability }
+    if ($EnableCapability.Count -gt 0) { $args += '-EnableCapability'; $args += $EnableCapability }
+    & pwsh.exe @args
+    if ($LASTEXITCODE -ne 0) { throw 'fresh-install routing/bootstrap validation failed' }
+
+    $route = Join-Path $env:LOCALAPPDATA 'ChatGPTRemoteCommander\routing\default.json'
+    if (Test-Path -LiteralPath $route -PathType Leaf) {
+      $routeState = Get-Content -LiteralPath $route -Raw | ConvertFrom-Json
+      if ($routeState.active.configPath -and (Test-Path -LiteralPath ([string]$routeState.active.configPath) -PathType Leaf)) {
+        $effective = Get-Content -LiteralPath ([string]$routeState.active.configPath) -Raw | ConvertFrom-Json
+      }
+    }
+  }
+}
 
 Write-Host ''
 Write-Host 'INSTALL_PASS'

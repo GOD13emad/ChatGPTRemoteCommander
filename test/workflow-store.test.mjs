@@ -54,7 +54,7 @@ test('checkpoint detects changed and missing evidence, stops next action',()=>{c
  assert.equal(f.s.resume('sample').readyForNextStep,true);fs.writeFileSync(path.join(f.root,'proof.txt'),'after');assert.ok(f.s.resume('sample').blockers.includes('WORKFLOW_EVIDENCE_STALE'));
  fs.unlinkSync(path.join(f.root,'proof.txt'));assert.ok(f.s.resume('sample').blockers.includes('WORKFLOW_EVIDENCE_UNAVAILABLE'));
 }finally{f.dispose();}});
-test('device and configuration drift block resumption',()=>{const f=fixture();try{f.create();const s=new WorkflowStore({...f.options,device:'other'});try{assert.ok(s.resume('sample').blockers.includes('WORKFLOW_IDENTITY_CHANGED'));}finally{s.close();}const c=new WorkflowStore({...f.options,configSha256:'2'.repeat(64)});try{assert.ok(c.resume('sample').blockers.includes('WORKFLOW_IDENTITY_CHANGED'));}finally{c.close();}}finally{f.dispose();}});
+test('device drift blocks but config hash drift with preserved authority is update-safe',()=>{const f=fixture();try{f.create();const s=new WorkflowStore({...f.options,device:'other'});try{assert.ok(s.resume('sample').blockers.includes('WORKFLOW_IDENTITY_CHANGED'));}finally{s.close();}const c=new WorkflowStore({...f.options,configSha256:'2'.repeat(64)});try{const r=c.resume('sample');assert.deepEqual(r.blockers,[]);assert.equal(r.configDrift,true);assert.equal(r.currentConfigSha256,'2'.repeat(64));}finally{c.close();}}finally{f.dispose();}});
 test('project evidence stays scoped while private local memory may live outside project roots',()=>{const f=fixture();const privateDir=fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(),'rc-private-memory-')));try{f.create();assert.throws(()=>f.s.evidence(f.root,['../outside']),/OUT_OF_SCOPE/);const s=new WorkflowStore({...f.options,directory:privateDir});try{assert.equal(s.capabilities().privateLocalStorage,true);assert.throws(()=>s.create({id:'outside',root:path.dirname(f.root),goal:'x',acceptance:['x'],steps:[{id:'one',title:'x'}]}),/ROOT_OUT_OF_SCOPE/);}finally{s.close();}}finally{f.dispose();fs.rmSync(privateDir,{recursive:true,force:true});}});
 test('symlink and hardlink evidence rejected',t=>{const f=fixture();try{
  const target=path.join(f.root,'proof.txt');fs.writeFileSync(target,'x');
@@ -85,7 +85,7 @@ test('process crash after external effect preserves uncertain intent and never r
 test('two processes contend for same revision: exactly one records intent/action',async()=>{const f=fixture();try{
  f.create();const r=await Promise.all([runWorker(['race',f.root]),runWorker(['race',f.root])]);
  assert.ok(r.some(x=>x.code===0),JSON.stringify(r));assert.equal(fs.readFileSync(path.join(f.root,'effects.txt'),'utf8').split('\n').filter(Boolean).length,1);
- assert.equal(f.s.get('sample').state.steps[0].status,'recorded');
+ assert.equal(f.s.get('sample').state.steps[0].status,'verified');
 }finally{f.dispose();}});
 test('crash inside an uncommitted transaction is rolled back on reopen',async()=>{const f=fixture();try{
  f.create();const r=await runWorker(['transaction-crash',f.root]);assert.equal(r.code,74,r.err);assert.equal(f.s.get('sample').state.revision,1);

@@ -139,7 +139,7 @@ Filesystem containment is enforced, but command execution is **not an OS sandbox
 
 ## Validation
 
-v0.7.0 adds durable project workflows and per-profile MCP isolation. v0.7.1 hardens Standard isolated profiles by removing their command-program allowlist. v0.7.2 adds transactional reconfiguration for existing isolated profiles. v0.7.3 hardens supervisor startup so an isolated MCP environment can never leak `REMOTE_COMMANDER_CONFIG` into primary MCP startup; primary config selection is explicitly sanitized while isolated instances continue to receive their config explicitly. For profiles that explicitly opt into Power + GUI, durable workflow journaling also covers the bounded power/file and GUI tool subset while shell, delete, process-kill and terminal control stay outside durable replay.
+v0.8.0 adds Capability Profile v2, Durable Workflows R2 and candidate-first automatic updates. Explicit Full Power is an all-on authority class: every known filesystem, shell, process, terminal, GUI, workflow and lifecycle capability is enabled, and future capabilities are enabled on later upgrades unless the user has persisted an explicit opt-out. Windows and Linux validate releases side-by-side on local hardware, switch a stable loopback router only after gates pass, drain the previous backend, finalize compatible state migrations and remove superseded release copies.
 
  Each isolated account can use a distinct loopback MCP port, config, audit log, runtime marker and private workflow database; secondary profiles default to Standard Mode with GUI/shell/full-filesystem disabled. Workflow actions use intent-before-effect journaling, evidence checkpoints and explicit uncertain-outcome reconciliation with no automatic replay. Use `configure-durable-workflows.ps1` for the primary profile and `configure-profile-instance.ps1 -Profile <name>` (or `connect-chatgpt-account.ps1 -Profile <name> -Isolate`) for additional accounts. This is a local application boundary, not an OS sandbox: use separate Windows users/VMs for principals with different OS-level trust. See `docs/DURABLE_WORKFLOWS_R1.md` and `docs/PROFILE_ISOLATION_R1.md`.
 
@@ -153,9 +153,9 @@ MIT — see [LICENSE](LICENSE).
 
 Power Mode is an explicit Full-Control mode for trusted machines. The runtime automatically prefers `config.local.json` when present; this file is gitignored. The public `config.json` remains safe-by-default with Power Mode disabled.
 
-On this machine, Power Mode can enable full filesystem access, direct PowerShell execution, process control, binary file I/O, recursive search, recoverable delete, and persistent terminal sessions. Existing files are backed up before Power Mode overwrite/move/delete operations. Permanent delete is separately gated and disabled in the provided local policy.
+On this machine, Power Mode can enable full filesystem access, direct PowerShell execution, process control, binary file I/O, recursive search, recoverable delete, and persistent terminal sessions. Existing files are backed up before Power Mode overwrite/move/delete operations. In explicit Full Power, permanent delete is enabled unless filesystem.permanent_delete is explicitly disabled in the persisted capability profile.
 
-The local policy blocks automatic shutdown, restart and logoff command patterns. Power Mode is intentionally privileged and is not an OS sandbox. Use ChatGPT action permissions and only expose a tunnel to trusted accounts.
+Explicit Full Power does not retain a hidden Commander shell-pattern denylist: shell capability is unrestricted unless shell.unrestricted or shell.execute is explicitly opted out. Runtime ownership checks, protected-process checks, operation journaling and OS permissions still apply. Full Power is intentionally privileged and is not an OS sandbox; expose it only to trusted accounts.
 
 `FORBIDDEN: This conversation does not support developer MCPs` is a ChatGPT conversation-surface gate that occurs before requests reach this server; server code cannot bypass it. Use a fresh MCP-capable chat when that platform gate appears.
 

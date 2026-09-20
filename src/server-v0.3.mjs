@@ -14,7 +14,7 @@ import { expandPathValue, shellName } from './platform.mjs';
 import { formatToolInputErrors, validateJsonSchema } from './schema-validator.mjs';
 
 let workflowTools = null;
-const VERSION = '0.7.3';
+const VERSION = '0.8.0';
 const MODERN_VERSION = '2026-07-28';
 const LEGACY_VERSIONS = ['2025-11-25', '2025-06-18', '2025-03-26'];
 const MODERN_CACHE_HINT = Object.freeze({ ttlMs: 30000, cacheScope: 'private' });
@@ -54,7 +54,7 @@ function operatingInstructions() {
 const TOOLS = [
   {
     name: 'system_status',
-    description: 'Return server version, configured roots, effective filesystem access, command allowlist, Power Mode state, and protocol support.',
+    description: 'Return server version, capability profile, configured roots, effective access, workflow/scheduler health, Power Mode state, and protocol support.',
     inputSchema: { type: 'object', properties: {}, additionalProperties: false },
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false }
   },
@@ -186,8 +186,11 @@ async function executeTool(name, args) {
   if (!toolDefinition(name)) throw protocolFailure(200, -32602, 'Unknown tool');
   if (name.startsWith('workflow_')) return workflowTools.execute(name, args);
   switch (name) {
-    case 'system_status':
+    case 'system_status': {
       await audit(ctx, { action: 'system_status', ok: true });
+      const workflowStatus = workflowTools
+        ? await workflowTools.execute('workflow_status', {})
+        : { enabled:false, engineEnabled:false, scheduler:false, automaticContinuation:false };
       return {
         name: 'chatgpt-remote-commander', version: VERSION,
         deviceName: config.deviceName || os.hostname(),
@@ -209,11 +212,22 @@ async function executeTool(name, args) {
         allowedPrograms: config.allowedPrograms,
         concurrency: { httpConcurrent: true, pathMutationLocks: true, ...lockStats() },
         configSha256,
+        configSchema: {
+          capabilityProfile: config.capabilityProfile?.schemaVersion ?? 0,
+          durableWorkflow: workflowStatus.schema ?? 0
+        },
+        capabilityProfile: config.capabilityProfile ?? {
+          id: config.instance?.profile ?? 'default',
+          tier: config.powerMode?.enabled && config.powerMode?.fullFilesystem ? 'FULL_POWER' : 'STANDARD',
+          explicitlyAuthorized: false,
+          persistAcrossUpdates: false
+        },
         instance: config.instance ?? { profile: 'default', isolated: false },
-        durableWorkflows: { enabled: !!workflowTools, revision: workflowTools ? 'durable-workflows-r1' : null, automaticReplay: false },
+        durableWorkflows: workflowStatus,
         powerMode: config.powerMode ?? { enabled: false },
         guiControl: { backendSupported: process.platform === 'win32', availability: 'CHECK_gui_status', enabled: GUI_ENABLED, policy: config.powerMode?.guiControl ?? { enabled: false } }
       };
+    }
     case 'list_directory':
       return listDirectory(ctx, args);
     case 'read_text':

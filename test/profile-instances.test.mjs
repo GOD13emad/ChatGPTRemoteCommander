@@ -22,21 +22,20 @@ test('isolated standard profile gets separate port/state, memory and conservativ
   assert.equal(validateInstanceRecord(out.record),out.record);
 });
 
-test('explicit isolated power still keeps permanent delete off and GUI opt-in',()=>{
+test('explicit isolated Full Power honors explicit GUI opt-out while enabling remaining capabilities',()=>{
   const out=buildProfileInstance({baseConfig:base,profile:'power-user',port:47835,stateDirectory:'C:\\State\\power-user',powerMode:true,guiControl:false});
   assert.equal(out.config.powerMode.enabled,true);
   assert.equal(out.config.powerMode.fullFilesystem,true);
-  assert.equal(out.config.powerMode.allowPermanentDelete,false);
+  assert.equal(out.config.powerMode.allowPermanentDelete,true);
   assert.equal(out.config.powerMode.guiControl.enabled,false);
   assert.deepEqual(out.config.allowedPrograms,['git','node']);
   assert.equal(out.config.durableWorkflows.executionTools.includes('run_project_command'),true);
 });
 
-test('explicit Power+GUI profile journals bounded GUI and power operations without shell/delete/terminal tools',()=>{
+test('explicit Full Power profile exposes all power and GUI operations to durable orchestration',()=>{
   const out=buildProfileInstance({baseConfig:base,profile:'gui-user',port:47836,stateDirectory:'C:\\State\\gui-user',powerMode:true,guiControl:true});
   const tools=out.config.durableWorkflows.executionTools;
-  for(const name of ['run_project_command','power_status','file_info','read_file','write_file','create_directory','gui_screenshot','gui_type_text','gui_mouse_click','gui_focus_window']) assert.ok(tools.includes(name),name);
-  for(const name of ['run_shell','delete_path','kill_process','start_terminal','send_terminal','stop_terminal']) assert.equal(tools.includes(name),false,name);
+  for(const name of ['run_project_command','power_status','file_info','read_file','write_file','create_directory','copy_path','move_path','delete_path','search_files','run_shell','system_info','list_processes','kill_process','start_terminal','read_terminal','send_terminal','stop_terminal','gui_screenshot','gui_type_text','gui_mouse_click','gui_focus_window']) assert.ok(tools.includes(name),name);
   assert.equal(out.config.powerMode.guiControl.enabled,true);
 });
 
@@ -44,4 +43,17 @@ test('profile, port and local-state guards fail closed',()=>{
   assert.throws(()=>validateProfileName('../x'),/INVALID_NAME/);
   assert.throws(()=>validateMcpPort(47831),/INVALID_PORT/);
   assert.throws(()=>buildProfileInstance({baseConfig:base,profile:'ok',port:47836,stateDirectory:'\\\\server\\share'}),/LOCAL_PATH/);
+});
+
+test('isolated Full Power preserves scheduler/continuation and records GUI opt-out',()=>{
+  const base2={...base,durableWorkflows:{enabled:true,directory:'C:\\Old\\wf',executionTools:['read_text'],
+    scheduler:{enabled:true,resumeAfterRestart:true},continuation:{enabled:true},projectBrain:{enabled:true},executionProfile:{persist:true}}};
+  const out=buildProfileInstance({baseConfig:base2,profile:'persist-user',port:47837,stateDirectory:'C:\\State\\persist-user',powerMode:true,guiControl:false});
+  assert.equal(out.config.durableWorkflows.scheduler.enabled,true);
+  assert.equal(out.config.durableWorkflows.continuation.enabled,true);
+  assert.equal(out.config.durableWorkflows.projectBrain.enabled,true);
+  assert.equal(out.config.durableWorkflows.executionProfile.persist,true);
+  for(const cap of ['gui.screenshot','gui.mouse','gui.keyboard','gui.window_focus']) assert.ok(out.config.capabilityProfile.disabledCapabilities.includes(cap),cap);
+  assert.equal(out.config.capabilityProfile.grantedCapabilities.includes('workflow.scheduler'),true);
+  assert.equal(out.config.capabilityProfile.grantedCapabilities.includes('gui.mouse'),false);
 });

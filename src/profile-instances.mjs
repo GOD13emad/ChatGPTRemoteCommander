@@ -1,5 +1,6 @@
 import path from 'node:path';
 import { createHash } from 'node:crypto';
+import { migrateCapabilityConfig, FULL_WORKFLOW_EXECUTION_TOOLS, normalizeCapabilityProfile } from './capability-profile.mjs';
 
 const PROFILE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 const LOCAL_WIN = /^[A-Za-z]:[\\/]/;
@@ -29,40 +30,32 @@ function safeProgramList(value) {
   return [...value];
 }
 
-export function buildProfileInstance({ baseConfig, profile, port, stateDirectory, allowedRoots, powerMode = false, guiControl = false }) {
+export function buildProfileInstance({ baseConfig, existingConfig = null, profile, port, stateDirectory, allowedRoots, powerMode = undefined, guiControl = undefined }) {
   if (!baseConfig || typeof baseConfig !== 'object' || Array.isArray(baseConfig)) throw new Error('PROFILE_INSTANCE_BASE_CONFIG_REQUIRED');
   profile = validateProfileName(profile);
   port = validateMcpPort(port);
   stateDirectory = validateLocalAbsolute(stateDirectory);
-  const roots = (allowedRoots ?? baseConfig.allowedRoots);
+  const roots = (allowedRoots ?? existingConfig?.allowedRoots ?? baseConfig.allowedRoots);
   if (!Array.isArray(roots) || roots.length < 1 || roots.some(x => typeof x !== 'string' || !x)) throw new Error('PROFILE_INSTANCE_ROOTS_REQUIRED');
   const basePrograms = safeProgramList(baseConfig.allowedPrograms);
+  const migrated = migrateCapabilityConfig({
+    defaultConfig: baseConfig,
+    existingConfig,
+    profileId: profile,
+    requestPower: powerMode === true,
+    requestStandard: powerMode === false,
+    requestGui: guiControl
+  });
+  const power = migrated.config.powerMode;
   // A general-purpose interpreter/compiler is not a filesystem sandbox. Standard
   // isolated profiles therefore receive no command allowlist at all.
-  const programs = powerMode === true ? basePrograms : [];
+  const programs = power.enabled === true ? basePrograms : [];
 
-  const basePower = baseConfig.powerMode && typeof baseConfig.powerMode === 'object' ? baseConfig.powerMode : {};
-  const power = powerMode === true
-    ? { ...basePower, enabled: true, fullFilesystem: true, allowPermanentDelete: false,
-        guiControl: { ...(basePower.guiControl ?? {}), enabled: guiControl === true } }
-    : { ...basePower, enabled: false, fullFilesystem: false, allowShell: false, allowProcessControl: false,
-        allowPermanentDelete: false, guiControl: { ...(basePower.guiControl ?? {}), enabled: false } };
-
-  const executionTools = ['system_status', 'list_directory', 'read_text', 'write_text'];
-  if (powerMode === true) {
-    executionTools.push('run_project_command', 'power_status', 'file_info', 'read_file', 'write_file', 'create_directory');
-  }
-  if (powerMode === true && guiControl === true) {
-    executionTools.push(
-      'gui_status', 'gui_session_begin', 'gui_session_renew', 'gui_session_end',
-      'gui_screenshot', 'gui_list_windows', 'gui_cursor_position',
-      'gui_mouse_move', 'gui_mouse_delta', 'gui_mouse_scroll', 'gui_mouse_click',
-      'gui_mouse_drag', 'gui_type_text', 'gui_key_press', 'gui_focus_window'
-    );
-  }
-
+  const executionTools = power.enabled === true
+    ? [...FULL_WORKFLOW_EXECUTION_TOOLS]
+    : ['system_status', 'list_directory', 'read_text', 'write_text'];
   const config = {
-    ...baseConfig,
+    ...migrated.config,
     port,
     allowedRoots: [...roots],
     allowedPrograms: programs,
@@ -71,11 +64,16 @@ export function buildProfileInstance({ baseConfig, profile, port, stateDirectory
     instance: { profile, isolated: true },
     powerMode: power,
     durableWorkflows: {
+      ...(migrated.config.durableWorkflows ?? {}),
       enabled: true,
       directory: path.join(stateDirectory, 'workflows'),
       executionTools
     }
   };
+  config.capabilityProfile = normalizeCapabilityProfile({
+    ...migrated.profile,
+    id: profile
+  }, config, { id: profile, legacyExplicit: true });
   const json = JSON.stringify(config, null, 2) + '\n';
   const configSha256 = createHash('sha256').update(json).digest('hex');
   const record = {

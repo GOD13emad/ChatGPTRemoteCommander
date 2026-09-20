@@ -2,11 +2,15 @@ param(
   [Parameter(Mandatory=$true)][string]$Profile,
   [string[]]$AllowedRoot = @(),
   [switch]$PowerMode,
+  [switch]$StandardMode,
   [switch]$GuiControl,
+  [switch]$DisableGuiControl,
   [ValidateRange(5,120)][int]$WaitSeconds = 45
 )
 $ErrorActionPreference='Stop'
-if($GuiControl -and -not $PowerMode){throw '-GuiControl requires -PowerMode.'}
+if($PowerMode -and $StandardMode){throw '-PowerMode and -StandardMode are mutually exclusive.'}
+if($GuiControl -and $DisableGuiControl){throw '-GuiControl and -DisableGuiControl are mutually exclusive.'}
+if($GuiControl -and $StandardMode){throw '-GuiControl cannot be combined with -StandardMode.'}
 if($Profile -notmatch '^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$' -or $Profile -match '\.\.' -or $Profile -in @('.','..')){throw 'Invalid profile name.'}
 
 $Root=Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -18,7 +22,9 @@ if(-not(Test-Path -LiteralPath $Tool -PathType Leaf)){throw 'reconfigure-profile
 $args=@($Tool,'--profile',$Profile)
 foreach($r in $AllowedRoot){$args+=@('--root',$r)}
 if($PowerMode){$args+='--power'}
+if($StandardMode){$args+='--standard'}
 if($GuiControl){$args+='--gui'}
+if($DisableGuiControl){$args+='--gui-off'}
 $json=& $node @args
 if($LASTEXITCODE -ne 0){throw 'Profile reconfiguration generator failed.'}
 try{$result=$json|ConvertFrom-Json}catch{throw 'Profile reconfiguration returned invalid JSON.'}

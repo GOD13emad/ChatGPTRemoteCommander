@@ -31,7 +31,7 @@ async function fixture(enabled){
 }
 test('live MCP create/write/read/checkpoint/restart/resume without repeating side effect',async()=>{
  const f=await fixture(true);try{
-  await f.start();const status=await f.invoke('system_status');assert.equal(status.durableWorkflows.revision,'durable-workflows-r1');
+  await f.start();const status=await f.invoke('system_status');assert.equal(status.durableWorkflows.revision,'durable-workflows-r2');
   const meta=await f.invoke('workflow_status');assert.equal(meta.automaticReplay,false);
   await f.invoke('workflow_create',{id:'e2e',root:f.project,goal:'Test durable MCP',acceptance:['readback verified'],steps:[{id:'write',title:'Write once'},{id:'read',title:'Read'},{id:'command',title:'Version'}]});
   const request={id:'e2e',stepId:'write',expectedRevision:1,tool:'write_text',arguments:{path:'proof.txt',mode:'append',content:'one'}};

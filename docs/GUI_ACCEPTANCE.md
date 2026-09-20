@@ -1,6 +1,6 @@
-# GUI acceptance gates — v0.7.3
+# GUI acceptance gates — v0.8.0
 
-The original R1 audit baseline is preserved in `AUDIT_R1.md`. v0.7.0 does not change GUI implementation code; its new profile-isolation defaults keep GUI disabled for secondary profiles unless explicitly opted in. The v0.6.4 native E2E evidence on Emad-PC-Ultimate remains applicable under unchanged-evidence reuse: layout/self-test, real screen capture, exact-window focus, mouse click, Farsi/Japanese Unicode typing, button activation, screenshot-before/after verification, cursor restore and focus restore. A fresh v0.6.5 native rerun reached the disposable-window focus step twice and failed closed with `GUI_FOCUS_NOT_CONFIRMED` before injecting input; the noninteractive native layout/self-test then passed. This is recorded as environment/foreground contention, not a GUI-code regression. Use `npm run test:gui-native` to repeat the bounded disposable-window validation when the desktop is uncontended.
+The v0.8.0 release keeps the bounded Windows GUI lease/frame safety model and integrates it into Full Power's all-on capability profile. A fresh native E2E run on Emad-PC-Ultimate on 2026-09-20 passed real capture, exact-window focus, mouse click, Farsi/Japanese Unicode typing, button activation, before/after screenshot verification, cursor restore and foreground restore (GUI_NATIVE_E2E_PASS). GUI authorization remains an explicit capability that can be persistently opted out while the rest of Full Power stays enabled.
 
 These measured Windows results do not waive the remaining release gates below for installer/update/tunnel/ChatGPT integration, Linux regression, multi-monitor/DPI coverage, locked/Secure Desktop behavior, anti-cheat/protected input, or real-time gameplay.
 
