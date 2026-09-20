@@ -152,3 +152,26 @@ This file is append-only for substantive project claims, decisions, failures, pr
 ## HISTORY — R2 delta
 
 - 2026-09-20 / R2: Added Linux CI reproduction, cross-platform fixture root cause/prevention, v0.8.5 validation/promotion evidence, and explicit GitHub billing-blocked hosted-CI status.
+
+## E015 — GitHub Free account billing-lock root cause and escalation
+
+- Context: Hosted CI remained red even though repository Actions settings were enabled, the repository is public, and local Windows/Linux release gates were PASS.
+- Account/billing facts observed in the signed-in GitHub Billing UI:
+  - GitHub plan: Free, USD 0.00/month.
+  - Copilot plan: Free, USD 0.00/month.
+  - Billing Overview: zero observed usage for the inspected period.
+  - Payment History: no payments.
+  - Payment Information: "Invalid payment method - authorization hold failed."
+  - No saved payment method with an Edit/Remove control was observed.
+- CI regression evidence: hosted run 35504469498 attempt 3, after dismissing the payment alert, again completed both Windows and Ubuntu jobs with zero workflow steps. Both jobs retained the account-level billing-lock annotation.
+- Root-cause classification: server-side stale failed payment-authorization/account-lock state on an already-Free account; not a Remote Commander defect, not a workflow syntax/configuration defect, and not a paid-plan requirement for this public repository.
+- GitHub Support's guided solution independently stated that restoring Actions on the free account requires clearing the billing lock tied to failed payment authorization.
+- Resolution action: submitted an official GitHub Support ticket under Billing and payments -> General billing and payments, classified as Payment method authorization and GitHub Actions or Packages. Submission success was verified and the ticket is open.
+- Privacy/provenance: the private ticket identifier and URL are intentionally not committed to this public repository. They are stored in %LOCALAPPDATA%\ChatGPTRemoteCommander\private-evidence\github-billing-support-ticket.json, SHA-256 6b21efb925486ce78f5c419496609b8c9634c65d264c9c0be9cdbb92d30c848e.
+- Prevention/guard: do not add a payment method, activate a paid plan, weaken CI, or repeat blind reruns merely to obtain a green status. Await GitHub Support's server-side clear, then rerun hosted CI once and inspect real executed steps.
+- Status/Confidence: Confirmed external blocker / high; remediation submitted / pending GitHub Support.
+- Reuse targets: CI incident history, billing troubleshooting, support handoff, release acceptance.
+
+## HISTORY — R3 delta
+
+- 2026-09-20 / R3: Confirmed the account is already GitHub Free/Copilot Free with no payment history, isolated the stale authorization-hold lock, proved it survives a third zero-step hosted CI attempt, and submitted the official support escalation while keeping the account free.

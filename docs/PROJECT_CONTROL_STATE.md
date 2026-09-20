@@ -1,6 +1,6 @@
 # ChatGPT Remote Commander — Project Brain
 
-Brain revision: R2
+Brain revision: R3
 Status: CURRENT
 As of: 2026-09-20
 Project root: %USERPROFILE%\source\repos\ChatGPTRemoteCommander
@@ -48,9 +48,9 @@ DoD for the current release requires: an immutable stable release tag and assets
 13. Portable profile-instance fixture hotfix — Completed in v0.8.5; production local-path guard unchanged.
 14. Windows + Ubuntu/Node22 validation of v0.8.5 — Completed / PASS.
 15. Candidate-only and automatic blue/green promotion to v0.8.5 — Completed / PASS.
-16. GitHub-hosted CI — OPEN EXTERNAL GATE: jobs are not started because GitHub reports an account billing lock; no runner is assigned.
+16. GitHub-hosted CI — OPEN EXTERNAL GATE: the account is already GitHub Free and Copilot Free with zero observed usage/payments, but a stale failed payment-authorization hold keeps the account billing-locked. An official GitHub Support ticket is open for server-side lock removal; no runner is assigned until GitHub clears it.
 
-No product/runtime blocker remains for v0.8.5. GitHub-hosted Actions is externally blocked because GitHub reports the repository owner's account is locked due to a billing issue; jobs receive no runner and execute zero steps.
+No product/runtime blocker remains for v0.8.5. GitHub-hosted Actions is externally blocked by a stale account-level billing lock. Billing UI evidence confirms GitHub Free, Copilot Free, zero observed usage, no payment history, no saved payment method control, and an Invalid payment method - authorization hold failed state. GitHub Support accepted an open billing ticket to clear this server-side lock without activating a paid plan.
 
 ## Closed failure chain
 
@@ -61,6 +61,16 @@ No product/runtime blocker remains for v0.8.5. GitHub-hosted Actions is external
 - v0.8.3 candidate cleanup failed with repeated saeed-emad candidates. Root cause: recursive discovery included historical instance.json files inside backup trees. Prevention in v0.8.4: enumerate only immediate profile directories, bind exactly one instance.json per profile directory, and fail closed on directory/profile identity mismatch.
 - A later GUI gate observed GUI_NATIVE_BUSY. Evidence showed the global GUI helper mutex was contended; a controlled run with no competing GUI helper passed full capture/focus/click/Unicode typing/screenshot verification. Existing behavior remains fail-closed; no mutation retry was added to mask uncertain GUI outcomes.
 
+## Open external blocker — GitHub billing state
+
+- Confirmed account plan: GitHub Free, USD 0/month.
+- Confirmed Copilot plan: Copilot Free, USD 0/month.
+- Billing Overview showed zero observed usage; Payment History showed no payments.
+- Payment Information reported Invalid payment method - authorization hold failed; no saved payment method with an Edit/Remove control was observed.
+- GitHub Support's own guided solution identified the condition as a billing lock on a free account tied to a failed payment authorization.
+- Hosted CI run attempt 3 was repeated after dismissing the alert; Windows and Ubuntu again executed zero steps and returned the same account-lock annotation.
+- An official GitHub Support ticket was successfully submitted and is open. Its private identifier/URL is retained only in local private evidence, not this public repository.
+- Status: external / server-side / awaiting GitHub Support. Product code and runtime remain PASS.
 ## Verification versus validation
 
 Verification evidence includes clean repository gates, contract tests, security audit, source integrity, native GUI E2E, doctor checks and workflow database integrity. Validation on the target machine includes the candidate-only updater run, exact two-profile discovery, blue/green cutover, canonical router checks, tunnel target checks, autostart continuity and CURRENT no-op behavior.
@@ -70,7 +80,7 @@ Verification evidence includes clean repository gates, contract tests, security 
 - The source working directory contains many unrelated untracked GCAD/engineering files. They were not modified or included in the release; all release gates were run from a separate clean detached worktree. Cleanup requires separate ownership/authority and is intentionally deferred.
 - Legacy profile baseline files under instances are not the active routed runtime authority after promotion. The durable route files are authoritative and the supervisor starts routed backends from their active.configPath. Do not delete legacy baselines without a separate rollback-policy change.
 - Workflow health reports runnerConfigured=false; scheduler/continuation state is healthy and this is not a capability-profile regression. Any external host-runner integration is a separate future scope.
-- GitHub Actions hosted CI is currently unavailable because GitHub reports the repository owner's account is locked due to a billing issue. The v0.8.5 Ubuntu job was reproduced locally on Ubuntu 24.04 with Node 22 and check/test/audit PASS, but hosted CI remains UNPROVEN until the owner resolves billing and reruns the workflow.
+- GitHub Actions hosted CI is currently unavailable because a stale failed payment-authorization hold keeps the otherwise-Free account billing-locked. The v0.8.5 Ubuntu job was reproduced locally on Ubuntu 24.04 with Node 22 and check/test/audit PASS. Three hosted-CI attempts executed zero workflow steps, including one after dismissing the billing alert, proving the remaining lock is server-side. GitHub Support has accepted a ticket; hosted CI remains UNPROVEN until Support clears the lock and one clean rerun passes.
 
 ## Authoritative evidence locations
 
@@ -82,12 +92,14 @@ Verification evidence includes clean repository gates, contract tests, security 
 - %LOCALAPPDATA%\ChatGPTRemoteCommander\update-backups\540d7e596686406e102e4a835c9ad4d7745cef5c\...
 - Clean validation logs listed in PROJECT_KNOWLEDGE_EVIDENCE.md.
 - Git tag v0.8.5 and GitHub Release v0.8.5.
+- Private external support evidence: %LOCALAPPDATA%\ChatGPTRemoteCommander\private-evidence\github-billing-support-ticket.json, SHA-256 6b21efb925486ce78f5c419496609b8c9634c65d264c9c0be9cdbb92d30c848e. The public repository intentionally does not expose the private support ticket identifier/URL.
 
 ## Exact next action
 
-No product action is required for the current release. Owner action is required only to restore GitHub-hosted CI by resolving the GitHub billing lock; after that, rerun CI without changing product code unless the runner reveals a new failure. For a future product change, start from this Brain and the exact release commit/tag, create one new change objective, validate in a clean worktree, run candidate-only validation, then promote only after all gates pass. If the updater reports CURRENT, do not force a rerun without a new release or a diagnosed fault.
+No product or billing-plan action is required for the current release: the account is already on GitHub Free. Await GitHub Support clearing the stale server-side billing lock; do not add a payment method or activate a paid plan for this purpose. After Support clears the lock, rerun the existing hosted CI once without product-code changes; only investigate code if a runner then executes steps and reveals a real failure. For a future product change, start from this Brain and the exact release commit/tag, create one new change objective, validate in a clean worktree, run candidate-only validation, then promote only after all gates pass. If the updater reports CURRENT, do not force a rerun without a new release or a diagnosed fault.
 
 ## HISTORY — append only
 
 - 2026-09-20 / R1: Established v0.8.4 as the promoted stable baseline on the validated Windows target; both profiles Full Power; zero-downtime routes, durable workflows, tunnels, autostart and auto-update post-check verified. v0.8.3 is superseded.
 - 2026-09-20 / R2: Reproduced the otherwise-hidden Linux CI fixture defect under Ubuntu 24.04 / Node 22, fixed it without relaxing production guards, released and automatically promoted v0.8.5, and recorded GitHub hosted CI as an external billing-blocked gate rather than a product failure.
+- 2026-09-20 / R3: Proved the GitHub account is already Free with no payment history or paid subscription, isolated the blocker to a stale failed payment-authorization hold, confirmed the lock persists server-side after another zero-step CI rerun, and submitted a private GitHub Support ticket for lock removal without adding a payment method.
