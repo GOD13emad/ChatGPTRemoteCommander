@@ -29,6 +29,7 @@ test('auto updater is candidate-first, hardware-gated and commit-point aware',()
     'Promote-Control',
     'Recycle-ControlSupervisor',
     'GATE_ARGUMENTS_MISSING',
+    'CANDIDATE_CLEANUP_OWNERSHIP_MISMATCH',
     'SUPERVISOR_RECYCLE_PASS',
     'Cleanup-Releases',
     'PROMOTED_MAINTENANCE_REQUIRED'

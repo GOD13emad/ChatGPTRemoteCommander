@@ -446,7 +446,27 @@ try{
     $report.profiles+=@{profile=$t.Profile;candidatePort=$port;configSha256=$finalSha;doctor='PASS';hardware='PASS';shadowStore='PASS';liveStoreCompatibility='PASS'}
   }
 
-  if($NoPromote){$report.status='CANDIDATE_PASS';Atomic-Json $ResultFile $report;Log 'AUTO_UPDATE_CANDIDATE_PASS';exit 0}
+  if($NoPromote){
+    foreach($c in $candidates){
+      try{
+        if($c.Process -and -not $c.Process.HasExited){
+          $listener=Get-NetTCPConnection -State Listen -LocalPort $c.Port -ErrorAction SilentlyContinue|Select-Object -First 1
+          $cfg=Read-Json $c.ConfigPath
+          $markerFile=[string]$cfg.runtimeState
+          $marker=if($markerFile -and (Test-Path -LiteralPath $markerFile -PathType Leaf)){Read-Json $markerFile}else{$null}
+          if($listener -and $marker -and [int]$listener.OwningProcess-eq [int]$c.Process.Id -and [int]$marker.pid-eq [int]$c.Process.Id -and [int]$marker.port-eq [int]$c.Port -and [string]$marker.instance.profile-eq [string]$c.Profile){
+            Stop-Process -Id $c.Process.Id -Force -ErrorAction Stop
+          }else{
+            throw "CANDIDATE_CLEANUP_OWNERSHIP_MISMATCH profile=$($c.Profile)"
+          }
+        }
+      }catch{throw}
+    }
+    $report.status='CANDIDATE_PASS';$report.completedAt=(Get-Date).ToUniversalTime().ToString('o')
+    Atomic-Json $ResultFile $report
+    Log 'AUTO_UPDATE_CANDIDATE_PASS'
+    exit 0
+  }
 
   foreach($c in $candidates){
     $t=$c.Target

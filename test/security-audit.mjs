@@ -11,12 +11,16 @@ function git(args, options = {}) {
 
 const patterns = [
   ['OpenAI-style secret key', new RegExp('s' + 'k-' + '[A-Za-z0-9_-]{20,}', 'i')],
-  ['Tunnel identifier', new RegExp('tunnel' + '_' + '[A-Za-z0-9_-]{16,}', 'i')],
+  ['Tunnel identifier', new RegExp('tunnel' + '_' + '[A-Za-z0-9_-]{16,}')],
   ['Private key block', new RegExp('-----BEGIN ' + '(?:RSA |EC |OPENSSH )?' + 'PRIVATE KEY-----', 'i')],
   ['Bearer token literal', new RegExp('Bearer\\s+' + '[A-Za-z0-9._-]{20,}', 'i')],
   ['GitHub token', new RegExp('gh' + '[pousr]_' + '[A-Za-z0-9]{20,}', 'i')],
   ['Developer Windows path', /C:\\Users\\[^\\\r\n]+\\source\\repos\\ChatGPTRemoteCommander/i]
 ];
+const tunnelPattern = patterns.find(([type]) => type === 'Tunnel identifier')[1];
+if (!tunnelPattern.test('tunnel' + '_' + 'a'.repeat(24)) || tunnelPattern.test('TUNNEL_HEALTH_UNKNOWN_LISTENER')) {
+  throw new Error('Tunnel identifier audit pattern regression');
+}
 const findings = [];
 const tracked = git(['ls-files', '-z']).split('\0').filter(Boolean);
 for (const file of tracked) {

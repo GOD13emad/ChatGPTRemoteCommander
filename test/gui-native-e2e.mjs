@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { readFile, rm } from 'node:fs/promises';
+import { readFile, rm, mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { createGuiController } from '../src/gui-tools-windows.mjs';
@@ -8,6 +8,7 @@ const root=path.resolve('.');
 const dll=path.join(root,'test','gui-e2e-app','bin','Release','net10.0-windows','GuiE2EApp.dll');
 const ready=path.join(root,'var','gui-e2e-ready.json');
 const result=path.join(root,'var','gui-e2e-result.json');
+await mkdir(path.dirname(ready),{recursive:true});
 await rm(ready,{force:true});
 await rm(result,{force:true});
 const child=spawn('dotnet',[dll,ready,result],{cwd:root,windowsHide:false,stdio:['ignore','ignore','pipe']});

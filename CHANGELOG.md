@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.8.3 — 2026-09-20
+
+- Make native Windows GUI E2E self-contained in clean Git checkouts by creating its ignored runtime `var` directory before launching the fixture app.
+- Make `-NoPromote` candidate validation ownership-safe and self-cleaning so diagnostic backends cannot remain running after a successful dry run.
+- Harden tunnel-ID history scanning to the canonical lowercase `tunnel_` prefix and add a regression that rejects uppercase status/error symbols as credential false positives.
+- v0.8.2 was intentionally not tagged or released after the clean detached-worktree gate exposed the GUI test-harness directory assumption.
+
 ## 0.8.2 — 2026-09-20
 
 - Include the tracked `tools/build-candidate-config.mjs` runtime helper required by clean staged automatic updates.
