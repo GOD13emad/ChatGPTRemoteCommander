@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.8.11 — 2026-09-21
+
+- Fix stable-router drain accounting when the downstream MCP client disconnects before a completed upstream response is fully consumed. The router now detaches the closed downstream response and continues consuming the backend response to its real end/close event instead of leaving a permanent inflight entry.
+- Preserve mutation safety: downstream disconnect does **not** cancel or retry the upstream request. The old backend is considered drainable only after the upstream response actually completes or closes.
+- Add a deterministic regression that reproduced the production failure before the fix (`inflight=1` after client disconnect) and passes after the fix.
+- Record and recover the v0.8.10 production incident with ownership-proven shutdown of the superseded backend only after its audit showed `run_shell ok=true`, no non-console child workload remained, and the route/runtime marker/PID/port/profile all matched.
+- Retain all v0.8.10 zero-interference desktop controls unchanged.
+
 ## 0.8.10 — 2026-09-21
 
 - Add a zero-interference GUI session boundary: `gui_session_begin` defaults to observe-only, while mouse/keyboard/scroll/focus mutations require an explicit `takeover` session with a current-user authorization basis.

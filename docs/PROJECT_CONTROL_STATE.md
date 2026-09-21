@@ -1,7 +1,7 @@
 # ChatGPT Remote Commander — Project Brain
 
-Brain revision: R6
-Status: CURRENT / v0.8.10 RELEASE CANDIDATE
+Brain revision: R7
+Status: CURRENT / v0.8.11 HOTFIX RELEASE CANDIDATE
 As of: 2026-09-21
 Project root: %USERPROFILE%\source\repos\ChatGPTRemoteCommander
 Public repository: GOD13emad/ChatGPTRemoteCommander
@@ -12,20 +12,21 @@ Deliver a stable Remote Commander release that can run in explicit Full Power on
 
 DoD for the current release requires: an immutable stable release tag and assets; clean-checkout check/test/security gates; scope-appropriate GUI evidence (fresh interactive native E2E when native input behavior changes, otherwise byte-identical prior native baseline + current no-input/native/controller regression); candidate validation on the target machine; promotion of every live profile; canonical-route doctor checks; durable-workflow integrity after schema finalization; tunnel profiles targeting canonical routers; autostart/supervisor continuity; removal of superseded release directories; and a post-promotion updater no-op returning CURRENT.
 
-## Authoritative current change set — v0.8.10 candidate
+## Authoritative current change set — v0.8.11 hotfix candidate
 
-- Public stable release before this change set: v0.8.9 at commit `eb9607687f4ff994eb52bcb9c80cecfde902e48d`; GitHub Latest is v0.8.9 and immutable.
-- Live default Remote Commander at change-set start: v0.8.9 on Emad-PC-Ultimate, FULL_POWER, full filesystem, shell/process/terminal, GUI and Durable Workflows enabled.
-- Candidate source version: v0.8.10.
-- Primary change: zero-interference desktop authority. GUI sessions default to observe-only; mouse/keyboard/scroll/focus mutation requires a distinct takeover session carrying an explicit current-user authorization basis. Full Power alone is not desktop-takeover authorization.
-- Durable/resumed workflows cannot acquire takeover mode or dispatch GUI mutation. Interactive desktop mutation is direct-session-only, preventing stale workflow state from becoming input authority.
-- Candidate verification on the development tree: `npm run check` PASS, `npm test` PASS, `npm run audit` PASS; GUI controller/HTTP suite 73/73 PASS; focused durable-workflow direct-session guard PASS; native no-input self-test PASS with X64 INPUT size 40.
-- Native GUI helper code is unchanged from the accepted v0.8.9 native baseline: `tools/gui-control.ps1` Git blob `410441b32e11a5a4d12850caf632da8460c2a5b1`; `tools/gui-native.cs` Git blob `7bfc23435390c81de0d4175805a57bdbc4322517`. The user's active desktop was not touched; interactive E2E is inherited under the proportional Gate-B rule rather than falsely rerun.
-- Headless Stockfish 19 stress evidence: official engine installed outside the repository; 32 threads / 2048 MiB hash; 1 s search ~17.9M NPS; bounded 20-move max-skill game remained essentially equal at stop. No foreground GUI interaction was used. Evidence: `docs/CHESS_STRESS_BENCHMARK_20260921.md`.
-- Comparative audit: `docs/COMPETITIVE_AUDIT_20260921.md`. Global superiority over Work/Codex/Claude/Cursor/Open Interpreter/other agents remains UNPROVEN because they are not identical products and no matched benchmark exists. Distinct product target is a high-authority, evidence-backed, non-intrusive real-machine execution substrate.
-- Repository hygiene: unrelated untracked engineering/GCAD scratch files remain outside release authority and are intentionally untouched. Only explicit tracked/new Remote Commander files belong to this change set.
-- External non-code gate remains GitHub-hosted Actions account/runner availability; local Windows and prior Ubuntu/Node22 gates are authoritative until hosted steps actually execute.
-- Exact next action: commit only the v0.8.10 change set, push main, run the official candidate-first updater with exact commit and `-NoPromote`, promote if PASS, verify canonical routes/tunnels/workflows, package 12 release assets with SHA-256 verification, publish immutable v0.8.10, then run the updater no-op/CURRENT check and close this Brain revision.
+- Public GitHub `main` was advanced to v0.8.10 commit `076e22c32c589a4ddfb04651e2ae774a2dba8c0a` after all tracked source gates passed.
+- v0.8.10 candidate-first `-NoPromote` validation PASSed on both `default` and `saeed-emad`: 54 tools / 15 GUI tools, FULL_POWER authority preserved, doctor PASS, hardware PASS, workflow shadow/live-store integrity PASS, native no-input self-test PASS.
+- Blue/green v0.8.10 cutover committed both canonical routes to generation 7 and active v0.8.10. The control checkout was promoted to the same exact commit.
+- During default-profile old-backend drain, router inflight accounting retained one completed `run_shell` request after its downstream MCP client disconnected. Old-backend audit independently recorded that action `ok=true` at 2026-09-21T03:37:06Z; no non-console child workload remained; route previous commit/port and runtime marker/PID/profile matched exactly.
+- Recovery was ownership-proven and narrow: only the superseded v0.8.9 default backend PID 25928 was stopped after the completed-operation evidence above. Router old-backend inflight immediately cleared. Official updater maintenance then finalized both workflow stores at schema 2, recycled the supervisor ownership-safely and reported `AUTO_UPDATE_MAINTENANCE_PASS version=0.8.10`.
+- Root cause is reproducible in the stable router: when the downstream response closes, Node stream piping can leave the upstream response paused; because inflight retirement intentionally waits for upstream end/close/error, a completed backend operation can remain permanently counted even though it must not be cancelled or replayed.
+- v0.8.11 fix: on downstream close, the router unpipes the dead downstream destination and resumes consuming the upstream backend response to its real completion. It does not cancel, duplicate or blind-retry the upstream request.
+- Regression evidence: the new production-shaped downstream-disconnect test failed before the fix with `1 !== 0` after ~3.2 s and passes after the fix; full stable-router focused suite is 6/6 PASS.
+- v0.8.10 zero-interference desktop authority remains unchanged in v0.8.11: GUI observe-only default, explicit-current-request takeover, direct-session-only desktop mutation, and no durable-workflow GUI takeover.
+- Native GUI helper files remain unchanged from the accepted baseline, so no foreground/mouse/focus test is introduced by this router-only hotfix.
+- Headless Stockfish and competitive-audit evidence remain in `docs/CHESS_STRESS_BENCHMARK_20260921.md` and `docs/COMPETITIVE_AUDIT_20260921.md`.
+- External GitHub-hosted Actions account/runner availability remains a separate external gate; it is not evidence against the locally reproduced Windows gates.
+- Exact next action: run full v0.8.11 check/test/audit + native no-input gate, commit/push only the hotfix set, candidate-only validate exact commit, promote both profiles, require router source-hash recycle to the new fixed router, verify doctors/tunnels/workflows and CURRENT no-op, then package/hash/publish immutable v0.8.11 and close Brain R7.
 
 ## Superseded historical state retained from R5
 

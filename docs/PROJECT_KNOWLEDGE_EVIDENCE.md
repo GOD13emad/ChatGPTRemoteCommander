@@ -494,3 +494,18 @@ This file is append-only for substantive project claims, decisions, failures, pr
 - Sources: https://help.openai.com/en/articles/20001275/ ; https://openai.com/codex/ ; https://docs.anthropic.com/en/docs/claude-code/overview ; https://docs.anthropic.com/en/docs/claude-code/security ; https://prod.cursor.com/help/ai-features/background-agents ; https://docs.github.com/en/copilot/concepts/agents ; https://www.openinterpreter.com/docs/desktop ; https://github.com/desktop-commander/remote-desktop-commander ; https://stockfishchess.org/download/ .
 - Confidence/Status: implementation Confirmed / focused regression PASS / full release gates OPEN. Comparative superiority claim remains UNPROVEN by design until reproducible cross-product benchmarks exist.
 - Reuse Targets: v0.8.10 release notes, GUI policy, Work/Plugin behavior, product comparison, failure prevention, final audit.
+
+
+## E035 — v0.8.10 live drain-accounting incident → v0.8.11 prevention hotfix
+
+- Date/Context: 2026-09-21, exact v0.8.10 commit `076e22c32c589a4ddfb04651e2ae774a2dba8c0a` after candidate-only PASS and blue/green cutover on Emad-PC-Ultimate.
+- Failure: default route cutover committed to v0.8.10, but old v0.8.9 backend port 48834 retained one router-counted non-cancellable `tools/call run_shell` request after the updater command itself had completed. Official updater entered `PROMOTED_DRAIN_PENDING` rather than force-killing the old backend.
+- Independent completion evidence: old-backend audit log records the relevant `run_shell` as `ok=true` at `2026-09-21T03:37:06.851Z`; process inspection found no non-console child workload; previous route was exactly commit `eb9607687f4ff994eb52bcb9c80cecfde902e48d` / port 48834; runtime marker matched PID 25928 / port 48834 / profile default.
+- Recovery: ownership-proven stop of only superseded PID 25928 cleared old inflight accounting. The official maintenance path then finalized workflow DB schema 2 for both profiles, recycled the supervisor and returned `AUTO_UPDATE_MAINTENANCE_PASS version=0.8.10`.
+- Reproduction: a new stable-router regression intentionally disconnects the downstream client while a mutating-shaped upstream response is still being produced. Pre-fix result: FAIL, inflight remained `1` instead of `0` after ~3.2 s.
+- Root Cause: stable-router retired inflight entries only on upstream `end/close/error`. When the downstream response closed mid-pipe, the upstream readable could remain paused after the destination disappeared, preventing its completion event even though the backend action had already finished. The router correctly avoided blind cancellation, but lacked response-drain continuation after downstream disconnect.
+- Prevention/Guard: v0.8.11 tracks downstream closure, unpipes the dead response destination and resumes consuming the upstream response until its real end/close/error. It does not cancel, retry or duplicate the upstream operation. If the downstream closes before upstream headers arrive, the upstream response is drained without writing to the destroyed client response.
+- Regression: focused stable-router suite PASS 6/6 after fix; the formerly failing downstream-disconnect case completes in ~88 ms and inflight returns to zero.
+- Status/Confidence: Root cause CONFIRMED / implementation PASS focused / full release gates pending at record creation.
+- Provenance: `src/stable-router.mjs`, `test/stable-router.test.mjs`, `%LOCALAPPDATA%\ChatGPTRemoteCommander\routing\default.json`, prior runtime `...\runtimes\eb960768...\default\audit.jsonl`, `last-update.json`, updater log.
+- Reuse Targets: v0.8.11 release notes, zero-downtime updater architecture, drain failure prevention, Project Brain, regression catalog.

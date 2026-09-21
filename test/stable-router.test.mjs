@@ -47,6 +47,36 @@ test('stable router switches atomically and drains in-flight request on old back
    fs.rmSync(root,{recursive:true,force:true});
  }
 });
+test('downstream disconnect drains completed upstream response without stranding inflight accounting',async()=>{
+ const root=temp();let router,a;try{
+   let release;const gate=new Promise(r=>release=r);let backendSaw=false;
+   a=http.createServer(async(req,res)=>{
+     backendSaw=true;await gate;res.writeHead(200,{'content-type':'application/octet-stream'});
+     const chunk=Buffer.alloc(65536,1);
+     for(let i=0;i<128;i++){if(!res.write(chunk))await new Promise(resolve=>res.once('drain',resolve));}
+     res.end();
+   });
+   const aPort=await listen(a),listenPort=await freePort(),stateFile=path.join(root,'router.json');
+   writeRouterStateAtomic(stateFile,{schema:1,profile:'default',generation:1,active:{port:aPort,version:'1',commit:'a'.repeat(40),configSha256:'1'.repeat(64)},updatedAt:new Date().toISOString()});
+   router=await startRouter({listenPort,stateFile});
+   const body=Buffer.from(JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/call',params:{name:'run_shell',arguments:{}}}));
+   let clientClosed=false;
+   const client=http.request({host:'127.0.0.1',port:listenPort,path:'/mcp',method:'POST',headers:{'content-type':'application/json','content-length':body.length}},res=>{
+     res.once('data',()=>{clientClosed=true;res.destroy();});
+   });
+   client.on('error',()=>{});client.end(body);
+   for(let i=0;i<100;i++){if(backendSaw&&Number(router.status().inflightByPort[aPort]||0)===1)break;await new Promise(r=>setTimeout(r,10));}
+   assert.equal(backendSaw,true);assert.equal(Number(router.status().inflightByPort[aPort]||0),1);
+   release();
+   for(let i=0;i<200;i++){if(clientClosed&&Number(router.status().inflightByPort[aPort]||0)===0)break;await new Promise(r=>setTimeout(r,10));}
+   assert.equal(clientClosed,true);assert.equal(Number(router.status().inflightByPort[aPort]||0),0);
+ }finally{
+   if(router)await router.close();
+   if(a){a.closeAllConnections?.();await close(a);}
+   fs.rmSync(root,{recursive:true,force:true});
+ }
+});
+
 test('router exposes conservative per-request drain metadata',async()=>{
  const root=temp();let router,a;try{
    let release;const gate=new Promise(r=>release=r);

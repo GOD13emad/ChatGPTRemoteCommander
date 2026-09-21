@@ -133,13 +133,24 @@ export async function startRouter({listenPort,stateFile,runtimeFile=null,host=LO
     let accounted=false;
     const done=()=>{if(accounted)return;accounted=true;finish(port,requestId);};
     const headers=proxyHeaders(req.headers);headers['content-length']=String(body.length);
+    let downstreamClosed=false,upstreamResponse=null;
+    const drainAfterDownstreamClose=()=>{
+      downstreamClosed=true;
+      // Never cancel a potentially mutating upstream request merely because the
+      // MCP client disconnected. Continue consuming the backend response so its
+      // real completion/close event can retire inflight accounting safely.
+      if(upstreamResponse && !upstreamResponse.complete && !upstreamResponse.destroyed){upstreamResponse.unpipe(res);upstreamResponse.resume();}
+    };
+    res.once('close',drainAfterDownstreamClose);
     const upstream=http.request({host:LOOPBACK,port,path:req.url||'/',method:req.method,headers},up=>{
+      upstreamResponse=up;
+      up.once('end',done);up.once('close',done);up.once('error',done);
+      if(downstreamClosed || res.destroyed){up.resume();return;}
       const h=proxyHeaders(up.headers);
       res.writeHead(up.statusCode||502,h);
       up.pipe(res);
-      up.once('end',done);up.once('close',done);up.once('error',done);
     });
-    upstream.once('error',error=>{done();if(!res.headersSent)res.writeHead(502,{'content-type':'application/json'});res.end(JSON.stringify({ok:false,error:'ROUTER_UPSTREAM_UNAVAILABLE',detail:error.code||'ERROR'}));});
+    upstream.once('error',error=>{done();if(!res.destroyed){if(!res.headersSent)res.writeHead(502,{'content-type':'application/json'});res.end(JSON.stringify({ok:false,error:'ROUTER_UPSTREAM_UNAVAILABLE',detail:error.code||'ERROR'}));}});
     upstream.end(body);
   });
   await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(listenPort,host,resolve);});
