@@ -36,7 +36,9 @@ test('auto updater is candidate-first, hardware-gated and commit-point aware',()
     'PROMOTED_DRAIN_PENDING',
     'AUTO_UPDATE_DRAIN_PENDING',
     'DRAIN_CANCEL_SAFE',
-    'Complete-DeferredDrains'
+    'Complete-DeferredDrains',
+    'AUTO_UPDATE_NEWER_CURRENT',
+    'Test-VersionGreater'
   ]) assert.ok(s.includes(marker),marker);
   assert.ok(s.includes('[string[]]$CommandArgs'), 'gate helper must not bind the PowerShell automatic $args variable');
   assert.ok(s.includes('& npm.cmd @CommandArgs'), 'gate helper must pass the intended npm argument array');
@@ -50,6 +52,7 @@ test('auto updater is candidate-first, hardware-gated and commit-point aware',()
   assert.ok(s.includes('PROFILE_DIRECTORY_MISMATCH'), 'profile directory identity must fail closed');
   assert.ok(s.includes("AUTO_UPDATE_DRAIN_PENDING profiles="),'Windows committed cutover must defer unsafe drains instead of throwing');
   assert.ok(s.includes("if($last.ok -and $last.count-gt 0 -and $last.cancellableOnly)"),'Windows may cancel only explicitly classified long-lived requests');
+  assert.ok(s.indexOf('AUTO_UPDATE_NEWER_CURRENT') < s.indexOf("Run-Gate $stage.Dir 'check'"), 'automatic downgrade guard must precede candidate gates/cutover');
   const cutover=s.indexOf('if(Test-Path $t.RoutePath)');
   assert.ok(s.indexOf("Run-Gate $stage.Dir 'check'") < cutover, 'gates must precede cutover');
   assert.ok(s.indexOf('Verify-Tunnels') < s.indexOf('$cutoverCommitted=$true'), 'tunnels verified before commit point');
@@ -112,10 +115,13 @@ test('Linux updater is candidate-first, hardware-gated, routed and rollback-awar
     'AUTO_UPDATE_POST_COMMIT_MAINTENANCE_REQUIRED',
     'AUTO_UPDATE_DRAIN_PENDING',
     'drain_previous_once',
-    'cancellableOnly'
+    'cancellableOnly',
+    'AUTO_UPDATE_NEWER_CURRENT',
+    'version_gt'
   ]) assert.ok(s.includes(marker),marker);
   assert.ok(s.includes("log 'AUTO_UPDATE_DRAIN_PENDING profile=default'"),'Linux committed cutover must defer unsafe drains');
   assert.ok(s.includes('drain_previous_once "$STAGE_DIR" "$OLD_PORT"'), 'Linux drain must use conservative shared policy');
+  assert.ok(s.indexOf('AUTO_UPDATE_NEWER_CURRENT') < s.indexOf('run_gate "$STAGE_DIR" check npm run check'),'Linux automatic downgrade guard must precede gates/cutover');
   const gates=s.indexOf('run_gate "$STAGE_DIR" check npm run check');
   const cutover=s.indexOf('if [[ -f "$ROUTE" ]]');
   const commit=s.indexOf('CUTOVER_COMMITTED=1');

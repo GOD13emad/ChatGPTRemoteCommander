@@ -509,3 +509,24 @@ This file is append-only for substantive project claims, decisions, failures, pr
 - Status/Confidence: Root cause CONFIRMED / implementation PASS focused / full release gates pending at record creation.
 - Provenance: `src/stable-router.mjs`, `test/stable-router.test.mjs`, `%LOCALAPPDATA%\ChatGPTRemoteCommander\routing\default.json`, prior runtime `...\runtimes\eb960768...\default\audit.jsonl`, `last-update.json`, updater log.
 - Reuse Targets: v0.8.11 release notes, zero-downtime updater architecture, drain failure prevention, Project Brain, regression catalog.
+
+
+## E036 — Stable auto-update monotonicity failure → v0.8.12 downgrade prevention
+
+- Date/Context: 2026-09-21, release finalization after v0.8.10/v0.8.11 candidate promotion while public GitHub Latest was still v0.8.9.
+- Failure: the scheduled stable updater resolved the older public v0.8.9 and began a candidate/cutover path even though the active runtime was newer. Timeline evidence in `auto-update.log` shows v0.8.10 maintenance PASS followed immediately by another stable gate sequence and route state later returning to v0.8.9 before the next candidate was applied.
+- Root Cause: both automatic updaters guarded only the exact-current case. They did not compare semantic versions and therefore treated active-newer/staged-older as an ordinary update. Release sequencing (promoting before publishing the matching stable release) exposed the defect.
+- Decision: stable automatic update is monotonic by default. Non-forced updates must never downgrade. Deliberate downgrade/rollback remains possible only through explicit force/exact-ref authority.
+- Prevention: Windows uses a fail-closed `[version]` semantic comparison and records `NEWER_CURRENT` / `AUTO_UPDATE_NEWER_CURRENT`; Linux adds numeric x.y.z comparison and the same no-cutover marker. Guards execute before candidate gates and route mutation.
+- Release-process prevention: for normal stable releases, follow GitHub's immutable-release sequence draft → upload all assets → verify → publish, then promote the exact published commit. This aligns scheduled stable authority with manual production authority.
+- Method evidence: GitHub immutable releases lock the associated tag/assets after publication and GitHub recommends attaching all assets to a draft before publishing. Sources: https://docs.github.com/en/code-security/concepts/supply-chain-security/immutable-releases and https://cli.github.com/manual/gh_release_create.
+- Status/Confidence: Root cause CONFIRMED / implementation pending full regression at record creation.
+- Reuse Targets: v0.8.12 release notes, updater policy, release runbook, failure prevention, Project Brain.
+
+
+### E036 validation delta
+
+- v0.8.12 targeted updater/router regression: PASS 14/14; Git-for-Windows Bash syntax validation of `auto-update-linux.sh`: PASS.
+- Live Windows negative regression while active v0.8.11 > GitHub Latest v0.8.9: `AUTO_UPDATE_NEWER_CURRENT current=0.8.11 latest=0.8.9`, exit 0; both canonical route files remained generation 9 / active v0.8.11 exact commit, proving no downgrade/cutover occurred.
+- Full v0.8.12 source gates: `npm run check` PASS; `npm test` PASS; `npm run audit` PASS; native no-input GUI self-test PASS (X64 INPUT size 40); Linux `bash -n` PASS. Full test run includes 105 core tests and 73 GUI contract tests with zero failures.
+- Status/Confidence: implementation + source regression PASS / high. Publication and exact published-commit production promotion remain OPEN at this point.

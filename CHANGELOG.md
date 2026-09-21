@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.8.12 — 2026-09-21
+
+- Make stable-channel automatic updates monotonic on Windows and Linux: when the installed active version is newer than the latest stable release, unattended update exits with `AUTO_UPDATE_NEWER_CURRENT` instead of downgrading.
+- Preserve explicit operator control: `-Force`/`--force` continues to permit deliberate exact-ref downgrade/testing when requested.
+- Add Windows/Linux updater-contract regressions requiring the downgrade guard to execute before candidate gates or route cutover.
+- Correct release sequencing for this project: publish and verify the immutable stable release before live promotion so the scheduled stable updater and manual promotion share the same authority.
+- Retain the v0.8.11 router disconnect-drain fix and v0.8.10 zero-interference desktop authority unchanged.
+
 ## 0.8.11 — 2026-09-21
 
 - Fix stable-router drain accounting when the downstream MCP client disconnects before a completed upstream response is fully consumed. The router now detaches the closed downstream response and continues consuming the backend response to its real end/close event instead of leaving a permanent inflight entry.

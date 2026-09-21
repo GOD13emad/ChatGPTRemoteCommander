@@ -1,7 +1,7 @@
 # ChatGPT Remote Commander — Project Brain
 
-Brain revision: R7
-Status: CURRENT / v0.8.11 HOTFIX RELEASE CANDIDATE
+Brain revision: R8
+Status: CURRENT / v0.8.12 RELEASE CANDIDATE
 As of: 2026-09-21
 Project root: %USERPROFILE%\source\repos\ChatGPTRemoteCommander
 Public repository: GOD13emad/ChatGPTRemoteCommander
@@ -12,21 +12,16 @@ Deliver a stable Remote Commander release that can run in explicit Full Power on
 
 DoD for the current release requires: an immutable stable release tag and assets; clean-checkout check/test/security gates; scope-appropriate GUI evidence (fresh interactive native E2E when native input behavior changes, otherwise byte-identical prior native baseline + current no-input/native/controller regression); candidate validation on the target machine; promotion of every live profile; canonical-route doctor checks; durable-workflow integrity after schema finalization; tunnel profiles targeting canonical routers; autostart/supervisor continuity; removal of superseded release directories; and a post-promotion updater no-op returning CURRENT.
 
-## Authoritative current change set — v0.8.11 hotfix candidate
+## Authoritative current change set — v0.8.12 release candidate
 
-- Public GitHub `main` was advanced to v0.8.10 commit `076e22c32c589a4ddfb04651e2ae774a2dba8c0a` after all tracked source gates passed.
-- v0.8.10 candidate-first `-NoPromote` validation PASSed on both `default` and `saeed-emad`: 54 tools / 15 GUI tools, FULL_POWER authority preserved, doctor PASS, hardware PASS, workflow shadow/live-store integrity PASS, native no-input self-test PASS.
-- Blue/green v0.8.10 cutover committed both canonical routes to generation 7 and active v0.8.10. The control checkout was promoted to the same exact commit.
-- During default-profile old-backend drain, router inflight accounting retained one completed `run_shell` request after its downstream MCP client disconnected. Old-backend audit independently recorded that action `ok=true` at 2026-09-21T03:37:06Z; no non-console child workload remained; route previous commit/port and runtime marker/PID/profile matched exactly.
-- Recovery was ownership-proven and narrow: only the superseded v0.8.9 default backend PID 25928 was stopped after the completed-operation evidence above. Router old-backend inflight immediately cleared. Official updater maintenance then finalized both workflow stores at schema 2, recycled the supervisor ownership-safely and reported `AUTO_UPDATE_MAINTENANCE_PASS version=0.8.10`.
-- Root cause is reproducible in the stable router: when the downstream response closes, Node stream piping can leave the upstream response paused; because inflight retirement intentionally waits for upstream end/close/error, a completed backend operation can remain permanently counted even though it must not be cancelled or replayed.
-- v0.8.11 fix: on downstream close, the router unpipes the dead downstream destination and resumes consuming the upstream backend response to its real completion. It does not cancel, duplicate or blind-retry the upstream request.
-- Regression evidence: the new production-shaped downstream-disconnect test failed before the fix with `1 !== 0` after ~3.2 s and passes after the fix; full stable-router focused suite is 6/6 PASS.
-- v0.8.10 zero-interference desktop authority remains unchanged in v0.8.11: GUI observe-only default, explicit-current-request takeover, direct-session-only desktop mutation, and no durable-workflow GUI takeover.
-- Native GUI helper files remain unchanged from the accepted baseline, so no foreground/mouse/focus test is introduced by this router-only hotfix.
-- Headless Stockfish and competitive-audit evidence remain in `docs/CHESS_STRESS_BENCHMARK_20260921.md` and `docs/COMPETITIVE_AUDIT_20260921.md`.
-- External GitHub-hosted Actions account/runner availability remains a separate external gate; it is not evidence against the locally reproduced Windows gates.
-- Exact next action: run full v0.8.11 check/test/audit + native no-input gate, commit/push only the hotfix set, candidate-only validate exact commit, promote both profiles, require router source-hash recycle to the new fixed router, verify doctors/tunnels/workflows and CURRENT no-op, then package/hash/publish immutable v0.8.11 and close Brain R7.
+- v0.8.10 zero-interference desktop authority and v0.8.11 router downstream-disconnect drain accounting are retained.
+- Live audit exposed a second lifecycle defect: after an unpublished newer build was promoted, the scheduled stable updater still resolved GitHub Latest (v0.8.9) and was allowed to stage/cut over that older version. This is a monotonicity failure, not a model/runtime failure.
+- Root cause: Windows and Linux updater current-version logic only recognized exact equality with the staged release; it had no guard for active semantic version > staged stable semantic version.
+- v0.8.12 prevention: before candidate gates/cutover, non-forced Windows/Linux stable update compares active and staged semantic versions. If active is newer it exits with `AUTO_UPDATE_NEWER_CURRENT` and does not change routes. Explicit force remains the deliberate rollback/test override.
+- Release-order decision: immutable stable publication must precede live promotion for normal releases. GitHub recommends draft → attach assets → publish for immutable releases; after publication the tag/assets are locked. Live promotion then consumes the same public stable authority.
+- v0.8.11 candidate-only validation PASSed for both profiles before this additional defect was identified. v0.8.12 source validation is now PASS: targeted updater/router 14/14, full check/test/audit, 105 core tests, 73 GUI contract tests, native no-input X64 layout test and Linux Bash syntax. Live non-force downgrade regression also PASSed with `AUTO_UPDATE_NEWER_CURRENT` and unchanged generation-9 routes. Exact-commit candidate validation follows publication.
+- Current public main will be advanced only after v0.8.12 gates pass. Unrelated untracked engineering/GCAD files remain outside release authority and untouched.
+- Exact next action: validate v0.8.12 updater guards and full check/test/audit/native-no-input gates; commit/push exact candidate; create annotated tag and immutable draft-first release with 12 hash-verified assets; verify GitHub digests/attestation; then candidate/promote exact published commit, verify router source hash/doctors/tunnels/workflows, and require final updater no-op/CURRENT.
 
 ## Superseded historical state retained from R5
 

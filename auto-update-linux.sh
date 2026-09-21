@@ -68,6 +68,12 @@ log(){ printf '%s %s\n' "$(date --iso-8601=seconds 2>/dev/null || date)" "$*" >>
 curl_fetch(){ curl --fail --silent --show-error --location --connect-timeout "$CURL_CONNECT_TIMEOUT" --max-time "$CURL_MAX_TIME" "$@"; }
 json_field(){ node "$1/tools/json-field.mjs" --file "$2" --field "$3" 2>/dev/null || true; }
 route_tsv(){ node "$1/tools/router-state.mjs" --state "$2" --tsv; }
+version_gt(){
+  [[ "$1" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ && "$2" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "AUTO_UPDATE_VERSION_COMPARE_INVALID left=$1 right=$2" >&2; return 2; }
+  local IFS=. a1 a2 a3 b1 b2 b3
+  read -r a1 a2 a3 <<< "$1"; read -r b1 b2 b3 <<< "$2"
+  ((10#$a1 > 10#$b1)) || { ((10#$a1 == 10#$b1)) && ((10#$a2 > 10#$b2)); } || { ((10#$a1 == 10#$b1)) && ((10#$a2 == 10#$b2)) && ((10#$a3 > 10#$b3)); }
+}
 
 wait_health(){
   local port="$1" version="$2" sha="$3" profile="$4" i body
@@ -262,7 +268,11 @@ if [[ "$FORCE" != 1 && "$AUTO_ENABLED" != true ]]; then log 'AUTO_UPDATE_DISABLE
 
 ROUTE="$ROUTING_ROOT/default.json"
 if [[ "$FORCE" != 1 && -f "$ROUTE" ]]; then
-  IFS=$'\t' read -r _ _ _ _ ACTIVE_COMMIT _ _ _ < <(route_tsv "$STAGE_DIR" "$ROUTE")
+  IFS=$'\t' read -r _ _ _ ACTIVE_VERSION ACTIVE_COMMIT _ _ _ < <(route_tsv "$STAGE_DIR" "$ROUTE")
+  if version_gt "$ACTIVE_VERSION" "$VERSION"; then
+    log "AUTO_UPDATE_NEWER_CURRENT current=$ACTIVE_VERSION latest=$VERSION"
+    exit 0
+  fi
   if [[ "$ACTIVE_COMMIT" == "$COMMIT" ]]; then
     CONTROL="$(git -C "$INSTALL_DIR" rev-parse HEAD 2>/dev/null || true)"
     PREV_PORT="$(json_field "$STAGE_DIR" "$ROUTE" previous.port)"

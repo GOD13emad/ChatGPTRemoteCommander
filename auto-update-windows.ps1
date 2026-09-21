@@ -82,6 +82,9 @@ function Get-FreePort([System.Collections.Generic.HashSet[int]]$Used){
   }
   throw 'NO_PRIVATE_BACKEND_PORT'
 }
+function Test-VersionGreater([string]$Left,[string]$Right){
+  try{return ([version]$Left -gt [version]$Right)}catch{throw "AUTO_UPDATE_VERSION_COMPARE_INVALID left=$Left right=$Right"}
+}
 function Get-LatestTag {
   if($SourceRef){ return $SourceRef }
   $release=Invoke-RestMethod 'https://api.github.com/repos/GOD13emad/ChatGPTRemoteCommander/releases/latest' -Headers @{'User-Agent'='ChatGPTRemoteCommander-Updater'} -TimeoutSec 20
@@ -399,6 +402,12 @@ try{
   $report.ref=$ref;$report.commit=$stage.Commit;$report.version=$stage.Version
   $currentStatus=$null
   try{$currentStatus=Invoke-Mcp 47831 'system_status'}catch{}
+  if(-not $Force -and $currentStatus -and (Test-VersionGreater ([string]$currentStatus.version) $stage.Version)){
+    $report.status='NEWER_CURRENT';$report.currentVersion=[string]$currentStatus.version;$report.completedAt=(Get-Date).ToUniversalTime().ToString('o')
+    Atomic-Json $ResultFile $report
+    Log "AUTO_UPDATE_NEWER_CURRENT current=$($currentStatus.version) latest=$($stage.Version)"
+    exit 0
+  }
   if(-not $Force -and $currentStatus -and [string]$currentStatus.version-eq $stage.Version){
     $route=Get-RoutePath 'default'
     if(Test-Path $route){
