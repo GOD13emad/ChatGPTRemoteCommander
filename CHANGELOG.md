@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.8.17 — 2026-09-21
+
+- Fix a confirmed Linux updater-lock inheritance defect: long-lived promoted backend and stable-router processes now explicitly close updater lock file descriptor 9 before exec, so the first successful cutover cannot permanently block every later update with `AUTO_UPDATE_ALREADY_RUNNING`.
+- Add updater contract regressions requiring both long-lived Linux processes to close the inherited lock descriptor.
+- This successor release preserves all v0.8.16 Linux lifecycle/package hardening and exists because v0.8.16 was already published immutably before live post-promotion evidence exposed the inherited-lock root cause.
+
 ## 0.8.16 — 2026-09-21
 
 - Fix Linux systemd/crontab supervisor runtime discovery by prepending the installer-managed portable Node runtime before any routed recovery or automatic-update work; generated systemd user units also persist that PATH explicitly.

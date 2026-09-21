@@ -161,6 +161,8 @@ test('Linux updater is candidate-first, hardware-gated, routed and rollback-awar
   assert.ok(s.indexOf('tunnels_ready',cutover)<commit,'Linux tunnel verification precedes commit point');
   assert.ok(s.indexOf('finalize-workflow-schema.mjs',commit)>commit,'Linux schema finalization follows commit point');
   assert.ok(s.includes("systemctl --user restart --no-block chatgpt-remote-commander.service"), 'Linux systemd recycle must be asynchronous so the updater can finish its own cgroup work');
+  assert.ok(s.includes('src/server-v0.3.mjs 9>&-'), 'Linux promoted backend must close inherited updater lock descriptor');
+  assert.ok(s.includes('src/stable-router.mjs --listen-port 47831') && s.includes('9>&- >>"$log_file"'), 'Linux stable router must close inherited updater lock descriptor');
   const finalPromote=s.lastIndexOf('promote_control "$COMMIT" "$REF"');
   const finalCleanup=s.indexOf('cleanup_releases',finalPromote);
   const finalPass=s.indexOf('AUTO_UPDATE_PASS version=',finalCleanup);

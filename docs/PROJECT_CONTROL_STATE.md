@@ -177,3 +177,16 @@ Start the GUI read-performance phase from v0.8.6 without changing the frozen rel
 ## HISTORY — Linux R1 delta
 
 - 2026-09-21: Deep Linux audit converted live failures into four bounded product fixes and regression guards; no unrelated untracked engineering/GCAD files were modified.
+
+## Linux hardening successor — v0.8.17
+
+- Trigger: live v0.8.16 promotion was blocked by `AUTO_UPDATE_ALREADY_RUNNING` despite no updater process.
+- Confirmed blocker: active v0.8.13 backend and stable router inherited and retained fd 9 for `auto-update.lock`; this is why the scheduler/update path remained permanently locked after the first cutover.
+- Change: close fd 9 explicitly in long-lived backend/router spawn paths; add source regression.
+- Authority rule: v0.8.16 remains immutable historical release; correction is a new v0.8.17 release.
+- Current gate: source/full regression -> exact commit Ubuntu validation -> immutable release -> one-time live stale-lock recovery -> v0.8.17 promotion -> second-update/lock-free regression.
+- Exact next action: validate and publish the successor only after all gates pass.
+
+## HISTORY — Linux R2 delta
+
+- 2026-09-21: Live post-publish evidence exposed updater-lock FD inheritance; no blind rerun performed, and successor release path selected instead of mutating immutable v0.8.16.

@@ -636,3 +636,20 @@ This file is append-only for substantive project claims, decisions, failures, pr
 ## HISTORY — E040 delta
 
 - 2026-09-21: Added live Linux audit, four confirmed lifecycle/package defects, rejected pre-commit patch failure, prevention/guards, and v0.8.16 candidate validation state.
+
+## E041 — Linux updater lock inheritance root cause and v0.8.17 successor
+
+- Date/Context: 2026-09-21, live post-publication promotion attempt after immutable v0.8.16 publication.
+- Confirmed symptom: official latest-release installer resolved v0.8.16 but returned `AUTO_UPDATE_ALREADY_RUNNING`; control checkout and canonical route remained v0.8.13.
+- Read-only forensic evidence: no updater process existed, but `/proc/18094/fd/9` (active backend) and `/proc/18177/fd/9` (stable router) both resolved to `~/.local/state/chatgpt-remote-commander/auto-update.lock`; `fuser` independently named those two Node PIDs as holders.
+- Root Cause: `auto-update-linux.sh` opens fd 9 and flocks it, then launches the long-lived backend/router without closing fd 9. Linux descriptor inheritance therefore extended the lock lifetime to those children, making every later updater instance fail its nonblocking flock even though the original updater had exited.
+- Prevention: both `start_backend` and `start_router` explicitly redirect `9>&-` on the long-lived Node process invocation.
+- Guard/Regression: Linux updater contract now asserts the backend and stable-router launch forms close fd 9. Live post-promotion acceptance requires no long-lived process to hold `auto-update.lock` and a second updater check must reach CURRENT/maintenance rather than `AUTO_UPDATE_ALREADY_RUNNING`.
+- Release authority: v0.8.16 was already published with immutable=true before this live defect was exposed; no mutation of that release is allowed. Fix is carried by successor v0.8.17.
+- Status/Confidence: root cause CONFIRMED / high; source fix IMPLEMENTED; clean exact-commit Ubuntu gate, immutable v0.8.17 publication, and live recovery/promotion OPEN at this record point.
+- Reuse Targets: Linux auto-update architecture, FD inheritance guards, release immutability procedure, incident postmortem.
+- Provenance: live `/proc/<pid>/fd/9`, `fuser`, canonical route/update logs on `aliemad-Labtop`; source `auto-update-linux.sh`, `test/auto-update-contract.test.mjs`.
+
+## HISTORY — E041 delta
+
+- 2026-09-21: Converted live stale-lock symptom into descriptor-inheritance root cause; v0.8.17 successor initiated because v0.8.16 is immutable.

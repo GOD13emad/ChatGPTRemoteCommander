@@ -87,7 +87,7 @@ wait_health(){
 start_backend(){
   local project="$1" cfg="$2" log_file="$3"
   mkdir -p "$(dirname "$log_file")"
-  (cd "$project"; REMOTE_COMMANDER_CONFIG="$cfg" nohup node src/server-v0.3.mjs >>"$log_file" 2>&1 & echo $!)
+  (cd "$project"; REMOTE_COMMANDER_CONFIG="$cfg" nohup node src/server-v0.3.mjs 9>&- >>"$log_file" 2>&1 & echo $!)
 }
 stop_pid(){ local pid="$1"; kill "$pid" 2>/dev/null || true; for _ in $(seq 1 40); do kill -0 "$pid" 2>/dev/null || return 0; sleep 0.1; done; kill -9 "$pid" 2>/dev/null || true; }
 stop_owned_candidate(){
@@ -214,7 +214,7 @@ has_superseded_release(){
 
 start_router(){
   local project="$1" route="$2" log_file="$3"
-  (cd "$project"; nohup node src/stable-router.mjs --listen-port 47831 --state-file "$route" --runtime-file "$ROUTING_ROOT/default.runtime.json" >>"$log_file" 2>&1 & echo $!)
+  (cd "$project"; nohup node src/stable-router.mjs --listen-port 47831 --state-file "$route" --runtime-file "$ROUTING_ROOT/default.runtime.json" 9>&- >>"$log_file" 2>&1 & echo $!)
 }
 wait_router(){
   for _ in $(seq 1 80); do
