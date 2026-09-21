@@ -32,7 +32,11 @@ test('auto updater is candidate-first, hardware-gated and commit-point aware',()
     'CANDIDATE_CLEANUP_OWNERSHIP_MISMATCH',
     'SUPERVISOR_RECYCLE_PASS',
     'Cleanup-Releases',
-    'PROMOTED_MAINTENANCE_REQUIRED'
+    'PROMOTED_MAINTENANCE_REQUIRED',
+    'PROMOTED_DRAIN_PENDING',
+    'AUTO_UPDATE_DRAIN_PENDING',
+    'DRAIN_CANCEL_SAFE',
+    'Complete-DeferredDrains'
   ]) assert.ok(s.includes(marker),marker);
   assert.ok(s.includes('[string[]]$CommandArgs'), 'gate helper must not bind the PowerShell automatic $args variable');
   assert.ok(s.includes('& npm.cmd @CommandArgs'), 'gate helper must pass the intended npm argument array');
@@ -41,6 +45,8 @@ test('auto updater is candidate-first, hardware-gated and commit-point aware',()
   assert.ok(s.includes("Join-Path $profileDir.FullName 'instance.json'"), 'target discovery must bind only each profile directory instance record');
   assert.ok(!s.includes("Get-ChildItem -LiteralPath $InstanceRoot -Filter 'instance.json' -Recurse"), 'target discovery must never recurse into instance backups');
   assert.ok(s.includes('PROFILE_DIRECTORY_MISMATCH'), 'profile directory identity must fail closed');
+  assert.ok(s.includes("AUTO_UPDATE_DRAIN_PENDING profiles="),'Windows committed cutover must defer unsafe drains instead of throwing');
+  assert.ok(s.includes("if($last.ok -and $last.count-gt 0 -and $last.cancellableOnly)"),'Windows may cancel only explicitly classified long-lived requests');
   const cutover=s.indexOf('if(Test-Path $t.RoutePath)');
   assert.ok(s.indexOf("Run-Gate $stage.Dir 'check'") < cutover, 'gates must precede cutover');
   assert.ok(s.indexOf('Verify-Tunnels') < s.indexOf('$cutoverCommitted=$true'), 'tunnels verified before commit point');
@@ -50,7 +56,7 @@ test('auto updater is candidate-first, hardware-gated and commit-point aware',()
 
 test('stable router and supervisor preserve canonical ports while backends are versioned',()=>{
   const router=read('src/stable-router.mjs'),sup=read('supervisor-routing.ps1'),main=read('autostart-windows.ps1');
-  for(const marker of ['ROUTER_GENERATION_CONFLICT','inflightByPort','127.0.0.1','active.port'])assert.ok(router.includes(marker),marker);
+  for(const marker of ['ROUTER_GENERATION_CONFLICT','inflightByPort','inflightDetailsByPort','cancellable','subscriptions/listen','127.0.0.1','active.port'])assert.ok(router.includes(marker),marker);
   for(const marker of ['Get-RouteState','Start-RoutedBackend','Start-RouterForRoute','Ensure-RoutedProfile','Start-AutoUpdateIfDue'])assert.ok(sup.includes(marker),marker);
   assert.ok(main.includes(". (Join-Path $Root 'supervisor-routing.ps1')"));
   assert.ok(main.includes("Ensure-RoutedProfile 'default' 47831"));
@@ -100,8 +106,13 @@ test('Linux updater is candidate-first, hardware-gated, routed and rollback-awar
     'promote_control',
     'recycle_supervisor',
     'cleanup_releases',
-    'AUTO_UPDATE_POST_COMMIT_MAINTENANCE_REQUIRED'
+    'AUTO_UPDATE_POST_COMMIT_MAINTENANCE_REQUIRED',
+    'AUTO_UPDATE_DRAIN_PENDING',
+    'drain_previous_once',
+    'cancellableOnly'
   ]) assert.ok(s.includes(marker),marker);
+  assert.ok(s.includes("log 'AUTO_UPDATE_DRAIN_PENDING profile=default'"),'Linux committed cutover must defer unsafe drains');
+  assert.ok(s.includes('drain_previous_once "$STAGE_DIR" "$OLD_PORT"'), 'Linux drain must use conservative shared policy');
   const gates=s.indexOf('run_gate "$STAGE_DIR" check npm run check');
   const cutover=s.indexOf('if [[ -f "$ROUTE" ]]');
   const commit=s.indexOf('CUTOVER_COMMITTED=1');

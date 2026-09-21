@@ -233,19 +233,97 @@ function Stop-OldBackend([object]$Active){
     if($listener -and [int]$listener.OwningProcess-eq [int]$m.pid -and [string]$m.projectDir-eq [string]$Active.projectDir){Stop-Process -Id $m.pid -Force -ErrorAction Stop}
   }catch{Log "OLD_BACKEND_STOP_WARN $($_.Exception.Message)"}
 }
+function Get-CanonicalPortForProfile([string]$Profile){
+  if($Profile-eq 'default'){return 47831}
+  if(-not(Test-ProfileName $Profile)){throw 'DRAIN_PROFILE_INVALID'}
+  $instancePath=Join-Path (Join-Path $InstanceRoot $Profile) 'instance.json'
+  if(-not(Test-Path -LiteralPath $instancePath -PathType Leaf)){throw "DRAIN_INSTANCE_MISSING profile=$Profile"}
+  $instance=Read-Json $instancePath
+  if([string]$instance.profile-ne $Profile -or [int]$instance.mcpPort-lt 1024 -or [int]$instance.mcpPort-gt 65535){throw "DRAIN_INSTANCE_INVALID profile=$Profile"}
+  return [int]$instance.mcpPort
+}
+function Test-OwnedOldBackend([object]$OldActive){
+  if(-not $OldActive -or -not $OldActive.configPath){return $false}
+  try{
+    $cfg=Read-Json ([string]$OldActive.configPath)
+    $marker=[string]$cfg.runtimeState
+    if(-not $marker -or -not(Test-Path -LiteralPath $marker -PathType Leaf)){return $false}
+    $m=Read-Json $marker
+    $listener=Get-NetTCPConnection -State Listen -LocalPort ([int]$OldActive.port) -ErrorAction SilentlyContinue|Select-Object -First 1
+    return [bool]($listener -and [int]$listener.OwningProcess-eq [int]$m.pid -and [string]$m.projectDir-eq [string]$OldActive.projectDir)
+  }catch{return $false}
+}
+function Get-DrainStatus([int]$CanonicalPort,[int]$OldPort){
+  try{
+    $st=Invoke-RestMethod "http://127.0.0.1:$CanonicalPort/router/status" -TimeoutSec 2
+    $n=0
+    if($st.inflightByPort.PSObject.Properties.Name -contains ([string]$OldPort)){$n=[int]$st.inflightByPort.([string]$OldPort)}
+    $details=@()
+    if($st.PSObject.Properties.Name -contains 'inflightDetailsByPort'){
+      $groups=$st.inflightDetailsByPort
+      if($groups -and $groups.PSObject.Properties.Name -contains ([string]$OldPort)){$details=@($groups.([string]$OldPort))}
+    }
+    $cancellableOnly=($n-gt 0 -and $details.Count-eq $n -and @($details|Where-Object{$_.cancellable-ne $true}).Count-eq 0)
+    return [pscustomobject]@{ok=$true;count=$n;cancellableOnly=$cancellableOnly;details=$details}
+  }catch{
+    return [pscustomobject]@{ok=$false;count=-1;cancellableOnly=$false;details=@()}
+  }
+}
 function Drain-Previous([object]$Target,[object]$OldActive){
-  if(-not $OldActive){return}
+  if(-not $OldActive -or -not(Test-OwnedOldBackend $OldActive)){return $true}
   $deadline=(Get-Date).AddSeconds($DrainTimeoutSeconds)
+  $last=[pscustomobject]@{ok=$false;count=-1;cancellableOnly=$false;details=@()}
   while((Get-Date)-lt $deadline){
-    try{
-      $st=Invoke-RestMethod "http://127.0.0.1:$($Target.CanonicalPort)/router/status" -TimeoutSec 2
-      $n=0
-      if($st.inflightByPort.PSObject.Properties.Name -contains ([string]$OldActive.port)){$n=[int]$st.inflightByPort.([string]$OldActive.port)}
-      if($n-eq 0){Stop-OldBackend $OldActive;return}
-    }catch{}
+    $last=Get-DrainStatus $Target.CanonicalPort ([int]$OldActive.port)
+    if($last.ok -and $last.count-eq 0){
+      Stop-OldBackend $OldActive
+      return (-not(Test-OwnedOldBackend $OldActive))
+    }
     Start-Sleep -Milliseconds 250
   }
-  throw "DRAIN_TIMEOUT profile=$($Target.Profile)"
+  $last=Get-DrainStatus $Target.CanonicalPort ([int]$OldActive.port)
+  if($last.ok -and $last.count-gt 0 -and $last.cancellableOnly){
+    Log "DRAIN_CANCEL_SAFE profile=$($Target.Profile) inflight=$($last.count)"
+    Stop-OldBackend $OldActive
+    return (-not(Test-OwnedOldBackend $OldActive))
+  }
+  Log "DRAIN_DEFERRED profile=$($Target.Profile) inflight=$($last.count)"
+  return $false
+}
+function Complete-DeferredDrains {
+  $pending=@()
+  foreach($rf in Get-ChildItem -LiteralPath $RoutingRoot -Filter '*.json' -File -ErrorAction SilentlyContinue){
+    if($rf.Name -like '*.runtime.json'){continue}
+    try{
+      $route=Read-Json $rf.FullName
+      $old=$route.previous
+      if(-not $old -or -not(Test-OwnedOldBackend $old)){continue}
+      $canonical=Get-CanonicalPortForProfile ([string]$route.profile)
+      $st=Get-DrainStatus $canonical ([int]$old.port)
+      if($st.ok -and ($st.count-eq 0 -or $st.cancellableOnly)){
+        if($st.count-gt 0){Log "DRAIN_CANCEL_SAFE profile=$($route.profile) inflight=$($st.count)"}
+        Stop-OldBackend $old
+        if(-not(Test-OwnedOldBackend $old)){continue}
+      }
+      $pending+=[string]$route.profile
+    }catch{
+      Log "DRAIN_RECHECK_WARN profile=$($rf.BaseName) $($_.Exception.Message)"
+      $pending+=[string]$rf.BaseName
+    }
+  }
+  return @($pending)
+}
+function Has-SupersededRelease {
+  $active=@{}
+  foreach($f in Get-ChildItem -LiteralPath $RoutingRoot -Filter '*.json' -File -ErrorAction SilentlyContinue){
+    if($f.Name -like '*.runtime.json'){continue}
+    try{$r=Read-Json $f.FullName;if($r.active.projectDir){$active[[IO.Path]::GetFullPath([string]$r.active.projectDir).ToLowerInvariant()]=$true}}catch{}
+  }
+  foreach($dir in Get-ChildItem -LiteralPath $ReleaseRoot -Directory -ErrorAction SilentlyContinue){
+    $key=[IO.Path]::GetFullPath($dir.FullName).ToLowerInvariant()
+    if(-not $active.ContainsKey($key)){return $true}
+  }
+  return $false
 }
 function Promote-Control([string]$Commit,[string]$Ref){
   $dirty=& git.exe -C $InstallDir status --porcelain --untracked-files=no
@@ -320,7 +398,19 @@ try{
       if([string]$rs.active.commit-eq $stage.Commit){
         $controlHead=''
         try{$controlHead=(& git.exe -C $InstallDir rev-parse HEAD).Trim().ToLowerInvariant()}catch{}
-        if($controlHead-ne $stage.Commit){
+        $pendingDrains=@(Complete-DeferredDrains)
+        if($pendingDrains.Count-gt 0){
+          if($controlHead-ne $stage.Commit){
+            Log "AUTO_UPDATE_MAINTENANCE controlHead=$controlHead target=$($stage.Commit)"
+            Promote-Control $stage.Commit $ref
+          }
+          $report.status='DRAIN_PENDING';$report.pendingDrains=@($pendingDrains);$report.completedAt=(Get-Date).ToUniversalTime().ToString('o')
+          Atomic-Json $ResultFile $report
+          Log "AUTO_UPDATE_DRAIN_PENDING profiles=$($pendingDrains -join ',')"
+          exit 0
+        }
+        $needsMaintenance=($controlHead-ne $stage.Commit -or (Has-SupersededRelease))
+        if($needsMaintenance){
           Log "AUTO_UPDATE_MAINTENANCE controlHead=$controlHead target=$($stage.Commit)"
           foreach($rf in Get-ChildItem -LiteralPath $RoutingRoot -Filter '*.json' -File -ErrorAction SilentlyContinue){
             if($rf.Name -like '*.runtime.json'){continue}
@@ -334,7 +424,7 @@ try{
               }
             }catch{throw}
           }
-          Promote-Control $stage.Commit $ref
+          if($controlHead-ne $stage.Commit){Promote-Control $stage.Commit $ref}
           Recycle-ControlSupervisor
           Cleanup-Releases
           $report.status='MAINTENANCE_REPAIRED';$report.completedAt=(Get-Date).ToUniversalTime().ToString('o')
@@ -488,11 +578,19 @@ try{
   $cutoverCommitted=$true
   $report.cutoverCommittedAt=(Get-Date).ToUniversalTime().ToString('o')
 
+  $pendingDrains=@()
   foreach($c in $candidates){
     if($routeBackups.ContainsKey($c.Profile)){
       $old=($routeBackups[$c.Profile]|ConvertFrom-Json).active
-      Drain-Previous $c.Target $old
+      if(-not(Drain-Previous $c.Target $old)){$pendingDrains+=[string]$c.Profile}
     }
+  }
+  if($pendingDrains.Count-gt 0){
+    Promote-Control $stage.Commit $ref
+    $report.status='PROMOTED_DRAIN_PENDING';$report.pendingDrains=@($pendingDrains);$report.completedAt=(Get-Date).ToUniversalTime().ToString('o')
+    Atomic-Json $ResultFile $report
+    Log "AUTO_UPDATE_DRAIN_PENDING profiles=$($pendingDrains -join ',')"
+    exit 0
   }
 
   foreach($c in $candidates){

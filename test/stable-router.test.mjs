@@ -46,6 +46,27 @@ test('stable router switches atomically and drains in-flight request on old back
    fs.rmSync(root,{recursive:true,force:true});
  }
 });
+test('router exposes conservative per-request drain metadata',async()=>{
+ const root=temp();let router,a;try{
+   let release;const gate=new Promise(r=>release=r);
+   a=http.createServer(async(req,res)=>{await gate;res.writeHead(200,{'content-type':'application/json'});res.end(JSON.stringify({ok:true}));});
+   const aPort=await listen(a),listenPort=await freePort(),stateFile=path.join(root,'router.json');
+   writeRouterStateAtomic(stateFile,{schema:1,profile:'default',generation:1,active:{port:aPort,version:'1',commit:'a'.repeat(40),configSha256:'1'.repeat(64)},updatedAt:new Date().toISOString()});
+   router=await startRouter({listenPort,stateFile});
+   const sub=fetch('http://127.0.0.1:'+listenPort+'/mcp',{method:'POST',headers:{'content-type':'application/json','mcp-method':'subscriptions/listen'},body:JSON.stringify({jsonrpc:'2.0',id:1,method:'subscriptions/listen'})}).then(r=>r.json());
+   const tool=fetch('http://127.0.0.1:'+listenPort+'/mcp',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:2,method:'tools/call',params:{name:'run_shell',arguments:{command:'redacted'}}})}).then(r=>r.json());
+   for(let i=0;i<80;i++){if(Number(router.status().inflightByPort[aPort]||0)===2)break;await new Promise(r=>setTimeout(r,10));}
+   const st=router.status(),details=st.inflightDetailsByPort[aPort];assert.equal(details.length,2);
+   const s=details.find(x=>x.rpcMethod==='subscriptions/listen'),m=details.find(x=>x.rpcMethod==='tools/call');
+   assert.equal(s.cancellable,true);assert.equal(s.path,'/mcp');
+   assert.equal(m.cancellable,false);assert.equal(m.rpcName,'run_shell');
+   assert.ok(!JSON.stringify(details).includes('redacted'),'router status must never retain tool arguments');
+   release();await Promise.all([sub,tool]);
+   for(let i=0;i<50&&Number(router.status().inflightByPort[aPort]||0)>0;i++)await new Promise(r=>setTimeout(r,10));
+   assert.equal(Number(router.status().inflightByPort[aPort]||0),0);assert.deepEqual(router.status().inflightDetailsByPort,{});
+ }finally{if(router)await router.close();if(a)await close(a);fs.rmSync(root,{recursive:true,force:true});}
+});
+
 test('router generation conflict prevents stale cutover',async()=>{
  const root=temp();try{
    const stateFile=path.join(root,'router.json');

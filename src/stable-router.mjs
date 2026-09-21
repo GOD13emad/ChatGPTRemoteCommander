@@ -71,17 +71,51 @@ function proxyHeaders(headers) {
   }
   return out;
 }
+function boundedText(value,max=160) {
+  return typeof value==='string' && value.length>0 && value.length<=max ? value : '';
+}
+function requestMetadata(req,body) {
+  let rpcMethod=boundedText(req.headers['mcp-method'],96),rpcName=boundedText(req.headers['mcp-name'],128);
+  if(!rpcMethod || !rpcName){
+    try{
+      const value=JSON.parse(body.toString('utf8'));
+      if(!rpcMethod)rpcMethod=boundedText(value?.method,96);
+      if(!rpcName)rpcName=boundedText(value?.params?.name,128);
+    }catch{}
+  }
+  let pathname='/';
+  try{pathname=new URL(req.url||'/','http://127.0.0.1').pathname.slice(0,256)||'/';}catch{}
+  const method=boundedText((req.method||'').toUpperCase(),16);
+  const cancellable=rpcMethod==='subscriptions/listen' || (method==='GET' && (pathname==='/mcp' || pathname==='/sse'));
+  return {method,path:pathname,rpcMethod,rpcName,cancellable,startedAt:new Date().toISOString()};
+}
 export async function startRouter({listenPort,stateFile,runtimeFile=null,host=LOOPBACK}) {
   listenPort=validPort(listenPort);stateFile=localFile(stateFile);
   if(host!==LOOPBACK) fail('ROUTER_LOOPBACK_ONLY');
   const inflight=new Map();
+  const inflightDetails=new Map();
+  let requestSequence=0;
   const bump=(port,delta)=>{const n=Math.max(0,(inflight.get(port)||0)+delta);if(n)inflight.set(port,n);else inflight.delete(port);};
+  const begin=(port,meta)=>{
+    const id=++requestSequence;
+    if(!inflightDetails.has(port))inflightDetails.set(port,new Map());
+    inflightDetails.get(port).set(id,{id,...meta});
+    bump(port,1);
+    return id;
+  };
+  const finish=(port,id)=>{
+    const group=inflightDetails.get(port);
+    if(!group || !group.delete(id))return;
+    if(group.size===0)inflightDetails.delete(port);
+    bump(port,-1);
+  };
+  const detailObject=()=>Object.fromEntries([...inflightDetails].map(([port,group])=>[port,[...group.values()]]));
   const server=http.createServer(async(req,res)=>{
     if(req.url==='/router/status' && req.method==='GET'){
       try{
         const state=readRouterState(stateFile);
         res.writeHead(200,{'content-type':'application/json','cache-control':'no-store'});
-        res.end(JSON.stringify({ok:true,router:true,listenPort,state,inflightByPort:Object.fromEntries(inflight)}));
+        res.end(JSON.stringify({ok:true,router:true,listenPort,state,inflightByPort:Object.fromEntries(inflight),inflightDetailsByPort:detailObject()}));
       }catch(error){
         res.writeHead(503,{'content-type':'application/json','cache-control':'no-store'});
         res.end(JSON.stringify({ok:false,router:true,error:error.message}));
@@ -91,9 +125,10 @@ export async function startRouter({listenPort,stateFile,runtimeFile=null,host=LO
     let state,body;
     try{state=readRouterState(stateFile);body=await collect(req);}
     catch(error){res.writeHead(503,{'content-type':'application/json'});res.end(JSON.stringify({ok:false,error:error.message}));return;}
-    const port=state.active.port;bump(port,1);
+    const port=state.active.port;
+    const requestId=begin(port,requestMetadata(req,body));
     let accounted=false;
-    const done=()=>{if(accounted)return;accounted=true;bump(port,-1);};
+    const done=()=>{if(accounted)return;accounted=true;finish(port,requestId);};
     const headers=proxyHeaders(req.headers);headers['content-length']=String(body.length);
     const upstream=http.request({host:LOOPBACK,port,path:req.url||'/',method:req.method,headers},up=>{
       const h=proxyHeaders(up.headers);
@@ -113,7 +148,7 @@ export async function startRouter({listenPort,stateFile,runtimeFile=null,host=LO
   return {
     server,
     close:()=>new Promise(resolve=>server.close(resolve)),
-    status:()=>({listenPort,state:readRouterState(stateFile),inflightByPort:Object.fromEntries(inflight)})
+    status:()=>({listenPort,state:readRouterState(stateFile),inflightByPort:Object.fromEntries(inflight),inflightDetailsByPort:detailObject()})
   };
 }
 function parse(argv){

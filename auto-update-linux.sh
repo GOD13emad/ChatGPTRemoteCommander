@@ -154,6 +154,47 @@ stop_owned_from_config(){
   [[ -z "$expected_project" || "$cwd" == "$(readlink -f "$expected_project")" || "$project" == "$expected_project" ]] || { echo 'owned backend identity mismatch' >&2; return 1; }
   stop_pid "$pid"
 }
+owned_backend_alive(){
+  local helper="$1" cfg="$2" expected_project="${3:-}" marker pid project cwd
+  [[ -f "$cfg" ]] || return 1
+  marker="$(json_field "$helper" "$cfg" runtimeState)"
+  [[ -n "$marker" && -f "$marker" ]] || return 1
+  pid="$(json_field "$helper" "$marker" pid)"
+  project="$(json_field "$helper" "$marker" projectDir)"
+  [[ "$pid" =~ ^[0-9]+$ ]] || return 1
+  kill -0 "$pid" 2>/dev/null || return 1
+  cwd="$(readlink -f "/proc/$pid/cwd" 2>/dev/null || true)"
+  [[ -z "$expected_project" || "$cwd" == "$(readlink -f "$expected_project")" || "$project" == "$expected_project" ]] || return 1
+  return 0
+}
+drain_previous_once(){
+  local helper="$1" old_port="$2" old_cfg="$3" old_project="$4" n detail cancellable
+  owned_backend_alive "$helper" "$old_cfg" "$old_project" || return 0
+  n="$(node "$helper/tools/router-status.mjs" --url http://127.0.0.1:47831/router/status --port "$old_port" 2>/dev/null || true)"
+  [[ "$n" =~ ^[0-9]+$ ]] || return 2
+  if [[ "$n" == 0 ]]; then
+    stop_owned_from_config "$helper" "$old_cfg" "$old_project"
+    owned_backend_alive "$helper" "$old_cfg" "$old_project" && return 2 || return 0
+  fi
+  detail="$(node "$helper/tools/router-status.mjs" --url http://127.0.0.1:47831/router/status --port "$old_port" --json 2>/dev/null || true)"
+  [[ -n "$detail" ]] || return 1
+  cancellable="$(node -e 'try{const x=JSON.parse(process.argv[1]);process.stdout.write(x.cancellableOnly===true?"true":"false")}catch{process.stdout.write("false")}' "$detail")"
+  if [[ "$cancellable" == true ]]; then
+    log "DRAIN_CANCEL_SAFE profile=default inflight=$n"
+    stop_owned_from_config "$helper" "$old_cfg" "$old_project"
+    owned_backend_alive "$helper" "$old_cfg" "$old_project" && return 2 || return 0
+  fi
+  return 1
+}
+has_superseded_release(){
+  local active="" d
+  [[ -f "$ROUTE" ]] && active="$(route_tsv "$STAGE_DIR" "$ROUTE" 2>/dev/null | awk -F '\t' '{print $8}')"
+  for d in "$RELEASE_ROOT"/v*; do
+    [[ -d "$d" ]] || continue
+    [[ -n "$active" && "$(readlink -f "$d")" == "$(readlink -f "$active")" ]] || return 0
+  done
+  return 1
+}
 
 start_router(){
   local project="$1" route="$2" log_file="$3"
@@ -224,10 +265,18 @@ if [[ "$FORCE" != 1 && -f "$ROUTE" ]]; then
   IFS=$'\t' read -r _ _ _ _ ACTIVE_COMMIT _ _ _ < <(route_tsv "$STAGE_DIR" "$ROUTE")
   if [[ "$ACTIVE_COMMIT" == "$COMMIT" ]]; then
     CONTROL="$(git -C "$INSTALL_DIR" rev-parse HEAD 2>/dev/null || true)"
-    if [[ "$CONTROL" != "$COMMIT" ]]; then
+    PREV_PORT="$(json_field "$STAGE_DIR" "$ROUTE" previous.port)"
+    PREV_CFG="$(json_field "$STAGE_DIR" "$ROUTE" previous.configPath)"
+    PREV_PROJECT="$(json_field "$STAGE_DIR" "$ROUTE" previous.projectDir)"
+    if [[ -n "$PREV_PORT" && -n "$PREV_CFG" ]] && ! drain_previous_once "$STAGE_DIR" "$PREV_PORT" "$PREV_CFG" "$PREV_PROJECT"; then
+      [[ "$CONTROL" == "$COMMIT" ]] || promote_control "$COMMIT" "$REF"
+      log 'AUTO_UPDATE_DRAIN_PENDING profile=default'
+      exit 0
+    fi
+    if [[ "$CONTROL" != "$COMMIT" ]] || has_superseded_release; then
       LIVE_WF="$(json_field "$STAGE_DIR" "$ACTIVE_CFG" durableWorkflows.directory)"
       [[ -z "$LIVE_WF" ]] || node "$STAGE_DIR/tools/finalize-workflow-schema.mjs" --directory "$LIVE_WF"
-      promote_control "$COMMIT" "$REF"
+      [[ "$CONTROL" == "$COMMIT" ]] || promote_control "$COMMIT" "$REF"
       recycle_supervisor
       cleanup_releases
       log "AUTO_UPDATE_MAINTENANCE_PASS version=$VERSION"
@@ -339,9 +388,11 @@ if [[ -n "$OLD_PORT" ]]; then
     [[ "$n" == 0 ]] && break
     sleep 0.25
   done
-  n="$(node "$STAGE_DIR/tools/router-status.mjs" --url http://127.0.0.1:47831/router/status --port "$OLD_PORT")"
-  [[ "$n" == 0 ]] || { log 'DRAIN_TIMEOUT_POST_COMMIT'; exit 3; }
-  [[ -z "$OLD_CFG" ]] || stop_owned_from_config "$STAGE_DIR" "$OLD_CFG" "$OLD_PROJECT"
+  if ! drain_previous_once "$STAGE_DIR" "$OLD_PORT" "$OLD_CFG" "$OLD_PROJECT"; then
+    promote_control "$COMMIT" "$REF"
+    log 'AUTO_UPDATE_DRAIN_PENDING profile=default'
+    exit 0
+  fi
 fi
 
 node "$STAGE_DIR/tools/finalize-workflow-schema.mjs" --directory "$LIVE_WF"

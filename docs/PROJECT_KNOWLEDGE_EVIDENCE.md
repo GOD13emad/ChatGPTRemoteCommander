@@ -355,3 +355,46 @@ This file is append-only for substantive project claims, decisions, failures, pr
   - security audit log SHA-256 `17181ee897aebe337b4429d0287304eb6545f1235906f2c6a6aa328cef4c62d2`.
 - Status/Confidence: implementation PASS / high on the current Windows source tree; release/promotion still pending.
 - Reuse targets: performance claims, release notes, GUI architecture, failure prevention.
+
+## E026 — Post-cutover drain failure analysis and recovery design
+
+- Date/Context: 2026-09-21, follow-up to the v0.8.6 `DRAIN_TIMEOUT profile=saeed-emad` incident.
+- Confirmed mechanism: route cutover had already committed to the new backend, while the router still tracked one old-backend request. The updater treated any nonzero old in-flight count after 60 seconds as an exception, which moved the run into `PROMOTED_MAINTENANCE_REQUIRED` and left control checkout/schema cleanup for a later manual recovery.
+- Safety constraint: an arbitrary long-running request cannot be force-killed after a timeout because it may be a mutating tool call with an uncertain external side effect. Therefore “just increase timeout” or “always kill the old backend” is rejected.
+- Protocol evidence:
+  - MCP 2026-07-28 Streamable HTTP permits request-scoped SSE responses and defines `subscriptions/listen` as a long-lived change-notification request. It also defines closing an SSE response stream as cancellation of that request. Source: https://github.com/modelcontextprotocol/modelcontextprotocol/blob/main/docs/specification/2026-07-28/basic/transports/streamable-http.mdx
+  - The same specification removed the standalone GET stream for the 2026-07-28 transport but documents backward compatibility with older Streamable HTTP / HTTP+SSE transports, where a GET can hold a long-lived SSE stream.
+  - Node HTTP exposes connection/request lifecycle and supports explicit connection closing, but generic connection termination alone does not prove application-level safety. Source: https://nodejs.org/api/http.html
+- Minimum-sufficient design:
+  1. Extend router status with bounded per-request metadata (`method`, path, JSON-RPC method/name, start time) and a conservative `cancellable` flag.
+  2. Mark only known long-lived transport requests as automatically cancellable: `subscriptions/listen`, plus legacy GET stream endpoints. Ordinary `tools/call` and unknown requests remain non-cancellable.
+  3. On drain timeout, if every old in-flight request is proven cancellable, stop the ownership-proven old backend and continue maintenance.
+  4. Otherwise do **not** throw after committed cutover. Promote the control checkout, record a drain-pending state, retain the old release/schema compatibility, and let later updater runs re-check. Once the old request naturally ends, finalize schema/recycle/cleanup automatically.
+  5. Keep rollback only for pre-commit failures; never roll back a committed route merely because cleanup is pending.
+- Why not more complexity: no new service or database is required. Existing route state, router status, ownership markers and updater loop are sufficient.
+- Status/Confidence: design Accepted for implementation / high; exact v0.8.6 incident request type remains Unverified, so the migration from the old router must use the conservative deferred path rather than assuming it was SSE.
+- Reuse targets: updater architecture, zero-downtime semantics, incident prevention, release validation.
+
+## E027 — Deferred drain implementation and regression result
+
+- Date/Context: 2026-09-21, zero-downtime updater failure-prevention change set.
+- Router now retains only bounded, non-argument request metadata for in-flight requests: request id, HTTP method, pathname, JSON-RPC method/name, cancellable flag and start time. Tool arguments/body content are not retained; regression explicitly verifies that a sentinel argument string never appears in router status.
+- Conservative cancellation classification is implemented: `subscriptions/listen` and legacy GET `/mcp` or `/sse` streams are cancellable; ordinary `tools/call` is not.
+- `router-status.mjs --json` returns count, bounded details and `cancellableOnly`; the old numeric interface remains unchanged.
+- Windows updater behavior after committed cutover:
+  - waits for the configured drain window;
+  - if only proven cancellable long-lived requests remain, stops only the ownership-proven old backend and continues;
+  - otherwise records `PROMOTED_DRAIN_PENDING` / `DRAIN_PENDING`, promotes control checkout, preserves old release/schema compatibility and exits successfully without rollback or blind process kill;
+  - later scheduled updater runs re-check old route state and automatically finalize schema, recycle supervisor and clean superseded releases once the old work is gone.
+- Linux updater now applies the same conservative policy for the default routed profile.
+- Regression evidence:
+  - stable-router + updater contract tests PASS, including simultaneous `subscriptions/listen` (cancellable) and `tools/call` (non-cancellable) metadata and argument-redaction assertion;
+  - Windows updater parses successfully; Linux updater passes `bash -n` in Ubuntu;
+  - full `npm run check`, `npm test`, and security audit PASS.
+- Provenance:
+  - check log SHA-256 `50d6ea575a75e77c8f4c400ede19acc699738fd88d2404f54ab3edc21d1e017b`;
+  - test log SHA-256 `73594d3280152659fc50f02a8e2e887b22317ea2f742db5d4c906c71546874b8`;
+  - security audit SHA-256 `17181ee897aebe337b4429d0287304eb6545f1235906f2c6a6aa328cef4c62d2`.
+- Validation limitation: the original v0.8.6 router did not expose request details, so the first upgrade from v0.8.6 must conservatively defer any still-busy old request rather than retroactively classifying it. After the new router is active, future upgrades gain cancellable-request classification.
+- Status/Confidence: implementation/regression PASS / high; full clean cross-platform release validation and live promotion pending.
+- Reuse targets: updater release notes, zero-downtime design, incident regression, operations handbook.
