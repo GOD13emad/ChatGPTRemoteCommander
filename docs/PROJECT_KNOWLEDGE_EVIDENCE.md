@@ -593,3 +593,25 @@ This file is append-only for substantive project claims, decisions, failures, pr
 - Tunnel-client supply chain: official OpenAI tunnel-client v0.0.14 windows-amd64 installed into the isolated checkout after upstream SHA256SUMS verification; recorded executable SHA-256 `fcc85a69ec0ad82518e4f8964f60c45e31787957782a0fc9c1b0c44e82d61b9b`.
 - No persistent sandbox server/tunnel process was started; process inspection showed only the transient read-only audit commands referencing the acceptance path.
 - Status/Confidence: fresh installer acceptance PASS / high. Release commit may add only evidence/docs after this tested code commit; any executable/installer-byte change requires rerun.
+
+
+## E039 — Exact-bundle acceptance found Fetch blocked-port test flake → v0.8.15
+
+- Date/Context: 2026-09-21, final installer-bundle acceptance for unpublished v0.8.14 candidate tag, exact commit `36fbaeddad1c80abaacfc9532b5c057558d9cf7c`.
+- What passed before failure: wrapper pinned `v0.8.14` and ExpectedCommit correctly; fresh checkout HEAD matched; official OpenAI tunnel-client v0.0.14 downloaded and SHA256SUMS-verified; capability migration produced explicit persistent FULL_POWER + GUI with permanent delete; no production server was started.
+- Failure: fresh checkout `npm run check` failed only in `stable-router.test.mjs` test 'upstream failure cannot underflow inflight accounting' with Node `TypeError: fetch failed`, cause `Error: bad port`.
+- Root Cause: `freePort()` obtains an arbitrary OS-assigned free TCP port. Tests then used global Fetch to contact the local router. Fetch intentionally blocks a standards-defined set of ports regardless of OS availability, so a free port such as 5060 can produce a client-side failure before the router is contacted.
+- Prevention: local stable-router tests now use a small `node:http` request helper for loopback traffic. This removes browser Fetch blocked-port policy from a Node HTTP-router unit/integration test and better matches the implementation transport. Runtime router source is unchanged.
+- Regression evidence: corrected stable-router suite passed 10 consecutive runs. Full v0.8.15 gates remain required after version/docs update.
+- Release decision: no v0.8.14 GitHub Release was published. The v0.8.14 tag is a failed unpublished candidate and is superseded by v0.8.15; all v0.8.14 candidate-cleanup and installer hardening carries forward.
+- Confidence/Status: root cause CONFIRMED / focused regression PASS / final release gates OPEN at record creation.
+- Reuse Targets: release acceptance, installer QA, test-harness reliability, Project Brain, final report.
+
+
+### E039 validation delta — full v0.8.15 gates
+
+- Corrected stable-router suite: 10 consecutive focused runs PASS before the full suite.
+- Full v0.8.15 validation PASS on Windows target: `npm run check`, `npm test`, `npm run audit`, native no-input GUI self-test and Linux Bash syntax check all returned zero.
+- Core suite: 106/106 PASS; GUI contract/helper/HTTP suite: 73/73 PASS; security audit PASS with no credential/developer-path finding.
+- No product/router/GUI runtime source changed for E039 beyond version metadata; the behavioral delta is confined to test/stable-router.test.mjs using node:http instead of Fetch.
+- Status/Confidence: source release candidate PASS / high. Exact-tag installer-bundle acceptance, immutable publication and live promotion remain OPEN at this point.

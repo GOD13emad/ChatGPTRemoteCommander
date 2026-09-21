@@ -26,7 +26,7 @@ test('parseArgs enforces timeout bounds and known arguments', () => {
   assert.equal(parsed.json, true);
 });
 
-async function withMockServer({ version = '0.8.14', deviceName = 'device-a', tools, configSha256 = null }, fn) {
+async function withMockServer({ version = '0.8.15', deviceName = 'device-a', tools, configSha256 = null }, fn) {
   const toolNames = tools || ['system_status', 'list_directory', 'read_text', 'write_text', 'run_project_command', 'gui_status'];
   const server = http.createServer(async (req, res) => {
     res.setHeader('content-type', 'application/json');
@@ -81,7 +81,7 @@ test('runDoctor passes healthy matching server and config', async () => {
     await writeFile(configPath, raw);
     const sha = createHash('sha256').update(raw).digest('hex');
     await withMockServer({ configSha256: sha }, async (endpoint) => {
-      const report = await runDoctor({ endpoint, expectedVersion: '0.8.14', expectedDevice: 'device-a', configPath, timeoutMs: 3000 });
+      const report = await runDoctor({ endpoint, expectedVersion: '0.8.15', expectedDevice: 'device-a', configPath, timeoutMs: 3000 });
       assert.equal(report.ok, true);
       assert.equal(report.tools.count, 6);
       assert.equal(report.tools.guiCount, 1);

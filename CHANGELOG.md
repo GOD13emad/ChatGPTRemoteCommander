@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.8.15 — 2026-09-21
+
+- Fix a nondeterministic release/installer test-harness failure caused by Node Fetch blocked-port policy. The stable-router tests previously chose any OS-assigned free port and then accessed the router through `fetch`; valid TCP ports such as 5060 can be rejected as unsafe by Fetch before the request reaches the local router.
+- Replace local router test traffic with `node:http` requests, matching the transport under test and removing browser-style blocked-port behavior from the harness. Product/router runtime code is unchanged by this fix.
+- Add repeated focused validation: the stable-router suite passed 10 consecutive runs after the harness correction.
+- Supersede the unpublished v0.8.14 candidate tag; no v0.8.14 GitHub release was published. All v0.8.14 candidate-cleanup/installer hardening is carried forward unchanged.
+- Retain v0.8.13 supervisor continuity, v0.8.12 monotonic updates, v0.8.11 response-drain accounting and v0.8.10 zero-interference desktop authority.
+
 ## 0.8.14 — 2026-09-21
 
 - Fix pre-cutover candidate leakage on Windows and Linux. Every spawned candidate is ownership-tracked immediately, and validation failures clean only the exact owned candidate before returning failure.

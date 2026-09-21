@@ -10,6 +10,19 @@ import { startRouter, writeRouterStateAtomic } from '../src/stable-router.mjs';
 function temp(){return fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(),'rc-router-')));}
 function listen(server){return new Promise((resolve,reject)=>{server.once('error',reject);server.listen(0,'127.0.0.1',()=>resolve(server.address().port));});}
 function close(server){return new Promise(resolve=>server.close(resolve));}
+function requestLocal(port,pathname,options={}){
+ return new Promise((resolve,reject)=>{
+  const req=http.request({host:'127.0.0.1',port,path:pathname,method:options.method||'GET',headers:options.headers||{}},res=>{
+   const chunks=[];res.on('data',chunk=>chunks.push(Buffer.from(chunk)));res.once('error',reject);res.once('end',()=>{
+    const body=Buffer.concat(chunks);
+    resolve({status:res.statusCode||0,text:async()=>body.toString('utf8'),json:async()=>JSON.parse(body.toString('utf8'))});
+   });
+  });
+  req.once('error',reject);
+  if(options.body!==undefined)req.write(options.body);
+  req.end();
+ });
+}
 async function freePort(){
  const s=http.createServer();const p=await listen(s);await close(s);return p;
 }
@@ -26,14 +39,14 @@ test('stable router switches atomically and drains in-flight request on old back
    const baseState={schema:1,profile:'default',generation:1,active:{port:aPort,version:'1.0.0',commit:'a'.repeat(40),configSha256:'1'.repeat(64)},updatedAt:new Date().toISOString()};
    writeRouterStateAtomic(stateFile,baseState);
    router=await startRouter({listenPort,stateFile});
-   let r=await fetch('http://127.0.0.1:'+listenPort+'/mcp');assert.equal((await r.json()).backend,'A');
+   let r=await requestLocal(listenPort,'/mcp');assert.equal((await r.json()).backend,'A');
 
-   const slow=fetch('http://127.0.0.1:'+listenPort+'/slow').then(x=>x.text());
+   const slow=requestLocal(listenPort,'/slow').then(x=>x.text());
    for(let i=0;i<50;i++){const st=router.status();if(Number(st.inflightByPort[aPort]||0)>0)break;await new Promise(r=>setTimeout(r,10));}
    assert.equal(Number(router.status().inflightByPort[aPort]||0),1);
 
    writeRouterStateAtomic(stateFile,{...baseState,generation:2,active:{port:bPort,version:'2.0.0',commit:'b'.repeat(40),configSha256:'2'.repeat(64)},updatedAt:new Date().toISOString()},1);
-   r=await fetch('http://127.0.0.1:'+listenPort+'/mcp');assert.equal((await r.json()).backend,'B');
+   r=await requestLocal(listenPort,'/mcp');assert.equal((await r.json()).backend,'B');
    assert.equal(Number(router.status().inflightByPort[aPort]||0),1);
 
    releaseA();assert.equal(await slow,'A-slow');
@@ -84,8 +97,8 @@ test('router exposes conservative per-request drain metadata',async()=>{
    const aPort=await listen(a),listenPort=await freePort(),stateFile=path.join(root,'router.json');
    writeRouterStateAtomic(stateFile,{schema:1,profile:'default',generation:1,active:{port:aPort,version:'1',commit:'a'.repeat(40),configSha256:'1'.repeat(64)},updatedAt:new Date().toISOString()});
    router=await startRouter({listenPort,stateFile});
-   const sub=fetch('http://127.0.0.1:'+listenPort+'/mcp',{method:'POST',headers:{'content-type':'application/json','mcp-method':'subscriptions/listen'},body:JSON.stringify({jsonrpc:'2.0',id:1,method:'subscriptions/listen'})}).then(r=>r.json());
-   const tool=fetch('http://127.0.0.1:'+listenPort+'/mcp',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:2,method:'tools/call',params:{name:'run_shell',arguments:{command:'redacted'}}})}).then(r=>r.json());
+   const sub=requestLocal(listenPort,'/mcp',{method:'POST',headers:{'content-type':'application/json','mcp-method':'subscriptions/listen'},body:JSON.stringify({jsonrpc:'2.0',id:1,method:'subscriptions/listen'})}).then(r=>r.json());
+   const tool=requestLocal(listenPort,'/mcp',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:2,method:'tools/call',params:{name:'run_shell',arguments:{command:'redacted'}}})}).then(r=>r.json());
    for(let i=0;i<80;i++){if(Number(router.status().inflightByPort[aPort]||0)===2)break;await new Promise(r=>setTimeout(r,10));}
    const st=router.status(),details=st.inflightDetailsByPort[aPort];assert.equal(details.length,2);
    const s=details.find(x=>x.rpcMethod==='subscriptions/listen'),m=details.find(x=>x.rpcMethod==='tools/call');
@@ -105,7 +118,7 @@ test('router status and runtime bind the exact loaded source hash',async()=>{
    router=await startRouter({listenPort,stateFile,runtimeFile});
    const expected=createHash('sha256').update(fs.readFileSync(new URL('../src/stable-router.mjs',import.meta.url))).digest('hex');
    assert.equal(router.status().sourceSha256,expected);
-   const status=await (await fetch('http://127.0.0.1:'+listenPort+'/router/status')).json();
+   const status=await (await requestLocal(listenPort,'/router/status')).json();
    assert.equal(status.sourceSha256,expected);
    const runtime=JSON.parse(fs.readFileSync(runtimeFile,'utf8'));
    assert.equal(runtime.sourceSha256,expected);
@@ -130,7 +143,7 @@ test('upstream failure cannot underflow inflight accounting',async()=>{
    const stateFile=path.join(root,'router.json');
    writeRouterStateAtomic(stateFile,{schema:1,profile:'default',generation:1,active:{port:dead,version:'1',commit:'a'.repeat(40),configSha256:'1'.repeat(64)},updatedAt:new Date().toISOString()});
    router=await startRouter({listenPort,stateFile});
-   const r=await fetch('http://127.0.0.1:'+listenPort+'/mcp');
+   const r=await requestLocal(listenPort,'/mcp');
    assert.equal(r.status,502);
    for(let i=0;i<20&&Number(router.status().inflightByPort[dead]||0)!==0;i++)await new Promise(r=>setTimeout(r,10));
    assert.equal(Number(router.status().inflightByPort[dead]||0),0);

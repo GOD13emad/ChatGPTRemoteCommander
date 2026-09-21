@@ -1,7 +1,7 @@
 # ChatGPT Remote Commander — Project Brain
 
-Brain revision: R10
-Status: CURRENT / v0.8.14 RELEASE CANDIDATE
+Brain revision: R11
+Status: CURRENT / v0.8.15 RELEASE CANDIDATE
 As of: 2026-09-21
 Project root: %USERPROFILE%\source\repos\ChatGPTRemoteCommander
 Public repository: GOD13emad/ChatGPTRemoteCommander
@@ -12,19 +12,18 @@ Deliver a stable Remote Commander release that can run in explicit Full Power on
 
 DoD for the current release requires: an immutable stable release tag and assets; clean-checkout check/test/security gates; scope-appropriate GUI evidence (fresh interactive native E2E when native input behavior changes, otherwise byte-identical prior native baseline + current no-input/native/controller regression); candidate validation on the target machine; promotion of every live profile; canonical-route doctor checks; durable-workflow integrity after schema finalization; tunnel profiles targeting canonical routers; autostart/supervisor continuity; removal of superseded release directories; and a post-promotion updater no-op returning CURRENT.
 
-## Authoritative current change set — v0.8.14 release candidate
+## Authoritative current change set — v0.8.15 release candidate
 
-- Upstream authority at change-set start: immutable GitHub Latest `v0.8.13`, tag peeled to commit `2629149ce577afc91469315c89685f9bbfa01459`; local `main == origin/main`.
-- All accepted protections remain cumulative: v0.8.10 zero-interference desktop takeover boundary; v0.8.11 stable-router downstream-disconnect drain accounting; v0.8.12 monotonic no-downgrade stable updates; v0.8.13 thresholded fail-closed supervisor recovery and no healthy-router source-drift recycle.
-- Exact-public v0.8.12 validation exposed two distinct candidate-lifecycle failures before cutover: shared `gui_status` contention (`GUI_NATIVE_BUSY`) and a pre-registration `saeed-emad` candidate orphan that later caused `WORKFLOW_SHADOW_COPY_FAIL`.
-- The orphan was recovered narrowly with exact ownership evidence: runtime marker, PID 14380, port 48837, profile `saeed-emad`, v0.8.12 project directory and proof that the canonical active route used a different port. No active backend was stopped.
-- v0.8.14 Windows prevention: `$currentCandidate` is assigned immediately after each candidate spawn. `Stop-OwnedCandidate` requires listener + runtime marker + PID + port + profile agreement; pre-cutover catch cleans current and fully registered candidates. Candidate GUI readiness uses native no-input self-test plus `system_status.guiControl.backendSupported/enabled`, not shared interactive `gui_status`.
-- v0.8.14 Linux prevention: validation cleanup trap is installed before candidate spawn and `stop_owned_candidate` requires live process cwd to equal the staged release directory before termination.
-- v0.8.13 supervisor continuity code and behavioral regressions remain authoritative and are not weakened by this change set.
-- Installer DoD: pinned release/source commit, candidate-first existing-install update, fresh isolated install acceptance, Full Power + GUI explicit opt-in with all known/new capabilities enabled unless opted out, official tunnel-client checksum verification, plugin/setup payloads, and a release-specific installer ZIP with SHA-256 manifest.
-- GUI input code is unchanged; no mouse/keyboard/focus takeover is authorized or required for this release. Native no-input/self-test plus prior accepted interactive baseline are the proportional GUI evidence.
-- External GitHub-hosted Actions availability remains a separate account/runner gate; local Windows + Linux syntax/contract + isolated installer acceptance are authoritative for this release if hosted jobs execute zero steps.
-- Source gates are PASS: 106/106 core tests, 73/73 GUI contract tests, check/test/audit, native no-input X64 layout and Linux Bash syntax. Fresh isolated Full Power + GUI installer acceptance is also PASS on pushed code commit `a8ed68c...`, including official tunnel-client checksum verification and exact HEAD validation. This evidence update changes docs only; executable/installer bytes remain those already accepted. Exact next action: push the evidence-only closeout commit, create and verify immutable draft-first v0.8.14 including installer bundle, publish, candidate-only validate both production profiles, promote/maintain, verify canonical routes/router source/tunnels/workflows/supervisor/orphans, require final stable updater `CURRENT`, then close R10 as FINAL.
+- Accepted upstream product authority remains cumulative through v0.8.13: zero-interference desktop authority (v0.8.10), stable-router downstream response-drain accounting (v0.8.11), monotonic no-downgrade updater (v0.8.12), and fail-closed supervisor continuity (v0.8.13).
+- v0.8.14 candidate added ownership-tracked candidate cleanup on Windows/Linux, removed unattended dependence on shared interactive `gui_status`, and introduced a checksum-manifested Full Power installer bundle. Its source gates and first isolated installer acceptance on code commit `a8ed68c...` passed.
+- During exact-tag installer-bundle acceptance from final v0.8.14 tag/commit `36fbaed...`, fresh install correctly pinned the tag, installed verified tunnel-client and enabled Full Power + GUI, but its built-in `npm run check` exposed a nondeterministic test-harness failure before publication: `test/stable-router.test.mjs` received Node `fetch failed / bad port`.
+- Root cause: test helper `freePort()` accepts any free TCP port allocated by the OS, while Node Fetch applies browser Fetch blocked-port policy and can reject otherwise valid ports such as 5060 before any local request is sent. This is test infrastructure, not router runtime behavior.
+- v0.8.15 replaces local stable-router test traffic with `node:http`, matching the transport under test and eliminating Fetch blocked-port semantics. Product/router runtime code is unchanged by this fix.
+- Focused corrected stable-router suite passed 10 consecutive runs before full v0.8.15 release gates.
+- v0.8.14 was never published as a GitHub Release; its pushed candidate tag is superseded and must not be treated as stable authority. v0.8.15 carries all v0.8.14 hardening forward.
+- Installer DoD remains: exact release/commit pin, candidate-first upgrade, isolated fresh Full Power + GUI acceptance from the final tag, official tunnel-client SHA-256 verification, installer bundle internal manifest, release SHA256SUMS verification, and no StartServer during acceptance so production routes/desktop remain untouched.
+- GUI input implementation is unchanged; no mouse/keyboard/focus takeover is authorized or required.
+- Full v0.8.15 source gates are PASS: stable-router 10x focused repetition, 106/106 core, 73/73 GUI, check/test/audit, native no-input X64 layout and Linux Bash syntax. Exact next action: commit/push if origin/main still matches current authority; retire the unpublished v0.8.14 candidate tag; create v0.8.15 tag; build and execute exact-tag installer bundle in a fresh sandbox; create draft release, verify all local/remote digests, publish immutable, candidate-only validate both production profiles, promote/maintain, verify routes/router source/tunnels/workflows/supervisor/orphan absence, require final stable updater `CURRENT`, then close R11 as FINAL in a docs-only post-release evidence commit.
 
 ## Superseded historical state retained from R5
 

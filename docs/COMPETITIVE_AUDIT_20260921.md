@@ -1,7 +1,7 @@
 # Competitive Audit — 2026-09-21
 
 ## Scope
-Evidence-first comparison of ChatGPT Remote Commander v0.8.14 candidate with adjacent agent/execution products. The products are not identical: Remote Commander is primarily an MCP execution/control layer for a real machine, while Work, Codex, Claude Code, Cursor, GitHub Copilot agents and Open Interpreter include their own agent/model/harness surfaces.
+Evidence-first comparison of ChatGPT Remote Commander v0.8.15 candidate with adjacent agent/execution products. The products are not identical: Remote Commander is primarily an MCP execution/control layer for a real machine, while Work, Codex, Claude Code, Cursor, GitHub Copilot agents and Open Interpreter include their own agent/model/harness surfaces.
 
 ## Current external evidence
 - ChatGPT Work: longer research/analysis/deliverable tasks, connected apps/files, scheduled tasks, and a separate cloud browser/computer that can continue after the user's local device is closed. Sources: https://help.openai.com/en/articles/20001275/ and https://help.openai.com/en/articles/20001280-using-cloud-browser-in-chatgpt
