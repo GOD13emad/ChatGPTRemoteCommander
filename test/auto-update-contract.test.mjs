@@ -63,9 +63,30 @@ test('auto updater is candidate-first, hardware-gated and commit-point aware',()
 test('stable router and supervisor preserve canonical ports while backends are versioned',()=>{
   const router=read('src/stable-router.mjs'),sup=read('supervisor-routing.ps1'),main=read('autostart-windows.ps1');
   for(const marker of ['ROUTER_GENERATION_CONFLICT','inflightByPort','inflightDetailsByPort','cancellable','subscriptions/listen','127.0.0.1','active.port'])assert.ok(router.includes(marker),marker);
-  for(const marker of ['Get-RouteState','Start-RoutedBackend','Start-RouterForRoute','Ensure-RoutedProfile','Start-AutoUpdateIfDue','Stop-OwnedRouter','ROUTER_RECYCLE_SOURCE_DRIFT','Get-FileHash','sourceSha256'])assert.ok(sup.includes(marker),marker);
+  for(const marker of [
+    'Get-RouteState','Start-RoutedBackend','Start-RouterForRoute','Ensure-RoutedProfile','Start-AutoUpdateIfDue',
+    'Get-RouterStatusSafe','Get-RouterBackendActivity','Get-RoutedBackendRecoveryDecision',
+    'RoutedBackendHealthFailureThreshold','DEFER_BUSY','DEFER_TRANSIENT','DEFER_UNPROVEN',
+    'ROUTED_BACKEND_RECYCLE_$decision','ROUTED_BACKEND_RECYCLE_CONFIRMED',
+    'ROUTER_SOURCE_ACTIVATION_DEFERRED','Get-FileHash','sourceSha256'
+  ])assert.ok(sup.includes(marker),marker);
+  assert.ok(sup.includes('Start-RoutedBackend $route $CanonicalPort'),'backend recovery must inspect the canonical router before any recycle');
+  const routerStart=sup.slice(sup.indexOf('function Start-RouterForRoute'),sup.indexOf('function Ensure-RoutedProfile'));
+  assert.ok(!routerStart.includes('Stop-OwnedRouter'),'live source drift must not create a canonical-listener gap');
   assert.ok(main.includes(". (Join-Path $Root 'supervisor-routing.ps1')"));
   assert.ok(main.includes("Ensure-RoutedProfile 'default' 47831"));
+});
+
+test('Windows routed-backend recovery is thresholded and fail-closed around live work',()=>{
+  const sup=read('supervisor-routing.ps1');
+  const decision=sup.slice(sup.indexOf('function Get-RoutedBackendRecoveryDecision'),sup.indexOf('function Stop-OwnedRouter'));
+  assert.ok(decision.indexOf("DEFER_UNPROVEN") < decision.indexOf("RECYCLE"));
+  assert.ok(decision.indexOf("DEFER_BUSY") < decision.indexOf("RECYCLE"));
+  assert.ok(decision.indexOf("DEFER_TRANSIENT") < decision.indexOf("RECYCLE"));
+  const backend=sup.slice(sup.indexOf('function Start-RoutedBackend'),sup.indexOf('function Start-RouterForRoute'));
+  assert.ok(backend.includes('Start-Sleep -Milliseconds 500'),'recycle must include a final recovery probe');
+  assert.ok(backend.includes("if(-not $activity.Known -or $activity.Count -gt 0)"),'final recycle gate must re-check router activity');
+  assert.ok(backend.indexOf('Get-RouterBackendActivity') < backend.indexOf('Stop-OwnedRoutedBackend'),'activity proof must precede destructive stop');
 });
 
 test('installer delegates existing installations to candidate updater instead of in-place source mutation',()=>{
@@ -132,7 +153,9 @@ test('Linux updater is candidate-first, hardware-gated, routed and rollback-awar
 
 test('Linux supervisor recovers routed backend/router and schedules automatic updates',()=>{
   const sup=read('supervisor-routing-linux.sh'),main=read('autostart-linux.sh');
-  for(const marker of ['ensure_routed_default','start_routed_backend','start_router_default','start_auto_update_if_due','AUTO_UPDATE_CHECK_STARTED','router_source_sha','stop_owned_router_default','ROUTER_RECYCLE_SOURCE_DRIFT','sourceSha256'])assert.ok(sup.includes(marker),marker);
+  for(const marker of ['ensure_routed_default','start_routed_backend','start_router_default','start_auto_update_if_due','AUTO_UPDATE_CHECK_STARTED','router_source_sha','ROUTER_SOURCE_ACTIVATION_DEFERRED','sourceSha256'])assert.ok(sup.includes(marker),marker);
+  const routerStart=sup.slice(sup.indexOf('start_router_default()'),sup.indexOf('ensure_routed_default()'));
+  assert.ok(!routerStart.includes('stop_owned_router_default'),'Linux live source drift must not create a canonical-listener gap');
   assert.ok(main.includes('. "$ROOT/supervisor-routing-linux.sh"'));
   assert.ok(main.includes('ensure_routed_default || start_mcp'));
   assert.ok(main.includes('start_auto_update_if_due || true'));

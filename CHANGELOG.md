@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.8.13 — 2026-09-21
+
+- Harden active routed-backend recovery after live evidence showed that one transient two-second health miss could force-stop a busy backend and trigger a burst of multi-chat HTTP 502 failures.
+- Require three consecutive backend health misses, readable canonical-router activity, zero in-flight work, and a final health/activity re-check immediately before any ownership-proven backend recycle.
+- Defer recovery whenever router activity is unavailable or work is still in flight; unknown or mutating work is never killed merely because liveness probes missed.
+- Preserve a healthy canonical router when only its loaded source hash is stale; source activation is deferred and logged instead of intentionally creating an update-time canonical-listener gap.
+- Apply the no-live-source-recycle policy to both Windows and Linux supervisors and add a behavioral Windows regression proving busy-backend and healthy-router guards cannot be bypassed.
+- Retain v0.8.12 monotonic no-downgrade updates, v0.8.11 downstream-disconnect drain accounting, v0.8.10 zero-interference desktop authority, Full Power persistence and no-blind-replay semantics unchanged.
+
 ## 0.8.12 — 2026-09-21
 
 - Make stable-channel automatic updates monotonic on Windows and Linux: when the installed active version is newer than the latest stable release, unattended update exits with `AUTO_UPDATE_NEWER_CURRENT` instead of downgrading.

@@ -91,11 +91,12 @@ start_router_default() {
   local router="$ROOT/src/stable-router.mjs"
   [[ -f "$router" ]] || return 1
   if router_any_ready; then
-    local old_pid expected
+    local old_pid expected current
     old_pid="$(node "$ROOT/tools/json-field.mjs" --file "$ROUTING_ROOT/default.runtime.json" --field pid 2>/dev/null || true)"
     expected="$(router_source_sha)"
-    stop_owned_router_default || { log 'ROUTER_SOURCE_DRIFT_OWNERSHIP_FAIL'; return 1; }
-    log "ROUTER_RECYCLE_SOURCE_DRIFT oldPid=$old_pid expectedSha=$expected"
+    current="$(node "$ROOT/tools/json-field.mjs" --file "$ROUTING_ROOT/default.runtime.json" --field sourceSha256 2>/dev/null || true)"
+    log "ROUTER_SOURCE_ACTIVATION_DEFERRED oldPid=$old_pid currentSha=$current expectedSha=$expected"
+    return 0
   elif mcp_healthy; then
     log 'ROUTER_CANONICAL_PORT_OCCUPIED_BY_DIRECT_MCP'
     return 1

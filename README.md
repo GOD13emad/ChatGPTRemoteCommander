@@ -139,6 +139,8 @@ Filesystem containment is enforced, but command execution is **not an OS sandbox
 
 ## Validation
 
+v0.8.13 adds fail-closed supervisor liveness and canonical-listener continuity on top of v0.8.12 monotonic updates, v0.8.11 drain-accounting and v0.8.10 zero-interference desktop authority. A routed backend cannot be force-recycled after one transient health miss: recovery requires three consecutive misses, readable router activity, zero in-flight work, and a final health/activity re-check. A healthy canonical router is also retained when only its loaded source hash is stale, avoiding an intentional update-time listener gap.
+
 v0.8.12 makes stable automatic updates monotonic on both Windows and Linux: an unattended updater will not replace a running newer build with an older GitHub Latest release. Explicit forced/exact-ref operations remain available for deliberate testing or rollback. This closes the live sequencing failure observed while an unpublished v0.8.10/v0.8.11 candidate was newer than the public stable release.
 
 v0.8.11 fixes a stable-router lifecycle edge case observed during the v0.8.10 blue/green cutover: when an MCP client disconnected while the backend response still existed, the proxy could leave the old backend permanently counted as in-flight even after the tool action had completed. The router now unpipes a closed downstream response and drains the upstream response to its real completion without cancelling or replaying the operation. A production-shaped regression failed before the fix and passes afterward.

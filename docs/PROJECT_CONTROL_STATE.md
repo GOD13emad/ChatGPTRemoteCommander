@@ -1,7 +1,7 @@
 # ChatGPT Remote Commander — Project Brain
 
-Brain revision: R8
-Status: CURRENT / v0.8.12 RELEASE CANDIDATE
+Brain revision: R9
+Status: CURRENT / v0.8.13 RELEASE CANDIDATE
 As of: 2026-09-21
 Project root: %USERPROFILE%\source\repos\ChatGPTRemoteCommander
 Public repository: GOD13emad/ChatGPTRemoteCommander
@@ -12,16 +12,20 @@ Deliver a stable Remote Commander release that can run in explicit Full Power on
 
 DoD for the current release requires: an immutable stable release tag and assets; clean-checkout check/test/security gates; scope-appropriate GUI evidence (fresh interactive native E2E when native input behavior changes, otherwise byte-identical prior native baseline + current no-input/native/controller regression); candidate validation on the target machine; promotion of every live profile; canonical-route doctor checks; durable-workflow integrity after schema finalization; tunnel profiles targeting canonical routers; autostart/supervisor continuity; removal of superseded release directories; and a post-promotion updater no-op returning CURRENT.
 
-## Authoritative current change set — v0.8.12 release candidate
+## Authoritative current change set — v0.8.13 release candidate
 
-- v0.8.10 zero-interference desktop authority and v0.8.11 router downstream-disconnect drain accounting are retained.
-- Live audit exposed a second lifecycle defect: after an unpublished newer build was promoted, the scheduled stable updater still resolved GitHub Latest (v0.8.9) and was allowed to stage/cut over that older version. This is a monotonicity failure, not a model/runtime failure.
-- Root cause: Windows and Linux updater current-version logic only recognized exact equality with the staged release; it had no guard for active semantic version > staged stable semantic version.
-- v0.8.12 prevention: before candidate gates/cutover, non-forced Windows/Linux stable update compares active and staged semantic versions. If active is newer it exits with `AUTO_UPDATE_NEWER_CURRENT` and does not change routes. Explicit force remains the deliberate rollback/test override.
-- Release-order decision: immutable stable publication must precede live promotion for normal releases. GitHub recommends draft → attach assets → publish for immutable releases; after publication the tag/assets are locked. Live promotion then consumes the same public stable authority.
-- v0.8.11 candidate-only validation PASSed for both profiles before this additional defect was identified. v0.8.12 source validation is now PASS: targeted updater/router 14/14, full check/test/audit, 105 core tests, 73 GUI contract tests, native no-input X64 layout test and Linux Bash syntax. Live non-force downgrade regression also PASSed with `AUTO_UPDATE_NEWER_CURRENT` and unchanged generation-9 routes. Exact-commit candidate validation follows publication.
-- Current public main will be advanced only after v0.8.12 gates pass. Unrelated untracked engineering/GCAD files remain outside release authority and untouched.
-- Exact next action: validate v0.8.12 updater guards and full check/test/audit/native-no-input gates; commit/push exact candidate; create annotated tag and immutable draft-first release with 12 hash-verified assets; verify GitHub digests/attestation; then candidate/promote exact published commit, verify router source hash/doctors/tunnels/workflows, and require final updater no-op/CURRENT.
+- Upstream source baseline: origin/main commit c5b998318959fd402fed06c6fdebcf7afadb1634, v0.8.12 monotonic stable-update authority.
+- v0.8.10 zero-interference desktop authority is retained unchanged: observe-only GUI by default, explicit-current-user takeover, direct-session-only interactive mutation and no durable-workflow takeover.
+- v0.8.11 stable-router downstream-disconnect drain accounting is retained unchanged: dead downstream destinations do not cancel/retry upstream work; the backend response is consumed to real completion so inflight accounting retires safely.
+- v0.8.12 automatic-update monotonicity is retained unchanged: non-forced stable updates cannot downgrade an active newer semantic version and return AUTO_UPDATE_NEWER_CURRENT before gates/cutover.
+- v0.8.13 addresses a distinct live continuity failure: Windows backend recovery no longer force-stops an active routed backend after one failed two-second health probe.
+- Destructive backend recycle now requires three consecutive health misses, readable canonical-router activity, zero in-flight work and a final health/activity re-check immediately before ownership-proven stop. Unknown or busy work defers recovery.
+- A healthy canonical router is not restarted solely because its loaded source hash is stale during active service. Source activation is deferred/logged instead of creating an intentional canonical-listener gap.
+- Windows behavioral regression directly proves repeated health misses cannot stop a backend while router-reported work is active and that a healthy stale-source router is not stopped. Linux contract prohibits live source-drift recycle.
+- The v0.8.12 downgrade contract and v0.8.13 continuity contract are semantically merged; neither guard is removed.
+- Full Power authority, credentials, workflow stores, desktop-takeover rules and no-blind-replay behavior are unchanged.
+- External GitHub-hosted Actions runner/account availability remains a separate non-code gate. Clean local Windows and Ubuntu Node-current/minimum-Node22 validation remain required before immutable publication when hosted jobs execute zero steps.
+- Source candidate gates are PASS with evidence recorded in E037; exact next action: commit this validated change, fast-forward/push main only if origin/main still equals baseline c5b998318959fd402fed06c6fdebcf7afadb1634, clean-validate the exact commit on Windows and Ubuntu Node current/22, publish immutable stable release before live promotion, candidate-only validate the published commit, promote both profiles, verify routes/router source/tunnels/workflows and final updater CURRENT, then advance this Brain to live-final.
 
 ## Superseded historical state retained from R5
 

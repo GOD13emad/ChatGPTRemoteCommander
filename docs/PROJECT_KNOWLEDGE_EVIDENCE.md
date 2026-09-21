@@ -530,3 +530,33 @@ This file is append-only for substantive project claims, decisions, failures, pr
 - Live Windows negative regression while active v0.8.11 > GitHub Latest v0.8.9: `AUTO_UPDATE_NEWER_CURRENT current=0.8.11 latest=0.8.9`, exit 0; both canonical route files remained generation 9 / active v0.8.11 exact commit, proving no downgrade/cutover occurred.
 - Full v0.8.12 source gates: `npm run check` PASS; `npm test` PASS; `npm run audit` PASS; native no-input GUI self-test PASS (X64 INPUT size 40); Linux `bash -n` PASS. Full test run includes 105 core tests and 73 GUI contract tests with zero failures.
 - Status/Confidence: implementation + source regression PASS / high. Publication and exact published-commit production promotion remain OPEN at this point.
+
+
+## E037 — v0.8.13 supervisor liveness and canonical-listener continuity
+
+- Date/Context: 2026-09-21, additive change on top of upstream v0.8.12 downgrade-prevention commit c5b998318959fd402fed06c6fdebcf7afadb1634.
+- Authority chain retained: v0.8.10 zero-interference desktop takeover boundary; v0.8.11 stable-router downstream-disconnect response-drain accounting; v0.8.12 monotonic stable updater that refuses non-forced downgrade.
+- Confirmed live backend incident from the earlier v0.8.9 runtime: the Windows supervisor recycled the active default backend at 06:17:58 local time after a failed health probe; tunnel telemetry then recorded at least 13 HTTP 502 upstream responses from 06:18:02 through 06:18:09 across multiple concurrent command/conversation identifiers.
+- Root cause: Start-RoutedBackend treated one failed two-second /health probe as sufficient for an ownership-proven force stop and did not consult the canonical router's already-available inflightByPort/inflightDetailsByPort before destructive recovery.
+- Confirmed canonical-router incident: separate 502 responses aligned with ROUTER_RECYCLE_SOURCE_DRIFT while the canonical listener itself was intentionally stopped/restarted solely to activate changed router source.
+- Prevention:
+  - three consecutive backend health misses before recycle is eligible;
+  - canonical router status must be readable and report zero in-flight work;
+  - final backend health and router-activity re-check immediately before stop;
+  - unknown/busy activity defers recovery;
+  - a healthy canonical router with stale loaded-source hash remains serving and records ROUTER_SOURCE_ACTIVATION_DEFERRED rather than creating an update-time listener gap.
+- Behavioral regression: test/supervisor-recovery-policy-windows.ps1 drives four repeated health misses while router status reports two in-flight calls and fails if Stop-OwnedRoutedBackend executes. It also fails if healthy stale-source router handling invokes Stop-OwnedRouter.
+- Contract merge preserves all v0.8.12 AUTO_UPDATE_NEWER_CURRENT/Test-VersionGreater/version_gt downgrade assertions while adding supervisor continuity assertions; downgrade prevention and continuity are complementary.
+- Firefox/browser evidence remains separate: six isolated authenticated ChatGPT conversations ranged from 2.984 to 18.374 CPU-seconds per 10-second sample and roughly 1.85-2.37 GiB working set. AI-RTL and hardware-acceleration A/B changes were not material, so browser conversation weight is a performance amplifier, not the confirmed transport root cause.
+- Status/Confidence: root causes Confirmed / high; merged v0.8.13 candidate prepared; exact merged gates, publication and live promotion OPEN at record creation.
+- Reuse targets: Retry diagnosis, supervisor liveness policy, zero-downtime operations, release acceptance, regression catalog.
+
+
+### E037 validation delta
+
+- v0.8.13 source candidate gates on the Windows target: `npm run check` PASS (log SHA-256 `09c7d9f3357be835ebadbec09c158fb00b494ae9ff0c3a01c4023bb030025471`); `npm test` PASS with zero failures (log SHA-256 `a306c8da76bac94d809b3108ea96074c854d43d475ac15fd6a9ba31936b11a18`); `npm run audit` PASS / `SECURITY_AUDIT_PASS` (log SHA-256 `e61be9724b2d466fedae822ae5c703f8114e886fd31d06332828c756afd9526f`).
+- Windows behavioral recovery policy PASS: repeated health misses while router activity reported two in-flight calls did not invoke backend stop; stale-source healthy-router handling did not invoke router stop.
+- PowerShell supervisor/test parsers PASS; Linux supervisor `bash -n` PASS; GUI native/controller files are byte-identical to authoritative v0.8.12 commit `c5b998318959fd402fed06c6fdebcf7afadb1634`; current no-input native self-test PASS (X64 input size 40).
+- Candidate diff remained unchanged through gates, SHA-256 `12acc14a4daf7d69bf8d0543d611a96b2d6e2e6077450ce9aecc48a0fb72fd47` before this evidence-only update.
+- Operational confirmation after v0.8.12 was published but before it was installed: a still-running v0.8.11 updater cycle beginning 07:25 local resolved stable v0.8.9 and returned production routes/control checkout to v0.8.9 with `PROMOTED_DRAIN_PENDING`. This is the already-documented E036 failure class occurring under the older updater; it does not contradict the v0.8.12 monotonic guard because that guard was not yet live in that updater process.
+- Status/Confidence: merged implementation + source regression PASS / high; exact committed-tree clean Windows + Ubuntu/Node22 validation, immutable publication and live promotion remain OPEN.

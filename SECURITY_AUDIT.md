@@ -4,12 +4,13 @@ Audit date: 2026-09-21
 
 ## Result
 
-PASS for the current v0.8.12 release candidate content and reachable branch/tag history checked locally after remote-ref synchronization.
+PASS for the current v0.8.13 release candidate content and reachable branch/tag history checked locally after remote-ref synchronization.
 
 The audit found no committed OpenAI-style API secret key, GitHub token, lowercase `tunnel_` identifier, private-key block, bearer-token literal, tracked `config.local.json`, or developer-specific absolute Windows path. On 2026-09-19 a stale local tracking ref first exposed an already-sanitized developer-path finding, and the obsolete public `release/v0.5.0-rc1` branch contained tunnel-shaped self-test fixtures inside the audit test itself. On 2026-09-20 the reachable `feature/blue-green-v0.8.0` history exposed an uppercase fail-closed status symbol that the former case-insensitive tunnel regex misclassified as a credential. The detector now follows the canonical lowercase `tunnel_` prefix used by OpenAI Secure MCP Tunnel examples and includes a regression proving lowercase tunnel-shaped values match while uppercase status/error symbols do not. The unchanged broader history scan then returned `SECURITY_AUDIT_PASS`. No real Runtime API key or tunnel identifier was recovered from these findings.
 
 ## Controls verified
 
+- v0.8.13 makes routed-backend recovery fail closed around live work: three consecutive misses, readable router activity, zero in-flight requests and a final re-check are required before stop; healthy canonical routers are not restarted solely for source-hash drift during active service.
 - v0.8.12 prevents unattended stable-channel downgrade on Windows and Linux. If the active semantic version is newer than the staged stable version, the updater records `AUTO_UPDATE_NEWER_CURRENT` before gates/cutover and exits without changing routes. Explicit force remains the deliberate override.
 - v0.8.11 closes a zero-downtime drain-accounting failure found during live v0.8.10 promotion. A disconnected downstream client no longer strands a completed upstream request in router inflight state. The fix drains the backend response without cancelling or replaying the request, preserving uncertain-side-effect safety. The new regression failed on the pre-fix router (`1 !== 0`) and passes after the fix.
 - v0.8.10 makes GUI control non-intrusive by default: an ordinary GUI lease is observe-only, and mouse/keyboard/scroll/focus mutation is rejected before native input unless the caller opened a takeover session with an explicit-current-user authorization basis. Full Power capability does not itself authorize foreground takeover. Durable workflows cannot acquire takeover or dispatch GUI mutation.

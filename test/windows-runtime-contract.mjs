@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import { spawnSync } from 'node:child_process';
 
 const read = (p) => fs.readFileSync(p, 'utf8');
 const hasAll = (text, items, label) => {
@@ -81,5 +82,11 @@ hasAll(account, [
   "CONNECT_ACCOUNT_PASS",
   "HealthPort"
 ], 'connect-chatgpt-account.ps1');
+
+if (process.platform === 'win32') {
+  const policy = spawnSync('pwsh.exe',['-NoLogo','-NoProfile','-File','test/supervisor-recovery-policy-windows.ps1'],{encoding:'utf8'});
+  if(policy.status!==0) throw new Error('supervisor recovery policy failed: '+(policy.stderr||policy.stdout));
+  if(!policy.stdout.includes('SUPERVISOR_RECOVERY_POLICY_PASS')) throw new Error('supervisor recovery policy marker missing');
+}
 
 console.log('WINDOWS_RUNTIME_CONTRACT_PASS');

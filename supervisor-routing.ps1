@@ -2,6 +2,27 @@ $RoutingRoot = Join-Path $env:LOCALAPPDATA 'ChatGPTRemoteCommander\routing'
 $UpdateStateRoot = Join-Path $env:LOCALAPPDATA 'ChatGPTRemoteCommander'
 New-Item -ItemType Directory -Force -Path $RoutingRoot | Out-Null
 $script:NextAutoUpdateCheck = Get-Date
+$script:RoutedBackendHealthMisses = @{}
+$script:RoutingNotices = @{}
+$script:RoutedBackendHealthFailureThreshold = 3
+
+function Write-RoutingNotice([string]$Key,[string]$Message) {
+  if ([string]$script:RoutingNotices[$Key] -eq $Message) { return }
+  $script:RoutingNotices[$Key] = $Message
+  Write-SupervisorLog $Message
+}
+
+function Clear-RoutingNotice([string]$Key) {
+  [void]$script:RoutingNotices.Remove($Key)
+}
+
+function Clear-RoutedBackendMisses([string]$Profile,[int]$Port) {
+  $prefix = "$Profile|$Port|"
+  foreach ($key in @($script:RoutedBackendHealthMisses.Keys)) {
+    if ([string]$key -like "$prefix*") { [void]$script:RoutedBackendHealthMisses.Remove($key) }
+  }
+}
+
 
 function Get-RouteState([string]$Profile) {
   if (-not (Test-ProfileName $Profile)) { throw "invalid route profile $Profile" }
@@ -19,13 +40,38 @@ function Get-RouteState([string]$Profile) {
   return [pscustomobject]@{ File=$file; State=$state; Active=$active }
 }
 
-function Test-RouterReady([int]$Port,[string]$Profile,[string]$ExpectedSourceSha='') {
+function Get-RouterStatusSafe([int]$Port,[string]$Profile) {
   try {
     $status = Invoke-RestMethod "http://127.0.0.1:$Port/router/status" -TimeoutSec 2
-    if(-not($status.ok -and $status.router -and [string]$status.state.profile -eq $Profile)){return $false}
-    if($ExpectedSourceSha -and [string]$status.sourceSha256 -ne $ExpectedSourceSha){return $false}
-    return $true
-  } catch { return $false }
+    if(-not($status.ok -and $status.router -and [string]$status.state.profile -eq $Profile)){return $null}
+    return $status
+  } catch { return $null }
+}
+
+function Test-RouterReady([int]$Port,[string]$Profile,[string]$ExpectedSourceSha='') {
+  $status = Get-RouterStatusSafe $Port $Profile
+  if(-not $status){return $false}
+  if($ExpectedSourceSha -and [string]$status.sourceSha256 -ne $ExpectedSourceSha){return $false}
+  return $true
+}
+
+function Get-RouterBackendActivity($Status,[int]$BackendPort) {
+  if(-not $Status -or -not $Status.PSObject.Properties['inflightByPort']) {
+    return [pscustomobject]@{Known=$false;Count=-1}
+  }
+  $container=$Status.inflightByPort
+  if(-not $container){return [pscustomobject]@{Known=$true;Count=0}}
+  $prop=$container.PSObject.Properties[[string]$BackendPort]
+  $count=if($prop){[int]$prop.Value}else{0}
+  return [pscustomobject]@{Known=$true;Count=$count}
+}
+
+function Get-RoutedBackendRecoveryDecision([bool]$HealthOk,[int]$ConsecutiveMisses,[bool]$RouterKnown,[int]$InflightCount) {
+  if($HealthOk){return 'HEALTHY'}
+  if(-not $RouterKnown){return 'DEFER_UNPROVEN'}
+  if($InflightCount -gt 0){return 'DEFER_BUSY'}
+  if($ConsecutiveMisses -lt $script:RoutedBackendHealthFailureThreshold){return 'DEFER_TRANSIENT'}
+  return 'RECYCLE'
 }
 
 function Stop-OwnedRouter([string]$Profile,[int]$CanonicalPort,[string]$RouteFile,[int]$ListenerPid) {
@@ -57,14 +103,46 @@ function Stop-OwnedRoutedBackend($Route,[int]$ListenerPid) {
   Stop-Process -Id $ListenerPid -Force -ErrorAction Stop
 }
 
-function Start-RoutedBackend($Route) {
+function Start-RoutedBackend($Route,[int]$CanonicalPort) {
   $profile = [string]$Route.State.profile
   $port = [int]$Route.Active.port
-  if (Test-McpHealth $port ([string]$Route.Active.configSha256) $profile) { return }
+  $noticeKey="backend|$profile|$port"
+  if (Test-McpHealth $port ([string]$Route.Active.configSha256) $profile) {
+    Clear-RoutedBackendMisses $profile $port
+    Clear-RoutingNotice $noticeKey
+    return $true
+  }
   $listener = Get-NetTCPConnection -State Listen -LocalPort $port -ErrorAction SilentlyContinue | Select-Object -First 1
   if ($listener) {
-    Stop-OwnedRoutedBackend $Route ([int]$listener.OwningProcess)
-    Write-SupervisorLog "ROUTED_BACKEND_RECYCLE profile=$profile oldPid=$($listener.OwningProcess) port=$port"
+    $listenerPid=[int]$listener.OwningProcess
+    $missKey="$profile|$port|$listenerPid"
+    $misses=1+[int]($script:RoutedBackendHealthMisses[$missKey] ?? 0)
+    $script:RoutedBackendHealthMisses[$missKey]=$misses
+    $routerStatus=Get-RouterStatusSafe $CanonicalPort $profile
+    $activity=Get-RouterBackendActivity $routerStatus $port
+    $decision=Get-RoutedBackendRecoveryDecision $false $misses $activity.Known $activity.Count
+    if($decision -ne 'RECYCLE'){
+      Write-RoutingNotice $noticeKey "ROUTED_BACKEND_RECYCLE_$decision profile=$profile pid=$listenerPid port=$port misses=$misses inflight=$($activity.Count)"
+      return $false
+    }
+
+    Start-Sleep -Milliseconds 500
+    if(Test-McpHealth $port ([string]$Route.Active.configSha256) $profile){
+      Clear-RoutedBackendMisses $profile $port
+      Write-RoutingNotice $noticeKey "ROUTED_BACKEND_RECOVERED profile=$profile pid=$listenerPid port=$port"
+      return $true
+    }
+    $routerStatus=Get-RouterStatusSafe $CanonicalPort $profile
+    $activity=Get-RouterBackendActivity $routerStatus $port
+    if(-not $activity.Known -or $activity.Count -gt 0){
+      $reason=if(-not $activity.Known){'DEFER_UNPROVEN'}else{'DEFER_BUSY'}
+      Write-RoutingNotice $noticeKey "ROUTED_BACKEND_RECYCLE_$reason profile=$profile pid=$listenerPid port=$port misses=$misses inflight=$($activity.Count)"
+      return $false
+    }
+
+    Stop-OwnedRoutedBackend $Route $listenerPid
+    Clear-RoutedBackendMisses $profile $port
+    Write-SupervisorLog "ROUTED_BACKEND_RECYCLE_CONFIRMED profile=$profile oldPid=$listenerPid port=$port misses=$misses inflight=0"
   }
   $node = (Get-Command node.exe -ErrorAction Stop).Source
   $server = Join-Path ([string]$Route.Active.projectDir) 'src\server-v0.3.mjs'
@@ -75,7 +153,12 @@ function Start-RoutedBackend($Route) {
   $p=[Diagnostics.Process]::Start($psi)
   foreach($i in 1..40){
     Start-Sleep -Milliseconds 500
-    if(Test-McpHealth $port ([string]$Route.Active.configSha256) $profile){Write-SupervisorLog "ROUTED_BACKEND_READY profile=$profile pid=$($p.Id) port=$port";return}
+    if(Test-McpHealth $port ([string]$Route.Active.configSha256) $profile){
+      Clear-RoutedBackendMisses $profile $port
+      Clear-RoutingNotice $noticeKey
+      Write-SupervisorLog "ROUTED_BACKEND_READY profile=$profile pid=$($p.Id) port=$port"
+      return $true
+    }
     if($p.HasExited){break}
   }
   if(-not $p.HasExited){Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue}
@@ -84,14 +167,28 @@ function Start-RoutedBackend($Route) {
 
 function Start-RouterForRoute($Route,[int]$CanonicalPort) {
   $profile=[string]$Route.State.profile
+  $noticeKey="router-source|$profile|$CanonicalPort"
   $router=Join-Path $Root 'src\stable-router.mjs'
   if(-not(Test-Path -LiteralPath $router -PathType Leaf)){$router=Join-Path ([string]$Route.Active.projectDir) 'src\stable-router.mjs'}
   $expectedSha=(Get-FileHash -LiteralPath $router -Algorithm SHA256).Hash.ToLowerInvariant()
-  if(Test-RouterReady $CanonicalPort $profile $expectedSha){return}
+  $status=Get-RouterStatusSafe $CanonicalPort $profile
+  if($status -and [string]$status.sourceSha256 -eq $expectedSha){
+    Clear-RoutingNotice $noticeKey
+    return $true
+  }
   $listener=Get-NetTCPConnection -State Listen -LocalPort $CanonicalPort -ErrorAction SilentlyContinue|Select-Object -First 1
   if($listener){
-    Stop-OwnedRouter $profile $CanonicalPort $Route.File ([int]$listener.OwningProcess)
-    Write-SupervisorLog "ROUTER_RECYCLE_SOURCE_DRIFT profile=$profile oldPid=$($listener.OwningProcess) port=$CanonicalPort expectedSha=$expectedSha"
+    if($status){
+      $currentSha=[string]$status.sourceSha256
+      $inflight=0
+      if($status.PSObject.Properties['inflightByPort'] -and $status.inflightByPort){
+        foreach($prop in $status.inflightByPort.PSObject.Properties){$inflight += [int]$prop.Value}
+      }
+      Write-RoutingNotice $noticeKey "ROUTER_SOURCE_ACTIVATION_DEFERRED profile=$profile pid=$($listener.OwningProcess) port=$CanonicalPort currentSha=$currentSha expectedSha=$expectedSha inflight=$inflight"
+      return $true
+    }
+    Write-RoutingNotice $noticeKey "ROUTER_RECOVERY_DEFER_UNPROVEN profile=$profile pid=$($listener.OwningProcess) port=$CanonicalPort expectedSha=$expectedSha"
+    return $false
   }
   $runtime=Join-Path $RoutingRoot "$profile.runtime.json"
   $node=(Get-Command node.exe -ErrorAction Stop).Source
@@ -101,7 +198,11 @@ function Start-RouterForRoute($Route,[int]$CanonicalPort) {
   $p=[Diagnostics.Process]::Start($psi)
   foreach($i in 1..40){
     Start-Sleep -Milliseconds 250
-    if(Test-RouterReady $CanonicalPort $profile $expectedSha){Write-SupervisorLog "ROUTER_READY profile=$profile pid=$($p.Id) port=$CanonicalPort sourceSha=$expectedSha";return}
+    if(Test-RouterReady $CanonicalPort $profile $expectedSha){
+      Clear-RoutingNotice $noticeKey
+      Write-SupervisorLog "ROUTER_READY profile=$profile pid=$($p.Id) port=$CanonicalPort sourceSha=$expectedSha"
+      return $true
+    }
     if($p.HasExited){break}
   }
   if(-not $p.HasExited){Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue}
@@ -111,8 +212,10 @@ function Start-RouterForRoute($Route,[int]$CanonicalPort) {
 function Ensure-RoutedProfile([string]$Profile,[int]$CanonicalPort) {
   $route=Get-RouteState $Profile
   if(-not $route){return $false}
-  Start-RoutedBackend $route
-  Start-RouterForRoute $route $CanonicalPort
+  $backendReady=Start-RoutedBackend $route $CanonicalPort
+  if(-not $backendReady){return $true}
+  $routerReady=Start-RouterForRoute $route $CanonicalPort
+  if(-not $routerReady){return $true}
   if(-not(Test-McpHealth $CanonicalPort ([string]$route.Active.configSha256) $Profile)){throw "canonical routed MCP unhealthy $Profile"}
   return $true
 }
