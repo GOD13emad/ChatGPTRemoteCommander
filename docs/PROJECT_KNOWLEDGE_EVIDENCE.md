@@ -398,3 +398,14 @@ This file is append-only for substantive project claims, decisions, failures, pr
 - Validation limitation: the original v0.8.6 router did not expose request details, so the first upgrade from v0.8.6 must conservatively defer any still-busy old request rather than retroactively classifying it. After the new router is active, future upgrades gain cancellable-request classification.
 - Status/Confidence: implementation/regression PASS / high; full clean cross-platform release validation and live promotion pending.
 - Reuse targets: updater release notes, zero-downtime design, incident regression, operations handbook.
+
+## E028 — Persistent GUI helper lifecycle failure and prevention
+
+- Date/Context: 2026-09-21, v0.8.7 release-preparation regression.
+- Failure: the first combined release gate reached successful native GUI E2E output but the Node test process did not exit because the new persistent PowerShell helper still held child-process pipes after `gui_session_end`.
+- Root cause: persistence lifetime was bound to the MCP process rather than the active GUI lease, so short-lived CLI/E2E hosts retained a live helper even after GUI work was finished.
+- Prevention: the GUI controller now closes the persistent helper on explicit `gui_session_end` and on lease expiry. The production MCP server still gets reuse throughout an active lease/session; the helper is not kept alive after its coordination lifetime ends.
+- Regression: added a test that requires both explicit session end and lease expiry to invoke helper close. GUI/HTTP safety suite is now 69/69 PASS.
+- Real validation after fix: native Windows E2E returned `GUI_NATIVE_E2E_PASS`, verified multilingual text/button/screenshot/cursor/foreground behavior, and the command exited normally with exit code 0.
+- Status/Confidence: Confirmed root cause / PASS / high.
+- Reuse targets: GUI helper lifecycle, CLI test design, process-leak prevention, release acceptance.

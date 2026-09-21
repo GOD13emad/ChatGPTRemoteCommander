@@ -26,7 +26,7 @@ test('parseArgs enforces timeout bounds and known arguments', () => {
   assert.equal(parsed.json, true);
 });
 
-async function withMockServer({ version = '0.8.6', deviceName = 'device-a', tools, configSha256 = null }, fn) {
+async function withMockServer({ version = '0.8.7', deviceName = 'device-a', tools, configSha256 = null }, fn) {
   const toolNames = tools || ['system_status', 'list_directory', 'read_text', 'write_text', 'run_project_command', 'gui_status'];
   const server = http.createServer(async (req, res) => {
     res.setHeader('content-type', 'application/json');
@@ -81,7 +81,7 @@ test('runDoctor passes healthy matching server and config', async () => {
     await writeFile(configPath, raw);
     const sha = createHash('sha256').update(raw).digest('hex');
     await withMockServer({ configSha256: sha }, async (endpoint) => {
-      const report = await runDoctor({ endpoint, expectedVersion: '0.8.6', expectedDevice: 'device-a', configPath, timeoutMs: 3000 });
+      const report = await runDoctor({ endpoint, expectedVersion: '0.8.7', expectedDevice: 'device-a', configPath, timeoutMs: 3000 });
       assert.equal(report.ok, true);
       assert.equal(report.tools.count, 6);
       assert.equal(report.tools.guiCount, 1);
@@ -94,7 +94,7 @@ test('runDoctor passes healthy matching server and config', async () => {
 
 test('runDoctor reports version drift', async () => {
   await withMockServer({ version: '0.5.1' }, async (endpoint) => {
-    const report = await runDoctor({ endpoint, expectedVersion: '0.8.6', timeoutMs: 3000 });
+    const report = await runDoctor({ endpoint, expectedVersion: '0.8.7', timeoutMs: 3000 });
     assert.equal(report.ok, false);
     assert.equal(report.checks.find((item) => item.name === 'version').ok, false);
   });
@@ -102,7 +102,7 @@ test('runDoctor reports version drift', async () => {
 
 test('runDoctor reports missing core tool', async () => {
   await withMockServer({ tools: ['system_status', 'list_directory'] }, async (endpoint) => {
-    const report = await runDoctor({ endpoint, expectedVersion: '0.8.6', timeoutMs: 3000 });
+    const report = await runDoctor({ endpoint, expectedVersion: '0.8.7', timeoutMs: 3000 });
     assert.equal(report.ok, false);
     assert.match(report.checks.find((item) => item.name === 'tools/list').detail, /missing:/);
   });

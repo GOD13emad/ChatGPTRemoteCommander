@@ -97,6 +97,17 @@ test('mouse permission cannot be escalated to keyboard via extra action', async 
 test('single desktop lease prevents second chat from taking control', async () => {
   const s=setup(); await s.run('gui_session_begin'); await assert.rejects(s.run('gui_session_begin'),/GUI_LEASE_BUSY/);
 });
+test('session end and lease expiry close the persistent helper lifecycle', async () => {
+  let closed=0;
+  const s=setup({closeInvoke:()=>{closed++;}});
+  const {lease}=await s.run('gui_session_begin',{ttlSeconds:10});
+  await s.run('gui_session_end',{lease});
+  assert.equal(closed,1);
+  const b=await s.run('gui_session_begin',{ttlSeconds:10});
+  s.time(10001);
+  await assert.rejects(s.run('gui_session_renew',{lease:b.lease}),/GUI_LEASE_REQUIRED/);
+  assert.equal(closed,2);
+});
 test('wrong lease cannot end or renew another session', async () => {
   const s=setup(); await s.run('gui_session_begin');
   for (const n of ['gui_session_end','gui_session_renew','gui_screenshot']) await assert.rejects(s.run(n,{lease:'not-yours'}),/GUI_LEASE_REQUIRED/);

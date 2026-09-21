@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.8.7 — 2026-09-21
+
+- Replace per-GUI-call PowerShell startup and C# recompilation with a bounded, lazily started persistent helper using newline-delimited JSON over existing child-process pipes; keep the one-shot helper path for compatibility and regression.
+- Preserve all GUI safety invariants: single desktop lease, fresh single-use frame, foreground/geometry validation, local emergency stop, global native mutex, bounded output/timeouts, and uncertain-mutation suspension with no blind replay.
+- On the validated Windows target, reduce warm GUI status from ~1.78 s to ~16 ms median, controller window listing to ~37 ms median, and common 1000 px screenshot reads to ~87 ms median.
+- Add conservative router in-flight metadata without retaining request arguments, classify only known long-lived transport requests as cancellable, and expose JSON drain details while preserving the old numeric router-status interface.
+- Change Windows/Linux post-cutover drain handling so unknown or mutating long-running work is deferred rather than force-killed; promote control state, preserve compatible old release/schema state, and complete cleanup automatically when the old request ends.
+- Keep GitHub immutable-release policy and full-SHA/least-privilege Actions hardening from v0.8.6.
+
 ## 0.8.6 — 2026-09-20
 
 - Make workflow checkpoints atomically synchronize WAITING lifecycle, scheduler enablement and next-run projection in the same SQLite transaction, closing the observed workflow snapshot/scheduler divergence.

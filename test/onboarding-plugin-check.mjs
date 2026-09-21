@@ -7,7 +7,7 @@ const exists = (p) => fs.existsSync(path.join(root, p));
 const fail = (m) => { throw new Error(m); };
 
 const pkg = JSON.parse(read('package.json'));
-if (pkg.version !== '0.8.6') fail('package version must be 0.8.6');
+if (pkg.version !== '0.8.7') fail('package version must be 0.8.7');
 
 for (const p of [
   'START_HERE.md','WORK_SETUP.md','PRIVACY.md','TERMS.md','docs/PLUGIN_SETUP.md',

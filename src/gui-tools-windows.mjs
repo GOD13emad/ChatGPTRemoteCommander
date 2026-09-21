@@ -17,6 +17,7 @@ const persistentHelper = process.platform === 'win32' ? createGuiProcessClient({
 const invokeDefault = request => persistentHelper
   ? persistentHelper.invoke(request)
   : runGuiProcess(request, { file: 'pwsh.exe', args: ['-NoLogo', '-NoProfile', '-NonInteractive', '-File', helper] });
+const closeInvokeDefault = () => persistentHelper?.close();
 async function stopped() {
   try { await access(stopFile); return true; }
   catch (error) { if (error.code === 'ENOENT') return false; throw guiError('GUI_STOP_CHECK_FAILED'); }
@@ -29,13 +30,13 @@ const bound = (v, low, high, defaultValue) => Number.isSafeInteger(v) ? Math.max
  * application coordination; distinct trust levels require separate OS sessions.
  */
 export function createGuiController({ platform = process.platform, now = () => performance.now(), token = () => randomBytes(24).toString('hex'), isStopped = stopped,
-  invoke = invokeDefault } = {}) {
+  invoke = invokeDefault, closeInvoke = closeInvokeDefault } = {}) {
   let session = null;
   let frame = null;
   let busy = false;
   let uncertain = false;
   function current() {
-    if (session && session.expires <= now()) { session = null; frame = null; }
+    if (session && session.expires <= now()) { session = null; frame = null; closeInvoke(); }
     return session;
   }
   function owns(value) {
@@ -79,7 +80,7 @@ export function createGuiController({ platform = process.platform, now = () => p
         session.expires = now() + (input.ttlSeconds ?? 60) * 1000;
         return { ok: true, ttlSeconds: input.ttlSeconds ?? 60 };
       }
-      if (name === 'gui_session_end') { session = null; frame = null; return { ok: true }; }
+      if (name === 'gui_session_end') { session = null; frame = null; closeInvoke(); return { ok: true }; }
       if (cfg[rule.capability] !== true) throw guiError('GUI_CAPABILITY_DISABLED');
       const isInput = rule.annotations.destructiveHint === true;
       let observed = null;

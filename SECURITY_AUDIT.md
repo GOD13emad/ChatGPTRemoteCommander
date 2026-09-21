@@ -1,15 +1,17 @@
 # Security Audit
 
-Audit date: 2026-09-20
+Audit date: 2026-09-21
 
 ## Result
 
-PASS for the current v0.8.6 release candidate content and reachable branch/tag history checked locally after remote-ref synchronization.
+PASS for the current v0.8.7 release candidate content and reachable branch/tag history checked locally after remote-ref synchronization.
 
 The audit found no committed OpenAI-style API secret key, GitHub token, lowercase `tunnel_` identifier, private-key block, bearer-token literal, tracked `config.local.json`, or developer-specific absolute Windows path. On 2026-09-19 a stale local tracking ref first exposed an already-sanitized developer-path finding, and the obsolete public `release/v0.5.0-rc1` branch contained tunnel-shaped self-test fixtures inside the audit test itself. On 2026-09-20 the reachable `feature/blue-green-v0.8.0` history exposed an uppercase fail-closed status symbol that the former case-insensitive tunnel regex misclassified as a credential. The detector now follows the canonical lowercase `tunnel_` prefix used by OpenAI Secure MCP Tunnel examples and includes a regression proving lowercase tunnel-shaped values match while uppercase status/error symbols do not. The unchanged broader history scan then returned `SECURITY_AUDIT_PASS`. No real Runtime API key or tunnel identifier was recovered from these findings.
 
 ## Controls verified
 
+- v0.8.7 reuses a persistent bounded GUI helper instead of recompiling `gui-native.cs` for every read; timeout/crash/output-bound failures remain fail-closed and mutation uncertainty is never replayed.
+- v0.8.7 makes post-cutover drain timeouts non-destructive: known cancellable long-lived transport requests may be cancelled after the drain budget, while unknown/mutating work is deferred and later maintenance completes automatically without rolling back a committed route.
 - v0.8.6 synchronizes workflow checkpoint lifecycle into the scheduler projection inside the same database transaction, adds regression coverage for consistent WAITING queue state, pins GitHub Actions to full commit SHAs, and declares read-only contents permission for CI.
 - v0.8.5 makes profile-instance release-gate fixtures platform-native while leaving production local-path validation fail-closed on each operating system.
 - v0.8.5 makes clean-checkout GUI release validation self-contained and makes no-promote candidate cleanup ownership-proven, preventing diagnostic backend leakage.
