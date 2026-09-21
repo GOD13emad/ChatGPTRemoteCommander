@@ -30,6 +30,9 @@ test('auto updater is candidate-first, hardware-gated and commit-point aware',()
     'Recycle-ControlSupervisor',
     'GATE_ARGUMENTS_MISSING',
     'CANDIDATE_CLEANUP_OWNERSHIP_MISMATCH',
+    'Stop-OwnedCandidate',
+    '$currentCandidate',
+    'GUI_POLICY_STATUS_FAIL',
     'SUPERVISOR_RECYCLE_PASS',
     'Cleanup-Releases',
     'PROMOTED_MAINTENANCE_REQUIRED',
@@ -45,6 +48,9 @@ test('auto updater is candidate-first, hardware-gated and commit-point aware',()
   assert.ok(s.includes("GATE_START gui-native-selftest"), 'unattended updater must run non-interactive native GUI self-test');
   assert.ok(s.includes("gui-control.ps1") && s.includes("-SelfTest"), 'GUI candidate gate must compile/validate native helper without desktop interaction');
   assert.ok(!s.includes("Run-Gate $stage.Dir 'gui-native' @('run','test:gui-native')"), 'unattended updater must not run interactive GUI E2E');
+  assert.ok(!s.includes("Invoke-Mcp $port 'gui_status'"), 'candidate validation must not contend for the shared interactive GUI helper');
+  assert.ok(s.includes('Stop-OwnedCandidate $currentCandidate'), 'failure cleanup must include the current pre-registration candidate');
+  assert.ok(s.indexOf('$currentCandidate=[pscustomobject]') > s.indexOf('$p=Start-Backend'), 'candidate ownership tracking must start immediately after spawn');
   assert.ok(!s.includes('[string[]]$Args'), 'reserved automatic $args name must not be used as a gate parameter');
   assert.ok(s.includes("Get-ChildItem -LiteralPath $InstanceRoot -Directory"), 'target discovery must enumerate only immediate profile directories');
   assert.ok(s.includes("Join-Path $profileDir.FullName 'instance.json'"), 'target discovery must bind only each profile directory instance record');
@@ -138,10 +144,15 @@ test('Linux updater is candidate-first, hardware-gated, routed and rollback-awar
     'drain_previous_once',
     'cancellableOnly',
     'AUTO_UPDATE_NEWER_CURRENT',
-    'version_gt'
+    'version_gt',
+    'stop_owned_candidate',
+    'validation_cleanup',
+    'trap validation_cleanup ERR'
   ]) assert.ok(s.includes(marker),marker);
   assert.ok(s.includes("log 'AUTO_UPDATE_DRAIN_PENDING profile=default'"),'Linux committed cutover must defer unsafe drains');
   assert.ok(s.includes('drain_previous_once "$STAGE_DIR" "$OLD_PORT"'), 'Linux drain must use conservative shared policy');
+  assert.ok(s.includes('stop_owned_candidate "$CANDIDATE_PID" "$STAGE_DIR"'), 'Linux validation failures must clean the exact spawned candidate');
+  assert.ok(s.indexOf('trap validation_cleanup ERR') < s.indexOf('CANDIDATE_PID="$(start_backend'), 'Linux validation cleanup trap must be installed before candidate spawn');
   assert.ok(s.indexOf('AUTO_UPDATE_NEWER_CURRENT') < s.indexOf('run_gate "$STAGE_DIR" check npm run check'),'Linux automatic downgrade guard must precede gates/cutover');
   const gates=s.indexOf('run_gate "$STAGE_DIR" check npm run check');
   const cutover=s.indexOf('if [[ -f "$ROUTE" ]]');

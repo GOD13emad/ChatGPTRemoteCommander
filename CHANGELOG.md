@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.8.14 — 2026-09-21
+
+- Fix pre-cutover candidate leakage on Windows and Linux. Every spawned candidate is ownership-tracked immediately, and validation failures clean only the exact owned candidate before returning failure.
+- Remove unattended Windows candidate dependence on the shared interactive `gui_status` helper. Update validation now uses the native no-input self-test plus candidate `system_status` GUI backend/policy fields, avoiding `GUI_NATIVE_BUSY` contention without taking desktop control.
+- Preserve v0.8.13 supervisor continuity hardening: busy routed backends and healthy canonical routers remain protected from transient health/source-drift recycling.
+- Add updater-contract regression coverage for immediate candidate tracking, ownership-safe failure cleanup, shared-GUI-helper independence, and Linux validation cleanup traps.
+- Ship a release-specific installer bundle with pinned Windows/Linux installers, Work-plugin installers, setup documents and SHA-256 manifest; fresh-install acceptance is performed in an isolated install directory before publication.
+- Retain v0.8.12 monotonic no-downgrade updates, v0.8.11 response-drain accounting and v0.8.10 zero-interference desktop authority.
+
 ## 0.8.13 — 2026-09-21
 
 - Harden active routed-backend recovery after live evidence showed that one transient two-second health miss could force-stop a busy backend and trigger a burst of multi-chat HTTP 502 failures.

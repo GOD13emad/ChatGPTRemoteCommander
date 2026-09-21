@@ -139,6 +139,8 @@ Filesystem containment is enforced, but command execution is **not an OS sandbox
 
 ## Validation
 
+v0.8.14 closes candidate-validation lifecycle gaps found while installing the immutable v0.8.12 release. Candidate processes are ownership-tracked immediately after spawn and cleaned on pre-cutover failure, preventing orphan listeners and locked workflow-shadow stores. Unattended Windows update validation no longer calls the shared interactive `gui_status` helper; it uses the existing native no-input self-test plus candidate `system_status` GUI backend/policy evidence, so update checks do not contend for or seize the user's desktop. v0.8.14 keeps all v0.8.13 supervisor continuity protections and adds a checksum-manifested installer bundle.
+
 v0.8.13 adds fail-closed supervisor liveness and canonical-listener continuity on top of v0.8.12 monotonic updates, v0.8.11 drain-accounting and v0.8.10 zero-interference desktop authority. A routed backend cannot be force-recycled after one transient health miss: recovery requires three consecutive misses, readable router activity, zero in-flight work, and a final health/activity re-check. A healthy canonical router is also retained when only its loaded source hash is stale, avoiding an intentional update-time listener gap.
 
 v0.8.12 makes stable automatic updates monotonic on both Windows and Linux: an unattended updater will not replace a running newer build with an older GitHub Latest release. Explicit forced/exact-ref operations remain available for deliberate testing or rollback. This closes the live sequencing failure observed while an unpublished v0.8.10/v0.8.11 candidate was newer than the public stable release.

@@ -1,7 +1,7 @@
 # ChatGPT Remote Commander — Project Brain
 
-Brain revision: R9
-Status: CURRENT / v0.8.13 RELEASE CANDIDATE
+Brain revision: R10
+Status: CURRENT / v0.8.14 RELEASE CANDIDATE
 As of: 2026-09-21
 Project root: %USERPROFILE%\source\repos\ChatGPTRemoteCommander
 Public repository: GOD13emad/ChatGPTRemoteCommander
@@ -12,20 +12,19 @@ Deliver a stable Remote Commander release that can run in explicit Full Power on
 
 DoD for the current release requires: an immutable stable release tag and assets; clean-checkout check/test/security gates; scope-appropriate GUI evidence (fresh interactive native E2E when native input behavior changes, otherwise byte-identical prior native baseline + current no-input/native/controller regression); candidate validation on the target machine; promotion of every live profile; canonical-route doctor checks; durable-workflow integrity after schema finalization; tunnel profiles targeting canonical routers; autostart/supervisor continuity; removal of superseded release directories; and a post-promotion updater no-op returning CURRENT.
 
-## Authoritative current change set — v0.8.13 release candidate
+## Authoritative current change set — v0.8.14 release candidate
 
-- Upstream source baseline: origin/main commit c5b998318959fd402fed06c6fdebcf7afadb1634, v0.8.12 monotonic stable-update authority.
-- v0.8.10 zero-interference desktop authority is retained unchanged: observe-only GUI by default, explicit-current-user takeover, direct-session-only interactive mutation and no durable-workflow takeover.
-- v0.8.11 stable-router downstream-disconnect drain accounting is retained unchanged: dead downstream destinations do not cancel/retry upstream work; the backend response is consumed to real completion so inflight accounting retires safely.
-- v0.8.12 automatic-update monotonicity is retained unchanged: non-forced stable updates cannot downgrade an active newer semantic version and return AUTO_UPDATE_NEWER_CURRENT before gates/cutover.
-- v0.8.13 addresses a distinct live continuity failure: Windows backend recovery no longer force-stops an active routed backend after one failed two-second health probe.
-- Destructive backend recycle now requires three consecutive health misses, readable canonical-router activity, zero in-flight work and a final health/activity re-check immediately before ownership-proven stop. Unknown or busy work defers recovery.
-- A healthy canonical router is not restarted solely because its loaded source hash is stale during active service. Source activation is deferred/logged instead of creating an intentional canonical-listener gap.
-- Windows behavioral regression directly proves repeated health misses cannot stop a backend while router-reported work is active and that a healthy stale-source router is not stopped. Linux contract prohibits live source-drift recycle.
-- The v0.8.12 downgrade contract and v0.8.13 continuity contract are semantically merged; neither guard is removed.
-- Full Power authority, credentials, workflow stores, desktop-takeover rules and no-blind-replay behavior are unchanged.
-- External GitHub-hosted Actions runner/account availability remains a separate non-code gate. Clean local Windows and Ubuntu Node-current/minimum-Node22 validation remain required before immutable publication when hosted jobs execute zero steps.
-- Source candidate gates are PASS with evidence recorded in E037; exact next action: commit this validated change, fast-forward/push main only if origin/main still equals baseline c5b998318959fd402fed06c6fdebcf7afadb1634, clean-validate the exact commit on Windows and Ubuntu Node current/22, publish immutable stable release before live promotion, candidate-only validate the published commit, promote both profiles, verify routes/router source/tunnels/workflows and final updater CURRENT, then advance this Brain to live-final.
+- Upstream authority at change-set start: immutable GitHub Latest `v0.8.13`, tag peeled to commit `2629149ce577afc91469315c89685f9bbfa01459`; local `main == origin/main`.
+- All accepted protections remain cumulative: v0.8.10 zero-interference desktop takeover boundary; v0.8.11 stable-router downstream-disconnect drain accounting; v0.8.12 monotonic no-downgrade stable updates; v0.8.13 thresholded fail-closed supervisor recovery and no healthy-router source-drift recycle.
+- Exact-public v0.8.12 validation exposed two distinct candidate-lifecycle failures before cutover: shared `gui_status` contention (`GUI_NATIVE_BUSY`) and a pre-registration `saeed-emad` candidate orphan that later caused `WORKFLOW_SHADOW_COPY_FAIL`.
+- The orphan was recovered narrowly with exact ownership evidence: runtime marker, PID 14380, port 48837, profile `saeed-emad`, v0.8.12 project directory and proof that the canonical active route used a different port. No active backend was stopped.
+- v0.8.14 Windows prevention: `$currentCandidate` is assigned immediately after each candidate spawn. `Stop-OwnedCandidate` requires listener + runtime marker + PID + port + profile agreement; pre-cutover catch cleans current and fully registered candidates. Candidate GUI readiness uses native no-input self-test plus `system_status.guiControl.backendSupported/enabled`, not shared interactive `gui_status`.
+- v0.8.14 Linux prevention: validation cleanup trap is installed before candidate spawn and `stop_owned_candidate` requires live process cwd to equal the staged release directory before termination.
+- v0.8.13 supervisor continuity code and behavioral regressions remain authoritative and are not weakened by this change set.
+- Installer DoD: pinned release/source commit, candidate-first existing-install update, fresh isolated install acceptance, Full Power + GUI explicit opt-in with all known/new capabilities enabled unless opted out, official tunnel-client checksum verification, plugin/setup payloads, and a release-specific installer ZIP with SHA-256 manifest.
+- GUI input code is unchanged; no mouse/keyboard/focus takeover is authorized or required for this release. Native no-input/self-test plus prior accepted interactive baseline are the proportional GUI evidence.
+- External GitHub-hosted Actions availability remains a separate account/runner gate; local Windows + Linux syntax/contract + isolated installer acceptance are authoritative for this release if hosted jobs execute zero steps.
+- Source gates are now PASS: 106/106 core tests, 73/73 GUI contract tests, check/test/audit, native no-input X64 layout and Linux Bash syntax. Exact next action: commit/push exact candidate only if origin/main remains `2629149...`, perform isolated fresh-install acceptance from the exact pushed commit, create and verify immutable draft-first release including installer bundle, publish, candidate-only validate both production profiles, promote/maintain, verify canonical routes/router source/tunnels/workflows/supervisor/orphans, require final stable updater `CURRENT`, then close R10 as FINAL.
 
 ## Superseded historical state retained from R5
 

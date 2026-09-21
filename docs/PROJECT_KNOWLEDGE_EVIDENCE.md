@@ -560,3 +560,25 @@ This file is append-only for substantive project claims, decisions, failures, pr
 - Candidate diff remained unchanged through gates, SHA-256 `12acc14a4daf7d69bf8d0543d611a96b2d6e2e6077450ce9aecc48a0fb72fd47` before this evidence-only update.
 - Operational confirmation after v0.8.12 was published but before it was installed: a still-running v0.8.11 updater cycle beginning 07:25 local resolved stable v0.8.9 and returned production routes/control checkout to v0.8.9 with `PROMOTED_DRAIN_PENDING`. This is the already-documented E036 failure class occurring under the older updater; it does not contradict the v0.8.12 monotonic guard because that guard was not yet live in that updater process.
 - Status/Confidence: merged implementation + source regression PASS / high; exact committed-tree clean Windows + Ubuntu/Node22 validation, immutable publication and live promotion remain OPEN.
+
+
+## E038 — v0.8.14 candidate cleanup, non-interactive update validation and installer closeout
+
+- Date/Context: 2026-09-21, additive change on immutable v0.8.13 commit `2629149ce577afc91469315c89685f9bbfa01459`.
+- Previous accepted state: v0.8.13 added fail-closed supervisor recovery: three consecutive misses + known zero inflight + final re-check before routed-backend recycle, and no healthy-router restart solely for source-hash drift.
+- New failures carried forward from exact-public v0.8.12 validation: `GUI_NATIVE_BUSY` caused by updater use of shared interactive `gui_status`; a failed saeed-emad candidate remained listening because Windows cleanup tracked only candidates that had completed all checks; the next run failed workflow-shadow copy.
+- Recovery evidence: candidate PID 14380 / port 48837 / profile saeed-emad / v0.8.12 runtime marker was proven non-active against canonical route and stopped narrowly.
+- Decision: candidate lifecycle authority begins at spawn, not after validation. Cleanup must be ownership-proven. Unattended GUI validation must not acquire or contend for an interactive desktop helper when equivalent no-input/policy evidence exists.
+- Implementation: Windows `Stop-OwnedCandidate` + immediate `$currentCandidate`; catch cleanup before cutover; candidate GUI backend/policy verification through `system_status`. Linux `validation_cleanup` trap + cwd-bound `stop_owned_candidate`. No native GUI input behavior changes.
+- Installer decision: release must include a standalone installer bundle in addition to individual assets; bundle contains pinned installers/plugin installers/setup docs and SHA-256 manifest. Fresh-install acceptance must run from exact pushed release commit in an isolated directory before publication.
+- Confidence/Status: implementation prepared on current v0.8.13 authority; full source gates, exact-commit installer acceptance, immutable publication and live promotion OPEN at record creation.
+- Reuse Targets: v0.8.14 changelog, installer/readme, updater failure prevention, release acceptance, Project Brain/final report.
+
+
+### E038 validation delta — source gates
+
+- v0.8.14 full source validation PASS on Emad-PC-Ultimate: `npm run check`, `npm test`, `npm run audit`, Windows native no-input GUI self-test and Git-for-Windows Bash syntax validation all returned zero.
+- Core test run: 106 tests / 106 PASS / 0 FAIL, including v0.8.13 supervisor continuity regressions plus v0.8.14 updater lifecycle contracts. GUI contract/helper/HTTP suite: 73/73 PASS.
+- Security audit: PASS with no secret-key, tunnel-id, private-key, bearer-token, GitHub-token, tracked local-config or developer-path finding.
+- Native GUI evidence: X64 INPUT layout size 40, no-input only; no mouse/keyboard/focus takeover was performed.
+- Status/Confidence: source implementation PASS / high. Exact pushed-commit isolated installer acceptance, immutable publication and live production promotion remain OPEN at this point.

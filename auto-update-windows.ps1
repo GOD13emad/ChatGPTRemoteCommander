@@ -147,6 +147,31 @@ function Start-Backend([string]$ProjectDir,[string]$ConfigPath,[string]$StateDir
   $psi.Environment['REMOTE_COMMANDER_CONFIG']=$ConfigPath
   return [Diagnostics.Process]::Start($psi)
 }
+function Stop-OwnedCandidate([object]$Candidate,[switch]$Strict){
+  if(-not $Candidate){return}
+  $proc=$Candidate.Process
+  if(-not $proc -or $proc.HasExited){return}
+  $listener=Get-NetTCPConnection -State Listen -LocalPort ([int]$Candidate.Port) -ErrorAction SilentlyContinue|Select-Object -First 1
+  $cfg=Read-Json $Candidate.ConfigPath
+  $markerFile=[string]$cfg.runtimeState
+  $marker=if($markerFile -and (Test-Path -LiteralPath $markerFile -PathType Leaf)){Read-Json $markerFile}else{$null}
+  $owned=$listener -and $marker -and
+    [int]$listener.OwningProcess-eq [int]$proc.Id -and
+    [int]$marker.pid-eq [int]$proc.Id -and
+    [int]$marker.port-eq [int]$Candidate.Port -and
+    [string]$marker.instance.profile-eq [string]$Candidate.Profile
+  if(-not $owned){
+    $msg="CANDIDATE_CLEANUP_OWNERSHIP_MISMATCH profile=$($Candidate.Profile) port=$($Candidate.Port) pid=$($proc.Id)"
+    if($Strict){throw $msg}
+    Log $msg
+    return
+  }
+  Stop-Process -Id $proc.Id -Force -ErrorAction Stop
+  foreach($i in 1..40){Start-Sleep -Milliseconds 100;if(-not(Get-Process -Id $proc.Id -ErrorAction SilentlyContinue)){return}}
+  $msg="CANDIDATE_CLEANUP_TIMEOUT profile=$($Candidate.Profile) port=$($Candidate.Port) pid=$($proc.Id)"
+  if($Strict){throw $msg}
+  Log $msg
+}
 function Get-Targets {
   $items=@()
   $primary=Get-PrimaryConfig
@@ -393,7 +418,7 @@ $created=$false
 $mutex=[Threading.Mutex]::new($false,'Local\ChatGPTRemoteCommanderAutoUpdater',[ref]$created)
 if(-not $created){Log 'AUTO_UPDATE_ALREADY_RUNNING';exit 0}
 
-$candidates=@();$routeBackups=@{};$initialDirect=@{};$cutoverCommitted=$false;$report=[ordered]@{startedAt=(Get-Date).ToUniversalTime().ToString('o');status='RUNNING';gates=@();profiles=@()}
+$candidates=@();$currentCandidate=$null;$routeBackups=@{};$initialDirect=@{};$cutoverCommitted=$false;$report=[ordered]@{startedAt=(Get-Date).ToUniversalTime().ToString('o');status='RUNNING';gates=@();profiles=@()}
 try{
   $primaryConfig=Read-Json (Get-PrimaryConfig)
   if(-not $Force -and $primaryConfig.autoUpdate.enabled-ne $true){Log 'AUTO_UPDATE_DISABLED';$report.status='DISABLED';Atomic-Json $ResultFile $report;exit 0}
@@ -505,6 +530,7 @@ try{
     if($LASTEXITCODE-ne 0){throw "CANDIDATE_CONFIG_FAIL profile=$($t.Profile)"}
     $sha=(Get-FileHash -LiteralPath $cfg -Algorithm SHA256).Hash.ToLowerInvariant()
     $p=Start-Backend $stage.Dir $cfg $stateDir
+    $currentCandidate=[pscustomobject]@{Profile=$t.Profile;Port=$port;Process=$p;ConfigPath=$cfg}
     $h=Wait-Health $port $stage.Version $sha $t.Profile
     & node.exe (Join-Path $stage.Dir 'tools\doctor.mjs') --url "http://127.0.0.1:$port/mcp" --expected-device $device --expected-version $stage.Version --config $cfg --json
     if($LASTEXITCODE-ne 0){throw "CANDIDATE_DOCTOR_FAIL profile=$($t.Profile)"}
@@ -524,7 +550,9 @@ try{
         $shell=Invoke-Mcp $port 'run_shell' @{command='Write-Output RC_AUTOUPDATE_SHELL_PASS';timeoutMs=10000}
         if([string]$shell.stdout -notmatch 'RC_AUTOUPDATE_SHELL_PASS'){throw 'FULL_POWER_SHELL_E2E_FAIL'}
       }
-      if($expected.powerMode.guiControl.enabled-eq $true){[void](Invoke-Mcp $port 'gui_status')}
+      if($expected.powerMode.guiControl.enabled-eq $true){
+        if($status.guiControl.backendSupported-ne $true -or $status.guiControl.enabled-ne $true){throw "GUI_POLICY_STATUS_FAIL profile=$($t.Profile)"}
+      }
     }
     if($expected.durableWorkflows.enabled-eq $true){
       $wf=Invoke-Mcp $port 'workflow_health'
@@ -533,7 +561,8 @@ try{
 
     # Diagnostic backend passed on a shadow store. Rebuild against the live durable
     # store while its DB is still v1-compatible, then run identity/doctor once more.
-    if($p -and -not $p.HasExited){Stop-Process -Id $p.Id -Force -ErrorAction Stop}
+    Stop-OwnedCandidate $currentCandidate -Strict
+    $currentCandidate=$null
     foreach($i in 1..40){Start-Sleep -Milliseconds 100;if(-not(Get-NetTCPConnection -State Listen -LocalPort $port -ErrorAction SilentlyContinue)){break}}
     $finalCfg=Join-Path $stateDir 'config.json'
     $finalArgs=@((Join-Path $stage.Dir 'tools\build-candidate-config.mjs'),'--default',(Join-Path $stage.Dir 'config.json'),'--existing',$t.ExistingConfig,'--output',$finalCfg,'--profile-id',$t.Profile,'--port',[string]$port,'--state-dir',$stateDir)
@@ -546,6 +575,7 @@ try{
     if($LASTEXITCODE-ne 0){throw "FINAL_CONFIG_FAIL profile=$($t.Profile)"}
     $finalSha=(Get-FileHash -LiteralPath $finalCfg -Algorithm SHA256).Hash.ToLowerInvariant()
     $p=Start-Backend $stage.Dir $finalCfg $stateDir
+    $currentCandidate=[pscustomobject]@{Profile=$t.Profile;Port=$port;Process=$p;ConfigPath=$finalCfg}
     [void](Wait-Health $port $stage.Version $finalSha $t.Profile)
     & node.exe (Join-Path $stage.Dir 'tools\doctor.mjs') --url "http://127.0.0.1:$port/mcp" --expected-device $device --expected-version $stage.Version --config $finalCfg --json
     if($LASTEXITCODE-ne 0){throw "FINAL_CANDIDATE_DOCTOR_FAIL profile=$($t.Profile)"}
@@ -555,25 +585,12 @@ try{
     }
     $c=[pscustomobject]@{Profile=$t.Profile;CanonicalPort=$t.CanonicalPort;Port=$port;Version=$stage.Version;Commit=$stage.Commit;ConfigSha=$finalSha;ConfigPath=$finalCfg;ProjectDir=$stage.Dir;Process=$p;Target=$t;WorkflowDir=$liveWorkflowDir;BackupDir=$backupDir}
     $candidates+=$c
+    $currentCandidate=$null
     $report.profiles+=@{profile=$t.Profile;candidatePort=$port;configSha256=$finalSha;doctor='PASS';hardware='PASS';shadowStore='PASS';liveStoreCompatibility='PASS'}
   }
 
   if($NoPromote){
-    foreach($c in $candidates){
-      try{
-        if($c.Process -and -not $c.Process.HasExited){
-          $listener=Get-NetTCPConnection -State Listen -LocalPort $c.Port -ErrorAction SilentlyContinue|Select-Object -First 1
-          $cfg=Read-Json $c.ConfigPath
-          $markerFile=[string]$cfg.runtimeState
-          $marker=if($markerFile -and (Test-Path -LiteralPath $markerFile -PathType Leaf)){Read-Json $markerFile}else{$null}
-          if($listener -and $marker -and [int]$listener.OwningProcess-eq [int]$c.Process.Id -and [int]$marker.pid-eq [int]$c.Process.Id -and [int]$marker.port-eq [int]$c.Port -and [string]$marker.instance.profile-eq [string]$c.Profile){
-            Stop-Process -Id $c.Process.Id -Force -ErrorAction Stop
-          }else{
-            throw "CANDIDATE_CLEANUP_OWNERSHIP_MISMATCH profile=$($c.Profile)"
-          }
-        }
-      }catch{throw}
-    }
+    foreach($c in $candidates){Stop-OwnedCandidate $c -Strict}
     $report.status='CANDIDATE_PASS';$report.completedAt=(Get-Date).ToUniversalTime().ToString('o')
     Atomic-Json $ResultFile $report
     Log 'AUTO_UPDATE_CANDIDATE_PASS'
@@ -632,7 +649,8 @@ try{
   try{Atomic-Json $ResultFile $report}catch{}
   Log "AUTO_UPDATE_FAIL $($_.Exception.Message)"
   if(-not $cutoverCommitted){
-    foreach($c in $candidates){try{if($c.Process -and -not $c.Process.HasExited){Stop-Process -Id $c.Process.Id -Force -ErrorAction SilentlyContinue}}catch{}}
+    try{Stop-OwnedCandidate $currentCandidate}catch{}
+    foreach($c in $candidates){try{Stop-OwnedCandidate $c}catch{}}
     foreach($profile in @($routeBackups.Keys)){
       try{[IO.File]::WriteAllText((Get-RoutePath $profile),[string]$routeBackups[$profile],[Text.UTF8Encoding]::new($false))}catch{}
     }

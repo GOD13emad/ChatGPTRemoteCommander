@@ -90,6 +90,16 @@ start_backend(){
   (cd "$project"; REMOTE_COMMANDER_CONFIG="$cfg" nohup node src/server-v0.3.mjs >>"$log_file" 2>&1 & echo $!)
 }
 stop_pid(){ local pid="$1"; kill "$pid" 2>/dev/null || true; for _ in $(seq 1 40); do kill -0 "$pid" 2>/dev/null || return 0; sleep 0.1; done; kill -9 "$pid" 2>/dev/null || true; }
+stop_owned_candidate(){
+  local pid="${1:-}" project="${2:-}"
+  [[ -z "$pid" ]] && return 0
+  kill -0 "$pid" 2>/dev/null || return 0
+  local actual expected
+  actual="$(readlink -f "/proc/$pid/cwd" 2>/dev/null || true)"
+  expected="$(cd "$project" && pwd -P)"
+  [[ -n "$actual" && "$actual" == "$expected" ]] || { log "CANDIDATE_CLEANUP_OWNERSHIP_MISMATCH pid=$pid"; return 1; }
+  stop_pid "$pid"
+}
 run_gate(){ local project="$1" name="$2"; shift 2; log "GATE_START $name"; (cd "$project"; "$@"); log "GATE_PASS $name"; }
 
 latest_ref(){
@@ -298,6 +308,15 @@ if [[ "$FORCE" != 1 && -f "$ROUTE" ]]; then
   fi
 fi
 
+CANDIDATE_PID=""
+validation_cleanup(){
+  local rc=$?
+  if [[ -n "$CANDIDATE_PID" ]]; then stop_owned_candidate "$CANDIDATE_PID" "$STAGE_DIR" || true; fi
+  CANDIDATE_PID=""
+  exit "$rc"
+}
+trap validation_cleanup ERR
+
 run_gate "$STAGE_DIR" check npm run check
 run_gate "$STAGE_DIR" test npm test
 run_gate "$STAGE_DIR" audit npm run audit
@@ -330,7 +349,8 @@ CANDIDATE_PID="$(start_backend "$STAGE_DIR" "$DIAG_CFG" "$STATE_DIR/diagnostic.l
 wait_health "$PORT" "$VERSION" "$DIAG_SHA" default || { stop_pid "$CANDIDATE_PID"; echo 'diagnostic health failed' >&2; exit 1; }
 node "$STAGE_DIR/tools/doctor.mjs" --url "http://127.0.0.1:$PORT/mcp" --expected-version "$VERSION" --config "$DIAG_CFG" --json
 node "$STAGE_DIR/tools/hardware-selftest.mjs" --url "http://127.0.0.1:$PORT/mcp" --config "$DIAG_CFG" --expected-version "$VERSION"
-stop_pid "$CANDIDATE_PID"
+stop_owned_candidate "$CANDIDATE_PID" "$STAGE_DIR"
+CANDIDATE_PID=""
 
 FINAL_CFG="$STATE_DIR/config.json"
 build_cfg "$FINAL_CFG" "$LIVE_WF" >/dev/null
@@ -340,8 +360,9 @@ wait_health "$PORT" "$VERSION" "$FINAL_SHA" default || { stop_pid "$CANDIDATE_PI
 node "$STAGE_DIR/tools/doctor.mjs" --url "http://127.0.0.1:$PORT/mcp" --expected-version "$VERSION" --config "$FINAL_CFG" --json
 node "$STAGE_DIR/tools/hardware-selftest.mjs" --url "http://127.0.0.1:$PORT/mcp" --config "$FINAL_CFG" --expected-version "$VERSION"
 
-if [[ "$NO_PROMOTE" == 1 ]]; then stop_pid "$CANDIDATE_PID"; log 'AUTO_UPDATE_CANDIDATE_PASS'; exit 0; fi
+if [[ "$NO_PROMOTE" == 1 ]]; then stop_owned_candidate "$CANDIDATE_PID" "$STAGE_DIR"; CANDIDATE_PID=""; trap - ERR; log 'AUTO_UPDATE_CANDIDATE_PASS'; exit 0; fi
 
+trap - ERR
 CUTOVER_COMMITTED=0
 ROUTE_BACKUP="$BACKUP_ROOT/$COMMIT/default/route.before.json"
 INITIAL_MIGRATION=0
