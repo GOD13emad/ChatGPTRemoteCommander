@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.8.19 — 2026-09-21
+
+- Break a confirmed Windows auto-update maintenance feedback loop: stale superseded-release cleanup is now independent of supervisor recycle, so a locked old release can no longer restart a healthy supervisor every scheduler cycle.
+- Supervisor recycle is now reserved for actual control-code promotion. Cleanup-only maintenance records explicit `RELEASE_CLEANUP_PASS`, `RELEASE_CLEANUP_DEFER`, and `AUTO_UPDATE_CLEANUP_PENDING` evidence without disrupting a healthy tunnel/backend.
+- Make Windows release cleanup observable and fail-closed instead of silently swallowing locked-directory deletion failures; cleanup-pending state is persisted in the updater receipt.
+- Apply the same cleanup-only/no-recycle separation to Linux maintenance to prevent the equivalent self-restart feedback loop.
+- Add contract regression that cleanup-only paths on both platforms must not contain supervisor recycle.
+- Live behavioral regressions on Windows proved both cases: removable stale release cleanup preserved the same supervisor PID; an intentionally locked stale release produced `AUTO_UPDATE_CLEANUP_PENDING` while the same supervisor PID remained alive and no recycle event was emitted.
+- Production cleanup retired ownership-proven orphan backends from v0.8.9, v0.8.10 and v0.8.11 only after proving they were unrouted, idle, connection-free and without unsafe descendants. Subsequent scheduled update checks remained `AUTO_UPDATE_CURRENT`.
+
 ## 0.8.18 — 2026-09-21
 
 - Fix Windows updater child-process stdio inheritance: staged long-lived backends are now launched with detached `Start-Process` semantics rather than inheriting the MCP `run_shell` stdout/stderr pipe. A behavioral regression proves the updater parent can observe EOF and exit while the child remains alive.

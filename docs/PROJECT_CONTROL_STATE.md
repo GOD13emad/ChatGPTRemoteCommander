@@ -1,7 +1,7 @@
 # ChatGPT Remote Commander — Project Brain
 
-Brain revision: R12
-Status: CURRENT / v0.8.18 RELEASE CANDIDATE
+Brain revision: R13
+Status: CURRENT / v0.8.19 RELEASE CANDIDATE
 As of: 2026-09-21
 Project root: %USERPROFILE%\source\repos\ChatGPTRemoteCommander
 Public repository: GOD13emad/ChatGPTRemoteCommander
@@ -230,3 +230,21 @@ Start the GUI read-performance phase from v0.8.6 without changing the frozen rel
 ## HISTORY — R12 delta
 
 - 2026-09-21: Converted the v0.8.15 Windows drain incident into stdio-inheritance prevention, evidence-gated recovery, persistent-terminal protection, atomic route retirement, and runtime-version authority regression.
+
+
+## Maintenance-loop successor — v0.8.19
+
+- Trigger: the GUI/chess stress test exposed repeated supervisor recycle/tunnel churn while production routes were already healthy on v0.8.18.
+- Confirmed root cause: stale superseded-release directories remained locked by three old unrouted backend processes. `Has-SupersededRelease` treated those directories as maintenance, `Cleanup-Releases` silently ignored failed deletion, and maintenance unconditionally called `Recycle-ControlSupervisor`. Supervisor restart reset the auto-update due time, causing an immediate maintenance/recycle feedback loop.
+- Production recovery: v0.8.9/v0.8.10/v0.8.11 orphan backends were stopped only after ownership proof, unrouted-state proof, exact listener ownership, zero active/queued operations, zero established connections and no unsafe descendants. Only v0.8.18 release runtime remained afterward.
+- Live stability evidence: scheduled update checks from 14:09 through 18:25 repeatedly reported `AUTO_UPDATE_CURRENT` with no further supervisor recycle loop.
+- Product prevention: cleanup-only maintenance no longer recycles the supervisor. Windows cleanup emits explicit PASS/DEFER events and persists `CLEANUP_PENDING`; Linux receives the equivalent separation. Supervisor recycle remains allowed only for actual control-code promotion.
+- Behavioral regression: a removable stale-release fixture was deleted while supervisor PID 40124 remained unchanged; an intentionally locked stale-release fixture returned `AUTO_UPDATE_CLEANUP_PENDING`, emitted no supervisor recycle, and preserved the same supervisor PID.
+- Source validation: full v0.8.19 release-candidate gates PASS — 109/109 core, 73/73 GUI, check/test/audit, installer/onboarding/source-integrity/security, Windows native self-test, Linux syntax and diff integrity.
+- Desktop interference policy remains unchanged and enforced: observe-only is default; mutation requires explicit takeover authorization. No interactive desktop input is required for this release.
+- Open release gates: commit/remote authority check, exact-tag installer acceptance, immutable publication, candidate-only validation, production promotion, post-promotion `CURRENT` verification.
+- Exact next action: complete those release gates in order; do not publish or promote on any regression or remote-authority drift.
+
+## HISTORY — R13 delta
+
+- 2026-09-21: Converted chess/GUI stress-test maintenance churn into a confirmed updater/supervisor feedback-loop root cause, ownership-safe orphan recovery, cleanup/no-recycle product fix and behavioral regression.

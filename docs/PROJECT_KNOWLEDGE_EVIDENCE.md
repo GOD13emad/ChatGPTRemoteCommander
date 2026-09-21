@@ -714,3 +714,36 @@ This file is append-only for substantive project claims, decisions, failures, pr
 - Release metadata check PASS: package=0.8.18, plugin=0.8.18, server runtime VERSION=0.8.18, Windows/Linux installer defaults=v0.8.18.
 - First full-gate attempt stopped at source-integrity because new router-retire files were intentionally not yet Git-tracked; after staging the exact change set, the guard passed on the complete rerun. No runtime test failure occurred in that first attempt.
 - Status/Confidence: source release candidate PASS / high. Exact-tag installer acceptance, immutable publication, live candidate promotion, route retirement and orphan cleanup remain OPEN at this point.
+
+
+## E045 — GUI/chess stress test exposed auto-update maintenance feedback loop
+
+- Date/Context: 2026-09-21, live Windows GUI stress test using Lucas Chess R6.1.4 with Stockfish 19.
+- Stress-test setup: Lucas Chess installed in a dedicated local window; Stockfish 19 selected as the strongest listed internal engine (Lucas UI rating 3700); engine fixed response time configured to 0.1 s. GUI takeover was explicitly scoped to the dedicated Lucas Chess window; browser/other windows were excluded.
+- Initial symptom: GUI sessions became uncertain/disconnected and the ChatGPT tunnel intermittently stopped polling. Update logs showed `SUPERVISOR_RECYCLE_STOP/PASS` repeating roughly every scheduler loop despite v0.8.18 routes already being healthy.
+- Root cause evidence: active routes for default/saeed-emad both pointed to v0.8.18 with `previous=null`, while release directories v0.8.9/v0.8.10/v0.8.11 remained. Each directory was held by its matching old Node backend listener. `Has-SupersededRelease` therefore stayed true; `Cleanup-Releases` swallowed deletion failure; the maintenance branch always called `Recycle-ControlSupervisor`; supervisor restart reset the auto-update schedule and retriggered the same condition.
+- Ownership-safe recovery evidence: v0.8.9 PID 6920/port 48833, v0.8.10 PID 6148/port 48831, and v0.8.11 PID 46692/port 48832 were each proven unrouted, exact-command/listener owned, `activeOperations=0`, `queued=0`, established connections=0, unsafe descendants=0 before stop/removal. After recovery only `v0.8.18-361289acc8d8` remained.
+- Post-recovery production evidence: scheduled checks from 14:09 through 18:25 repeatedly logged `AUTO_UPDATE_CURRENT version=0.8.18`; no repeated supervisor recycle was observed.
+- Product decision: cleanup-only maintenance must never restart a healthy supervisor. Restart is reserved for actual control-code promotion. Failed stale-release deletion is evidence, not a reason to churn the runtime.
+- Windows implementation: `Cleanup-Releases` now records `RELEASE_CLEANUP_PASS/DEFER`, returns remaining cleanup items, and maintenance persists `CLEANUP_PENDING` without supervisor recycle when control code is already current.
+- Linux implementation: current-release maintenance similarly separates cleanup-only work from control-code promotion/recycle and logs cleanup pending instead of restarting solely for stale artifacts.
+- Behavioral regression 1: synthetic removable release directory was cleaned; output `RELEASE_CLEANUP_PASS` + `AUTO_UPDATE_CURRENT`; supervisor PID remained 40124; no recycle event.
+- Behavioral regression 2: synthetic release contained an exclusively locked file; cleanup emitted `RELEASE_CLEANUP_DEFER` and `AUTO_UPDATE_CLEANUP_PENDING`; supervisor PID remained 40124 and no `SUPERVISOR_RECYCLE` appeared. Fixture/locker were then removed.
+- Contract regression: updater test requires Windows and Linux cleanup-only branches to contain no supervisor recycle; focused updater contract 9/9 PASS.
+- Full pre-version source validation: `npm run check`, `npm test`, `npm run audit`, Windows native GUI self-test, Linux shell parse, and diff integrity PASS; core 109/109, GUI 73/73.
+- Status/Confidence: root cause CONFIRMED / live recovery PASS / product fix pre-release PASS / v0.8.19 publication OPEN at record creation.
+- Reuse Targets: updater lifecycle, supervisor stability, GUI/tunnel reliability, stress-test methodology, incident postmortem, release acceptance.
+- Provenance: production routes/process/listener/status/update-log evidence; isolated worktree `fix/v0819-maintenance-loop`; behavioral fixtures and regression tests described above.
+
+## HISTORY — E045 delta
+
+- 2026-09-21: Added confirmed maintenance-loop root cause, live orphan recovery, cleanup-only no-recycle architecture and two behavioral regression outcomes.
+
+
+### E045 validation delta — full v0.8.19 source gates
+
+- Version authority PASS: package=0.8.19, plugin=0.8.19, server runtime VERSION=0.8.19, Windows/Linux installer defaults=v0.8.19.
+- Full release-candidate validation PASS: `npm run check`, `npm test`, `npm run audit`, Windows native no-input GUI self-test, Linux `bash -n`, and diff integrity all returned zero.
+- Core suite: 109/109 PASS. GUI contract/helper/HTTP suite: 73/73 PASS. Security audit: PASS. Installer and onboarding checks: PASS. Source integrity: PASS.
+- Existing GUI non-interference guards remain PASS: observe-only default, explicit takeover authorization requirement, single desktop lease, fresh single-use frame requirement, uncertain-outcome fail-closed behavior, and durable workflows forbidden from acquiring interactive desktop takeover.
+- Status/Confidence: v0.8.19 source release candidate PASS / high. Commit/tag/artifact/publication/live-promotion gates remain OPEN at this record.

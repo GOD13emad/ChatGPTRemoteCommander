@@ -269,12 +269,21 @@ promote_control(){
 }
 
 cleanup_releases(){
-  local route="$ROUTING_ROOT/default.json" active="" d
+  local route="$ROUTING_ROOT/default.json" active="" d remaining=0
   [[ -f "$route" ]] && active="$(route_tsv "$INSTALL_DIR" "$route" 2>/dev/null | awk -F '\t' '{print $8}')"
   for d in "$RELEASE_ROOT"/v*; do
     [[ -d "$d" ]] || continue
-    [[ -n "$active" && "$(readlink -f "$d")" == "$(readlink -f "$active")" ]] || rm -rf "$d"
+    if [[ -n "$active" && "$(readlink -f "$d")" == "$(readlink -f "$active")" ]]; then
+      continue
+    fi
+    if rm -rf "$d" && [[ ! -d "$d" ]]; then
+      log "RELEASE_CLEANUP_PASS name=$(basename "$d")"
+    else
+      remaining=1
+      log "RELEASE_CLEANUP_DEFER name=$(basename "$d")"
+    fi
   done
+  return "$remaining"
 }
 
 mkdir -p "$INSTALL_DIR/var"
@@ -309,16 +318,21 @@ if [[ "$FORCE" != 1 && -f "$ROUTE" ]]; then
       log 'AUTO_UPDATE_DRAIN_PENDING profile=default'
       exit 0
     fi
-    if [[ "$CONTROL" != "$COMMIT" ]] || has_superseded_release; then
+    if [[ "$CONTROL" != "$COMMIT" ]]; then
       LIVE_WF="$(json_field "$STAGE_DIR" "$ACTIVE_CFG" durableWorkflows.directory)"
       [[ -z "$LIVE_WF" ]] || node "$STAGE_DIR/tools/finalize-workflow-schema.mjs" --directory "$LIVE_WF"
-      [[ "$CONTROL" == "$COMMIT" ]] || promote_control "$COMMIT" "$REF"
-      cleanup_releases
+      promote_control "$COMMIT" "$REF"
+      cleanup_releases || log 'AUTO_UPDATE_CLEANUP_PENDING_AFTER_MAINTENANCE'
       log "AUTO_UPDATE_MAINTENANCE_PASS version=$VERSION"
       recycle_supervisor
       exit 0
     fi
-    cleanup_releases
+    if has_superseded_release; then
+      if ! cleanup_releases; then
+        log 'AUTO_UPDATE_CLEANUP_PENDING'
+        exit 0
+      fi
+    fi
     log "AUTO_UPDATE_CURRENT version=$VERSION"
     exit 0
   fi
@@ -444,6 +458,6 @@ fi
 
 node "$STAGE_DIR/tools/finalize-workflow-schema.mjs" --directory "$LIVE_WF"
 promote_control "$COMMIT" "$REF"
-cleanup_releases
+cleanup_releases || log 'AUTO_UPDATE_CLEANUP_PENDING_AFTER_PROMOTION'
 log "AUTO_UPDATE_PASS version=$VERSION commit=$COMMIT"
 recycle_supervisor

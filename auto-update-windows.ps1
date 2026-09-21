@@ -518,14 +518,23 @@ function Recycle-ControlSupervisor {
 
 function Cleanup-Releases {
   $active=@{}
+  $remaining=@()
   foreach($f in Get-ChildItem -LiteralPath $RoutingRoot -Filter '*.json' -File -ErrorAction SilentlyContinue){
     if($f.Name -like '*.runtime.json'){continue}
     try{$r=Read-Json $f.FullName;if($r.active.projectDir){$active[[IO.Path]::GetFullPath([string]$r.active.projectDir).ToLowerInvariant()]=$true}}catch{}
   }
   foreach($d in Get-ChildItem -LiteralPath $ReleaseRoot -Directory -ErrorAction SilentlyContinue){
     $key=[IO.Path]::GetFullPath($d.FullName).ToLowerInvariant()
-    if(-not $active.ContainsKey($key)){Remove-Item -LiteralPath $d.FullName -Recurse -Force -ErrorAction SilentlyContinue}
+    if($active.ContainsKey($key)){continue}
+    try{
+      Remove-Item -LiteralPath $d.FullName -Recurse -Force -ErrorAction Stop
+      Log "RELEASE_CLEANUP_PASS name=$($d.Name)"
+    }catch{
+      $remaining+=$d.Name
+      Log "RELEASE_CLEANUP_DEFER name=$($d.Name) error=$($_.Exception.Message)"
+    }
   }
+  return @($remaining)
 }
 if($SelfTest){
   [pscustomobject]@{ok=$true;installDir=$InstallDir;stateRoot=$StateRoot;releaseRoot=$ReleaseRoot;routingRoot=$RoutingRoot}|ConvertTo-Json -Compress
@@ -569,8 +578,8 @@ try{
           Log "AUTO_UPDATE_DRAIN_PENDING profiles=$($pendingDrains -join ',')"
           exit 0
         }
-        $needsMaintenance=($controlHead-ne $stage.Commit -or (Has-SupersededRelease))
-        if($needsMaintenance){
+        $controlMismatch=($controlHead-ne $stage.Commit)
+        if($controlMismatch){
           Log "AUTO_UPDATE_MAINTENANCE controlHead=$controlHead target=$($stage.Commit)"
           foreach($rf in Get-ChildItem -LiteralPath $RoutingRoot -Filter '*.json' -File -ErrorAction SilentlyContinue){
             if($rf.Name -like '*.runtime.json'){continue}
@@ -584,17 +593,25 @@ try{
               }
             }catch{throw}
           }
-          if($controlHead-ne $stage.Commit){Promote-Control $stage.Commit $ref}
+          Promote-Control $stage.Commit $ref
           Recycle-ControlSupervisor
-          Cleanup-Releases
-          $report.status='MAINTENANCE_REPAIRED';$report.completedAt=(Get-Date).ToUniversalTime().ToString('o')
+          $cleanupPending=@(Cleanup-Releases)
+          $report.status=if($cleanupPending.Count-gt0){'MAINTENANCE_REPAIRED_CLEANUP_PENDING'}else{'MAINTENANCE_REPAIRED'}
+          $report.cleanupPending=@($cleanupPending)
+          $report.completedAt=(Get-Date).ToUniversalTime().ToString('o')
           Atomic-Json $ResultFile $report
-          Log "AUTO_UPDATE_MAINTENANCE_PASS version=$($stage.Version)"
+          Log "AUTO_UPDATE_MAINTENANCE_PASS version=$($stage.Version) cleanupPending=$($cleanupPending.Count)"
           exit 0
         }
-        Cleanup-Releases
+        $cleanupPending=@(Cleanup-Releases)
+        if($cleanupPending.Count-gt0){
+          $report.status='CLEANUP_PENDING';$report.cleanupPending=@($cleanupPending);$report.completedAt=(Get-Date).ToUniversalTime().ToString('o')
+          Atomic-Json $ResultFile $report
+          Log "AUTO_UPDATE_CLEANUP_PENDING releases=$($cleanupPending -join ',')"
+          exit 0
+        }
         Log "AUTO_UPDATE_CURRENT version=$($stage.Version)"
-        $report.status='CURRENT';Atomic-Json $ResultFile $report;exit 0
+        $report.status='CURRENT';$report.completedAt=(Get-Date).ToUniversalTime().ToString('o');Atomic-Json $ResultFile $report;exit 0
       }
     }
   }
