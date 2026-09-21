@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.8.9 — 2026-09-21
+
+- Replace the unattended Windows updater's interactive GUI E2E gate with the existing native no-input self-test, preventing scheduled updates from stealing desktop focus or failing because Windows denies background foreground activation.
+- Keep real focus/click/Farsi+Japanese typing/button/screenshot/cursor/foreground GUI E2E as a mandatory release-validation gate on the exact clean release commit.
+- Keep candidate hardware validation of the GUI backend through candidate MCP `gui_status`, so the target machine must still prove the native backend is available before promotion.
+- Preserve v0.8.8 router loaded-source SHA binding and ownership-proven stale-router recycle, plus v0.8.7 persistent GUI latency and conservative drain handling.
+- Add updater-contract regression proving interactive `test:gui-native` is not invoked by unattended candidate updates.
+
 ## 0.8.8 — 2026-09-21
 
 - Bind every running stable router to a SHA-256 of the exact `stable-router.mjs` source loaded by that process and expose the digest through router status/runtime state.

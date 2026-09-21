@@ -4,12 +4,13 @@ Audit date: 2026-09-21
 
 ## Result
 
-PASS for the current v0.8.8 release candidate content and reachable branch/tag history checked locally after remote-ref synchronization.
+PASS for the current v0.8.9 release candidate content and reachable branch/tag history checked locally after remote-ref synchronization.
 
 The audit found no committed OpenAI-style API secret key, GitHub token, lowercase `tunnel_` identifier, private-key block, bearer-token literal, tracked `config.local.json`, or developer-specific absolute Windows path. On 2026-09-19 a stale local tracking ref first exposed an already-sanitized developer-path finding, and the obsolete public `release/v0.5.0-rc1` branch contained tunnel-shaped self-test fixtures inside the audit test itself. On 2026-09-20 the reachable `feature/blue-green-v0.8.0` history exposed an uppercase fail-closed status symbol that the former case-insensitive tunnel regex misclassified as a credential. The detector now follows the canonical lowercase `tunnel_` prefix used by OpenAI Secure MCP Tunnel examples and includes a regression proving lowercase tunnel-shaped values match while uppercase status/error symbols do not. The unchanged broader history scan then returned `SECURITY_AUDIT_PASS`. No real Runtime API key or tunnel identifier was recovered from these findings.
 
 ## Controls verified
 
+- v0.8.9 separates unattended candidate GUI verification from interactive desktop E2E: automatic updates run the native no-input self-test plus candidate MCP `gui_status`, while the full focus/click/type E2E remains a release gate on the exact clean commit. This prevents scheduled updates from stealing focus or failing solely because Windows denies background foreground activation.
 - v0.8.8 binds each running stable router to the SHA-256 of its loaded router source and makes Windows/Linux supervisors recycle only ownership-proven routers whose loaded source does not match the promoted control checkout. Unknown canonical listeners remain fail-closed.
 - v0.8.7 reuses a persistent bounded GUI helper instead of recompiling `gui-native.cs` for every read; timeout/crash/output-bound failures remain fail-closed and mutation uncertainty is never replayed.
 - v0.8.7 makes post-cutover drain timeouts non-destructive: known cancellable long-lived transport requests may be cancelled after the drain budget, while unknown/mutating work is deferred and later maintenance completes automatically without rolling back a committed route.

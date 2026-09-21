@@ -1,6 +1,6 @@
-# GUI acceptance gates — v0.8.8
+# GUI acceptance gates — v0.8.9
 
-The v0.8.8 release retains the v0.8.7 bounded Windows GUI lease/frame safety model and persistent helper, while adding router source-activation verification outside the GUI path. On the validated Windows target, warm status reads measured 16.09 ms median, window-list reads 36.76 ms through the controller, and 1000 px JPEG screenshots 87.40 ms through the controller, while the real native E2E still passed capture, exact-window focus, click, Farsi/Japanese Unicode typing, button activation, screenshot verification, cursor restore and foreground restore (GUI_NATIVE_E2E_PASS). GUI authorization remains an explicit capability that can be persistently opted out while the rest of Full Power stays enabled.
+The v0.8.9 release retains the v0.8.7 bounded Windows GUI lease/frame safety model and persistent helper plus v0.8.8 router source-activation verification. It also separates unattended update verification from interactive desktop E2E so scheduled updates never need to steal focus. On the validated Windows target, warm status reads measured 16.09 ms median, window-list reads 36.76 ms through the controller, and 1000 px JPEG screenshots 87.40 ms through the controller, while the real native E2E still passed capture, exact-window focus, click, Farsi/Japanese Unicode typing, button activation, screenshot verification, cursor restore and foreground restore (GUI_NATIVE_E2E_PASS). GUI authorization remains an explicit capability that can be persistently opted out while the rest of Full Power stays enabled.
 
 These measured Windows results do not waive the remaining release gates below for installer/update/tunnel/ChatGPT integration, Linux regression, multi-monitor/DPI coverage, locked/Secure Desktop behavior, anti-cheat/protected input, or real-time gameplay.
 
@@ -9,6 +9,8 @@ These measured Windows results do not waive the remaining release gates below fo
 Run the Node behavioral suite and `test/gui-native.ps1` on an extracted, pinned candidate copy. The native test parses the helper, compiles its C# types, checks INPUT layout (40 bytes in a 64-bit process, 28 in a 32-bit process), and exercises pure key-name validation. It must not capture the screen, move input, connect a tunnel, overwrite local policy, enroll credentials or restart services. Save stdout/stderr, exit codes, platform and artifact hashes.
 
 PASS here means parser/layout readiness only, not working GUI control.
+
+This no-input native self-test is also the GUI gate used by unattended Windows candidate updates. Candidate hardware validation separately requires `gui_status` from the candidate MCP process. The interactive Gate B remains a release-validation gate and is intentionally not run by the scheduled updater, because Windows may deny background foreground activation while the user is working.
 
 ## Gate B: disposable interactive desktop
 

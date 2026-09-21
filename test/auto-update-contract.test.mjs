@@ -14,7 +14,7 @@ test('auto updater is candidate-first, hardware-gated and commit-point aware',()
     "Run-Gate $stage.Dir 'check'",
     "Run-Gate $stage.Dir 'test'",
     "Run-Gate $stage.Dir 'audit'",
-    "Run-Gate $stage.Dir 'gui-native'",
+    'Run-GuiNativeSelfTest $stage.Dir',
     'copy-workflow-store.mjs',
     'workflow-shadow',
     'DisableCapability',
@@ -40,6 +40,9 @@ test('auto updater is candidate-first, hardware-gated and commit-point aware',()
   ]) assert.ok(s.includes(marker),marker);
   assert.ok(s.includes('[string[]]$CommandArgs'), 'gate helper must not bind the PowerShell automatic $args variable');
   assert.ok(s.includes('& npm.cmd @CommandArgs'), 'gate helper must pass the intended npm argument array');
+  assert.ok(s.includes("GATE_START gui-native-selftest"), 'unattended updater must run non-interactive native GUI self-test');
+  assert.ok(s.includes("gui-control.ps1") && s.includes("-SelfTest"), 'GUI candidate gate must compile/validate native helper without desktop interaction');
+  assert.ok(!s.includes("Run-Gate $stage.Dir 'gui-native' @('run','test:gui-native')"), 'unattended updater must not run interactive GUI E2E');
   assert.ok(!s.includes('[string[]]$Args'), 'reserved automatic $args name must not be used as a gate parameter');
   assert.ok(s.includes("Get-ChildItem -LiteralPath $InstanceRoot -Directory"), 'target discovery must enumerate only immediate profile directories');
   assert.ok(s.includes("Join-Path $profileDir.FullName 'instance.json'"), 'target discovery must bind only each profile directory instance record');

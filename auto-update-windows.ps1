@@ -124,6 +124,14 @@ function Run-Gate([string]$Candidate,[string]$Name,[string[]]$CommandArgs){
   if($LASTEXITCODE-ne 0){throw "GATE_FAIL $Name"}
   Log "GATE_PASS $Name"
 }
+function Run-GuiNativeSelfTest([string]$Candidate){
+  Log "GATE_START gui-native-selftest"
+  $helper=Join-Path $Candidate 'tools\gui-control.ps1'
+  if(-not(Test-Path -LiteralPath $helper -PathType Leaf)){throw 'GATE_GUI_HELPER_MISSING'}
+  & pwsh.exe -NoLogo -NoProfile -NonInteractive -File $helper -SelfTest
+  if($LASTEXITCODE-ne 0){throw 'GATE_FAIL gui-native-selftest'}
+  Log "GATE_PASS gui-native-selftest"
+}
 function Start-Backend([string]$ProjectDir,[string]$ConfigPath,[string]$StateDir){
   New-Item -ItemType Directory -Force -Path $StateDir|Out-Null
   $node=(Get-Command node.exe -ErrorAction Stop).Source
@@ -445,7 +453,9 @@ try{
     Run-Gate $stage.Dir 'test' @('test')
     Run-Gate $stage.Dir 'audit' @('run','audit')
     if($primaryConfig.powerMode.enabled-eq $true -and $primaryConfig.powerMode.guiControl.enabled-eq $true){
-      Run-Gate $stage.Dir 'gui-native' @('run','test:gui-native')
+      # Unattended updates must not steal desktop focus. Full interactive GUI E2E
+      # remains a release gate; candidate hardware validation later requires gui_status.
+      Run-GuiNativeSelfTest $stage.Dir
     }
   }finally{Pop-Location}
 

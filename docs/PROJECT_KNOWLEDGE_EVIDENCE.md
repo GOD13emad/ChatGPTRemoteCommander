@@ -453,3 +453,32 @@ This file is append-only for substantive project claims, decisions, failures, pr
   - native GUI E2E log SHA-256 `8edd865291b3858e56793351ddfe9d26ff7ae22f0922a7954f701279da6be7ca`.
 - Status/Confidence: source release-prep PASS / high. Clean detached Windows, exact-public Ubuntu/Node22, immutable publication, candidate-only update, live promotion and router source-drift recycle remain OPEN gates.
 - Reuse targets: v0.8.8 release acceptance, release notes, Project Brain.
+
+## E032 — Automatic-update GUI E2E focus failure and gate redesign
+
+- Date/Context: 2026-09-21, v0.8.8 candidate-only validation on the live Windows target.
+- Failure: candidate `check`, `test`, and security audit all passed, but the automatic updater's `gui-native` gate failed at the real interactive focus step with `GUI_FOCUS_NOT_CONFIRMED`. The same exact release commit had already passed native GUI E2E from a clean detached worktree.
+- Root cause: the scheduled/candidate updater was using the full interactive GUI E2E as an unattended release gate. Microsoft documents that `SetForegroundWindow` is intentionally restricted and may be denied even when documented conditions are met; an application cannot force itself to foreground while the user is working with another window. Sources: https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setforegroundwindow and https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-allowsetforegroundwindow.
+- Risk: an unattended auto-update should not steal focus, synthesize desktop interaction, or fail a valid candidate merely because the user is actively using another application.
+- Minimum-sufficient correction:
+  - keep full real GUI E2E as a release-validation gate on the exact clean release commit;
+  - in unattended Windows candidate updates, replace the interactive E2E with the existing native `gui-control.ps1 -SelfTest`, which compiles/loads native code and verifies input layout/key validation without capture or input;
+  - retain candidate MCP hardware self-test `gui_status` so the candidate process must still prove that the Windows GUI backend is available on the target machine;
+  - do not weaken lease/frame/foreground/input safety in production to make a background test pass.
+- Status/Confidence: Root cause Confirmed / high. v0.8.8 immutable publication remains valid but live promotion is blocked; hotfix release required so unattended candidate validation is deterministic and non-intrusive.
+- Reuse targets: updater release gates, GUI acceptance, failure prevention, v0.8.9 release notes.
+
+## E033 — v0.8.9 unattended-GUI-gate hotfix release preparation
+
+- Date/Context: 2026-09-21, source-tree validation after replacing the unattended interactive GUI E2E with native no-input self-test and bumping to v0.8.9.
+- Windows source-tree release gates: `npm run check` PASS; `npm test` PASS; `npm run audit` PASS; full real native GUI E2E PASS.
+- The real E2E still validates focus, click, multilingual Unicode typing, button activation, before/after screenshot change, cursor restoration and foreground restoration; the product GUI safety model was not relaxed to address unattended-update focus denial.
+- Updater contract now requires `Run-GuiNativeSelfTest`, `gui-control.ps1 -SelfTest`, and explicitly forbids invoking interactive `test:gui-native` from the unattended updater path.
+- Candidate hardware self-test remains responsible for proving `gui_status` on the candidate MCP process before promotion.
+- Provenance:
+  - check log SHA-256 `548fb6a14c1680cf208bb3177b218b5cec8b149bfeb4fcbb89fb468bf29bb56f`;
+  - test log SHA-256 `253aea599e099eb323bc530b2ba1351d04ff03f6e5833660fdc38e31d8c9f760`;
+  - security audit log SHA-256 `b5367c370a7221bdc1b6b5fdf1482aaa45d2912bc584f7deb556cab82b8c312b`;
+  - native GUI E2E log SHA-256 `7fa1ea1a7799768ca51ffd427fa964536fe95bc368c4c5390f45363c30ed4028`.
+- Status/Confidence: source release-prep PASS / high. Clean detached Windows, exact-public Ubuntu/Node22, immutable publication, candidate-only update, live promotion, router source-hash activation and final no-op remain OPEN gates.
+- Reuse targets: v0.8.9 release acceptance, GUI/update architecture, Project Brain.
