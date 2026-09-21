@@ -190,3 +190,26 @@ Start the GUI read-performance phase from v0.8.6 without changing the frozen rel
 ## HISTORY — Linux R2 delta
 
 - 2026-09-21: Live post-publish evidence exposed updater-lock FD inheritance; no blind rerun performed, and successor release path selected instead of mutating immutable v0.8.16.
+
+## Linux hardening closeout state — v0.8.17 published
+
+- Source/release: PASS. `main` release commit `6bd826502a048640baf3c77fa4b74bc40e8e977d`; tag `v0.8.17` resolves to it; GitHub Latest is v0.8.17 and immutable.
+- Cross-platform verification: PASS. Windows full check/test/audit/security gates PASS; exact Ubuntu 24.04.4 WSL2 checkout PASS including shell parse, 100755 executable modes, updater lock-FD guards, check/test/audit.
+- Release artifacts: PASS. 13/13 draft assets matched local SHA-256 before publish.
+- Root causes closed in product: systemd portable-runtime PATH; Linux executable-bit release drift; ownership-aware routed shutdown cleanup; bounded tunnel-client download; self-safe systemd updater restart ordering; updater lock descriptor inheritance into long-lived backend/router children.
+- Live `aliemad-Labtop`: BLOCKED BY ACCESS, not by release validation. Device is alive on LAN at 192.168.10.6 but tunnel-client is not polling; no SSH/RDP/VNC/WinRM/canonical MCP or bounded common remote-management port is reachable. Live runtime remains last-confirmed v0.8.13 until directly revalidated.
+- DoD: release engineering DONE; live Linux deployment gate OPEN. FINAL-LIVE must not be claimed until direct target evidence shows v0.8.17 route/backend/tunnel health and a second updater run no longer reports `AUTO_UPDATE_ALREADY_RUNNING`.
+- Brain authority: this file remains CURRENT. Root `PROJECT_BRAIN.md` is a legacy/untracked mirror and remains STALE by prior decision; do not create a second competing authority.
+- Exact next action: execute the single recovery runner locally on `aliemad-Labtop` (or regain Remote Commander), then capture the generated Return and complete live promotion/second-update verification.
+
+## HISTORY — Linux R3 delta
+
+- 2026-09-21: Published immutable v0.8.17 after exact Ubuntu and Windows validation; all product-level Linux defects found in R1/R2 are guarded. Live promotion is explicitly OPEN solely because the laptop currently exposes no authorized remote execution channel.
+
+## Linux local-recovery fallback
+
+- Runner: `RC_LINUX_RECOVERY_V0817.zip`, SHA-256 `db3ceb41df02ada77c988335b72ef79ae05f34eadd446b63cc4a3ae5dd8e3944`.
+- Exact pinned authority: v0.8.17 / `6bd826502a048640baf3c77fa4b74bc40e8e977d` / release `install.sh` SHA-256 `486b69e33d537768761887bbe4b39f0fc3ded6efc5b28d18932bbd39b1cc7d49`.
+- Execution scope: local on `aliemad-Labtop` only; fail-closed if existing tunnel identity/credential is missing; no secret capture or credential deletion.
+- Expected Return: one `RETURN_RC_LINUX_V0817_<UTC timestamp>.zip`.
+- Promotion status remains OPEN until Return or restored live connector proves PASS.

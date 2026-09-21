@@ -653,3 +653,34 @@ This file is append-only for substantive project claims, decisions, failures, pr
 ## HISTORY — E041 delta
 
 - 2026-09-21: Converted live stale-lock symptom into descriptor-inheritance root cause; v0.8.17 successor initiated because v0.8.16 is immutable.
+
+## E042 — v0.8.17 exact Linux validation, immutable publication, and live-access gate
+
+- Date/Context: 2026-09-21, successor release closeout after E041.
+- Exact source authority: commit `6bd826502a048640baf3c77fa4b74bc40e8e977d`, package/plugin version 0.8.17, annotated tag `v0.8.17^{}` resolving to the same commit.
+- Windows/source regression: focused Linux updater contract 9/9 PASS; full `npm run check`, `npm test`, and `npm run audit` PASS. Core suite 106/106 PASS, GUI contract/helper/HTTP suite 73/73 PASS, source-integrity PASS, security audit PASS.
+- Independent exact Linux validation: clean exact-commit checkout on WSL2 Ubuntu 24.04.4 LTS with Node v24.18.0/npm 11.16.0. All eight Linux lifecycle scripts parsed with `bash -n`, all eight were Git mode 100755, lock-FD source guards were present, and `check && test && audit` returned exit 0 with marker `WSL_EXACT_V0817_PASS`.
+- Linux validation log hashes from the exact checkout: check `9ff66e4cb256f6c035c8487c03539ff322ece2d8cad4830873359e664acfb99d`; test `dec692ee21fa5be289a907f9c4f26a5cae09a18e0eca8749ee14360b4fbc8ae0`; audit `cc26b34580d578353def2e02ab8272ec50964cf9959ccfa8ba6ba2d40f69323c`.
+- Publication: GitHub Release `v0.8.17` published 2026-09-21T05:55:07Z with `isImmutable=true`; it is the current Latest release. Draft-first verification matched 13/13 uploaded asset SHA-256 digests before publication.
+- Key public asset digests: installer ZIP `9e475cb261815feb8a45f398a6d06db058315d43d6ef915ff07132e8b026fe9f`; `install.sh` `486b69e33d537768761887bbe4b39f0fc3ded6efc5b28d18932bbd39b1cc7d49`; `SHA256SUMS.txt` `b99a480929f8f22f7d2e432a95b27d90fe5e884e95142085e5dd8d1917dae1d3`; plugin template stable/versioned ZIP `cb4fab9b41765b4d1b3fe2cccc8ecb40f1c8dd2c5c01c5628e0685991faed29b`.
+- Live target gate: `aliemad-Labtop` is reachable on LAN at 192.168.10.6 and replies to ping, but its OpenAI tunnel-client has not been seen for >300 seconds. SSH, RDP/VNC/WinRM, canonical MCP/tunnel ports and a bounded set of common remote-management ports are closed from the trusted Windows host. Therefore there is presently no authorized remote execution path to restart the local user service.
+- Validation status: product/release PASS; live deployment on `aliemad-Labtop` remains UNVERIFIED/OPEN. No claim of live v0.8.17 promotion is made.
+- External CI: GitHub Actions for the successor commit did not execute any workflow step because the repository account remains billing-locked; this is external infrastructure evidence, not a code/test failure.
+- Exact next action: regain one local execution path on `aliemad-Labtop`, release the legacy inherited updater lock by ownership-safe service/process shutdown, run the exact v0.8.17 installer/update, then require canonical route/tunnel health plus a second updater run proving `AUTO_UPDATE_ALREADY_RUNNING` is gone.
+- Reuse Targets: Linux release acceptance, incident recovery, final project report, future updater FD-inheritance regression.
+- Provenance: Windows source repo and GitHub release metadata; WSL2 exact Linux checkout/logs; LAN/tunnel probes; E040/E041 live Linux evidence.
+
+## HISTORY — E042 delta
+
+- 2026-09-21: v0.8.17 exact Linux/Windows/security validation and immutable publication PASS; live laptop promotion correctly left OPEN because all authorized remote execution channels are currently unavailable.
+
+## E043 — Exact local-recovery fallback artifact for disconnected Linux target
+
+- Date/Context: 2026-09-21, created only because `aliemad-Labtop` is LAN-reachable but exposes no authorized remote execution channel and its OpenAI tunnel-client is not polling.
+- Artifact: `RC_LINUX_RECOVERY_V0817.zip`; SHA-256 `db3ceb41df02ada77c988335b72ef79ae05f34eadd446b63cc4a3ae5dd8e3944`.
+- Authority pinned in artifact: release `v0.8.17`; commit `6bd826502a048640baf3c77fa4b74bc40e8e977d`; immutable release `install.sh` SHA-256 `486b69e33d537768761887bbe4b39f0fc3ded6efc5b28d18932bbd39b1cc7d49`.
+- Safety model: runner refuses missing existing tunnel profile/credential instead of prompting for secrets; stops the user service; terminates only lock holders whose cmdline and cwd prove Remote Commander backend/router ownership; verifies exact installer SHA; requires exact control/route commit, active systemd service, tunnel readyz, stable-router state, a free updater lock, and a second exact updater run that must not report `AUTO_UPDATE_ALREADY_RUNNING`.
+- Return contract: exactly one `RETURN_RC_LINUX_V0817_<UTC timestamp>.zip` is emitted in the Linux user's home with prestate, mutation log, poststate, result/failure and manifest.
+- Artifact integrity verification: ZIP internal `SHA256SUMS.txt` verified all three payload files (`RUN_LINUX_RECOVERY.ps1`, `RUNNER_MANIFEST.json`, `README.txt`) before handoff.
+- Status: fallback READY; live target execution remains OWNER/LOCAL ACCESS GATE until the runner is executed or Remote Commander reconnects.
+- Reuse Targets: exact manual recovery, account-transfer handoff, incident closure.
