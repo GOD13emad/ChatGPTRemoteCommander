@@ -36,7 +36,7 @@ try {
   const status=await c.execute(ctx,'gui_status',{});
   if(!status.available) throw new Error('GUI not available');
   console.error('E2E_STEP lease');
-  ({lease}=await c.execute(ctx,'gui_session_begin',{ttlSeconds:60}));
+  ({lease}=await c.execute(ctx,'gui_session_begin',{ttlSeconds:60,mode:'takeover',explicitUserAuthorization:'Explicit release validation on disposable GUI test window'}));
   console.error('E2E_STEP cursor');
   originalCursor=await c.execute(ctx,'gui_cursor_position',{lease});
 

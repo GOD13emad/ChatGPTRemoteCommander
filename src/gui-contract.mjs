@@ -12,13 +12,14 @@ const point = {
   screenIndex: integer(0, 31)
 };
 const button = choice('left', 'right', 'middle');
+const sessionMode = choice('observe', 'takeover');
 const ro = { readOnlyHint: true, destructiveHint: false, openWorldHint: false };
 // Clicking/typing/focusing can submit a form, overwrite work, or close an app.
 const mutation = { readOnlyHint: false, destructiveHint: true, openWorldHint: true };
 const coordination = { readOnlyHint: false, destructiveHint: false, openWorldHint: false };
 const defs = [
   ['gui_status', 'Report GUI policy and native desktop readiness. Does not capture the screen.', object(), 'status', null, ro],
-  ['gui_session_begin', 'Acquire the single desktop control lease. Busy sessions are not stolen. This is coordination, not user authentication.', object({ ttlSeconds: integer(10, 120) }), null, null, coordination],
+  ['gui_session_begin', 'Acquire the single desktop coordination lease. Defaults to observe-only. Desktop input or focus requires mode=takeover and explicitUserAuthorization grounded in an explicit current user request. Busy sessions are not stolen.', object({ ttlSeconds: integer(10, 120), mode: sessionMode, explicitUserAuthorization: str(500) }), null, null, coordination],
   ['gui_session_renew', 'Renew a live desktop lease; does not revive an expired one.', object({ ...lease, ttlSeconds: integer(10, 120) }, ['lease']), null, null, coordination],
   ['gui_session_end', 'End your desktop lease without stopping other services.', object(lease, ['lease']), null, null, coordination],
   ['gui_screenshot', 'Capture one monitor as an MCP image. Returns native pixel bounds and a short-lived, single-use frame token for the next action.', object({ ...lease, screenIndex: integer(0, 31), format: choice('jpeg', 'png'), quality: integer(25, 90), maxWidth: integer(320, 1920) }, ['lease']), 'screenshot', 'allowScreenshot', ro],
@@ -70,6 +71,15 @@ export function validateGuiInput(name, input) {
   for (const p of [input, input.from, input.to].filter(Boolean)) {
     if (p.coordinateMode === 'relative' && (p.x < 0 || p.x > 1 || p.y < 0 || p.y > 1)) throw guiError('GUI_RELATIVE_RANGE');
     if (p.x !== undefined && (p.coordinateMode ?? 'absolute') === 'absolute' && (!Number.isInteger(p.x) || !Number.isInteger(p.y))) throw guiError('GUI_PIXEL_INTEGER');
+  }
+  if (name === 'gui_session_begin') {
+    const mode = input.mode ?? 'observe';
+    if (mode === 'takeover') {
+      const authorization = input.explicitUserAuthorization?.trim();
+      if (!authorization || authorization.length < 8) throw guiError('GUI_EXPLICIT_TAKEOVER_AUTHORIZATION_REQUIRED');
+    } else if (input.explicitUserAuthorization !== undefined) {
+      throw guiError('GUI_TAKEOVER_AUTHORIZATION_WITHOUT_TAKEOVER');
+    }
   }
   if (name === 'gui_focus_window' && (Number(!!input.handle) + Number(!!input.titleContains) !== 1)) throw guiError('GUI_EXACTLY_ONE_WINDOW_SELECTOR');
   if (name === 'gui_type_text') {

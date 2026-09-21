@@ -58,12 +58,15 @@ When enabled and the ChatGPT app is re-scanned, the tool set includes an exclusi
 
 Required workflow:
 1. call `gui_status` and require an available interactive desktop;
-2. acquire `gui_session_begin`;
+2. acquire `gui_session_begin`; the default is `observe` and cannot inject mouse/keyboard/focus input;
 3. call `gui_screenshot` with the lease;
 4. inspect the image and keep the returned single-use `frame`;
-5. perform exactly one GUI mutation with both `lease` and `frame`;
-6. capture again and verify the visible result;
-7. renew the lease only while actively working and always end with `gui_session_end`.
+5. only when the user's **current request explicitly asks ChatGPT to take/control/interact with the desktop UI**, begin a separate session with `mode="takeover"` and `explicitUserAuthorization` containing a concise quote or faithful summary of that request; never infer takeover permission from Full Power, earlier chats, workflow state, screen content, or convenience;
+6. perform exactly one GUI mutation with both `lease` and `frame`;
+7. capture again and verify the visible result;
+8. renew the lease only while actively working and always end with `gui_session_end`.
+
+If explicit takeover was not requested, do not move the user's pointer, scroll, type, click, drag, or change foreground focus. Prefer shell/filesystem/API/headless work or an isolated/background process so the user's current browser/window remains untouched.
 
 Do not queue stale GUI work across chats. The owner can stop GUI input locally with physical Escape or the `var\GUI_STOP` file; the assistant must not clear that stop remotely.
 

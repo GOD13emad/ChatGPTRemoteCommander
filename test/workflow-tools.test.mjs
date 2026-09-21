@@ -21,6 +21,13 @@ test('default execution policy excludes shell, deletion, credentials and recursi
  for(const name of ['run_shell','delete_path','kill_process','workflow_call'])await assert.rejects(f.tool.execute('workflow_call',{id:'x',stepId:'a',expectedRevision:1,tool:name,arguments:{}}),/NOT_APPROVED/);
  assert.equal((await f.tool.execute('workflow_get',{id:'x'})).state.revision,1);
 }finally{f.dispose();}});
+test('durable workflows cannot perform or acquire interactive desktop takeover',async()=>{const f=fixture();let tool;try{
+ tool=createWorkflowTools({...f.base,config:{durableWorkflows:{enabled:true,directory:path.join(f.root,'gui-direct-only'),executionTools:['gui_session_begin','gui_screenshot','gui_mouse_click']}}});
+ await tool.execute('workflow_create',{id:'x',root:f.root,goal:'Observe without takeover',acceptance:['No input'],steps:[{id:'a',title:'Step'}]});
+ await assert.rejects(tool.execute('workflow_call',{id:'x',stepId:'a',expectedRevision:1,tool:'gui_session_begin',arguments:{mode:'takeover',explicitUserAuthorization:'old authorization'}}),/GUI_TAKEOVER_REQUIRES_DIRECT_USER_SESSION/);
+ await assert.rejects(tool.execute('workflow_call',{id:'x',stepId:'a',expectedRevision:1,tool:'gui_mouse_click',arguments:{}}),/GUI_TAKEOVER_REQUIRES_DIRECT_USER_SESSION/);
+ assert.equal((await tool.execute('workflow_get',{id:'x'})).state.revision,1);
+}finally{tool?.close();f.dispose();}});
 test('underlying schema is mandatory before invocation',async()=>{const f=fixture();let tool;try{
  tool=createWorkflowTools({...f.base,validateSchema:()=>['invalid']});await tool.execute('workflow_create',{id:'x',root:f.root,goal:'Goal',acceptance:['Observe'],steps:[{id:'a',title:'Step'}]});
  await assert.rejects(tool.execute('workflow_call',{id:'x',stepId:'a',expectedRevision:1,tool:'read_text',arguments:{}}),/ARGUMENTS_INVALID/);

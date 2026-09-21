@@ -21,7 +21,7 @@ function setup(custom = {}) {
   return { ctx, run, calls, time: n => { time += n; }, stop: () => { stop = true; } };
 }
 async function prepared(s) {
-  const { lease } = await s.run('gui_session_begin');
+  const { lease } = await s.run('gui_session_begin', { mode:'takeover', explicitUserAuthorization:'Explicit test authorization for disposable fixture' });
   const shot = await s.run('gui_screenshot', { lease });
   return { lease, frame: shot.__structuredContent.frame };
 }
@@ -64,6 +64,8 @@ const invalid = [
   ['gui_status', JSON.parse('{"__proto__":{"x":1}}')],
   ['gui_status', null],
   ['gui_session_begin', { ttlSeconds:999999 }],
+  ['gui_session_begin', { mode:'takeover' }],
+  ['gui_session_begin', { mode:'observe', explicitUserAuthorization:'not allowed here' }],
   ['gui_no_such_tool', {}]
 ];
 for (const [i,[name,args]] of invalid.entries()) test(`reject invalid request ${i+1}: ${name}`, async () => {
@@ -94,6 +96,16 @@ test('mouse permission cannot be escalated to keyboard via extra action', async 
   await assert.rejects(s.run('gui_key_press',{...a,keys:['A']}),/GUI_CAPABILITY_DISABLED/);
   assert.equal(s.calls.length,2);
 });
+test('observe-only is the default and blocks desktop mutation before native input', async () => {
+  const s=setup(); const {lease,mode}=await s.run('gui_session_begin'); assert.equal(mode,'observe');
+  const shot=await s.run('gui_screenshot',{lease});
+  await assert.rejects(s.run('gui_mouse_click',{lease,frame:shot.__structuredContent.frame,x:1,y:1}),/GUI_TAKEOVER_NOT_AUTHORIZED/);
+  assert.equal(s.calls.length,2); assert.equal(s.calls[0].action,'status'); assert.equal(s.calls[1].action,'screenshot');
+});
+test('takeover mode requires explicit authorization and permits guarded mutation', async () => {
+  const s=setup(); const a=await prepared(s); const r=await s.run('gui_mouse_click',{...a,x:1,y:1});
+  assert.equal(r.submitted,true); assert.equal(s.calls.at(-1).action,'click');
+});
 test('single desktop lease prevents second chat from taking control', async () => {
   const s=setup(); await s.run('gui_session_begin'); await assert.rejects(s.run('gui_session_begin'),/GUI_LEASE_BUSY/);
 });
@@ -121,7 +133,7 @@ test('expired lease cannot be renewed, a new session gets a new token', async ()
   const b=await s.run('gui_session_begin'); assert.notEqual(a.lease,b.lease);
 });
 test('input without fresh frame refused', async () => {
-  const s=setup(); const {lease}=await s.run('gui_session_begin');
+  const s=setup(); const {lease}=await s.run('gui_session_begin',{mode:'takeover',explicitUserAuthorization:'Explicit test authorization for fixture'});
   await assert.rejects(s.run('gui_key_press',{lease,frame:'invented',keys:['A']}),/GUI_FRESH_FRAME/);
 });
 test('single-use frame permits exactly one input, screenshot remains in MCP image content', async () => {

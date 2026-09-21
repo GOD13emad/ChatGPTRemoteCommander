@@ -64,15 +64,17 @@ export function createGuiController({ platform = process.platform, now = () => p
         if (current()) throw guiError('GUI_LEASE_BUSY');
         const status = await invoke({ action: 'status', stopFile });
         if (status.available !== true) throw guiError('GUI_DESKTOP_UNAVAILABLE');
-        session = { id: token(), expires: now() + (input.ttlSeconds ?? 60) * 1000 };
+        const mode = input.mode ?? 'observe';
+        session = { id: token(), expires: now() + (input.ttlSeconds ?? 60) * 1000, mode };
         frame = null;
-        return { ok: true, lease: session.id, ttlSeconds: input.ttlSeconds ?? 60, coordinationOnly: true };
+        return { ok: true, lease: session.id, ttlSeconds: input.ttlSeconds ?? 60, mode, coordinationOnly: true, interactiveTakeover: mode === 'takeover' };
       }
       if (name === 'gui_status') {
         const status = await invoke({ action: 'status', stopFile });
         return { ...status, enabled, busy: false, leased: !!current(), backend: 'windows-user32-gdi', policy: {
           allowScreenshot: cfg.allowScreenshot === true, allowMouse: cfg.allowMouse === true,
-          allowKeyboard: cfg.allowKeyboard === true, allowWindowFocus: cfg.allowWindowFocus === true
+          allowKeyboard: cfg.allowKeyboard === true, allowWindowFocus: cfg.allowWindowFocus === true,
+          defaultSessionMode: 'observe', explicitTakeoverRequired: true
         } };
       }
       owns(input.lease);
@@ -83,6 +85,7 @@ export function createGuiController({ platform = process.platform, now = () => p
       if (name === 'gui_session_end') { session = null; frame = null; closeInvoke(); return { ok: true }; }
       if (cfg[rule.capability] !== true) throw guiError('GUI_CAPABILITY_DISABLED');
       const isInput = rule.annotations.destructiveHint === true;
+      if (isInput && session.mode !== 'takeover') throw guiError('GUI_TAKEOVER_NOT_AUTHORIZED');
       let observed = null;
       if (isInput) {
         if (!frame || !sameToken(input.frame, frame.id) || now() - frame.at > 15000) throw guiError('GUI_FRESH_FRAME_REQUIRED');

@@ -4,12 +4,14 @@ Audit date: 2026-09-21
 
 ## Result
 
-PASS for the current v0.8.9 release candidate content and reachable branch/tag history checked locally after remote-ref synchronization.
+PASS for the current v0.8.10 release candidate content and reachable branch/tag history checked locally after remote-ref synchronization.
 
 The audit found no committed OpenAI-style API secret key, GitHub token, lowercase `tunnel_` identifier, private-key block, bearer-token literal, tracked `config.local.json`, or developer-specific absolute Windows path. On 2026-09-19 a stale local tracking ref first exposed an already-sanitized developer-path finding, and the obsolete public `release/v0.5.0-rc1` branch contained tunnel-shaped self-test fixtures inside the audit test itself. On 2026-09-20 the reachable `feature/blue-green-v0.8.0` history exposed an uppercase fail-closed status symbol that the former case-insensitive tunnel regex misclassified as a credential. The detector now follows the canonical lowercase `tunnel_` prefix used by OpenAI Secure MCP Tunnel examples and includes a regression proving lowercase tunnel-shaped values match while uppercase status/error symbols do not. The unchanged broader history scan then returned `SECURITY_AUDIT_PASS`. No real Runtime API key or tunnel identifier was recovered from these findings.
 
 ## Controls verified
 
+- v0.8.10 makes GUI control non-intrusive by default: an ordinary GUI lease is observe-only, and mouse/keyboard/scroll/focus mutation is rejected before native input unless the caller opened a takeover session with an explicit-current-user authorization basis. Full Power capability does not itself authorize foreground takeover. Durable workflows cannot acquire takeover or dispatch GUI mutation.
+- v0.8.10 does not modify `tools/gui-control.ps1` or `tools/gui-native.cs` (Git blobs `410441b32e11a5a4d12850caf632da8460c2a5b1` and `7bfc23435390c81de0d4175805a57bdbc4322517`). The candidate passed the native no-input layout self-test and focused controller regressions. Interactive native E2E is inherited from the exact v0.8.9 native baseline rather than rerun on the user's active desktop; this reuse is scoped only to the controller-authorization change and is not evidence for changed native behavior.
 - v0.8.9 separates unattended candidate GUI verification from interactive desktop E2E: automatic updates run the native no-input self-test plus candidate MCP `gui_status`, while the full focus/click/type E2E remains a release gate on the exact clean commit. This prevents scheduled updates from stealing focus or failing solely because Windows denies background foreground activation.
 - v0.8.8 binds each running stable router to the SHA-256 of its loaded router source and makes Windows/Linux supervisors recycle only ownership-proven routers whose loaded source does not match the promoted control checkout. Unknown canonical listeners remain fail-closed.
 - v0.8.7 reuses a persistent bounded GUI helper instead of recompiling `gui-native.cs` for every read; timeout/crash/output-bound failures remain fail-closed and mutation uncertainty is never replayed.

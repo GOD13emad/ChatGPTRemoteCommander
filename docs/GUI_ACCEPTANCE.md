@@ -1,4 +1,6 @@
-# GUI acceptance gates — v0.8.9
+# GUI acceptance gates — v0.8.10
+
+The v0.8.10 release adds an explicit takeover boundary on top of the v0.8.9 non-intrusive updater design. `gui_session_begin` defaults to observe-only; screenshot/window/cursor reads may proceed under that lease, but mouse/keyboard/scroll/focus mutations fail before native input unless the session was opened as `mode="takeover"` with an `explicitUserAuthorization` basis grounded in an explicit current user request. Full Power is capability authority, not implicit foreground-desktop permission. Durable workflow calls are not a valid interactive authorization channel: they may observe when permitted, but takeover acquisition and GUI mutation are direct-session-only.
 
 The v0.8.9 release retains the v0.8.7 bounded Windows GUI lease/frame safety model and persistent helper plus v0.8.8 router source-activation verification. It also separates unattended update verification from interactive desktop E2E so scheduled updates never need to steal focus. On the validated Windows target, warm status reads measured 16.09 ms median, window-list reads 36.76 ms through the controller, and 1000 px JPEG screenshots 87.40 ms through the controller, while the real native E2E still passed capture, exact-window focus, click, Farsi/Japanese Unicode typing, button activation, screenshot verification, cursor restore and foreground restore (GUI_NATIVE_E2E_PASS). GUI authorization remains an explicit capability that can be persistently opted out while the rest of Full Power stays enabled.
 
@@ -14,9 +16,11 @@ This no-input native self-test is also the GUI gate used by unattended Windows c
 
 ## Gate B: disposable interactive desktop
 
+Use a test Windows user/VM and a disposable editor window. **Proportional release rule:** Gate B must be rerun on the exact release candidate whenever native input code, coordinate/focus behavior, helper transport, or post-dispatch verification changes. A controller-only authorization change may reuse the immediately prior exact native E2E baseline only when (a) native helper files are byte-identical/Git-identical to that baseline, (b) the current candidate passes native no-input self-test, (c) focused regression proves authorized takeover reaches dispatch while observe-only cannot, and (d) the release record explicitly says interactive native E2E was inherited rather than rerun. This exception must not be used for native behavior changes.
+
 Use a test Windows user/VM and a disposable editor window. Confirm which computer and user session the MCP is attached to. Close private content before any screen capture. Explicitly authorize the bounded input tests below; do not run them on unrelated applications.
 
-Test the loop `gui_status → gui_session_begin → gui_screenshot → one action with lease+frame → gui_screenshot → gui_session_end`. Require a rendered actual image and visible post-action evidence, not text that merely says the action was submitted. A lease is shared-desktop coordination, not authenticated user isolation.
+First prove the observe-only default: `gui_status → gui_session_begin → gui_screenshot`, then attempt a mutation and require `GUI_TAKEOVER_NOT_AUTHORIZED` with no native input call. For disposable interactive Gate B only, explicitly authorize the test and run `gui_session_begin(mode="takeover", explicitUserAuthorization=...) → gui_screenshot → one action with lease+frame → gui_screenshot → gui_session_end`. Require a rendered actual image and visible post-action evidence, not text that merely says the action was submitted. A lease is shared-desktop coordination, not authenticated user isolation.
 
 Required cases:
 - Basic move, single/double click, scroll, drag, exact-window focus and safe key combinations.

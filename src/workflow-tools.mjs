@@ -60,6 +60,10 @@ export const WORKFLOW_TOOL_DEFINITIONS = [
 ];
 
 const SAFE_KNOWN = new Set(FULL_WORKFLOW_EXECUTION_TOOLS);
+const DIRECT_SESSION_ONLY_GUI = new Set([
+  'gui_mouse_move','gui_mouse_delta','gui_mouse_scroll','gui_mouse_click','gui_mouse_drag',
+  'gui_type_text','gui_key_press','gui_focus_window'
+]);
 
 export function createWorkflowTools({ config, roots, device, configSha256, lookup, validateSchema, dispatch }) {
   const settings = config.durableWorkflows;
@@ -169,6 +173,9 @@ export function createWorkflowTools({ config, roots, device, configSha256, looku
           const outcome = await store.call(args, {
             validate: async (tool, input) => {
               if (!allowed.has(tool) || tool.startsWith('workflow_')) fail('WORKFLOW_TOOL_NOT_APPROVED');
+              if (DIRECT_SESSION_ONLY_GUI.has(tool) || (tool === 'gui_session_begin' && input?.mode === 'takeover')) {
+                fail('WORKFLOW_GUI_TAKEOVER_REQUIRES_DIRECT_USER_SESSION');
+              }
               const definition = lookup(tool);
               if (!definition) fail('WORKFLOW_TOOL_UNAVAILABLE');
               const errors = validateSchema(input, definition.inputSchema);

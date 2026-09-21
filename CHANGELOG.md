@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.8.10 — 2026-09-21
+
+- Add a zero-interference GUI session boundary: `gui_session_begin` defaults to observe-only, while mouse/keyboard/scroll/focus mutations require an explicit `takeover` session with a current-user authorization basis.
+- Enforce takeover mode in the MCP controller before consuming a frame or invoking native input, so Full Power alone cannot seize the user's pointer or foreground application.
+- Prevent durable/resumed workflows from acquiring takeover mode or dispatching GUI mutations; interactive desktop input is direct-session-only so stale workflow memory cannot become authorization.
+- Update Plugin, Work, setup, security and GUI-acceptance contracts to prefer shell/filesystem/API/headless/background paths unless the current user explicitly requests desktop interaction.
+- Add regressions proving observe-only sessions can inspect the desktop but reject native mutation, and that takeover mode remains guarded by the existing lease/fresh-frame/uncertain-outcome protections.
+- Keep unattended updates strictly no-input; interactive GUI E2E remains a separately authorized disposable-release gate.
+
 ## 0.8.9 — 2026-09-21
 
 - Replace the unattended Windows updater's interactive GUI E2E gate with the existing native no-input self-test, preventing scheduled updates from stealing desktop focus or failing because Windows denies background foreground activation.

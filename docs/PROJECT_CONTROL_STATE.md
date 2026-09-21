@@ -1,8 +1,8 @@
 # ChatGPT Remote Commander — Project Brain
 
-Brain revision: R5
-Status: CURRENT
-As of: 2026-09-20
+Brain revision: R6
+Status: CURRENT / v0.8.10 RELEASE CANDIDATE
+As of: 2026-09-21
 Project root: %USERPROFILE%\source\repos\ChatGPTRemoteCommander
 Public repository: GOD13emad/ChatGPTRemoteCommander
 
@@ -10,9 +10,24 @@ Public repository: GOD13emad/ChatGPTRemoteCommander
 
 Deliver a stable Remote Commander release that can run in explicit Full Power on trusted machines, preserves all known capabilities unless a capability is explicitly opted out, supports native Windows GUI control, durable workflows and Project Brain integration, and updates itself candidate-first with local validation, zero-downtime routing, rollback boundaries and no blind mutation replay.
 
-DoD for the current release requires: an immutable stable release tag and assets; clean-checkout check/test/security/native-GUI gates; candidate validation on the target machine; promotion of every live profile; canonical-route doctor checks; durable-workflow integrity after schema finalization; tunnel profiles targeting canonical routers; autostart/supervisor continuity; removal of superseded release directories; and a post-promotion updater no-op returning CURRENT.
+DoD for the current release requires: an immutable stable release tag and assets; clean-checkout check/test/security gates; scope-appropriate GUI evidence (fresh interactive native E2E when native input behavior changes, otherwise byte-identical prior native baseline + current no-input/native/controller regression); candidate validation on the target machine; promotion of every live profile; canonical-route doctor checks; durable-workflow integrity after schema finalization; tunnel profiles targeting canonical routers; autostart/supervisor continuity; removal of superseded release directories; and a post-promotion updater no-op returning CURRENT.
 
-## Authoritative current state
+## Authoritative current change set — v0.8.10 candidate
+
+- Public stable release before this change set: v0.8.9 at commit `eb9607687f4ff994eb52bcb9c80cecfde902e48d`; GitHub Latest is v0.8.9 and immutable.
+- Live default Remote Commander at change-set start: v0.8.9 on Emad-PC-Ultimate, FULL_POWER, full filesystem, shell/process/terminal, GUI and Durable Workflows enabled.
+- Candidate source version: v0.8.10.
+- Primary change: zero-interference desktop authority. GUI sessions default to observe-only; mouse/keyboard/scroll/focus mutation requires a distinct takeover session carrying an explicit current-user authorization basis. Full Power alone is not desktop-takeover authorization.
+- Durable/resumed workflows cannot acquire takeover mode or dispatch GUI mutation. Interactive desktop mutation is direct-session-only, preventing stale workflow state from becoming input authority.
+- Candidate verification on the development tree: `npm run check` PASS, `npm test` PASS, `npm run audit` PASS; GUI controller/HTTP suite 73/73 PASS; focused durable-workflow direct-session guard PASS; native no-input self-test PASS with X64 INPUT size 40.
+- Native GUI helper code is unchanged from the accepted v0.8.9 native baseline: `tools/gui-control.ps1` Git blob `410441b32e11a5a4d12850caf632da8460c2a5b1`; `tools/gui-native.cs` Git blob `7bfc23435390c81de0d4175805a57bdbc4322517`. The user's active desktop was not touched; interactive E2E is inherited under the proportional Gate-B rule rather than falsely rerun.
+- Headless Stockfish 19 stress evidence: official engine installed outside the repository; 32 threads / 2048 MiB hash; 1 s search ~17.9M NPS; bounded 20-move max-skill game remained essentially equal at stop. No foreground GUI interaction was used. Evidence: `docs/CHESS_STRESS_BENCHMARK_20260921.md`.
+- Comparative audit: `docs/COMPETITIVE_AUDIT_20260921.md`. Global superiority over Work/Codex/Claude/Cursor/Open Interpreter/other agents remains UNPROVEN because they are not identical products and no matched benchmark exists. Distinct product target is a high-authority, evidence-backed, non-intrusive real-machine execution substrate.
+- Repository hygiene: unrelated untracked engineering/GCAD scratch files remain outside release authority and are intentionally untouched. Only explicit tracked/new Remote Commander files belong to this change set.
+- External non-code gate remains GitHub-hosted Actions account/runner availability; local Windows and prior Ubuntu/Node22 gates are authoritative until hosted steps actually execute.
+- Exact next action: commit only the v0.8.10 change set, push main, run the official candidate-first updater with exact commit and `-NoPromote`, promote if PASS, verify canonical routes/tunnels/workflows, package 12 release assets with SHA-256 verification, publish immutable v0.8.10, then run the updater no-op/CURRENT check and close this Brain revision.
+
+## Superseded historical state retained from R5
 
 - Stable release: v0.8.6
 - Release commit: 1a5c7613252b8f98836bcd26861449a792d4651f
