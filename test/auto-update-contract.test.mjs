@@ -57,7 +57,7 @@ test('auto updater is candidate-first, hardware-gated and commit-point aware',()
 test('stable router and supervisor preserve canonical ports while backends are versioned',()=>{
   const router=read('src/stable-router.mjs'),sup=read('supervisor-routing.ps1'),main=read('autostart-windows.ps1');
   for(const marker of ['ROUTER_GENERATION_CONFLICT','inflightByPort','inflightDetailsByPort','cancellable','subscriptions/listen','127.0.0.1','active.port'])assert.ok(router.includes(marker),marker);
-  for(const marker of ['Get-RouteState','Start-RoutedBackend','Start-RouterForRoute','Ensure-RoutedProfile','Start-AutoUpdateIfDue'])assert.ok(sup.includes(marker),marker);
+  for(const marker of ['Get-RouteState','Start-RoutedBackend','Start-RouterForRoute','Ensure-RoutedProfile','Start-AutoUpdateIfDue','Stop-OwnedRouter','ROUTER_RECYCLE_SOURCE_DRIFT','Get-FileHash','sourceSha256'])assert.ok(sup.includes(marker),marker);
   assert.ok(main.includes(". (Join-Path $Root 'supervisor-routing.ps1')"));
   assert.ok(main.includes("Ensure-RoutedProfile 'default' 47831"));
 });
@@ -123,7 +123,7 @@ test('Linux updater is candidate-first, hardware-gated, routed and rollback-awar
 
 test('Linux supervisor recovers routed backend/router and schedules automatic updates',()=>{
   const sup=read('supervisor-routing-linux.sh'),main=read('autostart-linux.sh');
-  for(const marker of ['ensure_routed_default','start_routed_backend','start_router_default','start_auto_update_if_due','AUTO_UPDATE_CHECK_STARTED'])assert.ok(sup.includes(marker),marker);
+  for(const marker of ['ensure_routed_default','start_routed_backend','start_router_default','start_auto_update_if_due','AUTO_UPDATE_CHECK_STARTED','router_source_sha','stop_owned_router_default','ROUTER_RECYCLE_SOURCE_DRIFT','sourceSha256'])assert.ok(sup.includes(marker),marker);
   assert.ok(main.includes('. "$ROOT/supervisor-routing-linux.sh"'));
   assert.ok(main.includes('ensure_routed_default || start_mcp'));
   assert.ok(main.includes('start_auto_update_if_due || true'));

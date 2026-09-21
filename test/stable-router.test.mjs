@@ -4,6 +4,7 @@ import http from 'node:http';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { createHash } from 'node:crypto';
 import { startRouter, writeRouterStateAtomic } from '../src/stable-router.mjs';
 
 function temp(){return fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(),'rc-router-')));}
@@ -65,6 +66,22 @@ test('router exposes conservative per-request drain metadata',async()=>{
    for(let i=0;i<50&&Number(router.status().inflightByPort[aPort]||0)>0;i++)await new Promise(r=>setTimeout(r,10));
    assert.equal(Number(router.status().inflightByPort[aPort]||0),0);assert.deepEqual(router.status().inflightDetailsByPort,{});
  }finally{if(router)await router.close();if(a)await close(a);fs.rmSync(root,{recursive:true,force:true});}
+});
+
+test('router status and runtime bind the exact loaded source hash',async()=>{
+ const root=temp();let router;try{
+   const listenPort=await freePort(),deadPort=await freePort(),stateFile=path.join(root,'router.json'),runtimeFile=path.join(root,'router.runtime.json');
+   writeRouterStateAtomic(stateFile,{schema:1,profile:'default',generation:1,active:{port:deadPort,version:'1',commit:'a'.repeat(40),configSha256:'1'.repeat(64)},updatedAt:new Date().toISOString()});
+   router=await startRouter({listenPort,stateFile,runtimeFile});
+   const expected=createHash('sha256').update(fs.readFileSync(new URL('../src/stable-router.mjs',import.meta.url))).digest('hex');
+   assert.equal(router.status().sourceSha256,expected);
+   const status=await (await fetch('http://127.0.0.1:'+listenPort+'/router/status')).json();
+   assert.equal(status.sourceSha256,expected);
+   const runtime=JSON.parse(fs.readFileSync(runtimeFile,'utf8'));
+   assert.equal(runtime.sourceSha256,expected);
+   assert.equal(runtime.pid,process.pid);
+   assert.equal(runtime.port,listenPort);
+ }finally{if(router)await router.close();fs.rmSync(root,{recursive:true,force:true});}
 });
 
 test('router generation conflict prevents stale cutover',async()=>{

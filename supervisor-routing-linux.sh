@@ -18,8 +18,51 @@ health_matches() {
   [[ "$body" == *'"ok":true'* && "$body" == *"\"configSha256\":\"$sha\""* && "$body" == *"\"profile\":\"$profile\""* ]]
 }
 
+router_source_sha() {
+  sha256sum "$ROOT/src/stable-router.mjs" | awk '{print $1}'
+}
+
+router_status_body() {
+  curl -fsS --connect-timeout 1 --max-time 2 http://127.0.0.1:47831/router/status 2>/dev/null || true
+}
+
+router_any_ready() {
+  local body
+  body="$(router_status_body)"
+  [[ "$body" == *'"router":true'* ]]
+}
+
 router_ready() {
-  curl -fsS --connect-timeout 1 --max-time 2 http://127.0.0.1:47831/router/status 2>/dev/null | grep -q '"router":true'
+  local body expected
+  body="$(router_status_body)"
+  expected="$(router_source_sha)"
+  [[ "$body" == *'"router":true'* && "$body" == *"\"sourceSha256\":\"$expected\""* ]]
+}
+
+stop_owned_router_default() {
+  local runtime="$ROUTING_ROOT/default.runtime.json" route="$ROUTING_ROOT/default.json"
+  local pid port host state_file cmd i
+  [[ -f "$runtime" && -f "$route" ]] || return 1
+  pid="$(node "$ROOT/tools/json-field.mjs" --file "$runtime" --field pid 2>/dev/null || true)"
+  port="$(node "$ROOT/tools/json-field.mjs" --file "$runtime" --field port 2>/dev/null || true)"
+  host="$(node "$ROOT/tools/json-field.mjs" --file "$runtime" --field host 2>/dev/null || true)"
+  state_file="$(node "$ROOT/tools/json-field.mjs" --file "$runtime" --field stateFile 2>/dev/null || true)"
+  [[ "$pid" =~ ^[0-9]+$ && "$port" == 47831 && "$host" == 127.0.0.1 ]] || return 1
+  [[ "$(readlink -f "$state_file" 2>/dev/null || true)" == "$(readlink -f "$route")" ]] || return 1
+  kill -0 "$pid" 2>/dev/null || return 0
+  cmd="$(tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null || true)"
+  [[ "$cmd" == *"stable-router.mjs"* ]] || return 1
+  kill "$pid" 2>/dev/null || return 1
+  for i in $(seq 1 40); do
+    kill -0 "$pid" 2>/dev/null || return 0
+    sleep 0.1
+  done
+  kill -9 "$pid" 2>/dev/null || true
+  for i in $(seq 1 20); do
+    kill -0 "$pid" 2>/dev/null || return 0
+    sleep 0.1
+  done
+  return 1
 }
 
 start_routed_backend() {
@@ -44,20 +87,26 @@ start_routed_backend() {
 
 start_router_default() {
   router_ready && return 0
-  if mcp_healthy; then
-    log 'ROUTER_CANONICAL_PORT_OCCUPIED_BY_DIRECT_MCP'
-    return 1
-  fi
   local route="$ROUTING_ROOT/default.json"
   local router="$ROOT/src/stable-router.mjs"
   [[ -f "$router" ]] || return 1
+  if router_any_ready; then
+    local old_pid expected
+    old_pid="$(node "$ROOT/tools/json-field.mjs" --file "$ROUTING_ROOT/default.runtime.json" --field pid 2>/dev/null || true)"
+    expected="$(router_source_sha)"
+    stop_owned_router_default || { log 'ROUTER_SOURCE_DRIFT_OWNERSHIP_FAIL'; return 1; }
+    log "ROUTER_RECYCLE_SOURCE_DRIFT oldPid=$old_pid expectedSha=$expected"
+  elif mcp_healthy; then
+    log 'ROUTER_CANONICAL_PORT_OCCUPIED_BY_DIRECT_MCP'
+    return 1
+  fi
   nohup node "$router" --listen-port 47831 --state-file "$route" \
     --runtime-file "$ROUTING_ROOT/default.runtime.json" \
     >>"$STATE_ROOT/router.out.log" 2>>"$STATE_ROOT/router.err.log" &
   for _ in $(seq 1 60); do
     sleep 0.25
     if router_ready; then
-      log "ROUTER_READY pid=$!"
+      log "ROUTER_READY pid=$! sourceSha=$(router_source_sha)"
       return 0
     fi
   done

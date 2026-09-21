@@ -409,3 +409,34 @@ This file is append-only for substantive project claims, decisions, failures, pr
 - Real validation after fix: native Windows E2E returned `GUI_NATIVE_E2E_PASS`, verified multilingual text/button/screenshot/cursor/foreground behavior, and the command exited normally with exit code 0.
 - Status/Confidence: Confirmed root cause / PASS / high.
 - Reuse targets: GUI helper lifecycle, CLI test design, process-leak prevention, release acceptance.
+
+## E029 — Router process source-drift discovered after v0.8.7 promotion
+
+- Date/Context: 2026-09-21, independent post-promotion closeout of immutable v0.8.7.
+- Finding: both canonical routers stayed alive across control-checkout/supervisor promotion. Their processes were created on 2026-09-20 and still ran the already-loaded `app/src/stable-router.mjs` code from the older release even though the file path on disk had been replaced by v0.8.7.
+- Evidence: canonical router PIDs 2776/7688 predated v0.8.7; default `/router/status` after promotion still lacked the new `inflightDetailsByPort` field and retained stale old-port accounting after the old backend exited. `Recycle-ControlSupervisor` stops/restarts only the PowerShell supervisor; `Start-RouterForRoute` considers any healthy router/profile sufficient and therefore does not reload changed router source.
+- Impact: v0.8.7 backend features are active and healthy, but its new router request-classification/drain metadata would not become active until the router process itself restarts. This is a lifecycle/version-activation defect, not a data-integrity or authority failure.
+- Root cause: router readiness proves endpoint/profile health but not that the running router binary/source matches the promoted control checkout.
+- Minimum-sufficient prevention: make each router expose and persist a SHA-256 of its loaded router source; supervisors compare that hash with the current authoritative source. If a healthy canonical listener is an ownership-proven Remote Commander router with a stale/missing source hash, recycle only that router and revalidate readiness. Unknown canonical listeners remain fail-closed. Apply the same rule on Windows and Linux.
+- Status/Confidence: Confirmed / high. v0.8.7 remains published/immutable and is superseded for final acceptance by the forthcoming hotfix; whole-product FINAL remains open until the router source-activation fix is cleanly validated, published and promoted.
+- Reuse targets: updater lifecycle, router zero-downtime architecture, release closeout, failure prevention.
+
+## E030 — Router source-activation hotfix implementation
+
+- Date/Context: 2026-09-21, hotfix change set following E029.
+- Implementation:
+  - `stable-router.mjs` now computes SHA-256 of the exact source file loaded by the running process and exposes it as `sourceSha256` in `/router/status`, `status()` and the router runtime marker.
+  - Windows supervisor computes the authoritative current router-source SHA. A router is considered ready only when profile and source hash both match. A stale/missing hash triggers recycle only after runtime-marker/listener/process ownership is proven; an unknown canonical listener remains fail-closed.
+  - Linux supervisor applies the same source-hash readiness rule and ownership-proven recycle using its runtime marker and `/proc/<pid>/cmdline`.
+  - This intentionally makes pre-hotfix routers (which do not expose `sourceSha256`) self-identify as stale on the first hotfix supervisor cycle.
+- Regression:
+  - stable-router tests now require `/router/status` and runtime marker to contain the SHA-256 of the exact loaded `stable-router.mjs` source;
+  - Windows updater/supervisor contract requires source-hash comparison and `ROUTER_RECYCLE_SOURCE_DRIFT`; PowerShell parser PASS;
+  - Linux supervisor/updater/install/autostart scripts pass `bash -n`; contract requires the same source-drift recycle controls;
+  - full `npm run check`, `npm test`, and security audit PASS.
+- Provenance:
+  - check log SHA-256 `0cf72b1f6db27220932196c2eb74ad71dfc6eccf5a013061b6a84a805b780caf`;
+  - test log SHA-256 `0fad36a6c91c4788f0fd89e52650084d5cdf5b08247f4b774ddaae81ab77d4e3`;
+  - security audit SHA-256 `26b2967a392390ead9e637749023a3a57034051c1f4110a9ebaa9d4295e57823`.
+- Status/Confidence: implementation/regression PASS / high; clean cross-platform release validation and live source-drift recycle still required before FINAL.
+- Reuse targets: update lifecycle, router activation, zero-downtime operations, release acceptance.

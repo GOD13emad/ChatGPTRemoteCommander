@@ -1,10 +1,13 @@
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { createHash } from 'node:crypto';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const MAX_BODY = 16 * 1024 * 1024;
 const LOOPBACK = '127.0.0.1';
+const ROUTER_SOURCE_FILE = fileURLToPath(import.meta.url);
+const ROUTER_SOURCE_SHA256 = createHash('sha256').update(fs.readFileSync(ROUTER_SOURCE_FILE)).digest('hex');
 
 function fail(code) { throw new Error(code); }
 function validPort(value) {
@@ -115,7 +118,7 @@ export async function startRouter({listenPort,stateFile,runtimeFile=null,host=LO
       try{
         const state=readRouterState(stateFile);
         res.writeHead(200,{'content-type':'application/json','cache-control':'no-store'});
-        res.end(JSON.stringify({ok:true,router:true,listenPort,state,inflightByPort:Object.fromEntries(inflight),inflightDetailsByPort:detailObject()}));
+        res.end(JSON.stringify({ok:true,router:true,listenPort,sourceSha256:ROUTER_SOURCE_SHA256,state,inflightByPort:Object.fromEntries(inflight),inflightDetailsByPort:detailObject()}));
       }catch(error){
         res.writeHead(503,{'content-type':'application/json','cache-control':'no-store'});
         res.end(JSON.stringify({ok:false,router:true,error:error.message}));
@@ -142,13 +145,13 @@ export async function startRouter({listenPort,stateFile,runtimeFile=null,host=LO
   await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(listenPort,host,resolve);});
   if(runtimeFile){
     runtimeFile=localFile(runtimeFile);fs.mkdirSync(path.dirname(runtimeFile),{recursive:true});
-    const state={schema:1,pid:process.pid,host,port:listenPort,stateFile,startedAt:new Date().toISOString()};
+    const state={schema:1,pid:process.pid,host,port:listenPort,stateFile,sourceSha256:ROUTER_SOURCE_SHA256,startedAt:new Date().toISOString()};
     const tmp=runtimeFile+'.tmp-'+process.pid;fs.writeFileSync(tmp,JSON.stringify(state,null,2)+'\n',{encoding:'utf8',mode:0o600});fs.renameSync(tmp,runtimeFile);
   }
   return {
     server,
     close:()=>new Promise(resolve=>server.close(resolve)),
-    status:()=>({listenPort,state:readRouterState(stateFile),inflightByPort:Object.fromEntries(inflight),inflightDetailsByPort:detailObject()})
+    status:()=>({listenPort,sourceSha256:ROUTER_SOURCE_SHA256,state:readRouterState(stateFile),inflightByPort:Object.fromEntries(inflight),inflightDetailsByPort:detailObject()})
   };
 }
 function parse(argv){

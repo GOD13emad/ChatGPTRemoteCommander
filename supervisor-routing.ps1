@@ -19,11 +19,29 @@ function Get-RouteState([string]$Profile) {
   return [pscustomobject]@{ File=$file; State=$state; Active=$active }
 }
 
-function Test-RouterReady([int]$Port,[string]$Profile) {
+function Test-RouterReady([int]$Port,[string]$Profile,[string]$ExpectedSourceSha='') {
   try {
     $status = Invoke-RestMethod "http://127.0.0.1:$Port/router/status" -TimeoutSec 2
-    return [bool]($status.ok -and $status.router -and [string]$status.state.profile -eq $Profile)
+    if(-not($status.ok -and $status.router -and [string]$status.state.profile -eq $Profile)){return $false}
+    if($ExpectedSourceSha -and [string]$status.sourceSha256 -ne $ExpectedSourceSha){return $false}
+    return $true
   } catch { return $false }
+}
+
+function Stop-OwnedRouter([string]$Profile,[int]$CanonicalPort,[string]$RouteFile,[int]$ListenerPid) {
+  $runtime=Join-Path $RoutingRoot "$Profile.runtime.json"
+  if(-not(Test-Path -LiteralPath $runtime -PathType Leaf)){throw "router runtime marker missing $Profile"}
+  $marker=Get-Content -LiteralPath $runtime -Raw|ConvertFrom-Json
+  if([int]$marker.pid-ne $ListenerPid -or [int]$marker.port-ne $CanonicalPort -or [string]$marker.host-ne '127.0.0.1' -or
+      [IO.Path]::GetFullPath([string]$marker.stateFile)-ne [IO.Path]::GetFullPath($RouteFile)){throw "router ownership mismatch $Profile"}
+  $proc=Get-CimInstance Win32_Process -Filter "ProcessId=$ListenerPid" -ErrorAction SilentlyContinue
+  if(-not $proc -or [string]$proc.CommandLine -notmatch 'stable-router\.mjs'){throw "router process identity mismatch $Profile"}
+  Stop-Process -Id $ListenerPid -Force -ErrorAction Stop
+  foreach($i in 1..40){
+    Start-Sleep -Milliseconds 100
+    if(-not(Get-NetTCPConnection -State Listen -LocalPort $CanonicalPort -ErrorAction SilentlyContinue)){return}
+  }
+  throw "router recycle port did not clear $Profile"
 }
 
 function Stop-OwnedRoutedBackend($Route,[int]$ListenerPid) {
@@ -66,11 +84,15 @@ function Start-RoutedBackend($Route) {
 
 function Start-RouterForRoute($Route,[int]$CanonicalPort) {
   $profile=[string]$Route.State.profile
-  if(Test-RouterReady $CanonicalPort $profile){return}
-  $listener=Get-NetTCPConnection -State Listen -LocalPort $CanonicalPort -ErrorAction SilentlyContinue|Select-Object -First 1
-  if($listener){throw "canonical port $CanonicalPort occupied without healthy router profile=$profile"}
   $router=Join-Path $Root 'src\stable-router.mjs'
   if(-not(Test-Path -LiteralPath $router -PathType Leaf)){$router=Join-Path ([string]$Route.Active.projectDir) 'src\stable-router.mjs'}
+  $expectedSha=(Get-FileHash -LiteralPath $router -Algorithm SHA256).Hash.ToLowerInvariant()
+  if(Test-RouterReady $CanonicalPort $profile $expectedSha){return}
+  $listener=Get-NetTCPConnection -State Listen -LocalPort $CanonicalPort -ErrorAction SilentlyContinue|Select-Object -First 1
+  if($listener){
+    Stop-OwnedRouter $profile $CanonicalPort $Route.File ([int]$listener.OwningProcess)
+    Write-SupervisorLog "ROUTER_RECYCLE_SOURCE_DRIFT profile=$profile oldPid=$($listener.OwningProcess) port=$CanonicalPort expectedSha=$expectedSha"
+  }
   $runtime=Join-Path $RoutingRoot "$profile.runtime.json"
   $node=(Get-Command node.exe -ErrorAction Stop).Source
   $psi=[Diagnostics.ProcessStartInfo]::new()
@@ -79,7 +101,7 @@ function Start-RouterForRoute($Route,[int]$CanonicalPort) {
   $p=[Diagnostics.Process]::Start($psi)
   foreach($i in 1..40){
     Start-Sleep -Milliseconds 250
-    if(Test-RouterReady $CanonicalPort $profile){Write-SupervisorLog "ROUTER_READY profile=$profile pid=$($p.Id) port=$CanonicalPort";return}
+    if(Test-RouterReady $CanonicalPort $profile $expectedSha){Write-SupervisorLog "ROUTER_READY profile=$profile pid=$($p.Id) port=$CanonicalPort sourceSha=$expectedSha";return}
     if($p.HasExited){break}
   }
   if(-not $p.HasExited){Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue}
