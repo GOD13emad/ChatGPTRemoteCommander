@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.8.18 — 2026-09-21
+
+- Fix Windows updater child-process stdio inheritance: staged long-lived backends are now launched with detached `Start-Process` semantics rather than inheriting the MCP `run_shell` stdout/stderr pipe. A behavioral regression proves the updater parent can observe EOF and exit while the child remains alive.
+- Replace version-gated legacy drain recovery with evidence-gated stale-drain recovery. Cleanup requires zero backend active operations/queue, no unexpected TCP peer beyond the canonical router, no persistent-terminal/other unsafe descendant, GUI not busy/leased, ownership identity, and an immediate second evidence check before stop.
+- Persistent terminal processes are never auto-classified as idle-safe. This prevents an updater from terminating a completed-but-still-owned interactive project shell without explicit session closure.
+- Atomically retire `route.previous` after ownership-proven drain/cleanup on Windows and Linux using generation/profile/port/commit preconditions, preventing stale previous-route metadata from surviving maintenance.
+- Fix runtime version authority drift carried by v0.8.16/v0.8.17: `src/server-v0.3.mjs` now reports the same version as package/plugin metadata, and onboarding regression requires equality.
+- Preserve all v0.8.17 Linux updater-lock descriptor protections, v0.8.16 Linux lifecycle hardening, and v0.8.15 Windows test-transport stabilization.
+
 ## 0.8.17 — 2026-09-21
 
 - Fix a confirmed Linux updater-lock inheritance defect: long-lived promoted backend and stable-router processes now explicitly close updater lock file descriptor 9 before exec, so the first successful cutover cannot permanently block every later update with `AUTO_UPDATE_ALREADY_RUNNING`.

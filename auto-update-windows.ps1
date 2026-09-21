@@ -14,6 +14,7 @@ param(
   [ValidateRange(5,300)][int]$DrainTimeoutSeconds = 60
 )
 $ErrorActionPreference='Stop'
+. (Join-Path $PSScriptRoot 'tools\stale-drain-policy.ps1')
 if($PowerMode -and $StandardMode){throw 'PowerMode and StandardMode are mutually exclusive.'}
 if($GuiControl -and $DisableGuiControl){throw 'GuiControl and DisableGuiControl are mutually exclusive.'}
 if($GuiControl -and $StandardMode){throw 'GuiControl cannot be combined with StandardMode.'}
@@ -138,14 +139,17 @@ function Run-GuiNativeSelfTest([string]$Candidate){
 function Start-Backend([string]$ProjectDir,[string]$ConfigPath,[string]$StateDir){
   New-Item -ItemType Directory -Force -Path $StateDir|Out-Null
   $node=(Get-Command node.exe -ErrorAction Stop).Source
-  $psi=[Diagnostics.ProcessStartInfo]::new()
-  $psi.FileName=$node
-  $psi.WorkingDirectory=$ProjectDir
-  $psi.UseShellExecute=$false
-  $psi.CreateNoWindow=$true
-  [void]$psi.ArgumentList.Add((Join-Path $ProjectDir 'src\server-v0.3.mjs'))
-  $psi.Environment['REMOTE_COMMANDER_CONFIG']=$ConfigPath
-  return [Diagnostics.Process]::Start($psi)
+  $hadConfig=Test-Path Env:REMOTE_COMMANDER_CONFIG
+  $previousConfig=$env:REMOTE_COMMANDER_CONFIG
+  try{
+    $env:REMOTE_COMMANDER_CONFIG=$ConfigPath
+    # Use Start-Process without stdio redirection. In a piped MCP run_shell parent,
+    # redirected long-lived children can retain inherited pipe handles and prevent
+    # the caller from observing EOF after the updater itself exits.
+    return Start-Process -FilePath $node -ArgumentList @((Join-Path $ProjectDir 'src\server-v0.3.mjs')) -WorkingDirectory $ProjectDir -WindowStyle Hidden -PassThru
+  }finally{
+    if($hadConfig){$env:REMOTE_COMMANDER_CONFIG=$previousConfig}else{Remove-Item Env:REMOTE_COMMANDER_CONFIG -ErrorAction SilentlyContinue}
+  }
 }
 function Stop-OwnedCandidate([object]$Candidate,[switch]$Strict){
   if(-not $Candidate){return}
@@ -289,6 +293,88 @@ function Test-OwnedOldBackend([object]$OldActive){
     return [bool]($listener -and [int]$listener.OwningProcess-eq [int]$m.pid -and [string]$m.projectDir-eq [string]$OldActive.projectDir)
   }catch{return $false}
 }
+function Get-BackendDescendants([int]$RootPid){
+  $all=@(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue)
+  $set=New-Object 'System.Collections.Generic.HashSet[int]'
+  [void]$set.Add($RootPid)
+  $changed=$true
+  while($changed){
+    $changed=$false
+    foreach($p in $all){
+      if($set.Contains([int]$p.ParentProcessId)-and -not $set.Contains([int]$p.ProcessId)){
+        [void]$set.Add([int]$p.ProcessId)
+        $changed=$true
+      }
+    }
+  }
+  return @($all|Where-Object {$_.ProcessId-ne$RootPid -and $set.Contains([int]$_.ProcessId)})
+}
+function Get-StaleDrainEvidence([object]$OldActive,[int]$CanonicalPort){
+  $result=[ordered]@{safe=$false;decision='DEFER_UNPROVEN';activeOperations=-1;queued=-1;unexpectedConnections=-1;guiBusy=$true;guiLeased=$true;unsafeDescendants=@();safeDescendants=@()}
+  if(-not(Test-OwnedOldBackend $OldActive)){$result.decision='NOT_OWNED';return [pscustomobject]$result}
+  try{
+    $status=Invoke-Mcp ([int]$OldActive.port) 'system_status'
+    if([string]$status.version-ne[string]$OldActive.version){$result.decision='DEFER_IDENTITY';return [pscustomobject]$result}
+    $cfg=Read-Json ([string]$OldActive.configPath)
+    if([string]$status.instance.profile-ne[string]$cfg.instance.profile){$result.decision='DEFER_IDENTITY';return [pscustomobject]$result}
+    $result.activeOperations=[int]$status.concurrency.activeOperations
+    $result.queued=[int]$status.concurrency.queued
+    $gui=Invoke-Mcp ([int]$OldActive.port) 'gui_status'
+    $result.guiBusy=[bool]$gui.busy
+    $result.guiLeased=[bool]$gui.leased
+  }catch{
+    $result.decision='DEFER_STATUS';return [pscustomobject]$result
+  }
+  Start-Sleep -Milliseconds 100
+  try{
+    $cfg=Read-Json ([string]$OldActive.configPath)
+    $marker=Read-Json ([string]$cfg.runtimeState)
+    $routerListener=Get-NetTCPConnection -State Listen -LocalPort $CanonicalPort -ErrorAction SilentlyContinue|Select-Object -First 1
+    if(-not $routerListener){$result.decision='DEFER_ROUTER';return [pscustomobject]$result}
+    $backendPid=[int]$marker.pid
+    $routerPid=[int]$routerListener.OwningProcess
+    $connections=@(Get-NetTCPConnection -State Established -ErrorAction SilentlyContinue|Where-Object {
+      $_.LocalPort-eq[int]$OldActive.port -or $_.RemotePort-eq[int]$OldActive.port
+    })
+    $unexpected=@($connections|Where-Object {$_.OwningProcess-ne$backendPid -and $_.OwningProcess-ne$routerPid})
+    $result.unexpectedConnections=$unexpected.Count
+    $desc=@(Get-BackendDescendants $backendPid)
+    $unsafe=@();$safe=@()
+    foreach($p in $desc){
+      $cmd=[string]$p.CommandLine
+      $norm=$cmd.Trim().ToLowerInvariant()
+      $isConhost=([string]$p.Name -ieq 'conhost.exe')
+      $isGuiHelper=([string]$p.Name -ieq 'pwsh.exe' -and $norm.Contains('tools\gui-control.ps1 -server') -and -not$result.guiBusy -and -not$result.guiLeased)
+      if($isConhost -or $isGuiHelper){$safe+=$p}else{$unsafe+=$p}
+    }
+    $result.unsafeDescendants=@($unsafe|Select-Object ProcessId,ParentProcessId,Name,CommandLine)
+    $result.safeDescendants=@($safe|Select-Object ProcessId,ParentProcessId,Name,CommandLine)
+  }catch{
+    $result.decision='DEFER_PROCESS_TREE';return [pscustomobject]$result
+  }
+  $result.decision=Get-StaleDrainDecision -ActiveOperations $result.activeOperations -Queued $result.queued -UnexpectedConnections $result.unexpectedConnections -UnsafeDescendants @($result.unsafeDescendants).Count -GuiBusy $result.guiBusy -GuiLeased $result.guiLeased
+  $result.safe=($result.decision-eq'ALLOW')
+  return [pscustomobject]$result
+}
+function Stop-StaleBackendTree([object]$OldActive,[int]$CanonicalPort){
+  $first=Get-StaleDrainEvidence $OldActive $CanonicalPort
+  if(-not $first.safe){return $false}
+  Start-Sleep -Milliseconds 500
+  $final=Get-StaleDrainEvidence $OldActive $CanonicalPort
+  if(-not $final.safe){Log "DRAIN_STALE_RECHECK_DEFER version=$($OldActive.version) decision=$($final.decision)";return $false}
+  foreach($p in @($final.safeDescendants)){Stop-Process -Id ([int]$p.ProcessId) -Force -ErrorAction SilentlyContinue}
+  Stop-OldBackend $OldActive
+  return (-not(Test-OwnedOldBackend $OldActive))
+}
+function Retire-PreviousRoute([string]$RoutePath,[object]$OldActive,[string]$Profile){
+  if(-not(Test-Path -LiteralPath $RoutePath -PathType Leaf)){return}
+  $state=Read-Json $RoutePath
+  if(-not $state.previous){return}
+  if([int]$state.previous.port-ne[int]$OldActive.port -or [string]$state.previous.commit-ne[string]$OldActive.commit){throw "ROUTER_RETIRE_IDENTITY_MISMATCH profile=$Profile"}
+  & node.exe (Join-Path $PSScriptRoot 'tools\router-retire.mjs') --state $RoutePath --expected-generation ([string]$state.generation) --profile $Profile --previous-port ([string]$OldActive.port) --previous-commit ([string]$OldActive.commit)
+  if($LASTEXITCODE-ne0){throw "ROUTER_RETIRE_FAIL profile=$Profile"}
+  Log "ROUTER_PREVIOUS_RETIRED profile=$Profile port=$($OldActive.port) commit=$($OldActive.commit)"
+}
 function Get-DrainStatus([int]$CanonicalPort,[int]$OldPort){
   try{
     $st=Invoke-RestMethod "http://127.0.0.1:$CanonicalPort/router/status" -TimeoutSec 2
@@ -306,14 +392,15 @@ function Get-DrainStatus([int]$CanonicalPort,[int]$OldPort){
   }
 }
 function Drain-Previous([object]$Target,[object]$OldActive){
-  if(-not $OldActive -or -not(Test-OwnedOldBackend $OldActive)){return $true}
+  if(-not $OldActive){return $true}
+  if(-not(Test-OwnedOldBackend $OldActive)){Retire-PreviousRoute $Target.RoutePath $OldActive $Target.Profile;return $true}
   $deadline=(Get-Date).AddSeconds($DrainTimeoutSeconds)
   $last=[pscustomobject]@{ok=$false;count=-1;cancellableOnly=$false;details=@()}
   while((Get-Date)-lt $deadline){
     $last=Get-DrainStatus $Target.CanonicalPort ([int]$OldActive.port)
     if($last.ok -and $last.count-eq 0){
       Stop-OldBackend $OldActive
-      return (-not(Test-OwnedOldBackend $OldActive))
+      if(-not(Test-OwnedOldBackend $OldActive)){Retire-PreviousRoute $Target.RoutePath $OldActive $Target.Profile;return $true}
     }
     Start-Sleep -Milliseconds 250
   }
@@ -321,7 +408,19 @@ function Drain-Previous([object]$Target,[object]$OldActive){
   if($last.ok -and $last.count-gt 0 -and $last.cancellableOnly){
     Log "DRAIN_CANCEL_SAFE profile=$($Target.Profile) inflight=$($last.count)"
     Stop-OldBackend $OldActive
-    return (-not(Test-OwnedOldBackend $OldActive))
+    if(-not(Test-OwnedOldBackend $OldActive)){Retire-PreviousRoute $Target.RoutePath $OldActive $Target.Profile;return $true}
+  }
+  if($last.ok -and $last.count-gt 0){
+    $legacy=Get-StaleDrainEvidence $OldActive $Target.CanonicalPort
+    if($legacy.safe){
+      Log "DRAIN_STALE_CONFIRMED profile=$($Target.Profile) version=$($OldActive.version) inflight=$($last.count)"
+      if(Stop-StaleBackendTree $OldActive $Target.CanonicalPort){
+        Retire-PreviousRoute $Target.RoutePath $OldActive $Target.Profile
+        return $true
+      }
+    }else{
+      Log "DRAIN_STALE_DEFER profile=$($Target.Profile) version=$($OldActive.version) decision=$($legacy.decision)"
+    }
   }
   Log "DRAIN_DEFERRED profile=$($Target.Profile) inflight=$($last.count)"
   return $false
@@ -333,13 +432,32 @@ function Complete-DeferredDrains {
     try{
       $route=Read-Json $rf.FullName
       $old=$route.previous
-      if(-not $old -or -not(Test-OwnedOldBackend $old)){continue}
+      if(-not $old){continue}
+      if(-not(Test-OwnedOldBackend $old)){
+        Retire-PreviousRoute $rf.FullName $old ([string]$route.profile)
+        continue
+      }
       $canonical=Get-CanonicalPortForProfile ([string]$route.profile)
       $st=Get-DrainStatus $canonical ([int]$old.port)
       if($st.ok -and ($st.count-eq 0 -or $st.cancellableOnly)){
         if($st.count-gt 0){Log "DRAIN_CANCEL_SAFE profile=$($route.profile) inflight=$($st.count)"}
         Stop-OldBackend $old
-        if(-not(Test-OwnedOldBackend $old)){continue}
+        if(-not(Test-OwnedOldBackend $old)){
+          Retire-PreviousRoute $rf.FullName $old ([string]$route.profile)
+          continue
+        }
+      }
+      if($st.ok -and $st.count-gt 0){
+        $legacy=Get-StaleDrainEvidence $old $canonical
+        if($legacy.safe){
+          Log "DRAIN_STALE_CONFIRMED profile=$($route.profile) version=$($old.version) inflight=$($st.count)"
+          if(Stop-StaleBackendTree $old $canonical){
+            Retire-PreviousRoute $rf.FullName $old ([string]$route.profile)
+            continue
+          }
+        }else{
+          Log "DRAIN_STALE_DEFER profile=$($route.profile) version=$($old.version) decision=$($legacy.decision)"
+        }
       }
       $pending+=[string]$route.profile
     }catch{

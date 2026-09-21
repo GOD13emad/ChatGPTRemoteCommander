@@ -183,14 +183,28 @@ owned_backend_alive(){
   [[ -z "$expected_project" || "$cwd" == "$(readlink -f "$expected_project")" || "$project" == "$expected_project" ]] || return 1
   return 0
 }
+retire_previous_route(){
+  local helper="$1" old_port="$2" old_commit profile generation
+  old_commit="$(node "$helper/tools/json-field.mjs" --file "$ROUTE" --field previous.commit 2>/dev/null || true)"
+  [[ -n "$old_commit" ]] || return 0
+  profile="$(node "$helper/tools/json-field.mjs" --file "$ROUTE" --field profile)"
+  generation="$(node "$helper/tools/json-field.mjs" --file "$ROUTE" --field generation)"
+  node "$helper/tools/router-retire.mjs" --state "$ROUTE" --expected-generation "$generation" --profile "$profile" --previous-port "$old_port" --previous-commit "$old_commit"
+  log "ROUTER_PREVIOUS_RETIRED profile=$profile port=$old_port commit=$old_commit"
+}
 drain_previous_once(){
   local helper="$1" old_port="$2" old_cfg="$3" old_project="$4" n detail cancellable
-  owned_backend_alive "$helper" "$old_cfg" "$old_project" || return 0
+  if ! owned_backend_alive "$helper" "$old_cfg" "$old_project"; then
+    retire_previous_route "$helper" "$old_port"
+    return 0
+  fi
   n="$(node "$helper/tools/router-status.mjs" --url http://127.0.0.1:47831/router/status --port "$old_port" 2>/dev/null || true)"
   [[ "$n" =~ ^[0-9]+$ ]] || return 2
   if [[ "$n" == 0 ]]; then
     stop_owned_from_config "$helper" "$old_cfg" "$old_project"
-    owned_backend_alive "$helper" "$old_cfg" "$old_project" && return 2 || return 0
+    if owned_backend_alive "$helper" "$old_cfg" "$old_project"; then return 2; fi
+    retire_previous_route "$helper" "$old_port"
+    return 0
   fi
   detail="$(node "$helper/tools/router-status.mjs" --url http://127.0.0.1:47831/router/status --port "$old_port" --json 2>/dev/null || true)"
   [[ -n "$detail" ]] || return 1
@@ -198,7 +212,9 @@ drain_previous_once(){
   if [[ "$cancellable" == true ]]; then
     log "DRAIN_CANCEL_SAFE profile=default inflight=$n"
     stop_owned_from_config "$helper" "$old_cfg" "$old_project"
-    owned_backend_alive "$helper" "$old_cfg" "$old_project" && return 2 || return 0
+    if owned_backend_alive "$helper" "$old_cfg" "$old_project"; then return 2; fi
+    retire_previous_route "$helper" "$old_port"
+    return 0
   fi
   return 1
 }

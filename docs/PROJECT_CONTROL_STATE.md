@@ -1,7 +1,7 @@
 # ChatGPT Remote Commander — Project Brain
 
-Brain revision: R11
-Status: CURRENT / v0.8.15 RELEASE CANDIDATE
+Brain revision: R12
+Status: CURRENT / v0.8.18 RELEASE CANDIDATE
 As of: 2026-09-21
 Project root: %USERPROFILE%\source\repos\ChatGPTRemoteCommander
 Public repository: GOD13emad/ChatGPTRemoteCommander
@@ -213,3 +213,20 @@ Start the GUI read-performance phase from v0.8.6 without changing the frozen rel
 - Execution scope: local on `aliemad-Labtop` only; fail-closed if existing tunnel identity/credential is missing; no secret capture or credential deletion.
 - Expected Return: one `RETURN_RC_LINUX_V0817_<UTC timestamp>.zip`.
 - Promotion status remains OPEN until Return or restored live connector proves PASS.
+
+
+## Windows drain/version successor — v0.8.18
+
+- Trigger: live v0.8.15 promotion exposed a non-cancellable stale router entry after the updater was invoked through MCP `run_shell`; the old backend itself reported zero active/queued operations while the router retained the updater request.
+- Confirmed root cause: the Windows updater spawned long-lived backend children from a piped shell context without an explicit detach boundary. Behavioral reproduction showed child stdio inheritance can keep the caller pipe open after the updater process exits.
+- Prevention: staged Windows backends use detached `Start-Process` without stdout/stderr redirection; behavioral test `BACKEND_STDIO_DETACH_PASS` requires parent EOF while child remains alive.
+- Recovery policy: stale drain retirement is evidence-based, not version-based. Required proof is exact old-backend ownership/version/profile, activeOperations=0, queued=0, only canonical-router TCP peer, GUI not busy/leased, no persistent terminal or other unsafe descendant, and a second immediate proof before stop.
+- Route-state prevention: successful ownership-proven drain/cleanup atomically clears `route.previous` with generation/profile/previous-port/previous-commit preconditions on Windows and Linux.
+- Additional authority defect: public v0.8.16/v0.8.17 package/plugin metadata advanced while `src/server-v0.3.mjs` still declared 0.8.15. v0.8.18 restores package/plugin/server equality and adds a release regression.
+- GUI/native input behavior is unchanged; no interactive desktop takeover is needed for this release.
+- Current verification: source/full release gates PASS — 109/109 core, 73/73 GUI, check/test/audit, native no-input Windows self-test, Linux syntax, stdio detach, stale-drain policy, route-retire and version-authority regressions.
+- Exact next action: run full v0.8.18 gates; commit only this isolated worktree if origin/main still equals the audited baseline; then exact-tag installer acceptance, immutable draft-first publication, candidate-only validation, production promotion and orphan cleanup with ownership evidence.
+
+## HISTORY — R12 delta
+
+- 2026-09-21: Converted the v0.8.15 Windows drain incident into stdio-inheritance prevention, evidence-gated recovery, persistent-terminal protection, atomic route retirement, and runtime-version authority regression.

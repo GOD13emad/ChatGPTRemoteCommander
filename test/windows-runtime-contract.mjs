@@ -87,6 +87,12 @@ if (process.platform === 'win32') {
   const policy = spawnSync('pwsh.exe',['-NoLogo','-NoProfile','-File','test/supervisor-recovery-policy-windows.ps1'],{encoding:'utf8'});
   if(policy.status!==0) throw new Error('supervisor recovery policy failed: '+(policy.stderr||policy.stdout));
   if(!policy.stdout.includes('SUPERVISOR_RECOVERY_POLICY_PASS')) throw new Error('supervisor recovery policy marker missing');
+  const stale = spawnSync('pwsh.exe',['-NoLogo','-NoProfile','-NonInteractive','-File','test/stale-drain-policy-windows.ps1'],{encoding:'utf8'});
+  if(stale.status!==0) throw new Error('stale drain policy failed: '+(stale.stderr||stale.stdout));
+  if(!stale.stdout.includes('STALE_DRAIN_POLICY_PASS')) throw new Error('stale drain policy marker missing');
+  const stdio = spawnSync('pwsh.exe',['-NoLogo','-NoProfile','-NonInteractive','-File','test/backend-stdio-windows.ps1'],{encoding:'utf8',timeout:15000});
+  if(stdio.status!==0) throw new Error('backend stdio detach failed: '+(stdio.stderr||stdio.stdout));
+  if(!stdio.stdout.includes('BACKEND_STDIO_DETACH_PASS')) throw new Error('backend stdio detach marker missing');
 }
 
 console.log('WINDOWS_RUNTIME_CONTRACT_PASS');

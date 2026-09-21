@@ -40,6 +40,11 @@ test('auto updater is candidate-first, hardware-gated and commit-point aware',()
     'AUTO_UPDATE_DRAIN_PENDING',
     'DRAIN_CANCEL_SAFE',
     'Complete-DeferredDrains',
+    'DRAIN_STALE_CONFIRMED',
+    'DRAIN_STALE_DEFER',
+    'ROUTER_PREVIOUS_RETIRED',
+    'router-retire.mjs',
+    'stale-drain-policy.ps1',
     'AUTO_UPDATE_NEWER_CURRENT',
     'Test-VersionGreater'
   ]) assert.ok(s.includes(marker),marker);
@@ -51,6 +56,16 @@ test('auto updater is candidate-first, hardware-gated and commit-point aware',()
   assert.ok(!s.includes("Invoke-Mcp $port 'gui_status'"), 'candidate validation must not contend for the shared interactive GUI helper');
   assert.ok(s.includes('Stop-OwnedCandidate $currentCandidate'), 'failure cleanup must include the current pre-registration candidate');
   assert.ok(s.indexOf('$currentCandidate=[pscustomobject]') > s.indexOf('$p=Start-Backend'), 'candidate ownership tracking must start immediately after spawn');
+  const startBackend=s.slice(s.indexOf('function Start-Backend'),s.indexOf('function Stop-OwnedCandidate'));
+  assert.ok(startBackend.includes('Start-Process') && !startBackend.includes('-RedirectStandardOutput') && !startBackend.includes('-RedirectStandardError'),'Windows staged backends must detach from updater run_shell stdio handles');
+  const stale=s.slice(s.indexOf('function Get-StaleDrainEvidence'),s.indexOf('function Get-DrainStatus'));
+  for(const marker of ['activeOperations','queued','unexpectedConnections','Get-NetTCPConnection -State Established','Get-BackendDescendants','guiBusy','guiLeased','DEFER_PROCESS_TREE'])assert.ok(stale.includes(marker),marker);
+  assert.ok(!stale.includes('$isIdleTerminal'),'persistent terminals must always block stale-backend retirement');
+  assert.ok(stale.includes('$routerListener'),'only the canonical router connection may be ignored as transport evidence');
+  assert.ok(stale.includes("Get-StaleDrainDecision"),'stale recovery must pass independent evidence into a fail-closed policy');
+  assert.ok(s.includes("Start-Sleep -Milliseconds 500") && s.includes("DRAIN_STALE_RECHECK_DEFER"),'stale recovery must re-check immediately before destructive stop');
+  assert.ok(s.indexOf('Get-StaleDrainEvidence $OldActive') < s.indexOf('Stop-StaleBackendTree $OldActive'),'stale evidence must precede stale-backend retirement');
+  assert.ok(s.includes("Retire-PreviousRoute $Target.RoutePath $OldActive $Target.Profile"),'successful Windows drain must atomically retire route.previous');
   assert.ok(!s.includes('[string[]]$Args'), 'reserved automatic $args name must not be used as a gate parameter');
   assert.ok(s.includes("Get-ChildItem -LiteralPath $InstanceRoot -Directory"), 'target discovery must enumerate only immediate profile directories');
   assert.ok(s.includes("Join-Path $profileDir.FullName 'instance.json'"), 'target discovery must bind only each profile directory instance record');
@@ -142,6 +157,9 @@ test('Linux updater is candidate-first, hardware-gated, routed and rollback-awar
     'AUTO_UPDATE_POST_COMMIT_MAINTENANCE_REQUIRED',
     'AUTO_UPDATE_DRAIN_PENDING',
     'drain_previous_once',
+    'retire_previous_route',
+    'router-retire.mjs',
+    'ROUTER_PREVIOUS_RETIRED',
     'cancellableOnly',
     'AUTO_UPDATE_NEWER_CURRENT',
     'version_gt',
@@ -151,6 +169,7 @@ test('Linux updater is candidate-first, hardware-gated, routed and rollback-awar
   ]) assert.ok(s.includes(marker),marker);
   assert.ok(s.includes("log 'AUTO_UPDATE_DRAIN_PENDING profile=default'"),'Linux committed cutover must defer unsafe drains');
   assert.ok(s.includes('drain_previous_once "$STAGE_DIR" "$OLD_PORT"'), 'Linux drain must use conservative shared policy');
+  assert.ok(s.includes('retire_previous_route "$helper" "$old_port"'), 'Linux successful drain must atomically retire route.previous');
   assert.ok(s.includes('stop_owned_candidate "$CANDIDATE_PID" "$STAGE_DIR"'), 'Linux validation failures must clean the exact spawned candidate');
   assert.ok(s.indexOf('trap validation_cleanup ERR') < s.indexOf('CANDIDATE_PID="$(start_backend'), 'Linux validation cleanup trap must be installed before candidate spawn');
   assert.ok(s.indexOf('AUTO_UPDATE_NEWER_CURRENT') < s.indexOf('run_gate "$STAGE_DIR" check npm run check'),'Linux automatic downgrade guard must precede gates/cutover');

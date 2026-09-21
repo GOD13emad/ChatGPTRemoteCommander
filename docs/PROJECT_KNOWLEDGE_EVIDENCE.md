@@ -684,3 +684,33 @@ This file is append-only for substantive project claims, decisions, failures, pr
 - Artifact integrity verification: ZIP internal `SHA256SUMS.txt` verified all three payload files (`RUN_LINUX_RECOVERY.ps1`, `RUNNER_MANIFEST.json`, `README.txt`) before handoff.
 - Status: fallback READY; live target execution remains OWNER/LOCAL ACCESS GATE until the runner is executed or Remote Commander reconnects.
 - Reuse Targets: exact manual recovery, account-transfer handoff, incident closure.
+
+
+## E044 — Windows updater stdio inheritance, stale drain recovery, and runtime-version authority
+
+- Date/Context: 2026-09-21, post-v0.8.15 Windows production promotion and v0.8.18 successor engineering.
+- Symptom: canonical route cut over to v0.8.15 but `route.previous` retained v0.8.13 and router inflight accounting retained the updater's non-cancellable `run_shell` request after updater work had otherwise completed.
+- Independent live evidence: old backend `system_status` reported `activeOperations=0` and `queued=0`; router showed one stale request; the only established TCP peer was the canonical stable router; GUI was `busy=false`, `leased=false`.
+- Safety discovery: old backend also owned persistent terminal `term-1`. Two read-only reads showed the scientific sweep completed with `RC=0` and the shell was at prompt. It was closed explicitly through `stop_terminal`; it was not force-classified as idle. Permanent rule: persistent terminals always block automatic stale-backend retirement.
+- Root Cause / Prevention: Windows updater launched long-lived backend children inside a piped MCP `run_shell` ancestry without an explicit stdio-detach boundary. Behavioral regression first reproduced a pipe-hold failure; corrected launch uses `Start-Process` without stdout/stderr redirection. Regression marker: `BACKEND_STDIO_DETACH_PASS`.
+- Recovery guard: stale cleanup requires exact ownership/version/profile, zero active/queued operations, no unexpected TCP peer besides canonical router, GUI not busy/leased, no persistent terminal/unsafe descendant, and a second immediate evidence check before destructive stop.
+- Route-state guard: `tools/router-retire.mjs` clears only the exact `route.previous` under generation/profile/port/commit preconditions and advances generation atomically. Windows and Linux updater paths call it only after successful ownership-proven drain/stop.
+- Version-authority defect: v0.8.16/v0.8.17 package/plugin metadata advanced while `src/server-v0.3.mjs` remained `VERSION='0.8.15'`. v0.8.18 sets package/plugin/server/install defaults consistently and onboarding regression now requires server VERSION == package version.
+- Focused regression evidence: `BACKEND_STDIO_DETACH_PASS`; `STALE_DRAIN_POLICY_PASS`; router-retire 3/3 PASS; updater contract including Linux v0.8.17 lock-FD guards PASS; Windows runtime contract PASS; Linux `bash -n` PASS.
+- Status/Confidence: root causes CONFIRMED / implementation focused-gates PASS / full release gates OPEN at record creation.
+- Reuse Targets: updater lifecycle, zero-downtime drain policy, release/version authority, incident postmortem, installer/update troubleshooting.
+- Provenance: v0.8.15 production route/runtime/audit/process evidence; isolated successor worktree `fix/windows-drain-stdio-safe`; source/tests listed above.
+
+## HISTORY — E044 delta
+
+- 2026-09-21: Added confirmed Windows stdio-inheritance failure, conservative recovery policy, persistent-terminal guard, atomic route retirement and runtime-version authority regression.
+
+
+### E044 validation delta — full v0.8.18 source gates
+
+- Full Windows/source validation PASS: `npm run check`, `npm test`, `npm run audit`, native no-input GUI self-test, Linux `bash -n`, and cached diff integrity all returned zero.
+- Core suite: 109/109 PASS. GUI contract/helper/HTTP suite: 73/73 PASS. Security audit: PASS.
+- Focused lifecycle regressions remain PASS: `BACKEND_STDIO_DETACH_PASS`, `STALE_DRAIN_POLICY_PASS`, router-retire 3/3, Windows runtime contract, and Linux v0.8.17 lock-FD assertions.
+- Release metadata check PASS: package=0.8.18, plugin=0.8.18, server runtime VERSION=0.8.18, Windows/Linux installer defaults=v0.8.18.
+- First full-gate attempt stopped at source-integrity because new router-retire files were intentionally not yet Git-tracked; after staging the exact change set, the guard passed on the complete rerun. No runtime test failure occurred in that first attempt.
+- Status/Confidence: source release candidate PASS / high. Exact-tag installer acceptance, immutable publication, live candidate promotion, route retirement and orphan cleanup remain OPEN at this point.
