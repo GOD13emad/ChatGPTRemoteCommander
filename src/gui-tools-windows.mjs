@@ -4,12 +4,19 @@ import { access } from 'node:fs/promises';
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { performance } from 'node:perf_hooks';
 import { GUI_RULES, guiError, guiToolDefinitions, validateGuiInput } from './gui-contract.mjs';
-import { runGuiProcess } from './gui-process.mjs';
+import { createGuiProcessClient, runGuiProcess } from './gui-process.mjs';
 export { guiToolDefinitions };
 
 const project = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const stopFile = path.join(project, 'var', 'GUI_STOP');
 const helper = path.join(project, 'tools', 'gui-control.ps1');
+const persistentHelper = process.platform === 'win32' ? createGuiProcessClient({
+  file: 'pwsh.exe',
+  args: ['-NoLogo', '-NoProfile', '-NonInteractive', '-File', helper, '-Server']
+}) : null;
+const invokeDefault = request => persistentHelper
+  ? persistentHelper.invoke(request)
+  : runGuiProcess(request, { file: 'pwsh.exe', args: ['-NoLogo', '-NoProfile', '-NonInteractive', '-File', helper] });
 async function stopped() {
   try { await access(stopFile); return true; }
   catch (error) { if (error.code === 'ENOENT') return false; throw guiError('GUI_STOP_CHECK_FAILED'); }
@@ -22,7 +29,7 @@ const bound = (v, low, high, defaultValue) => Number.isSafeInteger(v) ? Math.max
  * application coordination; distinct trust levels require separate OS sessions.
  */
 export function createGuiController({ platform = process.platform, now = () => performance.now(), token = () => randomBytes(24).toString('hex'), isStopped = stopped,
-  invoke = request => runGuiProcess(request, { file: 'pwsh.exe', args: ['-NoLogo', '-NoProfile', '-NonInteractive', '-File', helper] }) } = {}) {
+  invoke = invokeDefault } = {}) {
   let session = null;
   let frame = null;
   let busy = false;

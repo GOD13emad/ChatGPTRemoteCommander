@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { guiToolDefinitions, validateGuiInput } from '../src/gui-contract.mjs';
 import { createGuiController } from '../src/gui-tools-windows.mjs';
-import { runGuiProcess } from '../src/gui-process.mjs';
+import { createGuiProcessClient, runGuiProcess } from '../src/gui-process.mjs';
 import { validateTransport } from '../src/transport-guard.mjs';
 
 const config = () => ({ config: { powerMode: { enabled: true, guiControl: { enabled: true, allowScreenshot: true, allowMouse: true, allowKeyboard: true, allowWindowFocus: true } } } });
@@ -165,6 +165,26 @@ for(const [headers,code] of [[{host:'attacker.invalid:47831'},403],[{host:'127.0
 for(const host of ['127.0.0.1:47831','localhost:47831','[::1]:47831']) test('nonbrowser JSON request retains '+host,()=>{
   validateTransport({method:'POST',headers:{host,'content-type':'application/json; charset=utf-8'}},{port:47831});
 });
+test('persistent helper reuses one process, bounds output, and restarts after timeout',async()=>{
+  const root=await fs.mkdtemp(path.join(os.tmpdir(),'rc-gui-persistent-'));
+  let client;
+  try {
+    const helper=path.join(root,'helper.cjs');
+    await fs.writeFile(helper,`process.stdout.write(JSON.stringify({ok:true,ready:true,protocol:1})+'\\n');let b='';process.stdin.setEncoding('utf8');process.stdin.on('data',c=>{b+=c;for(;;){const i=b.indexOf('\\n');if(i<0)break;const line=b.slice(0,i);b=b.slice(i+1);const r=JSON.parse(line);if(r.mode==='valid')process.stdout.write(JSON.stringify({ok:true,pid:process.pid})+'\\n');else if(r.mode==='failure')process.stdout.write(JSON.stringify({ok:false,error:'GUI_LOCAL_STOP'})+'\\n');else if(r.mode==='large')process.stdout.write('x'.repeat(10000)+'\\n');else if(r.mode==='bad')process.stdout.write('not JSON\\n');else if(r.mode==='hang'){}else process.stdout.write(JSON.stringify({ok:true})+'\\n');}});`);
+    client=createGuiProcessClient({file:process.execPath,args:[helper],timeoutMs:300,maxBytes:4096,startupTimeoutMs:2000});
+    const a=await client.invoke({mode:'valid'}),b=await client.invoke({mode:'valid'});
+    assert.equal(a.pid,b.pid);
+    await assert.rejects(client.invoke({mode:'failure'}),/GUI_LOCAL_STOP/);
+    client.close();client=createGuiProcessClient({file:process.execPath,args:[helper],timeoutMs:300,maxBytes:4096,startupTimeoutMs:2000});
+    await assert.rejects(client.invoke({mode:'large'}),/GUI_HELPER_OUTPUT_LIMIT/);
+    client.close();client=createGuiProcessClient({file:process.execPath,args:[helper],timeoutMs:300,maxBytes:4096,startupTimeoutMs:2000});
+    await assert.rejects(client.invoke({mode:'bad'}),/GUI_HELPER_BAD_JSON/);
+    client.close();client=createGuiProcessClient({file:process.execPath,args:[helper],timeoutMs:150,maxBytes:4096,startupTimeoutMs:2000});
+    await assert.rejects(client.invoke({mode:'hang'}),/GUI_HELPER_TIMEOUT/);
+    const restarted=await client.invoke({mode:'valid'});assert.equal(restarted.ok,true);
+  } finally { client?.close();await fs.rm(root,{recursive:true,force:true}); }
+});
+
 test('helper process JSON lifecycle, malformed JSON and output bounds',async()=>{
   const root=await fs.mkdtemp(path.join(os.tmpdir(),'rc-gui-test-'));
   try {

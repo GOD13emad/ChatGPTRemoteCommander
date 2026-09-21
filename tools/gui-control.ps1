@@ -1,4 +1,4 @@
-param([switch]$SelfTest)
+param([switch]$SelfTest,[switch]$Server)
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 $utf8NoBom = [Text.UTF8Encoding]::new($false)
@@ -17,13 +17,30 @@ if ($SelfTest) {
     @{ok=$true; inputSize=[RcGuiNative]::InputSize(); architecture=[Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture.ToString(); nativeLayoutOnly=$true} | ConvertTo-Json -Compress
     exit 0
 }
+
+function Convert-GuiErrorPayload($record) {
+    $diagnostic = @(
+        [string]$record,
+        [string]$record.Exception,
+        [string]$record.Exception.Message,
+        [string]$record.FullyQualifiedErrorId,
+        [string]$record.CategoryInfo.Reason
+    ) -join ' '
+    $match=[regex]::Match($diagnostic,'GUI_[A-Z0-9_]+')
+    $payload = @{ok=$false;error=$(if($match.Success){$match.Value}else{'GUI_NATIVE_FAILED'})}
+    if($env:RC_GUI_DIAGNOSTIC -eq '1') {
+        $payload['errorType'] = $record.Exception.GetType().FullName
+        $payload['fullyQualifiedErrorId'] = [string]$record.FullyQualifiedErrorId
+        $payload['reason'] = [string]$record.CategoryInfo.Reason
+    }
+    return $payload
+}
+
+function Invoke-GuiRequest([hashtable]$req) {
 $owned = $false
 $mutex = $null
 $oldDpi = [IntPtr]::Zero
 try {
-    $raw = [Console]::In.ReadToEnd()
-    if ($raw.Length -gt 32768) { throw 'GUI_REQUEST_LIMIT' }
-    $req = $raw | ConvertFrom-Json -AsHashtable
     $actions = @('status','screenshot','cursor','listWindows','move','moveRelative','scroll','click','drag','typeText','keyPress','focusWindow')
     if ($req['action'] -notin $actions) { throw 'GUI_UNKNOWN_ACTION' }
     $stop = Join-Path (Split-Path -Parent $PSScriptRoot) 'var\GUI_STOP'
@@ -43,8 +60,7 @@ try {
                 $screens+=@{index=$i;left=$b.Left;top=$b.Top;width=$b.Width;height=$b.Height;primary=$all[$i].Primary}
             }
         }
-        @{ok=$true;available=$available;session=[Diagnostics.Process]::GetCurrentProcess().SessionId;screens=$screens;inputSize=[RcGuiNative]::InputSize()} | ConvertTo-Json -Depth 8 -Compress
-        exit 0
+        return @{ok=$true;available=$available;session=[Diagnostics.Process]::GetCurrentProcess().SessionId;screens=$screens;inputSize=[RcGuiNative]::InputSize()}
     }
     [RcGuiNative]::Guard($stop)
     function Bounds([int]$index) {
@@ -158,27 +174,37 @@ try {
             @{ok=$true;handle=[string]$matches[0].Handle}
         }
     }
-    $result | ConvertTo-Json -Depth 8 -Compress
+    return $result
 } catch {
-    # Never emit raw exception text: it may contain typed text, a private title, or a path.
-    # Search PowerShell wrapper layers, but return only a stable GUI_* code.
-    $diagnostic = @(
-        [string]$_,
-        [string]$_.Exception,
-        [string]$_.Exception.Message,
-        [string]$_.FullyQualifiedErrorId,
-        [string]$_.CategoryInfo.Reason
-    ) -join ' '
-    $match=[regex]::Match($diagnostic,'GUI_[A-Z0-9_]+')
-    $payload = @{ok=$false;error=$(if($match.Success){$match.Value}else{'GUI_NATIVE_FAILED'})}
-    if($env:RC_GUI_DIAGNOSTIC -eq '1') {
-        $payload['errorType'] = $_.Exception.GetType().FullName
-        $payload['fullyQualifiedErrorId'] = [string]$_.FullyQualifiedErrorId
-        $payload['reason'] = [string]$_.CategoryInfo.Reason
-    }
-    $payload | ConvertTo-Json -Compress
+    return Convert-GuiErrorPayload $_
 } finally {
     if($oldDpi -ne [IntPtr]::Zero) { [void][RcGuiNative]::SetThreadDpiAwarenessContext($oldDpi) }
     if($owned) { $mutex.ReleaseMutex() }
     if($mutex) { $mutex.Dispose() }
+}
+}
+
+function Invoke-GuiRaw([string]$raw) {
+    try {
+        if($raw.Length -gt 32768) { throw 'GUI_REQUEST_LIMIT' }
+        $req = $raw | ConvertFrom-Json -AsHashtable
+        if($null -eq $req -or $req -isnot [hashtable]) { throw 'GUI_REQUEST_INVALID' }
+        return Invoke-GuiRequest $req
+    } catch {
+        return Convert-GuiErrorPayload $_
+    }
+}
+
+if($Server) {
+    @{ok=$true;ready=$true;protocol=1} | ConvertTo-Json -Compress
+    [Console]::Out.Flush()
+    while(($raw=[Console]::In.ReadLine()) -ne $null) {
+        $payload=Invoke-GuiRaw $raw
+        $payload | ConvertTo-Json -Depth 8 -Compress
+        [Console]::Out.Flush()
+    }
+} else {
+    $raw=[Console]::In.ReadToEnd()
+    $payload=Invoke-GuiRaw $raw
+    $payload | ConvertTo-Json -Depth 8 -Compress
 }

@@ -295,3 +295,63 @@ This file is append-only for substantive project claims, decisions, failures, pr
 ## HISTORY — R5 delta
 
 - 2026-09-20 / R5: Published immutable v0.8.6 from the exact Windows+Ubuntu validated commit, closed workflow scheduler-projection and Actions hardening gaps, promoted both profiles, recovered one ownership-proven post-commit drain timeout through the designed maintenance path, and established GUI read latency as the next phase.
+
+
+## E024 — GUI read-latency baseline and method choice
+
+- Date/Context: 2026-09-21, v0.8.6 immutable release baseline, start of GUI read-performance phase.
+- Measured current one-shot helper latency on the validated Windows target:
+  - `status`: median 1775.44 ms, 140 output characters.
+  - `listWindows`: median 1804.30 ms, 586 output characters.
+  - JPEG screenshot 1000 px / quality 45: median 1691.91 ms, ~41.6k JSON characters.
+  - JPEG screenshot 1600 px / quality 70: median 2207.64 ms, ~122.7k JSON characters.
+- Warm in-process native baseline after loading GUI assemblies/types once:
+  - one-time assembly/type load: 1288.72 ms.
+  - warm status median: 19.98 ms.
+  - warm window list median: 0.15 ms.
+  - warm screenshot 1000/q45 median: 123.44 ms.
+  - warm screenshot 1600/q70 median: 127.24 ms.
+- Root-cause inference: repeated PowerShell process startup plus repeated `Add-Type` source compilation dominates ordinary GUI read latency; image capture/encode is secondary for the tested sizes. Confidence: high because status has tiny output yet ~1.8 s one-shot latency, while the same native operation is ~20 ms warm.
+- Official method evidence:
+  - Microsoft PowerShell `Add-Type` documentation states that source-code input is compiled into an in-memory assembly in the PowerShell session; therefore a new session repeats compilation/load work. Source: https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.utility/add-type
+  - Microsoft `about_Pwsh` documents that each `pwsh -File` invocation starts a PowerShell session; `-NoProfile` avoids profiles but does not make the process/session persistent. Source: https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_pwsh
+  - Node.js `child_process.spawn()` officially supports long-running child processes with piped stdin/stdout, which fits a bounded request/response helper without introducing a shell. Source: https://nodejs.org/api/child_process.html
+- Method decision: prefer one persistent, lazily-started PowerShell GUI helper per MCP process using newline-delimited JSON over existing stdin/stdout pipes. Keep the current one-shot helper function as a tested fallback/compatibility primitive. Do not weaken the lease, fresh-frame, emergency-stop, global GUI mutex, foreground check, output bounds, timeout, or uncertain-mutation rules.
+- Rejected alternatives:
+  - reducing screenshot quality/size alone: insufficient, because tiny `status` and `listWindows` calls are already ~1.8 s.
+  - removing safety checks: rejected; measured warm native work shows safety-preserving persistence can remove the dominant cost.
+  - introducing a new external service/IPC stack: unnecessary complexity; Node child pipes already provide the required bounded local transport.
+- Benchmark provenance:
+  - `%LOCALAPPDATA%\ChatGPTRemoteCommander\audit\gui-helper-baseline.json` (raw one-shot timings).
+  - `%LOCALAPPDATA%\ChatGPTRemoteCommander\audit\gui-warm-native-baseline.ps1` (warm native timing script).
+- Status/Confidence: Root cause Confirmed / high; persistent-helper implementation Proposed until regression and live benchmarks PASS.
+- Reuse targets: GUI architecture, performance report, updater/release notes, failure-prevention regression.
+
+
+## E025 — Persistent GUI helper implementation and measured result
+
+- Date/Context: 2026-09-21, GUI latency change set on top of v0.8.6.
+- Implementation:
+  - added a bounded persistent child-process client in `src/gui-process.mjs`;
+  - kept the existing one-shot helper path for compatibility and independent regression;
+  - added `-Server` newline-delimited JSON mode to `tools/gui-control.ps1`, loading Windows Forms, Drawing and `gui-native.cs` once per helper lifetime;
+  - default Windows GUI controller now lazily reuses one helper per MCP process;
+  - request concurrency remains rejected by the controller; the helper client also refuses overlapping direct requests;
+  - process start, stdin, stderr, output-size, timeout, malformed-JSON and native-error failures remain fail-closed; timed-out/crashed helpers are restarted only on a later read request, never by blindly replaying a mutation.
+- Safety regression: GUI contract/transport suite PASS 68/68, including lease isolation, fresh-frame single use, local stop, uncertain-mutation latch, malformed image rejection, output bounds and persistent-helper timeout/restart behavior.
+- Real Windows native E2E PASS with focus, click, multilingual Unicode typing, button activation, screenshot change, cursor restoration and foreground restoration.
+- Full project gates after the change: `npm run check` PASS; `npm test` PASS; `SECURITY_AUDIT_PASS`.
+- Performance after implementation:
+  - first cold status: 963.69 ms versus old one-shot median 1775.44 ms (~45.7% lower latency before warm reuse);
+  - warm status median: 16.09 ms, ~110x faster than old median;
+  - controller window-list median: 36.76 ms, ~49x faster than old one-shot median;
+  - controller screenshot 1000/q45 median: 87.40 ms, ~19x faster than old one-shot median;
+  - warm screenshot 1600/q70 median: 83.87 ms, ~26x faster than old one-shot median.
+- Provenance/hashes:
+  - baseline JSON: `%LOCALAPPDATA%\ChatGPTRemoteCommander\audit\gui-helper-baseline.json`, SHA-256 `3a5b58f432ce2fb68111581e87467f18922e7dc7fe7e3a50c3402b4a86965b9d`;
+  - persistent benchmark JSON: `%LOCALAPPDATA%\ChatGPTRemoteCommander\audit\gui-persistent-benchmark.json`, SHA-256 `0133f2f9f21671967728b469d4bccebe4d843912ea1c8bb72fd2c3ebf0337913`;
+  - full check log SHA-256 `0687171b8d4db8356d08c0c4ecaaaed802170dfbb7fc5f0df27d62068e4739de`;
+  - full test log SHA-256 `90f0853bdb5133bc2be4315bb9d387572ef17adb44c3cf92fe6d28d1a14b146b`;
+  - security audit log SHA-256 `17181ee897aebe337b4429d0287304eb6545f1235906f2c6a6aa328cef4c62d2`.
+- Status/Confidence: implementation PASS / high on the current Windows source tree; release/promotion still pending.
+- Reuse targets: performance claims, release notes, GUI architecture, failure prevention.
