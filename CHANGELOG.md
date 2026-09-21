@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.8.8 — 2026-09-21
+
+- Bind every running stable router to a SHA-256 of the exact `stable-router.mjs` source loaded by that process and expose the digest through router status/runtime state.
+- Make Windows and Linux supervisors require the running router source digest to match the authoritative promoted checkout; stale or pre-hash routers are recycled automatically.
+- Keep router recycle ownership-proven through runtime marker, canonical port/state-file identity and process identity checks; unknown canonical listeners remain fail-closed.
+- Preserve v0.8.7 GUI latency improvements, conservative post-cutover drain handling, Full Power capability persistence, durable workflow recovery and immutable release policy.
+- Add regression coverage for loaded-source hash binding and supervisor source-drift recycle contracts on both Windows and Linux.
+
 ## 0.8.7 — 2026-09-21
 
 - Replace per-GUI-call PowerShell startup and C# recompilation with a bounded, lazily started persistent helper using newline-delimited JSON over existing child-process pipes; keep the one-shot helper path for compatibility and regression.

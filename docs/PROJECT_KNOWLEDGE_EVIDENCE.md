@@ -440,3 +440,16 @@ This file is append-only for substantive project claims, decisions, failures, pr
   - security audit SHA-256 `26b2967a392390ead9e637749023a3a57034051c1f4110a9ebaa9d4295e57823`.
 - Status/Confidence: implementation/regression PASS / high; clean cross-platform release validation and live source-drift recycle still required before FINAL.
 - Reuse targets: update lifecycle, router activation, zero-downtime operations, release acceptance.
+
+## E031 — v0.8.8 release-preparation gates
+
+- Date/Context: 2026-09-21, release-preparation tree after router source-activation hotfix and version bump to 0.8.8.
+- Windows source-tree release gates: `npm run check` PASS; `npm test` PASS; `npm run audit` PASS; native GUI E2E PASS.
+- GUI/transport regression remains 69/69 PASS and the real native E2E again verifies focus, click, multilingual Unicode typing, button activation, screenshot change, cursor restoration and foreground restoration.
+- Provenance:
+  - check log SHA-256 `4f18cf4404df218e8d1f25a24555dbaa9db9fd711ba28f11e1a738909190e3d6`;
+  - test log SHA-256 `00d560f30b2601a8ed85b551d1cab6afac1f0951efef8dc84f4f3157103bf394`;
+  - security audit log SHA-256 `447ab70f4b592286448cdf91f868b26a3f8443817383561054ff2dc64953b650`;
+  - native GUI E2E log SHA-256 `8edd865291b3858e56793351ddfe9d26ff7ae22f0922a7954f701279da6be7ca`.
+- Status/Confidence: source release-prep PASS / high. Clean detached Windows, exact-public Ubuntu/Node22, immutable publication, candidate-only update, live promotion and router source-drift recycle remain OPEN gates.
+- Reuse targets: v0.8.8 release acceptance, release notes, Project Brain.
