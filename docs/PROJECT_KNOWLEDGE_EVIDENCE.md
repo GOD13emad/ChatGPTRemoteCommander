@@ -582,3 +582,14 @@ This file is append-only for substantive project claims, decisions, failures, pr
 - Security audit: PASS with no secret-key, tunnel-id, private-key, bearer-token, GitHub-token, tracked local-config or developer-path finding.
 - Native GUI evidence: X64 INPUT layout size 40, no-input only; no mouse/keyboard/focus takeover was performed.
 - Status/Confidence: source implementation PASS / high. Exact pushed-commit isolated installer acceptance, immutable publication and live production promotion remain OPEN at this point.
+
+
+### E038 validation delta — isolated fresh installer
+
+- Exact pushed code commit tested: `a8ed68c5fbafaf7276f33e3e19ef19856d8f4b1f` from `origin/main`.
+- Fresh Windows install path: `%LOCALAPPDATA%\ChatGPTRemoteCommander\installer-accept-v0.8.14-a8ed68c`; prestate proved the path did not exist. Installer was invoked with explicit `-PowerMode -GuiControl -SourceRef main -ExpectedCommit a8ed68c...` and without `-StartServer`, so production canonical ports/routes and desktop focus were not touched.
+- Result: `INSTALL_PASS`; installed HEAD exactly matched the expected commit. Installer reran check/test/audit successfully from the fresh checkout.
+- Authority result: capability tier `FULL_POWER`, `explicitlyAuthorized=true`, `persistAcrossUpdates=true`, `autoEnableNewCapabilities=true`, `disabledCapabilities=[]`; all 22 current capabilities granted. Full filesystem, permanent delete, unrestricted shell, process control and all four GUI capabilities enabled.
+- Tunnel-client supply chain: official OpenAI tunnel-client v0.0.14 windows-amd64 installed into the isolated checkout after upstream SHA256SUMS verification; recorded executable SHA-256 `fcc85a69ec0ad82518e4f8964f60c45e31787957782a0fc9c1b0c44e82d61b9b`.
+- No persistent sandbox server/tunnel process was started; process inspection showed only the transient read-only audit commands referencing the acceptance path.
+- Status/Confidence: fresh installer acceptance PASS / high. Release commit may add only evidence/docs after this tested code commit; any executable/installer-byte change requires rerun.
