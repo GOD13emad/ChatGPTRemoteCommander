@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.8.20 — 2026-09-21
+
+- Prevent automatic cutover while the currently active backend owns any persistent interactive terminal. Candidate validation can complete, but candidates are stopped before route mutation and the updater records `BLOCKED_PERSISTENT_TERMINALS` / `AUTO_UPDATE_PERSISTENT_TERMINAL_BLOCK`.
+- Protect already-draining previous backends on both Windows and Linux: a live persistent terminal now emits `DRAIN_PERSISTENT_TERMINAL_DEFER` before any old-backend stop path, including the zero-inflight path.
+- Detect only the interactive shells created by Remote Commander `start_terminal` (`pwsh -NoLogo -NoProfile` on Windows and shell `--noprofile --norc` on Linux), avoiding false positives from ordinary non-interactive updater/run-shell children.
+- Align terminal-session upgrade behavior with established session-drain designs: keep the endpoint/session owner alive or defer cutover rather than orphaning an interactive session. A full terminal broker/reconnect architecture is intentionally deferred because the smaller admission/drain guard achieves the required safety outcome with much less new complexity.
+- Carry forward v0.8.19 cleanup-only/no-recycle protection and all prior candidate-first, ownership, GUI non-interference, durable-workflow and rollback controls.
+
 ## 0.8.19 — 2026-09-21
 
 - Break a confirmed Windows auto-update maintenance feedback loop: stale superseded-release cleanup is now independent of supervisor recycle, so a locked old release can no longer restart a healthy supervisor every scheduler cycle.

@@ -309,6 +309,21 @@ function Get-BackendDescendants([int]$RootPid){
   }
   return @($all|Where-Object {$_.ProcessId-ne$RootPid -and $set.Contains([int]$_.ProcessId)})
 }
+function Get-PersistentTerminalChildren([object]$Active){
+  $found=@()
+  if(-not(Test-OwnedOldBackend $Active)){return @($found)}
+  try{
+    $cfg=Read-Json ([string]$Active.configPath)
+    $marker=Read-Json ([string]$cfg.runtimeState)
+    $backendPid=[int]$marker.pid
+    foreach($p in @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue|Where-Object {[int]$_.ParentProcessId-eq$backendPid})){
+      $cmd=([string]$p.CommandLine).Trim().ToLowerInvariant()
+      $interactive=($cmd -eq 'pwsh.exe -nologo -noprofile' -or $cmd.EndsWith('\\pwsh.exe" -nologo -noprofile'))
+      if([string]$p.Name -ieq 'pwsh.exe' -and $interactive){$found+=$p}
+    }
+  }catch{}
+  return @($found|Select-Object ProcessId,ParentProcessId,Name,CommandLine)
+}
 function Get-StaleDrainEvidence([object]$OldActive,[int]$CanonicalPort){
   $result=[ordered]@{safe=$false;decision='DEFER_UNPROVEN';activeOperations=-1;queued=-1;unexpectedConnections=-1;guiBusy=$true;guiLeased=$true;unsafeDescendants=@();safeDescendants=@()}
   if(-not(Test-OwnedOldBackend $OldActive)){$result.decision='NOT_OWNED';return [pscustomobject]$result}
@@ -394,6 +409,11 @@ function Get-DrainStatus([int]$CanonicalPort,[int]$OldPort){
 function Drain-Previous([object]$Target,[object]$OldActive){
   if(-not $OldActive){return $true}
   if(-not(Test-OwnedOldBackend $OldActive)){Retire-PreviousRoute $Target.RoutePath $OldActive $Target.Profile;return $true}
+  $terminalChildren=@(Get-PersistentTerminalChildren $OldActive)
+  if($terminalChildren.Count-gt0){
+    Log "DRAIN_PERSISTENT_TERMINAL_DEFER profile=$($Target.Profile) pids=$(@($terminalChildren|ForEach-Object{[int]$_.ProcessId}) -join ',')"
+    return $false
+  }
   $deadline=(Get-Date).AddSeconds($DrainTimeoutSeconds)
   $last=[pscustomobject]@{ok=$false;count=-1;cancellableOnly=$false;details=@()}
   while((Get-Date)-lt $deadline){
@@ -729,6 +749,26 @@ try{
     $report.status='CANDIDATE_PASS';$report.completedAt=(Get-Date).ToUniversalTime().ToString('o')
     Atomic-Json $ResultFile $report
     Log 'AUTO_UPDATE_CANDIDATE_PASS'
+    exit 0
+  }
+  $terminalBlocks=@()
+  foreach($c in $candidates){
+    $t=$c.Target
+    if(-not(Test-Path -LiteralPath $t.RoutePath -PathType Leaf)){continue}
+    $liveRoute=Read-Json $t.RoutePath
+    if(-not $liveRoute.active){continue}
+    $terms=@(Get-PersistentTerminalChildren $liveRoute.active)
+    if($terms.Count-gt0){
+      $terminalBlocks+=[pscustomobject]@{profile=$t.Profile;pids=@($terms|ForEach-Object{[int]$_.ProcessId})}
+    }
+  }
+  if($terminalBlocks.Count-gt0){
+    foreach($c in $candidates){Stop-OwnedCandidate $c -Strict}
+    $report.status='BLOCKED_PERSISTENT_TERMINALS'
+    $report.terminalBlocks=@($terminalBlocks)
+    $report.completedAt=(Get-Date).ToUniversalTime().ToString('o')
+    Atomic-Json $ResultFile $report
+    foreach($b in $terminalBlocks){Log "AUTO_UPDATE_PERSISTENT_TERMINAL_BLOCK profile=$($b.profile) pids=$(@($b.pids) -join ',')"}
     exit 0
   }
 

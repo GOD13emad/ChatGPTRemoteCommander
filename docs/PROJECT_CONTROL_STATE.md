@@ -1,7 +1,7 @@
 # ChatGPT Remote Commander — Project Brain
 
-Brain revision: R13
-Status: CURRENT / v0.8.19 RELEASE CANDIDATE
+Brain revision: R14
+Status: CURRENT / v0.8.20 RELEASE CANDIDATE
 As of: 2026-09-21
 Project root: %USERPROFILE%\source\repos\ChatGPTRemoteCommander
 Public repository: GOD13emad/ChatGPTRemoteCommander
@@ -248,3 +248,22 @@ Start the GUI read-performance phase from v0.8.6 without changing the frozen rel
 ## HISTORY — R13 delta
 
 - 2026-09-21: Converted chess/GUI stress-test maintenance churn into a confirmed updater/supervisor feedback-loop root cause, ownership-safe orphan recovery, cleanup/no-recycle product fix and behavioral regression.
+
+
+## v0.8.19 release closeout and terminal-drain successor — v0.8.20
+
+- v0.8.19 release authority: public GitHub release, Latest and immutable; tag `v0.8.19^{}` resolves to commit `4538b1b7931c8f709dfb77553e21e22fd7b4dc9f`. Draft-first publication verified 13/13 asset SHA-256 and sizes. Exact-tag Full Power installer acceptance PASS with package/server 0.8.19, 22 granted capabilities and GUI enabled.
+- Windows live state after v0.8.19: default and saeed-emad canonical routes both run exact v0.8.19 commit. saeed-emad drained fully. default intentionally retains previous v0.8.18 because three Remote Commander persistent terminals are still children of that backend; one is confirmed to own a live `python -m http.server 8765` workload under `H:\Nima`. No force stop was performed.
+- Linux live state after v0.8.19: `aliemad-Labtop` runs exact commit `4538b1b...`, package/runtime 0.8.19, route `previous=null`, only the v0.8.19 release directory, updater lock FREE, user service active and canonical health/tunnel ready.
+- Newly confirmed product gap: v0.8.19 protects persistent terminals in one stale-drain evidence branch, but pre-cutover route switching can make the old terminal session unreachable from the new canonical backend; additionally both platforms had stop paths that could retire an old backend when router inflight became zero without first checking terminal ownership.
+- Method choice / external benchmark: VS Code documents terminal process reconnection and detach/attach; tmux keeps terminal programs in a separate persistent server; Kubernetes documents graceful endpoint/connection draining before termination. These support preserving the session owner or deferring cutover. A new cross-version terminal broker would provide richer reconnect semantics but is disproportionate for this change set. Minimum sufficient control is pre-cutover terminal admission plus pre-retirement terminal guard.
+- v0.8.20 implementation: Windows detects direct child `pwsh.exe -NoLogo -NoProfile`; Linux detects direct child shell `--noprofile --norc`. Automatic candidate promotion is stopped before any route mutation when such a terminal exists. Deferred-drain retirement also checks the same evidence before every backend stop path.
+- Focused validation: updater contract 9/9 PASS; Windows updater self-test PASS; Linux `bash -n` PASS; diff integrity PASS.
+- Full v0.8.20 release-candidate validation: check/test/audit/native no-input GUI/Linux syntax PASS; core 109/109 and GUI 73/73 PASS; installer/onboarding/source-integrity/security PASS.
+- GUI/non-interference scope: no mouse movement, click, keyboard injection or window focus is required or used by this successor.
+- Open release gates: commit/remote-CAS, exact committed-tree Linux validation, exact-tag installer acceptance, immutable release publication, Linux promotion where safe, Windows control-plane protection/promotion subject to live-terminal drain authority.
+- Exact next action: complete v0.8.20 release gates; never terminate the existing default-profile persistent terminals merely to make deployment look clean.
+
+## HISTORY — R14 delta
+
+- 2026-09-21: Closed the persistent-terminal update safety gap with proportional pre-cutover and pre-retirement guards; retained the user's live H:\Nima workload without force mutation.

@@ -183,6 +183,21 @@ owned_backend_alive(){
   [[ -z "$expected_project" || "$cwd" == "$(readlink -f "$expected_project")" || "$project" == "$expected_project" ]] || return 1
   return 0
 }
+persistent_terminal_pids(){
+  local helper="$1" cfg="$2" expected_project="$3" marker backend_pid d child_pid ppid cmd
+  owned_backend_alive "$helper" "$cfg" "$expected_project" || return 0
+  marker="$(json_field "$helper" "$cfg" runtimeState)"
+  backend_pid="$(json_field "$helper" "$marker" pid)"
+  [[ "$backend_pid" =~ ^[0-9]+$ ]] || return 0
+  for d in /proc/[0-9]*; do
+    [[ -r "$d/stat" && -r "$d/cmdline" ]] || continue
+    child_pid="${d##*/}"
+    ppid="$(awk '{print $4}' "$d/stat" 2>/dev/null || true)"
+    [[ "$ppid" == "$backend_pid" ]] || continue
+    cmd="$(tr '\0' ' ' < "$d/cmdline" 2>/dev/null || true)"
+    [[ "$cmd" == *" --noprofile --norc "* ]] && printf '%s\n' "$child_pid"
+  done
+}
 retire_previous_route(){
   local helper="$1" old_port="$2" old_commit profile generation
   old_commit="$(node "$helper/tools/json-field.mjs" --file "$ROUTE" --field previous.commit 2>/dev/null || true)"
@@ -193,10 +208,15 @@ retire_previous_route(){
   log "ROUTER_PREVIOUS_RETIRED profile=$profile port=$old_port commit=$old_commit"
 }
 drain_previous_once(){
-  local helper="$1" old_port="$2" old_cfg="$3" old_project="$4" n detail cancellable
+  local helper="$1" old_port="$2" old_cfg="$3" old_project="$4" n detail cancellable terminal_pids
   if ! owned_backend_alive "$helper" "$old_cfg" "$old_project"; then
     retire_previous_route "$helper" "$old_port"
     return 0
+  fi
+  terminal_pids="$(persistent_terminal_pids "$helper" "$old_cfg" "$old_project" | paste -sd, -)"
+  if [[ -n "$terminal_pids" ]]; then
+    log "DRAIN_PERSISTENT_TERMINAL_DEFER profile=default pids=$terminal_pids"
+    return 1
   fi
   n="$(node "$helper/tools/router-status.mjs" --url http://127.0.0.1:47831/router/status --port "$old_port" 2>/dev/null || true)"
   [[ "$n" =~ ^[0-9]+$ ]] || return 2
@@ -391,6 +411,20 @@ node "$STAGE_DIR/tools/doctor.mjs" --url "http://127.0.0.1:$PORT/mcp" --expected
 node "$STAGE_DIR/tools/hardware-selftest.mjs" --url "http://127.0.0.1:$PORT/mcp" --config "$FINAL_CFG" --expected-version "$VERSION"
 
 if [[ "$NO_PROMOTE" == 1 ]]; then stop_owned_candidate "$CANDIDATE_PID" "$STAGE_DIR"; CANDIDATE_PID=""; trap - ERR; log 'AUTO_UPDATE_CANDIDATE_PASS'; exit 0; fi
+
+if [[ -f "$ROUTE" ]]; then
+  LIVE_ROUTE_CFG=""
+  LIVE_ROUTE_PROJECT=""
+  IFS=$'\t' read -r _ _ _ _ _ _ LIVE_ROUTE_CFG LIVE_ROUTE_PROJECT < <(route_tsv "$STAGE_DIR" "$ROUTE")
+  TERMINAL_PIDS="$(persistent_terminal_pids "$STAGE_DIR" "$LIVE_ROUTE_CFG" "$LIVE_ROUTE_PROJECT" | paste -sd, -)"
+  if [[ -n "$TERMINAL_PIDS" ]]; then
+    stop_owned_candidate "$CANDIDATE_PID" "$STAGE_DIR"
+    CANDIDATE_PID=""
+    trap - ERR
+    log "AUTO_UPDATE_PERSISTENT_TERMINAL_BLOCK profile=default pids=$TERMINAL_PIDS"
+    exit 0
+  fi
+fi
 
 trap - ERR
 CUTOVER_COMMITTED=0

@@ -747,3 +747,37 @@ This file is append-only for substantive project claims, decisions, failures, pr
 - Core suite: 109/109 PASS. GUI contract/helper/HTTP suite: 73/73 PASS. Security audit: PASS. Installer and onboarding checks: PASS. Source integrity: PASS.
 - Existing GUI non-interference guards remain PASS: observe-only default, explicit takeover authorization requirement, single desktop lease, fresh single-use frame requirement, uncertain-outcome fail-closed behavior, and durable workflows forbidden from acquiring interactive desktop takeover.
 - Status/Confidence: v0.8.19 source release candidate PASS / high. Commit/tag/artifact/publication/live-promotion gates remain OPEN at this record.
+
+
+## E046 — v0.8.19 release closeout and persistent-terminal upgrade safety
+
+- Date/Context: 2026-09-21, post-publication/live deployment verification of v0.8.19 and successor design.
+- v0.8.19 release evidence: tag `v0.8.19^{}` resolves to `4538b1b7931c8f709dfb77553e21e22fd7b4dc9f`; GitHub release is public, Latest and immutable; draft-first verification matched 13/13 uploaded asset SHA-256 digests and byte sizes. Final installer ZIP SHA-256 is `2a909323b96df8f87f70a20fc14483d1548055921f9f1df27826cc2b4825f584`.
+- Exact-tag installer acceptance: fresh Full Power install returned exact commit `4538b1b...`, package/server 0.8.19, 22 granted capabilities and GUI enabled; built-in check/test/audit completed successfully.
+- Windows live evidence: both canonical profiles cut over to v0.8.19. `saeed-emad` retired v0.8.18 fully. `default` retained v0.8.18 as `route.previous` because the old backend owns three persistent PowerShell terminals. Read-only terminal evidence showed `term-3` running `H:\Nima\.venv\Scripts\python.exe -m http.server 8765 --bind 0.0.0.0`; no user workload was killed for cleanup.
+- Linux live evidence: `aliemad-Labtop` runs exact v0.8.19 commit/package/runtime; route generation 5 has `previous=null`; only release `v0.8.19-4538b1b7931c` remains; updater lock is FREE; systemd user service is active; canonical health returns 0.8.19. Log records `AUTO_UPDATE_PASS version=0.8.19 commit=4538b1b...`.
+- Newly confirmed gap: v0.8.19 cutover occurs before persistent-terminal admission. A terminal can therefore remain alive on the old backend while canonical routing moves to the new backend, preserving the process but losing normal canonical control of that terminal session. In addition, Windows zero-inflight retirement and Linux normal/cancellable retirement could stop an old backend without an explicit persistent-terminal check.
+- External method evidence:
+  - VS Code Terminal Advanced documents process reconnection and session detach/attach: https://code.visualstudio.com/docs/terminal/advanced
+  - tmux documents a persistent server owning sessions independently of clients: https://github.com/tmux/tmux/wiki/Getting-Started
+  - Kubernetes documents graceful endpoint/connection draining before termination: https://kubernetes.io/docs/tutorials/services/pods-and-endpoint-termination-flow/
+- Decision: do not introduce a new cross-platform terminal broker in this change set. It would add a large native/IPC lifecycle surface. The minimum sufficient control is to defer automatic cutover when the current backend owns a Remote Commander interactive terminal and to re-check the same condition before every old-backend retirement.
+- v0.8.20 implementation: Windows classifies only the direct child interactive shell shape emitted by `start_terminal` (`pwsh.exe -NoLogo -NoProfile`); Linux classifies direct child shell command lines containing `--noprofile --norc`. Non-interactive updater/run-shell children are not matched. Candidate processes are stopped before any route mutation and Windows persists `BLOCKED_PERSISTENT_TERMINALS`; both platforms log `AUTO_UPDATE_PERSISTENT_TERMINAL_BLOCK`. Deferred drain logs `DRAIN_PERSISTENT_TERMINAL_DEFER` before any backend stop.
+- Focused regression: `node --test test/auto-update-contract.test.mjs` 9/9 PASS, Windows updater self-test PASS, Linux `bash -n` PASS, `git diff --check` PASS.
+- Full pre-version regression: `npm run check`, `npm test`, `npm run audit`, Windows native GUI no-input self-test and Linux syntax PASS; source-integrity and security audit PASS. Core suite and GUI suite remain fully green.
+- Status/Confidence: v0.8.19 release/live closeout CONFIRMED; persistent-terminal root cause/gap CONFIRMED; v0.8.20 source implementation PASS pre-release / high.
+- Reuse Targets: updater lifecycle, persistent terminal semantics, safe rolling updates, incident postmortem, release acceptance, architecture rationale.
+- Provenance: GitHub release/tag metadata; Windows route/process/terminal/read-only evidence; Linux live route/service/lock/log evidence; source worktree `fix/v0820-terminal-drain-admission`; official references above.
+
+## HISTORY — E046 delta
+
+- 2026-09-21: Recorded v0.8.19 immutable/live closeout and converted the remaining terminal-session cutover/retirement hazard into the bounded v0.8.20 terminal admission/drain guard.
+
+
+### E046 validation delta — full v0.8.20 source gates
+
+- Version authority PASS: package=0.8.20, plugin=0.8.20, server runtime VERSION=0.8.20, Windows/Linux installer defaults=v0.8.20.
+- Full Windows/source validation PASS: `npm run check`, `npm test`, `npm run audit`, Windows native no-input GUI self-test, Linux `bash -n`, and diff integrity all returned zero.
+- Core suite: 109/109 PASS. GUI contract/helper/HTTP suite: 73/73 PASS. Security audit, source-integrity, installer and onboarding checks: PASS.
+- Terminal-update focused contract remains 9/9 PASS and requires both pre-cutover terminal admission and pre-retirement terminal checks on Windows and Linux.
+- Status/Confidence: v0.8.20 source release candidate PASS / high. Exact committed-tree Linux validation, tag/artifact/publication and live rollout remain OPEN at this record.

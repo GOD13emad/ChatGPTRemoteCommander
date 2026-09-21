@@ -44,6 +44,9 @@ test('auto updater is candidate-first, hardware-gated and commit-point aware',()
     'Complete-DeferredDrains',
     'DRAIN_STALE_CONFIRMED',
     'DRAIN_STALE_DEFER',
+    'DRAIN_PERSISTENT_TERMINAL_DEFER',
+    'AUTO_UPDATE_PERSISTENT_TERMINAL_BLOCK',
+    'Get-PersistentTerminalChildren',
     'ROUTER_PREVIOUS_RETIRED',
     'router-retire.mjs',
     'stale-drain-policy.ps1',
@@ -68,6 +71,8 @@ test('auto updater is candidate-first, hardware-gated and commit-point aware',()
   assert.ok(s.includes("Start-Sleep -Milliseconds 500") && s.includes("DRAIN_STALE_RECHECK_DEFER"),'stale recovery must re-check immediately before destructive stop');
   assert.ok(s.indexOf('Get-StaleDrainEvidence $OldActive') < s.indexOf('Stop-StaleBackendTree $OldActive'),'stale evidence must precede stale-backend retirement');
   assert.ok(s.includes("Retire-PreviousRoute $Target.RoutePath $OldActive $Target.Profile"),'successful Windows drain must atomically retire route.previous');
+  const drain=s.slice(s.indexOf('function Drain-Previous'),s.indexOf('function Complete-DeferredDrains'));
+  assert.ok(drain.indexOf('Get-PersistentTerminalChildren $OldActive') < drain.indexOf('Stop-OldBackend $OldActive'),'Windows retirement must check persistent terminals before every old-backend stop path');
   const maintenance=s.slice(s.indexOf('$controlMismatch=($controlHead-ne $stage.Commit)'),s.indexOf('Push-Location $stage.Dir'));
   assert.ok(maintenance.includes("if($controlMismatch)") && maintenance.includes('Recycle-ControlSupervisor'),'control-code promotion may recycle the supervisor');
   const cleanupOnly=maintenance.slice(maintenance.lastIndexOf('$cleanupPending=@(Cleanup-Releases)'));
@@ -81,6 +86,10 @@ test('auto updater is candidate-first, hardware-gated and commit-point aware',()
   assert.ok(s.includes("if($last.ok -and $last.count-gt 0 -and $last.cancellableOnly)"),'Windows may cancel only explicitly classified long-lived requests');
   assert.ok(s.indexOf('AUTO_UPDATE_NEWER_CURRENT') < s.indexOf("Run-Gate $stage.Dir 'check'"), 'automatic downgrade guard must precede candidate gates/cutover');
   const cutover=s.indexOf('if(Test-Path $t.RoutePath)');
+  const terminalAdmission=s.indexOf('$terminalBlocks=@()');
+  assert.ok(terminalAdmission>0 && terminalAdmission<cutover,'persistent terminal admission must run before Windows route cutover');
+  const terminalAdmissionBlock=s.slice(terminalAdmission,cutover);
+  assert.ok(terminalAdmissionBlock.includes('Stop-OwnedCandidate') && terminalAdmissionBlock.includes('BLOCKED_PERSISTENT_TERMINALS'),'Windows terminal blocker must clean candidates and persist a non-cutover result');
   assert.ok(s.indexOf("Run-Gate $stage.Dir 'check'") < cutover, 'gates must precede cutover');
   assert.ok(s.indexOf('Verify-Tunnels') < s.indexOf('$cutoverCommitted=$true'), 'tunnels verified before commit point');
   const commitPoint=s.indexOf('$cutoverCommitted=$true');
@@ -164,6 +173,7 @@ test('Linux updater is candidate-first, hardware-gated, routed and rollback-awar
     'AUTO_UPDATE_CLEANUP_PENDING',
     'AUTO_UPDATE_POST_COMMIT_MAINTENANCE_REQUIRED',
     'AUTO_UPDATE_DRAIN_PENDING',
+    'DRAIN_PERSISTENT_TERMINAL_DEFER',
     'drain_previous_once',
     'retire_previous_route',
     'router-retire.mjs',
@@ -173,11 +183,15 @@ test('Linux updater is candidate-first, hardware-gated, routed and rollback-awar
     'version_gt',
     'stop_owned_candidate',
     'validation_cleanup',
-    'trap validation_cleanup ERR'
+    'trap validation_cleanup ERR',
+    'persistent_terminal_pids',
+    'AUTO_UPDATE_PERSISTENT_TERMINAL_BLOCK'
   ]) assert.ok(s.includes(marker),marker);
   assert.ok(s.includes("log 'AUTO_UPDATE_DRAIN_PENDING profile=default'"),'Linux committed cutover must defer unsafe drains');
   assert.ok(s.includes('drain_previous_once "$STAGE_DIR" "$OLD_PORT"'), 'Linux drain must use conservative shared policy');
   assert.ok(s.includes('retire_previous_route "$helper" "$old_port"'), 'Linux successful drain must atomically retire route.previous');
+  const linuxDrain=s.slice(s.indexOf('drain_previous_once(){'),s.indexOf('has_superseded_release(){'));
+  assert.ok(linuxDrain.indexOf('persistent_terminal_pids') < linuxDrain.indexOf('stop_owned_from_config'),'Linux retirement must check persistent terminals before stopping the old backend');
   const currentMaintenance=s.slice(s.indexOf('if [[ "$CONTROL" != "$COMMIT" ]]; then'),s.indexOf('CANDIDATE_PID=""'));
   const cleanupOnlyLinux=currentMaintenance.slice(currentMaintenance.indexOf('if has_superseded_release; then'));
   assert.ok(currentMaintenance.includes('recycle_supervisor'),'Linux control-code promotion may recycle the supervisor');
@@ -186,7 +200,10 @@ test('Linux updater is candidate-first, hardware-gated, routed and rollback-awar
   assert.ok(s.indexOf('trap validation_cleanup ERR') < s.indexOf('CANDIDATE_PID="$(start_backend'), 'Linux validation cleanup trap must be installed before candidate spawn');
   assert.ok(s.indexOf('AUTO_UPDATE_NEWER_CURRENT') < s.indexOf('run_gate "$STAGE_DIR" check npm run check'),'Linux automatic downgrade guard must precede gates/cutover');
   const gates=s.indexOf('run_gate "$STAGE_DIR" check npm run check');
-  const cutover=s.indexOf('if [[ -f "$ROUTE" ]]');
+  const cutover=s.lastIndexOf('if [[ -f "$ROUTE" ]]');
+  const terminalAdmission=s.indexOf('TERMINAL_PIDS="$(persistent_terminal_pids');
+  assert.ok(terminalAdmission>0 && terminalAdmission<cutover,'Linux persistent terminal admission must run before route cutover');
+  assert.ok(s.slice(terminalAdmission,cutover).includes('stop_owned_candidate "$CANDIDATE_PID" "$STAGE_DIR"'),'Linux terminal blocker must stop the unpromoted candidate');
   const commit=s.indexOf('CUTOVER_COMMITTED=1');
   assert.ok(gates>0 && cutover>gates,'Linux gates precede cutover');
   assert.ok(s.indexOf('tunnels_ready',cutover)<commit,'Linux tunnel verification precedes commit point');
