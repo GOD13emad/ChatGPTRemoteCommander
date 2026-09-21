@@ -52,4 +52,36 @@ for (const file of trackedRuntimeFiles) {
   if (r.status !== 0) throw new Error('required runtime file is not Git-tracked: ' + file);
 }
 
+
+const linuxExecFiles = [
+  'install.sh','auto-update-linux.sh','autostart-linux.sh','supervisor-routing-linux.sh',
+  'enable-autostart-linux.sh','disable-autostart-linux.sh','connect-chatgpt-account.sh','run-server.sh'
+];
+for (const file of linuxExecFiles) {
+  const r = spawnSync('git',['ls-files','--stage',file],{encoding:'utf8'});
+  if (r.status !== 0 || !/^100755\s/.test(r.stdout)) {
+    throw new Error('Linux runtime script must be Git-tracked executable (100755): ' + file);
+  }
+}
+
+const linuxAutostart = read('autostart-linux.sh');
+const linuxEnable = read('enable-autostart-linux.sh');
+const linuxDisable = read('disable-autostart-linux.sh');
+const linuxAccount = read('connect-chatgpt-account.sh');
+const linuxInstall = read('install.sh');
+for (const [name,text] of [
+  ['autostart-linux.sh',linuxAutostart],['enable-autostart-linux.sh',linuxEnable],
+  ['connect-chatgpt-account.sh',linuxAccount]
+]) {
+  if (!text.includes('.runtime/node-current/bin')) throw new Error(name + ' must bootstrap portable Node PATH');
+}
+if (!linuxAutostart.includes('RUNTIME_MISSING')) throw new Error('Linux supervisor must fail visibly when Node/npm runtime is unavailable');
+if (!linuxEnable.includes('Environment="PATH=$RUNTIME_BIN:')) throw new Error('Linux systemd unit must carry the portable runtime PATH');
+for (const marker of ['ROUTE="$STATE_ROOT/routing/default.json"','ROUTER_RUNTIME="$STATE_ROOT/routing/default.runtime.json"','stable-router.mjs','src/server-v0.3.mjs']) {
+  if (!linuxDisable.includes(marker)) throw new Error('Linux disable lifecycle cleanup missing marker: ' + marker);
+}
+if (linuxInstall.includes('curl -fsSL "$base/$asset"')) throw new Error('tunnel-client download must use bounded curl_fetch');
+if (!linuxInstall.includes('curl_fetch "$base/$asset" -o "$tmp/$asset"')) throw new Error('bounded tunnel-client asset download missing');
+
+
 console.log('SOURCE_INTEGRITY_PASS');

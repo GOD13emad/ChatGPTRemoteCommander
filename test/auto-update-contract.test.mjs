@@ -160,6 +160,14 @@ test('Linux updater is candidate-first, hardware-gated, routed and rollback-awar
   assert.ok(gates>0 && cutover>gates,'Linux gates precede cutover');
   assert.ok(s.indexOf('tunnels_ready',cutover)<commit,'Linux tunnel verification precedes commit point');
   assert.ok(s.indexOf('finalize-workflow-schema.mjs',commit)>commit,'Linux schema finalization follows commit point');
+  assert.ok(s.includes("systemctl --user restart --no-block chatgpt-remote-commander.service"), 'Linux systemd recycle must be asynchronous so the updater can finish its own cgroup work');
+  const finalPromote=s.lastIndexOf('promote_control "$COMMIT" "$REF"');
+  const finalCleanup=s.indexOf('cleanup_releases',finalPromote);
+  const finalPass=s.indexOf('AUTO_UPDATE_PASS version=',finalCleanup);
+  const finalRecycle=s.indexOf('recycle_supervisor',finalPass);
+  assert.ok(finalPromote>0 && finalCleanup>finalPromote && finalPass>finalCleanup && finalRecycle>finalPass, 'Linux cleanup and durable PASS log must precede self-cgroup supervisor restart');
+  const maintenance=s.indexOf('AUTO_UPDATE_MAINTENANCE_PASS version=');
+  assert.ok(maintenance>0 && s.lastIndexOf('cleanup_releases',maintenance)<maintenance && s.indexOf('recycle_supervisor',maintenance)>maintenance, 'Linux maintenance pass must be durable before supervisor restart request');
 });
 
 test('Linux supervisor recovers routed backend/router and schedules automatic updates',()=>{

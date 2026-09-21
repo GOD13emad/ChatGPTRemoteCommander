@@ -10,7 +10,7 @@ ENABLE_CAPS=()
 START_SERVER=0
 INSTALL_PREREQS=0
 TUNNEL_VERSION="0.0.14"
-SOURCE_REF="${REMOTE_COMMANDER_SOURCE_REF:-v0.8.15}"
+SOURCE_REF="${REMOTE_COMMANDER_SOURCE_REF:-v0.8.16}"
 EXPECTED_COMMIT="${REMOTE_COMMANDER_EXPECTED_COMMIT:-}"
 CURL_CONNECT_TIMEOUT="${REMOTE_COMMANDER_CURL_CONNECT_TIMEOUT:-15}"
 CURL_MAX_TIME="${REMOTE_COMMANDER_CURL_MAX_TIME:-180}"
@@ -25,7 +25,7 @@ Usage: install.sh [options]
   --disable-capability CAP  Explicit capability opt-out (repeatable)
   --enable-capability CAP   Explicit capability opt-in (repeatable)
   --start-server            Start MCP server with nohup after validation
-  --source-ref REF          Git ref to install (default: v0.8.15)
+  --source-ref REF          Git ref to install (default: v0.8.16)
   --expected-commit SHA     Require the fetched ref to peel to this exact 40-hex commit
   -h, --help                Show help
 USAGE
@@ -236,7 +236,7 @@ install_tunnel_client() {
   asset="tunnel-client-v${TUNNEL_VERSION}-linux-${arch}.zip"
   tmp="$(mktemp -d)"
   local base="https://github.com/openai/tunnel-client/releases/download/v${TUNNEL_VERSION}"
-  curl -fsSL "$base/$asset" -o "$tmp/$asset"
+  curl_fetch "$base/$asset" -o "$tmp/$asset"
   curl_fetch "$base/SHA256SUMS.txt" -o "$tmp/SHA256SUMS.txt"
   expected="$(awk -v f="$asset" '$2==f {print $1}' "$tmp/SHA256SUMS.txt")"
   actual="$(sha256sum "$tmp/$asset" | awk '{print $1}')"

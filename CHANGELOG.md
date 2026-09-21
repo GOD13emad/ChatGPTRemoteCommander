@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.8.16 — 2026-09-21
+
+- Fix Linux systemd/crontab supervisor runtime discovery by prepending the installer-managed portable Node runtime before any routed recovery or automatic-update work; generated systemd user units also persist that PATH explicitly.
+- Preserve executable mode in Git/release metadata for all Linux lifecycle scripts instead of relying on post-checkout chmod. This prevents the installer from manufacturing tracked mode-only dirtiness that can block control-checkout promotion with `control tracked dirty`.
+- Extend Linux disable lifecycle cleanup to ownership-validate and stop routed backend/router processes, not only direct control-checkout servers and tunnel processes.
+- Restore bounded connect/total timeout policy for the tunnel-client binary download by routing the asset fetch through the shared `curl_fetch` helper.
+- Add source-integrity regressions for Linux executable modes, portable-runtime bootstrapping, routed cleanup markers, and bounded tunnel-client download.
+- Make systemd supervisor recycle self-safe: post-cutover cleanup and durable PASS logging complete before an asynchronous `systemctl --user restart --no-block`, avoiding self-termination of the updater inside the service control group.
+- Live Ubuntu audit that motivated this patch: v0.8.13 runtime/tunnel were healthy, but the systemd user supervisor PATH omitted the portable Node directory and no scheduled auto-update launch was recorded despite `autoUpdate.enabled=true`; the source authority was already v0.8.15.
+- Retain v0.8.15 test-transport stabilization and all v0.8.13 supervisor continuity/no-live-work-recycle protections.
+
 ## 0.8.15 — 2026-09-21
 
 - Fix a nondeterministic release/installer test-harness failure caused by Node Fetch blocked-port policy. The stable-router tests previously chose any OS-assigned free port and then accessed the router through `fetch`; valid TCP ports such as 5060 can be rejected as unsafe by Fetch before the request reaches the local router.

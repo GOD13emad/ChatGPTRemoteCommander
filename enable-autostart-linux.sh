@@ -19,6 +19,8 @@ while [[ $# -gt 0 ]]; do
 done
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+RUNTIME_BIN="$ROOT/.runtime/node-current/bin"
+[[ -x "$RUNTIME_BIN/node" ]] && export PATH="$RUNTIME_BIN:$PATH"
 CFG_BASE="${XDG_CONFIG_HOME:-$HOME/.config}"
 PROFILE_DIR="$CFG_BASE/tunnel-client"
 PROFILE_FILE="$PROFILE_DIR/$PROFILE.yaml"
@@ -127,6 +129,7 @@ Type=simple
 ExecStart=/bin/bash $ROOT/autostart-linux.sh
 Restart=always
 RestartSec=5
+Environment="PATH=$RUNTIME_BIN:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
 [Install]
 WantedBy=default.target

@@ -161,3 +161,19 @@ Start the GUI read-performance phase from v0.8.6 without changing the frozen rel
 - 2026-09-20 / R3: Proved the GitHub account is already Free with no payment history or paid subscription, isolated the blocker to a stale failed payment-authorization hold, confirmed the lock persists server-side after another zero-step CI rerun, and submitted a private GitHub Support ticket for lock removal without adding a payment method.
 - 2026-09-20 / R4: Performed a full live re-audit; reran local regression/security/native-GUI and both doctor gates; verified 11/11 release assets; identified immutable-release, unsigned-tag and CI-permission/SHA-pinning hardening gaps; reconciled stale Remote Commander durable-workflow checkpoints to v0.8.5; kept the unrelated thesis workflow untouched.
 - 2026-09-20 / R5: Released v0.8.6 from exact cross-platform-validated commit; enabled immutable releases; published draft-first with 12/12 asset digests verified; fixed workflow checkpoint/scheduler consistency; hardened Actions SHA pinning/permissions; promoted both profiles to generation 3; recovered one post-commit saeed drain timeout with ownership-proven old-backend stop and official maintenance path; final updater state CURRENT v0.8.6. GUI read latency is the next phase.
+
+## Current Linux hardening phase — v0.8.16 candidate
+
+- Objective: close Linux-specific lifecycle/release gaps found on the real `aliemad-Labtop` deployment without changing Windows GUI/runtime semantics.
+- Previous accepted source: v0.8.15 at `221fcc7adb88c001c238eb6e6af52e4ec53e3f64`.
+- Live Linux runtime at audit start: v0.8.13, FULL_POWER, tunnel ready, canonical router/backend healthy; source/runtime version drift existed because scheduled auto-update was not launching.
+- Confirmed root cause on target: systemd supervisor PATH excluded the portable Node/npm installed by Remote Commander; scheduler function therefore could not execute its Node-based config reads and silently returned through the supervisor's tolerant loop.
+- Change Set (one Linux lifecycle objective): portable-runtime PATH bootstrap + explicit runtime failure; Git 100755 executable metadata for Linux scripts; ownership-aware routed shutdown cleanup; bounded tunnel-client asset download; self-safe systemd updater recycle ordering; source-integrity/updater regressions.
+- Verification so far: public v0.8.15 Ubuntu baseline check/test/audit PASS; changed shell syntax PASS on live Ubuntu after one rejected pre-commit patch-generation failure; full Windows source check/test/audit PASS including 106/106 core tests, 73/73 GUI contract tests and SECURITY_AUDIT_PASS.
+- Conditional/deferred: systemd user lingering remains OFF on the target and is not automatically changed. This only matters if Remote Commander must remain active after user logout; current login-bound desktop requirement is satisfied.
+- Current gate: exact committed-tree Ubuntu validation, then immutable v0.8.16 publication and live Linux promotion.
+- Exact next action: commit only tracked Remote Commander v0.8.16 files, push, validate exact commit from clean Ubuntu clone, then publish/promote only on PASS.
+
+## HISTORY — Linux R1 delta
+
+- 2026-09-21: Deep Linux audit converted live failures into four bounded product fixes and regression guards; no unrelated untracked engineering/GCAD files were modified.

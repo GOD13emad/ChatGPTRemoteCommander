@@ -228,8 +228,8 @@ recycle_supervisor(){
   local had=0 pid
   if command -v systemctl >/dev/null 2>&1 && systemctl --user is-enabled chatgpt-remote-commander.service >/dev/null 2>&1; then
     systemctl --user daemon-reload
-    systemctl --user restart chatgpt-remote-commander.service
-    log 'SUPERVISOR_RECYCLE_PASS mode=systemd'
+    log 'SUPERVISOR_RECYCLE_REQUEST mode=systemd'
+    systemctl --user restart --no-block chatgpt-remote-commander.service
     return 0
   fi
   while read -r pid; do
@@ -297,9 +297,9 @@ if [[ "$FORCE" != 1 && -f "$ROUTE" ]]; then
       LIVE_WF="$(json_field "$STAGE_DIR" "$ACTIVE_CFG" durableWorkflows.directory)"
       [[ -z "$LIVE_WF" ]] || node "$STAGE_DIR/tools/finalize-workflow-schema.mjs" --directory "$LIVE_WF"
       [[ "$CONTROL" == "$COMMIT" ]] || promote_control "$COMMIT" "$REF"
-      recycle_supervisor
       cleanup_releases
       log "AUTO_UPDATE_MAINTENANCE_PASS version=$VERSION"
+      recycle_supervisor
       exit 0
     fi
     cleanup_releases
@@ -428,6 +428,6 @@ fi
 
 node "$STAGE_DIR/tools/finalize-workflow-schema.mjs" --directory "$LIVE_WF"
 promote_control "$COMMIT" "$REF"
-recycle_supervisor
 cleanup_releases
 log "AUTO_UPDATE_PASS version=$VERSION commit=$COMMIT"
+recycle_supervisor

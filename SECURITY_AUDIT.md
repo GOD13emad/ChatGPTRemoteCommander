@@ -4,13 +4,13 @@ Audit date: 2026-09-21
 
 ## Result
 
-PASS for the current v0.8.15 release candidate content and reachable branch/tag history checked locally after remote-ref synchronization.
+PASS for the current v0.8.16 release candidate content and reachable branch/tag history checked locally after remote-ref synchronization.
 
 The audit found no committed OpenAI-style API secret key, GitHub token, lowercase `tunnel_` identifier, private-key block, bearer-token literal, tracked `config.local.json`, or developer-specific absolute Windows path. On 2026-09-19 a stale local tracking ref first exposed an already-sanitized developer-path finding, and the obsolete public `release/v0.5.0-rc1` branch contained tunnel-shaped self-test fixtures inside the audit test itself. On 2026-09-20 the reachable `feature/blue-green-v0.8.0` history exposed an uppercase fail-closed status symbol that the former case-insensitive tunnel regex misclassified as a credential. The detector now follows the canonical lowercase `tunnel_` prefix used by OpenAI Secure MCP Tunnel examples and includes a regression proving lowercase tunnel-shaped values match while uppercase status/error symbols do not. The unchanged broader history scan then returned `SECURITY_AUDIT_PASS`. No real Runtime API key or tunnel identifier was recovered from these findings.
 
 ## Controls verified
 
-- v0.8.15 removes browser Fetch blocked-port semantics from the local stable-router test harness by using `node:http` for loopback test requests. This is test-infrastructure hardening only; router runtime code and security boundaries are unchanged.
+- v0.8.16 restores bounded tunnel-client downloads and makes Linux lifecycle cleanup ownership-aware for routed processes; executable-mode and portable-runtime regressions prevent release/update drift.\n- v0.8.15 removes browser Fetch blocked-port semantics from the local stable-router test harness by using `node:http` for loopback test requests. This is test-infrastructure hardening only; router runtime code and security boundaries are unchanged.
 - v0.8.14 ownership-tracks staged candidates immediately after spawn and performs ownership-checked cleanup on pre-cutover validation failures, preventing orphan candidate processes without broad process termination.
 - v0.8.14 removes unattended updater dependence on the shared interactive `gui_status` helper. GUI update readiness uses the native no-input self-test plus candidate `system_status` backend/policy evidence, so unrelated authorized GUI activity cannot cause helper contention and the updater still never takes desktop control.
 - v0.8.13 makes routed-backend recovery fail closed around live work: three consecutive misses, readable router activity, zero in-flight requests and a final re-check are required before stop; healthy canonical routers are not restarted solely for source-hash drift during active service.

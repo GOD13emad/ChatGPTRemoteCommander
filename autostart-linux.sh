@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+RUNTIME_BIN="$ROOT/.runtime/node-current/bin"
+[[ -x "$RUNTIME_BIN/node" ]] && export PATH="$RUNTIME_BIN:$PATH"
 VAR_DIR="$ROOT/var"
 CFG_BASE="${XDG_CONFIG_HOME:-$HOME/.config}"
 PROFILE_DIR="$CFG_BASE/tunnel-client"
@@ -8,6 +10,12 @@ CRED_DIR="$CFG_BASE/chatgpt-remote-commander/credentials"
 INTERVAL="${REMOTE_COMMANDER_SUPERVISOR_INTERVAL:-5}"
 mkdir -p "$VAR_DIR" "$CRED_DIR"
 chmod 700 "$CRED_DIR" 2>/dev/null || true
+
+require_runtime() {
+  command -v node >/dev/null 2>&1 && command -v npm >/dev/null 2>&1 && return 0
+  log "RUNTIME_MISSING node=$(command -v node 2>/dev/null || echo missing) npm=$(command -v npm 2>/dev/null || echo missing)"
+  return 1
+}
 
 log() {
   printf '%s %s\n' "$(date --iso-8601=seconds 2>/dev/null || date)" "$*" >> "$VAR_DIR/autostart.log"
@@ -75,6 +83,7 @@ start_tunnel() {
 
 . "$ROOT/supervisor-routing-linux.sh"
 
+require_runtime || exit 1
 log "SUPERVISOR_STARTED pid=$$ root=$ROOT"
 while true; do
   if ensure_routed_default || start_mcp; then

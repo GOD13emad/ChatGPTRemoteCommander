@@ -5,6 +5,8 @@ PROFILE=""
 HEALTH_PORT="0"
 TUNNEL_ID=""
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+RUNTIME_BIN="$ROOT/.runtime/node-current/bin"
+[[ -x "$RUNTIME_BIN/node" ]] && export PATH="$RUNTIME_BIN:$PATH"
 MCP_URL="http://127.0.0.1:47831/mcp"
 HEALTH_URL="http://127.0.0.1:47831/health"
 
