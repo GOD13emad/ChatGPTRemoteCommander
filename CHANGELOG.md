@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.8.23 — 2026-09-22
+
+- Correct stable-channel discovery: ordinary Git tags are no longer treated as releases.
+- Prefer GitHub's documented `/releases/latest` web redirect on both Linux and Windows, with the Releases REST endpoint as fallback.
+- Fail closed if published-release discovery is unavailable; never fall back to the highest raw semantic-version tag.
+- Preserve v0.8.22 route/drain barriers and all prior GUI, persistent-terminal and updater safety controls.
+
 ## 0.8.22 — 2026-09-22
 
 - Prevent nested blue/green generations from overwriting an unresolved `route.previous`. Windows and Linux now attempt to finish the existing drain after candidate validation but before any new route mutation; unresolved drains stop the candidate with `BLOCKED_EXISTING_DRAIN` / `AUTO_UPDATE_EXISTING_DRAIN_BLOCK`.

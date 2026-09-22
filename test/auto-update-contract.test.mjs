@@ -55,6 +55,7 @@ test('auto updater is candidate-first, hardware-gated and commit-point aware',()
     'AUTO_UPDATE_NEWER_CURRENT',
     'Test-VersionGreater'
   ]) assert.ok(s.includes(marker),marker);
+  assert.ok(s.includes('https://github.com/GOD13emad/ChatGPTRemoteCommander/releases/latest') && s.includes('Invoke-WebRequest') && s.includes('Invoke-RestMethod'),'Windows stable discovery must prefer published-release redirect with REST fallback');
   assert.ok(s.includes('[string[]]$CommandArgs'), 'gate helper must not bind the PowerShell automatic $args variable');
   assert.ok(s.includes('& npm.cmd @CommandArgs'), 'gate helper must pass the intended npm argument array');
   assert.ok(s.includes("GATE_START gui-native-selftest"), 'unattended updater must run non-interactive native GUI self-test');
@@ -197,11 +198,12 @@ test('Linux updater is candidate-first, hardware-gated, routed and rollback-awar
     'persistent_terminal_pids',
     'AUTO_UPDATE_PERSISTENT_TERMINAL_BLOCK',
     'AUTO_UPDATE_EXISTING_DRAIN_BLOCK',
-    'git ls-remote --tags --refs',
-    'sort -V',
+    'https://github.com/GOD13emad/ChatGPTRemoteCommander/releases/latest',
+    '%{url_effective}',
     'install_linux_gui_backend',
     'LINUX_GUI_BACKEND_SYNCED'
   ]) assert.ok(s.includes(marker),marker);
+  assert.ok(!s.includes('git ls-remote --tags --refs'),'Linux stable discovery must never promote a raw tag without a published Release');
   assert.ok(s.includes("log 'AUTO_UPDATE_DRAIN_PENDING profile=default'"),'Linux committed cutover must defer unsafe drains');
   assert.ok(s.includes('drain_previous_once "$STAGE_DIR" "$OLD_PORT"'), 'Linux drain must use conservative shared policy');
   assert.ok(s.includes('retire_previous_route "$helper" "$old_port"'), 'Linux successful drain must atomically retire route.previous');

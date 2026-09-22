@@ -1,7 +1,7 @@
 # ChatGPT Remote Commander — Project Brain
 
-Brain revision: R17
-Status: CURRENT / v0.8.22 FINAL RELEASE
+Brain revision: R18
+Status: CURRENT / v0.8.23 RELEASE CANDIDATE
 As of: 2026-09-22
 Project root: %USERPROFILE%\source\repos\ChatGPTRemoteCommander
 Public repository: GOD13emad/ChatGPTRemoteCommander
@@ -348,3 +348,25 @@ Start the GUI read-performance phase from v0.8.6 without changing the frozen rel
 ## HISTORY — R17 delta
 
 - 2026-09-22: Finalized immutable v0.8.22 release and Linux rollout; converted Windows live-terminal blocking and Linux Wayland extension activation into explicit safe deferred states rather than destructive release blockers.
+
+## Stable-release authority successor — v0.8.23
+
+- Previous stable authority: immutable v0.8.22 at `cc736eb5bc457972120a60b22d59b19219e9f659`. Linux production is active and clean on v0.8.22; Windows default remains safely on active v0.8.21 with previous v0.8.19 because live persistent scientific terminals make a new cutover unsafe.
+- Confirmed discovery defect: Linux v0.8.21/v0.8.22 selected the highest semantic Git tag before consulting GitHub Releases. Project history contains the counterexample v0.8.20: a tag existed while no GitHub Release existed. A future tagged-but-unpublished candidate could therefore be misclassified as stable.
+- Method evidence: GitHub distinguishes releases from tags and documents `/releases/latest` / Releases REST as published-release authority. The latest-release REST endpoint returns the latest published full release; ordinary tags without an associated release are not release-list entries.
+- Minimum sufficient prevention: on Linux and Windows, resolve the ordinary GitHub `/releases/latest` redirect first and accept only `vMAJOR.MINOR.PATCH`; use Releases REST only as fallback. If neither published-release source succeeds, fail closed. Raw tag enumeration is not a stable-channel fallback.
+- Live method probes PASS before implementation: Linux web redirect and REST independently resolved immutable v0.8.22; Windows PowerShell followed the redirect and parsed v0.8.22.
+- Preserved controls: v0.8.22 unresolved-previous route barrier; v0.8.21 Linux GUI/zero-interference; v0.8.20 persistent-terminal admission/drain guards; v0.8.19 cleanup-only/no-recycle.
+- Exact next action: run focused discovery/updater regressions and complete v0.8.23 source gates, then exact clean-commit validation, remote-CAS publication and target rollout without terminating live scientific terminals.
+
+## HISTORY — R18 delta
+
+- 2026-09-22: Converted the tagged-but-unpublished stable-channel ambiguity into published-Release authority on both platforms, with web-latest primary, REST fallback and fail-closed semantics.
+
+
+### v0.8.23 source validation delta
+
+- Full staged source validation PASS on Linux after replacing raw-tag discovery: `git diff --cached --check`, focused updater/router 13/13, `npm run check`, `npm test`, `npm run audit`, Linux GUI contract, Windows runtime contract and source-integrity all returned zero.
+- Core suite: 111 total / 110 PASS / 1 Windows-only parser skip. GUI suite: 75/75 PASS. Security audit: PASS.
+- Exact candidate `auto-update-windows.ps1` was transferred byte-for-byte to Windows and parsed by the native PowerShell parser with zero errors; published-release redirect + REST fallback markers were present.
+- Current gate: exact commit/clean-checkout validation and remote-CAS publication remain OPEN; do not tag/publish before those pass.

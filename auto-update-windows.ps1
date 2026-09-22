@@ -88,6 +88,13 @@ function Test-VersionGreater([string]$Left,[string]$Right){
 }
 function Get-LatestTag {
   if($SourceRef){ return $SourceRef }
+  $tag=''
+  try{
+    $latest=Invoke-WebRequest -Method Head -Uri 'https://github.com/GOD13emad/ChatGPTRemoteCommander/releases/latest' -MaximumRedirection 5 -TimeoutSec 20 -Headers @{'User-Agent'='ChatGPTRemoteCommander-Updater'}
+    $effective=[string]$latest.BaseResponse.RequestMessage.RequestUri.AbsoluteUri
+    if($effective -match '/releases/tag/(v\d+\.\d+\.\d+)$'){ $tag=[string]$Matches[1] }
+  }catch{}
+  if($tag -match '^v\d+\.\d+\.\d+$'){ return $tag }
   $release=Invoke-RestMethod 'https://api.github.com/repos/GOD13emad/ChatGPTRemoteCommander/releases/latest' -Headers @{'User-Agent'='ChatGPTRemoteCommander-Updater'} -TimeoutSec 20
   if($release.draft -or $release.prerelease){ throw 'LATEST_RELEASE_NOT_STABLE' }
   $tag=[string]$release.tag_name

@@ -104,15 +104,16 @@ run_gate(){ local project="$1" name="$2"; shift 2; log "GATE_START $name"; (cd "
 
 latest_ref(){
   if [[ -n "$SOURCE_REF" ]]; then printf '%s\n' "$SOURCE_REF"; return; fi
-  local tag body
-  # Git is the updater's authoritative transport; avoid GitHub API rate-limit/403 dependence.
-  tag="$(git ls-remote --tags --refs "$REPO_URL" 'refs/tags/v*' 2>/dev/null |
-    awk '$2 ~ /^refs\/tags\/v[0-9]+\.[0-9]+\.[0-9]+$/ {sub(/^refs\/tags\//,"",$2); print $2}' |
-    sort -V | tail -n1)"
+  local tag body effective
+  effective="$(curl --fail --silent --show-error --location --head \
+    --connect-timeout "$CURL_CONNECT_TIMEOUT" --max-time "$CURL_MAX_TIME" \
+    --output /dev/null --write-out '%{url_effective}' \
+    https://github.com/GOD13emad/ChatGPTRemoteCommander/releases/latest 2>/dev/null || true)"
+  tag="$(printf '%s' "$effective" | sed -nE 's#^.*/releases/tag/(v[0-9]+\.[0-9]+\.[0-9]+)$#\1#p' | head -n1)"
   if [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then printf '%s\n' "$tag"; return; fi
   body="$(curl_fetch -H 'User-Agent: ChatGPTRemoteCommander-Updater' https://api.github.com/repos/GOD13emad/ChatGPTRemoteCommander/releases/latest 2>/dev/null || true)"
   tag="$(printf '%s' "$body" | sed -nE 's/.*"tag_name"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p' | head -n1)"
-  [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo 'latest release tag discovery failed' >&2; return 1; }
+  [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo 'latest published release tag discovery failed' >&2; return 1; }
   printf '%s\n' "$tag"
 }
 stage_release(){

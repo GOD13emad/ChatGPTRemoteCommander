@@ -49,7 +49,7 @@ assert.ok(!/(logout|logoff|reboot|shutdown)[ \t]/i.test(installer), 'GUI install
 assert.ok(controller.includes("platform === 'linux'"));
 assert.ok(server.includes("process.platform === 'win32' || process.platform === 'linux'"));
 assert.ok(updater.includes('install_linux_gui_backend'));
-assert.ok(updater.includes('git ls-remote --tags --refs'));
+assert.ok(updater.includes('https://github.com/GOD13emad/ChatGPTRemoteCommander/releases/latest') && updater.includes('%{url_effective}'));
 
 if (process.platform === 'linux') {
   const compile=spawnSync('python3',['-c',"import ast,pathlib; ast.parse(pathlib.Path('tools/gui-control-linux.py').read_text())"],{encoding:'utf8'});

@@ -891,3 +891,23 @@ This file is append-only for substantive project claims, decisions, failures, pr
 ## HISTORY — E049 delta
 
 - 2026-09-22: Closed immutable v0.8.22 release engineering and Linux deployment, proved Windows mixed-version fail-closed plus v0.8.22 safe blocker behavior, and retained live user terminals and current GNOME Wayland session without disruptive cleanup.
+
+## E050 — v0.8.23 published-release discovery authority
+
+- Date/Context: 2026-09-22 deep post-v0.8.22 audit.
+- Confirmed defect: Linux `latest_ref` preferred highest semantic Git tag. Repository history proves tag != release: v0.8.20 had a tag but no GitHub Release. Stable-channel auto-update could therefore install a tagged candidate that had never passed publication/asset immutability gates.
+- Windows was semantically safer because it used GitHub latest-release REST, but depended on REST availability/rate limits. Cross-platform discovery semantics were inconsistent.
+- Official GitHub method evidence checked 2026-09-22: `/releases/latest` links to the latest release; Releases REST defines latest as the latest published full release; release listings do not include ordinary tags without an associated release; GitHub distinguishes a release from its underlying tag and documents draft -> attach assets -> publish for immutable releases.
+- Decision: published Release authority is mandatory for stable channel. Primary discovery uses the public `releases/latest` redirect to reduce REST dependency; REST latest-release is fallback; raw Git tag enumeration is forbidden as fallback. If both published-release paths fail, updater fails closed.
+- Live probes before mutation: Linux redirect resolved `.../releases/tag/v0.8.22`; REST cross-check returned v0.8.22 with draft=false, prerelease=false, immutable=true. Windows `Invoke-WebRequest -Method Head` resolved the same v0.8.22 release URL and parser.
+- Status at record creation: defect CONFIRMED / method evidence HIGH / implementation staged in isolated v0.8.23 worktree / full regression OPEN.
+- Reuse Targets: updater architecture, stable-channel semantics, supply-chain policy, release acceptance, incident prevention, Project Brain.
+- Provenance: official GitHub documentation; live GitHub probes from both target OSes; repository updater source and v0.8.20/v0.8.22 release history.
+
+
+### E050 validation delta — full v0.8.23 source gates
+
+- Full source validation PASS after implementation: focused updater/router 13/13; core 111 total / 110 PASS / 1 Windows-only skip; GUI 75/75; Linux GUI contract, Windows runtime contract, source-integrity and security audit PASS.
+- Native Windows parser validation PASS on the exact candidate PowerShell updater bytes; no syntax errors and both web-redirect primary plus REST fallback markers were confirmed.
+- Regression propagation: a stale Linux GUI contract assertion still required raw-tag discovery and failed on first focused rerun; root cause was test-policy drift. The assertion was updated to require published-release discovery, then focused and full suites passed. Prevention: stable-discovery semantics are now asserted in both updater contract and Linux GUI integration contract.
+- Status: source candidate PASS / high. Exact committed-tree validation, remote authority, tag/release, installer acceptance and live rollout remain OPEN.
