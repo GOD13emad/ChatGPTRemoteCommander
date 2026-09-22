@@ -1,7 +1,7 @@
 # ChatGPT Remote Commander — Project Brain
 
-Brain revision: R19
-Status: CURRENT / v0.8.24 RELEASE CANDIDATE
+Brain revision: R20
+Status: CURRENT / WINDOWS v0.8.26 OPERATIONAL FINAL-PASS; SHARED PUBLIC RELEASE OUTSIDE WINDOWS LANE
 As of: 2026-09-22
 Project root: %USERPROFILE%\source\repos\ChatGPTRemoteCommander
 Public repository: GOD13emad/ChatGPTRemoteCommander
@@ -12,7 +12,41 @@ Deliver a stable Remote Commander release that can run in explicit Full Power on
 
 DoD for the current release requires: an immutable stable release tag and assets; clean-checkout check/test/security gates; scope-appropriate GUI evidence (fresh interactive native E2E when native input behavior changes, otherwise byte-identical prior native baseline + current no-input/native/controller regression); candidate validation on the target machine; promotion of every live profile; canonical-route doctor checks; durable-workflow integrity after schema finalization; tunnel profiles targeting canonical routers; autostart/supervisor continuity; removal of superseded release directories; and a post-promotion updater no-op returning CURRENT.
 
-## Authoritative current change set — v0.8.15 release candidate
+## Authoritative current Windows state — v0.8.26
+
+- Scope/authority: this R20 projection is the Windows lane only. Linux and shared stable-release publication remain owned by the separate Linux/shared-release lane.
+- Windows product code authority is commit `cf0e6770d31a904f7ed7cf4eb799476bdfa731ea` (v0.8.26); installed control checkout and both active backends use that exact commit.
+- Two ChatGPT connections are independently live: `default` canonical route 47831 -> v0.8.26 backend 48832; `saeed-emad` canonical route 47834 -> isolated v0.8.26 backend 48834.
+- Both live profiles report FULL_POWER, explicit authorization, no disabled capabilities, full filesystem/shell/process/terminal authority, GUI available through `windows-user32-gdi`, `explicit-current-request-only` interaction, durable workflow scheduler enabled, and reconciliationRequired=0.
+- Exact clean-checkout v0.8.26 validation on this Windows machine PASS: 111/111 core tests, 75/75 GUI contract tests, check, security audit, Windows runtime contract, source integrity, concurrency/filesystem safety, and native no-input X64 GUI layout. Validation checkout remained clean afterward.
+- Default previous backend v0.8.21 on 48833 is SAFE-RETAINED, not stale cleanup debt: terminal PID 32412 is alive and router status reports three historical non-cancellable `run_shell` requests. It must not be killed or retired until those workload facts clear.
+- Default retained backend v0.8.19 on 48831 is also SAFE-RETAINED: six persistent terminal processes remain alive. It is outside active route authority and must remain until those terminals finish.
+- `saeed-emad` has no previous route and no routed inflight work. Old candidate port 48835 is no longer listening.
+- Both tunnel-client processes are live with established external connections; local admin endpoints 47832 and 47833 return HTTP 200. OAuth-discovery warnings occurred on both profiles only during prior startup discovery; there are no current ERROR/FATAL findings and no evidence of service impact, so restart solely to suppress the warning is rejected as unnecessary risk.
+- Windows autostart persistence PASS: HKCU Run points to the windowless launcher; its Python runtime and launcher exist; installed `autostart-windows.ps1` parses with zero PowerShell errors; the FullAccessPolicyGuard scheduled task last returned 0.
+- Stable-channel downgrade prevention PASS: public stable currently resolves v0.8.24 while installed Windows v0.8.26 records `NEWER_CURRENT`; no downgrade/cutover occurs.
+- Shared publication boundary: no v0.8.26 Published Release/tag was created in this Windows lane, intentionally avoiding mutation of the Linux/shared stable channel. This is DEFERRED to the shared-release owner and is not a blocker to the verified Windows operational state.
+- Brain status: CURRENT. Windows active product lane is FINAL-PASS/HIGH. Conditional cleanup of safe-retained older backends is deferred until their live terminals/inflight work end; blind/forced cleanup is prohibited.
+- ← CURRENT: Windows dual-account operational finalization complete. Exact next action is only conditional maintenance: retire retained/previous backends after read-only proof that their terminal and inflight counts have reached zero.
+
+## Current Windows roadmap projection — R20
+
+1. Windows source/authority audit — COMPLETED / evidence-backed.
+2. Exact v0.8.26 clean-checkout regression + security — COMPLETED / PASS.
+3. Dual-profile candidate-first promotion — COMPLETED / PASS.
+4. default + saeed-emad Full Power/profile isolation validation — COMPLETED / PASS.
+5. Canonical routes, GUI availability, workflows/scheduler — COMPLETED / PASS.
+6. Two tunnel connections and local admin health — COMPLETED / PASS.
+7. Autostart/supervisor/policy-guard persistence — COMPLETED / PASS.
+8. Live-work preservation across upgrades — COMPLETED / PASS; older backends SAFE-RETAINED by evidence.
+9. Project Brain / Knowledge Evidence handoff — COMPLETED / CURRENT.
+10. Shared public v0.8.26 release/tag/assets — DEFERRED to Linux/shared-release owner; outside this Windows lane.
+11. Retained-backend retirement — DEFERRED/CONDITIONAL until terminal + inflight evidence is zero.
+
+Open blocker for active Windows product: NONE.
+Open safety gate: do not terminate v0.8.19/v0.8.21 workload carriers while their live terminals/inflight operations remain.
+
+## Superseded historical change set — v0.8.15 release candidate
 
 - Accepted upstream product authority remains cumulative through v0.8.13: zero-interference desktop authority (v0.8.10), stable-router downstream response-drain accounting (v0.8.11), monotonic no-downgrade updater (v0.8.12), and fail-closed supervisor continuity (v0.8.13).
 - v0.8.14 candidate added ownership-tracked candidate cleanup on Windows/Linux, removed unattended dependence on shared interactive `gui_status`, and introduced a checksum-manifested Full Power installer bundle. Its source gates and first isolated installer acceptance on code commit `a8ed68c...` passed.
