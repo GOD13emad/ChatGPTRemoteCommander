@@ -858,3 +858,13 @@ This file is append-only for substantive project claims, decisions, failures, pr
 - Core suite: 111/111 PASS. GUI suite: 75/75 PASS. `LINUX_GUI_CONTRACT_PASS`, `WINDOWS_RUNTIME_CONTRACT_PASS`, `SOURCE_INTEGRITY_PASS`, `SECURITY_AUDIT_PASS`, installer/onboarding PASS.
 - v0.8.21 zero-interference and Linux GNOME/Wayland functionality remains covered by the same full regression suite.
 - Status/Confidence: v0.8.22 source release candidate PASS / high. Commit/CAS, independent exact-commit Linux validation, tag/artifact/publication/live rollout remain OPEN.
+
+
+### E048 exact-commit Linux validation delta
+
+- Remote product-code authority: `origin/main=968ac2d10da8cc30c66827c625e4a7da636194a3`.
+- Independent Linux validation used a fresh detached clone at that exact commit; active Linux runtime and GNOME session were not mutated.
+- Exact checkout was clean and package version was 0.8.22.
+- PASS: `npm run check`, `npm test`, `npm run audit`, focused updater/router suite 13/13, `LINUX_GUI_CONTRACT_PASS`, `bash -n auto-update-linux.sh`.
+- Security audit reported no secret-key, tunnel-id, private-key, bearer-token, GitHub-token, tracked local-config or developer-path finding.
+- Status/Confidence: exact committed v0.8.22 product tree cross-platform validation PASS / high. Final documentation commit, tag, exact-tag installer/artifacts, publication and live rollout remain OPEN.

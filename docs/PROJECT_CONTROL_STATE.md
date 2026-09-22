@@ -321,7 +321,8 @@ Start the GUI read-performance phase from v0.8.6 without changing the frozen rel
 - Live Windows user workload remains protected: the old default backend with persistent terminals must be allowed to keep running until the user/workload ends or is explicitly closed; release rollout must report a safe blocker rather than force cleanup.
 - Hosted GitHub Actions remains an external billing-lock gate and does not substitute for local cross-platform release validation.
 - Full v0.8.22 source validation PASS: core 111/111, GUI 75/75, check/test/audit, Linux GUI contract, Windows runtime/native no-input, installer/onboarding, source-integrity, security and Linux syntax all PASS.
-- Open gates: remote-CAS commit/push, exact clean Linux commit validation, exact-tag artifact/installer acceptance, immutable publication, safe Linux rollout, and Windows blocker behavior verification.
+- Remote-CAS product commit PASS: `968ac2d10da8cc30c66827c625e4a7da636194a3` is on `origin/main`. Independent fresh Linux exact-commit validation PASS (`check`, `test`, audit, focused 13/13, Linux GUI contract, shell syntax).
+- Open gates: docs closeout/final tag, exact-tag artifact/installer acceptance, immutable publication, safe Linux rollout, and Windows blocker behavior verification.
 - Exact next action: run the complete release suite on version-authoritative v0.8.22, then continue only if every gate passes and origin/main still equals the v0.8.21 authority.
 
 ## HISTORY — R16 delta
