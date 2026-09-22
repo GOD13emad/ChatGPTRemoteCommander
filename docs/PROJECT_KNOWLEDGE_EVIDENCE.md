@@ -868,3 +868,26 @@ This file is append-only for substantive project claims, decisions, failures, pr
 - PASS: `npm run check`, `npm test`, `npm run audit`, focused updater/router suite 13/13, `LINUX_GUI_CONTRACT_PASS`, `bash -n auto-update-linux.sh`.
 - Security audit reported no secret-key, tunnel-id, private-key, bearer-token, GitHub-token, tracked local-config or developer-path finding.
 - Status/Confidence: exact committed v0.8.22 product tree cross-platform validation PASS / high. Final documentation commit, tag, exact-tag installer/artifacts, publication and live rollout remain OPEN.
+
+
+## E049 — v0.8.22 immutable release and live rollout closeout
+
+- Date/Context: 2026-09-22, final post-publication/live acceptance after immutable v0.8.22 publication.
+- Release authority / CONFIRMED: `origin/main` and `v0.8.22^{}` resolve to `cc736eb5bc457972120a60b22d59b19219e9f659`. GitHub Release v0.8.22 is public, Latest, non-prerelease and immutable. Publication timestamp: 2026-09-22T02:01:46Z.
+- Artifact authority / CONFIRMED: release contains 13 uploaded assets. `ChatGPT-Remote-Commander-v0.8.22-Installer.zip` size=168773 bytes, GitHub SHA-256 digest=`7c8cdab91ddabc982248fc66982d845765522ad56724dca8fd4c47348269b8bd`. Exact-tag Windows sandbox installer acceptance had already PASSed with Full Power, GUI enabled and zero-interference policy.
+- Linux rollout / PASS: control/runtime exact commit `cc736eb...`; route generation 9 active v0.8.22, `previous=null`; only release directory `v0.8.22-cc736eb5bc45`; updater lock FREE; systemd user service active; Full Power preserved; second exact updater run returned `AUTO_UPDATE_CURRENT version=0.8.22`.
+- Linux GUI installation / PARTIAL-VALIDATION: runtime reports GNOME/Wayland GUI backend support and policy enabled. The GNOME extension `chatgpt-remote-commander@god13emad` is installed and Enabled, but GNOME Shell 46 current Wayland session reports State=INACTIVE and MCP `gui_status` reports `GUI_GNOME_EXTENSION_UNAVAILABLE`. No forced Shell restart, logout or reboot was performed. Status=`DEFERRED_SESSION_ACTIVATION`; native interactive Linux GUI E2E remains UNPROVEN for the current already-running session.
+- Windows first v0.8.22 attempt / SAFE FAIL-CLOSED: when the v0.8.21 updater staged v0.8.22, candidate gates passed but the staged v0.8.22 router-switch refused unresolved `route.previous`; receipt was `FAILED / ROUTER_SWITCH_FAIL profile=default`, with no route mutation. This demonstrated the router-level `ROUTER_PREVIOUS_NOT_DRAINED` invariant under mixed-version self-update.
+- Windows control-plane handoff / PASS: tracked-clean installed control checkout was advanced directly from v0.8.21 `31414b65...` to exact v0.8.22 `cc736eb...` after exact tag fetch/commit verification, without route cutover, GUI mutation or supervisor restart.
+- Windows v0.8.22 updater / PASS-AS-SAFE-BLOCKER: both default and saeed-emad v0.8.22 candidates passed doctor/hardware/shadow/live-store compatibility. Before any route mutation the updater found an unresolved default previous generation with six direct Remote Commander persistent terminal children (PIDs 19072, 2760, 31592, 12248, 17564, 23576), logged `DRAIN_PERSISTENT_TERMINAL_DEFER` and exited with receipt status `BLOCKED_EXISTING_DRAIN` / `AUTO_UPDATE_EXISTING_DRAIN_BLOCK profiles=default`.
+- Windows preservation evidence: default route remains generation 19, active v0.8.21 and previous v0.8.19; saeed-emad remains generation 20, active v0.8.21 with `previous=null`. No candidate listeners remained on staged ports 48832/48835. Supervisor PID remained 30584. Existing old backend has live persistent terminals and a router-recorded non-cancellable `run_shell` request; it was not force-stopped.
+- Desktop non-interference / PASS: this release/rollout closeout used no mouse movement, click, keyboard injection, window focus mutation, logout, reboot or GNOME Shell restart.
+- Decision: v0.8.22 product/release engineering is FINAL/PASS and Linux runtime rollout is FINAL/PASS. Windows control-plane is v0.8.22 and the runtime cutover is intentionally `SAFE_DEFERRED_BY_LIVE_USER_WORKLOAD`; it must complete only after the user-owned persistent terminals/old request end safely. Linux native GUI activation is `DEFERRED_SESSION_ACTIVATION` until a normal future GNOME session lifecycle makes the installed extension active.
+- Non-claim: universal superiority over Work/Codex/Claude/Copilot remains UNPROVEN; the release claim is limited to the verified Remote Commander capabilities and safety properties above.
+- Reuse Targets: release acceptance, self-update mixed-version handoff, persistent-terminal safety, Linux Wayland GUI activation, operator handoff.
+- Provenance: GitHub release API/tag refs; Windows control/route/receipt/process/router evidence; Linux route/service/lock/update-log/system_status/GNOME extension evidence.
+- Status/Confidence: release FINAL/PASS; Linux rollout FINAL/PASS; Windows runtime rollout SAFE-DEFERRED; current-session Linux native GUI E2E DEFERRED/UNPROVEN / high.
+
+## HISTORY — E049 delta
+
+- 2026-09-22: Closed immutable v0.8.22 release engineering and Linux deployment, proved Windows mixed-version fail-closed plus v0.8.22 safe blocker behavior, and retained live user terminals and current GNOME Wayland session without disruptive cleanup.

@@ -1,7 +1,7 @@
 # ChatGPT Remote Commander — Project Brain
 
-Brain revision: R16
-Status: CURRENT / v0.8.22 RELEASE CANDIDATE
+Brain revision: R17
+Status: CURRENT / v0.8.22 FINAL RELEASE
 As of: 2026-09-22
 Project root: %USERPROFILE%\source\repos\ChatGPTRemoteCommander
 Public repository: GOD13emad/ChatGPTRemoteCommander
@@ -328,3 +328,23 @@ Start the GUI read-performance phase from v0.8.6 without changing the frozen rel
 ## HISTORY — R16 delta
 
 - 2026-09-22: Preserved the immutable v0.8.21 Linux GUI baseline and added the minimum sufficient route-generation invariant needed to prevent nested cutover/orphaned persistent sessions.
+
+
+## v0.8.22 final release closeout
+
+- FINAL RELEASE authority: v0.8.22 / `cc736eb5bc457972120a60b22d59b19219e9f659`; GitHub release is Public + Latest + Immutable with 13 assets.
+- Final Windows installer: `ChatGPT-Remote-Commander-v0.8.22-Installer.zip`, SHA-256 `7c8cdab91ddabc982248fc66982d845765522ad56724dca8fd4c47348269b8bd`.
+- Verification: full source, security, installer/onboarding, Windows runtime/native no-input, Linux syntax/GUI contract, focused route/updater 13/13 and exact Linux commit validation PASS.
+- Linux validation: FINAL/PASS. Active route/runtime/control are exact v0.8.22, `previous=null`, only v0.8.22 release remains, service active, updater lock free, second updater run `CURRENT`.
+- Windows control-plane: PASS at exact v0.8.22. Runtime route remains safely on v0.8.21 because default `route.previous` v0.8.19 still owns six persistent terminals and a non-cancellable old request. v0.8.22 candidates validate and then return `BLOCKED_EXISTING_DRAIN` before route mutation; candidate processes are cleaned.
+- Windows runtime rollout status: SAFE-DEFERRED-BY-LIVE-USER-WORKLOAD. This is the intended fail-closed behavior and must not be bypassed by killing user terminals merely to make the version uniform.
+- Linux GUI current-session status: extension is installed+Enabled on GNOME 46 Wayland but currently INACTIVE; backend reports `GUI_GNOME_EXTENSION_UNAVAILABLE`. Native interactive E2E is DEFERRED_SESSION_ACTIVATION until a normal future session lifecycle; no logout/restart/reboot is authorized for this gate.
+- Desktop policy: PASS. No mouse/keyboard/focus takeover occurred during release closeout. Explicit-current-request-only / observe-by-default remains authoritative.
+- External hosted GitHub Actions billing lock remains an external infrastructure limitation and does not invalidate the completed local Windows + exact Linux release validation. It remains separate from product runtime authority.
+- Universal competitive superiority claim remains UNPROVEN and is excluded from FINAL criteria.
+- Final Objective/DoD status: release engineering FINAL/PASS; Linux deployment FINAL/PASS; Windows product is operational on accepted v0.8.21 runtime with v0.8.22 control-plane and safe deferred runtime promotion; Linux GUI code/product gate PASS with current-session native activation deferred.
+- Exact Next Action: no forced action. Allow current Windows persistent terminals to finish/close normally; the scheduled v0.8.22 updater can then retire the old generation and complete runtime cutover. After the next normal Linux GNOME session start, run read-only `gui_status` then native interactive E2E only with explicit current-request desktop takeover authorization.
+
+## HISTORY — R17 delta
+
+- 2026-09-22: Finalized immutable v0.8.22 release and Linux rollout; converted Windows live-terminal blocking and Linux Wayland extension activation into explicit safe deferred states rather than destructive release blockers.
