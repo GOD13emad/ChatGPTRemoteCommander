@@ -501,9 +501,9 @@ function Get-TerminalRetentionEvidence([object]$OldActive,[int]$CanonicalPort,[o
     $terminalRoots=@{}; foreach($t in @($TerminalChildren)){$terminalRoots[[int]$t.ProcessId]=$true}
     $unsafe=@()
     foreach($p in $desc){
-      $pid=[int]$p.ProcessId
+      $processId=[int]$p.ProcessId
       $norm=([string]$p.CommandLine).Trim().ToLowerInvariant()
-      $allowed=$terminalRoots.ContainsKey($pid)
+      $allowed=$terminalRoots.ContainsKey($processId)
       $cursor=$p;$guard=0
       while(-not $allowed -and $cursor -and $guard-lt64){
         $guard++;$parent=[int]$cursor.ParentProcessId

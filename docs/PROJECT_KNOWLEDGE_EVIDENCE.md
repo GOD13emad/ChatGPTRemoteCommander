@@ -998,3 +998,16 @@ This file is append-only for substantive project claims, decisions, failures, pr
 ## HISTORY — E055 delta
 
 - 2026-09-22: Converted stale router accounting + valid persistent terminal from a permanent profile blocker into a double-checked non-destructive retained-backend handoff.
+
+## E056 — PowerShell reserved PID collision in terminal retention evidence
+
+- Date/Context: 2026-09-22 first live use of v0.8.27 terminal-retention evidence.
+- Failure: updater logged `DRAIN_TERMINAL_RETAIN_DEFER profile=default decision=DEFER_PROCESS_TREE`; no route or process was destructively changed.
+- Root Cause: PowerShell variables are case-insensitive and `$PID` is a read-only automatic variable. The new helper assigned `$pid=[int]$p.ProcessId`, throwing inside its fail-closed process-tree block.
+- Fix: v0.8.28 renames the local variable to `$processId`; no policy or destructive behavior changes.
+- Verification: updater contract PASS; full Windows check/test/audit PASS; core 111/111 and GUI 75/75 PASS; security audit PASS.
+- Status/Confidence: root cause CONFIRMED; hotfix PASS/HIGH; live promotion OPEN at this record point.
+
+## HISTORY — E056 delta
+
+- 2026-09-22: Corrected reserved-variable collision while preserving double-check terminal-retention safety.

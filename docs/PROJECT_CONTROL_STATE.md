@@ -1,7 +1,7 @@
 # ChatGPT Remote Commander — Project Brain
 
-Brain revision: R21
-Status: CURRENT / v0.8.27 TERMINAL-RETENTION FIX CANDIDATE
+Brain revision: R22
+Status: CURRENT / v0.8.28 TERMINAL-RETENTION HOTFIX CANDIDATE
 As of: 2026-09-22
 Project root: %USERPROFILE%\source\repos\ChatGPTRemoteCommander
 Public repository: GOD13emad/ChatGPTRemoteCommander
@@ -449,3 +449,7 @@ Start the GUI read-performance phase from v0.8.6 without changing the frozen rel
 ## HISTORY — R21 terminal-retention delta
 
 - 2026-09-22: Live Windows rollout exposed a stale-router-accounting edge case around a valid persistent terminal. Added evidence-gated terminal-aware route detachment rather than killing or blocking the workload; full Windows regression/security PASS.
+
+## HISTORY — R22 PowerShell reserved-variable hotfix
+
+- 2026-09-22: v0.8.27 live maintenance failed closed as `DEFER_PROCESS_TREE` because `$pid` collided case-insensitively with PowerShell's reserved `$PID`. v0.8.28 renames the local loop variable only; safety semantics are unchanged. Full Windows regression/security PASS.

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.8.28 — 2026-09-22
+
+- Fix the Windows terminal-retention evidence helper to avoid PowerShell's reserved automatic `$PID` variable; the prior v0.8.27 helper failed closed as `DEFER_PROCESS_TREE` before classifying descendants.
+- Preserve the v0.8.27 double-check, non-destructive retained-terminal design unchanged.
+
 ## 0.8.27 — 2026-09-22
 
 - Allow Windows retained-terminal handoff to retire stale router inflight accounting only after independent backend-idle, GUI-idle, socket-owner and process-tree evidence passes twice.
