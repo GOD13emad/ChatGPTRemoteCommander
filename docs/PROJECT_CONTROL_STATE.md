@@ -1,7 +1,7 @@
 # ChatGPT Remote Commander — Project Brain
 
-Brain revision: R18
-Status: CURRENT / v0.8.23 RELEASE CANDIDATE
+Brain revision: R19
+Status: CURRENT / v0.8.24 RELEASE CANDIDATE
 As of: 2026-09-22
 Project root: %USERPROFILE%\source\repos\ChatGPTRemoteCommander
 Public repository: GOD13emad/ChatGPTRemoteCommander
@@ -370,3 +370,28 @@ Start the GUI read-performance phase from v0.8.6 without changing the frozen rel
 - Core suite: 111 total / 110 PASS / 1 Windows-only parser skip. GUI suite: 75/75 PASS. Security audit: PASS.
 - Exact candidate `auto-update-windows.ps1` was transferred byte-for-byte to Windows and parsed by the native PowerShell parser with zero errors; published-release redirect + REST fallback markers were present.
 - Current gate: exact commit/clean-checkout validation and remote-CAS publication remain OPEN; do not tag/publish before those pass.
+
+
+## GNOME live-extension lifecycle successor — v0.8.24
+
+- Previous immutable authority: v0.8.23 at `4ff706197ec9940dc7f3a2d84d33f207a42249f3`. Linux production reached v0.8.23 with route `previous=null`; Windows stable discovery correctly resolved v0.8.23 but remained fail-closed on its real persistent-terminal drain blocker.
+- Live defect evidence: on Ubuntu GNOME Shell 46 / Wayland, the Remote Commander extension files were byte-identical to source and the extension was configured Enabled=Yes, but the live bridge was initially unavailable. The updater installer unconditionally replaced the extension directory on each promotion even when bytes were unchanged. GNOME's CLI documents that `enable` is a no-op when already enabled, so replacement could leave an enabled-but-not-yet-live extension without a reliable reload path.
+- Recovery evidence: a CLI disable -> enable cycle for this extension alone required no logout/reboot and resulted in `gnome-extensions list --active` containing the UUID, the D-Bus bridge becoming introspectable, and Remote Commander `gui_status.available=true` with screenshot/mouse/keyboard/focus capabilities. No mouse movement, keyboard input, focus change, browser control or desktop takeover was used.
+- Minimum sufficient prevention: compare source and live extension trees first; do not touch byte-identical live files. If bytes changed and the extension is active, disable it before atomic directory replacement and re-enable afterward. If the bridge remains absent while enabled, perform one bounded disable/enable recovery cycle and bounded bridge poll. Never force logout, reboot, shutdown or GNOME Shell restart.
+- Hygiene delta: runtime `/var/` logs/state are explicitly ignored by Git because the installed control checkout intentionally hosts operational state there.
+- Method evidence: GNOME 46 guidance retains the standard ES module Extension API used by this extension; the official `gnome-extensions` command documentation says `enable` does nothing when already enabled and advises checking ACTIVE state. This supports explicit active-state verification/recovery rather than assuming enabled==live.
+- Exact next action: run focused installer behavior tests, live read-only/isolated validation, full source gates and exact clean-commit validation. Only then publish v0.8.24 and roll out without interrupting Windows scientific terminals.
+
+## HISTORY — R19 delta
+
+- 2026-09-22: Converted the Linux GNOME enabled-but-not-live failure into an idempotent extension install/reload contract and corrected runtime checkout hygiene.
+
+
+### v0.8.24 validation delta
+
+- Focused GUI/updater validation PASS: behavioral GNOME installer regression, Linux GUI contract, updater/router 13/13, installer and onboarding contracts.
+- Behavioral regression proves two paths in an isolated memory-backed GNOME test harness: identical live/source extension trees preserve the destination inode and never disable the extension; changed active trees execute exactly disable -> atomic replacement -> enable and restore the bridge.
+- Live Linux idempotence PASS on the real GNOME 46 / Wayland session: candidate v0.8.24 installer reported `GNOME_GUI_EXTENSION_UNCHANGED` and `GNOME_GUI_EXTENSION_ACTIVE changed=false`; live directory inode and both extension hashes were unchanged and the UUID remained active.
+- Full source validation PASS: `npm run check`, `npm test`, `npm run audit`, Linux GUI contract, Windows runtime contract and source-integrity all returned zero. Core suite remained 111 total / 110 PASS / 1 Windows-only skip; GUI suite 75/75 PASS; security audit PASS.
+- Native Windows PowerShell parser PASS on exact candidate `install.ps1` bytes with the v0.8.24 default source ref.
+- Current gate: exact commit/clean-checkout validation and remote-CAS publication remain OPEN.

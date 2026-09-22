@@ -1,5 +1,5 @@
 node_modules/
-var/*.jsonl
+/var/
 test/.tmp-*
 test/chatgpt-plugin-e2e*.txt
 .remote-commander-backups/

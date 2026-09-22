@@ -139,6 +139,8 @@ Filesystem containment is enforced, but command execution is **not an OS sandbox
 
 ## Validation
 
+v0.8.24 hardens the Linux GNOME/Wayland GUI lifecycle: unchanged extension bytes are not replaced, changed active extensions are orderly disabled before atomic replacement and re-enabled afterward, and enabled-but-inactive state gets a bounded same-session recovery attempt. Runtime `/var/` files are ignored so operational logs/state do not make the control checkout appear dirty.
+
 v0.8.23 fixes stable-channel release discovery: both platforms now prefer GitHub's published `releases/latest` redirect and use the Releases API only as fallback. Raw Git tags are never treated as stable releases, so tagged-but-unpublished candidates cannot be auto-promoted.
 
 v0.8.22 hardens the zero-downtime route invariant: an unresolved previous generation must be safely retired before any new cutover, and the router switch itself refuses to overwrite `route.previous`. Windows deferred maintenance also checks persistent terminals before every old-backend stop path. v0.8.21 adds guarded GNOME/Wayland GUI control on Linux and makes the zero-interference rule machine-readable across config, capability migration and runtime status. Linux install/update synchronizes the per-user GNOME extension without forcing logout/reboot; on GNOME 46 a newly introduced extension may remain unavailable until the next normal desktop session, and that limitation is reported rather than bypassed. Published stable-version discovery now uses GitHub Release authority, and scheduler status distinguishes automatic recovery/readiness from the intentionally absent model/agent execution runner.

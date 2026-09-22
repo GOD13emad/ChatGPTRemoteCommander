@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 
 const read = p => fs.readFileSync(p,'utf8');
@@ -40,8 +42,12 @@ for (const marker of [
 
 for (const marker of [
   'enabled-extensions',
+  'GNOME_GUI_EXTENSION_UNCHANGED',
   'GNOME_GUI_EXTENSION_SESSION_RELOAD_REQUIRED',
-  'grep -q \'interface org.gnome.Shell.Extensions.ChatGPTRemoteCommander\'',
+  'diff -qr -- "$SRC" "$DST"',
+  'gnome-extensions disable "$UUID"',
+  'wait_bridge',
+  'grep -q "interface $BRIDGE_IFACE"',
   'chmod 600 "$TOKEN"'
 ]) assert.ok(installer.includes(marker), 'installer missing '+marker);
 
@@ -60,5 +66,85 @@ if (process.platform === 'linux') {
   assert.equal(parsed.ok,true);
   const bash=spawnSync('bash',['-n','tools/install-gnome-gui-extension.sh'],{encoding:'utf8'});
   assert.equal(bash.status,0,bash.stderr);
+
+  const tmp=fs.mkdtempSync(path.join(os.tmpdir(),'rc-gnome-installer-'));
+  try {
+    const uuid='chatgpt-remote-commander@god13emad';
+    const fakeRoot=path.join(tmp,'root');
+    const fakeTools=path.join(fakeRoot,'tools');
+    const fakeSrc=path.join(fakeRoot,'gnome-extension',uuid);
+    const fakeData=path.join(tmp,'data');
+    const fakeDst=path.join(fakeData,'gnome-shell','extensions',uuid);
+    const fakeBin=path.join(tmp,'bin');
+    const state=path.join(tmp,'bridge-active');
+    const calls=path.join(tmp,'calls.log');
+    fs.mkdirSync(fakeTools,{recursive:true});
+    fs.mkdirSync(fakeSrc,{recursive:true});
+    fs.mkdirSync(fakeDst,{recursive:true});
+    fs.mkdirSync(fakeBin,{recursive:true});
+    fs.copyFileSync('tools/install-gnome-gui-extension.sh',path.join(fakeTools,'install-gnome-gui-extension.sh'));
+    fs.writeFileSync(path.join(fakeSrc,'extension.js'),'same-v1\n');
+    fs.writeFileSync(path.join(fakeSrc,'metadata.json'),'{}\n');
+    fs.copyFileSync(path.join(fakeSrc,'extension.js'),path.join(fakeDst,'extension.js'));
+    fs.copyFileSync(path.join(fakeSrc,'metadata.json'),path.join(fakeDst,'metadata.json'));
+    fs.writeFileSync(state,'active\n');
+    fs.writeFileSync(path.join(fakeBin,'gdbus'),`#!/bin/sh
+if [ -f "$GNOME_TEST_STATE" ]; then
+  echo "interface org.gnome.Shell.Extensions.ChatGPTRemoteCommander"
+  exit 0
+fi
+exit 1
+`);
+    fs.writeFileSync(path.join(fakeBin,'gnome-extensions'),`#!/bin/sh
+cmd="$1"
+case "$cmd" in
+  list)
+    if [ "$2" = "--active" ] && [ -f "$GNOME_TEST_STATE" ]; then echo "chatgpt-remote-commander@god13emad"; fi
+    ;;
+  disable)
+    echo disable >> "$GNOME_TEST_CALLS"
+    rm -f "$GNOME_TEST_STATE"
+    ;;
+  enable)
+    echo enable >> "$GNOME_TEST_CALLS"
+    : > "$GNOME_TEST_STATE"
+    ;;
+esac
+exit 0
+`);
+    fs.chmodSync(path.join(fakeBin,'gdbus'),0o755);
+    fs.chmodSync(path.join(fakeBin,'gnome-extensions'),0o755);
+    const env={
+      ...process.env,
+      PATH:`${fakeBin}:${process.env.PATH}`,
+      HOME:tmp,
+      XDG_CURRENT_DESKTOP:'GNOME',
+      XDG_DATA_HOME:fakeData,
+      XDG_CONFIG_HOME:path.join(tmp,'config'),
+      GSETTINGS_BACKEND:'memory',
+      GNOME_TEST_STATE:state,
+      GNOME_TEST_CALLS:calls
+    };
+
+    const inodeBefore=fs.statSync(fakeDst).ino;
+    let run=spawnSync('bash',[path.join(fakeTools,'install-gnome-gui-extension.sh')],{encoding:'utf8',env});
+    assert.equal(run.status,0,run.stderr);
+    assert.match(run.stdout,/GNOME_GUI_EXTENSION_UNCHANGED/);
+    assert.match(run.stdout,/GNOME_GUI_EXTENSION_ACTIVE changed=false/);
+    assert.equal(fs.statSync(fakeDst).ino,inodeBefore,'byte-identical extension tree must not be replaced');
+    assert.ok(!fs.existsSync(calls) || !fs.readFileSync(calls,'utf8').includes('disable'),'unchanged active extension must not be disabled');
+
+    fs.writeFileSync(path.join(fakeSrc,'extension.js'),'changed-v2\n');
+    fs.writeFileSync(calls,'');
+    fs.writeFileSync(state,'active\n');
+    run=spawnSync('bash',[path.join(fakeTools,'install-gnome-gui-extension.sh')],{encoding:'utf8',env});
+    assert.equal(run.status,0,run.stderr);
+    assert.match(run.stdout,/GNOME_GUI_EXTENSION_INSTALLED/);
+    assert.match(run.stdout,/GNOME_GUI_EXTENSION_ACTIVE changed=true/);
+    assert.equal(fs.readFileSync(path.join(fakeDst,'extension.js'),'utf8'),'changed-v2\n');
+    assert.deepEqual(fs.readFileSync(calls,'utf8').trim().split(/\r?\n/),['disable','enable']);
+  } finally {
+    fs.rmSync(tmp,{recursive:true,force:true});
+  }
 }
 console.log('LINUX_GUI_CONTRACT_PASS');

@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.8.24 — 2026-09-22
+
+- Make GNOME/Wayland GUI extension updates session-safe: byte-identical extension trees are no longer replaced.
+- When extension bytes really change, disable the active extension before atomic replacement, then re-enable it; recover enabled-but-inactive state with one bounded disable/enable cycle and bridge polling.
+- Keep the no-logout/no-reboot/no-desktop-takeover invariant while allowing the GUI D-Bus bridge to become active in the current GNOME 46 session when possible.
+- Ignore runtime `/var/` state/log output so the control checkout remains clean without deleting operational logs.
+- Preserve v0.8.23 published-release authority and all earlier route, persistent-terminal, GUI-policy and cleanup protections.
+
 ## 0.8.23 — 2026-09-22
 
 - Correct stable-channel discovery: ordinary Git tags are no longer treated as releases.

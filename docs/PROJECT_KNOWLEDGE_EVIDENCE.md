@@ -911,3 +911,27 @@ This file is append-only for substantive project claims, decisions, failures, pr
 - Native Windows parser validation PASS on the exact candidate PowerShell updater bytes; no syntax errors and both web-redirect primary plus REST fallback markers were confirmed.
 - Regression propagation: a stale Linux GUI contract assertion still required raw-tag discovery and failed on first focused rerun; root cause was test-policy drift. The assertion was updated to require published-release discovery, then focused and full suites passed. Prevention: stable-discovery semantics are now asserted in both updater contract and Linux GUI integration contract.
 - Status: source candidate PASS / high. Exact committed-tree validation, remote authority, tag/release, installer acceptance and live rollout remain OPEN.
+
+
+## E051 — v0.8.24 GNOME live-extension lifecycle and runtime hygiene
+
+- Date/Context: 2026-09-22 live post-v0.8.23 audit on Ubuntu GNOME Shell 46 / Wayland.
+- Confirmed live state before recovery: extension UUID installed with matching source hashes, Enabled=Yes, `disable-user-extensions=false`, but the Remote Commander D-Bus bridge was unavailable and `gui_status.available=false`.
+- Source/root-cause evidence: `tools/install-gnome-gui-extension.sh` always built a temporary copy and replaced the live extension directory, even when the source and destination trees were byte-identical. It then called `gnome-extensions enable`. GNOME's command documentation states that enabling an already-enabled extension does nothing and that ACTIVE must be checked separately.
+- Recovery experiment: only this product's extension was toggled via `gnome-extensions disable` then `enable`; no logout/reboot/system restart, no mouse/keyboard/focus/browser action. Afterward the UUID appeared in `gnome-extensions list --active`, D-Bus bridge introspection succeeded, and Remote Commander reported GNOME Wayland GUI available with two screens and all six native capabilities.
+- GNOME compatibility evidence: official GNOME JavaScript porting guidance for Shell 46 reports no relevant metadata or extension.js changes; the current extension uses the documented ES-module `Extension` base import.
+- Decision: make install idempotent on extension bytes. Identical tree -> do not replace. Changed live active tree -> disable only this extension, atomic replace, enable. Enabled-but-bridge-absent -> one bounded recovery toggle and bridge poll. No forced logout/reboot/shutdown/GNOME Shell restart.
+- Hygiene defect: installed control checkout contained untracked `var/` with runtime PID/log/lock files. These are operational state, not project source. Add `/var/` to .gitignore; do not delete logs as a cleanliness workaround.
+- Status: defect/root cause CONFIRMED; implementation staged in isolated v0.8.24 worktree; focused/full validation OPEN.
+- Reuse Targets: Linux GUI updater design, zero-interference policy, update lifecycle, release acceptance, operational hygiene, Project Brain.
+- Provenance: live GNOME 46 system state and D-Bus/CLI probes; v0.8.23 source; official GNOME Shell extension documentation and gnome-extensions manual.
+
+
+### E051 validation delta — v0.8.24
+
+- Focused behavioral and contract validation PASS. The synthetic GNOME harness uses `GSETTINGS_BACKEND=memory` plus controlled `gdbus` / `gnome-extensions` stubs, so it tests installer sequencing without touching the user's desktop.
+- Identical-tree case PASS: destination inode unchanged, no disable call, bridge active. Changed-active case PASS: exact call sequence disable -> enable, destination bytes updated, bridge active.
+- Real GNOME 46 / Wayland idempotence PASS: source/live extension hashes matched, inode stayed identical across installer invocation, output was `UNCHANGED` then `ACTIVE changed=false`, and the extension remained in the active list with live D-Bus bridge.
+- Full project gates PASS: check/test/audit, source integrity, Linux GUI and Windows runtime contracts. Security audit found no credential/token/private-key/developer-path issue.
+- Native Windows PowerShell parser PASS on exact candidate installer bytes and v0.8.24 source-ref authority.
+- Status: implementation + source/live idempotence HIGH/PASS; exact committed-tree validation, immutable release and live rollout OPEN.
