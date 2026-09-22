@@ -498,22 +498,26 @@ function Get-TerminalRetentionEvidence([object]$OldActive,[int]$CanonicalPort,[o
     $result.unexpectedConnections=@($connections|Where-Object{$_.OwningProcess-ne$backendPid -and $_.OwningProcess-ne$routerPid}).Count
     $desc=@(Get-BackendDescendants $backendPid)
     $byId=@{}; foreach($p in $desc){$byId[[int]$p.ProcessId]=$p}
-    $terminalRoots=@{}; foreach($t in @($TerminalChildren)){$terminalRoots[[int]$t.ProcessId]=$true}
+    $allowedRoots=@{}; foreach($t in @($TerminalChildren)){$allowedRoots[[int]$t.ProcessId]=$true}
+    if(-not$result.guiBusy -and -not$result.guiLeased){
+      foreach($p in $desc){
+        $norm=([string]$p.CommandLine).Trim().ToLowerInvariant()
+        if([string]$p.Name -ieq 'pwsh.exe' -and $norm.Contains('tools\gui-control.ps1 -server')){$allowedRoots[[int]$p.ProcessId]=$true}
+      }
+    }
     $unsafe=@()
     foreach($p in $desc){
       $processId=[int]$p.ProcessId
-      $norm=([string]$p.CommandLine).Trim().ToLowerInvariant()
-      $allowed=$terminalRoots.ContainsKey($processId)
+      $allowed=$allowedRoots.ContainsKey($processId)
       $cursor=$p;$guard=0
       while(-not $allowed -and $cursor -and $guard-lt64){
         $guard++;$parent=[int]$cursor.ParentProcessId
-        if($terminalRoots.ContainsKey($parent)){$allowed=$true;break}
+        if($allowedRoots.ContainsKey($parent)){$allowed=$true;break}
         if($parent-eq$backendPid){break}
         if($byId.ContainsKey($parent)){$cursor=$byId[$parent]}else{break}
       }
       $isDirectConhost=([string]$p.Name -ieq 'conhost.exe' -and [int]$p.ParentProcessId-eq$backendPid)
-      $isIdleGuiHelper=([string]$p.Name -ieq 'pwsh.exe' -and $norm.Contains('tools\gui-control.ps1 -server') -and -not$result.guiBusy -and -not$result.guiLeased)
-      if(-not($allowed -or $isDirectConhost -or $isIdleGuiHelper)){$unsafe+=$p}
+      if(-not($allowed -or $isDirectConhost)){$unsafe+=$p}
     }
     $result.unsafeDescendants=@($unsafe|Select-Object ProcessId,ParentProcessId,Name,CommandLine)
   }catch{$result.decision='DEFER_PROCESS_TREE';return [pscustomobject]$result}

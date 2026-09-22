@@ -1011,3 +1011,17 @@ This file is append-only for substantive project claims, decisions, failures, pr
 ## HISTORY — E056 delta
 
 - 2026-09-22: Corrected reserved-variable collision while preserving double-check terminal-retention safety.
+
+## E057 — idle GUI-helper console subtree classification
+
+- Date/Context: 2026-09-22 live v0.8.28 maintenance on Windows default profile.
+- Failure: terminal-retention evidence returned `DEFER_DESCENDANTS` after the reserved `$PID` issue was fixed; no process or route was destructively changed.
+- Evidence: backend PID 17200 descendants were direct conhost PID 4856, persistent terminal root PID 32412 with conhost child PID 31736, and official GUI helper PID 44860 (`pwsh.exe ... tools\gui-control.ps1 -Server`) with conhost child PID 48132. Backend active/queued operations remained zero and GUI was idle/unleased.
+- Root Cause: v0.8.28 explicitly allowed the idle GUI helper process itself but did not root its console-host descendant in the ancestry allow-set, so PID 48132 was conservatively classified unsafe.
+- Fix: v0.8.29 builds a single `allowedRoots` set from persistent terminal roots plus official idle/unleased GUI-helper roots, then permits only descendants whose ancestry reaches one of those roots, plus a direct backend console host. No arbitrary PowerShell or child process is allowed.
+- Verification: focused updater contract 9/9 PASS; Windows full check/test/audit PASS; core 111/111, GUI 75/75, concurrency/fs/runtime/source-integrity/security PASS.
+- Status/Confidence: root cause CONFIRMED; candidate verification PASS/HIGH; exact Linux compatibility/publication/live closeout OPEN at this record point.
+
+## HISTORY — E057 delta
+
+- 2026-09-22: Extended terminal-retention evidence narrowly to the official idle GUI-helper subtree while preserving fail-closed treatment of unrelated descendants.

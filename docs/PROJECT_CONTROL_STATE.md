@@ -1,7 +1,7 @@
 # ChatGPT Remote Commander — Project Brain
 
-Brain revision: R22
-Status: CURRENT / v0.8.28 TERMINAL-RETENTION HOTFIX CANDIDATE
+Brain revision: R23
+Status: CURRENT / v0.8.29 TERMINAL-RETENTION SUBTREE FIX CANDIDATE
 As of: 2026-09-22
 Project root: %USERPROFILE%\source\repos\ChatGPTRemoteCommander
 Public repository: GOD13emad/ChatGPTRemoteCommander
@@ -453,3 +453,7 @@ Start the GUI read-performance phase from v0.8.6 without changing the frozen rel
 ## HISTORY — R22 PowerShell reserved-variable hotfix
 
 - 2026-09-22: v0.8.27 live maintenance failed closed as `DEFER_PROCESS_TREE` because `$pid` collided case-insensitively with PowerShell's reserved `$PID`. v0.8.28 renames the local loop variable only; safety semantics are unchanged. Full Windows regression/security PASS.
+
+## HISTORY — R23 idle GUI-helper subtree delta
+
+- 2026-09-22: v0.8.28 live maintenance advanced from process-tree exception to a real `DEFER_DESCENDANTS`. Audit identified the only extra descendant as the `conhost.exe` child of the official idle/unleased `gui-control.ps1 -Server` helper. v0.8.29 treats that helper and its descendants as one explicitly rooted safe subtree during non-destructive route detachment; all unrelated descendants still fail closed. Full Windows regression/security PASS.

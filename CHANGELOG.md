@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.8.29 — 2026-09-22
+
+- Treat the descendant subtree of an idle, unleased Windows GUI helper as part of that helper during non-destructive terminal-retention evidence, so its console host does not falsely block route detachment.
+- Continue to fail closed for every descendant outside the persistent-terminal subtree, the idle GUI-helper subtree, or a direct console host.
+
 ## 0.8.28 — 2026-09-22
 
 - Fix the Windows terminal-retention evidence helper to avoid PowerShell's reserved automatic `$PID` variable; the prior v0.8.27 helper failed closed as `DEFER_PROCESS_TREE` before classifying descendants.

@@ -96,8 +96,9 @@ test('auto updater is candidate-first, hardware-gated and commit-point aware',()
   assert.ok(s.includes('DRAIN_TERMINAL_RETAINED') && s.includes('Get-ProtectedReleasePaths') && s.includes('Complete-RetainedBackends'),'Windows terminal keeper must durably detach zero-inflight previous backends and protect their release trees');
   assert.ok(s.includes('Get-TerminalRetentionEvidence') && s.includes('DRAIN_TERMINAL_STALE_ROUTER_ACCOUNTING'),'Windows terminal keeper must detach stale router accounting only after independent backend-idle evidence');
   const retainEvidence=s.slice(s.indexOf('function Get-TerminalRetentionEvidence'),s.indexOf('function Stop-StaleBackendTree'));
-  for(const marker of ['activeOperations','queued','unexpectedConnections','guiBusy','guiLeased','terminalRoots','unsafeDescendants','Get-StaleDrainDecision'])assert.ok(retainEvidence.includes(marker),marker);
+  for(const marker of ['activeOperations','queued','unexpectedConnections','guiBusy','guiLeased','allowedRoots','unsafeDescendants','Get-StaleDrainDecision'])assert.ok(retainEvidence.includes(marker),marker);
   assert.ok(s.includes('DRAIN_TERMINAL_RETAIN_RECHECK_DEFER') && s.includes('Start-Sleep -Milliseconds 500'),'terminal retention must re-check safety immediately before route detachment');
+  assert.ok(retainEvidence.includes("tools\\gui-control.ps1 -server") && retainEvidence.includes("allowedRoots[[int]$p.ProcessId]=$true"),'idle GUI helper subtree must be explicitly rooted before descendant traversal');
   assert.ok(s.includes("if($last.ok -and $last.count-gt 0 -and $last.cancellableOnly)"),'Windows may cancel only explicitly classified long-lived requests');
   assert.ok(s.indexOf('AUTO_UPDATE_NEWER_CURRENT') < s.indexOf("Run-Gate $stage.Dir 'check'"), 'automatic downgrade guard must precede candidate gates/cutover');
   const cutover=s.indexOf('if(Test-Path $t.RoutePath)');
