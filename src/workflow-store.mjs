@@ -115,6 +115,35 @@ function requireExpectedEvidence(evidence, expected) {
   }
 }
 
+function planRecord(value, allowed, required) {
+  if (!value || Object.getPrototypeOf(value) !== Object.prototype) fail('WORKFLOW_PLAN_INPUT_INVALID');
+  const descriptors = Object.getOwnPropertyDescriptors(value);
+  if (Reflect.ownKeys(descriptors).some(key => typeof key !== 'string' || !allowed.includes(key)
+    || !Object.hasOwn(descriptors[key], 'value') || !descriptors[key].enumerable)
+    || required.some(key => !Object.hasOwn(descriptors, key))) fail('WORKFLOW_PLAN_INPUT_INVALID');
+}
+function planArray(value) {
+  if (!Array.isArray(value) || Object.getPrototypeOf(value) !== Array.prototype) fail('WORKFLOW_PLAN_INPUT_INVALID');
+  const descriptors = Object.getOwnPropertyDescriptors(value);
+  if (Reflect.ownKeys(descriptors).length !== value.length + 1) fail('WORKFLOW_PLAN_INPUT_INVALID');
+  for (let i = 0; i < value.length; i++) {
+    const descriptor = descriptors[i];
+    if (!descriptor || !Object.hasOwn(descriptor, 'value') || !descriptor.enumerable) fail('WORKFLOW_PLAN_INPUT_INVALID');
+  }
+}
+function structuralPlanHash(steps) {
+  return jsonHash(steps.map(({ id, title, dependsOn }) => ({ id, title, dependsOn })));
+}
+function requireOrderedPlan(steps) {
+  const seen = new Set();
+  for (const step of steps) {
+    if (seen.has(step.id)) fail('WORKFLOW_DUPLICATE_STEP');
+    if (!Array.isArray(step.dependsOn) || step.dependsOn.some(dep => !seen.has(dep))
+      || new Set(step.dependsOn).size !== step.dependsOn.length) fail('WORKFLOW_INVALID_DEPENDENCY');
+    seen.add(step.id);
+  }
+}
+
 export class WorkflowStore {
   #db;
   #roots;
@@ -320,6 +349,7 @@ export class WorkflowStore {
         if (intent) { state.control.intent = intent; state.control.generation++; }
       }
     }
+    state.planExtensions ??= [];
     return { state, head: prev, events };
   }
   #commit(state, previous, kind, data) {
@@ -372,7 +402,7 @@ export class WorkflowStore {
       if (this.#db.prepare('SELECT COUNT(*) AS n FROM workflows').get().n >= 1000) fail('WORKFLOW_COUNT_LIMIT');
       const state = { schema: 2, id, root, device: this.#device, configSha256: this.#configSha,
         goal, acceptance, revision: 0, createdAt: new Date().toISOString(), updatedAt: null,
-        steps: plan, notes: [], checkpoint: null, acceptanceStatus: 'UNVALIDATED',
+        steps: plan, planExtensions: [], notes: [], checkpoint: null, acceptanceStatus: 'UNVALIDATED',
         lifecycleState: 'CREATED',
         control: { intent: 'ACTIVE', generation: 0 },
         executionProfile: normalizeExecutionProfile(executionProfile ?? this.#executionProfile),
@@ -780,6 +810,87 @@ export class WorkflowStore {
       this.#db.prepare("UPDATE scheduler_jobs SET lifecycle='WAITING',retry_count=0,last_failure=NULL,updated_at=? WHERE workflow=?")
         .run(new Date().toISOString(),id);
       return {reason,before,after:{goal:s.goal,acceptance:[...s.acceptance]}};
+    });
+  }
+
+  extendPlan(input) {
+    planRecord(input, ['id','expectedRevision','operationId','targetStepId','steps','reason'],
+      ['id','expectedRevision','operationId','targetStepId','steps','reason']);
+    const { id, expectedRevision, operationId, targetStepId, steps, reason } = input;
+    identifier(id); identifier(targetStepId); revision(expectedRevision); safeText(reason, 1000);
+    if (expectedRevision < 1 || expectedRevision > MAX_EVENTS) fail('WORKFLOW_REVISION_REQUIRED');
+    if (typeof operationId !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(operationId)) fail('WORKFLOW_PLAN_OPERATION_ID');
+    if (!Array.isArray(steps) || steps.length < 1 || steps.length > 20) fail('WORKFLOW_PLAN_STEP_LIMIT');
+    planArray(steps);
+    for (const step of steps) {
+      planRecord(step, ['id','title','dependsOn'], ['id','title']);
+      identifier(step.id); safeText(step.title, 500);
+      if (Object.hasOwn(step, 'dependsOn')) {
+        if (!Array.isArray(step.dependsOn) || step.dependsOn.length > 100) fail('WORKFLOW_INVALID_DEPENDENCY');
+        planArray(step.dependsOn);
+        for (const dependency of step.dependsOn) identifier(dependency);
+        if (new Set(step.dependsOn).size !== step.dependsOn.length) fail('WORKFLOW_INVALID_DEPENDENCY');
+      }
+    }
+    // Hash the exact request before default dependencies are filled in. A
+    // receipt is immutable even when the caller later reads a newer revision.
+    const payloadHash = jsonHash({ targetStepId, steps, reason });
+    return this.#transaction(() => {
+      const { state, head } = this.#load(id);
+      this.#identity(state);
+      const prior = state.planExtensions.find(item => item.operationId === operationId);
+      if (prior) {
+        if (prior.payloadHash !== payloadHash) fail('WORKFLOW_PLAN_OPERATION_CONFLICT');
+        if (expectedRevision !== prior.sourceRevision && expectedRevision !== state.revision) fail('WORKFLOW_REVISION_CONFLICT');
+        return { state: clone(state), receipt: clone(prior), cachedReceipt: true };
+      }
+      if (state.revision !== expectedRevision) fail('WORKFLOW_REVISION_CONFLICT');
+      requireActive(state);
+      if (['FAILED','FINALIZING','VALIDATING'].includes(state.lifecycleState)) fail('WORKFLOW_PLAN_STATE_BLOCKED');
+      if (state.steps.some(step => ['running','uncertain'].includes(step.status))
+        || this.#db.prepare("SELECT 1 FROM operations WHERE workflow=? AND status IN ('PREPARED','EXECUTING','UNCERTAIN') LIMIT 1").get(id)) {
+        fail('WORKFLOW_BUSY_OR_UNCERTAIN');
+      }
+      if (state.steps.length + steps.length > 100 || state.planExtensions.length >= 99) fail('WORKFLOW_PLAN_STEP_LIMIT');
+      requireOrderedPlan(state.steps);
+      const targetIndex = state.steps.findIndex(step => step.id === targetStepId);
+      if (targetIndex < 0) fail('WORKFLOW_STEP_NOT_FOUND');
+      const target = state.steps[targetIndex];
+      if (target.status !== 'pending'
+        || ['operationId','callHash','receipt','startedAt','endedAt','attemptId','idempotencyKey','tool','reconciliation'].some(key => Object.hasOwn(target, key))
+        || this.#db.prepare('SELECT 1 FROM operations WHERE workflow=? AND step_id=? LIMIT 1').get(id, targetStepId)) {
+        fail('WORKFLOW_PLAN_TARGET_NOT_PENDING');
+      }
+      const originals = new Map(state.steps.map(step => [step.id, step]));
+      const ancestors = new Set();
+      const collect = step => {
+        for (const dependency of step.dependsOn) if (!ancestors.has(dependency)) {
+          ancestors.add(dependency); collect(originals.get(dependency));
+        }
+      };
+      collect(target);
+      const inserted = [], added = new Set();
+      for (const request of steps) {
+        if (originals.has(request.id) || added.has(request.id)) fail('WORKFLOW_DUPLICATE_STEP');
+        const dependsOn = request.dependsOn ?? (inserted.length ? [inserted.at(-1).id] : target.dependsOn);
+        if (dependsOn.some(dependency => !ancestors.has(dependency) && !added.has(dependency))) fail('WORKFLOW_INVALID_DEPENDENCY');
+        inserted.push({ id: request.id, title: request.title, dependsOn: [...dependsOn], status: 'pending' });
+        added.add(request.id);
+      }
+      const consumed = new Set(inserted.flatMap(step => step.dependsOn));
+      const terminalIds = inserted.filter(step => !consumed.has(step.id)).map(step => step.id);
+      const sourcePlanHash = structuralPlanHash(state.steps);
+      state.steps = [...state.steps.slice(0, targetIndex), ...inserted,
+        { ...target, dependsOn: [...new Set([...target.dependsOn, ...terminalIds])] }, ...state.steps.slice(targetIndex + 1)];
+      requireOrderedPlan(state.steps);
+      const receipt = {
+        operationId, targetStepId, sourceRevision: state.revision, resultRevision: state.revision + 1,
+        addedStepIds: inserted.map(step => step.id), payloadHash,
+        sourcePlanHash, resultPlanHash: structuralPlanHash(state.steps)
+      };
+      state.planExtensions.push(receipt);
+      const committed = this.#commit(state, head, 'plan_extended', { reason, receipt });
+      return { state: committed.state, receipt: clone(receipt), cachedReceipt: false };
     });
   }
 

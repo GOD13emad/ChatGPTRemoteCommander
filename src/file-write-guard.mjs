@@ -14,7 +14,7 @@ export async function guardFileWrite(target, expected) {
   const parsed = path.parse(target);
   const parts = target.slice(parsed.root.length).split(path.sep).filter(Boolean);
   const ancestors = [];
-  let cursor = parsed.root, leaf = null, missing = false;
+  let cursor = parsed.root, leaf = null, missing = false, deepestExisting = null;
   for (let index = -1; index < parts.length; index++) {
     if (index >= 0) cursor = path.join(cursor, parts[index]);
     const last = index === parts.length - 1;
@@ -34,8 +34,14 @@ export async function guardFileWrite(target, expected) {
       if (!info.isDirectory()) fail('FILE_WRITE_PARENT_NOT_DIRECTORY');
       ancestors.push({ path: cursor, info });
     }
-    if (key(await realpath(cursor)) !== key(cursor)) fail('FILE_WRITE_ALIAS');
+    deepestExisting = cursor;
   }
+  // One full canonical path verifies the complete ancestor chain. Resolving
+  // each ancestor separately can require unrelated directory permissions that
+  // the caller does not have, even when this exact descendant is authorized.
+  // Never ignore canonicalization errors, and never canonicalize a missing leaf.
+  if (!deepestExisting) fail('FILE_WRITE_PARENT_NOT_DIRECTORY');
+  if (key(await realpath(deepestExisting)) !== key(deepestExisting)) fail('FILE_WRITE_ALIAS');
   if (expected !== undefined) {
     if ((expected.leaf === null) !== (leaf === null) || (leaf !== null && !sameFile(expected.leaf, leaf))) fail('FILE_WRITE_TARGET_CHANGED');
     for (const before of expected.ancestors) {

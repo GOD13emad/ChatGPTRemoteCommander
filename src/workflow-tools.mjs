@@ -5,6 +5,7 @@ import { deriveCapabilitySet, FULL_WORKFLOW_EXECUTION_TOOLS } from './capability
 import path from 'node:path';
 import { createProjectEngine } from './project-engine.mjs';
 import { createCommandPlanner } from './project-planner.mjs';
+import { createTeamPlanner } from './project-team.mjs';
 
 const text = maxLength => ({ type: 'string', minLength: 1, maxLength });
 const id = { ...text(64), pattern: '^[a-z][a-z0-9_-]{0,63}$' };
@@ -65,7 +66,7 @@ export const WORKFLOW_TOOL_DEFINITIONS = [
 
 export const PROJECT_ENGINE_TOOL_DEFINITIONS = [
   definition('workflow_run_start','Explicitly enroll a project in bounded agent execution with immutable independent acceptance checks. May start provider calls when configured autoTick is enabled.',obj({
-    ...update,runId:id,maxActions:{type:'integer',minimum:1,maximum:100},durationMs:{type:'integer',minimum:1000,maximum:3600000},
+    ...update,runId:id,maxActions:{type:'integer',minimum:1,maximum:100},maxPlannerCalls:{type:'integer',minimum:1,maximum:500},durationMs:{type:'integer',minimum:1000,maximum:3600000},
     checks:{type:'array',minItems:1,maxItems:50,items:{type:'object'}}
   },['id','runId','expectedRevision','checks']),action),
   definition('workflow_run_status','Read durable run budgets, receipts, independent verification and blocker status.',obj({runId:id}),ro),
@@ -225,11 +226,14 @@ export function createWorkflowTools({ config, roots, device, configSha256, looku
   };
   if(settings.runner?.enabled===true) {
     try {
-      const planner=injectedPlanner??createCommandPlanner(settings.runner.provider);
+      const basePlanner=injectedPlanner??createCommandPlanner(settings.runner.provider);
+      const planner=settings.runner.team===undefined?basePlanner:createTeamPlanner({planner:basePlanner,
+        workers:settings.runner.team.workers,maxParallel:settings.runner.team.maxParallel});
       const requested=settings.runner.allowedTools??['list_directory','read_text','file_info','write_text','create_directory'];
       if(!Array.isArray(requested)||requested.some(name=>!allowed.has(name)))fail('WORKFLOW_RUNNER_POLICY_EXCEEDS_HOST');
       engine=createProjectEngine({directory:path.join(settings.directory,'project-engine'),planner,
-        execute:(name,args)=>api.execute(name,args),
+        // Plan editing is an internal runner capability, never a host-dispatched tool.
+        execute:(name,args)=>name==='workflow_plan_extend'?store.extendPlan(args):api.execute(name,args),
         observe:async(name,args,workflow)=>{
           if(!['read_text','list_directory'].includes(name)||!allowed.has(name))fail('WORKFLOW_OBSERVATION_NOT_ALLOWED');
           const resumed=store.resume(workflow.id);

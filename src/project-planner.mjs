@@ -8,7 +8,7 @@ const FIELDS = ['action', 'tool', 'argumentsJson', 'summary'];
 const SCHEMA = {
   type: 'object', additionalProperties: false, required: FIELDS,
   properties: {
-    action: { type: 'string', enum: ['call', 'block'] },
+    action: { type: 'string', enum: ['call', 'block', 'extend'] },
     tool: { type: 'string' }, argumentsJson: { type: 'string' }, summary: { type: 'string' }
   }
 };
@@ -38,10 +38,11 @@ function parseProposal(text) {
   if (!value || typeof value !== 'object' || Array.isArray(value)
       || Object.keys(value).length !== FIELDS.length
       || FIELDS.some(key => !Object.hasOwn(value, key) || typeof value[key] !== 'string')
-      || !['call', 'block'].includes(value.action)
+      || !['call', 'block', 'extend'].includes(value.action)
       || value.tool.length > 200 || value.argumentsJson.length > 256 * 1024
       || value.summary.length > 8000
-      || (value.action === 'call' && !/^[A-Za-z][A-Za-z0-9_.:-]{0,199}$/.test(value.tool))) {
+      || (value.action === 'call' && !/^[A-Za-z][A-Za-z0-9_.:-]{0,199}$/.test(value.tool))
+      || (value.action === 'extend' && value.tool !== '')) {
     throw fail('PLANNER_INVALID_PROPOSAL');
   }
   let args;

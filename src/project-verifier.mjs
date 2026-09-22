@@ -116,10 +116,11 @@ async function inspectPath(absolute, leafIsFile) {
     const leaf = index === components.length - 1;
     if (leaf && leafIsFile) regular(info);
     else if (!info.isDirectory()) fail('EVIDENCE_NOT_DIRECTORY');
-    const canonical = await fs.realpath(current);
-    if (!samePath(current, canonical)) fail('EVIDENCE_ALIAS');
     records.push({ path: current, info, file: leaf && leafIsFile });
   }
+  // The complete canonical path verifies every ancestor without separately
+  // requesting metadata access to unrelated ancestor directories.
+  if (!samePath(current, await fs.realpath(current))) fail('EVIDENCE_ALIAS');
   return records;
 }
 async function revalidate(records) {
@@ -129,8 +130,9 @@ async function revalidate(records) {
     if (record.file) regular(info);
     else if (!info.isDirectory()) fail('EVIDENCE_CHANGED');
     if (!(record.file ? version(record.info, info) : identity(record.info, info))) fail('EVIDENCE_CHANGED');
-    if (!samePath(record.path, await fs.realpath(record.path))) fail('EVIDENCE_ALIAS');
   }
+  const target = records.at(-1).path;
+  if (!samePath(target, await fs.realpath(target))) fail('EVIDENCE_ALIAS');
 }
 async function readEvidence(root, rootRecords, relative) {
   const absolute = path.resolve(root, ...relative.split('/'));

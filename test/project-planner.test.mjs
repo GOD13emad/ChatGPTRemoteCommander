@@ -15,6 +15,7 @@ const proposal = {action:'call',tool:'read_text',argumentsJson:'{"path":"proof.t
 const flag = name => process.argv[process.argv.indexOf(name)+1];
 if (mode === 'echo') { proposal.summary=JSON.parse(text).marker; console.log(JSON.stringify(proposal)); }
 if (mode === 'cwd') { proposal.summary=process.cwd(); console.log(JSON.stringify(proposal)); }
+if (mode === 'extend' || mode === 'extend-tool') console.log(JSON.stringify({action:'extend',tool:mode==='extend'?'':'write_text',argumentsJson:JSON.stringify({steps:[{id:'inspect',title:'Inspect source'}],reason:'Missing prerequisite'}),summary:'Insert an inspection step'}));
 if (mode === 'bad') console.log('PRIVATE_CONTEXT not JSON');
 if (mode === 'schema') console.log(JSON.stringify({...proposal, authority:true}));
 if (mode === 'array') console.log(JSON.stringify({...proposal,argumentsJson:'[]'}));
@@ -69,6 +70,18 @@ test('provider runs outside project and owned scratch is removed on success', as
   assert.notEqual(result.summary, process.cwd());
   assert.match(path.basename(result.summary), /^rc-project-planner-/);
   assert.equal(fs.existsSync(result.summary), false);
+});
+
+test('adapter accepts a plan proposal without treating it as an executable tool', async t => {
+  const {planner}=fixture(t,'extend');
+  const result=await planner.plan({adaptive:{enabled:true}});
+  assert.equal(result.action,'extend');assert.equal(result.tool,'');
+  assert.equal(JSON.parse(result.argumentsJson).steps[0].id,'inspect');
+});
+
+test('plan proposal cannot name an executable tool', async t => {
+  const {planner}=fixture(t,'extend-tool');
+  await assert.rejects(planner.plan({adaptive:{enabled:true}}),{code:'PLANNER_INVALID_PROPOSAL'});
 });
 
 for (const [mode, code] of [['bad','PLANNER_INVALID_JSON'],['schema','PLANNER_INVALID_PROPOSAL'],['array','PLANNER_INVALID_PROPOSAL'],['exit','PLANNER_EXIT_FAILED'],['flood','PLANNER_OUTPUT_LIMIT'],['stderr','PLANNER_OUTPUT_LIMIT']]) {

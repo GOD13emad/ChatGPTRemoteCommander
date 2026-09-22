@@ -6,7 +6,7 @@ The engine connects a bounded planner to existing journaled Commander tools and 
 
 1. A caller creates a workflow with a goal, acceptance criteria and atomic steps.
 2. A caller explicitly enrolls that workflow using `workflow_run_start`, supplying immutable checks and bounded action/time limits.
-3. Each `workflow_run_tick` reserves a durable planner attempt, obtains a JSON proposal, validates current control/revision/policy, and invokes at most one `workflow_call`.
+3. Each `workflow_run_tick` reserves a durable planner attempt and provider-call budget, obtains a JSON proposal, validates current control/revision/policy, and invokes at most one `workflow_call` or an explicitly enabled prerequisite insertion.
 4. When all steps have receipts, a separate deterministic verifier checks every acceptance criterion. Its file hashes must still match finalization evidence. Model text saying "done" does not complete the workflow.
 5. The existing Brain synchronization records the accepted final state.
 
@@ -44,7 +44,7 @@ Supported providers:
 - `command`: explicitly trusted operator executable with fixed argv, JSON context on stdin, and a JSON proposal on stdout. It is not arbitrary command text supplied by the model. The executable itself has the OS user's privileges.
 - `claude`: reserved but fails with `PLANNER_PROVIDER_UNAVAILABLE` pending local CLI/auth/control qualification. No compatibility is claimed from documentation alone.
 
-Model selection may be explicitly set as `provider.model`. Planner processes have timeout, output size and cancellation bounds. Provider calls may consume the account's normal quota. A run budget limits attempts and wall time, not currency or model tokens.
+Model selection may be explicitly set as `provider.model`. Planner processes have timeout, output size and cancellation bounds. Provider calls may consume the account's normal quota. A run budget limits attempts, planner invocations, plan extensions and wall time, not currency or model tokens. Optional [proposal teams](PROJECT_ENGINE_ADAPTIVE.md) reserve all worker/coordinator calls before invoking any provider.
 
 ## Tools
 
@@ -52,13 +52,13 @@ When configured, three additional tools appear:
 
 | Tool | Purpose |
 |---|---|
-| `workflow_run_start` | Enroll an exact workflow revision with run ID, independent checks, action limit and duration |
+| `workflow_run_start` | Enroll an exact workflow revision with run ID, independent checks, action/provider-call limits and duration |
 | `workflow_run_status` | Inspect run state, reserved attempts, receipts, blockers and verification |
 | `workflow_run_tick` | Execute at most one planner/tool action or perform independent finalization |
 
 `workflow_control` pauses/resumes/cancels the underlying workflow. Control intent has its own persistent generation, independent of scheduler enablement. Pause/cancel stops new effects and survives late receipts. An already dispatched effect is allowed to settle; its lease is not released just because the user pauses. Unknown effects remain uncertain and must be reconciled.
 
-Reusing the same run ID returns the existing run and does not replenish budgets. A terminal blocked run is not silently restarted. Correct the issue and explicitly create a new run ID when appropriate. Changing the goal, steps, authority, model profile or runner policy invalidates the old run's planning assumptions.
+Reusing the same run ID returns the existing run and does not replenish budgets. A terminal blocked run is not silently restarted. Correct the issue and explicitly create a new run ID when appropriate. External changes to the goal, steps, authority, model profile or runner policy invalidate the old run's planning assumptions. An engine's own journaled prerequisite insertion can update its plan fingerprint only through a matching durable receipt and unchanged scope.
 
 ## Independent checks
 
@@ -89,7 +89,7 @@ Allowed autonomous actions intentionally exclude GUI takeover, unrestricted shel
 
 Add `--codex` to that demo for a live provider qualification using existing CLI authentication. Set `RC_CODEX_EXECUTABLE` only when the CLI is not on PATH. The demo creates and cleans only its owned temporary project; it never installs or changes a production service.
 
-The roadmap in `PROJECT_ENGINE_ROADMAP.md` tracks adaptive plan extension, broader providers/integrations and comparative benchmarks. Dynamic plan editing, a parallel agent fleet, automatic scientific validation, and general terminal reattachment are not delivered by this first increment.
+The roadmap in `PROJECT_ENGINE_ROADMAP.md` tracks broader providers/integrations and comparative benchmarks. Milestone 4A adds [bounded prerequisite insertion and parallel proposal workers](PROJECT_ENGINE_ADAPTIVE.md). Unrestricted plan rewriting, parallel mutating workers, automatic scientific validation, monetary accounting and general terminal reattachment remain outside this candidate.
 
 ## Primary references
 

@@ -10,11 +10,11 @@ Develop Remote Commander into a measurable project execution and management syst
 1. BASELINE: source/runtime comparison and gap inventory — COMPLETE.
 2. EXECUTION FOUNDATION: reliable pause/cancel, opt-in planner/executor/verifier loop, durable attempt budgets, evidence-bound completion — COMPLETE for the first increment.
 3. QUALIFICATION: deterministic end-to-end regression, full existing suites, independent review, candidate handoff — COMPLETE for local qualification and the reviewable development candidate.
-4. ADAPTIVE MANAGEMENT: CAS-safe plan extension, scoped parallel workers, blocker escalation and resource/cost accounting — PLANNED.
+4. ADAPTIVE MANAGEMENT: 4A prerequisite insertion, bounded parallel proposal workers and durable provider-call budgets — LOCAL_QUALIFICATION_PASS. 4B general worker execution, blocker escalation and monetary accounting remain PLANNED.
 5. CONNECTOR PARITY: catalog drift diagnostics, qualified providers, browser/application integrations and transparent terminal reconnection — PLANNED.
 6. COMPARATIVE EVALUATION: pinned real project corpus, equal models/budgets, completion/correctness/recovery/intervention/cost measurements — PLANNED.
 
-CURRENT: milestone 3 complete; milestone 4 is next. Release deployment is a separate gate. See [qualification evidence](PROJECT_ENGINE_VALIDATION.md). No percentage or superiority score is asserted.
+CURRENT: milestone 4A locally qualified from `67d0153`; publication is blocked by current network/account-config access. Next development slice: 4B worker execution isolation and explicit escalation. Release deployment is a separate gate. See [qualification evidence](PROJECT_ENGINE_VALIDATION.md). No percentage or superiority score is asserted.
 
 ## First increment acceptance
 - Opt-in execution actually calls a configured planner and dispatches schema-valid proposals through existing journaled workflow tools.
@@ -33,6 +33,8 @@ The user authorized implementation toward this objective. Development is isolate
 The first increment uses one tool operation per predeclared workflow step, consistent with the existing journal. Dynamic plan expansion is a later milestone. Separate planner proposals from execution and deterministic verification. No agent can alter its acceptance checks during a run. New execution tools appear only when explicitly configured.
 
 ## History
+- 2026-09-23: Milestone 4A passed full test/check/audit on Windows Node 22.23.2 and 26.7.0 (292 core PASS, 1 privilege SKIP, 75 GUI contracts PASS). Deterministic two-worker/coordinator demo completed with one extension and nine reserved/observed calls. Final independent review found no remaining blocker in scope. Remote publication is currently unavailable; no production rollout occurred.
+- 2026-09-23: Continued milestone 4. Plan extensions insert prerequisites before an unexecuted target without revising scope/acceptance/history. Proposal workers may run in parallel; one coordinator and the existing executor retain mutation authority. Reserve all worker/coordinator calls before invocation and journal extension intent before changing the plan.
 - 2026-09-23: Published draft PR #5. Exact clean code commit `27827fb` independently passed full Windows test/check under Node 22.23.2 as well as the original Node 26 qualification. Hosted Windows/Linux CI was blocked before any step by an account billing lock; runtime Linux/release qualification remains open.
 - 2026-09-23: Full Windows regression passed (203 Node tests, 1 skipped; GUI contracts 75/75), repository security audit passed, and independent focused review passed 16/16 including the real crash-after-receipt regression. Preparing a reviewable development candidate; production/release qualification remains separate.
 - 2026-09-23: A live Codex planner completed an isolated end-to-end artifact task through journaled write, independent predicate/hash check, and Brain finalization. No production service was changed.
