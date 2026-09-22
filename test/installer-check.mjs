@@ -14,7 +14,7 @@ for (const required of [
   'Detected active installation from Windows autostart',
   '$InstallDir = Resolve-InstallDir',
   'Tracked local changes exist in InstallDir',
-  "[string]$SourceRef = 'v0.8.20'",
+  "[string]$SourceRef = 'v0.8.21'",
   'ExpectedCommit',
   "rev-parse 'FETCH_HEAD^{commit}'",
   'incomplete Git checkout with no HEAD',
@@ -46,7 +46,7 @@ const linuxEnrollment = readFileSync('enable-autostart-linux.sh', 'utf8');
 const linuxPluginInstaller = readFileSync('install-work-plugin.sh', 'utf8');
 const linuxAccountConnector = readFileSync('connect-chatgpt-account.sh', 'utf8');
 for (const required of [
-  'SOURCE_REF="${REMOTE_COMMANDER_SOURCE_REF:-v0.8.20}"',
+  'SOURCE_REF="${REMOTE_COMMANDER_SOURCE_REF:-v0.8.21}"',
   '--source-ref',
   '--expected-commit',
   'REMOTE_COMMANDER_EXPECTED_COMMIT',
@@ -106,13 +106,16 @@ if (process.platform === 'linux') {
   const files = [
     'install.sh', 'connect-chatgpt-account.sh', 'run-server.sh',
     'autostart-linux.sh', 'supervisor-routing-linux.sh', 'auto-update-linux.sh',
-    'enable-autostart-linux.sh', 'disable-autostart-linux.sh', 'install-work-plugin.sh'
+    'enable-autostart-linux.sh', 'disable-autostart-linux.sh', 'install-work-plugin.sh',
+    'tools/install-gnome-gui-extension.sh'
   ];
   for (const file of files) {
     const outcome = run('bash', ['-n', file]);
     if (outcome.skipped) throw new Error('bash parser is required on Linux');
   }
-  console.log('INSTALLER_CHECK_PASS platform=linux bash=true');
+  const py = run('python3', ['-c',"import ast,pathlib; ast.parse(pathlib.Path('tools/gui-control-linux.py').read_text())"]);
+  if (py.skipped) throw new Error('python3 is required for the Linux GUI helper');
+  console.log('INSTALLER_CHECK_PASS platform=linux bash=true python=true');
 } else if (process.platform === 'win32') {
   const files = [
     'install.ps1', 'connect-chatgpt-account.ps1', 'connect-chatgpt.ps1',

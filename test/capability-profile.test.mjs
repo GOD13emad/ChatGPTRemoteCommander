@@ -84,3 +84,12 @@ test('explicit GUI opt-out is persisted across Full Power updates',()=>{
   assert.equal(third.config.powerMode.guiControl.enabled,true);
   for(const cap of ['gui.screenshot','gui.mouse','gui.keyboard','gui.window_focus'])assert.equal(third.profile.disabledCapabilities.includes(cap),false,cap);
 });
+
+test('desktop interaction safety invariant survives Full Power migration',()=>{
+  const r=migrateCapabilityConfig({defaultConfig:defaults(),existingConfig:full(),profileId:'default'});
+  const g=r.config.powerMode.guiControl;
+  assert.equal(g.interactionPolicy,'explicit-current-request-only');
+  assert.equal(g.defaultSessionMode,'observe');
+  assert.equal(g.backgroundPreferred,true);
+  assert.equal(g.workflowTakeoverAllowed,false);
+});

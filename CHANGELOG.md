@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.8.21 — 2026-09-22
+
+- Add guarded native GUI control for Linux GNOME 46 / Wayland through a local GNOME Shell extension plus bounded helper, while preserving the existing exclusive lease, fresh single-use frame and explicit-current-user takeover boundary.
+- Make zero-interference machine-readable and migration-stable: observe-only by default, background/headless preferred, foreground mutation forbidden without an explicit current request, and durable workflows unable to acquire GUI takeover.
+- Recheck foreground window and monitor geometry immediately before Linux native input, honor local GUI stop files, and authenticate the per-user Shell bridge with a mode-0600 token.
+- Install and synchronize the Linux GUI extension through fresh install and candidate-first update paths without forcing logout, GNOME restart or reboot. GNOME 46 may require the next normal desktop session before a newly introduced local extension becomes active; gui_status remains fail-closed until then.
+- Prefer Git repository tags for Linux stable-version discovery, using the GitHub Releases API only as fallback, reducing exposure to API rate-limit/403/timeout failures.
+- Clarify durable scheduler semantics: automatic recovery/reconciliation/readiness remains enabled, while automaticExecution=false and runnerConfigured=false truthfully state that Remote Commander is an execution/control plane rather than a duplicate model runtime.
+- Preserve v0.8.20 persistent-terminal cutover/drain protection and v0.8.19 cleanup-only/no-recycle behavior unchanged while adding GUI backend synchronization to control-code maintenance and final promotion.
+- Add Linux GUI contract/packaging/parser regression, zero-interference migration/status regression and stress evidence separating local MCP latency from external connector latency and decision quality.
+
 ## 0.8.20 — 2026-09-21
 
 - Prevent automatic cutover while the currently active backend owns any persistent interactive terminal. Candidate validation can complete, but candidates are stopped before route mutation and the updater records `BLOCKED_PERSISTENT_TERMINALS` / `AUTO_UPDATE_PERSISTENT_TERMINAL_BLOCK`.

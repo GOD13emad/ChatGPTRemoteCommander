@@ -135,7 +135,7 @@ export function createWorkflowTools({ config, roots, device, configSha256, looku
           blocked.push({id:item.id,blockers:[error.workflowCode ?? 'WORKFLOW_SCHEDULER_ERROR']});
         }
       }
-      return {recovered,reconciled,ready,blocked,runnerConfigured:false,status:store.schedulerStatus()};
+      return {recovered,reconciled,ready,blocked,runnerConfigured:false,automaticExecution:false,automaticContinuationScope:'RECOVERY_AND_READINESS_ONLY',status:store.schedulerStatus()};
     } finally { ticking=false; }
   }
 

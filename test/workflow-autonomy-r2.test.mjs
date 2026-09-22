@@ -68,7 +68,7 @@ test('B restart preserves durable queue and resumable checkpoint',()=>{
     fs.writeFileSync(path.join(root,'proof.txt'),'stable');
     s.checkpoint({id:'sample',expectedRevision:1,files:['proof.txt'],nextAction:'Run exact next step',summary:'checkpoint'});
     const queued=s.list().find(x=>x.id==='sample');assert.equal(queued.lifecycle,'WAITING');assert.equal(queued.schedulerEnabled,true);
-    const before=s.schedulerStatus();assert.equal(before.pending,1);s.close();
+    const before=s.schedulerStatus();assert.equal(before.pending,1);assert.equal(before.runnerConfigured,false);assert.equal(before.automaticExecution,false);assert.equal(before.automaticContinuationScope,'RECOVERY_AND_READINESS_ONLY');s.close();
     s=new WorkflowStore(options(root));
     try{
       const after=s.schedulerStatus(),r=s.resume('sample');
@@ -155,7 +155,7 @@ test('G execution profile survives restart and scheduler exposes explicit unavai
       executionProfile:{modelFamily:'GPT-5.6',modelVariant:'Sol',reasoningEffort:'High',executionMode:'project-agent',profileVersion:'1',fallbackPolicy:'equivalent-or-better'}});
     const tick=await tool.execute('workflow_scheduler_tick',{});
     const item=tick.ready.find(x=>x.id==='model');assert.ok(item);assert.equal(item.stopCondition,'MODEL_PROFILE_UNAVAILABLE');
-    assert.equal(item.executionProfile.modelVariant,'Sol');assert.equal(tick.runnerConfigured,false);
+    assert.equal(item.executionProfile.modelVariant,'Sol');assert.equal(tick.runnerConfigured,false);assert.equal(tick.automaticExecution,false);assert.equal(tick.automaticContinuationScope,'RECOVERY_AND_READINESS_ONLY');
   }finally{tool?.close();fs.rmSync(root,{recursive:true,force:true});}
 });
 

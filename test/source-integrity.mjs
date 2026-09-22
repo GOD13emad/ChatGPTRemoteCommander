@@ -44,7 +44,7 @@ const trackedRuntimeFiles = [
   'src/capability-profile.mjs','src/stable-router.mjs','src/workflow-autonomy.mjs',
   'tools/build-candidate-config.mjs','tools/capability-migrate.mjs','tools/copy-workflow-store.mjs',
   'tools/finalize-workflow-schema.mjs','tools/find-free-port.mjs','tools/hardware-selftest.mjs',
-  'tools/json-field.mjs','tools/router-init.mjs','tools/router-state.mjs','tools/router-status.mjs','tools/router-switch.mjs','tools/router-retire.mjs','tools/stale-drain-policy.ps1'
+  'tools/json-field.mjs','tools/gui-control-linux.py','tools/install-gnome-gui-extension.sh','tools/router-init.mjs','tools/router-state.mjs','tools/router-status.mjs','tools/router-switch.mjs','tools/router-retire.mjs','tools/stale-drain-policy.ps1'
 ];
 for (const file of trackedRuntimeFiles) {
   if (!fs.existsSync(file)) throw new Error('required runtime file missing: ' + file);
@@ -55,7 +55,8 @@ for (const file of trackedRuntimeFiles) {
 
 const linuxExecFiles = [
   'install.sh','auto-update-linux.sh','autostart-linux.sh','supervisor-routing-linux.sh',
-  'enable-autostart-linux.sh','disable-autostart-linux.sh','connect-chatgpt-account.sh','run-server.sh'
+  'enable-autostart-linux.sh','disable-autostart-linux.sh','connect-chatgpt-account.sh','run-server.sh',
+  'tools/gui-control-linux.py','tools/install-gnome-gui-extension.sh'
 ];
 for (const file of linuxExecFiles) {
   const r = spawnSync('git',['ls-files','--stage',file],{encoding:'utf8'});

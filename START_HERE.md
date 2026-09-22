@@ -46,9 +46,9 @@ Important boundaries:
 - Automatic shutdown, restart, and logoff command patterns remain blocked.
 - Full MCP write/modify support in ChatGPT is currently for Business and Enterprise/Edu. Pro custom MCP access is currently read/fetch only.
 
-### Windows GUI Control
+### GUI Control — zero-interference by default
 
-On Windows, v0.5 can expose its own graphical-control MCP tools. This is an explicit opt-in on top of Power Mode. Enable it only on a trusted interactive desktop:
+Remote Commander can expose graphical-control MCP tools on Windows and, from v0.8.21, GNOME/Wayland Linux. Full Power grants capability but never grants foreground takeover by itself. The default is observe-only; pointer, keyboard, scroll, click, drag and focus remain forbidden unless the current user request explicitly asks for desktop interaction.
 
 ```powershell
 .\install.ps1 -PowerMode -GuiControl -StartServer -SkipTunnelClient
@@ -105,7 +105,7 @@ Open PowerShell 7 and run:
 
 ### Windows — Power Mode + GUI Control
 
-For a v0.5 source checkout, run `.\install.ps1 -PowerMode -GuiControl -StartServer -SkipTunnelClient`, then refresh/re-scan the ChatGPT app tools. For a published v0.5 Release, the same `-GuiControl` switch applies to the Release installer. GUI Control is Windows-only in v0.5.
+On Windows, use the Power Mode + GuiControl installer path above. On Linux Full Power, the GNOME/Wayland backend is installed and registered automatically unless GUI capabilities were explicitly disabled. GNOME 46 does not hot-load a newly introduced local extension into the already-running Wayland session, so gui_status may remain unavailable until the next normal desktop login. Remote Commander never forces logout, GNOME restart or reboot to activate it.
 
 ### Linux — Standard
 
@@ -323,7 +323,7 @@ Continue through install/update, Secure MCP Tunnel, persistent enrollment, ChatG
 
 ### GUI backend implementation note
 
-Windows GUI Control uses bounded **synthetic input** in the current interactive user session for mouse and keyboard actions. A submitted input is not considered successful until a fresh screenshot confirms the visible result. It does not bypass Secure Desktop/UAC, the lock screen, protected-input/anti-cheat restrictions, or real-time latency limits.
+Windows uses bounded native synthetic input. Linux GNOME/Wayland uses a local GNOME Shell extension for compositor-level screenshot/window/pointer access and virtual input. Both paths share the same exclusive lease, observe-only default, explicit-current-request takeover requirement, fresh single-use frame guard and post-action visual verification. A submitted input is not considered successful until a fresh screenshot confirms the visible result. Security/lock-screen/protected-input boundaries and real-time latency limits are not bypassed.
 
 
 ## v0.7 durable workflows and multi-account isolation

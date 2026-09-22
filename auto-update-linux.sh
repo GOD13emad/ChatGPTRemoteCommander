@@ -104,13 +104,17 @@ run_gate(){ local project="$1" name="$2"; shift 2; log "GATE_START $name"; (cd "
 
 latest_ref(){
   if [[ -n "$SOURCE_REF" ]]; then printf '%s\n' "$SOURCE_REF"; return; fi
-  local body tag
-  body="$(curl_fetch -H 'User-Agent: ChatGPTRemoteCommander-Updater' https://api.github.com/repos/GOD13emad/ChatGPTRemoteCommander/releases/latest)"
+  local tag body
+  # Git is the updater's authoritative transport; avoid GitHub API rate-limit/403 dependence.
+  tag="$(git ls-remote --tags --refs "$REPO_URL" 'refs/tags/v*' 2>/dev/null |
+    awk '$2 ~ /^refs\/tags\/v[0-9]+\.[0-9]+\.[0-9]+$/ {sub(/^refs\/tags\//,"",$2); print $2}' |
+    sort -V | tail -n1)"
+  if [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then printf '%s\n' "$tag"; return; fi
+  body="$(curl_fetch -H 'User-Agent: ChatGPTRemoteCommander-Updater' https://api.github.com/repos/GOD13emad/ChatGPTRemoteCommander/releases/latest 2>/dev/null || true)"
   tag="$(printf '%s' "$body" | sed -nE 's/.*"tag_name"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p' | head -n1)"
-  [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo 'latest release tag invalid' >&2; return 1; }
+  [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo 'latest release tag discovery failed' >&2; return 1; }
   printf '%s\n' "$tag"
 }
-
 stage_release(){
   local ref="$1" tmp resolved version final head
   tmp="$RELEASE_ROOT/stage-$(printf '%s' "$ref" | tr -c 'A-Za-z0-9._-' '_')-$$"
@@ -288,6 +292,15 @@ promote_control(){
   git -C "$INSTALL_DIR" checkout --detach --force "$commit" >/dev/null
 }
 
+install_linux_gui_backend(){
+  local project="$1" cfg="$2" enabled
+  enabled="$(json_field "$project" "$cfg" powerMode.guiControl.enabled)"
+  [[ "$enabled" == true ]] || return 0
+  chmod +x "$project/tools/gui-control-linux.py" "$project/tools/install-gnome-gui-extension.sh"
+  "$project/tools/install-gnome-gui-extension.sh"
+  log "LINUX_GUI_BACKEND_SYNCED project=$project"
+}
+
 cleanup_releases(){
   local route="$ROUTING_ROOT/default.json" active="" d remaining=0
   [[ -f "$route" ]] && active="$(route_tsv "$INSTALL_DIR" "$route" 2>/dev/null | awk -F '\t' '{print $8}')"
@@ -342,6 +355,7 @@ if [[ "$FORCE" != 1 && -f "$ROUTE" ]]; then
       LIVE_WF="$(json_field "$STAGE_DIR" "$ACTIVE_CFG" durableWorkflows.directory)"
       [[ -z "$LIVE_WF" ]] || node "$STAGE_DIR/tools/finalize-workflow-schema.mjs" --directory "$LIVE_WF"
       promote_control "$COMMIT" "$REF"
+      install_linux_gui_backend "$STAGE_DIR" "$ACTIVE_CFG"
       cleanup_releases || log 'AUTO_UPDATE_CLEANUP_PENDING_AFTER_MAINTENANCE'
       log "AUTO_UPDATE_MAINTENANCE_PASS version=$VERSION"
       recycle_supervisor
@@ -491,6 +505,7 @@ if [[ -n "$OLD_PORT" ]]; then
 fi
 
 node "$STAGE_DIR/tools/finalize-workflow-schema.mjs" --directory "$LIVE_WF"
+install_linux_gui_backend "$STAGE_DIR" "$FINAL_CFG"
 promote_control "$COMMIT" "$REF"
 cleanup_releases || log 'AUTO_UPDATE_CLEANUP_PENDING_AFTER_PROMOTION'
 log "AUTO_UPDATE_PASS version=$VERSION commit=$COMMIT"

@@ -9,14 +9,20 @@ export { guiToolDefinitions };
 
 const project = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const stopFile = path.join(project, 'var', 'GUI_STOP');
-const helper = path.join(project, 'tools', 'gui-control.ps1');
-const persistentHelper = process.platform === 'win32' ? createGuiProcessClient({
-  file: 'pwsh.exe',
-  args: ['-NoLogo', '-NoProfile', '-NonInteractive', '-File', helper, '-Server']
-}) : null;
-const invokeDefault = request => persistentHelper
-  ? persistentHelper.invoke(request)
-  : runGuiProcess(request, { file: 'pwsh.exe', args: ['-NoLogo', '-NoProfile', '-NonInteractive', '-File', helper] });
+const windowsHelper = path.join(project, 'tools', 'gui-control.ps1');
+const linuxHelper = path.join(project, 'tools', 'gui-control-linux.py');
+const backendSpec = platform => platform === 'win32'
+  ? { file: 'pwsh.exe', args: ['-NoLogo', '-NoProfile', '-NonInteractive', '-File', windowsHelper, '-Server'], oneShotArgs: ['-NoLogo', '-NoProfile', '-NonInteractive', '-File', windowsHelper] }
+  : platform === 'linux'
+    ? { file: 'python3', args: [linuxHelper, '--server'], oneShotArgs: [linuxHelper] }
+    : null;
+const defaultBackend = backendSpec(process.platform);
+const persistentHelper = defaultBackend ? createGuiProcessClient({ file: defaultBackend.file, args: defaultBackend.args }) : null;
+const invokeDefault = request => {
+  if (persistentHelper) return persistentHelper.invoke(request);
+  if (!defaultBackend) throw guiError('GUI_PLATFORM_BACKEND_UNSUPPORTED');
+  return runGuiProcess(request, { file: defaultBackend.file, args: defaultBackend.oneShotArgs });
+};
 const closeInvokeDefault = () => persistentHelper?.close();
 async function stopped() {
   try { await access(stopFile); return true; }
@@ -47,11 +53,12 @@ export function createGuiController({ platform = process.platform, now = () => p
     const rule = GUI_RULES.get(name);
     const power = ctx.config?.powerMode;
     const cfg = power?.guiControl ?? {};
-    const enabled = platform === 'win32' && power?.enabled === true && cfg.enabled === true;
+    const supported = platform === 'win32' || platform === 'linux';
+    const enabled = supported && power?.enabled === true && cfg.enabled === true;
     const blocked = await isStopped();
     if (name === 'gui_status' && (!enabled || blocked || uncertain)) return {
       enabled, available: false, blocked, uncertain, busy, leased: !!current(),
-      reason: platform !== 'win32' ? 'WINDOWS_BACKEND_ONLY' : blocked ? 'LOCAL_GUI_STOP' : uncertain ? 'NATIVE_OUTCOME_UNCERTAIN_RESTART_REQUIRED' : 'GUI_DISABLED'
+      reason: !supported ? 'PLATFORM_BACKEND_UNSUPPORTED' : blocked ? 'LOCAL_GUI_STOP' : uncertain ? 'NATIVE_OUTCOME_UNCERTAIN_RESTART_REQUIRED' : 'GUI_DISABLED'
     };
     if (!enabled) throw guiError('GUI_DISABLED_OR_UNSUPPORTED');
     if (blocked) throw guiError('GUI_LOCAL_STOP');
@@ -71,10 +78,12 @@ export function createGuiController({ platform = process.platform, now = () => p
       }
       if (name === 'gui_status') {
         const status = await invoke({ action: 'status', stopFile });
-        return { ...status, enabled, busy: false, leased: !!current(), backend: 'windows-user32-gdi', policy: {
+        return { ...status, enabled, busy: false, leased: !!current(), backend: status.backend ?? (platform === 'win32' ? 'windows-user32-gdi' : 'gnome-shell-wayland'), policy: {
           allowScreenshot: cfg.allowScreenshot === true, allowMouse: cfg.allowMouse === true,
           allowKeyboard: cfg.allowKeyboard === true, allowWindowFocus: cfg.allowWindowFocus === true,
-          defaultSessionMode: 'observe', explicitTakeoverRequired: true
+          defaultSessionMode: 'observe', explicitTakeoverRequired: true,
+          interactionPolicy: 'explicit-current-request-only', backgroundPreferred: true,
+          workflowTakeoverAllowed: false, foregroundInterferenceByDefault: false
         } };
       }
       owns(input.lease);

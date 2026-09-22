@@ -14,7 +14,7 @@ import { expandPathValue, shellName } from './platform.mjs';
 import { formatToolInputErrors, validateJsonSchema } from './schema-validator.mjs';
 
 let workflowTools = null;
-const VERSION = '0.8.20';
+const VERSION = '0.8.21';
 const MODERN_VERSION = '2026-07-28';
 const LEGACY_VERSIONS = ['2025-11-25', '2025-06-18', '2025-03-26'];
 const MODERN_CACHE_HINT = Object.freeze({ ttlMs: 30000, cacheScope: 'private' });
@@ -42,7 +42,8 @@ const ctx = {
   roots,
   auditLog: path.resolve(projectDir, config.auditLog || 'var/audit.jsonl')
 };
-const GUI_ENABLED = process.platform === 'win32' && config.powerMode?.enabled === true && config.powerMode?.guiControl?.enabled === true;
+const GUI_BACKEND_SUPPORTED = process.platform === 'win32' || process.platform === 'linux';
+const GUI_ENABLED = GUI_BACKEND_SUPPORTED && config.powerMode?.enabled === true && config.powerMode?.guiControl?.enabled === true;
 const LEGACY_FULL_FILESYSTEM = config.powerMode?.enabled === true && config.powerMode?.fullFilesystem === true;
 
 function operatingInstructions() {
@@ -225,7 +226,9 @@ async function executeTool(name, args) {
         instance: config.instance ?? { profile: 'default', isolated: false },
         durableWorkflows: workflowStatus,
         powerMode: config.powerMode ?? { enabled: false },
-        guiControl: { backendSupported: process.platform === 'win32', availability: 'CHECK_gui_status', enabled: GUI_ENABLED, policy: config.powerMode?.guiControl ?? { enabled: false } }
+        guiControl: { backendSupported: GUI_BACKEND_SUPPORTED, availability: 'CHECK_gui_status', enabled: GUI_ENABLED,
+          policy: { ...(config.powerMode?.guiControl ?? { enabled:false }), interactionPolicy:'explicit-current-request-only',
+            defaultSessionMode:'observe', backgroundPreferred:true, workflowTakeoverAllowed:false, foregroundInterferenceByDefault:false } }
       };
     }
     case 'list_directory':

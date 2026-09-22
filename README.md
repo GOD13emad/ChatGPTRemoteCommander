@@ -68,9 +68,9 @@ For Power Mode, add `--power-mode`. Linux amd64 and arm64 are supported by the i
 - Concurrent-chat path locking for mutating operations
 - Windows and Linux persistent supervisors
 
-## Windows GUI Control (v0.5)
+## GUI Control — Windows and GNOME/Wayland Linux
 
-Windows Power Mode can opt in to **built-in GUI Control**. The MCP itself returns live screenshots as image content and exposes bounded mouse, keyboard, window-focus and coordination tools, so ordinary supported desktop workflows do not require a separate Computer Use surface.
+Remote Commander exposes **built-in GUI Control** on Windows and, from v0.8.21, GNOME/Wayland Linux. The MCP returns screenshots as image content and exposes bounded mouse, keyboard, window-focus and coordination tools. Zero-interference is invariant: observe-only is the default, and foreground mutation requires an explicit current user request plus a fresh single-use frame.
 
 Safe visual-control loop:
 
@@ -86,7 +86,7 @@ gui_status
 
 A frame is short-lived and single-use. A second chat cannot take the active desktop lease. GUI actions are never considered successful merely because input was submitted; a fresh screenshot must verify the visible result.
 
-Enable it on a trusted Windows checkout with:
+On Windows, enable it on a trusted checkout with:
 
 ```powershell
 .\install.ps1 -PowerMode -GuiControl -StartServer -SkipTunnelClient
@@ -138,6 +138,8 @@ Legacy-safe tools: `system_status`, `list_directory`, `read_text`, `write_text`,
 Filesystem containment is enforced, but command execution is **not an OS sandbox**. An allowlisted executable or project script may itself access resources beyond the configured roots. Treat command execution as privileged. See [SECURITY.md](SECURITY.md) and the point-in-time [SECURITY_AUDIT.md](SECURITY_AUDIT.md).
 
 ## Validation
+
+v0.8.21 adds guarded GNOME/Wayland GUI control on Linux and makes the zero-interference rule machine-readable across config, capability migration and runtime status. Linux install/update synchronizes the per-user GNOME extension without forcing logout/reboot; on GNOME 46 a newly introduced extension may remain unavailable until the next normal desktop session, and that limitation is reported rather than bypassed. Stable-version discovery now prefers Git tags, and scheduler status distinguishes automatic recovery/readiness from the intentionally absent model/agent execution runner.
 
 v0.8.20 prevents updates from orphaning persistent terminal control: automatic promotion is deferred before route cutover when the active backend owns a Remote Commander interactive terminal, and any already-draining previous backend is also protected before every stop path on Windows and Linux. This follows the same general design principle as persistent/reconnectable terminal managers and graceful endpoint draining: preserve the live session owner until it can be safely retired. v0.8.19 closes a maintenance-loop failure found by the GUI/chess stress test. Release cleanup is now decoupled from supervisor restart: locked superseded releases produce explicit cleanup-pending evidence while the healthy supervisor/tunnel remain untouched. Behavioral Windows regressions cover both successful cleanup and an intentionally locked release, and platform contracts require cleanup-only paths on Windows and Linux to contain no supervisor recycle.
 

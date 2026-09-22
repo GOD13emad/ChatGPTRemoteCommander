@@ -190,6 +190,8 @@ export class WorkflowStore {
     return {
       enabled: this.#schedulerPolicy.enabled,
       automaticContinuation: this.#schedulerPolicy.enabled,
+      automaticContinuationScope: 'RECOVERY_AND_READINESS_ONLY',
+      automaticExecution: false,
       runnerConfigured: false,
       pending: Number(pending),
       interrupted: Number(interrupted),
@@ -243,6 +245,7 @@ export class WorkflowStore {
       databaseSchemaVersion: this.#db.prepare('PRAGMA user_version').get().user_version,
       node: process.versions.node, automaticReplay: false,
       automaticContinuation: this.#schedulerPolicy.enabled,
+      automaticContinuationScope: 'RECOVERY_AND_READINESS_ONLY', automaticExecution: false, runnerConfigured: false,
       scheduler: this.#schedulerPolicy.enabled, schedulerPolicy: clone(this.#schedulerPolicy),
       schedulerState: scheduler, rawArgumentsStored: false, rawOutputsStored: false,
       authenticationBoundary: false, newScopeBeyondConfiguredRoots: false,

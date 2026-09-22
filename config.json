@@ -30,7 +30,11 @@
       "allowScreenshot": true,
       "allowMouse": true,
       "allowKeyboard": true,
-      "allowWindowFocus": true
+      "allowWindowFocus": true,
+      "interactionPolicy": "explicit-current-request-only",
+      "defaultSessionMode": "observe",
+      "backgroundPreferred": true,
+      "workflowTakeoverAllowed": false
     }
   },
   "auditMaxBytes": 8388608,

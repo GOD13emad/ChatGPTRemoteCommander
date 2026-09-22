@@ -10,7 +10,7 @@ ENABLE_CAPS=()
 START_SERVER=0
 INSTALL_PREREQS=0
 TUNNEL_VERSION="0.0.14"
-SOURCE_REF="${REMOTE_COMMANDER_SOURCE_REF:-v0.8.20}"
+SOURCE_REF="${REMOTE_COMMANDER_SOURCE_REF:-v0.8.21}"
 EXPECTED_COMMIT="${REMOTE_COMMANDER_EXPECTED_COMMIT:-}"
 CURL_CONNECT_TIMEOUT="${REMOTE_COMMANDER_CURL_CONNECT_TIMEOUT:-15}"
 CURL_MAX_TIME="${REMOTE_COMMANDER_CURL_MAX_TIME:-180}"
@@ -25,7 +25,7 @@ Usage: install.sh [options]
   --disable-capability CAP  Explicit capability opt-out (repeatable)
   --enable-capability CAP   Explicit capability opt-in (repeatable)
   --start-server            Start MCP server with nohup after validation
-  --source-ref REF          Git ref to install (default: v0.8.20)
+  --source-ref REF          Git ref to install (default: v0.8.21)
   --expected-commit SHA     Require the fetched ref to peel to this exact 40-hex commit
   -h, --help                Show help
 USAGE
@@ -298,6 +298,14 @@ write_local_config() {
   fi
 }
 
+install_linux_gui_backend() {
+  local project="$1" cfg="$2" enabled
+  enabled="$(node "$project/tools/json-field.mjs" --file "$cfg" --field powerMode.guiControl.enabled 2>/dev/null || true)"
+  [[ "$enabled" == true ]] || return 0
+  [[ -x "$project/tools/install-gnome-gui-extension.sh" ]] || { echo 'Linux GUI backend installer missing or not executable.' >&2; return 1; }
+  "$project/tools/install-gnome-gui-extension.sh"
+}
+
 validate_installation() {
   cd "$INSTALL_DIR"
   npm run check
@@ -366,7 +374,9 @@ else
   write_local_config
   chmod +x "$INSTALL_DIR/install.sh" "$INSTALL_DIR/connect-chatgpt-account.sh" "$INSTALL_DIR/run-server.sh" \
     "$INSTALL_DIR/autostart-linux.sh" "$INSTALL_DIR/supervisor-routing-linux.sh" "$INSTALL_DIR/auto-update-linux.sh" \
-    "$INSTALL_DIR/enable-autostart-linux.sh" "$INSTALL_DIR/disable-autostart-linux.sh"
+    "$INSTALL_DIR/enable-autostart-linux.sh" "$INSTALL_DIR/disable-autostart-linux.sh" \
+    "$INSTALL_DIR/tools/gui-control-linux.py" "$INSTALL_DIR/tools/install-gnome-gui-extension.sh"
+  install_linux_gui_backend "$INSTALL_DIR" "$INSTALL_DIR/config.local.json"
   validate_installation
   start_server
   if [[ "$START_SERVER" == "1" ]]; then

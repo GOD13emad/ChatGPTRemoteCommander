@@ -1,8 +1,8 @@
 # ChatGPT Remote Commander — Project Brain
 
-Brain revision: R14
-Status: CURRENT / v0.8.20 RELEASE CANDIDATE
-As of: 2026-09-21
+Brain revision: R15
+Status: CURRENT / v0.8.21 RELEASE CANDIDATE
+As of: 2026-09-22
 Project root: %USERPROFILE%\source\repos\ChatGPTRemoteCommander
 Public repository: GOD13emad/ChatGPTRemoteCommander
 
@@ -288,3 +288,23 @@ Start the GUI read-performance phase from v0.8.6 without changing the frozen rel
 - Existing workflow protections remain in place: explicit least-privilege permissions and full commit-SHA pins.
 - Dependabot branch refs created during the short-lived configuration are not merged and must not be treated as accepted updates. No PR is currently open for them.
 - Reactivate automated dependency update PRs only after hosted CI can execute real steps again.
+
+## Linux GUI / zero-interference successor — v0.8.21
+
+- Previous authority: origin/main v0.8.20 commit c7c086c2900f5190423f30b60a78d000d94f2fb5. The earlier local GUI candidate was based on v0.8.18 and was not pushed after remote authority advanced through public v0.8.19/v0.8.20; its patch was preserved with SHA-256 13f7623fcd35e1e51cb5030d119c8406d8f9994faa4eac866127e557bf8af23b and rebased semantically onto v0.8.20 instead of overwriting upstream.
+- Objective: add Linux GNOME/Wayland GUI capability while preserving v0.8.20 persistent-terminal protection, v0.8.19 cleanup/no-recycle behavior and the v0.8.10 explicit desktop-takeover boundary.
+- Linux GUI architecture: GNOME Shell extension plus bounded Python helper. X11-only tooling and denied public Shell/Mutter introspection were rejected as incomplete for the real Wayland target. The extension rechecks foreground/geometry immediately before mutation, honors local stop files and uses a per-user mode-0600 token.
+- Zero-interference invariant: interactionPolicy=explicit-current-request-only; defaultSessionMode=observe; backgroundPreferred=true; workflowTakeoverAllowed=false; foregroundInterferenceByDefault=false. Full Power grants capability, not permission to seize the foreground desktop.
+- Updater integration: Git tag discovery is primary with Releases API fallback. GUI backend synchronization is additive to the v0.8.20 control-promotion paths; cleanup-only maintenance still never recycles the supervisor, and persistent terminals still block route cutover/retirement.
+- Scheduler truthfulness: automaticContinuationScope=RECOVERY_AND_READINESS_ONLY, automaticExecution=false, runnerConfigured=false. No duplicate model runtime is introduced.
+- Performance/stress evidence: direct local system_status p50 was about 2.52 ms on backend and 3.00 ms through the stable router; ChatGPT-to-connector shell median was about 1.81 s. Verified Stockfish 19 bench reached about 8.20M nodes/s; a rapid manual game did not beat Stockfish and exposed a decision-quality failure, establishing that latency and reasoning quality require separate gates.
+- Competitive audit: official OpenAI Work documentation confirms a separate cloud browser/session; GitHub documents custom agents/subagents and MCP; Anthropic documents native subagent orchestration and cautions against overuse. Universal superiority over Work/Codex/Claude/Copilot remains UNPROVEN and is not a release claim. Remote Commander targets differentiated evidence-backed strengths in real-machine control, explicit authority, rollback/recovery, auditability, one-writer coordination and foreground non-interference.
+- Full v0.8.21 source validation after semantic rebase onto v0.8.20: PASS. `npm run check`, `npm test`, `npm run audit`, source-integrity, Linux GUI contract and Windows runtime contract all returned zero; core suite 109 PASS + 1 Windows-only skip, GUI suite 75/75 PASS.
+- Linux native GUI interactive E2E remains OPEN because GNOME 46 does not hot-load the new local extension into the already-running Wayland session. No forced logout, Shell restart or reboot is authorized merely to satisfy the gate.
+- Post-d037 rebase validation: PASS. Full `npm run check`, `npm test`, `npm run audit`, source-integrity, Linux GUI contract and Windows runtime contract all returned zero again on commit candidate `fa61252...`; core 109 PASS + 1 Windows-only skip, GUI 75/75.
+- Remote authority advanced again through governance-only commits `489ff6e`/`d8efbd3` that pause Dependabot while hosted CI is billing-blocked; no runtime/product source changed in that delta. This upstream state is preserved.
+- Current gate: rerun full source and exact clean-commit validation after the d8efbd3 rebase, then require a final remote-CAS check before push/tag/publication/promotion.
+
+## HISTORY — R15 delta
+
+- 2026-09-22: Preserved unexpected upstream v0.8.19/v0.8.20 authority, rebased the Linux GUI/zero-interference work as v0.8.21, retained persistent-terminal and cleanup-loop protections, and kept current-session Linux native GUI E2E explicitly unproven rather than forcing desktop disruption.

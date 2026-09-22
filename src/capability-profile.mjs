@@ -152,6 +152,10 @@ export function migrateCapabilityConfig({
 
   next.powerMode ??= {};
   next.powerMode.guiControl ??= {};
+  next.powerMode.guiControl.interactionPolicy = 'explicit-current-request-only';
+  next.powerMode.guiControl.defaultSessionMode = 'observe';
+  next.powerMode.guiControl.backgroundPreferred = true;
+  next.powerMode.guiControl.workflowTakeoverAllowed = false;
   next.durableWorkflows ??= {};
   next.durableWorkflows.continuation ??= {};
   next.durableWorkflows.scheduler ??= {};

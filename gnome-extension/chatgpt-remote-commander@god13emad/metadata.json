@@ -1,0 +1,9 @@
+{
+  "uuid": "chatgpt-remote-commander@god13emad",
+  "name": "ChatGPT Remote Commander GUI Backend",
+  "description": "Headless GNOME Wayland GUI backend for ChatGPT Remote Commander with frame-guarded desktop control.",
+  "shell-version": [
+    "46"
+  ],
+  "version": 1
+}

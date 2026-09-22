@@ -185,7 +185,11 @@ test('Linux updater is candidate-first, hardware-gated, routed and rollback-awar
     'validation_cleanup',
     'trap validation_cleanup ERR',
     'persistent_terminal_pids',
-    'AUTO_UPDATE_PERSISTENT_TERMINAL_BLOCK'
+    'AUTO_UPDATE_PERSISTENT_TERMINAL_BLOCK',
+    'git ls-remote --tags --refs',
+    'sort -V',
+    'install_linux_gui_backend',
+    'LINUX_GUI_BACKEND_SYNCED'
   ]) assert.ok(s.includes(marker),marker);
   assert.ok(s.includes("log 'AUTO_UPDATE_DRAIN_PENDING profile=default'"),'Linux committed cutover must defer unsafe drains');
   assert.ok(s.includes('drain_previous_once "$STAGE_DIR" "$OLD_PORT"'), 'Linux drain must use conservative shared policy');
@@ -195,6 +199,7 @@ test('Linux updater is candidate-first, hardware-gated, routed and rollback-awar
   const currentMaintenance=s.slice(s.indexOf('if [[ "$CONTROL" != "$COMMIT" ]]; then'),s.indexOf('CANDIDATE_PID=""'));
   const cleanupOnlyLinux=currentMaintenance.slice(currentMaintenance.indexOf('if has_superseded_release; then'));
   assert.ok(currentMaintenance.includes('recycle_supervisor'),'Linux control-code promotion may recycle the supervisor');
+  assert.ok(currentMaintenance.includes('install_linux_gui_backend "$STAGE_DIR" "$ACTIVE_CFG"'),'Linux control-code maintenance must synchronize the GUI backend before recycle');
   assert.ok(cleanupOnlyLinux.includes("AUTO_UPDATE_CLEANUP_PENDING") && !cleanupOnlyLinux.includes('recycle_supervisor'),'Linux release cleanup alone must never recycle a healthy supervisor');
   assert.ok(s.includes('stop_owned_candidate "$CANDIDATE_PID" "$STAGE_DIR"'), 'Linux validation failures must clean the exact spawned candidate');
   assert.ok(s.indexOf('trap validation_cleanup ERR') < s.indexOf('CANDIDATE_PID="$(start_backend'), 'Linux validation cleanup trap must be installed before candidate spawn');
@@ -211,6 +216,7 @@ test('Linux updater is candidate-first, hardware-gated, routed and rollback-awar
   assert.ok(s.includes("systemctl --user restart --no-block chatgpt-remote-commander.service"), 'Linux systemd recycle must be asynchronous so the updater can finish its own cgroup work');
   assert.ok(s.includes('src/server-v0.3.mjs 9>&-'), 'Linux promoted backend must close inherited updater lock descriptor');
   assert.ok(s.includes('src/stable-router.mjs --listen-port 47831') && s.includes('9>&- >>"$log_file"'), 'Linux stable router must close inherited updater lock descriptor');
+  assert.ok(s.includes('install_linux_gui_backend "$STAGE_DIR" "$FINAL_CFG"'),'Linux promotion must synchronize the GUI backend before control promotion');
   const finalPromote=s.lastIndexOf('promote_control "$COMMIT" "$REF"');
   const finalCleanup=s.indexOf('cleanup_releases',finalPromote);
   const finalPass=s.indexOf('AUTO_UPDATE_PASS version=',finalCleanup);

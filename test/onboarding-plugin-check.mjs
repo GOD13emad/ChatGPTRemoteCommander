@@ -7,7 +7,7 @@ const exists = (p) => fs.existsSync(path.join(root, p));
 const fail = (m) => { throw new Error(m); };
 
 const pkg = JSON.parse(read('package.json'));
-if (pkg.version !== '0.8.20') fail('package version must be 0.8.20');
+if (pkg.version !== '0.8.21') fail('package version must be 0.8.21');
 const serverSource = read('src/server-v0.3.mjs');
 const serverVersion = serverSource.match(/const VERSION = '([^']+)'/u)?.[1];
 if (serverVersion !== pkg.version) fail(`server runtime version ${serverVersion ?? 'missing'} does not match package version ${pkg.version}`);
@@ -35,7 +35,7 @@ for (const required of [
   'releases/latest/download/install.ps1',
   'releases/latest/download/install.sh',
   'docs/PLUGIN_SETUP.md',
-  'Windows GUI Control',
+  'GUI Control — zero-interference by default',
   'gui_screenshot',
   'synthetic input'
 ]) if (!start.includes(required)) fail(`START_HERE missing: ${required}`);

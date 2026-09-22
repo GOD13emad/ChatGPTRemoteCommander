@@ -78,13 +78,28 @@ test('literal multilingual Unicode + punctuation accepted, no shell interpretati
 test('key aliases are validated and normalized before any injection', () => {
   assert.deepEqual(validateGuiInput('gui_key_press',{lease:'l',frame:'f',keys:['Control','a']}).keys,['CTRL','A']);
 });
+test('zero-interference desktop policy is machine-readable and fail-closed', async () => {
+  const s=setup();
+  const status=await s.run('gui_status');
+  assert.equal(status.policy.interactionPolicy,'explicit-current-request-only');
+  assert.equal(status.policy.defaultSessionMode,'observe');
+  assert.equal(status.policy.backgroundPreferred,true);
+  assert.equal(status.policy.workflowTakeoverAllowed,false);
+  assert.equal(status.policy.foregroundInterferenceByDefault,false);
+});
+
 test('GUI not enabled is fail closed even if Power Mode enabled', async () => {
   const s=setup(); s.ctx.config.powerMode.guiControl.enabled=false;
   assert.equal((await s.run('gui_status')).available,false);
   await assert.rejects(s.run('gui_session_begin'),/GUI_DISABLED/); assert.equal(s.calls.length,0);
 });
-test('Windows unavailable on Linux does not claim native support', async () => {
-  const s=setup({platform:'linux'}); assert.equal((await s.run('gui_status')).reason,'WINDOWS_BACKEND_ONLY');
+test('unsupported platforms do not claim native GUI support', async () => {
+  const s=setup({platform:'darwin'}); assert.equal((await s.run('gui_status')).reason,'PLATFORM_BACKEND_UNSUPPORTED');
+});
+test('Linux controller exposes the GNOME backend when the native helper is ready', async () => {
+  const s=setup({platform:'linux',invoke:async r=>r.action==='status'?{ok:true,available:true,backend:'gnome-shell-wayland',screens:[{index:0,left:0,top:0,width:1920,height:1080,primary:true}]}:image()});
+  const status=await s.run('gui_status');
+  assert.equal(status.available,true);assert.equal(status.backend,'gnome-shell-wayland');assert.equal(status.enabled,true);
 });
 test('disabled screenshot capability is enforced before invoking helper', async () => {
   const s=setup(); const {lease}=await s.run('gui_session_begin'); s.ctx.config.powerMode.guiControl.allowScreenshot=false;

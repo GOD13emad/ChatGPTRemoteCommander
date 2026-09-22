@@ -790,3 +790,37 @@ This file is append-only for substantive project claims, decisions, failures, pr
 - Linux exact-commit results: package=0.8.20; working tree clean; `npm run check` exit 0; `npm test` exit 0; `npm run audit` PASS; `node --test test/auto-update-contract.test.mjs` 9/9 PASS; `bash -n auto-update-linux.sh` PASS.
 - This independent validation did not mutate the live Linux route/runtime and did not require GUI interaction.
 - Status/Confidence: committed v0.8.20 product code cross-platform validation PASS / high. Final documentation commit/tag/artifact/publication/live rollout remain OPEN at this record.
+
+## E047 — v0.8.21 Linux GUI semantic rebase, zero-interference and benchmark evidence
+
+- Date/Context: 2026-09-22 on aliemad-Labtop, after remote authority unexpectedly advanced from v0.8.18 to public v0.8.19/v0.8.20 during local GUI engineering.
+- Authority handling: push was stopped on remote-main drift. The staged GUI candidate was backed up outside the repository at ~/.local/state/chatgpt-remote-commander/candidate-backups/v0.8.19-pre-upstream-audit.patch, SHA-256 13f7623fcd35e1e51cb5030d119c8406d8f9994faa4eac866127e557bf8af23b. A new worktree/branch was created from origin/main c7c086c (v0.8.20), and the candidate was applied with 3-way semantics. Upstream won every conflict first; GUI deltas were then reintroduced additively.
+- Preserved upstream controls: cleanup-only maintenance/no-recycle from v0.8.19; persistent-terminal pre-cutover and pre-retirement guards from v0.8.20; candidate-first validation, rollback boundaries, route retirement and inherited lock protections remain intact.
+- Linux GUI implementation: GNOME Shell extension plus Python helper; controller/server now report Linux backend support, but gui_status remains unavailable until the extension is active. Fresh install and control-promotion maintenance synchronize the extension; no forced logout/reboot/Shell restart occurs.
+- Zero-interference policy: direct current-user request is required for takeover; default session remains observe-only; background work is preferred; workflow takeover is false; foreground interference by default is false. Regression is encoded in GUI and capability-profile tests.
+- Updater network prevention: repository tags via git ls-remote --tags --refs are the primary stable-version discovery source; Releases API is fallback only after observed 403/timeout episodes.
+- Scheduler semantics: automatic recovery/readiness is distinguished from model execution using automaticContinuationScope=RECOVERY_AND_READINESS_ONLY, automaticExecution=false and runnerConfigured=false.
+- Performance evidence: direct backend p50 about 2.52 ms, stable-router p50 about 3.00 ms for 50 local system_status calls; 12 connector shell calls median about 1.81 s and p90 about 2.13 s. Inference: the local MCP core is not the dominant user-visible latency layer.
+- Stress evidence: official Stockfish 19 Linux asset matched SHA-256 9defc0d4e55d49c65a6d042f3e571a39fcea499ade6dbe741b53b8c65e03611f; local bench searched 53,607,790 nodes in 6,540 ms (~8.20M nodes/s). Rapid manual play did not win; Rh3?? allowed Qxh3 and later evaluation was around -8.31, demonstrating that fast response and decision quality are separate acceptance dimensions.
+- Comparative primary-source evidence checked 2026-09-22: OpenAI Help Center 'Using cloud browser in ChatGPT'; OpenAI Help Center 'Plugins in ChatGPT and Codex'; GitHub Docs 'Custom agents and sub-agent orchestration' and 'Custom agents configuration'; Anthropic 'Prompting best practices' section on subagent orchestration. These products provide managed browser/model/subagent runtimes that Remote Commander does not replicate.
+- Comparative conclusion: global superiority over Work/Codex/Claude/Copilot is UNPROVEN. Evidence-backed differentiation is local real-machine control, explicit authority, zero-interference foreground policy, durable recovery/reconciliation, one-writer coordination, candidate-first zero-downtime updates, rollback boundaries and audit/evidence retention.
+- Status/Confidence: semantic rebase IMPLEMENTED; focused checks PASS; full staged v0.8.21 source gates PASS (check/test/audit, core 109 PASS + 1 Windows-only skip, GUI 75/75, Linux GUI contract, Windows runtime contract, source-integrity, security audit); exact committed-tree/release/promotion gates OPEN; current-session Linux native GUI E2E OPEN.
+- Reuse Targets: release notes, security model, performance guide, competitive positioning, incident prevention, Project Brain.
+- Provenance: worktree /home/aliemad/source/repos/ChatGPTRemoteCommander-v0821; upstream commits 4538b1b and c7c086c; preserved candidate patch/hash; live GNOME probes and Stockfish benchmark artifacts under ~/.local/share/remote-commander-bench/stockfish19.
+
+
+### E047 validation delta — full staged v0.8.21 gates
+
+- Date/Context: 2026-09-22, complete v0.8.21 candidate after semantic merge with v0.8.20 runtime/update controls.
+- PASS: `git diff --cached --check`, `npm run check`, `npm test`, `npm run audit`.
+- Core suite: 110 total, 109 PASS, 1 Windows-only parser SKIP, 0 FAIL. GUI contract/helper/HTTP suite: 75/75 PASS. `LINUX_GUI_CONTRACT_PASS`, `WINDOWS_RUNTIME_CONTRACT_PASS`, `SOURCE_INTEGRITY_PASS`, `SECURITY_AUDIT_PASS`.
+- Security audit: no tracked secret-key, tunnel-id, private-key, bearer-token, GitHub-token, local-config or developer-path finding.
+- Remote CAS changed again after this run from c7c086c to d037663; the new upstream delta is documentation plus `.github/dependabot.yml`, not runtime/product code. Candidate is therefore preserved and must be rebased/validated again before publication rather than pushed blindly.
+
+
+### E047 validation delta — post-d037 semantic rebase
+
+- Date/Context: 2026-09-22 after rebasing the v0.8.21 release commit onto `origin/main=d03766331b0b5d0a3441bee44850c531e969fc81`, which added only Dependabot/Actions-maintenance governance evidence beyond c7c086c.
+- Full validation PASS again: `npm run check`, `npm test`, `npm run audit`, diff integrity. Core suite 110 total / 109 PASS / 1 Windows-only skip; GUI suite 75/75 PASS; Linux GUI contract, Windows runtime contract, source-integrity and security audit PASS.
+- No runtime/product conflict was introduced by the upstream governance commits. Both upstream Actions/billing evidence and v0.8.21 E047 history are retained append-only.
+- Status: rebased source candidate PASS. Exact amended commit clean-checkout validation, remote-CAS push, tag/release, live Linux promotion and post-session native Linux GUI E2E remain OPEN.
