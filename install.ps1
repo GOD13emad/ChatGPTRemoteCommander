@@ -10,7 +10,7 @@ param(
   [switch]$StartServer,
   [switch]$SkipTunnelClient,
   [string]$TunnelClientVersion = '0.0.14',
-  [string]$SourceRef = 'v0.8.30',
+  [string]$SourceRef = 'v0.8.31',
   [string]$ExpectedCommit = ''
 )
 $ErrorActionPreference = 'Stop'
@@ -461,10 +461,12 @@ function Start-LocalServer {
 
 Require-Windows
 $InstallDir = Resolve-InstallDir
+$canonicalLiveInstall=[IO.Path]::GetFullPath((Join-Path $env:LOCALAPPDATA 'ChatGPTRemoteCommander\app'))
+$isCanonicalLiveInstall=([IO.Path]::GetFullPath($InstallDir).TrimEnd('\') -ieq $canonicalLiveInstall.TrimEnd('\'))
 Ensure-Prerequisites
 
 $existingInstall = Test-Path -LiteralPath (Join-Path $InstallDir '.git')
-if ($existingInstall) {
+if ($existingInstall -and $isCanonicalLiveInstall) {
   Invoke-ExistingSafeUpdate
   $effectivePath = Join-Path $InstallDir 'config.local.json'
   $route = Join-Path $env:LOCALAPPDATA 'ChatGPTRemoteCommander\routing\default.json'
@@ -478,6 +480,9 @@ if ($existingInstall) {
   }
   $effective = Get-Content -LiteralPath $effectivePath -Raw | ConvertFrom-Json
 } else {
+  if ($existingInstall -and -not $isCanonicalLiveInstall) {
+    Write-Host "Updating isolated/custom checkout in place without global routing mutation: $InstallDir"
+  }
   if ($GuiControl -and -not $PowerMode) { throw '-GuiControl requires -PowerMode for a fresh installation.' }
   Install-Source
   Install-TunnelClient

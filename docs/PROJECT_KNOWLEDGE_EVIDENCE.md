@@ -1040,3 +1040,17 @@ This file is append-only for substantive project claims, decisions, failures, pr
 ## HISTORY — E058 delta
 
 - 2026-09-22: Converted multi-profile same-release candidate churn from a cleanup-only symptom into a versioned ownership-identity prevention rule.
+
+## E059 — custom installer validation crossed global routing boundary
+
+- Date/Context: 2026-09-22 exact-tag Windows installer acceptance after v0.8.30 tag creation but before any v0.8.30 GitHub Release publication.
+- Observation: GitHub `/releases/latest` still reported immutable v0.8.29, yet the live Windows updater ran with `ref=v0.8.30` and safely promoted active backends while preserving terminal workloads. `Get-LatestTag` itself correctly prefers the stable Releases endpoint unless `SourceRef` is explicitly supplied.
+- Root Cause: `install.ps1` treated any existing `InstallDir` as eligible for `Invoke-ExistingSafeUpdate`. That updater accepts the supplied `InstallDir` for control checkout but deliberately uses the global Remote Commander state/routing root. Therefore a repeated/partial custom acceptance checkout could cross from isolated validation into live routing.
+- Fix: v0.8.31 distinguishes the canonical live app directory from non-canonical custom paths. Canonical existing installs retain candidate-first delegation. Non-canonical existing installs in `-NoStartServer` acceptance update their own checkout in place, run tests, and never invoke the global updater.
+- Release decision: do not publish v0.8.30. Keep its public tag unchanged as an unpublished candidate and publish v0.8.31 only after new isolated acceptance proves no live route/head change.
+- Regression: installer check must require `$isCanonicalLiveInstall` and the isolated/custom in-place message; full Windows/Linux gates remain mandatory.
+- Status/Confidence: root cause CONFIRMED/HIGH; focused installer/updater contracts PASS; full release gates OPEN at this record point.
+
+## HISTORY — E059 delta
+
+- 2026-09-22: Added an explicit installer isolation boundary before release publication rather than accepting a validation path that could mutate the live installation.

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.8.31 — 2026-09-22
+
+- Keep custom/isolated Windows installer validation from delegating an existing non-canonical checkout into the global candidate updater when `-NoStartServer` is used.
+- Canonical live installations still use candidate-first safe update; isolated/custom existing checkouts update only themselves in place and do not mutate global routing/state.
+- Supersedes unpublished v0.8.30 candidate for release publication; retains all v0.8.30 runtime-identity and already-current-profile protections.
+
 ## 0.8.30 — 2026-09-22
 
 - Prevent Windows multi-profile updater candidate churn from reusing one `commit/profile` runtime marker across repeated same-release runs. Candidate runtime and backup state are now unique per candidate port.

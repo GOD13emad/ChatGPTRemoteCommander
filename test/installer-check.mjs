@@ -14,7 +14,7 @@ for (const required of [
   'Detected active installation from Windows autostart',
   '$InstallDir = Resolve-InstallDir',
   'Tracked local changes exist in InstallDir',
-  "[string]$SourceRef = 'v0.8.30'",
+  "[string]$SourceRef = 'v0.8.31'",
   'ExpectedCommit',
   "rev-parse 'FETCH_HEAD^{commit}'",
   'incomplete Git checkout with no HEAD',
@@ -24,6 +24,8 @@ for (const required of [
   'tunnel-client.json',
   'update-backups',
   'SAFE_UPDATE_PASS',
+  '$isCanonicalLiveInstall',
+  'Updating isolated/custom checkout in place without global routing mutation',
   'fresh-install routing/bootstrap validation failed',
   'Capability self-test:',
   'Mode: $(if ($effective.powerMode.enabled)'
@@ -46,7 +48,7 @@ const linuxEnrollment = readFileSync('enable-autostart-linux.sh', 'utf8');
 const linuxPluginInstaller = readFileSync('install-work-plugin.sh', 'utf8');
 const linuxAccountConnector = readFileSync('connect-chatgpt-account.sh', 'utf8');
 for (const required of [
-  'SOURCE_REF="${REMOTE_COMMANDER_SOURCE_REF:-v0.8.30}"',
+  'SOURCE_REF="${REMOTE_COMMANDER_SOURCE_REF:-v0.8.31}"',
   '--source-ref',
   '--expected-commit',
   'REMOTE_COMMANDER_EXPECTED_COMMIT',
