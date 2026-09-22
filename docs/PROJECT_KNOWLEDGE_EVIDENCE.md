@@ -1025,3 +1025,18 @@ This file is append-only for substantive project claims, decisions, failures, pr
 ## HISTORY — E057 delta
 
 - 2026-09-22: Extended terminal-retention evidence narrowly to the official idle GUI-helper subtree while preserving fail-closed treatment of unrelated descendants.
+
+## E058 — repeated same-release candidate marker overwrite
+
+- Date/Context: 2026-09-22 post-v0.8.29 Windows cleanup audit.
+- Symptom: Windows reached active v0.8.29 on both profiles with `previous=null`, but release cleanup remained pending because 13 old `saeed-emad` backend processes still held v0.8.26/v0.8.27/v0.8.28 release trees open.
+- Evidence: orphan listeners on ports 48835-48845, 48847 and 48848 were all `saeed-emad`, had `activeOperations=0`, `queued=0`, no established connections, no route reference, no retained-backend reference, and only `conhost.exe` descendants. Old 0.8.26 `gui_status` returned `GUI_HELPER_BAD_JSON`, but no GUI-helper process existed in the audited trees.
+- Root Cause: Windows updater reused `runtimes/<commit>/<profile>` and the same `runtimeState` marker for every candidate generation of a profile on the same release. While `default` remained deferred, repeated automatic runs rebuilt an already-current `saeed-emad`; the newer candidate overwrote the shared marker, so the older backend could later lose ownership proof and survive route retirement.
+- Remediation on audited host: no retained/default terminal workload was killed. The stale isolated-profile processes were rechecked; 12 had already exited and the final listener also disappeared. A no-op maintenance then removed v0.8.26/v0.8.27/v0.8.28 stale release trees and recorded Windows `CURRENT v0.8.29`.
+- Prevention: v0.8.30 uses `port-<candidatePort>` beneath runtime and update-backup state, preserving per-generation ownership evidence. Ordinary automatic runs also log `AUTO_UPDATE_PROFILE_CURRENT_SKIP` and do not rebuild an already-current profile with no previous route unless Force or an explicit capability/mode mutation is requested.
+- Regression requirement: updater contract must assert unique runtime leaf and profile-current skip markers; full Windows/Linux check/test/audit must remain PASS.
+- Status/Confidence: root cause CONFIRMED; host cleanup PASS; prevention candidate under validation.
+
+## HISTORY — E058 delta
+
+- 2026-09-22: Converted multi-profile same-release candidate churn from a cleanup-only symptom into a versioned ownership-identity prevention rule.

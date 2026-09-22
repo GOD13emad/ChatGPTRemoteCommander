@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.8.30 — 2026-09-22
+
+- Prevent Windows multi-profile updater candidate churn from reusing one `commit/profile` runtime marker across repeated same-release runs. Candidate runtime and backup state are now unique per candidate port.
+- Skip candidate creation for an already-current profile with no pending previous route during ordinary automatic updates, while preserving explicit mutation/force behavior.
+- This prevents stale `saeed-emad` backend processes from losing ownership evidence and accumulating as cleanup-blocking orphans when another profile remains deferred.
+
 ## 0.8.29 — 2026-09-22
 
 - Treat the descendant subtree of an idle, unleased Windows GUI helper as part of that helper during non-destructive terminal-retention evidence, so its console host does not falsely block route detachment.

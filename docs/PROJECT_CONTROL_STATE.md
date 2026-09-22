@@ -1,7 +1,7 @@
 # ChatGPT Remote Commander — Project Brain
 
-Brain revision: R23
-Status: CURRENT / v0.8.29 TERMINAL-RETENTION SUBTREE FIX CANDIDATE
+Brain revision: R24
+Status: CURRENT / v0.8.30 MULTI-PROFILE RUNTIME-IDENTITY FIX CANDIDATE
 As of: 2026-09-22
 Project root: %USERPROFILE%\source\repos\ChatGPTRemoteCommander
 Public repository: GOD13emad/ChatGPTRemoteCommander
@@ -457,3 +457,7 @@ Start the GUI read-performance phase from v0.8.6 without changing the frozen rel
 ## HISTORY — R23 idle GUI-helper subtree delta
 
 - 2026-09-22: v0.8.28 live maintenance advanced from process-tree exception to a real `DEFER_DESCENDANTS`. Audit identified the only extra descendant as the `conhost.exe` child of the official idle/unleased `gui-control.ps1 -Server` helper. v0.8.29 treats that helper and its descendants as one explicitly rooted safe subtree during non-destructive route detachment; all unrelated descendants still fail closed. Full Windows regression/security PASS.
+
+## HISTORY — R24 multi-profile runtime identity delta
+
+- 2026-09-22: After v0.8.29 reached CURRENT on Windows and Linux, audit found 13 stale `saeed-emad` backend listeners from repeated same-release updater cycles. They were unreferenced by routes/retained state, had zero active/queued operations, no established connections and only console-host descendants. Root cause was reuse of `runtimes/<commit>/<profile>/config.json` and its runtime marker across candidate generations, allowing a later candidate to overwrite ownership evidence for an older backend. v0.8.30 makes runtime/backup state unique per candidate port and skips already-current profiles during ordinary maintenance. Existing audited orphan processes exited and cleanup returned Windows to CURRENT without touching retained terminal workloads.

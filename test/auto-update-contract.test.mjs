@@ -98,6 +98,8 @@ test('auto updater is candidate-first, hardware-gated and commit-point aware',()
   const retainEvidence=s.slice(s.indexOf('function Get-TerminalRetentionEvidence'),s.indexOf('function Stop-StaleBackendTree'));
   for(const marker of ['activeOperations','queued','unexpectedConnections','guiBusy','guiLeased','allowedRoots','unsafeDescendants','Get-StaleDrainDecision'])assert.ok(retainEvidence.includes(marker),marker);
   assert.ok(s.includes('DRAIN_TERMINAL_RETAIN_RECHECK_DEFER') && s.includes('Start-Sleep -Milliseconds 500'),'terminal retention must re-check safety immediately before route detachment');
+  assert.ok(s.includes('$runtimeLeaf="port-$port"') && s.includes("Join-Path $t.Profile $runtimeLeaf"),'Windows candidate runtime state must be unique per candidate port so ownership markers cannot be overwritten by later same-commit runs');
+  assert.ok(s.includes('AUTO_UPDATE_PROFILE_CURRENT_SKIP') && s.includes('$explicitProfileMutation'),'already-current independent profiles must not churn candidates during another profile drain unless an explicit mutation was requested');
   assert.ok(retainEvidence.includes("tools\\gui-control.ps1 -server") && retainEvidence.includes("allowedRoots[[int]$p.ProcessId]=$true"),'idle GUI helper subtree must be explicitly rooted before descendant traversal');
   assert.ok(s.includes("if($last.ok -and $last.count-gt 0 -and $last.cancellableOnly)"),'Windows may cancel only explicitly classified long-lived requests');
   assert.ok(s.indexOf('AUTO_UPDATE_NEWER_CURRENT') < s.indexOf("Run-Gate $stage.Dir 'check'"), 'automatic downgrade guard must precede candidate gates/cutover');

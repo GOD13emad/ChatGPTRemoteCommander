@@ -813,13 +813,24 @@ try{
     }
   }
   $device=if($currentStatus){[string]$currentStatus.deviceName}else{$env:COMPUTERNAME}
+  $explicitProfileMutation=[bool]($Force -or $PowerMode -or $StandardMode -or $GuiControl -or $DisableGuiControl -or @($DisableCapability).Count-gt0 -or @($EnableCapability).Count-gt0)
   foreach($t in $targets){
+    if(-not $explicitProfileMutation -and (Test-Path -LiteralPath $t.RoutePath -PathType Leaf)){
+      try{
+        $liveRoute=Read-Json $t.RoutePath
+        if($liveRoute.active -and [string]$liveRoute.active.commit-eq[string]$stage.Commit -and -not $liveRoute.previous){
+          Log "AUTO_UPDATE_PROFILE_CURRENT_SKIP profile=$($t.Profile) commit=$($stage.Commit)"
+          continue
+        }
+      }catch{throw "PROFILE_CURRENT_CHECK_FAIL profile=$($t.Profile) $($_.Exception.Message)"}
+    }
     $port=Get-FreePort $used
-    $stateDir=Join-Path $RuntimeRoot (Join-Path $stage.Commit $t.Profile)
+    $runtimeLeaf="port-$port"
+    $stateDir=Join-Path $RuntimeRoot (Join-Path $stage.Commit (Join-Path $t.Profile $runtimeLeaf))
     New-Item -ItemType Directory -Force -Path $stateDir|Out-Null
     $existingPolicy=Read-Json $t.ExistingConfig
     $liveWorkflowDir=[string]$existingPolicy.durableWorkflows.directory
-    $backupDir=Join-Path $StateRoot (Join-Path 'update-backups' (Join-Path $stage.Commit $t.Profile))
+    $backupDir=Join-Path $StateRoot (Join-Path 'update-backups' (Join-Path $stage.Commit (Join-Path $t.Profile $runtimeLeaf)))
     $shadowWorkflowDir=Join-Path $backupDir 'workflow-shadow'
     New-Item -ItemType Directory -Force -Path $backupDir|Out-Null
     Copy-Item -LiteralPath $t.ExistingConfig -Destination (Join-Path $backupDir 'config.before.json') -Force
