@@ -781,3 +781,12 @@ This file is append-only for substantive project claims, decisions, failures, pr
 - Core suite: 109/109 PASS. GUI contract/helper/HTTP suite: 73/73 PASS. Security audit, source-integrity, installer and onboarding checks: PASS.
 - Terminal-update focused contract remains 9/9 PASS and requires both pre-cutover terminal admission and pre-retirement terminal checks on Windows and Linux.
 - Status/Confidence: v0.8.20 source release candidate PASS / high. Exact committed-tree Linux validation, tag/artifact/publication and live rollout remain OPEN at this record.
+
+
+### E046 release-authority delta — pushed commit and independent Linux validation
+
+- Remote authority PASS: `origin/main` advanced by compare-before-push from audited baseline `4538b1b7931c8f709dfb77553e21e22fd7b4dc9f` to v0.8.20 code commit `c7c086c2900f5190423f30b60a78d000d94f2fb5`; destination tag `v0.8.20` did not exist at the authority check.
+- Independent Linux validation used a clean detached checkout at exact commit `c7c086c2900f5190423f30b60a78d000d94f2fb5`, outside the active installation.
+- Linux exact-commit results: package=0.8.20; working tree clean; `npm run check` exit 0; `npm test` exit 0; `npm run audit` PASS; `node --test test/auto-update-contract.test.mjs` 9/9 PASS; `bash -n auto-update-linux.sh` PASS.
+- This independent validation did not mutate the live Linux route/runtime and did not require GUI interaction.
+- Status/Confidence: committed v0.8.20 product code cross-platform validation PASS / high. Final documentation commit/tag/artifact/publication/live rollout remain OPEN at this record.

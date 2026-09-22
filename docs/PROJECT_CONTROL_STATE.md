@@ -261,7 +261,8 @@ Start the GUI read-performance phase from v0.8.6 without changing the frozen rel
 - Focused validation: updater contract 9/9 PASS; Windows updater self-test PASS; Linux `bash -n` PASS; diff integrity PASS.
 - Full v0.8.20 release-candidate validation: check/test/audit/native no-input GUI/Linux syntax PASS; core 109/109 and GUI 73/73 PASS; installer/onboarding/source-integrity/security PASS.
 - GUI/non-interference scope: no mouse movement, click, keyboard injection or window focus is required or used by this successor.
-- Open release gates: commit/remote-CAS, exact committed-tree Linux validation, exact-tag installer acceptance, immutable release publication, Linux promotion where safe, Windows control-plane protection/promotion subject to live-terminal drain authority.
+- Remote-CAS/push PASS: v0.8.20 product-code commit `c7c086c2900f5190423f30b60a78d000d94f2fb5` is on `origin/main`. Independent clean Linux exact-commit validation PASS (`check`, `test`, audit, updater contract 9/9, shell syntax).
+- Open release gates: documentation closeout commit, exact-tag installer acceptance, immutable release publication, Linux promotion where safe, Windows promotion subject to live persistent-terminal admission.
 - Exact next action: complete v0.8.20 release gates; never terminate the existing default-profile persistent terminals merely to make deployment look clean.
 
 ## HISTORY — R14 delta
