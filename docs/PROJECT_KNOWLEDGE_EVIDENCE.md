@@ -935,3 +935,17 @@ This file is append-only for substantive project claims, decisions, failures, pr
 - Full project gates PASS: check/test/audit, source integrity, Linux GUI and Windows runtime contracts. Security audit found no credential/token/private-key/developer-path issue.
 - Native Windows PowerShell parser PASS on exact candidate installer bytes and v0.8.24 source-ref authority.
 - Status: implementation + source/live idempotence HIGH/PASS; exact committed-tree validation, immutable release and live rollout OPEN.
+
+
+## E052 — Windows two-account profile-scoped update admission
+
+- Date/Context: 2026-09-22, live audit on Emad-PC-Ultimate with two ChatGPT tunnel profiles.
+- Claim/Decision: updater admission must be profile-scoped; a persistent-terminal drain in one profile is not evidence that another isolated profile is unsafe to promote.
+- Evidence/Source: live route/health/process/tunnel state; default route generation 19 active v0.8.21 + previous v0.8.19; saeed-emad generation 20 active v0.8.21 + previous=null; v0.8.24 last-update.json showed both candidates passed hardware/doctor/shadow/live-store gates but global status was BLOCKED_EXISTING_DRAIN.
+- Workload evidence: old default backend owns persistent shells; PID 19072 owns an active PowerShell 7 child running C:\TLC29\L01_R267R1_PR2_HFS_EXACT_REPLAY_10050000\RUN_R267R1.ps1. These processes are user work and must not be killed for update convenience.
+- Root Cause: v0.8.24 auto-update-windows.ps1 globally stopped all candidates when Complete-DeferredDrains returned any profile, and repeated the same global behavior for active persistent-terminal admission.
+- Prevention: stop/filter only candidates whose profile is blocked; continue with eligible candidates; if at least one profile promotes while others defer, record PROMOTED_PARTIAL/deferredProfiles and exit before supervisor recycle/cleanup.
+- Rejected option: terminating apparently idle terminals or migrating live terminal processes. Reason: existing policy intentionally treats persistent terminals as non-disposable; one observed terminal has an active scientific child, and process migration adds disproportionate risk.
+- Status/Confidence: root cause CONFIRMED/HIGH; focused implementation + npm run check PASS; full/exact/live gates OPEN.
+- Reuse Targets: Windows updater architecture, multi-account isolation, zero-downtime release procedure, incident prevention, Project Brain.
+- Provenance: Windows live routing/process/health/tunnel evidence; branch fix/v0825-windows-multiprofile-drain; prestate backup under %LOCALAPPDATA%\ChatGPTRemoteCommander\manual-backups\win-v0825-profile-isolation-pre.

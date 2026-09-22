@@ -447,3 +447,10 @@ Initial public release.
 - JSONL audit logging
 - legacy and modern MCP protocol support used by ChatGPT tunnel sessions
 - end-to-end validation from ChatGPT UI for list/read/write/command paths
+
+## 0.8.25 — 2026-09-22
+
+- Fix Windows multi-profile update admission so one ChatGPT profile with a legitimate persistent-terminal drain no longer blocks independent healthy profiles.
+- Preserve fail-closed terminal safety per profile: blocked profiles keep their live backends and terminal process trees untouched; only eligible profile candidates may cut over.
+- Record partial promotion explicitly and avoid supervisor recycle/release cleanup while any profile remains deferred.
+- Keep the v0.8.24 Linux GNOME lifecycle unchanged.

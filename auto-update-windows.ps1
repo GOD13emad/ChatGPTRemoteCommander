@@ -764,15 +764,25 @@ try{
     Log 'AUTO_UPDATE_CANDIDATE_PASS'
     exit 0
   }
+  # Admission is profile-scoped. One account may have a legitimate long-lived
+  # previous backend while another account is safe to promote independently.
+  $deferredProfiles=@()
   $existingDrainBlocks=@(Complete-DeferredDrains)
   if($existingDrainBlocks.Count-gt0){
-    foreach($c in $candidates){Stop-OwnedCandidate $c -Strict}
-    $report.status='BLOCKED_EXISTING_DRAIN'
+    foreach($profile in $existingDrainBlocks){
+      foreach($c in @($candidates|Where-Object{$_.Profile-eq$profile})){Stop-OwnedCandidate $c -Strict}
+      if(-not($deferredProfiles -contains [string]$profile)){$deferredProfiles+=[string]$profile}
+    }
+    $candidates=@($candidates|Where-Object{$deferredProfiles -notcontains [string]$_.Profile})
     $report.pendingDrains=@($existingDrainBlocks)
-    $report.completedAt=(Get-Date).ToUniversalTime().ToString('o')
-    Atomic-Json $ResultFile $report
-    Log "AUTO_UPDATE_EXISTING_DRAIN_BLOCK profiles=$($existingDrainBlocks -join ',')"
-    exit 0
+    Log "AUTO_UPDATE_EXISTING_DRAIN_DEFER profiles=$($existingDrainBlocks -join ',')"
+    if($candidates.Count-eq0){
+      $report.status='BLOCKED_EXISTING_DRAIN'
+      $report.completedAt=(Get-Date).ToUniversalTime().ToString('o')
+      Atomic-Json $ResultFile $report
+      Log "AUTO_UPDATE_EXISTING_DRAIN_BLOCK profiles=$($existingDrainBlocks -join ',')"
+      exit 0
+    }
   }
 
   $terminalBlocks=@()
@@ -787,13 +797,20 @@ try{
     }
   }
   if($terminalBlocks.Count-gt0){
-    foreach($c in $candidates){Stop-OwnedCandidate $c -Strict}
-    $report.status='BLOCKED_PERSISTENT_TERMINALS'
+    foreach($b in $terminalBlocks){
+      foreach($c in @($candidates|Where-Object{$_.Profile-eq$b.profile})){Stop-OwnedCandidate $c -Strict}
+      if(-not($deferredProfiles -contains [string]$b.profile)){$deferredProfiles+=[string]$b.profile}
+      Log "AUTO_UPDATE_PERSISTENT_TERMINAL_DEFER profile=$($b.profile) pids=$(@($b.pids) -join ',')"
+    }
     $report.terminalBlocks=@($terminalBlocks)
-    $report.completedAt=(Get-Date).ToUniversalTime().ToString('o')
-    Atomic-Json $ResultFile $report
-    foreach($b in $terminalBlocks){Log "AUTO_UPDATE_PERSISTENT_TERMINAL_BLOCK profile=$($b.profile) pids=$(@($b.pids) -join ',')"}
-    exit 0
+    $candidates=@($candidates|Where-Object{$deferredProfiles -notcontains [string]$_.Profile})
+    if($candidates.Count-eq0){
+      $report.status='BLOCKED_PERSISTENT_TERMINALS'
+      $report.completedAt=(Get-Date).ToUniversalTime().ToString('o')
+      Atomic-Json $ResultFile $report
+      foreach($b in $terminalBlocks){Log "AUTO_UPDATE_PERSISTENT_TERMINAL_BLOCK profile=$($b.profile) pids=$(@($b.pids) -join ',')"}
+      exit 0
+    }
   }
 
   foreach($c in $candidates){
@@ -820,11 +837,16 @@ try{
       if(-not(Drain-Previous $c.Target $old)){$pendingDrains+=[string]$c.Profile}
     }
   }
-  if($pendingDrains.Count-gt 0){
+  if($pendingDrains.Count-gt 0 -or $deferredProfiles.Count-gt 0){
     Promote-Control $stage.Commit $ref
-    $report.status='PROMOTED_DRAIN_PENDING';$report.pendingDrains=@($pendingDrains);$report.completedAt=(Get-Date).ToUniversalTime().ToString('o')
+    $allPending=@($pendingDrains)+@($deferredProfiles)|Select-Object -Unique
+    $report.pendingDrains=@($allPending)
+    $report.deferredProfiles=@($deferredProfiles)
+    $report.status=if($deferredProfiles.Count-gt0){'PROMOTED_PARTIAL'}else{'PROMOTED_DRAIN_PENDING'}
+    $report.completedAt=(Get-Date).ToUniversalTime().ToString('o')
     Atomic-Json $ResultFile $report
-    Log "AUTO_UPDATE_DRAIN_PENDING profiles=$($pendingDrains -join ',')"
+    if($deferredProfiles.Count-gt0){Log "AUTO_UPDATE_PROFILE_DEFER profiles=$($deferredProfiles -join ',')"}
+    if($pendingDrains.Count-gt0){Log "AUTO_UPDATE_DRAIN_PENDING profiles=$($pendingDrains -join ',')"}
     exit 0
   }
 

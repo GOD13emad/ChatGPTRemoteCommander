@@ -395,3 +395,15 @@ Start the GUI read-performance phase from v0.8.6 without changing the frozen rel
 - Full source validation PASS: `npm run check`, `npm test`, `npm run audit`, Linux GUI contract, Windows runtime contract and source-integrity all returned zero. Core suite remained 111 total / 110 PASS / 1 Windows-only skip; GUI suite 75/75 PASS; security audit PASS.
 - Native Windows PowerShell parser PASS on exact candidate `install.ps1` bytes with the v0.8.24 default source ref.
 - Current gate: exact commit/clean-checkout validation and remote-CAS publication remain OPEN.
+
+
+## Windows multi-profile update isolation successor — v0.8.25
+
+- Date/Context: 2026-09-22, Windows-only audit of a live two-ChatGPT-account installation.
+- Confirmed live topology: default canonical 47831 and isolated saeed-emad canonical 47834; both Full Power, GUI enabled with explicit-current-request-only policy, independent tunnel profiles and route states.
+- Confirmed blocker: default generation 19 retains previous v0.8.19 with persistent terminals, including an active scientific PowerShell workload. saeed-emad has no previous route.
+- Root cause: v0.8.24 Windows updater treated any one profile's existing drain or active persistent terminal as a global admission blocker and stopped every candidate.
+- Decision: minimum sufficient control is profile-scoped admission. Defer only the affected profile, preserve its backend/terminal tree, allow eligible profiles to cut over, and report PROMOTED_PARTIAL. No terminal migration, forced stop, reboot, logout or desktop takeover.
+- Safety: partial promotion exits before supervisor recycle/release cleanup while any profile is deferred.
+- Focused regression: updater contract 9/9 PASS, Windows runtime contract PASS, native PowerShell parser PASS, npm run check PASS, diff integrity PASS.
+- Current gate: npm test/security audit, exact commit validation, remote CAS publication and live two-profile promotion.
