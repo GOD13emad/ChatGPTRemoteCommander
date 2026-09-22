@@ -279,3 +279,12 @@ Start the GUI read-performance phase from v0.8.6 without changing the frozen rel
 - Hosted CI remains externally blocked before step execution by the GitHub account billing authorization lock. A controlled rerun of the v0.8.19 CI on 2026-09-22 produced a second zero-step failure on both Windows and Ubuntu.
 - GitHub Support response was not present in connected Gmail at audit time. The official GitHub recovery path for a failed authorization hold requires billing/payment information to be updated in the account UI; the current GitHub connector exposes no billing/admin write action.
 - Exact next action for the external gate: clear the account billing authorization lock in GitHub Billing & Licensing, then rerun unchanged hosted CI and require real non-null steps on both hosted OS jobs before closing the gate.
+
+
+### Dependabot pause delta — 2026-09-22
+
+- The temporary GitHub Actions Dependabot configuration was removed after it immediately created major-version update branches while hosted CI is account-billing locked.
+- Reason: those branches generated additional zero-step CI failures and email noise without providing executable validation.
+- Existing workflow protections remain in place: explicit least-privilege permissions and full commit-SHA pins.
+- Dependabot branch refs created during the short-lived configuration are not merged and must not be treated as accepted updates. No PR is currently open for them.
+- Reactivate automated dependency update PRs only after hosted CI can execute real steps again.
