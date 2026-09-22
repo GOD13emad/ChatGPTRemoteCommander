@@ -963,3 +963,22 @@ This file is append-only for substantive project claims, decisions, failures, pr
 - Status/Confidence: design and focused implementation PASS/HIGH; live promotion UNPROVEN until candidate/exact/live gates complete.
 - Reuse Targets: Windows zero-downtime updater, long-running terminal policy, release cleanup, incident prevention, Project Brain.
 - Provenance: live Windows router/process/health evidence; branch `fix/v0826-windows-terminal-keeper`; baseline v0.8.25 commit bf62101746fc6b9ee10f85eb37ae0ef46307b6de.
+
+## E054 — v0.8.26 cross-platform release-finalization evidence
+
+- Date/Context: 2026-09-22 finalization audit after Windows runtime reached 0.8.26 while Linux stable updater remained at 0.8.24.
+- Claim/Decision: stable-channel authority must remain the latest published immutable GitHub Release; main-branch version strings alone are insufficient. v0.8.26 may be published only after exact clean cross-platform validation and release metadata/Brain reconciliation.
+- Evidence/Source: GitHub public Release API reported latest=`v0.8.24`, draft=false, prerelease=false, immutable=true, 13 assets; requests for releases/tags `v0.8.25` and `v0.8.26` returned 404 and remote tag lookup returned none. Linux official updater independently returned `AUTO_UPDATE_CURRENT version=0.8.24`, proving published-release discovery behaved as designed.
+- Exact candidate provenance: clean detached Windows and Linux checkouts fetched commit `cf0e6770d31a904f7ed7cf4eb799476bdfa731ea` directly from origin.
+- Verification: Windows `npm run check` PASS (110/110 core check set; 75/75 GUI contract), `npm test` PASS (111/111 core plus smoke/concurrency/filesystem/source-integrity), `npm run audit`=`SECURITY_AUDIT_PASS`. Linux `npm run check` PASS (109/110 + one Windows-only skip; 75/75 GUI), `npm test` PASS (110/111 + one Windows-only skip), and security audit PASS. No secret-key, tunnel-id, private-key, bearer-token, GitHub-token, tracked local-config or developer-path finding was detected.
+- Native GUI evidence: Windows exact-source `gui-control.ps1 -SelfTest` PASS with X64 and `inputSize=40`; live `windows-user32-gdi` status available/enabled/idle/unleased. Linux live `gui-control-linux.py` status PASS on GNOME/Wayland with two displays and all six native capability groups true; helper self-test PASS.
+- Connector/catalog root cause: raw Linux MCP `tools/list` returned 54 total tools and all 15 GUI tools while the already-open ChatGPT connector namespace exposed only 39 non-GUI methods. Therefore the discrepancy is client/session schema caching or discovery staleness; no server/catalog/native GUI defect is supported by evidence.
+- Proportional-rigor decision: do not modify GUI code or force logout/reboot/reconnect solely to repair the current chat cached catalog. Product-side server and native bridge are verified. Use a fresh connector discovery/session for client-surface confirmation after stable promotion.
+- GUI change-scope evidence: `git diff v0.8.24..cf0e677 -- src/gui-tools-windows.mjs` is empty and changed-file inventory contains no GUI implementation files, so no new interactive mouse/keyboard E2E is required; current no-input/native/controller regression plus accepted prior interactive baseline is sufficient.
+- Status/Confidence: candidate code verification CONFIRMED/PASS/HIGH; release publication and live post-promotion validation OPEN at this record point.
+- Reuse Targets: release acceptance, updater authority, Linux GUI diagnostics, connector cache diagnostics, Project Brain, operator handoff.
+- Provenance: exact local clean checkouts on Emad-PC-Ultimate and aliemad-Labtop; live system_status/gui/helper/MCP probes; public GitHub release metadata; commit `cf0e6770d31a904f7ed7cf4eb799476bdfa731ea`.
+
+## HISTORY — E054 delta
+
+- 2026-09-22: Converted the v0.8.26 version/release mismatch into an explicit authority gate, completed exact cross-platform code/security/native-readiness validation, and isolated the Linux GUI visibility mismatch to the current connector-session catalog rather than the Remote Commander server.

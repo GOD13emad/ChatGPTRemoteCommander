@@ -1,10 +1,23 @@
 # ChatGPT Remote Commander — Project Brain
 
-Brain revision: R19
-Status: CURRENT / v0.8.24 RELEASE CANDIDATE
+Brain revision: R20
+Status: CURRENT / v0.8.26 RELEASE-FINALIZATION CANDIDATE
 As of: 2026-09-22
 Project root: %USERPROFILE%\source\repos\ChatGPTRemoteCommander
 Public repository: GOD13emad/ChatGPTRemoteCommander
+## Authoritative current state — v0.8.26 release finalization
+
+- Date/Context: 2026-09-22 final cross-platform closeout.
+- Candidate code authority: commit `cf0e6770d31a904f7ed7cf4eb799476bdfa731ea` on `origin/main`, product version `0.8.26`.
+- Public stable authority at this checkpoint remains immutable GitHub Release `v0.8.24` with 13 assets. No `v0.8.25` or `v0.8.26` tag/Release exists yet; stable-channel updater therefore correctly remains on `v0.8.24` until publication.
+- Exact clean-checkout verification on Windows and Linux: `npm run check`, `npm test`, and `npm run audit` PASS. Windows core test = 111/111 PASS in `npm test`; Linux = 110 PASS + 1 Windows-only skip. GUI contract = 75/75 PASS on both. Concurrency, filesystem safety, Linux GUI contract, Windows runtime contract, source integrity, smoke and security audit all PASS.
+- Windows native evidence: exact-candidate no-input X64 self-test PASS (`inputSize=40`); live backend `windows-user32-gdi` is available, enabled, idle and unleased. Diff from accepted `v0.8.24` to candidate contains no Windows GUI implementation change, so interactive desktop takeover is not required for this release gate.
+- Linux native evidence: live GNOME 46 / Wayland bridge is available with two 1920x1080 displays and screenshot/cursor/window-list/mouse/keyboard/focus capabilities all true. Direct MCP `tools/list` returns 54 tools including all 15 GUI tools.
+- Connector observation: this already-open ChatGPT connector session exposes an older Linux tool schema without the 15 GUI methods. Server-side catalog and native bridge are independently PASS, so this is classified as a client/session catalog-cache observation, not a product/backend defect. A fresh connector discovery/session is the appropriate validation surface; no product patch is justified.
+- Release-scope change from `v0.8.24` is Windows updater/profile/terminal lifecycle plus metadata/version changes; Linux functional updater and GUI implementation are unchanged.
+- Current gate: publish an evidence-backed immutable `v0.8.26` release only after this authority-only closeout delta is committed and clean-checkout gates remain PASS; then promote live Windows/Linux targets through the official candidate-first updater and require post-promotion CURRENT/no-op, route/workflow/GUI health.
+- Exact next action: commit this R20 authority/evidence delta with remote-head CAS, revalidate the resulting exact commit, build the 13-asset release bundle matching the accepted v0.8.24 contract, publish immutable v0.8.26, promote both targets, then append final live closeout evidence.
+
 
 ## Final objective and Definition of Done
 
@@ -12,7 +25,7 @@ Deliver a stable Remote Commander release that can run in explicit Full Power on
 
 DoD for the current release requires: an immutable stable release tag and assets; clean-checkout check/test/security gates; scope-appropriate GUI evidence (fresh interactive native E2E when native input behavior changes, otherwise byte-identical prior native baseline + current no-input/native/controller regression); candidate validation on the target machine; promotion of every live profile; canonical-route doctor checks; durable-workflow integrity after schema finalization; tunnel profiles targeting canonical routers; autostart/supervisor continuity; removal of superseded release directories; and a post-promotion updater no-op returning CURRENT.
 
-## Authoritative current change set — v0.8.15 release candidate
+## Superseded historical change set — v0.8.15 release candidate
 
 - Accepted upstream product authority remains cumulative through v0.8.13: zero-interference desktop authority (v0.8.10), stable-router downstream response-drain accounting (v0.8.11), monotonic no-downgrade updater (v0.8.12), and fail-closed supervisor continuity (v0.8.13).
 - v0.8.14 candidate added ownership-tracked candidate cleanup on Windows/Linux, removed unattended dependence on shared interactive `gui_status`, and introduced a checksum-manifested Full Power installer bundle. Its source gates and first isolated installer acceptance on code commit `a8ed68c...` passed.
@@ -419,3 +432,7 @@ Start the GUI read-performance phase from v0.8.6 without changing the frozen rel
 - Active-terminal admission: persistent terminals on the current active backend no longer block cutover; route switch moves that backend to `previous`, where existing drain protection preserves it.
 - Focused gates PASS: updater contract 9/9, Windows runtime contract, PowerShell parser, diff integrity. Linux functional updater code is unchanged.
 - Current gate: full v0.8.26 regression/security, exact commit validation, remote CAS, live rehearsal and live Windows promotion.
+
+## HISTORY — R20 pre-release delta
+
+- 2026-09-22: Reconciled v0.8.26 release authority after discovering that runtime/main had advanced beyond the published stable channel. Exact Windows/Linux clean-checkout check/test/security gates PASS; Windows native no-input/live GUI PASS; Linux GNOME/Wayland bridge and raw MCP 54-tool/15-GUI catalog PASS. Publication and live promotion remain the only open gates at this checkpoint.
