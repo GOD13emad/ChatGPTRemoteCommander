@@ -45,7 +45,9 @@ test('auto updater is candidate-first, hardware-gated and commit-point aware',()
     'DRAIN_STALE_CONFIRMED',
     'DRAIN_STALE_DEFER',
     'DRAIN_PERSISTENT_TERMINAL_DEFER',
-    'AUTO_UPDATE_PERSISTENT_TERMINAL_BLOCK',
+    'AUTO_UPDATE_ACTIVE_TERMINALS_PRESERVE',
+    'DRAIN_TERMINAL_RETAINED',
+    'retained-backends.json',
     'AUTO_UPDATE_EXISTING_DRAIN_BLOCK',
     'BLOCKED_EXISTING_DRAIN',
     'PROMOTED_PARTIAL',
@@ -91,17 +93,18 @@ test('auto updater is candidate-first, hardware-gated and commit-point aware',()
   assert.ok(!s.includes("Get-ChildItem -LiteralPath $InstanceRoot -Filter 'instance.json' -Recurse"), 'target discovery must never recurse into instance backups');
   assert.ok(s.includes('PROFILE_DIRECTORY_MISMATCH'), 'profile directory identity must fail closed');
   assert.ok(s.includes("AUTO_UPDATE_DRAIN_PENDING profiles=") && s.includes("AUTO_UPDATE_PROFILE_DEFER profiles="),'Windows committed cutover must preserve both post-cutover drains and independently deferred profiles');
+  assert.ok(s.includes('DRAIN_TERMINAL_RETAINED') && s.includes('Get-ProtectedReleasePaths') && s.includes('Complete-RetainedBackends'),'Windows terminal keeper must durably detach zero-inflight previous backends and protect their release trees');
   assert.ok(s.includes("if($last.ok -and $last.count-gt 0 -and $last.cancellableOnly)"),'Windows may cancel only explicitly classified long-lived requests');
   assert.ok(s.indexOf('AUTO_UPDATE_NEWER_CURRENT') < s.indexOf("Run-Gate $stage.Dir 'check'"), 'automatic downgrade guard must precede candidate gates/cutover');
   const cutover=s.indexOf('if(Test-Path $t.RoutePath)');
   const existingDrainAdmission=s.indexOf('$existingDrainBlocks=@(Complete-DeferredDrains)');
-  const terminalAdmission=s.indexOf('$terminalBlocks=@()');
+  const terminalAdmission=s.indexOf('$terminalPreserve=@()');
   assert.ok(existingDrainAdmission>0 && existingDrainAdmission<terminalAdmission,'unresolved previous drain must be handled before active-terminal admission');
   const existingDrainBlock=s.slice(existingDrainAdmission,terminalAdmission);
   assert.ok(existingDrainBlock.includes('Where-Object{$_.Profile-eq$profile}') && existingDrainBlock.includes('AUTO_UPDATE_EXISTING_DRAIN_DEFER') && existingDrainBlock.includes('if($candidates.Count-eq0)'),'Windows existing-drain admission must defer only affected profiles and globally block only when none remain');
   assert.ok(terminalAdmission>0 && terminalAdmission<cutover,'persistent terminal admission must run before Windows route cutover');
   const terminalAdmissionBlock=s.slice(terminalAdmission,cutover);
-  assert.ok(terminalAdmissionBlock.includes('Where-Object{$_.Profile-eq$b.profile}') && terminalAdmissionBlock.includes('AUTO_UPDATE_PERSISTENT_TERMINAL_DEFER') && terminalAdmissionBlock.includes('if($candidates.Count-eq0)'),'Windows terminal admission must defer only affected profiles and globally block only when none remain');
+  assert.ok(terminalAdmissionBlock.includes('AUTO_UPDATE_ACTIVE_TERMINALS_PRESERVE') && !terminalAdmissionBlock.includes('Stop-OwnedCandidate'),'Windows active terminals must be preserved through cutover rather than block or kill their profile');
   assert.ok(s.indexOf("Run-Gate $stage.Dir 'check'") < cutover, 'gates must precede cutover');
   assert.ok(s.indexOf('Verify-Tunnels') < s.indexOf('$cutoverCommitted=$true'), 'tunnels verified before commit point');
   const commitPoint=s.indexOf('$cutoverCommitted=$true');

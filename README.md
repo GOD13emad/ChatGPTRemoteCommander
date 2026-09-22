@@ -204,3 +204,5 @@ Enroll another Linux account once:
 Each account must use its own tunnel and Runtime API key. The supervisor automatically starts every enrolled profile that points to this local MCP. For one account controlling multiple computers, repeat the installation/enrollment on each computer with a distinct tunnel so each device appears separately in ChatGPT.
 
 v0.8.25 fixes Windows multi-account update isolation: a drain or persistent terminal owned by one ChatGPT profile defers only that profile, while independently healthy profiles can promote without terminating the blocked profile's workload.
+
+v0.8.26 adds Windows terminal-keeper lifecycle handling: long-running persistent-terminal workloads can survive successive zero-downtime upgrades without occupying the single route `previous` slot forever, while cleanup and reaping remain evidence-gated.

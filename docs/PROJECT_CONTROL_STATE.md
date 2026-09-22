@@ -407,3 +407,15 @@ Start the GUI read-performance phase from v0.8.6 without changing the frozen rel
 - Safety: partial promotion exits before supervisor recycle/release cleanup while any profile is deferred.
 - Focused regression: updater contract 9/9 PASS, Windows runtime contract PASS, native PowerShell parser PASS, npm run check PASS, diff integrity PASS.
 - Current gate: npm test/security audit, exact commit validation, remote CAS publication and live two-profile promotion.
+
+
+## Windows terminal-keeper successor — v0.8.26
+
+- Date/Context: 2026-09-22, second Windows-only change set after v0.8.25 proved per-account promotion on the live two-account machine.
+- Previous accepted state: `saeed-emad` active v0.8.25 generation 22; default active v0.8.21 generation 19 with previous v0.8.19. v0.8.25 control plane active.
+- Live blocker evidence: default previous port 48831 has persistent terminals but router inflight for 48831 is zero; one retained terminal owns the scientific `RUN_R267R1.ps1` workload. Default active port 48833 has persistent terminal PID 32412 plus non-cancellable run_shell inflight operations.
+- Root cause: the single `previous` route slot conflated HTTP drain authority with process-lifetime ownership. A terminal-bearing backend with zero routed inflight could never leave the slot, preventing the current active backend from becoming previous during the next safe cutover.
+- Decision: retain zero-inflight terminal backends outside route authority in a durable `retained-backends.json` registry. Never kill or migrate the terminal tree. Protect retained and routed-previous release trees from cleanup. Reap retained backends only when no route references them, persistent terminals are gone, and stale-drain evidence allows termination.
+- Active-terminal admission: persistent terminals on the current active backend no longer block cutover; route switch moves that backend to `previous`, where existing drain protection preserves it.
+- Focused gates PASS: updater contract 9/9, Windows runtime contract, PowerShell parser, diff integrity. Linux functional updater code is unchanged.
+- Current gate: full v0.8.26 regression/security, exact commit validation, remote CAS, live rehearsal and live Windows promotion.

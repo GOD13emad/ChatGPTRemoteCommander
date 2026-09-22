@@ -949,3 +949,17 @@ This file is append-only for substantive project claims, decisions, failures, pr
 - Status/Confidence: root cause CONFIRMED/HIGH; focused implementation + npm run check PASS; full/exact/live gates OPEN.
 - Reuse Targets: Windows updater architecture, multi-account isolation, zero-downtime release procedure, incident prevention, Project Brain.
 - Provenance: Windows live routing/process/health/tunnel evidence; branch fix/v0825-windows-multiprofile-drain; prestate backup under %LOCALAPPDATA%\ChatGPTRemoteCommander\manual-backups\win-v0825-profile-isolation-pre.
+
+
+## E053 — Windows retained terminal backend lifecycle
+
+- Date/Context: 2026-09-22, live Windows two-account audit after v0.8.25 partial promotion.
+- Claim/Decision: HTTP route-drain authority and persistent-terminal process lifetime must be represented separately once a previous backend has zero routed inflight requests.
+- Evidence/Source: default router generation 19 reports previous v0.8.19 port 48831 but no inflightByPort entry for 48831; that backend still owns persistent PowerShell terminals, including a child running `C:\TLC29\L01_R267R1_PR2_HFS_EXACT_REPLAY_10050000\RUN_R267R1.ps1`. Active v0.8.21 port 48833 reports non-cancellable run_shell inflight and also owns a persistent terminal.
+- Root Cause: one-slot `route.previous` was used both as drain metadata and as an implicit keepalive for terminal-bearing backend processes. This makes an already-drained terminal backend permanently block another zero-downtime generation.
+- Prevention: (1) detach a terminal-bearing previous backend only after canonical router status proves its port inflight count is exactly zero; (2) atomically register it as retained before route retirement; (3) protect retained and routed-previous project directories from cleanup; (4) preserve active terminal workloads through cutover so the old active becomes protected `previous`; (5) reaper may stop a retained backend only after it is route-unreferenced, terminal-free, and stale-drain evidence is safe.
+- Rejected options: kill persistent terminals; migrate live shell/process trees; expand route schema to an unbounded generation chain. These add irreversible risk or complexity without improving the required outcome.
+- Verification: focused Windows updater regression 9/9 PASS, Windows runtime contract PASS, native PowerShell parser PASS, diff integrity PASS. Full/exact/live validation remains OPEN at this record point.
+- Status/Confidence: design and focused implementation PASS/HIGH; live promotion UNPROVEN until candidate/exact/live gates complete.
+- Reuse Targets: Windows zero-downtime updater, long-running terminal policy, release cleanup, incident prevention, Project Brain.
+- Provenance: live Windows router/process/health evidence; branch `fix/v0826-windows-terminal-keeper`; baseline v0.8.25 commit bf62101746fc6b9ee10f85eb37ae0ef46307b6de.

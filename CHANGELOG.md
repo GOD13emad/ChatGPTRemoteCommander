@@ -454,3 +454,10 @@ Initial public release.
 - Preserve fail-closed terminal safety per profile: blocked profiles keep their live backends and terminal process trees untouched; only eligible profile candidates may cut over.
 - Record partial promotion explicitly and avoid supervisor recycle/release cleanup while any profile remains deferred.
 - Keep the v0.8.24 Linux GNOME lifecycle unchanged.
+
+## 0.8.26 — 2026-09-22
+
+- Add a Windows retained-backend terminal keeper so a zero-inflight previous backend may leave the single route slot without terminating its persistent terminals.
+- Preserve active persistent-terminal backends through cutover; after cutover they remain the routed `previous` generation until their workload ends safely.
+- Protect both routed previous and retained release trees from cleanup; retained backends are reaped only after terminal/process safety evidence allows it.
+- Keep Linux updater behavior unchanged.

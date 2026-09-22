@@ -30,6 +30,7 @@ $InstanceRoot=Join-Path $StateRoot 'instances'
 $ProfileDir=Join-Path $env:APPDATA 'tunnel-client'
 $LogDir=Join-Path $StateRoot 'update-logs'
 $ResultFile=Join-Path $StateRoot 'last-update.json'
+$RetainedFile=Join-Path $StateRoot 'retained-backends.json'
 New-Item -ItemType Directory -Force -Path $ReleaseRoot,$RoutingRoot,$RuntimeRoot,$LogDir | Out-Null
 
 function Log([string]$Message){
@@ -41,6 +42,91 @@ function Atomic-Json([string]$Path,[object]$Value){
   $tmp="$Path.tmp-$PID"
   [IO.File]::WriteAllText($tmp,($Value|ConvertTo-Json -Depth 30)+[Environment]::NewLine,[Text.UTF8Encoding]::new($false))
   Move-Item -LiteralPath $tmp -Destination $Path -Force
+}
+function Get-RetainedBackends {
+  if(-not(Test-Path -LiteralPath $RetainedFile -PathType Leaf)){return @()}
+  try{
+    $doc=Read-Json $RetainedFile
+    if($doc -and $doc.PSObject.Properties.Name -contains 'items'){return @($doc.items)}
+  }catch{Log "RETAINED_BACKEND_READ_WARN $($_.Exception.Message)"}
+  return @()
+}
+function Save-RetainedBackends([object[]]$Items){
+  Atomic-Json $RetainedFile ([ordered]@{schema=1;items=@($Items);updatedAt=(Get-Date).ToUniversalTime().ToString('o')})
+}
+function Test-BackendReferencedInRoutes([object]$Backend){
+  foreach($f in Get-ChildItem -LiteralPath $RoutingRoot -Filter '*.json' -File -ErrorAction SilentlyContinue){
+    if($f.Name -like '*.runtime.json'){continue}
+    try{
+      $r=Read-Json $f.FullName
+      foreach($slot in @($r.active,$r.previous)){
+        if($slot -and [int]$slot.port-eq[int]$Backend.port -and [string]$slot.commit-eq[string]$Backend.commit){return $true}
+      }
+    }catch{}
+  }
+  return $false
+}
+function Add-RetainedBackend([string]$Profile,[object]$Backend,[object[]]$TerminalChildren){
+  $items=@(Get-RetainedBackends)
+  $exists=@($items|Where-Object{[string]$_.profile-eq$Profile -and [int]$_.port-eq[int]$Backend.port -and [string]$_.commit-eq[string]$Backend.commit}).Count-gt0
+  if(-not $exists){
+    $entry=[ordered]@{
+      profile=$Profile;port=[int]$Backend.port;version=[string]$Backend.version;commit=[string]$Backend.commit;
+      configSha256=[string]$Backend.configSha256;configPath=[string]$Backend.configPath;projectDir=[string]$Backend.projectDir;
+      terminalPids=@($TerminalChildren|ForEach-Object{[int]$_.ProcessId});
+      retainedAt=(Get-Date).ToUniversalTime().ToString('o')
+    }
+    $items+= [pscustomobject]$entry
+    Save-RetainedBackends $items
+  }
+}
+function Complete-RetainedBackends {
+  $items=@(Get-RetainedBackends)
+  if($items.Count-eq0){return}
+  $keep=@()
+  foreach($entry in $items){
+    if(Test-BackendReferencedInRoutes $entry){$keep+=$entry;continue}
+    if(-not(Test-OwnedOldBackend $entry)){Log "RETAINED_BACKEND_GONE profile=$($entry.profile) port=$($entry.port)";continue}
+    $terms=@(Get-PersistentTerminalChildren $entry)
+    if($terms.Count-gt0){
+      $entry.terminalPids=@($terms|ForEach-Object{[int]$_.ProcessId})
+      $keep+=$entry
+      continue
+    }
+    $canonical=Get-CanonicalPortForProfile ([string]$entry.profile)
+    $ev=Get-StaleDrainEvidence $entry $canonical
+    if($ev.safe -and (Stop-StaleBackendTree $entry $canonical)){
+      Log "RETAINED_BACKEND_REAPED profile=$($entry.profile) port=$($entry.port)"
+      continue
+    }
+    Log "RETAINED_BACKEND_REAP_DEFER profile=$($entry.profile) port=$($entry.port) decision=$($ev.decision)"
+    $keep+=$entry
+  }
+  Save-RetainedBackends $keep
+}
+function Get-ProtectedReleasePaths {
+  $protected=@{}
+  foreach($f in Get-ChildItem -LiteralPath $RoutingRoot -Filter '*.json' -File -ErrorAction SilentlyContinue){
+    if($f.Name -like '*.runtime.json'){continue}
+    try{
+      $r=Read-Json $f.FullName
+      foreach($slot in @($r.active,$r.previous)){
+        if($slot -and $slot.projectDir){$protected[[IO.Path]::GetFullPath([string]$slot.projectDir).ToLowerInvariant()]=$true}
+      }
+    }catch{}
+  }
+  foreach($entry in @(Get-RetainedBackends)){
+    if($entry.projectDir){$protected[[IO.Path]::GetFullPath([string]$entry.projectDir).ToLowerInvariant()]=$true}
+  }
+  return $protected
+}
+function Retain-PreviousBackend([string]$RoutePath,[object]$Old,[string]$Profile,[int]$Canonical,[object[]]$TerminalChildren){
+  $st=Get-DrainStatus $Canonical ([int]$Old.port)
+  if(-not($st.ok -and $st.count-eq0)){return $false}
+  Add-RetainedBackend $Profile $Old $TerminalChildren
+  Retire-PreviousRoute $RoutePath $Old $Profile
+  Log "DRAIN_TERMINAL_RETAINED profile=$Profile port=$($Old.port) pids=$(@($TerminalChildren|ForEach-Object{[int]$_.ProcessId}) -join ',')"
+  return $true
 }
 function Test-ProfileName([string]$Name){
   return ($Name -match '^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$' -and $Name -notmatch '\.\.' -and $Name -notin @('.','..'))
@@ -464,13 +550,14 @@ function Complete-DeferredDrains {
         Retire-PreviousRoute $rf.FullName $old ([string]$route.profile)
         continue
       }
+      $canonical=Get-CanonicalPortForProfile ([string]$route.profile)
       $terminalChildren=@(Get-PersistentTerminalChildren $old)
       if($terminalChildren.Count-gt0){
+        if(Retain-PreviousBackend $rf.FullName $old ([string]$route.profile) $canonical $terminalChildren){continue}
         Log "DRAIN_PERSISTENT_TERMINAL_DEFER profile=$($route.profile) pids=$(@($terminalChildren|ForEach-Object{[int]$_.ProcessId}) -join ',')"
         $pending+=[string]$route.profile
         continue
       }
-      $canonical=Get-CanonicalPortForProfile ([string]$route.profile)
       $st=Get-DrainStatus $canonical ([int]$old.port)
       if($st.ok -and ($st.count-eq 0 -or $st.cancellableOnly)){
         if($st.count-gt 0){Log "DRAIN_CANCEL_SAFE profile=$($route.profile) inflight=$($st.count)"}
@@ -501,14 +588,10 @@ function Complete-DeferredDrains {
   return @($pending)
 }
 function Has-SupersededRelease {
-  $active=@{}
-  foreach($f in Get-ChildItem -LiteralPath $RoutingRoot -Filter '*.json' -File -ErrorAction SilentlyContinue){
-    if($f.Name -like '*.runtime.json'){continue}
-    try{$r=Read-Json $f.FullName;if($r.active.projectDir){$active[[IO.Path]::GetFullPath([string]$r.active.projectDir).ToLowerInvariant()]=$true}}catch{}
-  }
+  $protected=Get-ProtectedReleasePaths
   foreach($dir in Get-ChildItem -LiteralPath $ReleaseRoot -Directory -ErrorAction SilentlyContinue){
     $key=[IO.Path]::GetFullPath($dir.FullName).ToLowerInvariant()
-    if(-not $active.ContainsKey($key)){return $true}
+    if(-not $protected.ContainsKey($key)){return $true}
   }
   return $false
 }
@@ -550,15 +633,11 @@ function Recycle-ControlSupervisor {
 }
 
 function Cleanup-Releases {
-  $active=@{}
+  $protected=Get-ProtectedReleasePaths
   $remaining=@()
-  foreach($f in Get-ChildItem -LiteralPath $RoutingRoot -Filter '*.json' -File -ErrorAction SilentlyContinue){
-    if($f.Name -like '*.runtime.json'){continue}
-    try{$r=Read-Json $f.FullName;if($r.active.projectDir){$active[[IO.Path]::GetFullPath([string]$r.active.projectDir).ToLowerInvariant()]=$true}}catch{}
-  }
   foreach($d in Get-ChildItem -LiteralPath $ReleaseRoot -Directory -ErrorAction SilentlyContinue){
     $key=[IO.Path]::GetFullPath($d.FullName).ToLowerInvariant()
-    if($active.ContainsKey($key)){continue}
+    if($protected.ContainsKey($key)){continue}
     try{
       Remove-Item -LiteralPath $d.FullName -Recurse -Force -ErrorAction Stop
       Log "RELEASE_CLEANUP_PASS name=$($d.Name)"
@@ -767,6 +846,7 @@ try{
   # Admission is profile-scoped. One account may have a legitimate long-lived
   # previous backend while another account is safe to promote independently.
   $deferredProfiles=@()
+  Complete-RetainedBackends
   $existingDrainBlocks=@(Complete-DeferredDrains)
   if($existingDrainBlocks.Count-gt0){
     foreach($profile in $existingDrainBlocks){
@@ -785,7 +865,7 @@ try{
     }
   }
 
-  $terminalBlocks=@()
+  $terminalPreserve=@()
   foreach($c in $candidates){
     $t=$c.Target
     if(-not(Test-Path -LiteralPath $t.RoutePath -PathType Leaf)){continue}
@@ -793,25 +873,11 @@ try{
     if(-not $liveRoute.active){continue}
     $terms=@(Get-PersistentTerminalChildren $liveRoute.active)
     if($terms.Count-gt0){
-      $terminalBlocks+=[pscustomobject]@{profile=$t.Profile;pids=@($terms|ForEach-Object{[int]$_.ProcessId})}
+      $terminalPreserve+=[pscustomobject]@{profile=$t.Profile;pids=@($terms|ForEach-Object{[int]$_.ProcessId})}
+      Log "AUTO_UPDATE_ACTIVE_TERMINALS_PRESERVE profile=$($t.Profile) pids=$(@($terms|ForEach-Object{[int]$_.ProcessId}) -join ',')"
     }
   }
-  if($terminalBlocks.Count-gt0){
-    foreach($b in $terminalBlocks){
-      foreach($c in @($candidates|Where-Object{$_.Profile-eq$b.profile})){Stop-OwnedCandidate $c -Strict}
-      if(-not($deferredProfiles -contains [string]$b.profile)){$deferredProfiles+=[string]$b.profile}
-      Log "AUTO_UPDATE_PERSISTENT_TERMINAL_DEFER profile=$($b.profile) pids=$(@($b.pids) -join ',')"
-    }
-    $report.terminalBlocks=@($terminalBlocks)
-    $candidates=@($candidates|Where-Object{$deferredProfiles -notcontains [string]$_.Profile})
-    if($candidates.Count-eq0){
-      $report.status='BLOCKED_PERSISTENT_TERMINALS'
-      $report.completedAt=(Get-Date).ToUniversalTime().ToString('o')
-      Atomic-Json $ResultFile $report
-      foreach($b in $terminalBlocks){Log "AUTO_UPDATE_PERSISTENT_TERMINAL_BLOCK profile=$($b.profile) pids=$(@($b.pids) -join ',')"}
-      exit 0
-    }
-  }
+  if($terminalPreserve.Count-gt0){$report.terminalPreserve=@($terminalPreserve)}
 
   foreach($c in $candidates){
     $t=$c.Target
