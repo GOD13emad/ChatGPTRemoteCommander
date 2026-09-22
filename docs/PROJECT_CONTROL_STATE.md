@@ -419,3 +419,16 @@ Start the GUI read-performance phase from v0.8.6 without changing the frozen rel
 - Active-terminal admission: persistent terminals on the current active backend no longer block cutover; route switch moves that backend to `previous`, where existing drain protection preserves it.
 - Focused gates PASS: updater contract 9/9, Windows runtime contract, PowerShell parser, diff integrity. Linux functional updater code is unchanged.
 - Current gate: full v0.8.26 regression/security, exact commit validation, remote CAS, live rehearsal and live Windows promotion.
+
+### v0.8.26 live Windows acceptance delta
+
+- Live candidate rehearsal against exact commit `cf0e6770d31a904f7ed7cf4eb799476bdfa731ea` PASS for both profiles before cutover.
+- Live promotion PASS with receipt `PROMOTED_DRAIN_PENDING`: default generation 21 active v0.8.26 on 48832; saeed-emad generation 24 active v0.8.26 on 48834.
+- Terminal keeper PASS: former default previous v0.8.19 port 48831 had zero routed inflight, was atomically registered in `retained-backends.json`, removed from the route slot, and left running with all six persistent terminals. Scientific child `RUN_R267R1.ps1` remained alive.
+- Active-terminal cutover PASS: prior default active v0.8.21 became route.previous on 48833; terminal PID 32412 and three observed non-cancellable historical run_shell inflight operations remain preserved rather than killed.
+- Both canonical ChatGPT endpoints PASS: 47831/default and 47834/saeed-emad report v0.8.26, exact profile identity, FULL_POWER, GUI available, explicit-current-request-only / observe-only interaction, durable workflow engine and scheduler healthy.
+- Two tunnel-client processes remain live under the supervisor with independent profiles `chatgpt-remote-commander` and `saeed-emad`. Old saeed v0.8.25 port 48835 is no longer a listener; no unowned candidate listener was observed.
+- Installed control checkout is v0.8.26 at exact commit `cf0e6770d31a904f7ed7cf4eb799476bdfa731ea`.
+- Stable-channel downgrade prevention PASS: installed updater resolved public latest v0.8.24 and returned `AUTO_UPDATE_NEWER_CURRENT current=0.8.26 latest=0.8.24` with no downgrade/cutover.
+- No mouse, keyboard injection, window focus, logout, reboot or shutdown was used.
+- Windows active product state is FINAL/PASS. Older backends are intentionally SAFE-RETAINED workload carriers and are not active product authority.

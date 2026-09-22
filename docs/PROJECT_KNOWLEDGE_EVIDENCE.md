@@ -963,3 +963,14 @@ This file is append-only for substantive project claims, decisions, failures, pr
 - Status/Confidence: design and focused implementation PASS/HIGH; live promotion UNPROVEN until candidate/exact/live gates complete.
 - Reuse Targets: Windows zero-downtime updater, long-running terminal policy, release cleanup, incident prevention, Project Brain.
 - Provenance: live Windows router/process/health evidence; branch `fix/v0826-windows-terminal-keeper`; baseline v0.8.25 commit bf62101746fc6b9ee10f85eb37ae0ef46307b6de.
+
+### E053 validation delta — exact/live Windows acceptance
+
+- Exact committed v0.8.26 source validation PASS: clean worktree, 111/111 core tests, 75/75 GUI tests, source-integrity, Windows runtime contract and security audit all PASS.
+- Remote CAS PASS: v0.8.26 was a fast-forward from v0.8.25 and pushed to main as `cf0e6770d31a904f7ed7cf4eb799476bdfa731ea`; no Published Release was created, intentionally avoiding Linux stable-channel mutation.
+- Candidate-first rehearsal PASS on both real profiles with hardware, doctor, shadow workflow-store and live-store compatibility gates.
+- Live terminal-keeper result CONFIRMED: old v0.8.19 backend port 48831 moved from route.previous to durable retained registry only after router status showed zero inflight for that port. Its terminal PIDs and scientific descendant remained alive.
+- Live active-terminal preservation CONFIRMED: old v0.8.21 backend port 48833 became default route.previous and remains alive because terminal/inflight evidence is present. No force stop/cancel occurred.
+- Canonical acceptance CONFIRMED: default 47831 and saeed-emad 47834 both expose v0.8.26 with correct distinct profile IDs, Full Power, GUI available and zero-interference policy, workflow scheduler enabled, no reconciliation-required state.
+- Stable auto-update non-regression CONFIRMED: public stable latest remained v0.8.24 and local 0.8.26 correctly refused downgrade with `AUTO_UPDATE_NEWER_CURRENT`.
+- Status/Confidence: Windows v0.8.26 active product FINAL/PASS / HIGH. Retained v0.8.19 and routed-previous v0.8.21 are intentional workload-preservation state, not incomplete active upgrades.
