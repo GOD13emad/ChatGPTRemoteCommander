@@ -1054,3 +1054,24 @@ This file is append-only for substantive project claims, decisions, failures, pr
 ## HISTORY — E059 delta
 
 - 2026-09-22: Added an explicit installer isolation boundary before release publication rather than accepting a validation path that could mutate the live installation.
+
+## E060 — v0.8.31 final cross-platform closeout
+
+- Date/Context: 2026-09-22 final acceptance after E058 runtime-identity prevention and E059 installer-isolation remediation.
+- Stable authority: GitHub latest release `v0.8.31`, tag commit `8bd18836882e5f4a6dd2497142488ac1af93dd70`, immutable=true, draft=false, prerelease=false, 13 assets; draft/upload digest verification passed 13/13 before final publication.
+- Windows verification: live `system_status.version=0.8.31`; Full Power; active/queued operations zero at audit; `default` and `saeed-emad` routes both active at `8bd1883...` with `previous=null`; updater result `CURRENT v0.8.31`; live GUI `windows-user32-gdi` available/enabled/idle/unleased.
+- Linux verification: live `system_status.version=0.8.31`; route active at `8bd1883...` with `previous=null`; updater log records `AUTO_UPDATE_CURRENT version=0.8.31`; workflow health `ok=true`, database integrity `ok`, schema 2; GNOME/Wayland helper available with all native capability groups true.
+- Linux tool-catalog verification: direct raw MCP `tools/list` returned 54 total tools and all 15 `gui_*` methods. This confirms the product catalog even if an already-open client connector session retains an older cached schema.
+- Cross-platform regression: exact v0.8.31 clean candidates passed `npm run check`, `npm test`, and `npm run audit` on Windows and Linux; Windows core=111/111 PASS, GUI contract=75/75 PASS, concurrency/filesystem/runtime/source-integrity/security gates PASS.
+- Installer isolation proof: second exact-tag custom `-NoStartServer` acceptance returned exitCode=0 and `INSTALL_PASS`; custom install HEAD/version were `8bd1883...`/0.8.31; production Windows app HEAD plus SHA-256 of `routing/default.json`, `routing/saeed-emad.json`, `retained-backends.json`, and `last-update.json` were exactly unchanged before/after.
+- Terminal continuity: multiple historical terminal-bearing backends were moved to retained state rather than terminated. The final v0.8.30 previous backend was retired with `DRAIN_TERMINAL_RETAINED` and updater returned CURRENT.
+- Final orphan audit: Windows enumerated 9 live Remote Commander server backends: 2 route-active, 7 retained, orphanCount=0. Before the zero result, one v0.8.29 `saeed-emad` orphan on port 48849 was found with no route/retained reference, no established connection, zero active/queued operations and only an idle official GUI-helper/conhost subtree; two independent safety checks passed before that exact backend/helper were stopped.
+- Historical correction: E059 recorded the intended decision not to publish v0.8.30, but v0.8.30 had already become an immutable public release during the audit sequence. It is not modified or deleted; v0.8.31 supersedes it and is the current stable authority.
+- Durable workflow boundary: recovery/readiness automation remains enabled while `automaticExecution=false` and `runnerConfigured=false`; this is intentional and not a failed gate.
+- Status/Confidence: FINAL/OPERATIONAL for the audited product scope; HIGH confidence from live route/process/native-GUI/workflow evidence, exact cross-platform regression, immutable release metadata and isolated installer acceptance.
+- Reuse Targets: release acceptance, updater lifecycle, installer isolation, multi-profile ownership, GUI capability, durable workflow, Project Brain, operator handoff.
+- Provenance: Emad-PC-Ultimate live runtime/process/routing evidence; aliemad-Labtop live runtime/workflow/native-GUI/MCP catalog evidence; GitHub release/tag/main authority; exact commit `8bd18836882e5f4a6dd2497142488ac1af93dd70`.
+
+## HISTORY — E060 delta
+
+- 2026-09-22: Closed v0.8.31 with immutable release authority, live CURRENT state on Windows/Linux, proven installer isolation, persistent-terminal preservation and zero unreferenced Windows server backends.

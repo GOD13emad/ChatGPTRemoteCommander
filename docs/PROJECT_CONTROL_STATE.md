@@ -1,10 +1,28 @@
 # ChatGPT Remote Commander — Project Brain
 
-Brain revision: R25
-Status: CURRENT / v0.8.31 INSTALLER-ISOLATION + RUNTIME-IDENTITY CANDIDATE
+Brain revision: R26
+Status: FINAL / OPERATIONAL / v0.8.31 STABLE
 As of: 2026-09-22
 Project root: %USERPROFILE%\source\repos\ChatGPTRemoteCommander
 Public repository: GOD13emad/ChatGPTRemoteCommander
+## Authoritative final state — v0.8.31 stable closeout
+
+- Date/Context: 2026-09-22 final cross-platform closeout after installer-isolation acceptance and live promotion.
+- Stable runtime/release authority: immutable GitHub Release/tag `v0.8.31`, runtime commit `8bd18836882e5f4a6dd2497142488ac1af93dd70`, 13 release assets, all release asset digests verified against `SHA256SUMS.txt`.
+- Repository closeout authority: this Brain/evidence update is documentation-only and may place `origin/main` one commit ahead of the stable runtime tag. It does not change package/runtime code and does not redefine the immutable `v0.8.31` runtime authority.
+- Windows live state: `default` and `saeed-emad` both active on v0.8.31 / `8bd1883...`; both route files have `previous=null`; official updater returns `CURRENT`; Full Power remains explicit with all known capabilities enabled unless explicitly disabled.
+- Windows desktop state: native `windows-user32-gdi` backend available/enabled, idle and unleased; policy remains observe-by-default, explicit-current-request-only, no foreground interference by default.
+- Linux live state: active v0.8.31 / `8bd1883...`, `previous=null`, updater `CURRENT`; durable workflow DB integrity PASS; GNOME/Wayland native helper available with screenshot/cursor/window-list/mouse/keyboard/focus capabilities all true.
+- Linux MCP catalog: raw live `tools/list` exposes 54 tools including all 15 GUI tools. Any already-open ChatGPT connector session that still omits those GUI methods is a client/session schema-cache observation, not a server/native-backend deficiency.
+- Release validation: exact v0.8.31 Windows and Linux `npm run check`, `npm test`, and `npm run audit` PASS; Windows core 111/111 and GUI 75/75 PASS; security audit PASS.
+- Installer-isolation acceptance: custom non-canonical `-NoStartServer` install completed `INSTALL_PASS` at exact v0.8.31 commit while production app HEAD plus hashes of both Windows route files, `retained-backends.json`, and `last-update.json` remained byte-identical before/after.
+- Runtime-identity prevention: v0.8.30/v0.8.31 per-candidate `port-<candidatePort>` runtime identity and already-current profile skip prevent same-release marker overwrite/candidate churn observed in earlier Windows multi-profile cycles.
+- Final Windows process audit: 9 Remote Commander backend servers were live; 2 were active route backends, 7 were intentionally retained for live persistent terminals, and orphan count was exactly 0. The last unreferenced v0.8.29 `saeed-emad` backend was independently verified twice as idle/unconnected with only an idle official GUI-helper subtree, then reaped without touching retained/user terminal workloads.
+- Persistent terminal invariant: terminal-bearing superseded backends remain retained until their terminal work ends naturally; update/cleanup does not terminate them merely to reclaim a route or release directory.
+- Durable workflow boundary: scheduler/recovery/readiness continuation is enabled; `automaticExecution=false` and `runnerConfigured=false` remain intentional, so the local control plane does not independently make model decisions or blindly replay mutations.
+- Supersession note: immutable v0.8.30 exists publicly but is superseded by v0.8.31 because v0.8.31 adds the custom-installer isolation boundary identified by E059.
+- Definition of Done: PASS. No open product/runtime blocker remains in this audited scope.
+
 ## Authoritative current state — v0.8.27 terminal-retention fix
 
 - Date/Context: 2026-09-22 live Windows rollout audit after immutable v0.8.26 publication.
@@ -465,3 +483,7 @@ Start the GUI read-performance phase from v0.8.6 without changing the frozen rel
 ## HISTORY — R25 installer isolation delta
 
 - 2026-09-22: During exact-tag acceptance preparation for unpublished v0.8.30, live Windows began an explicit `SourceRef=v0.8.30` rollout while GitHub Latest Release was still v0.8.29. Audit of `install.ps1` identified a boundary: an existing custom `InstallDir` could enter `Invoke-ExistingSafeUpdate`, whose updater uses global `%LOCALAPPDATA%\ChatGPTRemoteCommander` routing/state. v0.8.31 preserves canonical candidate-first updates but routes non-canonical existing `-NoStartServer` validation through isolated in-place source update/test only. v0.8.30 remains an unpublished tag and is superseded by v0.8.31 for release.
+
+## HISTORY — R26 final stable closeout
+
+- 2026-09-22: Published immutable v0.8.31, promoted Windows/Linux to CURRENT, proved custom installer isolation with byte-identical production state, preserved persistent terminal workloads through retained-backend handoff, and closed the final Windows orphan-backend audit at zero.
