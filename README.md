@@ -206,3 +206,5 @@ Each account must use its own tunnel and Runtime API key. The supervisor automat
 v0.8.25 fixes Windows multi-account update isolation: a drain or persistent terminal owned by one ChatGPT profile defers only that profile, while independently healthy profiles can promote without terminating the blocked profile's workload.
 
 v0.8.26 adds Windows terminal-keeper lifecycle handling: long-running persistent-terminal workloads can survive successive zero-downtime upgrades without occupying the single route `previous` slot forever, while cleanup and reaping remain evidence-gated.
+
+v0.8.27 closes the stale-router-accounting edge case: when a previous Windows backend has a live persistent terminal but reports zero active/queued operations, idle/unleased GUI state, no unexpected socket owners, and no non-terminal descendant workload, the updater may detach that backend from `route.previous` while keeping the terminal subtree alive in the retained-backend registry.

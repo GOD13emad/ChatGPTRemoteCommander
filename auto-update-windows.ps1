@@ -122,7 +122,15 @@ function Get-ProtectedReleasePaths {
 }
 function Retain-PreviousBackend([string]$RoutePath,[object]$Old,[string]$Profile,[int]$Canonical,[object[]]$TerminalChildren){
   $st=Get-DrainStatus $Canonical ([int]$Old.port)
-  if(-not($st.ok -and $st.count-eq0)){return $false}
+  if(-not $st.ok){return $false}
+  if($st.count-gt0){
+    $first=Get-TerminalRetentionEvidence $Old $Canonical $TerminalChildren
+    if(-not $first.safe){Log "DRAIN_TERMINAL_RETAIN_DEFER profile=$Profile decision=$($first.decision)";return $false}
+    Start-Sleep -Milliseconds 500
+    $final=Get-TerminalRetentionEvidence $Old $Canonical $TerminalChildren
+    if(-not $final.safe){Log "DRAIN_TERMINAL_RETAIN_RECHECK_DEFER profile=$Profile decision=$($final.decision)";return $false}
+    Log "DRAIN_TERMINAL_STALE_ROUTER_ACCOUNTING profile=$Profile inflight=$($st.count)"
+  }
   Add-RetainedBackend $Profile $Old $TerminalChildren
   Retire-PreviousRoute $RoutePath $Old $Profile
   Log "DRAIN_TERMINAL_RETAINED profile=$Profile port=$($Old.port) pids=$(@($TerminalChildren|ForEach-Object{[int]$_.ProcessId}) -join ',')"
@@ -460,6 +468,55 @@ function Get-StaleDrainEvidence([object]$OldActive,[int]$CanonicalPort){
   }catch{
     $result.decision='DEFER_PROCESS_TREE';return [pscustomobject]$result
   }
+  $result.decision=Get-StaleDrainDecision -ActiveOperations $result.activeOperations -Queued $result.queued -UnexpectedConnections $result.unexpectedConnections -UnsafeDescendants @($result.unsafeDescendants).Count -GuiBusy $result.guiBusy -GuiLeased $result.guiLeased
+  $result.safe=($result.decision-eq'ALLOW')
+  return [pscustomobject]$result
+}
+function Get-TerminalRetentionEvidence([object]$OldActive,[int]$CanonicalPort,[object[]]$TerminalChildren){
+  $result=[ordered]@{safe=$false;decision='DEFER_UNPROVEN';activeOperations=-1;queued=-1;unexpectedConnections=-1;guiBusy=$true;guiLeased=$true;unsafeDescendants=@()}
+  if(-not(Test-OwnedOldBackend $OldActive)){$result.decision='NOT_OWNED';return [pscustomobject]$result}
+  if(@($TerminalChildren).Count-eq0){$result.decision='DEFER_NO_TERMINAL';return [pscustomobject]$result}
+  try{
+    $status=Invoke-Mcp ([int]$OldActive.port) 'system_status'
+    if([string]$status.version-ne[string]$OldActive.version){$result.decision='DEFER_IDENTITY';return [pscustomobject]$result}
+    $cfg=Read-Json ([string]$OldActive.configPath)
+    if([string]$status.instance.profile-ne[string]$cfg.instance.profile){$result.decision='DEFER_IDENTITY';return [pscustomobject]$result}
+    $result.activeOperations=[int]$status.concurrency.activeOperations
+    $result.queued=[int]$status.concurrency.queued
+    $gui=Invoke-Mcp ([int]$OldActive.port) 'gui_status'
+    $result.guiBusy=[bool]$gui.busy
+    $result.guiLeased=[bool]$gui.leased
+  }catch{$result.decision='DEFER_STATUS';return [pscustomobject]$result}
+  try{
+    $cfg=Read-Json ([string]$OldActive.configPath)
+    $marker=Read-Json ([string]$cfg.runtimeState)
+    $backendPid=[int]$marker.pid
+    $routerListener=Get-NetTCPConnection -State Listen -LocalPort $CanonicalPort -ErrorAction SilentlyContinue|Select-Object -First 1
+    if(-not $routerListener){$result.decision='DEFER_ROUTER';return [pscustomobject]$result}
+    $routerPid=[int]$routerListener.OwningProcess
+    $connections=@(Get-NetTCPConnection -State Established -ErrorAction SilentlyContinue|Where-Object{$_.LocalPort-eq[int]$OldActive.port -or $_.RemotePort-eq[int]$OldActive.port})
+    $result.unexpectedConnections=@($connections|Where-Object{$_.OwningProcess-ne$backendPid -and $_.OwningProcess-ne$routerPid}).Count
+    $desc=@(Get-BackendDescendants $backendPid)
+    $byId=@{}; foreach($p in $desc){$byId[[int]$p.ProcessId]=$p}
+    $terminalRoots=@{}; foreach($t in @($TerminalChildren)){$terminalRoots[[int]$t.ProcessId]=$true}
+    $unsafe=@()
+    foreach($p in $desc){
+      $pid=[int]$p.ProcessId
+      $norm=([string]$p.CommandLine).Trim().ToLowerInvariant()
+      $allowed=$terminalRoots.ContainsKey($pid)
+      $cursor=$p;$guard=0
+      while(-not $allowed -and $cursor -and $guard-lt64){
+        $guard++;$parent=[int]$cursor.ParentProcessId
+        if($terminalRoots.ContainsKey($parent)){$allowed=$true;break}
+        if($parent-eq$backendPid){break}
+        if($byId.ContainsKey($parent)){$cursor=$byId[$parent]}else{break}
+      }
+      $isDirectConhost=([string]$p.Name -ieq 'conhost.exe' -and [int]$p.ParentProcessId-eq$backendPid)
+      $isIdleGuiHelper=([string]$p.Name -ieq 'pwsh.exe' -and $norm.Contains('tools\gui-control.ps1 -server') -and -not$result.guiBusy -and -not$result.guiLeased)
+      if(-not($allowed -or $isDirectConhost -or $isIdleGuiHelper)){$unsafe+=$p}
+    }
+    $result.unsafeDescendants=@($unsafe|Select-Object ProcessId,ParentProcessId,Name,CommandLine)
+  }catch{$result.decision='DEFER_PROCESS_TREE';return [pscustomobject]$result}
   $result.decision=Get-StaleDrainDecision -ActiveOperations $result.activeOperations -Queued $result.queued -UnexpectedConnections $result.unexpectedConnections -UnsafeDescendants @($result.unsafeDescendants).Count -GuiBusy $result.guiBusy -GuiLeased $result.guiLeased
   $result.safe=($result.decision-eq'ALLOW')
   return [pscustomobject]$result

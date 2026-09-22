@@ -982,3 +982,19 @@ This file is append-only for substantive project claims, decisions, failures, pr
 ## HISTORY — E054 delta
 
 - 2026-09-22: Converted the v0.8.26 version/release mismatch into an explicit authority gate, completed exact cross-platform code/security/native-readiness validation, and isolated the Linux GUI visibility mismatch to the current connector-session catalog rather than the Remote Commander server.
+
+## E055 — stale router accounting with persistent terminal
+
+- Date/Context: 2026-09-22 Windows live rollout after v0.8.26 release.
+- Claim/Decision: a persistent-terminal backend may be detached from `route.previous` despite stale router inflight accounting only when independent backend/process/socket/GUI evidence proves there is no active non-terminal work; the backend itself must remain alive and retained.
+- Evidence/Source: route `default` generation 21 had active v0.8.26/cf0e677 and previous v0.8.21/31414b6 on port 48833 with three old non-cancellable `run_shell` inflight records. Direct old-backend probe reported version/profile identity match, `activeOperations=0`, `queued=0`, GUI available/idle/unleased, listener owned by PID 17200, and only router/backend established socket owners. Process tree contained direct conhost plus persistent `pwsh.exe -NoLogo -NoProfile` PID 32412 and its conhost child.
+- Root Cause: v0.8.26 `Retain-PreviousBackend` required `Get-DrainStatus.count==0`, so stale router accounting could indefinitely occupy the single previous slot even though the backend had no active MCP operation and had to remain alive for a persistent terminal.
+- Prevention: v0.8.27 introduces `Get-TerminalRetentionEvidence`, allowing non-destructive route detachment only after identity, zero active/queued operations, GUI idle/unleased, socket ownership, and descendant-tree checks pass twice. Terminal descendants are preserved; unrelated descendants fail closed.
+- Regression: updater contract 9/9 PASS; Windows full check/test/audit PASS; core 111/111, GUI 75/75, concurrency/fs/runtime/source-integrity/security PASS.
+- Status/Confidence: root cause CONFIRMED; patch verification PASS/HIGH; publication/live promotion OPEN at this record point.
+- Reuse Targets: zero-downtime updater, persistent terminal lifecycle, stale router recovery, incident prevention, Project Brain.
+- Provenance: live Windows route/runtime/process/socket/MCP evidence; exact candidate checkout based on commit `025179cf202ddce7de39a005b3f0ddfd931c6962`.
+
+## HISTORY — E055 delta
+
+- 2026-09-22: Converted stale router accounting + valid persistent terminal from a permanent profile blocker into a double-checked non-destructive retained-backend handoff.

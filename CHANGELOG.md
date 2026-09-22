@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.8.27 — 2026-09-22
+
+- Allow Windows retained-terminal handoff to retire stale router inflight accounting only after independent backend-idle, GUI-idle, socket-owner and process-tree evidence passes twice.
+- Preserve the entire persistent-terminal subtree; this path never stops the retained backend and never treats persistent terminals as safe for destructive stale-backend retirement.
+- Keep profile-scoped update admission and all v0.8.26 safety barriers unchanged.
+
 ## 0.8.26 — 2026-09-22
 
 - Add a Windows retained-backend terminal keeper so a zero-inflight previous backend may leave the single route slot without terminating its persistent terminals.

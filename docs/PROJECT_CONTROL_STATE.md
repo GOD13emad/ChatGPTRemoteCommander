@@ -1,10 +1,19 @@
 # ChatGPT Remote Commander — Project Brain
 
-Brain revision: R20
-Status: CURRENT / v0.8.26 RELEASE-FINALIZATION CANDIDATE
+Brain revision: R21
+Status: CURRENT / v0.8.27 TERMINAL-RETENTION FIX CANDIDATE
 As of: 2026-09-22
 Project root: %USERPROFILE%\source\repos\ChatGPTRemoteCommander
 Public repository: GOD13emad/ChatGPTRemoteCommander
+## Authoritative current state — v0.8.27 terminal-retention fix
+
+- Date/Context: 2026-09-22 live Windows rollout audit after immutable v0.8.26 publication.
+- Root cause: Windows `default` route still carried `previous=v0.8.21` with three stale router inflight records while the backend itself reported `activeOperations=0`, `queued=0`, GUI idle/unleased and owned a live persistent PowerShell terminal subtree. Existing v0.8.26 keeper correctly refused to kill the terminal-bearing backend, but also required router inflight=0 before detaching it from `route.previous`, leaving the profile blocked.
+- Prevention/guard: v0.8.27 adds `Get-TerminalRetentionEvidence`. Route detachment with stale router accounting is allowed only when the backend identity matches, active/queued operations are zero, GUI is idle/unleased, no unexpected socket owner exists, and every descendant is within the persistent-terminal subtree (plus direct conhost or idle GUI helper). Evidence is checked twice with a 500 ms separation immediately before detachment.
+- Safety invariant: persistent terminals remain unsafe for destructive stale-backend retirement. The new path never stops the retained backend; it only records it in `retained-backends.json` and atomically retires the route slot.
+- Verification: Windows focused updater contract 9/9 PASS; full `npm run check`, `npm test`, and `npm run audit` PASS; core 111/111 and GUI 75/75 PASS; diff check clean.
+- Live precondition evidence: old backend PID 17200 / port 48833 is owned v0.8.21, has `activeOperations=0`, `queued=0`, GUI `busy=false`, `leased=false`, and persistent terminal PID 32412 with conhost child; established sockets are only between backend PID 17200 and canonical router PID 16860.
+- Exact next action: commit/push v0.8.27 with remote-head CAS, verify Linux compatibility on exact commit, publish immutable v0.8.27, run candidate-first rollout, and require terminal PID continuity plus route.previous retirement and updater CURRENT.
 ## Authoritative current state — v0.8.26 release finalization
 
 - Date/Context: 2026-09-22 final cross-platform closeout.
@@ -436,3 +445,7 @@ Start the GUI read-performance phase from v0.8.6 without changing the frozen rel
 ## HISTORY — R20 pre-release delta
 
 - 2026-09-22: Reconciled v0.8.26 release authority after discovering that runtime/main had advanced beyond the published stable channel. Exact Windows/Linux clean-checkout check/test/security gates PASS; Windows native no-input/live GUI PASS; Linux GNOME/Wayland bridge and raw MCP 54-tool/15-GUI catalog PASS. Publication and live promotion remain the only open gates at this checkpoint.
+
+## HISTORY — R21 terminal-retention delta
+
+- 2026-09-22: Live Windows rollout exposed a stale-router-accounting edge case around a valid persistent terminal. Added evidence-gated terminal-aware route detachment rather than killing or blocking the workload; full Windows regression/security PASS.
