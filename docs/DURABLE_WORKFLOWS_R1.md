@@ -6,7 +6,7 @@ Durable workflows give a later authorized session a verifiable project state, go
 
 A missing receipt means the outcome is uncertain, not permission to repeat the action.
 
-This subsystem is not a model, scheduler, background reasoning service or authorization system. When ChatGPT/API execution ends, reasoning ends. A later authorized session can call `workflow_resume` and continue deliberately.
+The durable store does not supply a model or grant authority. Its default scheduler performs recovery/readiness only. The unreleased, separately opt-in [project execution engine](PROJECT_ENGINE.md) can invoke a configured planner for explicitly enrolled, budgeted runs and independently verify acceptance. Without that configuration, a later authorized session calls `workflow_resume` and continues deliberately.
 
 ## Activation
 
@@ -26,11 +26,15 @@ Additional isolated profiles receive separate stores automatically through their
 
 The SQLite database must live on a local filesystem with reliable locking. UNC paths are rejected. The store is deliberately separate from ordinary project roots; workflow project/evidence roots remain independently enforced.
 
-## Eleven tools
+## Seventeen durable workflow tools
 
 `workflow_status`, `workflow_create`, `workflow_get`, `workflow_list`,
 `workflow_note`, `workflow_search`, `workflow_checkpoint`, `workflow_resume`,
-`workflow_call`, `workflow_reconcile`, `workflow_export`.
+`workflow_call`, `workflow_reconcile`, `workflow_export`, `workflow_health`,
+`workflow_operations`, `workflow_finalize`, `workflow_control`, `workflow_revise`,
+`workflow_scheduler_tick`.
+
+When the project runner is explicitly configured, `workflow_run_start`, `workflow_run_status` and `workflow_run_tick` are also exposed. Paused/cancelled workflow control persists independently of scheduler settings and fences new effects and finalization.
 
 Every mutation has a revision precondition. Stored notes are caller-supplied untrusted data and never confer authority.
 
@@ -44,7 +48,7 @@ An already-recorded identical call returns only its receipt and does not execute
 
 If an external effect may have occurred but the result could not be durably recorded, the step becomes uncertain. Normal continuation is blocked until evidence is inspected and `workflow_reconcile` records the outcome. Reconciliation never retries automatically.
 
-Device/config changes, stale/missing checkpoint evidence, unfinished intents and invalid dependency order also block continuation.
+Device/authority changes, stale/missing checkpoint evidence, unfinished intents and invalid dependency order block continuation. Config hash drift is reported; it does not alone block a workflow when device, root and capabilities remain compatible.
 
 ## Data minimization
 
@@ -68,11 +72,11 @@ Cross-process tests cover:
 
 ## Execution policy
 
-Only a fixed host-configured tool set can be wrapped. Shell, deletion, process kill, terminal control and recursive workflow calls are excluded from the adapter. `run_project_command` must be explicitly present in the configured execution list.
+Only a fixed host-configured tool set can be wrapped. Standard policy defaults to a small read-only set. An explicitly configured Full Power workflow can include shell, deletion, process and terminal tools; these are privileged operations, not sandboxed by the journal. Recursive workflow calls remain excluded. The new automatic project runner has its own narrower allowlist and does not inherit all Full Power tools.
 
 Workflow-dispatched filesystem tools are scoped to that workflow's project root even when the containing MCP instance has full Power Mode.
 
-GUI actions, when explicitly allowed, still require the existing lease + fresh frame + foreground + local stop guards. An isolated profile configured with both Power Mode and GUI can journal the bounded GUI tool set plus scoped power/file operations; shell, delete, process-kill and terminal control remain outside durable workflow execution. Memory never revives a stale GUI frame or clears an uncertain GUI outcome.
+Durable workflows cannot acquire interactive GUI takeover or perform GUI input mutations. Authorized observation still requires the existing lease/frame policy. Interactive input belongs to a current direct user session; memory never revives its authority, a stale frame or an uncertain outcome.
 
 ## Multi-account rule
 

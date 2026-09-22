@@ -2,6 +2,9 @@
 // Autonomous scheduler may reconcile evidence automatically, but it never blind-replays mutations.
 import { WorkflowStore, fail } from './workflow-store.mjs';
 import { deriveCapabilitySet, FULL_WORKFLOW_EXECUTION_TOOLS } from './capability-profile.mjs';
+import path from 'node:path';
+import { createProjectEngine } from './project-engine.mjs';
+import { createCommandPlanner } from './project-planner.mjs';
 
 const text = maxLength => ({ type: 'string', minLength: 1, maxLength });
 const id = { ...text(64), pattern: '^[a-z][a-z0-9_-]{0,63}$' };
@@ -47,7 +50,8 @@ export const WORKFLOW_TOOL_DEFINITIONS = [
   definition('workflow_call', 'Journal PREPARED/EXECUTING/EXECUTED-or-UNCERTAIN around one host-allowed tool call. Raw arguments are not stored.', obj({ ...update, stepId: id, tool: text(128), arguments: { type: 'object' } }, ['id', 'stepId', 'expectedRevision', 'tool', 'arguments']), action),
   definition('workflow_reconcile', 'Record independently observed outcome and evidence for an uncertain operation.', obj({ ...update, stepId: id, outcome: { type: 'string', enum: ['applied', 'not_applied'] }, files, explanation: text(4000) }, ['id', 'stepId', 'expectedRevision', 'outcome', 'files', 'explanation']), write),
   definition('workflow_finalize', 'Mark COMPLETED only after every step is done, all acceptance results are true, evidence is hashed, and Project Brain is synchronized.', obj({
-    ...update, acceptanceResults:{type:'array',minItems:1,maxItems:50,items:{type:'boolean'}}, files, summary:text(4000)
+    ...update, acceptanceResults:{type:'array',minItems:1,maxItems:50,items:{type:'boolean'}}, files, summary:text(4000),
+    expectedEvidence:{type:'array',minItems:1,maxItems:20,items:obj({path:text(512),sha256:{type:'string',pattern:'^[a-f0-9]{64}$'},bytes:{type:'integer',minimum:0}},['path','sha256'])}
   }, ['id','expectedRevision','acceptanceResults','files','summary']), write),
   definition('workflow_control', 'Explicitly pause, resume or cancel autonomous continuation with revision conflict protection.', obj({
     ...update, action:{type:'string',enum:['pause','resume','cancel']}, reason:text(1000)
@@ -59,13 +63,22 @@ export const WORKFLOW_TOOL_DEFINITIONS = [
   definition('workflow_export', 'Export one workflow, integrity chain, execution profile and evidence refs; never credentials.', obj(base, ['id']), ro)
 ];
 
+export const PROJECT_ENGINE_TOOL_DEFINITIONS = [
+  definition('workflow_run_start','Explicitly enroll a project in bounded agent execution with immutable independent acceptance checks. May start provider calls when configured autoTick is enabled.',obj({
+    ...update,runId:id,maxActions:{type:'integer',minimum:1,maximum:100},durationMs:{type:'integer',minimum:1000,maximum:3600000},
+    checks:{type:'array',minItems:1,maxItems:50,items:{type:'object'}}
+  },['id','runId','expectedRevision','checks']),action),
+  definition('workflow_run_status','Read durable run budgets, receipts, independent verification and blocker status.',obj({runId:id}),ro),
+  definition('workflow_run_tick','Execute at most one bounded planner/tool step, or independently verify and finalize an enrolled project.',obj({runId:id}),action)
+];
+
 const SAFE_KNOWN = new Set(FULL_WORKFLOW_EXECUTION_TOOLS);
 const DIRECT_SESSION_ONLY_GUI = new Set([
   'gui_mouse_move','gui_mouse_delta','gui_mouse_scroll','gui_mouse_click','gui_mouse_drag',
   'gui_type_text','gui_key_press','gui_focus_window'
 ]);
 
-export function createWorkflowTools({ config, roots, device, configSha256, lookup, validateSchema, dispatch }) {
+export function createWorkflowTools({ config, roots, device, configSha256, lookup, validateSchema, dispatch, planner: injectedPlanner }) {
   const settings = config.durableWorkflows;
   if (settings?.enabled !== true) fail('WORKFLOW_DISABLED');
   if (typeof settings.directory !== 'string') fail('WORKFLOW_DIRECTORY_REQUIRED');
@@ -83,6 +96,15 @@ export function createWorkflowTools({ config, roots, device, configSha256, looku
     directory: settings.directory, allowedRoots: roots, device, configSha256,
     authority, executionProfile: defaultExecutionProfile, schedulerPolicy
   });
+  let engine=null;
+  const runtimeStatus=()=>{
+    const base=store.capabilities();
+    if(!engine)return base;
+    const runner=engine.status();
+    const flags={runnerConfigured:true,automaticExecution:schedulerPolicy.enabled===true&&settings.runner.autoTick===true,
+      automaticContinuationScope:settings.runner.autoTick===true?'ENROLLED_PROJECT_EXECUTION':'RECOVERY_AND_MANUAL_RUN_TICKS'};
+    return {...base,...flags,schedulerState:{...base.schedulerState,...flags},projectEngine:runner};
+  };
 
   async function verifyPlan(plan, meta) {
     try {
@@ -124,10 +146,11 @@ export function createWorkflowTools({ config, roots, device, configSha256, looku
             r=store.resume(item.id);
           }
           if (r.readyForNextStep) {
+            const enrolled=engine?.status().runs.find(run=>run.workflowId===item.id&&!['COMPLETED','BLOCKED','CANCELLED','EXHAUSTED'].includes(run.status));
             ready.push({
               id:item.id,nextStep:r.nextStep,nextAction:r.nextAction,revision:r.state.revision,
               executionProfile:r.executionProfile,
-              stopCondition:r.executionProfile?.modelFamily || r.executionProfile?.modelVariant
+              stopCondition:enrolled?null:engine?'EXPLICIT_RUN_ENROLLMENT_REQUIRED':r.executionProfile?.modelFamily || r.executionProfile?.modelVariant
                 ? 'MODEL_PROFILE_UNAVAILABLE' : 'AGENT_RUNNER_UNAVAILABLE'
             });
           } else if (r.blockers.length) blocked.push({id:item.id,blockers:r.blockers});
@@ -135,7 +158,11 @@ export function createWorkflowTools({ config, roots, device, configSha256, looku
           blocked.push({id:item.id,blockers:[error.workflowCode ?? 'WORKFLOW_SCHEDULER_ERROR']});
         }
       }
-      return {recovered,reconciled,ready,blocked,runnerConfigured:false,automaticExecution:false,automaticContinuationScope:'RECOVERY_AND_READINESS_ONLY',status:store.schedulerStatus()};
+      const execution=engine&&settings.runner.autoTick===true?await engine.tick():null;
+      return {recovered,reconciled,ready,blocked,...(engine?{
+        runnerConfigured:true,automaticExecution:schedulerPolicy.enabled===true&&settings.runner.autoTick===true,
+        automaticContinuationScope:settings.runner.autoTick===true?'ENROLLED_PROJECT_EXECUTION':'RECOVERY_AND_MANUAL_RUN_TICKS',execution
+      }:{runnerConfigured:false,automaticExecution:false,automaticContinuationScope:'RECOVERY_AND_READINESS_ONLY'}),status:engine?runtimeStatus().schedulerState:store.schedulerStatus()};
     } finally { ticking=false; }
   }
 
@@ -147,14 +174,14 @@ export function createWorkflowTools({ config, roots, device, configSha256, looku
     timer.unref?.();
   }
 
-  return {
-    definitions: WORKFLOW_TOOL_DEFINITIONS,
-    close: () => { if(timer)clearInterval(timer); store.close(); },
+  const api = {
+    definitions: [...WORKFLOW_TOOL_DEFINITIONS],
+    close: () => { if(timer)clearInterval(timer); const pending=engine?.close(); if(pending?.then)return pending.then(()=>store.close());store.close(); },
     schedulerTick,
     async execute(name, args) {
       switch (name) {
-        case 'workflow_status': return { ...store.capabilities(), enabled:true, engineEnabled:true, executionTools:[...allowed] };
-        case 'workflow_health': return store.health();
+        case 'workflow_status': return { ...runtimeStatus(), enabled:true, engineEnabled:true, executionTools:[...allowed] };
+        case 'workflow_health': {const health=store.health();return engine?{...health,scheduler:runtimeStatus().schedulerState,projectEngine:engine.status()}:health;}
         case 'workflow_create': return store.create(args);
         case 'workflow_get': return store.get(args.id);
         case 'workflow_list': return { workflows: store.list() };
@@ -169,6 +196,9 @@ export function createWorkflowTools({ config, roots, device, configSha256, looku
         case 'workflow_control': return store.control(args);
         case 'workflow_revise': return store.revise(args);
         case 'workflow_scheduler_tick': return schedulerTick();
+        case 'workflow_run_start': if(!engine)fail('WORKFLOW_RUNNER_DISABLED');return engine.start(args);
+        case 'workflow_run_status': if(!engine)fail('WORKFLOW_RUNNER_DISABLED');return engine.status(args.runId);
+        case 'workflow_run_tick': if(!engine)fail('WORKFLOW_RUNNER_DISABLED');return engine.tick(args.runId);
         case 'workflow_call': {
           const outcome = await store.call(args, {
             validate: async (tool, input) => {
@@ -193,4 +223,26 @@ export function createWorkflowTools({ config, roots, device, configSha256, looku
       }
     }
   };
+  if(settings.runner?.enabled===true) {
+    try {
+      const planner=injectedPlanner??createCommandPlanner(settings.runner.provider);
+      const requested=settings.runner.allowedTools??['list_directory','read_text','file_info','write_text','create_directory'];
+      if(!Array.isArray(requested)||requested.some(name=>!allowed.has(name)))fail('WORKFLOW_RUNNER_POLICY_EXCEEDS_HOST');
+      engine=createProjectEngine({directory:path.join(settings.directory,'project-engine'),planner,
+        execute:(name,args)=>api.execute(name,args),
+        observe:async(name,args,workflow)=>{
+          if(!['read_text','list_directory'].includes(name)||!allowed.has(name))fail('WORKFLOW_OBSERVATION_NOT_ALLOWED');
+          const resumed=store.resume(workflow.id);
+          if(resumed.blockers.length)fail(resumed.blockers[0]);
+          const definition=lookup(name);
+          if(!definition||validateSchema(args,definition.inputSchema).length)fail('WORKFLOW_TOOL_ARGUMENTS_INVALID');
+          return dispatch(name,args,resumed.state);
+        },lookup,policy:settings.runner});
+      api.definitions.push(...PROJECT_ENGINE_TOOL_DEFINITIONS);
+      if(settings.runner.autoTick===true)api.definitions=api.definitions.map(d=>d.name==='workflow_scheduler_tick'?{
+        ...d,description:'Recover interrupted state and execute at most one enrolled planner/tool step or verified finalization. May invoke a configured provider and mutate project files.',annotations:action
+      }:d);
+    } catch(error) {if(timer)clearInterval(timer);store.close();throw error;}
+  }
+  return api;
 }

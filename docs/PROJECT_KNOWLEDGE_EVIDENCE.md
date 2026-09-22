@@ -1075,3 +1075,12 @@ This file is append-only for substantive project claims, decisions, failures, pr
 ## HISTORY — E060 delta
 
 - 2026-09-22: Closed v0.8.31 with immutable release authority, live CURRENT state on Windows/Linux, proven installer isolation, persistent-terminal preservation and zero unreferenced Windows server backends.
+
+## E061 — unreleased project engine qualification
+
+- Date/Context: 2026-09-23, isolated development candidate from `2ad46c5`; production authority remains E060/v0.8.31.
+- Finding: effective unattended execution needs independent user control, durable attempt reservation, crash-safe observation references, and acceptance verification outside model text. A receipt alone must not override pause/cancel or prove a deliverable correct.
+- Finding: filesystem path containment alone did not stop writes through a hardlinked target. A regression reproduced outside-file mutation; a shared pre-mutation alias/identity guard now covers standard/full text and binary writes.
+- Evidence: full Windows regression 203 PASS / 1 privilege-dependent SKIP, GUI contracts 75/75 PASS, focused independent engine review 16/16 PASS, repository security audit PASS, isolated live Codex planner-to-artifact-to-verified-Brain completion PASS.
+- Detailed root causes, guards, reproduction and limitations: [PROJECT_ENGINE_VALIDATION.md](PROJECT_ENGINE_VALIDATION.md).
+- Status/Confidence: first increment LOCAL_QUALIFICATION_PASS; release/cross-platform runtime qualification UNEXECUTED; comparative superiority UNPROVEN. No production rollout occurred.

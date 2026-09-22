@@ -487,3 +487,9 @@ Start the GUI read-performance phase from v0.8.6 without changing the frozen rel
 ## HISTORY — R26 final stable closeout
 
 - 2026-09-22: Published immutable v0.8.31, promoted Windows/Linux to CURRENT, proved custom installer isolation with byte-identical production state, preserved persistent terminal workloads through retained-backend handoff, and closed the final Windows orphan-backend audit at zero.
+
+## Development track — opt-in project engine candidate
+
+- 2026-09-23: Started isolated `codex/project-execution-engine` development from `2ad46c5`. This is an unreleased candidate and does not replace the operational R26/v0.8.31 authority above.
+- Added bounded planner execution, durable user control and budgets, independent acceptance verification, and evidence-bound finalization. Windows local regression and a live Codex artifact qualification passed; see [validation](PROJECT_ENGINE_VALIDATION.md) and [roadmap](PROJECT_ENGINE_ROADMAP.md).
+- Current gate: candidate review/handoff. Adaptive planning, parallel workers and comparative evaluation remain future milestones. No production configuration, service, release or running workload was changed by this development track.

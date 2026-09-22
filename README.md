@@ -57,6 +57,8 @@ For Power Mode, add `--power-mode`. Linux amd64 and arm64 are supported by the i
 
 ## Features
 
+Unreleased candidate: [the opt-in project execution engine](docs/PROJECT_ENGINE.md) adds bounded planner proposals, journaled execution, durable budgets, pause/cancel controls, fresh observations after restart and independent evidence-bound finalization. It is disabled unless explicitly configured and does not automatically enroll existing workflows. See the [development roadmap](docs/PROJECT_ENGINE_ROADMAP.md) for remaining capabilities and comparative qualification.
+
 - Loopback-only MCP server by default (`127.0.0.1:47831`)
 - Configurable allowed filesystem roots
 - Directory listing and UTF-8 text reads
