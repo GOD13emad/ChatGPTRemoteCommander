@@ -33,6 +33,7 @@ The user authorized implementation toward this objective. Development is isolate
 The first increment uses one tool operation per predeclared workflow step, consistent with the existing journal. Dynamic plan expansion is a later milestone. Separate planner proposals from execution and deterministic verification. No agent can alter its acceptance checks during a run. New execution tools appear only when explicitly configured.
 
 ## History
+- 2026-09-23: Published draft PR #5. Exact clean code commit `27827fb` independently passed full Windows test/check under Node 22.23.2 as well as the original Node 26 qualification. Hosted Windows/Linux CI was blocked before any step by an account billing lock; runtime Linux/release qualification remains open.
 - 2026-09-23: Full Windows regression passed (203 Node tests, 1 skipped; GUI contracts 75/75), repository security audit passed, and independent focused review passed 16/16 including the real crash-after-receipt regression. Preparing a reviewable development candidate; production/release qualification remains separate.
 - 2026-09-23: A live Codex planner completed an isolated end-to-end artifact task through journaled write, independent predicate/hash check, and Brain finalization. No production service was changed.
 - 2026-09-23: Independent review found and regressed observation loss across restart, paused-queue starvation, bypass via external manual completion, status/annotation drift and exact-model mismatch. All fixes passed the full local suite.

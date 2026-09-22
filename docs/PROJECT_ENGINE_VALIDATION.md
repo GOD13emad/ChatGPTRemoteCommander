@@ -13,7 +13,11 @@ Scope: unreleased `codex/project-execution-engine` development increment. This r
 | `npm run audit` | PASS | Repository secret/configuration audit; not a penetration test |
 | Live Codex qualification | PASS | CLI 0.146.0 proposed one action; journaled execution wrote an isolated artifact; independent predicate/hash verification and Brain finalization completed |
 
-Qualification ran on Windows with Node 26.7.0. The skipped test requires Windows file-symlink privileges; junction and hardlink regressions passed. Linux contract checks are not a live Linux run of the new engine. Live GUI input, production deployment, long-duration unattended projects, Claude integration and comparative benchmarks remain UNEXECUTED.
+Qualification ran on Windows with Node 26.7.0. An independent repeat of `npm test` and `npm run check` on the exact clean code commit `27827fb93575687a821874421953689e78d8fca1` also passed with official portable Node 22.23.2 / npm 10.9.8. Its archive SHA-256 matched the official release manifest: `1177b4137ba5adaa56354ae40f1080c7450e8ae09cecb47da459d1c52ac99f97`. The repeated test result was again 203 passed / 1 skipped plus GUI contracts 75/75.
+
+The skipped test requires Windows file-symlink privileges; junction and hardlink regressions passed. Linux contract checks are not a live Linux run of the new engine. Live GUI input, production deployment, long-duration unattended projects, Claude integration and comparative benchmarks remain UNEXECUTED.
+
+Draft candidate: [PR #5](https://github.com/GOD13emad/ChatGPTRemoteCommander/pull/5). [Hosted CI run](https://github.com/GOD13emad/ChatGPTRemoteCommander/actions/runs/35783715237) was BLOCKED_BEFORE_EXECUTION: GitHub reported an account billing lock; both Windows and Ubuntu jobs ran zero steps. Local passes do not turn that CI result into a pass. Resolving account billing and rerunning CI remains an external release prerequisite.
 
 Reproduce the isolated live provider check with `node examples/project-engine/run.mjs --codex`, using existing operator authentication. Its test artifact hash was `c18e2d1a4af992e00e6db1885f0e651c686ac3a3cb9ac4b047e4a1ab98b42813`; the run returned `PROJECT_ACCEPTANCE_VERIFIED`, `COMPLETED`, `artifactVerified=true` and `brainCreated=true`. This small qualification establishes a working integration, not general project competence.
 
