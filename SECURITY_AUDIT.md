@@ -1,15 +1,18 @@
 # Security Audit
 
-Audit date: 2026-09-21
+Audit date: 2026-09-22
 
 ## Result
 
-PASS for the current v0.8.20 release candidate content and reachable branch/tag history checked locally after remote-ref synchronization.
+PASS for the current v0.8.22 release candidate content and reachable branch/tag history checked locally after remote-ref synchronization.
 
 The audit found no committed OpenAI-style API secret key, GitHub token, lowercase `tunnel_` identifier, private-key block, bearer-token literal, tracked `config.local.json`, or developer-specific absolute Windows path. On 2026-09-19 a stale local tracking ref first exposed an already-sanitized developer-path finding, and the obsolete public `release/v0.5.0-rc1` branch contained tunnel-shaped self-test fixtures inside the audit test itself. On 2026-09-20 the reachable `feature/blue-green-v0.8.0` history exposed an uppercase fail-closed status symbol that the former case-insensitive tunnel regex misclassified as a credential. The detector now follows the canonical lowercase `tunnel_` prefix used by OpenAI Secure MCP Tunnel examples and includes a regression proving lowercase tunnel-shaped values match while uppercase status/error symbols do not. The unchanged broader history scan then returned `SECURITY_AUDIT_PASS`. No real Runtime API key or tunnel identifier was recovered from these findings.
 
 ## Controls verified
 
+- v0.8.22 prevents nested update generations from overwriting unresolved `route.previous` state. Both platform updaters gate cutover on existing-drain completion, and `router-switch.mjs` independently fails closed with `ROUTER_PREVIOUS_NOT_DRAINED`.
+- v0.8.22 extends persistent-terminal protection to the Windows deferred-maintenance direct-stop path, so zero router inflight is not treated as permission to terminate a terminal-owning backend.
+- v0.8.21 provides guarded GNOME/Wayland GUI support while retaining observe-only default and explicit-current-user takeover authorization.
 - v0.8.20 blocks automatic route cutover when a live Remote Commander persistent terminal is attached to the active backend, and blocks retirement of an already-previous backend before every stop path while such a terminal exists.
 - v0.8.20 detects the exact interactive shell shape created by `start_terminal`; ordinary non-interactive updater/run-shell children are not classified as persistent terminals.
 - v0.8.19 prevents cleanup-only maintenance from restarting a healthy supervisor. Locked superseded releases are surfaced as cleanup-pending evidence instead of causing repeated service/tunnel churn.

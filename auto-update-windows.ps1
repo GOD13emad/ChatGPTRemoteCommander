@@ -457,6 +457,12 @@ function Complete-DeferredDrains {
         Retire-PreviousRoute $rf.FullName $old ([string]$route.profile)
         continue
       }
+      $terminalChildren=@(Get-PersistentTerminalChildren $old)
+      if($terminalChildren.Count-gt0){
+        Log "DRAIN_PERSISTENT_TERMINAL_DEFER profile=$($route.profile) pids=$(@($terminalChildren|ForEach-Object{[int]$_.ProcessId}) -join ',')"
+        $pending+=[string]$route.profile
+        continue
+      }
       $canonical=Get-CanonicalPortForProfile ([string]$route.profile)
       $st=Get-DrainStatus $canonical ([int]$old.port)
       if($st.ok -and ($st.count-eq 0 -or $st.cancellableOnly)){
@@ -751,6 +757,17 @@ try{
     Log 'AUTO_UPDATE_CANDIDATE_PASS'
     exit 0
   }
+  $existingDrainBlocks=@(Complete-DeferredDrains)
+  if($existingDrainBlocks.Count-gt0){
+    foreach($c in $candidates){Stop-OwnedCandidate $c -Strict}
+    $report.status='BLOCKED_EXISTING_DRAIN'
+    $report.pendingDrains=@($existingDrainBlocks)
+    $report.completedAt=(Get-Date).ToUniversalTime().ToString('o')
+    Atomic-Json $ResultFile $report
+    Log "AUTO_UPDATE_EXISTING_DRAIN_BLOCK profiles=$($existingDrainBlocks -join ',')"
+    exit 0
+  }
+
   $terminalBlocks=@()
   foreach($c in $candidates){
     $t=$c.Target

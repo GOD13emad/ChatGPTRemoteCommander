@@ -824,3 +824,37 @@ This file is append-only for substantive project claims, decisions, failures, pr
 - Full validation PASS again: `npm run check`, `npm test`, `npm run audit`, diff integrity. Core suite 110 total / 109 PASS / 1 Windows-only skip; GUI suite 75/75 PASS; Linux GUI contract, Windows runtime contract, source-integrity and security audit PASS.
 - No runtime/product conflict was introduced by the upstream governance commits. Both upstream Actions/billing evidence and v0.8.21 E047 history are retained append-only.
 - Status: rebased source candidate PASS. Exact amended commit clean-checkout validation, remote-CAS push, tag/release, live Linux promotion and post-session native Linux GUI E2E remain OPEN.
+
+
+## E048 — v0.8.22 unresolved-previous route invariant
+
+- Date/Context: 2026-09-22, successor audit after immutable v0.8.21 added Linux GNOME/Wayland GUI support.
+- Baseline authority: `origin/main=31414b65f8292fdc3111f9c31bf886e14458f0cb`; tag `v0.8.21^{}` resolves to the same commit; GitHub release v0.8.21 is public, non-prerelease, immutable, published 2026-09-22T01:43:59Z with 13 assets.
+- Superseded evidence: v0.8.20 has an annotated tag resolving to `b08f4588a1812cad5081b77ea66d2ad9726fed20` but no GitHub Release. It remains unpublished candidate history only.
+- Confirmed gap: `tools/router-switch.mjs` wrote `previous=current.active` without rejecting an already-populated `current.previous`; a new generation could therefore discard route authority for an older still-draining backend.
+- Confirmed Windows gap: `Complete-DeferredDrains` could call `Stop-OldBackend` on zero-inflight/cancellable status before checking whether the old backend owned a Remote Commander persistent terminal.
+- Prevention:
+  1. Windows candidate promotion calls `Complete-DeferredDrains` before active-terminal admission and before any route mutation. Unresolved previous drains stop all unpromoted candidates and persist `BLOCKED_EXISTING_DRAIN` plus `AUTO_UPDATE_EXISTING_DRAIN_BLOCK`.
+  2. Linux candidate promotion resolves `previous.port/configPath/projectDir` and calls `drain_previous_once` before active-terminal admission/route switch. Failure stops the candidate and logs `AUTO_UPDATE_EXISTING_DRAIN_BLOCK`.
+  3. Windows `Complete-DeferredDrains` checks `Get-PersistentTerminalChildren $old` before all direct stop paths; terminal ownership logs `DRAIN_PERSISTENT_TERMINAL_DEFER` and remains pending.
+  4. `tools/router-switch.mjs` independently rejects any switch while `current.previous` exists with `ROUTER_PREVIOUS_NOT_DRAINED`.
+- Functional regression: router-switch is invoked against a synthetic route containing active+previous; it must fail with `ROUTER_PREVIOUS_NOT_DRAINED` and leave generation, active and previous byte-semantics unchanged.
+- Integration preservation: v0.8.21 Linux GUI updater synchronization (`install_linux_gui_backend`), Git-tag-first discovery, zero-interference policy and Linux GUI contract assertions remain intact.
+- Focused validation: combined updater/router suite 13/13 PASS; Windows updater self-test PASS; Linux `bash -n` PASS; `node --check tools/router-switch.mjs` PASS; `LINUX_GUI_CONTRACT_PASS`; diff integrity PASS.
+- Method choice: keep one previous generation and make unresolved drain a hard admission barrier rather than expanding the route schema into an unbounded generation chain. This is the minimum sufficient control consistent with session draining and avoids a new terminal/session broker.
+- Status/Confidence: root cause CONFIRMED / v0.8.22 focused implementation PASS / high; full release-candidate gates OPEN at record creation.
+- Reuse Targets: blue/green update invariant, persistent-terminal safety, route authority, Linux GUI upgrade integration, release preflight.
+- Provenance: baseline commit/tag/release metadata above; `auto-update-windows.ps1`, `auto-update-linux.sh`, `tools/router-switch.mjs`, `test/auto-update-contract.test.mjs`, `test/router-retire.test.mjs`.
+
+## HISTORY — E048 delta
+
+- 2026-09-22: Added hard unresolved-previous admission, complete terminal-safe deferred retirement and router-level nested-generation rejection on top of immutable v0.8.21.
+
+
+### E048 validation delta — full v0.8.22 source gates
+
+- Version authority PASS: package/plugin/server=0.8.22; Windows and Linux installer defaults=v0.8.22.
+- Complete release-candidate validation PASS: `npm run check`, `npm test`, `npm run audit`, Windows native no-input GUI self-test, Linux shell syntax, Linux GUI contract and diff integrity.
+- Core suite: 111/111 PASS. GUI suite: 75/75 PASS. `LINUX_GUI_CONTRACT_PASS`, `WINDOWS_RUNTIME_CONTRACT_PASS`, `SOURCE_INTEGRITY_PASS`, `SECURITY_AUDIT_PASS`, installer/onboarding PASS.
+- v0.8.21 zero-interference and Linux GNOME/Wayland functionality remains covered by the same full regression suite.
+- Status/Confidence: v0.8.22 source release candidate PASS / high. Commit/CAS, independent exact-commit Linux validation, tag/artifact/publication/live rollout remain OPEN.

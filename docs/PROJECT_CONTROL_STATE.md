@@ -1,7 +1,7 @@
 # ChatGPT Remote Commander — Project Brain
 
-Brain revision: R15
-Status: CURRENT / v0.8.21 RELEASE CANDIDATE
+Brain revision: R16
+Status: CURRENT / v0.8.22 RELEASE CANDIDATE
 As of: 2026-09-22
 Project root: %USERPROFILE%\source\repos\ChatGPTRemoteCommander
 Public repository: GOD13emad/ChatGPTRemoteCommander
@@ -308,3 +308,22 @@ Start the GUI read-performance phase from v0.8.6 without changing the frozen rel
 ## HISTORY — R15 delta
 
 - 2026-09-22: Preserved unexpected upstream v0.8.19/v0.8.20 authority, rebased the Linux GUI/zero-interference work as v0.8.21, retained persistent-terminal and cleanup-loop protections, and kept current-session Linux native GUI E2E explicitly unproven rather than forcing desktop disruption.
+
+
+## Route-generation invariant successor — v0.8.22
+
+- Previous stable authority: immutable v0.8.21 at `31414b65f8292fdc3111f9c31bf886e14458f0cb`, with 13 published assets. Its Linux GNOME/Wayland GUI, zero-interference policy, Git-tag-first updater discovery and scheduler truthfulness are retained unchanged.
+- v0.8.20 remains an unpublished tagged candidate only; no v0.8.20 GitHub Release exists.
+- Trigger: exact route-lifecycle audit proved a second cutover could overwrite an unresolved `route.previous`; Windows deferred maintenance also had one direct stop path without a persistent-terminal check.
+- v0.8.22 objective: one bounded failure-prevention change set — resolve or block every existing previous generation before any new cutover, guard every deferred stop against persistent terminals, and enforce the invariant inside router-switch itself.
+- Focused gates PASS: updater/router 13/13, Windows updater self-test, Linux shell syntax, router syntax, Linux GUI contract and diff integrity.
+- Desktop policy: no GUI takeover, mouse, keyboard or focus mutation is needed for this release. Existing explicit-current-request-only behavior remains authoritative.
+- Live Windows user workload remains protected: the old default backend with persistent terminals must be allowed to keep running until the user/workload ends or is explicitly closed; release rollout must report a safe blocker rather than force cleanup.
+- Hosted GitHub Actions remains an external billing-lock gate and does not substitute for local cross-platform release validation.
+- Full v0.8.22 source validation PASS: core 111/111, GUI 75/75, check/test/audit, Linux GUI contract, Windows runtime/native no-input, installer/onboarding, source-integrity, security and Linux syntax all PASS.
+- Open gates: remote-CAS commit/push, exact clean Linux commit validation, exact-tag artifact/installer acceptance, immutable publication, safe Linux rollout, and Windows blocker behavior verification.
+- Exact next action: run the complete release suite on version-authoritative v0.8.22, then continue only if every gate passes and origin/main still equals the v0.8.21 authority.
+
+## HISTORY — R16 delta
+
+- 2026-09-22: Preserved the immutable v0.8.21 Linux GUI baseline and added the minimum sufficient route-generation invariant needed to prevent nested cutover/orphaned persistent sessions.

@@ -46,6 +46,8 @@ test('auto updater is candidate-first, hardware-gated and commit-point aware',()
     'DRAIN_STALE_DEFER',
     'DRAIN_PERSISTENT_TERMINAL_DEFER',
     'AUTO_UPDATE_PERSISTENT_TERMINAL_BLOCK',
+    'AUTO_UPDATE_EXISTING_DRAIN_BLOCK',
+    'BLOCKED_EXISTING_DRAIN',
     'Get-PersistentTerminalChildren',
     'ROUTER_PREVIOUS_RETIRED',
     'router-retire.mjs',
@@ -72,7 +74,9 @@ test('auto updater is candidate-first, hardware-gated and commit-point aware',()
   assert.ok(s.indexOf('Get-StaleDrainEvidence $OldActive') < s.indexOf('Stop-StaleBackendTree $OldActive'),'stale evidence must precede stale-backend retirement');
   assert.ok(s.includes("Retire-PreviousRoute $Target.RoutePath $OldActive $Target.Profile"),'successful Windows drain must atomically retire route.previous');
   const drain=s.slice(s.indexOf('function Drain-Previous'),s.indexOf('function Complete-DeferredDrains'));
-  assert.ok(drain.indexOf('Get-PersistentTerminalChildren $OldActive') < drain.indexOf('Stop-OldBackend $OldActive'),'Windows retirement must check persistent terminals before every old-backend stop path');
+  assert.ok(drain.indexOf('Get-PersistentTerminalChildren $OldActive') < drain.indexOf('Stop-OldBackend $OldActive'),'Windows immediate retirement must check persistent terminals before old-backend stop');
+  const deferred=s.slice(s.indexOf('function Complete-DeferredDrains'),s.indexOf('function Has-SupersededRelease'));
+  assert.ok(deferred.indexOf('Get-PersistentTerminalChildren $old') < deferred.indexOf('Stop-OldBackend $old'),'Windows deferred retirement must check persistent terminals before every old-backend stop path');
   const maintenance=s.slice(s.indexOf('$controlMismatch=($controlHead-ne $stage.Commit)'),s.indexOf('Push-Location $stage.Dir'));
   assert.ok(maintenance.includes("if($controlMismatch)") && maintenance.includes('Recycle-ControlSupervisor'),'control-code promotion may recycle the supervisor');
   const cleanupOnly=maintenance.slice(maintenance.lastIndexOf('$cleanupPending=@(Cleanup-Releases)'));
@@ -86,7 +90,11 @@ test('auto updater is candidate-first, hardware-gated and commit-point aware',()
   assert.ok(s.includes("if($last.ok -and $last.count-gt 0 -and $last.cancellableOnly)"),'Windows may cancel only explicitly classified long-lived requests');
   assert.ok(s.indexOf('AUTO_UPDATE_NEWER_CURRENT') < s.indexOf("Run-Gate $stage.Dir 'check'"), 'automatic downgrade guard must precede candidate gates/cutover');
   const cutover=s.indexOf('if(Test-Path $t.RoutePath)');
+  const existingDrainAdmission=s.indexOf('$existingDrainBlocks=@(Complete-DeferredDrains)');
   const terminalAdmission=s.indexOf('$terminalBlocks=@()');
+  assert.ok(existingDrainAdmission>0 && existingDrainAdmission<terminalAdmission,'unresolved previous drain must be handled before active-terminal admission');
+  const existingDrainBlock=s.slice(existingDrainAdmission,terminalAdmission);
+  assert.ok(existingDrainBlock.includes('Stop-OwnedCandidate') && existingDrainBlock.includes('BLOCKED_EXISTING_DRAIN'),'Windows existing-drain blocker must clean candidates and exit before cutover');
   assert.ok(terminalAdmission>0 && terminalAdmission<cutover,'persistent terminal admission must run before Windows route cutover');
   const terminalAdmissionBlock=s.slice(terminalAdmission,cutover);
   assert.ok(terminalAdmissionBlock.includes('Stop-OwnedCandidate') && terminalAdmissionBlock.includes('BLOCKED_PERSISTENT_TERMINALS'),'Windows terminal blocker must clean candidates and persist a non-cutover result');
@@ -97,8 +105,10 @@ test('auto updater is candidate-first, hardware-gated and commit-point aware',()
 });
 
 test('stable router and supervisor preserve canonical ports while backends are versioned',()=>{
-  const router=read('src/stable-router.mjs'),sup=read('supervisor-routing.ps1'),main=read('autostart-windows.ps1');
+  const router=read('src/stable-router.mjs'),switcher=read('tools/router-switch.mjs'),sup=read('supervisor-routing.ps1'),main=read('autostart-windows.ps1');
   for(const marker of ['ROUTER_GENERATION_CONFLICT','inflightByPort','inflightDetailsByPort','cancellable','subscriptions/listen','127.0.0.1','active.port'])assert.ok(router.includes(marker),marker);
+  assert.ok(switcher.includes('ROUTER_PREVIOUS_NOT_DRAINED'),'router switch must fail closed while any previous generation remains');
+  assert.ok(switcher.indexOf('current.previous') < switcher.indexOf("fetch('http://127.0.0.1:'"),'previous-generation guard must run before candidate switch I/O');
   for(const marker of [
     'Get-RouteState','Start-RoutedBackend','Start-RouterForRoute','Ensure-RoutedProfile','Start-AutoUpdateIfDue',
     'Get-RouterStatusSafe','Get-RouterBackendActivity','Get-RoutedBackendRecoveryDecision',
@@ -186,6 +196,7 @@ test('Linux updater is candidate-first, hardware-gated, routed and rollback-awar
     'trap validation_cleanup ERR',
     'persistent_terminal_pids',
     'AUTO_UPDATE_PERSISTENT_TERMINAL_BLOCK',
+    'AUTO_UPDATE_EXISTING_DRAIN_BLOCK',
     'git ls-remote --tags --refs',
     'sort -V',
     'install_linux_gui_backend',
@@ -206,7 +217,10 @@ test('Linux updater is candidate-first, hardware-gated, routed and rollback-awar
   assert.ok(s.indexOf('AUTO_UPDATE_NEWER_CURRENT') < s.indexOf('run_gate "$STAGE_DIR" check npm run check'),'Linux automatic downgrade guard must precede gates/cutover');
   const gates=s.indexOf('run_gate "$STAGE_DIR" check npm run check');
   const cutover=s.lastIndexOf('if [[ -f "$ROUTE" ]]');
+  const existingDrainAdmission=s.indexOf('EXISTING_PREV_PORT="$(json_field');
   const terminalAdmission=s.indexOf('TERMINAL_PIDS="$(persistent_terminal_pids');
+  assert.ok(existingDrainAdmission>0 && existingDrainAdmission<terminalAdmission,'Linux unresolved previous drain must be handled before active-terminal admission');
+  assert.ok(s.slice(existingDrainAdmission,terminalAdmission).includes("AUTO_UPDATE_EXISTING_DRAIN_BLOCK"),'Linux existing-drain blocker must exit before route mutation');
   assert.ok(terminalAdmission>0 && terminalAdmission<cutover,'Linux persistent terminal admission must run before route cutover');
   assert.ok(s.slice(terminalAdmission,cutover).includes('stop_owned_candidate "$CANDIDATE_PID" "$STAGE_DIR"'),'Linux terminal blocker must stop the unpromoted candidate');
   const commit=s.indexOf('CUTOVER_COMMITTED=1');

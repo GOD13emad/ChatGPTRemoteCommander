@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.8.22 — 2026-09-22
+
+- Prevent nested blue/green generations from overwriting an unresolved `route.previous`. Windows and Linux now attempt to finish the existing drain after candidate validation but before any new route mutation; unresolved drains stop the candidate with `BLOCKED_EXISTING_DRAIN` / `AUTO_UPDATE_EXISTING_DRAIN_BLOCK`.
+- Complete Windows deferred-drain terminal safety: `Complete-DeferredDrains` checks persistent-terminal descendants before every direct old-backend stop path, including zero-inflight/cancellable maintenance.
+- Enforce the invariant inside `tools/router-switch.mjs`: any switch with an existing `current.previous` fails closed with `ROUTER_PREVIOUS_NOT_DRAINED`, so a future caller cannot silently overwrite older route authority.
+- Add a functional router regression proving rejected nested switches leave generation, active and previous state unchanged, plus Windows/Linux ordering regressions around existing-drain admission.
+- Preserve all v0.8.21 Linux GNOME/Wayland GUI and zero-interference controls, v0.8.20 persistent-terminal admission, and v0.8.19 cleanup-only/no-recycle protection.
+
 ## 0.8.21 — 2026-09-22
 
 - Add guarded native GUI control for Linux GNOME 46 / Wayland through a local GNOME Shell extension plus bounded helper, while preserving the existing exclusive lease, fresh single-use frame and explicit-current-user takeover boundary.

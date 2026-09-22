@@ -7,6 +7,7 @@ import { spawnSync } from 'node:child_process';
 
 const root=path.resolve(import.meta.dirname,'..');
 const tool=path.join(root,'tools','router-retire.mjs');
+const switchTool=path.join(root,'tools','router-switch.mjs');
 function state(dir){
   const file=path.join(dir,'route.json');
   fs.writeFileSync(file,JSON.stringify({
@@ -18,6 +19,7 @@ function state(dir){
   return file;
 }
 function run(args){return spawnSync(process.execPath,[tool,...args],{encoding:'utf8'});}
+function runSwitch(args){return spawnSync(process.execPath,[switchTool,...args],{encoding:'utf8'});}
 
 test('router retire atomically clears the exact previous backend and advances generation',()=>{
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),'rc-retire-'));
@@ -46,4 +48,26 @@ test('router retire fails closed on previous identity mismatch',()=>{
   assert.notEqual(r.status,0);
   assert.match(r.stderr,/ROUTER_RETIRE_PREVIOUS_PORT_MISMATCH/);
   assert.notEqual(JSON.parse(fs.readFileSync(file,'utf8')).previous,null);
+});
+
+
+test('router switch refuses to overwrite an unresolved previous generation',()=>{
+  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'rc-switch-prev-'));
+  const file=state(dir);
+  const cfg=path.join(dir,'candidate-config.json');
+  fs.writeFileSync(cfg,'{}\n');
+  const before=JSON.parse(fs.readFileSync(file,'utf8'));
+  const r=runSwitch([
+    '--state',file,'--expected-generation','11','--profile','default',
+    '--port','49998','--version','0.8.22',
+    '--commit','3333333333333333333333333333333333333333',
+    '--config-sha','cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc',
+    '--config-path',cfg,'--project-dir',dir
+  ]);
+  assert.notEqual(r.status,0);
+  assert.match(r.stderr,/ROUTER_PREVIOUS_NOT_DRAINED/);
+  const after=JSON.parse(fs.readFileSync(file,'utf8'));
+  assert.equal(after.generation,before.generation);
+  assert.deepEqual(after.active,before.active);
+  assert.deepEqual(after.previous,before.previous);
 });

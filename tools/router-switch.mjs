@@ -25,6 +25,7 @@ async function main(){
  const current=readRouterState(a.stateFile);
  if(current.profile!==a.profile)throw new Error('ROUTER_SWITCH_PROFILE_MISMATCH');
  if(current.generation!==a.expectedGeneration)throw new Error('ROUTER_GENERATION_CONFLICT');
+ if(current.previous)throw new Error('ROUTER_PREVIOUS_NOT_DRAINED');
  if(!fs.existsSync(a.configPath)||!fs.existsSync(a.projectDir))throw new Error('ROUTER_SWITCH_PATH_MISSING');
  const response=await fetch('http://127.0.0.1:'+a.port+'/health',{redirect:'error',signal:AbortSignal.timeout(5000)});
  if(!response.ok)throw new Error('ROUTER_SWITCH_CANDIDATE_HEALTH');

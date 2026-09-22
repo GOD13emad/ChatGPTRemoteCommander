@@ -427,6 +427,19 @@ node "$STAGE_DIR/tools/hardware-selftest.mjs" --url "http://127.0.0.1:$PORT/mcp"
 if [[ "$NO_PROMOTE" == 1 ]]; then stop_owned_candidate "$CANDIDATE_PID" "$STAGE_DIR"; CANDIDATE_PID=""; trap - ERR; log 'AUTO_UPDATE_CANDIDATE_PASS'; exit 0; fi
 
 if [[ -f "$ROUTE" ]]; then
+  EXISTING_PREV_PORT="$(json_field "$STAGE_DIR" "$ROUTE" previous.port)"
+  EXISTING_PREV_CFG="$(json_field "$STAGE_DIR" "$ROUTE" previous.configPath)"
+  EXISTING_PREV_PROJECT="$(json_field "$STAGE_DIR" "$ROUTE" previous.projectDir)"
+  if [[ -n "$EXISTING_PREV_PORT" && -n "$EXISTING_PREV_CFG" ]] && ! drain_previous_once "$STAGE_DIR" "$EXISTING_PREV_PORT" "$EXISTING_PREV_CFG" "$EXISTING_PREV_PROJECT"; then
+    stop_owned_candidate "$CANDIDATE_PID" "$STAGE_DIR"
+    CANDIDATE_PID=""
+    trap - ERR
+    log 'AUTO_UPDATE_EXISTING_DRAIN_BLOCK profile=default'
+    exit 0
+  fi
+fi
+
+if [[ -f "$ROUTE" ]]; then
   LIVE_ROUTE_CFG=""
   LIVE_ROUTE_PROJECT=""
   IFS=$'\t' read -r _ _ _ _ _ _ LIVE_ROUTE_CFG LIVE_ROUTE_PROJECT < <(route_tsv "$STAGE_DIR" "$ROUTE")
