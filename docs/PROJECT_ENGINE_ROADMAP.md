@@ -1,6 +1,6 @@
 # Project execution engine roadmap
 
-Date: 2026-09-23. Candidate branch: codex/project-execution-engine.
+Date: 2026-09-24. Released version: v0.8.34.
 Baseline: 2ad46c544907f6ca2c6c47ebf5d88b6a661e7047 (runtime code identical to v0.8.31).
 
 ## Objective
@@ -10,11 +10,11 @@ Develop Remote Commander into a measurable project execution and management syst
 1. BASELINE: source/runtime comparison and gap inventory — COMPLETE.
 2. EXECUTION FOUNDATION: reliable pause/cancel, opt-in planner/executor/verifier loop, durable attempt budgets, evidence-bound completion — COMPLETE for the first increment.
 3. QUALIFICATION: deterministic end-to-end regression, full existing suites, independent review, candidate handoff — COMPLETE for local qualification and the reviewable development candidate.
-4. ADAPTIVE MANAGEMENT: 4A prerequisite insertion, bounded parallel proposal workers and durable provider-call budgets — LOCAL_QUALIFICATION_PASS. 4B general worker execution, blocker escalation and monetary accounting remain PLANNED.
+4. ADAPTIVE MANAGEMENT: 4A prerequisite insertion, bounded parallel proposal workers and durable provider-call budgets — RELEASED / Windows and Linux CURRENT. 4B general worker execution, blocker escalation and monetary accounting remain PLANNED.
 5. CONNECTOR PARITY: catalog drift diagnostics, qualified providers, browser/application integrations and transparent terminal reconnection — PLANNED.
 6. COMPARATIVE EVALUATION: pinned real project corpus, equal models/budgets, completion/correctness/recovery/intervention/cost measurements — PLANNED.
 
-CURRENT: milestone 4A is locally qualified and published to PR #5. The user authorized Windows/Linux finalization and GitHub publication; v0.8.34 cross-platform release qualification is now in progress. See [release gates](RELEASE_0.8.34.md) and [qualification evidence](PROJECT_ENGINE_VALIDATION.md). After release, the next development slice is 4B worker execution isolation and explicit escalation. No percentage or superiority score is asserted.
+CURRENT: milestone 4A is released in immutable v0.8.34, PR #5 is merged, and official updates on both Windows and Linux report CURRENT. See [release gates](RELEASE_0.8.34.md) and [qualification evidence](PROJECT_ENGINE_VALIDATION.md). The next development slice is 4B worker execution isolation and explicit escalation. No percentage or superiority score is asserted. Historical entries below describe their observation time, not the current release status.
 
 ## First increment acceptance
 - Opt-in execution actually calls a configured planner and dispatches schema-valid proposals through existing journaled workflow tools.

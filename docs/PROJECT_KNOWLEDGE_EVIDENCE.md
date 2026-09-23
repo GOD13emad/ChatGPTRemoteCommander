@@ -1095,3 +1095,12 @@ This file is append-only for substantive project claims, decisions, failures, pr
 - Deterministic team/adaptive demo PASS: one inserted prerequisite, three planning attempts, nine reserved and observed provider calls, source read, artifact write, independent verification and Brain COMPLETED. Store plan/control/recovery checks separately passed 97/97. Full regression remains the next gate at this record point.
 - Publication boundary: local source development continues. GitHub CLI currently cannot read account configuration under the restricted environment; no new PR update is claimed from this turn.
 - Final qualification: full test/check/audit PASS on Node 22.23.2 and 26.7.0; 292 core PASS / 1 skip plus GUI contracts 75/75. An argument-error compatibility regression exposed by the full suite was normalized back to `PROJECT_ARGUMENTS_INVALID` while preserving zero effects. Existing Windows runtime cleanup passed with a process-local authorized TEMP/TMP root; no global settings or test assertions were changed. Node22 source manifests were byte-identical before/after qualification.
+
+## Release v0.8.34 — deadline classification and cross-platform closeout
+
+- Claim: exact commit 86af9fe7e803bbba19fa2d3126d81389509bd176 is released, immutable/latest and active on qualified Windows/Linux devices; official updater reruns report CURRENT.
+- Evidence: RELEASE_0.8.34.md; hosted CI 35931231097/35931226455/35931690735; release 395129107; merged PR #5. Both fresh/repeated pinned installers and candidate-first compatibility checks passed. Thirteen reproducible assets matched API/download hashes.
+- Failure -> prevention -> regression: an early timer wakeup classified a deadline as BLOCKED -> recheck persisted deadline before aborting -> forced early-wakeup test requires EXHAUSTED, exactly one attempt and zero effects.
+- Continuity correction: pre-rollout live status showed Windows already configured on v0.8.32 with the runner enabled, unlike the older handoff; Linux was v0.8.31 without it. Preserve live configuration, verify current state and never infer deployment from a stale handoff.
+- Windows drain maintenance retained terminal-bearing backends instead of terminating work. Six named terminal PIDs and three scientific process PIDs remained alive. Linux and both Windows profiles reported schema 2 and databaseIntegrity=ok.
+- Limits: milestone 4B, broader connectors/providers and comparative benchmarks remain planned. GUI input E2E limitations are unchanged. No universal project-completion or superiority claim is made.

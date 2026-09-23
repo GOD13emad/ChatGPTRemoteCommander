@@ -1,14 +1,14 @@
 # ChatGPT Remote Commander — Project Brain
 
-Brain revision: R26
-Status: FINAL / OPERATIONAL / v0.8.31 STABLE
-As of: 2026-09-22
+Brain revision: R27
+Status: FINAL / OPERATIONAL / v0.8.34 STABLE
+As of: 2026-09-24
 Project root: %USERPROFILE%\source\repos\ChatGPTRemoteCommander
 Public repository: GOD13emad/ChatGPTRemoteCommander
-## Current release work — v0.8.34 candidate
+## Current authority — v0.8.34 released
 
-- 2026-09-23: User explicitly authorized Windows/Linux finalization and GitHub publication. Milestone 4A is implemented and pushed in PR #5; exact candidate gates are tracked in RELEASE_0.8.34.md.
-- Stable authority remains v0.8.31 until the new immutable release is published. Candidate qualification and promotion must preserve current terminal workloads and credentials.
+- 2026-09-23: User explicitly authorized Windows/Linux finalization and GitHub publication. Milestone 4A is released through merged PR #5; final gates are recorded in RELEASE_0.8.34.md.
+- v0.8.34 is immutable/latest and deployed on both devices; official updaters report CURRENT. Windows both profiles and Linux default passed doctor, no-input hardware checks and database integrity. Active terminal and scientific processes were preserved. See RELEASE_0.8.34.md for exact commit and receipts.
 - The runner remains opt-in and existing workflows are not enrolled by an update. General executing workers, monetary accounting, Claude qualification and comparative benchmarks remain outside this release.
 - GitHub access/hosted execution have recovered. Ubuntu CI identified missing GdkPixbuf test prerequisites; v0.8.32 adds them to CI without weakening native checks.
 ## Authoritative final state — v0.8.31 stable closeout
