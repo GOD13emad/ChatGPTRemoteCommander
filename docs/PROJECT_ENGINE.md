@@ -1,4 +1,4 @@
-# Opt-in project execution engine — unreleased candidate
+# Opt-in project execution engine — v0.8.32
 
 The engine connects a bounded planner to existing journaled Commander tools and independent acceptance checks. It can execute an explicitly enrolled project, inspect progress, stop safely, and finalize a verified artifact. It does not supply a new model or establish superiority over other agents.
 

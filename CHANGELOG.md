@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.8.32 — 2026-09-23
+
+- Add an opt-in durable project runner with a bounded Codex/trusted-command planner, journaled execution, independent acceptance checks and evidence-bound Project Brain completion.
+- Preserve pause/cancel authority across late receipts; reserve action/provider budgets before dispatch and recover recorded read observations after restart.
+- Add opt-in adaptive prerequisite insertion with exact revision/receipt recovery and bounded parallel proposal workers with a single executing coordinator.
+- Reject hardlinked write targets before mutation and validate file identity/canonical paths for independent verification.
+- Existing installations retain recovery/readiness-only behavior until the runner is explicitly configured and projects are enrolled. Native desktop input behavior is unchanged.
+- Cross-platform qualification and release evidence: docs/RELEASE_0.8.32.md. Claude execution, isolated mutating workers, monetary accounting and universal comparative superiority remain unqualified.
+- Install the Linux native helper's GdkPixbuf dependencies in hosted CI before running its existing contract/self-test.
+
 ## 0.8.31 — 2026-09-22
 
 - Keep custom/isolated Windows installer validation from delegating an existing non-canonical checkout into the global candidate updater when `-NoStartServer` is used.

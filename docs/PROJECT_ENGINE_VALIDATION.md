@@ -1,7 +1,7 @@
 # Project engine candidate qualification
 
 Date: 2026-09-23. Baseline: `2ad46c544907f6ca2c6c47ebf5d88b6a661e7047`.
-Scope: unreleased `codex/project-execution-engine` development increment. This record does not supersede the v0.8.31 production acceptance record.
+Scope: v0.8.32 development qualification. Current publication and live rollout evidence is recorded in RELEASE_0.8.32.md; historical entries below retain their original scope.
 
 ## Current qualification — milestone 4A
 
@@ -13,7 +13,7 @@ Focused evidence includes 42 store extension cases, 20 team cases, 20 adaptive i
 
 Restricted-environment diagnosis and correction are recorded in E062 of `PROJECT_KNOWLEDGE_EVIDENCE.md`. Full test commands used a process-local TEMP/TMP directory under the development workspace because the existing Windows runtime test could not clean a profile-short-name temporary path under current restrictions. No test assertion was skipped or weakened, and no global environment setting changed. New alias/hardlink/identity regressions pass after full-target canonicalization replaced unnecessary ancestor canonicalization.
 
-Publication status: LOCAL_CANDIDATE. GitHub CLI account configuration is inaccessible and the current environment cannot connect to github.com:443. PR #5 still represents the previously published increment until a confirmed push. Hosted CI, live Linux execution, native GUI use and production rollout remain separate open gates.
+Publication status: PR #5 now includes exact 4A commit 1f98f03. GitHub access and hosted execution are restored. Windows hosted CI passed; Ubuntu exposed a missing GdkPixbuf runner dependency. v0.8.32 provisions that dependency before the unchanged helper test. Final candidate CI, native, installer and deployment results are tracked in RELEASE_0.8.32.md.
 
 ## Historical results — first increment
 
@@ -29,7 +29,7 @@ Qualification ran on Windows with Node 26.7.0. An independent repeat of `npm tes
 
 The skipped test requires Windows file-symlink privileges; junction and hardlink regressions passed. Linux contract checks are not a live Linux run of the new engine. Live GUI input, production deployment, long-duration unattended projects, Claude integration and comparative benchmarks remain UNEXECUTED.
 
-Draft candidate: [PR #5](https://github.com/GOD13emad/ChatGPTRemoteCommander/pull/5). [Hosted CI run](https://github.com/GOD13emad/ChatGPTRemoteCommander/actions/runs/35783715237) was BLOCKED_BEFORE_EXECUTION: GitHub reported an account billing lock; both Windows and Ubuntu jobs ran zero steps. Local passes do not turn that CI result into a pass. Resolving account billing and rerunning CI remains an external release prerequisite.
+Draft candidate: [PR #5](https://github.com/GOD13emad/ChatGPTRemoteCommander/pull/5). [Hosted CI run](https://github.com/GOD13emad/ChatGPTRemoteCommander/actions/runs/35783715237) was BLOCKED_BEFORE_EXECUTION: GitHub reported an account billing lock; both Windows and Ubuntu jobs ran zero steps. Local passes do not turn that CI result into a pass. This historical billing block was resolved before v0.8.32 qualification; current hosted CI is required separately and must pass on the release candidate.
 
 Reproduce the isolated live provider check with `node examples/project-engine/run.mjs --codex`, using existing operator authentication. Its test artifact hash was `c18e2d1a4af992e00e6db1885f0e651c686ac3a3cb9ac4b047e4a1ab98b42813`; the run returned `PROJECT_ACCEPTANCE_VERIFIED`, `COMPLETED`, `artifactVerified=true` and `brainCreated=true`. This small qualification establishes a working integration, not general project competence.
 
@@ -49,6 +49,6 @@ Additional tests cover immutable checks, bounded output/time, persisted attempt 
 
 ## Limits and next acceptance gate
 
-The current engine consumes predeclared atomic workflow steps. It does not autonomously revise a plan, dispatch a parallel worker fleet, impose monetary budgets, validate arbitrary scientific claims or provide an OS sandbox. Pause/cancel prevents new effects; it cannot undo an already dispatched external action. Configured command providers and explicitly allowlisted project commands retain the host user's OS privileges.
+The current engine consumes atomic workflow steps and can insert bounded prerequisites when adaptive planning is explicitly enabled. Proposal workers advise a single executing coordinator. It does not dispatch an isolated mutating worker fleet, impose monetary budgets, validate arbitrary scientific claims or provide an OS sandbox. Pause/cancel prevents new effects; it cannot undo an already dispatched external action. Configured command providers and explicitly allowlisted project commands retain the host user's OS privileges.
 
 The first increment's next milestone was revision-safe plan extension and scoped proposal coordination; its 4A qualification is recorded above. Parallel mutating workers and monetary budgets remain planned. A release additionally needs exact-candidate Linux execution and existing cross-platform release gates. Superiority against other products remains UNPROVEN until a pinned, equal-model/equal-budget project benchmark is completed.

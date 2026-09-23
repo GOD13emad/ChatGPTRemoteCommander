@@ -14,7 +14,7 @@ Develop Remote Commander into a measurable project execution and management syst
 5. CONNECTOR PARITY: catalog drift diagnostics, qualified providers, browser/application integrations and transparent terminal reconnection — PLANNED.
 6. COMPARATIVE EVALUATION: pinned real project corpus, equal models/budgets, completion/correctness/recovery/intervention/cost measurements — PLANNED.
 
-CURRENT: milestone 4A locally qualified from `67d0153`; publication is blocked by current network/account-config access. Next development slice: 4B worker execution isolation and explicit escalation. Release deployment is a separate gate. See [qualification evidence](PROJECT_ENGINE_VALIDATION.md). No percentage or superiority score is asserted.
+CURRENT: milestone 4A is locally qualified and published to PR #5. The user authorized Windows/Linux finalization and GitHub publication; v0.8.32 cross-platform release qualification is now in progress. See [release gates](RELEASE_0.8.32.md) and [qualification evidence](PROJECT_ENGINE_VALIDATION.md). After release, the next development slice is 4B worker execution isolation and explicit escalation. No percentage or superiority score is asserted.
 
 ## First increment acceptance
 - Opt-in execution actually calls a configured planner and dispatches schema-valid proposals through existing journaled workflow tools.
@@ -27,7 +27,7 @@ CURRENT: milestone 4A locally qualified from `67d0153`; publication is blocked b
 - Tests use isolated fixture projects, never production services, personal data or GUI input.
 
 ## Authority and boundaries
-The user authorized implementation toward this objective. Development is isolated in this worktree. Existing Windows/Linux services and active workloads remain the production baseline. No release or deployment has occurred. Planner executables are operator-configured trusted integrations, not code from workflow notes. File/shell privileges remain those of the existing host policy; this engine is not an OS sandbox.
+The user authorized implementation and subsequently explicit cross-platform release/deployment. Candidate qualification uses isolated workspaces before official updater promotion. Active workloads must remain intact. Planner executables are operator-configured trusted integrations, not code from workflow notes. File/shell privileges remain those of the existing host policy; this engine is not an OS sandbox.
 
 ## Decisions
 The first increment uses one tool operation per predeclared workflow step, consistent with the existing journal. Dynamic plan expansion is a later milestone. Separate planner proposals from execution and deterministic verification. No agent can alter its acceptance checks during a run. New execution tools appear only when explicitly configured.
