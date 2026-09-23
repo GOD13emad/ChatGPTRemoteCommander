@@ -10,7 +10,7 @@ ENABLE_CAPS=()
 START_SERVER=0
 INSTALL_PREREQS=0
 TUNNEL_VERSION="0.0.14"
-SOURCE_REF="${REMOTE_COMMANDER_SOURCE_REF:-v0.8.31}"
+SOURCE_REF="${REMOTE_COMMANDER_SOURCE_REF:-v0.8.34}"
 EXPECTED_COMMIT="${REMOTE_COMMANDER_EXPECTED_COMMIT:-}"
 CURL_CONNECT_TIMEOUT="${REMOTE_COMMANDER_CURL_CONNECT_TIMEOUT:-15}"
 CURL_MAX_TIME="${REMOTE_COMMANDER_CURL_MAX_TIME:-180}"
@@ -25,7 +25,7 @@ Usage: install.sh [options]
   --disable-capability CAP  Explicit capability opt-out (repeatable)
   --enable-capability CAP   Explicit capability opt-in (repeatable)
   --start-server            Start MCP server with nohup after validation
-  --source-ref REF          Git ref to install (default: v0.8.31)
+  --source-ref REF          Git ref to install (default: v0.8.34)
   --expected-commit SHA     Require the fetched ref to peel to this exact 40-hex commit
   -h, --help                Show help
 USAGE
@@ -253,36 +253,49 @@ install_tunnel_client() {
 write_local_config() {
   local workspace="$HOME/source/repos"
   local state_root="${XDG_STATE_HOME:-$HOME/.local/state}/chatgpt-remote-commander"
+  local backup_root="$HOME/.chatgpt-remote-commander/backups"
+  if [[ "$CUSTOM_NO_START" == 1 ]]; then
+    workspace="$INSTALL_DIR/workspace"
+    state_root="$INSTALL_DIR/var/isolated"
+    backup_root="$state_root/backups"
+  fi
   local state_dir="$state_root/instances/default"
   local workflow_dir="$state_dir/workflows"
   local cfg="$INSTALL_DIR/config.local.json"
   local mode="standard"
-  mkdir -p "$workspace" "$state_dir"
+  local preserve_custom=0
+  if [[ "$CUSTOM_NO_START" == 1 && -f "$cfg" ]]; then
+    preserve_custom=1
+    mode=preserve
+  else
+    mkdir -p "$workspace"
+    mkdir -p "$state_dir"
+  fi
   [[ "$POWER_MODE" == 1 ]] && mode="full"
   [[ "$STANDARD_MODE" == 1 ]] && mode="standard"
 
-  local args=(
-    "$INSTALL_DIR/tools/build-candidate-config.mjs"
-    --default "$INSTALL_DIR/config.json"
-    --output "$cfg"
-    --profile-id default
-    --port 47831
-    --state-dir "$state_dir"
-    --workflow-dir "$workflow_dir"
-    --mode "$mode"
-    --device-name "$(hostname)"
-    --allowed-root "$workspace"
-    --allowed-program git
-    --allowed-program node
-    --allowed-program npm
-    --allowed-program npx
-    --allowed-program python3
-    --allowed-program python
-    --allowed-program dotnet
-    --allowed-program cmake
-    --allowed-program ninja
-    --backup-root "$HOME/.chatgpt-remote-commander/backups"
-  )
+  local args=()
+  if [[ "$preserve_custom" == 1 ]]; then
+    # No backup-root argument: config migration preserves explicit state paths
+    # without opening the referenced workflow database or activating a service.
+    local profile_id existing_workflow
+    profile_id="$(node "$INSTALL_DIR/tools/json-field.mjs" --file "$cfg" --field capabilityProfile.id 2>/dev/null || true)"
+    [[ -n "$profile_id" ]] || profile_id=default
+    existing_workflow="$(node "$INSTALL_DIR/tools/json-field.mjs" --file "$cfg" --field durableWorkflows.directory 2>/dev/null || true)"
+    [[ -z "$existing_workflow" ]] || workflow_dir="$existing_workflow"
+    args=("$INSTALL_DIR/tools/capability-migrate.mjs" --default "$INSTALL_DIR/config.json"
+      --existing "$cfg" --output "$cfg" --profile-id "$profile_id" --workflow-dir "$workflow_dir")
+    [[ "$POWER_MODE" == 1 ]] && args+=(--request-power)
+    [[ "$STANDARD_MODE" == 1 ]] && args+=(--request-standard)
+  else
+    args=("$INSTALL_DIR/tools/build-candidate-config.mjs" --default "$INSTALL_DIR/config.json"
+      --output "$cfg" --profile-id default --port 47831 --state-dir "$state_dir"
+      --workflow-dir "$workflow_dir" --mode "$mode" --backup-root "$backup_root"
+      --device-name "$(hostname)" --allowed-root "$workspace"
+      --allowed-program git --allowed-program node --allowed-program npm
+      --allowed-program npx --allowed-program python3 --allowed-program python
+      --allowed-program dotnet --allowed-program cmake --allowed-program ninja)
+  fi
   local cap
   for cap in "${DISABLE_CAPS[@]}"; do args+=(--disable-capability "$cap"); done
   for cap in "${ENABLE_CAPS[@]}"; do args+=(--enable-capability "$cap"); done
@@ -302,6 +315,10 @@ install_linux_gui_backend() {
   local project="$1" cfg="$2" enabled
   enabled="$(node "$project/tools/json-field.mjs" --file "$cfg" --field powerMode.guiControl.enabled 2>/dev/null || true)"
   [[ "$enabled" == true ]] || return 0
+  if [[ "$CUSTOM_NO_START" == 1 ]]; then
+    echo 'Linux GUI registration deferred for custom/no-start installation; registration occurs during explicit activation.'
+    return 0
+  fi
   [[ -x "$project/tools/install-gnome-gui-extension.sh" ]] || { echo 'Linux GUI backend installer missing or not executable.' >&2; return 1; }
   "$project/tools/install-gnome-gui-extension.sh"
 }
@@ -359,14 +376,22 @@ start_server() {
 }
 [[ "$(uname -s)" == "Linux" ]] || { echo "This installer supports Linux only. Use install.ps1 on Windows." >&2; exit 1; }
 install_os_packages
-for cmd in git curl unzip tar sha256sum; do
+for cmd in git curl unzip tar sha256sum readlink; do
   need "$cmd" || { echo "$cmd is required; re-run with --install-prerequisites." >&2; exit 1; }
 done
 
-if [[ -d "$INSTALL_DIR/.git" ]]; then
+INSTALL_DIR="$(readlink -m -- "$INSTALL_DIR")"
+CANONICAL_INSTALL_DIR="$(readlink -m -- "$HOME/.local/share/ChatGPTRemoteCommander")"
+CUSTOM_NO_START=0
+[[ "$INSTALL_DIR" == "$CANONICAL_INSTALL_DIR" || "$START_SERVER" == 1 ]] || CUSTOM_NO_START=1
+
+if [[ -d "$INSTALL_DIR/.git" && "$CUSTOM_NO_START" != 1 ]]; then
   ensure_node_path
   invoke_existing_safe_update
 else
+  if [[ -d "$INSTALL_DIR/.git" ]]; then
+    echo "Updating isolated/custom checkout in place without global routing mutation: $INSTALL_DIR"
+  fi
   install_source
   install_portable_node
   ensure_node_path
@@ -392,7 +417,7 @@ fi
 
 effective_cfg="$INSTALL_DIR/config.local.json"
 route="${XDG_STATE_HOME:-$HOME/.local/state}/chatgpt-remote-commander/routing/default.json"
-if [[ -f "$route" ]]; then
+if [[ "$CUSTOM_NO_START" != 1 && -f "$route" ]]; then
   routed_cfg="$(node "$INSTALL_DIR/tools/router-state.mjs" --state "$route" --tsv 2>/dev/null | awk -F '\t' '{print $7}')"
   [[ -n "$routed_cfg" && -f "$routed_cfg" ]] && effective_cfg="$routed_cfg"
 fi

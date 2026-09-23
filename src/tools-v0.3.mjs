@@ -3,6 +3,7 @@ import { appendFile, copyFile, mkdir, readFile, readdir, rename, rm, stat, write
 import { createHash, randomUUID } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { withPathLocks } from './locks.mjs';
+import { guardFileWrite } from './file-write-guard.mjs';
 import {
   psQuote,
   rootForPath,
@@ -152,6 +153,7 @@ export async function writeText(ctx, input) {
 
   const target = await safeWritablePath(input.path, ctx.roots, ctx.roots[0]);
   return withPathLocks([target], async () => {
+    const snapshot = await guardFileWrite(target);
     let beforeHash = null;
     let backupPath = null;
     try {
@@ -160,6 +162,7 @@ export async function writeText(ctx, input) {
       if (input.expectedSha256 && input.expectedSha256 !== beforeHash) {
         throw new Error('expectedSha256 does not match current file');
       }
+      await guardFileWrite(target, snapshot);
       const root = rootForPath(target, ctx.roots);
       const rel = path.relative(root, target);
       const stamp = `${new Date().toISOString().replaceAll(':', '-')}-${randomUUID().slice(0, 8)}`;
@@ -170,6 +173,7 @@ export async function writeText(ctx, input) {
       if (error?.code !== 'ENOENT') throw error;
       if (input.expectedSha256 !== undefined) throw new Error('expectedSha256 precondition failed: target does not exist');
     }
+    await guardFileWrite(target, snapshot);
     if (mode === 'append') await appendFile(target, input.content, 'utf8');
     else await writeFile(target, input.content, 'utf8');
     const after = await readFile(target);

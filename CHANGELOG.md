@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.8.34 — 2026-09-24
+
+- Deliver the durable adaptive project engine, isolated Linux installer and Standard-authority fixes from the unpublished 0.8.32/0.8.33 candidates.
+- Recheck the persisted project deadline after a timer wakes early, preserving EXHAUSTED classification and preventing an early abort. A deterministic early-wakeup integration regression retains the no-effect and single-attempt assertions.
+- Release evidence: docs/RELEASE_0.8.34.md.
+
+## 0.8.33 — 2026-09-23 (unpublished candidate)
+
+- Deliver the opt-in durable/adaptive project engine prepared in 0.8.32 after final cross-platform qualification.
+- Keep custom Linux no-start installer updates in their own checkout; only canonical live installs or explicit start requests delegate to candidate-first service promotion.
+- Preserve explicitly selected Standard authority across repeated capability migrations; an explicit Standard choice must never imply Full Power authorization.
+- Give process-crash regression tests separate bounded startup/scenario budgets and cancellation cleanup for slower Windows CI workers, retaining all receipt, deadline and no-replay assertions.
+- v0.8.32 was tagged for installer acceptance but not publicly released. Its duplicate hosted Windows run exposed a test time budget issue, and final Linux installer review exposed the custom no-start activation issue.
+
+## 0.8.32 — 2026-09-23 (unpublished candidate, superseded by 0.8.33)
+
+- Add an opt-in durable project runner with a bounded Codex/trusted-command planner, journaled execution, independent acceptance checks and evidence-bound Project Brain completion.
+- Preserve pause/cancel authority across late receipts; reserve action/provider budgets before dispatch and recover recorded read observations after restart.
+- Add opt-in adaptive prerequisite insertion with exact revision/receipt recovery and bounded parallel proposal workers with a single executing coordinator.
+- Reject hardlinked write targets before mutation and validate file identity/canonical paths for independent verification.
+- Existing installations retain recovery/readiness-only behavior until the runner is explicitly configured and projects are enrolled. Native desktop input behavior is unchanged.
+- Cross-platform qualification and release evidence: docs/RELEASE_0.8.32.md. Claude execution, isolated mutating workers, monetary accounting and universal comparative superiority remain unqualified.
+- Install the Linux native helper's GdkPixbuf dependencies in hosted CI before running its existing contract/self-test.
+
 ## 0.8.31 — 2026-09-22
 
 - Keep custom/isolated Windows installer validation from delegating an existing non-canonical checkout into the global candidate updater when `-NoStartServer` is used.

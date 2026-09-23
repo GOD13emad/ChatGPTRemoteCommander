@@ -81,6 +81,69 @@ function receiptFields(result) {
 }
 function badResult(r) { return r?.timedOut === true || r?.isError === true || r?.ok === false || (typeof r?.exitCode === 'number' && r.exitCode !== 0) || r?.exitCode === null; }
 
+// Explicit control is independent of scheduling: scheduler-off workflows still
+// permit direct authorized calls. Late receipts must never clear user intent.
+function controlBlocker(state) {
+  if (state.lifecycleState === 'COMPLETED') return 'WORKFLOW_ALREADY_COMPLETED';
+  if (state.control?.intent === 'CANCELLED' || state.lifecycleState === 'CANCELLED') return 'WORKFLOW_CANCELLED';
+  if (state.control?.intent === 'PAUSED') return 'WORKFLOW_PAUSED';
+  return null;
+}
+function requireActive(state) {
+  const blocker = controlBlocker(state);
+  if (blocker) fail(blocker);
+}
+function setLifecycle(state, next) {
+  const blocker = controlBlocker(state);
+  state.lifecycleState = blocker === 'WORKFLOW_ALREADY_COMPLETED' ? 'COMPLETED'
+    : blocker === 'WORKFLOW_CANCELLED' ? 'CANCELLED'
+    : blocker === 'WORKFLOW_PAUSED' ? 'WAITING' : next;
+  if (blocker) {
+    state.scheduler.enabled = false;
+    state.scheduler.automaticContinuation = false;
+  }
+}
+function requireExpectedEvidence(evidence, expected) {
+  if (expected === undefined) return;
+  if (!Array.isArray(expected) || expected.length !== evidence.length) fail('WORKFLOW_EVIDENCE_CHANGED');
+  const paths = new Set();
+  for (const item of expected) {
+    if (!item || typeof item.path !== 'string' || !/^[a-f0-9]{64}$/.test(item.sha256 ?? '') || paths.has(item.path)) fail('WORKFLOW_EVIDENCE_CHANGED');
+    paths.add(item.path);
+    const actual = evidence.find(ref => ref.path === item.path);
+    if (!actual || actual.sha256 !== item.sha256 || (item.bytes !== undefined && actual.bytes !== item.bytes)) fail('WORKFLOW_EVIDENCE_CHANGED');
+  }
+}
+
+function planRecord(value, allowed, required) {
+  if (!value || Object.getPrototypeOf(value) !== Object.prototype) fail('WORKFLOW_PLAN_INPUT_INVALID');
+  const descriptors = Object.getOwnPropertyDescriptors(value);
+  if (Reflect.ownKeys(descriptors).some(key => typeof key !== 'string' || !allowed.includes(key)
+    || !Object.hasOwn(descriptors[key], 'value') || !descriptors[key].enumerable)
+    || required.some(key => !Object.hasOwn(descriptors, key))) fail('WORKFLOW_PLAN_INPUT_INVALID');
+}
+function planArray(value) {
+  if (!Array.isArray(value) || Object.getPrototypeOf(value) !== Array.prototype) fail('WORKFLOW_PLAN_INPUT_INVALID');
+  const descriptors = Object.getOwnPropertyDescriptors(value);
+  if (Reflect.ownKeys(descriptors).length !== value.length + 1) fail('WORKFLOW_PLAN_INPUT_INVALID');
+  for (let i = 0; i < value.length; i++) {
+    const descriptor = descriptors[i];
+    if (!descriptor || !Object.hasOwn(descriptor, 'value') || !descriptor.enumerable) fail('WORKFLOW_PLAN_INPUT_INVALID');
+  }
+}
+function structuralPlanHash(steps) {
+  return jsonHash(steps.map(({ id, title, dependsOn }) => ({ id, title, dependsOn })));
+}
+function requireOrderedPlan(steps) {
+  const seen = new Set();
+  for (const step of steps) {
+    if (seen.has(step.id)) fail('WORKFLOW_DUPLICATE_STEP');
+    if (!Array.isArray(step.dependsOn) || step.dependsOn.some(dep => !seen.has(dep))
+      || new Set(step.dependsOn).size !== step.dependsOn.length) fail('WORKFLOW_INVALID_DEPENDENCY');
+    seen.add(step.id);
+  }
+}
+
 export class WorkflowStore {
   #db;
   #roots;
@@ -227,11 +290,11 @@ export class WorkflowStore {
           affected.push(step.id);
         }
         if (!affected.length) return null;
-        state.lifecycleState = 'INTERRUPTED';
+        setLifecycle(state, 'INTERRUPTED');
         state.scheduler.lastFailureCode = 'INTERRUPTED_EXECUTION';
         const result = this.#commit(state, head, 'interruption_recovered', { steps: affected });
-        this.#db.prepare("UPDATE scheduler_jobs SET lifecycle='INTERRUPTED',last_failure='INTERRUPTED_EXECUTION',updated_at=? WHERE workflow=?")
-          .run(new Date().toISOString(), id);
+        this.#db.prepare("UPDATE scheduler_jobs SET lifecycle=?,enabled=?,last_failure='INTERRUPTED_EXECUTION',updated_at=? WHERE workflow=?")
+          .run(state.lifecycleState, state.scheduler.enabled ? 1 : 0, new Date().toISOString(), id);
         return result;
       });
       if (updated) recovered.push(id);
@@ -275,6 +338,18 @@ export class WorkflowStore {
     }
     if (row.head !== prev || state.id !== id || state.revision !== row.revision || jsonHash(state) !== last.snapshotSha256) fail('WORKFLOW_CORRUPT_SNAPSHOT');
     normalizeWorkflowState(state, { authority: this.#authority, executionProfile: this.#executionProfile, schedulerPolicy: this.#schedulerPolicy });
+    if (!state.control) {
+      // Recover old explicit controls from the verified journal, never from the
+      // scheduler flag (which may simply have been disabled at creation).
+      state.control = { intent: state.lifecycleState === 'CANCELLED' ? 'CANCELLED' : 'ACTIVE', generation: 0 };
+      for (const event of events) {
+        const body = JSON.parse(event.body);
+        if (body.kind !== 'control') continue;
+        const intent = { pause: 'PAUSED', resume: 'ACTIVE', cancel: 'CANCELLED' }[body.data?.action];
+        if (intent) { state.control.intent = intent; state.control.generation++; }
+      }
+    }
+    state.planExtensions ??= [];
     return { state, head: prev, events };
   }
   #commit(state, previous, kind, data) {
@@ -327,8 +402,9 @@ export class WorkflowStore {
       if (this.#db.prepare('SELECT COUNT(*) AS n FROM workflows').get().n >= 1000) fail('WORKFLOW_COUNT_LIMIT');
       const state = { schema: 2, id, root, device: this.#device, configSha256: this.#configSha,
         goal, acceptance, revision: 0, createdAt: new Date().toISOString(), updatedAt: null,
-        steps: plan, notes: [], checkpoint: null, acceptanceStatus: 'UNVALIDATED',
+        steps: plan, planExtensions: [], notes: [], checkpoint: null, acceptanceStatus: 'UNVALIDATED',
         lifecycleState: 'CREATED',
+        control: { intent: 'ACTIVE', generation: 0 },
         executionProfile: normalizeExecutionProfile(executionProfile ?? this.#executionProfile),
         authority: clone(this.#authority),
         scheduler: {
@@ -417,6 +493,8 @@ export class WorkflowStore {
   resume(id) {
     const view = this.get(id), { state } = view;
     const blockers = [];
+    const controlFailure = controlBlocker(state);
+    if (controlFailure && controlFailure !== 'WORKFLOW_ALREADY_COMPLETED') blockers.push(controlFailure);
     try { this.#identity(state); } catch (e) { blockers.push(e.workflowCode ?? 'WORKFLOW_ROOT_UNAVAILABLE'); }
     const configDrift = state.configSha256 !== this.#configSha;
     const unresolved = state.steps.filter(s => ['running', 'uncertain'].includes(s.status));
@@ -432,11 +510,14 @@ export class WorkflowStore {
       } catch { evidence.push({ ...ref, matches: false }); blockers.push('WORKFLOW_EVIDENCE_UNAVAILABLE'); }
     }
     const ready = s => s.status === 'pending' && s.dependsOn.every(d => ['recorded', 'verified', 'reconciled_applied'].includes(state.steps.find(x => x.id === d).status));
-    const next = blockers.length ? null : state.steps.find(ready) ?? null;
+    const next = blockers.length || controlFailure ? null : state.steps.find(ready) ?? null;
     const terminalNotApplied = state.steps.some(s => s.status === 'reconciled_not_applied');
     if (terminalNotApplied && !next) blockers.push('WORKFLOW_REPLAN_REQUIRED');
-    const schedulingEnabled = this.#schedulerPolicy.enabled && state.scheduler?.enabled === true;
-    const derivedState = blockers.length ? (unresolved.length ? 'INTERRUPTED' : 'BLOCKED')
+    const schedulingEnabled = !controlFailure && this.#schedulerPolicy.enabled && state.scheduler?.enabled === true;
+    const derivedState = controlFailure === 'WORKFLOW_CANCELLED' ? 'CANCELLED'
+      : controlFailure === 'WORKFLOW_PAUSED' ? 'WAITING'
+      : controlFailure === 'WORKFLOW_ALREADY_COMPLETED' ? 'COMPLETED'
+      : blockers.length ? (unresolved.length ? 'INTERRUPTED' : 'BLOCKED')
       : next ? 'RESUMING' : (state.lifecycleState === 'COMPLETED' ? 'COMPLETED' : 'WAITING');
     return { ...view, blockers: [...new Set(blockers)], unresolved: unresolved.map(s => s.id), evidence,
       readyForNextStep: blockers.length === 0 && !!next, nextStep: next?.id ?? null,
@@ -453,6 +534,7 @@ export class WorkflowStore {
     const argsRaw = canonical(args);
     if (Buffer.byteLength(argsRaw) > 128 * 1024) fail('WORKFLOW_ARGUMENT_LIMIT');
     const view = this.get(id), { state } = view; this.#identity(state);
+    requireActive(state);
     const fingerprint = jsonHash({ tool, args, root: state.root, device: state.device, authority: state.authority });
     const prior = state.steps.find(s => s.id === stepId);
     if (!prior) fail('WORKFLOW_STEP_NOT_FOUND');
@@ -475,6 +557,7 @@ export class WorkflowStore {
 
     const prepared = this.#mutate(id, expectedRevision, 'intent', s => {
       this.#identity(s);
+      requireActive(s);
       if (s.steps.some(x => ['running', 'uncertain'].includes(x.status))) fail('WORKFLOW_BUSY_OR_UNCERTAIN');
       const step = s.steps.find(x => x.id === stepId);
       if (!step || step.status !== 'pending') fail('WORKFLOW_STEP_NOT_PENDING');
@@ -533,9 +616,9 @@ export class WorkflowStore {
           s.scheduler.lastRootCauseCode = code;
           const budget=Number.isSafeInteger(Number(s.scheduler.retryBudget)) ? Number(s.scheduler.retryBudget) : this.#schedulerPolicy.retryBudget;
           s.scheduler.lastFailureCode = s.scheduler.repeatedFailureCount > budget ? 'BLOCKED_REQUIRES_REASSESSMENT' : code;
-          s.lifecycleState = s.scheduler.repeatedFailureCount > budget ? 'BLOCKED' : 'INTERRUPTED';
+          setLifecycle(s, s.scheduler.repeatedFailureCount > budget ? 'BLOCKED' : 'INTERRUPTED');
         } else {
-          s.lifecycleState='RUNNING';
+          setLifecycle(s, 'RUNNING');
           s.scheduler.repeatedFailureCount=0;
           s.scheduler.lastFailureCode=null;s.scheduler.lastRootCauseCode=null;
         }
@@ -545,8 +628,8 @@ export class WorkflowStore {
             (!failure && classification==='READ_ONLY')?(receipt.resultSha256??null):null,
             JSON.stringify(receipt),new Date().toISOString(),operationId);
         const committed = this.#commit(s,head,'receipt',{stepId,operationId,status:step.status,operationStatus,receipt});
-        this.#db.prepare('UPDATE scheduler_jobs SET lifecycle=?,retry_count=?,last_failure=?,lease_owner=NULL,lease_until=NULL,updated_at=? WHERE workflow=?')
-          .run(s.lifecycleState,Number(s.scheduler.repeatedFailureCount??0),s.scheduler.lastFailureCode,new Date().toISOString(),id);
+        this.#db.prepare('UPDATE scheduler_jobs SET lifecycle=?,enabled=?,retry_count=?,last_failure=?,lease_owner=NULL,lease_until=NULL,updated_at=? WHERE workflow=?')
+          .run(s.lifecycleState,s.scheduler.enabled?1:0,Number(s.scheduler.repeatedFailureCount??0),s.scheduler.lastFailureCode,new Date().toISOString(),id);
         this.#db.prepare('DELETE FROM root_leases WHERE root=? AND workflow=? AND owner=?').run(s.root,id,owner);
         return committed;
       });
@@ -578,7 +661,7 @@ export class WorkflowStore {
         this.#db.prepare('UPDATE operations SET status=?,post_state_hash=?,updated_at=? WHERE operation_id=?')
           .run(outcome === 'applied' ? 'VERIFIED' : 'NOT_APPLIED', evidenceHash, new Date().toISOString(), step.operationId);
       }
-      s.lifecycleState = outcome === 'applied' ? 'RUNNING' : 'BLOCKED';
+      setLifecycle(s, outcome === 'applied' ? 'RUNNING' : 'BLOCKED');
       s.scheduler.lastFailureCode = outcome === 'applied' ? null : 'WORKFLOW_REPLAN_REQUIRED';
       this.#db.prepare('UPDATE scheduler_jobs SET lifecycle=?,last_failure=?,updated_at=? WHERE workflow=?')
         .run(s.lifecycleState,s.scheduler.lastFailureCode,new Date().toISOString(),id);
@@ -610,16 +693,16 @@ export class WorkflowStore {
       if (status==='APPLIED') {
         current.status='reconciled_applied';
         current.reconciliation={outcome:'applied',explanation:summary,evidenceHash,source:'automatic-read-only-verification',acceptance:'UNVALIDATED'};
-        s.lifecycleState='RESUMING';s.scheduler.lastFailureCode=null;
+        setLifecycle(s, 'RESUMING');s.scheduler.lastFailureCode=null;
         this.#db.prepare("UPDATE operations SET status='VERIFIED',post_state_hash=?,updated_at=? WHERE operation_id=?").run(evidenceHash,new Date().toISOString(),op.operation_id);
       } else if (status==='NOT_APPLIED') {
         current.status='reconciled_not_applied';
         current.reconciliation={outcome:'not_applied',explanation:summary,evidenceHash,source:'automatic-read-only-verification',acceptance:'UNVALIDATED'};
-        s.lifecycleState='BLOCKED';s.scheduler.lastFailureCode='WORKFLOW_REPLAN_REQUIRED';
+        setLifecycle(s, 'BLOCKED');s.scheduler.lastFailureCode='WORKFLOW_REPLAN_REQUIRED';
         this.#db.prepare("UPDATE operations SET status='NOT_APPLIED',post_state_hash=?,updated_at=? WHERE operation_id=?").run(evidenceHash,new Date().toISOString(),op.operation_id);
       } else {
         current.reconciliation={outcome:'conflict',explanation:summary,evidenceHash,source:'automatic-read-only-verification',acceptance:'UNVALIDATED'};
-        s.lifecycleState='BLOCKED';s.scheduler.lastFailureCode='WORKFLOW_RECONCILIATION_CONFLICT';
+        setLifecycle(s, 'BLOCKED');s.scheduler.lastFailureCode='WORKFLOW_RECONCILIATION_CONFLICT';
         this.#db.prepare("UPDATE operations SET status='CONFLICT',post_state_hash=?,updated_at=? WHERE operation_id=?").run(evidenceHash,new Date().toISOString(),op.operation_id);
       }
       this.#db.prepare('UPDATE scheduler_jobs SET lifecycle=?,last_failure=?,updated_at=? WHERE workflow=?')
@@ -637,7 +720,7 @@ export class WorkflowStore {
       this.#identity(s);
       s.checkpoint = { evidence, nextAction, summary, at: new Date().toISOString(), revision: expectedRevision + 1 };
       if (s.lifecycleState !== 'COMPLETED') {
-        s.lifecycleState = 'WAITING';
+        setLifecycle(s, 'WAITING');
         this.#db.prepare('UPDATE scheduler_jobs SET lifecycle=?,enabled=?,next_run_at=?,updated_at=? WHERE workflow=?')
           .run(s.lifecycleState,s.scheduler.enabled?1:0,s.scheduler.nextRunAt,new Date().toISOString(),id);
       }
@@ -649,10 +732,11 @@ export class WorkflowStore {
     return {...committed,brainSync,brainError};
   }
 
-  finalize({ id, expectedRevision, acceptanceResults, files, summary }) {
+  finalize({ id, expectedRevision, acceptanceResults, files, summary, expectedEvidence = undefined }) {
     revision(expectedRevision);
     safeText(summary,4000);
     const initial=this.get(id), state=initial.state; this.#identity(state);
+    requireActive(state);
     if (state.revision !== expectedRevision) fail('WORKFLOW_REVISION_CONFLICT');
     if (!Array.isArray(acceptanceResults) || acceptanceResults.length !== state.acceptance.length || acceptanceResults.some(x=>x!==true)) {
       fail('WORKFLOW_ACCEPTANCE_UNPROVEN');
@@ -660,12 +744,14 @@ export class WorkflowStore {
     const incomplete=state.steps.filter(s=>!['recorded','verified','reconciled_applied'].includes(s.status));
     if (incomplete.length) fail('WORKFLOW_STEPS_INCOMPLETE');
     const evidence=this.evidence(state.root,files);
+    requireExpectedEvidence(evidence, expectedEvidence);
     let finalizing;
     if (state.lifecycleState === 'FINALIZING') {
       if (state.finalization?.status !== 'VALIDATING') fail('WORKFLOW_FINALIZATION_STATE');
       finalizing={state,headSha256:initial.headSha256};
     } else {
       finalizing=this.#mutate(id,expectedRevision,'finalization_started',s=>{
+        requireActive(s);
         s.lifecycleState='FINALIZING';s.acceptanceStatus='VALIDATING';
         s.finalization={status:'VALIDATING',validatedAt:null,evidence,summary,acceptanceResults:[...acceptanceResults]};
         this.#db.prepare("UPDATE scheduler_jobs SET lifecycle='FINALIZING',updated_at=? WHERE workflow=?").run(new Date().toISOString(),id);
@@ -674,12 +760,17 @@ export class WorkflowStore {
     }
     const prospective=clone(finalizing.state);
     prospective.lifecycleState='COMPLETED';prospective.acceptanceStatus='PASS';
-    prospective.finalization={...prospective.finalization,status:'PASS',validatedAt:new Date().toISOString()};
+    prospective.finalization={...prospective.finalization,evidence,summary,acceptanceResults:[...acceptanceResults],status:'PASS',validatedAt:new Date().toISOString()};
     prospective.revision=finalizing.state.revision+1;prospective.updatedAt=new Date().toISOString();
-    const brainSync=syncProjectBrain(prospective);
+    let brainSync;
     const done=this.#mutate(id,finalizing.state.revision,'finalized',s=>{
+      requireActive(s);
+      if (expectedEvidence !== undefined) requireExpectedEvidence(this.evidence(s.root, files), expectedEvidence);
+      // Keep the control check and final projection under the same write claim.
+      brainSync=syncProjectBrain(prospective);
+      if (expectedEvidence !== undefined) requireExpectedEvidence(this.evidence(s.root, files), expectedEvidence);
       s.lifecycleState='COMPLETED';s.acceptanceStatus='PASS';
-      s.finalization={...s.finalization,status:'PASS',validatedAt:prospective.finalization.validatedAt,brainSync};
+      s.finalization={...prospective.finalization,brainSync};
       s.brain.lastSyncedRevision=s.revision+1;s.brain.lastSyncSha256=brainSync.jsonSha256;
       this.#db.prepare("UPDATE scheduler_jobs SET lifecycle='COMPLETED',enabled=0,last_failure=NULL,lease_owner=NULL,lease_until=NULL,updated_at=? WHERE workflow=?")
         .run(new Date().toISOString(),id);
@@ -708,17 +799,98 @@ export class WorkflowStore {
     }
     return this.#mutate(id,expectedRevision,'revised',s=>{
       this.#identity(s);
-      if (s.lifecycleState==='COMPLETED' || s.lifecycleState==='CANCELLED') fail('WORKFLOW_TERMINAL');
+      if (s.lifecycleState==='COMPLETED' || s.lifecycleState==='CANCELLED' || s.control.intent==='CANCELLED') fail('WORKFLOW_TERMINAL');
       const before={goal:s.goal,acceptance:[...s.acceptance]};
       if (goal !== undefined) s.goal=goal;
       if (acceptance !== undefined) s.acceptance=[...acceptance];
       s.acceptanceStatus='UNVALIDATED';
       s.finalization={status:'UNVALIDATED',validatedAt:null,evidence:[]};
-      s.lifecycleState='WAITING';
+      setLifecycle(s, 'WAITING');
       s.scheduler.lastFailureCode=null;s.scheduler.lastRootCauseCode=null;s.scheduler.repeatedFailureCount=0;
       this.#db.prepare("UPDATE scheduler_jobs SET lifecycle='WAITING',retry_count=0,last_failure=NULL,updated_at=? WHERE workflow=?")
         .run(new Date().toISOString(),id);
       return {reason,before,after:{goal:s.goal,acceptance:[...s.acceptance]}};
+    });
+  }
+
+  extendPlan(input) {
+    planRecord(input, ['id','expectedRevision','operationId','targetStepId','steps','reason'],
+      ['id','expectedRevision','operationId','targetStepId','steps','reason']);
+    const { id, expectedRevision, operationId, targetStepId, steps, reason } = input;
+    identifier(id); identifier(targetStepId); revision(expectedRevision); safeText(reason, 1000);
+    if (expectedRevision < 1 || expectedRevision > MAX_EVENTS) fail('WORKFLOW_REVISION_REQUIRED');
+    if (typeof operationId !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(operationId)) fail('WORKFLOW_PLAN_OPERATION_ID');
+    if (!Array.isArray(steps) || steps.length < 1 || steps.length > 20) fail('WORKFLOW_PLAN_STEP_LIMIT');
+    planArray(steps);
+    for (const step of steps) {
+      planRecord(step, ['id','title','dependsOn'], ['id','title']);
+      identifier(step.id); safeText(step.title, 500);
+      if (Object.hasOwn(step, 'dependsOn')) {
+        if (!Array.isArray(step.dependsOn) || step.dependsOn.length > 100) fail('WORKFLOW_INVALID_DEPENDENCY');
+        planArray(step.dependsOn);
+        for (const dependency of step.dependsOn) identifier(dependency);
+        if (new Set(step.dependsOn).size !== step.dependsOn.length) fail('WORKFLOW_INVALID_DEPENDENCY');
+      }
+    }
+    // Hash the exact request before default dependencies are filled in. A
+    // receipt is immutable even when the caller later reads a newer revision.
+    const payloadHash = jsonHash({ targetStepId, steps, reason });
+    return this.#transaction(() => {
+      const { state, head } = this.#load(id);
+      this.#identity(state);
+      const prior = state.planExtensions.find(item => item.operationId === operationId);
+      if (prior) {
+        if (prior.payloadHash !== payloadHash) fail('WORKFLOW_PLAN_OPERATION_CONFLICT');
+        if (expectedRevision !== prior.sourceRevision && expectedRevision !== state.revision) fail('WORKFLOW_REVISION_CONFLICT');
+        return { state: clone(state), receipt: clone(prior), cachedReceipt: true };
+      }
+      if (state.revision !== expectedRevision) fail('WORKFLOW_REVISION_CONFLICT');
+      requireActive(state);
+      if (['FAILED','FINALIZING','VALIDATING'].includes(state.lifecycleState)) fail('WORKFLOW_PLAN_STATE_BLOCKED');
+      if (state.steps.some(step => ['running','uncertain'].includes(step.status))
+        || this.#db.prepare("SELECT 1 FROM operations WHERE workflow=? AND status IN ('PREPARED','EXECUTING','UNCERTAIN') LIMIT 1").get(id)) {
+        fail('WORKFLOW_BUSY_OR_UNCERTAIN');
+      }
+      if (state.steps.length + steps.length > 100 || state.planExtensions.length >= 99) fail('WORKFLOW_PLAN_STEP_LIMIT');
+      requireOrderedPlan(state.steps);
+      const targetIndex = state.steps.findIndex(step => step.id === targetStepId);
+      if (targetIndex < 0) fail('WORKFLOW_STEP_NOT_FOUND');
+      const target = state.steps[targetIndex];
+      if (target.status !== 'pending'
+        || ['operationId','callHash','receipt','startedAt','endedAt','attemptId','idempotencyKey','tool','reconciliation'].some(key => Object.hasOwn(target, key))
+        || this.#db.prepare('SELECT 1 FROM operations WHERE workflow=? AND step_id=? LIMIT 1').get(id, targetStepId)) {
+        fail('WORKFLOW_PLAN_TARGET_NOT_PENDING');
+      }
+      const originals = new Map(state.steps.map(step => [step.id, step]));
+      const ancestors = new Set();
+      const collect = step => {
+        for (const dependency of step.dependsOn) if (!ancestors.has(dependency)) {
+          ancestors.add(dependency); collect(originals.get(dependency));
+        }
+      };
+      collect(target);
+      const inserted = [], added = new Set();
+      for (const request of steps) {
+        if (originals.has(request.id) || added.has(request.id)) fail('WORKFLOW_DUPLICATE_STEP');
+        const dependsOn = request.dependsOn ?? (inserted.length ? [inserted.at(-1).id] : target.dependsOn);
+        if (dependsOn.some(dependency => !ancestors.has(dependency) && !added.has(dependency))) fail('WORKFLOW_INVALID_DEPENDENCY');
+        inserted.push({ id: request.id, title: request.title, dependsOn: [...dependsOn], status: 'pending' });
+        added.add(request.id);
+      }
+      const consumed = new Set(inserted.flatMap(step => step.dependsOn));
+      const terminalIds = inserted.filter(step => !consumed.has(step.id)).map(step => step.id);
+      const sourcePlanHash = structuralPlanHash(state.steps);
+      state.steps = [...state.steps.slice(0, targetIndex), ...inserted,
+        { ...target, dependsOn: [...new Set([...target.dependsOn, ...terminalIds])] }, ...state.steps.slice(targetIndex + 1)];
+      requireOrderedPlan(state.steps);
+      const receipt = {
+        operationId, targetStepId, sourceRevision: state.revision, resultRevision: state.revision + 1,
+        addedStepIds: inserted.map(step => step.id), payloadHash,
+        sourcePlanHash, resultPlanHash: structuralPlanHash(state.steps)
+      };
+      state.planExtensions.push(receipt);
+      const committed = this.#commit(state, head, 'plan_extended', { reason, receipt });
+      return { state: committed.state, receipt: clone(receipt), cachedReceipt: false };
     });
   }
 
@@ -728,6 +900,8 @@ export class WorkflowStore {
     const result=this.#mutate(id,expectedRevision,'control',s=>{
       this.#identity(s);
       if (s.lifecycleState==='COMPLETED') fail('WORKFLOW_ALREADY_COMPLETED');
+      if ((s.control.intent==='CANCELLED' || s.lifecycleState==='CANCELLED') && action!=='cancel') fail('WORKFLOW_CANCELLED');
+      s.control = { intent: { pause:'PAUSED', resume:'ACTIVE', cancel:'CANCELLED' }[action], generation:s.control.generation+1 };
       if (action==='pause') {
         s.lifecycleState='WAITING';s.scheduler.enabled=false;s.scheduler.automaticContinuation=false;
       } else if (action==='resume') {
@@ -736,10 +910,11 @@ export class WorkflowStore {
       } else {
         s.lifecycleState='CANCELLED';s.scheduler.enabled=false;s.scheduler.automaticContinuation=false;
       }
-      this.#db.prepare('UPDATE scheduler_jobs SET lifecycle=?,enabled=?,last_failure=?,lease_owner=NULL,lease_until=NULL,updated_at=? WHERE workflow=?')
+      this.#db.prepare('UPDATE scheduler_jobs SET lifecycle=?,enabled=?,last_failure=?,updated_at=? WHERE workflow=?')
         .run(s.lifecycleState,s.scheduler.enabled?1:0,s.scheduler.lastFailureCode,new Date().toISOString(),id);
-      if(action!=='resume')this.#db.prepare('DELETE FROM root_leases WHERE workflow=?').run(id);
-      return {action,reason,lifecycleState:s.lifecycleState};
+      // An in-flight effect still owns its lease after pause/cancel. Its receipt
+      // settles the operation; control is not proof that the effect stopped.
+      return {action,reason,lifecycleState:s.lifecycleState,control:clone(s.control)};
     });
     return result;
   }

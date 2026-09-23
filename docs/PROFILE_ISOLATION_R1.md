@@ -61,7 +61,7 @@ Optional isolated Power Mode is explicit:
 .\connect-chatgpt-account.ps1 -Profile "trusted-profile" -Isolate -IsolatedPowerMode
 ```
 
-GUI requires isolated Power Mode and should only be given to principals trusted to drive the shared desktop. When both Power Mode and GUI are explicitly enabled, the profile's durable workflow execution set also includes bounded power/file operations and the existing lease/fresh-frame GUI tools; shell, permanent/recoverable delete, process kill and terminal control remain excluded from workflow execution.
+GUI requires isolated Power Mode and should only be given to principals trusted to drive the shared desktop. Explicit Full Power profiles can configure shell, deletion, process and terminal tools in their durable execution set. The workflow adapter independently rejects GUI takeover and input mutations; these require a direct current-user session. The opt-in project runner uses a narrower execution policy and must be configured separately.
 
 ### Reconfigure an existing isolated profile
 

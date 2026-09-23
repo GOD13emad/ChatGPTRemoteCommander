@@ -8,6 +8,7 @@ import {
 } from 'node:fs/promises';
 import { isWithin } from './security-v0.3.mjs';
 import { withPathLocks } from './locks.mjs';
+import { guardFileWrite } from './file-write-guard.mjs';
 import { IS_WINDOWS, defaultBackupRoot, expandPathValue, shellName, spawnShell } from './platform.mjs';
 
 const terminals = new Map();
@@ -206,6 +207,7 @@ export async function writeAnyFile(ctx, input) {
   const maxBytes = Number(power(ctx).maxFileBytes ?? 8 * 1024 * 1024);
   if (data.length > maxBytes) throw new Error(`content exceeds Power Mode maxFileBytes (${maxBytes})`);
   return withPathLocks([target], async () => {
+    const snapshot = await guardFileWrite(target);
     let beforeSha256 = null;
     try {
       const before = await readFile(target);
@@ -217,8 +219,11 @@ export async function writeAnyFile(ctx, input) {
       if (error?.code !== 'ENOENT') throw error;
       if (input.expectedSha256 !== undefined) throw new Error('expectedSha256 precondition failed: target does not exist');
     }
+    await guardFileWrite(target, snapshot);
     if (input.createParents !== false) await mkdir(path.dirname(target), { recursive: true });
+    await guardFileWrite(target, snapshot);
     const backupPath = await backupExisting(ctx, target);
+    await guardFileWrite(target, snapshot);
     if (input.mode === 'append') await appendFile(target, data);
     else await writeFile(target, data);
     const after = await readFile(target);

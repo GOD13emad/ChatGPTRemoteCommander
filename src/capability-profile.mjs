@@ -133,7 +133,14 @@ export function migrateCapabilityConfig({
   const hadExisting = !!existingConfig;
   const existing = existingConfig ? clone(existingConfig) : {};
   const prior = normalizeCapabilityProfile(existing.capabilityProfile, existing, { id: profileId, legacyExplicit: hadExisting });
-  const preserveExplicit = hadExisting && prior.explicitlyAuthorized === true && prior.persistAcrossUpdates === true && !requestStandard;
+  const preserveExplicit = hadExisting && prior.tier === 'FULL_POWER' && prior.explicitlyAuthorized === true && prior.persistAcrossUpdates === true && !requestStandard;
+  // Standard authorization is a persisted restriction, never authority to
+  // restore stale Power flags. Legacy partial profiles without an explicit tier
+  // retain their existing scope; a new requestPower still takes precedence.
+  const inferredPartial = existing.capabilityProfile?.source === 'config-derived'
+    && prior.explicitlyAuthorized === false && prior.autoEnableNewCapabilities === false
+    && existing.powerMode?.enabled === true && existing.powerMode?.fullFilesystem === false;
+  const preserveStandard = hadExisting && existing.capabilityProfile?.tier === 'STANDARD' && !inferredPartial;
   const next = mergeConfigDefaults(defaultConfig, existing);
   const disabled = new Set(prior.disabledCapabilities ?? []);
   const guiCapabilities=['gui.screenshot','gui.mouse','gui.keyboard','gui.window_focus'];
@@ -183,7 +190,7 @@ export function migrateCapabilityConfig({
       channel: next.autoUpdate?.channel ?? 'stable',
       intervalMinutes: next.autoUpdate?.intervalMinutes ?? 15
     };
-  } else if (requestStandard || !hadExisting) {
+  } else if (requestStandard || preserveStandard || !hadExisting) {
     next.powerMode.enabled = false;
     next.powerMode.fullFilesystem = false;
     next.powerMode.allowShell = false;

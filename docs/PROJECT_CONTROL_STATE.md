@@ -5,6 +5,12 @@ Status: FINAL / OPERATIONAL / v0.8.31 STABLE
 As of: 2026-09-22
 Project root: %USERPROFILE%\source\repos\ChatGPTRemoteCommander
 Public repository: GOD13emad/ChatGPTRemoteCommander
+## Current release work — v0.8.34 candidate
+
+- 2026-09-23: User explicitly authorized Windows/Linux finalization and GitHub publication. Milestone 4A is implemented and pushed in PR #5; exact candidate gates are tracked in RELEASE_0.8.34.md.
+- Stable authority remains v0.8.31 until the new immutable release is published. Candidate qualification and promotion must preserve current terminal workloads and credentials.
+- The runner remains opt-in and existing workflows are not enrolled by an update. General executing workers, monetary accounting, Claude qualification and comparative benchmarks remain outside this release.
+- GitHub access/hosted execution have recovered. Ubuntu CI identified missing GdkPixbuf test prerequisites; v0.8.32 adds them to CI without weakening native checks.
 ## Authoritative final state — v0.8.31 stable closeout
 
 - Date/Context: 2026-09-22 final cross-platform closeout after installer-isolation acceptance and live promotion.
@@ -487,3 +493,14 @@ Start the GUI read-performance phase from v0.8.6 without changing the frozen rel
 ## HISTORY — R26 final stable closeout
 
 - 2026-09-22: Published immutable v0.8.31, promoted Windows/Linux to CURRENT, proved custom installer isolation with byte-identical production state, preserved persistent terminal workloads through retained-backend handoff, and closed the final Windows orphan-backend audit at zero.
+
+## Development track — opt-in project engine candidate
+
+- 2026-09-23: Started isolated `codex/project-execution-engine` development from `2ad46c5`. This is an unreleased candidate and does not replace the operational R26/v0.8.31 authority above.
+- Added bounded planner execution, durable user control and budgets, independent acceptance verification, and evidence-bound finalization. Windows local regression and a live Codex artifact qualification passed; see [validation](PROJECT_ENGINE_VALIDATION.md) and [roadmap](PROJECT_ENGINE_ROADMAP.md).
+- Current gate: [draft PR #5](https://github.com/GOD13emad/ChatGPTRemoteCommander/pull/5) review. Exact code commit `27827fb` passed full local Windows gates on Node 26 and an independent test/check repeat on Node 22. Hosted CI is blocked before execution by GitHub account billing; runtime Linux/release gates remain open. Adaptive planning, parallel workers and comparative evaluation remain future milestones. No production configuration, service, release or running workload was changed by this development track.
+
+### Current development continuation — milestone 4A
+
+- 2026-09-23: Supersedes the development-track next-step statement above only; production R26 authority is unchanged. Bounded prerequisite insertion, proposal teams and provider-call reservations are implemented and locally qualified. Full test/check/audit passed on Windows Node 22 and 26: 292 core PASS / 1 skip, GUI contracts 75/75 PASS. The fixture team completed a real artifact project; live team-model and Linux qualifications remain open.
+- Current gate: publish the local candidate when GitHub access is available. Both account-config access and direct network connection failed in this restricted environment; no new remote update is claimed. Next development scope is milestone 4B, including execution isolation and explicit escalation. Evidence and remaining limitations: [PROJECT_ENGINE_VALIDATION.md](PROJECT_ENGINE_VALIDATION.md).
