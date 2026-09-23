@@ -25,7 +25,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install --yes python3-gi gir1.2-gdkpixbuf-2.0
+          sudo apt-get install --yes python3-gi gir1.2-gdkpixbuf-2.0 gnome-shell-common
       - run: npm run check
       - run: npm test
       - run: npm run audit
