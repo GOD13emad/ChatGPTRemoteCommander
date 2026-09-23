@@ -100,7 +100,7 @@ if (process.argv[2] === '--claim-worker') {
     } finally { await fixture.dispose(); }
   });
 
-  test('deadline aborts an abort-aware planner before any filesystem effect', { timeout: 6000 }, async () => {
+  for (const earlyWake of [false,true]) test(`deadline aborts an abort-aware planner before any filesystem effect (early wake=${earlyWake})`, { timeout: 6000 }, async t => {
     let aborted = false;
     const fixture = makeFixture({ planner: async (_, { signal }) => new Promise((resolve, reject) => {
       const stop = () => { aborted = true; reject(Object.assign(new Error('Planner interrupted'), { code: 'PLANNER_ABORTED' })); };
@@ -108,7 +108,16 @@ if (process.argv[2] === '--claim-worker') {
     }) });
     try {
       await fixture.create(); await fixture.start({ durationMs: 1000 });
+      let timerCalls=0;
+      if(earlyWake){
+        const nativeTimeout=globalThis.setTimeout;
+        t.mock.method(globalThis,'setTimeout',(callback,delay,...args)=>{
+          timerCalls++;
+          return nativeTimeout(callback,Math.min(delay,5),...args);
+        });
+      }
       const result = await fixture.tick();
+      if(earlyWake)assert.ok(timerCalls>1,'an early timer must be rescheduled, not abort the planner');
       assert.equal(aborted, true);
       assert.equal(result.status, 'EXHAUSTED');
       assert.equal(result.lastCode, 'PROJECT_DEADLINE_EXHAUSTED');

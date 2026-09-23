@@ -247,7 +247,14 @@ export function createProjectEngine({directory,planner,execute,observe,lookup,po
         return save(r);
       });
       controller=new AbortController();
-      abortTimer=setTimeout(()=>controller?.abort(),Math.max(1,run.deadline-Date.now()));
+      // Timers may wake just before the persisted wall-clock deadline. Recheck
+      // it before aborting, otherwise a valid run is misclassified as BLOCKED.
+      const abortAtDeadline=()=>{
+        const remaining=run.deadline-Date.now();
+        if(remaining>0){abortTimer=setTimeout(abortAtDeadline,remaining);return;}
+        controller?.abort();
+      };
+      abortTimer=setTimeout(abortAtDeadline,Math.max(1,run.deadline-Date.now()));
       controlTimer=setInterval(async()=>{
         try {const s=await getWorkflow(run.workflowId);assertCurrent(run,s,state.revision);}
         catch {controller?.abort();}

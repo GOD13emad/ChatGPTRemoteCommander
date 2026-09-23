@@ -1,6 +1,6 @@
-# v0.8.33 release qualification
+# v0.8.34 release qualification
 
-Status: UNPUBLISHED / SUPERSEDED by v0.8.34. Windows/Linux CI and source tests passed, but repeated Linux installation exposed early deadline timer wakeup incorrectly producing BLOCKED. The release was not published. v0.8.34 rechecks the persisted deadline before aborting; see RELEASE_0.8.34.md.
+Status: CANDIDATE / qualification in progress, 2026-09-24.
 
 This release delivers the opt-in durable project engine and milestone 4A adaptive prerequisites/proposal teams. The user authorized finalizing both Windows and Linux and publishing GitHub. The earlier v0.8.32 tag is an unpublished, superseded candidate; stable production remains v0.8.31 until this release is published and promoted.
 

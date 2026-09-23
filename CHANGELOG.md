@@ -1,6 +1,12 @@
 # Changelog
 
-## 0.8.33 — 2026-09-23
+## 0.8.34 — 2026-09-24
+
+- Deliver the durable adaptive project engine, isolated Linux installer and Standard-authority fixes from the unpublished 0.8.32/0.8.33 candidates.
+- Recheck the persisted project deadline after a timer wakes early, preserving EXHAUSTED classification and preventing an early abort. A deterministic early-wakeup integration regression retains the no-effect and single-attempt assertions.
+- Release evidence: docs/RELEASE_0.8.34.md.
+
+## 0.8.33 — 2026-09-23 (unpublished candidate)
 
 - Deliver the opt-in durable/adaptive project engine prepared in 0.8.32 after final cross-platform qualification.
 - Keep custom Linux no-start installer updates in their own checkout; only canonical live installs or explicit start requests delegate to candidate-first service promotion.

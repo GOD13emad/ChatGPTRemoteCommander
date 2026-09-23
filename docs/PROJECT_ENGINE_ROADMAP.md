@@ -14,7 +14,7 @@ Develop Remote Commander into a measurable project execution and management syst
 5. CONNECTOR PARITY: catalog drift diagnostics, qualified providers, browser/application integrations and transparent terminal reconnection — PLANNED.
 6. COMPARATIVE EVALUATION: pinned real project corpus, equal models/budgets, completion/correctness/recovery/intervention/cost measurements — PLANNED.
 
-CURRENT: milestone 4A is locally qualified and published to PR #5. The user authorized Windows/Linux finalization and GitHub publication; v0.8.33 cross-platform release qualification is now in progress. See [release gates](RELEASE_0.8.33.md) and [qualification evidence](PROJECT_ENGINE_VALIDATION.md). After release, the next development slice is 4B worker execution isolation and explicit escalation. No percentage or superiority score is asserted.
+CURRENT: milestone 4A is locally qualified and published to PR #5. The user authorized Windows/Linux finalization and GitHub publication; v0.8.34 cross-platform release qualification is now in progress. See [release gates](RELEASE_0.8.34.md) and [qualification evidence](PROJECT_ENGINE_VALIDATION.md). After release, the next development slice is 4B worker execution isolation and explicit escalation. No percentage or superiority score is asserted.
 
 ## First increment acceptance
 - Opt-in execution actually calls a configured planner and dispatches schema-valid proposals through existing journaled workflow tools.

@@ -5,9 +5,9 @@ Status: FINAL / OPERATIONAL / v0.8.31 STABLE
 As of: 2026-09-22
 Project root: %USERPROFILE%\source\repos\ChatGPTRemoteCommander
 Public repository: GOD13emad/ChatGPTRemoteCommander
-## Current release work — v0.8.33 candidate
+## Current release work — v0.8.34 candidate
 
-- 2026-09-23: User explicitly authorized Windows/Linux finalization and GitHub publication. Milestone 4A is implemented and pushed in PR #5; exact candidate gates are tracked in RELEASE_0.8.33.md.
+- 2026-09-23: User explicitly authorized Windows/Linux finalization and GitHub publication. Milestone 4A is implemented and pushed in PR #5; exact candidate gates are tracked in RELEASE_0.8.34.md.
 - Stable authority remains v0.8.31 until the new immutable release is published. Candidate qualification and promotion must preserve current terminal workloads and credentials.
 - The runner remains opt-in and existing workflows are not enrolled by an update. General executing workers, monetary accounting, Claude qualification and comparative benchmarks remain outside this release.
 - GitHub access/hosted execution have recovered. Ubuntu CI identified missing GdkPixbuf test prerequisites; v0.8.32 adds them to CI without weakening native checks.
