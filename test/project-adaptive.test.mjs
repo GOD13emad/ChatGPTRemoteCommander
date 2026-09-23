@@ -17,6 +17,13 @@ const definitions = {
   write_text: { name: 'write_text', inputSchema: { type: 'object', properties: { path: { type: 'string' }, content: { type: 'string' } }, required: ['path', 'content'], additionalProperties: false } }
 };
 const checks = [{ criterion: 0, type: 'text_includes', path: 'result.txt', text: 'verified output' }];
+// Crash recovery asserts journal/budget invariants, not process-startup latency.
+// Concurrent Windows CI can delay startup and synchronous SQLite durability.
+// Keep the child watchdog inside the scenario timeout, and the fixture's project
+// deadline outside both so host contention cannot masquerade as a runtime expiry.
+const CRASH_CHILD_TIMEOUT_MS = 30000;
+const CRASH_TEST_TIMEOUT_MS = 90000;
+const CRASH_RUN_DURATION_MS = 120000;
 const call = (tool, args) => ({ action: 'call', tool, argumentsJson: JSON.stringify(args), summary: 'Perform one approved project action' });
 const extend = (steps = [{ id: 'needed', title: 'Read missing source evidence' }], extras = {}) => ({ action: 'extend', tool: '', argumentsJson: JSON.stringify({ steps, reason: 'The pending action requires additional source evidence', ...extras }), summary: 'Insert a required prerequisite' });
 const deferred = () => { let resolve; const promise = new Promise(yes => { resolve = yes; }); return { promise, resolve }; };
@@ -67,22 +74,40 @@ function fixture({ root, planner = defaultPlanner, runner = {} } = {}) {
     async dispose() { if (api) await api.close(); fs.rmSync(root, { recursive: true, force: true }); }
   };
 }
-async function crashAfterExtension(root, mode = '--crash-extension') {
+const crashFixture = ({ root, planner } = {}) => fixture({ root, planner, runner: { maxDurationMs: CRASH_RUN_DURATION_MS } });
+async function crashAfterExtension(root, mode = '--crash-extension', t) {
+  const signal = t?.signal;
+  signal?.throwIfAborted();
   return new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, [fileURLToPath(import.meta.url), mode, root], { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
-    let stderr = '';
-    child.stderr.on('data', chunk => { stderr += chunk.toString(); });
-    const timer = setTimeout(() => child.kill(), 8000);
-    child.once('error', error => { clearTimeout(timer); reject(error); });
-    child.once('close', code => { clearTimeout(timer); resolve({ code, stderr }); });
+    const started = performance.now();
+    const child = spawn(process.execPath, [fileURLToPath(import.meta.url), mode, root], { stdio: ['ignore', 'ignore', 'pipe', 'ipc'], windowsHide: true });
+    let stderr = '', phase = 'starting', readyAfterMs = null, terminationReason = null;
+    child.stderr.on('data', chunk => { stderr = (stderr + chunk.toString()).slice(-32768); });
+    child.on('message', message => {
+      if (message?.phase === 'ready') { phase = 'executing'; readyAfterMs = Math.round(performance.now() - started); }
+    });
+    const stop = reason => { terminationReason ??= reason; child.kill('SIGKILL'); };
+    const aborted = () => stop('test-aborted');
+    const timer = setTimeout(() => stop('child-timeout'), CRASH_CHILD_TIMEOUT_MS);
+    signal?.addEventListener('abort', aborted, { once: true });
+    const cleanup = () => { clearTimeout(timer); signal?.removeEventListener('abort', aborted); };
+    child.once('error', error => { cleanup(); reject(error); });
+    child.once('close', (code, exitSignal) => {
+      cleanup();
+      const outcome = { code, exitSignal, phase, readyAfterMs, elapsedMs: Math.round(performance.now() - started), terminationReason, stderr };
+      if (!signal?.aborted) t?.diagnostic(`Crash worker ${mode}: ${JSON.stringify(outcome)}`);
+      resolve(outcome);
+    });
+    // The test may abort between the pre-spawn check and listener registration.
+    if (signal?.aborted) aborted();
   });
 }
-async function prepareCommittedCrash(f) {
+async function prepareCommittedCrash(f, t) {
   await f.create();
   const enrolled = await f.start({ maxPlannerCalls: 5 });
   await f.close();
-  const crashed = await crashAfterExtension(f.root);
-  assert.equal(crashed.code, 73, crashed.stderr);
+  const crashed = await crashAfterExtension(f.root, '--crash-extension', t);
+  assert.equal(crashed.code, 73, JSON.stringify(crashed));
   await f.reopen();
   assert.equal((await f.state()).planExtensions.length, 1);
   const pending = await f.status();
@@ -104,7 +129,10 @@ if (['--crash-extension', '--crash-before-extension', '--crash-extension-extra']
     }
     process.exit(73); // Exact durable-store commit / engine acknowledgement boundary.
   };
-  const f = fixture({ root: process.argv[3], planner: async () => extend() });
+  const f = crashFixture({ root: process.argv[3], planner: async () => extend() });
+  // Acknowledged readiness distinguishes slow process/import/store startup from
+  // a stalled crash boundary, without moving the actual exit-after-commit point.
+  if (process.send) await new Promise((resolve, reject) => process.send({ phase: 'ready' }, error => error ? reject(error) : resolve()));
   await f.tick();
   await f.close();
   process.exit(74);
@@ -258,10 +286,10 @@ if (['--crash-extension', '--crash-before-extension', '--crash-extension-extra']
     } finally { await f.dispose(); }
   });
 
-  test('process crash after store commit recovers exactly once without replenishing budgets', { timeout: 12000 }, async () => {
-    const f = fixture();
+  test('process crash after store commit recovers exactly once without replenishing budgets', { timeout: CRASH_TEST_TIMEOUT_MS }, async t => {
+    const f = crashFixture();
     try {
-      const pending = await prepareCommittedCrash(f);
+      const pending = await prepareCommittedCrash(f, t);
       const recovered = await f.tick();
       assert.equal(recovered.lastCode, 'PROJECT_PLAN_EXTENSION_RECOVERED');
       assert.equal(recovered.pendingExtension, null);
@@ -284,10 +312,10 @@ if (['--crash-extension', '--crash-before-extension', '--crash-extension-extra']
     } finally { await f.dispose(); }
   });
 
-  test('pause after committed extension remains authoritative during crash recovery', { timeout: 12000 }, async () => {
-    const f = fixture();
+  test('pause after committed extension remains authoritative during crash recovery', { timeout: CRASH_TEST_TIMEOUT_MS }, async t => {
+    const f = crashFixture();
     try {
-      await prepareCommittedCrash(f);
+      await prepareCommittedCrash(f, t);
       const state = await f.state();
       await f.api.execute('workflow_control', { id: 'project', expectedRevision: state.revision, action: 'pause', reason: 'User paused before recovery' });
       const result = await f.tick();
@@ -301,12 +329,12 @@ if (['--crash-extension', '--crash-before-extension', '--crash-extension-extra']
     } finally { await f.dispose(); }
   });
 
-  test('crash before extension commit fails closed without replaying a reserved mutation', { timeout: 12000 }, async () => {
-    const f = fixture();
+  test('crash before extension commit fails closed without replaying a reserved mutation', { timeout: CRASH_TEST_TIMEOUT_MS }, async t => {
+    const f = crashFixture();
     try {
       await f.create(); await f.start(); await f.close();
-      const crash = await crashAfterExtension(f.root, '--crash-before-extension');
-      assert.equal(crash.code, 73, crash.stderr);
+      const crash = await crashAfterExtension(f.root, '--crash-before-extension', t);
+      assert.equal(crash.code, 73, JSON.stringify(crash));
       await f.reopen();
       assert.equal((await f.state()).planExtensions.length, 0);
       const result = await f.tick();
@@ -320,12 +348,12 @@ if (['--crash-extension', '--crash-before-extension', '--crash-extension-extra']
     } finally { await f.dispose(); }
   });
 
-  test('recovery refuses a valid journal receipt when a later topology edit changed its result', { timeout: 12000 }, async () => {
-    const f = fixture();
+  test('recovery refuses a valid journal receipt when a later topology edit changed its result', { timeout: CRASH_TEST_TIMEOUT_MS }, async t => {
+    const f = crashFixture();
     try {
       await f.create(); await f.start(); await f.close();
-      const crash = await crashAfterExtension(f.root, '--crash-extension-extra');
-      assert.equal(crash.code, 73, crash.stderr);
+      const crash = await crashAfterExtension(f.root, '--crash-extension-extra', t);
+      assert.equal(crash.code, 73, JSON.stringify(crash));
       await f.reopen();
       assert.equal((await f.state()).planExtensions.length, 2);
       const result = await f.tick();
@@ -337,10 +365,10 @@ if (['--crash-extension', '--crash-before-extension', '--crash-extension-extra']
     } finally { await f.dispose(); }
   });
 
-  test('user criteria changed after an extension crash prevents adoption into the old run', { timeout: 12000 }, async () => {
-    const f = fixture();
+  test('user criteria changed after an extension crash prevents adoption into the old run', { timeout: CRASH_TEST_TIMEOUT_MS }, async t => {
+    const f = crashFixture();
     try {
-      await prepareCommittedCrash(f);
+      await prepareCommittedCrash(f, t);
       const state = await f.state();
       await f.api.execute('workflow_revise', { id: 'project', expectedRevision: state.revision, acceptance: ['Different user criterion'], reason: 'Requirement changed after interruption' });
       const result = await f.tick();

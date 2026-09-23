@@ -1,7 +1,7 @@
 # Project engine candidate qualification
 
 Date: 2026-09-23. Baseline: `2ad46c544907f6ca2c6c47ebf5d88b6a661e7047`.
-Scope: v0.8.32 development qualification. Current publication and live rollout evidence is recorded in RELEASE_0.8.32.md; historical entries below retain their original scope.
+Scope: v0.8.32 development qualification. Current publication and live rollout evidence is recorded in RELEASE_0.8.33.md; historical entries below retain their original scope.
 
 ## Current qualification — milestone 4A
 
@@ -13,7 +13,7 @@ Focused evidence includes 42 store extension cases, 20 team cases, 20 adaptive i
 
 Restricted-environment diagnosis and correction are recorded in E062 of `PROJECT_KNOWLEDGE_EVIDENCE.md`. Full test commands used a process-local TEMP/TMP directory under the development workspace because the existing Windows runtime test could not clean a profile-short-name temporary path under current restrictions. No test assertion was skipped or weakened, and no global environment setting changed. New alias/hardlink/identity regressions pass after full-target canonicalization replaced unnecessary ancestor canonicalization.
 
-Publication status: PR #5 now includes exact 4A commit 1f98f03. GitHub access and hosted execution are restored. Windows hosted CI passed; Ubuntu exposed a missing GdkPixbuf runner dependency. v0.8.32 provisions that dependency before the unchanged helper test. Final candidate CI, native, installer and deployment results are tracked in RELEASE_0.8.32.md.
+Publication status: PR #5 now includes exact 4A commit 1f98f03. GitHub access and hosted execution are restored. Windows hosted CI passed; Ubuntu exposed a missing GdkPixbuf runner dependency. v0.8.32 provisions that dependency before the unchanged helper test. Final candidate CI, native, installer and deployment results are tracked in RELEASE_0.8.33.md.
 
 ## Historical results — first increment
 

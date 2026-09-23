@@ -1,6 +1,14 @@
 # Changelog
 
-## 0.8.32 — 2026-09-23
+## 0.8.33 — 2026-09-23
+
+- Deliver the opt-in durable/adaptive project engine prepared in 0.8.32 after final cross-platform qualification.
+- Keep custom Linux no-start installer updates in their own checkout; only canonical live installs or explicit start requests delegate to candidate-first service promotion.
+- Preserve explicitly selected Standard authority across repeated capability migrations; an explicit Standard choice must never imply Full Power authorization.
+- Give process-crash regression tests separate bounded startup/scenario budgets and cancellation cleanup for slower Windows CI workers, retaining all receipt, deadline and no-replay assertions.
+- v0.8.32 was tagged for installer acceptance but not publicly released. Its duplicate hosted Windows run exposed a test time budget issue, and final Linux installer review exposed the custom no-start activation issue.
+
+## 0.8.32 — 2026-09-23 (unpublished candidate, superseded by 0.8.33)
 
 - Add an opt-in durable project runner with a bounded Codex/trusted-command planner, journaled execution, independent acceptance checks and evidence-bound Project Brain completion.
 - Preserve pause/cancel authority across late receipts; reserve action/provider budgets before dispatch and recover recorded read observations after restart.

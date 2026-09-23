@@ -57,7 +57,7 @@ For Power Mode, add `--power-mode`. Linux amd64 and arm64 are supported by the i
 
 ## Features
 
-v0.8.32: [the opt-in project execution engine](docs/PROJECT_ENGINE.md) adds bounded planner proposals, journaled execution, durable budgets, pause/cancel controls, fresh observations after restart and independent evidence-bound finalization. It is disabled unless explicitly configured and does not automatically enroll existing workflows. See the [development roadmap](docs/PROJECT_ENGINE_ROADMAP.md) for remaining capabilities and comparative qualification.
+v0.8.33: [the opt-in project execution engine](docs/PROJECT_ENGINE.md) adds bounded planner proposals, journaled execution, durable budgets, pause/cancel controls, fresh observations after restart and independent evidence-bound finalization. It is disabled unless explicitly configured and does not automatically enroll existing workflows. See the [development roadmap](docs/PROJECT_ENGINE_ROADMAP.md) for remaining capabilities and comparative qualification.
 
 Optional [adaptive planning and proposal teams](docs/PROJECT_ENGINE_ADAPTIVE.md) add journaled prerequisite insertion, parallel worker advice, one coordinating executor and persistent provider-call budgets. Acceptance criteria and execution authority remain immutable within a run.
 

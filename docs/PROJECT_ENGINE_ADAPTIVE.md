@@ -1,4 +1,4 @@
-# Adaptive planning and proposal teams — v0.8.32
+# Adaptive planning and proposal teams — v0.8.33
 
 This increment lets the planner insert missing prerequisites and ask a bounded group of proposal workers for advice. The original executor still performs one journaled action at a time. A team does not receive additional filesystem, command, acceptance or completion authority.
 
