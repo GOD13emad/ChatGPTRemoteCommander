@@ -10,3 +10,5 @@ This folder is a template for a private/local/workspace Plugin that references a
 6. For ChatGPT Work, use `WORK_INSTALL_PROMPT.md` after the MCP app has been registered and scanned successfully.
 
 Before app binding, `plugin.json` is a valid skill-only template. The bind helper creates `.app.json` and adds the app reference to the private copy. The template includes a workflow skill and ready icon/logo assets.
+
+The Git marketplace also includes `.codex-plugin/plugin.json` for native Codex version and skill discovery. It shares the backend version with the legacy manifest; neither public manifest contains an account binding. The native manifest was added after the immutable v0.8.35 assets were published, so upgrade the Git marketplace to obtain it. Existing registered apps remain separate from this skill wrapper. Open a new task after installing an update to load its refreshed skills.
