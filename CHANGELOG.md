@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased — project decisions (4B.1)
+
+- Persist bounded planner questions as WAITING_INPUT and expose them in run status/scheduler blockers without stalling other enrolled projects.
+- Add explicit revision-checked, idempotent workflow_run_resolve responses. Resume the same run with its original scope, acceptance checks, deadline and consumed budgets; responses do not grant tool authority.
+- Preserve question/answer state across restart and reject stale/conflicting answers, credentials, changed policy/scope, cancelled/paused execution and exhausted budgets.
+
 ## 0.8.34 — 2026-09-24
 
 - Deliver the durable adaptive project engine, isolated Linux installer and Standard-authority fixes from the unpublished 0.8.32/0.8.33 candidates.

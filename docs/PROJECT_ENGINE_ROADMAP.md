@@ -14,7 +14,7 @@ Develop Remote Commander into a measurable project execution and management syst
 5. CONNECTOR PARITY: catalog drift diagnostics, qualified providers, browser/application integrations and transparent terminal reconnection — PLANNED.
 6. COMPARATIVE EVALUATION: pinned real project corpus, equal models/budgets, completion/correctness/recovery/intervention/cost measurements — PLANNED.
 
-CURRENT: milestone 4A is released in immutable v0.8.34, PR #5 is merged, and official updates on both Windows and Linux report CURRENT. See [release gates](RELEASE_0.8.34.md) and [qualification evidence](PROJECT_ENGINE_VALIDATION.md). The next development slice is 4B worker execution isolation and explicit escalation. No percentage or superiority score is asserted. Historical entries below describe their observation time, not the current release status.
+CURRENT: milestone 4A is released in immutable v0.8.34, PR #5 is merged, and official updates on both Windows and Linux report CURRENT. Development continues in 4B.1: [durable input requests and explicit responses](PROJECT_ENGINE_DECISIONS.md). Worker execution isolation, broader escalation and monetary accounting remain open. See [release gates](RELEASE_0.8.34.md) and [qualification evidence](PROJECT_ENGINE_VALIDATION.md). No percentage or superiority score is asserted. Historical entries below describe their observation time, not the current release status.
 
 ## First increment acceptance
 - Opt-in execution actually calls a configured planner and dispatches schema-valid proposals through existing journaled workflow tools.

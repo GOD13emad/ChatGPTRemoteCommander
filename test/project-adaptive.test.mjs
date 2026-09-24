@@ -176,7 +176,7 @@ if (['--crash-extension', '--crash-before-extension', '--crash-extension-extra']
       assert.equal(fs.readFileSync(path.join(f.root, 'result.txt'), 'utf8'), 'verified output');
       assert.equal((await f.state()).finalization.acceptanceResults[0], true);
       assert.equal((await f.api.execute('workflow_operations', { id: 'project' })).operations.length, 3);
-      assert.equal(f.api.definitions.length, 20);
+      assert.equal(f.api.definitions.length, 21);
       assert.equal(f.api.definitions.some(tool => tool.name === 'workflow_plan_extend'), false);
     } finally { await f.dispose(); }
   });
