@@ -1,5 +1,7 @@
 # Competitive Audit — 2026-09-21
 
+> Historical snapshot. Product comparisons, measurements and roadmap statements apply to the recorded date/version. See [current project state](PROJECT_CONTROL_STATE.md) and [v0.8.35](RELEASE_0.8.35.md) for present release scope.
+
 ## Scope
 Evidence-first comparison of ChatGPT Remote Commander v0.8.15 candidate with adjacent agent/execution products. The products are not identical: Remote Commander is primarily an MCP execution/control layer for a real machine, while Work, Codex, Claude Code, Cursor, GitHub Copilot agents and Open Interpreter include their own agent/model/harness surfaces.
 

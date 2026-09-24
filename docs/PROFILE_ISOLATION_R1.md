@@ -40,19 +40,19 @@ The tunnel YAML remains under the tunnel-client profile directory. Migration cha
 Existing enrolled profile:
 
 ```powershell
-.\configure-profile-instance.ps1 -Profile "saeed-emad"
+.\configure-profile-instance.ps1 -Profile "secondary"
 ```
 
 Dry validation without changing the live tunnel:
 
 ```powershell
-.\configure-profile-instance.ps1 -Profile "saeed-emad" -McpPort 47834 -PrepareOnly
+.\configure-profile-instance.ps1 -Profile "secondary" -McpPort 47834 -PrepareOnly
 ```
 
 New/reenrolled account can request isolation through:
 
 ```powershell
-.\connect-chatgpt-account.ps1 -Profile "saeed-emad" -HealthPort 47833 -Isolate
+.\connect-chatgpt-account.ps1 -Profile "secondary" -HealthPort 47833 -Isolate
 ```
 
 Optional isolated Power Mode is explicit:
@@ -68,7 +68,7 @@ GUI requires isolated Power Mode and should only be given to principals trusted 
 Use the supported transaction instead of editing `config.json` or `instance.json` manually:
 
 ```powershell
-.\reconfigure-profile-instance.ps1 -Profile "saeed-emad" -PowerMode -GuiControl
+.\reconfigure-profile-instance.ps1 -Profile "secondary" -PowerMode -GuiControl
 ```
 
 The current MCP port and private workflow store are preserved. Config/record files are backed up and rewritten atomically. The supervisor recycles only a marker-proven owned instance. If the new config does not become healthy within the bounded wait, the wrapper restores the backed-up config/record and verifies rollback. Tunnel ID and DPAPI Runtime API credential are unchanged.

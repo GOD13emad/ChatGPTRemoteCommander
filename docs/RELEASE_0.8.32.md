@@ -4,7 +4,7 @@ Status: UNPUBLISHED / SUPERSEDED by v0.8.33, 2026-09-23. The tag and draft asset
 
 Exact candidate `f4f4546fa8cac0e87b0f75b4604208a3f3b378ef` passed Windows/Ubuntu CI run 35827442768, real-platform suites, candidate-only validation and fresh Windows/Linux installer checks. Windows custom no-start repeat installation preserved production state. All 13 draft asset digests matched downloaded bytes.
 
-Publication was stopped when a duplicate Windows CI run exceeded the adaptive crash test's 12-second scenario budget, and Linux repeat-install review found that a custom existing no-start install unconditionally entered service promotion. v0.8.33 corrects both before publication. See [the current release record](RELEASE_0.8.33.md). The table below is the historical candidate gate plan, not current release authority.
+Publication was stopped when a duplicate Windows CI run exceeded the adaptive crash test's 12-second scenario budget, and Linux repeat-install review found that a custom existing no-start install unconditionally entered service promotion. v0.8.33 corrects both before publication. See the [successor candidate](RELEASE_0.8.33.md) and [current v0.8.35 release](RELEASE_0.8.35.md). The table below is the historical candidate gate plan, not current release authority.
 
 The user authorized Windows/Linux finalization and GitHub publication. This release delivers roadmap milestones 2–4A: explicit project enrollment, durable planner/executor/verifier runs, adaptive prerequisites and bounded proposal teams. Milestone 4B (isolated executing workers, blocker escalation and currency accounting), additional qualified providers/integrations and comparative benchmarks remain planned.
 

@@ -1,9 +1,9 @@
-# Project engine candidate qualification
+# Project engine qualification history
 
 Date: 2026-09-23. Baseline: `2ad46c544907f6ca2c6c47ebf5d88b6a661e7047`.
-Scope: v0.8.32 development qualification. Current publication and live rollout evidence is recorded in RELEASE_0.8.34.md; historical entries below retain their original scope.
+Scope: development and release qualification history. Current publication and scoped rollout evidence is recorded in [v0.8.35](RELEASE_0.8.35.md); historical entries below retain their original dates, versions and limits.
 
-## Current qualification — milestone 4A
+## Historical candidate qualification — milestone 4A
 
 From baseline `67d01533d1ddb7ea511c5410290b617752456659`, the adaptive planning/team increment passed `npm test`, `npm run check` and `npm run audit` on Windows with both Node 22.23.2 and 26.7.0. Core tests: **292 passed, 1 skipped, 0 failed**. Separate GUI contracts: **75/75 passed**. These are repeated version checks, not additional distinct test totals. The skipped leaf-symlink test requires a Windows privilege unavailable to this account.
 
@@ -11,7 +11,7 @@ Focused evidence includes 42 store extension cases, 20 team cases, 20 adaptive i
 
 `node examples/project-engine/adaptive.mjs` completed: two proposal workers plus one coordinator, one prerequisite insertion, three planning rounds, nine reserved/observed provider invocations, observed source read, real artifact write, independent verification and Brain finalization. This uses a deterministic fixture provider. A live model run of the new team/adaptive flow remains UNEXECUTED; the earlier live Codex single-step qualification below is historical evidence for the first increment.
 
-Restricted-environment diagnosis and correction are recorded in E062 of `PROJECT_KNOWLEDGE_EVIDENCE.md`. Full test commands used a process-local TEMP/TMP directory under the development workspace because the existing Windows runtime test could not clean a profile-short-name temporary path under current restrictions. No test assertion was skipped or weakened, and no global environment setting changed. New alias/hardlink/identity regressions pass after full-target canonicalization replaced unnecessary ancestor canonicalization.
+Restricted-environment diagnosis and correction are recorded in E062 of the [historical engineering record](history/PROJECT_KNOWLEDGE_EVIDENCE_20260924.md). Full test commands used a process-local TEMP/TMP directory under the development workspace because the existing Windows runtime test could not clean a profile-short-name temporary path under current restrictions. No test assertion was skipped or weakened, and no global environment setting changed. New alias/hardlink/identity regressions pass after full-target canonicalization replaced unnecessary ancestor canonicalization.
 
 Publication status: PR #5 now includes exact 4A commit 1f98f03. GitHub access and hosted execution are restored. Windows hosted CI passed; Ubuntu exposed a missing GdkPixbuf runner dependency. v0.8.32 provisions that dependency before the unchanged helper test. Final candidate CI, native, installer and deployment results are tracked in RELEASE_0.8.34.md.
 
@@ -53,6 +53,6 @@ The current engine consumes atomic workflow steps and can insert bounded prerequ
 
 The first increment's next milestone was revision-safe plan extension and scoped proposal coordination; its 4A qualification is recorded above. Parallel mutating workers and monetary budgets remain planned. A release additionally needs exact-candidate Linux execution and existing cross-platform release gates. Superiority against other products remains UNPROVEN until a pinned, equal-model/equal-budget project benchmark is completed.
 
-## Final published qualification — 2026-09-24
+## Historical published qualification — v0.8.34
 
 v0.8.34 / 86af9fe7e803bbba19fa2d3126d81389509bd176 passed exact Windows/Ubuntu CI, real-device source/native no-input qualification, both platforms' fresh and repeated pinned installers, candidate-first compatibility and official rollout. Both updaters subsequently reported CURRENT. Windows core: 302 PASS, 5 platform/privilege SKIP; GUI contracts: 75 PASS. See [release closeout](RELEASE_0.8.34.md) for publication, hashes, configuration preservation, retained workloads and remaining qualification limits. These final gates supersede earlier candidate release failures; their historical records remain below/above for provenance.

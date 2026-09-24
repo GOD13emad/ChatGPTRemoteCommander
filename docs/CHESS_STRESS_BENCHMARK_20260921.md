@@ -1,5 +1,7 @@
 # Headless Chess Stress Benchmark — 2026-09-21
 
+> Historical snapshot. Product comparisons, measurements and roadmap statements apply to the recorded date/version. See [current project state](PROJECT_CONTROL_STATE.md) and [v0.8.35](RELEASE_0.8.35.md) for present release scope.
+
 ## Objective
 Exercise Remote Commander under a repeated think/tool/respond loop without touching the user's foreground desktop. This is a latency/reliability stress test, not a scientific benchmark of model chess strength or a cross-product superiority test.
 
@@ -12,7 +14,7 @@ Exercise Remote Commander under a repeated think/tool/respond loop without touch
 - Local benchmark root: `%LOCALAPPDATA%\ChatGPTRemoteCommander\benchmarks\stockfish19-20260921` (external/local evidence; not release content).
 
 ## Host
-- Device: Emad-PC-Ultimate
+- Device: Windows test host
 - CPU: Intel Core i9-13900KF, 32 logical processors
 - Engine configuration: 32 threads, 2048 MiB hash, Skill Level 20/default maximum
 - GUI usage: none. Stockfish ran headlessly through a persistent PowerShell terminal; no screenshot, mouse, keyboard, scroll, focus, or browser interaction was used.

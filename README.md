@@ -8,10 +8,11 @@ Cross-platform Windows + Linux MCP server for controlled remote project and mach
 
 **Setup guides in 10 languages:** [English](docs/SETUP.en.md) · [فارسی](docs/SETUP.fa.md) · [العربية](docs/SETUP.ar.md) · [Türkçe](docs/SETUP.tr.md) · [Español](docs/SETUP.es.md) · [Français](docs/SETUP.fr.md) · [Deutsch](docs/SETUP.de.md) · [Русский](docs/SETUP.ru.md) · [简体中文](docs/SETUP.zh-CN.md) · [日本語](docs/SETUP.ja.md)
 
-[All setup guides](docs/README.md)
-## v0.5 controlled desktop automation, hardened runtime ownership, and zero-reentry startup
+[Documentation index](docs/README.md) · [Current release: v0.8.35](docs/RELEASE_0.8.35.md) · [Project status](docs/PROJECT_CONTROL_STATE.md) · [Development roadmap](docs/PROJECT_ENGINE_ROADMAP.md)
 
-v0.5 preserves all three deployment patterns: **one ChatGPT account -> multiple computers**, **multiple ChatGPT accounts -> one computer**, and **multiple concurrent chats -> the same computer**. Each computer runs its own MCP server; each account uses its own Secure MCP Tunnel profile; concurrent chat mutations on the same path are serialized to reduce write races.
+## Persistent startup
+
+Three deployment patterns are supported: **one ChatGPT account -> multiple computers**, **multiple ChatGPT accounts -> one computer**, and **multiple concurrent chats -> the same computer**. Each computer runs its own MCP server; each account uses its own Secure MCP Tunnel profile; concurrent chat mutations on the same path are serialized to reduce write races.
 
 After the one-time tunnel enrollment, you do **not** need to re-enter the Tunnel ID, local MCP address, health port, or Runtime API key after each login.
 
@@ -57,7 +58,9 @@ For Power Mode, add `--power-mode`. Linux amd64 and arm64 are supported by the i
 
 ## Features
 
-v0.8.34: [the opt-in project execution engine](docs/PROJECT_ENGINE.md) adds bounded planner proposals, journaled execution, durable budgets, pause/cancel controls, fresh observations after restart and independent evidence-bound finalization. It is disabled unless explicitly configured and does not automatically enroll existing workflows. See the [development roadmap](docs/PROJECT_ENGINE_ROADMAP.md) for remaining capabilities and comparative qualification.
+In v0.8.35, [durable input requests](docs/PROJECT_ENGINE_DECISIONS.md) let an enrolled project ask for a decision and resume from an explicit answer without resetting its budgets or changing its acceptance criteria.
+
+[The opt-in project execution engine](docs/PROJECT_ENGINE.md), introduced in v0.8.34, adds bounded planner proposals, journaled execution, durable budgets, pause/cancel controls, fresh observations after restart and independent evidence-bound finalization. It is disabled unless explicitly configured and does not automatically enroll existing workflows. See the [development roadmap](docs/PROJECT_ENGINE_ROADMAP.md) for remaining capabilities and comparative qualification.
 
 Optional [adaptive planning and proposal teams](docs/PROJECT_ENGINE_ADAPTIVE.md) add journaled prerequisite insertion, parallel worker advice, one coordinating executor and persistent provider-call budgets. Acceptance criteria and execution authority remain immutable within a run.
 
@@ -215,5 +218,3 @@ v0.8.27 closes the stale-router-accounting edge case: when a previous Windows ba
 
 
 v0.8.31 keeps isolated/custom Windows installer validation from mutating live routing when `-NoStartServer` is used. Canonical live installs retain candidate-first delegation, while custom existing checkouts update in place only.
-
-In v0.8.35, [durable input requests](docs/PROJECT_ENGINE_DECISIONS.md) let an enrolled project ask for a decision and resume from an explicit answer without resetting its budgets or changing its acceptance criteria.
