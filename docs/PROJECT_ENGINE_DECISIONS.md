@@ -1,6 +1,6 @@
 # Durable project input requests
 
-Milestone 4B.1, development after v0.8.34. General executing workers, monetary budgets and external notification delivery are separate work.
+Milestone 4B.1, included in v0.8.35. General executing workers, monetary budgets and external notification delivery are separate work.
 
 A configured project planner can stop an atomic step with a specific question. Commander persists the request before releasing its claim and reports `WAITING_INPUT`. Waiting projects do not block the execution queue for other enrolled projects. The request is visible through `workflow_run_status` and the scheduler's blocked list; it is stored in the private project-run database, not as a credential-bearing log or external message.
 

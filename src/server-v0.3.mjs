@@ -14,7 +14,7 @@ import { expandPathValue, shellName } from './platform.mjs';
 import { formatToolInputErrors, validateJsonSchema } from './schema-validator.mjs';
 
 let workflowTools = null;
-const VERSION = '0.8.34';
+const VERSION = '0.8.35';
 const MODERN_VERSION = '2026-07-28';
 const LEGACY_VERSIONS = ['2025-11-25', '2025-06-18', '2025-03-26'];
 const MODERN_CACHE_HINT = Object.freeze({ ttlMs: 30000, cacheScope: 'private' });

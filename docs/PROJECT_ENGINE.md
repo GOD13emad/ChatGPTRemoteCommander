@@ -1,4 +1,4 @@
-# Opt-in project execution engine — v0.8.34 and unreleased development
+# Opt-in project execution engine — v0.8.35
 
 The engine connects a bounded planner to existing journaled Commander tools and independent acceptance checks. It can execute an explicitly enrolled project, inspect progress, stop safely, and finalize a verified artifact. It does not supply a new model or establish superiority over other agents.
 
@@ -48,7 +48,7 @@ Model selection may be explicitly set as `provider.model`. Planner processes hav
 
 ## Tools
 
-When configured, four additional tools appear (the response tool is development after v0.8.34):
+When configured, four additional tools appear:
 
 | Tool | Purpose |
 |---|---|
