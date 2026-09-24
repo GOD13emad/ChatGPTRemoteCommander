@@ -43,6 +43,13 @@ for (const required of [
 const plugin = JSON.parse(read('plugin-template/plugin.json'));
 if (plugin.version !== pkg.version) fail('plugin version does not match package version');
 if (plugin.name !== 'chatgpt-remote-commander') fail('unexpected plugin name');
+const codexPlugin = JSON.parse(read('plugin-template/.codex-plugin/plugin.json'));
+if (codexPlugin.name !== plugin.name || codexPlugin.version !== pkg.version) fail('Codex plugin identity/version drift');
+if (codexPlugin.skills !== './skills/' || !exists(`plugin-template/${codexPlugin.skills}`)) fail('Codex skill discovery missing');
+if (codexPlugin.apps || exists('plugin-template/.app.json')) fail('public Codex template must not contain a private app binding');
+for (const field of ['composerIcon', 'logo']) {
+  if (!exists(`plugin-template/${codexPlugin.interface?.[field]}`)) fail(`Codex plugin asset missing: ${field}`);
+}
 const openai = plugin.extensions?.['com.openai'];
 if (!openai?.interface) fail('OpenAI plugin interface missing');
 if (openai.apps) fail('public plugin template must not contain workspace-specific apps binding');
