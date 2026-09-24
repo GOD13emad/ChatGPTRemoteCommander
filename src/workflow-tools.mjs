@@ -70,6 +70,9 @@ export const PROJECT_ENGINE_TOOL_DEFINITIONS = [
     checks:{type:'array',minItems:1,maxItems:50,items:{type:'object'}}
   },['id','runId','expectedRevision','checks']),action),
   definition('workflow_run_status','Read durable run budgets, receipts, independent verification and blocker status.',obj({runId:id}),ro),
+  definition('workflow_run_resolve','Record an explicit response to an open project input request and queue the same run. Preserves scope, checks and consumed budgets. Configured automatic scheduling may subsequently execute it. Never submit credentials.',obj({
+    runId:id,requestId:text(64),expectedRevision:rev,response:text(2000)
+  },['runId','requestId','expectedRevision','response']),{...action,idempotentHint:true}),
   definition('workflow_run_tick','Execute at most one bounded planner/tool step, or independently verify and finalize an enrolled project.',obj({runId:id}),action)
 ];
 
@@ -148,6 +151,10 @@ export function createWorkflowTools({ config, roots, device, configSha256, looku
           }
           if (r.readyForNextStep) {
             const enrolled=engine?.status().runs.find(run=>run.workflowId===item.id&&!['COMPLETED','BLOCKED','CANCELLED','EXHAUSTED'].includes(run.status));
+            if(enrolled?.pendingRequest){
+              blocked.push({id:item.id,runId:enrolled.runId,blockers:['PROJECT_INPUT_REQUIRED'],request:enrolled.pendingRequest});
+              continue;
+            }
             ready.push({
               id:item.id,nextStep:r.nextStep,nextAction:r.nextAction,revision:r.state.revision,
               executionProfile:r.executionProfile,
@@ -199,6 +206,7 @@ export function createWorkflowTools({ config, roots, device, configSha256, looku
         case 'workflow_scheduler_tick': return schedulerTick();
         case 'workflow_run_start': if(!engine)fail('WORKFLOW_RUNNER_DISABLED');return engine.start(args);
         case 'workflow_run_status': if(!engine)fail('WORKFLOW_RUNNER_DISABLED');return engine.status(args.runId);
+        case 'workflow_run_resolve': if(!engine)fail('WORKFLOW_RUNNER_DISABLED');return engine.resolve(args);
         case 'workflow_run_tick': if(!engine)fail('WORKFLOW_RUNNER_DISABLED');return engine.tick(args.runId);
         case 'workflow_call': {
           const outcome = await store.call(args, {

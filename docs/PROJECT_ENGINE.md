@@ -1,4 +1,4 @@
-# Opt-in project execution engine — v0.8.34
+# Opt-in project execution engine — v0.8.34 and unreleased development
 
 The engine connects a bounded planner to existing journaled Commander tools and independent acceptance checks. It can execute an explicitly enrolled project, inspect progress, stop safely, and finalize a verified artifact. It does not supply a new model or establish superiority over other agents.
 
@@ -48,17 +48,18 @@ Model selection may be explicitly set as `provider.model`. Planner processes hav
 
 ## Tools
 
-When configured, three additional tools appear:
+When configured, four additional tools appear (the response tool is development after v0.8.34):
 
 | Tool | Purpose |
 |---|---|
 | `workflow_run_start` | Enroll an exact workflow revision with run ID, independent checks, action/provider-call limits and duration |
 | `workflow_run_status` | Inspect run state, reserved attempts, receipts, blockers and verification |
+| `workflow_run_resolve` | Record an explicit answer to an exact open input request; queue the same run without refilling its budgets |
 | `workflow_run_tick` | Execute at most one planner/tool action or perform independent finalization |
 
 `workflow_control` pauses/resumes/cancels the underlying workflow. Control intent has its own persistent generation, independent of scheduler enablement. Pause/cancel stops new effects and survives late receipts. An already dispatched effect is allowed to settle; its lease is not released just because the user pauses. Unknown effects remain uncertain and must be reconciled.
 
-Reusing the same run ID returns the existing run and does not replenish budgets. A terminal blocked run is not silently restarted. Correct the issue and explicitly create a new run ID when appropriate. External changes to the goal, steps, authority, model profile or runner policy invalidate the old run's planning assumptions. An engine's own journaled prerequisite insertion can update its plan fingerprint only through a matching durable receipt and unchanged scope.
+Reusing the same run ID returns the existing run and does not replenish budgets. A terminal blocked run is not silently restarted. Correct the issue and explicitly create a new run ID when appropriate. Structured questions instead enter `WAITING_INPUT`; an explicit, revision-checked response can resume the same run while preserving its original deadline and consumed budgets. See [durable decisions](PROJECT_ENGINE_DECISIONS.md). External changes to the goal, steps, authority, model profile or runner policy invalidate the old run's planning assumptions. An engine's own journaled prerequisite insertion can update its plan fingerprint only through a matching durable receipt and unchanged scope.
 
 ## Independent checks
 
