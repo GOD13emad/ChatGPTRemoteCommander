@@ -215,3 +215,5 @@ v0.8.27 closes the stale-router-accounting edge case: when a previous Windows ba
 
 
 v0.8.31 keeps isolated/custom Windows installer validation from mutating live routing when `-NoStartServer` is used. Canonical live installs retain candidate-first delegation, while custom existing checkouts update in place only.
+
+In v0.8.35, [durable input requests](docs/PROJECT_ENGINE_DECISIONS.md) let an enrolled project ask for a decision and resume from an explicit answer without resetting its budgets or changing its acceptance criteria.
