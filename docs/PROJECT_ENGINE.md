@@ -1,4 +1,4 @@
-# Opt-in project execution engine — v0.8.36
+# Opt-in project execution engine — v0.8.37
 
 The engine connects a bounded planner to existing journaled Commander tools and independent acceptance checks. It can execute an explicitly enrolled project, inspect progress, stop safely, and finalize a verified artifact. It does not supply a new model or establish superiority over other agents.
 
@@ -40,7 +40,7 @@ The provider uses the operator's existing CLI authentication. Never put credenti
 
 Supported providers:
 
-- `codex`: verified against local Codex CLI 0.146.0. Runs in a temporary project, read-only, ephemeral, with user configuration/rules and known action features disabled. JSONL tool events are rejected. These application controls do not constitute a separate OS sandbox for the provider process.
+- `codex`: verified against local Codex CLI 0.146.0 and an isolated authenticated Codex CLI 0.156.1 qualification. Runs in a temporary project, read-only, ephemeral, with user configuration/rules and known action features disabled. Executable-tool JSONL events and unknown provider errors are rejected. The exact 0.156.1 diagnostic emitted because Commander intentionally disables `code_mode_host` is accepted only with its exact schema/message and only before `turn.started`; widened, duplicated or reordered diagnostics still fail closed. These application controls do not constitute a separate OS sandbox for the provider process.
 - `command`: explicitly trusted operator executable with fixed argv, JSON context on stdin, and a JSON proposal on stdout. It is not arbitrary command text supplied by the model. The executable itself has the OS user's privileges.
 - `claude`: reserved but fails with `PLANNER_PROVIDER_UNAVAILABLE` pending local CLI/auth/control qualification. No compatibility is claimed from documentation alone.
 
@@ -90,12 +90,12 @@ Allowed autonomous actions intentionally exclude GUI takeover, unrestricted shel
 
 Add `--codex` to that demo for a live provider qualification using existing CLI authentication. Set `RC_CODEX_EXECUTABLE` only when the CLI is not on PATH. The demo creates and cleans only its owned temporary project; it never installs or changes a production service.
 
-The roadmap in `PROJECT_ENGINE_ROADMAP.md` tracks broader providers/integrations and comparative benchmarks. Milestone 4A adds [bounded prerequisite insertion and parallel proposal workers](PROJECT_ENGINE_ADAPTIVE.md). Unrestricted plan rewriting, parallel mutating project workers, automatic scientific validation, monetary accounting and general terminal reattachment remain outside the v0.8.36 scope. Milestone 4B.2 adds only the bounded artifact-worker boundary described below.
+The roadmap in `PROJECT_ENGINE_ROADMAP.md` tracks broader providers/integrations and comparative benchmarks. Milestone 4A adds [bounded prerequisite insertion and parallel proposal workers](PROJECT_ENGINE_ADAPTIVE.md). Unrestricted plan rewriting, parallel mutating project workers, automatic scientific validation, monetary accounting and general terminal reattachment remain outside the v0.8.37 scope. Milestone 4B.2 adds only the bounded artifact-worker boundary described below.
 
 
 ## Bounded artifact workers (4B.2)
 
-v0.8.36 adds an **opt-in artifact worker** boundary. It remains disabled unless explicitly configured inside an already enabled project runner.
+v0.8.36 introduced the **opt-in artifact worker** boundary. v0.8.37 keeps it disabled unless explicitly configured inside an already enabled project runner and hardens import invariants found by independent review: a ready receipt remains bound to its delegated workflow step; absolute coordinator targets are accepted only when canonical containment keeps them inside the project root; and the documented 64 KiB artifact ceiling now fits through bounded proposal/context/journal envelopes without relaxing the 256 KiB workflow argument ceiling.
 
 Enable it only inside an already explicit project runner:
 
