@@ -99,7 +99,6 @@ invoke_existing_safe_update() {
   [[ "$POWER_MODE" == 1 ]] && args+=(--power-mode)
   [[ "$STANDARD_MODE" == 1 ]] && args+=(--standard-mode)
   local cap
-  [[ "$CUSTOM_NO_START" == 1 ]] || args+=(--provider-root "$state_root")
   for cap in "${DISABLE_CAPS[@]}"; do args+=(--disable-capability "$cap"); done
   for cap in "${ENABLE_CAPS[@]}"; do args+=(--enable-capability "$cap"); done
   /bin/bash "$updater" "${args[@]}"
@@ -339,6 +338,7 @@ write_local_config() {
       --allowed-program dotnet --allowed-program cmake --allowed-program ninja)
   fi
   local cap
+  [[ "$CUSTOM_NO_START" == 1 ]] || args+=(--provider-root "$state_root")
   for cap in "${DISABLE_CAPS[@]}"; do args+=(--disable-capability "$cap"); done
   for cap in "${ENABLE_CAPS[@]}"; do args+=(--enable-capability "$cap"); done
   node "${args[@]}" >/dev/null
