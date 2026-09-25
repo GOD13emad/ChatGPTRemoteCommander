@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 
-export const CAPABILITY_SCHEMA_VERSION = 2;
-export const CAPABILITY_PROFILE_REVISION = 'capability-profile-r2';
+export const CAPABILITY_SCHEMA_VERSION = 3;
+export const CAPABILITY_PROFILE_REVISION = 'capability-profile-r3';
 
 export const FULL_WORKFLOW_EXECUTION_TOOLS = Object.freeze([
   'system_status','list_directory','read_text','write_text','run_project_command',
@@ -25,6 +25,10 @@ export const CAPABILITIES = Object.freeze([
   'gui.mouse',
   'gui.keyboard',
   'gui.window_focus',
+  'browser.background',
+  'browser.navigate',
+  'browser.input',
+  'browser.screenshot',
   'workflow.durable',
   'workflow.autonomous_resume',
   'workflow.scheduler',
@@ -45,6 +49,7 @@ function list(value) { return Array.isArray(value) ? [...value] : []; }
 export function deriveCapabilitySet(config = {}) {
   const pm = config.powerMode ?? {};
   const gui = pm.guiControl ?? {};
+  const browser = pm.browserControl ?? {};
   const wf = config.durableWorkflows ?? {};
   const continuation = wf.continuation ?? {};
   const scheduler = wf.scheduler ?? {};
@@ -64,6 +69,12 @@ export function deriveCapabilitySet(config = {}) {
   if (bool(gui.enabled) && bool(gui.allowMouse)) out.add('gui.mouse');
   if (bool(gui.enabled) && bool(gui.allowKeyboard)) out.add('gui.keyboard');
   if (bool(gui.enabled) && bool(gui.allowWindowFocus)) out.add('gui.window_focus');
+  if (bool(browser.enabled)) {
+    out.add('browser.background');
+    if (bool(browser.allowNavigate)) out.add('browser.navigate');
+    if (bool(browser.allowInput)) out.add('browser.input');
+    if (bool(browser.allowScreenshot)) out.add('browser.screenshot');
+  }
   if (bool(wf.enabled)) {
     out.add('workflow.durable');
     out.add('workflow.reconcile');
@@ -159,10 +170,17 @@ export function migrateCapabilityConfig({
 
   next.powerMode ??= {};
   next.powerMode.guiControl ??= {};
+  next.powerMode.browserControl ??= {};
   next.powerMode.guiControl.interactionPolicy = 'explicit-current-request-only';
   next.powerMode.guiControl.defaultSessionMode = 'observe';
   next.powerMode.guiControl.backgroundPreferred = true;
   next.powerMode.guiControl.workflowTakeoverAllowed = false;
+  next.powerMode.browserControl.backgroundFirst = true;
+  next.powerMode.browserControl.allowForegroundFallback = true;
+  next.powerMode.browserControl.foregroundFallback = 'explicit-current-request-only';
+  next.powerMode.browserControl.workflowBrowserAllowed = false;
+  next.powerMode.browserControl.userBrowserProfileReuse = false;
+  next.powerMode.browserControl.savedPasswordExtraction = false;
   next.durableWorkflows ??= {};
   next.durableWorkflows.continuation ??= {};
   next.durableWorkflows.scheduler ??= {};
@@ -183,6 +201,10 @@ export function migrateCapabilityConfig({
     next.powerMode.guiControl.allowMouse = on('gui.mouse');
     next.powerMode.guiControl.allowKeyboard = on('gui.keyboard');
     next.powerMode.guiControl.allowWindowFocus = on('gui.window_focus');
+    next.powerMode.browserControl.enabled = on('browser.background');
+    next.powerMode.browserControl.allowNavigate = on('browser.navigate');
+    next.powerMode.browserControl.allowInput = on('browser.input');
+    next.powerMode.browserControl.allowScreenshot = on('browser.screenshot');
     next.autoUpdate = {
       ...(next.autoUpdate ?? {}),
       enabled: on('lifecycle.auto_update'),
@@ -197,6 +219,10 @@ export function migrateCapabilityConfig({
     next.powerMode.allowProcessControl = false;
     next.powerMode.allowPermanentDelete = false;
     next.powerMode.guiControl.enabled = false;
+    next.powerMode.browserControl.enabled = false;
+    next.powerMode.browserControl.allowNavigate = false;
+    next.powerMode.browserControl.allowInput = false;
+    next.powerMode.browserControl.allowScreenshot = false;
   }
   // Full Power automatically enables every known workflow capability unless explicitly opted out.
   if (enableFull && next.durableWorkflows.enabled === true) {

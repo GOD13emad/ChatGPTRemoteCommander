@@ -1,0 +1,157 @@
+import os from 'node:os';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { randomBytes, timingSafeEqual } from 'node:crypto';
+import { performance } from 'node:perf_hooks';
+import { BROWSER_RULES, browserError, browserToolDefinitions, validateBrowserInput } from './browser-contract.mjs';
+import { createBrowserProcessClient } from './browser-process.mjs';
+export { browserToolDefinitions };
+
+const project=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
+const helper=path.join(project,'tools','browser-control.mjs');
+const client=createBrowserProcessClient({file:process.execPath,args:[helper,'--server']});
+const sameToken=(a,b)=>typeof a==='string'&&typeof b==='string'&&Buffer.byteLength(a)===Buffer.byteLength(b)&&timingSafeEqual(Buffer.from(a),Buffer.from(b));
+const safeSegment=value=>typeof value==='string'&&/^[a-z][a-z0-9_-]{0,31}$/.test(value)?value:'default';
+function defaultProfileRoot(){
+ if(process.platform==='win32')return path.join(process.env.LOCALAPPDATA||os.homedir(),'ChatGPTRemoteCommander','browser-profiles');
+ return path.join(os.homedir(),'.local','state','chatgpt-remote-commander','browser-profiles');
+}
+function resolveProfileRoot(cfg){
+ const raw=typeof cfg.profileRoot==='string'&&cfg.profileRoot.trim()?cfg.profileRoot.trim():defaultProfileRoot();
+ return path.resolve(raw.replace(/%([^%]+)%/g,(_,k)=>process.env[k]??process.env[k.toUpperCase()]??''));
+}
+export function createBrowserController({invoke=req=>client.invoke(req),closeInvoke=()=>client.close(),now=()=>performance.now(),token=()=>randomBytes(24).toString('hex'),scheduleTimeout=setTimeout,cancelTimeout=clearTimeout}={}){
+ let session=null,uncertain=false,timer=null,busy=false,expiryRequested=false;
+ const clearTimer=()=>{if(timer)cancelTimeout(timer);timer=null;};
+ const cleanupExpired=async()=>{
+  if(!expiryRequested||busy)return;
+  expiryRequested=false;
+  try{await invoke({action:'end'});}
+  catch{closeInvoke();}
+ };
+ const expireSession=()=>{
+  if(!session)return;
+  session=null;uncertain=false;timer=null;expiryRequested=true;
+  if(!busy)queueMicrotask(()=>cleanupExpired().catch(()=>{}));
+ };
+ const current=()=>{
+  if(session&&session.expires<=now())expireSession();
+  return session;
+ };
+ const arm=ttl=>{
+  clearTimer();
+  timer=scheduleTimeout(expireSession,ttl*1000);
+  timer.unref?.();
+ };
+ const owns=value=>{
+  const active=current();
+  if(!active||!sameToken(value,active.id))throw browserError('BROWSER_LEASE_REQUIRED_OR_EXPIRED');
+ };
+ const execute=async(ctx,name,raw={})=>{
+  const input=validateBrowserInput(name,raw);
+  const cfg=ctx.config?.powerMode?.browserControl??{};
+  const enabled=ctx.config?.powerMode?.enabled===true&&cfg.enabled===true;
+  if(name==='browser_status'){
+   let native={ok:true,available:false,backend:null,active:false};
+   try{native=await invoke({action:'status',executable:cfg.executable});}catch(error){native={ok:false,available:false,backend:null,active:false,reason:error.browserCode??'BROWSER_HELPER_UNAVAILABLE'};}
+   current();
+   return {...native,enabled,busy,leased:!!session,uncertain,policy:{
+    backgroundFirst:true,headlessOwnedProfileOnly:true,userDesktopTouchedByDefault:false,
+    savedPasswordExtraction:false,userBrowserProfileReuse:false,
+    foregroundFallback:'explicit-current-request-only',workflowBrowserAllowed:false,
+    allowForegroundFallback:cfg.allowForegroundFallback===true,
+    allowNavigate:cfg.allowNavigate===true,allowInput:cfg.allowInput===true,allowScreenshot:cfg.allowScreenshot===true
+   }};
+  }
+  if(!enabled)throw browserError('BROWSER_DISABLED');
+  if(busy)throw browserError('BROWSER_BUSY');
+  busy=true;
+  try{
+   if(name==='browser_session_begin'){
+    if(current())throw browserError('BROWSER_LEASE_BUSY');
+    const ttl=input.ttlSeconds??300,mode=input.mode??'persistent',profile=input.profile??'default';
+    const root=resolveProfileRoot(cfg),instance=safeSegment(ctx.config?.instance?.profile??'default');
+    const dir=mode==='isolated'
+      ? path.join(root,instance,'isolated-'+Date.now().toString(36)+'-'+token().slice(0,12))
+      : path.join(root,instance,safeSegment(profile));
+    const native=await invoke({action:'start',profileDir:dir,isolated:mode==='isolated',executable:cfg.executable});
+    session={id:token(),expires:now()+ttl*1000,ttl,mode,profile,profileDir:dir,isolated:mode==='isolated',
+      executable:cfg.executable,foreground:false};
+    uncertain=false;expiryRequested=false;arm(ttl);
+    return {ok:true,lease:session.id,ttlSeconds:ttl,profile,mode,background:true,headless:true,
+      userDesktopTouched:false,savedPasswordStoreAccess:false,browserProduct:native.browserProduct??null,backend:'chromium-cdp-headless'};
+   }
+   owns(input.lease);
+   if(name==='browser_session_renew'){
+    const ttl=input.ttlSeconds??300;session.expires=now()+ttl*1000;session.ttl=ttl;arm(ttl);return {ok:true,ttlSeconds:ttl};
+   }
+   if(name==='browser_session_end'){
+    clearTimer();session=null;uncertain=false;expiryRequested=false;
+    const r=await invoke({action:'end'});return {ok:true,closed:r.closed===true};
+   }
+   if(name==='browser_foreground_requirement'){
+    return {ok:true,approvalRequired:true,reason:input.reason,targetHost:input.targetHost??null,detail:input.detail??null,
+      backgroundSessionPreserved:true,desktopTakenOver:false,
+      authorizationPolicy:'explicit-current-request-only',
+      nextStep:'Ask only if the current user request did not already authorize foreground interaction. After approval call browser_foreground_begin with that current-task authorization, then gui_session_begin(mode="takeover", explicitUserAuthorization=<same approval>) for the minimum interaction. End the GUI lease and call browser_foreground_end to resume the same profile headlessly.'};
+   }
+   if(name==='browser_foreground_begin'){
+    if(cfg.foregroundFallback!=='explicit-current-request-only'||cfg.allowForegroundFallback!==true)throw browserError('BROWSER_FOREGROUND_FALLBACK_DISABLED');
+    if(session.foreground)throw browserError('BROWSER_FOREGROUND_ALREADY_ACTIVE');
+    const native=await invoke({action:'relaunch',headless:false});
+    session.foreground=true;uncertain=false;
+    return {ok:true,foreground:true,headless:false,userDesktopTouched:true,explicitlyAuthorized:true,
+      sameOwnedProfile:true,browserProduct:native.browserProduct??null,
+      nextStep:'Use a separately authorized GUI takeover only for the minimum required interaction, then end the GUI lease and call browser_foreground_end.'};
+   }
+   if(name==='browser_foreground_end'){
+    if(!session.foreground)throw browserError('BROWSER_FOREGROUND_NOT_ACTIVE');
+    const native=await invoke({action:'relaunch',headless:true});
+    session.foreground=false;uncertain=false;
+    return {ok:true,foreground:false,headless:true,userDesktopTouched:false,sameOwnedProfile:true,
+      browserProduct:native.browserProduct??null,backgroundResumed:true};
+   }
+   if(uncertain&&['browser_navigate','browser_fill','browser_click'].includes(name))throw browserError('BROWSER_OUTCOME_UNCERTAIN_SNAPSHOT_REQUIRED');
+   const rule=BROWSER_RULES.get(name);
+   if(name==='browser_navigate'&&cfg.allowNavigate!==true)throw browserError('BROWSER_NAVIGATION_DISABLED');
+   if(['browser_fill','browser_click'].includes(name)&&cfg.allowInput!==true)throw browserError('BROWSER_INPUT_DISABLED');
+   if(name==='browser_screenshot'&&cfg.allowScreenshot!==true)throw browserError('BROWSER_SCREENSHOT_DISABLED');
+   const mutation=['browser_navigate','browser_fill','browser_click'].includes(name);
+   try{
+    let result;
+    if(name==='browser_navigate')result=await invoke({action:'navigate',url:input.url,timeoutMs:input.timeoutMs??30000});
+    else if(name==='browser_snapshot')result=await invoke({action:'snapshot',maxTextChars:input.maxTextChars??20000,maxElements:input.maxElements??120});
+    else if(name==='browser_screenshot')result=await invoke({action:'screenshot',format:input.format??'jpeg',quality:input.quality??70,maxBytes:input.maxBytes??2097152});
+    else if(name==='browser_fill')result=await invoke({action:'fill',selector:input.selector,text:input.text});
+    else if(name==='browser_click')result=await invoke({action:'click',selector:input.selector});
+    else if(name==='browser_wait')result=await invoke({action:'wait',selector:input.selector,textIncludes:input.textIncludes,urlIncludes:input.urlIncludes,timeoutMs:input.timeoutMs??5000});
+    else throw browserError('BROWSER_UNKNOWN_TOOL');
+    if(name==='browser_snapshot'){
+      uncertain=false;
+      result={...result,passwordValuesReturned:false,cookiesReturned:false,savedPasswordStoreAccess:false};
+    }
+    if(name==='browser_screenshot'){
+      const {data,mimeType,...meta}=result;
+      if(!['image/jpeg','image/png'].includes(mimeType)||typeof data!=='string'||!data.length)throw browserError('BROWSER_INVALID_IMAGE');
+      const bytes=Buffer.from(data,'base64');
+      const sig=mimeType==='image/png'?bytes.subarray(0,8).equals(Buffer.from('89504e470d0a1a0a','hex')):bytes[0]===0xff&&bytes[1]===0xd8&&bytes[2]===0xff;
+      if(!sig||bytes.length>(input.maxBytes??2097152))throw browserError('BROWSER_INVALID_IMAGE');
+      const structured={...meta,bytes:bytes.length,mimeType,background:true,userDesktopTouched:false};
+      return {__mcpContent:[{type:'image',mimeType,data},{type:'text',text:JSON.stringify(structured)}],__structuredContent:structured};
+    }
+    return {...result,background:true,userDesktopTouched:false,...(['browser_fill','browser_click'].includes(name)?{verificationRecommended:true}:{})};
+   }catch(error){
+    if(mutation)uncertain=true;
+    throw error;
+   }
+  }finally{
+   busy=false;
+   if(expiryRequested)await cleanupExpired();
+  }
+ };
+ const close=()=>{clearTimer();session=null;uncertain=false;expiryRequested=false;closeInvoke();};
+ return {execute,close};
+}
+const controller=createBrowserController();
+export async function executeBrowserTool(ctx,name,input){return controller.execute(ctx,name,input);}
+export function closeBrowserController(){controller.close();}
