@@ -532,7 +532,7 @@ export class WorkflowStore {
     identifier(stepId); safeText(tool, 128);
     if (typeof dispatch !== 'function' || typeof validate !== 'function') fail('WORKFLOW_HOST_DISPATCH_REQUIRED');
     const argsRaw = canonical(args);
-    if (Buffer.byteLength(argsRaw) > 128 * 1024) fail('WORKFLOW_ARGUMENT_LIMIT');
+    if (Buffer.byteLength(argsRaw) > 256 * 1024) fail('WORKFLOW_ARGUMENT_LIMIT');
     const view = this.get(id), { state } = view; this.#identity(state);
     requireActive(state);
     const fingerprint = jsonHash({ tool, args, root: state.root, device: state.device, authority: state.authority });

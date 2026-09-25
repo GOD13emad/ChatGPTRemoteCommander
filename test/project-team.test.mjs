@@ -170,7 +170,9 @@ test('malformed coordinator output is rejected and error text stays redacted', a
 test('context byte limit and unsupported JSON fail before any provider call', async () => {
   let calls = 0, getterCalls = 0;
   const team = createTeamPlanner({ planner: provider(async () => { calls++; return choice(); }), workers: members.slice(0, 1) });
-  await assert.rejects(team.plan({ text: 'ا'.repeat(70000) }), { code: 'PLANNER_TEAM_CONTEXT_LIMIT' });
+  const oversizedContext = 'ا'.repeat(250000);
+  assert.ok(Buffer.byteLength(oversizedContext, 'utf8') > 384 * 1024);
+  await assert.rejects(team.plan({ text: oversizedContext }), { code: 'PLANNER_TEAM_CONTEXT_LIMIT' });
   await assert.rejects(team.plan({ collaboration: {} }), { code: 'PLANNER_TEAM_INVALID_CONTEXT' });
   await assert.rejects(team.plan({ absent: undefined }), { code: 'PLANNER_TEAM_INVALID_CONTEXT' });
   await assert.rejects(team.plan({ get secret() { getterCalls++; return 'x'; } }), { code: 'PLANNER_TEAM_INVALID_CONTEXT' });
@@ -179,9 +181,19 @@ test('context byte limit and unsupported JSON fail before any provider call', as
   assert.equal(calls, 0); assert.equal(getterCalls, 0);
 });
 
-test('individual 64KiB output limit fails without truncation or coordinator', async () => {
+test('artifact-sized escaped proposal remains within the expanded bounded envelope', async () => {
   let calls = 0;
-  const team = createTeamPlanner({ planner: provider(async () => { calls++; return { ...choice(), argumentsJson: JSON.stringify({ text: 'x'.repeat(66000) }) }; }), workers: members.slice(0, 1) });
+  const argumentsJson = JSON.stringify({ text: '"'.repeat(65536) });
+  assert.ok(argumentsJson.length > 65536);
+  const team = createTeamPlanner({ planner: provider(async () => { calls++; return { ...choice(), argumentsJson }; }), workers: members.slice(0, 1) });
+  const result = await team.plan({});
+  assert.equal(result.argumentsJson, argumentsJson);
+  assert.equal(calls, 2);
+});
+
+test('individual 512KiB output limit fails without truncation or coordinator', async () => {
+  let calls = 0;
+  const team = createTeamPlanner({ planner: provider(async () => { calls++; return { ...choice(), argumentsJson: JSON.stringify({ text: 'x'.repeat(530000) }) }; }), workers: members.slice(0, 1) });
   await assert.rejects(team.plan({}), { code: 'PLANNER_TEAM_OUTPUT_LIMIT' });
   assert.equal(calls, 1);
 });
@@ -190,9 +202,9 @@ test('combined context and advice limit aborts before coordinator', async () => 
   let calls = 0;
   const team = createTeamPlanner({ planner: provider(async context => {
     calls++; assert.equal(context.collaboration.phase, 'worker');
-    return { ...choice(), argumentsJson: JSON.stringify({ text: 'x'.repeat(20000) }) };
+    return { ...choice(), argumentsJson: JSON.stringify({ text: 'x'.repeat(50000) }) };
   }), workers: members.slice(0, 2), maxParallel: 1 });
-  await assert.rejects(team.plan({ evidence: 'x'.repeat(100000) }), { code: 'PLANNER_TEAM_CONTEXT_LIMIT' });
+  await assert.rejects(team.plan({ evidence: 'x'.repeat(300000) }), { code: 'PLANNER_TEAM_CONTEXT_LIMIT' });
   assert.equal(calls, 2);
 });
 
