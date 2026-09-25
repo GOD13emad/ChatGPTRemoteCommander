@@ -1,7 +1,7 @@
 # Project engine qualification history
 
 Date: 2026-09-23. Baseline: `2ad46c544907f6ca2c6c47ebf5d88b6a661e7047`.
-Scope: development and release qualification history. Current candidate evidence is recorded in [v0.9.1](RELEASE_0.9.1.md); v0.9.0 is the unpublished parity candidate that exposed the final exact-tag acceptance issues; the published live-compatibility baseline is [v0.8.42](RELEASE_0.8.42.md), carrying the v0.8.41 retry hardening; historical entries below retain their original dates, versions and limits.
+Scope: development and release qualification history. Current candidate evidence is recorded in [v0.9.2](RELEASE_0.9.2.md); v0.9.1 is the unpublished release-hardening tag, while v0.9.0 is an immutable published parity release whose live Windows rollout exposed a post-success installer cleanup race. The earlier live-compatibility baseline is [v0.8.42](RELEASE_0.8.42.md), carrying the v0.8.41 retry hardening; historical entries below retain their original dates, versions and limits.
 
 
 ## v0.8.40 durable background-operation candidate qualification

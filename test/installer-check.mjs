@@ -14,7 +14,7 @@ for (const required of [
   'Detected active installation from Windows autostart',
   '$InstallDir = Resolve-InstallDir',
   'Tracked local changes exist in InstallDir',
-  "[string]$SourceRef = 'v0.9.1'",
+  "[string]$SourceRef = 'v0.9.2'",
   'ExpectedCommit',
   "rev-parse 'FETCH_HEAD^{commit}'",
   'incomplete Git checkout with no HEAD',
@@ -33,7 +33,10 @@ for (const required of [
   "'@openai/codex@0.156.1'",
   'PROJECT_PROVIDER_PASS',
   "'tools\\codex-cli'",
-  'Mode: $(if ($effective.powerMode.enabled)'
+  'Mode: $(if ($effective.powerMode.enabled)',
+  'if (Test-Path -LiteralPath $temp) {',
+  'Remove-Item -LiteralPath $temp -Recurse -Force -ErrorAction Stop',
+  'if (Test-Path -LiteralPath $temp) { throw }'
 ]) {
   if (!windowsInstaller.includes(required)) {
     throw new Error(`install.ps1 missing required release behavior: ${required}`);
@@ -53,7 +56,7 @@ const linuxEnrollment = readFileSync('enable-autostart-linux.sh', 'utf8');
 const linuxPluginInstaller = readFileSync('install-work-plugin.sh', 'utf8');
 const linuxAccountConnector = readFileSync('connect-chatgpt-account.sh', 'utf8');
 for (const required of [
-  'SOURCE_REF="${REMOTE_COMMANDER_SOURCE_REF:-v0.9.1}"',
+  'SOURCE_REF="${REMOTE_COMMANDER_SOURCE_REF:-v0.9.2}"',
   '--source-ref',
   '--skip-tunnel-client',
   '--expected-commit',
