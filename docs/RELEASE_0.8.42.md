@@ -14,7 +14,7 @@ v0.8.41 failed safely: all repository gates passed, candidate health did not, no
 | Full Windows `npm run check` | PASS — 156 PASS / 4 SKIP / 0 FAIL; GUI 75/75; integrity tails PASS |
 | Full Windows `npm test` | PASS — 378 PASS / 5 SKIP / 0 FAIL; GUI 75/75; FS/runtime/source-integrity tails PASS |
 | Repository security audit | PASS — SECURITY_AUDIT_PASS |
-| Persisted-profile candidate startup / `NoPromote` | PENDING |
+| Persisted-profile candidate startup / `NoPromote` | PASS — exact commit `1d2308fb3873870e7bd47e394c8d96cffe74c28d`; default + saeed-emad doctor/hardware/shadow-store/live-store compatibility PASS; production routes unchanged |
 | Hosted Windows + Ubuntu CI | PENDING |
 | Exact-tag Windows/Linux fresh + repeated acceptance | PENDING |
 | Reproducible release assets | PENDING |

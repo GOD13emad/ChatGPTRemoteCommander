@@ -142,6 +142,8 @@ Historical checkpoints remain append-only archives. Current release/control clai
 
 **Regression:** `test/project-planner.test.mjs` asserts a configured 120000 ms provider constructs successfully and reports an effective 30000 ms timeout. The focused planner suite passes **27/27**. Full Windows qualification also passes `npm run check` **156/4/0**, `npm test` **378/5/0**, GUI **75/75**, integrity tails, and security audit. v0.8.42 must additionally pass candidate-first live validation against the same persisted profile before publication/deployment is accepted.
 
-**Confidence/Status:** ROOT CAUSE CONFIRMED; v0.8.41 LIVE DEPLOYMENT REJECTED SAFELY; v0.8.42 HOTFIX UNDER QUALIFICATION.
+**Live regression evidence:** The exact hotfix commit `1d2308fb3873870e7bd47e394c8d96cffe74c28d` completed updater `NoPromote` validation as `CANDIDATE_PASS` against the real persisted Full Power profiles. Default and saeed-emad each passed doctor, hardware, shadow-store and live-store compatibility while preserving configured `provider.timeoutMs=120000`. Production route SHA-256 values remained `8d5f275ab835c9790bb1fadfdb109dd07db14e0b4d8c4d18c18da46c860d62b1` (default) and `3f6a274a9a10ea664c2ae57d4f83102173563137f3ea127d2e9ac17bc42972c3` (saeed-emad); live services remained v0.8.37 and candidate listeners were removed after validation.
+
+**Confidence/Status:** ROOT CAUSE CONFIRMED; v0.8.41 LIVE DEPLOYMENT REJECTED SAFELY; v0.8.42 HOTFIX LIVE-COMPATIBILITY GATE PASS.
 
 **Reuse targets:** update compatibility policy, release gates, Project Engine configuration migration, retry hardening.

@@ -8,7 +8,7 @@ Updated: 2026-09-25. Scope: public product/release status, not a live machine in
 - [v0.8.42](RELEASE_0.8.42.md) is the current hotfix release candidate. It preserves the 30 s effective planner bound while accepting historical configured timeout values.
 - v0.8.38, v0.8.39 and v0.8.40 remain historical unpublished tags and are intentionally not moved.
 - v0.8.41 package/CI/reproducible-asset qualification passed, but live compatibility validation found the provider-timeout migration defect and the updater failed closed with `CANDIDATE_HEALTH_TIMEOUT` before any route switch.
-- v0.8.42 focused planner regression passes **27/27**, including legacy `120000 ms -> accepted / 30000 ms effective` behavior. Full Windows `npm run check` passes **156/4/0**, full `npm test` passes **378/5/0**, GUI **75/75**, integrity tails PASS, and repository security audit PASS. The exact persisted-profile `NoPromote` candidate-startup gate is next.
+- v0.8.42 focused planner regression passes **27/27**, including legacy `120000 ms -> accepted / 30000 ms effective` behavior. Full Windows `npm run check` passes **156/4/0**, full `npm test` passes **378/5/0**, GUI **75/75**, integrity tails PASS, and repository security audit PASS. The exact persisted-profile `NoPromote` candidate-startup gate is PASS on commit `1d2308fb3873870e7bd47e394c8d96cffe74c28d` for both default and saeed-emad; both retain the historical 120000 ms provider timeout while v0.8.42 starts healthy. Production routes remained byte-identical to prestate and candidate listeners were cleaned.
 - Focused durability evidence includes ten consecutive async runs (**80/80 PASS**), a later five-run set after stdio hardening (**45/45 PASS**), and a direct 30-operation race diagnostic (**30/30 PASS**).
 - Milestones 4A, 4B.1 and 4B.2 remain released. The new `operation_*` layer is direct-session command durability; it does not widen Project Engine tool authority.
 
@@ -16,7 +16,7 @@ Updated: 2026-09-25. Scope: public product/release status, not a live machine in
 
 CURRENT: v0.8.42 live-compatibility hotfix qualification.
 
-Open gates are v0.8.42 full local qualification, remote PR/hosted CI, exact-tag fresh/repeated installer acceptance, reproducible release assets, immutable publication, and a successful candidate-first Windows/Linux rollout. Publication or deployment is not claimed until those gates produce evidence.
+Open gates are v0.8.42 remote PR/hosted CI, exact-tag fresh/repeated installer acceptance, reproducible release assets, immutable publication, and a successful candidate-first Windows/Linux rollout. Publication or deployment is not claimed until those gates produce evidence.
 
 ## Remaining roadmap
 
