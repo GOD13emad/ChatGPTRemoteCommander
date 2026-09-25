@@ -1,6 +1,6 @@
 # Engineering decisions and evidence
 
-Updated: 2026-09-25. Current immutable published-release authority is [v0.8.37](RELEASE_0.8.37.md). [v0.8.41](RELEASE_0.8.41.md) is the current release candidate; v0.8.38, v0.8.39 and v0.8.40 remain historical unpublished tags. This public index separates reusable engineering decisions from historical deployment observations.
+Updated: 2026-09-25. Current immutable published-release authority is [v0.8.41](RELEASE_0.8.41.md). [v0.9.0](RELEASE_0.9.0.md) is the current capability-parity candidate; v0.8.38, v0.8.39 and v0.8.40 remain historical unpublished tags. This public index separates reusable engineering decisions from historical deployment observations.
 
 ## Current guarantees and their regression locations
 
@@ -69,7 +69,8 @@ These candidate-development results were followed by the exact v0.8.40 Windows g
 
 ## Publication records
 
-- [v0.8.41 candidate](RELEASE_0.8.41.md): retry/connection hardening over durable background operations; publication gates remain open until evidenced.
+- [v0.9.0 candidate](RELEASE_0.9.0.md): Full Power Project Engine runner parity across qualified Windows/Linux deployments.
+- [v0.8.41 published](RELEASE_0.8.41.md): immutable retry/connection hardening baseline with 13 public release assets and successful hosted CI.
 - [v0.8.40 historical candidate](RELEASE_0.8.40.md): durable background operations tag; not published as a GitHub Release and superseded by v0.8.41.
 - [v0.8.39 historical candidate](RELEASE_0.8.39.md): hardened zero-interference browser; tag exists but no GitHub Release was published.
 - [v0.8.38 superseded candidate](RELEASE_0.8.38.md): pre-hardening browser candidate; historical tag is not moved.
@@ -127,3 +128,19 @@ Historical checkpoints remain append-only archives. Current release/control clai
 **Confidence/Status:** LIVE METADATA REPAIR CONFIRMED; legacy stale-prestate rollback edge case remains OPEN/DEFERRED unless it recurs in normal v0.8.41 update paths.
 
 **Reuse targets:** multi-account recovery, supervisor diagnostics, future reconfigure hardening.
+
+## E069 — Full Power Project Engine parity across Emad deployments
+
+**Date/Context:** 2026-09-25; reconciliation of capabilities created through Saeed's ChatGPT Work account on the accessible Emad Windows PC with the Emad Linux laptop. No direct machine-state claim about Saeed's own physical computer is used as evidence.
+
+**Observed evidence:** Both accessible runtimes were v0.8.37 at the audit checkpoint. Windows Full Power config contained an enabled Project Engine runner with `autoTick=true`, qualified Codex CLI 0.156.1, bounded builder/reviewer proposal team, adaptive extension budget and durable worker-artifact controls. Linux Full Power config had the same qualified Codex CLI 0.156.1 binary installed under its private Commander state root but no runner block; `system_status` therefore reported `automaticExecution=false` and `runnerConfigured=false`.
+
+**Root cause:** capability migration preserved an existing runner but did not create one from the already-qualified local provider. Full Power therefore meant different effective project-execution capability depending on prior machine history.
+
+**Decision/Prevention:** v0.9.0 adds explicit `workflow.project_engine` capability accounting and cross-platform qualified-provider discovery. Explicit Full Power may auto-configure the bounded runner when the qualified provider already exists; Standard authority, explicit opt-out and missing provider remain fail-closed. Existing provider timeout is normalized to the v0.8.41 30-second synchronous transport budget.
+
+**Regression:** `test/project-runner-config.test.mjs` covers Linux and Windows provider discovery, preservation + timeout migration, Standard denial, explicit opt-out, missing-provider fail-closed behavior and capability-state accounting. Initial focused result: 7/7 PASS; combined capability + runner result: 27/27 PASS.
+
+**Confidence/Status:** implementation and focused regression CONFIRMED; full Windows/Linux/release/deployment gates remain OPEN until executed.
+
+**Reuse targets:** v0.9.0 release, installer/updater policy, Full Power capability model, Project Brain, Work/Codex setup.

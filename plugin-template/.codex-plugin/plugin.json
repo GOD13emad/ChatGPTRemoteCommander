@@ -1,6 +1,6 @@
 {
   "name": "chatgpt-remote-commander",
-  "version": "0.8.41",
+  "version": "0.9.0",
   "description": "Operate a trusted computer through a registered Remote Commander MCP app.",
   "author": { "name": "GOD13emad" },
   "homepage": "https://github.com/GOD13emad/ChatGPTRemoteCommander",

@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 
-export const CAPABILITY_SCHEMA_VERSION = 3;
-export const CAPABILITY_PROFILE_REVISION = 'capability-profile-r3';
+export const CAPABILITY_SCHEMA_VERSION = 4;
+export const CAPABILITY_PROFILE_REVISION = 'capability-profile-r4';
 
 export const FULL_WORKFLOW_EXECUTION_TOOLS = Object.freeze([
   'system_status','list_directory','read_text','write_text','run_project_command',
@@ -36,6 +36,7 @@ export const CAPABILITIES = Object.freeze([
   'workflow.checkpoint',
   'workflow.project_brain',
   'workflow.execution_profile_persistence',
+  'workflow.project_engine',
   'workflow.crash_recovery',
   'workflow.durable_queue',
   'lifecycle.auto_update',
@@ -88,6 +89,9 @@ export function deriveCapabilitySet(config = {}) {
   }
   if (bool(wf.projectBrain?.enabled)) out.add('workflow.project_brain');
   if (bool(wf.executionProfile?.persist)) out.add('workflow.execution_profile_persistence');
+  const profile = config.capabilityProfile ?? {};
+  const disabled = new Set(Array.isArray(profile.disabledCapabilities) ? profile.disabledCapabilities : []);
+  if (profile.tier === 'FULL_POWER' && profile.explicitlyAuthorized === true && !disabled.has('workflow.project_engine')) out.add('workflow.project_engine');
   if (config.autoUpdate?.enabled === true) out.add('lifecycle.auto_update');
   if (config.autoUpdate?.zeroDowntime === true) out.add('lifecycle.zero_downtime_update');
   return [...out].sort();

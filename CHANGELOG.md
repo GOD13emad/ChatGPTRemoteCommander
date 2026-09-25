@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.9.0 — 2026-09-25
+
+- Promote the next milestone around capability parity rather than revision-only versioning: Full Power installations can auto-configure the bounded Project Engine runner from the qualified local Codex CLI provider when it is already present.
+- Converge the Linux/Emad deployment with the proven Work-created configuration observed on the Emad Windows PC: automatic enrolled-project execution, bounded planner proposals, builder/reviewer proposal team, adaptive bounded extensions, durable worker artifacts and resume-after-restart/update semantics.
+- Add explicit `workflow.project_engine` capability accounting and opt-out. Standard authority and explicit Full Power opt-outs continue to fail closed; missing qualified provider leaves durable recovery enabled but does not enable autonomous execution.
+- Normalize inherited provider timeouts to the 30-second synchronous transport budget introduced in v0.8.41; longer work continues through durable operation/workflow state rather than extending tunnel deadlines.
+- Make installer and candidate-first updater configuration discover the same qualified provider on Windows and Linux from the private Commander state root, with regression coverage for parity, authority, provider absence and timeout migration.
+- Carry forward v0.8.41 background-first browser, durable operation, idempotency, response-envelope and connection-interruption hardening unchanged.
+
 ## 0.8.41 — 2026-09-25
 
 - Harden Secure MCP Tunnel reliability after real logs repeatedly showed `command response deadline reached; dropping without posting a response`: synchronous command/browser/planner work is bounded to 30 seconds and longer work is directed to durable `operation_*` execution.

@@ -4,20 +4,17 @@ Updated: 2026-09-25. Scope: public product/release status, not a live machine in
 
 ## Release baseline
 
-- [v0.8.37](RELEASE_0.8.37.md) remains the latest immutable **published GitHub Release** at this checkpoint.
-- [v0.8.41](RELEASE_0.8.41.md) is the current release candidate. It supersedes the unpublished v0.8.40 tag and adds response-deadline/size hardening on top of durable background commands.
+- [v0.8.41](RELEASE_0.8.41.md) is the latest immutable **published GitHub Release**: public release present, 13 assets, hosted Windows/Ubuntu CI successful.
+- [v0.9.0](RELEASE_0.9.0.md) is the current capability-parity candidate. It carries v0.8.41 retry/background hardening and adds Full Power Project Engine runner convergence across the two Emad deployments when the qualified local provider exists.
 - v0.8.38, v0.8.39 and v0.8.40 remain historical unpublished tags and are intentionally not moved.
-- Current v0.8.41 Windows qualification passed full `npm test` (**377 PASS / 5 SKIP / 0 FAIL**) with all browser/concurrency/GUI/filesystem/runtime/source-integrity tails PASS, and full `npm run check` (**156 PASS / 4 SKIP / 0 FAIL**) with GUI **75/75** and integrity tails PASS.
-- Focused retry evidence passes direct >30s pre-effect rejection, 5 MiB non-duplicated success, 9 MiB compact oversize failure, and durable operation idempotency/cancel/recovery regressions.
-- v0.8.40 exact Windows/Ubuntu hosted CI had already passed before it was superseded; its historical tag is retained.
-- Focused durability evidence includes ten consecutive async runs (**80/80 PASS**), a later five-run set after stdio hardening (**45/45 PASS**), and a direct 30-operation race diagnostic (**30/30 PASS**).
-- Milestones 4A, 4B.1 and 4B.2 remain released. The new `operation_*` layer is direct-session command durability; it does not widen Project Engine tool authority.
+- Live deployment audit on 2026-09-25 found both Emad PC and Emad laptop still executing v0.8.37 commit `09fcc485fd7ade82f7d8be25efc4f77ebc17e640` at the audit checkpoint. The Windows updater had already staged the published v0.8.41 release and passed local check/test/audit/GUI gates; Linux had not yet begun its post-publication v0.8.41 cycle.
+- The Windows Full Power configuration created through Saeed's ChatGPT Work account on the accessible Emad PC includes Project Engine runner + automatic execution using qualified Codex CLI 0.156.1 and a bounded builder/reviewer proposal team. No live state from Saeed's own physical computer is used as release authority. The Linux Full Power configuration has the same qualified Codex CLI installed but no runner block, so automatic project execution is disabled. This parity gap is the primary v0.9.0 mutation objective.
 
 ## CURRENT / open release gates
 
-CURRENT: v0.8.41 retry-hardening release-candidate closeout.
+CURRENT: v0.9.0 Full Power Project Engine parity and release qualification.
 
-Open gates are v0.8.41 remote PR/hosted CI, exact-tag fresh/repeated installer acceptance, reproducible release assets, immutable GitHub publication, and safe candidate-first rollout. Publication or deployment is not claimed until those gates produce evidence.
+Open gates: focused parity regression, full Windows test/check/audit, independent Linux exact-commit test/check/audit, candidate-first installer/updater acceptance on both Emad devices, hosted CI, reproducible release bundle, immutable GitHub publication, then post-rollout runtime/tunnel verification. No v0.9.0 publication or deployment is claimed until these gates produce evidence.
 
 ## Remaining roadmap
 
@@ -27,7 +24,7 @@ Broader blocker escalation, monetary accounting, additional providers/integratio
 
 - Installation: [START_HERE](../START_HERE.md) and [Work/Codex setup](../WORK_SETUP.md).
 - Behavior: [project engine](PROJECT_ENGINE.md), [adaptive planning](PROJECT_ENGINE_ADAPTIVE.md), [project questions](PROJECT_ENGINE_DECISIONS.md), [background browser](BACKGROUND_BROWSER.md).
-- Validation: [v0.8.41 candidate](RELEASE_0.8.41.md), [v0.8.40 historical candidate](RELEASE_0.8.40.md), [v0.8.39 historical candidate](RELEASE_0.8.39.md), [qualification history](PROJECT_ENGINE_VALIDATION.md), [GUI acceptance](GUI_ACCEPTANCE.md).
+- Validation: [v0.9.0 candidate](RELEASE_0.9.0.md), [v0.8.41 published baseline](RELEASE_0.8.41.md), [v0.8.40 historical candidate](RELEASE_0.8.40.md), [v0.8.39 historical candidate](RELEASE_0.8.39.md), [qualification history](PROJECT_ENGINE_VALIDATION.md), [GUI acceptance](GUI_ACCEPTANCE.md).
 - Knowledge: [engineering decisions and evidence](PROJECT_KNOWLEDGE_EVIDENCE.md).
 
 Historical checkpoints are preserved in the [archived project state](history/PROJECT_CONTROL_STATE_20260924.md). Their former “current”, “final” and “next action” labels are historical. Account bindings, machine paths, process inventories and operational receipts belong in private deployment handoffs rather than this public status page.

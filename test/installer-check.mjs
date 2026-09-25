@@ -14,7 +14,7 @@ for (const required of [
   'Detected active installation from Windows autostart',
   '$InstallDir = Resolve-InstallDir',
   'Tracked local changes exist in InstallDir',
-  "[string]$SourceRef = 'v0.8.41'",
+  "[string]$SourceRef = 'v0.9.0'",
   'ExpectedCommit',
   "rev-parse 'FETCH_HEAD^{commit}'",
   'incomplete Git checkout with no HEAD',
@@ -29,6 +29,10 @@ for (const required of [
   'Updating isolated/custom checkout in place without global routing mutation',
   'fresh-install routing/bootstrap validation failed',
   'Capability self-test:',
+  'Ensure-ProjectProvider',
+  "'@openai/codex@0.156.1'",
+  'PROJECT_PROVIDER_PASS',
+  "'tools\\codex-cli'",
   'Mode: $(if ($effective.powerMode.enabled)'
 ]) {
   if (!windowsInstaller.includes(required)) {
@@ -49,7 +53,7 @@ const linuxEnrollment = readFileSync('enable-autostart-linux.sh', 'utf8');
 const linuxPluginInstaller = readFileSync('install-work-plugin.sh', 'utf8');
 const linuxAccountConnector = readFileSync('connect-chatgpt-account.sh', 'utf8');
 for (const required of [
-  'SOURCE_REF="${REMOTE_COMMANDER_SOURCE_REF:-v0.8.41}"',
+  'SOURCE_REF="${REMOTE_COMMANDER_SOURCE_REF:-v0.9.0}"',
   '--source-ref',
   '--expected-commit',
   'REMOTE_COMMANDER_EXPECTED_COMMIT',
@@ -64,6 +68,11 @@ for (const required of [
   'invoke_existing_safe_update',
   'SAFE_UPDATE_PASS',
   'build-candidate-config.mjs',
+  '--provider-root',
+  'ensure_project_provider',
+  '"@openai/codex@$version"',
+  'PROJECT_PROVIDER_PASS',
+  'tools/codex-cli',
   'auto-update-linux.sh',
   'supervisor-routing-linux.sh',
   '--disable-capability',

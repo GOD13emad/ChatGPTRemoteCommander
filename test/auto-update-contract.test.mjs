@@ -267,7 +267,15 @@ test('Linux supervisor recovers routed backend/router and schedules automatic up
 
 test('Linux installer delegates existing installs and builds Full Power through shared capability profile',()=>{
   const s=read('install.sh');
-  for(const marker of ['invoke_existing_safe_update','build-candidate-config.mjs','--disable-capability','--enable-capability','SAFE_UPDATE_PASS','capabilityProfile.tier'])assert.ok(s.includes(marker),marker);
+  for(const marker of ['invoke_existing_safe_update','build-candidate-config.mjs','--provider-root','--disable-capability','--enable-capability','SAFE_UPDATE_PASS','capabilityProfile.tier'])assert.ok(s.includes(marker),marker);
   const branch=s.indexOf('if [[ -d "$INSTALL_DIR/.git" ]]');
   assert.ok(branch>0 && s.indexOf('invoke_existing_safe_update',branch)>branch);
+});
+
+
+test('project provider bootstrap is pinned and state-private on both updaters',()=>{
+  const win=read('auto-update-windows.ps1');
+  const lin=read('auto-update-linux.sh');
+  for(const marker of ['Ensure-ProjectProvider',"'@openai/codex@0.156.1'",'PROJECT_PROVIDER_PASS',"'tools\\codex-cli'"]) assert.ok(win.includes(marker),marker);
+  for(const marker of ['ensure_project_provider','"@openai/codex@$version"','PROJECT_PROVIDER_PASS','tools/codex-cli']) assert.ok(lin.includes(marker),marker);
 });

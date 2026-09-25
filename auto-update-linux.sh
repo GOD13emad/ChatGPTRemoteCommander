@@ -101,6 +101,31 @@ stop_owned_candidate(){
   stop_pid "$pid"
 }
 run_gate(){ local project="$1" name="$2"; shift 2; log "GATE_START $name"; (cd "$project"; "$@"); log "GATE_PASS $name"; }
+ensure_project_provider(){
+  local helper="$1" cfg="$2" requested=0 tier version provider_root machine exe actual
+  if [[ "$POWER_MODE" == 1 ]]; then requested=1
+  elif [[ "$STANDARD_MODE" == 0 ]]; then
+    tier="$(json_field "$helper" "$cfg" capabilityProfile.tier)"
+    [[ "$tier" == "FULL_POWER" ]] && requested=1
+  fi
+  [[ "$requested" == 1 ]] || return 0
+  version="0.156.1"
+  provider_root="$STATE_ROOT/tools/codex-cli/$version"
+  machine="$(uname -m)"
+  case "$machine" in
+    x86_64|amd64) exe="$provider_root/node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/bin/codex" ;;
+    aarch64|arm64) exe="$provider_root/node_modules/@openai/codex-linux-arm64/vendor/aarch64-unknown-linux-musl/bin/codex" ;;
+    *) echo "Unsupported Codex provider architecture: $machine" >&2; return 1 ;;
+  esac
+  if [[ ! -x "$exe" ]]; then
+    mkdir -p "$provider_root"
+    npm install --prefix "$provider_root" --ignore-scripts --no-audit --no-fund --save-exact "@openai/codex@$version"
+  fi
+  [[ -x "$exe" ]] || { echo "Qualified Codex provider missing after update bootstrap: $exe" >&2; return 1; }
+  actual="$("$exe" --version 2>/dev/null || true)"
+  [[ "$actual" == *"$version"* ]] || { echo "Qualified Codex provider version mismatch: $actual" >&2; return 1; }
+  log "PROJECT_PROVIDER_PASS version=$version path=$exe"
+}
 
 latest_ref(){
   if [[ -n "$SOURCE_REF" ]]; then printf '%s\n' "$SOURCE_REF"; return; fi
@@ -395,12 +420,14 @@ LIVE_WF="$(json_field "$STAGE_DIR" "$ACTIVE_CFG" durableWorkflows.directory)"
 SHADOW_WF="$BACKUP_ROOT/$COMMIT/default/workflow-shadow"
 node "$STAGE_DIR/tools/copy-workflow-store.mjs" --source-dir "$LIVE_WF" --dest-dir "$SHADOW_WF"
 
+ensure_project_provider "$STAGE_DIR" "$ACTIVE_CFG"
+
 MODE=preserve
 [[ "$POWER_MODE" == 1 ]] && MODE=full
 [[ "$STANDARD_MODE" == 1 ]] && MODE=standard
 build_cfg(){
   local output="$1" wf="$2"
-  local args=("$STAGE_DIR/tools/build-candidate-config.mjs" --default "$STAGE_DIR/config.json" --existing "$ACTIVE_CFG" --output "$output" --profile-id default --port "$PORT" --state-dir "$STATE_DIR" --workflow-dir "$wf" --mode "$MODE")
+  local args=("$STAGE_DIR/tools/build-candidate-config.mjs" --default "$STAGE_DIR/config.json" --existing "$ACTIVE_CFG" --output "$output" --profile-id default --port "$PORT" --state-dir "$STATE_DIR" --workflow-dir "$wf" --mode "$MODE" --provider-root "$STATE_ROOT")
   local c
   for c in "${DISABLE_CAPS[@]}"; do args+=(--disable-capability "$c"); done
   for c in "${ENABLE_CAPS[@]}"; do args+=(--enable-capability "$c"); done

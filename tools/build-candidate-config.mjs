@@ -1,7 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
-import { migrateCapabilityConfig } from '../src/capability-profile.mjs';
+import { migrateCapabilityConfig, normalizeCapabilityProfile } from '../src/capability-profile.mjs';
+import { applyProjectRunnerConfig } from '../src/project-runner-config.mjs';
 
 function parse(argv){
   const o={disableCapabilities:[],enableCapabilities:[],allowedRoots:[],allowedPrograms:[],mode:'preserve',requestGui:undefined};
@@ -22,6 +23,7 @@ function parse(argv){
     else if(a==='--allowed-program')o.allowedPrograms.push(v);
     else if(a==='--device-name')o.deviceName=v;
     else if(a==='--backup-root')o.backupRoot=v;
+    else if(a==='--provider-root')o.providerRoot=v;
     else throw new Error('CANDIDATE_CONFIG_ARGUMENT');
   }
   for(const k of ['defaultPath','outputPath','profileId','port','stateDirectory'])if(!o[k])throw new Error('CANDIDATE_CONFIG_REQUIRED');
@@ -43,7 +45,7 @@ const migrated=migrateCapabilityConfig({
   requestPower:a.mode==='full',requestStandard:a.mode==='standard',requestGui:a.requestGui,
   disableCapabilities:a.disableCapabilities,enableCapabilities:a.enableCapabilities
 });
-const config=migrated.config;
+let config=migrated.config;
 if(a.allowedRoots.length)config.allowedRoots=[...a.allowedRoots];
 if(a.allowedPrograms.length)config.allowedPrograms=[...a.allowedPrograms];
 if(a.deviceName)config.deviceName=a.deviceName;
@@ -56,6 +58,9 @@ config.durableWorkflows ??={};
 if(config.durableWorkflows.enabled===true){
   config.durableWorkflows.directory=workflowDirectory;
 }
+const runner=applyProjectRunnerConfig(config,{stateRoot:a.providerRoot});
+config=runner.config;
+config.capabilityProfile=normalizeCapabilityProfile(config.capabilityProfile,config,{id:a.profileId,legacyExplicit:!!existing});
 if(a.profileId!=='default'){
   config.instance={profile:a.profileId,isolated:true};
 }else{
@@ -67,5 +72,5 @@ const sha256=createHash('sha256').update(text).digest('hex');
 console.log(JSON.stringify({
   ok:true,profile:a.profileId,port:a.port,configSha256:sha256,
   capabilityProfile:config.capabilityProfile,powerMode:config.powerMode,durableWorkflows:config.durableWorkflows,
-  autoUpdate:config.autoUpdate
+  autoUpdate:config.autoUpdate,projectRunner:{status:runner.status,provider:runner.provider}
 }));

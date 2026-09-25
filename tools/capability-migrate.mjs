@@ -1,7 +1,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
-import { migrateCapabilityConfig, compareCapabilityState } from '../src/capability-profile.mjs';
+import { createHash } from 'node:crypto';
+import { migrateCapabilityConfig, compareCapabilityState, normalizeCapabilityProfile } from '../src/capability-profile.mjs';
+import { applyProjectRunnerConfig } from '../src/project-runner-config.mjs';
 
 function parse(argv) {
   const out = { requestPower: false, requestStandard: false, requestGui: undefined, disableCapabilities: [], enableCapabilities: [] };
@@ -19,6 +21,7 @@ function parse(argv) {
     else if (a === '--profile-id') out.profileId = v;
     else if (a === '--backup-root') out.backupRoot = v;
     else if (a === '--workflow-dir') out.workflowDirectory = v;
+    else if (a === '--provider-root') out.providerRoot = v;
     else if (a === '--disable-capability') out.disableCapabilities.push(v);
     else if (a === '--enable-capability') out.enableCapabilities.push(v);
     else throw new Error('CAPABILITY_MIGRATION_ARGUMENT');
@@ -57,7 +60,7 @@ const args = parse(process.argv.slice(2));
 const defaultConfig = JSON.parse(fs.readFileSync(args.defaultPath, 'utf8'));
 const existingConfig = args.existingPath && fs.existsSync(args.existingPath)
   ? JSON.parse(fs.readFileSync(args.existingPath, 'utf8')) : null;
-const result = migrateCapabilityConfig({
+let result = migrateCapabilityConfig({
   defaultConfig,
   existingConfig,
   profileId: args.profileId,
@@ -68,6 +71,10 @@ const result = migrateCapabilityConfig({
   disableCapabilities: args.disableCapabilities,
   enableCapabilities: args.enableCapabilities
 });
+const runner = applyProjectRunnerConfig(result.config, { stateRoot: args.providerRoot });
+runner.config.capabilityProfile = normalizeCapabilityProfile(runner.config.capabilityProfile, runner.config, { id: args.profileId, legacyExplicit: !!existingConfig });
+result = { ...result, config: runner.config, profile: runner.config.capabilityProfile };
+result.sha256 = createHash('sha256').update(JSON.stringify(result.config, null, 2) + '\n').digest('hex');
 const nextText = JSON.stringify(result.config, null, 2) + '\n';
 let backupDir = null;
 let oldBytes = null;
@@ -98,6 +105,7 @@ try {
     capabilityCount: result.profile.grantedCapabilities.length,
     configSha256: result.sha256,
     backupDir,
+    projectRunner: { status: runner.status, provider: runner.provider },
     selfTest: check
   }));
 } catch (error) {

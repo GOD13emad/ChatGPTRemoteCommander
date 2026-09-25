@@ -1,6 +1,6 @@
 # v0.8.41 qualification
 
-Status: CANDIDATE, 2026-09-25.
+Status: PUBLISHED IMMUTABLE RELEASE, 2026-09-25.
 
 v0.8.41 supersedes the immutable but unpublished v0.8.40 tag. It retains the hardened background browser and durable `operation_*` command layer, then closes the confirmed Secure MCP Tunnel retry/disconnection failure classes seen on the audited Windows deployment.
 
@@ -19,11 +19,11 @@ The release also retains v0.8.40 receipt-first Windows operation recovery, bound
 | Windows full `npm test` | PASS — 377 PASS / 5 SKIP / 0 FAIL; browser/concurrency/GUI/FS/runtime/source-integrity tails PASS |
 | Provider timeout-tree stress | PASS — 5/5 after correcting the test probe to the existing bounded cleanup budget |
 | Repository security audit | PASS — SECURITY_AUDIT_PASS after final documentation delta |
-| Remote PR / Windows+Ubuntu hosted CI | PENDING |
-| Exact-tag fresh/repeated installers | PENDING |
-| Reproducible 13-asset release bundle | PENDING |
-| Immutable GitHub publication | PENDING |
-| Candidate-first live rollout and post-rollout tunnel canaries | PENDING |
+| Remote PR / Windows+Ubuntu hosted CI | PASS |
+| Exact-tag fresh/repeated installers | PASS before immutable publication |
+| Reproducible 13-asset release bundle | PASS — 13 assets published |
+| Immutable GitHub publication | PASS |
+| Candidate-first live rollout and post-rollout tunnel canaries | OPEN at the 2026-09-25 deployment audit; both accessible Emad runtimes were still v0.8.37 |
 
 Known scope boundary: Commander can eliminate the confirmed local/tunnel causes above, but cannot guarantee that the ChatGPT UI or upstream platform will never experience an unrelated network/session interruption. Such cases require distinct evidence and are not conflated with a local MCP PASS.
 
