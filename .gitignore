@@ -15,3 +15,9 @@ connections.local.json
 /plugin-template/.app.json
 /test/gui-e2e-app/bin/
 /test/gui-e2e-app/obj/
+
+# Local development, deployment evidence and generated Python files
+/work/
+/outputs/
+__pycache__/
+*.pyc

@@ -1,12 +1,12 @@
 # v0.8.34 release qualification
 
-Status: RELEASED / DEPLOYED / CURRENT, 2026-09-24 (Asia/Tehran).
+Status: HISTORICAL RELEASE / superseded by [v0.8.35](RELEASE_0.8.35.md). Qualification below was recorded on 2026-09-24 (Asia/Tehran).
 
-Immutable latest release: https://github.com/GOD13emad/ChatGPTRemoteCommander/releases/tag/v0.8.34
+Immutable release: https://github.com/GOD13emad/ChatGPTRemoteCommander/releases/tag/v0.8.34
 Runtime/tag commit: `86af9fe7e803bbba19fa2d3126d81389509bd176`.
 PR #5 merged as `b2c976d9b63a508b4da6e256f716a73101477dd7`; its tree equals the tested tag. This documentation closeout does not change the released runtime.
 
-This release delivers the opt-in durable project engine and milestone 4A adaptive prerequisites/proposal teams. The user authorized finalizing both Windows and Linux and publishing GitHub. Earlier v0.8.32 and v0.8.33 drafts remain unpublished and superseded. v0.8.34 is now the public stable release and active on both qualified devices.
+This release delivers the opt-in durable project engine and milestone 4A adaptive prerequisites/proposal teams. The user authorized finalizing both Windows and Linux and publishing GitHub. Earlier v0.8.32 and v0.8.33 drafts remain unpublished and superseded. At this checkpoint, v0.8.34 was the public stable release and active on both qualified devices; this is not a current machine-state claim.
 
 ## Corrections from final qualification
 

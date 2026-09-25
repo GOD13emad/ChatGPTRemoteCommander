@@ -1,5 +1,7 @@
 # Expanded product audit and roadmap — 2026-09-19
 
+> Historical snapshot. Product comparisons, measurements and roadmap statements apply to the recorded date/version. See [current project state](PROJECT_CONTROL_STATE.md) and [v0.8.35](RELEASE_0.8.35.md) for present release scope.
+
 ## Definition and acceptance
 Project: ChatGPT Remote Commander, expanded from an MCP execution bridge into a
 project-aware, recoverable automation system. Target acceptance is measured per
@@ -9,7 +11,7 @@ human intervention. No claim of being universally better than Codex/Claude/Work,
 of doing every possible task, or of an unsupported benchmark score is made.
 
 Baseline source and verified live identity: v0.6.4,
-402b9f4110f0c27bc7da3059f956df309048ca53, Emad-PC-Ultimate.
+402b9f4110f0c27bc7da3059f956df309048ca53, Windows test host.
 An isolated candidate worktree is used; deployment authority is unchanged.
 
 ## Audit coverage

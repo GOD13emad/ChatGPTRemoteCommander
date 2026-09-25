@@ -1,6 +1,16 @@
-# Setup Guides — 10 Languages
+# Documentation and setup guides
 
 > Canonical AI-assisted workflow: [START_HERE.md](../START_HERE.md). This is the single current source of truth for end-to-end installation and FINAL PASS.
+
+## Current product documentation
+
+- [Current project state](PROJECT_CONTROL_STATE.md) and [development roadmap](PROJECT_ENGINE_ROADMAP.md).
+- [v0.8.35 release qualification](RELEASE_0.8.35.md) and [engineering decisions/evidence](PROJECT_KNOWLEDGE_EVIDENCE.md).
+- [Project execution](PROJECT_ENGINE.md), [adaptive planning](PROJECT_ENGINE_ADAPTIVE.md) and [durable questions/responses](PROJECT_ENGINE_DECISIONS.md).
+- [Durable workflows](DURABLE_WORKFLOWS_R1.md), [profile isolation](PROFILE_ISOLATION_R1.md), [filesystem integrity](FS_INTEGRITY_R1.md) and [GUI acceptance](GUI_ACCEPTANCE.md).
+- [Plugin setup](PLUGIN_SETUP.md) and [Work/Codex setup](../WORK_SETUP.md).
+
+## Setup guides — 10 languages
 
 Choose your language:
 
@@ -17,7 +27,15 @@ Choose your language:
 
 English and Persian contain the expanded current flow; the other language pages provide the current commands and point back to the canonical workflow. Plugin packaging and icon/app binding are documented in [PLUGIN_SETUP.md](PLUGIN_SETUP.md). ChatGPT Work packaging/install guidance is in [WORK_SETUP.md](../WORK_SETUP.md).
 
-Project-control continuity: [PROJECT_CONTROL_STATE.md](PROJECT_CONTROL_STATE.md) is the cumulative Project Brain/current project state and [PROJECT_KNOWLEDGE_EVIDENCE.md](PROJECT_KNOWLEDGE_EVIDENCE.md) is the append-only evidence/decision record.
+## Historical records
+
+- [Archived project checkpoints](history/PROJECT_CONTROL_STATE_20260924.md) and [E001–E062 engineering records](history/PROJECT_KNOWLEDGE_EVIDENCE_20260924.md).
+- [Project-engine qualification history](PROJECT_ENGINE_VALIDATION.md), [v0.8.34](RELEASE_0.8.34.md), and unpublished candidates [v0.8.32](RELEASE_0.8.32.md) / [v0.8.33](RELEASE_0.8.33.md).
+- Dated [GUI/release audit](AUDIT_R1.md), [expanded audit](AUDIT_AND_ROADMAP_R1.md), [competitive audit](COMPETITIVE_AUDIT_20260921.md) and [chess stress test](CHESS_STRESS_BENCHMARK_20260921.md).
+
+Historical version/status statements apply only to their checkpoint date. Current status comes from the project state and latest release record; deployment-specific handoffs remain private.
+
+## Official references
 
 Official OpenAI references:
 
@@ -40,7 +58,7 @@ Power Mode on a trusted PC:
 & ([scriptblock]::Create((irm 'https://github.com/GOD13emad/ChatGPTRemoteCommander/releases/latest/download/install.ps1'))) -InstallPrerequisites -PowerMode -StartServer
 ```
 
-## v0.4 cross-platform, persistent startup, and plugin onboarding
+## Cross-platform persistent startup and plugin onboarding
 
 All guides now also cover Windows + Linux, one account on multiple computers, multiple accounts on one computer, concurrent chats, automatic health-port selection, and zero-reentry startup.
 

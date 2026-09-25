@@ -40,7 +40,7 @@
 
 - Prevent Windows multi-profile updater candidate churn from reusing one `commit/profile` runtime marker across repeated same-release runs. Candidate runtime and backup state are now unique per candidate port.
 - Skip candidate creation for an already-current profile with no pending previous route during ordinary automatic updates, while preserving explicit mutation/force behavior.
-- This prevents stale `saeed-emad` backend processes from losing ownership evidence and accumulating as cleanup-blocking orphans when another profile remains deferred.
+- This prevents stale `secondary` backend processes from losing ownership evidence and accumulating as cleanup-blocking orphans when another profile remains deferred.
 
 ## 0.8.29 — 2026-09-22
 
@@ -245,7 +245,7 @@
 
 - Fix Windows updater target discovery so only immediate profile directories are considered; historical `instance.json` files inside profile backup trees can no longer be mistaken for live profiles.
 - Fail closed when a direct profile directory name disagrees with the profile recorded in its `instance.json`.
-- Add regression coverage that forbids recursive instance discovery. This closes the v0.8.3 `-NoPromote` cleanup failure where archived `saeed-emad` records produced duplicate candidates and an ownership mismatch before any route cutover.
+- Add regression coverage that forbids recursive instance discovery. This closes the v0.8.3 `-NoPromote` cleanup failure where archived `secondary` records produced duplicate candidates and an ownership mismatch before any route cutover.
 - v0.8.3 was published but is superseded by this hotfix before production promotion; live v0.7.3 remained authoritative throughout discovery.
 
 ## 0.8.3 — 2026-09-20

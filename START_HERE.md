@@ -337,13 +337,13 @@ For long-running project work, enable durable workflows only after deciding the 
 Additional ChatGPT accounts on the same PC should use a separate local MCP instance before durable memory is enabled:
 
 ```powershell
-.\configure-profile-instance.ps1 -Profile "saeed-emad"
+.\configure-profile-instance.ps1 -Profile "secondary"
 ```
 
 or during enrollment:
 
 ```powershell
-.\connect-chatgpt-account.ps1 -Profile "saeed-emad" -HealthPort 47833 -Isolate
+.\connect-chatgpt-account.ps1 -Profile "secondary" -HealthPort 47833 -Isolate
 ```
 
 The isolated secondary profile gets a distinct loopback MCP port, runtime marker, audit log and workflow database. It defaults to Standard Mode with shell/process/GUI/full-filesystem access off. This is an application/configuration boundary, not an OS sandbox; use separate Windows users/VMs for principals with materially different OS-level trust.
