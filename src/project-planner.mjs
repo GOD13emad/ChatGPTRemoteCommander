@@ -53,21 +53,38 @@ function parseProposal(text) {
 
 // JSONL is audit evidence, not the structured final result. Reject any execution
 // or unknown event even if the child eventually returns a valid proposal.
+const CODEX_DISABLED_CODE_MODE_DIAGNOSTIC =
+  'Code Mode is unavailable because code-mode host is disabled. Code mode will fail closed; enable \`features.code_mode_host\` and install \`codex-code-mode-host\`.';
+
 function inspectCodexEvents(text) {
   let complete = false;
   let started = false;
+  let threadStarted = false;
+  let benignDiagnosticSeen = false;
   for (const line of text.split(/\r?\n/).filter(line => line.trim())) {
     let event;
     try { event = JSON.parse(line); } catch { throw fail('PLANNER_INVALID_EVENTS'); }
     if (!event || typeof event !== 'object') throw fail('PLANNER_INVALID_EVENTS');
-    if (event.type === 'thread.started' || event.type === 'turn.started') {
-      if (complete) throw fail('PLANNER_INVALID_EVENTS');
-      if (event.type === 'turn.started') started = true;
+    if (event.type === 'thread.started') {
+      if (threadStarted || started || complete) throw fail('PLANNER_INVALID_EVENTS');
+      threadStarted = true;
+    } else if (event.type === 'turn.started') {
+      if (!threadStarted || started || complete) throw fail('PLANNER_INVALID_EVENTS');
+      started = true;
     } else if (event.type === 'turn.completed') {
       if (!started || complete) throw fail('PLANNER_INVALID_EVENTS');
       complete = true;
     } else if (['item.started', 'item.updated', 'item.completed'].includes(event.type)) {
-      if (complete || !['agent_message', 'reasoning'].includes(event.item?.type)) throw fail('PLANNER_UNEXPECTED_TOOL');
+      const item = event.item;
+      if (event.type === 'item.completed' && item?.type === 'error') {
+        const keys = item && typeof item === 'object' ? Object.keys(item).sort().join(',') : '';
+        if (!threadStarted || started || complete || benignDiagnosticSeen
+            || keys !== 'id,message,type' || typeof item.id !== 'string'
+            || item.message !== CODEX_DISABLED_CODE_MODE_DIAGNOSTIC) throw fail('PLANNER_UNEXPECTED_TOOL');
+        benignDiagnosticSeen = true;
+      } else if (!started || complete || !['agent_message', 'reasoning'].includes(item?.type)) {
+        throw fail('PLANNER_UNEXPECTED_TOOL');
+      }
     } else if (event.type === 'turn.failed' || event.type === 'error') {
       throw fail('PLANNER_PROVIDER_FAILED');
     } else {

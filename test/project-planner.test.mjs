@@ -39,6 +39,9 @@ if (mode.startsWith('codex')) {
   if(!text.includes('Commander alone executes')) process.exit(10);
   proposal.summary=process.cwd();
   console.log(JSON.stringify({type:'thread.started',thread_id:'fixture'}));
+  if(mode==='codex-benign-diagnostic') console.log(JSON.stringify({type:'item.completed',item:{id:'item_0',type:'error',message:'Code Mode is unavailable because code-mode host is disabled. Code mode will fail closed; enable \`features.code_mode_host\` and install \`codex-code-mode-host\`.'}}));
+  if(mode==='codex-unknown-diagnostic') console.log(JSON.stringify({type:'item.completed',item:{id:'item_0',type:'error',message:'Different diagnostic'}}));
+  if(mode==='codex-diagnostic-extra') console.log(JSON.stringify({type:'item.completed',item:{id:'item_0',type:'error',message:'Code Mode is unavailable because code-mode host is disabled. Code mode will fail closed; enable \`features.code_mode_host\` and install \`codex-code-mode-host\`.',extra:true}}));
   console.log(JSON.stringify({type:'turn.started'}));
   console.log(JSON.stringify({type:'item.completed',item:{type:mode==='codex-tool'?'command_execution':'agent_message',text:'PRIVATE_PROVIDER_TEXT'}}));
   if(mode!=='codex-incomplete') console.log(JSON.stringify({type:'turn.completed'}));
@@ -143,6 +146,19 @@ test('Codex emits only a validated schema proposal under explicit restrictions',
   assert.equal(fs.existsSync(result.summary), false);
   assert.equal(planner.describe().model, 'fixture-model');
 });
+
+test('Codex accepts only the exact fail-closed code-mode-disabled diagnostic emitted by current CLI', async t => {
+  const { planner } = fixture(t, 'codex-benign-diagnostic', { kind: 'codex' });
+  const result = await planner.plan({ goal: 'inspect' });
+  assert.equal(result.action, 'call');
+});
+
+for (const mode of ['codex-unknown-diagnostic','codex-diagnostic-extra']) {
+  test('Codex rejects unrecognized or widened error diagnostics: ' + mode, async t => {
+    const { planner } = fixture(t, mode, { kind: 'codex' });
+    await assert.rejects(planner.plan({ goal: 'inspect' }), { code: 'PLANNER_UNEXPECTED_TOOL' });
+  });
+}
 
 for (const [mode, code] of [['codex-tool','PLANNER_UNEXPECTED_TOOL'],['codex-incomplete','PLANNER_INCOMPLETE_RESULT'],['codex-missing','PLANNER_INCOMPLETE_RESULT'],['codex-large','PLANNER_OUTPUT_LIMIT'],['codex-hardlink','PLANNER_INVALID_RESULT_FILE']]) {
   test('Codex rejects provider evidence: ' + mode, async t => {
