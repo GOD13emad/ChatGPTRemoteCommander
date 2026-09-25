@@ -22,10 +22,14 @@ Browser tools are direct-session-only in this release. They are not added to dur
 | Windows native headless browser E2E | PASS — Chrome 154; no foreground interaction |
 | Helper EOF cleanup and same-profile relaunch continuity | PASS |
 | PR #16 hosted Windows/Ubuntu CI | PASS — four jobs |
+| Independent review of initial candidate | FINDINGS CLOSED — six profile/snapshot/process/lifecycle defects converted to regressions; final re-review PENDING |
+| Review-fix Windows focused/full gates | PASS — 13 focused browser regressions; full `check`, `test` (355 PASS / 5 SKIP / 0 FAIL), GUI 75/75, security audit |
 | Exact v0.8.38 release Windows/Ubuntu CI | PENDING |
 | Fresh/repeated pinned installer acceptance | PENDING |
 | Reproducible release assets and GitHub digests | PENDING |
 | Immutable publication and Windows/Linux candidate-first rollout | PENDING |
+
+The initial independently reviewed candidate exposed six browser lifecycle defects before publication: non-injective instance profile paths, nullable non-HTTP snapshot URLs, helper teardown on ordinary application errors, startup request ownership races, Chromium leakage during pre-attachment initialization failure, and isolated-profile residue after forced helper termination. The hardening follow-up fixes each case and adds direct regressions in `test/browser-safety.test.mjs`, `test/browser-process.test.mjs`, `test/browser-helper-init-failure-run.mjs`, and `test/browser-native-run.mjs`. Publication remains blocked until the hardened head passes Linux exact-commit qualification, hosted CI, and independent re-review.
 
 This release does not bypass organizational monitoring, endpoint controls, authentication policy, CAPTCHA, WebAuthn, Secure Desktop/UAC, anti-cheat/protected input or other site/OS restrictions. Background-first means low-interference automation, not hidden or evasive automation.
 

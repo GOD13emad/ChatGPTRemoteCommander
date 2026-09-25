@@ -43,6 +43,20 @@ test('owned background session navigates, snapshots auth signals and never asks 
  assert.equal(s.passwordValuesReturned,false);assert.equal(s.cookiesReturned,false);
  await f.ctl.execute(f.ctx,'browser_session_end',{lease:b.lease});assert.equal(f.closed,1);
 });
+test('valid mixed-case, dotted and numeric instance names map to distinct browser profile namespaces',async()=>{
+ const f=fixture();const dirs=[];
+ for(const instance of ['default','Work','Research.1','123']){
+  f.ctx.config.instance.profile=instance;
+  const b=await f.ctl.execute(f.ctx,'browser_session_begin',{profile:'uni',mode:'persistent'});
+  const start=[...f.calls].reverse().find(x=>x.action==='start');
+  dirs.push(start.profileDir);
+  await f.ctl.execute(f.ctx,'browser_session_end',{lease:b.lease});
+ }
+ assert.equal(new Set(dirs.map(x=>x.toLowerCase())).size,4);
+ assert.ok(dirs[0].includes('default'));
+ assert.ok(dirs.slice(1).every(x=>/instance-[0-9a-f]+/i.test(x)));
+});
+
 test('foreground requirement returns approval workflow but never takes over the desktop itself',async()=>{
  const f=fixture();const b=await f.ctl.execute(f.ctx,'browser_session_begin',{});
  const a=await f.ctl.execute(f.ctx,'browser_foreground_requirement',{lease:b.lease,reason:'mfa',targetHost:'example.test'});

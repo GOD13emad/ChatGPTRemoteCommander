@@ -1,0 +1,34 @@
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { spawn } from 'node:child_process';
+import { createInterface } from 'node:readline';
+import { once } from 'node:events';
+
+const helper=new URL('../tools/browser-control.mjs',import.meta.url);
+const profile=path.join(os.tmpdir(),'rc-browser-init-fail-'+process.pid+'-'+Date.now().toString(36));
+const child=spawn(process.execPath,[helper.pathname.startsWith('/')&&process.platform==='win32'?helper.pathname.slice(1):helper.pathname,'--server'],{stdio:['pipe','pipe','pipe'],windowsHide:true,shell:false});
+let stderr='';child.stderr.on('data',c=>stderr+=c.toString('utf8'));
+const rl=createInterface({input:child.stdout,crlfDelay:Infinity});
+const it=rl[Symbol.asyncIterator]();
+const next=async()=>{
+ const result=await Promise.race([it.next(),new Promise((_,reject)=>setTimeout(()=>reject(Error('HELPER_LINE_TIMEOUT')),12000))]);
+ if(result.done)throw Error('HELPER_EOF '+stderr.slice(-500));
+ return JSON.parse(result.value);
+};
+const send=o=>child.stdin.write(JSON.stringify(o)+'\n');
+try{
+ const ready=await next();if(ready.ok!==true||ready.ready!==true)throw Error('HELPER_NOT_READY');
+ send({action:'start',profileDir:profile,isolated:true,executable:process.execPath});const failed=await next();
+ if(failed.ok!==false||!['BROWSER_LAUNCH_FAILED','BROWSER_DEVTOOLS_TIMEOUT','BROWSER_DEVTOOLS_UNAVAILABLE'].includes(failed.error))throw Error('EXPECTED_INIT_FAILURE');
+ for(let i=0;i<80&&fs.existsSync(profile);i++)await new Promise(r=>setTimeout(r,50));
+ if(fs.existsSync(profile))throw Error('INIT_FAILURE_PROFILE_NOT_REMOVED');
+ send({action:'status'});const status=await next();
+ if(status.ok!==true||status.active!==false)throw Error('HELPER_NOT_RECOVERED_AFTER_INIT_FAILURE');
+ console.log(JSON.stringify({status:'BROWSER_INIT_FAILURE_CLEANUP_PASS',error:failed.error,profileRemoved:true,helperAlive:true}));
+}finally{
+ rl.close();
+ if(child.exitCode===null){try{child.stdin.end();}catch{}await Promise.race([once(child,'close'),new Promise(resolve=>setTimeout(resolve,1500))]);}
+ if(child.exitCode===null)child.kill();
+ try{fs.rmSync(profile,{recursive:true,force:true,maxRetries:3,retryDelay:50});}catch{}
+}

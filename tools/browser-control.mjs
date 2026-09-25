@@ -11,12 +11,12 @@ const fail=code=>Object.assign(new Error(code),{browserCode:code});
 const redactUrl=value=>{
  try{
   const u=new URL(String(value));
-  if(!['http:','https:'].includes(u.protocol))return null;
+  if(!['http:','https:'].includes(u.protocol))return {url:null,queryRedacted:false,fragmentRedacted:false,schemeRedacted:true};
   u.username='';u.password='';
   const hadSearch=!!u.search,hadHash=!!u.hash;
   u.search='';u.hash='';
-  return {url:u.href,queryRedacted:hadSearch,fragmentRedacted:hadHash};
- }catch{return {url:null,queryRedacted:false,fragmentRedacted:false};}
+  return {url:u.href,queryRedacted:hadSearch,fragmentRedacted:hadHash,schemeRedacted:false};
+ }catch{return {url:null,queryRedacted:false,fragmentRedacted:false,schemeRedacted:false};}
 };
 const exists=p=>{try{return fs.statSync(p).isFile();}catch{return false;}};
 function which(name){
@@ -140,20 +140,21 @@ async function startBrowser(req){
  if(headless)args.unshift('--headless=new');
  args.push('about:blank');
  let child;try{child=spawn(executable,args,{stdio:['ignore','ignore','ignore'],windowsHide:headless,shell:false});}catch{throw fail('BROWSER_LAUNCH_FAILED');}
- const port=await waitForPortFile(portFile,child);
- let version;try{version=await (await fetch('http://127.0.0.1:'+port+'/json/version')).json();}catch{try{child.kill();}catch{}throw fail('BROWSER_DEVTOOLS_UNAVAILABLE');}
- if(typeof version.webSocketDebuggerUrl!=='string'){try{child.kill();}catch{}throw fail('BROWSER_DEVTOOLS_UNAVAILABLE');}
- const cdp=new Cdp(version.webSocketDebuggerUrl);await cdp.open();
- const target=await cdp.send('Target.createTarget',{url:'about:blank'});
- const attached=await cdp.send('Target.attachToTarget',{targetId:target.targetId,flatten:true});
- browser={child,cdp,sessionId:attached.sessionId,targetId:target.targetId,profileDir,isolated:req.isolated===true,executable,product:version.Browser??null,port,headless};
+ browser={child,cdp:null,sessionId:null,targetId:null,profileDir,isolated:req.isolated===true,executable,product:null,port:null,headless};
  try{
+  const port=await waitForPortFile(portFile,child);browser.port=port;
+  let version;try{version=await (await fetch('http://127.0.0.1:'+port+'/json/version')).json();}catch{throw fail('BROWSER_DEVTOOLS_UNAVAILABLE');}
+  if(typeof version.webSocketDebuggerUrl!=='string')throw fail('BROWSER_DEVTOOLS_UNAVAILABLE');
+  browser.product=version.Browser??null;
+  const cdp=new Cdp(version.webSocketDebuggerUrl);browser.cdp=cdp;await cdp.open();
+  const target=await cdp.send('Target.createTarget',{url:'about:blank'});browser.targetId=target.targetId;
+  const attached=await cdp.send('Target.attachToTarget',{targetId:target.targetId,flatten:true});browser.sessionId=attached.sessionId;
   await cdp.send('Page.enable',{},browser.sessionId);
   await cdp.send('Runtime.enable',{},browser.sessionId);
   await cdp.send('Network.enable',{},browser.sessionId);
+  return {ok:true,background:headless,headless,foreground:!headless,userDesktopTouched:!headless,
+    profileMode:browser.isolated?'isolated':'persistent',browserProduct:browser.product,executable};
  }catch(e){await closeBrowser();throw e;}
- return {ok:true,background:headless,headless,foreground:!headless,userDesktopTouched:!headless,
-   profileMode:browser.isolated?'isolated':'persistent',browserProduct:browser.product,executable};
 }
 async function snapshot(req){
  const maxText=Math.max(1000,Math.min(40000,req.maxTextChars??20000));
@@ -168,11 +169,11 @@ async function snapshot(req){
  const pageUrl=redactUrl(value?.url);
  const elements=Array.isArray(value?.elements)?value.elements.map(item=>{
   const next={...item};
-  if(typeof next.href==='string'){const x=redactUrl(next.href);next.href=x.url;next.hrefQueryRedacted=x.queryRedacted;next.hrefFragmentRedacted=x.fragmentRedacted;}
-  if(typeof next.action==='string'){const x=redactUrl(next.action);next.action=x.url;next.actionQueryRedacted=x.queryRedacted;next.actionFragmentRedacted=x.fragmentRedacted;}
+  if(typeof next.href==='string'){const x=redactUrl(next.href);next.href=x.url;next.hrefQueryRedacted=x.queryRedacted;next.hrefFragmentRedacted=x.fragmentRedacted;next.hrefSchemeRedacted=x.schemeRedacted;}
+  if(typeof next.action==='string'){const x=redactUrl(next.action);next.action=x.url;next.actionQueryRedacted=x.queryRedacted;next.actionFragmentRedacted=x.fragmentRedacted;next.actionSchemeRedacted=x.schemeRedacted;}
   return next;
  }):[];
- return {...value,url:pageUrl.url,urlQueryRedacted:pageUrl.queryRedacted,urlFragmentRedacted:pageUrl.fragmentRedacted,elements,background:true,passwordValuesReturned:false,cookiesReturned:false,savedPasswordStoreAccess:false,foregroundFallbackSuggested:!!suggestedForegroundReason,suggestedForegroundReason};
+ return {...value,url:pageUrl.url,urlQueryRedacted:pageUrl.queryRedacted,urlFragmentRedacted:pageUrl.fragmentRedacted,urlSchemeRedacted:pageUrl.schemeRedacted,elements,background:true,passwordValuesReturned:false,cookiesReturned:false,savedPasswordStoreAccess:false,foregroundFallbackSuggested:!!suggestedForegroundReason,suggestedForegroundReason};
 }
 async function handle(req){
  switch(req.action){

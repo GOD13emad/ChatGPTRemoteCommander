@@ -1,36 +1,78 @@
+import { rm } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 import { browserError } from './browser-contract.mjs';
 
-function parseResult(bytes){
+const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+function parseEnvelope(bytes){
  let value;
  try{
   value=JSON.parse(Buffer.isBuffer(bytes)?bytes.toString('utf8'):String(bytes));
   if(!value||typeof value!=='object'||Array.isArray(value)||typeof value.ok!=='boolean')throw new Error();
  }catch{throw browserError('BROWSER_HELPER_BAD_JSON');}
- if(value.ok!==true){
-  const code=/^[A-Z][A-Z0-9_]{1,79}$/.test(value.error??'')?value.error:'BROWSER_NATIVE_FAILED';
-  throw browserError(code);
- }
  return value;
 }
-export function createBrowserProcessClient({file,args,timeoutMs=60000,startupTimeoutMs=15000,maxBytes=8*1024*1024,env=process.env}){
- let child=null,buffer=Buffer.alloc(0),startup=null,pending=null,stderrBytes=0,intentionalClose=false;
+function applicationError(value){
+ const code=/^[A-Z][A-Z0-9_]{1,79}$/.test(value?.error??'')?value.error:'BROWSER_NATIVE_FAILED';
+ return browserError(code);
+}
+async function removeOwnedProfile(profile){
+ if(typeof profile!=='string'||!profile)return;
+ for(let i=0;i<8;i++){
+  try{await rm(profile,{recursive:true,force:true,maxRetries:3,retryDelay:80});return;}
+  catch{await sleep(100);}
+ }
+}
+async function waitForClose(child,ms){
+ if(!child||child.exitCode!==null)return;
+ await Promise.race([new Promise(resolve=>child.once('close',resolve)),sleep(ms)]);
+}
+async function forceTree(child,forceCloseMs){
+ if(!child||child.exitCode!==null)return;
+ if(process.platform==='win32'){
+  try{
+   const killer=spawn('taskkill.exe',['/PID',String(child.pid),'/T','/F'],{stdio:'ignore',windowsHide:true,shell:false});
+   await waitForClose(killer,forceCloseMs);
+  }catch{try{child.kill();}catch{}}
+ }else{
+  try{child.kill('SIGKILL');}catch{}
+ }
+ await waitForClose(child,forceCloseMs);
+}
+export function createBrowserProcessClient({file,args,timeoutMs=60000,startupTimeoutMs=15000,maxBytes=8*1024*1024,env=process.env,gracefulCloseMs=2500,forceCloseMs=1500}){
+ let child=null,buffer=Buffer.alloc(0),startup=null,pending=null,stderrBytes=0,reserved=false,shutdown=null,isolatedProfile=null;
  const clear=t=>{if(t)clearTimeout(t);};
- const kill=()=>{const c=child;child=null;if(c&&c.exitCode===null&&!c.killed)c.kill();};
+ const beginShutdown=()=>{
+  if(shutdown)return shutdown;
+  const c=child;child=null;
+  const profile=isolatedProfile;isolatedProfile=null;
+  buffer=Buffer.alloc(0);
+  shutdown=(async()=>{
+   if(c&&c.exitCode===null){
+    try{c.stdin.end();}catch{}
+    await waitForClose(c,gracefulCloseMs);
+    if(c.exitCode===null)await forceTree(c,forceCloseMs);
+   }
+   await removeOwnedProfile(profile);
+  })().finally(()=>{shutdown=null;});
+  return shutdown;
+ };
  const fail=code=>{
-  const error=browserError(code);
+  const error=browserError(code);reserved=false;
   if(startup){const s=startup;clear(s.timer);startup=null;s.reject(error);}
   if(pending){const p=pending;clear(p.timer);pending=null;p.reject(error);}
-  buffer=Buffer.alloc(0);kill();
+  buffer=Buffer.alloc(0);
+  void beginShutdown();
  };
  const complete=line=>{
-  let value;try{value=parseResult(line);}catch(e){fail(e.browserCode??'BROWSER_HELPER_BAD_JSON');return;}
+  let value;try{value=parseEnvelope(line);}catch(e){fail(e.browserCode??'BROWSER_HELPER_BAD_JSON');return;}
   if(startup){
-   if(value.ready!==true||value.protocol!==1){fail('BROWSER_HELPER_BAD_JSON');return;}
+   if(value.ok!==true||value.ready!==true||value.protocol!==1){fail('BROWSER_HELPER_BAD_JSON');return;}
    const s=startup;clear(s.timer);startup=null;s.resolve();return;
   }
   if(!pending){fail('BROWSER_HELPER_BAD_JSON');return;}
-  const p=pending;clear(p.timer);pending=null;p.resolve(value);
+  const p=pending;clear(p.timer);pending=null;
+  if(value.ok!==true){p.reject(applicationError(value));return;}
+  p.resolve(value);
  };
  const consume=chunk=>{
   if(!child)return;
@@ -46,12 +88,13 @@ export function createBrowserProcessClient({file,args,timeoutMs=60000,startupTim
    complete(line);
   }
  };
- const start=()=>{
-  if(child&&child.exitCode===null&&!child.killed&&!startup)return Promise.resolve();
+ const start=async()=>{
+  if(shutdown)await shutdown;
+  if(child&&child.exitCode===null&&!child.killed&&!startup)return;
   if(startup)return startup.promise;
-  intentionalClose=false;buffer=Buffer.alloc(0);stderrBytes=0;
+  buffer=Buffer.alloc(0);stderrBytes=0;
   let spawned;try{spawned=spawn(file,args,{windowsHide:true,env,stdio:['pipe','pipe','pipe'],shell:false});}
-  catch{return Promise.reject(browserError('BROWSER_HELPER_START_FAILED'));}
+  catch{throw browserError('BROWSER_HELPER_START_FAILED');}
   child=spawned;
   let resolveStart,rejectStart;const promise=new Promise((resolve,reject)=>{resolveStart=resolve;rejectStart=reject;});
   startup={promise,resolve:resolveStart,reject:rejectStart,timer:null};
@@ -60,28 +103,51 @@ export function createBrowserProcessClient({file,args,timeoutMs=60000,startupTim
   spawned.stdin.on('error',()=>fail('BROWSER_HELPER_STDIN_FAILED'));
   spawned.stdout.on('data',consume);
   spawned.stderr.on('data',chunk=>{stderrBytes+=chunk.length;if(stderrBytes>32768)fail('BROWSER_HELPER_OUTPUT_LIMIT');});
-  spawned.once('close',code=>{
+  spawned.once('close',()=>{
    if(child!==spawned)return;
    child=null;buffer=Buffer.alloc(0);
-   if(intentionalClose)return;
-   if(startup||pending)fail(code===0?'BROWSER_HELPER_EXIT_FAILED':'BROWSER_HELPER_EXIT_FAILED');
+   if(startup||pending)fail('BROWSER_HELPER_EXIT_FAILED');
   });
   return promise;
  };
  const invoke=async request=>{
-  if(pending)throw browserError('BROWSER_HELPER_BUSY');
-  await start();
-  if(!child||child.exitCode!==null||child.killed)throw browserError('BROWSER_HELPER_EXIT_FAILED');
-  return new Promise((resolve,reject)=>{
-   pending={resolve,reject,timer:setTimeout(()=>fail('BROWSER_HELPER_TIMEOUT'),timeoutMs)};
-   child.stdin.write(JSON.stringify(request)+'\n','utf8',error=>{if(error)fail('BROWSER_HELPER_STDIN_FAILED');});
-  });
+  if(pending||reserved)throw browserError('BROWSER_HELPER_BUSY');
+  reserved=true;
+  let trackedStartProfile=null;
+  try{
+   await start();
+   if(!child||child.exitCode!==null||child.killed)throw browserError('BROWSER_HELPER_EXIT_FAILED');
+   if(pending)throw browserError('BROWSER_HELPER_BUSY');
+   if(request?.action==='start'&&request.isolated===true&&typeof request.profileDir==='string'&&request.profileDir){
+    trackedStartProfile=request.profileDir;
+    isolatedProfile=request.profileDir;
+   }
+   const promise=new Promise((resolve,reject)=>{
+    pending={resolve,reject,timer:setTimeout(()=>fail('BROWSER_HELPER_TIMEOUT'),timeoutMs)};
+    reserved=false;
+    child.stdin.write(JSON.stringify(request)+'\n','utf8',error=>{if(error)fail('BROWSER_HELPER_STDIN_FAILED');});
+   });
+   try{
+    const result=await promise;
+    if(request?.action==='end')isolatedProfile=null;
+    return result;
+   }catch(error){
+    if(trackedStartProfile&&child&&child.exitCode===null){
+     isolatedProfile=null;
+     void removeOwnedProfile(trackedStartProfile);
+    }
+    throw error;
+   }
+  }finally{
+   reserved=false;
+  }
  };
  const close=()=>{
-  intentionalClose=true;
-  if(startup){const s=startup;clear(s.timer);startup=null;s.reject(browserError('BROWSER_HELPER_EXIT_FAILED'));}
-  if(pending){const p=pending;clear(p.timer);pending=null;p.reject(browserError('BROWSER_HELPER_EXIT_FAILED'));}
-  buffer=Buffer.alloc(0);kill();
+  reserved=false;
+  const error=browserError('BROWSER_HELPER_EXIT_FAILED');
+  if(startup){const s=startup;clear(s.timer);startup=null;s.reject(error);}
+  if(pending){const p=pending;clear(p.timer);pending=null;p.reject(error);}
+  return beginShutdown();
  };
  return {invoke,close};
 }

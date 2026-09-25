@@ -5,7 +5,7 @@ Updated: 2026-09-25. Scope: public product/release status, not a live machine in
 ## Release baseline
 
 - [v0.8.37](RELEASE_0.8.37.md) remains the latest immutable public release until the v0.8.38 candidate completes publication.
-- [v0.8.38](RELEASE_0.8.38.md) packages PR #16: zero-interference background browser automation with explicit same-profile foreground handoff.
+- [v0.8.38](RELEASE_0.8.38.md) packages PR #16 plus pre-publication browser hardening: zero-interference background automation, explicit same-profile foreground handoff, and regression fixes for six independently reviewed isolation/snapshot/process/lifecycle defects.
 - Milestones 4A, 4B.1 and 4B.2 are released: adaptive prerequisites/proposal teams, durable missing-input questions/explicit bounded responses, and opt-in bounded artifact workers.
 - Exact Windows/Ubuntu CI, real-device candidate checks, fresh/repeated installers, reproducible assets and scoped deployment checks passed. See the release record for evidence and limits.
 - [PR #9](https://github.com/GOD13emad/ChatGPTRemoteCommander/pull/9) added native Codex plugin metadata after publication. Git marketplace metadata can advance beyond the immutable backend tag; existing release assets are unchanged.

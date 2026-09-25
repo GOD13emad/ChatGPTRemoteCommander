@@ -12,6 +12,7 @@ const helper=path.join(project,'tools','browser-control.mjs');
 const client=createBrowserProcessClient({file:process.execPath,args:[helper,'--server']});
 const sameToken=(a,b)=>typeof a==='string'&&typeof b==='string'&&Buffer.byteLength(a)===Buffer.byteLength(b)&&timingSafeEqual(Buffer.from(a),Buffer.from(b));
 const safeSegment=value=>typeof value==='string'&&/^[a-z][a-z0-9_-]{0,31}$/.test(value)?value:'default';
+const instanceSegment=value=>{const raw=typeof value==='string'&&value?value:'default';return raw==='default'?'default':'instance-'+Buffer.from(raw,'utf8').toString('hex');};
 function defaultProfileRoot(){
  if(process.platform==='win32')return path.join(process.env.LOCALAPPDATA||os.homedir(),'ChatGPTRemoteCommander','browser-profiles');
  return path.join(os.homedir(),'.local','state','chatgpt-remote-commander','browser-profiles');
@@ -70,7 +71,7 @@ export function createBrowserController({invoke=req=>client.invoke(req),closeInv
    if(name==='browser_session_begin'){
     if(current())throw browserError('BROWSER_LEASE_BUSY');
     const ttl=input.ttlSeconds??300,mode=input.mode??'persistent',profile=input.profile??'default';
-    const root=resolveProfileRoot(cfg),instance=safeSegment(ctx.config?.instance?.profile??'default');
+    const root=resolveProfileRoot(cfg),instance=instanceSegment(ctx.config?.instance?.profile??'default');
     const dir=mode==='isolated'
       ? path.join(root,instance,'isolated-'+Date.now().toString(36)+'-'+token().slice(0,12))
       : path.join(root,instance,safeSegment(profile));
