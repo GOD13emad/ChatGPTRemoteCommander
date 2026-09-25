@@ -10,7 +10,7 @@ param(
   [switch]$StartServer,
   [switch]$SkipTunnelClient,
   [string]$TunnelClientVersion = '0.0.14',
-  [string]$SourceRef = 'v0.9.1',
+  [string]$SourceRef = 'v0.9.2',
   [string]$ExpectedCommit = ''
 )
 $ErrorActionPreference = 'Stop'
@@ -145,7 +145,13 @@ function Invoke-ExistingSafeUpdate {
     if ($LASTEXITCODE -ne 0) { throw "candidate-first update failed: $LASTEXITCODE" }
     Write-Host "SAFE_UPDATE_PASS commit=$commit"
   } finally {
-    Remove-Item -LiteralPath $temp -Recurse -Force -ErrorAction SilentlyContinue
+    if (Test-Path -LiteralPath $temp) {
+      try {
+        Remove-Item -LiteralPath $temp -Recurse -Force -ErrorAction Stop
+      } catch {
+        if (Test-Path -LiteralPath $temp) { throw }
+      }
+    }
   }
 }
 

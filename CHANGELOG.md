@@ -1,11 +1,18 @@
 # Changelog
 
+## 0.9.2 — 2026-09-25
+
+- Make the Windows existing-install updater wrapper cleanup idempotent after a successful candidate-first cutover: if its temporary fetch tree has already disappeared, cleanup no longer converts `SAFE_UPDATE_PASS` into a false process failure.
+- Keep cleanup fail-closed for real residual failures: a caught removal error is rethrown when the temporary tree still exists.
+- Carry forward all v0.9.1 release-hardening changes, including Linux `--skip-tunnel-client` parity and the browser-process regression race fix.
+- v0.9.0 is an immutable published parity release; v0.9.1 remains a tagged but unpublished hardening candidate, and v0.9.2 supersedes it as the release target.
+
 ## 0.9.1 — 2026-09-25
 
 - Harden final release acceptance without widening runtime authority or changing the v0.9.0 Project Engine capability model.
 - Add Linux `--skip-tunnel-client` parity with Windows: an existing pinned client is reused and verified; when none is present, the network download can be explicitly skipped for isolated/fresh qualification.
 - Eliminate a test-only unhandled-rejection race in the browser helper forced-shutdown regression by attaching the expected timeout rejection handler immediately; runtime browser timeout semantics are unchanged.
-- v0.9.0 remains an unpublished historical candidate; v0.9.1 is the release target.
+- v0.9.0 was subsequently published as an immutable parity release; v0.9.1 remains a tagged but unpublished hardening candidate superseded by v0.9.2.
 
 ## 0.9.0 — 2026-09-25
 

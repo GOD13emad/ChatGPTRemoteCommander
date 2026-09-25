@@ -1,6 +1,6 @@
 # Engineering decisions and evidence
 
-Updated: 2026-09-25. Current immutable published-release authority is [v0.8.42](RELEASE_0.8.42.md). [v0.9.1](RELEASE_0.9.1.md) is the current release-hardening candidate; v0.8.38, v0.8.39 and v0.8.40 remain historical unpublished tags. This public index separates reusable engineering decisions from historical deployment observations.
+Updated: 2026-09-25. Current immutable published-release authority is [v0.9.0](RELEASE_0.9.0.md). [v0.9.2](RELEASE_0.9.2.md) is the current installer-cleanup hotfix candidate; v0.9.1 remains an unpublished hardening tag; v0.8.38, v0.8.39 and v0.8.40 remain historical unpublished tags. This public index separates reusable engineering decisions from historical deployment observations.
 
 ## Current guarantees and their regression locations
 
@@ -69,7 +69,9 @@ These candidate-development results were followed by the exact v0.8.40 Windows g
 
 ## Publication records
 
-- [v0.9.1 candidate](RELEASE_0.9.1.md): v0.9.0 parity plus exact-tag installer/release hardening.
+- [v0.9.2 candidate](RELEASE_0.9.2.md): v0.9.1 hardening plus idempotent post-success Windows updater cleanup.
+- [v0.9.1 historical candidate](RELEASE_0.9.1.md): parity plus exact-tag installer/release hardening; tagged but not published as a GitHub Release.
+- [v0.9.0 published](RELEASE_0.9.0.md): immutable capability-parity release; Windows live cutover succeeded but its wrapper exposed the cleanup-race false failure corrected by v0.9.2.
 - [v0.9.0 historical candidate](RELEASE_0.9.0.md): Full Power Project Engine parity candidate, not published as a GitHub Release.
 - [v0.8.42 published](RELEASE_0.8.42.md): immutable live-compatibility baseline that preserves v0.8.41 transport hardening and restores persisted provider-timeout compatibility.
 - [v0.8.41 published](RELEASE_0.8.41.md): immutable retry/connection hardening release, deployment-superseded by v0.8.42.
@@ -139,10 +141,27 @@ Historical checkpoints remain append-only archives. Current release/control clai
 
 **Root cause:** capability migration preserved an existing runner but did not create one from the already-qualified local provider. Full Power therefore meant different effective project-execution capability depending on prior machine history.
 
-**Decision/Prevention:** v0.9.0/v0.9.1 add explicit `workflow.project_engine` capability accounting and cross-platform qualified-provider discovery. Canonical explicitly authorized Full Power installs/updates may bootstrap the pinned private Codex CLI 0.156.1 provider and auto-configure the bounded runner; Standard authority, explicit opt-out and custom/no-start isolation remain fail-closed. Historical configured provider timeouts remain loadable through the v0.8.42 compatibility guard while effective execution remains clamped to 30 seconds.
+**Decision/Prevention:** v0.9.0/v0.9.1/v0.9.2 add explicit `workflow.project_engine` capability accounting and cross-platform qualified-provider discovery. Canonical explicitly authorized Full Power installs/updates may bootstrap the pinned private Codex CLI 0.156.1 provider and auto-configure the bounded runner; Standard authority, explicit opt-out and custom/no-start isolation remain fail-closed. Historical configured provider timeouts remain loadable through the v0.8.42 compatibility guard while effective execution remains clamped to 30 seconds.
 
 **Regression:** `test/project-runner-config.test.mjs` covers Linux and Windows provider discovery, preservation + timeout migration, Standard denial, explicit opt-out, missing-provider fail-closed behavior and capability-state accounting. A discovered authority-hash regression in crash-recovery fixtures was corrected by separating capability authorization from runner readiness; the combined parity/capability/recovery gate then passed 73/73. The converged candidate line also passed full Windows check/test/audit, full Linux check/test/audit, real candidate-config parity on both accessible Emad devices, and Linux custom/no-start isolation 4/4.
 
-**Confidence/Status:** implementation and local cross-platform qualification CONFIRMED; hosted CI, immutable v0.9.1 publication and production rollout remain OPEN until separately evidenced.
+**Confidence/Status:** implementation and local cross-platform qualification CONFIRMED; hosted CI, immutable v0.9.2 publication and production rollout remain OPEN until separately evidenced.
 
-**Reuse targets:** v0.9.1 release, installer/updater policy, Full Power capability model, Project Brain, Work/Codex setup.
+**Reuse targets:** v0.9.2 release, installer/updater policy, Full Power capability model, Project Brain, Work/Codex setup.
+
+
+## E070 — post-success Windows installer cleanup race
+
+**Date/Context:** 2026-09-25; first live Windows rollout of immutable v0.9.0.
+
+**Observed evidence:** both configured Windows profiles passed candidate health/doctor and were switched to v0.9.0. The updater emitted `SAFE_UPDATE_PASS`, after which the outer `install.ps1` returned exit code 1 from its `finally` cleanup because the temporary updater tree had already disappeared.
+
+**Root cause:** temporary-tree cleanup was treated as an unconditional final operation. A disappearance race after successful cutover could surface as a terminating cleanup error and overwrite the already-proven update outcome.
+
+**Prevention/Guard:** v0.9.2 makes cleanup idempotent only for an already-absent tree. It checks existence before removal; if removal throws, it suppresses the error only when the tree is now absent. If the tree still exists, the cleanup error is rethrown. Candidate-first route switching, backend validation and rollback behavior are unchanged.
+
+**Regression:** Windows installer parser/contract checks require the guarded cleanup pattern; focused parity/recovery/installer gate passed 117/117; full Windows and exact-commit Linux check/test/audit subsequently passed. Final live rollout must additionally prove process exit 0 after `SAFE_UPDATE_PASS`.
+
+**Confidence/Status:** root cause and code guard CONFIRMED; final live v0.9.2 rollout evidence remains OPEN until executed.
+
+**Reuse targets:** installer/update policy, release qualification, false-failure prevention, Project Brain.
