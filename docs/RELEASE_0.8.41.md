@@ -1,6 +1,6 @@
 # v0.8.41 qualification
 
-Status: PUBLISHED IMMUTABLE RELEASE, 2026-09-25.
+Status: PUBLISHED / DEPLOYMENT-SUPERSEDED, 2026-09-25.
 
 v0.8.41 supersedes the immutable but unpublished v0.8.40 tag. It retains the hardened background browser and durable `operation_*` command layer, then closes the confirmed Secure MCP Tunnel retry/disconnection failure classes seen on the audited Windows deployment.
 
@@ -19,11 +19,11 @@ The release also retains v0.8.40 receipt-first Windows operation recovery, bound
 | Windows full `npm test` | PASS — 377 PASS / 5 SKIP / 0 FAIL; browser/concurrency/GUI/FS/runtime/source-integrity tails PASS |
 | Provider timeout-tree stress | PASS — 5/5 after correcting the test probe to the existing bounded cleanup budget |
 | Repository security audit | PASS — SECURITY_AUDIT_PASS after final documentation delta |
-| Remote PR / Windows+Ubuntu hosted CI | PASS |
-| Exact-tag fresh/repeated installers | PASS before immutable publication |
-| Reproducible 13-asset release bundle | PASS — 13 assets published |
-| Immutable GitHub publication | PASS |
-| Candidate-first live rollout and post-rollout tunnel canaries | OPEN at the 2026-09-25 deployment audit; both accessible Emad runtimes were still v0.8.37 |
+| Remote PR / Windows+Ubuntu hosted CI | PENDING |
+| Exact-tag fresh/repeated installers | PENDING |
+| Reproducible 13-asset release bundle | PENDING |
+| Immutable GitHub publication | PENDING |
+| Candidate-first live rollout and post-rollout tunnel canaries | PENDING |
 
 Known scope boundary: Commander can eliminate the confirmed local/tunnel causes above, but cannot guarantee that the ChatGPT UI or upstream platform will never experience an unrelated network/session interruption. Such cases require distinct evidence and are not conflated with a local MCP PASS.
 
@@ -31,3 +31,8 @@ Method references:
 - OpenAI tunnel-client response deadline semantics: <https://github.com/openai/tunnel-client/blob/master/docs/protocol.md>
 - MCP Tasks extension: <https://tasks.extensions.modelcontextprotocol.io/specification/draft/tasks>
 - Node child process lifecycle: <https://nodejs.org/api/child_process.html>
+
+
+## Post-publication live gate
+
+The immutable v0.8.41 package passed hosted CI, exact-tag isolated installers, reproducible asset verification and publication checks. Its first candidate-first Windows production rollout nevertheless failed closed before route promotion: the existing Full Power Project Engine profile persisted `runner.provider.timeoutMs=120000`, while v0.8.41 accepted only up to 30000 ms. Candidate health timed out, the updater recorded `FAILED`, and both production profiles remained on v0.8.37. This compatibility defect is fixed in the v0.8.42 hotfix candidate; v0.8.41 is not accepted for live deployment.
