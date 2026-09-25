@@ -55,6 +55,7 @@ const linuxAccountConnector = readFileSync('connect-chatgpt-account.sh', 'utf8')
 for (const required of [
   'SOURCE_REF="${REMOTE_COMMANDER_SOURCE_REF:-v0.9.0}"',
   '--source-ref',
+  '--skip-tunnel-client',
   '--expected-commit',
   'REMOTE_COMMANDER_EXPECTED_COMMIT',
   "rev-parse 'FETCH_HEAD^{commit}'",
@@ -83,7 +84,9 @@ for (const required of [
   '--connect-timeout "$CURL_CONNECT_TIMEOUT"',
   '--max-time "$CURL_MAX_TIME"',
   'curl_fetch https://nodejs.org/dist/index.json',
-  'curl -fsS --connect-timeout 1 --max-time 2 http://127.0.0.1:47831/health'
+  'curl -fsS --connect-timeout 1 --max-time 2 http://127.0.0.1:47831/health',
+  'Skipping tunnel-client installation as requested',
+  'Reusing existing pinned tunnel-client while skip was requested'
 ]) {
   if (!linuxInstaller.includes(required)) {
     throw new Error(`install.sh missing required release behavior: ${required}`);

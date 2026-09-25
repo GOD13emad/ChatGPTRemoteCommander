@@ -72,12 +72,13 @@ test('forced helper shutdown terminates an owned descendant process tree',async(
  const marker=path.join(f.root,'descendant.pid');
  try{
   const pending=f.client.invoke({action:'hangWithChild',marker});
+  const rejected=assert.rejects(pending,/BROWSER_HELPER_TIMEOUT/);
   for(let i=0;i<40&&!await exists(marker);i++)await sleep(20);
   assert.equal(await exists(marker),true);
   const pid=Number((await readFile(marker,'utf8')).trim());
   assert.equal(Number.isInteger(pid)&&pid>0,true);
   assert.equal(processAlive(pid),true);
-  await assert.rejects(pending,/BROWSER_HELPER_TIMEOUT/);
+  await rejected;
   for(let i=0;i<80&&processAlive(pid);i++)await sleep(25);
   assert.equal(processAlive(pid),false);
   await Promise.all([f.client.close(),f.client.close()]);
