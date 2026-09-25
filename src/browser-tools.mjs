@@ -20,19 +20,32 @@ function resolveProfileRoot(cfg){
  const raw=typeof cfg.profileRoot==='string'&&cfg.profileRoot.trim()?cfg.profileRoot.trim():defaultProfileRoot();
  return path.resolve(raw.replace(/%([^%]+)%/g,(_,k)=>process.env[k]??process.env[k.toUpperCase()]??''));
 }
-export function createBrowserController({invoke=req=>client.invoke(req),closeInvoke=()=>client.close(),now=()=>performance.now(),token=()=>randomBytes(24).toString('hex')}={}){
- let session=null,uncertain=false,timer=null,busy=false;
- const clearTimer=()=>{if(timer)clearTimeout(timer);timer=null;};
+export function createBrowserController({invoke=req=>client.invoke(req),closeInvoke=()=>client.close(),now=()=>performance.now(),token=()=>randomBytes(24).toString('hex'),scheduleTimeout=setTimeout,cancelTimeout=clearTimeout}={}){
+ let session=null,uncertain=false,timer=null,busy=false,expiryRequested=false;
+ const clearTimer=()=>{if(timer)cancelTimeout(timer);timer=null;};
+ const cleanupExpired=async()=>{
+  if(!expiryRequested||busy)return;
+  expiryRequested=false;
+  try{await invoke({action:'end'});}
+  catch{closeInvoke();}
+ };
+ const expireSession=()=>{
+  if(!session)return;
+  session=null;uncertain=false;timer=null;expiryRequested=true;
+  if(!busy)queueMicrotask(()=>cleanupExpired().catch(()=>{}));
+ };
+ const current=()=>{
+  if(session&&session.expires<=now())expireSession();
+  return session;
+ };
  const arm=ttl=>{
   clearTimer();
-  timer=setTimeout(()=>{
-   const old=session;session=null;uncertain=false;timer=null;
-   if(old)invoke({action:'end'}).catch(()=>{});
-  },ttl*1000);
+  timer=scheduleTimeout(expireSession,ttl*1000);
   timer.unref?.();
  };
  const owns=value=>{
-  if(!session||!sameToken(value,session.id))throw browserError('BROWSER_LEASE_REQUIRED_OR_EXPIRED');
+  const active=current();
+  if(!active||!sameToken(value,active.id))throw browserError('BROWSER_LEASE_REQUIRED_OR_EXPIRED');
  };
  const execute=async(ctx,name,raw={})=>{
   const input=validateBrowserInput(name,raw);
@@ -41,6 +54,7 @@ export function createBrowserController({invoke=req=>client.invoke(req),closeInv
   if(name==='browser_status'){
    let native={ok:true,available:false,backend:null,active:false};
    try{native=await invoke({action:'status',executable:cfg.executable});}catch(error){native={ok:false,available:false,backend:null,active:false,reason:error.browserCode??'BROWSER_HELPER_UNAVAILABLE'};}
+   current();
    return {...native,enabled,busy,leased:!!session,uncertain,policy:{
     backgroundFirst:true,headlessOwnedProfileOnly:true,userDesktopTouchedByDefault:false,
     savedPasswordExtraction:false,userBrowserProfileReuse:false,
@@ -53,7 +67,7 @@ export function createBrowserController({invoke=req=>client.invoke(req),closeInv
   busy=true;
   try{
    if(name==='browser_session_begin'){
-    if(session)throw browserError('BROWSER_LEASE_BUSY');
+    if(current())throw browserError('BROWSER_LEASE_BUSY');
     const ttl=input.ttlSeconds??300,mode=input.mode??'persistent',profile=input.profile??'default';
     const root=resolveProfileRoot(cfg),instance=safeSegment(ctx.config?.instance?.profile??'default');
     const dir=mode==='isolated'
@@ -61,7 +75,7 @@ export function createBrowserController({invoke=req=>client.invoke(req),closeInv
       : path.join(root,instance,safeSegment(profile));
     const native=await invoke({action:'start',profileDir:dir,isolated:mode==='isolated',executable:cfg.executable});
     session={id:token(),expires:now()+ttl*1000,ttl,mode,profile};
-    uncertain=false;arm(ttl);
+    uncertain=false;expiryRequested=false;arm(ttl);
     return {ok:true,lease:session.id,ttlSeconds:ttl,profile,mode,background:true,headless:true,
       userDesktopTouched:false,savedPasswordStoreAccess:false,browserProduct:native.browserProduct??null,backend:'chromium-cdp-headless'};
    }
@@ -70,7 +84,7 @@ export function createBrowserController({invoke=req=>client.invoke(req),closeInv
     const ttl=input.ttlSeconds??300;session.expires=now()+ttl*1000;session.ttl=ttl;arm(ttl);return {ok:true,ttlSeconds:ttl};
    }
    if(name==='browser_session_end'){
-    clearTimer();session=null;uncertain=false;
+    clearTimer();session=null;uncertain=false;expiryRequested=false;
     const r=await invoke({action:'end'});return {ok:true,closed:r.closed===true};
    }
    if(name==='browser_foreground_requirement'){
@@ -112,9 +126,12 @@ export function createBrowserController({invoke=req=>client.invoke(req),closeInv
     if(mutation)uncertain=true;
     throw error;
    }
-  }finally{busy=false;}
+  }finally{
+   busy=false;
+   if(expiryRequested)await cleanupExpired();
+  }
  };
- const close=()=>{clearTimer();session=null;uncertain=false;closeInvoke();};
+ const close=()=>{clearTimer();session=null;uncertain=false;expiryRequested=false;closeInvoke();};
  return {execute,close};
 }
 const controller=createBrowserController();

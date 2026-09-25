@@ -76,3 +76,38 @@ test('standard/disabled browser policy fails before native session start',async(
  await assert.rejects(f.ctl.execute(f.ctx,'browser_session_begin',{}),/BROWSER_DISABLED/);
  assert.equal(f.calls.length,0);
 });
+
+test('TTL expiry during an in-flight mutation closes the helper after that one effect and leaves no lease', async()=>{
+  let timerCallback=null,clickResolve,endCalls=0,clickCalls=0;
+  const invoke=async req=>{
+    if(req.action==='start')return {ok:true,browserProduct:'Chrome/test'};
+    if(req.action==='click'){
+      clickCalls++;
+      return await new Promise(resolve=>{clickResolve=()=>resolve({ok:true,clicked:true});});
+    }
+    if(req.action==='end'){endCalls++;return {ok:true,closed:true};}
+    if(req.action==='status')return {ok:true,available:true,backend:'chromium-cdp-headless',active:false};
+    throw new Error('unexpected '+req.action);
+  };
+  const ctl=createBrowserController({
+    invoke,
+    scheduleTimeout:fn=>{timerCallback=fn;return {unref(){}};},
+    cancelTimeout:()=>{},
+    token:(()=>{let n=0;return()=>String(++n).padStart(48,'b');})()
+  });
+  const ctx={config:config()};
+  const begun=await ctl.execute(ctx,'browser_session_begin',{ttlSeconds:30,mode:'isolated'});
+  const pending=ctl.execute(ctx,'browser_click',{lease:begun.lease,selector:'#submit'});
+  await new Promise(r=>setImmediate(r));
+  assert.equal(clickCalls,1);
+  timerCallback();
+  clickResolve();
+  const result=await pending;
+  assert.equal(result.clicked,true);
+  assert.equal(clickCalls,1);
+  assert.equal(endCalls,1);
+  const status=await ctl.execute(ctx,'browser_status',{});
+  assert.equal(status.leased,false);
+  assert.equal(status.active,false);
+  await assert.rejects(ctl.execute(ctx,'browser_click',{lease:begun.lease,selector:'#submit'}),/BROWSER_LEASE_REQUIRED_OR_EXPIRED/);
+});

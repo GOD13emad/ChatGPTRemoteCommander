@@ -21,7 +21,7 @@
     "test:profiles": "node --test test/profile-instances.test.mjs test/profile-instance-http.test.mjs test/profile-isolation-windows-contract.test.mjs test/profile-reconfigure.test.mjs test/profile-reconfigure-contract.test.mjs test/profile-reconfigure-windows-parser.test.mjs",
     "test:update": "node --test test/capability-profile.test.mjs test/stable-router.test.mjs test/router-retire.test.mjs test/auto-update-contract.test.mjs",
     "test:project-engine": "node --test test/workflow-control.test.mjs test/project-planner.test.mjs test/project-verifier.test.mjs test/project-engine.test.mjs test/project-engine-integration.test.mjs test/project-engine-review.test.mjs test/file-write-guard.test.mjs test/workflow-plan.test.mjs test/project-team.test.mjs test/project-adaptive.test.mjs",
-    "test:browser-native": "node test/browser-native-run.mjs"
+    "test:browser-native": "node test/browser-native-run.mjs && node test/browser-helper-lifecycle-run.mjs"
   },
   "repository": "https://github.com/GOD13emad/ChatGPTRemoteCommander",
   "license": "MIT"

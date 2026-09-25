@@ -8,6 +8,16 @@ import { createInterface } from 'node:readline';
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const safeCode=e=>/^[A-Z][A-Z0-9_]{1,79}$/.test(e?.browserCode??e?.message??'')?(e.browserCode??e.message):'BROWSER_NATIVE_FAILED';
 const fail=code=>Object.assign(new Error(code),{browserCode:code});
+const redactUrl=value=>{
+ try{
+  const u=new URL(String(value));
+  if(!['http:','https:'].includes(u.protocol))return null;
+  u.username='';u.password='';
+  const hadSearch=!!u.search,hadHash=!!u.hash;
+  u.search='';u.hash='';
+  return {url:u.href,queryRedacted:hadSearch,fragmentRedacted:hadHash};
+ }catch{return {url:null,queryRedacted:false,fragmentRedacted:false};}
+};
 const exists=p=>{try{return fs.statSync(p).isFile();}catch{return false;}};
 function which(name){
  const exts=process.platform==='win32'?['.exe','.cmd','']:[''];
@@ -143,7 +153,14 @@ async function snapshot(req){
  if(signals.captchaDetected)suggestedForegroundReason='captcha';
  else if((signals.otpInputCount??0)>0)suggestedForegroundReason='mfa';
  else if((signals.passwordInputCount??0)>0)suggestedForegroundReason='saved-browser-credential';
- return {...value,background:true,passwordValuesReturned:false,cookiesReturned:false,savedPasswordStoreAccess:false,foregroundFallbackSuggested:!!suggestedForegroundReason,suggestedForegroundReason};
+ const pageUrl=redactUrl(value?.url);
+ const elements=Array.isArray(value?.elements)?value.elements.map(item=>{
+  const next={...item};
+  if(typeof next.href==='string'){const x=redactUrl(next.href);next.href=x.url;next.hrefQueryRedacted=x.queryRedacted;next.hrefFragmentRedacted=x.fragmentRedacted;}
+  if(typeof next.action==='string'){const x=redactUrl(next.action);next.action=x.url;next.actionQueryRedacted=x.queryRedacted;next.actionFragmentRedacted=x.fragmentRedacted;}
+  return next;
+ }):[];
+ return {...value,url:pageUrl.url,urlQueryRedacted:pageUrl.queryRedacted,urlFragmentRedacted:pageUrl.fragmentRedacted,elements,background:true,passwordValuesReturned:false,cookiesReturned:false,savedPasswordStoreAccess:false,foregroundFallbackSuggested:!!suggestedForegroundReason,suggestedForegroundReason};
 }
 async function handle(req){
  switch(req.action){
@@ -158,7 +175,8 @@ async function handle(req){
    const u=new URL(req.url);if(!['http:','https:'].includes(u.protocol)||u.username||u.password)throw fail('BROWSER_URL_NOT_ALLOWED');
    const r=await browser.cdp.send('Page.navigate',{url:u.href},browser.sessionId,req.timeoutMs??30000);
    if(r.errorText)throw fail('BROWSER_NAVIGATION_FAILED');await ready(req.timeoutMs??30000);
-   return {ok:true,url:await evaluate('location.href'),title:await evaluate('document.title'),background:true};
+   const current=redactUrl(await evaluate('location.href'));
+   return {ok:true,url:current.url,urlQueryRedacted:current.queryRedacted,urlFragmentRedacted:current.fragmentRedacted,title:await evaluate('document.title'),background:true};
   }
   case 'snapshot':return {ok:true,...await snapshot(req)};
   case 'screenshot':{
@@ -168,7 +186,8 @@ async function handle(req){
    const r=await browser.cdp.send('Page.captureScreenshot',params,browser.sessionId,30000);
    const data=r.data;if(typeof data!=='string'||!data)throw fail('BROWSER_SCREENSHOT_FAILED');
    const bytes=Buffer.from(data,'base64');if(bytes.length>(req.maxBytes??2097152))throw fail('BROWSER_SCREENSHOT_TOO_LARGE');
-   return {ok:true,data,mimeType:format==='png'?'image/png':'image/jpeg',bytes:bytes.length,url:await evaluate('location.href'),title:await evaluate('document.title'),background:true};
+   const current=redactUrl(await evaluate('location.href'));
+   return {ok:true,data,mimeType:format==='png'?'image/png':'image/jpeg',bytes:bytes.length,url:current.url,urlQueryRedacted:current.queryRedacted,urlFragmentRedacted:current.fragmentRedacted,title:await evaluate('document.title'),background:true};
   }
   case 'fill':{
    const sel=JSON.stringify(req.selector),txt=JSON.stringify(req.text);

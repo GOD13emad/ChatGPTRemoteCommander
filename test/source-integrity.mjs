@@ -42,7 +42,7 @@ const trackedRuntimeFiles = [
   'auto-update-windows.ps1','auto-update-linux.sh',
   'supervisor-routing.ps1','supervisor-routing-linux.sh',
   'src/capability-profile.mjs','src/stable-router.mjs','src/workflow-autonomy.mjs',
-  'src/browser-contract.mjs','src/browser-process.mjs','src/browser-tools.mjs','tools/browser-control.mjs',
+  'src/browser-contract.mjs','src/browser-process.mjs','src/browser-tools.mjs','tools/browser-control.mjs','test/browser-helper-lifecycle-run.mjs',
   'tools/build-candidate-config.mjs','tools/capability-migrate.mjs','tools/copy-workflow-store.mjs',
   'tools/finalize-workflow-schema.mjs','tools/find-free-port.mjs','tools/hardware-selftest.mjs',
   'tools/json-field.mjs','tools/gui-control-linux.py','tools/install-gnome-gui-extension.sh','tools/router-init.mjs','tools/router-state.mjs','tools/router-status.mjs','tools/router-switch.mjs','tools/router-retire.mjs','tools/stale-drain-policy.ps1'
