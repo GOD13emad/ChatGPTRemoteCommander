@@ -9,7 +9,7 @@ import {
 import { isWithin } from './security-v0.3.mjs';
 import { withPathLocks } from './locks.mjs';
 import { guardFileWrite } from './file-write-guard.mjs';
-import { IS_WINDOWS, defaultBackupRoot, expandPathValue, shellName, spawnShell } from './platform.mjs';
+import { IS_WINDOWS, defaultBackupRoot, expandPathValue, shellName, shellSpec, spawnShell } from './platform.mjs';
 
 const terminals = new Map();
 let terminalCounter = 1;
@@ -394,6 +394,17 @@ export async function searchFiles(ctx, input) {
   await walkSearch(root, root, options, results, Math.max(0, Math.min(Number(input.depth ?? 6), 32)));
   return { root, count: results.length, truncated: results.length >= options.maxResults, results };
 }
+export async function prepareShellCommand(ctx, input) {
+  const command = checkShell(ctx, input.command);
+  const cwd = await resolveExistingTarget(ctx, input.cwd ?? ctx.roots[0]);
+  const info = await stat(cwd);
+  if (!info.isDirectory()) throw new Error('cwd is not a directory');
+  const cfg = power(ctx);
+  const timeoutMs = Math.max(1000, Math.min(Number(input.timeoutMs ?? cfg.maxCommandMs ?? 300000), Number(cfg.maxCommandMs ?? 300000)));
+  const outputLimit = Math.max(4096, Math.min(Number(cfg.maxOutputBytes ?? 1048576), 8388608));
+  const spec = shellSpec(command);
+  return { file: spec.file, args: spec.args, cwd, timeoutMs, outputLimit };
+}
 export async function runShell(ctx, input) {
   const command = checkShell(ctx, input.command);
   const cwd = await resolveExistingTarget(ctx, input.cwd ?? ctx.roots[0]);
@@ -563,7 +574,7 @@ export const powerToolDefinitions = [
   { name: 'move_path', description: 'Move or rename a file/directory; optionally replace destination after backup.', inputSchema: { type: 'object', properties: { source: { type: 'string' }, destination: { type: 'string' }, overwrite: { type: 'boolean' } }, required: ['source', 'destination'], additionalProperties: false }, annotations: localDestructive },
   { name: 'delete_path', description: 'Delete with recoverable backup by default. Permanent deletion is separately policy-gated.', inputSchema: { type: 'object', properties: { path: { type: 'string' }, permanent: { type: 'boolean' } }, required: ['path'], additionalProperties: false }, annotations: localDestructive },
   { name: 'search_files', description: 'Search names and optionally UTF-8 file content across Power Mode filesystem scope.', inputSchema: { type: 'object', properties: { path: { type: 'string' }, pattern: { type: 'string' }, regex: { type: 'boolean' }, ignoreCase: { type: 'boolean' }, searchContent: { type: 'boolean' }, depth: { type: 'integer', minimum: 0, maximum: 32 }, maxResults: { type: 'integer', minimum: 1, maximum: 1000 }, maxContentBytes: { type: 'integer', minimum: 1024 } }, required: ['pattern'], additionalProperties: false }, annotations: ro },
-  { name: 'run_shell', description: 'Run a platform shell command (PowerShell on Windows, Bash on Linux) with timeout/output bounds. Explicit Power Mode only.', inputSchema: { type: 'object', properties: { command: { type: 'string' }, cwd: { type: 'string' }, timeoutMs: { type: 'integer', minimum: 1000 } }, required: ['command'], additionalProperties: false }, annotations: openDestructive },
+  { name: 'run_shell', description: 'Run a short bounded platform shell command (PowerShell 7 on Windows, Bash on Linux). For long or high-output work prefer operation_start so execution is detached and recoverable. Explicit Power Mode only.', inputSchema: { type: 'object', properties: { command: { type: 'string' }, cwd: { type: 'string' }, timeoutMs: { type: 'integer', minimum: 1000 } }, required: ['command'], additionalProperties: false }, annotations: openDestructive },
   { name: 'system_info', description: 'Return OS, CPU, memory, user, Node and runtime information.', inputSchema: { type: 'object', properties: {}, additionalProperties: false }, annotations: ro },
   { name: 'list_processes', description: 'List operating-system processes with PID and resource details when available.', inputSchema: { type: 'object', properties: {}, additionalProperties: false }, annotations: ro },
   { name: 'kill_process', description: 'Terminate a process by PID; protected/system PIDs and this server are refused.', inputSchema: { type: 'object', properties: { pid: { type: 'integer' }, signal: { type: 'string' } }, required: ['pid'], additionalProperties: false }, annotations: localDestructive },

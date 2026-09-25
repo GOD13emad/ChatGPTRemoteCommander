@@ -1,7 +1,17 @@
 # Project engine qualification history
 
 Date: 2026-09-23. Baseline: `2ad46c544907f6ca2c6c47ebf5d88b6a661e7047`.
-Scope: development and release qualification history. Current candidate evidence is recorded in [v0.8.39](RELEASE_0.8.39.md); historical entries below retain their original dates, versions and limits.
+Scope: development and release qualification history. Current candidate evidence is recorded in [v0.8.40](RELEASE_0.8.40.md); historical entries below retain their original dates, versions and limits.
+
+
+## v0.8.40 durable background-operation candidate qualification
+
+v0.8.40 carries the reviewed browser candidate forward and adds direct-session durable command operations for `run_project_command` and `run_shell`. A stable request ID reserves one logical effect; retries with identical inputs reuse the operation, conflicting inputs fail closed, operation state/result survive the initiating request, output is captured to bounded files with full-stream byte count/SHA-256 evidence, and cancellation addresses only the exact Commander-owned operation.
+
+A repeated Windows false-`UNCERTAIN` family reached the project reassessment threshold. Diagnostic evidence proved a matching `SUCCEEDED` receipt existed while a later `state.json` replacement failed with `EPERM` and the catch path downgraded the projection. Recovery now treats an exact completion receipt as authority, repairs state best-effort, and bounded-retries only transient Windows rename failures. A second diagnostic showed the direct child had exited but the worker remained blocked waiting for stdio `close`; the worker now records child `exit`, permits a bounded drain, and records `outputComplete=false` if inherited pipes remain open.
+
+Focused evidence before the version bump: ten consecutive async runs 80/80 PASS; after stdio hardening, five consecutive runs 45/45 PASS; the direct race diagnostic 30/30 PASS. Full Windows candidate-development `npm test` passed 373/5/0 plus GUI 75/75 and all tail contracts; `npm run check` passed 152/4/0 plus GUI 75/75; repository security audit PASS. These are development-tree results. Exact v0.8.40 versioned Windows/Linux, remote/hosted, installer/reproducibility, publication and rollout gates remain separate and must pass before FINAL.
+
 
 ## v0.8.39 hardened browser candidate qualification
 

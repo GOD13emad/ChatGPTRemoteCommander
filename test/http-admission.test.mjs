@@ -18,10 +18,10 @@ test('real candidate HTTP dispatcher blocks browser origins and keeps local JSON
   let child;
   try {
     await fs.mkdir(path.join(root,'src'));
-    for(const f of ['server-v0.3.mjs','transport-guard.mjs','gui-tools-windows.mjs','gui-contract.mjs','gui-process.mjs','browser-tools.mjs','browser-contract.mjs','browser-process.mjs','browser-owned-processes.mjs','schema-validator.mjs']) await fs.copyFile(new URL('../src/'+f,import.meta.url),path.join(root,'src',f));
+    for(const f of ['server-v0.3.mjs','transport-guard.mjs','gui-tools-windows.mjs','gui-contract.mjs','gui-process.mjs','browser-tools.mjs','browser-contract.mjs','browser-process.mjs','browser-owned-processes.mjs','schema-validator.mjs','async-operations.mjs']) await fs.copyFile(new URL('../src/'+f,import.meta.url),path.join(root,'src',f));
     await fs.writeFile(path.join(root,'src','security-v0.3.mjs'),'export const canonicalizeRoots = async x=>x;');
-    await fs.writeFile(path.join(root,'src','tools-v0.3.mjs'),'export const audit=async()=>{}; export const listDirectory=async()=>({stub:true}); export const readText=listDirectory; export const runProjectCommand=listDirectory; export const writeText=listDirectory;');
-    await fs.writeFile(path.join(root,'src','power-tools-v0.3.mjs'),'export const powerToolDefinitions=[]; export const executePowerTool=async()=>({stub:true});');
+    await fs.writeFile(path.join(root,'src','tools-v0.3.mjs'),'export const audit=async()=>{}; export const listDirectory=async()=>({stub:true}); export const readText=listDirectory; export const runProjectCommand=listDirectory; export const writeText=listDirectory; export const prepareProjectCommand=async()=>({file:process.execPath,args:[],cwd:process.cwd(),timeoutMs:1000,outputLimit:4096});');
+    await fs.writeFile(path.join(root,'src','power-tools-v0.3.mjs'),'export const powerToolDefinitions=[]; export const executePowerTool=async()=>({stub:true}); export const prepareShellCommand=async()=>({file:process.execPath,args:[],cwd:process.cwd(),timeoutMs:1000,outputLimit:4096});');
     await fs.writeFile(path.join(root,'src','locks.mjs'),'export const lockStats=()=>({stub:true});');
     await fs.writeFile(path.join(root,'src','platform.mjs'),'export const expandPathValue=x=>x; export const shellName=()=>"stub";');
     await fs.writeFile(path.join(root,'config.json'),JSON.stringify({host:'127.0.0.1',port,allowedRoots:[root],allowedPrograms:[],powerMode:{enabled:true,fullFilesystem:true,guiControl:{enabled:false}}}));

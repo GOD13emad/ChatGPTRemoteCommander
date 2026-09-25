@@ -18,6 +18,11 @@
   "maxReadBytes": 524288,
   "maxWriteBytes": 524288,
   "maxCommandMs": 120000,
+  "asyncOperations": {
+    "enabled": true,
+    "backgroundFirst": true,
+    "maxOutputBytes": 16777216
+  },
   "auditLog": "var/audit.jsonl",
   "powerMode": {
     "enabled": false,

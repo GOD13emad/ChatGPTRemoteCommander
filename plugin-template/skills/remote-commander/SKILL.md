@@ -9,6 +9,14 @@ Use only the exact registered app for the intended computer. Verify `system_stat
 
 Before mutation, read the current state, identify the exact target, and keep the change narrow. Preserve unrelated files and use normal product confirmation for privileged actions. Do not change network/firewall/VPN/DNS, reboot, shutdown, logoff, credentials, or account permissions unless explicitly requested and supported. Never request Runtime API keys, tunnel credentials, bearer tokens, or private keys in chat.
 
+## Background-first execution
+
+**Background is the default for all work.** Do not move the user's mouse, type into their foreground applications, steal focus, replace their current browser tab, or keep a long MCP request open when an equivalent background path exists. Use filesystem/API operations directly, the owned headless browser for web work, and detached durable operations for long-running command work. Foreground desktop interaction is an exception that requires the user's explicit current request or a genuine interactive barrier such as MFA, WebAuthn, CAPTCHA, or a site that cannot complete in the isolated browser.
+
+When `operation_start` is available, use it instead of synchronous `run_project_command` or `run_shell` for builds, tests, audits, installers, reviews, unknown-duration commands, commands likely to exceed about 30 seconds, or commands that can produce substantial output. The initial call must return an `operationId` quickly. Poll `operation_status` with small responses, then use `operation_result` for bounded tails and evidence metadata. Captured stdout/stderr stays file-backed and policy-bounded; it may be truncated, while total byte counts and full-stream digests preserve evidence about the complete stream.
+
+Give each logical effect a stable `requestId` and reuse that exact ID if ChatGPT retries after a timeout or lost acknowledgement. Never create a fresh request ID merely to repeat an uncertain operation. A repeated request ID with changed arguments is a conflict, not retry authority. If status becomes `UNCERTAIN`, inspect/reconcile external state; do not blindly rerun. Use `operation_cancel` only for the exact Commander-owned operation the current task intends to stop.
+
 ## GUI Control workflow
 
 Discover the actual tools before using GUI Control. `gui_status` must report an available supported desktop (Windows or the configured GNOME/Wayland backend). Tool discovery, a successful input submission, and a real visible result are different checks.
