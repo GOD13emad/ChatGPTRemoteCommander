@@ -8,7 +8,7 @@ Cross-platform Windows + Linux MCP server for controlled remote project and mach
 
 **Setup guides in 10 languages:** [English](docs/SETUP.en.md) · [فارسی](docs/SETUP.fa.md) · [العربية](docs/SETUP.ar.md) · [Türkçe](docs/SETUP.tr.md) · [Español](docs/SETUP.es.md) · [Français](docs/SETUP.fr.md) · [Deutsch](docs/SETUP.de.md) · [Русский](docs/SETUP.ru.md) · [简体中文](docs/SETUP.zh-CN.md) · [日本語](docs/SETUP.ja.md)
 
-[Documentation index](docs/README.md) · [Current release candidate: v0.8.38](docs/RELEASE_0.8.38.md) · [Project status](docs/PROJECT_CONTROL_STATE.md) · [Development roadmap](docs/PROJECT_ENGINE_ROADMAP.md)
+[Documentation index](docs/README.md) · [Current release candidate: v0.8.39](docs/RELEASE_0.8.39.md) · [Project status](docs/PROJECT_CONTROL_STATE.md) · [Development roadmap](docs/PROJECT_ENGINE_ROADMAP.md)
 
 ## Persistent startup
 
@@ -77,7 +77,7 @@ Optional [adaptive planning and proposal teams](docs/PROJECT_ENGINE_ADAPTIVE.md)
 
 ## Background browser — zero-interference web automation
 
-v0.8.38 adds a background-browser layer. It drives an owned headless Chromium session through CDP, using a Commander-only persistent or isolated profile. It does **not** move the user's mouse, change foreground focus, type into the user's browser window, reuse the user's normal browser profile, or expose cookies/password-store contents.
+v0.8.39 ships the hardened background-browser layer. It drives an owned headless Chromium session through CDP, using a Commander-only persistent or isolated profile. It does **not** move the user's mouse, change foreground focus, type into the user's browser window, reuse the user's normal browser profile, or expose cookies/password-store contents.
 
 The intended order for web work is: **background first → approval only when genuinely required → temporary same-profile foreground interaction → return to background**. If the background page encounters MFA, WebAuthn, CAPTCHA, or a site that rejects background operation, `browser_foreground_requirement` returns an explicit approval boundary instead of seizing the desktop. After approval, `browser_foreground_begin` temporarily exposes the same Commander-owned profile visibly; after the minimum GUI step, `browser_foreground_end` returns that same session to headless background operation. Existing user-browser saved passwords are never extracted or copied. See [Background browser and foreground approval](docs/BACKGROUND_BROWSER.md).
 

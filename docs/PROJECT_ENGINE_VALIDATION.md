@@ -1,7 +1,17 @@
 # Project engine qualification history
 
 Date: 2026-09-23. Baseline: `2ad46c544907f6ca2c6c47ebf5d88b6a661e7047`.
-Scope: development and release qualification history. Current candidate evidence is recorded in [v0.8.38](RELEASE_0.8.38.md); historical entries below retain their original dates, versions and limits.
+Scope: development and release qualification history. Current candidate evidence is recorded in [v0.8.39](RELEASE_0.8.39.md); historical entries below retain their original dates, versions and limits.
+
+## v0.8.39 hardened browser candidate qualification
+
+PR #18 merged the final reviewed browser hardening into `main` at `14a1c5eb94833c6e90c67eec01aae3981ed1e8e8`; its exact final feature head was `ae6aab28991ab4c17923e66bb1cd1a45b394ed7d`. Windows full `check`, `test` and `audit` passed with **363 PASS, 5 platform/privilege SKIP, 0 FAIL** in the 368-test core suite plus GUI **75/75** and security audit PASS. The exact same commit passed Linux full qualification with **367 PASS, 1 platform SKIP, 0 FAIL**, GUI **75/75** and security audit PASS. PR #18 completed four hosted CI jobs: two Windows and two Ubuntu.
+
+The candidate retains the direct-session, Commander-owned Chromium profile boundary and adds the hardening found through two independent review rounds. Regressions cover instance-profile namespace separation, null-safe non-HTTP snapshot metadata, preservation of stateful helpers after ordinary page/application errors, startup request ownership, Chromium cleanup before CDP attachment, isolated-profile cleanup after timeout/crash, Linux descendant-tree shutdown, visible-relaunch recovery, foreground/background result labeling, file-URL decoding under spaces/non-ASCII paths, exact `--user-data-dir` process ownership, unexpected-helper-exit cleanup, persistent-profile preservation and prefix-sibling non-termination. Native Chrome headless E2E remains zero-interference.
+
+A final external Codex re-review attempt of the hardened head did not execute because the reviewer account returned a usage-limit error and a retry-after time. That gate is recorded as **UNAVAILABLE_EXTERNAL_QUOTA**, not PASS. Product qualification does not depend on Codex: the browser layer is deterministic local CDP automation and the release gates rely on the repository tests, real Windows native browser test, Linux exact-commit run and hosted CI.
+
+v0.8.39 remains a candidate until exact versioned Windows/Linux gates, pinned installer acceptance, reproducible immutable assets and candidate-first live rollout complete.
 
 ## v0.8.38 candidate qualification
 

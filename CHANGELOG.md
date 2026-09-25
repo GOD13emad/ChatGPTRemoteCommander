@@ -1,6 +1,15 @@
 # Changelog
 
-## 0.8.38 — 2026-09-25
+## 0.8.39 — 2026-09-25
+
+- Ship the hardened background-first browser layer after two independent review rounds found ten pre-publication defects and every reproduced issue was converted to regression coverage.
+- Isolate browser profiles by Commander instance, preserve helper sessions across ordinary page errors, make non-HTTP snapshot URLs null-safe, and clean browser/profile state on startup, timeout, crash and forced-shutdown paths.
+- Harden same-profile foreground handoff so failed visible relaunches recover safely, result metadata reflects actual foreground/background mode, and helper path handling remains correct with spaces and non-ASCII checkout paths.
+- Centralize exact `--user-data-dir` ownership matching so cleanup terminates only browser processes belonging to the Commander-owned profile and preserves prefix-sibling processes and persistent profile data.
+- Keep the browser deterministic and direct-session-only; it does not require Codex and does not grant autonomous workflow browsing authority.
+
+
+## 0.8.38 — 2026-09-25 (unpublished candidate, superseded by 0.8.39)
 
 - Add a direct-session zero-interference background browser that drives an owned Chromium profile through CDP without moving the user's mouse, changing foreground focus, reusing the user's normal browser profile, or extracting saved passwords.
 - Add approval-on-demand coordination for MFA, WebAuthn, CAPTCHA, saved-user-browser credential boundaries, and sites that reject headless operation.
