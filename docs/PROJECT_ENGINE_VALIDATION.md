@@ -74,3 +74,8 @@ Windows local qualification on the candidate after these regressions:
 - Focused engine/team/integration set after final edge-case correction: 74/74 PASS.
 
 Open release gates at this record point: exact Linux execution of the same commit, independent diff review, hosted Windows/Ubuntu CI, PR merge and normal version/install/reproducibility/rollout gates. These results therefore establish a Windows-qualified development candidate, not a release.
+
+
+## 2026-09-25 — 4B.2 artifact-worker recovery hardening
+
+The bounded artifact-worker candidate was independently hardened after its initial local commit. Worker artifact reads now normalize missing/raced filesystem failures to bounded project error codes. A worker import persists the canonical `write_text` input hash before dispatch; normal closeout and crash recovery require that hash plus the workflow operation receipt/operation ID and the final target bytes to match the artifact SHA-256. A regression intentionally journals a different `write_text` call that produces the same target bytes and confirms recovery blocks with `PROJECT_WORKER_IMPORT_UNCONFIRMED` instead of adopting the effect. Focused integration after this change: 26/26 PASS.

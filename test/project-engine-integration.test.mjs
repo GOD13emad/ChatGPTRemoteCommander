@@ -321,6 +321,8 @@ if (process.argv[2] === '--claim-worker') {
       assert.equal(imported.pendingWorker, null);
       assert.equal(imported.workerReceipts.length, 1);
       assert.equal(imported.workerReceipts[0].sha256, delegated.pendingWorker.sha256);
+      assert.match(imported.workerReceipts[0].inputHash, /^[a-f0-9]{64}$/);
+      assert.match(imported.workerReceipts[0].operationId, /^[0-9a-f-]{36}$/);
       assert.equal(fs.readFileSync(path.join(fixture.root, 'result.txt'), 'utf8'), artifactText);
       const final = await fixture.tick();
       assert.equal(final.status, 'COMPLETED');
@@ -342,6 +344,26 @@ if (process.argv[2] === '--claim-worker') {
       const pending = delegated.pendingWorker;
       const workerFile = path.join(fixture.root, 'state', 'project-engine', 'workers', 'run-one', pending.workerId, pending.artifact);
       fs.writeFileSync(workerFile, 'tampered after receipt');
+      const result = await fixture.tick();
+      assert.equal(result.status, 'BLOCKED');
+      assert.equal(result.lastCode, 'PROJECT_WORKER_ARTIFACT_CHANGED');
+      assert.equal(fixture.calls, 0);
+      assert.equal(fs.existsSync(path.join(fixture.root, 'result.txt')), false);
+    } finally { await fixture.dispose(); }
+  });
+
+  test('missing worker artifact maps filesystem races to a bounded worker error without project effects', async () => {
+    const fixture = makeFixture({ runner: { worker: { enabled: true, maxArtifactBytes: 4096 } }, planner: async context => {
+      if (context.worker?.phase === 'artifact-worker') return proposal('write_text', { path: 'worker-draft.txt', content: 'verified output missing race' });
+      if (context.worker?.pending) return proposal('write_text', { path: 'result.txt', content: context.worker.pending.text });
+      return delegate();
+    } });
+    try {
+      await fixture.create(); await fixture.start({ maxPlannerCalls: 6 });
+      const delegated = await fixture.tick();
+      const pending = delegated.pendingWorker;
+      const workerFile = path.join(fixture.root, 'state', 'project-engine', 'workers', 'run-one', pending.workerId, pending.artifact);
+      fs.unlinkSync(workerFile);
       const result = await fixture.tick();
       assert.equal(result.status, 'BLOCKED');
       assert.equal(result.lastCode, 'PROJECT_WORKER_ARTIFACT_CHANGED');
@@ -429,7 +451,7 @@ if (process.argv[2] === '--claim-worker') {
     } finally { await fixture.dispose(); }
   });
 
-  async function crashAfterWorkerImport({ tamperAfterCrash = false } = {}) {
+  async function crashAfterWorkerImport({ tamperAfterCrash = false, mismatchedJournal = false } = {}) {
     const artifactText = 'verified output crash recovery';
     const fixture = makeFixture({ runner: { worker: { enabled: true, maxArtifactBytes: 4096 } }, planner: async context => {
       if (context.worker?.phase === 'artifact-worker') return proposal('write_text', { path: 'worker-draft.txt', content: artifactText });
@@ -468,15 +490,15 @@ if (process.argv[2] === '--claim-worker') {
       "import { validateJsonSchema } from " + JSON.stringify(urls['schema-validator']) + ";",
       "import { writeText, readText, listDirectory } from " + JSON.stringify(urls['tools-v0.3']) + ";",
       "import path from 'node:path';",
-      "const config=JSON.parse(process.argv[1]),defs=JSON.parse(process.argv[2]),policy=JSON.parse(process.argv[3]),artifactText=process.argv[4];",
+      "const config=JSON.parse(process.argv[1]),defs=JSON.parse(process.argv[2]),policy=JSON.parse(process.argv[3]),artifactText=process.argv[4],mismatchedJournal=process.argv[5]==='mismatch'; if(mismatchedJournal)defs.write_text.inputSchema.properties.mode={type:'string',enum:['overwrite','append']};",
       "const root=config.allowedRoots[0],ctx={roots:[root],auditLog:config.auditLog,config:{...config,allowedRoots:[root],powerMode:{fullFilesystem:false}}};",
       "const dispatch=async(name,args)=>name==='write_text'?writeText(ctx,args):name==='read_text'?readText(ctx,args):listDirectory(ctx,args);",
       "const core=createWorkflowTools({config,roots:[root],device:'integration-fixture',configSha256:'7'.repeat(64),lookup:n=>defs[n],validateSchema:validateJsonSchema,dispatch});",
       "const planner={describe:()=>({kind:'integration-fixture'}),plan:async context=>{if(!context.worker?.pending)throw new Error('WORKER_PENDING_ARTIFACT_MISSING');return {action:'call',tool:'write_text',argumentsJson:JSON.stringify({path:'result.txt',content:artifactText}),summary:'Import exact worker artifact'};}};",
-      "const engine=createProjectEngine({directory:path.join(config.durableWorkflows.directory,'project-engine'),planner,workerPlanner:planner,policy,lookup:n=>defs[n],execute:async(name,args)=>{const result=await core.execute(name,args);if(name==='workflow_call')process.exit(73);return result;}});",
+      "const engine=createProjectEngine({directory:path.join(config.durableWorkflows.directory,'project-engine'),planner,workerPlanner:planner,policy,lookup:n=>defs[n],execute:async(name,args)=>{const actual=name==='workflow_call'&&mismatchedJournal?{...args,arguments:{...args.arguments,mode:'overwrite'}}:args;const result=await core.execute(name,actual);if(name==='workflow_call')process.exit(73);return result;}});",
       "await engine.tick('run-one');"
     ].join('\n');
-    const child = spawn(process.execPath, ['--input-type=module','-e',childScript,JSON.stringify(childConfig),JSON.stringify(definitions),JSON.stringify(childPolicy),artifactText],
+    const child = spawn(process.execPath, ['--input-type=module','-e',childScript,JSON.stringify(childConfig),JSON.stringify(definitions),JSON.stringify(childPolicy),artifactText,mismatchedJournal?'mismatch':'exact'],
       { stdio: ['ignore','pipe','pipe'], windowsHide: true });
     let stderr = '';
     child.stderr.on('data', chunk => { stderr += chunk.toString(); });
@@ -533,6 +555,20 @@ if (process.argv[2] === '--claim-worker') {
       assert.equal(dispatches.length,0);
       const operations=await resumed.execute('workflow_operations',{id:'project'});
       assert.equal(operations.operations.length,1);
+    } finally { await resumed.close(); fs.rmSync(fixture.root,{recursive:true,force:true}); }
+  });
+
+  test('crash recovery refuses same bytes produced by a different journaled write call', { timeout: 10000 }, async () => {
+    const {fixture,resumed,dispatches}=await crashAfterWorkerImport({mismatchedJournal:true});
+    try {
+      assert.equal(fs.readFileSync(path.join(fixture.root,'result.txt'),'utf8'),'verified output crash recovery');
+      const result=await resumed.execute('workflow_run_tick',{runId:'run-one'});
+      assert.equal(result.status,'BLOCKED');
+      assert.equal(result.lastCode,'PROJECT_WORKER_IMPORT_UNCONFIRMED');
+      assert.equal(dispatches.length,0);
+      const operations=await resumed.execute('workflow_operations',{id:'project'});
+      assert.equal(operations.operations.length,1);
+      assert.equal(operations.operations[0].tool,'write_text');
     } finally { await resumed.close(); fs.rmSync(fixture.root,{recursive:true,force:true}); }
   });
 

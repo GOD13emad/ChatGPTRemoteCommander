@@ -50,31 +50,36 @@ function artifactName(value) {
   return value;
 }
 function readRegularBytes(root,relative,maximum,code='PROJECT_WORKER_ARTIFACT_CHANGED') {
-  if(typeof relative!=='string'||!relative||path.isAbsolute(relative))error(code);
-  const actualRoot=fs.realpathSync.native(root),target=path.resolve(actualRoot,relative);
-  if(target===actualRoot||!inside(actualRoot,target))error(code);
-  let cursor=actualRoot;
-  for(const bit of path.relative(actualRoot,target).split(path.sep).filter(Boolean)) {
-    cursor=path.join(cursor,bit);
-    const stat=fs.lstatSync(cursor);
-    if(stat.isSymbolicLink())error(code);
-  }
-  const before=fs.lstatSync(target);
-  if(!before.isFile()||before.isSymbolicLink()||before.nlink!==1||before.size<1||before.size>maximum)error(code);
-  const fd=fs.openSync(target,'r');
   try {
-    const opened=fs.fstatSync(fd);
-    if(!opened.isFile()||opened.nlink!==1||opened.dev!==before.dev||opened.ino!==before.ino||opened.size!==before.size)error(code);
-    const buffer=Buffer.alloc(opened.size),position=0;
-    let offset=0;
-    while(offset<buffer.length) {
-      const count=fs.readSync(fd,buffer,offset,buffer.length-offset,offset);
-      if(count===0)break;offset+=count;
+    if(typeof relative!=='string'||!relative||path.isAbsolute(relative))error(code);
+    const actualRoot=fs.realpathSync.native(root),target=path.resolve(actualRoot,relative);
+    if(target===actualRoot||!inside(actualRoot,target))error(code);
+    let cursor=actualRoot;
+    for(const bit of path.relative(actualRoot,target).split(path.sep).filter(Boolean)) {
+      cursor=path.join(cursor,bit);
+      const stat=fs.lstatSync(cursor);
+      if(stat.isSymbolicLink())error(code);
     }
-    const after=fs.fstatSync(fd);
-    if(offset!==buffer.length||after.size!==opened.size||after.dev!==opened.dev||after.ino!==opened.ino)error(code);
-    return buffer;
-  } finally { fs.closeSync(fd); }
+    const before=fs.lstatSync(target);
+    if(!before.isFile()||before.isSymbolicLink()||before.nlink!==1||before.size<1||before.size>maximum)error(code);
+    const fd=fs.openSync(target,'r');
+    try {
+      const opened=fs.fstatSync(fd);
+      if(!opened.isFile()||opened.nlink!==1||opened.dev!==before.dev||opened.ino!==before.ino||opened.size!==before.size)error(code);
+      const buffer=Buffer.alloc(opened.size);
+      let offset=0;
+      while(offset<buffer.length) {
+        const count=fs.readSync(fd,buffer,offset,buffer.length-offset,offset);
+        if(count===0)break;offset+=count;
+      }
+      const after=fs.fstatSync(fd);
+      if(offset!==buffer.length||after.size!==opened.size||after.dev!==opened.dev||after.ino!==opened.ino)error(code);
+      return buffer;
+    } finally { fs.closeSync(fd); }
+  } catch(cause) {
+    if(cause?.projectCode===code)throw cause;
+    error(code);
+  }
 }
 function workerDirectory(engineDirectory,runId,workerId) {
   return privateDirectory(path.join(engineDirectory,'workers',runId,workerId));
@@ -309,17 +314,21 @@ export function createProjectEngine({directory,planner,workerPlanner,execute,obs
       if(run.pendingWorker?.status==='RESERVED')return settle(run.runId,'BLOCKED','PROJECT_WORKER_UNCONFIRMED');
       if(run.pendingWorker?.status==='READY'&&run.pendingWorker.importIntent) {
         const pending=run.pendingWorker,stepState=state.steps.find(item=>item.id===pending.stepId);
-        if(!stepState||!['recorded','verified','reconciled_applied'].includes(stepState.status))
+        const intent=pending.importIntent;
+        if(!stepState||!['recorded','verified','reconciled_applied'].includes(stepState.status)
+          ||stepState.tool!=='write_text'||stepState.inputHash!==intent.inputHash
+          ||stepState.receipt?.inputHash!==intent.inputHash||stepState.receipt?.operationId!==stepState.operationId)
           return settle(run.runId,'BLOCKED','PROJECT_WORKER_IMPORT_UNCONFIRMED');
         let imported;
-        try{imported=readRegularBytes(state.root,pending.importIntent.path,maximumWorkerArtifactBytes,'PROJECT_WORKER_IMPORT_UNCONFIRMED');}
+        try{imported=readRegularBytes(state.root,intent.path,maximumWorkerArtifactBytes,'PROJECT_WORKER_IMPORT_UNCONFIRMED');}
         catch{return settle(run.runId,'BLOCKED','PROJECT_WORKER_IMPORT_UNCONFIRMED');}
         if(imported.length!==pending.size||bytesHash(imported)!==pending.sha256)
           return settle(run.runId,'BLOCKED','PROJECT_WORKER_IMPORT_UNCONFIRMED');
         run=transaction(()=>{
           const r=load(run.runId);if(r.owner?.id!==owner.id)error('PROJECT_RUN_CLAIM_LOST');
           r.workerReceipts??=[];r.workerReceipts.push({workerId:pending.workerId,artifact:pending.artifact,sha256:pending.sha256,size:pending.size,
-            stepId:pending.stepId,importPath:pending.importIntent.path,importedAt:new Date().toISOString(),recovered:true});
+            stepId:pending.stepId,importPath:intent.path,inputHash:intent.inputHash,operationId:stepState.operationId,
+            importedAt:new Date().toISOString(),recovered:true});
           r.pendingWorker=null;return save(r);
         });
       }
@@ -498,7 +507,7 @@ export function createProjectEngine({directory,planner,workerPlanner,execute,obs
         if(proposedBytes.length!==workerImport.size||bytesHash(proposedBytes)!==workerImport.sha256)error('PROJECT_WORKER_IMPORT_MISMATCH');
       }
       transaction(()=>{const r=load(run.runId);r.history.at(-1).status='DISPATCHING';r.history.at(-1).decisionHash=digest(proposal);
-        if(workerImport)r.pendingWorker.importIntent={path:args.path,sourceRevision:state.revision,sha256:workerImport.sha256,at:new Date().toISOString()};
+        if(workerImport)r.pendingWorker.importIntent={path:args.path,sourceRevision:state.revision,sha256:workerImport.sha256,inputHash:digest(args),tool:'write_text',at:new Date().toISOString()};
         // Persist only typed read references BEFORE dispatch: a crash after the workflow
         // receipt must not lose the information needed to re-observe on restart.
         if(['read_text','list_directory'].includes(proposal.tool)) {
@@ -517,14 +526,19 @@ export function createProjectEngine({directory,planner,workerPlanner,execute,obs
       assertCurrent(run,after);
       if(receipt.outcome==='UNCERTAIN')return settle(run.runId,'BLOCKED','PROJECT_EFFECT_UNCERTAIN');
       if(workerImport) {
+        const expectedInputHash=digest(args);
+        if(receipt.receipt?.inputHash!==expectedInputHash||receipt.receipt?.operationId!==receipt.operation?.operationId)
+          error('PROJECT_WORKER_IMPORT_UNCONFIRMED');
         const imported=readRegularBytes(state.root,args.path,maximumWorkerArtifactBytes,'PROJECT_WORKER_IMPORT_CHANGED');
         if(imported.length!==workerImport.size||bytesHash(imported)!==workerImport.sha256)error('PROJECT_WORKER_IMPORT_CHANGED');
         transaction(()=>{
           const r=load(run.runId),pending=r.pendingWorker;
           if(r.owner?.id!==owner.id||pending?.workerId!==workerImport.workerId)error('PROJECT_RUN_CLAIM_LOST');
           r.workerReceipts??=[];r.workerReceipts.push({workerId:pending.workerId,artifact:pending.artifact,sha256:pending.sha256,size:pending.size,
-            stepId:pending.stepId,importPath:args.path,importedAt:new Date().toISOString(),recovered:false});
-          r.pendingWorker=null;Object.assign(r.history.at(-1),{workerImported:true,workerId:pending.workerId,workerSha256:pending.sha256});
+            stepId:pending.stepId,importPath:args.path,inputHash:expectedInputHash,operationId:receipt.operation.operationId,
+            importedAt:new Date().toISOString(),recovered:false});
+          r.pendingWorker=null;Object.assign(r.history.at(-1),{workerImported:true,workerId:pending.workerId,workerSha256:pending.sha256,
+            workerOperationId:receipt.operation.operationId,workerInputHash:expectedInputHash});
           save(r);
         });
         run=load(run.runId);
