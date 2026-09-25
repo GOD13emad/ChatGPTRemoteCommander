@@ -1,7 +1,17 @@
 # Project engine qualification history
 
 Date: 2026-09-23. Baseline: `2ad46c544907f6ca2c6c47ebf5d88b6a661e7047`.
-Scope: development and release qualification history. Current publication and scoped rollout evidence is recorded in [v0.8.37](RELEASE_0.8.37.md); historical entries below retain their original dates, versions and limits.
+Scope: development and release qualification history. Current candidate evidence is recorded in [v0.8.38](RELEASE_0.8.38.md); historical entries below retain their original dates, versions and limits.
+
+## v0.8.38 candidate qualification
+
+PR #16 merged direct-session background browser automation into `main` at `3b20ac45be20f9d7cdf75ec37cec8ca4162ba193`. The final feature head `aa4aecea6b30a0fc5d72bdbb7e551829d79fa52c` passed four hosted CI jobs: two Windows and two Ubuntu.
+
+Windows full `npm run check`, `npm test` and `npm run audit` passed with **351 PASS, 5 platform/privilege SKIP, 0 FAIL** in the 356-test core Node suite plus **75/75 GUI contract PASS**. The native background-browser gate passed against Chrome 154 without foreground interaction; URL query/fragment secrets were redacted, password values/cookies were not returned, DOM mutation was verified, and helper EOF cleanup/profile continuity passed. The exact feature commit passed full Linux check/test/audit with **355 PASS, 1 platform SKIP, 0 FAIL** plus GUI 75/75 and security audit PASS.
+
+The browser path is direct-session deterministic automation over Chromium CDP. It does not depend on Codex or another model provider, does not reuse the user's normal browser profile, and does not extract saved passwords. Persistent session state lives only in a Commander-owned profile. When a step genuinely needs physical-presence interaction, `browser_foreground_requirement` establishes an approval boundary; after explicit current-task authorization, `browser_foreground_begin` may expose that same owned profile visibly, the existing GUI takeover lease performs only the minimum required interaction, and `browser_foreground_end` returns the same authenticated profile to headless operation.
+
+Browser tools are intentionally excluded from durable/autonomous workflow execution. The candidate still requires exact v0.8.38 hosted CI, pinned installer acceptance, reproducible immutable release assets and candidate-first Windows/Linux rollout before publication is FINAL.
 
 ## v0.8.37 published qualification
 

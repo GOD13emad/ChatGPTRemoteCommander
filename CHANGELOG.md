@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.8.38 — 2026-09-25
+
+- Add a direct-session zero-interference background browser that drives an owned Chromium profile through CDP without moving the user's mouse, changing foreground focus, reusing the user's normal browser profile, or extracting saved passwords.
+- Add approval-on-demand coordination for MFA, WebAuthn, CAPTCHA, saved-user-browser credential boundaries, and sites that reject headless operation.
+- Add explicit same-profile foreground handoff: after current-task authorization, the Commander-owned profile may be relaunched visibly for the minimum required GUI step and then returned headlessly with its cookies/session preserved.
+- Keep browser tools out of durable/autonomous workflow execution and require fresh reconciliation after uncertain browser mutations.
+- Harden browser helper shutdown/relaunch lifecycle, URL query/fragment redaction, and isolated-profile cleanup.
+
 ## 0.8.37 — 2026-09-25
 
 - Qualify the bounded project-engine planner against Codex CLI 0.156.1 while accepting only its exact fail-closed `code_mode_host`-disabled diagnostic; unknown, widened, duplicated or out-of-order provider errors remain blocked.
