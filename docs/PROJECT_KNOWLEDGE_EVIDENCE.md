@@ -1,6 +1,6 @@
 # Engineering decisions and evidence
 
-Updated: 2026-09-25. Current immutable published-release authority is [v0.8.41](RELEASE_0.8.41.md), but live candidate-first deployment rejected it before cutover. [v0.8.42](RELEASE_0.8.42.md) is the current compatibility hotfix candidate; v0.8.38, v0.8.39 and v0.8.40 remain historical unpublished tags. This public index separates reusable engineering decisions from historical deployment observations.
+Updated: 2026-09-25. Current immutable published-release authority is [v0.8.41](RELEASE_0.8.41.md). v0.8.42 is merged live-compatibility code on main but is not the published-release authority at this checkpoint. [v0.9.0](RELEASE_0.9.0.md) is the current capability-parity qualification target.
 
 ## Current guarantees and their regression locations
 
@@ -147,3 +147,28 @@ Historical checkpoints remain append-only archives. Current release/control clai
 **Confidence/Status:** ROOT CAUSE CONFIRMED; v0.8.41 LIVE DEPLOYMENT REJECTED SAFELY; v0.8.42 HOTFIX LIVE-COMPATIBILITY GATE PASS.
 
 **Reuse targets:** update compatibility policy, release gates, Project Engine configuration migration, retry hardening.
+
+
+## E070 — connector tool-catalog drift is not missing Linux capability
+
+**Date/Context:** 2026-09-25; direct comparison of the two Emad targets after a prior report inferred missing Linux GUI/workflow features from the ChatGPT-visible connector schema.
+
+**Observed evidence:** The Linux MCP server's loopback `tools/list` includes the full GUI family and durable workflow tools, and direct `gui_status` reports GNOME/Wayland available with screenshot, cursor, window listing, mouse, keyboard and focus. The current ChatGPT connector surface exposes fewer tools.
+
+**Claim/Decision:** Treat this mismatch as custom-app/tool-scan freshness unless the live MCP catalog itself lacks the capability. v0.9.0 adds `system_status.toolCatalog` count/SHA-256 fingerprinting and requires **Scan Tools** again when that fingerprint changes.
+
+**Confidence/Status:** CONFIRMED on the directly managed Linux target and live server; ChatGPT app re-scan remains a registration gate.
+
+**Reuse targets:** onboarding, Work Plugin skill, deployment audit, support diagnostics.
+
+## E071 — v0.9.0 parity keeps v0.8.42 compatibility semantics
+
+**Date/Context:** 2026-09-25; rebase of capability-parity work onto the v0.8.42 live compatibility hotfix.
+
+**Decision:** Do not rewrite valid historical configured provider timeouts during candidate migration. v0.8.42 already implements the minimum sufficient control: configuration accepts the prior 10..600000 ms range while effective planner execution is capped at 30000 ms. The v0.9.0 cross-platform runner configurator follows the same contract.
+
+**Rationale:** Forced normalization of stored 120000 ms values would add mutation without improving the transport outcome and would duplicate the upstream hotfix.
+
+**Confidence/Status:** CONFIRMED by source comparison; exact rebased v0.9.0 regression gates pending.
+
+**Reuse targets:** runner configuration, updater migration policy, release notes.

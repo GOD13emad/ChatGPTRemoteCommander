@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.9.0 — 2026-09-25
+
+- Build the capability-parity milestone on top of the v0.8.42 live-compatibility hotfix; historical provider timeout values remain loadable while effective planner execution stays capped at 30 seconds.
+- Add a cross-platform Project Engine runner configurator so Windows and Linux use the same bounded runner/team policy when an explicit local provider is available.
+- Add `system_status.toolCatalog` count/SHA-256 fingerprinting so a stale ChatGPT custom-app tool scan is distinguishable from a capability actually missing in the MCP server.
+- Preserve background-first durable command execution, bounded MCP responses, idempotent request IDs, background browser isolation, durable workflow recovery, and zero-interference GUI authority.
+- Keep Linux provider execution honest: a machine without an installed/authenticated provider remains recovery/readiness-only until the owner completes provider authentication; no substitute model is silently selected.
+
 ## 0.8.42 — 2026-09-25
 
 - Restore live upgrade compatibility for persisted Project Engine provider configurations that legitimately carry historical timeout values such as 120000 ms.

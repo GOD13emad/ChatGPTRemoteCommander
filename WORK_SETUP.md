@@ -23,7 +23,8 @@ Work should:
 5. create the ChatGPT custom MCP app with Connection = Tunnel;
 6. use None / No authentication for this server;
 7. run Scan Tools;
-8. verify a real `system_status` call from a fresh supported chat/Work task.
+8. verify a real `system_status` call from a fresh supported chat/Work task;
+9. record `system_status.toolCatalog.sha256` and, after any release that changes the catalog, run **Scan Tools** again for that exact custom app until the exposed inventory matches the live MCP catalog.
 
 Full/Power Mode is for a trusted computer. It enables full filesystem access, shell execution, process control, binary operations, recursive search, backups, and persistent terminals. It is not an OS sandbox.
 

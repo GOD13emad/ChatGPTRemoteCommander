@@ -8,7 +8,7 @@ Cross-platform Windows + Linux MCP server for controlled remote project and mach
 
 **Setup guides in 10 languages:** [English](docs/SETUP.en.md) · [فارسی](docs/SETUP.fa.md) · [العربية](docs/SETUP.ar.md) · [Türkçe](docs/SETUP.tr.md) · [Español](docs/SETUP.es.md) · [Français](docs/SETUP.fr.md) · [Deutsch](docs/SETUP.de.md) · [Русский](docs/SETUP.ru.md) · [简体中文](docs/SETUP.zh-CN.md) · [日本語](docs/SETUP.ja.md)
 
-[Documentation index](docs/README.md) · [Current release candidate: v0.8.42](docs/RELEASE_0.8.42.md) · [Project status](docs/PROJECT_CONTROL_STATE.md) · [Development roadmap](docs/PROJECT_ENGINE_ROADMAP.md)
+[Documentation index](docs/README.md) · [Current release target: v0.9.0](docs/RELEASE_0.9.0.md) · [Project status](docs/PROJECT_CONTROL_STATE.md) · [Development roadmap](docs/PROJECT_ENGINE_ROADMAP.md)
 
 ## Persistent startup
 
@@ -57,6 +57,8 @@ curl -fsSL --connect-timeout 15 --max-time 180 https://github.com/GOD13emad/Chat
 For Power Mode, add `--power-mode`. Linux amd64 and arm64 are supported by the installer when an official OpenAI tunnel-client artifact is available.
 
 ## Features
+
+v0.9.0 unifies the capability contract across Windows and Linux. The live MCP tool catalog is fingerprinted in `system_status.toolCatalog`; if a ChatGPT custom app exposes fewer tools than the live server, re-run **Scan Tools** for that exact app instead of treating the missing client schema as missing server functionality. The optional Project Engine runner uses one cross-platform bounded configuration path; configured historical timeouts remain compatible while the planner keeps the effective execution deadline transport-safe.
 
 In v0.8.35, [durable input requests](docs/PROJECT_ENGINE_DECISIONS.md) let an enrolled project ask for a decision and resume from an explicit answer without resetting its budgets or changing its acceptance criteria.
 

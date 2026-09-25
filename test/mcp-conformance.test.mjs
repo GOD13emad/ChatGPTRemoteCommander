@@ -6,6 +6,7 @@ import os from 'node:os';
 import net from 'node:net';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
+import { createHash } from 'node:crypto';
 
 const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 const MODERN = '2026-07-28';
@@ -120,6 +121,20 @@ test('dual-era MCP contract, tool validation, cache hints and risk annotations',
     assert.equal(legacyList.status, 200);
     assert.ok(Array.isArray(legacyList.body.result.tools));
     assert.equal('ttlMs' in legacyList.body.result, false);
+
+    const status = await post(port, {
+      jsonrpc: '2.0', id: 21, method: 'tools/call',
+      params: { name: 'system_status', arguments: {} }
+    });
+    assert.equal(status.status, 200);
+    assert.equal(status.body.result.isError, false);
+    const catalog = status.body.result.structuredContent.toolCatalog;
+    const names = legacyList.body.result.tools.map(tool => tool.name).sort();
+    const expectedCatalogHash = createHash('sha256').update(names.join('\n') + '\n').digest('hex');
+    assert.equal(catalog.count, names.length);
+    assert.equal(catalog.sha256, expectedCatalogHash);
+    assert.equal(catalog.revision, 'capability-parity-r1');
+    assert.equal(catalog.refreshRule, 'rescan-custom-app-when-sha256-changes');
 
     const writeTextDef = legacyList.body.result.tools.find(tool => tool.name === 'write_text');
     const writeFileDef = legacyList.body.result.tools.find(tool => tool.name === 'write_file');

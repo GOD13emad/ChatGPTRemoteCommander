@@ -17,7 +17,7 @@ import { createAsyncOperationTools } from './async-operations.mjs';
 import { compactToolSuccessPayload, serializeBoundedJsonResponse } from './retry-guard.mjs';
 
 let workflowTools = null;
-const VERSION = '0.8.42';
+const VERSION = '0.9.0';
 const MODERN_VERSION = '2026-07-28';
 const LEGACY_VERSIONS = ['2025-11-25', '2025-06-18', '2025-03-26'];
 const MODERN_CACHE_HINT = Object.freeze({ ttlMs: 30000, cacheScope: 'private' });
@@ -159,6 +159,24 @@ if (config.durableWorkflows?.enabled === true) {
   });
   TOOLS.push(...workflowTools.definitions);
 }
+function toolCatalogStatus(workflowStatus) {
+  const names = TOOLS.map(tool => tool.name).sort();
+  return {
+    revision: 'capability-parity-r1',
+    count: names.length,
+    sha256: createHash('sha256').update(names.join('\n') + '\n').digest('hex'),
+    features: {
+      asyncOperations: true,
+      backgroundBrowser: BROWSER_ENABLED,
+      gui: GUI_ENABLED,
+      durableWorkflows: config.durableWorkflows?.enabled === true,
+      projectEngine: workflowStatus?.runnerConfigured === true,
+      automaticExecution: workflowStatus?.automaticExecution === true
+    },
+    refreshRule: 'rescan-custom-app-when-sha256-changes'
+  };
+}
+
 function serverMeta() {
   return { 'io.modelcontextprotocol/serverInfo': { name: 'chatgpt-remote-commander', version: VERSION } };
 }
@@ -239,6 +257,7 @@ async function executeTool(name, args) {
         },
         instance: config.instance ?? { profile: 'default', isolated: false },
         durableWorkflows: workflowStatus,
+        toolCatalog: toolCatalogStatus(workflowStatus),
         asyncOperations: asyncOperationTools.status(),
         powerMode: config.powerMode ?? { enabled: false },
         browserControl: { availability: BROWSER_ENABLED ? 'CHECK_browser_status' : 'DISABLED', enabled: BROWSER_ENABLED,

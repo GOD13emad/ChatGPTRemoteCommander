@@ -5,7 +5,7 @@ description: Operate a trusted computer through the user's registered ChatGPT Re
 
 # Remote Commander workflow
 
-Use only the exact registered app for the intended computer. Verify `system_status` first; another similarly named app or Work's cloud computer is not the target. Repository code and a discovered schema do not prove that the running app has that version.
+Use only the exact registered app for the intended computer. Verify `system_status` first; another similarly named app or Work's cloud computer is not the target. Repository code and a discovered schema do not prove that the running app has that version. Treat `system_status.toolCatalog.sha256` as the live tool-catalog fingerprint: if the MCP server reports capabilities that the current ChatGPT app schema does not expose, re-scan tools for that exact custom app rather than inferring the server is missing the capability.
 
 Before mutation, read the current state, identify the exact target, and keep the change narrow. Preserve unrelated files and use normal product confirmation for privileged actions. Do not change network/firewall/VPN/DNS, reboot, shutdown, logoff, credentials, or account permissions unless explicitly requested and supported. Never request Runtime API keys, tunnel credentials, bearer tokens, or private keys in chat.
 
