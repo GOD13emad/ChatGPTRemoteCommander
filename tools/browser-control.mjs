@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
+import { terminateProcessesUsingBrowserProfile } from '../src/browser-owned-processes.mjs';
 import { createInterface } from 'node:readline';
 
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
@@ -11,12 +12,12 @@ const fail=code=>Object.assign(new Error(code),{browserCode:code});
 const redactUrl=value=>{
  try{
   const u=new URL(String(value));
-  if(!['http:','https:'].includes(u.protocol))return null;
+  if(!['http:','https:'].includes(u.protocol))return {url:null,queryRedacted:false,fragmentRedacted:false,schemeRedacted:true};
   u.username='';u.password='';
   const hadSearch=!!u.search,hadHash=!!u.hash;
   u.search='';u.hash='';
-  return {url:u.href,queryRedacted:hadSearch,fragmentRedacted:hadHash};
- }catch{return {url:null,queryRedacted:false,fragmentRedacted:false};}
+  return {url:u.href,queryRedacted:hadSearch,fragmentRedacted:hadHash,schemeRedacted:false};
+ }catch{return {url:null,queryRedacted:false,fragmentRedacted:false,schemeRedacted:false};}
 };
 const exists=p=>{try{return fs.statSync(p).isFile();}catch{return false;}};
 function which(name){
@@ -103,6 +104,7 @@ async function ready(timeoutMs){
  }
  throw fail('BROWSER_NAVIGATION_TIMEOUT');
 }
+function killOwnedProfileProcesses(profileDir){return terminateProcessesUsingBrowserProfile(profileDir);}
 async function closeBrowser({preserveProfile=false}={}){
  const b=browser;browser=null;if(!b)return;
  try{await b.cdp?.send('Browser.close',{},undefined,2000);}catch{}
@@ -119,9 +121,42 @@ async function closeBrowser({preserveProfile=false}={}){
    if(b.child.exitCode===null)await Promise.race([new Promise(resolve=>b.child.once('close',resolve)),sleep(1500)]);
   }
  }
- if(!preserveProfile&&b.isolated&&b.profileDir){
-  for(let i=0;i<8;i++){try{fs.rmSync(b.profileDir,{recursive:true,force:true,maxRetries:3,retryDelay:80});break;}catch{await sleep(100);}}
+ if(!preserveProfile&&b.profileDir){
+  killOwnedProfileProcesses(b.profileDir);
+  await sleep(100);
  }
+ if(!preserveProfile&&b.isolated&&b.profileDir){
+  let removed=false;
+  for(let i=0;i<10;i++){
+   try{fs.rmSync(b.profileDir,{recursive:true,force:true,maxRetries:1,retryDelay:40});removed=!fs.existsSync(b.profileDir);if(removed)break;}
+   catch{}
+   await sleep(50);
+  }
+  if(!removed){
+   killOwnedProfileProcesses(b.profileDir);
+   await sleep(500);
+   for(let i=0;i<200;i++){
+    try{fs.rmSync(b.profileDir,{recursive:true,force:true,maxRetries:2,retryDelay:60});removed=!fs.existsSync(b.profileDir);if(removed)break;}
+    catch{}
+    if(i===79||i===159)killOwnedProfileProcesses(b.profileDir);
+    await sleep(50);
+   }
+  }
+  if(!removed&&fs.existsSync(b.profileDir))throw fail('BROWSER_PROFILE_CLEANUP_FAILED');
+ }
+}
+async function startBrowserForRelaunch(prior,headless){
+ let lastError=null,cleaned=false;
+ for(let attempt=0;attempt<4;attempt++){
+  try{return await startBrowser({...prior,headless,preserveProfileOnFailure:true});}
+  catch(error){
+   lastError=error;
+   if(!['BROWSER_LAUNCH_FAILED','BROWSER_PROFILE_IN_USE'].includes(error?.browserCode)||attempt===3)throw error;
+   if(!cleaned){killOwnedProfileProcesses(prior.profileDir);cleaned=true;}
+   await sleep(250*(attempt+1));
+  }
+ }
+ throw lastError??fail('BROWSER_LAUNCH_FAILED');
 }
 async function startBrowser(req){
  if(browser)throw fail('BROWSER_SESSION_ALREADY_RUNNING');
@@ -140,20 +175,21 @@ async function startBrowser(req){
  if(headless)args.unshift('--headless=new');
  args.push('about:blank');
  let child;try{child=spawn(executable,args,{stdio:['ignore','ignore','ignore'],windowsHide:headless,shell:false});}catch{throw fail('BROWSER_LAUNCH_FAILED');}
- const port=await waitForPortFile(portFile,child);
- let version;try{version=await (await fetch('http://127.0.0.1:'+port+'/json/version')).json();}catch{try{child.kill();}catch{}throw fail('BROWSER_DEVTOOLS_UNAVAILABLE');}
- if(typeof version.webSocketDebuggerUrl!=='string'){try{child.kill();}catch{}throw fail('BROWSER_DEVTOOLS_UNAVAILABLE');}
- const cdp=new Cdp(version.webSocketDebuggerUrl);await cdp.open();
- const target=await cdp.send('Target.createTarget',{url:'about:blank'});
- const attached=await cdp.send('Target.attachToTarget',{targetId:target.targetId,flatten:true});
- browser={child,cdp,sessionId:attached.sessionId,targetId:target.targetId,profileDir,isolated:req.isolated===true,executable,product:version.Browser??null,port,headless};
+ browser={child,cdp:null,sessionId:null,targetId:null,profileDir,isolated:req.isolated===true,executable,product:null,port:null,headless};
  try{
+  const port=await waitForPortFile(portFile,child);browser.port=port;
+  let version;try{version=await (await fetch('http://127.0.0.1:'+port+'/json/version')).json();}catch{throw fail('BROWSER_DEVTOOLS_UNAVAILABLE');}
+  if(typeof version.webSocketDebuggerUrl!=='string')throw fail('BROWSER_DEVTOOLS_UNAVAILABLE');
+  browser.product=version.Browser??null;
+  const cdp=new Cdp(version.webSocketDebuggerUrl);browser.cdp=cdp;await cdp.open();
+  const target=await cdp.send('Target.createTarget',{url:'about:blank'});browser.targetId=target.targetId;
+  const attached=await cdp.send('Target.attachToTarget',{targetId:target.targetId,flatten:true});browser.sessionId=attached.sessionId;
   await cdp.send('Page.enable',{},browser.sessionId);
   await cdp.send('Runtime.enable',{},browser.sessionId);
   await cdp.send('Network.enable',{},browser.sessionId);
- }catch(e){await closeBrowser();throw e;}
- return {ok:true,background:headless,headless,foreground:!headless,userDesktopTouched:!headless,
-   profileMode:browser.isolated?'isolated':'persistent',browserProduct:browser.product,executable};
+  return {ok:true,background:headless,headless,foreground:!headless,userDesktopTouched:!headless,
+    profileMode:browser.isolated?'isolated':'persistent',browserProduct:browser.product,executable};
+ }catch(e){await closeBrowser({preserveProfile:req.preserveProfileOnFailure===true});throw e;}
 }
 async function snapshot(req){
  const maxText=Math.max(1000,Math.min(40000,req.maxTextChars??20000));
@@ -168,11 +204,11 @@ async function snapshot(req){
  const pageUrl=redactUrl(value?.url);
  const elements=Array.isArray(value?.elements)?value.elements.map(item=>{
   const next={...item};
-  if(typeof next.href==='string'){const x=redactUrl(next.href);next.href=x.url;next.hrefQueryRedacted=x.queryRedacted;next.hrefFragmentRedacted=x.fragmentRedacted;}
-  if(typeof next.action==='string'){const x=redactUrl(next.action);next.action=x.url;next.actionQueryRedacted=x.queryRedacted;next.actionFragmentRedacted=x.fragmentRedacted;}
+  if(typeof next.href==='string'){const x=redactUrl(next.href);next.href=x.url;next.hrefQueryRedacted=x.queryRedacted;next.hrefFragmentRedacted=x.fragmentRedacted;next.hrefSchemeRedacted=x.schemeRedacted;}
+  if(typeof next.action==='string'){const x=redactUrl(next.action);next.action=x.url;next.actionQueryRedacted=x.queryRedacted;next.actionFragmentRedacted=x.fragmentRedacted;next.actionSchemeRedacted=x.schemeRedacted;}
   return next;
  }):[];
- return {...value,url:pageUrl.url,urlQueryRedacted:pageUrl.queryRedacted,urlFragmentRedacted:pageUrl.fragmentRedacted,elements,background:true,passwordValuesReturned:false,cookiesReturned:false,savedPasswordStoreAccess:false,foregroundFallbackSuggested:!!suggestedForegroundReason,suggestedForegroundReason};
+ return {...value,url:pageUrl.url,urlQueryRedacted:pageUrl.queryRedacted,urlFragmentRedacted:pageUrl.fragmentRedacted,urlSchemeRedacted:pageUrl.schemeRedacted,elements,background:true,passwordValuesReturned:false,cookiesReturned:false,savedPasswordStoreAccess:false,foregroundFallbackSuggested:!!suggestedForegroundReason,suggestedForegroundReason};
 }
 async function handle(req){
  switch(req.action){
@@ -189,15 +225,41 @@ async function handle(req){
    let resume=null;
    try{const current=await evaluate('location.href');const u=new URL(current);if(['http:','https:'].includes(u.protocol)&&!u.username&&!u.password)resume=u.href;}catch{}
    const prior={profileDir:browser.profileDir,isolated:browser.isolated,executable:browser.executable};
+   const targetHeadless=req.headless!==false;
    await closeBrowser({preserveProfile:true});
-   const next=await startBrowser({...prior,headless:req.headless!==false});
+   let next;
+   try{
+    next=await startBrowserForRelaunch(prior,targetHeadless);
+   }catch(error){
+    if(!targetHeadless){
+     try{await startBrowserForRelaunch(prior,true);}
+     catch{try{await closeBrowser();}catch{}}
+    }
+    throw error;
+   }
+   let resumeNavigationFailed=false;
    if(resume){
-    const nav=await browser.cdp.send('Page.navigate',{url:resume},browser.sessionId,30000);
-    if(nav.errorText)throw fail('BROWSER_NAVIGATION_FAILED');
-    await ready(30000);
+    try{
+     const nav=await browser.cdp.send('Page.navigate',{url:resume},browser.sessionId,8000);
+     if(nav.errorText)throw fail('BROWSER_NAVIGATION_FAILED');
+     await ready(8000);
+    }catch(e){
+     if(targetHeadless){
+      resumeNavigationFailed=true;
+     }else{
+      try{
+       await closeBrowser({preserveProfile:true});
+       await startBrowserForRelaunch(prior,true);
+      }catch{
+       try{await closeBrowser();}catch{}
+      }
+      throw e;
+     }
+    }
    }
    const current=redactUrl(await evaluate('location.href'))??{url:null,queryRedacted:false,fragmentRedacted:false};
-   return {...next,resumedUrl:current.url,urlQueryRedacted:current.queryRedacted,urlFragmentRedacted:current.fragmentRedacted,sameOwnedProfile:true};
+   return {...next,resumedUrl:current.url,urlQueryRedacted:current.queryRedacted,urlFragmentRedacted:current.fragmentRedacted,
+    sameOwnedProfile:true,resumeNavigationFailed};
   }
   case 'navigate':{
    if(!browser)throw fail('BROWSER_SESSION_NOT_RUNNING');

@@ -1,7 +1,7 @@
 # Project execution engine roadmap
 
-Date: 2026-09-25. Released version: v0.8.37; release candidate: v0.8.38.
-Project-engine baseline remains v0.8.37. The v0.8.38 candidate adds direct-session background browser automation outside Project Engine authority; PR #16 merged the feature into main at `3b20ac45be20f9d7cdf75ec37cec8ca4162ba193`.
+Date: 2026-09-25. Released version: v0.8.37; v0.8.38 is a superseded unpublished candidate.
+Project-engine baseline remains v0.8.37. The browser feature from PR #16 is undergoing post-v0.8.38 hardening outside Project Engine authority; the hardened release will use a new tag because v0.8.38 already points to the pre-hardening commit.
 
 ## Objective
 Develop Remote Commander into a measurable project execution and management system: plan bounded operations, execute through authorized tools, verify outputs, recover interrupted work, and finalize only against recorded acceptance criteria. Universal superiority is an ambition, not a current capability claim.
@@ -14,7 +14,7 @@ Develop Remote Commander into a measurable project execution and management syst
 5. CONNECTOR PARITY: catalog drift diagnostics, qualified providers, browser/application integrations and transparent terminal reconnection — PLANNED.
 6. COMPARATIVE EVALUATION: pinned real project corpus, equal models/budgets, completion/correctness/recovery/intervention/cost measurements — PLANNED.
 
-CURRENT: immutable v0.8.37 remains deployed on the audited Windows/Linux targets while v0.8.38 is a release candidate. The Project Engine authority model is unchanged. v0.8.38 adds a direct-session background browser that is explicitly excluded from autonomous workflow execution and does not require Codex. Windows/Linux full regression, Windows native headless browser E2E and hosted PR16 CI have passed; publication, versioned installer acceptance and live rollout remain separate gates. Broader escalation and monetary accounting remain open. No percentage or superiority score is asserted. Historical entries below describe their observation time, not the current release status.
+CURRENT: immutable v0.8.37 remains deployed on the audited Windows/Linux targets while the browser feature is in post-v0.8.38 hardening; v0.8.38 itself is superseded and will not be published. The Project Engine authority model is unchanged. v0.8.38 adds a direct-session background browser that is explicitly excluded from autonomous workflow execution and does not require Codex. Windows/Linux full regression, Windows native headless browser E2E and hosted PR16 CI have passed; publication, versioned installer acceptance and live rollout remain separate gates. Broader escalation and monetary accounting remain open. No percentage or superiority score is asserted. Historical entries below describe their observation time, not the current release status.
 
 ## First increment acceptance
 - Opt-in execution actually calls a configured planner and dispatches schema-valid proposals through existing journaled workflow tools.
@@ -33,6 +33,8 @@ The user authorized implementation and subsequently explicit cross-platform rele
 The first increment uses one tool operation per predeclared workflow step, consistent with the existing journal. Dynamic plan expansion is a later milestone. Separate planner proposals from execution and deterministic verification. No agent can alter its acceptance checks during a run. New execution tools appear only when explicitly configured.
 
 ## History
+- 2026-09-25: independent re-review of the first browser hardening found four additional pre-publication defects: Linux descendant-tree shutdown, failed visible-relaunch recovery, foreground/background result labeling, and URL-decoding in helper test runners. All four were fixed with focused regressions; the existing v0.8.38 tag remains untouched and superseded.
+- 2026-09-25: independent review of the first v0.8.38 browser candidate found six profile/snapshot/process/lifecycle defects before publication. Each was fixed with a focused regression; the release remains candidate-only until final cross-platform CI/re-review/publication gates pass.
 - 2026-09-25: PR #16 merged zero-interference background browser automation after full Windows/Linux regression, security audit, native Windows headless browser E2E, helper lifecycle/profile-continuity qualification, and four hosted Windows/Ubuntu CI jobs. Browser automation remains direct-session-only and independent of Codex/Project Engine.
 - 2026-09-25: v0.8.37 published as immutable Latest with 13 reproducible assets. Fresh/repeated pinned installers passed on Windows and Linux without changing live production routing during acceptance. Candidate-first rollout then reached CURRENT on both audited platforms; previous routes cleared, while Windows terminal-owning backends were retained instead of terminated.
 - 2026-09-25: PR #13 passed full Windows/Linux check/test/audit, four hosted Windows/Ubuntu CI jobs, an authenticated isolated Codex CLI 0.156.1 qualification and independent review. Review findings were converted into regressions for delegated-step binding, contained absolute imports and bounded 64 KiB worker envelopes before release preparation.

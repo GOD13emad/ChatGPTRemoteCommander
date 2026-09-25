@@ -43,6 +43,20 @@ test('owned background session navigates, snapshots auth signals and never asks 
  assert.equal(s.passwordValuesReturned,false);assert.equal(s.cookiesReturned,false);
  await f.ctl.execute(f.ctx,'browser_session_end',{lease:b.lease});assert.equal(f.closed,1);
 });
+test('valid mixed-case, dotted and numeric instance names map to distinct browser profile namespaces',async()=>{
+ const f=fixture();const dirs=[];
+ for(const instance of ['default','Work','Research.1','123']){
+  f.ctx.config.instance.profile=instance;
+  const b=await f.ctl.execute(f.ctx,'browser_session_begin',{profile:'uni',mode:'persistent'});
+  const start=[...f.calls].reverse().find(x=>x.action==='start');
+  dirs.push(start.profileDir);
+  await f.ctl.execute(f.ctx,'browser_session_end',{lease:b.lease});
+ }
+ assert.equal(new Set(dirs.map(x=>x.toLowerCase())).size,4);
+ assert.ok(dirs[0].includes('default'));
+ assert.ok(dirs.slice(1).every(x=>/instance-[0-9a-f]+/i.test(x)));
+});
+
 test('foreground requirement returns approval workflow but never takes over the desktop itself',async()=>{
  const f=fixture();const b=await f.ctl.execute(f.ctx,'browser_session_begin',{});
  const a=await f.ctl.execute(f.ctx,'browser_foreground_requirement',{lease:b.lease,reason:'mfa',targetHost:'example.test'});
@@ -57,10 +71,56 @@ test('foreground fallback requires explicit current-task approval and relaunches
  assert.equal(visible.foreground,true);assert.equal(visible.sameOwnedProfile,true);assert.equal(visible.userDesktopTouched,true);
  const relaunchVisible=f.calls.find(x=>x.action==='relaunch'&&x.headless===false);
  assert.ok(relaunchVisible);assert.equal(Object.hasOwn(relaunchVisible,'explicitUserAuthorization'),false);
+ const nav=await f.ctl.execute(f.ctx,'browser_navigate',{lease:b.lease,url:'https://example.test/visible'});
+ assert.equal(nav.background,false);assert.equal(nav.userDesktopTouched,true);
+ const shot=await f.ctl.execute(f.ctx,'browser_screenshot',{lease:b.lease,format:'png'});
+ assert.equal(shot.__structuredContent.background,false);assert.equal(shot.__structuredContent.userDesktopTouched,true);
  const resumed=await f.ctl.execute(f.ctx,'browser_foreground_end',{lease:b.lease});
  assert.equal(resumed.backgroundResumed,true);assert.equal(resumed.headless,true);assert.equal(resumed.sameOwnedProfile,true);
  assert.ok(f.calls.find(x=>x.action==='relaunch'&&x.headless===true));
  await assert.rejects(f.ctl.execute(f.ctx,'browser_foreground_end',{lease:b.lease}),/BROWSER_FOREGROUND_NOT_ACTIVE/);
+});
+
+test('failed foreground begin keeps controller mode background and does not misreport later work',async()=>{
+ const calls=[];
+ const invoke=async req=>{
+  calls.push(req);
+  if(req.action==='start')return {ok:true,browserProduct:'Chrome/test'};
+  if(req.action==='relaunch'&&req.headless===false)throw Object.assign(new Error('BROWSER_NAVIGATION_FAILED'),{browserCode:'BROWSER_NAVIGATION_FAILED'});
+  if(req.action==='navigate')return {ok:true,url:req.url,title:'background'};
+  if(req.action==='end')return {ok:true,closed:true};
+  throw new Error('unexpected '+req.action);
+ };
+ const ctl=createBrowserController({invoke,token:()=> 'c'.repeat(48)});
+ const ctx={config:config()};
+ const b=await ctl.execute(ctx,'browser_session_begin',{});
+ await assert.rejects(ctl.execute(ctx,'browser_foreground_begin',{lease:b.lease,explicitUserAuthorization:'Use the browser visibly for this task.'}),/BROWSER_NAVIGATION_FAILED/);
+ const nav=await ctl.execute(ctx,'browser_navigate',{lease:b.lease,url:'https://example.test/after-failed-begin'});
+ assert.equal(nav.background,true);assert.equal(nav.userDesktopTouched,false);
+ await ctl.execute(ctx,'browser_session_end',{lease:b.lease});
+});
+
+test('failed foreground end clears visible-mode state and fail-closes mutations',async()=>{
+ const calls=[];let visible=false;
+ const invoke=async req=>{
+  calls.push(req);
+  if(req.action==='start')return {ok:true,browserProduct:'Chrome/test'};
+  if(req.action==='relaunch'&&req.headless===false){visible=true;return {ok:true,foreground:true,browserProduct:'Chrome/test',sameOwnedProfile:true};}
+  if(req.action==='relaunch'&&req.headless===true){visible=false;throw Object.assign(new Error('BROWSER_LAUNCH_FAILED'),{browserCode:'BROWSER_LAUNCH_FAILED'});}
+  if(req.action==='snapshot')return {ok:true,url:'https://example.test/',title:'x',text:'x',elements:[]};
+  if(req.action==='end')return {ok:true,closed:true};
+  throw new Error('unexpected '+req.action);
+ };
+ const ctl=createBrowserController({invoke,token:()=> 'd'.repeat(48)});
+ const ctx={config:config()};
+ const b=await ctl.execute(ctx,'browser_session_begin',{});
+ await ctl.execute(ctx,'browser_foreground_begin',{lease:b.lease,explicitUserAuthorization:'Use the browser visibly for this task.'});
+ await assert.rejects(ctl.execute(ctx,'browser_foreground_end',{lease:b.lease}),/BROWSER_LAUNCH_FAILED/);
+ assert.equal(visible,false);
+ await assert.rejects(ctl.execute(ctx,'browser_navigate',{lease:b.lease,url:'https://example.test/blocked'}),/BROWSER_OUTCOME_UNCERTAIN_SNAPSHOT_REQUIRED/);
+ const snap=await ctl.execute(ctx,'browser_snapshot',{lease:b.lease});
+ assert.equal(snap.background,true);assert.equal(snap.userDesktopTouched,false);
+ await ctl.execute(ctx,'browser_session_end',{lease:b.lease});
 });
 
 test('uncertain browser mutation cannot blind-retry until a fresh DOM snapshot reconciles state',async()=>{

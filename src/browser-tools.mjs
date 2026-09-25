@@ -12,6 +12,7 @@ const helper=path.join(project,'tools','browser-control.mjs');
 const client=createBrowserProcessClient({file:process.execPath,args:[helper,'--server']});
 const sameToken=(a,b)=>typeof a==='string'&&typeof b==='string'&&Buffer.byteLength(a)===Buffer.byteLength(b)&&timingSafeEqual(Buffer.from(a),Buffer.from(b));
 const safeSegment=value=>typeof value==='string'&&/^[a-z][a-z0-9_-]{0,31}$/.test(value)?value:'default';
+const instanceSegment=value=>{const raw=typeof value==='string'&&value?value:'default';return raw==='default'?'default':'instance-'+Buffer.from(raw,'utf8').toString('hex');};
 function defaultProfileRoot(){
  if(process.platform==='win32')return path.join(process.env.LOCALAPPDATA||os.homedir(),'ChatGPTRemoteCommander','browser-profiles');
  return path.join(os.homedir(),'.local','state','chatgpt-remote-commander','browser-profiles');
@@ -70,7 +71,7 @@ export function createBrowserController({invoke=req=>client.invoke(req),closeInv
    if(name==='browser_session_begin'){
     if(current())throw browserError('BROWSER_LEASE_BUSY');
     const ttl=input.ttlSeconds??300,mode=input.mode??'persistent',profile=input.profile??'default';
-    const root=resolveProfileRoot(cfg),instance=safeSegment(ctx.config?.instance?.profile??'default');
+    const root=resolveProfileRoot(cfg),instance=instanceSegment(ctx.config?.instance?.profile??'default');
     const dir=mode==='isolated'
       ? path.join(root,instance,'isolated-'+Date.now().toString(36)+'-'+token().slice(0,12))
       : path.join(root,instance,safeSegment(profile));
@@ -99,17 +100,19 @@ export function createBrowserController({invoke=req=>client.invoke(req),closeInv
     if(cfg.foregroundFallback!=='explicit-current-request-only'||cfg.allowForegroundFallback!==true)throw browserError('BROWSER_FOREGROUND_FALLBACK_DISABLED');
     if(session.foreground)throw browserError('BROWSER_FOREGROUND_ALREADY_ACTIVE');
     const native=await invoke({action:'relaunch',headless:false});
-    session.foreground=true;uncertain=false;
+    session.foreground=true;
     return {ok:true,foreground:true,headless:false,userDesktopTouched:true,explicitlyAuthorized:true,
       sameOwnedProfile:true,browserProduct:native.browserProduct??null,
       nextStep:'Use a separately authorized GUI takeover only for the minimum required interaction, then end the GUI lease and call browser_foreground_end.'};
    }
    if(name==='browser_foreground_end'){
     if(!session.foreground)throw browserError('BROWSER_FOREGROUND_NOT_ACTIVE');
-    const native=await invoke({action:'relaunch',headless:true});
-    session.foreground=false;uncertain=false;
+    let native;
+    try{native=await invoke({action:'relaunch',headless:true});}
+    catch(error){session.foreground=false;uncertain=true;throw error;}
+    session.foreground=false;
     return {ok:true,foreground:false,headless:true,userDesktopTouched:false,sameOwnedProfile:true,
-      browserProduct:native.browserProduct??null,backgroundResumed:true};
+      browserProduct:native.browserProduct??null,backgroundResumed:true,resumeNavigationFailed:native.resumeNavigationFailed===true};
    }
    if(uncertain&&['browser_navigate','browser_fill','browser_click'].includes(name))throw browserError('BROWSER_OUTCOME_UNCERTAIN_SNAPSHOT_REQUIRED');
    const rule=BROWSER_RULES.get(name);
@@ -117,6 +120,8 @@ export function createBrowserController({invoke=req=>client.invoke(req),closeInv
    if(['browser_fill','browser_click'].includes(name)&&cfg.allowInput!==true)throw browserError('BROWSER_INPUT_DISABLED');
    if(name==='browser_screenshot'&&cfg.allowScreenshot!==true)throw browserError('BROWSER_SCREENSHOT_DISABLED');
    const mutation=['browser_navigate','browser_fill','browser_click'].includes(name);
+   const foregroundAtDispatch=session.foreground===true;
+   const activity={background:!foregroundAtDispatch,userDesktopTouched:foregroundAtDispatch};
    try{
     let result;
     if(name==='browser_navigate')result=await invoke({action:'navigate',url:input.url,timeoutMs:input.timeoutMs??30000});
@@ -136,10 +141,10 @@ export function createBrowserController({invoke=req=>client.invoke(req),closeInv
       const bytes=Buffer.from(data,'base64');
       const sig=mimeType==='image/png'?bytes.subarray(0,8).equals(Buffer.from('89504e470d0a1a0a','hex')):bytes[0]===0xff&&bytes[1]===0xd8&&bytes[2]===0xff;
       if(!sig||bytes.length>(input.maxBytes??2097152))throw browserError('BROWSER_INVALID_IMAGE');
-      const structured={...meta,bytes:bytes.length,mimeType,background:true,userDesktopTouched:false};
+      const structured={...meta,bytes:bytes.length,mimeType,...activity};
       return {__mcpContent:[{type:'image',mimeType,data},{type:'text',text:JSON.stringify(structured)}],__structuredContent:structured};
     }
-    return {...result,background:true,userDesktopTouched:false,...(['browser_fill','browser_click'].includes(name)?{verificationRecommended:true}:{})};
+    return {...result,...activity,...(['browser_fill','browser_click'].includes(name)?{verificationRecommended:true}:{})};
    }catch(error){
     if(mutation)uncertain=true;
     throw error;
