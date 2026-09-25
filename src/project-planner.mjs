@@ -198,7 +198,8 @@ export function createCommandPlanner(config) {
     throw fail('PLANNER_INVALID_CONFIG');
   }
   const launchArgs = [...args];
-  const timeoutMs = boundedInteger(config.timeoutMs, 30000, 10, 30000);
+  const configuredTimeoutMs = boundedInteger(config.timeoutMs, 30000, 10, 600000);
+  const timeoutMs = Math.min(configuredTimeoutMs, 30000);
   const maxOutputBytes = boundedInteger(config.maxOutputBytes, 2 * 1024 * 1024, 64, 16 * 1024 * 1024);
   return {
     describe() {

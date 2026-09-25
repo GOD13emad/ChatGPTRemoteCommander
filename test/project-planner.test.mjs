@@ -132,6 +132,11 @@ test('missing executable fails without returning operating system details', asyn
   await assert.rejects(planner.plan({}), { code: 'PLANNER_START_FAILED', message: 'PLANNER_START_FAILED' });
 });
 
+test('legacy configured provider timeout remains loadable but runtime stays transport-bounded', () => {
+  const planner = createCommandPlanner({ kind: 'command', executable: 'x', timeoutMs: 120000 });
+  assert.equal(planner.describe().timeoutMs, 30000);
+});
+
 test('input/configuration are bounded and command description hides argv', async t => {
   const { planner } = fixture(t, 'echo');
   assert.throws(() => createCommandPlanner({ kind: 'command', executable: 'x', timeoutMs: 0 }), /INVALID_CONFIG/);
