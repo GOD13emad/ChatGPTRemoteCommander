@@ -1,25 +1,38 @@
 import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { mkdtemp, mkdir, copyFile, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, copyFile, rm, readFile } from 'node:fs/promises';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const root=await mkdtemp(path.join(os.tmpdir(),'rc browser تست '));
 try{
- const testDir=path.join(root,'test'),toolsDir=path.join(root,'tools');
- await mkdir(testDir,{recursive:true});await mkdir(toolsDir,{recursive:true});
+ const toolsDir=path.join(root,'tools');
+ await mkdir(toolsDir,{recursive:true});
  const srcRoot=new URL('../',import.meta.url);
- for(const rel of ['test/browser-helper-init-failure-run.mjs','test/browser-helper-lifecycle-run.mjs','tools/browser-control.mjs']){
-  const src=new URL(rel,srcRoot);
-  const dest=path.join(root,...rel.split('/'));
-  await copyFile(src,dest);
+ const helperSource=new URL('tools/browser-control.mjs',srcRoot);
+ const helperDest=path.join(toolsDir,'browser-control.mjs');
+ await copyFile(helperSource,helperDest);
+
+ for(const rel of ['test/browser-helper-init-failure-run.mjs','test/browser-helper-lifecycle-run.mjs']){
+  const source=await readFile(new URL(rel,srcRoot),'utf8');
+  if(!source.includes("fileURLToPath(new URL('../tools/browser-control.mjs',import.meta.url))"))throw Error('RUNNER_FILE_URL_DECODE_MISSING '+rel);
+  if(source.includes("helper.pathname"))throw Error('RUNNER_ENCODED_PATH_REGRESSION '+rel);
  }
- for(const name of ['browser-helper-init-failure-run.mjs','browser-helper-lifecycle-run.mjs']){
-  const file=path.join(testDir,name);
-  const run=spawnSync(process.execPath,[file],{encoding:'utf8',windowsHide:true,timeout:90000});
-  if(run.error)throw run.error;
-  if(run.status!==0)throw Error('PATH_ENCODING_RUN_FAILED '+name+' stdout='+String(run.stdout).slice(-800)+' stderr='+String(run.stderr).slice(-800));
- }
- console.log(JSON.stringify({status:'BROWSER_PATH_ENCODING_PASS',space:true,unicode:true}));
+
+ const helper=fileURLToPath(pathToFileURL(helperDest));
+ if(path.resolve(helper)!==path.resolve(helperDest))throw Error('FILE_URL_ROUNDTRIP_FAILED');
+ const run=spawnSync(process.execPath,[helper,'--server'],{
+  cwd:root,
+  input:JSON.stringify({action:'status'})+'\n',
+  encoding:'utf8',
+  windowsHide:true,
+  timeout:15000
+ });
+ if(run.error)throw run.error;
+ if(run.status!==0)throw Error('PATH_ENCODING_HELPER_FAILED stdout='+String(run.stdout).slice(-800)+' stderr='+String(run.stderr).slice(-800));
+ const lines=String(run.stdout).trim().split(/\r?\n/).filter(Boolean).map(line=>JSON.parse(line));
+ if(lines.length<2||lines[0].ready!==true||lines[0].protocol!==1||lines[1].ok!==true)throw Error('PATH_ENCODING_PROTOCOL_FAILED '+JSON.stringify(lines));
+ console.log(JSON.stringify({status:'BROWSER_PATH_ENCODING_PASS',space:true,unicode:true,helperProtocol:true}));
 }finally{
  await rm(root,{recursive:true,force:true,maxRetries:3,retryDelay:80});
 }
