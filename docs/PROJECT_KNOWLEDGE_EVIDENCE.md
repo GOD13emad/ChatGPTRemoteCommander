@@ -1,6 +1,6 @@
 # Engineering decisions and evidence
 
-Updated: 2026-09-24. Current release authority: [v0.8.35](RELEASE_0.8.35.md). This public index separates reusable engineering decisions from historical deployment observations.
+Updated: 2026-09-25. Current immutable release authority remains [v0.8.35](RELEASE_0.8.35.md) until the [v0.8.36 candidate](RELEASE_0.8.36.md) is published. This public index separates reusable engineering decisions from historical deployment observations.
 
 ## Current guarantees and their regression locations
 
@@ -12,6 +12,7 @@ Updated: 2026-09-24. Current release authority: [v0.8.35](RELEASE_0.8.35.md). Th
 | Reject hardlinked and aliased mutation/evidence paths | `test/file-write-guard.test.mjs`, `test/project-engine-integration.test.mjs` |
 | Adaptive prerequisites preserve scope and recover plan commits exactly once | `test/workflow-plan.test.mjs`, `test/project-adaptive.test.mjs` |
 | Waiting questions yield to other projects; explicit responses cannot reset budgets or grant authority | [Project decisions](PROJECT_ENGINE_DECISIONS.md), `test/project-engine-review.test.mjs` |
+| Bounded artifact workers cannot mutate project files directly; import is SHA-256/inputHash/operationId-bound and crash recovery never blindly replays | `test/project-engine-integration.test.mjs`, [v0.8.36 candidate](RELEASE_0.8.36.md) |
 | Custom no-start installers preserve live routing; updates retain active terminal workloads | `test/linux-installer-isolation.test.mjs`, `test/auto-update-contract.test.mjs` |
 | Native and legacy plugin manifests retain matching identity/version, discoverable skills and public assets | `test/onboarding-plugin-check.mjs`, [PR #9](https://github.com/GOD13emad/ChatGPTRemoteCommander/pull/9) |
 
