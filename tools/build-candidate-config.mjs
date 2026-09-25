@@ -24,6 +24,8 @@ function parse(argv){
     else if(a==='--device-name')o.deviceName=v;
     else if(a==='--backup-root')o.backupRoot=v;
     else if(a==='--provider-root')o.providerRoot=v;
+    else if(a==='--browser-executable')o.browserExecutable=v;
+    else if(a==='--browser-profile-root')o.browserProfileRoot=v;
     else throw new Error('CANDIDATE_CONFIG_ARGUMENT');
   }
   for(const k of ['defaultPath','outputPath','profileId','port','stateDirectory'])if(!o[k])throw new Error('CANDIDATE_CONFIG_REQUIRED');
@@ -54,6 +56,8 @@ config.port=a.port;
 config.runtimeState=path.join(a.stateDirectory,'mcp-runtime.json');
 config.auditLog=path.join(a.stateDirectory,'audit.jsonl');
 if(a.backupRoot){config.powerMode??={};config.powerMode.backupRoot=a.backupRoot;}
+if(a.browserExecutable){config.powerMode??={};config.powerMode.browserControl??={};config.powerMode.browserControl.executable=path.resolve(a.browserExecutable);}
+if(a.browserProfileRoot){config.powerMode??={};config.powerMode.browserControl??={};config.powerMode.browserControl.profileRoot=path.resolve(a.browserProfileRoot);}
 config.durableWorkflows ??={};
 if(config.durableWorkflows.enabled===true){
   config.durableWorkflows.directory=workflowDirectory;

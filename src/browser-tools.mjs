@@ -8,8 +8,23 @@ import { createBrowserProcessClient } from './browser-process.mjs';
 export { browserToolDefinitions };
 
 const project=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
-const helper=path.join(project,'tools','browser-control.mjs');
-const client=createBrowserProcessClient({file:process.execPath,args:[helper,'--server']});
+const chromiumHelper=path.join(project,'tools','browser-control.mjs');
+const firefoxHelper=path.join(project,'tools','browser-control-firefox.mjs');
+const chromiumClient=createBrowserProcessClient({file:process.execPath,args:[chromiumHelper,'--server']});
+const firefoxClient=createBrowserProcessClient({file:process.execPath,args:[firefoxHelper,'--server']});
+let defaultBrowserBackend=null;
+const isFirefoxExecutable=value=>typeof value==='string'&&/firefox/i.test(path.basename(value));
+const defaultInvoke=async req=>{
+ const kind=req.action==='status'
+  ? (isFirefoxExecutable(req.executable)?'firefox':'chromium')
+  : req.action==='start'
+    ? (defaultBrowserBackend=isFirefoxExecutable(req.executable)?'firefox':'chromium')
+    : (defaultBrowserBackend??'chromium');
+ const client=kind==='firefox'?firefoxClient:chromiumClient;
+ try{return await client.invoke(req);}
+ finally{if(req.action==='end')defaultBrowserBackend=null;}
+};
+const defaultClose=()=>{defaultBrowserBackend=null;chromiumClient.close();firefoxClient.close();};
 const sameToken=(a,b)=>typeof a==='string'&&typeof b==='string'&&Buffer.byteLength(a)===Buffer.byteLength(b)&&timingSafeEqual(Buffer.from(a),Buffer.from(b));
 const safeSegment=value=>typeof value==='string'&&/^[a-z][a-z0-9_-]{0,31}$/.test(value)?value:'default';
 const instanceSegment=value=>{const raw=typeof value==='string'&&value?value:'default';return raw==='default'?'default':'instance-'+Buffer.from(raw,'utf8').toString('hex');};
@@ -21,7 +36,7 @@ function resolveProfileRoot(cfg){
  const raw=typeof cfg.profileRoot==='string'&&cfg.profileRoot.trim()?cfg.profileRoot.trim():defaultProfileRoot();
  return path.resolve(raw.replace(/%([^%]+)%/g,(_,k)=>process.env[k]??process.env[k.toUpperCase()]??''));
 }
-export function createBrowserController({invoke=req=>client.invoke(req),closeInvoke=()=>client.close(),now=()=>performance.now(),token=()=>randomBytes(24).toString('hex'),scheduleTimeout=setTimeout,cancelTimeout=clearTimeout}={}){
+export function createBrowserController({invoke=defaultInvoke,closeInvoke=defaultClose,now=()=>performance.now(),token=()=>randomBytes(24).toString('hex'),scheduleTimeout=setTimeout,cancelTimeout=clearTimeout}={}){
  let session=null,uncertain=false,timer=null,busy=false,expiryRequested=false;
  const clearTimer=()=>{if(timer)cancelTimeout(timer);timer=null;};
  const cleanupExpired=async()=>{
@@ -80,7 +95,7 @@ export function createBrowserController({invoke=req=>client.invoke(req),closeInv
       executable:cfg.executable,foreground:false};
     uncertain=false;expiryRequested=false;arm(ttl);
     return {ok:true,lease:session.id,ttlSeconds:ttl,profile,mode,background:true,headless:true,
-      userDesktopTouched:false,savedPasswordStoreAccess:false,browserProduct:native.browserProduct??null,backend:'chromium-cdp-headless'};
+      userDesktopTouched:false,savedPasswordStoreAccess:false,browserProduct:native.browserProduct??null,backend:native.backend??'browser-headless'};
    }
    owns(input.lease);
    if(name==='browser_session_renew'){

@@ -7,6 +7,8 @@ POWER_MODE=0
 STANDARD_MODE=0
 DISABLE_CAPS=()
 ENABLE_CAPS=()
+BROWSER_EXECUTABLE=""
+BROWSER_PROFILE_ROOT=""
 START_SERVER=0
 INSTALL_PREREQS=0
 SKIP_TUNNEL_CLIENT=0
@@ -267,6 +269,44 @@ ensure_project_provider() {
   echo "PROJECT_PROVIDER_PASS version=$version path=$exe"
 }
 
+ensure_browser_backend() {
+  if [[ "$CUSTOM_NO_START" == 1 ]]; then
+    echo 'Browser backend bootstrap deferred for custom/no-start installation.'
+    return 0
+  fi
+  local requested=0 exe driver state_root
+  if [[ "$POWER_MODE" == 1 ]]; then requested=1
+  elif [[ "$STANDARD_MODE" == 0 && -f "$INSTALL_DIR/config.local.json" ]]; then
+    local tier
+    tier="$(node "$INSTALL_DIR/tools/json-field.mjs" --file "$INSTALL_DIR/config.local.json" --field capabilityProfile.tier 2>/dev/null || true)"
+    [[ "$tier" == "FULL_POWER" ]] && requested=1
+  fi
+  [[ "$requested" == 1 ]] || return 0
+  state_root="${XDG_STATE_HOME:-$HOME/.local/state}/chatgpt-remote-commander"
+  for exe in "$(command -v google-chrome 2>/dev/null || true)" "$(command -v google-chrome-stable 2>/dev/null || true)" "$(command -v chromium 2>/dev/null || true)" "$(command -v chromium-browser 2>/dev/null || true)" "$(command -v microsoft-edge 2>/dev/null || true)"; do
+    if [[ -n "$exe" && -x "$exe" ]]; then
+      BROWSER_EXECUTABLE="$exe"
+      BROWSER_PROFILE_ROOT="$state_root/browser-profiles"
+      echo "BROWSER_BACKEND_PASS backend=chromium executable=$exe"
+      return 0
+    fi
+  done
+  exe="$(command -v firefox 2>/dev/null || true)"
+  driver="$(command -v geckodriver 2>/dev/null || true)"
+  if [[ -n "$exe" && -x "$exe" && -n "$driver" && -x "$driver" ]]; then
+    BROWSER_EXECUTABLE="$exe"
+    if command -v snap >/dev/null 2>&1 && snap list firefox >/dev/null 2>&1; then
+      BROWSER_PROFILE_ROOT="$HOME/snap/firefox/common/chatgpt-remote-commander/browser-profiles"
+    else
+      BROWSER_PROFILE_ROOT="$state_root/browser-profiles"
+    fi
+    mkdir -p "$BROWSER_PROFILE_ROOT"
+    echo "BROWSER_BACKEND_PASS backend=firefox-webdriver executable=$exe driver=$driver profileRoot=$BROWSER_PROFILE_ROOT"
+    return 0
+  fi
+  echo 'BROWSER_BACKEND_UNAVAILABLE authorized=true reason=no-safe-local-browser-backend'
+  return 0
+}
 install_tunnel_client() {
   local machine arch asset dir tmp sums expected actual
   machine="$(uname -m)"
@@ -350,6 +390,8 @@ write_local_config() {
   fi
   local cap
   [[ "$CUSTOM_NO_START" == 1 ]] || args+=(--provider-root "$state_root")
+  [[ -z "$BROWSER_EXECUTABLE" ]] || args+=(--browser-executable "$BROWSER_EXECUTABLE")
+  [[ -z "$BROWSER_PROFILE_ROOT" ]] || args+=(--browser-profile-root "$BROWSER_PROFILE_ROOT")
   for cap in "${DISABLE_CAPS[@]}"; do args+=(--disable-capability "$cap"); done
   for cap in "${ENABLE_CAPS[@]}"; do args+=(--enable-capability "$cap"); done
   node "${args[@]}" >/dev/null
@@ -450,6 +492,7 @@ else
   ensure_node_path
   install_tunnel_client
   ensure_project_provider
+  ensure_browser_backend
   write_local_config
   chmod +x "$INSTALL_DIR/install.sh" "$INSTALL_DIR/connect-chatgpt-account.sh" "$INSTALL_DIR/run-server.sh" \
     "$INSTALL_DIR/autostart-linux.sh" "$INSTALL_DIR/supervisor-routing-linux.sh" "$INSTALL_DIR/auto-update-linux.sh" \

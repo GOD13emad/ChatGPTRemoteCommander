@@ -12,6 +12,8 @@ SELF_TEST=0
 DRAIN_TIMEOUT=60
 DISABLE_CAPS=()
 ENABLE_CAPS=()
+BROWSER_EXECUTABLE=""
+BROWSER_PROFILE_ROOT=""
 REPO_URL="${REMOTE_COMMANDER_REPO_URL:-https://github.com/GOD13emad/ChatGPTRemoteCommander.git}"
 CURL_CONNECT_TIMEOUT="${REMOTE_COMMANDER_CURL_CONNECT_TIMEOUT:-15}"
 CURL_MAX_TIME="${REMOTE_COMMANDER_CURL_MAX_TIME:-180}"
@@ -128,6 +130,38 @@ ensure_project_provider(){
   log "PROJECT_PROVIDER_PASS version=$version path=$exe"
 }
 
+ensure_browser_backend(){
+  local helper="$1" cfg="$2" requested=0 tier exe driver
+  if [[ "$POWER_MODE" == 1 ]]; then requested=1
+  elif [[ "$STANDARD_MODE" == 0 ]]; then
+    tier="$(json_field "$helper" "$cfg" capabilityProfile.tier)"
+    [[ "$tier" == "FULL_POWER" ]] && requested=1
+  fi
+  [[ "$requested" == 1 ]] || return 0
+  for exe in "$(command -v google-chrome 2>/dev/null || true)" "$(command -v google-chrome-stable 2>/dev/null || true)" "$(command -v chromium 2>/dev/null || true)" "$(command -v chromium-browser 2>/dev/null || true)" "$(command -v microsoft-edge 2>/dev/null || true)"; do
+    if [[ -n "$exe" && -x "$exe" ]]; then
+      BROWSER_EXECUTABLE="$exe"
+      BROWSER_PROFILE_ROOT="$STATE_ROOT/browser-profiles"
+      log "BROWSER_BACKEND_PASS backend=chromium executable=$exe"
+      return 0
+    fi
+  done
+  exe="$(command -v firefox 2>/dev/null || true)"
+  driver="$(command -v geckodriver 2>/dev/null || true)"
+  if [[ -n "$exe" && -x "$exe" && -n "$driver" && -x "$driver" ]]; then
+    BROWSER_EXECUTABLE="$exe"
+    if command -v snap >/dev/null 2>&1 && snap list firefox >/dev/null 2>&1; then
+      BROWSER_PROFILE_ROOT="$HOME/snap/firefox/common/chatgpt-remote-commander/browser-profiles"
+    else
+      BROWSER_PROFILE_ROOT="$STATE_ROOT/browser-profiles"
+    fi
+    mkdir -p "$BROWSER_PROFILE_ROOT"
+    log "BROWSER_BACKEND_PASS backend=firefox-webdriver executable=$exe driver=$driver profileRoot=$BROWSER_PROFILE_ROOT"
+    return 0
+  fi
+  log 'BROWSER_BACKEND_UNAVAILABLE authorized=true reason=no-safe-local-browser-backend'
+  return 0
+}
 latest_ref(){
   if [[ -n "$SOURCE_REF" ]]; then printf '%s\n' "$SOURCE_REF"; return; fi
   local tag body effective
@@ -452,6 +486,7 @@ SHADOW_WF="$BACKUP_ROOT/$COMMIT/default/workflow-shadow"
 node "$STAGE_DIR/tools/copy-workflow-store.mjs" --source-dir "$LIVE_WF" --dest-dir "$SHADOW_WF"
 
 ensure_project_provider "$STAGE_DIR" "$ACTIVE_CFG"
+ensure_browser_backend "$STAGE_DIR" "$ACTIVE_CFG"
 
 MODE=preserve
 [[ "$POWER_MODE" == 1 ]] && MODE=full
@@ -459,6 +494,8 @@ MODE=preserve
 build_cfg(){
   local output="$1" wf="$2"
   local args=("$STAGE_DIR/tools/build-candidate-config.mjs" --default "$STAGE_DIR/config.json" --existing "$ACTIVE_CFG" --output "$output" --profile-id default --port "$PORT" --state-dir "$STATE_DIR" --workflow-dir "$wf" --mode "$MODE" --provider-root "$STATE_ROOT")
+  [[ -z "$BROWSER_EXECUTABLE" ]] || args+=(--browser-executable "$BROWSER_EXECUTABLE")
+  [[ -z "$BROWSER_PROFILE_ROOT" ]] || args+=(--browser-profile-root "$BROWSER_PROFILE_ROOT")
   local c
   for c in "${DISABLE_CAPS[@]}"; do args+=(--disable-capability "$c"); done
   for c in "${ENABLE_CAPS[@]}"; do args+=(--enable-capability "$c"); done
