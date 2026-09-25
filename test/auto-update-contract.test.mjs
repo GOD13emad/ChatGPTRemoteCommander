@@ -209,7 +209,11 @@ test('Linux updater is candidate-first, hardware-gated, routed and rollback-awar
     'validation_cleanup',
     'trap validation_cleanup ERR',
     'persistent_terminal_pids',
-    'AUTO_UPDATE_PERSISTENT_TERMINAL_BLOCK',
+    'AUTO_UPDATE_ACTIVE_TERMINALS_PRESERVE',
+    'DRAIN_TERMINAL_RETAINED',
+    'retained-backends.json',
+    'retained-backends.mjs',
+    'RELEASE_CLEANUP_RETAINED_PROTECT',
     'AUTO_UPDATE_EXISTING_DRAIN_BLOCK',
     'https://github.com/GOD13emad/ChatGPTRemoteCommander/releases/latest',
     '%{url_effective}',
@@ -222,6 +226,7 @@ test('Linux updater is candidate-first, hardware-gated, routed and rollback-awar
   assert.ok(s.includes('retire_previous_route "$helper" "$old_port"'), 'Linux successful drain must atomically retire route.previous');
   const linuxDrain=s.slice(s.indexOf('drain_previous_once(){'),s.indexOf('has_superseded_release(){'));
   assert.ok(linuxDrain.indexOf('persistent_terminal_pids') < linuxDrain.indexOf('stop_owned_from_config'),'Linux retirement must check persistent terminals before stopping the old backend');
+  assert.ok(linuxDrain.includes('retain_previous_backend'),'Linux terminal-bearing previous backends must use retained-backend detachment instead of forced stop');
   const currentMaintenance=s.slice(s.indexOf('if [[ "$CONTROL" != "$COMMIT" ]]; then'),s.indexOf('CANDIDATE_PID=""'));
   const cleanupOnlyLinux=currentMaintenance.slice(currentMaintenance.indexOf('if has_superseded_release; then'));
   assert.ok(currentMaintenance.includes('recycle_supervisor'),'Linux control-code promotion may recycle the supervisor');
@@ -237,7 +242,8 @@ test('Linux updater is candidate-first, hardware-gated, routed and rollback-awar
   assert.ok(existingDrainAdmission>0 && existingDrainAdmission<terminalAdmission,'Linux unresolved previous drain must be handled before active-terminal admission');
   assert.ok(s.slice(existingDrainAdmission,terminalAdmission).includes("AUTO_UPDATE_EXISTING_DRAIN_BLOCK"),'Linux existing-drain blocker must exit before route mutation');
   assert.ok(terminalAdmission>0 && terminalAdmission<cutover,'Linux persistent terminal admission must run before route cutover');
-  assert.ok(s.slice(terminalAdmission,cutover).includes('stop_owned_candidate "$CANDIDATE_PID" "$STAGE_DIR"'),'Linux terminal blocker must stop the unpromoted candidate');
+  assert.ok(s.slice(terminalAdmission,cutover).includes('AUTO_UPDATE_ACTIVE_TERMINALS_PRESERVE'),'Linux active terminals must be explicitly preserved before route cutover');
+  assert.ok(!s.slice(terminalAdmission,cutover).includes('AUTO_UPDATE_PERSISTENT_TERMINAL_BLOCK'),'Linux active terminals must not block a validated cutover');
   const commit=s.indexOf('CUTOVER_COMMITTED=1');
   assert.ok(gates>0 && cutover>gates,'Linux gates precede cutover');
   assert.ok(s.indexOf('tunnels_ready',cutover)<commit,'Linux tunnel verification precedes commit point');

@@ -22,6 +22,7 @@ RUNTIME_ROOT="$STATE_ROOT/runtimes"
 BACKUP_ROOT="$STATE_ROOT/update-backups"
 LOG_DIR="$STATE_ROOT/update-logs"
 RESULT_FILE="$STATE_ROOT/last-update.json"
+RETAINED_FILE="$STATE_ROOT/retained-backends.json"
 PROFILE_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/tunnel-client"
 
 usage(){
@@ -228,6 +229,31 @@ persistent_terminal_pids(){
     [[ "$cmd" == *" --noprofile --norc "* ]] && printf '%s\n' "$child_pid"
   done
 }
+retained_project_protected(){
+  local helper="$1" target="$2" candidate
+  [[ -f "$RETAINED_FILE" ]] || return 1
+  target="$(readlink -f "$target" 2>/dev/null || printf '%s' "$target")"
+  while IFS= read -r candidate; do
+    [[ -n "$candidate" ]] || continue
+    candidate="$(readlink -f "$candidate" 2>/dev/null || printf '%s' "$candidate")"
+    [[ "$candidate" == "$target" ]] && return 0
+  done < <(node "$helper/tools/retained-backends.mjs" --file "$RETAINED_FILE" --action protected-projects 2>/dev/null || true)
+  return 1
+}
+retain_previous_backend(){
+  local helper="$1" old_port="$2" old_cfg="$3" old_project="$4" terminal_pids="$5"
+  local n old_version old_commit old_sha
+  n="$(node "$helper/tools/router-status.mjs" --url http://127.0.0.1:47831/router/status --port "$old_port" 2>/dev/null || true)"
+  [[ "$n" == 0 ]] || { log "DRAIN_TERMINAL_RETAIN_DEFER profile=default inflight=$n"; return 1; }
+  old_version="$(json_field "$helper" "$ROUTE" previous.version)"
+  old_commit="$(json_field "$helper" "$ROUTE" previous.commit)"
+  old_sha="$(json_field "$helper" "$ROUTE" previous.configSha256)"
+  [[ "$old_commit" =~ ^[0-9a-fA-F]{40}$ && "$old_sha" =~ ^[0-9a-fA-F]{64}$ ]] || { log "DRAIN_TERMINAL_RETAIN_IDENTITY_DEFER profile=default"; return 1; }
+  node "$helper/tools/retained-backends.mjs" --file "$RETAINED_FILE" --action add --profile default --port "$old_port" --version "$old_version" --commit "$old_commit" --config-sha "$old_sha" --config-path "$old_cfg" --project-dir "$old_project" --terminal-pids "$terminal_pids" >/dev/null
+  retire_previous_route "$helper" "$old_port"
+  log "DRAIN_TERMINAL_RETAINED profile=default port=$old_port pids=$terminal_pids"
+  return 0
+}
 retire_previous_route(){
   local helper="$1" old_port="$2" old_commit profile generation
   old_commit="$(node "$helper/tools/json-field.mjs" --file "$ROUTE" --field previous.commit 2>/dev/null || true)"
@@ -245,6 +271,7 @@ drain_previous_once(){
   fi
   terminal_pids="$(persistent_terminal_pids "$helper" "$old_cfg" "$old_project" | paste -sd, -)"
   if [[ -n "$terminal_pids" ]]; then
+    if retain_previous_backend "$helper" "$old_port" "$old_cfg" "$old_project" "$terminal_pids"; then return 0; fi
     log "DRAIN_PERSISTENT_TERMINAL_DEFER profile=default pids=$terminal_pids"
     return 1
   fi
@@ -333,6 +360,10 @@ cleanup_releases(){
   for d in "$RELEASE_ROOT"/v*; do
     [[ -d "$d" ]] || continue
     if [[ -n "$active" && "$(readlink -f "$d")" == "$(readlink -f "$active")" ]]; then
+      continue
+    fi
+    if retained_project_protected "$INSTALL_DIR" "$d"; then
+      log "RELEASE_CLEANUP_RETAINED_PROTECT name=$(basename "$d")"
       continue
     fi
     if rm -rf "$d" && [[ ! -d "$d" ]]; then
@@ -473,11 +504,7 @@ if [[ -f "$ROUTE" ]]; then
   IFS=$'\t' read -r _ _ _ _ _ _ LIVE_ROUTE_CFG LIVE_ROUTE_PROJECT < <(route_tsv "$STAGE_DIR" "$ROUTE")
   TERMINAL_PIDS="$(persistent_terminal_pids "$STAGE_DIR" "$LIVE_ROUTE_CFG" "$LIVE_ROUTE_PROJECT" | paste -sd, -)"
   if [[ -n "$TERMINAL_PIDS" ]]; then
-    stop_owned_candidate "$CANDIDATE_PID" "$STAGE_DIR"
-    CANDIDATE_PID=""
-    trap - ERR
-    log "AUTO_UPDATE_PERSISTENT_TERMINAL_BLOCK profile=default pids=$TERMINAL_PIDS"
-    exit 0
+    log "AUTO_UPDATE_ACTIVE_TERMINALS_PRESERVE profile=default pids=$TERMINAL_PIDS"
   fi
 fi
 
