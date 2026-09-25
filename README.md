@@ -8,7 +8,7 @@ Cross-platform Windows + Linux MCP server for controlled remote project and mach
 
 **Setup guides in 10 languages:** [English](docs/SETUP.en.md) · [فارسی](docs/SETUP.fa.md) · [العربية](docs/SETUP.ar.md) · [Türkçe](docs/SETUP.tr.md) · [Español](docs/SETUP.es.md) · [Français](docs/SETUP.fr.md) · [Deutsch](docs/SETUP.de.md) · [Русский](docs/SETUP.ru.md) · [简体中文](docs/SETUP.zh-CN.md) · [日本語](docs/SETUP.ja.md)
 
-[Documentation index](docs/README.md) · [Current release candidate: v0.8.42](docs/RELEASE_0.8.42.md) · [Project status](docs/PROJECT_CONTROL_STATE.md) · [Development roadmap](docs/PROJECT_ENGINE_ROADMAP.md)
+[Documentation index](docs/README.md) · [Published baseline: v0.8.42](docs/RELEASE_0.8.42.md) · [Current candidate: v0.9.0](docs/RELEASE_0.9.0.md) · [Project status](docs/PROJECT_CONTROL_STATE.md) · [Development roadmap](docs/PROJECT_ENGINE_ROADMAP.md)
 
 ## Persistent startup
 
@@ -58,7 +58,7 @@ For Power Mode, add `--power-mode`. Linux amd64 and arm64 are supported by the i
 
 ## Features
 
-In v0.8.35, [durable input requests](docs/PROJECT_ENGINE_DECISIONS.md) let an enrolled project ask for a decision and resume from an explicit answer without resetting its budgets or changing its acceptance criteria.
+In v0.9.0, canonical Full Power installations converge the bounded Project Engine runner across qualified Windows/Linux deployments using a pinned private Codex CLI 0.156.1 provider; the installer/updater bootstraps it when needed, while Standard authority, explicit opt-outs and custom/no-start isolation remain fail-closed. In v0.8.35, [durable input requests](docs/PROJECT_ENGINE_DECISIONS.md) let an enrolled project ask for a decision and resume from an explicit answer without resetting its budgets or changing its acceptance criteria.
 
 [The opt-in project execution engine](docs/PROJECT_ENGINE.md), introduced in v0.8.34, adds bounded planner proposals, journaled execution, durable budgets, pause/cancel controls, fresh observations after restart and independent evidence-bound finalization. It is disabled unless explicitly configured and does not automatically enroll existing workflows. See the [development roadmap](docs/PROJECT_ENGINE_ROADMAP.md) for remaining capabilities and comparative qualification.
 
@@ -77,7 +77,7 @@ Optional [adaptive planning and proposal teams](docs/PROJECT_ENGINE_ADAPTIVE.md)
 
 ## Background browser — zero-interference web automation
 
-v0.8.42 carries the v0.8.41 transport-deadline/response-budget hardening while restoring compatibility with persisted provider timeout settings from earlier releases; configured legacy values are accepted, but effective planner execution remains transport-bounded. It drives an owned headless Chromium session through CDP, using a Commander-only persistent or isolated profile. It does **not** move the user's mouse, change foreground focus, type into the user's browser window, reuse the user's normal browser profile, or expose cookies/password-store contents.
+v0.8.41 carries the hardened background-browser and durable-command layers from the unpublished v0.8.39/v0.8.40 candidates and adds transport-deadline/response-budget hardening. It drives an owned headless Chromium session through CDP, using a Commander-only persistent or isolated profile. It does **not** move the user's mouse, change foreground focus, type into the user's browser window, reuse the user's normal browser profile, or expose cookies/password-store contents.
 
 Long-running command work is also background-first: `operation_start` returns a durable operation ID quickly, `operation_status` polls bounded state, `operation_result` returns bounded tails plus evidence metadata, and `operation_cancel` stops only the exact Commander-owned operation. Stable request IDs make lost acknowledgements idempotent and uncertain effects are never blindly replayed.\n\nThe intended order for web work is: **background first → approval only when genuinely required → temporary same-profile foreground interaction → return to background**. If the background page encounters MFA, WebAuthn, CAPTCHA, or a site that rejects background operation, `browser_foreground_requirement` returns an explicit approval boundary instead of seizing the desktop. After approval, `browser_foreground_begin` temporarily exposes the same Commander-owned profile visibly; after the minimum GUI step, `browser_foreground_end` returns that same session to headless background operation. Existing user-browser saved passwords are never extracted or copied. See [Background browser and foreground approval](docs/BACKGROUND_BROWSER.md).
 

@@ -1,11 +1,20 @@
 # Changelog
 
+## 0.9.0 — 2026-09-25
+
+- Promote the next milestone around capability parity rather than revision-only versioning: canonical Full Power installations auto-configure the bounded Project Engine runner from the pinned private Codex CLI 0.156.1 provider, bootstrapping that provider when needed.
+- Converge the Linux/Emad deployment with the proven Work-created configuration observed on the Emad Windows PC: automatic enrolled-project execution, bounded planner proposals, builder/reviewer proposal team, adaptive bounded extensions, durable worker artifacts and resume-after-restart/update semantics.
+- Add explicit `workflow.project_engine` capability accounting and opt-out. Standard authority and explicit Full Power opt-outs continue to fail closed; missing qualified provider leaves durable recovery enabled but does not enable autonomous execution.
+- Normalize inherited provider timeouts to the 30-second synchronous transport budget introduced in v0.8.41; longer work continues through durable operation/workflow state rather than extending tunnel deadlines.
+- Make installer and candidate-first updater configuration discover the same qualified provider on Windows and Linux from the private Commander state root, with regression coverage for parity, authority, provider absence and timeout migration.
+- Carry forward v0.8.41 background-first browser, durable operation, idempotency, response-envelope and connection-interruption hardening unchanged.
+
 ## 0.8.42 — 2026-09-25
 
 - Restore live upgrade compatibility for persisted Project Engine provider configurations that legitimately carry historical timeout values such as 120000 ms.
 - Separate configured timeout acceptance from effective execution time: provider configuration remains accepted up to the historical 600000 ms bound, while the effective planner process deadline remains clamped to 30000 ms for transport-safe retry hardening.
 - Add regression coverage proving a legacy 120000 ms provider configuration loads successfully while `planner.describe().timeoutMs` remains 30000 ms.
-- v0.8.41 remains an immutable published release, but its first candidate-first Windows production rollout was rejected before cutover with `CANDIDATE_HEALTH_TIMEOUT`; production stayed on v0.8.37. v0.8.42 supersedes it for deployment.
+- v0.8.41 remained immutable and failed safely during its first live rollout; v0.8.42 superseded it for deployment and is the published compatibility baseline carried into v0.9.0.
 
 ## 0.8.41 — 2026-09-25 (published, deployment superseded by 0.8.42)
 

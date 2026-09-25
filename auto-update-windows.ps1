@@ -195,6 +195,34 @@ function Get-LatestTag {
   if($tag -notmatch '^v\d+\.\d+\.\d+$'){ throw 'LATEST_RELEASE_TAG_INVALID' }
   return $tag
 }
+function Ensure-ProjectProvider([string]$ConfigPath){
+  $requested = [bool]$PowerMode
+  if (-not $requested -and -not $StandardMode -and (Test-Path -LiteralPath $ConfigPath -PathType Leaf)) {
+    try {
+      $prior = Read-Json $ConfigPath
+      $requested = [string]$prior.capabilityProfile.tier -eq 'FULL_POWER'
+    } catch {}
+  }
+  if (-not $requested) { return }
+  $version='0.156.1'
+  $providerRoot=Join-Path $StateRoot (Join-Path 'tools\codex-cli' $version)
+  $arch=[System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString().ToLowerInvariant()
+  switch($arch){
+    'x64' { $exe=Join-Path $providerRoot 'node_modules\@openai\codex-win32-x64\vendor\x86_64-pc-windows-msvc\bin\codex.exe' }
+    'arm64' { $exe=Join-Path $providerRoot 'node_modules\@openai\codex-win32-arm64\vendor\aarch64-pc-windows-msvc\bin\codex.exe' }
+    default { throw "Unsupported Codex provider architecture: $arch" }
+  }
+  if(-not(Test-Path -LiteralPath $exe -PathType Leaf)){
+    New-Item -ItemType Directory -Force -Path $providerRoot | Out-Null
+    & npm.cmd install --prefix $providerRoot --ignore-scripts --no-audit --no-fund --save-exact '@openai/codex@0.156.1'
+    if($LASTEXITCODE -ne 0){throw "PROJECT_PROVIDER_INSTALL_FAIL code=$LASTEXITCODE"}
+  }
+  if(-not(Test-Path -LiteralPath $exe -PathType Leaf)){throw "PROJECT_PROVIDER_MISSING path=$exe"}
+  $actual=(& $exe --version 2>&1 | Out-String).Trim()
+  if($LASTEXITCODE -ne 0 -or $actual -notmatch [regex]::Escape($version)){throw "PROJECT_PROVIDER_VERSION_MISMATCH actual=$actual"}
+  Log "PROJECT_PROVIDER_PASS version=$version path=$exe"
+}
+
 function Stage-Release([string]$Ref){
   $tmp=Join-Path $ReleaseRoot ("stage-{0}-{1}" -f ($Ref -replace '[^A-Za-z0-9._-]','_'),$PID)
   if(Test-Path $tmp){Remove-Item $tmp -Recurse -Force}
@@ -541,7 +569,7 @@ function Retire-PreviousRoute([string]$RoutePath,[object]$OldActive,[string]$Pro
   if(-not $state.previous){return}
   if([int]$state.previous.port-ne[int]$OldActive.port -or [string]$state.previous.commit-ne[string]$OldActive.commit){throw "ROUTER_RETIRE_IDENTITY_MISMATCH profile=$Profile"}
   & node.exe (Join-Path $PSScriptRoot 'tools\router-retire.mjs') --state $RoutePath --expected-generation ([string]$state.generation) --profile $Profile --previous-port ([string]$OldActive.port) --previous-commit ([string]$OldActive.commit)
-  if($LASTEXITCODE-ne0){throw "ROUTER_RETIRE_FAIL profile=$Profile"}
+  if($LASTEXITCODE -ne 0){throw "ROUTER_RETIRE_FAIL profile=$Profile"}
   Log "ROUTER_PREVIOUS_RETIRED profile=$Profile port=$($OldActive.port) commit=$($OldActive.commit)"
 }
 function Get-DrainStatus([int]$CanonicalPort,[int]$OldPort){
@@ -794,6 +822,7 @@ try{
     Run-Gate $stage.Dir 'check' @('run','check')
     Run-Gate $stage.Dir 'test' @('test')
     Run-Gate $stage.Dir 'audit' @('run','audit')
+    Ensure-ProjectProvider (Get-PrimaryConfig)
     if($primaryConfig.powerMode.enabled-eq $true -and $primaryConfig.powerMode.guiControl.enabled-eq $true){
       # Unattended updates must not steal desktop focus. Full interactive GUI E2E
       # remains a release gate; candidate hardware validation later requires gui_status.
@@ -840,7 +869,7 @@ try{
     }
 
     $cfg=Join-Path $stateDir 'diagnostic-config.json'
-    $buildArgs=@((Join-Path $stage.Dir 'tools\build-candidate-config.mjs'),'--default',(Join-Path $stage.Dir 'config.json'),'--existing',$t.ExistingConfig,'--output',$cfg,'--profile-id',$t.Profile,'--port',[string]$port,'--state-dir',$stateDir,'--workflow-dir',$shadowWorkflowDir)
+    $buildArgs=@((Join-Path $stage.Dir 'tools\build-candidate-config.mjs'),'--default',(Join-Path $stage.Dir 'config.json'),'--existing',$t.ExistingConfig,'--output',$cfg,'--profile-id',$t.Profile,'--port',[string]$port,'--state-dir',$stateDir,'--workflow-dir',$shadowWorkflowDir,'--provider-root',$StateRoot)
     if($PowerMode){$buildArgs+=@('--mode','full')}elseif($StandardMode){$buildArgs+=@('--mode','standard')}else{$buildArgs+=@('--mode','preserve')}
     if($GuiControl){$buildArgs+=@('--gui','on')}elseif($DisableGuiControl){$buildArgs+=@('--gui','off')}
     foreach($cap in $DisableCapability){$buildArgs+=@('--disable-capability',$cap)}
@@ -884,7 +913,7 @@ try{
     $currentCandidate=$null
     foreach($i in 1..40){Start-Sleep -Milliseconds 100;if(-not(Get-NetTCPConnection -State Listen -LocalPort $port -ErrorAction SilentlyContinue)){break}}
     $finalCfg=Join-Path $stateDir 'config.json'
-    $finalArgs=@((Join-Path $stage.Dir 'tools\build-candidate-config.mjs'),'--default',(Join-Path $stage.Dir 'config.json'),'--existing',$t.ExistingConfig,'--output',$finalCfg,'--profile-id',$t.Profile,'--port',[string]$port,'--state-dir',$stateDir)
+    $finalArgs=@((Join-Path $stage.Dir 'tools\build-candidate-config.mjs'),'--default',(Join-Path $stage.Dir 'config.json'),'--existing',$t.ExistingConfig,'--output',$finalCfg,'--profile-id',$t.Profile,'--port',[string]$port,'--state-dir',$stateDir,'--provider-root',$StateRoot)
     if($liveWorkflowDir){$finalArgs+=@('--workflow-dir',$liveWorkflowDir)}
     if($PowerMode){$finalArgs+=@('--mode','full')}elseif($StandardMode){$finalArgs+=@('--mode','standard')}else{$finalArgs+=@('--mode','preserve')}
     if($GuiControl){$finalArgs+=@('--gui','on')}elseif($DisableGuiControl){$finalArgs+=@('--gui','off')}

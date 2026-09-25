@@ -10,7 +10,7 @@ ENABLE_CAPS=()
 START_SERVER=0
 INSTALL_PREREQS=0
 TUNNEL_VERSION="0.0.14"
-SOURCE_REF="${REMOTE_COMMANDER_SOURCE_REF:-v0.8.42}"
+SOURCE_REF="${REMOTE_COMMANDER_SOURCE_REF:-v0.9.0}"
 EXPECTED_COMMIT="${REMOTE_COMMANDER_EXPECTED_COMMIT:-}"
 CURL_CONNECT_TIMEOUT="${REMOTE_COMMANDER_CURL_CONNECT_TIMEOUT:-15}"
 CURL_MAX_TIME="${REMOTE_COMMANDER_CURL_MAX_TIME:-180}"
@@ -25,7 +25,7 @@ Usage: install.sh [options]
   --disable-capability CAP  Explicit capability opt-out (repeatable)
   --enable-capability CAP   Explicit capability opt-in (repeatable)
   --start-server            Start MCP server with nohup after validation
-  --source-ref REF          Git ref to install (default: v0.8.42)
+  --source-ref REF          Git ref to install (default: v0.9.0)
   --expected-commit SHA     Require the fetched ref to peel to this exact 40-hex commit
   -h, --help                Show help
 USAGE
@@ -222,6 +222,47 @@ ensure_node_path() {
   [[ "$major" -ge 22 ]] || { echo "Node.js 22+ not available" >&2; exit 1; }
   need npm || { echo "npm is required" >&2; exit 1; }
 }
+ensure_project_provider() {
+  if [[ "$CUSTOM_NO_START" == 1 ]]; then
+    echo 'Project provider bootstrap deferred for custom/no-start installation.'
+    return 0
+  fi
+  local requested=0
+  if [[ "$POWER_MODE" == 1 ]]; then
+    requested=1
+  elif [[ "$STANDARD_MODE" == 0 && -f "$INSTALL_DIR/config.local.json" ]]; then
+    local tier
+    tier="$(node "$INSTALL_DIR/tools/json-field.mjs" --file "$INSTALL_DIR/config.local.json" --field capabilityProfile.tier 2>/dev/null || true)"
+    [[ "$tier" == "FULL_POWER" ]] && requested=1
+  fi
+  [[ "$requested" == 1 ]] || return 0
+
+  local version="0.156.1"
+  local state_root="${XDG_STATE_HOME:-$HOME/.local/state}/chatgpt-remote-commander"
+  [[ "$CUSTOM_NO_START" == 0 ]] || state_root="$INSTALL_DIR/var/isolated"
+  local provider_root="$state_root/tools/codex-cli/$version"
+  local machine exe
+  machine="$(uname -m)"
+  case "$machine" in
+    x86_64|amd64)
+      exe="$provider_root/node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/bin/codex"
+      ;;
+    aarch64|arm64)
+      exe="$provider_root/node_modules/@openai/codex-linux-arm64/vendor/aarch64-unknown-linux-musl/bin/codex"
+      ;;
+    *) echo "Unsupported Codex provider architecture: $machine" >&2; exit 1 ;;
+  esac
+
+  if [[ ! -x "$exe" ]]; then
+    mkdir -p "$provider_root"
+    npm install --prefix "$provider_root" --ignore-scripts --no-audit --no-fund --save-exact "@openai/codex@$version"
+  fi
+  [[ -x "$exe" ]] || { echo "Qualified Codex provider is missing after install: $exe" >&2; exit 1; }
+  local actual
+  actual="$("$exe" --version 2>/dev/null || true)"
+  [[ "$actual" == *"$version"* ]] || { echo "Qualified Codex provider version mismatch: $actual" >&2; exit 1; }
+  echo "PROJECT_PROVIDER_PASS version=$version path=$exe"
+}
 
 install_tunnel_client() {
   local machine arch asset dir tmp sums expected actual
@@ -297,6 +338,7 @@ write_local_config() {
       --allowed-program dotnet --allowed-program cmake --allowed-program ninja)
   fi
   local cap
+  [[ "$CUSTOM_NO_START" == 1 ]] || args+=(--provider-root "$state_root")
   for cap in "${DISABLE_CAPS[@]}"; do args+=(--disable-capability "$cap"); done
   for cap in "${ENABLE_CAPS[@]}"; do args+=(--enable-capability "$cap"); done
   node "${args[@]}" >/dev/null
@@ -396,6 +438,7 @@ else
   install_portable_node
   ensure_node_path
   install_tunnel_client
+  ensure_project_provider
   write_local_config
   chmod +x "$INSTALL_DIR/install.sh" "$INSTALL_DIR/connect-chatgpt-account.sh" "$INSTALL_DIR/run-server.sh" \
     "$INSTALL_DIR/autostart-linux.sh" "$INSTALL_DIR/supervisor-routing-linux.sh" "$INSTALL_DIR/auto-update-linux.sh" \

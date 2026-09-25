@@ -1,6 +1,6 @@
 # Engineering decisions and evidence
 
-Updated: 2026-09-25. Current immutable published-release authority is [v0.8.41](RELEASE_0.8.41.md), but live candidate-first deployment rejected it before cutover. [v0.8.42](RELEASE_0.8.42.md) is the current compatibility hotfix candidate; v0.8.38, v0.8.39 and v0.8.40 remain historical unpublished tags. This public index separates reusable engineering decisions from historical deployment observations.
+Updated: 2026-09-25. Current immutable published-release authority is [v0.8.42](RELEASE_0.8.42.md). [v0.9.0](RELEASE_0.9.0.md) is the current capability-parity candidate; v0.8.38, v0.8.39 and v0.8.40 remain historical unpublished tags. This public index separates reusable engineering decisions from historical deployment observations.
 
 ## Current guarantees and their regression locations
 
@@ -69,8 +69,9 @@ These candidate-development results were followed by the exact v0.8.40 Windows g
 
 ## Publication records
 
-- [v0.8.42 candidate](RELEASE_0.8.42.md): compatibility hotfix retaining v0.8.41 transport bounds while accepting persisted legacy provider timeout values.
-- [v0.8.41 published/deployment-superseded](RELEASE_0.8.41.md): immutable retry/connection hardening release; package/CI gates passed, but first Windows live candidate failed before cutover.
+- [v0.9.0 candidate](RELEASE_0.9.0.md): Full Power Project Engine runner parity across qualified Windows/Linux deployments.
+- [v0.8.42 published](RELEASE_0.8.42.md): immutable live-compatibility baseline that preserves v0.8.41 transport hardening and restores persisted provider-timeout compatibility.
+- [v0.8.41 published](RELEASE_0.8.41.md): immutable retry/connection hardening release, deployment-superseded by v0.8.42.
 - [v0.8.40 historical candidate](RELEASE_0.8.40.md): durable background operations tag; not published as a GitHub Release and superseded by v0.8.41.
 - [v0.8.39 historical candidate](RELEASE_0.8.39.md): hardened zero-interference browser; tag exists but no GitHub Release was published.
 - [v0.8.38 superseded candidate](RELEASE_0.8.38.md): pre-hardening browser candidate; historical tag is not moved.
@@ -129,21 +130,18 @@ Historical checkpoints remain append-only archives. Current release/control clai
 
 **Reuse targets:** multi-account recovery, supervisor diagnostics, future reconfigure hardening.
 
+## E069 — Full Power Project Engine parity across Emad deployments
 
-## E069 — v0.8.41 live upgrade rejected persisted 120 s planner configuration
+**Date/Context:** 2026-09-25; reconciliation of capabilities created through Saeed's ChatGPT Work account on the accessible Emad Windows PC with the Emad Linux laptop. No direct machine-state claim about Saeed's own physical computer is used as evidence.
 
-**Date/Context:** 2026-09-25; first candidate-first Windows production rollout after immutable v0.8.41 publication.
+**Observed evidence:** Both accessible runtimes were v0.8.37 at the audit checkpoint. Windows Full Power config contained an enabled Project Engine runner with `autoTick=true`, qualified Codex CLI 0.156.1, bounded builder/reviewer proposal team, adaptive extension budget and durable worker-artifact controls. Linux Full Power config had the same qualified Codex CLI 0.156.1 binary installed under its private Commander state root but no runner block; `system_status` therefore reported `automaticExecution=false` and `runnerConfigured=false`.
 
-**Observed evidence:** v0.8.41 passed local/hosted CI, reproducible assets and fresh/repeated no-start installer acceptance. During live candidate-first update, repository gates `check/test/audit/gui-native-selftest` all passed and a diagnostic config was generated from the persisted Full Power profile. The candidate backend never reached health and the updater ended `FAILED: CANDIDATE_HEALTH_TIMEOUT profile=default port=48836`. No route switched; both canonical profiles remained healthy on v0.8.37.
+**Root cause:** capability migration preserved an existing runner but did not create one from the already-qualified local provider. Full Power therefore meant different effective project-execution capability depending on prior machine history.
 
-**Root cause:** The persisted Project Engine runner configuration contains `provider.timeoutMs=120000`, which was valid in prior releases. v0.8.41 changed `createCommandPlanner` validation from an accepted maximum of 600000 ms to 30000 ms in order to keep synchronous work below the tunnel response deadline. Startup constructs the planner whenever the runner is enabled, so the existing configuration threw `PLANNER_INVALID_CONFIG` before the candidate backend could become healthy. CI and isolated no-start installation did not instantiate this exact persisted-runner compatibility path.
+**Decision/Prevention:** v0.9.0 adds explicit `workflow.project_engine` capability accounting and cross-platform qualified-provider discovery. Canonical explicitly authorized Full Power installs/updates may bootstrap the pinned private Codex CLI 0.156.1 provider and auto-configure the bounded runner; Standard authority, explicit opt-out and custom/no-start isolation remain fail-closed. Historical configured provider timeouts remain loadable through the v0.8.42 compatibility guard while effective execution remains clamped to 30 seconds.
 
-**Prevention/Guard:** Configuration acceptance and effective execution deadline are separated. Historical configured values remain valid in the prior 10..600000 ms range, while the effective planner process timeout is clamped to 30000 ms. This preserves the retry/deadline control without making previously valid persisted profiles unloadable.
+**Regression:** `test/project-runner-config.test.mjs` covers Linux and Windows provider discovery, preservation + timeout migration, Standard denial, explicit opt-out, missing-provider fail-closed behavior and capability-state accounting. A discovered authority-hash regression in crash-recovery fixtures was corrected by separating capability authorization from runner readiness; the combined parity/capability/recovery gate then passed 73/73. The converged candidate line also passed full Windows check/test/audit, full Linux check/test/audit, real candidate-config parity on both accessible Emad devices, and Linux custom/no-start isolation 4/4.
 
-**Regression:** `test/project-planner.test.mjs` asserts a configured 120000 ms provider constructs successfully and reports an effective 30000 ms timeout. The focused planner suite passes **27/27**. Full Windows qualification also passes `npm run check` **156/4/0**, `npm test` **378/5/0**, GUI **75/75**, integrity tails, and security audit. v0.8.42 must additionally pass candidate-first live validation against the same persisted profile before publication/deployment is accepted.
+**Confidence/Status:** implementation and local cross-platform qualification CONFIRMED; hosted CI, immutable v0.9.0 publication and production rollout remain OPEN until separately evidenced.
 
-**Live regression evidence:** The exact hotfix commit `1d2308fb3873870e7bd47e394c8d96cffe74c28d` completed updater `NoPromote` validation as `CANDIDATE_PASS` against the real persisted Full Power profiles. Default and saeed-emad each passed doctor, hardware, shadow-store and live-store compatibility while preserving configured `provider.timeoutMs=120000`. Production route SHA-256 values remained `8d5f275ab835c9790bb1fadfdb109dd07db14e0b4d8c4d18c18da46c860d62b1` (default) and `3f6a274a9a10ea664c2ae57d4f83102173563137f3ea127d2e9ac17bc42972c3` (saeed-emad); live services remained v0.8.37 and candidate listeners were removed after validation.
-
-**Confidence/Status:** ROOT CAUSE CONFIRMED; v0.8.41 LIVE DEPLOYMENT REJECTED SAFELY; v0.8.42 HOTFIX LIVE-COMPATIBILITY GATE PASS.
-
-**Reuse targets:** update compatibility policy, release gates, Project Engine configuration migration, retry hardening.
+**Reuse targets:** v0.9.0 release, installer/updater policy, Full Power capability model, Project Brain, Work/Codex setup.
