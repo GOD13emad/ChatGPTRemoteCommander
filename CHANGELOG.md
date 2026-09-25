@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.9.1 — 2026-09-25
+
+- Harden final release acceptance without widening runtime authority or changing the v0.9.0 Project Engine capability model.
+- Add Linux `--skip-tunnel-client` parity with Windows: an existing pinned client is reused and verified; when none is present, the network download can be explicitly skipped for isolated/fresh qualification.
+- Eliminate a test-only unhandled-rejection race in the browser helper forced-shutdown regression by attaching the expected timeout rejection handler immediately; runtime browser timeout semantics are unchanged.
+- v0.9.0 remains an unpublished historical candidate; v0.9.1 is the release target.
+
 ## 0.9.0 — 2026-09-25
 
 - Promote the next milestone around capability parity rather than revision-only versioning: canonical Full Power installations auto-configure the bounded Project Engine runner from the pinned private Codex CLI 0.156.1 provider, bootstrapping that provider when needed.
