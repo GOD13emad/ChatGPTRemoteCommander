@@ -1,6 +1,6 @@
 # Engineering decisions and evidence
 
-Updated: 2026-09-25. Current immutable published-release authority is [v0.9.0](RELEASE_0.9.0.md). [v0.9.2](RELEASE_0.9.2.md) is the current installer-cleanup hotfix candidate; v0.9.1 remains an unpublished hardening tag; v0.8.38, v0.8.39 and v0.8.40 remain historical unpublished tags. This public index separates reusable engineering decisions from historical deployment observations.
+Updated: 2026-09-25. Current immutable published-release authority is [v0.9.1](RELEASE_0.9.1.md). [v0.9.3](RELEASE_0.9.3.md) is the current Linux-completeness candidate; v0.9.2 is an unpublished installer-cleanup candidate; v0.8.38, v0.8.39 and v0.8.40 remain historical unpublished tags. This public index separates reusable engineering decisions from historical deployment observations.
 
 ## Current guarantees and their regression locations
 
@@ -15,7 +15,7 @@ Updated: 2026-09-25. Current immutable published-release authority is [v0.9.0](R
 | Persist attempts, observations and provider-call budgets before continuation | `test/project-engine.test.mjs`, `test/project-engine-integration.test.mjs` |
 | Independent immutable checks and fresh artifact hashes determine workflow completion | `test/project-verifier.test.mjs`, `test/project-engine-review.test.mjs` |
 | Reject hardlinked and aliased mutation/evidence paths | `test/file-write-guard.test.mjs`, `test/project-engine-integration.test.mjs` |
-| Background web automation uses an instance-isolated Commander-owned Chromium profile first and requires explicit current-task authorization before same-profile foreground exposure | `test/browser-safety.test.mjs`, `test/browser-process.test.mjs`, `test/browser-owned-processes.test.mjs`, [v0.8.39 historical candidate](RELEASE_0.8.39.md) |
+| Background web automation uses a Commander-owned profile first: Chromium/CDP where available and Firefox/geckodriver WebDriver on qualified Linux hosts; explicit current-task authorization remains required before foreground exposure | `test/browser-safety.test.mjs`, `test/browser-process.test.mjs`, `test/browser-firefox-native.test.mjs`, `test/browser-owned-processes.test.mjs` |
 | Custom no-start installers preserve live routing; updates retain active terminal workloads | `test/linux-installer-isolation.test.mjs`, `test/auto-update-contract.test.mjs` |
 | Native and legacy plugin manifests retain matching identity/version, discoverable skills and public assets | `test/onboarding-plugin-check.mjs` |
 
@@ -69,10 +69,10 @@ These candidate-development results were followed by the exact v0.8.40 Windows g
 
 ## Publication records
 
-- [v0.9.2 candidate](RELEASE_0.9.2.md): v0.9.1 hardening plus idempotent post-success Windows updater cleanup.
-- [v0.9.1 historical candidate](RELEASE_0.9.1.md): parity plus exact-tag installer/release hardening; tagged but not published as a GitHub Release.
-- [v0.9.0 published](RELEASE_0.9.0.md): immutable capability-parity release; Windows live cutover succeeded but its wrapper exposed the cleanup-race false failure corrected by v0.9.2.
-- [v0.9.0 historical candidate](RELEASE_0.9.0.md): Full Power Project Engine parity candidate, not published as a GitHub Release.
+- [v0.9.3 candidate](RELEASE_0.9.3.md): v0.9.2 cleanup plus Linux terminal-retention and Firefox WebDriver background-browser parity.
+- [v0.9.2 historical candidate](RELEASE_0.9.2.md): unpublished installer-cleanup hotfix candidate.
+- [v0.9.1 published](RELEASE_0.9.1.md): immutable release-hardening release with 13 assets.
+- [v0.9.0 published](RELEASE_0.9.0.md): immutable capability-parity release with 13 assets; its Windows rollout exposed the cleanup-race false failure corrected by v0.9.2.
 - [v0.8.42 published](RELEASE_0.8.42.md): immutable live-compatibility baseline that preserves v0.8.41 transport hardening and restores persisted provider-timeout compatibility.
 - [v0.8.41 published](RELEASE_0.8.41.md): immutable retry/connection hardening release, deployment-superseded by v0.8.42.
 - [v0.8.40 historical candidate](RELEASE_0.8.40.md): durable background operations tag; not published as a GitHub Release and superseded by v0.8.41.
@@ -141,13 +141,13 @@ Historical checkpoints remain append-only archives. Current release/control clai
 
 **Root cause:** capability migration preserved an existing runner but did not create one from the already-qualified local provider. Full Power therefore meant different effective project-execution capability depending on prior machine history.
 
-**Decision/Prevention:** v0.9.0/v0.9.1/v0.9.2 add explicit `workflow.project_engine` capability accounting and cross-platform qualified-provider discovery. Canonical explicitly authorized Full Power installs/updates may bootstrap the pinned private Codex CLI 0.156.1 provider and auto-configure the bounded runner; Standard authority, explicit opt-out and custom/no-start isolation remain fail-closed. Historical configured provider timeouts remain loadable through the v0.8.42 compatibility guard while effective execution remains clamped to 30 seconds.
+**Decision/Prevention:** v0.9.0 through v0.9.3 add explicit `workflow.project_engine` capability accounting and cross-platform qualified-provider discovery. Canonical explicitly authorized Full Power installs/updates may bootstrap the pinned private Codex CLI 0.156.1 provider and auto-configure the bounded runner; Standard authority, explicit opt-out and custom/no-start isolation remain fail-closed. Historical configured provider timeouts remain loadable through the v0.8.42 compatibility guard while effective execution remains clamped to 30 seconds.
 
 **Regression:** `test/project-runner-config.test.mjs` covers Linux and Windows provider discovery, preservation + timeout migration, Standard denial, explicit opt-out, missing-provider fail-closed behavior and capability-state accounting. A discovered authority-hash regression in crash-recovery fixtures was corrected by separating capability authorization from runner readiness; the combined parity/capability/recovery gate then passed 73/73. The converged candidate line also passed full Windows check/test/audit, full Linux check/test/audit, real candidate-config parity on both accessible Emad devices, and Linux custom/no-start isolation 4/4.
 
-**Confidence/Status:** implementation and local cross-platform qualification CONFIRMED; hosted CI, immutable v0.9.2 publication and production rollout remain OPEN until separately evidenced.
+**Confidence/Status:** implementation and local cross-platform qualification CONFIRMED; hosted CI, immutable v0.9.3 publication and production rollout remain OPEN until separately evidenced.
 
-**Reuse targets:** v0.9.2 release, installer/updater policy, Full Power capability model, Project Brain, Work/Codex setup.
+**Reuse targets:** v0.9.3 release, installer/updater policy, Full Power capability model, Project Brain, Work/Codex setup.
 
 
 ## E070 — post-success Windows installer cleanup race
@@ -165,3 +165,33 @@ Historical checkpoints remain append-only archives. Current release/control clai
 **Confidence/Status:** root cause and code guard CONFIRMED; final live v0.9.2 rollout evidence remains OPEN until executed.
 
 **Reuse targets:** installer/update policy, release qualification, false-failure prevention, Project Brain.
+
+## E071 — Linux terminal-preserving route cutover
+
+**Date/Context:** 2026-09-25; v0.9.1 Linux live rollout after all candidate gates passed.
+
+**Observed evidence:** the validated candidate could not promote because the active v0.8.37 backend owned persistent terminal children. The Linux updater treated any such terminal as a pre-cutover blocker. Killing those terminals would violate the project execution policy and user continuity requirement.
+
+**Root cause:** Windows already had a retained-backend registry and terminal-aware route detachment, but Linux only had defer-or-stop drain logic.
+
+**Prevention/Guard:** v0.9.3 adds a durable Linux retained-backend registry. After the normal candidate gates and route switch, a terminal-bearing previous backend may be detached only when routed HTTP inflight for its exact port is zero and its commit/config identity is valid. The backend process is kept alive, its release tree is protected, and later maintenance reaps it only after terminal/child/socket evidence is clear. No terminal is killed merely to finish an update.
+
+**Regression:** retained registry and updater contracts passed 12/12 on the Windows development host and 12/12 on the Emad Linux laptop; candidate-only Linux validation of the retention branch exited 0.
+
+**Confidence/Status:** implementation and candidate-only behavior CONFIRMED; final live route-retention evidence is a v0.9.3 rollout gate.
+
+## E072 — Safe Linux background-browser backend
+
+**Date/Context:** 2026-09-25; activation of all Full Power capabilities on the Emad Linux laptop.
+
+**Observed evidence:** v0.9.1 authorized browser.background/navigation/input/screenshot in Full Power but the laptop had no Chromium backend. Playwright 1.63.0 installed, while its Chrome-for-Testing CDN returned HTTP 403 location blocking. A verified privately extracted Google Chrome package then failed its SUID sandbox requirement; Ubuntu 24.04 AppArmor had kernel.apparmor_restrict_unprivileged_userns=1, and both Chrome namespace sandbox and bubblewrap user namespaces were blocked without elevated OS policy.
+
+**Rejected unsafe workaround:** direct --no-sandbox Chrome was not admitted as a product default.
+
+**Prevention/Guard:** v0.9.3 keeps Chromium/CDP where already available and adds an independent Firefox + geckodriver WebDriver backend on Linux. Firefox Snap uses an owned profile under its permitted ~/snap/firefox/common namespace. Browser tools remain background-first, do not reuse the user's normal browser profile, do not extract password-store data, and retain the same foreground-approval boundary.
+
+**Regression:** manual Firefox 156.0.1 / geckodriver 0.37.1 session, navigation, JavaScript and screenshot PASS; product-level controller E2E status/session/navigate/snapshot/Unicode fill/click/wait/screenshot/end PASS on the Emad Linux laptop. Existing Windows focused browser and updater regressions passed 31/31.
+
+**Confidence/Status:** Linux Firefox background backend CONFIRMED on the audited laptop; cross-platform full/hosted/release gates remain separate.
+
+**Reuse targets:** browser backend selection, Linux installer/update policy, security review, Full Power capability parity.

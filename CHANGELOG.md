@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.9.3 — 2026-09-25
+
+- Complete Linux Full Power parity without killing persistent terminal workloads: validated route cutovers may retain a terminal-bearing previous backend after routed inflight work reaches zero, detach it from route.previous, and protect its release tree until the terminal workload ends.
+- Add a safe Firefox + geckodriver background-browser backend for Linux hosts without Chromium. Firefox Snap uses an owned profile root under ~/snap/firefox/common; Windows Chrome/CDP behavior is unchanged.
+- Keep Browser background-first and fail-closed: no global browser install, no sudo requirement, no user browser-profile reuse, no saved-password extraction, and no --no-sandbox fallback.
+- Record rejected approaches as evidence: Playwright Chromium CDN geoblocking and Ubuntu AppArmor user-namespace restrictions made private Chromium unsuitable on the audited Linux host.
+- Carry forward the v0.9.2 installer cleanup fix, v0.9.1 release hardening, and v0.9.0 Project Engine/retry parity behavior.
 ## 0.9.2 — 2026-09-25
 
 - Make the Windows existing-install updater wrapper cleanup idempotent after a successful candidate-first cutover: if its temporary fetch tree has already disappeared, cleanup no longer converts `SAFE_UPDATE_PASS` into a false process failure.

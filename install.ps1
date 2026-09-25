@@ -10,7 +10,7 @@ param(
   [switch]$StartServer,
   [switch]$SkipTunnelClient,
   [string]$TunnelClientVersion = '0.0.14',
-  [string]$SourceRef = 'v0.9.2',
+  [string]$SourceRef = 'v0.9.3',
   [string]$ExpectedCommit = ''
 )
 $ErrorActionPreference = 'Stop'

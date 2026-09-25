@@ -13,7 +13,7 @@ START_SERVER=0
 INSTALL_PREREQS=0
 SKIP_TUNNEL_CLIENT=0
 TUNNEL_VERSION="0.0.14"
-SOURCE_REF="${REMOTE_COMMANDER_SOURCE_REF:-v0.9.2}"
+SOURCE_REF="${REMOTE_COMMANDER_SOURCE_REF:-v0.9.3}"
 EXPECTED_COMMIT="${REMOTE_COMMANDER_EXPECTED_COMMIT:-}"
 CURL_CONNECT_TIMEOUT="${REMOTE_COMMANDER_CURL_CONNECT_TIMEOUT:-15}"
 CURL_MAX_TIME="${REMOTE_COMMANDER_CURL_MAX_TIME:-180}"
@@ -29,7 +29,7 @@ Usage: install.sh [options]
   --enable-capability CAP   Explicit capability opt-in (repeatable)
   --start-server            Start MCP server with nohup after validation
   --skip-tunnel-client      Skip tunnel-client download; reuse existing pinned client when present
-  --source-ref REF          Git ref to install (default: v0.9.2)
+  --source-ref REF          Git ref to install (default: v0.9.3)
   --expected-commit SHA     Require the fetched ref to peel to this exact 40-hex commit
   -h, --help                Show help
 USAGE
