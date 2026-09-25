@@ -176,6 +176,7 @@ export function migrateCapabilityConfig({
   next.powerMode.guiControl.backgroundPreferred = true;
   next.powerMode.guiControl.workflowTakeoverAllowed = false;
   next.powerMode.browserControl.backgroundFirst = true;
+  next.powerMode.browserControl.allowForegroundFallback = true;
   next.powerMode.browserControl.foregroundFallback = 'explicit-current-request-only';
   next.powerMode.browserControl.workflowBrowserAllowed = false;
   next.powerMode.browserControl.userBrowserProfileReuse = false;

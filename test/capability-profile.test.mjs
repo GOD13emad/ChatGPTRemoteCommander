@@ -215,6 +215,7 @@ test('background browser safety invariant survives Full Power migration',()=>{
   const r=migrateCapabilityConfig({defaultConfig:defaults(),existingConfig:full(),profileId:'default'});
   const b=r.config.powerMode.browserControl;
   assert.equal(b.backgroundFirst,true);
+  assert.equal(b.allowForegroundFallback,true);
   assert.equal(b.foregroundFallback,'explicit-current-request-only');
   assert.equal(b.workflowBrowserAllowed,false);
   assert.equal(b.userBrowserProfileReuse,false);

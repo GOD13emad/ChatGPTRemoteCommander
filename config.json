@@ -45,7 +45,8 @@
       "foregroundFallback": "explicit-current-request-only",
       "workflowBrowserAllowed": false,
       "userBrowserProfileReuse": false,
-      "savedPasswordExtraction": false
+      "savedPasswordExtraction": false,
+      "allowForegroundFallback": true
     }
   },
   "auditMaxBytes": 8388608,

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createBrowserController } from '../src/browser-tools.mjs';
 
 const config=()=>({instance:{profile:'default'},powerMode:{enabled:true,browserControl:{
- enabled:true,allowNavigate:true,allowInput:true,allowScreenshot:true,
+ enabled:true,allowNavigate:true,allowInput:true,allowScreenshot:true,allowForegroundFallback:true,
  backgroundFirst:true,foregroundFallback:'explicit-current-request-only',workflowBrowserAllowed:false,
  userBrowserProfileReuse:false,savedPasswordExtraction:false
 }}});
@@ -14,6 +14,7 @@ function fixture(overrides={}){
   if(req.action==='status')return {ok:true,available:true,backend:'chromium-cdp-headless',active:false};
   if(req.action==='start')return {ok:true,browserProduct:'Chrome/154',background:true};
   if(req.action==='end'){closed++;return {ok:true,closed:true};}
+  if(req.action==='relaunch')return {ok:true,headless:req.headless!==false,foreground:req.headless===false,browserProduct:'Chrome/154',sameOwnedProfile:true};
   if(req.action==='navigate')return {ok:true,url:req.url,title:'Page'};
   if(req.action==='snapshot')return {ok:true,url:'https://example.test/login',title:'Login',text:'Sign in',elements:[],signals:{passwordInputCount:1,otpInputCount:0,captchaDetected:false},foregroundFallbackSuggested:true,suggestedForegroundReason:'saved-browser-credential'};
   if(req.action==='screenshot')return {ok:true,data:Buffer.from('89504e470d0a1a0a','hex').toString('base64'),mimeType:'image/png',bytes:8,url:'https://example.test',title:'x'};
@@ -49,6 +50,19 @@ test('foreground requirement returns approval workflow but never takes over the 
  assert.equal(a.authorizationPolicy,'explicit-current-request-only');
  assert.match(a.nextStep,/gui_session_begin\(mode="takeover"/);
 });
+test('foreground fallback requires explicit current-task approval and relaunches the same owned profile back to headless',async()=>{
+ const f=fixture();const b=await f.ctl.execute(f.ctx,'browser_session_begin',{profile:'uni',mode:'persistent'});
+ await assert.rejects(f.ctl.execute(f.ctx,'browser_foreground_begin',{lease:b.lease,explicitUserAuthorization:'   '}),/BROWSER_EXPLICIT_FOREGROUND_AUTHORIZATION_REQUIRED/);
+ const visible=await f.ctl.execute(f.ctx,'browser_foreground_begin',{lease:b.lease,explicitUserAuthorization:'User explicitly asked to use mouse and keyboard for this task.'});
+ assert.equal(visible.foreground,true);assert.equal(visible.sameOwnedProfile,true);assert.equal(visible.userDesktopTouched,true);
+ const relaunchVisible=f.calls.find(x=>x.action==='relaunch'&&x.headless===false);
+ assert.ok(relaunchVisible);assert.equal(Object.hasOwn(relaunchVisible,'explicitUserAuthorization'),false);
+ const resumed=await f.ctl.execute(f.ctx,'browser_foreground_end',{lease:b.lease});
+ assert.equal(resumed.backgroundResumed,true);assert.equal(resumed.headless,true);assert.equal(resumed.sameOwnedProfile,true);
+ assert.ok(f.calls.find(x=>x.action==='relaunch'&&x.headless===true));
+ await assert.rejects(f.ctl.execute(f.ctx,'browser_foreground_end',{lease:b.lease}),/BROWSER_FOREGROUND_NOT_ACTIVE/);
+});
+
 test('uncertain browser mutation cannot blind-retry until a fresh DOM snapshot reconciles state',async()=>{
  const f=fixture();const b=await f.ctl.execute(f.ctx,'browser_session_begin',{});
  f.failClick();

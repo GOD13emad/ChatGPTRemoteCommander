@@ -103,15 +103,23 @@ async function ready(timeoutMs){
  }
  throw fail('BROWSER_NAVIGATION_TIMEOUT');
 }
-async function closeBrowser(){
+async function closeBrowser({preserveProfile=false}={}){
  const b=browser;browser=null;if(!b)return;
  try{await b.cdp?.send('Browser.close',{},undefined,2000);}catch{}
  try{b.cdp?.close();}catch{}
  if(b.child&&b.child.exitCode===null){
-  await Promise.race([new Promise(r=>b.child.once('close',r)),sleep(1500)]);
-  if(b.child.exitCode===null)try{b.child.kill();}catch{}
+  await Promise.race([new Promise(resolve=>b.child.once('close',resolve)),sleep(2500)]);
+  if(b.child.exitCode===null){
+   try{
+    if(process.platform==='win32'){
+     const killer=spawn('taskkill.exe',['/PID',String(b.child.pid),'/T','/F'],{stdio:'ignore',windowsHide:true,shell:false});
+     await Promise.race([new Promise(resolve=>killer.once('close',resolve)),sleep(1500)]);
+    }else b.child.kill('SIGKILL');
+   }catch{try{b.child.kill('SIGKILL');}catch{}}
+   if(b.child.exitCode===null)await Promise.race([new Promise(resolve=>b.child.once('close',resolve)),sleep(1500)]);
+  }
  }
- if(b.isolated&&b.profileDir){
+ if(!preserveProfile&&b.isolated&&b.profileDir){
   for(let i=0;i<8;i++){try{fs.rmSync(b.profileDir,{recursive:true,force:true,maxRetries:3,retryDelay:80});break;}catch{await sleep(100);}}
  }
 }
@@ -127,21 +135,25 @@ async function startBrowser(req){
   try{const port=Number(fs.readFileSync(portFile,'utf8').trim().split(/\r?\n/)[0]);if(await portAlive(port))throw fail('BROWSER_PROFILE_IN_USE');}catch(e){if(e?.browserCode)throw e;}
   try{fs.unlinkSync(portFile);}catch{}
  }
- const args=['--headless=new','--remote-debugging-port=0','--user-data-dir='+profileDir,'--no-first-run','--no-default-browser-check','--disable-sync','--window-size=1280,900','about:blank'];
- let child;try{child=spawn(executable,args,{stdio:['ignore','ignore','ignore'],windowsHide:true,shell:false});}catch{throw fail('BROWSER_LAUNCH_FAILED');}
+ const headless=req.headless!==false;
+ const args=['--remote-debugging-port=0','--user-data-dir='+profileDir,'--no-first-run','--no-default-browser-check','--disable-sync','--window-size=1280,900'];
+ if(headless)args.unshift('--headless=new');
+ args.push('about:blank');
+ let child;try{child=spawn(executable,args,{stdio:['ignore','ignore','ignore'],windowsHide:headless,shell:false});}catch{throw fail('BROWSER_LAUNCH_FAILED');}
  const port=await waitForPortFile(portFile,child);
  let version;try{version=await (await fetch('http://127.0.0.1:'+port+'/json/version')).json();}catch{try{child.kill();}catch{}throw fail('BROWSER_DEVTOOLS_UNAVAILABLE');}
  if(typeof version.webSocketDebuggerUrl!=='string'){try{child.kill();}catch{}throw fail('BROWSER_DEVTOOLS_UNAVAILABLE');}
  const cdp=new Cdp(version.webSocketDebuggerUrl);await cdp.open();
  const target=await cdp.send('Target.createTarget',{url:'about:blank'});
  const attached=await cdp.send('Target.attachToTarget',{targetId:target.targetId,flatten:true});
- browser={child,cdp,sessionId:attached.sessionId,targetId:target.targetId,profileDir,isolated:req.isolated===true,executable,product:version.Browser??null,port};
+ browser={child,cdp,sessionId:attached.sessionId,targetId:target.targetId,profileDir,isolated:req.isolated===true,executable,product:version.Browser??null,port,headless};
  try{
   await cdp.send('Page.enable',{},browser.sessionId);
   await cdp.send('Runtime.enable',{},browser.sessionId);
   await cdp.send('Network.enable',{},browser.sessionId);
  }catch(e){await closeBrowser();throw e;}
- return {ok:true,background:true,headless:true,profileMode:browser.isolated?'isolated':'persistent',browserProduct:browser.product,executable};
+ return {ok:true,background:headless,headless,foreground:!headless,userDesktopTouched:!headless,
+   profileMode:browser.isolated?'isolated':'persistent',browserProduct:browser.product,executable};
 }
 async function snapshot(req){
  const maxText=Math.max(1000,Math.min(40000,req.maxTextChars??20000));
@@ -166,10 +178,27 @@ async function handle(req){
  switch(req.action){
   case 'status':{
    const executable=detectBrowser(req.executable);
-   return {ok:true,available:!!executable,backend:executable?'chromium-cdp-headless':null,executable,active:!!browser,backgroundOnly:true,userDesktopTouched:false,savedPasswordStoreAccess:false};
+   return {ok:true,available:!!executable,backend:executable?'chromium-cdp':null,executable,active:!!browser,
+    headless:browser?.headless??null,foreground:browser?browser.headless===false:false,
+    backgroundOnly:browser?browser.headless===true:true,userDesktopTouched:browser?browser.headless===false:false,savedPasswordStoreAccess:false};
   }
   case 'start':return startBrowser(req);
   case 'end':await closeBrowser();return {ok:true,closed:true};
+  case 'relaunch':{
+   if(!browser)throw fail('BROWSER_SESSION_NOT_RUNNING');
+   let resume=null;
+   try{const current=await evaluate('location.href');const u=new URL(current);if(['http:','https:'].includes(u.protocol)&&!u.username&&!u.password)resume=u.href;}catch{}
+   const prior={profileDir:browser.profileDir,isolated:browser.isolated,executable:browser.executable};
+   await closeBrowser({preserveProfile:true});
+   const next=await startBrowser({...prior,headless:req.headless!==false});
+   if(resume){
+    const nav=await browser.cdp.send('Page.navigate',{url:resume},browser.sessionId,30000);
+    if(nav.errorText)throw fail('BROWSER_NAVIGATION_FAILED');
+    await ready(30000);
+   }
+   const current=redactUrl(await evaluate('location.href'))??{url:null,queryRedacted:false,fragmentRedacted:false};
+   return {...next,resumedUrl:current.url,urlQueryRedacted:current.queryRedacted,urlFragmentRedacted:current.fragmentRedacted,sameOwnedProfile:true};
+  }
   case 'navigate':{
    if(!browser)throw fail('BROWSER_SESSION_NOT_RUNNING');
    const u=new URL(req.url);if(!['http:','https:'].includes(u.protocol)||u.username||u.password)throw fail('BROWSER_URL_NOT_ALLOWED');

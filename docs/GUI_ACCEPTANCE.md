@@ -10,11 +10,11 @@ These measured Windows results do not waive the remaining release gates below fo
 
 ## Background-first web interaction candidate
 
-For web tasks, shared-desktop GUI is no longer the first automation path. Use the owned background browser first when available. It operates headlessly in a Commander-only browser profile and does not move the user's pointer, type into their foreground window, or focus their current browser. If the background path reports a genuine foreground boundary, use `browser_foreground_requirement` and ask for explicit current-task approval before GUI takeover.
+For web tasks, shared-desktop GUI is no longer the first automation path. Use the owned background browser first when available. It operates headlessly in a Commander-only browser profile and does not move the user's pointer, type into their foreground window, or focus their current browser. If the background path reports a genuine foreground boundary, use `browser_foreground_requirement`; if current-task approval is already present, do not ask again. `browser_foreground_begin` must relaunch the same owned profile visibly before any approved GUI step, and `browser_foreground_end` must return that same profile to headless mode afterward.
 
 A current user request that explicitly says to use the mouse/keyboard, take control of the page, or act like a human is sufficient authorization for that task's temporary takeover; do not ask for the same permission twice. After the minimum foreground step, verify it and end the GUI lease immediately.
 
-The background browser never extracts saved passwords or opens the user's password store. If a saved credential that exists only in the user's normal browser is required, that is a foreground-approval boundary, not authority to copy credentials.
+The background browser never extracts saved passwords or opens the user's password store. It does not reuse the user's normal browser profile. If a credential exists only in the user's normal browser, the approved fallback is not to copy it: the user or authorized GUI interaction signs in through the visible Commander-owned profile once, after which its own session cookies can persist for future background work.
 
 ## Gate A: no-input verification
 

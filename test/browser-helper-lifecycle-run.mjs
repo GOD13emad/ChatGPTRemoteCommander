@@ -4,8 +4,13 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { createInterface } from 'node:readline';
 import { once } from 'node:events';
+import http from 'node:http';
 
 const helper=new URL('../tools/browser-control.mjs',import.meta.url);
+const seenCookies=[];
+const server=http.createServer((req,res)=>{seenCookies.push(req.headers.cookie??'');res.writeHead(200,{'content-type':'text/html; charset=utf-8','set-cookie':'rc_profile=kept; Path=/; SameSite=Lax'});res.end('<!doctype html><title>profile continuity</title><p>ok</p>');});
+server.listen(0,'127.0.0.1');await once(server,'listening');
+const localUrl='http://127.0.0.1:'+server.address().port+'/continuity';
 const profile=path.join(os.tmpdir(),'rc-browser-eof-'+process.pid+'-'+Date.now().toString(36));
 const child=spawn(process.execPath,[helper.pathname.startsWith('/')&&process.platform==='win32'?helper.pathname.slice(1):helper.pathname,'--server'],{stdio:['pipe','pipe','pipe'],windowsHide:true,shell:false});
 let stderr='';child.stderr.on('data',c=>stderr+=c.toString('utf8'));
@@ -25,6 +30,16 @@ try{
  }else{
   send({action:'start',profileDir:profile,isolated:true});const started=await next();
   if(started.ok!==true||started.background!==true)throw Error('BROWSER_START_FAIL');
+  const firstPortFile=path.join(profile,'DevToolsActivePort');
+  const firstPort=Number(fs.readFileSync(firstPortFile,'utf8').trim().split(/\r?\n/)[0]);
+  send({action:'navigate',url:localUrl,timeoutMs:10000});const navigated=await next();
+  if(navigated.ok!==true||!String(navigated.url||'').startsWith(localUrl))throw Error('BROWSER_LOCAL_NAVIGATE_FAIL');
+  send({action:'relaunch',headless:true});const relaunched=await next();
+  if(relaunched.ok!==true||relaunched.headless!==true||relaunched.sameOwnedProfile!==true)throw Error('BROWSER_RELAUNCH_FAIL');
+  if(!String(relaunched.resumedUrl||'').startsWith(localUrl))throw Error('BROWSER_RELAUNCH_URL_LOST');
+  const secondPort=Number(fs.readFileSync(firstPortFile,'utf8').trim().split(/\r?\n/)[0]);
+  if(!Number.isInteger(firstPort)||!Number.isInteger(secondPort)||firstPort<1||secondPort<1)throw Error('BROWSER_RELAUNCH_PORT_INVALID');
+  if(!seenCookies.some(value=>value.includes('rc_profile=kept')))throw Error('BROWSER_RELAUNCH_PROFILE_STATE_LOST');
   const portFile=path.join(profile,'DevToolsActivePort');
   if(!fs.existsSync(portFile))throw Error('DEVTOOLS_PORT_FILE_MISSING');
   const port=Number(fs.readFileSync(portFile,'utf8').trim().split(/\r?\n/)[0]);
@@ -43,4 +58,5 @@ try{
  rl.close();
  if(child.exitCode===null){try{child.stdin.end();}catch{}child.kill();}
  for(let i=0;i<10&&fs.existsSync(profile);i++){try{fs.rmSync(profile,{recursive:true,force:true,maxRetries:3,retryDelay:50});}catch{}await new Promise(r=>setTimeout(r,50));}
+ await new Promise(resolve=>server.close(resolve));
 }

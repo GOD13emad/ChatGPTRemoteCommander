@@ -59,6 +59,7 @@ export function createBrowserController({invoke=req=>client.invoke(req),closeInv
     backgroundFirst:true,headlessOwnedProfileOnly:true,userDesktopTouchedByDefault:false,
     savedPasswordExtraction:false,userBrowserProfileReuse:false,
     foregroundFallback:'explicit-current-request-only',workflowBrowserAllowed:false,
+    allowForegroundFallback:cfg.allowForegroundFallback===true,
     allowNavigate:cfg.allowNavigate===true,allowInput:cfg.allowInput===true,allowScreenshot:cfg.allowScreenshot===true
    }};
   }
@@ -74,7 +75,8 @@ export function createBrowserController({invoke=req=>client.invoke(req),closeInv
       ? path.join(root,instance,'isolated-'+Date.now().toString(36)+'-'+token().slice(0,12))
       : path.join(root,instance,safeSegment(profile));
     const native=await invoke({action:'start',profileDir:dir,isolated:mode==='isolated',executable:cfg.executable});
-    session={id:token(),expires:now()+ttl*1000,ttl,mode,profile};
+    session={id:token(),expires:now()+ttl*1000,ttl,mode,profile,profileDir:dir,isolated:mode==='isolated',
+      executable:cfg.executable,foreground:false};
     uncertain=false;expiryRequested=false;arm(ttl);
     return {ok:true,lease:session.id,ttlSeconds:ttl,profile,mode,background:true,headless:true,
       userDesktopTouched:false,savedPasswordStoreAccess:false,browserProduct:native.browserProduct??null,backend:'chromium-cdp-headless'};
@@ -91,7 +93,23 @@ export function createBrowserController({invoke=req=>client.invoke(req),closeInv
     return {ok:true,approvalRequired:true,reason:input.reason,targetHost:input.targetHost??null,detail:input.detail??null,
       backgroundSessionPreserved:true,desktopTakenOver:false,
       authorizationPolicy:'explicit-current-request-only',
-      nextStep:'Ask the user for explicit current-task foreground permission. Only after that approval, acquire gui_session_begin(mode="takeover", explicitUserAuthorization=<the current approval>), perform the minimum necessary GUI step, verify it, and immediately end the GUI lease.'};
+      nextStep:'Ask only if the current user request did not already authorize foreground interaction. After approval call browser_foreground_begin with that current-task authorization, then gui_session_begin(mode="takeover", explicitUserAuthorization=<same approval>) for the minimum interaction. End the GUI lease and call browser_foreground_end to resume the same profile headlessly.'};
+   }
+   if(name==='browser_foreground_begin'){
+    if(cfg.foregroundFallback!=='explicit-current-request-only'||cfg.allowForegroundFallback!==true)throw browserError('BROWSER_FOREGROUND_FALLBACK_DISABLED');
+    if(session.foreground)throw browserError('BROWSER_FOREGROUND_ALREADY_ACTIVE');
+    const native=await invoke({action:'relaunch',headless:false});
+    session.foreground=true;uncertain=false;
+    return {ok:true,foreground:true,headless:false,userDesktopTouched:true,explicitlyAuthorized:true,
+      sameOwnedProfile:true,browserProduct:native.browserProduct??null,
+      nextStep:'Use a separately authorized GUI takeover only for the minimum required interaction, then end the GUI lease and call browser_foreground_end.'};
+   }
+   if(name==='browser_foreground_end'){
+    if(!session.foreground)throw browserError('BROWSER_FOREGROUND_NOT_ACTIVE');
+    const native=await invoke({action:'relaunch',headless:true});
+    session.foreground=false;uncertain=false;
+    return {ok:true,foreground:false,headless:true,userDesktopTouched:false,sameOwnedProfile:true,
+      browserProduct:native.browserProduct??null,backgroundResumed:true};
    }
    if(uncertain&&['browser_navigate','browser_fill','browser_click'].includes(name))throw browserError('BROWSER_OUTCOME_UNCERTAIN_SNAPSHOT_REQUIRED');
    const rule=BROWSER_RULES.get(name);

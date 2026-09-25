@@ -22,7 +22,9 @@ const defs=[
  ['browser_fill','Fill one CSS-selected input/textarea/select in the owned background page and dispatch input/change events. The submitted value is never echoed in the tool result.',object({...lease,selector,text:{type:'string',minLength:0,maxLength:4096}},['lease','selector','text']),mutation],
  ['browser_click','Click one CSS-selected element in the owned background page. A click can submit forms or trigger external side effects; verify afterward with browser_snapshot.',object({...lease,selector},['lease','selector']),mutation],
  ['browser_wait','Wait for a bounded condition in the owned background page.',object({...lease,selector,textIncludes:str(1024),urlIncludes:str(1024),timeoutMs:int(100,30000)},['lease']),ro],
- ['browser_foreground_requirement','Record that background automation reached a step requiring explicit current-task foreground approval, such as saved user-browser credentials, MFA, WebAuthn, CAPTCHA or a site that blocks headless/background operation. This tool does NOT take over the desktop; it returns the exact approval workflow the caller should present to the user.',object({...lease,reason:choice('saved-browser-credential','mfa','webauthn','captcha','site-blocked-background','other'),targetHost:str(253),detail:str(500)},['lease','reason']),coordination]
+ ['browser_foreground_requirement','Record that background automation reached a step requiring explicit current-task foreground approval, such as saved user-browser credentials, MFA, WebAuthn, CAPTCHA or a site that blocks headless/background operation. This tool does NOT take over the desktop.',object({...lease,reason:choice('saved-browser-credential','mfa','webauthn','captcha','site-blocked-background','other'),targetHost:str(253),detail:str(500)},['lease','reason']),coordination],
+ ['browser_foreground_begin','After explicit current-task approval, relaunch the SAME Commander-owned browser profile as a visible browser so the minimum required foreground step can be completed. This may steal focus and therefore always requires explicitUserAuthorization.',object({...lease,explicitUserAuthorization:str(500)},['lease','explicitUserAuthorization']),coordination],
+ ['browser_foreground_end','Return an explicitly approved visible Commander-owned browser session to headless background mode while preserving that same owned profile cookies/storage.',object(lease,['lease']),coordination]
 ];
 export const BROWSER_RULES=new Map(defs.map(([name,description,inputSchema,annotations])=>[name,{name,description,inputSchema,annotations}]));
 export const browserToolDefinitions=[...BROWSER_RULES.values()];
@@ -46,6 +48,10 @@ export function validateBrowserInput(name,input){
  }
  if(name==='browser_foreground_requirement'&&input.targetHost!==undefined){
    if(!/^[A-Za-z0-9.-]+$/.test(input.targetHost)||input.targetHost.startsWith('.')||input.targetHost.endsWith('.'))throw browserError('BROWSER_INVALID_HOST');
+ }
+ if(name==='browser_foreground_begin'){
+   const authorization=input.explicitUserAuthorization?.trim();
+   if(!authorization||authorization.length<8)throw browserError('BROWSER_EXPLICIT_FOREGROUND_AUTHORIZATION_REQUIRED');
  }
  return {...input};
 }
