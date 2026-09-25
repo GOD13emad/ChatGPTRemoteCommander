@@ -27,10 +27,10 @@ During the Windows candidate-first rollout of immutable v0.9.0, both configured 
 
 | Gate | Status |
 | --- | --- |
-| Cleanup regression / installer contract | PENDING |
-| Focused parity + recovery + v0.8.42 compatibility | PENDING |
-| Windows full `npm run check` / `npm test` / `npm run audit` | PENDING |
-| Linux full `npm run check` / `npm test` / `npm run audit` | PENDING |
+| Cleanup regression / installer contract | PASS — installer parser + contract checks PASS; focused convergence suite 117/117 PASS |
+| Focused parity + recovery + v0.8.42 compatibility | PASS — included in 117/117 focused suite |
+| Windows full `npm run check` / `npm test` / `npm run audit` | PASS — all three; full test core 386 PASS / 6 expected SKIP / 0 FAIL |
+| Linux full `npm run check` / `npm test` / `npm run audit` | PASS on exact code commit `1f92ed424c08d2522ba0cbc8619e228aaec14ca8` |
 | Hosted Windows + Ubuntu CI | PENDING |
 | Exact-tag fresh + repeated installer acceptance | PENDING |
 | Reproducible 13-asset release bundle | PENDING |

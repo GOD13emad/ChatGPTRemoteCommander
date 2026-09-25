@@ -148,3 +148,20 @@ Historical checkpoints remain append-only archives. Current release/control clai
 **Confidence/Status:** implementation and local cross-platform qualification CONFIRMED; hosted CI, immutable v0.9.2 publication and production rollout remain OPEN until separately evidenced.
 
 **Reuse targets:** v0.9.2 release, installer/updater policy, Full Power capability model, Project Brain, Work/Codex setup.
+
+
+## E070 — post-success Windows installer cleanup race
+
+**Date/Context:** 2026-09-25; first live Windows rollout of immutable v0.9.0.
+
+**Observed evidence:** both configured Windows profiles passed candidate health/doctor and were switched to v0.9.0. The updater emitted `SAFE_UPDATE_PASS`, after which the outer `install.ps1` returned exit code 1 from its `finally` cleanup because the temporary updater tree had already disappeared.
+
+**Root cause:** temporary-tree cleanup was treated as an unconditional final operation. A disappearance race after successful cutover could surface as a terminating cleanup error and overwrite the already-proven update outcome.
+
+**Prevention/Guard:** v0.9.2 makes cleanup idempotent only for an already-absent tree. It checks existence before removal; if removal throws, it suppresses the error only when the tree is now absent. If the tree still exists, the cleanup error is rethrown. Candidate-first route switching, backend validation and rollback behavior are unchanged.
+
+**Regression:** Windows installer parser/contract checks require the guarded cleanup pattern; focused parity/recovery/installer gate passed 117/117; full Windows and exact-commit Linux check/test/audit subsequently passed. Final live rollout must additionally prove process exit 0 after `SAFE_UPDATE_PASS`.
+
+**Confidence/Status:** root cause and code guard CONFIRMED; final live v0.9.2 rollout evidence remains OPEN until executed.
+
+**Reuse targets:** installer/update policy, release qualification, false-failure prevention, Project Brain.
