@@ -2,7 +2,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { createInterface } from 'node:readline';
 
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
@@ -103,6 +103,28 @@ async function ready(timeoutMs){
  }
  throw fail('BROWSER_NAVIGATION_TIMEOUT');
 }
+function killOwnedProfileProcesses(profileDir){
+ if(typeof profileDir!=='string'||!profileDir)return;
+ const needle='--user-data-dir='+profileDir;
+ if(process.platform==='win32'){
+  const script="$needle='--user-data-dir='+$env:RC_BROWSER_PROFILE_DIR; Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -and $_.CommandLine.IndexOf($needle,[System.StringComparison]::OrdinalIgnoreCase) -ge 0 } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }";
+  const env={...process.env,RC_BROWSER_PROFILE_DIR:profileDir};
+  for(const exe of ['pwsh.exe','powershell.exe']){
+   const result=spawnSync(exe,['-NoLogo','-NoProfile','-NonInteractive','-Command',script],{stdio:'ignore',windowsHide:true,shell:false,env,timeout:6000});
+   if(!result.error||result.error.code!=='ENOENT')break;
+  }
+  return;
+ }
+ if(process.platform==='linux'){
+  let entries=[];try{entries=fs.readdirSync('/proc');}catch{return;}
+  for(const name of entries){
+   if(!/^\d+$/.test(name))continue;
+   const pid=Number(name);if(pid===process.pid)continue;
+   let cmd='';try{cmd=fs.readFileSync('/proc/'+name+'/cmdline','utf8').replace(/\0/g,' ');}catch{continue;}
+   if(cmd.includes(needle))try{process.kill(pid,'SIGKILL');}catch{}
+  }
+ }
+}
 async function closeBrowser({preserveProfile=false}={}){
  const b=browser;browser=null;if(!b)return;
  try{await b.cdp?.send('Browser.close',{},undefined,2000);}catch{}
@@ -120,8 +142,39 @@ async function closeBrowser({preserveProfile=false}={}){
   }
  }
  if(!preserveProfile&&b.isolated&&b.profileDir){
-  for(let i=0;i<8;i++){try{fs.rmSync(b.profileDir,{recursive:true,force:true,maxRetries:3,retryDelay:80});break;}catch{await sleep(100);}}
+  let removed=false;
+  for(let i=0;i<10;i++){
+   try{fs.rmSync(b.profileDir,{recursive:true,force:true,maxRetries:1,retryDelay:40});removed=!fs.existsSync(b.profileDir);if(removed)break;}
+   catch{}
+   await sleep(50);
+  }
+  if(!removed){
+   killOwnedProfileProcesses(b.profileDir);
+   await sleep(500);
+   for(let i=0;i<200;i++){
+    try{fs.rmSync(b.profileDir,{recursive:true,force:true,maxRetries:2,retryDelay:60});removed=!fs.existsSync(b.profileDir);if(removed)break;}
+    catch{}
+    if(i===79||i===159)killOwnedProfileProcesses(b.profileDir);
+    await sleep(50);
+   }
+  }
+  if(!removed&&fs.existsSync(b.profileDir))throw fail('BROWSER_PROFILE_CLEANUP_FAILED');
+ }else if(!preserveProfile&&b.profileDir){
+  killOwnedProfileProcesses(b.profileDir);
  }
+}
+async function startBrowserForRelaunch(prior,headless){
+ let lastError=null,cleaned=false;
+ for(let attempt=0;attempt<4;attempt++){
+  try{return await startBrowser({...prior,headless,preserveProfileOnFailure:true});}
+  catch(error){
+   lastError=error;
+   if(!['BROWSER_LAUNCH_FAILED','BROWSER_PROFILE_IN_USE'].includes(error?.browserCode)||attempt===3)throw error;
+   if(!cleaned){killOwnedProfileProcesses(prior.profileDir);cleaned=true;}
+   await sleep(250*(attempt+1));
+  }
+ }
+ throw lastError??fail('BROWSER_LAUNCH_FAILED');
 }
 async function startBrowser(req){
  if(browser)throw fail('BROWSER_SESSION_ALREADY_RUNNING');
@@ -154,7 +207,7 @@ async function startBrowser(req){
   await cdp.send('Network.enable',{},browser.sessionId);
   return {ok:true,background:headless,headless,foreground:!headless,userDesktopTouched:!headless,
     profileMode:browser.isolated?'isolated':'persistent',browserProduct:browser.product,executable};
- }catch(e){await closeBrowser();throw e;}
+ }catch(e){await closeBrowser({preserveProfile:req.preserveProfileOnFailure===true});throw e;}
 }
 async function snapshot(req){
  const maxText=Math.max(1000,Math.min(40000,req.maxTextChars??20000));
@@ -190,15 +243,41 @@ async function handle(req){
    let resume=null;
    try{const current=await evaluate('location.href');const u=new URL(current);if(['http:','https:'].includes(u.protocol)&&!u.username&&!u.password)resume=u.href;}catch{}
    const prior={profileDir:browser.profileDir,isolated:browser.isolated,executable:browser.executable};
+   const targetHeadless=req.headless!==false;
    await closeBrowser({preserveProfile:true});
-   const next=await startBrowser({...prior,headless:req.headless!==false});
+   let next;
+   try{
+    next=await startBrowserForRelaunch(prior,targetHeadless);
+   }catch(error){
+    if(!targetHeadless){
+     try{await startBrowserForRelaunch(prior,true);}
+     catch{try{await closeBrowser();}catch{}}
+    }
+    throw error;
+   }
+   let resumeNavigationFailed=false;
    if(resume){
-    const nav=await browser.cdp.send('Page.navigate',{url:resume},browser.sessionId,30000);
-    if(nav.errorText)throw fail('BROWSER_NAVIGATION_FAILED');
-    await ready(30000);
+    try{
+     const nav=await browser.cdp.send('Page.navigate',{url:resume},browser.sessionId,8000);
+     if(nav.errorText)throw fail('BROWSER_NAVIGATION_FAILED');
+     await ready(8000);
+    }catch(e){
+     if(targetHeadless){
+      resumeNavigationFailed=true;
+     }else{
+      try{
+       await closeBrowser({preserveProfile:true});
+       await startBrowserForRelaunch(prior,true);
+      }catch{
+       try{await closeBrowser();}catch{}
+      }
+      throw e;
+     }
+    }
    }
    const current=redactUrl(await evaluate('location.href'))??{url:null,queryRedacted:false,fragmentRedacted:false};
-   return {...next,resumedUrl:current.url,urlQueryRedacted:current.queryRedacted,urlFragmentRedacted:current.fragmentRedacted,sameOwnedProfile:true};
+   return {...next,resumedUrl:current.url,urlQueryRedacted:current.queryRedacted,urlFragmentRedacted:current.fragmentRedacted,
+    sameOwnedProfile:true,resumeNavigationFailed};
   }
   case 'navigate':{
    if(!browser)throw fail('BROWSER_SESSION_NOT_RUNNING');

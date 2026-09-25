@@ -17,10 +17,12 @@ function applicationError(value){
 }
 async function removeOwnedProfile(profile){
  if(typeof profile!=='string'||!profile)return;
- for(let i=0;i<8;i++){
+ let lastError=null;
+ for(let i=0;i<80;i++){
   try{await rm(profile,{recursive:true,force:true,maxRetries:3,retryDelay:80});return;}
-  catch{await sleep(100);}
+  catch(error){lastError=error;await sleep(50);}
  }
+ if(lastError)throw browserError('BROWSER_PROFILE_CLEANUP_FAILED');
 }
 async function waitForClose(child,ms){
  if(!child||child.exitCode!==null)return;
@@ -34,7 +36,7 @@ async function forceTree(child,forceCloseMs){
    await waitForClose(killer,forceCloseMs);
   }catch{try{child.kill();}catch{}}
  }else{
-  try{child.kill('SIGKILL');}catch{}
+  try{process.kill(-child.pid,'SIGKILL');}catch{try{child.kill('SIGKILL');}catch{}}
  }
  await waitForClose(child,forceCloseMs);
 }
@@ -61,7 +63,7 @@ export function createBrowserProcessClient({file,args,timeoutMs=60000,startupTim
   if(startup){const s=startup;clear(s.timer);startup=null;s.reject(error);}
   if(pending){const p=pending;clear(p.timer);pending=null;p.reject(error);}
   buffer=Buffer.alloc(0);
-  void beginShutdown();
+  void beginShutdown().catch(()=>{});
  };
  const complete=line=>{
   let value;try{value=parseEnvelope(line);}catch(e){fail(e.browserCode??'BROWSER_HELPER_BAD_JSON');return;}
@@ -93,7 +95,7 @@ export function createBrowserProcessClient({file,args,timeoutMs=60000,startupTim
   if(child&&child.exitCode===null&&!child.killed&&!startup)return;
   if(startup)return startup.promise;
   buffer=Buffer.alloc(0);stderrBytes=0;
-  let spawned;try{spawned=spawn(file,args,{windowsHide:true,env,stdio:['pipe','pipe','pipe'],shell:false});}
+  let spawned;try{spawned=spawn(file,args,{windowsHide:true,env,stdio:['pipe','pipe','pipe'],shell:false,detached:process.platform!=='win32'});}
   catch{throw browserError('BROWSER_HELPER_START_FAILED');}
   child=spawned;
   let resolveStart,rejectStart;const promise=new Promise((resolve,reject)=>{resolveStart=resolve;rejectStart=reject;});
@@ -144,6 +146,7 @@ export function createBrowserProcessClient({file,args,timeoutMs=60000,startupTim
  };
  const close=()=>{
   reserved=false;
+  if(shutdown)return shutdown;
   const error=browserError('BROWSER_HELPER_EXIT_FAILED');
   if(startup){const s=startup;clear(s.timer);startup=null;s.reject(error);}
   if(pending){const p=pending;clear(p.timer);pending=null;p.reject(error);}

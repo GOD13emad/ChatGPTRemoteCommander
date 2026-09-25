@@ -1,13 +1,14 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { spawn } from 'node:child_process';
 import { createInterface } from 'node:readline';
 import { once } from 'node:events';
 
-const helper=new URL('../tools/browser-control.mjs',import.meta.url);
+const helper=fileURLToPath(new URL('../tools/browser-control.mjs',import.meta.url));
 const profile=path.join(os.tmpdir(),'rc-browser-init-fail-'+process.pid+'-'+Date.now().toString(36));
-const child=spawn(process.execPath,[helper.pathname.startsWith('/')&&process.platform==='win32'?helper.pathname.slice(1):helper.pathname,'--server'],{stdio:['pipe','pipe','pipe'],windowsHide:true,shell:false});
+const child=spawn(process.execPath,[helper,'--server'],{stdio:['pipe','pipe','pipe'],windowsHide:true,shell:false});
 let stderr='';child.stderr.on('data',c=>stderr+=c.toString('utf8'));
 const rl=createInterface({input:child.stdout,crlfDelay:Infinity});
 const it=rl[Symbol.asyncIterator]();

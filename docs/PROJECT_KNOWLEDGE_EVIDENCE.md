@@ -1,6 +1,6 @@
 # Engineering decisions and evidence
 
-Updated: 2026-09-25. Current immutable release authority remains [v0.8.37](RELEASE_0.8.37.md) until the [v0.8.38 candidate](RELEASE_0.8.38.md) completes publication. This public index separates reusable engineering decisions from historical deployment observations.
+Updated: 2026-09-25. Current immutable release authority remains [v0.8.37](RELEASE_0.8.37.md). The [v0.8.38 candidate](RELEASE_0.8.38.md) is superseded and will not be published because its existing tag predates the final browser hardening. This public index separates reusable engineering decisions from historical deployment observations.
 
 ## Current guarantees and their regression locations
 
@@ -14,13 +14,13 @@ Updated: 2026-09-25. Current immutable release authority remains [v0.8.37](RELEA
 | Waiting questions yield to other projects; explicit responses cannot reset budgets or grant authority | [Project decisions](PROJECT_ENGINE_DECISIONS.md), `test/project-engine-review.test.mjs` |
 | Bounded artifact workers cannot mutate project files directly; import is SHA-256/inputHash/operationId-bound, remains bound to the delegated step, and crash recovery never blindly replays | `test/project-engine-integration.test.mjs`, [v0.8.37 release](RELEASE_0.8.37.md) |
 | Codex CLI provider diagnostics stay fail-closed across the qualified 0.146/0.156 formats; only the exact intentionally-disabled `code_mode_host` diagnostic is admitted | `test/project-planner.test.mjs`, [v0.8.37 release](RELEASE_0.8.37.md) |
-| Background web automation uses an instance-isolated Commander-owned Chromium profile first, preserves valid helper sessions across ordinary page errors, cleans failed/forced sessions, never extracts saved passwords, and requires explicit current-task authorization before same-profile foreground exposure | `test/browser-safety.test.mjs`, `test/browser-process.test.mjs`, `test/browser-helper-init-failure-run.mjs`, `test/browser-native-run.mjs`, `test/browser-helper-lifecycle-run.mjs`, [v0.8.38 candidate](RELEASE_0.8.38.md) |
+| Background web automation uses an instance-isolated Commander-owned Chromium profile first, preserves valid helper sessions across ordinary page errors, cleans failed/forced sessions, never extracts saved passwords, and requires explicit current-task authorization before same-profile foreground exposure | `test/browser-safety.test.mjs`, `test/browser-process.test.mjs`, `test/browser-helper-init-failure-run.mjs`, `test/browser-path-encoding-run.mjs`, `test/browser-native-run.mjs`, `test/browser-helper-lifecycle-run.mjs`, [v0.8.38 superseded candidate](RELEASE_0.8.38.md) |
 | Custom no-start installers preserve live routing; updates retain active terminal workloads | `test/linux-installer-isolation.test.mjs`, `test/auto-update-contract.test.mjs` |
 | Native and legacy plugin manifests retain matching identity/version, discoverable skills and public assets | `test/onboarding-plugin-check.mjs`, [PR #9](https://github.com/GOD13emad/ChatGPTRemoteCommander/pull/9) |
 
 ## Publication records
 
-- [v0.8.38 candidate](RELEASE_0.8.38.md): zero-interference background browser, same-owned-profile foreground handoff, cross-platform regression and browser-native qualification; publication/rollout gates remain separate.
+- [v0.8.38 superseded candidate](RELEASE_0.8.38.md): zero-interference background browser and same-owned-profile foreground handoff. Two independent review rounds found ten pre-publication isolation/snapshot/process/relaunch/reporting/path defects; each was converted into regression coverage. The existing v0.8.38 tag is not moved or published; a hardened successor release must use a new tag.
 - [v0.8.37 qualification](RELEASE_0.8.37.md): Codex 0.156 compatibility, independently reviewed worker-invariant hardening, reproducible assets, pinned installer acceptance and scoped cross-platform rollout.
 - [v0.8.36 qualification](RELEASE_0.8.36.md): bounded artifact-worker release baseline and its release/deployment gates.
 - [v0.8.35 qualification](RELEASE_0.8.35.md): Windows/Linux release and scoped deployment gates, exact runtime identity and remaining limits.

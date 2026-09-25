@@ -5,6 +5,8 @@ import path from 'node:path';
 import { mkdtemp, writeFile, readFile, stat, rm } from 'node:fs/promises';
 import { createBrowserProcessClient } from '../src/browser-process.mjs';
 
+function processAlive(pid){try{process.kill(pid,0);return true;}catch{return false;}}
+
 const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 async function exists(p){try{await stat(p);return true;}catch{return false;}}
 async function fixture({readyDelay=0,timeoutMs=1000,gracefulCloseMs=150,forceCloseMs=150}={}){
@@ -12,6 +14,7 @@ async function fixture({readyDelay=0,timeoutMs=1000,gracefulCloseMs=150,forceClo
  const helper=path.join(root,'helper.mjs');
  await writeFile(helper,`
 import { createInterface } from 'node:readline';
+import { spawn } from 'node:child_process';
 import { mkdir, writeFile } from 'node:fs/promises';
 const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 await sleep(Number(process.env.RC_TEST_READY_DELAY||0));
@@ -25,6 +28,11 @@ for await(const line of rl){
   process.stdout.write(JSON.stringify({ok:true,started:true})+'\\n');continue;
  }
  if(req.action==='hang'){await new Promise(()=>{});}
+ if(req.action==='hangWithChild'){
+  const child=spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{stdio:'ignore',windowsHide:true,shell:false});
+  await writeFile(req.marker,String(child.pid));
+  await new Promise(()=>{});
+ }
  process.stdout.write(JSON.stringify({ok:true,action:req.action,alive:true})+'\\n');
 }
 `,'utf8');
@@ -51,6 +59,35 @@ test('request ownership is reserved before helper startup so concurrent invokes 
   await assert.rejects(f.client.invoke({action:'two'}),/BROWSER_HELPER_BUSY/);
   const result=await first;
   assert.equal(result.action,'one');
+ }finally{await f.cleanup();}
+});
+
+test('forced helper shutdown terminates an owned descendant process tree',async()=>{
+ const f=await fixture({timeoutMs:180,gracefulCloseMs:60,forceCloseMs:400});
+ const marker=path.join(f.root,'descendant.pid');
+ try{
+  const pending=f.client.invoke({action:'hangWithChild',marker});
+  for(let i=0;i<40&&!await exists(marker);i++)await sleep(20);
+  assert.equal(await exists(marker),true);
+  const pid=Number((await readFile(marker,'utf8')).trim());
+  assert.equal(Number.isInteger(pid)&&pid>0,true);
+  assert.equal(processAlive(pid),true);
+  await assert.rejects(pending,/BROWSER_HELPER_TIMEOUT/);
+  for(let i=0;i<80&&processAlive(pid);i++)await sleep(25);
+  assert.equal(processAlive(pid),false);
+  await Promise.all([f.client.close(),f.client.close()]);
+ }finally{await f.cleanup();}
+});
+
+test('client shutdown never removes a persistent owned profile',async()=>{
+ const f=await fixture();
+ const profile=path.join(f.root,'persistent-profile');
+ try{
+  const started=await f.client.invoke({action:'start',isolated:false,profileDir:profile});
+  assert.equal(started.started,true);
+  assert.equal(await exists(path.join(profile,'owned.txt')),true);
+  await f.client.close();
+  assert.equal(await exists(profile),true);
  }finally{await f.cleanup();}
 });
 

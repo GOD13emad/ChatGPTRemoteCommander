@@ -107,10 +107,12 @@ export function createBrowserController({invoke=req=>client.invoke(req),closeInv
    }
    if(name==='browser_foreground_end'){
     if(!session.foreground)throw browserError('BROWSER_FOREGROUND_NOT_ACTIVE');
-    const native=await invoke({action:'relaunch',headless:true});
+    let native;
+    try{native=await invoke({action:'relaunch',headless:true});}
+    catch(error){session.foreground=false;uncertain=true;throw error;}
     session.foreground=false;uncertain=false;
     return {ok:true,foreground:false,headless:true,userDesktopTouched:false,sameOwnedProfile:true,
-      browserProduct:native.browserProduct??null,backgroundResumed:true};
+      browserProduct:native.browserProduct??null,backgroundResumed:true,resumeNavigationFailed:native.resumeNavigationFailed===true};
    }
    if(uncertain&&['browser_navigate','browser_fill','browser_click'].includes(name))throw browserError('BROWSER_OUTCOME_UNCERTAIN_SNAPSHOT_REQUIRED');
    const rule=BROWSER_RULES.get(name);
@@ -118,6 +120,8 @@ export function createBrowserController({invoke=req=>client.invoke(req),closeInv
    if(['browser_fill','browser_click'].includes(name)&&cfg.allowInput!==true)throw browserError('BROWSER_INPUT_DISABLED');
    if(name==='browser_screenshot'&&cfg.allowScreenshot!==true)throw browserError('BROWSER_SCREENSHOT_DISABLED');
    const mutation=['browser_navigate','browser_fill','browser_click'].includes(name);
+   const foregroundAtDispatch=session.foreground===true;
+   const activity={background:!foregroundAtDispatch,userDesktopTouched:foregroundAtDispatch};
    try{
     let result;
     if(name==='browser_navigate')result=await invoke({action:'navigate',url:input.url,timeoutMs:input.timeoutMs??30000});
@@ -137,10 +141,10 @@ export function createBrowserController({invoke=req=>client.invoke(req),closeInv
       const bytes=Buffer.from(data,'base64');
       const sig=mimeType==='image/png'?bytes.subarray(0,8).equals(Buffer.from('89504e470d0a1a0a','hex')):bytes[0]===0xff&&bytes[1]===0xd8&&bytes[2]===0xff;
       if(!sig||bytes.length>(input.maxBytes??2097152))throw browserError('BROWSER_INVALID_IMAGE');
-      const structured={...meta,bytes:bytes.length,mimeType,background:true,userDesktopTouched:false};
+      const structured={...meta,bytes:bytes.length,mimeType,...activity};
       return {__mcpContent:[{type:'image',mimeType,data},{type:'text',text:JSON.stringify(structured)}],__structuredContent:structured};
     }
-    return {...result,background:true,userDesktopTouched:false,...(['browser_fill','browser_click'].includes(name)?{verificationRecommended:true}:{})};
+    return {...result,...activity,...(['browser_fill','browser_click'].includes(name)?{verificationRecommended:true}:{})};
    }catch(error){
     if(mutation)uncertain=true;
     throw error;
