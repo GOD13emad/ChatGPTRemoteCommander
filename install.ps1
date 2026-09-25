@@ -150,6 +150,10 @@ function Invoke-ExistingSafeUpdate {
 }
 
 function Ensure-ProjectProvider {
+  if (-not $isCanonicalLiveInstall -and -not $StartServer) {
+    Write-Host 'Project provider bootstrap deferred for custom/no-start installation.'
+    return
+  }
   $requested = [bool]$PowerMode
   $localConfig = Join-Path $InstallDir 'config.local.json'
   if (-not $requested -and -not $StandardMode -and (Test-Path -LiteralPath $localConfig -PathType Leaf)) {
@@ -354,9 +358,9 @@ function Configure-LocalPolicy {
     '--output', $localConfig,
     '--profile-id', 'default',
     '--backup-root', (Join-Path $InstallDir 'var\update-backups'),
-    '--workflow-dir', (Join-Path $env:LOCALAPPDATA 'ChatGPTRemoteCommander\instances\default\workflows'),
-    '--provider-root', $stateRoot
+    '--workflow-dir', (Join-Path $env:LOCALAPPDATA 'ChatGPTRemoteCommander\instances\default\workflows')
   )
+  if ($isCanonicalLiveInstall -or $StartServer) { $args += @('--provider-root', $stateRoot) }
   if (Test-Path -LiteralPath $localConfig -PathType Leaf) { $args += @('--existing', $localConfig) }
   if ($PowerMode) { $args += '--request-power' }
   if ($StandardMode) { $args += '--request-standard' }

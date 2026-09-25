@@ -23,7 +23,7 @@ function fixture(t) {
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   const source = path.join(root, 'source'), target = path.join(root, 'custom-install');
   fs.mkdirSync(source);
-  for (const name of ['config.json', 'tools/build-candidate-config.mjs', 'tools/capability-migrate.mjs', 'tools/json-field.mjs', 'src/capability-profile.mjs']) {
+  for (const name of ['config.json', 'tools/build-candidate-config.mjs', 'tools/capability-migrate.mjs', 'tools/json-field.mjs', 'src/capability-profile.mjs', 'src/project-runner-config.mjs']) {
     write(path.join(source, name), fs.readFileSync(path.join(repository, name)));
   }
   write(path.join(source, 'package.json'), '{"type":"module"}\n');

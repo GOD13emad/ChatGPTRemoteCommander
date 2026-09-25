@@ -58,7 +58,7 @@ config.durableWorkflows ??={};
 if(config.durableWorkflows.enabled===true){
   config.durableWorkflows.directory=workflowDirectory;
 }
-const runner=applyProjectRunnerConfig(config,{stateRoot:a.providerRoot});
+const runner=a.providerRoot ? applyProjectRunnerConfig(config,{stateRoot:a.providerRoot}) : {config,status:'NOT_EVALUATED',provider:null};
 config=runner.config;
 config.capabilityProfile=normalizeCapabilityProfile(config.capabilityProfile,config,{id:a.profileId,legacyExplicit:!!existing});
 if(a.profileId!=='default'){

@@ -71,7 +71,7 @@ let result = migrateCapabilityConfig({
   disableCapabilities: args.disableCapabilities,
   enableCapabilities: args.enableCapabilities
 });
-const runner = applyProjectRunnerConfig(result.config, { stateRoot: args.providerRoot });
+const runner = args.providerRoot ? applyProjectRunnerConfig(result.config, { stateRoot: args.providerRoot }) : { config: result.config, status: 'NOT_EVALUATED', provider: null };
 runner.config.capabilityProfile = normalizeCapabilityProfile(runner.config.capabilityProfile, runner.config, { id: args.profileId, legacyExplicit: !!existingConfig });
 result = { ...result, config: runner.config, profile: runner.config.capabilityProfile };
 result.sha256 = createHash('sha256').update(JSON.stringify(result.config, null, 2) + '\n').digest('hex');

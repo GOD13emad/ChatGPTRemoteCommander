@@ -99,6 +99,7 @@ invoke_existing_safe_update() {
   [[ "$POWER_MODE" == 1 ]] && args+=(--power-mode)
   [[ "$STANDARD_MODE" == 1 ]] && args+=(--standard-mode)
   local cap
+  [[ "$CUSTOM_NO_START" == 1 ]] || args+=(--provider-root "$state_root")
   for cap in "${DISABLE_CAPS[@]}"; do args+=(--disable-capability "$cap"); done
   for cap in "${ENABLE_CAPS[@]}"; do args+=(--enable-capability "$cap"); done
   /bin/bash "$updater" "${args[@]}"
@@ -223,6 +224,10 @@ ensure_node_path() {
   need npm || { echo "npm is required" >&2; exit 1; }
 }
 ensure_project_provider() {
+  if [[ "$CUSTOM_NO_START" == 1 ]]; then
+    echo 'Project provider bootstrap deferred for custom/no-start installation.'
+    return 0
+  fi
   local requested=0
   if [[ "$POWER_MODE" == 1 ]]; then
     requested=1
@@ -321,13 +326,13 @@ write_local_config() {
     existing_workflow="$(node "$INSTALL_DIR/tools/json-field.mjs" --file "$cfg" --field durableWorkflows.directory 2>/dev/null || true)"
     [[ -z "$existing_workflow" ]] || workflow_dir="$existing_workflow"
     args=("$INSTALL_DIR/tools/capability-migrate.mjs" --default "$INSTALL_DIR/config.json"
-      --existing "$cfg" --output "$cfg" --profile-id "$profile_id" --workflow-dir "$workflow_dir" --provider-root "$state_root")
+      --existing "$cfg" --output "$cfg" --profile-id "$profile_id" --workflow-dir "$workflow_dir")
     [[ "$POWER_MODE" == 1 ]] && args+=(--request-power)
     [[ "$STANDARD_MODE" == 1 ]] && args+=(--request-standard)
   else
     args=("$INSTALL_DIR/tools/build-candidate-config.mjs" --default "$INSTALL_DIR/config.json"
       --output "$cfg" --profile-id default --port 47831 --state-dir "$state_dir"
-      --workflow-dir "$workflow_dir" --mode "$mode" --backup-root "$backup_root" --provider-root "$state_root"
+      --workflow-dir "$workflow_dir" --mode "$mode" --backup-root "$backup_root"
       --device-name "$(hostname)" --allowed-root "$workspace"
       --allowed-program git --allowed-program node --allowed-program npm
       --allowed-program npx --allowed-program python3 --allowed-program python
