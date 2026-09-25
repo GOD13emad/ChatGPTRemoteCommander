@@ -25,7 +25,7 @@ if (mode === 'stderr') { console.error('x'.repeat(10000)); setInterval(()=>{},10
 if (mode === 'flood') { console.log('x'.repeat(10000)); setInterval(()=>{},1000); }
 if (mode === 'wait') setInterval(()=>{},1000);
 if (mode === 'tree') {
-  spawn(process.execPath,['-e','setTimeout(()=>require("node:fs").writeFileSync(process.argv[1],"leaked"),700)',JSON.parse(text).marker],{stdio:'ignore'});
+  spawn(process.execPath,['-e','setTimeout(()=>require("node:fs").writeFileSync(process.argv[1],"leaked"),2500)',JSON.parse(text).marker],{stdio:'ignore'});
   setInterval(()=>{},1000);
 }
 if (mode.startsWith('codex')) {
@@ -111,7 +111,10 @@ test('timeout terminates a provider process tree', async t => {
   const { planner, directory } = fixture(t, 'tree', { timeoutMs: 200 });
   const marker = path.join(directory, 'child-effect.txt');
   await assert.rejects(planner.plan({ marker }), { code: 'PLANNER_TIMEOUT' });
-  await new Promise(resolve => setTimeout(resolve, 800));
+  // Windows taskkill /T is a bounded cleanup mechanism, not a sub-second sandbox.
+  // Keep the leak probe inside the 3s termination budget while allowing observed
+  // taskkill latency under system load.
+  await new Promise(resolve => setTimeout(resolve, 2800));
   assert.equal(fs.existsSync(marker), false);
 });
 

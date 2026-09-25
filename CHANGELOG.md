@@ -1,6 +1,16 @@
 # Changelog
 
-## 0.8.40 — 2026-09-25
+## 0.8.41 — 2026-09-25
+
+- Harden Secure MCP Tunnel reliability after real logs repeatedly showed `command response deadline reached; dropping without posting a response`: synchronous command/browser/planner work is bounded to 30 seconds and longer work is directed to durable `operation_*` execution.
+- Remove large-result duplication between MCP text content and structured content, and cap the final serialized MCP response at an 8 MiB safe envelope; oversize results now fail as a compact `MCP_RESPONSE_TOO_LARGE` JSON-RPC error instead of risking a 413/transport interruption.
+- Keep legitimate large reads usable inside the envelope: regression coverage passes a 5 MiB structured result without duplicate text and converts a 9 MiB response into the compact bounded error.
+- Fix fresh/custom Windows `-SkipTunnelClient` acceptance so an intentionally skipped tunnel client no longer requires a pre-existing executable; an existing pinned client is still reused when present.
+- Align provider/browser timeout defaults with the tunnel deadline budget while preserving durable cancellation and no-blind-retry semantics.
+- Recalibrate the Windows provider-tree regression to the existing bounded cleanup budget after direct diagnostics measured `taskkill /T /F` latency under load; the runtime termination mechanism itself is unchanged.
+- v0.8.40 remains an immutable historical tag but was not published as a GitHub Release; v0.8.41 supersedes it before public publication.
+
+## 0.8.40 — 2026-09-25 (unpublished candidate, superseded by 0.8.41)
 
 - Add durable background command operations (`operation_start`, `operation_status`, `operation_result`, `operation_cancel`) so long-running builds, tests, audits and shell/project commands do not hold one MCP request open.
 - Make stable request IDs idempotent across lost acknowledgements; changed inputs with the same request ID fail closed, and uncertain outcomes are never blindly replayed.

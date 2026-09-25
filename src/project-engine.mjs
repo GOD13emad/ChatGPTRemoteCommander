@@ -503,7 +503,7 @@ export function createProjectEngine({directory,planner,workerPlanner,execute,obs
       if(proposal.tool==='run_project_command') {
         if(!commands.some(c=>c.program===args.program&&canonical(c.args)===canonical(args.args??[])))error('PROJECT_COMMAND_NOT_APPROVED');
         if(args.cwd&&path.resolve(args.cwd)!==path.resolve(state.root))error('PROJECT_COMMAND_CWD_INVALID');
-        args.cwd=state.root;args.timeoutMs=Math.max(1000,Math.min(args.timeoutMs??120000,run.deadline-Date.now()));
+        args.cwd=state.root;args.timeoutMs=Math.max(1000,Math.min(args.timeoutMs??30000,30000,run.deadline-Date.now()));
       }
       const workerImport=run.pendingWorker?.status==='READY'?readWorkerArtifact(engineDirectory,run,run.pendingWorker,maximumWorkerArtifactBytes):null;
       if(workerImport) {

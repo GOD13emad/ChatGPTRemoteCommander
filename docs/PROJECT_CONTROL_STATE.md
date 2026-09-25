@@ -5,17 +5,19 @@ Updated: 2026-09-25. Scope: public product/release status, not a live machine in
 ## Release baseline
 
 - [v0.8.37](RELEASE_0.8.37.md) remains the latest immutable **published GitHub Release** at this checkpoint.
-- [v0.8.40](RELEASE_0.8.40.md) is the current release candidate. It carries forward the hardened background browser from the unpublished v0.8.39 candidate and adds durable background command operations with stable request IDs, bounded file-backed output, receipt-first recovery and exact-operation cancellation.
-- v0.8.38 and v0.8.39 remain historical unpublished tags and are intentionally not moved.
-- Exact v0.8.40 Windows qualification passed full `npm test` (**373 PASS / 5 SKIP / 0 FAIL**), full `npm run check` (**152 PASS / 4 SKIP / 0 FAIL**), GUI contract **75/75**, Windows runtime/source integrity and repository security audit. Independent Linux verification of commit `2245495e` passed `npm test` (**377 PASS / 1 SKIP / 0 FAIL**), `npm run check` (exit 0 with tail contracts PASS), and repository security audit.
+- [v0.8.41](RELEASE_0.8.41.md) is the current release candidate. It supersedes the unpublished v0.8.40 tag and adds response-deadline/size hardening on top of durable background commands.
+- v0.8.38, v0.8.39 and v0.8.40 remain historical unpublished tags and are intentionally not moved.
+- Current v0.8.41 Windows qualification passed full `npm test` (**377 PASS / 5 SKIP / 0 FAIL**) with all browser/concurrency/GUI/filesystem/runtime/source-integrity tails PASS, and full `npm run check` (**156 PASS / 4 SKIP / 0 FAIL**) with GUI **75/75** and integrity tails PASS.
+- Focused retry evidence passes direct >30s pre-effect rejection, 5 MiB non-duplicated success, 9 MiB compact oversize failure, and durable operation idempotency/cancel/recovery regressions.
+- v0.8.40 exact Windows/Ubuntu hosted CI had already passed before it was superseded; its historical tag is retained.
 - Focused durability evidence includes ten consecutive async runs (**80/80 PASS**), a later five-run set after stdio hardening (**45/45 PASS**), and a direct 30-operation race diagnostic (**30/30 PASS**).
 - Milestones 4A, 4B.1 and 4B.2 remain released. The new `operation_*` layer is direct-session command durability; it does not widen Project Engine tool authority.
 
 ## CURRENT / open release gates
 
-CURRENT: v0.8.40 release-candidate closeout.
+CURRENT: v0.8.41 retry-hardening release-candidate closeout.
 
-Open gates are remote PR/hosted CI, pinned installer/reproducible asset acceptance, immutable GitHub publication, and safe candidate-first rollout. Publication or deployment is not claimed until those gates produce evidence.
+Open gates are v0.8.41 remote PR/hosted CI, exact-tag fresh/repeated installer acceptance, reproducible release assets, immutable GitHub publication, and safe candidate-first rollout. Publication or deployment is not claimed until those gates produce evidence.
 
 ## Remaining roadmap
 
@@ -25,7 +27,7 @@ Broader blocker escalation, monetary accounting, additional providers/integratio
 
 - Installation: [START_HERE](../START_HERE.md) and [Work/Codex setup](../WORK_SETUP.md).
 - Behavior: [project engine](PROJECT_ENGINE.md), [adaptive planning](PROJECT_ENGINE_ADAPTIVE.md), [project questions](PROJECT_ENGINE_DECISIONS.md), [background browser](BACKGROUND_BROWSER.md).
-- Validation: [v0.8.40 candidate](RELEASE_0.8.40.md), [v0.8.39 historical candidate](RELEASE_0.8.39.md), [qualification history](PROJECT_ENGINE_VALIDATION.md), [GUI acceptance](GUI_ACCEPTANCE.md).
+- Validation: [v0.8.41 candidate](RELEASE_0.8.41.md), [v0.8.40 historical candidate](RELEASE_0.8.40.md), [v0.8.39 historical candidate](RELEASE_0.8.39.md), [qualification history](PROJECT_ENGINE_VALIDATION.md), [GUI acceptance](GUI_ACCEPTANCE.md).
 - Knowledge: [engineering decisions and evidence](PROJECT_KNOWLEDGE_EVIDENCE.md).
 
 Historical checkpoints are preserved in the [archived project state](history/PROJECT_CONTROL_STATE_20260924.md). Their former “current”, “final” and “next action” labels are historical. Account bindings, machine paths, process inventories and operational receipts belong in private deployment handoffs rather than this public status page.

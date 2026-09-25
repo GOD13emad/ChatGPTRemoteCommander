@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { synchronousCommandInput } from './retry-guard.mjs';
 import { appendFile, copyFile, mkdir, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { createHash, randomUUID } from 'node:crypto';
 import { spawn } from 'node:child_process';
@@ -194,7 +195,7 @@ export async function prepareProjectCommand(ctx, input) {
   return { file: program, args, cwd, timeoutMs, outputLimit: 262144, fullFilesystem };
 }
 export async function runProjectCommand(ctx, input) {
-  const prepared = await prepareProjectCommand(ctx, input);
+  const prepared = await prepareProjectCommand(ctx, synchronousCommandInput(input));
   const { file: program, args, cwd, timeoutMs, outputLimit, fullFilesystem } = prepared;
   const child = spawn(program, args, {
     cwd,

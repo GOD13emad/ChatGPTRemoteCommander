@@ -10,7 +10,7 @@ param(
   [switch]$StartServer,
   [switch]$SkipTunnelClient,
   [string]$TunnelClientVersion = '0.0.14',
-  [string]$SourceRef = 'v0.8.40',
+  [string]$SourceRef = 'v0.8.41',
   [string]$ExpectedCommit = ''
 )
 $ErrorActionPreference = 'Stop'
@@ -258,7 +258,8 @@ function Install-TunnelClient {
       Write-Host "Reusing pinned tunnel client: $exe"
       return
     }
-    throw "SkipTunnelClient was requested but expected executable is missing: $exe"
+    Write-Host "Skipping tunnel-client installation as requested; no pinned client exists in this fresh/custom install."
+    return
   }
 
   if (Test-Path -LiteralPath $exe -PathType Leaf) {
