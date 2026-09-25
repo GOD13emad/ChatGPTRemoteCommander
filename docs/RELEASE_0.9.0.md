@@ -22,8 +22,8 @@ A machine without an installed/authenticated provider remains recovery/readiness
 
 ## Required gates before publication
 
-1. Focused runner/catalog regressions on the rebased source.
-2. Full `npm run check`, `npm test`, and repository security audit on Windows.
+1. Focused runner/catalog/planner regressions on the rebased source — **PASS 31/31** on `04b2dc45696d0b0d3eac531ccba701da6265dfde`.
+2. Full Windows local gates — **PASS**: `npm run check` 156/4/0 plus GUI 75/75 and integrity/platform tails; `npm test` 378/5/0 plus GUI/platform tails; `npm run audit` SECURITY_AUDIT_PASS. Detached receipt SHA-256: `e10f12d125169e6168566d562b00606af976ed8f44e06c80944f64c3e47bf9d9`.
 3. Hosted Windows and Linux CI for the exact PR head.
 4. Exact-tag installer acceptance and release-asset checksum verification.
 5. Candidate-first rollout on the two directly managed Emad targets while preserving persistent-terminal/drain safety.

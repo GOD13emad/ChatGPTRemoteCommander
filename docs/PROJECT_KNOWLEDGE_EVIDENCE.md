@@ -172,3 +172,18 @@ Historical checkpoints remain append-only archives. Current release/control clai
 **Confidence/Status:** CONFIRMED by source comparison; exact rebased v0.9.0 regression gates pending.
 
 **Reuse targets:** runner configuration, updater migration policy, release notes.
+
+
+## E072 — exact rebased v0.9.0 local qualification
+
+**Date/Context:** 2026-09-25; capability-parity branch after rebase onto the v0.8.42 live-compatibility baseline.
+
+**Evidence:** exact HEAD `04b2dc45696d0b0d3eac531ccba701da6265dfde`; focused runner/catalog/planner tests **31/31 PASS**; `npm run check` **156 PASS / 4 SKIP / 0 FAIL** plus GUI **75/75**, Linux GUI contract, filesystem safety, Windows runtime and source integrity PASS; `npm test` **378 PASS / 5 SKIP / 0 FAIL** plus browser/concurrency/GUI/platform tails; repository audit reports `SECURITY_AUDIT_PASS`.
+
+**Durable evidence:** detached fail-fast receipt status `PASS`, SHA-256 `e10f12d125169e6168566d562b00606af976ed8f44e06c80944f64c3e47bf9d9`. The receipt recorded predecessor HEAD `f7370b7778e56d0f56760f16caea1856a10f0900` because the already-tested `package.json` syntax-gate hardening was still unstaged during the run; the subsequent package-only amend produced product commit `04b2dc45696d0b0d3eac531ccba701da6265dfde` with those same tested product/test bytes. Check/test/audit stdout SHA-256 values are respectively `51e9f700e09f5ce2a6577bcfdfff9084a028f2bfcb46dcb04fb3b1eb6127814b`, `fe29accc1e25cdaffe502ba4e6c5c54df71063dcacade8c7e5c4170a95f6680d`, and `d89263829a435bd41f7a0bb9906258e1a99a2b881af7400dcfeb1492b8c56ebd`.
+
+**Limitation:** the receipt's optional per-gate array is empty because the temporary PowerShell harness used function-local array scope. Its top-level `PASS` path is still fail-fast and reachable only after all three child exit codes are zero; independent gate logs provide the detailed evidence. This is a release-harness limitation, not a product runtime result, and is not used to weaken any acceptance gate.
+
+**Confidence/Status:** CONFIRMED local Windows qualification. Hosted CI, exact-tag installer/assets, publication and live rollout remain separate gates.
+
+**Reuse targets:** v0.9.0 release record, Project Control, deployment handoff.

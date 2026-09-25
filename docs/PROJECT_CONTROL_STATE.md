@@ -14,7 +14,7 @@ Updated: 2026-09-25. Scope: public product/release status, not a live machine in
 
 CURRENT: v0.9.0 capability-parity qualification after rebase onto v0.8.42.
 
-The earlier pre-rebase v0.9.0 tree passed focused parity tests and full local Windows check/test/audit, but those results are not promoted to the rebased commit. Open gates are exact rebased local qualification, remote PR/hosted Windows+Linux CI, exact-tag installer/release-asset acceptance, immutable GitHub publication, candidate-first rollout to the two directly managed Emad targets, and custom-app **Scan Tools** refresh wherever the ChatGPT connector inventory is stale.
+Exact rebased Windows local qualification PASS on `04b2dc45696d0b0d3eac531ccba701da6265dfde`: focused runner/catalog/planner regressions **31/31**, `npm run check` **156 PASS / 4 SKIP / 0 FAIL** plus GUI **75/75** and integrity/platform tails, `npm test` **378 PASS / 5 SKIP / 0 FAIL** plus GUI/platform tails, and `npm run audit` **SECURITY_AUDIT_PASS**. The detached fail-fast receipt is PASS and binds the run to the same HEAD. Open gates are remote PR/hosted Windows+Linux CI, exact-tag installer/release-asset acceptance, immutable GitHub publication, candidate-first rollout to the two directly managed Emad targets, and custom-app **Scan Tools** refresh wherever the ChatGPT connector inventory is stale.
 
 ## Remaining roadmap
 
