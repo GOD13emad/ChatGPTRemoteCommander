@@ -73,7 +73,7 @@ Windows local qualification on the candidate after these regressions:
 - \`npm run audit\`: PASS.
 - Focused engine/team/integration set after final edge-case correction: 74/74 PASS.
 
-Open release gates at this record point: exact Linux execution of the same commit, independent diff review, hosted Windows/Ubuntu CI, PR merge and normal version/install/reproducibility/rollout gates. These results therefore establish a Windows-qualified development candidate, not a release.
+Feature qualification closed on exact commit `46f4c70d4467677d97be642aa06680da3b746507`: Windows and Linux each passed full `npm test`, `npm run check` and `npm run audit`; hosted PR #11 Windows/Ubuntu CI passed and the PR merged as `c85975e231b006da1d3eb9edb34fc8c446608401`. Release-version, installer, reproducibility, immutable-publication and live rollout gates remain separate and are tracked in [v0.8.36](RELEASE_0.8.36.md).
 
 
 ## 2026-09-25 — 4B.2 artifact-worker recovery hardening

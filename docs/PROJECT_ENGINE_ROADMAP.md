@@ -1,7 +1,7 @@
 # Project execution engine roadmap
 
-Date: 2026-09-25. Released version: v0.8.35.
-Development baseline: a6bb67d4cca5e1b6a04d8690f1530e964925657a (post-release repository cleanup; runtime release remains v0.8.35 / d25117773ee6982661a27b1f2955888f7019edaf).
+Date: 2026-09-25. Released version: v0.8.35; release candidate: v0.8.36.
+Release-candidate baseline: PR #11 merged into main at c85975e231b006da1d3eb9edb34fc8c446608401; v0.8.36 version metadata is qualified separately before publication.
 
 ## Objective
 Develop Remote Commander into a measurable project execution and management system: plan bounded operations, execute through authorized tools, verify outputs, recover interrupted work, and finalize only against recorded acceptance criteria. Universal superiority is an ambition, not a current capability claim.
@@ -10,11 +10,11 @@ Develop Remote Commander into a measurable project execution and management syst
 1. BASELINE: source/runtime comparison and gap inventory — COMPLETE.
 2. EXECUTION FOUNDATION: reliable pause/cancel, opt-in planner/executor/verifier loop, durable attempt budgets, evidence-bound completion — COMPLETE for the first increment.
 3. QUALIFICATION: deterministic end-to-end regression, full existing suites, independent review, candidate handoff — COMPLETE for local qualification and the reviewable development candidate.
-4. ADAPTIVE MANAGEMENT: 4A prerequisite insertion, bounded parallel proposal workers and durable provider-call budgets, plus 4B.1 durable input requests and explicit responses — RELEASED / Windows and Linux CURRENT. 4B.2 bounded artifact-worker execution is IN DEVELOPMENT; broader escalation and monetary accounting remain PLANNED.
+4. ADAPTIVE MANAGEMENT: 4A prerequisite insertion, bounded parallel proposal workers and durable provider-call budgets, plus 4B.1 durable input requests and explicit responses — RELEASED / Windows and Linux CURRENT. 4B.2 bounded artifact-worker execution is RELEASE CANDIDATE; broader escalation and monetary accounting remain PLANNED.
 5. CONNECTOR PARITY: catalog drift diagnostics, qualified providers, browser/application integrations and transparent terminal reconnection — PLANNED.
 6. COMPARATIVE EVALUATION: pinned real project corpus, equal models/budgets, completion/correctness/recovery/intervention/cost measurements — PLANNED.
 
-CURRENT: milestone 4B.1 is released in immutable v0.8.35, PRs #7 and #8 are merged, and official updates on both Windows and Linux report CURRENT. [Durable input requests and explicit responses](PROJECT_ENGINE_DECISIONS.md) are qualified; a production runner still requires a configured provider and explicit project enrollment. A post-release 4B.2 development worktree now implements bounded artifact-worker isolation with receipt-bound import, fail-closed tamper handling, durable budget reservation and crash-safe no-replay recovery. Windows local regression is PASS; exact Linux, hosted CI, PR review and release qualification remain required before calling it released. Broader escalation and monetary accounting remain open. See [release gates](RELEASE_0.8.35.md) and [qualification evidence](PROJECT_ENGINE_VALIDATION.md). No percentage or superiority score is asserted. Historical entries below describe their observation time, not the current release status.
+CURRENT: milestones 4A and 4B.1 remain released in immutable v0.8.35. PR #11 merged 4B.2 bounded artifact-worker isolation after exact Windows/Linux full test/check/audit and hosted Windows/Ubuntu CI PASS. v0.8.36 is the release candidate carrying that work; installer, reproducibility, immutable-publication and live rollout gates remain separate. Broader escalation and monetary accounting remain open. No percentage or superiority score is asserted. Historical entries below describe their observation time, not the current release status.
 
 ## First increment acceptance
 - Opt-in execution actually calls a configured planner and dispatches schema-valid proposals through existing journaled workflow tools.

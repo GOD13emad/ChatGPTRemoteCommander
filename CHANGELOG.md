@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.8.36 — 2026-09-25
+
+- Add opt-in bounded artifact-worker delegation for explicitly enrolled project runs without granting workers direct Commander project-tool authority.
+- Store worker artifacts only in private per-run engine state and require regular single-link files, bounded UTF-8 content, secret guards and SHA-256 receipts before coordinator import.
+- Bind imports to the normal journaled `write_text` path and record canonical input hashes plus operation IDs; crash recovery refuses same-bytes/different-call effects and never blindly replays a reserved worker.
+- Preserve pause/cancel/deadline control, durable provider-call budgets, independent final verification and disabled-mode behavior. This is an application-level authority boundary, not an OS sandbox.
+
 ## 0.8.35 — 2026-09-24
 
 - Persist bounded planner questions as WAITING_INPUT and expose them in run status/scheduler blockers without stalling other enrolled projects.

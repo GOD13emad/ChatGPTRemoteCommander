@@ -1,4 +1,4 @@
-# Opt-in project execution engine — v0.8.35
+# Opt-in project execution engine — v0.8.36
 
 The engine connects a bounded planner to existing journaled Commander tools and independent acceptance checks. It can execute an explicitly enrolled project, inspect progress, stop safely, and finalize a verified artifact. It does not supply a new model or establish superiority over other agents.
 
@@ -90,12 +90,12 @@ Allowed autonomous actions intentionally exclude GUI takeover, unrestricted shel
 
 Add `--codex` to that demo for a live provider qualification using existing CLI authentication. Set `RC_CODEX_EXECUTABLE` only when the CLI is not on PATH. The demo creates and cleans only its owned temporary project; it never installs or changes a production service.
 
-The roadmap in `PROJECT_ENGINE_ROADMAP.md` tracks broader providers/integrations and comparative benchmarks. Milestone 4A adds [bounded prerequisite insertion and parallel proposal workers](PROJECT_ENGINE_ADAPTIVE.md). Unrestricted plan rewriting, parallel mutating project workers, automatic scientific validation, monetary accounting and general terminal reattachment remain outside the released v0.8.35 scope. The post-release 4B.2 development candidate adds only the bounded artifact-worker boundary described below.
+The roadmap in `PROJECT_ENGINE_ROADMAP.md` tracks broader providers/integrations and comparative benchmarks. Milestone 4A adds [bounded prerequisite insertion and parallel proposal workers](PROJECT_ENGINE_ADAPTIVE.md). Unrestricted plan rewriting, parallel mutating project workers, automatic scientific validation, monetary accounting and general terminal reattachment remain outside the v0.8.36 scope. Milestone 4B.2 adds only the bounded artifact-worker boundary described below.
 
 
-## Development candidate — bounded artifact workers (4B.2)
+## Bounded artifact workers (4B.2)
 
-The development branch after v0.8.35 adds an **opt-in artifact worker** boundary. This is not part of the immutable v0.8.35 release until a later release passes the normal cross-platform and installer gates.
+v0.8.36 adds an **opt-in artifact worker** boundary. It remains disabled unless explicitly configured inside an already enabled project runner.
 
 Enable it only inside an already explicit project runner:
 
