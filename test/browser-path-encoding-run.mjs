@@ -6,12 +6,13 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const root=await mkdtemp(path.join(os.tmpdir(),'rc browser تست '));
 try{
- const toolsDir=path.join(root,'tools');
- await mkdir(toolsDir,{recursive:true});
+ const toolsDir=path.join(root,'tools'),srcDir=path.join(root,'src');
+ await mkdir(toolsDir,{recursive:true});await mkdir(srcDir,{recursive:true});
  const srcRoot=new URL('../',import.meta.url);
  const helperSource=new URL('tools/browser-control.mjs',srcRoot);
  const helperDest=path.join(toolsDir,'browser-control.mjs');
  await copyFile(helperSource,helperDest);
+ await copyFile(new URL('src/browser-owned-processes.mjs',srcRoot),path.join(srcDir,'browser-owned-processes.mjs'));
 
  for(const rel of ['test/browser-helper-init-failure-run.mjs','test/browser-helper-lifecycle-run.mjs']){
   const source=await readFile(new URL(rel,srcRoot),'utf8');

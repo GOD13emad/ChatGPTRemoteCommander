@@ -2,7 +2,8 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { spawn, spawnSync } from 'node:child_process';
+import { spawn } from 'node:child_process';
+import { terminateProcessesUsingBrowserProfile } from '../src/browser-owned-processes.mjs';
 import { createInterface } from 'node:readline';
 
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
@@ -103,28 +104,7 @@ async function ready(timeoutMs){
  }
  throw fail('BROWSER_NAVIGATION_TIMEOUT');
 }
-function killOwnedProfileProcesses(profileDir){
- if(typeof profileDir!=='string'||!profileDir)return;
- const needle='--user-data-dir='+profileDir;
- if(process.platform==='win32'){
-  const script="$needle='--user-data-dir='+$env:RC_BROWSER_PROFILE_DIR; Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -and $_.CommandLine.IndexOf($needle,[System.StringComparison]::OrdinalIgnoreCase) -ge 0 } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }";
-  const env={...process.env,RC_BROWSER_PROFILE_DIR:profileDir};
-  for(const exe of ['pwsh.exe','powershell.exe']){
-   const result=spawnSync(exe,['-NoLogo','-NoProfile','-NonInteractive','-Command',script],{stdio:'ignore',windowsHide:true,shell:false,env,timeout:6000});
-   if(!result.error||result.error.code!=='ENOENT')break;
-  }
-  return;
- }
- if(process.platform==='linux'){
-  let entries=[];try{entries=fs.readdirSync('/proc');}catch{return;}
-  for(const name of entries){
-   if(!/^\d+$/.test(name))continue;
-   const pid=Number(name);if(pid===process.pid)continue;
-   let cmd='';try{cmd=fs.readFileSync('/proc/'+name+'/cmdline','utf8').replace(/\0/g,' ');}catch{continue;}
-   if(cmd.includes(needle))try{process.kill(pid,'SIGKILL');}catch{}
-  }
- }
-}
+function killOwnedProfileProcesses(profileDir){return terminateProcessesUsingBrowserProfile(profileDir);}
 async function closeBrowser({preserveProfile=false}={}){
  const b=browser;browser=null;if(!b)return;
  try{await b.cdp?.send('Browser.close',{},undefined,2000);}catch{}
@@ -140,6 +120,10 @@ async function closeBrowser({preserveProfile=false}={}){
    }catch{try{b.child.kill('SIGKILL');}catch{}}
    if(b.child.exitCode===null)await Promise.race([new Promise(resolve=>b.child.once('close',resolve)),sleep(1500)]);
   }
+ }
+ if(!preserveProfile&&b.profileDir){
+  killOwnedProfileProcesses(b.profileDir);
+  await sleep(100);
  }
  if(!preserveProfile&&b.isolated&&b.profileDir){
   let removed=false;
@@ -159,8 +143,6 @@ async function closeBrowser({preserveProfile=false}={}){
    }
   }
   if(!removed&&fs.existsSync(b.profileDir))throw fail('BROWSER_PROFILE_CLEANUP_FAILED');
- }else if(!preserveProfile&&b.profileDir){
-  killOwnedProfileProcesses(b.profileDir);
  }
 }
 async function startBrowserForRelaunch(prior,headless){

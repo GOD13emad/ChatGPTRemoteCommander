@@ -1,6 +1,7 @@
 import { rm } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 import { browserError } from './browser-contract.mjs';
+import { terminateProcessesUsingBrowserProfile } from './browser-owned-processes.mjs';
 
 const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 function parseEnvelope(bytes){
@@ -41,12 +42,12 @@ async function forceTree(child,forceCloseMs){
  await waitForClose(child,forceCloseMs);
 }
 export function createBrowserProcessClient({file,args,timeoutMs=60000,startupTimeoutMs=15000,maxBytes=8*1024*1024,env=process.env,gracefulCloseMs=2500,forceCloseMs=1500}){
- let child=null,buffer=Buffer.alloc(0),startup=null,pending=null,stderrBytes=0,reserved=false,shutdown=null,isolatedProfile=null;
+ let child=null,buffer=Buffer.alloc(0),startup=null,pending=null,stderrBytes=0,reserved=false,shutdown=null,ownedProfile=null,ownedProfileIsolated=false;
  const clear=t=>{if(t)clearTimeout(t);};
  const beginShutdown=()=>{
   if(shutdown)return shutdown;
   const c=child;child=null;
-  const profile=isolatedProfile;isolatedProfile=null;
+  const profile=ownedProfile,removeProfile=ownedProfileIsolated;ownedProfile=null;ownedProfileIsolated=false;
   buffer=Buffer.alloc(0);
   shutdown=(async()=>{
    if(c&&c.exitCode===null){
@@ -54,7 +55,8 @@ export function createBrowserProcessClient({file,args,timeoutMs=60000,startupTim
     await waitForClose(c,gracefulCloseMs);
     if(c.exitCode===null)await forceTree(c,forceCloseMs);
    }
-   await removeOwnedProfile(profile);
+   if(profile)terminateProcessesUsingBrowserProfile(profile);
+   if(removeProfile)await removeOwnedProfile(profile);
   })().finally(()=>{shutdown=null;});
   return shutdown;
  };
@@ -107,22 +109,23 @@ export function createBrowserProcessClient({file,args,timeoutMs=60000,startupTim
   spawned.stderr.on('data',chunk=>{stderrBytes+=chunk.length;if(stderrBytes>32768)fail('BROWSER_HELPER_OUTPUT_LIMIT');});
   spawned.once('close',()=>{
    if(child!==spawned)return;
-   child=null;buffer=Buffer.alloc(0);
+   buffer=Buffer.alloc(0);
    if(startup||pending)fail('BROWSER_HELPER_EXIT_FAILED');
+   else void beginShutdown().catch(()=>{});
   });
   return promise;
  };
  const invoke=async request=>{
   if(pending||reserved)throw browserError('BROWSER_HELPER_BUSY');
   reserved=true;
-  let trackedStartProfile=null;
+  let trackedStartProfile=null,trackedStartIsolated=false;
   try{
    await start();
    if(!child||child.exitCode!==null||child.killed)throw browserError('BROWSER_HELPER_EXIT_FAILED');
    if(pending)throw browserError('BROWSER_HELPER_BUSY');
-   if(request?.action==='start'&&request.isolated===true&&typeof request.profileDir==='string'&&request.profileDir){
-    trackedStartProfile=request.profileDir;
-    isolatedProfile=request.profileDir;
+   if(request?.action==='start'&&typeof request.profileDir==='string'&&request.profileDir){
+    trackedStartProfile=request.profileDir;trackedStartIsolated=request.isolated===true;
+    ownedProfile=request.profileDir;ownedProfileIsolated=trackedStartIsolated;
    }
    const promise=new Promise((resolve,reject)=>{
     pending={resolve,reject,timer:setTimeout(()=>fail('BROWSER_HELPER_TIMEOUT'),timeoutMs)};
@@ -131,12 +134,13 @@ export function createBrowserProcessClient({file,args,timeoutMs=60000,startupTim
    });
    try{
     const result=await promise;
-    if(request?.action==='end')isolatedProfile=null;
+    if(request?.action==='end'){ownedProfile=null;ownedProfileIsolated=false;}
     return result;
    }catch(error){
-    if(trackedStartProfile&&child&&child.exitCode===null){
-     isolatedProfile=null;
-     void removeOwnedProfile(trackedStartProfile);
+    if(trackedStartProfile){
+     if(ownedProfile===trackedStartProfile){ownedProfile=null;ownedProfileIsolated=false;}
+     terminateProcessesUsingBrowserProfile(trackedStartProfile);
+     if(trackedStartIsolated)void removeOwnedProfile(trackedStartProfile).catch(()=>{});
     }
     throw error;
    }
@@ -147,9 +151,12 @@ export function createBrowserProcessClient({file,args,timeoutMs=60000,startupTim
  const close=()=>{
   reserved=false;
   if(shutdown)return shutdown;
-  const error=browserError('BROWSER_HELPER_EXIT_FAILED');
-  if(startup){const s=startup;clear(s.timer);startup=null;s.reject(error);}
-  if(pending){const p=pending;clear(p.timer);pending=null;p.reject(error);}
+  const hadActive=!!startup||!!pending;
+  if(hadActive){
+   const error=browserError('BROWSER_HELPER_EXIT_FAILED');
+   if(startup){const s=startup;clear(s.timer);startup=null;s.reject(error);}
+   if(pending){const p=pending;clear(p.timer);pending=null;p.reject(error);}
+  }
   return beginShutdown();
  };
  return {invoke,close};

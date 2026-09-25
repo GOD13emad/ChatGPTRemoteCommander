@@ -100,7 +100,7 @@ export function createBrowserController({invoke=req=>client.invoke(req),closeInv
     if(cfg.foregroundFallback!=='explicit-current-request-only'||cfg.allowForegroundFallback!==true)throw browserError('BROWSER_FOREGROUND_FALLBACK_DISABLED');
     if(session.foreground)throw browserError('BROWSER_FOREGROUND_ALREADY_ACTIVE');
     const native=await invoke({action:'relaunch',headless:false});
-    session.foreground=true;uncertain=false;
+    session.foreground=true;
     return {ok:true,foreground:true,headless:false,userDesktopTouched:true,explicitlyAuthorized:true,
       sameOwnedProfile:true,browserProduct:native.browserProduct??null,
       nextStep:'Use a separately authorized GUI takeover only for the minimum required interaction, then end the GUI lease and call browser_foreground_end.'};
@@ -110,7 +110,7 @@ export function createBrowserController({invoke=req=>client.invoke(req),closeInv
     let native;
     try{native=await invoke({action:'relaunch',headless:true});}
     catch(error){session.foreground=false;uncertain=true;throw error;}
-    session.foreground=false;uncertain=false;
+    session.foreground=false;
     return {ok:true,foreground:false,headless:true,userDesktopTouched:false,sameOwnedProfile:true,
       browserProduct:native.browserProduct??null,backgroundResumed:true,resumeNavigationFailed:native.resumeNavigationFailed===true};
    }

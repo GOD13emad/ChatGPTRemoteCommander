@@ -33,6 +33,11 @@ for await(const line of rl){
   await writeFile(req.marker,String(child.pid));
   await new Promise(()=>{});
  }
+ if(req.action==='crashWithChild'){
+  const child=spawn(process.execPath,['-e','setInterval(()=>{},1000)','--','--user-data-dir='+req.profileDir],{stdio:'ignore',windowsHide:true,shell:false});
+  await writeFile(req.marker,String(child.pid));
+  process.exit(17);
+ }
  process.stdout.write(JSON.stringify({ok:true,action:req.action,alive:true})+'\\n');
 }
 `,'utf8');
@@ -76,6 +81,42 @@ test('forced helper shutdown terminates an owned descendant process tree',async(
   for(let i=0;i<80&&processAlive(pid);i++)await sleep(25);
   assert.equal(processAlive(pid),false);
   await Promise.all([f.client.close(),f.client.close()]);
+ }finally{await f.cleanup();}
+});
+
+test('unexpected helper exit terminates the independently owned browser process and removes an isolated profile',async()=>{
+ const f=await fixture({timeoutMs:1500,gracefulCloseMs:60,forceCloseMs:400});
+ const profile=path.join(f.root,'unexpected-isolated'),marker=path.join(f.root,'unexpected.pid');
+ try{
+  await f.client.invoke({action:'start',isolated:true,profileDir:profile});
+  const pending=f.client.invoke({action:'crashWithChild',marker,profileDir:profile});
+  const rejected=assert.rejects(pending,/BROWSER_HELPER_EXIT_FAILED/);
+  for(let i=0;i<60&&!await exists(marker);i++)await sleep(20);
+  assert.equal(await exists(marker),true);
+  const pid=Number((await readFile(marker,'utf8')).trim());
+  assert.equal(Number.isInteger(pid)&&pid>0,true);
+  await rejected;
+  for(let i=0;i<100&&(processAlive(pid)||await exists(profile));i++)await sleep(25);
+  assert.equal(processAlive(pid),false);
+  assert.equal(await exists(profile),false);
+ }finally{await f.cleanup();}
+});
+
+test('unexpected helper exit terminates a persistent browser process but preserves its profile data',async()=>{
+ const f=await fixture({timeoutMs:1500,gracefulCloseMs:60,forceCloseMs:400});
+ const profile=path.join(f.root,'unexpected-persistent'),marker=path.join(f.root,'persistent.pid');
+ try{
+  await f.client.invoke({action:'start',isolated:false,profileDir:profile});
+  assert.equal(await exists(path.join(profile,'owned.txt')),true);
+  const pending=f.client.invoke({action:'crashWithChild',marker,profileDir:profile});
+  const rejected=assert.rejects(pending,/BROWSER_HELPER_EXIT_FAILED/);
+  for(let i=0;i<60&&!await exists(marker);i++)await sleep(20);
+  const pid=Number((await readFile(marker,'utf8')).trim());
+  await rejected;
+  for(let i=0;i<100&&processAlive(pid);i++)await sleep(25);
+  assert.equal(processAlive(pid),false);
+  assert.equal(await exists(profile),true);
+  assert.equal(await readFile(path.join(profile,'owned.txt'),'utf8'),'owned');
  }finally{await f.cleanup();}
 });
 
