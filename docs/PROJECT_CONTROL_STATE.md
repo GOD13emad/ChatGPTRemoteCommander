@@ -7,7 +7,7 @@ Updated: 2026-09-25. Scope: public product/release status, not a live machine in
 - [v0.8.37](RELEASE_0.8.37.md) remains the latest immutable **published GitHub Release** at this checkpoint.
 - [v0.8.40](RELEASE_0.8.40.md) is the current release candidate. It carries forward the hardened background browser from the unpublished v0.8.39 candidate and adds durable background command operations with stable request IDs, bounded file-backed output, receipt-first recovery and exact-operation cancellation.
 - v0.8.38 and v0.8.39 remain historical unpublished tags and are intentionally not moved.
-- Exact v0.8.40 Windows qualification passed full `npm test` (**373 PASS / 5 SKIP / 0 FAIL**), full `npm run check` (**152 PASS / 4 SKIP / 0 FAIL**), GUI contract **75/75**, Windows runtime/source integrity and repository security audit.
+- Exact v0.8.40 Windows qualification passed full `npm test` (**373 PASS / 5 SKIP / 0 FAIL**), full `npm run check` (**152 PASS / 4 SKIP / 0 FAIL**), GUI contract **75/75**, Windows runtime/source integrity and repository security audit. Independent Linux verification of commit `2245495e` passed `npm test` (**377 PASS / 1 SKIP / 0 FAIL**), `npm run check` (exit 0 with tail contracts PASS), and repository security audit.
 - Focused durability evidence includes ten consecutive async runs (**80/80 PASS**), a later five-run set after stdio hardening (**45/45 PASS**), and a direct 30-operation race diagnostic (**30/30 PASS**).
 - Milestones 4A, 4B.1 and 4B.2 remain released. The new `operation_*` layer is direct-session command durability; it does not widen Project Engine tool authority.
 
@@ -15,7 +15,7 @@ Updated: 2026-09-25. Scope: public product/release status, not a live machine in
 
 CURRENT: v0.8.40 release-candidate closeout.
 
-Open gates are exact Linux qualification, remote commit/PR authority, hosted CI where available, pinned installer/reproducible asset acceptance, immutable GitHub publication, and safe candidate-first rollout. Publication or deployment is not claimed until those gates produce evidence.
+Open gates are remote PR/hosted CI, pinned installer/reproducible asset acceptance, immutable GitHub publication, and safe candidate-first rollout. Publication or deployment is not claimed until those gates produce evidence.
 
 ## Remaining roadmap
 

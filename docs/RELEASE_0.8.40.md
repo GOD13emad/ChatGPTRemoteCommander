@@ -20,7 +20,7 @@ The implementation is benchmarked against the MCP 2026-07-28 experimental Tasks 
 | Async focused stress | PASS — 80/80 before final root-cause closeout; 45/45 after stdio hardening |
 | Direct race diagnostic | PASS — 30/30 after receipt/rename/stdio corrections |
 | Exact v0.8.40 Windows check/test/audit | PASS — test 373/5/0, check 152/4/0, GUI 75/75, runtime/source-integrity/security audit PASS |
-| Exact v0.8.40 Linux check/test/audit | PENDING |
+| Exact v0.8.40 Linux check/test/audit | PASS — detached commit 2245495e; test 377/1/0; check exit 0 with tail contracts PASS; security audit PASS |
 | Remote PR/hosted CI | PENDING |
 | Pinned fresh/repeated installers | PENDING |
 | Reproducible release assets / digest match | PENDING |
