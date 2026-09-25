@@ -1,6 +1,6 @@
 # Engineering decisions and evidence
 
-Updated: 2026-09-25. Current immutable published-release authority is [v0.8.42](RELEASE_0.8.42.md). [v0.9.0](RELEASE_0.9.0.md) is the current capability-parity candidate; v0.8.38, v0.8.39 and v0.8.40 remain historical unpublished tags. This public index separates reusable engineering decisions from historical deployment observations.
+Updated: 2026-09-25. Current immutable published-release authority is [v0.8.42](RELEASE_0.8.42.md). [v0.9.1](RELEASE_0.9.1.md) is the current release-hardening candidate; v0.8.38, v0.8.39 and v0.8.40 remain historical unpublished tags. This public index separates reusable engineering decisions from historical deployment observations.
 
 ## Current guarantees and their regression locations
 
@@ -69,7 +69,8 @@ These candidate-development results were followed by the exact v0.8.40 Windows g
 
 ## Publication records
 
-- [v0.9.0 candidate](RELEASE_0.9.0.md): Full Power Project Engine runner parity across qualified Windows/Linux deployments.
+- [v0.9.1 candidate](RELEASE_0.9.1.md): v0.9.0 parity plus exact-tag installer/release hardening.
+- [v0.9.0 historical candidate](RELEASE_0.9.0.md): Full Power Project Engine parity candidate, not published as a GitHub Release.
 - [v0.8.42 published](RELEASE_0.8.42.md): immutable live-compatibility baseline that preserves v0.8.41 transport hardening and restores persisted provider-timeout compatibility.
 - [v0.8.41 published](RELEASE_0.8.41.md): immutable retry/connection hardening release, deployment-superseded by v0.8.42.
 - [v0.8.40 historical candidate](RELEASE_0.8.40.md): durable background operations tag; not published as a GitHub Release and superseded by v0.8.41.
@@ -138,10 +139,10 @@ Historical checkpoints remain append-only archives. Current release/control clai
 
 **Root cause:** capability migration preserved an existing runner but did not create one from the already-qualified local provider. Full Power therefore meant different effective project-execution capability depending on prior machine history.
 
-**Decision/Prevention:** v0.9.0 adds explicit `workflow.project_engine` capability accounting and cross-platform qualified-provider discovery. Canonical explicitly authorized Full Power installs/updates may bootstrap the pinned private Codex CLI 0.156.1 provider and auto-configure the bounded runner; Standard authority, explicit opt-out and custom/no-start isolation remain fail-closed. Historical configured provider timeouts remain loadable through the v0.8.42 compatibility guard while effective execution remains clamped to 30 seconds.
+**Decision/Prevention:** v0.9.0/v0.9.1 add explicit `workflow.project_engine` capability accounting and cross-platform qualified-provider discovery. Canonical explicitly authorized Full Power installs/updates may bootstrap the pinned private Codex CLI 0.156.1 provider and auto-configure the bounded runner; Standard authority, explicit opt-out and custom/no-start isolation remain fail-closed. Historical configured provider timeouts remain loadable through the v0.8.42 compatibility guard while effective execution remains clamped to 30 seconds.
 
 **Regression:** `test/project-runner-config.test.mjs` covers Linux and Windows provider discovery, preservation + timeout migration, Standard denial, explicit opt-out, missing-provider fail-closed behavior and capability-state accounting. A discovered authority-hash regression in crash-recovery fixtures was corrected by separating capability authorization from runner readiness; the combined parity/capability/recovery gate then passed 73/73. The converged candidate line also passed full Windows check/test/audit, full Linux check/test/audit, real candidate-config parity on both accessible Emad devices, and Linux custom/no-start isolation 4/4.
 
-**Confidence/Status:** implementation and local cross-platform qualification CONFIRMED; hosted CI, immutable v0.9.0 publication and production rollout remain OPEN until separately evidenced.
+**Confidence/Status:** implementation and local cross-platform qualification CONFIRMED; hosted CI, immutable v0.9.1 publication and production rollout remain OPEN until separately evidenced.
 
-**Reuse targets:** v0.9.0 release, installer/updater policy, Full Power capability model, Project Brain, Work/Codex setup.
+**Reuse targets:** v0.9.1 release, installer/updater policy, Full Power capability model, Project Brain, Work/Codex setup.

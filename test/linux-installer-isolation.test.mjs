@@ -128,6 +128,22 @@ for (const mode of ['standard', 'power']) test(`Linux custom no-start ${mode} re
   assert.deepEqual(fs.readFileSync(f.npmCalls, 'utf8').trim().split('\n'), ['run check', 'test', 'run audit', 'run check', 'test', 'run audit']);
 });
 
+
+test('Linux custom no-start skip-tunnel-client avoids network when no pinned client exists', linuxOnly, t => {
+  const f = fixture(t);
+  const arch = process.arch === 'arm64' ? 'arm64' : 'amd64';
+  fs.rmSync(path.join(f.target, `tools/tunnel-client-v0.0.14-linux-${arch}`), { recursive: true, force: true });
+  const output = run('bash', [f.installedScript, '--install-dir', f.target, '--source-ref', 'HEAD',
+    '--expected-commit', f.commit, '--standard-mode', '--skip-tunnel-client'], {
+    cwd: f.root, env: f.env
+  });
+  assert.match(output, /Skipping tunnel-client installation as requested/);
+  assert.match(output, /INSTALL_PASS/);
+  assert.equal(fs.existsSync(f.effects), false, 'skip-tunnel-client must not invoke curl or mutate production services');
+  assert.deepEqual(fs.readFileSync(f.route), fs.readFileSync(f.route));
+  assert.deepEqual(fs.readFileSync(f.npmCalls, 'utf8').trim().split('\n'), ['run check', 'test', 'run audit']);
+});
+
 test('Linux existing custom installation with explicit start retains candidate-first path', linuxOnly, t => {
   const f = fixture(t);
   const routeBefore = fs.readFileSync(f.route);
