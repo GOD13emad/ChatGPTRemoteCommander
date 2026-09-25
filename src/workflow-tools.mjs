@@ -239,7 +239,7 @@ export function createWorkflowTools({ config, roots, device, configSha256, looku
         workers:settings.runner.team.workers,maxParallel:settings.runner.team.maxParallel});
       const requested=settings.runner.allowedTools??['list_directory','read_text','file_info','write_text','create_directory'];
       if(!Array.isArray(requested)||requested.some(name=>!allowed.has(name)))fail('WORKFLOW_RUNNER_POLICY_EXCEEDS_HOST');
-      engine=createProjectEngine({directory:path.join(settings.directory,'project-engine'),planner,
+      engine=createProjectEngine({directory:path.join(settings.directory,'project-engine'),planner,workerPlanner:basePlanner,
         // Plan editing is an internal runner capability, never a host-dispatched tool.
         execute:(name,args)=>name==='workflow_plan_extend'?store.extendPlan(args):api.execute(name,args),
         observe:async(name,args,workflow)=>{

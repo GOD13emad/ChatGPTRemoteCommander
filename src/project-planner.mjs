@@ -8,7 +8,7 @@ const FIELDS = ['action', 'tool', 'argumentsJson', 'summary'];
 const SCHEMA = {
   type: 'object', additionalProperties: false, required: FIELDS,
   properties: {
-    action: { type: 'string', enum: ['call', 'block', 'extend'] },
+    action: { type: 'string', enum: ['call', 'block', 'extend', 'delegate'] },
     tool: { type: 'string' }, argumentsJson: { type: 'string' }, summary: { type: 'string' }
   }
 };
@@ -18,7 +18,7 @@ const DISABLED_CODEX_FEATURES = [
   'multi_agent', 'memories', 'image_generation', 'code_mode_host',
   'skill_search', 'skill_mcp_dependency_install', 'goals', 'remote_plugin', 'tool_suggest'
 ];
-const INSTRUCTIONS = 'Return exactly one JSON proposal matching the supplied schema. Use only the supplied context. Do not use tools, read files, run commands, edit files, or perform the action. Commander alone executes proposed actions. Choose block when evidence or authority is missing. argumentsJson must encode a JSON object.\n';
+const INSTRUCTIONS = 'Return exactly one JSON proposal matching the supplied schema. Use only the supplied context. Do not use tools, read files, run commands, edit files, or perform the action. Commander alone executes proposed actions. Choose block when evidence or authority is missing. Choose delegate only when the supplied worker context explicitly enables it. argumentsJson must encode a JSON object.\n';
 
 function fail(code) {
   const error = new Error(code);
@@ -38,11 +38,11 @@ function parseProposal(text) {
   if (!value || typeof value !== 'object' || Array.isArray(value)
       || Object.keys(value).length !== FIELDS.length
       || FIELDS.some(key => !Object.hasOwn(value, key) || typeof value[key] !== 'string')
-      || !['call', 'block', 'extend'].includes(value.action)
+      || !['call', 'block', 'extend', 'delegate'].includes(value.action)
       || value.tool.length > 200 || value.argumentsJson.length > 256 * 1024
       || value.summary.length > 8000
       || (value.action === 'call' && !/^[A-Za-z][A-Za-z0-9_.:-]{0,199}$/.test(value.tool))
-      || (value.action === 'extend' && value.tool !== '')) {
+      || (value.action !== 'call' && value.tool !== '')) {
     throw fail('PLANNER_INVALID_PROPOSAL');
   }
   let args;
