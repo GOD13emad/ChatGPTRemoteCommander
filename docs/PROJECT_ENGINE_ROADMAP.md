@@ -1,7 +1,7 @@
 # Project execution engine roadmap
 
-Date: 2026-09-25. Released version: v0.8.36; release candidate: v0.8.37.
-Release-candidate baseline: PR #13 merged into main at b0a64ce21acec48c08c18676fc701a5c84962900 after PR #11 introduced 4B.2. v0.8.37 is a scoped compatibility/invariant hardening release.
+Date: 2026-09-25. Released version: v0.8.37; no newer release candidate is open.
+Release baseline: tag `v0.8.37` peels to `09fcc485fd7ade82f7d8be25efc4f77ebc17e640`; PR #13 supplied the scoped compatibility/invariant fixes and PR #14 merged the release record.
 
 ## Objective
 Develop Remote Commander into a measurable project execution and management system: plan bounded operations, execute through authorized tools, verify outputs, recover interrupted work, and finalize only against recorded acceptance criteria. Universal superiority is an ambition, not a current capability claim.
@@ -10,11 +10,11 @@ Develop Remote Commander into a measurable project execution and management syst
 1. BASELINE: source/runtime comparison and gap inventory — COMPLETE.
 2. EXECUTION FOUNDATION: reliable pause/cancel, opt-in planner/executor/verifier loop, durable attempt budgets, evidence-bound completion — COMPLETE for the first increment.
 3. QUALIFICATION: deterministic end-to-end regression, full existing suites, independent review, candidate handoff — COMPLETE for local qualification and the reviewable development candidate.
-4. ADAPTIVE MANAGEMENT: 4A prerequisite insertion, bounded parallel proposal workers and durable provider-call budgets, plus 4B.1 durable input requests and explicit responses and 4B.2 bounded artifact-worker execution — RELEASED in v0.8.36 / Windows and Linux CURRENT. v0.8.37 hardens 4B.2 without adding authority; broader escalation and monetary accounting remain PLANNED.
+4. ADAPTIVE MANAGEMENT: 4A prerequisite insertion, bounded parallel proposal workers and durable provider-call budgets, 4B.1 durable input requests/explicit responses, and 4B.2 bounded artifact-worker execution — RELEASED. v0.8.37 hardens 4B.2 without adding authority; broader escalation and monetary accounting remain PLANNED.
 5. CONNECTOR PARITY: catalog drift diagnostics, qualified providers, browser/application integrations and transparent terminal reconnection — PLANNED.
 6. COMPARATIVE EVALUATION: pinned real project corpus, equal models/budgets, completion/correctness/recovery/intervention/cost measurements — PLANNED.
 
-CURRENT: immutable v0.8.36 released milestone 4B.2 and is CURRENT on the audited Windows/Linux targets. PR #13 then qualified Codex CLI 0.156.1 fail-closed diagnostics and closed three independent artifact-worker review findings: stale-step receipt retargeting, contained absolute import paths, and the 64 KiB envelope/journal mismatch. v0.8.37 packages only those compatibility/invariant fixes; publication and live rollout remain separate gates. Broader escalation and monetary accounting remain open. No percentage or superiority score is asserted. Historical entries below describe their observation time, not the current release status.
+CURRENT: immutable v0.8.37 is published as Latest and CURRENT on the audited Windows/Linux targets. It qualifies Codex CLI 0.156.1 fail-closed diagnostics and closes three independent artifact-worker review findings: stale-step receipt retargeting, contained absolute import paths, and the 64 KiB envelope/journal mismatch. Reproducible assets, exact-version installers, candidate-first promotion, retained-terminal continuity and final route cleanup passed. Broader escalation and monetary accounting remain open. No percentage or superiority score is asserted. Historical entries below describe their observation time, not the current release status.
 
 ## First increment acceptance
 - Opt-in execution actually calls a configured planner and dispatches schema-valid proposals through existing journaled workflow tools.
@@ -33,6 +33,7 @@ The user authorized implementation and subsequently explicit cross-platform rele
 The first increment uses one tool operation per predeclared workflow step, consistent with the existing journal. Dynamic plan expansion is a later milestone. Separate planner proposals from execution and deterministic verification. No agent can alter its acceptance checks during a run. New execution tools appear only when explicitly configured.
 
 ## History
+- 2026-09-25: v0.8.37 published as immutable Latest with 13 reproducible assets. Fresh/repeated pinned installers passed on Windows and Linux without changing live production routing during acceptance. Candidate-first rollout then reached CURRENT on both audited platforms; previous routes cleared, while Windows terminal-owning backends were retained instead of terminated.
 - 2026-09-25: PR #13 passed full Windows/Linux check/test/audit, four hosted Windows/Ubuntu CI jobs, an authenticated isolated Codex CLI 0.156.1 qualification and independent review. Review findings were converted into regressions for delegated-step binding, contained absolute imports and bounded 64 KiB worker envelopes before release preparation.
 - 2026-09-23: Milestone 4A passed full test/check/audit on Windows Node 22.23.2 and 26.7.0 (292 core PASS, 1 privilege SKIP, 75 GUI contracts PASS). Deterministic two-worker/coordinator demo completed with one extension and nine reserved/observed calls. Final independent review found no remaining blocker in scope. Remote publication is currently unavailable; no production rollout occurred.
 - 2026-09-23: Continued milestone 4. Plan extensions insert prerequisites before an unexecuted target without revising scope/acceptance/history. Proposal workers may run in parallel; one coordinator and the existing executor retain mutation authority. Reserve all worker/coordinator calls before invocation and journal extension intent before changing the plan.

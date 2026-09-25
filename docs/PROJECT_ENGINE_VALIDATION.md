@@ -1,9 +1,9 @@
 # Project engine qualification history
 
 Date: 2026-09-23. Baseline: `2ad46c544907f6ca2c6c47ebf5d88b6a661e7047`.
-Scope: development and release qualification history. Current publication and scoped rollout evidence is recorded in [v0.8.35](RELEASE_0.8.35.md); historical entries below retain their original dates, versions and limits.
+Scope: development and release qualification history. Current publication and scoped rollout evidence is recorded in [v0.8.37](RELEASE_0.8.37.md); historical entries below retain their original dates, versions and limits.
 
-## v0.8.37 candidate qualification
+## v0.8.37 published qualification
 
 PR #13 merged into `main` at `b0a64ce21acec48c08c18676fc701a5c84962900` after two code commits: Codex CLI 0.156.1 fail-closed diagnostic compatibility and bounded artifact-worker invariant hardening. The final PR head passed four hosted CI jobs: two Windows and two Ubuntu.
 
@@ -11,7 +11,7 @@ On the final reviewed code, Windows full `npm run check`, `npm test` and `npm ru
 
 Independent review first found three concrete worker defects: a ready receipt could survive plan progress to a different step, absolute targets inside the project were rejected after write-time containment already allowed them, and a configured 64 KiB worker artifact could exceed the old proposal/journal envelope when JSON escaping expanded the arguments. Each now has a focused regression. A second independent review of the final PR head reported no actionable regression; filesystem-writing integration tests remained covered by the separate full local suites because that review itself was read-only.
 
-The release remains a candidate until exact versioned release CI, pinned installers, reproducible immutable assets and live candidate-first deployment pass. v0.8.37 adds no new shell/GUI/process/deletion authority and does not make the worker boundary an OS sandbox.
+Those remaining release gates subsequently passed: the exact versioned commit completed four hosted Windows/Ubuntu CI jobs; fresh and repeated pinned installers passed on both audited platforms while preserving live production state during no-start acceptance; two independent 13-asset builds matched byte-for-byte; GitHub draft digests matched local assets 13/13; and the published release is immutable Latest. Candidate-first promotion reached CURRENT on the audited Windows and Linux targets with previous routes cleared. Windows terminal-owning older backends were retained rather than terminated. v0.8.37 adds no new shell/GUI/process/deletion authority and does not make the worker boundary an OS sandbox.
 
 ## Historical candidate qualification — milestone 4A
 
