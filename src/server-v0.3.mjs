@@ -14,9 +14,10 @@ import { lockStats } from './locks.mjs';
 import { expandPathValue, shellName } from './platform.mjs';
 import { formatToolInputErrors, validateJsonSchema } from './schema-validator.mjs';
 import { createAsyncOperationTools } from './async-operations.mjs';
+import { compactToolSuccessPayload, serializeBoundedJsonResponse } from './retry-guard.mjs';
 
 let workflowTools = null;
-const VERSION = '0.8.40';
+const VERSION = '0.8.41';
 const MODERN_VERSION = '2026-07-28';
 const LEGACY_VERSIONS = ['2025-11-25', '2025-06-18', '2025-03-26'];
 const MODERN_CACHE_HINT = Object.freeze({ ttlMs: 30000, cacheScope: 'private' });
@@ -113,14 +114,14 @@ const TOOLS = [
   },
   {
     name: 'run_project_command',
-    description: LEGACY_FULL_FILESYSTEM ? 'Run one short bounded allowlisted executable directly without a shell. For long or high-output work prefer operation_start. Power Mode fullFilesystem=true permits cwd and path arguments outside configured allowedRoots; Python -c and Node eval/print remain blocked.' : 'Run one short bounded allowlisted executable directly in an allowed project directory without a shell. For long or high-output work prefer operation_start.',
+    description: LEGACY_FULL_FILESYSTEM ? 'Run one short bounded allowlisted executable directly without a shell. Synchronous calls are hard-limited to 30 seconds; use operation_start with a stable requestId for longer, unknown-duration, or high-output work. Power Mode fullFilesystem=true permits cwd and path arguments outside configured allowedRoots; Python -c and Node eval/print remain blocked.' : 'Run one short bounded allowlisted executable directly in an allowed project directory without a shell. Synchronous calls are hard-limited to 30 seconds; use operation_start with a stable requestId for longer, unknown-duration, or high-output work.',
     inputSchema: {
       type: 'object',
       properties: {
         program: { type: 'string', minLength: 1 },
         args: { type: 'array', items: { type: 'string' }, maxItems: 100 },
         cwd: { type: 'string' },
-        timeoutMs: { type: 'integer', minimum: 1000 }
+        timeoutMs: { type: 'integer', minimum: 1000, maximum: 30000 }
       },
       required: ['program'],
       additionalProperties: false
@@ -182,9 +183,7 @@ function toolErrorPayload(message) {
 }
 
 function toolSuccessPayload(result) {
-  return result?.__mcpContent
-    ? { content: result.__mcpContent, structuredContent: result.__structuredContent ?? {}, isError: false }
-    : { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }], structuredContent: result, isError: false };
+  return compactToolSuccessPayload(result);
 }
 
 function rpcResult(id, payload, modern) {
@@ -431,9 +430,10 @@ function sendJson(res, status, body) {
     return;
   }
   res.setHeader('Cache-Control', 'no-store');
-  const data = Buffer.from(JSON.stringify(body));
-  res.writeHead(status, { 'content-type': 'application/json', 'content-length': data.length });
-  res.end(data);
+  const bounded = serializeBoundedJsonResponse(body);
+  const responseStatus = bounded.overflow && body?.jsonrpc !== '2.0' ? 500 : status;
+  res.writeHead(responseStatus, { 'content-type': 'application/json', 'content-length': bounded.data.length });
+  res.end(bounded.data);
 }
 const server = http.createServer(async (req, res) => {
   try {

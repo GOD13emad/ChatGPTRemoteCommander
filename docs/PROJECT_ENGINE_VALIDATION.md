@@ -1,7 +1,7 @@
 # Project engine qualification history
 
 Date: 2026-09-23. Baseline: `2ad46c544907f6ca2c6c47ebf5d88b6a661e7047`.
-Scope: development and release qualification history. Current candidate evidence is recorded in [v0.8.40](RELEASE_0.8.40.md); historical entries below retain their original dates, versions and limits.
+Scope: development and release qualification history. Current candidate evidence is recorded in [v0.8.41](RELEASE_0.8.41.md); historical entries below retain their original dates, versions and limits.
 
 
 ## v0.8.40 durable background-operation candidate qualification

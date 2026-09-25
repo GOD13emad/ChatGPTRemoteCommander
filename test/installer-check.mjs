@@ -14,7 +14,7 @@ for (const required of [
   'Detected active installation from Windows autostart',
   '$InstallDir = Resolve-InstallDir',
   'Tracked local changes exist in InstallDir',
-  "[string]$SourceRef = 'v0.8.40'",
+  "[string]$SourceRef = 'v0.8.41'",
   'ExpectedCommit',
   "rev-parse 'FETCH_HEAD^{commit}'",
   'incomplete Git checkout with no HEAD',
@@ -22,6 +22,7 @@ for (const required of [
   'Get-ExpectedConfigHash',
   'mcp-runtime.json',
   'tunnel-client.json',
+  'Skipping tunnel-client installation as requested',
   'update-backups',
   'SAFE_UPDATE_PASS',
   '$isCanonicalLiveInstall',
@@ -48,7 +49,7 @@ const linuxEnrollment = readFileSync('enable-autostart-linux.sh', 'utf8');
 const linuxPluginInstaller = readFileSync('install-work-plugin.sh', 'utf8');
 const linuxAccountConnector = readFileSync('connect-chatgpt-account.sh', 'utf8');
 for (const required of [
-  'SOURCE_REF="${REMOTE_COMMANDER_SOURCE_REF:-v0.8.40}"',
+  'SOURCE_REF="${REMOTE_COMMANDER_SOURCE_REF:-v0.8.41}"',
   '--source-ref',
   '--expected-commit',
   'REMOTE_COMMANDER_EXPECTED_COMMIT',
@@ -133,4 +134,8 @@ if (process.platform === 'linux') {
   console.log('INSTALLER_CHECK_PASS platform=win32 powershell=true');
 } else {
   console.log(`INSTALLER_CHECK_SKIP platform=${process.platform}`);
+}
+
+if (windowsInstaller.includes('throw "SkipTunnelClient was requested but expected executable is missing')) {
+  throw new Error('SkipTunnelClient missing-client path must not throw');
 }
