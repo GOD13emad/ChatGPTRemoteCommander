@@ -1,6 +1,13 @@
 # Changelog
 
-## 0.8.41 — 2026-09-25
+## 0.8.42 — 2026-09-25
+
+- Restore live upgrade compatibility for persisted Project Engine provider configurations that legitimately carry historical timeout values such as 120000 ms.
+- Separate configured timeout acceptance from effective execution time: provider configuration remains accepted up to the historical 600000 ms bound, while the effective planner process deadline remains clamped to 30000 ms for transport-safe retry hardening.
+- Add regression coverage proving a legacy 120000 ms provider configuration loads successfully while `planner.describe().timeoutMs` remains 30000 ms.
+- v0.8.41 remains an immutable published release, but its first candidate-first Windows production rollout was rejected before cutover with `CANDIDATE_HEALTH_TIMEOUT`; production stayed on v0.8.37. v0.8.42 supersedes it for deployment.
+
+## 0.8.41 — 2026-09-25 (published, deployment superseded by 0.8.42)
 
 - Harden Secure MCP Tunnel reliability after real logs repeatedly showed `command response deadline reached; dropping without posting a response`: synchronous command/browser/planner work is bounded to 30 seconds and longer work is directed to durable `operation_*` execution.
 - Remove large-result duplication between MCP text content and structured content, and cap the final serialized MCP response at an 8 MiB safe envelope; oversize results now fail as a compact `MCP_RESPONSE_TOO_LARGE` JSON-RPC error instead of risking a 413/transport interruption.

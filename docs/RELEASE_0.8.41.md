@@ -1,6 +1,6 @@
 # v0.8.41 qualification
 
-Status: CANDIDATE, 2026-09-25.
+Status: PUBLISHED / DEPLOYMENT-SUPERSEDED, 2026-09-25.
 
 v0.8.41 supersedes the immutable but unpublished v0.8.40 tag. It retains the hardened background browser and durable `operation_*` command layer, then closes the confirmed Secure MCP Tunnel retry/disconnection failure classes seen on the audited Windows deployment.
 
@@ -31,3 +31,8 @@ Method references:
 - OpenAI tunnel-client response deadline semantics: <https://github.com/openai/tunnel-client/blob/master/docs/protocol.md>
 - MCP Tasks extension: <https://tasks.extensions.modelcontextprotocol.io/specification/draft/tasks>
 - Node child process lifecycle: <https://nodejs.org/api/child_process.html>
+
+
+## Post-publication live gate
+
+The immutable v0.8.41 package passed hosted CI, exact-tag isolated installers, reproducible asset verification and publication checks. Its first candidate-first Windows production rollout nevertheless failed closed before route promotion: the existing Full Power Project Engine profile persisted `runner.provider.timeoutMs=120000`, while v0.8.41 accepted only up to 30000 ms. Candidate health timed out, the updater recorded `FAILED`, and both production profiles remained on v0.8.37. This compatibility defect is fixed in the v0.8.42 hotfix candidate; v0.8.41 is not accepted for live deployment.

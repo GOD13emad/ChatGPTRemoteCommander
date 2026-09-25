@@ -1,6 +1,6 @@
 # Engineering decisions and evidence
 
-Updated: 2026-09-25. Current immutable published-release authority is [v0.8.37](RELEASE_0.8.37.md). [v0.8.41](RELEASE_0.8.41.md) is the current release candidate; v0.8.38, v0.8.39 and v0.8.40 remain historical unpublished tags. This public index separates reusable engineering decisions from historical deployment observations.
+Updated: 2026-09-25. Current immutable published-release authority is [v0.8.41](RELEASE_0.8.41.md), but live candidate-first deployment rejected it before cutover. [v0.8.42](RELEASE_0.8.42.md) is the current compatibility hotfix candidate; v0.8.38, v0.8.39 and v0.8.40 remain historical unpublished tags. This public index separates reusable engineering decisions from historical deployment observations.
 
 ## Current guarantees and their regression locations
 
@@ -69,7 +69,8 @@ These candidate-development results were followed by the exact v0.8.40 Windows g
 
 ## Publication records
 
-- [v0.8.41 candidate](RELEASE_0.8.41.md): retry/connection hardening over durable background operations; publication gates remain open until evidenced.
+- [v0.8.42 candidate](RELEASE_0.8.42.md): compatibility hotfix retaining v0.8.41 transport bounds while accepting persisted legacy provider timeout values.
+- [v0.8.41 published/deployment-superseded](RELEASE_0.8.41.md): immutable retry/connection hardening release; package/CI gates passed, but first Windows live candidate failed before cutover.
 - [v0.8.40 historical candidate](RELEASE_0.8.40.md): durable background operations tag; not published as a GitHub Release and superseded by v0.8.41.
 - [v0.8.39 historical candidate](RELEASE_0.8.39.md): hardened zero-interference browser; tag exists but no GitHub Release was published.
 - [v0.8.38 superseded candidate](RELEASE_0.8.38.md): pre-hardening browser candidate; historical tag is not moved.
@@ -127,3 +128,22 @@ Historical checkpoints remain append-only archives. Current release/control clai
 **Confidence/Status:** LIVE METADATA REPAIR CONFIRMED; legacy stale-prestate rollback edge case remains OPEN/DEFERRED unless it recurs in normal v0.8.41 update paths.
 
 **Reuse targets:** multi-account recovery, supervisor diagnostics, future reconfigure hardening.
+
+
+## E069 — v0.8.41 live upgrade rejected persisted 120 s planner configuration
+
+**Date/Context:** 2026-09-25; first candidate-first Windows production rollout after immutable v0.8.41 publication.
+
+**Observed evidence:** v0.8.41 passed local/hosted CI, reproducible assets and fresh/repeated no-start installer acceptance. During live candidate-first update, repository gates `check/test/audit/gui-native-selftest` all passed and a diagnostic config was generated from the persisted Full Power profile. The candidate backend never reached health and the updater ended `FAILED: CANDIDATE_HEALTH_TIMEOUT profile=default port=48836`. No route switched; both canonical profiles remained healthy on v0.8.37.
+
+**Root cause:** The persisted Project Engine runner configuration contains `provider.timeoutMs=120000`, which was valid in prior releases. v0.8.41 changed `createCommandPlanner` validation from an accepted maximum of 600000 ms to 30000 ms in order to keep synchronous work below the tunnel response deadline. Startup constructs the planner whenever the runner is enabled, so the existing configuration threw `PLANNER_INVALID_CONFIG` before the candidate backend could become healthy. CI and isolated no-start installation did not instantiate this exact persisted-runner compatibility path.
+
+**Prevention/Guard:** Configuration acceptance and effective execution deadline are separated. Historical configured values remain valid in the prior 10..600000 ms range, while the effective planner process timeout is clamped to 30000 ms. This preserves the retry/deadline control without making previously valid persisted profiles unloadable.
+
+**Regression:** `test/project-planner.test.mjs` asserts a configured 120000 ms provider constructs successfully and reports an effective 30000 ms timeout. The focused planner suite passes **27/27**. Full Windows qualification also passes `npm run check` **156/4/0**, `npm test` **378/5/0**, GUI **75/75**, integrity tails, and security audit. v0.8.42 must additionally pass candidate-first live validation against the same persisted profile before publication/deployment is accepted.
+
+**Live regression evidence:** The exact hotfix commit `1d2308fb3873870e7bd47e394c8d96cffe74c28d` completed updater `NoPromote` validation as `CANDIDATE_PASS` against the real persisted Full Power profiles. Default and saeed-emad each passed doctor, hardware, shadow-store and live-store compatibility while preserving configured `provider.timeoutMs=120000`. Production route SHA-256 values remained `8d5f275ab835c9790bb1fadfdb109dd07db14e0b4d8c4d18c18da46c860d62b1` (default) and `3f6a274a9a10ea664c2ae57d4f83102173563137f3ea127d2e9ac17bc42972c3` (saeed-emad); live services remained v0.8.37 and candidate listeners were removed after validation.
+
+**Confidence/Status:** ROOT CAUSE CONFIRMED; v0.8.41 LIVE DEPLOYMENT REJECTED SAFELY; v0.8.42 HOTFIX LIVE-COMPATIBILITY GATE PASS.
+
+**Reuse targets:** update compatibility policy, release gates, Project Engine configuration migration, retry hardening.
