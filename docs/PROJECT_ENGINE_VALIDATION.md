@@ -3,6 +3,16 @@
 Date: 2026-09-23. Baseline: `2ad46c544907f6ca2c6c47ebf5d88b6a661e7047`.
 Scope: development and release qualification history. Current publication and scoped rollout evidence is recorded in [v0.8.35](RELEASE_0.8.35.md); historical entries below retain their original dates, versions and limits.
 
+## v0.8.37 candidate qualification
+
+PR #13 merged into `main` at `b0a64ce21acec48c08c18676fc701a5c84962900` after two code commits: Codex CLI 0.156.1 fail-closed diagnostic compatibility and bounded artifact-worker invariant hardening. The final PR head passed four hosted CI jobs: two Windows and two Ubuntu.
+
+On the final reviewed code, Windows full `npm run check`, `npm test` and `npm run audit` passed with **340 PASS, 5 platform/privilege SKIP, 0 FAIL** in the core Node suite plus **75/75 GUI contract PASS**. The exact same follow-up diff applied to Linux and passed full `check`, `test`, `audit` and the 75/75 GUI contract. An isolated authenticated Codex CLI 0.156.1 run completed the project-engine demo with `COMPLETED`, independently verified artifact bytes and Brain creation.
+
+Independent review first found three concrete worker defects: a ready receipt could survive plan progress to a different step, absolute targets inside the project were rejected after write-time containment already allowed them, and a configured 64 KiB worker artifact could exceed the old proposal/journal envelope when JSON escaping expanded the arguments. Each now has a focused regression. A second independent review of the final PR head reported no actionable regression; filesystem-writing integration tests remained covered by the separate full local suites because that review itself was read-only.
+
+The release remains a candidate until exact versioned release CI, pinned installers, reproducible immutable assets and live candidate-first deployment pass. v0.8.37 adds no new shell/GUI/process/deletion authority and does not make the worker boundary an OS sandbox.
+
 ## Historical candidate qualification — milestone 4A
 
 From baseline `67d01533d1ddb7ea511c5410290b617752456659`, the adaptive planning/team increment passed `npm test`, `npm run check` and `npm run audit` on Windows with both Node 22.23.2 and 26.7.0. Core tests: **292 passed, 1 skipped, 0 failed**. Separate GUI contracts: **75/75 passed**. These are repeated version checks, not additional distinct test totals. The skipped leaf-symlink test requires a Windows privilege unavailable to this account.

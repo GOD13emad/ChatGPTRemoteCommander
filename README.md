@@ -8,7 +8,7 @@ Cross-platform Windows + Linux MCP server for controlled remote project and mach
 
 **Setup guides in 10 languages:** [English](docs/SETUP.en.md) · [فارسی](docs/SETUP.fa.md) · [العربية](docs/SETUP.ar.md) · [Türkçe](docs/SETUP.tr.md) · [Español](docs/SETUP.es.md) · [Français](docs/SETUP.fr.md) · [Deutsch](docs/SETUP.de.md) · [Русский](docs/SETUP.ru.md) · [简体中文](docs/SETUP.zh-CN.md) · [日本語](docs/SETUP.ja.md)
 
-[Documentation index](docs/README.md) · [Current release candidate: v0.8.36](docs/RELEASE_0.8.36.md) · [Project status](docs/PROJECT_CONTROL_STATE.md) · [Development roadmap](docs/PROJECT_ENGINE_ROADMAP.md)
+[Documentation index](docs/README.md) · [Current release candidate: v0.8.37](docs/RELEASE_0.8.37.md) · [Project status](docs/PROJECT_CONTROL_STATE.md) · [Development roadmap](docs/PROJECT_ENGINE_ROADMAP.md)
 
 ## Persistent startup
 
@@ -62,7 +62,7 @@ In v0.8.35, [durable input requests](docs/PROJECT_ENGINE_DECISIONS.md) let an en
 
 [The opt-in project execution engine](docs/PROJECT_ENGINE.md), introduced in v0.8.34, adds bounded planner proposals, journaled execution, durable budgets, pause/cancel controls, fresh observations after restart and independent evidence-bound finalization. It is disabled unless explicitly configured and does not automatically enroll existing workflows. See the [development roadmap](docs/PROJECT_ENGINE_ROADMAP.md) for remaining capabilities and comparative qualification.
 
-Optional [adaptive planning and proposal teams](docs/PROJECT_ENGINE_ADAPTIVE.md) add journaled prerequisite insertion, parallel worker advice, one coordinating executor and persistent provider-call budgets. v0.8.36 adds opt-in bounded artifact workers whose receipt-bound output can enter the project only through the normal journaled coordinator path. Acceptance criteria and execution authority remain immutable within a run.
+Optional [adaptive planning and proposal teams](docs/PROJECT_ENGINE_ADAPTIVE.md) add journaled prerequisite insertion, parallel worker advice, one coordinating executor and persistent provider-call budgets. v0.8.36 adds opt-in bounded artifact workers whose receipt-bound output can enter the project only through the normal journaled coordinator path. Acceptance criteria and execution authority remain immutable within a run. v0.8.37 hardens that boundary with exact delegated-step binding, canonical contained imports, end-to-end bounded 64 KiB artifact envelopes, and qualified fail-closed Codex CLI 0.156.1 diagnostics.
 
 - Loopback-only MCP server by default (`127.0.0.1:47831`)
 - Configurable allowed filesystem roots

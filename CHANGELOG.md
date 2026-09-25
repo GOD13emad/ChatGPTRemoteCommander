@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.8.37 — 2026-09-25
+
+- Qualify the bounded project-engine planner against Codex CLI 0.156.1 while accepting only its exact fail-closed `code_mode_host`-disabled diagnostic; unknown, widened, duplicated or out-of-order provider errors remain blocked.
+- Bind a ready worker receipt to the exact delegated workflow step so plan progress cannot retarget a verified artifact to another step.
+- Accept absolute coordinator import targets only when canonical containment keeps them inside the enrolled project root.
+- Preserve the documented 64 KiB worker-artifact ceiling through bounded proposal/context/journal envelopes, with an explicit 256 KiB workflow argument ceiling and negative regression above it.
+
 ## 0.8.36 — 2026-09-25
 
 - Add opt-in bounded artifact-worker delegation for explicitly enrolled project runs without granting workers direct Commander project-tool authority.
