@@ -86,7 +86,7 @@ async function startBrowser(req){
   await waitDriver(driver,port);
   const args=['-profile',profileDir];
   if(req.headless!==false)args.unshift('-headless');
-  const created=await http('POST','/session',{capabilities:{alwaysMatch:{browserName:'firefox','moz:firefoxOptions':{binary:executable,args}}}},15000);
+  const created=await http('POST','/session',{capabilities:{alwaysMatch:{browserName:'firefox','moz:firefoxOptions':{args}}}},15000);
   if(!created?.sessionId)throw fail('BROWSER_DEVTOOLS_UNAVAILABLE');
   browser.sessionId=created.sessionId;browser.product='Firefox '+String(created.capabilities?.browserVersion??'').trim();
   return {ok:true,background:browser.headless,headless:browser.headless,foreground:!browser.headless,userDesktopTouched:!browser.headless,
