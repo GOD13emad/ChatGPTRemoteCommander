@@ -1,6 +1,15 @@
 # Changelog
 
-## 0.8.39 — 2026-09-25
+## 0.8.40 — 2026-09-25
+
+- Add durable background command operations (`operation_start`, `operation_status`, `operation_result`, `operation_cancel`) so long-running builds, tests, audits and shell/project commands do not hold one MCP request open.
+- Make stable request IDs idempotent across lost acknowledgements; changed inputs with the same request ID fail closed, and uncertain outcomes are never blindly replayed.
+- Keep captured stdout/stderr file-backed and policy-bounded while recording total byte counts and SHA-256 over the complete stream; bounded result tails keep MCP responses small.
+- Harden Windows durability with receipt-first recovery and bounded atomic-state rename retries so a valid completion receipt cannot be downgraded by a transient `EPERM/EACCES/EBUSY` state update failure.
+- Bound post-exit stdio draining so descendants that inherit a pipe cannot strand an already-finished command; receipts explicitly report whether output capture was complete.
+- Carry forward the hardened background-browser implementation from unpublished v0.8.39; v0.8.38 and v0.8.39 tags remain historical and are not moved.
+
+## 0.8.39 — 2026-09-25 (unpublished candidate, superseded by 0.8.40)
 
 - Ship the hardened background-first browser layer after two independent review rounds found ten pre-publication defects and every reproduced issue was converted to regression coverage.
 - Isolate browser profiles by Commander instance, preserve helper sessions across ordinary page errors, make non-HTTP snapshot URLs null-safe, and clean browser/profile state on startup, timeout, crash and forced-shutdown paths.

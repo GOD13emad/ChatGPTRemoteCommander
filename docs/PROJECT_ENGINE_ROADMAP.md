@@ -1,7 +1,7 @@
 # Project execution engine roadmap
 
-Date: 2026-09-25. Released version: v0.8.37; release candidate: v0.8.39. v0.8.38 remains a superseded unpublished tag.
-Project-engine baseline remains v0.8.37. The browser feature from PR #16 and PR #18 is packaged in v0.8.39 outside Project Engine authority; v0.8.38 remains untouched because it points to the pre-hardening commit.
+Date: 2026-09-25. Published release: v0.8.37; release candidate: v0.8.40. v0.8.38 and v0.8.39 remain historical unpublished tags.
+Project-engine baseline remains v0.8.37. v0.8.40 carries the reviewed browser feature from PR #16/#18 and adds direct-session durable command operations; neither expands autonomous Project Engine authority. Historical v0.8.38/v0.8.39 tags remain untouched.
 
 ## Objective
 Develop Remote Commander into a measurable project execution and management system: plan bounded operations, execute through authorized tools, verify outputs, recover interrupted work, and finalize only against recorded acceptance criteria. Universal superiority is an ambition, not a current capability claim.
@@ -14,7 +14,7 @@ Develop Remote Commander into a measurable project execution and management syst
 5. CONNECTOR PARITY: catalog drift diagnostics, qualified providers, browser/application integrations and transparent terminal reconnection — PLANNED.
 6. COMPARATIVE EVALUATION: pinned real project corpus, equal models/budgets, completion/correctness/recovery/intervention/cost measurements — PLANNED.
 
-CURRENT: immutable v0.8.37 remains deployed on the audited Windows/Linux targets while hardened v0.8.39 is the release candidate. v0.8.38 itself is superseded and will not be published. The Project Engine authority model is unchanged. v0.8.39 packages the direct-session background browser, explicitly excluded from autonomous workflow execution and independent of Codex. Final development-head Windows/Linux full regression, native Chrome headless E2E and PR #18 hosted Windows/Ubuntu CI have passed; exact versioned installer, reproducibility, publication and live rollout remain separate gates. Broader escalation and monetary accounting remain open. No percentage or superiority score is asserted. Historical entries below describe their observation time, not the current release status.
+CURRENT: v0.8.40 is in exact release-candidate closeout. The published-release authority remains v0.8.37 until immutable publication is verified. v0.8.40 combines the direct-session background browser with durable background command operations; stable request IDs, exact receipts, bounded output and explicit cancellation reduce lost-acknowledgement/retry risk without granting new workflow authority. Exact post-version Windows/Linux qualification, remote/hosted gates, installer/reproducibility, publication and safe rollout remain open. Broader escalation and monetary accounting remain open. No percentage or superiority score is asserted. Historical entries below describe their observation time, not the current release status.
 
 ## First increment acceptance
 - Opt-in execution actually calls a configured planner and dispatches schema-valid proposals through existing journaled workflow tools.
@@ -33,6 +33,7 @@ The user authorized implementation and subsequently explicit cross-platform rele
 The first increment uses one tool operation per predeclared workflow step, consistent with the existing journal. Dynamic plan expansion is a later milestone. Separate planner proposals from execution and deterministic verification. No agent can alter its acceptance checks during a run. New execution tools appear only when explicitly configured.
 
 ## History
+- 2026-09-25: v0.8.40 candidate adds durable background command operations. A repeated Windows false-UNCERTAIN family triggered stop-patching and historical audit; exact receipt precedence plus bounded transient rename retry closed the confirmed EPERM race. A separate inherited-stdio close wait was converted to exit outcome plus bounded drain. Focused stress and full regression passed before version closeout; exact v0.8.40 gates remain required.
 - 2026-09-25: PR #18 merged final browser hardening at `14a1c5e`; development head `ae6aab2` passed Windows 363/5/0, Linux 367/1/0, GUI 75/75, security audit, exact profile/process cleanup regressions and four hosted CI jobs. A final external model re-review attempt was blocked by account quota and is recorded as unavailable rather than passed.
 - 2026-09-25: independent re-review of the first browser hardening found four additional pre-publication defects: Linux descendant-tree shutdown, failed visible-relaunch recovery, foreground/background result labeling, and URL-decoding in helper test runners. All four were fixed with focused regressions; the existing v0.8.38 tag remains untouched and superseded.
 - 2026-09-25: independent review of the first v0.8.38 browser candidate found six profile/snapshot/process/lifecycle defects before publication. Each was fixed with a focused regression; the release remains candidate-only until final cross-platform CI/re-review/publication gates pass.

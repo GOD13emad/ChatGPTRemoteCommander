@@ -1,35 +1,81 @@
 # Engineering decisions and evidence
 
-Updated: 2026-09-25. Current immutable release authority remains [v0.8.37](RELEASE_0.8.37.md) until the [v0.8.39 hardened candidate](RELEASE_0.8.39.md) completes publication. v0.8.38 is a superseded unpublished tag whose commit predates final browser hardening. This public index separates reusable engineering decisions from historical deployment observations.
+Updated: 2026-09-25. Current immutable published-release authority is [v0.8.37](RELEASE_0.8.37.md). [v0.8.40](RELEASE_0.8.40.md) is the current release candidate; v0.8.38 and v0.8.39 remain historical unpublished tags. This public index separates reusable engineering decisions from historical deployment observations.
 
 ## Current guarantees and their regression locations
 
 | Decision / failure prevention | Evidence |
 | --- | --- |
-| Pause/cancel authority survives late receipts; ambiguous effects are not blindly replayed | `test/workflow-control.test.mjs`, `test/project-engine-review.test.mjs` |
+| Long-running command work can detach from the initiating MCP request and be polled/cancelled by durable operation ID | `test/async-operations.test.mjs`, `test/async-http.test.mjs` |
+| Lost acknowledgement reuses the same effect through a stable request ID; changed inputs under that ID fail closed | `test/async-operations.test.mjs`, `test/async-http.test.mjs` |
+| Valid exact completion receipts outrank lossy state projections; Windows transient atomic-renames are bounded-retried rather than turning a completed effect into false uncertainty | `test/async-operations.test.mjs`; direct 30-operation race regression |
+| Child process exit is completion evidence independent of indefinitely inherited stdio; drain is bounded and output completeness is explicit | `test/async-operations.test.mjs` (`linger-stdio` regression) |
+| Captured command output is file-backed and bounded while complete-stream total bytes and SHA-256 remain available | `test/async-operations.test.mjs` large-output regression |
+| Pause/cancel authority survives late receipts; ambiguous workflow effects are not blindly replayed | `test/workflow-control.test.mjs`, `test/project-engine-review.test.mjs` |
 | Persist attempts, observations and provider-call budgets before continuation | `test/project-engine.test.mjs`, `test/project-engine-integration.test.mjs` |
-| Independent immutable checks and fresh artifact hashes determine completion | `test/project-verifier.test.mjs`, `test/project-engine-review.test.mjs` |
+| Independent immutable checks and fresh artifact hashes determine workflow completion | `test/project-verifier.test.mjs`, `test/project-engine-review.test.mjs` |
 | Reject hardlinked and aliased mutation/evidence paths | `test/file-write-guard.test.mjs`, `test/project-engine-integration.test.mjs` |
-| Adaptive prerequisites preserve scope and recover plan commits exactly once | `test/workflow-plan.test.mjs`, `test/project-adaptive.test.mjs` |
-| Waiting questions yield to other projects; explicit responses cannot reset budgets or grant authority | [Project decisions](PROJECT_ENGINE_DECISIONS.md), `test/project-engine-review.test.mjs` |
-| Bounded artifact workers cannot mutate project files directly; import is SHA-256/inputHash/operationId-bound, remains bound to the delegated step, and crash recovery never blindly replays | `test/project-engine-integration.test.mjs`, [v0.8.37 release](RELEASE_0.8.37.md) |
-| Codex CLI provider diagnostics stay fail-closed across the qualified 0.146/0.156 formats; only the exact intentionally-disabled `code_mode_host` diagnostic is admitted | `test/project-planner.test.mjs`, [v0.8.37 release](RELEASE_0.8.37.md) |
-| Background web automation uses an instance-isolated Commander-owned Chromium profile first, preserves valid helper sessions across ordinary page errors, cleans failed/forced sessions, never extracts saved passwords, and requires explicit current-task authorization before same-profile foreground exposure | `test/browser-safety.test.mjs`, `test/browser-process.test.mjs`, `test/browser-helper-init-failure-run.mjs`, `test/browser-path-encoding-run.mjs`, `test/browser-native-run.mjs`, `test/browser-helper-lifecycle-run.mjs`, [v0.8.39 candidate](RELEASE_0.8.39.md) |
+| Background web automation uses an instance-isolated Commander-owned Chromium profile first and requires explicit current-task authorization before same-profile foreground exposure | `test/browser-safety.test.mjs`, `test/browser-process.test.mjs`, `test/browser-owned-processes.test.mjs`, [v0.8.39 historical candidate](RELEASE_0.8.39.md) |
 | Custom no-start installers preserve live routing; updates retain active terminal workloads | `test/linux-installer-isolation.test.mjs`, `test/auto-update-contract.test.mjs` |
-| Native and legacy plugin manifests retain matching identity/version, discoverable skills and public assets | `test/onboarding-plugin-check.mjs`, [PR #9](https://github.com/GOD13emad/ChatGPTRemoteCommander/pull/9) |
+| Native and legacy plugin manifests retain matching identity/version, discoverable skills and public assets | `test/onboarding-plugin-check.mjs` |
+
+## E063 — durable background command operations
+
+**Date/Context:** 2026-09-25; retry/disconnection reduction and zero-interference execution.
+
+**Claim/Decision:** Introduce a compatibility-level `operation_start/status/result/cancel` surface for long or high-output `run_project_command` / `run_shell` work. Initial calls return quickly; state and receipts live outside chat context; request IDs are stable idempotency keys; `UNCERTAIN` never authorizes blind replay.
+
+**Method evidence:** MCP 2026-07-28 defines an experimental Tasks extension for durable/pollable/cancellable work: <https://tasks.extensions.modelcontextprotocol.io/specification/draft/tasks>. Host negotiation/support in the current ChatGPT Plugin path is **UNVERIFIED**, so this project does not claim native Tasks support and retains the minimal custom compatibility surface. If the host later advertises Tasks reliably, native protocol alignment should be evaluated before adding more custom orchestration.
+
+**Confidence/Status:** CONFIRMED for the project implementation and local HTTP/MCP behavior; UNVERIFIED for ChatGPT host support of the official Tasks extension.
+
+**Reuse targets:** runtime architecture, Plugin skill, release notes, retry-prevention guidance.
+
+## E064 — false UNCERTAIN after successful Windows operation
+
+**Date/Context:** 2026-09-25; repeated failure family reached the project stop-patching threshold and triggered historical/concurrency audit.
+
+**Observed evidence:** A diagnostic captured `result.json` with matching operation ID/input hash and `status=SUCCEEDED`, while the state projection had become `UNCERTAIN/WORKER_EXCEPTION` because Windows returned `EPERM` replacing `state.json` after the receipt was already durable.
+
+**Root cause:** Two durable files represented completion, but recovery gave the fallible state projection precedence over the exact receipt. Transient Windows rename sharing failures were not bounded-retried.
+
+**Prevention/Guard:** Exact valid receipt is authoritative for completed operation outcome; state is a repairable projection. Atomic JSON replacement retries only transient Windows `EPERM/EACCES/EBUSY` within a bounded budget. No effect is rerun to repair metadata.
+
+**Regression:** receipt-first recovery test; ten-run focused stress (**80/80 PASS**) and direct 30-operation race diagnostic (**30/30 PASS**) after the final fix.
+
+**Confidence/Status:** CONFIRMED.
+
+## E065 — process exit stranded by inherited stdio
+
+**Date/Context:** 2026-09-25; diagnostic found a different operation with child process gone but worker still awaiting completion and no receipt.
+
+**Root cause:** Worker awaited Node's `close` event, which occurs after stdio closes; descendants can inherit a pipe after the direct child exits. Official Node documentation distinguishes `exit` from later `close`: <https://nodejs.org/api/child_process.html#event-exit> and <https://nodejs.org/api/child_process.html#event-close>.
+
+**Prevention/Guard:** Record direct-child `exit` outcome, allow a bounded two-second stdio drain, then close local streams and finish the receipt if descendants keep them open. Receipt field `outputComplete` distinguishes complete drain from a bounded partial capture.
+
+**Regression:** dedicated inherited-stdio fixture; five consecutive post-fix async runs (**45/45 PASS**); full parallel suite subsequently passed.
+
+**Confidence/Status:** CONFIRMED.
+
+## Current qualification evidence
+
+Before the v0.8.40 version-authority bump, the exact working tree completed:
+- `npm test`: **373 PASS / 5 SKIP / 0 FAIL**, plus GUI **75/75**, concurrency 1200, filesystem safety, Linux GUI contract, Windows runtime contract and source integrity PASS.
+- `npm run check`: **152 PASS / 4 SKIP / 0 FAIL**, plus GUI **75/75**, installer/onboarding/helper/runtime/source-integrity PASS.
+- `npm run audit`: **SECURITY_AUDIT_PASS**, with no secret/token/private-key/tracked-local-config/developer-path finding.
+- npm dependency vulnerability scan is **N/A for this checkpoint**: `package.json` declares no dependencies/devDependencies and there is no lockfile; the network `npm audit` command produced no result and is not counted as PASS.
+
+These candidate-development results were followed by the exact v0.8.40 Windows gate: `npm test` **373/5/0**, `npm run check` **152/4/0**, GUI **75/75**, Windows runtime/source-integrity PASS and repository security audit PASS. Independent Linux verification of exact commit `2245495e6554f86bdfd97c15483b6d3b77408108` then passed `npm test` **377/1/0**, `npm run check` with exit 0 and all tail contracts PASS, and `npm run audit` with `SECURITY_AUDIT_PASS`. The Linux production checkout/service was not mutated; verification used a separate detached worktree. Remote/hosted/publication gates remain separate.
 
 ## Publication records
 
-- [v0.8.39 candidate](RELEASE_0.8.39.md): hardened zero-interference background browser after PR #18, including exact owned-process cleanup and all regressions from two independent review rounds. Publication/installer/live-rollout gates remain separate.
-- [v0.8.38 superseded candidate](RELEASE_0.8.38.md): zero-interference background browser and same-owned-profile foreground handoff. Two independent review rounds found ten pre-publication isolation/snapshot/process/relaunch/reporting/path defects; each was converted into regression coverage. The existing v0.8.38 tag is not moved or published; a hardened successor release must use a new tag.
-- [v0.8.37 qualification](RELEASE_0.8.37.md): Codex 0.156 compatibility, independently reviewed worker-invariant hardening, reproducible assets, pinned installer acceptance and scoped cross-platform rollout.
-- [v0.8.36 qualification](RELEASE_0.8.36.md): bounded artifact-worker release baseline and its release/deployment gates.
-- [v0.8.35 qualification](RELEASE_0.8.35.md): Windows/Linux release and scoped deployment gates, exact runtime identity and remaining limits.
+- [v0.8.40 candidate](RELEASE_0.8.40.md): hardened browser plus durable background command operations; publication gates remain open until evidenced.
+- [v0.8.39 historical candidate](RELEASE_0.8.39.md): hardened zero-interference browser; tag exists but no GitHub Release was published.
+- [v0.8.38 superseded candidate](RELEASE_0.8.38.md): pre-hardening browser candidate; historical tag is not moved.
+- [v0.8.37 published qualification](RELEASE_0.8.37.md): immutable published baseline at this checkpoint.
 - [Project-engine qualification history](PROJECT_ENGINE_VALIDATION.md): historical candidate results and permanent failure regressions.
 - [Historical E001–E062 records](history/PROJECT_KNOWLEDGE_EVIDENCE_20260924.md): dated decisions, failures, corrections and original test scopes. These records are retained as history, not evidence of today's machine/account state.
 
 ## Repository maintenance decision
 
-The post-v0.8.35 review found several old checkpoints still labeled current and a long public handoff mixed with private deployment details. Current release/roadmap links now lead from a short public state page; historical engineering records have a separate location and explicit scope. Personal host/profile examples were generalized and private paths/process snapshots omitted from those public archives. Exact originals were backed up locally before cleanup; Git history and immutable releases were not rewritten.
-
-Repository cleanup preserves compatibility entry points and the duplicate icon/logo assets required by the standalone plugin package. Generated workspaces, output folders and Python caches are excluded from future commits. Link/inventory checks, onboarding, source integrity and security audit qualify this documentation change; they do not imply a new runtime release or new model/GUI qualification.
+Historical checkpoints remain append-only archives. Current release/control claims live in this file and `PROJECT_CONTROL_STATE.md`. Personal host/profile examples and secrets are excluded from public evidence; exact operational receipts remain local when they would expose machine-specific state.

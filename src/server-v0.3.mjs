@@ -6,16 +6,17 @@ import path from 'node:path';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { canonicalizeRoots } from './security-v0.3.mjs';
-import { audit, listDirectory, readText, runProjectCommand, writeText } from './tools-v0.3.mjs';
-import { executePowerTool, powerToolDefinitions } from './power-tools-v0.3.mjs';
+import { audit, listDirectory, prepareProjectCommand, readText, runProjectCommand, writeText } from './tools-v0.3.mjs';
+import { executePowerTool, powerToolDefinitions, prepareShellCommand } from './power-tools-v0.3.mjs';
 import { executeGuiTool, guiToolDefinitions } from './gui-tools-windows.mjs';
 import { executeBrowserTool, browserToolDefinitions } from './browser-tools.mjs';
 import { lockStats } from './locks.mjs';
 import { expandPathValue, shellName } from './platform.mjs';
 import { formatToolInputErrors, validateJsonSchema } from './schema-validator.mjs';
+import { createAsyncOperationTools } from './async-operations.mjs';
 
 let workflowTools = null;
-const VERSION = '0.8.39';
+const VERSION = '0.8.40';
 const MODERN_VERSION = '2026-07-28';
 const LEGACY_VERSIONS = ['2025-11-25', '2025-06-18', '2025-03-26'];
 const MODERN_CACHE_HINT = Object.freeze({ ttlMs: 30000, cacheScope: 'private' });
@@ -47,12 +48,20 @@ const GUI_BACKEND_SUPPORTED = process.platform === 'win32' || process.platform =
 const GUI_ENABLED = GUI_BACKEND_SUPPORTED && config.powerMode?.enabled === true && config.powerMode?.guiControl?.enabled === true;
 const BROWSER_ENABLED = config.powerMode?.enabled === true && config.powerMode?.browserControl?.enabled === true;
 const LEGACY_FULL_FILESYSTEM = config.powerMode?.enabled === true && config.powerMode?.fullFilesystem === true;
+const asyncOperationTools = createAsyncOperationTools({
+  config,
+  prepare: async (name, args) => {
+    if (name === 'run_project_command') return prepareProjectCommand(ctx, args);
+    if (name === 'run_shell') return prepareShellCommand(ctx, args);
+    throw new Error('unsupported async operation tool');
+  }
+});
 
 function operatingInstructions() {
   if (LEGACY_FULL_FILESYSTEM) {
-    return 'Power Mode full-filesystem is enabled. configured/allowedRoots are Standard Mode roots and the default relative-path base, not an active filesystem boundary. Legacy list_directory/read_text/write_text/run_project_command accept absolute paths outside allowedRoots subject to OS permissions and policy. run_project_command remains executable-allowlisted and Python -c / Node eval-print remain blocked. Prefer read-only inspection before mutation. When browser background tools are available, use the owned headless browser before shared-desktop GUI takeover. Saved browser passwords are never extracted; if MFA, WebAuthn, CAPTCHA, or user-browser credentials require foreground interaction, request explicit current-task approval and use the minimum temporary GUI takeover.';
+    return 'Power Mode full-filesystem is enabled. configured/allowedRoots are Standard Mode roots and the default relative-path base, not an active filesystem boundary. Legacy list_directory/read_text/write_text/run_project_command accept absolute paths outside allowedRoots subject to OS permissions and policy. run_project_command remains executable-allowlisted and Python -c / Node eval-print remain blocked. Prefer read-only inspection before mutation. Background-first is the default: use operation_start for long-running or high-output command work so the MCP call returns immediately, and use the owned headless browser before shared-desktop GUI takeover. Saved browser passwords are never extracted; if MFA, WebAuthn, CAPTCHA, or user-browser credentials require foreground interaction, request explicit current-task approval and use the minimum temporary GUI takeover.';
   }
-  return 'Operate only inside configured project roots. Prefer read-only inspection before mutation. Concurrent chats are supported with per-path mutation locks.';
+  return 'Operate only inside configured project roots. Prefer read-only inspection before mutation. Background-first is the default: use operation_start for long-running allowlisted commands; synchronous command calls are for short bounded work. Concurrent chats are supported with per-path mutation locks.';
 }
 const TOOLS = [
   {
@@ -104,7 +113,7 @@ const TOOLS = [
   },
   {
     name: 'run_project_command',
-    description: LEGACY_FULL_FILESYSTEM ? 'Run one allowlisted executable directly without a shell. Power Mode fullFilesystem=true permits cwd and path arguments outside configured allowedRoots; Python -c and Node eval/print remain blocked.' : 'Run one allowlisted executable directly in an allowed project directory without a shell.',
+    description: LEGACY_FULL_FILESYSTEM ? 'Run one short bounded allowlisted executable directly without a shell. For long or high-output work prefer operation_start. Power Mode fullFilesystem=true permits cwd and path arguments outside configured allowedRoots; Python -c and Node eval/print remain blocked.' : 'Run one short bounded allowlisted executable directly in an allowed project directory without a shell. For long or high-output work prefer operation_start.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -118,6 +127,7 @@ const TOOLS = [
     },
     annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true }
   },
+  ...asyncOperationTools.definitions,
   ...powerToolDefinitions,
   ...(BROWSER_ENABLED ? browserToolDefinitions : []),
   ...(GUI_ENABLED ? guiToolDefinitions : [])
@@ -188,6 +198,7 @@ function rpcError(id, code, message, data) {
 }
 async function executeTool(name, args) {
   if (!toolDefinition(name)) throw protocolFailure(200, -32602, 'Unknown tool');
+  if (name.startsWith('operation_')) return asyncOperationTools.execute(name, args);
   if (name.startsWith('workflow_')) return workflowTools.execute(name, args);
   switch (name) {
     case 'system_status': {
@@ -218,7 +229,8 @@ async function executeTool(name, args) {
         configSha256,
         configSchema: {
           capabilityProfile: config.capabilityProfile?.schemaVersion ?? 0,
-          durableWorkflow: workflowStatus.schema ?? 0
+          durableWorkflow: workflowStatus.schema ?? 0,
+          asyncOperations: 1
         },
         capabilityProfile: config.capabilityProfile ?? {
           id: config.instance?.profile ?? 'default',
@@ -228,6 +240,7 @@ async function executeTool(name, args) {
         },
         instance: config.instance ?? { profile: 'default', isolated: false },
         durableWorkflows: workflowStatus,
+        asyncOperations: asyncOperationTools.status(),
         powerMode: config.powerMode ?? { enabled: false },
         browserControl: { availability: BROWSER_ENABLED ? 'CHECK_browser_status' : 'DISABLED', enabled: BROWSER_ENABLED,
           policy: { ...(config.powerMode?.browserControl ?? { enabled:false }), backgroundFirst:true,

@@ -1,6 +1,6 @@
 # Background browser and foreground approval
 
-Status: v0.8.39 release candidate behavior.
+Status: v0.8.40 release candidate behavior; browser semantics are carried forward from the unpublished v0.8.39 candidate.
 
 Remote Commander uses three ordered interaction layers for web work:
 

@@ -182,7 +182,7 @@ export async function writeText(ctx, input) {
     return result;
   });
 }
-export async function runProjectCommand(ctx, input) {
+export async function prepareProjectCommand(ctx, input) {
   const fullFilesystem = legacyPowerFullFilesystem(ctx);
   const program = validateProgram(input.program, ctx.config.allowedPrograms);
   const cwd = await legacyExistingPath(ctx, input.cwd ?? '.', ctx.roots[0]);
@@ -191,6 +191,11 @@ export async function runProjectCommand(ctx, input) {
   const args = validateCommandArgs(program, input.args ?? [], cwd, ctx.roots, { fullFilesystem });
   const requested = Number(input.timeoutMs ?? ctx.config.maxCommandMs);
   const timeoutMs = Math.max(1000, Math.min(requested, ctx.config.maxCommandMs));
+  return { file: program, args, cwd, timeoutMs, outputLimit: 262144, fullFilesystem };
+}
+export async function runProjectCommand(ctx, input) {
+  const prepared = await prepareProjectCommand(ctx, input);
+  const { file: program, args, cwd, timeoutMs, outputLimit, fullFilesystem } = prepared;
   const child = spawn(program, args, {
     cwd,
     windowsHide: true,
@@ -199,7 +204,6 @@ export async function runProjectCommand(ctx, input) {
   });
   let stdout = '';
   let stderr = '';
-  const outputLimit = 262144;
   child.stdout.on('data', (chunk) => { if (stdout.length < outputLimit) stdout += chunk.toString('utf8'); });
   child.stderr.on('data', (chunk) => { if (stderr.length < outputLimit) stderr += chunk.toString('utf8'); });
   let timedOut = false;
