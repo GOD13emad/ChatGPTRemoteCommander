@@ -111,6 +111,23 @@ test('runner status is opt-in and existing recovery-only tool catalog is unchang
   }finally{await legacy?.close();await f.dispose();}
 });
 
+
+test('derived planner budget clamps at 500 for maximum proposal team plus worker isolation',async()=>{
+  const f=fixture(async()=>proposal('read_text',{path:'x'}),{runner:{
+    maxActions:100,
+    team:{workers:[
+      {id:'a',role:'Advise A'},{id:'b',role:'Advise B'},{id:'c',role:'Advise C'},{id:'d',role:'Advise D'}
+    ],maxParallel:4},
+    worker:{enabled:true}
+  }});
+  try{
+    const status=await f.api.execute('workflow_status',{});
+    assert.equal(status.projectEngine.policy.callsPerPlan,5);
+    assert.equal(status.projectEngine.policy.worker.callsPerPlan,1);
+    assert.equal(status.projectEngine.policy.maxPlannerCalls,500);
+  }finally{await f.dispose();}
+});
+
 test('input request survives restart and explicit idempotent response resumes the same bounded run',async()=>{
   const contexts=[];
   const f=fixture(async context=>{contexts.push(context);return contexts.length===1?ask():proposal('write_text',{path:'result.txt',content:'verified output'});});

@@ -6,11 +6,13 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { createWorkflowTools } from '../src/workflow-tools.mjs';
+import { createProjectEngine } from '../src/project-engine.mjs';
 import { validateJsonSchema } from '../src/schema-validator.mjs';
 import { listDirectory, readText, writeText } from '../src/tools-v0.3.mjs';
 import { writeAnyFile } from '../src/power-tools-v0.3.mjs';
 
 const proposal = (tool, args) => ({ action: 'call', tool, argumentsJson: JSON.stringify(args), summary: 'Perform one approved project step' });
+const delegate = (artifact = 'worker-draft.txt', brief = 'Create one bounded artifact') => ({ action: 'delegate', tool: '', argumentsJson: JSON.stringify({ artifact, brief }), summary: 'Delegate one bounded artifact worker' });
 const definitions = {
   write_text: { name: 'write_text', inputSchema: { type: 'object', properties: { path: { type: 'string' }, content: { type: 'string' } }, required: ['path', 'content'], additionalProperties: false } },
   read_text: { name: 'read_text', inputSchema: { type: 'object', properties: { path: { type: 'string' } }, required: ['path'], additionalProperties: false } },
@@ -288,4 +290,308 @@ if (process.argv[2] === '--claim-worker') {
       await fixture.dispose();
     }
   });
+  test('bounded worker creates a private receipt before exact coordinator import and independent finalization', async () => {
+    const artifactText = 'verified output from isolated worker';
+    const fixture = makeFixture({ runner: { worker: { enabled: true, maxArtifactBytes: 4096 } }, planner: async context => {
+      if (context.worker?.phase === 'artifact-worker') {
+        assert.equal(context.tools, undefined);
+        assert.equal(context.commands, undefined);
+        assert.equal(context.worker.artifact, 'worker-draft.txt');
+        return proposal('write_text', { path: 'worker-draft.txt', content: artifactText });
+      }
+      if (context.worker?.pending) {
+        assert.equal(context.worker.pending.text, artifactText);
+        return proposal('write_text', { path: 'result.txt', content: context.worker.pending.text });
+      }
+      return delegate();
+    } });
+    try {
+      await fixture.create(); await fixture.start({ maxPlannerCalls: 6 });
+      const delegated = await fixture.tick();
+      assert.equal(delegated.status, 'QUEUED');
+      assert.equal(delegated.lastCode, 'PROJECT_WORKER_ARTIFACT_READY');
+      assert.equal(delegated.workerActions, 1);
+      assert.equal(delegated.actions, 0);
+      assert.equal(delegated.plannerCalls, 2);
+      assert.equal(delegated.pendingWorker.status, 'READY');
+      assert.equal(fs.existsSync(path.join(fixture.root, 'result.txt')), false);
+      const imported = await fixture.tick();
+      assert.equal(imported.status, 'QUEUED');
+      assert.equal(imported.actions, 1);
+      assert.equal(imported.pendingWorker, null);
+      assert.equal(imported.workerReceipts.length, 1);
+      assert.equal(imported.workerReceipts[0].sha256, delegated.pendingWorker.sha256);
+      assert.match(imported.workerReceipts[0].inputHash, /^[a-f0-9]{64}$/);
+      assert.match(imported.workerReceipts[0].operationId, /^[0-9a-f-]{36}$/);
+      assert.equal(fs.readFileSync(path.join(fixture.root, 'result.txt'), 'utf8'), artifactText);
+      const final = await fixture.tick();
+      assert.equal(final.status, 'COMPLETED');
+      assert.equal(final.lastCode, 'PROJECT_ACCEPTANCE_VERIFIED');
+      assert.equal(fixture.calls, 1, 'worker workspace creation is not a project-root host dispatch');
+      assert.equal(fixture.plans, 3, 'one coordinator delegation, one worker call and one coordinator import');
+    } finally { await fixture.dispose(); }
+  });
+
+  test('worker artifact tampering fails closed before any project effect', async () => {
+    const fixture = makeFixture({ runner: { worker: { enabled: true, maxArtifactBytes: 4096 } }, planner: async context => {
+      if (context.worker?.phase === 'artifact-worker') return proposal('write_text', { path: 'worker-draft.txt', content: 'verified output original' });
+      if (context.worker?.pending) return proposal('write_text', { path: 'result.txt', content: context.worker.pending.text });
+      return delegate();
+    } });
+    try {
+      await fixture.create(); await fixture.start({ maxPlannerCalls: 6 });
+      const delegated = await fixture.tick();
+      const pending = delegated.pendingWorker;
+      const workerFile = path.join(fixture.root, 'state', 'project-engine', 'workers', 'run-one', pending.workerId, pending.artifact);
+      fs.writeFileSync(workerFile, 'tampered after receipt');
+      const result = await fixture.tick();
+      assert.equal(result.status, 'BLOCKED');
+      assert.equal(result.lastCode, 'PROJECT_WORKER_ARTIFACT_CHANGED');
+      assert.equal(fixture.calls, 0);
+      assert.equal(fs.existsSync(path.join(fixture.root, 'result.txt')), false);
+    } finally { await fixture.dispose(); }
+  });
+
+  test('missing worker artifact maps filesystem races to a bounded worker error without project effects', async () => {
+    const fixture = makeFixture({ runner: { worker: { enabled: true, maxArtifactBytes: 4096 } }, planner: async context => {
+      if (context.worker?.phase === 'artifact-worker') return proposal('write_text', { path: 'worker-draft.txt', content: 'verified output missing race' });
+      if (context.worker?.pending) return proposal('write_text', { path: 'result.txt', content: context.worker.pending.text });
+      return delegate();
+    } });
+    try {
+      await fixture.create(); await fixture.start({ maxPlannerCalls: 6 });
+      const delegated = await fixture.tick();
+      const pending = delegated.pendingWorker;
+      const workerFile = path.join(fixture.root, 'state', 'project-engine', 'workers', 'run-one', pending.workerId, pending.artifact);
+      fs.unlinkSync(workerFile);
+      const result = await fixture.tick();
+      assert.equal(result.status, 'BLOCKED');
+      assert.equal(result.lastCode, 'PROJECT_WORKER_ARTIFACT_CHANGED');
+      assert.equal(fixture.calls, 0);
+      assert.equal(fs.existsSync(path.join(fixture.root, 'result.txt')), false);
+    } finally { await fixture.dispose(); }
+  });
+
+  test('delegation is fail-closed when worker execution is not explicitly enabled', async () => {
+    const fixture = makeFixture({ planner: async () => delegate() });
+    try {
+      await fixture.create(); await fixture.start();
+      const result = await fixture.tick();
+      assert.equal(result.status, 'BLOCKED');
+      assert.equal(result.lastCode, 'PROJECT_WORKER_DISABLED');
+      assert.equal(fixture.calls, 0);
+      assert.equal(result.workerActions, 0);
+    } finally { await fixture.dispose(); }
+  });
+
+  test('worker provider call consumes durable planner budget before it starts', async () => {
+    let workerCalls = 0;
+    const fixture = makeFixture({ runner: { worker: { enabled: true } }, planner: async context => {
+      if (context.worker?.phase === 'artifact-worker') { workerCalls++; return proposal('write_text', { path: 'worker-draft.txt', content: 'verified output' }); }
+      return delegate();
+    } });
+    try {
+      await fixture.create(); await fixture.start({ maxPlannerCalls: 1 });
+      const result = await fixture.tick();
+      assert.equal(result.status, 'EXHAUSTED');
+      assert.equal(result.lastCode, 'PROJECT_WORKER_BUDGET_EXHAUSTED');
+      assert.equal(result.plannerCalls, 1);
+      assert.equal(workerCalls, 0);
+      assert.equal(fixture.calls, 0);
+    } finally { await fixture.dispose(); }
+  });
+
+  test('cancel during worker planning aborts the worker and performs no project or workspace artifact effect', { timeout: 6000 }, async () => {
+    const entered = deferred(); let aborted = false;
+    const fixture = makeFixture({ runner: { worker: { enabled: true } }, planner: async (context, { signal }) => {
+      if (context.worker?.phase !== 'artifact-worker') return delegate();
+      entered.resolve();
+      return new Promise((resolve, reject) => {
+        const stop = () => { aborted = true; reject(Object.assign(new Error('worker aborted'), { code: 'PLANNER_ABORTED' })); };
+        if (signal.aborted) stop(); else signal.addEventListener('abort', stop, { once: true });
+      });
+    } });
+    let pending;
+    try {
+      await fixture.create(); await fixture.start({ maxPlannerCalls: 6 });
+      pending = fixture.tick(); await entered.promise;
+      const state = await fixture.state();
+      await fixture.api.execute('workflow_control', { id: 'project', expectedRevision: state.revision, action: 'cancel', reason: 'Cancel delegated worker' });
+      const result = await pending;
+      assert.equal(aborted, true);
+      assert.equal(result.status, 'CANCELLED');
+      assert.equal(result.lastCode, 'PROJECT_CANCELLED');
+      assert.equal(fixture.calls, 0);
+      assert.equal(fs.existsSync(path.join(fixture.root, 'result.txt')), false);
+      const pendingWorker = result.pendingWorker;
+      assert.equal(pendingWorker.status, 'RESERVED');
+      const workerDir = path.join(fixture.root, 'state', 'project-engine', 'workers', 'run-one', pendingWorker.workerId);
+      assert.equal(fs.existsSync(workerDir), false);
+    } finally { await pending?.catch(() => {}); await fixture.dispose(); }
+  });
+
+
+  test('worker artifact hardlink alias fails closed before coordinator import', async () => {
+    const fixture = makeFixture({ runner: { worker: { enabled: true, maxArtifactBytes: 4096 } }, planner: async context => {
+      if (context.worker?.phase === 'artifact-worker') return proposal('write_text', { path: 'worker-draft.txt', content: 'verified output hardlink guard' });
+      if (context.worker?.pending) return proposal('write_text', { path: 'result.txt', content: context.worker.pending.text });
+      return delegate();
+    } });
+    try {
+      await fixture.create(); await fixture.start({ maxPlannerCalls: 6 });
+      const delegated = await fixture.tick();
+      const pending = delegated.pendingWorker;
+      const workerFile = path.join(fixture.root, 'state', 'project-engine', 'workers', 'run-one', pending.workerId, pending.artifact);
+      fs.linkSync(workerFile, workerFile + '.alias');
+      const result = await fixture.tick();
+      assert.equal(result.status, 'BLOCKED');
+      assert.equal(result.lastCode, 'PROJECT_WORKER_ARTIFACT_CHANGED');
+      assert.equal(fixture.calls, 0);
+      assert.equal(fs.existsSync(path.join(fixture.root, 'result.txt')), false);
+    } finally { await fixture.dispose(); }
+  });
+
+  async function crashAfterWorkerImport({ tamperAfterCrash = false, mismatchedJournal = false } = {}) {
+    const artifactText = 'verified output crash recovery';
+    const fixture = makeFixture({ runner: { worker: { enabled: true, maxArtifactBytes: 4096 } }, planner: async context => {
+      if (context.worker?.phase === 'artifact-worker') return proposal('write_text', { path: 'worker-draft.txt', content: artifactText });
+      if (context.worker?.pending) return proposal('write_text', { path: 'result.txt', content: context.worker.pending.text });
+      return delegate();
+    } });
+    await fixture.create(); await fixture.start({ maxPlannerCalls: 6 });
+    const delegated = await fixture.tick();
+    assert.equal(delegated.pendingWorker.status, 'READY');
+    await fixture.api.close();
+
+    const urls = Object.fromEntries(['workflow-tools','project-engine','schema-validator','tools-v0.3'].map(name => [name, new URL('../src/' + name + '.mjs', import.meta.url).href]));
+    const childConfig = {
+      allowedRoots: [fixture.root],
+      maxWriteBytes: 524288,
+      maxReadBytes: 524288,
+      auditLog: path.join(fixture.root, 'audit.jsonl'),
+      durableWorkflows: {
+        enabled: true,
+        directory: path.join(fixture.root, 'state'),
+        executionTools: Object.keys(definitions),
+        scheduler: { enabled: false, intervalMs: 1000, oneWriterPerRoot: true },
+        runner: { enabled: false }
+      }
+    };
+    const childPolicy = {
+      enabled: true,
+      allowedTools: Object.keys(definitions),
+      maxActions: 10,
+      maxDurationMs: 30000,
+      worker: { enabled: true, maxArtifactBytes: 4096 }
+    };
+    const childScript = [
+      "import { createWorkflowTools } from " + JSON.stringify(urls['workflow-tools']) + ";",
+      "import { createProjectEngine } from " + JSON.stringify(urls['project-engine']) + ";",
+      "import { validateJsonSchema } from " + JSON.stringify(urls['schema-validator']) + ";",
+      "import { writeText, readText, listDirectory } from " + JSON.stringify(urls['tools-v0.3']) + ";",
+      "import path from 'node:path';",
+      "const config=JSON.parse(process.argv[1]),defs=JSON.parse(process.argv[2]),policy=JSON.parse(process.argv[3]),artifactText=process.argv[4],mismatchedJournal=process.argv[5]==='mismatch'; if(mismatchedJournal)defs.write_text.inputSchema.properties.mode={type:'string',enum:['overwrite','append']};",
+      "const root=config.allowedRoots[0],ctx={roots:[root],auditLog:config.auditLog,config:{...config,allowedRoots:[root],powerMode:{fullFilesystem:false}}};",
+      "const dispatch=async(name,args)=>name==='write_text'?writeText(ctx,args):name==='read_text'?readText(ctx,args):listDirectory(ctx,args);",
+      "const core=createWorkflowTools({config,roots:[root],device:'integration-fixture',configSha256:'7'.repeat(64),lookup:n=>defs[n],validateSchema:validateJsonSchema,dispatch});",
+      "const planner={describe:()=>({kind:'integration-fixture'}),plan:async context=>{if(!context.worker?.pending)throw new Error('WORKER_PENDING_ARTIFACT_MISSING');return {action:'call',tool:'write_text',argumentsJson:JSON.stringify({path:'result.txt',content:artifactText}),summary:'Import exact worker artifact'};}};",
+      "const engine=createProjectEngine({directory:path.join(config.durableWorkflows.directory,'project-engine'),planner,workerPlanner:planner,policy,lookup:n=>defs[n],execute:async(name,args)=>{const actual=name==='workflow_call'&&mismatchedJournal?{...args,arguments:{...args.arguments,mode:'overwrite'}}:args;const result=await core.execute(name,actual);if(name==='workflow_call')process.exit(73);return result;}});",
+      "await engine.tick('run-one');"
+    ].join('\n');
+    const child = spawn(process.execPath, ['--input-type=module','-e',childScript,JSON.stringify(childConfig),JSON.stringify(definitions),JSON.stringify(childPolicy),artifactText,mismatchedJournal?'mismatch':'exact'],
+      { stdio: ['ignore','pipe','pipe'], windowsHide: true });
+    let stderr = '';
+    child.stderr.on('data', chunk => { stderr += chunk.toString(); });
+    const exitCode = await new Promise((resolve,reject) => {
+      child.once('error', reject);
+      child.once('close', resolve);
+    });
+    assert.equal(exitCode, 73, stderr);
+    assert.equal(fs.readFileSync(path.join(fixture.root,'result.txt'),'utf8'), artifactText);
+
+    if(tamperAfterCrash)fs.writeFileSync(path.join(fixture.root,'result.txt'),'tampered after committed import');
+
+    const resumeConfig={...childConfig,durableWorkflows:{...childConfig.durableWorkflows,runner:{
+      ...childPolicy,autoTick:false
+    }}};
+    const dispatches=[];
+    const resumed=createWorkflowTools({
+      config:resumeConfig,roots:[fixture.root],device:'integration-fixture',configSha256:'7'.repeat(64),
+      lookup:name=>definitions[name],validateSchema:validateJsonSchema,
+      planner:{
+        describe:()=>({kind:'integration-fixture'}),
+        plan:async()=>{throw new Error('Recovered import must not invoke planner');}
+      },
+      dispatch:async(name,args)=>{
+        dispatches.push({name,args});
+        const ctx={roots:[fixture.root],auditLog:resumeConfig.auditLog,config:{...resumeConfig,allowedRoots:[fixture.root],powerMode:{fullFilesystem:false}}};
+        return name==='write_text'?writeText(ctx,args):name==='read_text'?readText(ctx,args):listDirectory(ctx,args);
+      }
+    });
+    return {fixture,resumed,dispatches};
+  }
+
+  test('crash after journaled worker import is adopted exactly once without replay', { timeout: 10000 }, async () => {
+    const {fixture,resumed,dispatches}=await crashAfterWorkerImport();
+    try {
+      const result=await resumed.execute('workflow_run_tick',{runId:'run-one'});
+      assert.equal(result.status,'COMPLETED');
+      assert.equal(result.lastCode,'PROJECT_ACCEPTANCE_VERIFIED');
+      assert.equal(result.pendingWorker,null);
+      assert.equal(result.workerReceipts.length,1);
+      assert.equal(result.workerReceipts[0].recovered,true);
+      assert.equal(dispatches.length,0,'recovery must not replay the project write');
+      const operations=await resumed.execute('workflow_operations',{id:'project'});
+      assert.equal(operations.operations.length,1);
+    } finally { await resumed.close(); fs.rmSync(fixture.root,{recursive:true,force:true}); }
+  });
+
+  test('tampered project import after crash blocks recovery without replay', { timeout: 10000 }, async () => {
+    const {fixture,resumed,dispatches}=await crashAfterWorkerImport({tamperAfterCrash:true});
+    try {
+      const result=await resumed.execute('workflow_run_tick',{runId:'run-one'});
+      assert.equal(result.status,'BLOCKED');
+      assert.equal(result.lastCode,'PROJECT_WORKER_IMPORT_UNCONFIRMED');
+      assert.equal(dispatches.length,0);
+      const operations=await resumed.execute('workflow_operations',{id:'project'});
+      assert.equal(operations.operations.length,1);
+    } finally { await resumed.close(); fs.rmSync(fixture.root,{recursive:true,force:true}); }
+  });
+
+  test('crash recovery refuses same bytes produced by a different journaled write call', { timeout: 10000 }, async () => {
+    const {fixture,resumed,dispatches}=await crashAfterWorkerImport({mismatchedJournal:true});
+    try {
+      assert.equal(fs.readFileSync(path.join(fixture.root,'result.txt'),'utf8'),'verified output crash recovery');
+      const result=await resumed.execute('workflow_run_tick',{runId:'run-one'});
+      assert.equal(result.status,'BLOCKED');
+      assert.equal(result.lastCode,'PROJECT_WORKER_IMPORT_UNCONFIRMED');
+      assert.equal(dispatches.length,0);
+      const operations=await resumed.execute('workflow_operations',{id:'project'});
+      assert.equal(operations.operations.length,1);
+      assert.equal(operations.operations[0].tool,'write_text');
+    } finally { await resumed.close(); fs.rmSync(fixture.root,{recursive:true,force:true}); }
+  });
+
+  test('worker provider failure is never blindly replayed after a durable reservation', async () => {
+    let workerCalls = 0;
+    const fixture = makeFixture({ runner: { worker: { enabled: true } }, planner: async context => {
+      if (context.worker?.phase === 'artifact-worker') {
+        workerCalls++;
+        throw Object.assign(new Error('private provider failure'), { code: 'PLANNER_PROVIDER_FAILED' });
+      }
+      return delegate();
+    } });
+    try {
+      await fixture.create(); await fixture.start({ maxPlannerCalls: 6 });
+      const first = await fixture.tick();
+      assert.equal(first.status, 'BLOCKED');
+      assert.equal(first.pendingWorker.status, 'RESERVED');
+      assert.equal(workerCalls, 1);
+      const second = await fixture.tick();
+      assert.equal(second.skipped, true);
+      assert.equal(workerCalls, 1);
+      assert.equal(fixture.calls, 0);
+    } finally { await fixture.dispose(); }
+  });
+
 }

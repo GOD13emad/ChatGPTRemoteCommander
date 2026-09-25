@@ -90,7 +90,36 @@ Allowed autonomous actions intentionally exclude GUI takeover, unrestricted shel
 
 Add `--codex` to that demo for a live provider qualification using existing CLI authentication. Set `RC_CODEX_EXECUTABLE` only when the CLI is not on PATH. The demo creates and cleans only its owned temporary project; it never installs or changes a production service.
 
-The roadmap in `PROJECT_ENGINE_ROADMAP.md` tracks broader providers/integrations and comparative benchmarks. Milestone 4A adds [bounded prerequisite insertion and parallel proposal workers](PROJECT_ENGINE_ADAPTIVE.md). Unrestricted plan rewriting, parallel mutating workers, automatic scientific validation, monetary accounting and general terminal reattachment remain outside this candidate.
+The roadmap in `PROJECT_ENGINE_ROADMAP.md` tracks broader providers/integrations and comparative benchmarks. Milestone 4A adds [bounded prerequisite insertion and parallel proposal workers](PROJECT_ENGINE_ADAPTIVE.md). Unrestricted plan rewriting, parallel mutating project workers, automatic scientific validation, monetary accounting and general terminal reattachment remain outside the released v0.8.35 scope. The post-release 4B.2 development candidate adds only the bounded artifact-worker boundary described below.
+
+
+## Development candidate — bounded artifact workers (4B.2)
+
+The development branch after v0.8.35 adds an **opt-in artifact worker** boundary. This is not part of the immutable v0.8.35 release until a later release passes the normal cross-platform and installer gates.
+
+Enable it only inside an already explicit project runner:
+
+\`\`\`json
+{
+  "runner": {
+    "enabled": true,
+    "worker": {
+      "enabled": true,
+      "maxArtifactBytes": 32768
+    }
+  }
+}
+\`\`\`
+
+A coordinator may propose \`action="delegate"\` for the current atomic step. Delegation does not dispatch a project tool. Commander reserves the provider-call budget first, creates a private per-run/per-worker directory under local project-engine state, and invokes the configured base provider with a restricted artifact contract. The worker receives no Commander filesystem, shell, GUI, process, terminal, deletion, completion or authority tool catalog. It may return only one UTF-8 text artifact through the proposal contract or block.
+
+The worker workspace is an **application-level authority boundary, not an OS sandbox**. In particular, a trusted \`command\` provider executable still runs with the operating-system user's privileges; the Codex adapter retains its existing temporary/read-only/feature-disabled controls. Do not treat worker isolation as protection from a malicious provider binary.
+
+Before an artifact can affect the project, Commander verifies that its workspace path is a regular single-link file, reopens it by stable file identity, enforces the size/UTF-8/secret guards, and binds a SHA-256 receipt. The coordinator can import only the exact receipt bytes through the normal journaled \`write_text\` path. The project target is then independently reread and matched to the worker receipt before the receipt is closed. Symlink/hardlink aliases, content changes and mismatched imports fail closed.
+
+Worker reservations and provider calls consume the existing durable planner-call budget. A crash after reservation is not blindly retried. If a process exits after the journaled project import but before the worker receipt is closed, restart adopts that exact import only when the workflow step and receipt identify the same `write_text` operation/input hash and the target bytes still match the recorded SHA-256; otherwise the run blocks for inspection. Pause/cancel/deadline checks remain authoritative while a worker provider call is active.
+
+This increment is intentionally narrow: one private text artifact at a time, one executing coordinator, no worker-to-worker delegation, no direct project mutation by a worker, no parallel mutating workers, no monetary budget, no external notification delivery and no superiority claim.
 
 ## Primary references
 

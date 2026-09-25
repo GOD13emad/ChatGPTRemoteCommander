@@ -16,6 +16,7 @@ const flag = name => process.argv[process.argv.indexOf(name)+1];
 if (mode === 'echo') { proposal.summary=JSON.parse(text).marker; console.log(JSON.stringify(proposal)); }
 if (mode === 'cwd') { proposal.summary=process.cwd(); console.log(JSON.stringify(proposal)); }
 if (mode === 'extend' || mode === 'extend-tool') console.log(JSON.stringify({action:'extend',tool:mode==='extend'?'':'write_text',argumentsJson:JSON.stringify({steps:[{id:'inspect',title:'Inspect source'}],reason:'Missing prerequisite'}),summary:'Insert an inspection step'}));
+if (mode === 'delegate' || mode === 'delegate-tool') console.log(JSON.stringify({action:'delegate',tool:mode==='delegate'?'':'write_text',argumentsJson:JSON.stringify({artifact:'draft.txt',brief:'Create one bounded draft'}),summary:'Delegate one artifact'}));
 if (mode === 'bad') console.log('PRIVATE_CONTEXT not JSON');
 if (mode === 'schema') console.log(JSON.stringify({...proposal, authority:true}));
 if (mode === 'array') console.log(JSON.stringify({...proposal,argumentsJson:'[]'}));
@@ -82,6 +83,18 @@ test('adapter accepts a plan proposal without treating it as an executable tool'
 test('plan proposal cannot name an executable tool', async t => {
   const {planner}=fixture(t,'extend-tool');
   await assert.rejects(planner.plan({adaptive:{enabled:true}}),{code:'PLANNER_INVALID_PROPOSAL'});
+});
+
+test('delegate remains a proposal with no executable tool attached', async t => {
+  const {planner}=fixture(t,'delegate');
+  const result=await planner.plan({worker:{enabled:true}});
+  assert.equal(result.action,'delegate');assert.equal(result.tool,'');
+  assert.deepEqual(JSON.parse(result.argumentsJson),{artifact:'draft.txt',brief:'Create one bounded draft'});
+});
+
+test('delegate proposal cannot smuggle an executable tool', async t => {
+  const {planner}=fixture(t,'delegate-tool');
+  await assert.rejects(planner.plan({worker:{enabled:true}}),{code:'PLANNER_INVALID_PROPOSAL'});
 });
 
 for (const [mode, code] of [['bad','PLANNER_INVALID_JSON'],['schema','PLANNER_INVALID_PROPOSAL'],['array','PLANNER_INVALID_PROPOSAL'],['exit','PLANNER_EXIT_FAILED'],['flood','PLANNER_OUTPUT_LIMIT'],['stderr','PLANNER_OUTPUT_LIMIT']]) {

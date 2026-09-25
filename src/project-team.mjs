@@ -57,12 +57,14 @@ function snapshot(value, maximum, invalidCode, limitCode) {
   }
 }
 
-function proposal(value, adaptive) {
+function proposal(value, adaptive, workerEnabled) {
   const result = snapshot(value, PROPOSAL_LIMIT, 'PLANNER_TEAM_INVALID_PROPOSAL', 'PLANNER_TEAM_OUTPUT_LIMIT');
   if (!record(result) || Object.keys(result).length !== FIELDS.length
       || FIELDS.some(field => !Object.hasOwn(result, field) || typeof result[field] !== 'string')
-      || !['call', 'block', 'extend'].includes(result.action)
-      || (result.action === 'extend' && (!adaptive || result.tool !== ''))
+      || !['call', 'block', 'extend', 'delegate'].includes(result.action)
+      || (result.action === 'extend' && !adaptive)
+      || (result.action === 'delegate' && !workerEnabled)
+      || (result.action !== 'call' && result.tool !== '')
       || result.tool.length > 200 || result.summary.length > 8000
       || (result.action === 'call' && !/^[A-Za-z][A-Za-z0-9_.:-]{0,199}$/.test(result.tool))) {
     throw error('PLANNER_TEAM_INVALID_PROPOSAL');
@@ -117,6 +119,7 @@ export function createTeamPlanner({ planner, workers, maxParallel = 2 } = {}) {
       const original = cloneContext(context);
       if (!record(original) || Object.hasOwn(original, 'collaboration')) throw error('PLANNER_TEAM_INVALID_CONTEXT');
       const adaptive = original.adaptive?.enabled === true;
+      const workerEnabled = original.worker?.enabled === true;
       const workerContexts = members.map(member => cloneContext({
         ...original,
         collaboration: {
@@ -149,7 +152,7 @@ export function createTeamPlanner({ planner, workers, maxParallel = 2 } = {}) {
           try {
             const result = await planner.plan(workerContexts[index], { signal: controller.signal });
             if (failure) return;
-            advice[index] = { ...members[index], proposal: proposal(result, adaptive) };
+            advice[index] = { ...members[index], proposal: proposal(result, adaptive, workerEnabled) };
             coordinatorContext(); // Enforce combined bound as advice arrives.
           } catch (cause) {
             stop(safeFailure(cause, 'PLANNER_TEAM_WORKER_FAILED'));
@@ -167,7 +170,7 @@ export function createTeamPlanner({ planner, workers, maxParallel = 2 } = {}) {
         try {
           final = await planner.plan(coordinatorContext(), { signal: controller.signal });
           if (failure) throw failure;
-          return proposal(final, adaptive);
+          return proposal(final, adaptive, workerEnabled);
         } catch (cause) {
           stop(safeFailure(cause, 'PLANNER_TEAM_COORDINATOR_FAILED'));
           throw failure;

@@ -56,3 +56,26 @@ The first increment's next milestone was revision-safe plan extension and scoped
 ## Historical published qualification — v0.8.34
 
 v0.8.34 / 86af9fe7e803bbba19fa2d3126d81389509bd176 passed exact Windows/Ubuntu CI, real-device source/native no-input qualification, both platforms' fresh and repeated pinned installers, candidate-first compatibility and official rollout. Both updaters subsequently reported CURRENT. Windows core: 302 PASS, 5 platform/privilege SKIP; GUI contracts: 75 PASS. See [release closeout](RELEASE_0.8.34.md) for publication, hashes, configuration preservation, retained workloads and remaining qualification limits. These final gates supersede earlier candidate release failures; their historical records remain below/above for provenance.
+
+
+## Development candidate qualification — milestone 4B.2 bounded artifact workers
+
+Date: 2026-09-25. Development baseline: \`a6bb67d4cca5e1b6a04d8690f1530e964925657a\`. Stable production remains immutable v0.8.35; no live service or release asset is changed by this candidate.
+
+The candidate adds an opt-in \`runner.worker\` path in which a delegated worker can create one bounded UTF-8 text artifact only in private project-engine state. It receives no Commander project-effect tool catalog. A coordinator may import only exact receipt-bound bytes through the existing journaled write path; regular-file identity, single-link status, size, UTF-8, secret guard and SHA-256 are checked again before use and after import. The boundary is not an OS sandbox and does not make an untrusted provider executable safe.
+
+Focused acceptance currently covers: successful private artifact → exact import → deterministic finalization; worker-workspace content tamper; hardlink alias after receipt; delegation without opt-in; durable provider-call budget exhaustion before worker start; cancel during worker planning; provider failure after durable reservation with no blind retry; crash after a committed journaled import with exact one-time adoption; tampered imported project bytes after crash with no replay; and Team+Worker maximum derived-budget clamping.
+
+Windows local qualification on the candidate after these regressions:
+- \`npm test\`: 334 total Node tests, 329 PASS, 5 platform/privilege SKIP, 0 FAIL.
+- GUI contract: 75/75 PASS.
+- \`npm run check\`: PASS.
+- \`npm run audit\`: PASS.
+- Focused engine/team/integration set after final edge-case correction: 74/74 PASS.
+
+Open release gates at this record point: exact Linux execution of the same commit, independent diff review, hosted Windows/Ubuntu CI, PR merge and normal version/install/reproducibility/rollout gates. These results therefore establish a Windows-qualified development candidate, not a release.
+
+
+## 2026-09-25 — 4B.2 artifact-worker recovery hardening
+
+The bounded artifact-worker candidate was independently hardened after its initial local commit. Worker artifact reads now normalize missing/raced filesystem failures to bounded project error codes. A worker import persists the canonical `write_text` input hash before dispatch; normal closeout and crash recovery require that hash plus the workflow operation receipt/operation ID and the final target bytes to match the artifact SHA-256. A regression intentionally journals a different `write_text` call that produces the same target bytes and confirms recovery blocks with `PROJECT_WORKER_IMPORT_UNCONFIRMED` instead of adopting the effect. Focused integration after this change: 26/26 PASS.

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { createTeamPlanner } from '../src/project-team.mjs';
 
 const choice = (summary = 'Inspect evidence') => ({ action: 'call', tool: 'read_text', argumentsJson: '{"path":"proof.txt"}', summary });
+const delegate = (summary = 'Delegate artifact') => ({ action: 'delegate', tool: '', argumentsJson: '{"artifact":"draft.txt","brief":"Create bounded draft"}', summary });
 const members = [
   { id: 'research', role: 'Find missing evidence' },
   { id: 'review', role: 'Check constraints' },
@@ -38,6 +39,16 @@ test('worker concurrency is capped and coordinator receives ordered untrusted ad
   assert.equal(peak, 2);
   assert.equal(completed.length, 4);
   assert.equal(coordinatorCalls, 1);
+});
+
+
+
+test('delegate advice is admitted only when the original worker policy enables execution isolation', async () => {
+  const base = provider(async context => context.collaboration.phase === 'coordinator' ? delegate('coordinated delegate') : delegate(context.collaboration.id));
+  const team = createTeamPlanner({ planner: base, workers: members.slice(0, 2), maxParallel: 2 });
+  const result = await team.plan({ worker: { enabled: true } });
+  assert.equal(result.action, 'delegate'); assert.equal(result.tool, '');
+  await assert.rejects(team.plan({ worker: { enabled: false } }), { code: 'PLANNER_TEAM_INVALID_PROPOSAL' });
 });
 
 test('participants cannot mutate original context, sibling inputs, config or descriptions', async () => {
