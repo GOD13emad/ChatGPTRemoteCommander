@@ -35,6 +35,17 @@
       "defaultSessionMode": "observe",
       "backgroundPreferred": true,
       "workflowTakeoverAllowed": false
+    },
+    "browserControl": {
+      "enabled": false,
+      "allowNavigate": true,
+      "allowInput": true,
+      "allowScreenshot": true,
+      "backgroundFirst": true,
+      "foregroundFallback": "explicit-current-request-only",
+      "workflowBrowserAllowed": false,
+      "userBrowserProfileReuse": false,
+      "savedPasswordExtraction": false
     }
   },
   "auditMaxBytes": 8388608,

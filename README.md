@@ -75,6 +75,14 @@ Optional [adaptive planning and proposal teams](docs/PROJECT_ENGINE_ADAPTIVE.md)
 - Concurrent-chat path locking for mutating operations
 - Windows and Linux persistent supervisors
 
+## Background browser — zero-interference web automation
+
+A background-browser layer is being qualified for the release after v0.8.37. It drives an owned headless Chromium session through CDP, using a Commander-only persistent or isolated profile. It does **not** move the user's mouse, change foreground focus, type into the user's browser window, reuse the user's normal browser profile, or expose cookies/password-store contents.
+
+The intended order for web work is: **background first → approval only when genuinely required → temporary GUI takeover → return to background**. If the background page encounters saved user-browser credentials, MFA, WebAuthn, CAPTCHA or a site that rejects background operation, `browser_foreground_requirement` returns an explicit approval boundary instead of seizing the desktop. See [Background browser and foreground approval](docs/BACKGROUND_BROWSER.md).
+
+This path is deterministic local browser automation and does **not require Codex**. Codex remains an optional provider for the separate Project Engine planner.
+
 ## GUI Control — Windows and GNOME/Wayland Linux
 
 Remote Commander exposes **built-in GUI Control** on Windows and, from v0.8.21, GNOME/Wayland Linux. The MCP returns screenshots as image content and exposes bounded mouse, keyboard, window-focus and coordination tools. Zero-interference is invariant: observe-only is the default, and foreground mutation requires an explicit current user request plus a fresh single-use frame.
@@ -138,7 +146,7 @@ For Plugin packaging, icons, app binding, and private/workspace distribution, se
 
 ## Tools
 
-Legacy-safe tools: `system_status`, `list_directory`, `read_text`, `write_text`, `run_project_command`. Power Mode adds `power_status`, `file_info`, `read_file`, `write_file`, `create_directory`, `copy_path`, `move_path`, `delete_path`, `search_files`, `run_shell`, `system_info`, `list_processes`, `kill_process`, and persistent terminal tools (`start_terminal`, `read_terminal`, `send_terminal`, `stop_terminal`).
+Legacy-safe tools: `system_status`, `list_directory`, `read_text`, `write_text`, `run_project_command`. Power Mode can also expose the direct-session background browser tools (`browser_status`, session begin/renew/end, navigate, snapshot, screenshot, fill, click, wait, and foreground-requirement coordination). These browser tools are not part of autonomous workflow execution. Power Mode adds `power_status`, `file_info`, `read_file`, `write_file`, `create_directory`, `copy_path`, `move_path`, `delete_path`, `search_files`, `run_shell`, `system_info`, `list_processes`, `kill_process`, and persistent terminal tools (`start_terminal`, `read_terminal`, `send_terminal`, `stop_terminal`).
 
 ## Security
 

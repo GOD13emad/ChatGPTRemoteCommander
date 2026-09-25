@@ -8,6 +8,14 @@ The v0.8.9 release retains the v0.8.7 bounded Windows GUI lease/frame safety mod
 
 These measured Windows results do not waive the remaining release gates below for installer/update/tunnel/ChatGPT integration, Linux regression, multi-monitor/DPI coverage, locked/Secure Desktop behavior, anti-cheat/protected input, or real-time gameplay.
 
+## Background-first web interaction candidate
+
+For web tasks, shared-desktop GUI is no longer the first automation path. Use the owned background browser first when available. It operates headlessly in a Commander-only browser profile and does not move the user's pointer, type into their foreground window, or focus their current browser. If the background path reports a genuine foreground boundary, use `browser_foreground_requirement` and ask for explicit current-task approval before GUI takeover.
+
+A current user request that explicitly says to use the mouse/keyboard, take control of the page, or act like a human is sufficient authorization for that task's temporary takeover; do not ask for the same permission twice. After the minimum foreground step, verify it and end the GUI lease immediately.
+
+The background browser never extracts saved passwords or opens the user's password store. If a saved credential that exists only in the user's normal browser is required, that is a foreground-approval boundary, not authority to copy credentials.
+
 ## Gate A: no-input verification
 
 Run the Node behavioral suite and `test/gui-native.ps1` on an extracted, pinned candidate copy. The native test parses the helper, compiles its C# types, checks INPUT layout (40 bytes in a 64-bit process, 28 in a 32-bit process), and exercises pure key-name validation. It must not capture the screen, move input, connect a tunnel, overwrite local policy, enroll credentials or restart services. Save stdout/stderr, exit codes, platform and artifact hashes.

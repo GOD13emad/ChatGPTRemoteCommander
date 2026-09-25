@@ -9,6 +9,7 @@ import { canonicalizeRoots } from './security-v0.3.mjs';
 import { audit, listDirectory, readText, runProjectCommand, writeText } from './tools-v0.3.mjs';
 import { executePowerTool, powerToolDefinitions } from './power-tools-v0.3.mjs';
 import { executeGuiTool, guiToolDefinitions } from './gui-tools-windows.mjs';
+import { executeBrowserTool, browserToolDefinitions } from './browser-tools.mjs';
 import { lockStats } from './locks.mjs';
 import { expandPathValue, shellName } from './platform.mjs';
 import { formatToolInputErrors, validateJsonSchema } from './schema-validator.mjs';
@@ -44,11 +45,12 @@ const ctx = {
 };
 const GUI_BACKEND_SUPPORTED = process.platform === 'win32' || process.platform === 'linux';
 const GUI_ENABLED = GUI_BACKEND_SUPPORTED && config.powerMode?.enabled === true && config.powerMode?.guiControl?.enabled === true;
+const BROWSER_ENABLED = config.powerMode?.enabled === true && config.powerMode?.browserControl?.enabled === true;
 const LEGACY_FULL_FILESYSTEM = config.powerMode?.enabled === true && config.powerMode?.fullFilesystem === true;
 
 function operatingInstructions() {
   if (LEGACY_FULL_FILESYSTEM) {
-    return 'Power Mode full-filesystem is enabled. configured/allowedRoots are Standard Mode roots and the default relative-path base, not an active filesystem boundary. Legacy list_directory/read_text/write_text/run_project_command accept absolute paths outside allowedRoots subject to OS permissions and policy. run_project_command remains executable-allowlisted and Python -c / Node eval-print remain blocked. Prefer read-only inspection before mutation.';
+    return 'Power Mode full-filesystem is enabled. configured/allowedRoots are Standard Mode roots and the default relative-path base, not an active filesystem boundary. Legacy list_directory/read_text/write_text/run_project_command accept absolute paths outside allowedRoots subject to OS permissions and policy. run_project_command remains executable-allowlisted and Python -c / Node eval-print remain blocked. Prefer read-only inspection before mutation. When browser background tools are available, use the owned headless browser before shared-desktop GUI takeover. Saved browser passwords are never extracted; if MFA, WebAuthn, CAPTCHA, or user-browser credentials require foreground interaction, request explicit current-task approval and use the minimum temporary GUI takeover.';
   }
   return 'Operate only inside configured project roots. Prefer read-only inspection before mutation. Concurrent chats are supported with per-path mutation locks.';
 }
@@ -117,6 +119,7 @@ const TOOLS = [
     annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true }
   },
   ...powerToolDefinitions,
+  ...(BROWSER_ENABLED ? browserToolDefinitions : []),
   ...(GUI_ENABLED ? guiToolDefinitions : [])
 ];
 // Opt-in only. Baseline tool catalog is unchanged when durable workflows are disabled.
@@ -226,6 +229,10 @@ async function executeTool(name, args) {
         instance: config.instance ?? { profile: 'default', isolated: false },
         durableWorkflows: workflowStatus,
         powerMode: config.powerMode ?? { enabled: false },
+        browserControl: { availability: BROWSER_ENABLED ? 'CHECK_browser_status' : 'DISABLED', enabled: BROWSER_ENABLED,
+          policy: { ...(config.powerMode?.browserControl ?? { enabled:false }), backgroundFirst:true,
+            foregroundFallback:'explicit-current-request-only', workflowBrowserAllowed:false,
+            userBrowserProfileReuse:false, savedPasswordExtraction:false, foregroundInterferenceByDefault:false } },
         guiControl: { backendSupported: GUI_BACKEND_SUPPORTED, availability: 'CHECK_gui_status', enabled: GUI_ENABLED,
           policy: { ...(config.powerMode?.guiControl ?? { enabled:false }), interactionPolicy:'explicit-current-request-only',
             defaultSessionMode:'observe', backgroundPreferred:true, workflowTakeoverAllowed:false, foregroundInterferenceByDefault:false } }
@@ -240,6 +247,11 @@ async function executeTool(name, args) {
     case 'run_project_command':
       return runProjectCommand(ctx, args);
     default: {
+      if (name.startsWith('browser_')) {
+        const result = await executeBrowserTool(ctx, name, args);
+        await audit(ctx, { action: name, ok: true, powerMode: true, browserControl: true });
+        return result;
+      }
       if (name.startsWith('gui_')) {
         const result = await executeGuiTool(ctx, name, args);
         await audit(ctx, { action: name, ok: true, powerMode: true, guiControl: true });

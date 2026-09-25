@@ -70,6 +70,17 @@ if(config.capabilityProfile?.tier==='FULL_POWER'){
   }else if(config.powerMode?.guiControl?.enabled===true){
     pass('gui_status','authorized but backend unavailable on this platform');
   }
+  if(config.powerMode?.browserControl?.enabled===true){
+    const bs=await tool(o.url,'browser_status',{},id++,o.timeoutMs);
+    if(bs?.available===true){
+      const begun=await tool(o.url,'browser_session_begin',{mode:'isolated',profile:'hardware',ttlSeconds:30},id++,Math.max(o.timeoutMs,30000));
+      if(begun?.background!==true||begun?.userDesktopTouched!==false||begun?.savedPasswordStoreAccess!==false)fail('SELFTEST_BROWSER_POLICY');
+      await tool(o.url,'browser_session_end',{lease:begun.lease},id++,Math.max(o.timeoutMs,30000));
+      pass('browser_background',bs.backend??'available');
+    }else{
+      pass('browser_background','authorized but Chromium background backend unavailable on this host');
+    }
+  }
 }
 if(config.durableWorkflows?.enabled===true){
   const wf=await tool(o.url,'workflow_health',{},id++,o.timeoutMs);
