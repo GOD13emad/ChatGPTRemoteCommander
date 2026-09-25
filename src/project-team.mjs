@@ -1,7 +1,7 @@
 // All participants share one trusted, proposal-only provider. Only the engine
 // can authorize and execute the coordinator's resulting proposal.
-const CONTEXT_LIMIT = 128 * 1024;
-const PROPOSAL_LIMIT = 64 * 1024;
+const CONTEXT_LIMIT = 384 * 1024;
+const PROPOSAL_LIMIT = 512 * 1024;
 const FIELDS = ['action', 'tool', 'argumentsJson', 'summary'];
 const error = code => Object.assign(new Error(code), { code });
 const record = value => value !== null && typeof value === 'object' && !Array.isArray(value);

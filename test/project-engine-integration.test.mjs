@@ -332,6 +332,85 @@ if (process.argv[2] === '--claim-worker') {
     } finally { await fixture.dispose(); }
   });
 
+  test('ready worker artifact remains bound to the delegated workflow step', async () => {
+    const artifactText = 'verified output delegated first step';
+    const fixture = makeFixture({ runner: { worker: { enabled: true, maxArtifactBytes: 4096 } }, planner: async context => {
+      if (context.worker?.phase === 'artifact-worker') return proposal('write_text', { path: 'worker-draft.txt', content: artifactText });
+      if (context.worker?.pending) return proposal('write_text', { path: 'result.txt', content: context.worker.pending.text });
+      return delegate();
+    } });
+    try {
+      await fixture.create('project', [{ id: 'first', title: 'First step' }, { id: 'second', title: 'Second step' }]);
+      await fixture.start({ maxPlannerCalls: 6 });
+      const delegated = await fixture.tick();
+      assert.equal(delegated.pendingWorker.stepId, 'first');
+      const state = await fixture.state();
+      await fixture.api.execute('workflow_call', { id: 'project', stepId: 'first', expectedRevision: state.revision,
+        tool: 'write_text', arguments: { path: 'external-first.txt', content: 'verified output external completion' } });
+      const callsBefore = fixture.calls;
+      const result = await fixture.tick();
+      assert.equal(result.status, 'BLOCKED');
+      assert.equal(result.lastCode, 'PROJECT_WORKER_STEP_CHANGED');
+      assert.equal(fixture.calls, callsBefore);
+      assert.equal(fs.existsSync(path.join(fixture.root, 'result.txt')), false);
+      assert.equal((await fixture.state()).steps[1].status, 'pending');
+    } finally { await fixture.dispose(); }
+  });
+
+  test('worker import accepts an absolute target only when it is contained by the project root', async () => {
+    const artifactText = 'verified output absolute contained path';
+    const fixture = makeFixture({ runner: { worker: { enabled: true, maxArtifactBytes: 4096 } }, planner: async context => {
+      if (context.worker?.phase === 'artifact-worker') return proposal('write_text', { path: 'worker-draft.txt', content: artifactText });
+      if (context.worker?.pending) return proposal('write_text', { path: path.join(fixture.root, 'result.txt'), content: context.worker.pending.text });
+      return delegate();
+    } });
+    try {
+      await fixture.create(); await fixture.start({ maxPlannerCalls: 6 });
+      await fixture.tick();
+      const imported = await fixture.tick();
+      assert.equal(imported.status, 'QUEUED');
+      assert.equal(imported.pendingWorker, null);
+      assert.equal(fs.readFileSync(path.join(fixture.root, 'result.txt'), 'utf8'), artifactText);
+      assert.equal((await fixture.tick()).status, 'COMPLETED');
+    } finally { await fixture.dispose(); }
+  });
+
+  test('configured 64KiB worker artifact round-trips even when JSON escaping exceeds the old 64KiB proposal envelope', async () => {
+    const prefix = 'verified output';
+    const artifactText = prefix + '"'.repeat(65536 - Buffer.byteLength(prefix));
+    assert.equal(Buffer.byteLength(artifactText), 65536);
+    assert.ok(JSON.stringify({ path: 'result.txt', content: artifactText }).length > 65536);
+    const fixture = makeFixture({ runner: { worker: { enabled: true, maxArtifactBytes: 65536 }, maxPlannerCalls: 8 }, planner: async context => {
+      if (context.worker?.phase === 'artifact-worker') return proposal('write_text', { path: 'worker-draft.txt', content: artifactText });
+      if (context.worker?.pending) return proposal('write_text', { path: 'result.txt', content: context.worker.pending.text });
+      return delegate();
+    } });
+    try {
+      await fixture.create(); await fixture.start({ maxPlannerCalls: 8 });
+      const delegated = await fixture.tick();
+      assert.equal(delegated.pendingWorker.size, 65536);
+      const imported = await fixture.tick();
+      assert.equal(imported.status, 'QUEUED');
+      assert.equal(imported.pendingWorker, null);
+      assert.equal(Buffer.byteLength(fs.readFileSync(path.join(fixture.root, 'result.txt'), 'utf8')), 65536);
+      assert.equal((await fixture.tick()).status, 'COMPLETED');
+    } finally { await fixture.dispose(); }
+  });
+
+  test('workflow journal remains bounded above the expanded worker import envelope', async () => {
+    const fixture = makeFixture({ planner: async () => { throw new Error('Planner must not run'); } });
+    try {
+      await fixture.create();
+      const state = await fixture.state();
+      await assert.rejects(fixture.api.execute('workflow_call', {
+        id: 'project', stepId: 'write', expectedRevision: state.revision, tool: 'write_text',
+        arguments: { path: 'too-large.txt', content: 'x'.repeat(270000) }
+      }), /WORKFLOW_ARGUMENT_LIMIT/);
+      assert.equal(fixture.calls, 0);
+      assert.equal(fs.existsSync(path.join(fixture.root, 'too-large.txt')), false);
+    } finally { await fixture.dispose(); }
+  });
+
   test('worker artifact tampering fails closed before any project effect', async () => {
     const fixture = makeFixture({ runner: { worker: { enabled: true, maxArtifactBytes: 4096 } }, planner: async context => {
       if (context.worker?.phase === 'artifact-worker') return proposal('write_text', { path: 'worker-draft.txt', content: 'verified output original' });
