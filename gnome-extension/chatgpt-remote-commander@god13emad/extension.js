@@ -1,6 +1,7 @@
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import Clutter from 'gi://Clutter';
+import Meta from 'gi://Meta';
 import Shell from 'gi://Shell';
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 
@@ -28,33 +29,37 @@ class Service {
   constructor() {
     this._pointer = null;
     this._keyboard = null;
+    this._destroyed = false;
+    this._wayland = Meta.is_wayland_compositor();
     this._token = '';
     try {
       const [ok, bytes] = GLib.file_get_contents(TOKEN_PATH);
       if (ok) this._token = new TextDecoder().decode(bytes).trim();
     } catch (_) {}
-    try {
-      const seat = Clutter.get_default_backend().get_default_seat();
-      this._pointer = seat.create_virtual_device(Clutter.InputDeviceType.POINTER_DEVICE);
-      this._keyboard = seat.create_virtual_device(Clutter.InputDeviceType.KEYBOARD_DEVICE);
-    } catch (_) {}
+    if (this._wayland) {
+      try {
+        const seat = Clutter.get_default_backend().get_default_seat();
+        this._pointer = seat.create_virtual_device(Clutter.InputDeviceType.POINTER_DEVICE);
+        this._keyboard = seat.create_virtual_device(Clutter.InputDeviceType.KEYBOARD_DEVICE);
+      } catch (_) {}
+    }
   }
 
   destroy() {
-    // GNOME may disable/re-enable extensions across session-mode transitions.
-    // Drop virtual-input references explicitly so an X11/XTEST-backed device
-    // cannot outlive this Service instance until a later GC nycle.
+    this._destroyed = true;
     this._pointer = null;
     this._keyboard = null;
     this._token = '';
   }
 
   _authorized(req) {
+    if (this._destroyed) fail('GUI_EXTENSION_DISABLED');
     if (!this._token || typeof req.auth !== 'string' || req.auth.length < 32 || req.auth !== this._token)
       fail('GUI_EXTENSION_AUTH_FAILED');
   }
 
   _stopped(req = null) {
+    if (this._destroyed) return true;
     if (Gio.File.new_for_path(STOP_PATH).query_exists(null)) return true;
     const requested = req?.stopFile;
     if (typeof requested === 'string' && requested.endsWith('/var/GUI_STOP'))
@@ -230,8 +235,9 @@ class Service {
     const action = req.action;
     if (action === 'status') {
       return {
-        ok:true, available:!!(this._pointer && this._keyboard), backend:'gnome-shell-clutter',
-        sessionType:GLib.getenv('XDG_SESSION_TYPE') ?? 'unknown', screens:this._screens(),
+        ok:true, available:true,
+        backend:this._wayland ? 'gnome-shell-wayland' : 'gnome-shell-x11-observe-only',
+        sessionType:this._wayland ? 'wayland' : 'x11', screens:this._screens(),
         capabilities:{screenshot:true,cursor:true,listWindows:true,mouse:!!this._pointer,keyboard:!!this._keyboard,focus:true}
       };
     }
@@ -246,7 +252,22 @@ class Service {
       return {ok:true,windows:this._rawWindows().map(w => this._windowRecord(w)).filter(w => w.handle !== '0')};
     }
     const {expected} = this._guard(req);
-    if (!this._pointer || !this._keyboard) fail('GUI_VIRTUAL_INPUT_UNAVAILABLE');
+    if (action === 'focusWindow') {
+      const windows = this._rawWindows();
+      let matches = [];
+      if (req.handle) matches = windows.filter(w => this._windowHandle(w) === String(req.handle));
+      else {
+        const q = String(req.titleContains ?? '').toLocaleLowerCase();
+        matches = windows.filter(w => String(w.get_title() ?? '').toLocaleLowerCase().includes(q));
+      }
+      if (matches.length !== 1) fail('GUI_WINDOW_SELECTOR_NOT_UNIQUE');
+      matches[0].activate(global.get_current_time());
+      await sleep(30);
+      if (global.display.focus_window !== matches[0]) fail('GUI_FOCUS_FAILED');
+      return {ok:true,handle:this._windowHandle(matches[0])};
+    }
+    if (!this._pointer || !this._keyboard)
+      fail(this._wayland ? 'GUI_VIRTUAL_INPUT_UNAVAILABLE' : 'GUI_SYNTHETIC_INPUT_UNAVAILABLE_X11');
     if (action === 'move') {
       const p = this._point(req, expected);
       this._pointer.notify_absolute_motion(nowUs(),p.x,p.y);
@@ -322,20 +343,6 @@ class Service {
         for (const val of pressed.reverse()) this._keyboard.notify_keyval(nowUs(),val,Clutter.KeyState.RELEASED);
       }
       return {ok:true};
-    }
-    if (action === 'focusWindow') {
-      const windows = this._rawWindows();
-      let matches = [];
-      if (req.handle) matches = windows.filter(w => this._windowHandle(w) === String(req.handle));
-      else {
-        const q = String(req.titleContains ?? '').toLocaleLowerCase();
-        matches = windows.filter(w => String(w.get_title() ?? '').toLocaleLowerCase().includes(q));
-      }
-      if (matches.length !== 1) fail('GUI_WINDOW_SELECTOR_NOT_UNIQUE');
-      matches[0].activate(global.get_current_time());
-      await sleep(30);
-      if (global.display.focus_window !== matches[0]) fail('GUI_FOCUS_FAILED');
-      return {ok:true,handle:this._windowHandle(matches[0])};
     }
     fail('GUI_UNKNOWN_ACTION');
   }

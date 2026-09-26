@@ -432,6 +432,10 @@ if [[ "$FORCE" != 1 && -f "$ROUTE" ]]; then
     log "AUTO_UPDATE_NEWER_CURRENT current=$ACTIVE_VERSION latest=$VERSION"
     exit 0
   fi
+  if [[ -z "$SOURCE_REF" && "$ACTIVE_VERSION" == "$VERSION" && "$ACTIVE_COMMIT" != "$COMMIT" ]]; then
+  log "AUTO_UPDATE_SAME_VERSION_COMMIT_HOLD current=$ACTIVE_COMMIT latest=$COMMIT version=$ACTIVE_VERSION"
+  exit 0
+fi
   if [[ "$ACTIVE_COMMIT" == "$COMMIT" ]]; then
     CONTROL="$(git -C "$INSTALL_DIR" rev-parse HEAD 2>/dev/null || true)"
     PREV_PORT="$(json_field "$STAGE_DIR" "$ROUTE" previous.port)"
