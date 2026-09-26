@@ -23,9 +23,10 @@ function fixture(t) {
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   const source = path.join(root, 'source'), target = path.join(root, 'custom-install');
   fs.mkdirSync(source);
-  for (const name of ['config.json', 'tools/build-candidate-config.mjs', 'tools/capability-migrate.mjs', 'tools/json-field.mjs', 'src/capability-profile.mjs', 'src/project-runner-config.mjs']) {
+  for (const name of ['config.json', 'tools/build-candidate-config.mjs', 'tools/capability-migrate.mjs', 'tools/json-field.mjs', 'tools/tunnel-client-pin.json', 'src/capability-profile.mjs', 'src/project-runner-config.mjs']) {
     write(path.join(source, name), fs.readFileSync(path.join(repository, name)));
   }
+  write(path.join(source, 'tools/install-tunnel-client-linux.sh'), fs.readFileSync(path.join(repository, 'tools/install-tunnel-client-linux.sh')), true);
   write(path.join(source, 'package.json'), '{"type":"module"}\n');
   write(path.join(source, '.gitignore'), 'config.local.json\nvar/\ntools/tunnel-client-v*/\n');
   const requiredScripts = ['install.sh', 'connect-chatgpt-account.sh', 'run-server.sh', 'autostart-linux.sh',
@@ -41,7 +42,7 @@ function fixture(t) {
   git('add', 'updated.txt'); git('commit', '-m', 'fixture update');
   const commit = git('rev-parse', 'HEAD');
   const arch = process.arch === 'arm64' ? 'arm64' : 'amd64';
-  write(path.join(target, `tools/tunnel-client-v0.0.15-linux-${arch}/tunnel-client`), '#!/bin/sh\nexit 0\n', true);
+  write(path.join(target, `tools/tunnel-client-v0.0.15-linux-${arch}/tunnel-client`), '#!/bin/sh\nprintf "0.0.15+a390c168ff1b2d14e73a95991c186c6aba3ff5a0 (git sha: a390c168ff1b2d14e73a95991c186c6aba3ff5a0)\\n"\n', true);
   const bin = path.join(root, 'bin'), effects = path.join(root, 'unexpected-effects'), npmCalls = path.join(root, 'npm-calls');
   write(path.join(bin, 'npm'), '#!/bin/sh\nprintf "%s\\n" "$*" >> "$RC_INSTALL_NPM_CALLS"\nexit 0\n', true);
   for (const name of ['curl', 'systemctl', 'nohup', 'gnome-extensions']) {
