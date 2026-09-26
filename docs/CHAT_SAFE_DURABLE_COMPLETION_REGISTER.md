@@ -55,7 +55,7 @@ Baseline: `a36ec05ea2c530ef52473b6a6f851a4484a31a35`. Qualification head: `6372b
 | CSDC-035 | P0 | TODO | **Long soak qualification** — Run 24-48h real workload qualification after fixes. | Zero Commander-caused deadline drops, silent terminal states and unrecoverable completed-undelivered jobs. |
 | CSDC-036 | P0 | TODO | **Release gate** — Block stable release unless chat-safe completion SLO passes on Windows and Linux. | Release checklist requires evidence for all P0 items and accepted dispositions for remaining P1 items. |
 | CSDC-037 | P0 | PASS | **Chat stream turn budget** — Prevent unbounded direct MCP call chains from causing ChatGPT UI/network/input-stream Retry before a final response is returned. | MCP initialize instructions and Plugin skill enforce a bounded direct-call batch, long work is moved to durable background state, and qualification distinguishes Commander transport failures from external Chat/UI stream failures. |
-| CSDC-038 | P0 | IN_PROGRESS | **Hot-update tool-schema continuity** — Keep an already-open MCP host usable when an update changes tool schemas, using negotiated MCP change-notification support where available and fail-closed compatibility policy otherwise. | A candidate-first live update cannot silently leave the active chat with stale mutation schemas; supported hosts refresh the tool list, unsupported hosts receive an explicit pre-cutover/compatibility disposition. |
+| CSDC-038 | P0 | PASS | **Hot-update tool-schema continuity** — Keep an already-open MCP host usable when an update changes tool schemas, using negotiated MCP change-notification support where available and fail-closed compatibility policy otherwise. | A candidate-first live update cannot silently leave the active chat with stale mutation schemas; supported hosts refresh the tool list, unsupported hosts receive an explicit pre-cutover/compatibility disposition. |
 
 ## Evidence rules
 
@@ -123,6 +123,7 @@ Baseline: `a36ec05ea2c530ef52473b6a6f851a4484a31a35`. Qualification head: `6372b
 - Exact HTTP acceptance proves copy/move/delete auto-defer, preserve one effect under retry, return structured `toolResult`, and keep raw source/destination arguments out of durable request/state journals.
 - Coverage regression locks the remaining boundary: synchronous command calls <=15 s, search <=10 s, process listing <=15 s, terminal stop <=2 s, browser/GUI helper boundary <=15 s; single-file/list I/O is payload/count bounded. Filesystem/network-drive stall handling remains explicitly CSDC-024 rather than being falsely claimed here.
 - Combined focused regression 24/24 PASS; deferred coverage acceptance 6/6 PASS plus the turn-safety contract; exact integrated Windows full gate `FULLGATE3_RC=0` with core 420 PASS / 6 SKIP / 0 FAIL, GUI 75/75, concurrency/FS/Linux-GUI/Windows-runtime/source-integrity PASS and `SECURITY_AUDIT_PASS`.
+- Live exact-commit canary after promotion to `0b965d7904a08a5eb04078bc61602687cf198552`: Windows direct `copy_path` returned a durable handle in 66 ms, Linux in 39 ms; same requestId reused the exact operation, copy/move/delete completed SUCCEEDED, result receipts matched, and temporary artifacts were removed on both OSes.
 
 ### CSDC-010 — PASS
 
@@ -144,8 +145,9 @@ Baseline: `a36ec05ea2c530ef52473b6a6f851a4484a31a35`. Qualification head: `6372b
 ### CSDC-027 — IN_PROGRESS
 
 - GitHub Actions run 36225716047: windows-latest PASS; ubuntu-latest PASS; head 6372bfa61bf265d7f337172c333f64b45072ba5d.
-- Source installers now pin OpenAI tunnel-client v0.0.15 and official release hashes/tag provenance were captured.
-- Residual: Live Windows/Linux candidate qualification is still required before PASS.
+- Source installers pin OpenAI tunnel-client v0.0.15; upstream tag target is `a390c168ff1b2d14e73a95991c186c6aba3ff5a0`.
+- Windows live promotion PASS on 2026-09-26: official ZIP SHA-256 `3b53133a1e24d43f63088d843860cb1701a4c3ed6390de2e19f69089e43bddc1`; installed binary SHA-256 `1946de55a038313a9b9b2458d05fe1719fa9cf1f20a94dd5f38fc26a98bfdd42`; both `chatgpt-remote-commander` and `saeed-emad` profiles have exactly one v0.0.15 process, readiness ports 47832/47833 report `ready`, supervisor count=1, no v0.0.14 process remains, and old binary + pin backup are retained.
+- Linux official candidate ZIP SHA-256 `8c836dc5d68d68b663d9a5c5b28ff9fa780d9f7a3fffb1c306880b8f32fab5f1` and binary SHA-256 `286769f6b1b1837e89896b4684a3ec59c919f860fa2bc159442e3839b6468711` were reverified immediately before cutover. Linux live cutover outcome is currently UNCERTAIN because the connector stopped polling during the supervised restart; do not mark PASS until post-state/rollback evidence is recovered.
 
 ### CSDC-033 — IN_PROGRESS
 
@@ -183,12 +185,12 @@ Baseline: `a36ec05ea2c530ef52473b6a6f851a4484a31a35`. Qualification head: `6372b
 
 
 
-### CSDC-038 — IN_PROGRESS
+### CSDC-038 — PASS
 
-- 2026-09-26 live v0.9.4 rollout reproduced the real boundary: the backend required the new stable mutation requestId, while an already-open ChatGPT host retained its older tool schema and could not issue a conforming direct mutation.
-- Official MCP 2026-07-28 method evidence: list-change delivery is negotiated through tools.listChanged and a client-opened subscriptions/listen stream; notifications/tools/list_changed is a level trigger that requires the client to refetch tools/list.
-- Local implementation on finalize/rc-v094-r2: the stable router owns subscriptions/listen, advertises tools.listChanged on modern server/discover, sends the standard acknowledged SSE frame, and emits notifications/tools/list_changed when the atomic route generation changes. The subscription remains attached to the stable router rather than the retired backend.
-- The updater compares canonical name + inputSchema hashes before cutover. Unchanged schemas proceed normally. Changed schemas fail closed if router continuity is unavailable, any legacy MCP traffic has been seen, or no tools-list subscriber is negotiated; only a modern negotiated refresh permits schema-changing cutover.
-- Focused wire/policy regression: 6/6 PASS, including generation-change notification and all fail-closed compatibility cases. Windows updater self-test PASS.
-- Full exact-tree local Windows gate: npm run check PASS; npm test 425 total / 419 PASS / 6 SKIP / 0 FAIL; GUI contract 75/75 PASS; concurrency/FS/Linux-GUI/Windows-runtime/source-integrity PASS; npm run audit = SECURITY_AUDIT_PASS; git diff --check PASS; independent background exit marker = 0.
-- Residual before PASS: exact-commit Windows/Linux candidate-first qualification and a live stable-router subscription/cutover canary are still required. The already-open pre-v0.9.4 host cannot retroactively negotiate a subscription; it remains a one-time stale-host compatibility boundary until reconnect/refetch.
+- Root cause was reproduced: a hot update can leave an already-open host with an older cached tool schema while the backend enforces a new mutation contract.
+- Stable router now owns modern `subscriptions/listen`, advertises `capabilities.tools.listChanged=true` on modern discovery and emits `notifications/tools/list_changed` across backend-generation changes.
+- Update admission conservatively distinguishes backward-compatible schema extensions from breaking changes. Breaking changes require negotiated refresh continuity and otherwise fail closed; old valid calls remain valid across a proven backward-compatible extension.
+- Exact full integration gate on `0b965d7904a08a5eb04078bc61602687cf198552`: 436 total / 430 PASS / 6 SKIP / 0 FAIL, GUI 75/75, concurrency/FS/Linux-GUI/Windows-runtime/source-integrity PASS, SECURITY_AUDIT_PASS, diff-check PASS.
+- Candidate-first Windows and Linux qualification both reached `AUTO_UPDATE_CANDIDATE_PASS`; live routes for Windows default, Windows saeed-emad and Linux default all cut over to exact commit `0b965d7904a08a5eb04078bc61602687cf198552`.
+- Live Windows and Linux canonical routers both advertise tools.listChanged and ACK a real modern subscription while exposing one active tools-list subscriber; subscriber count returns to zero after disconnect. Windows observed generation 53 and Linux generation 37.
+- Isolated live-to-candidate probe classified the promoted schema delta as `BACKWARD_COMPATIBLE_SCHEMA`; therefore pre-existing old calls remain valid even when the already-open UI does not expose newly added tools. A pre-update chat still requires reconnect/refetch to *discover* newly added tools; the updater now prevents a breaking stale-schema cutover.

@@ -311,3 +311,33 @@ Historical checkpoints remain append-only archives. Current release/control clai
 **Reuse Targets:** release admission, hot update safety, MCP schema evolution.
 
 **Provenance:** branch inalize/rc-v094-r2, baseline live commit c8f7baedfae4053ffb200f2a2a8f988fab951f0.
+
+
+## E077 — exact live 0b965d7 cutover and post-cutover canaries
+
+**Date/Context:** 2026-09-26; finalization integration promoted after exact Windows/Linux candidate-first qualification.
+
+**Claim/Decision:** `0b965d7904a08a5eb04078bc61602687cf198552` is the current evidence-backed live Commander source on Windows default, Windows saeed-emad and Linux default. The promoted build includes stable-router schema continuity, conservative backward-compatible schema admission, Linux non-login `run_shell`, and CSDC-008 deferred path mutations.
+
+**Evidence/Source:** Live route generations Windows default=53, Windows saeed-emad=90, Linux default=37 point to exact commit. Both canonical routers advertise tools.listChanged and ACK live modern subscriptions. Live deferred canaries: Windows handle latency 66 ms; Linux 39 ms; same requestId reused the exact operation; copy/move/delete completed SUCCEEDED and receipts matched. Candidate/full regression: 436 total / 430 PASS / 6 SKIP / 0 FAIL plus GUI 75/75 and security/integrity gates.
+
+**Confidence/Status:** CONFIRMED for live source identity, CSDC-038 and CSDC-008 on both OSes.
+
+**Reuse Targets:** release notes, CSDC register, hot-update architecture, turn-safe orchestration.
+
+**Provenance:** branch `finalize/rc-v094-r2`; live commit `0b965d7904a08a5eb04078bc61602687cf198552`.
+
+
+## E078 — tunnel-client v0.0.15 live promotion
+
+**Date/Context:** 2026-09-26; CSDC-027 candidate-to-live rollout.
+
+**Claim/Decision:** Windows v0.0.15 promotion is CONFIRMED; Linux remains UNCERTAIN until independent post-state evidence is recovered. Rollback artifacts must remain until both OSes pass.
+
+**Evidence/Source:** Windows official ZIP SHA-256 `3b53133a1e24d43f63088d843860cb1701a4c3ed6390de2e19f69089e43bddc1`; installed binary SHA-256 `1946de55a038313a9b9b2458d05fe1719fa9cf1f20a94dd5f38fc26a98bfdd42`; upstream `a390c168ff1b2d14e73a95991c186c6aba3ff5a0`. Both Windows profiles report ready on 47832/47833, exactly two v0.0.15 processes exist, zero v0.0.14 processes remain, supervisor count=1 and old binary/pin backup are retained. Linux candidate reverified against official ZIP SHA-256 `8c836dc5d68d68b663d9a5c5b28ff9fa780d9f7a3fffb1c306880b8f32fab5f1` and binary SHA-256 `286769f6b1b1837e89896b4684a3ec59c919f860fa2bc159442e3839b6468711`; connector stopped polling during supervised restart so PASS is withheld.
+
+**Confidence/Status:** Windows CONFIRMED; Linux UNCERTAIN.
+
+**Reuse Targets:** tunnel qualification, release gate, rollback guide.
+
+**Provenance:** v0.0.15 upstream tag target `a390c168ff1b2d14e73a95991c186c6aba3ff5a0`; Commander live source `0b965d7904a08a5eb04078bc61602687cf198552`.
