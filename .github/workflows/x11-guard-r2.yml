@@ -1,0 +1,44 @@
+name: X11 GUI Guard R2
+
+on:
+  push:
+    branches:
+      - hotfix/v0.9.4-legacy-idempotency-r1
+
+permissions:
+  contents: write
+
+jobs:
+  qualify:
+    if: ${{ github.actor != 'github-actions[bot]' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - name: Apply guard
+        run: node tools/apply-linux-x11-observe-only-guard.mjs
+      - name: Diff safety
+        run: git diff --check
+      - name: Guard regression
+        run: node --test test/linux-gui-x11-observe-only.test.mjs
+      - name: Linux GUI dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes python3-gi gir1.2-gdkpixbuf-2.0 gnome-shell-common
+      - name: Project qualification
+        run: |
+          npm run check
+          npm test
+          npm run audit
+      - name: Commit qualified source
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add gnome-extension/chatgpt-remote-commander@god13emad/extension.js
+          git diff --cached --quiet && exit 0
+          git commit -m 'fix(linux): make X11 GUI observe-only [x11-guard-applied]'
+          git push origin HEAD:hotfix/v0.9.4-legacy-idempotency-r1
