@@ -297,3 +297,17 @@ Historical checkpoints remain append-only archives. Current release/control clai
 **Reuse Targets:** stable-router lifecycle, zero-downtime updater, MCP schema continuity, release gate, rollback design, multi-platform updater policy.
 
 **Provenance:** integration branch `finalize/rc-v094-r2`; baseline live commit `bc8f7baedfae4053ffb200f2a2a8f988fab951f0`; prior integrated commit `651926adbd22b979c41f473b49906036261823a4`.
+
+## E076 — backward-compatible schema admission
+
+**Date/Context:** 2026-09-26; refinement of CSDC-038 after reproducing stale host schemas in already-open ChatGPT sessions.
+
+**Claim/Decision:** Hot-update admission distinguishes backward-compatible tool-schema extensions from breaking changes. A candidate that preserves every old tool and accepts every old valid input may promote without negotiated refresh; breaking changes still require modern tool-list refresh continuity and otherwise fail closed.
+
+**Evidence/Source:** conservative classifier in 	ools/schema-continuity-gate.mjs; dedicated regression in 	est/schema-continuity-gate.test.mjs. Focused classifier 9/9 PASS; router/bootstrap/updater set 16/16 PASS; exact full worktree gate exit 0 with 436 tests / 430 pass / 6 skip / 0 fail, GUI 75/75, concurrency/fs/runtime/source-integrity and SECURITY_AUDIT_PASS. Isolated live Windows probe compared active c8f7ba... against candidate 63f314... and returned BACKWARD_COMPATIBLE_SCHEMA with distinct old/candidate hashes.
+
+**Confidence/Status:** CONFIRMED for compatibility classification and current live-to-candidate disposition. Live promotion/cutover canary remains required before CSDC-038 may be PASS.
+
+**Reuse Targets:** release admission, hot update safety, MCP schema evolution.
+
+**Provenance:** branch inalize/rc-v094-r2, baseline live commit c8f7baedfae4053ffb200f2a2a8f988fab951f0.
