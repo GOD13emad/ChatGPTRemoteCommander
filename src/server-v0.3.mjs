@@ -7,7 +7,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { canonicalizeRoots } from './security-v0.3.mjs';
 import { audit, listDirectory, prepareProjectCommand, readText, runProjectCommand, writeText } from './tools-v0.3.mjs';
-import { executePowerTool, powerToolDefinitions, prepareShellCommand } from './power-tools-v0.3.mjs';
+import { executePowerTool, powerToolDefinitions, prepareDeferredPowerMutation, prepareShellCommand } from './power-tools-v0.3.mjs';
 import { executeGuiTool, guiToolDefinitions } from './gui-tools-windows.mjs';
 import { executeBrowserTool, browserToolDefinitions } from './browser-tools.mjs';
 import { lockStats } from './locks.mjs';
@@ -61,8 +61,12 @@ const asyncOperationTools = createAsyncOperationTools({
   config,
   deliveryStore,
   prepare: async (name, args) => {
-    if (name === 'run_project_command') return prepareProjectCommand(ctx, args);
-    if (name === 'run_shell') return prepareShellCommand(ctx, args);
+    if (name === 'run_project_command') return { kind: 'process', ...(await prepareProjectCommand(ctx, args)) };
+    if (name === 'run_shell') return { kind: 'process', ...(await prepareShellCommand(ctx, args)) };
+    if (['copy_path', 'move_path', 'delete_path'].includes(name)) {
+      const plan = await prepareDeferredPowerMutation(ctx, name, args);
+      return { ...plan, configPath: path.resolve(configPath), configSha256 };
+    }
     throw new Error('unsupported async operation tool');
   }
 });
@@ -144,6 +148,7 @@ const TOOLS = [
   ...(GUI_ENABLED ? guiToolDefinitions : [])
 ];
 
+const AUTO_DEFERRED_MUTATIONS = new Set(['copy_path', 'move_path', 'delete_path']);
 const MUTATION_REQUEST_ID_SCHEMA = {
   type: 'string',
   minLength: 1,
@@ -231,6 +236,15 @@ function rpcError(id, code, message, data) {
 }
 async function executeTool(name, args) {
   if (!toolDefinition(name)) throw protocolFailure(200, -32602, 'Unknown tool');
+  if (AUTO_DEFERRED_MUTATIONS.has(name)) {
+    const { requestId, ...effectArgs } = args ?? {};
+    return asyncOperationTools.execute('operation_start', {
+      requestId,
+      correlationId: requestId,
+      tool: name,
+      arguments: effectArgs
+    });
+  }
   if (isDirectMutationTool(name)) {
     const { requestId, ...effectArgs } = args ?? {};
     // Preserve existing no-effect semantic/authority checks before durable mutation intent where a reusable preflight exists.

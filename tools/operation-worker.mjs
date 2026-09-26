@@ -1,4 +1,8 @@
 import { createHash } from 'node:crypto';
+import { fileURLToPath } from 'node:url';
+import { canonicalizeRoots } from '../src/security-v0.3.mjs';
+import { expandPathValue } from '../src/platform.mjs';
+import { executePowerTool } from '../src/power-tools-v0.3.mjs';
 import { spawn, spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
@@ -111,10 +115,79 @@ function waitForChildOutcome(child, drainMs = 2000) {
   });
 }
 
+async function runPowerToolOperation(spec, prior) {
+  const startedAt = new Date().toISOString();
+  await atomicJson(spec.statePath, {
+    ...prior,
+    status: 'RUNNING',
+    workerPid: process.pid,
+    childPid: null,
+    startedAt,
+    updatedAt: startedAt
+  });
+  if (existsSync(spec.cancelPath)) {
+    const finishedAt = new Date().toISOString();
+    const emptyHash = createHash('sha256').update('').digest('hex');
+    const receipt = {
+      schema: 1, operationId: spec.operationId, tool: spec.tool, inputHash: spec.inputHash,
+      status: 'CANCELLED', exitCode: null, signal: null, timedOut: false, cancelRequested: true,
+      outputComplete: true, toolResult: null,
+      stdout: { capturedBytes: 0, totalBytes: 0, sha256: emptyHash, truncated: false, path: spec.stdoutPath },
+      stderr: { capturedBytes: 0, totalBytes: 0, sha256: emptyHash, truncated: false, path: spec.stderrPath },
+      startedAt, finishedAt
+    };
+    await writeFile(spec.stdoutPath, Buffer.alloc(0), { mode: 0o600 });
+    await writeFile(spec.stderrPath, Buffer.alloc(0), { mode: 0o600 });
+    await atomicJson(spec.resultPath, receipt);
+    await atomicJson(spec.statePath, { ...prior, status: 'CANCELLED', workerPid: process.pid, childPid: null,
+      startedAt, finishedAt, updatedAt: finishedAt, exitCode: null, signal: null, timedOut: false, cancelRequested: true });
+    return;
+  }
+  const configRaw = await readFile(spec.configPath, 'utf8');
+  if (createHash('sha256').update(configRaw).digest('hex') !== spec.configSha256) throw new Error('OPERATION_CONFIG_CHANGED');
+  const config = JSON.parse(configRaw);
+  if (!Array.isArray(config.allowedRoots)) throw new Error('OPERATION_CONFIG_INVALID_ROOTS');
+  config.allowedRoots = config.allowedRoots.map(expandPathValue);
+  const roots = await canonicalizeRoots(config.allowedRoots);
+  const projectDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+  const ctx = {
+    config,
+    roots,
+    auditLog: path.resolve(projectDir, config.auditLog || 'var/audit.jsonl')
+  };
+  const toolResult = await executePowerTool(ctx, spec.tool, spec.toolArguments);
+  const encoded = JSON.stringify(toolResult);
+  if (Buffer.byteLength(encoded) > spec.outputLimit) throw new Error('OPERATION_TOOL_RESULT_TOO_LARGE');
+  const finishedAt = new Date().toISOString();
+  const cancelRequestedNow = existsSync(spec.cancelPath);
+  const emptyHash = createHash('sha256').update('').digest('hex');
+  await writeFile(spec.stdoutPath, Buffer.alloc(0), { mode: 0o600 });
+  await writeFile(spec.stderrPath, Buffer.alloc(0), { mode: 0o600 });
+  const receipt = {
+    schema: 1, operationId: spec.operationId, tool: spec.tool, inputHash: spec.inputHash,
+    status: 'SUCCEEDED', exitCode: null, signal: null, timedOut: false, cancelRequested: cancelRequestedNow,
+    outputComplete: true, toolResult,
+    stdout: { capturedBytes: 0, totalBytes: 0, sha256: emptyHash, truncated: false, path: spec.stdoutPath },
+    stderr: { capturedBytes: 0, totalBytes: 0, sha256: emptyHash, truncated: false, path: spec.stderrPath },
+    startedAt, finishedAt
+  };
+  await atomicJson(spec.resultPath, receipt);
+  await atomicJson(spec.statePath, {
+    ...prior, status: 'SUCCEEDED', workerPid: process.pid, childPid: null,
+    startedAt, finishedAt, updatedAt: finishedAt, exitCode: null, signal: null,
+    timedOut: false, cancelRequested: cancelRequestedNow
+  });
+}
+
 async function main() {
   const spec = await readInput();
   currentSpec = spec;
   const prior = JSON.parse(await readFile(spec.statePath, 'utf8'));
+  if (spec.kind === 'power-tool') {
+    await runPowerToolOperation(spec, prior);
+    return;
+  }
+  if (spec.kind !== undefined && spec.kind !== 'process') throw new Error('OPERATION_KIND_UNSUPPORTED');
   const startedAt = new Date().toISOString();
   const stdout = collector(spec.outputLimit);
   const stderr = collector(spec.outputLimit);

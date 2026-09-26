@@ -25,9 +25,9 @@ Baseline: `a36ec05ea2c530ef52473b6a6f851a4484a31a35`. Qualification head: `6372b
 | CSDC-005 | P0 | BLOCKED_EXTERNAL | **Chat completion bridge** — Use a supported host mechanism to wake/resume delivery when available; retain polling fallback. | Real ChatGPT qualification proves autonomous delivery, or capability is marked external/unavailable with safe fallback. |
 | CSDC-006 | P0 | PASS | **WAITING/BLOCKED delivery** — Create durable user-visible events for WAITING_INPUT, BLOCKED, EXHAUSTED and quota pauses. | No terminal/wait state can become silent. |
 | CSDC-007 | P0 | PASS | **Lost-ack idempotency for mutations** — Stable durable request identity now guards direct mutating file/process/terminal/browser/GUI operations. | Lost response never causes a blind duplicate effect. |
-| CSDC-008 | P0 | TODO | **Universal deferred execution** — Extend deferred/durable work beyond run_shell/run_project_command to all potentially slow tools. | Any uncertain-duration tool can return a small durable handle before transport deadline. |
+| CSDC-008 | P0 | PASS | **Universal deferred execution** — Extend deferred/durable work beyond run_shell/run_project_command to all potentially slow tools. | Any uncertain-duration tool can return a small durable handle before transport deadline. |
 | CSDC-009 | P0 | PASS | **Transport safety budget** — Reserve explicit margin below tunnel response deadline for every synchronous call. | No Commander synchronous call can consume the full tunnel deadline. |
-| CSDC-010 | P0 | IN_PROGRESS | **Turn-safe orchestration** — Prevent long chains of MCP calls from keeping one chat turn alive until failure. | Large projects acknowledge quickly and continue from durable state rather than a single long turn. |
+| CSDC-010 | P0 | PASS | **Turn-safe orchestration** — Prevent long chains of MCP calls from keeping one chat turn alive until failure. | Large projects acknowledge quickly and continue from durable state rather than a single long turn. |
 | CSDC-011 | P0 | PASS | **Result envelope** — Separate compact chat summary from full artifact/output. | Final chat payload stays bounded while complete evidence remains retrievable. |
 | CSDC-012 | P0 | PASS | **Exactly-once delivery receipt** — Persist delivery attempt/ack identities and suppress duplicate final answers. | Retrying delivery cannot re-execute work or duplicate an acknowledged result. |
 | CSDC-013 | P1 | TODO | **Native MCP Tasks capability probe** — Probe ChatGPT Plugin support for MCP Tasks/subscriptions and implement only when negotiated. | Capability is runtime-proven; no speculative protocol claim. |
@@ -116,10 +116,20 @@ Baseline: `a36ec05ea2c530ef52473b6a6f851a4484a31a35`. Qualification head: `6372b
 - Synchronous command safety budget was reduced to reserve transport headroom; long/unknown work remains directed to detached operation_start.
 - Residual: Live tunnel canary after rollout is still required by CSDC-035/release qualification; this PASS is for the Commander-side safety-budget requirement.
 
-### CSDC-010 — IN_PROGRESS
+### CSDC-008 — PASS
 
-- fd8bec transport headroom PASS; durable detached operation + delivery inbox path PASS in cross-platform CI.
-- Residual: Potentially slow non-command tools are not universally deferred yet; CSDC-008 remains open.
+- Recursive `copy_path`, `move_path`, and `delete_path` no longer execute as unbounded direct effects; direct calls reserve a durable `operation_start` request and return a compact operation handle while the detached worker re-verifies config hash/authority and executes the existing transactional Power tool.
+- Lost-ack retry looks up the durable request before effect-dependent preflight, so a completed copy retry returns the same operation instead of duplicating the effect or failing on the now-existing destination.
+- Exact HTTP acceptance proves copy/move/delete auto-defer, preserve one effect under retry, return structured `toolResult`, and keep raw source/destination arguments out of durable request/state journals.
+- Coverage regression locks the remaining boundary: synchronous command calls <=15 s, search <=10 s, process listing <=15 s, terminal stop <=2 s, browser/GUI helper boundary <=15 s; single-file/list I/O is payload/count bounded. Filesystem/network-drive stall handling remains explicitly CSDC-024 rather than being falsely claimed here.
+- Combined focused regression 24/24 PASS; deferred coverage acceptance 6/6 PASS plus the turn-safety contract; exact integrated Windows full gate `FULLGATE3_RC=0` with core 420 PASS / 6 SKIP / 0 FAIL, GUI 75/75, concurrency/FS/Linux-GUI/Windows-runtime/source-integrity PASS and `SECURITY_AUDIT_PASS`.
+
+### CSDC-010 — PASS
+
+- The server advertises a six-direct-call turn budget, `rapidPollingAllowed=false`, and `longWorkMode='durable-background'`; unknown-duration or substantial work is explicitly routed to durable workflows, Project Engine, or `operation_start` instead of keeping one chat stream alive.
+- CSDC-037 already proved the Commander-side stream budget/compact checkpoint contract; CSDC-008 now removes the remaining unbounded recursive direct-tool path that was the sole recorded residual for CSDC-010.
+- Regression `test/deferred-coverage.test.mjs` locks the turn-safety contract and durable continuation guidance, while async/delivery/retry suites cover detached completion/recovery.
+- Boundary: ChatGPT host/UI stream availability and native wake/push remain external under CSDC-005; this PASS covers Commander-side orchestration only.
 
 ### CSDC-011 — PASS
 

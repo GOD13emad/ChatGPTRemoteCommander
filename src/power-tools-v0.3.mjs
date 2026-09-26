@@ -612,6 +612,30 @@ export const powerToolDefinitions = [
   { name: 'send_terminal', description: 'Send input to a persistent terminal session.', inputSchema: { type: 'object', properties: { id: { type: 'string' }, input: { type: 'string' }, newline: { type: 'boolean' } }, required: ['id', 'input'], additionalProperties: false }, annotations: openDestructive },
   { name: 'stop_terminal', description: 'Stop and optionally remove a persistent terminal session.', inputSchema: { type: 'object', properties: { id: { type: 'string' }, signal: { type: 'string' }, remove: { type: 'boolean' } }, required: ['id'], additionalProperties: false }, annotations: localDestructive }
 ];
+export async function prepareDeferredPowerMutation(ctx, name, input) {
+  const cfg = power(ctx);
+  if (name === 'copy_path' || name === 'move_path') {
+    const source = await resolveExistingTarget(ctx, input.source);
+    const destination = await resolveWritableTarget(ctx, input.destination);
+    assertDisjointPaths(source, destination);
+    await lstat(source);
+    try {
+      await lstat(destination);
+      if (input.overwrite !== true) throw new Error('destination exists; set overwrite=true');
+    } catch (error) {
+      if (error?.code !== 'ENOENT') throw error;
+    }
+    return { kind: 'power-tool', timeoutMs: 24 * 60 * 60 * 1000 };
+  }
+  if (name === 'delete_path') {
+    const target = await resolveExistingTarget(ctx, input.path);
+    await lstat(target);
+    if (input.permanent === true && cfg.allowPermanentDelete !== true) throw new Error('permanent delete is disabled');
+    return { kind: 'power-tool', timeoutMs: 24 * 60 * 60 * 1000 };
+  }
+  throw new Error('unsupported deferred power mutation');
+}
+
 export async function executePowerTool(ctx, name, input) {
   switch (name) {
     case 'power_status': return powerStatus(ctx);

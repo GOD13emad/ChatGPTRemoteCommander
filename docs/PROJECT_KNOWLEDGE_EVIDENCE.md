@@ -248,10 +248,31 @@ Historical checkpoints remain append-only archives. Current release/control clai
 
 **Implementation:** src/stable-router.mjs now owns modern tools-list subscriptions across blue/green backend generations, augments modern server/discover with capabilities.tools.listChanged=true, publishes notifications/tools/list_changed after an atomic route generation change, and exposes bounded continuity state (toolsListSubscribers, total subscriptions, modern/legacy-seen flags, observed generation) without retaining tool arguments. tools/schema-continuity-gate.mjs hashes canonical tool name + inputSchema and blocks schema-changing promotion when continuity is unavailable, legacy traffic has been observed, or no modern tools-list subscriber is present. Windows and Linux updaters invoke the same helper before promotion.
 
-**Evidence/Source:** Focused router/gate regression 6/6 PASS; Windows updater -SelfTest PASS. Exact-tree background full qualification finished with exit marker 0: npm run check PASS; npm test 425 total / 419 PASS / 6 SKIP / 0 FAIL; GUI contract 75/75 PASS; concurrency, filesystem, Linux GUI, Windows runtime and source integrity PASS; SECURITY_AUDIT_PASS; git diff --check PASS.
+**Evidence/Source:** Focused router/gate regression 6/6 PASS; Windows updater -SelfTest PASS. Latest exact integration validation: independent npm run check exit artifact = 0; independent npm test exit artifact = 0 with 429 total / 423 PASS / 6 SKIP / 0 FAIL; GUI contract 75/75 PASS; CONCURRENCY_SMOKE_PASS; FS_SAFETY_PASS; Linux GUI, Windows runtime and source integrity PASS; SECURITY_AUDIT_PASS; git diff --check PASS. Focused router/schema-continuity regression remains 6/6 PASS and Windows updater -SelfTest PASS.
 
 **Confidence/Status:** implementation and local Windows qualification CONFIRMED. Live exact-commit Windows/Linux candidate qualification and live subscription/cutover canary remain UNPROVEN; CSDC-038 therefore remains IN_PROGRESS.
 
 **Reuse Targets:** hot-update architecture, stable router, MCP protocol compatibility, mutation safety, release gate, updater policy.
 
 **Provenance:** integration branch finalize/rc-v094-r2, baseline live commit bc8f7baedfae4053ffb200f2a2a8f988fab951f0.
+
+
+## E076 — CSDC-008 universal deferred coverage and CSDC-010 turn-safe closeout
+
+**Date/Context:** 2026-09-26; semantic integration of the previously isolated CSDC-008 work onto the CSDC-038/Linux-fix finalization branch.
+
+**Claim/Decision:** Recursive path mutations are the remaining direct tool family whose effect duration was intrinsically unbounded by payload/transport contracts. `copy_path`, `move_path`, and `delete_path` now auto-defer into the durable operation engine. Other process/search/browser/GUI direct tools have explicit hard deadlines; single-file and directory-list operations are size/count bounded. Transient or stalled filesystem/network-drive behavior remains a separate CSDC-024 responsibility and is not misrepresented as solved by CSDC-008.
+
+**Implementation:** `operation_start` now accepts copy/move/delete plans. Duplicate request lookup precedes effect-dependent preflight. `prepareDeferredPowerMutation` validates authority/source/destination before reservation. Detached worker plans carry a config path/hash and re-establish canonical roots before invoking the existing transactional Power tool; durable result receipts include structured `toolResult` while raw arguments remain absent from the request/state journal. Direct server dispatch for copy/move/delete immediately enters this durable path.
+
+**Turn-safety consequence:** The server contract advertises a maximum of six direct synchronous MCP calls per assistant turn, disallows rapid polling, declares long work as durable-background, and directs unknown-duration/substantial work to durable workflows, Project Engine, or `operation_start`. CSDC-008 removes the recorded non-command duration gap, so the Commander-side CSDC-010 acceptance is met. ChatGPT host stream availability/wake remains external under CSDC-005.
+
+**Evidence/Source:** Combined focused integration regression 24/24 PASS; dedicated deferred coverage/HTTP/idempotency acceptance 6/6 PASS; schema-continuity test repeated ten times without the prior OS-selected bad-port flake after using a Fetch-safe deterministic range. Latest exact integration validation independently confirmed npm run check exit 0 and npm test exit 0 with 429 total / 423 PASS / 6 SKIP / 0 FAIL; GUI 75/75 PASS; CONCURRENCY_SMOKE_PASS; FS_SAFETY_PASS; Linux GUI, Windows runtime and source integrity PASS; SECURITY_AUDIT_PASS; git diff --check PASS.
+
+**Failure→Root Cause→Prevention:** The first integrated full run exposed a test-only WHATWG bad-port flake because `listen(0)` could select a Fetch-prohibited port. The schema-gate test now binds a deterministic safe range with bounded EADDRINUSE retry and passed ten repeated runs. A separate one-off Windows browser-child cleanup assertion failed once in a full run; browser production source was unchanged and three complete focused reruns passed, followed by the exact full gate passing. No production browser patch was made without repeated evidence.
+
+**Confidence/Status:** CSDC-008 and Commander-side CSDC-010 CONFIRMED on the exact integration tree. Cross-platform candidate/live rollout remains a release gate under CSDC-036/CSDC-038; storage transient policy remains CSDC-024.
+
+**Reuse Targets:** async/deferred architecture, retry safety, chat-stream operating contract, updater/release qualification, CSDC-024 boundary.
+
+**Provenance:** integration branch `finalize/rc-v094-r2`; baseline live commit `bc8f7baedfae4053ffb200f2a2a8f988fab951f0`; CSDC-038 integration commit `5cffe7bf7b9427edb104133780cd13aa768f3408`.

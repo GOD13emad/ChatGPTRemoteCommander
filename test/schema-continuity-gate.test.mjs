@@ -5,7 +5,25 @@ import { once } from 'node:events';
 import { evaluateSchemaContinuity } from '../tools/schema-continuity-gate.mjs';
 
 function server(handler){return http.createServer(handler);}
-async function listen(s){s.listen(0,'127.0.0.1');await once(s,'listening');return s.address().port;}
+let portCursor=20000+(process.pid%10000);
+async function listen(s){
+  for(let attempt=0;attempt<500;attempt+=1){
+    const port=portCursor++;
+    if(portCursor>45000)portCursor=20000;
+    try{
+      await new Promise((resolve,reject)=>{
+        const cleanup=()=>{s.off('error',onError);s.off('listening',onListening);};
+        const onError=error=>{cleanup();reject(error);};
+        const onListening=()=>{cleanup();resolve();};
+        s.once('error',onError);s.once('listening',onListening);s.listen(port,'127.0.0.1');
+      });
+      return port;
+    }catch(error){
+      if(error?.code!=='EADDRINUSE')throw error;
+    }
+  }
+  throw new Error('SAFE_TEST_PORT_UNAVAILABLE');
+}
 async function close(s){await new Promise(r=>s.close(r));}
 function schemaServer(tools){return server(async(req,res)=>{for await(const _ of req){}const data=Buffer.from(JSON.stringify({jsonrpc:'2.0',id:1,result:{tools}}));res.writeHead(200,{'content-type':'application/json','content-length':data.length});res.end(data);});}
 function statusServer(schemaContinuity){return server((req,res)=>{const data=Buffer.from(JSON.stringify({ok:true,router:true,schemaContinuity}));res.writeHead(200,{'content-type':'application/json','content-length':data.length});res.end(data);});}

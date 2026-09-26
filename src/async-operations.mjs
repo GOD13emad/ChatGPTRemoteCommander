@@ -81,7 +81,7 @@ export const asyncOperationDefinitions = [
       properties: {
         requestId: { type: 'string', minLength: 1, maxLength: 128, pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$' },
         correlationId: { type: 'string', minLength: 1, maxLength: 128, pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$' },
-        tool: { type: 'string', enum: ['run_project_command', 'run_shell'] },
+        tool: { type: 'string', enum: ['run_project_command', 'run_shell', 'copy_path', 'move_path', 'delete_path'] },
         arguments: { type: 'object' }
       },
       required: ['requestId', 'tool', 'arguments'],
@@ -166,6 +166,7 @@ export function createAsyncOperationTools({ config, prepare, workerPath, deliver
       timedOut: receipt.timedOut === true,
       cancelRequested: receipt.cancelRequested === true,
       outputComplete: receipt.outputComplete !== false,
+      toolResult: receipt.toolResult ?? null,
       stdout: stream(receipt.stdout),
       stderr: stream(receipt.stderr),
       startedAt: receipt.startedAt ?? null,
@@ -298,13 +299,31 @@ export function createAsyncOperationTools({ config, prepare, workerPath, deliver
     const correlationId = input.correlationId ?? input.requestId;
     if (!REQUEST_RE.test(correlationId)) throw new Error('invalid correlationId');
     const inputHash = hashJson({ tool: input.tool, arguments: input.arguments });
-    const prepared = await prepare(input.tool, input.arguments);
-    if (!prepared || typeof prepared.file !== 'string' || !Array.isArray(prepared.args) || typeof prepared.cwd !== 'string') {
-      throw new Error('invalid async execution plan');
-    }
     await mkdir(requestsDir, { recursive: true, mode: 0o700 });
     await mkdir(operationsDir, { recursive: true, mode: 0o700 });
     const requestPath = path.join(requestsDir, `${hashJson(input.requestId)}.json`);
+    try {
+      const prior = await readJson(requestPath);
+      if (prior.requestId !== input.requestId || prior.inputHash !== inputHash || (prior.correlationId ?? prior.requestId) !== correlationId) {
+        throw new Error('REQUEST_ID_CONFLICT');
+      }
+      let priorState;
+      try { priorState = await status(prior.operationId); }
+      catch (error) {
+        if (error.message !== 'operation not found') throw error;
+        priorState = { operationId: prior.operationId, status: 'UNCERTAIN', failureCode: 'RESERVED_WITHOUT_STATE' };
+      }
+      return { operationId: prior.operationId, requestId: input.requestId, correlationId, duplicate: true, status: priorState.status, deliveryId: priorState.deliveryId ?? null };
+    } catch (error) {
+      if (error?.code !== 'ENOENT') throw error;
+    }
+    const prepared = await prepare(input.tool, input.arguments);
+    const processPlan = prepared && (prepared.kind === undefined || prepared.kind === 'process')
+      && typeof prepared.file === 'string' && Array.isArray(prepared.args) && typeof prepared.cwd === 'string';
+    const powerToolPlan = prepared?.kind === 'power-tool'
+      && typeof prepared.configPath === 'string'
+      && /^[a-f0-9]{64}$/.test(prepared.configSha256 ?? '');
+    if (!processPlan && !powerToolPlan) throw new Error('invalid async execution plan');
     const operationId = randomUUID();
     let claimed = false;
     try {
@@ -355,14 +374,21 @@ export function createAsyncOperationTools({ config, prepare, workerPath, deliver
     await atomicJson(p.state, baseState);
     if (deliveryStore) deliveryTracked.add(operationId);
     const execution = {
+      kind: powerToolPlan ? 'power-tool' : 'process',
       operationId,
       requestId: input.requestId,
       correlationId,
       inputHash,
       tool: input.tool,
-      file: prepared.file,
-      args: prepared.args,
-      cwd: prepared.cwd,
+      ...(powerToolPlan ? {
+        configPath: prepared.configPath,
+        configSha256: prepared.configSha256,
+        toolArguments: input.arguments
+      } : {
+        file: prepared.file,
+        args: prepared.args,
+        cwd: prepared.cwd
+      }),
       timeoutMs: operationTimeoutMs,
       outputLimit,
       statePath: p.state,
