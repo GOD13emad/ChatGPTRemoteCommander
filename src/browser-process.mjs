@@ -41,7 +41,7 @@ async function forceTree(child,forceCloseMs){
  }
  await waitForClose(child,forceCloseMs);
 }
-export function createBrowserProcessClient({file,args,timeoutMs=30000,startupTimeoutMs=15000,maxBytes=8*1024*1024,env=process.env,gracefulCloseMs=2500,forceCloseMs=1500}){
+export function createBrowserProcessClient({file,args,timeoutMs=15000,startupTimeoutMs=15000,maxBytes=8*1024*1024,env=process.env,gracefulCloseMs=2500,forceCloseMs=1500}){
  let child=null,buffer=Buffer.alloc(0),startup=null,pending=null,stderrBytes=0,reserved=false,shutdown=null,ownedProfile=null,ownedProfileIsolated=false;
  const clear=t=>{if(t)clearTimeout(t);};
  const beginShutdown=()=>{
