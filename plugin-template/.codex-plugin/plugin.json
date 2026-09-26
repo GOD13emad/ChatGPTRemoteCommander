@@ -1,8 +1,10 @@
 {
   "name": "chatgpt-remote-commander",
-  "version": "0.9.3",
+  "version": "0.9.4",
   "description": "Operate a trusted computer through a registered Remote Commander MCP app.",
-  "author": { "name": "GOD13emad" },
+  "author": {
+    "name": "GOD13emad"
+  },
   "homepage": "https://github.com/GOD13emad/ChatGPTRemoteCommander",
   "repository": "https://github.com/GOD13emad/ChatGPTRemoteCommander",
   "license": "MIT",
@@ -13,11 +15,16 @@
     "longDescription": "Inspect projects and perform authorized Windows and Linux workflows through an already registered Remote Commander app.",
     "developerName": "GOD13emad",
     "category": "Productivity",
-    "capabilities": ["Read", "Write"],
+    "capabilities": [
+      "Read",
+      "Write"
+    ],
     "websiteURL": "https://github.com/GOD13emad/ChatGPTRemoteCommander",
     "privacyPolicyURL": "https://github.com/GOD13emad/ChatGPTRemoteCommander/blob/main/PRIVACY.md",
     "termsOfServiceURL": "https://github.com/GOD13emad/ChatGPTRemoteCommander/blob/main/TERMS.md",
-    "defaultPrompt": ["Report this computer's Remote Commander status without changing anything."],
+    "defaultPrompt": [
+      "Report this computer's Remote Commander status without changing anything."
+    ],
     "brandColor": "#0B5FFF",
     "composerIcon": "./assets/icon.png",
     "logo": "./assets/logo.png"
