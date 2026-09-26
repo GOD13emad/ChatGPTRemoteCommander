@@ -70,16 +70,24 @@ test('HTTP retry hardening rejects long sync work before effect and bounds overs
     const safeLarge = await rawPost(port, 2, 'read_text', { path: largeSafe });
     assert.equal(safeLarge.response.status, 200);
     assert.equal(safeLarge.body.error, undefined);
-    assert.equal(safeLarge.body.result.isError, false);
-    assert.equal(safeLarge.body.result.structuredContent.bytes, 5 * 1024 * 1024);
-    assert.match(safeLarge.body.result.content[0].text, /omitted from duplicate text rendering/);
-    assert.ok(Buffer.byteLength(safeLarge.text, 'utf8') < 6 * 1024 * 1024);
+    assert.equal(safeLarge.body.result.isError, true);
+    assert.match(safeLarge.body.result.content[0].text, /SYNCHRONOUS_READ_REQUIRES_PAGING/);
+    assert.ok(Buffer.byteLength(safeLarge.text, 'utf8') < 4096);
 
-    const oversized = await rawPost(port, 3, 'read_text', { path: largeOversize });
+    const page = await rawPost(port, 3, 'read_text', { path: largeSafe, offset: 0, maxBytes: 262144 });
+    assert.equal(page.response.status, 200);
+    assert.equal(page.body.error, undefined);
+    assert.equal(page.body.result.isError, false);
+    assert.equal(page.body.result.structuredContent.bytes, 262144);
+    assert.equal(page.body.result.structuredContent.nextOffset, 262144);
+    assert.equal(page.body.result.structuredContent.truncated, true);
+    assert.ok(Buffer.byteLength(page.text, 'utf8') < 1024 * 1024);
+
+    const oversized = await rawPost(port, 4, 'read_text', { path: largeOversize });
     assert.equal(oversized.response.status, 200);
-    assert.equal(oversized.body.error?.code, -32051);
-    assert.match(oversized.body.error.message, /MCP_RESPONSE_TOO_LARGE/);
-    assert.ok(Buffer.byteLength(oversized.text, 'utf8') < 2048);
+    assert.equal(oversized.body.result.isError, true);
+    assert.match(oversized.body.result.content[0].text, /SYNCHRONOUS_READ_REQUIRES_PAGING/);
+    assert.ok(Buffer.byteLength(oversized.text, 'utf8') < 4096);
   } finally {
     if (child && child.exitCode === null) { child.kill(); await Promise.race([once(child,'exit'), wait(2000)]); }
     await fs.rm(root, { recursive: true, force: true });

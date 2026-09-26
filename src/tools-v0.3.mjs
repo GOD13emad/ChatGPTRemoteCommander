@@ -104,22 +104,44 @@ export async function readText(ctx, input) {
   const target = await legacyExistingPath(ctx, input.path, ctx.roots[0]);
   const info = await stat(target);
   if (!info.isFile()) throw new Error('path is not a file');
-  const maxReadBytes = Number(fullFilesystem
+  const configuredMax = Number(fullFilesystem
     ? (ctx.config.powerMode?.maxFileBytes ?? ctx.config.maxReadBytes ?? 524288)
     : (ctx.config.maxReadBytes ?? 524288));
-  if (info.size > maxReadBytes) {
-    throw new Error(`file exceeds maxReadBytes (${maxReadBytes})`);
-  }
+  if (info.size > configuredMax) throw new Error(`file exceeds maxReadBytes (${configuredMax})`);
   const buffer = await readFile(target);
   if (buffer.includes(0)) throw new Error('binary files are not supported by read_text');
-  const text = buffer.toString('utf8');
+  const paging = input.offset !== undefined || input.maxBytes !== undefined;
+  const inlineMax = 512 * 1024;
+  if (!paging && buffer.length > inlineMax) {
+    throw new Error('SYNCHRONOUS_READ_REQUIRES_PAGING: file exceeds 512 KiB inline limit; use offset/maxBytes');
+  }
+  const offset = input.offset === undefined ? 0 : Number(input.offset);
+  const maxBytes = input.maxBytes === undefined ? Math.min(buffer.length, inlineMax) : Number(input.maxBytes);
+  if (!Number.isSafeInteger(offset) || offset < 0 || offset > buffer.length) throw new Error('offset must be a valid byte offset');
+  if (paging && offset > 0 && offset < buffer.length && (buffer[offset] & 0xC0) === 0x80) throw new Error('UTF8_PAGE_OFFSET_UNSAFE');
+  if (paging && (!Number.isSafeInteger(maxBytes) || maxBytes < 1 || maxBytes > 256 * 1024)) {
+    throw new Error('maxBytes must be between 1 and 262144');
+  }
+  let end = paging ? Math.min(buffer.length, offset + maxBytes) : buffer.length;
+  if (paging && end < buffer.length) {
+    while (end > offset && (buffer[end] & 0xC0) === 0x80) end -= 1;
+    if (end === offset) throw new Error('UTF8_PAGE_BOUNDARY_UNSAFE');
+  }
+  const page = buffer.subarray(offset, end);
+  const text = new TextDecoder('utf-8', { fatal: true }).decode(page);
   const result = {
     path: target,
-    bytes: buffer.length,
+    bytes: page.length,
+    fileBytes: buffer.length,
+    offset,
+    nextOffset: end < buffer.length ? end : null,
+    truncated: end < buffer.length,
     sha256: sha256(buffer),
+    chunkSha256: sha256(page),
     text
   };
-  await audit(ctx, { action: 'read_text', target, ok: true, bytes: buffer.length, powerModeFullFilesystem: fullFilesystem });
+  await audit(ctx, { action: 'read_text', target, ok: true, bytes: page.length, fileBytes: buffer.length, offset,
+    paged: paging, powerModeFullFilesystem: fullFilesystem });
   return result;
 }
 export async function writeText(ctx, input) {
@@ -127,9 +149,9 @@ export async function writeText(ctx, input) {
   if (typeof input.content !== 'string') throw new Error('content must be a string');
   const fullFilesystem = legacyPowerFullFilesystem(ctx);
   const bytes = Buffer.byteLength(input.content, 'utf8');
-  const maxWriteBytes = Number(fullFilesystem
+  const maxWriteBytes = Math.min(512 * 1024, Number(fullFilesystem
     ? (ctx.config.powerMode?.maxFileBytes ?? ctx.config.maxWriteBytes ?? 524288)
-    : (ctx.config.maxWriteBytes ?? 524288));
+    : (ctx.config.maxWriteBytes ?? 524288)));
   if (bytes > maxWriteBytes) {
     throw new Error(`content exceeds maxWriteBytes (${maxWriteBytes})`);
   }

@@ -190,23 +190,43 @@ export async function readAnyFile(ctx, input) {
   const target = await resolveExistingTarget(ctx, input.path);
   const info = await stat(target);
   if (!info.isFile()) throw new Error('path is not a file');
-  const maxBytes = Number(power(ctx).maxFileBytes ?? 8 * 1024 * 1024);
-  if (info.size > maxBytes) throw new Error(`file exceeds Power Mode maxFileBytes (${maxBytes})`);
+  const configuredMax = Number(power(ctx).maxFileBytes ?? 8 * 1024 * 1024);
+  if (info.size > configuredMax) throw new Error(`file exceeds Power Mode maxFileBytes (${configuredMax})`);
   const buffer = await readFile(target);
+  const paging = input.offset !== undefined || input.maxBytes !== undefined;
+  const inlineMax = 512 * 1024;
+  if (!paging && buffer.length > inlineMax) {
+    throw new Error('SYNCHRONOUS_READ_REQUIRES_PAGING: file exceeds 512 KiB inline limit; use offset/maxBytes');
+  }
+  const offset = input.offset === undefined ? 0 : Number(input.offset);
+  const maxBytes = input.maxBytes === undefined ? Math.min(buffer.length, inlineMax) : Number(input.maxBytes);
+  if (!Number.isSafeInteger(offset) || offset < 0 || offset > buffer.length) throw new Error('offset must be a valid byte offset');
+  if ((input.encoding ?? 'utf8') !== 'base64' && paging && offset > 0 && offset < buffer.length && (buffer[offset] & 0xC0) === 0x80) throw new Error('UTF8_PAGE_OFFSET_UNSAFE');
+  if (paging && (!Number.isSafeInteger(maxBytes) || maxBytes < 1 || maxBytes > 256 * 1024)) throw new Error('maxBytes must be between 1 and 262144');
+  let end = paging ? Math.min(buffer.length, offset + maxBytes) : buffer.length;
   const encoding = input.encoding === 'base64' ? 'base64' : 'utf8';
+  if (encoding === 'utf8' && paging && end < buffer.length) {
+    while (end > offset && (buffer[end] & 0xC0) === 0x80) end -= 1;
+    if (end === offset) throw new Error('UTF8_PAGE_BOUNDARY_UNSAFE');
+  }
+  const page = buffer.subarray(offset, end);
+  if (encoding === 'utf8' && page.includes(0)) throw new Error('binary file requires base64 encoding');
+  const content = encoding === 'utf8'
+    ? new TextDecoder('utf-8', { fatal: true }).decode(page)
+    : page.toString('base64');
   return {
-    path: target, bytes: buffer.length, sha256: digest(buffer), encoding,
-    content: buffer.toString(encoding)
+    path: target, bytes: page.length, fileBytes: buffer.length, offset,
+    nextOffset: end < buffer.length ? end : null, truncated: end < buffer.length,
+    sha256: digest(buffer), chunkSha256: digest(page), encoding, content
   };
 }
-
 export async function writeAnyFile(ctx, input) {
   if (input.expectedSha256 !== undefined && !/^[a-f0-9]{64}$/.test(input.expectedSha256)) throw new Error('expectedSha256 must be a lowercase 64-hex SHA-256');
   const target = await resolveWritableTarget(ctx, input.path);
   const encoding = input.encoding === 'base64' ? 'base64' : 'utf8';
   const data = Buffer.from(input.content ?? '', encoding);
-  const maxBytes = Number(power(ctx).maxFileBytes ?? 8 * 1024 * 1024);
-  if (data.length > maxBytes) throw new Error(`content exceeds Power Mode maxFileBytes (${maxBytes})`);
+  const maxBytes = Math.min(512 * 1024, Number(power(ctx).maxFileBytes ?? 8 * 1024 * 1024));
+  if (data.length > maxBytes) throw new Error(`content exceeds synchronous write limit (${maxBytes}); use bounded append chunks`);
   return withPathLocks([target], async () => {
     const snapshot = await guardFileWrite(target);
     let beforeSha256 = null;
@@ -354,12 +374,12 @@ export async function deletePath(ctx, input) {
 }
 
 async function walkSearch(root, current, input, results, depth) {
-  if (results.length >= input.maxResults || depth < 0) return;
+  if (results.length >= input.maxResults || depth < 0 || Date.now() >= input.deadline) return;
   let entries;
   try { entries = await readdir(current, { withFileTypes: true }); }
   catch { return; }
   for (const entry of entries) {
-    if (results.length >= input.maxResults) break;
+    if (results.length >= input.maxResults || Date.now() >= input.deadline) break;
     const full = path.join(current, entry.name);
     const rel = path.relative(root, full);
     const nameHit = input.matcher.test(entry.name) || input.matcher.test(rel);
@@ -388,12 +408,14 @@ export async function searchFiles(ctx, input) {
   const matcher = input.regex === true ? new RegExp(pattern, flags) : new RegExp(pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), flags);
   const options = {
     matcher, searchContent: input.searchContent === true,
-    maxResults: Math.max(1, Math.min(Number(input.maxResults ?? 100), 1000)),
-    maxContentBytes: Math.max(1024, Math.min(Number(input.maxContentBytes ?? 1048576), 8388608))
+    maxResults: Math.max(1, Math.min(Number(input.maxResults ?? 100), 200)),
+    maxContentBytes: Math.max(1024, Math.min(Number(input.maxContentBytes ?? 262144), 1048576)),
+    deadline: Date.now() + Math.max(100, Math.min(Number(input.maxDurationMs ?? 5000), 10000))
   };
   const results = [];
   await walkSearch(root, root, options, results, Math.max(0, Math.min(Number(input.depth ?? 6), 32)));
-  return { root, count: results.length, truncated: results.length >= options.maxResults, results };
+  const timedOut = Date.now() >= options.deadline;
+  return { root, count: results.length, truncated: timedOut || results.length >= options.maxResults, timedOut, results };
 }
 export async function prepareShellCommand(ctx, input) {
   const command = checkShell(ctx, input.command);
@@ -563,13 +585,13 @@ const openDestructive = { readOnlyHint: false, destructiveHint: true, idempotent
 export const powerToolDefinitions = [
   { name: 'power_status', description: 'Return Full-Control Power Mode capabilities and policy.', inputSchema: { type: 'object', properties: {}, additionalProperties: false }, annotations: ro },
   { name: 'file_info', description: 'Return metadata for any file or directory permitted by Power Mode.', inputSchema: { type: 'object', properties: { path: { type: 'string' } }, required: ['path'], additionalProperties: false }, annotations: ro },
-  { name: 'read_file', description: 'Read text or binary file data (base64) using Power Mode.', inputSchema: { type: 'object', properties: { path: { type: 'string' }, encoding: { type: 'string', enum: ['utf8', 'base64'] } }, required: ['path'], additionalProperties: false }, annotations: ro },
+  { name: 'read_file', description: 'Read bounded text or binary data using Power Mode. Files above 512 KiB require offset/maxBytes paging; each page is at most 256 KiB.', inputSchema: { type: 'object', properties: { path: { type: 'string' }, encoding: { type: 'string', enum: ['utf8', 'base64'] }, offset: { type: 'integer', minimum: 0 }, maxBytes: { type: 'integer', minimum: 1, maximum: 262144 } }, required: ['path'], additionalProperties: false }, annotations: ro },
   { name: 'write_file', description: 'Write/append text or base64 file data with automatic pre-mutation backup and optional SHA-256 precondition.', inputSchema: { type: 'object', properties: { path: { type: 'string' }, content: { type: 'string' }, encoding: { type: 'string', enum: ['utf8', 'base64'] }, mode: { type: 'string', enum: ['overwrite', 'append'] }, createParents: { type: 'boolean' }, expectedSha256: { type: 'string' } }, required: ['path', 'content'], additionalProperties: false }, annotations: localDestructive },
   { name: 'create_directory', description: 'Create a directory, including parents.', inputSchema: { type: 'object', properties: { path: { type: 'string' }, recursive: { type: 'boolean' } }, required: ['path'], additionalProperties: false }, annotations: additive },
   { name: 'copy_path', description: 'Copy a file or directory recursively; optionally replace destination after backup.', inputSchema: { type: 'object', properties: { source: { type: 'string' }, destination: { type: 'string' }, overwrite: { type: 'boolean' } }, required: ['source', 'destination'], additionalProperties: false }, annotations: localDestructive },
   { name: 'move_path', description: 'Move or rename a file/directory; optionally replace destination after backup.', inputSchema: { type: 'object', properties: { source: { type: 'string' }, destination: { type: 'string' }, overwrite: { type: 'boolean' } }, required: ['source', 'destination'], additionalProperties: false }, annotations: localDestructive },
   { name: 'delete_path', description: 'Delete with recoverable backup by default. Permanent deletion is separately policy-gated.', inputSchema: { type: 'object', properties: { path: { type: 'string' }, permanent: { type: 'boolean' } }, required: ['path'], additionalProperties: false }, annotations: localDestructive },
-  { name: 'search_files', description: 'Search names and optionally UTF-8 file content across Power Mode filesystem scope.', inputSchema: { type: 'object', properties: { path: { type: 'string' }, pattern: { type: 'string' }, regex: { type: 'boolean' }, ignoreCase: { type: 'boolean' }, searchContent: { type: 'boolean' }, depth: { type: 'integer', minimum: 0, maximum: 32 }, maxResults: { type: 'integer', minimum: 1, maximum: 1000 }, maxContentBytes: { type: 'integer', minimum: 1024 } }, required: ['pattern'], additionalProperties: false }, annotations: ro },
+  { name: 'search_files', description: 'Search names and optionally bounded UTF-8 file content across Power Mode filesystem scope. The synchronous search is time-bounded.', inputSchema: { type: 'object', properties: { path: { type: 'string' }, pattern: { type: 'string' }, regex: { type: 'boolean' }, ignoreCase: { type: 'boolean' }, searchContent: { type: 'boolean' }, depth: { type: 'integer', minimum: 0, maximum: 32 }, maxResults: { type: 'integer', minimum: 1, maximum: 200 }, maxContentBytes: { type: 'integer', minimum: 1024, maximum: 1048576 }, maxDurationMs: { type: 'integer', minimum: 100, maximum: 10000 } }, required: ['pattern'], additionalProperties: false }, annotations: ro },
   { name: 'run_shell', description: 'Run a short bounded platform shell command (PowerShell 7 on Windows, Bash on Linux). Synchronous calls are hard-limited to 20 seconds; use operation_start with a stable requestId for longer, unknown-duration, or high-output work. Explicit Power Mode only.', inputSchema: { type: 'object', properties: { command: { type: 'string' }, cwd: { type: 'string' }, timeoutMs: { type: 'integer', minimum: 1000, maximum: 20000 } }, required: ['command'], additionalProperties: false }, annotations: openDestructive },
   { name: 'system_info', description: 'Return OS, CPU, memory, user, Node and runtime information.', inputSchema: { type: 'object', properties: {}, additionalProperties: false }, annotations: ro },
   { name: 'list_processes', description: 'List operating-system processes with PID and resource details when available.', inputSchema: { type: 'object', properties: {}, additionalProperties: false }, annotations: ro },
