@@ -16,10 +16,12 @@ async function freePort() {
   await new Promise(resolve => listener.close(resolve));
   return port;
 }
-async function post(port, id, name, args) {
+async function post(port, id, name, args, transportRequestId = null) {
+  const headers = { 'content-type': 'application/json' };
+  if (transportRequestId) headers['x-request-id'] = transportRequestId;
   const response = await fetch(`http://127.0.0.1:${port}/mcp`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers,
     body: JSON.stringify({ jsonrpc:'2.0', id, method:'tools/call', params:{ name, arguments:args } })
   });
   const body = await response.json();
@@ -43,7 +45,7 @@ async function stopServer(child) {
   if (child && child.exitCode === null) { child.kill(); await Promise.race([once(child,'exit'), wait(2000)]); }
 }
 
-test('direct mutation requestId prevents duplicate append across lost ack and restart', async () => {
+test('direct mutation requestId prevents duplicate append across lost ack and restart while legacy hosts use transport/RPC fallback', async () => {
   const root=await fs.mkdtemp(path.join(os.tmpdir(),'rc-mut-http-'));
   const serverRoot=path.join(root,'server');
   const dataRoot=path.join(root,'data');
@@ -54,7 +56,11 @@ test('direct mutation requestId prevents duplicate append across lost ack and re
     await fs.cp(new URL('../src/', import.meta.url), path.join(serverRoot,'src'), {recursive:true});
     const canonicalDataRoot=await fs.realpath(dataRoot);
     const target=path.join(canonicalDataRoot,'append.txt');
+    const legacyTarget=path.join(canonicalDataRoot,'legacy.txt');
+    const precedenceTarget=path.join(canonicalDataRoot,'precedence.txt');
     await fs.writeFile(target,'');
+    await fs.writeFile(legacyTarget,'');
+    await fs.writeFile(precedenceTarget,'');
     const port=await freePort();
     const config={
       host:'127.0.0.1', port, allowedRoots:[canonicalDataRoot], allowedPrograms:['node'],
@@ -69,10 +75,41 @@ test('direct mutation requestId prevents duplicate append across lost ack and re
     await fs.writeFile(configPath,JSON.stringify(config,null,2));
     running=await startServer(serverRoot,configPath);
 
-    const missing=await post(port,1,'write_text',{path:target,content:'x',mode:'append'});
+    // Still fail closed when neither an explicit key nor transport/RPC identity exists.
+    const missing=await post(port,null,'write_text',{path:target,content:'x',mode:'append'});
     assert.equal(missing.result.isError,true);
     assert.match(missing.result.content[0].text,/MUTATION_REQUEST_ID_REQUIRED|requestId/i);
     assert.equal(await fs.readFile(target,'utf8'),'');
+
+    // Legacy cached hosts can omit requestId: stable RPC identity becomes the compatibility key.
+    const legacyArgs={path:legacyTarget,content:'r',mode:'append'};
+    const legacyFirst=await post(port,'legacy-rpc-stable','write_text',legacyArgs);
+    assert.equal(legacyFirst.result.isError,false);
+    assert.equal(await fs.readFile(legacyTarget,'utf8'),'r');
+    const legacyRetry=await post(port,'legacy-rpc-stable','write_text',legacyArgs);
+    assert.equal(legacyRetry.result.isError,false);
+    assert.deepEqual(legacyRetry.result.structuredContent, legacyFirst.result.structuredContent);
+    assert.equal(await fs.readFile(legacyTarget,'utf8'),'r');
+
+    // Forwarded transport identity has precedence over changing JSON-RPC ids for legacy hosts.
+    const transportArgs={path:legacyTarget,content:'t',mode:'append'};
+    const transportFirst=await post(port,'rpc-transport-a','write_text',transportArgs,'transport-stable-1');
+    assert.equal(transportFirst.result.isError,false);
+    assert.equal(await fs.readFile(legacyTarget,'utf8'),'rt');
+    const transportRetry=await post(port,'rpc-transport-b','write_text',transportArgs,'transport-stable-1');
+    assert.equal(transportRetry.result.isError,false);
+    assert.deepEqual(transportRetry.result.structuredContent, transportFirst.result.structuredContent);
+    assert.equal(await fs.readFile(legacyTarget,'utf8'),'rt');
+
+    // Explicit requestId remains authoritative even when transport identity changes.
+    const precedenceArgs={requestId:'explicit-precedence-1',path:precedenceTarget,content:'p',mode:'append'};
+    const precedenceFirst=await post(port,'rpc-explicit-a','write_text',precedenceArgs,'transport-changing-a');
+    assert.equal(precedenceFirst.result.isError,false);
+    assert.equal(await fs.readFile(precedenceTarget,'utf8'),'p');
+    const precedenceRetry=await post(port,'rpc-explicit-b','write_text',precedenceArgs,'transport-changing-b');
+    assert.equal(precedenceRetry.result.isError,false);
+    assert.deepEqual(precedenceRetry.result.structuredContent, precedenceFirst.result.structuredContent);
+    assert.equal(await fs.readFile(precedenceTarget,'utf8'),'p');
     
     const args={requestId:'mut-http-1',path:target,content:'x',mode:'append'};
     const first=await post(port,2,'write_text',args);
@@ -102,7 +139,7 @@ test('direct mutation requestId prevents duplicate append across lost ack and re
 });
 
 
-test('full-power direct mutation catalog requires requestId across file/process/terminal/browser/GUI', async () => {
+test('full-power direct mutation catalog exposes optional requestId across file/process/terminal/browser/GUI', async () => {
   const root=await fs.mkdtemp(path.join(os.tmpdir(),'rc-mut-catalog-'));
   const serverRoot=path.join(root,'server');
   const dataRoot=path.join(root,'data');
@@ -138,6 +175,7 @@ test('full-power direct mutation catalog requires requestId across file/process/
     assert.ok(directMutations.length > 10, 'expected broad Full Power mutation catalog');
     for (const tool of directMutations) {
       assert.ok(tool.inputSchema?.properties?.requestId, `missing requestId schema: ${tool.name}`);
+      assert.equal((tool.inputSchema?.required ?? []).includes('requestId'), false, `requestId must remain optional for cached-host compatibility: ${tool.name}`);
     }
     const names=new Set(directMutations.map(tool=>tool.name));
     assert.ok(names.has('write_text'), 'file mutation missing');
