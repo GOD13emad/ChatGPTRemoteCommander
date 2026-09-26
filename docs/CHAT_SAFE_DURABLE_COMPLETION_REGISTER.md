@@ -1,0 +1,65 @@
+# Chat-Safe Durable Completion Register
+
+This cloud-backup branch preserves the execution register while the development machines are unavailable. It is not a release branch and does not prove the local uncommitted code.
+
+Baseline: `a36ec05ea2c530ef52473b6a6f851a4484a31a35`. Local register commit observed before outage: `defb3ae95ef14cd9ce2c8f88f7dae134f855ddad` (not yet pushed at the time of outage).
+
+## Completion SLO
+
+- `accepted_job_without_durable_identity = 0`
+- `blind_duplicate_mutation_after_retry = 0`
+- `commander_caused_transport_deadline_drop = 0 during qualification`
+- `silent_WAITING_BLOCKED_EXHAUSTED = 0`
+- `COMPLETED_without_discoverable_result = 0`
+- `oversized_result_breaks_transport = 0`
+- `update_or_restart_loses_accepted_job = 0`
+
+## Execution Register
+
+| ID | Priority | Status | Work | Acceptance |
+|---|---:|---|---|---|
+| CSDC-001 | P0 | IN_PROGRESS | **Durable delivery store** — Persist completion/delivery records independently of chat context. | A completed job survives process/chat restart with delivery state and immutable result hash. |
+| CSDC-002 | P0 | IN_PROGRESS | **Correlation identity** — Carry one correlationId across request, workflow/run, operation, artifact and delivery. | A support trace can map one accepted request end-to-end without heuristic log matching. |
+| CSDC-003 | P0 | IN_PROGRESS | **Delivery state machine** — Implement COMPLETED_UNDELIVERED -> DELIVERY_PENDING -> DELIVERED/DEAD_LETTER. | Transitions are durable, idempotent and covered by restart/lost-ack tests. |
+| CSDC-004 | P0 | IN_PROGRESS | **Pending-delivery inbox** — Expose bounded read/claim/ack paths for undelivered results. | A later chat can discover and claim an earlier completed result without re-running effects. |
+| CSDC-005 | P0 | TODO | **Chat completion bridge** — Use a supported host mechanism to wake/resume delivery when available; retain polling fallback. | Real ChatGPT qualification proves autonomous delivery, or capability is marked external/unavailable with safe fallback. |
+| CSDC-006 | P0 | TODO | **WAITING/BLOCKED delivery** — Create durable user-visible events for WAITING_INPUT, BLOCKED, EXHAUSTED and quota pauses. | No terminal/wait state can become silent. |
+| CSDC-007 | P0 | TODO | **Lost-ack idempotency for mutations** — Add stable idempotency to mutating file/process/terminal/browser/GUI operations. | Lost response never causes a blind duplicate effect. |
+| CSDC-008 | P0 | TODO | **Universal deferred execution** — Extend deferred/durable work beyond run_shell/run_project_command to all potentially slow tools. | Any uncertain-duration tool can return a small durable handle before transport deadline. |
+| CSDC-009 | P0 | TODO | **Transport safety budget** — Reserve explicit margin below tunnel response deadline for every synchronous call. | No Commander synchronous call can consume the full tunnel deadline. |
+| CSDC-010 | P0 | TODO | **Turn-safe orchestration** — Prevent long chains of MCP calls from keeping one chat turn alive until failure. | Large projects acknowledge quickly and continue from durable state rather than a single long turn. |
+| CSDC-011 | P0 | IN_PROGRESS | **Result envelope** — Separate compact chat summary from full artifact/output. | Final chat payload stays bounded while complete evidence remains retrievable. |
+| CSDC-012 | P0 | IN_PROGRESS | **Exactly-once delivery receipt** — Persist delivery attempt/ack identities and suppress duplicate final answers. | Retrying delivery cannot re-execute work or duplicate an acknowledged result. |
+| CSDC-013 | P1 | TODO | **Native MCP Tasks capability probe** — Probe ChatGPT Plugin support for MCP Tasks/subscriptions and implement only when negotiated. | Capability is runtime-proven; no speculative protocol claim. |
+| CSDC-014 | P1 | TODO | **Paged/ranged reads** — Add paging/range contracts for large text/binary/list/search results. | Files/results larger than one MCP envelope remain retrievable without 413. |
+| CSDC-015 | P1 | TODO | **Request/response size alignment** — Align tool schemas with request/response envelopes or move content to artifacts. | No advertised payload size is impossible to transport. |
+| CSDC-016 | P1 | TODO | **Project Engine execution primitive** — Permit safe background build/run/test via a durable bounded execution primitive. | Enrolled execution projects can perform verified command work without unrestricted planner shell. |
+| CSDC-017 | P1 | TODO | **Long-project decomposition** — Split projects into durable milestone/subrun units beyond the default five-minute run window. | Hour-scale projects progress through checkpoints instead of EXHAUSTED due solely to wall time. |
+| CSDC-018 | P1 | TODO | **Pause human-wait clock** — Do not consume execution wall-clock while legitimately waiting for user input. | WAITING_INPUT does not expire before the user can answer. |
+| CSDC-019 | P1 | TODO | **Quota/rate-limit state** — Classify provider quota/rate-limit as durable PAUSED_QUOTA with safe resume. | Quota exhaustion never becomes an ambiguous failure or duplicate execution. |
+| CSDC-020 | P1 | TODO | **Context retrieval/compaction** — Keep working context bounded using durable refs/indexes rather than raw transcript growth. | Large projects do not fail solely because history grew. |
+| CSDC-021 | P1 | TODO | **Workflow rollover/archive** — Compact/archive state before workflow/event/note/count limits are reached. | Long-lived projects remain writable and auditable. |
+| CSDC-022 | P1 | TODO | **External mutation detection** — Detect project-root changes made outside Commander locks before applying/replaying planned mutations. | One-writer violations become explicit blockers rather than silent overwrite. |
+| CSDC-023 | P1 | TODO | **Process-tree lifecycle** — Guarantee timeout/cancel handles descendant processes and records durable outcome. | No timed-out command leaves untracked children that can mutate later. |
+| CSDC-024 | P1 | TODO | **Transient filesystem/network-drive policy** — Classify and bounded-retry safe transient EPERM/EBUSY/network-share failures. | Transient storage failures do not silently strand projects. |
+| CSDC-025 | P1 | TODO | **Browser/session escalation** — Persist browser-auth/CAPTCHA/MFA blockers and deliver a minimal foreground-approval request. | Background jobs never silently hang on authentication. |
+| CSDC-026 | P1 | TODO | **Update-safe run migration** — Keep active workflow/run/delivery authority stable across auto-update and policy migrations. | Updates do not strand or invalidate accepted jobs without explicit compatible migration. |
+| CSDC-027 | P1 | IN_PROGRESS | **Tunnel-client v0.0.15 qualification** — Candidate-test current upstream tunnel-client on Windows/Linux and pin if it passes. | Exact binary/hash, regression and live canaries pass before promotion. |
+| CSDC-028 | P1 | IN_PROGRESS | **Linux v0.9.3 completion** — Finish retained-terminal cutover and Firefox background browser, full qualification and release. | Linux canonical connector reaches current release without killing active terminals. |
+| CSDC-029 | P1 | TODO | **Cross-device parity** — Make Windows/Linux capability and Project Engine behavior equivalent where platform permits. | System-status parity matrix has no unexplained functional gaps. |
+| CSDC-030 | P1 | TODO | **End-to-end telemetry** — Record correlationId, transport request, tool, operation, workflow, result and delivery metrics. | Deadline/post failures can be attributed to exact work instead of heuristic timestamps. |
+| CSDC-031 | P1 | TODO | **Durable alerting/dead-letter** — Surface COMPLETED_UNDELIVERED, blocked and dead-letter records in health/status. | No failed delivery can remain invisible. |
+| CSDC-032 | P1 | TODO | **Acceptance-strength profiles** — Support domain-specific validators instead of treating weak text checks as correctness. | COMPLETED means the configured technical/scientific acceptance really passed. |
+| CSDC-033 | P0 | IN_PROGRESS | **Fault-injection regression suite** — Test disconnects before ack, after effect, during planner, after completion and during delivery. | Every injected cut preserves at-most-once effects and eventual discoverable result. |
+| CSDC-034 | P0 | TODO | **Multi-chat/account concurrency regression** — Test same project from concurrent chats/accounts with ownership/delivery isolation. | No cross-chat result leakage, duplicate writer or duplicate effect. |
+| CSDC-035 | P0 | TODO | **Long soak qualification** — Run 24-48h real workload qualification after fixes. | Zero Commander-caused deadline drops, silent terminal states and unrecoverable completed-undelivered jobs. |
+| CSDC-036 | P0 | TODO | **Release gate** — Block stable release unless chat-safe completion SLO passes on Windows and Linux. | Release checklist requires evidence for all P0 items and accepted dispositions for remaining P1 items. |
+
+## Rules
+
+- Status changes require evidence; `PASS` requires code/test/live evidence as applicable.
+- One primary blocker per change set; prestate -> narrow change -> post-check -> regression -> evidence.
+- Background-first; a chat turn is never the sole owner of long-running work.
+- Lost acknowledgement never authorizes blind replay of a mutation.
+- External platform limits are not marked fixed by Commander; use `BLOCKED_EXTERNAL` only after Commander-side fallback is proven.
+- After the power outage, reconcile the local dirty tree before merging or deleting this cloud-backup branch.
