@@ -233,6 +233,7 @@ test('dead PID without receipt stays nonterminal until durable deadline', async 
 
 test('terminal operation receipts backfill exactly once into durable delivery after restart', async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'rc-async-delivery-'));
+  let first = null, second = null, delivery = null;
   try {
     const config = {
       instance: { profile: 'delivery-test' },
@@ -245,7 +246,7 @@ test('terminal operation receipts backfill exactly once into durable delivery af
       timeoutMs: 5000,
       outputLimit: 1024 * 1024
     });
-    const first = createAsyncOperationTools({ config, prepare });
+    first = createAsyncOperationTools({ config, prepare });
     const started = await first.execute('operation_start', {
       requestId: 'delivery-request-1',
       correlationId: 'chat-a',
@@ -254,9 +255,10 @@ test('terminal operation receipts backfill exactly once into durable delivery af
     });
     await waitFor(first, started.operationId);
     await first.close?.();
+    first = null;
 
-    const delivery = new DeliveryStore({ directory: path.join(root, 'delivery'), scope: 'profile-a' });
-    const second = createAsyncOperationTools({ config, prepare, deliveryStore: delivery });
+    delivery = new DeliveryStore({ directory: path.join(root, 'delivery'), scope: 'profile-a' });
+    second = createAsyncOperationTools({ config, prepare, deliveryStore: delivery });
     await second.reconcileDeliveries(500);
     const listed = delivery.list({ correlationId: 'chat-a', includeDelivered: true });
     assert.equal(listed.items.length, 1);
@@ -265,10 +267,11 @@ test('terminal operation receipts backfill exactly once into durable delivery af
     assert.equal(listed.items[0].kind, 'COMPLETED');
     await second.reconcileDeliveries(500);
     assert.equal(delivery.list({ correlationId: 'chat-a', includeDelivered: true }).items.length, 1);
-    await second.close?.();
-    delivery.close();
   } finally {
-    await rm(root, { recursive: true, force: true });
+    try { await first?.close?.(); } catch {}
+    try { await second?.close?.(); } catch {}
+    try { delivery?.close(); } catch {}
+    await rm(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 });
   }
 });
 
