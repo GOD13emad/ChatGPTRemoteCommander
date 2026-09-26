@@ -59,11 +59,11 @@ test('HTTP retry hardening rejects long sync work before effect and bounds overs
     for (let i=0;i<100;i+=1) { try { const r=await fetch(`http://127.0.0.1:${port}/health`); if(r.ok){healthy=true;break;} } catch {} await wait(25); }
     assert.equal(healthy, true, stderr);
 
-    const direct = await rawPost(port, 1, 'run_project_command', { program: 'node', args: [fixture], cwd: canonicalDataRoot, timeoutMs: 30001 });
+    const direct = await rawPost(port, 1, 'run_project_command', { program: 'node', args: [fixture], cwd: canonicalDataRoot, timeoutMs: 15001 });
     assert.equal(direct.response.status, 200);
     assert.ok(direct.elapsedMs < 1000, `long sync request was not rejected promptly: ${direct.elapsedMs}ms`);
     assert.equal(direct.body.result.isError, true);
-    assert.match(direct.body.result.content[0].text, /30000|maximum/);
+    assert.match(direct.body.result.content[0].text, /15000|maximum/);
     await wait(1200);
     await assert.rejects(fs.stat(effect), { code: 'ENOENT' });
 
