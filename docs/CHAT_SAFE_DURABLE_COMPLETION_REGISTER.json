@@ -1,0 +1,393 @@
+{
+  "schemaVersion": 1,
+  "register": "chat-safe-durable-completion",
+  "createdAt": "2026-09-26",
+  "authority": {
+    "repo": "GOD13emad/ChatGPTRemoteCommander",
+    "cloudBackupBranch": "audit/chat-safe-completion-r1",
+    "baselineCommit": "a36ec05ea2c530ef52473b6a6f851a4484a31a35",
+    "localRegisterCommit": "defb3ae95ef14cd9ce2c8f88f7dae134f855ddad",
+    "localRegisterCommitPushed": false
+  },
+  "goal": "An accepted project must never silently disappear because a chat turn, context, model quota, tunnel request or UI stream ends. Effects remain at-most-once; completion/blocker state is durable; a bounded final result is eventually discoverable/deliverable without re-running work.",
+  "statusValues": [
+    "TODO",
+    "IN_PROGRESS",
+    "PASS",
+    "BLOCKED_EXTERNAL",
+    "DEFERRED",
+    "FAILED"
+  ],
+  "completionSlo": [
+    "accepted_job_without_durable_identity = 0",
+    "blind_duplicate_mutation_after_retry = 0",
+    "commander_caused_transport_deadline_drop = 0 during qualification",
+    "silent_WAITING_BLOCKED_EXHAUSTED = 0",
+    "COMPLETED_without_discoverable_result = 0",
+    "oversized_result_breaks_transport = 0",
+    "update_or_restart_loses_accepted_job = 0"
+  ],
+  "outageNote": "Power outage occurred 2026-09-26 during local implementation. Local working tree contains uncommitted CSDC code and must be inspected/reconciled after power returns before any cloud branch is merged.",
+  "tasks": [
+    {
+      "id": "CSDC-001",
+      "priority": "P0",
+      "status": "IN_PROGRESS",
+      "title": "Durable delivery store",
+      "scope": "Persist completion/delivery records independently of chat context.",
+      "acceptance": "A completed job survives process/chat restart with delivery state and immutable result hash.",
+      "evidence": [],
+      "notes": []
+    },
+    {
+      "id": "CSDC-002",
+      "priority": "P0",
+      "status": "IN_PROGRESS",
+      "title": "Correlation identity",
+      "scope": "Carry one correlationId across request, workflow/run, operation, artifact and delivery.",
+      "acceptance": "A support trace can map one accepted request end-to-end without heuristic log matching.",
+      "evidence": [],
+      "notes": []
+    },
+    {
+      "id": "CSDC-003",
+      "priority": "P0",
+      "status": "IN_PROGRESS",
+      "title": "Delivery state machine",
+      "scope": "Implement COMPLETED_UNDELIVERED -> DELIVERY_PENDING -> DELIVERED/DEAD_LETTER.",
+      "acceptance": "Transitions are durable, idempotent and covered by restart/lost-ack tests.",
+      "evidence": [],
+      "notes": []
+    },
+    {
+      "id": "CSDC-004",
+      "priority": "P0",
+      "status": "IN_PROGRESS",
+      "title": "Pending-delivery inbox",
+      "scope": "Expose bounded read/claim/ack paths for undelivered results.",
+      "acceptance": "A later chat can discover and claim an earlier completed result without re-running effects.",
+      "evidence": [],
+      "notes": []
+    },
+    {
+      "id": "CSDC-005",
+      "priority": "P0",
+      "status": "TODO",
+      "title": "Chat completion bridge",
+      "scope": "Use a supported host mechanism to wake/resume delivery when available; retain polling fallback.",
+      "acceptance": "Real ChatGPT qualification proves autonomous delivery, or capability is marked external/unavailable with safe fallback.",
+      "evidence": [],
+      "notes": []
+    },
+    {
+      "id": "CSDC-006",
+      "priority": "P0",
+      "status": "TODO",
+      "title": "WAITING/BLOCKED delivery",
+      "scope": "Create durable user-visible events for WAITING_INPUT, BLOCKED, EXHAUSTED and quota pauses.",
+      "acceptance": "No terminal/wait state can become silent.",
+      "evidence": [],
+      "notes": []
+    },
+    {
+      "id": "CSDC-007",
+      "priority": "P0",
+      "status": "TODO",
+      "title": "Lost-ack idempotency for mutations",
+      "scope": "Add stable idempotency to mutating file/process/terminal/browser/GUI operations.",
+      "acceptance": "Lost response never causes a blind duplicate effect.",
+      "evidence": [],
+      "notes": []
+    },
+    {
+      "id": "CSDC-008",
+      "priority": "P0",
+      "status": "TODO",
+      "title": "Universal deferred execution",
+      "scope": "Extend deferred/durable work beyond run_shell/run_project_command to all potentially slow tools.",
+      "acceptance": "Any uncertain-duration tool can return a small durable handle before transport deadline.",
+      "evidence": [],
+      "notes": []
+    },
+    {
+      "id": "CSDC-009",
+      "priority": "P0",
+      "status": "TODO",
+      "title": "Transport safety budget",
+      "scope": "Reserve explicit margin below tunnel response deadline for every synchronous call.",
+      "acceptance": "No Commander synchronous call can consume the full tunnel deadline.",
+      "evidence": [],
+      "notes": []
+    },
+    {
+      "id": "CSDC-010",
+      "priority": "P0",
+      "status": "TODO",
+      "title": "Turn-safe orchestration",
+      "scope": "Prevent long chains of MCP calls from keeping one chat turn alive until failure.",
+      "acceptance": "Large projects acknowledge quickly and continue from durable state rather than a single long turn.",
+      "evidence": [],
+      "notes": []
+    },
+    {
+      "id": "CSDC-011",
+      "priority": "P0",
+      "status": "IN_PROGRESS",
+      "title": "Result envelope",
+      "scope": "Separate compact chat summary from full artifact/output.",
+      "acceptance": "Final chat payload stays bounded while complete evidence remains retrievable.",
+      "evidence": [],
+      "notes": []
+    },
+    {
+      "id": "CSDC-012",
+      "priority": "P0",
+      "status": "IN_PROGRESS",
+      "title": "Exactly-once delivery receipt",
+      "scope": "Persist delivery attempt/ack identities and suppress duplicate final answers.",
+      "acceptance": "Retrying delivery cannot re-execute work or duplicate an acknowledged result.",
+      "evidence": [],
+      "notes": []
+    },
+    {
+      "id": "CSDC-013",
+      "priority": "P1",
+      "status": "TODO",
+      "title": "Native MCP Tasks capability probe",
+      "scope": "Probe ChatGPT Plugin support for MCP Tasks/subscriptions and implement only when negotiated.",
+      "acceptance": "Capability is runtime-proven; no speculative protocol claim.",
+      "evidence": [],
+      "notes": []
+    },
+    {
+      "id": "CSDC-014",
+      "priority": "P1",
+      "status": "TODO",
+      "title": "Paged/ranged reads",
+      "scope": "Add paging/range contracts for large text/binary/list/search results.",
+      "acceptance": "Files/results larger than one MCP envelope remain retrievable without 413.",
+      "evidence": [],
+      "notes": []
+    },
+    {
+      "id": "CSDC-015",
+      "priority": "P1",
+      "status": "TODO",
+      "title": "Request/response size alignment",
+      "scope": "Align tool schemas with request/response envelopes or move content to artifacts.",
+      "acceptance": "No advertised payload size is impossible to transport.",
+      "evidence": [],
+      "notes": []
+    },
+    {
+      "id": "CSDC-016",
+      "priority": "P1",
+      "status": "TODO",
+      "title": "Project Engine execution primitive",
+      "scope": "Permit safe background build/run/test via a durable bounded execution primitive.",
+      "acceptance": "Enrolled execution projects can perform verified command work without unrestricted planner shell.",
+      "evidence": [],
+      "notes": []
+    },
+    {
+      "id": "CSDC-017",
+      "priority": "P1",
+      "status": "TODO",
+      "title": "Long-project decomposition",
+      "scope": "Split projects into durable milestone/subrun units beyond the default five-minute run window.",
+      "acceptance": "Hour-scale projects progress through checkpoints instead of EXHAUSTED due solely to wall time.",
+      "evidence": [],
+      "notes": []
+    },
+    {
+      "id": "CSDC-018",
+      "priority": "P1",
+      "status": "TODO",
+      "title": "Pause human-wait clock",
+      "scope": "Do not consume execution wall-clock while legitimately waiting for user input.",
+      "acceptance": "WAITING_INPUT does not expire before the user can answer.",
+      "evidence": [],
+      "notes": []
+    },
+    {
+      "id": "CSDC-019",
+      "priority": "P1",
+      "status": "TODO",
+      "title": "Quota/rate-limit state",
+      "scope": "Classify provider quota/rate-limit as durable PAUSED_QUOTA with safe resume.",
+      "acceptance": "Quota exhaustion never becomes an ambiguous failure or duplicate execution.",
+      "evidence": [],
+      "notes": []
+    },
+    {
+      "id": "CSDC-020",
+      "priority": "P1",
+      "status": "TODO",
+      "title": "Context retrieval/compaction",
+      "scope": "Keep working context bounded using durable refs/indexes rather than raw transcript growth.",
+      "acceptance": "Large projects do not fail solely because history grew.",
+      "evidence": [],
+      "notes": []
+    },
+    {
+      "id": "CSDC-021",
+      "priority": "P1",
+      "status": "TODO",
+      "title": "Workflow rollover/archive",
+      "scope": "Compact/archive state before workflow/event/note/count limits are reached.",
+      "acceptance": "Long-lived projects remain writable and auditable.",
+      "evidence": [],
+      "notes": []
+    },
+    {
+      "id": "CSDC-022",
+      "priority": "P1",
+      "status": "TODO",
+      "title": "External mutation detection",
+      "scope": "Detect project-root changes made outside Commander locks before applying/replaying planned mutations.",
+      "acceptance": "One-writer violations become explicit blockers rather than silent overwrite.",
+      "evidence": [],
+      "notes": []
+    },
+    {
+      "id": "CSDC-023",
+      "priority": "P1",
+      "status": "TODO",
+      "title": "Process-tree lifecycle",
+      "scope": "Guarantee timeout/cancel handles descendant processes and records durable outcome.",
+      "acceptance": "No timed-out command leaves untracked children that can mutate later.",
+      "evidence": [],
+      "notes": []
+    },
+    {
+      "id": "CSDC-024",
+      "priority": "P1",
+      "status": "TODO",
+      "title": "Transient filesystem/network-drive policy",
+      "scope": "Classify and bounded-retry safe transient EPERM/EBUSY/network-share failures.",
+      "acceptance": "Transient storage failures do not silently strand projects.",
+      "evidence": [],
+      "notes": []
+    },
+    {
+      "id": "CSDC-025",
+      "priority": "P1",
+      "status": "TODO",
+      "title": "Browser/session escalation",
+      "scope": "Persist browser-auth/CAPTCHA/MFA blockers and deliver a minimal foreground-approval request.",
+      "acceptance": "Background jobs never silently hang on authentication.",
+      "evidence": [],
+      "notes": []
+    },
+    {
+      "id": "CSDC-026",
+      "priority": "P1",
+      "status": "TODO",
+      "title": "Update-safe run migration",
+      "scope": "Keep active workflow/run/delivery authority stable across auto-update and policy migrations.",
+      "acceptance": "Updates do not strand or invalidate accepted jobs without explicit compatible migration.",
+      "evidence": [],
+      "notes": []
+    },
+    {
+      "id": "CSDC-027",
+      "priority": "P1",
+      "status": "IN_PROGRESS",
+      "title": "Tunnel-client v0.0.15 qualification",
+      "scope": "Candidate-test current upstream tunnel-client on Windows/Linux and pin if it passes.",
+      "acceptance": "Exact binary/hash, regression and live canaries pass before promotion.",
+      "evidence": [],
+      "notes": []
+    },
+    {
+      "id": "CSDC-028",
+      "priority": "P1",
+      "status": "IN_PROGRESS",
+      "title": "Linux v0.9.3 completion",
+      "scope": "Finish retained-terminal cutover and Firefox background browser, full qualification and release.",
+      "acceptance": "Linux canonical connector reaches current release without killing active terminals.",
+      "evidence": [],
+      "notes": []
+    },
+    {
+      "id": "CSDC-029",
+      "priority": "P1",
+      "status": "TODO",
+      "title": "Cross-device parity",
+      "scope": "Make Windows/Linux capability and Project Engine behavior equivalent where platform permits.",
+      "acceptance": "System-status parity matrix has no unexplained functional gaps.",
+      "evidence": [],
+      "notes": []
+    },
+    {
+      "id": "CSDC-030",
+      "priority": "P1",
+      "status": "TODO",
+      "title": "End-to-end telemetry",
+      "scope": "Record correlationId, transport request, tool, operation, workflow, result and delivery metrics.",
+      "acceptance": "Deadline/post failures can be attributed to exact work instead of heuristic timestamps.",
+      "evidence": [],
+      "notes": []
+    },
+    {
+      "id": "CSDC-031",
+      "priority": "P1",
+      "status": "TODO",
+      "title": "Durable alerting/dead-letter",
+      "scope": "Surface COMPLETED_UNDELIVERED, blocked and dead-letter records in health/status.",
+      "acceptance": "No failed delivery can remain invisible.",
+      "evidence": [],
+      "notes": []
+    },
+    {
+      "id": "CSDC-032",
+      "priority": "P1",
+      "status": "TODO",
+      "title": "Acceptance-strength profiles",
+      "scope": "Support domain-specific validators instead of treating weak text checks as correctness.",
+      "acceptance": "COMPLETED means the configured technical/scientific acceptance really passed.",
+      "evidence": [],
+      "notes": []
+    },
+    {
+      "id": "CSDC-033",
+      "priority": "P0",
+      "status": "IN_PROGRESS",
+      "title": "Fault-injection regression suite",
+      "scope": "Test disconnects before ack, after effect, during planner, after completion and during delivery.",
+      "acceptance": "Every injected cut preserves at-most-once effects and eventual discoverable result.",
+      "evidence": [],
+      "notes": []
+    },
+    {
+      "id": "CSDC-034",
+      "priority": "P0",
+      "status": "TODO",
+      "title": "Multi-chat/account concurrency regression",
+      "scope": "Test same project from concurrent chats/accounts with ownership/delivery isolation.",
+      "acceptance": "No cross-chat result leakage, duplicate writer or duplicate effect.",
+      "evidence": [],
+      "notes": []
+    },
+    {
+      "id": "CSDC-035",
+      "priority": "P0",
+      "status": "TODO",
+      "title": "Long soak qualification",
+      "scope": "Run 24-48h real workload qualification after fixes.",
+      "acceptance": "Zero Commander-caused deadline drops, silent terminal states and unrecoverable completed-undelivered jobs.",
+      "evidence": [],
+      "notes": []
+    },
+    {
+      "id": "CSDC-036",
+      "priority": "P0",
+      "status": "TODO",
+      "title": "Release gate",
+      "scope": "Block stable release unless chat-safe completion SLO passes on Windows and Linux.",
+      "acceptance": "Release checklist requires evidence for all P0 items and accepted dispositions for remaining P1 items.",
+      "evidence": [],
+      "notes": []
+    }
+  ]
+}
