@@ -40,6 +40,15 @@ class Service {
     } catch (_) {}
   }
 
+  destroy() {
+    // GNOME may disable/re-enable extensions across session-mode transitions.
+    // Drop virtual-input references explicitly so an X11/XTEST-backed device
+    // cannot outlive this Service instance until a later GC nycle.
+    this._pointer = null;
+    this._keyboard = null;
+    this._token = '';
+  }
+
   _authorized(req) {
     if (!this._token || typeof req.auth !== 'string' || req.auth.length < 32 || req.auth !== this._token)
       fail('GUI_EXTENSION_AUTH_FAILED');
@@ -221,7 +230,7 @@ class Service {
     const action = req.action;
     if (action === 'status') {
       return {
-        ok:true, available:!!(this._pointer && this._keyboard), backend:'gnome-shell-wayland',
+        ok:true, available:!!(this._pointer && this._keyboard), backend:'gnome-shell-clutter',
         sessionType:GLib.getenv('XDG_SESSION_TYPE') ?? 'unknown', screens:this._screens(),
         capabilities:{screenshot:true,cursor:true,listWindows:true,mouse:!!this._pointer,keyboard:!!this._keyboard,focus:true}
       };
@@ -358,6 +367,7 @@ export default class ChatGPTRemoteCommanderExtension extends Extension {
   disable() {
     this._dbus?.unexport();
     this._dbus = null;
+    this._service?.destroy();
     this._service = null;
   }
 }
