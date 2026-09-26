@@ -332,12 +332,31 @@ Historical checkpoints remain append-only archives. Current release/control clai
 
 **Date/Context:** 2026-09-26; CSDC-027 candidate-to-live rollout.
 
-**Claim/Decision:** Windows v0.0.15 promotion is CONFIRMED; Linux remains UNCERTAIN until independent post-state evidence is recovered. Rollback artifacts must remain until both OSes pass.
+**Claim/Decision:** tunnel-client v0.0.15 promotion is CONFIRMED on Windows and Linux. Rollback artifacts remain retained while the Linux lifecycle guard is integrated.
 
-**Evidence/Source:** Windows official ZIP SHA-256 `3b53133a1e24d43f63088d843860cb1701a4c3ed6390de2e19f69089e43bddc1`; installed binary SHA-256 `1946de55a038313a9b9b2458d05fe1719fa9cf1f20a94dd5f38fc26a98bfdd42`; upstream `a390c168ff1b2d14e73a95991c186c6aba3ff5a0`. Both Windows profiles report ready on 47832/47833, exactly two v0.0.15 processes exist, zero v0.0.14 processes remain, supervisor count=1 and old binary/pin backup are retained. Linux candidate reverified against official ZIP SHA-256 `8c836dc5d68d68b663d9a5c5b28ff9fa780d9f7a3fffb1c306880b8f32fab5f1` and binary SHA-256 `286769f6b1b1837e89896b4684a3ec59c919f860fa2bc159442e3839b6468711`; connector stopped polling during supervised restart so PASS is withheld.
+**Evidence/Source:** Windows official ZIP SHA-256 `3b53133a1e24d43f63088d843860cb1701a4c3ed6390de2e19f69089e43bddc1`; installed binary SHA-256 `1946de55a038313a9b9b2458d05fe1719fa9cf1f20a94dd5f38fc26a98bfdd42`; upstream `a390c168ff1b2d14e73a95991c186c6aba3ff5a0`. Both Windows profiles report ready on 47832/47833, exactly two v0.0.15 processes exist, zero v0.0.14 processes remain, supervisor count=1 and old binary/pin backup are retained. Linux candidate reverified against official ZIP SHA-256 `8c836dc5d68d68b663d9a5c5b28ff9fa780d9f7a3fffb1c306880b8f32fab5f1` and binary SHA-256 `286769f6b1b1837e89896b4684a3ec59c919f860fa2bc159442e3839b6468711`. After reconnect, `chatgpt-remote-commander.service` is active, v0.0.15 is the only managed profile tunnel, readiness on 47832 is `ready`, and tunnel logs show forwarded commands.
 
-**Confidence/Status:** Windows CONFIRMED; Linux UNCERTAIN.
+**Confidence/Status:** Windows CONFIRMED; Linux CONFIRMED; CSDC-027 PASS.
 
 **Reuse Targets:** tunnel qualification, release gate, rollback guide.
 
 **Provenance:** v0.0.15 upstream tag target `a390c168ff1b2d14e73a95991c186c6aba3ff5a0`; Commander live source `0b965d7904a08a5eb04078bc61602687cf198552`.
+
+
+## E079 — Linux tunnel lifecycle self-kill root cause and guard
+
+**Date/Context:** 2026-09-26; postmortem after the first Linux v0.0.15 cutover temporarily removed the connector until the service was reconnected.
+
+**Failure→Root Cause:** The one-off cutover runner was launched from a command executed inside `chatgpt-remote-commander.service`. It then called `systemctl --user stop chatgpt-remote-commander.service`. systemd stopped the service cgroup, which included the runner itself, so the runner was killed before its rollback handler could execute. Journal evidence shows the stop at 17:00:52 and the later service start at 17:47:42. The absence of the runner result file is consistent with self-termination before its final write.
+
+**Post-state evidence:** After service recovery, the managed tunnel is v0.0.15 at upstream `a390c168ff1b2d14e73a95991c186c6aba3ff5a0`; readiness on port 47832 is `ready`; command forwarding through the v0.0.15 dispatcher is visible in the tunnel log. Therefore the candidate itself was not the failure.
+
+**Prevention/Guard:** Linux tunnel lifecycle is moved into `autostart-linux.sh` profile-scoped supervision. The supervisor selects versioned candidates, refuses external profile conflicts, stops only Commander-owned profile tunnel processes, validates `/readyz`, records rejected candidate paths, and rolls back to a prior executable without stopping its own systemd service. Fresh installs delegate to one pinned helper (`tools/install-tunnel-client-linux.sh`) using exact v0.0.15 release provenance from `tools/tunnel-client-pin.json`.
+
+**Regression:** `test/linux-tunnel-lifecycle.test.mjs` 4/4 PASS; `test/auto-update-contract.test.mjs` 13/13 PASS. Exact full tree after browser timing-test stabilization: `npm run check`, `npm test`, `npm run audit`, and `git diff --check` all exit 0; main test set 440 total / 434 pass / 6 skip / 0 fail; GUI contract 75/75 PASS; `SECURITY_AUDIT_PASS`.
+
+**Confidence/Status:** CONFIRMED root cause and local prevention. Live deployment of this guard requires exact post-commit candidate qualification/promotion.
+
+**Reuse Targets:** Linux autostart, tunnel upgrade lifecycle, rollback, release checklist, failure-prevention guidance.
+
+**Provenance:** branch `finalize/rc-v094-r2`; live Commander source before guard deployment `0b965d7904a08a5eb04078bc61602687cf198552`.

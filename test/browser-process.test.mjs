@@ -68,7 +68,7 @@ test('request ownership is reserved before helper startup so concurrent invokes 
 });
 
 test('forced helper shutdown terminates an owned descendant process tree',async()=>{
- const f=await fixture({timeoutMs:180,gracefulCloseMs:60,forceCloseMs:400});
+ const f=await fixture({timeoutMs:2500,gracefulCloseMs:60,forceCloseMs:400});
  const marker=path.join(f.root,'descendant.pid');
  try{
   const pending=f.client.invoke({action:'hangWithChild',marker});

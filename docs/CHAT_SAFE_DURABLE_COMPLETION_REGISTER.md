@@ -44,7 +44,7 @@ Baseline: `a36ec05ea2c530ef52473b6a6f851a4484a31a35`. Qualification head: `6372b
 | CSDC-024 | P1 | TODO | **Transient filesystem/network-drive policy** — Classify and bounded-retry safe transient EPERM/EBUSY/network-share failures. | Transient storage failures do not silently strand projects. |
 | CSDC-025 | P1 | TODO | **Browser/session escalation** — Persist browser-auth/CAPTCHA/MFA blockers and deliver a minimal foreground-approval request. | Background jobs never silently hang on authentication. |
 | CSDC-026 | P1 | TODO | **Update-safe run migration** — Keep active workflow/run/delivery authority stable across auto-update and policy migrations. | Updates do not strand or invalidate accepted jobs without explicit compatible migration. |
-| CSDC-027 | P1 | IN_PROGRESS | **Tunnel-client v0.0.15 qualification** — Candidate-test current upstream tunnel-client on Windows/Linux and pin if it passes. | Exact binary/hash, regression and live canaries pass before promotion. |
+| CSDC-027 | P1 | PASS | **Tunnel-client v0.0.15 qualification** — Candidate-test current upstream tunnel-client on Windows/Linux and pin if it passes. | Exact binary/hash, regression and live canaries pass before promotion. |
 | CSDC-028 | P1 | IN_PROGRESS | **Linux v0.9.4 completion** — Finish retained-terminal cutover, Firefox background browser, current CSDC/retry hardening, full qualification and release. | Linux canonical connector reaches the current qualified release without killing active terminals and with Windows/Linux behavior parity where platform permits. |
 | CSDC-029 | P1 | TODO | **Cross-device parity** — Make Windows/Linux capability and Project Engine behavior equivalent where platform permits. | System-status parity matrix has no unexplained functional gaps. |
 | CSDC-030 | P1 | TODO | **End-to-end telemetry** — Record correlationId, transport request, tool, operation, workflow, result and delivery metrics. | Deadline/post failures can be attributed to exact work instead of heuristic timestamps. |
@@ -142,12 +142,12 @@ Baseline: `a36ec05ea2c530ef52473b6a6f851a4484a31a35`. Qualification head: `6372b
 - GitHub Actions run 36225716047: windows-latest PASS; ubuntu-latest PASS; head 6372bfa61bf265d7f337172c333f64b45072ba5d.
 - Same delivery attempt claim/ack is idempotent; duplicate event key returns same delivery; changed payload conflicts fail closed.
 
-### CSDC-027 — IN_PROGRESS
+### CSDC-027 — PASS
 
 - GitHub Actions run 36225716047: windows-latest PASS; ubuntu-latest PASS; head 6372bfa61bf265d7f337172c333f64b45072ba5d.
 - Source installers pin OpenAI tunnel-client v0.0.15; upstream tag target is `a390c168ff1b2d14e73a95991c186c6aba3ff5a0`.
 - Windows live promotion PASS on 2026-09-26: official ZIP SHA-256 `3b53133a1e24d43f63088d843860cb1701a4c3ed6390de2e19f69089e43bddc1`; installed binary SHA-256 `1946de55a038313a9b9b2458d05fe1719fa9cf1f20a94dd5f38fc26a98bfdd42`; both `chatgpt-remote-commander` and `saeed-emad` profiles have exactly one v0.0.15 process, readiness ports 47832/47833 report `ready`, supervisor count=1, no v0.0.14 process remains, and old binary + pin backup are retained.
-- Linux official candidate ZIP SHA-256 `8c836dc5d68d68b663d9a5c5b28ff9fa780d9f7a3fffb1c306880b8f32fab5f1` and binary SHA-256 `286769f6b1b1837e89896b4684a3ec59c919f860fa2bc159442e3839b6468711` were reverified immediately before cutover. Linux live cutover outcome is currently UNCERTAIN because the connector stopped polling during the supervised restart; do not mark PASS until post-state/rollback evidence is recovered.
+- Linux v0.0.15 live promotion is independently CONFIRMED after reconnect: `chatgpt-remote-commander.service` is active; the only managed profile tunnel is `/home/aliemad/.local/share/ChatGPTRemoteCommander/tools/tunnel-client-v0.0.15-linux-amd64/tunnel-client`; `readyz` on 47832 returns `ready`; both v0.0.14 and v0.0.15 binaries remain available for rollback; and tunnel logs show commands forwarding through the v0.0.15 client. Official Linux ZIP SHA-256 is `8c836dc5d68d68b663d9a5c5b28ff9fa780d9f7a3fffb1c306880b8f32fab5f1`; installed/candidate binary SHA-256 is `286769f6b1b1837e89896b4684a3ec59c919f860fa2bc159442e3839b6468711`; upstream is `a390c168ff1b2d14e73a95991c186c6aba3ff5a0`.
 
 ### CSDC-033 — IN_PROGRESS
 

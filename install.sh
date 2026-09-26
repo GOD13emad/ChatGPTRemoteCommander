@@ -12,7 +12,6 @@ BROWSER_PROFILE_ROOT=""
 START_SERVER=0
 INSTALL_PREREQS=0
 SKIP_TUNNEL_CLIENT=0
-TUNNEL_VERSION="0.0.15"
 SOURCE_REF="${REMOTE_COMMANDER_SOURCE_REF:-v0.9.4}"
 EXPECTED_COMMIT="${REMOTE_COMMANDER_EXPECTED_COMMIT:-}"
 CURL_CONNECT_TIMEOUT="${REMOTE_COMMANDER_CURL_CONNECT_TIMEOUT:-15}"
@@ -308,38 +307,40 @@ ensure_browser_backend() {
   return 0
 }
 install_tunnel_client() {
-  local machine arch asset dir tmp sums expected actual
-  machine="$(uname -m)"
-  case "$machine" in
-    x86_64|amd64) arch="amd64" ;;
-    aarch64|arm64) arch="arm64" ;;
-    *) echo "Unsupported tunnel-client architecture: $machine" >&2; exit 1 ;;
-  esac
-  dir="$INSTALL_DIR/tools/tunnel-client-v${TUNNEL_VERSION}-linux-${arch}"
-  if [[ -x "$dir/tunnel-client" ]]; then
-    "$dir/tunnel-client" --version >/dev/null 2>&1 || { echo "Existing tunnel-client failed version check: $dir/tunnel-client" >&2; exit 1; }
-    [[ "$SKIP_TUNNEL_CLIENT" == 1 ]] && echo "Reusing existing pinned tunnel-client while skip was requested: $dir/tunnel-client"
-    return 0
-  fi
+  local pin helper version machine arch dir actual upstream
+  pin="$INSTALL_DIR/tools/tunnel-client-pin.json"
+  helper="$INSTALL_DIR/tools/install-tunnel-client-linux.sh"
+  [[ -f "$pin" && -f "$helper" ]] || { echo "Pinned tunnel-client installer metadata is missing." >&2; exit 1; }
+
+  version="$(node "$INSTALL_DIR/tools/json-field.mjs" --file "$pin" --field version)"
+  upstream="$(node "$INSTALL_DIR/tools/json-field.mjs" --file "$pin" --field upstreamCommit)"
+  [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ && "$upstream" =~ ^[0-9a-f]{40}$ ]] || {
+    echo "Pinned tunnel-client metadata is invalid." >&2
+    exit 1
+  }
+
   if [[ "$SKIP_TUNNEL_CLIENT" == 1 ]]; then
-    echo "Skipping tunnel-client installation as requested; no pinned executable is present."
+    machine="$(uname -m)"
+    case "$machine" in
+      x86_64|amd64) arch="amd64" ;;
+      aarch64|arm64) arch="arm64" ;;
+      *) echo "Unsupported tunnel-client architecture: $machine" >&2; exit 1 ;;
+    esac
+    dir="$INSTALL_DIR/tools/tunnel-client-v$version-linux-$arch"
+    if [[ -x "$dir/tunnel-client" ]]; then
+      actual="$("$dir/tunnel-client" --version 2>/dev/null || true)"
+      [[ "$actual" == "$version+$upstream"* ]] || {
+        echo "Existing pinned tunnel-client provenance mismatch: $actual" >&2
+        exit 1
+      }
+      echo "Reusing existing pinned tunnel-client while skip was requested: $dir/tunnel-client"
+    else
+      echo "Skipping tunnel-client installation as requested; no pinned executable is present."
+    fi
     return 0
   fi
-  asset="tunnel-client-v${TUNNEL_VERSION}-linux-${arch}.zip"
-  tmp="$(mktemp -d)"
-  local base="https://github.com/openai/tunnel-client/releases/download/v${TUNNEL_VERSION}"
-  curl_fetch "$base/$asset" -o "$tmp/$asset"
-  curl_fetch "$base/SHA256SUMS.txt" -o "$tmp/SHA256SUMS.txt"
-  expected="$(awk -v f="$asset" '$2==f {print $1}' "$tmp/SHA256SUMS.txt")"
-  actual="$(sha256sum "$tmp/$asset" | awk '{print $1}')"
-  [[ -n "$expected" && "$actual" == "$expected" ]] || { echo "tunnel-client SHA-256 verification failed" >&2; exit 1; }
-  rm -rf "$dir"
-  mkdir -p "$dir"
-  unzip -q "$tmp/$asset" -d "$dir"
-  chmod +x "$dir/tunnel-client" "$dir/cloudflared" 2>/dev/null || true
-  "$dir/tunnel-client" --version
-  rm -rf "$tmp"
-  echo "Official OpenAI tunnel-client installed and verified: $dir/tunnel-client"
+
+  /bin/bash "$helper" --install-dir "$INSTALL_DIR"
 }
 
 write_local_config() {
@@ -496,6 +497,7 @@ else
   write_local_config
   chmod +x "$INSTALL_DIR/install.sh" "$INSTALL_DIR/connect-chatgpt-account.sh" "$INSTALL_DIR/run-server.sh" \
     "$INSTALL_DIR/autostart-linux.sh" "$INSTALL_DIR/supervisor-routing-linux.sh" "$INSTALL_DIR/auto-update-linux.sh" \
+    "$INSTALL_DIR/tools/install-tunnel-client-linux.sh" \
     "$INSTALL_DIR/enable-autostart-linux.sh" "$INSTALL_DIR/disable-autostart-linux.sh" \
     "$INSTALL_DIR/tools/gui-control-linux.py" "$INSTALL_DIR/tools/install-gnome-gui-extension.sh"
   install_linux_gui_backend "$INSTALL_DIR" "$INSTALL_DIR/config.local.json"
