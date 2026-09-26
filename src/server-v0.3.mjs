@@ -144,6 +144,7 @@ if (config.durableWorkflows?.enabled === true) {
   const { createWorkflowTools } = await import('./workflow-tools.mjs');
   workflowTools = createWorkflowTools({
     config, roots, device: config.deviceName || os.hostname(), configSha256,
+    deliveryStore,
     lookup: toolDefinition, validateSchema: validateJsonSchema,
     dispatch: async (name, args, workflow) => {
       // Further restrict file operations to the project, even in full Power Mode.

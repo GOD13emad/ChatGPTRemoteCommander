@@ -11,6 +11,7 @@ import { validateJsonSchema } from './schema-validator.mjs';
 const digest = value => createHash('sha256').update(canonical(value)).digest('hex');
 const error = code => { throw Object.assign(new Error(code), { projectCode: code }); };
 const ID = /^[a-z][a-z0-9_-]{0,63}$/;
+const CORRELATION = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const TERMINAL = new Set(['COMPLETED', 'BLOCKED', 'CANCELLED', 'EXHAUSTED']);
 const SUPPORTED = new Set(['system_status','list_directory','read_text','file_info','read_file',
   'write_text','write_file','create_directory','search_files','run_project_command']);
@@ -172,9 +173,10 @@ export function createProjectEngine({directory,planner,workerPlanner,execute,obs
     if(sourceRevision!==undefined&&state.revision!==sourceRevision)error('PROJECT_REVISION_CHANGED');
     if(Date.now()>=run.deadline)error('PROJECT_DEADLINE_EXHAUSTED');
   };
-  async function start({runId,id,expectedRevision,maxActions,maxPlannerCalls,durationMs,checks}) {
+  async function start({runId,id,expectedRevision,maxActions,maxPlannerCalls,durationMs,checks,correlationId}) {
     if(closing||closed)error('PROJECT_ENGINE_CLOSED');
     if(typeof runId!=='string'||!ID.test(runId))error('PROJECT_RUN_ID_INVALID');
+    correlationId=correlationId??runId;if(typeof correlationId!=='string'||!CORRELATION.test(correlationId))error('PROJECT_CORRELATION_ID_INVALID');
     const state=await getWorkflow(id);
     if(state.revision!==expectedRevision)error('PROJECT_REVISION_CHANGED');
     if(['CANCELLED','COMPLETED','FINALIZING'].includes(state.lifecycleState))error('PROJECT_WORKFLOW_TERMINAL');
@@ -187,7 +189,7 @@ export function createProjectEngine({directory,planner,workerPlanner,execute,obs
     const actions=boundedInt(maxActions,maximumActions,1,maximumActions);
     const plannerCalls=boundedInt(maxPlannerCalls,maximumPlannerCalls,1,maximumPlannerCalls);
     const duration=boundedInt(durationMs,maximumDurationMs,1000,maximumDurationMs);
-    const initial={runId,workflowId:id,workflowFingerprint:fingerprint(state),scopeFingerprint:scopeFingerprint(state),policyHash,
+    const initial={runId,correlationId,workflowId:id,workflowFingerprint:fingerprint(state),scopeFingerprint:scopeFingerprint(state),policyHash,
       status:'QUEUED',lastCode:null,maxActions:actions,attempts:0,actions:0,
       maxPlannerCalls:plannerCalls,plannerCalls:0,maxExtensions:maximumExtensions,extensions:0,pendingExtension:null,
       workerActions:0,pendingWorker:null,workerReceipts:[],

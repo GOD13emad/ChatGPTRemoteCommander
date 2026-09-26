@@ -9,6 +9,7 @@ import { createTeamPlanner } from './project-team.mjs';
 
 const text = maxLength => ({ type: 'string', minLength: 1, maxLength });
 const id = { ...text(64), pattern: '^[a-z][a-z0-9_-]{0,63}$' };
+const correlationId = { ...text(128), pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$' };
 const rev = { type: 'integer', minimum: 1, maximum: 10000 };
 const obj = (properties, required = []) => ({ type: 'object', properties, required, additionalProperties: false });
 const base = { id };
@@ -66,7 +67,7 @@ export const WORKFLOW_TOOL_DEFINITIONS = [
 
 export const PROJECT_ENGINE_TOOL_DEFINITIONS = [
   definition('workflow_run_start','Explicitly enroll a project in bounded agent execution with immutable independent acceptance checks. May start provider calls when configured autoTick is enabled.',obj({
-    ...update,runId:id,maxActions:{type:'integer',minimum:1,maximum:100},maxPlannerCalls:{type:'integer',minimum:1,maximum:500},durationMs:{type:'integer',minimum:1000,maximum:3600000},
+    ...update,runId:id,correlationId,maxActions:{type:'integer',minimum:1,maximum:100},maxPlannerCalls:{type:'integer',minimum:1,maximum:500},durationMs:{type:'integer',minimum:1000,maximum:3600000},
     checks:{type:'array',minItems:1,maxItems:50,items:{type:'object'}}
   },['id','runId','expectedRevision','checks']),action),
   definition('workflow_run_status','Read durable run budgets, receipts, independent verification and blocker status.',obj({runId:id}),ro),
@@ -82,7 +83,7 @@ const DIRECT_SESSION_ONLY_GUI = new Set([
   'gui_type_text','gui_key_press','gui_focus_window'
 ]);
 
-export function createWorkflowTools({ config, roots, device, configSha256, lookup, validateSchema, dispatch, planner: injectedPlanner }) {
+export function createWorkflowTools({ config, roots, device, configSha256, lookup, validateSchema, dispatch, planner: injectedPlanner, deliveryStore = null }) {
   const settings = config.durableWorkflows;
   if (settings?.enabled !== true) fail('WORKFLOW_DISABLED');
   if (typeof settings.directory !== 'string') fail('WORKFLOW_DIRECTORY_REQUIRED');
@@ -134,6 +135,58 @@ export function createWorkflowTools({ config, roots, device, configSha256, looku
     }
   }
 
+  const deliveryVisible = new Set(['COMPLETED','WAITING_INPUT','BLOCKED','EXHAUSTED','CANCELLED','PAUSED']);
+  let deliveryLastError = null;
+  function deliveryEventKey(run) {
+    const stamp=String(run.updatedAt??'unknown').replace(/[^A-Za-z0-9._:-]/g,'_');
+    return ('project:'+run.runId+':'+run.status+':'+stamp).slice(0,128);
+  }
+  function publishProjectDelivery(run) {
+    if(!deliveryStore||!run||!deliveryVisible.has(run.status))return null;
+    const correlation=run.correlationId??run.runId;
+    const compact={
+      runId:run.runId,workflowId:run.workflowId,status:run.status,lastCode:run.lastCode??run.status,
+      pendingRequest:run.pendingRequest?{
+        requestId:run.pendingRequest.requestId,
+        question:run.pendingRequest.question,
+        options:run.pendingRequest.options??[],
+        sourceRevision:run.pendingRequest.sourceRevision,
+        stepId:run.pendingRequest.stepId,
+        createdAt:run.pendingRequest.createdAt
+      }:null,
+      summary:typeof run.summary==='string'?run.summary.slice(0,2000):null,
+      updatedAt:run.updatedAt??null
+    };
+    const artifact=deliveryStore.writeArtifact(compact);
+    const kind=run.status==='COMPLETED'?'COMPLETED'
+      :run.status==='WAITING_INPUT'?'WAITING_INPUT'
+      :run.status==='BLOCKED'?'BLOCKED'
+      :run.status==='EXHAUSTED'?'EXHAUSTED'
+      :run.status==='CANCELLED'?'CANCELLED':'PAUSED';
+    return deliveryStore.publish({
+      eventKey:deliveryEventKey(run),correlationId:correlation,source:'project',sourceId:run.runId,
+      kind,code:run.lastCode??run.status,artifact
+    });
+  }
+  function reconcileProjectDeliveries() {
+    if(!deliveryStore||!engine)return {checked:0,published:0,error:null};
+    let published=0,checked=0;
+    try{
+      for(const run of engine.status().runs){
+        if(!deliveryVisible.has(run.status))continue;
+        checked++;
+        const before=deliveryStore.health().pending;
+        publishProjectDelivery(run);
+        if(deliveryStore.health().pending>before)published++;
+      }
+      deliveryLastError=null;
+      return {checked,published,error:null};
+    }catch(error){
+      deliveryLastError=String(error?.deliveryCode??error?.message??error);
+      return {checked,published,error:deliveryLastError};
+    }
+  }
+
   let ticking=false;
   async function schedulerTick() {
     if (ticking) return {skipped:true,reason:'TICK_ALREADY_RUNNING'};
@@ -167,7 +220,8 @@ export function createWorkflowTools({ config, roots, device, configSha256, looku
         }
       }
       const execution=engine&&settings.runner.autoTick===true?await engine.tick():null;
-      return {recovered,reconciled,ready,blocked,...(engine?{
+      const delivery=engine?reconcileProjectDeliveries():null;
+      return {recovered,reconciled,ready,blocked,delivery,...(engine?{
         runnerConfigured:true,automaticExecution:schedulerPolicy.enabled===true&&settings.runner.autoTick===true,
         automaticContinuationScope:settings.runner.autoTick===true?'ENROLLED_PROJECT_EXECUTION':'RECOVERY_AND_MANUAL_RUN_TICKS',execution
       }:{runnerConfigured:false,automaticExecution:false,automaticContinuationScope:'RECOVERY_AND_READINESS_ONLY'}),status:engine?runtimeStatus().schedulerState:store.schedulerStatus()};
@@ -188,8 +242,8 @@ export function createWorkflowTools({ config, roots, device, configSha256, looku
     schedulerTick,
     async execute(name, args) {
       switch (name) {
-        case 'workflow_status': return { ...runtimeStatus(), enabled:true, engineEnabled:true, executionTools:[...allowed] };
-        case 'workflow_health': {const health=store.health();return engine?{...health,scheduler:runtimeStatus().schedulerState,projectEngine:engine.status()}:health;}
+        case 'workflow_status': return { ...runtimeStatus(), enabled:true, engineEnabled:true, executionTools:[...allowed], deliveryIntegration:deliveryStore?{enabled:true,lastError:deliveryLastError}: {enabled:false} };
+        case 'workflow_health': {const health=store.health();return engine?{...health,scheduler:runtimeStatus().schedulerState,projectEngine:engine.status(),deliveryIntegration:deliveryStore?{enabled:true,lastError:deliveryLastError}: {enabled:false}}:health;}
         case 'workflow_create': return store.create(args);
         case 'workflow_get': return store.get(args.id);
         case 'workflow_list': return { workflows: store.list() };
@@ -204,10 +258,22 @@ export function createWorkflowTools({ config, roots, device, configSha256, looku
         case 'workflow_control': return store.control(args);
         case 'workflow_revise': return store.revise(args);
         case 'workflow_scheduler_tick': return schedulerTick();
-        case 'workflow_run_start': if(!engine)fail('WORKFLOW_RUNNER_DISABLED');return engine.start(args);
-        case 'workflow_run_status': if(!engine)fail('WORKFLOW_RUNNER_DISABLED');return engine.status(args.runId);
-        case 'workflow_run_resolve': if(!engine)fail('WORKFLOW_RUNNER_DISABLED');return engine.resolve(args);
-        case 'workflow_run_tick': if(!engine)fail('WORKFLOW_RUNNER_DISABLED');return engine.tick(args.runId);
+        case 'workflow_run_start': {
+          if(!engine)fail('WORKFLOW_RUNNER_DISABLED');
+          const result=await engine.start(args);reconcileProjectDeliveries();return result;
+        }
+        case 'workflow_run_status': {
+          if(!engine)fail('WORKFLOW_RUNNER_DISABLED');
+          const result=engine.status(args.runId);reconcileProjectDeliveries();return result;
+        }
+        case 'workflow_run_resolve': {
+          if(!engine)fail('WORKFLOW_RUNNER_DISABLED');
+          const result=await engine.resolve(args);reconcileProjectDeliveries();return result;
+        }
+        case 'workflow_run_tick': {
+          if(!engine)fail('WORKFLOW_RUNNER_DISABLED');
+          const result=await engine.tick(args.runId);reconcileProjectDeliveries();return result;
+        }
         case 'workflow_call': {
           const outcome = await store.call(args, {
             validate: async (tool, input) => {
@@ -251,6 +317,7 @@ export function createWorkflowTools({ config, roots, device, configSha256, looku
           return dispatch(name,args,resumed.state);
         },lookup,policy:settings.runner});
       api.definitions.push(...PROJECT_ENGINE_TOOL_DEFINITIONS);
+      queueMicrotask(()=>{reconcileProjectDeliveries();});
       if(settings.runner.autoTick===true)api.definitions=api.definitions.map(d=>d.name==='workflow_scheduler_tick'?{
         ...d,description:'Recover interrupted state and execute at most one enrolled planner/tool step or verified finalization. May invoke a configured provider and mutate project files.',annotations:action
       }:d);
