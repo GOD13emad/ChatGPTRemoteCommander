@@ -10,7 +10,7 @@ import {
 import { isWithin } from './security-v0.3.mjs';
 import { withPathLocks } from './locks.mjs';
 import { guardFileWrite } from './file-write-guard.mjs';
-import { IS_WINDOWS, defaultBackupRoot, expandPathValue, shellName, shellSpec, spawnShell } from './platform.mjs';
+import { IS_WINDOWS, defaultBackupRoot, expandPathValue, shellName, shellSpec, spawnShell, terminateProcessTree } from './platform.mjs';
 
 const terminals = new Map();
 let terminalCounter = 1;
@@ -144,7 +144,7 @@ async function capture(command, cwd, timeoutMs, outputLimit) {
   let timedOut = false;
   child.stdout.on('data', (chunk) => { if (stdout.length < outputLimit) stdout += chunk.toString('utf8'); });
   child.stderr.on('data', (chunk) => { if (stderr.length < outputLimit) stderr += chunk.toString('utf8'); });
-  const timer = setTimeout(() => { timedOut = true; child.kill(); }, timeoutMs);
+  const timer = setTimeout(() => { timedOut = true; terminateProcessTree(child.pid, { signal: 'SIGKILL' }); }, timeoutMs);
   const outcome = await new Promise((resolve, reject) => {
     child.once('error', reject);
     child.once('close', (code, signal) => resolve({ code, signal }));
@@ -581,8 +581,12 @@ export async function stopTerminal(ctx, input) {
   const session = getTerminal(input);
   if (session.running) {
     const closed = new Promise((resolve) => session.child.once('close', resolve));
-    session.child.kill(input.signal || 'SIGTERM');
-    await Promise.race([closed, new Promise((resolve) => setTimeout(resolve, 2000))]);
+    terminateProcessTree(session.child.pid, { signal: input.signal || 'SIGTERM' });
+    await Promise.race([closed, new Promise((resolve) => setTimeout(resolve, 1500))]);
+    if (session.running) {
+      terminateProcessTree(session.child.pid, { signal: 'SIGKILL' });
+      await Promise.race([closed, new Promise((resolve) => setTimeout(resolve, 500))]);
+    }
   }
   if (input.remove !== false) terminals.delete(session.id);
   return { id: session.id, pid: session.child.pid, stopRequested: true, running: session.running };
