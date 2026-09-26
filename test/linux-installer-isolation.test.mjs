@@ -41,7 +41,7 @@ function fixture(t) {
   git('add', 'updated.txt'); git('commit', '-m', 'fixture update');
   const commit = git('rev-parse', 'HEAD');
   const arch = process.arch === 'arm64' ? 'arm64' : 'amd64';
-  write(path.join(target, `tools/tunnel-client-v0.0.14-linux-${arch}/tunnel-client`), '#!/bin/sh\nexit 0\n', true);
+  write(path.join(target, `tools/tunnel-client-v0.0.15-linux-${arch}/tunnel-client`), '#!/bin/sh\nexit 0\n', true);
   const bin = path.join(root, 'bin'), effects = path.join(root, 'unexpected-effects'), npmCalls = path.join(root, 'npm-calls');
   write(path.join(bin, 'npm'), '#!/bin/sh\nprintf "%s\\n" "$*" >> "$RC_INSTALL_NPM_CALLS"\nexit 0\n', true);
   for (const name of ['curl', 'systemctl', 'nohup', 'gnome-extensions']) {
@@ -132,7 +132,7 @@ for (const mode of ['standard', 'power']) test(`Linux custom no-start ${mode} re
 test('Linux custom no-start skip-tunnel-client avoids network when no pinned client exists', linuxOnly, t => {
   const f = fixture(t);
   const arch = process.arch === 'arm64' ? 'arm64' : 'amd64';
-  fs.rmSync(path.join(f.target, `tools/tunnel-client-v0.0.14-linux-${arch}`), { recursive: true, force: true });
+  fs.rmSync(path.join(f.target, `tools/tunnel-client-v0.0.15-linux-${arch}`), { recursive: true, force: true });
   const output = run('bash', [f.installedScript, '--install-dir', f.target, '--source-ref', 'HEAD',
     '--expected-commit', f.commit, '--standard-mode', '--skip-tunnel-client'], {
     cwd: f.root, env: f.env
