@@ -299,3 +299,16 @@ test('project provider bootstrap is pinned and state-private on both updaters',(
   for(const marker of ['Ensure-ProjectProvider',"'@openai/codex@0.156.1'",'PROJECT_PROVIDER_PASS',"'tools\\codex-cli'"]) assert.ok(win.includes(marker),marker);
   for(const marker of ['ensure_project_provider','"@openai/codex@$version"','PROJECT_PROVIDER_PASS','tools/codex-cli']) assert.ok(lin.includes(marker),marker);
 });
+
+test('router bootstrap is after no-promote and before schema-changing cutover',()=>{
+  const win=read('auto-update-windows.ps1');
+  const lin=read('auto-update-linux.sh');
+  const helper=read('tools/router-source-bootstrap.mjs');
+  assert.ok(win.indexOf('if($NoPromote)') < win.indexOf('$bootstrap=Ensure-RouterCandidateSource'),'Windows no-promote must exit before router bootstrap');
+  assert.ok(lin.indexOf('if [[ "$NO_PROMOTE" == 1 ]]') < lin.indexOf('router-source-bootstrap.mjs'),'Linux no-promote must exit before router bootstrap');
+  assert.match(win,/ROUTER_BOOTSTRAPPED_RETRY_REQUIRED/);
+  assert.match(lin,/AUTO_UPDATE_ROUTER_BOOTSTRAPPED_RETRY_REQUIRED/);
+  assert.match(helper,/ROUTER_ROUTE_DRIFT/);
+  assert.match(helper,/ROUTER_BOOTSTRAP_ROLLBACK_FAIL/);
+  assert.match(helper,/verifyProcessIdentity/);
+});

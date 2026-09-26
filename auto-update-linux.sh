@@ -520,9 +520,24 @@ wait_health "$PORT" "$VERSION" "$FINAL_SHA" default || { stop_pid "$CANDIDATE_PI
 node "$STAGE_DIR/tools/doctor.mjs" --url "http://127.0.0.1:$PORT/mcp" --expected-version "$VERSION" --config "$FINAL_CFG" --json
 node "$STAGE_DIR/tools/hardware-selftest.mjs" --url "http://127.0.0.1:$PORT/mcp" --config "$FINAL_CFG" --expected-version "$VERSION"
 
+if [[ "$NO_PROMOTE" == 1 ]]; then stop_owned_candidate "$CANDIDATE_PID" "$STAGE_DIR"; CANDIDATE_PID=""; trap - ERR; log 'AUTO_UPDATE_CANDIDATE_PASS'; exit 0; fi
+
 if [[ -f "$ROUTE" ]]; then
   SCHEMA_OLD_PORT="$(json_field "$STAGE_DIR" "$ROUTE" active.port)"
   if [[ -n "$SCHEMA_OLD_PORT" ]]; then
+    set +e
+    SCHEMA_PRE="$(node "$STAGE_DIR/tools/schema-continuity-gate.mjs" --old-url "http://127.0.0.1:$SCHEMA_OLD_PORT/mcp" --candidate-url "http://127.0.0.1:$PORT/mcp" --router-url "http://127.0.0.1:47831/router/status" 2>/dev/null)"
+    set -e
+    SCHEMA_CHANGED="$(node -e 'try{const x=JSON.parse(process.argv[1]);process.stdout.write(x.changed===true?"true":"false")}catch{process.stdout.write("false")}' "$SCHEMA_PRE")"
+    BOOTSTRAP="$(node "$STAGE_DIR/tools/router-source-bootstrap.mjs" --url http://127.0.0.1:47831/router/status --state "$ROUTE" --runtime "$ROUTING_ROOT/default.runtime.json" --candidate-source "$STAGE_DIR/src/stable-router.mjs" --log "$STATE_ROOT/router.log")"
+    ROUTER_CHANGED="$(node -e 'const x=JSON.parse(process.argv[1]);process.stdout.write(x.changed===true?"true":"false")' "$BOOTSTRAP")"
+    if [[ "$ROUTER_CHANGED" == true && "$SCHEMA_CHANGED" == true ]]; then
+      stop_owned_candidate "$CANDIDATE_PID" "$STAGE_DIR"
+      CANDIDATE_PID=""
+      trap - ERR
+      log 'AUTO_UPDATE_ROUTER_BOOTSTRAPPED_RETRY_REQUIRED profile=default'
+      exit 0
+    fi
     if ! node "$STAGE_DIR/tools/schema-continuity-gate.mjs" --old-url "http://127.0.0.1:$SCHEMA_OLD_PORT/mcp" --candidate-url "http://127.0.0.1:$PORT/mcp" --router-url "http://127.0.0.1:47831/router/status"; then
       echo 'SCHEMA_CONTINUITY_GATE_FAIL profile=default' >&2
       exit 1
@@ -530,8 +545,6 @@ if [[ -f "$ROUTE" ]]; then
     log 'SCHEMA_CONTINUITY_GATE_PASS profile=default'
   fi
 fi
-
-if [[ "$NO_PROMOTE" == 1 ]]; then stop_owned_candidate "$CANDIDATE_PID" "$STAGE_DIR"; CANDIDATE_PID=""; trap - ERR; log 'AUTO_UPDATE_CANDIDATE_PASS'; exit 0; fi
 
 if [[ -f "$ROUTE" ]]; then
   EXISTING_PREV_PORT="$(json_field "$STAGE_DIR" "$ROUTE" previous.port)"

@@ -351,6 +351,19 @@ function Start-Router([int]$CanonicalPort,[string]$RoutePath,[string]$RouterSour
   if(-not $p.HasExited){Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue}
   throw "ROUTER_START_FAIL profile=$Profile"
 }
+function Get-SchemaContinuityProbe([string]$StageDir,[int]$OldPort,[int]$CandidatePort,[int]$CanonicalPort){
+  $raw=@(& node.exe (Join-Path $StageDir 'tools\schema-continuity-gate.mjs') --old-url ("http://127.0.0.1:{0}/mcp" -f $OldPort) --candidate-url ("http://127.0.0.1:{0}/mcp" -f $CandidatePort) --router-url ("http://127.0.0.1:{0}/router/status" -f $CanonicalPort) 2>$null)
+  $rc=$LASTEXITCODE
+  try{$v=([string]($raw|Select-Object -Last 1))|ConvertFrom-Json}catch{throw "SCHEMA_CONTINUITY_PROBE_INVALID port=$CanonicalPort rc=$rc"}
+  return [pscustomobject]@{ok=[bool]$v.ok;changed=[bool]$v.changed;decision=[string]$v.decision;exitCode=[int]$rc}
+}
+function Ensure-RouterCandidateSource([object]$Target,[string]$StageDir){
+  $runtime=Join-Path $RoutingRoot "$($Target.Profile).runtime.json"
+  $raw=@(& node.exe (Join-Path $StageDir 'tools\router-source-bootstrap.mjs') --url ("http://127.0.0.1:{0}/router/status" -f [int]$Target.CanonicalPort) --state $Target.RoutePath --runtime $runtime --candidate-source (Join-Path $StageDir 'src\stable-router.mjs') --log (Join-Path $StateRoot 'router.log'))
+  if($LASTEXITCODE-ne 0){throw "ROUTER_SOURCE_BOOTSTRAP_FAIL profile=$($Target.Profile)"}
+  try{return ([string]($raw|Select-Object -Last 1))|ConvertFrom-Json}catch{throw "ROUTER_SOURCE_BOOTSTRAP_RESULT_INVALID profile=$($Target.Profile)"}
+}
+
 function Stop-OwnedDirect([object]$Target){
   $listener=Get-NetTCPConnection -State Listen -LocalPort $Target.CanonicalPort -ErrorAction SilentlyContinue|Select-Object -First 1
   if(-not $listener){return $null}
@@ -937,23 +950,37 @@ try{
     $report.profiles+=@{profile=$t.Profile;candidatePort=$port;configSha256=$finalSha;doctor='PASS';hardware='PASS';shadowStore='PASS';liveStoreCompatibility='PASS'}
   }
 
-  foreach($c in $candidates){
-    $t=$c.Target
-    if(Test-Path -LiteralPath $t.RoutePath -PathType Leaf){
-      $liveRoute=Read-Json $t.RoutePath
-      if($liveRoute.active -and $liveRoute.active.port){
-        & node.exe (Join-Path $stage.Dir 'tools\schema-continuity-gate.mjs') --old-url ("http://127.0.0.1:{0}/mcp" -f [int]$liveRoute.active.port) --candidate-url ("http://127.0.0.1:{0}/mcp" -f [int]$c.Port) --router-url ("http://127.0.0.1:{0}/router/status" -f [int]$t.CanonicalPort)
-        if($LASTEXITCODE-ne 0){throw "SCHEMA_CONTINUITY_GATE_FAIL profile=$($t.Profile)"}
-        Log "SCHEMA_CONTINUITY_GATE_PASS profile=$($t.Profile)"
-      }
-    }
-  }
-
   if($NoPromote){
     foreach($c in $candidates){Stop-OwnedCandidate $c -Strict}
     $report.status='CANDIDATE_PASS';$report.completedAt=(Get-Date).ToUniversalTime().ToString('o')
     Atomic-Json $ResultFile $report
     Log 'AUTO_UPDATE_CANDIDATE_PASS'
+    exit 0
+  }
+
+  $routerBootstrapDeferred=@()
+  foreach($c in $candidates){
+    $t=$c.Target
+    if(-not(Test-Path -LiteralPath $t.RoutePath -PathType Leaf)){continue}
+    $liveRoute=Read-Json $t.RoutePath
+    if(-not($liveRoute.active -and $liveRoute.active.port)){continue}
+    $pre=Get-SchemaContinuityProbe $stage.Dir ([int]$liveRoute.active.port) ([int]$c.Port) ([int]$t.CanonicalPort)
+    $bootstrap=Ensure-RouterCandidateSource $t $stage.Dir
+    if($bootstrap.changed -eq $true -and $pre.changed -eq $true){
+      $routerBootstrapDeferred+=[string]$t.Profile
+      continue
+    }
+    $gate=Get-SchemaContinuityProbe $stage.Dir ([int]$liveRoute.active.port) ([int]$c.Port) ([int]$t.CanonicalPort)
+    if(-not $gate.ok){throw "SCHEMA_CONTINUITY_GATE_FAIL profile=$($t.Profile) decision=$($gate.decision)"}
+    Log "SCHEMA_CONTINUITY_GATE_PASS profile=$($t.Profile) decision=$($gate.decision)"
+  }
+  if($routerBootstrapDeferred.Count-gt0){
+    foreach($c in $candidates){Stop-OwnedCandidate $c -Strict}
+    $report.status='ROUTER_BOOTSTRAPPED_RETRY_REQUIRED'
+    $report.routerBootstrapProfiles=@($routerBootstrapDeferred)
+    $report.completedAt=(Get-Date).ToUniversalTime().ToString('o')
+    Atomic-Json $ResultFile $report
+    Log "AUTO_UPDATE_ROUTER_BOOTSTRAPPED_RETRY_REQUIRED profiles=$($routerBootstrapDeferred -join ',')"
     exit 0
   }
   # Admission is profile-scoped. One account may have a legitimate long-lived
