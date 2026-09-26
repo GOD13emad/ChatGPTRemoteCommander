@@ -1,0 +1,202 @@
+name: Apply Linux X11 observe-only GUI guard
+
+on:
+  push:
+    branches:
+      - hotfix/v0.9.4-legacy-idempotency-r1
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-qualify:
+    if: ${{ !contains(github.event.head_commit.message, '[x11-guard-applied]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+      - name: Apply exact X11 observe-only guard
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('gnome-extension/chatgpt-remote-commander@god13emad/extension.js')
+          s=p.read_text(encoding='utf-8')
+          if "import Meta from 'gi://Meta';" not in s:
+              old="import Clutter from 'gi://Clutter';\nimport Shell from 'gi://Shell';"
+              new="import Clutter from 'gi://Clutter';\nimport Meta from 'gi://Meta';\nimport Shell from 'gi://Shell';"
+              if s.count(old)!=1: raise SystemExit(f'import marker count={s.count(old)}')
+              s=s.replace(old,new)
+
+          old_ctor="""    this._pointer = null;
+    this._keyboard = null;
+    this._token = '';
+"""
+          new_ctor="""    this._pointer = null;
+    this._keyboard = null;
+    this._destroyed = false;
+    this._wayland = Meta.is_wayland_compositor();
+    this._token = '';
+"""
+          if 'this._destroyed = false;' not in s:
+              if s.count(old_ctor)!=1: raise SystemExit(f'constructor marker count={s.count(old_ctor)}')
+              s=s.replace(old_ctor,new_ctor)
+
+          old_devices="""    try {
+      const seat = Clutter.get_default_backend().get_default_seat();
+      this._pointer = seat.create_virtual_device(Clutter.InputDeviceType.POINTER_DEVICE);
+      this._keyboard = seat.create_virtual_device(Clutter.InputDeviceType.KEYBOARD_DEVICE);
+    } catch (_) {}
+  }
+
+  _authorized(req) {
+"""
+          new_devices="""    if (this._wayland) {
+      try {
+        const seat = Clutter.get_default_backend().get_default_seat();
+        this._pointer = seat.create_virtual_device(Clutter.InputDeviceType.POINTER_DEVICE);
+        this._keyboard = seat.create_virtual_device(Clutter.InputDeviceType.KEYBOARD_DEVICE);
+      } catch (_) {}
+    }
+  }
+
+  destroy() {
+    this._destroyed = true;
+    this._pointer = null;
+    this._keyboard = null;
+    this._token = '';
+  }
+
+  _authorized(req) {
+    if (this._destroyed) fail('GUI_EXTENSION_DISABLED');
+"""
+          if 'destroy() {' not in s:
+              if s.count(old_devices)!=1: raise SystemExit(f'device marker count={s.count(old_devices)}')
+              s=s.replace(old_devices,new_devices)
+
+          old_stopped="""  _stopped(req = null) {
+    if (Gio.File.new_for_path(STOP_PATH).query_exists(null)) return true;
+"""
+          new_stopped="""  _stopped(req = null) {
+    if (this._destroyed) return true;
+    if (Gio.File.new_for_path(STOP_PATH).query_exists(null)) return true;
+"""
+          if 'if (this._destroyed) return true;' not in s:
+              if s.count(old_stopped)!=1: raise SystemExit(f'stopped marker count={s.count(old_stopped)}')
+              s=s.replace(old_stopped,new_stopped)
+
+          old_status="""        ok:true, available:!!(this._pointer && this._keyboard), backend:'gnome-shell-wayland',
+        sessionType:GLib.getenv('XDG_SESSION_TYPE') ?? 'unknown', screens:this._screens(),
+        capabilities:{screenshot:true,cursor:true,listWindows:true,mouse:!!this._pointer,keyboard:!!this._keyboard,focus:true}
+"""
+          new_status="""        ok:true, available:true,
+        backend:this._wayland ? 'gnome-shell-wayland' : 'gnome-shell-x11-observe-only',
+        sessionType:this._wayland ? 'wayland' : 'x11', screens:this._screens(),
+        capabilities:{screenshot:true,cursor:true,listWindows:true,mouse:!!this._pointer,keyboard:!!this._keyboard,focus:true}
+"""
+          if "gnome-shell-x11-observe-only" not in s:
+              if s.count(old_status)!=1: raise SystemExit(f'status marker count={s.count(old_status)}')
+              s=s.replace(old_status,new_status)
+
+          old_guard="""    const {expected} = this._guard(req);
+    if (!this._pointer || !this._keyboard) fail('GUI_VIRTUAL_INPUT_UNAVAILABLE');
+    if (action === 'move') {
+"""
+          focus_block="""    if (action === 'focusWindow') {
+      const windows = this._rawWindows();
+      let matches = [];
+      if (req.handle) matches = windows.filter(w => this._windowHandle(w) === String(req.handle));
+      else {
+        const q = String(req.titleContains ?? '').toLocaleLowerCase();
+        matches = windows.filter(w => String(w.get_title() ?? '').toLocaleLowerCase().includes(q));
+      }
+      if (matches.length !== 1) fail('GUI_WINDOW_SELECTOR_NOT_UNIQUE');
+      matches[0].activate(global.get_current_time());
+      await sleep(30);
+      if (global.display.focus_window !== matches[0]) fail('GUI_FOCUS_FAILED');
+      return {ok:true,handle:this._windowHandle(matches[0])};
+    }
+"""
+          if "GUI_SYNTHETIC_INPUT_UNAVAILABLE_X11" not in s:
+              if s.count(old_guard)!=1: raise SystemExit(f'input guard count={s.count(old_guard)}')
+              if s.count(focus_block)!=1: raise SystemExit(f'focus block count={s.count(focus_block)}')
+              s=s.replace(focus_block,'')
+              new_guard="""    const {expected} = this._guard(req);
+"""+focus_block+"""    if (!this._pointer || !this._keyboard)
+      fail(this._wayland ? 'GUI_VIRTUAL_INPUT_UNAVAILABLE' : 'GUI_SYNTHETIC_INPUT_UNAVAILABLE_X11');
+    if (action === 'move') {
+"""
+              s=s.replace(old_guard,new_guard)
+
+          old_disable="""  disable() {
+    this._dbus?.unexport();
+    this._dbus = null;
+    this._service = null;
+  }
+"""
+          new_disable="""  disable() {
+    this._dbus?.unexport();
+    this._dbus = null;
+    this._service?.destroy();
+    this._service = null;
+  }
+"""
+          if 'this._service?.destroy();' not in s:
+              if s.count(old_disable)!=1: raise SystemExit(f'disable marker count={s.count(old_disable)}')
+              s=s.replace(old_disable,new_disable)
+
+          p.write_text(s,encoding='utf-8')
+          PY
+      - name: Add regression test
+        shell: bash
+        run: |
+          cat > test/linux-gui-x11-observe-only.test.mjs <<'EOF'
+          import test from 'node:test';
+          import assert from 'node:assert/strict';
+          import fs from 'node:fs';
+
+          const file='gnome-extension/chatgpt-remote-commander@god13emad/extension.js';
+          const s=fs.readFileSync(file,'utf8');
+
+          test('GNOME X11 backend is observe-only and never constructs Clutter virtual input',()=>{
+            assert.match(s,/import Meta from 'gi:\/\/Meta';/);
+            assert.match(s,/this\._wayland = Meta\.is_wayland_compositor\(\);/);
+            assert.match(s,/if \(this\._wayland\) \{[\s\S]*create_virtual_device\(Clutter\.InputDeviceType\.POINTER_DEVICE\)[\s\S]*create_virtual_device\(Clutter\.InputDeviceType\.KEYBOARD_DEVICE\)/);
+            assert.match(s,/backend:this\._wayland \? 'gnome-shell-wayland' : 'gnome-shell-x11-observe-only'/);
+            assert.match(s,/sessionType:this\._wayland \? 'wayland' : 'x11'/);
+            assert.match(s,/GUI_SYNTHETIC_INPUT_UNAVAILABLE_X11/);
+          });
+
+          test('focus stays before synthetic-input guard and extension teardown releases service devices',()=>{
+            const focus=s.indexOf("if (action === 'focusWindow')");
+            const guard=s.indexOf("GUI_SYNTHETIC_INPUT_UNAVAILABLE_X11");
+            assert.ok(focus>0 && guard>focus,'focus must remain available before X11 synthetic-input refusal');
+            assert.match(s,/destroy\(\) \{[\s\S]*this\._destroyed = true;[\s\S]*this\._pointer = null;[\s\S]*this\._keyboard = null;/);
+            assert.match(s,/disable\(\) \{[\s\S]*this\._dbus\?\.unexport\(\);[\s\S]*this\._service\?\.destroy\(\);/);
+          });
+          EOF
+      - name: Diff safety
+        run: git diff --check
+      - name: Static guard test
+        run: node --test test/linux-gui-x11-observe-only.test.mjs
+      - name: Install Linux GUI helper dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes python3-gi gir1.2-gdkpixbuf-2.0 gnome-shell-common
+      - name: Full qualification
+        run: |
+          npm run check
+          npm test
+          npm run audit
+      - name: Commit qualified guard
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add gnome-extension/chatgpt-remote-commander@god13emad/extension.js test/linux-gui-x11-observe-only.test.mjs
+          git diff --cached --quiet && exit 0
+          git commit -m 'fix(linux): disable synthetic GUI input on X11 [x11-guard-applied]'
+          git push origin HEAD:hotfix/v0.9.4-legacy-idempotency-r1
