@@ -23,7 +23,7 @@ Baseline: `a36ec05ea2c530ef52473b6a6f851a4484a31a35`. Qualification head: `6372b
 | CSDC-003 | P0 | PASS | **Delivery state machine** — Implement COMPLETED_UNDELIVERED -> DELIVERY_PENDING -> DELIVERED/DEAD_LETTER. | Transitions are durable, idempotent and covered by restart/lost-ack tests. |
 | CSDC-004 | P0 | PASS | **Pending-delivery inbox** — Expose bounded read/claim/ack paths for undelivered results. | A later chat can discover and claim an earlier completed result without re-running effects. |
 | CSDC-005 | P0 | BLOCKED_EXTERNAL | **Chat completion bridge** — Use a supported host mechanism to wake/resume delivery when available; retain polling fallback. | Real ChatGPT qualification proves autonomous delivery, or capability is marked external/unavailable with safe fallback. |
-| CSDC-006 | P0 | IN_PROGRESS | **WAITING/BLOCKED delivery** — Create durable user-visible events for WAITING_INPUT, BLOCKED, EXHAUSTED and quota pauses. | No terminal/wait state can become silent. |
+| CSDC-006 | P0 | PASS | **WAITING/BLOCKED delivery** — Create durable user-visible events for WAITING_INPUT, BLOCKED, EXHAUSTED and quota pauses. | No terminal/wait state can become silent. |
 | CSDC-007 | P0 | TODO | **Lost-ack idempotency for mutations** — Add stable idempotency to mutating file/process/terminal/browser/GUI operations. | Lost response never causes a blind duplicate effect. |
 | CSDC-008 | P0 | TODO | **Universal deferred execution** — Extend deferred/durable work beyond run_shell/run_project_command to all potentially slow tools. | Any uncertain-duration tool can return a small durable handle before transport deadline. |
 | CSDC-009 | P0 | PASS | **Transport safety budget** — Reserve explicit margin below tunnel response deadline for every synchronous call. | No Commander synchronous call can consume the full tunnel deadline. |
@@ -31,11 +31,11 @@ Baseline: `a36ec05ea2c530ef52473b6a6f851a4484a31a35`. Qualification head: `6372b
 | CSDC-011 | P0 | PASS | **Result envelope** — Separate compact chat summary from full artifact/output. | Final chat payload stays bounded while complete evidence remains retrievable. |
 | CSDC-012 | P0 | PASS | **Exactly-once delivery receipt** — Persist delivery attempt/ack identities and suppress duplicate final answers. | Retrying delivery cannot re-execute work or duplicate an acknowledged result. |
 | CSDC-013 | P1 | TODO | **Native MCP Tasks capability probe** — Probe ChatGPT Plugin support for MCP Tasks/subscriptions and implement only when negotiated. | Capability is runtime-proven; no speculative protocol claim. |
-| CSDC-014 | P1 | TODO | **Paged/ranged reads** — Add paging/range contracts for large text/binary/list/search results. | Files/results larger than one MCP envelope remain retrievable without 413. |
-| CSDC-015 | P1 | TODO | **Request/response size alignment** — Align tool schemas with request/response envelopes or move content to artifacts. | No advertised payload size is impossible to transport. |
+| CSDC-014 | P1 | PASS | **Paged/ranged reads** — Add paging/range contracts for large text/binary/list/search results. | Files/results larger than one MCP envelope remain retrievable without 413. |
+| CSDC-015 | P1 | PASS | **Request/response size alignment** — Align tool schemas with request/response envelopes or move content to artifacts. | No advertised payload size is impossible to transport. |
 | CSDC-016 | P1 | TODO | **Project Engine execution primitive** — Permit safe background build/run/test via a durable bounded execution primitive. | Enrolled execution projects can perform verified command work without unrestricted planner shell. |
 | CSDC-017 | P1 | TODO | **Long-project decomposition** — Split projects into durable milestone/subrun units beyond the default five-minute run window. | Hour-scale projects progress through checkpoints instead of EXHAUSTED due solely to wall time. |
-| CSDC-018 | P1 | TODO | **Pause human-wait clock** — Do not consume execution wall-clock while legitimately waiting for user input. | WAITING_INPUT does not expire before the user can answer. |
+| CSDC-018 | P1 | PASS | **Pause human-wait clock** — Do not consume execution wall-clock while legitimately waiting for user input. | WAITING_INPUT does not expire before the user can answer. |
 | CSDC-019 | P1 | TODO | **Quota/rate-limit state** — Classify provider quota/rate-limit as durable PAUSED_QUOTA with safe resume. | Quota exhaustion never becomes an ambiguous failure or duplicate execution. |
 | CSDC-020 | P1 | TODO | **Context retrieval/compaction** — Keep working context bounded using durable refs/indexes rather than raw transcript growth. | Large projects do not fail solely because history grew. |
 | CSDC-021 | P1 | TODO | **Workflow rollover/archive** — Compact/archive state before workflow/event/note/count limits are reached. | Long-lived projects remain writable and auditable. |
@@ -45,7 +45,7 @@ Baseline: `a36ec05ea2c530ef52473b6a6f851a4484a31a35`. Qualification head: `6372b
 | CSDC-025 | P1 | TODO | **Browser/session escalation** — Persist browser-auth/CAPTCHA/MFA blockers and deliver a minimal foreground-approval request. | Background jobs never silently hang on authentication. |
 | CSDC-026 | P1 | TODO | **Update-safe run migration** — Keep active workflow/run/delivery authority stable across auto-update and policy migrations. | Updates do not strand or invalidate accepted jobs without explicit compatible migration. |
 | CSDC-027 | P1 | IN_PROGRESS | **Tunnel-client v0.0.15 qualification** — Candidate-test current upstream tunnel-client on Windows/Linux and pin if it passes. | Exact binary/hash, regression and live canaries pass before promotion. |
-| CSDC-028 | P1 | IN_PROGRESS | **Linux v0.9.3 completion** — Finish retained-terminal cutover and Firefox background browser, full qualification and release. | Linux canonical connector reaches current release without killing active terminals. |
+| CSDC-028 | P1 | IN_PROGRESS | **Linux v0.9.4 completion** — Finish retained-terminal cutover, Firefox background browser, current CSDC/retry hardening, full qualification and release. | Linux canonical connector reaches the current qualified release without killing active terminals and with Windows/Linux behavior parity where platform permits. |
 | CSDC-029 | P1 | TODO | **Cross-device parity** — Make Windows/Linux capability and Project Engine behavior equivalent where platform permits. | System-status parity matrix has no unexplained functional gaps. |
 | CSDC-030 | P1 | TODO | **End-to-end telemetry** — Record correlationId, transport request, tool, operation, workflow, result and delivery metrics. | Deadline/post failures can be attributed to exact work instead of heuristic timestamps. |
 | CSDC-031 | P1 | TODO | **Durable alerting/dead-letter** — Surface COMPLETED_UNDELIVERED, blocked and dead-letter records in health/status. | No failed delivery can remain invisible. |
@@ -54,6 +54,7 @@ Baseline: `a36ec05ea2c530ef52473b6a6f851a4484a31a35`. Qualification head: `6372b
 | CSDC-034 | P0 | TODO | **Multi-chat/account concurrency regression** — Test same project from concurrent chats/accounts with ownership/delivery isolation. | No cross-chat result leakage, duplicate writer or duplicate effect. |
 | CSDC-035 | P0 | TODO | **Long soak qualification** — Run 24-48h real workload qualification after fixes. | Zero Commander-caused deadline drops, silent terminal states and unrecoverable completed-undelivered jobs. |
 | CSDC-036 | P0 | TODO | **Release gate** — Block stable release unless chat-safe completion SLO passes on Windows and Linux. | Release checklist requires evidence for all P0 items and accepted dispositions for remaining P1 items. |
+| CSDC-037 | P0 | IN_PROGRESS | **Chat stream turn budget** — Prevent unbounded direct MCP call chains from causing ChatGPT UI/network/input-stream Retry before a final response is returned. | MCP initialize instructions and Plugin skill enforce a bounded direct-call batch, long work is moved to durable background state, and qualification distinguishes Commander transport failures from external Chat/UI stream failures. |
 
 ## Evidence rules
 
@@ -92,11 +93,11 @@ Baseline: `a36ec05ea2c530ef52473b6a6f851a4484a31a35`. Qualification head: `6372b
 - Commander-side durable inbox fallback is implemented and cross-platform CI passes.
 - Residual: Autonomous ChatGPT wake/push cannot be claimed unless the host advertises the MCP Tasks/subscriptions capability on the actual request. Native host capability still requires live observation.
 
-### CSDC-006 — IN_PROGRESS
+### CSDC-006 — PASS
 
-- GitHub Actions run 36225716047: windows-latest PASS; ubuntu-latest PASS; head 6372bfa61bf265d7f337172c333f64b45072ba5d.
-- WAITING_INPUT and BLOCKED project states are regression-tested as durable correlation-scoped delivery events; code also maps COMPLETED/EXHAUSTED/CANCELLED/PAUSED.
-- Residual: Need explicit executable coverage for every mapped terminal/wait state before PASS.
+- GitHub Actions run 36227448928: windows-latest PASS; ubuntu-latest PASS; head 3da2278f3233150bc227bf4a0d090b3cfafebb9b.
+- Project delivery regression covers WAITING_INPUT, BLOCKED, COMPLETED, EXHAUSTED, CANCELLED and PAUSED as durable correlation-scoped delivery events.
+
 
 ### CSDC-009 — PASS
 
@@ -130,4 +131,29 @@ Baseline: `a36ec05ea2c530ef52473b6a6f851a4484a31a35`. Qualification head: `6372b
 - GitHub Actions run 36225716047: windows-latest PASS; ubuntu-latest PASS; head 6372bfa61bf265d7f337172c333f64b45072ba5d.
 - Restart/lost-ack/idempotent delivery, operation receipt backfill and correlation isolation tests are in full CI.
 - Residual: Remaining fault matrix cases include real tunnel disconnect, power cuts, process-tree and long soak.
+
+
+### CSDC-037 — IN_PROGRESS
+
+- User screenshots on 2026-09-26 captured `A network error occurred. Please check your connection and try again.` and `Error in input stream` after very long tool-call turns.
+- Post-outage live Windows tunnel audit found response-deadline drops at 10:23:24 and 10:24:25 local, but no new tunnel deadline/413 event at the screenshot times around 10:36 and 11:00.
+- Candidate contract now limits a Chat turn to 6 direct synchronous Commander calls and routes larger/unknown-duration work to durable background execution with sparse bounded status reads.
+- Residual: ChatGPT UI/network stream failures remain outside Commander authority; CSDC-005 tracks autonomous host wake/delivery.
+
+### CSDC-014 — PASS
+
+- GitHub Actions run 36227448928: windows-latest PASS; ubuntu-latest PASS; head 3da2278f3233150bc227bf4a0d090b3cfafebb9b.
+- Large text/binary reads use bounded paging (max 256 KiB per page), with UTF-8 boundary guards and nextOffset/truncated metadata.
+
+
+### CSDC-015 — PASS
+
+- GitHub Actions run 36227448928: windows-latest PASS; ubuntu-latest PASS; head 3da2278f3233150bc227bf4a0d090b3cfafebb9b.
+- Synchronous writes are capped below the 1 MiB HTTP request envelope; large reads fail closed into paging; retry HTTP tests cover the bounded response path.
+
+
+### CSDC-018 — PASS
+
+- GitHub Actions run 36227448928: windows-latest PASS; ubuntu-latest PASS; head 3da2278f3233150bc227bf4a0d090b3cfafebb9b.
+- Human WAITING_INPUT time extends the execution deadline by measured wait time while action/planner budgets are not replenished.
 

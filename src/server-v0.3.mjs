@@ -23,6 +23,8 @@ const VERSION = '0.9.4';
 const MODERN_VERSION = '2026-07-28';
 const LEGACY_VERSIONS = ['2025-11-25', '2025-06-18', '2025-03-26'];
 const MODERN_CACHE_HINT = Object.freeze({ ttlMs: 30000, cacheScope: 'private' });
+const CHAT_STREAM_SAFE_DIRECT_CALL_BUDGET = 6;
+const chatStreamSafetyInstruction = () => ` Chat-stream safety: use at most ${CHAT_STREAM_SAFE_DIRECT_CALL_BUDGET} direct synchronous MCP tool calls in one assistant turn. For work that needs more calls, substantial output, or unknown duration, persist/continue it through durable workflows, Project Engine, or operation_start and return a compact checkpoint/delivery identity instead of holding one chat stream open. Do not rapidly poll status; use sparse bounded status/result reads.`;
 const here = path.dirname(fileURLToPath(import.meta.url));
 const projectDir = path.resolve(here, '..');
 const defaultConfigPath = path.join(projectDir, 'config.json');
@@ -65,9 +67,9 @@ const asyncOperationTools = createAsyncOperationTools({
 
 function operatingInstructions() {
   if (LEGACY_FULL_FILESYSTEM) {
-    return 'Power Mode full-filesystem is enabled. configured/allowedRoots are Standard Mode roots and the default relative-path base, not an active filesystem boundary. Legacy list_directory/read_text/write_text/run_project_command accept absolute paths outside allowedRoots subject to OS permissions and policy. run_project_command remains executable-allowlisted and Python -c / Node eval-print remain blocked. Prefer read-only inspection before mutation. Background-first is the default: use operation_start for long-running or high-output command work so the MCP call returns immediately, and use the owned headless browser before shared-desktop GUI takeover. Saved browser passwords are never extracted; if MFA, WebAuthn, CAPTCHA, or user-browser credentials require foreground interaction, request explicit current-task approval and use the minimum temporary GUI takeover.';
+    return 'Power Mode full-filesystem is enabled. configured/allowedRoots are Standard Mode roots and the default relative-path base, not an active filesystem boundary. Legacy list_directory/read_text/write_text/run_project_command accept absolute paths outside allowedRoots subject to OS permissions and policy. run_project_command remains executable-allowlisted and Python -c / Node eval-print remain blocked. Prefer read-only inspection before mutation. Background-first is the default: use operation_start for long-running or high-output command work so the MCP call returns immediately, and use the owned headless browser before shared-desktop GUI takeover. Saved browser passwords are never extracted; if MFA, WebAuthn, CAPTCHA, or user-browser credentials require foreground interaction, request explicit current-task approval and use the minimum temporary GUI takeover.' + chatStreamSafetyInstruction();
   }
-  return 'Operate only inside configured project roots. Prefer read-only inspection before mutation. Background-first is the default: use operation_start for long-running allowlisted commands; synchronous command calls are for short bounded work. Concurrent chats are supported with per-path mutation locks.';
+  return 'Operate only inside configured project roots. Prefer read-only inspection before mutation. Background-first is the default: use operation_start for long-running allowlisted commands; synchronous command calls are for short bounded work. Concurrent chats are supported with per-path mutation locks.' + chatStreamSafetyInstruction();
 }
 const TOOLS = [
   {
@@ -249,6 +251,12 @@ async function executeTool(name, args) {
         instance: config.instance ?? { profile: 'default', isolated: false },
         durableWorkflows: workflowStatus,
         asyncOperations: asyncOperationTools.status(),
+        chatStreamSafety: {
+          directSyncCallBudget: CHAT_STREAM_SAFE_DIRECT_CALL_BUDGET,
+          rapidPollingAllowed: false,
+          longWorkMode: 'durable-background',
+          hostWakeAssumed: false
+        },
         durableDelivery: deliveryTools.status(),
         powerMode: config.powerMode ?? { enabled: false },
         browserControl: { availability: BROWSER_ENABLED ? 'CHECK_browser_status' : 'DISABLED', enabled: BROWSER_ENABLED,

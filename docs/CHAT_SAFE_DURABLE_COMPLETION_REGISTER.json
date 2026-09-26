@@ -101,13 +101,15 @@
     {
       "id": "CSDC-006",
       "priority": "P0",
-      "status": "IN_PROGRESS",
+      "status": "PASS",
       "title": "WAITING/BLOCKED delivery",
       "scope": "Create durable user-visible events for WAITING_INPUT, BLOCKED, EXHAUSTED and quota pauses.",
       "acceptance": "No terminal/wait state can become silent.",
       "evidence": [
         "GitHub Actions run 36225716047: windows-latest PASS; ubuntu-latest PASS; head 6372bfa61bf265d7f337172c333f64b45072ba5d.",
-        "WAITING_INPUT and BLOCKED project states are regression-tested as durable correlation-scoped delivery events; code also maps COMPLETED/EXHAUSTED/CANCELLED/PAUSED."
+        "WAITING_INPUT and BLOCKED project states are regression-tested as durable correlation-scoped delivery events; code also maps COMPLETED/EXHAUSTED/CANCELLED/PAUSED.",
+        "GitHub Actions run 36227448928: windows-latest PASS; ubuntu-latest PASS; head 3da2278f3233150bc227bf4a0d090b3cfafebb9b.",
+        "Project delivery regression covers WAITING_INPUT, BLOCKED, COMPLETED, EXHAUSTED, CANCELLED and PAUSED terminal/user-action states as durable correlation-scoped delivery events."
       ],
       "notes": [
         "Need explicit executable coverage for every mapped terminal/wait state before PASS."
@@ -201,21 +203,27 @@
     {
       "id": "CSDC-014",
       "priority": "P1",
-      "status": "TODO",
+      "status": "PASS",
       "title": "Paged/ranged reads",
       "scope": "Add paging/range contracts for large text/binary/list/search results.",
       "acceptance": "Files/results larger than one MCP envelope remain retrievable without 413.",
-      "evidence": [],
+      "evidence": [
+        "GitHub Actions run 36227448928: windows-latest PASS; ubuntu-latest PASS; head 3da2278f3233150bc227bf4a0d090b3cfafebb9b.",
+        "Paged I/O regression requires paging for text/binary reads above the inline threshold, caps pages at 256 KiB, preserves UTF-8 boundaries, and exposes nextOffset/truncated metadata."
+      ],
       "notes": []
     },
     {
       "id": "CSDC-015",
       "priority": "P1",
-      "status": "TODO",
+      "status": "PASS",
       "title": "Request/response size alignment",
       "scope": "Align tool schemas with request/response envelopes or move content to artifacts.",
       "acceptance": "No advertised payload size is impossible to transport.",
-      "evidence": [],
+      "evidence": [
+        "GitHub Actions run 36227448928: windows-latest PASS; ubuntu-latest PASS; head 3da2278f3233150bc227bf4a0d090b3cfafebb9b.",
+        "Synchronous writes are capped below the 1 MiB HTTP request envelope; large reads fail closed into paging rather than producing oversized MCP responses; retry HTTP tests exercise the bounded envelope."
+      ],
       "notes": []
     },
     {
@@ -241,11 +249,14 @@
     {
       "id": "CSDC-018",
       "priority": "P1",
-      "status": "TODO",
+      "status": "PASS",
       "title": "Pause human-wait clock",
       "scope": "Do not consume execution wall-clock while legitimately waiting for user input.",
       "acceptance": "WAITING_INPUT does not expire before the user can answer.",
-      "evidence": [],
+      "evidence": [
+        "GitHub Actions run 36227448928: windows-latest PASS; ubuntu-latest PASS; head 3da2278f3233150bc227bf4a0d090b3cfafebb9b.",
+        "Project Engine regression proves WAITING_INPUT time extends the execution deadline by measured wait time while action/planner budgets are not replenished."
+      ],
       "notes": []
     },
     {
@@ -347,11 +358,13 @@
       "id": "CSDC-028",
       "priority": "P1",
       "status": "IN_PROGRESS",
-      "title": "Linux v0.9.3 completion",
-      "scope": "Finish retained-terminal cutover and Firefox background browser, full qualification and release.",
-      "acceptance": "Linux canonical connector reaches current release without killing active terminals.",
+      "title": "Linux v0.9.4 completion",
+      "scope": "Finish retained-terminal cutover, Firefox background browser, current CSDC/retry hardening, full qualification and release.",
+      "acceptance": "Linux canonical connector reaches the current qualified release without killing active terminals and with Windows/Linux behavior parity where platform permits.",
       "evidence": [],
-      "notes": []
+      "notes": [
+        "Supersedes the earlier v0.9.3 candidate wording after the CSDC branch advanced package/server/installers to v0.9.4."
+      ]
     },
     {
       "id": "CSDC-029",
@@ -437,6 +450,21 @@
       "acceptance": "Release checklist requires evidence for all P0 items and accepted dispositions for remaining P1 items.",
       "evidence": [],
       "notes": []
+    },
+    {
+      "id": "CSDC-037",
+      "priority": "P0",
+      "status": "IN_PROGRESS",
+      "title": "Chat stream turn budget",
+      "scope": "Prevent unbounded direct MCP call chains from causing ChatGPT UI/network/input-stream Retry before a final response is returned.",
+      "acceptance": "MCP initialize instructions and Plugin skill enforce a bounded direct-call batch, long work is moved to durable background state, and qualification distinguishes Commander transport failures from external Chat/UI stream failures.",
+      "evidence": [
+        "User screenshots on 2026-09-26 show two distinct UI failures after very long tool-call turns: `A network error occurred. Please check your connection and try again.` and `Error in input stream`.",
+        "Post-outage live Windows tunnel audit found response-deadline drops at 10:23:24 and 10:24:25 local, but no new tunnel deadline/413 event at the screenshot times around 10:36 and 11:00; those screenshot failures therefore were not contemporaneous Commander response-deadline drops."
+      ],
+      "notes": [
+        "Commander can reduce stream exposure but cannot guarantee the ChatGPT UI/network stream never fails. Host wake/push remains separately tracked by CSDC-005."
+      ]
     }
   ],
   "lastUpdatedAt": "2026-09-26",
