@@ -7,7 +7,7 @@ const exists = (p) => fs.existsSync(path.join(root, p));
 const fail = (m) => { throw new Error(m); };
 
 const pkg = JSON.parse(read('package.json'));
-if (pkg.version !== '0.9.3') fail('package version must be 0.9.3');
+if (pkg.version !== '0.9.4') fail('package version must be 0.9.4');
 const serverSource = read('src/server-v0.3.mjs');
 const serverVersion = serverSource.match(/const VERSION = '([^']+)'/u)?.[1];
 if (serverVersion !== pkg.version) fail(`server runtime version ${serverVersion ?? 'missing'} does not match package version ${pkg.version}`);
