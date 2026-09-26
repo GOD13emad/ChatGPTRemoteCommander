@@ -141,6 +141,8 @@ export function createAsyncOperationTools({ config, prepare, workerPath, deliver
   const deliveryBatchSize = boundedInt(policy.deliveryReconcileBatch, 100, 1, 500);
   const deliveryTracked = new Set();
   let deliveryTimer = null;
+  let deliveryClosed = false;
+  let deliveryReconcilePromise = Promise.resolve({ checked: 0, pending: 0 });
 
   function correlationOf(state) {
     const value = state?.correlationId ?? state?.requestId;
@@ -411,11 +413,12 @@ export function createAsyncOperationTools({ config, prepare, workerPath, deliver
     for (const entry of entries) if (entry.isDirectory() && OP_RE.test(entry.name)) deliveryTracked.add(entry.name);
     return entries.length;
   }
-  async function reconcileDeliveries(limit = deliveryBatchSize) {
-    if (!deliveryStore) return { checked: 0, pending: 0 };
+  async function reconcileDeliveriesOnce(limit = deliveryBatchSize) {
+    if (!deliveryStore || deliveryClosed) return { checked: 0, pending: deliveryTracked.size };
     const ids = [...deliveryTracked].slice(0, boundedInt(limit, deliveryBatchSize, 1, 500));
     let checked = 0;
     for (const operationId of ids) {
+      if (deliveryClosed) break;
       checked += 1;
       try {
         const state = await status(operationId, true);
@@ -430,9 +433,24 @@ export function createAsyncOperationTools({ config, prepare, workerPath, deliver
     }
     return { checked, pending: deliveryTracked.size };
   }
+  function reconcileDeliveries(limit = deliveryBatchSize) {
+    if (!deliveryStore || deliveryClosed) return Promise.resolve({ checked: 0, pending: deliveryTracked.size });
+    const run = () => reconcileDeliveriesOnce(limit);
+    deliveryReconcilePromise = deliveryReconcilePromise.then(run, run);
+    return deliveryReconcilePromise;
+  }
   if (deliveryStore) {
-    queueMicrotask(async () => {
-      try { await discoverForDelivery(); await reconcileDeliveries(); } catch {}
+    queueMicrotask(() => {
+      if (deliveryClosed) return;
+      deliveryReconcilePromise = deliveryReconcilePromise.then(async () => {
+        if (deliveryClosed) return { checked: 0, pending: deliveryTracked.size };
+        try { await discoverForDelivery(); } catch {}
+        return reconcileDeliveriesOnce();
+      }, async () => {
+        if (deliveryClosed) return { checked: 0, pending: deliveryTracked.size };
+        try { await discoverForDelivery(); } catch {}
+        return reconcileDeliveriesOnce();
+      });
     });
     deliveryTimer = setInterval(() => { reconcileDeliveries().catch(() => {}); }, deliveryIntervalMs);
     deliveryTimer.unref?.();
@@ -464,7 +482,12 @@ export function createAsyncOperationTools({ config, prepare, workerPath, deliver
       } : { enabled: false }
     }),
     reconcileDeliveries,
-    close: () => { if (deliveryTimer) clearInterval(deliveryTimer); },
+    close: async () => {
+      deliveryClosed = true;
+      if (deliveryTimer) clearInterval(deliveryTimer);
+      deliveryTimer = null;
+      try { await deliveryReconcilePromise; } catch {}
+    },
     execute: async (name, input) => {
       if (name === 'operation_start') return start(input);
       if (name === 'operation_status') return status(input.operationId);

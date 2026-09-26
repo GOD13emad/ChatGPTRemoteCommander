@@ -253,7 +253,7 @@ test('terminal operation receipts backfill exactly once into durable delivery af
       arguments: { argv: ['done'] }
     });
     await waitFor(first, started.operationId);
-    first.close?.();
+    await first.close?.();
 
     const delivery = new DeliveryStore({ directory: path.join(root, 'delivery'), scope: 'profile-a' });
     const second = createAsyncOperationTools({ config, prepare, deliveryStore: delivery });
@@ -265,7 +265,7 @@ test('terminal operation receipts backfill exactly once into durable delivery af
     assert.equal(listed.items[0].kind, 'COMPLETED');
     await second.reconcileDeliveries(500);
     assert.equal(delivery.list({ correlationId: 'chat-a', includeDelivered: true }).items.length, 1);
-    second.close?.();
+    await second.close?.();
     delivery.close();
   } finally {
     await rm(root, { recursive: true, force: true });
@@ -287,7 +287,7 @@ test('same async requestId with a changed correlation fails closed', async () =>
       manager.execute('operation_start', { ...input, correlationId: 'chat-b' }),
       /REQUEST_ID_CONFLICT/
     );
-    manager.close?.();
+    await manager.close?.();
   } finally {
     await rm(root, { recursive: true, force: true });
   }
