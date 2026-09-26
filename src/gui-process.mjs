@@ -20,7 +20,7 @@ function parseGuiResult(bytes) {
  * Bounded buffers, one JSON result, cleanup on every termination path.
  * A failed input is NOT retried. Caller latches uncertain native outcomes.
  */
-export function runGuiProcess(request, { file, args, timeoutMs = 30000, maxBytes = 7 * 1024 * 1024, env = process.env }) {
+export function runGuiProcess(request, { file, args, timeoutMs = 15000, maxBytes = 7 * 1024 * 1024, env = process.env }) {
   return new Promise((resolve, reject) => {
     let child;
     let timer;
@@ -67,8 +67,8 @@ export function runGuiProcess(request, { file, args, timeoutMs = 30000, maxBytes
 export function createGuiProcessClient({
   file,
   args,
-  timeoutMs = 30000,
-  startupTimeoutMs = 30000,
+  timeoutMs = 15000,
+  startupTimeoutMs = 15000,
   maxBytes = 7 * 1024 * 1024,
   env = process.env
 }) {
