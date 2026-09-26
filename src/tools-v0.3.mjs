@@ -3,6 +3,7 @@ import { synchronousCommandInput } from './retry-guard.mjs';
 import { appendFile, copyFile, mkdir, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { createHash, randomUUID } from 'node:crypto';
 import { spawn } from 'node:child_process';
+import { terminateProcessTree } from './platform.mjs';
 import { withPathLocks } from './locks.mjs';
 import { guardFileWrite } from './file-write-guard.mjs';
 import {
@@ -223,6 +224,7 @@ export async function runProjectCommand(ctx, input) {
     cwd,
     windowsHide: true,
     shell: false,
+    detached: process.platform !== 'win32',
     stdio: ['ignore', 'pipe', 'pipe']
   });
   let stdout = '';
@@ -230,7 +232,7 @@ export async function runProjectCommand(ctx, input) {
   child.stdout.on('data', (chunk) => { if (stdout.length < outputLimit) stdout += chunk.toString('utf8'); });
   child.stderr.on('data', (chunk) => { if (stderr.length < outputLimit) stderr += chunk.toString('utf8'); });
   let timedOut = false;
-  const timer = setTimeout(() => { timedOut = true; child.kill(); }, timeoutMs);
+  const timer = setTimeout(() => { timedOut = true; terminateProcessTree(child.pid, { signal: 'SIGKILL' }); }, timeoutMs);
   const outcome = await new Promise((resolve, reject) => {
     child.once('error', reject);
     child.once('close', (code, signal) => resolve({ code, signal }));
