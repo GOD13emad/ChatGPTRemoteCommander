@@ -160,7 +160,7 @@ export function createProjectEngine({directory,planner,workerPlanner,execute,obs
     Object.assign(run,extra,{status,lastCode:code,owner:null});save(run);return publicState(run);
   });
   const getWorkflow=async id=>(await execute('workflow_get',{id})).state;
-  const assertCurrent=(run,state,sourceRevision)=>{
+  const assertCurrent=(run,state,sourceRevision,{ignoreDeadline=false}={})=>{
     if(fingerprint(state)!==run.workflowFingerprint)error('PROJECT_SCOPE_CHANGED');
     if(state.control?.intent==='CANCELLED'||state.lifecycleState==='CANCELLED')error('PROJECT_CANCELLED');
     if(state.control?.intent==='PAUSED')error('PROJECT_PAUSED');
@@ -171,7 +171,7 @@ export function createProjectEngine({directory,planner,workerPlanner,execute,obs
       (requested.reasoningEffort&&requested.reasoningEffort!==provided.reasoningEffort)
     ))error('PROJECT_MODEL_PROFILE_UNAVAILABLE');
     if(sourceRevision!==undefined&&state.revision!==sourceRevision)error('PROJECT_REVISION_CHANGED');
-    if(Date.now()>=run.deadline)error('PROJECT_DEADLINE_EXHAUSTED');
+    if(!ignoreDeadline&&Date.now()>=run.deadline)error('PROJECT_DEADLINE_EXHAUSTED');
   };
   async function start({runId,id,expectedRevision,maxActions,maxPlannerCalls,durationMs,checks,correlationId}) {
     if(closing||closed)error('PROJECT_ENGINE_CLOSED');
@@ -223,7 +223,7 @@ export function createProjectEngine({directory,planner,workerPlanner,execute,obs
     if(repeated)return repeated;
     const state=await getWorkflow(first.workflowId);
     if(state.revision!==expectedRevision)error('PROJECT_REVISION_CHANGED');
-    assertCurrent(first,state);
+    assertCurrent(first,state,undefined,{ignoreDeadline:['WAITING_INPUT','PAUSED'].includes(first.status)});
     if(['COMPLETED','FINALIZING'].includes(state.lifecycleState))error('PROJECT_WORKFLOW_TERMINAL');
     const resumed=await execute('workflow_resume',{id:first.workflowId});
     if(resumed.blockers.length)error('PROJECT_RESUME_BLOCKED');
@@ -234,6 +234,12 @@ export function createProjectEngine({directory,planner,workerPlanner,execute,obs
       if(repeated)return repeated;
       if(!['WAITING_INPUT','PAUSED'].includes(run.status)||run.owner||run.pendingRequest?.requestId!==requestId)error('PROJECT_REQUEST_NOT_OPEN');
       if(run.policyHash!==policyHash)error('PROJECT_POLICY_CHANGED');
+      const waitedMs=Number.isSafeInteger(run.waitingStartedAt)?Math.max(0,Date.now()-run.waitingStartedAt):0;
+      if(waitedMs>0){
+        run.deadline=Math.min(Number.MAX_SAFE_INTEGER,run.deadline+waitedMs);
+        run.totalWaitingMs=(run.totalWaitingMs??0)+waitedMs;
+      }
+      run.waitingStartedAt=null;
       assertCurrent(run,resumed.state,expectedRevision);
       if(run.attempts>=run.maxActions||run.plannerCalls+callsPerPlan>run.maxPlannerCalls)error('PROJECT_DECISION_BUDGET_EXHAUSTED');
       run.decisions??=[];
@@ -429,7 +435,7 @@ export function createProjectEngine({directory,planner,workerPlanner,execute,obs
         return transaction(()=>{
           const r=load(run.runId);if(r.owner?.id!==owner.id)error('PROJECT_RUN_CLAIM_LOST');
           Object.assign(r.history.at(-1),{status:'WAITING_INPUT',requestId:pendingRequest.requestId,decisionHash:digest(proposal)});
-          Object.assign(r,{status:'WAITING_INPUT',lastCode:'PROJECT_INPUT_REQUIRED',pendingRequest,summary:proposal.summary,owner:null});
+          Object.assign(r,{status:'WAITING_INPUT',lastCode:'PROJECT_INPUT_REQUIRED',pendingRequest,summary:proposal.summary,owner:null,waitingStartedAt:Date.now()});
           return publicState(save(r));
         });
       }
