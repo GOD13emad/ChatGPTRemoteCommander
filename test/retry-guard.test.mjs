@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import { compactToolSuccessPayload, RETRY_GUARD_LIMITS, serializeBoundedJsonResponse, synchronousCommandInput } from '../src/retry-guard.mjs';
 
 test('synchronous command guard defaults to 30s and rejects longer direct calls before execution', () => {
-  assert.equal(synchronousCommandInput({ program: 'node' }).timeoutMs, 30000);
-  assert.equal(synchronousCommandInput({ timeoutMs: 30000 }).timeoutMs, 30000);
-  assert.throws(() => synchronousCommandInput({ timeoutMs: 30001 }), /SYNCHRONOUS_COMMAND_DEADLINE_RISK/);
+  assert.equal(synchronousCommandInput({ program: 'node' }).timeoutMs, 20000);
+  assert.equal(synchronousCommandInput({ timeoutMs: 20000 }).timeoutMs, 20000);
+  assert.throws(() => synchronousCommandInput({ timeoutMs: 20001 }), /SYNCHRONOUS_COMMAND_DEADLINE_RISK/);
 });
 
 test('large tool results are not duplicated into content text', () => {

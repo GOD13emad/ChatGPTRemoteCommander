@@ -119,14 +119,14 @@ const TOOLS = [
   },
   {
     name: 'run_project_command',
-    description: LEGACY_FULL_FILESYSTEM ? 'Run one short bounded allowlisted executable directly without a shell. Synchronous calls are hard-limited to 30 seconds; use operation_start with a stable requestId for longer, unknown-duration, or high-output work. Power Mode fullFilesystem=true permits cwd and path arguments outside configured allowedRoots; Python -c and Node eval/print remain blocked.' : 'Run one short bounded allowlisted executable directly in an allowed project directory without a shell. Synchronous calls are hard-limited to 30 seconds; use operation_start with a stable requestId for longer, unknown-duration, or high-output work.',
+    description: LEGACY_FULL_FILESYSTEM ? 'Run one short bounded allowlisted executable directly without a shell. Synchronous calls are hard-limited to 20 seconds; use operation_start with a stable requestId for longer, unknown-duration, or high-output work. Power Mode fullFilesystem=true permits cwd and path arguments outside configured allowedRoots; Python -c and Node eval/print remain blocked.' : 'Run one short bounded allowlisted executable directly in an allowed project directory without a shell. Synchronous calls are hard-limited to 20 seconds; use operation_start with a stable requestId for longer, unknown-duration, or high-output work.',
     inputSchema: {
       type: 'object',
       properties: {
         program: { type: 'string', minLength: 1 },
         args: { type: 'array', items: { type: 'string' }, maxItems: 100 },
         cwd: { type: 'string' },
-        timeoutMs: { type: 'integer', minimum: 1000, maximum: 30000 }
+        timeoutMs: { type: 'integer', minimum: 1000, maximum: 20000 }
       },
       required: ['program'],
       additionalProperties: false
@@ -143,7 +143,7 @@ const TOOLS = [
 if (config.durableWorkflows?.enabled === true) {
   const { createWorkflowTools } = await import('./workflow-tools.mjs');
   workflowTools = createWorkflowTools({
-    config, roots, device: config.deviceName || os.hostname(), configSha256,
+    config, roots, device: config.deviceName || os.hostname(), configSha256, deliveryStore,
     lookup: toolDefinition, validateSchema: validateJsonSchema,
     dispatch: async (name, args, workflow) => {
       // Further restrict file operations to the project, even in full Power Mode.

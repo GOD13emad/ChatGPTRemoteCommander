@@ -66,7 +66,7 @@ export const WORKFLOW_TOOL_DEFINITIONS = [
 
 export const PROJECT_ENGINE_TOOL_DEFINITIONS = [
   definition('workflow_run_start','Explicitly enroll a project in bounded agent execution with immutable independent acceptance checks. May start provider calls when configured autoTick is enabled.',obj({
-    ...update,runId:id,maxActions:{type:'integer',minimum:1,maximum:100},maxPlannerCalls:{type:'integer',minimum:1,maximum:500},durationMs:{type:'integer',minimum:1000,maximum:3600000},
+    ...update,runId:id,correlationId:{type:'string',minLength:1,maxLength:128,pattern:'^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$'},maxActions:{type:'integer',minimum:1,maximum:100},maxPlannerCalls:{type:'integer',minimum:1,maximum:500},durationMs:{type:'integer',minimum:1000,maximum:3600000},
     checks:{type:'array',minItems:1,maxItems:50,items:{type:'object'}}
   },['id','runId','expectedRevision','checks']),action),
   definition('workflow_run_status','Read durable run budgets, receipts, independent verification and blocker status.',obj({runId:id}),ro),
@@ -82,7 +82,7 @@ const DIRECT_SESSION_ONLY_GUI = new Set([
   'gui_type_text','gui_key_press','gui_focus_window'
 ]);
 
-export function createWorkflowTools({ config, roots, device, configSha256, lookup, validateSchema, dispatch, planner: injectedPlanner }) {
+export function createWorkflowTools({ config, roots, device, configSha256, lookup, validateSchema, dispatch, planner: injectedPlanner, deliveryStore = null }) {
   const settings = config.durableWorkflows;
   if (settings?.enabled !== true) fail('WORKFLOW_DISABLED');
   if (typeof settings.directory !== 'string') fail('WORKFLOW_DIRECTORY_REQUIRED');
@@ -249,7 +249,7 @@ export function createWorkflowTools({ config, roots, device, configSha256, looku
           const definition=lookup(name);
           if(!definition||validateSchema(args,definition.inputSchema).length)fail('WORKFLOW_TOOL_ARGUMENTS_INVALID');
           return dispatch(name,args,resumed.state);
-        },lookup,policy:settings.runner});
+        },lookup,policy:settings.runner,deliveryStore});
       api.definitions.push(...PROJECT_ENGINE_TOOL_DEFINITIONS);
       if(settings.runner.autoTick===true)api.definitions=api.definitions.map(d=>d.name==='workflow_scheduler_tick'?{
         ...d,description:'Recover interrupted state and execute at most one enrolled planner/tool step or verified finalization. May invoke a configured provider and mutate project files.',annotations:action

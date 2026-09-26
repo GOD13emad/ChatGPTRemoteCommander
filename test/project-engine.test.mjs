@@ -233,3 +233,32 @@ test('a changed runner policy cannot resolve an old input request',async()=>{
     const result=await f.api.execute('workflow_run_status',{runId:'run-one'});assert.equal(result.status,'BLOCKED');assert.equal(result.lastCode,'PROJECT_POLICY_CHANGED');assert.equal(f.calls,0);
   }finally{await f.dispose();}
 });
+
+
+test('WAITING_INPUT and terminal project states publish durable delivery events with correlation isolation', async()=>{
+  const f=fixture(async()=>ask());
+  const deliveryDir=path.join(f.root,'delivery-state');
+  const delivery=new DeliveryStore({directory:deliveryDir,scope:'project-delivery-test'});
+  try{
+    await f.create();
+    const engine=createProjectEngine({
+      directory:path.join(f.root,'engine-delivery'),
+      planner:{describe:()=>({available:true,callsPerPlan:1}),plan:async()=>ask()},
+      execute:(name,args)=>f.api.execute(name,args),
+      lookup:name=>f.definitions?.[name],
+      policy:{allowedTools:['write_text','read_text','list_directory'],maxActions:10,maxDurationMs:30000},
+      deliveryStore:delivery
+    });
+    await engine.start({runId:'delivery-run',id:'project-one',expectedRevision:0,checks:[{path:'evidence.txt',sha256:'0'.repeat(64)}],correlationId:'chat-route-a'});
+    const waiting=await engine.tick('delivery-run');
+    assert.equal(waiting.status,'WAITING_INPUT');
+    const events=delivery.list({correlationId:'chat-route-a',includeDelivered:true}).items;
+    assert.equal(events.length,1);
+    assert.equal(events[0].kind,'WAITING_INPUT');
+    assert.throws(()=>delivery.get(events[0].deliveryId,'chat-route-b'),/DELIVERY_CORRELATION_MISMATCH/);
+    engine.close();
+  }finally{
+    delivery.close();
+    await f.dispose();
+  }
+});

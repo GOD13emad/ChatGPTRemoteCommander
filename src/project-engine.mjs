@@ -12,6 +12,7 @@ const digest = value => createHash('sha256').update(canonical(value)).digest('he
 const error = code => { throw Object.assign(new Error(code), { projectCode: code }); };
 const ID = /^[a-z][a-z0-9_-]{0,63}$/;
 const TERMINAL = new Set(['COMPLETED', 'BLOCKED', 'CANCELLED', 'EXHAUSTED']);
+const DELIVERY_STATES = new Set(['COMPLETED','BLOCKED','CANCELLED','EXHAUSTED','WAITING_INPUT','PAUSED']);
 const SUPPORTED = new Set(['system_status','list_directory','read_text','file_info','read_file',
   'write_text','write_file','create_directory','search_files','run_project_command']);
 const DEFAULT_TOOLS = ['list_directory','read_text','file_info','write_text','create_directory'];
@@ -104,7 +105,7 @@ function readWorkerArtifact(engineDirectory,run,pending,maximum) {
   safeText(text,maximum);return {text,sha256:pending.sha256,size:pending.size,artifact:pending.artifact,workerId:pending.workerId};
 }
 
-export function createProjectEngine({directory,planner,workerPlanner,execute,observe,lookup,policy={}}) {
+export function createProjectEngine({directory,planner,workerPlanner,execute,observe,lookup,policy={},deliveryStore=null}) {
   if (!planner || typeof planner.plan!=='function' || typeof execute!=='function') error('PROJECT_RUNNER_REQUIRED');
   if(planner.describe?.().available===false)error('PROJECT_PROVIDER_UNAVAILABLE');
   const allowedTools=policy.allowedTools??DEFAULT_TOOLS;
@@ -149,15 +150,56 @@ export function createProjectEngine({directory,planner,workerPlanner,execute,obs
     db.prepare('UPDATE project_runs SET state=? WHERE id=?').run(canonical(run),run.runId);return run;
   };
   const list=()=>db.prepare('SELECT state FROM project_runs ORDER BY id').all().map(r=>JSON.parse(r.state));
+  function publishRunDelivery(run) {
+    if(!deliveryStore||!DELIVERY_STATES.has(run.status))return null;
+    const correlationId=run.correlationId??run.runId;
+    const payload={
+      runId:run.runId,workflowId:run.workflowId,status:run.status,lastCode:run.lastCode??null,
+      summary:run.summary??null,pendingRequest:run.pendingRequest??null,
+      finalRevision:run.finalRevision??null,updatedAt:run.updatedAt
+    };
+    const artifact=deliveryStore.writeArtifact(payload);
+    const eventKey='project:'+run.runId+':'+digest({
+      status:run.status,lastCode:run.lastCode??null,pendingRequest:run.pendingRequest?.requestId??null,
+      finalRevision:run.finalRevision??null,updatedAt:run.updatedAt
+    }).slice(0,32);
+    return deliveryStore.publish({
+      eventKey,correlationId,source:'project',sourceId:run.runId,
+      kind:run.status==='PAUSED'?'PAUSED':run.status,
+      code:run.lastCode??run.status,artifact
+    });
+  }
+  function withDelivery(run) {
+    if(!deliveryStore||!DELIVERY_STATES.has(run.status))return publicState(run);
+    try {
+      const event=publishRunDelivery(run);
+      return {...publicState(run),deliveryId:event?.deliveryId??null,deliveryPending:false};
+    } catch {
+      return {...publicState(run),deliveryPending:true};
+    }
+  }
+  function reconcileDeliveries() {
+    if(!deliveryStore||closed)return {checked:0,published:0,pending:0};
+    let checked=0,published=0,pending=0;
+    for(const run of list()) {
+      if(!DELIVERY_STATES.has(run.status))continue;
+      checked++;
+      try { publishRunDelivery(run); published++; } catch { pending++; }
+    }
+    return {checked,published,pending};
+  }
   const publicState=run=>{
     const {checks,owner:ignored,...summary}=run;
     return {...summary,checkCount:checks.length,checksArePlannerEditable:false};
   };
-  const settle=(id,status,code,extra={})=>transaction(()=>{
-    const run=load(id);
-    if(run.owner?.id!==owner.id)error('PROJECT_RUN_CLAIM_LOST');
-    Object.assign(run,extra,{status,lastCode:code,owner:null});save(run);return publicState(run);
-  });
+  const settle=(id,status,code,extra={})=>{
+    const run=transaction(()=>{
+      const current=load(id);
+      if(current.owner?.id!==owner.id)error('PROJECT_RUN_CLAIM_LOST');
+      Object.assign(current,extra,{status,lastCode:code,owner:null});save(current);return current;
+    });
+    return withDelivery(run);
+  };
   const getWorkflow=async id=>(await execute('workflow_get',{id})).state;
   const assertCurrent=(run,state,sourceRevision)=>{
     if(fingerprint(state)!==run.workflowFingerprint)error('PROJECT_SCOPE_CHANGED');
@@ -172,9 +214,11 @@ export function createProjectEngine({directory,planner,workerPlanner,execute,obs
     if(sourceRevision!==undefined&&state.revision!==sourceRevision)error('PROJECT_REVISION_CHANGED');
     if(Date.now()>=run.deadline)error('PROJECT_DEADLINE_EXHAUSTED');
   };
-  async function start({runId,id,expectedRevision,maxActions,maxPlannerCalls,durationMs,checks}) {
+  async function start({runId,id,expectedRevision,maxActions,maxPlannerCalls,durationMs,checks,correlationId}) {
     if(closing||closed)error('PROJECT_ENGINE_CLOSED');
     if(typeof runId!=='string'||!ID.test(runId))error('PROJECT_RUN_ID_INVALID');
+    const routeId=correlationId??runId;
+    if(typeof routeId!=='string'||!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(routeId))error('PROJECT_CORRELATION_ID_INVALID');
     const state=await getWorkflow(id);
     if(state.revision!==expectedRevision)error('PROJECT_REVISION_CHANGED');
     if(['CANCELLED','COMPLETED','FINALIZING'].includes(state.lifecycleState))error('PROJECT_WORKFLOW_TERMINAL');
@@ -187,7 +231,7 @@ export function createProjectEngine({directory,planner,workerPlanner,execute,obs
     const actions=boundedInt(maxActions,maximumActions,1,maximumActions);
     const plannerCalls=boundedInt(maxPlannerCalls,maximumPlannerCalls,1,maximumPlannerCalls);
     const duration=boundedInt(durationMs,maximumDurationMs,1000,maximumDurationMs);
-    const initial={runId,workflowId:id,workflowFingerprint:fingerprint(state),scopeFingerprint:scopeFingerprint(state),policyHash,
+    const initial={runId,workflowId:id,correlationId:routeId,workflowFingerprint:fingerprint(state),scopeFingerprint:scopeFingerprint(state),policyHash,
       status:'QUEUED',lastCode:null,maxActions:actions,attempts:0,actions:0,
       maxPlannerCalls:plannerCalls,plannerCalls:0,maxExtensions:maximumExtensions,extensions:0,pendingExtension:null,
       workerActions:0,pendingWorker:null,workerReceipts:[],
@@ -424,12 +468,13 @@ export function createProjectEngine({directory,planner,workerPlanner,execute,obs
         }
         const pendingRequest={requestId:randomUUID(),question:request.question,options:request.options??[],
           sourceRevision:state.revision,stepId:step.id,createdAt:new Date().toISOString()};
-        return transaction(()=>{
+        const waiting=transaction(()=>{
           const r=load(run.runId);if(r.owner?.id!==owner.id)error('PROJECT_RUN_CLAIM_LOST');
           Object.assign(r.history.at(-1),{status:'WAITING_INPUT',requestId:pendingRequest.requestId,decisionHash:digest(proposal)});
           Object.assign(r,{status:'WAITING_INPUT',lastCode:'PROJECT_INPUT_REQUIRED',pendingRequest,summary:proposal.summary,owner:null});
-          return publicState(save(r));
+          return save(r);
         });
+        return withDelivery(waiting);
       }
       let args;try{args=JSON.parse(proposal.argumentsJson);canonical(args);}catch{error('PROJECT_ARGUMENTS_INVALID');}
       if(run.pendingWorker?.status==='READY'&&proposal.action!=='block'&&!(proposal.action==='call'&&proposal.tool==='write_text'))
@@ -572,8 +617,9 @@ export function createProjectEngine({directory,planner,workerPlanner,execute,obs
       if(closing&&!closed){db.close();closed=true;for(const resolve of closeWaiters)resolve();}
     }
   }
-  return {start,tick,resolve,
-    status(runId){if(closed)error('PROJECT_ENGINE_CLOSED');return runId?publicState(load(runId)):{
+  queueMicrotask(()=>{try{reconcileDeliveries();}catch{}});
+  return {start,tick,resolve,reconcileDeliveries,
+    status(runId){if(closed)error('PROJECT_ENGINE_CLOSED');if(runId)return withDelivery(load(runId));return {
       configured:true,enabled:true,executionScope:'EXPLICITLY_ENROLLED_PROJECTS',busy,
       provider:planner.describe?.()??{},providerReadiness:'CONFIGURED_RUNTIME_ERRORS_REMAIN_POSSIBLE',policy:{allowedTools,maxActions:maximumActions,maxDurationMs:maximumDurationMs,
         maxPlannerCalls:maximumPlannerCalls,callsPerPlan,adaptive:{enabled:adaptiveEnabled,maxExtensions:maximumExtensions},
