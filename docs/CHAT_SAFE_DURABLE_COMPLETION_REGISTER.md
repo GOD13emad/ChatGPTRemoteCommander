@@ -54,7 +54,7 @@ Baseline: `a36ec05ea2c530ef52473b6a6f851a4484a31a35`. Qualification head: `6372b
 | CSDC-034 | P0 | TODO | **Multi-chat/account concurrency regression** — Test same project from concurrent chats/accounts with ownership/delivery isolation. | No cross-chat result leakage, duplicate writer or duplicate effect. |
 | CSDC-035 | P0 | TODO | **Long soak qualification** — Run 24-48h real workload qualification after fixes. | Zero Commander-caused deadline drops, silent terminal states and unrecoverable completed-undelivered jobs. |
 | CSDC-036 | P0 | TODO | **Release gate** — Block stable release unless chat-safe completion SLO passes on Windows and Linux. | Release checklist requires evidence for all P0 items and accepted dispositions for remaining P1 items. |
-| CSDC-037 | P0 | IN_PROGRESS | **Chat stream turn budget** — Prevent unbounded direct MCP call chains from causing ChatGPT UI/network/input-stream Retry before a final response is returned. | MCP initialize instructions and Plugin skill enforce a bounded direct-call batch, long work is moved to durable background state, and qualification distinguishes Commander transport failures from external Chat/UI stream failures. |
+| CSDC-037 | P0 | PASS | **Chat stream turn budget** — Prevent unbounded direct MCP call chains from causing ChatGPT UI/network/input-stream Retry before a final response is returned. | MCP initialize instructions and Plugin skill enforce a bounded direct-call batch, long work is moved to durable background state, and qualification distinguishes Commander transport failures from external Chat/UI stream failures. |
 
 ## Evidence rules
 
@@ -133,12 +133,15 @@ Baseline: `a36ec05ea2c530ef52473b6a6f851a4484a31a35`. Qualification head: `6372b
 - Residual: Remaining fault matrix cases include real tunnel disconnect, power cuts, process-tree and long soak.
 
 
-### CSDC-037 — IN_PROGRESS
+### CSDC-037 — PASS
 
 - User screenshots on 2026-09-26 captured `A network error occurred. Please check your connection and try again.` and `Error in input stream` after very long tool-call turns.
 - Post-outage live Windows tunnel audit found response-deadline drops at 10:23:24 and 10:24:25 local, but no new tunnel deadline/413 event at the screenshot times around 10:36 and 11:00.
-- Candidate contract now limits a Chat turn to 6 direct synchronous Commander calls and routes larger/unknown-duration work to durable background execution with sparse bounded status reads.
-- Residual: ChatGPT UI/network stream failures remain outside Commander authority; CSDC-005 tracks autonomous host wake/delivery.
+- Candidate contract limits a Chat turn to 6 direct synchronous Commander calls, forbids rapid polling, and routes larger/unknown-duration work to durable background execution with compact checkpoint/delivery identity.
+- GitHub Actions run 36227846681: windows-latest PASS; ubuntu-latest PASS; head 9a8fdb8ca7205a1555b2acc55d00bb6339000968.
+- Windows local qualification at the same worktree: npm run check PASS; npm test PASS; npm run audit PASS; git diff --check PASS.
+- Boundary: ChatGPT UI/network stream availability is external; this PASS covers Commander-side stream exposure and retry-safe operating contract. CSDC-005 remains the host wake/delivery boundary.
+
 
 ### CSDC-014 — PASS
 

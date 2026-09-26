@@ -454,13 +454,15 @@
     {
       "id": "CSDC-037",
       "priority": "P0",
-      "status": "IN_PROGRESS",
+      "status": "PASS",
       "title": "Chat stream turn budget",
       "scope": "Prevent unbounded direct MCP call chains from causing ChatGPT UI/network/input-stream Retry before a final response is returned.",
       "acceptance": "MCP initialize instructions and Plugin skill enforce a bounded direct-call batch, long work is moved to durable background state, and qualification distinguishes Commander transport failures from external Chat/UI stream failures.",
       "evidence": [
         "User screenshots on 2026-09-26 show two distinct UI failures after very long tool-call turns: `A network error occurred. Please check your connection and try again.` and `Error in input stream`.",
-        "Post-outage live Windows tunnel audit found response-deadline drops at 10:23:24 and 10:24:25 local, but no new tunnel deadline/413 event at the screenshot times around 10:36 and 11:00; those screenshot failures therefore were not contemporaneous Commander response-deadline drops."
+        "Post-outage live Windows tunnel audit found response-deadline drops at 10:23:24 and 10:24:25 local, but no new tunnel deadline/413 event at the screenshot times around 10:36 and 11:00; those screenshot failures therefore were not contemporaneous Commander response-deadline drops.",
+        "GitHub Actions run 36227846681: windows-latest PASS; ubuntu-latest PASS; head 9a8fdb8ca7205a1555b2acc55d00bb6339000968.",
+        "Windows local qualification at the same worktree: npm run check PASS; npm test PASS; npm run audit PASS; git diff --check PASS."
       ],
       "notes": [
         "Commander can reduce stream exposure but cannot guarantee the ChatGPT UI/network stream never fails. Host wake/push remains separately tracked by CSDC-005."
