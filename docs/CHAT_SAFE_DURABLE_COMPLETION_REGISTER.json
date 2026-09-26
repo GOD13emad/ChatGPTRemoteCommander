@@ -32,11 +32,14 @@
     {
       "id": "CSDC-001",
       "priority": "P0",
-      "status": "IN_PROGRESS",
+      "status": "PASS",
       "title": "Durable delivery store",
       "scope": "Persist completion/delivery records independently of chat context.",
       "acceptance": "A completed job survives process/chat restart with delivery state and immutable result hash.",
-      "evidence": [],
+      "evidence": [
+        "GitHub Actions run 36225716047: windows-latest PASS; ubuntu-latest PASS; head 6372bfa61bf265d7f337172c333f64b45072ba5d.",
+        "Durable SQLite delivery core persists records across reopen/restart and keeps state private from project roots; delivery-store regression suite is included in full CI."
+      ],
       "notes": []
     },
     {
@@ -46,48 +49,69 @@
       "title": "Correlation identity",
       "scope": "Carry one correlationId across request, workflow/run, operation, artifact and delivery.",
       "acceptance": "A support trace can map one accepted request end-to-end without heuristic log matching.",
-      "evidence": [],
-      "notes": []
+      "evidence": [
+        "GitHub Actions run 36225716047: windows-latest PASS; ubuntu-latest PASS; head 6372bfa61bf265d7f337172c333f64b45072ba5d.",
+        "Opaque correlationId is persisted through detached operations and Project Engine runs into delivery artifacts/events."
+      ],
+      "notes": [
+        "End-to-end Chat request/tunnel request correlation is not yet proven; CSDC-030 remains outstanding."
+      ]
     },
     {
       "id": "CSDC-003",
       "priority": "P0",
-      "status": "IN_PROGRESS",
+      "status": "PASS",
       "title": "Delivery state machine",
       "scope": "Implement COMPLETED_UNDELIVERED -> DELIVERY_PENDING -> DELIVERED/DEAD_LETTER.",
       "acceptance": "Transitions are durable, idempotent and covered by restart/lost-ack tests.",
-      "evidence": [],
+      "evidence": [
+        "GitHub Actions run 36225716047: windows-latest PASS; ubuntu-latest PASS; head 6372bfa61bf265d7f337172c333f64b45072ba5d.",
+        "Delivery transitions COMPLETED_UNDELIVERED -> DELIVERY_PENDING -> DELIVERED and bounded DEAD_LETTER semantics are durable/idempotent in delivery-store tests."
+      ],
       "notes": []
     },
     {
       "id": "CSDC-004",
       "priority": "P0",
-      "status": "IN_PROGRESS",
+      "status": "PASS",
       "title": "Pending-delivery inbox",
       "scope": "Expose bounded read/claim/ack paths for undelivered results.",
       "acceptance": "A later chat can discover and claim an earlier completed result without re-running effects.",
-      "evidence": [],
+      "evidence": [
+        "GitHub Actions run 36225716047: windows-latest PASS; ubuntu-latest PASS; head 6372bfa61bf265d7f337172c333f64b45072ba5d.",
+        "Bounded MCP delivery_status/list/get/claim/ack/read_artifact surface is integrated; correlation mismatch fails closed; artifacts are chunked."
+      ],
       "notes": []
     },
     {
       "id": "CSDC-005",
       "priority": "P0",
-      "status": "TODO",
+      "status": "BLOCKED_EXTERNAL",
       "title": "Chat completion bridge",
       "scope": "Use a supported host mechanism to wake/resume delivery when available; retain polling fallback.",
       "acceptance": "Real ChatGPT qualification proves autonomous delivery, or capability is marked external/unavailable with safe fallback.",
-      "evidence": [],
-      "notes": []
+      "evidence": [
+        "GitHub Actions run 36225716047: windows-latest PASS; ubuntu-latest PASS; head 6372bfa61bf265d7f337172c333f64b45072ba5d.",
+        "Commander-side durable inbox fallback is implemented and cross-platform CI passes."
+      ],
+      "notes": [
+        "Autonomous ChatGPT wake/push cannot be claimed unless the host advertises the MCP Tasks/subscriptions capability on the actual request. Native host capability still requires live observation."
+      ]
     },
     {
       "id": "CSDC-006",
       "priority": "P0",
-      "status": "TODO",
+      "status": "IN_PROGRESS",
       "title": "WAITING/BLOCKED delivery",
       "scope": "Create durable user-visible events for WAITING_INPUT, BLOCKED, EXHAUSTED and quota pauses.",
       "acceptance": "No terminal/wait state can become silent.",
-      "evidence": [],
-      "notes": []
+      "evidence": [
+        "GitHub Actions run 36225716047: windows-latest PASS; ubuntu-latest PASS; head 6372bfa61bf265d7f337172c333f64b45072ba5d.",
+        "WAITING_INPUT and BLOCKED project states are regression-tested as durable correlation-scoped delivery events; code also maps COMPLETED/EXHAUSTED/CANCELLED/PAUSED."
+      ],
+      "notes": [
+        "Need explicit executable coverage for every mapped terminal/wait state before PASS."
+      ]
     },
     {
       "id": "CSDC-007",
@@ -112,41 +136,56 @@
     {
       "id": "CSDC-009",
       "priority": "P0",
-      "status": "TODO",
+      "status": "PASS",
       "title": "Transport safety budget",
       "scope": "Reserve explicit margin below tunnel response deadline for every synchronous call.",
       "acceptance": "No Commander synchronous call can consume the full tunnel deadline.",
-      "evidence": [],
-      "notes": []
+      "evidence": [
+        "GitHub Actions run 36224867884 PASS on Windows and Ubuntu at fd8bec724c17b9ed04de42db36ff509f46cc8bdf.",
+        "Synchronous command safety budget was reduced to reserve transport headroom; long/unknown work remains directed to detached operation_start."
+      ],
+      "notes": [
+        "Live tunnel canary after rollout is still required by CSDC-035/release qualification; this PASS is for the Commander-side safety-budget requirement."
+      ]
     },
     {
       "id": "CSDC-010",
       "priority": "P0",
-      "status": "TODO",
+      "status": "IN_PROGRESS",
       "title": "Turn-safe orchestration",
       "scope": "Prevent long chains of MCP calls from keeping one chat turn alive until failure.",
       "acceptance": "Large projects acknowledge quickly and continue from durable state rather than a single long turn.",
-      "evidence": [],
-      "notes": []
+      "evidence": [
+        "fd8bec transport headroom PASS; durable detached operation + delivery inbox path PASS in cross-platform CI."
+      ],
+      "notes": [
+        "Potentially slow non-command tools are not universally deferred yet; CSDC-008 remains open."
+      ]
     },
     {
       "id": "CSDC-011",
       "priority": "P0",
-      "status": "IN_PROGRESS",
+      "status": "PASS",
       "title": "Result envelope",
       "scope": "Separate compact chat summary from full artifact/output.",
       "acceptance": "Final chat payload stays bounded while complete evidence remains retrievable.",
-      "evidence": [],
+      "evidence": [
+        "GitHub Actions run 36225716047: windows-latest PASS; ubuntu-latest PASS; head 6372bfa61bf265d7f337172c333f64b45072ba5d.",
+        "Full operation/project result payloads are stored as content-addressed bounded artifacts; delivery metadata remains compact; artifact reads are capped/chunked."
+      ],
       "notes": []
     },
     {
       "id": "CSDC-012",
       "priority": "P0",
-      "status": "IN_PROGRESS",
+      "status": "PASS",
       "title": "Exactly-once delivery receipt",
       "scope": "Persist delivery attempt/ack identities and suppress duplicate final answers.",
       "acceptance": "Retrying delivery cannot re-execute work or duplicate an acknowledged result.",
-      "evidence": [],
+      "evidence": [
+        "GitHub Actions run 36225716047: windows-latest PASS; ubuntu-latest PASS; head 6372bfa61bf265d7f337172c333f64b45072ba5d.",
+        "Same delivery attempt claim/ack is idempotent; duplicate event key returns same delivery; changed payload conflicts fail closed."
+      ],
       "notes": []
     },
     {
@@ -296,8 +335,13 @@
       "title": "Tunnel-client v0.0.15 qualification",
       "scope": "Candidate-test current upstream tunnel-client on Windows/Linux and pin if it passes.",
       "acceptance": "Exact binary/hash, regression and live canaries pass before promotion.",
-      "evidence": [],
-      "notes": []
+      "evidence": [
+        "GitHub Actions run 36225716047: windows-latest PASS; ubuntu-latest PASS; head 6372bfa61bf265d7f337172c333f64b45072ba5d.",
+        "Source installers now pin OpenAI tunnel-client v0.0.15 and official release hashes/tag provenance were captured."
+      ],
+      "notes": [
+        "Live Windows/Linux candidate qualification is still required before PASS."
+      ]
     },
     {
       "id": "CSDC-028",
@@ -356,8 +400,13 @@
       "title": "Fault-injection regression suite",
       "scope": "Test disconnects before ack, after effect, during planner, after completion and during delivery.",
       "acceptance": "Every injected cut preserves at-most-once effects and eventual discoverable result.",
-      "evidence": [],
-      "notes": []
+      "evidence": [
+        "GitHub Actions run 36225716047: windows-latest PASS; ubuntu-latest PASS; head 6372bfa61bf265d7f337172c333f64b45072ba5d.",
+        "Restart/lost-ack/idempotent delivery, operation receipt backfill and correlation isolation tests are in full CI."
+      ],
+      "notes": [
+        "Remaining fault matrix cases include real tunnel disconnect, power cuts, process-tree and long soak."
+      ]
     },
     {
       "id": "CSDC-034",
@@ -389,5 +438,7 @@
       "evidence": [],
       "notes": []
     }
-  ]
+  ],
+  "lastUpdatedAt": "2026-09-26",
+  "lastEvidenceHead": "6372bfa61bf265d7f337172c333f64b45072ba5d"
 }
