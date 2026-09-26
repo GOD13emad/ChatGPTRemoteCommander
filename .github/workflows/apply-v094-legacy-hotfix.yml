@@ -42,6 +42,23 @@ jobs:
           PY
       - name: Apply bounded compatibility patch
         run: node tools/apply-v094-legacy-idempotency-hotfix-r2.mjs
+      - name: Update deferred-work regression for schema/runtime separation
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('test/deferred-coverage.test.mjs')
+          s=p.read_text()
+          old="import { powerToolDefinitions } from '../src/power-tools-v0.3.mjs';"
+          new="import { powerToolDefinitions } from '../src/power-tools-v0.3.mjs';\nimport { synchronousCommandInput } from '../src/retry-guard.mjs';"
+          if s.count(old) != 1:
+              raise SystemExit(f'import marker count={s.count(old)}')
+          s=s.replace(old,new)
+          old2="  assert.equal(max(def(powerToolDefinitions,'run_shell'),'timeoutMs'),15000);"
+          new2="  // Keep the advertised schema backward-compatible with cached hosts, while the runtime hard guard remains 15 seconds.\n  assert.equal(max(def(powerToolDefinitions,'run_shell'),'timeoutMs'),30000);\n  assert.throws(() => synchronousCommandInput({timeoutMs:30000}), /SYNCHRONOUS_COMMAND_DEADLINE_RISK/);\n  assert.equal(synchronousCommandInput({timeoutMs:15000}).timeoutMs,15000);"
+          if s.count(old2) != 1:
+              raise SystemExit(f'assert marker count={s.count(old2)}')
+          p.write_text(s.replace(old2,new2))
+          PY
       - name: Diff safety
         run: git diff --check
       - name: Check
@@ -54,7 +71,7 @@ jobs:
         run: |
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add src/server-v0.3.mjs src/power-tools-v0.3.mjs test/mutation-idempotency-http.test.mjs test/linux-host-schema-compat.test.mjs package.json
+          git add src/server-v0.3.mjs src/power-tools-v0.3.mjs test/mutation-idempotency-http.test.mjs test/linux-host-schema-compat.test.mjs test/deferred-coverage.test.mjs package.json
           git diff --cached --quiet && exit 0
           git commit -m 'fix: preserve idempotency for cached legacy MCP clients [hotfix-applied]'
           git push origin HEAD:hotfix/v0.9.4-legacy-idempotency-r1
