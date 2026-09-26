@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.9.4 — 2026-09-26
+- Add a private durable completion/delivery inbox with idempotent claim/ack, content-addressed bounded artifacts, and restart-safe detached-operation receipt backfill.
+- Carry opaque correlation IDs through detached operations and Project Engine runs; publish WAITING_INPUT/BLOCKED and mapped terminal project states into durable delivery.
+- Reserve explicit transport headroom for synchronous command calls and keep long/unknown command work background-first.
+- Pin official OpenAI tunnel-client v0.0.15 for Windows/Linux candidate qualification.
+- Carry forward v0.9.3 Linux retained-terminal cutover and owned Firefox background-browser parity.
+- Preserve fail-closed mutation uncertainty, foreground-interaction policy, and project/scientific evidence during cleanup.
+
 ## 0.9.3 — 2026-09-25
 
 - Complete Linux Full Power parity without killing persistent terminal workloads: validated route cutovers may retain a terminal-bearing previous backend after routed inflight work reaches zero, detach it from route.previous, and protect its release tree until the terminal workload ends.
