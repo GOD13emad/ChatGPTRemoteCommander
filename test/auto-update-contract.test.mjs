@@ -175,6 +175,15 @@ test('public installation opts into stable automatic updates',()=>{
 });
 
 
+
+test('hardware selftest supplies stable requestIds to direct mutations',()=>{
+  const s=read('tools/hardware-selftest.mjs');
+  assert.ok(s.includes("requestId:selftestRequestId('run-shell')"),'run_shell selftest must satisfy mutation idempotency contract');
+  assert.ok(s.includes("requestId:selftestRequestId('browser-begin')"),'browser_session_begin selftest must satisfy mutation idempotency contract');
+  assert.ok(s.includes("requestId:selftestRequestId('browser-end')"),'browser_session_end selftest must satisfy mutation idempotency contract');
+  assert.ok(s.includes('hardware-selftest-${process.pid}-${label}'),'selftest request IDs must be unique per process and stable per intent');
+});
+
 test('Linux updater is candidate-first, hardware-gated, routed and rollback-aware',()=>{
   const s=read('auto-update-linux.sh');
   for(const marker of [

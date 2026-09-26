@@ -219,3 +219,20 @@ Historical checkpoints remain append-only archives. Current release/control clai
 **Reuse Targets:** retry/fault-tolerance architecture, Plugin contract, release notes, operations guide, future CSDC fault-injection and multi-chat tests.
 
 **Provenance:** branch `fix/csdc007-lost-ack`, dedicated local worktree (absolute developer path intentionally excluded from tracked evidence), baseline `44379b11d63585ccaf5305d20b9039f4d5893ef3`.
+
+
+## E074 — release qualification self-test request identity
+
+**Date/Context:** 2026-09-26; exact v0.9.4 candidate qualification of CSDC-007 commit `e195f991702035220c15545ee83a77eb1c0c52d1` on both target machines.
+
+**Claim/Decision:** Candidate promotion must remain fail-closed when the live hardware self-test is stale relative to a new MCP mutation contract. Hardware self-test mutations now supply per-process, per-intent stable `requestId` values for `run_shell`, `browser_session_begin`, and `browser_session_end`.
+
+**Failure→Root Cause→Prevention:** Windows and Linux candidates passed repository check/test/audit and candidate doctor, then both stopped before promotion with `MUTATION_REQUEST_ID_REQUIRED` / `SELFTEST_TOOL_run_shell`. Root cause was not candidate runtime failure; `tools/hardware-selftest.mjs` still invoked newly idempotent direct mutations using the pre-CSDC-007 contract. Prevention is an explicit updater-contract regression asserting requestId coverage for every self-test mutation.
+
+**Evidence/Source:** Windows candidate reported v0.9.4, Full Power, 81 tools and matching config before failing hardware self-test; Linux candidate reported v0.9.4, Full Power, 77 tools and matching config before the same contract failure. No promotion occurred. Hotfix source `tools/hardware-selftest.mjs` SHA-256 `e9b10c69919450e9fbd86052ebd96f6c1e2e8302b035b2105acec994750f7fbe`; regression `test/auto-update-contract.test.mjs` SHA-256 `cd24cd4aff0217e8ca023413e88005028fa665aad36c41dc7fa0a46b727ba8e7`. Exact hotfix tree: `npm run check` exit 0; `npm test` exit 0 (418 total / 412 pass / 6 skip / 0 fail plus downstream GUI/concurrency/runtime checks); `npm run audit` exit 0 with `SECURITY_AUDIT_PASS`; `git diff --check` exit 0.
+
+**Confidence/Status:** CONFIRMED local Windows regression; live Windows/Linux candidate requalification remains required before promotion.
+
+**Reuse Targets:** updater qualification, release checklist, mutation contract evolution, hardware canary design.
+
+**Provenance:** branch `fix/csdc007-release-selftest`, baseline `e195f991702035220c15545ee83a77eb1c0c52d1`.

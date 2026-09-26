@@ -36,6 +36,7 @@ async function tool(url,name,args,id,timeoutMs){
   return r?.structuredContent??r;
 }
 const o=parse(process.argv.slice(2));
+const selftestRequestId=(label)=>`hardware-selftest-${process.pid}-${label}`;
 const config=JSON.parse(fs.readFileSync(o.config,'utf8'));
 let id=1;
 const status=await tool(o.url,'system_status',{},id++,o.timeoutMs);
@@ -61,7 +62,7 @@ if(config.capabilityProfile?.tier==='FULL_POWER'){
   if(!disabled.has('shell.execute')){
     const marker='RC_HARDWARE_SELFTEST_PASS';
     const cmd=status.platform==='win32'?'Write-Output '+marker:'printf '+marker;
-    const sh=await tool(o.url,'run_shell',{command:cmd,timeoutMs:10000},id++,o.timeoutMs);
+    const sh=await tool(o.url,'run_shell',{requestId:selftestRequestId('run-shell'),command:cmd,timeoutMs:10000},id++,o.timeoutMs);
     if(!String(sh?.stdout??'').includes(marker))fail('SELFTEST_SHELL_E2E');
     pass('run_shell');
   }
@@ -73,9 +74,9 @@ if(config.capabilityProfile?.tier==='FULL_POWER'){
   if(config.powerMode?.browserControl?.enabled===true){
     const bs=await tool(o.url,'browser_status',{},id++,o.timeoutMs);
     if(bs?.available===true){
-      const begun=await tool(o.url,'browser_session_begin',{mode:'isolated',profile:'hardware',ttlSeconds:30},id++,Math.max(o.timeoutMs,30000));
+      const begun=await tool(o.url,'browser_session_begin',{requestId:selftestRequestId('browser-begin'),mode:'isolated',profile:'hardware',ttlSeconds:30},id++,Math.max(o.timeoutMs,30000));
       if(begun?.background!==true||begun?.userDesktopTouched!==false||begun?.savedPasswordStoreAccess!==false)fail('SELFTEST_BROWSER_POLICY');
-      await tool(o.url,'browser_session_end',{lease:begun.lease},id++,Math.max(o.timeoutMs,30000));
+      await tool(o.url,'browser_session_end',{requestId:selftestRequestId('browser-end'),lease:begun.lease},id++,Math.max(o.timeoutMs,30000));
       pass('browser_background',bs.backend??'available');
     }else{
       pass('browser_background','authorized but Chromium background backend unavailable on this host');
