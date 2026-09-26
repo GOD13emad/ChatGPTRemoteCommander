@@ -55,6 +55,7 @@ Baseline: `a36ec05ea2c530ef52473b6a6f851a4484a31a35`. Qualification head: `6372b
 | CSDC-035 | P0 | TODO | **Long soak qualification** — Run 24-48h real workload qualification after fixes. | Zero Commander-caused deadline drops, silent terminal states and unrecoverable completed-undelivered jobs. |
 | CSDC-036 | P0 | TODO | **Release gate** — Block stable release unless chat-safe completion SLO passes on Windows and Linux. | Release checklist requires evidence for all P0 items and accepted dispositions for remaining P1 items. |
 | CSDC-037 | P0 | PASS | **Chat stream turn budget** — Prevent unbounded direct MCP call chains from causing ChatGPT UI/network/input-stream Retry before a final response is returned. | MCP initialize instructions and Plugin skill enforce a bounded direct-call batch, long work is moved to durable background state, and qualification distinguishes Commander transport failures from external Chat/UI stream failures. |
+| CSDC-038 | P0 | IN_PROGRESS | **Hot-update tool-schema continuity** — Keep an already-open MCP host usable when an update changes tool schemas, using negotiated MCP change-notification support where available and fail-closed compatibility policy otherwise. | A candidate-first live update cannot silently leave the active chat with stale mutation schemas; supported hosts refresh the tool list, unsupported hosts receive an explicit pre-cutover/compatibility disposition. |
 
 ## Evidence rules
 
@@ -170,3 +171,12 @@ Baseline: `a36ec05ea2c530ef52473b6a6f851a4484a31a35`. Qualification head: `6372b
 - GitHub Actions run 36227448928: windows-latest PASS; ubuntu-latest PASS; head 3da2278f3233150bc227bf4a0d090b3cfafebb9b.
 - Human WAITING_INPUT time extends the execution deadline by measured wait time while action/planner budgets are not replenished.
 
+
+
+### CSDC-038 — IN_PROGRESS
+
+- Live v0.9.4 rollout on 2026-09-26 exposed a real stale-schema boundary: the server correctly began requiring stable `requestId` on direct mutations, while the already-open host tool wrapper still reflected the pre-update schema and could no longer issue a conforming mutation.
+- Current server discovery advertises `capabilities.tools={}` and has no `subscriptions/listen` implementation, so no standard tool-list change path is presently available.
+- MCP 2026-07-28 defines negotiated `tools.listChanged` plus `subscriptions/listen`; clients that opt in refetch tools after `notifications/tools/list_changed`. Earlier protocol revisions use the legacy list-changed notification channel.
+- Minimum-sufficient target: preserve strict lost-ack idempotency; do not weaken `requestId` merely to hide a stale host schema. Add standards-based refresh where runtime-proven, plus a release/update compatibility gate for hosts that do not negotiate it.
+- Live rollout evidence: exact commit `bc8f7baedfae4053ffb200f2a2a8f988fab951f0` became active on both Windows profiles and the Linux canonical route; Linux retained active terminal sessions on the previous backend without keeping it in the canonical route.
