@@ -415,6 +415,8 @@ export function createAsyncOperationTools({ config, prepare, workerPath, deliver
   }
   async function reconcileDeliveriesOnce(limit = deliveryBatchSize) {
     if (!deliveryStore || deliveryClosed) return { checked: 0, pending: deliveryTracked.size };
+    await discoverForDelivery();
+    if (deliveryClosed) return { checked: 0, pending: deliveryTracked.size };
     const ids = [...deliveryTracked].slice(0, boundedInt(limit, deliveryBatchSize, 1, 500));
     let checked = 0;
     for (const operationId of ids) {
@@ -440,18 +442,7 @@ export function createAsyncOperationTools({ config, prepare, workerPath, deliver
     return deliveryReconcilePromise;
   }
   if (deliveryStore) {
-    queueMicrotask(() => {
-      if (deliveryClosed) return;
-      deliveryReconcilePromise = deliveryReconcilePromise.then(async () => {
-        if (deliveryClosed) return { checked: 0, pending: deliveryTracked.size };
-        try { await discoverForDelivery(); } catch {}
-        return reconcileDeliveriesOnce();
-      }, async () => {
-        if (deliveryClosed) return { checked: 0, pending: deliveryTracked.size };
-        try { await discoverForDelivery(); } catch {}
-        return reconcileDeliveriesOnce();
-      });
-    });
+    queueMicrotask(() => { reconcileDeliveries().catch(() => {}); });
     deliveryTimer = setInterval(() => { reconcileDeliveries().catch(() => {}); }, deliveryIntervalMs);
     deliveryTimer.unref?.();
   }
