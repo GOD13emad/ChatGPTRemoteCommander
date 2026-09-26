@@ -39,6 +39,18 @@ test('fresh linux installer delegates tunnel install to the single pinned helper
   assert.match(s,/chmod \+x[\s\S]*install-tunnel-client-linux\.sh/);
 });
 
+test('existing-install updater installs and proves the pinned tunnel before route cutover',()=>{
+  const s=read('auto-update-linux.sh');
+  for(const marker of ['pinned_tunnel_exe()','ensure_pinned_tunnel_client()','profile_tunnel_uses_expected()','wait_pinned_tunnels()','TUNNEL_PIN_INSTALL_PASS','TUNNEL_PIN_ACTIVE','TUNNEL_PIN_ACTIVE_FAIL']) assert.ok(s.includes(marker),marker);
+  const noPromote=s.indexOf('if [[ "$NO_PROMOTE" == 1 ]]');
+  const install=s.indexOf('ensure_pinned_tunnel_client "$STAGE_DIR"',noPromote);
+  const verify=s.indexOf('wait_pinned_tunnels "$STAGE_DIR"',install);
+  const commitSetup=s.indexOf('CUTOVER_COMMITTED=0',verify);
+  assert.ok(noPromote>0 && install>noPromote && verify>install && commitSetup>verify,'pinned tunnel mutation must occur only after no-promote exit and before cutover');
+  assert.match(s,/profile_tunnel_uses_expected[\s\S]*\[\[ "\$exe" == "\$expected" \]\]/);
+  assert.match(s,/wait_pinned_tunnels[\s\S]*readyz/);
+});
+
 test('tunnel pin has exact qualified v0.0.15 provenance',()=>{
   const pin=JSON.parse(read('tools/tunnel-client-pin.json'));
   assert.equal(pin.version,'0.0.15');
@@ -50,7 +62,7 @@ test('tunnel pin has exact qualified v0.0.15 provenance',()=>{
 test('linux lifecycle shell files parse and tunnel installer self-test resolves the pin',()=>{
   const bash=bashPath();
   if(!bash)return;
-  for(const rel of ['autostart-linux.sh','install.sh','tools/install-tunnel-client-linux.sh']){
+  for(const rel of ['autostart-linux.sh','auto-update-linux.sh','install.sh','tools/install-tunnel-client-linux.sh']){
     const p=path.join(root,rel);
     const r=spawnSync(bash,['-n',p],{encoding:'utf8'});
     assert.equal(r.status,0,rel+' bash -n failed: '+r.stderr);

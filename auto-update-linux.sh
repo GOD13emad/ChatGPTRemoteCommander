@@ -222,6 +222,65 @@ tunnels_ready(){
   done < <(find "$PROFILE_DIR" -maxdepth 1 -type f -name '*.yaml' -print0 2>/dev/null)
 }
 
+pinned_tunnel_exe(){
+  local project="$1" version machine arch
+  version="$(json_field "$project" "$project/tools/tunnel-client-pin.json" version)"
+  [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || return 1
+  machine="$(uname -m)"
+  case "$machine" in
+    x86_64|amd64) arch=amd64 ;;
+    aarch64|arm64) arch=arm64 ;;
+    *) return 1 ;;
+  esac
+  printf '%s/tools/tunnel-client-v%s-linux-%s/tunnel-client\n' "$INSTALL_DIR" "$version" "$arch"
+}
+ensure_pinned_tunnel_client(){
+  local project="$1" helper expected
+  helper="$project/tools/install-tunnel-client-linux.sh"
+  [[ -f "$project/tools/tunnel-client-pin.json" && -f "$helper" ]] || { echo 'pinned tunnel-client installer missing' >&2; return 1; }
+  chmod +x "$helper"
+  /bin/bash "$helper" --install-dir "$INSTALL_DIR"
+  expected="$(pinned_tunnel_exe "$project")"
+  [[ -x "$expected" ]] || { echo "pinned tunnel-client executable missing: $expected" >&2; return 1; }
+  log "TUNNEL_PIN_INSTALL_PASS exe=$expected"
+}
+profile_tunnel_uses_expected(){
+  local profile="$1" expected="$2" pid exe verb flag value rest found=0
+  while read -r pid exe verb flag value rest; do
+    [[ -n "$pid" && -n "$exe" ]] || continue
+    [[ "$verb" == run && "$flag" == --profile && "$value" == "$profile" ]] || continue
+    [[ "$exe" == "$expected" ]] || return 1
+    found=$((found+1))
+  done < <(ps -eo pid=,args= 2>/dev/null)
+  (( found == 1 ))
+}
+wait_pinned_tunnels(){
+  local project="$1" expected file raw hp profile ok
+  expected="$(pinned_tunnel_exe "$project")" || return 1
+  [[ -x "$expected" ]] || return 1
+  [[ -d "$PROFILE_DIR" ]] || { log "TUNNEL_PIN_ACTIVE no_profiles=true exe=$expected"; return 0; }
+  while IFS= read -r -d '' file; do
+    raw="$(cat "$file")"
+    [[ "$raw" == *'http://127.0.0.1:47831/mcp'* ]] || continue
+    hp="$(printf '%s' "$raw" | sed -nE 's/.*listen_addr:[[:space:]]*["'\'']?127\.0\.0\.1:([0-9]+).*/\1/p' | head -n1)"
+    [[ -n "$hp" ]] || continue
+    profile="$(basename "$file" .yaml)"
+    ok=0
+    for _ in $(seq 1 150); do
+      if profile_tunnel_uses_expected "$profile" "$expected" && [[ "$(curl -fsS --connect-timeout 1 --max-time 2 "http://127.0.0.1:$hp/readyz" 2>/dev/null || true)" == ready ]]; then
+        ok=1
+        break
+      fi
+      sleep 0.2
+    done
+    if [[ "$ok" != 1 ]]; then
+      log "TUNNEL_PIN_ACTIVE_FAIL profile=$profile exe=$expected port=$hp"
+      return 1
+    fi
+    log "TUNNEL_PIN_ACTIVE profile=$profile exe=$expected port=$hp"
+  done < <(find "$PROFILE_DIR" -maxdepth 1 -type f -name '*.yaml' -print0 2>/dev/null)
+}
+
 stop_owned_from_config(){
   local helper="$1" cfg="$2" expected_project="${3:-}" marker pid project cwd
   marker="$(json_field "$helper" "$cfg" runtimeState)"
@@ -562,6 +621,9 @@ if [[ -f "$ROUTE" ]]; then
     exit 0
   fi
 fi
+
+ensure_pinned_tunnel_client "$STAGE_DIR"
+wait_pinned_tunnels "$STAGE_DIR" || { echo 'pinned tunnel-client activation failed' >&2; exit 1; }
 
 if [[ -f "$ROUTE" ]]; then
   LIVE_ROUTE_CFG=""
