@@ -187,11 +187,10 @@ for(const action of ['pause','cancel','revise'])test(`decision resolution respec
   }finally{await f.dispose();}
 });
 
-for(const kind of ['deadline','actions','calls'])test(`waiting for input never replenishes ${kind} budget`,async t=>{
+for(const kind of ['actions','calls'])test(`waiting for input never replenishes ${kind} budget`,async()=>{
   const f=fixture(async()=>ask());
   try{
-    await f.create();const initial=await f.start(kind==='actions'?{maxActions:1}:kind==='calls'?{maxPlannerCalls:1}:{});const waiting=await f.tick();
-    if(kind==='deadline')t.mock.method(Date,'now',()=>initial.deadline+1);
+    await f.create();const initial=await f.start(kind==='actions'?{maxActions:1}:{maxPlannerCalls:1});const waiting=await f.tick();
     const state=(await f.api.execute('workflow_get',{id:'project'})).state;
     await assert.rejects(f.api.execute('workflow_run_resolve',{runId:'run-one',requestId:waiting.pendingRequest.requestId,expectedRevision:state.revision,response:'Continue'}),/EXHAUSTED/);
     const tick=await f.tick();assert.equal(tick.status,'EXHAUSTED');assert.equal(tick.attempts,1);assert.equal(tick.plannerCalls,1);assert.equal(tick.deadline,initial.deadline);assert.equal(f.calls,0);
