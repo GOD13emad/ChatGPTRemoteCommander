@@ -6,6 +6,7 @@ import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promis
 import { fileURLToPath } from 'node:url';
 import { createHash, randomUUID } from 'node:crypto';
 import { createAsyncOperationTools } from '../src/async-operations.mjs';
+import { DeliveryStore } from '../src/delivery-store.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const fixture = path.join(here, 'async-operation-fixture.mjs');
@@ -226,5 +227,68 @@ test('dead PID without receipt stays nonterminal until durable deadline', async 
     assert.equal(afterDeadline.failureCode, 'DEADLINE_EXCEEDED_WITHOUT_FINAL_RECEIPT');
   } finally {
     await rm(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 });
+  }
+});
+
+
+test('terminal operation receipts backfill exactly once into durable delivery after restart', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'rc-async-delivery-'));
+  try {
+    const config = {
+      instance: { profile: 'delivery-test' },
+      asyncOperations: { enabled: true, stateDir: path.join(root, 'ops'), maxOutputBytes: 1024 * 1024 }
+    };
+    const prepare = async () => ({
+      file: process.execPath,
+      args: ['-e', 'process.stdout.write("done")'],
+      cwd: root,
+      timeoutMs: 5000,
+      outputLimit: 1024 * 1024
+    });
+    const first = createAsyncOperationTools({ config, prepare });
+    const started = await first.execute('operation_start', {
+      requestId: 'delivery-request-1',
+      correlationId: 'chat-a',
+      tool: 'run_project_command',
+      arguments: { argv: ['done'] }
+    });
+    await waitForTerminal(first, started.operationId);
+    first.close?.();
+
+    const delivery = new DeliveryStore({ directory: path.join(root, 'delivery'), scope: 'profile-a' });
+    const second = createAsyncOperationTools({ config, prepare, deliveryStore: delivery });
+    await second.reconcileDeliveries(500);
+    const listed = delivery.list({ correlationId: 'chat-a', includeDelivered: true });
+    assert.equal(listed.items.length, 1);
+    assert.equal(listed.items[0].source, 'operation');
+    assert.equal(listed.items[0].sourceId, started.operationId);
+    assert.equal(listed.items[0].kind, 'COMPLETED');
+    await second.reconcileDeliveries(500);
+    assert.equal(delivery.list({ correlationId: 'chat-a', includeDelivered: true }).items.length, 1);
+    second.close?.();
+    delivery.close();
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
+test('same async requestId with a changed correlation fails closed', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'rc-async-correlation-'));
+  try {
+    const config = { asyncOperations: { enabled: true, stateDir: path.join(root, 'ops') } };
+    const prepare = async () => ({
+      file: process.execPath, args: ['-e', 'setTimeout(()=>{},50)'], cwd: root,
+      timeoutMs: 1000, outputLimit: 65536
+    });
+    const manager = createAsyncOperationTools({ config, prepare });
+    const input = { requestId: 'same-correlation-request', correlationId: 'chat-a', tool: 'run_project_command', arguments: {} };
+    await manager.execute('operation_start', input);
+    await assert.rejects(
+      manager.execute('operation_start', { ...input, correlationId: 'chat-b' }),
+      /REQUEST_ID_CONFLICT/
+    );
+    manager.close?.();
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
   }
 });

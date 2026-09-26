@@ -3,7 +3,7 @@ import path from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { mkdir, open, readFile, rename, stat, writeFile } from 'node:fs/promises';
+import { mkdir, open, readFile, readdir, rename, stat, writeFile } from 'node:fs/promises';
 import { expandPathValue } from './platform.mjs';
 
 const TERMINAL = new Set(['SUCCEEDED', 'FAILED', 'TIMED_OUT', 'CANCELLED', 'UNCERTAIN']);
@@ -80,6 +80,7 @@ export const asyncOperationDefinitions = [
       type: 'object',
       properties: {
         requestId: { type: 'string', minLength: 1, maxLength: 128, pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$' },
+        correlationId: { type: 'string', minLength: 1, maxLength: 128, pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$' },
         tool: { type: 'string', enum: ['run_project_command', 'run_shell'] },
         arguments: { type: 'object' }
       },
@@ -126,7 +127,7 @@ export const asyncOperationDefinitions = [
   }
 ];
 
-export function createAsyncOperationTools({ config, prepare, workerPath }) {
+export function createAsyncOperationTools({ config, prepare, workerPath, deliveryStore = null }) {
   const policy = config.asyncOperations ?? {};
   const enabled = policy.enabled !== false;
   const root = policy.stateDir
@@ -136,6 +137,39 @@ export function createAsyncOperationTools({ config, prepare, workerPath }) {
   const resolvedWorker = workerPath ?? fileURLToPath(new URL('../tools/operation-worker.mjs', import.meta.url));
   const operationsDir = path.join(root, 'operations');
   const requestsDir = path.join(root, 'requests');
+  const deliveryIntervalMs = boundedInt(policy.deliveryReconcileMs, 5000, 1000, 60000);
+  const deliveryBatchSize = boundedInt(policy.deliveryReconcileBatch, 100, 1, 500);
+  const deliveryTracked = new Set();
+  let deliveryTimer = null;
+
+  function correlationOf(state) {
+    const value = state?.correlationId ?? state?.requestId;
+    return REQUEST_RE.test(value ?? '') ? value : null;
+  }
+  function compactReceipt(receipt) {
+    if (!receipt) return null;
+    const stream = value => value ? {
+      capturedBytes: value.capturedBytes ?? null,
+      totalBytes: value.totalBytes ?? null,
+      sha256: value.sha256 ?? null,
+      truncated: value.truncated === true
+    } : null;
+    return {
+      operationId: receipt.operationId,
+      tool: receipt.tool,
+      inputHash: receipt.inputHash,
+      status: receipt.status,
+      exitCode: receipt.exitCode ?? null,
+      signal: receipt.signal ?? null,
+      timedOut: receipt.timedOut === true,
+      cancelRequested: receipt.cancelRequested === true,
+      outputComplete: receipt.outputComplete !== false,
+      stdout: stream(receipt.stdout),
+      stderr: stream(receipt.stderr),
+      startedAt: receipt.startedAt ?? null,
+      finishedAt: receipt.finishedAt ?? null
+    };
+  }
 
   function opPaths(operationId) {
     if (!OP_RE.test(operationId)) throw new Error('invalid operationId');
@@ -148,6 +182,47 @@ export function createAsyncOperationTools({ config, prepare, workerPath }) {
       stderr: path.join(dir, 'stderr.log'),
       cancel: path.join(dir, 'cancel.request')
     };
+  }
+  async function publishTerminal(state) {
+    if (!deliveryStore || !state || !TERMINAL.has(state.status)) return null;
+    const correlationId = correlationOf(state);
+    if (!correlationId) return null;
+    const p = opPaths(state.operationId);
+    let receipt = null;
+    try { receipt = await readJson(p.result); } catch (error) { if (error?.code !== 'ENOENT') throw error; }
+    const payload = compactReceipt(receipt) ?? {
+      operationId: state.operationId,
+      tool: state.tool,
+      inputHash: state.inputHash,
+      status: state.status,
+      failureCode: state.failureCode ?? null,
+      finishedAt: state.finishedAt ?? null
+    };
+    const artifact = deliveryStore.writeArtifact(payload);
+    const kind = state.status === 'SUCCEEDED' ? 'COMPLETED'
+      : state.status === 'CANCELLED' ? 'CANCELLED'
+        : state.status === 'UNCERTAIN' ? 'UNCERTAIN' : 'FAILED';
+    const event = deliveryStore.publish({
+      eventKey: 'operation:' + state.operationId + ':' + state.status,
+      correlationId,
+      source: 'operation',
+      sourceId: state.operationId,
+      kind,
+      code: state.failureCode ?? state.status,
+      artifact
+    });
+    deliveryTracked.delete(state.operationId);
+    return event;
+  }
+  async function attachDelivery(state) {
+    if (!deliveryStore || !TERMINAL.has(state?.status)) return state;
+    try {
+      const event = await publishTerminal(state);
+      return event ? { ...state, deliveryId: event.deliveryId } : state;
+    } catch {
+      deliveryTracked.add(state.operationId);
+      return { ...state, deliveryPending: true };
+    }
   }
   async function status(operationId, reconcile = true) {
     const p = opPaths(operationId);
@@ -186,9 +261,9 @@ export function createAsyncOperationTools({ config, prepare, workerPath }) {
 
     if (reconcile) {
       const receipt = await exactReceipt(state);
-      if (receipt) return adoptReceipt(state, receipt);
+      if (receipt) return attachDelivery(await adoptReceipt(state, receipt));
     }
-    if (TERMINAL.has(state.status)) return state;
+    if (TERMINAL.has(state.status)) return attachDelivery(state);
 
     if (reconcile) {
       const deadlineExpired = typeof state.deadlineAt === 'string'
@@ -198,8 +273,8 @@ export function createAsyncOperationTools({ config, prepare, workerPath }) {
       if (deadlineExpired || workerMissing) {
         const latest = await readJson(p.state);
         const receipt = await exactReceipt(latest);
-        if (receipt) return adoptReceipt(latest, receipt);
-        if (TERMINAL.has(latest.status)) return latest;
+        if (receipt) return attachDelivery(await adoptReceipt(latest, receipt));
+        if (TERMINAL.has(latest.status)) return attachDelivery(latest);
         // PID liveness is only a hint. Without a durable receipt, do not invent
         // failure before the operation deadline and never replay the effect.
         if (!deadlineExpired) return latest;
@@ -210,6 +285,7 @@ export function createAsyncOperationTools({ config, prepare, workerPath }) {
           failureCode: 'DEADLINE_EXCEEDED_WITHOUT_FINAL_RECEIPT'
         };
         await atomicJson(p.state, state);
+        return attachDelivery(state);
       }
     }
     return state;
@@ -217,6 +293,8 @@ export function createAsyncOperationTools({ config, prepare, workerPath }) {
   async function start(input) {
     if (!enabled) throw new Error('async operations are disabled');
     if (!REQUEST_RE.test(input.requestId)) throw new Error('invalid requestId');
+    const correlationId = input.correlationId ?? input.requestId;
+    if (!REQUEST_RE.test(correlationId)) throw new Error('invalid correlationId');
     const inputHash = hashJson({ tool: input.tool, arguments: input.arguments });
     const prepared = await prepare(input.tool, input.arguments);
     if (!prepared || typeof prepared.file !== 'string' || !Array.isArray(prepared.args) || typeof prepared.cwd !== 'string') {
@@ -230,7 +308,7 @@ export function createAsyncOperationTools({ config, prepare, workerPath }) {
     try {
       const handle = await open(requestPath, 'wx', 0o600);
       try {
-        await handle.writeFile(JSON.stringify({ requestId: input.requestId, operationId, inputHash, createdAt: new Date().toISOString() }) + '\n');
+        await handle.writeFile(JSON.stringify({ requestId: input.requestId, correlationId, operationId, inputHash, createdAt: new Date().toISOString() }) + '\n');
       } finally {
         await handle.close();
       }
@@ -240,7 +318,7 @@ export function createAsyncOperationTools({ config, prepare, workerPath }) {
     }
     if (!claimed) {
       const prior = await readJson(requestPath);
-      if (prior.requestId !== input.requestId || prior.inputHash !== inputHash) {
+      if (prior.requestId !== input.requestId || prior.inputHash !== inputHash || (prior.correlationId ?? prior.requestId) !== correlationId) {
         throw new Error('REQUEST_ID_CONFLICT');
       }
       let priorState;
@@ -249,7 +327,7 @@ export function createAsyncOperationTools({ config, prepare, workerPath }) {
         if (error.message !== 'operation not found') throw error;
         priorState = { operationId: prior.operationId, status: 'UNCERTAIN', failureCode: 'RESERVED_WITHOUT_STATE' };
       }
-      return { operationId: prior.operationId, requestId: input.requestId, duplicate: true, status: priorState.status };
+      return { operationId: prior.operationId, requestId: input.requestId, correlationId, duplicate: true, status: priorState.status, deliveryId: priorState.deliveryId ?? null };
     }
 
     const p = opPaths(operationId);
@@ -261,6 +339,7 @@ export function createAsyncOperationTools({ config, prepare, workerPath }) {
       schema: 1,
       operationId,
       requestId: input.requestId,
+      correlationId,
       inputHash,
       tool: input.tool,
       status: 'QUEUED',
@@ -272,9 +351,11 @@ export function createAsyncOperationTools({ config, prepare, workerPath }) {
       childPid: null
     };
     await atomicJson(p.state, baseState);
+    if (deliveryStore) deliveryTracked.add(operationId);
     const execution = {
       operationId,
       requestId: input.requestId,
+      correlationId,
       inputHash,
       tool: input.tool,
       file: prepared.file,
@@ -298,7 +379,7 @@ export function createAsyncOperationTools({ config, prepare, workerPath }) {
       await atomicJson(p.state, queued);
       worker.stdin.end(JSON.stringify(execution));
       worker.unref();
-      return { operationId, requestId: input.requestId, duplicate: false, status: 'QUEUED' };
+      return { operationId, requestId: input.requestId, correlationId, duplicate: false, status: 'QUEUED' };
     } catch (error) {
       await atomicJson(p.state, {
         ...baseState,
@@ -322,6 +403,41 @@ export function createAsyncOperationTools({ config, prepare, workerPath }) {
       stderrTail: await tailText(p.stderr, tailBytes)
     };
   }
+  async function discoverForDelivery() {
+    if (!deliveryStore) return 0;
+    let entries = [];
+    try { entries = await readdir(operationsDir, { withFileTypes: true }); }
+    catch (error) { if (error?.code === 'ENOENT') return 0; throw error; }
+    for (const entry of entries) if (entry.isDirectory() && OP_RE.test(entry.name)) deliveryTracked.add(entry.name);
+    return entries.length;
+  }
+  async function reconcileDeliveries(limit = deliveryBatchSize) {
+    if (!deliveryStore) return { checked: 0, pending: 0 };
+    const ids = [...deliveryTracked].slice(0, boundedInt(limit, deliveryBatchSize, 1, 500));
+    let checked = 0;
+    for (const operationId of ids) {
+      checked += 1;
+      try {
+        const state = await status(operationId, true);
+        if (!TERMINAL.has(state.status)) {
+          deliveryTracked.delete(operationId);
+          deliveryTracked.add(operationId);
+        }
+      } catch {
+        deliveryTracked.delete(operationId);
+        deliveryTracked.add(operationId);
+      }
+    }
+    return { checked, pending: deliveryTracked.size };
+  }
+  if (deliveryStore) {
+    queueMicrotask(async () => {
+      try { await discoverForDelivery(); await reconcileDeliveries(); } catch {}
+    });
+    deliveryTimer = setInterval(() => { reconcileDeliveries().catch(() => {}); }, deliveryIntervalMs);
+    deliveryTimer.unref?.();
+  }
+
   async function cancel(input) {
     const state = await status(input.operationId);
     if (TERMINAL.has(state.status)) return { operationId: input.operationId, status: state.status, alreadyTerminal: true };
@@ -339,8 +455,16 @@ export function createAsyncOperationTools({ config, prepare, workerPath }) {
       requestIdempotency: true,
       rawArgumentsStored: false,
       maxOutputBytes,
-      stateRoot: root
+      stateRoot: root,
+      deliveryIntegration: deliveryStore ? {
+        enabled: true,
+        reconcileIntervalMs: deliveryIntervalMs,
+        reconcileBatch: deliveryBatchSize,
+        tracked: deliveryTracked.size
+      } : { enabled: false }
     }),
+    reconcileDeliveries,
+    close: () => { if (deliveryTimer) clearInterval(deliveryTimer); },
     execute: async (name, input) => {
       if (name === 'operation_start') return start(input);
       if (name === 'operation_status') return status(input.operationId);

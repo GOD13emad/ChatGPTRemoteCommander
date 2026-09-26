@@ -55,6 +55,7 @@ const deliveryStore = new DeliveryStore(deliveryLocation(config, configPath));
 const deliveryTools = createDeliveryTools(deliveryStore);
 const asyncOperationTools = createAsyncOperationTools({
   config,
+  deliveryStore,
   prepare: async (name, args) => {
     if (name === 'run_project_command') return prepareProjectCommand(ctx, args);
     if (name === 'run_shell') return prepareShellCommand(ctx, args);
