@@ -1,0 +1,83 @@
+name: Publish v0.9.4 exact qualified release
+
+on:
+  push:
+    branches:
+      - ops/release-v0.9.4-ca97
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    env:
+      TARGET_SHA: ca97ced5b4e39ff727af83eee95b46c6c8ef52b4
+      TAG: v0.9.4
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ca97ced5b4e39ff727af83eee95b46c6c8ef52b4
+          fetch-depth: 0
+      - name: Verify immutable release input
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          test "$(node -p "require('./package.json').version")" = "0.9.4"
+          git diff --exit-code
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release $TAG already exists; refusing to replace it." >&2
+            exit 1
+          fi
+      - name: Build release assets and checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          git archive --format=zip --prefix=ChatGPT-Remote-Commander-v0.9.4/ "$TARGET_SHA" > dist/ChatGPT-Remote-Commander-v0.9.4-Installer.zip
+          cp install.sh dist/install.sh
+          cp install.ps1 dist/install.ps1
+          cp install-work-plugin.sh dist/install-work-plugin.sh
+          cp install-work-plugin.ps1 dist/install-work-plugin.ps1
+          cp plugin-template/assets/icon.png dist/plugin-icon.png
+          cp plugin-template/assets/logo.png dist/plugin-logo.png
+          (cd dist && sha256sum ChatGPT-Remote-Commander-v0.9.4-Installer.zip install.sh install.ps1 install-work-plugin.sh install-work-plugin.ps1 plugin-icon.png plugin-logo.png > SHA256SUMS.txt)
+          cat > RELEASE_NOTES.md <<'EOF'
+          ChatGPT Remote Commander v0.9.4
+
+          Qualified release target: ca97ced5b4e39ff727af83eee95b46c6c8ef52b4
+
+          Highlights:
+          - durable delivery and direct-mutation idempotency
+          - retry-safe mutation replay with conflict detection
+          - backward-compatible tool schemas for cached ChatGPT/MCP hosts while retaining hard runtime safety bounds
+          - legacy cached clients derive a durable idempotency identity from the trusted transport request ID when an explicit requestId is unavailable
+          - explicit requestId remains authoritative and missing identity remains fail-closed when neither source exists
+          - synchronous command runtime remains hard-bounded to 15 seconds; longer work uses durable/background execution
+          - Linux and Windows CI qualification, security audit, updater/router continuity, browser/GUI and durable workflow regression coverage
+
+          Release assets include the exact source archive, Linux/Windows installers, Work Plugin installers, icons, and SHA-256 checksums.
+          EOF
+      - name: Publish exact release
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release create "$TAG" \
+            dist/ChatGPT-Remote-Commander-v0.9.4-Installer.zip \
+            dist/install.sh dist/install.ps1 \
+            dist/install-work-plugin.sh dist/install-work-plugin.ps1 \
+            dist/plugin-icon.png dist/plugin-logo.png dist/SHA256SUMS.txt \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$TARGET_SHA" \
+            --title "$TAG" \
+            --notes-file RELEASE_NOTES.md \
+            --latest
+      - name: Verify published target
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json tagName,targetCommitish --jq '.tagName')" = "$TAG"
+          published_target="$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json targetCommitish --jq '.targetCommitish')"
+          test "$published_target" = "$TARGET_SHA"
