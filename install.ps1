@@ -9,7 +9,7 @@ param(
   [string[]]$EnableCapability = @(),
   [switch]$StartServer,
   [switch]$SkipTunnelClient,
-  [string]$TunnelClientVersion = '0.0.14',
+  [string]$TunnelClientVersion = '0.0.15',
   [string]$SourceRef = 'v0.9.3',
   [string]$ExpectedCommit = ''
 )
