@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import { cp, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { spawn } from 'node:child_process';
 
 const root = path.resolve('test', '.tmp-concurrency-root');
@@ -12,6 +12,7 @@ const liveRuntimeStatePath = path.resolve('var', 'mcp-runtime.json');
 const isolatedRuntimeStatePath = path.join(isolatedApp, 'var', 'mcp-runtime.json');
 const port = 47931;
 const endpoint = `http://127.0.0.1:${port}/mcp`;
+const requestPrefix = `concurrency-${randomUUID()}`;
 
 async function sha256IfPresent(filePath) {
   try {
@@ -88,6 +89,7 @@ try {
   assert.equal(readOnlyResults.length, 40);
   const distinctWrites = Array.from({ length: 20 }, (_, index) =>
     callTool('write_text', {
+      requestId: `${requestPrefix}-parallel-${index}`,
       path: path.join(root, `parallel-${index}.txt`),
       content: `value-${index}`
     })
@@ -97,7 +99,8 @@ try {
 
   const shared = path.join(root, 'shared-append.txt');
   const tokens = Array.from({ length: 30 }, (_, index) => `token-${index.toString().padStart(2, '0')}\n`);
-  await Promise.all(tokens.map((token) => callTool('write_text', {
+  await Promise.all(tokens.map((token, index) => callTool('write_text', {
+    requestId: `${requestPrefix}-shared-${index}`,
     path: shared, content: token, mode: 'append'
   })));
   const sharedText = await readFile(shared, 'utf8');

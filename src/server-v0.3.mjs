@@ -17,6 +17,7 @@ import { createAsyncOperationTools } from './async-operations.mjs';
 import { DeliveryStore, deliveryLocation } from './delivery-store.mjs';
 import { createDeliveryTools } from './delivery-tools.mjs';
 import { compactToolSuccessPayload, serializeBoundedJsonResponse } from './retry-guard.mjs';
+import { MutationIdempotencyStore } from './mutation-idempotency.mjs';
 
 let workflowTools = null;
 const VERSION = '0.9.4';
@@ -55,6 +56,7 @@ const BROWSER_ENABLED = config.powerMode?.enabled === true && config.powerMode?.
 const LEGACY_FULL_FILESYSTEM = config.powerMode?.enabled === true && config.powerMode?.fullFilesystem === true;
 const deliveryStore = new DeliveryStore(deliveryLocation(config, configPath));
 const deliveryTools = createDeliveryTools(deliveryStore);
+const mutationIdempotency = new MutationIdempotencyStore({ directory: deliveryStore.directory, scope: deliveryStore.scope });
 const asyncOperationTools = createAsyncOperationTools({
   config,
   deliveryStore,
@@ -141,6 +143,29 @@ const TOOLS = [
   ...(BROWSER_ENABLED ? browserToolDefinitions : []),
   ...(GUI_ENABLED ? guiToolDefinitions : [])
 ];
+
+const MUTATION_REQUEST_ID_SCHEMA = {
+  type: 'string',
+  minLength: 1,
+  maxLength: 128,
+  pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$',
+  description: 'Stable idempotency key for this mutation. Reuse only for the exact same intended effect.'
+};
+function isDirectMutationTool(name) {
+  if (typeof name !== 'string' || /^(operation_|delivery_|workflow_)/.test(name)) return false;
+  // Do not create idempotency state before authorization for Power-only tools.
+  // When Power Mode is disabled these tools must preserve their existing fail-closed authority error.
+  if (config.powerMode?.enabled !== true && powerToolDefinitions.some(tool => tool.name === name)) return false;
+  const definition = TOOLS.find(tool => tool.name === name);
+  return definition?.annotations?.readOnlyHint === false;
+}
+for (const tool of TOOLS) {
+  if (!isDirectMutationTool(tool.name)) continue;
+  tool.inputSchema = {
+    ...tool.inputSchema,
+    properties: { ...(tool.inputSchema?.properties ?? {}), requestId: MUTATION_REQUEST_ID_SCHEMA }
+  };
+}
 // Opt-in only. Baseline tool catalog is unchanged when durable workflows are disabled.
 if (config.durableWorkflows?.enabled === true) {
   const { createWorkflowTools } = await import('./workflow-tools.mjs');
@@ -206,6 +231,16 @@ function rpcError(id, code, message, data) {
 }
 async function executeTool(name, args) {
   if (!toolDefinition(name)) throw protocolFailure(200, -32602, 'Unknown tool');
+  if (isDirectMutationTool(name)) {
+    const { requestId, ...effectArgs } = args ?? {};
+    // Preserve existing no-effect semantic/authority checks before durable mutation intent where a reusable preflight exists.
+    if (name === 'run_project_command') await prepareProjectCommand(ctx, effectArgs);
+    return mutationIdempotency.execute({ requestId, tool: name, input: effectArgs }, () => executeToolEffect(name, effectArgs));
+  }
+  return executeToolEffect(name, args);
+}
+async function executeToolEffect(name, args) {
+  if (!toolDefinition(name)) throw protocolFailure(200, -32602, 'Unknown tool');
   if (name.startsWith('operation_')) return asyncOperationTools.execute(name, args);
   if (name.startsWith('delivery_')) return deliveryTools.execute(name, args);
   if (name.startsWith('workflow_')) return workflowTools.execute(name, args);
@@ -240,7 +275,8 @@ async function executeTool(name, args) {
           capabilityProfile: config.capabilityProfile?.schemaVersion ?? 0,
           durableWorkflow: workflowStatus.schema ?? 0,
           asyncOperations: 1,
-          durableDelivery: 1
+          durableDelivery: 1,
+          mutationIdempotency: 1
         },
         capabilityProfile: config.capabilityProfile ?? {
           id: config.instance?.profile ?? 'default',
@@ -258,6 +294,7 @@ async function executeTool(name, args) {
           hostWakeAssumed: false
         },
         durableDelivery: deliveryTools.status(),
+        mutationIdempotency: mutationIdempotency.status(),
         powerMode: config.powerMode ?? { enabled: false },
         browserControl: { availability: BROWSER_ENABLED ? 'CHECK_browser_status' : 'DISABLED', enabled: BROWSER_ENABLED,
           policy: { ...(config.powerMode?.browserControl ?? { enabled:false }), backgroundFirst:true,

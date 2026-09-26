@@ -1,6 +1,6 @@
 # Engineering decisions and evidence
 
-Updated: 2026-09-25. Current immutable published-release authority is [v0.9.1](RELEASE_0.9.1.md). [v0.9.3](RELEASE_0.9.3.md) is the current Linux-completeness candidate; v0.9.2 is an unpublished installer-cleanup candidate; v0.8.38, v0.8.39 and v0.8.40 remain historical unpublished tags. This public index separates reusable engineering decisions from historical deployment observations.
+Updated: 2026-09-26. Current immutable published-release authority is [v0.9.1](RELEASE_0.9.1.md). [v0.9.3](RELEASE_0.9.3.md) is the current Linux-completeness candidate; v0.9.2 is an unpublished installer-cleanup candidate; v0.8.38, v0.8.39 and v0.8.40 remain historical unpublished tags. This public index separates reusable engineering decisions from historical deployment observations.
 
 ## Current guarantees and their regression locations
 
@@ -195,3 +195,27 @@ Historical checkpoints remain append-only archives. Current release/control clai
 **Confidence/Status:** Linux Firefox background backend CONFIRMED on the audited laptop; cross-platform full/hosted/release gates remain separate.
 
 **Reuse targets:** browser backend selection, Linux installer/update policy, security review, Full Power capability parity.
+
+
+## E073 — direct mutation lost-ack idempotency
+
+**Date/Context:** 2026-09-26; CSDC-007 P0 closure after the prior chat reached its conversation-length limit. Authority was recovered from GitHub and a clean dedicated worktree rather than mutating the polluted/stale main checkout.
+
+**Claim/Decision:** Direct mutating MCP calls require a stable per-intent `requestId`. Before an effect, Commander persists only the tool name plus canonical input hash in a private SQLite mutation journal. Exact successful retries return the stored result without repeating the effect; reusing the requestId with changed tool/input fails closed; an exception after PREPARED becomes `UNCERTAIN` and never authorizes blind replay.
+
+**Rationale / rejected alternatives:** Blindly retrying a direct mutation after a lost response can duplicate append/input/process/GUI effects. Relying only on per-path locks prevents concurrent overlap but does not solve a retry after the first effect completed. Extending transport deadlines also does not establish at-most-once semantics. The minimum sufficient control is a durable request identity plus PREPARED/SUCCEEDED/UNCERTAIN state. Power-disabled/unauthorized tools must fail authorization before journal state; command allowlist/cwd preflight must also happen before durable intent where a reusable preflight exists.
+
+**Failure→Root Cause→Prevention:** The first patch corrupted `server-v0.3.mjs` because JavaScript replacement-string `$'` semantics consumed the suffix; it was rebuilt from exact baseline `44379b1` and all patch insertions were switched to replacement callbacks. Regression then found authorization-order changes for disabled Power tools and disallowed programs; the guard was moved behind those preflight boundaries. A repeated concurrency smoke initially reused fixed requestIds after deleting its temp target, correctly causing stale success replay; the fixture now generates a unique run prefix while retaining stable IDs within one intent.
+
+**Evidence/Source:**
+- `src/mutation-idempotency.mjs` SHA-256 `1e47fb07934d7b34091cee4000ec1a1a63528e3a24d87a2a96cf3c883b3a69c9`.
+- `src/server-v0.3.mjs` post-fix SHA-256 `779e8afc0754c3ffa22bc16ff1e7dc3ae590045dc3c23b619fd080c34944d788`.
+- `test/mutation-idempotency.test.mjs`; `test/mutation-idempotency-http.test.mjs`; `test/concurrency-smoke.mjs`; `test/profile-instance-http.test.mjs`; `test/http-admission.test.mjs`.
+- HTTP append lost-ack/restart regression PASS; Full-Power catalog coverage confirms requestId on direct mutating file/process/terminal/browser/GUI tools.
+- Final local Windows code/test tree: `npm run check` PASS; `npm test` 417 total / 411 PASS / 6 SKIP / 0 FAIL; GUI 75/75 PASS; concurrency/FS/Windows-runtime/source-integrity PASS; security audit PASS; `git diff --check` PASS.
+
+**Confidence/Status:** CONFIRMED for local Windows code/contract/integration behavior and CSDC-007 acceptance. Cross-platform live deployment, long soak and final release remain separate open gates.
+
+**Reuse Targets:** retry/fault-tolerance architecture, Plugin contract, release notes, operations guide, future CSDC fault-injection and multi-chat tests.
+
+**Provenance:** branch `fix/csdc007-lost-ack`, dedicated local worktree (absolute developer path intentionally excluded from tracked evidence), baseline `44379b11d63585ccaf5305d20b9039f4d5893ef3`.

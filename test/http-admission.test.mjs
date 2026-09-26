@@ -26,6 +26,7 @@ test('real candidate HTTP dispatcher blocks browser origins and keeps local JSON
     await fs.writeFile(path.join(root,'src','platform.mjs'),'export const expandPathValue=x=>x; export const shellName=()=>"stub";');
     await fs.writeFile(path.join(root,'src','delivery-store.mjs'),'export const deliveryLocation=()=>({directory:"stub",scope:"stub",forbiddenRoots:[]}); export class DeliveryStore { health(){return {durable:true,schema:1,pending:0,deadLetter:0};} }');
     await fs.writeFile(path.join(root,'src','delivery-tools.mjs'),'export const createDeliveryTools=store=>({definitions:[],status:()=>store.health(),execute:async()=>({stub:true})});');
+    await fs.writeFile(path.join(root,'src','mutation-idempotency.mjs'),'export class MutationIdempotencyStore { constructor(){} status(){return {enabled:true,durable:true,rawArgumentsStored:false,states:{}};} async execute(_request,effect){return effect();} }');
     await fs.writeFile(path.join(root,'config.json'),JSON.stringify({host:'127.0.0.1',port,allowedRoots:[root],allowedPrograms:[],powerMode:{enabled:true,fullFilesystem:true,guiControl:{enabled:false}}}));
     child=spawn(process.execPath,[path.join(root,'src','server-v0.3.mjs')],{env:{...process.env,REMOTE_COMMANDER_CONFIG:path.join(root,'config.json')},stdio:['ignore','pipe','pipe']});
     let stderr='';child.stderr.on('data',c=>stderr+=c);

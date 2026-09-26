@@ -24,7 +24,7 @@ Baseline: `a36ec05ea2c530ef52473b6a6f851a4484a31a35`. Qualification head: `6372b
 | CSDC-004 | P0 | PASS | **Pending-delivery inbox** — Expose bounded read/claim/ack paths for undelivered results. | A later chat can discover and claim an earlier completed result without re-running effects. |
 | CSDC-005 | P0 | BLOCKED_EXTERNAL | **Chat completion bridge** — Use a supported host mechanism to wake/resume delivery when available; retain polling fallback. | Real ChatGPT qualification proves autonomous delivery, or capability is marked external/unavailable with safe fallback. |
 | CSDC-006 | P0 | PASS | **WAITING/BLOCKED delivery** — Create durable user-visible events for WAITING_INPUT, BLOCKED, EXHAUSTED and quota pauses. | No terminal/wait state can become silent. |
-| CSDC-007 | P0 | TODO | **Lost-ack idempotency for mutations** — Add stable idempotency to mutating file/process/terminal/browser/GUI operations. | Lost response never causes a blind duplicate effect. |
+| CSDC-007 | P0 | PASS | **Lost-ack idempotency for mutations** — Stable durable request identity now guards direct mutating file/process/terminal/browser/GUI operations. | Lost response never causes a blind duplicate effect. |
 | CSDC-008 | P0 | TODO | **Universal deferred execution** — Extend deferred/durable work beyond run_shell/run_project_command to all potentially slow tools. | Any uncertain-duration tool can return a small durable handle before transport deadline. |
 | CSDC-009 | P0 | PASS | **Transport safety budget** — Reserve explicit margin below tunnel response deadline for every synchronous call. | No Commander synchronous call can consume the full tunnel deadline. |
 | CSDC-010 | P0 | IN_PROGRESS | **Turn-safe orchestration** — Prevent long chains of MCP calls from keeping one chat turn alive until failure. | Large projects acknowledge quickly and continue from durable state rather than a single long turn. |
@@ -98,6 +98,16 @@ Baseline: `a36ec05ea2c530ef52473b6a6f851a4484a31a35`. Qualification head: `6372b
 - GitHub Actions run 36227448928: windows-latest PASS; ubuntu-latest PASS; head 3da2278f3233150bc227bf4a0d090b3cfafebb9b.
 - Project delivery regression covers WAITING_INPUT, BLOCKED, COMPLETED, EXHAUSTED, CANCELLED and PAUSED as durable correlation-scoped delivery events.
 
+
+### CSDC-007 — PASS
+
+- Change-set baseline: `44379b11d63585ccaf5305d20b9039f4d5893ef3` on `origin/codex/chat-safe-final-r2`; implementation worktree/branch: `fix/csdc007-lost-ack`.
+- Direct mutating MCP tools carry a stable `requestId`; the durable mutation store records PREPARED before effect, stores immutable successful result/hash, replays exact successful retries without re-executing the effect, rejects changed inputs under the same ID, and fails closed as `MUTATION_OUTCOME_UNCERTAIN` after an ambiguous effect.
+- Raw mutation arguments are not persisted. Power-disabled tools preserve their existing authorization failure before any idempotency state is created; `run_project_command` also retains allowlist/cwd preflight before durable mutation intent.
+- Executable lost-ack HTTP regression uses real `write_text mode=append`: first call writes one token; retry with the same requestId leaves one token; restart + retry still leaves one token; changed input conflicts. Full-Power catalog regression proves direct mutating file/process/terminal/browser/GUI tools expose `requestId`, while read-only tools do not.
+- Focused final regressions: mutation/idempotency + isolated-profile compatibility PASS; concurrency smoke passes twice consecutively with per-intent unique request IDs.
+- Exact final code/test tree local Windows evidence: `npm run check` PASS; `npm test` **417 total / 411 PASS / 6 SKIP / 0 FAIL**, GUI HTTP/contract **75/75 PASS**, concurrency/FS/Windows-runtime/source-integrity PASS; `npm run audit` = `SECURITY_AUDIT_PASS`; `git diff --check` PASS.
+- Scope: this PASS closes blind duplicate direct mutation after lost acknowledgement. Universal deferred execution (CSDC-008), remaining fault injection (CSDC-033), multi-chat concurrency qualification (CSDC-034), soak (CSDC-035) and release gate (CSDC-036) remain open.
 
 ### CSDC-009 — PASS
 
