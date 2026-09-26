@@ -95,7 +95,7 @@ const TOOLS = [
     description: LEGACY_FULL_FILESYSTEM ? 'Read a UTF-8 text file and return its SHA-256 hash. Power Mode fullFilesystem=true permits absolute paths outside configured allowedRoots.' : 'Read a UTF-8 text file inside an allowed root and return its SHA-256 hash.',
     inputSchema: {
       type: 'object',
-      properties: { path: { type: 'string', minLength: 1 } },
+      properties: { path: { type: 'string', minLength: 1 }, offset: { type: 'integer', minimum: 0 }, maxBytes: { type: 'integer', minimum: 1, maximum: 262144 } },
       required: ['path'],
       additionalProperties: false
     },
