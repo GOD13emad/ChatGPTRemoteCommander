@@ -16,7 +16,7 @@ import { formatToolInputErrors, validateJsonSchema } from './schema-validator.mj
 import { createAsyncOperationTools } from './async-operations.mjs';
 import { DeliveryStore, deliveryLocation } from './delivery-store.mjs';
 import { createDeliveryTools } from './delivery-tools.mjs';
-import { compactToolSuccessPayload, serializeBoundedJsonResponse } from './retry-guard.mjs';
+import { compactToolSuccessPayload, serializeBoundedJsonResponse, synchronousCommandInput } from './retry-guard.mjs';
 import { MutationIdempotencyStore } from './mutation-idempotency.mjs';
 
 let workflowTools = null;
@@ -134,7 +134,7 @@ const TOOLS = [
         program: { type: 'string', minLength: 1 },
         args: { type: 'array', items: { type: 'string' }, maxItems: 100 },
         cwd: { type: 'string' },
-        timeoutMs: { type: 'integer', minimum: 1000, maximum: 15000 }
+        timeoutMs: { type: 'integer', minimum: 1000, maximum: 30000 }
       },
       required: ['program'],
       additionalProperties: false
@@ -247,8 +247,11 @@ async function executeTool(name, args) {
   }
   if (isDirectMutationTool(name)) {
     const { requestId, ...effectArgs } = args ?? {};
-    // Preserve existing no-effect semantic/authority checks before durable mutation intent where a reusable preflight exists.
-    if (name === 'run_project_command') await prepareProjectCommand(ctx, effectArgs);
+    // Preserve no-effect transport/semantic/authority checks before durable mutation intent.
+    // The outward schema stays backward-compatible, while synchronous command
+    // execution remains hard-bounded to 15 seconds at runtime.
+    if (name === 'run_project_command') await prepareProjectCommand(ctx, synchronousCommandInput(effectArgs));
+    if (name === 'run_shell') await prepareShellCommand(ctx, synchronousCommandInput(effectArgs));
     return mutationIdempotency.execute({ requestId, tool: name, input: effectArgs }, () => executeToolEffect(name, effectArgs));
   }
   return executeToolEffect(name, args);
@@ -353,6 +356,11 @@ function traceId(value) {
   if (typeof value === 'number' && Number.isSafeInteger(value)) return String(value);
   if (typeof value !== 'string' || !TRACE_ID_RE.test(value)) return null;
   return value;
+}
+function transportMutationRequestId(req) {
+  const transportRequestId = traceId(header(req, 'x-request-id'));
+  if (!transportRequestId) return null;
+  return `transport-${createHash('sha256').update(transportRequestId).digest('hex')}`;
 }
 function acceptedTrace(req, message, args, tool) {
   const transportRequestId = traceId(header(req, 'x-request-id'));
@@ -479,9 +487,18 @@ async function handleMessage(req, message) {
         return { status: 200, body: rpcResult(message.id, toolErrorPayload(messageText), modern) };
       }
 
-      await audit(ctx, acceptedTrace(req, message, args, name));
+      let executionArgs = args;
+      let requestIdSource = null;
+      if (isDirectMutationTool(name) && args.requestId === undefined) {
+        const derivedRequestId = transportMutationRequestId(req);
+        if (derivedRequestId) {
+          executionArgs = { ...args, requestId: derivedRequestId };
+          requestIdSource = 'transport';
+        }
+      }
+      await audit(ctx, { ...acceptedTrace(req, message, executionArgs, name), ...(requestIdSource ? { requestIdSource } : {}) });
       try {
-        const result = await executeTool(name, args);
+        const result = await executeTool(name, executionArgs);
         return { status: 200, body: rpcResult(message.id, toolSuccessPayload(result), modern) };
       } catch (error) {
         await audit(ctx, { action: 'tool_error', tool: name, ok: false, error: error.message });

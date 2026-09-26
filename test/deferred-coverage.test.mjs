@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { powerToolDefinitions } from '../src/power-tools-v0.3.mjs';
+import { synchronousCommandInput } from '../src/retry-guard.mjs';
 import { browserToolDefinitions } from '../src/browser-contract.mjs';
 
 const read = p => readFileSync(new URL('../'+p, import.meta.url), 'utf8');
@@ -23,7 +24,10 @@ test('uncertain-duration direct work is deferred or hard-bounded',()=>{
   assert.match(server,/asyncOperationTools\.execute\('operation_start'/);
   assert.match(server,/tool: name,\s*arguments: effectArgs/s);
 
-  assert.equal(max(def(powerToolDefinitions,'run_shell'),'timeoutMs'),15000);
+  // Keep the advertised schema backward-compatible with cached hosts, while the runtime hard guard remains 15 seconds.
+  assert.equal(max(def(powerToolDefinitions,'run_shell'),'timeoutMs'),30000);
+  assert.throws(() => synchronousCommandInput({timeoutMs:30000}), /SYNCHRONOUS_COMMAND_DEADLINE_RISK/);
+  assert.equal(synchronousCommandInput({timeoutMs:15000}).timeoutMs,15000);
   assert.equal(max(def(powerToolDefinitions,'search_files'),'maxDurationMs'),10000);
   assert.match(power,/PROCESS_LIST_TIMEOUT/);
   assert.match(power,/terminateProcessTree\(session\.child\.pid/);

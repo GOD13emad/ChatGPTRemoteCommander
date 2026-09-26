@@ -16,10 +16,10 @@ async function freePort() {
   await new Promise(resolve => listener.close(resolve));
   return port;
 }
-async function post(port, id, name, args) {
+async function post(port, id, name, args, extraHeaders = {}) {
   const response = await fetch(`http://127.0.0.1:${port}/mcp`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: { 'content-type': 'application/json', ...extraHeaders },
     body: JSON.stringify({ jsonrpc:'2.0', id, method:'tools/call', params:{ name, arguments:args } })
   });
   const body = await response.json();
@@ -101,6 +101,68 @@ test('direct mutation requestId prevents duplicate append across lost ack and re
   }
 });
 
+
+test('legacy cached client derives durable mutation idempotency from x-request-id', async () => {
+  const root=await fs.mkdtemp(path.join(os.tmpdir(),'rc-mut-legacy-xreq-'));
+  const serverRoot=path.join(root,'server');
+  const dataRoot=path.join(root,'data');
+  const deliveryRoot=path.join(root,'private-delivery');
+  let running;
+  try {
+    await fs.mkdir(serverRoot,{recursive:true}); await fs.mkdir(dataRoot,{recursive:true});
+    await fs.cp(new URL('../src/', import.meta.url), path.join(serverRoot,'src'), {recursive:true});
+    const canonicalDataRoot=await fs.realpath(dataRoot);
+    const target=path.join(canonicalDataRoot,'append.txt');
+    await fs.writeFile(target,'');
+    const port=await freePort();
+    const config={
+      host:'127.0.0.1', port, allowedRoots:[canonicalDataRoot], allowedPrograms:['node'],
+      maxReadBytes:1024*1024, maxWriteBytes:1024*1024, maxCommandMs:300000,
+      auditLog:'var/audit.jsonl', durableDelivery:{directory:deliveryRoot},
+      asyncOperations:{enabled:false},
+      powerMode:{enabled:false,fullFilesystem:false,allowShell:false,allowProcessControl:false,allowPermanentDelete:false,
+        guiControl:{enabled:false},browserControl:{enabled:false}}
+    };
+    const configPath=path.join(serverRoot,'config.json');
+    await fs.writeFile(configPath,JSON.stringify(config,null,2));
+    running=await startServer(serverRoot,configPath);
+
+    const legacyHeaders={'x-request-id':'legacy-client-call-1'};
+    const first=await post(port,10,'write_text',{path:target,content:'x',mode:'append'},legacyHeaders);
+    assert.equal(first.result.isError,false);
+    assert.equal(await fs.readFile(target,'utf8'),'x');
+
+    const replay=await post(port,11,'write_text',{path:target,content:'x',mode:'append'},legacyHeaders);
+    assert.equal(replay.result.isError,false);
+    assert.deepEqual(replay.result.structuredContent,first.result.structuredContent);
+    assert.equal(await fs.readFile(target,'utf8'),'x');
+
+    const conflict=await post(port,12,'write_text',{path:target,content:'y',mode:'append'},legacyHeaders);
+    assert.equal(conflict.result.isError,true);
+    assert.match(conflict.result.content[0].text,/MUTATION_REQUEST_ID_CONFLICT/);
+    assert.equal(await fs.readFile(target,'utf8'),'x');
+
+    // Explicit requestId must override the transport-derived fallback.
+    const explicit=await post(port,13,'write_text',{requestId:'explicit-client-key-1',path:target,content:'z',mode:'append'},legacyHeaders);
+    assert.equal(explicit.result.isError,false);
+    assert.equal(await fs.readFile(target,'utf8'),'xz');
+
+    const missingBoth=await post(port,14,'write_text',{path:target,content:'q',mode:'append'});
+    assert.equal(missingBoth.result.isError,true);
+    assert.match(missingBoth.result.content[0].text,/MUTATION_REQUEST_ID_REQUIRED/);
+    assert.equal(await fs.readFile(target,'utf8'),'xz');
+
+    await stopServer(running.child); running=null;
+    running=await startServer(serverRoot,configPath);
+    const afterRestart=await post(port,15,'write_text',{path:target,content:'x',mode:'append'},legacyHeaders);
+    assert.equal(afterRestart.result.isError,false);
+    assert.deepEqual(afterRestart.result.structuredContent,first.result.structuredContent);
+    assert.equal(await fs.readFile(target,'utf8'),'xz');
+  } finally {
+    if (running) await stopServer(running.child);
+    await fs.rm(root,{recursive:true,force:true});
+  }
+});
 
 test('full-power direct mutation catalog requires requestId across file/process/terminal/browser/GUI', async () => {
   const root=await fs.mkdtemp(path.join(os.tmpdir(),'rc-mut-catalog-'));
