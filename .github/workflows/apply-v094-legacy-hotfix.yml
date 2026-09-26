@@ -23,6 +23,23 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install --yes python3-gi gir1.2-gdkpixbuf-2.0 gnome-shell-common
+      - name: Align one-shot patcher with current v0.9.4 test order
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('tools/apply-v094-legacy-idempotency-hotfix-r2.mjs')
+          s=p.read_text()
+          old="const needle='test/deferred-coverage.test.mjs test/retry-guard.test.mjs';"
+          new="const needle='test/deferred-coverage.test.mjs test/process-tree-lifecycle.test.mjs test/retry-guard.test.mjs';"
+          if s.count(old) != 1:
+              raise SystemExit(f'needle declaration count={s.count(old)}')
+          s=s.replace(old,new)
+          old2="pkg.scripts.test=pkg.scripts.test.replace(needle,'test/deferred-coverage.test.mjs test/linux-host-schema-compat.test.mjs test/retry-guard.test.mjs');"
+          new2="pkg.scripts.test=pkg.scripts.test.replace(needle,'test/deferred-coverage.test.mjs test/process-tree-lifecycle.test.mjs test/linux-host-schema-compat.test.mjs test/retry-guard.test.mjs');"
+          if s.count(old2) != 1:
+              raise SystemExit(f'replacement declaration count={s.count(old2)}')
+          p.write_text(s.replace(old2,new2))
+          PY
       - name: Apply bounded compatibility patch
         run: node tools/apply-v094-legacy-idempotency-hotfix-r2.mjs
       - name: Diff safety
