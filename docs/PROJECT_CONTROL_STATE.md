@@ -1,9 +1,10 @@
 # Current project state
 
-Updated: 2026-09-25. Scope: public product/release status, not a live machine inventory.
+Updated: 2026-09-26. Scope: public product/release status, not a live machine inventory.
 
 ## Release baseline
 
+- v0.9.4 live candidate `bc8f7baedfae4053ffb200f2a2a8f988fab951f0` is the current qualified runtime baseline after cross-platform candidate-first rollout; this does **not** by itself make v0.9.4 an immutable published GitHub Release.
 - [v0.9.1](RELEASE_0.9.1.md) is the latest immutable **published GitHub Release** at this checkpoint, with 13 assets. v0.9.0 is also an immutable published release.
 - [v0.9.3](RELEASE_0.9.3.md) is the current Linux-completeness release target. It carries the v0.9.2 installer cleanup fix and adds terminal-preserving Linux cutover plus a safe Firefox WebDriver background-browser backend without widening foreground authority.
 - v0.8.38, v0.8.39 and v0.8.40 remain historical unpublished tags and are intentionally not moved.
@@ -12,9 +13,9 @@ Updated: 2026-09-25. Scope: public product/release status, not a live machine in
 
 ## CURRENT / open release gates
 
-CURRENT: v0.9.3 Linux-completeness qualification.
+CURRENT: post-v0.9.4 live hardening — CSDC-038 hot-update tool-schema continuity.
 
-Focused Linux retention and Firefox background-browser E2E gates are PASS. Remaining gates are full Windows/Linux check-test-audit on the exact v0.9.3 commit, hosted PR CI, exact-tag installer/update acceptance, reproducible release assets, immutable GitHub publication, candidate-first rollout, and post-rollout route/tunnel/tool canaries.
+Exact v0.9.4 commit `bc8f7baedfae4053ffb200f2a2a8f988fab951f0` passed candidate-first Windows/Linux qualification and is active on the qualified Windows profiles and Linux canonical route. Linux retained pre-update terminal sessions without killing them or leaving the old backend in the canonical route. The next release-critical blocker is CSDC-038: an already-open host can retain a stale tool schema across a hot update that introduces a new mutation contract. Stable publication remains gated by the open P0 completion register, hosted CI/release acceptance, and the final release gate.
 
 ## Remaining roadmap
 
