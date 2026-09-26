@@ -78,6 +78,16 @@ const shellCommand = process.platform === 'win32'
 const shell = await runShell(ctx, { command: shellCommand, cwd: root, timeoutMs: 5000 });
 assert.equal(shell.exitCode, 0);
 assert.match(shell.stdout, /POWER_SHELL_PASS/);
+if (process.platform === 'linux') {
+  // Non-interactive run_shell must not be a login shell: login-shell logout hooks
+  // can turn an explicitly successful command into a false nonzero exit.
+  const explicitSuccess = await runShell(ctx, {
+    command: 'set +e; true; rc=$?; set -e; printf \"LOGIN_SHELL_REGRESSION_PASS\\n\"; exit \"$rc\"',
+    cwd: root, timeoutMs: 5000
+  });
+  assert.equal(explicitSuccess.exitCode, 0);
+  assert.match(explicitSuccess.stdout, /LOGIN_SHELL_REGRESSION_PASS/);
+}
 const blockedCommand = process.platform === 'win32' ? 'shutdown /s' : 'shutdown -h now';
 await assert.rejects(() => runShell(ctx, { command: blockedCommand, cwd: root }), /blocked by policy/);
 
