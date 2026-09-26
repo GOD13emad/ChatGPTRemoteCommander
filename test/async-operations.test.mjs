@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import os from 'node:os';
 import path from 'node:path';
-import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { createHash, randomUUID } from 'node:crypto';
 import { createAsyncOperationTools } from '../src/async-operations.mjs';
@@ -96,6 +96,36 @@ test('child exit completes operation even when inherited stdio delays close', as
     assert.equal(result.result.outputComplete, false);
     assert.equal(result.stdoutTail, 'parent-done');
   });
+});
+
+test('status tolerates a bounded transient state-projection replacement gap', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'rc-async-state-gap-'));
+  const stateRoot = path.join(root, 'state');
+  const config = { instance: { profile: 'test' }, asyncOperations: { enabled: true, stateDir: stateRoot, maxOutputBytes: 65536 } };
+  const prepare = async (_tool, args) => ({ file: process.execPath, args: [fixture, ...args.argv], cwd: root, timeoutMs: 5000, outputLimit: 65536 });
+  try {
+    const firstManager = createAsyncOperationTools({ config, prepare, workerPath: worker });
+    const started = await firstManager.execute('operation_start', {
+      requestId: 'state-gap-1',
+      tool: 'run_project_command',
+      arguments: { argv: ['sleep', '400', 'recovered-after-gap'] }
+    });
+    const statePath = path.join(stateRoot, 'operations', started.operationId, 'state.json');
+    const heldPath = statePath + '.held';
+    await rename(statePath, heldPath);
+    const restore = (async () => {
+      await new Promise((resolve) => setTimeout(resolve, 80));
+      await rename(heldPath, statePath);
+    })();
+    const secondManager = createAsyncOperationTools({ config, prepare, workerPath: worker });
+    const observed = await secondManager.execute('operation_status', { operationId: started.operationId });
+    await restore;
+    assert.equal(observed.operationId, started.operationId);
+    const final = await waitFor(secondManager, started.operationId);
+    assert.equal(final.status, 'SUCCEEDED');
+  } finally {
+    await rm(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 });
+  }
 });
 
 test('a new manager instance can recover status and result while detached work continues', async () => {
