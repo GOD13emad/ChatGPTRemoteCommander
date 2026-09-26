@@ -176,6 +176,11 @@ test('public installation opts into stable automatic updates',()=>{
 
 
 
+test('Windows updater shell qualification satisfies mutation request identity',()=>{
+  const s=read('auto-update-windows.ps1');
+  assert.ok(s.includes('requestId=("autoupdate-shell-{0}-{1}" -f $t.Profile,$port)'),'Windows candidate run_shell canary must use a stable per-candidate requestId');
+});
+
 test('hardware selftest supplies stable requestIds to direct mutations',()=>{
   const s=read('tools/hardware-selftest.mjs');
   assert.ok(s.includes("requestId:selftestRequestId('run-shell')"),'run_shell selftest must satisfy mutation idempotency contract');

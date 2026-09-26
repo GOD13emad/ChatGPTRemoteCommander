@@ -895,7 +895,7 @@ try{
       [void](Invoke-Mcp $port 'system_info')
       [void](Invoke-Mcp $port 'list_processes')
       if(-not($disabled -contains 'shell.execute')){
-        $shell=Invoke-Mcp $port 'run_shell' @{command='Write-Output RC_AUTOUPDATE_SHELL_PASS';timeoutMs=10000}
+        $shell=Invoke-Mcp $port 'run_shell' @{requestId=("autoupdate-shell-{0}-{1}" -f $t.Profile,$port);command='Write-Output RC_AUTOUPDATE_SHELL_PASS';timeoutMs=10000}
         if([string]$shell.stdout -notmatch 'RC_AUTOUPDATE_SHELL_PASS'){throw 'FULL_POWER_SHELL_E2E_FAIL'}
       }
       if($expected.powerMode.guiControl.enabled-eq $true){
