@@ -30,7 +30,7 @@ export function shellSpec(command, interactive = false) {
   const shell = process.env.SHELL || '/bin/bash';
   return interactive
     ? { file: shell, args: ['--noprofile', '--norc'] }
-    : { file: shell, args: ['-lc', command] };
+    : { file: shell, args: ['-c', command] };
 }
 
 export function spawnShell(command, options = {}) {
