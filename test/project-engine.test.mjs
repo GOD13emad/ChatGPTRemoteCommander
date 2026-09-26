@@ -145,7 +145,7 @@ test('input request survives restart and explicit idempotent response resumes th
     await assert.rejects(f.start({runId:'second'}),/ALREADY_ENROLLED/);
     const args={runId:'run-one',requestId:request.requestId,expectedRevision:revision,response:'Use concise wording'};
     const results=await Promise.all([f.api.execute('workflow_run_resolve',args),f.api.execute('workflow_run_resolve',args)]);
-    for(const result of results){assert.equal(result.status,'QUEUED');assert.equal(result.decisions.length,1);assert.equal(result.attempts,1);assert.equal(result.plannerCalls,1);assert.equal(result.deadline,initial.deadline);}
+    for(const result of results){assert.equal(result.status,'QUEUED');assert.equal(result.decisions.length,1);assert.equal(result.attempts,1);assert.equal(result.plannerCalls,1);assert.ok(result.deadline>=initial.deadline);assert.ok((result.totalWaitingMs??0)>=0);}
     await assert.rejects(f.api.execute('workflow_run_resolve',{...args,response:'Replace the response'}),/DECISION_CONFLICT/);
     await f.reopen();await f.api.execute('workflow_run_resolve',args); // exact delivery retry after restart
     await f.tick();assert.equal(contexts[1].decisions[0].response,args.response);
@@ -231,5 +231,26 @@ test('a changed runner policy cannot resolve an old input request',async()=>{
     await assert.rejects(f.api.execute('workflow_run_resolve',{runId:'run-one',requestId:wait.pendingRequest.requestId,expectedRevision:revision,response:'Continue'}),/PROJECT_POLICY_CHANGED/);
     await f.api.execute('workflow_run_tick',{});
     const result=await f.api.execute('workflow_run_status',{runId:'run-one'});assert.equal(result.status,'BLOCKED');assert.equal(result.lastCode,'PROJECT_POLICY_CHANGED');assert.equal(f.calls,0);
+  }finally{await f.dispose();}
+});
+
+
+test('human WAITING_INPUT time does not consume the execution deadline',async()=>{
+  const f=fixture(async()=>ask());
+  try{
+    await f.create();
+    const initial=await f.start({durationMs:1000});
+    const wait=await f.tick();
+    assert.equal(wait.status,'WAITING_INPUT');
+    assert.ok(Number.isSafeInteger(wait.waitingStartedAt));
+    await new Promise(resolve=>setTimeout(resolve,1100));
+    const state=(await f.api.execute('workflow_get',{id:'project'})).state;
+    const resumed=await f.api.execute('workflow_run_resolve',{
+      runId:'run-one',requestId:wait.pendingRequest.requestId,expectedRevision:state.revision,response:'Continue'
+    });
+    assert.equal(resumed.status,'QUEUED');
+    assert.equal(resumed.waitingStartedAt,null);
+    assert.ok(resumed.totalWaitingMs>=1000);
+    assert.ok(resumed.deadline>=initial.deadline+1000);
   }finally{await f.dispose();}
 });
