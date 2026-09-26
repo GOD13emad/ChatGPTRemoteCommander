@@ -268,7 +268,7 @@ test('terminal operation receipts backfill exactly once into durable delivery af
     second.close?.();
     delivery.close();
   } finally {
-    await fs.rm(root, { recursive: true, force: true });
+    await rm(root, { recursive: true, force: true });
   }
 });
 
@@ -289,6 +289,6 @@ test('same async requestId with a changed correlation fails closed', async () =>
     );
     manager.close?.();
   } finally {
-    await fs.rm(root, { recursive: true, force: true });
+    await rm(root, { recursive: true, force: true });
   }
 });
