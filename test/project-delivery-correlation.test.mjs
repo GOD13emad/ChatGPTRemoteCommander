@@ -3,21 +3,47 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { createProjectEngine } from '../src/project-engine.mjs';
+import { createWorkflowTools } from '../src/workflow-tools.mjs';
+import { validateJsonSchema } from '../src/schema-validator.mjs';
 
 test('project run persists caller correlation id and rejects invalid correlation', async () => {
-  const root=fs.mkdtempSync(path.join(os.tmpdir(),'rc-project-corr-'));
-  const workflow={id:'wf',root,goal:'g',acceptance:['a'],steps:[{id:'s',title:'s'}],authority:{},executionProfile:{},revision:1,lifecycleState:'ACTIVE',control:{intent:'RUN'},notes:[],decisions:[],planExtensions:[]};
-  const planner={describe:()=>({available:true,callsPerPlan:1}),plan:async()=>({action:'block',tool:'',argumentsJson:'{}',summary:'stop'})};
-  const execute=async(name)=>name==='workflow_get'?{state:workflow}:{};
-  const engine=createProjectEngine({directory:path.join(root,'private'),planner,execute,observe:async()=>({}),lookup:()=>null,policy:{allowedTools:['read_text'],maxDurationMs:5000}});
+  const root=fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(),'rc-project-corr-')));
+  const config={
+    allowedRoots:[root],
+    durableWorkflows:{
+      enabled:true,directory:path.join(root,'state'),executionTools:['read_text'],
+      runner:{enabled:true,allowedTools:['read_text'],maxActions:2,maxDurationMs:5000}
+    }
+  };
+  const definition={name:'read_text',inputSchema:{type:'object',properties:{path:{type:'string'}},required:['path'],additionalProperties:false}};
+  const api=createWorkflowTools({
+    config,roots:[root],device:'fixture',configSha256:'1'.repeat(64),
+    lookup:name=>name==='read_text'?definition:null,
+    validateSchema:validateJsonSchema,
+    planner:{describe:()=>({kind:'fixture',available:true,callsPerPlan:1}),plan:async()=>({action:'block',tool:'',argumentsJson:'{}',summary:'stop'})},
+    dispatch:async()=>({})
+  });
   try{
-    const started=await engine.start({runId:'run',correlationId:'chat-a',id:'wf',expectedRevision:1,checks:[{path:'evidence.txt',type:'exists'}]});
+    const created=await api.execute('workflow_create',{
+      id:'project',root,goal:'Persist correlation',acceptance:['Evidence exists'],
+      steps:[{id:'step',title:'Inspect evidence'}]
+    });
+    const state=(await api.execute('workflow_get',{id:'project'})).state;
+    const started=await api.execute('workflow_run_start',{
+      id:'project',runId:'run-one',correlationId:'chat-a',expectedRevision:state.revision,
+      checks:[{criterion:0,type:'exists',path:'evidence.txt'}]
+    });
     assert.equal(started.correlationId,'chat-a');
-    assert.equal(engine.status('run').correlationId,'chat-a');
+    assert.equal((await api.execute('workflow_run_status',{runId:'run-one'})).correlationId,'chat-a');
     await assert.rejects(
-      engine.start({runId:'bad',correlationId:'bad space',id:'wf',expectedRevision:1,checks:[{path:'evidence.txt',type:'exists'}]}),
-      /PROJECT_CORRELATION_ID_INVALID/
+      api.execute('workflow_run_start',{
+        id:'project',runId:'bad',correlationId:'bad space',expectedRevision:state.revision,
+        checks:[{criterion:0,type:'exists',path:'evidence.txt'}]
+      }),
+      /PROJECT_CORRELATION_ID_INVALID|schema validation failed/i
     );
-  } finally { engine.close(); fs.rmSync(root,{recursive:true,force:true}); }
+  } finally {
+    await api.close();
+    fs.rmSync(root,{recursive:true,force:true});
+  }
 });
