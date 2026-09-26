@@ -31,14 +31,14 @@ test('project run persists caller correlation id and rejects invalid correlation
     const state=(await api.execute('workflow_get',{id:'project'})).state;
     const started=await api.execute('workflow_run_start',{
       id:'project',runId:'run-one',correlationId:'chat-a',expectedRevision:state.revision,
-      checks:[{criterion:0,type:'exists',path:'evidence.txt'}]
+      checks:[{criterion:0,type:'text_includes',path:'evidence.txt',text:'evidence'}]
     });
     assert.equal(started.correlationId,'chat-a');
     assert.equal((await api.execute('workflow_run_status',{runId:'run-one'})).correlationId,'chat-a');
     await assert.rejects(
       api.execute('workflow_run_start',{
         id:'project',runId:'bad',correlationId:'bad space',expectedRevision:state.revision,
-        checks:[{criterion:0,type:'exists',path:'evidence.txt'}]
+        checks:[{criterion:0,type:'text_includes',path:'evidence.txt',text:'evidence'}]
       }),
       /PROJECT_CORRELATION_ID_INVALID|schema validation failed/i
     );
