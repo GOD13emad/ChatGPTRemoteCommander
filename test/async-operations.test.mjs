@@ -252,7 +252,7 @@ test('terminal operation receipts backfill exactly once into durable delivery af
       tool: 'run_project_command',
       arguments: { argv: ['done'] }
     });
-    await waitForTerminal(first, started.operationId);
+    await waitFor(first, started.operationId);
     first.close?.();
 
     const delivery = new DeliveryStore({ directory: path.join(root, 'delivery'), scope: 'profile-a' });
