@@ -232,7 +232,7 @@ test('dead PID without receipt stays nonterminal until durable deadline', async 
 
 
 test('terminal operation receipts backfill exactly once into durable delivery after restart', async () => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'rc-async-delivery-'));
+  const root = await mkdtemp(path.join(os.tmpdir(), 'rc-async-delivery-'));
   try {
     const config = {
       instance: { profile: 'delivery-test' },
@@ -273,7 +273,7 @@ test('terminal operation receipts backfill exactly once into durable delivery af
 });
 
 test('same async requestId with a changed correlation fails closed', async () => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'rc-async-correlation-'));
+  const root = await mkdtemp(path.join(os.tmpdir(), 'rc-async-correlation-'));
   try {
     const config = { asyncOperations: { enabled: true, stateDir: path.join(root, 'ops') } };
     const prepare = async () => ({
