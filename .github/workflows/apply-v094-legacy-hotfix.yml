@@ -1,0 +1,43 @@
+name: Apply v0.9.4 legacy compatibility hotfix
+
+on:
+  push:
+    branches:
+      - hotfix/v0.9.4-legacy-idempotency-r1
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-qualify:
+    if: ${{ !contains(github.event.head_commit.message, '[hotfix-applied]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+      - name: Install Linux GUI helper dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes python3-gi gir1.2-gdkpixbuf-2.0 gnome-shell-common
+      - name: Apply bounded compatibility patch
+        run: node tools/apply-v094-legacy-idempotency-hotfix.mjs
+      - name: Diff safety
+        run: git diff --check
+      - name: Check
+        run: npm run check
+      - name: Test
+        run: npm test
+      - name: Security audit
+        run: npm run audit
+      - name: Commit qualified hotfix
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add src/server-v0.3.mjs src/power-tools-v0.3.mjs test/mutation-idempotency-http.test.mjs test/linux-host-schema-compat.test.mjs package.json
+          git diff --cached --quiet && exit 0
+          git commit -m 'fix: preserve idempotency for cached legacy MCP clients [hotfix-applied]'
+          git push origin HEAD:hotfix/v0.9.4-legacy-idempotency-r1
