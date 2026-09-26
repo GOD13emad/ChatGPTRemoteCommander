@@ -374,3 +374,17 @@ Historical checkpoints remain append-only archives. Current release/control clai
 **Reuse Targets:** support tracing, incident attribution, CSDC-030 telemetry, delivery correlation.
 
 **Provenance:** `finalize/rc-v094-r2`.
+
+## E078 — machine-global cross-profile writer lease
+
+**Date/Context:** 2026-09-26; CSDC-034 audit found `root_leases` was stored inside each profile-specific workflow SQLite database, so Windows default and `saeed-emad` profiles could each believe they exclusively owned the same physical project root.
+
+**Claim/Decision:** Workflow/event/delivery databases remain profile-isolated, but project-root writer authority is now a machine-global private SQLite lease store. Candidate configs derive `durableWorkflows.rootLeaseDirectory` from the existing machine state root (`<StateRoot>/shared/root-leases`). Lease acquisition is `BEGIN IMMEDIATE` fail-closed; a crash before durable intent can only strand a bounded TTL lease, not begin an effect.
+
+**Evidence/Source:** `src/workflow-store.mjs`, `src/workflow-tools.mjs`, `src/profile-instances.mjs`, `tools/build-candidate-config.mjs`, `test/multi-profile-concurrency.test.mjs`. Focused acceptance 35/35 PASS. Full `npm run check` completed 206 tests / 201 pass / 5 skip / 0 fail plus GUI 75/75 and platform/source gates; full `npm test` completed 447 tests / 441 pass / 6 skip / 0 fail plus concurrency/GUI/fs/runtime/source gates. Security audit current tree was clean after sanitizing the CSDC-002 synthetic authorization marker; the only history finding came from the superseded local `finalize/rc-v094-r2` ref, whose conflicting delta was preserved externally and whose remote branch was deleted.
+
+**Confidence/Status:** CONFIRMED implementation/regression. Live two-profile same-root contention on the final exact candidate is still required before CSDC-034 may be PASS.
+
+**Reuse Targets:** multi-account safety, scheduler ownership, one-writer invariant, release qualification.
+
+**Provenance:** `finalize/rc-v094-r3`; superseded local-r2 evidence metadata SHA-256 `5cd0c713a8205633f165d83710a6f8368cf0eaa832278c1b164ea8caa949c53c`.
