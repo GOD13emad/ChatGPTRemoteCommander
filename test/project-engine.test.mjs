@@ -6,6 +6,7 @@ import path from 'node:path';
 import { createWorkflowTools } from '../src/workflow-tools.mjs';
 import { validateJsonSchema } from '../src/schema-validator.mjs';
 import { listDirectory,readText,writeText } from '../src/tools-v0.3.mjs';
+import { DeliveryStore } from '../src/delivery-store.mjs';
 
 const proposal=(tool,args)=>({action:'call',tool,argumentsJson:JSON.stringify(args),summary:'Perform the approved step'});
 const ask=(request={question:'Which artifact wording should be used?',options:['Detailed','Concise']})=>({action:'block',tool:'',argumentsJson:JSON.stringify({request}),summary:'A project decision is needed'});
@@ -21,7 +22,7 @@ function fixture(planner,extra={}) {
       runner:{enabled:true,allowedTools:['write_text','read_text','list_directory'],maxActions:10,maxDurationMs:30000,...extra.runner}}};
   const ctx={config,roots:[root],auditLog:config.auditLog};
   let calls=0;
-  const options={config,roots:[root],device:'fixture',configSha256:'1'.repeat(64),lookup:n=>definitions[n],validateSchema:validateJsonSchema,
+  const options={config,roots:[root],device:'fixture',configSha256:'1'.repeat(64),lookup:n=>definitions[n],validateSchema:validateJsonSchema,deliveryStore:extra.deliveryStore,
     planner:{plan:planner,describe:()=>({kind:'fixture'})},
     dispatch:async(tool,args)=>{calls++;if(extra.dispatch)return extra.dispatch(tool,args,ctx);
       if(tool==='write_text')return writeText(ctx,args);
@@ -236,29 +237,24 @@ test('a changed runner policy cannot resolve an old input request',async()=>{
 
 
 test('WAITING_INPUT and terminal project states publish durable delivery events with correlation isolation', async()=>{
-  const f=fixture(async()=>ask());
-  const deliveryDir=path.join(f.root,'delivery-state');
-  const delivery=new DeliveryStore({directory:deliveryDir,scope:'project-delivery-test'});
+  const deliveryRoot=fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(),'rc-engine-delivery-')));
+  const delivery=new DeliveryStore({directory:path.join(deliveryRoot,'state'),scope:'project-delivery-test'});
+  const f=fixture(async()=>ask(),{deliveryStore:delivery});
   try{
     await f.create();
-    const engine=createProjectEngine({
-      directory:path.join(f.root,'engine-delivery'),
-      planner:{describe:()=>({available:true,callsPerPlan:1}),plan:async()=>ask()},
-      execute:(name,args)=>f.api.execute(name,args),
-      lookup:name=>f.definitions?.[name],
-      policy:{allowedTools:['write_text','read_text','list_directory'],maxActions:10,maxDurationMs:30000},
-      deliveryStore:delivery
-    });
-    await engine.start({runId:'delivery-run',id:'project-one',expectedRevision:0,checks:[{path:'evidence.txt',sha256:'0'.repeat(64)}],correlationId:'chat-route-a'});
-    const waiting=await engine.tick('delivery-run');
+    await f.start({correlationId:'chat-route-a'});
+    const waiting=await f.tick();
     assert.equal(waiting.status,'WAITING_INPUT');
+    assert.equal(waiting.deliveryPending,false);
     const events=delivery.list({correlationId:'chat-route-a',includeDelivered:true}).items;
     assert.equal(events.length,1);
     assert.equal(events[0].kind,'WAITING_INPUT');
+    assert.equal(events[0].source,'project');
+    assert.equal(events[0].sourceId,'run-one');
     assert.throws(()=>delivery.get(events[0].deliveryId,'chat-route-b'),/DELIVERY_CORRELATION_MISMATCH/);
-    engine.close();
   }finally{
-    delivery.close();
     await f.dispose();
+    delivery.close();
+    fs.rmSync(deliveryRoot,{recursive:true,force:true});
   }
 });

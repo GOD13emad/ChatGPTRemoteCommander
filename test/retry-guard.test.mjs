@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { compactToolSuccessPayload, RETRY_GUARD_LIMITS, serializeBoundedJsonResponse, synchronousCommandInput } from '../src/retry-guard.mjs';
 
-test('synchronous command guard defaults to 30s and rejects longer direct calls before execution', () => {
+test('synchronous command guard defaults to 20s and rejects longer direct calls before execution', () => {
   assert.equal(synchronousCommandInput({ program: 'node' }).timeoutMs, 20000);
   assert.equal(synchronousCommandInput({ timeoutMs: 20000 }).timeoutMs, 20000);
   assert.throws(() => synchronousCommandInput({ timeoutMs: 20001 }), /SYNCHRONOUS_COMMAND_DEADLINE_RISK/);
