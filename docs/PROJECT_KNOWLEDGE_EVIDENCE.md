@@ -236,3 +236,26 @@ Historical checkpoints remain append-only archives. Current release/control clai
 **Reuse Targets:** updater qualification, release checklist, mutation contract evolution, hardware canary design.
 
 **Provenance:** branch `fix/csdc007-release-selftest`, baseline `e195f991702035220c15545ee83a77eb1c0c52d1`.
+
+
+## E075 — v0.9.4 live rollout and stale host tool schema
+
+**Date/Context:** 2026-09-26; candidate-first rollout after CSDC-007 and the release-selftest hotfixes.
+
+**Claim/Decision:** Exact commit `bc8f7baedfae4053ffb200f2a2a8f988fab951f0` is the current qualified live runtime baseline. Windows default and secondary routed profiles reached v0.9.4; Linux reached v0.9.4 through the terminal-preserving candidate updater. Active Linux terminal sessions remained on a retained previous backend, while the canonical route switched to v0.9.4 and the previous route entry was retired. This validates retained-terminal cutover without destructive terminal cleanup.
+
+**Observed failure / new blocker:** Immediately after the Windows cutover, the already-open ChatGPT host still exposed the pre-v0.9.4 mutation-tool schema. The v0.9.4 server correctly rejected a mutation without the newly required stable `requestId` as `MUTATION_REQUEST_ID_REQUIRED`. Read-only calls continued to work. This is a host/server schema-continuity failure across hot update, not a failure of the mutation journal itself.
+
+**Root cause:** Commander currently changes the tool schema across a backend swap but advertises `capabilities.tools={}`; the HTTP server has no `subscriptions/listen` implementation and therefore cannot provide the MCP 2026-07-28 tool-list-change path. The stable router can change backend generation while an already-open host retains its earlier tool definition cache.
+
+**Method evidence:** MCP 2026-07-28 supports `tools.listChanged`; clients opt into `toolsListChanged` on `subscriptions/listen`, receive `notifications/tools/list_changed`, and refetch `tools/list`. See the official MCP TypeScript migration documentation (https://ts.sdk.modelcontextprotocol.io/v2/migration/support-2026-07-28) and MCP SDK subscriptions documentation (https://ruby.sdk.modelcontextprotocol.io/server/subscriptions/). The standard also makes this negotiated rather than an unconditional push.
+
+**Decision / rejected shortcut:** Do not make `requestId` silently optional merely to restore stale clients; that would weaken the accepted lost-ack safety property. The minimum-sufficient next change is standards-based list refresh when negotiated, together with an explicit compatibility gate/disposition when the host does not support refresh. Any router-level mechanism must preserve strict at-most-once mutation semantics.
+
+**Evidence/Source:** exact Windows/Linux route state and control packages reported v0.9.4 on `bc8f7baedfae4053ffb200f2a2a8f988fab951f0`. Linux updater recorded `AUTO_UPDATE_ACTIVE_TERMINALS_PRESERVE`, `CUTOVER_COMMIT`, `DRAIN_TERMINAL_RETAINED`, release cleanup, and `AUTO_UPDATE_PASS`. The current server source has no `subscriptions/listen` handler and advertises empty tools capabilities.
+
+**Confidence/Status:** rollout CONFIRMED for the audited routes; CSDC-038 IN_PROGRESS. Seamless host refresh is UNPROVEN until executable protocol tests and a live host canary pass.
+
+**Reuse Targets:** hot update architecture, MCP compatibility, release gate, mutation safety, plugin/connector lifecycle, troubleshooting.
+
+**Provenance:** runtime baseline `bc8f7baedfae4053ffb200f2a2a8f988fab951f0`; development branch `fix/csdc038-hot-update-schema-continuity`.
