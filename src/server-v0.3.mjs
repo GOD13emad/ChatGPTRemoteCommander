@@ -14,6 +14,8 @@ import { lockStats } from './locks.mjs';
 import { expandPathValue, shellName } from './platform.mjs';
 import { formatToolInputErrors, validateJsonSchema } from './schema-validator.mjs';
 import { createAsyncOperationTools } from './async-operations.mjs';
+import { DeliveryStore, deliveryLocation } from './delivery-store.mjs';
+import { createDeliveryTools } from './delivery-tools.mjs';
 import { compactToolSuccessPayload, serializeBoundedJsonResponse } from './retry-guard.mjs';
 
 let workflowTools = null;
@@ -49,6 +51,8 @@ const GUI_BACKEND_SUPPORTED = process.platform === 'win32' || process.platform =
 const GUI_ENABLED = GUI_BACKEND_SUPPORTED && config.powerMode?.enabled === true && config.powerMode?.guiControl?.enabled === true;
 const BROWSER_ENABLED = config.powerMode?.enabled === true && config.powerMode?.browserControl?.enabled === true;
 const LEGACY_FULL_FILESYSTEM = config.powerMode?.enabled === true && config.powerMode?.fullFilesystem === true;
+const deliveryStore = new DeliveryStore(deliveryLocation(config, configPath));
+const deliveryTools = createDeliveryTools(deliveryStore);
 const asyncOperationTools = createAsyncOperationTools({
   config,
   prepare: async (name, args) => {
@@ -129,6 +133,7 @@ const TOOLS = [
     annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true }
   },
   ...asyncOperationTools.definitions,
+  ...deliveryTools.definitions,
   ...powerToolDefinitions,
   ...(BROWSER_ENABLED ? browserToolDefinitions : []),
   ...(GUI_ENABLED ? guiToolDefinitions : [])
@@ -198,6 +203,7 @@ function rpcError(id, code, message, data) {
 async function executeTool(name, args) {
   if (!toolDefinition(name)) throw protocolFailure(200, -32602, 'Unknown tool');
   if (name.startsWith('operation_')) return asyncOperationTools.execute(name, args);
+  if (name.startsWith('delivery_')) return deliveryTools.execute(name, args);
   if (name.startsWith('workflow_')) return workflowTools.execute(name, args);
   switch (name) {
     case 'system_status': {
@@ -229,7 +235,8 @@ async function executeTool(name, args) {
         configSchema: {
           capabilityProfile: config.capabilityProfile?.schemaVersion ?? 0,
           durableWorkflow: workflowStatus.schema ?? 0,
-          asyncOperations: 1
+          asyncOperations: 1,
+          durableDelivery: 1
         },
         capabilityProfile: config.capabilityProfile ?? {
           id: config.instance?.profile ?? 'default',
@@ -240,6 +247,7 @@ async function executeTool(name, args) {
         instance: config.instance ?? { profile: 'default', isolated: false },
         durableWorkflows: workflowStatus,
         asyncOperations: asyncOperationTools.status(),
+        durableDelivery: deliveryTools.status(),
         powerMode: config.powerMode ?? { enabled: false },
         browserControl: { availability: BROWSER_ENABLED ? 'CHECK_browser_status' : 'DISABLED', enabled: BROWSER_ENABLED,
           policy: { ...(config.powerMode?.browserControl ?? { enabled:false }), backgroundFirst:true,

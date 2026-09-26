@@ -70,6 +70,7 @@ test('dual-era MCP contract, tool validation, cache hints and risk annotations',
       maxWriteBytes: 1024 * 1024,
       maxCommandMs: 10000,
       auditLog: 'var/audit.jsonl',
+      durableDelivery: { directory: path.join(root, 'delivery') },
       powerMode: {
         enabled: true,
         fullFilesystem: false,
@@ -175,6 +176,15 @@ test('dual-era MCP contract, tool validation, cache hints and risk annotations',
     assert.equal(modernList.body.result.ttlMs, 30000);
     assert.equal(modernList.body.result.cacheScope, 'private');
     assert.ok(Array.isArray(modernList.body.result.tools));
+    assert.ok(modernList.body.result.tools.some(tool => tool.name === 'delivery_status'));
+    const deliveryStatus = await post(port, {
+      jsonrpc: '2.0', id: 111, method: 'tools/call',
+      params: { name: 'delivery_status', arguments: {}, _meta: modernMeta() }
+    }, modernHeaders('tools/call', 'delivery_status'));
+    assert.equal(deliveryStatus.status, 200);
+    assert.equal(deliveryStatus.body.result.resultType, 'complete');
+    assert.equal(deliveryStatus.body.result.structuredContent.durable, true);
+    assert.equal(deliveryStatus.body.result.structuredContent.identityBoundary, 'TRUSTED_PROFILE_NOT_AUTHENTICATED_CHAT');
 
     const modernInvalid = await post(port, {
       jsonrpc: '2.0', id: 12, method: 'tools/call',
