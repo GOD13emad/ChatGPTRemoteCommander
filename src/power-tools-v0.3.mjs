@@ -464,12 +464,23 @@ export async function listProcesses(ctx) {
   });
   let stdout = '';
   let stderr = '';
-  child.stdout.on('data', (chunk) => { stdout += chunk.toString('utf8'); });
-  child.stderr.on('data', (chunk) => { stderr += chunk.toString('utf8'); });
-  const code = await new Promise((resolve, reject) => {
-    child.once('error', reject);
-    child.once('close', resolve);
+  const outputLimit = 4 * 1024 * 1024;
+  let outputExceeded = false;
+  child.stdout.on('data', (chunk) => {
+    if (Buffer.byteLength(stdout) + chunk.length > outputLimit) { outputExceeded = true; child.kill('SIGKILL'); return; }
+    stdout += chunk.toString('utf8');
   });
+  child.stderr.on('data', (chunk) => {
+    if (Buffer.byteLength(stderr) + chunk.length <= 65536) stderr += chunk.toString('utf8');
+  });
+  const code = await new Promise((resolve, reject) => {
+    let settled = false;
+    const finish = (fn, value) => { if (settled) return; settled = true; clearTimeout(timer); fn(value); };
+    const timer = setTimeout(() => { child.kill('SIGKILL'); finish(reject, new Error('PROCESS_LIST_TIMEOUT')); }, 10000);
+    child.once('error', error => finish(reject, error));
+    child.once('close', value => finish(resolve, value));
+  });
+  if (outputExceeded) throw new Error('PROCESS_LIST_OUTPUT_LIMIT');
   if (code !== 0) throw new Error(stderr || 'ps failed');
   const processes = stdout.split(/\r?\n/).filter(Boolean).map((line) => {
     const match = line.trim().match(/^(\d+)\s+(\S+)\s+([\d.]+)\s+(\d+)\s*(.*)$/);
