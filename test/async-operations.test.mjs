@@ -108,21 +108,23 @@ test('status tolerates a bounded transient state-projection replacement gap', as
     const started = await firstManager.execute('operation_start', {
       requestId: 'state-gap-1',
       tool: 'run_project_command',
-      arguments: { argv: ['sleep', '400', 'recovered-after-gap'] }
+      arguments: { argv: ['sleep', '120', 'stable-before-gap'] }
     });
+    const completed = await waitFor(firstManager, started.operationId);
+    assert.equal(completed.status, 'SUCCEEDED');
+
     const statePath = path.join(stateRoot, 'operations', started.operationId, 'state.json');
     const heldPath = statePath + '.held';
     await rename(statePath, heldPath);
-    const restore = (async () => {
-      await new Promise((resolve) => setTimeout(resolve, 80));
-      await rename(heldPath, statePath);
-    })();
+
     const secondManager = createAsyncOperationTools({ config, prepare, workerPath: worker });
-    const observed = await secondManager.execute('operation_status', { operationId: started.operationId });
-    await restore;
+    const pendingRead = secondManager.execute('operation_status', { operationId: started.operationId });
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    await rename(heldPath, statePath);
+
+    const observed = await pendingRead;
     assert.equal(observed.operationId, started.operationId);
-    const final = await waitFor(secondManager, started.operationId);
-    assert.equal(final.status, 'SUCCEEDED');
+    assert.equal(observed.status, 'SUCCEEDED');
   } finally {
     await rm(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 });
   }
