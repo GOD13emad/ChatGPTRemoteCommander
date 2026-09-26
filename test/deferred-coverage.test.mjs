@@ -26,7 +26,9 @@ test('uncertain-duration direct work is deferred or hard-bounded',()=>{
   assert.equal(max(def(powerToolDefinitions,'run_shell'),'timeoutMs'),15000);
   assert.equal(max(def(powerToolDefinitions,'search_files'),'maxDurationMs'),10000);
   assert.match(power,/PROCESS_LIST_TIMEOUT/);
-  assert.match(power,/setTimeout\(resolve, 2000\)/);
+  assert.match(power,/terminateProcessTree\(session\.child\.pid/);
+  assert.match(power,/setTimeout\(resolve, 1500\)/);
+  assert.match(power,/setTimeout\(resolve, 500\)/);
 
   assert.equal(max(def(browserToolDefinitions,'browser_navigate'),'timeoutMs'),30000);
   assert.equal(max(def(browserToolDefinitions,'browser_wait'),'timeoutMs'),30000);
