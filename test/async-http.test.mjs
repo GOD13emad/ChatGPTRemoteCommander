@@ -103,14 +103,18 @@ test('HTTP async operation returns immediately, retry is idempotent, and output 
     child.stderr.on('data', (chunk) => { stderr += chunk.toString('utf8'); });
 
     let healthy = false;
-    for (let attempt = 0; attempt < 100; attempt += 1) {
+    // Release qualification runs test files in parallel. Keep startup bounded,
+    // but give the copied fixture server 5s of process-start headroom; this is
+    // independent of Commander's synchronous transport deadline.
+    for (let attempt = 0; attempt < 200; attempt += 1) {
+      if (child.exitCode !== null) break;
       try {
         const response = await fetch(`http://127.0.0.1:${port}/health`);
         if (response.ok) { healthy = true; break; }
       } catch {}
       await wait(25);
     }
-    assert.equal(healthy, true, stderr);
+    assert.equal(healthy, true, stderr || `server failed to become healthy; exitCode=${child.exitCode}`);
 
     const effect = path.join(canonicalDataRoot, 'effect.txt');
     const request = {
