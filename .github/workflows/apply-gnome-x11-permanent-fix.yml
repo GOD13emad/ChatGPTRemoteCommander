@@ -41,23 +41,17 @@ jobs:
 
           updater = Path('auto-update-linux.sh')
           s = updater.read_text()
-          old = '''  if version_gt "$ACTIVE_VERSION" "$VERSION"; then
-            log "AUTO_UPDATE_NEWER_CURRENT current=$ACTIVE_VERSION latest=$VERSION"
-            exit 0
-          fi
-          if [[ "$ACTIVE_COMMIT" == "$COMMIT" ]]; then'''
-          new = '''  if version_gt "$ACTIVE_VERSION" "$VERSION"; then
-            log "AUTO_UPDATE_NEWER_CURRENT current=$ACTIVE_VERSION latest=$VERSION"
-            exit 0
-          fi
-          if [[ -z "$SOURCE_REF" && "$ACTIVE_VERSION" == "$VERSION" && "$ACTIVE_COMMIT" != "$COMMIT" ]]; then
+          marker = '  if [[ "$ACTIVE_COMMIT" == "$COMMIT" ]]; then'
+          guard = '''  if [[ -z "$SOURCE_REF" && "$ACTIVE_VERSION" == "$VERSION" && "$ACTIVE_COMMIT" != "$COMMIT" ]]; then
             log "AUTO_UPDATE_SAME_VERSION_COMMIT_HOLD current=$ACTIVE_COMMIT latest=$COMMIT version=$ACTIVE_VERSION"
             exit 0
           fi
-          if [[ "$ACTIVE_COMMIT" == "$COMMIT" ]]; then'''
-          if s.count(old) != 1:
-              raise SystemExit(f'updater patch point count={s.count(old)}')
-          updater.write_text(s.replace(old, new))
+          '''
+          if 'AUTO_UPDATE_SAME_VERSION_COMMIT_HOLD' not in s:
+              if s.count(marker) != 1:
+                  raise SystemExit(f'updater marker count={s.count(marker)}')
+              s = s.replace(marker, guard + marker, 1)
+          updater.write_text(s)
 
           test = Path('test/auto-update-same-version-hold.test.mjs')
           test.write_text("""import test from 'node:test';
@@ -68,9 +62,9 @@ jobs:
           test('automatic updater holds a qualified same-version different commit', () => {
             assert.match(source, /AUTO_UPDATE_SAME_VERSION_COMMIT_HOLD/);
             const hold = source.indexOf('AUTO_UPDATE_SAME_VERSION_COMMIT_HOLD');
-            const sameCommit = source.indexOf('if [[ \"$ACTIVE_COMMIT\" == \"$COMMIT\" ]]');
+            const sameCommit = source.indexOf('if [[ "$ACTIVE_COMMIT" == "$COMMIT" ]]');
             assert.ok(hold > 0 && sameCommit > hold);
-            assert.match(source, /-z \"\$SOURCE_REF\" && \"\$ACTIVE_VERSION\" == \"\$VERSION\" && \"\$ACTIVE_COMMIT\" != \"\$COMMIT\"/);
+            assert.ok(source.includes('[[ -z "$SOURCE_REF" && "$ACTIVE_VERSION" == "$VERSION" && "$ACTIVE_COMMIT" != "$COMMIT" ]]'));
           });
           """)
 
@@ -79,12 +73,12 @@ jobs:
           additions = ['test/auto-update-same-version-hold.test.mjs', 'test/linux-gui-x11-observe-only.test.mjs']
           for key in ('check', 'test'):
               script = p['scripts'][key]
-              marker = 'test/auto-update-contract.test.mjs'
-              if marker not in script:
+              marker_test = 'test/auto-update-contract.test.mjs'
+              if marker_test not in script:
                   raise SystemExit(f'{key} marker missing')
               for item in additions:
                   if item not in script:
-                      script = script.replace(marker, marker + ' ' + item, 1)
+                      script = script.replace(marker_test, marker_test + ' ' + item, 1)
               p['scripts'][key] = script
           package.write_text(json.dumps(p, indent=2) + '\n')
           PY
