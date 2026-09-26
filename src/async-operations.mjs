@@ -227,14 +227,29 @@ export function createAsyncOperationTools({ config, prepare, workerPath, deliver
       return { ...state, deliveryPending: true };
     }
   }
+  async function readStateProjection(p) {
+    for (let attempt = 0; attempt <= 20; attempt += 1) {
+      try { return await readJson(p.state); }
+      catch (error) {
+        const transientAccess = process.platform === 'win32' && ['EPERM', 'EACCES', 'EBUSY'].includes(error?.code);
+        if (error?.code !== 'ENOENT' && !transientAccess) throw error;
+        try { await stat(p.dir); }
+        catch (dirError) {
+          if (dirError?.code === 'ENOENT') throw new Error('operation not found');
+          throw dirError;
+        }
+        if (attempt === 20) {
+          if (error?.code === 'ENOENT') throw new Error('operation not found');
+          throw error;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 10 + attempt * 2));
+      }
+    }
+    throw new Error('operation not found');
+  }
   async function status(operationId, reconcile = true) {
     const p = opPaths(operationId);
-    let state;
-    try { state = await readJson(p.state); }
-    catch (error) {
-      if (error?.code === 'ENOENT') throw new Error('operation not found');
-      throw error;
-    }
+    let state = await readStateProjection(p);
 
     const exactReceipt = async (candidate) => {
       let receipt = null;
