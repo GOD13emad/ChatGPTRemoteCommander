@@ -234,10 +234,11 @@ function rpcError(id, code, message, data) {
   if (data !== undefined) error.data = data;
   return { jsonrpc: '2.0', id: id ?? null, error };
 }
-async function executeTool(name, args) {
+async function executeTool(name, args, compatibilityRequestId = null) {
   if (!toolDefinition(name)) throw protocolFailure(200, -32602, 'Unknown tool');
   if (AUTO_DEFERRED_MUTATIONS.has(name)) {
-    const { requestId, ...effectArgs } = args ?? {};
+    const { requestId: explicitRequestId, ...effectArgs } = args ?? {};
+    const requestId = explicitRequestId ?? compatibilityRequestId;
     return asyncOperationTools.execute('operation_start', {
       requestId,
       correlationId: requestId,
@@ -246,7 +247,8 @@ async function executeTool(name, args) {
     });
   }
   if (isDirectMutationTool(name)) {
-    const { requestId, ...effectArgs } = args ?? {};
+    const { requestId: explicitRequestId, ...effectArgs } = args ?? {};
+    const requestId = explicitRequestId ?? compatibilityRequestId;
     // Preserve existing no-effect semantic/authority checks before durable mutation intent where a reusable preflight exists.
     if (name === 'run_project_command') await prepareProjectCommand(ctx, effectArgs);
     return mutationIdempotency.execute({ requestId, tool: name, input: effectArgs }, () => executeToolEffect(name, effectArgs));
@@ -353,6 +355,14 @@ function traceId(value) {
   if (typeof value === 'number' && Number.isSafeInteger(value)) return String(value);
   if (typeof value !== 'string' || !TRACE_ID_RE.test(value)) return null;
   return value;
+}
+function compatibilityMutationRequestId(req, message, args) {
+  const explicit = traceId(args?.requestId);
+  if (explicit) return explicit;
+  const transport = traceId(header(req, 'x-request-id'));
+  const rpc = traceId(message?.id);
+  const source = transport ? `transport:${transport}` : rpc ? `rpc:${rpc}` : null;
+  return source ? `compat:${createHash('sha256').update(source).digest('hex')}` : null;
 }
 function acceptedTrace(req, message, args, tool) {
   const transportRequestId = traceId(header(req, 'x-request-id'));
@@ -481,7 +491,10 @@ async function handleMessage(req, message) {
 
       await audit(ctx, acceptedTrace(req, message, args, name));
       try {
-        const result = await executeTool(name, args);
+        const compatibilityRequestId = (isDirectMutationTool(name) || AUTO_DEFERRED_MUTATIONS.has(name))
+        ? compatibilityMutationRequestId(req, message, args)
+        : null;
+      const result = await executeTool(name, args, compatibilityRequestId);
         return { status: 200, body: rpcResult(message.id, toolSuccessPayload(result), modern) };
       } catch (error) {
         await audit(ctx, { action: 'tool_error', tool: name, ok: false, error: error.message });
