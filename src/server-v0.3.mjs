@@ -16,6 +16,7 @@ import { formatToolInputErrors, validateJsonSchema } from './schema-validator.mj
 import { createAsyncOperationTools } from './async-operations.mjs';
 import { DeliveryStore, deliveryLocation } from './delivery-store.mjs';
 import { createDeliveryTools } from './delivery-tools.mjs';
+import { createDurableCall, durableCallDefinition, isDurableMutationTarget } from './durable-call.mjs';
 import { compactToolSuccessPayload, serializeBoundedJsonResponse } from './retry-guard.mjs';
 
 let workflowTools = null;
@@ -52,7 +53,14 @@ const GUI_ENABLED = GUI_BACKEND_SUPPORTED && config.powerMode?.enabled === true 
 const BROWSER_ENABLED = config.powerMode?.enabled === true && config.powerMode?.browserControl?.enabled === true;
 const LEGACY_FULL_FILESYSTEM = config.powerMode?.enabled === true && config.powerMode?.fullFilesystem === true;
 const deliveryStore = new DeliveryStore(deliveryLocation(config, configPath));
+deliveryStore.recover();
 const deliveryTools = createDeliveryTools(deliveryStore);
+const durableCall = createDurableCall({
+  deliveryStore,
+  lookup: name => toolDefinition(name),
+  validateSchema: validateJsonSchema,
+  dispatch: (name, args) => executeTool(name, args)
+});
 const asyncOperationTools = createAsyncOperationTools({
   config,
   deliveryStore,
@@ -65,7 +73,7 @@ const asyncOperationTools = createAsyncOperationTools({
 
 function operatingInstructions() {
   if (LEGACY_FULL_FILESYSTEM) {
-    return 'Power Mode full-filesystem is enabled. configured/allowedRoots are Standard Mode roots and the default relative-path base, not an active filesystem boundary. Legacy list_directory/read_text/write_text/run_project_command accept absolute paths outside allowedRoots subject to OS permissions and policy. run_project_command remains executable-allowlisted and Python -c / Node eval-print remain blocked. Prefer read-only inspection before mutation. Background-first is the default: use operation_start for long-running or high-output command work so the MCP call returns immediately, and use the owned headless browser before shared-desktop GUI takeover. Saved browser passwords are never extracted; if MFA, WebAuthn, CAPTCHA, or user-browser credentials require foreground interaction, request explicit current-task approval and use the minimum temporary GUI takeover.';
+    return 'Power Mode full-filesystem is enabled. configured/allowedRoots are Standard Mode roots and the default relative-path base, not an active filesystem boundary. Legacy list_directory/read_text/write_text/run_project_command accept absolute paths outside allowedRoots subject to OS permissions and policy. run_project_command remains executable-allowlisted and Python -c / Node eval-print remain blocked. Prefer read-only inspection before mutation. Background-first is the default: use operation_start for command work and durable_call for bounded mutations so the MCP call returns immediately, and use the owned headless browser before shared-desktop GUI takeover. Saved browser passwords are never extracted; if MFA, WebAuthn, CAPTCHA, or user-browser credentials require foreground interaction, request explicit current-task approval and use the minimum temporary GUI takeover.';
   }
   return 'Operate only inside configured project roots. Prefer read-only inspection before mutation. Background-first is the default: use operation_start for long-running allowlisted commands; synchronous command calls are for short bounded work. Concurrent chats are supported with per-path mutation locks.';
 }
@@ -135,6 +143,7 @@ const TOOLS = [
   },
   ...asyncOperationTools.definitions,
   ...deliveryTools.definitions,
+  durableCallDefinition,
   ...powerToolDefinitions,
   ...(BROWSER_ENABLED ? browserToolDefinitions : []),
   ...(GUI_ENABLED ? guiToolDefinitions : [])
@@ -205,6 +214,7 @@ async function executeTool(name, args) {
   if (!toolDefinition(name)) throw protocolFailure(200, -32602, 'Unknown tool');
   if (name.startsWith('operation_')) return asyncOperationTools.execute(name, args);
   if (name.startsWith('delivery_')) return deliveryTools.execute(name, args);
+  if (name === 'durable_call') return durableCall.execute(args);
   if (name.startsWith('workflow_')) return workflowTools.execute(name, args);
   switch (name) {
     case 'system_status': {
@@ -283,6 +293,14 @@ async function executeTool(name, args) {
       return result;
     }
   }
+}
+function directMutationGuard(name, definition) {
+  if (config.durableDelivery?.enforceDirectMutations !== true) return null;
+  if (!isDurableMutationTarget(name, definition)) return null;
+  if (name === 'run_shell' || name === 'run_project_command') {
+    return 'DIRECT_COMMAND_REQUIRES_OPERATION_START: use operation_start with a stable requestId';
+  }
+  return 'DIRECT_MUTATION_REQUIRES_DURABLE_CALL: wrap this tool in durable_call with a stable requestId';
 }
 function header(req, name) {
   const value = req.headers[name.toLowerCase()];
@@ -389,6 +407,11 @@ async function handleMessage(req, message) {
       if (!definition) throw protocolFailure(200, -32602, 'Unknown tool');
 
       const args = message.params?.arguments ?? {};
+      const directGuard = directMutationGuard(name, definition);
+      if (directGuard) {
+        await audit(ctx, { action:'direct_mutation_rejected', tool:name, ok:false });
+        return { status:200, body:rpcResult(message.id, toolErrorPayload(directGuard), modern) };
+      }
       const validationErrors = validateJsonSchema(args, definition.inputSchema);
       if (validationErrors.length > 0) {
         const messageText = formatToolInputErrors(name, validationErrors);

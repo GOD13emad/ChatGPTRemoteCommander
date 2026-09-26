@@ -185,6 +185,8 @@ export function migrateCapabilityConfig({
   next.powerMode.browserControl.workflowBrowserAllowed = false;
   next.powerMode.browserControl.userBrowserProfileReuse = false;
   next.powerMode.browserControl.savedPasswordExtraction = false;
+  next.durableDelivery ??= {};
+  next.durableDelivery.enforceDirectMutations = true;
   next.durableWorkflows ??= {};
   next.durableWorkflows.continuation ??= {};
   next.durableWorkflows.scheduler ??= {};

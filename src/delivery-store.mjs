@@ -308,6 +308,34 @@ export class DeliveryStore {
       return event;
     });
   }
+  uncertain(requestId, code = 'MUTATION_OUTCOME_UNCERTAIN') {
+    opaqueId(code);
+    const request = this.request(requestId);
+    if (request.status === 'COMPLETED' || request.status === 'UNCERTAIN') {
+      return request.deliveryId ? this.get(request.deliveryId, request.correlationId) : null;
+    }
+    const artifact = this.writeArtifact({
+      requestId: request.requestId,
+      jobId: request.jobId,
+      tool: request.tool,
+      status: 'UNCERTAIN',
+      code
+    });
+    return this.transaction(() => {
+      const event = this.publish({
+        eventKey: 'tool:' + request.jobId + ':uncertain',
+        correlationId: request.correlationId,
+        source: 'tool',
+        sourceId: request.jobId,
+        kind: 'UNCERTAIN',
+        code,
+        artifact
+      });
+      this.db.prepare("UPDATE requests SET status='UNCERTAIN',delivery_id=? WHERE scope=? AND request_id=?")
+        .run(event.deliveryId, this.scope, requestId);
+      return event;
+    });
+  }
   recover(limit = 50) {
     integer(limit, 50, 1, 100);
     const rows = this.db.prepare("SELECT * FROM requests WHERE scope=? AND status='RUNNING' ORDER BY created_at LIMIT ?")

@@ -61,5 +61,8 @@
     "zeroDowntime": true,
     "channel": "stable",
     "intervalMinutes": 15
+  },
+  "durableDelivery": {
+    "enforceDirectMutations": true
   }
 }

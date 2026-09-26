@@ -46,11 +46,13 @@ test('legacy explicit full power is preserved across update without flags',()=>{
   assert.equal(r.preservedExplicitAuthority,true);
   assert.equal(r.config.durableWorkflows.scheduler.enabled,true);
   assert.equal(r.config.durableWorkflows.continuation.blindMutationReplay,false);
+  assert.equal(r.config.durableDelivery.enforceDirectMutations,true);
 });
 test('new standard install remains standard',()=>{
   const r=migrateCapabilityConfig({defaultConfig:defaults(),existingConfig:null});
   assert.equal(r.config.powerMode.enabled,false);
   assert.equal(r.profile.tier,'STANDARD');
+  assert.equal(r.config.durableDelivery.enforceDirectMutations,true);
 });
 test('explicit full power enables every known capability by default',()=>{
   const r=migrateCapabilityConfig({defaultConfig:defaults(),existingConfig:null,requestPower:true,requestGui:true,workflowDirectory:'C:\\state\\wf'});
@@ -65,6 +67,7 @@ test('explicit full power enables every known capability by default',()=>{
   assert.equal(r.profile.explicitlyAuthorized,true);
   assert.equal(r.profile.autoEnableNewCapabilities,true);
   assert.deepEqual(r.profile.disabledCapabilities,[]);
+  assert.equal(r.config.durableDelivery.enforceDirectMutations,true);
 });
 test('explicit standard downgrade is possible and explicit',()=>{
   const r=migrateCapabilityConfig({defaultConfig:defaults(),existingConfig:full(),requestStandard:true});

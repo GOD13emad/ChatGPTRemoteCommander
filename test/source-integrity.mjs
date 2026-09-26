@@ -41,7 +41,7 @@ for (const [name, text] of [['install',install],['supervisor',supervisor],['enab
 const trackedRuntimeFiles = [
   'auto-update-windows.ps1','auto-update-linux.sh',
   'supervisor-routing.ps1','supervisor-routing-linux.sh',
-  'src/capability-profile.mjs','src/project-runner-config.mjs','src/stable-router.mjs','src/workflow-autonomy.mjs','src/delivery-store.mjs','src/delivery-tools.mjs',
+  'src/capability-profile.mjs','src/project-runner-config.mjs','src/stable-router.mjs','src/workflow-autonomy.mjs','src/delivery-store.mjs','src/delivery-tools.mjs','src/durable-call.mjs',
   'src/browser-contract.mjs','src/browser-process.mjs','src/browser-tools.mjs','tools/browser-control.mjs','tools/browser-control-firefox.mjs','test/browser-helper-lifecycle-run.mjs','test/browser-firefox-native.test.mjs',
   'tools/build-candidate-config.mjs','tools/capability-migrate.mjs','tools/copy-workflow-store.mjs',
   'tools/finalize-workflow-schema.mjs','tools/find-free-port.mjs','tools/hardware-selftest.mjs',
