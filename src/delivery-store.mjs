@@ -57,10 +57,11 @@ function within(root, target) {
 export function deliveryLocation(config, configPath) {
   const scope = digest(stableJson({ configPath: path.resolve(configPath), profile: config.instance?.profile ?? 'default' }));
   const configured = config.durableDelivery?.directory;
+  // Delivery metadata is intentionally not colocated with project/workflow/operation
+  // directories. Those may be project-owned or portable. Default to private
+  // per-profile Commander state; an explicit override is still validated later.
   const base = configured ? path.resolve(expandPathValue(configured))
-    : config.asyncOperations?.stateDir ? path.join(path.resolve(expandPathValue(config.asyncOperations.stateDir)), 'delivery')
-      : config.durableWorkflows?.directory ? path.join(path.resolve(expandPathValue(config.durableWorkflows.directory)), 'delivery')
-        : path.join(os.homedir(), '.chatgpt-remote-commander', 'delivery', scope);
+    : path.join(os.homedir(), '.chatgpt-remote-commander', 'delivery', scope);
   return { directory: base, scope, forbiddenRoots: config.allowedRoots ?? [] };
 }
 

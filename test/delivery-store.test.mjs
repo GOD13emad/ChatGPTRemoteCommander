@@ -115,3 +115,18 @@ test('expired unfinished request becomes durable UNCERTAIN rather than replay au
     store.close();
   } finally { f.dispose(); }
 });
+
+
+test('default delivery location does not inherit workflow or async project state directories', async () => {
+  const { deliveryLocation } = await import('../src/delivery-store.mjs');
+  const project = path.join(os.tmpdir(), 'rc-project-owned-state');
+  const configPath = path.join(project, 'config.json');
+  const location = deliveryLocation({
+    instance: { profile: 'profile-a' },
+    allowedRoots: [project],
+    asyncOperations: { stateDir: path.join(project, 'ops') },
+    durableWorkflows: { directory: path.join(project, 'workflow') }
+  }, configPath);
+  assert.equal(location.directory.startsWith(project + path.sep), false);
+  assert.equal(location.scope.length, 64);
+});
