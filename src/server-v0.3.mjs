@@ -348,6 +348,29 @@ function header(req, name) {
   const value = req.headers[name.toLowerCase()];
   return Array.isArray(value) ? value[0] : value;
 }
+const TRACE_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._:\/-]{0,255}$/;
+function traceId(value) {
+  if (typeof value === 'number' && Number.isSafeInteger(value)) return String(value);
+  if (typeof value !== 'string' || !TRACE_ID_RE.test(value)) return null;
+  return value;
+}
+function acceptedTrace(req, message, args, tool) {
+  const transportRequestId = traceId(header(req, 'x-request-id'));
+  const rpcRequestId = traceId(message?.id);
+  const requestId = traceId(args?.requestId);
+  const runId = traceId(args?.runId);
+  const workflowId = traceId(args?.id);
+  const correlationId = traceId(args?.correlationId) ?? requestId ?? runId;
+  return {
+    action: 'tool_accept', ok: true, tool,
+    ...(transportRequestId ? { transportRequestId } : {}),
+    ...(rpcRequestId ? { rpcRequestId } : {}),
+    ...(requestId ? { requestId } : {}),
+    ...(correlationId ? { correlationId } : {}),
+    ...(runId ? { runId } : {}),
+    ...(workflowId ? { workflowId } : {})
+  };
+}
 
 function protocolFailure(httpStatus, code, message, data) {
   const error = new Error(message);
@@ -452,10 +475,11 @@ async function handleMessage(req, message) {
       const validationErrors = validateJsonSchema(args, definition.inputSchema);
       if (validationErrors.length > 0) {
         const messageText = formatToolInputErrors(name, validationErrors);
-        await audit(ctx, { action: 'tool_validation_error', tool: name, ok: false, errors: validationErrors.slice(0, 8) });
+        await audit(ctx, { ...acceptedTrace(req, message, args, name), action: 'tool_validation_error', ok: false, errors: validationErrors.slice(0, 8) });
         return { status: 200, body: rpcResult(message.id, toolErrorPayload(messageText), modern) };
       }
 
+      await audit(ctx, acceptedTrace(req, message, args, name));
       try {
         const result = await executeTool(name, args);
         return { status: 200, body: rpcResult(message.id, toolSuccessPayload(result), modern) };

@@ -38,6 +38,7 @@ const jsonHash = v => hash(canonical(v));
 const identifier = id => { if (typeof id !== 'string' || !ID.test(id)) fail('WORKFLOW_INVALID_ID'); return id; };
 const revision = n => { if (!Number.isSafeInteger(n) || n < 0) fail('WORKFLOW_REVISION_REQUIRED'); return n; };
 const samePath = (a, b) => process.platform === 'win32' ? a.toLowerCase() === b.toLowerCase() : a === b;
+const leaseRootKey = value => { const resolved=path.resolve(value); return process.platform === 'win32' ? resolved.toLowerCase() : resolved; };
 export function inside(root, candidate) {
   let a = path.resolve(root), b = path.resolve(candidate);
   if (process.platform === 'win32') { a = a.toLowerCase(); b = b.toLowerCase(); }
@@ -146,17 +147,20 @@ function requireOrderedPlan(steps) {
 
 export class WorkflowStore {
   #db;
+  #leaseDb;
   #roots;
   #device;
   #configSha;
   #instance = randomUUID();
   #dbPath;
+  #leaseDbPath;
+  #profileId;
   #closed = false;
   #authority;
   #executionProfile;
   #schedulerPolicy;
   #workerId = randomUUID();
-  constructor({ directory, allowedRoots, device = os.hostname(), configSha256 = ZERO, authority = {}, executionProfile = {}, schedulerPolicy = {} }) {
+  constructor({ directory, rootLeaseDirectory = directory, allowedRoots, device = os.hostname(), configSha256 = ZERO, authority = {}, executionProfile = {}, schedulerPolicy = {} }) {
     if (!Array.isArray(allowedRoots) || !allowedRoots.length) fail('WORKFLOW_ROOTS_REQUIRED');
     this.#roots = allowedRoots.map(r => { noLinks(r); return fs.realpathSync.native(r); });
     if (typeof directory !== 'string' || !path.isAbsolute(directory) || /^(?:\\\\|\/\/)/.test(directory)) fail('WORKFLOW_LOCAL_STORE_REQUIRED');
@@ -178,8 +182,33 @@ export class WorkflowStore {
     if (!/^[a-f0-9]{64}$/.test(configSha256)) fail('WORKFLOW_CONFIG_HASH_REQUIRED');
     this.#configSha = configSha256;
     this.#authority = normalizeAuthority(authority);
+    this.#profileId = safeText(this.#authority.profileId ?? 'default', 128);
     this.#executionProfile = normalizeExecutionProfile(executionProfile);
     this.#schedulerPolicy = normalizeSchedulerPolicy(schedulerPolicy);
+
+    if (typeof rootLeaseDirectory !== 'string' || !path.isAbsolute(rootLeaseDirectory) || /^(?:\\|\/\/)/.test(rootLeaseDirectory)) fail('WORKFLOW_ROOT_LEASE_STORE_REQUIRED');
+    noLinks(rootLeaseDirectory, false);
+    fs.mkdirSync(rootLeaseDirectory, { recursive: true, mode: 0o700 });
+    const leaseDir = fs.realpathSync.native(rootLeaseDirectory);
+    if (!fs.statSync(leaseDir).isDirectory()) fail('WORKFLOW_ROOT_LEASE_STORE_REQUIRED');
+    this.#leaseDbPath = path.join(leaseDir, 'root-leases.sqlite');
+    for (const suffix of ['', '-journal', '-wal', '-shm']) {
+      noLinks(this.#leaseDbPath + suffix, false);
+      if (fs.existsSync(this.#leaseDbPath + suffix)) {
+        const stat = fs.lstatSync(this.#leaseDbPath + suffix);
+        if (!stat.isFile() || stat.nlink > 1) fail('WORKFLOW_ROOT_LEASE_DATABASE_ALIAS');
+      }
+    }
+    this.#leaseDb = new DatabaseSync(this.#leaseDbPath, { allowExtension: false });
+    fs.chmodSync(this.#leaseDbPath, 0o600);
+    this.#leaseDb.exec('PRAGMA busy_timeout=3000; PRAGMA trusted_schema=OFF;');
+    if (this.#leaseDb.prepare('PRAGMA journal_mode').get().journal_mode !== 'delete') fail('WORKFLOW_ROOT_LEASE_JOURNAL_MODE');
+    this.#leaseDb.exec(`PRAGMA synchronous=EXTRA;
+      CREATE TABLE IF NOT EXISTS root_leases(
+        root TEXT PRIMARY KEY, profile TEXT NOT NULL, workflow TEXT NOT NULL,
+        owner TEXT NOT NULL, expires_at TEXT NOT NULL, revision INTEGER NOT NULL
+      );`);
+
     this.#db = new DatabaseSync(this.#dbPath, { allowExtension: false });
     try {
       fs.chmodSync(this.#dbPath, 0o600);
@@ -237,10 +266,10 @@ export class WorkflowStore {
         this.#db.prepare('INSERT OR IGNORE INTO scheduler_jobs(workflow,lifecycle,enabled,next_run_at,lease_owner,lease_until,retry_count,last_failure,updated_at) VALUES(?,?,?,?,?,?,?,?,?)')
           .run(row.id,lifecycle,enabled?1:0,null,null,null,0,null,now);
       }
-    } catch (e) { this.#db.close(); throw e; }
+    } catch (e) { this.#db.close(); this.#leaseDb.close(); throw e; }
     this.recoverInterrupted();
   }
-  close() { if (!this.#closed) { this.#db.close(); this.#closed = true; } }
+  close() { if (!this.#closed) { this.#db.close(); this.#leaseDb.close(); this.#closed = true; } }
   get location() { return this.#dbPath; }
 
   schedulerStatus() {
@@ -248,7 +277,9 @@ export class WorkflowStore {
     for (const row of this.#db.prepare('SELECT lifecycle,COUNT(*) AS n FROM scheduler_jobs GROUP BY lifecycle').all()) counts[row.lifecycle] = Number(row.n);
     const pending = this.#db.prepare("SELECT COUNT(*) AS n FROM scheduler_jobs WHERE enabled=1 AND lifecycle NOT IN ('COMPLETED','FAILED','CANCELLED')").get().n;
     const interrupted = this.#db.prepare("SELECT COUNT(*) AS n FROM scheduler_jobs WHERE lifecycle='INTERRUPTED'").get().n;
-    const leases = this.#db.prepare('SELECT COUNT(*) AS n FROM root_leases WHERE expires_at > ?').get(new Date().toISOString()).n;
+    const leaseNow = new Date().toISOString();
+    this.#leaseDb.prepare('DELETE FROM root_leases WHERE expires_at <= ?').run(leaseNow);
+    const leases = this.#leaseDb.prepare('SELECT COUNT(*) AS n FROM root_leases WHERE expires_at > ?').get(leaseNow).n;
     const reconciliationRequired = this.#db.prepare("SELECT COUNT(*) AS n FROM operations WHERE status='UNCERTAIN'").get().n;
     return {
       enabled: this.#schedulerPolicy.enabled,
@@ -313,12 +344,38 @@ export class WorkflowStore {
       schedulerState: scheduler, rawArgumentsStored: false, rawOutputsStored: false,
       authenticationBoundary: false, newScopeBeyondConfiguredRoots: false,
       privateLocalStorage: true, executionProfilePersistence: true, projectBrainIntegration: true,
-      operationJournal: true, oneWriterPerRoot: this.#schedulerPolicy.oneWriterPerRoot };
+      operationJournal: true, oneWriterPerRoot: this.#schedulerPolicy.oneWriterPerRoot, oneWriterScope: 'machine' };
   }
   #transaction(fn) {
     this.#db.exec('BEGIN IMMEDIATE');
     try { const value = fn(); this.#db.exec('COMMIT'); return value; }
     catch (e) { try { this.#db.exec('ROLLBACK'); } catch { /* preserve original exception */ } throw e; }
+  }
+  #leaseTransaction(fn) {
+    this.#leaseDb.exec('BEGIN IMMEDIATE');
+    try { const value = fn(); this.#leaseDb.exec('COMMIT'); return value; }
+    catch (e) { try { this.#leaseDb.exec('ROLLBACK'); } catch { /* preserve original exception */ } throw e; }
+  }
+  #acquireRootLease(root, workflow, owner, expiresAt, revisionValue) {
+    if (this.#schedulerPolicy.oneWriterPerRoot === false) return;
+    const key=leaseRootKey(root), now=new Date().toISOString();
+    this.#leaseTransaction(() => {
+      this.#leaseDb.prepare('DELETE FROM root_leases WHERE expires_at <= ?').run(now);
+      const lease=this.#leaseDb.prepare('SELECT profile,workflow,owner FROM root_leases WHERE root=?').get(key);
+      if (lease) fail('WORKFLOW_ROOT_LEASED');
+      this.#leaseDb.prepare('INSERT INTO root_leases(root,profile,workflow,owner,expires_at,revision) VALUES(?,?,?,?,?,?)')
+        .run(key,this.#profileId,workflow,owner,expiresAt,revisionValue);
+    });
+  }
+  #renewRootLease(root, workflow, owner, expiresAt) {
+    if (this.#schedulerPolicy.oneWriterPerRoot === false) return;
+    this.#leaseDb.prepare('UPDATE root_leases SET expires_at=? WHERE root=? AND profile=? AND workflow=? AND owner=?')
+      .run(expiresAt,leaseRootKey(root),this.#profileId,workflow,owner);
+  }
+  #releaseRootLease(root, workflow, owner) {
+    if (this.#schedulerPolicy.oneWriterPerRoot === false) return;
+    this.#leaseDb.prepare('DELETE FROM root_leases WHERE root=? AND profile=? AND workflow=? AND owner=?')
+      .run(leaseRootKey(root),this.#profileId,workflow,owner);
   }
   #load(id) {
     identifier(id);
@@ -555,19 +612,16 @@ export class WorkflowStore {
     const now = new Date().toISOString();
     const expires = new Date(Date.now()+Math.max(this.#schedulerPolicy.leaseMs,30000)).toISOString();
 
-    const prepared = this.#mutate(id, expectedRevision, 'intent', s => {
+    this.#acquireRootLease(state.root,id,owner,expires,expectedRevision);
+    let prepared;
+    try {
+      prepared = this.#mutate(id, expectedRevision, 'intent', s => {
       this.#identity(s);
       requireActive(s);
       if (s.steps.some(x => ['running', 'uncertain'].includes(x.status))) fail('WORKFLOW_BUSY_OR_UNCERTAIN');
       const step = s.steps.find(x => x.id === stepId);
       if (!step || step.status !== 'pending') fail('WORKFLOW_STEP_NOT_PENDING');
       if (step.dependsOn.some(d => !['recorded','verified','reconciled_applied'].includes(s.steps.find(x => x.id === d).status))) fail('WORKFLOW_DEPENDENCY_NOT_READY');
-
-      this.#db.prepare('DELETE FROM root_leases WHERE expires_at <= ?').run(now);
-      const lease = this.#db.prepare('SELECT workflow,owner FROM root_leases WHERE root=?').get(s.root);
-      if (lease && lease.workflow !== id) fail('WORKFLOW_ROOT_LEASED');
-      this.#db.prepare('INSERT OR REPLACE INTO root_leases(root,workflow,owner,expires_at,revision) VALUES(?,?,?,?,?)')
-        .run(s.root,id,owner,expires,expectedRevision);
 
       this.#db.prepare('INSERT INTO operations(operation_id,workflow,step_id,attempt_id,idempotency_key,classification,status,tool,input_hash,verification,pre_state_hash,result_status,exit_code,post_state_hash,receipt,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
         .run(operationId,id,stepId,attemptId,idempotencyKey,classification,'PREPARED',tool,inputHash,JSON.stringify(verification),
@@ -580,7 +634,11 @@ export class WorkflowStore {
       s.lifecycleState='RUNNING';
       return { stepId, tool, callHash:fingerprint, operationId, attemptId, idempotencyKey,
         classification, inputHash, preStateHash:view.headSha256, operationStatus:'PREPARED', rawArgumentsStored:false };
-    });
+      });
+    } catch (error) {
+      try { this.#releaseRootLease(state.root,id,owner); } catch {}
+      throw error;
+    }
 
     this.#db.prepare("UPDATE operations SET status='EXECUTING',updated_at=? WHERE operation_id=?").run(new Date().toISOString(),operationId);
     this.#db.prepare("UPDATE scheduler_jobs SET lifecycle='RUNNING',lease_owner=?,lease_until=?,updated_at=? WHERE workflow=?")
@@ -589,7 +647,7 @@ export class WorkflowStore {
     let renew = setInterval(() => {
       try {
         const until = new Date(Date.now()+Math.max(this.#schedulerPolicy.leaseMs,30000)).toISOString();
-        this.#db.prepare('UPDATE root_leases SET expires_at=? WHERE root=? AND workflow=? AND owner=?').run(until,state.root,id,owner);
+        this.#renewRootLease(state.root,id,owner,until);
         this.#db.prepare('UPDATE scheduler_jobs SET lease_until=?,updated_at=? WHERE workflow=? AND lease_owner=?')
           .run(until,new Date().toISOString(),id,owner);
       } catch { /* recovery will reconcile if persistence becomes unavailable */ }
@@ -630,11 +688,13 @@ export class WorkflowStore {
         const committed = this.#commit(s,head,'receipt',{stepId,operationId,status:step.status,operationStatus,receipt});
         this.#db.prepare('UPDATE scheduler_jobs SET lifecycle=?,enabled=?,retry_count=?,last_failure=?,lease_owner=NULL,lease_until=NULL,updated_at=? WHERE workflow=?')
           .run(s.lifecycleState,s.scheduler.enabled?1:0,Number(s.scheduler.repeatedFailureCount??0),s.scheduler.lastFailureCode,new Date().toISOString(),id);
-        this.#db.prepare('DELETE FROM root_leases WHERE root=? AND workflow=? AND owner=?').run(s.root,id,owner);
         return committed;
       });
     } finally {
       clearInterval(renew);
+      if (finished) {
+        try { this.#releaseRootLease(state.root,id,owner); } catch { /* lease expiry remains the safe fallback */ }
+      }
     }
     return { replayed:false,cachedReceipt:false,outcome:failure?'UNCERTAIN':'RECORDED_NOT_VALIDATED',
       revision:finished.state.revision,receipt,result:result??null,acceptanceStatus:'UNVALIDATED',

@@ -98,7 +98,8 @@ export function createWorkflowTools({ config, roots, device, configSha256, looku
   const defaultExecutionProfile = settings.executionProfile?.default ?? {};
   const schedulerPolicy = settings.scheduler ?? { enabled:false };
   const store = new WorkflowStore({
-    directory: settings.directory, allowedRoots: roots, device, configSha256,
+    directory: settings.directory, rootLeaseDirectory: settings.rootLeaseDirectory ?? settings.directory,
+    allowedRoots: roots, device, configSha256,
     authority, executionProfile: defaultExecutionProfile, schedulerPolicy
   });
   let engine=null;

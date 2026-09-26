@@ -360,3 +360,17 @@ Historical checkpoints remain append-only archives. Current release/control clai
 **Reuse Targets:** Linux autostart, tunnel upgrade lifecycle, rollback, release checklist, failure-prevention guidance.
 
 **Provenance:** branch `finalize/rc-v094-r2`; live Commander source before guard deployment `0b965d7904a08a5eb04078bc61602687cf198552`.
+
+## E077 — transport-to-correlation trace
+
+**Date/Context:** 2026-09-26; CSDC-002 support-trace gap after durable operation/workflow/delivery correlation was already implemented.
+
+**Claim/Decision:** The control-plane `X-Request-Id` forwarded by OpenAI tunnel-client is recorded as bounded `transportRequestId` on each accepted `tools/call`, alongside JSON-RPC request ID and the existing requestId/correlationId/runId/workflowId. No raw tool arguments, Authorization, shard/session headers or content are added to this trace record.
+
+**Evidence/Source:** OpenAI tunnel-client v0.0.15 upstream processor forwards command headers unchanged to the MCP transport while logging the incoming control-plane `X-Request-Id` as `cmd_request_id`; Commander implementation is in `src/server-v0.3.mjs`. `test/transport-correlation-http.test.mjs` proves exact transport→correlation mapping and negative leakage assertions. Focused correlation + lost-ack regression: 3/3 PASS; syntax and diff-check PASS.
+
+**Confidence/Status:** CONFIRMED implementation/regression. Live equality between a real tunnel log `cmd_request_id` and Commander audit `transportRequestId` remains required before CSDC-002 becomes PASS.
+
+**Reuse Targets:** support tracing, incident attribution, CSDC-030 telemetry, delivery correlation.
+
+**Provenance:** `finalize/rc-v094-r2`.

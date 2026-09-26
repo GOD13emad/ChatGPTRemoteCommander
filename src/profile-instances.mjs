@@ -54,6 +54,8 @@ export function buildProfileInstance({ baseConfig, existingConfig = null, profil
   const executionTools = power.enabled === true
     ? [...FULL_WORKFLOW_EXECUTION_TOOLS]
     : ['system_status', 'list_directory', 'read_text', 'write_text'];
+  const rootLeaseDirectory = migrated.config.durableWorkflows?.rootLeaseDirectory
+    ?? path.join(path.dirname(path.dirname(stateDirectory)),'shared','root-leases');
   const config = {
     ...migrated.config,
     port,
@@ -67,6 +69,7 @@ export function buildProfileInstance({ baseConfig, existingConfig = null, profil
       ...(migrated.config.durableWorkflows ?? {}),
       enabled: true,
       directory: path.join(stateDirectory, 'workflows'),
+      rootLeaseDirectory,
       executionTools
     }
   };

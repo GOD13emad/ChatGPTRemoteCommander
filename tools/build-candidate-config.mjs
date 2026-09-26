@@ -61,6 +61,7 @@ if(a.browserProfileRoot){config.powerMode??={};config.powerMode.browserControl??
 config.durableWorkflows ??={};
 if(config.durableWorkflows.enabled===true){
   config.durableWorkflows.directory=workflowDirectory;
+  if(a.providerRoot) config.durableWorkflows.rootLeaseDirectory=path.join(path.resolve(a.providerRoot),'shared','root-leases');
 }
 const runner=a.providerRoot ? applyProjectRunnerConfig(config,{stateRoot:a.providerRoot}) : {config,status:'NOT_EVALUATED',provider:null};
 config=runner.config;
