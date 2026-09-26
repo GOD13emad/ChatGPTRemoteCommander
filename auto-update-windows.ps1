@@ -937,6 +937,18 @@ try{
     $report.profiles+=@{profile=$t.Profile;candidatePort=$port;configSha256=$finalSha;doctor='PASS';hardware='PASS';shadowStore='PASS';liveStoreCompatibility='PASS'}
   }
 
+  foreach($c in $candidates){
+    $t=$c.Target
+    if(Test-Path -LiteralPath $t.RoutePath -PathType Leaf){
+      $liveRoute=Read-Json $t.RoutePath
+      if($liveRoute.active -and $liveRoute.active.port){
+        & node.exe (Join-Path $stage.Dir 'tools\schema-continuity-gate.mjs') --old-url ("http://127.0.0.1:{0}/mcp" -f [int]$liveRoute.active.port) --candidate-url ("http://127.0.0.1:{0}/mcp" -f [int]$c.Port) --router-url ("http://127.0.0.1:{0}/router/status" -f [int]$t.CanonicalPort)
+        if($LASTEXITCODE-ne 0){throw "SCHEMA_CONTINUITY_GATE_FAIL profile=$($t.Profile)"}
+        Log "SCHEMA_CONTINUITY_GATE_PASS profile=$($t.Profile)"
+      }
+    }
+  }
+
   if($NoPromote){
     foreach($c in $candidates){Stop-OwnedCandidate $c -Strict}
     $report.status='CANDIDATE_PASS';$report.completedAt=(Get-Date).ToUniversalTime().ToString('o')

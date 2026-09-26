@@ -6,6 +6,25 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const MAX_BODY = 16 * 1024 * 1024;
 const LOOPBACK = '127.0.0.1';
+const MODERN_VERSION = '2026-07-28';
+const SUBSCRIPTION_ID_META_KEY = 'io.modelcontextprotocol/subscriptionId';
+function parseMcpBody(body) {
+  try { return JSON.parse(body.toString('utf8')); } catch { return null; }
+}
+function isModernMcp(req,message) {
+  const headerVersion=String(req.headers['mcp-protocol-version']||'');
+  const metaVersion=message?.params?._meta?.['io.modelcontextprotocol/protocolVersion'];
+  return headerVersion===MODERN_VERSION || metaVersion===MODERN_VERSION;
+}
+function sseFrame(message) { return 'event: message\ndata: '+JSON.stringify(message)+'\n\n'; }
+function subscriptionMeta(id) { return { [SUBSCRIPTION_ID_META_KEY]: id }; }
+function advertiseToolListChanged(payload) {
+  if (!payload || typeof payload!=='object' || !payload.result || typeof payload.result!=='object') return payload;
+  const caps=(payload.result.capabilities && typeof payload.result.capabilities==='object') ? payload.result.capabilities : (payload.result.capabilities={});
+  const tools=(caps.tools && typeof caps.tools==='object') ? caps.tools : (caps.tools={});
+  tools.listChanged=true;
+  return payload;
+}
 const ROUTER_SOURCE_FILE = fileURLToPath(import.meta.url);
 const ROUTER_SOURCE_SHA256 = createHash('sha256').update(fs.readFileSync(ROUTER_SOURCE_FILE)).digest('hex');
 
@@ -97,7 +116,29 @@ export async function startRouter({listenPort,stateFile,runtimeFile=null,host=LO
   if(host!==LOOPBACK) fail('ROUTER_LOOPBACK_ONLY');
   const inflight=new Map();
   const inflightDetails=new Map();
+  const subscriptions=new Map();
+  let subscriptionSequence=0;
   let requestSequence=0;
+  let observedState=readRouterState(stateFile);
+  let observedGeneration=observedState.generation;
+  let legacyMcpSeen=false,modernMcpSeen=false,lastGenerationChangeAt=null;
+  const publishToolsChanged=()=>{
+    for(const sub of subscriptions.values()){
+      if(!sub.toolsListChanged || sub.res.destroyed) continue;
+      try{sub.res.write(sseFrame({jsonrpc:'2.0',method:'notifications/tools/list_changed',params:{_meta:subscriptionMeta(sub.id)}}));}
+      catch{}
+    }
+  };
+  const routeTimer=setInterval(()=>{
+    try{
+      const next=readRouterState(stateFile);
+      if(next.generation!==observedGeneration){
+        observedGeneration=next.generation;observedState=next;lastGenerationChangeAt=new Date().toISOString();
+        publishToolsChanged();
+      }
+    }catch{}
+  },100);
+  routeTimer.unref?.();
   const bump=(port,delta)=>{const n=Math.max(0,(inflight.get(port)||0)+delta);if(n)inflight.set(port,n);else inflight.delete(port);};
   const begin=(port,meta)=>{
     const id=++requestSequence;
@@ -118,7 +159,7 @@ export async function startRouter({listenPort,stateFile,runtimeFile=null,host=LO
       try{
         const state=readRouterState(stateFile);
         res.writeHead(200,{'content-type':'application/json','cache-control':'no-store'});
-        res.end(JSON.stringify({ok:true,router:true,listenPort,sourceSha256:ROUTER_SOURCE_SHA256,state,inflightByPort:Object.fromEntries(inflight),inflightDetailsByPort:detailObject()}));
+        res.end(JSON.stringify({ok:true,router:true,listenPort,sourceSha256:ROUTER_SOURCE_SHA256,state,inflightByPort:Object.fromEntries(inflight),inflightDetailsByPort:detailObject(),schemaContinuity:{toolsListSubscribers:[...subscriptions.values()].filter(x=>x.toolsListChanged).length,totalSubscriptions:subscriptions.size,legacyMcpSeen,modernMcpSeen,observedGeneration,lastGenerationChangeAt}}));
       }catch(error){
         res.writeHead(503,{'content-type':'application/json','cache-control':'no-store'});
         res.end(JSON.stringify({ok:false,router:true,error:error.message}));
@@ -128,8 +169,37 @@ export async function startRouter({listenPort,stateFile,runtimeFile=null,host=LO
     let state,body;
     try{state=readRouterState(stateFile);body=await collect(req);}
     catch(error){res.writeHead(503,{'content-type':'application/json'});res.end(JSON.stringify({ok:false,error:error.message}));return;}
+    const message=parseMcpBody(body);
+    const meta=requestMetadata(req,body);
+    const modern=meta.path==='/mcp' && meta.method==='POST' && isModernMcp(req,message);
+    if(meta.path==='/mcp' && meta.method==='POST' && meta.rpcMethod){
+      if(modern)modernMcpSeen=true;else legacyMcpSeen=true;
+    }
+    if(modern && meta.rpcMethod==='subscriptions/listen'){
+      if(req.headers['mcp-method']!=='subscriptions/listen'){
+        res.writeHead(400,{'content-type':'application/json','cache-control':'no-store'});
+        res.end(JSON.stringify({jsonrpc:'2.0',id:message?.id??null,error:{code:-32020,message:'Mcp-Method header does not match request body'}}));
+        return;
+      }
+      if(message?.id===undefined || message?.id===null){
+        res.writeHead(400,{'content-type':'application/json','cache-control':'no-store'});
+        res.end(JSON.stringify({jsonrpc:'2.0',id:null,error:{code:-32600,message:'subscriptions/listen requires a request id'}}));
+        return;
+      }
+      const requested=message?.params?.notifications;
+      const toolsListChanged=requested?.toolsListChanged===true;
+      res.writeHead(200,{'content-type':'text/event-stream','cache-control':'no-cache, no-store','connection':'keep-alive'});
+      res.flushHeaders?.();
+      const key=++subscriptionSequence;
+      const sub={key,id:message.id,res,toolsListChanged};
+      subscriptions.set(key,sub);
+      const cleanup=()=>subscriptions.delete(key);
+      req.once('aborted',cleanup);req.once('close',cleanup);res.once('close',cleanup);res.once('error',cleanup);
+      res.write(sseFrame({jsonrpc:'2.0',method:'notifications/subscriptions/acknowledged',params:{notifications:toolsListChanged?{toolsListChanged:true}:{},_meta:subscriptionMeta(message.id)}}));
+      return;
+    }
     const port=state.active.port;
-    const requestId=begin(port,requestMetadata(req,body));
+    const requestId=begin(port,meta);
     let accounted=false;
     const done=()=>{if(accounted)return;accounted=true;finish(port,requestId);};
     const headers=proxyHeaders(req.headers);headers['content-length']=String(body.length);
@@ -146,6 +216,26 @@ export async function startRouter({listenPort,stateFile,runtimeFile=null,host=LO
       upstreamResponse=up;
       up.once('end',done);up.once('close',done);up.once('error',done);
       if(downstreamClosed || res.destroyed){up.resume();return;}
+      if(modern && meta.rpcMethod==='server/discover'){
+        const chunks=[];let bytes=0,overflow=false;
+        up.on('data',chunk=>{bytes+=chunk.length;if(bytes>MAX_BODY){overflow=true;}else chunks.push(Buffer.from(chunk));});
+        up.once('end',()=>{
+          if(downstreamClosed || res.destroyed)return;
+          const h=proxyHeaders(up.headers);
+          if(overflow){
+            const data=Buffer.from(JSON.stringify({jsonrpc:'2.0',id:message?.id??null,error:{code:-32603,message:'ROUTER_DISCOVER_RESPONSE_TOO_LARGE'}}));
+            h['content-type']='application/json';h['content-length']=String(data.length);res.writeHead(502,h);res.end(data);return;
+          }
+          let data=Buffer.concat(chunks);
+          try{
+            const payload=advertiseToolListChanged(JSON.parse(data.toString('utf8')));
+            data=Buffer.from(JSON.stringify(payload));
+          }catch{}
+          h['content-length']=String(data.length);
+          res.writeHead(up.statusCode||502,h);res.end(data);
+        });
+        return;
+      }
       const h=proxyHeaders(up.headers);
       res.writeHead(up.statusCode||502,h);
       up.pipe(res);
@@ -161,8 +251,15 @@ export async function startRouter({listenPort,stateFile,runtimeFile=null,host=LO
   }
   return {
     server,
-    close:()=>new Promise(resolve=>server.close(resolve)),
-    status:()=>({listenPort,sourceSha256:ROUTER_SOURCE_SHA256,state:readRouterState(stateFile),inflightByPort:Object.fromEntries(inflight),inflightDetailsByPort:detailObject()})
+    close:()=>{
+      clearInterval(routeTimer);
+      for(const sub of subscriptions.values()){
+        try{sub.res.write(sseFrame({jsonrpc:'2.0',id:sub.id,result:{_meta:subscriptionMeta(sub.id)}}));sub.res.end();}catch{}
+      }
+      subscriptions.clear();
+      return new Promise(resolve=>server.close(resolve));
+    },
+    status:()=>({listenPort,sourceSha256:ROUTER_SOURCE_SHA256,state:readRouterState(stateFile),inflightByPort:Object.fromEntries(inflight),inflightDetailsByPort:detailObject(),schemaContinuity:{toolsListSubscribers:[...subscriptions.values()].filter(x=>x.toolsListChanged).length,totalSubscriptions:subscriptions.size,legacyMcpSeen,modernMcpSeen,observedGeneration,lastGenerationChangeAt}})
   };
 }
 function parse(argv){

@@ -236,3 +236,22 @@ Historical checkpoints remain append-only archives. Current release/control clai
 **Reuse Targets:** updater qualification, release checklist, mutation contract evolution, hardware canary design.
 
 **Provenance:** branch `fix/csdc007-release-selftest`, baseline `e195f991702035220c15545ee83a77eb1c0c52d1`.
+
+
+## E075 — stable-router schema continuity and schema-breaking update gate
+
+**Date/Context:** 2026-09-26; root cause follow-up after the v0.9.4 live rollout left an already-open ChatGPT host on the pre-update mutation schema.
+
+**Claim/Decision:** Tool-list change authority belongs at the stable router, not an ephemeral backend generation. A route swap can retire the old backend while the client must keep one stable subscription endpoint. Schema-breaking hot updates are fail-closed unless refresh continuity is negotiated; strict mutation requestId safety is not weakened to mask a stale host.
+
+**Method evidence:** Official MCP 2026-07-28 SDK documentation defines tools.listChanged, client-opened subscriptions/listen, leading notifications/subscriptions/acknowledged, and notifications/tools/list_changed as a level-trigger that instructs clients to refetch tools/list. The modern server must not send unrequested list-change notifications. This is the minimum standards-based mechanism; unsupported/legacy hosts require an explicit compatibility disposition rather than speculative push.
+
+**Implementation:** src/stable-router.mjs now owns modern tools-list subscriptions across blue/green backend generations, augments modern server/discover with capabilities.tools.listChanged=true, publishes notifications/tools/list_changed after an atomic route generation change, and exposes bounded continuity state (toolsListSubscribers, total subscriptions, modern/legacy-seen flags, observed generation) without retaining tool arguments. tools/schema-continuity-gate.mjs hashes canonical tool name + inputSchema and blocks schema-changing promotion when continuity is unavailable, legacy traffic has been observed, or no modern tools-list subscriber is present. Windows and Linux updaters invoke the same helper before promotion.
+
+**Evidence/Source:** Focused router/gate regression 6/6 PASS; Windows updater -SelfTest PASS. Exact-tree background full qualification finished with exit marker 0: npm run check PASS; npm test 425 total / 419 PASS / 6 SKIP / 0 FAIL; GUI contract 75/75 PASS; concurrency, filesystem, Linux GUI, Windows runtime and source integrity PASS; SECURITY_AUDIT_PASS; git diff --check PASS.
+
+**Confidence/Status:** implementation and local Windows qualification CONFIRMED. Live exact-commit Windows/Linux candidate qualification and live subscription/cutover canary remain UNPROVEN; CSDC-038 therefore remains IN_PROGRESS.
+
+**Reuse Targets:** hot-update architecture, stable router, MCP protocol compatibility, mutation safety, release gate, updater policy.
+
+**Provenance:** integration branch finalize/rc-v094-r2, baseline live commit bc8f7baedfae4053ffb200f2a2a8f988fab951f0.

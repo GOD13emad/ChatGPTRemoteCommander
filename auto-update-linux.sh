@@ -520,6 +520,17 @@ wait_health "$PORT" "$VERSION" "$FINAL_SHA" default || { stop_pid "$CANDIDATE_PI
 node "$STAGE_DIR/tools/doctor.mjs" --url "http://127.0.0.1:$PORT/mcp" --expected-version "$VERSION" --config "$FINAL_CFG" --json
 node "$STAGE_DIR/tools/hardware-selftest.mjs" --url "http://127.0.0.1:$PORT/mcp" --config "$FINAL_CFG" --expected-version "$VERSION"
 
+if [[ -f "$ROUTE" ]]; then
+  SCHEMA_OLD_PORT="$(json_field "$STAGE_DIR" "$ROUTE" active.port)"
+  if [[ -n "$SCHEMA_OLD_PORT" ]]; then
+    if ! node "$STAGE_DIR/tools/schema-continuity-gate.mjs" --old-url "http://127.0.0.1:$SCHEMA_OLD_PORT/mcp" --candidate-url "http://127.0.0.1:$PORT/mcp" --router-url "http://127.0.0.1:47831/router/status"; then
+      echo 'SCHEMA_CONTINUITY_GATE_FAIL profile=default' >&2
+      exit 1
+    fi
+    log 'SCHEMA_CONTINUITY_GATE_PASS profile=default'
+  fi
+fi
+
 if [[ "$NO_PROMOTE" == 1 ]]; then stop_owned_candidate "$CANDIDATE_PID" "$STAGE_DIR"; CANDIDATE_PID=""; trap - ERR; log 'AUTO_UPDATE_CANDIDATE_PASS'; exit 0; fi
 
 if [[ -f "$ROUTE" ]]; then

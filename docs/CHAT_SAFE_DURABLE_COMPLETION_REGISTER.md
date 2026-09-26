@@ -55,6 +55,7 @@ Baseline: `a36ec05ea2c530ef52473b6a6f851a4484a31a35`. Qualification head: `6372b
 | CSDC-035 | P0 | TODO | **Long soak qualification** — Run 24-48h real workload qualification after fixes. | Zero Commander-caused deadline drops, silent terminal states and unrecoverable completed-undelivered jobs. |
 | CSDC-036 | P0 | TODO | **Release gate** — Block stable release unless chat-safe completion SLO passes on Windows and Linux. | Release checklist requires evidence for all P0 items and accepted dispositions for remaining P1 items. |
 | CSDC-037 | P0 | PASS | **Chat stream turn budget** — Prevent unbounded direct MCP call chains from causing ChatGPT UI/network/input-stream Retry before a final response is returned. | MCP initialize instructions and Plugin skill enforce a bounded direct-call batch, long work is moved to durable background state, and qualification distinguishes Commander transport failures from external Chat/UI stream failures. |
+| CSDC-038 | P0 | IN_PROGRESS | **Hot-update tool-schema continuity** — Keep an already-open MCP host usable when an update changes tool schemas, using negotiated MCP change-notification support where available and fail-closed compatibility policy otherwise. | A candidate-first live update cannot silently leave the active chat with stale mutation schemas; supported hosts refresh the tool list, unsupported hosts receive an explicit pre-cutover/compatibility disposition. |
 
 ## Evidence rules
 
@@ -170,3 +171,14 @@ Baseline: `a36ec05ea2c530ef52473b6a6f851a4484a31a35`. Qualification head: `6372b
 - GitHub Actions run 36227448928: windows-latest PASS; ubuntu-latest PASS; head 3da2278f3233150bc227bf4a0d090b3cfafebb9b.
 - Human WAITING_INPUT time extends the execution deadline by measured wait time while action/planner budgets are not replenished.
 
+
+
+### CSDC-038 — IN_PROGRESS
+
+- 2026-09-26 live v0.9.4 rollout reproduced the real boundary: the backend required the new stable mutation requestId, while an already-open ChatGPT host retained its older tool schema and could not issue a conforming direct mutation.
+- Official MCP 2026-07-28 method evidence: list-change delivery is negotiated through tools.listChanged and a client-opened subscriptions/listen stream; notifications/tools/list_changed is a level trigger that requires the client to refetch tools/list.
+- Local implementation on finalize/rc-v094-r2: the stable router owns subscriptions/listen, advertises tools.listChanged on modern server/discover, sends the standard acknowledged SSE frame, and emits notifications/tools/list_changed when the atomic route generation changes. The subscription remains attached to the stable router rather than the retired backend.
+- The updater compares canonical name + inputSchema hashes before cutover. Unchanged schemas proceed normally. Changed schemas fail closed if router continuity is unavailable, any legacy MCP traffic has been seen, or no tools-list subscriber is negotiated; only a modern negotiated refresh permits schema-changing cutover.
+- Focused wire/policy regression: 6/6 PASS, including generation-change notification and all fail-closed compatibility cases. Windows updater self-test PASS.
+- Full exact-tree local Windows gate: npm run check PASS; npm test 425 total / 419 PASS / 6 SKIP / 0 FAIL; GUI contract 75/75 PASS; concurrency/FS/Linux-GUI/Windows-runtime/source-integrity PASS; npm run audit = SECURITY_AUDIT_PASS; git diff --check PASS; independent background exit marker = 0.
+- Residual before PASS: exact-commit Windows/Linux candidate-first qualification and a live stable-router subscription/cutover canary are still required. The already-open pre-v0.9.4 host cannot retroactively negotiate a subscription; it remains a one-time stale-host compatibility boundary until reconnect/refetch.
