@@ -1,0 +1,1 @@
+This branch is intentionally isolated for qualification. Opening a draft PR against finalize/rc-v094-r3 is only to run the repository's standard pull_request CI matrix on Windows and Ubuntu. Do not merge until the local mmz-LOQ-15IRX9 host is candidate-first qualified after connector schema compatibility is restored.
