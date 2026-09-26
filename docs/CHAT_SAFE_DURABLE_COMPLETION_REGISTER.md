@@ -1,8 +1,8 @@
 # Chat-Safe Durable Completion Register
 
-This cloud-backup branch preserves the execution register while the development machines are unavailable. It is not a release branch and does not prove the local uncommitted code.
+This branch is the qualification authority for chat-safe completion. PASS is evidence-gated; host-external limits stay explicit.
 
-Baseline: `a36ec05ea2c530ef52473b6a6f851a4484a31a35`. Local register commit observed before outage: `defb3ae95ef14cd9ce2c8f88f7dae134f855ddad` (not yet pushed at the time of outage).
+Baseline: `a36ec05ea2c530ef52473b6a6f851a4484a31a35`. Qualification head: `6372bfa61bf265d7f337172c333f64b45072ba5d`.
 
 ## Completion SLO
 
@@ -18,18 +18,18 @@ Baseline: `a36ec05ea2c530ef52473b6a6f851a4484a31a35`. Local register commit obse
 
 | ID | Priority | Status | Work | Acceptance |
 |---|---:|---|---|---|
-| CSDC-001 | P0 | IN_PROGRESS | **Durable delivery store** — Persist completion/delivery records independently of chat context. | A completed job survives process/chat restart with delivery state and immutable result hash. |
+| CSDC-001 | P0 | PASS | **Durable delivery store** — Persist completion/delivery records independently of chat context. | A completed job survives process/chat restart with delivery state and immutable result hash. |
 | CSDC-002 | P0 | IN_PROGRESS | **Correlation identity** — Carry one correlationId across request, workflow/run, operation, artifact and delivery. | A support trace can map one accepted request end-to-end without heuristic log matching. |
-| CSDC-003 | P0 | IN_PROGRESS | **Delivery state machine** — Implement COMPLETED_UNDELIVERED -> DELIVERY_PENDING -> DELIVERED/DEAD_LETTER. | Transitions are durable, idempotent and covered by restart/lost-ack tests. |
-| CSDC-004 | P0 | IN_PROGRESS | **Pending-delivery inbox** — Expose bounded read/claim/ack paths for undelivered results. | A later chat can discover and claim an earlier completed result without re-running effects. |
-| CSDC-005 | P0 | TODO | **Chat completion bridge** — Use a supported host mechanism to wake/resume delivery when available; retain polling fallback. | Real ChatGPT qualification proves autonomous delivery, or capability is marked external/unavailable with safe fallback. |
-| CSDC-006 | P0 | TODO | **WAITING/BLOCKED delivery** — Create durable user-visible events for WAITING_INPUT, BLOCKED, EXHAUSTED and quota pauses. | No terminal/wait state can become silent. |
+| CSDC-003 | P0 | PASS | **Delivery state machine** — Implement COMPLETED_UNDELIVERED -> DELIVERY_PENDING -> DELIVERED/DEAD_LETTER. | Transitions are durable, idempotent and covered by restart/lost-ack tests. |
+| CSDC-004 | P0 | PASS | **Pending-delivery inbox** — Expose bounded read/claim/ack paths for undelivered results. | A later chat can discover and claim an earlier completed result without re-running effects. |
+| CSDC-005 | P0 | BLOCKED_EXTERNAL | **Chat completion bridge** — Use a supported host mechanism to wake/resume delivery when available; retain polling fallback. | Real ChatGPT qualification proves autonomous delivery, or capability is marked external/unavailable with safe fallback. |
+| CSDC-006 | P0 | IN_PROGRESS | **WAITING/BLOCKED delivery** — Create durable user-visible events for WAITING_INPUT, BLOCKED, EXHAUSTED and quota pauses. | No terminal/wait state can become silent. |
 | CSDC-007 | P0 | TODO | **Lost-ack idempotency for mutations** — Add stable idempotency to mutating file/process/terminal/browser/GUI operations. | Lost response never causes a blind duplicate effect. |
 | CSDC-008 | P0 | TODO | **Universal deferred execution** — Extend deferred/durable work beyond run_shell/run_project_command to all potentially slow tools. | Any uncertain-duration tool can return a small durable handle before transport deadline. |
-| CSDC-009 | P0 | TODO | **Transport safety budget** — Reserve explicit margin below tunnel response deadline for every synchronous call. | No Commander synchronous call can consume the full tunnel deadline. |
-| CSDC-010 | P0 | TODO | **Turn-safe orchestration** — Prevent long chains of MCP calls from keeping one chat turn alive until failure. | Large projects acknowledge quickly and continue from durable state rather than a single long turn. |
-| CSDC-011 | P0 | IN_PROGRESS | **Result envelope** — Separate compact chat summary from full artifact/output. | Final chat payload stays bounded while complete evidence remains retrievable. |
-| CSDC-012 | P0 | IN_PROGRESS | **Exactly-once delivery receipt** — Persist delivery attempt/ack identities and suppress duplicate final answers. | Retrying delivery cannot re-execute work or duplicate an acknowledged result. |
+| CSDC-009 | P0 | PASS | **Transport safety budget** — Reserve explicit margin below tunnel response deadline for every synchronous call. | No Commander synchronous call can consume the full tunnel deadline. |
+| CSDC-010 | P0 | IN_PROGRESS | **Turn-safe orchestration** — Prevent long chains of MCP calls from keeping one chat turn alive until failure. | Large projects acknowledge quickly and continue from durable state rather than a single long turn. |
+| CSDC-011 | P0 | PASS | **Result envelope** — Separate compact chat summary from full artifact/output. | Final chat payload stays bounded while complete evidence remains retrievable. |
+| CSDC-012 | P0 | PASS | **Exactly-once delivery receipt** — Persist delivery attempt/ack identities and suppress duplicate final answers. | Retrying delivery cannot re-execute work or duplicate an acknowledged result. |
 | CSDC-013 | P1 | TODO | **Native MCP Tasks capability probe** — Probe ChatGPT Plugin support for MCP Tasks/subscriptions and implement only when negotiated. | Capability is runtime-proven; no speculative protocol claim. |
 | CSDC-014 | P1 | TODO | **Paged/ranged reads** — Add paging/range contracts for large text/binary/list/search results. | Files/results larger than one MCP envelope remain retrievable without 413. |
 | CSDC-015 | P1 | TODO | **Request/response size alignment** — Align tool schemas with request/response envelopes or move content to artifacts. | No advertised payload size is impossible to transport. |
@@ -55,11 +55,79 @@ Baseline: `a36ec05ea2c530ef52473b6a6f851a4484a31a35`. Local register commit obse
 | CSDC-035 | P0 | TODO | **Long soak qualification** — Run 24-48h real workload qualification after fixes. | Zero Commander-caused deadline drops, silent terminal states and unrecoverable completed-undelivered jobs. |
 | CSDC-036 | P0 | TODO | **Release gate** — Block stable release unless chat-safe completion SLO passes on Windows and Linux. | Release checklist requires evidence for all P0 items and accepted dispositions for remaining P1 items. |
 
-## Rules
+## Evidence rules
 
-- Status changes require evidence; `PASS` requires code/test/live evidence as applicable.
-- One primary blocker per change set; prestate -> narrow change -> post-check -> regression -> evidence.
-- Background-first; a chat turn is never the sole owner of long-running work.
+- `PASS` requires executable/code/live evidence appropriate to the item.
+- `BLOCKED_EXTERNAL` means Commander-side fallback is implemented but a host/platform capability is outside Commander authority.
 - Lost acknowledgement never authorizes blind replay of a mutation.
-- External platform limits are not marked fixed by Commander; use `BLOCKED_EXTERNAL` only after Commander-side fallback is proven.
-- After the power outage, reconcile the local dirty tree before merging or deleting this cloud-backup branch.
+- A chat turn is never the sole owner of long-running accepted work.
+- Release qualification additionally requires live Windows/Linux candidate canaries and the release gate.
+
+## Current qualified evidence
+
+### CSDC-001 — PASS
+
+- GitHub Actions run 36225716047: windows-latest PASS; ubuntu-latest PASS; head 6372bfa61bf265d7f337172c333f64b45072ba5d.
+- Durable SQLite delivery core persists records across reopen/restart and keeps state private from project roots; delivery-store regression suite is included in full CI.
+
+### CSDC-002 — IN_PROGRESS
+
+- GitHub Actions run 36225716047: windows-latest PASS; ubuntu-latest PASS; head 6372bfa61bf265d7f337172c333f64b45072ba5d.
+- Opaque correlationId is persisted through detached operations and Project Engine runs into delivery artifacts/events.
+- Residual: End-to-end Chat request/tunnel request correlation is not yet proven; CSDC-030 remains outstanding.
+
+### CSDC-003 — PASS
+
+- GitHub Actions run 36225716047: windows-latest PASS; ubuntu-latest PASS; head 6372bfa61bf265d7f337172c333f64b45072ba5d.
+- Delivery transitions COMPLETED_UNDELIVERED -> DELIVERY_PENDING -> DELIVERED and bounded DEAD_LETTER semantics are durable/idempotent in delivery-store tests.
+
+### CSDC-004 — PASS
+
+- GitHub Actions run 36225716047: windows-latest PASS; ubuntu-latest PASS; head 6372bfa61bf265d7f337172c333f64b45072ba5d.
+- Bounded MCP delivery_status/list/get/claim/ack/read_artifact surface is integrated; correlation mismatch fails closed; artifacts are chunked.
+
+### CSDC-005 — BLOCKED_EXTERNAL
+
+- GitHub Actions run 36225716047: windows-latest PASS; ubuntu-latest PASS; head 6372bfa61bf265d7f337172c333f64b45072ba5d.
+- Commander-side durable inbox fallback is implemented and cross-platform CI passes.
+- Residual: Autonomous ChatGPT wake/push cannot be claimed unless the host advertises the MCP Tasks/subscriptions capability on the actual request. Native host capability still requires live observation.
+
+### CSDC-006 — IN_PROGRESS
+
+- GitHub Actions run 36225716047: windows-latest PASS; ubuntu-latest PASS; head 6372bfa61bf265d7f337172c333f64b45072ba5d.
+- WAITING_INPUT and BLOCKED project states are regression-tested as durable correlation-scoped delivery events; code also maps COMPLETED/EXHAUSTED/CANCELLED/PAUSED.
+- Residual: Need explicit executable coverage for every mapped terminal/wait state before PASS.
+
+### CSDC-009 — PASS
+
+- GitHub Actions run 36224867884 PASS on Windows and Ubuntu at fd8bec724c17b9ed04de42db36ff509f46cc8bdf.
+- Synchronous command safety budget was reduced to reserve transport headroom; long/unknown work remains directed to detached operation_start.
+- Residual: Live tunnel canary after rollout is still required by CSDC-035/release qualification; this PASS is for the Commander-side safety-budget requirement.
+
+### CSDC-010 — IN_PROGRESS
+
+- fd8bec transport headroom PASS; durable detached operation + delivery inbox path PASS in cross-platform CI.
+- Residual: Potentially slow non-command tools are not universally deferred yet; CSDC-008 remains open.
+
+### CSDC-011 — PASS
+
+- GitHub Actions run 36225716047: windows-latest PASS; ubuntu-latest PASS; head 6372bfa61bf265d7f337172c333f64b45072ba5d.
+- Full operation/project result payloads are stored as content-addressed bounded artifacts; delivery metadata remains compact; artifact reads are capped/chunked.
+
+### CSDC-012 — PASS
+
+- GitHub Actions run 36225716047: windows-latest PASS; ubuntu-latest PASS; head 6372bfa61bf265d7f337172c333f64b45072ba5d.
+- Same delivery attempt claim/ack is idempotent; duplicate event key returns same delivery; changed payload conflicts fail closed.
+
+### CSDC-027 — IN_PROGRESS
+
+- GitHub Actions run 36225716047: windows-latest PASS; ubuntu-latest PASS; head 6372bfa61bf265d7f337172c333f64b45072ba5d.
+- Source installers now pin OpenAI tunnel-client v0.0.15 and official release hashes/tag provenance were captured.
+- Residual: Live Windows/Linux candidate qualification is still required before PASS.
+
+### CSDC-033 — IN_PROGRESS
+
+- GitHub Actions run 36225716047: windows-latest PASS; ubuntu-latest PASS; head 6372bfa61bf265d7f337172c333f64b45072ba5d.
+- Restart/lost-ack/idempotent delivery, operation receipt backfill and correlation isolation tests are in full CI.
+- Residual: Remaining fault matrix cases include real tunnel disconnect, power cuts, process-tree and long soak.
+
