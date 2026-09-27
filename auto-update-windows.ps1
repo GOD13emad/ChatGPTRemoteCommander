@@ -607,7 +607,7 @@ function Retire-PreviousRoute([string]$RoutePath,[object]$OldActive,[string]$Pro
   $state=Read-Json $RoutePath
   if(-not $state.previous){return}
   if([int]$state.previous.port-ne[int]$OldActive.port -or [string]$state.previous.commit-ne[string]$OldActive.commit){throw "ROUTER_RETIRE_IDENTITY_MISMATCH profile=$Profile"}
-  & node.exe (Join-Path $PSScriptRoot 'tools\router-retire.mjs') --state $RoutePath --expected-generation ([string]$state.generation) --profile $Profile --previous-port ([string]$OldActive.port) --previous-commit ([string]$OldActive.commit)
+  & node.exe (Join-Path $PSScriptRoot 'tools\router-retire.mjs') --state $RoutePath --expected-generation ([string]$state.generation) --profile $Profile --previous-port ([string]$OldActive.port) --previous-commit ([string]$OldActive.commit) | Out-Null
   if($LASTEXITCODE -ne 0){throw "ROUTER_RETIRE_FAIL profile=$Profile"}
   Log "ROUTER_PREVIOUS_RETIRED profile=$Profile port=$($OldActive.port) commit=$($OldActive.commit)"
 }

@@ -84,6 +84,8 @@ test('auto updater is candidate-first, hardware-gated and commit-point aware',()
   assert.ok(s.includes("Start-Sleep -Milliseconds 500") && s.includes("DRAIN_STALE_RECHECK_DEFER"),'stale recovery must re-check immediately before destructive stop');
   assert.ok(s.indexOf('Get-StaleDrainEvidence $OldActive') < s.indexOf('Stop-StaleBackendTree $OldActive'),'stale evidence must precede stale-backend retirement');
   assert.ok(s.includes("Retire-PreviousRoute $Target.RoutePath $OldActive $Target.Profile"),'successful Windows drain must atomically retire route.previous');
+  const retire=s.slice(s.indexOf('function Retire-PreviousRoute'),s.indexOf('function Get-DrainStatus'));
+  assert.ok(retire.includes("router-retire.mjs')") && retire.includes('| Out-Null'),'router-retire diagnostic JSON must not leak into Complete-DeferredDrains pending-profile output');
   const drain=s.slice(s.indexOf('function Drain-Previous'),s.indexOf('function Complete-DeferredDrains'));
   assert.ok(drain.indexOf('Get-PersistentTerminalChildren $OldActive') < drain.indexOf('Stop-OldBackend $OldActive'),'Windows immediate retirement must check persistent terminals before old-backend stop');
   const deferred=s.slice(s.indexOf('function Complete-DeferredDrains'),s.indexOf('function Has-SupersededRelease'));

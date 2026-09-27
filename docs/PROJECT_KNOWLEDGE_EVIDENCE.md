@@ -534,3 +534,13 @@ Historical checkpoints remain append-only archives. Current release/control clai
 - Real-data validation: on a temporary copy of the 22 production-corrupt operations and reservation files, recovery produced copied=22, repaired=22, backups=22, invalid=0, tracked=0, events=22. Live operation storage was not modified by this validation.
 - Related stream finding: two long-lived pre-v0.9.9 synchronous `run_shell` requests remain on a detached v0.9.8 backend because they own real external jobs; v0.9.9 live guard rejects >15 s synchronous calls before effect. Causality from these historical requests to ChatGPT UI `Resume stream unavailable` remains PROBABLE-UNVERIFIED.
 - Reuse Targets: durable delivery, crash/power recovery, stream resilience, release 0.9.10, incident runbook.
+
+
+## E-DRAIN-20260927-R1 — Windows retire output contamination
+- Date/Context: 2026-09-27, post-promotion reconciliation of immutable v0.9.10.
+- Fact / Confirmed: default route safely retired v0.9.9 and reached previous=null, but the first hidden reconcile emitted `AUTO_UPDATE_DRAIN_PENDING profiles={"ok":true,"retired":true,"generation":94}`. The next maintenance cycle correctly reached `CURRENT`.
+- Root Cause / Confirmed: PowerShell function `Retire-PreviousRoute` invoked `tools/router-retire.mjs` without suppressing its diagnostic JSON stdout. Because PowerShell functions return pipeline output, `Complete-DeferredDrains` interpreted that JSON string as a pending-profile item.
+- Risk: transient false DRAIN_PENDING status only; cutover, route generation, old-backend stop, and workload safety were independently verified correct.
+- Prevention/Guard: pipe router-retire diagnostic stdout to `Out-Null` while retaining `$LASTEXITCODE` enforcement; contract regression requires suppression.
+- Release decision: do not mint a new release solely for this self-correcting status artifact. Fix is committed on main for the next substantive release; immutable v0.9.10 remains the current live release.
+- Reuse Targets: updater status correctness, zero-downtime drain reconciliation, release diagnostics.
