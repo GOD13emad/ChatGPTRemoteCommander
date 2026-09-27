@@ -51,3 +51,10 @@ The final v0.9.4 HEAD must independently pass check/test/audit on hosted Windows
 ## Known external boundary
 
 ChatGPT UI stream interruption cannot be globally prevented by Commander. v0.9.4 removes the need for an accepted long-running Commander operation to depend on one chat turn and provides a durable inbox fallback. Autonomous host wake/push remains capability-negotiated and is not assumed.
+
+
+## Power-loss recovery gate
+
+The final v0.9.4 release also requires Windows pre-login recovery. The qualified design uses a SYSTEM AtStartup headless core with machine-protected tunnel credential copies and explicit owner-profile state paths, followed by a safe AtLogOn handoff to the user session. AutoAdminLogon/password persistence is not used. Project mutations that must survive host power loss are enrolled in a durable workflow before the first meaningful mutation.
+
+Firmware power restoration remains an operator-controlled UEFI setting and Commander never reboots/logs off automatically for this gate. Stable publication requires exact-candidate Windows/Linux qualification, successful SYSTEM self-test and task installation, then at least 24 cumulative hours of observed online soak on the final build, excluding genuine external power-off time and requiring successful recovery after power returns.
