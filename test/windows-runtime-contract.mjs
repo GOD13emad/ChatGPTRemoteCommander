@@ -58,6 +58,61 @@ hasAll(supervisor, [
   "Start-AutoUpdateIfDue"
 ], 'autostart-windows.ps1');
 
+const bootEnable = read('enable-boot-recovery.ps1');
+hasAll(bootEnable, [
+  "BOOT_RECOVERY_ELEVATION_REQUIRED",
+  "DataProtectionScope]::LocalMachine",
+  "S-1-5-18",
+  "S-1-5-32-544",
+  "New-ScheduledTaskTrigger -AtStartup",
+  "New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount",
+  "CredentialSelfTest",
+  "boot-recovery-system-probe.json",
+  "Register-ScheduledTask -TaskName $HandoffTaskName",
+  "New-ScheduledTaskTrigger -AtLogOn",
+  "autoAdminLogonRequired=$false",
+  "plaintextCredentialPersisted=$false"
+], 'enable-boot-recovery.ps1');
+for (const forbidden of ['AutoAdminLogon =', 'DefaultPassword', '-LogonType Password']) {
+  if (bootEnable.includes(forbidden)) throw new Error('boot recovery unsafe marker: ' + forbidden);
+}
+
+const handoff = read('handoff-user-session-windows.ps1');
+hasAll(handoff, [
+  "Get-CommanderBusy",
+  "active=$active",
+  "leases=$leases",
+  "HANDOFF_DEFERRED_BUSY",
+  "Test-SystemOwner",
+  "autostart-windows\\.ps1",
+  "-BootCore",
+  "system-tunnel",
+  "system-mcp",
+  "USER_SESSION_HANDOFF_PASS"
+], 'handoff-user-session-windows.ps1');
+
+const bootDisable = read('disable-boot-recovery.ps1');
+hasAll(bootDisable, [
+  "BOOT_RECOVERY_ELEVATION_REQUIRED",
+  "Unregister-ScheduledTask",
+  "*.machine.dpapi",
+  "currentUserCredentialsPreserved=$true",
+  "autoAdminLogonChanged=$false"
+], 'disable-boot-recovery.ps1');
+
+hasAll(supervisor, [
+  "OwnerUserProfile",
+  "CredentialScope",
+  "CurrentUser','LocalMachine",
+  "DataProtectionScope]::LocalMachine",
+  "CredentialSelfTest",
+  "SelfTestOutput",
+  "BootCore",
+  "OwnerLocalAppData",
+  "OwnerRoamingAppData",
+  "$env:USERPROFILE = $OwnerUserProfile"
+], 'autostart-windows.ps1 boot recovery');
+
 const routing = read('supervisor-routing.ps1');
 hasAll(routing, [
   "Get-RouteState",
@@ -84,6 +139,13 @@ hasAll(account, [
 ], 'connect-chatgpt-account.ps1');
 
 if (process.platform === 'win32') {
+  for (const script of ['autostart-windows.ps1','enable-boot-recovery.ps1','handoff-user-session-windows.ps1','disable-boot-recovery.ps1']) {
+    const parse = spawnSync('pwsh.exe', ['-NoLogo','-NoProfile','-Command',
+      '$t=$null;$e=$null;[void][System.Management.Automation.Language.Parser]::ParseFile("'+script+'",[ref]$t,[ref]$e);if($e.Count){$e|ForEach-Object{$_.Message};exit 1}'],
+      { encoding:'utf8' });
+    if (parse.status !== 0) throw new Error(script+' parse failed: '+(parse.stderr||parse.stdout));
+  }
+
   const policy = spawnSync('pwsh.exe',['-NoLogo','-NoProfile','-File','test/supervisor-recovery-policy-windows.ps1'],{encoding:'utf8'});
   if(policy.status!==0) throw new Error('supervisor recovery policy failed: '+(policy.stderr||policy.stdout));
   if(!policy.stdout.includes('SUPERVISOR_RECOVERY_POLICY_PASS')) throw new Error('supervisor recovery policy marker missing');
