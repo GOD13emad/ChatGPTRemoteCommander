@@ -88,6 +88,7 @@ test('auto updater is candidate-first, hardware-gated and commit-point aware',()
   assert.ok(drain.indexOf('Get-PersistentTerminalChildren $OldActive') < drain.indexOf('Stop-OldBackend $OldActive'),'Windows immediate retirement must check persistent terminals before old-backend stop');
   const deferred=s.slice(s.indexOf('function Complete-DeferredDrains'),s.indexOf('function Has-SupersededRelease'));
   assert.ok(deferred.indexOf('Get-PersistentTerminalChildren $old') < deferred.indexOf('Stop-OldBackend $old'),'Windows deferred retirement must check persistent terminals before every old-backend stop path');
+  assert.ok(deferred.indexOf('Get-RetainableLongCommandRoots $old $canonical') < deferred.indexOf('Stop-OldBackend $old'),'Windows deferred retirement must preserve verified long command trees before any old-backend stop path');
   const maintenance=s.slice(s.indexOf('$controlMismatch=($controlHead-ne $stage.Commit)'),s.indexOf('Push-Location $stage.Dir'));
   assert.ok(maintenance.includes("if($controlMismatch)") && maintenance.includes('Recycle-ControlSupervisor'),'control-code promotion may recycle the supervisor');
   const cleanupOnly=maintenance.slice(maintenance.lastIndexOf('$cleanupPending=@(Cleanup-Releases)'));
@@ -99,6 +100,11 @@ test('auto updater is candidate-first, hardware-gated and commit-point aware',()
   assert.ok(s.includes('PROFILE_DIRECTORY_MISMATCH'), 'profile directory identity must fail closed');
   assert.ok(s.includes("AUTO_UPDATE_DRAIN_PENDING profiles=") && s.includes("AUTO_UPDATE_PROFILE_DEFER profiles="),'Windows committed cutover must preserve both post-cutover drains and independently deferred profiles');
   assert.ok(s.includes('DRAIN_TERMINAL_RETAINED') && s.includes('Get-ProtectedReleasePaths') && s.includes('Complete-RetainedBackends'),'Windows terminal keeper must durably detach zero-inflight previous backends and protect their release trees');
+  assert.ok(s.includes('Get-RetainableLongCommandRoots') && s.includes('DRAIN_COMMAND_RETAINED'),'Windows updater must detach verified long-running command backends instead of blocking future generations');
+  const longCommand=s.slice(s.indexOf('function Get-RetainableLongCommandRoots'),s.indexOf('function Get-StaleDrainEvidence'));
+  for(const marker of ["rpcMethod-eq'tools/call'","run_shell","run_project_command","cancellable-ne$true","-noninteractive","age-lt60"])assert.ok(longCommand.includes(marker),marker);
+  assert.ok(longCommand.includes('if($found.Count-ne$st.count){return @()}'),'long-command retention must map every non-cancellable command request to exactly one direct owned command root');
+
   assert.ok(s.includes('Get-TerminalRetentionEvidence') && s.includes('DRAIN_TERMINAL_STALE_ROUTER_ACCOUNTING'),'Windows terminal keeper must detach stale router accounting only after independent backend-idle evidence');
   const retainEvidence=s.slice(s.indexOf('function Get-TerminalRetentionEvidence'),s.indexOf('function Stop-StaleBackendTree'));
   for(const marker of ['activeOperations','queued','unexpectedConnections','guiBusy','guiLeased','allowedRoots','unsafeDescendants','Get-StaleDrainDecision'])assert.ok(retainEvidence.includes(marker),marker);
