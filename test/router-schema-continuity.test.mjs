@@ -10,7 +10,25 @@ import { startRouter, writeRouterStateAtomic } from '../src/stable-router.mjs';
 const MODERN='2026-07-28';
 const wait=ms=>new Promise(r=>setTimeout(r,ms));
 function temp(){return fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(),'rc-schema-router-')));}
-function listen(server){return new Promise((resolve,reject)=>{server.once('error',reject);server.listen(0,'127.0.0.1',()=>resolve(server.address().port));});}
+let portCursor=20000+(process.pid%20000);
+async function listen(server){
+  for(let attempt=0;attempt<500;attempt+=1){
+    const port=portCursor++;
+    if(portCursor>45000)portCursor=20000;
+    try{
+      await new Promise((resolve,reject)=>{
+        const cleanup=()=>{server.off('error',onError);server.off('listening',onListening);};
+        const onError=error=>{cleanup();reject(error);};
+        const onListening=()=>{cleanup();resolve();};
+        server.once('error',onError);server.once('listening',onListening);server.listen(port,'127.0.0.1');
+      });
+      return port;
+    }catch(error){
+      if(error?.code!=='EADDRINUSE')throw error;
+    }
+  }
+  throw new Error('SAFE_TEST_PORT_UNAVAILABLE');
+}
 function close(server){return new Promise(resolve=>server.close(resolve));}
 async function freePort(){const s=http.createServer();const p=await listen(s);await close(s);return p;}
 function backend(label){

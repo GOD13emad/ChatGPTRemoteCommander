@@ -53,6 +53,17 @@ test('legacy Codex runner is migrated fail-closed', () => {
   assert.deepEqual(result.config.durableWorkflows.runner.provider,{kind:'disabled',reason:'NO_CODEX_VIA_COMMANDER'});
 });
 
+test('legacy top-level runner kind=codex is migrated fail-closed', () => {
+  const cfg=base({runner:{enabled:false,autoTick:false,kind:'codex',model:'legacy-model',maxPlannerCalls:7}});
+  const result=applyProjectRunnerConfig(cfg,{platform:'linux'});
+  assert.equal(result.status,'CODEX_FORBIDDEN');
+  assert.equal(result.config.durableWorkflows.runner.enabled,false);
+  assert.equal(result.config.durableWorkflows.runner.autoTick,false);
+  assert.equal(result.config.durableWorkflows.runner.kind,'disabled');
+  assert.deepEqual(result.config.durableWorkflows.runner.provider,{kind:'disabled',reason:'NO_CODEX_VIA_COMMANDER'});
+  assert.equal(result.config.durableWorkflows.runner.maxPlannerCalls,7);
+});
+
 test('Codex executable is forbidden even if disguised as command provider', () => {
   const cfg=base({runner:{
     enabled:true,autoTick:true,

@@ -23,7 +23,7 @@ function fixture(t) {
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   const source = path.join(root, 'source'), target = path.join(root, 'custom-install');
   fs.mkdirSync(source);
-  for (const name of ['config.json', 'tools/build-candidate-config.mjs', 'tools/capability-migrate.mjs', 'tools/json-field.mjs', 'tools/tunnel-client-pin.json', 'src/capability-profile.mjs', 'src/project-runner-config.mjs']) {
+  for (const name of ['config.json', 'tools/build-candidate-config.mjs', 'tools/capability-migrate.mjs', 'tools/json-field.mjs', 'tools/tunnel-client-pin.json', 'src/capability-profile.mjs', 'src/project-runner-config.mjs', 'src/no-codex-policy.mjs']) {
     write(path.join(source, name), fs.readFileSync(path.join(repository, name)));
   }
   write(path.join(source, 'tools/install-tunnel-client-linux.sh'), fs.readFileSync(path.join(repository, 'tools/install-tunnel-client-linux.sh')), true);
@@ -115,7 +115,12 @@ for (const mode of ['standard', 'power']) test(`Linux custom no-start ${mode} re
       assert.equal(config.capabilityProfile.id, saved.capabilityProfile.id);
       assert.equal(config.powerMode.backupRoot, saved.powerMode.backupRoot);
       assert.equal(config.durableWorkflows.directory, saved.durableWorkflows.directory);
-      assert.deepEqual(config.durableWorkflows.runner, saved.durableWorkflows.runner);
+      assert.equal(config.durableWorkflows.runner.enabled, false);
+      assert.equal(config.durableWorkflows.runner.autoTick, false);
+      assert.equal(config.durableWorkflows.runner.kind, 'disabled');
+      assert.deepEqual(config.durableWorkflows.runner.provider, { kind: 'disabled', reason: 'NO_CODEX_VIA_COMMANDER' });
+      assert.equal(config.durableWorkflows.runner.model, saved.durableWorkflows.runner.model);
+      assert.equal(config.durableWorkflows.runner.maxPlannerCalls, saved.durableWorkflows.runner.maxPlannerCalls);
       assert.deepEqual(config.capabilityProfile.disabledCapabilities, saved.capabilityProfile.disabledCapabilities);
       assert.equal(config.powerMode.allowShell, false);
       assert.equal(fs.existsSync(config.allowedRoots[0]), false, 'preserving a configured root must not create it');

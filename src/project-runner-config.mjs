@@ -40,9 +40,11 @@ function disableRunner(existing, reason = 'NO_AUTOMATIC_MODEL_PROVIDER') {
   const current = existing && typeof existing === 'object' && !Array.isArray(existing) ? clone(existing) : {};
   const currentProvider = current.provider && typeof current.provider === 'object' && !Array.isArray(current.provider)
     ? clone(current.provider) : {};
-  const codex = currentProvider.kind === 'codex' || isCodexExecutable(currentProvider.executable);
+  const codex = current.kind === 'codex' || currentProvider.kind === 'codex'
+    || isCodexExecutable(current.executable) || isCodexExecutable(currentProvider.executable);
   return {
     ...current,
+    ...(codex ? { kind: 'disabled' } : {}),
     enabled: false,
     autoTick: false,
     provider: codex
@@ -106,7 +108,8 @@ export function applyProjectRunnerConfig(config, { platform = process.platform }
   const existing = next.durableWorkflows.runner;
   const provider = existing?.provider;
   const executable = provider?.executable;
-  if (provider?.kind === 'codex' || isCodexExecutable(executable)) {
+  if (existing?.kind === 'codex' || provider?.kind === 'codex'
+      || isCodexExecutable(existing?.executable) || isCodexExecutable(executable)) {
     next.durableWorkflows.runner = disableRunner(existing, 'NO_CODEX_VIA_COMMANDER');
     return {
       config: next,
