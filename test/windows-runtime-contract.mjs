@@ -112,6 +112,12 @@ hasAll(supervisor, [
   "Read-RcCredentialPlainText",
   "Test-RcCredential"
 ], 'autostart-windows.ps1 boot recovery');
+if (supervisor.includes('Get-ProfileMcpPort') || supervisor.includes('Get-ProfileHealthPort')) {
+  throw new Error('autostart-windows.ps1 contains stale pre-refactor profile helper call');
+}
+if (!bootEnable.includes("New-Item -ItemType Directory -Force -Path $VarDir")) {
+  throw new Error('enable-boot-recovery.ps1 must create its runtime var directory before probe output');
+}
 
 const runtime = read('windows-supervisor-runtime.ps1');
 hasAll(runtime, [
