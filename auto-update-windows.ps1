@@ -153,7 +153,8 @@ function Get-PrimaryConfig {
 }
 function Invoke-Mcp([int]$Port,[string]$Name,[hashtable]$Arguments=@{}){
   $body=@{jsonrpc='2.0';id=1;method='tools/call';params=@{name=$Name;arguments=$Arguments}}|ConvertTo-Json -Depth 20 -Compress
-  $r=Invoke-RestMethod -Uri "http://127.0.0.1:$Port/mcp" -Method Post -ContentType 'application/json' -Body $body -TimeoutSec 30
+  $headers=@{'MCP-Protocol-Version'='2026-07-28'}
+  $r=Invoke-RestMethod -Uri "http://127.0.0.1:$Port/mcp" -Method Post -Headers $headers -ContentType 'application/json' -Body $body -TimeoutSec 30
   if($r.error){ throw "MCP_RPC_ERROR $($r.error.message)" }
   if($r.result.isError){ throw "MCP_TOOL_ERROR $Name $($r.result.content[0].text)" }
   return $r.result.structuredContent
