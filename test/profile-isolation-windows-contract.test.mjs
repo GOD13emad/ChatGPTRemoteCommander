@@ -5,11 +5,15 @@ import fs from 'node:fs';
 const read=p=>fs.readFileSync(p,'utf8');
 test('Windows profile isolation scripts preserve secret split and rollback boundaries',()=>{
   const sup=read('autostart-windows.ps1');
+  const runtime=read('windows-supervisor-runtime.ps1');
   const mig=read('configure-profile-instance.ps1');
   const conn=read('connect-chatgpt-account.ps1');
   const cfg=read('configure-durable-workflows.ps1');
-  for(const marker of ['ChatGPTRemoteCommander\\instances','REMOTE_COMMANDER_CONFIG','instance config hash mismatch','refusing to stop it','MCP_INSTANCE_READY','$SelfTest']){
+  for(const marker of ['REMOTE_COMMANDER_CONFIG','instance config hash mismatch','refusing to stop it','MCP_INSTANCE_READY','$SelfTest']){
     assert.ok(sup.includes(marker),marker);
+  }
+  for(const marker of ['ChatGPTRemoteCommander\\instances','OwnerUserProfile','OwnerLocal','OwnerRoaming']){
+    assert.ok(runtime.includes(marker),marker);
   }
   for(const marker of ['Existing DPAPI Runtime API credential is required','doctor-profile','CONTROL_PLANE_API_KEY','profile-before-','Profile backup hash mismatch','PROFILE_INSTANCE_MIGRATION_PASS','Stop-IsolatedMcp']){
     assert.ok(mig.includes(marker),marker);
