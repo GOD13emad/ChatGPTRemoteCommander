@@ -3,7 +3,7 @@ $originalLocalAppData=$env:LOCALAPPDATA
 $tempLocalAppData=Join-Path ([IO.Path]::GetTempPath()) ('rc-supervisor-policy-'+[guid]::NewGuid().ToString('N'))
 $env:LOCALAPPDATA=$tempLocalAppData
 function Write-SupervisorLog([string]$Message) {}
-function Test-ProfileName([string]$Name) { return $true }
+function Test-RcProfileName([string]$Name) { return $true }
 try {
   . (Join-Path (Split-Path -Parent $PSScriptRoot) 'supervisor-routing.ps1')
   $cases=@(
