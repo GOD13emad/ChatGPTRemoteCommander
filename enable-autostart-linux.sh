@@ -73,7 +73,7 @@ chmod 700 "$CRED_DIR"
 
 if [[ ! -f "$PROFILE_FILE" ]]; then
   [[ -n "$TUNNEL_ID" ]] || { read -r -p 'Paste OpenAI tunnel_id: ' TUNNEL_ID; }
-  [[ "$TUNNEL_ID" =~ ^tunnel_[A-Za-z0-9_-]+$ ]] || { echo 'Invalid tunnel_id format.' >&2; exit 1; }
+  [[ "$TUNNEL_ID" =~ ^tunnel_[0-9a-f]{32}$ ]] || { echo 'Invalid tunnel_id format.' >&2; exit 1; }
   [[ "$HEALTH_PORT" -ne 0 ]] || HEALTH_PORT="$(free_port)"
 elif [[ "$HEALTH_PORT" -eq 0 ]]; then
   HEALTH_PORT="$(sed -nE 's/.*listen_addr:[[:space:]]*"?127\.0\.0\.1:([0-9]+).*/\1/p' "$PROFILE_FILE" | head -n1)"
