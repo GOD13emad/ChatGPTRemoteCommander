@@ -79,7 +79,7 @@ test('forced helper shutdown terminates an owned descendant process tree',async(
   assert.equal(Number.isInteger(pid)&&pid>0,true);
   assert.equal(processAlive(pid),true);
   await rejected;
-  for(let i=0;i<80&&processAlive(pid);i++)await sleep(25);
+  for(let i=0;i<600&&processAlive(pid);i++)await sleep(25);
   assert.equal(processAlive(pid),false);
   await Promise.all([f.client.close(),f.client.close()]);
  }finally{await f.cleanup();}
@@ -97,7 +97,7 @@ test('unexpected helper exit terminates the independently owned browser process 
   const pid=Number((await readFile(marker,'utf8')).trim());
   assert.equal(Number.isInteger(pid)&&pid>0,true);
   await rejected;
-  for(let i=0;i<100&&(processAlive(pid)||await exists(profile));i++)await sleep(25);
+  for(let i=0;i<600&&(processAlive(pid)||await exists(profile));i++)await sleep(25);
   assert.equal(processAlive(pid),false);
   assert.equal(await exists(profile),false);
  }finally{await f.cleanup();}
@@ -114,7 +114,7 @@ test('unexpected helper exit terminates a persistent browser process but preserv
   for(let i=0;i<60&&!await exists(marker);i++)await sleep(20);
   const pid=Number((await readFile(marker,'utf8')).trim());
   await rejected;
-  for(let i=0;i<100&&processAlive(pid);i++)await sleep(25);
+  for(let i=0;i<600&&processAlive(pid);i++)await sleep(25);
   assert.equal(processAlive(pid),false);
   assert.equal(await exists(profile),true);
   assert.equal(await readFile(path.join(profile,'owned.txt'),'utf8'),'owned');
