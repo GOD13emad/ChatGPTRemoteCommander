@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import {createWorkflowTools,WORKFLOW_TOOL_DEFINITIONS} from '../src/workflow-tools.mjs';
+import {createWorkflowTools,WORKFLOW_TOOL_DEFINITIONS,PROJECT_ENGINE_TOOL_DEFINITIONS} from '../src/workflow-tools.mjs';
 const fixture=()=>{
  const root=fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(),'rc-wf-adapter-')));
  const base={config:{durableWorkflows:{enabled:true,directory:path.join(root,'state')}},roots:[root],device:'fixture',configSha256:'0'.repeat(64),lookup:name=>({name,inputSchema:{type:'object'}}),validateSchema:()=>[],dispatch:async()=>({ok:true})};
@@ -15,6 +15,12 @@ test('catalog preserves original tools and adds autonomy controls with unique na
  assert.equal(WORKFLOW_TOOL_DEFINITIONS.length,17);assert.equal(new Set(WORKFLOW_TOOL_DEFINITIONS.map(d=>d.name)).size,17);
  for(const name of ['workflow_status','workflow_create','workflow_get','workflow_list','workflow_note','workflow_search','workflow_checkpoint','workflow_resume','workflow_call','workflow_reconcile','workflow_export'])assert.ok(WORKFLOW_TOOL_DEFINITIONS.some(d=>d.name===name));
  assert.equal(WORKFLOW_TOOL_DEFINITIONS.find(d=>d.name==='workflow_call').annotations.destructiveHint,true);
+});
+test('project-engine tool schema stays stable when runner is disabled',async()=>{
+ const f=fixture();try{
+  for(const def of PROJECT_ENGINE_TOOL_DEFINITIONS)assert.ok(f.tool.definitions.some(x=>x.name===def.name),def.name);
+  await assert.rejects(f.tool.execute('workflow_run_status',{runId:'disabled'}),/WORKFLOW_RUNNER_DISABLED/);
+ }finally{f.dispose();}
 });
 test('default execution policy excludes shell, deletion, credentials and recursive workflow calls',async()=>{const f=fixture();try{
  await f.tool.execute('workflow_create',{id:'x',root:f.root,goal:'Goal',acceptance:['Observe'],steps:[{id:'a',title:'Step'}]});

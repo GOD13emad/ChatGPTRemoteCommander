@@ -24,7 +24,7 @@ import {
 } from './no-codex-policy.mjs';
 
 let workflowTools = null;
-const VERSION = '0.9.11';
+const VERSION = '0.9.12';
 const MODERN_VERSION = '2026-07-28';
 const LEGACY_VERSIONS = ['2025-11-25', '2025-06-18', '2025-03-26'];
 const MODERN_CACHE_HINT = Object.freeze({ ttlMs: 30000, cacheScope: 'private' });

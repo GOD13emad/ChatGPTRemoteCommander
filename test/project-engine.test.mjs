@@ -102,11 +102,12 @@ test('uncertain mutation blocks continuation and is never automatically replayed
   try{await f.create();await f.start();const r=await f.tick();assert.equal(r.lastCode,'PROJECT_EFFECT_UNCERTAIN');await f.reopen();const again=await f.tick();assert.equal(again.skipped,true);assert.equal(f.calls,1);
   }finally{await f.dispose();}
 });
-test('runner status is opt-in and existing recovery-only tool catalog is unchanged',async()=>{
+test('runner status is opt-in while the project-engine tool schema stays stable',async()=>{
   const f=fixture(async()=>proposal('read_text',{path:'x'}));let legacy;
   try{const opts={...f.options,config:{...f.options.config,durableWorkflows:{...f.options.config.durableWorkflows,directory:path.join(f.root,'legacy'),runner:{enabled:false}}}};
-    legacy=createWorkflowTools(opts);assert.equal(legacy.definitions.length,17);assert.equal(f.api.definitions.length,21);
+    legacy=createWorkflowTools(opts);assert.equal(legacy.definitions.length,21);assert.equal(f.api.definitions.length,21);
     const disabled=await legacy.execute('workflow_status',{});assert.equal(disabled.runnerConfigured,false);assert.equal(disabled.automaticExecution,false);
+    await assert.rejects(legacy.execute('workflow_run_status',{runId:'disabled'}),/WORKFLOW_RUNNER_DISABLED/);
     const enabled=await f.api.execute('workflow_status',{});assert.equal(enabled.runnerConfigured,true);assert.equal(enabled.automaticExecution,false);
   }finally{await legacy?.close();await f.dispose();}
 });

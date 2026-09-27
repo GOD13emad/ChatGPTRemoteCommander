@@ -238,7 +238,7 @@ export function createWorkflowTools({ config, roots, device, configSha256, looku
   }
 
   const api = {
-    definitions: [...WORKFLOW_TOOL_DEFINITIONS],
+    definitions: [...WORKFLOW_TOOL_DEFINITIONS, ...PROJECT_ENGINE_TOOL_DEFINITIONS],
     close: () => { if(timer)clearInterval(timer); const pending=engine?.close(); if(pending?.then)return pending.then(()=>store.close());store.close(); },
     schedulerTick,
     async execute(name, args) {
@@ -317,7 +317,6 @@ export function createWorkflowTools({ config, roots, device, configSha256, looku
           if(!definition||validateSchema(args,definition.inputSchema).length)fail('WORKFLOW_TOOL_ARGUMENTS_INVALID');
           return dispatch(name,args,resumed.state);
         },lookup,policy:settings.runner});
-      api.definitions.push(...PROJECT_ENGINE_TOOL_DEFINITIONS);
       queueMicrotask(()=>{reconcileProjectDeliveries();});
       if(settings.runner.autoTick===true)api.definitions=api.definitions.map(d=>d.name==='workflow_scheduler_tick'?{
         ...d,description:'Recover interrupted state and execute at most one enrolled planner/tool step or verified finalization. May invoke a configured provider and mutate project files.',annotations:action
