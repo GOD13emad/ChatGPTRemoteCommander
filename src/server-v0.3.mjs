@@ -18,9 +18,10 @@ import { DeliveryStore, deliveryLocation } from './delivery-store.mjs';
 import { createDeliveryTools } from './delivery-tools.mjs';
 import { compactToolSuccessPayload, serializeBoundedJsonResponse, synchronousCommandInput } from './retry-guard.mjs';
 import { MutationIdempotencyStore } from './mutation-idempotency.mjs';
+import { createAgentExtensionRegistry } from './agent-extensions.mjs';
 
 let workflowTools = null;
-const VERSION = '0.9.6';
+const VERSION = '0.9.7';
 const MODERN_VERSION = '2026-07-28';
 const LEGACY_VERSIONS = ['2025-11-25', '2025-06-18', '2025-03-26'];
 const MODERN_CACHE_HINT = Object.freeze({ ttlMs: 30000, cacheScope: 'private' });
@@ -50,6 +51,16 @@ const ctx = {
   roots,
   auditLog: path.resolve(projectDir, config.auditLog || 'var/audit.jsonl')
 };
+const configuredAgentExtensionDirectories = config.agentExtensions?.enabled === false
+  ? []
+  : (Array.isArray(config.agentExtensions?.directories) && config.agentExtensions.directories.length
+    ? config.agentExtensions.directories
+    : [path.join(projectDir, 'agent-extensions'), path.join(os.homedir(), '.agents', 'extensions')]);
+const agentExtensionDirectories = configuredAgentExtensionDirectories.map(value => {
+  const expanded = expandEnvironment(value);
+  return path.isAbsolute(expanded) ? path.resolve(expanded) : path.resolve(projectDir, expanded);
+});
+const agentExtensions = createAgentExtensionRegistry({ directories: agentExtensionDirectories });
 const GUI_BACKEND_SUPPORTED = process.platform === 'win32' || process.platform === 'linux';
 const GUI_ENABLED = GUI_BACKEND_SUPPORTED && config.powerMode?.enabled === true && config.powerMode?.guiControl?.enabled === true;
 const BROWSER_ENABLED = config.powerMode?.enabled === true && config.powerMode?.browserControl?.enabled === true;
@@ -143,6 +154,7 @@ const TOOLS = [
   },
   ...asyncOperationTools.definitions,
   ...deliveryTools.definitions,
+  ...agentExtensions.definitions,
   ...powerToolDefinitions,
   ...(BROWSER_ENABLED ? browserToolDefinitions : []),
   ...(GUI_ENABLED ? guiToolDefinitions : [])
@@ -260,6 +272,7 @@ async function executeToolEffect(name, args) {
   if (!toolDefinition(name)) throw protocolFailure(200, -32602, 'Unknown tool');
   if (name.startsWith('operation_')) return asyncOperationTools.execute(name, args);
   if (name.startsWith('delivery_')) return deliveryTools.execute(name, args);
+  if (name.startsWith('agent_extension_')) return agentExtensions.execute(name, args);
   if (name.startsWith('workflow_')) return workflowTools.execute(name, args);
   switch (name) {
     case 'system_status': {
@@ -293,7 +306,8 @@ async function executeToolEffect(name, args) {
           durableWorkflow: workflowStatus.schema ?? 0,
           asyncOperations: 1,
           durableDelivery: 1,
-          mutationIdempotency: 1
+          mutationIdempotency: 1,
+          agentExtensions: 1
         },
         capabilityProfile: config.capabilityProfile ?? {
           id: config.instance?.profile ?? 'default',
@@ -313,6 +327,7 @@ async function executeToolEffect(name, args) {
         durableDelivery: deliveryTools.status(),
         completionBeacon: deliveryStore.beacon(5),
         mutationIdempotency: mutationIdempotency.status(),
+        agentExtensions: agentExtensions.status(),
         powerMode: config.powerMode ?? { enabled: false },
         browserControl: { availability: BROWSER_ENABLED ? 'CHECK_browser_status' : 'DISABLED', enabled: BROWSER_ENABLED,
           policy: { ...(config.powerMode?.browserControl ?? { enabled:false }), backgroundFirst:true,

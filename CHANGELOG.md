@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.9.7 — 2026-09-27
+- Add Remote Commander-Agent Extension Contract v1 for reusable declarative capability packs without expanding execution authority.
+- Expose read-only extension discovery through `agent_extension_list`, `agent_extension_get`, and `agent_extension_match`, with bounded status/diagnostics in `system_status`.
+- Fail closed on invalid manifests, traversal, linked manifest files, and duplicate IDs, including multi-way duplicate conflicts.
+- Teach the Remote Commander skill to reuse declared shared runtimes/models and preserve all existing Commander workflow, GUI/browser, idempotency and safety gates.
+- Install `video-trend` locally as the first reference extension; its Hotel Lobby media job remains independently evidence-gated and is not claimed complete by the Core release.
+
 ## 0.9.6 — 2026-09-27
 - Add a schema-compatible completion beacon to the existing `system_status` result so chats with a cached older MCP tool catalog can still discover bounded metadata for durable completed-but-undelivered work.
 - Require continuation turns to check the completion beacon before unrelated work, preserve correlation isolation, and visibly close every execution turn as COMPLETED/BACKGROUND/BLOCKED/WAITING/FAILED instead of silently extending one UI stream.

@@ -477,3 +477,20 @@ Historical checkpoints remain append-only archives. Current release/control clai
 **Confidence/Status:** Root cause CONFIRMED; exact candidate requires Windows/Linux qualification before promotion.
 
 **Reuse Targets:** Linux install/update guide, parity matrix, release evidence.
+
+
+## E084 — Remote Commander-Agent Extension Contract v1
+
+**Date/Context:** 2026-09-27; conversion of the one-off Video Trend Agent concept into a reusable Remote Commander-Agent extensibility layer.
+
+**Claim/Decision:** Domain agents are implemented as declarative Agent Extensions rather than independent privileged MCP servers. An `agent.json` manifest advertises capability IDs, triggers, optional skill path, project root, router metadata, runtime/model/tool dependencies, hardware requirements, safety gates and expected artifacts. The registry exposes only read-only discovery (`agent_extension_list/get/match`); all execution authority remains in the existing Commander tool/workflow/Project Engine policy. This avoids duplicate runtimes and prevents a domain extension from silently expanding filesystem, shell, GUI, browser or workflow authority.
+
+**Evidence/Source:** `src/agent-extensions.mjs`, `src/server-v0.3.mjs`, `docs/AGENT_EXTENSIONS.md`, `test/agent-extensions.test.mjs`, `test/agent-extensions-http.test.mjs`, and Remote Commander skill guidance. The first full regression exposed one fixture-only dependency drift in `test/http-admission.test.mjs`; root cause was that its isolated server fixture did not copy the new source module. The fixture was corrected and the same gate passed. Independent review then found two pre-promotion edge cases: three-way duplicate IDs could allow a later duplicate to re-enter the catalog, and a nested junction/symlink could escape the lexical extension root for the skill path. Both were converted to fail-closed guards and regressions.
+
+**Validation:** Exact v0.9.7 candidate tree: focused Agent Extension tests 9/9 PASS; `npm run check` exit 0; `npm test` 466 total / 460 PASS / 6 SKIP / 0 FAIL; GUI contract 75/75 PASS; concurrency, filesystem, Windows runtime and source-integrity gates PASS; `npm run audit` exit 0 with `SECURITY_AUDIT_PASS`.
+
+**Confidence/Status:** CONFIRMED source/regression qualification. Live candidate-first route promotion and post-cutover system_status/tool-canary remain the deployment gate before production acceptance.
+
+**Reuse Targets:** video-trend, CAD/document/scientific/system-audit capability packs, shared runtime registry, future thin ChatGPT UI integrations.
+
+**Provenance:** branch `codex/agent-extensions-r1`; release target v0.9.7; first installed local reference extension `video-trend`.
