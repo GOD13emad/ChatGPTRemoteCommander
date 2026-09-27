@@ -104,14 +104,26 @@ hasAll(supervisor, [
   "OwnerUserProfile",
   "CredentialScope",
   "CurrentUser','LocalMachine",
-  "DataProtectionScope]::LocalMachine",
   "CredentialSelfTest",
   "SelfTestOutput",
   "BootCore",
-  "OwnerLocalAppData",
-  "OwnerRoamingAppData",
-  "$env:USERPROFILE = $OwnerUserProfile"
+  "windows-supervisor-runtime.ps1",
+  "Initialize-WindowsSupervisorRuntime",
+  "Read-RcCredentialPlainText",
+  "Test-RcCredential"
 ], 'autostart-windows.ps1 boot recovery');
+
+const runtime = read('windows-supervisor-runtime.ps1');
+hasAll(runtime, [
+  "OwnerUserProfile",
+  "OwnerLocal",
+  "OwnerRoaming",
+  "$env:USERPROFILE = $OwnerUserProfile",
+  "$env:LOCALAPPDATA = $local",
+  "$env:APPDATA = $roaming",
+  "DataProtectionScope]::LocalMachine",
+  "Test-RcCredential"
+], 'windows-supervisor-runtime.ps1');
 
 const routing = read('supervisor-routing.ps1');
 hasAll(routing, [
@@ -139,7 +151,7 @@ hasAll(account, [
 ], 'connect-chatgpt-account.ps1');
 
 if (process.platform === 'win32') {
-  for (const script of ['autostart-windows.ps1','enable-boot-recovery.ps1','handoff-user-session-windows.ps1','disable-boot-recovery.ps1']) {
+  for (const script of ['autostart-windows.ps1','windows-supervisor-runtime.ps1','enable-boot-recovery.ps1','handoff-user-session-windows.ps1','disable-boot-recovery.ps1']) {
     const parse = spawnSync('pwsh.exe', ['-NoLogo','-NoProfile','-Command',
       '$t=$null;$e=$null;[void][System.Management.Automation.Language.Parser]::ParseFile("'+script+'",[ref]$t,[ref]$e);if($e.Count){$e|ForEach-Object{$_.Message};exit 1}'],
       { encoding:'utf8' });
