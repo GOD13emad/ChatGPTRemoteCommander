@@ -25,7 +25,7 @@ function Clear-RoutedBackendMisses([string]$Profile,[int]$Port) {
 
 
 function Get-RouteState([string]$Profile) {
-  if (-not (Test-ProfileName $Profile)) { throw "invalid route profile $Profile" }
+  if (-not (Test-RcProfileName $Profile)) { throw "invalid route profile $Profile" }
   $file = Join-Path $RoutingRoot "$Profile.json"
   if (-not (Test-Path -LiteralPath $file -PathType Leaf)) { return $null }
   $state = Get-Content -LiteralPath $file -Raw | ConvertFrom-Json
