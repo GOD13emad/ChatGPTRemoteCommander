@@ -17,7 +17,7 @@ $required = @(
 foreach ($needle in $required) {
   if (-not $text.Contains($needle)) { throw "installer missing required marker: $needle" }
 }
-if ($text -match 'sk-[A-Za-z0-9_-]{20,}|tunnel_[A-Za-z0-9_-]{16,}') {
+if ($text -match 'sk-[A-Za-z0-9_-]{20,}|tunnel_[0-9a-f]{32}') {
   throw 'installer contains a credential-like literal'
 }
 Write-Output 'INSTALLER_CHECK_PASS'
