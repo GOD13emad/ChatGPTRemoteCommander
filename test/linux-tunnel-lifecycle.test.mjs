@@ -28,6 +28,17 @@ test('linux tunnel supervisor never self-stops its own service and scopes recycl
   assert.match(s,/TUNNEL_CANDIDATE_REJECTED/);
   assert.match(s,/TUNNEL_ROLLBACK_PASS/);
   assert.match(s,/rejected_tunnel_file/);
+  assert.match(s,/tunnel_control_plane_fresh\(\)/);
+  assert.match(s,/commands_poll_last_successful_timestamp_seconds/);
+  assert.match(s,/TUNNEL_CONTROL_PLANE_STALE/);
+  assert.match(s,/REMOTE_COMMANDER_TUNNEL_STALE_SECONDS/);
+});
+
+test('linux autostart enables user lingering when systemd user services are available',()=>{
+  const s=read('enable-autostart-linux.sh');
+  assert.match(s,/loginctl enable-linger "\$USER"/);
+  assert.match(s,/loginctl show-user "\$USER" -p Linger --value/);
+  assert.match(s,/linger=\$\{LINGER_STATUS:-n\/a\}/);
 });
 
 test('fresh linux installer delegates tunnel install to the single pinned helper',()=>{
@@ -50,7 +61,7 @@ test('tunnel pin has exact qualified v0.0.15 provenance',()=>{
 test('linux lifecycle shell files parse and tunnel installer self-test resolves the pin',()=>{
   const bash=bashPath();
   if(!bash)return;
-  for(const rel of ['autostart-linux.sh','install.sh','tools/install-tunnel-client-linux.sh']){
+  for(const rel of ['autostart-linux.sh','enable-autostart-linux.sh','install.sh','tools/install-tunnel-client-linux.sh']){
     const p=path.join(root,rel);
     const r=spawnSync(bash,['-n',p],{encoding:'utf8'});
     assert.equal(r.status,0,rel+' bash -n failed: '+r.stderr);
