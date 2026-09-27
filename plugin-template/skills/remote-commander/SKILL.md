@@ -44,7 +44,12 @@ Inspect git status before changes, do not stage unrelated files, test the change
 
 ## Durable project workflows
 
-When `system_status.durableWorkflows.enabled` is true, use the workflow tools for long-running work that must survive a chat/process interruption.
+When `system_status.durableWorkflows.enabled` is true, use the workflow tools for work that must survive a chat/process/host-power interruption.
+
+**Power-loss envelope is mandatory for project mutation:** for any multi-step project, any project with persistent mutations, any unknown-duration execution, or any task the user expects to resume after reboot/power loss, create or resume the durable workflow **before the first meaningful mutation**. Give it goal/acceptance/steps, keep Project Brain enabled, and checkpoint meaningful evidence/state at phase boundaries. A one-shot read-only inspection does not need enrollment. If durable workflows are unavailable, fail closed on claims of automatic recovery; do not represent an ordinary terminal/process as power-loss-resumable.
+
+A host power loss terminates RAM-only processes. After boot, resume from durable workflow/operation/checkpoint state and revalidate external effects before continuation. Never blindly replay an uncertain mutation. On Windows boot-core recovery, headless/filesystem/shell/durable work may resume before interactive login; GUI/foreground actions are session-bound and must wait for the user session, then continue after the boot-core handoff.
+
 
 - Create an explicit workflow with goal, acceptance criteria and bounded steps.
 - Before a meaningful mutation, keep the workflow revision current and use `workflow_call` only for the single approved host tool/action.
