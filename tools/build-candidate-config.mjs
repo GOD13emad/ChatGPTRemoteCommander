@@ -63,7 +63,7 @@ if(config.durableWorkflows.enabled===true){
   config.durableWorkflows.directory=workflowDirectory;
   if(a.providerRoot) config.durableWorkflows.rootLeaseDirectory=path.join(path.resolve(a.providerRoot),'shared','root-leases');
 }
-const runner=a.providerRoot ? applyProjectRunnerConfig(config,{stateRoot:a.providerRoot}) : {config,status:'NOT_EVALUATED',provider:null};
+const runner=applyProjectRunnerConfig(config);
 config=runner.config;
 config.capabilityProfile=normalizeCapabilityProfile(config.capabilityProfile,config,{id:a.profileId,legacyExplicit:!!existing});
 if(a.profileId!=='default'){
