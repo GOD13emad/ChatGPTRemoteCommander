@@ -331,6 +331,38 @@ export class DeliveryStore {
     }
     return { recovered };
   }
+  beacon(limit = 5) {
+    integer(limit, 5, 1, 10);
+    const items = this.db.prepare(`SELECT * FROM deliveries
+      WHERE scope=? AND state!='DELIVERED'
+      ORDER BY seq DESC LIMIT ?`).all(this.scope, limit).map(row => {
+        const item = this.decode(row);
+        return {
+          deliveryId: item.deliveryId,
+          cursor: item.cursor,
+          correlationId: item.correlationId,
+          source: item.source,
+          sourceId: item.sourceId,
+          kind: item.kind,
+          code: item.code,
+          state: item.state,
+          artifact: item.artifact ? { bytes: item.artifact.bytes, sha256: item.artifact.sha256 } : null,
+          createdAt: item.createdAt,
+          updatedAt: item.updatedAt
+        };
+      });
+    const counts = Object.fromEntries(
+      this.db.prepare('SELECT state,count(*) AS n FROM deliveries WHERE scope=? GROUP BY state')
+        .all(this.scope).map(row => [row.state, row.n])
+    );
+    return {
+      pending: (counts.COMPLETED_UNDELIVERED ?? 0) + (counts.DELIVERY_PENDING ?? 0),
+      deadLetter: counts.DEAD_LETTER ?? 0,
+      items,
+      hostWakeAvailable: false,
+      identityBoundary: 'TRUSTED_PROFILE_NOT_AUTHENTICATED_CHAT'
+    };
+  }
   health() {
     const counts = Object.fromEntries(
       this.db.prepare('SELECT state,count(*) AS n FROM deliveries WHERE scope=? GROUP BY state')
