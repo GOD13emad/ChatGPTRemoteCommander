@@ -116,7 +116,113 @@ if (-not $ProfileExists) {
   if (-not $TunnelId) {
     $TunnelId = Read-Host 'Paste OpenAI tunnel_id for this account'
   }
-  if ($TunnelId -notmatch '^tunnel_[A-Za-z0-9_-]+$') {
+  if ($TunnelId -notmatch '^tunnel_[0-9a-f]{32}
+    throw 'Invalid tunnel_id format.'
+  }
+  if ($HealthPort -eq 0) {
+    $HealthPort = Find-FreeHealthPort
+  }
+} else {
+  $raw = Get-Content -LiteralPath $ProfileFile -Raw
+  $tm = [regex]::Match($raw, '(?m)^\s*tunnel_id:\s*["'']?([^"''\s#]+)')
+  $hm = [regex]::Match($raw, 'listen_addr:\s*["'']?127\.0\.0\.1:(\d+)')
+  if (-not $tm.Success -or -not $hm.Success) {
+    throw 'Existing tunnel profile is missing tunnel_id or loopback health port.'
+  }
+
+  $existingTunnelId = $tm.Groups[1].Value
+  $existingHealthPort = [int]$hm.Groups[1].Value
+  if ($TunnelId -and $TunnelId -ne $existingTunnelId) {
+    throw 'TunnelId does not match the existing profile; use a different profile name.'
+  }
+  if ($HealthPort -ne 0 -and $HealthPort -ne $existingHealthPort) {
+    throw 'HealthPort does not match the existing profile; use a different profile name.'
+  }
+  $TunnelId = $existingTunnelId
+  $HealthPort = $existingHealthPort
+}
+
+New-Item -ItemType Directory -Force -Path $CredDir,$ProfileDir | Out-Null
+$PersistCredential = $false
+if (Test-Path -LiteralPath $CredFile -PathType Leaf) {
+  $Encrypted = Get-Content -LiteralPath $CredFile -Raw
+  $SecureKey = ConvertTo-SecureString $Encrypted
+  Write-Host "Reusing existing DPAPI credential for profile $Profile."
+} else {
+  $SecureKey = Read-Host 'Paste Runtime API key once (input hidden; saved only after tunnel validation passes)' -AsSecureString
+  $PersistCredential = $true
+}
+
+$PlainKey = [System.Net.NetworkCredential]::new('', $SecureKey).Password
+if ([string]::IsNullOrWhiteSpace($PlainKey)) {
+  throw 'Runtime API key is empty.'
+}
+
+$ValidationPassed = $false
+try {
+  $env:CONTROL_PLANE_API_KEY = $PlainKey
+
+  if (-not $ProfileExists) {
+    & $TunnelExe init --sample sample_mcp_remote_no_auth --profile $Profile --profile-dir $ProfileDir --tunnel-id $TunnelId --mcp-server-url $McpUrl --health-listen-addr "127.0.0.1:$HealthPort" --force
+    if ($LASTEXITCODE -ne 0) {
+      throw "tunnel-client init failed: $LASTEXITCODE"
+    }
+    $CreatedProfile = $true
+  }
+
+  $runningProfile = Test-ProfileProcess $TunnelExe $Profile
+  if (-not $runningProfile) {
+    $runningProfile = Test-AnyProfileProcess $Profile
+  }
+  $ready = [bool]($runningProfile -and (Test-TunnelReady $HealthPort))
+
+  if ($ready -and -not $PersistCredential) {
+    Write-Host "Existing tunnel profile $Profile is already ready on health port $HealthPort; doctor bind check skipped."
+  } else {
+    & $TunnelExe doctor --profile $Profile --profile-dir $ProfileDir --explain
+    if ($LASTEXITCODE -ne 0) {
+      throw "tunnel-client doctor failed: $LASTEXITCODE"
+    }
+  }
+
+  if ($PersistCredential) {
+    $Encrypted = ConvertFrom-SecureString $SecureKey
+    $tmpCred = "$CredFile.tmp-$PID"
+    [IO.File]::WriteAllText($tmpCred, $Encrypted, [Text.UTF8Encoding]::new($false))
+    Move-Item -LiteralPath $tmpCred -Destination $CredFile -Force
+  }
+
+  $ValidationPassed = $true
+} finally {
+  Remove-Item Env:CONTROL_PLANE_API_KEY -ErrorAction SilentlyContinue
+  if (-not $ValidationPassed -and $CreatedProfile) {
+    Remove-Item -LiteralPath $ProfileFile -Force -ErrorAction SilentlyContinue
+  }
+  $PlainKey = $null
+  $SecureKey = $null
+}
+
+$pwsh = (Get-Command pwsh.exe -ErrorAction Stop).Source
+$supervisor = Join-Path $Root 'autostart-windows.ps1'
+$runKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
+New-Item -Path $runKey -Force | Out-Null
+$command = '"{0}" -NoLogo -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "{1}"' -f $pwsh,$supervisor
+New-ItemProperty -Path $runKey -Name 'ChatGPTRemoteCommander' -Value $command -PropertyType String -Force | Out-Null
+
+if (-not $NoStart) {
+  $rootPattern = [regex]::Escape([IO.Path]::GetFullPath($Root))
+  $existing = Get-CimInstance Win32_Process -Filter "Name='pwsh.exe'" -ErrorAction SilentlyContinue |
+    Where-Object { $_.CommandLine -match 'autostart-windows\.ps1' -and $_.CommandLine -match $rootPattern } |
+    Select-Object -First 1
+  if (-not $existing) {
+    Start-Process -FilePath $pwsh -ArgumentList @('-NoLogo','-NoProfile','-WindowStyle','Hidden','-ExecutionPolicy','Bypass','-File',$supervisor) -WindowStyle Hidden | Out-Null
+  }
+}
+
+Write-Host ''
+Write-Host "AUTOSTART_ENROLL_PASS profile=$Profile credential=$CredFile healthPort=$HealthPort"
+Write-Host 'Windows logon autostart is enabled. No Tunnel ID, IP/port, or Runtime API key is required on later logons.'
+) {
     throw 'Invalid tunnel_id format.'
   }
   if ($HealthPort -eq 0) {
