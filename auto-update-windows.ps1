@@ -127,7 +127,7 @@ function Retain-PreviousBackend([string]$RoutePath,[object]$Old,[string]$Profile
     $first=Get-TerminalRetentionEvidence $Old $Canonical $RetentionRoots
     if(-not $first.safe){if($Kind-eq'command'){Log "DRAIN_COMMAND_RETAIN_DEFER profile=$Profile decision=$($first.decision)"}else{Log "DRAIN_TERMINAL_RETAIN_DEFER profile=$Profile decision=$($first.decision)"};return $false}
     Start-Sleep -Milliseconds 500
-    $final=Get-TerminalRetentionEvidence $Old $Canonical $TerminalChildren
+    $final=Get-TerminalRetentionEvidence $Old $Canonical $RetentionRoots
     if(-not $final.safe){if($Kind-eq'command'){Log "DRAIN_COMMAND_RETAIN_RECHECK_DEFER profile=$Profile decision=$($final.decision)"}else{Log "DRAIN_TERMINAL_RETAIN_RECHECK_DEFER profile=$Profile decision=$($final.decision)"};return $false}
     if($Kind-eq'command'){Log "DRAIN_COMMAND_ROUTER_ACCOUNTING profile=$Profile inflight=$($st.count)"}else{Log "DRAIN_TERMINAL_STALE_ROUTER_ACCOUNTING profile=$Profile inflight=$($st.count)"}
   }
