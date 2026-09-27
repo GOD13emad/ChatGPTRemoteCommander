@@ -464,3 +464,16 @@ Historical checkpoints remain append-only archives. Current release/control clai
 **Confidence/Status:** Facts CONFIRMED by live routes, GitHub compare/fetch, and Windows read-only state audit. FINAL remains UNPROVEN until the open gates above are closed.
 
 **Reuse Targets:** release closeout, Project Brain, installer/runbook, stream-resilience guidance.
+
+
+## E082 — Linux Firefox updater false-negative probe
+
+**Date/Context:** 2026-09-27; final cross-device parity audit on live v0.9.4.
+
+**Failure / Root Cause:** Linux updater logged `BROWSER_BACKEND_UNAVAILABLE authorized=true reason=no-safe-local-browser-backend` even though Firefox remained configured. Read-only host evidence showed `firefox=/usr/bin/firefox` and an executable `/snap/bin/geckodriver`, while `command -v geckodriver` returned no PATH result. The runtime Firefox helper already checks `/snap/bin/geckodriver` and `/usr/bin/geckodriver`, but `auto-update-linux.sh` only checked PATH. This created an updater false negative and could omit browser configuration on a fresh candidate.
+
+**Fix / Prevention:** Linux updater now prefers PATH and then checks explicit executable fallbacks `/snap/bin/geckodriver`, `/usr/bin/geckodriver`, `/usr/local/bin/geckodriver`, and `$HOME/.local/bin/geckodriver`. The auto-update contract test requires these fallbacks so updater detection stays aligned with the runtime browser helper.
+
+**Confidence/Status:** Root cause CONFIRMED; exact candidate requires Windows/Linux qualification before promotion.
+
+**Reuse Targets:** Linux install/update guide, parity matrix, release evidence.
