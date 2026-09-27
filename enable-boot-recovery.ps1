@@ -136,7 +136,7 @@ Register-ScheduledTask -TaskName $BootTaskName -Action $bootAction -Trigger $boo
 $handoffArgs='-NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}" -OwnerUserProfile "{1}"' -f $Handoff,$OwnerUserProfile
 $handoffAction=New-ScheduledTaskAction -Execute $pwsh -Argument $handoffArgs -WorkingDirectory $Root
 $handoffTrigger=New-ScheduledTaskTrigger -AtLogOn -User $ownerName
-$handoffSettings=New-ScheduledTaskSettingsSet -StartWhenAvailable -ExecutionTimeLimit (New-TimeSpan -Minutes 12) -MultipleInstances IgnoreNew
+$handoffSettings=New-ScheduledTaskSettingsSet -StartWhenAvailable -RestartCount 12 -RestartInterval (New-TimeSpan -Minutes 1) -ExecutionTimeLimit (New-TimeSpan -Minutes 12) -MultipleInstances IgnoreNew
 Register-ScheduledTask -TaskName $HandoffTaskName -Action $handoffAction -Trigger $handoffTrigger -Principal $systemPrincipal -Settings $handoffSettings -Force | Out-Null
 
 $runKey='HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
