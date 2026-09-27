@@ -116,8 +116,8 @@ hasAll(supervisor, [
 const runtime = read('windows-supervisor-runtime.ps1');
 hasAll(runtime, [
   "OwnerUserProfile",
-  "OwnerLocal",
-  "OwnerRoaming",
+  "AppData\\Local",
+  "AppData\\Roaming",
   "$env:USERPROFILE = $OwnerUserProfile",
   "$env:LOCALAPPDATA = $local",
   "$env:APPDATA = $roaming",
