@@ -48,7 +48,7 @@ Baseline: `a36ec05ea2c530ef52473b6a6f851a4484a31a35`. Qualification head: `6372b
 | CSDC-028 | P1 | IN_PROGRESS | **Linux v0.9.4 completion** — Finish retained-terminal cutover, Firefox background browser, current CSDC/retry hardening, full qualification and release. | Linux canonical connector reaches the current qualified release without killing active terminals and with Windows/Linux behavior parity where platform permits. |
 | CSDC-029 | P1 | TODO | **Cross-device parity** — Make Windows/Linux capability and Project Engine behavior equivalent where platform permits. | System-status parity matrix has no unexplained functional gaps. |
 | CSDC-030 | P1 | TODO | **End-to-end telemetry** — Record correlationId, transport request, tool, operation, workflow, result and delivery metrics. | Deadline/post failures can be attributed to exact work instead of heuristic timestamps. |
-| CSDC-031 | P1 | TODO | **Durable alerting/dead-letter** — Surface COMPLETED_UNDELIVERED, blocked and dead-letter records in health/status. | No failed delivery can remain invisible. |
+| CSDC-031 | P1 | IN_PROGRESS | **Durable alerting/dead-letter** — Surface COMPLETED_UNDELIVERED, blocked and dead-letter records in health/status and make pending delivery actionable. | Health/status exposes pending delivery counts; autonomous chat wake remains under CSDC-005. |
 | CSDC-032 | P1 | TODO | **Acceptance-strength profiles** — Support domain-specific validators instead of treating weak text checks as correctness. | COMPLETED means the configured technical/scientific acceptance really passed. |
 | CSDC-033 | P0 | IN_PROGRESS | **Fault-injection regression suite** — Test disconnects before ack, after effect, during planner, after completion and during delivery. | Every injected cut preserves at-most-once effects and eventual discoverable result. |
 | CSDC-034 | P0 | IN_PROGRESS | **Multi-chat/account concurrency regression** — Test same project from concurrent chats/accounts with ownership/delivery isolation. | No cross-chat result leakage, duplicate writer or duplicate effect. |
@@ -56,6 +56,7 @@ Baseline: `a36ec05ea2c530ef52473b6a6f851a4484a31a35`. Qualification head: `6372b
 | CSDC-036 | P0 | TODO | **Release gate** — Block stable release unless chat-safe completion SLO passes on Windows and Linux. | Release checklist requires evidence for all P0 items and accepted dispositions for remaining P1 items. |
 | CSDC-037 | P0 | PASS | **Chat stream turn budget** — Prevent unbounded direct MCP call chains from causing ChatGPT UI/network/input-stream Retry before a final response is returned. | MCP initialize instructions and Plugin skill enforce a bounded direct-call batch, long work is moved to durable background state, and qualification distinguishes Commander transport failures from external Chat/UI stream failures. |
 | CSDC-038 | P0 | PASS | **Hot-update tool-schema continuity** — Keep an already-open MCP host usable when an update changes tool schemas, using negotiated MCP change-notification support where available and fail-closed compatibility policy otherwise. | A candidate-first live update cannot silently leave the active chat with stale mutation schemas; supported hosts refresh the tool list, unsupported hosts receive an explicit pre-cutover/compatibility disposition. |
+| CSDC-039 | P0 | IN_PROGRESS | **Mandatory visible-turn closeout** — End every tool-heavy turn with a bounded user-visible status or durable handoff instead of silently continuing until the response stream fails. | Plugin contract is regression-locked; live ChatGPT use must show a visible closeout before further long-running work, and resume from exact durable identity after stream loss. |
 
 ## Evidence rules
 
@@ -127,7 +128,7 @@ Baseline: `a36ec05ea2c530ef52473b6a6f851a4484a31a35`. Qualification head: `6372b
 
 ### CSDC-010 — PASS
 
-- The server advertises a six-direct-call turn budget, `rapidPollingAllowed=false`, and `longWorkMode='durable-background'`; unknown-duration or substantial work is explicitly routed to durable workflows, Project Engine, or `operation_start` instead of keeping one chat stream alive.
+- The live v0.9.5 server advertises a three-direct-call turn budget, `rapidPollingAllowed=false`, and `longWorkMode='durable-background'`; unknown-duration or substantial work is explicitly routed to durable workflows, Project Engine, or `operation_start` instead of keeping one chat stream alive.
 - CSDC-037 already proved the Commander-side stream budget/compact checkpoint contract; CSDC-008 now removes the remaining unbounded recursive direct-tool path that was the sole recorded residual for CSDC-010.
 - Regression `test/deferred-coverage.test.mjs` locks the turn-safety contract and durable continuation guidance, while async/delivery/retry suites cover detached completion/recovery.
 - Boundary: ChatGPT host/UI stream availability and native wake/push remain external under CSDC-005; this PASS covers Commander-side orchestration only.
@@ -160,7 +161,7 @@ Baseline: `a36ec05ea2c530ef52473b6a6f851a4484a31a35`. Qualification head: `6372b
 
 - User screenshots on 2026-09-26 captured `A network error occurred. Please check your connection and try again.` and `Error in input stream` after very long tool-call turns.
 - Post-outage live Windows tunnel audit found response-deadline drops at 10:23:24 and 10:24:25 local, but no new tunnel deadline/413 event at the screenshot times around 10:36 and 11:00.
-- Candidate contract limits a Chat turn to 6 direct synchronous Commander calls, forbids rapid polling, and routes larger/unknown-duration work to durable background execution with compact checkpoint/delivery identity.
+- Current contract limits a Chat turn to 3 direct synchronous Commander calls, forbids rapid polling, and routes larger/unknown-duration work to durable background execution with compact checkpoint/delivery identity.
 - GitHub Actions run 36227846681: windows-latest PASS; ubuntu-latest PASS; head 9a8fdb8ca7205a1555b2acc55d00bb6339000968.
 - Windows local qualification at the same worktree: npm run check PASS; npm test PASS; npm run audit PASS; git diff --check PASS.
 - Boundary: ChatGPT UI/network stream availability is external; this PASS covers Commander-side stream exposure and retry-safe operating contract. CSDC-005 remains the host wake/delivery boundary.
@@ -194,3 +195,16 @@ Baseline: `a36ec05ea2c530ef52473b6a6f851a4484a31a35`. Qualification head: `6372b
 - Candidate-first Windows and Linux qualification both reached `AUTO_UPDATE_CANDIDATE_PASS`; live routes for Windows default, Windows saeed-emad and Linux default all cut over to exact commit `0b965d7904a08a5eb04078bc61602687cf198552`.
 - Live Windows and Linux canonical routers both advertise tools.listChanged and ACK a real modern subscription while exposing one active tools-list subscriber; subscriber count returns to zero after disconnect. Windows observed generation 53 and Linux generation 37.
 - Isolated live-to-candidate probe classified the promoted schema delta as `BACKWARD_COMPATIBLE_SCHEMA`; therefore pre-existing old calls remain valid even when the already-open UI does not expose newly added tools. A pre-update chat still requires reconnect/refetch to *discover* newly added tools; the updater now prevents a breaking stale-schema cutover.
+
+### CSDC-031 — IN_PROGRESS (live v0.9.5 refinement)
+
+- Live `system_status` on 2026-09-27 exposes pending delivery counts directly: Windows default reported 106 `COMPLETED_UNDELIVERED`; Linux default reported 7. `unfinishedRequests=0` on both proves these are completed results awaiting presentation rather than still-running effects.
+- This closes the old visibility-only gap in health/status, but it does **not** close autonomous chat delivery. `hostWakeAssumed=false` remains authoritative, so Commander cannot claim it can resurrect an expired ChatGPT response stream or push a final answer into a dead turn without a supported host capability.
+- Exact next work is split deliberately: CSDC-039 makes every live turn hand off visibly before long work continues; CSDC-005/CSDC-013 remain the host capability boundary for autonomous wake/tasks/subscriptions.
+
+### CSDC-039 — IN_PROGRESS
+
+- Candidate branch `stream-closeout-v096-r1` adds a mandatory visible-turn closeout rule to the Remote Commander skill and regression-locks the rule in `test/onboarding-plugin-check.mjs`.
+- The required closeout includes current status, durable operation/workflow/correlation identity when available, completed scope, remaining blocker/background state, and exact next action. Unknown-duration work must stop issuing more direct tool calls after durable handoff rather than waiting inside the same chat response stream.
+- Resume after `Stream cache expired`, `Resume stream unavailable`, `ChatGPT stream recovery polling timed out`, Retry, or lost acknowledgement begins by reading authoritative durable state; a missing chat answer is never treated as proof the effect failed.
+- Live qualification in an actual ChatGPT turn is still required before PASS because the assistant/host response stream is outside repository unit-test authority.
