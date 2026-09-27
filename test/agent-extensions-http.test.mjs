@@ -48,7 +48,7 @@ test('agent extension tools are exposed read-only and return validated manifests
     });
     let stderr='';child.stderr.on('data',c=>stderr+=c);
     let alive=false;
-    for(let i=0;i<100;i++){try{if((await fetch(`http://127.0.0.1:${port}/health`)).ok){alive=true;break;}}catch{}await wait(25);}
+    for(let i=0;i<400;i++){try{if((await fetch(`http://127.0.0.1:${port}/health`)).ok){alive=true;break;}}catch{}await wait(25);}
     assert.equal(alive,true,stderr);
     const call=async(name,args={})=>{
       const res=await fetch(`http://127.0.0.1:${port}/mcp`,{
@@ -77,7 +77,7 @@ test('agent extension tools are exposed read-only and return validated manifests
     const match=(await call('agent_extension_match',{capabilities:['video.reference-preserve']})).result.structuredContent;
     assert.deepEqual(match.items.map(x=>x.id),['video-trend']);
   } finally {
-    if(child){child.kill();await Promise.race([once(child,'close'),wait(2000)]);}
+    if(child){child.kill();await Promise.race([once(child,'close'),wait(5000)]);}
     await fs.rm(root,{recursive:true,force:true});
   }
 });

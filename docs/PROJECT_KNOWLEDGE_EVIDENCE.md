@@ -494,3 +494,16 @@ Historical checkpoints remain append-only archives. Current release/control clai
 **Reuse Targets:** video-trend, CAD/document/scientific/system-audit capability packs, shared runtime registry, future thin ChatGPT UI integrations.
 
 **Provenance:** branch `codex/agent-extensions-r1`; release target v0.9.7; first installed local reference extension `video-trend`.
+
+
+## E085 — staged-candidate test contention hardening
+
+**Date/Context:** 2026-09-27; first exact v0.9.7 candidate-first `-NoPromote` qualification from the release staging directory.
+
+**Failure / Root Cause:** The staged gate produced two failures while the same source tree passed in the development worktree. `agent-extensions-http.test.mjs` failed its server-alive assertion and `doctor.test.mjs` lacked the expected version check because the mocked `system_status` request timed out. Re-running the Extension HTTP test alone in the exact staged release passed. The failures were therefore test-harness timing sensitivity under the highly parallel full gate, not a deterministic Agent Extension/runtime defect.
+
+**Prevention / Guard:** Test-only startup allowance for the isolated Extension server was increased from 2.5s to 10s and shutdown allowance from 2s to 5s. Doctor mock tests now use 10s request bounds instead of 3s. Production doctor defaults and runtime deadlines are unchanged. A focused high-concurrency stress run across Extension HTTP, Doctor, async HTTP, browser process and process-tree tests passed 20/20, followed by full `npm run check` exit 0.
+
+**Confidence/Status:** CONFIRMED fixture contention root cause; exact updated commit still requires candidate-first `-NoPromote` qualification before promotion.
+
+**Reuse Targets:** release staging gates, parallel CI reliability, future HTTP fixture design.
