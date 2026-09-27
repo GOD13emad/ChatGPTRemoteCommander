@@ -409,3 +409,22 @@ Historical checkpoints remain append-only archives. Current release/control clai
 **Reuse Targets:** installer, power-loss runbook, release gate, Project Brain, user documentation.
 
 **Provenance:** see `docs/POWER_RECOVERY_R1.md`; exact final candidate SHA must be recorded after qualification.
+
+
+## E081 — Power-recovery install postmortem and browser cleanup timing guard
+
+**Date/Context:** 2026-09-27; exact power-recovery candidate validation.
+
+**Failure / Root Cause 1:** The first elevated boot-recovery install exited before any task or machine credential was created. Read-only post-state showed no BootRecovery/Handoff/Probe task, no `*.machine.dpapi`, no probe result, and AutoAdminLogon unchanged. Two source defects were then reproduced: `autostart-windows.ps1` retained one pre-refactor `Get-ProfileMcpPort` call after helper extraction, and `enable-boot-recovery.ps1` incorrectly required the release-local `var` directory to pre-exist although the supervisor owns its creation.
+
+**Prevention / Guard:** The remaining call site now uses `Get-RcProfileMcpPort`; the installer creates its runtime `var` directory before the SYSTEM probe. `test/windows-runtime-contract.mjs` now fails if stale pre-refactor profile helper calls remain or if the installer stops creating the probe directory.
+
+**Failure / Root Cause 2:** A later Windows full gate produced one failure in the unchanged `browser-process.test.mjs` cleanup assertion. The test allowed only 2–2.5 seconds after helper exit, while the Windows cleanup implementation may synchronously spend up to 6 seconds discovering profile-owned processes and up to 6 seconds in `taskkill /T /F`. The browser source/test blob was identical to the previously qualified `ca97ced5` baseline and the same test had passed earlier, so this was a timing-test defect rather than a power-recovery behavior regression.
+
+**Method Evidence:** Node.js documents that synchronous child-process APIs block until the child exits or the configured timeout is reached. Test cleanup polling is now capped at 15 seconds, exceeding the implementation's bounded worst-case without increasing production cleanup timeouts.
+
+**Confidence/Status:** Root causes CONFIRMED. Corrected final candidate requires full Windows + Linux requalification before promotion/install.
+
+**Reuse Targets:** release qualification, failure-prevention guide, power-recovery runbook, CI reliability.
+
+**Provenance:** `autostart-windows.ps1`, `enable-boot-recovery.ps1`, `test/windows-runtime-contract.mjs`, `test/browser-process.test.mjs`; failed elevated-install post-state and candidate gate receipts from 2026-09-27.
