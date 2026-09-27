@@ -96,3 +96,16 @@ An isolated profile has a separate loopback MCP port, configuration, audit log, 
 This remains the same OS user unless the operator uses separate Windows users/VMs. Do not describe profile isolation as an OS sandbox.
 
 Before operating a sensitive project, confirm `system_status.instance.profile`, `instance.isolated`, device name and effective access. Do not rely on connector display names alone.
+
+## Remote Commander-Agent extensions
+
+When `agent_extension_list`, `agent_extension_get`, or `agent_extension_match` are present, use them to discover reusable domain capability packs before inventing a new one-off workflow. Agent Extensions are declarative metadata only: they never grant execution authority and never bypass filesystem, command, workflow, GUI, browser, safety, or Project Engine policy.
+
+- Use `agent_extension_match` with the minimum capability set needed for the task.
+- Read the selected extension with `agent_extension_get` before execution.
+- Reuse declared shared runtimes/models instead of downloading duplicate copies.
+- Respect extension safety gates and hardware requirements; a manifest is not proof that dependencies are currently healthy.
+- Execute work only through authorized Commander tools/workflows and independently validate the artifact before declaring PASS.
+- Invalid or duplicate manifests are fail-closed diagnostics, not candidates to guess around.
+
+See `docs/AGENT_EXTENSIONS.md` in the repository for Agent Extension Contract v1.
