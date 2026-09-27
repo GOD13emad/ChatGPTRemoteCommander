@@ -14,7 +14,7 @@ for (const required of [
   'Detected active installation from Windows autostart',
   '$InstallDir = Resolve-InstallDir',
   'Tracked local changes exist in InstallDir',
-  "[string]$SourceRef = 'v0.9.4'",
+  "[string]$SourceRef = 'v0.9.5'",
   'ExpectedCommit',
   "rev-parse 'FETCH_HEAD^{commit}'",
   'incomplete Git checkout with no HEAD',
