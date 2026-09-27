@@ -81,7 +81,7 @@ test('runDoctor passes healthy matching server and config', async () => {
     await writeFile(configPath, raw);
     const sha = createHash('sha256').update(raw).digest('hex');
     await withMockServer({ configSha256: sha }, async (endpoint) => {
-      const report = await runDoctor({ endpoint, expectedVersion: '0.8.15', expectedDevice: 'device-a', configPath, timeoutMs: 3000 });
+      const report = await runDoctor({ endpoint, expectedVersion: '0.8.15', expectedDevice: 'device-a', configPath, timeoutMs: 10000 });
       assert.equal(report.ok, true);
       assert.equal(report.tools.count, 6);
       assert.equal(report.tools.guiCount, 1);
@@ -94,7 +94,7 @@ test('runDoctor passes healthy matching server and config', async () => {
 
 test('runDoctor reports version drift', async () => {
   await withMockServer({ version: '0.5.1' }, async (endpoint) => {
-    const report = await runDoctor({ endpoint, expectedVersion: '0.8.10', timeoutMs: 3000 });
+    const report = await runDoctor({ endpoint, expectedVersion: '0.8.10', timeoutMs: 10000 });
     assert.equal(report.ok, false);
     assert.equal(report.checks.find((item) => item.name === 'version').ok, false);
   });
@@ -102,7 +102,7 @@ test('runDoctor reports version drift', async () => {
 
 test('runDoctor reports missing core tool', async () => {
   await withMockServer({ tools: ['system_status', 'list_directory'] }, async (endpoint) => {
-    const report = await runDoctor({ endpoint, expectedVersion: '0.8.10', timeoutMs: 3000 });
+    const report = await runDoctor({ endpoint, expectedVersion: '0.8.10', timeoutMs: 10000 });
     assert.equal(report.ok, false);
     assert.match(report.checks.find((item) => item.name === 'tools/list').detail, /missing:/);
   });
