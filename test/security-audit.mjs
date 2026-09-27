@@ -11,14 +11,14 @@ function git(args, options = {}) {
 
 const patterns = [
   ['OpenAI-style secret key', new RegExp('s' + 'k-' + '[A-Za-z0-9_-]{20,}', 'i')],
-  ['Tunnel identifier', new RegExp('tunnel' + '_' + '[A-Za-z0-9_-]{16,}')],
+  ['Tunnel identifier', new RegExp('tunnel' + '_' + '[0-9a-f]{32}')],
   ['Private key block', new RegExp('-----BEGIN ' + '(?:RSA |EC |OPENSSH )?' + 'PRIVATE KEY-----', 'i')],
   ['Bearer token literal', new RegExp('Bearer\\s+' + '[A-Za-z0-9._-]{20,}', 'i')],
   ['GitHub token', new RegExp('gh' + '[pousr]_' + '[A-Za-z0-9]{20,}', 'i')],
   ['Developer Windows path', /C:\\Users\\[^\\\r\n]+\\source\\repos\\ChatGPTRemoteCommander/i]
 ];
 const tunnelPattern = patterns.find(([type]) => type === 'Tunnel identifier')[1];
-if (!tunnelPattern.test('tunnel' + '_' + 'a'.repeat(24)) || tunnelPattern.test('TUNNEL_HEALTH_UNKNOWN_LISTENER')) {
+if (!tunnelPattern.test('tunnel' + '_' + '0123456789abcdef'.repeat(2)) || tunnelPattern.test('tunnel_control_plane_fresh') || tunnelPattern.test('TUNNEL_HEALTH_UNKNOWN_LISTENER')) {
   throw new Error('Tunnel identifier audit pattern regression');
 }
 const findings = [];
