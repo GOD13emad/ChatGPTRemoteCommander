@@ -61,6 +61,7 @@ test('auto updater is candidate-first, hardware-gated and commit-point aware',()
     'Test-VersionGreater'
   ]) assert.ok(s.includes(marker),marker);
   assert.ok(s.includes('https://github.com/GOD13emad/ChatGPTRemoteCommander/releases/latest') && s.includes('Invoke-WebRequest') && s.includes('Invoke-RestMethod'),'Windows stable discovery must prefer published-release redirect with REST fallback');
+  assert.ok(s.includes("MCP-Protocol-Version") && s.includes("2026-07-28") && s.includes("-Headers $headers"), 'internal updater MCP calls through the canonical router must identify as the current protocol and never self-poison legacy-host continuity state');
   assert.ok(s.includes('[string[]]$CommandArgs'), 'gate helper must not bind the PowerShell automatic $args variable');
   assert.ok(s.includes('& npm.cmd @CommandArgs'), 'gate helper must pass the intended npm argument array');
   assert.ok(s.includes("GATE_START gui-native-selftest"), 'unattended updater must run non-interactive native GUI self-test');
