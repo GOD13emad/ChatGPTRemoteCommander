@@ -120,20 +120,20 @@ function Get-ProtectedReleasePaths {
   }
   return $protected
 }
-function Retain-PreviousBackend([string]$RoutePath,[object]$Old,[string]$Profile,[int]$Canonical,[object[]]$TerminalChildren){
+function Retain-PreviousBackend([string]$RoutePath,[object]$Old,[string]$Profile,[int]$Canonical,[object[]]$RetentionRoots,[string]$Kind='terminal'){
   $st=Get-DrainStatus $Canonical ([int]$Old.port)
   if(-not $st.ok){return $false}
   if($st.count-gt0){
-    $first=Get-TerminalRetentionEvidence $Old $Canonical $TerminalChildren
-    if(-not $first.safe){Log "DRAIN_TERMINAL_RETAIN_DEFER profile=$Profile decision=$($first.decision)";return $false}
+    $first=Get-TerminalRetentionEvidence $Old $Canonical $RetentionRoots
+    if(-not $first.safe){if($Kind-eq'command'){Log "DRAIN_COMMAND_RETAIN_DEFER profile=$Profile decision=$($first.decision)"}else{Log "DRAIN_TERMINAL_RETAIN_DEFER profile=$Profile decision=$($first.decision)"};return $false}
     Start-Sleep -Milliseconds 500
     $final=Get-TerminalRetentionEvidence $Old $Canonical $TerminalChildren
-    if(-not $final.safe){Log "DRAIN_TERMINAL_RETAIN_RECHECK_DEFER profile=$Profile decision=$($final.decision)";return $false}
-    Log "DRAIN_TERMINAL_STALE_ROUTER_ACCOUNTING profile=$Profile inflight=$($st.count)"
+    if(-not $final.safe){if($Kind-eq'command'){Log "DRAIN_COMMAND_RETAIN_RECHECK_DEFER profile=$Profile decision=$($final.decision)"}else{Log "DRAIN_TERMINAL_RETAIN_RECHECK_DEFER profile=$Profile decision=$($final.decision)"};return $false}
+    if($Kind-eq'command'){Log "DRAIN_COMMAND_ROUTER_ACCOUNTING profile=$Profile inflight=$($st.count)"}else{Log "DRAIN_TERMINAL_STALE_ROUTER_ACCOUNTING profile=$Profile inflight=$($st.count)"}
   }
-  Add-RetainedBackend $Profile $Old $TerminalChildren
+  Add-RetainedBackend $Profile $Old $RetentionRoots
   Retire-PreviousRoute $RoutePath $Old $Profile
-  Log "DRAIN_TERMINAL_RETAINED profile=$Profile port=$($Old.port) pids=$(@($TerminalChildren|ForEach-Object{[int]$_.ProcessId}) -join ',')"
+  if($Kind-eq'command'){Log "DRAIN_COMMAND_RETAINED profile=$Profile port=$($Old.port) pids=$(@($RetentionRoots|ForEach-Object{[int]$_.ProcessId}) -join ',')"}else{Log "DRAIN_TERMINAL_RETAINED profile=$Profile port=$($Old.port) pids=$(@($RetentionRoots|ForEach-Object{[int]$_.ProcessId}) -join ',')"}
   return $true
 }
 function Test-ProfileName([string]$Name){
@@ -467,6 +467,31 @@ function Get-PersistentTerminalChildren([object]$Active){
   }catch{}
   return @($found|Select-Object ProcessId,ParentProcessId,Name,CommandLine)
 }
+function Get-RetainableLongCommandRoots([object]$Active,[int]$CanonicalPort){
+  $found=@()
+  if(-not(Test-OwnedOldBackend $Active)){return @($found)}
+  try{
+    $st=Get-DrainStatus $CanonicalPort ([int]$Active.port)
+    if(-not $st.ok -or $st.count-lt1 -or @($st.details).Count-ne$st.count){return @($found)}
+    $commandDetails=@($st.details|Where-Object{
+      $_.cancellable-ne$true -and [string]$_.rpcMethod-eq'tools/call' -and [string]$_.rpcName-in@('run_shell','run_project_command')
+    })
+    if($commandDetails.Count-ne$st.count){return @($found)}
+    $cfg=Read-Json ([string]$Active.configPath)
+    $marker=Read-Json ([string]$cfg.runtimeState)
+    $backendPid=[int]$marker.pid
+    $now=Get-Date
+    foreach($p in @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue|Where-Object{[int]$_.ParentProcessId-eq$backendPid})){
+      $norm=([string]$p.CommandLine).Trim().ToLowerInvariant()
+      if([string]$p.Name -ine 'pwsh.exe' -or -not $norm.Contains('-noninteractive') -or $norm.Contains('tools\gui-control.ps1 -server')){continue}
+      try{$age=($now-[datetime]$p.CreationDate).TotalSeconds}catch{continue}
+      if($age-lt60){continue}
+      $found+=$p
+    }
+    if($found.Count-ne$st.count){return @()}
+  }catch{return @()}
+  return @($found|Select-Object ProcessId,ParentProcessId,Name,CommandLine,CreationDate)
+}
 function Get-StaleDrainEvidence([object]$OldActive,[int]$CanonicalPort){
   $result=[ordered]@{safe=$false;decision='DEFER_UNPROVEN';activeOperations=-1;queued=-1;unexpectedConnections=-1;guiBusy=$true;guiLeased=$true;unsafeDescendants=@();safeDescendants=@()}
   if(-not(Test-OwnedOldBackend $OldActive)){$result.decision='NOT_OWNED';return [pscustomobject]$result}
@@ -656,8 +681,15 @@ function Complete-DeferredDrains {
       $canonical=Get-CanonicalPortForProfile ([string]$route.profile)
       $terminalChildren=@(Get-PersistentTerminalChildren $old)
       if($terminalChildren.Count-gt0){
-        if(Retain-PreviousBackend $rf.FullName $old ([string]$route.profile) $canonical $terminalChildren){continue}
+        if(Retain-PreviousBackend $rf.FullName $old ([string]$route.profile) $canonical $terminalChildren 'terminal'){continue}
         Log "DRAIN_PERSISTENT_TERMINAL_DEFER profile=$($route.profile) pids=$(@($terminalChildren|ForEach-Object{[int]$_.ProcessId}) -join ',')"
+        $pending+=[string]$route.profile
+        continue
+      }
+      $commandRoots=@(Get-RetainableLongCommandRoots $old $canonical)
+      if($commandRoots.Count-gt0){
+        if(Retain-PreviousBackend $rf.FullName $old ([string]$route.profile) $canonical $commandRoots 'command'){continue}
+        Log "DRAIN_LONG_COMMAND_DEFER profile=$($route.profile) pids=$(@($commandRoots|ForEach-Object{[int]$_.ProcessId}) -join ',')"
         $pending+=[string]$route.profile
         continue
       }
