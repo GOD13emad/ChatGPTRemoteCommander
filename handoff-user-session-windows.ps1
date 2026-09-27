@@ -64,7 +64,8 @@ $supervisors=@(Get-CimInstance Win32_Process -Filter "Name='pwsh.exe'" -ErrorAct
 foreach($p in $supervisors){Stop-ExactProcess $p 'boot-supervisor'}
 Start-Sleep -Milliseconds 500
 
-$pin=Join-Path $Root 'var\tunnel-client.json'
+$stableAppRoot=Join-Path (Join-Path $OwnerUserProfile 'AppData\Local') 'ChatGPTRemoteCommander\app'
+$pin=Join-Path $stableAppRoot 'var\tunnel-client.json'
 $expectedTunnel=$null
 if(Test-Path -LiteralPath $pin -PathType Leaf){
   try{$expectedTunnel=[IO.Path]::GetFullPath([string](Get-Content -LiteralPath $pin -Raw|ConvertFrom-Json).path)}catch{}
