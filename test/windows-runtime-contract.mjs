@@ -17,6 +17,7 @@ hasAll(install, [
   "Get-ExpectedConfigHash",
   "mcp-runtime.json",
   "tunnel-client.json",
+  "ChatGPTRemoteCommander\\app",
   "SAFE_UPDATE_PASS"
 ], 'install.ps1');
 
@@ -87,6 +88,7 @@ hasAll(handoff, [
   "autostart-windows\\.ps1",
   "-BootCore",
   "system-tunnel",
+  "ChatGPTRemoteCommander\\app",
   "system-mcp",
   "USER_SESSION_HANDOFF_PASS"
 ], 'handoff-user-session-windows.ps1');
