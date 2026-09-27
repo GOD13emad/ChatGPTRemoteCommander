@@ -428,3 +428,24 @@ Historical checkpoints remain append-only archives. Current release/control clai
 **Reuse Targets:** release qualification, failure-prevention guide, power-recovery runbook, CI reliability.
 
 **Provenance:** `autostart-windows.ps1`, `enable-boot-recovery.ps1`, `test/windows-runtime-contract.mjs`, `test/browser-process.test.mjs`; failed elevated-install post-state and candidate gate receipts from 2026-09-27.
+
+
+## E082 — Chat stream resilience and retained terminal pressure
+
+**Date/Context:** 2026-09-27; repeated ChatGPT errors including `ChatGPT stream recovery polling timed out` and `Resume stream unavailable` while several chats were used concurrently.
+
+**External evidence / method:** OpenAI Help Center documents that ChatGPT uses secure WebSocket traffic over TCP 443, including `wss://ws.chatgpt.com`, and warns that proxies, TLS inspection, web filtering, idle timeouts, or frame/message policies can stall or prematurely close long-lived WebSocket sessions. OpenAI troubleshooting also lists transient server-side problems as a possible cause. Recent OpenAI community reports describe the same `Resume stream unavailable` pattern on long responses; these are corroborating user reports, not an official incident declaration.
+
+**Local network evidence:** Windows WinHTTP is direct, the user proxy is disabled (`ProxyEnable=0`), and DNS/TCP 443 tests to both `ws.chatgpt.com` and `chatgpt.com` pass. A stale proxy endpoint remains stored in `ProxyServer` but is inactive. No DNS/firewall/proxy mutation is justified by current evidence.
+
+**Local pressure root cause:** Audit found ten concurrent Remote Commander MCP backend listeners and roughly one hundred PowerShell processes. `retained-backends.json` showed eight non-route historical backends retained because `start_terminal(command=...)` had left interactive `pwsh.exe -NoLogo -NoProfile` shells sitting at a prompt. `src/stable-router.mjs` sends normal MCP traffic only to `state.active.port` and has no terminal-ID affinity to retired backends; therefore prompt-idle terminals on detached backends are not reachable through the canonical connector.
+
+**Immediate cleanup evidence:** retained backends were queried directly with read-only `read_terminal`. Prompt-idle sessions were distinguished from no-prompt, multiline, or still-running states. Legacy v0.9.1 idle sessions were stopped after two prompt confirmations. Newer backends correctly required stable mutation `requestId`; a later long cleanup call hit its synchronous deadline, so its result was treated as uncertain and reconciled rather than blindly replayed. Canonical default and `saeed-emad` health remained PASS throughout.
+
+**Prevention / decision:** `start_terminal` now defaults to one-shot when `command` is supplied: the shell process exits with the command and does not stay at a prompt. Persistent behavior with an initial command requires explicit `interactive=true`; a terminal without a command remains interactive. `send_terminal` rejects one-shot sessions. The Remote Commander skill prohibits using interactive terminals as a substitute for detached/background execution and requires explicit cleanup after genuine interactive use. Chat-stream guidance is tightened from six to three direct synchronous Commander calls per assistant turn; longer/unknown work must use detached/durable execution and compact receipts.
+
+**Confidence/Status:** Platform-side resume availability for a specific failed ChatGPT turn remains EXTERNAL/UNVERIFIED. The local terminal-retention defect is CONFIRMED by process tree, retained-state, router behavior, and terminal buffers. Prevention implementation is CANDIDATE until cross-platform qualification and live promotion.
+
+**Reuse Targets:** stream/retry runbook, multi-chat operating policy, terminal lifecycle tests, release qualification, Project Brain.
+
+**Provenance:** `src/power-tools-v0.3.mjs`, `src/server-v0.3.mjs`, `plugin-template/skills/remote-commander/SKILL.md`, `src/stable-router.mjs`, local `retained-backends.json`; OpenAI Help Center network/troubleshooting documentation reviewed 2026-09-27.
