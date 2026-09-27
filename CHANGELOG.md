@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.9.10 — 2026-09-27
+- Recover an unreadable terminal operation state projection only when its durable request reservation and final receipt agree exactly on operation ID, input hash and correlation identity.
+- Preserve the original corrupt `state.json` bytes as a content-addressed `.bin` evidence backup before atomically reconstructing the terminal projection; never replay the external effect.
+- Stop corrupted historical terminal projections from remaining forever in the periodic delivery tracked set after exact recovery, while mismatched reservation/receipt evidence remains fail-closed and undelivered.
+- Add positive and mismatch regressions plus a read-only-copy validation over the 22 all-zero Windows projections observed in production: 22/22 repaired, 22/22 backups preserved, 0 invalid, tracked→0.
+
+
 ## 0.9.9 — 2026-09-27
 - Bound durable-delivery reconciliation to one startup discovery plus the live tracked-operation set instead of rediscovering every historical operation directory every five seconds.
 - Stop repeated terminal-receipt adoption/state-file rewrites after a completion has already been published; preserve restart backfill, exact correlation isolation, durable artifacts and no-blind-replay semantics.

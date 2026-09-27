@@ -312,6 +312,109 @@ test('terminal operation receipts backfill exactly once into durable delivery af
   }
 });
 
+test('corrupt terminal projection recovers from exact reservation and receipt without replay', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'rc-async-corrupt-projection-'));
+  let first = null, second = null, delivery = null;
+  try {
+    const config = {
+      instance: { profile: 'corrupt-projection-test' },
+      asyncOperations: { enabled: true, stateDir: path.join(root, 'ops'), maxOutputBytes: 1024 * 1024 }
+    };
+    const prepare = async () => ({
+      file: process.execPath,
+      args: ['-e', 'process.stdout.write("done")'],
+      cwd: root,
+      timeoutMs: 5000,
+      outputLimit: 1024 * 1024
+    });
+    first = createAsyncOperationTools({ config, prepare });
+    const started = await first.execute('operation_start', {
+      requestId: 'corrupt-projection-request-1',
+      correlationId: 'chat-corrupt-projection',
+      tool: 'run_project_command',
+      arguments: { argv: ['done'] }
+    });
+    await waitFor(first, started.operationId);
+    await first.close?.();
+    first = null;
+
+    const operationDir = path.join(root, 'ops', 'operations', started.operationId);
+    const statePath = path.join(operationDir, 'state.json');
+    const originalState = await readFile(statePath);
+    const zeros = Buffer.alloc(originalState.length);
+    await writeFile(statePath, zeros);
+
+    delivery = new DeliveryStore({ directory: path.join(root, 'delivery'), scope: 'profile-corrupt' });
+    second = createAsyncOperationTools({ config, prepare, deliveryStore: delivery });
+    await second.reconcileDeliveries(500);
+
+    const listed = delivery.list({ correlationId: 'chat-corrupt-projection', includeDelivered: true });
+    assert.equal(listed.items.length, 1);
+    assert.equal(listed.items[0].sourceId, started.operationId);
+    assert.equal(listed.items[0].kind, 'COMPLETED');
+    const repaired = JSON.parse(await readFile(statePath, 'utf8'));
+    assert.equal(repaired.status, 'SUCCEEDED');
+    assert.equal(repaired.recoveredFromReceipt, true);
+    assert.equal(repaired.recoveredFromCorruptProjection, true);
+    assert.equal(repaired.correlationId, 'chat-corrupt-projection');
+    const backups = (await readdir(operationDir)).filter((name) => name.startsWith('state.corrupt-') && name.endsWith('.bin'));
+    assert.equal(backups.length, 1);
+    assert.deepEqual(await readFile(path.join(operationDir, backups[0])), zeros);
+    const secondPass = await second.reconcileDeliveries(500);
+    assert.equal(secondPass.checked, 0);
+  } finally {
+    try { await first?.close?.(); } catch {}
+    try { await second?.close?.(); } catch {}
+    try { delivery?.close(); } catch {}
+    await rm(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 });
+  }
+});
+
+test('corrupt terminal projection is not repaired when receipt and reservation hashes differ', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'rc-async-corrupt-mismatch-'));
+  let first = null, second = null, delivery = null;
+  try {
+    const config = {
+      instance: { profile: 'corrupt-mismatch-test' },
+      asyncOperations: { enabled: true, stateDir: path.join(root, 'ops'), maxOutputBytes: 1024 * 1024 }
+    };
+    const prepare = async () => ({
+      file: process.execPath, args: ['-e', 'process.stdout.write("done")'], cwd: root,
+      timeoutMs: 5000, outputLimit: 1024 * 1024
+    });
+    first = createAsyncOperationTools({ config, prepare });
+    const started = await first.execute('operation_start', {
+      requestId: 'corrupt-mismatch-request-1', correlationId: 'chat-corrupt-mismatch',
+      tool: 'run_project_command', arguments: { argv: ['done'] }
+    });
+    await waitFor(first, started.operationId);
+    await first.close?.();
+    first = null;
+
+    const operationDir = path.join(root, 'ops', 'operations', started.operationId);
+    const statePath = path.join(operationDir, 'state.json');
+    const resultPath = path.join(operationDir, 'result.json');
+    const originalState = await readFile(statePath);
+    const receipt = JSON.parse(await readFile(resultPath, 'utf8'));
+    receipt.inputHash = 'f'.repeat(64);
+    await writeFile(resultPath, JSON.stringify(receipt, null, 2) + '\n', 'utf8');
+    const zeros = Buffer.alloc(originalState.length);
+    await writeFile(statePath, zeros);
+
+    delivery = new DeliveryStore({ directory: path.join(root, 'delivery'), scope: 'profile-corrupt-mismatch' });
+    second = createAsyncOperationTools({ config, prepare, deliveryStore: delivery });
+    await second.reconcileDeliveries(1);
+    assert.equal(delivery.list({ correlationId: 'chat-corrupt-mismatch', includeDelivered: true }).items.length, 0);
+    assert.deepEqual(await readFile(statePath), zeros);
+    assert.equal(second.status().deliveryIntegration.tracked, 1);
+  } finally {
+    try { await first?.close?.(); } catch {}
+    try { await second?.close?.(); } catch {}
+    try { delivery?.close(); } catch {}
+    await rm(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 });
+  }
+});
+
 test('same async requestId with a changed correlation fails closed', async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'rc-async-correlation-'));
   try {

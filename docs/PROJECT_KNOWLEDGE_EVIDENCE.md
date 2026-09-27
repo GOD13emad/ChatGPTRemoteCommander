@@ -520,3 +520,17 @@ Historical checkpoints remain append-only archives. Current release/control clai
 - Boundary: ChatGPT host response-stream expiry and native wake/push remain external unless the host exposes a supported capability. Commander acceptance is durable result survival, idempotent no-duplicate effect, bounded reconciliation, and retrievable correlation-scoped results.
 - Status/Confidence: Internal reconciliation defect CONFIRMED/high; causal contribution to the ChatGPT UI stream failure PROBABLE-UNVERIFIED until correlated host evidence exists.
 - Reuse Targets: release 0.9.9, stream resilience, incident response, durable delivery design, performance/load testing.
+
+
+## E-STREAM-20260927-R3 — Exact recovery of all-zero historical operation projections
+
+- Date/Context: 2026-09-27; continuation of the stream/durable-delivery audit after v0.9.9 promotion.
+- Fact / Confirmed: Windows default operation storage contained 22 historical `state.json` files whose byte content was entirely NUL. Counts: bad=22, valid terminal receipt=22, request mapping=22, exact receipt/reservation inputHash pair=22, correlation present=22, all-zero=22.
+- Fact / Confirmed: the 22 invalid projections explain the remaining `deliveryIntegration.tracked=22`: the reconciliation catch path removed and immediately re-added unreadable operations indefinitely.
+- Unknown: the original cause of the NUL overwrite is UNVERIFIED; no storage/power/process cause is asserted.
+- Decision: do not delete or blindly overwrite historical state. Recover only from exact request reservation + terminal final receipt, preserve corrupt bytes as content-addressed evidence, and never replay the external effect.
+- Guard: mismatched inputHash/correlation/operation evidence does not repair and does not publish a delivery.
+- Regression: focused async/HTTP/correlation suite PASS 16/16. Positive corrupt-projection recovery and mismatch fail-closed cases are included.
+- Real-data validation: on a temporary copy of the 22 production-corrupt operations and reservation files, recovery produced copied=22, repaired=22, backups=22, invalid=0, tracked=0, events=22. Live operation storage was not modified by this validation.
+- Related stream finding: two long-lived pre-v0.9.9 synchronous `run_shell` requests remain on a detached v0.9.8 backend because they own real external jobs; v0.9.9 live guard rejects >15 s synchronous calls before effect. Causality from these historical requests to ChatGPT UI `Resume stream unavailable` remains PROBABLE-UNVERIFIED.
+- Reuse Targets: durable delivery, crash/power recovery, stream resilience, release 0.9.10, incident runbook.

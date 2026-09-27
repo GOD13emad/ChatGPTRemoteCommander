@@ -144,6 +144,9 @@ export function createAsyncOperationTools({ config, prepare, workerPath, deliver
   let deliveryTimer = null;
   let deliveryClosed = false;
   let deliveryReconcilePromise = Promise.resolve({ checked: 0, pending: 0 });
+  const reservationByOperation = new Map();
+  let reservationsLoaded = false;
+
 
   function correlationOf(state) {
     const value = state?.correlationId ?? state?.requestId;
@@ -186,6 +189,98 @@ export function createAsyncOperationTools({ config, prepare, workerPath, deliver
       stderr: path.join(dir, 'stderr.log'),
       cancel: path.join(dir, 'cancel.request')
     };
+  }
+  function validReservation(value) {
+    const correlationId = value?.correlationId ?? value?.requestId;
+    return value
+      && REQUEST_RE.test(value.requestId ?? '')
+      && REQUEST_RE.test(correlationId ?? '')
+      && OP_RE.test(value.operationId ?? '')
+      && /^[a-f0-9]{64}$/.test(value.inputHash ?? '');
+  }
+  async function refreshReservationIndex() {
+    let entries = [];
+    try { entries = await readdir(requestsDir, { withFileTypes: true }); }
+    catch (error) { if (error?.code === 'ENOENT') { reservationsLoaded = true; return; } throw error; }
+    for (const entry of entries) {
+      if (!entry.isFile() || !entry.name.endsWith('.json')) continue;
+      let reservation = null;
+      try { reservation = await readJson(path.join(requestsDir, entry.name)); } catch { continue; }
+      if (!validReservation(reservation)) continue;
+      const prior = reservationByOperation.get(reservation.operationId);
+      if (prior === false) continue;
+      if (prior && (prior.requestId !== reservation.requestId
+        || (prior.correlationId ?? prior.requestId) !== (reservation.correlationId ?? reservation.requestId)
+        || prior.inputHash !== reservation.inputHash)) {
+        reservationByOperation.set(reservation.operationId, false);
+        continue;
+      }
+      reservationByOperation.set(reservation.operationId, reservation);
+    }
+    reservationsLoaded = true;
+  }
+  async function reservationForOperation(operationId) {
+    if (!reservationsLoaded) await refreshReservationIndex();
+    let reservation = reservationByOperation.get(operationId);
+    if (reservation === undefined) {
+      await refreshReservationIndex();
+      reservation = reservationByOperation.get(operationId);
+    }
+    return reservation && reservation !== false ? reservation : null;
+  }
+  async function preserveCorruptProjection(p) {
+    let bytes;
+    try { bytes = await readFile(p.state); }
+    catch (error) { if (error?.code === 'ENOENT') return null; throw error; }
+    const sha256 = createHash('sha256').update(bytes).digest('hex');
+    const backup = path.join(p.dir, `state.corrupt-${sha256}.bin`);
+    try {
+      await writeFile(backup, bytes, { flag: 'wx', mode: 0o600 });
+    } catch (error) {
+      if (error?.code !== 'EEXIST') throw error;
+      const existing = await readFile(backup);
+      if (createHash('sha256').update(existing).digest('hex') !== sha256) throw new Error('CORRUPT_STATE_BACKUP_CONFLICT');
+    }
+    return path.basename(backup);
+  }
+  async function recoverTerminalProjection(operationId) {
+    const reservation = await reservationForOperation(operationId);
+    if (!reservation) return null;
+    const p = opPaths(operationId);
+    let receipt = null;
+    try { receipt = await readJson(p.result); } catch { return null; }
+    const correlationId = reservation.correlationId ?? reservation.requestId;
+    if (!receipt
+      || receipt.operationId !== operationId
+      || receipt.inputHash !== reservation.inputHash
+      || !TERMINAL.has(receipt.status)
+      || typeof receipt.tool !== 'string'
+      || !REQUEST_RE.test(correlationId)) return null;
+    const corruptProjectionBackup = await preserveCorruptProjection(p);
+    const finishedAt = receipt.finishedAt ?? new Date().toISOString();
+    const recovered = {
+      schema: 1,
+      operationId,
+      requestId: reservation.requestId,
+      correlationId,
+      inputHash: receipt.inputHash,
+      tool: receipt.tool,
+      status: receipt.status,
+      createdAt: reservation.createdAt ?? receipt.startedAt ?? finishedAt,
+      updatedAt: finishedAt,
+      finishedAt: receipt.finishedAt ?? null,
+      workerPid: null,
+      childPid: null,
+      exitCode: receipt.exitCode ?? null,
+      signal: receipt.signal ?? null,
+      timedOut: receipt.timedOut === true,
+      cancelRequested: receipt.cancelRequested === true,
+      recoveredFromReceipt: true,
+      recoveredFromCorruptProjection: true,
+      corruptProjectionBackup
+    };
+    await atomicJson(p.state, recovered);
+    return recovered;
   }
   async function publishTerminal(state) {
     if (!deliveryStore || !state || !TERMINAL.has(state.status)) return null;
@@ -250,7 +345,15 @@ export function createAsyncOperationTools({ config, prepare, workerPath, deliver
   }
   async function status(operationId, reconcile = true) {
     const p = opPaths(operationId);
-    let state = await readStateProjection(p);
+    let state;
+    try { state = await readStateProjection(p); }
+    catch (error) {
+      if (reconcile) {
+        const recovered = await recoverTerminalProjection(operationId);
+        if (recovered) return attachDelivery(recovered);
+      }
+      throw error;
+    }
 
     const exactReceipt = async (candidate) => {
       let receipt = null;
