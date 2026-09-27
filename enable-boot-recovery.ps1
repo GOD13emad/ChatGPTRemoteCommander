@@ -24,9 +24,10 @@ $OwnerRoaming = Join-Path $OwnerUserProfile 'AppData\Roaming'
 $CredDir = Join-Path $OwnerLocal 'ChatGPTRemoteCommander\credentials'
 $ProfileDir = Join-Path $OwnerRoaming 'tunnel-client'
 $VarDir = Join-Path $Root 'var'
+New-Item -ItemType Directory -Force -Path $VarDir | Out-Null
 $Supervisor = Join-Path $Root 'autostart-windows.ps1'
 $Handoff = Join-Path $Root 'handoff-user-session-windows.ps1'
-foreach($p in @($CredDir,$ProfileDir,$VarDir,$Supervisor,$Handoff)){
+foreach($p in @($CredDir,$ProfileDir,$Supervisor,$Handoff)){
   if(-not(Test-Path -LiteralPath $p)){throw "BOOT_RECOVERY_REQUIRED_PATH_MISSING $p"}
 }
 
