@@ -48,7 +48,7 @@ Baseline: `a36ec05ea2c530ef52473b6a6f851a4484a31a35`. Qualification head: `6372b
 | CSDC-028 | P1 | IN_PROGRESS | **Linux v0.9.4 completion** — Finish retained-terminal cutover, Firefox background browser, current CSDC/retry hardening, full qualification and release. | Linux canonical connector reaches the current qualified release without killing active terminals and with Windows/Linux behavior parity where platform permits. |
 | CSDC-029 | P1 | TODO | **Cross-device parity** — Make Windows/Linux capability and Project Engine behavior equivalent where platform permits. | System-status parity matrix has no unexplained functional gaps. |
 | CSDC-030 | P1 | TODO | **End-to-end telemetry** — Record correlationId, transport request, tool, operation, workflow, result and delivery metrics. | Deadline/post failures can be attributed to exact work instead of heuristic timestamps. |
-| CSDC-031 | P1 | TODO | **Durable alerting/dead-letter** — Surface COMPLETED_UNDELIVERED, blocked and dead-letter records in health/status. | No failed delivery can remain invisible. |
+| CSDC-031 | P1 | PASS | **Durable alerting/dead-letter** — Surface COMPLETED_UNDELIVERED, blocked and dead-letter records in health/status. | No failed delivery can remain invisible. |
 | CSDC-032 | P1 | TODO | **Acceptance-strength profiles** — Support domain-specific validators instead of treating weak text checks as correctness. | COMPLETED means the configured technical/scientific acceptance really passed. |
 | CSDC-033 | P0 | IN_PROGRESS | **Fault-injection regression suite** — Test disconnects before ack, after effect, during planner, after completion and during delivery. | Every injected cut preserves at-most-once effects and eventual discoverable result. |
 | CSDC-034 | P0 | IN_PROGRESS | **Multi-chat/account concurrency regression** — Test same project from concurrent chats/accounts with ownership/delivery isolation. | No cross-chat result leakage, duplicate writer or duplicate effect. |
@@ -155,6 +155,13 @@ Baseline: `a36ec05ea2c530ef52473b6a6f851a4484a31a35`. Qualification head: `6372b
 - Restart/lost-ack/idempotent delivery, operation receipt backfill and correlation isolation tests are in full CI.
 - Residual: Remaining fault matrix cases include real tunnel disconnect, power cuts, process-tree and long soak.
 
+
+### CSDC-031 — PASS
+
+- v0.9.6 adds a bounded `completionBeacon` to the already-cached-compatible `system_status` response. It reports pending/dead-letter counts plus at most five metadata-only records (delivery/correlation/source/kind/code/state/artifact size+hash/timestamps), never artifact contents.
+- This closes the prior visibility gap even when the ChatGPT host has not refreshed newly-added `delivery_*` tools. Exact result reads remain correlation-scoped and are not weakened.
+- Delivery-store regression proves the beacon is bounded and does not inline artifact content; the turn-safety regression requires both server instructions and the Plugin skill to surface the beacon after interrupted/long work.
+- Autonomous host wake remains separately `BLOCKED_EXTERNAL` under CSDC-005; visibility/discoverability is now independent of push support.
 
 ### CSDC-037 — PASS
 
