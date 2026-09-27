@@ -34,6 +34,7 @@ hasAll(updater, [
 ], 'auto-update-windows.ps1');
 
 const enable = read('enable-autostart.ps1');
+if (!enable.includes("^tunnel_[0-9a-f]{32}$")) throw new Error('Windows enrollment must enforce official tunnel ID format');
 hasAll(enable, [
   "without ..",
   "Pinned tunnel-client state is missing",
