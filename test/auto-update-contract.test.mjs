@@ -104,6 +104,10 @@ test('auto updater is candidate-first, hardware-gated and commit-point aware',()
   const longCommand=s.slice(s.indexOf('function Get-RetainableLongCommandRoots'),s.indexOf('function Get-StaleDrainEvidence'));
   for(const marker of ["rpcMethod-eq'tools/call'","run_shell","run_project_command","cancellable-ne$true","-noninteractive","age-lt60"])assert.ok(longCommand.includes(marker),marker);
   assert.ok(longCommand.includes('if($found.Count-ne$st.count){return @()}'),'long-command retention must map every non-cancellable command request to exactly one direct owned command root');
+  const retainWork=s.slice(s.indexOf('function Retain-PreviousBackend'),s.indexOf('function Test-ProfileName'));
+  assert.ok(retainWork.includes('Get-TerminalRetentionEvidence $Old $Canonical $RetentionRoots'),'retention evidence must use the provided retention roots');
+  assert.ok(!retainWork.includes('$TerminalChildren'),'generic retained-work path must not fall back to the legacy terminal-only variable');
+
 
   assert.ok(s.includes('Get-TerminalRetentionEvidence') && s.includes('DRAIN_TERMINAL_STALE_ROUTER_ACCOUNTING'),'Windows terminal keeper must detach stale router accounting only after independent backend-idle evidence');
   const retainEvidence=s.slice(s.indexOf('function Get-TerminalRetentionEvidence'),s.indexOf('function Stop-StaleBackendTree'));
