@@ -28,27 +28,6 @@ if (mode === 'tree') {
   spawn(process.execPath,['-e','setTimeout(()=>require("node:fs").writeFileSync(process.argv[1],"leaked"),2500)',JSON.parse(text).marker],{stdio:'ignore'});
   setInterval(()=>{},1000);
 }
-if (mode.startsWith('codex')) {
-  const context=JSON.parse(text.slice(text.indexOf('\\n')+1));
-  if(context.scratchMarker) fs.writeFileSync(context.scratchMarker,process.cwd());
-  const schema=JSON.parse(fs.readFileSync(flag('--output-schema'),'utf8'));
-  const required=['--ephemeral','--ignore-user-config','--ignore-rules','--skip-git-repo-check','--json'];
-  if (flag('--sandbox')!=='read-only' || !required.every(x=>process.argv.includes(x)) || schema.additionalProperties!==false || schema.required.length!==4) process.exit(8);
-  const disabled=[]; for(let i=0;i<process.argv.length;i++) if(process.argv[i]==='--disable') disabled.push(process.argv[i+1]);
-  if (!['apps','plugins','hooks','shell_tool','unified_exec','computer_use','browser_use','multi_agent'].every(x=>disabled.includes(x))) process.exit(9);
-  if(!text.includes('Commander alone executes')) process.exit(10);
-  proposal.summary=process.cwd();
-  console.log(JSON.stringify({type:'thread.started',thread_id:'fixture'}));
-  if(mode==='codex-benign-diagnostic') console.log(JSON.stringify({type:'item.completed',item:{id:'item_0',type:'error',message:'Code Mode is unavailable because code-mode host is disabled. Code mode will fail closed; enable \`features.code_mode_host\` and install \`codex-code-mode-host\`.'}}));
-  if(mode==='codex-unknown-diagnostic') console.log(JSON.stringify({type:'item.completed',item:{id:'item_0',type:'error',message:'Different diagnostic'}}));
-  if(mode==='codex-diagnostic-extra') console.log(JSON.stringify({type:'item.completed',item:{id:'item_0',type:'error',message:'Code Mode is unavailable because code-mode host is disabled. Code mode will fail closed; enable \`features.code_mode_host\` and install \`codex-code-mode-host\`.',extra:true}}));
-  console.log(JSON.stringify({type:'turn.started'}));
-  console.log(JSON.stringify({type:'item.completed',item:{type:mode==='codex-tool'?'command_execution':'agent_message',text:'PRIVATE_PROVIDER_TEXT'}}));
-  if(mode!=='codex-incomplete') console.log(JSON.stringify({type:'turn.completed'}));
-  if(mode!=='codex-missing') fs.writeFileSync(flag('--output-last-message'),JSON.stringify(proposal));
-  if(mode==='codex-large') fs.appendFileSync(flag('--output-last-message'),' '.repeat(10000));
-  if(mode==='codex-hardlink') fs.linkSync(flag('--output-last-message'),flag('--output-last-message')+'.link');
-}
 `;
 
 function fixture(t, mode, overrides = {}) {
@@ -147,35 +126,12 @@ test('input/configuration are bounded and command description hides argv', async
   assert.equal(JSON.stringify(planner.describe()).includes('provider.mjs'), false);
 });
 
-test('Codex emits only a validated schema proposal under explicit restrictions', async t => {
-  const { planner } = fixture(t, 'codex', { kind: 'codex', model: 'fixture-model' });
-  const result = await planner.plan({ goal: 'inspect' });
-  assert.equal(result.action, 'call');
-  assert.equal(fs.existsSync(result.summary), false);
-  assert.equal(planner.describe().model, 'fixture-model');
+test('Codex provider is forbidden by Commander policy before process start', () => {
+  assert.throws(
+    () => createCommandPlanner({ kind: 'codex', executable: 'codex.exe' }),
+    error => error?.code === 'PLANNER_PROVIDER_FORBIDDEN'
+  );
 });
-
-test('Codex accepts only the exact fail-closed code-mode-disabled diagnostic emitted by current CLI', async t => {
-  const { planner } = fixture(t, 'codex-benign-diagnostic', { kind: 'codex' });
-  const result = await planner.plan({ goal: 'inspect' });
-  assert.equal(result.action, 'call');
-});
-
-for (const mode of ['codex-unknown-diagnostic','codex-diagnostic-extra']) {
-  test('Codex rejects unrecognized or widened error diagnostics: ' + mode, async t => {
-    const { planner } = fixture(t, mode, { kind: 'codex' });
-    await assert.rejects(planner.plan({ goal: 'inspect' }), { code: 'PLANNER_UNEXPECTED_TOOL' });
-  });
-}
-
-for (const [mode, code] of [['codex-tool','PLANNER_UNEXPECTED_TOOL'],['codex-incomplete','PLANNER_INCOMPLETE_RESULT'],['codex-missing','PLANNER_INCOMPLETE_RESULT'],['codex-large','PLANNER_OUTPUT_LIMIT'],['codex-hardlink','PLANNER_INVALID_RESULT_FILE']]) {
-  test('Codex rejects provider evidence: ' + mode, async t => {
-    const { planner, directory } = fixture(t, mode, { kind: 'codex', maxOutputBytes: 4096 });
-    const scratchMarker = path.join(directory, 'scratch-path.txt');
-    await assert.rejects(planner.plan({ scratchMarker }), { code });
-    assert.equal(fs.existsSync(fs.readFileSync(scratchMarker,'utf8')), false);
-  });
-}
 
 test('Claude remains unavailable until the installed client is qualified', async () => {
   const planner = createCommandPlanner({ kind: 'claude', executable: 'claude' });

@@ -1,7 +1,5 @@
 import fs from 'node:fs';
-import path from 'node:path';
-
-export const QUALIFIED_CODEX_VERSION = '0.156.1';
+import { isCodexExecutable } from './no-codex-policy.mjs';
 
 const RUNNER_ALLOWED_TOOLS = Object.freeze([
   'list_directory','read_text','file_info','write_text','create_directory'
@@ -28,50 +26,40 @@ function executableFile(file, platform = process.platform) {
   }
 }
 
-function qualifiedCandidates(stateRoot, platform = process.platform, arch = process.arch) {
-  if (typeof stateRoot !== 'string' || !stateRoot) return [];
-  const base = path.join(stateRoot, 'tools', 'codex-cli', QUALIFIED_CODEX_VERSION, 'node_modules', '@openai');
-  const table = {
-    'win32:x64': ['codex-win32-x64', 'vendor', 'x86_64-pc-windows-msvc', 'bin', 'codex.exe'],
-    'win32:arm64': ['codex-win32-arm64', 'vendor', 'aarch64-pc-windows-msvc', 'bin', 'codex.exe'],
-    'linux:x64': ['codex-linux-x64', 'vendor', 'x86_64-unknown-linux-musl', 'bin', 'codex'],
-    'linux:arm64': ['codex-linux-arm64', 'vendor', 'aarch64-unknown-linux-musl', 'bin', 'codex']
-  };
-  const parts = table[`${platform}:${arch}`];
-  return parts ? [path.join(base, ...parts)] : [];
-}
-
-export function discoverQualifiedProjectProvider({ stateRoot, platform = process.platform, arch = process.arch } = {}) {
-  for (const executable of qualifiedCandidates(stateRoot, platform, arch)) {
-    if (executableFile(executable, platform)) {
-      return {
-        status: 'QUALIFIED',
-        kind: 'codex',
-        version: QUALIFIED_CODEX_VERSION,
-        executable
-      };
-    }
-  }
+export function discoverQualifiedProjectProvider() {
   return {
-    status: 'MISSING',
+    status: 'FORBIDDEN',
     kind: 'codex',
-    version: QUALIFIED_CODEX_VERSION,
-    executable: null
+    version: null,
+    executable: null,
+    reason: 'NO_CODEX_VIA_COMMANDER'
   };
 }
 
-function normalizedRunner(existing, executable) {
+function disableRunner(existing, reason = 'NO_AUTOMATIC_MODEL_PROVIDER') {
   const current = existing && typeof existing === 'object' && !Array.isArray(existing) ? clone(existing) : {};
-  const provider = current.provider && typeof current.provider === 'object' && !Array.isArray(current.provider)
+  const currentProvider = current.provider && typeof current.provider === 'object' && !Array.isArray(current.provider)
     ? clone(current.provider) : {};
+  const codex = currentProvider.kind === 'codex' || isCodexExecutable(currentProvider.executable);
+  return {
+    ...current,
+    enabled: false,
+    autoTick: false,
+    provider: codex
+      ? { kind: 'disabled', reason: 'NO_CODEX_VIA_COMMANDER' }
+      : (Object.keys(currentProvider).length ? currentProvider : { kind: 'disabled', reason })
+  };
+}
+
+function normalizedExplicitRunner(existing) {
+  const current = clone(existing);
+  const provider = clone(current.provider);
   return {
     ...current,
     enabled: true,
     autoTick: current.autoTick !== false,
     provider: {
       ...provider,
-      kind: provider.kind ?? 'codex',
-      executable,
       timeoutMs: Math.min(Number.isSafeInteger(Number(provider.timeoutMs)) ? Number(provider.timeoutMs) : 30_000, 30_000),
       maxOutputBytes: Number.isSafeInteger(Number(provider.maxOutputBytes))
         ? Math.min(Math.max(Number(provider.maxOutputBytes), 64), 16 * 1024 * 1024)
@@ -96,16 +84,17 @@ function normalizedRunner(existing, executable) {
   };
 }
 
-export function applyProjectRunnerConfig(config, { stateRoot, platform = process.platform, arch = process.arch } = {}) {
+export function applyProjectRunnerConfig(config, { platform = process.platform } = {}) {
   const next = clone(config);
   next.durableWorkflows ??= {};
   const profile = next.capabilityProfile ?? {};
   const disabled = new Set(Array.isArray(profile.disabledCapabilities) ? profile.disabledCapabilities : []);
   const authorized = profile.tier === 'FULL_POWER' && profile.explicitlyAuthorized === true;
+
   if (!authorized || disabled.has('workflow.project_engine') || next.durableWorkflows.enabled !== true) {
     if (next.durableWorkflows.runner && typeof next.durableWorkflows.runner === 'object') {
-      next.durableWorkflows.runner.enabled = false;
-      next.durableWorkflows.runner.autoTick = false;
+      next.durableWorkflows.runner = disableRunner(next.durableWorkflows.runner,
+        disabled.has('workflow.project_engine') ? 'EXPLICITLY_DISABLED' : 'AUTHORITY_DISABLED');
     }
     return {
       config: next,
@@ -115,29 +104,39 @@ export function applyProjectRunnerConfig(config, { stateRoot, platform = process
   }
 
   const existing = next.durableWorkflows.runner;
-  const existingExecutable = existing?.provider?.executable;
-  if (existing?.enabled === true && executableFile(existingExecutable, platform)) {
-    next.durableWorkflows.runner = normalizedRunner(existing, existingExecutable);
+  const provider = existing?.provider;
+  const executable = provider?.executable;
+  if (provider?.kind === 'codex' || isCodexExecutable(executable)) {
+    next.durableWorkflows.runner = disableRunner(existing, 'NO_CODEX_VIA_COMMANDER');
     return {
       config: next,
-      status: 'PRESERVED',
-      provider: {
-        kind: next.durableWorkflows.runner.provider.kind,
-        executable: existingExecutable,
-        qualifiedVersion: existing?.provider?.kind === 'codex' ? QUALIFIED_CODEX_VERSION : null
-      }
+      status: 'CODEX_FORBIDDEN',
+      provider: { kind: 'disabled', reason: 'NO_CODEX_VIA_COMMANDER' }
     };
   }
 
-  const discovered = discoverQualifiedProjectProvider({ stateRoot, platform, arch });
-  if (discovered.status !== 'QUALIFIED') {
-    if (next.durableWorkflows.runner && typeof next.durableWorkflows.runner === 'object') {
-      next.durableWorkflows.runner.enabled = false;
-      next.durableWorkflows.runner.autoTick = false;
-    }
-    return { config: next, status: 'PROVIDER_MISSING', provider: discovered };
+  if (existing?.enabled === true && ['command', 'claude'].includes(provider?.kind)
+      && executableFile(executable, platform)) {
+    next.durableWorkflows.runner = normalizedExplicitRunner(existing);
+    return {
+      config: next,
+      status: 'PRESERVED_EXPLICIT_NON_CODEX_PROVIDER',
+      provider: { kind: provider.kind, executable, qualifiedVersion: null }
+    };
   }
 
-  next.durableWorkflows.runner = normalizedRunner(existing, discovered.executable);
-  return { config: next, status: 'AUTO_CONFIGURED', provider: discovered };
+  if (existing && typeof existing === 'object') {
+    next.durableWorkflows.runner = disableRunner(existing, 'NO_AUTOMATIC_MODEL_PROVIDER');
+  } else {
+    next.durableWorkflows.runner = {
+      enabled: false,
+      autoTick: false,
+      provider: { kind: 'disabled', reason: 'NO_AUTOMATIC_MODEL_PROVIDER' }
+    };
+  }
+  return {
+    config: next,
+    status: existing?.enabled === true ? 'PROVIDER_MISSING_OR_UNSUPPORTED' : 'NO_AUTOMATIC_MODEL_PROVIDER',
+    provider: null
+  };
 }

@@ -23,6 +23,17 @@ When `system_status.platform` is `linux`, treat Linux as the authoritative execu
 - Linux GUI acceptance requires real screenshot/input/screenshot evidence on the Linux target when interaction is authorized; a Windows test is not evidence for Linux GUI behavior.
 - For package installation or OS maintenance, verify the distribution/release and package manager first. Do not assume `apt`, `dnf`, `pacman`, Snap or Flatpak without evidence from the target.
 
+## ChatGPT-first reasoning and explicit external handoff
+
+Remote Commander is the execution/control layer for the current ChatGPT conversation. **Do not silently convert Commander work into Codex, ChatGPT Work, or another model/agent session. Do not launch Codex from Commander, from a workflow runner, from a shell command, or indirectly through a project script.** Full Power, automatic execution, a prior Codex login, an installed Codex CLI, an old workflow configuration, or a previous approval never grants that authority.
+
+If the current ChatGPT assistant believes Work or Codex would materially help, stop before any handoff and ask the user to choose explicitly between these two paths:
+
+- **Move to Work/Codex** — only after the user explicitly selects this option; the handoff occurs outside Commander and Commander itself still must not launch Codex.
+- **Continue in this chat with Remote Commander** — this is the default and consumes the current ChatGPT interaction path.
+
+No response, ambiguous approval, inferred preference, or historical project note counts as consent. If the user does not choose Work/Codex, continue in the current chat with Commander. Record a handoff decision in project evidence only when it actually affects project execution.
+
 ## Background-first execution
 
 **Background is the default for all work.** Do not move the user's mouse, type into their foreground applications, steal focus, replace their current browser tab, or keep a long MCP request open when an equivalent background path exists. Use filesystem/API operations directly, the owned headless browser for web work, and detached durable operations for long-running command work. Foreground desktop interaction is an exception that requires the user's explicit current request or a genuine interactive barrier such as MFA, WebAuthn, CAPTCHA, or a site that cannot complete in the isolated browser.

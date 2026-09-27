@@ -10,7 +10,7 @@ param(
   [switch]$StartServer,
   [switch]$SkipTunnelClient,
   [string]$TunnelClientVersion = '0.0.15',
-  [string]$SourceRef = 'v0.9.10',
+  [string]$SourceRef = 'v0.9.11',
   [string]$ExpectedCommit = ''
 )
 $ErrorActionPreference = 'Stop'
@@ -156,38 +156,7 @@ function Invoke-ExistingSafeUpdate {
 }
 
 function Ensure-ProjectProvider {
-  if (-not $isCanonicalLiveInstall -and -not $StartServer) {
-    Write-Host 'Project provider bootstrap deferred for custom/no-start installation.'
-    return
-  }
-  $requested = [bool]$PowerMode
-  $localConfig = Join-Path $InstallDir 'config.local.json'
-  if (-not $requested -and -not $StandardMode -and (Test-Path -LiteralPath $localConfig -PathType Leaf)) {
-    try {
-      $prior = Get-Content -LiteralPath $localConfig -Raw | ConvertFrom-Json
-      $requested = [string]$prior.capabilityProfile.tier -eq 'FULL_POWER'
-    } catch {}
-  }
-  if (-not $requested) { return }
-
-  $version = '0.156.1'
-  $stateRoot = Join-Path $env:LOCALAPPDATA 'ChatGPTRemoteCommander'
-  $providerRoot = Join-Path $stateRoot (Join-Path 'tools\codex-cli' $version)
-  $arch = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString().ToLowerInvariant()
-  switch ($arch) {
-    'x64' { $exe = Join-Path $providerRoot 'node_modules\@openai\codex-win32-x64\vendor\x86_64-pc-windows-msvc\bin\codex.exe' }
-    'arm64' { $exe = Join-Path $providerRoot 'node_modules\@openai\codex-win32-arm64\vendor\aarch64-pc-windows-msvc\bin\codex.exe' }
-    default { throw "Unsupported Codex provider architecture: $arch" }
-  }
-  if (-not (Test-Path -LiteralPath $exe -PathType Leaf)) {
-    New-Item -ItemType Directory -Force -Path $providerRoot | Out-Null
-    & npm.cmd install --prefix $providerRoot --ignore-scripts --no-audit --no-fund --save-exact '@openai/codex@0.156.1'
-    if ($LASTEXITCODE -ne 0) { throw "Codex provider install failed: $LASTEXITCODE" }
-  }
-  if (-not (Test-Path -LiteralPath $exe -PathType Leaf)) { throw "Qualified Codex provider missing after install: $exe" }
-  $actual = (& $exe --version 2>&1 | Out-String).Trim()
-  if ($LASTEXITCODE -ne 0 -or $actual -notmatch [regex]::Escape($version)) { throw "Qualified Codex provider version mismatch: $actual" }
-  Write-Host "PROJECT_PROVIDER_PASS version=$version path=$exe"
+  Write-Host 'PROJECT_PROVIDER_DISABLED policy=NO_CODEX_VIA_COMMANDER'
 }
 
 function Install-Source {

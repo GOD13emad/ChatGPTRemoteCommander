@@ -19,9 +19,12 @@ import { createDeliveryTools } from './delivery-tools.mjs';
 import { compactToolSuccessPayload, serializeBoundedJsonResponse, synchronousCommandInput } from './retry-guard.mjs';
 import { MutationIdempotencyStore } from './mutation-idempotency.mjs';
 import { createAgentExtensionRegistry } from './agent-extensions.mjs';
+import {
+  NO_CODEX_POLICY, delegationRequirement, delegationStatus
+} from './no-codex-policy.mjs';
 
 let workflowTools = null;
-const VERSION = '0.9.10';
+const VERSION = '0.9.11';
 const MODERN_VERSION = '2026-07-28';
 const LEGACY_VERSIONS = ['2025-11-25', '2025-06-18', '2025-03-26'];
 const MODERN_CACHE_HINT = Object.freeze({ ttlMs: 30000, cacheScope: 'private' });
@@ -82,12 +85,31 @@ const asyncOperationTools = createAsyncOperationTools({
   }
 });
 
+function modelHandoffInstruction() {
+  return ' Commander never delegates project reasoning or execution to Codex, ChatGPT Work, or another model runtime on its own. Stay in the current ChatGPT conversation and use Commander as the execution layer. If you believe Work or Codex would materially help, first ask the user to choose explicitly between continuing here with Commander and moving to Work/Codex. No silence, Full Power setting, prior approval, or project history counts as handoff consent. Commander itself must not launch Codex.';
+}
+
 function operatingInstructions() {
   if (LEGACY_FULL_FILESYSTEM) {
-    return 'Power Mode full-filesystem is enabled. configured/allowedRoots are Standard Mode roots and the default relative-path base, not an active filesystem boundary. Legacy list_directory/read_text/write_text/run_project_command accept absolute paths outside allowedRoots subject to OS permissions and policy. run_project_command remains executable-allowlisted and Python -c / Node eval-print remain blocked. Prefer read-only inspection before mutation. Background-first is the default: use operation_start for long-running or high-output command work so the MCP call returns immediately, and use the owned headless browser before shared-desktop GUI takeover. Saved browser passwords are never extracted; if MFA, WebAuthn, CAPTCHA, or user-browser credentials require foreground interaction, request explicit current-task approval and use the minimum temporary GUI takeover.' + chatStreamSafetyInstruction();
+    return 'Power Mode full-filesystem is enabled. configured/allowedRoots are Standard Mode roots and the default relative-path base, not an active filesystem boundary. Legacy list_directory/read_text/write_text/run_project_command accept absolute paths outside allowedRoots subject to OS permissions and policy. run_project_command remains executable-allowlisted and Python -c / Node eval-print remain blocked. Prefer read-only inspection before mutation. Background-first is the default: use operation_start for long-running or high-output command work so the MCP call returns immediately, and use the owned headless browser before shared-desktop GUI takeover. Saved browser passwords are never extracted; if MFA, WebAuthn, CAPTCHA, or user-browser credentials require foreground interaction, request explicit current-task approval and use the minimum temporary GUI takeover.' + modelHandoffInstruction() + chatStreamSafetyInstruction();
   }
-  return 'Operate only inside configured project roots. Prefer read-only inspection before mutation. Background-first is the default: use operation_start for long-running allowlisted commands; synchronous command calls are for short bounded work. Concurrent chats are supported with per-path mutation locks.' + chatStreamSafetyInstruction();
+  return 'Operate only inside configured project roots. Prefer read-only inspection before mutation. Background-first is the default: use operation_start for long-running allowlisted commands; synchronous command calls are for short bounded work. Concurrent chats are supported with per-path mutation locks.' + modelHandoffInstruction() + chatStreamSafetyInstruction();
 }
+const delegationToolDefinitions = [
+  {
+    name: 'delegation_requirement',
+    description: 'Return the mandatory current-chat choice before an external Work/Codex handoff. Default is to continue in the current ChatGPT + Commander chat. Commander never launches Codex.',
+    inputSchema: { type: 'object', properties: { reason: { type: 'string', maxLength: 2000 } }, additionalProperties: false },
+    annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false }
+  },
+  {
+    name: 'delegation_status',
+    description: 'Return the external-handoff-only policy. There is no Commander-side Codex lease or launch authority.',
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+    annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false }
+  }
+];
+
 const TOOLS = [
   {
     name: 'system_status',
@@ -152,6 +174,7 @@ const TOOLS = [
     },
     annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true }
   },
+  ...delegationToolDefinitions,
   ...asyncOperationTools.definitions,
   ...deliveryTools.definitions,
   ...agentExtensions.definitions,
@@ -268,8 +291,19 @@ async function executeTool(name, args) {
   }
   return executeToolEffect(name, args);
 }
+async function executeDelegationTool(name, args) {
+  if (name === 'delegation_requirement') {
+    const result = delegationRequirement(args?.reason);
+    await audit(ctx, { action: name, ok: true, target: 'work_codex', approvalRequired: true, externalHandoffOnly: true });
+    return result;
+  }
+  if (name === 'delegation_status') return delegationStatus();
+  throw new Error('DELEGATION_UNKNOWN_TOOL');
+}
+
 async function executeToolEffect(name, args) {
   if (!toolDefinition(name)) throw protocolFailure(200, -32602, 'Unknown tool');
+  if (name.startsWith('delegation_')) return executeDelegationTool(name, args);
   if (name.startsWith('operation_')) return asyncOperationTools.execute(name, args);
   if (name.startsWith('delivery_')) return deliveryTools.execute(name, args);
   if (name.startsWith('agent_extension_')) return agentExtensions.execute(name, args);
@@ -328,6 +362,7 @@ async function executeToolEffect(name, args) {
         completionBeacon: deliveryStore.beacon(5),
         mutationIdempotency: mutationIdempotency.status(),
         agentExtensions: agentExtensions.status(),
+        delegationPolicy: { ...NO_CODEX_POLICY, status: delegationStatus() },
         powerMode: config.powerMode ?? { enabled: false },
         browserControl: { availability: BROWSER_ENABLED ? 'CHECK_browser_status' : 'DISABLED', enabled: BROWSER_ENABLED,
           policy: { ...(config.powerMode?.browserControl ?? { enabled:false }), backgroundFirst:true,

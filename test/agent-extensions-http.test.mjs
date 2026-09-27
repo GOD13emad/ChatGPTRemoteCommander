@@ -17,7 +17,7 @@ test('agent extension tools are exposed read-only and return validated manifests
   let child;
   try {
     await fs.mkdir(path.join(root,'src'),{recursive:true});
-    for(const f of ['server-v0.3.mjs','transport-guard.mjs','gui-tools-windows.mjs','gui-contract.mjs','gui-process.mjs','browser-tools.mjs','browser-contract.mjs','browser-process.mjs','browser-owned-processes.mjs','schema-validator.mjs','async-operations.mjs','retry-guard.mjs','agent-extensions.mjs']) {
+    for(const f of ['server-v0.3.mjs','transport-guard.mjs','gui-tools-windows.mjs','gui-contract.mjs','gui-process.mjs','browser-tools.mjs','browser-contract.mjs','browser-process.mjs','browser-owned-processes.mjs','schema-validator.mjs','async-operations.mjs','retry-guard.mjs','agent-extensions.mjs','no-codex-policy.mjs']) {
       await fs.copyFile(new URL('../src/'+f,import.meta.url),path.join(root,'src',f));
     }
     await fs.writeFile(path.join(root,'src','security-v0.3.mjs'),'export const canonicalizeRoots = async x=>x;');

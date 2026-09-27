@@ -197,31 +197,24 @@ function Get-LatestTag {
   return $tag
 }
 function Ensure-ProjectProvider([string]$ConfigPath){
-  $requested = [bool]$PowerMode
-  if (-not $requested -and -not $StandardMode -and (Test-Path -LiteralPath $ConfigPath -PathType Leaf)) {
-    try {
-      $prior = Read-Json $ConfigPath
-      $requested = [string]$prior.capabilityProfile.tier -eq 'FULL_POWER'
-    } catch {}
+  $legacyRoot=Join-Path $StateRoot 'tools\codex-cli'
+  if(Test-Path -LiteralPath $legacyRoot){
+    $prefix=[IO.Path]::GetFullPath($legacyRoot).TrimEnd('\\')+'\\'
+    $inUse=@(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object {
+      $_.ExecutablePath -and ([IO.Path]::GetFullPath([string]$_.ExecutablePath)).StartsWith($prefix,[StringComparison]::OrdinalIgnoreCase)
+    })
+    if($inUse.Count-eq 0){
+      try{
+        Remove-Item -LiteralPath $legacyRoot -Recurse -Force -ErrorAction Stop
+        Log 'LEGACY_CODEX_PROVIDER_REMOVED policy=NO_CODEX_VIA_COMMANDER'
+      }catch{
+        Log "LEGACY_CODEX_PROVIDER_CLEANUP_PENDING reason=$($_.Exception.GetType().Name)"
+      }
+    }else{
+      Log "LEGACY_CODEX_PROVIDER_CLEANUP_PENDING activeProcesses=$($inUse.Count)"
+    }
   }
-  if (-not $requested) { return }
-  $version='0.156.1'
-  $providerRoot=Join-Path $StateRoot (Join-Path 'tools\codex-cli' $version)
-  $arch=[System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString().ToLowerInvariant()
-  switch($arch){
-    'x64' { $exe=Join-Path $providerRoot 'node_modules\@openai\codex-win32-x64\vendor\x86_64-pc-windows-msvc\bin\codex.exe' }
-    'arm64' { $exe=Join-Path $providerRoot 'node_modules\@openai\codex-win32-arm64\vendor\aarch64-pc-windows-msvc\bin\codex.exe' }
-    default { throw "Unsupported Codex provider architecture: $arch" }
-  }
-  if(-not(Test-Path -LiteralPath $exe -PathType Leaf)){
-    New-Item -ItemType Directory -Force -Path $providerRoot | Out-Null
-    & npm.cmd install --prefix $providerRoot --ignore-scripts --no-audit --no-fund --save-exact '@openai/codex@0.156.1'
-    if($LASTEXITCODE -ne 0){throw "PROJECT_PROVIDER_INSTALL_FAIL code=$LASTEXITCODE"}
-  }
-  if(-not(Test-Path -LiteralPath $exe -PathType Leaf)){throw "PROJECT_PROVIDER_MISSING path=$exe"}
-  $actual=(& $exe --version 2>&1 | Out-String).Trim()
-  if($LASTEXITCODE -ne 0 -or $actual -notmatch [regex]::Escape($version)){throw "PROJECT_PROVIDER_VERSION_MISMATCH actual=$actual"}
-  Log "PROJECT_PROVIDER_PASS version=$version path=$exe"
+  Log 'PROJECT_PROVIDER_DISABLED policy=NO_CODEX_VIA_COMMANDER'
 }
 
 function Stage-Release([string]$Ref){

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { applyProjectRunnerConfig, QUALIFIED_CODEX_VERSION } from '../src/project-runner-config.mjs';
+import { applyProjectRunnerConfig, discoverQualifiedProjectProvider } from '../src/project-runner-config.mjs';
 import { normalizeCapabilityProfile } from '../src/capability-profile.mjs';
 
 function temp() { return fs.mkdtempSync(path.join(os.tmpdir(), 'rc-runner-config-')); }
@@ -18,101 +18,89 @@ function base(extra = {}) {
     }
   };
 }
-function providerPath(root, platform, arch) {
-  const parts = platform === 'win32'
-    ? ['codex-win32-x64','vendor','x86_64-pc-windows-msvc','bin','codex.exe']
-    : arch === 'arm64'
-      ? ['codex-linux-arm64','vendor','aarch64-unknown-linux-musl','bin','codex']
-      : ['codex-linux-x64','vendor','x86_64-unknown-linux-musl','bin','codex'];
-  return path.join(root,'tools','codex-cli',QUALIFIED_CODEX_VERSION,'node_modules','@openai',...parts);
-}
-function makeProvider(root, platform='linux', arch='x64') {
-  const file=providerPath(root,platform,arch);
-  fs.mkdirSync(path.dirname(file),{recursive:true});
+function makeCommand(root, platform='linux') {
+  const file=path.join(root,platform==='win32'?'planner.exe':'planner');
   fs.writeFileSync(file,'stub');
   if(platform!=='win32') fs.chmodSync(file,0o755);
   return file;
 }
 
-test('Full Power auto-configures the qualified Linux Codex provider', () => {
+test('automatic model provider discovery is permanently forbidden', () => {
+  const result=discoverQualifiedProjectProvider();
+  assert.equal(result.status,'FORBIDDEN');
+  assert.equal(result.kind,'codex');
+  assert.equal(result.executable,null);
+  assert.equal(result.reason,'NO_CODEX_VIA_COMMANDER');
+});
+
+test('Full Power does not auto-configure a model runner', () => {
+  const result=applyProjectRunnerConfig(base(),{platform:'linux'});
+  assert.equal(result.status,'NO_AUTOMATIC_MODEL_PROVIDER');
+  assert.equal(result.config.durableWorkflows.runner.enabled,false);
+  assert.equal(result.config.durableWorkflows.runner.autoTick,false);
+  assert.equal(result.config.durableWorkflows.runner.provider.kind,'disabled');
+});
+
+test('legacy Codex runner is migrated fail-closed', () => {
+  const cfg=base({runner:{
+    enabled:true,autoTick:true,
+    provider:{kind:'codex',executable:'/state/tools/codex-cli/0.156.1/bin/codex',timeoutMs:30000}
+  }});
+  const result=applyProjectRunnerConfig(cfg,{platform:'linux'});
+  assert.equal(result.status,'CODEX_FORBIDDEN');
+  assert.equal(result.config.durableWorkflows.runner.enabled,false);
+  assert.equal(result.config.durableWorkflows.runner.autoTick,false);
+  assert.deepEqual(result.config.durableWorkflows.runner.provider,{kind:'disabled',reason:'NO_CODEX_VIA_COMMANDER'});
+});
+
+test('Codex executable is forbidden even if disguised as command provider', () => {
+  const cfg=base({runner:{
+    enabled:true,autoTick:true,
+    provider:{kind:'command',executable:'C:\\state\\tools\\codex-cli\\0.156.1\\bin\\codex.exe'}
+  }});
+  const result=applyProjectRunnerConfig(cfg,{platform:'win32'});
+  assert.equal(result.status,'CODEX_FORBIDDEN');
+  assert.equal(result.config.durableWorkflows.runner.enabled,false);
+});
+
+test('explicit non-Codex command runner may be preserved but is never auto-created', () => {
   const root=temp();
   try {
-    const executable=makeProvider(root,'linux','x64');
-    const result=applyProjectRunnerConfig(base(),{stateRoot:root,platform:'linux',arch:'x64'});
-    assert.equal(result.status,'AUTO_CONFIGURED');
+    const executable=makeCommand(root,'linux');
+    const cfg=base({runner:{enabled:true,autoTick:false,provider:{kind:'command',executable,timeoutMs:120000,maxOutputBytes:2*1024*1024}}});
+    const result=applyProjectRunnerConfig(cfg,{platform:'linux'});
+    assert.equal(result.status,'PRESERVED_EXPLICIT_NON_CODEX_PROVIDER');
     assert.equal(result.config.durableWorkflows.runner.enabled,true);
-    assert.equal(result.config.durableWorkflows.runner.autoTick,true);
-    assert.equal(result.config.durableWorkflows.runner.provider.kind,'codex');
-    assert.equal(result.config.durableWorkflows.runner.provider.executable,executable);
-    assert.equal(result.config.durableWorkflows.runner.provider.timeoutMs,30_000);
-  } finally { fs.rmSync(root,{recursive:true,force:true}); }
-});
-
-test('Full Power auto-configures the qualified Windows Codex provider', () => {
-  const root=temp();
-  try {
-    const executable=makeProvider(root,'win32','x64');
-    const result=applyProjectRunnerConfig(base(),{stateRoot:root,platform:'win32',arch:'x64'});
-    assert.equal(result.status,'AUTO_CONFIGURED');
-    assert.equal(result.config.durableWorkflows.runner.provider.executable,executable);
-  } finally { fs.rmSync(root,{recursive:true,force:true}); }
-});
-
-test('existing qualified runner is preserved and old transport timeout is clamped', () => {
-  const root=temp();
-  try {
-    const executable=makeProvider(root,'linux','x64');
-    const cfg=base({runner:{enabled:true,autoTick:true,provider:{kind:'codex',executable,timeoutMs:120_000,maxOutputBytes:2*1024*1024}}});
-    const result=applyProjectRunnerConfig(cfg,{stateRoot:root,platform:'linux',arch:'x64'});
-    assert.equal(result.status,'PRESERVED');
-    assert.equal(result.config.durableWorkflows.runner.provider.timeoutMs,30_000);
+    assert.equal(result.config.durableWorkflows.runner.autoTick,false);
+    assert.equal(result.config.durableWorkflows.runner.provider.kind,'command');
+    assert.equal(result.config.durableWorkflows.runner.provider.timeoutMs,30000);
   } finally { fs.rmSync(root,{recursive:true,force:true}); }
 });
 
 test('Standard authority disables an inherited runner', () => {
-  const cfg=base({runner:{enabled:true,autoTick:true,provider:{kind:'codex',executable:'C:/old/codex.exe',timeoutMs:30_000}}});
+  const cfg=base({runner:{enabled:true,autoTick:true,provider:{kind:'command',executable:'C:/old/planner.exe',timeoutMs:30000}}});
   cfg.capabilityProfile.tier='STANDARD';
   cfg.capabilityProfile.explicitlyAuthorized=true;
-  const result=applyProjectRunnerConfig(cfg,{stateRoot:'C:/missing',platform:'win32',arch:'x64'});
+  const result=applyProjectRunnerConfig(cfg,{platform:'win32'});
   assert.equal(result.status,'AUTHORITY_DISABLED');
   assert.equal(result.config.durableWorkflows.runner.enabled,false);
   assert.equal(result.config.durableWorkflows.runner.autoTick,false);
 });
 
 test('explicit workflow.project_engine opt-out is preserved', () => {
-  const root=temp();
-  try {
-    makeProvider(root,'linux','x64');
-    const cfg=base();
-    cfg.capabilityProfile.disabledCapabilities=['workflow.project_engine'];
-    const result=applyProjectRunnerConfig(cfg,{stateRoot:root,platform:'linux',arch:'x64'});
-    assert.equal(result.status,'EXPLICITLY_DISABLED');
-    assert.notEqual(result.config.durableWorkflows.runner?.enabled,true);
-  } finally { fs.rmSync(root,{recursive:true,force:true}); }
+  const cfg=base();
+  cfg.capabilityProfile.disabledCapabilities=['workflow.project_engine'];
+  const result=applyProjectRunnerConfig(cfg,{platform:'linux'});
+  assert.equal(result.status,'EXPLICITLY_DISABLED');
+  assert.notEqual(result.config.durableWorkflows.runner?.enabled,true);
 });
 
-test('missing provider fails closed without disabling durable workflow recovery', () => {
-  const root=temp();
-  try {
-    const result=applyProjectRunnerConfig(base(),{stateRoot:root,platform:'linux',arch:'x64'});
-    assert.equal(result.status,'PROVIDER_MISSING');
-    assert.equal(result.config.durableWorkflows.enabled,true);
-    assert.notEqual(result.config.durableWorkflows.runner?.enabled,true);
-  } finally { fs.rmSync(root,{recursive:true,force:true}); }
-});
-
-test('project engine capability represents Full Power authority independently of provider readiness', () => {
-  const root=temp();
-  try {
-    makeProvider(root,'linux','x64');
-    const result=applyProjectRunnerConfig(base(),{stateRoot:root,platform:'linux',arch:'x64'});
-    result.config.capabilityProfile=normalizeCapabilityProfile(result.config.capabilityProfile,result.config,{id:'default',legacyExplicit:true});
-    assert.ok(result.config.capabilityProfile.grantedCapabilities.includes('workflow.project_engine'));
-    result.config.durableWorkflows.runner.enabled=false;
-    const normalized=normalizeCapabilityProfile(result.config.capabilityProfile,result.config,{id:'default',legacyExplicit:true});
-    assert.ok(normalized.grantedCapabilities.includes('workflow.project_engine'));
-    result.config.capabilityProfile.disabledCapabilities=['workflow.project_engine'];
-    const optedOut=normalizeCapabilityProfile(result.config.capabilityProfile,result.config,{id:'default',legacyExplicit:true});
-    assert.equal(optedOut.grantedCapabilities.includes('workflow.project_engine'),false);
-  } finally { fs.rmSync(root,{recursive:true,force:true}); }
+test('project engine capability represents authority independently of provider readiness', () => {
+  const result=applyProjectRunnerConfig(base(),{platform:'linux'});
+  result.config.capabilityProfile=normalizeCapabilityProfile(result.config.capabilityProfile,result.config,{id:'default',legacyExplicit:true});
+  assert.ok(result.config.capabilityProfile.grantedCapabilities.includes('workflow.project_engine'));
+  assert.equal(result.config.durableWorkflows.runner.enabled,false);
+  result.config.capabilityProfile.disabledCapabilities=['workflow.project_engine'];
+  const optedOut=normalizeCapabilityProfile(result.config.capabilityProfile,result.config,{id:'default',legacyExplicit:true});
+  assert.equal(optedOut.grantedCapabilities.includes('workflow.project_engine'),false);
 });

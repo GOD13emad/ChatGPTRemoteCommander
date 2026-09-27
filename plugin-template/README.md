@@ -12,3 +12,7 @@ This folder is a template for a private/local/workspace Plugin that references a
 Before app binding, `plugin.json` is a valid skill-only template. The bind helper creates `.app.json` and adds the app reference to the private copy. The template includes a workflow skill and ready icon/logo assets.
 
 The Git marketplace also includes `.codex-plugin/plugin.json` for native Codex version and skill discovery. It shares the backend version with the legacy manifest; neither public manifest contains an account binding. The native manifest is included in v0.8.36 and later release assets; Git marketplace upgrades continue to refresh the same public metadata. Existing registered apps remain separate from this skill wrapper. Open a new task after installing an update to load its refreshed skills.
+
+## Reasoning/handoff policy
+
+The Plugin keeps reasoning in the current ChatGPT conversation and uses Remote Commander as the execution layer. Commander never launches Codex. If the assistant recommends Work/Codex, it must first ask the user to choose **Move to Work/Codex** or **Continue in this chat with Remote Commander**; the latter is the default. A Work/Codex selection is an external handoff, not a Commander-side model launch.

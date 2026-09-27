@@ -7,15 +7,15 @@ import { createCommandPlanner } from '../../src/project-planner.mjs';
 import { validateJsonSchema } from '../../src/schema-validator.mjs';
 import { readText, writeText } from '../../src/tools-v0.3.mjs';
 
-const live=process.argv.includes('--codex');
-if(process.argv.slice(2).some(x=>x!=='--codex'))throw new Error('Usage: node examples/project-engine/run.mjs [--codex]');
+if(process.argv.includes('--codex')) throw new Error('CODEX_DELEGATION_FORBIDDEN: v0.9.11 requires external Work/Codex handoff; Commander examples do not launch Codex.');
+if(process.argv.slice(2).length) throw new Error('Usage: node examples/project-engine/run.mjs');
 const root=fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(),'rc-project-demo-')));
 const expected='Verified by the independent project engine.';
 const definitions={
   write_text:{name:'write_text',description:'Write the requested UTF-8 artifact in this isolated project.',inputSchema:{type:'object',properties:{path:{type:'string'},content:{type:'string'}},required:['path','content'],additionalProperties:false}},
   read_text:{name:'read_text',description:'Read a UTF-8 project file.',inputSchema:{type:'object',properties:{path:{type:'string'}},required:['path'],additionalProperties:false}}
 };
-const planner=live?createCommandPlanner({kind:'codex',executable:process.env.RC_CODEX_EXECUTABLE||'codex',timeoutMs:60000}):{
+const planner={
   describe:()=>({kind:'deterministic-fixture'}),
   plan:async()=>({action:'call',tool:'write_text',argumentsJson:JSON.stringify({path:'result.txt',content:expected}),summary:'Write the specified artifact.'})
 };
@@ -35,7 +35,7 @@ try {
     checks:[{criterion:0,type:'text_includes',path:'result.txt',text:expected}]});
   const execution=await api.execute('workflow_run_tick',{runId:'qualification-run'});
   const completion=await api.execute('workflow_run_tick',{runId:'qualification-run'});
-  const output={provider:live?'codex':'fixture',execution:execution.status,completion,
+  const output={provider:'fixture',execution:execution.status,completion,
     artifactVerified:fs.existsSync(path.join(root,'result.txt'))&&fs.readFileSync(path.join(root,'result.txt'),'utf8')===expected,
     brainCreated:fs.existsSync(path.join(root,'PROJECT_BRAIN.md'))};
   console.log(JSON.stringify(output,null,2));

@@ -14,7 +14,7 @@ for (const required of [
   'Detected active installation from Windows autostart',
   '$InstallDir = Resolve-InstallDir',
   'Tracked local changes exist in InstallDir',
-  "[string]$SourceRef = 'v0.9.10'",
+  "[string]$SourceRef = 'v0.9.11'",
   'ExpectedCommit',
   "rev-parse 'FETCH_HEAD^{commit}'",
   'incomplete Git checkout with no HEAD',
@@ -30,9 +30,7 @@ for (const required of [
   'fresh-install routing/bootstrap validation failed',
   'Capability self-test:',
   'Ensure-ProjectProvider',
-  "'@openai/codex@0.156.1'",
-  'PROJECT_PROVIDER_PASS',
-  "'tools\\codex-cli'",
+  'PROJECT_PROVIDER_DISABLED policy=NO_CODEX_VIA_COMMANDER',
   'Mode: $(if ($effective.powerMode.enabled)',
   'if (Test-Path -LiteralPath $temp) {',
   'Remove-Item -LiteralPath $temp -Recurse -Force -ErrorAction Stop',
@@ -43,6 +41,7 @@ for (const required of [
   }
 }
 
+if (windowsInstaller.includes('@openai/codex@')) throw new Error('install.ps1 must not provision Codex');
 const publicConfig = JSON.parse(readFileSync('config.json','utf8'));
 if (publicConfig.auditMaxBytes !== 8388608 || publicConfig.auditKeepFiles !== 3) {
   throw new Error('config.json missing bounded audit defaults');
@@ -52,11 +51,12 @@ if (publicConfig.autoUpdate?.enabled !== true || publicConfig.autoUpdate?.zeroDo
 }
 
 const linuxInstaller = readFileSync('install.sh', 'utf8');
+if (linuxInstaller.includes('@openai/codex@')) throw new Error('install.sh must not provision Codex');
 const linuxEnrollment = readFileSync('enable-autostart-linux.sh', 'utf8');
 const linuxPluginInstaller = readFileSync('install-work-plugin.sh', 'utf8');
 const linuxAccountConnector = readFileSync('connect-chatgpt-account.sh', 'utf8');
 for (const required of [
-  'SOURCE_REF="${REMOTE_COMMANDER_SOURCE_REF:-v0.9.10}"',
+  'SOURCE_REF="${REMOTE_COMMANDER_SOURCE_REF:-v0.9.11}"',
   '--source-ref',
   '--skip-tunnel-client',
   '--expected-commit',
@@ -74,9 +74,7 @@ for (const required of [
   'build-candidate-config.mjs',
   '--provider-root',
   'ensure_project_provider',
-  '"@openai/codex@$version"',
-  'PROJECT_PROVIDER_PASS',
-  'tools/codex-cli',
+  'PROJECT_PROVIDER_DISABLED policy=NO_CODEX_VIA_COMMANDER',
   'auto-update-linux.sh',
   'supervisor-routing-linux.sh',
   '--disable-capability',

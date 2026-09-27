@@ -315,11 +315,13 @@ test('Linux installer delegates existing installs and builds Full Power through 
 });
 
 
-test('project provider bootstrap is pinned and state-private on both updaters',()=>{
+test('updaters disable and retire the legacy Commander-private Codex provider',()=>{
   const win=read('auto-update-windows.ps1');
   const lin=read('auto-update-linux.sh');
-  for(const marker of ['Ensure-ProjectProvider',"'@openai/codex@0.156.1'",'PROJECT_PROVIDER_PASS',"'tools\\codex-cli'"]) assert.ok(win.includes(marker),marker);
-  for(const marker of ['ensure_project_provider','"@openai/codex@$version"','PROJECT_PROVIDER_PASS','tools/codex-cli']) assert.ok(lin.includes(marker),marker);
+  for(const marker of ['Ensure-ProjectProvider','PROJECT_PROVIDER_DISABLED policy=NO_CODEX_VIA_COMMANDER','LEGACY_CODEX_PROVIDER_REMOVED','LEGACY_CODEX_PROVIDER_CLEANUP_PENDING']) assert.ok(win.includes(marker),marker);
+  for(const marker of ['ensure_project_provider','PROJECT_PROVIDER_DISABLED policy=NO_CODEX_VIA_COMMANDER','LEGACY_CODEX_PROVIDER_REMOVED','LEGACY_CODEX_PROVIDER_CLEANUP_PENDING']) assert.ok(lin.includes(marker),marker);
+  assert.ok(!win.includes('@openai/codex@'),'Windows updater must not install Codex');
+  assert.ok(!lin.includes('@openai/codex@'),'Linux updater must not install Codex');
 });
 
 test('router bootstrap is after no-promote and before schema-changing cutover',()=>{

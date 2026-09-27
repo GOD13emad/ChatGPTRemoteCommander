@@ -1,5 +1,6 @@
 import os from 'node:os';
 import { synchronousCommandInput } from './retry-guard.mjs';
+import { assertNoCodexCommand, assertNoCodexShellDelegation, commanderChildEnv } from './no-codex-policy.mjs';
 import path from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
 import { spawn } from 'node:child_process';
@@ -138,7 +139,7 @@ function checkShell(ctx, command) {
   return command;
 }
 async function capture(command, cwd, timeoutMs, outputLimit) {
-  const child = spawnShell(command, { cwd, stdio: ['ignore', 'pipe', 'pipe'] });
+  const child = spawnShell(command, { cwd, stdio: ['ignore', 'pipe', 'pipe'], env: commanderChildEnv(cwd) });
   let stdout = '';
   let stderr = '';
   let timedOut = false;
@@ -420,6 +421,8 @@ export async function searchFiles(ctx, input) {
 export async function prepareShellCommand(ctx, input) {
   const command = checkShell(ctx, input.command);
   const cwd = await resolveExistingTarget(ctx, input.cwd ?? ctx.roots[0]);
+  assertNoCodexCommand(command, cwd);
+  await assertNoCodexShellDelegation(command, cwd);
   const info = await stat(cwd);
   if (!info.isDirectory()) throw new Error('cwd is not a directory');
   const cfg = power(ctx);
@@ -536,8 +539,12 @@ export async function startTerminal(ctx, input) {
   const hasCommand = typeof input.command === 'string' && input.command.length > 0;
   const interactive = input.interactive === true || !hasCommand;
   const command = hasCommand ? checkShell(ctx, input.command) : '';
+  if (hasCommand) {
+    assertNoCodexCommand(command, cwd);
+    await assertNoCodexShellDelegation(command, cwd);
+  }
   const child = spawnShell(interactive ? '' : command, {
-    cwd, interactive, stdio: ['pipe', 'pipe', 'pipe']
+    cwd, interactive, stdio: ['pipe', 'pipe', 'pipe'], env: commanderChildEnv(cwd)
   });
   const id = `term-${terminalCounter++}`;
   const session = {
@@ -576,6 +583,8 @@ export async function sendTerminal(ctx, input) {
   if (!session.running) throw new Error('terminal session is not running');
   const text = String(input.input ?? '');
   checkShell(ctx, text);
+  assertNoCodexCommand(text, session.cwd);
+  await assertNoCodexShellDelegation(text, session.cwd);
   session.child.stdin.write(text + (input.newline === false ? '' : os.EOL));
   return { id: session.id, pid: session.child.pid, accepted: true };
 }

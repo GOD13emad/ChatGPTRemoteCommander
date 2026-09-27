@@ -51,3 +51,15 @@ Historical checkpoints are preserved in the [archived project state](history/PRO
 - Validation: focused suite PASS 16/16; real-data copy recovery 22/22 with tracked=0 and no invalid cases.
 - Current gate: full cross-platform candidate qualification → commit/tag/release → candidate-first rollout → live tracked=0 verification.
 - FINAL status: UNPROVEN until those gates complete.
+
+
+## CURRENT CHANGE SET — v0.9.11 ChatGPT-first / No-Codex Commander invariant
+
+- Objective: prevent Remote Commander from consuming Codex/model-provider quota unless the user explicitly leaves Commander for an external Work/Codex handoff.
+- Trigger: live R28 executor audit proved a Commander-launched private Codex CLI was using ChatGPT Plus Codex/agentic allowance.
+- Root cause: Full Power auto-provisioned `provider=codex` and general script execution did not prohibit indirect Codex launch.
+- Locked policy: **Commander never launches Codex.** If Work/Codex is recommended, current chat must ask the user to choose **Move to Work/Codex** or **Continue in this chat with Remote Commander**; default is continue-chat; external handoff only.
+- Implementation: Codex provisioning removed; legacy runner disabled; direct/shell/terminal/package-manager/script-mediated Codex guarded; child model credentials stripped; Plugin/MCP instructions updated; legacy Commander-private provider cleanup added.
+- Focused regression: no-Codex/planner/runner **33/33 PASS**; installer check PASS; onboarding PASS; updater contract **13/13 PASS**.
+- Current gate: full Windows check/test/audit → Linux exact-tree check/test/audit → commit/push/hosted CI → immutable v0.9.11 publication → candidate-first Windows/Linux rollout → live no-Codex/config/route verification.
+- FINAL status: UNPROVEN until those release/rollout gates complete.

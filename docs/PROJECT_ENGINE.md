@@ -1,4 +1,6 @@
-# Opt-in project execution engine — v0.8.37
+# Opt-in project execution engine — current policy
+
+> **v0.9.11 policy:** Remote Commander does not provision, authenticate, or launch Codex. Legacy Codex runner configuration is migrated fail-closed. Normal project reasoning stays in the current ChatGPT conversation. A user may explicitly choose an external Work/Codex handoff in chat, but that handoff occurs outside Commander.
 
 The engine connects a bounded planner to existing journaled Commander tools and independent acceptance checks. It can execute an explicitly enrolled project, inspect progress, stop safely, and finalize a verified artifact. It does not supply a new model or establish superiority over other agents.
 
@@ -10,7 +12,7 @@ The engine connects a bounded planner to existing journaled Commander tools and 
 4. When all steps have receipts, a separate deterministic verifier checks every acceptance criterion. Its file hashes must still match finalization evidence. Model text saying "done" does not complete the workflow.
 5. The existing Brain synchronization records the accepted final state.
 
-An enabled scheduler can tick enrolled runs only when `runner.autoTick=true`. Existing workflows are never automatically enrolled. Full Power migration does not enable this feature. Disable/omit `runner.enabled` to retain the existing recovery/readiness-only engine and the original 17-tool workflow catalog.
+An enabled scheduler can tick enrolled runs only when `runner.autoTick=true`. Existing workflows are never automatically enrolled. Full Power migration does not enable or auto-create a model provider. From v0.9.11 the default runner is disabled; recovery/readiness remains available without external model delegation.
 
 ## Operator configuration
 
@@ -22,9 +24,9 @@ Merge this fragment into the existing, approved `durableWorkflows` configuration
     "enabled": true,
     "autoTick": false,
     "provider": {
-      "kind": "codex",
-      "executable": "codex",
-      "timeoutMs": 120000,
+      "kind": "command",
+      "executable": "/path/to/explicitly-trusted-non-model-planner",
+      "timeoutMs": 30000,
       "maxOutputBytes": 2097152
     },
     "allowedTools": ["list_directory", "read_text", "file_info", "write_text", "create_directory"],
@@ -36,13 +38,13 @@ Merge this fragment into the existing, approved `durableWorkflows` configuration
 
 `autoTick=false` requires explicit ticks. `autoTick=true` permits scheduler-triggered execution of enrolled runs when the existing scheduler is enabled. Invoking `workflow_scheduler_tick` explicitly can also execute an enrolled step when autoTick is enabled; that tool's annotations accurately mark it as a mutating, external action.
 
-The provider uses the operator's existing CLI authentication. Never put credentials in a workflow, config example or prompt. Configured is not the same as authenticated or healthy: provider errors block that run with a bounded error code. A requested exact model/effort that the configured provider cannot demonstrate is rejected. The engine does not silently decide another model is equivalent or better.
+Commander does not use Codex authentication or model quota. An explicit `command` provider is operator-supplied local code and must not be a Codex wrapper or a script that launches Codex. Provider errors block the run with a bounded error code. The engine never silently substitutes a model/provider.
 
-Supported providers:
+Supported providers under the current policy:
 
-- `codex`: verified against local Codex CLI 0.146.0 and an isolated authenticated Codex CLI 0.156.1 qualification. Runs in a temporary project, read-only, ephemeral, with user configuration/rules and known action features disabled. Executable-tool JSONL events and unknown provider errors are rejected. The exact 0.156.1 diagnostic emitted because Commander intentionally disables `code_mode_host` is accepted only with its exact schema/message and only before `turn.started`; widened, duplicated or reordered diagnostics still fail closed. These application controls do not constitute a separate OS sandbox for the provider process.
-- `command`: explicitly trusted operator executable with fixed argv, JSON context on stdin, and a JSON proposal on stdout. It is not arbitrary command text supplied by the model. The executable itself has the OS user's privileges.
-- `claude`: reserved but fails with `PLANNER_PROVIDER_UNAVAILABLE` pending local CLI/auth/control qualification. No compatibility is claimed from documentation alone.
+- `codex`: **FORBIDDEN in Commander**. Configuration with `kind="codex"` or a Codex executable/path is disabled/fails closed. Use the current ChatGPT chat for reasoning; an optional Work/Codex handoff requires explicit current-chat user choice and occurs outside Commander.
+- `command`: an explicitly trusted operator executable with fixed argv, JSON context on stdin, and a JSON proposal on stdout. It is not automatically discovered or created. It must not launch Codex.
+- `claude`: reserved but fails with `PLANNER_PROVIDER_UNAVAILABLE` pending separate qualification. No automatic model substitution is performed.
 
 Model selection may be explicitly set as `provider.model`. Planner processes have timeout, output size and cancellation bounds. Provider calls may consume the account's normal quota. A run budget limits attempts, planner invocations, plan extensions and wall time, not currency or model tokens. Optional [proposal teams](PROJECT_ENGINE_ADAPTIVE.md) reserve all worker/coordinator calls before invoking any provider.
 
@@ -88,7 +90,7 @@ Allowed autonomous actions intentionally exclude GUI takeover, unrestricted shel
 
 `npm run test:project-engine` runs deterministic regression fixtures. `node examples/project-engine/run.mjs` demonstrates a full fixture planner → journaled file write → independent check → Brain/finalization cycle in an owned temporary directory.
 
-Add `--codex` to that demo for a live provider qualification using existing CLI authentication. Set `RC_CODEX_EXECUTABLE` only when the CLI is not on PATH. The demo creates and cleans only its owned temporary project; it never installs or changes a production service.
+`--codex` live-provider qualification is historical and must not be used under v0.9.11 policy. Use deterministic fixtures or an explicitly trusted non-Codex command provider for development tests.
 
 The roadmap in `PROJECT_ENGINE_ROADMAP.md` tracks broader providers/integrations and comparative benchmarks. Milestone 4A adds [bounded prerequisite insertion and parallel proposal workers](PROJECT_ENGINE_ADAPTIVE.md). Unrestricted plan rewriting, parallel mutating project workers, automatic scientific validation, monetary accounting and general terminal reattachment remain outside the v0.8.37 scope. Milestone 4B.2 adds only the bounded artifact-worker boundary described below.
 
@@ -113,7 +115,7 @@ Enable it only inside an already explicit project runner:
 
 A coordinator may propose \`action="delegate"\` for the current atomic step. Delegation does not dispatch a project tool. Commander reserves the provider-call budget first, creates a private per-run/per-worker directory under local project-engine state, and invokes the configured base provider with a restricted artifact contract. The worker receives no Commander filesystem, shell, GUI, process, terminal, deletion, completion or authority tool catalog. It may return only one UTF-8 text artifact through the proposal contract or block.
 
-The worker workspace is an **application-level authority boundary, not an OS sandbox**. In particular, a trusted \`command\` provider executable still runs with the operating-system user's privileges; the Codex adapter retains its existing temporary/read-only/feature-disabled controls. Do not treat worker isolation as protection from a malicious provider binary.
+The worker workspace is an **application-level authority boundary, not an OS sandbox**. A trusted `command` provider executable still runs with the operating-system user's privileges. Codex is forbidden as a provider under v0.9.11. Do not treat worker isolation as protection from a malicious provider binary.
 
 Before an artifact can affect the project, Commander verifies that its workspace path is a regular single-link file, reopens it by stable file identity, enforces the size/UTF-8/secret guards, and binds a SHA-256 receipt. The coordinator can import only the exact receipt bytes through the normal journaled \`write_text\` path. The project target is then independently reread and matched to the worker receipt before the receipt is closed. Symlink/hardlink aliases, content changes and mismatched imports fail closed.
 

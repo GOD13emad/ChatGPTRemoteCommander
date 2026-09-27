@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process';
 import { mkdtemp, writeFile, open, lstat, rm, realpath } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { assertNoCodexDelegatingScript, assertNoCodexExecutable, commanderChildEnv } from './no-codex-policy.mjs';
 
 const MAX_INPUT_BYTES = 512 * 1024;
 const FIELDS = ['action', 'tool', 'argumentsJson', 'summary'];
@@ -154,7 +155,7 @@ function runProcess(executable, args, input, { cwd, timeoutMs, maxOutputBytes, s
     try {
       child = spawn(executable, args, {
         cwd, shell: false, windowsHide: true, detached: process.platform !== 'win32',
-        stdio: ['pipe', 'pipe', 'pipe']
+        stdio: ['pipe', 'pipe', 'pipe'], env: commanderChildEnv()
       });
     } catch { settle(fail('PLANNER_START_FAILED')); return; }
     child.once('error', () => settle(fail('PLANNER_START_FAILED')));
@@ -188,9 +189,11 @@ function runProcess(executable, args, input, { cwd, timeoutMs, maxOutputBytes, s
  * A command provider is operator-supplied code, not an isolation boundary.
  */
 export function createCommandPlanner(config) {
-  if (!config || !['codex', 'claude', 'command'].includes(config.kind)) throw fail('PLANNER_INVALID_CONFIG');
+  if (config?.kind === 'codex') throw fail('PLANNER_PROVIDER_FORBIDDEN');
+  if (!config || !['claude', 'command'].includes(config.kind)) throw fail('PLANNER_INVALID_CONFIG');
   const { kind, executable, model } = config;
   const args = config.args ?? [];
+  assertNoCodexExecutable(executable);
   if (typeof executable !== 'string' || !executable || executable.includes('\0')
       || !Array.isArray(args) || args.length > 64
       || args.some(arg => typeof arg !== 'string' || arg.includes('\0') || arg.length > 8192)
@@ -219,6 +222,7 @@ export function createCommandPlanner(config) {
       if (Buffer.byteLength(serialized, 'utf8') > MAX_INPUT_BYTES) throw fail('PLANNER_INPUT_LIMIT');
       let scratch, scratchRoot, cleanupSafe = true;
       try {
+        await assertNoCodexDelegatingScript(executable, launchArgs, process.cwd());
         scratchRoot = await realpath(os.tmpdir());
         scratch = await realpath(await mkdtemp(path.join(scratchRoot, 'rc-project-planner-')));
         let commandArgs = [...launchArgs];

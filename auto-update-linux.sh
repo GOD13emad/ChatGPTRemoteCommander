@@ -105,29 +105,23 @@ stop_owned_candidate(){
 }
 run_gate(){ local project="$1" name="$2"; shift 2; log "GATE_START $name"; (cd "$project"; "$@"); log "GATE_PASS $name"; }
 ensure_project_provider(){
-  local helper="$1" cfg="$2" requested=0 tier version provider_root machine exe actual
-  if [[ "$POWER_MODE" == 1 ]]; then requested=1
-  elif [[ "$STANDARD_MODE" == 0 ]]; then
-    tier="$(json_field "$helper" "$cfg" capabilityProfile.tier)"
-    [[ "$tier" == "FULL_POWER" ]] && requested=1
+  local legacy_root="$STATE_ROOT/tools/codex-cli" in_use=0 exe
+  if [[ -d "$legacy_root" ]]; then
+    for link in /proc/[0-9]*/exe; do
+      exe="$(readlink -f "$link" 2>/dev/null || true)"
+      if [[ -n "$exe" && "$exe" == "$legacy_root/"* ]]; then in_use=1; break; fi
+    done
+    if [[ "$in_use" == 0 ]]; then
+      if rm -rf -- "$legacy_root"; then
+        log 'LEGACY_CODEX_PROVIDER_REMOVED policy=NO_CODEX_VIA_COMMANDER'
+      else
+        log 'LEGACY_CODEX_PROVIDER_CLEANUP_PENDING reason=remove_failed'
+      fi
+    else
+      log 'LEGACY_CODEX_PROVIDER_CLEANUP_PENDING activeProcesses=1'
+    fi
   fi
-  [[ "$requested" == 1 ]] || return 0
-  version="0.156.1"
-  provider_root="$STATE_ROOT/tools/codex-cli/$version"
-  machine="$(uname -m)"
-  case "$machine" in
-    x86_64|amd64) exe="$provider_root/node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/bin/codex" ;;
-    aarch64|arm64) exe="$provider_root/node_modules/@openai/codex-linux-arm64/vendor/aarch64-unknown-linux-musl/bin/codex" ;;
-    *) echo "Unsupported Codex provider architecture: $machine" >&2; return 1 ;;
-  esac
-  if [[ ! -x "$exe" ]]; then
-    mkdir -p "$provider_root"
-    npm install --prefix "$provider_root" --ignore-scripts --no-audit --no-fund --save-exact "@openai/codex@$version"
-  fi
-  [[ -x "$exe" ]] || { echo "Qualified Codex provider missing after update bootstrap: $exe" >&2; return 1; }
-  actual="$("$exe" --version 2>/dev/null || true)"
-  [[ "$actual" == *"$version"* ]] || { echo "Qualified Codex provider version mismatch: $actual" >&2; return 1; }
-  log "PROJECT_PROVIDER_PASS version=$version path=$exe"
+  log 'PROJECT_PROVIDER_DISABLED policy=NO_CODEX_VIA_COMMANDER'
 }
 
 ensure_browser_backend(){

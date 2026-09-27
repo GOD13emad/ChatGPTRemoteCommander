@@ -544,3 +544,24 @@ Historical checkpoints remain append-only archives. Current release/control clai
 - Prevention/Guard: pipe router-retire diagnostic stdout to `Out-Null` while retaining `$LASTEXITCODE` enforcement; contract regression requires suppression.
 - Release decision: do not mint a new release solely for this self-correcting status artifact. Fix is committed on main for the next substantive release; immutable v0.9.10 remains the current live release.
 - Reuse Targets: updater status correctness, zero-downtime drain reconciliation, release diagnostics.
+
+
+## E-NOCODEX-20260927-R1 — ChatGPT-first execution invariant after live R28 quota incident
+
+**Date/Context:** 2026-09-27; live audit of `D:\\uni\\PhD\\electromagnetic generator free energy` R28 background execution.
+
+**Fact / Confirmed:** The R28 wrapper launched the Commander-private Codex CLI 0.156.1 from `%LOCALAPPDATA%\\ChatGPTRemoteCommander\\tools\\codex-cli\\...`. The exact live Codex session reported `Logged in using ChatGPT`, `plan_type=plus`, no API-key environment, no purchased credit balance, and substantial token usage. This proved that Commander-mediated background execution had shifted reasoning consumption from the current ChatGPT conversation into Codex/agentic allowance.
+
+**Root Cause / Confirmed:** Historical v0.9.0+ Full Power policy auto-provisioned a private Codex provider and Project Engine runner. Separately, authorized script execution had no product-level prohibition against a project script spawning Codex. Full Power machine authority was therefore incorrectly coupled to model-provider availability.
+
+**Decision:** Remote Commander is ChatGPT-first. Commander never launches Codex. If ChatGPT recommends Work/Codex, it must obtain an explicit current-chat choice between **Move to Work/Codex** and **Continue in this chat with Remote Commander**. Default is continue-chat. A Work/Codex selection is an external product handoff; it does not create Commander-side Codex launch authority.
+
+**Prevention:** remove Codex bootstrap from Windows/Linux install/update; disable legacy `provider=codex`; block direct/package-manager/script-mediated Codex launches; strip model credentials from Commander child environments; expose only read-only handoff-requirement/status policy; embed the rule in MCP operating instructions and Plugin Skill.
+
+**Guard / Regression:** `test/no-codex-policy.test.mjs`, `test/project-runner-config.test.mjs`, `test/project-planner.test.mjs`, installer/onboarding/update contract tests. Focused policy/planner/runner suite PASS 33/33; installer/onboarding PASS; updater contract PASS 13/13 before full release qualification.
+
+**Scope:** Independent user-owned Codex Desktop processes/installations are outside Commander and are not terminated or removed. Only Commander-private provider state is retired.
+
+**Confidence/Status:** Root cause CONFIRMED. v0.9.11 release/promotion remains pending full qualification at this record.
+
+**Reuse Targets:** Commander architecture, Plugin Skill, install/update policy, Project Engine, quota/cost prevention, incident runbook.

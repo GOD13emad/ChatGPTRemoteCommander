@@ -5,6 +5,17 @@ Use this file when the user gives ChatGPT Work or Codex the repository URL and a
 Repository:
 https://github.com/GOD13emad/ChatGPTRemoteCommander
 
+## Mandatory handoff choice
+
+This guide is used **only after the user explicitly chooses Work/Codex for the current task**. Remote Commander itself never launches Codex and never silently moves a task out of the current ChatGPT conversation.
+
+If an assistant working through Remote Commander believes Work or Codex would materially help, it must ask in the current chat before any handoff:
+
+1. **Move to Work/Codex**
+2. **Continue in this chat with Remote Commander**
+
+The default is to continue in the current chat. Full Power, an installed/logged-in Codex CLI, old Project Engine configuration, prior approval on another task, or silence is not handoff consent. If the user selects Work/Codex, the handoff happens outside Remote Commander; Commander still does not spawn Codex.
+
 ## Authority
 
 Read `START_HERE.md` first. It is the machine/tunnel/app source of truth. This file adds the Work/Plugin path.
