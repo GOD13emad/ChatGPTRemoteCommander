@@ -67,7 +67,8 @@ function Start-PrimaryMcp {
 }
 
 function Find-TunnelExe {
-  $stateFile = Join-Path $Root 'var\tunnel-client.json'
+  $stableAppRoot = Join-Path (Join-Path $OwnerUserProfile 'AppData\Local') 'ChatGPTRemoteCommander\app'
+  $stateFile = Join-Path $stableAppRoot 'var\tunnel-client.json'
   if (-not (Test-Path -LiteralPath $stateFile -PathType Leaf)) {
     throw 'Pinned tunnel-client state missing; run install.ps1.'
   }
