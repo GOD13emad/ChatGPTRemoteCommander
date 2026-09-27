@@ -72,7 +72,10 @@ hasAll(bootEnable, [
   "Register-ScheduledTask -TaskName $HandoffTaskName",
   "New-ScheduledTaskTrigger -AtLogOn",
   "autoAdminLogonRequired=$false",
-  "plaintextCredentialPersisted=$false"
+  "plaintextCredentialPersisted=$false",
+  "ChatGPTRemoteCommander\\app",
+  "$stableSupervisor",
+  "$stableHandoff"
 ], 'enable-boot-recovery.ps1');
 for (const forbidden of ['AutoAdminLogon =', 'DefaultPassword', '-LogonType Password']) {
   if (bootEnable.includes(forbidden)) throw new Error('boot recovery unsafe marker: ' + forbidden);
