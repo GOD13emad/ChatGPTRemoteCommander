@@ -117,6 +117,15 @@ UNIT_DIR="$CFG_BASE/systemd/user"
 UNIT_FILE="$UNIT_DIR/chatgpt-remote-commander.service"
 REGISTERED=0
 if command -v systemctl >/dev/null 2>&1 && systemctl --user show-environment >/dev/null 2>&1; then
+  LINGER_STATUS="unsupported"
+  if command -v loginctl >/dev/null 2>&1; then
+    if loginctl enable-linger "$USER" >/dev/null 2>&1; then
+      LINGER_STATUS="$(loginctl show-user "$USER" -p Linger --value 2>/dev/null || true)"
+      [[ "$LINGER_STATUS" == "yes" ]] || LINGER_STATUS="unverified"
+    else
+      LINGER_STATUS="failed"
+    fi
+  fi
   mkdir -p "$UNIT_DIR"
   cat > "$UNIT_FILE" <<EOF
 [Unit]
@@ -153,6 +162,6 @@ else
 fi
 
 echo
-echo "AUTOSTART_ENROLL_PASS profile=$PROFILE credential=$CRED_FILE registered=$REGISTERED"
+echo "AUTOSTART_ENROLL_PASS profile=$PROFILE credential=$CRED_FILE registered=$REGISTERED linger=${LINGER_STATUS:-n/a}"
 echo 'Future logins do not require the Tunnel ID, health port, or Runtime API key.'
 echo 'Linux credential fallback is a local chmod-600 file outside the repository.'
