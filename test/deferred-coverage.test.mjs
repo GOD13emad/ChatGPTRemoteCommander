@@ -59,6 +59,14 @@ test('turn-safe orchestration advertises bounded direct work and durable continu
   assert.match(server,/CHAT_STREAM_SAFE_DIRECT_CALL_BUDGET = 3/);
   assert.match(server,/rapidPollingAllowed: false/);
   assert.match(server,/longWorkMode: 'durable-background'/);
+  assert.match(server,/completionBeacon: deliveryStore\.beacon\(5\)/);
   assert.match(server,/use at most \$\{CHAT_STREAM_SAFE_DIRECT_CALL_BUDGET\} direct synchronous MCP tool calls/);
+  assert.match(server,/completionBeacon\.pending is nonzero/);
+  assert.match(server,/Every execution turn must end with a visible closeout state/);
   assert.match(server,/unknown duration, persist\/continue it through durable workflows, Project Engine, or operation_start/);
+  const skill=read('plugin-template/skills/remote-commander/SKILL.md');
+  assert.match(skill,/completionBeacon\.pending > 0/);
+  assert.match(skill,/Every execution turn must visibly close out/);
+  assert.match(skill,/Stream cache expired/);
+  assert.match(skill,/Resume stream unavailable/);
 });
