@@ -507,3 +507,20 @@ Historical checkpoints remain append-only archives. Current release/control clai
 **Confidence/Status:** CONFIRMED fixture contention root cause; exact updated commit still requires candidate-first `-NoPromote` qualification before promotion.
 
 **Reuse Targets:** release staging gates, parallel CI reliability, future HTTP fixture design.
+
+
+## E086 — v0.9.7 live Agent Extension acceptance on Emad Windows
+
+**Date/Context:** 2026-09-27; production rollout after exact-commit candidate-first qualification.
+
+**Accepted runtime authority:** Remote Commander canonical default and `saeed-emad` routes were promoted to version `0.9.7`, exact commit `902057768d775010e1591e576b8013368c24f6d2`. Default route generation 88 is active on backend port 48832; `saeed-emad` route generation 126 is active on backend port 48834. Both route records have `previous=null`. This route state is stronger deployment evidence than the earlier `last-update.json`, which still records the preceding no-promote `CANDIDATE_PASS`.
+
+**Promotion evidence:** The final exact commit first passed `AUTO_UPDATE_CANDIDATE_PASS` with check/test/audit, provider/native-GUI, doctor, shadow-store and live-store compatibility for both profiles. Promotion then re-ran the gates, and schema continuity passed for both profiles with `BACKWARD_COMPATIBLE_SCHEMA` before cutover.
+
+**Live validation:** Canonical `system_status` reports version `0.9.7`, Agent Extension schema 1, one discovered extension, zero invalid extensions and zero diagnostics. A direct read-only MCP canary on the canonical route returned `video-trend` successfully from `agent_extension_list`, `agent_extension_get`, and `agent_extension_match` for `video.trend + video.reference-preserve`. The installed manifest resolves to `C:\\Users\\Aa.Emad\\.agents\\extensions\\video-trend\\agent.json` and reuses the shared ComfyUI runtime.
+
+**Confidence/Status:** ACCEPTED for local Windows production deployment of Agent Extension Contract v1. This does not claim GitHub public-release publication, Linux rollout, or completion of the Hotel Lobby media job.
+
+**Reuse Targets:** Agent Extension release acceptance, local production authority, Video Trend continuation, future capability-pack deployments.
+
+**Provenance:** exact deployed runtime commit `902057768d775010e1591e576b8013368c24f6d2`; canonical route files under `%LOCALAPPDATA%\\ChatGPTRemoteCommander\\routing`; live MCP canary on 2026-09-27.
