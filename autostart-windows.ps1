@@ -160,7 +160,7 @@ function Get-ManagedProfiles {
   foreach ($file in Get-ChildItem -LiteralPath $ProfileDir -Filter '*.yaml' -File -ErrorAction SilentlyContinue) {
     $profile = [IO.Path]::GetFileNameWithoutExtension($file.Name)
     if (-not (Test-RcProfileName $profile)) { Write-SupervisorLog "PROFILE_SKIPPED_INVALID name=$profile"; continue }
-    $mcpPort = Get-ProfileMcpPort $file.FullName
+    $mcpPort = Get-RcProfileMcpPort $file.FullName
     if ($mcpPort -le 0) { continue }
     $instance = if ($mcpPort -eq 47831) { $null } else { Get-InstanceRecord $profile }
     if ($mcpPort -ne 47831 -and (-not $instance -or $instance.Port -ne $mcpPort)) { throw "profile instance missing/mismatched $profile" }
