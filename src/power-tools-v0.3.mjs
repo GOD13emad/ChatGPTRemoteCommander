@@ -522,7 +522,8 @@ function terminalSnapshot(session, consume = true) {
   return {
     id: session.id, pid: session.child.pid, running: session.running,
     exitCode: session.exitCode, signal: session.signal, stdout, stderr,
-    truncated: session.truncated
+    truncated: session.truncated, interactive: session.interactive === true,
+    autoClose: session.interactive !== true
   };
 }
 
@@ -532,12 +533,15 @@ export async function startTerminal(ctx, input) {
   const cwd = await resolveExistingTarget(ctx, input.cwd ?? ctx.roots[0]);
   const info = await stat(cwd);
   if (!info.isDirectory()) throw new Error('cwd is not a directory');
-  const child = spawnShell('', {
-    cwd, interactive: true, stdio: ['pipe', 'pipe', 'pipe']
+  const hasCommand = typeof input.command === 'string' && input.command.length > 0;
+  const interactive = input.interactive === true || !hasCommand;
+  const command = hasCommand ? checkShell(ctx, input.command) : '';
+  const child = spawnShell(interactive ? '' : command, {
+    cwd, interactive, stdio: ['pipe', 'pipe', 'pipe']
   });
   const id = `term-${terminalCounter++}`;
   const session = {
-    id, child, cwd, running: true, exitCode: null, signal: null,
+    id, child, cwd, interactive, running: true, exitCode: null, signal: null,
     stdout: '', stderr: '', stdoutCursor: 0, stderrCursor: 0, truncated: false
   };
   const limit = Math.max(65536, Math.min(Number(cfg.maxTerminalBufferBytes ?? 2097152), 16777216));
@@ -552,8 +556,8 @@ export async function startTerminal(ctx, input) {
   child.once('close', (code, signal) => { session.running = false; session.exitCode = code; session.signal = signal; });
   child.once('error', (error) => { session.running = false; session.stderr += `\n${error.message}\n`; });
   terminals.set(id, session);
-  if (input.command) child.stdin.write(checkShell(ctx, input.command) + os.EOL);
-  return { id, pid: child.pid, cwd, running: true };
+  if (hasCommand && interactive) child.stdin.write(command + os.EOL);
+  return { id, pid: child.pid, cwd, running: true, interactive, autoClose: !interactive };
 }
 function getTerminal(input) {
   const session = terminals.get(input.id);
@@ -568,6 +572,7 @@ export async function readTerminal(ctx, input) {
 
 export async function sendTerminal(ctx, input) {
   const session = getTerminal(input);
+  if (session.interactive !== true) throw new Error('terminal session is one-shot and does not accept input');
   if (!session.running) throw new Error('terminal session is not running');
   const text = String(input.input ?? '');
   checkShell(ctx, text);
@@ -611,9 +616,9 @@ export const powerToolDefinitions = [
   { name: 'system_info', description: 'Return OS, CPU, memory, user, Node and runtime information.', inputSchema: { type: 'object', properties: {}, additionalProperties: false }, annotations: ro },
   { name: 'list_processes', description: 'List operating-system processes with PID and resource details when available.', inputSchema: { type: 'object', properties: {}, additionalProperties: false }, annotations: ro },
   { name: 'kill_process', description: 'Terminate a process by PID; protected/system PIDs and this server are refused.', inputSchema: { type: 'object', properties: { pid: { type: 'integer' }, signal: { type: 'string' } }, required: ['pid'], additionalProperties: false }, annotations: localDestructive },
-  { name: 'start_terminal', description: 'Start a persistent platform terminal session (PowerShell on Windows, Bash on Linux) and optionally run an initial command.', inputSchema: { type: 'object', properties: { cwd: { type: 'string' }, command: { type: 'string' } }, additionalProperties: false }, annotations: openDestructive },
+  { name: 'start_terminal', description: 'Start a platform terminal session. With command and no interactive=true it is one-shot and exits when the command completes; use interactive=true only when later send_terminal input is genuinely required. With no command it remains interactive.', inputSchema: { type: 'object', properties: { cwd: { type: 'string' }, command: { type: 'string' }, interactive: { type: 'boolean' } }, additionalProperties: false }, annotations: openDestructive },
   { name: 'read_terminal', description: 'Read buffered stdout/stderr and state from a persistent terminal session.', inputSchema: { type: 'object', properties: { id: { type: 'string' }, consume: { type: 'boolean' } }, required: ['id'], additionalProperties: false }, annotations: ro },
-  { name: 'send_terminal', description: 'Send input to a persistent terminal session.', inputSchema: { type: 'object', properties: { id: { type: 'string' }, input: { type: 'string' }, newline: { type: 'boolean' } }, required: ['id', 'input'], additionalProperties: false }, annotations: openDestructive },
+  { name: 'send_terminal', description: 'Send input to an explicitly interactive terminal session. One-shot command sessions reject input.', inputSchema: { type: 'object', properties: { id: { type: 'string' }, input: { type: 'string' }, newline: { type: 'boolean' } }, required: ['id', 'input'], additionalProperties: false }, annotations: openDestructive },
   { name: 'stop_terminal', description: 'Stop and optionally remove a persistent terminal session.', inputSchema: { type: 'object', properties: { id: { type: 'string' }, signal: { type: 'string' }, remove: { type: 'boolean' } }, required: ['id'], additionalProperties: false }, annotations: localDestructive }
 ];
 export async function prepareDeferredPowerMutation(ctx, name, input) {
