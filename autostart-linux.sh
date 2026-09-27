@@ -107,7 +107,7 @@ network_route_present() {
   ip route show default 2>/dev/null | grep -q .
 }
 
-tunnel_control_plane_fresh() {
+control_plane_fresh() {
   local port="$1" limit="${REMOTE_COMMANDER_TUNNEL_STALE_SECONDS:-90}" metrics last started now base
   [[ "$limit" =~ ^[1-9][0-9]{1,3}$ ]] || limit=90
   metrics="$(curl -fsS --max-time 2 "http://127.0.0.1:$port/metrics" 2>/dev/null || true)"
@@ -204,7 +204,7 @@ start_tunnel() {
     fi
     [[ "$exe" == "$desired" ]] || [[ -n "$previous" ]] || previous="$exe"
     if [[ "$exe" == "$desired" ]] && tunnel_ready "$health"; then
-      if tunnel_control_plane_fresh "$health"; then
+      if control_plane_fresh "$health"; then
         rm -f "$reject_file"
         return 0
       fi
