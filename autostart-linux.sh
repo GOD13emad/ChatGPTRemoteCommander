@@ -102,6 +102,25 @@ tunnel_ready() {
   [[ "$(curl -fsS --max-time 2 "http://127.0.0.1:$port/readyz" 2>/dev/null || true)" == "ready" ]]
 }
 
+network_route_present() {
+  command -v ip >/dev/null 2>&1 || return 0
+  ip route show default 2>/dev/null | grep -q .
+}
+
+tunnel_control_plane_fresh() {
+  local port="$1" limit="${REMOTE_COMMANDER_TUNNEL_STALE_SECONDS:-90}" metrics last started now base
+  [[ "$limit" =~ ^[1-9][0-9]{1,3}$ ]] || limit=90
+  metrics="$(curl -fsS --max-time 2 "http://127.0.0.1:$port/metrics" 2>/dev/null || true)"
+  [[ -n "$metrics" ]] || return 0
+  last="$(printf '%s\n' "$metrics" | awk '/^commands_poll_last_successful_timestamp_seconds([{ ]|$)/{print $NF;exit}')"
+  started="$(printf '%s\n' "$metrics" | awk '/^process_start_time_seconds([{ ]|$)/{print $NF;exit}')"
+  now="$(date +%s)"
+  base="$last"
+  awk -v v="$base" 'BEGIN{exit !((v+0)>0)}' || base="$started"
+  [[ -n "$base" ]] || return 0
+  awk -v n="$now" -v b="$base" -v l="$limit" 'BEGIN{age=n-b; exit !((age>=0)&&(age<=l))}'
+}
+
 cred_path() {
   local profile="$1"
   printf '%s/%s.key\n' "$CRED_DIR" "$(safe_profile "$profile")"
@@ -185,8 +204,14 @@ start_tunnel() {
     fi
     [[ "$exe" == "$desired" ]] || [[ -n "$previous" ]] || previous="$exe"
     if [[ "$exe" == "$desired" ]] && tunnel_ready "$health"; then
-      rm -f "$reject_file"
-      return 0
+      if tunnel_control_plane_fresh "$health"; then
+        rm -f "$reject_file"
+        return 0
+      fi
+      if ! network_route_present; then
+        return 0
+      fi
+      log "TUNNEL_CONTROL_PLANE_STALE profile=$profile port=$health exe=$desired"
     fi
   done < <(profile_tunnel_rows "$profile")
 
