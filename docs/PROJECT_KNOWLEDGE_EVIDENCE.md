@@ -388,3 +388,24 @@ Historical checkpoints remain append-only archives. Current release/control clai
 **Reuse Targets:** multi-account safety, scheduler ownership, one-writer invariant, release qualification.
 
 **Provenance:** `finalize/rc-v094-r3`; superseded local-r2 evidence metadata SHA-256 `5cd0c713a8205633f165d83710a6f8368cf0eaa832278c1b164ea8caa949c53c`.
+
+
+## E080 — Windows mains-power boot recovery architecture
+
+**Date/Context:** 2026-09-27; final v0.9.4 power-loss hardening before restarting the release soak.
+
+**Fact / pre-state:** Windows Remote Commander startup was login-dependent: `HKCU\Software\Microsoft\Windows\CurrentVersion\Run\ChatGPTRemoteCommander` launched the user-session supervisor, no Remote Commander Windows service/boot task existed, and AutoAdminLogon was disabled. Tunnel credentials were CurrentUser DPAPI blobs under the owner's LocalAppData. The current process token was medium-integrity with the Administrators SID deny-only, so installation of a SYSTEM startup task requires normal UAC elevation.
+
+**Method choice:** Task Scheduler S4U was rejected because Microsoft documents that S4U tasks have no network access and cannot access encrypted files. AutoAdminLogon was rejected because it is unnecessary and weakens the login boundary. Selected architecture: SYSTEM AtStartup headless boot core + DPAPI LocalMachine machine-credential copies restricted by ACL to SYSTEM and Administrators + explicit owner-profile paths + safe AtLogOn handoff back to the user session.
+
+**Implementation:** `autostart-windows.ps1` now supports BootCore, explicit owner paths, CurrentUser/LocalMachine credential scopes, explicit node/npm paths and bounded credential self-test. Helper `windows-supervisor-runtime.ps1` holds owner-path/profile/credential logic while preserving the supervisor source-size integrity envelope. `enable-boot-recovery.ps1` performs elevated machine-credential migration, ACL hardening, a temporary SYSTEM probe, and registers SYSTEM AtStartup/AtLogOn tasks. `handoff-user-session-windows.ps1` defers while active operations or root leases exist and retires only SYSTEM-owned Commander processes before verifying user-session recovery. `disable-boot-recovery.ps1` is the bounded rollback.
+
+**Project recovery policy:** The Remote Commander skill now requires a durable workflow before the first meaningful mutation for multi-step, persistent-mutation, unknown-duration or power-loss-resumable tasks. GUI/foreground continuation remains user-session scoped; headless durable work may resume pre-login. Blind replay of uncertain mutations remains forbidden.
+
+**Evidence/Source:** Windows live-state audit; Microsoft Task Scheduler S4U documentation; Windows DPAPI DataProtectionScope LocalMachine documentation; branch `power-recovery/v094-r2` based on live `ca97ced5b4e39ff727af83eee95b46c6c8ef52b4`; `test/windows-runtime-contract.mjs`; `test/source-integrity.mjs`.
+
+**Confidence/Status:** Implementation CONFIRMED in source; candidate qualification PENDING after helper refactor; real post-mains-power boot remains a required external validation because no automatic reboot/shutdown/logoff is permitted.
+
+**Reuse Targets:** installer, power-loss runbook, release gate, Project Brain, user documentation.
+
+**Provenance:** see `docs/POWER_RECOVERY_R1.md`; exact final candidate SHA must be recorded after qualification.
