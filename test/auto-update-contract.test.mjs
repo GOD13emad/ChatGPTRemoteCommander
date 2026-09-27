@@ -232,8 +232,13 @@ test('Linux updater is candidate-first, hardware-gated, routed and rollback-awar
     'https://github.com/GOD13emad/ChatGPTRemoteCommander/releases/latest',
     '%{url_effective}',
     'install_linux_gui_backend',
-    'LINUX_GUI_BACKEND_SYNCED'
+    'LINUX_GUI_BACKEND_SYNCED',
+    '/snap/bin/geckodriver',
+    '/usr/bin/geckodriver',
+    '/usr/local/bin/geckodriver',
+    '"$HOME/.local/bin/geckodriver"'
   ]) assert.ok(s.includes(marker),marker);
+  assert.ok(s.indexOf('driver="$(command -v geckodriver') < s.indexOf('/snap/bin/geckodriver'),'Linux updater must prefer PATH geckodriver before explicit safe fallbacks');
   assert.ok(!s.includes('git ls-remote --tags --refs'),'Linux stable discovery must never promote a raw tag without a published Release');
   assert.ok(s.includes("log 'AUTO_UPDATE_DRAIN_PENDING profile=default'"),'Linux committed cutover must defer unsafe drains');
   assert.ok(s.includes('drain_previous_once "$STAGE_DIR" "$OLD_PORT"'), 'Linux drain must use conservative shared policy');
