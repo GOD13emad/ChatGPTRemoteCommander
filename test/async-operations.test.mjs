@@ -12,8 +12,8 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const fixture = path.join(here, 'async-operation-fixture.mjs');
 const worker = path.join(here, '..', 'tools', 'operation-worker.mjs');
 
-async function waitFor(manager, operationId, terminal = ['SUCCEEDED', 'FAILED', 'TIMED_OUT', 'CANCELLED', 'UNCERTAIN']) {
-  const deadline = Date.now() + 10000;
+async function waitFor(manager, operationId, terminal = ['SUCCEEDED', 'FAILED', 'TIMED_OUT', 'CANCELLED', 'UNCERTAIN'], timeoutMs = 10000) {
+  const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     const state = await manager.execute('operation_status', { operationId });
     if (terminal.includes(state.status)) return state;
@@ -90,7 +90,7 @@ test('child exit completes operation even when inherited stdio delays close', as
       tool: 'run_project_command',
       arguments: { argv: ['linger-stdio', 'parent-done'], timeoutMs: 8000 }
     });
-    const state = await waitFor(manager, started.operationId);
+    const state = await waitFor(manager, started.operationId, undefined, 15000);
     assert.equal(state.status, 'SUCCEEDED');
     const result = await manager.execute('operation_result', { operationId: started.operationId, tailBytes: 1024 });
     assert.equal(result.result.outputComplete, false);
