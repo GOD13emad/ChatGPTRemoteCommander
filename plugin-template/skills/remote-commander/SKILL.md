@@ -1,6 +1,6 @@
 ---
 name: remote-commander
-description: Operate a trusted computer through the user's registered ChatGPT Remote Commander MCP app, with evidence-based GUI coordination.
+description: Operate a trusted computer through the user's registered ChatGPT Remote Commander MCP app, with evidence-based Linux/desktop coordination.
 ---
 
 # Remote Commander workflow
@@ -8,6 +8,20 @@ description: Operate a trusted computer through the user's registered ChatGPT Re
 Use only the exact registered app for the intended computer. Verify `system_status` first; another similarly named app or Work's cloud computer is not the target. Repository code and a discovered schema do not prove that the running app has that version.
 
 Before mutation, read the current state, identify the exact target, and keep the change narrow. Preserve unrelated files and use normal product confirmation for privileged actions. Do not change network/firewall/VPN/DNS, reboot, shutdown, logoff, credentials, or account permissions unless explicitly requested and supported. Never request Runtime API keys, tunnel credentials, bearer tokens, or private keys in chat.
+
+## Linux-first runtime profile
+
+When `system_status.platform` is `linux`, treat Linux as the authoritative execution environment for this device.
+
+- Use POSIX paths, preserve case sensitivity, ownership, executable bits, permissions and symlink semantics, and quote shell-sensitive paths.
+- Use Bash-compatible commands for `run_shell`. Do not translate Linux work into PowerShell or Windows path syntax.
+- Prefer `run_project_command` for a direct executable when shell features are unnecessary; use `run_shell` for bounded Bash pipelines/conditionals; use a persistent terminal only for genuinely interactive or long-lived terminal work.
+- Distinguish user services from system services: use `systemctl --user` for the user's Commander services and `systemctl` only when system scope is actually required.
+- Treat `sudo`/polkit prompts as owner-authentication gates. Never extract, bypass, cache or infer the owner's password. If non-interactive sudo is unavailable, continue all safe unprivileged work and record the root-only step as blocked.
+- Do not reboot, shut down, log out, restart the graphical session, or disrupt NetworkManager merely to complete an update unless the current user explicitly requested that effect.
+- On GNOME/Wayland, use the configured native Linux GUI helper and its declared capabilities. Do not assume X11 tooling, Windows handles or Windows-only accessibility APIs exist.
+- Linux GUI acceptance requires real screenshot/input/screenshot evidence on the Linux target when interaction is authorized; a Windows test is not evidence for Linux GUI behavior.
+- For package installation or OS maintenance, verify the distribution/release and package manager first. Do not assume `apt`, `dnf`, `pacman`, Snap or Flatpak without evidence from the target.
 
 ## Background-first execution
 
