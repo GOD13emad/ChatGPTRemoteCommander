@@ -12,7 +12,7 @@ test('Windows profile isolation scripts preserve secret split and rollback bound
   for(const marker of ['REMOTE_COMMANDER_CONFIG','instance config hash mismatch','refusing to stop it','MCP_INSTANCE_READY','$SelfTest']){
     assert.ok(sup.includes(marker),marker);
   }
-  for(const marker of ['ChatGPTRemoteCommander\\instances','OwnerUserProfile','OwnerLocal','OwnerRoaming']){
+  for(const marker of ['ChatGPTRemoteCommander\\instances','OwnerUserProfile','AppData\\Local','AppData\\Roaming']){
     assert.ok(runtime.includes(marker),marker);
   }
   for(const marker of ['Existing DPAPI Runtime API credential is required','doctor-profile','CONTROL_PLANE_API_KEY','profile-before-','Profile backup hash mismatch','PROFILE_INSTANCE_MIGRATION_PASS','Stop-IsolatedMcp']){
