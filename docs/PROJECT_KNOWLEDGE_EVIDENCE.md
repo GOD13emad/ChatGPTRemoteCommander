@@ -508,3 +508,15 @@ Historical checkpoints remain append-only archives. Current release/control clai
 **Reuse Targets:** stream/retry runbook, release checklist, power-recovery runbook, cross-platform parity, agent-platform strategy, Project Brain, final user closeout.
 
 **Provenance:** GitHub release/tag v0.9.6 and commit 4be0ebcd7a30b412de31e2b40f75dc3c504ec8ce; live Windows/Linux routes/system_status/update logs; Windows elevated boot-rebind result; Linux systemd/loginctl state; benchmark primary sources listed in `docs/AGENT_CAPABILITY_BENCHMARK_20260927.md`.
+
+
+## E-STREAM-20260927-R2 — Host stream symptom and bounded-reconciliation root cause
+
+- Date/Context: 2026-09-27; repeated ChatGPT conversations can display `Our systems are thinking a bit more about this request before responding.` and later lose the response stream with `Resume stream unavailable`-class or other interruption errors.
+- Fact / Confirmed as observed: the UI symptom occurs across chats. It is not by itself proof that Remote Commander caused the host stream termination.
+- Internal finding / Confirmed: v0.9.8 durable operation delivery reconciliation rediscovered all historical operation directories every five seconds. Already-published terminal operations were repeatedly reprocessed; receipt adoption could rewrite `state.json` without a new effect/result.
+- Root Cause → Prevention → Guard → Regression: periodic full-history rediscovery → one startup discovery plus live tracked set → retain failed/unresolved deliveries and never auto-ack/purge/cross-correlate → second reconciliation must check zero historical terminal operations and leave state-file mtime unchanged.
+- Validation so far: focused async/HTTP/correlation suite PASS 14/14 after the fix. v0.9.8 exact baseline separately passed check/test/audit/doctor before mutation.
+- Boundary: ChatGPT host response-stream expiry and native wake/push remain external unless the host exposes a supported capability. Commander acceptance is durable result survival, idempotent no-duplicate effect, bounded reconciliation, and retrievable correlation-scoped results.
+- Status/Confidence: Internal reconciliation defect CONFIRMED/high; causal contribution to the ChatGPT UI stream failure PROBABLE-UNVERIFIED until correlated host evidence exists.
+- Reuse Targets: release 0.9.9, stream resilience, incident response, durable delivery design, performance/load testing.

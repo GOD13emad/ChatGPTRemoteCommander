@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import os from 'node:os';
 import path from 'node:path';
-import { mkdir, mkdtemp, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { createHash, randomUUID } from 'node:crypto';
 import { createAsyncOperationTools } from '../src/async-operations.mjs';
@@ -297,8 +297,13 @@ test('terminal operation receipts backfill exactly once into durable delivery af
     assert.equal(listed.items[0].source, 'operation');
     assert.equal(listed.items[0].sourceId, started.operationId);
     assert.equal(listed.items[0].kind, 'COMPLETED');
-    await second.reconcileDeliveries(500);
+    const statePath = path.join(root, 'ops', 'operations', started.operationId, 'state.json');
+    const afterFirstReconcile = (await stat(statePath)).mtimeMs;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    const secondPass = await second.reconcileDeliveries(500);
+    assert.equal(secondPass.checked, 0);
     assert.equal(delivery.list({ correlationId: 'chat-a', includeDelivered: true }).items.length, 1);
+    assert.equal((await stat(statePath)).mtimeMs, afterFirstReconcile);
   } finally {
     try { await first?.close?.(); } catch {}
     try { await second?.close?.(); } catch {}

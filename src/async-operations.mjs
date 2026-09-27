@@ -140,6 +140,7 @@ export function createAsyncOperationTools({ config, prepare, workerPath, deliver
   const deliveryIntervalMs = boundedInt(policy.deliveryReconcileMs, 5000, 1000, 60000);
   const deliveryBatchSize = boundedInt(policy.deliveryReconcileBatch, 100, 1, 500);
   const deliveryTracked = new Set();
+  let deliveryDiscovered = false;
   let deliveryTimer = null;
   let deliveryClosed = false;
   let deliveryReconcilePromise = Promise.resolve({ checked: 0, pending: 0 });
@@ -456,7 +457,10 @@ export function createAsyncOperationTools({ config, prepare, workerPath, deliver
   }
   async function reconcileDeliveriesOnce(limit = deliveryBatchSize) {
     if (!deliveryStore || deliveryClosed) return { checked: 0, pending: deliveryTracked.size };
-    await discoverForDelivery();
+    if (!deliveryDiscovered) {
+      await discoverForDelivery();
+      deliveryDiscovered = true;
+    }
     if (deliveryClosed) return { checked: 0, pending: deliveryTracked.size };
     const ids = [...deliveryTracked].slice(0, boundedInt(limit, deliveryBatchSize, 1, 500));
     let checked = 0;

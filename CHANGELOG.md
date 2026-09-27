@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.9.9 — 2026-09-27
+- Bound durable-delivery reconciliation to one startup discovery plus the live tracked-operation set instead of rediscovering every historical operation directory every five seconds.
+- Stop repeated terminal-receipt adoption/state-file rewrites after a completion has already been published; preserve restart backfill, exact correlation isolation, durable artifacts and no-blind-replay semantics.
+- Add a regression proving the second reconciliation pass checks zero historical terminal operations and does not touch the persisted operation state.
+- Keep ChatGPT host-stream failures as a separate external/host boundary: Commander guarantees durable/idempotent work recovery, but cannot manufacture host wake/push or prevent a platform-side response stream from expiring.
+
+
 ## 0.9.8 — 2026-09-27
 - Add Remote Commander-Agent Extension Contract v1 for reusable declarative capability packs without expanding execution authority.
 - Expose read-only extension discovery through `agent_extension_list`, `agent_extension_get`, and `agent_extension_match`, with bounded status/diagnostics in `system_status`.

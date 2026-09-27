@@ -28,3 +28,15 @@ Broader blocker escalation, monetary accounting, additional providers/integratio
 - Knowledge: [engineering decisions and evidence](PROJECT_KNOWLEDGE_EVIDENCE.md).
 
 Historical checkpoints are preserved in the [archived project state](history/PROJECT_CONTROL_STATE_20260924.md). Their former “current”, “final” and “next action” labels are historical. Account bindings, machine paths, process inventories and operational receipts belong in private deployment handoffs rather than this public status page.
+
+
+## CURRENT CHANGE SET — v0.9.9 bounded delivery reconciliation
+
+- Objective: stop repeated historical-operation rediscovery/state churn while preserving durable lost-ack and restart recovery.
+- Baseline authority: v0.9.8 / `7e48fe1b23192064091f4c39a50c723d077f5a07`; Windows and Linux live runtime parity confirmed before mutation.
+- Root cause: every periodic reconciliation cycle rediscovered every historical operation directory.
+- Change: discover historical operations once at manager startup; thereafter reconcile only the tracked set. New operations are already added at start; failed/unresolved delivery stays tracked.
+- Regression: focused async/HTTP/correlation suite PASS 14/14; second historical reconciliation requires checked=0 and unchanged state mtime.
+- Stream incident: ChatGPT host/UI stream termination remains OPEN as a separate boundary. v0.9.9 reduces avoidable Commander I/O pressure but does not claim to control host-side thinking/stream expiry.
+- Current gate: exact candidate full Windows check/test/audit, commit/push/tag/release, candidate-first promotion, then Windows/Linux live parity and post-promotion no-churn verification.
+- FINAL status: UNPROVEN until those gates complete.
