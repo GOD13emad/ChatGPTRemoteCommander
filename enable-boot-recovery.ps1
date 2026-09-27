@@ -14,13 +14,17 @@ function Test-Elevated {
 if (-not (Test-Elevated)) { throw 'BOOT_RECOVERY_ELEVATION_REQUIRED' }
 if ([Security.Principal.WindowsIdentity]::GetCurrent().IsSystem) { throw 'BOOT_RECOVERY_RUN_AS_OWNER_ADMIN_REQUIRED' }
 
-$Root = Split-Path -Parent $MyInvocation.MyCommand.Path
+$SourceRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $OwnerUserProfile = [IO.Path]::GetFullPath($OwnerUserProfile)
 if ([IO.Path]::GetFullPath($env:USERPROFILE) -ne $OwnerUserProfile) {
   throw 'BOOT_RECOVERY_OWNER_PROFILE_MUST_MATCH_CURRENT_USER'
 }
 $OwnerLocal = Join-Path $OwnerUserProfile 'AppData\Local'
 $OwnerRoaming = Join-Path $OwnerUserProfile 'AppData\Roaming'
+$StableRoot = Join-Path $OwnerLocal 'ChatGPTRemoteCommander\app'
+$stableSupervisor = Join-Path $StableRoot 'autostart-windows.ps1'
+$stableHandoff = Join-Path $StableRoot 'handoff-user-session-windows.ps1'
+$Root = if((Test-Path -LiteralPath $stableSupervisor -PathType Leaf) -and (Test-Path -LiteralPath $stableHandoff -PathType Leaf)){$StableRoot}else{$SourceRoot}
 $CredDir = Join-Path $OwnerLocal 'ChatGPTRemoteCommander\credentials'
 $ProfileDir = Join-Path $OwnerRoaming 'tunnel-client'
 $VarDir = Join-Path $Root 'var'
