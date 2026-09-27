@@ -16,29 +16,18 @@ $ErrorActionPreference = 'Stop'
 Remove-Item Env:REMOTE_COMMANDER_CONFIG -ErrorAction SilentlyContinue
 
 $Root = Split-Path -Parent $MyInvocation.MyCommand.Path
+. (Join-Path $Root 'windows-supervisor-runtime.ps1')
+$runtime = Initialize-WindowsSupervisorRuntime $Root $OwnerUserProfile ([bool]$BootCore)
+$OwnerUserProfile = $runtime.OwnerUserProfile
 $VarDir = Join-Path $Root 'var'
-if ([string]::IsNullOrWhiteSpace($OwnerUserProfile)) { $OwnerUserProfile = $env:USERPROFILE }
-$OwnerUserProfile = [IO.Path]::GetFullPath($OwnerUserProfile)
-$OwnerLocalAppData = Join-Path $OwnerUserProfile 'AppData\Local'
-$OwnerRoamingAppData = Join-Path $OwnerUserProfile 'AppData\Roaming'
-if ($BootCore) {
-  $env:USERPROFILE = $OwnerUserProfile
-  $env:LOCALAPPDATA = $OwnerLocalAppData
-  $env:APPDATA = $OwnerRoamingAppData
-  $env:HOME = $OwnerUserProfile
-}
-$CredDir = Join-Path $OwnerLocalAppData 'ChatGPTRemoteCommander\credentials'
-$ProfileDir = Join-Path $OwnerRoamingAppData 'tunnel-client'
-$InstanceRoot = Join-Path $OwnerLocalAppData 'ChatGPTRemoteCommander\instances'
+$CredDir = $runtime.CredDir
+$ProfileDir = $runtime.ProfileDir
+$InstanceRoot = $runtime.InstanceRoot
 New-Item -ItemType Directory -Force -Path $VarDir,$CredDir,$InstanceRoot | Out-Null
 
 function Write-SupervisorLog([string]$Message) {
   $line = "$(Get-Date -Format o) $Message"
   Add-Content -LiteralPath (Join-Path $VarDir 'autostart.log') -Value $line -Encoding utf8
-}
-
-function Test-ProfileName([string]$Name) {
-  return ($Name -match '^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$' -and $Name -notmatch '\.\.' -and $Name -notin @('.','..'))
 }
 
 $created = $false
@@ -97,44 +86,8 @@ function Find-TunnelExe {
   return $exe
 }
 
-function CredentialPath([string]$Profile) {
-  $suffix = if ($CredentialScope -eq 'LocalMachine') { '.machine.dpapi' } else { '.dpapi' }
-  return Join-Path $CredDir ($Profile + $suffix)
-}
-
-function Read-CredentialPlainText([string]$Path) {
-  $raw = (Get-Content -LiteralPath $Path -Raw).Trim()
-  if ($CredentialScope -eq 'CurrentUser') {
-    $secure = ConvertTo-SecureString $raw
-    try { return [System.Net.NetworkCredential]::new('', $secure).Password }
-    finally { $secure = $null }
-  }
-  $cipher = [Convert]::FromBase64String($raw)
-  $clear = [Security.Cryptography.ProtectedData]::Unprotect(
-    $cipher, $null, [Security.Cryptography.DataProtectionScope]::LocalMachine)
-  try { return [Text.Encoding]::UTF8.GetString($clear) }
-  finally {
-    if ($cipher) { [Array]::Clear($cipher,0,$cipher.Length) }
-    if ($clear) { [Array]::Clear($clear,0,$clear.Length) }
-  }
-}
-
-function Get-ProfileHealthPort([string]$ProfileFile) {
-  $text = Get-Content -LiteralPath $ProfileFile -Raw
-  $match = [regex]::Match($text, 'listen_addr:\s*["'']?127\.0\.0\.1:(\d+)')
-  if ($match.Success) { return [int]$match.Groups[1].Value }
-  return 0
-}
-
-function Get-ProfileMcpPort([string]$ProfileFile) {
-  $text = Get-Content -LiteralPath $ProfileFile -Raw
-  $match = [regex]::Match($text, 'url:\s*["'']?http://127\.0\.0\.1:(\d+)/mcp')
-  if ($match.Success) { return [int]$match.Groups[1].Value }
-  return 0
-}
-
 function Get-InstanceRecord([string]$Profile) {
-  if (-not (Test-ProfileName $Profile)) { throw "invalid instance profile $Profile" }
+  if (-not (Test-RcProfileName $Profile)) { throw "invalid instance profile $Profile" }
   $dir = Join-Path $InstanceRoot $Profile
   $recordFile = Join-Path $dir 'instance.json'
   if (-not (Test-Path -LiteralPath $recordFile -PathType Leaf)) { return $null }
@@ -206,7 +159,7 @@ function Get-ManagedProfiles {
   $items = @()
   foreach ($file in Get-ChildItem -LiteralPath $ProfileDir -Filter '*.yaml' -File -ErrorAction SilentlyContinue) {
     $profile = [IO.Path]::GetFileNameWithoutExtension($file.Name)
-    if (-not (Test-ProfileName $profile)) { Write-SupervisorLog "PROFILE_SKIPPED_INVALID name=$profile"; continue }
+    if (-not (Test-RcProfileName $profile)) { Write-SupervisorLog "PROFILE_SKIPPED_INVALID name=$profile"; continue }
     $mcpPort = Get-ProfileMcpPort $file.FullName
     if ($mcpPort -le 0) { continue }
     $instance = if ($mcpPort -eq 47831) { $null } else { Get-InstanceRecord $profile }
@@ -214,8 +167,8 @@ function Get-ManagedProfiles {
     $items += [pscustomobject]@{
       Profile=$profile
       File=$file.FullName
-      Credential=(CredentialPath $profile)
-      HealthPort=(Get-ProfileHealthPort $file.FullName)
+      Credential=(Get-RcCredentialPath $CredDir $profile $CredentialScope)
+      HealthPort=(Get-RcProfileHealthPort $file.FullName)
       McpPort=$mcpPort
       Instance=$instance
     }
@@ -267,7 +220,7 @@ function Start-TunnelProfile($Item) {
     throw "profile $($Item.Profile) process exists but readiness failed"
   }
 
-  $plain = Read-CredentialPlainText $Item.Credential
+  $plain = Read-RcCredentialPlainText $Item.Credential $CredentialScope
 
   try {
     if ([string]::IsNullOrWhiteSpace($plain)) {
@@ -320,20 +273,12 @@ function Start-TunnelProfile($Item) {
 
 if ($SelfTest) {
   $profiles = @(Get-ManagedProfiles | ForEach-Object {
-    $credentialReady = Test-Path -LiteralPath $_.Credential -PathType Leaf
-    if ($CredentialSelfTest -and $credentialReady) {
-      $secret = $null
-      try {
-        $secret = Read-CredentialPlainText $_.Credential
-        $credentialReady = -not [string]::IsNullOrWhiteSpace($secret)
-      } catch { $credentialReady = $false }
-      finally { $secret = $null }
-    }
+    $credentialReady = if ($CredentialSelfTest) { Test-RcCredential $_.Credential $CredentialScope } else { Test-Path -LiteralPath $_.Credential -PathType Leaf }
     [pscustomobject]@{ profile=$_.Profile; mcpPort=$_.McpPort; healthPort=$_.HealthPort; isolated=[bool]$_.Instance; credentialReady=$credentialReady }
   })
   $instance = $null
   if ($SelfTestProfile) {
-    if (-not (Test-ProfileName $SelfTestProfile)) { throw 'Invalid SelfTestProfile.' }
+    if (-not (Test-RcProfileName $SelfTestProfile)) { throw 'Invalid SelfTestProfile.' }
     $instance = Get-InstanceRecord $SelfTestProfile
   }
   $routes=@(); foreach($p in @('default')+@($profiles.profile)){try{$r=Get-RouteState $p;if($r){$routes+=[pscustomobject]@{profile=$p;generation=$r.State.generation;active=$r.Active}}}catch{}}
