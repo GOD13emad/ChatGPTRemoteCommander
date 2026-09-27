@@ -148,6 +148,11 @@ ensure_browser_backend(){
   done
   exe="$(command -v firefox 2>/dev/null || true)"
   driver="$(command -v geckodriver 2>/dev/null || true)"
+  if [[ -z "$driver" ]]; then
+    for candidate in /snap/bin/geckodriver /usr/bin/geckodriver /usr/local/bin/geckodriver "$HOME/.local/bin/geckodriver"; do
+      if [[ -x "$candidate" ]]; then driver="$candidate"; break; fi
+    done
+  fi
   if [[ -n "$exe" && -x "$exe" && -n "$driver" && -x "$driver" ]]; then
     BROWSER_EXECUTABLE="$exe"
     if command -v snap >/dev/null 2>&1 && snap list firefox >/dev/null 2>&1; then
