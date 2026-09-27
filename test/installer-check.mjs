@@ -56,7 +56,7 @@ const linuxEnrollment = readFileSync('enable-autostart-linux.sh', 'utf8');
 const linuxPluginInstaller = readFileSync('install-work-plugin.sh', 'utf8');
 const linuxAccountConnector = readFileSync('connect-chatgpt-account.sh', 'utf8');
 for (const required of [
-  'SOURCE_REF="${REMOTE_COMMANDER_SOURCE_REF:-v0.9.4}"',
+  'SOURCE_REF="${REMOTE_COMMANDER_SOURCE_REF:-v0.9.5}"',
   '--source-ref',
   '--skip-tunnel-client',
   '--expected-commit',
