@@ -33,51 +33,7 @@ test('linux tunnel supervisor never self-stops its own service and scopes recycl
   assert.match(s,/TUNNEL_CONTROL_PLANE_STALE/);
   assert.match(s,/REMOTE_COMMANDER_TUNNEL_STALE_SECONDS/);
   const enroll=read('enable-autostart-linux.sh');
-  assert.ok(enroll.includes('^tunnel_[0-9a-f]{32}
-});
-
-test('linux autostart enables user lingering when systemd user services are available',()=>{
-  const s=read('enable-autostart-linux.sh');
-  assert.match(s,/loginctl enable-linger "\$USER"/);
-  assert.match(s,/loginctl show-user "\$USER" -p Linger --value/);
-  assert.match(s,/linger=\$\{LINGER_STATUS:-n\/a\}/);
-});
-
-test('fresh linux installer delegates tunnel install to the single pinned helper',()=>{
-  const s=read('install.sh');
-  assert.doesNotMatch(s,/^TUNNEL_VERSION=/m);
-  assert.match(s,/tools\/tunnel-client-pin\.json/);
-  assert.match(s,/tools\/install-tunnel-client-linux\.sh/);
-  assert.match(s,/\/bin\/bash "\$helper" --install-dir "\$INSTALL_DIR"/);
-  assert.match(s,/chmod \+x[\s\S]*install-tunnel-client-linux\.sh/);
-});
-
-test('tunnel pin has exact qualified v0.0.15 provenance',()=>{
-  const pin=JSON.parse(read('tools/tunnel-client-pin.json'));
-  assert.equal(pin.version,'0.0.15');
-  assert.equal(pin.releaseTag,'v0.0.15');
-  assert.equal(pin.upstreamCommit,'a390c168ff1b2d14e73a95991c186c6aba3ff5a0');
-  assert.equal(pin.sha256sumsSha256,'8a32bbcd724468f1874f12d5b0dedb6e6b07dfe5aa323cf5b4c070a5a81b0b4e');
-});
-
-test('linux lifecycle shell files parse and tunnel installer self-test resolves the pin',()=>{
-  const bash=bashPath();
-  if(!bash)return;
-  for(const rel of ['autostart-linux.sh','enable-autostart-linux.sh','install.sh','tools/install-tunnel-client-linux.sh']){
-    const p=path.join(root,rel);
-    const r=spawnSync(bash,['-n',p],{encoding:'utf8'});
-    assert.equal(r.status,0,rel+' bash -n failed: '+r.stderr);
-  }
-  const self=spawnSync(bash,[path.join(root,'tools/install-tunnel-client-linux.sh'),'--install-dir',root,'--self-test'],{
-    cwd:root,encoding:'utf8',env:{...process.env,PATH:process.env.PATH}
-  });
-  assert.equal(self.status,0,self.stderr);
-  const body=JSON.parse(self.stdout.trim());
-  assert.equal(body.ok,true);
-  assert.equal(body.version,'0.0.15');
-  assert.equal(body.tag,'v0.0.15');
-});
-),'Linux enrollment must enforce the official tunnel ID format');
+  assert.ok(enroll.includes('^tunnel_[0-9a-f]{32}$'),'Linux enrollment must enforce the official tunnel ID format');
 });
 
 test('linux autostart enables user lingering when systemd user services are available',()=>{
