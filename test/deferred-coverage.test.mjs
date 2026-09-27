@@ -52,7 +52,7 @@ test('CSDC-008 scope does not pretend storage stalls are solved',()=>{
 
 test('turn-safe orchestration advertises bounded direct work and durable continuation',()=>{
   const server=read('src/server-v0.3.mjs');
-  assert.match(server,/CHAT_STREAM_SAFE_DIRECT_CALL_BUDGET = 6/);
+  assert.match(server,/CHAT_STREAM_SAFE_DIRECT_CALL_BUDGET = 3/);
   assert.match(server,/rapidPollingAllowed: false/);
   assert.match(server,/longWorkMode: 'durable-background'/);
   assert.match(server,/use at most \$\{CHAT_STREAM_SAFE_DIRECT_CALL_BUDGET\} direct synchronous MCP tool calls/);
