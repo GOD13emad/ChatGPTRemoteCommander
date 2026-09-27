@@ -28,6 +28,27 @@ test('delivery event publish is durable and idempotent across restart',()=>{
   } finally { f.dispose(); }
 });
 
+test('completion beacon exposes only bounded pending metadata without artifact contents',()=>{
+  const f=fixture(); const store=f.open();
+  try{
+    const artifact=store.writeArtifact({secretLike:'do-not-inline',summary:'done'});
+    const first=store.publish({eventKey:'tool:job-beacon-1:final',correlationId:'req-beacon-1',source:'tool',sourceId:'job-beacon-1',kind:'COMPLETED',artifact});
+    store.publish({eventKey:'project:run-beacon-2:end',correlationId:'run-beacon-2',source:'project',sourceId:'run-beacon-2',kind:'BLOCKED',code:'PROJECT_BLOCKED'});
+    const beacon=store.beacon(1);
+    assert.equal(beacon.pending,2);
+    assert.equal(beacon.items.length,1);
+    assert.equal(beacon.items[0].correlationId,'run-beacon-2');
+    assert.equal(beacon.items[0].artifact,null);
+    assert.equal(beacon.hostWakeAvailable,false);
+    assert.equal(beacon.identityBoundary,'TRUSTED_PROFILE_NOT_AUTHENTICATED_CHAT');
+    assert.equal(JSON.stringify(beacon).includes('do-not-inline'),false);
+    const full=store.beacon(5);
+    const item=full.items.find(x=>x.deliveryId===first.deliveryId);
+    assert.equal(item.artifact.bytes,artifact.bytes);
+    assert.equal(item.artifact.sha256,artifact.sha256);
+  } finally { store.close(); f.dispose(); }
+});
+
 test('same event key with changed payload fails closed',()=>{
   const f=fixture(); const store=f.open();
   try{
