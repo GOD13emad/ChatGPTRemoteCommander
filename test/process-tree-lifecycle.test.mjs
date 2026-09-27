@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { runShell, startTerminal, stopTerminal } from '../src/power-tools-v0.3.mjs';
+import { runShell, startTerminal, readTerminal, sendTerminal, stopTerminal } from '../src/power-tools-v0.3.mjs';
 import { runProjectCommand } from '../src/tools-v0.3.mjs';
 
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -108,4 +108,47 @@ test('run_project_command timeout terminates the owned descendant process tree',
   assert.equal(result.timedOut, true);
   await wait(2200);
   assert.equal(exists(marker), false);
+});
+
+
+test('start_terminal command defaults to one-shot and exits without leaving a prompt shell', { timeout: 10000 }, async (t) => {
+  const root = await fixture(t);
+  const ctx = powerContext(root);
+  const command = process.platform === 'win32' ? "Write-Output 'ONE_SHOT_DONE'" : "printf 'ONE_SHOT_DONE\\n'";
+  const session = await startTerminal(ctx, { cwd: root, command });
+  assert.equal(session.interactive, false);
+  assert.equal(session.autoClose, true);
+  for (let i=0;i<120;i++) {
+    const state = await readTerminal(ctx, { id: session.id, consume: false });
+    if (!state.running) {
+      assert.match(state.stdout,/ONE_SHOT_DONE/);
+      assert.equal(state.interactive,false);
+      assert.equal(state.autoClose,true);
+      await assert.rejects(sendTerminal(ctx,{id:session.id,input:'x'}),/one-shot/);
+      await stopTerminal(ctx,{id:session.id,remove:true});
+      return;
+    }
+    await wait(25);
+  }
+  assert.fail('one-shot terminal did not exit');
+});
+
+test('start_terminal remains interactive only when explicitly requested with an initial command', { timeout: 10000 }, async (t) => {
+  const root = await fixture(t);
+  const ctx = powerContext(root);
+  const command = process.platform === 'win32' ? "Write-Output 'INTERACTIVE_READY'" : "printf 'INTERACTIVE_READY\\n'";
+  const session = await startTerminal(ctx, { cwd: root, command, interactive: true });
+  assert.equal(session.interactive,true);
+  assert.equal(session.autoClose,false);
+  for (let i=0;i<80;i++) {
+    const state=await readTerminal(ctx,{id:session.id,consume:false});
+    if (/INTERACTIVE_READY/.test(state.stdout)) {
+      assert.equal(state.running,true);
+      await stopTerminal(ctx,{id:session.id,remove:true});
+      return;
+    }
+    await wait(25);
+  }
+  await stopTerminal(ctx,{id:session.id,remove:true});
+  assert.fail('interactive terminal did not accept initial command');
 });
