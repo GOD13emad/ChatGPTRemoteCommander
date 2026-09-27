@@ -449,3 +449,18 @@ Historical checkpoints remain append-only archives. Current release/control clai
 **Reuse Targets:** stream/retry runbook, multi-chat operating policy, terminal lifecycle tests, release qualification, Project Brain.
 
 **Provenance:** `src/power-tools-v0.3.mjs`, `src/server-v0.3.mjs`, `plugin-template/skills/remote-commander/SKILL.md`, `src/stable-router.mjs`, local `retained-backends.json`; OpenAI Help Center network/troubleshooting documentation reviewed 2026-09-27.
+
+
+## E083 — Final branch authority reconciliation before v0.9.4 closeout
+
+**Date/Context:** 2026-09-27; closeout after repeated ChatGPT stream-recovery failures and parallel development.
+
+**Authority audit:** Windows default, Windows `saeed-emad`, and Linux canonical routes were all observed on exact commit `87ed15912591131e3cc3130692677d97db0ef028`, the head of `stream-resilience/v094-r1`. GitHub `main` was not authoritative: it diverged by five commits while the stream-resilience branch carried the current v0.9.4 implementation.
+
+**Main-only content audit:** The five main-only commits reduce to two logical changes. The Linux non-login-shell fix (`bash -c`) and its `LOGIN_SHELL_REGRESSION_PASS` test were already present in the v0.9.4 candidate. The Linux-first Remote Commander skill section was not present and is therefore merged into the current skill without removing the newer background-first, terminal one-shot, or three-direct-call stream-safety rules.
+
+**Open gates at this record:** Windows BootRecovery and UserSessionHandoff scheduled tasks were absent and require installation plus SYSTEM probe. Six historical retained backends were still recorded/listening and require lifecycle cleanup using the current one-shot-terminal implementation. Exact Windows/Linux qualification and GitHub main reconciliation remain required before FINAL.
+
+**Confidence/Status:** Facts CONFIRMED by live routes, GitHub compare/fetch, and Windows read-only state audit. FINAL remains UNPROVEN until the open gates above are closed.
+
+**Reuse Targets:** release closeout, Project Brain, installer/runbook, stream-resilience guidance.
