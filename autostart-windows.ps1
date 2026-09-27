@@ -1,7 +1,14 @@
 param(
   [ValidateRange(2,300)][int]$IntervalSeconds = 5,
   [switch]$SelfTest,
-  [string]$SelfTestProfile = ''
+  [string]$SelfTestProfile = '',
+  [switch]$CredentialSelfTest,
+  [string]$SelfTestOutput = '',
+  [string]$OwnerUserProfile = '',
+  [ValidateSet('CurrentUser','LocalMachine')][string]$CredentialScope = 'CurrentUser',
+  [string]$NpmPath = '',
+  [string]$NodePath = '',
+  [switch]$BootCore
 )
 $ErrorActionPreference = 'Stop'
 # Never inherit an isolated MCP config into the global supervisor. Primary startup
@@ -10,9 +17,19 @@ Remove-Item Env:REMOTE_COMMANDER_CONFIG -ErrorAction SilentlyContinue
 
 $Root = Split-Path -Parent $MyInvocation.MyCommand.Path
 $VarDir = Join-Path $Root 'var'
-$CredDir = Join-Path $env:LOCALAPPDATA 'ChatGPTRemoteCommander\credentials'
-$ProfileDir = Join-Path $env:APPDATA 'tunnel-client'
-$InstanceRoot = Join-Path $env:LOCALAPPDATA 'ChatGPTRemoteCommander\instances'
+if ([string]::IsNullOrWhiteSpace($OwnerUserProfile)) { $OwnerUserProfile = $env:USERPROFILE }
+$OwnerUserProfile = [IO.Path]::GetFullPath($OwnerUserProfile)
+$OwnerLocalAppData = Join-Path $OwnerUserProfile 'AppData\Local'
+$OwnerRoamingAppData = Join-Path $OwnerUserProfile 'AppData\Roaming'
+if ($BootCore) {
+  $env:USERPROFILE = $OwnerUserProfile
+  $env:LOCALAPPDATA = $OwnerLocalAppData
+  $env:APPDATA = $OwnerRoamingAppData
+  $env:HOME = $OwnerUserProfile
+}
+$CredDir = Join-Path $OwnerLocalAppData 'ChatGPTRemoteCommander\credentials'
+$ProfileDir = Join-Path $OwnerRoamingAppData 'tunnel-client'
+$InstanceRoot = Join-Path $OwnerLocalAppData 'ChatGPTRemoteCommander\instances'
 New-Item -ItemType Directory -Force -Path $VarDir,$CredDir,$InstanceRoot | Out-Null
 
 function Write-SupervisorLog([string]$Message) {
@@ -48,7 +65,8 @@ function Start-PrimaryMcp {
   if (Test-McpHealth 47831) { return }
   $listener = Get-NetTCPConnection -State Listen -LocalPort 47831 -ErrorAction SilentlyContinue | Select-Object -First 1
   if ($listener) { throw 'Port 47831 is occupied but primary Remote Commander health is unavailable; refusing unknown process.' }
-  $npm = (Get-Command npm.cmd -ErrorAction Stop).Source
+  $npm = if ($NpmPath) { [IO.Path]::GetFullPath($NpmPath) } else { (Get-Command npm.cmd -ErrorAction Stop).Source }
+  if (-not (Test-Path -LiteralPath $npm -PathType Leaf)) { throw 'npm executable missing for supervisor.' }
   $out = Join-Path $VarDir 'mcp-autostart.out.log'
   $err = Join-Path $VarDir 'mcp-autostart.err.log'
   Start-Process -FilePath $npm -ArgumentList @('start','--silent') -WorkingDirectory $Root -WindowStyle Hidden -RedirectStandardOutput $out -RedirectStandardError $err | Out-Null
@@ -80,7 +98,25 @@ function Find-TunnelExe {
 }
 
 function CredentialPath([string]$Profile) {
-  return Join-Path $CredDir "$Profile.dpapi"
+  $suffix = if ($CredentialScope -eq 'LocalMachine') { '.machine.dpapi' } else { '.dpapi' }
+  return Join-Path $CredDir ($Profile + $suffix)
+}
+
+function Read-CredentialPlainText([string]$Path) {
+  $raw = (Get-Content -LiteralPath $Path -Raw).Trim()
+  if ($CredentialScope -eq 'CurrentUser') {
+    $secure = ConvertTo-SecureString $raw
+    try { return [System.Net.NetworkCredential]::new('', $secure).Password }
+    finally { $secure = $null }
+  }
+  $cipher = [Convert]::FromBase64String($raw)
+  $clear = [Security.Cryptography.ProtectedData]::Unprotect(
+    $cipher, $null, [Security.Cryptography.DataProtectionScope]::LocalMachine)
+  try { return [Text.Encoding]::UTF8.GetString($clear) }
+  finally {
+    if ($cipher) { [Array]::Clear($cipher,0,$cipher.Length) }
+    if ($clear) { [Array]::Clear($clear,0,$clear.Length) }
+  }
 }
 
 function Get-ProfileHealthPort([string]$ProfileFile) {
@@ -143,7 +179,8 @@ function Start-McpInstance($Instance) {
     Stop-OwnedMcpInstance $Instance ([int]$listener.OwningProcess)
     Write-SupervisorLog "MCP_INSTANCE_RECYCLE profile=$($Instance.Profile) oldPid=$($listener.OwningProcess) port=$($Instance.Port)"
   }
-  $node = (Get-Command node.exe -ErrorAction Stop).Source
+  $node = if ($NodePath) { [IO.Path]::GetFullPath($NodePath) } else { (Get-Command node.exe -ErrorAction Stop).Source }
+  if (-not (Test-Path -LiteralPath $node -PathType Leaf)) { throw 'node executable missing for supervisor.' }
   $server = Join-Path $Root 'src\server-v0.3.mjs'
   $psi = [Diagnostics.ProcessStartInfo]::new()
   $psi.FileName = $node
@@ -230,9 +267,7 @@ function Start-TunnelProfile($Item) {
     throw "profile $($Item.Profile) process exists but readiness failed"
   }
 
-  $encrypted = Get-Content -LiteralPath $Item.Credential -Raw
-  $secure = ConvertTo-SecureString $encrypted
-  $plain = [System.Net.NetworkCredential]::new('', $secure).Password
+  $plain = Read-CredentialPlainText $Item.Credential
 
   try {
     if ([string]::IsNullOrWhiteSpace($plain)) {
@@ -278,20 +313,49 @@ function Start-TunnelProfile($Item) {
     Write-SupervisorLog "TUNNEL_READY profile=$($Item.Profile) pid=$($process.Id) port=$($Item.HealthPort)"
   } finally {
     $plain = $null
-    $secure = $null
   }
 }
 
 . (Join-Path $Root 'supervisor-routing.ps1')
 
 if ($SelfTest) {
-  $profiles = @(Get-ManagedProfiles | ForEach-Object { [pscustomobject]@{ profile=$_.Profile; mcpPort=$_.McpPort; healthPort=$_.HealthPort; isolated=[bool]$_.Instance } })
+  $profiles = @(Get-ManagedProfiles | ForEach-Object {
+    $credentialReady = Test-Path -LiteralPath $_.Credential -PathType Leaf
+    if ($CredentialSelfTest -and $credentialReady) {
+      $secret = $null
+      try {
+        $secret = Read-CredentialPlainText $_.Credential
+        $credentialReady = -not [string]::IsNullOrWhiteSpace($secret)
+      } catch { $credentialReady = $false }
+      finally { $secret = $null }
+    }
+    [pscustomobject]@{ profile=$_.Profile; mcpPort=$_.McpPort; healthPort=$_.HealthPort; isolated=[bool]$_.Instance; credentialReady=$credentialReady }
+  })
   $instance = $null
   if ($SelfTestProfile) {
     if (-not (Test-ProfileName $SelfTestProfile)) { throw 'Invalid SelfTestProfile.' }
     $instance = Get-InstanceRecord $SelfTestProfile
   }
-  $routes=@(); foreach($p in @('default')+@($profiles.profile)){try{$r=Get-RouteState $p;if($r){$routes+=[pscustomobject]@{profile=$p;generation=$r.State.generation;active=$r.Active}}}catch{}}; [pscustomobject]@{ ok=$true; profiles=$profiles; instance=$instance; routes=$routes; autoUpdateScript=(Test-Path (Join-Path $Root 'auto-update-windows.ps1')) } | ConvertTo-Json -Depth 8 -Compress
+  $routes=@(); foreach($p in @('default')+@($profiles.profile)){try{$r=Get-RouteState $p;if($r){$routes+=[pscustomobject]@{profile=$p;generation=$r.State.generation;active=$r.Active}}}catch{}}
+  $result=[pscustomobject]@{
+    ok=(@($profiles | Where-Object { -not $_.credentialReady }).Count -eq 0)
+    bootCore=[bool]$BootCore
+    credentialScope=$CredentialScope
+    ownerUserProfile=$OwnerUserProfile
+    profiles=$profiles
+    instance=$instance
+    routes=$routes
+    autoUpdateScript=(Test-Path (Join-Path $Root 'auto-update-windows.ps1'))
+  }
+  $json=$result | ConvertTo-Json -Depth 8 -Compress
+  if ($SelfTestOutput) {
+    $outPath=[IO.Path]::GetFullPath($SelfTestOutput)
+    $outDir=Split-Path -Parent $outPath
+    New-Item -ItemType Directory -Force -Path $outDir | Out-Null
+    [IO.File]::WriteAllText($outPath,$json+[Environment]::NewLine,[Text.UTF8Encoding]::new($false))
+  }
+  Write-Output $json
+  if (-not $result.ok) { exit 3 }
   exit 0
 }
 
