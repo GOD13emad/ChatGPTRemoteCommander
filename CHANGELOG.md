@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.9.6 — 2026-09-27
+- Add a schema-compatible completion beacon to the existing `system_status` result so chats with a cached older MCP tool catalog can still discover bounded metadata for durable completed-but-undelivered work.
+- Require continuation turns to check the completion beacon before unrelated work, preserve correlation isolation, and visibly close every execution turn as COMPLETED/BACKGROUND/BLOCKED/WAITING/FAILED instead of silently extending one UI stream.
+- Keep full result artifacts private and correlation-scoped; the beacon exposes metadata only and does not inline command output, project contents, or secrets.
+- Preserve the three-direct-call chat-stream budget, durable background execution, idempotent mutation replay protection, Full Power capabilities, Windows/Linux power recovery hardening, and zero-downtime update guards from v0.9.5.
+- Explicitly retain the platform boundary: autonomous wake/push into a ChatGPT conversation remains unavailable unless the host negotiates a supported task/subscription capability; durable inbox/beacon recovery is the safe fallback.
+
 ## 0.9.5 — 2026-09-27
 - Fix Windows real-power-return recovery by resolving the pinned tunnel client from stable per-user app state and binding SYSTEM BootRecovery/UserSessionHandoff tasks to the stable app root so future zero-downtime promotions do not leave task-path drift.
 - Harden Linux unattended recovery: enable systemd user lingering during autostart enrollment and recycle only Commander-owned tunnels whose control-plane success metric is stale while a network route is present; local /readyz alone is no longer treated as proof of control-plane freshness.
