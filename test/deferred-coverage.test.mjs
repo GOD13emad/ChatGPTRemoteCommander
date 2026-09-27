@@ -30,6 +30,10 @@ test('uncertain-duration direct work is deferred or hard-bounded',()=>{
   assert.equal(synchronousCommandInput({timeoutMs:15000}).timeoutMs,15000);
   assert.equal(max(def(powerToolDefinitions,'search_files'),'maxDurationMs'),10000);
   assert.match(power,/PROCESS_LIST_TIMEOUT/);
+  const startTerminalDef=def(powerToolDefinitions,'start_terminal');
+  assert.equal(startTerminalDef.inputSchema.properties.interactive?.type,'boolean');
+  assert.match(startTerminalDef.description,/one-shot/);
+  assert.match(power,/terminal session is one-shot and does not accept input/);
   assert.match(power,/terminateProcessTree\(session\.child\.pid/);
   assert.match(power,/setTimeout\(resolve, 1500\)/);
   assert.match(power,/setTimeout\(resolve, 500\)/);
