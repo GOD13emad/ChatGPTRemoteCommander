@@ -11,7 +11,7 @@ const wait=ms=>new Promise(r=>setTimeout(r,ms));
 test('agent extension tools are exposed read-only and return validated manifests',async()=>{
   const root=await fs.mkdtemp(path.join(os.tmpdir(),'rc-agent-http-'));
   const extensionRoot=path.join(root,'extensions');
-  const extensionDir=path.join(extensionRoot,'video-trend');
+  const extensionDir=path.join(extensionRoot,'fixture-extension');
   const listener=net.createServer();listener.listen(0,'127.0.0.1');await once(listener,'listening');
   const port=listener.address().port;await new Promise(r=>listener.close(r));
   let child;
@@ -30,12 +30,12 @@ test('agent extension tools are exposed read-only and return validated manifests
     await fs.writeFile(path.join(root,'src','mutation-idempotency.mjs'),'export class MutationIdempotencyStore { constructor(){} status(){return {enabled:true,durable:true,rawArgumentsStored:false,states:{}};} async execute(_request,effect){return effect();} }');
 
     await fs.mkdir(extensionDir,{recursive:true});
-    await fs.writeFile(path.join(extensionDir,'SKILL.md'),'# Video Trend\n');
+    await fs.writeFile(path.join(extensionDir,'SKILL.md'),'# Fixture Extension\n');
     await fs.writeFile(path.join(extensionDir,'agent.json'),JSON.stringify({
-      schemaVersion:1,id:'video-trend',version:'1.0.0',displayName:'Video Trend',
-      description:'Reusable local video trend production.',
-      capabilities:['video.trend','video.reference-preserve'],skill:'SKILL.md',
-      safetyGates:['identity.consent-required'],artifacts:['FINAL.mp4']
+      schemaVersion:1,id:'fixture-extension',version:'1.0.0',displayName:'Fixture Extension',
+      description:'Generic reusable capability-pack fixture.',
+      capabilities:['fixture.capability.alpha','fixture.capability.beta'],skill:'SKILL.md',
+      safetyGates:['fixture.approval-required'],artifacts:['result.bin']
     }));
 
     await fs.writeFile(path.join(root,'config.json'),JSON.stringify({
@@ -71,11 +71,11 @@ test('agent extension tools are exposed read-only and return validated manifests
     assert.equal(status.configSchema.agentExtensions,1);
     assert.equal(status.agentExtensions.count,1);
     const extList=(await call('agent_extension_list')).result.structuredContent;
-    assert.deepEqual(extList.items.map(x=>x.id),['video-trend']);
-    const ext=(await call('agent_extension_get',{id:'video-trend'})).result.structuredContent;
-    assert.equal(ext.safetyGates[0],'identity.consent-required');
-    const match=(await call('agent_extension_match',{capabilities:['video.reference-preserve']})).result.structuredContent;
-    assert.deepEqual(match.items.map(x=>x.id),['video-trend']);
+    assert.deepEqual(extList.items.map(x=>x.id),['fixture-extension']);
+    const ext=(await call('agent_extension_get',{id:'fixture-extension'})).result.structuredContent;
+    assert.equal(ext.safetyGates[0],'fixture.approval-required');
+    const match=(await call('agent_extension_match',{capabilities:['fixture.capability.beta']})).result.structuredContent;
+    assert.deepEqual(match.items.map(x=>x.id),['fixture-extension']);
   } finally {
     if(child){child.kill();await Promise.race([once(child,'close'),wait(5000)]);}
     await fs.rm(root,{recursive:true,force:true});

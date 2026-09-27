@@ -21,7 +21,7 @@ import { MutationIdempotencyStore } from './mutation-idempotency.mjs';
 import { createAgentExtensionRegistry } from './agent-extensions.mjs';
 
 let workflowTools = null;
-const VERSION = '0.9.7';
+const VERSION = '0.9.8';
 const MODERN_VERSION = '2026-07-28';
 const LEGACY_VERSIONS = ['2025-11-25', '2025-06-18', '2025-03-26'];
 const MODERN_CACHE_HINT = Object.freeze({ ttlMs: 30000, cacheScope: 'private' });
@@ -55,7 +55,7 @@ const configuredAgentExtensionDirectories = config.agentExtensions?.enabled === 
   ? []
   : (Array.isArray(config.agentExtensions?.directories) && config.agentExtensions.directories.length
     ? config.agentExtensions.directories
-    : [path.join(projectDir, 'agent-extensions'), path.join(os.homedir(), '.agents', 'extensions')]);
+    : [path.join(os.homedir(), '.agents', 'extensions')]);
 const agentExtensionDirectories = configuredAgentExtensionDirectories.map(value => {
   const expanded = expandEnvironment(value);
   return path.isAbsolute(expanded) ? path.resolve(expanded) : path.resolve(projectDir, expanded);

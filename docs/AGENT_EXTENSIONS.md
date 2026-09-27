@@ -2,17 +2,22 @@
 
 Status: Agent Extension Contract v1
 
-Remote Commander-Agent Extensions are declarative capability packs. They make reusable domain agents discoverable without granting them new execution authority. The Core remains responsible for filesystem, command, browser, GUI, workflow, idempotency, recovery, audit, and Project Engine policy.
+Remote Commander-Agent Extensions are declarative capability packs discovered and validated by Commander. Domain-agent implementation, assets, project evidence and product-specific pipelines live in their own project/repository; they are not part of the Remote Commander Core repository.
+
+## Ownership boundary
+
+Remote Commander Core owns discovery, manifest validation, capability matching, policy intersection, durable job/evidence integration hooks, lifecycle safety and shared-runtime metadata. A domain Agent owns its own code, prompts/skills, pipelines, assets, tests and domain acceptance.
+
+Plugin/package distribution is separate from Agent identity. An Agent Extension may be invoked through ChatGPT, CLI, GUI or scheduler without moving its implementation into Core.
 
 ## Contract
 
-Each extension is one directory containing an `agent.json` manifest. It may also contain a `SKILL.md`, references, scripts, or schemas.
+Each installed extension is one external directory containing an `agent.json` manifest. It may also contain its own `SKILL.md`, references, scripts or schemas.
 
-Default discovery roots:
-- `<Remote Commander checkout>/agent-extensions`
+Default discovery root:
 - `~/.agents/extensions`
 
-An administrator may override them with `agentExtensions.directories` in the local config. Set `agentExtensions.enabled=false` to disable discovery.
+Administrators may override discovery with `agentExtensions.directories` in local configuration. Relative configured paths resolve against the Commander checkout for compatibility, but product installations should use explicit external absolute paths. Set `agentExtensions.enabled=false` to disable discovery.
 
 ## Required manifest fields
 
@@ -23,13 +28,13 @@ An administrator may override them with `agentExtensions.directories` in the loc
 - `description`
 - `capabilities`: unique declarative capability ids
 
-Optional fields include triggers, a contained skill path, a project root, router metadata, runtime/model/tool dependencies, hardware requirements, safety gates, and expected artifacts.
+Optional fields include triggers, a contained skill path, external project root, router metadata, runtime/model/tool dependencies, hardware requirements, safety gates and expected artifacts.
 
 ## Security boundary
 
-The registry is read-only. A manifest cannot execute code, expand Commander authority, enable GUI takeover, bypass project roots, or bypass workflow checks. It only describes a capability. Execution must still use an authorized Commander tool, durable workflow, Project Engine run, or another explicitly permitted surface.
+The registry is read-only. A manifest cannot execute code, expand Commander authority, enable GUI takeover, bypass project-root leases, bypass workflow checks or grant itself permissions. It only describes a capability. Execution must still use an authorized Commander surface and the effective permission set is bounded by Commander policy.
 
-Invalid manifests are excluded and reported as diagnostics. Duplicate extension ids fail closed rather than selecting one by path order. Skill paths must remain inside the extension directory. Manifests must be regular single-link bounded files.
+Invalid manifests are excluded and reported as diagnostics. Duplicate extension ids fail closed rather than selecting by path order. Skill paths must remain inside the extension package. Manifests must be regular, single-link and bounded files.
 
 ## Tools
 
@@ -37,17 +42,14 @@ Invalid manifests are excluded and reported as diagnostics. Duplicate extension 
 - `agent_extension_get`: return one validated manifest.
 - `agent_extension_match`: find extensions declaring all requested capabilities.
 
-`system_status` reports Agent Extension schema/count/diagnostics.
+`system_status` reports the Agent Extension contract schema, discovery directories, valid count and diagnostics.
 
-## Development flow
+## Development and lifecycle
 
-1. Keep the production Remote Commander checkout immutable while developing.
-2. Build an extension in a separate project/worktree.
-3. Install the declarative pack under `~/.agents/extensions/<id>`.
-4. Validate the manifest and relevant skill.
-5. Run a representative short job before long/high-cost work.
-6. Promote only after domain-specific evidence gates pass.
-
-## Video Trend reference extension
-
-The first acceptance extension is `video-trend`. It routes between reference-preserving edits, motion transfer, lip-sync, full generation, enhancement and social export while reusing the shared ComfyUI/model inventory. Real-person identity editing remains gated by explicit permission/authority and source/reference rights review.
+1. Keep Remote Commander Core immutable while developing domain Agents.
+2. Build/test each Agent in its own project/repository.
+3. Install or link its declarative package under `~/.agents/extensions/<id>` or an explicit configured external directory.
+4. Validate the manifest and relevant skill/policy requirements.
+5. Resolve declared shared runtimes without duplicating heavyweight dependencies when a compatible authoritative runtime already exists.
+6. Run representative domain acceptance in the Agent project, not in the Core repository.
+7. Commander release qualification uses generic fixtures only.

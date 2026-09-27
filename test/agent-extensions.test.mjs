@@ -12,41 +12,41 @@ function writeExtension(base,name,manifest,{skill=true}={}) {
   fs.writeFileSync(path.join(dir,'agent.json'),JSON.stringify(manifest,null,2),'utf8');
   return dir;
 }
-function manifest(id='video-trend') {
+function manifest(id='fixture-extension') {
   return {
     schemaVersion:1,
     id,
     version:'1.0.0',
-    displayName:'Video Trend',
-    description:'Routes reusable local video trend production.',
-    capabilities:['video.trend','video.reference-preserve','video.motion-transfer'],
-    triggers:['recreate this trend','make this reel'],
+    displayName:'Fixture Extension',
+    description:'Generic reusable capability-pack fixture.',
+    capabilities:['fixture.capability.alpha','fixture.capability.beta','fixture.capability.gamma'],
+    triggers:['run fixture','run sample'],
     skill:'SKILL.md',
-    projectRoot:path.resolve('C:/My Project/VIDEO_TREND_AGENT'),
+    projectRoot:path.join(os.tmpdir(),'rc-fixture-project'),
     router:{program:'python',args:['router.py']},
     runtimeDependencies:[
-      {id:'comfyui.shared',kind:'runtime',required:true,path:'C:/My Project/AI_BUSINESS_AGENT/RUNTIME/VISUAL_COMFYUI_R16'},
-      {id:'ffmpeg',kind:'tool',required:true}
+      {id:'runtime.shared',kind:'runtime',required:true,path:path.join(os.tmpdir(),'rc-shared-runtime')},
+      {id:'tool.example',kind:'tool',required:true}
     ],
-    hardware:{gpu:'nvidia',minVramMiB:8192,platforms:['win32']},
-    safetyGates:['identity.consent-required'],
-    artifacts:['FINAL.mp4','evidence.json']
+    hardware:{minRamMiB:1024,platforms:[process.platform]},
+    safetyGates:['fixture.approval-required'],
+    artifacts:['result.bin','evidence.json']
   };
 }
 
 test('valid manifest is discovered and matched by all requested capabilities',()=>{
   const base=tempRoot();
   try {
-    writeExtension(base,'video-trend',manifest());
+    writeExtension(base,'fixture-extension',manifest());
     const registry=createAgentExtensionRegistry({directories:[base]});
     const list=registry.execute('agent_extension_list',{});
     assert.equal(list.items.length,1);
     assert.equal(list.diagnostics.length,0);
-    assert.equal(list.items[0].id,'video-trend');
+    assert.equal(list.items[0].id,'fixture-extension');
     assert.ok(path.isAbsolute(list.items[0].skillPath));
-    const match=registry.execute('agent_extension_match',{capabilities:['video.trend','video.motion-transfer']});
-    assert.deepEqual(match.items.map(x=>x.id),['video-trend']);
-    assert.equal(registry.execute('agent_extension_get',{id:'video-trend'}).version,'1.0.0');
+    const match=registry.execute('agent_extension_match',{capabilities:['fixture.capability.alpha','fixture.capability.gamma']});
+    assert.deepEqual(match.items.map(x=>x.id),['fixture-extension']);
+    assert.equal(registry.execute('agent_extension_get',{id:'fixture-extension'}).version,'1.0.0');
   } finally { fs.rmSync(base,{recursive:true,force:true}); }
 });
 
@@ -56,7 +56,7 @@ test('unknown fields and escaping skill paths fail validation',()=>{
     const value=manifest();
     value.extra=true;
     value.skill='../outside.md';
-    const validation=validateAgentExtensionManifest(value,path.join(base,'video-trend'));
+    const validation=validateAgentExtensionManifest(value,path.join(base,'fixture-extension'));
     assert.equal(validation.valid,false);
     const codes=validation.errors.map(x=>x.code);
     assert.ok(codes.includes('AGENT_EXTENSION_UNKNOWN_FIELD'));
@@ -80,8 +80,8 @@ test('invalid extension is excluded without breaking registry',()=>{
 test('duplicate ids fail closed instead of selecting by path order',()=>{
   const a=tempRoot(),b=tempRoot();
   try {
-    writeExtension(a,'one',manifest('video-trend'));
-    writeExtension(b,'two',manifest('video-trend'));
+    writeExtension(a,'one',manifest('fixture-extension'));
+    writeExtension(b,'two',manifest('fixture-extension'));
     const registry=createAgentExtensionRegistry({directories:[a,b]});
     const list=registry.execute('agent_extension_list',{});
     assert.equal(list.items.length,0);
@@ -116,9 +116,9 @@ test('manifest file must be a regular bounded single-link file',()=>{
 test('three-way duplicate ids remain fully conflicted and never re-enter the catalog',()=>{
   const a=tempRoot(),b=tempRoot(),c=tempRoot();
   try {
-    writeExtension(a,'one',manifest('video-trend'));
-    writeExtension(b,'two',manifest('video-trend'));
-    writeExtension(c,'three',manifest('video-trend'));
+    writeExtension(a,'one',manifest('fixture-extension'));
+    writeExtension(b,'two',manifest('fixture-extension'));
+    writeExtension(c,'three',manifest('fixture-extension'));
     const registry=createAgentExtensionRegistry({directories:[a,b,c]});
     const list=registry.execute('agent_extension_list',{});
     assert.equal(list.items.length,0);
@@ -134,7 +134,7 @@ test('three-way duplicate ids remain fully conflicted and never re-enter the cat
 test('skill path cannot escape through a junction or symlinked parent', t=>{
   const base=tempRoot(), outside=tempRoot();
   try {
-    const dir=path.join(base,'video-trend');
+    const dir=path.join(base,'fixture-extension');
     fs.mkdirSync(dir,{recursive:true});
     fs.writeFileSync(path.join(outside,'SKILL.md'),'# outside\n');
     let linked=false;
