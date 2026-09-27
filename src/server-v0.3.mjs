@@ -24,7 +24,7 @@ const VERSION = '0.9.4';
 const MODERN_VERSION = '2026-07-28';
 const LEGACY_VERSIONS = ['2025-11-25', '2025-06-18', '2025-03-26'];
 const MODERN_CACHE_HINT = Object.freeze({ ttlMs: 30000, cacheScope: 'private' });
-const CHAT_STREAM_SAFE_DIRECT_CALL_BUDGET = 6;
+const CHAT_STREAM_SAFE_DIRECT_CALL_BUDGET = 3;
 const chatStreamSafetyInstruction = () => ` Chat-stream safety: use at most ${CHAT_STREAM_SAFE_DIRECT_CALL_BUDGET} direct synchronous MCP tool calls in one assistant turn. For work that needs more calls, substantial output, or unknown duration, persist/continue it through durable workflows, Project Engine, or operation_start and return a compact checkpoint/delivery identity instead of holding one chat stream open. Do not rapidly poll status; use sparse bounded status/result reads.`;
 const here = path.dirname(fileURLToPath(import.meta.url));
 const projectDir = path.resolve(here, '..');
