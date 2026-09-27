@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.9.5 — 2026-09-27
+- Fix Windows real-power-return recovery by resolving the pinned tunnel client from stable per-user app state and binding SYSTEM BootRecovery/UserSessionHandoff tasks to the stable app root so future zero-downtime promotions do not leave task-path drift.
+- Harden Linux unattended recovery: enable systemd user lingering during autostart enrollment and recycle only Commander-owned tunnels whose control-plane success metric is stale while a network route is present; local /readyz alone is no longer treated as proof of control-plane freshness.
+- Preserve Full Power semantics with no disabled capabilities, candidate-first updates, unchanged-schema continuity checks, durable workflows, Project Brain, background-first browser/GUI policy, and fail-closed mutation replay.
+- Supersede the stale v0.9.4 release channel so stable auto-update no longer repeatedly qualifies an older schema-changing commit.
+
 ## 0.9.4 — 2026-09-26
 - Add a private durable completion/delivery inbox with idempotent claim/ack, content-addressed bounded artifacts, and restart-safe detached-operation receipt backfill.
 - Carry opaque correlation IDs through detached operations and Project Engine runs; publish WAITING_INPUT/BLOCKED and mapped terminal project states into durable delivery.
