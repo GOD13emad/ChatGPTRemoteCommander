@@ -477,3 +477,26 @@ Historical checkpoints remain append-only archives. Current release/control clai
 **Confidence/Status:** Root cause CONFIRMED; exact candidate requires Windows/Linux qualification before promotion.
 
 **Reuse Targets:** Linux install/update guide, parity matrix, release evidence.
+
+
+## E084 — v0.9.5 live stream-loss root cause refinement and mandatory closeout
+
+**Date/Context:** 2026-09-27; user reproduced `Stream cache expired` after v0.9.5 stream-resilience rollout and reported a persistent symptom: long work often progresses on the machine but no final status is ever presented in the initiating chat turn.
+
+**Confirmed live product state:** Windows and Linux default profiles both report v0.9.5 FULL_POWER with `disabledCapabilities=[]`, durable/background operations enabled, `directSyncCallBudget=3`, `rapidPollingAllowed=false`, `longWorkMode=durable-background`, and `hostWakeAssumed=false`. Windows default reported 106 `COMPLETED_UNDELIVERED` delivery records and Linux default reported 7; both reported `unfinishedRequests=0`. Therefore a material class of work is finishing durably while presentation remains pending.
+
+**Root-cause decomposition:** (1) earlier local Commander pressure from prompt-idle persistent terminals was real and was fixed by one-shot terminal defaults plus the three-direct-call stream budget; (2) a ChatGPT response stream/cache can still expire outside Commander authority; (3) Commander already retains completed results, but an expired/dead ChatGPT turn cannot currently be autonomously woken by the MCP server because no supported host wake/push capability is proven and `hostWakeAssumed=false` is intentional. A lost chat answer is therefore not evidence that the underlying effect failed.
+
+**External evidence:** OpenAI status was operational at the observation time, so the reproduced error is not attributed to a current global outage. Recent official incident history nevertheless includes ChatGPT conversation and Work failures, including task start/resume errors; OpenAI troubleshooting documents transient server/network/WebSocket failure modes. The exact `Stream cache expired` implementation/TTL is not publicly documented in the reviewed official material, so its internal cache semantics remain UNVERIFIED.
+
+**Decision / minimum sufficient prevention:** Do not attempt to keep one assistant response alive through a substantial project. Unknown-duration work receives a durable identity quickly; the assistant then stops direct tool calls within the turn budget and must emit a user-visible closeout in the same turn. Every closeout reports status, exact durable identity when available, completed scope, blocker/background state, and exact next action. After a stream-loss error, the next turn begins from authoritative workflow/operation/delivery state and never blindly replays mutations.
+
+**Implementation candidate:** branch `stream-closeout-v096-r1` adds `Mandatory visible-turn closeout` to the Remote Commander skill; `test/onboarding-plugin-check.mjs` regression-locks the contract. CSDC-039 is IN_PROGRESS pending live ChatGPT qualification. CSDC-005 remains BLOCKED_EXTERNAL for autonomous host wake/push; CSDC-013 remains the native MCP Tasks/subscriptions capability probe.
+
+**Prior-release closeout:** immutable GitHub Stable release `v0.9.5` targets `9d9bbe29dd2ba9bd03d249cdc95ac7551c594ce4`. Linux is fully on the exact commit with previous route cleared, linger enabled and user service active. Windows default and `saeed-emad` active routes are on v0.9.5; `saeed-emad` previous is cleared. Windows default intentionally retains the v0.9.4 compatibility backend while it owns a legitimate COMSOL run (`RUN_C11R1.ps1` → `comsolbatch.exe` → `comsolmethodexec.exe`); killing it for cleanup would violate workload preservation. This is a deliberate drain, not a failed v0.9.5 cutover.
+
+**Confidence/Status:** local delivery backlog, live capability state and v0.9.5 rollout = CONFIRMED. Exact ChatGPT `Stream cache expired` cache mechanism = UNVERIFIED. Host autonomous wake = currently unavailable/unproven by design. Visible-turn closeout contract = CANDIDATE until live qualification.
+
+**Reuse Targets:** stream/retry runbook, Project Brain, Plugin skill, release gating, comparison against background/cloud agents, user-visible completion policy.
+
+**Provenance:** live `system_status` Windows/Linux 2026-09-27; live routes/update evidence; `src/delivery-store.mjs`, `src/delivery-tools.mjs`, `docs/CHAT_SAFE_DURABLE_COMPLETION_REGISTER.md`, `plugin-template/skills/remote-commander/SKILL.md`; OpenAI status/troubleshooting/incident history reviewed 2026-09-27.
