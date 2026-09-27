@@ -1,0 +1,37 @@
+name: Release Sync
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+      - name: Publish matching qualified tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(node -p "require('./package.json').version")"
+          tag="v$version"
+          notes="docs/RELEASE_${version}.md"
+          if ! git show-ref --verify --quiet "refs/tags/$tag"; then
+            echo "RELEASE_SYNC_SKIP tag_missing=$tag"
+            exit 0
+          fi
+          if gh release view "$tag" --repo "$GH_REPO" >/dev/null 2>&1; then
+            echo "RELEASE_SYNC_ALREADY_PUBLISHED tag=$tag"
+            exit 0
+          fi
+          test -f "$notes"
+          gh release create "$tag" --repo "$GH_REPO" --verify-tag             --title "Remote Commander $tag"             --notes-file "$notes"
+          echo "RELEASE_SYNC_PUBLISHED tag=$tag"
