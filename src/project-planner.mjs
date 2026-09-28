@@ -119,7 +119,7 @@ async function readFinalFile(finalPath, remainingBytes) {
   } finally { await file.close(); }
 }
 
-function runProcess(executable, args, input, { cwd, timeoutMs, maxOutputBytes, signal }) {
+function runProcess(executable, args, input, { cwd, timeoutMs, maxOutputBytes, signal, allowCodex = false }) {
   return new Promise((resolve, reject) => {
     let child, timer, killTimer, failure, done = false, bytes = 0;
     const chunks = [];
@@ -155,7 +155,7 @@ function runProcess(executable, args, input, { cwd, timeoutMs, maxOutputBytes, s
     try {
       child = spawn(executable, args, {
         cwd, shell: false, windowsHide: true, detached: process.platform !== 'win32',
-        stdio: ['pipe', 'pipe', 'pipe'], env: commanderChildEnv()
+        stdio: ['pipe', 'pipe', 'pipe'], env: commanderChildEnv(process.cwd(), process.env, { allowCodex })
       });
     } catch { settle(fail('PLANNER_START_FAILED')); return; }
     child.once('error', () => settle(fail('PLANNER_START_FAILED')));
@@ -188,12 +188,12 @@ function runProcess(executable, args, input, { cwd, timeoutMs, maxOutputBytes, s
  * validates policy, revisions and action arguments before dispatching anything.
  * A command provider is operator-supplied code, not an isolation boundary.
  */
-export function createCommandPlanner(config) {
-  if (config?.kind === 'codex') throw fail('PLANNER_PROVIDER_FORBIDDEN');
-  if (!config || !['claude', 'command'].includes(config.kind)) throw fail('PLANNER_INVALID_CONFIG');
+export function createCommandPlanner(config, { allowCodex = false } = {}) {
+  if (config?.kind === 'codex' && !allowCodex) throw fail('PLANNER_PROVIDER_FORBIDDEN');
+  if (!config || !['codex', 'claude', 'command'].includes(config.kind)) throw fail('PLANNER_INVALID_CONFIG');
   const { kind, executable, model } = config;
   const args = config.args ?? [];
-  assertNoCodexExecutable(executable);
+  assertNoCodexExecutable(executable, { allowCodex });
   if (typeof executable !== 'string' || !executable || executable.includes('\0')
       || !Array.isArray(args) || args.length > 64
       || args.some(arg => typeof arg !== 'string' || arg.includes('\0') || arg.length > 8192)
@@ -222,7 +222,7 @@ export function createCommandPlanner(config) {
       if (Buffer.byteLength(serialized, 'utf8') > MAX_INPUT_BYTES) throw fail('PLANNER_INPUT_LIMIT');
       let scratch, scratchRoot, cleanupSafe = true;
       try {
-        await assertNoCodexDelegatingScript(executable, launchArgs, process.cwd());
+        await assertNoCodexDelegatingScript(executable, launchArgs, process.cwd(), { allowCodex });
         scratchRoot = await realpath(os.tmpdir());
         scratch = await realpath(await mkdtemp(path.join(scratchRoot, 'rc-project-planner-')));
         let commandArgs = [...launchArgs];
@@ -241,7 +241,7 @@ export function createCommandPlanner(config) {
           commandArgs.push('-');
           input = INSTRUCTIONS + serialized;
         }
-        const result = await runProcess(executable, commandArgs, input, { cwd: scratch, timeoutMs, maxOutputBytes, signal });
+        const result = await runProcess(executable, commandArgs, input, { cwd: scratch, timeoutMs, maxOutputBytes, signal, allowCodex });
         if (signal?.aborted) throw fail('PLANNER_ABORTED');
         if (kind === 'command') return parseProposal(result.stdout);
         inspectCodexEvents(result.stdout);

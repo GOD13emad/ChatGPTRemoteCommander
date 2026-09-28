@@ -233,3 +233,64 @@ Historical checkpoints are preserved in the [archived project state](history/PRO
 - External official set: `ansys-modeling` v1.1.1, `comsol-modeling` v1.1.1, `project-execution-brain` current installed version, `final-thesis-report` v1.0.0. `video-trend` remains owner-private/excluded.
 - Focused regression: Agent Extension suite 13/13 PASS; installer/onboarding/release-asset checks PASS.
 - FINAL status: UNPROVEN until exact-SHA full gates, hosted CI, immutable publication verification and rollout pass.
+
+
+## 2026-09-28 — v0.9.21 runner-authorization closure
+
+- Previous accepted source baseline: main@4a93d5475447f751e81ceaa87495b8c684fd1e87 (0.9.20).
+- Current mutation objective: repair the owner-authorized Codex Project Engine contract without weakening default-deny.
+- Authority: one clean writer clone ChatGPTRemoteCommander-finalize-20260928; legacy dirty checkout is non-authoritative and untouched.
+- Validation gate before promotion: focused policy/runner/planner/Project Engine tests, full npm run check, npm test, npm run audit, git diff --check, then GitHub CI and live runtime readback.
+- Residual external gate: native host wake/push (hostWakeAvailable=false) is outside Commander authority. Long-soak qualification remains evidence-dependent and cannot be marked PASS without elapsed evidence.
+
+
+## 2026-09-28 — local promotion gate result
+
+- Local release candidate 0.9.21: **PASS for immediate reproducible gates**.
+- Gate marker: FINAL_GATE_PASS 2026-09-28T21:50:18.6502700+03:30.
+- Gate log SHA-256: 406a95addaff1ccc343969c2d4097bf401eac2145b36e5ad18431429108bb569.
+- Zero test failures in the final gate; platform skips were retained rather than converted to PASS.
+- Promotion state: GitHub/CI/live deployment still OPEN.
+- Long-soak and external host wake: UNPROVEN / external.
+
+## 2026-09-28 — Hosted pre-promotion security-audit correction
+
+- First hosted v0.9.21 attempt: Ubuntu CI and clean-Ubuntu canary failed at security audit only.
+- Root cause: a personal absolute checkout path was written into repository-facing Brain content.
+- Corrective action: anonymize repository provenance, amend the still-unmerged release commit, force-push with lease, and rerun local/hosted audit gates.
+- Merge remains BLOCKED until the amended SHA passes CI and server-install canary.
+
+
+## 2026-09-28 — Hosted Windows browser qualification blocker
+
+- Amended SHA d297ec212ec4d3a670a1a5081d1d00888851298e: Ubuntu CI PASS; clean-Ubuntu server canary PASS.
+- Windows CI blocker: one test used an 80 ms request timeout for both setup/start and the intended hang timeout; production has no 80 ms response contract.
+- Windows Server blocker: one profile-owned cleanup test asserted raw PID nonexistence rather than exact profile-owned process identity.
+- Mutation: test-only qualification correction; production browser lifecycle code and production timeouts remain unchanged.
+- Promotion remains BLOCKED until targeted stress + local final gate + hosted Windows CI + Windows Server canary pass.
+
+
+## 2026-09-28 — Local gate requalification PASS
+
+- Browser qualification regression: 7/7 PASS; targeted hosted-Windows scenarios stress: 20/20 PASS.
+- Full local release gate: PASS with Project Engine 222/0/1-skip and full suite 481/0/6-skips; SECURITY_AUDIT_PASS; diff-check PASS.
+- Evidence log SHA-256: 107D33026CD9294B07ED8B7AAB79B0A6B63B5EE325E634A663E184C505FD80DB.
+- Next gate: amend the unmerged release candidate, push with explicit SHA lease, and require fresh GitHub CI plus Windows/Linux server-install canaries before merge.
+
+
+## 2026-09-28 — Third hosted-Windows browser qualification occurrence
+
+- Stop-patching threshold reached for the hosted-Windows browser failure family; historical audit plus primary Node documentation review performed before the next mutation.
+- Candidate 812d3fd failed before cleanup validation because the test fixture recorded child.pid immediately after asynchronous spawn.
+- Root cause: test fixture spawn/PID race. Guard: await child spawn before PID evidence is written.
+- Product/runtime browser code remains unchanged.
+- Promotion remains BLOCKED pending targeted regression, final local gate, and fresh hosted gates.
+
+
+## 2026-09-28 — Final local requalification PASS after child-spawn guard
+
+- Targeted browser-process regression: 7/7 PASS; repeated child-spawn paths: 10/10 PASS.
+- Full local release gate: PASS. Project Engine 222/0/1-skip; full suite 481/0/6-skips; GUI 77/77; SECURITY_AUDIT_PASS; diff-check PASS.
+- Final gate marker: 2026-09-28T23:06:39.5908545+03:30.
+- Gate log SHA-256: 0DC03CE86CF73A2847B68ECC566D7CDF916F91F7B3E0D69DB33A51DF8DA5F817.
+- Exact next gate: amend the still-unmerged candidate, push with explicit lease against 812d3fdedc9d58c655aa6237a8e6c4b5d0d4284d, then require fresh hosted CI/canaries.

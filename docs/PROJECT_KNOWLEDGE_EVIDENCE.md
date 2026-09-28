@@ -1086,3 +1086,73 @@ Historical checkpoints remain append-only archives. Current release/control clai
 **Deferred/external:** ChatGPT host/UI stream failures such as `Resume stream unavailable` remain outside Commander transport authority. Future provider expansion, broad competitive benchmarking and unrelated historical-project cleanup remain separate work, not release blockers.
 
 **Confidence/Status:** CONFIRMED/HIGH from exact run, release, route, workflow and Git evidence.
+
+
+## 2026-09-28 — Owner-authorized Project Engine runner contract repair (v0.9.21 candidate)
+
+- **Context:** Live Windows 0.9.20 reported runnerConfigured=false / automaticExecution=false although config.local.json explicitly had runner.enabled=true, autoTick=true, a local Codex provider, and the active FULL_POWER capability profile reported codexControl.allowLaunch=true.
+- **Claim / root cause — CONFIRMED / HIGH:** src/no-codex-policy.mjs already encoded owner-authorized local Codex launch, but src/project-runner-config.mjs and src/project-planner.mjs still unconditionally rejected Codex. This contract mismatch disabled the configured Project Engine runner.
+- **Decision:** Preserve default-deny and automatic-discovery prohibition. Permit an explicitly configured Codex provider only when FULL_POWER, explicit owner authorization, powerMode.codexControl.allowLaunch=true, exact provider kind=codex, and a real Codex executable are all present. Planner remains proposal-only under the existing read-only/ephemeral/no-approval/no-web/tool-disabled controls.
+- **Rejected option:** An Ollama adapter prototype passed its mock contract, but a live qwen3-coder:30b proposal exceeded the planner latency budget. It was removed from this change set to avoid mixing provider expansion with the root-cause repair.
+- **Safety / limitation:** Unauthorized, Standard, disguised-command, missing-executable, and auto-discovered Codex paths remain fail-closed. ChatGPT native wake/push remains an external host capability and is not claimed fixed here.
+- **Reuse targets:** release notes, architecture/security rationale, failure-prevention history, Project Engine documentation.
+- **Provenance:** clean writer clone ChatGPTRemoteCommander-finalize-20260928, baseline main@4a93d5475447f751e81ceaa87495b8c684fd1e87.
+
+
+## 2026-09-28 — v0.9.21 local promotion gate
+
+- **Status:** CONFIRMED / HIGH — local promotion gate PASS.
+- **Focused Project Engine:** 223 tests total; 222 passed, 0 failed, 1 environment skip (Windows symlink privilege).
+- **Comprehensive check suite:** completed with no failures. Representative aggregate suites included 487 tests / 481 pass / 6 environment skips and GUI contract 77/77 pass; installer, onboarding plugin, release asset, runtime, source-integrity, retry/recovery and schema-continuity gates passed.
+- **Security audit:** SECURITY_AUDIT_PASS; no secret-key, tunnel-id, private-key, bearer-token, GitHub-token, tracked local-config, or developer-path finding.
+- **Diff gate:** git diff --check PASS.
+- **Final marker:** FINAL_GATE_PASS at 2026-09-28T21:50:18.6502700+03:30.
+- **Evidence artifact:** var/final-gate-v0.9.21.log, SHA-256 406a95addaff1ccc343969c2d4097bf401eac2145b36e5ad18431429108bb569.
+- **Limitation:** elapsed 24/48-hour soak and native ChatGPT host wake/push are not proven by this gate.
+
+## 2026-09-28 — Hosted pre-promotion security-audit correction
+
+- **Failure — CONFIRMED / HIGH:** the first hosted Ubuntu CI and clean-Ubuntu canary for the v0.9.21 candidate failed only at the security audit after functional/runtime tests had passed.
+- **Root cause:** Project Brain recorded an absolute developer Windows checkout path. The audit correctly rejected that path in both the current tree and the unmerged branch history.
+- **Prevention / guard:** repository-facing Brain and evidence records must use role/host-relative provenance rather than personal developer filesystem paths. Because the offending commit had not been merged, the branch commit was amended so the sensitive path does not remain reachable in branch history.
+- **Regression:** local security audit and hosted CI/canary must both pass on the amended SHA before merge.
+- **Reuse targets:** release process, security-audit guidance, Brain authoring rules.
+
+
+## 2026-09-28 — Hosted Windows browser qualification hardening
+
+- **Context:** On amended v0.9.21 SHA d297ec212ec4d3a670a1a5081d1d00888851298e, Ubuntu CI and clean-Ubuntu server canary passed. Windows CI failed one browser-process test because its setup/start request shared an 80 ms request timeout with the intentionally hanging request. Windows Server canary failed a different browser-process assertion after polling only raw PID existence.
+- **Evidence:** The 80 ms test passed 30/30 on the primary Windows host but failed once on hosted Windows, showing scheduler/environment sensitivity rather than a stable product contract. The production browser request timeout remains 15 s. The Windows Server assertion observed only that the numeric PID still existed after cleanup; it did not verify that the PID still identified the profile-owned browser process.
+- **Method benchmark / primary sources:** Node.js process documentation states that signal 0 tests process existence and warns that PIDs may be reassigned after process exit (https://nodejs.org/api/process.html; https://nodejs.org/api/child_process.html). Microsoft taskkill documentation states that /T terminates the selected process and child processes and /F forces termination (https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/taskkill).
+- **Assessment:** The exact reason the raw PID remained observable on Windows Server is **PROBABLE/UNVERIFIED** (PID reuse or process-object visibility are both compatible with the evidence). The qualification predicate itself is **CONFIRMED insufficient** because it tests numeric PID existence rather than browser ownership identity.
+- **Decision / prevention:** Do not weaken production cleanup or extend product timeouts. Align profile-owned lifecycle tests with the production ownership predicate: exact --user-data-dir identity. Keep raw PID liveness only for the non-profile process-tree test. Restore the timeout-cleanup fixture to its 1000 ms default so the test measures timeout cleanup without imposing an unrelated 80 ms setup-performance requirement.
+- **Regression requirement:** targeted Windows stress, full local final gate, hosted Windows CI, and Windows Server canary must pass on the amended SHA before merge.
+- **Reuse targets:** browser lifecycle qualification, CI stability, release acceptance, failure-prevention guidance.
+
+
+## 2026-09-28 — Local final gate after Windows qualification correction
+
+- **Targeted browser qualification:** full browser-process suite 7/7 PASS; repeated stress of the two previously failing hosted-Windows scenarios 20/20 PASS.
+- **Full local release gate — PASS / CONFIRMED:** Project Engine 222 pass, 0 fail, 1 environment skip; full suite 481 pass, 0 fail, 6 environment skips; GUI contract 77/77 pass; installer/onboarding/release-asset/runtime/source-integrity/schema-continuity gates passed; security audit passed; git diff check passed.
+- **Final marker:** FINAL_GATE_PASS at 2026-09-28T22:56:14.0725938+03:30.
+- **Gate log SHA-256:** 107D33026CD9294B07ED8B7AAB79B0A6B63B5EE325E634A663E184C505FD80DB.
+- **Status:** local verification PASS. Promotion remains blocked only on fresh hosted CI and server-install canary for the amended candidate.
+
+
+## 2026-09-28 — Hosted Windows child-spawn fixture race root cause
+
+- **Failure — CONFIRMED / HIGH:** fresh hosted Windows CI on candidate 812d3fdedc9d58c655aa6237a8e6c4b5d0d4284d failed the isolated-profile child-process test before cleanup assertions because the marker contained a non-numeric PID.
+- **Root cause — CONFIRMED:** the test helper called child_process.spawn() and immediately serialized child.pid. Node documents ChildProcess.pid as number or undefined and defines the spawn event as the boundary indicating successful child creation. Under hosted-Windows scheduling, PID observation raced process creation.
+- **Primary method evidence:** Node.js ChildProcess documentation: https://nodejs.org/api/child_process.html. The spawn event is emitted once the child has spawned successfully; subprocess.pid may be undefined when spawn fails.
+- **Prevention:** fixture child processes that expose a PID now await the spawn event before persisting PID evidence. Both hangWithChild and crashWithChild paths use the same guard.
+- **Scope:** test-fixture correction only; production browser lifecycle code and production timeouts are unchanged.
+- **Regression gate:** browser-process suite plus repeated affected-child scenarios, then one complete local release gate and fresh hosted Windows/Linux CI and server canaries.
+
+
+## 2026-09-28 — Final local release gate after spawn/PID guard
+
+- **Targeted regression — PASS / CONFIRMED:** browser-process suite 7/7; affected child-spawn scenarios repeated 10/10 without failure.
+- **Full local release gate — PASS / CONFIRMED:** Project Engine 222 pass / 0 fail / 1 environment skip; full suite 481 pass / 0 fail / 6 environment skips; GUI contract 77/77 pass; Windows/Linux runtime contracts, source integrity, schema continuity, installer/onboarding/release-asset checks, security audit, and diff check all passed.
+- **Final marker:** FINAL_GATE_PASS 2026-09-28T23:06:39.5908545+03:30.
+- **Gate log SHA-256:** 0DC03CE86CF73A2847B68ECC566D7CDF916F91F7B3E0D69DB33A51DF8DA5F817.
+- **Promotion status:** local gate accepted; GitHub CI and both server-install canaries on the amended SHA remain required before merge.

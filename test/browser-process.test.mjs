@@ -4,8 +4,10 @@ import os from 'node:os';
 import path from 'node:path';
 import { mkdtemp, writeFile, readFile, stat, rm } from 'node:fs/promises';
 import { createBrowserProcessClient } from '../src/browser-process.mjs';
+import { findProcessesUsingBrowserProfile } from '../src/browser-owned-processes.mjs';
 
 function processAlive(pid){try{process.kill(pid,0);return true;}catch{return false;}}
+function profileProcessAlive(profile,pid){return findProcessesUsingBrowserProfile(profile).includes(pid);}
 
 const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 async function exists(p){try{await stat(p);return true;}catch{return false;}}
@@ -15,6 +17,7 @@ async function fixture({readyDelay=0,timeoutMs=1000,gracefulCloseMs=150,forceClo
  await writeFile(helper,`
 import { createInterface } from 'node:readline';
 import { spawn } from 'node:child_process';
+import { once } from 'node:events';
 import { mkdir, writeFile } from 'node:fs/promises';
 const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 await sleep(Number(process.env.RC_TEST_READY_DELAY||0));
@@ -30,11 +33,13 @@ for await(const line of rl){
  if(req.action==='hang'){await new Promise(()=>{});}
  if(req.action==='hangWithChild'){
   const child=spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{stdio:'ignore',windowsHide:true,shell:false});
+  await once(child,'spawn');
   await writeFile(req.marker,String(child.pid));
   await new Promise(()=>{});
  }
  if(req.action==='crashWithChild'){
   const child=spawn(process.execPath,['-e','setInterval(()=>{},1000)','--','--user-data-dir='+req.profileDir],{stdio:'ignore',windowsHide:true,shell:false});
+  await once(child,'spawn');
   await writeFile(req.marker,String(child.pid));
   process.exit(17);
  }
@@ -98,7 +103,7 @@ test('unexpected helper exit terminates the independently owned browser process 
   assert.equal(Number.isInteger(pid)&&pid>0,true);
   await rejected;
   for(let i=0;i<600&&(processAlive(pid)||await exists(profile));i++)await sleep(25);
-  assert.equal(processAlive(pid),false);
+  assert.equal(profileProcessAlive(profile,pid),false);
   assert.equal(await exists(profile),false);
  }finally{await f.cleanup();}
 });
@@ -115,7 +120,7 @@ test('unexpected helper exit terminates a persistent browser process but preserv
   const pid=Number((await readFile(marker,'utf8')).trim());
   await rejected;
   for(let i=0;i<600&&processAlive(pid);i++)await sleep(25);
-  assert.equal(processAlive(pid),false);
+  assert.equal(profileProcessAlive(profile,pid),false);
   assert.equal(await exists(profile),true);
   assert.equal(await readFile(path.join(profile,'owned.txt'),'utf8'),'owned');
  }finally{await f.cleanup();}
@@ -134,7 +139,7 @@ test('client shutdown never removes a persistent owned profile',async()=>{
 });
 
 test('timed-out isolated session shuts down helper and removes tracked owned profile even after forced termination',async()=>{
- const f=await fixture({timeoutMs:80,gracefulCloseMs:80,forceCloseMs:150});
+ const f=await fixture({timeoutMs:1000,gracefulCloseMs:80,forceCloseMs:150});
  const profile=path.join(f.root,'isolated-profile');
  try{
   const started=await f.client.invoke({action:'start',isolated:true,profileDir:profile});

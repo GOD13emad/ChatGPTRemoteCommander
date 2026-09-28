@@ -115,3 +115,24 @@ test('project engine capability represents authority independently of provider r
   const optedOut=normalizeCapabilityProfile(result.config.capabilityProfile,result.config,{id:'default',legacyExplicit:true});
   assert.equal(optedOut.grantedCapabilities.includes('workflow.project_engine'),false);
 });
+
+
+test('explicit owner-authorized Full-Power Codex runner is preserved', () => {
+  const root=temp();
+  try {
+    const executable=path.join(root,process.platform==='win32'?'codex.exe':'codex');
+    fs.writeFileSync(executable,'stub');
+    if(process.platform!=='win32') fs.chmodSync(executable,0o755);
+    const cfg=base({runner:{
+      enabled:true,autoTick:true,
+      provider:{kind:'codex',executable,timeoutMs:120000,maxOutputBytes:2*1024*1024}
+    }});
+    cfg.powerMode.codexControl={allowLaunch:true};
+    const result=applyProjectRunnerConfig(cfg,{platform:process.platform});
+    assert.equal(result.status,'PRESERVED_EXPLICIT_OWNER_CODEX_PROVIDER');
+    assert.equal(result.config.durableWorkflows.runner.enabled,true);
+    assert.equal(result.config.durableWorkflows.runner.autoTick,true);
+    assert.equal(result.config.durableWorkflows.runner.provider.kind,'codex');
+    assert.equal(result.config.durableWorkflows.runner.provider.timeoutMs,30000);
+  } finally { fs.rmSync(root,{recursive:true,force:true}); }
+});
