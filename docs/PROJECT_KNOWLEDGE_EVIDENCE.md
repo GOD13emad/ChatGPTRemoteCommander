@@ -702,3 +702,18 @@ Historical checkpoints remain append-only archives. Current release/control clai
 **Reuse Targets:** Windows CI stability, async durability tests, corrupt-projection recovery, release qualification.
 
 **Post-fix Full Gate:** exact-tree Windows `npm run check && npm test && npm run audit` completed in terminal `term-28` with final exit 0; test core runner reported 475 PASS / 6 SKIP / 0 FAIL and security audit reported `SECURITY_AUDIT_PASS`.
+
+
+## E-AUTH-20260928-R4 — Cross-platform async child-exit/stdio test stabilization
+
+**Date/Context:** 2026-09-28; after v0.9.15 authorization candidate qualification. A second meaningful async-lifecycle CI failure occurred on Ubuntu in the docs-only PR #37: `child exit completes operation even when inherited stdio delays close` reached `TIMED_OUT` instead of `SUCCEEDED`.
+
+**Project Evidence / Failure:** Earlier Windows hosted CI had exposed a distinct worker-exit timing race in deliberate corruption tests. The later Ubuntu failure lasted about 10.2 s and matched the fixture grandchild's 10 s lifetime, showing that the fixture itself did not reliably force the direct child to exit before inherited stdio closed on that platform.
+
+**Method Evidence:** Node.js child_process documentation distinguishes `exit` from `close`: `exit` occurs when the child ends while stdio may still be open; `close` occurs only after stdio is closed and may be delayed when multiple processes share streams. Node also documents that detached background children should not keep parent-connected stdio when independent lifetime is required. Sources checked 2026-09-28: https://nodejs.org/download/release/latest-jod/docs/api/child_process.html and https://nodejs.org/api/child_process.html.
+
+**Root Cause → Prevention → Guard → Regression:** OS-sensitive fixture relied on a detached Node grandchild with inherited stdout/stderr plus natural parent event-loop exit → make the direct fixture process explicitly exit only after its own stdout write callback fires, while the detached grandchild continues holding inherited descriptors → no production worker/runtime code changed → focused Windows `node --test test/async-operations.test.mjs` PASS 14/14, exit 0. Hosted Ubuntu exact-SHA CI remains the cross-platform promotion gate.
+
+**Confidence/Status:** Root cause PROBABLE/HIGH from timing match, official event semantics, and focused regression. Cross-platform confirmation pending hosted CI.
+
+**Reuse Targets:** async operation durability tests, child-process lifecycle testing, CI failure prevention, v0.9.16 release gate.

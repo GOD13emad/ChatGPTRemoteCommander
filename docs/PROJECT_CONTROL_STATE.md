@@ -105,3 +105,12 @@ Historical checkpoints are preserved in the [archived project state](history/PRO
 - Regression: `test/async-operations.test.mjs` repeated 10 times on Windows, **140/140 PASS**, terminal `term-27`, exit 0. Next gate: full exact-tree Windows check/test/audit, then updated exact-SHA hosted CI.
 
 - Post-race-fix full exact-tree Windows gate: `npm run check` PASS; `npm test` PASS (core runner 475 PASS / 6 SKIP / 0 FAIL plus downstream GUI/concurrency/runtime/schema gates); `npm run audit` PASS with `SECURITY_AUDIT_PASS`; terminal `term-28`, final exit 0.
+
+
+### Async lifecycle gate before v0.9.16
+
+- Repeated timing failures in the async lifecycle test family triggered a historical/source audit rather than another blind retry.
+- Ubuntu PR #37 failure was isolated to the `linger-stdio` fixture assumption; production worker logic was not changed.
+- Fixture now forces the direct child to exit after flushing its own output while a detached grandchild retains inherited stdio, deterministically exercising Node's documented `exit` vs `close` distinction.
+- Focused Windows async regression: 14/14 PASS, exit 0.
+- Cross-platform status: UNPROVEN until exact-SHA hosted Windows/Ubuntu CI passes.
