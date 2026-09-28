@@ -25,7 +25,7 @@ import {
 } from './no-codex-policy.mjs';
 
 let workflowTools = null;
-const VERSION = '0.9.13';
+const VERSION = '0.9.14';
 const MODERN_VERSION = '2026-07-28';
 const LEGACY_VERSIONS = ['2025-11-25', '2025-06-18', '2025-03-26'];
 const TASKS_EXTENSION = 'io.modelcontextprotocol/tasks';
@@ -269,9 +269,19 @@ function taskCapabilityError(id) {
     requiredCapabilities: { extensions: { [TASKS_EXTENSION]: {} } }
   });
 }
+async function taskOperation(name, args) {
+  try {
+    return await asyncOperationTools.execute(name, args);
+  } catch (error) {
+    if (error?.message === 'operation not found') {
+      throw protocolFailure(200, -32602, 'Task not found');
+    }
+    throw error;
+  }
+}
 async function operationTask(taskId) {
   if (!TASK_ID_RE.test(String(taskId ?? ''))) throw new Error('invalid taskId');
-  const state = await asyncOperationTools.execute('operation_status', { operationId: taskId });
+  const state = await taskOperation('operation_status', { operationId: taskId });
   const base = {
     taskId,
     createdAt: state.createdAt ?? state.updatedAt ?? new Date().toISOString(),
@@ -598,10 +608,10 @@ async function handleMessage(req, message) {
         if (!isPlainObject(message.params?.inputResponses)) {
           return { status: 200, body: rpcError(message.id, -32602, 'tasks/update requires inputResponses object') };
         }
-        await asyncOperationTools.execute('operation_status', { operationId: taskId });
+        await taskOperation('operation_status', { operationId: taskId });
         return { status: 200, body: rpcResult(message.id, {}, true) };
       }
-      await asyncOperationTools.execute('operation_cancel', { operationId: taskId });
+      await taskOperation('operation_cancel', { operationId: taskId });
       return { status: 200, body: rpcResult(message.id, {}, true) };
     }
     if (message.method === 'tools/call') {

@@ -81,6 +81,14 @@ test('MCP Tasks extension maps durable Commander operations without changing fal
     assert.equal(wrongHeader.status,400);
     assert.equal(wrongHeader.body.error.code,-32020);
 
+    const unknownTaskId='00000000-0000-4000-8000-000000000000';
+    const unknownGet=await rpc(port,7,'tasks/get',{taskId:unknownTaskId,_meta:meta(true)},unknownTaskId);
+    assert.equal(unknownGet.body.error.code,-32602);
+    const unknownUpdate=await rpc(port,8,'tasks/update',{taskId:unknownTaskId,inputResponses:{ignored:{value:true}},_meta:meta(true)},unknownTaskId);
+    assert.equal(unknownUpdate.body.error.code,-32602);
+    const unknownCancel=await rpc(port,9,'tasks/cancel',{taskId:unknownTaskId,_meta:meta(true)},unknownTaskId);
+    assert.equal(unknownCancel.body.error.code,-32602);
+
     const update=await rpc(port,6,'tasks/update',{taskId,inputResponses:{ignored:{value:true}},_meta:meta(true)},taskId);
     assert.equal(update.body.result.resultType,'complete');
 
