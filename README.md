@@ -8,7 +8,7 @@ Cross-platform Windows + Linux MCP server for controlled remote project and mach
 
 **Setup guides in 10 languages:** [English](docs/SETUP.en.md) · [فارسی](docs/SETUP.fa.md) · [العربية](docs/SETUP.ar.md) · [Türkçe](docs/SETUP.tr.md) · [Español](docs/SETUP.es.md) · [Français](docs/SETUP.fr.md) · [Deutsch](docs/SETUP.de.md) · [Русский](docs/SETUP.ru.md) · [简体中文](docs/SETUP.zh-CN.md) · [日本語](docs/SETUP.ja.md)
 
-[Documentation index](docs/README.md) · [Current release: v0.9.16](docs/RELEASE_0.9.16.md) · [Project status](docs/PROJECT_CONTROL_STATE.md) · [Development roadmap](docs/PROJECT_ENGINE_ROADMAP.md)
+[Documentation index](docs/README.md) · [Server install](docs/SERVER_INSTALL.md) · [Current release: v0.9.16](docs/RELEASE_0.9.16.md) · [Project status](docs/PROJECT_CONTROL_STATE.md) · [Development roadmap](docs/PROJECT_ENGINE_ROADMAP.md)
 
 ## Persistent startup
 
@@ -33,6 +33,8 @@ For an existing profile, this only asks for the Runtime API key once. It is stor
 The Linux helper registers a systemd user service when available, otherwise falls back to `crontab`. Runtime keys are stored outside the repository in a user-only `chmod 600` credential file.
 
 ## One-command Windows install
+
+For a **fresh Windows Server, Server Core, or machine without WinGet/Git/Node/PowerShell 7**, use [the server bootstrap](docs/SERVER_INSTALL.md) instead of this desktop-oriented path.
 
 Paste this into **PowerShell** for a standard safe-by-default install (it installs missing Git/Node.js/PowerShell 7 with `winget`, downloads and verifies the official OpenAI tunnel client, runs tests/audit, and starts the local MCP server):
 

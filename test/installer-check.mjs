@@ -3,6 +3,8 @@ import { readFileSync } from 'node:fs';
 
 const windowsInstaller = readFileSync('install.ps1', 'utf8');
 const capabilityPolicy = readFileSync('src/capability-profile.mjs', 'utf8');
+const windowsServerInstaller = readFileSync('server-install-windows.ps1','utf8');
+const linuxServerInstaller = readFileSync('server-install-linux.sh','utf8');
 for (const required of ['[switch]$GuiControl','[switch]$DisableGuiControl','capability-migrate.mjs','Invoke-ExistingSafeUpdate','auto-update-windows.ps1']) {
   if (!windowsInstaller.includes(required)) throw new Error(`install.ps1 missing delegated capability/update behavior: ${required}`);
 }
@@ -42,6 +44,25 @@ for (const required of [
 }
 
 if (windowsInstaller.includes('@openai/codex@')) throw new Error('install.ps1 must not provision Codex');
+for (const required of [
+  "PowerShell-$version-win-x64.msi",
+  '958838FF55091E1C8705D89EFED0CC7E8245A3A6EF6C0CCFAE20015227108AD8',
+  "node-v$version-x64.msi",
+  'SHASUMS256.txt',
+  'Get-AuthenticodeSignature',
+  'Get-FileHash',
+  'git-for-windows/git/releases/latest',
+  "InstallationType",
+  "Server Core",
+  'server-install-allowlist.json',
+  'antivirusExclusionsAdded=$false',
+  "rev-parse 'FETCH_HEAD^{commit}'",
+  "'-ExpectedCommit',$resolved",
+  'SERVER_INSTALL_WINDOWS_PASS'
+]) if (!windowsServerInstaller.includes(required)) throw new Error(`server-install-windows.ps1 missing secure bootstrap behavior: ${required}`);
+for (const forbidden of ['Add-MpPreference','Set-MpPreference','Remove-MpPreference']) {
+  if (windowsServerInstaller.includes(forbidden)) throw new Error(`server installer must not mutate Defender exclusions/settings: ${forbidden}`);
+}
 const publicConfig = JSON.parse(readFileSync('config.json','utf8'));
 if (publicConfig.auditMaxBytes !== 8388608 || publicConfig.auditKeepFiles !== 3) {
   throw new Error('config.json missing bounded audit defaults');
@@ -55,6 +76,16 @@ if (linuxInstaller.includes('@openai/codex@')) throw new Error('install.sh must 
 const linuxEnrollment = readFileSync('enable-autostart-linux.sh', 'utf8');
 const linuxPluginInstaller = readFileSync('install-work-plugin.sh', 'utf8');
 const linuxAccountConnector = readFileSync('connect-chatgpt-account.sh', 'utf8');
+for (const required of [
+  'apt-get','dnf','yum','zypper','pacman',
+  '--expected-commit "$resolved"',
+  '--disable-capability gui.screenshot',
+  '--disable-capability gui.mouse',
+  '--disable-capability gui.keyboard',
+  '--disable-capability gui.window_focus',
+  'SERVER_INSTALL_LINUX_PASS',
+  'Alpine/musl is not qualified'
+]) if (!linuxServerInstaller.includes(required)) throw new Error(`server-install-linux.sh missing server bootstrap behavior: ${required}`);
 for (const required of [
   'SOURCE_REF="${REMOTE_COMMANDER_SOURCE_REF:-v0.9.16}"',
   '--source-ref',
@@ -123,7 +154,7 @@ if (process.platform === 'linux') {
     'install.sh', 'connect-chatgpt-account.sh', 'run-server.sh',
     'autostart-linux.sh', 'supervisor-routing-linux.sh', 'auto-update-linux.sh',
     'enable-autostart-linux.sh', 'disable-autostart-linux.sh', 'install-work-plugin.sh',
-    'tools/install-gnome-gui-extension.sh'
+    'tools/install-gnome-gui-extension.sh', 'server-install-linux.sh'
   ];
   for (const file of files) {
     const outcome = run('bash', ['-n', file]);
@@ -136,7 +167,7 @@ if (process.platform === 'linux') {
   const files = [
     'install.ps1', 'connect-chatgpt-account.ps1', 'connect-chatgpt.ps1',
     'autostart-windows.ps1', 'supervisor-routing.ps1', 'auto-update-windows.ps1', 'enable-autostart.ps1', 'disable-autostart.ps1',
-    'install-work-plugin.ps1', 'tools/gui-control.ps1'
+    'install-work-plugin.ps1', 'tools/gui-control.ps1', 'server-install-windows.ps1'
   ];
   for (const file of files) {
     const escaped = file.replaceAll("'", "''");

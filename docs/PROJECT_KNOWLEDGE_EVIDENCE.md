@@ -828,3 +828,22 @@ Historical checkpoints remain append-only archives. Current release/control clai
 **Confidence/Status:** CONFIRMED/HIGH.
 
 **Reuse Targets:** user guidance, runtime operating instructions, Codex authorization semantics, release notes.
+
+
+## E-INSTALL-20260928-R1 — raw Windows Server + Linux server bootstrap
+
+**Date/Context:** 2026-09-28; v0.9.16 deployment hardening for fresh servers where WinGet, Git, Node.js, PowerShell 7, desktop GUI, or distribution prerequisites may be absent.
+
+**Method evidence:** Microsoft documents MSI as a supported PowerShell-on-Windows deployment path and PowerShell 7 support on Windows Server 2016/2019/2022. PowerShell 7.6 is the current LTS line. Node.js lists Windows x64 >= Windows 10 / Server 2016 as Tier 1. Microsoft Defender guidance states that each custom exclusion reduces protection and should be used sparingly; Windows Server 2016+ already receives built-in/automatic server-role exclusions. Primary sources: https://learn.microsoft.com/powershell/scripting/install/install-powershell-on-windows ; https://learn.microsoft.com/powershell/scripting/whats-new/migrating-from-windows-powershell-51-to-powershell-7 ; https://learn.microsoft.com/powershell/scripting/install/powershell-support-lifecycle ; https://github.com/nodejs/node/blob/main/BUILDING.md ; https://nodejs.org/download/release/latest-jod/ ; https://learn.microsoft.com/defender-endpoint/microsoft-defender-antivirus-exclusions-overview ; https://learn.microsoft.com/defender-endpoint/microsoft-defender-antivirus-exclusions-windows-server .
+
+**Decision:** Add thin server bootstrap wrappers instead of duplicating the product installer. Windows bootstrap starts from built-in Windows PowerShell, does not depend on WinGet, installs only missing prerequisites, verifies PowerShell MSI with pinned upstream SHA-256 + Authenticode, verifies Node 22.23.3 MSI against upstream SHASUMS256 + Authenticode, verifies Git for Windows using official release-asset SHA-256 digest + Authenticode, resolves the requested Commander ref to one exact commit, then hands off to the normal candidate-first installer. Linux bootstrap supports apt/dnf/yum/zypper/pacman, resolves one exact commit, then hands off to install.sh.
+
+**Server policy:** Full Power is the server wrapper default because this package is for owner-managed Remote Commander servers. GUI capabilities are automatically disabled on Windows Server Core and by default on Linux servers. Windows desktop/server-with-GUI can opt in; Linux desktop can opt in explicitly.
+
+**Security decision:** Do not add Microsoft Defender/EDR exclusions automatically. Generate a local allowlist-evidence manifest with source commit, hashes, signer metadata and Defender state. If enterprise controls block a verified artifact, prefer administrator-managed publisher/signature or exact-hash allow rules. Broad path/process exclusions are rejected because they create a protection gap and are unnecessary for normal installation.
+
+**Validation:** Windows installer parser/static gate PASS; onboarding/plugin check PASS; security audit PASS. Linux overlay: bash syntax PASS, installer-check PASS, focused HTTP/lifecycle suite 7/7 PASS, security audit PASS.
+
+**Confidence/Status:** IMPLEMENTATION CONFIRMED/HIGH for static/cross-platform qualification. Fresh-VM destructive installation canary remains OPEN until release-candidate CI is green and a disposable clean server target is available.
+
+**Reuse Targets:** Windows Server deployment, Linux server deployment, enterprise allowlisting, installation troubleshooting, release packaging.

@@ -174,3 +174,13 @@ Historical checkpoints are preserved in the [archived project state](history/PRO
 - Superseded absolute “Commander never launches Codex” wording was found in current README/runtime instructions.
 - Current text now matches the implemented policy: default-deny local Codex, explicit trusted Full-Power owner opt-in only, hidden/background project runner still No-Codex, external handoff still explicit-choice only.
 - No runtime authorization broadening was introduced by this text-alignment change.
+
+
+### Server bootstrap change set
+
+- Added raw-server Windows bootstrap: no WinGet dependency; verified PowerShell/Node/Git prerequisites; exact source commit handoff; Server Core GUI auto-disable; health validation.
+- Added Linux server bootstrap: apt/dnf/yum/zypper/pacman prerequisite path; exact source commit; headless GUI opt-out by default.
+- Antivirus/EDR policy: no automatic exclusions. Installer emits allowlist evidence for admin-controlled publisher/hash rules.
+- Windows static/onboarding/security gates: PASS.
+- Linux overlay syntax/installer/focused/security gates: PASS.
+- Fresh disposable server installation canary: OPEN.

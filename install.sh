@@ -74,6 +74,11 @@ install_os_packages() {
     $sudo_cmd apt-get install -y git curl unzip tar xz-utils ca-certificates
   elif need dnf; then
     $sudo_cmd dnf install -y git curl unzip tar xz ca-certificates
+  elif need yum; then
+    $sudo_cmd yum install -y git curl unzip tar xz ca-certificates
+  elif need zypper; then
+    $sudo_cmd zypper --non-interactive refresh
+    $sudo_cmd zypper --non-interactive install git curl unzip tar xz ca-certificates
   elif need pacman; then
     $sudo_cmd pacman -Sy --needed --noconfirm git curl unzip tar xz ca-certificates
   else
