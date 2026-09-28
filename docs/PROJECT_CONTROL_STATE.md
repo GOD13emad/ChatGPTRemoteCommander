@@ -1,24 +1,21 @@
 # Current project state
 
-Updated: 2026-09-28. Scope: public product/release status plus current v0.9.18 candidate.
+Updated: 2026-09-28. Scope: public product/release status plus current v0.9.19 candidate.
 
 ## Release baseline
 
-- v0.9.17 is the current immutable published baseline at merge commit `a6b2deb55ff3bccc5c0e940c31fdbd3a38f9b305`.
-- v0.9.17 release packaging is verified: immutable release, 15 assets, 14 checksum entries, and the stable latest `plugin-template.zip` path matched the published SHA-256.
-- v0.9.17 is live on Linux, the audited HPC Windows target, and the Windows `saeed-emad` profile. The Windows `default` profile remained on v0.9.16 only because a stale previous-route record blocked candidate admission; independent double-check proved the recorded v0.9.15 backend process/listener were absent and the stale record was retired with exact generation/profile/port/commit guards.
-- v0.9.18 is the current candidate.
+- v0.9.18 is the current immutable published runtime baseline at merge commit `b277c30ee9c1ecceb9e68638cf413fe4f7b75d4c`.
+- v0.9.18 release verification: immutable=true; 15 assets; 14 checksum entries all matched; stable latest `plugin-template.zip` matched SHA-256 `ff725c10a8d747747ae6c37e84c0ccf18b3d39c992cb9f7dc4b13fa02506fff9`.
+- v0.9.18 is live on the audited Windows default target, Linux target, and HPC Windows target.
+- Separately installed official Extension set is `ansys-modeling`, `comsol-modeling`, `project-execution-brain`, and `final-thesis-report`. The owner-private `video-trend` extension remains outside the official rollout.
 
 ## CURRENT / open release gates
 
-CURRENT: v0.9.18 final qualification.
+CURRENT: v0.9.19 Skill-routing specificity.
 
-v0.9.18 contains three separately scoped change sets:
-1. Windows installer temp-cleanup outcome integrity.
-2. Headless/background PowerShell enforcement across qualification helper paths.
-3. External Agent Extension relevance routing + bounded Skill retrieval; domain Skills remain separately installed and are not bundled by Commander.
+v0.9.19 has one bounded objective: make automatic Extension selection fail safer after v0.9.18 by (a) suppressing weak lexical candidates when explicit trigger evidence exists, and (b) allowing multiword project triggers to match when their words are separated so compatible project-method + domain Skills can layer.
 
-Focused gates currently PASS for installer parser behavior, headless Windows runtime contract, extension registry/HTTP routing, local external extension discovery, ANSYS task routing, and Persian thesis-report routing.
+Focused routing/installer/onboarding/release-asset regressions PASS.
 
 Open gates: full Windows check/test/audit; clean Linux exact-tree check/test/audit + release-asset build; hosted exact-SHA Windows/Ubuntu CI; immutable release publication/download verification; candidate-first rollout/version canaries.
 
@@ -218,3 +215,14 @@ Historical checkpoints are preserved in the [archived project state](history/PRO
 - PowerShell visibility: CONFIRMED gap in test/qualification helpers; main runtime paths were already hidden/no-window. Remaining helper launches now use `windowsHide:true`; regression gate PASS.
 - Agent Extensions: `agent_extension_route` and `agent_extension_skill` added as read-only tools. Local separately installed acceptance set is `ansys-modeling`, `project-execution-brain`, and `final-thesis-report`. Owner-private `video-trend` is excluded from this rollout. Standalone COMSOL Skill is MISSING/UNVERIFIED in the current local catalog.
 - FINAL status: UNPROVEN until full exact-SHA gates, hosted CI, immutable release verification, and rollout pass.
+
+
+## CURRENT CHANGE SET — v0.9.19 Skill-routing specificity
+
+- Previous accepted state: v0.9.18 / `b277c30ee9c1ecceb9e68638cf413fe4f7b75d4c`, immutable release verified and live on Windows/Linux/HPC.
+- Trigger: acceptance of external COMSOL showed `ansys-modeling` could appear as a weak lexical candidate for an explicitly COMSOL task because both domain descriptions contain generic terms such as modeling/condensation.
+- Prevention: when at least one declared trigger matches, suppress lexical-only candidates; use lexical-only routing only when no trigger evidence exists.
+- Layering: multiword triggers may match by complete token presence even when separated, allowing `project-execution-brain` to layer with a directly relevant domain Skill.
+- External official set: `ansys-modeling` v1.1.1, `comsol-modeling` v1.1.1, `project-execution-brain` current installed version, `final-thesis-report` v1.0.0. `video-trend` remains owner-private/excluded.
+- Focused regression: Agent Extension suite 13/13 PASS; installer/onboarding/release-asset checks PASS.
+- FINAL status: UNPROVEN until exact-SHA full gates, hosted CI, immutable publication verification and rollout pass.

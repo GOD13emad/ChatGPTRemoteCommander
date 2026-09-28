@@ -62,8 +62,10 @@ Invalid manifests are excluded and reported as diagnostics. Duplicate extension 
 The Remote Commander ChatGPT/Codex Skill should route non-trivial domain work before execution:
 
 1. call `agent_extension_route` with the current task;
-2. when one installed extension has direct trigger/domain evidence, call `agent_extension_skill` for that exact id;
-3. apply that Skill for domain reasoning while preserving Commander authority, safety, project-root and evidence rules;
-4. do not infer availability for missing extensions and do not select an extension merely because it is installed.
+2. load each routed extension with direct trigger/domain evidence, up to the bounded route limit, using `agent_extension_skill`; compatible Skills may layer (for example a domain Skill plus `project-execution-brain`);
+3. if any declared trigger matches, treat lexical-only candidates as weak and suppress them from routing; lexical fallback is used only when no trigger evidence exists;
+4. multiword triggers may match when all meaningful trigger tokens are present even if separated in the task text;
+5. apply loaded Skills while preserving Commander authority, safety, project-root and evidence rules;
+6. do not infer availability for missing extensions and do not select an extension merely because it is installed.
 
 Domain packages remain separately installed. The Commander installer and immutable release assets do not bundle owner/domain extensions.

@@ -196,3 +196,44 @@ test('unrelated task does not route to an extension without lexical or trigger e
     assert.equal(routed.items.length,0);
   } finally { fs.rmSync(base,{recursive:true,force:true}); }
 });
+
+
+test('explicit trigger evidence suppresses weak cross-domain lexical candidates',()=>{
+  const base=tempRoot();
+  try {
+    const comsol=manifest('comsol-modeling');
+    comsol.displayName='COMSOL Modeling';
+    comsol.description='COMSOL multiphysics condensation modeling.';
+    comsol.triggers=['comsol','comsol condensation'];
+    writeExtension(base,'comsol-modeling',comsol);
+    const ansys=manifest('ansys-modeling');
+    ansys.displayName='ANSYS Modeling';
+    ansys.description='ANSYS multiphysics condensation modeling.';
+    ansys.triggers=['ansys','fluent'];
+    writeExtension(base,'ansys-modeling',ansys);
+    const registry=createAgentExtensionRegistry({directories:[base]});
+    const routed=registry.execute('agent_extension_route',{task:'COMSOL condensation modeling audit'});
+    assert.deepEqual(routed.items.map(x=>x.id),['comsol-modeling']);
+  } finally { fs.rmSync(base,{recursive:true,force:true}); }
+});
+
+test('multiword project trigger matches when its words are separated and layers with domain skill',()=>{
+  const base=tempRoot();
+  try {
+    const ansys=manifest('ansys-modeling');
+    ansys.displayName='ANSYS Modeling';
+    ansys.description='ANSYS Fluent modeling.';
+    ansys.triggers=['ansys','fluent'];
+    writeExtension(base,'ansys-modeling',ansys);
+    const brain=manifest('project-execution-brain');
+    brain.displayName='Project Execution Brain';
+    brain.description='Project audit and continuation discipline.';
+    brain.triggers=['audit project','continue project'];
+    writeExtension(base,'project-execution-brain',brain);
+    const registry=createAgentExtensionRegistry({directories:[base]});
+    const routed=registry.execute('agent_extension_route',{task:'Audit and continue this ANSYS Fluent project'});
+    assert.deepEqual(routed.items.map(x=>x.id),['ansys-modeling','project-execution-brain']);
+    assert.ok(routed.items[1].route.matchedTriggers.includes('audit project'));
+    assert.ok(routed.items[1].route.matchedTriggers.includes('continue project'));
+  } finally { fs.rmSync(base,{recursive:true,force:true}); }
+});
