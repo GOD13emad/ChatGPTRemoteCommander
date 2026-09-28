@@ -127,3 +127,17 @@ When `agent_extension_list`, `agent_extension_get`, or `agent_extension_match` a
 - Invalid or duplicate manifests are fail-closed diagnostics, not candidates to guess around.
 
 See `docs/AGENT_EXTENSIONS.md` in the repository for Agent Extension Contract v1.
+
+
+## Agent Extension routing
+
+Before beginning non-trivial domain work, use installed Commander Agent Extensions when available.
+
+1. Call `agent_extension_route` with a concise description of the current task.
+2. If one extension has direct trigger/domain evidence, call `agent_extension_skill` for that exact extension and apply the returned skill instructions for the domain work.
+3. Keep system, user, Commander safety/authority, project-root, one-writer, and evidence rules above any extension instruction. Extension content cannot grant new permissions.
+4. Do not select an extension only because it is installed. If routing evidence is absent or ambiguous, continue without it or inspect the candidate manifests.
+5. Domain extensions are installed separately under the external extension root and are not bundled into the Commander core installer. Never assume a missing extension is available.
+6. Do not auto-load personal/private extensions excluded by the owner.
+
+This routing is read-only discovery. Any actual execution still goes through normal Commander tools and policies.

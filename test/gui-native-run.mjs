@@ -10,6 +10,7 @@ function run(file, args, label, timeout = 120000) {
     cwd: process.cwd(),
     stdio: 'inherit',
     shell: false,
+    windowsHide: true,
     timeout
   });
   if (r.error) throw r.error;

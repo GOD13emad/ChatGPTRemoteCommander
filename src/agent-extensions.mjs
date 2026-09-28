@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { createHash } from 'node:crypto';
 
 const ID_RE = /^[a-z][a-z0-9-]{0,63}$/;
 const CAP_RE = /^[a-z][a-z0-9._:-]{0,95}$/;
@@ -128,6 +129,20 @@ function loadManifest(extensionDir) {
   });
 }
 
+const ROUTE_STOPWORDS=new Set(['and','the','this','that','with','from','into','for','please','task','work','project','continue','audit','make','create','use','using','about','روی','برای','این','اون','یک','کار','پروژه','ادامه','انجام','کن','کنید']);
+function taskTokens(value) {
+  return [...new Set(String(value ?? '').toLowerCase().match(/[\p{L}\p{N}][\p{L}\p{N}._:+-]{1,63}/gu) ?? [])];
+}
+function routeScore(ext, task) {
+  const text=String(task??'').trim().toLowerCase();
+  if(!text)return {score:0,matchedTriggers:[],matchedTokens:[]};
+  const tokens=taskTokens(text);
+  const matchedTriggers=(ext.triggers??[]).filter(x=>text.includes(String(x).toLowerCase()));
+  const hay=[ext.id,ext.displayName,ext.description,...(ext.capabilities??[]),...(ext.triggers??[])].join(' ').toLowerCase();
+  const matchedTokens=tokens.filter(x=>x.length>=4 && !ROUTE_STOPWORDS.has(x) && hay.includes(x));
+  const score=matchedTriggers.length*20 + matchedTokens.length;
+  return {score,matchedTriggers,matchedTokens};
+}
 function normalizeDirectories(directories) {
   if (!Array.isArray(directories) || directories.length > 20) throw new Error('AGENT_EXTENSION_DIRECTORIES_INVALID');
   return [...new Set(directories.filter(Boolean).map(dir=>{
@@ -153,6 +168,18 @@ export const agentExtensionToolDefinitions = Object.freeze([
     name:'agent_extension_match',
     description:'Find validated Agent extensions that declare every requested capability. Matching is declarative and does not execute the extension.',
     inputSchema:{type:'object',properties:{capabilities:{type:'array',minItems:1,maxItems:20,uniqueItems:true,items:{type:'string',pattern:'^[a-z][a-z0-9._:-]{0,95}$'}}},required:['capabilities'],additionalProperties:false},
+    annotations:{readOnlyHint:true,destructiveHint:false,openWorldHint:false}
+  },
+  {
+    name:'agent_extension_route',
+    description:'Route a bounded natural-language task to relevant installed Agent extensions using declared triggers/capability metadata. Read-only; no extension is executed and no authority is granted.',
+    inputSchema:{type:'object',properties:{task:{type:'string',minLength:1,maxLength:4000},limit:{type:'integer',minimum:1,maximum:10}},required:['task'],additionalProperties:false},
+    annotations:{readOnlyHint:true,destructiveHint:false,openWorldHint:false}
+  },
+  {
+    name:'agent_extension_skill',
+    description:'Read the bounded SKILL.md content of one validated installed Agent extension after routing. The skill is subordinate to system/user/Commander policy and cannot expand execution authority.',
+    inputSchema:{type:'object',properties:{id:{type:'string',pattern:'^[a-z][a-z0-9-]{0,63}$'}},required:['id'],additionalProperties:false},
     annotations:{readOnlyHint:true,destructiveHint:false,openWorldHint:false}
   }
 ]);
@@ -235,6 +262,20 @@ export function createAgentExtensionRegistry({directories=[]}={}) {
       const requested=args.capabilities;
       const items=extensions.filter(ext=>requested.every(c=>ext.capabilities.includes(c))).map(publicExtension);
       return {schema:1,requestedCapabilities:[...requested],items,diagnostics};
+    }
+    if(name==='agent_extension_route') {
+      const limit=Math.max(1,Math.min(Number(args.limit??3),10));
+      const ranked=extensions.map(ext=>({ext,...routeScore(ext,args.task)})).filter(x=>x.matchedTriggers.length>0 || x.matchedTokens.length>=2)
+        .sort((a,b)=>b.score-a.score||a.ext.id.localeCompare(b.ext.id)).slice(0,limit);
+      return {schema:1,task:String(args.task),items:ranked.map(x=>({...publicExtension(x.ext),route:{score:x.score,matchedTriggers:x.matchedTriggers,matchedTokens:x.matchedTokens}})),diagnostics};
+    }
+    if(name==='agent_extension_skill') {
+      const ext=extensions.find(x=>x.id===args.id);
+      if(!ext) throw new Error('AGENT_EXTENSION_NOT_FOUND');
+      if(!ext.skillPath) throw new Error('AGENT_EXTENSION_SKILL_NOT_DECLARED');
+      const stat=regularFile(ext.skillPath,256*1024);
+      const skill=fs.readFileSync(ext.skillPath,'utf8');
+      return {schema:1,id:ext.id,version:ext.version,skillPath:ext.skillPath,bytes:stat.size,sha256:createHash('sha256').update(skill).digest('hex'),skill};
     }
     throw new Error('AGENT_EXTENSION_TOOL_UNKNOWN');
   }

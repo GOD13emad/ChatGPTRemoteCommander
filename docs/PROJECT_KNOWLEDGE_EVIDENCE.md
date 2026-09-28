@@ -909,3 +909,28 @@ Historical checkpoints remain append-only archives. Current release/control clai
 **Confidence/Status:** CONFIRMED/HIGH. Final exact-SHA Linux/Windows/hosted qualification pending the corrected commit.
 
 **Reuse Targets:** release packaging, immutable assets, failure-prevention gate design.
+
+
+## E-OPS-20260928-R4 — visible PowerShell root cause and headless enforcement
+
+**Date/Context:** 2026-09-28; owner reported PowerShell windows surfacing during Commander/project work despite the project-level headless rule.
+
+**Observed evidence:** primary runtime execution paths use hidden/no-window launch semantics, but Windows qualification helpers in `test/gui-native-run.mjs`, `test/profile-reconfigure-windows-parser.test.mjs`, `test/windows-runtime-contract.mjs`, and the installer parser helper spawned `pwsh.exe` without `windowsHide:true`. These helpers execute during candidate qualification and can surface console windows even though production child execution is hidden.
+
+**Root Cause -> Prevention -> Guard:** headless policy existed in project instructions but was not enforced across all Windows child-process launch sites -> harden remaining PowerShell test/helper spawns -> add a Windows runtime regression gate covering audited pwsh child launch paths.
+
+**Policy decision:** background/headless is the default for project execution. Visible console/terminal windows are forbidden as a progress surface. Only the actual task UI or an explicit official progress/UI surface may be foregrounded.
+
+**Confidence/Status:** root cause CONFIRMED/HIGH for qualification-time PowerShell flashes; final regression qualification pending v0.9.18 gates.
+
+## E-EXT-20260928-R5 — Skill-aware external Agent Extension routing
+
+**Date/Context:** 2026-09-28; owner required Commander to use project Skills automatically when the task is relevant, while keeping extensions separate from Commander Core and excluding the private film-making extension.
+
+**Authoritative architecture:** domain Skills/Agents remain external packages under `~/.agents/extensions`; Commander Core owns validation, discovery, policy intersection, relevance routing and skill retrieval only. Core installer/release assets do not bundle those domain packages.
+
+**Implemented contract delta:** add read-only `agent_extension_route(task)` and `agent_extension_skill(id)`. Routing uses manifest-declared triggers/domain metadata; skill retrieval is bounded, validated, and SHA-256 identified. No extension execution authority is added.
+
+**External packages selected for this rollout:** `ansys-modeling`, `project-execution-brain`, `final-thesis-report`. `video-trend` is explicitly excluded by owner instruction. COMSOL standalone Skill was not found in the current authoritative local Skill catalog, status MISSING/UNVERIFIED.
+
+**Reuse Targets:** domain agent routing, separate extension lifecycle, Skill selection, least-authority integration.

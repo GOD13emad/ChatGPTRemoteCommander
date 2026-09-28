@@ -16,7 +16,7 @@ for (const required of [
   'Detected active installation from Windows autostart',
   '$InstallDir = Resolve-InstallDir',
   'Tracked local changes exist in InstallDir',
-  "[string]$SourceRef = 'v0.9.17'",
+  "[string]$SourceRef = 'v0.9.18'",
   'ExpectedCommit',
   "rev-parse 'FETCH_HEAD^{commit}'",
   'incomplete Git checkout with no HEAD',
@@ -36,13 +36,15 @@ for (const required of [
   'Mode: $(if ($effective.powerMode.enabled)',
   'if (Test-Path -LiteralPath $temp) {',
   'Remove-Item -LiteralPath $temp -Recurse -Force -ErrorAction Stop',
-  'if (Test-Path -LiteralPath $temp) { throw }'
+  'UPDATER_TEMP_CLEANUP_DEFER'
 ]) {
   if (!windowsInstaller.includes(required)) {
     throw new Error(`install.ps1 missing required release behavior: ${required}`);
   }
 }
 
+if (!windowsInstaller.includes('Write-Warning ("UPDATER_TEMP_CLEANUP_DEFER')) throw new Error('existing-update temp cleanup must be best-effort after update outcome is known');
+if (windowsInstaller.includes('if (Test-Path -LiteralPath $temp) { throw }')) throw new Error('temp cleanup must not convert a successful update into installer failure');
 if (windowsInstaller.includes('@openai/codex@')) throw new Error('install.ps1 must not provision Codex');
 for (const required of [
   "PowerShell-$version-win-x64.msi",
@@ -87,7 +89,7 @@ for (const required of [
   'Alpine/musl is not qualified'
 ]) if (!linuxServerInstaller.includes(required)) throw new Error(`server-install-linux.sh missing server bootstrap behavior: ${required}`);
 for (const required of [
-  'SOURCE_REF="${REMOTE_COMMANDER_SOURCE_REF:-v0.9.17}"',
+  'SOURCE_REF="${REMOTE_COMMANDER_SOURCE_REF:-v0.9.18}"',
   '--source-ref',
   '--skip-tunnel-client',
   '--expected-commit',
@@ -141,7 +143,7 @@ for (const required of ['Reusing existing local credential', 'doctor bind check 
 }
 
 function run(file, args) {
-  const result = spawnSync(file, args, { encoding: 'utf8' });
+  const result = spawnSync(file, args, { encoding: 'utf8', windowsHide: true });
   if (result.error?.code === 'ENOENT') return { skipped: true };
   if (result.status !== 0) {
     throw new Error(`${file} ${args.join(' ')} failed\n${result.stdout}\n${result.stderr}`);

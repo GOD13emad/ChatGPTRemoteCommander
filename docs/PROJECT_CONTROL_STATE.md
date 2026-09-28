@@ -1,19 +1,26 @@
 # Current project state
 
-Updated: 2026-09-28. Scope: public product/release status, not a live machine inventory.
+Updated: 2026-09-28. Scope: public product/release status plus current v0.9.18 candidate.
 
 ## Release baseline
 
-- [v0.9.16](RELEASE_0.9.16.md) is the current immutable published runtime baseline at merge/tag commit `981e0b2a8856043b862da8a3ec63d75c5d906588`.
-- Exact v0.9.16 qualification passed Windows local, clean Linux local, and hosted Windows/Ubuntu CI. Candidate-first rollout is live on the primary Windows profiles, the Linux laptop, and the audited Windows HPC target.
-- v0.9.16 was published without release assets. Because release immutability locks assets after publication, its documented latest-release `plugin-template.zip` download path is incomplete and is not being worked around by deleting/recreating the release.
-- [v0.9.17](RELEASE_0.9.17.md) is the current bounded packaging patch. Runtime semantics are unchanged apart from the version identifier; the release pipeline now builds/checks all assets before publication and passes them directly to `gh release create`.
+- v0.9.17 is the current immutable published baseline at merge commit `a6b2deb55ff3bccc5c0e940c31fdbd3a38f9b305`.
+- v0.9.17 release packaging is verified: immutable release, 15 assets, 14 checksum entries, and the stable latest `plugin-template.zip` path matched the published SHA-256.
+- v0.9.17 is live on Linux, the audited HPC Windows target, and the Windows `saeed-emad` profile. The Windows `default` profile remained on v0.9.16 only because a stale previous-route record blocked candidate admission; independent double-check proved the recorded v0.9.15 backend process/listener were absent and the stale record was retired with exact generation/profile/port/commit guards.
+- v0.9.18 is the current candidate.
 
 ## CURRENT / open release gates
 
-CURRENT: v0.9.17 immutable-release packaging correction.
+CURRENT: v0.9.18 final qualification.
 
-Open gates: deterministic asset build and checksum verification; full exact-tree Windows + Linux check/test/audit; hosted exact-SHA Windows/Ubuntu CI; immutable publication with exactly 15 assets; published download/checksum verification including `plugin-template.zip`; candidate-first rollout/version canaries.
+v0.9.18 contains three separately scoped change sets:
+1. Windows installer temp-cleanup outcome integrity.
+2. Headless/background PowerShell enforcement across qualification helper paths.
+3. External Agent Extension relevance routing + bounded Skill retrieval; domain Skills remain separately installed and are not bundled by Commander.
+
+Focused gates currently PASS for installer parser behavior, headless Windows runtime contract, extension registry/HTTP routing, local external extension discovery, ANSYS task routing, and Persian thesis-report routing.
+
+Open gates: full Windows check/test/audit; clean Linux exact-tree check/test/audit + release-asset build; hosted exact-SHA Windows/Ubuntu CI; immutable release publication/download verification; candidate-first rollout/version canaries.
 
 ## Remaining roadmap
 
@@ -203,3 +210,11 @@ Historical checkpoints are preserved in the [archived project state](history/PRO
 - Minimum fix: deterministic 16-asset build + SHA-256 verification, then attach the complete set during `gh release create`; keep immutable releases enabled.
 - Runtime delta: version only; no authorization, updater, workflow, browser, GUI or execution-policy broadening.
 - FINAL status: UNPROVEN until exact-SHA local/hosted gates, immutable publication, asset download verification and rollout pass.
+
+
+## CURRENT CHANGE SET — v0.9.18 operational closure
+
+- Installer cleanup failure: CONFIRMED root cause; successful candidate update could be followed by cleanup-only exit 1. Prevention implemented as best-effort temp cleanup with warning-only defer.
+- PowerShell visibility: CONFIRMED gap in test/qualification helpers; main runtime paths were already hidden/no-window. Remaining helper launches now use `windowsHide:true`; regression gate PASS.
+- Agent Extensions: `agent_extension_route` and `agent_extension_skill` added as read-only tools. Local separately installed acceptance set is `ansys-modeling`, `project-execution-brain`, and `final-thesis-report`. Owner-private `video-trend` is excluded from this rollout. Standalone COMSOL Skill is MISSING/UNVERIFIED in the current local catalog.
+- FINAL status: UNPROVEN until full exact-SHA gates, hosted CI, immutable release verification, and rollout pass.

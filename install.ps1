@@ -10,7 +10,7 @@ param(
   [switch]$StartServer,
   [switch]$SkipTunnelClient,
   [string]$TunnelClientVersion = '0.0.15',
-  [string]$SourceRef = 'v0.9.17',
+  [string]$SourceRef = 'v0.9.18',
   [string]$ExpectedCommit = ''
 )
 $ErrorActionPreference = 'Stop'
@@ -149,7 +149,7 @@ function Invoke-ExistingSafeUpdate {
       try {
         Remove-Item -LiteralPath $temp -Recurse -Force -ErrorAction Stop
       } catch {
-        if (Test-Path -LiteralPath $temp) { throw }
+        Write-Warning ("UPDATER_TEMP_CLEANUP_DEFER path={0} error={1}" -f $temp,$_.Exception.Message)
       }
     }
   }
