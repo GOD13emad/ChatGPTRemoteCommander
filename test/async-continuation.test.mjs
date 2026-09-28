@@ -12,6 +12,15 @@ function fixture(){
   return {base,state,config,dispose:()=>fs.rmSync(base,{recursive:true,force:true})};
 }
 function timeout(ms){return new Promise((_,reject)=>setTimeout(()=>reject(new Error('TEST_TIMEOUT')),ms));}
+async function waitTerminal(api,operationId,timeoutMs=2000){
+  const deadline=Date.now()+timeoutMs;
+  while(Date.now()<deadline){
+    const state=await api.execute('operation_status',{operationId});
+    if(['SUCCEEDED','FAILED','TIMED_OUT','CANCELLED','UNCERTAIN'].includes(state.status))return state;
+    await new Promise(r=>setTimeout(r,20));
+  }
+  throw new Error('TERMINAL_WAIT_TIMEOUT');
+}
 
 test('operation terminal event triggers attached continuation without status polling',async()=>{
   const f=fixture();
@@ -56,6 +65,8 @@ test('continuation metadata is part of request idempotency identity',async()=>{
     await assert.rejects(api.execute('operation_start',{
       ...input,continuation:{projectId:'p1',eventKey:'op:req-2',root:f.base,summary:'changed'}
     }),/REQUEST_ID_CONFLICT/);
+    const settled=await waitTerminal(api,a.operationId);
+    assert.equal(settled.status,'SUCCEEDED');
   }finally{await api.close();f.dispose();}
 });
 
