@@ -9,7 +9,7 @@ function fixture(){
   const base=fs.mkdtempSync(path.join(os.tmpdir(),'rc-async-continuation-'));
   const state=path.join(base,'state');
   const config={instance:{profile:'test'},asyncOperations:{stateDir:state,maxOutputBytes:1024*1024}};
-  return {base,state,config,dispose:()=>fs.rmSync(base,{recursive:true,force:true})};
+  return {base,state,config,dispose:()=>fs.rmSync(base,{recursive:true,force:true,maxRetries:20,retryDelay:50})};
 }
 function timeout(ms){return new Promise((_,reject)=>setTimeout(()=>reject(new Error('TEST_TIMEOUT')),ms));}
 async function waitTerminal(api,operationId,timeoutMs=2000){

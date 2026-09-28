@@ -294,3 +294,10 @@ Historical checkpoints are preserved in the [archived project state](history/PRO
 - Final gate marker: 2026-09-28T23:06:39.5908545+03:30.
 - Gate log SHA-256: 0DC03CE86CF73A2847B68ECC566D7CDF916F91F7B3E0D69DB33A51DF8DA5F817.
 - Exact next gate: amend the still-unmerged candidate, push with explicit lease against 812d3fdedc9d58c655aa6237a8e6c4b5d0d4284d, then require fresh hosted CI/canaries.
+
+
+## 2026-09-28 — Async-continuation cleanup gate
+
+- Full gate after browser qualification fix had one failure only: Windows fixture cleanup returned `ENOTEMPTY` after the idempotency assertions had passed.
+- Mutation: test-fixture teardown only, using the repository's established recursive cleanup retry policy (`maxRetries:20`, `retryDelay:50`).
+- Runtime/contract code unchanged. Promotion remains BLOCKED until targeted stress and full final gate pass.
