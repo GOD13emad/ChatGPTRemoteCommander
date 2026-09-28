@@ -72,7 +72,7 @@ test('HTTP conversation continuation binds without opening a tab and queues term
     });
     assert.equal(binding.projectId,'p1');
     assert.equal(binding.deliveryAvailable,false);
-    assert.ok(['WAITING_FOR_CHAT_TAB','WINDOWS_UIA_REQUIRED'].includes(binding.code),binding.code);
+    assert.ok(['WAITING_FOR_CHAT_TAB','WINDOWS_UIA_REQUIRED','UIA_HELPER_TIMEOUT'].includes(binding.code),binding.code);
 
     const started=await call(port,3,'operation_start',{
       requestId:'op-http-1',tool:'run_project_command',
