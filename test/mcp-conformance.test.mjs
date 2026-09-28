@@ -98,7 +98,7 @@ test('dual-era MCP contract, tool validation, cache hints and risk annotations',
     child.stderr.on('data', chunk => { stderr += chunk.toString('utf8'); });
 
     let healthy = false;
-    for (let attempt = 0; attempt < 100; attempt += 1) {
+    for (let attempt = 0; attempt < 400; attempt += 1) {
       try {
         const response = await fetch(`http://127.0.0.1:${port}/health`);
         if (response.ok) { healthy = true; break; }

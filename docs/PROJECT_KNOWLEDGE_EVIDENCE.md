@@ -1050,3 +1050,18 @@ Historical checkpoints remain append-only archives. Current release/control clai
 **Scope:** repository CI/release infrastructure only. No v0.9.20 runtime/release bytes change; the immutable tag remains authoritative for production.
 
 **Status:** implementation present on closure branch; PR CI must pass before merge. After merge, Dependabot PRs #3/#4 and stale PR #43 are superseded.
+
+
+## E-CI-20260928-R12 — Windows hosted fixture startup budget under Actions v7
+
+**Date/Context:** 2026-09-28; post-release closure PR #45 after refreshing GitHub Actions pins to checkout v7.0.1/setup-node v7.0.0.
+
+**Observed evidence:** Ubuntu CI passed. Windows CI run `36450036292` failed two HTTP fixture tests while runtime source was unchanged from accepted v0.9.20. Both failures occurred before any behavior assertion because copied fixture servers did not become healthy within their local startup loops. `mcp-conformance.test.mjs` allowed 100×25 ms (2.5 s); `mutation-idempotency-http.test.mjs` also allowed 100×25 ms. The latter stderr contained only the SQLite experimental warning, not a product initialization error.
+
+**Historical family audit:** several HTTP fixture tests still used 2.5–5 s process-start budgets while hardened fixtures already allow approximately 10 s or a 30 s deadline. Hosted qualification runs test files concurrently, so process scheduling/startup latency is not the invariant these tests intend to measure.
+
+**Root Cause -> Prevention -> Guard:** inconsistent short fixture-server readiness budgets allowed host scheduling latency to fail unrelated HTTP behavior tests -> normalize copied/local fixture health waits to approximately 10 s without changing product runtime deadlines -> run the affected fixture suite repeatedly on Windows and require renewed hosted Windows/Ubuntu CI PASS.
+
+**Scope:** test infrastructure only. No Commander runtime, transport, installer, release bytes, authority, timeout semantics, or user-visible behavior changed.
+
+**Focused regression:** affected fixture suite executed three consecutive times on Windows: 36/36 PASS, terminal marker `V0920_FIXTURE_STARTUP_STRESS_PASS`, exit 0. Both originally failing tests passed in every run. **Status:** local prevention CONFIRMED/HIGH; renewed hosted CI on the committed head is required before merge.

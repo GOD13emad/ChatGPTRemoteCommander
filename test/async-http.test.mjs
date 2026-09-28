@@ -104,9 +104,9 @@ test('HTTP async operation returns immediately, retry is idempotent, and output 
 
     let healthy = false;
     // Release qualification runs test files in parallel. Keep startup bounded,
-    // but give the copied fixture server 5s of process-start headroom; this is
+    // but give the copied fixture server 10s of process-start headroom; this is
     // independent of Commander's synchronous transport deadline.
-    for (let attempt = 0; attempt < 200; attempt += 1) {
+    for (let attempt = 0; attempt < 400; attempt += 1) {
       if (child.exitCode !== null) break;
       try {
         const response = await fetch(`http://127.0.0.1:${port}/health`);

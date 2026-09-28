@@ -42,7 +42,7 @@ async function startServer(serverRoot,configPath,port) {
     cwd:serverRoot,env:{...process.env,REMOTE_COMMANDER_CONFIG:configPath},stdio:['ignore','pipe','pipe']
   });
   let stderr=''; child.stderr.on('data',c=>{stderr+=c.toString('utf8');});
-  for(let i=0;i<120;i+=1) {
+  for(let i=0;i<400;i+=1) {
     try { const r=await fetch(`http://127.0.0.1:${port}/health`); if(r.ok) return {child,stderr:()=>stderr}; } catch {}
     await wait(25);
   }

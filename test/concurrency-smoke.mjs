@@ -50,7 +50,7 @@ server.stderr.on('data', (chunk) => { serverOutput += chunk.toString('utf8'); })
 process.once('exit', () => { try { server.kill('SIGTERM'); } catch {} });
 
 async function waitForHealth() {
-  for (let attempt = 0; attempt < 50; attempt += 1) {
+  for (let attempt = 0; attempt < 100; attempt += 1) {
     try {
       const response = await fetch(`http://127.0.0.1:${port}/health`);
       if (response.ok) return;
