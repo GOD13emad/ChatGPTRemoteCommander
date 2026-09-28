@@ -15,7 +15,12 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
-      - name: Publish matching qualified tag
+      - name: Build immutable release assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash tools/build-release-assets.sh dist/release
+      - name: Publish matching qualified tag with assets
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
@@ -34,5 +39,8 @@ jobs:
             exit 0
           fi
           test -f "$notes"
-          gh release create "$tag" --repo "$GH_REPO" --verify-tag             --title "Remote Commander $tag"             --notes-file "$notes"
-          echo "RELEASE_SYNC_PUBLISHED tag=$tag"
+          (cd dist/release && sha256sum -c SHA256SUMS.txt)
+          mapfile -t assets < <(find dist/release -maxdepth 1 -type f -printf '%p\n' | LC_ALL=C sort)
+          test "${#assets[@]}" -eq 15
+          gh release create "$tag" "${assets[@]}"             --repo "$GH_REPO"             --verify-tag             --title "Remote Commander $tag"             --notes-file "$notes"
+          echo "RELEASE_SYNC_PUBLISHED tag=$tag assets=${#assets[@]}"
