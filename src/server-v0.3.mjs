@@ -24,12 +24,15 @@ import {
 } from './no-codex-policy.mjs';
 
 let workflowTools = null;
-const VERSION = '0.9.12';
+const VERSION = '0.9.13';
 const MODERN_VERSION = '2026-07-28';
 const LEGACY_VERSIONS = ['2025-11-25', '2025-06-18', '2025-03-26'];
+const TASKS_EXTENSION = 'io.modelcontextprotocol/tasks';
+const TASK_POLL_INTERVAL_MS = 5000;
+const TASK_ID_RE = /^[a-f0-9-]{36}$/;
 const MODERN_CACHE_HINT = Object.freeze({ ttlMs: 30000, cacheScope: 'private' });
 const CHAT_STREAM_SAFE_DIRECT_CALL_BUDGET = 3;
-const chatStreamSafetyInstruction = () => ` Chat-stream safety: use at most ${CHAT_STREAM_SAFE_DIRECT_CALL_BUDGET} direct synchronous MCP tool calls in one assistant turn. Start any substantive continuation after an interrupted or long-running task with one system_status read; if completionBeacon.pending is nonzero, surface the matching pending closeout before starting unrelated work. Use delivery tools when the exact correlation identity is known and those tools are exposed; never claim an unrelated correlation. For work that needs more calls, substantial output, or unknown duration, persist/continue it through durable workflows, Project Engine, or operation_start and return a compact checkpoint/delivery identity instead of holding one chat stream open. Every execution turn must end with a visible closeout state (COMPLETED, BACKGROUND, BLOCKED, WAITING, or FAILED) and the exact next state before more direct work. Do not rapidly poll status; use sparse bounded status/result reads.`;
+const chatStreamSafetyInstruction = () => ` Chat-stream safety: use at most ${CHAT_STREAM_SAFE_DIRECT_CALL_BUDGET} direct synchronous MCP tool calls in one assistant turn. Start any substantive continuation after an interrupted or long-running task with one system_status read; if completionBeacon.pending is nonzero, surface the matching pending closeout before starting unrelated work. Use delivery tools when the exact correlation identity is known and those tools are exposed; never claim an unrelated correlation. For work that needs more calls, substantial output, or unknown duration, use operation_start. If the modern client negotiated io.modelcontextprotocol/tasks, operation_start may return a durable MCP task handle; honor pollIntervalMs and resume with tasks/get after stream/client restart. Otherwise preserve the operationId/correlationId fallback. You may use one bounded operation_status waitMs follow window (maximum 5 seconds) when a result is likely imminent; if it is still running, close the chat turn as BACKGROUND instead of polling. Persist multi-step readiness/recovery through durable workflows, but keep all new reasoning and next-step decisions in the current ChatGPT conversation. Every execution turn must end with a visible closeout state (COMPLETED, BACKGROUND, BLOCKED, WAITING, or FAILED) and the exact durable identity/next state before more direct work. Do not rapidly poll status or tasks/get; use sparse bounded reads.`;
 const here = path.dirname(fileURLToPath(import.meta.url));
 const projectDir = path.resolve(here, '..');
 const defaultConfigPath = path.join(projectDir, 'config.json');
@@ -248,6 +251,42 @@ function legacyResult(payload) {
 function toolDefinition(name) {
   return typeof name === 'string' ? TOOLS.find(tool => tool.name === name) : undefined;
 }
+function clientSupportsTasks(message) {
+  return message?.params?._meta?.['io.modelcontextprotocol/clientCapabilities']?.extensions?.[TASKS_EXTENSION] !== undefined;
+}
+function taskCapabilityError(id) {
+  return rpcError(id, -32003, 'Missing required client capability', {
+    requiredCapabilities: { extensions: { [TASKS_EXTENSION]: {} } }
+  });
+}
+async function operationTask(taskId) {
+  if (!TASK_ID_RE.test(String(taskId ?? ''))) throw new Error('invalid taskId');
+  const state = await asyncOperationTools.execute('operation_status', { operationId: taskId });
+  const base = {
+    taskId,
+    createdAt: state.createdAt ?? state.updatedAt ?? new Date().toISOString(),
+    lastUpdatedAt: state.updatedAt ?? state.createdAt ?? new Date().toISOString(),
+    ttlMs: null,
+    pollIntervalMs: TASK_POLL_INTERVAL_MS
+  };
+  if (state.status === 'CANCELLED') return { ...base, status: 'cancelled', statusMessage: 'Operation cancelled.' };
+  if (!['SUCCEEDED','FAILED','TIMED_OUT','UNCERTAIN'].includes(state.status)) {
+    return { ...base, status: 'working', statusMessage: state.status === 'QUEUED' ? 'Operation queued.' : 'Operation in progress.' };
+  }
+  const detail = await asyncOperationTools.execute('operation_result', { operationId: taskId, tailBytes: 8192 });
+  const result = toolSuccessPayload(detail);
+  if (state.status !== 'SUCCEEDED') result.isError = true;
+  return {
+    ...base,
+    status: 'completed',
+    statusMessage: state.status === 'SUCCEEDED' ? 'Operation completed.' : 'Operation completed with state ' + state.status + '.',
+    result
+  };
+}
+function rpcTaskResult(id, task) {
+  return { jsonrpc: '2.0', id, result: { resultType: 'task', ...task, _meta: serverMeta() } };
+}
+
 
 function toolErrorPayload(message) {
   return {
@@ -486,6 +525,13 @@ function validateModern(req, message) {
       throw protocolFailure(400, -32020, 'Mcp-Name header does not match request body');
     }
   }
+  if (['tasks/get','tasks/update','tasks/cancel'].includes(message.method)) {
+    const taskId = message.params?.taskId;
+    const nameHeader = header(req, 'mcp-name');
+    if (nameHeader !== taskId) {
+      throw protocolFailure(400, -32020, 'Mcp-Name header must match params.taskId');
+    }
+  }
 }
 async function handleMessage(req, message) {
   if (!message || message.jsonrpc !== '2.0' || typeof message.method !== 'string') {
@@ -516,7 +562,7 @@ async function handleMessage(req, message) {
     if (modern && message.method === 'server/discover') {
       return { status: 200, body: rpcResult(message.id, {
         supportedVersions: [MODERN_VERSION],
-        capabilities: { tools: {} },
+        capabilities: { tools: {}, extensions: { [TASKS_EXTENSION]: {} } },
         instructions: operatingInstructions(),
         ...MODERN_CACHE_HINT
       }, true) };
@@ -524,6 +570,26 @@ async function handleMessage(req, message) {
     if (message.method === 'tools/list') {
       const payload = modern ? { tools: TOOLS, ...MODERN_CACHE_HINT } : { tools: TOOLS };
       return { status: 200, body: rpcResult(message.id, payload, modern) };
+    }
+    if (modern && ['tasks/get','tasks/update','tasks/cancel'].includes(message.method)) {
+      if (!clientSupportsTasks(message)) return { status: 200, body: taskCapabilityError(message.id) };
+      const taskId = message.params?.taskId;
+      if (!TASK_ID_RE.test(String(taskId ?? ''))) {
+        return { status: 200, body: rpcError(message.id, -32602, 'invalid taskId') };
+      }
+      if (message.method === 'tasks/get') {
+        const task = await operationTask(taskId);
+        return { status: 200, body: rpcResult(message.id, task, true) };
+      }
+      if (message.method === 'tasks/update') {
+        if (!isPlainObject(message.params?.inputResponses)) {
+          return { status: 200, body: rpcError(message.id, -32602, 'tasks/update requires inputResponses object') };
+        }
+        await asyncOperationTools.execute('operation_status', { operationId: taskId });
+        return { status: 200, body: rpcResult(message.id, {}, true) };
+      }
+      await asyncOperationTools.execute('operation_cancel', { operationId: taskId });
+      return { status: 200, body: rpcResult(message.id, {}, true) };
     }
     if (message.method === 'tools/call') {
       const name = message.params?.name;
@@ -550,6 +616,10 @@ async function handleMessage(req, message) {
       await audit(ctx, { ...acceptedTrace(req, message, executionArgs, name), ...(requestIdSource ? { requestIdSource } : {}) });
       try {
         const result = await executeTool(name, executionArgs);
+        if (modern && name === 'operation_start' && clientSupportsTasks(message) && result?.operationId) {
+          const task = await operationTask(result.operationId);
+          return { status: 200, body: rpcTaskResult(message.id, task) };
+        }
         return { status: 200, body: rpcResult(message.id, toolSuccessPayload(result), modern) };
       } catch (error) {
         await audit(ctx, { action: 'tool_error', tool: name, ok: false, error: error.message });

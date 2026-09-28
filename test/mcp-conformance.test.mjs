@@ -165,6 +165,7 @@ test('dual-era MCP contract, tool validation, cache hints and risk annotations',
     assert.equal(discover.status, 200);
     assert.equal(discover.body.result.resultType, 'complete');
     assert.deepEqual(discover.body.result.supportedVersions, [MODERN]);
+    assert.deepEqual(discover.body.result.capabilities.extensions['io.modelcontextprotocol/tasks'], {});
     assert.equal(discover.body.result.ttlMs, 30000);
     assert.equal(discover.body.result.cacheScope, 'private');
     assert.equal(discover.body.result._meta['io.modelcontextprotocol/serverInfo'].name, 'chatgpt-remote-commander');

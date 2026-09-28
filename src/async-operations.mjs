@@ -2,8 +2,9 @@ import os from 'node:os';
 import path from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
 import { spawn } from 'node:child_process';
+import { watch as fsWatch } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { mkdir, open, readFile, readdir, rename, stat, writeFile } from 'node:fs/promises';
+import { mkdir, open, readFile, readdir, realpath, rename, stat, writeFile } from 'node:fs/promises';
 import { expandPathValue } from './platform.mjs';
 
 const TERMINAL = new Set(['SUCCEEDED', 'FAILED', 'TIMED_OUT', 'CANCELLED', 'UNCERTAIN']);
@@ -91,10 +92,13 @@ export const asyncOperationDefinitions = [
   },
   {
     name: 'operation_status',
-    description: 'Read compact durable status for a detached operation without returning command output.',
+    description: 'Read compact durable status for a detached operation without returning command output. Optionally wait up to 5 seconds for a state change and return early on terminal state.',
     inputSchema: {
       type: 'object',
-      properties: { operationId: { type: 'string', pattern: '^[a-f0-9-]{36}$' } },
+      properties: {
+        operationId: { type: 'string', pattern: '^[a-f0-9-]{36}$' },
+        waitMs: { type: 'integer', minimum: 0, maximum: 5000 }
+      },
       required: ['operationId'],
       additionalProperties: false
     },
@@ -412,6 +416,49 @@ export function createAsyncOperationTools({ config, prepare, workerPath, deliver
     }
     return state;
   }
+
+  async function statusWithWait(operationId, waitMs = 0) {
+    if (!Number.isSafeInteger(waitMs) || waitMs < 0 || waitMs > 5000) throw new Error('invalid waitMs');
+    let current = await status(operationId);
+    if (waitMs === 0 || TERMINAL.has(current.status)) return current;
+    const p = opPaths(operationId);
+    const watchDir = await realpath(p.dir);
+    return new Promise((resolve, reject) => {
+      let done = false;
+      let watcher = null;
+      let timer = null;
+      let reading = false;
+      const finish = (value, error = null) => {
+        if (done) return;
+        done = true;
+        if (timer) clearTimeout(timer);
+        try { watcher?.close(); } catch {}
+        if (error) reject(error); else resolve(value);
+      };
+      const refresh = async () => {
+        if (done || reading) return;
+        reading = true;
+        try {
+          current = await status(operationId);
+          if (TERMINAL.has(current.status)) finish(current);
+        } catch (error) {
+          finish(null, error);
+        } finally {
+          reading = false;
+        }
+      };
+      try {
+        watcher = fsWatch(watchDir, { persistent: false }, () => { refresh(); });
+        watcher.on('error', () => {});
+      } catch {}
+      timer = setTimeout(async () => {
+        try { finish(await status(operationId)); }
+        catch (error) { finish(null, error); }
+      }, waitMs);
+      timer.unref?.();
+    });
+  }
+
   async function start(input) {
     if (!enabled) throw new Error('async operations are disabled');
     if (!REQUEST_RE.test(input.requestId)) throw new Error('invalid requestId');
@@ -629,7 +676,7 @@ export function createAsyncOperationTools({ config, prepare, workerPath, deliver
     },
     execute: async (name, input) => {
       if (name === 'operation_start') return start(input);
-      if (name === 'operation_status') return status(input.operationId);
+      if (name === 'operation_status') return statusWithWait(input.operationId, input.waitMs ?? 0);
       if (name === 'operation_result') return result(input);
       if (name === 'operation_cancel') return cancel(input);
       throw new Error('unknown async operation tool');
