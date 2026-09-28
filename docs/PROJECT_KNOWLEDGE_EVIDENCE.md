@@ -847,3 +847,18 @@ Historical checkpoints remain append-only archives. Current release/control clai
 **Confidence/Status:** IMPLEMENTATION CONFIRMED/HIGH for static/cross-platform qualification. Fresh-VM destructive installation canary remains OPEN until release-candidate CI is green and a disposable clean server target is available.
 
 **Reuse Targets:** Windows Server deployment, Linux server deployment, enterprise allowlisting, installation troubleshooting, release packaging.
+
+
+## E-CI-20260928-R1 — Windows hosted temp-lifecycle hardening
+
+**Date/Context:** 2026-09-28; GitHub Actions run `36406635441` on v0.9.16 candidate `762e309`.
+
+**Observed evidence:** Ubuntu hosted `check`, `test`, and `audit` all passed. Windows `check` passed but `npm test` reported four failures: three `EBUSY: resource busy or locked, rmdir ...\\server` failures during test teardown, plus one isolated workflow fixture health-start timeout at the existing 15-second deadline. The failing tests exercise isolated copied servers; no production assertion failed.
+
+**Root Cause → Prevention → Guard:** two affected teardown paths killed the isolated child and waited only for `exit`, then immediately removed its temp tree with no Windows retry policy → wait for child `close` (stdio lifecycle complete) and use the repository's existing bounded `fs.rm(..., {maxRetries:20,retryDelay:50})` Windows cleanup pattern. The workflow fixture already waits for `close`; its only failure was startup under hosted parallel load, so the fixture-only readiness budget is raised from 15 to 30 seconds. No product server timeout, retry, idempotency, workflow, or mutation semantics changed.
+
+**Regression:** Affected Windows files executed together for five consecutive rounds: 35/35 PASS, no skips/failures. Installer static gate PASS and security audit PASS after the same working-tree changes. Linux overlay of the same affected tests: 7/7 PASS; installer gate and security audit PASS.
+
+**Confidence/Status:** CI root cause CONFIRMED/HIGH. Full exact-tree and renewed hosted exact-SHA CI remain promotion gates.
+
+**Reuse Targets:** Windows test process lifecycle, isolated-server fixtures, CI reliability, cleanup guidance.

@@ -121,8 +121,8 @@ test('unbounded path mutations auto-defer, survive retry, and publish exact resu
   } finally {
     if(running?.child && running.child.exitCode===null) {
       running.child.kill();
-      await Promise.race([once(running.child,'exit'),wait(2000)]);
+      await Promise.race([once(running.child,'close'),wait(4000)]);
     }
-    await fs.rm(root,{recursive:true,force:true});
+    await fs.rm(root,{recursive:true,force:true,maxRetries:20,retryDelay:50});
   }
 });

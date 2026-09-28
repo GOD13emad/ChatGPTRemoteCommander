@@ -184,3 +184,13 @@ Historical checkpoints are preserved in the [archived project state](history/PRO
 - Windows static/onboarding/security gates: PASS.
 - Linux overlay syntax/installer/focused/security gates: PASS.
 - Fresh disposable server installation canary: OPEN.
+
+
+### Windows hosted CI lifecycle correction
+
+- Prior hosted candidate: Ubuntu fully PASS; Windows `check` PASS, test FAIL only in isolated-server fixture lifecycle.
+- Failure family: 3 temp cleanup `EBUSY` errors + 1 15-second health-start timeout under hosted parallel load.
+- Fix is test infrastructure only: child `close` before cleanup, bounded Windows rm retries, 30-second fixture startup budget.
+- Focused Windows regression: 5 rounds / 35 of 35 PASS.
+- Linux overlay affected suite: 7 of 7 PASS.
+- Next gate: full exact-tree Windows + clean Linux, then hosted exact-SHA Windows/Ubuntu.
