@@ -1,0 +1,87 @@
+name: Server Install Canary
+
+on:
+  pull_request:
+    paths:
+      - 'install.ps1'
+      - 'install.sh'
+      - 'server-install-windows.ps1'
+      - 'server-install-linux.sh'
+      - 'test/installer-check.mjs'
+      - 'package.json'
+      - '.github/workflows/server-install-canary.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  RC_SOURCE_REF: ${{ github.event.pull_request.head.ref || github.ref_name }}
+  RC_EXPECTED_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+
+jobs:
+  windows-server-bootstrap:
+    runs-on: windows-2022
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 1
+      - name: Exercise Windows Server bootstrap with Node/Git absent from PATH
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $script=Join-Path $env:GITHUB_WORKSPACE 'server-install-windows.ps1'
+          $expectedVersion=(Get-Content -LiteralPath (Join-Path $env:GITHUB_WORKSPACE 'package.json') -Raw | ConvertFrom-Json).version
+          $identity=[Security.Principal.WindowsIdentity]::GetCurrent()
+          $principal=[Security.Principal.WindowsPrincipal]::new($identity)
+          if(-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)){throw 'HOSTED_RUNNER_NOT_ADMIN'}
+          $oldMachine=[Environment]::GetEnvironmentVariable('Path','Machine')
+          $oldUser=[Environment]::GetEnvironmentVariable('Path','User')
+          try {
+            $minimal="$env:ProgramFiles\PowerShell\7;$env:windir\System32;$env:windir;$env:windir\System32\Wbem"
+            [Environment]::SetEnvironmentVariable('Path',$minimal,'Machine')
+            [Environment]::SetEnvironmentVariable('Path',$null,'User')
+            $env:Path=$minimal
+            if(Get-Command node.exe -ErrorAction SilentlyContinue){throw 'NODE_SHOULD_BE_HIDDEN_FOR_CANARY'}
+            if(Get-Command git.exe -ErrorAction SilentlyContinue){throw 'GIT_SHOULD_BE_HIDDEN_FOR_CANARY'}
+            $installDir=Join-Path $env:RUNNER_TEMP 'rc-server-app'
+            & $script -SourceRef $env:RC_SOURCE_REF -ExpectedCommit $env:RC_EXPECTED_COMMIT -InstallDir $installDir -NoStartServer -GuiControl Off
+            $manifestPath=Join-Path $env:ProgramData 'ChatGPTRemoteCommander\server-install-allowlist.json'
+            $manifest=Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+            if($manifest.resolvedCommit -ne $env:RC_EXPECTED_COMMIT){throw 'MANIFEST_COMMIT_MISMATCH'}
+            if($manifest.antivirusExclusionsAdded -ne $false){throw 'ANTIVIRUS_EXCLUSION_POLICY_VIOLATION'}
+            $names=@($manifest.artifacts | ForEach-Object {$_.name})
+            if($names -notcontains 'Node.js'){throw 'NODE_BOOTSTRAP_NOT_EVIDENCED'}
+            if($names -notcontains 'Git for Windows'){throw 'GIT_BOOTSTRAP_NOT_EVIDENCED'}
+            $pkg=Get-Content -LiteralPath (Join-Path $installDir 'package.json') -Raw | ConvertFrom-Json
+            if($pkg.version -ne $expectedVersion){throw 'INSTALLED_VERSION_MISMATCH'}
+            Write-Output 'WINDOWS_DISPOSABLE_SERVER_CANARY_PASS'
+          } finally {
+            [Environment]::SetEnvironmentVariable('Path',$oldMachine,'Machine')
+            [Environment]::SetEnvironmentVariable('Path',$oldUser,'User')
+          }
+
+  linux-clean-container:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 1
+      - name: Exercise Linux bootstrap in clean Ubuntu container
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --rm             -e RC_SOURCE_REF="$RC_SOURCE_REF"             -e RC_EXPECTED_COMMIT="$RC_EXPECTED_COMMIT"             -v "$GITHUB_WORKSPACE:/src:ro"             ubuntu:24.04 bash -lc '
+              set -euo pipefail
+              bash /src/server-install-linux.sh                 --source-ref "$RC_SOURCE_REF"                 --expected-commit "$RC_EXPECTED_COMMIT"                 --install-dir /opt/chatgpt-remote-commander/app                 --no-start
+              test "$(git -C /opt/chatgpt-remote-commander/app rev-parse HEAD)" = "$RC_EXPECTED_COMMIT"
+              command -v python3 >/dev/null
+              expected_version="$(sed -nE '"'"'s/.*"version"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p'"'"' /src/package.json | head -n1)"
+              actual_version="$(/opt/chatgpt-remote-commander/app/.runtime/node-current/bin/node -p "require('"'"'/opt/chatgpt-remote-commander/app/package.json'"'"').version")"
+              test "$actual_version" = "$expected_version"
+              echo LINUX_DISPOSABLE_SERVER_CANARY_PASS
+            '

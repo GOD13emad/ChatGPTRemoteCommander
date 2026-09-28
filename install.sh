@@ -12,7 +12,7 @@ BROWSER_PROFILE_ROOT=""
 START_SERVER=0
 INSTALL_PREREQS=0
 SKIP_TUNNEL_CLIENT=0
-SOURCE_REF="${REMOTE_COMMANDER_SOURCE_REF:-v0.9.19}"
+SOURCE_REF="${REMOTE_COMMANDER_SOURCE_REF:-v0.9.20}"
 EXPECTED_COMMIT="${REMOTE_COMMANDER_EXPECTED_COMMIT:-}"
 CURL_CONNECT_TIMEOUT="${REMOTE_COMMANDER_CURL_CONNECT_TIMEOUT:-15}"
 CURL_MAX_TIME="${REMOTE_COMMANDER_CURL_MAX_TIME:-180}"
@@ -28,7 +28,7 @@ Usage: install.sh [options]
   --enable-capability CAP   Explicit capability opt-in (repeatable)
   --start-server            Start MCP server with nohup after validation
   --skip-tunnel-client      Skip tunnel-client download; reuse existing pinned client when present
-  --source-ref REF          Git ref to install (default: v0.9.19)
+  --source-ref REF          Git ref to install (default: v0.9.20)
   --expected-commit SHA     Require the fetched ref to peel to this exact 40-hex commit
   -h, --help                Show help
 USAGE
@@ -71,18 +71,18 @@ install_os_packages() {
   fi
   if need apt-get; then
     $sudo_cmd apt-get update
-    $sudo_cmd apt-get install -y git curl unzip tar xz-utils ca-certificates
+    $sudo_cmd apt-get install -y git curl unzip tar xz-utils ca-certificates python3
   elif need dnf; then
-    $sudo_cmd dnf install -y git curl unzip tar xz ca-certificates
+    $sudo_cmd dnf install -y git curl unzip tar xz ca-certificates python3
   elif need yum; then
-    $sudo_cmd yum install -y git curl unzip tar xz ca-certificates
+    $sudo_cmd yum install -y git curl unzip tar xz ca-certificates python3
   elif need zypper; then
     $sudo_cmd zypper --non-interactive refresh
-    $sudo_cmd zypper --non-interactive install git curl unzip tar xz ca-certificates
+    $sudo_cmd zypper --non-interactive install git curl unzip tar xz ca-certificates python3
   elif need pacman; then
-    $sudo_cmd pacman -Sy --needed --noconfirm git curl unzip tar xz ca-certificates
+    $sudo_cmd pacman -Sy --needed --noconfirm git curl unzip tar xz ca-certificates python
   else
-    echo "Unsupported package manager. Install git curl unzip tar xz manually." >&2
+    echo "Unsupported package manager. Install git curl unzip tar xz python3 manually." >&2
     exit 1
   fi
 }
@@ -439,7 +439,7 @@ start_server() {
 }
 [[ "$(uname -s)" == "Linux" ]] || { echo "This installer supports Linux only. Use install.ps1 on Windows." >&2; exit 1; }
 install_os_packages
-for cmd in git curl unzip tar sha256sum readlink; do
+for cmd in git curl unzip tar sha256sum readlink python3; do
   need "$cmd" || { echo "$cmd is required; re-run with --install-prerequisites." >&2; exit 1; }
 done
 

@@ -57,7 +57,8 @@ assert.ok(server.includes("process.platform === 'win32' || process.platform === 
 assert.ok(updater.includes('install_linux_gui_backend'));
 assert.ok(updater.includes('https://github.com/GOD13emad/ChatGPTRemoteCommander/releases/latest') && updater.includes('%{url_effective}'));
 
-if (process.platform === 'linux') {
+const headlessValidation = process.env.REMOTE_COMMANDER_HEADLESS_VALIDATE === '1';
+if (process.platform === 'linux' && !headlessValidation) {
   const compile=spawnSync('python3',['-c',"import ast,pathlib; ast.parse(pathlib.Path('tools/gui-control-linux.py').read_text())"],{encoding:'utf8'});
   assert.equal(compile.status,0,compile.stderr);
   const self=spawnSync('python3',['tools/gui-control-linux.py','--self-test'],{encoding:'utf8'});
@@ -147,4 +148,4 @@ exit 0
     fs.rmSync(tmp,{recursive:true,force:true});
   }
 }
-console.log('LINUX_GUI_CONTRACT_PASS');
+console.log(headlessValidation ? 'LINUX_GUI_CONTRACT_PASS mode=headless-static' : 'LINUX_GUI_CONTRACT_PASS');

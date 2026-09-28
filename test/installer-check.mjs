@@ -16,7 +16,7 @@ for (const required of [
   'Detected active installation from Windows autostart',
   '$InstallDir = Resolve-InstallDir',
   'Tracked local changes exist in InstallDir',
-  "[string]$SourceRef = 'v0.9.19'",
+  "[string]$SourceRef = 'v0.9.20'",
   'ExpectedCommit',
   "rev-parse 'FETCH_HEAD^{commit}'",
   'incomplete Git checkout with no HEAD',
@@ -75,6 +75,18 @@ if (publicConfig.autoUpdate?.enabled !== true || publicConfig.autoUpdate?.zeroDo
 
 const linuxInstaller = readFileSync('install.sh', 'utf8');
 if (linuxInstaller.includes('@openai/codex@')) throw new Error('install.sh must not provision Codex');
+for (const [label, text] of [['install.sh',linuxInstaller],['server-install-linux.sh',linuxServerInstaller]]) {
+  for (const required of ['python3','sha256sum','readlink']) {
+    if (!text.includes(required)) throw new Error(`${label} missing required fresh-Linux prerequisite contract: ${required}`);
+  }
+}
+if (!linuxInstaller.includes('for cmd in git curl unzip tar sha256sum readlink python3; do')) throw new Error('install.sh must require python3 before qualification');
+if (!linuxServerInstaller.includes('for cmd in git curl unzip tar sha256sum readlink python3; do')) throw new Error('server-install-linux.sh must require python3 before handoff');
+if (!linuxServerInstaller.includes('REMOTE_COMMANDER_HEADLESS_VALIDATE=1 /bin/bash "$installer" "${args[@]}"')) throw new Error('headless server install must scope native GUI validation skip to the child installer');
+const linuxGuiContract = readFileSync('test/linux-gui-contract.mjs','utf8');
+if (!linuxGuiContract.includes("process.env.REMOTE_COMMANDER_HEADLESS_VALIDATE === '1'")) throw new Error('Linux GUI contract must recognize explicit headless validation mode');
+
+
 const linuxEnrollment = readFileSync('enable-autostart-linux.sh', 'utf8');
 const linuxPluginInstaller = readFileSync('install-work-plugin.sh', 'utf8');
 const linuxAccountConnector = readFileSync('connect-chatgpt-account.sh', 'utf8');
@@ -89,7 +101,7 @@ for (const required of [
   'Alpine/musl is not qualified'
 ]) if (!linuxServerInstaller.includes(required)) throw new Error(`server-install-linux.sh missing server bootstrap behavior: ${required}`);
 for (const required of [
-  'SOURCE_REF="${REMOTE_COMMANDER_SOURCE_REF:-v0.9.19}"',
+  'SOURCE_REF="${REMOTE_COMMANDER_SOURCE_REF:-v0.9.20}"',
   '--source-ref',
   '--skip-tunnel-client',
   '--expected-commit',

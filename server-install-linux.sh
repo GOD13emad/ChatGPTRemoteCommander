@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-SOURCE_REF="${REMOTE_COMMANDER_SOURCE_REF:-v0.9.19}"
+SOURCE_REF="${REMOTE_COMMANDER_SOURCE_REF:-v0.9.20}"
 EXPECTED_COMMIT="${REMOTE_COMMANDER_EXPECTED_COMMIT:-}"
 INSTALL_DIR=""
 ENABLE_GUI=0
@@ -11,7 +11,7 @@ REPO_URL="${REMOTE_COMMANDER_REPO_URL:-https://github.com/GOD13emad/ChatGPTRemot
 usage() {
   cat <<'USAGE'
 Usage: server-install-linux.sh [options]
-  --source-ref REF          Git ref to install (default: v0.9.19)
+  --source-ref REF          Git ref to install (default: v0.9.20)
   --expected-commit SHA     Require the fetched ref to resolve to this exact commit
   --install-dir PATH        Override the normal per-user install directory
   --enable-gui              Keep GUI capabilities enabled (desktop Linux only)
@@ -49,16 +49,16 @@ as_root() {
 install_bootstrap_packages() {
   if need apt-get; then
     as_root apt-get update
-    as_root apt-get install -y git curl unzip tar xz-utils ca-certificates
+    as_root apt-get install -y git curl unzip tar xz-utils ca-certificates python3
   elif need dnf; then
-    as_root dnf install -y git curl unzip tar xz ca-certificates
+    as_root dnf install -y git curl unzip tar xz ca-certificates python3
   elif need yum; then
-    as_root yum install -y git curl unzip tar xz ca-certificates
+    as_root yum install -y git curl unzip tar xz ca-certificates python3
   elif need zypper; then
     as_root zypper --non-interactive refresh
-    as_root zypper --non-interactive install git curl unzip tar xz ca-certificates
+    as_root zypper --non-interactive install git curl unzip tar xz ca-certificates python3
   elif need pacman; then
-    as_root pacman -Sy --needed --noconfirm git curl unzip tar xz ca-certificates
+    as_root pacman -Sy --needed --noconfirm git curl unzip tar xz ca-certificates python
   else
     echo 'Unsupported package manager. Supported: apt, dnf, yum, zypper, pacman.' >&2
     exit 1
@@ -75,7 +75,7 @@ if [[ -r /etc/os-release ]]; then
 fi
 
 install_bootstrap_packages
-for cmd in git curl unzip tar sha256sum readlink; do
+for cmd in git curl unzip tar sha256sum readlink python3; do
   need "$cmd" || { echo "$cmd is still unavailable after prerequisite installation." >&2; exit 1; }
 done
 
@@ -110,7 +110,11 @@ if [[ "$ENABLE_GUI" != 1 ]]; then
   args+=(--disable-capability gui.window_focus)
 fi
 
-/bin/bash "$installer" "${args[@]}"
+if [[ "$ENABLE_GUI" == 1 ]]; then
+  /bin/bash "$installer" "${args[@]}"
+else
+  REMOTE_COMMANDER_HEADLESS_VALIDATE=1 /bin/bash "$installer" "${args[@]}"
+fi
 
 if [[ "$START_SERVER" == 1 ]]; then
   health="$(curl -fsS --connect-timeout 2 --max-time 5 http://127.0.0.1:47831/health)"

@@ -2,21 +2,23 @@ import { appendFile, writeFile } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 import os from 'node:os';
 
-const [mode, arg1, arg2] = process.argv.slice(2);
+const [mode, arg1, arg2, arg3] = process.argv.slice(2);
 if (mode === 'sleep') {
   await new Promise((resolve) => setTimeout(resolve, Number(arg1 || 100)));
   process.stdout.write(arg2 || 'done');
 } else if (mode === 'linger-stdio') {
-  const child = spawn(process.execPath, ['-e', 'setTimeout(()=>{},10000)'], {
+  const holdMs = Number(arg3 || 10000);
+  const child = spawn(process.execPath, ['-e', `setTimeout(()=>{},${holdMs})`], {
     detached: true,
     windowsHide: true,
     cwd: os.tmpdir(),
     stdio: ['ignore', 'inherit', 'inherit']
   });
   child.unref();
-  // Establish the test condition deterministically across platforms: the direct
-  // child exits after its own output is flushed while the detached grandchild
-  // still holds inherited stdout/stderr open.
+  // Signal that the direct child has actually been scheduled and established
+  // the inherited-stdio condition. The regression timer starts from this
+  // marker, not from operation creation under unrelated CI scheduler load.
+  if (arg2) await writeFile(arg2, 'ready\n', 'utf8');
   process.stdout.write(arg1 || 'parent-done', () => process.exit(0));
 } else if (mode === 'large') {
   const bytes = Number(arg1 || 1024);
