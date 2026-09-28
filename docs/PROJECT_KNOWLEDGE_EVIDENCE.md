@@ -1156,3 +1156,24 @@ Historical checkpoints remain append-only archives. Current release/control clai
 - **Final marker:** FINAL_GATE_PASS 2026-09-28T23:06:39.5908545+03:30.
 - **Gate log SHA-256:** 0DC03CE86CF73A2847B68ECC566D7CDF916F91F7B3E0D69DB33A51DF8DA5F817.
 - **Promotion status:** local gate accepted; GitHub CI and both server-install canaries on the amended SHA remain required before merge.
+
+
+## 2026-09-28 — Async continuation cleanup qualification correction
+
+- **Failure — CONFIRMED / HIGH:** after the Windows browser qualification correction, the full local gate had exactly one failure in `continuation metadata is part of request idempotency identity`.
+- **Root cause:** the contract assertions had passed; the test failed only in `finally` because its temporary-root cleanup used synchronous recursive removal with no retries and Windows returned `ENOTEMPTY` while async-operation state files were still settling.
+- **Comparable project evidence:** existing async-operation/process-tree/HTTP tests in this repository already use recursive cleanup with `maxRetries:20` and `retryDelay:50` for Windows-safe teardown.
+- **Decision:** align only this fixture teardown with that established repository pattern. Runtime async continuation behavior, idempotency identity, and production code remain unchanged.
+- **Prevention / regression:** targeted repetition of the exact test plus a complete final gate must pass before promotion.
+- **Reuse targets:** Windows CI hygiene, async-operation fixture guidance, release qualification.
+
+
+## 2026-09-28 — v0.9.21 post-qualification local promotion evidence
+
+- **Status:** CONFIRMED / HIGH — complete local promotion gate PASS at `2026-09-28T23:37:31.6925697+03:30`.
+- **Focused Project Engine:** 223 total; 222 pass, 0 fail, 1 platform skip.
+- **CHECK:** completed with zero failures after both Windows qualification corrections.
+- **FULL_TEST:** representative aggregate 487 total; 481 pass, 0 fail, 6 platform skips; downstream GUI/schema/runtime/source-integrity gates also passed.
+- **Security / diff:** `SECURITY_AUDIT_PASS`; `git diff --check` PASS.
+- **Evidence artifact:** `var/final-gate-v0.9.21.log`, SHA-256 `2e4402ddddcf21240fc59f478734f3833c11d5b614bf2698a5aa0b39ef00bf12`.
+- **Open gates:** hosted CI + Server Install Canary on the new commit, PR merge, immutable deployment, and live runtime readback. Native ChatGPT host wake/push and elapsed soak remain external/unproven.
