@@ -306,3 +306,10 @@ Historical checkpoints are preserved in the [archived project state](history/PRO
 - Focused source regression has passed once; clean focused/full gates still required before promotion.
 - Promotion state: BLOCKED pending local full gate, hosted CI/canaries, exact-commit deployment, and live readback.
 - Residual gates: long soak UNPROVEN; native ChatGPT host wake external.
+
+
+## 2026-09-28 — Async-continuation cleanup gate
+
+- Full gate after browser qualification fix had one failure only: Windows fixture cleanup returned `ENOTEMPTY` after the idempotency assertions had passed.
+- Mutation: test-fixture teardown only, using the repository's established recursive cleanup retry policy (`maxRetries:20`, `retryDelay:50`).
+- Runtime/contract code unchanged. Promotion remains BLOCKED until targeted stress and full final gate pass.

@@ -1169,3 +1169,24 @@ Historical checkpoints remain append-only archives. Current release/control clai
 - **Method rationale:** generated runtime artifacts and persistent owner configuration serve different authority roles. Treating deployment output as fallback avoids stale-runtime feedback loops while retaining recovery when canonical configuration is unavailable.
 - **Status:** hotfix implementation remains a candidate until focused, full, hosted, promotion, and live gates pass.
 - **Reuse targets:** release notes, updater architecture, configuration-authority guidance, failure-prevention history.
+
+
+## 2026-09-28 — Async continuation cleanup qualification correction
+
+- **Failure — CONFIRMED / HIGH:** after the Windows browser qualification correction, the full local gate had exactly one failure in `continuation metadata is part of request idempotency identity`.
+- **Root cause:** the contract assertions had passed; the test failed only in `finally` because its temporary-root cleanup used synchronous recursive removal with no retries and Windows returned `ENOTEMPTY` while async-operation state files were still settling.
+- **Comparable project evidence:** existing async-operation/process-tree/HTTP tests in this repository already use recursive cleanup with `maxRetries:20` and `retryDelay:50` for Windows-safe teardown.
+- **Decision:** align only this fixture teardown with that established repository pattern. Runtime async continuation behavior, idempotency identity, and production code remain unchanged.
+- **Prevention / regression:** targeted repetition of the exact test plus a complete final gate must pass before promotion.
+- **Reuse targets:** Windows CI hygiene, async-operation fixture guidance, release qualification.
+
+
+## 2026-09-28 — v0.9.21 post-qualification local promotion evidence
+
+- **Status:** CONFIRMED / HIGH — complete local promotion gate PASS at `2026-09-28T23:37:31.6925697+03:30`.
+- **Focused Project Engine:** 223 total; 222 pass, 0 fail, 1 platform skip.
+- **CHECK:** completed with zero failures after both Windows qualification corrections.
+- **FULL_TEST:** representative aggregate 487 total; 481 pass, 0 fail, 6 platform skips; downstream GUI/schema/runtime/source-integrity gates also passed.
+- **Security / diff:** `SECURITY_AUDIT_PASS`; `git diff --check` PASS.
+- **Evidence artifact:** `var/final-gate-v0.9.21.log`, SHA-256 `2e4402ddddcf21240fc59f478734f3833c11d5b614bf2698a5aa0b39ef00bf12`.
+- **Open gates:** hosted CI + Server Install Canary on the new commit, PR merge, immutable deployment, and live runtime readback. Native ChatGPT host wake/push and elapsed soak remain external/unproven.

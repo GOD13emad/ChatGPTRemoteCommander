@@ -140,3 +140,8 @@ The spawn/PID fixture guard passed targeted validation (browser-process 7/7; aff
 **Current mutation:** v0.9.22 makes canonical owner config authoritative when present and keeps active runtime config as fallback only. Production runner authorization rules are unchanged.
 
 **Open gates / critical path:** focused regression rerun, full local gate, hosted CI/canaries, immutable promotion, exact-commit rollout, and live runner readback. Long-soak evidence remains UNPROVEN until elapsed. Native ChatGPT host wake remains external.
+
+
+## Milestone delta — 2026-09-28 — v0.9.21 post-qualification local gate PASS
+
+The Windows qualification blockers were isolated to test predicates/teardown rather than production behavior: browser profile-owned cleanup now verifies exact profile ownership instead of raw PID existence, the timeout-cleanup fixture no longer imposes an unrelated 80 ms setup requirement, and async-continuation teardown uses the repository's established Windows retry policy. Production browser and continuation runtime code remain unchanged by these qualification corrections. Targeted browser qualification stress passed 20/20; targeted async-continuation cleanup stress passed 20/20. The complete local promotion gate then passed at 2026-09-28T23:37:31.6925697+03:30 with zero failures, including security audit and diff check. GitHub hosted CI/canary, merge, immutable deployment, and live runtime readback remain open; native host wake/push and elapsed soak remain external/unproven.
