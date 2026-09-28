@@ -751,3 +751,50 @@ Historical checkpoints remain append-only archives. Current release/control clai
 **Reuse Targets:** v0.9.16 release qualification, Codex authorization, environment inheritance, async lifecycle testing.
 
 **Provenance:** `term-17`; `src/no-codex-policy.mjs`; `test/no-codex-policy.test.mjs`; `test/async-operation-fixture.mjs`; `docs/RELEASE_0.9.16.md`.
+
+
+## E-AUTH-20260928-R6 — v0.9.16 full Windows qualification
+
+**Date/Context:** 2026-09-28; v0.9.16 owner-authorized Codex environment candidate after focused regressions.
+
+**Focused regressions:** `test/no-codex-policy.test.mjs` + `test/async-operations.test.mjs` completed 22/22 PASS. Installer and onboarding checks also PASS.
+
+**Full Windows exact-tree gate:** PowerShell 7 gate script executed `npm run check`, `npm test`, and `npm run audit` sequentially with strict exit-code propagation. Final terminal `term-17` exited 0. Full test runner reported 475 PASS / 6 SKIP / 0 FAIL; GUI contract reported 77/77 PASS; source integrity and Windows runtime contract PASS.
+
+**Status:** Windows qualification CONFIRMED. Cross-platform promotion remains UNPROVEN until clean Linux and hosted exact-SHA Windows/Ubuntu CI pass.
+
+**Reuse Targets:** v0.9.16 release qualification, owner-authorized Codex, async lifecycle stabilization, installer/onboarding consistency.
+
+**Provenance:** dedicated v0.9.16 Windows qualification worktree; terminal `term-17`, exit 0.
+
+
+## E-AUTH-20260928-R7 — Codex home and status-metadata semantics
+
+**Date/Context:** 2026-09-28; final v0.9.16 pre-release audit.
+
+**Method evidence:** OpenAI Codex maintainers document `CODEX_HOME` as the supported way to select a different independent Codex home directory; Codex configuration/auth/session data can therefore legitimately depend on this environment value. Primary-source references: https://github.com/openai/codex/issues/7971 and https://github.com/openai/codex/issues/15410.
+
+**Decision:** Authorized Commander launches must preserve a legitimate owner `CODEX_HOME`; only Commander's own generated `chatgpt-remote-commander-no-codex` sentinel may be removed. Status metadata is renamed to `CODEX_DELEGATION_DEFAULT_DENY` while the blocked-attempt error remains `CODEX_DELEGATION_FORBIDDEN`.
+
+**Regression:** Focused `test/no-codex-policy.test.mjs` PASS 8/8 after the status-metadata change. Full exact-candidate local and hosted qualification remain release gates.
+
+**Confidence/Status:** CONFIRMED/HIGH for method choice and focused behavior.
+
+**Reuse Targets:** Codex home preservation, authorization diagnostics, user-facing status interpretation, v0.9.16 release.
+
+
+## E-AUTH-20260928-R7 — v0.9.16 clean Linux qualification
+
+**Date/Context:** 2026-09-28; detached clean Linux worktree at exact candidate SHA `32b85b8`.
+
+**Environment:** `/home/aliemad/source/repos/ChatGPTRemoteCommander-v0916-ci`, detached from `origin/fix/v0.9.16-codex-env`; the user's dirty Linux development tree was not modified.
+
+**Gate:** `npm run check` → `npm test` → `npm run audit` under `set -euo pipefail`.
+
+**Result:** exit 0; installer check PASS on Linux; async exit/stdio regression PASS; full test runner 480 PASS / 1 SKIP / 0 FAIL; GUI contract 77/77 PASS; concurrency smoke PASS; source integrity PASS; `SECURITY_AUDIT_PASS`; final marker `V0916_FULL_LINUX_PASS`.
+
+**Status:** Clean Linux qualification CONFIRMED for `32b85b8`. Hosted exact-SHA Windows/Ubuntu CI remains the promotion gate.
+
+**Reuse Targets:** v0.9.16 release qualification, Linux installer, server deployment confidence, cross-platform async stabilization.
+
+**Provenance:** Linux terminal `term-1`, exact worktree SHA `32b85b8`, exit 0.

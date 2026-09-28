@@ -136,3 +136,24 @@ Historical checkpoints are preserved in the [archived project state](history/PRO
 - Full Windows `npm test`: PASS; core 475 PASS / 6 SKIP / 0 FAIL plus downstream contract gates.
 - Windows `npm run audit`: PASS / `SECURITY_AUDIT_PASS`.
 - Current gate: commit/push → hosted exact-SHA Windows/Ubuntu CI.
+
+
+### v0.9.16 Windows qualification
+
+- Focused authorization/async regression: 22/22 PASS.
+- Installer parser/check: PASS.
+- Onboarding/plugin check: PASS.
+- Full Windows exact-tree gate: `npm run check && npm test && npm run audit` via PowerShell 7 strict wrapper, terminal `term-17`, exit 0.
+- Full test core: 475 PASS / 6 SKIP / 0 FAIL; GUI contract: 77/77 PASS.
+- Next gate: clean Linux exact-tree qualification, then hosted exact-SHA Windows/Ubuntu CI.
+
+
+### v0.9.16 Linux qualification
+
+- Clean detached Linux worktree: exact SHA `32b85b8`.
+- Full gate: `npm run check`, `npm test`, `npm run audit`, exit 0.
+- Full test: 480 PASS / 1 SKIP / 0 FAIL.
+- GUI contract: 77/77 PASS.
+- Concurrency smoke, source integrity, installer check, security audit: PASS.
+- Final marker: `V0916_FULL_LINUX_PASS`.
+- Next gate: hosted Windows + Ubuntu CI on the final evidence-bearing candidate SHA.
