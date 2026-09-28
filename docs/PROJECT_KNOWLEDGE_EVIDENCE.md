@@ -875,3 +875,22 @@ Historical checkpoints remain append-only archives. Current release/control clai
 **Status:** Windows local combined candidate qualification CONFIRMED/HIGH. Because this evidence record itself changes the candidate commit, the evidence-bearing exact SHA still requires the final qualification/hosted gates before promotion.
 
 **Reuse Targets:** v0.9.16 final release gate, server installer qualification, Windows CI stabilization.
+
+
+## E-REL-20260928-R2 — immutable release asset publication failure and v0.9.17 prevention
+
+**Date/Context:** 2026-09-28; post-publication audit of v0.9.16 after exact-SHA Windows/Linux/hosted qualification and live rollout.
+
+**Observed evidence:** v0.9.16 was published as an immutable GitHub Release with no attached assets. A direct post-publication upload attempt returned HTTP 422. Current Work/plugin installers resolve `releases/latest/download/plugin-template.zip`, so a latest release without that asset breaks the documented install path even though the source tree itself is healthy.
+
+**Method evidence:** GitHub documents that immutable releases lock release assets after publication and recommends draft -> attach assets -> publish. Current GitHub CLI documentation states that `gh release create <tag> <files...>` internally creates a draft, uploads the assets, then publishes when release immutability is enabled. Sources checked 2026-09-28: https://docs.github.com/en/code-security/concepts/supply-chain-security/immutable-releases and https://cli.github.com/manual/gh_release_create .
+
+**Root Cause -> Prevention -> Guard:** Release Sync created the release with notes only and therefore crossed the immutability boundary before assets existed -> build all assets and checksums first, then pass the complete asset array to the single `gh release create` operation -> static contract forbids `gh release upload` in the release workflow and requires an exact 16-file asset set plus checksum verification before publication.
+
+**Scope decision:** do not delete/recreate or weaken v0.9.16 immutability. Repair packaging in patch release v0.9.17; runtime logic remains unchanged apart from the version identifier.
+
+**Confidence/Status:** Root cause CONFIRMED/HIGH. v0.9.17 implementation in progress; publication/download acceptance OPEN.
+
+**Reuse Targets:** immutable GitHub releases, release asset integrity, Work/plugin onboarding, server installer distribution, supply-chain release process.
+
+**Provenance:** v0.9.16 release asset inventory, rejected post-publication asset upload, `.github/workflows/release-sync.yml`, `install-work-plugin.ps1/.sh`.

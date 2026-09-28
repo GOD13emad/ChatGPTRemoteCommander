@@ -1,20 +1,19 @@
 # Current project state
 
-Updated: 2026-09-25. Scope: public product/release status, not a live machine inventory.
+Updated: 2026-09-28. Scope: public product/release status, not a live machine inventory.
 
 ## Release baseline
 
-- [v0.9.1](RELEASE_0.9.1.md) is the latest immutable **published GitHub Release** at this checkpoint, with 13 assets. v0.9.0 is also an immutable published release.
-- [v0.9.3](RELEASE_0.9.3.md) is the current Linux-completeness release target. It carries the v0.9.2 installer cleanup fix and adds terminal-preserving Linux cutover plus a safe Firefox WebDriver background-browser backend without widening foreground authority.
-- v0.8.38, v0.8.39 and v0.8.40 remain historical unpublished tags and are intentionally not moved.
-- Later live audit on 2026-09-25 confirmed Emad PC on v0.9.1 with Full Power Project Engine automatic execution and all 27 current capabilities granted. Emad laptop successfully validated v0.9.1 Full Power candidates, but promotion was safely deferred because the old routed backend owned persistent terminal sessions. v0.9.3 closes that Linux retention gap without killing those terminals.
-- The Windows Full Power configuration created through Saeed's ChatGPT Work account on the accessible Emad PC supplied the parity requirements for Project Engine runner + automatic execution. No live state from Saeed's own physical computer is used as release authority. Linux Project Engine candidate parity is now proven; the remaining release work is exact v0.9.3 qualification/publication/rollout.
+- [v0.9.16](RELEASE_0.9.16.md) is the current immutable published runtime baseline at merge/tag commit `981e0b2a8856043b862da8a3ec63d75c5d906588`.
+- Exact v0.9.16 qualification passed Windows local, clean Linux local, and hosted Windows/Ubuntu CI. Candidate-first rollout is live on the primary Windows profiles, the Linux laptop, and the audited Windows HPC target.
+- v0.9.16 was published without release assets. Because release immutability locks assets after publication, its documented latest-release `plugin-template.zip` download path is incomplete and is not being worked around by deleting/recreating the release.
+- [v0.9.17](RELEASE_0.9.17.md) is the current bounded packaging patch. Runtime semantics are unchanged apart from the version identifier; the release pipeline now builds/checks all assets before publication and passes them directly to `gh release create`.
 
 ## CURRENT / open release gates
 
-CURRENT: v0.9.3 Linux-completeness qualification.
+CURRENT: v0.9.17 immutable-release packaging correction.
 
-Focused Linux retention and Firefox background-browser E2E gates are PASS. Remaining gates are full Windows/Linux check-test-audit on the exact v0.9.3 commit, hosted PR CI, exact-tag installer/update acceptance, reproducible release assets, immutable GitHub publication, candidate-first rollout, and post-rollout route/tunnel/tool canaries.
+Open gates: deterministic asset build and checksum verification; full exact-tree Windows + Linux check/test/audit; hosted exact-SHA Windows/Ubuntu CI; immutable publication with exactly 16 assets; published download/checksum verification including `plugin-template.zip`; candidate-first rollout/version canaries.
 
 ## Remaining roadmap
 
@@ -194,3 +193,13 @@ Historical checkpoints are preserved in the [archived project state](history/PRO
 - Focused Windows regression: 5 rounds / 35 of 35 PASS.
 - Linux overlay affected suite: 7 of 7 PASS.
 - Next gate: full exact-tree Windows + clean Linux, then hosted exact-SHA Windows/Ubuntu.
+
+
+## CURRENT CHANGE SET — v0.9.17 immutable release assets
+
+- Previous accepted runtime state: v0.9.16 / `981e0b2a8856043b862da8a3ec63d75c5d906588`, qualified and live on Windows, Linux and the audited HPC target.
+- Main blocker: v0.9.16 immutable release contains no attached assets while current Work/plugin onboarding depends on `releases/latest/download/plugin-template.zip`.
+- Root cause: Release Sync crossed the immutable publication boundary before attaching assets; post-publication upload is blocked by design.
+- Minimum fix: deterministic 16-asset build + SHA-256 verification, then attach the complete set during `gh release create`; keep immutable releases enabled.
+- Runtime delta: version only; no authorization, updater, workflow, browser, GUI or execution-policy broadening.
+- FINAL status: UNPROVEN until exact-SHA local/hosted gates, immutable publication, asset download verification and rollout pass.

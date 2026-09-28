@@ -16,7 +16,7 @@ for (const required of [
   'Detected active installation from Windows autostart',
   '$InstallDir = Resolve-InstallDir',
   'Tracked local changes exist in InstallDir',
-  "[string]$SourceRef = 'v0.9.16'",
+  "[string]$SourceRef = 'v0.9.17'",
   'ExpectedCommit',
   "rev-parse 'FETCH_HEAD^{commit}'",
   'incomplete Git checkout with no HEAD',
@@ -87,7 +87,7 @@ for (const required of [
   'Alpine/musl is not qualified'
 ]) if (!linuxServerInstaller.includes(required)) throw new Error(`server-install-linux.sh missing server bootstrap behavior: ${required}`);
 for (const required of [
-  'SOURCE_REF="${REMOTE_COMMANDER_SOURCE_REF:-v0.9.16}"',
+  'SOURCE_REF="${REMOTE_COMMANDER_SOURCE_REF:-v0.9.17}"',
   '--source-ref',
   '--skip-tunnel-client',
   '--expected-commit',
