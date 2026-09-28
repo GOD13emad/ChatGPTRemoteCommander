@@ -1156,3 +1156,16 @@ Historical checkpoints remain append-only archives. Current release/control clai
 - **Final marker:** FINAL_GATE_PASS 2026-09-28T23:06:39.5908545+03:30.
 - **Gate log SHA-256:** 0DC03CE86CF73A2847B68ECC566D7CDF916F91F7B3E0D69DB33A51DF8DA5F817.
 - **Promotion status:** local gate accepted; GitHub CI and both server-install canaries on the amended SHA remain required before merge.
+
+
+## 2026-09-28 — v0.9.22 canonical configuration authority root cause
+
+- **Context:** v0.9.21 passed source, hosted CI, and server-install canary gates and promoted successfully on the primary Windows route. Live validation then showed runnerConfigured=false and automaticExecution=false.
+- **Claim / root cause — CONFIRMED / HIGH:** the owner-controlled canonical configurations retained runner.enabled=true, autoTick=true, Full-Power explicit authorization, Codex launch authorization, and an existing external Codex executable. The routed runtime config instead contained a disabled provider. Windows updater target discovery selected the routed runtime config first, so generated deployment state incorrectly became migration authority.
+- **Reproducible audit:** with identical v0.9.21 source and host state, candidate generation using canonical owner config returned PRESERVED_EXPLICIT_OWNER_CODEX_PROVIDER; using the active routed runtime config returned a disabled runner. This isolates authority selection from executable compatibility and runner policy.
+- **Decision:** use canonical owner configuration as migration source whenever it exists; use route-active config only as a recovery fallback. Keep routes as runtime/cutover truth, not owner-intent truth.
+- **Rejected option:** directly editing only the active runtime config would repair one deployment but would not prevent the next updater from repeating the same loss of owner intent.
+- **Prevention / guard:** add a Windows updater contract regression asserting canonical-first ordering for the default profile and canonical instance config preference for named profiles. Preserve candidate-first gates, exact-commit checks, drains, rollback, and one-writer behavior.
+- **Method rationale:** generated runtime artifacts and persistent owner configuration serve different authority roles. Treating deployment output as fallback avoids stale-runtime feedback loops while retaining recovery when canonical configuration is unavailable.
+- **Status:** hotfix implementation remains a candidate until focused, full, hosted, promotion, and live gates pass.
+- **Reuse targets:** release notes, updater architecture, configuration-authority guidance, failure-prevention history.

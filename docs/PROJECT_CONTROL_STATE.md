@@ -294,3 +294,15 @@ Historical checkpoints are preserved in the [archived project state](history/PRO
 - Final gate marker: 2026-09-28T23:06:39.5908545+03:30.
 - Gate log SHA-256: 0DC03CE86CF73A2847B68ECC566D7CDF916F91F7B3E0D69DB33A51DF8DA5F817.
 - Exact next gate: amend the still-unmerged candidate, push with explicit lease against 812d3fdedc9d58c655aa6237a8e6c4b5d0d4284d, then require fresh hosted CI/canaries.
+
+
+## 2026-09-28 — v0.9.22 Windows updater configuration-authority hotfix
+
+- Previous source state: v0.9.21 promoted on main and hosted release gates passed.
+- Live rollout: v0.9.21 route/version promotion passed, but runner validation failed because candidate generation used a prior routed runtime config carrying a disabled runner.
+- CONFIRMED root cause: default and named-profile target discovery preferred routed runtime config over canonical owner config.
+- Reproducible baseline: candidate generation from canonical owner config preserves the explicitly authorized Codex runner; generation from the active routed runtime config preserves the disabled state.
+- Current mutation objective: canonical owner config first; route-active config fallback only. No runner-authorization widening and no direct active-runtime patch as the durable fix.
+- Focused source regression has passed once; clean focused/full gates still required before promotion.
+- Promotion state: BLOCKED pending local full gate, hosted CI/canaries, exact-commit deployment, and live readback.
+- Residual gates: long soak UNPROVEN; native ChatGPT host wake external.

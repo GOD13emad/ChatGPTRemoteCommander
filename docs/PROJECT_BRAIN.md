@@ -127,3 +127,16 @@ A third meaningful hosted-Windows browser qualification occurrence triggered sto
 ## Milestone delta — 2026-09-28 — Final local candidate requalified
 
 The spawn/PID fixture guard passed targeted validation (browser-process 7/7; affected child-spawn stress 10/10) and the complete release gate then passed. Project Engine: 222 pass / 0 fail / 1 environment skip. Full suite: 481 pass / 0 fail / 6 environment skips. GUI contract: 77/77. Security audit and diff check passed. Final gate marker: 2026-09-28T23:06:39.5908545+03:30; gate-log SHA-256: 0DC03CE86CF73A2847B68ECC566D7CDF916F91F7B3E0D69DB33A51DF8DA5F817. The source candidate is locally accepted but not yet promoted; fresh hosted CI and server canaries remain mandatory.
+
+
+## Milestone delta — 2026-09-28 — v0.9.22 updater configuration-authority hotfix
+
+**Previous accepted source:** main contains v0.9.21. Hosted CI and server-install canaries passed, and the primary Windows route promoted to the v0.9.21 merge revision.
+
+**Live validation delta:** version and route promotion passed, but Project Engine runner validation failed. The canonical Full-Power owner configuration still contained an enabled, auto-ticking external Codex runner with valid launch authority and an existing executable; the generated active runtime config instead contained a disabled provider.
+
+**Root cause — CONFIRMED:** the Windows updater preferred the active routed runtime config over the canonical owner config when constructing the next candidate. Generated deployment state therefore overrode persistent owner intent during migration.
+
+**Current mutation:** v0.9.22 makes canonical owner config authoritative when present and keeps active runtime config as fallback only. Production runner authorization rules are unchanged.
+
+**Open gates / critical path:** focused regression rerun, full local gate, hosted CI/canaries, immutable promotion, exact-commit rollout, and live runner readback. Long-soak evidence remains UNPROVEN until elapsed. Native ChatGPT host wake remains external.

@@ -142,13 +142,13 @@ function Test-ProfileName([string]$Name){
 function Get-RoutePath([string]$Profile){ Join-Path $RoutingRoot "$Profile.json" }
 function Read-Json([string]$Path){ Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json }
 function Get-PrimaryConfig {
+  $local=Join-Path $InstallDir 'config.local.json'
+  if(Test-Path -LiteralPath $local -PathType Leaf){ return [IO.Path]::GetFullPath($local) }
   $route=Get-RoutePath 'default'
   if(Test-Path $route){
     $r=Read-Json $route
-    if($r.active.configPath -and (Test-Path -LiteralPath $r.active.configPath)){ return [IO.Path]::GetFullPath([string]$r.active.configPath) }
+    if($r.active.configPath -and (Test-Path -LiteralPath $r.active.configPath -PathType Leaf)){ return [IO.Path]::GetFullPath([string]$r.active.configPath) }
   }
-  $local=Join-Path $InstallDir 'config.local.json'
-  if(Test-Path -LiteralPath $local){ return $local }
   return (Join-Path $InstallDir 'config.json')
 }
 function Invoke-Mcp([int]$Port,[string]$Name,[hashtable]$Arguments=@{}){
@@ -314,9 +314,12 @@ function Get-Targets {
         if($profileDir.Name-ne $profile){throw "PROFILE_DIRECTORY_MISMATCH expected=$profile actual=$($profileDir.Name)"}
         $route=Get-RoutePath $profile
         $cfg=[string]$record.configPath
-        if(Test-Path $route){
+        $canonicalConfigReady=($cfg -and (Test-Path -LiteralPath $cfg -PathType Leaf))
+        if($canonicalConfigReady){
+          $cfg=[IO.Path]::GetFullPath($cfg)
+        }elseif(Test-Path $route){
           $rr=Read-Json $route
-          if($rr.active.configPath -and (Test-Path -LiteralPath $rr.active.configPath)){$cfg=[string]$rr.active.configPath}
+          if($rr.active.configPath -and (Test-Path -LiteralPath $rr.active.configPath -PathType Leaf)){$cfg=[string]$rr.active.configPath}
         }
         $items+=[pscustomobject]@{Profile=$profile;CanonicalPort=[int]$record.mcpPort;ExistingConfig=$cfg;RoutePath=$route;InstanceDir=$profileDir.FullName}
       }catch{throw "TARGET_DISCOVERY_FAIL $recordFile $($_.Exception.Message)"}

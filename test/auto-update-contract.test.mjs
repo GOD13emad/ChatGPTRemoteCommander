@@ -336,3 +336,17 @@ test('router bootstrap is after no-promote and before schema-changing cutover',(
   assert.match(helper,/ROUTER_BOOTSTRAP_ROLLBACK_FAIL/);
   assert.match(helper,/verifyProcessIdentity/);
 });
+
+test('Windows updater treats canonical owner config as migration authority and routed runtime config only as fallback',()=>{
+  const s=read('auto-update-windows.ps1');
+  const primary=s.slice(s.indexOf('function Get-PrimaryConfig'),s.indexOf('function Invoke-Mcp'));
+  const local="$$local=Join-Path $$InstallDir 'config.local.json'".replaceAll('$$','$');
+  const localReturn="if(Test-Path -LiteralPath $$local -PathType Leaf){ return [IO.Path]::GetFullPath($$local) }".replaceAll('$$','$');
+  const route="$$route=Get-RoutePath 'default'".replaceAll('$$','$');
+  assert.ok(primary.includes(localReturn),'default updater target must prefer canonical config.local.json when present');
+  assert.ok(primary.indexOf(local)<primary.indexOf(route),'canonical default config must be considered before routed runtime config');
+  const targets=s.slice(s.indexOf('function Get-Targets'),s.indexOf('function Start-Router'));
+  assert.ok(targets.includes('$$canonicalConfigReady=($$cfg -and (Test-Path -LiteralPath $$cfg -PathType Leaf))'.replaceAll('$$','$')),'profile target must establish canonical config readiness');
+  assert.ok(targets.includes('if($$canonicalConfigReady){'.replaceAll('$$','$')),'profile target must preserve canonical instance config');
+  assert.ok(targets.includes('}elseif(Test-Path $$route){'.replaceAll('$$','$')),'route-active config must be fallback-only for profiles');
+});
