@@ -702,3 +702,20 @@ Historical checkpoints remain append-only archives. Current release/control clai
 **Reuse Targets:** Windows CI stability, async durability tests, corrupt-projection recovery, release qualification.
 
 **Post-fix Full Gate:** exact-tree Windows `npm run check && npm test && npm run audit` completed in terminal `term-28` with final exit 0; test core runner reported 475 PASS / 6 SKIP / 0 FAIL and security audit reported `SECURITY_AUDIT_PASS`.
+
+
+## E-AUTH-20260928-R3 — Windows hosted CI async projection race
+
+**Date/Context:** 2026-09-28; PR #36 exact-SHA CI for v0.9.15 authorization candidate `3a5c49c63cf33a75cad003ebb7872704dd7eb037`.
+
+**Failure:** Ubuntu hosted CI passed. Windows hosted CI passed `npm run check` and all authorization regressions, but `npm test` had one failure in existing async-operation corruption recovery: `corrupt terminal projection is not repaired when receipt and reservation hashes differ`, assertion `1 !== 0` at delivery reconciliation.
+
+**Root Cause → Prevention → Guard → Regression:** test observed terminal operation state before the detached worker process had fully exited; Windows timing allowed the prior worker to remain alive briefly while the test deliberately corrupted state/receipt files → wait for exact terminal state's `workerPid` to exit before destructive corruption setup → bounded 10 s process-exit wait, only in the two corruption-recovery tests that mutate durable artifacts → 10 consecutive local Windows runs of `test/async-operations.test.mjs` completed with exit 0 after the change.
+
+**Scope:** test synchronization only; no runtime authorization, async-operation, delivery, browser, GUI, or process product code changed.
+
+**Confidence/Status:** Root cause PROBABLE/HIGH from Windows-only timing behavior plus deterministic stress pass after synchronization. Exact-SHA hosted Windows/Ubuntu CI rerun remains the promotion gate.
+
+**Reuse Targets:** Windows CI stability, async durability regression design, failure-prevention, release qualification.
+
+**Provenance:** GitHub Actions run `36393301881`, Windows job `108833771646`; `test/async-operations.test.mjs`; local stress terminal `term-27` exit 0 across 10 iterations.

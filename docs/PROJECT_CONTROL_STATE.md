@@ -105,3 +105,11 @@ Historical checkpoints are preserved in the [archived project state](history/PRO
 - Regression: `test/async-operations.test.mjs` repeated 10 times on Windows, **140/140 PASS**, terminal `term-27`, exit 0. Next gate: full exact-tree Windows check/test/audit, then updated exact-SHA hosted CI.
 
 - Post-race-fix full exact-tree Windows gate: `npm run check` PASS; `npm test` PASS (core runner 475 PASS / 6 SKIP / 0 FAIL plus downstream GUI/concurrency/runtime/schema gates); `npm run audit` PASS with `SECURITY_AUDIT_PASS`; terminal `term-28`, final exit 0.
+
+
+### v0.9.15 hosted-CI delta
+
+- PR #36 first hosted run: Ubuntu PASS; Windows `npm run check` PASS; Windows `npm test` failed one pre-existing async corruption test due a worker-exit timing race, not authorization behavior.
+- Narrow test-only synchronization added: wait for the exact operation worker PID to exit before corrupting durable state/receipt artifacts in the two projection-corruption regressions.
+- Local Windows stress: 10 consecutive async-operation suite runs PASS, terminal exit 0.
+- Current gate: exact-SHA hosted CI rerun after the synchronization commit. Promotion remains blocked until PASS.
