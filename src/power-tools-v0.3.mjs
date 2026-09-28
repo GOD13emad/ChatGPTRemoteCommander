@@ -1,6 +1,6 @@
 import os from 'node:os';
 import { synchronousCommandInput } from './retry-guard.mjs';
-import { assertNoCodexCommand, assertNoCodexShellDelegation, commanderChildEnv } from './no-codex-policy.mjs';
+import { assertNoCodexCommand, assertNoCodexShellDelegation, codexLaunchAuthorized, commanderChildEnv } from './no-codex-policy.mjs';
 import path from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
 import { spawn } from 'node:child_process';
@@ -138,8 +138,8 @@ function checkShell(ctx, command) {
   }
   return command;
 }
-async function capture(command, cwd, timeoutMs, outputLimit) {
-  const child = spawnShell(command, { cwd, stdio: ['ignore', 'pipe', 'pipe'], env: commanderChildEnv(cwd) });
+async function capture(command, cwd, timeoutMs, outputLimit, { allowCodex = false } = {}) {
+  const child = spawnShell(command, { cwd, stdio: ['ignore', 'pipe', 'pipe'], env: commanderChildEnv(cwd, process.env, { allowCodex }) });
   let stdout = '';
   let stderr = '';
   let timedOut = false;
@@ -421,20 +421,21 @@ export async function searchFiles(ctx, input) {
 export async function prepareShellCommand(ctx, input) {
   const command = checkShell(ctx, input.command);
   const cwd = await resolveExistingTarget(ctx, input.cwd ?? ctx.roots[0]);
-  assertNoCodexCommand(command, cwd);
-  await assertNoCodexShellDelegation(command, cwd);
+  const allowCodex = codexLaunchAuthorized(ctx);
+  assertNoCodexCommand(command, { allowCodex });
+  await assertNoCodexShellDelegation(command, cwd, { allowCodex });
   const info = await stat(cwd);
   if (!info.isDirectory()) throw new Error('cwd is not a directory');
   const cfg = power(ctx);
   const timeoutMs = Math.max(1000, Math.min(Number(input.timeoutMs ?? cfg.maxCommandMs ?? 300000), Number(cfg.maxCommandMs ?? 300000)));
   const outputLimit = Math.max(4096, Math.min(Number(cfg.maxOutputBytes ?? 1048576), 8388608));
   const spec = shellSpec(command);
-  return { file: spec.file, args: spec.args, cwd, timeoutMs, outputLimit };
+  return { file: spec.file, args: spec.args, cwd, timeoutMs, outputLimit, allowCodex };
 }
 export async function runShell(ctx, input) {
   const guarded = synchronousCommandInput(input);
   const prepared = await prepareShellCommand(ctx, guarded);
-  const result = await capture(input.command, prepared.cwd, prepared.timeoutMs, prepared.outputLimit);
+  const result = await capture(input.command, prepared.cwd, prepared.timeoutMs, prepared.outputLimit, { allowCodex: prepared.allowCodex });
   return { command: input.command, cwd: prepared.cwd, timeoutMs: prepared.timeoutMs, ...result };
 }
 
@@ -540,11 +541,12 @@ export async function startTerminal(ctx, input) {
   const interactive = input.interactive === true || !hasCommand;
   const command = hasCommand ? checkShell(ctx, input.command) : '';
   if (hasCommand) {
-    assertNoCodexCommand(command, cwd);
-    await assertNoCodexShellDelegation(command, cwd);
+    const allowCodex = codexLaunchAuthorized(ctx);
+    assertNoCodexCommand(command, { allowCodex });
+    await assertNoCodexShellDelegation(command, cwd, { allowCodex });
   }
   const child = spawnShell(interactive ? '' : command, {
-    cwd, interactive, stdio: ['pipe', 'pipe', 'pipe'], env: commanderChildEnv(cwd)
+    cwd, interactive, stdio: ['pipe', 'pipe', 'pipe'], env: commanderChildEnv(cwd, process.env, { allowCodex: codexLaunchAuthorized(ctx) })
   });
   const id = `term-${terminalCounter++}`;
   const session = {
@@ -583,8 +585,9 @@ export async function sendTerminal(ctx, input) {
   if (!session.running) throw new Error('terminal session is not running');
   const text = String(input.input ?? '');
   checkShell(ctx, text);
-  assertNoCodexCommand(text, session.cwd);
-  await assertNoCodexShellDelegation(text, session.cwd);
+  const allowCodex = codexLaunchAuthorized(ctx);
+  assertNoCodexCommand(text, { allowCodex });
+  await assertNoCodexShellDelegation(text, session.cwd, { allowCodex });
   session.child.stdin.write(text + (input.newline === false ? '' : os.EOL));
   return { id: session.id, pid: session.child.pid, accepted: true };
 }

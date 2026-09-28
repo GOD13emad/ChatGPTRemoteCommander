@@ -9,6 +9,7 @@ import {
   assertNoCodexExecutable,
   assertNoCodexShellDelegation,
   commanderChildEnv,
+  codexLaunchAuthorized,
   delegationRequirement,
   delegationStatus,
   isCodexExecutable,
@@ -25,7 +26,7 @@ test('Codex executables and private/package paths are recognized', () => {
     '/tmp/node_modules/.bin/codex'
   ]) assert.equal(isCodexExecutable(value),true,value);
   assert.equal(isCodexExecutable('code.exe'),false);
-  assert.equal(NO_CODEX_POLICY.mode,'ENFORCED');
+  assert.equal(NO_CODEX_POLICY.mode,'DEFAULT_DENY');
   assert.equal(NO_CODEX_POLICY.default,'CONTINUE_CHAT');
   assert.equal(NO_CODEX_POLICY.commanderMayLaunchCodex,false);
 });
@@ -40,6 +41,26 @@ test('handoff gate offers only continue-chat or external Work/Codex and starts n
   assert.equal(status.active,false);
   assert.equal(status.policy,'external-handoff-only');
   assert.equal(status.commanderMayLaunchCodex,false);
+});
+
+test('explicit Full-Power owner opt-in authorizes local Codex launch policy only for that profile', () => {
+  const config={powerMode:{enabled:true,codexControl:{allowLaunch:true}},capabilityProfile:{tier:'FULL_POWER',explicitlyAuthorized:true}};
+  assert.equal(codexLaunchAuthorized(config),true);
+  assert.equal(delegationStatus(config).commanderMayLaunchCodex,true);
+  assert.equal(delegationRequirement('requested',config).commanderMayLaunchCodex,true);
+  assert.doesNotThrow(()=>assertNoCodexExecutable('codex.exe',{allowCodex:true}));
+  assert.doesNotThrow(()=>assertNoCodexCommand('codex exec -',{allowCodex:true}));
+  const env=commanderChildEnv(process.cwd(),{PATH:process.env.PATH,CODEX_HOME:'C:/owner-codex'},{allowCodex:true});
+  assert.equal(env.REMOTE_COMMANDER_NO_CODEX,undefined);
+  assert.equal(env.CODEX_HOME,'C:/owner-codex');
+});
+
+test('Codex opt-in is fail-closed outside explicitly authorized Full-Power', () => {
+  for (const config of [
+    {powerMode:{enabled:true,codexControl:{allowLaunch:true}},capabilityProfile:{tier:'STANDARD',explicitlyAuthorized:true}},
+    {powerMode:{enabled:true,codexControl:{allowLaunch:true}},capabilityProfile:{tier:'FULL_POWER',explicitlyAuthorized:false}},
+    {powerMode:{enabled:true,codexControl:{allowLaunch:false}},capabilityProfile:{tier:'FULL_POWER',explicitlyAuthorized:true}}
+  ]) assert.equal(codexLaunchAuthorized(config),false);
 });
 
 test('direct and package-manager Codex commands fail closed', () => {

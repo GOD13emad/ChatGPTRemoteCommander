@@ -111,6 +111,26 @@ test('mouse permission cannot be escalated to keyboard via extra action', async 
   await assert.rejects(s.run('gui_key_press',{...a,keys:['A']}),/GUI_CAPABILITY_DISABLED/);
   assert.equal(s.calls.length,2);
 });
+test('owner-authorized Full-Power fallback permits takeover for stale client schema', async () => {
+  const s=setup();
+  s.ctx.config.capabilityProfile={tier:'FULL_POWER',explicitlyAuthorized:true};
+  s.ctx.config.powerMode.guiControl.ownerAuthorizedTakeover=true;
+  const begun=await s.run('gui_session_begin');
+  assert.equal(begun.mode,'takeover');
+  assert.equal(begun.authorization,'owner-persisted');
+  const shot=await s.run('gui_screenshot',{lease:begun.lease});
+  const clicked=await s.run('gui_mouse_click',{lease:begun.lease,frame:shot.__structuredContent.frame,x:1,y:1});
+  assert.equal(clicked.submitted,true);
+});
+
+test('owner fallback is denied without explicit Full-Power profile authorization', async () => {
+  const s=setup();
+  s.ctx.config.powerMode.guiControl.ownerAuthorizedTakeover=true;
+  s.ctx.config.capabilityProfile={tier:'STANDARD',explicitlyAuthorized:false};
+  const begun=await s.run('gui_session_begin');
+  assert.equal(begun.mode,'observe');
+});
+
 test('observe-only is the default and blocks desktop mutation before native input', async () => {
   const s=setup(); const {lease,mode}=await s.run('gui_session_begin'); assert.equal(mode,'observe');
   const shot=await s.run('gui_screenshot',{lease});

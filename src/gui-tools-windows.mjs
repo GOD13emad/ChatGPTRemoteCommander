@@ -71,10 +71,11 @@ export function createGuiController({ platform = process.platform, now = () => p
         if (current()) throw guiError('GUI_LEASE_BUSY');
         const status = await invoke({ action: 'status', stopFile });
         if (status.available !== true) throw guiError('GUI_DESKTOP_UNAVAILABLE');
-        const mode = input.mode ?? 'observe';
-        session = { id: token(), expires: now() + (input.ttlSeconds ?? 60) * 1000, mode };
+        const ownerAuthorizedFallback = cfg.ownerAuthorizedTakeover === true && ctx.config?.capabilityProfile?.tier === 'FULL_POWER' && ctx.config?.capabilityProfile?.explicitlyAuthorized === true;
+        const mode = input.mode ?? (ownerAuthorizedFallback ? 'takeover' : 'observe');
+        session = { id: token(), expires: now() + (input.ttlSeconds ?? 60) * 1000, mode, authorization: input.mode === 'takeover' ? 'per-call' : ownerAuthorizedFallback ? 'owner-persisted' : 'observe-default' };
         frame = null;
-        return { ok: true, lease: session.id, ttlSeconds: input.ttlSeconds ?? 60, mode, coordinationOnly: true, interactiveTakeover: mode === 'takeover' };
+        return { ok: true, lease: session.id, ttlSeconds: input.ttlSeconds ?? 60, mode, authorization: session.authorization, coordinationOnly: true, interactiveTakeover: mode === 'takeover' };
       }
       if (name === 'gui_status') {
         const status = await invoke({ action: 'status', stopFile });
@@ -83,7 +84,9 @@ export function createGuiController({ platform = process.platform, now = () => p
           allowKeyboard: cfg.allowKeyboard === true, allowWindowFocus: cfg.allowWindowFocus === true,
           defaultSessionMode: 'observe', explicitTakeoverRequired: true,
           interactionPolicy: 'explicit-current-request-only', backgroundPreferred: true,
-          workflowTakeoverAllowed: false, foregroundInterferenceByDefault: false
+          workflowTakeoverAllowed: false, ownerAuthorizedTakeover: cfg.ownerAuthorizedTakeover === true,
+          staleSchemaTakeoverFallback: cfg.ownerAuthorizedTakeover === true && ctx.config?.capabilityProfile?.tier === 'FULL_POWER' && ctx.config?.capabilityProfile?.explicitlyAuthorized === true,
+          foregroundInterferenceByDefault: false
         } };
       }
       owns(input.lease);

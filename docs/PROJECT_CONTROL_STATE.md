@@ -84,3 +84,17 @@ Historical checkpoints are preserved in the [archived project state](history/PRO
 - Windows local qualification: focused MCP Tasks regression PASS; `npm run check` PASS exit 0; `npm test` PASS exit 0; `npm run audit` PASS with `SECURITY_AUDIT_PASS`.
 - Remaining release gates: hosted Windows/Ubuntu CI, exact-tag installer/update acceptance, immutable publication, and candidate-first Windows/Linux rollout with post-promotion runtime canaries.
 - FINAL status: UNPROVEN until remaining release gates complete.
+
+
+## CURRENT CHANGE SET — v0.9.15 explicit owner authorization
+
+- Objective: make explicit owner authorization effective for stale-schema GUI takeover and local Codex launch without weakening default-deny behavior.
+- Baseline authority: v0.9.14 integrated on main via merge commit `5e08c1356ee4802da12295ebc89cd9c9a4e7175e`; v0.9.15 branch is derived from the qualified v0.9.14 head.
+- Confirmed root causes: active ChatGPT connector schema can remain stale while live server schema has takeover fields; Codex launch was hard-blocked regardless of owner intent.
+- Minimum controls: both persistent opt-ins require `FULL_POWER + explicitlyAuthorized=true`; ordinary/default profiles remain observe-only/Codex-denied.
+- Focused regression: first run FAIL 103/104 due missing response provenance only; narrow fix applied; second run PASS 104/104.
+- TinyFish benchmark: hosted search/fetch/proxy/vault/stealth/browser-profile/webhook features are complementary and are not duplicated into the local Commander core without demonstrated need.
+- Current gate: full Windows check/test/audit, hosted CI, exact-tag installer/update acceptance, candidate-first rollout and live authorization canaries.
+- FINAL status: UNPROVEN until those gates complete.
+
+- Windows full qualification delta: `npm run check` operation `75d71f03-da21-4b05-92b3-75c3e5594e4b` PASS exit 0; `npm test` operation `83494e4f-3ec1-4924-bba5-c0473fae5657` PASS exit 0; `npm run audit` PASS with `SECURITY_AUDIT_PASS`. First full-check operation `f75eb1e0-7ba3-4928-b1d1-6899837983d7` failed because helper `capture()` referenced out-of-scope `ctx`; targeted process-tree/auth suite then PASS 109/109 after explicit `allowCodex` wiring, followed by full PASS.

@@ -175,10 +175,13 @@ export function migrateCapabilityConfig({
   next.powerMode ??= {};
   next.powerMode.guiControl ??= {};
   next.powerMode.browserControl ??= {};
+  next.powerMode.codexControl ??= {};
   next.powerMode.guiControl.interactionPolicy = 'explicit-current-request-only';
   next.powerMode.guiControl.defaultSessionMode = 'observe';
   next.powerMode.guiControl.backgroundPreferred = true;
   next.powerMode.guiControl.workflowTakeoverAllowed = false;
+  next.powerMode.guiControl.ownerAuthorizedTakeover = existing.powerMode?.guiControl?.ownerAuthorizedTakeover === true;
+  next.powerMode.codexControl.allowLaunch = existing.powerMode?.codexControl?.allowLaunch === true;
   next.powerMode.browserControl.backgroundFirst = true;
   next.powerMode.browserControl.allowForegroundFallback = true;
   next.powerMode.browserControl.foregroundFallback = 'explicit-current-request-only';
