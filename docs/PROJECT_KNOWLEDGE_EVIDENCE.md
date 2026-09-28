@@ -1009,8 +1009,8 @@ Historical checkpoints remain append-only archives. Current release/control clai
 
 **Candidate status:** `d620ce96e48da818df0801e708d5ea788cbea8d9` is REJECTED/SUPERSEDED for promotion because hosted Ubuntu CI failed, despite the fresh-server objective itself passing both disposable canaries.
 
-**Focused regression:** Windows `node --test test/async-operations.test.mjs` executed 10 consecutive times after the ready-handshake change: **140/140 PASS**, terminal exit 0. The inherited-stdio regression itself completed consistently at roughly 2.1–2.3 s after the fixture condition was established; the tenth overall suite run slowed materially but the targeted invariant remained bounded and passed.
+**Focused regression:** Windows `node --test test/async-operations.test.mjs` executed 10 consecutive times after the ready-handshake change: **140/140 PASS**, terminal exit 0. The inherited-stdio regression itself completed consistently at roughly 2.1–2.3 s after the fixture condition was established; the tenth overall suite run slowed materially but the targeted invariant remained bounded and passed. The exact same committed source (`ec1df954ee5e15fa4b9cbddbc5e8c61969beaf31`) then executed 10 consecutive times on Linux: **140/140 PASS**, terminal exit 0; the targeted invariant completed at roughly 2.07–2.11 s. Combined focused stress: **280/280 PASS**.
 
-**Confidence/Status:** root cause CONFIRMED/HIGH from repeated historical evidence, exact timing signature, test source, fixture history, official Node event semantics, and 10× Windows focused stress. Linux focused stress and renewed exact-SHA hosted qualification remain required.
+**Confidence/Status:** root cause and deterministic-test prevention CONFIRMED/HIGH from repeated historical evidence, official Node event semantics, and 10× Windows + 10× Linux focused stress. Renewed full exact-SHA local/hosted qualification remains required on the final documentation-complete SHA.
 
 **Reuse Targets:** async lifecycle CI, inherited-stdio regression design, release qualification, failure-prevention.

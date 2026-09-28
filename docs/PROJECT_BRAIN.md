@@ -62,7 +62,7 @@ Fresh-server objective is confirmed: permanent Windows/Linux disposable canaries
 
 Current blocker is now test determinism only. Historical audit + official Node child-process semantics show that the test mixed hosted startup scheduling with the post-exit drain invariant. The corrected fixture writes a ready marker after establishing inherited stdio; the test begins its short invariant window only after ready, while retaining a longer independent operation timeout. Runtime code is unchanged.
 
-Windows focused stress is complete: 10 consecutive async-suite runs, 140/140 PASS. Exact next action: freeze this test/evidence delta, run 10× focused Linux stress on the same commit, then rerun all exact-SHA local/hosted/canary gates before immutable publication and rollout.
+Cross-platform focused stress is complete: Windows 10× = 140/140 PASS and Linux 10× on commit `ec1df954ee5e15fa4b9cbddbc5e8c61969beaf31` = 140/140 PASS; combined 280/280 PASS. Exact next action: freeze the documentation-complete v0.9.20 SHA, then rerun all exact-SHA local Windows/Linux, hosted CI, disposable-server canaries, immutable publication verification and candidate-first rollout.
 
 ## Deferred / external, not v0.9.20 blockers
 
