@@ -611,3 +611,41 @@ Historical checkpoints remain append-only archives. Current release/control clai
 **Status:** integrated candidate; focused contracts PASS. Full integrated release gates remain OPEN.
 
 **Reuse Targets:** stream-loss recovery, long-run project execution, power/network recovery, Remote Commander product architecture, Project Brain/Handoff.
+
+
+## E-AUTOMATION-20260928-R2 — Post-v0.9.13 durable automation standards audit
+
+**Date/Context:** 2026-09-28; post-release audit of v0.9.13 against current durable-workflow, MCP Tasks, callback, retry/idempotency, and Windows UI Automation guidance.
+
+**Claim/Decision:** v0.9.13's architecture is retained: ChatGPT remains the reasoning layer; Commander executes durable local work; long operations return immediately; terminal/NEEDS_CHAT events persist to an idempotent outbox and may resume the same already-open conversation. No second reasoning agent, Codex runner, browser extension, OCR loop, or duplicate project-state authority is justified by the evidence.
+
+**External Evidence/Source:** MCP Tasks Extension SEP-2663 (Final) requires durable task creation before returning a task handle, uses `tasks/get/update/cancel`, requires `-32602` for unknown `tasks/get` IDs and recommends it for update/cancel; Azure Durable external events are at-least-once and recommend event-ID deduplication; AWS Step Functions documents run-job and callback/task-token patterns; Temporal requires idempotent operation/task handlers under retries; Microsoft UI Automation recommends a separate MTA thread for desktop-wide UIA. Sources: `https://tasks.extensions.modelcontextprotocol.io/seps/2663-tasks-extension`; `https://learn.microsoft.com/azure/azure-functions/durable/durable-functions-external-events`; `https://docs.aws.amazon.com/step-functions/latest/dg/connect-to-resource.html`; `https://docs.temporal.io/tasks`; `https://learn.microsoft.com/windows/win32/winauto/uiauto-threading`.
+
+**Project Evidence / Confirmed:** v0.9.13 is live on Windows default, Windows saeed-emad, and Linux default at `f7aa867e28765d40772b953f31fbff93cbaa77fc`. Runtime status reports `automaticExecution=false`, `runnerConfigured=false`, same-conversation continuation schema=1, and delegation policy `commanderMayLaunchCodex=false`. The native continuation feature candidate passed Windows full check/test/audit, Linux exact-tree check/test, and hosted Windows/Ubuntu CI on the exact feature SHA before integration.
+
+**Defect / Confirmed:** v0.9.13 mapped an unknown but syntactically valid MCP task ID through generic `operation not found` handling, yielding generic RPC error instead of the spec-required/recommended `-32602 Invalid params` task-not-found response.
+
+**Root Cause → Prevention → Guard → Regression:** operation-store exception leaked across the protocol adapter → narrow task-operation adapter maps only `operation not found` to `-32602` → no broad exception rewriting and no task lifecycle changes → focused regression checks unknown `tasks/get`, `tasks/update`, and `tasks/cancel`.
+
+**Rejected Options:** adding a new orchestration service, permanent browser bridge, task-expiry policy for same-conversation callbacks, mandatory task notifications, faster polling, or any model runner. These add complexity without evidence of better outcomes for the observed risks.
+
+**Confidence/Status:** Architecture CONFIRMED/HIGH. v0.9.14 compliance patch focused test PASS; full release qualification pending.
+
+**Reuse Targets:** durable automation architecture, stream/retry resilience, MCP Tasks compatibility, same-conversation callbacks, Project Brain, release checklist.
+
+**Provenance:** main v0.9.13 commit `f7aa867e28765d40772b953f31fbff93cbaa77fc`; live route/system_status evidence; `src/server-v0.3.mjs`; `test/mcp-tasks-extension.test.mjs`; official sources above.
+
+
+## E-AUTOMATION-20260928-R3 — v0.9.14 Windows qualification checkpoint
+
+**Date/Context:** 2026-09-28; clean dedicated worktree `finalize/v0.9.14-r1` based on `5116163` after v0.9.13 production audit.
+
+**Claim/Decision:** The MCP Tasks unknown-task error mapping patch is locally qualified on Windows and does not justify any additional orchestration control.
+
+**Evidence/Source:** Focused `node --test test/mcp-tasks-extension.test.mjs` PASS 1/1; durable background `npm run check` operation `aebde577-6687-4857-a561-7ec0ddeb9bca` SUCCEEDED with exit 0; durable background `npm test` operation `45082011-094b-4f85-99b0-5b6e1c818548` SUCCEEDED with exit 0; `npm run audit` exit 0 and `SECURITY_AUDIT_PASS`.
+
+**Confidence/Status:** CONFIRMED/HIGH for Windows local qualification. Hosted CI, immutable publication and production rollout remain OPEN.
+
+**Reuse Targets:** release qualification, MCP Tasks compliance, stream-safe release workflow.
+
+**Provenance:** `src/server-v0.3.mjs`, `test/mcp-tasks-extension.test.mjs`, commit `5116163`, local durable operation receipts listed above.
