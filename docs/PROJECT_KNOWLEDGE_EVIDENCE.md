@@ -1035,3 +1035,18 @@ Historical checkpoints remain append-only archives. Current release/control clai
 **Decision:** v0.9.20 is **SCOPED FINAL / ACCEPTED** for the current release objective. Broader superiority claims, external host-stream guarantees, unrelated project workflow cleanup, and future provider/integration work remain outside this acceptance.
 
 **Reuse Targets:** release qualification, fresh-server installer, immutable publication, live rollout, Agent Extension routing, failure-prevention, project handoff.
+
+
+## E-MAINT-20260928-R11 — post-release GitHub Actions pin closure
+
+**Date/Context:** 2026-09-28; final repository hygiene after v0.9.20 production acceptance.
+
+**Finding:** open PRs #3/#4 and superseded closure PR #43 carried current GitHub Actions pins while main still used older v4 commits. Hosted runs emitted the GitHub warning that Node.js 20-targeting action revisions were being forced onto Node.js 24.
+
+**Decision:** port only the action-pin maintenance onto the current v0.9.20 closure branch instead of merging stale v0.9.19 documentation. Update all current workflow call sites, including the newly added permanent Server Install Canary.
+
+**Pins:** `actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1` (v7.0.1) and `actions/setup-node@820762786026740c76f36085b0efc47a31fe5020` (v7.0.0).
+
+**Scope:** repository CI/release infrastructure only. No v0.9.20 runtime/release bytes change; the immutable tag remains authoritative for production.
+
+**Status:** implementation present on closure branch; PR CI must pass before merge. After merge, Dependabot PRs #3/#4 and stale PR #43 are superseded.
