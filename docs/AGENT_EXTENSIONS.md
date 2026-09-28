@@ -41,6 +41,8 @@ Invalid manifests are excluded and reported as diagnostics. Duplicate extension 
 - `agent_extension_list`: list validated extensions and discovery diagnostics.
 - `agent_extension_get`: return one validated manifest.
 - `agent_extension_match`: find extensions declaring all requested capabilities.
+- `agent_extension_route`: route a bounded natural-language task to relevant installed extensions using declared triggers and domain metadata. This is relevance discovery only; it executes nothing.
+- `agent_extension_skill`: return the bounded validated `SKILL.md` for one selected extension together with its SHA-256. Skill instructions remain subordinate to system/user/Commander policy.
 
 `system_status` reports the Agent Extension contract schema, discovery directories, valid count and diagnostics.
 
@@ -53,3 +55,15 @@ Invalid manifests are excluded and reported as diagnostics. Duplicate extension 
 5. Resolve declared shared runtimes without duplicating heavyweight dependencies when a compatible authoritative runtime already exists.
 6. Run representative domain acceptance in the Agent project, not in the Core repository.
 7. Commander release qualification uses generic fixtures only.
+
+
+## Automatic Skill use
+
+The Remote Commander ChatGPT/Codex Skill should route non-trivial domain work before execution:
+
+1. call `agent_extension_route` with the current task;
+2. when one installed extension has direct trigger/domain evidence, call `agent_extension_skill` for that exact id;
+3. apply that Skill for domain reasoning while preserving Commander authority, safety, project-root and evidence rules;
+4. do not infer availability for missing extensions and do not select an extension merely because it is installed.
+
+Domain packages remain separately installed. The Commander installer and immutable release assets do not bundle owner/domain extensions.

@@ -161,3 +161,38 @@ test('skill path cannot escape through a junction or symlinked parent', t=>{
     fs.rmSync(outside,{recursive:true,force:true});
   }
 });
+
+
+test('routes natural-language tasks by declared triggers and returns bounded skill content read-only',()=>{
+  const base=tempRoot();
+  try {
+    const m=manifest('ansys-modeling');
+    m.displayName='ANSYS Modeling';
+    m.description='ANSYS Fluent Mechanical and multiphysics modeling.';
+    m.triggers=['ansys','fluent','mechanical','pyansys'];
+    writeExtension(base,'ansys-modeling',m);
+    const registry=createAgentExtensionRegistry({directories:[base]});
+    const routed=registry.execute('agent_extension_route',{task:'Please audit this ANSYS Fluent condensation model',limit:3});
+    assert.deepEqual(routed.items.map(x=>x.id),['ansys-modeling']);
+    assert.ok(routed.items[0].route.score>=20);
+    assert.ok(routed.items[0].route.matchedTriggers.includes('ansys'));
+    const skill=registry.execute('agent_extension_skill',{id:'ansys-modeling'});
+    assert.equal(skill.id,'ansys-modeling');
+    assert.match(skill.skill,/^# skill/m);
+    assert.match(skill.sha256,/^[0-9a-f]{64}$/);
+  } finally { fs.rmSync(base,{recursive:true,force:true}); }
+});
+
+test('unrelated task does not route to an extension without lexical or trigger evidence',()=>{
+  const base=tempRoot();
+  try {
+    const m=manifest('ansys-modeling');
+    m.displayName='ANSYS Modeling';
+    m.description='ANSYS Fluent Mechanical modeling.';
+    m.triggers=['ansys','fluent'];
+    writeExtension(base,'ansys-modeling',m);
+    const registry=createAgentExtensionRegistry({directories:[base]});
+    const routed=registry.execute('agent_extension_route',{task:'Translate this short sentence to Persian'});
+    assert.equal(routed.items.length,0);
+  } finally { fs.rmSync(base,{recursive:true,force:true}); }
+});

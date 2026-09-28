@@ -166,19 +166,39 @@ if (process.platform === 'win32') {
   for (const script of ['autostart-windows.ps1','windows-supervisor-runtime.ps1','enable-boot-recovery.ps1','handoff-user-session-windows.ps1','disable-boot-recovery.ps1']) {
     const parse = spawnSync('pwsh.exe', ['-NoLogo','-NoProfile','-Command',
       '$t=$null;$e=$null;[void][System.Management.Automation.Language.Parser]::ParseFile("'+script+'",[ref]$t,[ref]$e);if($e.Count){$e|ForEach-Object{$_.Message};exit 1}'],
-      { encoding:'utf8' });
+      { encoding:'utf8', windowsHide:true });
     if (parse.status !== 0) throw new Error(script+' parse failed: '+(parse.stderr||parse.stdout));
   }
 
-  const policy = spawnSync('pwsh.exe',['-NoLogo','-NoProfile','-File','test/supervisor-recovery-policy-windows.ps1'],{encoding:'utf8'});
+  const policy = spawnSync('pwsh.exe',['-NoLogo','-NoProfile','-File','test/supervisor-recovery-policy-windows.ps1'],{encoding:'utf8',windowsHide:true});
   if(policy.status!==0) throw new Error('supervisor recovery policy failed: '+(policy.stderr||policy.stdout));
   if(!policy.stdout.includes('SUPERVISOR_RECOVERY_POLICY_PASS')) throw new Error('supervisor recovery policy marker missing');
-  const stale = spawnSync('pwsh.exe',['-NoLogo','-NoProfile','-NonInteractive','-File','test/stale-drain-policy-windows.ps1'],{encoding:'utf8'});
+  const stale = spawnSync('pwsh.exe',['-NoLogo','-NoProfile','-NonInteractive','-File','test/stale-drain-policy-windows.ps1'],{encoding:'utf8',windowsHide:true});
   if(stale.status!==0) throw new Error('stale drain policy failed: '+(stale.stderr||stale.stdout));
   if(!stale.stdout.includes('STALE_DRAIN_POLICY_PASS')) throw new Error('stale drain policy marker missing');
-  const stdio = spawnSync('pwsh.exe',['-NoLogo','-NoProfile','-NonInteractive','-File','test/backend-stdio-windows.ps1'],{encoding:'utf8',timeout:15000});
+  const stdio = spawnSync('pwsh.exe',['-NoLogo','-NoProfile','-NonInteractive','-File','test/backend-stdio-windows.ps1'],{encoding:'utf8',timeout:15000,windowsHide:true});
   if(stdio.status!==0) throw new Error('backend stdio detach failed: '+(stdio.stderr||stdio.stdout));
   if(!stdio.stdout.includes('BACKEND_STDIO_DETACH_PASS')) throw new Error('backend stdio detach marker missing');
 }
 
+const headlessFiles = [
+  'test/gui-native-run.mjs',
+  'test/profile-reconfigure-windows-parser.test.mjs',
+  'test/installer-check.mjs',
+  'src/platform.mjs',
+  'src/power-tools-v0.3.mjs',
+  'src/tools-v0.3.mjs',
+  'src/conversation-continuation.mjs',
+  'tools/router-source-bootstrap.mjs'
+];
+for (const file of headlessFiles) {
+  const text = read(file);
+  for (const match of text.matchAll(/spawnSync\(\s*['"]pwsh\.exe['"][\s\S]{0,900}?\)/g)) {
+    if (!match[0].includes('windowsHide')) throw new Error(file+' launches pwsh.exe without windowsHide:true');
+  }
+  for (const match of text.matchAll(/spawn\(\s*['"]pwsh\.exe['"][\s\S]{0,900}?\)/g)) {
+    if (!match[0].includes('windowsHide')) throw new Error(file+' launches pwsh.exe without windowsHide:true');
+  }
+}
+console.log('HEADLESS_PROCESS_LAUNCH_POLICY_PASS');
 console.log('WINDOWS_RUNTIME_CONTRACT_PASS');

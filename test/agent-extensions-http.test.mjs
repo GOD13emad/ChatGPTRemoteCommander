@@ -34,7 +34,7 @@ test('agent extension tools are exposed read-only and return validated manifests
     await fs.writeFile(path.join(extensionDir,'agent.json'),JSON.stringify({
       schemaVersion:1,id:'fixture-extension',version:'1.0.0',displayName:'Fixture Extension',
       description:'Generic reusable capability-pack fixture.',
-      capabilities:['fixture.capability.alpha','fixture.capability.beta'],skill:'SKILL.md',
+      capabilities:['fixture.capability.alpha','fixture.capability.beta'],triggers:['fixture task','sample extension'],skill:'SKILL.md',
       safetyGates:['fixture.approval-required'],artifacts:['result.bin']
     }));
 
@@ -62,7 +62,7 @@ test('agent extension tools are exposed read-only and return validated manifests
       body:JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/list',params:{}})
     });
     const listed=await listRes.json();
-    for(const name of ['agent_extension_list','agent_extension_get','agent_extension_match']){
+    for(const name of ['agent_extension_list','agent_extension_get','agent_extension_match','agent_extension_route','agent_extension_skill']){
       const def=listed.result.tools.find(x=>x.name===name);
       assert.ok(def,name+' missing');
       assert.equal(def.annotations.readOnlyHint,true);
@@ -76,6 +76,12 @@ test('agent extension tools are exposed read-only and return validated manifests
     assert.equal(ext.safetyGates[0],'fixture.approval-required');
     const match=(await call('agent_extension_match',{capabilities:['fixture.capability.beta']})).result.structuredContent;
     assert.deepEqual(match.items.map(x=>x.id),['fixture-extension']);
+    const routed=(await call('agent_extension_route',{task:'fixture task'})).result.structuredContent;
+    assert.deepEqual(routed.items.map(x=>x.id),['fixture-extension']);
+    const skill=(await call('agent_extension_skill',{id:'fixture-extension'})).result.structuredContent;
+    assert.equal(skill.id,'fixture-extension');
+    assert.match(skill.sha256,/^[0-9a-f]{64}$/);
+    assert.match(skill.skill,/Fixture Extension/);
   } finally {
     if(child){child.kill();await Promise.race([once(child,'close'),wait(5000)]);}
     await fs.rm(root,{recursive:true,force:true});

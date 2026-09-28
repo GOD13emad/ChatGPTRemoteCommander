@@ -6,12 +6,16 @@ const args=process.argv.slice(2);
 const roots=[];
 const capabilities=[];
 let id=null;
+let task=null;
+let skillId=null;
 for(let i=0;i<args.length;i++){
   if(args[i]==='--root' && args[i+1]) roots.push(path.resolve(args[++i]));
   else if(args[i]==='--id' && args[i+1]) id=args[++i];
   else if(args[i]==='--capability' && args[i+1]) capabilities.push(args[++i]);
+  else if(args[i]==='--task' && args[i+1]) task=args[++i];
+  else if(args[i]==='--skill' && args[i+1]) skillId=args[++i];
   else if(args[i]==='--help'){
-    console.log('Usage: node tools/agent-extension-inspect.mjs [--root DIR] [--id ID] [--capability CAP]...');
+    console.log('Usage: node tools/agent-extension-inspect.mjs [--root DIR] [--id ID] [--capability CAP]... [--task TEXT] [--skill ID]');
     process.exit(0);
   } else {
     console.error('AGENT_EXTENSION_INSPECT_ARGUMENT_INVALID');
@@ -22,7 +26,9 @@ if(!roots.length) roots.push(path.join(os.homedir(),'.agents','extensions'));
 const registry=createAgentExtensionRegistry({directories:roots});
 let out;
 try {
-  if(id) out=registry.execute('agent_extension_get',{id});
+  if(skillId) out=registry.execute('agent_extension_skill',{id:skillId});
+  else if(task) out=registry.execute('agent_extension_route',{task});
+  else if(id) out=registry.execute('agent_extension_get',{id});
   else if(capabilities.length) out=registry.execute('agent_extension_match',{capabilities});
   else out=registry.execute('agent_extension_list',{});
 } catch(error) {
