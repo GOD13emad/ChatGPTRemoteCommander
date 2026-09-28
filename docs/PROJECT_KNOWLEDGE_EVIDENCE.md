@@ -875,3 +875,24 @@ Historical checkpoints remain append-only archives. Current release/control clai
 **Status:** Windows local combined candidate qualification CONFIRMED/HIGH. Because this evidence record itself changes the candidate commit, the evidence-bearing exact SHA still requires the final qualification/hosted gates before promotion.
 
 **Reuse Targets:** v0.9.16 final release gate, server installer qualification, Windows CI stabilization.
+
+
+## E-RELEASE-20260928-R1 — v0.9.16 publication and live rollout
+
+**Date/Context:** 2026-09-28; post-release evidence after exact-tree qualification, immutable publication, and production rollout.
+
+**Release authority:** Exact candidate `9004a94f56411c05a4d6ea0a7049e36ace54126a` passed full Windows and clean Linux `check → test → audit` gates. GitHub hosted Windows and Ubuntu CI on that exact SHA both passed. PR #38 was merged with an expected-head guard; merge commit `981e0b2a8856043b862da8a3ec63d75c5d906588` has no file diff relative to the qualified candidate. Annotated tag `v0.9.16` points to that merge commit and the GitHub Release is immutable.
+
+**Live Windows rollout:** Both production Windows profiles route to v0.9.16 / `981e0b2`. The default profile safely retains one v0.9.15 previous backend because live ownership/lease evidence prevents destructive retirement; the secondary profile has no previous generation. The v0.9.16 Codex canary executes the installed Codex CLI successfully without Commander's no-Codex `CODEX_HOME` or boolean sentinel. GUI policy reports owner-authorized stale-schema fallback enabled; a post-release takeover mutation canary is deferred while another live GUI lease exists rather than breaking that lease.
+
+**Live Linux rollout:** Candidate-only exact-release qualification returned `AUTO_UPDATE_CANDIDATE_PASS`. The full exact updater then promoted generation 81 to v0.9.16 / `981e0b2`, with `previous=null`; live `system_status` matches the route and preserved explicit Full Power authority.
+
+**Windows server acceptance:** The raw-server bootstrap correctly refuses a non-elevated token before changing prerequisites or security settings. The existing installed-server candidate-first path on the audited server then promoted successfully to v0.9.16 / `981e0b2`; live route generation 5 has `previous=null` and the update record reports `CURRENT`.
+
+**Installer/security decision:** The immutable release does not permit post-publication asset mutation, so no release asset was added after publication. Exact tagged server-bootstrap files remain in the repository and are distributed separately when needed. The Windows bootstrap intentionally creates no Defender/EDR exclusions; verified hash/signature evidence and administrator-controlled publisher/hash allowlisting remain the accepted path.
+
+**Known bounded state:** Historical durable-completion queues may contain unclaimed records on long-lived installations while `deadLetter=0` and `unfinishedRequests=0`; this is not evidence of an active failed operation. Automatic hidden model/provider execution remains intentionally disabled; Full Power does not silently create a model runner.
+
+**Confidence/Status:** RELEASE / ROLLOUT CONFIRMED HIGH, with live GUI mutation re-canary deferred only by an existing lease. No release rollback condition is present.
+
+**Reuse Targets:** release acceptance, production rollout, server installation, immutable publication, GUI lease safety, Codex authorization, Project Brain handoff.

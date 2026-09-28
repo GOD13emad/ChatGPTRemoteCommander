@@ -194,3 +194,20 @@ Historical checkpoints are preserved in the [archived project state](history/PRO
 - Focused Windows regression: 5 rounds / 35 of 35 PASS.
 - Linux overlay affected suite: 7 of 7 PASS.
 - Next gate: full exact-tree Windows + clean Linux, then hosted exact-SHA Windows/Ubuntu.
+
+
+## v0.9.16 RELEASE / LIVE STATE — 2026-09-28
+
+- Immutable release authority: tag `v0.9.16` → merge commit `981e0b2a8856043b862da8a3ec63d75c5d906588`.
+- Qualified tree: exact candidate `9004a94f56411c05a4d6ea0a7049e36ace54126a`; merge has no file diff from that candidate.
+- Windows exact-tree local gate: PASS; Linux exact-tree local gate: PASS.
+- Hosted exact-SHA GitHub CI: Windows PASS; Ubuntu PASS.
+- Main Windows live: both profiles v0.9.16 exact release; secondary has no previous; default retains one protected v0.9.15 previous generation rather than terminating a live owner/lease.
+- Linux live: v0.9.16 exact release, generation 81, previous null.
+- Audited Windows server live: v0.9.16 exact release, generation 5, previous null, update status CURRENT.
+- Windows raw-server bootstrap: admin/elevation gate CONFIRMED fail-closed; no antivirus exclusion or security-control bypass is performed.
+- Codex live canary on owner-authorized Windows: PASS; no Commander no-Codex environment sentinel remains.
+- GUI policy on owner-authorized Windows: PASS; live mutation re-canary DEFERRED_BY_EXISTING_LEASE and no lease was force-broken.
+- Background/hidden model runner: intentionally absent; Full Power does not auto-configure one.
+- Release rollback condition: NONE observed.
+- Project release status: **FINAL / ACCEPTED for v0.9.16 under the current locked architecture and safety model.**
