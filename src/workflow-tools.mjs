@@ -6,6 +6,7 @@ import path from 'node:path';
 import { createProjectEngine } from './project-engine.mjs';
 import { createCommandPlanner } from './project-planner.mjs';
 import { createTeamPlanner } from './project-team.mjs';
+import { codexLaunchAuthorized } from './no-codex-policy.mjs';
 
 const text = maxLength => ({ type: 'string', minLength: 1, maxLength });
 const id = { ...text(64), pattern: '^[a-z][a-z0-9_-]{0,63}$' };
@@ -355,7 +356,7 @@ export function createWorkflowTools({ config, roots, device, configSha256, looku
   if(conversationController)queueMicrotask(()=>{reconcileWorkflowChatHandoffs().catch(()=>{});});
   if(settings.runner?.enabled===true) {
     try {
-      const basePlanner=injectedPlanner??createCommandPlanner(settings.runner.provider);
+      const basePlanner=injectedPlanner??createCommandPlanner(settings.runner.provider,{allowCodex:codexLaunchAuthorized(config)});
       const planner=settings.runner.team===undefined?basePlanner:createTeamPlanner({planner:basePlanner,
         workers:settings.runner.team.workers,maxParallel:settings.runner.team.maxParallel});
       const requested=settings.runner.allowedTools??['list_directory','read_text','file_info','write_text','create_directory'];

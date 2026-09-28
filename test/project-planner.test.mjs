@@ -138,3 +138,12 @@ test('Claude remains unavailable until the installed client is qualified', async
   assert.equal(planner.describe().available, false);
   await assert.rejects(planner.plan({}), { code: 'PLANNER_PROVIDER_UNAVAILABLE' });
 });
+
+
+test('explicitly authorized Codex planner remains proposal-only', () => {
+  const planner=createCommandPlanner({ kind:'codex', executable:'codex.exe', timeoutMs:30000 },{allowCodex:true});
+  const description=planner.describe();
+  assert.equal(description.kind,'codex');
+  assert.equal(description.mode,'proposal-only');
+  assert.equal(description.controls,'read-only-disabled-action-features-and-event-validation');
+});

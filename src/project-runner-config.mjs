@@ -1,5 +1,5 @@
 import fs from 'node:fs';
-import { isCodexExecutable } from './no-codex-policy.mjs';
+import { codexLaunchAuthorized, isCodexExecutable } from './no-codex-policy.mjs';
 
 const RUNNER_ALLOWED_TOOLS = Object.freeze([
   'list_directory','read_text','file_info','write_text','create_directory'
@@ -108,8 +108,22 @@ export function applyProjectRunnerConfig(config, { platform = process.platform }
   const existing = next.durableWorkflows.runner;
   const provider = existing?.provider;
   const executable = provider?.executable;
-  if (existing?.kind === 'codex' || provider?.kind === 'codex'
-      || isCodexExecutable(existing?.executable) || isCodexExecutable(executable)) {
+  const codexConfigured = existing?.kind === 'codex' || provider?.kind === 'codex'
+    || isCodexExecutable(existing?.executable) || isCodexExecutable(executable);
+  if (codexConfigured) {
+    const authorizedCodex = existing?.enabled === true
+      && provider?.kind === 'codex'
+      && isCodexExecutable(executable)
+      && executableFile(executable, platform)
+      && codexLaunchAuthorized(next);
+    if (authorizedCodex) {
+      next.durableWorkflows.runner = normalizedExplicitRunner(existing);
+      return {
+        config: next,
+        status: 'PRESERVED_EXPLICIT_OWNER_CODEX_PROVIDER',
+        provider: { kind: 'codex', executable, qualifiedVersion: null }
+      };
+    }
     next.durableWorkflows.runner = disableRunner(existing, 'NO_CODEX_VIA_COMMANDER');
     return {
       config: next,
