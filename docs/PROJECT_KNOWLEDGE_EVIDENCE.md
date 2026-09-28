@@ -813,3 +813,18 @@ Historical checkpoints remain append-only archives. Current release/control clai
 **Confidence/Status:** Root cause CONFIRMED/HIGH. Renewed exact-SHA hosted CI remains the promotion gate.
 
 **Reuse Targets:** Project Knowledge provenance hygiene, security audit, release qualification, account-transfer-ready Brain.
+
+
+## E-AUTH-20260928-R9 — current Codex guidance consistency
+
+**Date/Context:** 2026-09-28; final v0.9.16 current-text audit after policy implementation and focused regression.
+
+**Finding:** Two current surfaces still carried the superseded absolute statement that Commander never launches Codex: the top-level README and the runtime operating-instruction string. That contradicted the already-qualified v0.9.15/v0.9.16 policy where local Codex launch is default-deny but may be explicitly authorized for a trusted Full-Power owner request.
+
+**Decision / Guard:** Align only current operational guidance. Hidden/background project runners remain No-Codex; external Work/Codex handoff still requires an explicit current-chat choice; local launch remains permitted only when the current request explicitly asks for Codex and runtime policy reports owner authorization. Historical release records are not rewritten.
+
+**Evidence:** `README.md`; `src/server-v0.3.mjs`; focused no-Codex regression previously PASS 8/8; security audit PASS after the policy/status correction.
+
+**Confidence/Status:** CONFIRMED/HIGH.
+
+**Reuse Targets:** user guidance, runtime operating instructions, Codex authorization semantics, release notes.

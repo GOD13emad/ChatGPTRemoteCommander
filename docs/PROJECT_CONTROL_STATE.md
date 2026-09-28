@@ -167,3 +167,10 @@ Historical checkpoints are preserved in the [archived project state](history/PRO
 - Local security audit: PASS.
 - Focused Codex policy regression after status-metadata clarification: 8/8 PASS.
 - Current gate: renewed hosted Windows + Ubuntu CI on the new exact SHA.
+
+
+### v0.9.16 current-guidance consistency
+
+- Superseded absolute “Commander never launches Codex” wording was found in current README/runtime instructions.
+- Current text now matches the implemented policy: default-deny local Codex, explicit trusted Full-Power owner opt-in only, hidden/background project runner still No-Codex, external handoff still explicit-choice only.
+- No runtime authorization broadening was introduced by this text-alignment change.
