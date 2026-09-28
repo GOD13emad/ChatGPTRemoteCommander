@@ -934,3 +934,22 @@ Historical checkpoints remain append-only archives. Current release/control clai
 **External packages selected for this rollout:** `ansys-modeling`, `project-execution-brain`, `final-thesis-report`. `video-trend` is explicitly excluded by owner instruction. COMSOL standalone Skill was not found in the current authoritative local Skill catalog, status MISSING/UNVERIFIED.
 
 **Reuse Targets:** domain agent routing, separate extension lifecycle, Skill selection, least-authority integration.
+
+
+## E-EXT-20260928-R6 — official project Skill catalog and routing specificity
+
+**Date/Context:** 2026-09-28; post-v0.9.18 external Extension acceptance and rollout.
+
+**Project-truth correction:** a narrow filename/source search found the authoritative COMSOL Skill that the earlier local installed-skill scan missed: `COMSOLModelingSkill`, clean `main`, tag `v1.1.1`, commit `bd51db0`, plus final archive `COMSOLModelingSkill_v1.1.1_FINAL.zip` with SHA-256 `5abc90bec1197fde81f44804816c674f9c4281287f31af6604b2ee73f03d13c6`. The earlier R5 COMSOL=MISSING observation is therefore superseded for current state, not erased historically.
+
+**Official external set:** `ansys-modeling` v1.1.1; `comsol-modeling` v1.1.1; `project-execution-brain` current installed project version; `final-thesis-report` v1.0.0. `video-trend` remains owner-private and excluded from the official catalog/rollout. Packages are installed separately under each host's external Extension root and are not bundled in Commander release assets.
+
+**Cross-host acceptance:** v0.9.18 live on Windows, Linux, and HPC Windows. Linux and HPC each discover four official extensions with zero invalid diagnostics; the primary Windows host discovers those four plus the owner's private `video-trend`.
+
+**Routing failure found:** explicit COMSOL acceptance returned COMSOL first but also a weak ANSYS lexical candidate because shared generic terms matched. This is not acceptable for automatic Skill selection.
+
+**Root Cause -> Prevention -> Guard:** lexical fallback remained active even when explicit trigger evidence existed -> explicit trigger dominance; lexical-only candidates are suppressed whenever any trigger matches -> regression fixture requires COMSOL task to return COMSOL only. Multiword trigger matching is also token-complete rather than substring-only so project-method Skills can layer with domain Skills. Focused Agent Extension regression 13/13 PASS.
+
+**Confidence/Status:** implementation CONFIRMED/HIGH; v0.9.19 full release gates OPEN.
+
+**Reuse Targets:** Skill auto-routing, domain/project-method composition, false-positive prevention, external Extension lifecycle.

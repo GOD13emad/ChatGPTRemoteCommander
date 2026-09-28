@@ -137,7 +137,14 @@ function routeScore(ext, task) {
   const text=String(task??'').trim().toLowerCase();
   if(!text)return {score:0,matchedTriggers:[],matchedTokens:[]};
   const tokens=taskTokens(text);
-  const matchedTriggers=(ext.triggers??[]).filter(x=>text.includes(String(x).toLowerCase()));
+  const tokenSet=new Set(tokens);
+  const matchedTriggers=(ext.triggers??[]).filter(value=>{
+    const trigger=String(value).trim().toLowerCase();
+    if(!trigger)return false;
+    if(text.includes(trigger))return true;
+    const triggerTokens=taskTokens(trigger).filter(x=>x.length>=3);
+    return triggerTokens.length>=2 && triggerTokens.every(x=>tokenSet.has(x));
+  });
   const hay=[ext.id,ext.displayName,ext.description,...(ext.capabilities??[]),...(ext.triggers??[])].join(' ').toLowerCase();
   const matchedTokens=tokens.filter(x=>x.length>=4 && !ROUTE_STOPWORDS.has(x) && hay.includes(x));
   const score=matchedTriggers.length*20 + matchedTokens.length;
@@ -265,7 +272,9 @@ export function createAgentExtensionRegistry({directories=[]}={}) {
     }
     if(name==='agent_extension_route') {
       const limit=Math.max(1,Math.min(Number(args.limit??3),10));
-      const ranked=extensions.map(ext=>({ext,...routeScore(ext,args.task)})).filter(x=>x.matchedTriggers.length>0 || x.matchedTokens.length>=2)
+      const scored=extensions.map(ext=>({ext,...routeScore(ext,args.task)}));
+      const hasTrigger=scored.some(x=>x.matchedTriggers.length>0);
+      const ranked=scored.filter(x=>hasTrigger?x.matchedTriggers.length>0:x.matchedTokens.length>=2)
         .sort((a,b)=>b.score-a.score||a.ext.id.localeCompare(b.ext.id)).slice(0,limit);
       return {schema:1,task:String(args.task),items:ranked.map(x=>({...publicExtension(x.ext),route:{score:x.score,matchedTriggers:x.matchedTriggers,matchedTokens:x.matchedTokens}})),diagnostics};
     }
