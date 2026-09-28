@@ -22,6 +22,17 @@ async function waitFor(manager, operationId, terminal = ['SUCCEEDED', 'FAILED', 
   throw new Error('operation did not finish');
 }
 
+async function waitForProcessExit(pid, timeoutMs = 10000) {
+  if (!Number.isSafeInteger(pid) || pid <= 0) return;
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    try { process.kill(pid, 0); }
+    catch { return; }
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  throw new Error('operation worker did not exit');
+}
+
 async function withManager(fn, overrides = {}) {
   const root = await mkdtemp(path.join(os.tmpdir(), 'rc-async-'));
   const manager = createAsyncOperationTools({
@@ -334,7 +345,8 @@ test('corrupt terminal projection recovers from exact reservation and receipt wi
       tool: 'run_project_command',
       arguments: { argv: ['done'] }
     });
-    await waitFor(first, started.operationId);
+    const terminal = await waitFor(first, started.operationId);
+    await waitForProcessExit(terminal.workerPid);
     await first.close?.();
     first = null;
 
@@ -387,7 +399,8 @@ test('corrupt terminal projection is not repaired when receipt and reservation h
       requestId: 'corrupt-mismatch-request-1', correlationId: 'chat-corrupt-mismatch',
       tool: 'run_project_command', arguments: { argv: ['done'] }
     });
-    await waitFor(first, started.operationId);
+    const terminal = await waitFor(first, started.operationId);
+    await waitForProcessExit(terminal.workerPid);
     await first.close?.();
     first = null;
 

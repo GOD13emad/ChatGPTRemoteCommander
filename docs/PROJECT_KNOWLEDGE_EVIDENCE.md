@@ -685,3 +685,20 @@ Historical checkpoints remain append-only archives. Current release/control clai
 **Confidence/Status:** Windows candidate qualification CONFIRMED/HIGH. Hosted exact-SHA CI, immutable integration/tag, installer/update acceptance and production rollout remain OPEN.
 
 **Reuse Targets:** authorization wiring, process lifecycle, release regression, failure-prevention guidance.
+
+
+## E-AUTH-20260928-R3 — Hosted Windows async test race during v0.9.15 qualification
+
+**Date/Context:** 2026-09-28; PR #36 exact head `3a5c49c63cf33a75cad003ebb7872704dd7eb037`, GitHub Actions run `36393301881`.
+
+**Observed Evidence:** Ubuntu job passed. Windows `npm run check` passed, then `npm test` failed exactly one test: `corrupt terminal projection is not repaired when receipt and reservation hashes differ` at `test/async-operations.test.mjs:407`, assertion `1 !== 0`. All authorization/Codex/GUI tests passed. The failure occurred after `waitFor()` observed a terminal operation state but before the detached worker process was guaranteed to have exited.
+
+**Root Cause → Prevention → Guard:** terminal state and final worker-process exit are distinct events on Windows; the regression intentionally corrupts durable projection/receipt files and could race the tail of worker cleanup → wait for the exact recorded `workerPid` to become nonexistent before deliberate test corruption → bounded 10-second PID-exit wait used only by the two corrupt-projection tests. No production retry, sleep, delivery, or authorization semantics changed.
+
+**Regression:** `test/async-operations.test.mjs` executed 10 consecutive times with the fix on Windows: **140/140 PASS**, no skips/failures, terminal `term-27`, final exit 0. `git diff --check` PASS.
+
+**Confidence/Status:** Root cause CONFIRMED/HIGH for the hosted failure family. Full exact-tree regression and renewed hosted exact-SHA CI remain OPEN.
+
+**Reuse Targets:** Windows CI stability, async durability tests, corrupt-projection recovery, release qualification.
+
+**Post-fix Full Gate:** exact-tree Windows `npm run check && npm test && npm run audit` completed in terminal `term-28` with final exit 0; test core runner reported 475 PASS / 6 SKIP / 0 FAIL and security audit reported `SECURITY_AUDIT_PASS`.

@@ -98,3 +98,10 @@ Historical checkpoints are preserved in the [archived project state](history/PRO
 - FINAL status: UNPROVEN until those gates complete.
 
 - Windows full qualification delta: `npm run check` operation `75d71f03-da21-4b05-92b3-75c3e5594e4b` PASS exit 0; `npm test` operation `83494e4f-3ec1-4924-bba5-c0473fae5657` PASS exit 0; `npm run audit` PASS with `SECURITY_AUDIT_PASS`. First full-check operation `f75eb1e0-7ba3-4928-b1d1-6899837983d7` failed because helper `capture()` referenced out-of-scope `ctx`; targeted process-tree/auth suite then PASS 109/109 after explicit `allowCodex` wiring, followed by full PASS.
+
+
+- Hosted CI delta: PR #36 exact head `3a5c49c` passed Ubuntu but Windows `npm test` failed one pre-existing async corrupt-projection race (GitHub Actions run `36393301881`, job `108833771646`): expected no delivery event after deliberate receipt/reservation hash mismatch, but transient tracked state was still 1 while the just-terminal worker process had not fully exited.
+- Narrow prevention: the two corrupt-projection tests now wait for the exact worker PID to exit before mutating `state.json` / `result.json`; product runtime behavior is unchanged.
+- Regression: `test/async-operations.test.mjs` repeated 10 times on Windows, **140/140 PASS**, terminal `term-27`, exit 0. Next gate: full exact-tree Windows check/test/audit, then updated exact-SHA hosted CI.
+
+- Post-race-fix full exact-tree Windows gate: `npm run check` PASS; `npm test` PASS (core runner 475 PASS / 6 SKIP / 0 FAIL plus downstream GUI/concurrency/runtime/schema gates); `npm run audit` PASS with `SECURITY_AUDIT_PASS`; terminal `term-28`, final exit 0.

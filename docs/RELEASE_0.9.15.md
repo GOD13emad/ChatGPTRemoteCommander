@@ -103,3 +103,12 @@ Regression:
    - existing durable workflow/retry/recovery behavior is unchanged.
 
 FINAL remains UNPROVEN until all gates complete.
+
+
+## Hosted Windows qualification race
+
+The first PR #36 hosted run passed Ubuntu but failed one Windows async durability regression after the operation had reached terminal state while its detached worker process was still completing exit/cleanup. The test then deliberately corrupted projection/receipt files and raced that tail cleanup.
+
+The test guard now waits for the exact terminal state's `workerPid` to exit before deliberate corruption. This is test-only synchronization; production async/delivery semantics are unchanged. Ten consecutive Windows async-suite runs passed **140/140** after the fix.
+
+Post-fix exact-tree Windows full gate then passed `npm run check`, `npm test`, and `npm run audit` with final exit 0 and `SECURITY_AUDIT_PASS`.
