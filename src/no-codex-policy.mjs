@@ -3,6 +3,7 @@ import path from 'node:path';
 import { readFile, stat } from 'node:fs/promises';
 
 const POLICY_CODE = 'CODEX_DELEGATION_FORBIDDEN';
+const STATUS_CODE = 'CODEX_DELEGATION_DEFAULT_DENY';
 const AUTH_POLICY = 'owner-authorized-local-launch';
 const INTERPRETERS = new Set([
   'python','python.exe','pythonw','pythonw.exe','node','node.exe',
@@ -174,6 +175,23 @@ export async function assertNoCodexShellDelegation(command, cwd, { allowCodex = 
   await assertNoCodexDelegatingScript(program,tokens,cwd);
 }
 
+function isCommanderNoCodexHome(value) {
+  const raw = String(value ?? '').trim();
+  if (!raw) return false;
+  try {
+    let root = path.resolve(path.join(os.tmpdir(), 'chatgpt-remote-commander-no-codex'));
+    let target = path.resolve(raw);
+    if (process.platform === 'win32') {
+      root = root.toLowerCase();
+      target = target.toLowerCase();
+    }
+    const relative = path.relative(root, target);
+    return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
+  } catch {
+    return false;
+  }
+}
+
 export function commanderChildEnv(cwdOrSource, maybeSource, { allowCodex = false } = {}) {
   const source = cwdOrSource && typeof cwdOrSource === 'object' && !Array.isArray(cwdOrSource) && maybeSource === undefined
     ? cwdOrSource
@@ -188,12 +206,13 @@ export function commanderChildEnv(cwdOrSource, maybeSource, { allowCodex = false
     env.CODEX_HOME = path.join(os.tmpdir(), 'chatgpt-remote-commander-no-codex', String(process.pid));
   } else {
     delete env.REMOTE_COMMANDER_NO_CODEX;
+    if (isCommanderNoCodexHome(env.CODEX_HOME)) delete env.CODEX_HOME;
   }
   return env;
 }
 
 export const NO_CODEX_POLICY = Object.freeze({
-  code: POLICY_CODE,
+  code: STATUS_CODE,
   mode: 'DEFAULT_DENY',
   default: 'CONTINUE_CHAT',
   externalHandoffRequiresCurrentChatChoice: true,

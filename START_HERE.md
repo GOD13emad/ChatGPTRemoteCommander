@@ -88,6 +88,8 @@ Local Power Mode controls what the MCP server can do. ChatGPT App permissions se
 
 ## 1. Install or update
 
+For a fresh Windows Server (especially Server Core or systems without WinGet/Git/Node/PowerShell 7) or a headless Linux server, use [docs/SERVER_INSTALL.md](docs/SERVER_INSTALL.md). The server bootstrap verifies prerequisite hashes/signatures, pins the exact fetched source commit, and never creates antivirus exclusions.
+
 ### Windows — Standard
 
 Open PowerShell 7 and run:

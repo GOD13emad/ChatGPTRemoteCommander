@@ -40,7 +40,7 @@ async function startServer(serverRoot, configPath) {
   throw new Error('server did not become healthy: '+stderr);
 }
 async function stopServer(child) {
-  if (child && child.exitCode === null) { child.kill(); await Promise.race([once(child,'exit'), wait(2000)]); }
+  if (child && child.exitCode === null) { child.kill(); await Promise.race([once(child,'close'), wait(4000)]); }
 }
 
 test('direct mutation requestId prevents duplicate append across lost ack and restart', async () => {
@@ -97,7 +97,7 @@ test('direct mutation requestId prevents duplicate append across lost ack and re
     assert.equal(await fs.readFile(target,'utf8'),'x');
   } finally {
     if (running) await stopServer(running.child);
-    await fs.rm(root,{recursive:true,force:true});
+    await fs.rm(root,{recursive:true,force:true,maxRetries:20,retryDelay:50});
   }
 });
 
@@ -160,7 +160,7 @@ test('legacy cached client derives durable mutation idempotency from x-request-i
     assert.equal(await fs.readFile(target,'utf8'),'xz');
   } finally {
     if (running) await stopServer(running.child);
-    await fs.rm(root,{recursive:true,force:true});
+    await fs.rm(root,{recursive:true,force:true,maxRetries:20,retryDelay:50});
   }
 });
 
@@ -211,6 +211,6 @@ test('full-power direct mutation catalog requires requestId across file/process/
     assert.ok(readOnly.some(tool=>tool.name==='system_status' && !tool.inputSchema?.properties?.requestId));
   } finally {
     if (running) await stopServer(running.child);
-    await fs.rm(root,{recursive:true,force:true});
+    await fs.rm(root,{recursive:true,force:true,maxRetries:20,retryDelay:50});
   }
 });

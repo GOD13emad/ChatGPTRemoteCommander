@@ -702,3 +702,176 @@ Historical checkpoints remain append-only archives. Current release/control clai
 **Reuse Targets:** Windows CI stability, async durability tests, corrupt-projection recovery, release qualification.
 
 **Post-fix Full Gate:** exact-tree Windows `npm run check && npm test && npm run audit` completed in terminal `term-28` with final exit 0; test core runner reported 475 PASS / 6 SKIP / 0 FAIL and security audit reported `SECURITY_AUDIT_PASS`.
+
+
+## E-AUTH-20260928-R4 — Cross-platform async child-exit/stdio test stabilization
+
+**Date/Context:** 2026-09-28; after v0.9.15 authorization candidate qualification. A second meaningful async-lifecycle CI failure occurred on Ubuntu in the docs-only PR #37: `child exit completes operation even when inherited stdio delays close` reached `TIMED_OUT` instead of `SUCCEEDED`.
+
+**Project Evidence / Failure:** Earlier Windows hosted CI had exposed a distinct worker-exit timing race in deliberate corruption tests. The later Ubuntu failure lasted about 10.2 s and matched the fixture grandchild's 10 s lifetime, showing that the fixture itself did not reliably force the direct child to exit before inherited stdio closed on that platform.
+
+**Method Evidence:** Node.js child_process documentation distinguishes `exit` from `close`: `exit` occurs when the child ends while stdio may still be open; `close` occurs only after stdio is closed and may be delayed when multiple processes share streams. Node also documents that detached background children should not keep parent-connected stdio when independent lifetime is required. Sources checked 2026-09-28: https://nodejs.org/download/release/latest-jod/docs/api/child_process.html and https://nodejs.org/api/child_process.html.
+
+**Root Cause → Prevention → Guard → Regression:** OS-sensitive fixture relied on a detached Node grandchild with inherited stdout/stderr plus natural parent event-loop exit → make the direct fixture process explicitly exit only after its own stdout write callback fires, while the detached grandchild continues holding inherited descriptors → no production worker/runtime code changed → focused Windows `node --test test/async-operations.test.mjs` PASS 14/14, exit 0. Hosted Ubuntu exact-SHA CI remains the cross-platform promotion gate.
+
+**Confidence/Status:** Root cause PROBABLE/HIGH from timing match, official event semantics, and focused regression. Cross-platform confirmation pending hosted CI.
+
+**Reuse Targets:** async operation durability tests, child-process lifecycle testing, CI failure prevention, v0.9.16 release gate.
+
+
+## E-AUTH-20260928-R5 — Authorized Codex inherited no-Codex sentinel
+
+**Date/Context:** 2026-09-28; live Windows v0.9.15 after successful stale-schema GUI authorization rollout on both `default` and `saeed-emad`.
+
+**Confirmed live result:** The actual cached ChatGPT connector schema, which exposes only `gui_session_begin({ttlSeconds})`, returned `mode=takeover` and `authorization=owner-persisted` on the v0.9.15 default backend. Both Windows profiles also reported `commanderMayLaunchCodex=true` and delegation policy `owner-authorized-local-launch`.
+
+**Failure:** Authorized `codex --version` found the installed Codex executable, exited 0 and reported `codex-cli 0.146.0`, but emitted a warning that `CODEX_HOME` pointed to Commander's generated `chatgpt-remote-commander-no-codex` temporary path.
+
+**Root Cause → Prevention → Guard → Regression:** v0.9.15 removed the no-Codex boolean sentinel for authorized child processes but preserved an inherited Commander-generated `CODEX_HOME` → recognize only paths inside Commander's generated no-Codex root and remove that stale value when Codex is authorized → preserve all legitimate user `CODEX_HOME` values → focused regression checks both sentinel removal and owner home preservation.
+
+**Instruction audit:** Current plugin/tool guidance still contained unconditional statements that Commander never launches Codex, contradicting the v0.9.15 live policy. Current operational text is updated to default-deny + explicit Full-Power owner authorization. Historical release records and the hidden/background project-runner No-Codex invariant remain unchanged.
+
+**Confidence/Status:** Root cause CONFIRMED/HIGH from live executable output and source inspection. v0.9.16 candidate qualification pending.
+
+**Reuse Targets:** Codex authorization, child-process environment hygiene, plugin instructions, updater inheritance, release acceptance.
+
+**Provenance:** live v0.9.15 `system_status`, direct stale-schema GUI canary, `rc_codex_canary_v0915.ps1`, `src/no-codex-policy.mjs`, `plugin-template/skills/remote-commander/SKILL.md`.
+
+
+## E-AUTH-20260928-R6 — v0.9.16 Windows full qualification
+
+**Date/Context:** 2026-09-28; v0.9.16 candidate worktree after authorized-Codex sentinel cleanup, current-instruction alignment, and cross-platform async fixture stabilization.
+
+**Evidence:** Focused Codex-policy + async suite PASS 22/22. Installer check PASS. Onboarding/plugin check PASS. Full Windows gate terminal `term-17` completed with exit 0: `npm run check` PASS; `npm test` PASS with core runner 475 PASS / 6 SKIP / 0 FAIL plus downstream browser, GUI, concurrency, filesystem, runtime and schema gates; `npm run audit` PASS with `SECURITY_AUDIT_PASS`.
+
+**Key regression:** authorized child environment removes only Commander's generated no-Codex `CODEX_HOME` sentinel while preserving a legitimate owner-specified `CODEX_HOME`. Hidden project-runner No-Codex tests remain PASS.
+
+**Confidence/Status:** Windows local candidate qualification CONFIRMED/HIGH. Hosted exact-SHA Windows/Ubuntu CI, immutable publication and production rollout remain OPEN.
+
+**Reuse Targets:** v0.9.16 release qualification, Codex authorization, environment inheritance, async lifecycle testing.
+
+**Provenance:** `term-17`; `src/no-codex-policy.mjs`; `test/no-codex-policy.test.mjs`; `test/async-operation-fixture.mjs`; `docs/RELEASE_0.9.16.md`.
+
+
+## E-AUTH-20260928-R6 — v0.9.16 full Windows qualification
+
+**Date/Context:** 2026-09-28; v0.9.16 owner-authorized Codex environment candidate after focused regressions.
+
+**Focused regressions:** `test/no-codex-policy.test.mjs` + `test/async-operations.test.mjs` completed 22/22 PASS. Installer and onboarding checks also PASS.
+
+**Full Windows exact-tree gate:** PowerShell 7 gate script executed `npm run check`, `npm test`, and `npm run audit` sequentially with strict exit-code propagation. Final terminal `term-17` exited 0. Full test runner reported 475 PASS / 6 SKIP / 0 FAIL; GUI contract reported 77/77 PASS; source integrity and Windows runtime contract PASS.
+
+**Status:** Windows qualification CONFIRMED. Cross-platform promotion remains UNPROVEN until clean Linux and hosted exact-SHA Windows/Ubuntu CI pass.
+
+**Reuse Targets:** v0.9.16 release qualification, owner-authorized Codex, async lifecycle stabilization, installer/onboarding consistency.
+
+**Provenance:** dedicated v0.9.16 Windows qualification worktree; terminal `term-17`, exit 0.
+
+
+## E-AUTH-20260928-R7 — Codex home and status-metadata semantics
+
+**Date/Context:** 2026-09-28; final v0.9.16 pre-release audit.
+
+**Method evidence:** OpenAI Codex maintainers document `CODEX_HOME` as the supported way to select a different independent Codex home directory; Codex configuration/auth/session data can therefore legitimately depend on this environment value. Primary-source references: https://github.com/openai/codex/issues/7971 and https://github.com/openai/codex/issues/15410.
+
+**Decision:** Authorized Commander launches must preserve a legitimate owner `CODEX_HOME`; only Commander's own generated `chatgpt-remote-commander-no-codex` sentinel may be removed. Status metadata is renamed to `CODEX_DELEGATION_DEFAULT_DENY` while the blocked-attempt error remains `CODEX_DELEGATION_FORBIDDEN`.
+
+**Regression:** Focused `test/no-codex-policy.test.mjs` PASS 8/8 after the status-metadata change. Full exact-candidate local and hosted qualification remain release gates.
+
+**Confidence/Status:** CONFIRMED/HIGH for method choice and focused behavior.
+
+**Reuse Targets:** Codex home preservation, authorization diagnostics, user-facing status interpretation, v0.9.16 release.
+
+
+## E-AUTH-20260928-R7 — v0.9.16 clean Linux qualification
+
+**Date/Context:** 2026-09-28; detached clean Linux worktree at exact candidate SHA `32b85b8`.
+
+**Environment:** `/home/aliemad/source/repos/ChatGPTRemoteCommander-v0916-ci`, detached from `origin/fix/v0.9.16-codex-env`; the user's dirty Linux development tree was not modified.
+
+**Gate:** `npm run check` → `npm test` → `npm run audit` under `set -euo pipefail`.
+
+**Result:** exit 0; installer check PASS on Linux; async exit/stdio regression PASS; full test runner 480 PASS / 1 SKIP / 0 FAIL; GUI contract 77/77 PASS; concurrency smoke PASS; source integrity PASS; `SECURITY_AUDIT_PASS`; final marker `V0916_FULL_LINUX_PASS`.
+
+**Status:** Clean Linux qualification CONFIRMED for `32b85b8`. Hosted exact-SHA Windows/Ubuntu CI remains the promotion gate.
+
+**Reuse Targets:** v0.9.16 release qualification, Linux installer, server deployment confidence, cross-platform async stabilization.
+
+**Provenance:** Linux terminal `term-1`, exact worktree SHA `32b85b8`, exit 0.
+
+
+## E-AUTH-20260928-R8 — Hosted security-audit provenance-path failure
+
+**Date/Context:** 2026-09-28; PR #38 hosted CI on the first evidence-bearing v0.9.16 candidate.
+
+**Failure:** Ubuntu hosted `check` and full `test` passed, but `npm run audit` failed. The audit reported exactly one class of finding: a developer-specific absolute Windows checkout path recorded as provenance in `docs/PROJECT_KNOWLEDGE_EVIDENCE.md`, which also appeared in candidate Git history.
+
+**Root Cause → Prevention → Guard → Regression:** evidence recording embedded an unnecessary machine/user-specific absolute checkout path → provenance records now use role + commit/SHA rather than personal checkout paths unless a path is technically necessary → keep the existing security audit's CURRENT + HISTORY developer-path checks strict; do not weaken or exempt evidence files → the unmerged evidence commit was sanitized before integration, local security audit PASS, and focused Codex policy regression PASS 8/8.
+
+**Decision:** Since the offending commit was an unmerged/unreleased candidate, rewriting that candidate evidence commit was preferable to weakening the audit or permanently retaining developer identity/path metadata.
+
+**Confidence/Status:** Root cause CONFIRMED/HIGH. Renewed exact-SHA hosted CI remains the promotion gate.
+
+**Reuse Targets:** Project Knowledge provenance hygiene, security audit, release qualification, account-transfer-ready Brain.
+
+
+## E-AUTH-20260928-R9 — current Codex guidance consistency
+
+**Date/Context:** 2026-09-28; final v0.9.16 current-text audit after policy implementation and focused regression.
+
+**Finding:** Two current surfaces still carried the superseded absolute statement that Commander never launches Codex: the top-level README and the runtime operating-instruction string. That contradicted the already-qualified v0.9.15/v0.9.16 policy where local Codex launch is default-deny but may be explicitly authorized for a trusted Full-Power owner request.
+
+**Decision / Guard:** Align only current operational guidance. Hidden/background project runners remain No-Codex; external Work/Codex handoff still requires an explicit current-chat choice; local launch remains permitted only when the current request explicitly asks for Codex and runtime policy reports owner authorization. Historical release records are not rewritten.
+
+**Evidence:** `README.md`; `src/server-v0.3.mjs`; focused no-Codex regression previously PASS 8/8; security audit PASS after the policy/status correction.
+
+**Confidence/Status:** CONFIRMED/HIGH.
+
+**Reuse Targets:** user guidance, runtime operating instructions, Codex authorization semantics, release notes.
+
+
+## E-INSTALL-20260928-R1 — raw Windows Server + Linux server bootstrap
+
+**Date/Context:** 2026-09-28; v0.9.16 deployment hardening for fresh servers where WinGet, Git, Node.js, PowerShell 7, desktop GUI, or distribution prerequisites may be absent.
+
+**Method evidence:** Microsoft documents MSI as a supported PowerShell-on-Windows deployment path and PowerShell 7 support on Windows Server 2016/2019/2022. PowerShell 7.6 is the current LTS line. Node.js lists Windows x64 >= Windows 10 / Server 2016 as Tier 1. Microsoft Defender guidance states that each custom exclusion reduces protection and should be used sparingly; Windows Server 2016+ already receives built-in/automatic server-role exclusions. Primary sources: https://learn.microsoft.com/powershell/scripting/install/install-powershell-on-windows ; https://learn.microsoft.com/powershell/scripting/whats-new/migrating-from-windows-powershell-51-to-powershell-7 ; https://learn.microsoft.com/powershell/scripting/install/powershell-support-lifecycle ; https://github.com/nodejs/node/blob/main/BUILDING.md ; https://nodejs.org/download/release/latest-jod/ ; https://learn.microsoft.com/defender-endpoint/microsoft-defender-antivirus-exclusions-overview ; https://learn.microsoft.com/defender-endpoint/microsoft-defender-antivirus-exclusions-windows-server .
+
+**Decision:** Add thin server bootstrap wrappers instead of duplicating the product installer. Windows bootstrap starts from built-in Windows PowerShell, does not depend on WinGet, installs only missing prerequisites, verifies PowerShell MSI with pinned upstream SHA-256 + Authenticode, verifies Node 22.23.3 MSI against upstream SHASUMS256 + Authenticode, verifies Git for Windows using official release-asset SHA-256 digest + Authenticode, resolves the requested Commander ref to one exact commit, then hands off to the normal candidate-first installer. Linux bootstrap supports apt/dnf/yum/zypper/pacman, resolves one exact commit, then hands off to install.sh.
+
+**Server policy:** Full Power is the server wrapper default because this package is for owner-managed Remote Commander servers. GUI capabilities are automatically disabled on Windows Server Core and by default on Linux servers. Windows desktop/server-with-GUI can opt in; Linux desktop can opt in explicitly.
+
+**Security decision:** Do not add Microsoft Defender/EDR exclusions automatically. Generate a local allowlist-evidence manifest with source commit, hashes, signer metadata and Defender state. If enterprise controls block a verified artifact, prefer administrator-managed publisher/signature or exact-hash allow rules. Broad path/process exclusions are rejected because they create a protection gap and are unnecessary for normal installation.
+
+**Validation:** Windows installer parser/static gate PASS; onboarding/plugin check PASS; security audit PASS. Linux overlay: bash syntax PASS, installer-check PASS, focused HTTP/lifecycle suite 7/7 PASS, security audit PASS.
+
+**Confidence/Status:** IMPLEMENTATION CONFIRMED/HIGH for static/cross-platform qualification. Fresh-VM destructive installation canary remains OPEN until release-candidate CI is green and a disposable clean server target is available.
+
+**Reuse Targets:** Windows Server deployment, Linux server deployment, enterprise allowlisting, installation troubleshooting, release packaging.
+
+
+## E-CI-20260928-R1 — Windows hosted temp-lifecycle hardening
+
+**Date/Context:** 2026-09-28; GitHub Actions run `36406635441` on v0.9.16 candidate `762e309`.
+
+**Observed evidence:** Ubuntu hosted `check`, `test`, and `audit` all passed. Windows `check` passed but `npm test` reported four failures: three `EBUSY: resource busy or locked, rmdir ...\\server` failures during test teardown, plus one isolated workflow fixture health-start timeout at the existing 15-second deadline. The failing tests exercise isolated copied servers; no production assertion failed.
+
+**Root Cause → Prevention → Guard:** two affected teardown paths killed the isolated child and waited only for `exit`, then immediately removed its temp tree with no Windows retry policy → wait for child `close` (stdio lifecycle complete) and use the repository's existing bounded `fs.rm(..., {maxRetries:20,retryDelay:50})` Windows cleanup pattern. The workflow fixture already waits for `close`; its only failure was startup under hosted parallel load, so the fixture-only readiness budget is raised from 15 to 30 seconds. No product server timeout, retry, idempotency, workflow, or mutation semantics changed.
+
+**Regression:** Affected Windows files executed together for five consecutive rounds: 35/35 PASS, no skips/failures. Installer static gate PASS and security audit PASS after the same working-tree changes. Linux overlay of the same affected tests: 7/7 PASS; installer gate and security audit PASS.
+
+**Confidence/Status:** CI root cause CONFIRMED/HIGH. Full exact-tree and renewed hosted exact-SHA CI remain promotion gates.
+
+**Reuse Targets:** Windows test process lifecycle, isolated-server fixtures, CI reliability, cleanup guidance.
+
+
+## E-QUAL-20260928-R1 — final combined Windows local gate
+
+**Date/Context:** 2026-09-28; combined v0.9.16 candidate after current-guidance alignment, raw-server bootstrap, and Windows hosted fixture lifecycle hardening.
+
+**Gate:** full `npm run check` → `npm test` → `npm run audit` with strict exit propagation.
+
+**Result:** exit 0; final marker `V0916_FINAL_FULL_WINDOWS_PASS`. Installer and onboarding checks PASS; `npm test` core runner reported 475 PASS / 6 SKIP / 0 FAIL; GUI contract 77/77 PASS; concurrency, filesystem safety, Windows runtime contract, source integrity and schema-continuity gates PASS; `SECURITY_AUDIT_PASS`.
+
+**Status:** Windows local combined candidate qualification CONFIRMED/HIGH. Because this evidence record itself changes the candidate commit, the evidence-bearing exact SHA still requires the final qualification/hosted gates before promotion.
+
+**Reuse Targets:** v0.9.16 final release gate, server installer qualification, Windows CI stabilization.

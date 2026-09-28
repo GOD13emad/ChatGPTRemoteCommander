@@ -14,7 +14,10 @@ if (mode === 'sleep') {
     stdio: ['ignore', 'inherit', 'inherit']
   });
   child.unref();
-  process.stdout.write(arg1 || 'parent-done');
+  // Establish the test condition deterministically across platforms: the direct
+  // child exits after its own output is flushed while the detached grandchild
+  // still holds inherited stdout/stderr open.
+  process.stdout.write(arg1 || 'parent-done', () => process.exit(0));
 } else if (mode === 'large') {
   const bytes = Number(arg1 || 1024);
   process.stdout.write('x'.repeat(bytes));

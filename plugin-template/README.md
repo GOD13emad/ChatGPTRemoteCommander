@@ -15,4 +15,4 @@ The Git marketplace also includes `.codex-plugin/plugin.json` for native Codex v
 
 ## Reasoning/handoff policy
 
-The Plugin keeps reasoning in the current ChatGPT conversation and uses Remote Commander as the execution layer. Commander never launches Codex. If the assistant recommends Work/Codex, it must first ask the user to choose **Move to Work/Codex** or **Continue in this chat with Remote Commander**; the latter is the default. A Work/Codex selection is an external handoff, not a Commander-side model launch.
+The Plugin keeps reasoning in the current ChatGPT conversation and uses Remote Commander as the default execution layer. Local Codex launch is default-deny and is permitted only under an explicitly authorized Full-Power owner policy when the current request explicitly asks for Codex. If the assistant recommends an external Work/Codex handoff, it must first ask the user to choose **Move to Work/Codex** or **Continue in this chat with Remote Commander**; the latter is the default.

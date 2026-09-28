@@ -7,7 +7,7 @@ const exists = (p) => fs.existsSync(path.join(root, p));
 const fail = (m) => { throw new Error(m); };
 
 const pkg = JSON.parse(read('package.json'));
-if (pkg.version !== '0.9.15') fail('package version must be 0.9.15');
+if (pkg.version !== '0.9.16') fail('package version must be 0.9.16');
 const serverSource = read('src/server-v0.3.mjs');
 const serverVersion = serverSource.match(/const VERSION = '([^']+)'/u)?.[1];
 if (serverVersion !== pkg.version) fail(`server runtime version ${serverVersion ?? 'missing'} does not match package version ${pkg.version}`);
@@ -71,7 +71,7 @@ for (const required of ['codex plugin marketplace add GOD13emad/ChatGPTRemoteCom
 const workPrompt = read('plugin-template/WORK_INSTALL_PROMPT.md');
 for (const required of ['Read START_HERE.md first','WORK_SETUP.md','@plugin-creator','install-work-plugin.ps1/.sh','real tool invocation','gui_status','gui_screenshot']) if (!workPrompt.includes(required)) fail(`WORK_INSTALL_PROMPT missing ${required}`);
 const skill = read('plugin-template/skills/remote-commander/SKILL.md');
-for (const required of ['GUI Control workflow','gui_screenshot','gui_mouse_click','real-time/high-speed gameplay','ChatGPT-first reasoning and explicit external handoff','Continue in this chat with Remote Commander','Move to Work/Codex','Commander itself still must not launch Codex']) if (!skill.includes(required)) fail(`remote-commander skill missing ${required}`);
+for (const required of ['GUI Control workflow','gui_screenshot','gui_mouse_click','real-time/high-speed gameplay','ChatGPT-first reasoning and explicit external handoff','Continue in this chat with Remote Commander','Move to Work/Codex','Local Codex launch is a separate default-deny path']) if (!skill.includes(required)) fail(`remote-commander skill missing ${required}`);
 const pluginSetup = read('docs/PLUGIN_SETUP.md');
 for (const required of ['Windows GUI Control capability','MCP image content','Native Computer Use remains a fallback']) if (!pluginSetup.includes(required)) fail(`PLUGIN_SETUP missing ${required}`);
 const workPs = read('install-work-plugin.ps1');

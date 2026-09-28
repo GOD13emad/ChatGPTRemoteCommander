@@ -26,6 +26,7 @@ test('Codex executables and private/package paths are recognized', () => {
     '/tmp/node_modules/.bin/codex'
   ]) assert.equal(isCodexExecutable(value),true,value);
   assert.equal(isCodexExecutable('code.exe'),false);
+  assert.equal(NO_CODEX_POLICY.code,'CODEX_DELEGATION_DEFAULT_DENY');
   assert.equal(NO_CODEX_POLICY.mode,'DEFAULT_DENY');
   assert.equal(NO_CODEX_POLICY.default,'CONTINUE_CHAT');
   assert.equal(NO_CODEX_POLICY.commanderMayLaunchCodex,false);
@@ -53,6 +54,14 @@ test('explicit Full-Power owner opt-in authorizes local Codex launch policy only
   const env=commanderChildEnv(process.cwd(),{PATH:process.env.PATH,CODEX_HOME:'C:/owner-codex'},{allowCodex:true});
   assert.equal(env.REMOTE_COMMANDER_NO_CODEX,undefined);
   assert.equal(env.CODEX_HOME,'C:/owner-codex');
+  const inheritedSentinel=path.join(os.tmpdir(),'chatgpt-remote-commander-no-codex','12345');
+  const cleaned=commanderChildEnv(process.cwd(),{
+    PATH:process.env.PATH,
+    CODEX_HOME:inheritedSentinel,
+    REMOTE_COMMANDER_NO_CODEX:'1'
+  },{allowCodex:true});
+  assert.equal(cleaned.REMOTE_COMMANDER_NO_CODEX,undefined);
+  assert.equal(cleaned.CODEX_HOME,undefined);
 });
 
 test('Codex opt-in is fail-closed outside explicitly authorized Full-Power', () => {

@@ -25,7 +25,7 @@ import {
 } from './no-codex-policy.mjs';
 
 let workflowTools = null;
-const VERSION = '0.9.15';
+const VERSION = '0.9.16';
 const MODERN_VERSION = '2026-07-28';
 const LEGACY_VERSIONS = ['2025-11-25', '2025-06-18', '2025-03-26'];
 const TASKS_EXTENSION = 'io.modelcontextprotocol/tasks';
@@ -101,7 +101,7 @@ function modelHandoffInstruction() {
   if (codexLaunchAuthorized(config)) {
     return ' Stay in the current ChatGPT conversation and use Commander as the default execution layer. This Full-Power owner profile permits local Codex launch only when the current user request explicitly authorizes or asks for Codex; do not infer consent from silence or unrelated prior work.';
   }
-  return ' Commander never delegates project reasoning or execution to Codex, ChatGPT Work, or another model runtime on its own. Stay in the current ChatGPT conversation and use Commander as the execution layer. If you believe Work or Codex would materially help, first ask the user to choose explicitly between continuing here with Commander and moving to Work/Codex. No silence, Full Power setting, prior approval, or project history counts as handoff consent. Commander itself must not launch Codex.';
+  return ' Commander never delegates project reasoning or execution to Codex, ChatGPT Work, or another model runtime on its own. Stay in the current ChatGPT conversation and use Commander as the default execution layer. External Work/Codex handoff requires the user to choose explicitly between continuing here and moving to Work/Codex; silence, prior approval, and project history do not count. Local Codex launch is separate and default-deny: use it only when the current user request explicitly asks for Codex and system_status reports commanderMayLaunchCodex=true for an explicitly authorized Full-Power owner profile. Hidden/background project runners must not launch Codex.';
 }
 
 function operatingInstructions() {
@@ -113,7 +113,7 @@ function operatingInstructions() {
 const delegationToolDefinitions = [
   {
     name: 'delegation_requirement',
-    description: 'Return the mandatory current-chat choice before an external Work/Codex handoff. Default is to continue in the current ChatGPT + Commander chat. Commander never launches Codex.',
+    description: 'Return the mandatory current-chat choice before an external Work/Codex handoff. Default is to continue in the current ChatGPT + Commander chat. Local Codex launch is separate, default-deny, and allowed only by an explicitly authorized Full-Power owner policy.',
     inputSchema: { type: 'object', properties: { reason: { type: 'string', maxLength: 2000 } }, additionalProperties: false },
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false }
   },
