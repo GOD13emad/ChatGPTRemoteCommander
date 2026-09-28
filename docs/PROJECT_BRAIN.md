@@ -49,8 +49,12 @@ Disposable v0.9.19 canary evidence:
 Implementation:
 - add Python 3 to supported Linux prerequisite package sets;
 - require `python3` before qualification;
+- when the server wrapper explicitly disables GUI, keep static GUI validation but skip only the native GNOME/PyGObject probe;
+- normal Linux CI and `--enable-gui` continue full native GUI validation;
 - add static installer regression;
 - add permanent disposable Windows/Linux server canary on relevant pull requests.
+
+Rejected candidate: `be89ce9c75ee0e998e03c649171cd9a0cc9a6255` passed local Windows/Linux full gates but failed the disposable clean-Ubuntu gate on missing PyGObject in a headless profile; it is superseded and must not be promoted.
 
 ## Current open gate / exact next action
 

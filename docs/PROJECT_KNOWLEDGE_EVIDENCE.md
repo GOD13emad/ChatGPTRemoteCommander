@@ -972,3 +972,22 @@ Historical checkpoints remain append-only archives. Current release/control clai
 **Confidence/Status:** root cause CONFIRMED/HIGH; v0.9.20 implementation present, full candidate qualification OPEN.
 
 **Reuse Targets:** raw-server installer, dependency completeness, release gating, immutable deployment, failure-prevention.
+
+
+## E-SRV-20260928-R8 — headless Linux qualification must not require GNOME runtime
+
+**Date/Context:** 2026-09-28; permanent Server Install Canary run `36443138568` on first v0.9.20 candidate `be89ce9c75ee0e998e03c649171cd9a0cc9a6255`.
+
+**Observed evidence:** after Python 3 was added, the clean Ubuntu 24.04 container progressed through OS bootstrap, source fetch, portable Node, tunnel-client, installer static checks, 248 Node tests and the GUI schema/controller contract. It then failed when `test/linux-gui-contract.mjs` launched `tools/gui-control-linux.py --self-test` and Python raised `ModuleNotFoundError: No module named 'gi'`.
+
+**Root Cause:** the product's full Linux GUI integration qualification was unconditional on Linux, even when `server-install-linux.sh` explicitly disabled all GUI capabilities for a headless server. The failure therefore mixed two distinct validation populations: headless server installation and GNOME desktop integration.
+
+**Method choice:** installing PyGObject/GNOME packages on every headless server would add desktop dependencies with no runtime benefit. The minimum-sufficient control is to retain all static/schema/source GUI checks for headless validation while skipping only the native GNOME helper probe. Normal Linux CI and `--enable-gui` installations continue to require and execute the native GUI probe.
+
+**Prevention/Guard:** `server-install-linux.sh` scopes `REMOTE_COMMANDER_HEADLESS_VALIDATE=1` only to its child installer when GUI is disabled. `test/linux-gui-contract.mjs` honors that explicit mode only for the native Linux block and emits a distinct headless-static PASS marker. Installer contract tests require this wiring.
+
+**Candidate status:** `be89ce9c75ee0e998e03c649171cd9a0cc9a6255` is REJECTED/SUPERSEDED for promotion despite Windows and Linux local full gates passing, because the disposable clean-server gate failed.
+
+**Confidence/Status:** root cause CONFIRMED/HIGH; corrected v0.9.20 candidate not yet frozen.
+
+**Reuse Targets:** headless server qualification, GUI dependency boundaries, proportional release gating, clean-install canaries.

@@ -110,7 +110,11 @@ if [[ "$ENABLE_GUI" != 1 ]]; then
   args+=(--disable-capability gui.window_focus)
 fi
 
-/bin/bash "$installer" "${args[@]}"
+if [[ "$ENABLE_GUI" == 1 ]]; then
+  /bin/bash "$installer" "${args[@]}"
+else
+  REMOTE_COMMANDER_HEADLESS_VALIDATE=1 /bin/bash "$installer" "${args[@]}"
+fi
 
 if [[ "$START_SERVER" == 1 ]]; then
   health="$(curl -fsS --connect-timeout 2 --max-time 5 http://127.0.0.1:47831/health)"

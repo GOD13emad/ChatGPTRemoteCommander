@@ -41,9 +41,13 @@ This is a real prerequisite omission: the installer qualification contract requi
 
 ## Root Cause -> Prevention -> Guard
 
-**Root cause:** fresh-Linux prerequisite lists omitted Python 3 although release qualification invokes the Python parser for the Linux GUI helper.
+**Root cause 1:** fresh-Linux prerequisite lists omitted Python 3 although release qualification invokes the Python parser for the Linux GUI helper.
 
-**Prevention:** Linux prerequisite installation now installs Python 3 on supported package-manager families, and the prequalification required-command gate explicitly requires `python3`.
+**Prevention 1:** Linux prerequisite installation now installs Python 3 on supported package-manager families, and the prequalification required-command gate explicitly requires `python3`.
+
+**Root cause 2 found by the first v0.9.20 canary:** after Python was present, headless-server qualification still executed the native GNOME helper self-test and therefore required PyGObject/`gi` even though all GUI capabilities were explicitly disabled.
+
+**Prevention 2:** headless server validation keeps static/schema/source GUI checks but skips only the native GNOME integration probe. Normal Linux CI and `--enable-gui` validation continue to execute the full native probe.
 
 **Static guard:** installer contract tests require Python 3 in both `install.sh` and `server-install-linux.sh`.
 

@@ -82,6 +82,10 @@ for (const [label, text] of [['install.sh',linuxInstaller],['server-install-linu
 }
 if (!linuxInstaller.includes('for cmd in git curl unzip tar sha256sum readlink python3; do')) throw new Error('install.sh must require python3 before qualification');
 if (!linuxServerInstaller.includes('for cmd in git curl unzip tar sha256sum readlink python3; do')) throw new Error('server-install-linux.sh must require python3 before handoff');
+if (!linuxServerInstaller.includes('REMOTE_COMMANDER_HEADLESS_VALIDATE=1 /bin/bash "$installer" "${args[@]}"')) throw new Error('headless server install must scope native GUI validation skip to the child installer');
+const linuxGuiContract = readFileSync('test/linux-gui-contract.mjs','utf8');
+if (!linuxGuiContract.includes("process.env.REMOTE_COMMANDER_HEADLESS_VALIDATE === '1'")) throw new Error('Linux GUI contract must recognize explicit headless validation mode');
+
 
 const linuxEnrollment = readFileSync('enable-autostart-linux.sh', 'utf8');
 const linuxPluginInstaller = readFileSync('install-work-plugin.sh', 'utf8');

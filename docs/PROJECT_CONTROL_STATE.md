@@ -15,7 +15,7 @@ Updated: 2026-09-28. Scope: public Remote Commander product/release status and t
 
 CURRENT: **v0.9.20 fresh-Linux server prerequisite closure**.
 
-A disposable v0.9.19 server canary proved the Windows raw-server bootstrap PASS with Node/Git absent from PATH and no antivirus exclusions. The clean Ubuntu 24.04 container found one real defect: Python 3 was not installed even though the Linux qualification contract requires it. v0.9.20 adds Python 3 to supported Linux prerequisite sets and makes clean Windows/Linux server canaries a permanent release gate.
+A disposable v0.9.19 server canary proved the Windows raw-server bootstrap PASS with Node/Git absent from PATH and no antivirus exclusions. Clean Ubuntu then exposed two bounded Linux qualification defects in sequence: Python 3 was missing, and after that was fixed the headless-server path still ran a native GNOME/PyGObject probe despite GUI capabilities being disabled. v0.9.20 installs/requires Python 3, separates headless static GUI validation from native GNOME integration validation, and makes clean Windows/Linux server canaries a permanent release gate.
 
 Open gates for v0.9.20: focused regression -> exact-SHA local Windows/Linux -> permanent disposable-server canary -> hosted CI -> immutable release verification -> candidate-first rollout/live readback.
 
