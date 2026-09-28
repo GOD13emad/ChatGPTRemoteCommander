@@ -1,23 +1,28 @@
 # Current project state
 
-Updated: 2026-09-28. Scope: public Remote Commander product/release status and the current v0.9.20 release candidate.
+Updated: 2026-09-28. Scope: public Remote Commander product/release status.
 
-## Release baseline
+## Accepted release baseline
 
-- **v0.9.19** is the current immutable published/live baseline at merge/tag commit `e04cff5a4985f905afe08a6b4a791baadc54bc46`.
-- v0.9.19 exact candidate qualification passed local Windows, clean Linux, hosted Windows and hosted Ubuntu. Its immutable release contains 15 assets with 14 verified checksum entries.
-- v0.9.19 is live on the primary Windows default profile, Windows `saeed-emad` profile, Linux target and audited HPC Windows target; all recorded routes use the exact release commit and have `previous=null`.
-- Official external Extension set is `ansys-modeling` v1.1.1, `comsol-modeling` v1.1.1, `project-execution-brain` v1.0.0, and `final-thesis-report` v1.0.0. Skill content hashes match across Windows/Linux/HPC. The owner-private `video-trend` extension is intentionally outside the official set.
-- Live routing canaries on Windows/Linux/HPC PASS: COMSOL -> COMSOL only; ANSYS audit/continue -> ANSYS + Project Execution Brain; Persian final-thesis request -> Final Thesis Report only.
-- Headless execution invariant is active: Commander/runtime/qualification PowerShell child paths are hidden/no-window by default; visible console windows are not an approved progress surface.
+**v0.9.20 is SCOPED FINAL / ACCEPTED for the current release objective.**
 
-## CURRENT / open release gate
+- Immutable tag/release commit: `cbbc6dc19f63a87e651a8f1af9f429aa7b6a5063`.
+- Qualified candidate tree: `674990c743fc996d84d0b0c4e008f0255078e44c`; merge-tree comparison reported no file differences.
+- Local exact-tree qualification: Windows PASS after a clean isolated rerun; Linux PASS including release-asset build/checksums and security audit.
+- Hosted exact-SHA CI run `36445899951`: Windows PASS; Ubuntu PASS.
+- Permanent disposable Server Install Canary run `36445899940`: Windows Server bootstrap PASS with Node/Git absent from PATH; clean Ubuntu 24.04 bootstrap PASS.
+- Published release verification: immutable=true; 15 assets present; 14/14 payload checksum entries matched; stable latest `plugin-template.zip` matched the release checksum.
+- Live candidate-first rollout: primary Windows default, Windows `saeed-emad`, Linux, and audited HPC Windows routes all point to v0.9.20 / exact release commit with `previous=null`.
+- Official separately installed Extension set remains `ansys-modeling` v1.1.1, `comsol-modeling` v1.1.1, `project-execution-brain` v1.0.0, and `final-thesis-report` v1.0.0. The owner-private `video-trend` extension is intentionally outside the official set.
+- Live routing acceptance on Windows/Linux/HPC: COMSOL -> COMSOL only; ANSYS audit/continue -> ANSYS + Project Execution Brain; Persian final-thesis request -> Final Thesis Report only; diagnostics empty.
+- Headless execution invariant remains accepted: Commander/runtime/qualification PowerShell child paths are hidden/no-window by default; console windows are not an approved progress surface.
+- Windows server bootstrap does not disable Defender/EDR and does not add antivirus exclusions.
 
-CURRENT: **v0.9.20 release qualification — deterministic async child-exit/stdio regression**.
+## Current status
 
-A disposable v0.9.19 server canary proved the Windows raw-server bootstrap PASS with Node/Git absent from PATH and no antivirus exclusions. Clean Ubuntu then exposed two bounded Linux qualification defects in sequence: Python 3 was missing, and after that was fixed the headless-server path still ran a native GNOME/PyGObject probe despite GUI capabilities being disabled. v0.9.20 installs/requires Python 3, separates headless static GUI validation from native GNOME integration validation, and makes clean Windows/Linux server canaries a permanent release gate.
+No open blocker remains for the **v0.9.20 release objective**.
 
-Fresh-server implementation is now independently CONFIRMED by permanent disposable Windows/Linux canaries on superseded candidate `d620ce96e48da818df0801e708d5ea788cbea8d9`, both PASS. The remaining current blocker is a repeated hosted-Ubuntu async test-harness timing failure. Historical audit + official Node event semantics identified that the test started its 8 s operation timeout before the fixture had actually established the inherited-stdio condition. The corrected regression uses a fixture ready marker and a bounded post-ready assertion window; runtime semantics are unchanged. Open gates restart from a newly frozen exact SHA: focused regression -> exact-SHA local Windows/Linux -> permanent disposable-server canary -> hosted CI -> immutable release verification -> candidate-first rollout/live readback.
+Broader product ambitions and host-platform limitations remain outside this scoped release acceptance and are listed under Remaining roadmap / Deferred below. They must not be interpreted as completed by this release.
 
 ## Remaining roadmap
 

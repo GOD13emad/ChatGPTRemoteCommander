@@ -75,3 +75,10 @@ Domain Agent Extensions remain separately installed under the external Extension
 7. candidate-first rollout and live version/route checks.
 
 FINAL remains UNPROVEN until all gates complete.
+
+
+## Post-release closure
+
+The immutable v0.9.20 release was subsequently accepted after all listed gates completed. Final evidence is recorded in `PROJECT_CONTROL_STATE.md`, `PROJECT_BRAIN.md`, and evidence record `E-REL-20260928-R10`.
+
+This section is a main-branch documentation update only; it does not alter the immutable v0.9.20 release bytes or tag.

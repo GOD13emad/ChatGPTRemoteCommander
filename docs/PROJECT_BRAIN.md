@@ -2,21 +2,28 @@
 
 Status: CURRENT
 Updated: 2026-09-28
-Authority: `origin/main`, immutable release tags, exact live route records, reproducible CI/canary evidence, then project control/evidence records.
+Authority: immutable release/tag -> exact live route records -> exact-SHA CI/canary evidence -> project control/evidence records.
 
 ## Final objective
 
 Maintain a cross-platform Remote Commander that safely executes substantial work in the background, survives interruption/update, preserves one-writer/evidence semantics, supports explicit owner-authorized GUI/Codex paths without hidden delegation, and routes relevant separately installed domain Skills without bundling them into Commander Core.
 
-## Accepted baseline
+## Accepted current baseline
 
-Current published/live baseline before the active patch: **v0.9.19**, merge/tag commit `e04cff5a4985f905afe08a6b4a791baadc54bc46`.
+**v0.9.20 — SCOPED FINAL / ACCEPTED**
 
-Confirmed live targets:
-- Windows default: v0.9.19, exact release commit, previous=null.
-- Windows `saeed-emad`: v0.9.19, exact release commit, previous=null.
-- Linux: v0.9.19, exact release commit, previous=null.
-- HPC Windows: v0.9.19, exact release commit, previous=null.
+Release/tag commit: `cbbc6dc19f63a87e651a8f1af9f429aa7b6a5063`.
+Qualified candidate tree: `674990c743fc996d84d0b0c4e008f0255078e44c` with no file diff against the merge commit.
+
+Accepted evidence:
+- local Windows exact-SHA full gate PASS;
+- local Linux exact-SHA full gate PASS;
+- hosted Windows/Ubuntu CI PASS on run `36445899951`;
+- disposable Windows Server + clean Ubuntu Server canary PASS on run `36445899940`;
+- immutable release verification PASS with 15 assets and 14 verified payload checksums;
+- candidate-first live rollout complete on primary Windows, Windows `saeed-emad`, Linux, and HPC Windows;
+- all accepted route records point to exact v0.9.20 commit with `previous=null`;
+- live Skill routing canaries PASS on Windows/Linux/HPC.
 
 Official separately installed Agent Extensions:
 - ansys-modeling v1.1.1
@@ -24,53 +31,48 @@ Official separately installed Agent Extensions:
 - project-execution-brain v1.0.0
 - final-thesis-report v1.0.0
 
-The owner-private video-trend extension is deliberately outside the official catalog. Official Skill hashes match across Windows/Linux/HPC. Live routing canaries are accepted on all three host classes.
+The owner-private video-trend extension remains intentionally outside the official catalog. Domain extensions remain lifecycle-independent from Commander Core and are not bundled by the Commander installer/release.
 
 ## Locked decisions
 
 - Background/headless execution is default. Console/terminal windows are not a progress UI.
 - Actual task UI or an explicit official progress UI may be foregrounded.
-- Domain Agent Extensions are separately installed and lifecycle-independent from Commander Core.
-- Commander owns Extension validation/routing/policy intersection; Extensions do not grant authority.
+- Domain Agent Extensions are separately installed; Commander owns validation/routing/policy intersection only.
 - Explicit trigger evidence dominates weak lexical routing; compatible project-method and domain Skills may layer.
-- Hidden/background project runners remain No-Codex; local Codex launch is only the explicit owner-authorized Full-Power path already defined by release policy.
-- Immutable releases stay enabled.
-- Windows server installer does not disable Defender/EDR and does not create AV exclusions.
-- Do not mass-cancel durable workflows from unrelated user projects merely to make a release dashboard look empty.
+- Hidden/background project runners remain No-Codex. Local Codex launch is only the explicitly authorized owner path defined by policy.
+- Immutable releases remain enabled.
+- Windows Server bootstrap remains verification/allowlist based; it does not disable Defender/EDR or create AV exclusions.
+- Fresh-server qualification is a permanent release gate: Windows Server bootstrap and clean Ubuntu bootstrap.
+- Do not mass-cancel durable workflows belonging to unrelated user projects merely to make release dashboards empty.
+- No blind rerun after meaningful failure; repeated failure families require root-cause audit and prevention.
 
-## Current change set
+## v0.9.20 closure
 
-**v0.9.20 — fresh-Linux server prerequisite closure.**
+Root causes closed:
+1. fresh Linux bootstrap omitted Python 3 although qualification requires it;
+2. headless Linux server qualification incorrectly required native GNOME/PyGObject integration;
+3. inherited-stdio async regression mixed hosted scheduling latency with the intended post-ready drain invariant.
 
-Disposable v0.9.19 canary evidence:
-- Windows Server with Node/Git removed from PATH: PASS.
-- Clean Ubuntu 24.04: FAIL because Python 3 was not installed although release qualification requires it.
+Prevention now retained in code/tests:
+- Python 3 is installed/required by supported Linux fresh-server paths;
+- headless server validation keeps static GUI checks but skips only the native GNOME probe;
+- normal Linux GUI qualification still exercises native GNOME integration;
+- permanent disposable Windows/Linux server canary;
+- async fixture ready-handshake and bounded post-ready assertion window.
 
-Implementation:
-- add Python 3 to supported Linux prerequisite package sets;
-- require `python3` before qualification;
-- when the server wrapper explicitly disables GUI, keep static GUI validation but skip only the native GNOME/PyGObject probe;
-- normal Linux CI and `--enable-gui` continue full native GUI validation;
-- add static installer regression;
-- add permanent disposable Windows/Linux server canary on relevant pull requests.
+A single local Windows full-gate attempt on the final candidate observed one clean fixture-server exit in the HTTP conversation test while several qualification workloads were concurrent. The same exact test then passed 10/10 in isolation, hosted Windows passed, and a clean full Windows exact-SHA rerun passed. Root cause of that one local occurrence is therefore UNVERIFIED; no product patch was made from it.
 
-Rejected candidate: `be89ce9c75ee0e998e03c649171cd9a0cc9a6255` passed local Windows/Linux full gates but failed the disposable clean-Ubuntu gate on missing PyGObject in a headless profile; it is superseded and must not be promoted.
+## Deferred / external — not v0.9.20 blockers
 
-## Current open gate / exact next action
+- ChatGPT host/UI stream errors such as Resume stream unavailable are outside Commander transport authority; Commander reduces exposure through durable/background execution but cannot guarantee the host UI stream.
+- Historical/other-project durable workflow records are retained when they belong to unrelated projects. Integrity is checked; they are not mass-cancelled for cosmetic cleanup.
+- Broader provider expansion, monetary accounting, additional integrations, and equal-model/equal-budget competitive benchmarks are future roadmap items.
+- Claims that Commander is universally superior to every external agent/work product remain UNPROVEN without comparable benchmark evidence.
+- Dependency-update PRs and legacy historical branches are maintenance/history, not release acceptance evidence.
 
-Fresh-server objective is confirmed: permanent Windows/Linux disposable canaries both passed on superseded candidate `d620ce96e48da818df0801e708d5ea788cbea8d9`. That candidate is nevertheless rejected because hosted Ubuntu CI reproduced the historical `child exit completes operation even when inherited stdio delays close` timing failure.
+## Exact next action
 
-Current blocker is now test determinism only. Historical audit + official Node child-process semantics show that the test mixed hosted startup scheduling with the post-exit drain invariant. The corrected fixture writes a ready marker after establishing inherited stdio; the test begins its short invariant window only after ready, while retaining a longer independent operation timeout. Runtime code is unchanged.
-
-Cross-platform focused stress is complete: Windows 10× = 140/140 PASS and Linux 10× on commit `ec1df954ee5e15fa4b9cbddbc5e8c61969beaf31` = 140/140 PASS; combined 280/280 PASS. Exact next action: freeze the documentation-complete v0.9.20 SHA, then rerun all exact-SHA local Windows/Linux, hosted CI, disposable-server canaries, immutable publication verification and candidate-first rollout.
-
-## Deferred / external, not v0.9.20 blockers
-
-- ChatGPT host/UI stream expiry is outside Commander transport authority.
-- Legacy/other-project durable workflow records on Linux are retained; workflow DB integrity is OK, automaticExecution=false and currentLeases=0.
-- Broader provider expansion, monetary accounting, and equal-model/equal-budget competitive benchmarks are future roadmap items.
-- Dependabot Actions PRs are maintenance, not release blockers.
-- Legacy PR #30 is historical/draft on a legacy branch and is not part of current release authority.
+For new work, start from v0.9.20 as the accepted production baseline. Open a new bounded change set only when a new requirement, reproducible defect, security issue, or evidence-backed improvement is identified.
 
 ## History pointers
 
