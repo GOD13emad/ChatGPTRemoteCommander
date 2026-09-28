@@ -17,7 +17,7 @@ test('agent extension tools are exposed read-only and return validated manifests
   let child;
   try {
     await fs.mkdir(path.join(root,'src'),{recursive:true});
-    for(const f of ['server-v0.3.mjs','transport-guard.mjs','gui-tools-windows.mjs','gui-contract.mjs','gui-process.mjs','browser-tools.mjs','browser-contract.mjs','browser-process.mjs','browser-owned-processes.mjs','schema-validator.mjs','async-operations.mjs','retry-guard.mjs','agent-extensions.mjs','no-codex-policy.mjs']) {
+    for(const f of ['server-v0.3.mjs','transport-guard.mjs','gui-tools-windows.mjs','gui-contract.mjs','gui-process.mjs','browser-tools.mjs','browser-contract.mjs','browser-process.mjs','browser-owned-processes.mjs','schema-validator.mjs','async-operations.mjs','retry-guard.mjs','agent-extensions.mjs','no-codex-policy.mjs','conversation-store.mjs','conversation-continuation.mjs']) {
       await fs.copyFile(new URL('../src/'+f,import.meta.url),path.join(root,'src',f));
     }
     await fs.writeFile(path.join(root,'src','security-v0.3.mjs'),'export const canonicalizeRoots = async x=>x;');
@@ -25,7 +25,7 @@ test('agent extension tools are exposed read-only and return validated manifests
     await fs.writeFile(path.join(root,'src','power-tools-v0.3.mjs'),'export const powerToolDefinitions=[]; export const executePowerTool=async()=>({stub:true}); export const prepareShellCommand=async()=>({file:process.execPath,args:[],cwd:process.cwd(),timeoutMs:1000,outputLimit:4096}); export const prepareDeferredPowerMutation=async()=>({kind:"power-tool",timeoutMs:86400000});');
     await fs.writeFile(path.join(root,'src','locks.mjs'),'export const lockStats=()=>({stub:true});');
     await fs.writeFile(path.join(root,'src','platform.mjs'),'export const expandPathValue=x=>x; export const shellName=()=>"stub";');
-    await fs.writeFile(path.join(root,'src','delivery-store.mjs'),'export const deliveryLocation=()=>({directory:"stub",scope:"stub",forbiddenRoots:[]}); export class DeliveryStore { health(){return {durable:true,schema:1,pending:0,deadLetter:0};} beacon(){return {pending:0,deadLetter:0,items:[],hostWakeAvailable:false,identityBoundary:"TRUSTED_PROFILE_NOT_AUTHENTICATED_CHAT"};} }');
+    await fs.writeFile(path.join(root,'src','delivery-store.mjs'),'import path from "node:path"; export const deliveryLocation=()=>({directory:path.join(path.dirname(process.env.REMOTE_COMMANDER_CONFIG),".delivery"),scope:"stub",forbiddenRoots:[]}); export class DeliveryStore { constructor(location){this.directory=location.directory;this.scope=location.scope;} health(){return {durable:true,schema:1,pending:0,deadLetter:0};} beacon(){return {pending:0,deadLetter:0,items:[],hostWakeAvailable:false,identityBoundary:"TRUSTED_PROFILE_NOT_AUTHENTICATED_CHAT"};} }');
     await fs.writeFile(path.join(root,'src','delivery-tools.mjs'),'export const createDeliveryTools=store=>({definitions:[],status:()=>store.health(),execute:async()=>({stub:true})});');
     await fs.writeFile(path.join(root,'src','mutation-idempotency.mjs'),'export class MutationIdempotencyStore { constructor(){} status(){return {enabled:true,durable:true,rawArgumentsStored:false,states:{}};} async execute(_request,effect){return effect();} }');
 

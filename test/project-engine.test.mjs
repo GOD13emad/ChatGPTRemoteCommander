@@ -105,7 +105,7 @@ test('uncertain mutation blocks continuation and is never automatically replayed
 test('runner status is opt-in while the project-engine tool schema stays stable',async()=>{
   const f=fixture(async()=>proposal('read_text',{path:'x'}));let legacy;
   try{const opts={...f.options,config:{...f.options.config,durableWorkflows:{...f.options.config.durableWorkflows,directory:path.join(f.root,'legacy'),runner:{enabled:false}}}};
-    legacy=createWorkflowTools(opts);assert.equal(legacy.definitions.length,21);assert.equal(f.api.definitions.length,21);
+    legacy=createWorkflowTools(opts);assert.equal(legacy.definitions.length,22);assert.equal(f.api.definitions.length,22);assert.ok(legacy.definitions.some(x=>x.name==='workflow_needs_chat'));
     const disabled=await legacy.execute('workflow_status',{});assert.equal(disabled.runnerConfigured,false);assert.equal(disabled.automaticExecution,false);
     await assert.rejects(legacy.execute('workflow_run_status',{runId:'disabled'}),/WORKFLOW_RUNNER_DISABLED/);
     const enabled=await f.api.execute('workflow_status',{});assert.equal(enabled.runnerConfigured,true);assert.equal(enabled.automaticExecution,false);

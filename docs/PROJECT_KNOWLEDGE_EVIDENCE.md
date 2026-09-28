@@ -565,3 +565,32 @@ Historical checkpoints remain append-only archives. Current release/control clai
 **Confidence/Status:** Root cause CONFIRMED. v0.9.11 release/promotion remains pending full qualification at this record.
 
 **Reuse Targets:** Commander architecture, Plugin Skill, install/update policy, Project Engine, quota/cost prevention, incident runbook.
+
+
+## E-CONVERSATION-20260928-R1 — Native same-conversation durable continuation
+
+**Date/Context:** 2026-09-28; audit of the electromagnetic-generator project handoff PoC plus official workflow/UI Automation benchmarks.
+
+**Claim/Decision:** Remote Commander should support event-driven continuation of the same already-open ChatGPT conversation for long-running/background work, without launching Codex, opening a new chat tab, using clipboard/mouse takeover, or converting Commander into a model runner.
+
+**Project Evidence:** The project PoC demonstrated a successful one-shot semantic UIA send to the existing ChatGPT tab. The permanent Python/ctypes supervisor path later suffered an access-violation failure, so that implementation is not promoted.
+
+**External Evidence:** Azure Durable Task/Durable Functions documents checkpointed long-running orchestrations, external-event wake-up, and at-least-once delivery requiring event IDs/deduplication. AWS Step Functions documents wait-for-callback task-token orchestration. Temporal documents idempotent task/operation handlers for durable retry. Microsoft UI Automation documents use of a separate MTA thread for desktop-wide UIA clients plus SelectionItemPattern/ValuePattern/InvokePattern control actions.
+
+**Sources:**
+- https://learn.microsoft.com/en-us/azure/durable-task/common/durable-task-orchestrations
+- https://learn.microsoft.com/en-us/azure/azure-functions/durable/durable-functions-external-events
+- https://docs.aws.amazon.com/step-functions/latest/dg/connect-to-resource.html
+- https://docs.temporal.io/tasks
+- https://learn.microsoft.com/en-us/windows/win32/winauto/uiauto-threading
+- https://learn.microsoft.com/en-us/dotnet/api/system.windows.automation.valuepattern.setvalue
+- https://learn.microsoft.com/en-us/dotnet/api/system.windows.automation.selectionitempattern.select
+- https://learn.microsoft.com/en-us/dotnet/api/system.windows.automation.invokepattern.invoke
+
+**Architecture:** Private SQLite outbox/binding authority; stable eventKey deduplication; QUEUED/CLAIMED/DEFERRED/SENT/UNCERTAIN delivery states; explicit resolution for UNCERTAIN; detached-operation terminal callback; restart-only bounded reconciliation; workflow NEEDS_CHAT atomic pause + evidence + Brain sync; exact-tab semantic UIA through hidden MTA pwsh helper; fixed Commander-owned anti-injection envelope.
+
+**Rejected Options:** fixed polling loop as the primary mechanism; browser extension as a required dependency; OCR/mouse/keyboard takeover; Python/ctypes permanent bridge; duplicate project-state authority; automatic uncertain-send retry; new-tab fallback; Codex/API execution.
+
+**Confidence/Status:** Architecture HIGH confidence; implementation candidate tests are passing in the feature worktree. Release/live validation remains OPEN.
+
+**Reuse Targets:** Remote Commander architecture, durable workflows, async operations, Project Brain/Handoff, long-run project execution, power/network/stream recovery.

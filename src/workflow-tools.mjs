@@ -48,6 +48,10 @@ export const WORKFLOW_TOOL_DEFINITIONS = [
   }, ['id','expectedRevision','kind','text']), write),
   definition('workflow_search', 'Search only the named project memory; returns caller-originated notes with provenance.', obj({ ...base, query: text(160) }, ['id', 'query']), ro),
   definition('workflow_checkpoint', 'Hash project evidence, save exact next action, and synchronize the workflow section of Project Brain.', obj({ ...update, files, nextAction: text(2000), summary: text(4000) }, ['id', 'expectedRevision', 'files', 'nextAction', 'summary']), write),
+  definition('workflow_needs_chat', 'Atomically pause a project for reasoning, record evidence-backed handoff knowledge, and enqueue an idempotent event to the already-bound same ChatGPT conversation. Never opens a new tab.', obj({
+    ...update, eventKey: correlationId, reason: text(2000), summary: text(4000),
+    files: { type:'array', maxItems:20, items:text(512) }
+  }, ['id','expectedRevision','eventKey','reason','summary']), write),
   definition('workflow_resume', 'Revalidate authority, project evidence and unfinished operations. Never blind-replays an uncertain mutation.', obj(base, ['id']), ro),
   definition('workflow_call', 'Journal PREPARED/EXECUTING/EXECUTED-or-UNCERTAIN around one host-allowed tool call. Raw arguments are not stored.', obj({ ...update, stepId: id, tool: text(128), arguments: { type: 'object' } }, ['id', 'stepId', 'expectedRevision', 'tool', 'arguments']), action),
   definition('workflow_reconcile', 'Record independently observed outcome and evidence for an uncertain operation.', obj({ ...update, stepId: id, outcome: { type: 'string', enum: ['applied', 'not_applied'] }, files, explanation: text(4000) }, ['id', 'stepId', 'expectedRevision', 'outcome', 'files', 'explanation']), write),
@@ -83,7 +87,7 @@ const DIRECT_SESSION_ONLY_GUI = new Set([
   'gui_type_text','gui_key_press','gui_focus_window'
 ]);
 
-export function createWorkflowTools({ config, roots, device, configSha256, lookup, validateSchema, dispatch, planner: injectedPlanner, deliveryStore = null }) {
+export function createWorkflowTools({ config, roots, device, configSha256, lookup, validateSchema, dispatch, planner: injectedPlanner, deliveryStore = null, conversationController = null }) {
   const settings = config.durableWorkflows;
   if (settings?.enabled !== true) fail('WORKFLOW_DISABLED');
   if (typeof settings.directory !== 'string') fail('WORKFLOW_DIRECTORY_REQUIRED');
@@ -188,6 +192,33 @@ export function createWorkflowTools({ config, roots, device, configSha256, looku
     }
   }
 
+  async function queueWorkflowChatHandoff(workflowId) {
+    if(!conversationController)fail('WORKFLOW_CONVERSATION_BRIDGE_UNAVAILABLE');
+    const view=store.get(workflowId), pending=view.state.pendingChatHandoff;
+    if(!pending)return {workflowId,queued:false,reason:'NO_PENDING_CHAT_HANDOFF'};
+    await conversationController.validateContinuation({
+      projectId:workflowId,eventKey:pending.eventKey,root:view.state.root
+    });
+    const handoff=conversationController.handoff({
+      projectId:workflowId,eventKey:pending.eventKey,eventType:'NEEDS_CHAT',
+      phase:view.state.checkpoint?.summary??'',state:'WAITING',
+      summary:pending.summary,reason:pending.reason,
+      evidencePaths:(pending.evidence??[]).map(item=>item.path)
+    });
+    return {workflowId,queued:true,handoffId:handoff.handoffId,state:handoff.state,eventKey:pending.eventKey};
+  }
+
+  async function reconcileWorkflowChatHandoffs() {
+    if(!conversationController)return {checked:0,queued:0,errors:[]};
+    let checked=0,queued=0;const errors=[];
+    for(const item of store.pendingChatHandoffs()){
+      checked+=1;
+      try{const result=await queueWorkflowChatHandoff(item.id);if(result.queued)queued+=1;}
+      catch(error){errors.push({id:item.id,code:error?.conversationCode??error?.workflowCode??error?.message??'WORKFLOW_CHAT_HANDOFF_ERROR'});}
+    }
+    return {checked,queued,errors};
+  }
+
   let ticking=false;
   async function schedulerTick() {
     if (ticking) return {skipped:true,reason:'TICK_ALREADY_RUNNING'};
@@ -222,7 +253,8 @@ export function createWorkflowTools({ config, roots, device, configSha256, looku
       }
       const execution=engine&&settings.runner.autoTick===true?await engine.tick():null;
       const delivery=engine?reconcileProjectDeliveries():null;
-      return {recovered,reconciled,ready,blocked,delivery,...(engine?{
+      const conversation=await reconcileWorkflowChatHandoffs();
+      return {recovered,reconciled,ready,blocked,delivery,conversation,...(engine?{
         runnerConfigured:true,automaticExecution:schedulerPolicy.enabled===true&&settings.runner.autoTick===true,
         automaticContinuationScope:settings.runner.autoTick===true?'ENROLLED_PROJECT_EXECUTION':'RECOVERY_AND_MANUAL_RUN_TICKS',execution
       }:{runnerConfigured:false,automaticExecution:false,automaticContinuationScope:'RECOVERY_AND_READINESS_ONLY'}),status:engine?runtimeStatus().schedulerState:store.schedulerStatus()};
@@ -252,11 +284,32 @@ export function createWorkflowTools({ config, roots, device, configSha256, looku
         case 'workflow_note': return store.note(args);
         case 'workflow_search': return store.search(args);
         case 'workflow_checkpoint': return store.checkpoint(args);
+        case 'workflow_needs_chat': {
+          if(!conversationController)fail('WORKFLOW_CONVERSATION_BRIDGE_UNAVAILABLE');
+          const current=store.get(args.id);
+          await conversationController.validateContinuation({projectId:args.id,eventKey:args.eventKey,root:current.state.root});
+          const committed=store.needsChat(args);
+          try{
+            const handoff=await queueWorkflowChatHandoff(args.id);
+            return {...committed,handoff,handoffPending:false};
+          }catch(error){
+            return {...committed,handoff:null,handoffPending:true,handoffError:String(error?.conversationCode??error?.workflowCode??error?.message??error)};
+          }
+        }
         case 'workflow_resume': return store.resume(args.id);
         case 'workflow_export': return store.export(args.id);
         case 'workflow_reconcile': return store.reconcile(args);
         case 'workflow_finalize': return store.finalize(args);
-        case 'workflow_control': return store.control(args);
+        case 'workflow_control': {
+          if(args.action==='resume'){
+            const current=store.get(args.id),pending=current.state.pendingChatHandoff;
+            if(pending){
+              if(!conversationController)fail('WORKFLOW_CONVERSATION_BRIDGE_UNAVAILABLE');
+              conversationController.cancelEvent(args.id,pending.eventKey);
+            }
+          }
+          return store.control(args);
+        }
         case 'workflow_revise': return store.revise(args);
         case 'workflow_scheduler_tick': return schedulerTick();
         case 'workflow_run_start': {
@@ -299,6 +352,7 @@ export function createWorkflowTools({ config, roots, device, configSha256, looku
       }
     }
   };
+  if(conversationController)queueMicrotask(()=>{reconcileWorkflowChatHandoffs().catch(()=>{});});
   if(settings.runner?.enabled===true) {
     try {
       const basePlanner=injectedPlanner??createCommandPlanner(settings.runner.provider);
