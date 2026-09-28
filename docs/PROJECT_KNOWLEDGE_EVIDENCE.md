@@ -953,3 +953,65 @@ Historical checkpoints remain append-only archives. Current release/control clai
 **Confidence/Status:** implementation CONFIRMED/HIGH; v0.9.19 full release gates OPEN.
 
 **Reuse Targets:** Skill auto-routing, domain/project-method composition, false-positive prevention, external Extension lifecycle.
+
+
+## E-FINAL-20260928-R7 — v0.9.19 final release and cross-host closure
+
+**Date/Context:** 2026-09-28; final audit after v0.9.19 publication and production rollout.
+
+**Authoritative release evidence:** `origin/main` and annotated tag `v0.9.19` both resolve to merge commit `e04cff5a4985f905afe08a6b4a791baadc54bc46`. The qualified candidate was `9d7949222a0c42cd0503ab6d43fdab78f0a2cf48`; GitHub compare showed the merge commit tree had no file delta from that candidate. Hosted PR CI and post-merge CI completed successfully on Windows and Ubuntu. Release Sync completed successfully.
+
+**Immutable asset evidence:** v0.9.19 is published, non-draft/non-prerelease, with 15 assets. `SHA256SUMS.txt` contains 14 payload entries; all downloaded bytes verified. Published `plugin-template.zip` digest is `0bf081bf791a94000dd482a148a6ce1ac02a0dfa029e71e4cee36bf1ac745cc0`; stable latest download matched the same digest.
+
+**Live deployment evidence:** Windows default route generation 110, Windows `saeed-emad` generation 152, Linux default generation 87, and HPC Windows default generation 11 all serve version 0.9.19 at exact commit `e04cff5a4985f905afe08a6b4a791baadc54bc46`; all recorded previous routes are null. Linux/HPC each discover 4 official extensions with invalidCount=0; primary Windows discovers those 4 plus the owner-private `video-trend`, also invalidCount=0.
+
+**Skill integrity evidence:** the four official SKILL.md hashes match across Windows/Linux/HPC:
+- ansys-modeling: `dd6d161109d87895c365bacd392560668c90fdae0d49c8446dec4e6c0e1a0cf1`
+- comsol-modeling: `37ce7a6645866a9a6897d77f1e905a5cc7bdb3ea5a0076047b271d2f4d4f9d0e`
+- project-execution-brain: `87b0e71f865ddb737a9c47e78413191a34be409fe356c90672c883b0f5e75aef`
+- final-thesis-report: `b06cd9db6079c34fe70a3311bb8f2c39a6d9b60a589520a06df5a795a50615e4`
+
+**Live routing canaries:** on each of Windows, Linux and HPC, `COMSOL condensation modeling audit` routes only to `comsol-modeling`; `Audit and continue this ANSYS Fluent project` routes to `ansys-modeling` plus `project-execution-brain`; Persian final-thesis request routes only to `final-thesis-report`. Every canary returned diagnostics=[].
+
+**Headless/background evidence:** production process launchers use `windowsHide:true`, `CreateNoWindow=true`, or PowerShell `-WindowStyle Hidden`; qualification helper gaps were fixed in v0.9.18 and the Windows runtime headless regression passed in v0.9.19 qualification. Visible terminal windows are not an accepted progress channel.
+
+**HPC rollout incident:** the first v0.9.19 install attempt failed closed before promotion. No v0.9.19 live route was exposed. The exact retained candidate on the same host subsequently passed independent `npm run check` with zero fail lines; one controlled retry then promoted successfully. Final system_status confirms v0.9.19. Root cause of the initial transient qualification failure remains UNVERIFIED; because it did not reproduce and promotion was fail-closed, no speculative product patch was made.
+
+**Workflow-store audit:** HPC delivery/workflow queues are empty. Linux durable-workflow database integrity is `ok`; currentLeases=0; automaticExecution=false. Its pending/waiting/interrupted records belong to independent thesis/C12/tunnel/project workflows and are not release operations. They are intentionally preserved rather than mass-cancelled.
+
+**Repository hygiene:** obsolete PR #39 containing v0.9.16-only post-release documentation was closed as superseded. Other open Dependabot/legacy draft PRs are maintenance/history and not part of the v0.9.19 release DoD.
+
+**External/deferred:** no disposable clean Windows Server VM was available for an exact fresh-server prerequisite-install canary. This remains EXTERNAL/DEFERRED; server bootstrap implementation is otherwise qualified by static/cross-platform gates, signed/hash-verified dependency logic, release packaging, and live HPC Windows usage. A Windows Sandbox client canary is supplementary only and is not equivalent to Windows Server.
+
+**Status:** v0.9.19 product/release scope ACCEPTED/FINAL. No release-critical blocker remains.
+
+**Reuse Targets:** final release audit, account transfer/handoff, cross-host deployment, Skill routing, release integrity, headless execution, future regression triage.
+
+
+## E-MAINT-20260928-R8 — GitHub Actions maintenance closure
+
+**Date/Context:** 2026-09-28; final repository-hygiene audit after v0.9.19 production acceptance.
+
+**Observed evidence:** Dependabot PR #3 proposed `actions/setup-node` v7.0.0 at commit `820762786026740c76f36085b0efc47a31fe5020`; PR #4 proposed `actions/checkout` v7.0.1 at commit `3d3c42e5aac5ba805825da76410c181273ba90b1`. Both PRs were based on an old main SHA and were no longer mergeable. Current workflows still used v4 pins.
+
+**Decision:** apply the exact Dependabot-published immutable pins directly to current main-derived closure branch instead of rebasing stale PRs. CI uses checkout v7.0.1 + setup-node v7.0.0; Release Sync uses the same checkout v7.0.1 pin. Runtime source/package version is unchanged. Hosted Windows/Ubuntu CI plus post-merge Release Sync are the acceptance gates.
+
+**Status:** implementation applied; hosted acceptance pending final closure PR.
+
+**Reuse Targets:** CI supply-chain hygiene, stale Dependabot reconciliation, post-release maintenance.
+
+## E-SRV-20260928-R9 — disposable Windows Sandbox bootstrap probe
+
+**Date/Context:** 2026-09-28; supplementary attempt to reduce the remaining fresh-server validation gap without a disposable Windows Server VM.
+
+**Environment fact:** host Windows Sandbox feature is available and hypervisor is present. The Sandbox reported Microsoft Windows 11 Enterprise and an elevated Administrator token. It is not Windows Server and therefore cannot satisfy the exact Windows Server acceptance gate.
+
+**Network probe:** independent in-Sandbox HTTPS HEAD requests returned HTTP 200 for the PowerShell 7.6.6 MSI, Node.js 22.23.3 SHASUMS256, and Git-for-Windows latest-release API.
+
+**Full bootstrap behavior:** first bootstrap attempt stopped during the initial PowerShell MSI download with an incomplete transport error. After the independent network probe succeeded, one controlled retry was permitted. The retry again remained at the first PowerShell MSI GET with no log transition for more than five minutes. No prerequisite install, Commander mutation, or health cutover occurred. The Sandbox process was terminated to prevent a hung validation.
+
+**Classification:** EXTERNAL/ENVIRONMENT-BLOCKED, not product FAIL. The evidence proves endpoint reachability but does not prove full-body large-download reliability in Windows Sandbox. No speculative installer patch is justified because the same release installer/update path is already qualified on local/hosted Windows and deployed on the audited HPC Windows target.
+
+**Remaining exact gap:** a truly fresh elevated Windows Server VM (with missing PowerShell/Node/Git prerequisites) is still required to close the destructive prerequisite-install canary. It is DEFERRED/EXTERNAL and is not part of the bounded v0.9.19 release DoD.
+
+**Reuse Targets:** raw Windows bootstrap validation, environment-vs-product failure triage, future server-lab acceptance.

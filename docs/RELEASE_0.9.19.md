@@ -38,4 +38,17 @@ The owner-private `video-trend` extension is excluded from the official rollout/
 - Onboarding/plugin check: PASS.
 - Release-asset contract: PASS.
 
-FINAL remains UNPROVEN until full Windows/Linux exact-tree gates, hosted exact-SHA Windows/Ubuntu CI, immutable publication verification, and candidate-first rollout pass.
+## Post-release acceptance
+
+- Candidate SHA `9d7949222a0c42cd0503ab6d43fdab78f0a2cf48` passed exact-tree Windows and clean Linux gates.
+- Hosted Windows and Ubuntu CI passed on the exact candidate; merge commit `e04cff5a4985f905afe08a6b4a791baadc54bc46` was tree-equivalent to that candidate.
+- Immutable GitHub Release v0.9.19 published successfully with 15 assets and 14 verified payload checksum entries.
+- Stable latest `plugin-template.zip` download matched the published digest.
+- Windows, Linux, and HPC Windows live routes all serve v0.9.19 at the exact merge/tag commit.
+- Official Skill hashes match across all three targets.
+- Live routing canaries PASS on all three targets for COMSOL-only routing, ANSYS + Project Brain layering, and final-thesis routing.
+- Windows background/headless launch regression is enforced and PASS.
+
+**Release status: ACCEPTED/FINAL for the bounded v0.9.19 product scope.**
+
+A fresh disposable Windows Server prerequisite-install canary remains EXTERNAL/DEFERRED because no clean Windows Server VM is available on the audited hosts. A supplementary Windows 11 Sandbox probe confirmed Administrator context and HTTP 200 reachability to the prerequisite endpoints, but two full bootstrap attempts stalled at the first PowerShell MSI GET; the Sandbox was terminated and the result is classified ENVIRONMENT-BLOCKED rather than product FAIL. No claim of universal agent superiority or control over ChatGPT host-side stream failures is made.

@@ -1,23 +1,37 @@
 # Current project state
 
-Updated: 2026-09-28. Scope: public product/release status plus current v0.9.19 candidate.
+Updated: 2026-09-28. Scope: public product/release closure for Remote Commander v0.9.19.
 
-## Release baseline
+## FINAL accepted release state
 
-- v0.9.18 is the current immutable published runtime baseline at merge commit `b277c30ee9c1ecceb9e68638cf413fe4f7b75d4c`.
-- v0.9.18 release verification: immutable=true; 15 assets; 14 checksum entries all matched; stable latest `plugin-template.zip` matched SHA-256 `ff725c10a8d747747ae6c37e84c0ccf18b3d39c992cb9f7dc4b13fa02506fff9`.
-- v0.9.18 is live on the audited Windows default target, Linux target, and HPC Windows target.
-- Separately installed official Extension set is `ansys-modeling`, `comsol-modeling`, `project-execution-brain`, and `final-thesis-report`. The owner-private `video-trend` extension remains outside the official rollout.
+- **Accepted release:** v0.9.19.
+- **Authoritative main/tag commit:** `e04cff5a4985f905afe08a6b4a791baadc54bc46`; `origin/main` and `v0.9.19^{commit}` resolve to the same commit.
+- **Immutable release:** published, non-draft/non-prerelease, 15 assets, 14 payload checksum entries verified, stable latest `plugin-template.zip` verified against the published SHA-256.
+- **Qualification:** exact-SHA Windows local PASS; clean Linux exact-SHA PASS including release-asset build/checksums; hosted Windows + Ubuntu CI PASS; security audit PASS.
+- **Live rollout:** Windows default, Windows `saeed-emad`, Linux, and audited HPC Windows routes all serve v0.9.19 / commit `e04cff5a4985f905afe08a6b4a791baadc54bc46`; each active route has `previous=null`.
+- **Background/headless invariant:** audited runtime and qualification PowerShell child-launch paths use hidden/no-window semantics. Visible console/terminal windows are not an accepted progress surface; only task UI or explicit official UI/progress surfaces may be foregrounded.
+- **Official external Skill set:** `ansys-modeling` v1.1.1, `comsol-modeling` v1.1.1, `project-execution-brain` v1.0.0, `final-thesis-report` v1.0.0. Their SKILL.md hashes are identical across Windows/Linux/HPC. The owner-private `video-trend` remains intentionally outside the official rollout.
+- **Live routing canaries:** COMSOL request -> COMSOL only; ANSYS audit/continue request -> ANSYS + Project Execution Brain; Persian final-thesis request -> Final Thesis Report only. All three patterns PASS on Windows, Linux, and HPC with empty diagnostics.
+- **Agent-extension boundary:** domain Skills remain independently installed under external extension roots; Commander installer/release assets do not bundle them.
+- **HPC rollout incident:** first v0.9.19 candidate promotion failed closed before cutover; the same candidate then passed an independent host-local `npm run check` diagnostic with zero failures, followed by one controlled retry that promoted successfully. Final authoritative live state is v0.9.19.
+- **GitHub hygiene:** obsolete PR #39 (v0.9.16-only post-release docs) was closed as superseded rather than rebased/merged. Dependabot maintenance PRs and a legacy draft branch are not v0.9.19 release blockers.
 
-## CURRENT / open release gates
+## Current blockers
 
-CURRENT: v0.9.19 Skill-routing specificity.
+**None for the v0.9.19 product/release scope.**
 
-v0.9.19 has one bounded objective: make automatic Extension selection fail safer after v0.9.18 by (a) suppressing weak lexical candidates when explicit trigger evidence exists, and (b) allowing multiword project triggers to match when their words are separated so compatible project-method + domain Skills can layer.
+Historical `CURRENT`, `OPEN`, and `UNPROVEN` labels below are append-only historical checkpoints and are superseded by this accepted state unless explicitly repeated in the current sections above.
 
-Focused routing/installer/onboarding/release-asset regressions PASS.
+## Deferred / external validation
 
-Open gates: full Windows check/test/audit; clean Linux exact-tree check/test/audit + release-asset build; hosted exact-SHA Windows/Ubuntu CI; immutable release publication/download verification; candidate-first rollout/version canaries.
+- A clean disposable **Windows Server** VM was not available on the current hosts. The server bootstrap is accepted from static/cross-platform gates, release packaging, and live update/use on the audited HPC Windows target. A truly fresh Windows Server prerequisite-install canary remains an **EXTERNAL/DEFERRED environment validation**, not a blocker for v0.9.19.
+- Windows Sandbox supplementary canary: Sandbox ran elevated and independent HTTPS HEAD probes to the PowerShell, Node.js, and Git-for-Windows endpoints all returned HTTP 200. Two full bootstrap attempts stalled at the first PowerShell MSI GET with no subsequent log transition; the Sandbox was terminated to avoid a hung validation. This is classified EXTERNAL/ENVIRONMENT-BLOCKED, not a Commander product failure, and is not treated as equivalent to a clean Windows Server canary.
+- Broad claims such as universal superiority over all competing agents, equal-budget benchmark dominance, additional provider integrations, or control of ChatGPT host/UI stream failures remain outside the bounded release DoD and are not claimed.
+- Linux durable workflow storage contains independent historical/active project records. Its database integrity is `ok`, automatic execution is disabled, and current leases are zero. Those project records are not Commander-release backlog and are not mass-cancelled by this release closure.
+
+## Exact next action
+
+No release-critical action remains. Future work begins only from a new scoped objective or from evidence of a new regression.
 
 ## Remaining roadmap
 
