@@ -1215,3 +1215,22 @@ Historical checkpoints remain append-only archives. Current release/control clai
 - **Evidence artifact:** `var/final-gate-v0.9.22.log`, SHA-256 `1996b17a4bad9c958de46ddf693ec507dece49e5a5e12cc3a839fdf71256b16b`.
 - **Scope:** qualification-only fixes; production runner-policy code remains unchanged from PR #50 head `8129441eec60ea21944b5c0b1c1bbc41ab0ab7ce`.
 - **Next authority gate:** push a narrow follow-up commit to PR #50 and require fresh hosted CI + Server Install Canary on the new head SHA before merge.
+
+
+## 2026-09-29 — Windows hosted full-suite concurrency control
+
+- **Hosted evidence — CONFIRMED / HIGH:** on PR #50 head `3f1ea4f9c598db78fdd15e0b70ce85411f2d6bff`, Ubuntu CI and both Server Install Canary jobs passed, while Windows `npm test` failed only in two time-sensitive tests: a 1 s Project Engine WAITING_INPUT deadline was exhausted under load, and an isolated workflow HTTP server missed a 30 s health-start deadline without exiting.
+- **Method evidence:** Node.js test runner executes test files in parallel child processes; `--test-concurrency` controls the maximum concurrent test processes and defaults from available parallelism. GitHub's standard public `windows-latest` runner provides four vCPUs. With this public repository, default Node file concurrency is therefore three on that runner.
+- **Sources:** Node.js Test Runner / CLI documentation (`https://nodejs.org/api/test.html`, `https://nodejs.org/api/cli.html#--test-concurrencyconcurrency`); GitHub hosted runner specifications (`https://docs.github.com/actions/reference/runners/github-hosted-runners`).
+- **Decision / minimum sufficient control:** do not inflate functional timeouts. Leave local and Ubuntu `npm test` unchanged; bound only Windows hosted full-test file concurrency to 2 through a tracked wrapper that transforms the existing package `test` script, avoiding a duplicated test list.
+- **Regression guard:** CI contract verifies the Windows-only conditional, exact bounded command, complete replacement of all `node --test` invocations, and invalid-wrapper inputs fail closed.
+- **Reuse targets:** CI reliability, Windows qualification, release engineering, failure-prevention guidance.
+
+
+## 2026-09-29 — Windows bounded-CI control fully qualified
+
+- **Exact Windows CI path — CONFIRMED / HIGH:** `npm run test:ci:windows` executed the tracked test script with `--test-concurrency=2` injected into both `node --test` invocations; aggregate 483 pass / 0 fail / 6 platform skips. The two prior hosted starvation failures both passed in this path.
+- **CHECK — CONFIRMED / HIGH:** complete `npm run check` passed after the new CI contract/helper was added.
+- **Complete local promotion gate — CONFIRMED / HIGH:** `FINAL_GATE_PASS` at `2026-09-29T00:50:53.5926011+03:30`; focused Project Engine 222 pass / 0 fail / 1 skip; full aggregate 483 pass / 0 fail / 6 skips; security audit, source integrity, Windows runtime contract and diff check passed.
+- **Evidence artifact:** `var/final-gate-v0.9.22.log`, SHA-256 `5f2bb611d2e43e921f57695119f1f3692313b4eb5ca6df1a7d71c631c157e87c`.
+- **Next authority gate:** fresh hosted CI + Server Install Canary on the new PR head SHA. Merge remains blocked until success.

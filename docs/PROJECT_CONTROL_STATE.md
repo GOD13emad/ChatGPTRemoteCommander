@@ -331,3 +331,18 @@ Historical checkpoints are preserved in the [archived project state](history/PRO
 - Windows qualification race fixes passed targeted stress and a complete local v0.9.22 promotion gate.
 - Gate evidence SHA-256: `1996b17a4bad9c958de46ddf693ec507dece49e5a5e12cc3a839fdf71256b16b`.
 - Merge remains BLOCKED until fresh hosted CI and Server Install Canary pass on the new PR head SHA.
+
+
+## 2026-09-29 — Windows CI resource-starvation control
+
+- Current PR #50 head `3f1ea4f9c598db78fdd15e0b70ce85411f2d6bff`: Ubuntu CI PASS; Linux + Windows Server Canaries PASS; Windows `check` PASS; Windows `npm test` failed two time-sensitive tests under the full parallel suite.
+- Root-cause class: hosted Windows file-process concurrency/resource starvation, not production runner-policy behavior.
+- Current mutation objective: bound only Windows hosted full-test file concurrency to 2; local/Ubuntu tests and functional timeout contracts remain unchanged.
+- Merge remains BLOCKED until this CI harness change passes local bounded-path qualification and fresh hosted CI on a new head SHA.
+
+
+## 2026-09-29 — Windows bounded-CI local gate PASS
+
+- Windows-specific bounded full-test path PASS, then complete CHECK PASS, then complete v0.9.22 final gate PASS.
+- Gate log SHA-256: `5f2bb611d2e43e921f57695119f1f3692313b4eb5ca6df1a7d71c631c157e87c`.
+- Current critical path: commit/push CI-harness delta -> fresh hosted CI/Canary -> merge PR #50 -> immutable v0.9.22 release -> candidate-first live rollout -> live runner readback.
