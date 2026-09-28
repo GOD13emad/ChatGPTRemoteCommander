@@ -798,3 +798,18 @@ Historical checkpoints remain append-only archives. Current release/control clai
 **Reuse Targets:** v0.9.16 release qualification, Linux installer, server deployment confidence, cross-platform async stabilization.
 
 **Provenance:** Linux terminal `term-1`, exact worktree SHA `32b85b8`, exit 0.
+
+
+## E-AUTH-20260928-R8 — Hosted security-audit provenance-path failure
+
+**Date/Context:** 2026-09-28; PR #38 hosted CI on the first evidence-bearing v0.9.16 candidate.
+
+**Failure:** Ubuntu hosted `check` and full `test` passed, but `npm run audit` failed. The audit reported exactly one class of finding: a developer-specific absolute Windows checkout path recorded as provenance in `docs/PROJECT_KNOWLEDGE_EVIDENCE.md`, which also appeared in candidate Git history.
+
+**Root Cause → Prevention → Guard → Regression:** evidence recording embedded an unnecessary machine/user-specific absolute checkout path → provenance records now use role + commit/SHA rather than personal checkout paths unless a path is technically necessary → keep the existing security audit's CURRENT + HISTORY developer-path checks strict; do not weaken or exempt evidence files → the unmerged evidence commit was sanitized before integration, local security audit PASS, and focused Codex policy regression PASS 8/8.
+
+**Decision:** Since the offending commit was an unmerged/unreleased candidate, rewriting that candidate evidence commit was preferable to weakening the audit or permanently retaining developer identity/path metadata.
+
+**Confidence/Status:** Root cause CONFIRMED/HIGH. Renewed exact-SHA hosted CI remains the promotion gate.
+
+**Reuse Targets:** Project Knowledge provenance hygiene, security audit, release qualification, account-transfer-ready Brain.

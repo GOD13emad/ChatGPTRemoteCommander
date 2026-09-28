@@ -26,6 +26,7 @@ test('Codex executables and private/package paths are recognized', () => {
     '/tmp/node_modules/.bin/codex'
   ]) assert.equal(isCodexExecutable(value),true,value);
   assert.equal(isCodexExecutable('code.exe'),false);
+  assert.equal(NO_CODEX_POLICY.code,'CODEX_DELEGATION_DEFAULT_DENY');
   assert.equal(NO_CODEX_POLICY.mode,'DEFAULT_DENY');
   assert.equal(NO_CODEX_POLICY.default,'CONTINUE_CHAT');
   assert.equal(NO_CODEX_POLICY.commanderMayLaunchCodex,false);

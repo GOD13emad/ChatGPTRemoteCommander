@@ -157,3 +157,13 @@ Historical checkpoints are preserved in the [archived project state](history/PRO
 - Concurrency smoke, source integrity, installer check, security audit: PASS.
 - Final marker: `V0916_FULL_LINUX_PASS`.
 - Next gate: hosted Windows + Ubuntu CI on the final evidence-bearing candidate SHA.
+
+
+### v0.9.16 hosted security-audit correction
+
+- Hosted Ubuntu on the prior candidate: `check` PASS, `test` PASS, `audit` FAIL solely because evidence contained a developer-specific absolute Windows checkout path.
+- Audit policy remains strict; no exemption added.
+- Unmerged candidate evidence was sanitized to role/SHA provenance.
+- Local security audit: PASS.
+- Focused Codex policy regression after status-metadata clarification: 8/8 PASS.
+- Current gate: renewed hosted Windows + Ubuntu CI on the new exact SHA.

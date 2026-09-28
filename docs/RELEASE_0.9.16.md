@@ -37,6 +37,8 @@ Fix:
 
 ## Instruction consistency
 
+Current status metadata now reports `CODEX_DELEGATION_DEFAULT_DENY` rather than the old unconditional `CODEX_DELEGATION_FORBIDDEN`. The latter remains the execution error code when an actually unauthorized Codex attempt is blocked.
+
 Current operational guidance now distinguishes three paths:
 
 1. Current ChatGPT + Commander remains the default reasoning/execution path.

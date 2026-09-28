@@ -3,6 +3,7 @@ import path from 'node:path';
 import { readFile, stat } from 'node:fs/promises';
 
 const POLICY_CODE = 'CODEX_DELEGATION_FORBIDDEN';
+const STATUS_CODE = 'CODEX_DELEGATION_DEFAULT_DENY';
 const AUTH_POLICY = 'owner-authorized-local-launch';
 const INTERPRETERS = new Set([
   'python','python.exe','pythonw','pythonw.exe','node','node.exe',
@@ -211,7 +212,7 @@ export function commanderChildEnv(cwdOrSource, maybeSource, { allowCodex = false
 }
 
 export const NO_CODEX_POLICY = Object.freeze({
-  code: POLICY_CODE,
+  code: STATUS_CODE,
   mode: 'DEFAULT_DENY',
   default: 'CONTINUE_CHAT',
   externalHandoffRequiresCurrentChatChoice: true,
