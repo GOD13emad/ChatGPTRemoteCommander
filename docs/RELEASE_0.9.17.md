@@ -34,7 +34,7 @@ Runtime behavior is unchanged from v0.9.16 except for the version identifier. Ow
 2. full Windows check/test/audit;
 3. clean Linux exact-tree check/test/audit plus asset build/checksum verification;
 4. hosted Windows + Ubuntu CI on the exact candidate SHA;
-5. immutable tag/release publication with 16 assets;
+5. immutable tag/release publication with 15 assets;
 6. download and checksum verification from the published release;
 7. `releases/latest/download/plugin-template.zip` availability;
 8. candidate-first Windows/Linux/HPC rollout and live version checks.

@@ -13,7 +13,7 @@ Updated: 2026-09-28. Scope: public product/release status, not a live machine in
 
 CURRENT: v0.9.17 immutable-release packaging correction.
 
-Open gates: deterministic asset build and checksum verification; full exact-tree Windows + Linux check/test/audit; hosted exact-SHA Windows/Ubuntu CI; immutable publication with exactly 16 assets; published download/checksum verification including `plugin-template.zip`; candidate-first rollout/version canaries.
+Open gates: deterministic asset build and checksum verification; full exact-tree Windows + Linux check/test/audit; hosted exact-SHA Windows/Ubuntu CI; immutable publication with exactly 15 assets; published download/checksum verification including `plugin-template.zip`; candidate-first rollout/version canaries.
 
 ## Remaining roadmap
 

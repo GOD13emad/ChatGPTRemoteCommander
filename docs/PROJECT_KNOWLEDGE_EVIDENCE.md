@@ -885,7 +885,7 @@ Historical checkpoints remain append-only archives. Current release/control clai
 
 **Method evidence:** GitHub documents that immutable releases lock release assets after publication and recommends draft -> attach assets -> publish. Current GitHub CLI documentation states that `gh release create <tag> <files...>` internally creates a draft, uploads the assets, then publishes when release immutability is enabled. Sources checked 2026-09-28: https://docs.github.com/en/code-security/concepts/supply-chain-security/immutable-releases and https://cli.github.com/manual/gh_release_create .
 
-**Root Cause -> Prevention -> Guard:** Release Sync created the release with notes only and therefore crossed the immutability boundary before assets existed -> build all assets and checksums first, then pass the complete asset array to the single `gh release create` operation -> static contract forbids `gh release upload` in the release workflow and requires an exact 16-file asset set plus checksum verification before publication.
+**Root Cause -> Prevention -> Guard:** Release Sync created the release with notes only and therefore crossed the immutability boundary before assets existed -> build all assets and checksums first, then pass the complete asset array to the single `gh release create` operation -> static contract forbids `gh release upload` in the release workflow and requires an exact 15-file asset set plus checksum verification before publication.
 
 **Scope decision:** do not delete/recreate or weaken v0.9.16 immutability. Repair packaging in patch release v0.9.17; runtime logic remains unchanged apart from the version identifier.
 
@@ -894,3 +894,18 @@ Historical checkpoints remain append-only archives. Current release/control clai
 **Reuse Targets:** immutable GitHub releases, release asset integrity, Work/plugin onboarding, server installer distribution, supply-chain release process.
 
 **Provenance:** v0.9.16 release asset inventory, rejected post-publication asset upload, `.github/workflows/release-sync.yml`, `install-work-plugin.ps1/.sh`.
+
+
+## E-REL-20260928-R3 — v0.9.17 release-asset count guard correction
+
+**Date/Context:** 2026-09-28; first clean Linux execution of the new release-asset builder at candidate `d94ad841be3740212ed28ce7c096d4c6741c9afd`.
+
+**Observed evidence:** every intended payload built successfully and both installer-internal and top-level SHA-256 verification passed. The builder then exited 1 only because its final count guard expected 16 files while the actual complete set is 15: 14 payload assets plus `SHA256SUMS.txt`.
+
+**Root Cause -> Prevention -> Guard:** manual cardinality miscount in the newly introduced gate -> correct builder, workflow and static contract to exact count 15 -> retain explicit filename/content checks plus checksum verification, so the count guard supplements rather than substitutes for asset identity/integrity checks.
+
+**Scope:** packaging/test/documentation only; no runtime source or policy change after the already-PASS d94ad84 Windows full gate.
+
+**Confidence/Status:** CONFIRMED/HIGH. Final exact-SHA Linux/Windows/hosted qualification pending the corrected commit.
+
+**Reuse Targets:** release packaging, immutable assets, failure-prevention gate design.

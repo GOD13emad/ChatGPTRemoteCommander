@@ -18,14 +18,14 @@ for (const required of [
 ]) {
   if (!builder.includes(required)) throw new Error(`release asset builder missing ${required}`);
 }
-if (!builder.includes('[[ "$count" -eq 16 ]]')) throw new Error('release asset count guard missing');
+if (!builder.includes('[[ "$count" -eq 15 ]]')) throw new Error('release asset count guard missing');
 if (!builder.includes('Release commit: $COMMIT')) throw new Error('installer bundle provenance missing');
 
 for (const required of [
   'bash tools/build-release-assets.sh dist/release',
   '(cd dist/release && sha256sum -c SHA256SUMS.txt)',
   'mapfile -t assets',
-  'test "${#assets[@]}" -eq 16',
+  'test "${#assets[@]}" -eq 15',
   'gh release create "$tag" "${assets[@]}"',
   '--verify-tag'
 ]) {

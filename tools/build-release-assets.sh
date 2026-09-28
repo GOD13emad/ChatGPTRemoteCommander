@@ -96,5 +96,5 @@ zip_tree "$installer_stage" "$OUT/ChatGPT-Remote-Commander-v$VERSION-Installer.z
 )
 
 count="$(find "$OUT" -maxdepth 1 -type f | wc -l | tr -d ' ')"
-[[ "$count" -eq 16 ]] || { echo "unexpected release asset count: $count" >&2; exit 1; }
+[[ "$count" -eq 15 ]] || { echo "unexpected release asset count: $count" >&2; exit 1; }
 echo "RELEASE_ASSETS_PASS version=$VERSION commit=$COMMIT count=$count out=$OUT"
