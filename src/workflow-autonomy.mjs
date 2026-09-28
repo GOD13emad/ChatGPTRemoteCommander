@@ -141,6 +141,7 @@ function atomicWrite(file, text) {
 export function renderBrain(state) {
   const completed = state.steps.filter(s => ['recorded','reconciled_applied','verified'].includes(s.status)).map(s=>s.id);
   const open = state.steps.filter(s => !completed.includes(s.id)).map(s=>({id:s.id,status:s.status,title:s.title}));
+  const chatHandoffs = state.notes.filter(n=>n.kind==='handoff');
   const data = {
     schemaVersion:1,
     workflowId:state.id,
@@ -155,6 +156,9 @@ export function renderBrain(state) {
     authoritative:{root:state.root,device:state.device,authority:state.authority},
     importantDecisions:state.notes.filter(n=>n.kind==='decision'),
     failures:state.notes.filter(n=>n.kind==='failure'),
+    chatHandoffs,
+    pendingChatHandoff:state.pendingChatHandoff ?? null,
+    lastChatHandoff:state.lastChatHandoff ?? null,
     evidence:state.checkpoint?.evidence ?? [],
     currentBaseline:{configSha256:state.configSha256,executionProfile:state.executionProfile},
     exactNextAction:state.checkpoint?.nextAction ?? null,
@@ -187,6 +191,10 @@ export function renderBrain(state) {
     '',
     '## Evidence',
     ...((state.checkpoint?.evidence?.length??0)?state.checkpoint.evidence.map(x=>'- '+x.path+' sha256='+x.sha256):['- None']),
+    '',
+    '## Chat Handoffs',
+    ...(chatHandoffs.length?chatHandoffs.slice(-20).map(x=>'- ['+(x.verification??'UNVERIFIED')+'] '+x.text):['- None']),
+    ...(state.pendingChatHandoff?['- Pending event: '+state.pendingChatHandoff.eventKey+' — '+state.pendingChatHandoff.summary]:[]),
     '',
     '## Exact Next Action',
     state.checkpoint?.nextAction ?? 'None',

@@ -15,6 +15,7 @@ export const STORE_SCHEMA = AUTONOMY_SCHEMA;
 export const MODULE_REVISION = AUTONOMY_REVISION;
 const ZERO = '0'.repeat(64);
 const ID = /^[a-z][a-z0-9_-]{0,63}$/;
+const EVENT_KEY = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const MAX_STATE = 512 * 1024;
 const MAX_EVENTS = 10000;
 const MAX_EXPORT = 4 * 1024 * 1024;
@@ -515,6 +516,45 @@ export class WorkflowStore {
       s.notes.push(note); return note;
     });
   }
+  needsChat({ id, expectedRevision, eventKey, reason, summary, files = [] }) {
+    if (typeof eventKey !== 'string' || !EVENT_KEY.test(eventKey)) fail('WORKFLOW_CHAT_EVENT_KEY');
+    safeText(reason, 2000); safeText(summary, 4000);
+    if (!Array.isArray(files) || files.length > 20 || files.some(x => typeof x !== 'string' || !x || x.length > 512)) fail('WORKFLOW_CHAT_EVIDENCE');
+    const view=this.get(id); this.#identity(view.state);
+    const evidence=files.length ? this.evidence(view.state.root, files) : [];
+    const committed=this.#mutate(id, expectedRevision, 'needs_chat', s => {
+      this.#identity(s);
+      if (s.lifecycleState === 'COMPLETED') fail('WORKFLOW_ALREADY_COMPLETED');
+      if (s.control.intent === 'CANCELLED' || s.lifecycleState === 'CANCELLED') fail('WORKFLOW_CANCELLED');
+      if (s.pendingChatHandoff && s.pendingChatHandoff.eventKey !== eventKey) fail('WORKFLOW_CHAT_HANDOFF_ALREADY_PENDING');
+      if (s.notes.length >= 500) fail('WORKFLOW_NOTE_LIMIT');
+      const at=new Date().toISOString();
+      const handoff={eventKey,reason,summary,evidence,createdAt:at,deliveryState:'PENDING'};
+      s.notes.push({kind:'handoff',text:summary,source:'workflow_needs_chat',verification:'CONFIRMED',confidence:'HIGH',
+        reuseTargets:['Project Brain','handoff'],path:null,hash:null,at,handoff:{eventKey,reason,evidence}});
+      s.pendingChatHandoff=handoff;
+      s.control={intent:'PAUSED',generation:s.control.generation+1};
+      s.lifecycleState='WAITING';
+      s.scheduler.enabled=false;
+      s.scheduler.automaticContinuation=false;
+      s.scheduler.lastFailureCode='NEEDS_CHAT';
+      this.#db.prepare('UPDATE scheduler_jobs SET lifecycle=?,enabled=0,last_failure=?,updated_at=? WHERE workflow=?')
+        .run(s.lifecycleState,'NEEDS_CHAT',at,id);
+      return {eventKey,lifecycleState:s.lifecycleState,evidence};
+    });
+    let brainSync=null,brainError=null;
+    try{brainSync=syncProjectBrain(committed.state);}catch(error){brainError=error.message;}
+    return {...committed,brainSync,brainError};
+  }
+  pendingChatHandoffs() {
+    const rows=this.#db.prepare('SELECT id,snapshot FROM workflows ORDER BY id LIMIT 1001').all();
+    const items=[];
+    for(const row of rows){
+      let state;try{state=JSON.parse(row.snapshot);}catch{continue;}
+      if(state?.pendingChatHandoff && !state.pendingChatHandoff.resolvedAt) items.push({id:row.id,revision:state.revision,handoff:clone(state.pendingChatHandoff)});
+    }
+    return items;
+  }
   search({ id, query }) {
     safeText(query, 160);
     const { state } = this.get(id);
@@ -966,6 +1006,10 @@ export class WorkflowStore {
         s.lifecycleState='WAITING';s.scheduler.enabled=false;s.scheduler.automaticContinuation=false;
       } else if (action==='resume') {
         if (s.lifecycleState==='CANCELLED') fail('WORKFLOW_CANCELLED');
+        if(s.pendingChatHandoff){
+          s.lastChatHandoff={...s.pendingChatHandoff,resolvedAt:new Date().toISOString()};
+          s.pendingChatHandoff=null;
+        }
         s.lifecycleState='RESUMING';s.scheduler.enabled=true;s.scheduler.automaticContinuation=true;s.scheduler.lastFailureCode=null;
       } else {
         s.lifecycleState='CANCELLED';s.scheduler.enabled=false;s.scheduler.automaticContinuation=false;

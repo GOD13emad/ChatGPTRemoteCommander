@@ -83,7 +83,20 @@ export const asyncOperationDefinitions = [
         requestId: { type: 'string', minLength: 1, maxLength: 128, pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$' },
         correlationId: { type: 'string', minLength: 1, maxLength: 128, pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$' },
         tool: { type: 'string', enum: ['run_project_command', 'run_shell', 'copy_path', 'move_path', 'delete_path'] },
-        arguments: { type: 'object' }
+        arguments: { type: 'object' },
+        continuation: {
+          type: 'object',
+          properties: {
+            projectId: { type: 'string', minLength: 1, maxLength: 128, pattern: '^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$' },
+            eventKey: { type: 'string', minLength: 1, maxLength: 128, pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$' },
+            root: { type: 'string', minLength: 1, maxLength: 4096 },
+            phase: { type: 'string', maxLength: 256 },
+            summary: { type: 'string', maxLength: 1200 },
+            evidencePaths: { type: 'array', maxItems: 10, items: { type: 'string', minLength: 1, maxLength: 512 } }
+          },
+          required: ['projectId', 'eventKey', 'root'],
+          additionalProperties: false
+        }
       },
       required: ['requestId', 'tool', 'arguments'],
       additionalProperties: false
@@ -131,7 +144,7 @@ export const asyncOperationDefinitions = [
   }
 ];
 
-export function createAsyncOperationTools({ config, prepare, workerPath, deliveryStore = null }) {
+export function createAsyncOperationTools({ config, prepare, workerPath, deliveryStore = null, onTerminal = null, validateContinuation = null }) {
   const policy = config.asyncOperations ?? {};
   const enabled = policy.enabled !== false;
   const root = policy.stateDir
@@ -150,7 +163,89 @@ export function createAsyncOperationTools({ config, prepare, workerPath, deliver
   let deliveryReconcilePromise = Promise.resolve({ checked: 0, pending: 0 });
   const reservationByOperation = new Map();
   let reservationsLoaded = false;
+  const continuationRecovery = new Set();
+  const continuationRecoveryTimers = new Map();
+  let continuationClosed = false;
 
+  function normalizeContinuation(value) {
+    if (value === undefined) return null;
+    if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('invalid continuation');
+    if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(value.projectId ?? '') || !REQUEST_RE.test(value.eventKey ?? '')) throw new Error('invalid continuation');
+    const boundedText = (item, max) => {
+      if (item === undefined) return '';
+      if (typeof item !== 'string' || item.includes('\0') || Buffer.byteLength(item, 'utf8') > max) throw new Error('invalid continuation');
+      return item;
+    };
+    const evidencePaths = value.evidencePaths ?? [];
+    if (!Array.isArray(evidencePaths) || evidencePaths.length > 10 ||
+        evidencePaths.some(item => typeof item !== 'string' || !item || item.includes('\0') || Buffer.byteLength(item, 'utf8') > 512)) {
+      throw new Error('invalid continuation');
+    }
+    return {
+      projectId: value.projectId,
+      eventKey: value.eventKey,
+      root: boundedText(value.root, 4096),
+      phase: boundedText(value.phase, 256),
+      summary: boundedText(value.summary, 1200),
+      evidencePaths: [...evidencePaths]
+    };
+  }
+
+  function stopRecovery(operationId) {
+    const timer=continuationRecoveryTimers.get(operationId);
+    if(timer)clearTimeout(timer);
+    continuationRecoveryTimers.delete(operationId);
+    continuationRecovery.delete(operationId);
+  }
+
+  function observeWorkerExit(worker, operationId) {
+    if (!onTerminal) return;
+    worker.once('exit', () => {
+      if (continuationClosed) return;
+      queueMicrotask(() => {
+        if (!continuationClosed) status(operationId, true).catch(() => {});
+      });
+    });
+  }
+
+  function scheduleRestartRecovery(operationId, attempt=0) {
+    if(!onTerminal||continuationClosed||continuationRecoveryTimers.has(operationId))return;
+    continuationRecovery.add(operationId);
+    const delay=Math.min(5000,250*(2**Math.min(attempt,5)));
+    const timer=setTimeout(async()=>{
+      continuationRecoveryTimers.delete(operationId);
+      if(continuationClosed)return;
+      try{
+        const state=await status(operationId,true);
+        if(TERMINAL.has(state.status)){stopRecovery(operationId);return;}
+      }catch{}
+      scheduleRestartRecovery(operationId,attempt+1);
+    },delay);
+    timer.unref?.();
+    continuationRecoveryTimers.set(operationId,timer);
+  }
+
+  async function discoverContinuationOperations() {
+    if (!onTerminal) return 0;
+    let entries = [];
+    try { entries = await readdir(operationsDir, { withFileTypes: true }); }
+    catch (error) { if (error?.code === 'ENOENT') return 0; throw error; }
+    let recovered = 0;
+    for (const entry of entries) {
+      if (!entry.isDirectory() || !OP_RE.test(entry.name)) continue;
+      try {
+        const state = await readStateProjection(opPaths(entry.name));
+        if (!state?.continuation) continue;
+        if (TERMINAL.has(state.status)) {
+          await attachDelivery(state);
+          recovered += 1;
+        } else {
+          scheduleRestartRecovery(entry.name);
+        }
+      } catch {}
+    }
+    return recovered;
+  }
 
   function correlationOf(state) {
     const value = state?.correlationId ?? state?.requestId;
@@ -269,6 +364,7 @@ export function createAsyncOperationTools({ config, prepare, workerPath, deliver
       correlationId,
       inputHash: receipt.inputHash,
       tool: receipt.tool,
+      continuation: reservation.continuation ?? null,
       status: receipt.status,
       createdAt: reservation.createdAt ?? receipt.startedAt ?? finishedAt,
       updatedAt: finishedAt,
@@ -318,14 +414,36 @@ export function createAsyncOperationTools({ config, prepare, workerPath, deliver
     return event;
   }
   async function attachDelivery(state) {
-    if (!deliveryStore || !TERMINAL.has(state?.status)) return state;
-    try {
-      const event = await publishTerminal(state);
-      return event ? { ...state, deliveryId: event.deliveryId } : state;
-    } catch {
-      deliveryTracked.add(state.operationId);
-      return { ...state, deliveryPending: true };
+    if (!TERMINAL.has(state?.status)) return state;
+    let result = state;
+    if (deliveryStore) {
+      try {
+        const event = await publishTerminal(state);
+        if (event) result = { ...result, deliveryId: event.deliveryId };
+      } catch {
+        deliveryTracked.add(state.operationId);
+        result = { ...result, deliveryPending: true };
+      }
     }
+    let continuationDelivered = true;
+    if (onTerminal && state.continuation) {
+      try {
+        const handoff = await onTerminal(state);
+        if (handoff?.handoffId) result = {
+          ...result,
+          conversationHandoffId: handoff.handoffId,
+          conversationHandoffState: handoff.state
+        };
+      } catch {
+        continuationDelivered = false;
+        continuationRecovery.add(state.operationId);
+        result = { ...result, conversationHandoffPending: true };
+      }
+    }
+    if (continuationDelivered) {
+      stopRecovery(state.operationId);
+    }
+    return result;
   }
   async function readStateProjection(p) {
     for (let attempt = 0; attempt <= 20; attempt += 1) {
@@ -465,12 +583,17 @@ export function createAsyncOperationTools({ config, prepare, workerPath, deliver
     const correlationId = input.correlationId ?? input.requestId;
     if (!REQUEST_RE.test(correlationId)) throw new Error('invalid correlationId');
     const inputHash = hashJson({ tool: input.tool, arguments: input.arguments });
+    const continuation = normalizeContinuation(input.continuation);
+    if (continuation && validateContinuation) await validateContinuation(continuation);
+    const continuationHash = continuation ? hashJson(continuation) : null;
     await mkdir(requestsDir, { recursive: true, mode: 0o700 });
     await mkdir(operationsDir, { recursive: true, mode: 0o700 });
     const requestPath = path.join(requestsDir, `${hashJson(input.requestId)}.json`);
     try {
       const prior = await readJson(requestPath);
-      if (prior.requestId !== input.requestId || prior.inputHash !== inputHash || (prior.correlationId ?? prior.requestId) !== correlationId) {
+      if (prior.requestId !== input.requestId || prior.inputHash !== inputHash ||
+          (prior.correlationId ?? prior.requestId) !== correlationId ||
+          (prior.continuationHash ?? null) !== continuationHash) {
         throw new Error('REQUEST_ID_CONFLICT');
       }
       let priorState;
@@ -495,7 +618,7 @@ export function createAsyncOperationTools({ config, prepare, workerPath, deliver
     try {
       const handle = await open(requestPath, 'wx', 0o600);
       try {
-        await handle.writeFile(JSON.stringify({ requestId: input.requestId, correlationId, operationId, inputHash, createdAt: new Date().toISOString() }) + '\n');
+        await handle.writeFile(JSON.stringify({ requestId: input.requestId, correlationId, operationId, inputHash, continuationHash, continuation, createdAt: new Date().toISOString() }) + '\n');
       } finally {
         await handle.close();
       }
@@ -505,7 +628,9 @@ export function createAsyncOperationTools({ config, prepare, workerPath, deliver
     }
     if (!claimed) {
       const prior = await readJson(requestPath);
-      if (prior.requestId !== input.requestId || prior.inputHash !== inputHash || (prior.correlationId ?? prior.requestId) !== correlationId) {
+      if (prior.requestId !== input.requestId || prior.inputHash !== inputHash ||
+          (prior.correlationId ?? prior.requestId) !== correlationId ||
+          (prior.continuationHash ?? null) !== continuationHash) {
         throw new Error('REQUEST_ID_CONFLICT');
       }
       let priorState;
@@ -535,7 +660,8 @@ export function createAsyncOperationTools({ config, prepare, workerPath, deliver
       timeoutMs: operationTimeoutMs,
       deadlineAt: new Date(Date.now() + operationTimeoutMs).toISOString(),
       workerPid: null,
-      childPid: null
+      childPid: null,
+      continuation
     };
     await atomicJson(p.state, baseState);
     if (deliveryStore) deliveryTracked.add(operationId);
@@ -572,8 +698,9 @@ export function createAsyncOperationTools({ config, prepare, workerPath, deliver
       const queued = { ...baseState, workerPid: worker.pid, updatedAt: new Date().toISOString() };
       await atomicJson(p.state, queued);
       worker.stdin.end(JSON.stringify(execution));
+      if (continuation) observeWorkerExit(worker, operationId);
       worker.unref();
-      return { operationId, requestId: input.requestId, correlationId, duplicate: false, status: 'QUEUED' };
+      return { operationId, requestId: input.requestId, correlationId, duplicate: false, status: 'QUEUED', continuationAttached: !!continuation };
     } catch (error) {
       await atomicJson(p.state, {
         ...baseState,
@@ -641,6 +768,7 @@ export function createAsyncOperationTools({ config, prepare, workerPath, deliver
     deliveryTimer = setInterval(() => { reconcileDeliveries().catch(() => {}); }, deliveryIntervalMs);
     deliveryTimer.unref?.();
   }
+  if (onTerminal) queueMicrotask(() => { discoverContinuationOperations().catch(() => {}); });
 
   async function cancel(input) {
     const state = await status(input.operationId);
@@ -669,6 +797,8 @@ export function createAsyncOperationTools({ config, prepare, workerPath, deliver
     }),
     reconcileDeliveries,
     close: async () => {
+      continuationClosed = true;
+      for(const operationId of [...continuationRecoveryTimers.keys()])stopRecovery(operationId);
       deliveryClosed = true;
       if (deliveryTimer) clearInterval(deliveryTimer);
       deliveryTimer = null;

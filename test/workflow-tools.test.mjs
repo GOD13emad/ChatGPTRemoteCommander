@@ -12,9 +12,10 @@ const fixture=()=>{
 };
 test('disabled adapter cannot silently create memory',()=>assert.throws(()=>createWorkflowTools({config:{}}),/DISABLED/));
 test('catalog preserves original tools and adds autonomy controls with unique names',()=>{
- assert.equal(WORKFLOW_TOOL_DEFINITIONS.length,17);assert.equal(new Set(WORKFLOW_TOOL_DEFINITIONS.map(d=>d.name)).size,17);
- for(const name of ['workflow_status','workflow_create','workflow_get','workflow_list','workflow_note','workflow_search','workflow_checkpoint','workflow_resume','workflow_call','workflow_reconcile','workflow_export'])assert.ok(WORKFLOW_TOOL_DEFINITIONS.some(d=>d.name===name));
+ assert.equal(new Set(WORKFLOW_TOOL_DEFINITIONS.map(d=>d.name)).size,WORKFLOW_TOOL_DEFINITIONS.length);
+ for(const name of ['workflow_status','workflow_create','workflow_get','workflow_list','workflow_note','workflow_search','workflow_checkpoint','workflow_needs_chat','workflow_resume','workflow_call','workflow_reconcile','workflow_export'])assert.ok(WORKFLOW_TOOL_DEFINITIONS.some(d=>d.name===name),name);
  assert.equal(WORKFLOW_TOOL_DEFINITIONS.find(d=>d.name==='workflow_call').annotations.destructiveHint,true);
+ assert.equal(WORKFLOW_TOOL_DEFINITIONS.find(d=>d.name==='workflow_needs_chat').annotations.openWorldHint,false);
 });
 test('project-engine tool schema stays stable when runner is disabled',async()=>{
  const f=fixture();try{
