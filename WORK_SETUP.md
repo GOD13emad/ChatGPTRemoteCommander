@@ -7,7 +7,7 @@ https://github.com/GOD13emad/ChatGPTRemoteCommander
 
 ## Mandatory handoff choice
 
-This guide is used **only after the user explicitly chooses Work/Codex for the current task**. Remote Commander itself never launches Codex and never silently moves a task out of the current ChatGPT conversation.
+This guide is used **only after the user explicitly chooses Work/Codex for the current task**. Remote Commander never silently moves a task out of the current ChatGPT conversation. Local Codex launch is a separate, default-deny path permitted only when an explicitly authorized Full-Power owner policy is active and the current user request explicitly asks for Codex.
 
 If an assistant working through Remote Commander believes Work or Codex would materially help, it must ask in the current chat before any handoff:
 

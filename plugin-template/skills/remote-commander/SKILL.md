@@ -29,7 +29,7 @@ Remote Commander is the execution/control layer for the current ChatGPT conversa
 
 If the current ChatGPT assistant believes Work or Codex would materially help, stop before any handoff and ask the user to choose explicitly between these two paths:
 
-- **Move to Work/Codex** — only after the user explicitly selects this option; the handoff occurs outside Commander and Commander itself still must not launch Codex.
+- **Move to Work/Codex** — only after the user explicitly selects this option; the handoff occurs outside Commander. Local Codex launch is a separate default-deny path and is allowed only when an explicitly authorized Full-Power owner policy is active and the current request explicitly asks for Codex.
 - **Continue in this chat with Remote Commander** — this is the default and consumes the current ChatGPT interaction path.
 
 No response, ambiguous approval, inferred preference, or historical project note counts as consent. If the user does not choose Work/Codex, continue in the current chat with Commander. Record a handoff decision in project evidence only when it actually affects project execution.

@@ -174,6 +174,23 @@ export async function assertNoCodexShellDelegation(command, cwd, { allowCodex = 
   await assertNoCodexDelegatingScript(program,tokens,cwd);
 }
 
+function isCommanderNoCodexHome(value) {
+  const raw = String(value ?? '').trim();
+  if (!raw) return false;
+  try {
+    let root = path.resolve(path.join(os.tmpdir(), 'chatgpt-remote-commander-no-codex'));
+    let target = path.resolve(raw);
+    if (process.platform === 'win32') {
+      root = root.toLowerCase();
+      target = target.toLowerCase();
+    }
+    const relative = path.relative(root, target);
+    return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
+  } catch {
+    return false;
+  }
+}
+
 export function commanderChildEnv(cwdOrSource, maybeSource, { allowCodex = false } = {}) {
   const source = cwdOrSource && typeof cwdOrSource === 'object' && !Array.isArray(cwdOrSource) && maybeSource === undefined
     ? cwdOrSource
@@ -188,6 +205,7 @@ export function commanderChildEnv(cwdOrSource, maybeSource, { allowCodex = false
     env.CODEX_HOME = path.join(os.tmpdir(), 'chatgpt-remote-commander-no-codex', String(process.pid));
   } else {
     delete env.REMOTE_COMMANDER_NO_CODEX;
+    if (isCommanderNoCodexHome(env.CODEX_HOME)) delete env.CODEX_HOME;
   }
   return env;
 }

@@ -25,7 +25,7 @@ import {
 } from './no-codex-policy.mjs';
 
 let workflowTools = null;
-const VERSION = '0.9.15';
+const VERSION = '0.9.16';
 const MODERN_VERSION = '2026-07-28';
 const LEGACY_VERSIONS = ['2025-11-25', '2025-06-18', '2025-03-26'];
 const TASKS_EXTENSION = 'io.modelcontextprotocol/tasks';
@@ -113,7 +113,7 @@ function operatingInstructions() {
 const delegationToolDefinitions = [
   {
     name: 'delegation_requirement',
-    description: 'Return the mandatory current-chat choice before an external Work/Codex handoff. Default is to continue in the current ChatGPT + Commander chat. Commander never launches Codex.',
+    description: 'Return the mandatory current-chat choice before an external Work/Codex handoff. Default is to continue in the current ChatGPT + Commander chat. Local Codex launch is separate, default-deny, and allowed only by an explicitly authorized Full-Power owner policy.',
     inputSchema: { type: 'object', properties: { reason: { type: 'string', maxLength: 2000 } }, additionalProperties: false },
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false }
   },

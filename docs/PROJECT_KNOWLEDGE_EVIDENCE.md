@@ -717,3 +717,37 @@ Historical checkpoints remain append-only archives. Current release/control clai
 **Confidence/Status:** Root cause PROBABLE/HIGH from timing match, official event semantics, and focused regression. Cross-platform confirmation pending hosted CI.
 
 **Reuse Targets:** async operation durability tests, child-process lifecycle testing, CI failure prevention, v0.9.16 release gate.
+
+
+## E-AUTH-20260928-R5 — Authorized Codex inherited no-Codex sentinel
+
+**Date/Context:** 2026-09-28; live Windows v0.9.15 after successful stale-schema GUI authorization rollout on both `default` and `saeed-emad`.
+
+**Confirmed live result:** The actual cached ChatGPT connector schema, which exposes only `gui_session_begin({ttlSeconds})`, returned `mode=takeover` and `authorization=owner-persisted` on the v0.9.15 default backend. Both Windows profiles also reported `commanderMayLaunchCodex=true` and delegation policy `owner-authorized-local-launch`.
+
+**Failure:** Authorized `codex --version` found the installed Codex executable, exited 0 and reported `codex-cli 0.146.0`, but emitted a warning that `CODEX_HOME` pointed to Commander's generated `chatgpt-remote-commander-no-codex` temporary path.
+
+**Root Cause → Prevention → Guard → Regression:** v0.9.15 removed the no-Codex boolean sentinel for authorized child processes but preserved an inherited Commander-generated `CODEX_HOME` → recognize only paths inside Commander's generated no-Codex root and remove that stale value when Codex is authorized → preserve all legitimate user `CODEX_HOME` values → focused regression checks both sentinel removal and owner home preservation.
+
+**Instruction audit:** Current plugin/tool guidance still contained unconditional statements that Commander never launches Codex, contradicting the v0.9.15 live policy. Current operational text is updated to default-deny + explicit Full-Power owner authorization. Historical release records and the hidden/background project-runner No-Codex invariant remain unchanged.
+
+**Confidence/Status:** Root cause CONFIRMED/HIGH from live executable output and source inspection. v0.9.16 candidate qualification pending.
+
+**Reuse Targets:** Codex authorization, child-process environment hygiene, plugin instructions, updater inheritance, release acceptance.
+
+**Provenance:** live v0.9.15 `system_status`, direct stale-schema GUI canary, `rc_codex_canary_v0915.ps1`, `src/no-codex-policy.mjs`, `plugin-template/skills/remote-commander/SKILL.md`.
+
+
+## E-AUTH-20260928-R6 — v0.9.16 Windows full qualification
+
+**Date/Context:** 2026-09-28; v0.9.16 candidate worktree after authorized-Codex sentinel cleanup, current-instruction alignment, and cross-platform async fixture stabilization.
+
+**Evidence:** Focused Codex-policy + async suite PASS 22/22. Installer check PASS. Onboarding/plugin check PASS. Full Windows gate terminal `term-17` completed with exit 0: `npm run check` PASS; `npm test` PASS with core runner 475 PASS / 6 SKIP / 0 FAIL plus downstream browser, GUI, concurrency, filesystem, runtime and schema gates; `npm run audit` PASS with `SECURITY_AUDIT_PASS`.
+
+**Key regression:** authorized child environment removes only Commander's generated no-Codex `CODEX_HOME` sentinel while preserving a legitimate owner-specified `CODEX_HOME`. Hidden project-runner No-Codex tests remain PASS.
+
+**Confidence/Status:** Windows local candidate qualification CONFIRMED/HIGH. Hosted exact-SHA Windows/Ubuntu CI, immutable publication and production rollout remain OPEN.
+
+**Reuse Targets:** v0.9.16 release qualification, Codex authorization, environment inheritance, async lifecycle testing.
+
+**Provenance:** `term-17`; `src/no-codex-policy.mjs`; `test/no-codex-policy.test.mjs`; `test/async-operation-fixture.mjs`; `docs/RELEASE_0.9.16.md`.

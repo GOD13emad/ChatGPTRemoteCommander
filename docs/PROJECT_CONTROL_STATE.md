@@ -58,7 +58,7 @@ Historical checkpoints are preserved in the [archived project state](history/PRO
 - Objective: prevent Remote Commander from consuming Codex/model-provider quota unless the user explicitly leaves Commander for an external Work/Codex handoff.
 - Trigger: live R28 executor audit proved a Commander-launched private Codex CLI was using ChatGPT Plus Codex/agentic allowance.
 - Root cause: Full Power auto-provisioned `provider=codex` and general script execution did not prohibit indirect Codex launch.
-- Locked policy: **Commander never launches Codex.** If Work/Codex is recommended, current chat must ask the user to choose **Move to Work/Codex** or **Continue in this chat with Remote Commander**; default is continue-chat; external handoff only.
+- Locked policy (superseded by v0.9.15 owner authorization): **local Codex launch is default-deny, not absolutely forbidden.** It is permitted only for an explicitly authorized `FULL_POWER` owner profile with `powerMode.codexControl.allowLaunch=true` and a current request that explicitly calls for Codex. Hidden/background project runners remain No-Codex. External Work/Codex handoff still requires the current-chat choice **Move to Work/Codex** vs **Continue in this chat with Remote Commander**; default is continue-chat.
 - Implementation: Codex provisioning removed; legacy runner disabled; direct/shell/terminal/package-manager/script-mediated Codex guarded; child model credentials stripped; Plugin/MCP instructions updated; legacy Commander-private provider cleanup added.
 - Focused regression: no-Codex/planner/runner **33/33 PASS**; installer check PASS; onboarding PASS; updater contract **13/13 PASS**.
 - Current gate: full Windows check/test/audit → Linux exact-tree check/test/audit → commit/push/hosted CI → immutable v0.9.11 publication → candidate-first Windows/Linux rollout → live no-Codex/config/route verification.
@@ -114,3 +114,25 @@ Historical checkpoints are preserved in the [archived project state](history/PRO
 - Fixture now forces the direct child to exit after flushing its own output while a detached grandchild retains inherited stdio, deterministically exercising Node's documented `exit` vs `close` distinction.
 - Focused Windows async regression: 14/14 PASS, exit 0.
 - Cross-platform status: UNPROVEN until exact-SHA hosted Windows/Ubuntu CI passes.
+
+
+## CURRENT CHANGE SET — v0.9.16 owner-authorized Codex environment
+
+- Objective: make explicit owner-authorized Codex launch end-to-end correct while preserving default-deny and hidden-runner No-Codex controls.
+- Baseline authority: v0.9.15 tag / merge commit `538c1dee6a0723f91ff1bd8f68585fbc60b6f8a2`.
+- Live GUI blocker: RESOLVED and verified on the actual stale ChatGPT tool schema; `gui_session_begin({ttlSeconds})` returns takeover with `owner-persisted`.
+- Remaining root cause: authorized Codex can inherit Commander's generated no-Codex `CODEX_HOME` sentinel from an older parent process.
+- Fix scope: environment decontamination only for Commander-generated sentinel paths; legitimate owner `CODEX_HOME` remains intact. Current plugin/tool text is aligned with the live policy. Background project runner remains No-Codex.
+- Related release gate: async exit/close fixture made cross-platform deterministic after repeated CI timing failures; production worker unchanged.
+- Current gate: focused regressions → full Windows check/test/audit → hosted exact-SHA Windows/Ubuntu CI → immutable publication → candidate-first rollout/live Codex canary.
+- FINAL status: UNPROVEN until all gates pass.
+
+
+### v0.9.16 Windows qualification
+
+- Focused authorization/async regression: PASS 22/22.
+- Installer and onboarding/plugin checks: PASS.
+- Full Windows `npm run check`: PASS.
+- Full Windows `npm test`: PASS; core 475 PASS / 6 SKIP / 0 FAIL plus downstream contract gates.
+- Windows `npm run audit`: PASS / `SECURITY_AUDIT_PASS`.
+- Current gate: commit/push → hosted exact-SHA Windows/Ubuntu CI.
