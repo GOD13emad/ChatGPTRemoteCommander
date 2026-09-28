@@ -318,3 +318,16 @@ Historical checkpoints are preserved in the [archived project state](history/PRO
 - Evidence log SHA-256: `a06b87e9a80be2bd0853207f3a9f33e191d27b12199af16e7cd0de79fe066b7f`.
 - Current critical path: commit/push -> hosted CI -> merge -> immutable v0.9.22 release -> candidate-first live rollout -> exact live runner readback.
 - FINAL remains UNPROVEN until live `runnerConfigured=true` and `automaticExecution=true` are observed on the routed runtime.
+
+
+## 2026-09-29 — PR #50 hosted Windows gate regression
+
+- Hosted Windows CI for head `8129441eec60ea21944b5c0b1c1bbc41ab0ab7ce` failed on two qualification races only: async temp-root teardown `EBUSY`, and browser PID marker read before valid content was ready.
+- Production runner-policy hotfix remains unchanged. Merge stays BLOCKED until targeted stress, full local gate and hosted reruns pass on a new head SHA.
+
+
+## 2026-09-29 — PR #50 qualification revalidation PASS
+
+- Windows qualification race fixes passed targeted stress and a complete local v0.9.22 promotion gate.
+- Gate evidence SHA-256: `1996b17a4bad9c958de46ddf693ec507dece49e5a5e12cc3a839fdf71256b16b`.
+- Merge remains BLOCKED until fresh hosted CI and Server Install Canary pass on the new PR head SHA.

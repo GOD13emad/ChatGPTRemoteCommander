@@ -1197,3 +1197,21 @@ Historical checkpoints remain append-only archives. Current release/control clai
 - **Live-config proof before promotion:** the policy merge recovered `runnerEnabled=true`, `autoTick=true`, provider `codex` while preserving active `runtimeState`, workflow directory and port.
 - **Evidence artifact:** `var/final-gate-v0.9.22.log`, SHA-256 `a06b87e9a80be2bd0853207f3a9f33e191d27b12199af16e7cd0de79fe066b7f`.
 - **Open gates:** hosted CI, merge, immutable release publication, candidate-first live rollout, and live `system_status` readback.
+
+
+## 2026-09-29 — PR #50 hosted Windows qualification failures
+
+- **Hosted evidence — CONFIRMED / HIGH:** PR #50 Windows `npm run check` had exactly two failures while local full gate was green.
+- **Failure 1:** `same async requestId with a changed correlation fails closed` failed only during fixture teardown with Windows `EBUSY` on temp-root removal. The test's cleanup was the only nearby async-operation cleanup missing the established `maxRetries:20, retryDelay:50` policy.
+- **Failure 2:** `unexpected helper exit terminates the independently owned browser process and removes an isolated profile` failed on the PID-validity assertion. The helper writes the PID with async `writeFile`; file creation can become visible before the content is ready, so gating only on path existence is insufficient.
+- **Decision:** qualification-only hardening. Add the same Windows cleanup retry policy to the async fixture and wait for a parseable positive PID marker before asserting process cleanup. Production runtime code remains unchanged.
+- **Prevention / regression:** exact-test stress on Windows plus a complete local final gate before pushing a new SHA; hosted CI/canary must then rerun on that SHA.
+
+
+## 2026-09-29 — PR #50 Windows qualification fixes revalidated
+
+- **Targeted regression — CONFIRMED / HIGH:** async correlation cleanup stress passed 20/20; browser unexpected-helper-exit stress passed 5/5; forced helper shutdown exact test passed.
+- **Complete local gate — CONFIRMED / HIGH:** `FINAL_GATE_PASS` at `2026-09-29T00:26:55.8341065+03:30`; focused Project Engine 222 pass / 0 fail / 1 platform skip; full test aggregate 483 pass / 0 fail / 6 platform skips; security audit, Windows runtime contract, source integrity and diff check passed.
+- **Evidence artifact:** `var/final-gate-v0.9.22.log`, SHA-256 `1996b17a4bad9c958de46ddf693ec507dece49e5a5e12cc3a839fdf71256b16b`.
+- **Scope:** qualification-only fixes; production runner-policy code remains unchanged from PR #50 head `8129441eec60ea21944b5c0b1c1bbc41ab0ab7ce`.
+- **Next authority gate:** push a narrow follow-up commit to PR #50 and require fresh hosted CI + Server Install Canary on the new head SHA before merge.
