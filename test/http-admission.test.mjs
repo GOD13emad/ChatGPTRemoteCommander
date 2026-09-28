@@ -31,7 +31,7 @@ test('real candidate HTTP dispatcher blocks browser origins and keeps local JSON
     child=spawn(process.execPath,[path.join(root,'src','server-v0.3.mjs')],{env:{...process.env,REMOTE_COMMANDER_CONFIG:path.join(root,'config.json')},stdio:['ignore','pipe','pipe']});
     let stderr='';child.stderr.on('data',c=>stderr+=c);
     let alive=false;
-    for(let i=0;i<100;i++){try{if((await fetch(`http://127.0.0.1:${port}/health`)).ok){alive=true;break;}}catch{}await wait(25);}
+    for(let i=0;i<400;i++){try{if((await fetch(`http://127.0.0.1:${port}/health`)).ok){alive=true;break;}}catch{}await wait(25);}
     assert.equal(alive,true,stderr);
     const body=JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/call',params:{name:'system_status',arguments:{}}});
     const send=headers=>fetch(`http://127.0.0.1:${port}/mcp`,{method:'POST',headers,body});

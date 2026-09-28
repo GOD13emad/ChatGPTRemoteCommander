@@ -28,7 +28,7 @@ test('isolated profile server owns separate marker, private memory and conservat
   child=spawn(process.execPath,[path.join(repo,'src','server-v0.3.mjs')],{cwd:repo,env:{...process.env,REMOTE_COMMANDER_CONFIG:cfg},stdio:['ignore','pipe','pipe']});
   child.stdout.on('data',d=>output=(output+d).slice(-12000));child.stderr.on('data',d=>output=(output+d).slice(-12000));
   let health;
-  for(let i=0;i<80;i++){try{const r=await fetch('http://127.0.0.1:'+p+'/health',{signal:AbortSignal.timeout(300)});if(r.ok){health=await r.json();break;}}catch{}await pause(50);}
+  for(let i=0;i<200;i++){try{const r=await fetch('http://127.0.0.1:'+p+'/health',{signal:AbortSignal.timeout(300)});if(r.ok){health=await r.json();break;}}catch{}await pause(50);}
   assert.ok(health,output);assert.equal(health.instance.profile,'fixture-account');assert.equal(health.instance.isolated,true);
   const rpc=async(name,args={})=>{const r=await fetch('http://127.0.0.1:'+p+'/mcp',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/call',params:{name,arguments:args}})});return r.json();};
   const status=await rpc('system_status');assert.equal(status.result.isError,false);const s=status.result.structuredContent;

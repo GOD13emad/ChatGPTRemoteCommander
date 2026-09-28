@@ -55,7 +55,7 @@ test('HTTP conversation continuation binds without opening a tab and queues term
     });
     let stderr='';child.stderr.on('data',d=>{stderr+=d.toString('utf8');});
     let healthy=false;
-    for(let i=0;i<200;i++){
+    for(let i=0;i<400;i++){
       if(child.exitCode!==null)break;
       try{const r=await fetch(`http://127.0.0.1:${port}/health`);if(r.ok){healthy=true;break;}}catch{}
       await wait(25);

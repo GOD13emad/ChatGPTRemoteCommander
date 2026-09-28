@@ -1014,3 +1014,54 @@ Historical checkpoints remain append-only archives. Current release/control clai
 **Confidence/Status:** root cause and deterministic-test prevention CONFIRMED/HIGH from repeated historical evidence, official Node event semantics, and 10× Windows + 10× Linux focused stress. Renewed full exact-SHA local/hosted qualification remains required on the final documentation-complete SHA.
 
 **Reuse Targets:** async lifecycle CI, inherited-stdio regression design, release qualification, failure-prevention.
+
+
+## E-REL-20260928-R10 — v0.9.20 final qualification, immutable publication, and live rollout
+
+**Date/Context:** 2026-09-28; final closure after repeated host-stream interruption.
+
+**Release truth:** qualified candidate `674990c743fc996d84d0b0c4e008f0255078e44c` was merged as `cbbc6dc19f63a87e651a8f1af9f429aa7b6a5063`. Candidate-vs-merge comparison contained no file differences. Annotated tag `v0.9.20` points to the merge commit.
+
+**Exact-SHA qualification — CONFIRMED/HIGH:** Linux exact-SHA check/test/audit and release-asset build/checksum PASS. Hosted CI run `36445899951` completed Windows and Ubuntu check/test/audit successfully. Permanent Server Install Canary run `36445899940` completed both Windows Server bootstrap and clean Ubuntu container bootstrap successfully. Windows local exact-SHA full gate initially observed one non-reproduced conversation-fixture startup exit while multiple qualification workloads were concurrent; the focused test then passed 10/10 in isolation, hosted Windows passed, and a subsequent clean full Windows exact-SHA check/test/audit rerun emitted `V0920_WINDOWS_FINAL_EXACT_SHA_PASS`. No runtime patch was inferred from the one non-reproduced occurrence.
+
+**Immutable publication — CONFIRMED/HIGH:** Release Sync run `36447207822` succeeded. Published release id `398403065` reports immutable=true. Re-downloaded release contained 15 assets; all 14 payload entries in `SHA256SUMS.txt` matched; the stable latest `plugin-template.zip` download matched SHA-256 `81b5874bec785e2d7d209f54ac2564f2e588a1118ff9c06884ceb129903a265d`.
+
+**Live rollout — CONFIRMED/HIGH:** candidate-first rollout completed on the primary Windows default profile, Windows `saeed-emad`, Linux target, and audited HPC Windows target. Final route records all show active version `0.9.20`, exact commit `cbbc6dc19f63a87e651a8f1af9f429aa7b6a5063`, and `previous=null`. No forced kill was needed to retire the primary Windows previous route; it drained/retired naturally.
+
+**External Extension acceptance — CONFIRMED/HIGH:** official Skill content remained separately installed and unchanged by the Commander rollout. Live v0.9.20 routing on Windows/Linux/HPC returned: COMSOL task -> `comsol-modeling` only; ANSYS audit/continue -> `ansys-modeling` + `project-execution-brain`; Persian final thesis request -> `final-thesis-report` only; diagnostics empty.
+
+**Security/operations:** headless/no-window PowerShell invariant retained. Windows server canary proves Node/Git bootstrap with no antivirus exclusions. HPC durable delivery remains clean at closure; unrelated historical workflow/delivery records on other profiles are not release blockers and are not mass-deleted.
+
+**Decision:** v0.9.20 is **SCOPED FINAL / ACCEPTED** for the current release objective. Broader superiority claims, external host-stream guarantees, unrelated project workflow cleanup, and future provider/integration work remain outside this acceptance.
+
+**Reuse Targets:** release qualification, fresh-server installer, immutable publication, live rollout, Agent Extension routing, failure-prevention, project handoff.
+
+
+## E-MAINT-20260928-R11 — post-release GitHub Actions pin closure
+
+**Date/Context:** 2026-09-28; final repository hygiene after v0.9.20 production acceptance.
+
+**Finding:** open PRs #3/#4 and superseded closure PR #43 carried current GitHub Actions pins while main still used older v4 commits. Hosted runs emitted the GitHub warning that Node.js 20-targeting action revisions were being forced onto Node.js 24.
+
+**Decision:** port only the action-pin maintenance onto the current v0.9.20 closure branch instead of merging stale v0.9.19 documentation. Update all current workflow call sites, including the newly added permanent Server Install Canary.
+
+**Pins:** `actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1` (v7.0.1) and `actions/setup-node@820762786026740c76f36085b0efc47a31fe5020` (v7.0.0).
+
+**Scope:** repository CI/release infrastructure only. No v0.9.20 runtime/release bytes change; the immutable tag remains authoritative for production.
+
+**Status:** implementation present on closure branch; PR CI must pass before merge. After merge, Dependabot PRs #3/#4 and stale PR #43 are superseded.
+
+
+## E-CI-20260928-R12 — Windows hosted fixture startup budget under Actions v7
+
+**Date/Context:** 2026-09-28; post-release closure PR #45 after refreshing GitHub Actions pins to checkout v7.0.1/setup-node v7.0.0.
+
+**Observed evidence:** Ubuntu CI passed. Windows CI run `36450036292` failed two HTTP fixture tests while runtime source was unchanged from accepted v0.9.20. Both failures occurred before any behavior assertion because copied fixture servers did not become healthy within their local startup loops. `mcp-conformance.test.mjs` allowed 100×25 ms (2.5 s); `mutation-idempotency-http.test.mjs` also allowed 100×25 ms. The latter stderr contained only the SQLite experimental warning, not a product initialization error.
+
+**Historical family audit:** several HTTP fixture tests still used 2.5–5 s process-start budgets while hardened fixtures already allow approximately 10 s or a 30 s deadline. Hosted qualification runs test files concurrently, so process scheduling/startup latency is not the invariant these tests intend to measure.
+
+**Root Cause -> Prevention -> Guard:** inconsistent short fixture-server readiness budgets allowed host scheduling latency to fail unrelated HTTP behavior tests -> normalize copied/local fixture health waits to approximately 10 s without changing product runtime deadlines -> run the affected fixture suite repeatedly on Windows and require renewed hosted Windows/Ubuntu CI PASS.
+
+**Scope:** test infrastructure only. No Commander runtime, transport, installer, release bytes, authority, timeout semantics, or user-visible behavior changed.
+
+**Focused regression:** affected fixture suite executed three consecutive times on Windows: 36/36 PASS, terminal marker `V0920_FIXTURE_STARTUP_STRESS_PASS`, exit 0. Both originally failing tests passed in every run. **Status:** local prevention CONFIRMED/HIGH; renewed hosted CI on the committed head is required before merge.

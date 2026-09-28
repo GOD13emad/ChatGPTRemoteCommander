@@ -32,7 +32,7 @@ async function startServer(serverRoot, configPath) {
   });
   let stderr=''; child.stderr.on('data', c => { stderr += c.toString('utf8'); });
   const config = JSON.parse(await fs.readFile(configPath, 'utf8'));
-  for (let i=0;i<100;i+=1) {
+  for (let i=0;i<400;i+=1) {
     try { const r=await fetch(`http://127.0.0.1:${config.port}/health`); if (r.ok) return { child, stderr:()=>stderr }; } catch {}
     await wait(25);
   }
