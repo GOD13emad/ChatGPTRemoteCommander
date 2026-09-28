@@ -301,3 +301,20 @@ Historical checkpoints are preserved in the [archived project state](history/PRO
 - Full gate after browser qualification fix had one failure only: Windows fixture cleanup returned `ENOTEMPTY` after the idempotency assertions had passed.
 - Mutation: test-fixture teardown only, using the repository's established recursive cleanup retry policy (`maxRetries:20`, `retryDelay:50`).
 - Runtime/contract code unchanged. Promotion remains BLOCKED until targeted stress and full final gate pass.
+
+
+## 2026-09-28 — v0.9.22 current blocker / policy-overlay hotfix
+
+- Previous accepted source: main after PR #48; v0.9.21 hosted CI and Server Install Canary passed.
+- Live blocker: v0.9.21 runtime remains `runnerConfigured=false / automaticExecution=false` although canonical local owner policy explicitly enables the runner.
+- Root cause: Windows updater uses active routed config as the default candidate source and therefore retained the historical policy-disabled runner.
+- Current mutation objective: overlay only an independently authorized canonical runner onto the active baseline when the active reason is exactly `NO_CODEX_VIA_COMMANDER`.
+- Promotion remains OPEN until focused/full/hosted gates, live candidate-first rollout, and exact live readback pass.
+
+
+## 2026-09-29 — v0.9.22 local promotion gate PASS
+
+- Complete local promotion gate PASS with security audit, source integrity, runtime contracts and diff check all green.
+- Evidence log SHA-256: `a06b87e9a80be2bd0853207f3a9f33e191d27b12199af16e7cd0de79fe066b7f`.
+- Current critical path: commit/push -> hosted CI -> merge -> immutable v0.9.22 release -> candidate-first live rollout -> exact live runner readback.
+- FINAL remains UNPROVEN until live `runnerConfigured=true` and `automaticExecution=true` are observed on the routed runtime.

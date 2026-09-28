@@ -58,7 +58,10 @@ test('auto updater is candidate-first, hardware-gated and commit-point aware',()
     'router-retire.mjs',
     'stale-drain-policy.ps1',
     'AUTO_UPDATE_NEWER_CURRENT',
-    'Test-VersionGreater'
+    'Test-VersionGreater',
+    'merge-primary-policy.mjs',
+    'PRIMARY_POLICY_OVERLAY',
+    'PRIMARY_POLICY_MERGE_FAIL'
   ]) assert.ok(s.includes(marker),marker);
   assert.ok(s.includes('https://github.com/GOD13emad/ChatGPTRemoteCommander/releases/latest') && s.includes('Invoke-WebRequest') && s.includes('Invoke-RestMethod'),'Windows stable discovery must prefer published-release redirect with REST fallback');
   assert.ok(s.includes("MCP-Protocol-Version") && s.includes("2026-07-28") && s.includes("-Headers $headers"), 'internal updater MCP calls through the canonical router must identify as the current protocol and never self-poison legacy-host continuity state');

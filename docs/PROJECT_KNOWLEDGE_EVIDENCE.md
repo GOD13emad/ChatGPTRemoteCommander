@@ -1177,3 +1177,23 @@ Historical checkpoints remain append-only archives. Current release/control clai
 - **Security / diff:** `SECURITY_AUDIT_PASS`; `git diff --check` PASS.
 - **Evidence artifact:** `var/final-gate-v0.9.21.log`, SHA-256 `2e4402ddddcf21240fc59f478734f3833c11d5b614bf2698a5aa0b39ef00bf12`.
 - **Open gates:** hosted CI + Server Install Canary on the new commit, PR merge, immutable deployment, and live runtime readback. Native ChatGPT host wake/push and elapsed soak remain external/unproven.
+
+
+## 2026-09-28 — v0.9.22 Windows owner-runner policy-overlay root cause and prevention
+
+- **Live evidence — CONFIRMED / HIGH:** v0.9.21 canonical local policy contains `durableWorkflows.runner.enabled=true`, `autoTick=true`, exact `provider.kind=codex`, a real local Codex executable and `powerMode.codexControl.allowLaunch=true`; the active routed v0.9.21 runtime still contains the historical disabled runner with reason `NO_CODEX_VIA_COMMANDER`, so live `system_status` reports `runnerConfigured=false` and `automaticExecution=false`.
+- **Root cause — CONFIRMED / HIGH:** Windows `Get-PrimaryConfig` has preferred `route.active.configPath` since v0.8.0. Thus the v0.9.21 updater used the historical runtime policy as its candidate input and ignored the newer explicit canonical owner runner policy. The v0.9.21 code contract itself is valid: an isolated candidate build using canonical local policy preserves the owner-authorized Codex runner and clamps provider timeout to 30 seconds.
+- **Correction to earlier inference:** `workflow.project_engine` is a capability name; the configured runner lives under `durableWorkflows.runner`. Earlier checks of a nonexistent `workflow.project_engine` config block are superseded by the direct `durableWorkflows.runner` evidence.
+- **Decision / minimum sufficient control:** keep active routed config as baseline. Recover only the runner block when active state is specifically historical `NO_CODEX_VIA_COMMANDER` and both canonical policy and merged active authority pass the same explicit-owner Codex contract. Do not copy unrelated canonical fields and do not override Standard/explicit opt-out/other disabled states.
+- **Prevention / regression:** centralize the merge through `project-runner-config` authorization logic, add unit regressions for allowed and denied overlays, add updater contract markers, and require live readback after candidate-first rollout.
+- **Reuse targets:** release notes, updater architecture, policy migration, failure prevention.
+
+
+## 2026-09-29 — v0.9.22 complete local promotion gate
+
+- **Status:** CONFIRMED / HIGH — `FINAL_GATE_PASS` at `2026-09-29T00:09:04.6782491+03:30`.
+- **Focused Project Engine:** 223 total; 222 pass, 0 fail, 1 platform skip.
+- **Release metadata contracts:** installer, onboarding/plugin, release-assets, source-integrity, Windows runtime contract and security audit passed after v0.9.22 alignment.
+- **Live-config proof before promotion:** the policy merge recovered `runnerEnabled=true`, `autoTick=true`, provider `codex` while preserving active `runtimeState`, workflow directory and port.
+- **Evidence artifact:** `var/final-gate-v0.9.22.log`, SHA-256 `a06b87e9a80be2bd0853207f3a9f33e191d27b12199af16e7cd0de79fe066b7f`.
+- **Open gates:** hosted CI, merge, immutable release publication, candidate-first live rollout, and live `system_status` readback.
