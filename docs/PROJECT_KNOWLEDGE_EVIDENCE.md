@@ -862,3 +862,16 @@ Historical checkpoints remain append-only archives. Current release/control clai
 **Confidence/Status:** CI root cause CONFIRMED/HIGH. Full exact-tree and renewed hosted exact-SHA CI remain promotion gates.
 
 **Reuse Targets:** Windows test process lifecycle, isolated-server fixtures, CI reliability, cleanup guidance.
+
+
+## E-QUAL-20260928-R1 — final combined Windows local gate
+
+**Date/Context:** 2026-09-28; combined v0.9.16 candidate after current-guidance alignment, raw-server bootstrap, and Windows hosted fixture lifecycle hardening.
+
+**Gate:** full `npm run check` → `npm test` → `npm run audit` with strict exit propagation.
+
+**Result:** exit 0; final marker `V0916_FINAL_FULL_WINDOWS_PASS`. Installer and onboarding checks PASS; `npm test` core runner reported 475 PASS / 6 SKIP / 0 FAIL; GUI contract 77/77 PASS; concurrency, filesystem safety, Windows runtime contract, source integrity and schema-continuity gates PASS; `SECURITY_AUDIT_PASS`.
+
+**Status:** Windows local combined candidate qualification CONFIRMED/HIGH. Because this evidence record itself changes the candidate commit, the evidence-bearing exact SHA still requires the final qualification/hosted gates before promotion.
+
+**Reuse Targets:** v0.9.16 final release gate, server installer qualification, Windows CI stabilization.
