@@ -1,23 +1,23 @@
 # Current project state
 
-Updated: 2026-09-28. Scope: public product/release status plus current v0.9.19 candidate.
+Updated: 2026-09-28. Scope: public Remote Commander product/release status and the current v0.9.20 release candidate.
 
 ## Release baseline
 
-- v0.9.18 is the current immutable published runtime baseline at merge commit `b277c30ee9c1ecceb9e68638cf413fe4f7b75d4c`.
-- v0.9.18 release verification: immutable=true; 15 assets; 14 checksum entries all matched; stable latest `plugin-template.zip` matched SHA-256 `ff725c10a8d747747ae6c37e84c0ccf18b3d39c992cb9f7dc4b13fa02506fff9`.
-- v0.9.18 is live on the audited Windows default target, Linux target, and HPC Windows target.
-- Separately installed official Extension set is `ansys-modeling`, `comsol-modeling`, `project-execution-brain`, and `final-thesis-report`. The owner-private `video-trend` extension remains outside the official rollout.
+- **v0.9.19** is the current immutable published/live baseline at merge/tag commit `e04cff5a4985f905afe08a6b4a791baadc54bc46`.
+- v0.9.19 exact candidate qualification passed local Windows, clean Linux, hosted Windows and hosted Ubuntu. Its immutable release contains 15 assets with 14 verified checksum entries.
+- v0.9.19 is live on the primary Windows default profile, Windows `saeed-emad` profile, Linux target and audited HPC Windows target; all recorded routes use the exact release commit and have `previous=null`.
+- Official external Extension set is `ansys-modeling` v1.1.1, `comsol-modeling` v1.1.1, `project-execution-brain` v1.0.0, and `final-thesis-report` v1.0.0. Skill content hashes match across Windows/Linux/HPC. The owner-private `video-trend` extension is intentionally outside the official set.
+- Live routing canaries on Windows/Linux/HPC PASS: COMSOL -> COMSOL only; ANSYS audit/continue -> ANSYS + Project Execution Brain; Persian final-thesis request -> Final Thesis Report only.
+- Headless execution invariant is active: Commander/runtime/qualification PowerShell child paths are hidden/no-window by default; visible console windows are not an approved progress surface.
 
-## CURRENT / open release gates
+## CURRENT / open release gate
 
-CURRENT: v0.9.19 Skill-routing specificity.
+CURRENT: **v0.9.20 fresh-Linux server prerequisite closure**.
 
-v0.9.19 has one bounded objective: make automatic Extension selection fail safer after v0.9.18 by (a) suppressing weak lexical candidates when explicit trigger evidence exists, and (b) allowing multiword project triggers to match when their words are separated so compatible project-method + domain Skills can layer.
+A disposable v0.9.19 server canary proved the Windows raw-server bootstrap PASS with Node/Git absent from PATH and no antivirus exclusions. The clean Ubuntu 24.04 container found one real defect: Python 3 was not installed even though the Linux qualification contract requires it. v0.9.20 adds Python 3 to supported Linux prerequisite sets and makes clean Windows/Linux server canaries a permanent release gate.
 
-Focused routing/installer/onboarding/release-asset regressions PASS.
-
-Open gates: full Windows check/test/audit; clean Linux exact-tree check/test/audit + release-asset build; hosted exact-SHA Windows/Ubuntu CI; immutable release publication/download verification; candidate-first rollout/version canaries.
+Open gates for v0.9.20: focused regression -> exact-SHA local Windows/Linux -> permanent disposable-server canary -> hosted CI -> immutable release verification -> candidate-first rollout/live readback.
 
 ## Remaining roadmap
 
@@ -28,7 +28,7 @@ Broader blocker escalation, monetary accounting, additional providers/integratio
 - Installation: [START_HERE](../START_HERE.md) and [Work/Codex setup](../WORK_SETUP.md).
 - Behavior: [project engine](PROJECT_ENGINE.md), [adaptive planning](PROJECT_ENGINE_ADAPTIVE.md), [project questions](PROJECT_ENGINE_DECISIONS.md), [background browser](BACKGROUND_BROWSER.md).
 - Validation: [v0.9.3 candidate](RELEASE_0.9.3.md), [v0.9.1 published baseline](RELEASE_0.9.1.md), [v0.9.2 historical candidate](RELEASE_0.9.2.md), [v0.9.0 published](RELEASE_0.9.0.md), [v0.8.42 historical published baseline](RELEASE_0.8.42.md), [v0.8.40 historical candidate](RELEASE_0.8.40.md), [v0.8.39 historical candidate](RELEASE_0.8.39.md), [qualification history](PROJECT_ENGINE_VALIDATION.md), [GUI acceptance](GUI_ACCEPTANCE.md).
-- Knowledge: [engineering decisions and evidence](PROJECT_KNOWLEDGE_EVIDENCE.md).
+- Knowledge: [engineering decisions and evidence](PROJECT_KNOWLEDGE_EVIDENCE.md) and [current Project Brain](PROJECT_BRAIN.md).
 
 Historical checkpoints are preserved in the [archived project state](history/PROJECT_CONTROL_STATE_20260924.md). Their former “current”, “final” and “next action” labels are historical. Account bindings, machine paths, process inventories and operational receipts belong in private deployment handoffs rather than this public status page.
 

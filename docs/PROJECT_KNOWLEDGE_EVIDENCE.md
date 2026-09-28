@@ -953,3 +953,22 @@ Historical checkpoints remain append-only archives. Current release/control clai
 **Confidence/Status:** implementation CONFIRMED/HIGH; v0.9.19 full release gates OPEN.
 
 **Reuse Targets:** Skill auto-routing, domain/project-method composition, false-positive prevention, external Extension lifecycle.
+
+
+## E-SRV-20260928-R7 — disposable fresh-server canary and Linux Python prerequisite defect
+
+**Date/Context:** 2026-09-28; closure audit of the long-open fresh-server installation gate after v0.9.19 release and live rollout.
+
+**Authoritative canary provenance:** temporary GitHub branch commit `efdfb5a40cfa04d77e636151df076dbdbeb5a847`; workflow run `36437156497`. The temporary branch exists only to exercise immutable v0.9.19 release assets without modifying main or live targets.
+
+**Windows Server fact — CONFIRMED/HIGH:** job `108977912241` on Windows Server 2022 completed successfully. Node.js and Git were removed from PATH before the published server bootstrap ran. The bootstrap downloaded/verified Node.js 22.23.3 and Git for Windows, installed exact commit `e04cff5a4985f905afe08a6b4a791baadc54bc46`, emitted `SERVER_INSTALL_WINDOWS_PASS` and `WINDOWS_DISPOSABLE_SERVER_CANARY_PASS`, reported no reboot requirement, and explicitly reported that no antivirus exclusions were added.
+
+**Linux fact — CONFIRMED/HIGH:** job `108977911768` ran the published v0.9.19 Linux server bootstrap inside a clean Ubuntu 24.04 container. OS prerequisites, exact source fetch, portable Node 22.23.3 and the pinned tunnel client succeeded. Qualification then failed in `test/installer-check.mjs` because `python3` was absent.
+
+**Root Cause -> Prevention -> Guard -> Regression:** Linux fresh-server package lists omitted Python 3 although the product's own qualification parses `tools/gui-control-linux.py` using Python 3 -> install Python 3 on supported package-manager families and require `python3` before qualification -> static installer contract plus a permanent disposable `Server Install Canary` workflow for Windows Server and clean Ubuntu -> v0.9.20 candidate must pass both system canaries before promotion.
+
+**Security decision:** do not weaken qualification by skipping the Python check on headless servers. Python is a real supported runtime/tool dependency in the product and installing it is the simpler, more faithful fix. Do not add Defender/AV exclusions; keep Windows bootstrap verification and allowlisting evidence.
+
+**Confidence/Status:** root cause CONFIRMED/HIGH; v0.9.20 implementation present, full candidate qualification OPEN.
+
+**Reuse Targets:** raw-server installer, dependency completeness, release gating, immutable deployment, failure-prevention.
