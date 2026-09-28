@@ -649,3 +649,56 @@ Historical checkpoints remain append-only archives. Current release/control clai
 **Reuse Targets:** release qualification, MCP Tasks compliance, stream-safe release workflow.
 
 **Provenance:** `src/server-v0.3.mjs`, `test/mcp-tasks-extension.test.mjs`, commit `5116163`, local durable operation receipts listed above.
+
+
+## E-AUTH-20260928-R1 — Explicit owner authorization + TinyFish capability audit
+
+**Date/Context:** 2026-09-28; live Windows v0.9.13/v0.9.14-line audit after an explicitly authorized foreground action still produced `GUI_TAKEOVER_NOT_AUTHORIZED`, plus a user report that Codex was explicitly allowed but locally blocked.
+
+**Claim/Decision:** Preserve safe defaults, but allow narrow persisted owner opt-ins for trusted Full-Power profiles. Do not make GUI takeover or Codex launch globally permissive.
+
+**Evidence/Source:** Live `system_status` confirms `FULL_POWER`, `explicitlyAuthorized=true`, all GUI capabilities granted, but default GUI session mode observe. Live server `tools/list` includes `mode` and `explicitUserAuthorization` for `gui_session_begin`; the active ChatGPT-side tool schema exposes only `ttlSeconds`, proving a stale-host-schema compatibility gap. Source audit confirms hard-coded `CODEX_DELEGATION_FORBIDDEN`. Connected TinyFish tool catalog confirms hosted search/fetch plus browser automation runs with browser profiles, optional vault, stealth/proxy, webhooks, structured output and capture controls.
+
+**Root Cause → Prevention → Guard → Regression:** stale connector schema cannot serialize modern GUI authorization → persisted owner fallback for omitted mode → require Full-Power + explicit authorization + opt-in flag, while Standard remains observe-only → focused GUI tests. Absolute Codex block ignores explicit owner intent → default-deny configurable policy → require Full-Power + explicit authorization + `codexControl.allowLaunch=true` → focused Codex tests.
+
+**Failure/Regression:** First focused authorization run operation `5bb9e558-ead5-44af-84a8-5ec4c0117020` FAIL 103/104 because takeover worked but response omitted authorization provenance. Narrow response fix applied. Second focused run operation `324137b3-6641-4c92-8ef8-8112ff658983` PASS 104/104, exit 0.
+
+**Rejected Options:** globally defaulting GUI to takeover; accepting any Full-Power flag without explicit profile authority; globally enabling Codex; embedding TinyFish-style hosted proxy/vault/search infrastructure into Commander. These add risk/complexity without necessity.
+
+**Confidence/Status:** Root causes CONFIRMED/HIGH; focused implementation regression PASS; full release qualification OPEN.
+
+**Reuse Targets:** GUI authorization, stale schema compatibility, Codex delegation, capability policy, competitive architecture, release documentation.
+
+**Provenance:** live runtime `system_status` and live MCP `tools/list`; `src/gui-tools-windows.mjs`, `src/no-codex-policy.mjs`, `src/capability-profile.mjs`, focused operation receipts above; TinyFish connected tool catalog.
+
+
+## E-AUTH-20260928-R2 — v0.9.15 Windows full qualification
+
+**Date/Context:** 2026-09-28; same clean v0.9.15 authorization worktree after focused PASS.
+
+**Failure/Root Cause:** First full `npm run check` operation `f75eb1e0-7ba3-4928-b1d1-6899837983d7` failed one process-tree regression because internal `capture()` referenced `ctx`, which is not in its scope. This was introduced by the Codex environment policy wiring.
+
+**Prevention/Guard:** Pass `allowCodex` explicitly from `prepareShellCommand()` through the prepared command into `capture()`; do not let low-level process helpers reach upward for authorization context. Targeted process-tree + GUI + Codex + capability suite PASS 109/109.
+
+**Full Evidence:** `npm run check` operation `75d71f03-da21-4b05-92b3-75c3e5594e4b` SUCCEEDED exit 0. `npm test` operation `83494e4f-3ec1-4924-bba5-c0473fae5657` SUCCEEDED exit 0. `npm run audit` exit 0 with `SECURITY_AUDIT_PASS`.
+
+**Confidence/Status:** Windows candidate qualification CONFIRMED/HIGH. Hosted exact-SHA CI, immutable integration/tag, installer/update acceptance and production rollout remain OPEN.
+
+**Reuse Targets:** authorization wiring, process lifecycle, release regression, failure-prevention guidance.
+
+
+## E-AUTH-20260928-R3 — Hosted Windows async test race during v0.9.15 qualification
+
+**Date/Context:** 2026-09-28; PR #36 exact head `3a5c49c63cf33a75cad003ebb7872704dd7eb037`, GitHub Actions run `36393301881`.
+
+**Observed Evidence:** Ubuntu job passed. Windows `npm run check` passed, then `npm test` failed exactly one test: `corrupt terminal projection is not repaired when receipt and reservation hashes differ` at `test/async-operations.test.mjs:407`, assertion `1 !== 0`. All authorization/Codex/GUI tests passed. The failure occurred after `waitFor()` observed a terminal operation state but before the detached worker process was guaranteed to have exited.
+
+**Root Cause → Prevention → Guard:** terminal state and final worker-process exit are distinct events on Windows; the regression intentionally corrupts durable projection/receipt files and could race the tail of worker cleanup → wait for the exact recorded `workerPid` to become nonexistent before deliberate test corruption → bounded 10-second PID-exit wait used only by the two corrupt-projection tests. No production retry, sleep, delivery, or authorization semantics changed.
+
+**Regression:** `test/async-operations.test.mjs` executed 10 consecutive times with the fix on Windows: **140/140 PASS**, no skips/failures, terminal `term-27`, final exit 0. `git diff --check` PASS.
+
+**Confidence/Status:** Root cause CONFIRMED/HIGH for the hosted failure family. Full exact-tree regression and renewed hosted exact-SHA CI remain OPEN.
+
+**Reuse Targets:** Windows CI stability, async durability tests, corrupt-projection recovery, release qualification.
+
+**Post-fix Full Gate:** exact-tree Windows `npm run check && npm test && npm run audit` completed in terminal `term-28` with final exit 0; test core runner reported 475 PASS / 6 SKIP / 0 FAIL and security audit reported `SECURITY_AUDIT_PASS`.

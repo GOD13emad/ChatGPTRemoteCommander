@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { synchronousCommandInput } from './retry-guard.mjs';
-import { assertNoCodexDelegatingScript, assertNoCodexExecutable, commanderChildEnv } from './no-codex-policy.mjs';
+import { assertNoCodexDelegatingScript, assertNoCodexExecutable, codexLaunchAuthorized, commanderChildEnv } from './no-codex-policy.mjs';
 import { appendFile, copyFile, mkdir, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { createHash, randomUUID } from 'node:crypto';
 import { spawn } from 'node:child_process';
@@ -211,11 +211,12 @@ export async function prepareProjectCommand(ctx, input) {
   const fullFilesystem = legacyPowerFullFilesystem(ctx);
   const program = validateProgram(input.program, ctx.config.allowedPrograms);
   const cwd = await legacyExistingPath(ctx, input.cwd ?? '.', ctx.roots[0]);
-  assertNoCodexExecutable(program, cwd);
+  const allowCodex = codexLaunchAuthorized(ctx);
+  assertNoCodexExecutable(program, { allowCodex });
   const info = await stat(cwd);
   if (!info.isDirectory()) throw new Error('cwd is not a directory');
   const args = validateCommandArgs(program, input.args ?? [], cwd, ctx.roots, { fullFilesystem });
-  await assertNoCodexDelegatingScript(program, args, cwd);
+  await assertNoCodexDelegatingScript(program, args, cwd, { allowCodex });
   const requested = Number(input.timeoutMs ?? ctx.config.maxCommandMs);
   const timeoutMs = Math.max(1000, Math.min(requested, ctx.config.maxCommandMs));
   return { file: program, args, cwd, timeoutMs, outputLimit: 262144, fullFilesystem };
@@ -229,7 +230,7 @@ export async function runProjectCommand(ctx, input) {
     shell: false,
     detached: process.platform !== 'win32',
     stdio: ['ignore', 'pipe', 'pipe'],
-    env: commanderChildEnv(cwd)
+    env: commanderChildEnv(cwd, process.env, { allowCodex: codexLaunchAuthorized(ctx) })
   });
   let stdout = '';
   let stderr = '';

@@ -21,11 +21,11 @@ import { compactToolSuccessPayload, serializeBoundedJsonResponse, synchronousCom
 import { MutationIdempotencyStore } from './mutation-idempotency.mjs';
 import { createAgentExtensionRegistry } from './agent-extensions.mjs';
 import {
-  NO_CODEX_POLICY, delegationRequirement, delegationStatus
+  NO_CODEX_POLICY, codexLaunchAuthorized, delegationRequirement, delegationStatus
 } from './no-codex-policy.mjs';
 
 let workflowTools = null;
-const VERSION = '0.9.14';
+const VERSION = '0.9.15';
 const MODERN_VERSION = '2026-07-28';
 const LEGACY_VERSIONS = ['2025-11-25', '2025-06-18', '2025-03-26'];
 const TASKS_EXTENSION = 'io.modelcontextprotocol/tasks';
@@ -98,6 +98,9 @@ const asyncOperationTools = createAsyncOperationTools({
 });
 
 function modelHandoffInstruction() {
+  if (codexLaunchAuthorized(config)) {
+    return ' Stay in the current ChatGPT conversation and use Commander as the default execution layer. This Full-Power owner profile permits local Codex launch only when the current user request explicitly authorizes or asks for Codex; do not infer consent from silence or unrelated prior work.';
+  }
   return ' Commander never delegates project reasoning or execution to Codex, ChatGPT Work, or another model runtime on its own. Stay in the current ChatGPT conversation and use Commander as the execution layer. If you believe Work or Codex would materially help, first ask the user to choose explicitly between continuing here with Commander and moving to Work/Codex. No silence, Full Power setting, prior approval, or project history counts as handoff consent. Commander itself must not launch Codex.';
 }
 
@@ -352,11 +355,11 @@ async function executeTool(name, args) {
 }
 async function executeDelegationTool(name, args) {
   if (name === 'delegation_requirement') {
-    const result = delegationRequirement(args?.reason);
+    const result = delegationRequirement(args?.reason, ctx.config);
     await audit(ctx, { action: name, ok: true, target: 'work_codex', approvalRequired: true, externalHandoffOnly: true });
     return result;
   }
-  if (name === 'delegation_status') return delegationStatus();
+  if (name === 'delegation_status') return delegationStatus(ctx.config);
   throw new Error('DELEGATION_UNKNOWN_TOOL');
 }
 
@@ -424,7 +427,7 @@ async function executeToolEffect(name, args) {
         completionBeacon: deliveryStore.beacon(5),
         mutationIdempotency: mutationIdempotency.status(),
         agentExtensions: agentExtensions.status(),
-        delegationPolicy: { ...NO_CODEX_POLICY, status: delegationStatus() },
+        delegationPolicy: { ...NO_CODEX_POLICY, commanderMayLaunchCodex: codexLaunchAuthorized(ctx.config), status: delegationStatus(ctx.config) },
         powerMode: config.powerMode ?? { enabled: false },
         browserControl: { availability: BROWSER_ENABLED ? 'CHECK_browser_status' : 'DISABLED', enabled: BROWSER_ENABLED,
           policy: { ...(config.powerMode?.browserControl ?? { enabled:false }), backgroundFirst:true,

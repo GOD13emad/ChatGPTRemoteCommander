@@ -3,6 +3,7 @@ import path from 'node:path';
 import { readFile, stat } from 'node:fs/promises';
 
 const POLICY_CODE = 'CODEX_DELEGATION_FORBIDDEN';
+const AUTH_POLICY = 'owner-authorized-local-launch';
 const INTERPRETERS = new Set([
   'python','python.exe','pythonw','pythonw.exe','node','node.exe',
   'pwsh','pwsh.exe','powershell','powershell.exe','bash','bash.exe','sh','sh.exe',
@@ -18,6 +19,14 @@ function unquote(value) {
   return String(value ?? '').trim().replace(/^["']|["']$/g, '');
 }
 
+export function codexLaunchAuthorized(ctxOrConfig) {
+  const config = ctxOrConfig?.config ?? ctxOrConfig;
+  return config?.powerMode?.enabled === true
+    && config?.capabilityProfile?.tier === 'FULL_POWER'
+    && config?.capabilityProfile?.explicitlyAuthorized === true
+    && config?.powerMode?.codexControl?.allowLaunch === true;
+}
+
 export function isCodexExecutable(value) {
   const text = unquote(value).replaceAll('\\','/');
   const base = path.basename(text).toLowerCase();
@@ -27,32 +36,36 @@ export function isCodexExecutable(value) {
     || /\/node_modules\/.bin\/codex(?:\.cmd|\.exe)?$/i.test(text);
 }
 
-export function delegationRequirement(reason = 'Work/Codex may be useful for this task.') {
+export function delegationRequirement(reason = 'Work/Codex may be useful for this task.', config = null) {
+  const local = codexLaunchAuthorized(config);
   return {
     approvalRequired: true,
-    policy: 'external-handoff-only',
+    policy: local ? AUTH_POLICY : 'external-handoff-only',
     default: 'continue_chat',
     reason: String(reason).slice(0, 2000),
     options: [
       { id: 'work_codex', label: 'Move to Work/Codex' },
       { id: 'continue_chat', label: 'Continue in this chat with Remote Commander' }
     ],
-    commanderMayLaunchCodex: false,
-    nextStep: 'Ask the user in the current chat to choose. If Work/Codex is selected, hand off outside Remote Commander. Commander itself must not launch Codex.'
+    commanderMayLaunchCodex: local,
+    nextStep: local
+      ? 'Current Full-Power owner policy permits local Codex launch only when the current user request explicitly calls for Codex. Otherwise continue in this chat.'
+      : 'Ask the user in the current chat to choose. If Work/Codex is selected, hand off outside Remote Commander. Commander itself must not launch Codex.'
   };
 }
 
-export function delegationStatus() {
+export function delegationStatus(config = null) {
+  const local = codexLaunchAuthorized(config);
   return {
     active: false,
-    policy: 'external-handoff-only',
+    policy: local ? AUTH_POLICY : 'external-handoff-only',
     default: 'continue_chat',
-    commanderMayLaunchCodex: false
+    commanderMayLaunchCodex: local
   };
 }
 
-export function assertNoCodexExecutable(value) {
-  if (isCodexExecutable(value)) throw violation();
+export function assertNoCodexExecutable(value, { allowCodex = false } = {}) {
+  if (!allowCodex && isCodexExecutable(value)) throw violation();
 }
 
 function commandReferencesCodex(command) {
@@ -70,8 +83,8 @@ function commandReferencesCodex(command) {
   return patterns.some(pattern => pattern.test(text));
 }
 
-export function assertNoCodexCommand(command) {
-  if (commandReferencesCodex(command)) throw violation();
+export function assertNoCodexCommand(command, { allowCodex = false } = {}) {
+  if (!allowCodex && commandReferencesCodex(command)) throw violation();
 }
 
 function interpreterScript(program, args, cwd) {
@@ -129,7 +142,8 @@ function scriptLaunchesCodex(text) {
   return false;
 }
 
-export async function assertNoCodexDelegatingScript(program, args, cwd) {
+export async function assertNoCodexDelegatingScript(program, args, cwd, { allowCodex = false } = {}) {
+  if (allowCodex) return;
   assertNoCodexExecutable(program);
   if (packageManagerCodex(program, args)) throw violation();
   const argText=(Array.isArray(args)?args:[]).map(String).join(' ');
@@ -145,7 +159,8 @@ export async function assertNoCodexDelegatingScript(program, args, cwd) {
   if (scriptLaunchesCodex(text)) throw violation();
 }
 
-export async function assertNoCodexShellDelegation(command, cwd) {
+export async function assertNoCodexShellDelegation(command, cwd, { allowCodex = false } = {}) {
+  if (allowCodex) return;
   assertNoCodexCommand(command);
   const text=String(command ?? '').trim();
   if(!text) return;
@@ -159,25 +174,29 @@ export async function assertNoCodexShellDelegation(command, cwd) {
   await assertNoCodexDelegatingScript(program,tokens,cwd);
 }
 
-export function commanderChildEnv(cwdOrSource, maybeSource) {
+export function commanderChildEnv(cwdOrSource, maybeSource, { allowCodex = false } = {}) {
   const source = cwdOrSource && typeof cwdOrSource === 'object' && !Array.isArray(cwdOrSource) && maybeSource === undefined
     ? cwdOrSource
     : (maybeSource ?? process.env);
   const env = { ...source };
-  for (const key of [
-    'OPENAI_API_KEY','OPENAI_BASE_URL','OPENAI_ORG_ID','OPENAI_ORGANIZATION',
-    'CODEX_API_KEY','CODEX_ACCESS_TOKEN','CODEX_REFRESH_TOKEN'
-  ]) delete env[key];
-  env.REMOTE_COMMANDER_NO_CODEX = '1';
-  env.CODEX_HOME = path.join(os.tmpdir(), 'chatgpt-remote-commander-no-codex', String(process.pid));
+  if (!allowCodex) {
+    for (const key of [
+      'OPENAI_API_KEY','OPENAI_BASE_URL','OPENAI_ORG_ID','OPENAI_ORGANIZATION',
+      'CODEX_API_KEY','CODEX_ACCESS_TOKEN','CODEX_REFRESH_TOKEN'
+    ]) delete env[key];
+    env.REMOTE_COMMANDER_NO_CODEX = '1';
+    env.CODEX_HOME = path.join(os.tmpdir(), 'chatgpt-remote-commander-no-codex', String(process.pid));
+  } else {
+    delete env.REMOTE_COMMANDER_NO_CODEX;
+  }
   return env;
 }
 
 export const NO_CODEX_POLICY = Object.freeze({
   code: POLICY_CODE,
-  mode: 'ENFORCED',
+  mode: 'DEFAULT_DENY',
   default: 'CONTINUE_CHAT',
   externalHandoffRequiresCurrentChatChoice: true,
   commanderMayLaunchCodex: false,
-  reason: 'Remote Commander uses the current ChatGPT chat as the reasoning layer. Work/Codex may be selected by the user only as an external handoff; Commander itself never launches Codex.'
+  reason: 'Remote Commander defaults to the current ChatGPT chat as the reasoning layer. Local Codex launch is denied unless an explicitly authorized Full-Power profile opts in.'
 });
