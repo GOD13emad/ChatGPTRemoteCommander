@@ -22,6 +22,8 @@ Updated: 2026-09-28. Scope: public Remote Commander product/release status.
 
 No open blocker remains for the **v0.9.20 release objective**.
 
+Post-release repository closure is also ACCEPTED: PR #45 exact head `bb973bb9f1de2f644d9a5e33fbbb854780897aa2` passed hosted Windows/Ubuntu CI run `36451298406` and Windows/Linux Server Install Canary run `36451298534`, then merged to main as `f0157ccff98da9e42c25e5ea0bd55bc9ee7de0ab`. This post-release main commit updates docs, GitHub Actions pins and test-fixture readiness only; immutable v0.9.20 release bytes remain unchanged.
+
 Broader product ambitions and host-platform limitations remain outside this scoped release acceptance and are listed under Remaining roadmap / Deferred below. They must not be interpreted as completed by this release.
 
 ## Remaining roadmap

@@ -1,6 +1,6 @@
 # Project Brain — ChatGPT Remote Commander
 
-Status: CURRENT
+Status: CURRENT — SCOPED FINAL / ACCEPTED
 Updated: 2026-09-28
 Authority: immutable release/tag -> exact live route records -> exact-SHA CI/canary evidence -> project control/evidence records.
 
@@ -70,9 +70,22 @@ A single local Windows full-gate attempt on the final candidate observed one cle
 - Claims that Commander is universally superior to every external agent/work product remain UNPROVEN without comparable benchmark evidence.
 - Dependency-update PRs and legacy historical branches are maintenance/history, not release acceptance evidence.
 
+## Post-release repository closure
+
+Main closure commit: `f0157ccff98da9e42c25e5ea0bd55bc9ee7de0ab`.
+
+Exact closure-head evidence:
+- focused Windows fixture-startup stress: 36/36 PASS;
+- hosted CI run `36451298406`: Windows PASS, Ubuntu PASS;
+- Server Install Canary run `36451298534`: Windows Server PASS, clean Ubuntu PASS;
+- Actions pins refreshed to checkout v7.0.1 / setup-node v7.0.0;
+- stale/superseded PRs #43, #3, #4 and legacy draft #30 closed without deleting Git history.
+
+No runtime/release bytes changed after immutable v0.9.20 publication.
+
 ## Exact next action
 
-For new work, start from v0.9.20 as the accepted production baseline. Open a new bounded change set only when a new requirement, reproducible defect, security issue, or evidence-backed improvement is identified.
+No action is required for the accepted v0.9.20 scope. For new work, start from v0.9.20 as the production baseline and open one bounded change set only when a new requirement, reproducible defect, security issue, or evidence-backed improvement is identified.
 
 ## History pointers
 

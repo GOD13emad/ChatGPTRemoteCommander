@@ -1065,3 +1065,24 @@ Historical checkpoints remain append-only archives. Current release/control clai
 **Scope:** test infrastructure only. No Commander runtime, transport, installer, release bytes, authority, timeout semantics, or user-visible behavior changed.
 
 **Focused regression:** affected fixture suite executed three consecutive times on Windows: 36/36 PASS, terminal marker `V0920_FIXTURE_STARTUP_STRESS_PASS`, exit 0. Both originally failing tests passed in every run. **Status:** local prevention CONFIRMED/HIGH; renewed hosted CI on the committed head is required before merge.
+
+
+## E-CLOSE-20260928-R13 — final post-release repository closure
+
+**Date/Context:** 2026-09-28; final audit after v0.9.20 production acceptance and post-release CI/hygiene maintenance.
+
+**Release authority:** immutable v0.9.20 remains tag/commit `cbbc6dc19f63a87e651a8f1af9f429aa7b6a5063`. Independent published-byte verification reconfirmed immutable=true, 15 assets and 14/14 payload checksum entries. Production routes on Windows default, Windows `saeed-emad`, Linux and HPC all point to exact v0.9.20 commit with `previous=null`.
+
+**Post-release main maintenance:** PR #45 exact head `bb973bb9f1de2f644d9a5e33fbbb854780897aa2` carried only closure documentation, GitHub Actions pin maintenance and test-fixture readiness hardening. Focused Windows affected-fixture stress passed 36/36. Hosted CI run `36451298406` passed Windows and Ubuntu check/test/audit. Server Install Canary run `36451298534` passed clean Ubuntu and Windows Server bootstrap. PR #45 merged as main commit `f0157ccff98da9e42c25e5ea0bd55bc9ee7de0ab`.
+
+**Actions maintenance:** current workflows use `actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1` (v7.0.1) and `actions/setup-node@820762786026740c76f36085b0efc47a31fe5020` (v7.0.0), including the permanent Server Install Canary.
+
+**Historical PR hygiene:** stale v0.9.19 closure PR #43, superseded Dependabot PRs #3/#4 and legacy v0.9.4 draft PR #30 were closed with history preserved in Git. No superseded PR is treated as current project authority.
+
+**Operational scope:** Linux durable-workflow database integrity is `ok`, `currentLeases=0`, and `automaticExecution=false`; its historical pending/interrupted records belong to other retained projects and are intentionally not mass-cancelled. HPC workflow integrity is `ok`, pending/interrupted/reconciliationRequired=0; HPC durable delivery pending/deadLetter/unfinishedRequests=0.
+
+**Decision:** v0.9.20 remains **SCOPED FINAL / ACCEPTED** for the release objective. Post-release repository closure is ACCEPTED. No current release blocker remains.
+
+**Deferred/external:** ChatGPT host/UI stream failures such as `Resume stream unavailable` remain outside Commander transport authority. Future provider expansion, broad competitive benchmarking and unrelated historical-project cleanup remain separate work, not release blockers.
+
+**Confidence/Status:** CONFIRMED/HIGH from exact run, release, route, workflow and Git evidence.
