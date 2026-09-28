@@ -634,3 +634,18 @@ Historical checkpoints remain append-only archives. Current release/control clai
 **Reuse Targets:** durable automation architecture, stream/retry resilience, MCP Tasks compatibility, same-conversation callbacks, Project Brain, release checklist.
 
 **Provenance:** main v0.9.13 commit `f7aa867e28765d40772b953f31fbff93cbaa77fc`; live route/system_status evidence; `src/server-v0.3.mjs`; `test/mcp-tasks-extension.test.mjs`; official sources above.
+
+
+## E-AUTOMATION-20260928-R3 — v0.9.14 Windows qualification checkpoint
+
+**Date/Context:** 2026-09-28; clean dedicated worktree `finalize/v0.9.14-r1` based on `5116163` after v0.9.13 production audit.
+
+**Claim/Decision:** The MCP Tasks unknown-task error mapping patch is locally qualified on Windows and does not justify any additional orchestration control.
+
+**Evidence/Source:** Focused `node --test test/mcp-tasks-extension.test.mjs` PASS 1/1; durable background `npm run check` operation `aebde577-6687-4857-a561-7ec0ddeb9bca` SUCCEEDED with exit 0; durable background `npm test` operation `45082011-094b-4f85-99b0-5b6e1c818548` SUCCEEDED with exit 0; `npm run audit` exit 0 and `SECURITY_AUDIT_PASS`.
+
+**Confidence/Status:** CONFIRMED/HIGH for Windows local qualification. Hosted CI, immutable publication and production rollout remain OPEN.
+
+**Reuse Targets:** release qualification, MCP Tasks compliance, stream-safe release workflow.
+
+**Provenance:** `src/server-v0.3.mjs`, `test/mcp-tasks-extension.test.mjs`, commit `5116163`, local durable operation receipts listed above.

@@ -74,3 +74,13 @@ Historical checkpoints are preserved in the [archived project state](history/PRO
 - Focused validation: MCP Tasks contract PASS; conversation suite PASS; feature Windows full and exact-tree Linux full PASS; feature hosted Windows/Ubuntu CI PASS before integration.
 - Integration gate: full Windows → exact-tree Linux → hosted CI → immutable publication → candidate-first rollout → live canaries.
 - FINAL status: UNPROVEN until integration release/rollout gates complete.
+
+
+## CURRENT CHANGE SET — v0.9.14 MCP Tasks compliance
+
+- Objective: map unknown MCP task IDs to protocol-compliant `-32602 Task not found` without changing durable execution semantics.
+- Baseline authority: v0.9.13 / `f7aa867e28765d40772b953f31fbff93cbaa77fc`.
+- Candidate authority: `5116163` on `finalize/v0.9.14-r1`.
+- Windows local qualification: focused MCP Tasks regression PASS; `npm run check` PASS exit 0; `npm test` PASS exit 0; `npm run audit` PASS with `SECURITY_AUDIT_PASS`.
+- Remaining release gates: hosted Windows/Ubuntu CI, exact-tag installer/update acceptance, immutable publication, and candidate-first Windows/Linux rollout with post-promotion runtime canaries.
+- FINAL status: UNPROVEN until remaining release gates complete.
