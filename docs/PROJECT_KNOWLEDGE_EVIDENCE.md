@@ -996,7 +996,7 @@ Historical checkpoints remain append-only archives. Current release/control clai
 
 **Decision:** apply the exact Dependabot-published immutable pins directly to current main-derived closure branch instead of rebasing stale PRs. CI uses checkout v7.0.1 + setup-node v7.0.0; Release Sync uses the same checkout v7.0.1 pin. Runtime source/package version is unchanged. Hosted Windows/Ubuntu CI plus post-merge Release Sync are the acceptance gates.
 
-**Status:** implementation applied; hosted acceptance pending final closure PR.
+**Status:** hosted acceptance CONFIRMED/HIGH on PR #43 run `36439953440`: Windows and Ubuntu both completed checkout v7.0.1, setup-node v7.0.0, `npm run check`, `npm test`, and `npm run audit` successfully.
 
 **Reuse Targets:** CI supply-chain hygiene, stale Dependabot reconciliation, post-release maintenance.
 
@@ -1015,3 +1015,13 @@ Historical checkpoints remain append-only archives. Current release/control clai
 **Remaining exact gap:** a truly fresh elevated Windows Server VM (with missing PowerShell/Node/Git prerequisites) is still required to close the destructive prerequisite-install canary. It is DEFERRED/EXTERNAL and is not part of the bounded v0.9.19 release DoD.
 
 **Reuse Targets:** raw Windows bootstrap validation, environment-vs-product failure triage, future server-lab acceptance.
+
+## E-CLOSE-20260928-R10 — final closure PR hosted acceptance
+
+**Date/Context:** 2026-09-28; final repository closure branch `docs/v0.9.19-final-closure`, commit `f1b545930a62fb5e3ebaabab4397bbee95e28285`, PR #43.
+
+**Hosted evidence:** GitHub Actions run `36439953440` completed successfully on both `windows-latest` and `ubuntu-latest`. Both jobs used `actions/checkout` v7.0.1 exact pin `3d3c42e5aac5ba805825da76410c181273ba90b1` and `actions/setup-node` v7.0.0 exact pin `820762786026740c76f36085b0efc47a31fe5020`, then passed `npm run check`, `npm test`, and `npm run audit`.
+
+**Interpretation:** CI maintenance and closure documentation are validated on both hosted operating systems. No Commander runtime source or package-version delta exists in this closure change.
+
+**Status:** CONFIRMED/HIGH. Merge to main remains the repository promotion step.

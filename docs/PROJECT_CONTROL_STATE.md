@@ -14,7 +14,7 @@ Updated: 2026-09-28. Scope: public product/release closure for Remote Commander 
 - **Live routing canaries:** COMSOL request -> COMSOL only; ANSYS audit/continue request -> ANSYS + Project Execution Brain; Persian final-thesis request -> Final Thesis Report only. All three patterns PASS on Windows, Linux, and HPC with empty diagnostics.
 - **Agent-extension boundary:** domain Skills remain independently installed under external extension roots; Commander installer/release assets do not bundle them.
 - **HPC rollout incident:** first v0.9.19 candidate promotion failed closed before cutover; the same candidate then passed an independent host-local `npm run check` diagnostic with zero failures, followed by one controlled retry that promoted successfully. Final authoritative live state is v0.9.19.
-- **GitHub hygiene:** obsolete PR #39 (v0.9.16-only post-release docs) was closed as superseded rather than rebased/merged. Dependabot maintenance PRs and a legacy draft branch are not v0.9.19 release blockers.
+- **GitHub hygiene:** obsolete PR #39 (v0.9.16-only post-release docs) was closed as superseded rather than rebased/merged. The stale Dependabot deltas were reconciled onto the current closure branch using exact checkout v7.0.1/setup-node v7.0.0 pins and hosted PR #43 Windows/Ubuntu CI passed. The legacy draft branch is not a v0.9.19 release blocker.
 
 ## Current blockers
 
