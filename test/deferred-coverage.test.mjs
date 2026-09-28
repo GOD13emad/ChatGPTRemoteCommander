@@ -63,7 +63,10 @@ test('turn-safe orchestration advertises bounded direct work and durable continu
   assert.match(server,/use at most \$\{CHAT_STREAM_SAFE_DIRECT_CALL_BUDGET\} direct synchronous MCP tool calls/);
   assert.match(server,/completionBeacon\.pending is nonzero/);
   assert.match(server,/Every execution turn must end with a visible closeout state/);
-  assert.match(server,/unknown duration, persist\/continue it through durable workflows, Project Engine, or operation_start/);
+  assert.match(server,/unknown duration, use operation_start/);
+  assert.match(server,/io\.modelcontextprotocol\/tasks/);
+  assert.match(server,/Persist multi-step readiness\/recovery through durable workflows/);
+  assert.match(server,/keep all new reasoning and next-step decisions in the current ChatGPT conversation/);
   const skill=read('plugin-template/skills/remote-commander/SKILL.md');
   assert.match(skill,/completionBeacon\.pending > 0/);
   assert.match(skill,/Every execution turn must visibly close out/);

@@ -594,3 +594,20 @@ Historical checkpoints remain append-only archives. Current release/control clai
 **Confidence/Status:** Architecture HIGH confidence; implementation candidate tests are passing in the feature worktree. Release/live validation remains OPEN.
 
 **Reuse Targets:** Remote Commander architecture, durable workflows, async operations, Project Brain/Handoff, long-run project execution, power/network/stream recovery.
+
+
+## E-AUTOMATION-20260928-R1 — MCP Tasks + same-conversation continuation integration
+
+**Date/Context:** 2026-09-28; integration of the parallel MCP Tasks change set with the independently qualified Native Same-Conversation Continuation feature.
+
+**Fact / Confirmed:** MCP Tasks and same-conversation continuation are complementary. Tasks preserve durable operation identity across host/client stream restart; conversation continuation provides a durable event-to-reasoning callback into the exact already-open ChatGPT conversation.
+
+**Integration defect found / fixed:** the parallel MCP Tasks change set referenced `operation_status.waitMs` in instructions/tests but did not implement it in the async-operation schema/runtime. Integration added a maximum-5-second bounded follow window. Initial Windows `fs.watch` on an 8.3 temp-path alias triggered a libuv `fs-event.c` assertion; canonicalizing the operation directory with `realpath` before watching prevents that crash. This is now regression-covered.
+
+**Decision:** primary automation remains event-driven. MCP task polling is sparse host recovery/status access, not the project execution loop. Same-conversation delivery is driven by durable terminal/NEEDS_CHAT events and idempotent outbox state.
+
+**Security/Cost boundary:** Commander does not launch Codex/Work/API models. Project-supplied handoff fields are untrusted hints. UIA does not read browser credentials/session data and does not open a new ChatGPT tab.
+
+**Status:** integrated candidate; focused contracts PASS. Full integrated release gates remain OPEN.
+
+**Reuse Targets:** stream-loss recovery, long-run project execution, power/network recovery, Remote Commander product architecture, Project Brain/Handoff.
