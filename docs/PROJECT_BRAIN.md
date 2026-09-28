@@ -58,7 +58,11 @@ Rejected candidate: `be89ce9c75ee0e998e03c649171cd9a0cc9a6255` passed local Wind
 
 ## Current open gate / exact next action
 
-Qualify one immutable v0.9.20 candidate through focused tests, Windows/Linux exact-SHA full gates, disposable server canary, hosted CI, immutable publication, published-byte verification and candidate-first rollout. Then update closure evidence/control status to scoped FINAL/ACCEPTED.
+Fresh-server objective is confirmed: permanent Windows/Linux disposable canaries both passed on superseded candidate `d620ce96e48da818df0801e708d5ea788cbea8d9`. That candidate is nevertheless rejected because hosted Ubuntu CI reproduced the historical `child exit completes operation even when inherited stdio delays close` timing failure.
+
+Current blocker is now test determinism only. Historical audit + official Node child-process semantics show that the test mixed hosted startup scheduling with the post-exit drain invariant. The corrected fixture writes a ready marker after establishing inherited stdio; the test begins its short invariant window only after ready, while retaining a longer independent operation timeout. Runtime code is unchanged.
+
+Windows focused stress is complete: 10 consecutive async-suite runs, 140/140 PASS. Exact next action: freeze this test/evidence delta, run 10× focused Linux stress on the same commit, then rerun all exact-SHA local/hosted/canary gates before immutable publication and rollout.
 
 ## Deferred / external, not v0.9.20 blockers
 

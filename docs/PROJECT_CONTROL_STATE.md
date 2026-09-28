@@ -13,11 +13,11 @@ Updated: 2026-09-28. Scope: public Remote Commander product/release status and t
 
 ## CURRENT / open release gate
 
-CURRENT: **v0.9.20 fresh-Linux server prerequisite closure**.
+CURRENT: **v0.9.20 release qualification — deterministic async child-exit/stdio regression**.
 
 A disposable v0.9.19 server canary proved the Windows raw-server bootstrap PASS with Node/Git absent from PATH and no antivirus exclusions. Clean Ubuntu then exposed two bounded Linux qualification defects in sequence: Python 3 was missing, and after that was fixed the headless-server path still ran a native GNOME/PyGObject probe despite GUI capabilities being disabled. v0.9.20 installs/requires Python 3, separates headless static GUI validation from native GNOME integration validation, and makes clean Windows/Linux server canaries a permanent release gate.
 
-Open gates for v0.9.20: focused regression -> exact-SHA local Windows/Linux -> permanent disposable-server canary -> hosted CI -> immutable release verification -> candidate-first rollout/live readback.
+Fresh-server implementation is now independently CONFIRMED by permanent disposable Windows/Linux canaries on superseded candidate `d620ce96e48da818df0801e708d5ea788cbea8d9`, both PASS. The remaining current blocker is a repeated hosted-Ubuntu async test-harness timing failure. Historical audit + official Node event semantics identified that the test started its 8 s operation timeout before the fixture had actually established the inherited-stdio condition. The corrected regression uses a fixture ready marker and a bounded post-ready assertion window; runtime semantics are unchanged. Open gates restart from a newly frozen exact SHA: focused regression -> exact-SHA local Windows/Linux -> permanent disposable-server canary -> hosted CI -> immutable release verification -> candidate-first rollout/live readback.
 
 ## Remaining roadmap
 

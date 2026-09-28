@@ -33,6 +33,16 @@ async function waitForProcessExit(pid, timeoutMs = 10000) {
   throw new Error('operation worker did not exit');
 }
 
+async function waitForFile(target, timeoutMs = 20000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    try { await stat(target); return; }
+    catch (error) { if (error?.code !== 'ENOENT') throw error; }
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  throw new Error('fixture did not reach ready state');
+}
+
 async function withManager(fn, overrides = {}) {
   const root = await mkdtemp(path.join(os.tmpdir(), 'rc-async-'));
   const manager = createAsyncOperationTools({
@@ -95,13 +105,15 @@ test('large output is file-backed and inline result stays bounded', async () => 
 });
 
 test('child exit completes operation even when inherited stdio delays close', async () => {
-  await withManager(async ({ manager }) => {
+  await withManager(async ({ manager, root }) => {
+    const ready = path.join(root, 'linger-stdio.ready');
     const started = await manager.execute('operation_start', {
       requestId: 'linger-stdio-1',
       tool: 'run_project_command',
-      arguments: { argv: ['linger-stdio', 'parent-done'], timeoutMs: 8000 }
+      arguments: { argv: ['linger-stdio', 'parent-done', ready, '20000'], timeoutMs: 30000 }
     });
-    const state = await waitFor(manager, started.operationId, undefined, 15000);
+    await waitForFile(ready, 20000);
+    const state = await waitFor(manager, started.operationId, undefined, 8000);
     assert.equal(state.status, 'SUCCEEDED');
     const result = await manager.execute('operation_result', { operationId: started.operationId, tailBytes: 1024 });
     assert.equal(result.result.outputComplete, false);

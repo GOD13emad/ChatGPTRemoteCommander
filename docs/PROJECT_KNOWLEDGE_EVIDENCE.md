@@ -991,3 +991,26 @@ Historical checkpoints remain append-only archives. Current release/control clai
 **Confidence/Status:** root cause CONFIRMED/HIGH; corrected v0.9.20 candidate not yet frozen.
 
 **Reuse Targets:** headless server qualification, GUI dependency boundaries, proportional release gating, clean-install canaries.
+
+
+## E-CI-20260928-R9 — third child-exit/stdio qualification failure; deterministic ready-handshake
+
+**Date/Context:** 2026-09-28; v0.9.20 corrected fresh-server candidate `d620ce96e48da818df0801e708d5ea788cbea8d9`, PR #44, hosted CI run `36443869681`, Ubuntu job `109001004378`.
+
+**Observed evidence:** Windows hosted CI passed; Windows and Linux local exact-SHA full gates passed; disposable Windows/Linux server canaries passed. Hosted Ubuntu failed exactly one pre-existing async test, `child exit completes operation even when inherited stdio delays close`: operation status was `TIMED_OUT` rather than `SUCCEEDED`, with ~10.1 s test duration. This is the same named failure family recorded in E-AUTH-20260928-R4 after PR #37.
+
+**Historical audit:** original production bug E065 was fixed by using direct-child `exit` as completion evidence plus a bounded 2 s stdio drain. A later fixture fix at commit `611d9866d63c52fde564aabc5bda87d0e4c688a3` forced the direct fixture process to exit after its stdout write callback. Timing hardening at `6e7ab6719d83e4bac8302e80d53e8aca86860ac7` only expanded the outer polling window; the operation itself still had an 8 s wall-clock timeout beginning before the fixture had necessarily received CPU on a loaded hosted runner.
+
+**Method evidence:** Node.js v22 child_process documentation states that `exit` is emitted after the child process ends even though stdio may still be open, while `close` occurs only after child stdio closes and can be delayed because multiple processes share the same streams. Node also documents that detached children with parent-connected stdio remain attached through those descriptors. Sources checked 2026-09-28: https://nodejs.org/download/release/latest-jod/docs/api/child_process.html and https://nodejs.org/api/child_process.html.
+
+**Root Cause -> Prevention -> Guard:** the regression test conflated two clocks: (1) hosted scheduling/startup latency before the direct fixture process actually established the inherited-stdio condition and (2) the intended post-exit bounded-drain invariant. Repeatedly raising an arbitrary operation timeout would not isolate the invariant -> fixture now writes a ready marker only after the detached grandchild with inherited stdio is created; the test allows a generous operation wall-clock timeout for scheduling, waits for that ready marker, then requires terminal completion within a bounded post-ready window shorter than the grandchild's stdio hold time. A runtime regression that waits for `close` still fails, while unrelated CI startup latency no longer consumes the assertion budget.
+
+**Scope:** test/evidence only. No async worker/runtime code, timeout semantics, receipt semantics, or user execution authority changed.
+
+**Candidate status:** `d620ce96e48da818df0801e708d5ea788cbea8d9` is REJECTED/SUPERSEDED for promotion because hosted Ubuntu CI failed, despite the fresh-server objective itself passing both disposable canaries.
+
+**Focused regression:** Windows `node --test test/async-operations.test.mjs` executed 10 consecutive times after the ready-handshake change: **140/140 PASS**, terminal exit 0. The inherited-stdio regression itself completed consistently at roughly 2.1–2.3 s after the fixture condition was established; the tenth overall suite run slowed materially but the targeted invariant remained bounded and passed.
+
+**Confidence/Status:** root cause CONFIRMED/HIGH from repeated historical evidence, exact timing signature, test source, fixture history, official Node event semantics, and 10× Windows focused stress. Linux focused stress and renewed exact-SHA hosted qualification remain required.
+
+**Reuse Targets:** async lifecycle CI, inherited-stdio regression design, release qualification, failure-prevention.
