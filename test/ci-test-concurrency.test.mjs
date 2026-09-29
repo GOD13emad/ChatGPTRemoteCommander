@@ -29,12 +29,12 @@ test('qualification paths bound full test file concurrency',()=>{
   assert.equal(pkg.scripts['check:qualification'],'node tools/run-bounded-test-script.mjs --script check --concurrency 2');
   assert.equal(pkg.scripts['test:qualification'],'node tools/run-bounded-test-script.mjs --script test --concurrency 2');
   const workflow=read('.github/workflows/ci.yml');
-  assert.ok(workflow.includes("if: runner.os == 'Windows'"));
   assert.ok(workflow.includes('run: npm run check:qualification'));
   assert.ok(workflow.includes('run: npm run test:qualification'));
-  assert.ok(workflow.includes("if: runner.os != 'Windows'"));
-  assert.ok(workflow.includes('run: npm run check'));
-  assert.ok(workflow.includes('run: npm test'));
+  assert.equal(workflow.includes("if: runner.os == 'Windows'"),false);
+  assert.equal(workflow.includes("if: runner.os != 'Windows'"),false);
+  assert.equal(workflow.includes('run: npm run check\n'),false);
+  assert.equal(workflow.includes('run: npm test\n'),false);
   const installPs1=read('install.ps1');
   const installSh=read('install.sh');
   const updateLinux=read('auto-update-linux.sh');
