@@ -24,7 +24,7 @@
     "test:browser-native": "node test/browser-native-run.mjs && node test/browser-helper-lifecycle-run.mjs",
     "test:async": "node --test test/async-operations.test.mjs test/async-continuation.test.mjs test/async-http.test.mjs test/deferred-path-http.test.mjs test/deferred-coverage.test.mjs test/process-tree-lifecycle.test.mjs test/retry-guard.test.mjs test/retry-http.test.mjs",
     "test:conversation": "node --test test/conversation-continuation.test.mjs test/async-continuation.test.mjs test/conversation-http.test.mjs test/conversation-uia-contract.test.mjs test/workflow-conversation.test.mjs",
-    "test:ci:windows": "node tools/run-bounded-test-script.mjs --script test --concurrency 2"
+    "test:qualification": "node tools/run-bounded-test-script.mjs --script test --concurrency 2"
   },
   "repository": "https://github.com/GOD13emad/ChatGPTRemoteCommander",
   "license": "MIT"

@@ -214,7 +214,7 @@ test('Linux updater is candidate-first, hardware-gated, routed and rollback-awar
   for(const marker of [
     'stage_release',
     'run_gate "$STAGE_DIR" check npm run check',
-    'run_gate "$STAGE_DIR" test npm test',
+    'run_gate "$STAGE_DIR" test npm run test:qualification',
     'run_gate "$STAGE_DIR" audit npm run audit',
     'copy-workflow-store.mjs',
     'workflow-shadow',

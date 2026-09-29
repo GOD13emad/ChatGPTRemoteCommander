@@ -81,6 +81,8 @@ for (const [label, text] of [['install.sh',linuxInstaller],['server-install-linu
   }
 }
 if (!linuxInstaller.includes('for cmd in git curl unzip tar sha256sum readlink python3; do')) throw new Error('install.sh must require python3 before qualification');
+if (!linuxInstaller.includes('npm run test:qualification')) throw new Error('install.sh must use bounded qualification test path');
+if (!windowsInstaller.includes('& npm.cmd run test:qualification')) throw new Error('install.ps1 must use bounded qualification test path');
 if (!linuxServerInstaller.includes('for cmd in git curl unzip tar sha256sum readlink python3; do')) throw new Error('server-install-linux.sh must require python3 before handoff');
 if (!linuxServerInstaller.includes('REMOTE_COMMANDER_HEADLESS_VALIDATE=1 /bin/bash "$installer" "${args[@]}"')) throw new Error('headless server install must scope native GUI validation skip to the child installer');
 const linuxGuiContract = readFileSync('test/linux-gui-contract.mjs','utf8');

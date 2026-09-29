@@ -1234,3 +1234,23 @@ Historical checkpoints remain append-only archives. Current release/control clai
 - **Complete local promotion gate — CONFIRMED / HIGH:** `FINAL_GATE_PASS` at `2026-09-29T00:50:53.5926011+03:30`; focused Project Engine 222 pass / 0 fail / 1 skip; full aggregate 483 pass / 0 fail / 6 skips; security audit, source integrity, Windows runtime contract and diff check passed.
 - **Evidence artifact:** `var/final-gate-v0.9.22.log`, SHA-256 `5f2bb611d2e43e921f57695119f1f3692313b4eb5ca6df1a7d71c631c157e87c`.
 - **Next authority gate:** fresh hosted CI + Server Install Canary on the new PR head SHA. Merge remains blocked until success.
+
+
+## 2026-09-29 — Linux install canary exposed qualification oversubscription
+
+- **Hosted evidence — CONFIRMED / HIGH:** PR #50 head `47c40616c30b37b23451cd237790f45bf81c4656` passed GitHub CI and Windows Server bootstrap. Linux clean-container canary failed only inside the install qualification suite: 486 pass / 2 fail / 1 skip.
+- **Exact failures:** `dead-worker reconciliation adopts an exact final receipt instead of overwriting it UNCERTAIN` and `corrupt terminal projection is not repaired when receipt and reservation hashes differ`; both failed in `waitFor()` at ~10.02 s with `operation did not finish` while neighboring tests passed.
+- **Root-cause class — PROBABLE/HIGH:** qualification file-process oversubscription/resource starvation, same failure family previously observed on hosted Windows. No production assertion, bootstrap integrity check, source pin, or runtime behavior failed.
+- **Scope evidence:** `install.ps1`, `install.sh`, and `auto-update-linux.sh` each invoked the full test suite with default Node test-file concurrency. The bounded helper already qualified successfully with concurrency 2.
+- **Decision / minimum sufficient control:** expose one generic `test:qualification` command using the existing bounded wrapper at concurrency 2 and reuse it in hosted Windows CI plus Windows/Linux install qualification and Linux updater qualification. Keep ordinary `npm test` and the complete local final gate unbounded.
+- **Validation state:** PATCH APPLIED; targeted contracts, exact qualification run, full local gate, fresh hosted CI/canary remain required before merge.
+
+
+## 2026-09-29 — Generic qualification path local validation PASS
+
+- **Targeted contracts — CONFIRMED / HIGH:** qualification-concurrency contract 2/2 PASS; Windows/Linux installer contract PASS; Linux auto-update contract 13/13 PASS.
+- **Exact qualification path — CONFIRMED / HIGH:** `npm run test:qualification` ran with `CI_TEST_CONCURRENCY script=test concurrency=2 replacements=2`; full aggregate 483 pass / 0 fail / 6 platform skips. Both prior Linux canary timeout tests passed within hundreds of milliseconds.
+- **Complete local gate — CONFIRMED / HIGH:** `FINAL_GATE_PASS` at `2026-09-29T07:26:17.2585959+03:30`; focused Project Engine 222 pass / 0 fail / 1 platform skip; unbounded full test aggregate 483 pass / 0 fail / 6 platform skips; security audit, source integrity, Windows runtime contract and diff check passed.
+- **Evidence artifact:** `var/final-gate-v0.9.22.log`, SHA-256 `1338cc7cd5e3d5b65739342fe4e3b8b0fdeffbd0501fe0d9f514d04196af751c`.
+- **Scope:** qualification harness/install-update gate only; production runner-policy/runtime behavior and functional timeouts unchanged.
+- **Next authority gate:** commit/push this delta, then require fresh GitHub CI and both Server Install Canary jobs on the new head SHA before merge.

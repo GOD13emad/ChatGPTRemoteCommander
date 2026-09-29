@@ -346,3 +346,20 @@ Historical checkpoints are preserved in the [archived project state](history/PRO
 - Windows-specific bounded full-test path PASS, then complete CHECK PASS, then complete v0.9.22 final gate PASS.
 - Gate log SHA-256: `5f2bb611d2e43e921f57695119f1f3692313b4eb5ca6df1a7d71c631c157e87c`.
 - Current critical path: commit/push CI-harness delta -> fresh hosted CI/Canary -> merge PR #50 -> immutable v0.9.22 release -> candidate-first live rollout -> live runner readback.
+
+
+## 2026-09-29 — Linux install canary qualification starvation
+
+- PR #50 head `47c40616c30b37b23451cd237790f45bf81c4656`: CI PASS; Windows Server Canary PASS; Linux clean-container canary failed two async-operation waiters at the exact 10 s bound during the installer's full qualification suite.
+- Production code remains unchanged by the current mutation objective.
+- Current mutation objective: replace platform-specific bounded CI naming with generic `test:qualification` (concurrency=2) and use it in hosted Windows CI, Windows installer qualification, Linux installer qualification and Linux auto-update qualification.
+- Merge remains BLOCKED until targeted contracts, exact qualification path, complete local gate and fresh hosted CI/canary all pass on a new head SHA.
+
+
+## 2026-09-29 — Generic qualification path local PASS
+
+- Generic `test:qualification` (Node test-file concurrency=2) is wired into hosted Windows CI, Windows installer qualification, Linux installer qualification and Linux auto-update qualification; normal `npm test` remains unchanged.
+- Targeted contracts PASS; exact bounded qualification full suite PASS; complete unbounded local final gate PASS at `2026-09-29T07:26:17.2585959+03:30`.
+- Final-gate log SHA-256: `1338cc7cd5e3d5b65739342fe4e3b8b0fdeffbd0501fe0d9f514d04196af751c`.
+- Current critical path: commit/push -> fresh hosted CI + Linux/Windows install canaries -> merge -> immutable v0.9.22 release -> candidate-first live rollout -> live runner/system-status proof.
+- FINAL remains UNPROVEN until live routed runtime proves `runnerConfigured=true` and `automaticExecution=true`.

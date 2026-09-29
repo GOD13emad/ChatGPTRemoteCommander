@@ -364,9 +364,9 @@ function Test-Installation {
     if ($LASTEXITCODE -ne 0) {
       throw 'npm run check failed'
     }
-    & npm.cmd test
+    & npm.cmd run test:qualification
     if ($LASTEXITCODE -ne 0) {
-      throw 'npm test failed'
+      throw 'npm run test:qualification failed'
     }
     & npm.cmd run audit
     if ($LASTEXITCODE -ne 0) {

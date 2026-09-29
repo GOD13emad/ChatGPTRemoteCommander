@@ -472,7 +472,7 @@ validation_cleanup(){
 trap validation_cleanup ERR
 
 run_gate "$STAGE_DIR" check npm run check
-run_gate "$STAGE_DIR" test npm test
+run_gate "$STAGE_DIR" test npm run test:qualification
 run_gate "$STAGE_DIR" audit npm run audit
 
 PORT="$(node "$STAGE_DIR/tools/find-free-port.mjs" --start 48831 --end 51999)"

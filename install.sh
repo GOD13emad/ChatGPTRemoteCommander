@@ -389,7 +389,7 @@ install_linux_gui_backend() {
 validate_installation() {
   cd "$INSTALL_DIR"
   npm run check
-  npm test
+  npm run test:qualification
   npm run audit
 }
 
