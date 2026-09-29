@@ -1385,3 +1385,61 @@ Historical checkpoints remain append-only archives. Current release/control clai
 - **Limitation:** no reboot/shutdown/logoff occurred, so actual AtStartup trigger behavior is not claimed as validated.
 - **Provenance:** local acceptance artifact SHA-256 `4817dddef6b497545369758da5be79c940500968b8df7375fb43c892a1ba832a`.
 - **Reuse targets:** deployment handoff, boot/power-loss recovery troubleshooting, future reboot validation, support.
+
+
+## 2026-09-29 — 20-product competitive audit / product-position evidence
+
+Context: deep product audit before real reboot/power-return validation. Authoritative live product remains v0.10.0; Windows and Linux both report FULL_POWER and idle active operation queues. A separate unpromoted local worktree named `fix/v0.10.1-boot-recovery-diagnostics` contains diagnostics/version changes and is explicitly excluded from current-release claims.
+
+### Current product findings
+
+- **Distinctive combined scope — CONFIRMED:** Remote Commander combines private outbound OpenAI Secure MCP Tunnel access, real owner-machine filesystem/shell/process tools, GUI and background-browser tools, durable operation/workflow state, one-writer mutation controls, multi-profile/multi-device routing, candidate-first live updates, per-device Plugin packaging, and OS startup supervision. This is a combination claim about the audited product, not a market-wide uniqueness proof.
+- **Windows/Linux live asymmetry — CONFIRMED:** Windows currently has `automaticExecution=true` and `runnerConfigured=true` for enrolled Project Engine work. Linux currently has `automaticExecution=false`, `runnerConfigured=false`, and recovery/readiness-only automatic continuation. Cross-platform runtime feature presence is broad, but autonomous execution parity is not complete.
+- **Durable-state hygiene debt — CONFIRMED:** Windows reports scheduler `pending=805`, `interrupted=81`, `reconciliationRequired=109`; Linux reports `pending=105`, `interrupted=4`, `reconciliationRequired=5`. Both hosts are currently idle (`activeOperations=0`, `queued=0`, `currentLeases=0`), so these counters are not evidence of a stuck runtime; they are an observability/state-lifecycle debt that should be classified/archived/reconciled before claiming enterprise-grade fleet operability.
+- **Security trade-off — CONFIRMED:** explicit FULL_POWER intentionally exposes unrestricted shell/full filesystem/process control on trusted machines. Standard/root-scoped modes and explicit GUI/foreground policies exist, but there is no general-purpose OS sandbox equivalent to the default/optional sandboxes documented by Claude Code, Gemini CLI, Cursor Cloud Agents, OpenHands, or Open Interpreter.
+- **Platform breadth gap — CONFIRMED:** current host implementation is Windows + Linux; no macOS host runtime is shipped.
+- **Fleet/governance gap — CONFIRMED:** multi-device and multi-profile routing are supported, but there is no central fleet inventory/policy/RBAC/SSO control plane comparable to UiPath Orchestrator, Automation Anywhere enterprise orchestration, TeamViewer device management, RustDesk Pro, MeshCentral, or Tailscale access policies.
+- **Remote-desktop scope boundary — CONFIRMED:** built-in GUI control is agent-oriented and verification-driven; it is not intended to replace high-frame-rate human remote desktop products with multimedia/session collaboration features.
+- **RPA scope boundary — CONFIRMED:** Remote Commander can automate browser/desktop actions but does not offer a low-code recorder/designer/process-mining/document-automation suite comparable to Power Automate, UiPath, or Automation Anywhere.
+- **Install UX — CONFIRMED:** v0.10.0 provides application-like Windows/Linux Setup ZIPs and per-device Plugin ZIP generation; it is not yet a signed native MSI/PKG/deb/rpm desktop distribution.
+- **External onboarding boundary — CONFIRMED:** final per-device Plugin packaging still requires the registered ChatGPT App ID after Scan Tools. Tunnel ID/API key are not valid substitutes and are not embedded in the Plugin ZIP.
+- **Power-return validation boundary — CONFIRMED:** BootRecovery/System credential self-test and UserSessionHandoff execution pass, but a real AtStartup cycle after reboot/power loss has not yet been validated because no reboot/shutdown/logoff was performed.
+
+### Benchmark set and method
+
+Twenty overlapping products were compared using current primary/official sources, grouped by function rather than treated as identical substitutes:
+OpenAI Codex; ChatGPT Work; Anthropic Claude Code; GitHub Copilot Agents; Google Gemini CLI; Google Antigravity managed agents; Cursor; Devin Desktop (Windsurf successor); Devin Cloud; OpenHands; Continue; Open Interpreter; Microsoft Power Automate Desktop; UiPath; Automation Anywhere; TeamViewer; AnyDesk; RustDesk; MeshCentral; Tailscale SSH/PAM.
+
+Method dimensions: direct control of a real owned host; filesystem/shell/process reach; GUI/browser; long-running durability; MCP/skills/plugins; multi-device/fleet control; sandbox/permissions; install/update/recovery; audit/governance; human handoff.
+
+Primary sources consulted (2026-09-29):
+- OpenAI Codex / Work / Secure MCP Tunnel / Plugins: https://openai.com/codex/ ; https://help.openai.com/en/articles/20001280-using-cloud-browser-in-chatgpt ; https://developers.openai.com/api/docs/guides/secure-mcp-tunnels ; https://developers.openai.com/plugins/build/plugins
+- Anthropic Claude Code/Skills: https://www.anthropic.com/webinars/claude-code-foundations ; https://www.anthropic.com/webinars/claude-code-advanced-patterns ; https://www.anthropic.com/engineering/claude-code-auto-mode ; https://www.anthropic.com/research/skills
+- GitHub Copilot Agents: https://docs.github.com/en/copilot/responsible-use/agents
+- Google Gemini CLI / managed agents: https://geminicli.com/docs/ ; https://ai.google.dev/gemini-api/docs/agents
+- Cursor: https://cursor.com/docs ; https://cursor.com/docs/cloud-agent/capabilities
+- Devin: https://devin.ai/ ; https://devin.ai/desktop ; https://devin.ai/cli
+- OpenHands: https://www.openhands.dev/product/ ; https://www.openhands.dev/product/canvas
+- Continue: https://docs.continue.dev/ ; https://docs.continue.dev/cli/quickstart
+- Open Interpreter: https://www.openinterpreter.com/docs/desktop ; https://www.openinterpreter.com/
+- Power Automate: https://learn.microsoft.com/en-us/power-automate/desktop-flows/run-unattended-desktop-flows
+- UiPath: https://docs.uipath.com/orchestrator/automation-cloud/latest/user-guide/about-robots
+- Automation Anywhere: https://www.automationanywhere.com/products/agentic-process-automation-system
+- TeamViewer: https://www.teamviewer.com/en/global/support/knowledge-base/teamviewer-remote/licenses/licenses-and-features/remote-access-license-feature-overview/
+- AnyDesk: https://support.anydesk.com/unattended-access
+- RustDesk: https://rustdesk.com/docs/en/
+- MeshCentral: https://docs.meshcentral.com/
+- Tailscale: https://tailscale.com/docs/features/tailscale-ssh
+
+### Method-choice conclusion
+
+Do not expand Remote Commander by copying every competitor category. Minimum-sufficient next controls are:
+(1) durable-state lifecycle/observability cleanup and ownership classification;
+(2) intentional Windows/Linux autonomous-execution parity decision;
+(3) reconcile/test the unpromoted v0.10.1 boot-diagnostics work before any next release;
+(4) minimal fleet inventory/health/version/tunnel/plugin-identity dashboard and policy view;
+(5) optional capability-scoped sandbox/privilege escalation rather than weakening FULL_POWER;
+then consider macOS, native signed installers, and enterprise RBAC/SSO only if target users require them.
+Avoid building high-frame-rate remote desktop, a full low-code RPA studio, or a competing coding-model IDE unless product scope changes; integrate those ecosystems through MCP/Plugins instead.
+
+Status: CURRENT benchmark evidence. Reuse targets: roadmap, release planning, product positioning, architecture review, security review.
