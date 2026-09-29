@@ -205,3 +205,52 @@ Linux live hygiene audit proved the untracked nested app/ checkout was an orphan
 The CHANGELOG projection gap for v0.9.11-v0.9.23 was repaired from authoritative per-release evidence files without changing historical release records.
 
 Current status: v0.10.0 source candidate is LOCAL PASS. Hosted CI/server canaries, clean Linux exact-tree qualification, immutable publication and live Windows/Linux rollout remain open. Windows SYSTEM BootRecovery/UserSessionHandoff task creation remains a separate owner/admin OS privilege gate; no UAC bypass is introduced.
+
+## Final seal — 2026-09-29 — v0.10.0 released and live
+
+v0.10.0 is now the accepted product release for the audited Windows and Linux targets.
+
+Authoritative release identity:
+- tag: v0.10.0
+- merge commit: 26b8df90838f449bc61710981fc31b7a467e021d
+- qualified candidate commit: 5bb6f541380514daf8924db7cb215d232405a8be
+- candidate and merge tree: ef76b567ead34d0ca26c0c8b7c42d9b28cd3eefe
+- immutable GitHub Release: published, 19 assets
+- downloaded release verification: 19/19 assets present and SHA256SUMS verified.
+
+Hosted acceptance:
+- GitHub CI Windows: PASS.
+- GitHub CI Ubuntu: PASS.
+- Server Install Canary Linux: PASS.
+- Server Install Canary Windows: first attempt had one transient interactive-terminal readiness timing failure under hosted contention; no affected runtime code changed. Exact-job rerun PASS, and seven consecutive local repetitions of the exact process-tree test file PASS. No timeout/runtime weakening was introduced.
+
+Live Windows acceptance:
+- default route generation 118 -> v0.10.0, commit 26b8df90838f449bc61710981fc31b7a467e021d, previous=null.
+- saeed-emad route generation 162 -> v0.10.0, same commit, previous=null.
+- last-update.json status=PROMOTED; doctor/hardware/shadowStore/liveStoreCompatibility all PASS for both profiles.
+- live status FULL_POWER authority preserved; activeOperations=0, queued=0, lockedKeys=0.
+- tunnel chatgpt-remote-commander: ready on local health port 47832.
+- tunnel saeed-emad: ready on local health port 47833.
+- auto-update log ends with AUTO_UPDATE_PASS version=0.10.0 commit=26b8df90838f449bc61710981fc31b7a467e021d.
+
+Live Linux acceptance:
+- default route generation 95 -> v0.10.0, same exact commit, previous=null.
+- live status FULL_POWER authority preserved; activeOperations=0, queued=0, lockedKeys=0.
+- systemd user service active.
+- MCP health on routed port 48832 reports v0.10.0 and matching config identity.
+- tunnel chatgpt-remote-commander ready on local health port 47832.
+- updater log records check PASS, test PASS, audit PASS, schema continuity PASS, CUTOVER_COMMIT v0.10.0, previous retirement, GUI backend sync, maintenance PASS and supervisor recycle request.
+
+Product delivery:
+- stable Windows Setup asset: ChatGPT-Remote-Commander-Windows-Setup.zip.
+- stable Linux Setup asset: ChatGPT-Remote-Commander-Linux-Setup.zip.
+- complete installer asset: ChatGPT-Remote-Commander-v0.10.0-Installer.zip.
+- setup wizard installs/updates Commander, enrolls the private tunnel using local-only credential prompts, verifies readiness, then waits for the registered ChatGPT App ID.
+- once the App ID is available after ChatGPT Scan Tools, the local device builder creates a complete app-bound Plugin ZIP with deterministic per-device/per-profile name, icon/logo and provenance; it contains no Runtime API key, Tunnel ID or tunnel credential.
+- one account may therefore connect to multiple systems through intentionally distinct Plugin identities.
+
+Remaining external/owner gates are not product defects:
+1. Per-device final Plugin ZIP is WAITING_APP_ID on a machine where the ChatGPT surface has not exposed/provided the registered App ID. No ID is fabricated from tunnel credentials.
+2. Windows pre-logon BootRecovery SYSTEM/UserSessionHandoff task creation remains an explicit elevated-owner OS action if operation before interactive logon is required. The product does not bypass UAC.
+
+Project status: PRODUCT FINAL PASS for v0.10.0 release/build/install/update/runtime/plugin-generation capability. Project Brain status CURRENT. Exact next action for a new machine: run the OS Setup bundle; after creating/scanning the custom ChatGPT app, provide its App ID to the local wizard to emit that machine's unique Plugin ZIP.
