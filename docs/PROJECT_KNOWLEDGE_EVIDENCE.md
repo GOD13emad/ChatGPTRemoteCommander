@@ -1323,3 +1323,16 @@ Historical checkpoints remain append-only archives. Current release/control clai
 - **Evidence artifact:** `var/final-gate-v0.9.23.log`, SHA-256 `b9e5945c7155a95212d5c2864fadca2acc15680e8e00c896980b62d14486a156`.
 - **Decision status:** minimum sufficient control accepted locally. No functional timeout, runtime semantics, router behavior, runner authority, or model-provider policy changed.
 - **Next authority gate:** commit/push this exact tree and require fresh Windows+Ubuntu CI plus both server-install canaries on the new head SHA before merge.
+
+
+## 2026-09-29 — v0.9.23 live rollout final acceptance
+
+- **Release authority — CONFIRMED / HIGH:** immutable tag `v0.9.23` peels to merge commit `a1b5368edf33d629111407aecd7f4c6a136a6122`; the release is published with the complete 15-asset contract.
+- **Hosted qualification — CONFIRMED / HIGH:** fresh Windows CI, Ubuntu CI, Linux clean-container install canary and Windows Server bootstrap canary all passed on hotfix head `92e9eec1d725763e1fbf93150765c2bbfba8a2b0` before merge.
+- **Local promotion gate — CONFIRMED / HIGH:** complete unbounded final gate passed at `2026-09-29T09:19:39.7374006+03:30`; artifact `var/final-gate-v0.9.23.log` SHA-256 `b9e5945c7155a95212d5c2864fadca2acc15680e8e00c896980b62d14486a156`.
+- **Candidate-first rollout — CONFIRMED / HIGH:** pinned candidate `v0.9.23 / a1b5368...` passed bounded CHECK and TEST qualification, security audit, native GUI self-test, doctor/config hash checks and emitted `AUTO_UPDATE_CANDIDATE_PASS`.
+- **Live default runtime — CONFIRMED / HIGH:** route generation 116 is active on port 48835 at version `0.9.23`, commit `a1b5368edf33d629111407aecd7f4c6a136a6122`, with no `previous` route. `system_status` reports Full Power, `runnerConfigured=true`, `automaticExecution=true`, scheduler enabled and no current lease at readback. Active config reports runner `enabled=true`, `autoTick=true`, provider `codex`.
+- **Independent profile preservation — CONFIRMED / HIGH:** `saeed-emad` is active on v0.9.23 / the same release commit with no previous route, while its independent policy remains `runner.enabled=false`, `autoTick=false`, provider `disabled`, reason `NO_CODEX_VIA_COMMANDER`.
+- **Drain closure without work loss — CONFIRMED / HIGH:** old default v0.9.21 backend on port 48834 had no router inflight but owned persistent terminal work. Maintenance recorded it in `retained-backends.json` with terminal PID 69684, emitted `DRAIN_TERMINAL_RETAINED`, then emitted `ROUTER_PREVIOUS_RETIRED`. This preserved the live terminal while removing the old backend from routing authority.
+- **Updater terminal state — CONFIRMED / HIGH:** `last-update.json` reports `status=CURRENT`, ref `v0.9.23`, commit `a1b5368edf33d629111407aecd7f4c6a136a6122`, completed at `2026-09-29T06:24:08.7992779Z`.
+- **Conclusion:** the v0.9.23 release objective and live Windows rollout DoD are **PASS**. Retained historical backends are preservation state for still-running terminal descendants, not active routing/drain blockers; their later reap is lifecycle cleanup and must not interrupt those jobs.

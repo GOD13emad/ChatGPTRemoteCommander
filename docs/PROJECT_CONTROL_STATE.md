@@ -409,3 +409,15 @@ Historical checkpoints are preserved in the [archived project state](history/PRO
 - Gate artifact `var/final-gate-v0.9.23.log`; SHA-256 `b9e5945c7155a95212d5c2864fadca2acc15680e8e00c896980b62d14486a156`.
 - Current critical path: commit/push -> fresh hosted CI + Linux/Windows install canaries -> merge/release -> candidate-first live rollout -> live default runner readback.
 - FINAL remains UNPROVEN until hosted gates and post-release live runtime criteria pass.
+
+
+## 2026-09-29 — v0.9.23 live rollout accepted
+
+- Authoritative release: `v0.9.23` -> `a1b5368edf33d629111407aecd7f4c6a136a6122`; release asset contract complete.
+- All fresh hosted gates passed before merge; complete local unbounded final gate also passed.
+- Default live route: v0.9.23, commit `a1b5368...`, port 48835, generation 116, no previous route.
+- Default live workflow authority: Full Power preserved; `runnerConfigured=true`; `automaticExecution=true`; runner provider is owner-authorized Codex.
+- `saeed-emad`: v0.9.23, no previous route, intentionally retains its independent `NO_CODEX_VIA_COMMANDER` runner-disabled policy.
+- Old v0.9.21 default backend was removed from routing and registered as retained because PID 69684 is an active persistent terminal descendant. No active user work was killed.
+- `last-update.status=CURRENT` for v0.9.23.
+- **Release/rollout status: FINAL PASS.** Remaining retained-backend entries are lifecycle cleanup tied to still-running terminal jobs, not a release blocker or routing authority.
