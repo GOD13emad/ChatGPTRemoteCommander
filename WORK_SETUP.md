@@ -96,7 +96,19 @@ Work should review the generated package:
 - icon/logo assets are included;
 - no secret is embedded.
 
-## 4. Install the generated Plugin
+## 4. Device-specific Plugin ZIP for direct workspace upload
+
+For the simplest multi-computer deployment, after the custom app exists run the local device builder on each computer. It creates a complete ZIP whose plugin name, display name, brand color and generated icon/logo are stable for that machine/profile and different from other computers.
+
+Windows: `build-device-plugin.ps1 -AppId "asdk_app_..."`
+
+Linux: `build-device-plugin.sh --app-id asdk_app_...`
+
+The ZIP contains no Runtime API key or Tunnel ID. It references the already-registered custom app only through `.app.json`. Eligible workspace owners/admins can upload it from **Admin → Plugins → Add → Upload plugin** when that control is available. App access/authorization remains separate from Plugin installation.
+
+If the same ChatGPT account is connected to multiple computers, create/scan one tunnel-backed custom app per target and run the builder on each target. The resulting Plugins are intentionally distinct so the user can choose the correct computer without ambiguous identical names or icons.
+
+## 5. Install the generated Plugin
 
 If plugin-creator created a personal marketplace entry:
 1. reload ChatGPT if required;
@@ -113,7 +125,7 @@ After installation, open a fresh Work task and ask:
 
 For Full/Power Mode, also run read-only `power_status`.
 
-## 5. Managed workspace GitHub marketplace
+## 6. Managed workspace GitHub marketplace
 
 An eligible workspace admin can import this repository:
 
@@ -129,7 +141,7 @@ An eligible workspace admin can import this repository:
 
 GitHub marketplace import syncs Plugin content. It does not create the Secure MCP Tunnel, create the MCP app, grant app access, or authenticate users. Workspace import also applies workspace policy rather than blindly trusting repository policy values.
 
-## 6. Preferred one-command app-bound Plugin install
+## 7. Preferred one-command app-bound Plugin install
 
 After the custom MCP app exists, use the ID from that exact registered **ChatGPT Remote Commander** app: either its underlying App ID or the technical `plugin_...` identifier shown by ChatGPT. Do not substitute a fuzzy Plugin Directory search result or another remote-control app. Before binding, verify the selected app is the one whose tool scan exposed this project's `system_status`/Remote Commander tools. The installer normalizes `plugin_asdk_app_...` to the underlying `asdk_app_...` required by `.app.json`.
 
@@ -153,7 +165,7 @@ If only manual binding is desired, copy `plugin-template/` privately and run `bi
 
 Do not commit a workspace-specific `.app.json` into this public repository unless that mapping is intentionally public. OpenAI requires the underlying app ID in `.app.json`; a `plugin_asdk_app_...` URL/technical identifier represents the corresponding `asdk_app_...` app.
 
-## 7. Work operating rules after installation
+## 8. Work operating rules after installation
 
 When Full/Power Mode is active, Work can perform substantial tasks such as builds, tests, debugging, project edits, process management, and persistent terminal workflows.
 

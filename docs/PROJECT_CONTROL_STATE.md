@@ -438,3 +438,29 @@ Historical checkpoints are preserved in the [archived project state](history/PRO
 - BootRecovery/UserSessionHandoff SYSTEM tasks remain absent and require an elevated owner token. Current token is not elevated; this is an explicit deployment gate and no privilege-boundary bypass was attempted.
 
 **Status:** v0.9.23 release/runtime = FINAL PASS. Windows logon persistence = PASS. Boot-before-logon autonomous recovery = MISSING owner/admin gate. Exact next action is one elevated run of the bounded boot-recovery runner followed by acceptance of its `RETURN.json`; no reboot is part of that runner.
+
+
+## Change Set — 2026-09-29 — v0.10.0 installable product and per-device Plugin packaging
+
+**One main objective:** close the remaining product-distribution friction while preserving the accepted v0.9.23 execution/update architecture.
+
+**Implemented:**
+- Windows and Linux Setup wizards plus stable/versioned Setup ZIP release packaging.
+- Setup mode selection: Standard, Full/Power, Full/Power + guarded GUI.
+- Existing secret-safe tunnel enrollment reused; no Runtime API key parameter/state was added to the wizard.
+- Local WAITING_APP_ID continuation because OpenAI app registration/Scan Tools is a platform step.
+- Device Plugin builders for Windows/Linux and dependency-free Node packager.
+- Stable per-machine/per-profile identity -> unique plugin name/display name/icon/logo.
+- Exact App ID binding in root plugin.json + .app.json + native .codex-plugin/plugin.json.
+- Generated Plugin secret-shape guard and provenance file.
+- Work Plugin legacy installers now verify native app binding too.
+- Immutable release assets 15 -> 19, including stable latest aliases for Windows/Linux Setup.
+- CHANGELOG 0.9.11-0.9.23 projection repaired from release evidence.
+
+**Local V&V:** targeted 7/7 PASS; real Windows device ZIP smoke PASS; shell syntax PASS; Windows wizard machine smoke PASS; complete v0.10.0 local final gate PASS; full suite 490 pass / 0 fail / 6 skip; security audit PASS; diff check PASS. Final gate log SHA-256 8ede55b433ed03a64f4d6dc536f5daf49fcc053aad4db4613e544e1fe134045a.
+
+**Linux hygiene delta:** orphan nested old app/ checkout backed up (archive SHA-256 b21d02f646dda980aa65e2cec1dc39898170c1d28517e12a10536b52c71a0c73, 30153972 bytes), then removed after proving no live references. Outer v0.9.23 service/health remained PASS.
+
+**Current gate:** LOCAL PASS. Next authority gates are exact-tree Linux qualification + release asset build, hosted CI/server canaries, immutable v0.10.0 publication, published asset verification, and candidate-first Windows/Linux live rollout/readback.
+
+**Separate owner gate:** Windows pre-logon BootRecovery SYSTEM tasks still require one elevated owner run; no privilege bypass is permitted.

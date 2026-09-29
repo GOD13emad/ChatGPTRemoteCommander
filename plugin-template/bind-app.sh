@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 APP_ID="${1:-}"
+if [[ "$APP_ID" =~ ^plugin_((asdk_app_|connector_|templated_apps_)[A-Za-z0-9_-]+)$ ]]; then APP_ID="${BASH_REMATCH[1]}"; fi
 [[ "$APP_ID" =~ ^(asdk_app_|connector_|templated_apps_)[A-Za-z0-9_-]+$ ]] || {
-  echo 'App ID must start with asdk_app_, connector_, or templated_apps_.' >&2
+  echo 'App ID must start with asdk_app_, connector_, or templated_apps_ (plugin_ technical ids are also accepted).' >&2
   exit 2
 }
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -14,8 +15,11 @@ const manifest=JSON.parse(fs.readFileSync('plugin.json','utf8'));
 manifest.extensions ??= {};
 manifest.extensions['com.openai'] ??= {};
 manifest.extensions['com.openai'].apps='./.app.json';
+const native=JSON.parse(fs.readFileSync('.codex-plugin/plugin.json','utf8'));
+native.apps='./.app.json';
 const app={apps:{'remote-commander':{id,required:true}}};
 fs.writeFileSync('.app.json',JSON.stringify(app,null,2)+'\n');
 fs.writeFileSync('plugin.json',JSON.stringify(manifest,null,2)+'\n');
-console.log('PLUGIN_APP_BOUND id='+id);
+fs.writeFileSync('.codex-plugin/plugin.json',JSON.stringify(native,null,2)+'\n');
+console.log('PLUGIN_APP_BOUND id='+id+' native=true');
 NODE

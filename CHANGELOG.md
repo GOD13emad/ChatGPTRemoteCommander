@@ -1,5 +1,53 @@
 # Changelog
 
+## 0.10.0 — 2026-09-29
+
+- Add Windows and Linux application-like Setup bundles that delegate to the existing release-qualified installers rather than creating a second privileged updater/runtime.
+- Add local setup wizards for Standard / Full Power / Full Power + GUI selection, persistent tunnel enrollment, health/readiness checks and truthful WAITING_APP_ID continuation.
+- Add deterministic device-specific Plugin ZIP generation. Each machine/profile receives a stable distinct plugin name, display name, brand color and generated icon/logo; the ZIP contains the exact registered App ID but no Runtime API key, Tunnel ID, bearer token or tunnel credential.
+- Bind and verify registered apps in both the portable root manifest and the native `.codex-plugin/plugin.json` compatibility manifest.
+- Add current OpenAI ZIP/upload/app-binding guidance and grow the immutable release asset set from 15 to 19 with stable and versioned Windows/Linux Setup ZIPs.
+- Repair this changelog projection for v0.9.11–v0.9.23 from the authoritative per-release evidence files; historical release files remain unchanged.
+
+## 0.9.23 — 2026-09-29
+- Reuse bounded check/test qualification in hosted/install/update Windows paths to prevent repeated test-file resource starvation without changing production runtime timeouts.
+
+## 0.9.22 — 2026-09-29
+- Preserve an explicitly owner-authorized Project Engine runner across candidate-first Windows updates using a narrowly validated canonical runner-policy overlay.
+
+## 0.9.21 — 2026-09-28
+- Reconcile the Project Engine runner contract with explicit FULL_POWER owner authorization while retaining default-deny local Codex behavior.
+
+## 0.9.20 — 2026-09-28
+- Add disposable Windows/Linux server-install canaries and close fresh-Linux prerequisite/headless qualification gaps.
+
+## 0.9.19 — 2026-09-28
+- Harden external Agent Extension routing with explicit-trigger dominance and separated multiword trigger matching.
+
+## 0.9.18 — 2026-09-28
+- Preserve successful Windows update outcomes across cleanup races, finish headless PowerShell helper coverage, and add read-only external Skill routing/retrieval.
+
+## 0.9.17 — 2026-09-28
+- Make immutable GitHub Release publication attach deterministic/checksummed installer, plugin and server assets in the initial release transaction.
+
+## 0.9.16 — 2026-09-28
+- Remove only Commander's stale generated no-Codex CODEX_HOME sentinel during explicitly authorized local Codex launch while preserving legitimate user configuration.
+
+## 0.9.15 — 2026-09-28
+- Honor persisted FULL_POWER owner authorization for stale-schema GUI takeover compatibility and replace the former absolute Codex block with a narrow explicit-owner opt-in.
+
+## 0.9.14 — 2026-09-28
+- Map unknown MCP task IDs to the standards-required Invalid params result while preserving durable/idempotent execution semantics.
+
+## 0.9.13 — 2026-09-28
+- Add MCP Tasks mapping and same-conversation continuation/outbox behavior so long work survives client/stream interruption without switching execution paths.
+
+## 0.9.12 — 2026-09-27
+- Preserve Project Engine tool definitions while the runner is disabled so live schema continuity remains compatible and invocation still fails closed.
+
+## 0.9.11 — 2026-09-27
+- Restore ChatGPT-first reasoning boundaries by removing unintended automatic Codex delegation from normal Commander execution.
+
 ## 0.9.10 — 2026-09-27
 - Recover an unreadable terminal operation state projection only when its durable request reservation and final receipt agree exactly on operation ID, input hash and correlation identity.
 - Preserve the original corrupt `state.json` bytes as a content-addressed `.bin` evidence backup before atomically reconstructing the terminal projection; never replay the external effect.
