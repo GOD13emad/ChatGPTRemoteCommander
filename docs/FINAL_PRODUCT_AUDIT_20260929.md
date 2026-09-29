@@ -47,3 +47,10 @@ v0.10.0 implementation -> local full gates -> clean Linux gate -> hosted CI/serv
 ## 2026-09-29 addendum — Windows BootRecovery owner gate
 
 The final owner/admin installation gate was subsequently closed after explicit approval. Official SYSTEM tasks are present with the expected principals/triggers/actions, production-equivalent SYSTEM credential self-test passes, and UserSessionHandoff has a current successful functional execution with both tunnels and MCP healthy afterward. No reboot/shutdown/logoff was performed; therefore a real AtStartup/power-return cycle is still a distinct validation event rather than a claimed PASS.
+
+
+## 2026-09-29 addendum — pre-important-task operational seal
+
+A final non-disruptive readiness pass was performed after the 20-product benchmark. Windows and Linux remain on exact v0.10.0 release commit 26b8df90838f449bc61710981fc31b7a467e021d with no previous route and no active operation/queue/path-lock load. Both doctors and security audits pass. Windows both tunnels, live GUI readiness and native background-browser smoke pass. Linux systemd+linger+tunnel and workflow DB integrity pass; GUI/browser contracts pass, while native browser execution is explicitly deferred because the host lacks geckodriver/Chromium and a clean low-risk dependency provisioning path was not available immediately before important work.
+
+No historical durable-state bulk cleanup, autonomy-policy change, v0.10.1 promotion, new dependency installation, reboot, shutdown or logoff was performed. This preserves the qualified baseline for the owner's next important task.
