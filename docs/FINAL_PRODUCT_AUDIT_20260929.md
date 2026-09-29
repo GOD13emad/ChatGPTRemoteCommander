@@ -54,3 +54,12 @@ The final owner/admin installation gate was subsequently closed after explicit a
 A final non-disruptive readiness pass was performed after the 20-product benchmark. Windows and Linux remain on exact v0.10.0 release commit 26b8df90838f449bc61710981fc31b7a467e021d with no previous route and no active operation/queue/path-lock load. Both doctors and security audits pass. Windows both tunnels, live GUI readiness and native background-browser smoke pass. Linux systemd+linger+tunnel and workflow DB integrity pass; GUI/browser contracts pass, while native browser execution is explicitly deferred because the host lacks geckodriver/Chromium and a clean low-risk dependency provisioning path was not available immediately before important work.
 
 No historical durable-state bulk cleanup, autonomy-policy change, v0.10.1 promotion, new dependency installation, reboot, shutdown or logoff was performed. This preserves the qualified baseline for the owner's next important task.
+
+
+## 2026-09-29 addendum — v0.10.1 release and live readback
+
+v0.10.1 is published and cryptographically/readback qualified: the annotated tag peels to main merge commit b65c48ff8c2fdacd6fbfe0efef4d90742a9e791c; hosted Windows/Ubuntu CI and Windows/Linux server canaries pass; all release payload assets verify against SHA256SUMS.
+
+Windows core runtime, routes, source projection and tunnels are on exact v0.10.1 and idle. Linux required one additional official maintenance-update pass because the routed runtime had promoted while the canonical control checkout remained v0.10.0; after exact-tag/commit updater qualification, canonical control is also exact v0.10.1 and doctor/service/tunnel all pass.
+
+The live Windows SYSTEM BootRecovery and UserSessionHandoff tasks are currently absent. Their disappearance cause is unverified. An official elevated repair attempt was canceled at UAC by the user, so the audit does not claim recovery-task final PASS. No reboot/shutdown/logoff occurred.
