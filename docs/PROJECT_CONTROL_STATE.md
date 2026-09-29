@@ -560,3 +560,20 @@ These open items are intentionally not auto-promoted or guessed and do not block
 **Do not claim full live-final recovery configuration until task repair evidence exists.**
 
 **Exact next action:** owner accepts UAC for the already-authorized `enable-boot-recovery.ps1 -NoStart`; verify both SYSTEM tasks, run one controlled Handoff test, then close #69. Real reboot/power-return validation remains #66.
+
+
+## Recovery live gate closure — 2026-09-29
+
+The owner-approved elevated v0.10.1 recovery install/readback is complete.
+
+- BootRecovery task: Enabled / SYSTEM / Highest / ServiceAccount / BootTrigger.
+- UserSessionHandoff task: Enabled / SYSTEM / Highest / ServiceAccount / LogonTrigger.
+- controlled Handoff run: PASS, LastTaskResult=0.
+- no reboot/shutdown/logoff performed.
+- post-Handoff Windows Doctor PASS.
+- both Windows tunnels ready.
+- no active operation, queue, mutation lock or workflow root lease.
+
+Correction to the preceding live-seal section: the non-elevated inventory that did not enumerate the SYSTEM tasks was insufficient evidence of deletion. Pre-repair disappearance is UNPROVEN. Current recovery configuration is PASS. Issue #69 is closed.
+
+Only #66 remains as the separate real reboot/power-return validation boundary; it is not auto-executed.
