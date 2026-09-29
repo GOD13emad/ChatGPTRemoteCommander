@@ -1254,3 +1254,12 @@ Historical checkpoints remain append-only archives. Current release/control clai
 - **Evidence artifact:** `var/final-gate-v0.9.22.log`, SHA-256 `1338cc7cd5e3d5b65739342fe4e3b8b0fdeffbd0501fe0d9f514d04196af751c`.
 - **Scope:** qualification harness/install-update gate only; production runner-policy/runtime behavior and functional timeouts unchanged.
 - **Next authority gate:** commit/push this delta, then require fresh GitHub CI and both Server Install Canary jobs on the new head SHA before merge.
+
+
+## 2026-09-29 — Ubuntu hosted check caught stale Linux installer expectation
+
+- **Hosted evidence — CONFIRMED / HIGH:** PR #50 head `e7fa42ab33a3633a7d290b8b47c25cbfade0c639` failed Ubuntu `npm run check` only in three Linux installer-isolation assertions.
+- **Exact mismatch:** installer fixture correctly recorded `run test:qualification`, while the Linux-only test still expected legacy `test` in two no-start reuse cases and one skip-tunnel-client case. Ubuntu aggregate for that CHECK segment: 248 pass / 3 fail / 1 skip.
+- **Root cause — CONFIRMED:** stale test oracle after intentional qualification-command rename; production/install behavior matched the new contract. Local Windows qualification did not execute these Linux-only isolation cases, so hosted Ubuntu was the first authority to expose the stale oracle.
+- **Fix:** update only the two expected npm-call arrays in `test/linux-installer-isolation.test.mjs` to `run test:qualification`; no runtime, installer, timeout, or concurrency behavior changed.
+- **Next authority gate:** local syntax/CHECK/audit/diff validation, then a fresh commit and fresh Ubuntu/Windows CI plus both install canaries. Do not rerun the old failed SHA as promotion evidence.

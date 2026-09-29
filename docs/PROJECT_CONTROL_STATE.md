@@ -363,3 +363,10 @@ Historical checkpoints are preserved in the [archived project state](history/PRO
 - Final-gate log SHA-256: `1338cc7cd5e3d5b65739342fe4e3b8b0fdeffbd0501fe0d9f514d04196af751c`.
 - Current critical path: commit/push -> fresh hosted CI + Linux/Windows install canaries -> merge -> immutable v0.9.22 release -> candidate-first live rollout -> live runner/system-status proof.
 - FINAL remains UNPROVEN until live routed runtime proves `runnerConfigured=true` and `automaticExecution=true`.
+
+
+## 2026-09-29 — Ubuntu Linux installer oracle mismatch
+
+- Head `e7fa42ab33a3633a7d290b8b47c25cbfade0c639` failed Ubuntu CHECK because three Linux-only installer-isolation expectations still asserted legacy npm command `test` instead of the intentionally introduced `run test:qualification`.
+- Actual installer behavior was correct; mutation objective is test-oracle alignment only.
+- Merge remains BLOCKED until a new SHA passes fresh Ubuntu/Windows CI and both Server Install Canary jobs.
