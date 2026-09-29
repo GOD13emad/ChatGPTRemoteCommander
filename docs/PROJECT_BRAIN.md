@@ -427,3 +427,19 @@ Primary method references:
 - GitHub-hosted runner specifications: https://docs.github.com/actions/reference/runners/github-hosted-runners
 
 Status: LOCAL PASS. Hosted Windows+Ubuntu CI remains the promotion gate.
+
+
+### Hosted follow-up — Ubuntu requires stricter bound
+
+Fresh PR #74 evidence invalidated the initial all-hosts=2 proposal:
+- hosted Windows at concurrency 2: PASS.
+- hosted Ubuntu at concurrency 2: inherited-stdio property test hit its explicit 20-second test wait at 20.111 s; failure was again an exact test deadline, not an invariant assertion.
+- therefore concurrency 2 is insufficient on the current Ubuntu hosted runner workload.
+
+Revised minimum-sufficient hosted policy:
+- Windows: test-file concurrency 2 (already locally and hosted qualified).
+- Ubuntu: test-file concurrency 1.
+- one matrix-driven workflow invokes the same tracked wrapper on both OSes; no duplicated test list and no per-test timeout inflation.
+- production/runtime behavior remains unchanged.
+
+Promotion remains blocked until fresh Ubuntu+Windows hosted CI passes this exact matrix.
