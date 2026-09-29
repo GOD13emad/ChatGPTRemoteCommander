@@ -1479,3 +1479,16 @@ Status: CURRENT benchmark evidence. Reuse targets: roadmap, release planning, pr
 - **Repair attempt — BLOCKED:** official v0.10.1 elevated repair was launched with evidence-file output, but UAC returned `operation was canceled by the user`. No task mutation occurred. Blind retry rejected.
 - **Issue disposition:** #62 and #65 closed as completed by v0.10.1; #69 opened for missing Windows recovery tasks and prevention guard; #66 remains real reboot/power-return validation.
 - **Reuse targets:** release support, installer/updater regression design, recovery readiness, future final-live seal.
+
+
+## 2026-09-29 — Hosted CI starvation root cause and proportional control
+
+- **Trigger — CONFIRMED/HIGH:** three meaningful timing failures occurred across the same hosted async/process family, including different tests and both historical Windows and current Ubuntu hosted runs. Per-test timeout patching was stopped.
+- **Historical evidence — CONFIRMED/HIGH:** commit `47c40616c30b37b23451cd237790f45bf81c4656` introduced bounded test-file concurrency only for Windows because Ubuntu was then passing. The OS-specific assumption is no longer supported after two fresh Ubuntu failures.
+- **Primary method evidence — CONFIRMED/HIGH:** Node.js v22 documents test-file process isolation and the `--test-concurrency` bound; GitHub documents four-CPU public hosted runners for the relevant standard images.
+- **Root-cause class — PROBABLE/HIGH, directly supported by reproduction:** default hosted file concurrency permits multiple process-heavy async suites to contend for limited runner CPU/process scheduling, exhausting test-only deadlines while the same invariants pass quickly under bounded file concurrency.
+- **Decision — ACCEPTED:** apply the already-qualified concurrency=2 wrapper to both hosted OSes. This is simpler and better aligned with the invariant than increasing individual timeouts.
+- **Rejected alternatives:** raising each timeout separately; creating an Ubuntu-specific wrapper; modifying production timeout semantics; serializing all tests to concurrency=1 without evidence it is needed.
+- **Verification:** exact branch local Windows and Linux qualification paths both PASS, including full bounded check/test and security audit.
+- **Reuse targets:** CI reliability, release engineering, future failure-prevention policy.
+- **Sources:** Node.js CLI/Test Runner official documentation and GitHub-hosted runner specifications listed in Project Brain.
