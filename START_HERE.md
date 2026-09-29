@@ -88,6 +88,24 @@ Local Power Mode controls what the MCP server can do. ChatGPT App permissions se
 
 ## 1. Install or update
 
+### Preferred application-like setup
+
+For a new personal/trusted computer, prefer the OS setup bundle instead of assembling individual commands.
+
+Windows:
+`https://github.com/GOD13emad/ChatGPTRemoteCommander/releases/latest/download/ChatGPT-Remote-Commander-Windows-Setup.zip`
+
+Extract it and double-click `SETUP.cmd`. The wizard offers Standard, Full/Power, or Full/Power + GUI and delegates to the same qualified `install.ps1` path below.
+
+Linux:
+`https://github.com/GOD13emad/ChatGPTRemoteCommander/releases/latest/download/ChatGPT-Remote-Commander-Linux-Setup.zip`
+
+Extract it and run `./SETUP.sh`. The wizard delegates to the same qualified `install.sh` path below.
+
+Both wizards continue through persistent tunnel enrollment and health/readiness checks. Runtime API keys are entered only in the local hidden credential prompt. After the ChatGPT custom MCP app is created and its tools are scanned, paste only that app's non-secret App ID into the local wizard. It creates a complete device-specific Plugin ZIP with a stable unique name/icon for that machine and profile.
+
+If the App ID does not exist yet, the wizard finishes the machine/tunnel phase as `SETUP_WAITING_APP_ID`; after creating/scanning the app, rerun the wizard with install/connect skipped and the App ID. This is a product boundary: the registered ChatGPT app is created by the ChatGPT surface, not by tunnel credentials.
+
 For a fresh Windows Server (especially Server Core or systems without WinGet/Git/Node/PowerShell 7) or a headless Linux server, use [docs/SERVER_INSTALL.md](docs/SERVER_INSTALL.md). The server bootstrap verifies prerequisite hashes/signatures, pins the exact fetched source commit, and never creates antivirus exclusions.
 
 ### Windows — Standard

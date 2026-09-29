@@ -98,8 +98,10 @@ try {
 
   $app = Get-Content (Join-Path $PluginRoot '.app.json') -Raw | ConvertFrom-Json
   $manifest = Get-Content (Join-Path $PluginRoot 'plugin.json') -Raw | ConvertFrom-Json
+  $native = Get-Content (Join-Path $PluginRoot '.codex-plugin\plugin.json') -Raw | ConvertFrom-Json
   if ($app.apps.'remote-commander'.id -ne $ResolvedAppId) { throw 'Generated .app.json does not match requested app.' }
   if ($manifest.extensions.'com.openai'.apps -ne './.app.json') { throw 'Generated plugin manifest is not app-bound.' }
+  if ($native.apps -ne './.app.json') { throw 'Generated native plugin manifest is not app-bound.' }
 
   Write-Host "WORK_PLUGIN_INSTALL_PASS marketplace=$MarketplaceName app=$ResolvedAppId root=$MarketplaceRoot"
   Write-Host 'Restart/reload ChatGPT Desktop or start a fresh Work task so the plugin inventory reloads.'

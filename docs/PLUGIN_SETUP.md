@@ -39,7 +39,27 @@ Supported app ID prefixes currently include:
 
 If an admin URL contains a form such as `plugin_asdk_app_...`, use the underlying app ID beginning at `asdk_app_`.
 
-## 3. Prepare a private/workspace app-bound Plugin
+## 3. Generate the device-specific upload ZIP
+
+Preferred for one ChatGPT account/workspace connected to one or more computers: run the local v0.10+ setup wizard or device builder after the custom MCP app has passed Scan Tools.
+
+Windows:
+```powershell
+.\build-device-plugin.ps1 -AppId "asdk_app_YOUR_ID"
+```
+
+Linux:
+```bash
+./build-device-plugin.sh --app-id asdk_app_YOUR_ID
+```
+
+The generator uses a local stable machine identity plus the Remote Commander profile to derive a short fingerprint. It creates a plugin name such as `remote-commander-workstation-a1b2c3d4e5`, a display name containing the device name, and deterministic device-specific icon/logo assets. A second computer or a second profile receives a different identity and icon.
+
+The ZIP contains `plugin.json`, `.codex-plugin/plugin.json`, `.app.json`, the workflow Skill, icon/logo assets and `DEVICE_PLUGIN.json`. It does not contain the Runtime API key, Tunnel ID, bearer token or tunnel credential. The `.app.json` contains only the registered App ID required to reference the already-created ChatGPT app.
+
+Where ZIP upload is available, eligible workspace owners/admins can use **Admin → Plugins → Add → Upload plugin**. Uploading the Plugin does not create or authorize the referenced app; normal app/workspace permissions remain separate.
+
+## 4. Prepare a private/workspace app-bound Plugin
 
 Preferred: use the latest-Release one-liner from `WORK_SETUP.md`; no repository checkout is required. The self-contained installer accepts either the ChatGPT technical `plugin_...` identifier or the underlying App ID, downloads `plugin-template.zip` from the latest Release when needed, creates a private per-user copy, binds it, adds a personal marketplace, installs the Plugin through Codex, and verifies the result. The repository-local `install-work-plugin.ps1/.sh` commands remain available for development/offline use with a local template.
 
@@ -57,7 +77,7 @@ or:
 ./bind-app.sh asdk_app_YOUR_ID
 ```
 
-The helper creates `.app.json` and adds `extensions.com.openai.apps = "./.app.json"` to that private copy. The resulting mapping is:
+The helper creates `.app.json`, adds `extensions.com.openai.apps = "./.app.json"` to the portable manifest, and sets `apps = "./.app.json"` in `.codex-plugin/plugin.json` for native compatibility. The resulting mapping is:
 
 ```json
 {
@@ -72,7 +92,7 @@ The helper creates `.app.json` and adds `extensions.com.openai.apps = "./.app.js
 
 Do not commit a workspace-specific app ID into this public repository unless you intentionally want that mapping public.
 
-## 4. Plugin manifest and icon
+## 5. Plugin manifest and icon
 
 The supplied `plugin.json` uses the portable Agent Plugins schema and OpenAI-specific interface metadata. It is valid as a skill-only template before any workspace-specific app ID is added. Run the supplied bind helper on a private copy to add the `apps` mapping.
 
@@ -89,7 +109,7 @@ It defines:
 
 Use the provided PNG assets as-is, or replace them with your own assets while keeping the manifest paths correct.
 
-## 5. Test privately
+## 6. Test privately
 
 For supported local ChatGPT Desktop/Codex testing, this repository already exposes `.agents/plugins/marketplace.json`. Add the GitHub marketplace with `codex plugin marketplace add GOD13emad/ChatGPTRemoteCommander --ref main`, then run `codex plugin add chatgpt-remote-commander@chatgpt-remote-commander`. Verify with `codex plugin list` and reload ChatGPT Desktop if required. The repository also marks the Plugin installed-by-default for local marketplace use; product policy or user approval can still control installation.
 
@@ -104,7 +124,7 @@ Then:
 4. For Power Mode, run read-only `power_status`.
 5. Confirm write actions require the expected permissions/confirmations.
 
-## 6. Public Plugin Directory limitation
+## 7. Public Plugin Directory limitation
 
 Secure MCP Tunnel is designed for private MCP connectivity and development/testing. It does **not** provide the stable public HTTPS MCP endpoint required for a public MCP-backed Plugin Directory submission.
 
@@ -112,7 +132,7 @@ To publish this project as a public MCP-backed plugin, first provide a productio
 
 Do not expose a personal Power Mode computer directly to the public internet to satisfy this requirement.
 
-## 7. Current official references
+## 8. Current official references
 
 - Plugin packaging: https://developers.openai.com/plugins/build/plugins
 - Plugin submission: https://developers.openai.com/plugins/deploy/submission

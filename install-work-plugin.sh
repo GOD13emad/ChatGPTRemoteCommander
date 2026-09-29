@@ -92,8 +92,10 @@ import fs from 'node:fs';
 const [, , root, expected] = process.argv;
 const app=JSON.parse(fs.readFileSync(root+'/.app.json','utf8'));
 const manifest=JSON.parse(fs.readFileSync(root+'/plugin.json','utf8'));
+const native=JSON.parse(fs.readFileSync(root+'/.codex-plugin/plugin.json','utf8'));
 if(app.apps?.['remote-commander']?.id!==expected) process.exit(2);
 if(manifest.extensions?.['com.openai']?.apps!=='./.app.json') process.exit(3);
+if(native.apps!=='./.app.json') process.exit(4);
 NODE
 
 echo "WORK_PLUGIN_INSTALL_PASS marketplace=$MARKETPLACE_NAME app=$APP_ID root=$MARKETPLACE_ROOT"

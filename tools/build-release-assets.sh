@@ -9,7 +9,12 @@ EPOCH="$(git -C "$ROOT" show -s --format=%ct HEAD)"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
-for f in   install.ps1 install.sh install-work-plugin.ps1 install-work-plugin.sh   server-install-windows.ps1 server-install-linux.sh START_HERE.md WORK_SETUP.md   assets/plugin-icon.png assets/plugin-icon.svg assets/plugin-logo.png   plugin-template/plugin.json plugin-template/.codex-plugin/plugin.json
+for f in \
+  install.ps1 install.sh install-work-plugin.ps1 install-work-plugin.sh \
+  setup-wizard.ps1 setup-wizard.sh build-device-plugin.ps1 build-device-plugin.sh tools/generate-device-plugin.mjs \
+  server-install-windows.ps1 server-install-linux.sh START_HERE.md WORK_SETUP.md \
+  assets/plugin-icon.png assets/plugin-icon.svg assets/plugin-logo.png \
+  plugin-template/plugin.json plugin-template/.codex-plugin/plugin.json
 do
   [[ -f "$ROOT/$f" ]] || { echo "missing release input: $f" >&2; exit 1; }
 done
@@ -36,7 +41,7 @@ zip_tree() {
   python3 - "$src" "$dest" "$EPOCH" <<'PY'
 from pathlib import Path
 from zipfile import ZipFile, ZipInfo, ZIP_DEFLATED
-import os, stat, sys, time
+import stat, sys, time
 src = Path(sys.argv[1]).resolve()
 dest = Path(sys.argv[2]).resolve()
 epoch = max(int(sys.argv[3]), 315532800)
@@ -59,22 +64,34 @@ zip_tree "$plugin_stage" "$OUT/plugin-template.zip"
 cp "$OUT/plugin-template.zip" "$OUT/plugin-template-v$VERSION.zip"
 
 installer_stage="$TMP/installer"
-mkdir -p "$installer_stage"
-for f in install.ps1 install.sh install-work-plugin.ps1 install-work-plugin.sh server-install-windows.ps1 server-install-linux.sh START_HERE.md WORK_SETUP.md; do
+mkdir -p "$installer_stage/tools"
+for f in install.ps1 install.sh install-work-plugin.ps1 install-work-plugin.sh setup-wizard.ps1 setup-wizard.sh build-device-plugin.ps1 build-device-plugin.sh server-install-windows.ps1 server-install-linux.sh START_HERE.md WORK_SETUP.md; do
   cp "$ROOT/$f" "$installer_stage/$f"
 done
+cp "$ROOT/tools/generate-device-plugin.mjs" "$installer_stage/tools/generate-device-plugin.mjs"
 cp "$OUT/plugin-template.zip" "$installer_stage/plugin-template.zip"
 cat > "$installer_stage/README-INSTALL.txt" <<EOF
 ChatGPT Remote Commander v$VERSION
 Release commit: $COMMIT
 
-Windows desktop/update:
+Easiest Windows path:
+  pwsh.exe -NoLogo -NoProfile -File .\setup-wizard.ps1
+
+Easiest Linux path:
+  bash ./setup-wizard.sh
+
+The wizard installs/updates Commander, enrolls the private tunnel using local hidden
+credential prompts, verifies health/readiness, and after the ChatGPT custom app is
+created/scanned accepts its App ID and produces a device-specific Plugin ZIP.
+Runtime API keys and tunnel credentials are never included in that Plugin ZIP.
+
+Direct Windows install:
   pwsh.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File .\install.ps1 -PowerMode -StartServer -SourceRef v$VERSION -ExpectedCommit $COMMIT
 
-Windows Server bootstrap (run from an elevated Administrator PowerShell):
+Windows Server bootstrap (run from an elevated Administrator PowerShell 7):
   pwsh.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File .\server-install-windows.ps1 -SourceRef v$VERSION -ExpectedCommit $COMMIT
 
-Linux:
+Direct Linux install:
   ./install.sh --power-mode --start-server --source-ref v$VERSION --expected-commit $COMMIT
 
 Linux Server bootstrap:
@@ -84,17 +101,88 @@ No antivirus exclusions are added by the server bootstrap.
 EOF
 (
   cd "$installer_stage"
-  sha256sum install.ps1 install.sh install-work-plugin.ps1 install-work-plugin.sh     server-install-windows.ps1 server-install-linux.sh plugin-template.zip START_HERE.md WORK_SETUP.md README-INSTALL.txt     | LC_ALL=C sort -k2 > SHA256SUMS-INSTALLER.txt
+  sha256sum install.ps1 install.sh install-work-plugin.ps1 install-work-plugin.sh \
+    setup-wizard.ps1 setup-wizard.sh build-device-plugin.ps1 build-device-plugin.sh tools/generate-device-plugin.mjs \
+    server-install-windows.ps1 server-install-linux.sh plugin-template.zip START_HERE.md WORK_SETUP.md README-INSTALL.txt \
+    | LC_ALL=C sort -k2 > SHA256SUMS-INSTALLER.txt
   sha256sum -c SHA256SUMS-INSTALLER.txt
 )
 zip_tree "$installer_stage" "$OUT/ChatGPT-Remote-Commander-v$VERSION-Installer.zip"
 
+windows_stage="$TMP/windows-setup"
+mkdir -p "$windows_stage"
+cp "$ROOT/setup-wizard.ps1" "$windows_stage/setup-wizard.ps1"
+cp "$ROOT/install.ps1" "$windows_stage/install.ps1"
+cat > "$windows_stage/SETUP.cmd" <<'CMD'
+@echo off
+setlocal
+where pwsh.exe >nul 2>nul
+if errorlevel 1 (
+  echo ChatGPT Remote Commander requires PowerShell 7.
+  echo Install PowerShell 7, then run SETUP.cmd again.
+  pause
+  exit /b 2
+)
+pwsh.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%~dp0setup-wizard.ps1"
+set "RC_EXIT=%ERRORLEVEL%"
+echo.
+if not "%RC_EXIT%"=="0" echo Setup exited with code %RC_EXIT%.
+pause
+exit /b %RC_EXIT%
+CMD
+cat > "$windows_stage/README.txt" <<EOF
+ChatGPT Remote Commander v$VERSION — Windows Setup
+
+1. Extract this ZIP.
+2. Double-click SETUP.cmd.
+3. Choose Standard, Full/Power, or Full/Power + GUI.
+4. Enter tunnel/runtime credentials only in the local hidden prompts.
+5. Create/scan the ChatGPT custom app when instructed.
+6. Paste only its App ID into the local wizard. The wizard creates a unique
+   device Plugin ZIP in Downloads\RemoteCommander-Plugins.
+
+The Plugin ZIP contains the app binding, workflow skill, unique device name,
+unique deterministic icon/logo, and no Runtime API key or tunnel credential.
+EOF
+zip_tree "$windows_stage" "$OUT/ChatGPT-Remote-Commander-Windows-Setup-v$VERSION.zip"
+cp "$OUT/ChatGPT-Remote-Commander-Windows-Setup-v$VERSION.zip" "$OUT/ChatGPT-Remote-Commander-Windows-Setup.zip"
+
+linux_stage="$TMP/linux-setup"
+mkdir -p "$linux_stage"
+cp "$ROOT/setup-wizard.sh" "$linux_stage/setup-wizard.sh"
+cp "$ROOT/install.sh" "$linux_stage/install.sh"
+cat > "$linux_stage/SETUP.sh" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+exec bash "$ROOT/setup-wizard.sh"
+SH
+chmod +x "$linux_stage/SETUP.sh" "$linux_stage/setup-wizard.sh" "$linux_stage/install.sh"
+cat > "$linux_stage/README.txt" <<EOF
+ChatGPT Remote Commander v$VERSION — Linux Setup
+
+1. Extract this ZIP.
+2. Run: ./SETUP.sh
+3. Choose Standard, Full/Power, or Full/Power + GUI.
+4. Enter tunnel/runtime credentials only in the local hidden prompts.
+5. Create/scan the ChatGPT custom app when instructed.
+6. Paste only its App ID into the local wizard. The wizard creates a unique
+   device Plugin ZIP in ~/Downloads/RemoteCommander-Plugins when available.
+
+The Plugin ZIP contains the app binding, workflow skill, unique device name,
+unique deterministic icon/logo, and no Runtime API key or tunnel credential.
+EOF
+zip_tree "$linux_stage" "$OUT/ChatGPT-Remote-Commander-Linux-Setup-v$VERSION.zip"
+cp "$OUT/ChatGPT-Remote-Commander-Linux-Setup-v$VERSION.zip" "$OUT/ChatGPT-Remote-Commander-Linux-Setup.zip"
+
 (
   cd "$OUT"
-  find . -maxdepth 1 -type f ! -name SHA256SUMS.txt -printf '%f\n'     | LC_ALL=C sort     | while IFS= read -r f; do sha256sum "$f"; done > SHA256SUMS.txt
+  find . -maxdepth 1 -type f ! -name SHA256SUMS.txt -printf '%f\n' \
+    | LC_ALL=C sort \
+    | while IFS= read -r f; do sha256sum "$f"; done > SHA256SUMS.txt
   sha256sum -c SHA256SUMS.txt
 )
 
 count="$(find "$OUT" -maxdepth 1 -type f | wc -l | tr -d ' ')"
-[[ "$count" -eq 15 ]] || { echo "unexpected release asset count: $count" >&2; exit 1; }
+[[ "$count" -eq 19 ]] || { echo "unexpected release asset count: $count" >&2; exit 1; }
 echo "RELEASE_ASSETS_PASS version=$VERSION commit=$COMMIT count=$count out=$OUT"
