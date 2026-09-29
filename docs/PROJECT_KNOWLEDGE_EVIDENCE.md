@@ -1373,3 +1373,15 @@ Historical checkpoints remain append-only archives. Current release/control clai
 - **Multi-device behavior — CONFIRMED by regression:** stable local machine identity + profile produces deterministic distinct plugin name and icon/logo; same identity is reproducible; different machine/profile differs; package excludes tunnel/runtime credentials.
 - **Owner privilege boundary — CONFIRMED:** optional Windows pre-logon SYSTEM tasks require elevation and remain a separate owner action. No privilege bypass was attempted.
 - **Reuse targets:** README/onboarding/support, installer distribution, future multi-device deployment, release audits, account transfer/handoff.
+
+
+## 2026-09-29 — Windows BootRecovery closure evidence
+
+- **Claim:** the SYSTEM task mechanism and LocalMachine credentials are viable on this machine. **Evidence:** production-equivalent SYSTEM self-test completed in 1.303 s with both `chatgpt-remote-commander` and `saeed-emad` credentials ready. **Status:** CONFIRMED/HIGH.
+- **Failure/root cause:** the first official elevated setup produced `BOOT_RECOVERY_SYSTEM_PROBE_TIMEOUT`. Subsequent evidence did not reproduce the failure. SYSTEM can launch Store PowerShell 7, Node/npm paths are accessible, and exact production argument quoting passes. Therefore the first timeout is classified **transient / root cause not further proven**; no runtime patch was justified. **Status:** PROBABLE transient; precise causal mechanism UNVERIFIED.
+- **Rejected diagnostic evidence:** a temporary `Start-Process -ArgumentList` wrapper split `C:\Program Files\nodejs\node.exe` and produced an invalid `IntervalSeconds` conversion. This was a diagnostic-wrapper defect and was excluded from product conclusions.
+- **Decision:** use the authoritative `enable-boot-recovery.ps1 -NoStart` path unchanged after exact SYSTEM probe PASS rather than altering timeouts or weakening checks. **Rationale:** minimum sufficient control; avoids patching a non-reproduced transient.
+- **Result:** BootRecovery and UserSessionHandoff registered as SYSTEM/Highest/ServiceAccount with correct enabled triggers; Handoff manually validated to LastTaskResult=0 while v0.10.0 MCP and both tunnels stayed ready.
+- **Limitation:** no reboot/shutdown/logoff occurred, so actual AtStartup trigger behavior is not claimed as validated.
+- **Provenance:** local acceptance artifact SHA-256 `4817dddef6b497545369758da5be79c940500968b8df7375fb43c892a1ba832a`.
+- **Reuse targets:** deployment handoff, boot/power-loss recovery troubleshooting, future reboot validation, support.

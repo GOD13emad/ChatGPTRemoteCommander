@@ -43,3 +43,7 @@ Native ChatGPT host wake/push is outside Commander authority. Secure MCP Tunnel 
 ## Critical path
 
 v0.10.0 implementation -> local full gates -> clean Linux gate -> hosted CI/server canaries -> immutable tag/release/assets -> live Windows/Linux promotion/readback -> final Brain seal. Windows pre-logon BootRecovery task creation remains a separate owner/admin gate if autonomous operation before user logon is required.
+
+## 2026-09-29 addendum — Windows BootRecovery owner gate
+
+The final owner/admin installation gate was subsequently closed after explicit approval. Official SYSTEM tasks are present with the expected principals/triggers/actions, production-equivalent SYSTEM credential self-test passes, and UserSessionHandoff has a current successful functional execution with both tunnels and MCP healthy afterward. No reboot/shutdown/logoff was performed; therefore a real AtStartup/power-return cycle is still a distinct validation event rather than a claimed PASS.
