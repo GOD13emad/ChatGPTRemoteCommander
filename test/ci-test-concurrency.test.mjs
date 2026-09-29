@@ -29,10 +29,12 @@ test('qualification paths bound full test file concurrency',()=>{
   assert.equal(pkg.scripts['check:qualification'],'node tools/run-bounded-test-script.mjs --script check --concurrency 2');
   assert.equal(pkg.scripts['test:qualification'],'node tools/run-bounded-test-script.mjs --script test --concurrency 2');
   const workflow=read('.github/workflows/ci.yml');
-  assert.ok(workflow.includes('run: npm run check:qualification'));
-  assert.ok(workflow.includes('run: npm run test:qualification'));
-  assert.equal(workflow.includes("if: runner.os == 'Windows'"),false);
-  assert.equal(workflow.includes("if: runner.os != 'Windows'"),false);
+  assert.ok(workflow.includes('os: windows-latest'));
+  assert.ok(workflow.includes('test_concurrency: 2'));
+  assert.ok(workflow.includes('os: ubuntu-latest'));
+  assert.ok(workflow.includes('test_concurrency: 1'));
+  assert.ok(workflow.includes('run: node tools/run-bounded-test-script.mjs --script check --concurrency ${{ matrix.test_concurrency }}'));
+  assert.ok(workflow.includes('run: node tools/run-bounded-test-script.mjs --script test --concurrency ${{ matrix.test_concurrency }}'));
   assert.equal(workflow.includes('run: npm run check\n'),false);
   assert.equal(workflow.includes('run: npm test\n'),false);
   const installPs1=read('install.ps1');
