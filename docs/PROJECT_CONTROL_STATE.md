@@ -464,3 +464,34 @@ Historical checkpoints are preserved in the [archived project state](history/PRO
 **Current gate:** LOCAL PASS. Next authority gates are exact-tree Linux qualification + release asset build, hosted CI/server canaries, immutable v0.10.0 publication, published asset verification, and candidate-first Windows/Linux live rollout/readback.
 
 **Separate owner gate:** Windows pre-logon BootRecovery SYSTEM tasks still require one elevated owner run; no privilege bypass is permitted.
+
+## FINAL accepted state — 2026-09-29 — v0.10.0
+
+**Status:** PRODUCT FINAL PASS.
+
+**Authority:** immutable v0.10.0 release, exact merge commit 26b8df90838f449bc61710981fc31b7a467e021d; hosted CI/canaries; live route/readiness evidence on audited Windows and Linux systems.
+
+**Completed roadmap:**
+1. Cross-platform runtime + Power/Standard authority — PASS.
+2. Persistent Secure MCP Tunnel + supervision — PASS.
+3. Candidate-first/rollback-aware update + schema continuity — PASS.
+4. Durable long work / retries / crash recovery / completion delivery — PASS.
+5. Browser/GUI zero-interference default + explicit owner takeover — PASS.
+6. Multi-profile / multi-account isolation — PASS.
+7. External Skill routing boundary — PASS.
+8. Fresh server install canaries — PASS.
+9. Application-like Windows/Linux setup bundles — PASS.
+10. Device-specific app-bound Plugin ZIP generator with distinct identity/icons and secret exclusion — PASS.
+11. Immutable release packaging/checksums — PASS.
+12. Exact live rollout to Windows default + saeed-emad and Linux default — PASS.
+13. Project Brain / knowledge / changelog projection — PASS after this final seal.
+
+**Live Windows:** v0.10.0 exact commit on default and saeed-emad; previous=null; tunnels ready; updater durable result PROMOTED; post-rollout concurrency idle.
+
+**Live Linux:** v0.10.0 exact commit on default; previous=null; service active; tunnel ready; post-rollout concurrency idle; updater gates/cutover recorded.
+
+**Open external gates only:**
+- WAITING_APP_ID for a machine-specific Plugin ZIP when the registered ChatGPT App ID has not yet been supplied by the ChatGPT surface.
+- elevated Windows owner action for optional pre-logon SYSTEM BootRecovery tasks.
+
+These open items are intentionally not auto-promoted or guessed and do not block the v0.10.0 product release.
