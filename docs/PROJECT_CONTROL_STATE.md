@@ -543,3 +543,20 @@ These open items are intentionally not auto-promoted or guessed and do not block
 **Current gate:** LOCAL PASS. Next: immutable candidate commit -> clean Linux exact-tree -> hosted CI/server canaries -> release assets/tag -> candidate-first live rollout/readback.
 
 **Deferred/not blockers for v0.10.1:** real reboot/power-return validation; evidence-preserving historical state reconciliation/archive; trusted Linux native-browser provisioning; fleet view; sandbox/least-privilege; macOS; enterprise RBAC; Game Agent.
+
+
+## v0.10.1 release/live control state — 2026-09-29
+
+**Release authority:** `v0.10.1` / main `b65c48ff8c2fdacd6fbfe0efef4d90742a9e791c`.
+
+**Publication/V&V PASS:** hosted Windows+Ubuntu CI PASS; Windows+clean-Linux server canaries PASS; immutable release published; tag peels to exact main commit; all published payload asset checksums verified.
+
+**Windows core PASS:** canonical control and both routed profiles are exact v0.10.1; previous=null; both tunnels ready; doctor PASS; no active operation/queue/path lock/root lease.
+
+**Linux core PASS after narrow repair:** routed runtime was already v0.10.1 but canonical control checkout was stale at v0.10.0. Official candidate-first updater was rerun in retained terminal, passed check/test/audit/hardware/schema gates, promoted canonical control to exact v0.10.1 and returned AUTO_UPDATE_PASS. Postrepair doctor/service/tunnel/readback PASS.
+
+**Remaining blocker:** desired Windows SYSTEM BootRecovery and UserSessionHandoff scheduled tasks are absent. Cause of disappearance is UNVERIFIED; no updater unregister path was found. Official elevated repair was attempted, but the UAC prompt was canceled by the user. Issue #69 tracks prevention/guard work.
+
+**Do not claim full live-final recovery configuration until task repair evidence exists.**
+
+**Exact next action:** owner accepts UAC for the already-authorized `enable-boot-recovery.ps1 -NoStart`; verify both SYSTEM tasks, run one controlled Handoff test, then close #69. Real reboot/power-return validation remains #66.
