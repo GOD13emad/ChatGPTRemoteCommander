@@ -1177,3 +1177,89 @@ Historical checkpoints remain append-only archives. Current release/control clai
 - **Security / diff:** `SECURITY_AUDIT_PASS`; `git diff --check` PASS.
 - **Evidence artifact:** `var/final-gate-v0.9.21.log`, SHA-256 `2e4402ddddcf21240fc59f478734f3833c11d5b614bf2698a5aa0b39ef00bf12`.
 - **Open gates:** hosted CI + Server Install Canary on the new commit, PR merge, immutable deployment, and live runtime readback. Native ChatGPT host wake/push and elapsed soak remain external/unproven.
+
+
+## 2026-09-28 — v0.9.22 Windows owner-runner policy-overlay root cause and prevention
+
+- **Live evidence — CONFIRMED / HIGH:** v0.9.21 canonical local policy contains `durableWorkflows.runner.enabled=true`, `autoTick=true`, exact `provider.kind=codex`, a real local Codex executable and `powerMode.codexControl.allowLaunch=true`; the active routed v0.9.21 runtime still contains the historical disabled runner with reason `NO_CODEX_VIA_COMMANDER`, so live `system_status` reports `runnerConfigured=false` and `automaticExecution=false`.
+- **Root cause — CONFIRMED / HIGH:** Windows `Get-PrimaryConfig` has preferred `route.active.configPath` since v0.8.0. Thus the v0.9.21 updater used the historical runtime policy as its candidate input and ignored the newer explicit canonical owner runner policy. The v0.9.21 code contract itself is valid: an isolated candidate build using canonical local policy preserves the owner-authorized Codex runner and clamps provider timeout to 30 seconds.
+- **Correction to earlier inference:** `workflow.project_engine` is a capability name; the configured runner lives under `durableWorkflows.runner`. Earlier checks of a nonexistent `workflow.project_engine` config block are superseded by the direct `durableWorkflows.runner` evidence.
+- **Decision / minimum sufficient control:** keep active routed config as baseline. Recover only the runner block when active state is specifically historical `NO_CODEX_VIA_COMMANDER` and both canonical policy and merged active authority pass the same explicit-owner Codex contract. Do not copy unrelated canonical fields and do not override Standard/explicit opt-out/other disabled states.
+- **Prevention / regression:** centralize the merge through `project-runner-config` authorization logic, add unit regressions for allowed and denied overlays, add updater contract markers, and require live readback after candidate-first rollout.
+- **Reuse targets:** release notes, updater architecture, policy migration, failure prevention.
+
+
+## 2026-09-29 — v0.9.22 complete local promotion gate
+
+- **Status:** CONFIRMED / HIGH — `FINAL_GATE_PASS` at `2026-09-29T00:09:04.6782491+03:30`.
+- **Focused Project Engine:** 223 total; 222 pass, 0 fail, 1 platform skip.
+- **Release metadata contracts:** installer, onboarding/plugin, release-assets, source-integrity, Windows runtime contract and security audit passed after v0.9.22 alignment.
+- **Live-config proof before promotion:** the policy merge recovered `runnerEnabled=true`, `autoTick=true`, provider `codex` while preserving active `runtimeState`, workflow directory and port.
+- **Evidence artifact:** `var/final-gate-v0.9.22.log`, SHA-256 `a06b87e9a80be2bd0853207f3a9f33e191d27b12199af16e7cd0de79fe066b7f`.
+- **Open gates:** hosted CI, merge, immutable release publication, candidate-first live rollout, and live `system_status` readback.
+
+
+## 2026-09-29 — PR #50 hosted Windows qualification failures
+
+- **Hosted evidence — CONFIRMED / HIGH:** PR #50 Windows `npm run check` had exactly two failures while local full gate was green.
+- **Failure 1:** `same async requestId with a changed correlation fails closed` failed only during fixture teardown with Windows `EBUSY` on temp-root removal. The test's cleanup was the only nearby async-operation cleanup missing the established `maxRetries:20, retryDelay:50` policy.
+- **Failure 2:** `unexpected helper exit terminates the independently owned browser process and removes an isolated profile` failed on the PID-validity assertion. The helper writes the PID with async `writeFile`; file creation can become visible before the content is ready, so gating only on path existence is insufficient.
+- **Decision:** qualification-only hardening. Add the same Windows cleanup retry policy to the async fixture and wait for a parseable positive PID marker before asserting process cleanup. Production runtime code remains unchanged.
+- **Prevention / regression:** exact-test stress on Windows plus a complete local final gate before pushing a new SHA; hosted CI/canary must then rerun on that SHA.
+
+
+## 2026-09-29 — PR #50 Windows qualification fixes revalidated
+
+- **Targeted regression — CONFIRMED / HIGH:** async correlation cleanup stress passed 20/20; browser unexpected-helper-exit stress passed 5/5; forced helper shutdown exact test passed.
+- **Complete local gate — CONFIRMED / HIGH:** `FINAL_GATE_PASS` at `2026-09-29T00:26:55.8341065+03:30`; focused Project Engine 222 pass / 0 fail / 1 platform skip; full test aggregate 483 pass / 0 fail / 6 platform skips; security audit, Windows runtime contract, source integrity and diff check passed.
+- **Evidence artifact:** `var/final-gate-v0.9.22.log`, SHA-256 `1996b17a4bad9c958de46ddf693ec507dece49e5a5e12cc3a839fdf71256b16b`.
+- **Scope:** qualification-only fixes; production runner-policy code remains unchanged from PR #50 head `8129441eec60ea21944b5c0b1c1bbc41ab0ab7ce`.
+- **Next authority gate:** push a narrow follow-up commit to PR #50 and require fresh hosted CI + Server Install Canary on the new head SHA before merge.
+
+
+## 2026-09-29 — Windows hosted full-suite concurrency control
+
+- **Hosted evidence — CONFIRMED / HIGH:** on PR #50 head `3f1ea4f9c598db78fdd15e0b70ce85411f2d6bff`, Ubuntu CI and both Server Install Canary jobs passed, while Windows `npm test` failed only in two time-sensitive tests: a 1 s Project Engine WAITING_INPUT deadline was exhausted under load, and an isolated workflow HTTP server missed a 30 s health-start deadline without exiting.
+- **Method evidence:** Node.js test runner executes test files in parallel child processes; `--test-concurrency` controls the maximum concurrent test processes and defaults from available parallelism. GitHub's standard public `windows-latest` runner provides four vCPUs. With this public repository, default Node file concurrency is therefore three on that runner.
+- **Sources:** Node.js Test Runner / CLI documentation (`https://nodejs.org/api/test.html`, `https://nodejs.org/api/cli.html#--test-concurrencyconcurrency`); GitHub hosted runner specifications (`https://docs.github.com/actions/reference/runners/github-hosted-runners`).
+- **Decision / minimum sufficient control:** do not inflate functional timeouts. Leave local and Ubuntu `npm test` unchanged; bound only Windows hosted full-test file concurrency to 2 through a tracked wrapper that transforms the existing package `test` script, avoiding a duplicated test list.
+- **Regression guard:** CI contract verifies the Windows-only conditional, exact bounded command, complete replacement of all `node --test` invocations, and invalid-wrapper inputs fail closed.
+- **Reuse targets:** CI reliability, Windows qualification, release engineering, failure-prevention guidance.
+
+
+## 2026-09-29 — Windows bounded-CI control fully qualified
+
+- **Exact Windows CI path — CONFIRMED / HIGH:** `npm run test:ci:windows` executed the tracked test script with `--test-concurrency=2` injected into both `node --test` invocations; aggregate 483 pass / 0 fail / 6 platform skips. The two prior hosted starvation failures both passed in this path.
+- **CHECK — CONFIRMED / HIGH:** complete `npm run check` passed after the new CI contract/helper was added.
+- **Complete local promotion gate — CONFIRMED / HIGH:** `FINAL_GATE_PASS` at `2026-09-29T00:50:53.5926011+03:30`; focused Project Engine 222 pass / 0 fail / 1 skip; full aggregate 483 pass / 0 fail / 6 skips; security audit, source integrity, Windows runtime contract and diff check passed.
+- **Evidence artifact:** `var/final-gate-v0.9.22.log`, SHA-256 `5f2bb611d2e43e921f57695119f1f3692313b4eb5ca6df1a7d71c631c157e87c`.
+- **Next authority gate:** fresh hosted CI + Server Install Canary on the new PR head SHA. Merge remains blocked until success.
+
+
+## 2026-09-29 — Linux install canary exposed qualification oversubscription
+
+- **Hosted evidence — CONFIRMED / HIGH:** PR #50 head `47c40616c30b37b23451cd237790f45bf81c4656` passed GitHub CI and Windows Server bootstrap. Linux clean-container canary failed only inside the install qualification suite: 486 pass / 2 fail / 1 skip.
+- **Exact failures:** `dead-worker reconciliation adopts an exact final receipt instead of overwriting it UNCERTAIN` and `corrupt terminal projection is not repaired when receipt and reservation hashes differ`; both failed in `waitFor()` at ~10.02 s with `operation did not finish` while neighboring tests passed.
+- **Root-cause class — PROBABLE/HIGH:** qualification file-process oversubscription/resource starvation, same failure family previously observed on hosted Windows. No production assertion, bootstrap integrity check, source pin, or runtime behavior failed.
+- **Scope evidence:** `install.ps1`, `install.sh`, and `auto-update-linux.sh` each invoked the full test suite with default Node test-file concurrency. The bounded helper already qualified successfully with concurrency 2.
+- **Decision / minimum sufficient control:** expose one generic `test:qualification` command using the existing bounded wrapper at concurrency 2 and reuse it in hosted Windows CI plus Windows/Linux install qualification and Linux updater qualification. Keep ordinary `npm test` and the complete local final gate unbounded.
+- **Validation state:** PATCH APPLIED; targeted contracts, exact qualification run, full local gate, fresh hosted CI/canary remain required before merge.
+
+
+## 2026-09-29 — Generic qualification path local validation PASS
+
+- **Targeted contracts — CONFIRMED / HIGH:** qualification-concurrency contract 2/2 PASS; Windows/Linux installer contract PASS; Linux auto-update contract 13/13 PASS.
+- **Exact qualification path — CONFIRMED / HIGH:** `npm run test:qualification` ran with `CI_TEST_CONCURRENCY script=test concurrency=2 replacements=2`; full aggregate 483 pass / 0 fail / 6 platform skips. Both prior Linux canary timeout tests passed within hundreds of milliseconds.
+- **Complete local gate — CONFIRMED / HIGH:** `FINAL_GATE_PASS` at `2026-09-29T07:26:17.2585959+03:30`; focused Project Engine 222 pass / 0 fail / 1 platform skip; unbounded full test aggregate 483 pass / 0 fail / 6 platform skips; security audit, source integrity, Windows runtime contract and diff check passed.
+- **Evidence artifact:** `var/final-gate-v0.9.22.log`, SHA-256 `1338cc7cd5e3d5b65739342fe4e3b8b0fdeffbd0501fe0d9f514d04196af751c`.
+- **Scope:** qualification harness/install-update gate only; production runner-policy/runtime behavior and functional timeouts unchanged.
+- **Next authority gate:** commit/push this delta, then require fresh GitHub CI and both Server Install Canary jobs on the new head SHA before merge.
+
+
+## 2026-09-29 — Ubuntu hosted check caught stale Linux installer expectation
+
+- **Hosted evidence — CONFIRMED / HIGH:** PR #50 head `e7fa42ab33a3633a7d290b8b47c25cbfade0c639` failed Ubuntu `npm run check` only in three Linux installer-isolation assertions.
+- **Exact mismatch:** installer fixture correctly recorded `run test:qualification`, while the Linux-only test still expected legacy `test` in two no-start reuse cases and one skip-tunnel-client case. Ubuntu aggregate for that CHECK segment: 248 pass / 3 fail / 1 skip.
+- **Root cause — CONFIRMED:** stale test oracle after intentional qualification-command rename; production/install behavior matched the new contract. Local Windows qualification did not execute these Linux-only isolation cases, so hosted Ubuntu was the first authority to expose the stale oracle.
+- **Fix:** update only the two expected npm-call arrays in `test/linux-installer-isolation.test.mjs` to `run test:qualification`; no runtime, installer, timeout, or concurrency behavior changed.
+- **Next authority gate:** local syntax/CHECK/audit/diff validation, then a fresh commit and fresh Ubuntu/Windows CI plus both install canaries. Do not rerun the old failed SHA as promotion evidence.

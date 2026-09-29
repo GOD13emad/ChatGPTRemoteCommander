@@ -457,6 +457,6 @@ test('same async requestId with a changed correlation fails closed', async () =>
     );
     await manager.close?.();
   } finally {
-    await rm(root, { recursive: true, force: true });
+    await rm(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 });
   }
 });

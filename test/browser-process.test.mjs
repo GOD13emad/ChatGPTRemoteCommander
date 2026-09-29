@@ -11,6 +11,17 @@ function profileProcessAlive(profile,pid){return findProcessesUsingBrowserProfil
 
 const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 async function exists(p){try{await stat(p);return true;}catch{return false;}}
+async function waitForPidMarker(marker,timeoutMs=2000){
+ const deadline=Date.now()+timeoutMs;
+ while(Date.now()<deadline){
+  try{
+   const pid=Number((await readFile(marker,'utf8')).trim());
+   if(Number.isInteger(pid)&&pid>0)return pid;
+  }catch(error){if(error?.code!=='ENOENT')throw error;}
+  await sleep(20);
+ }
+ throw new Error('PID_MARKER_NOT_READY');
+}
 async function fixture({readyDelay=0,timeoutMs=1000,gracefulCloseMs=150,forceCloseMs=150}={}){
  const root=await mkdtemp(path.join(os.tmpdir(),'rc-browser-process-'));
  const helper=path.join(root,'helper.mjs');
@@ -78,10 +89,7 @@ test('forced helper shutdown terminates an owned descendant process tree',async(
  try{
   const pending=f.client.invoke({action:'hangWithChild',marker});
   const rejected=assert.rejects(pending,/BROWSER_HELPER_TIMEOUT/);
-  for(let i=0;i<40&&!await exists(marker);i++)await sleep(20);
-  assert.equal(await exists(marker),true);
-  const pid=Number((await readFile(marker,'utf8')).trim());
-  assert.equal(Number.isInteger(pid)&&pid>0,true);
+  const pid=await waitForPidMarker(marker);
   assert.equal(processAlive(pid),true);
   await rejected;
   for(let i=0;i<600&&processAlive(pid);i++)await sleep(25);
@@ -97,10 +105,7 @@ test('unexpected helper exit terminates the independently owned browser process 
   await f.client.invoke({action:'start',isolated:true,profileDir:profile});
   const pending=f.client.invoke({action:'crashWithChild',marker,profileDir:profile});
   const rejected=assert.rejects(pending,/BROWSER_HELPER_EXIT_FAILED/);
-  for(let i=0;i<60&&!await exists(marker);i++)await sleep(20);
-  assert.equal(await exists(marker),true);
-  const pid=Number((await readFile(marker,'utf8')).trim());
-  assert.equal(Number.isInteger(pid)&&pid>0,true);
+  const pid=await waitForPidMarker(marker);
   await rejected;
   for(let i=0;i<600&&(processAlive(pid)||await exists(profile));i++)await sleep(25);
   assert.equal(profileProcessAlive(profile,pid),false);

@@ -143,11 +143,25 @@ function Get-RoutePath([string]$Profile){ Join-Path $RoutingRoot "$Profile.json"
 function Read-Json([string]$Path){ Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json }
 function Get-PrimaryConfig {
   $route=Get-RoutePath 'default'
+  $local=Join-Path $InstallDir 'config.local.json'
   if(Test-Path $route){
     $r=Read-Json $route
-    if($r.active.configPath -and (Test-Path -LiteralPath $r.active.configPath)){ return [IO.Path]::GetFullPath([string]$r.active.configPath) }
+    if($r.active.configPath -and (Test-Path -LiteralPath $r.active.configPath)){
+      $active=[IO.Path]::GetFullPath([string]$r.active.configPath)
+      $mergeTool=Join-Path $PSScriptRoot 'tools\merge-primary-policy.mjs'
+      if((Test-Path -LiteralPath $local -PathType Leaf) -and (Test-Path -LiteralPath $mergeTool -PathType Leaf)){
+        $effective=Join-Path $StateRoot 'primary-policy-effective.json'
+        $raw=@(& node.exe $mergeTool --active $active --local $local --output $effective)
+        if($LASTEXITCODE-ne 0){throw 'PRIMARY_POLICY_MERGE_FAIL'}
+        try{$summary=([string]($raw|Select-Object -Last 1))|ConvertFrom-Json}catch{throw 'PRIMARY_POLICY_MERGE_RESULT_INVALID'}
+        if($summary.merged-eq $true){
+          Log "PRIMARY_POLICY_OVERLAY status=$($summary.status)"
+          return $effective
+        }
+      }
+      return $active
+    }
   }
-  $local=Join-Path $InstallDir 'config.local.json'
   if(Test-Path -LiteralPath $local){ return $local }
   return (Join-Path $InstallDir 'config.json')
 }

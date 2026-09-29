@@ -86,6 +86,34 @@ function normalizedExplicitRunner(existing) {
   };
 }
 
+export function mergeExplicitOwnerRunnerPolicy(activeConfig, canonicalConfig, { platform = process.platform } = {}) {
+  const active = clone(activeConfig);
+  const activeRunner = active?.durableWorkflows?.runner;
+  const legacyPolicyDisabled = activeRunner?.enabled !== true
+    && activeRunner?.provider?.kind === 'disabled'
+    && activeRunner?.provider?.reason === 'NO_CODEX_VIA_COMMANDER';
+  if (!legacyPolicyDisabled) {
+    return { config: active, merged: false, status: 'ACTIVE_POLICY_PRESERVED' };
+  }
+
+  const canonical = applyProjectRunnerConfig(canonicalConfig, { platform });
+  if (canonical.status !== 'PRESERVED_EXPLICIT_OWNER_CODEX_PROVIDER') {
+    return { config: active, merged: false, status: 'CANONICAL_OWNER_RUNNER_NOT_AUTHORIZED' };
+  }
+
+  active.durableWorkflows ??= {};
+  active.durableWorkflows.runner = clone(canonical.config.durableWorkflows.runner);
+  const verified = applyProjectRunnerConfig(active, { platform });
+  if (verified.status !== 'PRESERVED_EXPLICIT_OWNER_CODEX_PROVIDER') {
+    return { config: clone(activeConfig), merged: false, status: 'ACTIVE_AUTHORITY_REJECTED_OWNER_RUNNER' };
+  }
+  return {
+    config: verified.config,
+    merged: true,
+    status: 'RECOVERED_EXPLICIT_OWNER_CODEX_PROVIDER'
+  };
+}
+
 export function applyProjectRunnerConfig(config, { platform = process.platform } = {}) {
   const next = clone(config);
   next.durableWorkflows ??= {};

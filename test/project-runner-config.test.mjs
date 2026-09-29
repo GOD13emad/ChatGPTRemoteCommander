@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { applyProjectRunnerConfig, discoverQualifiedProjectProvider } from '../src/project-runner-config.mjs';
+import { applyProjectRunnerConfig, discoverQualifiedProjectProvider, mergeExplicitOwnerRunnerPolicy } from '../src/project-runner-config.mjs';
 import { normalizeCapabilityProfile } from '../src/capability-profile.mjs';
 
 function temp() { return fs.mkdtempSync(path.join(os.tmpdir(), 'rc-runner-config-')); }
@@ -134,5 +134,54 @@ test('explicit owner-authorized Full-Power Codex runner is preserved', () => {
     assert.equal(result.config.durableWorkflows.runner.autoTick,true);
     assert.equal(result.config.durableWorkflows.runner.provider.kind,'codex');
     assert.equal(result.config.durableWorkflows.runner.provider.timeoutMs,30000);
+  } finally { fs.rmSync(root,{recursive:true,force:true}); }
+});
+
+test('historical policy-disabled active runner recovers only explicit canonical owner Codex runner', () => {
+  const root=temp();
+  try {
+    const executable=path.join(root,process.platform==='win32'?'codex.exe':'codex');
+    fs.writeFileSync(executable,'stub');
+    if(process.platform!=='win32') fs.chmodSync(executable,0o755);
+    const active=base({runner:{enabled:false,autoTick:false,provider:{kind:'disabled',reason:'NO_CODEX_VIA_COMMANDER'},allowedTools:['read_text']}});
+    active.runtimeState='active-runtime';
+    active.powerMode.codexControl={allowLaunch:true};
+    const canonical=base({runner:{enabled:true,autoTick:true,provider:{kind:'codex',executable,timeoutMs:120000,maxOutputBytes:2*1024*1024},allowedTools:['read_text','write_text']}});
+    canonical.powerMode.codexControl={allowLaunch:true};
+    canonical.runtimeState='canonical-runtime-must-not-overlay';
+    const result=mergeExplicitOwnerRunnerPolicy(active,canonical,{platform:process.platform});
+    assert.equal(result.merged,true);
+    assert.equal(result.status,'RECOVERED_EXPLICIT_OWNER_CODEX_PROVIDER');
+    assert.equal(result.config.runtimeState,'active-runtime');
+    assert.equal(result.config.durableWorkflows.runner.enabled,true);
+    assert.equal(result.config.durableWorkflows.runner.autoTick,true);
+    assert.equal(result.config.durableWorkflows.runner.provider.kind,'codex');
+    assert.equal(result.config.durableWorkflows.runner.provider.timeoutMs,30000);
+    assert.deepEqual(result.config.durableWorkflows.runner.allowedTools,['read_text','write_text']);
+  } finally { fs.rmSync(root,{recursive:true,force:true}); }
+});
+
+test('primary policy merge refuses unauthorized canonical runner and non-historical active disables', () => {
+  const root=temp();
+  try {
+    const executable=path.join(root,process.platform==='win32'?'codex.exe':'codex');
+    fs.writeFileSync(executable,'stub');
+    if(process.platform!=='win32') fs.chmodSync(executable,0o755);
+    const active=base({runner:{enabled:false,autoTick:false,provider:{kind:'disabled',reason:'NO_CODEX_VIA_COMMANDER'}}});
+    active.powerMode.codexControl={allowLaunch:true};
+    const canonical=base({runner:{enabled:true,autoTick:true,provider:{kind:'codex',executable}}});
+    canonical.powerMode.codexControl={allowLaunch:false};
+    const denied=mergeExplicitOwnerRunnerPolicy(active,canonical,{platform:process.platform});
+    assert.equal(denied.merged,false);
+    assert.equal(denied.status,'CANONICAL_OWNER_RUNNER_NOT_AUTHORIZED');
+    assert.equal(denied.config.durableWorkflows.runner.enabled,false);
+
+    const explicit=base({runner:{enabled:false,autoTick:false,provider:{kind:'disabled',reason:'EXPLICITLY_DISABLED'}}});
+    explicit.powerMode.codexControl={allowLaunch:true};
+    canonical.powerMode.codexControl={allowLaunch:true};
+    const preserved=mergeExplicitOwnerRunnerPolicy(explicit,canonical,{platform:process.platform});
+    assert.equal(preserved.merged,false);
+    assert.equal(preserved.status,'ACTIVE_POLICY_PRESERVED');
+    assert.equal(preserved.config.durableWorkflows.runner.provider.reason,'EXPLICITLY_DISABLED');
   } finally { fs.rmSync(root,{recursive:true,force:true}); }
 });

@@ -301,3 +301,72 @@ Historical checkpoints are preserved in the [archived project state](history/PRO
 - Full gate after browser qualification fix had one failure only: Windows fixture cleanup returned `ENOTEMPTY` after the idempotency assertions had passed.
 - Mutation: test-fixture teardown only, using the repository's established recursive cleanup retry policy (`maxRetries:20`, `retryDelay:50`).
 - Runtime/contract code unchanged. Promotion remains BLOCKED until targeted stress and full final gate pass.
+
+
+## 2026-09-28 — v0.9.22 current blocker / policy-overlay hotfix
+
+- Previous accepted source: main after PR #48; v0.9.21 hosted CI and Server Install Canary passed.
+- Live blocker: v0.9.21 runtime remains `runnerConfigured=false / automaticExecution=false` although canonical local owner policy explicitly enables the runner.
+- Root cause: Windows updater uses active routed config as the default candidate source and therefore retained the historical policy-disabled runner.
+- Current mutation objective: overlay only an independently authorized canonical runner onto the active baseline when the active reason is exactly `NO_CODEX_VIA_COMMANDER`.
+- Promotion remains OPEN until focused/full/hosted gates, live candidate-first rollout, and exact live readback pass.
+
+
+## 2026-09-29 — v0.9.22 local promotion gate PASS
+
+- Complete local promotion gate PASS with security audit, source integrity, runtime contracts and diff check all green.
+- Evidence log SHA-256: `a06b87e9a80be2bd0853207f3a9f33e191d27b12199af16e7cd0de79fe066b7f`.
+- Current critical path: commit/push -> hosted CI -> merge -> immutable v0.9.22 release -> candidate-first live rollout -> exact live runner readback.
+- FINAL remains UNPROVEN until live `runnerConfigured=true` and `automaticExecution=true` are observed on the routed runtime.
+
+
+## 2026-09-29 — PR #50 hosted Windows gate regression
+
+- Hosted Windows CI for head `8129441eec60ea21944b5c0b1c1bbc41ab0ab7ce` failed on two qualification races only: async temp-root teardown `EBUSY`, and browser PID marker read before valid content was ready.
+- Production runner-policy hotfix remains unchanged. Merge stays BLOCKED until targeted stress, full local gate and hosted reruns pass on a new head SHA.
+
+
+## 2026-09-29 — PR #50 qualification revalidation PASS
+
+- Windows qualification race fixes passed targeted stress and a complete local v0.9.22 promotion gate.
+- Gate evidence SHA-256: `1996b17a4bad9c958de46ddf693ec507dece49e5a5e12cc3a839fdf71256b16b`.
+- Merge remains BLOCKED until fresh hosted CI and Server Install Canary pass on the new PR head SHA.
+
+
+## 2026-09-29 — Windows CI resource-starvation control
+
+- Current PR #50 head `3f1ea4f9c598db78fdd15e0b70ce85411f2d6bff`: Ubuntu CI PASS; Linux + Windows Server Canaries PASS; Windows `check` PASS; Windows `npm test` failed two time-sensitive tests under the full parallel suite.
+- Root-cause class: hosted Windows file-process concurrency/resource starvation, not production runner-policy behavior.
+- Current mutation objective: bound only Windows hosted full-test file concurrency to 2; local/Ubuntu tests and functional timeout contracts remain unchanged.
+- Merge remains BLOCKED until this CI harness change passes local bounded-path qualification and fresh hosted CI on a new head SHA.
+
+
+## 2026-09-29 — Windows bounded-CI local gate PASS
+
+- Windows-specific bounded full-test path PASS, then complete CHECK PASS, then complete v0.9.22 final gate PASS.
+- Gate log SHA-256: `5f2bb611d2e43e921f57695119f1f3692313b4eb5ca6df1a7d71c631c157e87c`.
+- Current critical path: commit/push CI-harness delta -> fresh hosted CI/Canary -> merge PR #50 -> immutable v0.9.22 release -> candidate-first live rollout -> live runner readback.
+
+
+## 2026-09-29 — Linux install canary qualification starvation
+
+- PR #50 head `47c40616c30b37b23451cd237790f45bf81c4656`: CI PASS; Windows Server Canary PASS; Linux clean-container canary failed two async-operation waiters at the exact 10 s bound during the installer's full qualification suite.
+- Production code remains unchanged by the current mutation objective.
+- Current mutation objective: replace platform-specific bounded CI naming with generic `test:qualification` (concurrency=2) and use it in hosted Windows CI, Windows installer qualification, Linux installer qualification and Linux auto-update qualification.
+- Merge remains BLOCKED until targeted contracts, exact qualification path, complete local gate and fresh hosted CI/canary all pass on a new head SHA.
+
+
+## 2026-09-29 — Generic qualification path local PASS
+
+- Generic `test:qualification` (Node test-file concurrency=2) is wired into hosted Windows CI, Windows installer qualification, Linux installer qualification and Linux auto-update qualification; normal `npm test` remains unchanged.
+- Targeted contracts PASS; exact bounded qualification full suite PASS; complete unbounded local final gate PASS at `2026-09-29T07:26:17.2585959+03:30`.
+- Final-gate log SHA-256: `1338cc7cd5e3d5b65739342fe4e3b8b0fdeffbd0501fe0d9f514d04196af751c`.
+- Current critical path: commit/push -> fresh hosted CI + Linux/Windows install canaries -> merge -> immutable v0.9.22 release -> candidate-first live rollout -> live runner/system-status proof.
+- FINAL remains UNPROVEN until live routed runtime proves `runnerConfigured=true` and `automaticExecution=true`.
+
+
+## 2026-09-29 — Ubuntu Linux installer oracle mismatch
+
+- Head `e7fa42ab33a3633a7d290b8b47c25cbfade0c639` failed Ubuntu CHECK because three Linux-only installer-isolation expectations still asserted legacy npm command `test` instead of the intentionally introduced `run test:qualification`.
+- Actual installer behavior was correct; mutation objective is test-oracle alignment only.
+- Merge remains BLOCKED until a new SHA passes fresh Ubuntu/Windows CI and both Server Install Canary jobs.
