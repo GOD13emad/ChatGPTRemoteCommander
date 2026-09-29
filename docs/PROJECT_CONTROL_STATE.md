@@ -421,3 +421,20 @@ Historical checkpoints are preserved in the [archived project state](history/PRO
 - Old v0.9.21 default backend was removed from routing and registered as retained because PID 69684 is an active persistent terminal descendant. No active user work was killed.
 - `last-update.status=CURRENT` for v0.9.23.
 - **Release/rollout status: FINAL PASS.** Remaining retained-backend entries are lifecycle cleanup tied to still-running terminal jobs, not a release blocker or routing authority.
+
+
+## Change Set — 2026-09-29 — post-release live finalization
+
+**Objective:** reconcile live Windows deployment state after v0.9.23 acceptance without interrupting retained terminal work.
+
+**Evidence-backed results:**
+- Executable authority remains v0.9.23 / `a1b5368edf33d629111407aecd7f4c6a136a6122`; subsequent repository changes before this change set were documentation-only.
+- default route generation 116 and saeed-emad generation 160 both point to v0.9.23 with `previous=null`.
+- Retained v0.9.10/v0.9.12/v0.9.13/v0.9.21 backends remain intentionally preserved because their registered terminal descendants are still live; they are not routing authority and were not force-killed.
+- Six superseded Commander maintenance workflow intents were cancelled with exact revision preconditions. Poststate: all six CANCELLED/scheduler-disabled; scheduler pending 811→805 and RUNNING 553→547.
+- Workflow database integrity `ok`; active workflow leases 0; ordinary operation queue 0/0.
+- Logon autostart state drift was repaired using `enable-autostart.ps1 -NoStart`; Run registration is restored and both tunnel readiness endpoints are healthy.
+- Fresh installed-release regression passed: focused 42/0; CHECK exit 0; TEST 483 pass/0 fail/6 skip; security audit PASS; doctor PASS.
+- BootRecovery/UserSessionHandoff SYSTEM tasks remain absent and require an elevated owner token. Current token is not elevated; this is an explicit deployment gate and no privilege-boundary bypass was attempted.
+
+**Status:** v0.9.23 release/runtime = FINAL PASS. Windows logon persistence = PASS. Boot-before-logon autonomous recovery = MISSING owner/admin gate. Exact next action is one elevated run of the bounded boot-recovery runner followed by acceptance of its `RETURN.json`; no reboot is part of that runner.
