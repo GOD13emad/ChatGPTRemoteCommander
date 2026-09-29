@@ -279,3 +279,43 @@ Evidence artifact:
 SHA-256: `4817dddef6b497545369758da5be79c940500968b8df7375fb43c892a1ba832a`.
 
 Status: owner/admin installation gate CLOSED / PASS. Real `AtStartup` behavior after an actual reboot/power-loss remains a separate validation event because this change set explicitly performed no reboot/shutdown/logoff.
+
+
+## Pre-important-task readiness seal — 2026-09-29
+
+Current objective is operational readiness for the owner's next important task, not feature expansion. The authoritative live product remains v0.10.0 / commit 26b8df90838f449bc61710981fc31b7a467e021d.
+
+Windows:
+- Doctor PASS, 94 tools, FULL_POWER, activeOperations=0, queued=0, lockedKeys=0, current workflow leases=0.
+- default route generation 118 and saeed-emad generation 162 both point to exact v0.10.0 commit with previous=null.
+- both Secure MCP Tunnel profiles are ready; HKCU logon autostart is present.
+- BootRecovery/UserSessionHandoff owner gate is already closed; Handoff functional validation LastTaskResult=0.
+- security audit PASS; GUI contract 77/77 PASS; live GUI backend available and idle.
+- browser safety 12/12 PASS; native Chromium background browser PASS with userDesktopTouched=false, passwordStoreExtracted=false, DOM verification PASS; EOF/lifecycle cleanup PASS.
+- local readiness artifact: %LOCALAPPDATA%\ChatGPTRemoteCommander\audit\PRE_IMPORTANT_TASK_READINESS_20260929.md
+  SHA-256 f1f7ad9c126125d85ef0d5ab8c37d94bad458e2e5c7ed07690a4239e00eea7d4.
+
+Linux:
+- Doctor PASS, 94 tools, FULL_POWER, activeOperations=0, queued=0, lockedKeys=0, current workflow leases=0.
+- workflow database integrity=ok.
+- default route generation 95 points to exact v0.10.0 commit with previous=null.
+- systemd user service active+enabled, Linger=yes, Secure MCP Tunnel ready.
+- security audit PASS; Linux GUI contract PASS; browser safety 12/12 PASS.
+- native Linux browser is not currently runnable: Firefox 156.0.1 is present, but geckodriver/Chromium is absent. apt offers no geckodriver candidate and noninteractive sudo is unavailable. Latest upstream geckodriver v0.37.1 asset is signed with Mozilla subkey 5ECB6497C1A20256, which Mozilla later revoked after an August 2026 key leak. Installing a new user-local executable before the owner's important task was rejected as disproportionate supply-chain risk. This is DEFERRED, not silently treated as PASS.
+- Linux automaticExecution=false / runnerConfigured=false and recovery/readiness-only continuation are preserved. No parity change is made immediately before important work.
+- local readiness artifact: /home/aliemad/.local/state/chatgpt-remote-commander/audit/PRE_IMPORTANT_TASK_READINESS_20260929.md
+  SHA-256 bcca4f4529350c186f2568a0fac389f2c74b101cc3d83b8c943e9e88dc72038f.
+
+Known non-blocking product debt retained for later development:
+- durable workflow/delivery lifecycle hygiene and clearer active-vs-historical observability;
+- explicit Windows/Linux autonomous-execution parity decision;
+- reconcile/test/promote-or-discard the unpromoted v0.10.1 BootRecovery diagnostics work;
+- minimal fleet inventory/health/version/tunnel/plugin-identity/policy view;
+- optional capability-scoped sandbox/least-privilege execution;
+- trusted Linux native browser dependency provisioning;
+- macOS/native signed installer/enterprise RBAC only if product scope requires them.
+
+The 20-product benchmark and the above roadmap are recorded in Project Knowledge. Do not mutate live runtime for these deferred items before the owner's important task unless one becomes a direct blocker.
+
+Status: Windows READY/PASS. Linux core runtime READY/PASS; Linux native browser DEFERRED. Project Brain CURRENT.
+Exact next action: use the existing v0.10.0 runtime for the important task.

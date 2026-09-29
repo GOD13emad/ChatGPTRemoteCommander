@@ -514,3 +514,20 @@ These open items are intentionally not auto-promoted or guessed and do not block
 **Verification vs validation:** task registration, SYSTEM credential/readiness path and Handoff execution are VERIFIED/PASS. A real machine restart/power-return cycle was not performed and therefore real AtStartup behavior remains UNVALIDATED in this change set.
 
 **Exact next action:** none for installation. Optional future validation is one controlled real reboot/power-return test when the owner explicitly authorizes it.
+
+
+## Pre-important-task control state — 2026-09-29
+
+**CURRENT:** freeze product expansion; preserve the qualified v0.10.0 live baseline while the owner performs an important task.
+
+**Windows readiness:** PASS — exact release route, doctor, both tunnels, logon/startup recovery configuration, security audit, GUI contract/live backend and native background browser have current evidence. Runtime is idle (0 active operations / 0 queued / 0 path locks).
+
+**Linux readiness:** core PASS — exact release route, doctor, systemd+linger persistence, tunnel, DB integrity, security audit and GUI/browser contracts have current evidence. Runtime is idle. Native browser execution is DEFERRED because Firefox lacks geckodriver and no clean low-risk provisioning path is currently authorized.
+
+**Do not clean historical durable state now.** Windows scheduler counters (805 pending / 81 interrupted / 109 reconciliation-required; delivery 616 completed-undelivered) and Linux counters (105 / 4 / 5; delivery 39) are observability/lifecycle debt, not evidence of an active stuck queue: active operations, queued operations, leases, dead letters and unfinished requests do not indicate current execution blockage. Ownership/classification must precede cleanup.
+
+**Deferred after important task:** durable-state hygiene; Linux autonomy parity decision; v0.10.1 diagnostics reconciliation; fleet view; sandbox; trusted Linux browser dependency; later platform/enterprise expansion.
+
+**Validation boundary:** a real Windows AtStartup/power-return event remains unvalidated because no reboot/shutdown/logoff was performed.
+
+**Exact next action:** no Commander mutation. Start the owner's important task on the stable v0.10.0 baseline.
