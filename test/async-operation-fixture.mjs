@@ -18,7 +18,7 @@ if (mode === 'sleep') {
   // Signal that the direct child has actually been scheduled and established
   // the inherited-stdio condition. The regression timer starts from this
   // marker, not from operation creation under unrelated CI scheduler load.
-  if (arg2) await writeFile(arg2, 'ready\n', 'utf8');
+  if (arg2) await writeFile(arg2, String(child.pid) + '\n', 'utf8');
   process.stdout.write(arg1 || 'parent-done', () => process.exit(0));
 } else if (mode === 'large') {
   const bytes = Number(arg1 || 1024);

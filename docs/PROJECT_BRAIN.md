@@ -319,3 +319,24 @@ The 20-product benchmark and the above roadmap are recorded in Project Knowledge
 
 Status: Windows READY/PASS. Linux core runtime READY/PASS; Linux native browser DEFERRED. Project Brain CURRENT.
 Exact next action: use the existing v0.10.0 runtime for the important task.
+
+## Milestone — 2026-09-29 — v0.10.1 maintenance candidate locally accepted
+
+Objective: close the remaining current-release maturity gaps without expanding Commander authority or feature scope.
+
+Accepted candidate delta:
+- Windows BootRecovery self-test diagnostics now preserve exact profile/integrity exceptions in structured SelfTestOutput and include Task Scheduler state/LastTaskResult when no result file appears. No automatic repair or integrity weakening was added.
+- Durable workflow scheduler status now makes the meaning of historical nonterminal records explicit: pending remains backward-compatible, persistedNonterminal exposes the same persisted count, pendingMeaning=PERSISTED_NONTERMINAL_RECORDS_NOT_LIVE_QUEUE, and hasActiveLease distinguishes current root-lease activity. No historical records were deleted or rewritten.
+- The inherited-stdio async-operation regression no longer depends on an arbitrary 8-second CI window. The fixture exposes the holder PID, the operation must complete while that holder process is provably still alive, outputComplete remains false, and the holder is explicitly cleaned up afterward. Production operation timeout behavior is unchanged.
+- Draft v0.10.1 documentation was corrected to remove an overclaimed BootRecovery root-cause statement. The initial live missing-result event remains precise-cause UNVERIFIED because later production-equivalent SYSTEM probes passed.
+
+Fresh Windows candidate evidence:
+- focused maintenance regressions: 44/44 PASS;
+- inherited-stdio property stress: 10/10 PASS;
+- Project Engine focused suite: 222 pass / 0 fail / 1 skip;
+- complete full suite: 493 pass / 0 fail / 6 skip;
+- SECURITY_AUDIT_PASS;
+- git diff --check PASS;
+- final-gate log SHA-256: 50e3bc6acf589884de2d369022e0cb6da89da32f826a4d521a411e501666eee3.
+
+Status: LOCAL PASS / not yet released. Hosted Windows/Ubuntu CI, server-install canaries, clean Linux exact-tree qualification, immutable publication and live Windows/Linux rollout remain open gates.

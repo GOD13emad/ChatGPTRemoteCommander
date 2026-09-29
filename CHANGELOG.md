@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.10.1 — 2026-09-29
+
+- Harden Windows BootRecovery diagnostics: structured self-test failures now preserve exact profile/integrity errors, and missing-result failures include Task Scheduler state/LastTaskResult context without weakening fail-closed integrity checks.
+- Add a Windows regression proving an intentional isolated-profile config-hash mismatch produces a persisted structured failure instead of disappearing behind a generic timeout.
+- Clarify durable workflow status without deleting history: expose persistedNonterminal, explicit pending semantics, and whether any root lease is active.
+- Make the inherited-stdio async-operation regression event/property based: prove the operation completes while the stdio-holding process is still alive, then clean that process up explicitly.
+- Keep runtime authority and production operation timeouts unchanged; no automatic historical workflow cleanup, Linux runner enablement, reboot, or permission expansion is introduced.
+
 ## 0.10.0 — 2026-09-29
 
 - Add Windows and Linux application-like Setup bundles that delegate to the existing release-qualified installers rather than creating a second privileged updater/runtime.

@@ -531,3 +531,15 @@ These open items are intentionally not auto-promoted or guessed and do not block
 **Validation boundary:** a real Windows AtStartup/power-return event remains unvalidated because no reboot/shutdown/logoff was performed.
 
 **Exact next action:** no Commander mutation. Start the owner's important task on the stable v0.10.0 baseline.
+
+## Change Set — 2026-09-29 — v0.10.1 maintenance finalization
+
+**One main objective:** finalize the existing Commander product by improving diagnostics, status semantics and CI determinism without widening authority.
+
+**Local V&V:** focused 44/44 PASS; async inherited-stdio stress 10/10 PASS; full test 493/0/6 skip; security audit PASS; diff check PASS. Final gate log SHA-256: 50e3bc6acf589884de2d369022e0cb6da89da32f826a4d521a411e501666eee3.
+
+**No scope expansion:** no new permission, no Linux runner enablement, no historical-state deletion, no reboot, no tunnel/routing policy change, no GUI/browser authority change.
+
+**Current gate:** LOCAL PASS. Next: immutable candidate commit -> clean Linux exact-tree -> hosted CI/server canaries -> release assets/tag -> candidate-first live rollout/readback.
+
+**Deferred/not blockers for v0.10.1:** real reboot/power-return validation; evidence-preserving historical state reconciliation/archive; trusted Linux native-browser provisioning; fleet view; sandbox/least-privilege; macOS; enterprise RBAC; Game Agent.

@@ -8,9 +8,9 @@ import { fileURLToPath } from 'node:url';
 import { DatabaseSync } from 'node:sqlite';
 import { WorkflowStore, canonical, hash } from '../src/workflow-store.mjs';
 const worker = fileURLToPath(new URL('./workflow-worker.mjs', import.meta.url));
-const fixture = () => {
+const fixture = (overrides = {}) => {
   const root = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'rc-memory-')));
-  const options = { directory: path.join(root, 'memory'), allowedRoots: [root], device: 'fixture', configSha256: '1'.repeat(64) };
+  const options = { directory: path.join(root, 'memory'), allowedRoots: [root], device: 'fixture', configSha256: '1'.repeat(64), ...overrides };
   const s = new WorkflowStore(options);
   const create = (id='sample') => s.create({ id, root, goal: 'Resume safely', acceptance: ['Validate visible outcome'], steps: [{ id: 'first', title: 'Inspect' }, { id: 'second', title: 'Act' }] });
   return { root, options, s, create, dispose() { s.close(); fs.rmSync(root, { recursive: true, force: true }); } };
@@ -33,6 +33,12 @@ test('creation, restart, typed notes and scoped search retain exact state',()=>{
     try {assert.deepEqual(s.get('sample'),before);assert.equal(s.search({id:'sample',query:'سلام'}).matches.length,1);assert.equal(s.get('sample').state.notes[0].verification,'UNVERIFIED');}finally{s.close();}
   }finally{f.dispose();}
 });
+test('scheduler status distinguishes persisted nonterminal records from active leases',()=>{const f=fixture({schedulerPolicy:{enabled:true}});try{
+ f.create();const st=f.s.schedulerStatus();
+ assert.equal(st.pending,1);assert.equal(st.persistedNonterminal,1);
+ assert.equal(st.pendingMeaning,'PERSISTED_NONTERMINAL_RECORDS_NOT_LIVE_QUEUE');
+ assert.equal(st.currentLeases,0);assert.equal(st.hasActiveLease,false);
+}finally{f.dispose();}});
 test('stale revision cannot overwrite new memory',()=>{const f=fixture();try{f.create();f.s.note({id:'sample',expectedRevision:1,kind:'decision',text:'A'});assert.throws(()=>f.s.note({id:'sample',expectedRevision:1,kind:'decision',text:'B'}),/REVISION_CONFLICT/);}finally{f.dispose();}});
 test('exact duplicate returns receipt and never executes twice',async()=>{const f=fixture();try{
  f.create();let n=0;const h=host(async()=>{n++;return{ok:true};});const a={id:'sample',stepId:'first',expectedRevision:1,tool:'read_text',arguments:{path:'x'}};
