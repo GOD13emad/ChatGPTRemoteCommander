@@ -26,7 +26,12 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install --yes python3-gi gir1.2-gdkpixbuf-2.0 gnome-shell-common
-      - run: npm run check
+      - name: Run qualification check with bounded Windows file concurrency
+        if: runner.os == 'Windows'
+        run: npm run check:qualification
+      - name: Run full check suite
+        if: runner.os != 'Windows'
+        run: npm run check
       - name: Run qualification suite with bounded Windows file concurrency
         if: runner.os == 'Windows'
         run: npm run test:qualification

@@ -19,7 +19,7 @@ export function boundNodeTestConcurrency(script,concurrency){
   };
 }
 
-function parse(argv){
+export function parseQualificationArgs(argv){
   const out={script:null,concurrency:null};
   for(let i=0;i<argv.length;i++){
     const key=argv[i],value=argv[++i];
@@ -28,12 +28,12 @@ function parse(argv){
     else if(key==='--concurrency')out.concurrency=value;
     else throw new Error('CI_TEST_ARGUMENT_UNKNOWN');
   }
-  if(out.script!=='test')throw new Error('CI_TEST_SCRIPT_NOT_ALLOWED');
+  if(!['test','check'].includes(out.script))throw new Error('CI_TEST_SCRIPT_NOT_ALLOWED');
   return out;
 }
 
 function run(){
-  const args=parse(process.argv.slice(2));
+  const args=parseQualificationArgs(process.argv.slice(2));
   const pkg=JSON.parse(fs.readFileSync(path.join(root,'package.json'),'utf8'));
   const original=pkg?.scripts?.[args.script];
   const bounded=boundNodeTestConcurrency(original,args.concurrency);
