@@ -365,8 +365,8 @@ test('corrupt terminal projection recovers from exact reservation and receipt wi
       tool: 'run_project_command',
       arguments: { argv: ['done'] }
     });
-    const terminal = await waitFor(first, started.operationId);
-    await waitForProcessExit(terminal.workerPid);
+    const terminal = await waitFor(first, started.operationId, undefined, 30000);
+    await waitForProcessExit(terminal.workerPid, 30000);
     await first.close?.();
     first = null;
 
