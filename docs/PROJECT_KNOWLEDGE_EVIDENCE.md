@@ -1492,3 +1492,11 @@ Status: CURRENT benchmark evidence. Reuse targets: roadmap, release planning, pr
 - **Verification:** exact branch local Windows and Linux qualification paths both PASS, including full bounded check/test and security audit.
 - **Reuse targets:** CI reliability, release engineering, future failure-prevention policy.
 - **Sources:** Node.js CLI/Test Runner official documentation and GitHub-hosted runner specifications listed in Project Brain.
+
+
+## 2026-09-29 — Hosted concurrency refinement
+
+- **Fresh hosted evidence:** Windows concurrency=2 PASS; Ubuntu concurrency=2 FAIL in inherited-stdio test at 20.111 s against a 20 s test-only completion bound.
+- **Inference/status:** resource-starvation class remains supported; the exact amount of parallelism tolerable is OS/runner-specific. Concurrency=2 is insufficient for the current Ubuntu hosted environment.
+- **Revised decision:** Windows=2, Ubuntu=1 using one matrix-driven wrapper invocation. This is narrower than serializing Windows and avoids individual timeout inflation.
+- **Promotion gate:** fresh hosted CI on the revised matrix.
