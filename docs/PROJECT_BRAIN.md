@@ -391,3 +391,39 @@ Status:
 
 Exact next action:
 Owner approves the single UAC prompt for the official v0.10.1 `enable-boot-recovery.ps1 -NoStart` repair; then perform elevated task readback + controlled Handoff run, record evidence, and close issue #69. No reboot is required for that repair.
+
+
+## CI determinism root-cause closure — 2026-09-29
+
+After three meaningful hosted timing/starvation occurrences in the async/process test family, per-test timeout patching was stopped and a historical + primary-source audit was performed.
+
+Observed evidence:
+- earlier Windows hosted failures led to the existing bounded qualification wrapper at test-file concurrency 2;
+- that historical control was intentionally Windows-only because Ubuntu had passed at the time;
+- two new Ubuntu hosted failures occurred on unchanged runtime behavior in different async tests:
+  - corrupt terminal projection recovery hit the generic 10-second wait boundary at about 10.03 seconds;
+  - attached continuation later hit its own test timeout;
+- both tests pass quickly when test-file concurrency is bounded.
+- Node.js v22 test runner executes isolated test files in child processes and `--test-concurrency` controls maximum file concurrency; the CLI default is derived from available parallelism.
+- GitHub public `ubuntu-latest` and `windows-latest` runners expose four CPUs in the applicable public-repository class.
+
+Root-cause class: hosted test-file resource contention/starvation under the unbounded/default Ubuntu CI path. The old Windows-only policy is now stale evidence, not a platform truth.
+
+Minimum-sufficient fix:
+- reuse the existing `check:qualification` and `test:qualification` wrapper with concurrency 2 on both hosted OSes;
+- remove raw hosted `npm run check` / `npm test` branches from CI;
+- do not change production operation timeouts;
+- do not inflate individual functional test deadlines;
+- do not change runtime code.
+
+Fresh exact-branch local qualification on `6c29e92a042407030414e9ec067ff8b552d04755`:
+- Windows: check:qualification PASS, test:qualification PASS, security audit PASS.
+- Linux: check:qualification PASS, test:qualification PASS, security audit PASS.
+- previously flaky attached-continuation and corrupt-projection tests both PASS under bounded execution on both OSes.
+
+Primary method references:
+- Node.js CLI `--test-concurrency`: https://nodejs.org/api/cli.html#--test-concurrencyconcurrency
+- Node.js Test Runner isolation/concurrency: https://nodejs.org/api/test.html
+- GitHub-hosted runner specifications: https://docs.github.com/actions/reference/runners/github-hosted-runners
+
+Status: LOCAL PASS. Hosted Windows+Ubuntu CI remains the promotion gate.
