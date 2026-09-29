@@ -12,7 +12,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest, ubuntu-latest]
+        include:
+          - os: windows-latest
+            test_concurrency: 2
+          - os: ubuntu-latest
+            test_concurrency: 1
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -27,7 +31,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install --yes python3-gi gir1.2-gdkpixbuf-2.0 gnome-shell-common
       - name: Run qualification check with bounded file concurrency
-        run: npm run check:qualification
+        run: node tools/run-bounded-test-script.mjs --script check --concurrency ${{ matrix.test_concurrency }}
       - name: Run qualification test suite with bounded file concurrency
-        run: npm run test:qualification
+        run: node tools/run-bounded-test-script.mjs --script test --concurrency ${{ matrix.test_concurrency }}
       - run: npm run audit
