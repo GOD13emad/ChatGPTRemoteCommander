@@ -27,9 +27,11 @@ test('qualification paths bound full test file concurrency',()=>{
   const installPs1=read('install.ps1');
   const installSh=read('install.sh');
   const updateLinux=read('auto-update-linux.sh');
+  const updateWindows=read('auto-update-windows.ps1');
   assert.ok(installPs1.includes('& npm.cmd run test:qualification'));
   assert.ok(installSh.includes('npm run test:qualification'));
   assert.ok(updateLinux.includes('run_gate "$STAGE_DIR" test npm run test:qualification'));
+  assert.ok(updateWindows.includes("Run-Gate $stage.Dir 'test' @('run','test:qualification')"));
 });
 
 test('bounded test wrapper rejects unsafe configuration',()=>{

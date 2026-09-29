@@ -1263,3 +1263,43 @@ Historical checkpoints remain append-only archives. Current release/control clai
 - **Root cause — CONFIRMED:** stale test oracle after intentional qualification-command rename; production/install behavior matched the new contract. Local Windows qualification did not execute these Linux-only isolation cases, so hosted Ubuntu was the first authority to expose the stale oracle.
 - **Fix:** update only the two expected npm-call arrays in `test/linux-installer-isolation.test.mjs` to `run test:qualification`; no runtime, installer, timeout, or concurrency behavior changed.
 - **Next authority gate:** local syntax/CHECK/audit/diff validation, then a fresh commit and fresh Ubuntu/Windows CI plus both install canaries. Do not rerun the old failed SHA as promotion evidence.
+
+
+## 2026-09-29 — v0.9.22 live Windows updater exposed the remaining unbounded qualification path
+
+- **Release authority — CONFIRMED / HIGH:** PR #50 merged at `1149ad23bbbce397d52e61663bbd3063fec76e17`; immutable `v0.9.22` Release Sync passed and published the full 15-asset contract. The tag is not to be moved or rewritten.
+- **Candidate qualification — CONFIRMED / HIGH:** exact pinned v0.9.22 candidate-only update passed check/test/audit/native GUI, including 483 pass / 0 fail / 6 platform skips, and recovered the explicit owner Codex provider for the default profile.
+- **First promotion — CONFIRMED / HIGH:** the updater safely promoted the independent `saeed-emad` profile but left default as `PROMOTED_PARTIAL` because an older default route generation was still draining. No blind retry was performed.
+- **Independent drain recheck — CONFIRMED / HIGH:** the old default previous port 48835 later had no listener; router status showed current inflight work only on active port 48834. This satisfied the updater's documented idempotent-resume precondition.
+- **Resume failure — CONFIRMED / HIGH:** the evidence-backed resume failed before cutover at the candidate test gate: 482 pass / 1 fail / 6 skips. The sole failure was `host-approved wrapper does not inherit full-filesystem access outside workflow root` in `workflow-http.test.mjs`, timing out its isolated health probe at ~30.16 s even though the child printed that it was listening.
+- **Diagnostic — CONFIRMED / HIGH:** the exact `node --test test/workflow-http.test.mjs` file immediately passed 3/3 in ~2.51 s; the affected test passed in ~0.57 s. No listener remained on the failed temporary port after cleanup, and live default routing remained on v0.9.21 with `last-update.status=FAILED`.
+- **Historical audit — CONFIRMED:** repository search showed Windows hosted CI, `install.ps1`, `install.sh`, `auto-update-linux.sh` use `test:qualification`, while `auto-update-windows.ps1` still used `Run-Gate ... @('test')`. This is the third meaningful occurrence of the same qualification oversubscription/starvation family after hosted Windows CI and Linux install canary.
+- **External method evidence:** Node v26 CLI documentation states that `--test-concurrency` limits concurrently executed test files and defaults to `os.availableParallelism() - 1` under process isolation; each test file executes in a child process. Source: https://nodejs.org/dist/latest/docs/api/all.html
+- **Root-cause class — PROBABLE / HIGH:** resource starvation caused by the one remaining unbounded Windows auto-update qualification path, not a workflow authorization/runtime regression. Confirmation requires the same live update path to pass after bounded qualification.
+- **Decision / minimum sufficient control:** do not increase functional health timeouts and do not alter runtime code. Wire only Windows auto-update candidate qualification to existing `test:qualification` concurrency=2 and add a regression assertion covering that path. Keep ordinary `npm test` unbounded for development/final-gate detection.
+- **Versioning:** v0.9.22 is immutable and already published, so the correction is a new v0.9.23 hotfix rather than retagging.
+
+
+## 2026-09-29 — v0.9.23 version consistency gate
+
+- **CHECK failure — CONFIRMED / LOW RISK:** first v0.9.23 `npm run check` stopped at `test/onboarding-plugin-check.mjs` because release-coupled files still expected v0.9.22.
+- **Root cause:** normal release-version dependency set, not a production/runtime defect.
+- **Correction:** align server VERSION, Windows/Linux installer default refs, README current-release link, plugin template version, final-gate log filename, installer contract, onboarding check and release-assets contract to v0.9.23. Historical v0.9.22 release/evidence text remains unchanged.
+- **Prevention:** existing `npm run check` is the sufficient guard; no additional release-version machinery is added.
+
+
+## 2026-09-29 — v0.9.23 native Codex manifest version alignment
+
+- **CHECK failure — CONFIRMED / LOW RISK:** the second version-consistency pass caught `plugin-template/.codex-plugin/plugin.json` still at v0.9.22 while the package and legacy public plugin manifest were v0.9.23.
+- **Root cause:** hidden native Codex manifest was outside the first ordinary version search, but the existing onboarding contract correctly enforced equality with `package.json`.
+- **Correction / prevention:** align the native Codex manifest to v0.9.23; retain the existing onboarding equality guard as the sufficient prevention control.
+
+
+## 2026-09-29 — v0.9.23 local promotion gate PASS
+
+- **Focused Project Engine — CONFIRMED / HIGH:** 222 pass / 0 fail / 1 environment skip.
+- **CHECK — CONFIRMED / HIGH:** complete `npm run check` passed after version-consistency alignment.
+- **Exact qualification — CONFIRMED / HIGH:** `npm run test:qualification` used `CI_TEST_CONCURRENCY ... concurrency=2 replacements=2`; aggregate 483 pass / 0 fail / 6 platform skips.
+- **Complete unbounded final gate — CONFIRMED / HIGH:** `FINAL_GATE_PASS 2026-09-29T08:44:21.1074309+03:30`; full aggregate 483 pass / 0 fail / 6 skips; GUI contract 77/77; schema continuity 9/9; security audit and diff check passed.
+- **Evidence artifact:** `var/final-gate-v0.9.23.log`, SHA-256 `caf3697d100ab9d6ccdcac913178a2bb424938b5e8cf6dd40dbf684a851b53d5`.
+- **Next authority gate:** commit/push this exact tree, then require fresh hosted CI and both Server Install Canary jobs on the new head SHA. No merge or release until those gates pass.

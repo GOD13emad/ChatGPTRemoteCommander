@@ -370,3 +370,24 @@ Historical checkpoints are preserved in the [archived project state](history/PRO
 - Head `e7fa42ab33a3633a7d290b8b47c25cbfade0c639` failed Ubuntu CHECK because three Linux-only installer-isolation expectations still asserted legacy npm command `test` instead of the intentionally introduced `run test:qualification`.
 - Actual installer behavior was correct; mutation objective is test-oracle alignment only.
 - Merge remains BLOCKED until a new SHA passes fresh Ubuntu/Windows CI and both Server Install Canary jobs.
+
+
+## 2026-09-29 — v0.9.23 Windows auto-update qualification hotfix
+
+- v0.9.22 is published and immutable at merge commit `1149ad23bbbce397d52e61663bbd3063fec76e17`.
+- Default live runtime remains safely on v0.9.21 after the resumed v0.9.22 updater failed its unbounded candidate test gate; no failed candidate was promoted.
+- Exact failing `workflow-http.test.mjs` passed 3/3 in isolation immediately afterward. Repository audit found the remaining gap: `auto-update-windows.ps1` still used raw `npm test`.
+- Current mutation objective: v0.9.23 changes only Windows auto-update candidate qualification to `npm run test:qualification`, extends the generic qualification regression contract, and bumps release metadata.
+- Runtime semantics, functional timeouts, runner-policy overlay, routing logic and independent `saeed-emad` policy are unchanged.
+- Critical path: targeted contract -> exact bounded suite -> complete local final gate -> fresh hosted CI/canaries -> merge -> immutable v0.9.23 release -> candidate-first live rollout -> default live readback with `runnerConfigured=true` and `automaticExecution=true`.
+- FINAL remains UNPROVEN until that live readback and drain closure succeed.
+
+
+## 2026-09-29 — v0.9.23 local gate accepted
+
+- Focused Project Engine PASS: 222 / 0 / 1 skip.
+- Exact bounded qualification PASS: 483 / 0 / 6 skips with concurrency=2.
+- Complete unbounded final gate PASS at `2026-09-29T08:44:21.1074309+03:30`.
+- Gate artifact: `var/final-gate-v0.9.23.log`; SHA-256 `caf3697d100ab9d6ccdcac913178a2bb424938b5e8cf6dd40dbf684a851b53d5`.
+- Current critical path: commit/push -> fresh hosted CI + Linux/Windows install canaries -> merge -> immutable v0.9.23 release -> candidate-first live rollout -> live default runner readback.
+- FINAL remains UNPROVEN until the live default routed runtime reports `runnerConfigured=true` and `automaticExecution=true` and no previous drain remains.

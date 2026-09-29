@@ -873,7 +873,7 @@ try{
   Push-Location $stage.Dir
   try{
     Run-Gate $stage.Dir 'check' @('run','check')
-    Run-Gate $stage.Dir 'test' @('test')
+    Run-Gate $stage.Dir 'test' @('run','test:qualification')
     Run-Gate $stage.Dir 'audit' @('run','audit')
     Ensure-ProjectProvider (Get-PrimaryConfig)
     if($primaryConfig.powerMode.enabled-eq $true -and $primaryConfig.powerMode.guiControl.enabled-eq $true){
