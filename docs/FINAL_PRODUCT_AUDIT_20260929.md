@@ -63,3 +63,12 @@ v0.10.1 is published and cryptographically/readback qualified: the annotated tag
 Windows core runtime, routes, source projection and tunnels are on exact v0.10.1 and idle. Linux required one additional official maintenance-update pass because the routed runtime had promoted while the canonical control checkout remained v0.10.0; after exact-tag/commit updater qualification, canonical control is also exact v0.10.1 and doctor/service/tunnel all pass.
 
 The live Windows SYSTEM BootRecovery and UserSessionHandoff tasks are currently absent. Their disappearance cause is unverified. An official elevated repair attempt was canceled at UAC by the user, so the audit does not claim recovery-task final PASS. No reboot/shutdown/logoff occurred.
+
+
+## 2026-09-29 addendum — Windows recovery live configuration PASS
+
+Following explicit owner approval, the official v0.10.1 elevated recovery installer completed successfully with SYSTEM probe PASS and no reboot. Elevated readback confirmed both BootRecovery and UserSessionHandoff enabled under SYSTEM/Highest/ServiceAccount with the expected Boot and Logon triggers. A controlled UserSessionHandoff execution completed with LastTaskResult=0. Windows Doctor and both tunnels remained healthy afterward.
+
+The earlier non-elevated observation that the privileged recovery tasks were absent is superseded as insufficient evidence. Since the repair preceded the first elevated readback, whether the tasks were actually absent immediately beforehand is UNPROVEN. No deletion root cause is claimed.
+
+Current product status is PASS for v0.10.1 publication, Windows/Linux core runtime, and desired live recovery configuration. Real reboot/power-return behavior remains unvalidated until issue #66 is explicitly executed.
