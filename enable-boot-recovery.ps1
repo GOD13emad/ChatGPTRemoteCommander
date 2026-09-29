@@ -122,10 +122,16 @@ try {
   Start-ScheduledTask -TaskName $probeName
   $deadline=(Get-Date).AddSeconds(20)
   while((Get-Date)-lt$deadline -and -not(Test-Path -LiteralPath $probeResult)){Start-Sleep -Milliseconds 250}
-  if(-not(Test-Path -LiteralPath $probeResult)){throw 'BOOT_RECOVERY_SYSTEM_PROBE_TIMEOUT'}
+  if(-not(Test-Path -LiteralPath $probeResult)){
+    $probeInfo=Get-ScheduledTaskInfo -TaskName $probeName -ErrorAction SilentlyContinue
+    $probeState=(Get-ScheduledTask -TaskName $probeName -ErrorAction SilentlyContinue).State
+    $lastResult=if($probeInfo){[int64]$probeInfo.LastTaskResult}else{-1}
+    throw "BOOT_RECOVERY_SYSTEM_PROBE_NO_RESULT state=$probeState lastTaskResult=$lastResult"
+  }
   $probe=Get-Content -LiteralPath $probeResult -Raw | ConvertFrom-Json
   if(-not $probe.ok -or -not $probe.bootCore -or [string]$probe.credentialScope -ne 'LocalMachine'){
-    throw 'BOOT_RECOVERY_SYSTEM_PROBE_FAIL'
+    $detail=if($probe.PSObject.Properties.Name -contains 'error' -and -not [string]::IsNullOrWhiteSpace([string]$probe.error)){[string]$probe.error}else{'unspecified'}
+    throw "BOOT_RECOVERY_SYSTEM_PROBE_FAIL error=$detail"
   }
   if(@($probe.profiles | Where-Object {-not $_.credentialReady}).Count -gt 0){throw 'BOOT_RECOVERY_SYSTEM_CREDENTIAL_PROBE_FAIL'}
 } finally {

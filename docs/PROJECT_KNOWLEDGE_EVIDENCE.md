@@ -1456,3 +1456,12 @@ Status: CURRENT benchmark evidence. Reuse targets: roadmap, release planning, pr
 - **Unpromoted development — UNPROVEN/CURRENTLY EXCLUDED:** a local fix/v0.10.1-boot-recovery-diagnostics worktree exists with improved diagnostic reporting/version changes. It is not release authority and must follow normal focused/full/hosted gates before any promotion.
 - **Local evidence:** Windows readiness artifact SHA-256 f1f7ad9c126125d85ef0d5ab8c37d94bad458e2e5c7ed07690a4239e00eea7d4; Linux readiness artifact SHA-256 bcca4f4529350c186f2568a0fac389f2c74b101cc3d83b8c943e9e88dc72038f.
 - **Reuse targets:** next release planning, durable-state cleanup design, Linux parity/browser provisioning, fleet dashboard, security/sandbox roadmap, post-important-task expansion.
+
+## 2026-09-29 — v0.10.1 maintenance evidence
+
+- **BootRecovery diagnostics — CONFIRMED/HIGH:** self-test exceptions are now serialized when SelfTestOutput is requested; installer reports exact structured error or, if no result exists, task state + LastTaskResult. Synthetic isolated-profile hash mismatch regression PASS. No automatic repair introduced.
+- **Root-cause correction — CONFIRMED/HIGH:** earlier draft text claimed a specific live config-hash drift root cause. Later authoritative activation evidence did not prove that as the cause of the initial timeout; exact SYSTEM probes subsequently passed. Final release text therefore classifies the initial missing result's precise cause as UNVERIFIED while fixing the diagnostic blind spot.
+- **Durable-state semantics — CONFIRMED/HIGH:** scheduler pending is a persisted enabled-nonterminal count and must not be read as proof of a live execution queue. v0.10.1 exposes persistedNonterminal, pendingMeaning=PERSISTED_NONTERMINAL_RECORDS_NOT_LIVE_QUEUE, currentLeases, and hasActiveLease without mutating history.
+- **CI determinism — CONFIRMED/HIGH:** inherited-stdio regression now tests the actual invariant: operation reaches SUCCEEDED while the stdio-holder PID is still alive. Holder lifetime is 60s, explicit cleanup follows, and production timeout semantics are unchanged. Ten consecutive focused runs PASS.
+- **Local candidate gate — CONFIRMED/HIGH:** full suite 493 pass / 0 fail / 6 skip, Project Engine 222/0/1 skip, security audit PASS, diff PASS. Final-gate log SHA-256 50e3bc6acf589884de2d369022e0cb6da89da32f826a4d521a411e501666eee3.
+- **Reuse targets:** release notes, support diagnostics, workflow observability, CI reliability, future historical-state reconciliation.

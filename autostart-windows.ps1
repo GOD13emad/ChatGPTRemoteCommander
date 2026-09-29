@@ -273,25 +273,21 @@ function Start-TunnelProfile($Item) {
 . (Join-Path $Root 'supervisor-routing.ps1')
 
 if ($SelfTest) {
-  $profiles = @(Get-ManagedProfiles | ForEach-Object {
-    $credentialReady = if ($CredentialSelfTest) { Test-RcCredential $_.Credential $CredentialScope } else { Test-Path -LiteralPath $_.Credential -PathType Leaf }
-    [pscustomobject]@{ profile=$_.Profile; mcpPort=$_.McpPort; healthPort=$_.HealthPort; isolated=[bool]$_.Instance; credentialReady=$credentialReady }
-  })
-  $instance = $null
-  if ($SelfTestProfile) {
-    if (-not (Test-RcProfileName $SelfTestProfile)) { throw 'Invalid SelfTestProfile.' }
-    $instance = Get-InstanceRecord $SelfTestProfile
-  }
-  $routes=@(); foreach($p in @('default')+@($profiles.profile)){try{$r=Get-RouteState $p;if($r){$routes+=[pscustomobject]@{profile=$p;generation=$r.State.generation;active=$r.Active}}}catch{}}
-  $result=[pscustomobject]@{
-    ok=(@($profiles | Where-Object { -not $_.credentialReady }).Count -eq 0)
-    bootCore=[bool]$BootCore
-    credentialScope=$CredentialScope
-    ownerUserProfile=$OwnerUserProfile
-    profiles=$profiles
-    instance=$instance
-    routes=$routes
-    autoUpdateScript=(Test-Path (Join-Path $Root 'auto-update-windows.ps1'))
+  $result=$null
+  try {
+    $profiles = @(Get-ManagedProfiles | ForEach-Object {
+      $credentialReady = if ($CredentialSelfTest) { Test-RcCredential $_.Credential $CredentialScope } else { Test-Path -LiteralPath $_.Credential -PathType Leaf }
+      [pscustomobject]@{ profile=$_.Profile; mcpPort=$_.McpPort; healthPort=$_.HealthPort; isolated=[bool]$_.Instance; credentialReady=$credentialReady }
+    })
+    $instance = $null
+    if ($SelfTestProfile) {
+      if (-not (Test-RcProfileName $SelfTestProfile)) { throw 'Invalid SelfTestProfile.' }
+      $instance = Get-InstanceRecord $SelfTestProfile
+    }
+    $routes=@(); foreach($p in @('default')+@($profiles.profile)){try{$r=Get-RouteState $p;if($r){$routes+=[pscustomobject]@{profile=$p;generation=$r.State.generation;active=$r.Active}}}catch{}}
+    $result=[pscustomobject]@{ok=(@($profiles | Where-Object { -not $_.credentialReady }).Count -eq 0);bootCore=[bool]$BootCore;credentialScope=$CredentialScope;ownerUserProfile=$OwnerUserProfile;profiles=$profiles;instance=$instance;routes=$routes;autoUpdateScript=(Test-Path (Join-Path $Root 'auto-update-windows.ps1'));error=$null}
+  } catch {
+    $result=[pscustomobject]@{ok=$false;bootCore=[bool]$BootCore;credentialScope=$CredentialScope;ownerUserProfile=$OwnerUserProfile;profiles=@();instance=$null;routes=@();autoUpdateScript=(Test-Path (Join-Path $Root 'auto-update-windows.ps1'));error=$_.Exception.Message}
   }
   $json=$result | ConvertTo-Json -Depth 8 -Compress
   if ($SelfTestOutput) {

@@ -289,9 +289,12 @@ export class WorkflowStore {
       automaticExecution: false,
       runnerConfigured: false,
       pending: Number(pending),
+      persistedNonterminal: Number(pending),
+      pendingMeaning: 'PERSISTED_NONTERMINAL_RECORDS_NOT_LIVE_QUEUE',
       interrupted: Number(interrupted),
       reconciliationRequired: Number(reconciliationRequired),
       currentLeases: Number(leases),
+      hasActiveLease: Number(leases) > 0,
       lifecycleCounts: counts,
       workerId: this.#workerId,
       policy: clone(this.#schedulerPolicy)

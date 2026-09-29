@@ -104,20 +104,28 @@ test('large output is file-backed and inline result stays bounded', async () => 
   });
 });
 
-test('child exit completes operation even when inherited stdio delays close', async () => {
+test('child exit completes operation while inherited-stdio holder is still alive', async () => {
   await withManager(async ({ manager, root }) => {
     const ready = path.join(root, 'linger-stdio.ready');
     const started = await manager.execute('operation_start', {
       requestId: 'linger-stdio-1',
       tool: 'run_project_command',
-      arguments: { argv: ['linger-stdio', 'parent-done', ready, '20000'], timeoutMs: 30000 }
+      arguments: { argv: ['linger-stdio', 'parent-done', ready, '60000'], timeoutMs: 30000 }
     });
     await waitForFile(ready, 20000);
-    const state = await waitFor(manager, started.operationId, undefined, 8000);
-    assert.equal(state.status, 'SUCCEEDED');
-    const result = await manager.execute('operation_result', { operationId: started.operationId, tailBytes: 1024 });
-    assert.equal(result.result.outputComplete, false);
-    assert.equal(result.stdoutTail, 'parent-done');
+    const holderPid = Number((await readFile(ready, 'utf8')).trim());
+    assert.equal(Number.isSafeInteger(holderPid) && holderPid > 0, true, 'fixture must expose inherited-stdio holder pid');
+    try {
+      const state = await waitFor(manager, started.operationId, undefined, 20000);
+      assert.equal(state.status, 'SUCCEEDED');
+      assert.doesNotThrow(() => process.kill(holderPid, 0), 'operation must complete while inherited-stdio holder remains alive');
+      const result = await manager.execute('operation_result', { operationId: started.operationId, tailBytes: 1024 });
+      assert.equal(result.result.outputComplete, false);
+      assert.equal(result.stdoutTail, 'parent-done');
+    } finally {
+      try { process.kill(holderPid); } catch {}
+      await waitForProcessExit(holderPid, 5000).catch(()=>{});
+    }
   });
 });
 
