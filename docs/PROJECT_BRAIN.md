@@ -340,3 +340,54 @@ Fresh Windows candidate evidence:
 - final-gate log SHA-256: 50e3bc6acf589884de2d369022e0cb6da89da32f826a4d521a411e501666eee3.
 
 Status: LOCAL PASS / not yet released. Hosted Windows/Ubuntu CI, server-install canaries, clean Linux exact-tree qualification, immutable publication and live Windows/Linux rollout remain open gates.
+
+
+## v0.10.1 live release seal — 2026-09-29 — one Windows recovery gate remains
+
+Authoritative release:
+- main merge commit: `b65c48ff8c2fdacd6fbfe0efef4d90742a9e791c` (PR #68).
+- tag: `v0.10.1` annotated tag peels to exact commit `b65c48ff8c2fdacd6fbfe0efef4d90742a9e791c`.
+- GitHub Release: published, draft=false, prerelease=false.
+- 19 release assets present; all 18 payload assets listed in `SHA256SUMS.txt` independently downloaded and checksum-verified PASS.
+
+Hosted release qualification:
+- CI run 36580307031: Ubuntu PASS, Windows PASS.
+- Server Install Canary run 36580307099: clean Linux container PASS, Windows server bootstrap PASS.
+- local candidate evidence already recorded: focused 44/44 PASS; inherited-stdio stress 10/10 PASS; full suite/security/diff gates PASS.
+
+Windows live:
+- runtime version 0.10.1.
+- canonical control source HEAD = `b65c48ff8c2fdacd6fbfe0efef4d90742a9e791c`, package=0.10.1.
+- default route generation 120 -> exact v0.10.1/main merge commit, previous=null.
+- saeed-emad route generation 164 -> exact same commit, previous=null.
+- default + saeed-emad tunnels ready.
+- Doctor PASS.
+- activeOperations=0, queued=0, lockedKeys=0; workflow currentLeases=0, hasActiveLease=false.
+- durable scheduler semantics now explicitly report `PERSISTED_NONTERMINAL_RECORDS_NOT_LIVE_QUEUE`.
+
+Linux live:
+- runtime version 0.10.1.
+- initial final readback found a projection mismatch: routed runtime was v0.10.1 but canonical control checkout remained v0.10.0, causing Doctor expected=0.10.0 / active=0.10.1 FAIL.
+- official v0.10.1 `auto-update-linux.sh` maintenance path was run in a retained terminal with exact tag+commit and full qualification; canonical control was promoted to exact `b65c48ff...`.
+- postrepair Doctor PASS; package=0.10.1; systemd service active+enabled; Linger=yes; tunnel ready.
+- route generation 99 -> exact v0.10.1 commit, previous=null.
+- update log records `AUTO_UPDATE_PASS version=0.10.1 commit=b65c48ff...` and supervisor recycle request.
+- activeOperations=0, queued=0, lockedKeys=0; workflow currentLeases=0, hasActiveLease=false.
+
+Open Windows recovery gate:
+- independent post-release Task Scheduler inventory found `ChatGPTRemoteCommander-BootRecovery` and `ChatGPTRemoteCommander-UserSessionHandoff` absent, despite prior v0.10.0 owner/admin acceptance where both were installed and Handoff was functionally validated.
+- source audit found no update/install unregister path for those task names; only explicit `disable-boot-recovery.ps1` intentionally removes them. Precise deletion cause is UNVERIFIED.
+- issue #69 records the regression and proposed future persisted-owner-intent/doctor guard.
+- official v0.10.1 elevated repair was initiated under prior owner authorization, but Windows UAC returned `operation was canceled by the user`; no repair mutation occurred.
+- no blind UAC retry was attempted.
+- real reboot/power-return validation remains separately open (#66).
+
+Status:
+- v0.10.1 release/publication: FINAL/PASS.
+- Windows core runtime/tunnels/routing: PASS.
+- Linux core/runtime/control projection: PASS after repair.
+- Windows BootRecovery/UserSessionHandoff desired live configuration: OPEN/BLOCKED_BY_OWNER_UAC.
+- Project Brain: CURRENT.
+
+Exact next action:
+Owner approves the single UAC prompt for the official v0.10.1 `enable-boot-recovery.ps1 -NoStart` repair; then perform elevated task readback + controlled Handoff run, record evidence, and close issue #69. No reboot is required for that repair.
