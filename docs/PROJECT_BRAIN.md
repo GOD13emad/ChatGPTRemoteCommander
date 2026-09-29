@@ -254,3 +254,28 @@ Remaining external/owner gates are not product defects:
 2. Windows pre-logon BootRecovery SYSTEM/UserSessionHandoff task creation remains an explicit elevated-owner OS action if operation before interactive logon is required. The product does not bypass UAC.
 
 Project status: PRODUCT FINAL PASS for v0.10.0 release/build/install/update/runtime/plugin-generation capability. Project Brain status CURRENT. Exact next action for a new machine: run the OS Setup bundle; after creating/scanning the custom ChatGPT app, provide its App ID to the local wizard to emit that machine's unique Plugin ZIP.
+
+
+## Owner/admin gate closure — 2026-09-29 — Windows BootRecovery tasks installed
+
+The previously open Windows owner/admin deployment gate was executed after explicit owner approval, without reboot/shutdown/logoff.
+
+- The first elevated run of `enable-boot-recovery.ps1 -NoStart` hit `BOOT_RECOVERY_SYSTEM_PROBE_TIMEOUT`. No completion was claimed from that attempt.
+- Read-only diagnosis proved SYSTEM ACL access to the app/var/profile/credential paths and proved that the Microsoft Store PowerShell 7 executable, Windows PowerShell 5.1 and cmd can all launch successfully as SYSTEM.
+- One temporary diagnostic wrapper was rejected as non-authoritative after it demonstrated a local quoting defect in its own `Start-Process -ArgumentList` handling of `C:\Program Files\nodejs\node.exe`.
+- An exact SYSTEM probe using the same `New-ScheduledTaskAction` argument string as the production boot setup passed in 1.303 seconds with `BootCore=true`, `CredentialScope=LocalMachine`, and both tunnel credentials `credentialReady=true`.
+- The production `enable-boot-recovery.ps1 -NoStart` path was then rerun under elevation and returned `ok=true`.
+
+Elevated post-check confirms:
+- `ChatGPTRemoteCommander-BootRecovery`: Ready, SYSTEM, Highest, ServiceAccount, enabled BootTrigger, StartWhenAvailable, IgnoreNew, RestartCount 20, RestartInterval 1 minute, unlimited execution time.
+- `ChatGPTRemoteCommander-UserSessionHandoff`: Ready, SYSTEM, Highest, ServiceAccount, enabled LogonTrigger for `EMAD-PC-ULTIMAT\Aa.Emad`, StartWhenAvailable, IgnoreNew, RestartCount 12, RestartInterval 1 minute, 12-minute execution limit.
+- HKCU logon autostart remains present.
+- No reboot was performed.
+
+The historical Handoff `LastTaskResult=76` from 2026-09-27 was actively cleared by one controlled manual task run. Post-run: `LastTaskResult=0`, state Ready, MCP v0.10.0 ready, default tunnel ready, saeed-emad tunnel ready.
+
+Evidence artifact:
+`%LOCALAPPDATA%\ChatGPTRemoteCommander\audit\v0100-boot-recovery-20260929\FINAL_BOOT_RECOVERY_ACCEPTANCE.md`
+SHA-256: `4817dddef6b497545369758da5be79c940500968b8df7375fb43c892a1ba832a`.
+
+Status: owner/admin installation gate CLOSED / PASS. Real `AtStartup` behavior after an actual reboot/power-loss remains a separate validation event because this change set explicitly performed no reboot/shutdown/logoff.

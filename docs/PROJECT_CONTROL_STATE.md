@@ -495,3 +495,22 @@ Historical checkpoints are preserved in the [archived project state](history/PRO
 - elevated Windows owner action for optional pre-logon SYSTEM BootRecovery tasks.
 
 These open items are intentionally not auto-promoted or guessed and do not block the v0.10.0 product release.
+
+
+## Windows BootRecovery owner gate — CLOSED — 2026-09-29
+
+**Previous state:** v0.10.0 product/runtime FINAL PASS, but SYSTEM BootRecovery/UserSessionHandoff task installation required explicit elevated owner approval.
+
+**Current delta:** explicit approval received; official setup executed under UAC elevation; transient first SYSTEM probe timeout was audited rather than blindly retried. Exact production-equivalent SYSTEM probe passed in 1.303 s with both LocalMachine tunnel credentials ready. Official setup was then rerun and returned PASS.
+
+**Accepted poststate:**
+- BootRecovery task: Ready / SYSTEM / Highest / ServiceAccount / enabled BootTrigger.
+- UserSessionHandoff task: Ready / SYSTEM / Highest / ServiceAccount / enabled user LogonTrigger.
+- Handoff functional run: PASS, current LastTaskResult=0.
+- MCP v0.10.0 and both Windows tunnels remained ready after handoff validation.
+- logon autostart present.
+- rebootPerformed=false.
+
+**Verification vs validation:** task registration, SYSTEM credential/readiness path and Handoff execution are VERIFIED/PASS. A real machine restart/power-return cycle was not performed and therefore real AtStartup behavior remains UNVALIDATED in this change set.
+
+**Exact next action:** none for installation. Optional future validation is one controlled real reboot/power-return test when the owner explicitly authorizes it.
