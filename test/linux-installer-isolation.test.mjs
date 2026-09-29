@@ -131,7 +131,7 @@ for (const mode of ['standard', 'power']) test(`Linux custom no-start ${mode} re
       assert.equal(fs.existsSync(config.powerMode.backupRoot), false);
     }
   }
-  assert.deepEqual(fs.readFileSync(f.npmCalls, 'utf8').trim().split('\n'), ['run check', 'run test:qualification', 'run audit', 'run check', 'run test:qualification', 'run audit']);
+  assert.deepEqual(fs.readFileSync(f.npmCalls, 'utf8').trim().split('\n'), ['run check:qualification', 'run test:qualification', 'run audit', 'run check:qualification', 'run test:qualification', 'run audit']);
 });
 
 
@@ -147,7 +147,7 @@ test('Linux custom no-start skip-tunnel-client avoids network when no pinned cli
   assert.match(output, /INSTALL_PASS/);
   assert.equal(fs.existsSync(f.effects), false, 'skip-tunnel-client must not invoke curl or mutate production services');
   assert.deepEqual(fs.readFileSync(f.route), fs.readFileSync(f.route));
-  assert.deepEqual(fs.readFileSync(f.npmCalls, 'utf8').trim().split('\n'), ['run check', 'run test:qualification', 'run audit']);
+  assert.deepEqual(fs.readFileSync(f.npmCalls, 'utf8').trim().split('\n'), ['run check:qualification', 'run test:qualification', 'run audit']);
 });
 
 test('Linux existing custom installation with explicit start retains candidate-first path', linuxOnly, t => {

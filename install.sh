@@ -388,7 +388,7 @@ install_linux_gui_backend() {
 
 validate_installation() {
   cd "$INSTALL_DIR"
-  npm run check
+  npm run check:qualification
   npm run test:qualification
   npm run audit
 }

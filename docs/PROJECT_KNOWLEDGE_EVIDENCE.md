@@ -1303,3 +1303,23 @@ Historical checkpoints remain append-only archives. Current release/control clai
 - **Complete unbounded final gate — CONFIRMED / HIGH:** `FINAL_GATE_PASS 2026-09-29T08:44:21.1074309+03:30`; full aggregate 483 pass / 0 fail / 6 skips; GUI contract 77/77; schema continuity 9/9; security audit and diff check passed.
 - **Evidence artifact:** `var/final-gate-v0.9.23.log`, SHA-256 `caf3697d100ab9d6ccdcac913178a2bb424938b5e8cf6dd40dbf684a851b53d5`.
 - **Next authority gate:** commit/push this exact tree, then require fresh hosted CI and both Server Install Canary jobs on the new head SHA. No merge or release until those gates pass.
+
+
+## 2026-09-29 — Windows hosted CHECK exposed unbounded check qualification
+
+- **Hosted evidence — CONFIRMED / HIGH:** PR #51 head `fd4a69d31715acb391528d933f07d6070b9237f9` passed Ubuntu CI, Linux clean-container canary, and Windows Server bootstrap canary. Windows CI failed only in `npm run check`.
+- **Exact failure:** `dual-era MCP contract, tool validation, cache hints and risk annotations` in `test/mcp-conformance.test.mjs`; line 108 asserted `healthy === true` after 400 × 25 ms startup probes. Hosted duration was ~12.8 s and stderr contained only the Node SQLite experimental warning.
+- **Root-cause class — PROBABLE / HIGH:** the same Windows hosted file-process resource starvation family, now inside the CHECK script's large unbounded `node --test` batch. Production/bootstrap regression is contradicted by both server canaries passing and Ubuntu CHECK/full tests passing.
+- **Historical audit:** qualification/install/update paths bounded the full TEST suite but all still invoked raw `npm run check`; the CHECK script itself contains multiple `node --test` batches.
+- **Decision / minimum sufficient control:** add generic `check:qualification` using the existing bounded wrapper at concurrency 2 and use it only for hosted Windows CI plus Windows/Linux installer and updater qualification. Keep ordinary `npm run check` unbounded for development/local final-gate detection. Do not widen the 10 s MCP health probe.
+- **Promotion state:** old failed head remains non-promotable; a new commit SHA must pass focused contracts, exact bounded CHECK/TEST qualification, complete local final gate, and fresh hosted gates.
+
+
+## 2026-09-29 — qualification CHECK control locally accepted
+
+- **Focused regression — CONFIRMED / HIGH:** qualification/update/installer contract set passed 15/0 with 5 platform skips plus `INSTALLER_CHECK_PASS`.
+- **Exact bounded qualification — CONFIRMED / HIGH:** `check:qualification` ran with `concurrency=2 replacements=4`; the previously failing MCP conformance startup case passed. `test:qualification` also passed; aggregate TEST result 483 pass / 0 fail / 6 skips.
+- **Complete unbounded final gate — CONFIRMED / HIGH:** `FINAL_GATE_PASS 2026-09-29T09:19:39.7374006+03:30`. Focused Project Engine 222/0/1 skip; CHECK 247/0/5 skip in its large test batch; FULL_TEST 483/0/6 skips; GUI contract 77/77; schema continuity 9/9; security audit, source integrity and diff check passed.
+- **Evidence artifact:** `var/final-gate-v0.9.23.log`, SHA-256 `b9e5945c7155a95212d5c2864fadca2acc15680e8e00c896980b62d14486a156`.
+- **Decision status:** minimum sufficient control accepted locally. No functional timeout, runtime semantics, router behavior, runner authority, or model-provider policy changed.
+- **Next authority gate:** commit/push this exact tree and require fresh Windows+Ubuntu CI plus both server-install canaries on the new head SHA before merge.

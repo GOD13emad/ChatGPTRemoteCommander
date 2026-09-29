@@ -391,3 +391,21 @@ Historical checkpoints are preserved in the [archived project state](history/PRO
 - Gate artifact: `var/final-gate-v0.9.23.log`; SHA-256 `caf3697d100ab9d6ccdcac913178a2bb424938b5e8cf6dd40dbf684a851b53d5`.
 - Current critical path: commit/push -> fresh hosted CI + Linux/Windows install canaries -> merge -> immutable v0.9.23 release -> candidate-first live rollout -> live default runner readback.
 - FINAL remains UNPROVEN until the live default routed runtime reports `runnerConfigured=true` and `automaticExecution=true` and no previous drain remains.
+
+
+## 2026-09-29 — PR #51 Windows CHECK qualification blocker
+
+- PR #51 head `fd4a69d31715acb391528d933f07d6070b9237f9`: Ubuntu CI PASS; Linux clean-container canary PASS; Windows Server bootstrap canary PASS; Windows CI FAIL only in unbounded `npm run check`.
+- Current mutation objective: bound Node test-file concurrency in qualification CHECK paths via existing `check:qualification`; no timeout/runtime/routing/runner-policy changes.
+- Merge remains BLOCKED. Exact next gate sequence: focused contract -> `npm run check:qualification` -> `npm run test:qualification` -> complete unbounded local final gate -> new commit/push -> fresh hosted CI/canaries.
+
+
+## 2026-09-29 — qualification CHECK local promotion gate PASS
+
+- Focused qualification/update/installer regressions PASS.
+- `check:qualification` PASS with concurrency=2 and four bounded Node test batches.
+- `test:qualification` PASS; aggregate 483 / 0 / 6 skips.
+- Complete unbounded final gate PASS at `2026-09-29T09:19:39.7374006+03:30`.
+- Gate artifact `var/final-gate-v0.9.23.log`; SHA-256 `b9e5945c7155a95212d5c2864fadca2acc15680e8e00c896980b62d14486a156`.
+- Current critical path: commit/push -> fresh hosted CI + Linux/Windows install canaries -> merge/release -> candidate-first live rollout -> live default runner readback.
+- FINAL remains UNPROVEN until hosted gates and post-release live runtime criteria pass.

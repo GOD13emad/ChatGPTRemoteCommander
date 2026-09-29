@@ -16,3 +16,7 @@ Node's official CLI documentation states that `--test-concurrency` controls the 
 
 ## Validation
 Promotion requires the focused qualification contract, exact bounded qualification suite, complete local final gate, hosted Windows/Ubuntu CI, both server-install canaries, immutable v0.9.23 release publication, candidate-first live rollout, and final live readback of the default routed runtime.
+
+
+## Hosted Windows CHECK follow-up
+A fresh Windows hosted CHECK on the first v0.9.23 PR head exposed the same resource-starvation family inside the CHECK script itself: the isolated MCP conformance server did not become healthy within its existing 10-second startup probe while Ubuntu CI and both server-install canaries passed. No functional timeout is increased. The existing bounded script wrapper is now also exposed as `check:qualification` and used only in hosted/install/update qualification paths; ordinary `npm run check` remains unbounded for the complete local final gate.

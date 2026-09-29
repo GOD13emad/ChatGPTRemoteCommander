@@ -360,9 +360,9 @@ function Configure-LocalPolicy {
 function Test-Installation {
   Push-Location -LiteralPath $InstallDir
   try {
-    & npm.cmd run check
+    & npm.cmd run check:qualification
     if ($LASTEXITCODE -ne 0) {
-      throw 'npm run check failed'
+      throw 'npm run check:qualification failed'
     }
     & npm.cmd run test:qualification
     if ($LASTEXITCODE -ne 0) {

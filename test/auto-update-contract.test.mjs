@@ -118,6 +118,7 @@ test('auto updater is candidate-first, hardware-gated and commit-point aware',()
   const retainEvidence=s.slice(s.indexOf('function Get-TerminalRetentionEvidence'),s.indexOf('function Stop-StaleBackendTree'));
   for(const marker of ['activeOperations','queued','unexpectedConnections','guiBusy','guiLeased','allowedRoots','unsafeDescendants','Get-StaleDrainDecision'])assert.ok(retainEvidence.includes(marker),marker);
   assert.ok(s.includes('DRAIN_TERMINAL_RETAIN_RECHECK_DEFER') && s.includes('Start-Sleep -Milliseconds 500'),'terminal retention must re-check safety immediately before route detachment');
+  assert.ok(s.includes("Run-Gate $stage.Dir 'check' @('run','check:qualification')"),'Windows updater qualification CHECK must bound Node test-file concurrency');
   assert.ok(s.includes('$runtimeLeaf="port-$port"') && s.includes("Join-Path $t.Profile $runtimeLeaf"),'Windows candidate runtime state must be unique per candidate port so ownership markers cannot be overwritten by later same-commit runs');
   assert.ok(s.includes('AUTO_UPDATE_PROFILE_CURRENT_SKIP') && s.includes('$explicitProfileMutation'),'already-current independent profiles must not churn candidates during another profile drain unless an explicit mutation was requested');
   assert.ok(retainEvidence.includes("tools\\gui-control.ps1 -server") && retainEvidence.includes("allowedRoots[[int]$p.ProcessId]=$true"),'idle GUI helper subtree must be explicitly rooted before descendant traversal');
@@ -213,7 +214,7 @@ test('Linux updater is candidate-first, hardware-gated, routed and rollback-awar
   const s=read('auto-update-linux.sh');
   for(const marker of [
     'stage_release',
-    'run_gate "$STAGE_DIR" check npm run check',
+    'run_gate "$STAGE_DIR" check npm run check:qualification',
     'run_gate "$STAGE_DIR" test npm run test:qualification',
     'run_gate "$STAGE_DIR" audit npm run audit',
     'copy-workflow-store.mjs',
@@ -273,8 +274,8 @@ test('Linux updater is candidate-first, hardware-gated, routed and rollback-awar
   assert.ok(cleanupOnlyLinux.includes("AUTO_UPDATE_CLEANUP_PENDING") && !cleanupOnlyLinux.includes('recycle_supervisor'),'Linux release cleanup alone must never recycle a healthy supervisor');
   assert.ok(s.includes('stop_owned_candidate "$CANDIDATE_PID" "$STAGE_DIR"'), 'Linux validation failures must clean the exact spawned candidate');
   assert.ok(s.indexOf('trap validation_cleanup ERR') < s.indexOf('CANDIDATE_PID="$(start_backend'), 'Linux validation cleanup trap must be installed before candidate spawn');
-  assert.ok(s.indexOf('AUTO_UPDATE_NEWER_CURRENT') < s.indexOf('run_gate "$STAGE_DIR" check npm run check'),'Linux automatic downgrade guard must precede gates/cutover');
-  const gates=s.indexOf('run_gate "$STAGE_DIR" check npm run check');
+  assert.ok(s.indexOf('AUTO_UPDATE_NEWER_CURRENT') < s.indexOf('run_gate "$STAGE_DIR" check npm run check:qualification'),'Linux automatic downgrade guard must precede gates/cutover');
+  const gates=s.indexOf('run_gate "$STAGE_DIR" check npm run check:qualification');
   const cutover=s.lastIndexOf('if [[ -f "$ROUTE" ]]');
   const existingDrainAdmission=s.indexOf('EXISTING_PREV_PORT="$(json_field');
   const terminalAdmission=s.indexOf('TERMINAL_PIDS="$(persistent_terminal_pids');
