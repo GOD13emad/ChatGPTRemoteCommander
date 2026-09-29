@@ -1479,3 +1479,22 @@ Status: CURRENT benchmark evidence. Reuse targets: roadmap, release planning, pr
 - **Repair attempt — BLOCKED:** official v0.10.1 elevated repair was launched with evidence-file output, but UAC returned `operation was canceled by the user`. No task mutation occurred. Blind retry rejected.
 - **Issue disposition:** #62 and #65 closed as completed by v0.10.1; #69 opened for missing Windows recovery tasks and prevention guard; #66 remains real reboot/power-return validation.
 - **Reuse targets:** release support, installer/updater regression design, recovery readiness, future final-live seal.
+
+
+## 2026-09-29 — Linux v0.10.1 concurrency-smoke readiness race
+
+- **Observed failure — CONFIRMED / HIGH:** full live-release qualification on Linux v0.10.1 (`b65c48ff8c2fdacd6fbfe0efef4d90742a9e791c`) completed the main TEST batch with 499 tests / 497 pass / 0 fail / 2 platform skips, then `test/concurrency-smoke.mjs` failed with `ENOENT` reading `test/.tmp-concurrency-app/var/mcp-runtime.json`.
+- **Isolation evidence — CONFIRMED / HIGH:** the exact smoke rerun in isolation immediately passed with `CONCURRENCY_SMOKE_PASS`; the backend concurrency assertions therefore remain passing.
+- **Root cause — CONFIRMED / HIGH:** `src/server-v0.3.mjs` makes the HTTP listener available in `server.listen(..., async callback)` before the async callback finishes `mkdir` + `writeFile(runtimeStatePath,...)`. The smoke waits only for `/health=200` and then synchronously reads the marker, so health can legitimately win the marker-write race. Current `main` at `cbdd2725b01f37c2fad5a5fea90d212d05de1834` still has the same test logic.
+- **Decision / minimum sufficient control:** do not change runtime/listener ordering and do not widen production timeouts. Add a bounded 2-second marker-readiness wait in the test that requires parseable JSON plus exact `port/projectDir` identity after health becomes available. `ENOENT` and transient partial JSON are retryable only inside that bounded readiness gate.
+- **Prevention / regression:** stress the exact smoke repeatedly on both Windows and Linux, then rerun bounded qualification on Linux. Production code is unchanged.
+- **Reuse targets:** CI/install/update qualification reliability; cross-platform readiness-test guidance.
+
+
+## 2026-09-29 — Linux concurrency-smoke readiness fix validated
+
+- **Cross-platform stress — CONFIRMED / HIGH:** patched `concurrency-smoke.mjs` passed 10/10 sequential iterations on Windows and 10/10 on a Linux sandbox built from the immutable v0.10.1 release.
+- **Windows qualification — CONFIRMED / HIGH:** patched main worktree completed `check:qualification`, `test:qualification`, security audit and doctor with exit code 0.
+- **Linux qualification — CONFIRMED / HIGH:** patched Linux sandbox completed `check:qualification` and `test:qualification` with exit code 0; the TEST main batch again reported 499 tests / 497 pass / 0 fail / 2 platform skips and the formerly failing concurrency smoke now passed. Security audit and doctor both passed.
+- **Patch identity:** patched test SHA-256 `66b0597990462e1104a4a57692b880154cc9348291c63092a392e7d04a41c4a2`.
+- **Validation conclusion:** root cause/fix pair is ACCEPTED for source promotion. Production server/runtime code remains unchanged.

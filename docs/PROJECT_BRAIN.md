@@ -391,3 +391,13 @@ Status:
 
 Exact next action:
 Owner approves the single UAC prompt for the official v0.10.1 `enable-boot-recovery.ps1 -NoStart` repair; then perform elevated task readback + controlled Handoff run, record evidence, and close issue #69. No reboot is required for that repair.
+
+
+## Milestone delta — 2026-09-29 — Linux v0.10.1 readiness race isolated
+
+The front-to-back audit found one reproducible qualification defect on Linux v0.10.1, not a backend concurrency regression. The main suite passed 499 tests with no failures, then the standalone concurrency smoke raced `/health` against asynchronous creation of `mcp-runtime.json`. The exact smoke passed immediately in isolation. Source inspection confirms the listener is available before the async listen callback finishes writing the runtime marker, and current main retains the same test logic. The narrow fix is test-only: wait up to 2 seconds for a parseable marker with the expected port/project identity after health is ready. Runtime code and production timeouts are unchanged.
+
+
+## Milestone delta — 2026-09-29 — Linux readiness fix validated
+
+The v0.10.1 cross-platform audit isolated the Linux qualification failure to a test readiness race, not backend concurrency. The test fix now waits for a valid runtime marker identity after health readiness. It passed 10/10 stress iterations on both Windows and Linux. Patched Windows and Linux qualification matrices both completed CHECK, TEST, security audit and doctor successfully; Linux's formerly failing tail smoke passed inside the full qualification path. Production runtime code and timeouts are unchanged. This source fix is promotion-ready; release promotion remains deferred while the broader front-end/system audit continues.

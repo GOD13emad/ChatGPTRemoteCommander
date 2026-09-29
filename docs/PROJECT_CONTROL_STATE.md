@@ -560,3 +560,21 @@ These open items are intentionally not auto-promoted or guessed and do not block
 **Do not claim full live-final recovery configuration until task repair evidence exists.**
 
 **Exact next action:** owner accepts UAC for the already-authorized `enable-boot-recovery.ps1 -NoStart`; verify both SYSTEM tasks, run one controlled Handoff test, then close #69. Real reboot/power-return validation remains #66.
+
+
+## 2026-09-29 — Linux concurrency-smoke readiness blocker
+
+- Windows live-release core matrix v0.10.1: PASS.
+- Linux live-release core matrix: main test batch PASS, overall qualification FAIL only in tail `concurrency-smoke.mjs` because `/health` became reachable before `mcp-runtime.json` existed.
+- Exact isolated rerun PASS; backend concurrency behavior is not the blocker.
+- Current mutation objective: test-readiness guard only; production/runtime code remains unchanged.
+- Exact next gate: Windows + Linux smoke stress -> Linux `check:qualification` + `test:qualification` -> audit/doctor -> hosted CI/canary if source change is promoted.
+
+
+## 2026-09-29 — Linux readiness fix promotion-ready
+
+- Test-only readiness fix validated on both Windows and Linux: smoke stress 10/10 each.
+- Patched Windows qualification: CHECK/TEST/audit/doctor PASS.
+- Patched Linux qualification: CHECK/TEST/audit/doctor PASS; previous tail ENOENT is eliminated.
+- Current change-set is promotion-ready and contains only `test/concurrency-smoke.mjs` plus Brain/Control/Knowledge evidence.
+- Next source gate: commit/push -> hosted CI/canary -> merge. Runtime release decision is deferred until remaining front-end/system audit findings are closed.
