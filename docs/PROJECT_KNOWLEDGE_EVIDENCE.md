@@ -1465,3 +1465,17 @@ Status: CURRENT benchmark evidence. Reuse targets: roadmap, release planning, pr
 - **CI determinism — CONFIRMED/HIGH:** inherited-stdio regression now tests the actual invariant: operation reaches SUCCEEDED while the stdio-holder PID is still alive. Holder lifetime is 60s, explicit cleanup follows, and production timeout semantics are unchanged. Ten consecutive focused runs PASS.
 - **Local candidate gate — CONFIRMED/HIGH:** full suite 493 pass / 0 fail / 6 skip, Project Engine 222/0/1 skip, security audit PASS, diff PASS. Final-gate log SHA-256 50e3bc6acf589884de2d369022e0cb6da89da32f826a4d521a411e501666eee3.
 - **Reuse targets:** release notes, support diagnostics, workflow observability, CI reliability, future historical-state reconciliation.
+
+
+## 2026-09-29 — v0.10.1 publication/live finalization evidence
+
+- **Release identity — CONFIRMED/HIGH:** `v0.10.1` annotated tag peels to `b65c48ff8c2fdacd6fbfe0efef4d90742a9e791c`, the PR #68 merge commit on main.
+- **Hosted qualification — CONFIRMED/HIGH:** CI run 36580307031 succeeded on ubuntu-latest and windows-latest. Server Install Canary run 36580307099 succeeded on linux-clean-container and windows-server-bootstrap.
+- **Release artifacts — CONFIRMED/HIGH:** GitHub Release published with draft=false/prerelease=false and 19 assets. Independent temporary download verified every one of the 18 payload assets against `SHA256SUMS.txt`; result `RELEASE_ASSET_CHECKSUM_PASS`.
+- **Windows live core — CONFIRMED/HIGH:** canonical control HEAD and default/saeed-emad routed backends all exact `b65c48ff...` / v0.10.1; both tunnels ready; doctor PASS; previous=null; no current operations/queue/locks/leases.
+- **Linux projection mismatch — FAILURE -> ROOT CAUSE -> PREVENTION evidence:** runtime route promoted to v0.10.1 while canonical install checkout remained detached at v0.10.0, so doctor correctly failed expected-version comparison. Root cause of the observed doctor failure was canonical control projection lag, not runtime failure. Official v0.10.1 maintenance updater was rerun with exact tag+commit; complete check/test/audit/schema/hardware qualification passed, canonical checkout became `b65c48ff...`, doctor/service/tunnel passed, and update log recorded AUTO_UPDATE_PASS. Reuse target: updater post-promotion projection/readback regression.
+- **Durable state semantics — CONFIRMED/HIGH:** both live hosts expose `pendingMeaning=PERSISTED_NONTERMINAL_RECORDS_NOT_LIVE_QUEUE`, `currentLeases=0`, `hasActiveLease=false`. Historical counts are not live-queue evidence and were not deleted.
+- **Windows recovery task regression — CONFIRMED absence / cause UNVERIFIED:** post-release Task Scheduler inventory found BootRecovery and UserSessionHandoff absent although prior v0.10.0 acceptance had installed/validated them. Search found no update/install path unregistering them; explicit disable script remains the only found intentional remover. Do not attribute deletion to updater without evidence.
+- **Repair attempt — BLOCKED:** official v0.10.1 elevated repair was launched with evidence-file output, but UAC returned `operation was canceled by the user`. No task mutation occurred. Blind retry rejected.
+- **Issue disposition:** #62 and #65 closed as completed by v0.10.1; #69 opened for missing Windows recovery tasks and prevention guard; #66 remains real reboot/power-return validation.
+- **Reuse targets:** release support, installer/updater regression design, recovery readiness, future final-live seal.
