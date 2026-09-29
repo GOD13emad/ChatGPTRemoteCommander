@@ -1479,3 +1479,15 @@ Status: CURRENT benchmark evidence. Reuse targets: roadmap, release planning, pr
 - **Repair attempt — BLOCKED:** official v0.10.1 elevated repair was launched with evidence-file output, but UAC returned `operation was canceled by the user`. No task mutation occurred. Blind retry rejected.
 - **Issue disposition:** #62 and #65 closed as completed by v0.10.1; #69 opened for missing Windows recovery tasks and prevention guard; #66 remains real reboot/power-return validation.
 - **Reuse targets:** release support, installer/updater regression design, recovery readiness, future final-live seal.
+
+
+## 2026-09-29 — Recovery task elevated verification and audit correction
+
+- **Official recovery install — CONFIRMED/HIGH:** owner-approved elevated `enable-boot-recovery.ps1 -NoStart` completed with ok=true, systemProbe=true, credentialScope=LocalMachine, machineCredentialCount=2, plaintextCredentialPersisted=false, rebootPerformed=false.
+- **Task configuration — CONFIRMED/HIGH by elevated readback:** BootRecovery and UserSessionHandoff are both Enabled, SYSTEM, Highest, ServiceAccount; triggers are BootTrigger and LogonTrigger respectively.
+- **Handoff validation — CONFIRMED/HIGH:** controlled scheduled-task start advanced LastRunTime and completed with LastTaskResult=0.
+- **Boot validation boundary — OPEN:** BootRecovery was not manually started and no reboot/power-return event occurred; #66 remains the authoritative validation gate.
+- **Audit correction — CONFIRMED/HIGH:** non-elevated task enumeration produced a false-negative/insufficient-visibility observation for SYSTEM-owned tasks. Because repair preceded elevated readback, whether tasks were absent immediately before repair is not knowable from current evidence. Previous "tasks disappeared" claim is superseded and reclassified UNPROVEN.
+- **Post-validation health — CONFIRMED/HIGH:** Windows Doctor PASS; default and saeed-emad tunnels ready; v0.10.1 remains active and idle with no operations/queue/locks/root leases.
+- **Provenance:** recovery result SHA-256 `DD5E831701161691E2E3D6D5A26088913DFCCCF9AE4C4E1C9C3D5433EE5D69C5`; elevated readback/Handoff result SHA-256 `60A2E1F581B8E6FB54A561353C054A1B207678CC81271750B3D34AB7927B32E1`.
+- **Reuse targets:** support diagnostics, future recovery-readiness guard design, final product audit.
