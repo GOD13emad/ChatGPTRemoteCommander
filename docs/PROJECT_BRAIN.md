@@ -391,3 +391,36 @@ Status:
 
 Exact next action:
 Owner approves the single UAC prompt for the official v0.10.1 `enable-boot-recovery.ps1 -NoStart` repair; then perform elevated task readback + controlled Handoff run, record evidence, and close issue #69. No reboot is required for that repair.
+
+
+## Recovery live gate closure — 2026-09-29
+
+Owner approved the second UAC prompt. The official v0.10.1 recovery installer completed with `ok=true`, LocalMachine credential conversion for two profiles, SYSTEM probe PASS, no plaintext credential persistence, `-NoStart`, and no reboot.
+
+Authoritative elevated readback then confirmed:
+- `ChatGPTRemoteCommander-BootRecovery`: Enabled, SYSTEM, Highest, ServiceAccount, BootTrigger.
+- `ChatGPTRemoteCommander-UserSessionHandoff`: Enabled, SYSTEM, Highest, ServiceAccount, LogonTrigger.
+- Controlled UserSessionHandoff start completed and returned `LastTaskResult=0`.
+- BootRecovery was deliberately not started; real AtStartup/power-return validation remains issue #66.
+- Windows Doctor remained PASS after the Handoff.
+- both Windows tunnels remained `ready`.
+- runtime remained v0.10.1 with activeOperations=0, queued=0, lockedKeys=0, currentLeases=0, hasActiveLease=false.
+
+Evidence correction:
+- the earlier non-elevated Task Scheduler query that returned no BootRecovery/Handoff objects was not authoritative for SYSTEM task visibility.
+- because the official elevated repair ran before the first elevated task readback, historical pre-repair task presence cannot be reconstructed conclusively.
+- therefore the earlier claim that the tasks had definitely disappeared is reclassified from Confirmed to UNPROVEN. No deletion root cause is asserted.
+- issue #69 was closed with this correction and the current PASS evidence.
+
+Evidence files:
+- `C:\Users\Aa.Emad\AppData\Local\ChatGPTRemoteCommander\audit\v0101-reinstall-boot-recovery-result.json`
+  SHA-256 `DD5E831701161691E2E3D6D5A26088913DFCCCF9AE4C4E1C9C3D5433EE5D69C5`
+- `C:\Users\Aa.Emad\AppData\Local\ChatGPTRemoteCommander\audit\v0101-admin-task-readback-and-handoff-result.json`
+  SHA-256 `60A2E1F581B8E6FB54A561353C054A1B207678CC81271750B3D34AB7927B32E1`
+
+Current status:
+- v0.10.1 release/publication/Windows core/Linux core/recovery desired live configuration: PASS.
+- real reboot/power-return BootRecovery validation: OPEN (#66), intentionally not executed automatically.
+- Project Brain: CURRENT.
+
+Exact next action: no further Commander mutation is required for normal use. Perform #66 only when the owner explicitly chooses a real reboot/power-return validation window.
