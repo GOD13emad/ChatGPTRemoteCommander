@@ -16,7 +16,7 @@ for (const required of [
   'Detected active installation from Windows autostart',
   '$InstallDir = Resolve-InstallDir',
   'Tracked local changes exist in InstallDir',
-  "[string]$SourceRef = 'v0.10.1'",
+  "[string]$SourceRef = 'v0.10.2'",
   'ExpectedCommit',
   "rev-parse 'FETCH_HEAD^{commit}'",
   'incomplete Git checkout with no HEAD',
@@ -53,6 +53,11 @@ for (const required of [
   'SHASUMS256.txt',
   'Get-AuthenticodeSignature',
   'Get-FileHash',
+  "Join-Path $env:ProgramFiles 'nodejs\\node.exe'",
+  "Join-Path $env:ProgramFiles 'Git\\cmd\\git.exe'",
+  "Add-ArtifactEvidence 'Node.js' $existing 'existing-installation'",
+  "Add-ArtifactEvidence 'Git for Windows' $existing 'existing-installation'",
+  "$env:Path = @((Split-Path -Parent $node),(Split-Path -Parent $git),$env:Path) -join ';'",
   'git-for-windows/git/releases/latest',
   "InstallationType",
   "Server Core",
@@ -105,7 +110,7 @@ for (const required of [
   'Alpine/musl is not qualified'
 ]) if (!linuxServerInstaller.includes(required)) throw new Error(`server-install-linux.sh missing server bootstrap behavior: ${required}`);
 for (const required of [
-  'SOURCE_REF="${REMOTE_COMMANDER_SOURCE_REF:-v0.10.1}"',
+  'SOURCE_REF="${REMOTE_COMMANDER_SOURCE_REF:-v0.10.2}"',
   '--source-ref',
   '--skip-tunnel-client',
   '--expected-commit',

@@ -114,6 +114,22 @@ function Ensure-Node([string]$Arch) {
     } catch {}
   }
 
+  $existing = Join-Path $env:ProgramFiles 'nodejs\node.exe'
+  if (Test-Path -LiteralPath $existing -PathType Leaf) {
+    try {
+      $major = [int]((& $existing --version).Trim().TrimStart('v').Split('.')[0])
+      if ($major -ge 22) {
+        $sha = (Get-FileHash -LiteralPath $existing -Algorithm SHA256).Hash.ToLowerInvariant()
+        $signer = Assert-Authenticode $existing
+        Add-ArtifactEvidence 'Node.js' $existing 'existing-installation' $sha $signer
+        Write-Host "Reusing verified existing Node.js outside PATH: $existing"
+        return $existing
+      }
+    } catch {
+      Write-Host "Existing Node.js outside PATH was not reusable: $($_.Exception.Message)"
+    }
+  }
+
   $version = '22.23.3'
   $asset = if ($Arch -eq 'x64') { "node-v$version-x64.msi" } else { "node-v$version-arm64.msi" }
   $base = "https://nodejs.org/dist/v$version"
@@ -137,6 +153,19 @@ function Ensure-Node([string]$Arch) {
 function Ensure-Git([string]$Arch) {
   $cmd = Get-Command git.exe -ErrorAction SilentlyContinue
   if ($cmd) { return $cmd.Source }
+
+  $existing = Join-Path $env:ProgramFiles 'Git\cmd\git.exe'
+  if (Test-Path -LiteralPath $existing -PathType Leaf) {
+    try {
+      $sha = (Get-FileHash -LiteralPath $existing -Algorithm SHA256).Hash.ToLowerInvariant()
+      $signer = Assert-Authenticode $existing
+      Add-ArtifactEvidence 'Git for Windows' $existing 'existing-installation' $sha $signer
+      Write-Host "Reusing verified existing Git for Windows outside PATH: $existing"
+      return $existing
+    } catch {
+      Write-Host "Existing Git for Windows outside PATH was not reusable: $($_.Exception.Message)"
+    }
+  }
 
   $release = Invoke-RestMethod -Uri 'https://api.github.com/repos/git-for-windows/git/releases/latest' -Headers @{'User-Agent'='ChatGPTRemoteCommander-ServerInstaller/0.9.21'}
   if ($release.draft -or $release.prerelease) { throw 'Git for Windows latest release is not stable.' }
@@ -216,9 +245,10 @@ try {
   Write-Host 'Security policy: verified downloads only; no Microsoft Defender exclusions are added.'
 
   $pwsh = Ensure-PowerShell7 $arch
-  [void](Ensure-Node $arch)
+  $node = Ensure-Node $arch
   $git = Ensure-Git $arch
   Refresh-Path
+  $env:Path = @((Split-Path -Parent $node),(Split-Path -Parent $git),$env:Path) -join ';'
 
   New-Item -ItemType Directory -Path $stage | Out-Null
   & $git -C $stage init | Out-Null
