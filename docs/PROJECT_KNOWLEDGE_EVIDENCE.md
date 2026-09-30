@@ -1508,3 +1508,16 @@ Status: CURRENT benchmark evidence. Reuse targets: roadmap, release planning, pr
 - **Implication:** after authoritative promotion of the existing safe CURRENT-path reconciler, all four retained registry entries are now eligible for normal reconciliation subject to the reconciler's own final precondition checks at execution time.
 - **Storage context:** retained release/runtime directories themselves are small (single-digit MiB each); the Windows state tree's main storage consumers are update-backups, release-acceptance, validation, tools, chess-gui-test and benchmarks. Retained-registry cleanup is lifecycle correctness first, not a multi-GB disk cleanup.
 - **Safety:** no manual registry edit, process kill or direct directory deletion was performed.
+
+
+## 2026-09-30 — v0.10.2 publication and Windows rollout qualification failure
+
+- **Release authority — CONFIRMED/HIGH:** immutable `v0.10.2` release published with 19 assets; annotated tag peels to merge commit `bc126ddf6351e107785096c1eec659cdf2982c1d`.
+- **Hosted release gates — CONFIRMED/HIGH:** exact-candidate Windows/Ubuntu CI and Windows Server/clean-Linux canaries PASS; post-merge Windows/Ubuntu CI PASS.
+- **Linux live rollout — CONFIRMED/HIGH:** candidate-first update promoted routed runtime to v0.10.2 / exact commit `bc126ddf...`; health PASS, FULL_POWER preserved, systemd service active.
+- **Windows rollout attempt 1 — ROOT CAUSE CONFIRMED:** stale base `app/config.local.json` reported STANDARD while authoritative active-route runtime config was FULL_POWER. Passing `-StandardMode` changed the candidate tool catalog and the schema-continuity gate correctly blocked promotion with `TOOLS_LIST_REFRESH_UNNEGOTIATED`. Rollback preserved live v0.10.1. **Prevention:** derive rollout authority from the active routed runtime/config, not a stale canonical projection.
+- **Windows rollout attempt 2 — FAILURE / runtime defect UNPROVEN:** with correct FULL_POWER authority, full qualification reached 499 tests and failed exactly one test: `profile-instance-http.test.mjs` health readiness after 12.59 s. The server emitted its listening banner; no product/runtime assertion failed.
+- **Flake evidence — CONFIRMED/HIGH:** exact v0.10.2 failing test subsequently passed 10/10 isolated repetitions on the same Windows host (~0.46–0.59 s) and had passed hosted Windows CI twice (~0.54–0.55 s). This supports load-sensitive fixed startup-window flake rather than runtime failure.
+- **Prevention patch — PATCHED / FOCUSED PASS:** isolated-profile HTTP readiness now uses a 30 s elapsed deadline plus early child-exit diagnostics, reusing the accepted transport-correlation pattern. Patched focused regression: Windows 10/10 PASS, Linux 3/3 PASS.
+- **Current promotion status:** v0.10.3 candidate preparation in progress. No v0.10.2 Windows promotion bypass was used; Windows remains safely on v0.10.1 pending a fully qualified maintenance release.
+- **Reuse targets:** updater authority-source selection, qualification-flake prevention, release/runbook diagnostics, future candidate-first rollout automation.
