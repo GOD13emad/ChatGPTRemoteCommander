@@ -26,11 +26,22 @@ The isolated-profile HTTP regression now uses the same bounded startup pattern a
 
 This changes only test-harness readiness handling. It does not change production server startup, HTTP timeouts, runtime behavior or safety gates.
 
+## Additional hosted-runner fixture hardening
+
+On PR #79 exact head `8e72bed5dd8f42964e4d140af98e02307c67034d`, Windows CI and the server-install canary passed, while two independent Ubuntu pull-request CI attempts failed the same inherited-stdio regression after about 20 seconds. The exact same unpatched regression passed 20/20 isolated repetitions on the live Linux validation host, so the failures did not establish a production async-operation worker defect.
+
+The fixture still had an unnecessary dependency on a `process.stdout.write(..., callback)` callback before the direct child exited. The candidate fixture now writes the tiny `parent-done` marker synchronously to fd 1 and exits immediately. The detached holder still keeps inherited stdout/stderr open, so the regression continues to prove the intended invariant: the operation reaches terminal success from direct-child `exit` without waiting for descendant-held stdio `close`.
+
+This is test-only determinism hardening. `src/async-operations.mjs`, `tools/operation-worker.mjs`, production operation deadlines and output-drain behavior are unchanged.
+
 ## Focused regression
 
 Before release preparation:
 - patched Windows isolated-profile test: 10/10 PASS;
-- patched Linux isolated-profile test: 3/3 PASS.
+- patched Linux isolated-profile test: 3/3 PASS;
+- inherited-stdio exact-head prepatch isolated Linux stress: 20/20 PASS;
+- inherited-stdio deterministic-fixture stress: Linux 30/30 PASS and Windows 10/10 PASS;
+- patched Linux complete local gate: `npm run check` 262 tests / 260 pass / 0 fail / 2 skip, `npm test` 499 tests / 497 pass / 0 fail / 2 skip, and `SECURITY_AUDIT_PASS`.
 
 ## Acceptance
 
@@ -45,4 +56,4 @@ Required before publication:
 
 ## Rollout note
 
-The first v0.10.2 Windows rollout attempt used stale base `config.local.json` authority and correctly failed schema continuity because the active routed runtime was actually FULL_POWER. The second attempt corrected authority to FULL_POWER; it then exposed the isolated-profile test startup flake described above. Both attempts rolled back cleanly to the live v0.10.1 Windows route. v0.10.3 must preserve the authoritative active-route FULL_POWER profile during Windows rollout.
+The first two v0.10.2 Windows rollout attempts rolled back cleanly to v0.10.1 at that point in the rollout. Subsequent fully qualified v0.10.2 publication and deployment completed successfully: the current accepted Windows and Linux production baseline is v0.10.2 at exact release commit `bc126ddf6351e107785096c1eec659cdf2982c1d`. v0.10.3 must preserve the authoritative active-route FULL_POWER profile and must not treat the earlier point-in-time v0.10.1 rollback state as current authority.

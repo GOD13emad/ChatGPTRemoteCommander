@@ -406,3 +406,12 @@ The Windows CURRENT-path retained-backend maintenance fix passed focused updater
 ## Milestone delta — 2026-09-30 — retained liveness refreshed
 
 A fresh Windows read-only audit shows all four retained backend entries now have no live registered terminal PID and no listener. This supersedes the earlier snapshot where one v0.9.10 terminal was still alive, without rewriting history. The existing v0.10.2 retained-maintenance patch remains the minimum safe fix; no manual retained registry edit or process kill is used. Promotion still requires fresh exact-tree regression and hosted gates.
+
+
+## Milestone delta — 2026-09-30 — v0.10.3 hosted fixture determinism
+
+Current accepted production authority is v0.10.2 on both Windows and Linux at exact immutable release commit `bc126ddf6351e107785096c1eec659cdf2982c1d`. PR #79 is a qualification-only v0.10.3 candidate; production runtime/tool schemas remain unchanged.
+
+Two independent Ubuntu pull-request CI attempts on exact pre-fix head `8e72bed5dd8f42964e4d140af98e02307c67034d` failed the same inherited-stdio regression after about 20 seconds, while Windows CI/server-install canary passed and the exact unpatched Linux regression passed 20/20 isolated repetitions. The test fixture's direct child still depended on an asynchronous stdout callback before exit. The minimum correction is test-only: synchronously write `parent-done` to fd 1, then exit immediately while the detached holder remains alive. Production worker/runtime files are untouched.
+
+Local patched evidence: Linux inherited-stdio 30/30 PASS; Windows 10/10 PASS; Linux full check 262/260 pass/0 fail/2 skip; full test 499/497 pass/0 fail/2 skip; security audit PASS. Exact next gate is fresh hosted Windows+Ubuntu CI plus both server-install canaries on the new committed head. Do not merge or release until those exact-head gates pass.

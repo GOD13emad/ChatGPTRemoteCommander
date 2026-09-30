@@ -1,5 +1,6 @@
 import { appendFile, writeFile } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
+import { writeSync } from 'node:fs';
 import os from 'node:os';
 
 const [mode, arg1, arg2, arg3] = process.argv.slice(2);
@@ -19,7 +20,12 @@ if (mode === 'sleep') {
   // the inherited-stdio condition. The regression timer starts from this
   // marker, not from operation creation under unrelated CI scheduler load.
   if (arg2) await writeFile(arg2, String(child.pid) + '\n', 'utf8');
-  process.stdout.write(arg1 || 'parent-done', () => process.exit(0));
+  // Write the direct child's tiny marker synchronously, then exit immediately.
+  // This constructs the intended regression condition without depending on a
+  // stream callback that can be delayed under hosted-runner load while the
+  // detached grandchild keeps the inherited pipe descriptor open.
+  writeSync(1, arg1 || 'parent-done');
+  process.exit(0);
 } else if (mode === 'large') {
   const bytes = Number(arg1 || 1024);
   process.stdout.write('x'.repeat(bytes));
