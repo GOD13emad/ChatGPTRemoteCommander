@@ -1508,3 +1508,28 @@ Status: CURRENT benchmark evidence. Reuse targets: roadmap, release planning, pr
 - **Implication:** after authoritative promotion of the existing safe CURRENT-path reconciler, all four retained registry entries are now eligible for normal reconciliation subject to the reconciler's own final precondition checks at execution time.
 - **Storage context:** retained release/runtime directories themselves are small (single-digit MiB each); the Windows state tree's main storage consumers are update-backups, release-acceptance, validation, tools, chess-gui-test and benchmarks. Retained-registry cleanup is lifecycle correctness first, not a multi-GB disk cleanup.
 - **Safety:** no manual registry edit, process kill or direct directory deletion was performed.
+
+
+## 2026-09-30 — v0.10.2 publication and Windows rollout qualification failure
+
+- **Release authority — CONFIRMED/HIGH:** immutable `v0.10.2` release published with 19 assets; annotated tag peels to merge commit `bc126ddf6351e107785096c1eec659cdf2982c1d`.
+- **Hosted release gates — CONFIRMED/HIGH:** exact-candidate Windows/Ubuntu CI and Windows Server/clean-Linux canaries PASS; post-merge Windows/Ubuntu CI PASS.
+- **Linux live rollout — CONFIRMED/HIGH:** candidate-first update promoted routed runtime to v0.10.2 / exact commit `bc126ddf...`; health PASS, FULL_POWER preserved, systemd service active.
+- **Windows rollout attempt 1 — ROOT CAUSE CONFIRMED:** stale base `app/config.local.json` reported STANDARD while authoritative active-route runtime config was FULL_POWER. Passing `-StandardMode` changed the candidate tool catalog and the schema-continuity gate correctly blocked promotion with `TOOLS_LIST_REFRESH_UNNEGOTIATED`. Rollback preserved live v0.10.1. **Prevention:** derive rollout authority from the active routed runtime/config, not a stale canonical projection.
+- **Windows rollout attempt 2 — FAILURE / runtime defect UNPROVEN:** with correct FULL_POWER authority, full qualification reached 499 tests and failed exactly one test: `profile-instance-http.test.mjs` health readiness after 12.59 s. The server emitted its listening banner; no product/runtime assertion failed.
+- **Flake evidence — CONFIRMED/HIGH:** exact v0.10.2 failing test subsequently passed 10/10 isolated repetitions on the same Windows host (~0.46–0.59 s) and had passed hosted Windows CI twice (~0.54–0.55 s). This supports load-sensitive fixed startup-window flake rather than runtime failure.
+- **Prevention patch — PATCHED / FOCUSED PASS:** isolated-profile HTTP readiness now uses a 30 s elapsed deadline plus early child-exit diagnostics, reusing the accepted transport-correlation pattern. Patched focused regression: Windows 10/10 PASS, Linux 3/3 PASS.
+- **Point-in-time promotion status / later superseded:** at the moment of those failed attempts Windows had rolled back safely to v0.10.1 and no bypass was used. Subsequent fully qualified v0.10.2 publication/deployment completed; current accepted Windows and Linux production authority is v0.10.2 at exact release commit `bc126ddf6351e107785096c1eec659cdf2982c1d`.
+- **Reuse targets:** updater authority-source selection, qualification-flake prevention, release/runbook diagnostics, future candidate-first rollout automation.
+
+
+## 2026-09-30 — v0.10.3 inherited-stdio hosted qualification hardening
+
+- **Hosted evidence — CONFIRMED/HIGH:** PR #79 exact head `8e72bed5dd8f42964e4d140af98e02307c67034d` had successful Windows CI and server-install canary evidence, but Ubuntu pull-request CI attempts 1 and 2 both failed the same `child exit completes operation while inherited-stdio holder is still alive` regression after about 20.1 seconds.
+- **Runtime-defect evidence — NOT ESTABLISHED:** the exact unpatched head passed the same regression 20/20 isolated repetitions on the Linux validation host; the production worker already bounds post-exit stdio drain. No production async-operation source is changed by this correction.
+- **Root test-harness weakness — CONFIRMED:** the fixture unnecessarily made direct-child exit contingent on the asynchronous stdout write callback even though the property under test is direct-child exit while a detached descendant retains inherited fds.
+- **Prevention patch — PATCHED:** fixture writes the tiny marker synchronously to fd 1 and then explicitly exits; the detached holder remains alive, preserving the actual inherited-stdio condition without callback-timing dependence.
+- **Focused regression — PASS:** patched inherited-stdio stress Linux 30/30 and Windows 10/10.
+- **Complete Linux candidate gate — PASS:** `npm run check` 262 tests / 260 pass / 0 fail / 2 skip; `npm test` 499 tests / 497 pass / 0 fail / 2 skip; GUI/Linux/Windows/source/schema contracts PASS; `SECURITY_AUDIT_PASS`.
+- **Promotion boundary:** hosted Windows+Ubuntu exact-new-head CI and server-install canaries remain mandatory before merge. v0.10.2 remains production authority until immutable v0.10.3 publication and candidate-first rollout complete.
+- **Reuse targets:** CI determinism, inherited-stdio lifecycle regression design, release qualification, no-runtime-change maintenance policy.
