@@ -560,3 +560,28 @@ These open items are intentionally not auto-promoted or guessed and do not block
 **Do not claim full live-final recovery configuration until task repair evidence exists.**
 
 **Exact next action:** owner accepts UAC for the already-authorized `enable-boot-recovery.ps1 -NoStart`; verify both SYSTEM tasks, run one controlled Handoff test, then close #69. Real reboot/power-return validation remains #66.
+
+
+## 2026-09-30 — retained-backend maintenance change set
+
+- **ONE mutation objective:** make Windows already-current updater maintenance reconcile retained backends before drain/release cleanup.
+- Live v0.10.1 runtime is healthy; this is lifecycle/storage correctness, not an active routing/runtime failure.
+- Three dead retained entries are currently removable by the existing safe reconciler; one v0.9.10 entry is still protected by live terminal PID 44432 and must remain.
+- Patch: insert `Complete-RetainedBackends` in the CURRENT fast path before `Complete-DeferredDrains` and `Cleanup-Releases`; add ordering regression guards.
+- Focused updater/retained tests: 15 PASS / 0 FAIL; diff check PASS.
+- Current gate: FOCUSED PASS / FULL REGRESSION OPEN.
+
+
+## 2026-09-30 — retained-maintenance local PASS
+
+- Focused updater/retained tests: 15/0.
+- Full local `check + test + audit`: PASS; full test 493/0/6 skips; security audit PASS.
+- Current status: LOCAL PASS / HOSTED GATES OPEN.
+- Exact next action: commit/push this change set, require fresh hosted CI/server canaries, then merge. Do not manually clean live retained registry before authoritative code is merged.
+
+
+## 2026-09-30 — retained maintenance evidence refresh
+
+- Current read-only liveness check supersedes the earlier snapshot: all four registered retained terminal PID sets are now dead and none of the retained ports is listening.
+- The existing v0.10.2 retained-maintenance code change remains the minimum sufficient correction: call the already-qualified safe reconciler in the CURRENT fast path before deferred-drain/release cleanup.
+- Live registry is intentionally unchanged until this exact branch passes fresh local/hosted authority gates and is merged/released.

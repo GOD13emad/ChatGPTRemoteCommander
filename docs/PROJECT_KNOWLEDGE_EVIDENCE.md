@@ -1479,3 +1479,32 @@ Status: CURRENT benchmark evidence. Reuse targets: roadmap, release planning, pr
 - **Repair attempt — BLOCKED:** official v0.10.1 elevated repair was launched with evidence-file output, but UAC returned `operation was canceled by the user`. No task mutation occurred. Blind retry rejected.
 - **Issue disposition:** #62 and #65 closed as completed by v0.10.1; #69 opened for missing Windows recovery tasks and prevention guard; #66 remains real reboot/power-return validation.
 - **Reuse targets:** release support, installer/updater regression design, recovery readiness, future final-live seal.
+
+
+## 2026-09-30 — Windows retained-backend CURRENT fast-path cleanup gap
+
+- **Live evidence — CONFIRMED / HIGH:** Windows v0.10.1 default and `saeed-emad` routes are healthy/current with no previous route, but `retained-backends.json` still contains four historical entries.
+- **Identity/liveness audit:** v0.9.12:48833, v0.9.21:48834 and v0.10.0:48837 have no listener and no recorded terminal PID still alive. v0.9.10:48831 has no listener but terminal PID 44432 is still alive and must remain protected.
+- **Root cause — CONFIRMED:** `Complete-RetainedBackends` exists and runs in full promotion admission, but the already-current fast path performed `Complete-DeferredDrains` and `Cleanup-Releases` without first reconciling retained entries. `Get-ProtectedReleasePaths` therefore kept dead retained release directories protected indefinitely while the system stayed current.
+- **Correction — PATCHED:** current fast path now calls `Complete-RetainedBackends` before deferred-drain handling and release cleanup.
+- **Focused regression — PASS:** updater + retained registry tests 15/15 PASS; diff check PASS.
+- **Safety invariant:** live-terminal entry v0.9.10 / PID 44432 is still preserved by the existing reconciler; no manual registry edit and no process kill is introduced.
+- **Reuse targets:** Windows updater lifecycle, retained-backend maintenance, release storage cleanup, failure-prevention guidance.
+
+
+## 2026-09-30 — retained-maintenance full local regression PASS
+
+- **Focused updater/retained regression:** 15 pass / 0 fail.
+- **Complete local regression:** `npm run check` PASS; `npm test` 493 pass / 0 fail / 6 platform skips; `npm run audit` -> `SECURITY_AUDIT_PASS`.
+- **Contracts also PASS:** GUI 77/77, Linux GUI contract, Windows runtime contract, source integrity, schema continuity, browser cleanup/path encoding, concurrency smoke, filesystem safety.
+- **Scope confirmation:** production delta is one updater fast-path call plus three ordering assertions; no authority, routing, runner, timeout, browser/GUI, Linux policy, or destructive cleanup semantics changed.
+- **Promotion status:** LOCAL PASS. Next authority: committed exact tree -> fresh hosted Windows/Ubuntu CI + both server-install canaries -> merge. Live maintenance is deferred until merged/released exact source is authoritative.
+
+
+## 2026-09-30 — retained-backend liveness correction after current audit
+
+- **New live evidence — CONFIRMED / HIGH:** re-audit on the current Windows v0.10.1 runtime found all four retained entries (v0.9.10:48831, v0.9.12:48833, v0.9.21:48834, v0.10.0:48837) with no listener and no registered terminal PID still alive.
+- **Correction to earlier snapshot:** the previous retained-maintenance record correctly identified the CURRENT fast-path cleanup gap, but its liveness snapshot (v0.9.10 / PID 44432 still alive) is now superseded by this newer read-only audit. No historical text is rewritten.
+- **Implication:** after authoritative promotion of the existing safe CURRENT-path reconciler, all four retained registry entries are now eligible for normal reconciliation subject to the reconciler's own final precondition checks at execution time.
+- **Storage context:** retained release/runtime directories themselves are small (single-digit MiB each); the Windows state tree's main storage consumers are update-backups, release-acceptance, validation, tools, chess-gui-test and benchmarks. Retained-registry cleanup is lifecycle correctness first, not a multi-GB disk cleanup.
+- **Safety:** no manual registry edit, process kill or direct directory deletion was performed.
