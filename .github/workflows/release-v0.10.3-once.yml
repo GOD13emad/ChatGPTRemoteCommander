@@ -1,0 +1,80 @@
+name: Release v0.10.3 One Shot
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/release-v0.10.3-once.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          ref: 37a57b72c25a793e32e0095f308f065afb1561a2
+
+      - name: Verify immutable release target
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "37a57b72c25a793e32e0095f308f065afb1561a2"
+          test "$(node -p "require('./package.json').version")" = "0.10.3"
+          test -f docs/RELEASE_0.10.3.md
+
+      - name: Build and verify immutable release assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash tools/build-release-assets.sh dist/release
+          (cd dist/release && sha256sum -c SHA256SUMS.txt)
+          count="$(find dist/release -maxdepth 1 -type f | wc -l | tr -d ' ')"
+          test "$count" -eq 19
+
+      - name: Create immutable v0.10.3 tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          target="37a57b72c25a793e32e0095f308f065afb1561a2"
+          tag="v0.10.3"
+          existing="$(git ls-remote --tags origin "refs/tags/$tag" | awk '{print $1}')"
+          if [[ -n "$existing" ]]; then
+            git fetch origin "refs/tags/$tag:refs/tags/$tag" || true
+            resolved="$(git rev-list -n 1 "$tag" 2>/dev/null || true)"
+            test "$resolved" = "$target"
+            echo "RELEASE_TAG_ALREADY_CORRECT tag=$tag target=$target"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$tag" "$target" -m "Remote Commander $tag"
+          git push origin "refs/tags/$tag"
+          test "$(git rev-list -n 1 "$tag")" = "$target"
+          echo "RELEASE_TAG_CREATED tag=$tag target=$target"
+
+      - name: Publish v0.10.3 release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="v0.10.3"
+          if gh release view "$tag" --repo "$GH_REPO" >/dev/null 2>&1; then
+            echo "RELEASE_ALREADY_PUBLISHED tag=$tag"
+            exit 0
+          fi
+          mapfile -t assets < <(find dist/release -maxdepth 1 -type f -printf '%p\n' | LC_ALL=C sort)
+          test "${#assets[@]}" -eq 19
+          gh release create "$tag" "${assets[@]}" \
+            --repo "$GH_REPO" \
+            --verify-tag \
+            --title "Remote Commander $tag" \
+            --notes-file docs/RELEASE_0.10.3.md
+          echo "RELEASE_PUBLISHED tag=$tag assets=${#assets[@]}"
