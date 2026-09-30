@@ -94,6 +94,10 @@ test('auto updater is candidate-first, hardware-gated and commit-point aware',()
   const deferred=s.slice(s.indexOf('function Complete-DeferredDrains'),s.indexOf('function Has-SupersededRelease'));
   assert.ok(deferred.indexOf('Get-PersistentTerminalChildren $old') < deferred.indexOf('Stop-OldBackend $old'),'Windows deferred retirement must check persistent terminals before every old-backend stop path');
   assert.ok(deferred.indexOf('Get-RetainableLongCommandRoots $old $canonical') < deferred.indexOf('Stop-OldBackend $old'),'Windows deferred retirement must preserve verified long command trees before any old-backend stop path');
+  const currentFastPath=s.slice(s.indexOf("if(-not $Force -and $currentStatus -and [string]$currentStatus.version-eq $stage.Version)"),s.indexOf('Push-Location $stage.Dir'));
+  assert.ok(currentFastPath.includes('Complete-RetainedBackends'),'already-current Windows maintenance must reconcile retained backends');
+  assert.ok(currentFastPath.indexOf('Complete-RetainedBackends') < currentFastPath.indexOf('Complete-DeferredDrains'),'retained-backend reconciliation must precede deferred-drain handling in current fast path');
+  assert.ok(currentFastPath.indexOf('Complete-RetainedBackends') < currentFastPath.lastIndexOf('$cleanupPending=@(Cleanup-Releases)'),'retained-backend reconciliation must precede release cleanup so dead retained releases are not protected forever');
   const maintenance=s.slice(s.indexOf('$controlMismatch=($controlHead-ne $stage.Commit)'),s.indexOf('Push-Location $stage.Dir'));
   assert.ok(maintenance.includes("if($controlMismatch)") && maintenance.includes('Recycle-ControlSupervisor'),'control-code promotion may recycle the supervisor');
   const cleanupOnly=maintenance.slice(maintenance.lastIndexOf('$cleanupPending=@(Cleanup-Releases)'));

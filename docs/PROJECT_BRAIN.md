@@ -391,3 +391,13 @@ Status:
 
 Exact next action:
 Owner approves the single UAC prompt for the official v0.10.1 `enable-boot-recovery.ps1 -NoStart` repair; then perform elevated task readback + controlled Handoff run, record evidence, and close issue #69. No reboot is required for that repair.
+
+
+## Milestone delta — 2026-09-30 — retained-backend current-path fix
+
+End-to-end v0.10.1 audit found Windows runtime/routing healthy but retained-backend lifecycle cleanup incomplete while already current. Three dead retained entries remain because `Complete-RetainedBackends` was not called in the CURRENT fast path before release cleanup; a fourth v0.9.10 entry still owns live terminal PID 44432 and must be preserved. The minimum correction has now been patched: run the existing safe reconciler before deferred drains and release cleanup, with ordering guards. Focused updater/registry regression is 15/15 PASS; full regression remains the next gate. No runtime authority, routing, runner, GUI/browser or Linux policy was changed.
+
+
+## Milestone delta — 2026-09-30 — retained-maintenance local PASS
+
+The Windows CURRENT-path retained-backend maintenance fix passed focused updater/registry tests and the complete local regression. The only production code delta is insertion of the existing safe retained reconciler before deferred-drain/release cleanup. Full test result is 493 pass / 0 fail / 6 platform skips and security audit PASS. Live registry is intentionally unchanged until fresh hosted qualification and merge make the source authoritative.

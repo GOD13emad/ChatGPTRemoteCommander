@@ -821,6 +821,7 @@ try{
       if([string]$rs.active.commit-eq $stage.Commit){
         $controlHead=''
         try{$controlHead=(& git.exe -C $InstallDir rev-parse HEAD).Trim().ToLowerInvariant()}catch{}
+        Complete-RetainedBackends
         $pendingDrains=@(Complete-DeferredDrains)
         if($pendingDrains.Count-gt 0){
           if($controlHead-ne $stage.Commit){
