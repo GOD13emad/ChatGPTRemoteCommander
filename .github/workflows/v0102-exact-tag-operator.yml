@@ -1,0 +1,41 @@
+name: v0.10.2 Exact Tag Operator
+
+on:
+  push:
+    branches:
+      - release/v0.10.2-finalize-20260930
+    paths:
+      - .github/workflows/v0102-exact-tag-operator.yml
+
+permissions:
+  contents: write
+
+jobs:
+  tag-exact-qualified-main:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+      - name: Create exact qualified v0.10.2 tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          target='bc126ddf6351e107785096c1eec659cdf2982c1d'
+          tag='v0.10.2'
+          git fetch origin main --tags
+          main_sha="$(git rev-parse origin/main)"
+          test "$main_sha" = "$target"
+          git show "$target:package.json" > "$RUNNER_TEMP/target-package.json"
+          version="$(node -p "require(process.argv[1]).version" "$RUNNER_TEMP/target-package.json")"
+          test "$version" = '0.10.2'
+          git cat-file -e "$target:docs/RELEASE_0.10.2.md"
+          if git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null 2>&1; then
+            echo "TAG_ALREADY_EXISTS tag=$tag"
+            exit 1
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git tag -a "$tag" "$target" -m 'Remote Commander v0.10.2'
+          git push origin "refs/tags/$tag"
+          echo "EXACT_TAG_CREATED tag=$tag target=$target"
