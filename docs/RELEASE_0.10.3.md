@@ -34,6 +34,12 @@ The fixture still had an unnecessary dependency on a `process.stdout.write(..., 
 
 This is test-only determinism hardening. `src/async-operations.mjs`, `tools/operation-worker.mjs`, production operation deadlines and output-drain behavior are unchanged.
 
+## Workflow restart-recovery qualification hardening
+
+After PR #79 merged, post-merge Ubuntu CI passed but Windows CI produced one failure in the pending workflow handoff restart-recovery regression. The assertion used a fixed 3-second observation window for the startup queueMicrotask recovery path. The exact merge commit then passed the same regression 15/15 isolated repetitions on Windows and 20/20 on Linux, so the evidence does not establish a production workflow-recovery defect.
+
+The regression now preserves the automatic restart-recovery property but uses a bounded 30-second elapsed wait plus explicit controller-status diagnostics on failure. Production workflow code, scheduler semantics, conversation delivery state, and retry policy are unchanged.
+
 ## Focused regression
 
 Before release preparation:

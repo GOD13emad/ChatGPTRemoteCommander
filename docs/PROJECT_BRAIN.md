@@ -415,3 +415,10 @@ Current accepted production authority is v0.10.2 on both Windows and Linux at ex
 Two independent Ubuntu pull-request CI attempts on exact pre-fix head `8e72bed5dd8f42964e4d140af98e02307c67034d` failed the same inherited-stdio regression after about 20 seconds, while Windows CI/server-install canary passed and the exact unpatched Linux regression passed 20/20 isolated repetitions. The test fixture's direct child still depended on an asynchronous stdout callback before exit. The minimum correction is test-only: synchronously write `parent-done` to fd 1, then exit immediately while the detached holder remains alive. Production worker/runtime files are untouched.
 
 Local patched evidence: Linux inherited-stdio 30/30 PASS; Windows 10/10 PASS; Linux full check 262/260 pass/0 fail/2 skip; full test 499/497 pass/0 fail/2 skip; security audit PASS. Exact next gate is fresh hosted Windows+Ubuntu CI plus both server-install canaries on the new committed head. Do not merge or release until those exact-head gates pass.
+
+
+## Milestone delta — 2026-09-30 — post-merge workflow recovery gate
+
+The first v0.10.3 merge commit `091cfb9e1ef131f5b18f5cf03976f2271ada4b93` is not publishable because post-merge Windows CI exposed a second test-harness timing weakness: workflow restart recovery was observed through a fixed 3-second wait. Exact-commit isolated reproduction passed Windows 15/15 and Linux 20/20, so no production workflow defect is established.
+
+Minimum correction: test-only bounded 30-second elapsed wait plus controller-status failure diagnostics, preserving the automatic `queueMicrotask` recovery property. Production workflow/conversation code remains untouched. Publication stays blocked until fresh exact-head local + hosted qualification succeeds.
