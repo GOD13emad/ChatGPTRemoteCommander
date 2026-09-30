@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.10.2 — 2026-09-30
+
+- Reconcile retained Windows backends on the updater CURRENT fast path before deferred drains and release cleanup, reusing the existing liveness-safe reconciler so dead retained entries can be cleaned without killing live terminal-bearing backends.
+- Harden the transport-correlation HTTP test startup gate with a 30-second elapsed deadline and early child-exit diagnostics, removing an arbitrary Windows full-suite scheduling window without changing production HTTP/runtime timeouts.
+- Preserve Full Power authority, stable routing, browser/GUI policy, durable workflow history, no-blind-replay semantics, and Linux runtime policy; this is maintenance hardening rather than a capability expansion.
+
 ## 0.10.1 — 2026-09-29
 
 - Harden Windows BootRecovery diagnostics: structured self-test failures now preserve exact profile/integrity errors, and missing-result failures include Task Scheduler state/LastTaskResult context without weakening fail-closed integrity checks.
