@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.10.3 — 2026-09-30
+
+- Harden the isolated-profile HTTP regression startup gate with a 30-second elapsed deadline and early child-exit diagnostics, matching the already-qualified transport-correlation startup pattern.
+- Remove an arbitrary approximately 10-second Windows full-suite scheduling window without changing production runtime, HTTP, routing, authority, or operation timeouts.
+- Preserve the v0.10.2 production behavior and maintenance fixes unchanged; this release exists to make candidate-first Windows qualification deterministic under host load.
+
 ## 0.10.2 — 2026-09-30
 
 - Reconcile retained Windows backends on the updater CURRENT fast path before deferred drains and release cleanup, reusing the existing liveness-safe reconciler so dead retained entries can be cleaned without killing live terminal-bearing backends.
