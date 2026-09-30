@@ -18,11 +18,13 @@ async function startServer(serverRoot,configPath){
   });
   let stderr='';child.stderr.on('data',c=>{stderr+=c.toString('utf8');});
   const config=JSON.parse(await fs.readFile(configPath,'utf8'));
-  for(let i=0;i<400;i+=1){
+  const startupDeadline=Date.now()+30000;
+  while(Date.now()<startupDeadline){
+    if(child.exitCode!==null)throw new Error(`server exited before healthy: exitCode=${child.exitCode}; stderr=${stderr}`);
     try{const r=await fetch(`http://127.0.0.1:${config.port}/health`);if(r.ok)return {child,stderr:()=>stderr};}catch{}
     await wait(25);
   }
-  child.kill();throw new Error('server did not become healthy: '+stderr);
+  child.kill();throw new Error(`server did not become healthy within 30000ms: stderr=${stderr}`);
 }
 async function stop(child){if(child&&child.exitCode===null){child.kill();await Promise.race([once(child,'exit'),wait(2000)]);}}
 
