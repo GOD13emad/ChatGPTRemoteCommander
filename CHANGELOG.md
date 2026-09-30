@@ -5,6 +5,7 @@
 - Harden the isolated-profile HTTP regression startup gate with a 30-second elapsed deadline and early child-exit diagnostics, matching the already-qualified transport-correlation startup pattern.
 - Remove an arbitrary approximately 10-second Windows full-suite scheduling window without changing production runtime, HTTP, routing, authority, or operation timeouts.
 - Make the inherited-stdio regression fixture deterministic under hosted-runner load by synchronously writing the direct-child marker before explicit exit; production async-operation worker/runtime behavior is unchanged.
+- Harden workflow chat-handoff restart recovery qualification with a 30-second elapsed wait and explicit status diagnostics; production workflow recovery behavior is unchanged.
 - Preserve the v0.10.2 production behavior and maintenance fixes unchanged; this release exists to make candidate-first Windows qualification deterministic under host load.
 
 ## 0.10.2 — 2026-09-30

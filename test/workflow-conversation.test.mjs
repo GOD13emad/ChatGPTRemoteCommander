@@ -151,8 +151,8 @@ test('pending workflow handoff is recovered after workflow adapter restart witho
       const recovered=await waitFor(async()=>{
         const status=await realController.status('proj');
         return status.pending.find(x=>x.eventKey==='wf:proj:restart');
-      },{timeout:3000});
-      assert.ok(recovered);
+      },{timeout:30000,interval:50});
+      assert.ok(recovered,'workflow chat handoff was not recovered within 30000ms; status='+JSON.stringify(await realController.status('proj')));
       await second.execute('workflow_scheduler_tick',{});
       const status=await realController.status('proj');
       assert.equal(status.pending.filter(x=>x.eventKey==='wf:proj:restart').length,1);

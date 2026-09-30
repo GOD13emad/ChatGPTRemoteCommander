@@ -1533,3 +1533,13 @@ Status: CURRENT benchmark evidence. Reuse targets: roadmap, release planning, pr
 - **Complete Linux candidate gate — PASS:** `npm run check` 262 tests / 260 pass / 0 fail / 2 skip; `npm test` 499 tests / 497 pass / 0 fail / 2 skip; GUI/Linux/Windows/source/schema contracts PASS; `SECURITY_AUDIT_PASS`.
 - **Promotion boundary:** hosted Windows+Ubuntu exact-new-head CI and server-install canaries remain mandatory before merge. v0.10.2 remains production authority until immutable v0.10.3 publication and candidate-first rollout complete.
 - **Reuse targets:** CI determinism, inherited-stdio lifecycle regression design, release qualification, no-runtime-change maintenance policy.
+
+
+## 2026-09-30 — v0.10.3 post-merge workflow recovery qualification hardening
+
+- **Post-merge evidence — FAILURE/HOSTED WINDOWS:** main merge commit `091cfb9e1ef131f5b18f5cf03976f2271ada4b93` passed Ubuntu CI but Windows full qualification had one failure in pending workflow handoff restart recovery at `assert.ok(recovered)`.
+- **Production defect — NOT ESTABLISHED:** the exact merge commit passed the same isolated regression Windows 15/15 and Linux 20/20. v0.10.2 production remains unchanged and authoritative.
+- **Root test-harness weakness — CONFIRMED:** the regression observed an automatic startup `queueMicrotask` recovery path through a fixed 3-second wall-clock window, vulnerable to hosted Windows scheduling pressure.
+- **Prevention patch — PATCHED:** preserve automatic recovery semantics, but use a bounded 30-second elapsed observation window and include exact controller status in any failure diagnostic.
+- **Scope:** test/documentation only. No workflow runtime, scheduler, conversation-store, delivery, routing, authority, or production timeout behavior changed.
+- **Promotion boundary:** fresh exact-head Windows+Ubuntu CI and canaries plus local qualification are required before publication. No blind rerun of the failed main build is accepted as proof.
