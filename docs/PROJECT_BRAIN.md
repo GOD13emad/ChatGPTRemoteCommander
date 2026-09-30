@@ -401,3 +401,8 @@ End-to-end v0.10.1 audit found Windows runtime/routing healthy but retained-back
 ## Milestone delta — 2026-09-30 — retained-maintenance local PASS
 
 The Windows CURRENT-path retained-backend maintenance fix passed focused updater/registry tests and the complete local regression. The only production code delta is insertion of the existing safe retained reconciler before deferred-drain/release cleanup. Full test result is 493 pass / 0 fail / 6 platform skips and security audit PASS. Live registry is intentionally unchanged until fresh hosted qualification and merge make the source authoritative.
+
+
+## Milestone delta — 2026-09-30 — retained liveness refreshed
+
+A fresh Windows read-only audit shows all four retained backend entries now have no live registered terminal PID and no listener. This supersedes the earlier snapshot where one v0.9.10 terminal was still alive, without rewriting history. The existing v0.10.2 retained-maintenance patch remains the minimum safe fix; no manual retained registry edit or process kill is used. Promotion still requires fresh exact-tree regression and hosted gates.

@@ -578,3 +578,10 @@ These open items are intentionally not auto-promoted or guessed and do not block
 - Full local `check + test + audit`: PASS; full test 493/0/6 skips; security audit PASS.
 - Current status: LOCAL PASS / HOSTED GATES OPEN.
 - Exact next action: commit/push this change set, require fresh hosted CI/server canaries, then merge. Do not manually clean live retained registry before authoritative code is merged.
+
+
+## 2026-09-30 — retained maintenance evidence refresh
+
+- Current read-only liveness check supersedes the earlier snapshot: all four registered retained terminal PID sets are now dead and none of the retained ports is listening.
+- The existing v0.10.2 retained-maintenance code change remains the minimum sufficient correction: call the already-qualified safe reconciler in the CURRENT fast path before deferred-drain/release cleanup.
+- Live registry is intentionally unchanged until this exact branch passes fresh local/hosted authority gates and is merged/released.
