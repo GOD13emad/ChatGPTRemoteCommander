@@ -75,9 +75,9 @@ test('hosted Windows priority mode runs scheduler-sensitive isolated fixtures be
     const prioritized=prioritizeSensitiveQualificationCommands(bounded);
     const bulkIndex=prioritized.indexOf('test/boot-recovery-diagnostics.test.mjs');
     assert.ok(bulkIndex>0,'bulk qualification command must remain present');
-    for(const sensitive of ['test/workflow-http.test.mjs','test/async-operations.test.mjs','test/tunnel-log-rotation.test.mjs']){
-      const i=prioritized.indexOf(sensitive);
-      assert.ok(i>=0 && i<bulkIndex, sensitive+' must execute before bulk qualification');
-    }
+    const ordered=['test/tunnel-log-rotation.test.mjs','test/async-operations.test.mjs','test/workflow-http.test.mjs'];
+    const positions=ordered.map(sensitive=>prioritized.indexOf(sensitive));
+    for(let i=0;i<ordered.length;i++) assert.ok(positions[i]>=0 && positions[i]<bulkIndex, ordered[i]+' must execute before bulk qualification');
+    assert.ok(positions[0] < positions[1] && positions[1] < positions[2], 'tunnel rotation must run before process-heavy async/workflow fixtures');
   }
 });

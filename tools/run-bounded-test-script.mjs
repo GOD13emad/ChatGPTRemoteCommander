@@ -20,21 +20,24 @@ export function boundNodeTestConcurrency(script,concurrency){
 }
 
 const SENSITIVE_QUALIFICATION_FILES=[
-  'test/workflow-http.test.mjs',
+  'test/tunnel-log-rotation.test.mjs',
   'test/async-operations.test.mjs',
-  'test/tunnel-log-rotation.test.mjs'
+  'test/workflow-http.test.mjs'
 ];
 
 export function prioritizeSensitiveQualificationCommands(command){
   if(typeof command!=='string'||!command)throw new Error('CI_TEST_COMMAND_INVALID');
   const parts=command.split(' && ').map(part=>part.trim()).filter(Boolean);
-  const sensitive=[],rest=[];
+  const byFile=new Map(),rest=[];
   for(const part of parts){
-    if(SENSITIVE_QUALIFICATION_FILES.some(file=>part.endsWith(' '+file)))sensitive.push(part);
-    else rest.push(part);
+    const file=SENSITIVE_QUALIFICATION_FILES.find(item=>part.endsWith(' '+item));
+    if(file){
+      if(byFile.has(file))throw new Error('CI_TEST_SENSITIVE_COMMAND_DUPLICATE');
+      byFile.set(file,part);
+    }else rest.push(part);
   }
-  if(sensitive.length!==SENSITIVE_QUALIFICATION_FILES.length)throw new Error('CI_TEST_SENSITIVE_COMMANDS_MISSING');
-  return [...sensitive,...rest].join(' && ');
+  if(byFile.size!==SENSITIVE_QUALIFICATION_FILES.length)throw new Error('CI_TEST_SENSITIVE_COMMANDS_MISSING');
+  return [...SENSITIVE_QUALIFICATION_FILES.map(file=>byFile.get(file)),...rest].join(' && ');
 }
 
 export function parseQualificationArgs(argv){
