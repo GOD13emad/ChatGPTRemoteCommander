@@ -1584,3 +1584,13 @@ Status: CURRENT benchmark evidence. Reuse targets: roadmap, release planning, pr
 - Machine-readable status: `tunnel-<profile>.log.rotation.json` records active state, child PID, current bytes, limits, archive count, rotation count/time and terminal reason.
 - Credential boundary: wrapper receives the existing process environment only long enough to spawn the tunnel child, then removes CONTROL_PLANE_API_KEY and OPENAI_API_KEY from its own environment copy. No secret is written to status.
 - Regression: forced multi-rotation test reconstructs the exact complete stdout+stderr byte stream without child restart; Linux and Windows launch contracts use `--log.file stdout`.
+
+
+## 2026-10-01 — Git blob normalization evidence
+
+- Authority: main 219f101291ada1488f6f961e3844b94326770474.
+- Its tree exactly equals qualified PR #87 head b45fe4e30fe9c1fcf76c15ef1add47c934f400a9.
+- PR #87 exact head has hosted CI PASS and Server Install Canary PASS.
+- Fresh Linux clone reported exactly two modified paths immediately after checkout: autostart-windows.ps1 and windows-supervisor-runtime.ps1.
+- git add --renormalize . identified exactly those two paths; git diff --ignore-space-at-eol was empty.
+- Corrective invariant: Git stores canonical LF for both blobs; checkout line endings remain governed by .gitattributes, eliminating dirty-clone drift without changing PowerShell semantics.
