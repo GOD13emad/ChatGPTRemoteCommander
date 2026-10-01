@@ -335,6 +335,36 @@ test('reconciliation does not downgrade a live worker whose execution budget sta
   }
 });
 
+test('reconciliation fail-closes a still-live worker after the bounded finalization hard deadline', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'rc-async-live-worker-hard-deadline-'));
+  const stateDir = path.join(root, 'state');
+  const manager = createAsyncOperationTools({
+    config: { instance: { profile: 'test' }, asyncOperations: { enabled: true, stateDir } },
+    workerPath: worker,
+    prepare: async () => { throw new Error('prepare must not run for status'); }
+  });
+  try {
+    const operationId = randomUUID();
+    const operationDir = path.join(stateDir, 'operations', operationId);
+    await mkdir(operationDir, { recursive: true });
+    const now = Date.now();
+    const state = {
+      schema: 1, operationId, requestId: 'live-worker-hard-deadline', correlationId: 'live-worker-hard-deadline',
+      inputHash: 'c'.repeat(64), tool: 'run_project_command', status: 'RUNNING',
+      createdAt: new Date(now - 120000).toISOString(), updatedAt: new Date(now - 120000).toISOString(),
+      startedAt: new Date(now - 120000).toISOString(), timeoutMs: 5000,
+      deadlineAt: new Date(now - 110000).toISOString(), workerPid: process.pid, childPid: null, continuation: null
+    };
+    await writeFile(path.join(operationDir, 'state.json'), JSON.stringify(state, null, 2) + '\n', 'utf8');
+    const observed = await manager.execute('operation_status', { operationId });
+    assert.equal(observed.status, 'UNCERTAIN');
+    assert.equal(observed.failureCode, 'DEADLINE_EXCEEDED_WITHOUT_FINAL_RECEIPT');
+  } finally {
+    await manager.close?.();
+    await rm(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 });
+  }
+});
+
 test('terminal operation receipts backfill exactly once into durable delivery after restart', async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'rc-async-delivery-'));
   let first = null, second = null, delivery = null;

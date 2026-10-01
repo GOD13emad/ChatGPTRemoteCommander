@@ -1617,3 +1617,13 @@ Status: CURRENT benchmark evidence. Reuse targets: roadmap, release planning, pr
 - New invariant: a live worker is not downgraded at the reservation deadline while its actual startedAt+timeoutMs+10s finalization window remains open.
 - If startedAt is not yet persisted but the worker PID is alive, a separate bounded 60s scheduling hard guard prevents indefinite masking.
 - Missing worker plus expired deadline behavior is unchanged; it remains fail-closed UNCERTAIN with no automatic replay.
+
+
+## 2026-10-01 — PR #89 Windows qualification closure
+
+- Exact failing head: 43f4b70f7d51e452fb861a235a6ba1685152b720.
+- Ubuntu CI: PASS. Windows check qualification: one failure, inherited-stdio holder PID marker read as empty/invalid before the semantic operation assertion.
+- Root cause: readiness helper checked path existence only while fixture used asynchronous direct-to-final-path write; creation visibility can precede readable payload bytes.
+- Prevention: fixture publishes the PID marker via completed temporary write plus atomic rename. No production async behavior is changed by this fixture fix.
+- Production async live-worker grace remains separately bounded and now has both positive (do not downgrade within actual worker budget) and negative (fail closed after hard finalization deadline) regression coverage.
+- Release identity projections are complete across package/runtime/plugins/public installers/installer contract/release contract/final-gate log.
