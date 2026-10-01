@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { canonicalizeRoots } from '../src/security-v0.3.mjs';
 import { expandPathValue } from '../src/platform.mjs';
 import { executePowerTool } from '../src/power-tools-v0.3.mjs';
+import { observeOperationChild } from '../src/operation-child-lifecycle.mjs';
 import { spawn, spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
@@ -73,46 +74,6 @@ function collector(limit) {
       return { buffer: Buffer.concat(chunks), captured, total, sha256: hash.digest('hex'), truncated: total > captured };
     }
   };
-}
-
-function waitForChildOutcome(child, drainMs = 2000) {
-  return new Promise((resolve, reject) => {
-    let settled = false;
-    let exited = null;
-    let drainTimer = null;
-    const cleanup = () => {
-      child.off('error', onError);
-      child.off('exit', onExit);
-      child.off('close', onClose);
-      if (drainTimer) clearTimeout(drainTimer);
-    };
-    const finish = (outcome) => {
-      if (settled) return;
-      settled = true;
-      cleanup();
-      resolve(outcome);
-    };
-    const onError = (error) => {
-      if (settled) return;
-      settled = true;
-      cleanup();
-      reject(error);
-    };
-    const onExit = (code, signal) => {
-      exited = { code, signal };
-      drainTimer = setTimeout(() => {
-        child.stdout?.destroy();
-        child.stderr?.destroy();
-        finish({ ...exited, stdioComplete: false });
-      }, drainMs);
-    };
-    const onClose = (code, signal) => {
-      finish({ code: exited?.code ?? code, signal: exited?.signal ?? signal, stdioComplete: true });
-    };
-    child.once('error', onError);
-    child.once('exit', onExit);
-    child.once('close', onClose);
-  });
 }
 
 async function runPowerToolOperation(spec, prior) {
@@ -198,34 +159,28 @@ async function main() {
     detached: process.platform !== 'win32',
     stdio: ['ignore', 'pipe', 'pipe']
   });
-  await atomicJson(spec.statePath, {
-    ...prior,
-    status: 'RUNNING',
-    workerPid: process.pid,
-    childPid: currentChild.pid,
-    startedAt,
-    updatedAt: startedAt
+  const observed = observeOperationChild(currentChild, {
+    stdout, stderr, timeoutMs: spec.timeoutMs,
+    cancellationRequested: () => existsSync(spec.cancelPath), killOwnedChild: killTree
   });
-  currentChild.stdout.on('data', (chunk) => stdout.push(chunk));
-  currentChild.stderr.on('data', (chunk) => stderr.push(chunk));
-
-  const cancelTimer = setInterval(() => {
-    if (existsSync(spec.cancelPath)) {
-      cancelRequested = true;
-      killTree(currentChild?.pid);
-    }
-  }, 250);
-  const timeoutTimer = setTimeout(() => {
-    timedOut = true;
-    killTree(currentChild?.pid);
-  }, spec.timeoutMs);
-
   let outcome;
   try {
-    outcome = await waitForChildOutcome(currentChild);
+    await atomicJson(spec.statePath, {
+      ...prior,
+      status: 'RUNNING',
+      workerPid: process.pid,
+      childPid: currentChild.pid,
+      startedAt,
+      updatedAt: startedAt
+    });
+    outcome = await observed.outcome;
+    if (outcome.error) throw outcome.error;
+    timedOut = outcome.timedOut;
+    cancelRequested = outcome.cancelRequested;
   } finally {
-    clearInterval(cancelTimer);
-    clearTimeout(timeoutTimer);
+    // Even a failed RUNNING write must not abandon the owned child or its finite budget.
+    await observed.outcome;
+    observed.dispose();
   }
   const out = stdout.finish();
   const err = stderr.finish();
