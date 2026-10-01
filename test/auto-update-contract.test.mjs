@@ -344,3 +344,16 @@ test('router bootstrap is after no-promote and before schema-changing cutover',(
   assert.match(helper,/ROUTER_BOOTSTRAP_ROLLBACK_FAIL/);
   assert.match(helper,/verifyProcessIdentity/);
 });
+
+test('Windows updater overlays explicit owner runner policy for default and named profiles without replacing active runtime state',()=>{
+  const s=read('auto-update-windows.ps1');
+  const merge=s.slice(s.indexOf('function Merge-OwnerPolicyConfig'),s.indexOf('function Get-PrimaryConfig'));
+  for(const marker of ['merge-primary-policy.mjs','--active','--local','--output','PRIMARY_POLICY_OVERLAY','PRIMARY_POLICY_MERGE_FAIL']) assert.ok(merge.includes(marker),marker);
+  assert.ok(merge.includes('return $activePath'),'non-mergeable owner policy must preserve active runtime authority');
+  const primary=s.slice(s.indexOf('function Get-PrimaryConfig'),s.indexOf('function Invoke-Mcp'));
+  assert.ok(primary.includes("Merge-OwnerPolicyConfig ([string]$r.active.configPath) $local 'default'"),'default profile must overlay canonical owner policy onto routed runtime config');
+  const targets=s.slice(s.indexOf('function Get-Targets'),s.indexOf('function Start-Router'));
+  assert.ok(targets.includes('$canonical=[string]$record.configPath'),'named profiles must retain their canonical owner config identity');
+  assert.ok(targets.includes('Merge-OwnerPolicyConfig ([string]$rr.active.configPath) $canonical $profile'),'named profiles must apply the same guarded owner-policy overlay');
+  assert.ok(targets.includes('PROFILE_CONFIG_MISSING'),'named profiles must fail closed when neither canonical nor routed config is usable');
+});

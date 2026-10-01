@@ -141,28 +141,33 @@ function Test-ProfileName([string]$Name){
 }
 function Get-RoutePath([string]$Profile){ Join-Path $RoutingRoot "$Profile.json" }
 function Read-Json([string]$Path){ Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json }
+function Merge-OwnerPolicyConfig([string]$Active,[string]$Canonical,[string]$Profile){
+  if(-not($Active -and (Test-Path -LiteralPath $Active -PathType Leaf))){return $Canonical}
+  $activePath=[IO.Path]::GetFullPath($Active)
+  if(-not($Canonical -and (Test-Path -LiteralPath $Canonical -PathType Leaf))){return $activePath}
+  $mergeTool=Join-Path $PSScriptRoot 'tools\merge-primary-policy.mjs'
+  if(-not(Test-Path -LiteralPath $mergeTool -PathType Leaf)){return $activePath}
+  $safeProfile=if($Profile){$Profile}else{'default'}
+  $effective=Join-Path $StateRoot ("owner-policy-effective-{0}.json" -f $safeProfile)
+  $raw=@(& node.exe $mergeTool --active $activePath --local ([IO.Path]::GetFullPath($Canonical)) --output $effective)
+  if($LASTEXITCODE-ne 0){throw "PRIMARY_POLICY_MERGE_FAIL profile=$safeProfile"}
+  try{$summary=([string]($raw|Select-Object -Last 1))|ConvertFrom-Json}catch{throw "PRIMARY_POLICY_MERGE_RESULT_INVALID profile=$safeProfile"}
+  if($summary.merged-eq $true){
+    Log "PRIMARY_POLICY_OVERLAY profile=$safeProfile status=$($summary.status)"
+    return $effective
+  }
+  return $activePath
+}
 function Get-PrimaryConfig {
   $route=Get-RoutePath 'default'
   $local=Join-Path $InstallDir 'config.local.json'
   if(Test-Path $route){
     $r=Read-Json $route
-    if($r.active.configPath -and (Test-Path -LiteralPath $r.active.configPath)){
-      $active=[IO.Path]::GetFullPath([string]$r.active.configPath)
-      $mergeTool=Join-Path $PSScriptRoot 'tools\merge-primary-policy.mjs'
-      if((Test-Path -LiteralPath $local -PathType Leaf) -and (Test-Path -LiteralPath $mergeTool -PathType Leaf)){
-        $effective=Join-Path $StateRoot 'primary-policy-effective.json'
-        $raw=@(& node.exe $mergeTool --active $active --local $local --output $effective)
-        if($LASTEXITCODE-ne 0){throw 'PRIMARY_POLICY_MERGE_FAIL'}
-        try{$summary=([string]($raw|Select-Object -Last 1))|ConvertFrom-Json}catch{throw 'PRIMARY_POLICY_MERGE_RESULT_INVALID'}
-        if($summary.merged-eq $true){
-          Log "PRIMARY_POLICY_OVERLAY status=$($summary.status)"
-          return $effective
-        }
-      }
-      return $active
+    if($r.active.configPath -and (Test-Path -LiteralPath $r.active.configPath -PathType Leaf)){
+      return (Merge-OwnerPolicyConfig ([string]$r.active.configPath) $local 'default')
     }
   }
-  if(Test-Path -LiteralPath $local){ return $local }
+  if(Test-Path -LiteralPath $local -PathType Leaf){ return [IO.Path]::GetFullPath($local) }
   return (Join-Path $InstallDir 'config.json')
 }
 function Invoke-Mcp([int]$Port,[string]$Name,[hashtable]$Arguments=@{}){
@@ -327,12 +332,16 @@ function Get-Targets {
         if(-not(Test-ProfileName $profile) -or $profile-eq 'default' -or $record.enabled-ne $true){continue}
         if($profileDir.Name-ne $profile){throw "PROFILE_DIRECTORY_MISMATCH expected=$profile actual=$($profileDir.Name)"}
         $route=Get-RoutePath $profile
-        $cfg=[string]$record.configPath
+        $canonical=[string]$record.configPath
+        $cfg=$canonical
         if(Test-Path $route){
           $rr=Read-Json $route
-          if($rr.active.configPath -and (Test-Path -LiteralPath $rr.active.configPath)){$cfg=[string]$rr.active.configPath}
+          if($rr.active.configPath -and (Test-Path -LiteralPath $rr.active.configPath -PathType Leaf)){
+            $cfg=Merge-OwnerPolicyConfig ([string]$rr.active.configPath) $canonical $profile
+          }
         }
-        $items+=[pscustomobject]@{Profile=$profile;CanonicalPort=[int]$record.mcpPort;ExistingConfig=$cfg;RoutePath=$route;InstanceDir=$profileDir.FullName}
+        if(-not($cfg -and (Test-Path -LiteralPath $cfg -PathType Leaf))){throw "PROFILE_CONFIG_MISSING profile=$profile"}
+        $items+=[pscustomobject]@{Profile=$profile;CanonicalPort=[int]$record.mcpPort;ExistingConfig=[IO.Path]::GetFullPath($cfg);RoutePath=$route;InstanceDir=$profileDir.FullName}
       }catch{throw "TARGET_DISCOVERY_FAIL $recordFile $($_.Exception.Message)"}
     }
   }

@@ -304,13 +304,15 @@ Historical checkpoints remain append-only archives. Current release/control clai
 
 **Claim/Decision:** Hot-update admission distinguishes backward-compatible tool-schema extensions from breaking changes. A candidate that preserves every old tool and accepts every old valid input may promote without negotiated refresh; breaking changes still require modern tool-list refresh continuity and otherwise fail closed.
 
-**Evidence/Source:** conservative classifier in 	ools/schema-continuity-gate.mjs; dedicated regression in 	est/schema-continuity-gate.test.mjs. Focused classifier 9/9 PASS; router/bootstrap/updater set 16/16 PASS; exact full worktree gate exit 0 with 436 tests / 430 pass / 6 skip / 0 fail, GUI 75/75, concurrency/fs/runtime/source-integrity and SECURITY_AUDIT_PASS. Isolated live Windows probe compared active c8f7ba... against candidate 63f314... and returned BACKWARD_COMPATIBLE_SCHEMA with distinct old/candidate hashes.
+**Evidence/Source:** conservative classifier in 	ools/schema-continuity-gate.mjs; dedicated regression in 	est/schema-continuity-gate.test.mjs. Focused classifier 9/9 PASS; router/bootstrap/updater set 16/16 PASS; exact full worktree gate exit 0 with 436 tests / 430 pass / 6 skip / 0 fail, GUI 75/75, concurrency/fs/runtime/source-integrity and SECURITY_AUDIT_PASS. Isolated live Windows probe compared active c8f7ba... against candidate
+63f314... and returned BACKWARD_COMPATIBLE_SCHEMA with distinct old/candidate hashes.
 
 **Confidence/Status:** CONFIRMED for compatibility classification and current live-to-candidate disposition. Live promotion/cutover canary remains required before CSDC-038 may be PASS.
 
 **Reuse Targets:** release admission, hot update safety, MCP schema evolution.
 
-**Provenance:** branch inalize/rc-v094-r2, baseline live commit c8f7baedfae4053ffb200f2a2a8f988fab951f0.
+**Provenance:** branch
+inalize/rc-v094-r2, baseline live commit c8f7baedfae4053ffb200f2a2a8f988fab951f0.
 
 
 ## E077 — exact live 0b965d7 cutover and post-cutover canaries
@@ -1543,3 +1545,14 @@ Status: CURRENT benchmark evidence. Reuse targets: roadmap, release planning, pr
 - **Prevention patch — PATCHED:** preserve automatic recovery semantics, but use a bounded 30-second elapsed observation window and include exact controller status in any failure diagnostic.
 - **Scope:** test/documentation only. No workflow runtime, scheduler, conversation-store, delivery, routing, authority, or production timeout behavior changed.
 - **Promotion boundary:** fresh exact-head Windows+Ubuntu CI and canaries plus local qualification are required before publication. No blind rerun of the failed main build is accepted as proof.
+
+
+## 2026-10-01 — exact-main repository audit evidence
+
+- Authority: main ac02b9a0ef33f781d3b8cbd6f70a88fbce92092a; immutable production release remains v0.10.3 at 37a57b72c25a793e32e0095f308f065afb1561a2.
+- Static PASS: 329 tracked files / about 45,975 lines; node syntax 165/165; bash syntax 16/16; JSON/YAML parse clean; broken relative Markdown links 0; non-doc TODO/FIXME/HACK/XXX 0; secret-pattern hits 0; GitHub Actions full-SHA pinned; git fsck/diff-check clean.
+- Dynamic exact-head PASS: Linux and Windows check:qualification, test:qualification, security audit and doctor all exited 0. Linux full test 499/497 pass/0 fail/2 skip; Windows full test 499/493 pass/0 fail/6 platform skips.
+- Readiness race CONFIRMED: PR #75 carried a test-only mcp-runtime marker wait that was absent from main. Rebased correction waits for parseable exact port/project identity after health readiness.
+- Named-profile owner-policy gap CONFIRMED: main applied merge-primary-policy only for the default Windows profile. Named-profile target discovery could select routed generated config without the newer explicit canonical owner runner policy. The correction reuses the same fail-closed overlay for every profile while preserving active runtime fields.
+- Linux tunnel helper mode NOT A DEFECT: source helper is intentionally callable through /bin/bash and fresh installer explicitly chmods the installed helper; regression tests enforce this.
+- Storage issues #81, #82 and #83 remain accepted open product debt requiring dedicated design/regression.
