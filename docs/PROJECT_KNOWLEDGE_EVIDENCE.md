@@ -1565,3 +1565,12 @@ Status: CURRENT benchmark evidence. Reuse targets: roadmap, release planning, pr
 - Rollback proof: truncate to journal `beforeBytes`, then verify exact `beforeSha256`.
 - Retention invariant: newest rollback point exists and is verified before older file rollback containers for the same target are pruned; minimum retention is 2 and default is 8.
 - Safety preserved: expectedSha256 precondition, path locks, canonical/symlink guards and post-write hash checks remain active.
+
+
+## 2026-10-01 — issue #82 identity-safe delivery compaction evidence
+
+- Logical acknowledgement boundary remains unchanged: only exact claim plus delivery_ack can transition a record to DELIVERED.
+- Compaction mutates artifact storage only; it returns logicalStateChanged=false and acknowledgementSynthesized=false.
+- Archive integrity is bound to the original content SHA-256 and byte length before plain data is removed.
+- Read path transparently reconstructs archived bytes under the existing delivery/correlation identity check.
+- Candidate selection excludes live DELIVERY_PENDING, DEAD_LETTER, and unresolved/non-COMPLETED kinds.

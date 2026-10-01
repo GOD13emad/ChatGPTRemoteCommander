@@ -436,3 +436,8 @@ Historical PR #74 is superseded by current deterministic v0.10.3 fixtures and su
 ## 2026-10-01 — storage hardening #81 candidate
 
 Root cause confirmed: Power Mode `writeAnyFile()` created a complete backup before every append, making a growing file produce quadratic backup bytes. Candidate correction keeps overwrite rollback snapshots but changes append recovery to a small verified journal containing target identity, pre-append byte length/hash and appended length/hash. Recovery is deterministic truncate-to-beforeBytes followed by beforeSha256 verification. File backup retention is per-target and retains the newest N rollback points (default 8; configurable 2–64) only after a new rollback point has been created and verified. Directory backup behavior is unchanged. `power_status.backupPolicy` exposes the effective root, retention count and append recovery mechanism.
+
+
+## 2026-10-01 — delivery storage hardening #82 candidate
+
+Compaction is deliberately separated from acknowledgement. Eligible completed artifacts may move from plain content-addressed JSON to verified gzip archive storage, but delivery state, attempt, correlation and receipt columns are never mutated. The archive is written to a private temporary file, fsynced, decompressed and hash/size verified, atomically renamed, verified again, and only then is the plain artifact removed. Reads are transparent across live/archive storage and keep exact correlation checks. DELIVERY_PENDING, DEAD_LETTER and non-COMPLETED kinds are excluded. delivery_status.storage reports database/artifact bytes, oldest pending timestamp and archive-candidate bytes.
