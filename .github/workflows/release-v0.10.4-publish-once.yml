@@ -1,0 +1,57 @@
+name: Publish v0.10.4 release once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/release-v0.10.4-publish-once.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  publish-qualified-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: v0.10.4
+          fetch-depth: 0
+      - name: Verify exact accepted target
+        shell: bash
+        env:
+          TARGET_COMMIT: 313fee6f10b303c1064edf2ec1fc0b7cbb373de2
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$TARGET_COMMIT"
+          test "$(node -p "require('./package.json').version")" = "0.10.4"
+          test -f docs/RELEASE_0.10.4.md
+      - name: Build immutable release assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash tools/build-release-assets.sh dist/release
+      - name: Publish verified v0.10.4 release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag=v0.10.4
+          notes=docs/RELEASE_0.10.4.md
+          git fetch --force --tags origin
+          test "$(git rev-parse "$tag^{}")" = "313fee6f10b303c1064edf2ec1fc0b7cbb373de2"
+          (cd dist/release && sha256sum -c SHA256SUMS.txt)
+          mapfile -t assets < <(find dist/release -maxdepth 1 -type f -printf '%p\n' | LC_ALL=C sort)
+          test "${#assets[@]}" -eq 19
+          if gh release view "$tag" --repo "$GH_REPO" >/dev/null 2>&1; then
+            echo "RELEASE_ALREADY_PUBLISHED tag=$tag"
+            exit 0
+          fi
+          gh release create "$tag" "${assets[@]}" \
+            --repo "$GH_REPO" \
+            --verify-tag \
+            --title "Remote Commander $tag" \
+            --notes-file "$notes"
+          echo "RELEASE_PUBLISHED tag=$tag assets=${#assets[@]}"
