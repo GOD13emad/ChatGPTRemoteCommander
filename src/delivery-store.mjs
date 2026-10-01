@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { createHash, randomUUID } from 'node:crypto';
+import { gzipSync, gunzipSync } from 'node:zlib';
 import { expandPathValue } from './platform.mjs';
 
 export const OPAQUE_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
@@ -224,26 +225,48 @@ export class DeliveryStore {
       return this.get(deliveryId, correlationId);
     });
   }
-  artifactPath(id) {
+  artifactPaths(id) {
     if (!/^[a-f0-9]{64}$/.test(id)) fail('DELIVERY_INVALID_ARTIFACT');
     const dir = path.join(this.directory, 'artifacts', this.scope);
     noLinks(dir); fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
-    return path.join(dir, id + '.json');
+    return {
+      plain: path.join(dir, id + '.json'),
+      archive: path.join(dir, id + '.json.gz')
+    };
+  }
+  artifactPath(id) {
+    return this.artifactPaths(id).plain;
+  }
+  readArchivedArtifact(target, ref) {
+    const archived = regular(target);
+    if (archived.size > MAX_ARTIFACT_BYTES + 1024 * 1024) fail('DELIVERY_ARTIFACT_CHANGED');
+    let bytes;
+    try { bytes = gunzipSync(fs.readFileSync(target), { maxOutputLength: MAX_ARTIFACT_BYTES + 1 }); }
+    catch { fail('DELIVERY_ARTIFACT_CHANGED'); }
+    if (bytes.length !== ref.bytes || digest(bytes) !== ref.sha256) fail('DELIVERY_ARTIFACT_CHANGED');
+    return bytes;
   }
   writeArtifact(result) {
     const bytes = Buffer.from(JSON.stringify(result) ?? 'null');
     if (bytes.length > MAX_ARTIFACT_BYTES) fail('DELIVERY_ARTIFACT_TOO_LARGE');
-    const sha256 = digest(bytes), target = this.artifactPath(sha256);
-    if (!fs.existsSync(target)) {
-      const fd = fs.openSync(target, 'wx', 0o600);
-      try { fs.writeFileSync(fd, bytes); fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
-      if (process.platform !== 'win32') {
-        const parent = fs.openSync(path.dirname(target), 'r');
-        try { fs.fsyncSync(parent); } finally { fs.closeSync(parent); }
-      }
+    const sha256 = digest(bytes), targets = this.artifactPaths(sha256);
+    if (fs.existsSync(targets.plain)) {
+      const stat = regular(targets.plain);
+      if (stat.size !== bytes.length || digest(fs.readFileSync(targets.plain)) !== sha256) fail('DELIVERY_ARTIFACT_CHANGED');
+      return { id: sha256, sha256, bytes: bytes.length };
     }
-    const stat = regular(target);
-    if (stat.size !== bytes.length || digest(fs.readFileSync(target)) !== sha256) fail('DELIVERY_ARTIFACT_CHANGED');
+    if (fs.existsSync(targets.archive)) {
+      this.readArchivedArtifact(targets.archive, { bytes: bytes.length, sha256 });
+      return { id: sha256, sha256, bytes: bytes.length };
+    }
+    const fd = fs.openSync(targets.plain, 'wx', 0o600);
+    try { fs.writeFileSync(fd, bytes); fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
+    if (process.platform !== 'win32') {
+      const parent = fs.openSync(path.dirname(targets.plain), 'r');
+      try { fs.fsyncSync(parent); } finally { fs.closeSync(parent); }
+    }
+    const stat = regular(targets.plain);
+    if (stat.size !== bytes.length || digest(fs.readFileSync(targets.plain)) !== sha256) fail('DELIVERY_ARTIFACT_CHANGED');
     return { id: sha256, sha256, bytes: bytes.length };
   }
   readArtifact({ deliveryId, correlationId, offset = 0, maxBytes = MAX_CHUNK_BYTES }) {
@@ -251,21 +274,130 @@ export class DeliveryStore {
     integer(maxBytes, MAX_CHUNK_BYTES, 1, MAX_CHUNK_BYTES);
     const item = this.get(deliveryId, correlationId), ref = item.artifact;
     if (!ref) fail('DELIVERY_NO_ARTIFACT');
-    const target = this.artifactPath(ref.id), before = regular(target);
-    if (before.size !== ref.bytes) fail('DELIVERY_ARTIFACT_CHANGED');
-    const fd = fs.openSync(target, 'r');
+    const targets = this.artifactPaths(ref.id);
+    if (fs.existsSync(targets.plain)) {
+      const before = regular(targets.plain);
+      if (before.size !== ref.bytes) fail('DELIVERY_ARTIFACT_CHANGED');
+      const fd = fs.openSync(targets.plain, 'r');
+      try {
+        const opened = fs.fstatSync(fd);
+        if (!opened.isFile() || opened.nlink !== 1 || opened.ino !== before.ino || opened.dev !== before.dev) fail('DELIVERY_STATE_ALIAS');
+        const length = Math.min(maxBytes, Math.max(0, ref.bytes - offset)), chunk = Buffer.alloc(length);
+        const count = length ? fs.readSync(fd, chunk, 0, length, offset) : 0;
+        if (count !== length || fs.fstatSync(fd).size !== ref.bytes) fail('DELIVERY_ARTIFACT_CHANGED');
+        return {
+          deliveryId, artifactId: ref.id, sha256: ref.sha256, bytes: ref.bytes, offset,
+          encoding: 'base64', data: chunk.toString('base64'), chunkSha256: digest(chunk),
+          nextOffset: offset + count < ref.bytes ? offset + count : null
+        };
+      } finally { fs.closeSync(fd); }
+    }
+    if (!fs.existsSync(targets.archive)) fail('DELIVERY_ARTIFACT_CHANGED');
+    const bytes = this.readArchivedArtifact(targets.archive, ref);
+    const end = Math.min(bytes.length, offset + maxBytes), chunk = bytes.subarray(offset, end);
+    return {
+      deliveryId, artifactId: ref.id, sha256: ref.sha256, bytes: ref.bytes, offset,
+      encoding: 'base64', data: chunk.toString('base64'), chunkSha256: digest(chunk),
+      nextOffset: end < bytes.length ? end : null, archived: true
+    };
+  }
+  artifactStorage() {
+    const dir = path.join(this.directory, 'artifacts', this.scope);
+    let plainBytes = 0, archivedBytes = 0, plainCount = 0, archivedCount = 0;
     try {
-      const opened = fs.fstatSync(fd);
-      if (!opened.isFile() || opened.nlink !== 1 || opened.ino !== before.ino || opened.dev !== before.dev) fail('DELIVERY_STATE_ALIAS');
-      const length = Math.min(maxBytes, Math.max(0, ref.bytes - offset)), chunk = Buffer.alloc(length);
-      const count = length ? fs.readSync(fd, chunk, 0, length, offset) : 0;
-      if (count !== length || fs.fstatSync(fd).size !== ref.bytes) fail('DELIVERY_ARTIFACT_CHANGED');
-      return {
-        deliveryId, artifactId: ref.id, sha256: ref.sha256, bytes: ref.bytes, offset,
-        encoding: 'base64', data: chunk.toString('base64'), chunkSha256: digest(chunk),
-        nextOffset: offset + count < ref.bytes ? offset + count : null
-      };
-    } finally { fs.closeSync(fd); }
+      noLinks(dir);
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        if (!entry.isFile()) continue;
+        const target = path.join(dir, entry.name);
+        const info = regular(target);
+        if (/^[a-f0-9]{64}\.json$/.test(entry.name)) { plainBytes += info.size; plainCount += 1; }
+        else if (/^[a-f0-9]{64}\.json\.gz$/.test(entry.name)) { archivedBytes += info.size; archivedCount += 1; }
+      }
+    } catch (error) {
+      if (error?.code !== 'ENOENT') throw error;
+    }
+    let databaseBytes = 0;
+    for (const suffix of ['', '-journal', '-wal', '-shm']) {
+      const target = path.join(this.directory, 'delivery.sqlite' + suffix);
+      try { databaseBytes += regular(target).size; }
+      catch (error) { if (error?.code !== 'ENOENT') throw error; }
+    }
+    const oldest = this.db.prepare(
+      "SELECT min(created_at) AS created_at FROM deliveries WHERE scope=? AND state IN ('COMPLETED_UNDELIVERED','DELIVERY_PENDING')"
+    ).get(this.scope).created_at ?? null;
+    const rows = this.db.prepare(
+      "SELECT payload,state FROM deliveries WHERE scope=? AND state IN ('COMPLETED_UNDELIVERED','DELIVERED')"
+    ).all(this.scope);
+    const candidates = new Map();
+    for (const row of rows) {
+      const payload = JSON.parse(row.payload);
+      if (payload.kind === 'COMPLETED' && payload.artifact) candidates.set(payload.artifact.id, payload.artifact.bytes);
+    }
+    let archiveCandidateBytes = 0;
+    for (const [id, bytes] of candidates) {
+      const plain = path.join(dir, id + '.json');
+      if (fs.existsSync(plain)) archiveCandidateBytes += bytes;
+    }
+    return {
+      databaseBytes, plainArtifactBytes: plainBytes, archivedArtifactBytes: archivedBytes,
+      plainArtifacts: plainCount, archivedArtifacts: archivedCount,
+      oldestPendingCreatedAt: oldest, archiveCandidateBytes
+    };
+  }
+  compact({ minAgeMs = 24 * 60 * 60 * 1000, limit = 50 } = {}) {
+    integer(minAgeMs, 24 * 60 * 60 * 1000, 0, 365 * 24 * 60 * 60 * 1000);
+    integer(limit, 50, 1, 100);
+    const cutoff = new Date(Date.now() - minAgeMs).toISOString();
+    const rows = this.db.prepare(
+      "SELECT * FROM deliveries WHERE scope=? AND state IN ('COMPLETED_UNDELIVERED','DELIVERED') AND created_at<=? AND payload LIKE ? ORDER BY seq LIMIT ?"
+    ).all(this.scope, cutoff, '%"kind":"COMPLETED"%', Math.min(10000, limit * 100));
+    const seen = new Set();
+    let scanned = 0, archived = 0, alreadyArchived = 0, bytesBefore = 0, bytesAfter = 0;
+    for (const row of rows) {
+      if (scanned >= limit) break;
+      const item = this.decode(row);
+      if (item.kind !== 'COMPLETED' || !item.artifact || seen.has(item.artifact.id)) continue;
+      seen.add(item.artifact.id); scanned += 1;
+      const ref = item.artifact, targets = this.artifactPaths(ref.id);
+      if (!fs.existsSync(targets.plain)) {
+        if (fs.existsSync(targets.archive)) {
+          this.readArchivedArtifact(targets.archive, ref);
+          alreadyArchived += 1;
+        }
+        continue;
+      }
+      const before = regular(targets.plain);
+      if (before.size !== ref.bytes) fail('DELIVERY_ARTIFACT_CHANGED');
+      const bytes = fs.readFileSync(targets.plain);
+      if (digest(bytes) !== ref.sha256) fail('DELIVERY_ARTIFACT_CHANGED');
+      const compressed = gzipSync(bytes, { level: 9 });
+      const temp = targets.archive + '.tmp-' + process.pid + '-' + randomUUID();
+      const fd = fs.openSync(temp, 'wx', 0o600);
+      try { fs.writeFileSync(fd, compressed); fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
+      try {
+        const verify = gunzipSync(fs.readFileSync(temp), { maxOutputLength: MAX_ARTIFACT_BYTES + 1 });
+        if (verify.length !== ref.bytes || digest(verify) !== ref.sha256) fail('DELIVERY_ARTIFACT_CHANGED');
+        if (fs.existsSync(targets.archive)) {
+          this.readArchivedArtifact(targets.archive, ref);
+          fs.rmSync(temp, { force: true });
+        } else {
+          fs.renameSync(temp, targets.archive);
+          this.readArchivedArtifact(targets.archive, ref);
+        }
+        bytesBefore += before.size;
+        bytesAfter += regular(targets.archive).size;
+        fs.rmSync(targets.plain);
+        archived += 1;
+      } catch (error) {
+        try { fs.rmSync(temp, { force: true }); } catch {}
+        throw error;
+      }
+    }
+    return {
+      scanned, archived, alreadyArchived,
+      bytesBefore, bytesAfter, reclaimedBytes: Math.max(0, bytesBefore - bytesAfter),
+      logicalStateChanged: false, acknowledgementSynthesized: false
+    };
   }
   reserve({ requestId, correlationId = requestId, tool, inputHash, durationMs = 3600000 }) {
     opaqueId(requestId); opaqueId(correlationId); opaqueId(tool);
@@ -375,7 +507,8 @@ export class DeliveryStore {
       unfinishedRequests: this.db.prepare("SELECT count(*) AS n FROM requests WHERE scope=? AND status='RUNNING'")
         .get(this.scope).n,
       identityBoundary: 'TRUSTED_PROFILE_NOT_AUTHENTICATED_CHAT',
-      rawArgumentsStored: false, maxArtifactBytes: MAX_ARTIFACT_BYTES, maxChunkBytes: MAX_CHUNK_BYTES
+      rawArgumentsStored: false, maxArtifactBytes: MAX_ARTIFACT_BYTES, maxChunkBytes: MAX_CHUNK_BYTES,
+      storage: this.artifactStorage()
     };
   }
 }
