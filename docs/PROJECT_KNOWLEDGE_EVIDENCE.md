@@ -1594,3 +1594,11 @@ Status: CURRENT benchmark evidence. Reuse targets: roadmap, release planning, pr
 - Fresh Linux clone reported exactly two modified paths immediately after checkout: autostart-windows.ps1 and windows-supervisor-runtime.ps1.
 - git add --renormalize . identified exactly those two paths; git diff --ignore-space-at-eol was empty.
 - Corrective invariant: Git stores canonical LF for both blobs; checkout line endings remain governed by .gitattributes, eliminating dirty-clone drift without changing PowerShell semantics.
+
+## 2026-10-01 — v0.10.4 release-preparation evidence
+
+- Release base: main eaba1122db96f7a47172ee0c1cc5ad96c7840b0e.
+- Release reason: main contains accepted post-v0.10.3 runtime/storage hardening and must not continue to advertise package/runtime identity 0.10.3.
+- Version projections promoted together: package.json, both Plugin manifests, server runtime constant, onboarding version guard and release-asset contract.
+- Unreleased changelog promoted to 0.10.4 dated 2026-10-01 and docs/RELEASE_0.10.4.md created.
+- Publication is not accepted until exact-candidate Linux/Windows qualification, hosted CI, server-install canaries, asset checksum verification, immutable tag/release and live rollout all pass.

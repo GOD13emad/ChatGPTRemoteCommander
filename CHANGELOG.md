@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased — repository audit hardening
+## 0.10.4 — 2026-10-01
 
 - Normalize Windows supervisor PowerShell blobs to canonical LF in Git while retaining CRLF checkout policy via .gitattributes, preventing fresh Linux clones from appearing dirty after checkout.
 - Bound tunnel log growth without restarting live tunnel connections: tunnel-client now logs to stdout under a Commander-owned rotating logger (8 MiB current file + 3 gzip archives) with atomic machine-readable rotation status and bounded legacy-tail migration.
