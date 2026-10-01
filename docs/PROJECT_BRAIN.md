@@ -441,3 +441,10 @@ Root cause confirmed: Power Mode `writeAnyFile()` created a complete backup befo
 ## 2026-10-01 — delivery storage hardening #82 candidate
 
 Compaction is deliberately separated from acknowledgement. Eligible completed artifacts may move from plain content-addressed JSON to verified gzip archive storage, but delivery state, attempt, correlation and receipt columns are never mutated. The archive is written to a private temporary file, fsynced, decompressed and hash/size verified, atomically renamed, verified again, and only then is the plain artifact removed. Reads are transparent across live/archive storage and keep exact correlation checks. DELIVERY_PENDING, DEAD_LETTER and non-COMPLETED kinds are excluded. delivery_status.storage reports database/artifact bytes, oldest pending timestamp and archive-candidate bytes.
+
+
+## 2026-10-01 — storage hardening #83 candidate
+
+Pinned tunnel-client v0.0.15 confirms that `--log.file stdout` is supported and is the safe ownership boundary for rotation. Commander now launches tunnel-client through `tools/tunnel-log-runner.mjs`: the child remains the real tunnel process with unchanged profile/health semantics, while the wrapper owns stdout/stderr persistence. Rotation never renames or truncates a file opened by tunnel-client. The wrapper keeps an 8 MiB current log and up to three gzip archives, retains only a bounded recent tail when migrating an oversized legacy current log, writes atomic `*.log.rotation.json` status, forwards termination on Linux, and Windows readiness-failure cleanup explicitly terminates the exact owned tunnel child before the wrapper to prevent orphaning. The wrapper scrubs control-plane/OpenAI credential variables from its own environment immediately after child spawn.
+
+Acceptance regression forces multiple rotations while one child PID stays alive, reconstructs all stdout/stderr bytes exactly across archives/current file, validates archive count/size/status, and separately proves bounded legacy-tail migration. Linux lifecycle, Windows runtime contract, and source-integrity gates bind both platforms to the same logger architecture.
