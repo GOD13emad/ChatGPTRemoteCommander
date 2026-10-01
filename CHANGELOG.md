@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased — repository audit hardening
+
+- Harden the concurrency smoke runtime-marker readiness gate after HTTP health; production runtime behavior is unchanged.
+- Apply the existing fail-closed explicit owner runner-policy overlay to named Windows profiles as well as the default profile, preserving routed runtime state while preventing canonical owner runner intent from being lost during candidate migration.
+- Normalize minor tracked-file text hygiene discovered by the full repository audit.
+
 ## 0.10.3 — 2026-09-30
 
 - Harden the isolated-profile HTTP regression startup gate with a 30-second elapsed deadline and early child-exit diagnostics, matching the already-qualified transport-correlation startup pattern.

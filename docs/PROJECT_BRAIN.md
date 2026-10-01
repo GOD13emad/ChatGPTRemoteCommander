@@ -422,3 +422,12 @@ Local patched evidence: Linux inherited-stdio 30/30 PASS; Windows 10/10 PASS; Li
 The first v0.10.3 merge commit `091cfb9e1ef131f5b18f5cf03976f2271ada4b93` is not publishable because post-merge Windows CI exposed a second test-harness timing weakness: workflow restart recovery was observed through a fixed 3-second wait. Exact-commit isolated reproduction passed Windows 15/15 and Linux 20/20, so no production workflow defect is established.
 
 Minimum correction: test-only bounded 30-second elapsed wait plus controller-status failure diagnostics, preserving the automatic `queueMicrotask` recovery property. Production workflow/conversation code remains untouched. Publication stays blocked until fresh exact-head local + hosted qualification succeeds.
+
+
+## 2026-10-01 — exact-main repository line audit
+
+Audited authority: main ac02b9a0ef33f781d3b8cbd6f70a88fbce92092a, tree 2e06f0c2aa58fb2fbac3037470f7673713b0dfa4. Static coverage: 329 tracked files / approximately 45,975 lines; 165 JS/MJS parse clean; 16 shell scripts parse clean; JSON/YAML parse clean; relative Markdown broken links zero; non-doc TODO/FIXME/HACK/XXX zero; secret-pattern scan zero; workflow actions pinned to full commit SHAs; git fsck and diff-check clean. Exact-head Linux and Windows qualification, security audit and doctor all passed.
+
+Two source defects remain actionable from historical PR audit. PR #75 contains a runtime-marker readiness guard that never reached current main, while current concurrency smoke still reads the marker immediately after HTTP health. The fix is rebased with a bounded 30-second marker-identity wait. Windows updater policy overlay is also generalized from only the default profile to named profiles using the existing narrow merge-primary-policy primitive; active routed runtime state remains authoritative except for explicitly owner-authorized runner policy.
+
+Historical PR #74 is superseded by current deterministic v0.10.3 fixtures and successful bounded-concurrency hosted CI. PR #49 is not adopted wholesale: its canonical-first design has been superseded by guarded active-runtime plus explicit-owner-policy overlay semantics, now applied consistently to named profiles. Storage issues #81, #82 and #83 remain separate product work and are not cosmetically closed by this audit.

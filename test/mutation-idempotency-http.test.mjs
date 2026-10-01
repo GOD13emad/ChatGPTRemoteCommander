@@ -73,7 +73,7 @@ test('direct mutation requestId prevents duplicate append across lost ack and re
     assert.equal(missing.result.isError,true);
     assert.match(missing.result.content[0].text,/MUTATION_REQUEST_ID_REQUIRED|requestId/i);
     assert.equal(await fs.readFile(target,'utf8'),'');
-    
+
     const args={requestId:'mut-http-1',path:target,content:'x',mode:'append'};
     const first=await post(port,2,'write_text',args);
     assert.equal(first.result.isError,false);

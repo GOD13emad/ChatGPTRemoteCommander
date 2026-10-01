@@ -60,6 +60,23 @@ async function waitForHealth() {
   throw new Error(`server did not become healthy: ${serverOutput}`);
 }
 
+async function waitForRuntimeState(timeoutMs = 30000) {
+  const deadline = Date.now() + timeoutMs;
+  let lastError = null;
+  while (Date.now() < deadline) {
+    try {
+      const state = JSON.parse(await readFile(isolatedRuntimeStatePath, 'utf8'));
+      if (state.port === port && path.resolve(state.projectDir) === isolatedApp) return state;
+      lastError = new Error('runtime state identity mismatch');
+    } catch (error) {
+      if (error?.code !== 'ENOENT' && !(error instanceof SyntaxError)) throw error;
+      lastError = error;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  throw new Error(`runtime state did not become ready: ${lastError?.message ?? 'unknown'}; ${serverOutput}`);
+}
+
 let nextId = 1;
 async function callTool(name, args = {}) {
   const response = await fetch(endpoint, {
@@ -78,7 +95,7 @@ async function callTool(name, args = {}) {
 
 try {
   await waitForHealth();
-  const isolatedState = JSON.parse(await readFile(isolatedRuntimeStatePath, 'utf8'));
+  const isolatedState = await waitForRuntimeState();
   assert.equal(isolatedState.port, port);
   assert.equal(path.resolve(isolatedState.projectDir), isolatedApp);
 
