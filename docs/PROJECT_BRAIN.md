@@ -470,3 +470,8 @@ Updated PR #89 exposed a second 10-second hosted-runner boundary: manager reconc
 ## 2026-10-01 — v0.10.4 Windows hosted fixture and release identity closure
 
 PR #89 head 43f4b70f7d51e452fb861a235a6ba1685152b720 passed Ubuntu CI but Windows qualification failed before the inherited-stdio semantic assertion because the holder PID marker path became visible before its asynchronous write bytes were readable. Correction is fixture-only: write PID bytes to a unique temporary file and atomically rename to the ready path. The same change-set completes the four release projections that still referenced v0.10.3 (Windows/Linux public installer defaults, installer contract expectations and final-gate log identity). A second async reconciliation regression proves the new live-worker grace cannot mask a worker forever: once startedAt+timeout+finalization grace is exceeded, status fail-closes to UNCERTAIN without replay.
+
+
+## 2026-10-01 — v0.10.4 final qualification-harness closure
+
+Post-merge main Windows qualification exposed three load-sensitive failures even though PR #89 exact-head Windows/Ubuntu CI and both server canaries passed the identical source tree. Focused exact-main Windows reruns proved tunnel-log rotation 12/12 and workflow-http 8/8 stable. A subsequent hosted rerun exposed a separate default 10-second async-operation observation boundary. Root cause is qualification file-level scheduler/resource pressure, not production semantics. Final candidate isolates workflow-http, async-operations and tunnel-log-rotation from the large concurrent test-file batch and extends only fixture observation deadlines to 30 seconds. Production timeout/reconciliation/tunnel/workflow behavior is unchanged.

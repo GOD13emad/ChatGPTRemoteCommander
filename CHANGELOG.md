@@ -2,6 +2,7 @@
 
 ## 0.10.4 — 2026-10-01
 
+- Make hosted qualification deterministic by isolating scheduler-sensitive async/workflow/tunnel-log test files from the large concurrent file batch and extending only fixture observation deadlines; production runtime deadlines are unchanged.
 - Make inherited-stdio fixture readiness publication atomic under hosted Windows load, and add a fail-closed regression proving live-worker finalization grace remains bounded.
 - Normalize Windows supervisor PowerShell blobs to canonical LF in Git while retaining CRLF checkout policy via .gitattributes, preventing fresh Linux clones from appearing dirty after checkout.
 - Bound tunnel log growth without restarting live tunnel connections: tunnel-client now logs to stdout under a Commander-owned rotating logger (8 MiB current file + 3 gzip archives) with atomic machine-readable rotation status and bounded legacy-tail migration.

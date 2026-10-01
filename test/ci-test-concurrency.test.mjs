@@ -28,6 +28,13 @@ test('qualification paths bound full test file concurrency',()=>{
   assert.equal(checkResult.command.includes('node --test test/'),false);
   assert.equal(pkg.scripts['check:qualification'],'node tools/run-bounded-test-script.mjs --script check --concurrency 2');
   assert.equal(pkg.scripts['test:qualification'],'node tools/run-bounded-test-script.mjs --script test --concurrency 2');
+  for (const sensitive of ['test/workflow-http.test.mjs','test/async-operations.test.mjs','test/tunnel-log-rotation.test.mjs']) {
+    for (const scriptName of ['check','test']) {
+      const script = pkg.scripts[scriptName];
+      assert.equal((script.match(new RegExp(sensitive.replaceAll('.', '[.]'), 'g')) || []).length, 1, `${scriptName} must reference ${sensitive} exactly once`);
+      assert.ok(script.includes(`node --test ${sensitive}`), `${scriptName} must run ${sensitive} as an isolated test-file command`);
+    }
+  }
   const workflow=read('.github/workflows/ci.yml');
   assert.ok(workflow.includes("if: runner.os == 'Windows'"));
   assert.ok(workflow.includes('run: node tools/run-bounded-test-script.mjs --script check --concurrency 1'));

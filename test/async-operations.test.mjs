@@ -12,7 +12,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const fixture = path.join(here, 'async-operation-fixture.mjs');
 const worker = path.join(here, '..', 'tools', 'operation-worker.mjs');
 
-async function waitFor(manager, operationId, terminal = ['SUCCEEDED', 'FAILED', 'TIMED_OUT', 'CANCELLED', 'UNCERTAIN'], timeoutMs = 10000) {
+async function waitFor(manager, operationId, terminal = ['SUCCEEDED', 'FAILED', 'TIMED_OUT', 'CANCELLED', 'UNCERTAIN'], timeoutMs = 30000) {
   const deadline = Date.now() + timeoutMs;
   let lastState = null;
   while (Date.now() < deadline) {
@@ -23,7 +23,7 @@ async function waitFor(manager, operationId, terminal = ['SUCCEEDED', 'FAILED', 
   throw new Error(`operation did not finish within ${timeoutMs}ms: status=${lastState?.status ?? 'unknown'} workerPid=${lastState?.workerPid ?? 'unknown'}`);
 }
 
-async function waitForProcessExit(pid, timeoutMs = 10000) {
+async function waitForProcessExit(pid, timeoutMs = 30000) {
   if (!Number.isSafeInteger(pid) || pid <= 0) return;
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
