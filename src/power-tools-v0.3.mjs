@@ -104,28 +104,115 @@ function backupRoot(ctx) {
   return path.resolve(configured ? expandEnv(configured) : defaultBackupRoot());
 }
 
-function backupName(target) {
+function backupRetentionSnapshots(ctx) {
+  const value = Number(power(ctx).backupRetentionSnapshots ?? 8);
+  if (!Number.isSafeInteger(value) || value < 2 || value > 64) {
+    throw new Error('backupRetentionSnapshots must be an integer between 2 and 64');
+  }
+  return value;
+}
+
+function backupTargetRelative(target) {
   const normalized = path.resolve(target);
-  const safe = normalized
+  return normalized
     .replace(/^([A-Za-z]):[\\/]/, '$1/')
     .replace(/^[/\\]+/, '')
     .replace(/[<>:"|?*\u0000]/g, '_');
-  const stamp = `${new Date().toISOString().replaceAll(':', '-')}-${process.pid}-${Date.now().toString(36)}`;
-  return path.join(stamp, safe);
+}
+
+function backupStamp() {
+  return `${new Date().toISOString().replaceAll(':', '-')}-${process.pid}-${Date.now().toString(36)}-${randomUUID().slice(0, 8)}`;
+}
+
+async function pruneFileBackups(ctx, target) {
+  const root = backupRoot(ctx);
+  const relative = backupTargetRelative(target);
+  const variants = [relative, relative + '.append.json'];
+  let entries = [];
+  try { entries = await readdir(root, { withFileTypes: true }); }
+  catch (error) {
+    if (error?.code === 'ENOENT') return { retained: 0, pruned: 0 };
+    throw error;
+  }
+  const matches = [];
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    for (const candidateRelative of variants) {
+      const candidate = path.join(root, entry.name, candidateRelative);
+      try {
+        const info = await lstat(candidate);
+        if (info.isFile() && !info.isSymbolicLink()) {
+          matches.push({ container: path.join(root, entry.name), mtimeMs: info.mtimeMs });
+          break;
+        }
+      } catch (error) {
+        if (error?.code !== 'ENOENT') throw error;
+      }
+    }
+  }
+  matches.sort((a, b) => b.mtimeMs - a.mtimeMs || b.container.localeCompare(a.container));
+  const keep = backupRetentionSnapshots(ctx);
+  const stale = matches.slice(keep);
+  for (const item of stale) await rm(item.container, { recursive: true, force: true });
+  return { retained: Math.min(matches.length, keep), pruned: stale.length };
 }
 
 async function backupExisting(ctx, target) {
   try {
     const info = await lstat(target);
-    const destination = path.join(backupRoot(ctx), backupName(target));
+    const destination = path.join(backupRoot(ctx), backupStamp(), backupTargetRelative(target));
     await mkdir(path.dirname(destination), { recursive: true });
-    if (info.isDirectory()) await cp(target, destination, { recursive: true, force: false });
-    else await copyFile(target, destination);
+    if (info.isDirectory()) {
+      await cp(target, destination, { recursive: true, force: false });
+      return destination;
+    }
+    await copyFile(target, destination);
+    const source = await readFile(target);
+    const copy = await readFile(destination);
+    if (source.length !== copy.length || digest(source) !== digest(copy)) {
+      await rm(path.dirname(destination), { recursive: true, force: true });
+      throw new Error('BACKUP_VERIFICATION_FAILED');
+    }
+    await pruneFileBackups(ctx, target);
     return destination;
   } catch (error) {
     if (error?.code === 'ENOENT') return null;
     throw error;
   }
+}
+
+async function backupAppendRecovery(ctx, target, before, appended) {
+  const destination = path.join(
+    backupRoot(ctx),
+    backupStamp(),
+    backupTargetRelative(target) + '.append.json'
+  );
+  const journal = {
+    schema: 1,
+    kind: 'append-truncate-recovery',
+    target: path.resolve(target),
+    beforeBytes: before.length,
+    beforeSha256: digest(before),
+    appendBytes: appended.length,
+    appendSha256: digest(appended),
+    createdAt: new Date().toISOString()
+  };
+  await mkdir(path.dirname(destination), { recursive: true });
+  await writeFile(destination, JSON.stringify(journal) + '\n', { mode: 0o600 });
+  const verify = JSON.parse(await readFile(destination, 'utf8'));
+  if (
+    verify.kind !== journal.kind ||
+    verify.target !== journal.target ||
+    verify.beforeBytes !== journal.beforeBytes ||
+    verify.beforeSha256 !== journal.beforeSha256 ||
+    verify.appendBytes !== journal.appendBytes ||
+    verify.appendSha256 !== journal.appendSha256
+  ) {
+    await rm(path.dirname(destination), { recursive: true, force: true });
+    throw new Error('APPEND_RECOVERY_JOURNAL_VERIFICATION_FAILED');
+  }
+  await pruneFileBackups(ctx, target);
+  return destination;
 }
 
 function checkShell(ctx, command) {
@@ -169,7 +256,12 @@ export async function powerStatus(ctx) {
     allowProcessControl: cfg.allowProcessControl === true,
     allowPermanentDelete: cfg.allowPermanentDelete === true,
     guiControl: cfg.guiControl ?? { enabled: false },
-    blockedShellPatterns: cfg.blockedShellPatterns || []
+    blockedShellPatterns: cfg.blockedShellPatterns || [],
+    backupPolicy: {
+      root: backupRoot(ctx),
+      retainedSnapshotsPerTarget: backupRetentionSnapshots(ctx),
+      appendRecovery: 'verified-truncate-journal'
+    }
   };
 }
 export async function fileInfo(ctx, input) {
@@ -231,8 +323,10 @@ export async function writeAnyFile(ctx, input) {
   return withPathLocks([target], async () => {
     const snapshot = await guardFileWrite(target);
     let beforeSha256 = null;
+    let beforeBuffer = null;
     try {
       const before = await readFile(target);
+      beforeBuffer = before;
       beforeSha256 = digest(before);
       if (input.expectedSha256 && input.expectedSha256 !== beforeSha256) {
         throw new Error('expectedSha256 does not match current file');
@@ -244,12 +338,29 @@ export async function writeAnyFile(ctx, input) {
     await guardFileWrite(target, snapshot);
     if (input.createParents !== false) await mkdir(path.dirname(target), { recursive: true });
     await guardFileWrite(target, snapshot);
-    const backupPath = await backupExisting(ctx, target);
+    const mode = input.mode === 'append' ? 'append' : 'overwrite';
+    const backupPath = beforeBuffer
+      ? (mode === 'append'
+        ? await backupAppendRecovery(ctx, target, beforeBuffer, data)
+        : await backupExisting(ctx, target))
+      : null;
     await guardFileWrite(target, snapshot);
-    if (input.mode === 'append') await appendFile(target, data);
+    if (mode === 'append') await appendFile(target, data);
     else await writeFile(target, data);
     const after = await readFile(target);
-    return { path: target, bytes: after.length, beforeSha256, sha256: digest(after), backupPath };
+    if (mode === 'append' && beforeBuffer) {
+      if (after.length !== beforeBuffer.length + data.length) throw new Error('APPEND_POSTCONDITION_FAILED');
+      if (digest(after.subarray(0, beforeBuffer.length)) !== beforeSha256) throw new Error('APPEND_PREFIX_CHANGED');
+      if (digest(after.subarray(beforeBuffer.length)) !== digest(data)) throw new Error('APPEND_PAYLOAD_CHANGED');
+    }
+    return {
+      path: target,
+      bytes: after.length,
+      beforeSha256,
+      sha256: digest(after),
+      backupPath,
+      backupKind: backupPath ? (mode === 'append' ? 'append-truncate-recovery' : 'snapshot') : null
+    };
   });
 }
 export async function createDirectory(ctx, input) {
@@ -615,10 +726,10 @@ const localDestructive = { readOnlyHint: false, destructiveHint: true, idempoten
 const openDestructive = { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true };
 
 export const powerToolDefinitions = [
-  { name: 'power_status', description: 'Return Full-Control Power Mode capabilities and policy.', inputSchema: { type: 'object', properties: {}, additionalProperties: false }, annotations: ro },
+  { name: 'power_status', description: 'Return Full-Control Power Mode capabilities, backup-retention policy, and safety policy.', inputSchema: { type: 'object', properties: {}, additionalProperties: false }, annotations: ro },
   { name: 'file_info', description: 'Return metadata for any file or directory permitted by Power Mode.', inputSchema: { type: 'object', properties: { path: { type: 'string' } }, required: ['path'], additionalProperties: false }, annotations: ro },
   { name: 'read_file', description: 'Read bounded text or binary data using Power Mode. Files above 512 KiB require offset/maxBytes paging; each page is at most 256 KiB.', inputSchema: { type: 'object', properties: { path: { type: 'string' }, encoding: { type: 'string', enum: ['utf8', 'base64'] }, offset: { type: 'integer', minimum: 0 }, maxBytes: { type: 'integer', minimum: 1, maximum: 262144 } }, required: ['path'], additionalProperties: false }, annotations: ro },
-  { name: 'write_file', description: 'Write/append text or base64 file data with automatic pre-mutation backup and optional SHA-256 precondition.', inputSchema: { type: 'object', properties: { path: { type: 'string' }, content: { type: 'string' }, encoding: { type: 'string', enum: ['utf8', 'base64'] }, mode: { type: 'string', enum: ['overwrite', 'append'] }, createParents: { type: 'boolean' }, expectedSha256: { type: 'string' } }, required: ['path', 'content'], additionalProperties: false }, annotations: localDestructive },
+  { name: 'write_file', description: 'Write/append text or base64 file data with recoverable pre-mutation protection and optional SHA-256 precondition. Append uses compact verified truncate-recovery journals; file rollback points use bounded per-target retention.', inputSchema: { type: 'object', properties: { path: { type: 'string' }, content: { type: 'string' }, encoding: { type: 'string', enum: ['utf8', 'base64'] }, mode: { type: 'string', enum: ['overwrite', 'append'] }, createParents: { type: 'boolean' }, expectedSha256: { type: 'string' } }, required: ['path', 'content'], additionalProperties: false }, annotations: localDestructive },
   { name: 'create_directory', description: 'Create a directory, including parents.', inputSchema: { type: 'object', properties: { path: { type: 'string' }, recursive: { type: 'boolean' } }, required: ['path'], additionalProperties: false }, annotations: additive },
   { name: 'copy_path', description: 'Copy a file or directory recursively; optionally replace destination after backup.', inputSchema: { type: 'object', properties: { source: { type: 'string' }, destination: { type: 'string' }, overwrite: { type: 'boolean' } }, required: ['source', 'destination'], additionalProperties: false }, annotations: localDestructive },
   { name: 'move_path', description: 'Move or rename a file/directory; optionally replace destination after backup.', inputSchema: { type: 'object', properties: { source: { type: 'string' }, destination: { type: 'string' }, overwrite: { type: 'boolean' } }, required: ['source', 'destination'], additionalProperties: false }, annotations: localDestructive },

@@ -1556,3 +1556,12 @@ Status: CURRENT benchmark evidence. Reuse targets: roadmap, release planning, pr
 - Named-profile owner-policy gap CONFIRMED: main applied merge-primary-policy only for the default Windows profile. Named-profile target discovery could select routed generated config without the newer explicit canonical owner runner policy. The correction reuses the same fail-closed overlay for every profile while preserving active runtime fields.
 - Linux tunnel helper mode NOT A DEFECT: source helper is intentionally callable through /bin/bash and fresh installer explicitly chmods the installed helper; regression tests enforce this.
 - Storage issues #81, #82 and #83 remain accepted open product debt requiring dedicated design/regression.
+
+
+## 2026-10-01 — issue #81 backup amplification evidence
+
+- Confirmed source cause: `src/power-tools-v0.3.mjs` copied the full existing target before every append.
+- Candidate invariant: append no longer copies prior payload bytes; it writes a verified `append-truncate-recovery` journal before mutation.
+- Rollback proof: truncate to journal `beforeBytes`, then verify exact `beforeSha256`.
+- Retention invariant: newest rollback point exists and is verified before older file rollback containers for the same target are pruned; minimum retention is 2 and default is 8.
+- Safety preserved: expectedSha256 precondition, path locks, canonical/symlink guards and post-write hash checks remain active.
