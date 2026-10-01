@@ -9,7 +9,7 @@ import { once } from 'node:events';
 import { fileURLToPath } from 'node:url';
 import { createCompanionSession, writeCompanionObservation } from '../src/companion-session.mjs';
 import { companionEndpoint, observeCompanion, parseCompanionExportArgs, readCompanionBinding } from '../tools/companion-export.mjs';
-import { proveCompanionPrivateDirectory, verifyCompanionPrivateDirectory, verifyCompanionPrivateFile } from '../src/companion-private-directory.mjs';
+import { evaluateCompanionAcl, proveCompanionPrivateDirectory, verifyCompanionPrivateDirectory, verifyCompanionPrivateFile } from '../src/companion-private-directory.mjs';
 import { parseCompanionJson } from '../src/companion-json.mjs';
 
 const cfgHash = 'a'.repeat(64);
@@ -37,6 +37,123 @@ function transport(observation, change = null) {
     return new Response(JSON.stringify({ jsonrpc: '2.0', id: body.id, result }), { status: 200, headers: { 'content-type': 'application/json' } });
   } };
 }
+
+// Test-only read-only telemetry. Neither these flags nor token ownership can
+// authorize an export; the unchanged production privacy proof still decides.
+function validatedFixtureAclDiagnostic(value) {
+  const keys = ['broadAllowPresent', 'hashSDDL', 'ownerMatchesTokenOwner', 'ownerMatchesUser', 'pathValid',
+    'requiredCurrentUserRights', 'rulesValid', 'schemaValid', 'tokenOwnerMatchesUser', 'tokenOwnerStatus'];
+  assert.ok(value && typeof value === 'object' && !Array.isArray(value));
+  assert.deepEqual(Object.keys(value).sort(), keys.sort());
+  for (const key of ['ownerMatchesUser', 'pathValid', 'schemaValid', 'rulesValid', 'broadAllowPresent', 'requiredCurrentUserRights']) {
+    assert.equal(typeof value[key], 'boolean');
+  }
+  assert.match(value.hashSDDL, /^[a-f0-9]{64}$/);
+  assert.ok(['OBSERVED', 'MISSING'].includes(value.tokenOwnerStatus));
+  for (const key of ['ownerMatchesTokenOwner', 'tokenOwnerMatchesUser']) {
+    if (value.tokenOwnerStatus === 'MISSING') assert.equal(value[key], null);
+    else assert.equal(typeof value[key], 'boolean');
+  }
+  return value;
+}
+const fixtureAclDiagnosticScript = String.raw`
+$ErrorActionPreference='Stop'
+$taskPath=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($env:RC_DIAG_FIXTURE_PATH))
+$taskRoot=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($env:RC_DIAG_FIXTURE_ROOT))
+$taskRootItem=Get-Item -LiteralPath $taskRoot -Force
+if(-not $taskRootItem.PSIsContainer -or ($taskRootItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -or $taskRootItem.Name -notlike 'rc-companion-private-test-*'){throw 'Fixture guard'}
+$taskItem=Get-Item -LiteralPath $taskPath -Force
+if(($taskItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -or (-not [string]::Equals($taskItem.FullName,$taskRootItem.FullName,[StringComparison]::OrdinalIgnoreCase) -and ($taskItem.PSIsContainer -or -not [string]::Equals($taskItem.Directory.FullName,$taskRootItem.FullName,[StringComparison]::OrdinalIgnoreCase)))){throw 'Fixture child guard'}
+$taskAcl=Get-Acl -LiteralPath $taskItem.FullName
+$taskIdentity=[Security.Principal.WindowsIdentity]::GetCurrent()
+$taskCurrent=$taskIdentity.User.Value
+$taskOwner=$taskAcl.GetOwner([Security.Principal.SecurityIdentifier]).Value
+$taskTokenOwner=$null
+try{if($null -ne $taskIdentity.Owner){$taskTokenOwner=$taskIdentity.Owner.Value}}catch{}
+$taskRules=@($taskAcl.GetAccessRules($true,$true,[Security.Principal.SecurityIdentifier]) | ForEach-Object {@{sid=$_.IdentityReference.Value;access=$_.AccessControlType.ToString();rights=[int64]$_.FileSystemRights}})
+$taskProof=@{path=$taskItem.FullName;ownerSid=$taskOwner;currentSid=$taskCurrent;sddl=$taskAcl.Sddl;rules=$taskRules}
+$taskRoundTrip=($taskProof | ConvertTo-Json -Depth 5 -Compress) | ConvertFrom-Json
+$taskSidPattern='^S-1-[0-9]+(?:-[0-9]+)+$'
+$taskSchemaValid=(($taskRoundTrip.PSObject.Properties.Name | Sort-Object) -join ',') -ceq 'currentSid,ownerSid,path,rules,sddl'
+$taskSchemaValid=$taskSchemaValid -and ($taskRoundTrip.path -is [string]) -and ($taskRoundTrip.currentSid -match $taskSidPattern) -and ($taskRoundTrip.ownerSid -is [string]) -and ($taskRoundTrip.sddl -is [string]) -and ($taskRoundTrip.sddl.Length -ge 8) -and ($taskRoundTrip.sddl.Length -le 32768)
+$taskRulesValid=($taskRoundTrip.rules -is [Array]) -and ($taskRules.Count -gt 0) -and ($taskRules.Count -le 256)
+$taskBroad=$false;$taskCurrentRights=$false
+foreach($taskRule in $taskRules){
+ $taskRuleValid=(($taskRule.Keys | Sort-Object) -join ',') -ceq 'access,rights,sid'
+ $taskRuleValid=$taskRuleValid -and ($taskRule.sid -match $taskSidPattern) -and ($taskRule.access -in @('Allow','Deny')) -and ($taskRule.rights -is [long]) -and ($taskRule.rights -ge 0) -and ($taskRule.rights -le 9007199254740991)
+ $taskRulesValid=$taskRulesValid -and $taskRuleValid
+ if($taskRule.access -eq 'Allow' -and $taskRule.rights -gt 0 -and $taskRule.sid -notin @($taskCurrent,'S-1-5-18','S-1-5-32-544')){$taskBroad=$true}
+ if($taskRule.access -eq 'Allow' -and $taskRule.sid -eq $taskCurrent -and (($taskRule.rights -band 3) -eq 3)){$taskCurrentRights=$true}
+}
+$taskHash=[Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($taskAcl.Sddl))
+$taskTokenStatus=if($null -eq $taskTokenOwner){'MISSING'}else{'OBSERVED'}
+@{ownerMatchesUser=($taskOwner -ceq $taskCurrent);ownerMatchesTokenOwner=$(if($null -eq $taskTokenOwner){$null}else{$taskOwner -ceq $taskTokenOwner});tokenOwnerMatchesUser=$(if($null -eq $taskTokenOwner){$null}else{$taskTokenOwner -ceq $taskCurrent});tokenOwnerStatus=$taskTokenStatus;pathValid=[string]::Equals([IO.Path]::GetFullPath($taskPath),$taskItem.FullName,[StringComparison]::OrdinalIgnoreCase);schemaValid=[bool]$taskSchemaValid;rulesValid=[bool]$taskRulesValid;broadAllowPresent=$taskBroad;requiredCurrentUserRights=$taskCurrentRights;hashSDDL=([BitConverter]::ToString($taskHash)).Replace('-','').ToLowerInvariant()} | ConvertTo-Json -Depth 3 -Compress
+`;
+function emitFixtureAclDiagnostic(actualRoot, target, phase, kind) {
+  if (process.platform !== 'win32') return;
+  const missing = { status: 'MISSING', schema: 1, phase, kind,
+    tokenOwnerEvidence: 'POWERSHELL_CHILD_ONLY_NODE_TOKEN_UNPROVEN' };
+  try {
+    assert.ok(['BEFORE_BINDING_READ', 'WRITER_FAILURE'].includes(phase));
+    assert.ok(['DIRECTORY', 'BINDING', 'LOCK', 'TEMPORARY', 'SNAPSHOT'].includes(kind));
+    assert.equal(fs.realpathSync.native(actualRoot), actualRoot);
+    assert.match(path.basename(actualRoot), /^rc-companion-private-test-/);
+    const rootBefore = fs.lstatSync(actualRoot, { bigint: true });
+    assert.equal(rootBefore.isDirectory(), true); assert.equal(rootBefore.isSymbolicLink(), false);
+    assert.ok(target === actualRoot || path.dirname(target) === actualRoot);
+    const before = fs.lstatSync(target, { bigint: true });
+    assert.equal(before.isSymbolicLink(), false);
+    if (target !== actualRoot) { assert.equal(before.isFile(), true); assert.equal(before.nlink, 1n); }
+    const run = spawnSync('pwsh.exe', ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', fixtureAclDiagnosticScript], {
+      env: { ...process.env, RC_DIAG_FIXTURE_PATH: Buffer.from(target).toString('base64'), RC_DIAG_FIXTURE_ROOT: Buffer.from(actualRoot).toString('base64') },
+      windowsHide: true, shell: false, encoding: 'utf8', timeout: 5000, maxBuffer: 16384 });
+    if (run.error || run.signal || run.status !== 0 || run.stderr.trim()) throw new Error('DIAGNOSTIC_MISSING');
+    const value = validatedFixtureAclDiagnostic(JSON.parse(run.stdout));
+    const after = fs.lstatSync(target, { bigint: true }), rootAfter = fs.lstatSync(actualRoot, { bigint: true });
+    assert.equal(after.dev, before.dev); assert.equal(after.ino, before.ino); assert.equal(after.size, before.size);
+    assert.equal(after.mtimeNs, before.mtimeNs); assert.equal(rootAfter.dev, rootBefore.dev); assert.equal(rootAfter.ino, rootBefore.ino);
+    console.log(JSON.stringify({ companionFixtureAclDiagnostic: { ...missing, status: 'OBSERVED', ...value } }));
+  } catch {
+    // A missing diagnostic is never authority and must not replace the gate error.
+    console.log(JSON.stringify({ companionFixtureAclDiagnostic: missing }));
+  }
+}
+function writeFixtureObservation(actualRoot, observation) {
+  try {
+    return writeCompanionObservation(actualRoot, observation, {
+      verifyPrivateDirectory: process.platform === 'win32' ? verifyCompanionPrivateDirectory : null,
+      verifyPrivateFile: process.platform === 'win32' ? verifyCompanionPrivateFile : null });
+  } catch (error) {
+    try {
+      emitFixtureAclDiagnostic(actualRoot, actualRoot, 'WRITER_FAILURE', 'DIRECTORY');
+      const receipt = error.companionWrite;
+      for (const [field, kind, pattern] of [
+        ['lockFile', 'LOCK', /^\.commander-companion-export\.lock$/],
+        ['temporaryFile', 'TEMPORARY', /^\.commander-companion-\d{16}-[a-f0-9-]{36}\.tmp$/],
+        ['publishedFile', 'SNAPSHOT', /^commander-companion-\d{16}-[a-f0-9-]{36}\.json$/]]) {
+        if (typeof receipt?.[field] === 'string' && pattern.test(receipt[field])) {
+          emitFixtureAclDiagnostic(actualRoot, path.join(actualRoot, receipt[field]), 'WRITER_FAILURE', kind);
+        }
+      }
+    } catch { /* Only diagnostic failure is ignored; the original gate is rethrown. */ }
+    throw error;
+  }
+}
+
+test('synthetic administrator owner mismatch remains rejected and diagnostic is redacted only', () => {
+  const currentSid = 'S-1-5-21-1-2-3-1001';
+  const acl = { path: 'C:\\example\\private', currentSid, ownerSid: 'S-1-5-32-544', sddl: 'D:(A;OICI;FA;;;OW)',
+    rules: [{ sid: currentSid, access: 'Allow', rights: 2032127 }, { sid: 'S-1-5-32-544', access: 'Allow', rights: 2032127 }] };
+  assert.throws(() => evaluateCompanionAcl(acl, acl.path), /COMPANION_ACL_INVALID/);
+  const flags = { ownerMatchesUser: false, ownerMatchesTokenOwner: true, tokenOwnerMatchesUser: false, tokenOwnerStatus: 'OBSERVED',
+    pathValid: true, schemaValid: true, rulesValid: true, broadAllowPresent: false, requiredCurrentUserRights: true, hashSDDL: 'a'.repeat(64) };
+  assert.deepEqual(validatedFixtureAclDiagnostic(flags), flags);
+  assert.deepEqual(validatedFixtureAclDiagnostic({ ...flags, tokenOwnerStatus: 'MISSING', ownerMatchesTokenOwner: null, tokenOwnerMatchesUser: null }).tokenOwnerStatus, 'MISSING');
+  assert.throws(() => validatedFixtureAclDiagnostic({ ...flags, path: acl.path }));
+  assert.throws(() => validatedFixtureAclDiagnostic({ ...flags, sddl: acl.sddl }));
+  assert.throws(() => validatedFixtureAclDiagnostic({ ...flags, ownerSid: acl.ownerSid }));
+  assert.doesNotMatch(JSON.stringify(flags), /S-1-|C:\\\\|D:\(/);
+});
 test('endpoint is exact literal loopback MCP only', () => {
   assert.equal(companionEndpoint('http://127.0.0.1:12345/mcp'), 'http://127.0.0.1:12345/mcp');
   for (const endpoint of ['http://localhost:12345/mcp', 'https://127.0.0.1:12345/mcp', 'http://127.0.0.1:12345/mcp?q=x',
@@ -95,17 +212,15 @@ test('actual isolated private profile supports immutable no-clobber exports', as
     fs.writeFileSync(path.join(actualRoot, 'commander-binding.json'), JSON.stringify(binding), { flag: 'wx', mode: 0o600 });
     const legacy = path.join(actualRoot, 'commander-companion.json');
     fs.writeFileSync(legacy, 'unknown owned test fixture; do not overwrite', { flag: 'wx', mode: 0o600 });
+    emitFixtureAclDiagnostic(actualRoot, actualRoot, 'BEFORE_BINDING_READ', 'DIRECTORY');
+    emitFixtureAclDiagnostic(actualRoot, path.join(actualRoot, 'commander-binding.json'), 'BEFORE_BINDING_READ', 'BINDING');
     assert.deepEqual(readCompanionBinding(actualRoot).binding, binding);
-    const result = writeCompanionObservation(actualRoot, await snapshot(), {
-      verifyPrivateDirectory: process.platform === 'win32' ? verifyCompanionPrivateDirectory : null,
-      verifyPrivateFile: process.platform === 'win32' ? verifyCompanionPrivateFile : null });
+    const result = writeFixtureObservation(actualRoot, await snapshot());
     assert.equal(result.private, true); assert.equal(result.workflowMutation, false);
     assert.match(path.basename(result.path), /^commander-companion-\d{16}-[a-f0-9-]{36}\.json$/);
     assert.equal(JSON.parse(fs.readFileSync(result.path, 'utf8')).currentChat.state, 'UNKNOWN');
     const original = fs.readFileSync(result.path);
-    const second = writeCompanionObservation(actualRoot, await snapshot(), {
-      verifyPrivateDirectory: process.platform === 'win32' ? verifyCompanionPrivateDirectory : null,
-      verifyPrivateFile: process.platform === 'win32' ? verifyCompanionPrivateFile : null });
+    const second = writeFixtureObservation(actualRoot, await snapshot());
     assert.notEqual(second.path, result.path);
     assert.deepEqual(fs.readFileSync(result.path), original);
     assert.equal(fs.lstatSync(second.path).nlink, 1);
