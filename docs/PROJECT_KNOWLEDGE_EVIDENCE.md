@@ -1609,3 +1609,11 @@ Status: CURRENT benchmark evidence. Reuse targets: roadmap, release planning, pr
 - Failure boundary was exact: the fixture's pre-corruption worker had not reached terminal state before the generic 10-second test wait; failure occurred at about 10.03 seconds before deliberate projection/receipt corruption.
 - The same release code passed local Linux qualification and hosted CI; no production async-operation behavior is changed.
 - Prevention: the single load-sensitive corruption fixture now uses a 30-second elapsed terminal/worker-exit observation window, and generic wait failure diagnostics include last status/worker PID. This remains test-only synchronization.
+
+
+## 2026-10-01 — async live-worker reconciliation invariant
+- Hosted Ubuntu CI on PR #89 head a5ca9d236b46aa5064aab528b217c7d042639ce1 failed the dead-worker exact-receipt regression at about 10.03 seconds: status became UNCERTAIN before the test could observe the worker final receipt.
+- Production root cause: manager deadline is reservation-relative, while worker timeout is start-relative; scheduler delay can therefore make manager reconciliation outrun a live worker.
+- New invariant: a live worker is not downgraded at the reservation deadline while its actual startedAt+timeoutMs+10s finalization window remains open.
+- If startedAt is not yet persisted but the worker PID is alive, a separate bounded 60s scheduling hard guard prevents indefinite masking.
+- Missing worker plus expired deadline behavior is unchanged; it remains fail-closed UNCERTAIN with no automatic replay.

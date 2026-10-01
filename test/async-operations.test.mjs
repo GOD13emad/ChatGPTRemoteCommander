@@ -232,7 +232,7 @@ test('dead-worker reconciliation adopts an exact final receipt instead of overwr
       tool: 'run_project_command',
       arguments: { argv: ['sleep', '40', 'receipt-wins'] }
     });
-    const final = await waitFor(manager, started.operationId);
+    const final = await waitFor(manager, started.operationId, ['SUCCEEDED', 'FAILED', 'TIMED_OUT', 'CANCELLED', 'UNCERTAIN'], 30000);
     assert.equal(final.status, 'SUCCEEDED');
 
     const statePath = path.join(root, 'state', 'operations', started.operationId, 'state.json');
@@ -294,6 +294,46 @@ test('dead PID without receipt stays nonterminal until durable deadline', async 
   }
 });
 
+
+test('reconciliation does not downgrade a live worker whose execution budget started after queue delay', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'rc-async-live-worker-grace-'));
+  const stateDir = path.join(root, 'state');
+  const manager = createAsyncOperationTools({
+    config: { instance: { profile: 'test' }, asyncOperations: { enabled: true, stateDir } },
+    workerPath: worker,
+    prepare: async () => { throw new Error('prepare must not run for status'); }
+  });
+  try {
+    const operationId = randomUUID();
+    const operationDir = path.join(stateDir, 'operations', operationId);
+    await mkdir(operationDir, { recursive: true });
+    const now = Date.now();
+    const state = {
+      schema: 1,
+      operationId,
+      requestId: 'live-worker-grace',
+      correlationId: 'live-worker-grace',
+      inputHash: 'b'.repeat(64),
+      tool: 'run_project_command',
+      status: 'RUNNING',
+      createdAt: new Date(now - 20000).toISOString(),
+      updatedAt: new Date(now - 1000).toISOString(),
+      startedAt: new Date(now - 1000).toISOString(),
+      timeoutMs: 5000,
+      deadlineAt: new Date(now - 10000).toISOString(),
+      workerPid: process.pid,
+      childPid: null,
+      continuation: null
+    };
+    await writeFile(path.join(operationDir, 'state.json'), JSON.stringify(state, null, 2) + '\n', 'utf8');
+    const observed = await manager.execute('operation_status', { operationId });
+    assert.equal(observed.status, 'RUNNING');
+    assert.equal(observed.failureCode, undefined);
+  } finally {
+    await manager.close?.();
+    await rm(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 });
+  }
+});
 
 test('terminal operation receipts backfill exactly once into durable delivery after restart', async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'rc-async-delivery-'));

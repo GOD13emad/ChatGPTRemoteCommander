@@ -73,6 +73,13 @@ The first v0.10.4 clean-Ubuntu server canary completed bootstrap and reached ful
 
 The single load-sensitive fixture now uses a bounded 30-second elapsed wait for terminal state and exact worker exit, while generic timeout diagnostics include the last operation status and worker PID. This is test-only scheduling hardening; production async-operation deadlines, recovery and retry semantics are unchanged.
 
+
+## Async reconciliation deadline race hardening
+
+Hosted Ubuntu qualification exposed a real race between two clocks: manager reservation deadlines begin before worker scheduling, while the operation-worker timeout begins when the child actually starts. Under scheduler load, reconciliation could therefore mark a still-live owned worker UNCERTAIN before that worker had consumed its actual execution budget and written its durable receipt.
+
+v0.10.4 makes live-worker finalization authoritative until the actual worker `startedAt + timeoutMs + 10s` receipt-finalization window closes. If a live worker has not yet persisted `startedAt`, a separate bounded 60-second scheduling hard guard prevents indefinite masking. Missing workers after the deadline remain fail-closed UNCERTAIN and no automatic replay is introduced.
+
 ## Release acceptance
 
 Publication requires all of the following on the exact v0.10.4 candidate:
