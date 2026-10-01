@@ -2,6 +2,7 @@
 
 ## Unreleased — repository audit hardening
 
+- Bound Power Mode file-backup growth: append mutations now create verified truncate-recovery journals instead of full growing-file copies, and file rollback points retain only the newest configurable per-target snapshots (default 8, range 2–64).
 - Harden the concurrency smoke runtime-marker readiness gate after HTTP health; production runtime behavior is unchanged.
 - Apply the existing fail-closed explicit owner runner-policy overlay to named Windows profiles as well as the default profile, preserving routed runtime state while preventing canonical owner runner intent from being lost during candidate migration.
 - Normalize minor tracked-file text hygiene discovered by the full repository audit.
