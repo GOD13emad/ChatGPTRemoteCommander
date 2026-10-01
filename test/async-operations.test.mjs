@@ -14,12 +14,13 @@ const worker = path.join(here, '..', 'tools', 'operation-worker.mjs');
 
 async function waitFor(manager, operationId, terminal = ['SUCCEEDED', 'FAILED', 'TIMED_OUT', 'CANCELLED', 'UNCERTAIN'], timeoutMs = 10000) {
   const deadline = Date.now() + timeoutMs;
+  let lastState = null;
   while (Date.now() < deadline) {
-    const state = await manager.execute('operation_status', { operationId });
-    if (terminal.includes(state.status)) return state;
+    lastState = await manager.execute('operation_status', { operationId });
+    if (terminal.includes(lastState.status)) return lastState;
     await new Promise((resolve) => setTimeout(resolve, 40));
   }
-  throw new Error('operation did not finish');
+  throw new Error(`operation did not finish within ${timeoutMs}ms: status=${lastState?.status ?? 'unknown'} workerPid=${lastState?.workerPid ?? 'unknown'}`);
 }
 
 async function waitForProcessExit(pid, timeoutMs = 10000) {
@@ -231,7 +232,7 @@ test('dead-worker reconciliation adopts an exact final receipt instead of overwr
       tool: 'run_project_command',
       arguments: { argv: ['sleep', '40', 'receipt-wins'] }
     });
-    const final = await waitFor(manager, started.operationId);
+    const final = await waitFor(manager, started.operationId, ['SUCCEEDED', 'FAILED', 'TIMED_OUT', 'CANCELLED', 'UNCERTAIN'], 30000);
     assert.equal(final.status, 'SUCCEEDED');
 
     const statePath = path.join(root, 'state', 'operations', started.operationId, 'state.json');
@@ -293,6 +294,76 @@ test('dead PID without receipt stays nonterminal until durable deadline', async 
   }
 });
 
+
+test('reconciliation does not downgrade a live worker whose execution budget started after queue delay', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'rc-async-live-worker-grace-'));
+  const stateDir = path.join(root, 'state');
+  const manager = createAsyncOperationTools({
+    config: { instance: { profile: 'test' }, asyncOperations: { enabled: true, stateDir } },
+    workerPath: worker,
+    prepare: async () => { throw new Error('prepare must not run for status'); }
+  });
+  try {
+    const operationId = randomUUID();
+    const operationDir = path.join(stateDir, 'operations', operationId);
+    await mkdir(operationDir, { recursive: true });
+    const now = Date.now();
+    const state = {
+      schema: 1,
+      operationId,
+      requestId: 'live-worker-grace',
+      correlationId: 'live-worker-grace',
+      inputHash: 'b'.repeat(64),
+      tool: 'run_project_command',
+      status: 'RUNNING',
+      createdAt: new Date(now - 20000).toISOString(),
+      updatedAt: new Date(now - 1000).toISOString(),
+      startedAt: new Date(now - 1000).toISOString(),
+      timeoutMs: 5000,
+      deadlineAt: new Date(now - 10000).toISOString(),
+      workerPid: process.pid,
+      childPid: null,
+      continuation: null
+    };
+    await writeFile(path.join(operationDir, 'state.json'), JSON.stringify(state, null, 2) + '\n', 'utf8');
+    const observed = await manager.execute('operation_status', { operationId });
+    assert.equal(observed.status, 'RUNNING');
+    assert.equal(observed.failureCode, undefined);
+  } finally {
+    await manager.close?.();
+    await rm(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 });
+  }
+});
+
+test('reconciliation fail-closes a still-live worker after the bounded finalization hard deadline', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'rc-async-live-worker-hard-deadline-'));
+  const stateDir = path.join(root, 'state');
+  const manager = createAsyncOperationTools({
+    config: { instance: { profile: 'test' }, asyncOperations: { enabled: true, stateDir } },
+    workerPath: worker,
+    prepare: async () => { throw new Error('prepare must not run for status'); }
+  });
+  try {
+    const operationId = randomUUID();
+    const operationDir = path.join(stateDir, 'operations', operationId);
+    await mkdir(operationDir, { recursive: true });
+    const now = Date.now();
+    const state = {
+      schema: 1, operationId, requestId: 'live-worker-hard-deadline', correlationId: 'live-worker-hard-deadline',
+      inputHash: 'c'.repeat(64), tool: 'run_project_command', status: 'RUNNING',
+      createdAt: new Date(now - 120000).toISOString(), updatedAt: new Date(now - 120000).toISOString(),
+      startedAt: new Date(now - 120000).toISOString(), timeoutMs: 5000,
+      deadlineAt: new Date(now - 110000).toISOString(), workerPid: process.pid, childPid: null, continuation: null
+    };
+    await writeFile(path.join(operationDir, 'state.json'), JSON.stringify(state, null, 2) + '\n', 'utf8');
+    const observed = await manager.execute('operation_status', { operationId });
+    assert.equal(observed.status, 'UNCERTAIN');
+    assert.equal(observed.failureCode, 'DEADLINE_EXCEEDED_WITHOUT_FINAL_RECEIPT');
+  } finally {
+    await manager.close?.();
+    await rm(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 });
+  }
+});
 
 test('terminal operation receipts backfill exactly once into durable delivery after restart', async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'rc-async-delivery-'));
@@ -419,8 +490,8 @@ test('corrupt terminal projection is not repaired when receipt and reservation h
       requestId: 'corrupt-mismatch-request-1', correlationId: 'chat-corrupt-mismatch',
       tool: 'run_project_command', arguments: { argv: ['done'] }
     });
-    const terminal = await waitFor(first, started.operationId);
-    await waitForProcessExit(terminal.workerPid);
+    const terminal = await waitFor(first, started.operationId, ['SUCCEEDED', 'FAILED', 'TIMED_OUT', 'CANCELLED', 'UNCERTAIN'], 30000);
+    await waitForProcessExit(terminal.workerPid, 30000);
     await first.close?.();
     first = null;
 

@@ -8,6 +8,8 @@ import { mkdir, open, readFile, readdir, realpath, rename, stat, writeFile } fro
 import { expandPathValue } from './platform.mjs';
 
 const TERMINAL = new Set(['SUCCEEDED', 'FAILED', 'TIMED_OUT', 'CANCELLED', 'UNCERTAIN']);
+const WORKER_FINALIZATION_GRACE_MS = 10000;
+const WORKER_SCHEDULING_HARD_GRACE_MS = 60000;
 const REQUEST_RE = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const OP_RE = /^[a-f0-9-]{36}$/;
 
@@ -510,18 +512,43 @@ export function createAsyncOperationTools({ config, prepare, workerPath, deliver
     if (TERMINAL.has(state.status)) return attachDelivery(state);
 
     if (reconcile) {
-      const deadlineExpired = typeof state.deadlineAt === 'string'
-        && Number.isFinite(Date.parse(state.deadlineAt))
-        && Date.now() > Date.parse(state.deadlineAt) + 5000;
-      const workerMissing = state.workerPid && !alive(state.workerPid);
+      const now = Date.now();
+      const deadlineAtMs = typeof state.deadlineAt === 'string' ? Date.parse(state.deadlineAt) : NaN;
+      const deadlineExpired = Number.isFinite(deadlineAtMs) && now > deadlineAtMs + 5000;
+      const workerPid = Number(state.workerPid);
+      const workerPidValid = Number.isSafeInteger(workerPid) && workerPid > 0;
+      const workerAlive = workerPidValid && alive(workerPid);
+      const workerMissing = workerPidValid && !workerAlive;
       if (deadlineExpired || workerMissing) {
         const latest = await readJson(p.state);
         const receipt = await exactReceipt(latest);
         if (receipt) return attachDelivery(await adoptReceipt(latest, receipt));
         if (TERMINAL.has(latest.status)) return attachDelivery(latest);
-        // PID liveness is only a hint. Without a durable receipt, do not invent
-        // failure before the operation deadline and never replay the effect.
-        if (!deadlineExpired) return latest;
+
+        const latestNow = Date.now();
+        const latestDeadlineAtMs = typeof latest.deadlineAt === 'string' ? Date.parse(latest.deadlineAt) : NaN;
+        const latestDeadlineExpired = Number.isFinite(latestDeadlineAtMs)
+          && latestNow > latestDeadlineAtMs + 5000;
+        if (!latestDeadlineExpired) return latest;
+
+        const latestWorkerPid = Number(latest.workerPid);
+        const latestWorkerPidValid = Number.isSafeInteger(latestWorkerPid) && latestWorkerPid > 0;
+        const latestWorkerAlive = latestWorkerPidValid && alive(latestWorkerPid);
+        if (latestWorkerAlive) {
+          const startedAtMs = typeof latest.startedAt === 'string' ? Date.parse(latest.startedAt) : NaN;
+          const timeoutMs = Number(latest.timeoutMs);
+          const timeoutValid = Number.isSafeInteger(timeoutMs) && timeoutMs >= 1000;
+          const createdAtMs = typeof latest.createdAt === 'string' ? Date.parse(latest.createdAt) : NaN;
+          const liveWorkerHardDeadline = Number.isFinite(startedAtMs) && timeoutValid
+            ? startedAtMs + timeoutMs + WORKER_FINALIZATION_GRACE_MS
+            : Number.isFinite(createdAtMs) && timeoutValid
+              ? createdAtMs + timeoutMs + WORKER_SCHEDULING_HARD_GRACE_MS
+              : NaN;
+          if (!Number.isFinite(liveWorkerHardDeadline) || latestNow <= liveWorkerHardDeadline) {
+            return latest;
+          }
+        }
+
         state = {
           ...latest,
           status: 'UNCERTAIN',
@@ -532,6 +559,7 @@ export function createAsyncOperationTools({ config, prepare, workerPath, deliver
         return attachDelivery(state);
       }
     }
+
     return state;
   }
 

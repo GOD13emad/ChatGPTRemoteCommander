@@ -1594,3 +1594,36 @@ Status: CURRENT benchmark evidence. Reuse targets: roadmap, release planning, pr
 - Fresh Linux clone reported exactly two modified paths immediately after checkout: autostart-windows.ps1 and windows-supervisor-runtime.ps1.
 - git add --renormalize . identified exactly those two paths; git diff --ignore-space-at-eol was empty.
 - Corrective invariant: Git stores canonical LF for both blobs; checkout line endings remain governed by .gitattributes, eliminating dirty-clone drift without changing PowerShell semantics.
+
+## 2026-10-01 — v0.10.4 release-preparation evidence
+
+- Release base: main eaba1122db96f7a47172ee0c1cc5ad96c7840b0e.
+- Release reason: main contains accepted post-v0.10.3 runtime/storage hardening and must not continue to advertise package/runtime identity 0.10.3.
+- Version projections promoted together: package.json, both Plugin manifests, server runtime constant, onboarding version guard and release-asset contract.
+- Unreleased changelog promoted to 0.10.4 dated 2026-10-01 and docs/RELEASE_0.10.4.md created.
+- Publication is not accepted until exact-candidate Linux/Windows qualification, hosted CI, server-install canaries, asset checksum verification, immutable tag/release and live rollout all pass.
+
+
+## 2026-10-01 — v0.10.4 Linux server-canary timing hardening
+- PR #89 exact head 8ef7ad3a799c3dc17493d47388e8d391b35fda35: hosted CI PASS and Windows Server canary PASS; clean-Ubuntu server canary reached full test qualification and failed only the corrupt-terminal-projection hash-mismatch regression.
+- Failure boundary was exact: the fixture's pre-corruption worker had not reached terminal state before the generic 10-second test wait; failure occurred at about 10.03 seconds before deliberate projection/receipt corruption.
+- The same release code passed local Linux qualification and hosted CI; no production async-operation behavior is changed.
+- Prevention: the single load-sensitive corruption fixture now uses a 30-second elapsed terminal/worker-exit observation window, and generic wait failure diagnostics include last status/worker PID. This remains test-only synchronization.
+
+
+## 2026-10-01 — async live-worker reconciliation invariant
+- Hosted Ubuntu CI on PR #89 head a5ca9d236b46aa5064aab528b217c7d042639ce1 failed the dead-worker exact-receipt regression at about 10.03 seconds: status became UNCERTAIN before the test could observe the worker final receipt.
+- Production root cause: manager deadline is reservation-relative, while worker timeout is start-relative; scheduler delay can therefore make manager reconciliation outrun a live worker.
+- New invariant: a live worker is not downgraded at the reservation deadline while its actual startedAt+timeoutMs+10s finalization window remains open.
+- If startedAt is not yet persisted but the worker PID is alive, a separate bounded 60s scheduling hard guard prevents indefinite masking.
+- Missing worker plus expired deadline behavior is unchanged; it remains fail-closed UNCERTAIN with no automatic replay.
+
+
+## 2026-10-01 — PR #89 Windows qualification closure
+
+- Exact failing head: 43f4b70f7d51e452fb861a235a6ba1685152b720.
+- Ubuntu CI: PASS. Windows check qualification: one failure, inherited-stdio holder PID marker read as empty/invalid before the semantic operation assertion.
+- Root cause: readiness helper checked path existence only while fixture used asynchronous direct-to-final-path write; creation visibility can precede readable payload bytes.
+- Prevention: fixture publishes the PID marker via completed temporary write plus atomic rename. No production async behavior is changed by this fixture fix.
+- Production async live-worker grace remains separately bounded and now has both positive (do not downgrade within actual worker budget) and negative (fail closed after hard finalization deadline) regression coverage.
+- Release identity projections are complete across package/runtime/plugins/public installers/installer contract/release contract/final-gate log.

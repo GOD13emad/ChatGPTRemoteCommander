@@ -453,3 +453,20 @@ Acceptance regression forces multiple rotations while one child PID stays alive,
 ## 2026-10-01 — post-PR87 Git normalization gate
 
 Fresh Linux checkout of main 219f101291ada1488f6f961e3844b94326770474 exposed a repository hygiene defect: autostart-windows.ps1 and windows-supervisor-runtime.ps1 were stored as CRLF bytes inside their Git blobs while .gitattributes already defines the PowerShell text/eol checkout policy. git add --renormalize . identified exactly those two files, and git diff --ignore-space-at-eol proved semantic content was unchanged. The corrective candidate stores canonical LF blobs while preserving checkout behavior through .gitattributes.
+
+## 2026-10-01 — v0.10.4 release preparation
+
+The post-v0.10.3 maintenance line is intentionally promoted to v0.10.4 rather than leaving main with package identity 0.10.3 plus unreleased runtime/storage changes. Exact release-preparation base is main eaba1122db96f7a47172ee0c1cc5ad96c7840b0e. Release scope is backward-compatible hardening: runtime-marker readiness guard, named-profile owner-policy overlay, bounded Power Mode backup recovery/retention, identity-safe delivery artifact compaction, zero-interruption Commander-owned tunnel log rotation, and canonical Git storage for Windows PowerShell blobs. Production remains v0.10.3 until exact v0.10.4 candidate qualification, hosted CI/canaries, immutable publication and live rollout all pass.
+
+
+## 2026-10-01 — v0.10.4 clean-Ubuntu canary timing blocker
+PR #89 head 8ef7ad3a799c3dc17493d47388e8d391b35fda35 had hosted CI PASS and Windows Server canary PASS. Clean-Ubuntu server canary bootstrapped successfully but one async corruption regression exhausted a generic 10-second pre-corruption terminal wait at about 10.03 seconds. Correction is test-only: that fixture now uses a bounded 30-second terminal/worker-exit window plus last-status/worker diagnostics. Production async operation behavior is unchanged.
+
+
+## 2026-10-01 — async reconciliation deadline race found by v0.10.4 hosted CI
+Updated PR #89 exposed a second 10-second hosted-runner boundary: manager reconciliation could mark an operation UNCERTAIN after reservation deadline+5s even while the owned worker PID was still alive and had only recently begun its own timeout budget. Root cause is mixed clocks: reservation deadline begins before worker scheduling; operation-worker timeout begins at actual child start. Correction makes live-worker finalization authoritative until startedAt+timeoutMs+10s receipt grace, with a bounded 60s scheduling hard guard when startedAt has not yet been persisted. Missing workers after deadline remain UNCERTAIN and no replay is introduced.
+
+
+## 2026-10-01 — v0.10.4 Windows hosted fixture and release identity closure
+
+PR #89 head 43f4b70f7d51e452fb861a235a6ba1685152b720 passed Ubuntu CI but Windows qualification failed before the inherited-stdio semantic assertion because the holder PID marker path became visible before its asynchronous write bytes were readable. Correction is fixture-only: write PID bytes to a unique temporary file and atomically rename to the ready path. The same change-set completes the four release projections that still referenced v0.10.3 (Windows/Linux public installer defaults, installer contract expectations and final-gate log identity). A second async reconciliation regression proves the new live-worker grace cannot mask a worker forever: once startedAt+timeout+finalization grace is exceeded, status fail-closes to UNCERTAIN without replay.
