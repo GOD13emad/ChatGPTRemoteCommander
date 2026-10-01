@@ -14,12 +14,13 @@ const worker = path.join(here, '..', 'tools', 'operation-worker.mjs');
 
 async function waitFor(manager, operationId, terminal = ['SUCCEEDED', 'FAILED', 'TIMED_OUT', 'CANCELLED', 'UNCERTAIN'], timeoutMs = 10000) {
   const deadline = Date.now() + timeoutMs;
+  let lastState = null;
   while (Date.now() < deadline) {
-    const state = await manager.execute('operation_status', { operationId });
-    if (terminal.includes(state.status)) return state;
+    lastState = await manager.execute('operation_status', { operationId });
+    if (terminal.includes(lastState.status)) return lastState;
     await new Promise((resolve) => setTimeout(resolve, 40));
   }
-  throw new Error('operation did not finish');
+  throw new Error(`operation did not finish within ${timeoutMs}ms: status=${lastState?.status ?? 'unknown'} workerPid=${lastState?.workerPid ?? 'unknown'}`);
 }
 
 async function waitForProcessExit(pid, timeoutMs = 10000) {
@@ -419,8 +420,8 @@ test('corrupt terminal projection is not repaired when receipt and reservation h
       requestId: 'corrupt-mismatch-request-1', correlationId: 'chat-corrupt-mismatch',
       tool: 'run_project_command', arguments: { argv: ['done'] }
     });
-    const terminal = await waitFor(first, started.operationId);
-    await waitForProcessExit(terminal.workerPid);
+    const terminal = await waitFor(first, started.operationId, ['SUCCEEDED', 'FAILED', 'TIMED_OUT', 'CANCELLED', 'UNCERTAIN'], 30000);
+    await waitForProcessExit(terminal.workerPid, 30000);
     await first.close?.();
     first = null;
 

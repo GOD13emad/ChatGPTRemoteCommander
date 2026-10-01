@@ -1602,3 +1602,10 @@ Status: CURRENT benchmark evidence. Reuse targets: roadmap, release planning, pr
 - Version projections promoted together: package.json, both Plugin manifests, server runtime constant, onboarding version guard and release-asset contract.
 - Unreleased changelog promoted to 0.10.4 dated 2026-10-01 and docs/RELEASE_0.10.4.md created.
 - Publication is not accepted until exact-candidate Linux/Windows qualification, hosted CI, server-install canaries, asset checksum verification, immutable tag/release and live rollout all pass.
+
+
+## 2026-10-01 — v0.10.4 Linux server-canary timing hardening
+- PR #89 exact head 8ef7ad3a799c3dc17493d47388e8d391b35fda35: hosted CI PASS and Windows Server canary PASS; clean-Ubuntu server canary reached full test qualification and failed only the corrupt-terminal-projection hash-mismatch regression.
+- Failure boundary was exact: the fixture's pre-corruption worker had not reached terminal state before the generic 10-second test wait; failure occurred at about 10.03 seconds before deliberate projection/receipt corruption.
+- The same release code passed local Linux qualification and hosted CI; no production async-operation behavior is changed.
+- Prevention: the single load-sensitive corruption fixture now uses a 30-second elapsed terminal/worker-exit observation window, and generic wait failure diagnostics include last status/worker PID. This remains test-only synchronization.

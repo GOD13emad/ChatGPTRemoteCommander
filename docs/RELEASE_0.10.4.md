@@ -67,6 +67,12 @@ Accepted local/hosted evidence accumulated on exact maintenance heads before ver
 - hosted Windows and Ubuntu CI PASS for the normalized candidate;
 - PR #87 exact-head hosted CI and Server Install Canary PASS.
 
+## Clean-Ubuntu canary timing hardening
+
+The first v0.10.4 clean-Ubuntu server canary completed bootstrap and reached full qualification, but one async-operation corruption regression hit its generic 10-second pre-corruption terminal wait at about 10.03 seconds under container load. Windows Server canary and hosted Windows/Ubuntu CI passed the same candidate, and the failure occurred before the test deliberately corrupted any projection/receipt.
+
+The single load-sensitive fixture now uses a bounded 30-second elapsed wait for terminal state and exact worker exit, while generic timeout diagnostics include the last operation status and worker PID. This is test-only scheduling hardening; production async-operation deadlines, recovery and retry semantics are unchanged.
+
 ## Release acceptance
 
 Publication requires all of the following on the exact v0.10.4 candidate:
