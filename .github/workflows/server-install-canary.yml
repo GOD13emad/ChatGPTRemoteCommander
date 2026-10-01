@@ -1,4 +1,5 @@
 name: Server Install Canary
+# v0.10.4 final exact-tree canary trigger; no runtime semantics.
 
 on:
   pull_request:
