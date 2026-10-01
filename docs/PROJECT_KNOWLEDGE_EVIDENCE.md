@@ -1627,3 +1627,13 @@ Status: CURRENT benchmark evidence. Reuse targets: roadmap, release planning, pr
 - Prevention: fixture publishes the PID marker via completed temporary write plus atomic rename. No production async behavior is changed by this fixture fix.
 - Production async live-worker grace remains separately bounded and now has both positive (do not downgrade within actual worker budget) and negative (fail closed after hard finalization deadline) regression coverage.
 - Release identity projections are complete across package/runtime/plugins/public installers/installer contract/release contract/final-gate log.
+
+
+## 2026-10-01 — final hosted qualification determinism evidence
+
+- PR #89 exact head and merge commit share the same tree `7988c877aa2b3d935483e0df6f5cc81c7d24ba56`.
+- PR #89 exact head: hosted Windows CI PASS, Ubuntu CI PASS, Windows Server Canary PASS, clean Linux Server Canary PASS.
+- Post-merge main Windows check under grouped file concurrency produced tunnel-log/workflow fixture failures; focused exact-main Windows reruns passed tunnel-log 12/12 and workflow-http 8/8.
+- Publication-helper rerun exposed a separate async-operation 10-second observation boundary under hosted Ubuntu load.
+- Final harness invariant: workflow-http, async-operations and tunnel-log-rotation each run as isolated test-file commands in check/test qualification; affected fixture observation waits are 30 seconds.
+- No production source or runtime deadline is changed by this harness closure.

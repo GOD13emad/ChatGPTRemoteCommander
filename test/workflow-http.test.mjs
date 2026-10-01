@@ -25,7 +25,7 @@ async function fixture(enabled){
   const deadline=Date.now()+30000;while(Date.now()<deadline){if(child.exitCode!==null)throw Error(output);try{const r=await fetch(`http://127.0.0.1:${p}/health`,{signal:AbortSignal.timeout(500)});const b=await r.json();assert.equal(b.configSha256,expectedHash);return;}catch(e){if(e.code==='ERR_ASSERTION')throw e;}await pause(50);}throw Error('health timeout '+output);
  };
  const stop=async()=>{if(child&&child.exitCode===null){const closed=once(child,'close');child.kill();await closed;}};
- const rpc=async(name,args={})=>{const r=await fetch(`http://127.0.0.1:${p}/mcp`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/call',params:{name,arguments:args}}),signal:AbortSignal.timeout(10000)});return r.json();};
+ const rpc=async(name,args={})=>{const r=await fetch(`http://127.0.0.1:${p}/mcp`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/call',params:{name,arguments:args}}),signal:AbortSignal.timeout(30000)});return r.json();};
  const invoke=async(name,args)=>{const r=await rpc(name,args);assert.ok(!r.error,JSON.stringify(r));assert.equal(r.result.isError,false,JSON.stringify(r));return r.result.structuredContent;};
  return {root,project,p,config,invoke,rpc,start,stop,async dispose(){await stop();fs.rmSync(root,{recursive:true,force:true,maxRetries:20,retryDelay:50});}};
 }

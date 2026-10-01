@@ -80,6 +80,12 @@ Hosted Ubuntu qualification exposed a real race between two clocks: manager rese
 
 v0.10.4 makes live-worker finalization authoritative until the actual worker `startedAt + timeoutMs + 10s` receipt-finalization window closes. If a live worker has not yet persisted `startedAt`, a separate bounded 60-second scheduling hard guard prevents indefinite masking. Missing workers after the deadline remain fail-closed UNCERTAIN and no automatic replay is introduced.
 
+## Qualification harness determinism closure
+
+Final post-merge CI found hosted-runner scheduling/resource pressure rather than a production regression: tunnel-log rotation and workflow/async restart fixtures passed repeatedly in isolation but could hit native-process or 10-second observation boundaries when executed inside the large file-concurrent qualification batch.
+
+v0.10.4 qualification now runs `workflow-http`, `async-operations`, and `tunnel-log-rotation` as isolated test-file commands while retaining the global Windows file-concurrency bound for the remaining suite. Test observation waits are 30 seconds for the affected fixtures; production operation deadlines, tunnel behavior, durable workflow semantics and recovery budgets are unchanged. A regression contract locks these files to isolated qualification execution.
+
 ## Release acceptance
 
 Publication requires all of the following on the exact v0.10.4 candidate:
