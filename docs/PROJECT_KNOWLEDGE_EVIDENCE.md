@@ -1637,3 +1637,11 @@ Status: CURRENT benchmark evidence. Reuse targets: roadmap, release planning, pr
 - Publication-helper rerun exposed a separate async-operation 10-second observation boundary under hosted Ubuntu load.
 - Final harness invariant: workflow-http, async-operations and tunnel-log-rotation each run as isolated test-file commands in check/test qualification; affected fixture observation waits are 30 seconds.
 - No production source or runtime deadline is changed by this harness closure.
+
+
+## 2026-10-01 — hosted Windows OOM ordering evidence
+
+- main 2321b887b15b22733a3d2f4a092ad7620bf49290: Ubuntu CI PASS; Windows check PASS; Windows test qualification failed only in the final isolated tunnel-log-rotation command.
+- Failure signature: Array buffer allocation failed followed by Node heap OOM in a fixture that allocates sub-megabyte buffers; no production assertion failed beforehand.
+- Existing isolation alone was insufficient because the sensitive files still ran after the large batch.
+- Candidate guard: hosted Windows CI passes --prioritize-sensitive=1 to the bounded qualification wrapper. The wrapper reorders only the three explicitly isolated fixture commands before the bulk batch; it does not alter production code, package scripts, installer/update qualification concurrency, assertions, or runtime deadlines.
