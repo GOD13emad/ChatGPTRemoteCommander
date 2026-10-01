@@ -1,0 +1,40 @@
+name: Publish v0.10.4 tag once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/release-v0.10.4-once.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  tag-qualified-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Create exact qualified v0.10.4 annotated tag
+        shell: bash
+        env:
+          TARGET_COMMIT: 5511473253f9bb71922b337576c7279b88e66fee
+          RELEASE_TAG: v0.10.4
+        run: |
+          set -euo pipefail
+          git fetch --force --tags origin
+          test "$(git show "$TARGET_COMMIT:package.json" | node -e "let s='';process.stdin.on('data',c=>s+=c).on('end',()=>process.stdout.write(JSON.parse(s).version))")" = "0.10.4"
+          git cat-file -e "$TARGET_COMMIT:docs/RELEASE_0.10.4.md"
+          if git show-ref --verify --quiet "refs/tags/$RELEASE_TAG"; then
+            peeled="$(git rev-parse "$RELEASE_TAG^{}")"
+            test "$peeled" = "$TARGET_COMMIT"
+            echo "TAG_ALREADY_CORRECT tag=$RELEASE_TAG target=$peeled"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$RELEASE_TAG" "$TARGET_COMMIT" -m "Remote Commander v0.10.4"
+          test "$(git rev-parse "$RELEASE_TAG^{}")" = "$TARGET_COMMIT"
+          git push origin "refs/tags/$RELEASE_TAG"
+          echo "TAG_CREATED tag=$RELEASE_TAG target=$TARGET_COMMIT"
