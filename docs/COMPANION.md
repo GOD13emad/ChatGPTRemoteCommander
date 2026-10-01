@@ -88,6 +88,28 @@ No model was downloaded or executed by this candidate's qualification tests.
 Actual offline inference, model quality and hardware performance remain separate
 acceptance gates.
 
+## Bounded child completion observation
+
+The candidate also closes an observation gap in detached process operations:
+stdout/stderr and terminal-event listeners are installed synchronously after
+spawn, before awaiting the RUNNING state projection. A fast child outcome is
+cached while persistence is in progress; a spawn error is not an early rejected
+promise. Exit stops execution/cancellation timers, while close confirms complete
+stdio. Descendant-held pipes retain the existing two-second drain bound and can
+produce `outputComplete: false`; this is not proof that every descendant stopped.
+
+Timeout/cancellation signals only the captured, still-unfinished owned child.
+An unobserved termination fails closed as UNCERTAIN through the existing recovery
+path. Durable result receipts still precede terminal state projection; this does
+not add effect retry, state CAS, arbitrary filesystem-hang recovery, or authority
+to continue a real chat. Pure event-ordering tests and isolated operation fixtures
+cover these distinctions. Historical CI failures require their own evidence;
+passing a new test does not establish the cause of an earlier failure.
+
+Windows admission tests additionally emit redacted, read-only owner/ACL
+diagnostics. They do not relax production privacy checks, expose SIDs or paths,
+change user ACLs, or treat a helper process's token as proof of its parent token.
+
 ## Verification and remaining gates
 
 Run `npm test` and `npm run audit` in an isolated source checkout. New tests
