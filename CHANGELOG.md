@@ -2,6 +2,7 @@
 
 ## Unreleased — repository audit hardening
 
+- Normalize Windows supervisor PowerShell blobs to canonical LF in Git while retaining CRLF checkout policy via .gitattributes, preventing fresh Linux clones from appearing dirty after checkout.
 - Bound tunnel log growth without restarting live tunnel connections: tunnel-client now logs to stdout under a Commander-owned rotating logger (8 MiB current file + 3 gzip archives) with atomic machine-readable rotation status and bounded legacy-tail migration.
 - Add identity-safe durable delivery artifact compaction: verified gzip archives preserve content hashes and unread delivery state, never synthesize acknowledgement, and expose storage/oldest-pending metrics.
 - Bound Power Mode file-backup growth: append mutations now create verified truncate-recovery journals instead of full growing-file copies, and file rollback points retain only the newest configurable per-target snapshots (default 8, range 2–64).
