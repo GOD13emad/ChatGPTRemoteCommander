@@ -30,8 +30,10 @@ test('qualification paths bound full test file concurrency',()=>{
   assert.equal(pkg.scripts['test:qualification'],'node tools/run-bounded-test-script.mjs --script test --concurrency 2');
   const workflow=read('.github/workflows/ci.yml');
   assert.ok(workflow.includes("if: runner.os == 'Windows'"));
-  assert.ok(workflow.includes('run: npm run check:qualification'));
-  assert.ok(workflow.includes('run: npm run test:qualification'));
+  assert.ok(workflow.includes('run: node tools/run-bounded-test-script.mjs --script check --concurrency 1'));
+  assert.equal(workflow.includes('run: npm run check:qualification'),false);
+  assert.ok(workflow.includes('run: node tools/run-bounded-test-script.mjs --script test --concurrency 1'));
+  assert.equal(workflow.includes('run: npm run test:qualification'),false);
   assert.ok(workflow.includes("if: runner.os != 'Windows'"));
   assert.ok(workflow.includes('run: npm run check'));
   assert.ok(workflow.includes('run: npm test'));
