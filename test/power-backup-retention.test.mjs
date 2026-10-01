@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import os from 'node:os';
 import path from 'node:path';
 import fs from 'node:fs';
-import { mkdtemp, readFile, readdir, rm, truncate, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, readdir, realpath, rm, truncate, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { powerStatus, writeAnyFile } from '../src/power-tools-v0.3.mjs';
 
@@ -73,7 +73,7 @@ test('Power Mode append recovery is compact, bounded and rollback-verifiable', a
 
   const journal = JSON.parse(await readFile(latest.backupPath, 'utf8'));
   assert.equal(journal.kind, 'append-truncate-recovery');
-  assert.equal(journal.target, path.resolve(target));
+  assert.equal(journal.target, await realpath(target));
   assert.equal(journal.beforeSha256, latest.beforeSha256);
   await truncate(target, journal.beforeBytes);
   const rolledBack = await readFile(target);
