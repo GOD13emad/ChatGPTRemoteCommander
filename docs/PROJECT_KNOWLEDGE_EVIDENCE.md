@@ -1574,3 +1574,13 @@ Status: CURRENT benchmark evidence. Reuse targets: roadmap, release planning, pr
 - Archive integrity is bound to the original content SHA-256 and byte length before plain data is removed.
 - Read path transparently reconstructs archived bytes under the existing delivery/correlation identity check.
 - Candidate selection excludes live DELIVERY_PENDING, DEAD_LETTER, and unresolved/non-COMPLETED kinds.
+
+
+## 2026-10-01 — issue #83 tunnel-log rotation evidence
+
+- Upstream capability verified from pinned tunnel-client v0.0.15: `--log.file` defaults to stdout and accepts explicit `stdout`.
+- Safety design: tunnel-client does not own the rolling file; Commander wrapper owns the file, so rotation does not mutate a file descriptor held by the live tunnel process.
+- Bound: current log <= 8 MiB; at most 3 gzip archives; legacy oversize migration preserves only the newest bounded diagnostic tail.
+- Machine-readable status: `tunnel-<profile>.log.rotation.json` records active state, child PID, current bytes, limits, archive count, rotation count/time and terminal reason.
+- Credential boundary: wrapper receives the existing process environment only long enough to spawn the tunnel child, then removes CONTROL_PLANE_API_KEY and OPENAI_API_KEY from its own environment copy. No secret is written to status.
+- Regression: forced multi-rotation test reconstructs the exact complete stdout+stderr byte stream without child restart; Linux and Windows launch contracts use `--log.file stdout`.

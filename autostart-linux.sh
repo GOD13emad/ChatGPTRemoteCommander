@@ -165,15 +165,17 @@ stop_owned_profile_tunnels() {
 
 STARTED_TUNNEL_PID=""
 launch_tunnel_with_exe() {
-  local profile="$1" cred="$2" exe="$3" log_file
+  local profile="$1" cred="$2" exe="$3" log_file status_file runner
   [[ -f "$cred" ]] || return 1
   [[ -x "$exe" ]] || return 1
   chmod 600 "$cred" 2>/dev/null || true
   log_file="$VAR_DIR/tunnel-$(safe_profile "$profile").log"
-  env -u OPENAI_API_KEY CONTROL_PLANE_API_KEY="$(cat "$cred")" \
-    nohup "$exe" run --profile "$profile" --profile-dir "$PROFILE_DIR" --log.file "$log_file" >/dev/null 2>&1 &
+  status_file="$VAR_DIR/tunnel-$(safe_profile "$profile").log.rotation.json"
+  runner="$ROOT/tools/tunnel-log-runner.mjs"
+  [[ -f "$runner" ]] || { log "TUNNEL_LOG_RUNNER_MISSING profile=$profile"; return 1; }
+  env -u OPENAI_API_KEY CONTROL_PLANE_API_KEY="$(cat "$cred")"     nohup node "$runner"       --log-file "$log_file"       --status-file "$status_file"       --max-bytes 8388608       --max-files 3       -- "$exe" run --profile "$profile" --profile-dir "$PROFILE_DIR" --log.file stdout >/dev/null 2>&1 &
   STARTED_TUNNEL_PID=$!
-  log "TUNNEL_STARTED profile=$profile pid=$STARTED_TUNNEL_PID exe=$exe"
+  log "TUNNEL_STARTED profile=$profile pid=$STARTED_TUNNEL_PID exe=$exe logRotation=8MiB/3"
 }
 
 wait_tunnel_ready() {

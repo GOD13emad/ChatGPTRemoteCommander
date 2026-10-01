@@ -32,6 +32,11 @@ test('linux tunnel supervisor never self-stops its own service and scopes recycl
   assert.match(s,/commands_poll_last_successful_timestamp_seconds/);
   assert.match(s,/TUNNEL_CONTROL_PLANE_STALE/);
   assert.match(s,/REMOTE_COMMANDER_TUNNEL_STALE_SECONDS/);
+  assert.match(s,/tools\/tunnel-log-runner[.]mjs/);
+  assert.match(s,/--log[.]file stdout/);
+  assert.match(s,/--max-bytes 8388608/);
+  assert.match(s,/--max-files 3/);
+  assert.match(s,/log[.]rotation[.]json/);
   const enroll=read('enable-autostart-linux.sh');
   assert.ok(enroll.includes('^tunnel_[0-9a-f]{32}$'),'Linux enrollment must enforce the official tunnel ID format');
 });

@@ -229,22 +229,11 @@ function Start-TunnelProfile($Item) {
     }
 
     $log = Join-Path $VarDir ("tunnel-{0}.log" -f $Item.Profile)
-    $psi = [Diagnostics.ProcessStartInfo]::new()
-    $psi.FileName = $exe
-    $psi.WorkingDirectory = $Root
-    $psi.UseShellExecute = $false
-    $psi.CreateNoWindow = $true
-    [void]$psi.ArgumentList.Add('run')
-    [void]$psi.ArgumentList.Add('--profile')
-    [void]$psi.ArgumentList.Add($Item.Profile)
-    [void]$psi.ArgumentList.Add('--profile-dir')
-    [void]$psi.ArgumentList.Add($ProfileDir)
-    [void]$psi.ArgumentList.Add('--log.file')
-    [void]$psi.ArgumentList.Add($log)
-    $psi.Environment['CONTROL_PLANE_API_KEY'] = $plain
-    [void]$psi.Environment.Remove('OPENAI_API_KEY')
+    $rotationStatus = Join-Path $VarDir ("tunnel-{0}.log.rotation.json" -f $Item.Profile)
+    $runner = Join-Path $Root 'tools\tunnel-log-runner.mjs'
+    $node = if ($NodePath) { [IO.Path]::GetFullPath($NodePath) } else { (Get-Command node.exe -ErrorAction Stop).Source }
+    $process = Start-RcTunnelWithRotatingLog $node $runner $exe $Root $Item.Profile $ProfileDir $log $rotationStatus $plain
 
-    $process = [Diagnostics.Process]::Start($psi)
     $ready = $false
     foreach ($i in 1..40) {
       Start-Sleep -Milliseconds 500
@@ -258,13 +247,17 @@ function Start-TunnelProfile($Item) {
     }
 
     if (-not $ready) {
+      $ownedTunnel = Get-TunnelProcess $Item.Profile $exe
+      if ($ownedTunnel) {
+        Stop-Process -Id ([int]$ownedTunnel.ProcessId) -Force -ErrorAction SilentlyContinue
+      }
       if (-not $process.HasExited) {
         Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
       }
       throw "tunnel readiness failed for profile $($Item.Profile)"
     }
 
-    Write-SupervisorLog "TUNNEL_READY profile=$($Item.Profile) pid=$($process.Id) port=$($Item.HealthPort)"
+    Write-SupervisorLog "TUNNEL_READY profile=$($Item.Profile) pid=$($process.Id) port=$($Item.HealthPort) logRotation=8MiB/3"
   } finally {
     $plain = $null
   }

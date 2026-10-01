@@ -53,11 +53,14 @@ hasAll(supervisor, [
   "ExecutablePath",
   "TUNNEL_READY",
   "Test-TunnelReady",
-  "ArgumentList.Add('--profile-dir')",
-  "ArgumentList.Add($ProfileDir)",
   "supervisor-routing.ps1",
   "Ensure-RoutedProfile",
-  "Start-AutoUpdateIfDue"
+  "Start-AutoUpdateIfDue",
+  "tunnel-log-runner.mjs",
+  "tunnel-{0}.log.rotation.json",
+  "Start-RcTunnelWithRotatingLog",
+  "Stop-Process -Id ([int]$ownedTunnel.ProcessId)",
+  "logRotation=8MiB/3"
 ], 'autostart-windows.ps1');
 
 const bootEnable = read('enable-boot-recovery.ps1');
@@ -134,7 +137,13 @@ hasAll(runtime, [
   "$env:LOCALAPPDATA = $local",
   "$env:APPDATA = $roaming",
   "DataProtectionScope]::LocalMachine",
-  "Test-RcCredential"
+  "Test-RcCredential",
+  "Start-RcTunnelWithRotatingLog",
+  "'--max-bytes','8388608'",
+  "'--max-files','3'",
+  "'--log.file','stdout'",
+  "CONTROL_PLANE_API_KEY",
+  "'--profile-dir',$ProfileDir"
 ], 'windows-supervisor-runtime.ps1');
 
 const routing = read('supervisor-routing.ps1');
