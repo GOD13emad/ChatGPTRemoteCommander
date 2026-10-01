@@ -6,6 +6,7 @@ import path from 'node:path';
 import { createWorkflowTools } from '../src/workflow-tools.mjs';
 import { validateJsonSchema } from '../src/schema-validator.mjs';
 import { listDirectory,readText,writeText } from '../src/tools-v0.3.mjs';
+import baselineWorkflowCatalog from './fixtures/workflow-tools-v0104.json' with { type: 'json' };
 
 const proposal=(tool,args)=>({action:'call',tool,argumentsJson:JSON.stringify(args),summary:'Perform the approved step'});
 const ask=(request={question:'Which artifact wording should be used?',options:['Detailed','Concise']})=>({action:'block',tool:'',argumentsJson:JSON.stringify({request}),summary:'A project decision is needed'});
@@ -105,7 +106,18 @@ test('uncertain mutation blocks continuation and is never automatically replayed
 test('runner status is opt-in while the project-engine tool schema stays stable',async()=>{
   const f=fixture(async()=>proposal('read_text',{path:'x'}));let legacy;
   try{const opts={...f.options,config:{...f.options.config,durableWorkflows:{...f.options.config.durableWorkflows,directory:path.join(f.root,'legacy'),runner:{enabled:false}}}};
-    legacy=createWorkflowTools(opts);assert.equal(legacy.definitions.length,22);assert.equal(f.api.definitions.length,22);assert.ok(legacy.definitions.some(x=>x.name==='workflow_needs_chat'));
+    legacy=createWorkflowTools(opts);
+    for (const api of [legacy, f.api]) {
+      // An additive observer must not change any prior schema/annotation or
+      // silently expose additional execution tools, whether runner is enabled.
+      assert.equal(api.definitions.length, baselineWorkflowCatalog.length + 1);
+      assert.deepEqual(api.definitions.filter(x=>x.name!=='workflow_companion_snapshot'), baselineWorkflowCatalog);
+      const observer=api.definitions.find(x=>x.name==='workflow_companion_snapshot');
+      assert.deepEqual(observer.annotations,{readOnlyHint:true,destructiveHint:false,openWorldHint:false});
+      assert.deepEqual(Object.keys(observer.inputSchema.properties),['id']);
+      assert.deepEqual(observer.inputSchema.required,['id']);
+    }
+    assert.ok(legacy.definitions.some(x=>x.name==='workflow_needs_chat'));
     const disabled=await legacy.execute('workflow_status',{});assert.equal(disabled.runnerConfigured,false);assert.equal(disabled.automaticExecution,false);
     await assert.rejects(legacy.execute('workflow_run_status',{runId:'disabled'}),/WORKFLOW_RUNNER_DISABLED/);
     const enabled=await f.api.execute('workflow_status',{});assert.equal(enabled.runnerConfigured,true);assert.equal(enabled.automaticExecution,false);

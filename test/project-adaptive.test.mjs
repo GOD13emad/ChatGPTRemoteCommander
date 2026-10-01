@@ -11,6 +11,7 @@ import { createWorkflowTools } from '../src/workflow-tools.mjs';
 import { WorkflowStore } from '../src/workflow-store.mjs';
 import { validateJsonSchema } from '../src/schema-validator.mjs';
 import { readText, writeText } from '../src/tools-v0.3.mjs';
+import baselineWorkflowCatalog from './fixtures/workflow-tools-v0104.json' with { type: 'json' };
 
 const definitions = {
   read_text: { name: 'read_text', inputSchema: { type: 'object', properties: { path: { type: 'string' } }, required: ['path'], additionalProperties: false } },
@@ -176,7 +177,10 @@ if (['--crash-extension', '--crash-before-extension', '--crash-extension-extra']
       assert.equal(fs.readFileSync(path.join(f.root, 'result.txt'), 'utf8'), 'verified output');
       assert.equal((await f.state()).finalization.acceptanceResults[0], true);
       assert.equal((await f.api.execute('workflow_operations', { id: 'project' })).operations.length, 3);
-      assert.equal(f.api.definitions.length, 22);
+      assert.equal(f.api.definitions.length, baselineWorkflowCatalog.length + 1);
+      assert.deepEqual(f.api.definitions.filter(tool=>tool.name!=='workflow_companion_snapshot'), baselineWorkflowCatalog);
+      assert.deepEqual(f.api.definitions.find(tool=>tool.name==='workflow_companion_snapshot').annotations,
+        {readOnlyHint:true,destructiveHint:false,openWorldHint:false});
       assert.equal(f.api.definitions.some(tool => tool.name === 'workflow_needs_chat'), true);
       assert.equal(f.api.definitions.some(tool => tool.name === 'workflow_plan_extend'), false);
     } finally { await f.dispose(); }

@@ -228,6 +228,9 @@ if (config.durableWorkflows?.enabled === true) {
   workflowTools = createWorkflowTools({
     config, roots, device: config.deviceName || os.hostname(), configSha256,
     deliveryStore, conversationController,
+    companionIdentity:{appId:null,profile:config.capabilityProfile?.id??config.instance?.profile??'default',
+      deviceName:config.deviceName||os.hostname(),version:VERSION,commit:null,configSha256,routeGeneration:null},
+    companionBackendTools:()=>TOOLS.map(tool=>tool.name),
     lookup: toolDefinition, validateSchema: validateJsonSchema,
     dispatch: async (name, args, workflow) => {
       // Further restrict file operations to the project, even in full Power Mode.
