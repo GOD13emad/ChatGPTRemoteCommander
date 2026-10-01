@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { boundNodeTestConcurrency, parseQualificationArgs } from '../tools/run-bounded-test-script.mjs';
+import { boundNodeTestConcurrency, parseQualificationArgs, prioritizeSensitiveQualificationCommands } from '../tools/run-bounded-test-script.mjs';
 
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const read=rel=>fs.readFileSync(path.join(root,rel),'utf8');
@@ -37,9 +37,9 @@ test('qualification paths bound full test file concurrency',()=>{
   }
   const workflow=read('.github/workflows/ci.yml');
   assert.ok(workflow.includes("if: runner.os == 'Windows'"));
-  assert.ok(workflow.includes('run: node tools/run-bounded-test-script.mjs --script check --concurrency 1'));
+  assert.ok(workflow.includes('run: node tools/run-bounded-test-script.mjs --script check --concurrency 1 --prioritize-sensitive 1'));
   assert.equal(workflow.includes('run: npm run check:qualification'),false);
-  assert.ok(workflow.includes('run: node tools/run-bounded-test-script.mjs --script test --concurrency 1'));
+  assert.ok(workflow.includes('run: node tools/run-bounded-test-script.mjs --script test --concurrency 1 --prioritize-sensitive 1'));
   assert.equal(workflow.includes('run: npm run test:qualification'),false);
   assert.ok(workflow.includes("if: runner.os != 'Windows'"));
   assert.ok(workflow.includes('run: npm run check'));
@@ -61,7 +61,23 @@ test('qualification paths bound full test file concurrency',()=>{
 test('bounded test wrapper rejects unsafe configuration',()=>{
   assert.throws(()=>boundNodeTestConcurrency('node --test test/a.test.mjs',0),/CI_TEST_CONCURRENCY_INVALID/);
   assert.throws(()=>boundNodeTestConcurrency('node test/a.mjs',2),/CI_TEST_COMMAND_MISSING/);
-  assert.deepEqual(parseQualificationArgs(['--script','test','--concurrency','2']),{script:'test',concurrency:'2'});
-  assert.deepEqual(parseQualificationArgs(['--script','check','--concurrency','2']),{script:'check',concurrency:'2'});
+  assert.deepEqual(parseQualificationArgs(['--script','test','--concurrency','2']),{script:'test',concurrency:'2',prioritizeSensitive:false});
+  assert.deepEqual(parseQualificationArgs(['--script','check','--concurrency','2']),{script:'check',concurrency:'2',prioritizeSensitive:false});
+  assert.deepEqual(parseQualificationArgs(['--script','test','--concurrency','1','--prioritize-sensitive','1']),{script:'test',concurrency:'1',prioritizeSensitive:true});
   assert.throws(()=>parseQualificationArgs(['--script','audit','--concurrency','2']),/CI_TEST_SCRIPT_NOT_ALLOWED/);
+});
+
+
+test('hosted Windows priority mode runs scheduler-sensitive isolated fixtures before the bulk qualification batch',()=>{
+  const pkg=JSON.parse(read('package.json'));
+  for(const scriptName of ['check','test']){
+    const bounded=boundNodeTestConcurrency(pkg.scripts[scriptName],1).command;
+    const prioritized=prioritizeSensitiveQualificationCommands(bounded);
+    const bulkIndex=prioritized.indexOf('test/boot-recovery-diagnostics.test.mjs');
+    assert.ok(bulkIndex>0,'bulk qualification command must remain present');
+    const ordered=['test/tunnel-log-rotation.test.mjs','test/async-operations.test.mjs','test/workflow-http.test.mjs'];
+    const positions=ordered.map(sensitive=>prioritized.indexOf(sensitive));
+    for(let i=0;i<ordered.length;i++) assert.ok(positions[i]>=0 && positions[i]<bulkIndex, ordered[i]+' must execute before bulk qualification');
+    assert.ok(positions[0] < positions[1] && positions[1] < positions[2], 'tunnel rotation must run before process-heavy async/workflow fixtures');
+  }
 });
