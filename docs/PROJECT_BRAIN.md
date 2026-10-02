@@ -1,8 +1,38 @@
 # Project Brain — ChatGPT Remote Commander
 
-Status: CURRENT — SCOPED FINAL / ACCEPTED
-Updated: 2026-09-28
+Status: CURRENT — v0.10.6 RELEASED / LINUX LAPTOP ROLLOUT ACCEPTED / MULTI-HOST ROLLOUT INCOMPLETE
+Updated: 2026-10-03
 Authority: immutable release/tag -> exact live route records -> exact-SHA CI/canary evidence -> project control/evidence records.
+
+## Current accepted baseline
+
+**v0.10.6 — RELEASE ARTIFACT FINAL / ACCEPTED**
+
+Release tag target: `3546256e8e7c494d140bc9c33259ddbf345639d3`.
+Qualified release tree: `cce09e13b834c17a055b3448e808089966e1125a`.
+GitHub release: stable (not draft, not prerelease), published 2026-10-02T21:27:11Z with exactly 19 uploaded assets and SHA-256 digests.
+
+Independent Linux rollout acceptance on `aliemad-Labtop`:
+- isolated exact-tag `--no-promote` canary PASS, including qualification/security/doctor/hardware self-test and `AUTO_UPDATE_CANDIDATE_PASS`;
+- live promoted route: v0.10.6, exact commit `3546256e...`, route generation 113, FULL_POWER preserved;
+- live workflow database integrity `ok`, active operations 0, current leases 0;
+- previous v0.10.5 release bytes remain present on disk for rollback even though the active route has `previous=null`;
+- unrelated durable project records were not mass-cancelled or cosmetically cleaned.
+
+Production scope promoted in v0.10.6 is the independently qualified operation-child lifecycle hardening. Saeid Companion/V03/paused-domain/Q5/Browser-R3 sources are preserved under `experimental/` and are NOT production-wired. Q5 native Windows private-file acceptance and whole-product autonomy remain UNPROVEN.
+
+CEF companion has separate authority: Linux preview `v0.8.0-rc.1` was rebuilt/native-qualified and published as a prerelease from exact commit `1581c8012dbbb08b88517e01aa5e4f4ab2eb97f3`; it is not a Commander stable-release acceptance and Windows/end-to-end gates remain open.
+
+## Open gates / critical path
+
+1. Candidate-first v0.10.6 rollout/readback on Saeid and Emad Windows hosts when their Commander connectors are reliably available; no blind mutation while readback is unavailable.
+2. CEF Windows native port/build/install.
+3. Real Commander↔CEF ownership/transport/current-session integration and sustained non-interference.
+4. Durable-delivery/history backlog on user machines is retained project state, not a release blocker; reconcile only by project authority, never mass-delete.
+
+## Exact next action
+
+On the next reliably connected Windows host, perform read-only authority/config/route audit, then exact-tag v0.10.6 candidate-first qualification and promotion with rollback preservation. Separately continue CEF Windows qualification from the published v0.8.0-rc.1 preview baseline.
 
 ## Final objective
 
