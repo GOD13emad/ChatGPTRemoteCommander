@@ -497,3 +497,51 @@ The exact v0.10.5 candidate reduces Commander's preventable contribution to host
 Evidence: targeted 13/13 PASS; broad MCP/transport regression 31/31 PASS; full test qualification final run 483 PASS / 0 FAIL / 6 platform-gated SKIP plus all downstream GUI/source/schema gates PASS. A roughly 16-second test group timed out when held in one direct Commander call but completed through start_terminal + later read_terminal, directly validating the background-handoff mitigation.
 
 Remaining external host gate after rollout: an already-open ChatGPT custom app may retain a stale scanned tool catalog. Refresh/Scan Tools and a fresh chat are required to expose the newest operation/read_terminal schemas when the ChatGPT surface permits it. This is not a reason to widen Commander timeouts or replay uncertain mutations.
+
+
+## 2026-10-02 — v0.10.6 Saeid release line
+
+Status: RELEASE CANDIDATE / NOT YET PUBLISHED.
+
+Previous accepted baseline: official v0.10.5 commit d6912c750640ca57a67be4a9cc8e6485653eb36c.
+
+Current delta: promote the accepted operation-child lifecycle hardening into the production tree; version Saeid V03 policy/monitor, paused-domain, blocked Q5 private-file and Owned Browser R3 development under experimental/ without production wiring. Browser R3 remains a fixture-only component; Q5 remains STOP/DO NOT RUN. No blocked experimental feature is granted runtime authority.
+
+Evidence before full qualification: operation-child-lifecycle targeted 14/14 PASS; Owned Browser R3 source snapshot 11/11 focused tests PASS after exact dependency packaging; V03 focused suite 100/100 PASS; paused-domain suite 27/27 PASS. Full v0.10.6 Windows/hosted CI/canary/release gates remain open until executed on the exact final tree.
+
+Release DoD: exact-tree parser/static/full qualification + security audit + installer/release contracts + hosted Windows/Ubuntu CI + server-install canaries + immutable tag/release readback. Rollback baseline remains v0.10.5 until those gates pass.
+
+
+## 2026-10-02 — v0.10.6 exact-tree local qualification
+
+Status: LOCAL_FULL_GATE_PASS / HOSTED_GATES_OPEN.
+
+Exact release workspace baseline: official v0.10.5 commit d6912c750640ca57a67be4a9cc8e6485653eb36c plus production operation-child lifecycle hardening and versioned non-runtime experimental snapshots.
+
+Evidence on Windows saeid / Node 24.19.0:
+- production operation-child lifecycle targeted regression: 14/14 PASS;
+- Owned Browser R3 packaging-rebound focused tests: 11/11 PASS;
+- project-operations V03 focused suite: 100/100 PASS;
+- paused-domain policy: 27/27 PASS;
+- check qualification: PASS, including 248 tests / 243 pass / 0 fail / 5 Windows-host platform skips, GUI 77/77, schema continuity 9/9, source integrity and runtime contracts PASS;
+- test qualification: 489 tests / 483 pass / 0 fail / 6 platform-gated skips, followed by workflow/async/tunnel/browser/GUI/source/schema downstream gates PASS;
+- security audit: PASS with no secret/token/private-key/developer-path finding;
+- installer check, onboarding plugin check and release asset contract: PASS.
+
+Acceptance boundary: this is local exact-tree qualification only. GitHub hosted Windows/Ubuntu CI, server-install canaries, merge, tag, release assets and downstream update/readback remain OPEN. v0.10.5 remains rollback authority until those gates pass.
+
+Companion preservation delta: PR #99 companion source at 715f99ae229e9e44ccc2e2b4ad6e6c3531b442da is now copied byte-for-byte under experimental/companion-v01 with a manifest. It remains blocked from production because hosted Windows recorded COMPANION_ACL_INVALID; this preserves the development without weakening owner/ACL policy.
+
+
+## 2026-10-02 — R4 release transport reconciliation
+
+The candidate was reconstructed from immutable Git objects on the publication host. Its complete Git tree matched Saeid tree bdc3175d370f7e4062bea078cec2adede6f12e1b exactly. Source commit f3dba1b177fd53fe58b684c0de16aafa81016cf5 remains provenance. A metadata-only correction updates the packaged Browser R3 client byte count from 3873 to 3822 after its previously tested relative-import rebind; its recorded SHA-256 already matched. Both current component manifests were rechecked for exact hashes and byte counts. Historical source snapshots remain unmodified. Hosted CI/canaries and immutable publication remain required; no host rollout is authorized by a passing source transfer alone.
+
+
+## 2026-10-02 — R5 repeated Windows failure audit
+
+Prior v0.10.4 CI changes serialized and reordered heavy tests after ArrayBuffer allocation failures. Fresh v0.10.6 Windows run 37059429795/job 111012109746 failed in the FIRST isolated tunnel-log fixture (57.5 s, Array buffer allocation failed), followed by child status 3221225794. This disproves residual pressure from this run's earlier bulk suite as a sufficient explanation. Production logger and fixture bytes are unchanged from baseline. Root cause of the observed allocation failure remains UNPROVEN.
+
+A diagnostic hazard is present: strict deep-equality of two ~917 KiB buffers can format a large binary diff upon mismatch, obscuring the underlying comparison. R5 changes only the test comparator to Buffer.equals with fixed-size length/hash/first-difference diagnostics, preserving exact equality. A one-byte injected mismatch must still fail with under 512 characters of metadata. This is stronger diagnostic coverage, not a product fix or relaxed assertion. Independent stdout/stderr arrival order remains an investigation hypothesis; no ordering assertion is removed in R5.
+
+Primary references checked: Node.js v22 process I/O documentation (https://nodejs.org/docs/latest-v22.x/api/process.html); Node.js Assert documentation (https://nodejs.org/api/assert.html). Exact v22.23.3 assertion source was unavailable from the attempted public URL, so allocation causality is not asserted. No blind rerun or deadline increase. Native fixture/hosted tests must determine the next step.

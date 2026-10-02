@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "generation": 1,
+  "revision": "BUILD-V03-SCOPE-R1",
+  "authority": "Latest explicit human request on 2026-10-02",
+  "gameEnabled": false,
+  "videoEnabled": false,
+  "coreBuildEnabled": true,
+  "browserMonitorBuildEnabled": true,
+  "runtimeInstalled": false,
+  "automaticPromotion": false
+}

@@ -1660,3 +1660,22 @@ Status: CURRENT benchmark evidence. Reuse targets: roadmap, release planning, pr
 **Regression:** 13/13 focused PASS; 31/31 MCP/transport PASS; final full qualification 483/483 non-skipped PASS in the main batch, 6 platform-gated SKIP, with downstream GUI/source/schema gates PASS.
 
 **Limitation:** this mitigates Commander's contribution; it cannot repair ChatGPT's host-side resume/cache service. Plan/tier differences remain UNPROVEN as a causal explanation.
+
+
+## 2026-10-02 — v0.10.6 exact-tree local qualification
+
+Status: LOCAL_FULL_GATE_PASS / HOSTED_GATES_OPEN.
+
+Exact release workspace baseline: official v0.10.5 commit d6912c750640ca57a67be4a9cc8e6485653eb36c plus production operation-child lifecycle hardening and versioned non-runtime experimental snapshots.
+
+Evidence on Windows saeid / Node 24.19.0:
+- production operation-child lifecycle targeted regression: 14/14 PASS;
+- Owned Browser R3 packaging-rebound focused tests: 11/11 PASS;
+- project-operations V03 focused suite: 100/100 PASS;
+- paused-domain policy: 27/27 PASS;
+- check qualification: PASS, including 248 tests / 243 pass / 0 fail / 5 Windows-host platform skips, GUI 77/77, schema continuity 9/9, source integrity and runtime contracts PASS;
+- test qualification: 489 tests / 483 pass / 0 fail / 6 platform-gated skips, followed by workflow/async/tunnel/browser/GUI/source/schema downstream gates PASS;
+- security audit: PASS with no secret/token/private-key/developer-path finding;
+- installer check, onboarding plugin check and release asset contract: PASS.
+
+Acceptance boundary: this is local exact-tree qualification only. GitHub hosted Windows/Ubuntu CI, server-install canaries, merge, tag, release assets and downstream update/readback remain OPEN. v0.10.5 remains rollback authority until those gates pass.

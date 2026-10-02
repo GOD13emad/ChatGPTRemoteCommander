@@ -1,0 +1,69 @@
+{
+  "schema": 1,
+  "revision": "COMPANION-V01-SNAPSHOT-715F99A",
+  "sourceCommit": "715f99ae229e9e44ccc2e2b4ad6e6c3531b442da",
+  "status": "VERSIONED_SOURCE_SNAPSHOT_BLOCKED_NOT_PRODUCTION_WIRED",
+  "blockers": [
+    "WINDOWS_PRIVATE_FILE_ACL: COMPANION_ACL_INVALID on hosted Windows private-profile export",
+    "Historical tests at source commit expected runtime 0.10.4 while official baseline advanced to 0.10.5; do not treat old CI as v0.10.6 qualification"
+  ],
+  "files": [
+    {
+      "path": "docs/COMPANION.md",
+      "sha256": "b03a399a4017184c0ea4a2cce289ed96796fc7eb0999aa052979717137f67a28",
+      "bytes": 7310
+    },
+    {
+      "path": "src/companion-json.mjs",
+      "sha256": "f6de453885e37337c335885c29b2995b44e0c9cd5b6b5fe0a90c6d128792183f",
+      "bytes": 1524
+    },
+    {
+      "path": "src/companion-private-directory.mjs",
+      "sha256": "60b09f8b927d6fccf9ad7903173369f39dc95ad280c3602f7a706d388d095a09",
+      "bytes": 6834
+    },
+    {
+      "path": "src/companion-session.mjs",
+      "sha256": "27892c7394a326d600704f852ec85ad2d7678444ba9ce535efd1b772c9785721",
+      "bytes": 33156
+    },
+    {
+      "path": "src/local-project-advisor.mjs",
+      "sha256": "532ffe0bba0c649bd22fa24cf1af2a527db5c7775e22fe80260ee6378e8a5292",
+      "bytes": 27432
+    },
+    {
+      "path": "test/companion-export.test.mjs",
+      "sha256": "3da40f9c85ea978746c0ccfcab857b6db6854a910ba20919bac49b3db83d4fd0",
+      "bytes": 25645
+    },
+    {
+      "path": "test/companion-private-directory.test.mjs",
+      "sha256": "6d1a8d2a89a163930c25236c4514842ab273e932d496ba6b750b0708837138b0",
+      "bytes": 2276
+    },
+    {
+      "path": "test/companion-session.test.mjs",
+      "sha256": "9bc2619bbe3e576be4d5b9a05198f22cc5540af21b7e3ff02f0afd75a5e3ca2a",
+      "bytes": 30502
+    },
+    {
+      "path": "test/fixtures/workflow-tools-v0104.json",
+      "sha256": "618a5ac46ea2a0f3a21bbf49e9736c7865bc071da8901c2c61835b0b6243ab76",
+      "bytes": 23992
+    },
+    {
+      "path": "test/local-project-advisor.test.mjs",
+      "sha256": "b301c7e7de56aeb8ddd82ed23c5937c45da89b38d8d703ddf4c7ec3bbfa88d94",
+      "bytes": 19801
+    },
+    {
+      "path": "tools/companion-export.mjs",
+      "sha256": "f16082b37f5a25d288577e481e205908f3b8f27b15f47a7841ad20e91c145df7",
+      "bytes": 9897
+    }
+  ],
+  "productionWiring": false,
+  "wholeProductFinal": false
+}
