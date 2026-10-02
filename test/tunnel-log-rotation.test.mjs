@@ -6,10 +6,21 @@ import path from 'node:path';
 import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 import { gunzipSync } from 'node:zlib';
+import { createHash } from 'node:crypto';
 
 const root = path.resolve(import.meta.dirname, '..');
 const runner = path.join(root, 'tools', 'tunnel-log-runner.mjs');
 const fixture = path.join(root, 'test', 'tunnel-log-child-fixture.mjs');
+
+// Preserve exact byte equality, but never ask AssertionError to format
+// a megabyte-scale binary diff. Failure metadata is fixed-size.
+function assertBytesEqual(actual, expected, label) {
+  if (actual.equals(expected)) return;
+  let firstMismatch = 0;
+  while (firstMismatch < Math.min(actual.length, expected.length) && actual[firstMismatch] === expected[firstMismatch]) firstMismatch++;
+  const digest = bytes => createHash('sha256').update(bytes).digest('hex');
+  assert.fail(JSON.stringify({code:'BINARY_EQUALITY_FAILED',label,actualBytes:actual.length,expectedBytes:expected.length,firstMismatch,actualSha256:digest(actual),expectedSha256:digest(expected)}));
+}
 
 function run(args, options = {}) {
   return new Promise((resolve, reject) => {
@@ -69,7 +80,7 @@ test('tunnel log runner rotates without restarting child and preserves the compl
   for (let i = 0; i < chunks; i += 1) expectedParts.push(Buffer.alloc(chunkBytes, 65 + (i % 26)));
   expectedParts.push(Buffer.from('TUNNEL_CHILD_DONE\n'));
   const expected = Buffer.concat(expectedParts);
-  assert.deepEqual(actual, expected, 'rolling logger must preserve stdout+stderr bytes exactly');
+  assertBytesEqual(actual, expected, 'rolling logger must preserve stdout+stderr bytes exactly');
 });
 
 test('tunnel log runner bounds and archives an oversized legacy current log before child startup', async t => {
@@ -90,8 +101,14 @@ test('tunnel log runner bounds and archives an oversized legacy current log befo
   assert.equal(result.code, 0, result.stderr);
   const archived = gunzipSync(await readFile(log + '.1.gz'));
   assert.equal(archived.length, maxBytes);
-  assert.deepEqual(archived, legacy.subarray(legacy.length - maxBytes), 'only the bounded recent diagnostic tail is retained from legacy oversize logs');
+  assertBytesEqual(archived, legacy.subarray(legacy.length - maxBytes), 'only the bounded recent diagnostic tail is retained from legacy oversize logs');
   const state = JSON.parse(await readFile(status, 'utf8'));
   assert.ok(state.rotations >= 1);
   assert.ok(state.archivedFiles <= 2);
+});
+
+test('binary failure diagnostics stay bounded while rejecting a one-byte mutation', () => {
+  const expected=Buffer.alloc(1048576,65),actual=Buffer.from(expected);actual[524288]=66;
+  assert.throws(()=>assertBytesEqual(actual,expected,'injected mismatch'),error=>error.code==='ERR_ASSERTION'&&error.message.length<512&&JSON.parse(error.message).firstMismatch===524288);
+  assertBytesEqual(expected,Buffer.from(expected),'identical');
 });
