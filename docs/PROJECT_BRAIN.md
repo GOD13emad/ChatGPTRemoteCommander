@@ -480,3 +480,20 @@ Post-merge main Windows qualification exposed three load-sensitive failures even
 ## 2026-10-01 — v0.10.4 hosted Windows final memory-order gate
 
 Post-merge main 2321b887b15b22733a3d2f4a092ad7620bf49290 passed Ubuntu CI but Windows failed only after the large qualification batch, when the already-isolated tunnel-log rotation fixture attempted tiny buffer allocations and Node reported Array buffer allocation failure / heap OOM. The exact fixture and production rotation code had passed focused Windows/Linux qualification and PR canaries. Root cause is residual hosted-runner commit pressure plus ordering: scheduler-sensitive isolated fixtures were moved out of the concurrent batch but still executed after it. Candidate prevention is CI-only ordering: hosted Windows runs tunnel-log-rotation first, then async-operations and workflow-http, each still isolated and concurrency=1, then the bulk qualification command. Package/install/update qualification remains unchanged.
+
+
+## 2026-10-02 — v0.10.5 stream-resume resilience
+
+A strict comparison against Desktop Commander identified a transferable transport pattern: long work should be detached from one chat response, with persistent process state and bounded paged result reads. The user-observed difference between ChatGPT accounts/plans is recorded as correlation only; plan tier is not accepted as the sole root cause without platform evidence.
+
+The exact v0.10.5 candidate reduces Commander's preventable contribution to host stream expiry:
+- direct synchronous command ceiling 10 seconds;
+- at most two direct synchronous Commander calls per assistant turn;
+- direct run_shell/run_project_command response output capped at 32 KiB;
+- read_terminal paged at 32 KiB default / 64 KiB max per stream with explicit continuation offsets and <=5 s bounded wait;
+- stale custom-app tool catalogs fall back to one-shot start_terminal + bounded read_terminal rather than increasing sync timeouts;
+- durable operation_start/MCP Tasks remain preferred when exposed.
+
+Evidence: targeted 13/13 PASS; broad MCP/transport regression 31/31 PASS; full test qualification final run 483 PASS / 0 FAIL / 6 platform-gated SKIP plus all downstream GUI/source/schema gates PASS. A roughly 16-second test group timed out when held in one direct Commander call but completed through start_terminal + later read_terminal, directly validating the background-handoff mitigation.
+
+Remaining external host gate after rollout: an already-open ChatGPT custom app may retain a stale scanned tool catalog. Refresh/Scan Tools and a fresh chat are required to expose the newest operation/read_terminal schemas when the ChatGPT surface permits it. This is not a reason to widen Commander timeouts or replay uncertain mutations.

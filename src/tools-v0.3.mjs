@@ -223,7 +223,8 @@ export async function prepareProjectCommand(ctx, input) {
 }
 export async function runProjectCommand(ctx, input) {
   const prepared = await prepareProjectCommand(ctx, synchronousCommandInput(input));
-  const { file: program, args, cwd, timeoutMs, outputLimit, fullFilesystem } = prepared;
+  const { file: program, args, cwd, timeoutMs, fullFilesystem } = prepared;
+  const outputLimit = Math.min(prepared.outputLimit, 32 * 1024);
   const child = spawn(program, args, {
     cwd,
     windowsHide: true,

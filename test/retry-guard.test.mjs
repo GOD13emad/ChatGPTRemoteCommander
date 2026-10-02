@@ -2,11 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { compactToolSuccessPayload, RETRY_GUARD_LIMITS, serializeBoundedJsonResponse, synchronousCommandInput } from '../src/retry-guard.mjs';
 
-test('synchronous command guard reserves transport headroom at 15s and rejects longer direct calls before execution', () => {
-  assert.equal(RETRY_GUARD_LIMITS.syncCommandMaxMs, 15000);
-  assert.equal(synchronousCommandInput({ program: 'node' }).timeoutMs, 15000);
-  assert.equal(synchronousCommandInput({ timeoutMs: 15000 }).timeoutMs, 15000);
-  assert.throws(() => synchronousCommandInput({ timeoutMs: 15001 }), /SYNCHRONOUS_COMMAND_DEADLINE_RISK/);
+test('synchronous command guard reserves transport headroom at 10s and rejects longer direct calls before execution', () => {
+  assert.equal(RETRY_GUARD_LIMITS.syncCommandMaxMs, 10000);
+  assert.equal(synchronousCommandInput({ program: 'node' }).timeoutMs, 10000);
+  assert.equal(synchronousCommandInput({ timeoutMs: 10000 }).timeoutMs, 10000);
+  assert.throws(() => synchronousCommandInput({ timeoutMs: 10001 }), /SYNCHRONOUS_COMMAND_DEADLINE_RISK/);
+  assert.throws(() => synchronousCommandInput({ timeoutMs: 10001 }), /start_terminal \+ bounded read_terminal/);
 });
 
 test('large tool results are not duplicated into content text', () => {

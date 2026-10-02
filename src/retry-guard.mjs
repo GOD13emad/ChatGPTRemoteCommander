@@ -1,4 +1,4 @@
-const DEFAULT_SYNC_COMMAND_MAX_MS = 15_000;
+const DEFAULT_SYNC_COMMAND_MAX_MS = 10_000;
 const DEFAULT_DUPLICATE_TEXT_MAX_BYTES = 128 * 1024;
 const DEFAULT_MCP_RESPONSE_MAX_BYTES = 8 * 1024 * 1024;
 
@@ -14,7 +14,7 @@ export function synchronousCommandInput(input = {}, maxMs = DEFAULT_SYNC_COMMAND
     const value = Number(requested);
     if (!Number.isFinite(value) || value < 1000) throw new Error('timeoutMs must be at least 1000');
     if (value > maxMs) {
-      throw new Error(`SYNCHRONOUS_COMMAND_DEADLINE_RISK: timeoutMs ${value} exceeds the ${maxMs} ms synchronous transport limit; use operation_start with a stable requestId`);
+      throw new Error(`SYNCHRONOUS_COMMAND_DEADLINE_RISK: timeoutMs ${value} exceeds the ${maxMs} ms synchronous transport limit; use operation_start with a stable requestId, or start_terminal + bounded read_terminal when operation tools are not exposed by the client`);
     }
   }
   return { ...input, timeoutMs: requested ?? maxMs };

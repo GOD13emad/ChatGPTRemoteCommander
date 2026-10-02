@@ -15,6 +15,9 @@ import { IS_WINDOWS, defaultBackupRoot, expandPathValue, shellName, shellSpec, s
 
 const terminals = new Map();
 let terminalCounter = 1;
+const TERMINAL_READ_DEFAULT_CHARS = 32 * 1024;
+const TERMINAL_READ_MAX_CHARS = 64 * 1024;
+const TERMINAL_READ_MAX_WAIT_MS = 5_000;
 
 function expandEnv(value) {
   return expandPathValue(value);
@@ -546,7 +549,8 @@ export async function prepareShellCommand(ctx, input) {
 export async function runShell(ctx, input) {
   const guarded = synchronousCommandInput(input);
   const prepared = await prepareShellCommand(ctx, guarded);
-  const result = await capture(input.command, prepared.cwd, prepared.timeoutMs, prepared.outputLimit, { allowCodex: prepared.allowCodex });
+  const outputLimit = Math.min(prepared.outputLimit, 32 * 1024);
+  const result = await capture(input.command, prepared.cwd, prepared.timeoutMs, outputLimit, { allowCodex: prepared.allowCodex });
   return { command: input.command, cwd: prepared.cwd, timeoutMs: prepared.timeoutMs, ...result };
 }
 
@@ -627,16 +631,38 @@ export async function killProcess(ctx, input) {
   process.kill(pid, input.signal || 'SIGTERM');
   return { pid, processName: name, signal: input.signal || 'SIGTERM', requested: true };
 }
-function terminalSnapshot(session, consume = true) {
-  const stdout = session.stdout.slice(session.stdoutCursor);
-  const stderr = session.stderr.slice(session.stderrCursor);
+function terminalReadOffset(value, fallback, total) {
+  if (value === undefined) return Math.min(fallback, total);
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed < 0) throw new Error('terminal offsets must be non-negative safe integers');
+  return Math.min(parsed, total);
+}
+
+function terminalSnapshot(session, input = {}) {
+  const consume = input.consume !== false;
+  const maxChars = Math.max(1, Math.min(Number(input.maxChars ?? TERMINAL_READ_DEFAULT_CHARS), TERMINAL_READ_MAX_CHARS));
+  if (!Number.isSafeInteger(maxChars)) throw new Error('maxChars must be a safe integer');
+  const stdoutAbsolute = input.stdoutOffset !== undefined;
+  const stderrAbsolute = input.stderrOffset !== undefined;
+  const stdoutOffset = terminalReadOffset(input.stdoutOffset, session.stdoutCursor, session.stdout.length);
+  const stderrOffset = terminalReadOffset(input.stderrOffset, session.stderrCursor, session.stderr.length);
+  const stdoutEnd = Math.min(session.stdout.length, stdoutOffset + maxChars);
+  const stderrEnd = Math.min(session.stderr.length, stderrOffset + maxChars);
+  const stdout = session.stdout.slice(stdoutOffset, stdoutEnd);
+  const stderr = session.stderr.slice(stderrOffset, stderrEnd);
   if (consume) {
-    session.stdoutCursor = session.stdout.length;
-    session.stderrCursor = session.stderr.length;
+    if (!stdoutAbsolute) session.stdoutCursor = stdoutEnd;
+    if (!stderrAbsolute) session.stderrCursor = stderrEnd;
   }
   return {
     id: session.id, pid: session.child.pid, running: session.running,
     exitCode: session.exitCode, signal: session.signal, stdout, stderr,
+    stdoutOffset, stderrOffset,
+    nextStdoutOffset: stdoutEnd < session.stdout.length ? stdoutEnd : null,
+    nextStderrOffset: stderrEnd < session.stderr.length ? stderrEnd : null,
+    stdoutRemainingChars: Math.max(0, session.stdout.length - stdoutEnd),
+    stderrRemainingChars: Math.max(0, session.stderr.length - stderrEnd),
+    maxChars,
     truncated: session.truncated, interactive: session.interactive === true,
     autoClose: session.interactive !== true
   };
@@ -687,7 +713,21 @@ function getTerminal(input) {
 
 export async function readTerminal(ctx, input) {
   power(ctx);
-  return terminalSnapshot(getTerminal(input), input.consume !== false);
+  const session = getTerminal(input);
+  const waitMs = Math.max(0, Math.min(Number(input.waitMs ?? 0), TERMINAL_READ_MAX_WAIT_MS));
+  if (!Number.isSafeInteger(waitMs)) throw new Error('waitMs must be a safe integer');
+  if (waitMs > 0 && session.running) {
+    const stdoutOffset = terminalReadOffset(input.stdoutOffset, session.stdoutCursor, session.stdout.length);
+    const stderrOffset = terminalReadOffset(input.stderrOffset, session.stderrCursor, session.stderr.length);
+    if (stdoutOffset >= session.stdout.length && stderrOffset >= session.stderr.length) {
+      const deadline = Date.now() + waitMs;
+      while (session.running && Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, Math.min(50, Math.max(1, deadline - Date.now()))));
+        if (stdoutOffset < session.stdout.length || stderrOffset < session.stderr.length) break;
+      }
+    }
+  }
+  return terminalSnapshot(session, input);
 }
 
 export async function sendTerminal(ctx, input) {
@@ -735,12 +775,12 @@ export const powerToolDefinitions = [
   { name: 'move_path', description: 'Move or rename a file/directory; optionally replace destination after backup.', inputSchema: { type: 'object', properties: { source: { type: 'string' }, destination: { type: 'string' }, overwrite: { type: 'boolean' } }, required: ['source', 'destination'], additionalProperties: false }, annotations: localDestructive },
   { name: 'delete_path', description: 'Delete with recoverable backup by default. Permanent deletion is separately policy-gated.', inputSchema: { type: 'object', properties: { path: { type: 'string' }, permanent: { type: 'boolean' } }, required: ['path'], additionalProperties: false }, annotations: localDestructive },
   { name: 'search_files', description: 'Search names and optionally bounded UTF-8 file content across Power Mode filesystem scope. The synchronous search is time-bounded.', inputSchema: { type: 'object', properties: { path: { type: 'string' }, pattern: { type: 'string' }, regex: { type: 'boolean' }, ignoreCase: { type: 'boolean' }, searchContent: { type: 'boolean' }, depth: { type: 'integer', minimum: 0, maximum: 32 }, maxResults: { type: 'integer', minimum: 1, maximum: 1000 }, maxContentBytes: { type: 'integer', minimum: 1024 }, maxDurationMs: { type: 'integer', minimum: 100, maximum: 10000 } }, required: ['pattern'], additionalProperties: false }, annotations: ro },
-  { name: 'run_shell', description: 'Run a short bounded platform shell command (PowerShell 7 on Windows, Bash on Linux). Synchronous calls are hard-limited to 15 seconds; use operation_start with a stable requestId for longer, unknown-duration, or high-output work. Explicit Power Mode only.', inputSchema: { type: 'object', properties: { command: { type: 'string' }, cwd: { type: 'string' }, timeoutMs: { type: 'integer', minimum: 1000, maximum: 30000 } }, required: ['command'], additionalProperties: false }, annotations: openDestructive },
+  { name: 'run_shell', description: 'Run a short bounded platform shell command (PowerShell 7 on Windows, Bash on Linux). Synchronous execution is hard-limited to 10 seconds with compact output. Use operation_start for longer/unknown/high-output work; if operation tools are not exposed by the client, use one-shot start_terminal + bounded read_terminal. Explicit Power Mode only.', inputSchema: { type: 'object', properties: { command: { type: 'string' }, cwd: { type: 'string' }, timeoutMs: { type: 'integer', minimum: 1000, maximum: 30000 } }, required: ['command'], additionalProperties: false }, annotations: openDestructive },
   { name: 'system_info', description: 'Return OS, CPU, memory, user, Node and runtime information.', inputSchema: { type: 'object', properties: {}, additionalProperties: false }, annotations: ro },
   { name: 'list_processes', description: 'List operating-system processes with PID and resource details when available.', inputSchema: { type: 'object', properties: {}, additionalProperties: false }, annotations: ro },
   { name: 'kill_process', description: 'Terminate a process by PID; protected/system PIDs and this server are refused.', inputSchema: { type: 'object', properties: { pid: { type: 'integer' }, signal: { type: 'string' } }, required: ['pid'], additionalProperties: false }, annotations: localDestructive },
-  { name: 'start_terminal', description: 'Start a platform terminal session. With command and no interactive=true it is one-shot and exits when the command completes; use interactive=true only when later send_terminal input is genuinely required. With no command it remains interactive.', inputSchema: { type: 'object', properties: { cwd: { type: 'string' }, command: { type: 'string' }, interactive: { type: 'boolean' } }, additionalProperties: false }, annotations: openDestructive },
-  { name: 'read_terminal', description: 'Read buffered stdout/stderr and state from a persistent terminal session.', inputSchema: { type: 'object', properties: { id: { type: 'string' }, consume: { type: 'boolean' } }, required: ['id'], additionalProperties: false }, annotations: ro },
+  { name: 'start_terminal', description: 'Start a platform terminal session and return immediately. With command and no interactive=true it is a one-shot background fallback for long or high-output work when operation_* tools are unavailable; retrieve output using bounded read_terminal pages. Use interactive=true only when later send_terminal input is genuinely required. With no command it remains interactive.', inputSchema: { type: 'object', properties: { cwd: { type: 'string' }, command: { type: 'string' }, interactive: { type: 'boolean' } }, additionalProperties: false }, annotations: openDestructive },
+  { name: 'read_terminal', description: 'Read a bounded page of buffered terminal stdout/stderr. Default is 32 KiB per stream; maxChars is capped at 64 KiB. Optional waitMs long-polls for new output for at most 5 seconds. Use nextStdoutOffset/nextStderrOffset for absolute paging without skipping unread output.', inputSchema: { type: 'object', properties: { id: { type: 'string' }, consume: { type: 'boolean' }, stdoutOffset: { type: 'integer', minimum: 0 }, stderrOffset: { type: 'integer', minimum: 0 }, maxChars: { type: 'integer', minimum: 1, maximum: 65536 }, waitMs: { type: 'integer', minimum: 0, maximum: 5000 } }, required: ['id'], additionalProperties: false }, annotations: ro },
   { name: 'send_terminal', description: 'Send input to an explicitly interactive terminal session. One-shot command sessions reject input.', inputSchema: { type: 'object', properties: { id: { type: 'string' }, input: { type: 'string' }, newline: { type: 'boolean' } }, required: ['id', 'input'], additionalProperties: false }, annotations: openDestructive },
   { name: 'stop_terminal', description: 'Stop and optionally remove a persistent terminal session.', inputSchema: { type: 'object', properties: { id: { type: 'string' }, signal: { type: 'string' }, remove: { type: 'boolean' } }, required: ['id'], additionalProperties: false }, annotations: localDestructive }
 ];

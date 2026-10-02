@@ -133,6 +133,46 @@ test('start_terminal command defaults to one-shot and exits without leaving a pr
   assert.fail('one-shot terminal did not exit');
 });
 
+test('read_terminal pages large output without skipping unread data', { timeout: 10000 }, async (t) => {
+  const root = await fixture(t);
+  const ctx = powerContext(root);
+  const command = process.platform === 'win32'
+    ? "[Console]::Out.Write((('A' * 90000) -join ''))"
+    : "yes A | tr -d '\\n' | head -c 90000";
+  const session = await startTerminal(ctx, { cwd: root, command });
+  for (let i=0;i<120;i++) {
+    const state = await readTerminal(ctx, { id: session.id, consume: false, maxChars: 32768 });
+    if (!state.running) break;
+    await wait(25);
+  }
+  const first = await readTerminal(ctx, { id: session.id, maxChars: 32768 });
+  assert.equal(first.stdout.length, 32768);
+  assert.equal(first.stdoutOffset, 0);
+  assert.equal(first.nextStdoutOffset, 32768);
+  assert.equal(first.stdoutRemainingChars, 90000 - 32768);
+  const second = await readTerminal(ctx, { id: session.id, maxChars: 32768 });
+  assert.equal(second.stdout.length, 32768);
+  assert.equal(second.stdoutOffset, 32768);
+  assert.equal(second.nextStdoutOffset, 65536);
+  const tail = await readTerminal(ctx, { id: session.id, stdoutOffset: second.nextStdoutOffset, maxChars: 65536, consume: false });
+  assert.equal(tail.stdout.length, 90000 - 65536);
+  assert.equal(tail.nextStdoutOffset, null);
+  await stopTerminal(ctx,{id:session.id,remove:true});
+});
+
+test('read_terminal bounded wait returns when new output arrives', { timeout: 10000 }, async (t) => {
+  const root = await fixture(t);
+  const ctx = powerContext(root);
+  const command = process.platform === 'win32'
+    ? "Start-Sleep -Milliseconds 150; Write-Output 'DELAYED_OUTPUT'"
+    : "sleep 0.15; printf 'DELAYED_OUTPUT\\n'";
+  const session = await startTerminal(ctx, { cwd: root, command });
+  const started = Date.now();
+  const state = await readTerminal(ctx, { id: session.id, waitMs: 1000, maxChars: 4096 });
+  assert.match(state.stdout,/DELAYED_OUTPUT/);
+  assert.ok(Date.now() - started < 1000);
+  await stopTerminal(ctx,{id:session.id,remove:true});
+});
 test('start_terminal remains interactive only when explicitly requested with an initial command', { timeout: 10000 }, async (t) => {
   const root = await fixture(t);
   const ctx = powerContext(root);

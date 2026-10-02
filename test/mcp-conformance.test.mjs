@@ -114,7 +114,7 @@ test('dual-era MCP contract, tool validation, cache hints and risk annotations',
     assert.equal(legacyInit.status, 200);
     assert.equal(legacyInit.body.result.protocolVersion, '2025-11-25');
     assert.equal(legacyInit.body.result.serverInfo.name, 'chatgpt-remote-commander');
-    assert.match(legacyInit.body.result.instructions, /at most 3 direct synchronous MCP tool calls/i);
+    assert.match(legacyInit.body.result.instructions, /at most 2 direct synchronous MCP tool calls/i);
     assert.match(legacyInit.body.result.instructions, /Do not rapidly poll status/i);
 
     const legacyList = await post(port, {

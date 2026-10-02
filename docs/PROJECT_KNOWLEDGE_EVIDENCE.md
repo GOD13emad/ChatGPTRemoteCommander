@@ -1645,3 +1645,18 @@ Status: CURRENT benchmark evidence. Reuse targets: roadmap, release planning, pr
 - Failure signature: Array buffer allocation failed followed by Node heap OOM in a fixture that allocates sub-megabyte buffers; no production assertion failed beforehand.
 - Existing isolation alone was insufficient because the sensitive files still ran after the large batch.
 - Candidate guard: hosted Windows CI passes --prioritize-sensitive=1 to the bounded qualification wrapper. The wrapper orders tunnel-log-rotation first, then async-operations and workflow-http, all before the bulk batch; it does not alter production code, package scripts, installer/update qualification concurrency, assertions, or runtime deadlines.
+
+
+## 2026-10-02 — stream-resume resilience / Desktop Commander comparison
+
+**Context:** repeated ChatGPT "Resume stream unavailable" during Commander-heavy long turns.
+
+**Finding:** the actionable difference in Desktop Commander's public implementation is process/result decoupling: process start returns quickly, running state persists, output is read later with bounded pagination/offsets, and history/buffers are capped. This avoids making completion depend on one long-lived assistant response stream.
+
+**Remote Commander root-cause contribution:** durable operation/MCP Tasks already existed, but a stale ChatGPT app tool catalog can omit them, while the compatibility terminal reader previously returned all unread output and direct synchronous tools could return comparatively large structured payloads.
+
+**Decision/Guard:** long or high-output work never earns a larger synchronous timeout. Prefer durable operation_start; if unavailable in the client catalog, use start_terminal once, read bounded terminal pages, allow at most one <=5 s wait window per turn, then close as BACKGROUND. Direct sync budget is 10 s, output 32 KiB, and two direct calls/turn.
+
+**Regression:** 13/13 focused PASS; 31/31 MCP/transport PASS; final full qualification 483/483 non-skipped PASS in the main batch, 6 platform-gated SKIP, with downstream GUI/source/schema gates PASS.
+
+**Limitation:** this mitigates Commander's contribution; it cannot repair ChatGPT's host-side resume/cache service. Plan/tier differences remain UNPROVEN as a causal explanation.

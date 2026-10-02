@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.10.5 — 2026-10-02
+
+- Harden ChatGPT stream-resume behavior by shortening direct synchronous command exposure from 15 seconds to 10 seconds and reducing the per-turn synchronous Commander budget from three calls to two.
+- Cap direct run_shell and run_project_command output at 32 KiB so a successful command cannot return multi-megabyte structured MCP payloads through one ChatGPT response stream.
+- Add bounded terminal output paging: read_terminal defaults to 32 KiB per stream, caps pages at 64 KiB, returns continuation offsets/remaining counts, and supports at most a 5-second long-poll for fresh output.
+- Make start_terminal the explicit compatibility fallback for long/high-output work when a ChatGPT custom app still has a stale cached tool catalog and has not exposed operation_*; never compensate by increasing synchronous timeouts.
+- Preserve durable operation_*, MCP Tasks, idempotency, delivery, workflow recovery, one-writer semantics, and candidate-first update behavior. The fix reduces dependence on one long-lived ChatGPT response stream rather than claiming to repair a platform-side resume service.
+- Add regressions for 90,000-character paged terminal output, bounded wait behavior, 10-second direct-call rejection, updated MCP instructions/schema, and retry/transport compatibility.
+
 ## 0.10.4 — 2026-10-01
 
 - Make hosted qualification deterministic by isolating scheduler-sensitive async/workflow/tunnel-log test files from the large concurrent file batch and extending only fixture observation deadlines; production runtime deadlines are unchanged.

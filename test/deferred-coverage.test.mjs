@@ -27,12 +27,19 @@ test('uncertain-duration direct work is deferred or hard-bounded',()=>{
   // Keep the advertised schema backward-compatible with cached hosts, while the runtime hard guard remains 15 seconds.
   assert.equal(max(def(powerToolDefinitions,'run_shell'),'timeoutMs'),30000);
   assert.throws(() => synchronousCommandInput({timeoutMs:30000}), /SYNCHRONOUS_COMMAND_DEADLINE_RISK/);
-  assert.equal(synchronousCommandInput({timeoutMs:15000}).timeoutMs,15000);
+  assert.equal(synchronousCommandInput({timeoutMs:10000}).timeoutMs,10000);
+  assert.throws(() => synchronousCommandInput({timeoutMs:10001}), /SYNCHRONOUS_COMMAND_DEADLINE_RISK/);
   assert.equal(max(def(powerToolDefinitions,'search_files'),'maxDurationMs'),10000);
   assert.match(power,/PROCESS_LIST_TIMEOUT/);
   const startTerminalDef=def(powerToolDefinitions,'start_terminal');
   assert.equal(startTerminalDef.inputSchema.properties.interactive?.type,'boolean');
   assert.match(startTerminalDef.description,/one-shot/);
+  assert.match(startTerminalDef.description,/bounded read_terminal/);
+  const readTerminalDef=def(powerToolDefinitions,'read_terminal');
+  assert.equal(max(readTerminalDef,'maxChars'),65536);
+  assert.equal(max(readTerminalDef,'waitMs'),5000);
+  assert.equal(readTerminalDef.inputSchema.properties.stdoutOffset?.minimum,0);
+  assert.equal(readTerminalDef.inputSchema.properties.stderrOffset?.minimum,0);
   assert.match(power,/terminal session is one-shot and does not accept input/);
   assert.match(power,/terminateProcessTree\(session\.child\.pid/);
   assert.match(power,/setTimeout\(resolve, 1500\)/);
@@ -56,14 +63,15 @@ test('CSDC-008 scope does not pretend storage stalls are solved',()=>{
 
 test('turn-safe orchestration advertises bounded direct work and durable continuation',()=>{
   const server=read('src/server-v0.3.mjs');
-  assert.match(server,/CHAT_STREAM_SAFE_DIRECT_CALL_BUDGET = 3/);
+  assert.match(server,/CHAT_STREAM_SAFE_DIRECT_CALL_BUDGET = 2/);
   assert.match(server,/rapidPollingAllowed: false/);
   assert.match(server,/longWorkMode: 'durable-background'/);
   assert.match(server,/completionBeacon: deliveryStore\.beacon\(5\)/);
   assert.match(server,/use at most \$\{CHAT_STREAM_SAFE_DIRECT_CALL_BUDGET\} direct synchronous MCP tool calls/);
   assert.match(server,/completionBeacon\.pending is nonzero/);
   assert.match(server,/Every execution turn must end with a visible closeout state/);
-  assert.match(server,/unknown duration, use operation_start/);
+  assert.match(server,/operation_\* tools are not exposed by the client/);
+  assert.match(server,/bounded read_terminal waitMs follow window/);
   assert.match(server,/io\.modelcontextprotocol\/tasks/);
   assert.match(server,/Persist multi-step readiness\/recovery through durable workflows/);
   assert.match(server,/keep all new reasoning and next-step decisions in the current ChatGPT conversation/);

@@ -1,0 +1,44 @@
+[
+  {
+    "path": "src\\retry-guard.mjs",
+    "sha256": "fe18c1511c1a73b95ca93b6134fefdc8da2401d115e7d7a11aa5cd2cb123b6cc",
+    "bytes": 2316,
+    "backup": "C:\\Users\\Aa.Emad\\source\\repos\\ChatGPTRemoteCommander\\_PROJECT_ARCHIVE\\audit-prestate\\2026-10-02-stream-resume\\src__retry-guard.mjs"
+  },
+  {
+    "path": "src\\server-v0.3.mjs",
+    "sha256": "91c89d5fcb63727cdef150009c85c886e0007887c6eb21c3f43d6995cc60b7ac",
+    "bytes": 38832,
+    "backup": "C:\\Users\\Aa.Emad\\source\\repos\\ChatGPTRemoteCommander\\_PROJECT_ARCHIVE\\audit-prestate\\2026-10-02-stream-resume\\src__server-v0.3.mjs"
+  },
+  {
+    "path": "src\\power-tools-v0.3.mjs",
+    "sha256": "18153c64d65e99de42aee71289d132b9bba6d09fd23ddefd957d9bfe8c74f49e",
+    "bytes": 42005,
+    "backup": "C:\\Users\\Aa.Emad\\source\\repos\\ChatGPTRemoteCommander\\_PROJECT_ARCHIVE\\audit-prestate\\2026-10-02-stream-resume\\src__power-tools-v0.3.mjs"
+  },
+  {
+    "path": "src\\tools-v0.3.mjs",
+    "sha256": "265ee6bc70c8339012a3d3b7d84a59ae7d8adafbe83a407063c9fe0a230ca661",
+    "bytes": 11800,
+    "backup": "C:\\Users\\Aa.Emad\\source\\repos\\ChatGPTRemoteCommander\\_PROJECT_ARCHIVE\\audit-prestate\\2026-10-02-stream-resume\\src__tools-v0.3.mjs"
+  },
+  {
+    "path": "test\\retry-guard.test.mjs",
+    "sha256": "dc4f91c1b88ceba42dca3612ce07d633b4fdb48774ad4db9c8b11b1fe6f3d954",
+    "bytes": 1658,
+    "backup": "C:\\Users\\Aa.Emad\\source\\repos\\ChatGPTRemoteCommander\\_PROJECT_ARCHIVE\\audit-prestate\\2026-10-02-stream-resume\\test__retry-guard.test.mjs"
+  },
+  {
+    "path": "test\\deferred-coverage.test.mjs",
+    "sha256": "daeab28fd196d1e44f04df2d104c4466fe8865c958ef9c25c89e2b44ce7f8cb6",
+    "bytes": 4213,
+    "backup": "C:\\Users\\Aa.Emad\\source\\repos\\ChatGPTRemoteCommander\\_PROJECT_ARCHIVE\\audit-prestate\\2026-10-02-stream-resume\\test__deferred-coverage.test.mjs"
+  },
+  {
+    "path": "test\\process-tree-lifecycle.test.mjs",
+    "sha256": "7028f0c9f3d3020b7ca6aebfd1a31e1865e05a02d5bd3a3db46487205bfee573",
+    "bytes": 6365,
+    "backup": "C:\\Users\\Aa.Emad\\source\\repos\\ChatGPTRemoteCommander\\_PROJECT_ARCHIVE\\audit-prestate\\2026-10-02-stream-resume\\test__process-tree-lifecycle.test.mjs"
+  }
+]

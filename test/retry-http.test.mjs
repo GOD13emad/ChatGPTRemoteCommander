@@ -63,7 +63,7 @@ test('HTTP retry hardening rejects long sync work before effect and bounds overs
     assert.equal(direct.response.status, 200);
     assert.ok(direct.elapsedMs < 1000, `long sync request was not rejected promptly: ${direct.elapsedMs}ms`);
     assert.equal(direct.body.result.isError, true);
-    assert.match(direct.body.result.content[0].text, /15000|maximum/);
+    assert.match(direct.body.result.content[0].text, /10000|bounded read_terminal|maximum/);
     await wait(1200);
     await assert.rejects(fs.stat(effect), { code: 'ENOENT' });
 
