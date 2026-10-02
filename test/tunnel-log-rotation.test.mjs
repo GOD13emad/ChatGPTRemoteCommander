@@ -22,6 +22,49 @@ function assertBytesEqual(actual, expected, label) {
   assert.fail(JSON.stringify({code:'BINARY_EQUALITY_FAILED',label,actualBytes:actual.length,expectedBytes:expected.length,firstMismatch,actualSha256:digest(actual),expectedSha256:digest(expected)}));
 }
 
+function assertMergedPipeBytes(actual, { chunks, chunkBytes, marker = Buffer.from('TUNNEL_CHILD_DONE\n') }) {
+  const expectedBytes = chunks * chunkBytes + marker.length;
+  assert.equal(actual.length, expectedBytes, 'merged logger byte count must be exact');
+  const markerIndex = actual.indexOf(marker);
+  assert.ok(markerIndex >= 0, 'stdout completion marker must be present');
+  assert.equal(actual.indexOf(marker, markerIndex + 1), -1, 'stdout completion marker must occur exactly once');
+
+  const payload = Buffer.concat([actual.subarray(0, markerIndex), actual.subarray(markerIndex + marker.length)]);
+  assert.equal(payload.length, chunks * chunkBytes);
+  const first = Array(chunks).fill(-1);
+  const last = Array(chunks).fill(-1);
+  const counts = Array(chunks).fill(0);
+  for (let pos = 0; pos < payload.length; pos += 1) {
+    const index = payload[pos] - 65;
+    if (index < 0 || index >= chunks) {
+      assert.fail(JSON.stringify({ code: 'MERGED_PIPE_UNEXPECTED_BYTE', pos, value: payload[pos] }));
+    }
+    if (first[index] < 0) first[index] = pos;
+    last[index] = pos;
+    counts[index] += 1;
+  }
+  for (let index = 0; index < chunks; index += 1) {
+    assert.equal(counts[index], chunkBytes, `chunk ${index} byte count must be exact`);
+  }
+
+  const assertPipeOrder = indexes => {
+    for (let i = 1; i < indexes.length; i += 1) {
+      const before = indexes[i - 1], after = indexes[i];
+      assert.ok(last[before] < first[after], `pipe order must preserve chunk ${before} before ${after}`);
+    }
+  };
+  assertPipeOrder(Array.from({ length: chunks }, (_, i) => i).filter(i => i % 5 !== 4));
+  assertPipeOrder(Array.from({ length: chunks }, (_, i) => i).filter(i => i % 5 === 4));
+
+  let lastFinalStdout = -1;
+  const finalStdoutByte = 65 + (chunks - 1);
+  for (let pos = 0; pos < actual.length; pos += 1) {
+    if (pos >= markerIndex && pos < markerIndex + marker.length) continue;
+    if (actual[pos] === finalStdoutByte) lastFinalStdout = pos;
+  }
+  assert.ok(lastFinalStdout >= 0 && lastFinalStdout < markerIndex, 'completion marker must follow the final stdout chunk');
+}
+
 function run(args, options = {}) {
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, args, { ...options, windowsHide: true });
@@ -76,11 +119,21 @@ test('tunnel log runner rotates without restarting child and preserves the compl
   parts.push(await readFile(log));
   const actual = Buffer.concat(parts);
 
-  const expectedParts = [];
-  for (let i = 0; i < chunks; i += 1) expectedParts.push(Buffer.alloc(chunkBytes, 65 + (i % 26)));
-  expectedParts.push(Buffer.from('TUNNEL_CHILD_DONE\n'));
-  const expected = Buffer.concat(expectedParts);
-  assertBytesEqual(actual, expected, 'rolling logger must preserve stdout+stderr bytes exactly');
+  assertMergedPipeBytes(actual, { chunks, chunkBytes });
+});
+
+test('merged stdout/stderr contract accepts cross-pipe delivery reordering but rejects loss', () => {
+  const chunks = 6, chunkBytes = 8;
+  const marker = Buffer.from('TUNNEL_CHILD_DONE\n');
+  const block = i => Buffer.alloc(chunkBytes, 65 + i);
+  const reordered = Buffer.concat([block(0), block(1), block(2), block(3), block(5), marker, block(4)]);
+  assertMergedPipeBytes(reordered, { chunks, chunkBytes, marker });
+
+  const lost = Buffer.from(reordered.subarray(1));
+  assert.throws(
+    () => assertMergedPipeBytes(lost, { chunks, chunkBytes, marker }),
+    error => error.code === 'ERR_ASSERTION'
+  );
 });
 
 test('tunnel log runner bounds and archives an oversized legacy current log before child startup', async t => {
