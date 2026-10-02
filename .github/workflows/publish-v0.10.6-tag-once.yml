@@ -1,0 +1,42 @@
+name: Publish v0.10.6 tag once
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Create exact qualified v0.10.6 tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected="359445da5bbe93cd5e7d22514f49e5597b387d8c"
+          expected_tree="79b19b75ad7100f0c84c82c6174e10cdf275ba61"
+          tag="v0.10.6"
+
+          git cat-file -e "$expected^{commit}"
+          test "$(git rev-parse "$expected^{tree}")" = "$expected_tree"
+          test "$(git show "$expected:package.json" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>process.stdout.write(JSON.parse(s).version))")" = "0.10.6"
+          git cat-file -e "$expected:docs/RELEASE_0.10.6.md"
+          git merge-base --is-ancestor "$expected" HEAD
+
+          if git show-ref --verify --quiet "refs/tags/$tag"; then
+            test "$(git rev-parse "$tag^{commit}")" = "$expected"
+            echo "TAG_ALREADY_CORRECT $tag $expected"
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$tag" "$expected" -m "Remote Commander v0.10.6"
+          git push origin "refs/tags/$tag"
+          test "$(git rev-parse "$tag^{commit}")" = "$expected"
+          echo "TAG_PUBLISHED $tag $expected"
