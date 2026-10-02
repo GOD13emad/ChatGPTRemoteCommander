@@ -22,7 +22,7 @@
     {
       "path": "src/graceful-browser-client.mjs",
       "sha256": "eeb8e6ba85a045a02f66450c51beb9bdefc48d482abc9568ec2c01773b224fe1",
-      "bytes": 3873
+      "bytes": 3822
     },
     {
       "path": "src/graceful-browser-close.mjs",
