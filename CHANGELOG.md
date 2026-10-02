@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.10.6 — 2026-10-02
+
+- Promote the evidence-backed Saeid operation-child lifecycle hardening on top of v0.10.5, capturing exit/close/error state before awaited persistence can race it.
+- Add operation-child lifecycle syntax/test gates to the default qualification path.
+- Version Saeid V03 policy/monitor, paused-domain, blocked Q5 private-file, and accepted Browser-R3 component sources under `experimental/` without wiring blocked components into production runtime.
+- Preserve v0.10.5 stream-resume protections, background-first transport, rollback baseline, and fail-closed update behavior.
+- Advance installer, server, plugin templates, release contracts and default source ref to v0.10.6.
 ## 0.10.5 — 2026-10-02
 
 - Harden ChatGPT stream-resume behavior by shortening direct synchronous command exposure from 15 seconds to 10 seconds and reducing the per-turn synchronous Commander budget from three calls to two.
