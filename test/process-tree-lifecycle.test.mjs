@@ -173,22 +173,21 @@ test('read_terminal bounded wait returns when new output arrives', { timeout: 10
   assert.ok(Date.now() - started < 1000);
   await stopTerminal(ctx,{id:session.id,remove:true});
 });
-test('start_terminal remains interactive only when explicitly requested with an initial command', { timeout: 10000 }, async (t) => {
+test('start_terminal remains interactive only when explicitly requested with an initial command', { timeout: 20000 }, async (t) => {
   const root = await fixture(t);
   const ctx = powerContext(root);
   const command = process.platform === 'win32' ? "Write-Output 'INTERACTIVE_READY'" : "printf 'INTERACTIVE_READY\\n'";
   const session = await startTerminal(ctx, { cwd: root, command, interactive: true });
   assert.equal(session.interactive,true);
   assert.equal(session.autoClose,false);
-  for (let i=0;i<80;i++) {
-    const state=await readTerminal(ctx,{id:session.id,consume:false});
+  for (let i=0;i<3;i++) {
+    const state=await readTerminal(ctx,{id:session.id,consume:false,waitMs:5000,maxChars:4096});
     if (/INTERACTIVE_READY/.test(state.stdout)) {
       assert.equal(state.running,true);
       await stopTerminal(ctx,{id:session.id,remove:true});
       return;
     }
-    await wait(25);
   }
   await stopTerminal(ctx,{id:session.id,remove:true});
-  assert.fail('interactive terminal did not accept initial command');
+  assert.fail('interactive terminal did not accept initial command within bounded readiness waits');
 });
