@@ -18,8 +18,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          expected="359445da5bbe93cd5e7d22514f49e5597b387d8c"
-          expected_tree="79b19b75ad7100f0c84c82c6174e10cdf275ba61"
+          expected="3546256e8e7c494d140bc9c33259ddbf345639d3"
+          expected_tree="cce09e13b834c17a055b3448e808089966e1125a"
           tag="v0.10.6"
 
           git cat-file -e "$expected^{commit}"
