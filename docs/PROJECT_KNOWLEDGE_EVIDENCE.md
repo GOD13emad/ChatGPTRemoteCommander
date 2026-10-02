@@ -1679,3 +1679,30 @@ Evidence on Windows saeid / Node 24.19.0:
 - installer check, onboarding plugin check and release asset contract: PASS.
 
 Acceptance boundary: this is local exact-tree qualification only. GitHub hosted Windows/Ubuntu CI, server-install canaries, merge, tag, release assets and downstream update/readback remain OPEN. v0.10.5 remains rollback authority until those gates pass.
+
+
+## 2026-10-03 — v0.10.6 publication, Linux rollout, and CEF preview closure
+
+**Context / objective:** move Saeid development from local/draft state into versioned GitHub authority without promoting unqualified experimental components.
+
+**Commander release claim — CONFIRMED / HIGH:** stable GitHub release `v0.10.6` is published, not draft/prerelease, and contains exactly 19 uploaded assets with SHA-256 metadata. Annotated tag peels to exact release commit `3546256e8e7c494d140bc9c33259ddbf345639d3`; exact release tree is `cce09e13b834c17a055b3448e808089966e1125a`.
+
+**Windows test-contract root cause — CONFIRMED / HIGH:** the prior tunnel-log failure treated stdout/stderr as one globally ordered stream even though they are independent OS pipes. Equal byte counts and a boundary-local reorder established a test-contract nondeterminism rather than data-loss evidence. PR #102 changed only the test invariant: exact byte totals/chunk counts and per-stream order remain strict; cross-pipe global arrival order is no longer required. Hosted Windows and Ubuntu CI passed before merge.
+
+**Release-orchestration root cause — CONFIRMED / HIGH:** a tag pushed by GitHub Actions using the repository `GITHUB_TOKEN` did not trigger the downstream tag workflow. Prevention used the already-proven one-shot publisher pattern: verify exact tag target/tree/version, rebuild official assets, verify SHA256SUMS, require exactly 19 assets, then publish. Publisher run completed successfully; one-shot workflows were removed from main after readback.
+
+**Proportional-rigor decision — ACCEPTED:** the asset-publisher PR modified only release workflow code, not product bytes. It was merged after exact product target qualification (hosted Windows/Ubuntu + prior server canaries + independent Linux canary) and exact target/tree guards, without waiting for an unrelated duplicate full-product suite on the publisher-only head. Publisher itself then passed exact-target, asset-build, checksum and publication gates.
+
+**Linux independent canary — CONFIRMED / HIGH:** `aliemad-Labtop` cloned exact tag v0.10.6 and ran official auto-update with `--no-promote`. Qualification/security/doctor/browser/workflow/hardware gates passed; main qualification observed 489 tests with 487 pass / 0 fail / 2 platform skips and final marker `AUTO_UPDATE_CANDIDATE_PASS`.
+
+**Linux live rollout — CONFIRMED / HIGH:** live readback after promotion reports v0.10.6 on port 48831, exact commit `3546256e...`, config SHA-256 `7358d66a665e3fbabb70b76cc09d3180a27e62571d685a28c1793423d6836c02`, route generation 113, FULL_POWER preserved, workflow DB integrity `ok`, active operations 0 and leases 0. The pre-existing dirty development checkout was not modified. v0.10.5 release bytes remain on disk for rollback.
+
+**State/backlog boundary — CONFIRMED:** 105 persisted nonterminal workflow records, 4 interrupted, 5 reconciliation-required and 205 completed-undelivered records remain on the laptop. These are not a live queue and include unrelated real user projects; no mass cleanup/replay was performed. Any UNCERTAIN result remains fail-closed and must not be blindly replayed.
+
+**CEF preview claim — CONFIRMED / HIGH:** `Usefull-Skills/chatgpt-cef-linux` prerelease `v0.8.0-rc.1` was rebuilt and native-qualified on Linux before publication. Annotated tag points to exact candidate `1581c8012dbbb08b88517e01aa5e4f4ab2eb97f3`. Published assets: Linux x86_64 binary SHA-256 `781e6eaf19317c40b2566f5630a7415fe39ed5d6460117e50fdd6564e15d2f66`, source SHA-256 `58e1067b29e5c712af677d47382890f722cf66fbf432a35d7549a10c67484865`, checksum-file asset digest `684994107e226d38a077257973fffb7bd27712c374082b615a94d2fc9160b781`. Stable CEF remains v0.7.1; Windows and end-to-end integration are UNPROVEN.
+
+**Superseded history:** Commander PR #99 and CEF PR #51/#52 were closed with explanatory comments after their required source was preserved/versioned. Branch/history were retained; closing does not imply experimental acceptance.
+
+**Limitations / open gates:** Saeid direct Commander readback was unavailable in this session; Emad Windows connector was not exposed/reliably accessible. Therefore their v0.10.6 rollout is MISSING, not completed. CEF Windows native build/install, V03 native integration, current-session transport and sustained end-to-end acceptance remain open.
+
+**Reuse targets:** release engineering, updater/runbook, Project Brain/handoff, Windows rollout, CEF cross-platform roadmap.
