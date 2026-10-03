@@ -268,7 +268,6 @@ export class WorkflowStore {
           .run(row.id,lifecycle,enabled?1:0,null,null,null,0,null,now);
       }
     } catch (e) { this.#db.close(); this.#leaseDb.close(); throw e; }
-    this.recoverInterrupted();
   }
   close() { if (!this.#closed) { this.#db.close(); this.#leaseDb.close(); this.#closed = true; } }
   get location() { return this.#dbPath; }
@@ -301,10 +300,12 @@ export class WorkflowStore {
     };
   }
 
-  recoverInterrupted() {
+  recoverInterrupted(ids = null) {
     const recovered = [];
-    const ids = this.#db.prepare('SELECT id FROM workflows ORDER BY id').all().map(x=>x.id);
-    for (const id of ids) {
+    const selected = Array.isArray(ids)
+      ? [...new Set(ids.filter(id => typeof id === 'string' && ID.test(id)))]
+      : this.#db.prepare("SELECT w.id FROM workflows w JOIN scheduler_jobs s ON s.workflow=w.id WHERE s.enabled=1 AND s.lifecycle NOT IN ('COMPLETED','FAILED','CANCELLED') ORDER BY w.id LIMIT 25").all().map(x=>x.id);
+    for (const id of selected) {
       let loaded; try { loaded = this.#load(id); } catch { continue; }
       const dead = loaded.state.steps.filter(step => {
         if (step.status !== 'running') return false;
@@ -460,7 +461,7 @@ export class WorkflowStore {
     });
     return this.#transaction(() => {
       if (this.#db.prepare('SELECT id FROM workflows WHERE id=?').get(id)) fail('WORKFLOW_ALREADY_EXISTS');
-      if (this.#db.prepare('SELECT COUNT(*) AS n FROM workflows').get().n >= 1000) fail('WORKFLOW_COUNT_LIMIT');
+      if (this.#db.prepare('SELECT COUNT(*) AS n FROM workflows').get().n >= 100000) fail('WORKFLOW_COUNT_LIMIT');
       const state = { schema: 2, id, root, device: this.#device, configSha256: this.#configSha,
         goal, acceptance, revision: 0, createdAt: new Date().toISOString(), updatedAt: null,
         steps: plan, planExtensions: [], notes: [], checkpoint: null, acceptanceStatus: 'UNVALIDATED',
@@ -497,8 +498,27 @@ export class WorkflowStore {
     } catch (e) { try { this.#db.exec('ROLLBACK'); } catch {} throw e; }
   }
   list() {
-    return this.#db.prepare("SELECT w.id,w.revision,COALESCE(s.lifecycle,'CREATED') AS lifecycle,COALESCE(s.enabled,0) AS schedulerEnabled,s.last_failure AS lastFailure FROM workflows w LEFT JOIN scheduler_jobs s ON s.workflow=w.id ORDER BY w.id LIMIT 1001").all()
-      .map(x=>({...x,schedulerEnabled:x.schedulerEnabled===1}));
+    return this.listPage({ limit: 1000 }).workflows;
+  }
+  listPage({ after = '', limit = 200 } = {}) {
+    const bounded = Number.isSafeInteger(Number(limit)) ? Math.max(1, Math.min(1000, Number(limit))) : 200;
+    if (after && (typeof after !== 'string' || !ID.test(after))) fail('WORKFLOW_INVALID_ID');
+    const rows = this.#db.prepare("SELECT w.id,w.revision,COALESCE(s.lifecycle,'CREATED') AS lifecycle,COALESCE(s.enabled,0) AS schedulerEnabled,s.last_failure AS lastFailure FROM workflows w LEFT JOIN scheduler_jobs s ON s.workflow=w.id WHERE (?='' OR w.id>?) ORDER BY w.id LIMIT ?").all(after, after, bounded + 1);
+    const hasMore = rows.length > bounded;
+    const page = rows.slice(0, bounded).map(x=>({...x,schedulerEnabled:x.schedulerEnabled===1}));
+    return { workflows: page, nextAfter: hasMore ? page.at(-1)?.id ?? null : null, hasMore };
+  }
+  schedulerBatch({ after = '', limit = 25 } = {}) {
+    const bounded = Number.isSafeInteger(Number(limit)) ? Math.max(1, Math.min(100, Number(limit))) : 25;
+    const query = "SELECT w.id,w.revision,s.lifecycle,COALESCE(s.enabled,0) AS schedulerEnabled,s.last_failure AS lastFailure FROM scheduler_jobs s JOIN workflows w ON w.id=s.workflow WHERE s.enabled=1 AND s.lifecycle NOT IN ('COMPLETED','FAILED','CANCELLED') AND (?='' OR w.id>?) ORDER BY w.id LIMIT ?";
+    let rows = this.#db.prepare(query).all(after, after, bounded);
+    if (rows.length < bounded && after) {
+      const remaining = bounded - rows.length;
+      const wrap = this.#db.prepare("SELECT w.id,w.revision,s.lifecycle,COALESCE(s.enabled,0) AS schedulerEnabled,s.last_failure AS lastFailure FROM scheduler_jobs s JOIN workflows w ON w.id=s.workflow WHERE s.enabled=1 AND s.lifecycle NOT IN ('COMPLETED','FAILED','CANCELLED') AND w.id<=? ORDER BY w.id LIMIT ?").all(after, remaining);
+      rows = rows.concat(wrap);
+    }
+    const workflows = rows.map(x=>({...x,schedulerEnabled:x.schedulerEnabled===1}));
+    return { workflows, nextAfter: workflows.at(-1)?.id ?? '' };
   }
   note({ id, expectedRevision, kind, text, status = 'UNVERIFIED', confidence = null, source = 'caller', reuseTargets = [], path: evidencePath = null, hash: evidenceHash = null }) {
     const kinds = ['fact','inference','proposal','assumption','decision','failure','root_cause','evidence','handoff'];
