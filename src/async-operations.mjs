@@ -529,12 +529,17 @@ export function createAsyncOperationTools({ config, prepare, workerPath, deliver
         const latestDeadlineAtMs = typeof latest.deadlineAt === 'string' ? Date.parse(latest.deadlineAt) : NaN;
         const latestDeadlineExpired = Number.isFinite(latestDeadlineAtMs)
           && latestNow > latestDeadlineAtMs + 5000;
-        if (!latestDeadlineExpired) return latest;
-
         const latestWorkerPid = Number(latest.workerPid);
         const latestWorkerPidValid = Number.isSafeInteger(latestWorkerPid) && latestWorkerPid > 0;
         const latestWorkerAlive = latestWorkerPidValid && alive(latestWorkerPid);
-        if (latestWorkerAlive) {
+        const latestUpdatedAtMs = typeof latest.updatedAt === 'string' ? Date.parse(latest.updatedAt) : NaN;
+        const staleQueued = latest.status === 'QUEUED'
+          && Number.isFinite(latestUpdatedAtMs)
+          && latestNow > latestUpdatedAtMs + WORKER_SCHEDULING_HARD_GRACE_MS;
+        const missingWorker = latestWorkerPidValid && !latestWorkerAlive;
+        if (!latestDeadlineExpired && !staleQueued && !missingWorker) return latest;
+
+        if (latestWorkerAlive && !staleQueued) {
           const startedAtMs = typeof latest.startedAt === 'string' ? Date.parse(latest.startedAt) : NaN;
           const timeoutMs = Number(latest.timeoutMs);
           const timeoutValid = Number.isSafeInteger(timeoutMs) && timeoutMs >= 1000;
@@ -553,7 +558,9 @@ export function createAsyncOperationTools({ config, prepare, workerPath, deliver
           ...latest,
           status: 'UNCERTAIN',
           updatedAt: new Date().toISOString(),
-          failureCode: 'DEADLINE_EXCEEDED_WITHOUT_FINAL_RECEIPT'
+          failureCode: staleQueued ? 'QUEUED_WORKER_STALLED_WITHOUT_FINAL_RECEIPT'
+            : missingWorker ? 'WORKER_MISSING_WITHOUT_FINAL_RECEIPT'
+            : 'DEADLINE_EXCEEDED_WITHOUT_FINAL_RECEIPT'
         };
         await atomicJson(p.state, state);
         return attachDelivery(state);
