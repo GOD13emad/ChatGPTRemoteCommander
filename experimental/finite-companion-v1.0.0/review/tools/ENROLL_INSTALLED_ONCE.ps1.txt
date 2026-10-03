@@ -1,0 +1,181 @@
+REVIEW ONLY — REDACTED, NOT EXECUTABLE, NOT AN INSTALLER, NOT RUNTIME-ACCEPTED.
+param(
+  [Parameter(Mandatory=$true)][string]$ReleaseRoot,
+  [Parameter(Mandatory=$true)][string]$GrantRoot,
+  [string]$EnrollmentRoot = '',
+  [switch]$StartOnce
+)
+$ErrorActionPreference = 'Stop'
+$ProgressPreference = 'SilentlyContinue'
+$installerLibrary = Join-Path $PSScriptRoot 'INSTALL_SIDECAR.ps1'
+$draftR2Root = '<OWNER_HOME>\Documents\Codex\2026-09-19\files-pasted-by-the-user-chatgpt\work\commander-saeed-finalization-r1-20261003\tools\r2'
+if ($PSScriptRoot -ceq $draftR2Root) { $installerLibrary = Join-Path (Split-Path -Parent $PSScriptRoot) 'INSTALL_SIDECAR.ps1' }
+. $installerLibrary -LibraryOnly
+
+# XML stores the authoritative SID. The COM property may resolve that SID to
+# a local account alias; compare its translated SID, not the display spelling.
+function Assert-CompanionTaskOwner([object]$Task) {
+  $xml = [xml][string]$Task.Xml
+  $principals = @($xml.SelectNodes('//*[local-name()="Principals"]/*[local-name()="Principal"]'))
+  if ($principals.Count -ne 1) { throw 'TASK_XML_PRINCIPAL_COUNT' }
+  $userIds = @($principals[0].SelectNodes('*[local-name()="UserId"]'))
+  if ($userIds.Count -ne 1 -or $userIds[0].InnerText -cne $script:CompanionOwnerSid) { throw 'TASK_XML_OWNER_SID' }
+  $reported = [string]$Task.Definition.Principal.UserId
+  if ($reported -match '^S-1-') { $resolved = [Security.Principal.SecurityIdentifier]::new($reported).Value }
+  else { $resolved = [Security.Principal.NTAccount]::new($reported).Translate([Security.Principal.SecurityIdentifier]).Value }
+  if ($resolved -cne $script:CompanionOwnerSid) { throw 'TASK_RESOLVED_OWNER_SID' }
+  $security = [Security.AccessControl.RawSecurityDescriptor]::new([string]$Task.GetSecurityDescriptor(5))
+  if ($security.Owner.Value -cne $script:CompanionOwnerSid -or $null -eq $security.DiscretionaryAcl -or $security.DiscretionaryAcl.Count -lt 1) { throw 'TASK_SECURITY_OWNER_OR_EMPTY_ACL' }
+  foreach ($ace in $security.DiscretionaryAcl) {
+    if ($ace -isnot [Security.AccessControl.CommonAce] -or $ace.AceQualifier -ne [Security.AccessControl.AceQualifier]::AccessAllowed -or $ace.SecurityIdentifier.Value -cne $script:CompanionOwnerSid) { throw 'TASK_SECURITY_OTHER_OWNER_OR_DENY' }
+  }
+  return @{xmlOwnerSid=$script:CompanionOwnerSid;resolvedOwnerSid=$resolved;reportedPrincipal=$reported;taskAclOwnerOnly=$true}
+}
+
+
+# This is one finite, explicitly dispatched owner check, not a scheduler,
+# ChatGPT continuation mechanism, core upgrade, or unattended work enrollment.
+$handles = [Collections.Generic.List[IDisposable]]::new()
+$heldFiles = [Collections.Generic.List[IDisposable]]::new()
+$result = [ordered]@{schema=1;operation='ENROLL_INSTALLED_FINITE_OWNER_CHECK';phase='PREFLIGHT';version='1.0.0';coreVersion='0.10.6';coreChanged=$false;taskCreated=$false;taskRun=$false;triggers=0;restartCount=0;automaticRetry=$false;whole='NOT_FINAL';runtimeAccepted=$false}
+$evidenceCreated = $false
+try {
+  [void](Assert-CompanionIdentity)
+  $ReleaseRoot = [IO.Path]::GetFullPath($ReleaseRoot)
+  $releaseParent = Join-Path $script:CompanionInstallBase 'companions'
+  $releaseName = [IO.Path]::GetFileName($ReleaseRoot)
+  if ([IO.Path]::GetDirectoryName($ReleaseRoot) -cne $releaseParent -or $releaseName -cnotmatch '^v1\.0\.0-[0-9a-f]{12}$') { throw 'EXACT_INSTALLED_RELEASE_REQUIRED' }
+  Hold-CompanionAncestors $ReleaseRoot $handles
+  $manifestPath = Join-Path $ReleaseRoot 'RELEASE_MANIFEST.json'
+  $manifestStream = [CommanderCompanionInstallV1.Native]::OpenRegularRead($manifestPath); $heldFiles.Add($manifestStream)
+  $manifestSha = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($manifestStream)).ToLowerInvariant()
+  $manifest = Read-CompanionJson $manifestPath
+  [void](Assert-CompanionPayloadDeclarations $manifest)
+  if ($releaseName -cne ('v1.0.0-'+$manifestSha.Substring(0,12))) { throw 'RELEASE_BASENAME_MANIFEST_PIN' }
+  $receipt = Read-CompanionJson (Join-Path $ReleaseRoot 'INSTALL_RECEIPT.json')
+  $taskName = 'Commander-Saeed-Companion-'+$manifestSha.Substring(0,12)
+  if ($receipt.status -cne 'PASS_INSTALLED_VERSIONED_COMPANION_NOT_CORE_UPGRADE' -or $receipt.manifestSha256 -cne $manifestSha -or $receipt.releaseRoot -cne $ReleaseRoot -or $receipt.expectedTaskName -cne $taskName -or $receipt.coreUpgraded -ne $false) { throw 'EXACT_ACCEPTED_INSTALL_RECEIPT_REQUIRED' }
+  Assert-CompanionInstalledPayload $ReleaseRoot $manifest
+  foreach ($relative in 'tools\launch-once.vbs','tools\ENROLL_INSTALLED_ONCE.ps1','src\companion-worker.mjs','RUNTIME_DESCRIPTOR_R2.json') {
+    if (@($manifest.files | Where-Object { $_.path.Replace('/','\') -ceq $relative }).Count -ne 1) { throw 'REQUIRED_ENROLLMENT_MEMBER_NOT_MANIFEST_PINNED' }
+    $heldFiles.Add([CommanderCompanionInstallV1.Native]::OpenRegularRead((Join-Path $ReleaseRoot $relative)))
+  }
+  foreach ($marker in 'DISABLE_INTENT.json','DISABLE_RECEIPT.json','INSTALL_FAILURE.json') {
+    if (Test-Path -LiteralPath (Join-Path $ReleaseRoot $marker)) { throw 'INSTALLED_RELEASE_DISABLED_OR_UNCERTAIN' }
+  }
+  $accepted = Read-CompanionJson (Join-Path $ReleaseRoot (Convert-CompanionRelative $manifest.nativeAcceptance.receiptPath))
+  if ($accepted.status -isnot [string] -or $accepted.status -cnotmatch '^PASS(?:_|$)') { throw 'NATIVE_ACCEPTANCE_NOT_ACCEPTED' }
+  $runsParent = Join-Path $script:CompanionInstallBase 'companion-runs'
+  $GrantRoot = [IO.Path]::GetFullPath($GrantRoot)
+  if ([IO.Path]::GetDirectoryName($GrantRoot) -cne $runsParent -or [IO.Path]::GetFileName($GrantRoot) -cnotmatch '^installed-[0-9a-f]{32}$') { throw 'EXACT_FRESH_INSTALLED_GRANT_REQUIRED' }
+  Hold-CompanionAncestors $GrantRoot $handles
+  Assert-CompanionOwnerAcl $runsParent
+  Assert-CompanionOwnerAcl $GrantRoot
+  $handles.Add([CommanderCompanionInstallV1.Native]::HoldDirectory($GrantRoot))
+  if (@(Get-ChildItem -LiteralPath $GrantRoot -Force).Count -ne 0) { throw 'GRANT_NOT_EMPTY_NO_REPLAY' }
+  if (-not $EnrollmentRoot) { $EnrollmentRoot = $GrantRoot+'.enrollment' }
+  $EnrollmentRoot = [IO.Path]::GetFullPath($EnrollmentRoot)
+  if ([IO.Path]::GetDirectoryName($EnrollmentRoot) -cne $runsParent -or [IO.Path]::GetFileName($EnrollmentRoot) -cne ([IO.Path]::GetFileName($GrantRoot)+'.enrollment')) { throw 'EXACT_EXTERNAL_ENROLLMENT_ROOT_REQUIRED' }
+  $grantPath = Join-Path $runsParent ($releaseName+'.launch.txt')
+  if (Test-Path -LiteralPath $EnrollmentRoot) { throw 'ENROLLMENT_EXISTS_RECONCILE_NO_REPLAY' }
+  if (Test-Path -LiteralPath $grantPath) { throw 'SEALED_LAUNCH_GRANT_EXISTS_RECONCILE_NO_REPLAY' }
+  $scheduler = New-Object -ComObject 'Schedule.Service'; $scheduler.Connect()
+  $folder = $scheduler.GetFolder('\')
+  foreach ($existing in $folder.GetTasks(0)) {
+    if ([string]$existing.Name -ieq $taskName) { throw 'TASK_EXISTS_RECONCILE_NO_OVERWRITE_OR_REPLAY' }
+  }
+  $before = Get-CompanionCoreSnapshot $manifest.core
+  $result.coreBefore = $before; $result.releaseRoot = $ReleaseRoot; $result.grantRoot = $GrantRoot
+  $result.manifestSha256 = $manifestSha; $result.taskName = $taskName; $result.enrollmentRoot = $EnrollmentRoot
+  $result.ownerSid = $script:CompanionOwnerSid; $result.scope = 'SAEED_STATUS_EXACT_PROOF_ONLY'
+  $result.browser = $false; $result.shell = $false; $result.game = $false; $result.video = $false
+  $result.phase = 'DURABLE_ENROLL_INTENT'
+  New-CompanionPrivateDirectory $EnrollmentRoot $handles; $evidenceCreated = $true
+  $grantBytes = [Text.Encoding]::ASCII.GetBytes($GrantRoot)
+  $result.grantSha256 = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($grantBytes)).ToLowerInvariant()
+  $result.startOnceExplicit = [bool]$StartOnce
+  Write-CompanionNewJson (Join-Path $EnrollmentRoot 'ENROLL_INTENT.json') $result
+  $grantStream = [IO.File]::Open($grantPath,[IO.FileMode]::CreateNew,[IO.FileAccess]::ReadWrite,[IO.FileShare]::None)
+  try { $grantStream.Write($grantBytes); $grantStream.Flush($true); [CommanderCompanionInstallV1.Native]::VerifyRegular($grantStream.SafeFileHandle) } finally { $grantStream.Dispose() }
+  Protect-CompanionPayloadFile $grantPath
+  $heldGrant = [CommanderCompanionInstallV1.Native]::OpenRegularRead($grantPath); $heldFiles.Add($heldGrant)
+  if ([Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($heldGrant)).ToLowerInvariant() -cne $result.grantSha256) { throw 'SEALED_GRANT_HASH' }
+  $result.phase = 'CREATE_ONLY_TASK_REGISTRATION'
+  $definition = $scheduler.NewTask(0)
+  $definition.RegistrationInfo.Description = 'Finite owner-enrolled Commander check. No triggers, retries, ongoing autonomy, or core replacement.'
+  $definition.Principal.UserId = $script:CompanionOwnerSid
+  $definition.Principal.LogonType = 3 # InteractiveToken; no password is supplied.
+  $definition.Principal.RunLevel = 0 # LUA, never highest privileges.
+  $settings = $definition.Settings
+  $settings.Enabled = $true; $settings.Hidden = $true; $settings.AllowDemandStart = $true
+  $settings.StartWhenAvailable = $false; $settings.RunOnlyIfIdle = $false
+  $settings.MultipleInstances = 2; $settings.RestartCount = 0; $settings.ExecutionTimeLimit = 'PT3M'
+  $settings.DisallowStartIfOnBatteries = $false; $settings.StopIfGoingOnBatteries = $false
+  $settings.AllowHardTerminate = $false
+  $action = $definition.Actions.Create(0)
+  $action.Path = 'C:\Windows\System32\wscript.exe'
+  $action.Arguments = '//B //NoLogo "'+(Join-Path $ReleaseRoot 'tools\launch-once.vbs')+'"'
+  $action.WorkingDirectory = $ReleaseRoot
+  $sddl = 'O:'+$script:CompanionOwnerSid+'G:'+$script:CompanionOwnerSid+'D:P(A;;FA;;;'+$script:CompanionOwnerSid+')'
+  # TASK_CREATE, not CREATE_OR_UPDATE. Any uncertain outcome is reconciled.
+  $registered = $folder.RegisterTaskDefinition($taskName,$definition,2,$script:CompanionOwnerSid,$null,3,$sddl)
+  $result.taskCreated = $true
+  $observed = $folder.GetTask($taskName)
+  $result.taskOwner = Assert-CompanionTaskOwner $observed
+  if ($observed.Definition.Triggers.Count -ne 0 -or $observed.Definition.Principal.LogonType -ne 3 -or $observed.Definition.Principal.RunLevel -ne 0 -or $observed.Definition.Settings.RestartCount -ne 0 -or $observed.Definition.Settings.ExecutionTimeLimit -cne 'PT3M' -or -not $observed.Definition.Settings.Hidden -or $observed.Definition.Actions.Count -ne 1) { throw 'REGISTERED_TASK_SCOPE_DRIFT_NO_RETRY' }
+  $observedAction = $observed.Definition.Actions.Item(1)
+  if ($observedAction.Path -cne $action.Path -or $observedAction.Arguments -cne $action.Arguments -or $observedAction.WorkingDirectory -cne $ReleaseRoot) { throw 'REGISTERED_TASK_ACTION_DRIFT' }
+  $result.taskXmlSha256 = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes([string]$observed.Xml))).ToLowerInvariant()
+  $result.status = 'REGISTERED_NOT_STARTED_NOT_ACCEPTED'
+  Write-CompanionNewJson (Join-Path $EnrollmentRoot 'REGISTER_RECEIPT.json') $result
+  if ($StartOnce) {
+    if (@(Get-ChildItem -LiteralPath $GrantRoot -Force).Count -ne 0 -or $observed.State -eq 4 -or $observed.GetInstances(0).Count -ne 0) { throw 'START_RACE_RECONCILE_NO_REPLAY' }
+    $result.phase = 'EXPLICIT_START_ONCE'
+    $dispatchAt = [DateTime]::UtcNow
+    $result.dispatchAtUtc = $dispatchAt.ToString('o')
+    Write-CompanionNewJson (Join-Path $EnrollmentRoot 'START_INTENT.json') $result
+    $instance = $observed.Run($null)
+    $result.taskRun = $true; $result.instanceGuid = [string]$instance.InstanceGuid
+    $result.status = 'START_DISPATCHED_NOT_ACCEPTED'
+    $nodeImage = 'C:\Program Files\nodejs\node.exe'
+    $expectedTail = '--disable-warning=ExperimentalWarning "'+(Join-Path $ReleaseRoot 'src\companion-worker.mjs')+'" --run-owned-check "'+$GrantRoot+'"'
+    $deadline = [DateTime]::UtcNow.AddSeconds(5); $matchesFound = @()
+    do {
+      $matchesFound = @(Get-CimInstance Win32_Process -Filter "Name='node.exe'" | Where-Object {
+        $_.ExecutablePath -ceq $nodeImage -and $_.CreationDate.ToUniversalTime() -ge $dispatchAt.AddSeconds(-1) -and $_.CommandLine -ceq ('"'+$nodeImage+'" '+$expectedTail)
+      })
+      if ($matchesFound.Count -gt 1) { throw 'MULTIPLE_EXACT_WORKERS_RECONCILE_NO_RETRY' }
+      if ($matchesFound.Count -eq 1) { break }
+      Start-Sleep -Milliseconds 100
+    } while ([DateTime]::UtcNow -lt $deadline)
+    if ($matchesFound.Count -eq 1) {
+      $worker = $matchesFound[0]
+      $owner = Invoke-CimMethod -InputObject $worker -MethodName GetOwner
+      $ownerSid = Invoke-CimMethod -InputObject $worker -MethodName GetOwnerSid
+      $parent = Get-CimInstance Win32_Process -Filter "ProcessId=$($worker.ParentProcessId)"
+      $parentCommands = @(('"C:\Windows\System32\wscript.exe" '+$action.Arguments),('C:\Windows\System32\wscript.exe '+$action.Arguments))
+      if ($owner.ReturnValue -ne 0 -or $owner.User -ine 'saeed' -or $owner.Domain -ine 'saeid' -or $ownerSid.ReturnValue -ne 0 -or $ownerSid.Sid -cne $script:CompanionOwnerSid -or $parent.ExecutablePath -cne 'C:\Windows\System32\wscript.exe' -or $parent.CommandLine -cnotin $parentCommands) { throw 'DISPATCHED_WORKER_OR_PARENT_IDENTITY' }
+      $parentOwner = Invoke-CimMethod -InputObject $parent -MethodName GetOwnerSid
+      if ($parentOwner.ReturnValue -ne 0 -or $parentOwner.Sid -cne $script:CompanionOwnerSid) { throw 'LAUNCHER_OWNER_MISMATCH' }
+      $workerWindow = (Get-Process -Id $worker.ProcessId).MainWindowHandle.ToInt64()
+      $parentWindow = (Get-Process -Id $parent.ProcessId).MainWindowHandle.ToInt64()
+      $result.workerObserved = @{pid=[int]$worker.ProcessId;createdAt=[string]$worker.CreationDate;image=$nodeImage;argumentsExact=$true;ownerSid=$ownerSid.Sid;parentPid=[int]$parent.ProcessId;parentImage=$parent.ExecutablePath;parentOwnerSid=$parentOwner.Sid;parentArgumentsExact=$true;mainWindowHandleZero=($workerWindow -eq 0 -and $parentWindow -eq 0);visibilityScope='OWNED_WORKER_AND_LAUNCHER_MAIN_WINDOWS_ONLY_NOT_ALL_USER_HANDLES'}
+    } else { $result.workerObservation = 'NOT_SEEN_IN_BOUNDED_WINDOW_RECONCILE_RECEIPT_NO_REPLAY' }
+  }
+  $result.coreAfter = Assert-CompanionCoreUnchanged $before $manifest.core
+  $result.phase = 'COMPLETE'; $result.completedAtUtc = [DateTime]::UtcNow.ToString('o')
+  Write-CompanionNewJson (Join-Path $EnrollmentRoot 'ENROLL_RECEIPT.json') $result
+} catch {
+  $result.status = 'FAIL_ENROLL_PRESERVED_RECONCILE_NO_RETRY'
+  $result.primaryError = @{class=$_.Exception.GetType().FullName;message=$_.Exception.Message;phase=$result.phase}
+  $result.reconcileRequired = $evidenceCreated
+  if ($evidenceCreated) {
+    try { Write-CompanionNewJson (Join-Path $EnrollmentRoot 'ENROLL_FAILURE.json') $result } catch { $result.secondaryCollectorError = $_.Exception.Message }
+  }
+} finally {
+  foreach ($file in $heldFiles) { $file.Dispose() }
+  for ($i=$handles.Count-1; $i -ge 0; $i--) { $handles[$i].Dispose() }
+}
+$result | ConvertTo-Json -Depth 25 -Compress
+if ($result.status -eq 'FAIL_ENROLL_PRESERVED_RECONCILE_NO_RETRY') { exit 1 }
+
