@@ -7,9 +7,24 @@ using System;
 using System.Runtime.InteropServices;
 public static class RcConversationNative {
   [StructLayout(LayoutKind.Sequential)] public struct LASTINPUTINFO { public uint cbSize; public uint dwTime; }
+  public delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
   [DllImport("user32.dll")] public static extern bool GetLastInputInfo(ref LASTINPUTINFO plii);
   [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr hWnd);
   [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+  [DllImport("user32.dll")] public static extern bool EnumWindows(EnumWindowsProc cb, IntPtr lParam);
+  [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
+  [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr hWnd);
+  public static IntPtr[] TopLevelWindowsForPids(int[] pids) {
+    var wanted=new System.Collections.Generic.HashSet<uint>();
+    foreach(var pid in pids) if(pid>0) wanted.Add((uint)pid);
+    var result=new System.Collections.Generic.List<IntPtr>();
+    EnumWindows((hWnd,lParam)=>{
+      uint pid; GetWindowThreadProcessId(hWnd,out pid);
+      if(pid!=0 && wanted.Contains(pid) && IsWindowVisible(hWnd)) result.Add(hWnd);
+      return true;
+    },IntPtr.Zero);
+    return result.ToArray();
+  }
   public static double IdleMilliseconds() {
     var li=new LASTINPUTINFO(); li.cbSize=(uint)Marshal.SizeOf(li);
     if(!GetLastInputInfo(ref li)) return 0;
@@ -72,18 +87,13 @@ function Get-SelectedTab($Root){
 }
 function Find-Context([string]$Browser,[string]$Title){
   $procName=if($Browser -eq 'edge'){'msedge'}else{'chrome'}
-  $pids=@(Get-Process $procName -ErrorAction SilentlyContinue|ForEach-Object{[int]$_.Id})
+  [int[]]$pids=@(Get-Process $procName -ErrorAction SilentlyContinue|ForEach-Object{[int]$_.Id})
   if($pids.Count-eq0){return @()}
-  $pidSet=[Collections.Generic.HashSet[int]]::new()
-  foreach($id in $pids){[void]$pidSet.Add($id)}
-  $desktop=[System.Windows.Automation.AutomationElement]::RootElement
-  $windows=$desktop.FindAll([System.Windows.Automation.TreeScope]::Children,[System.Windows.Automation.Condition]::TrueCondition)
   $matches=@()
-  foreach($root in $windows){
+  foreach($hwnd in [RcConversationNative]::TopLevelWindowsForPids($pids)){
     try{
+      $root=[System.Windows.Automation.AutomationElement]::FromHandle([IntPtr]$hwnd)
       $pid=[int]$root.Current.ProcessId
-      $hwnd=[long]$root.Current.NativeWindowHandle
-      if($hwnd-eq0 -or -not$pidSet.Contains($pid)){continue}
       $tabs=$root.FindAll([System.Windows.Automation.TreeScope]::Descendants,
         (New-Object System.Windows.Automation.PropertyCondition(
           [System.Windows.Automation.AutomationElement]::ControlTypeProperty,
@@ -91,7 +101,7 @@ function Find-Context([string]$Browser,[string]$Title){
       foreach($t in $tabs){
         try{
           if(([string]$t.Current.Name).Trim() -eq $Title){
-            $matches += [pscustomobject]@{ProcessId=$pid;WindowHandle=$hwnd;Root=$root;Tab=$t;Title=([string]$t.Current.Name).Trim()}
+            $matches += [pscustomobject]@{ProcessId=$pid;WindowHandle=[long]$hwnd;Root=$root;Tab=$t;Title=([string]$t.Current.Name).Trim()}
           }
         }catch{}
       }
