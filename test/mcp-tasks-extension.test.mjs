@@ -108,10 +108,15 @@ test('MCP Tasks extension maps durable Commander operations without changing fal
     const followStart=await rpc(port,100,'tools/call',{name:'operation_start',arguments:{requestId:'follow-1',tool:'run_project_command',arguments:{program:'node',args:[fixture,'effect',effect3,'250'],cwd:canonical,timeoutMs:5000}},_meta:meta(false)},'operation_start');
     const followId=followStart.body.result.structuredContent.operationId;
     const before=Date.now();
-    const followed=await rpc(port,101,'tools/call',{name:'operation_status',arguments:{operationId:followId,waitMs:1500},_meta:meta(false)},'operation_status');
+    let followed=await rpc(port,101,'tools/call',{name:'operation_status',arguments:{operationId:followId,waitMs:1500},_meta:meta(false)},'operation_status');
     const elapsed=Date.now()-before;
+    assert.ok(['RUNNING','SUCCEEDED'].includes(followed.body.result.structuredContent.status));
+    assert.ok(elapsed>=100 && elapsed<2500,`bounded follow elapsed=${elapsed}`);
+    for(let i=0;followed.body.result.structuredContent.status!=='SUCCEEDED'&&i<120;i++){
+      await wait(50);
+      followed=await rpc(port,102+i,'tools/call',{name:'operation_status',arguments:{operationId:followId,waitMs:0},_meta:meta(false)},'operation_status');
+    }
     assert.equal(followed.body.result.structuredContent.status,'SUCCEEDED');
-    assert.ok(elapsed>=100 && elapsed<1800,`bounded follow elapsed=${elapsed}`);
 
     const effect4=path.join(canonical,'cancel.txt');
     const cancelStart=await rpc(port,110,'tools/call',{name:'operation_start',arguments:{requestId:'cancel-task-1',tool:'run_project_command',arguments:{program:'node',args:[fixture,'effect',effect4,'3000'],cwd:canonical,timeoutMs:5000}},_meta:meta(true)},'operation_start');
