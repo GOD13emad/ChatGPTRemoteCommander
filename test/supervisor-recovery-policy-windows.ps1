@@ -11,11 +11,13 @@ try {
     @{h=$false;m=1;k=$true;i=0;e='DEFER_TRANSIENT'},
     @{h=$false;m=2;k=$true;i=0;e='DEFER_TRANSIENT'},
     @{h=$false;m=3;k=$false;i=-1;e='DEFER_UNPROVEN'},
-    @{h=$false;m=3;k=$true;i=1;e='DEFER_BUSY'},
-    @{h=$false;m=3;k=$true;i=0;e='RECYCLE'}
+    @{h=$false;m=3;k=$true;i=1;a=1000;e='DEFER_BUSY'},
+    @{h=$false;m=3;k=$true;i=1;a=61000;e='RECYCLE_STALE'},
+    @{h=$false;m=3;k=$true;i=0;a=0;e='RECYCLE'}
   )
   foreach($c in $cases){
-    $actual=Get-RoutedBackendRecoveryDecision ([bool]$c.h) ([int]$c.m) ([bool]$c.k) ([int]$c.i)
+    $age=if($c.ContainsKey('a')){[int]$c.a}else{0}
+    $actual=Get-RoutedBackendRecoveryDecision ([bool]$c.h) ([int]$c.m) ([bool]$c.k) ([int]$c.i) $age
     if($actual -ne $c.e){throw "policy mismatch expected=$($c.e) actual=$actual"}
   }
   $script:StopBackendCalled=$false
