@@ -48,7 +48,8 @@ function Normalize-TabTitle([string]$Value){
   $name=([string]$Value).Trim()
   # Chrome may append a volatile performance suffix to the accessible tab name.
   # Strip only that known telemetry suffix; the stable base title still matches exactly.
-  return ([regex]::Replace($name,' - High memory usage - [0-9]+(?:\.[0-9]+)? (?:KB|MB|GB)
+  return ([regex]::Replace($name,' - High memory usage - [0-9]+(?:\.[0-9]+)? (?:KB|MB|GB)$','')).Trim()
+}
 function Get-Buttons($Root,[string[]]$Names){
   $buttons=$Root.FindAll([System.Windows.Automation.TreeScope]::Descendants,
     (New-Object System.Windows.Automation.PropertyCondition(
