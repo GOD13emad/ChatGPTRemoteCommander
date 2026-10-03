@@ -99,7 +99,7 @@ function Find-Context([string]$Browser,[string]$Title){
   foreach($hwnd in [RcConversationNative]::TopLevelWindowsForPids($pids)){
     try{
       $root=[System.Windows.Automation.AutomationElement]::FromHandle([IntPtr]$hwnd)
-      $pid=[int]$root.Current.ProcessId
+      $windowPid=[int]$root.Current.ProcessId
       $tabs=$root.FindAll([System.Windows.Automation.TreeScope]::Descendants,
         (New-Object System.Windows.Automation.PropertyCondition(
           [System.Windows.Automation.AutomationElement]::ControlTypeProperty,
@@ -109,7 +109,7 @@ function Find-Context([string]$Browser,[string]$Title){
           $rawTitle=([string]$t.Current.Name).Trim()
           $stableTitle=Normalize-TabTitle $rawTitle
           if($stableTitle -eq (Normalize-TabTitle $Title)){
-            $matches += [pscustomobject]@{ProcessId=$pid;WindowHandle=[long]$hwnd;Root=$root;Tab=$t;Title=$stableTitle;RawTitle=$rawTitle}
+            $matches += [pscustomobject]@{ProcessId=$windowPid;WindowHandle=[long]$hwnd;Root=$root;Tab=$t;Title=$stableTitle;RawTitle=$rawTitle}
           }
         }catch{}
       }
