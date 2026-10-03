@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.10.8 — 2026-10-03
+
+- Fix Windows candidate-first updates that could permanently block on an idle Commander-owned browser-control helper left under a verified old backend.
+- Classify the browser helper as safe only after direct old-backend `browser_status` proves `active=false`, `busy=false`, `leased=false`, and `uncertain=false`; any missing or unsafe evidence remains fail-closed.
+- Apply the same browser-idle proof to retained-work drain evidence so later generations cannot reintroduce the stale-descendant deadlock.
+- Preserve v0.10.7 runtime semantics outside updater drain classification and advance installer/server/plugin/release identity to v0.10.8.
+
 ## 0.10.7 — 2026-10-03
 
 - Isolate the MCP Tasks extension regression from the bulk Node test batch so workstation load cannot create a false qualification failure.

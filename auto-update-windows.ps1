@@ -509,7 +509,7 @@ function Get-RetainableLongCommandRoots([object]$Active,[int]$CanonicalPort){
   return @($found|Select-Object ProcessId,ParentProcessId,Name,CommandLine,CreationDate)
 }
 function Get-StaleDrainEvidence([object]$OldActive,[int]$CanonicalPort){
-  $result=[ordered]@{safe=$false;decision='DEFER_UNPROVEN';activeOperations=-1;queued=-1;unexpectedConnections=-1;guiBusy=$true;guiLeased=$true;unsafeDescendants=@();safeDescendants=@()}
+  $result=[ordered]@{safe=$false;decision='DEFER_UNPROVEN';activeOperations=-1;queued=-1;unexpectedConnections=-1;guiBusy=$true;guiLeased=$true;browserActive=$true;browserBusy=$true;browserLeased=$true;browserUncertain=$true;unsafeDescendants=@();safeDescendants=@()}
   if(-not(Test-OwnedOldBackend $OldActive)){$result.decision='NOT_OWNED';return [pscustomobject]$result}
   try{
     $status=Invoke-Mcp ([int]$OldActive.port) 'system_status'
@@ -521,6 +521,11 @@ function Get-StaleDrainEvidence([object]$OldActive,[int]$CanonicalPort){
     $gui=Invoke-Mcp ([int]$OldActive.port) 'gui_status'
     $result.guiBusy=[bool]$gui.busy
     $result.guiLeased=[bool]$gui.leased
+    $browser=Invoke-Mcp ([int]$OldActive.port) 'browser_status'
+    $result.browserActive=[bool]$browser.active
+    $result.browserBusy=[bool]$browser.busy
+    $result.browserLeased=[bool]$browser.leased
+    $result.browserUncertain=[bool]$browser.uncertain
   }catch{
     $result.decision='DEFER_STATUS';return [pscustomobject]$result
   }
@@ -544,7 +549,8 @@ function Get-StaleDrainEvidence([object]$OldActive,[int]$CanonicalPort){
       $norm=$cmd.Trim().ToLowerInvariant()
       $isConhost=([string]$p.Name -ieq 'conhost.exe')
       $isGuiHelper=([string]$p.Name -ieq 'pwsh.exe' -and $norm.Contains('tools\gui-control.ps1 -server') -and -not$result.guiBusy -and -not$result.guiLeased)
-      if($isConhost -or $isGuiHelper){$safe+=$p}else{$unsafe+=$p}
+      $isBrowserHelper=([string]$p.Name -ieq 'node.exe' -and $norm.Contains('tools\browser-control.mjs --server') -and -not$result.browserActive -and -not$result.browserBusy -and -not$result.browserLeased -and -not$result.browserUncertain)
+      if($isConhost -or $isGuiHelper -or $isBrowserHelper){$safe+=$p}else{$unsafe+=$p}
     }
     $result.unsafeDescendants=@($unsafe|Select-Object ProcessId,ParentProcessId,Name,CommandLine)
     $result.safeDescendants=@($safe|Select-Object ProcessId,ParentProcessId,Name,CommandLine)
@@ -556,7 +562,7 @@ function Get-StaleDrainEvidence([object]$OldActive,[int]$CanonicalPort){
   return [pscustomobject]$result
 }
 function Get-TerminalRetentionEvidence([object]$OldActive,[int]$CanonicalPort,[object[]]$TerminalChildren){
-  $result=[ordered]@{safe=$false;decision='DEFER_UNPROVEN';activeOperations=-1;queued=-1;unexpectedConnections=-1;guiBusy=$true;guiLeased=$true;unsafeDescendants=@()}
+  $result=[ordered]@{safe=$false;decision='DEFER_UNPROVEN';activeOperations=-1;queued=-1;unexpectedConnections=-1;guiBusy=$true;guiLeased=$true;browserActive=$true;browserBusy=$true;browserLeased=$true;browserUncertain=$true;unsafeDescendants=@()}
   if(-not(Test-OwnedOldBackend $OldActive)){$result.decision='NOT_OWNED';return [pscustomobject]$result}
   if(@($TerminalChildren).Count-eq0){$result.decision='DEFER_NO_TERMINAL';return [pscustomobject]$result}
   try{
@@ -569,6 +575,11 @@ function Get-TerminalRetentionEvidence([object]$OldActive,[int]$CanonicalPort,[o
     $gui=Invoke-Mcp ([int]$OldActive.port) 'gui_status'
     $result.guiBusy=[bool]$gui.busy
     $result.guiLeased=[bool]$gui.leased
+    $browser=Invoke-Mcp ([int]$OldActive.port) 'browser_status'
+    $result.browserActive=[bool]$browser.active
+    $result.browserBusy=[bool]$browser.busy
+    $result.browserLeased=[bool]$browser.leased
+    $result.browserUncertain=[bool]$browser.uncertain
   }catch{$result.decision='DEFER_STATUS';return [pscustomobject]$result}
   try{
     $cfg=Read-Json ([string]$OldActive.configPath)
@@ -586,6 +597,12 @@ function Get-TerminalRetentionEvidence([object]$OldActive,[int]$CanonicalPort,[o
       foreach($p in $desc){
         $norm=([string]$p.CommandLine).Trim().ToLowerInvariant()
         if([string]$p.Name -ieq 'pwsh.exe' -and $norm.Contains('tools\gui-control.ps1 -server')){$allowedRoots[[int]$p.ProcessId]=$true}
+      }
+    }
+    if(-not$result.browserActive -and -not$result.browserBusy -and -not$result.browserLeased -and -not$result.browserUncertain){
+      foreach($p in $desc){
+        $norm=([string]$p.CommandLine).Trim().ToLowerInvariant()
+        if([string]$p.Name -ieq 'node.exe' -and $norm.Contains('tools\browser-control.mjs --server')){$allowedRoots[[int]$p.ProcessId]=$true}
       }
     }
     $unsafe=@()

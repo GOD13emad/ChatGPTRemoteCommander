@@ -42,6 +42,6 @@ for (const required of [
 }
 if (workflow.includes('gh release upload')) throw new Error('immutable release workflow must attach assets at create time, not after publication');
 if (!workflow.includes('docs/RELEASE_${version}.md')) throw new Error('release notes must follow package version');
-if (pkg.version !== '0.10.7') throw new Error(`unexpected package version ${pkg.version}`);
+if (pkg.version !== '0.10.8') throw new Error(`unexpected package version ${pkg.version}`);
 
 console.log('RELEASE_ASSET_CONTRACT_PASS');
