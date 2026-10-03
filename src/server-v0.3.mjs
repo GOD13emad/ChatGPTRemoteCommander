@@ -334,12 +334,13 @@ function rpcError(id, code, message, data) {
 async function executeTool(name, args) {
   if (!toolDefinition(name)) throw protocolFailure(200, -32602, 'Unknown tool');
   if (AUTO_DEFERRED_MUTATIONS.has(name)) {
-    const { requestId, ...effectArgs } = args ?? {};
+    const { requestId, continuation, ...effectArgs } = args ?? {};
     return asyncOperationTools.execute('operation_start', {
       requestId,
       correlationId: requestId,
       tool: name,
-      arguments: effectArgs
+      arguments: effectArgs,
+      ...(continuation ? { continuation } : {})
     });
   }
   if (isDirectMutationTool(name)) {
