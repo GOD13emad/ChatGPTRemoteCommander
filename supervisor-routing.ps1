@@ -5,6 +5,7 @@ $script:NextAutoUpdateCheck = Get-Date
 $script:RoutedBackendHealthMisses = @{}
 $script:RoutingNotices = @{}
 $script:RoutedBackendHealthFailureThreshold = 3
+$script:RoutedBackendStaleInflightMs = 60000
 
 function Write-RoutingNotice([string]$Key,[string]$Message) {
   if ([string]$script:RoutingNotices[$Key] -eq $Message) { return }
@@ -57,20 +58,35 @@ function Test-RouterReady([int]$Port,[string]$Profile,[string]$ExpectedSourceSha
 
 function Get-RouterBackendActivity($Status,[int]$BackendPort) {
   if(-not $Status -or -not $Status.PSObject.Properties['inflightByPort']) {
-    return [pscustomobject]@{Known=$false;Count=-1}
+    return [pscustomobject]@{Known=$false;Count=-1;OldestAgeMs=-1}
   }
   $container=$Status.inflightByPort
-  if(-not $container){return [pscustomobject]@{Known=$true;Count=0}}
+  if(-not $container){return [pscustomobject]@{Known=$true;Count=0;OldestAgeMs=0}}
   $prop=$container.PSObject.Properties[[string]$BackendPort]
   $count=if($prop){[int]$prop.Value}else{0}
-  return [pscustomobject]@{Known=$true;Count=$count}
+  $oldestAge=0
+  if($count-gt0 -and $Status.PSObject.Properties['inflightDetailsByPort'] -and $Status.inflightDetailsByPort){
+    $detailsProp=$Status.inflightDetailsByPort.PSObject.Properties[[string]$BackendPort]
+    if($detailsProp){
+      $now=[DateTimeOffset]::UtcNow
+      foreach($detail in @($detailsProp.Value)){
+        try{
+          $started=[DateTimeOffset]::Parse([string]$detail.startedAt).ToUniversalTime()
+          $age=[int][Math]::Max(0,($now-$started).TotalMilliseconds)
+          if($age-gt$oldestAge){$oldestAge=$age}
+        }catch{}
+      }
+    }
+  }
+  return [pscustomobject]@{Known=$true;Count=$count;OldestAgeMs=$oldestAge}
 }
 
-function Get-RoutedBackendRecoveryDecision([bool]$HealthOk,[int]$ConsecutiveMisses,[bool]$RouterKnown,[int]$InflightCount) {
+function Get-RoutedBackendRecoveryDecision([bool]$HealthOk,[int]$ConsecutiveMisses,[bool]$RouterKnown,[int]$InflightCount,[int]$OldestAgeMs=0) {
   if($HealthOk){return 'HEALTHY'}
   if(-not $RouterKnown){return 'DEFER_UNPROVEN'}
-  if($InflightCount -gt 0){return 'DEFER_BUSY'}
+  if($InflightCount -gt 0 -and $OldestAgeMs-lt $script:RoutedBackendStaleInflightMs){return 'DEFER_BUSY'}
   if($ConsecutiveMisses -lt $script:RoutedBackendHealthFailureThreshold){return 'DEFER_TRANSIENT'}
+  if($InflightCount -gt 0){return 'RECYCLE_STALE'}
   return 'RECYCLE'
 }
 
@@ -120,9 +136,9 @@ function Start-RoutedBackend($Route,[int]$CanonicalPort) {
     $script:RoutedBackendHealthMisses[$missKey]=$misses
     $routerStatus=Get-RouterStatusSafe $CanonicalPort $profile
     $activity=Get-RouterBackendActivity $routerStatus $port
-    $decision=Get-RoutedBackendRecoveryDecision $false $misses $activity.Known $activity.Count
-    if($decision -ne 'RECYCLE'){
-      Write-RoutingNotice $noticeKey "ROUTED_BACKEND_RECYCLE_$decision profile=$profile pid=$listenerPid port=$port misses=$misses inflight=$($activity.Count)"
+    $decision=Get-RoutedBackendRecoveryDecision $false $misses $activity.Known $activity.Count $activity.OldestAgeMs
+    if($decision -notmatch '^RECYCLE'){
+      Write-RoutingNotice $noticeKey "ROUTED_BACKEND_RECYCLE_$decision profile=$profile pid=$listenerPid port=$port misses=$misses inflight=$($activity.Count) oldestAgeMs=$($activity.OldestAgeMs)"
       return $false
     }
 
@@ -134,15 +150,15 @@ function Start-RoutedBackend($Route,[int]$CanonicalPort) {
     }
     $routerStatus=Get-RouterStatusSafe $CanonicalPort $profile
     $activity=Get-RouterBackendActivity $routerStatus $port
-    if(-not $activity.Known -or $activity.Count -gt 0){
-      $reason=if(-not $activity.Known){'DEFER_UNPROVEN'}else{'DEFER_BUSY'}
-      Write-RoutingNotice $noticeKey "ROUTED_BACKEND_RECYCLE_$reason profile=$profile pid=$listenerPid port=$port misses=$misses inflight=$($activity.Count)"
+    $finalDecision=Get-RoutedBackendRecoveryDecision $false $misses $activity.Known $activity.Count $activity.OldestAgeMs
+    if($finalDecision -notmatch '^RECYCLE'){
+      Write-RoutingNotice $noticeKey "ROUTED_BACKEND_RECYCLE_$finalDecision profile=$profile pid=$listenerPid port=$port misses=$misses inflight=$($activity.Count) oldestAgeMs=$($activity.OldestAgeMs)"
       return $false
     }
 
     Stop-OwnedRoutedBackend $Route $listenerPid
     Clear-RoutedBackendMisses $profile $port
-    Write-SupervisorLog "ROUTED_BACKEND_RECYCLE_CONFIRMED profile=$profile oldPid=$listenerPid port=$port misses=$misses inflight=0"
+    Write-SupervisorLog "ROUTED_BACKEND_RECYCLE_CONFIRMED profile=$profile oldPid=$listenerPid port=$port misses=$misses inflight=$($activity.Count) oldestAgeMs=$($activity.OldestAgeMs) decision=$finalDecision"
   }
   $node = (Get-Command node.exe -ErrorAction Stop).Source
   $server = Join-Path ([string]$Route.Active.projectDir) 'src\server-v0.3.mjs'
