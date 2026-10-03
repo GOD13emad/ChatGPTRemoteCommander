@@ -12,7 +12,9 @@ const coreRoot = path.join(root,'fixtures/core-v0.10.6');
 const configSha256 = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
 const pins = collectCoreSourcePins(coreRoot);
 // Keep SQLite paths below Windows MAX_PATH without changing machine policy.
-const testArea = fs.mkdtempSync(path.join(os.tmpdir(),'commander-core-tests-'));
+// Hosted Windows TEMP may be a junction. Resolve the existing test parent
+// before creating a fresh owned directory; do not relax the runtime alias guard.
+const testArea = fs.mkdtempSync(path.join(fs.realpathSync.native(os.tmpdir()),'commander-core-tests-'));
 if (path.join(testArea,'owned-'+'0'.repeat(36),'.engine/project-engine/project-runs.sqlite-journal').length>=240) throw Error('TEST_TEMP_PATH_TOO_LONG');
 fs.mkdirSync(testArea,{recursive:true});
 const host = {name:'chatgpt-remote-commander',deviceName:'saeid',platform:'win32',version:'0.10.6',

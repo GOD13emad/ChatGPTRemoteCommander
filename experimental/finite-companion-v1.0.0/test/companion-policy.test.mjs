@@ -13,7 +13,8 @@ import {createCoreEngineAdapter,collectCoreSourcePins,hostProofContent} from '..
 // these tests do not make inference or reach the real Commander endpoint.
 const base=path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 // Fresh test-owned short root; no production database or Windows policy change.
-const area=fs.mkdtempSync(path.join(os.tmpdir(),'commander-policy-tests-'));
+// Resolve the existing hosted TEMP junction before creating test-owned state.
+const area=fs.mkdtempSync(path.join(fs.realpathSync.native(os.tmpdir()),'commander-policy-tests-'));
 if(path.join(area,'acceptance-owned-'+'0'.repeat(36),'.engine/project-engine/project-runs.sqlite-journal').length>=240)throw Error('TEST_TEMP_PATH_TOO_LONG');
 const target=path.join(area,'acceptance-owned-'+randomUUID());fs.mkdirSync(target);
 const coreRoot=path.join(base,'fixtures/core-v0.10.6');

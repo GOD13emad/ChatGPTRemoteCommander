@@ -159,17 +159,17 @@
     },
     {
       "path": "test/companion-policy.test.mjs",
-      "bytes": 8406,
-      "sha256": "a5567dec00dffcfaf29b9afe14bac20f7ad888c488f6f5a5ec1c1e8e9d2fe2ef",
+      "bytes": 8509,
+      "sha256": "f9e5eb989db5393d7edc6e415bc07cd49e8039b11dd6e13afe46f89b8e34eb20",
       "originalSha256": "79069cbe2b1251be60d397c26d2e526e8ae96d449e1e083075de34a7321e40c0",
-      "scope": "PUBLIC_TEST_FIXTURE_OR_PRIVACY_CORRECTION_R4"
+      "scope": "PUBLIC_TEST_TEMP_CANONICAL_PARENT_ONLY_R5"
     },
     {
       "path": "test/core-engine-adapter.test.mjs",
-      "bytes": 10116,
-      "sha256": "50551d39669d8a4cf475df1d25af2b0de68330f9aab95d8782f88e74244b6918",
+      "bytes": 10297,
+      "sha256": "0ef21cb39f9e027a0fe0878d8504194b8a65d7c942e4633e65389d5d90490757",
       "originalSha256": "7b0e97f51189904a6790bd373428191d3d92e9d0bf9e9090961140e416a275d4",
-      "scope": "PUBLIC_TEST_FIXTURE_OR_PRIVACY_CORRECTION_R4"
+      "scope": "PUBLIC_TEST_TEMP_CANONICAL_PARENT_ONLY_R5"
     },
     {
       "path": "test/model-contract.test.mjs",

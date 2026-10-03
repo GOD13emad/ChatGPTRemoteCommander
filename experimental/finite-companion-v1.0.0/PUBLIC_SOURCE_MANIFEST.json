@@ -104,9 +104,9 @@
     },
     {
       "path": "PUBLIC_VALIDATION.json",
-      "bytes": 7093,
-      "sha256": "b8bce5f768db9e1bbdc66e4d5f06a5efac611d62e69aef2abee63f855bc633f4",
-      "gitBlobSha": "68a1bdb10858012e57af4d3c94c05c0a46970dfb"
+      "bytes": 7291,
+      "sha256": "57385a86918385565897a1feeb4fdb152623ee2f347dd1c4fb85af92f080a600",
+      "gitBlobSha": "866636b8cb3c48f5b36615eb73c240ecb2a71b28"
     },
     {
       "path": "README.md",
@@ -152,9 +152,9 @@
     },
     {
       "path": "SOURCE_LINEAGE.json",
-      "bytes": 11783,
-      "sha256": "9a23ad4ee6c0ab4d583ae49e3ff0043082243d681d79206546da676784d33748",
-      "gitBlobSha": "50bc225ec544dc50cc807d4647bcecd872cf91eb"
+      "bytes": 11777,
+      "sha256": "a9d360d001857f5c8257d08c1a22004391c7aff10dcb8d46afffc59b0da09d07",
+      "gitBlobSha": "80372412908467f8779fefa7bdd8f010f5973391"
     },
     {
       "path": "src/bounded-planner.mjs",
@@ -212,15 +212,15 @@
     },
     {
       "path": "test/companion-policy.test.mjs",
-      "bytes": 8406,
-      "sha256": "a5567dec00dffcfaf29b9afe14bac20f7ad888c488f6f5a5ec1c1e8e9d2fe2ef",
-      "gitBlobSha": "0cdde8e956d3baa82d52c25beb9f24d3d91610cb"
+      "bytes": 8509,
+      "sha256": "f9e5eb989db5393d7edc6e415bc07cd49e8039b11dd6e13afe46f89b8e34eb20",
+      "gitBlobSha": "c3cedcca63e2e0829b01330286e670d1b31d07ee"
     },
     {
       "path": "test/core-engine-adapter.test.mjs",
-      "bytes": 10116,
-      "sha256": "50551d39669d8a4cf475df1d25af2b0de68330f9aab95d8782f88e74244b6918",
-      "gitBlobSha": "3b42744733938ed3fa305050a1022f14b71bc8bf"
+      "bytes": 10297,
+      "sha256": "0ef21cb39f9e027a0fe0878d8504194b8a65d7c942e4633e65389d5d90490757",
+      "gitBlobSha": "ee32f85e23c1269aa3837577bcbe89e9ec6ef6bc"
     },
     {
       "path": "test/fixtures/synthetic-old-model-result.json",
