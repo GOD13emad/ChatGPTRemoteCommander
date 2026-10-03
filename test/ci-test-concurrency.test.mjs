@@ -28,13 +28,15 @@ test('qualification paths bound full test file concurrency',()=>{
   assert.equal(checkResult.command.includes('node --test test/'),false);
   assert.equal(pkg.scripts['check:qualification'],'node tools/run-bounded-test-script.mjs --script check --concurrency 2');
   assert.equal(pkg.scripts['test:qualification'],'node tools/run-bounded-test-script.mjs --script test --concurrency 2');
-  for (const sensitive of ['test/workflow-http.test.mjs','test/async-operations.test.mjs','test/tunnel-log-rotation.test.mjs']) {
+  for (const sensitive of ['test/workflow-http.test.mjs','test/async-operations.test.mjs','test/tunnel-log-rotation.test.mjs','test/mcp-tasks-extension.test.mjs']) {
     for (const scriptName of ['check','test']) {
       const script = pkg.scripts[scriptName];
       assert.equal((script.match(new RegExp(sensitive.replaceAll('.', '[.]'), 'g')) || []).length, 1, `${scriptName} must reference ${sensitive} exactly once`);
       assert.ok(script.includes(`node --test ${sensitive}`), `${scriptName} must run ${sensitive} as an isolated test-file command`);
     }
   }
+  const wrapper=read('tools/run-bounded-test-script.mjs');
+  assert.ok(wrapper.includes("args.prioritizeSensitive||process.platform==='win32'"),'Windows updater qualification must prioritize isolated sensitive fixtures automatically');
   const workflow=read('.github/workflows/ci.yml');
   assert.ok(workflow.includes("if: runner.os == 'Windows'"));
   assert.ok(workflow.includes('run: node tools/run-bounded-test-script.mjs --script check --concurrency 1 --prioritize-sensitive 1'));
@@ -75,9 +77,9 @@ test('hosted Windows priority mode runs scheduler-sensitive isolated fixtures be
     const prioritized=prioritizeSensitiveQualificationCommands(bounded);
     const bulkIndex=prioritized.indexOf('test/boot-recovery-diagnostics.test.mjs');
     assert.ok(bulkIndex>0,'bulk qualification command must remain present');
-    const ordered=['test/tunnel-log-rotation.test.mjs','test/async-operations.test.mjs','test/workflow-http.test.mjs'];
+    const ordered=['test/tunnel-log-rotation.test.mjs','test/mcp-tasks-extension.test.mjs','test/async-operations.test.mjs','test/workflow-http.test.mjs'];
     const positions=ordered.map(sensitive=>prioritized.indexOf(sensitive));
     for(let i=0;i<ordered.length;i++) assert.ok(positions[i]>=0 && positions[i]<bulkIndex, ordered[i]+' must execute before bulk qualification');
-    assert.ok(positions[0] < positions[1] && positions[1] < positions[2], 'tunnel rotation must run before process-heavy async/workflow fixtures');
+    assert.ok(positions.every((position,index)=>index===0||positions[index-1]<position), 'sensitive fixtures must preserve deterministic priority order');
   }
 });
