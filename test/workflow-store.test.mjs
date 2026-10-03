@@ -60,6 +60,15 @@ test('store scales beyond the legacy 1000-workflow ceiling and exposes bounded p
   assert.equal(batch.workflows.length,25);assert.ok(batch.nextAfter);
   assert.equal(s.get('overflowok').state.id,'overflowok');
 }finally{try{s?.close();}catch{}f.dispose();}});
+test('scheduler store installs indexes for bounded large-history recovery',()=>{const f=fixture({schedulerPolicy:{enabled:true}});try{
+  const db=new DatabaseSync(path.join(f.options.directory,'workflows.sqlite'),{readOnly:true});
+  try{
+    const names=db.prepare("SELECT name FROM sqlite_master WHERE type='index' AND name LIKE 'scheduler_jobs_%' ORDER BY name").all().map(x=>x.name);
+    assert.ok(names.includes('scheduler_jobs_enabled_workflow'));
+    assert.ok(names.includes('scheduler_jobs_lifecycle_updated_workflow'));
+  }finally{db.close();}
+}finally{f.dispose();}});
+
 test('stale revision cannot overwrite new memory',()=>{const f=fixture();try{f.create();f.s.note({id:'sample',expectedRevision:1,kind:'decision',text:'A'});assert.throws(()=>f.s.note({id:'sample',expectedRevision:1,kind:'decision',text:'B'}),/REVISION_CONFLICT/);}finally{f.dispose();}});
 test('exact duplicate returns receipt and never executes twice',async()=>{const f=fixture();try{
  f.create();let n=0;const h=host(async()=>{n++;return{ok:true};});const a={id:'sample',stepId:'first',expectedRevision:1,tool:'read_text',arguments:{path:'x'}};
