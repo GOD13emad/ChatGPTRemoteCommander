@@ -1,0 +1,1 @@
+{"name":"commander-finite-project-companion","version":"1.1.2","private":true,"type":"module","engines":{"node":">=24"},"scripts":{"test":"node ci-source.mjs"},"description":"Source-only finite project contracts; not an installer or unrestricted autonomous agent"}
