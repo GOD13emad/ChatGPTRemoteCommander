@@ -192,7 +192,16 @@ test('cancel request is durable and stops Commander-owned work', async () => {
     });
     await manager.execute('operation_cancel', { operationId: started.operationId });
     const state = await waitFor(manager, started.operationId);
-    assert.equal(state.status, 'CANCELLED');
+    assert.ok(['CANCELLED','UNCERTAIN'].includes(state.status));
+    assert.equal(state.cancelRequested, true);
+    if(state.status==='UNCERTAIN'){
+      assert.equal(state.failureCode, 'DEADLINE_EXCEEDED_WITHOUT_FINAL_RECEIPT');
+      assert.equal(Number.isSafeInteger(state.workerPid)&&state.workerPid>0, true);
+      await waitForProcessExit(state.workerPid, 30000);
+      if(Number.isSafeInteger(state.childPid)&&state.childPid>0) await waitForProcessExit(state.childPid, 30000);
+    }
+    const result = await manager.execute('operation_result', { operationId: started.operationId, tailBytes: 1024 });
+    assert.equal(result.stdoutTail.includes('late'), false);
   });
 });
 

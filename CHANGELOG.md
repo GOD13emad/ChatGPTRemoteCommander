@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.10.7 — 2026-10-03
+
+- Isolate the MCP Tasks extension regression from the bulk Node test batch so workstation load cannot create a false qualification failure.
+- Automatically prioritize timing/process-sensitive isolated fixtures on Windows for installer and updater qualification, not only hosted CI.
+- Add harness regressions proving MCP Tasks is referenced exactly once, runs as an isolated test-file command, and participates in deterministic sensitive ordering.
+- Preserve v0.10.6 production runtime semantics; this release changes qualification scheduling and release identity only.
+
 ## 0.10.6 — 2026-10-02
 
 - Promote the evidence-backed Saeid operation-child lifecycle hardening on top of v0.10.5, capturing exit/close/error state before awaited persistence can race it.
