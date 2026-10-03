@@ -140,7 +140,7 @@ try {
   Unregister-ScheduledTask -TaskName $probeName -Confirm:$false -ErrorAction SilentlyContinue
 }
 
-$bootArgs='-NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}" -CredentialScope LocalMachine -BootCore -OwnerUserProfile "{1}" -NodePath "{2}" -NpmPath "{3}"' -f $Supervisor,$OwnerUserProfile,$node,$npm
+$bootArgs='-NoLogo -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File "{0}" -CredentialScope LocalMachine -BootCore -OwnerUserProfile "{1}" -NodePath "{2}" -NpmPath "{3}"' -f $Supervisor,$OwnerUserProfile,$node,$npm
 $bootAction=New-ScheduledTaskAction -Execute $pwsh -Argument $bootArgs -WorkingDirectory $Root
 $bootTrigger=New-ScheduledTaskTrigger -AtStartup
 $bootSettings=New-ScheduledTaskSettingsSet -StartWhenAvailable -RestartCount 20 -RestartInterval (New-TimeSpan -Minutes 1) -ExecutionTimeLimit ([TimeSpan]::Zero) -MultipleInstances IgnoreNew
@@ -149,6 +149,7 @@ Register-ScheduledTask -TaskName $BootTaskName -Action $bootAction -Trigger $boo
 $handoffArgs='-NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}" -OwnerUserProfile "{1}"' -f $Handoff,$OwnerUserProfile
 $handoffAction=New-ScheduledTaskAction -Execute $pwsh -Argument $handoffArgs -WorkingDirectory $Root
 $handoffTrigger=New-ScheduledTaskTrigger -AtLogOn -User $ownerName
+$handoffTrigger.Delay='PT30S'
 $handoffSettings=New-ScheduledTaskSettingsSet -StartWhenAvailable -RestartCount 12 -RestartInterval (New-TimeSpan -Minutes 1) -ExecutionTimeLimit (New-TimeSpan -Minutes 12) -MultipleInstances IgnoreNew
 Register-ScheduledTask -TaskName $HandoffTaskName -Action $handoffAction -Trigger $handoffTrigger -Principal $systemPrincipal -Settings $handoffSettings -Force | Out-Null
 
@@ -161,7 +162,17 @@ Register-ScheduledTask -TaskName $BackupRetentionTaskName -Action $backupAction 
 
 $runKey='HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
 New-Item -Path $runKey -Force | Out-Null
-$logonCommand='"{0}" -NoLogo -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "{1}"' -f $pwsh,$Supervisor
+$launcher=Join-Path $Root 'launch-supervisor-hidden.vbs'
+$pwshVbs=$pwsh.Replace('"','""')
+$supervisorVbs=$Supervisor.Replace('"','""')
+$vbs=@(
+  'Set sh = CreateObject("WScript.Shell")',
+  ('cmd = Chr(34) & "{0}" & Chr(34) & " -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File " & Chr(34) & "{1}" & Chr(34)' -f $pwshVbs,$supervisorVbs),
+  'Call sh.Run(cmd, 0, False)'
+)
+[IO.File]::WriteAllLines($launcher,$vbs,[Text.UTF8Encoding]::new($false))
+$wscript=Join-Path $env:WINDIR 'System32\wscript.exe'
+$logonCommand='"{0}" //B //NoLogo "{1}"' -f $wscript,$launcher
 New-ItemProperty -Path $runKey -Name 'ChatGPTRemoteCommander' -Value $logonCommand -PropertyType String -Force | Out-Null
 
 if(-not $NoStart){

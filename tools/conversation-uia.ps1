@@ -7,9 +7,24 @@ using System;
 using System.Runtime.InteropServices;
 public static class RcConversationNative {
   [StructLayout(LayoutKind.Sequential)] public struct LASTINPUTINFO { public uint cbSize; public uint dwTime; }
+  public delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
   [DllImport("user32.dll")] public static extern bool GetLastInputInfo(ref LASTINPUTINFO plii);
   [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr hWnd);
   [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+  [DllImport("user32.dll")] public static extern bool EnumWindows(EnumWindowsProc cb, IntPtr lParam);
+  [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
+  [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr hWnd);
+  public static IntPtr[] TopLevelWindowsForPids(int[] pids) {
+    var wanted=new System.Collections.Generic.HashSet<uint>();
+    foreach(var pid in pids) if(pid>0) wanted.Add((uint)pid);
+    var result=new System.Collections.Generic.List<IntPtr>();
+    EnumWindows((hWnd,lParam)=>{
+      uint pid; GetWindowThreadProcessId(hWnd,out pid);
+      if(pid!=0 && wanted.Contains(pid) && IsWindowVisible(hWnd)) result.Add(hWnd);
+      return true;
+    },IntPtr.Zero);
+    return result.ToArray();
+  }
   public static double IdleMilliseconds() {
     var li=new LASTINPUTINFO(); li.cbSize=(uint)Marshal.SizeOf(li);
     if(!GetLastInputInfo(ref li)) return 0;
@@ -28,6 +43,12 @@ function Get-Names([object]$Value,[string[]]$Fallback){
   if($null-ne$Value){$items=@($Value|ForEach-Object{[string]$_}|Where-Object{$_})}
   if($items.Count-eq0){$items=$Fallback}
   return $items
+}
+function Normalize-TabTitle([string]$Value){
+  $name=([string]$Value).Trim()
+  # Chrome may append a volatile performance suffix to the accessible tab name.
+  # Strip only that known telemetry suffix; the stable base title still matches exactly.
+  return ([regex]::Replace($name,' - High memory usage - [0-9]+(?:\.[0-9]+)? (?:KB|MB|GB)$','')).Trim()
 }
 function Get-Buttons($Root,[string[]]$Names){
   $buttons=$Root.FindAll([System.Windows.Automation.TreeScope]::Descendants,
@@ -72,18 +93,23 @@ function Get-SelectedTab($Root){
 }
 function Find-Context([string]$Browser,[string]$Title){
   $procName=if($Browser -eq 'edge'){'msedge'}else{'chrome'}
+  [int[]]$pids=@(Get-Process $procName -ErrorAction SilentlyContinue|ForEach-Object{[int]$_.Id})
+  if($pids.Count-eq0){return @()}
   $matches=@()
-  foreach($p in (Get-Process $procName -ErrorAction SilentlyContinue|Where-Object{$_.MainWindowHandle-ne0})){
+  foreach($hwnd in [RcConversationNative]::TopLevelWindowsForPids($pids)){
     try{
-      $root=[System.Windows.Automation.AutomationElement]::FromHandle([IntPtr]$p.MainWindowHandle)
+      $root=[System.Windows.Automation.AutomationElement]::FromHandle([IntPtr]$hwnd)
+      $windowPid=[int]$root.Current.ProcessId
       $tabs=$root.FindAll([System.Windows.Automation.TreeScope]::Descendants,
         (New-Object System.Windows.Automation.PropertyCondition(
           [System.Windows.Automation.AutomationElement]::ControlTypeProperty,
           [System.Windows.Automation.ControlType]::TabItem)))
       foreach($t in $tabs){
         try{
-          if(([string]$t.Current.Name).Trim() -eq $Title){
-            $matches += [pscustomobject]@{Process=$p;Root=$root;Tab=$t;Title=([string]$t.Current.Name).Trim()}
+          $rawTitle=([string]$t.Current.Name).Trim()
+          $stableTitle=Normalize-TabTitle $rawTitle
+          if($stableTitle -eq (Normalize-TabTitle $Title)){
+            $matches += [pscustomobject]@{ProcessId=$windowPid;WindowHandle=[long]$hwnd;Root=$root;Tab=$t;Title=$stableTitle;RawTitle=$rawTitle}
           }
         }catch{}
       }
@@ -133,8 +159,8 @@ try{
   $ctx=$ctxs[0]
   if($action -eq 'status'){
     $result=@{State='READY';Code='CHAT_TAB_FOUND';Extra=@{
-      matchCount=1;title=$ctx.Title;processId=$ctx.Process.Id;windowHandle=[long]$ctx.Process.MainWindowHandle;
-      minimized=[RcConversationNative]::IsIconic([IntPtr]$ctx.Process.MainWindowHandle);
+      matchCount=1;title=$ctx.Title;processId=[int]$ctx.ProcessId;windowHandle=[long]$ctx.WindowHandle;
+      minimized=[RcConversationNative]::IsIconic([IntPtr]$ctx.WindowHandle);
       idleMs=[math]::Round([RcConversationNative]::IdleMilliseconds())
     }}
     throw [System.OperationCanceledException]::new('handled')
@@ -146,7 +172,7 @@ try{
     $result=@{State='DEFERRED';Code='USER_ACTIVE';Extra=@{idleMs=[math]::Round($idle);requiredMs=$idleRequired}}
     throw [System.OperationCanceledException]::new('handled')
   }
-  $hwnd=[IntPtr]$ctx.Process.MainWindowHandle
+  $hwnd=[IntPtr]$ctx.WindowHandle
   if([RcConversationNative]::IsIconic($hwnd)){
     $result=@{State='DEFERRED';Code='CHAT_WINDOW_MINIMIZED';Extra=@{}}
     throw [System.OperationCanceledException]::new('handled')

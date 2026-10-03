@@ -50,21 +50,7 @@ function Test-McpHealth([int]$Port,[string]$ExpectedConfigSha='',[string]$Expect
   return $true
 }
 
-function Start-PrimaryMcp {
-  if (Test-McpHealth 47831) { return }
-  $listener = Get-NetTCPConnection -State Listen -LocalPort 47831 -ErrorAction SilentlyContinue | Select-Object -First 1
-  if ($listener) { throw 'Port 47831 is occupied but primary Remote Commander health is unavailable; refusing unknown process.' }
-  $npm = if ($NpmPath) { [IO.Path]::GetFullPath($NpmPath) } else { (Get-Command npm.cmd -ErrorAction Stop).Source }
-  if (-not (Test-Path -LiteralPath $npm -PathType Leaf)) { throw 'npm executable missing for supervisor.' }
-  $out = Join-Path $VarDir 'mcp-autostart.out.log'
-  $err = Join-Path $VarDir 'mcp-autostart.err.log'
-  Start-Process -FilePath $npm -ArgumentList @('start','--silent') -WorkingDirectory $Root -WindowStyle Hidden -RedirectStandardOutput $out -RedirectStandardError $err | Out-Null
-  foreach ($i in 1..30) {
-    Start-Sleep -Milliseconds 500
-    if (Test-McpHealth 47831) { Write-SupervisorLog 'MCP_STARTED port=47831 profile=default'; return }
-  }
-  throw 'MCP_START_TIMEOUT port=47831'
-}
+$script:PrimaryHealthFailures = 0
 
 function Find-TunnelExe {
   $stableAppRoot = Join-Path (Join-Path $OwnerUserProfile 'AppData\Local') 'ChatGPTRemoteCommander\app'
@@ -300,22 +286,34 @@ try {
 
   while ($true) {
     try {
-      if (-not (Ensure-RoutedProfile 'default' 47831)) { Start-PrimaryMcp }
+      $primaryReady=$true
+      if (-not (Ensure-RoutedProfile 'default' 47831)) { $primaryReady=[bool](Start-PrimaryMcp) }
       $exe = Find-TunnelExe
       foreach ($item in Get-ManagedProfiles) {
-        if ($item.Instance) { if (-not (Ensure-RoutedProfile $item.Profile $item.McpPort)) { Start-McpInstance $item.Instance } }
-        elseif (-not (Test-McpHealth 47831)) { throw 'primary MCP unavailable' }
-
-        if (-not (Test-Path -LiteralPath $item.Credential -PathType Leaf)) {
-          if (-not $missingLogged.ContainsKey($item.Profile)) {
-            Write-SupervisorLog "CREDENTIAL_MISSING profile=$($item.Profile)"
-            $missingLogged[$item.Profile] = $true
+        try {
+          if ($item.Instance) {
+            if (-not (Ensure-RoutedProfile $item.Profile $item.McpPort)) { Start-McpInstance $item.Instance }
+          } elseif (-not $primaryReady) {
+            Write-RoutingNotice ("profile-mcp|"+$item.Profile) "PROFILE_MCP_UNAVAILABLE profile=$($item.Profile) port=47831"
+            continue
+          } else {
+            Clear-RoutingNotice ("profile-mcp|"+$item.Profile)
           }
+
+          if (-not (Test-Path -LiteralPath $item.Credential -PathType Leaf)) {
+            if (-not $missingLogged.ContainsKey($item.Profile)) {
+              Write-SupervisorLog "CREDENTIAL_MISSING profile=$($item.Profile)"
+              $missingLogged[$item.Profile] = $true
+            }
+            continue
+          }
+          [void]$missingLogged.Remove($item.Profile)
+          $process = Get-TunnelProcess $item.Profile $exe
+          if (-not $process -or -not (Test-TunnelReady $item.HealthPort)) { Start-TunnelProfile $item }
+        } catch {
+          Write-SupervisorLog "PROFILE_ITERATION_ERROR profile=$($item.Profile) $($_.Exception.Message)"
           continue
         }
-        [void]$missingLogged.Remove($item.Profile)
-        $process = Get-TunnelProcess $item.Profile $exe
-        if (-not $process -or -not (Test-TunnelReady $item.HealthPort)) { Start-TunnelProfile $item }
       }
       Start-AutoUpdateIfDue
     } catch {

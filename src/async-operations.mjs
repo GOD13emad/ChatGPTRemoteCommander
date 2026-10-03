@@ -9,6 +9,7 @@ import { expandPathValue } from './platform.mjs';
 
 const TERMINAL = new Set(['SUCCEEDED', 'FAILED', 'TIMED_OUT', 'CANCELLED', 'UNCERTAIN']);
 const WORKER_FINALIZATION_GRACE_MS = 10000;
+const WORKER_MISSING_RECEIPT_GRACE_MS = 2000;
 const WORKER_SCHEDULING_HARD_GRACE_MS = 60000;
 const REQUEST_RE = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const OP_RE = /^[a-f0-9-]{36}$/;
@@ -205,7 +206,10 @@ export function createAsyncOperationTools({ config, prepare, workerPath, deliver
     worker.once('exit', () => {
       if (continuationClosed) return;
       queueMicrotask(() => {
-        if (!continuationClosed) status(operationId, true).catch(() => {});
+        if (continuationClosed) return;
+        status(operationId, true)
+          .then(state => { if (!TERMINAL.has(state.status)) scheduleRestartRecovery(operationId); })
+          .catch(() => scheduleRestartRecovery(operationId));
       });
     });
   }
@@ -519,7 +523,11 @@ export function createAsyncOperationTools({ config, prepare, workerPath, deliver
       const workerPidValid = Number.isSafeInteger(workerPid) && workerPid > 0;
       const workerAlive = workerPidValid && alive(workerPid);
       const workerMissing = workerPidValid && !workerAlive;
-      if (deadlineExpired || workerMissing) {
+      const updatedAtMs = typeof state.updatedAt === 'string' ? Date.parse(state.updatedAt) : NaN;
+      const staleQueued = state.status === 'QUEUED'
+        && Number.isFinite(updatedAtMs)
+        && now > updatedAtMs + WORKER_SCHEDULING_HARD_GRACE_MS;
+      if (deadlineExpired || workerMissing || staleQueued) {
         const latest = await readJson(p.state);
         const receipt = await exactReceipt(latest);
         if (receipt) return attachDelivery(await adoptReceipt(latest, receipt));
@@ -529,12 +537,20 @@ export function createAsyncOperationTools({ config, prepare, workerPath, deliver
         const latestDeadlineAtMs = typeof latest.deadlineAt === 'string' ? Date.parse(latest.deadlineAt) : NaN;
         const latestDeadlineExpired = Number.isFinite(latestDeadlineAtMs)
           && latestNow > latestDeadlineAtMs + 5000;
-        if (!latestDeadlineExpired) return latest;
-
         const latestWorkerPid = Number(latest.workerPid);
         const latestWorkerPidValid = Number.isSafeInteger(latestWorkerPid) && latestWorkerPid > 0;
         const latestWorkerAlive = latestWorkerPidValid && alive(latestWorkerPid);
-        if (latestWorkerAlive) {
+        const latestUpdatedAtMs = typeof latest.updatedAt === 'string' ? Date.parse(latest.updatedAt) : NaN;
+        const staleQueued = latest.status === 'QUEUED'
+          && Number.isFinite(latestUpdatedAtMs)
+          && latestNow > latestUpdatedAtMs + WORKER_SCHEDULING_HARD_GRACE_MS;
+        const missingWorker = latestWorkerPidValid && !latestWorkerAlive;
+        const missingWorkerExpired = missingWorker
+          && (!Number.isFinite(latestUpdatedAtMs)
+            || latestNow > latestUpdatedAtMs + WORKER_MISSING_RECEIPT_GRACE_MS);
+        if (!latestDeadlineExpired && !staleQueued && !missingWorkerExpired) return latest;
+
+        if (latestWorkerAlive && !staleQueued) {
           const startedAtMs = typeof latest.startedAt === 'string' ? Date.parse(latest.startedAt) : NaN;
           const timeoutMs = Number(latest.timeoutMs);
           const timeoutValid = Number.isSafeInteger(timeoutMs) && timeoutMs >= 1000;
@@ -553,7 +569,9 @@ export function createAsyncOperationTools({ config, prepare, workerPath, deliver
           ...latest,
           status: 'UNCERTAIN',
           updatedAt: new Date().toISOString(),
-          failureCode: 'DEADLINE_EXCEEDED_WITHOUT_FINAL_RECEIPT'
+          failureCode: staleQueued ? 'QUEUED_WORKER_STALLED_WITHOUT_FINAL_RECEIPT'
+            : missingWorkerExpired ? 'WORKER_MISSING_WITHOUT_FINAL_RECEIPT'
+            : 'DEADLINE_EXCEEDED_WITHOUT_FINAL_RECEIPT'
         };
         await atomicJson(p.state, state);
         return attachDelivery(state);

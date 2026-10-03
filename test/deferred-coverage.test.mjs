@@ -22,7 +22,13 @@ test('uncertain-duration direct work is deferred or hard-bounded',()=>{
 
   assert.match(server,/AUTO_DEFERRED_MUTATIONS = new Set\(\['copy_path', 'move_path', 'delete_path'\]\)/);
   assert.match(server,/asyncOperationTools\.execute\('operation_start'/);
-  assert.match(server,/tool: name,\s*arguments: effectArgs/s);
+  assert.match(server,/const \{ requestId, continuation, \.\.\.effectArgs \}/);
+  assert.match(server,/tool: name,\s*arguments: effectArgs,\s*\.\.\.\(continuation \? \{ continuation \} : \{\}\)/s);
+  for (const name of ['copy_path','move_path','delete_path']) {
+    const d=def(powerToolDefinitions,name);
+    assert.equal(d.inputSchema.properties.continuation?.type,'object');
+    assert.deepEqual(d.inputSchema.properties.continuation?.required,['projectId','eventKey','root']);
+  }
 
   // Keep the advertised schema backward-compatible with cached hosts, while the runtime hard guard remains 15 seconds.
   assert.equal(max(def(powerToolDefinitions,'run_shell'),'timeoutMs'),30000);

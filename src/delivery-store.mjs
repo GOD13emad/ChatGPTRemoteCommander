@@ -495,7 +495,7 @@ export class DeliveryStore {
       identityBoundary: 'TRUSTED_PROFILE_NOT_AUTHENTICATED_CHAT'
     };
   }
-  health() {
+  summary() {
     const counts = Object.fromEntries(
       this.db.prepare('SELECT state,count(*) AS n FROM deliveries WHERE scope=? GROUP BY state')
         .all(this.scope).map(row => [row.state, row.n])
@@ -507,8 +507,10 @@ export class DeliveryStore {
       unfinishedRequests: this.db.prepare("SELECT count(*) AS n FROM requests WHERE scope=? AND status='RUNNING'")
         .get(this.scope).n,
       identityBoundary: 'TRUSTED_PROFILE_NOT_AUTHENTICATED_CHAT',
-      rawArgumentsStored: false, maxArtifactBytes: MAX_ARTIFACT_BYTES, maxChunkBytes: MAX_CHUNK_BYTES,
-      storage: this.artifactStorage()
+      rawArgumentsStored: false, maxArtifactBytes: MAX_ARTIFACT_BYTES, maxChunkBytes: MAX_CHUNK_BYTES
     };
+  }
+  health() {
+    return { ...this.summary(), storage: this.artifactStorage() };
   }
 }

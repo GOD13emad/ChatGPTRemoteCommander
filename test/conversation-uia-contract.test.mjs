@@ -5,9 +5,16 @@ import fs from 'node:fs';
 test('conversation UIA helper is semantic, exact-targeted, hidden and credential-free',()=>{
   const text=fs.readFileSync(new URL('../tools/conversation-uia.ps1',import.meta.url),'utf8');
   assert.match(text,/SelectionItemPattern/);
+  assert.match(text,/EnumWindows/);
+  assert.match(text,/GetWindowThreadProcessId/);
+  assert.match(text,/TopLevelWindowsForPids/);
+  assert.doesNotMatch(text,/MainWindowHandle/);
+  assert.doesNotMatch(text,/\\$pid\\s*=/i,'helper must not assign the read-only automatic PID variable');
   assert.match(text,/ValuePattern/);
   assert.match(text,/InvokePattern/);
-  assert.match(text,/-eq \$Title/);
+  assert.match(text,/Normalize-TabTitle/);
+  assert.match(text,/High memory usage/);
+  assert.match(text,/CHAT_TAB_AMBIGUOUS/);
   assert.match(text,/WAITING_FOR_CHAT_TAB/);
   assert.match(text,/COMPOSER_NOT_EMPTY/);
   assert.match(text,/CHAT_BUSY/);

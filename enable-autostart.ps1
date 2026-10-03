@@ -206,7 +206,17 @@ $pwsh = (Get-Command pwsh.exe -ErrorAction Stop).Source
 $supervisor = Join-Path $Root 'autostart-windows.ps1'
 $runKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
 New-Item -Path $runKey -Force | Out-Null
-$command = '"{0}" -NoLogo -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "{1}"' -f $pwsh,$supervisor
+$launcher = Join-Path $Root 'launch-supervisor-hidden.vbs'
+$pwshVbs = $pwsh.Replace('"','""')
+$supervisorVbs = $supervisor.Replace('"','""')
+$vbs = @(
+  'Set sh = CreateObject("WScript.Shell")',
+  ('cmd = Chr(34) & "{0}" & Chr(34) & " -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File " & Chr(34) & "{1}" & Chr(34)' -f $pwshVbs,$supervisorVbs),
+  'Call sh.Run(cmd, 0, False)'
+)
+[IO.File]::WriteAllLines($launcher,$vbs,[Text.UTF8Encoding]::new($false))
+$wscript = Join-Path $env:WINDIR 'System32\wscript.exe'
+$command = '"{0}" //B //NoLogo "{1}"' -f $wscript,$launcher
 New-ItemProperty -Path $runKey -Name 'ChatGPTRemoteCommander' -Value $command -PropertyType String -Force | Out-Null
 
 if (-not $NoStart) {

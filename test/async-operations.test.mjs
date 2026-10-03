@@ -260,7 +260,7 @@ test('dead-worker reconciliation adopts an exact final receipt instead of overwr
 });
 
 
-test('dead PID without receipt stays nonterminal until durable deadline', async () => {
+test('dead worker without receipt becomes UNCERTAIN after a bounded final-receipt grace instead of waiting for a long deadline', async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'rc-async-dead-pid-'));
   const stateDir = path.join(root, 'state');
   const manager = createAsyncOperationTools({
@@ -273,7 +273,8 @@ test('dead PID without receipt stays nonterminal until durable deadline', async 
     const operationDir = path.join(stateDir, 'operations', operationId);
     await mkdir(operationDir, { recursive: true });
     const statePath = path.join(operationDir, 'state.json');
-    const now = new Date().toISOString();
+    const nowMs = Date.now();
+    const now = new Date(nowMs - 5000).toISOString();
     const state = {
       schema: 1,
       operationId,
@@ -283,22 +284,74 @@ test('dead PID without receipt stays nonterminal until durable deadline', async 
       status: 'RUNNING',
       createdAt: now,
       updatedAt: now,
-      timeoutMs: 5000,
-      deadlineAt: new Date(Date.now() + 5000).toISOString(),
+      timeoutMs: 24 * 60 * 60 * 1000,
+      deadlineAt: new Date(nowMs + 24 * 60 * 60 * 1000).toISOString(),
       workerPid: 2147483646,
       childPid: null
     };
     await writeFile(statePath, JSON.stringify(state, null, 2) + '\n', 'utf8');
 
-    const beforeDeadline = await manager.execute('operation_status', { operationId });
-    assert.equal(beforeDeadline.status, 'RUNNING');
-
-    state.deadlineAt = new Date(Date.now() - 6000).toISOString();
-    await writeFile(statePath, JSON.stringify(state, null, 2) + '\n', 'utf8');
-    const afterDeadline = await manager.execute('operation_status', { operationId });
-    assert.equal(afterDeadline.status, 'UNCERTAIN');
-    assert.equal(afterDeadline.failureCode, 'DEADLINE_EXCEEDED_WITHOUT_FINAL_RECEIPT');
+    const observed = await manager.execute('operation_status', { operationId });
+    assert.equal(observed.status, 'UNCERTAIN');
+    assert.equal(observed.failureCode, 'WORKER_MISSING_WITHOUT_FINAL_RECEIPT');
   } finally {
+    await rm(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 });
+  }
+});
+
+test('freshly exited worker projection gets a short receipt grace and is not downgraded immediately', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'rc-async-dead-grace-'));
+  const stateDir = path.join(root, 'state');
+  const manager = createAsyncOperationTools({
+    config: { instance: { profile: 'test' }, asyncOperations: { enabled: true, stateDir } },
+    workerPath: worker,
+    prepare: async () => { throw new Error('prepare must not run for status'); }
+  });
+  try {
+    const operationId = randomUUID();
+    const operationDir = path.join(stateDir, 'operations', operationId);
+    await mkdir(operationDir, { recursive: true });
+    const now = new Date().toISOString();
+    await writeFile(path.join(operationDir, 'state.json'), JSON.stringify({
+      schema:1,operationId,requestId:'fresh-dead-grace',inputHash:'f'.repeat(64),
+      tool:'run_project_command',status:'RUNNING',createdAt:now,updatedAt:now,
+      timeoutMs:86400000,deadlineAt:new Date(Date.now()+86400000).toISOString(),
+      workerPid:2147483646,childPid:null
+    }, null, 2)+'\n','utf8');
+    const observed=await manager.execute('operation_status',{operationId});
+    assert.equal(observed.status,'RUNNING');
+  } finally {
+    await manager.close?.();
+    await rm(root,{recursive:true,force:true,maxRetries:20,retryDelay:50});
+  }
+});
+
+test('stale QUEUED projection fail-closes after scheduling grace even when PID is alive', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'rc-async-stale-queued-'));
+  const stateDir = path.join(root, 'state');
+  const manager = createAsyncOperationTools({
+    config: { instance: { profile: 'test' }, asyncOperations: { enabled: true, stateDir } },
+    workerPath: worker,
+    prepare: async () => { throw new Error('prepare must not run for status'); }
+  });
+  try {
+    const operationId = randomUUID();
+    const operationDir = path.join(stateDir, 'operations', operationId);
+    await mkdir(operationDir, { recursive: true });
+    const now = Date.now();
+    const state = {
+      schema: 1, operationId, requestId: 'stale-queued', correlationId: 'stale-queued',
+      inputHash: 'd'.repeat(64), tool: 'copy_path', status: 'QUEUED',
+      createdAt: new Date(now - 120000).toISOString(), updatedAt: new Date(now - 120000).toISOString(),
+      timeoutMs: 24 * 60 * 60 * 1000, deadlineAt: new Date(now + 23 * 60 * 60 * 1000).toISOString(),
+      workerPid: process.pid, childPid: null, continuation: null
+    };
+    await writeFile(path.join(operationDir, 'state.json'), JSON.stringify(state, null, 2) + '\n', 'utf8');
+    const observed = await manager.execute('operation_status', { operationId });
+    assert.equal(observed.status, 'UNCERTAIN');
+    assert.equal(observed.failureCode, 'QUEUED_WORKER_STALLED_WITHOUT_FINAL_RECEIPT');
+  } finally {
+    await manager.close?.();
     await rm(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 });
   }
 });
