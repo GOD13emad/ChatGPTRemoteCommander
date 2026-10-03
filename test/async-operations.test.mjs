@@ -260,7 +260,7 @@ test('dead-worker reconciliation adopts an exact final receipt instead of overwr
 });
 
 
-test('dead worker without receipt becomes UNCERTAIN immediately instead of waiting for a long deadline', async () => {
+test('dead worker without receipt becomes UNCERTAIN after a bounded final-receipt grace instead of waiting for a long deadline', async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'rc-async-dead-pid-'));
   const stateDir = path.join(root, 'state');
   const manager = createAsyncOperationTools({
@@ -273,7 +273,8 @@ test('dead worker without receipt becomes UNCERTAIN immediately instead of waiti
     const operationDir = path.join(stateDir, 'operations', operationId);
     await mkdir(operationDir, { recursive: true });
     const statePath = path.join(operationDir, 'state.json');
-    const now = new Date().toISOString();
+    const nowMs = Date.now();
+    const now = new Date(nowMs - 5000).toISOString();
     const state = {
       schema: 1,
       operationId,
@@ -284,7 +285,7 @@ test('dead worker without receipt becomes UNCERTAIN immediately instead of waiti
       createdAt: now,
       updatedAt: now,
       timeoutMs: 24 * 60 * 60 * 1000,
-      deadlineAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+      deadlineAt: new Date(nowMs + 24 * 60 * 60 * 1000).toISOString(),
       workerPid: 2147483646,
       childPid: null
     };
@@ -295,6 +296,33 @@ test('dead worker without receipt becomes UNCERTAIN immediately instead of waiti
     assert.equal(observed.failureCode, 'WORKER_MISSING_WITHOUT_FINAL_RECEIPT');
   } finally {
     await rm(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 });
+  }
+});
+
+test('freshly exited worker projection gets a short receipt grace and is not downgraded immediately', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'rc-async-dead-grace-'));
+  const stateDir = path.join(root, 'state');
+  const manager = createAsyncOperationTools({
+    config: { instance: { profile: 'test' }, asyncOperations: { enabled: true, stateDir } },
+    workerPath: worker,
+    prepare: async () => { throw new Error('prepare must not run for status'); }
+  });
+  try {
+    const operationId = randomUUID();
+    const operationDir = path.join(stateDir, 'operations', operationId);
+    await mkdir(operationDir, { recursive: true });
+    const now = new Date().toISOString();
+    await writeFile(path.join(operationDir, 'state.json'), JSON.stringify({
+      schema:1,operationId,requestId:'fresh-dead-grace',inputHash:'f'.repeat(64),
+      tool:'run_project_command',status:'RUNNING',createdAt:now,updatedAt:now,
+      timeoutMs:86400000,deadlineAt:new Date(Date.now()+86400000).toISOString(),
+      workerPid:2147483646,childPid:null
+    }, null, 2)+'\n','utf8');
+    const observed=await manager.execute('operation_status',{operationId});
+    assert.equal(observed.status,'RUNNING');
+  } finally {
+    await manager.close?.();
+    await rm(root,{recursive:true,force:true,maxRetries:20,retryDelay:50});
   }
 });
 
