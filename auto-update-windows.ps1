@@ -31,6 +31,7 @@ $ProfileDir=Join-Path $env:APPDATA 'tunnel-client'
 $LogDir=Join-Path $StateRoot 'update-logs'
 $ResultFile=Join-Path $StateRoot 'last-update.json'
 $RetainedFile=Join-Path $StateRoot 'retained-backends.json'
+$QualificationFailureFile=Join-Path $StateRoot 'qualification-failure.json'
 New-Item -ItemType Directory -Force -Path $ReleaseRoot,$RoutingRoot,$RuntimeRoot,$LogDir | Out-Null
 
 function Log([string]$Message){
@@ -42,6 +43,45 @@ function Atomic-Json([string]$Path,[object]$Value){
   $tmp="$Path.tmp-$PID"
   [IO.File]::WriteAllText($tmp,($Value|ConvertTo-Json -Depth 30)+[Environment]::NewLine,[Text.UTF8Encoding]::new($false))
   Move-Item -LiteralPath $tmp -Destination $Path -Force
+}function Get-QualificationFailureState {
+  if(-not(Test-Path -LiteralPath $QualificationFailureFile -PathType Leaf)){return $null}
+  try{return Read-Json $QualificationFailureFile}catch{Log "QUALIFICATION_BACKOFF_READ_WARN $($_.Exception.Message)";return $null}
+}
+function Get-QualificationBackoffMinutes([int]$Count){
+  $steps=@(15,30,60,120,240,360)
+  $index=[Math]::Max(0,[Math]::Min($steps.Count-1,$Count-1))
+  return [int]$steps[$index]
+}
+function Get-ActiveQualificationBackoff([string]$Commit){
+  if($Force){return $null}
+  $state=Get-QualificationFailureState
+  if(-not $state -or [string]$state.commit-ne$Commit){return $null}
+  try{
+    $next=[DateTimeOffset]::Parse([string]$state.nextRetryAt).ToUniversalTime()
+    if($next-gt[DateTimeOffset]::UtcNow){return $state}
+  }catch{}
+  return $null
+}
+function Record-QualificationFailure([string]$Commit,[string]$Gate,[string]$Code){
+  if(-not $Commit){return}
+  $old=Get-QualificationFailureState
+  $count=1
+  if($old -and [string]$old.commit-eq$Commit -and [string]$old.gate-eq$Gate){$count=[int]$old.count+1}
+  $minutes=Get-QualificationBackoffMinutes $count
+  $now=[DateTimeOffset]::UtcNow
+  $state=[ordered]@{
+    schema=1;commit=$Commit;gate=$Gate;count=$count;code=$Code;
+    failedAt=$now.ToString('o');nextRetryAt=$now.AddMinutes($minutes).ToString('o');backoffMinutes=$minutes
+  }
+  Atomic-Json $QualificationFailureFile $state
+  Log "QUALIFICATION_FAILURE_RECORDED commit=$Commit gate=$Gate count=$count backoffMinutes=$minutes code=$Code"
+}
+function Clear-QualificationFailure([string]$Commit){
+  $state=Get-QualificationFailureState
+  if($state -and [string]$state.commit-eq$Commit){
+    Remove-Item -LiteralPath $QualificationFailureFile -Force -ErrorAction SilentlyContinue
+    Log "QUALIFICATION_FAILURE_CLEARED commit=$Commit"
+  }
 }
 function Get-RetainedBackends {
   if(-not(Test-Path -LiteralPath $RetainedFile -PathType Leaf)){return @()}
@@ -266,9 +306,23 @@ function Stage-Release([string]$Ref){
 function Run-Gate([string]$Candidate,[string]$Name,[string[]]$CommandArgs){
   Log "GATE_START $Name"
   if(-not $CommandArgs -or $CommandArgs.Count -lt 1){throw "GATE_ARGUMENTS_MISSING $Name"}
-  & npm.cmd @CommandArgs
-  if($LASTEXITCODE-ne 0){throw "GATE_FAIL $Name"}
-  Log "GATE_PASS $Name"
+  $commit=[string]$script:QualificationCommit
+  if($commit -notmatch '^[0-9a-f]{40}$'){throw "GATE_COMMIT_MISSING $Name"}
+  $runner=Join-Path $Candidate 'tools\run-owned-process-tree-windows.ps1'
+  if(-not(Test-Path -LiteralPath $runner -PathType Leaf)){throw "GATE_JOB_RUNNER_MISSING $Name"}
+  $npm=(Get-Command npm.cmd -ErrorAction Stop).Source
+  $runId=("qualification-{0}-{1}-{2}" -f $Name,$commit.Substring(0,12),([guid]::NewGuid().ToString('N')))
+  $reportPath=Join-Path $LogDir ("qualification-job-{0}.json" -f $runId)
+  $argumentsJson=@($CommandArgs)|ConvertTo-Json -Compress
+  try{
+    & pwsh.exe -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $runner -Program $npm -WorkingDirectory $Candidate -ArgumentsJson $argumentsJson -RunId $runId -TimeoutSeconds 1200 -DrainGraceMs 2000 -ReportPath $reportPath
+    $code=$LASTEXITCODE
+    if($code-ne 0){throw "GATE_FAIL $Name exit=$code runId=$runId"}
+    Log "GATE_PASS $Name runId=$runId"
+  }catch{
+    Record-QualificationFailure $commit $Name $_.Exception.Message
+    throw
+  }
 }
 function Run-GuiNativeSelfTest([string]$Candidate){
   Log "GATE_START gui-native-selftest"
@@ -832,6 +886,7 @@ try{
   $ref=Get-LatestTag
   $stage=Stage-Release $ref
   $report.ref=$ref;$report.commit=$stage.Commit;$report.version=$stage.Version
+  $script:QualificationCommit=$stage.Commit
   $currentStatus=$null
   try{$currentStatus=Invoke-Mcp 47831 'system_status'}catch{}
   if(-not $Force -and $currentStatus -and (Test-VersionGreater ([string]$currentStatus.version) $stage.Version)){
@@ -906,6 +961,16 @@ try{
     }
   }
 
+  $backoff=Get-ActiveQualificationBackoff $stage.Commit
+  if($backoff){
+    $report.status='QUALIFICATION_BACKOFF'
+    $report.qualificationBackoff=$backoff
+    $report.completedAt=(Get-Date).ToUniversalTime().ToString('o')
+    Atomic-Json $ResultFile $report
+    Log "AUTO_UPDATE_QUALIFICATION_BACKOFF commit=$($stage.Commit) gate=$($backoff.gate) count=$($backoff.count) nextRetryAt=$($backoff.nextRetryAt)"
+    exit 0
+  }
+
   Push-Location $stage.Dir
   try{
     Run-Gate $stage.Dir 'check' @('run','check:qualification')
@@ -918,6 +983,7 @@ try{
       Run-GuiNativeSelfTest $stage.Dir
     }
   }finally{Pop-Location}
+  Clear-QualificationFailure $stage.Commit
 
   $targets=Get-Targets
   $used=[System.Collections.Generic.HashSet[int]]::new()
