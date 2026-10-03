@@ -72,10 +72,18 @@ function Get-SelectedTab($Root){
 }
 function Find-Context([string]$Browser,[string]$Title){
   $procName=if($Browser -eq 'edge'){'msedge'}else{'chrome'}
+  $pids=@(Get-Process $procName -ErrorAction SilentlyContinue|ForEach-Object{[int]$_.Id})
+  if($pids.Count-eq0){return @()}
+  $pidSet=[Collections.Generic.HashSet[int]]::new()
+  foreach($id in $pids){[void]$pidSet.Add($id)}
+  $desktop=[System.Windows.Automation.AutomationElement]::RootElement
+  $windows=$desktop.FindAll([System.Windows.Automation.TreeScope]::Children,[System.Windows.Automation.Condition]::TrueCondition)
   $matches=@()
-  foreach($p in (Get-Process $procName -ErrorAction SilentlyContinue|Where-Object{$_.MainWindowHandle-ne0})){
+  foreach($root in $windows){
     try{
-      $root=[System.Windows.Automation.AutomationElement]::FromHandle([IntPtr]$p.MainWindowHandle)
+      $pid=[int]$root.Current.ProcessId
+      $hwnd=[long]$root.Current.NativeWindowHandle
+      if($hwnd-eq0 -or -not$pidSet.Contains($pid)){continue}
       $tabs=$root.FindAll([System.Windows.Automation.TreeScope]::Descendants,
         (New-Object System.Windows.Automation.PropertyCondition(
           [System.Windows.Automation.AutomationElement]::ControlTypeProperty,
@@ -83,7 +91,7 @@ function Find-Context([string]$Browser,[string]$Title){
       foreach($t in $tabs){
         try{
           if(([string]$t.Current.Name).Trim() -eq $Title){
-            $matches += [pscustomobject]@{Process=$p;Root=$root;Tab=$t;Title=([string]$t.Current.Name).Trim()}
+            $matches += [pscustomobject]@{ProcessId=$pid;WindowHandle=$hwnd;Root=$root;Tab=$t;Title=([string]$t.Current.Name).Trim()}
           }
         }catch{}
       }
@@ -133,8 +141,8 @@ try{
   $ctx=$ctxs[0]
   if($action -eq 'status'){
     $result=@{State='READY';Code='CHAT_TAB_FOUND';Extra=@{
-      matchCount=1;title=$ctx.Title;processId=$ctx.Process.Id;windowHandle=[long]$ctx.Process.MainWindowHandle;
-      minimized=[RcConversationNative]::IsIconic([IntPtr]$ctx.Process.MainWindowHandle);
+      matchCount=1;title=$ctx.Title;processId=[int]$ctx.ProcessId;windowHandle=[long]$ctx.WindowHandle;
+      minimized=[RcConversationNative]::IsIconic([IntPtr]$ctx.WindowHandle);
       idleMs=[math]::Round([RcConversationNative]::IdleMilliseconds())
     }}
     throw [System.OperationCanceledException]::new('handled')
@@ -146,7 +154,7 @@ try{
     $result=@{State='DEFERRED';Code='USER_ACTIVE';Extra=@{idleMs=[math]::Round($idle);requiredMs=$idleRequired}}
     throw [System.OperationCanceledException]::new('handled')
   }
-  $hwnd=[IntPtr]$ctx.Process.MainWindowHandle
+  $hwnd=[IntPtr]$ctx.WindowHandle
   if([RcConversationNative]::IsIconic($hwnd)){
     $result=@{State='DEFERRED';Code='CHAT_WINDOW_MINIMIZED';Extra=@{}}
     throw [System.OperationCanceledException]::new('handled')
