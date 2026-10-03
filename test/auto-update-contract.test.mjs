@@ -172,8 +172,11 @@ test('Windows routed-backend recovery is thresholded and fail-closed around live
   assert.ok(decision.indexOf("DEFER_TRANSIENT") < decision.indexOf("RECYCLE"));
   const backend=sup.slice(sup.indexOf('function Start-RoutedBackend'),sup.indexOf('function Start-RouterForRoute'));
   assert.ok(backend.includes('Start-Sleep -Milliseconds 500'),'recycle must include a final recovery probe');
-  assert.ok(backend.includes("if(-not $activity.Known -or $activity.Count -gt 0)"),'final recycle gate must re-check router activity');
-  assert.ok(backend.indexOf('Get-RouterBackendActivity') < backend.indexOf('Stop-OwnedRoutedBackend'),'activity proof must precede destructive stop');
+  assert.ok(backend.includes('$finalDecision=Get-RoutedBackendRecoveryDecision $false $misses $activity.Known $activity.Count $activity.OldestAgeMs'),'final recycle gate must recompute recovery from freshly re-read router activity');
+  const activityChecks=[...backend.matchAll(/Get-RouterBackendActivity/g)].map(match=>match.index);
+  assert.ok(activityChecks.length>=2,'routed backend recycle must re-read router activity immediately before destructive stop');
+  assert.ok(activityChecks.at(-1) < backend.indexOf('Stop-OwnedRoutedBackend'),'fresh activity proof must precede destructive stop');
+  assert.ok(backend.includes("if($finalDecision -notmatch '^RECYCLE')"),'fresh activity decision must fail closed unless recycle remains authorized');
 });
 
 test('installer delegates existing installations to candidate updater instead of in-place source mutation',()=>{
