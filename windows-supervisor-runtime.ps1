@@ -108,3 +108,21 @@ function Start-RcTunnelWithRotatingLog(
   [void]$psi.Environment.Remove('OPENAI_API_KEY')
   return [Diagnostics.Process]::Start($psi)
 }
+
+function Get-OwnedPrimaryMcpProcess([string]$Root,[string]$ConfigPath) {
+  try {
+    if (-not (Test-Path -LiteralPath $ConfigPath -PathType Leaf)) { return $null }
+    $cfg=Get-Content -LiteralPath $ConfigPath -Raw|ConvertFrom-Json
+    $markerPath=[string]$cfg.runtimeState
+    if(-not $markerPath){$markerPath=Join-Path $Root 'var\mcp-runtime.json'}
+    $markerPath=[Environment]::ExpandEnvironmentVariables($markerPath)
+    if(-not[IO.Path]::IsPathRooted($markerPath)){$markerPath=Join-Path $Root $markerPath}
+    if(-not(Test-Path -LiteralPath $markerPath -PathType Leaf)){return $null}
+    $m=Get-Content -LiteralPath $markerPath -Raw|ConvertFrom-Json
+    if([int]$m.port-ne47831 -or [string]$m.instance.profile-ne'default'){return $null}
+    if([IO.Path]::GetFullPath([string]$m.projectDir)-ne[IO.Path]::GetFullPath($Root)){return $null}
+    $p=Get-CimInstance Win32_Process -Filter ("ProcessId="+[int]$m.pid) -ErrorAction SilentlyContinue
+    if(-not$p -or [string]$p.Name -ine'node.exe' -or [string]$p.CommandLine -notmatch'server-v0\.3\.mjs'){return $null}
+    return $p
+  }catch{return $null}
+}
