@@ -5,6 +5,9 @@ import fs from 'node:fs';
 test('conversation UIA helper is semantic, exact-targeted, hidden and credential-free',()=>{
   const text=fs.readFileSync(new URL('../tools/conversation-uia.ps1',import.meta.url),'utf8');
   assert.match(text,/SelectionItemPattern/);
+  assert.match(text,/AutomationElement\]::RootElement/);
+  assert.match(text,/NativeWindowHandle/);
+  assert.doesNotMatch(text,/MainWindowHandle/);
   assert.match(text,/ValuePattern/);
   assert.match(text,/InvokePattern/);
   assert.match(text,/-eq \$Title/);
