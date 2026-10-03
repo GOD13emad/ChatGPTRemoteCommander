@@ -238,6 +238,9 @@ function Start-AutoUpdateIfDue {
   $scriptPath=Join-Path $Root 'auto-update-windows.ps1'
   if(-not(Test-Path -LiteralPath $scriptPath -PathType Leaf)){Write-SupervisorLog 'AUTO_UPDATE_SCRIPT_MISSING';return}
   $pwsh=(Get-Command pwsh.exe -ErrorAction Stop).Source
-  Start-Process -FilePath $pwsh -ArgumentList @('-NoLogo','-NoProfile','-WindowStyle','Hidden','-ExecutionPolicy','Bypass','-File',$scriptPath,'-InstallDir',$Root) -WindowStyle Hidden | Out-Null
-  Write-SupervisorLog "AUTO_UPDATE_CHECK_STARTED next=$($script:NextAutoUpdateCheck.ToString('o'))"
+  $args=@('-NoLogo','-NoProfile','-WindowStyle','Hidden','-ExecutionPolicy','Bypass','-File',$scriptPath,'-InstallDir',$Root)
+  $sourceRef=[string]($config.autoUpdate.sourceRef ?? '')
+  if($sourceRef){$args+=@('-SourceRef',$sourceRef)}
+  Start-Process -FilePath $pwsh -ArgumentList $args -WindowStyle Hidden | Out-Null
+  Write-SupervisorLog "AUTO_UPDATE_CHECK_STARTED sourceRef=$sourceRef next=$($script:NextAutoUpdateCheck.ToString('o'))"
 }
