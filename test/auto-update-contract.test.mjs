@@ -80,7 +80,8 @@ test('auto updater is candidate-first, hardware-gated and commit-point aware',()
   const startBackend=s.slice(s.indexOf('function Start-Backend'),s.indexOf('function Stop-OwnedCandidate'));
   assert.ok(startBackend.includes('Start-Process') && !startBackend.includes('-RedirectStandardOutput') && !startBackend.includes('-RedirectStandardError'),'Windows staged backends must detach from updater run_shell stdio handles');
   const stale=s.slice(s.indexOf('function Get-StaleDrainEvidence'),s.indexOf('function Get-DrainStatus'));
-  for(const marker of ['activeOperations','queued','unexpectedConnections','Get-NetTCPConnection -State Established','Get-BackendDescendants','guiBusy','guiLeased','DEFER_PROCESS_TREE'])assert.ok(stale.includes(marker),marker);
+  for(const marker of ['activeOperations','queued','unexpectedConnections','Get-NetTCPConnection -State Established','Get-BackendDescendants','guiBusy','guiLeased','browserActive','browserBusy','browserLeased','browserUncertain','browser_status','DEFER_PROCESS_TREE'])assert.ok(stale.includes(marker),marker);
+  assert.ok(stale.includes("tools\\browser-control.mjs --server") && stale.includes('$isBrowserHelper') && stale.includes('-not$result.browserActive') && stale.includes('-not$result.browserUncertain'),'idle browser helper is safe only after explicit fail-closed browser_status evidence');
   assert.ok(!stale.includes('$isIdleTerminal'),'persistent terminals must always block stale-backend retirement');
   assert.ok(stale.includes('$routerListener'),'only the canonical router connection may be ignored as transport evidence');
   assert.ok(stale.includes("Get-StaleDrainDecision"),'stale recovery must pass independent evidence into a fail-closed policy');
@@ -120,7 +121,8 @@ test('auto updater is candidate-first, hardware-gated and commit-point aware',()
 
   assert.ok(s.includes('Get-TerminalRetentionEvidence') && s.includes('DRAIN_TERMINAL_STALE_ROUTER_ACCOUNTING'),'Windows terminal keeper must detach stale router accounting only after independent backend-idle evidence');
   const retainEvidence=s.slice(s.indexOf('function Get-TerminalRetentionEvidence'),s.indexOf('function Stop-StaleBackendTree'));
-  for(const marker of ['activeOperations','queued','unexpectedConnections','guiBusy','guiLeased','allowedRoots','unsafeDescendants','Get-StaleDrainDecision'])assert.ok(retainEvidence.includes(marker),marker);
+  for(const marker of ['activeOperations','queued','unexpectedConnections','guiBusy','guiLeased','browserActive','browserBusy','browserLeased','browserUncertain','browser_status','allowedRoots','unsafeDescendants','Get-StaleDrainDecision'])assert.ok(retainEvidence.includes(marker),marker);
+  assert.ok(retainEvidence.includes("tools\\browser-control.mjs --server") && retainEvidence.includes('-not$result.browserActive') && retainEvidence.includes('allowedRoots[[int]$p.ProcessId]=$true'),'retained-work evidence may root only an explicitly idle browser helper');
   assert.ok(s.includes('DRAIN_TERMINAL_RETAIN_RECHECK_DEFER') && s.includes('Start-Sleep -Milliseconds 500'),'terminal retention must re-check safety immediately before route detachment');
   assert.ok(s.includes("Run-Gate $stage.Dir 'check' @('run','check:qualification')"),'Windows updater qualification CHECK must bound Node test-file concurrency');
   assert.ok(s.includes('$runtimeLeaf="port-$port"') && s.includes("Join-Path $t.Profile $runtimeLeaf"),'Windows candidate runtime state must be unique per candidate port so ownership markers cannot be overwritten by later same-commit runs');
