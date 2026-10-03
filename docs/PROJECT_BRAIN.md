@@ -575,3 +575,12 @@ Prior v0.10.4 CI changes serialized and reordered heavy tests after ArrayBuffer 
 A diagnostic hazard is present: strict deep-equality of two ~917 KiB buffers can format a large binary diff upon mismatch, obscuring the underlying comparison. R5 changes only the test comparator to Buffer.equals with fixed-size length/hash/first-difference diagnostics, preserving exact equality. A one-byte injected mismatch must still fail with under 512 characters of metadata. This is stronger diagnostic coverage, not a product fix or relaxed assertion. Independent stdout/stderr arrival order remains an investigation hypothesis; no ordering assertion is removed in R5.
 
 Primary references checked: Node.js v22 process I/O documentation (https://nodejs.org/docs/latest-v22.x/api/process.html); Node.js Assert documentation (https://nodejs.org/api/assert.html). Exact v22.23.3 assertion source was unavailable from the attempted public URL, so allocation causality is not asserted. No blind rerun or deadline increase. Native fixture/hosted tests must determine the next step.
+
+
+## 2026-10-03 — v0.10.7 Windows qualification isolation
+
+Status: RELEASE CANDIDATE / NOT YET PUBLISHED.
+
+Emad-PC v0.10.6 update remained rollback-safe on active v0.10.4 while local qualification exposed two host-load issues. One stale browser-process fixture subtree was identity-bound and terminated without touching production; the same browser-process test then passed 7/7 alone. MCP Tasks failed only when embedded in the bulk concurrency=2 batch, then passed 1/1 alone on the exact v0.10.6 candidate in about 18.3 seconds. This establishes qualification contention rather than a runtime defect.
+
+Decision: v0.10.7 isolates MCP Tasks as a sensitive test-file command and automatically prioritizes sensitive fixtures on Windows in the bounded qualification wrapper. Runtime code and authority are unchanged. Acceptance requires hosted Windows/Ubuntu CI, install canaries, exact tag/release, and successful candidate-first Emad-PC rollout.
