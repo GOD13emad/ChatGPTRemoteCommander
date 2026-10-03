@@ -13,6 +13,7 @@ import {
 
 const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 function alive(pid){try{process.kill(pid,0);return true;}catch{return false;}}
+async function waitForAlive(pid,timeoutMs=3000){const deadline=Date.now()+timeoutMs;while(Date.now()<deadline){if(alive(pid))return true;await sleep(25);}return alive(pid);}
 
 test('profile process matching requires the complete user-data-dir argument',()=>{
  const a=browserProfileArgument('/owned/default');
@@ -31,8 +32,7 @@ test('terminating one owned profile never terminates a prefix-sibling process',a
  const spawnOwned=profile=>spawn(process.execPath,['-e','setInterval(()=>{},1000)','--',browserProfileArgument(profile)],{stdio:'ignore',windowsHide:true,shell:false});
  const a=spawnOwned(exact),b=spawnOwned(sibling);
  try{
-  await sleep(250);
-  assert.equal(alive(a.pid),true);assert.equal(alive(b.pid),true);
+  assert.equal(await waitForAlive(a.pid),true);assert.equal(await waitForAlive(b.pid),true);
   const killed=terminateProcessesUsingBrowserProfile(exact);
   assert.ok(killed.includes(a.pid));
   assert.equal(killed.includes(b.pid),false);
