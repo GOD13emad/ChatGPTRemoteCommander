@@ -221,11 +221,11 @@ export function createWorkflowTools({ config, roots, device, configSha256, looku
   let ticking=false;
   let schedulerCursor='';
   const schedulerBatchSize=25;
-  async function schedulerTick() {
+  async function schedulerTick({ includeDisabled = false } = {}) {
     if (ticking) return {skipped:true,reason:'TICK_ALREADY_RUNNING'};
     ticking=true;
     try {
-      const page=store.schedulerBatch({after:schedulerCursor,limit:schedulerBatchSize});
+      const page=store.schedulerBatch({after:schedulerCursor,limit:schedulerBatchSize,includeDisabled});
       const batch=page.workflows;
       schedulerCursor=page.nextAfter||'';
       const recovered=store.recoverInterrupted(batch.map(item=>item.id));
@@ -269,7 +269,7 @@ export function createWorkflowTools({ config, roots, device, configSha256, looku
   if (schedulerPolicy?.enabled === true) {
     const interval = Number.isSafeInteger(Number(schedulerPolicy.intervalMs)) && Number(schedulerPolicy.intervalMs)>=1000
       ? Number(schedulerPolicy.intervalMs) : 5000;
-    timer=setInterval(()=>{ schedulerTick().catch(()=>{}); },interval);
+    timer=setInterval(()=>{ schedulerTick({includeDisabled:false}).catch(()=>{}); },interval);
     timer.unref?.();
   }
 
@@ -315,7 +315,7 @@ export function createWorkflowTools({ config, roots, device, configSha256, looku
           return store.control(args);
         }
         case 'workflow_revise': return store.revise(args);
-        case 'workflow_scheduler_tick': return schedulerTick();
+        case 'workflow_scheduler_tick': return schedulerTick({includeDisabled:true});
         case 'workflow_run_start': {
           if(!engine)fail('WORKFLOW_RUNNER_DISABLED');
           const result=await engine.start(args);reconcileProjectDeliveries();return result;

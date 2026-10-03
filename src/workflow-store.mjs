@@ -250,6 +250,7 @@ export class WorkflowStore {
             post_state_hash TEXT, receipt TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
           );
           CREATE INDEX IF NOT EXISTS operations_workflow_step ON operations(workflow,step_id);
+          CREATE INDEX IF NOT EXISTS operations_status_workflow_updated ON operations(status,workflow,updated_at DESC);
           CREATE INDEX IF NOT EXISTS scheduler_jobs_enabled_workflow ON scheduler_jobs(enabled,workflow);
           CREATE INDEX IF NOT EXISTS scheduler_jobs_lifecycle_updated_workflow ON scheduler_jobs(lifecycle,updated_at DESC,workflow);
           CREATE TABLE IF NOT EXISTS root_leases(
@@ -307,7 +308,7 @@ export class WorkflowStore {
     const recovered = [];
     const selected = Array.isArray(ids)
       ? [...new Set(ids.filter(id => typeof id === 'string' && ID.test(id)))]
-      : this.#db.prepare("SELECT w.id FROM workflows w JOIN scheduler_jobs s ON s.workflow=w.id WHERE s.lifecycle='RUNNING' ORDER BY COALESCE(s.updated_at,'') DESC,w.id LIMIT 25").all().map(x=>x.id);
+      : this.#db.prepare("SELECT w.id FROM workflows w WHERE EXISTS (SELECT 1 FROM scheduler_jobs s WHERE s.workflow=w.id AND s.lifecycle='RUNNING') OR EXISTS (SELECT 1 FROM operations o WHERE o.workflow=w.id AND o.status IN ('PREPARED','EXECUTING')) ORDER BY w.id LIMIT 25").all().map(x=>x.id);
     for (const id of selected) {
       let loaded; try { loaded = this.#load(id); } catch { continue; }
       const dead = loaded.state.steps.filter(step => {
@@ -511,13 +512,14 @@ export class WorkflowStore {
     const page = rows.slice(0, bounded).map(x=>({...x,schedulerEnabled:x.schedulerEnabled===1}));
     return { workflows: page, nextAfter: hasMore ? page.at(-1)?.id ?? null : null, hasMore };
   }
-  schedulerBatch({ after = '', limit = 25 } = {}) {
+  schedulerBatch({ after = '', limit = 25, includeDisabled = false } = {}) {
     const bounded = Number.isSafeInteger(Number(limit)) ? Math.max(1, Math.min(100, Number(limit))) : 25;
-    const query = "SELECT w.id,w.revision,s.lifecycle,COALESCE(s.enabled,0) AS schedulerEnabled,s.last_failure AS lastFailure FROM scheduler_jobs s JOIN workflows w ON w.id=s.workflow WHERE s.enabled=1 AND s.lifecycle NOT IN ('COMPLETED','FAILED','CANCELLED') AND (?='' OR w.id>?) ORDER BY w.id LIMIT ?";
-    let rows = this.#db.prepare(query).all(after, after, bounded);
+    const include = includeDisabled === true ? 1 : 0;
+    const query = "SELECT w.id,w.revision,s.lifecycle,COALESCE(s.enabled,0) AS schedulerEnabled,s.last_failure AS lastFailure FROM scheduler_jobs s JOIN workflows w ON w.id=s.workflow WHERE (?=1 OR s.enabled=1) AND s.lifecycle NOT IN ('COMPLETED','FAILED','CANCELLED') AND (?='' OR w.id>?) ORDER BY w.id LIMIT ?";
+    let rows = this.#db.prepare(query).all(include, after, after, bounded);
     if (rows.length < bounded && after) {
       const remaining = bounded - rows.length;
-      const wrap = this.#db.prepare("SELECT w.id,w.revision,s.lifecycle,COALESCE(s.enabled,0) AS schedulerEnabled,s.last_failure AS lastFailure FROM scheduler_jobs s JOIN workflows w ON w.id=s.workflow WHERE s.enabled=1 AND s.lifecycle NOT IN ('COMPLETED','FAILED','CANCELLED') AND w.id<=? ORDER BY w.id LIMIT ?").all(after, remaining);
+      const wrap = this.#db.prepare("SELECT w.id,w.revision,s.lifecycle,COALESCE(s.enabled,0) AS schedulerEnabled,s.last_failure AS lastFailure FROM scheduler_jobs s JOIN workflows w ON w.id=s.workflow WHERE (?=1 OR s.enabled=1) AND s.lifecycle NOT IN ('COMPLETED','FAILED','CANCELLED') AND w.id<=? ORDER BY w.id LIMIT ?").all(include, after, remaining);
       rows = rows.concat(wrap);
     }
     const workflows = rows.map(x=>({...x,schedulerEnabled:x.schedulerEnabled===1}));
