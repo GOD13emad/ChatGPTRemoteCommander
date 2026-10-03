@@ -9,7 +9,16 @@ function fixture(){
   const base=fs.mkdtempSync(path.join(os.tmpdir(),'rc-async-continuation-'));
   const state=path.join(base,'state');
   const config={instance:{profile:'test'},asyncOperations:{stateDir:state,maxOutputBytes:1024*1024}};
-  return {base,state,config,dispose:()=>fs.rmSync(base,{recursive:true,force:true,maxRetries:20,retryDelay:50})};
+  return {base,state,config,dispose:async()=>{
+    const deadline=Date.now()+3000;
+    while(true){
+      try{fs.rmSync(base,{recursive:true,force:true,maxRetries:4,retryDelay:25});return;}
+      catch(error){
+        if(!['ENOTEMPTY','EBUSY','EPERM'].includes(error?.code)||Date.now()>=deadline)throw error;
+        await new Promise(r=>setTimeout(r,25));
+      }
+    }
+  }};
 }
 function timeout(ms){return new Promise((_,reject)=>setTimeout(()=>reject(new Error('TEST_TIMEOUT')),ms));}
 async function waitTerminal(api,operationId,timeoutMs=2000){
@@ -44,7 +53,7 @@ test('operation terminal event triggers attached continuation without status pol
     assert.equal(state.status,'SUCCEEDED');
     assert.equal(state.continuation.projectId,'p1');
     assert.equal(state.continuation.eventKey,'op:req-1');
-  }finally{await api.close();f.dispose();}
+  }finally{await api.close();await f.dispose();}
 });
 
 test('continuation metadata is part of request idempotency identity',async()=>{
@@ -67,7 +76,7 @@ test('continuation metadata is part of request idempotency identity',async()=>{
     }),/REQUEST_ID_CONFLICT/);
     const settled=await waitTerminal(api,a.operationId);
     assert.equal(settled.status,'SUCCEEDED');
-  }finally{await api.close();f.dispose();}
+  }finally{await api.close();await f.dispose();}
 });
 
 test('restart reconciliation recovers terminal continuation after watcher is gone',async()=>{
@@ -100,7 +109,7 @@ test('restart reconciliation recovers terminal continuation after watcher is gon
       assert.equal(state.status,'SUCCEEDED');
       assert.equal(state.continuation.eventKey,'op:req-3');
     }finally{await second.close();}
-  }finally{f.dispose();}
+  }finally{await f.dispose();}
 });
 
 test('unbound continuation validation prevents worker creation',async()=>{
@@ -117,5 +126,5 @@ test('unbound continuation validation prevents worker creation',async()=>{
       continuation:{projectId:'p1',eventKey:'op:req-4',root:f.base}
     }),/CONVERSATION_NOT_BOUND/);
     assert.equal(fs.existsSync(path.join(f.state,'operations')),false);
-  }finally{await api.close();f.dispose();}
+  }finally{await api.close();await f.dispose();}
 });
