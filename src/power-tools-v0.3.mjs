@@ -767,8 +767,16 @@ const openDestructive = { readOnlyHint: false, destructiveHint: true, idempotent
 const continuationInputSchema = {
   type: 'object',
   properties: {
-    projectId: { type: 'string', minLength: 1, maxLength: 128, pattern: '^[A-Za-z0-9][A-Za-z0-9._-]{0,127}
-
+    projectId: { type: 'string', minLength: 1, maxLength: 128, pattern: '^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$' },
+    eventKey: { type: 'string', minLength: 1, maxLength: 128, pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$' },
+    root: { type: 'string', minLength: 1, maxLength: 4096 },
+    phase: { type: 'string', maxLength: 256 },
+    summary: { type: 'string', maxLength: 1200 },
+    evidencePaths: { type: 'array', maxItems: 10, items: { type: 'string', minLength: 1, maxLength: 512 } }
+  },
+  required: ['projectId', 'eventKey', 'root'],
+  additionalProperties: false
+};
 export const powerToolDefinitions = [
   { name: 'power_status', description: 'Return Full-Control Power Mode capabilities, backup-retention policy, and safety policy.', inputSchema: { type: 'object', properties: {}, additionalProperties: false }, annotations: ro },
   { name: 'file_info', description: 'Return metadata for any file or directory permitted by Power Mode.', inputSchema: { type: 'object', properties: { path: { type: 'string' } }, required: ['path'], additionalProperties: false }, annotations: ro },
