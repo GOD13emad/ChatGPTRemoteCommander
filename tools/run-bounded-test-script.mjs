@@ -20,8 +20,8 @@ export function boundNodeTestConcurrency(script,concurrency){
 }
 
 const SENSITIVE_QUALIFICATION_FILES=[
-  'test/tunnel-log-rotation.test.mjs',
   'test/mcp-tasks-extension.test.mjs',
+  'test/tunnel-log-rotation.test.mjs',
   'test/async-operations.test.mjs',
   'test/workflow-http.test.mjs'
 ];
