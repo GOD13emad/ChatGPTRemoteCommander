@@ -842,6 +842,15 @@ try{
   }
   if(-not $Force -and $currentStatus -and [string]$currentStatus.version-eq $stage.Version){
     $route=Get-RoutePath 'default'
+    $controlHead=''
+    try{$controlHead=(& git.exe -C $InstallDir rev-parse HEAD).Trim().ToLowerInvariant()}catch{}
+    if(-not(Test-Path $route) -and $controlHead-eq $stage.Commit){
+      Complete-RetainedBackends
+      $report.status='CURRENT';$report.currentVersion=[string]$currentStatus.version;$report.completedAt=(Get-Date).ToUniversalTime().ToString('o')
+      Atomic-Json $ResultFile $report
+      Log "AUTO_UPDATE_CURRENT direct=true commit=$controlHead version=$($currentStatus.version)"
+      exit 0
+    }
     if(Test-Path $route){
       $rs=Read-Json $route
       if([string]$rs.active.commit-eq $stage.Commit){
