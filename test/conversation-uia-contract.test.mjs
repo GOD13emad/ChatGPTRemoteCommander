@@ -9,6 +9,7 @@ test('conversation UIA helper is semantic, exact-targeted, hidden and credential
   assert.match(text,/GetWindowThreadProcessId/);
   assert.match(text,/TopLevelWindowsForPids/);
   assert.doesNotMatch(text,/MainWindowHandle/);
+  assert.doesNotMatch(text,/\\$pid\\s*=/i,'helper must not assign the read-only automatic PID variable');
   assert.match(text,/ValuePattern/);
   assert.match(text,/InvokePattern/);
   assert.match(text,/Normalize-TabTitle/);
