@@ -21,6 +21,7 @@ export function boundNodeTestConcurrency(script,concurrency){
 
 const SENSITIVE_QUALIFICATION_FILES=[
   'test/tunnel-log-rotation.test.mjs',
+  'test/mcp-tasks-extension.test.mjs',
   'test/async-operations.test.mjs',
   'test/workflow-http.test.mjs'
 ];
@@ -59,8 +60,9 @@ function run(){
   const pkg=JSON.parse(fs.readFileSync(path.join(root,'package.json'),'utf8'));
   const original=pkg?.scripts?.[args.script];
   const bounded=boundNodeTestConcurrency(original,args.concurrency);
-  const command=args.prioritizeSensitive?prioritizeSensitiveQualificationCommands(bounded.command):bounded.command;
-  console.log('CI_TEST_CONCURRENCY script='+args.script+' concurrency='+Number(args.concurrency)+' replacements='+bounded.replacements+' prioritizeSensitive='+args.prioritizeSensitive);
+  const prioritizeSensitive=args.prioritizeSensitive||process.platform==='win32';
+  const command=prioritizeSensitive?prioritizeSensitiveQualificationCommands(bounded.command):bounded.command;
+  console.log('CI_TEST_CONCURRENCY script='+args.script+' concurrency='+Number(args.concurrency)+' replacements='+bounded.replacements+' prioritizeSensitive='+prioritizeSensitive);
   const child=process.platform==='win32'
     ? spawnSync(process.env.ComSpec||'cmd.exe',['/d','/s','/c',command],{cwd:root,env:process.env,stdio:'inherit'})
     : spawnSync('/bin/sh',['-lc',command],{cwd:root,env:process.env,stdio:'inherit'});
