@@ -181,9 +181,7 @@ export function createWorkflowTools({ config, roots, device, configSha256, looku
       for(const run of engine.status().runs){
         if(!deliveryVisible.has(run.status))continue;
         checked++;
-        const before=deliveryStore.health().pending;
-        publishProjectDelivery(run);
-        if(deliveryStore.health().pending>before)published++;
+        if(publishProjectDelivery(run))published++;
       }
       deliveryLastError=null;
       return {checked,published,error:null};
@@ -221,13 +219,20 @@ export function createWorkflowTools({ config, roots, device, configSha256, looku
   }
 
   let ticking=false;
+  let schedulerCursor=0;
+  const schedulerBatchSize=25;
   async function schedulerTick() {
     if (ticking) return {skipped:true,reason:'TICK_ALREADY_RUNNING'};
     ticking=true;
     try {
-      const recovered=store.recoverInterrupted();
+      const recovered=[];
       const reconciled=[], ready=[], blocked=[];
-      for (const item of store.list()) {
+      const allItems=store.list();
+      const batch=allItems.length<=schedulerBatchSize
+        ? allItems
+        : Array.from({length:Math.min(schedulerBatchSize,allItems.length)},(_,offset)=>allItems[(schedulerCursor+offset)%allItems.length]);
+      if(allItems.length)schedulerCursor=(schedulerCursor+batch.length)%allItems.length;
+      for (const item of batch) {
         try {
           let r=store.resume(item.id);
           if (r.unresolved.length) {
