@@ -2,6 +2,7 @@ param(
   [string]$OwnerUserProfile = $env:USERPROFILE,
   [string]$BootTaskName = 'ChatGPTRemoteCommander-BootRecovery',
   [string]$HandoffTaskName = 'ChatGPTRemoteCommander-UserSessionHandoff',
+  [string]$BackupRetentionTaskName = 'ChatGPTRemoteCommander-BackupRetention',
   [switch]$KeepMachineCredentials
 )
 $ErrorActionPreference='Stop'
@@ -13,7 +14,7 @@ if(-not $p.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)){
 $OwnerUserProfile=[IO.Path]::GetFullPath($OwnerUserProfile)
 $credDir=Join-Path $OwnerUserProfile 'AppData\Local\ChatGPTRemoteCommander\credentials'
 
-foreach($name in @($HandoffTaskName,$BootTaskName)){
+foreach($name in @($BackupRetentionTaskName,$HandoffTaskName,$BootTaskName)){
   try{Stop-ScheduledTask -TaskName $name -ErrorAction SilentlyContinue}catch{}
   Unregister-ScheduledTask -TaskName $name -Confirm:$false -ErrorAction SilentlyContinue
 }
@@ -26,6 +27,7 @@ if(-not $KeepMachineCredentials -and (Test-Path -LiteralPath $credDir)){
   ok=$true
   bootTaskRemoved=(-not [bool](Get-ScheduledTask -TaskName $BootTaskName -ErrorAction SilentlyContinue))
   handoffTaskRemoved=(-not [bool](Get-ScheduledTask -TaskName $HandoffTaskName -ErrorAction SilentlyContinue))
+  backupRetentionTaskRemoved=(-not [bool](Get-ScheduledTask -TaskName $BackupRetentionTaskName -ErrorAction SilentlyContinue))
   machineCredentialsKept=[bool]$KeepMachineCredentials
   currentUserCredentialsPreserved=$true
   autoAdminLogonChanged=$false

@@ -2,6 +2,7 @@ param(
   [string]$OwnerUserProfile = $env:USERPROFILE,
   [string]$BootTaskName = 'ChatGPTRemoteCommander-BootRecovery',
   [string]$HandoffTaskName = 'ChatGPTRemoteCommander-UserSessionHandoff',
+  [string]$BackupRetentionTaskName = 'ChatGPTRemoteCommander-BackupRetention',
   [switch]$NoStart
 )
 $ErrorActionPreference = 'Stop'
@@ -31,7 +32,8 @@ $VarDir = Join-Path $Root 'var'
 New-Item -ItemType Directory -Force -Path $VarDir | Out-Null
 $Supervisor = Join-Path $Root 'autostart-windows.ps1'
 $Handoff = Join-Path $Root 'handoff-user-session-windows.ps1'
-foreach($p in @($CredDir,$ProfileDir,$Supervisor,$Handoff)){
+$BackupRetention = Join-Path $Root 'tools\backup-retention-windows.ps1'
+foreach($p in @($CredDir,$ProfileDir,$Supervisor,$Handoff,$BackupRetention)){
   if(-not(Test-Path -LiteralPath $p)){throw "BOOT_RECOVERY_REQUIRED_PATH_MISSING $p"}
 }
 
@@ -150,6 +152,13 @@ $handoffTrigger=New-ScheduledTaskTrigger -AtLogOn -User $ownerName
 $handoffSettings=New-ScheduledTaskSettingsSet -StartWhenAvailable -RestartCount 12 -RestartInterval (New-TimeSpan -Minutes 1) -ExecutionTimeLimit (New-TimeSpan -Minutes 12) -MultipleInstances IgnoreNew
 Register-ScheduledTask -TaskName $HandoffTaskName -Action $handoffAction -Trigger $handoffTrigger -Principal $systemPrincipal -Settings $handoffSettings -Force | Out-Null
 
+$backupStateRoot=Join-Path $OwnerUserProfile '.chatgpt-remote-commander'
+$backupArgs='-NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}" -Base "{1}"' -f $BackupRetention,$backupStateRoot
+$backupAction=New-ScheduledTaskAction -Execute $pwsh -Argument $backupArgs -WorkingDirectory $Root
+$backupTrigger=New-ScheduledTaskTrigger -Daily -At '03:15'
+$backupSettings=New-ScheduledTaskSettingsSet -StartWhenAvailable -ExecutionTimeLimit (New-TimeSpan -Hours 2) -MultipleInstances IgnoreNew
+Register-ScheduledTask -TaskName $BackupRetentionTaskName -Action $backupAction -Trigger $backupTrigger -Principal $systemPrincipal -Settings $backupSettings -Force | Out-Null
+
 $runKey='HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
 New-Item -Path $runKey -Force | Out-Null
 $logonCommand='"{0}" -NoLogo -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "{1}"' -f $pwsh,$Supervisor
@@ -163,6 +172,8 @@ if(-not $NoStart){
   ok=$true
   bootTask=$BootTaskName
   handoffTask=$HandoffTaskName
+  backupRetentionTask=$BackupRetentionTaskName
+  backupRetentionScript=$BackupRetention
   owner=$ownerName
   ownerUserProfile=$OwnerUserProfile
   credentialScope='LocalMachine'

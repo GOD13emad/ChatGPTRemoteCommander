@@ -9,7 +9,7 @@ import { canonicalizeRoots } from './security-v0.3.mjs';
 import { audit, listDirectory, prepareProjectCommand, readText, runProjectCommand, writeText } from './tools-v0.3.mjs';
 import { executePowerTool, powerToolDefinitions, prepareDeferredPowerMutation, prepareShellCommand } from './power-tools-v0.3.mjs';
 import { executeGuiTool, guiToolDefinitions } from './gui-tools-windows.mjs';
-import { executeBrowserTool, browserToolDefinitions } from './browser-tools.mjs';
+import { executeBrowserTool, browserToolDefinitions, reapBrowserOrphans } from './browser-tools.mjs';
 import { lockStats } from './locks.mjs';
 import { expandPathValue, shellName } from './platform.mjs';
 import { formatToolInputErrors, validateJsonSchema } from './schema-validator.mjs';
@@ -25,7 +25,7 @@ import {
 } from './no-codex-policy.mjs';
 
 let workflowTools = null;
-const VERSION = '0.10.8';
+const VERSION = '0.10.9';
 const MODERN_VERSION = '2026-07-28';
 const LEGACY_VERSIONS = ['2025-11-25', '2025-06-18', '2025-03-26'];
 const TASKS_EXTENSION = 'io.modelcontextprotocol/tasks';
@@ -72,6 +72,15 @@ const agentExtensions = createAgentExtensionRegistry({ directories: agentExtensi
 const GUI_BACKEND_SUPPORTED = process.platform === 'win32' || process.platform === 'linux';
 const GUI_ENABLED = GUI_BACKEND_SUPPORTED && config.powerMode?.enabled === true && config.powerMode?.guiControl?.enabled === true;
 const BROWSER_ENABLED = config.powerMode?.enabled === true && config.powerMode?.browserControl?.enabled === true;
+let browserStartupReap = { attempted:false, ok:true, scanned:0, reaped:0, skippedActive:0, invalid:0, profiles:[] };
+if (BROWSER_ENABLED) {
+  try { browserStartupReap = { attempted:true, ok:true, ...reapBrowserOrphans(ctx) }; }
+  catch (error) {
+    browserStartupReap = { attempted:true, ok:false, scanned:0, reaped:0, skippedActive:0, invalid:0, profiles:[],
+      error:String(error?.code ?? error?.message ?? error) };
+    console.error('BROWSER_STARTUP_REAP_FAILED '+browserStartupReap.error);
+  }
+}
 const LEGACY_FULL_FILESYSTEM = config.powerMode?.enabled === true && config.powerMode?.fullFilesystem === true;
 const deliveryStore = new DeliveryStore(deliveryLocation(config, configPath));
 const deliveryTools = createDeliveryTools(deliveryStore);
@@ -334,12 +343,13 @@ function rpcError(id, code, message, data) {
 async function executeTool(name, args) {
   if (!toolDefinition(name)) throw protocolFailure(200, -32602, 'Unknown tool');
   if (AUTO_DEFERRED_MUTATIONS.has(name)) {
-    const { requestId, ...effectArgs } = args ?? {};
+    const { requestId, continuation, ...effectArgs } = args ?? {};
     return asyncOperationTools.execute('operation_start', {
       requestId,
       correlationId: requestId,
       tool: name,
-      arguments: effectArgs
+      arguments: effectArgs,
+      ...(continuation ? { continuation } : {})
     });
   }
   if (isDirectMutationTool(name)) {
@@ -430,6 +440,7 @@ async function executeToolEffect(name, args) {
         delegationPolicy: { ...NO_CODEX_POLICY, commanderMayLaunchCodex: codexLaunchAuthorized(ctx.config), status: delegationStatus(ctx.config) },
         powerMode: config.powerMode ?? { enabled: false },
         browserControl: { availability: BROWSER_ENABLED ? 'CHECK_browser_status' : 'DISABLED', enabled: BROWSER_ENABLED,
+          startupReap: browserStartupReap,
           policy: { ...(config.powerMode?.browserControl ?? { enabled:false }), backgroundFirst:true,
             foregroundFallback:'explicit-current-request-only', workflowBrowserAllowed:false,
             userBrowserProfileReuse:false, savedPasswordExtraction:false, foregroundInterferenceByDefault:false } },

@@ -1,3 +1,11 @@
+## 0.10.9 - 2026-10-03
+
+- Contain every Windows auto-update qualification gate inside an owned kill-on-close Job Object with bounded timeout, leak evidence, and repeated-failure backoff.
+- Add durable isolated-browser lease markers and startup orphan reaping without touching persistent/user browser profiles.
+- Add verified machine-level backup archive retention with age/count/byte budgets and scheduled maintenance.
+- Bound stale workflow startup reconciliation, improve release-lock diagnostics, and retain delivery compaction safety.
+- Preserve the v0.10.8 public surface while integrating the experimental finite Companion source snapshot separately from production authority.
+
 # Changelog
 
 ## 0.10.8 — 2026-10-03
