@@ -9,6 +9,7 @@ import { expandPathValue } from './platform.mjs';
 
 const TERMINAL = new Set(['SUCCEEDED', 'FAILED', 'TIMED_OUT', 'CANCELLED', 'UNCERTAIN']);
 const WORKER_FINALIZATION_GRACE_MS = 10000;
+const WORKER_MISSING_RECEIPT_GRACE_MS = 2000;
 const WORKER_SCHEDULING_HARD_GRACE_MS = 60000;
 const REQUEST_RE = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const OP_RE = /^[a-f0-9-]{36}$/;
@@ -205,7 +206,10 @@ export function createAsyncOperationTools({ config, prepare, workerPath, deliver
     worker.once('exit', () => {
       if (continuationClosed) return;
       queueMicrotask(() => {
-        if (!continuationClosed) status(operationId, true).catch(() => {});
+        if (continuationClosed) return;
+        status(operationId, true)
+          .then(state => { if (!TERMINAL.has(state.status)) scheduleRestartRecovery(operationId); })
+          .catch(() => scheduleRestartRecovery(operationId));
       });
     });
   }
@@ -541,7 +545,10 @@ export function createAsyncOperationTools({ config, prepare, workerPath, deliver
           && Number.isFinite(latestUpdatedAtMs)
           && latestNow > latestUpdatedAtMs + WORKER_SCHEDULING_HARD_GRACE_MS;
         const missingWorker = latestWorkerPidValid && !latestWorkerAlive;
-        if (!latestDeadlineExpired && !staleQueued && !missingWorker) return latest;
+        const missingWorkerExpired = missingWorker
+          && (!Number.isFinite(latestUpdatedAtMs)
+            || latestNow > latestUpdatedAtMs + WORKER_MISSING_RECEIPT_GRACE_MS);
+        if (!latestDeadlineExpired && !staleQueued && !missingWorkerExpired) return latest;
 
         if (latestWorkerAlive && !staleQueued) {
           const startedAtMs = typeof latest.startedAt === 'string' ? Date.parse(latest.startedAt) : NaN;
@@ -563,7 +570,7 @@ export function createAsyncOperationTools({ config, prepare, workerPath, deliver
           status: 'UNCERTAIN',
           updatedAt: new Date().toISOString(),
           failureCode: staleQueued ? 'QUEUED_WORKER_STALLED_WITHOUT_FINAL_RECEIPT'
-            : missingWorker ? 'WORKER_MISSING_WITHOUT_FINAL_RECEIPT'
+            : missingWorkerExpired ? 'WORKER_MISSING_WITHOUT_FINAL_RECEIPT'
             : 'DEADLINE_EXCEEDED_WITHOUT_FINAL_RECEIPT'
         };
         await atomicJson(p.state, state);
