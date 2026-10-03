@@ -526,11 +526,6 @@ function Get-StaleDrainEvidence([object]$OldActive,[int]$CanonicalPort){
     $result.browserBusy=[bool]$browser.busy
     $result.browserLeased=[bool]$browser.leased
     $result.browserUncertain=[bool]$browser.uncertain
-    $browser=Invoke-Mcp ([int]$OldActive.port) 'browser_status'
-    $result.browserActive=[bool]$browser.active
-    $result.browserBusy=[bool]$browser.busy
-    $result.browserLeased=[bool]$browser.leased
-    $result.browserUncertain=[bool]$browser.uncertain
   }catch{
     $result.decision='DEFER_STATUS';return [pscustomobject]$result
   }
@@ -580,6 +575,11 @@ function Get-TerminalRetentionEvidence([object]$OldActive,[int]$CanonicalPort,[o
     $gui=Invoke-Mcp ([int]$OldActive.port) 'gui_status'
     $result.guiBusy=[bool]$gui.busy
     $result.guiLeased=[bool]$gui.leased
+    $browser=Invoke-Mcp ([int]$OldActive.port) 'browser_status'
+    $result.browserActive=[bool]$browser.active
+    $result.browserBusy=[bool]$browser.busy
+    $result.browserLeased=[bool]$browser.leased
+    $result.browserUncertain=[bool]$browser.uncertain
   }catch{$result.decision='DEFER_STATUS';return [pscustomobject]$result}
   try{
     $cfg=Read-Json ([string]$OldActive.configPath)
