@@ -37,6 +37,7 @@ test('qualification paths bound full test file concurrency',()=>{
   }
   const wrapper=read('tools/run-bounded-test-script.mjs');
   assert.ok(wrapper.includes("args.prioritizeSensitive||process.platform==='win32'"),'Windows updater qualification must prioritize isolated sensitive fixtures automatically');
+  assert.ok(wrapper.includes("effectiveConcurrency=process.platform==='win32'?1:requestedConcurrency"),'Windows installer/updater qualification must use deterministic concurrency=1 under workstation load');
   const workflow=read('.github/workflows/ci.yml');
   assert.ok(workflow.includes("if: runner.os == 'Windows'"));
   assert.ok(workflow.includes('run: node tools/run-bounded-test-script.mjs --script check --concurrency 1 --prioritize-sensitive 1'));
