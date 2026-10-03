@@ -1,0 +1,51 @@
+{
+  "schema": 1,
+  "version": "1.1.1",
+  "component": "finite-project-companion-source",
+  "status": "INTEGRITY_ONLY_NOT_OPERATIONAL_ACCEPTANCE",
+  "coreChanged": false,
+  "whole": "NOT_FINAL",
+  "previousVersion": "1.1.0_SUPERSEDED_DO_NOT_ACTIVATE_NTFS64_UNSAFE",
+  "files": [
+    {
+      "path": "experimental/project-companion-v1.1.1/README.md",
+      "sha256": "2ac9c24436a532a483da7206931bd36761ee324f8668ce120336e200b81f64fd",
+      "bytes": 12409
+    },
+    {
+      "path": "experimental/project-companion-v1.1.1/package.json",
+      "sha256": "c62d4dc714d7cd80f92a28804271a9d4c10afbdfa8893c04fa2e20658f29ed1d",
+      "bytes": 835
+    },
+    {
+      "path": "experimental/project-companion-v1.1.1/ci-source.mjs",
+      "sha256": "9c3a0a2feb581b1c2349bb5080b53a18f01040e82e9035f85b2e5aaa59f04233",
+      "bytes": 5662
+    },
+    {
+      "path": "experimental/project-companion-v1.1.1/src/project-catalog.mjs",
+      "sha256": "00113ce157f9f01aa4e60ffc2cbb6850012af6397b22028b1ed05594654faee1",
+      "bytes": 13097
+    },
+    {
+      "path": "experimental/project-companion-v1.1.1/src/durable-project-runner.mjs",
+      "sha256": "61dead8706838e8d806c2d3e47fe8b6d1fb86e3168d0de85ed126164325da728",
+      "bytes": 33339
+    },
+    {
+      "path": "experimental/project-companion-v1.1.1/test/generic-project-runner.test.mjs",
+      "sha256": "cdef08121b7ab362d76e759999102c6a19fc2699730416f9a24bd8983fa053f1",
+      "bytes": 50338
+    },
+    {
+      "path": ".github/workflows/project-companion-source.yml",
+      "sha256": "3b14cc63e1c2b5ad5402c7eb7822ff8f5ed61a35bfa546d7018f01688d505d01",
+      "bytes": 945
+    },
+    {
+      "path": "experimental/project-companion-v1.1.0/SUPERSEDED_STATUS.md",
+      "sha256": "68599184d8d0f9581393b2e71be4046921d1b13277ba36b34fa2c559a38de50c",
+      "bytes": 1207
+    }
+  ]
+}

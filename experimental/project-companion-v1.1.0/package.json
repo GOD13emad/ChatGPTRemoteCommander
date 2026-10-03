@@ -1,0 +1,18 @@
+{
+  "name": "commander-finite-project-companion-source-review",
+  "version": "1.1.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "description": "Finite hash-chained project runner source candidate; trusted operational adapters and installation are not included",
+  "engines": { "node": ">=24" },
+  "exports": {
+    ".": "./src/durable-project-runner.mjs",
+    "./catalog": "./src/project-catalog.mjs"
+  },
+  "files": ["src/project-catalog.mjs", "src/durable-project-runner.mjs", "test/generic-project-runner.test.mjs", "README.md"],
+  "scripts": {
+    "check": "node --check src/project-catalog.mjs && node --check src/durable-project-runner.mjs && node --check test/generic-project-runner.test.mjs",
+    "test": "node --test --test-reporter=tap --test-concurrency=1 test/generic-project-runner.test.mjs"
+  }
+}
