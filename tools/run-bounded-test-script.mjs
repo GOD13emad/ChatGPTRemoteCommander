@@ -59,10 +59,12 @@ function run(){
   const args=parseQualificationArgs(process.argv.slice(2));
   const pkg=JSON.parse(fs.readFileSync(path.join(root,'package.json'),'utf8'));
   const original=pkg?.scripts?.[args.script];
-  const bounded=boundNodeTestConcurrency(original,args.concurrency);
+  const requestedConcurrency=Number(args.concurrency);
+  const effectiveConcurrency=process.platform==='win32'?1:requestedConcurrency;
+  const bounded=boundNodeTestConcurrency(original,effectiveConcurrency);
   const prioritizeSensitive=args.prioritizeSensitive||process.platform==='win32';
   const command=prioritizeSensitive?prioritizeSensitiveQualificationCommands(bounded.command):bounded.command;
-  console.log('CI_TEST_CONCURRENCY script='+args.script+' concurrency='+Number(args.concurrency)+' replacements='+bounded.replacements+' prioritizeSensitive='+prioritizeSensitive);
+  console.log('CI_TEST_CONCURRENCY script='+args.script+' requestedConcurrency='+requestedConcurrency+' effectiveConcurrency='+effectiveConcurrency+' replacements='+bounded.replacements+' prioritizeSensitive='+prioritizeSensitive);
   const child=process.platform==='win32'
     ? spawnSync(process.env.ComSpec||'cmd.exe',['/d','/s','/c',command],{cwd:root,env:process.env,stdio:'inherit'})
     : spawnSync('/bin/sh',['-lc',command],{cwd:root,env:process.env,stdio:'inherit'});
