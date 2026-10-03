@@ -250,6 +250,8 @@ export class WorkflowStore {
             post_state_hash TEXT, receipt TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
           );
           CREATE INDEX IF NOT EXISTS operations_workflow_step ON operations(workflow,step_id);
+          CREATE INDEX IF NOT EXISTS scheduler_jobs_enabled_workflow ON scheduler_jobs(enabled,workflow);
+          CREATE INDEX IF NOT EXISTS scheduler_jobs_lifecycle_updated_workflow ON scheduler_jobs(lifecycle,updated_at DESC,workflow);
           CREATE TABLE IF NOT EXISTS root_leases(
             root TEXT PRIMARY KEY, workflow TEXT NOT NULL REFERENCES workflows(id) ON DELETE CASCADE,
             owner TEXT NOT NULL, expires_at TEXT NOT NULL, revision INTEGER NOT NULL
