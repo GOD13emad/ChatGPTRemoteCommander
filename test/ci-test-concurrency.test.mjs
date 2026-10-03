@@ -77,7 +77,7 @@ test('hosted Windows priority mode runs scheduler-sensitive isolated fixtures be
     const prioritized=prioritizeSensitiveQualificationCommands(bounded);
     const bulkIndex=prioritized.indexOf('test/boot-recovery-diagnostics.test.mjs');
     assert.ok(bulkIndex>0,'bulk qualification command must remain present');
-    const ordered=['test/tunnel-log-rotation.test.mjs','test/mcp-tasks-extension.test.mjs','test/async-operations.test.mjs','test/workflow-http.test.mjs'];
+    const ordered=['test/mcp-tasks-extension.test.mjs','test/tunnel-log-rotation.test.mjs','test/async-operations.test.mjs','test/workflow-http.test.mjs'];
     const positions=ordered.map(sensitive=>prioritized.indexOf(sensitive));
     for(let i=0;i<ordered.length;i++) assert.ok(positions[i]>=0 && positions[i]<bulkIndex, ordered[i]+' must execute before bulk qualification');
     assert.ok(positions.every((position,index)=>index===0||positions[index-1]<position), 'sensitive fixtures must preserve deterministic priority order');
