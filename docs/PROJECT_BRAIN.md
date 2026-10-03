@@ -1,38 +1,38 @@
 # Project Brain — ChatGPT Remote Commander
 
-Status: CURRENT — v0.10.6 RELEASED / LINUX LAPTOP ROLLOUT ACCEPTED / MULTI-HOST ROLLOUT INCOMPLETE
+Status: CURRENT — v0.10.8 RELEASED / THREE REACHABLE HOSTS ACCEPTED / SAEID HOST OFFLINE
 Updated: 2026-10-03
 Authority: immutable release/tag -> exact live route records -> exact-SHA CI/canary evidence -> project control/evidence records.
 
 ## Current accepted baseline
 
-**v0.10.6 — RELEASE ARTIFACT FINAL / ACCEPTED**
+**v0.10.8 — RELEASE ARTIFACT FINAL / ACCEPTED**
 
-Release tag target: `3546256e8e7c494d140bc9c33259ddbf345639d3`.
-Qualified release tree: `cce09e13b834c17a055b3448e808089966e1125a`.
-GitHub release: stable (not draft, not prerelease), published 2026-10-02T21:27:11Z with exactly 19 uploaded assets and SHA-256 digests.
+Release tag target: `4ca2efe57ceb6d22a75176420fc41ae904666f00`.
+Qualified product candidate: `23dea9881f8d60959f499d7e39e78df676d3b8ae`.
+Accepted tree shared by candidate and merge commit: `92b628765f5d19a090eddb1654e2d936a0e6775e`.
+GitHub release is immutable, stable (not draft/prerelease), published 2026-10-03 with exactly 19 uploaded assets carrying SHA-256 metadata.
 
-Independent Linux rollout acceptance on `aliemad-Labtop`:
-- isolated exact-tag `--no-promote` canary PASS, including qualification/security/doctor/hardware self-test and `AUTO_UPDATE_CANDIDATE_PASS`;
-- live promoted route: v0.10.6, exact commit `3546256e...`, route generation 113, FULL_POWER preserved;
-- live workflow database integrity `ok`, active operations 0, current leases 0;
-- previous v0.10.5 release bytes remain present on disk for rollback even though the active route has `previous=null`;
-- unrelated durable project records were not mass-cancelled or cosmetically cleaned.
+v0.10.8 closes the real Windows candidate-first drain deadlock observed while rolling v0.10.7 on HPC-159-17. An old backend could be independently idle while its Commander-owned `tools/browser-control.mjs --server` helper remained alive. The updater now treats that helper as safe only after exact old-backend `browser_status` proves active=false, busy=false, leased=false and uncertain=false. Unknown or conflicting evidence remains fail-closed.
 
-Production scope promoted in v0.10.6 is the independently qualified operation-child lifecycle hardening. Saeid Companion/V03/paused-domain/Q5/Browser-R3 sources are preserved under `experimental/` and are NOT production-wired. Q5 native Windows private-file acceptance and whole-product autonomy remain UNPROVEN.
+Accepted host readback:
+- `aliemad-Labtop` Linux: v0.10.8, exact commit `4ca2efe...`, route generation 117, workflow DB integrity `ok`, active operations 0, current leases 0.
+- `HPC-154-66` Windows: v0.10.8, exact commit `4ca2efe...`, route generation 33, workflow DB integrity `ok`, active operations 0, current leases 0.
+- `HPC-159-17` Windows: v0.10.8 real regression host; candidate-first update retired the previously blocking verified-idle browser helper path without manual process killing; active operations 0 and current leases 0 at readback.
+- Saeid Windows host: MISSING rollout/readback in this session because its tunnel-client has not been seen for 300 seconds. No blind mutation or downgrade is authorized while that connector is offline.
 
-CEF companion has separate authority: Linux preview `v0.8.0-rc.1` was rebuilt/native-qualified and published as a prerelease from exact commit `1581c8012dbbb08b88517e01aa5e4f4ab2eb97f3`; it is not a Commander stable-release acceptance and Windows/end-to-end gates remain open.
+The Saeid Companion/V03/paused-domain/Q5/Browser-R3 sources remain explicitly experimental unless separately qualified. Commander stable acceptance does not promote the CEF companion or Windows private-file guard.
 
 ## Open gates / critical path
 
-1. Candidate-first v0.10.6 rollout/readback on Saeid and Emad Windows hosts when their Commander connectors are reliably available; no blind mutation while readback is unavailable.
-2. CEF Windows native port/build/install.
-3. Real Commander↔CEF ownership/transport/current-session integration and sustained non-interference.
-4. Durable-delivery/history backlog on user machines is retained project state, not a release blocker; reconcile only by project authority, never mass-delete.
+1. Bring Saeid tunnel-client back online; then perform read-only authority/route audit followed by exact-tag v0.10.8 candidate-first update only if needed.
+2. CEF cross-platform preview qualification remains a separate project. Linux runtime is already qualified; Windows native runtime is being qualified independently.
+3. Real Commander↔CEF ownership/transport/current-session integration, native Windows private-file ACL guard, and sustained non-interference remain OPEN.
+4. Durable-delivery/history backlog on user machines is retained project state, not a release blocker; reconcile only by project authority and never mass-delete or blind-replay UNCERTAIN effects.
 
 ## Exact next action
 
-On the next reliably connected Windows host, perform read-only authority/config/route audit, then exact-tag v0.10.6 candidate-first qualification and promotion with rollback preservation. Separately continue CEF Windows qualification from the published v0.8.0-rc.1 preview baseline.
+Do not change accepted v0.10.8 hosts. Restore Saeid connectivity before any Saeid mutation. Continue CEF Windows-native qualification from its exact feature head; publish only a prerelease until Windows private-file ownership/ACL and end-to-end Commander binding are independently accepted.
 
 ## Final objective
 
