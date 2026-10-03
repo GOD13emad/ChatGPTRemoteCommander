@@ -11,7 +11,9 @@ test('conversation UIA helper is semantic, exact-targeted, hidden and credential
   assert.doesNotMatch(text,/MainWindowHandle/);
   assert.match(text,/ValuePattern/);
   assert.match(text,/InvokePattern/);
-  assert.match(text,/-eq \$Title/);
+  assert.match(text,/Normalize-TabTitle/);
+  assert.match(text,/High memory usage/);
+  assert.match(text,/CHAT_TAB_AMBIGUOUS/);
   assert.match(text,/WAITING_FOR_CHAT_TAB/);
   assert.match(text,/COMPOSER_NOT_EMPTY/);
   assert.match(text,/CHAT_BUSY/);
