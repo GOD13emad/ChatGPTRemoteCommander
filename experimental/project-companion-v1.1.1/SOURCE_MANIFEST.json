@@ -39,8 +39,8 @@
     },
     {
       "path": ".github/workflows/project-companion-source.yml",
-      "sha256": "1e1c7c35a059d0df0227f908da485b7045b2aa2cb3dda6e048223cd7a2c89e72",
-      "bytes": 942
+      "sha256": "3b14cc63e1c2b5ad5402c7eb7822ff8f5ed61a35bfa546d7018f01688d505d01",
+      "bytes": 945
     },
     {
       "path": "experimental/project-companion-v1.1.0/SUPERSEDED_STATUS.md",

@@ -3,11 +3,11 @@ name: Finite Project Companion Source
 on:
   push:
     paths:
-      - 'experimental/finite-companion-v1.1.1/**'
+      - 'experimental/project-companion-v1.1.1/**'
       - '.github/workflows/project-companion-source.yml'
   pull_request:
     paths:
-      - 'experimental/finite-companion-v1.1.1/**'
+      - 'experimental/project-companion-v1.1.1/**'
       - '.github/workflows/project-companion-source.yml'
 
 permissions:
@@ -29,5 +29,5 @@ jobs:
         with:
           node-version: '24'
       - name: Pinned parser and exact 88 synthetic contracts only
-        working-directory: experimental/finite-companion-v1.1.1
+        working-directory: experimental/project-companion-v1.1.1
         run: node ci-source.mjs
