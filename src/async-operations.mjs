@@ -519,7 +519,11 @@ export function createAsyncOperationTools({ config, prepare, workerPath, deliver
       const workerPidValid = Number.isSafeInteger(workerPid) && workerPid > 0;
       const workerAlive = workerPidValid && alive(workerPid);
       const workerMissing = workerPidValid && !workerAlive;
-      if (deadlineExpired || workerMissing) {
+      const updatedAtMs = typeof state.updatedAt === 'string' ? Date.parse(state.updatedAt) : NaN;
+      const staleQueued = state.status === 'QUEUED'
+        && Number.isFinite(updatedAtMs)
+        && now > updatedAtMs + WORKER_SCHEDULING_HARD_GRACE_MS;
+      if (deadlineExpired || workerMissing || staleQueued) {
         const latest = await readJson(p.state);
         const receipt = await exactReceipt(latest);
         if (receipt) return attachDelivery(await adoptReceipt(latest, receipt));
