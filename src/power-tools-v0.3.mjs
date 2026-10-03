@@ -764,6 +764,153 @@ const ro = { readOnlyHint: true, destructiveHint: false, openWorldHint: false };
 const additive = { readOnlyHint: false, destructiveHint: false, openWorldHint: false };
 const localDestructive = { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false };
 const openDestructive = { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true };
+const continuationInputSchema = {
+  type: 'object',
+  properties: {
+    projectId: { type: 'string', minLength: 1, maxLength: 128, pattern: '^[A-Za-z0-9][A-Za-z0-9._-]{0,127}
+
+export const powerToolDefinitions = [
+  { name: 'power_status', description: 'Return Full-Control Power Mode capabilities, backup-retention policy, and safety policy.', inputSchema: { type: 'object', properties: {}, additionalProperties: false }, annotations: ro },
+  { name: 'file_info', description: 'Return metadata for any file or directory permitted by Power Mode.', inputSchema: { type: 'object', properties: { path: { type: 'string' } }, required: ['path'], additionalProperties: false }, annotations: ro },
+  { name: 'read_file', description: 'Read bounded text or binary data using Power Mode. Files above 512 KiB require offset/maxBytes paging; each page is at most 256 KiB.', inputSchema: { type: 'object', properties: { path: { type: 'string' }, encoding: { type: 'string', enum: ['utf8', 'base64'] }, offset: { type: 'integer', minimum: 0 }, maxBytes: { type: 'integer', minimum: 1, maximum: 262144 } }, required: ['path'], additionalProperties: false }, annotations: ro },
+  { name: 'write_file', description: 'Write/append text or base64 file data with recoverable pre-mutation protection and optional SHA-256 precondition. Append uses compact verified truncate-recovery journals; file rollback points use bounded per-target retention.', inputSchema: { type: 'object', properties: { path: { type: 'string' }, content: { type: 'string' }, encoding: { type: 'string', enum: ['utf8', 'base64'] }, mode: { type: 'string', enum: ['overwrite', 'append'] }, createParents: { type: 'boolean' }, expectedSha256: { type: 'string' } }, required: ['path', 'content'], additionalProperties: false }, annotations: localDestructive },
+  { name: 'create_directory', description: 'Create a directory, including parents.', inputSchema: { type: 'object', properties: { path: { type: 'string' }, recursive: { type: 'boolean' } }, required: ['path'], additionalProperties: false }, annotations: additive },
+  { name: 'copy_path', description: 'Copy a file or directory recursively in a durable detached operation; optionally replace destination after backup. When this exact chat is already conversation-bound, include continuation for terminal handoff.', inputSchema: { type: 'object', properties: { source: { type: 'string' }, destination: { type: 'string' }, overwrite: { type: 'boolean' }, continuation: continuationInputSchema }, required: ['source', 'destination'], additionalProperties: false }, annotations: localDestructive },
+  { name: 'move_path', description: 'Move or rename a file/directory in a durable detached operation; optionally replace destination after backup. When this exact chat is already conversation-bound, include continuation for terminal handoff.', inputSchema: { type: 'object', properties: { source: { type: 'string' }, destination: { type: 'string' }, overwrite: { type: 'boolean' }, continuation: continuationInputSchema }, required: ['source', 'destination'], additionalProperties: false }, annotations: localDestructive },
+  { name: 'delete_path', description: 'Delete in a durable detached operation with recoverable backup by default. Permanent deletion is separately policy-gated. When this exact chat is already conversation-bound, include continuation for terminal handoff.', inputSchema: { type: 'object', properties: { path: { type: 'string' }, permanent: { type: 'boolean' }, continuation: continuationInputSchema }, required: ['path'], additionalProperties: false }, annotations: localDestructive },
+  { name: 'search_files', description: 'Search names and optionally bounded UTF-8 file content across Power Mode filesystem scope. The synchronous search is time-bounded.', inputSchema: { type: 'object', properties: { path: { type: 'string' }, pattern: { type: 'string' }, regex: { type: 'boolean' }, ignoreCase: { type: 'boolean' }, searchContent: { type: 'boolean' }, depth: { type: 'integer', minimum: 0, maximum: 32 }, maxResults: { type: 'integer', minimum: 1, maximum: 1000 }, maxContentBytes: { type: 'integer', minimum: 1024 }, maxDurationMs: { type: 'integer', minimum: 100, maximum: 10000 } }, required: ['pattern'], additionalProperties: false }, annotations: ro },
+  { name: 'run_shell', description: 'Run a short bounded platform shell command (PowerShell 7 on Windows, Bash on Linux). Synchronous execution is hard-limited to 10 seconds with compact output. Use operation_start for longer/unknown/high-output work; if operation tools are not exposed by the client, use one-shot start_terminal + bounded read_terminal. Explicit Power Mode only.', inputSchema: { type: 'object', properties: { command: { type: 'string' }, cwd: { type: 'string' }, timeoutMs: { type: 'integer', minimum: 1000, maximum: 30000 } }, required: ['command'], additionalProperties: false }, annotations: openDestructive },
+  { name: 'system_info', description: 'Return OS, CPU, memory, user, Node and runtime information.', inputSchema: { type: 'object', properties: {}, additionalProperties: false }, annotations: ro },
+  { name: 'list_processes', description: 'List operating-system processes with PID and resource details when available.', inputSchema: { type: 'object', properties: {}, additionalProperties: false }, annotations: ro },
+  { name: 'kill_process', description: 'Terminate a process by PID; protected/system PIDs and this server are refused.', inputSchema: { type: 'object', properties: { pid: { type: 'integer' }, signal: { type: 'string' } }, required: ['pid'], additionalProperties: false }, annotations: localDestructive },
+  { name: 'start_terminal', description: 'Start a platform terminal session and return immediately. With command and no interactive=true it is a one-shot background fallback for long or high-output work when operation_* tools are unavailable; retrieve output using bounded read_terminal pages. Use interactive=true only when later send_terminal input is genuinely required. With no command it remains interactive.', inputSchema: { type: 'object', properties: { cwd: { type: 'string' }, command: { type: 'string' }, interactive: { type: 'boolean' } }, additionalProperties: false }, annotations: openDestructive },
+  { name: 'read_terminal', description: 'Read a bounded page of buffered terminal stdout/stderr. Default is 32 KiB per stream; maxChars is capped at 64 KiB. Optional waitMs long-polls for new output for at most 5 seconds. Use nextStdoutOffset/nextStderrOffset for absolute paging without skipping unread output.', inputSchema: { type: 'object', properties: { id: { type: 'string' }, consume: { type: 'boolean' }, stdoutOffset: { type: 'integer', minimum: 0 }, stderrOffset: { type: 'integer', minimum: 0 }, maxChars: { type: 'integer', minimum: 1, maximum: 65536 }, waitMs: { type: 'integer', minimum: 0, maximum: 5000 } }, required: ['id'], additionalProperties: false }, annotations: ro },
+  { name: 'send_terminal', description: 'Send input to an explicitly interactive terminal session. One-shot command sessions reject input.', inputSchema: { type: 'object', properties: { id: { type: 'string' }, input: { type: 'string' }, newline: { type: 'boolean' } }, required: ['id', 'input'], additionalProperties: false }, annotations: openDestructive },
+  { name: 'stop_terminal', description: 'Stop and optionally remove a persistent terminal session.', inputSchema: { type: 'object', properties: { id: { type: 'string' }, signal: { type: 'string' }, remove: { type: 'boolean' } }, required: ['id'], additionalProperties: false }, annotations: localDestructive }
+];
+export async function prepareDeferredPowerMutation(ctx, name, input) {
+  const cfg = power(ctx);
+  if (name === 'copy_path' || name === 'move_path') {
+    const source = await resolveExistingTarget(ctx, input.source);
+    const destination = await resolveWritableTarget(ctx, input.destination);
+    assertDisjointPaths(source, destination);
+    await lstat(source);
+    try {
+      await lstat(destination);
+      if (input.overwrite !== true) throw new Error('destination exists; set overwrite=true');
+    } catch (error) {
+      if (error?.code !== 'ENOENT') throw error;
+    }
+    return { kind: 'power-tool', timeoutMs: 24 * 60 * 60 * 1000 };
+  }
+  if (name === 'delete_path') {
+    const target = await resolveExistingTarget(ctx, input.path);
+    await lstat(target);
+    if (input.permanent === true && cfg.allowPermanentDelete !== true) throw new Error('permanent delete is disabled');
+    return { kind: 'power-tool', timeoutMs: 24 * 60 * 60 * 1000 };
+  }
+  throw new Error('unsupported deferred power mutation');
+}
+
+export async function executePowerTool(ctx, name, input) {
+  switch (name) {
+    case 'power_status': return powerStatus(ctx);
+    case 'file_info': return fileInfo(ctx, input);
+    case 'read_file': return readAnyFile(ctx, input);
+    case 'write_file': return writeAnyFile(ctx, input);
+    case 'create_directory': return createDirectory(ctx, input);
+    case 'copy_path': return copyPath(ctx, input);
+    case 'move_path': return movePath(ctx, input);
+    case 'delete_path': return deletePath(ctx, input);
+    case 'search_files': return searchFiles(ctx, input);
+    case 'run_shell': return runShell(ctx, input);
+    case 'system_info': return systemInfo(ctx);
+    case 'list_processes': return listProcesses(ctx);
+    case 'kill_process': return killProcess(ctx, input);
+    case 'start_terminal': return startTerminal(ctx, input);
+    case 'read_terminal': return readTerminal(ctx, input);
+    case 'send_terminal': return sendTerminal(ctx, input);
+    case 'stop_terminal': return stopTerminal(ctx, input);
+    default: throw Object.assign(new Error(`Unknown tool: ${name}`), { rpcCode: -32602 });
+  }
+}
+ },
+    eventKey: { type: 'string', minLength: 1, maxLength: 128, pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}
+
+export const powerToolDefinitions = [
+  { name: 'power_status', description: 'Return Full-Control Power Mode capabilities, backup-retention policy, and safety policy.', inputSchema: { type: 'object', properties: {}, additionalProperties: false }, annotations: ro },
+  { name: 'file_info', description: 'Return metadata for any file or directory permitted by Power Mode.', inputSchema: { type: 'object', properties: { path: { type: 'string' } }, required: ['path'], additionalProperties: false }, annotations: ro },
+  { name: 'read_file', description: 'Read bounded text or binary data using Power Mode. Files above 512 KiB require offset/maxBytes paging; each page is at most 256 KiB.', inputSchema: { type: 'object', properties: { path: { type: 'string' }, encoding: { type: 'string', enum: ['utf8', 'base64'] }, offset: { type: 'integer', minimum: 0 }, maxBytes: { type: 'integer', minimum: 1, maximum: 262144 } }, required: ['path'], additionalProperties: false }, annotations: ro },
+  { name: 'write_file', description: 'Write/append text or base64 file data with recoverable pre-mutation protection and optional SHA-256 precondition. Append uses compact verified truncate-recovery journals; file rollback points use bounded per-target retention.', inputSchema: { type: 'object', properties: { path: { type: 'string' }, content: { type: 'string' }, encoding: { type: 'string', enum: ['utf8', 'base64'] }, mode: { type: 'string', enum: ['overwrite', 'append'] }, createParents: { type: 'boolean' }, expectedSha256: { type: 'string' } }, required: ['path', 'content'], additionalProperties: false }, annotations: localDestructive },
+  { name: 'create_directory', description: 'Create a directory, including parents.', inputSchema: { type: 'object', properties: { path: { type: 'string' }, recursive: { type: 'boolean' } }, required: ['path'], additionalProperties: false }, annotations: additive },
+  { name: 'copy_path', description: 'Copy a file or directory recursively; optionally replace destination after backup.', inputSchema: { type: 'object', properties: { source: { type: 'string' }, destination: { type: 'string' }, overwrite: { type: 'boolean' } }, required: ['source', 'destination'], additionalProperties: false }, annotations: localDestructive },
+  { name: 'move_path', description: 'Move or rename a file/directory; optionally replace destination after backup.', inputSchema: { type: 'object', properties: { source: { type: 'string' }, destination: { type: 'string' }, overwrite: { type: 'boolean' } }, required: ['source', 'destination'], additionalProperties: false }, annotations: localDestructive },
+  { name: 'delete_path', description: 'Delete with recoverable backup by default. Permanent deletion is separately policy-gated.', inputSchema: { type: 'object', properties: { path: { type: 'string' }, permanent: { type: 'boolean' } }, required: ['path'], additionalProperties: false }, annotations: localDestructive },
+  { name: 'search_files', description: 'Search names and optionally bounded UTF-8 file content across Power Mode filesystem scope. The synchronous search is time-bounded.', inputSchema: { type: 'object', properties: { path: { type: 'string' }, pattern: { type: 'string' }, regex: { type: 'boolean' }, ignoreCase: { type: 'boolean' }, searchContent: { type: 'boolean' }, depth: { type: 'integer', minimum: 0, maximum: 32 }, maxResults: { type: 'integer', minimum: 1, maximum: 1000 }, maxContentBytes: { type: 'integer', minimum: 1024 }, maxDurationMs: { type: 'integer', minimum: 100, maximum: 10000 } }, required: ['pattern'], additionalProperties: false }, annotations: ro },
+  { name: 'run_shell', description: 'Run a short bounded platform shell command (PowerShell 7 on Windows, Bash on Linux). Synchronous execution is hard-limited to 10 seconds with compact output. Use operation_start for longer/unknown/high-output work; if operation tools are not exposed by the client, use one-shot start_terminal + bounded read_terminal. Explicit Power Mode only.', inputSchema: { type: 'object', properties: { command: { type: 'string' }, cwd: { type: 'string' }, timeoutMs: { type: 'integer', minimum: 1000, maximum: 30000 } }, required: ['command'], additionalProperties: false }, annotations: openDestructive },
+  { name: 'system_info', description: 'Return OS, CPU, memory, user, Node and runtime information.', inputSchema: { type: 'object', properties: {}, additionalProperties: false }, annotations: ro },
+  { name: 'list_processes', description: 'List operating-system processes with PID and resource details when available.', inputSchema: { type: 'object', properties: {}, additionalProperties: false }, annotations: ro },
+  { name: 'kill_process', description: 'Terminate a process by PID; protected/system PIDs and this server are refused.', inputSchema: { type: 'object', properties: { pid: { type: 'integer' }, signal: { type: 'string' } }, required: ['pid'], additionalProperties: false }, annotations: localDestructive },
+  { name: 'start_terminal', description: 'Start a platform terminal session and return immediately. With command and no interactive=true it is a one-shot background fallback for long or high-output work when operation_* tools are unavailable; retrieve output using bounded read_terminal pages. Use interactive=true only when later send_terminal input is genuinely required. With no command it remains interactive.', inputSchema: { type: 'object', properties: { cwd: { type: 'string' }, command: { type: 'string' }, interactive: { type: 'boolean' } }, additionalProperties: false }, annotations: openDestructive },
+  { name: 'read_terminal', description: 'Read a bounded page of buffered terminal stdout/stderr. Default is 32 KiB per stream; maxChars is capped at 64 KiB. Optional waitMs long-polls for new output for at most 5 seconds. Use nextStdoutOffset/nextStderrOffset for absolute paging without skipping unread output.', inputSchema: { type: 'object', properties: { id: { type: 'string' }, consume: { type: 'boolean' }, stdoutOffset: { type: 'integer', minimum: 0 }, stderrOffset: { type: 'integer', minimum: 0 }, maxChars: { type: 'integer', minimum: 1, maximum: 65536 }, waitMs: { type: 'integer', minimum: 0, maximum: 5000 } }, required: ['id'], additionalProperties: false }, annotations: ro },
+  { name: 'send_terminal', description: 'Send input to an explicitly interactive terminal session. One-shot command sessions reject input.', inputSchema: { type: 'object', properties: { id: { type: 'string' }, input: { type: 'string' }, newline: { type: 'boolean' } }, required: ['id', 'input'], additionalProperties: false }, annotations: openDestructive },
+  { name: 'stop_terminal', description: 'Stop and optionally remove a persistent terminal session.', inputSchema: { type: 'object', properties: { id: { type: 'string' }, signal: { type: 'string' }, remove: { type: 'boolean' } }, required: ['id'], additionalProperties: false }, annotations: localDestructive }
+];
+export async function prepareDeferredPowerMutation(ctx, name, input) {
+  const cfg = power(ctx);
+  if (name === 'copy_path' || name === 'move_path') {
+    const source = await resolveExistingTarget(ctx, input.source);
+    const destination = await resolveWritableTarget(ctx, input.destination);
+    assertDisjointPaths(source, destination);
+    await lstat(source);
+    try {
+      await lstat(destination);
+      if (input.overwrite !== true) throw new Error('destination exists; set overwrite=true');
+    } catch (error) {
+      if (error?.code !== 'ENOENT') throw error;
+    }
+    return { kind: 'power-tool', timeoutMs: 24 * 60 * 60 * 1000 };
+  }
+  if (name === 'delete_path') {
+    const target = await resolveExistingTarget(ctx, input.path);
+    await lstat(target);
+    if (input.permanent === true && cfg.allowPermanentDelete !== true) throw new Error('permanent delete is disabled');
+    return { kind: 'power-tool', timeoutMs: 24 * 60 * 60 * 1000 };
+  }
+  throw new Error('unsupported deferred power mutation');
+}
+
+export async function executePowerTool(ctx, name, input) {
+  switch (name) {
+    case 'power_status': return powerStatus(ctx);
+    case 'file_info': return fileInfo(ctx, input);
+    case 'read_file': return readAnyFile(ctx, input);
+    case 'write_file': return writeAnyFile(ctx, input);
+    case 'create_directory': return createDirectory(ctx, input);
+    case 'copy_path': return copyPath(ctx, input);
+    case 'move_path': return movePath(ctx, input);
+    case 'delete_path': return deletePath(ctx, input);
+    case 'search_files': return searchFiles(ctx, input);
+    case 'run_shell': return runShell(ctx, input);
+    case 'system_info': return systemInfo(ctx);
+    case 'list_processes': return listProcesses(ctx);
+    case 'kill_process': return killProcess(ctx, input);
+    case 'start_terminal': return startTerminal(ctx, input);
+    case 'read_terminal': return readTerminal(ctx, input);
+    case 'send_terminal': return sendTerminal(ctx, input);
+    case 'stop_terminal': return stopTerminal(ctx, input);
+    default: throw Object.assign(new Error(`Unknown tool: ${name}`), { rpcCode: -32602 });
+  }
+}
+ },
+    root: { type: 'string', minLength: 1, maxLength: 4096 },
+    phase: { type: 'string', maxLength: 256 },
+    summary: { type: 'string', maxLength: 1200 },
+    evidencePaths: { type: 'array', maxItems: 10, items: { type: 'string', minLength: 1, maxLength: 512 } }
+  },
+  required: ['projectId', 'eventKey', 'root'],
+  additionalProperties: false
+};
 
 export const powerToolDefinitions = [
   { name: 'power_status', description: 'Return Full-Control Power Mode capabilities, backup-retention policy, and safety policy.', inputSchema: { type: 'object', properties: {}, additionalProperties: false }, annotations: ro },
