@@ -268,6 +268,7 @@ export class WorkflowStore {
           .run(row.id,lifecycle,enabled?1:0,null,null,null,0,null,now);
       }
     } catch (e) { this.#db.close(); this.#leaseDb.close(); throw e; }
+    this.recoverInterrupted();
   }
   close() { if (!this.#closed) { this.#db.close(); this.#leaseDb.close(); this.#closed = true; } }
   get location() { return this.#dbPath; }
@@ -304,7 +305,7 @@ export class WorkflowStore {
     const recovered = [];
     const selected = Array.isArray(ids)
       ? [...new Set(ids.filter(id => typeof id === 'string' && ID.test(id)))]
-      : this.#db.prepare("SELECT w.id FROM workflows w JOIN scheduler_jobs s ON s.workflow=w.id WHERE s.enabled=1 AND s.lifecycle NOT IN ('COMPLETED','FAILED','CANCELLED') ORDER BY w.id LIMIT 25").all().map(x=>x.id);
+      : this.#db.prepare("SELECT w.id FROM workflows w JOIN scheduler_jobs s ON s.workflow=w.id WHERE s.lifecycle='RUNNING' ORDER BY COALESCE(s.updated_at,'') DESC,w.id LIMIT 25").all().map(x=>x.id);
     for (const id of selected) {
       let loaded; try { loaded = this.#load(id); } catch { continue; }
       const dead = loaded.state.steps.filter(step => {
