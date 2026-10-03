@@ -1,0 +1,9 @@
+{
+  "scope": "SYNTHETIC_EVENT_LAYOUT_ONLY_NOT_REAL_MODEL_EVIDENCE",
+  "stdout": "{\"type\":\"thread.started\",\"thread_id\":\"12345678-1234-5678-9012-123456789012\"}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_0\",\"type\":\"error\",\"message\":\"Code Mode is unavailable because code-mode host is disabled. Code mode will fail closed; enable `features.code_mode_host` and install `codex-code-mode-host`.\"}}\n{\"type\":\"turn.started\"}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_1\",\"type\":\"agent_message\",\"text\":\"{\\\"choice\\\":\\\"OBSERVE_STATUS\\\"}\"}}\n{\"type\":\"turn.completed\",\"usage\":{\"input_tokens\":1,\"output_tokens\":1,\"cached_input_tokens\":0}}\n",
+  "code": 0,
+  "signal": null,
+  "stderr": "",
+  "overflow": false,
+  "pipeError": null
+}

@@ -1,0 +1,218 @@
+{
+  "schema": 1,
+  "status": "PASS_NEW_PUBLIC_SELF_CONTAINED_226_TESTS",
+  "tests": 226,
+  "passed": 226,
+  "failed": 0,
+  "skipped": 0,
+  "models": 0,
+  "realHostRequests": 0,
+  "installedMutation": false,
+  "scope": "PUBLIC_COPY_SYNTHETIC_MODEL_HOST_AND_CORE_FIXTURE_NOT_INSTALLED_RUNTIME",
+  "privateFullReceiptSha256": "5262f57717f43057348839b04426003e56e2550c3b91f5c5f93f0619650407ea",
+  "testedFiles": [
+    {
+      "path": ".gitignore",
+      "sha256": "54af621197192e10e6050de1392b3d61c6cb92ed27dbfaa401f6c62fec3936c2",
+      "bytes": 25
+    },
+    {
+      "path": "ACCEPTANCE_SUMMARY.json",
+      "sha256": "99983033814b70e50f62f8578cc98f5ede1be6417fbe2612060d1233e574d281",
+      "bytes": 1884
+    },
+    {
+      "path": "CMakeLists.txt",
+      "sha256": "49682e70a4e30f94a453eedd52d79257a55afbed9052dfdafc7360d70d7be45f",
+      "bytes": 421
+    },
+    {
+      "path": "fixtures/core-v0.10.6/package.json",
+      "sha256": "959488584595a0d3defbe8a3b4f2079f77230b9170bb94b45ad47b818c0a8b5c",
+      "bytes": 10528
+    },
+    {
+      "path": "fixtures/core-v0.10.6/src/capability-profile.mjs",
+      "sha256": "fedffd4c8d537ba2313b63aca1d414fd91e7a5414a16c1bf3913cbab90d1eb6c",
+      "bytes": 16387
+    },
+    {
+      "path": "fixtures/core-v0.10.6/src/no-codex-policy.mjs",
+      "sha256": "2c01ad6ff50a34596cfdf196f08b72cef5d41834fc859875a4108119bc547f52",
+      "bytes": 9686
+    },
+    {
+      "path": "fixtures/core-v0.10.6/src/project-engine.mjs",
+      "sha256": "50a3932d7a456dcb8a944b85ae90fa44c223f70ea31bc95c49dc7fef45747656",
+      "bytes": 43429
+    },
+    {
+      "path": "fixtures/core-v0.10.6/src/project-planner.mjs",
+      "sha256": "108bdf83de59984db530960dd3dcebcaf0f365c9d3773635787ab6c5356e8d2e",
+      "bytes": 13691
+    },
+    {
+      "path": "fixtures/core-v0.10.6/src/project-team.mjs",
+      "sha256": "aa8993f5bc0a25d9971acfb61e18a99f69df7b7855c6dae4ee6e3671c3b355b8",
+      "bytes": 9296
+    },
+    {
+      "path": "fixtures/core-v0.10.6/src/project-verifier.mjs",
+      "sha256": "8f7dbbd5a541c8a12eec43a039c895bfd3518abbbda81ffb6244aacda4cd259d",
+      "bytes": 13419
+    },
+    {
+      "path": "fixtures/core-v0.10.6/src/schema-validator.mjs",
+      "sha256": "414420a9dfaa749252037b1f99f028c3b7e9ddd919c04ee40e0adf113eed11f9",
+      "bytes": 4520
+    },
+    {
+      "path": "fixtures/core-v0.10.6/src/workflow-autonomy.mjs",
+      "sha256": "bf86a6b50fff2c2a84b4d4a2c6f029ee55a0fc29c0fd2a6a63da8518c0edeacc",
+      "bytes": 10956
+    },
+    {
+      "path": "fixtures/core-v0.10.6/src/workflow-store.mjs",
+      "sha256": "10be07360186edee008968f778e37c6cf877b2eb3ea26e64370926f40d63963f",
+      "bytes": 65050
+    },
+    {
+      "path": "fixtures/core-v0.10.6/src/workflow-tools.mjs",
+      "sha256": "9acbf5ad855a26468603e947060e5ce39723e01d9ad44b2afe5052ff9713a446",
+      "bytes": 24897
+    },
+    {
+      "path": "native/job-guard.cc",
+      "sha256": "afe86db0f5a1dc058be763f95e3e99a612400d07baca45277e9238a25e89284e",
+      "bytes": 9806
+    },
+    {
+      "path": "package.json",
+      "sha256": "45351794deae098bae4bfe71171708f981a443105e613d1b349af814e0f2e951",
+      "bytes": 561
+    },
+    {
+      "path": "README.md",
+      "sha256": "e9fc4fc6bd2dfea9e9a7a6214a80f3405dabef0214cc9bb60ba26658cb568b07",
+      "bytes": 4941
+    },
+    {
+      "path": "review/src/companion-worker.mjs.txt",
+      "sha256": "020a30b9e73a390c12c36b478210b84f205f25b67538058cca72d69ed7a25dc0",
+      "bytes": 9627
+    },
+    {
+      "path": "review/tools/CREATE_OWNED_RUN.ps1.txt",
+      "sha256": "4b5329644b62b3a9936902c5579e48f64c8a92ae8caa2215c3849ec7da261a93",
+      "bytes": 969
+    },
+    {
+      "path": "review/tools/DISABLE_SIDECAR.ps1.txt",
+      "sha256": "6baa5fd0b4c7452349d35d89354e18236c66412f40956a8224a8518b5222ffc1",
+      "bytes": 8837
+    },
+    {
+      "path": "review/tools/ENROLL_INSTALLED_ONCE.ps1.txt",
+      "sha256": "ddd351f78484ac34782bc551077dc49c4b6e62f7a288f09cbab61b4cad9b1ebe",
+      "bytes": 14855
+    },
+    {
+      "path": "review/tools/INSTALL_SIDECAR.ps1.txt",
+      "sha256": "25410f71a0884fa23484bde9e6e24088bc151d51b6ff46e4e9c257da84c7c581",
+      "bytes": 25605
+    },
+    {
+      "path": "review/tools/launch-once.vbs.txt",
+      "sha256": "ab3bbe632454419843e64b7a5cce09bcf14dbf2c1542ed05bbacca86d9bf9975",
+      "bytes": 4733
+    },
+    {
+      "path": "src/bounded-planner.mjs",
+      "sha256": "e58cb431da49bec4d8d41abb071070fb314e74c12f258bd11634d0fe8da8ea02",
+      "bytes": 4521
+    },
+    {
+      "path": "src/companion-acceptance.mjs",
+      "sha256": "6806c73f632aaae685b8893689b4f99479563f111c48d3f2cb071bc88370445a",
+      "bytes": 11982
+    },
+    {
+      "path": "src/core-engine-adapter.mjs",
+      "sha256": "f0503e6caf1cd2b07f79ac08d51ad64649a9c3e923d5647fbf565ad773cbb1b8",
+      "bytes": 13867
+    },
+    {
+      "path": "src/model-contract.mjs",
+      "sha256": "6298f5be3acaf072a0c0eaf81d228640931d670c9be9d8077d0fa1d0b7b8b902",
+      "bytes": 8376
+    },
+    {
+      "path": "src/native-process.mjs",
+      "sha256": "643ad9a2534041066943bafa322bfb2ecc38670e789f86374a150e23c9f765a6",
+      "bytes": 7411
+    },
+    {
+      "path": "src/planner-admission.mjs",
+      "sha256": "90ff14478d32913d74db55330e16a7e38dc2574a5c84341519f3ba2e8c0786cc",
+      "bytes": 2857
+    },
+    {
+      "path": "src/saeed-status-transport.mjs",
+      "sha256": "45ba1d64ab2d0619c1ab8e9cb38d8969e65ad8412056100a4f1a6a64a2d04f5a",
+      "bytes": 5503
+    },
+    {
+      "path": "src/strict-status-json.mjs",
+      "sha256": "5cb4274ad9803342588e460b4433db22bd64add92164c731d1643745ebfe31cb",
+      "bytes": 1473
+    },
+    {
+      "path": "test/bounded-planner.test.mjs",
+      "sha256": "bf8d22b182fea1d8db4db10ad0a8a5554d19da7af1ccfc133f64150f7f7d8f17",
+      "bytes": 4608
+    },
+    {
+      "path": "test/companion-policy.test.mjs",
+      "sha256": "f9e5eb989db5393d7edc6e415bc07cd49e8039b11dd6e13afe46f89b8e34eb20",
+      "bytes": 8509
+    },
+    {
+      "path": "test/core-engine-adapter.test.mjs",
+      "sha256": "0ef21cb39f9e027a0fe0878d8504194b8a65d7c942e4633e65389d5d90490757",
+      "bytes": 10297
+    },
+    {
+      "path": "test/fixtures/synthetic-old-model-result.json",
+      "sha256": "dfa219db5c052abdb9549ae49816a2057e660fdd7cf1c6a02dffb6ae102d9702",
+      "bytes": 790
+    },
+    {
+      "path": "test/model-contract.test.mjs",
+      "sha256": "84619adba407c77168712abf50e3fdb1c0cfa344452a2328dd220149e33b430a",
+      "bytes": 8449
+    },
+    {
+      "path": "test/native-process.test.mjs",
+      "sha256": "0b3c8d378e2d86132f78d9c3f3566fe92d0621175384e2c9e92fcce907e1018e",
+      "bytes": 4559
+    },
+    {
+      "path": "test/planner-admission.test.mjs",
+      "sha256": "52f92f3085ffe75a1c82441902bec13bfb5c9324ab8599ad158dae2bff340823",
+      "bytes": 4745
+    },
+    {
+      "path": "test/status-transport.test.mjs",
+      "sha256": "007dab02990c8150986b0099c6e6c2cc2124aef73e504d5f48c707a0b4d2e5d1",
+      "bytes": 9233
+    }
+  ],
+  "whole": "NOT_FINAL",
+  "hostedCI": "PENDING_EXACT_R5_COMMIT",
+  "nativeRuntimeTests": "HISTORICAL_PRIVATE_ACCEPTANCE_NOT_RERUN_BY_PUBLIC_TESTS",
+  "previousHostedFailure": {
+    "head": "f413651a56c72df7447623a799957db2e281734c",
+    "code": "ADAPTER_DIRECTORY_ALIAS",
+    "correctiveScope": "CANONICAL_TEST_TEMP_PARENT_NO_RUNTIME_GUARD_RELAXATION"
+  }
+}

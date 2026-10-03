@@ -1,0 +1,38 @@
+name: Finite Companion Source
+
+on:
+  push:
+    paths:
+      - 'experimental/finite-companion-v1.0.0/**'
+      - '.github/workflows/finite-companion-source.yml'
+  pull_request:
+    paths:
+      - 'experimental/finite-companion-v1.0.0/**'
+      - '.github/workflows/finite-companion-source.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  public-contracts:
+    # Keep the VS2022 generator aligned with the documented Windows image.
+    runs-on: windows-2022
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+      - name: Diagnose test path aliases (no host or credentials)
+        run: |
+          node --input-type=module -e "import fs from 'node:fs';import os from 'node:os';import path from 'node:path';const input=os.tmpdir(),canonical=fs.realpathSync.native(input);let cursor=path.parse(path.resolve(input)).root;const ancestors=[];for(const name of path.resolve(input).slice(cursor.length).split(path.sep).filter(Boolean)){cursor=path.join(cursor,name);ancestors.push({path:cursor,symbolicLink:fs.lstatSync(cursor).isSymbolicLink()});}console.log(JSON.stringify({input,canonical,ancestors}));"
+      - name: Self-contained source contracts (no model or installed host)
+        working-directory: experimental/finite-companion-v1.0.0
+        run: npm test
+      - name: Compile native guard (no enrollment or runtime activation)
+        working-directory: experimental/finite-companion-v1.0.0
+        run: |
+          cmake -S . -B build -G "Visual Studio 17 2022" -A x64
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cmake --build build --config Release
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

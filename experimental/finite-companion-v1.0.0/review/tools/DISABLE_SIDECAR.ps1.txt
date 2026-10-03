@@ -1,0 +1,120 @@
+REVIEW ONLY — REDACTED, NOT EXECUTABLE, NOT AN INSTALLER, NOT RUNTIME-ACCEPTED.
+param(
+  [Parameter(Mandatory=$true)][string]$ReleaseRoot,
+  [string]$TaskName = '',
+  [string]$ExpectedTaskXmlSha256 = ''
+)
+$ErrorActionPreference = 'Stop'
+$ProgressPreference = 'SilentlyContinue'
+$installerLibrary = Join-Path $PSScriptRoot 'INSTALL_SIDECAR.ps1'
+$draftR2Root = '<OWNER_HOME>\Documents\Codex\2026-09-19\files-pasted-by-the-user-chatgpt\work\commander-saeed-finalization-r1-20261003\tools\r2'
+if ($PSScriptRoot -ceq $draftR2Root) { $installerLibrary = Join-Path (Split-Path -Parent $PSScriptRoot) 'INSTALL_SIDECAR.ps1' }
+. $installerLibrary -LibraryOnly
+
+# XML stores the authoritative SID. The COM property may resolve that SID to
+# a local account alias; compare its translated SID, not the display spelling.
+function Assert-CompanionTaskOwner([object]$Task) {
+  $xml = [xml][string]$Task.Xml
+  $principals = @($xml.SelectNodes('//*[local-name()="Principals"]/*[local-name()="Principal"]'))
+  if ($principals.Count -ne 1) { throw 'TASK_XML_PRINCIPAL_COUNT' }
+  $userIds = @($principals[0].SelectNodes('*[local-name()="UserId"]'))
+  if ($userIds.Count -ne 1 -or $userIds[0].InnerText -cne $script:CompanionOwnerSid) { throw 'TASK_XML_OWNER_SID' }
+  $reported = [string]$Task.Definition.Principal.UserId
+  if ($reported -match '^S-1-') { $resolved = [Security.Principal.SecurityIdentifier]::new($reported).Value }
+  else { $resolved = [Security.Principal.NTAccount]::new($reported).Translate([Security.Principal.SecurityIdentifier]).Value }
+  if ($resolved -cne $script:CompanionOwnerSid) { throw 'TASK_RESOLVED_OWNER_SID' }
+  $security = [Security.AccessControl.RawSecurityDescriptor]::new([string]$Task.GetSecurityDescriptor(5))
+  if ($security.Owner.Value -cne $script:CompanionOwnerSid -or $null -eq $security.DiscretionaryAcl -or $security.DiscretionaryAcl.Count -lt 1) { throw 'TASK_SECURITY_OWNER_OR_EMPTY_ACL' }
+  foreach ($ace in $security.DiscretionaryAcl) {
+    if ($ace -isnot [Security.AccessControl.CommonAce] -or $ace.AceQualifier -ne [Security.AccessControl.AceQualifier]::AccessAllowed -or $ace.SecurityIdentifier.Value -cne $script:CompanionOwnerSid) { throw 'TASK_SECURITY_OTHER_OWNER_OR_DENY' }
+  }
+  return @{xmlOwnerSid=$script:CompanionOwnerSid;resolvedOwnerSid=$resolved;reportedPrincipal=$reported;taskAclOwnerOnly=$true}
+}
+
+$handles = [Collections.Generic.List[IDisposable]]::new()
+$result = [ordered]@{schema=1;operation='RECOVERABLE_COMPANION_DISABLE';phase='PREFLIGHT';taskDisabled=$false;filesDeleted=0;processesTerminated=0;coreChanged=$false;network=$false;automaticRetry=$false}
+$disableIntentWritten = $false
+try {
+  [void](Assert-CompanionIdentity)
+  $ReleaseRoot = [IO.Path]::GetFullPath($ReleaseRoot)
+  $parent = Join-Path $script:CompanionInstallBase 'companions'
+  if ([IO.Path]::GetDirectoryName($ReleaseRoot) -cne $parent -or [IO.Path]::GetFileName($ReleaseRoot) -cnotmatch '^v1\.0\.0-[0-9a-f]{12}$') { throw 'EXACT_VERSIONED_RELEASE_REQUIRED' }
+  Hold-CompanionAncestors $ReleaseRoot $handles
+  $manifestPath = Join-Path $ReleaseRoot 'RELEASE_MANIFEST.json'
+  $manifest = Read-CompanionJson $manifestPath
+  $manifestSha = Get-CompanionSha $manifestPath
+  $receipt = Read-CompanionJson (Join-Path $ReleaseRoot 'INSTALL_RECEIPT.json')
+  if ($receipt.status -cne 'PASS_INSTALLED_VERSIONED_COMPANION_NOT_CORE_UPGRADE' -or $receipt.manifestSha256 -cne $manifestSha -or $receipt.releaseRoot -cne $ReleaseRoot -or $manifest.version -cne '1.0.0') { throw 'EXACT_INSTALL_RECEIPT_REQUIRED' }
+  Assert-CompanionInstalledPayload $ReleaseRoot $manifest
+  $before = Get-CompanionCoreSnapshot $manifest.core
+  $result.coreBefore = $before; $result.releaseRoot = $ReleaseRoot; $result.manifestSha256 = $manifestSha
+  $task = $null; $scheduler = $null
+  if ($TaskName -or $ExpectedTaskXmlSha256) {
+    Assert-CompanionSha $ExpectedTaskXmlSha256
+    if ($TaskName -cne ('Commander-Saeed-Companion-'+$manifestSha.Substring(0,12))) { throw 'EXACT_NEW_TASK_REQUIRED' }
+    $scheduler = New-Object -ComObject 'Schedule.Service'; $scheduler.Connect()
+    $task = $scheduler.GetFolder('\').GetTask($TaskName)
+    $taskXml = [string]$task.Xml
+    $xmlSha = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($taskXml))).ToLowerInvariant()
+    $result.taskName = $TaskName; $result.taskXmlBeforeSha256 = $xmlSha
+    $definition = $task.Definition
+    $result.taskOwner = Assert-CompanionTaskOwner $task
+    if ($definition.Principal.LogonType -ne 3 -or $definition.Principal.RunLevel -ne 0 -or $definition.Triggers.Count -ne 0 -or $definition.Actions.Count -ne 1 -or -not $definition.Settings.Hidden) { throw 'TASK_SCOPE_OR_IDENTITY' }
+    $action = $definition.Actions.Item(1)
+    if ($action.Path -cne 'C:\Windows\System32\wscript.exe' -or $action.WorkingDirectory -cne $ReleaseRoot -or $action.Arguments -cnotmatch '^//B //NoLogo "(?<launcher>[^"\r\n]+\.vbs)"$') { throw 'TASK_LAUNCHER_SCOPE' }
+    $launcher = [IO.Path]::GetFullPath($Matches.launcher)
+    $relative = [IO.Path]::GetRelativePath($ReleaseRoot,$launcher)
+    $relative = Convert-CompanionRelative $relative
+    if (@($manifest.files | Where-Object { $_.path.Replace('/','\') -ceq $relative }).Count -ne 1) { throw 'TASK_LAUNCHER_NOT_MANIFEST_MEMBER' }
+    if ($task.State -eq 4 -or $task.GetInstances(0).Count -ne 0) { throw 'TASK_RUNNING_PRESERVE_NO_STOP_OR_DISABLE' }
+    if ($xmlSha -cne $ExpectedTaskXmlSha256) {
+      $priorPath = Join-Path $ReleaseRoot 'DISABLE_RECEIPT.json'
+      if (-not (Test-Path -LiteralPath $priorPath -PathType Leaf)) { throw 'TASK_XML_DRIFT' }
+      $prior = Read-CompanionJson $priorPath
+      if ($prior.status -cne 'PASS_COMPANION_RECOVERABLY_DISABLED_CORE_UNCHANGED' -or $prior.taskName -cne $TaskName -or $prior.manifestSha256 -cne $manifestSha -or $prior.taskXmlBeforeSha256 -cne $ExpectedTaskXmlSha256 -or $prior.taskXmlAfterSha256 -cne $xmlSha -or $task.Enabled) { throw 'TASK_XML_DRIFT_RECONCILE_REQUIRED' }
+      $result.coreAfter = Assert-CompanionCoreUnchanged $before $manifest.core
+      $result.status = 'PASS_ALREADY_DISABLED_RECONCILED_NO_WRITE'; $result.taskDisabled = $true
+      $result | ConvertTo-Json -Depth 20 -Compress
+      return
+    }
+  }
+  if ($null -eq $task -and (Test-Path -LiteralPath (Join-Path $ReleaseRoot 'DISABLE_RECEIPT.json') -PathType Leaf)) {
+    $prior = Read-CompanionJson (Join-Path $ReleaseRoot 'DISABLE_RECEIPT.json')
+    if ($prior.status -cne 'PASS_COMPANION_RECOVERABLY_DISABLED_CORE_UNCHANGED' -or $prior.releaseRoot -cne $ReleaseRoot -or $prior.manifestSha256 -cne $manifestSha -or $prior.taskDisabled -eq $true) { throw 'PRIOR_DISABLE_SCOPE_RECONCILE_REQUIRED' }
+    $result.coreAfter = Assert-CompanionCoreUnchanged $before $manifest.core
+    $result.status = 'PASS_ALREADY_UNENROLLED_RECONCILED_NO_WRITE'
+    $result | ConvertTo-Json -Depth 20 -Compress
+    return
+  }
+  if (Test-Path -LiteralPath (Join-Path $ReleaseRoot 'DISABLE_INTENT.json')) { throw 'DISABLE_INTENT_EXISTS_RECONCILE_NO_REPLAY' }
+  $result.phase = 'DISABLE_INTENT'
+  Write-CompanionNewJson (Join-Path $ReleaseRoot 'DISABLE_INTENT.json') $result
+  $disableIntentWritten = $true
+  if ($null -ne $task) {
+    # No Stop/Delete/Run calls exist here. Disabling stops future enrollment only.
+    if ($task.State -eq 4 -or $task.GetInstances(0).Count -ne 0) { throw 'TASK_START_RACE_PRESERVE_NO_DISABLE' }
+    $task.Enabled = $false
+    $observed = $scheduler.GetFolder('\').GetTask($TaskName)
+    [void](Assert-CompanionTaskOwner $observed)
+    if ($observed.Enabled -or $observed.State -eq 4 -or $observed.GetInstances(0).Count -ne 0) { throw 'TASK_DISABLE_OUTCOME_UNCERTAIN_NO_RETRY' }
+    $result.taskDisabled = $true
+    $result.taskXmlAfterSha256 = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes([string]$observed.Xml))).ToLowerInvariant()
+  }
+  $result.coreAfter = Assert-CompanionCoreUnchanged $before $manifest.core
+  $result.status = 'PASS_COMPANION_RECOVERABLY_DISABLED_CORE_UNCHANGED'
+  $result.phase = 'COMPLETE'; $result.releaseRetained = $true; $result.completedAtUtc = [DateTime]::UtcNow.ToString('o')
+  Write-CompanionNewJson (Join-Path $ReleaseRoot 'DISABLE_RECEIPT.json') $result
+} catch {
+  $result.status = 'FAIL_DISABLE_PRESERVED_RECONCILE_NO_RETRY'
+  $result.primaryError = @{class=$_.Exception.GetType().FullName;message=$_.Exception.Message;phase=$result.phase}
+  $result.reconcileRequired = $disableIntentWritten
+  if ($disableIntentWritten) {
+    try { Write-CompanionNewJson (Join-Path $ReleaseRoot 'DISABLE_FAILURE.json') $result }
+    catch { $result.secondaryCollectorError = $_.Exception.Message }
+  }
+} finally {
+  for ($i=$handles.Count-1; $i -ge 0; $i--) { $handles[$i].Dispose() }
+}
+$result | ConvertTo-Json -Depth 20 -Compress
+if ($result.status -notlike 'PASS_*') { exit 1 }
+
