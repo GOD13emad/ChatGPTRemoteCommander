@@ -1706,3 +1706,30 @@ Acceptance boundary: this is local exact-tree qualification only. GitHub hosted 
 **Limitations / open gates:** Saeid direct Commander readback was unavailable in this session; Emad Windows connector was not exposed/reliably accessible. Therefore their v0.10.6 rollout is MISSING, not completed. CEF Windows native build/install, V03 native integration, current-session transport and sustained end-to-end acceptance remain open.
 
 **Reuse targets:** release engineering, updater/runbook, Project Brain/handoff, Windows rollout, CEF cross-platform roadmap.
+
+
+## 2026-10-03 — v0.10.8 release and reachable-host rollout closure
+
+**Context / objective:** finish the v0.10.7 rollout, resolve the real Windows stale-drain blocker discovered during that rollout, publish the corrected release, and update every safely reachable host without blind process termination.
+
+**Root cause — CONFIRMED / HIGH:** on HPC-159-17 the old Commander backend was independently idle, but its owned persistent `tools/browser-control.mjs --server` descendant caused the candidate-first updater to return a blocked existing drain. Process existence alone was insufficient evidence of active browser work.
+
+**Fix — CONFIRMED / HIGH:** v0.10.8 queries `browser_status` from the exact owned old backend and permits the direct Commander browser helper to participate in safe drain retirement only when `active=false`, `busy=false`, `leased=false`, and `uncertain=false`. The same proof is applied to retained-work evidence. Any status failure, activity, lease, uncertainty, identity mismatch, unexpected connection, or unowned descendant remains fail-closed.
+
+**Product provenance — CONFIRMED / HIGH:** accepted product candidate `23dea9881f8d60959f499d7e39e78df676d3b8ae` and main release merge `4ca2efe57ceb6d22a75176420fc41ae904666f00` have the identical tree `92b628765f5d19a090eddb1654e2d936a0e6775e`. Hosted CI and Server Install Canary both passed on the candidate. The main merge adds no product-byte difference.
+
+**Real regression — CONFIRMED / HIGH:** HPC-159-17 was the previously blocked route and successfully reached live v0.10.8 through the updater-owned candidate/drain path without manual killing of the browser helper. Its live route points to `23dea988...`, which is byte-identical to the immutable release tree.
+
+**Release publication — CONFIRMED / HIGH:** immutable stable GitHub release `v0.10.8` is published from annotated tag object `590d162299ccf6d3831c4b8269263884adc31fc6`, peeling to exact commit `4ca2efe57ceb6d22a75176420fc41ae904666f00`. Release is draft=false, prerelease=false and contains exactly 19 uploaded assets with SHA-256 metadata. The tag is unsigned; no signed-release claim is made.
+
+**Representative asset evidence:** Linux setup SHA-256 `7e230dfd6ac0e6a9bde926fb8762958bd3dd233aad91ddb8aa9bf47419d8bffe`; Windows setup SHA-256 `2db196d7b8a217f1d114d73341ed95dd8f9fa7a05f150ae890f9bb3e1866ffcf`; installer ZIP SHA-256 `eae4f432aae1cd438a5767b569fe8b45d0d612dde367bdcb248f5cd5d79345cb`; release `SHA256SUMS.txt` asset digest `a989d0d41fd9641145f1b4f86414e72a24c8c9257571081d27a3650a69e25c50`.
+
+**Linux canary / rollout — CONFIRMED / HIGH:** aliemad-Labtop cloned exact tag v0.10.8, ran candidate-first `--no-promote` qualification with 0 failures, security audit PASS, workflow DB shadow backup integrity `ok`, doctor/version/config match, browser/GUI/hardware gates PASS and `AUTO_UPDATE_CANDIDATE_PASS`. Promotion live readback: version 0.10.8, commit `4ca2efe...`, config `ccd7774466f3b1437c345c3e2b2188b2f2505ea2e4b3fbf5140d660088730d95`, route generation 117, DB integrity `ok`, active operations 0, current leases 0. The dirty development checkout was not overwritten.
+
+**HPC-154-66 canary / rollout — CONFIRMED / HIGH:** exact-tag Windows `-NoPromote -SelfTest` returned `RC0108_WINDOWS_CANARY_PASS`. Promotion live readback: version 0.10.8, commit `4ca2efe...`, config `b32e344d49d7886e5d0f1849879aef7d345aef25c1fac1a9d0e5e25d22324905`, route generation 33, DB integrity `ok`, active operations 0, current leases 0.
+
+**Saeid boundary — MISSING / FAIL-CLOSED:** direct Saeid connector reports that tunnel-client has not been seen for 300 seconds. No blind update, process kill, or inferred live-version claim was performed. Saeid rollout remains OPEN until connectivity and readback return.
+
+**State/backlog boundary:** existing durable workflow/delivery/history records are not release garbage. They remain preserved; no mass cancel, synthetic acknowledgement, or blind replay was used to make rollout numbers look clean.
+
+**Reuse targets:** updater drain policy, release runbook, Windows regression suite, Project Brain/handoff, CEF integration boundary.
