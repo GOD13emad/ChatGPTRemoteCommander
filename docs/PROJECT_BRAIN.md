@@ -619,3 +619,47 @@ Status: RELEASE CANDIDATE / NOT YET PUBLISHED.
 Emad-PC v0.10.6 update remained rollback-safe on active v0.10.4 while local qualification exposed two host-load issues. One stale browser-process fixture subtree was identity-bound and terminated without touching production; the same browser-process test then passed 7/7 alone. MCP Tasks failed only when embedded in the bulk concurrency=2 batch, then passed 1/1 alone on the exact v0.10.6 candidate in about 18.3 seconds. This establishes qualification contention rather than a runtime defect.
 
 Decision: v0.10.7 isolates MCP Tasks as a sensitive test-file command and automatically prioritizes sensitive fixtures on Windows in the bounded qualification wrapper. Runtime code and authority are unchanged. Acceptance requires hosted Windows/Ubuntu CI, install canaries, exact tag/release, and successful candidate-first Emad-PC rollout.
+
+
+## 2026-10-04 — CURRENT: Emad-PC kernel-resource recovery gate and bounded-enumeration hardening
+
+**Previous accepted state:** stable Commander v0.10.9 is published and accepted on reachable healthy hosts; Emad-PC remained v0.10.8. CEF rc.2 Windows private-file guard qualification has now been repaired and merged into its rc.2 line, not promoted to stable CEF.
+
+**Current delta / key result:** Emad-PC v0.10.9 promotion was correctly stopped by candidate-first qualification. Deep host audit found approximately 3.326M System PID 4 handles, approximately 3.315M of them File handles, with about 23.1 GB paged pool and 15.2 GB nonpaged pool. wcifs is active on C:/D: and the local signature closely matches current Microsoft issue reports, but local stack-level attribution remains PROBABLE rather than CONFIRMED.
+
+**Containment completed:** unattended auto-update on Emad-PC now honors a reversible pause sentinel before fetch/staging; the stale `fix/windows-lifecycle-qualification` sourceRef pin was removed from future local policy. A direct no-Force updater post-check returned `AUTO_UPDATE_PAUSED` with exit 0. No reboot, System-handle closure, filter unload, workflow replay, or destructive backlog cleanup was performed.
+
+**Source prevention candidate:** clean base `6f192c96d51efb3eebdad4dfd49ff36df1888d4b`. Recursive `list_directory` / `search_files` on a bare Windows volume root is refused; synchronous search now has an explicit 5000-entry visit ceiling in addition to result/time bounds; updater pause sentinel is source-controlled. Focused guard 4/4, targeted compatibility/schema 14/14 and updater sentinel contract 1/1 pass. Full local qualification is intentionally DEFERRED because current host state invalidates it.
+
+**Roadmap → NOW:**
+1. **DONE / evidence-backed:** CEF PR #59 qualification-only fixes and rc.2 merge.
+2. **DONE / evidence-backed:** Emad-PC host diagnosis to confirmed kernel-resource pathology; wcifs attribution remains high-confidence probable.
+3. **DONE / evidence-backed:** unattended updater containment and stale development pin removal.
+4. **CURRENT:** clean source hardening, documentation, PR and healthy hosted CI.
+5. **OPEN OWNER/HOST GATE:** owner-performed Windows recovery/reboot; no automatic reboot authority is exercised.
+6. **OPEN:** post-recovery fresh handle/pool baseline and one exact v0.10.9-or-newer qualification on Emad-PC.
+7. **OPEN:** remove pause sentinel only after post-recovery gates; then promote through candidate-first updater and perform live readback.
+
+**Critical path / blocker:** Windows kernel-resource recovery on Emad-PC. Until that occurs, local full qualification and v0.10.9 promotion are UNPROVEN/blocked. Hosted CI can validate the source candidate independently.
+
+**Project Brain status:** CURRENT after this delta. Historical Commander and CEF decisions remain append-only; no prior accepted release claims are rewritten.
+
+**Exact next action:** normalize the clean source change set to intended files only, create a guarded GitHub PR, and use hosted Windows/Ubuntu CI as the next valid product gate while Emad-PC remains paused.
+
+## 2026-10-04 — Integrator reconciliation checkpoint
+
+The parallel Windows recovery/prevention work was independently reconciled on clean base `6f192c96d51efb3eebdad4dfd49ff36df1888d4b`. Live Emad-PC kernel state remains abnormal: System PID 4 = **3,326,455 handles**, paged pool **21.537 GiB**, nonpaged pool **13.948 GiB**. Active LAMMPS thesis computation is the dominant CPU load and is preserved; it is not the kernel-handle root-cause claim.
+
+Accepted source scope is intentionally narrow: bare Windows volume-root recursive native enumeration is refused, synchronous search is entry-visit bounded, updater pause sentinel is source-controlled, and the new regression is wired into standard/qualification scripts. Focused local evidence: guard 4/4 PASS, updater contract 1/1 PASS, MCP/schema 2/2 PASS, diff check PASS. Full local qualification is still **BLOCKED/UNPROVEN** by host kernel state.
+
+**CURRENT →** publish this isolated change through GitHub PR and healthy hosted Windows/Ubuntu CI. Emad-PC rollout remains owner-recovery gated; no automatic reboot authority is exercised.
+
+### 2026-10-04 — v0.10.10 integration ordering checkpoint
+
+PR #120 (authority/readiness evidence) and PR #121 (delivery compaction + v0.10.10 release identity) were accepted only after exact-head hosted gates. They are now on main. #122 has been reconciled onto that main while retaining v0.10.10 package/install identity and its filesystem guard regression.
+
+Post-reconcile focused local evidence: delivery + enumeration **18/18 PASS**, installer check PASS, updater contract 1/1 PASS, diff check PASS. **CURRENT →** push reconciled #122 and gate merge on fresh hosted Windows/Ubuntu CI plus Linux/Windows Server canaries. Emad-PC full qualification/rollout remains owner-reboot gated.
+
+### 2026-10-04 — #122 bounded-enumeration refinement
+
+Deep review found that the initial 5,000-entry search budget still sat above bulk `readdir()`, so one huge directory could be enumerated before the budget fired. #122 now streams recursive directory entries with `opendir(bufferSize:1)`. Guard 6/6, smoke PASS and Project Engine 59/59 all pass locally. This closes the I/O-boundedness gap without widening authority or adding a shell-policy feature.

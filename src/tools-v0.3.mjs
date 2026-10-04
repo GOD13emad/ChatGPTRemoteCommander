@@ -1,7 +1,7 @@
 import path from 'node:path';
 import { synchronousCommandInput } from './retry-guard.mjs';
 import { assertNoCodexDelegatingScript, assertNoCodexExecutable, codexLaunchAuthorized, commanderChildEnv } from './no-codex-policy.mjs';
-import { appendFile, copyFile, mkdir, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { appendFile, copyFile, mkdir, opendir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { createHash, randomUUID } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { terminateProcessTree } from './platform.mjs';
@@ -16,6 +16,7 @@ import {
   validateProgram
 } from './security-v0.3.mjs';
 import { resolveExistingTarget, writeAnyFile } from './power-tools-v0.3.mjs';
+import { assertEnumerationScope } from './filesystem-enumeration-guard.mjs';
 
 export function sha256(data) {
   return createHash('sha256').update(data).digest('hex');
@@ -77,9 +78,8 @@ export function audit(ctx, record) {
 }
 async function walkDirectory(dir, depth, maxEntries, base, out) {
   if (out.length >= maxEntries) return;
-  const entries = await readdir(dir, { withFileTypes: true });
-  entries.sort((a, b) => a.name.localeCompare(b.name));
-  for (const entry of entries) {
+  const directory = await opendir(dir, { bufferSize: 1 });
+  for await (const entry of directory) {
     if (out.length >= maxEntries) break;
     const full = path.join(dir, entry.name);
     const rel = path.relative(base, full) || '.';
@@ -95,9 +95,11 @@ export async function listDirectory(ctx, input) {
   const info = await stat(target);
   if (!info.isDirectory()) throw new Error('path is not a directory');
   const depth = Math.max(0, Math.min(Number(input.depth ?? 1), 4));
+  assertEnumerationScope({ target, depth, operation: 'list_directory' });
   const maxEntries = Math.max(1, Math.min(Number(input.maxEntries ?? 200), 500));
   const entries = [];
   await walkDirectory(target, depth, maxEntries, target, entries);
+  entries.sort((a, b) => a.path.localeCompare(b.path));
   await audit(ctx, { action: 'list_directory', target, ok: true, count: entries.length });
   return { target, depth, truncated: entries.length >= maxEntries, entries };
 }

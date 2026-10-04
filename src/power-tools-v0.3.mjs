@@ -5,13 +5,14 @@ import path from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import {
-  appendFile, copyFile, cp, lstat, mkdir, readFile, readdir,
+  appendFile, copyFile, cp, lstat, mkdir, opendir, readFile, readdir,
   realpath, rename, rm, stat, writeFile
 } from 'node:fs/promises';
 import { isWithin } from './security-v0.3.mjs';
 import { withPathLocks } from './locks.mjs';
 import { guardFileWrite } from './file-write-guard.mjs';
 import { IS_WINDOWS, defaultBackupRoot, expandPathValue, shellName, shellSpec, spawnShell, terminateProcessTree } from './platform.mjs';
+import { assertEnumerationScope, boundedSearchVisitLimit } from './filesystem-enumeration-guard.mjs';
 
 const terminals = new Map();
 let terminalCounter = 1;
@@ -489,12 +490,17 @@ export async function deletePath(ctx, input) {
 }
 
 async function walkSearch(root, current, input, results, depth) {
-  if (results.length >= input.maxResults || depth < 0 || Date.now() >= input.deadline) return;
-  let entries;
-  try { entries = await readdir(current, { withFileTypes: true }); }
+  if (results.length >= input.maxResults || depth < 0 || Date.now() >= input.deadline || input.visitLimitHit) return;
+  let directory;
+  try { directory = await opendir(current, { bufferSize: 1 }); }
   catch { return; }
-  for (const entry of entries) {
-    if (results.length >= input.maxResults || Date.now() >= input.deadline) break;
+  for await (const entry of directory) {
+    if (results.length >= input.maxResults || Date.now() >= input.deadline || input.visitLimitHit) break;
+    if (input.visitedEntries >= input.maxVisitedEntries) {
+      input.visitLimitHit = true;
+      break;
+    }
+    input.visitedEntries += 1;
     const full = path.join(current, entry.name);
     const rel = path.relative(root, full);
     const nameHit = input.matcher.test(entry.name) || input.matcher.test(rel);
@@ -518,6 +524,8 @@ async function walkSearch(root, current, input, results, depth) {
 
 export async function searchFiles(ctx, input) {
   const root = await resolveExistingTarget(ctx, input.path ?? '.');
+  const depth = Math.max(0, Math.min(Number(input.depth ?? 6), 32));
+  assertEnumerationScope({ target: root, depth, operation: 'search_files' });
   const pattern = String(input.pattern ?? '');
   const flags = input.ignoreCase === false ? 'g' : 'gi';
   const matcher = input.regex === true ? new RegExp(pattern, flags) : new RegExp(pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), flags);
@@ -525,12 +533,19 @@ export async function searchFiles(ctx, input) {
     matcher, searchContent: input.searchContent === true,
     maxResults: Math.max(1, Math.min(Number(input.maxResults ?? 100), 200)),
     maxContentBytes: Math.max(1024, Math.min(Number(input.maxContentBytes ?? 262144), 1048576)),
+    maxVisitedEntries: boundedSearchVisitLimit(input.maxVisitedEntries),
+    visitedEntries: 0,
+    visitLimitHit: false,
     deadline: Date.now() + Math.max(100, Math.min(Number(input.maxDurationMs ?? 5000), 10000))
   };
   const results = [];
-  await walkSearch(root, root, options, results, Math.max(0, Math.min(Number(input.depth ?? 6), 32)));
+  await walkSearch(root, root, options, results, depth);
   const timedOut = Date.now() >= options.deadline;
-  return { root, count: results.length, truncated: timedOut || results.length >= options.maxResults, timedOut, results };
+  return {
+    root, count: results.length,
+    truncated: timedOut || options.visitLimitHit || results.length >= options.maxResults,
+    timedOut, visitLimitHit: options.visitLimitHit, visitedEntries: options.visitedEntries, results
+  };
 }
 export async function prepareShellCommand(ctx, input) {
   const command = checkShell(ctx, input.command);
@@ -787,7 +802,7 @@ export const powerToolDefinitions = [
   { name: 'copy_path', description: 'Copy a file or directory recursively in a durable detached operation; optionally replace destination after backup. When this exact chat is already conversation-bound, include continuation for terminal handoff.', inputSchema: { type: 'object', properties: { source: { type: 'string' }, destination: { type: 'string' }, overwrite: { type: 'boolean' }, continuation: continuationInputSchema }, required: ['source', 'destination'], additionalProperties: false }, annotations: localDestructive },
   { name: 'move_path', description: 'Move or rename a file/directory in a durable detached operation; optionally replace destination after backup. When this exact chat is already conversation-bound, include continuation for terminal handoff.', inputSchema: { type: 'object', properties: { source: { type: 'string' }, destination: { type: 'string' }, overwrite: { type: 'boolean' }, continuation: continuationInputSchema }, required: ['source', 'destination'], additionalProperties: false }, annotations: localDestructive },
   { name: 'delete_path', description: 'Delete in a durable detached operation with recoverable backup by default. Permanent deletion is separately policy-gated. When this exact chat is already conversation-bound, include continuation for terminal handoff.', inputSchema: { type: 'object', properties: { path: { type: 'string' }, permanent: { type: 'boolean' }, continuation: continuationInputSchema }, required: ['path'], additionalProperties: false }, annotations: localDestructive },
-  { name: 'search_files', description: 'Search names and optionally bounded UTF-8 file content across Power Mode filesystem scope. The synchronous search is time-bounded.', inputSchema: { type: 'object', properties: { path: { type: 'string' }, pattern: { type: 'string' }, regex: { type: 'boolean' }, ignoreCase: { type: 'boolean' }, searchContent: { type: 'boolean' }, depth: { type: 'integer', minimum: 0, maximum: 32 }, maxResults: { type: 'integer', minimum: 1, maximum: 1000 }, maxContentBytes: { type: 'integer', minimum: 1024 }, maxDurationMs: { type: 'integer', minimum: 100, maximum: 10000 } }, required: ['pattern'], additionalProperties: false }, annotations: ro },
+  { name: 'search_files', description: 'Search names and optionally bounded UTF-8 file content across Power Mode filesystem scope. The synchronous search is time-, result-, and entry-visit-bounded; recursive scans of a bare Windows volume root are refused.', inputSchema: { type: 'object', properties: { path: { type: 'string' }, pattern: { type: 'string' }, regex: { type: 'boolean' }, ignoreCase: { type: 'boolean' }, searchContent: { type: 'boolean' }, depth: { type: 'integer', minimum: 0, maximum: 32 }, maxResults: { type: 'integer', minimum: 1, maximum: 1000 }, maxContentBytes: { type: 'integer', minimum: 1024 }, maxDurationMs: { type: 'integer', minimum: 100, maximum: 10000 }, maxVisitedEntries: { type: 'integer', minimum: 1, maximum: 5000 } }, required: ['pattern'], additionalProperties: false }, annotations: ro },
   { name: 'run_shell', description: 'Run a short bounded platform shell command (PowerShell 7 on Windows, Bash on Linux). Synchronous execution is hard-limited to 10 seconds with compact output. Use operation_start for longer/unknown/high-output work; if operation tools are not exposed by the client, use one-shot start_terminal + bounded read_terminal. Explicit Power Mode only.', inputSchema: { type: 'object', properties: { command: { type: 'string' }, cwd: { type: 'string' }, timeoutMs: { type: 'integer', minimum: 1000, maximum: 30000 } }, required: ['command'], additionalProperties: false }, annotations: openDestructive },
   { name: 'system_info', description: 'Return OS, CPU, memory, user, Node and runtime information.', inputSchema: { type: 'object', properties: {}, additionalProperties: false }, annotations: ro },
   { name: 'list_processes', description: 'List operating-system processes with PID and resource details when available.', inputSchema: { type: 'object', properties: {}, additionalProperties: false }, annotations: ro },
