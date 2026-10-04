@@ -659,3 +659,7 @@ Accepted source scope is intentionally narrow: bare Windows volume-root recursiv
 PR #120 (authority/readiness evidence) and PR #121 (delivery compaction + v0.10.10 release identity) were accepted only after exact-head hosted gates. They are now on main. #122 has been reconciled onto that main while retaining v0.10.10 package/install identity and its filesystem guard regression.
 
 Post-reconcile focused local evidence: delivery + enumeration **18/18 PASS**, installer check PASS, updater contract 1/1 PASS, diff check PASS. **CURRENT →** push reconciled #122 and gate merge on fresh hosted Windows/Ubuntu CI plus Linux/Windows Server canaries. Emad-PC full qualification/rollout remains owner-reboot gated.
+
+### 2026-10-04 — #122 bounded-enumeration refinement
+
+Deep review found that the initial 5,000-entry search budget still sat above bulk `readdir()`, so one huge directory could be enumerated before the budget fired. #122 now streams recursive directory entries with `opendir(bufferSize:1)`. Guard 6/6, smoke PASS and Project Engine 59/59 all pass locally. This closes the I/O-boundedness gap without widening authority or adding a shell-policy feature.

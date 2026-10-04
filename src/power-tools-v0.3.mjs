@@ -5,7 +5,7 @@ import path from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import {
-  appendFile, copyFile, cp, lstat, mkdir, readFile, readdir,
+  appendFile, copyFile, cp, lstat, mkdir, opendir, readFile, readdir,
   realpath, rename, rm, stat, writeFile
 } from 'node:fs/promises';
 import { isWithin } from './security-v0.3.mjs';
@@ -491,10 +491,10 @@ export async function deletePath(ctx, input) {
 
 async function walkSearch(root, current, input, results, depth) {
   if (results.length >= input.maxResults || depth < 0 || Date.now() >= input.deadline || input.visitLimitHit) return;
-  let entries;
-  try { entries = await readdir(current, { withFileTypes: true }); }
+  let directory;
+  try { directory = await opendir(current, { bufferSize: 1 }); }
   catch { return; }
-  for (const entry of entries) {
+  for await (const entry of directory) {
     if (results.length >= input.maxResults || Date.now() >= input.deadline || input.visitLimitHit) break;
     if (input.visitedEntries >= input.maxVisitedEntries) {
       input.visitLimitHit = true;

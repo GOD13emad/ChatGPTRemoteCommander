@@ -1898,3 +1898,13 @@ Acceptance boundary: this is local exact-tree qualification only. GitHub hosted 
 - **Reconciliation:** #122 branch was merged with new main, preserving v0.10.10 identity and guard regression wiring. The only textual conflict was append-only Project Knowledge/Evidence; main history was retained and the kernel-resource incident/integrator records were appended.
 - **Focused post-reconcile validation on Emad-PC:** delivery + enumeration suite **18/18 PASS**, `INSTALLER_CHECK_PASS`, updater candidate-first/pause contract **1/1 PASS**, and `git diff --check` PASS. Full local qualification remains intentionally invalid/deferred until owner host recovery.
 - **Exact next gate:** push the reconciled #122 head and require fresh hosted CI + Server Install Canary on that new exact SHA before merge.
+
+### 2026-10-04 — Enumeration I/O boundedness gap closed before #122 merge
+
+- **Finding / Type:** Fact. The first prevention candidate applied a 5,000-entry visit budget after `readdir()`; because `readdir()` materializes a directory listing before the caller can stop, the budget bounded processing but did not strictly bound directory enumeration I/O for a single very large non-root directory.
+- **Status:** CONFIRMED gap / FIXED in #122 head before merge.
+- **Decision:** recursive `list_directory` and `search_files` traversal now use `opendir(..., { bufferSize: 1 })` and consume entries incrementally. Bare Windows volume-root recursion remains refused. The existing result/visit ceilings remain unchanged.
+- **Trade-off:** `list_directory` no longer needs a bulk per-directory read in order to recurse. Returned selected entries are sorted before response; when a directory exceeds the response ceiling, selection is bounded rather than attempting to enumerate the complete directory for a globally sorted prefix. Bounded resource use is the higher-priority invariant.
+- **Regression:** filesystem-enumeration guard **6/6 PASS**, including source-contract proof that recursive walkers use incremental `opendir` and no bulk `readdir`; `SMOKE_V03_PASS`; Project Engine / integration set **59/59 PASS**; syntax and `git diff --check` PASS.
+- **Scope boundary:** no shell parser/restriction was added. FULL_POWER `shell.unrestricted` semantics remain unchanged; recursive whole-volume shell sweeps remain an operationally forbidden default unless explicitly owner-directed.
+- **Reuse targets:** v0.10.10 release notes, filesystem safety contract, future Windows kernel-resource incident prevention.

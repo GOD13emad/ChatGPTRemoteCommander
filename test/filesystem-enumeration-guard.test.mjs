@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import os from 'node:os';
 import path from 'node:path';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import {
   WINDOWS_SEARCH_VISIT_LIMIT,
   assertEnumerationScope,
@@ -71,6 +71,39 @@ test('search_files stops at the entry-visit budget without needing a large fixtu
   assert.equal(result.count, 0);
 });
 
+
+test('recursive enumeration uses incremental directory handles instead of bulk directory reads', async () => {
+  const toolsSource = await readFile(new URL('../src/tools-v0.3.mjs', import.meta.url), 'utf8');
+  const powerSource = await readFile(new URL('../src/power-tools-v0.3.mjs', import.meta.url), 'utf8');
+  const listBlock = toolsSource.slice(
+    toolsSource.indexOf('async function walkDirectory'),
+    toolsSource.indexOf('export async function listDirectory')
+  );
+  const searchBlock = powerSource.slice(
+    powerSource.indexOf('async function walkSearch'),
+    powerSource.indexOf('export async function searchFiles')
+  );
+  assert.match(listBlock, /opendir\(dir, \{ bufferSize: 1 \}\)/);
+  assert.doesNotMatch(listBlock, /readdir\(/);
+  assert.match(searchBlock, /opendir\(current, \{ bufferSize: 1 \}\)/);
+  assert.doesNotMatch(searchBlock, /readdir\(/);
+});
+
+test('list_directory honors its entry ceiling on a non-root directory', async (t) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'rc-list-budget-'));
+  t.after(async () => rm(root, { recursive: true, force: true }));
+  for (let i = 0; i < 8; i += 1) {
+    await writeFile(path.join(root, `item-${i}.txt`), 'bounded\n', 'utf8');
+  }
+  const ctx = {
+    roots: [root],
+    config: { powerMode: { enabled: true, fullFilesystem: true } },
+    auditLog: path.join(root, 'audit.jsonl')
+  };
+  const result = await listDirectory(ctx, { path: root, depth: 0, maxEntries: 3 });
+  assert.equal(result.entries.length, 3);
+  assert.equal(result.truncated, true);
+});
 
 test('Windows tool wiring refuses recursive enumeration at the active volume root before walking it', async (t) => {
   if (process.platform !== 'win32') {
