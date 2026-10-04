@@ -777,3 +777,12 @@ Because this changed executable code after the earlier qualification, the comple
 **Open gates:** Windows CI; Ubuntu CI; Linux Server Install Canary; Windows Server Install Canary; immutable v0.10.14 release; exact-ref Linux rollout; control HEAD == release merge commit; durable updater completion state; `WORK_PLUGIN_SOURCE_SYNC_PASS version=0.10.14`; personal Work plugin source/cache == 0.10.14 with binding preserved.
 
 **Exact next action:** stage only the intended v0.10.14 files, exclude the two historical EOL-only PowerShell worktree artifacts, push the branch and require all hosted exact-head gates before merge.
+
+
+### 2026-10-05 — Scope narrowed to Linux-only
+
+**Authority update:** current owner direction limits continued work to Linux and Linux-specialized components on the active Linux host. Windows implementation, debugging and Windows-specific release acceptance are DEFERRED and are not part of the current DoD.
+
+**Release interpretation:** v0.10.14 remains an exact-commit Linux candidate. Do not merge/tag it as a repository-wide cross-platform release under the current scope. Linux acceptance is based on Linux qualification, source/security integrity, candidate-first exact-commit rollout, control promotion completion, durable updater completion and Work/Codex projection/cache verification on the active Linux host.
+
+**Exact next action:** commit the Linux test-scope correction, close the cross-platform PR to prevent accidental merge, push the Linux candidate branch, then roll out that exact commit on the active Linux machine and verify all Linux post-cutover invariants.

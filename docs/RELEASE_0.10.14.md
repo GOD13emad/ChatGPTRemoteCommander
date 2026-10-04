@@ -39,6 +39,10 @@ Focused updater contract: 17 pass / 0 fail / 1 Windows-only skip.
 
 Supplementary GUI contract 77/77, Linux GUI, filesystem safety, headless launch policy, Windows runtime contract, source integrity and schema continuity 9/9 all pass. `SECURITY_AUDIT_PASS`.
 
+Linux-only deployment scope
+---------------------------
+Current owner direction limits this milestone to Linux and Linux-specialized functionality. v0.10.14 is therefore qualified and deployable as an exact-commit Linux candidate on the current Linux host, but it must not be treated as a general cross-platform release or merged/tagged as such until a separate Windows scope is explicitly resumed. Windows CI/canary results are informational and out of the current acceptance boundary.
+
 Acceptance
 ----------
-v0.10.13 remains accepted stable until exact-head Windows and Ubuntu CI, Linux and Windows Server Install canaries, merge-tree identity, immutable v0.10.14 publication, and exact-ref Linux rollout pass. Rollout acceptance specifically requires the control checkout to reach the release merge commit, durable updater completion evidence to reappear, and the personal Work/Codex plugin source plus managed Codex cache to report v0.10.14 with the same preserved app binding.
+v0.10.13 remains the repository-wide accepted stable release. For the current Linux-only scope, v0.10.14 acceptance requires Linux qualification plus exact-commit rollout and post-cutover evidence on this host. Repository-wide merge/tag publication is deferred. Rollout acceptance specifically requires the control checkout to reach the release merge commit, durable updater completion evidence to reappear, and the personal Work/Codex plugin source plus managed Codex cache to report v0.10.14 with the same preserved app binding.

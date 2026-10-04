@@ -226,12 +226,16 @@ test('Linux control promotion accepts CR-at-EOL-only drift but blocks staged or 
 });
 
 
-test('Linux updater atomically syncs an installed Work plugin while preserving its app binding',t=>{
+test('Linux updater atomically syncs an installed Work plugin while preserving its app binding',
+  { skip: process.platform !== 'linux' ? 'Linux-only updater executable fixture' : false },
+  t=>{
   const updater=read('auto-update-linux.sh');
   const start=updater.indexOf('sync_work_plugin_projection(){');
   const end=updater.indexOf('cleanup_releases(){',start);
   assert.ok(start>0 && end>start,'sync_work_plugin_projection must be a standalone updater function');
   const fn=updater.slice(start,end);
+  for(const marker of ['WORK_PLUGIN_SOURCE_SYNC_PASS','WORK_PLUGIN_SOURCE_SYNC_SKIP','WORK_PLUGIN_SOURCE_SYNC_BLOCK','sha256sum','mv "$plugin_root" "$retired"']) assert.ok(fn.includes(marker),marker);
+  if(process.platform==='win32'){t.skip('Linux shell fixture requires a native POSIX Bash environment');return;}
 
   const fixture=fs.mkdtempSync(path.join(os.tmpdir(),'rc-work-plugin-sync-'));
   t.after(()=>fs.rmSync(fixture,{recursive:true,force:true}));
