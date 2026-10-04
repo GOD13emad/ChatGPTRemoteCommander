@@ -87,12 +87,12 @@ test('stop_terminal terminates descendants and does not leave a delayed mutation
   await stopTerminal(ctx, { id: session.id, remove: true });
 });
 
-test('run_project_command timeout terminates the owned descendant process tree', { timeout: 10000 }, async (t) => {
+test('run_project_command timeout terminates the owned descendant process tree', { timeout: 15000 }, async (t) => {
   const root = await fixture(t);
   const marker = path.join(root, 'project-command-leak.txt');
   const parent = path.join(root, 'parent.mjs');
   const descendant = path.join(root, 'descendant.mjs');
-  await writeFile(descendant, `import fs from 'node:fs'; setTimeout(()=>fs.writeFileSync(process.argv[2],'leaked'),1800); setInterval(()=>{},1000);\n`);
+  await writeFile(descendant, `import fs from 'node:fs'; setTimeout(()=>fs.writeFileSync(process.argv[2],'leaked'),5000); setInterval(()=>{},1000);\n`);
   await writeFile(parent, `import { spawn } from 'node:child_process'; spawn(process.execPath,[process.argv[2],process.argv[3]],{stdio:'ignore'}); setInterval(()=>{},1000);\n`);
   const ctx = {
     roots: [root],
@@ -106,7 +106,7 @@ test('run_project_command timeout terminates the owned descendant process tree',
     timeoutMs: 1000
   });
   assert.equal(result.timedOut, true);
-  await wait(2200);
+  await wait(5500);
   assert.equal(exists(marker), false);
 });
 
@@ -163,14 +163,16 @@ test('read_terminal pages large output without skipping unread data', { timeout:
 test('read_terminal bounded wait returns when new output arrives', { timeout: 10000 }, async (t) => {
   const root = await fixture(t);
   const ctx = powerContext(root);
+  const ready = path.join(root, 'terminal-read-ready.txt');
   const command = process.platform === 'win32'
-    ? "Start-Sleep -Milliseconds 150; Write-Output 'DELAYED_OUTPUT'"
-    : "sleep 0.15; printf 'DELAYED_OUTPUT\\n'";
+    ? `Set-Content -LiteralPath ${psQuote(ready)} -Value ready -Encoding ascii; Start-Sleep -Milliseconds 500; Write-Output 'DELAYED_OUTPUT'`
+    : `printf ready > ${shQuote(ready)}; sleep 0.5; printf 'DELAYED_OUTPUT\\n'`;
   const session = await startTerminal(ctx, { cwd: root, command });
+  assert.equal(await waitForFile(ready, 3000), true);
   const started = Date.now();
-  const state = await readTerminal(ctx, { id: session.id, waitMs: 1000, maxChars: 4096 });
+  const state = await readTerminal(ctx, { id: session.id, waitMs: 2000, maxChars: 4096 });
   assert.match(state.stdout,/DELAYED_OUTPUT/);
-  assert.ok(Date.now() - started < 1000);
+  assert.ok(Date.now() - started < 2000);
   await stopTerminal(ctx,{id:session.id,remove:true});
 });
 test('start_terminal remains interactive only when explicitly requested with an initial command', { timeout: 10000 }, async (t) => {

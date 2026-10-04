@@ -108,3 +108,49 @@ function Start-RcTunnelWithRotatingLog(
   [void]$psi.Environment.Remove('OPENAI_API_KEY')
   return [Diagnostics.Process]::Start($psi)
 }
+
+function Get-OwnedPrimaryMcpProcess([string]$Root,[string]$ConfigPath) {
+  try {
+    if (-not (Test-Path -LiteralPath $ConfigPath -PathType Leaf)) { return $null }
+    $cfg=Get-Content -LiteralPath $ConfigPath -Raw|ConvertFrom-Json
+    $markerPath=[string]$cfg.runtimeState
+    if(-not $markerPath){$markerPath=Join-Path $Root 'var\mcp-runtime.json'}
+    $markerPath=[Environment]::ExpandEnvironmentVariables($markerPath)
+    if(-not[IO.Path]::IsPathRooted($markerPath)){$markerPath=Join-Path $Root $markerPath}
+    if(-not(Test-Path -LiteralPath $markerPath -PathType Leaf)){return $null}
+    $m=Get-Content -LiteralPath $markerPath -Raw|ConvertFrom-Json
+    if([int]$m.port-ne47831 -or [string]$m.instance.profile-ne'default'){return $null}
+    if([IO.Path]::GetFullPath([string]$m.projectDir)-ne[IO.Path]::GetFullPath($Root)){return $null}
+    $p=Get-CimInstance Win32_Process -Filter ("ProcessId="+[int]$m.pid) -ErrorAction SilentlyContinue
+    if(-not$p -or [string]$p.Name -ine'node.exe' -or [string]$p.CommandLine -notmatch'server-v0\.3\.mjs'){return $null}
+    return $p
+  }catch{return $null}
+}
+
+function Start-PrimaryMcp {
+  if (Test-McpHealth 47831) { $script:PrimaryHealthFailures = 0; return $true }
+  $script:PrimaryHealthFailures += 1
+  $owned = Get-OwnedPrimaryMcpProcess $Root (Get-ActivePrimaryConfig)
+  if ($owned) {
+    Write-SupervisorLog "MCP_HEALTH_MISS profile=default pid=$($owned.ProcessId) count=$script:PrimaryHealthFailures"
+    if ($script:PrimaryHealthFailures -lt 3) { return $false }
+    Stop-Process -Id ([int]$owned.ProcessId) -Force -ErrorAction Stop
+    Write-SupervisorLog "MCP_STALLED_OWNED_RESTART profile=default pid=$($owned.ProcessId)"
+    Start-Sleep -Milliseconds 750
+    $script:PrimaryHealthFailures = 0
+  } else {
+    $listener = $null
+    try { $listener = Get-NetTCPConnection -State Listen -LocalPort 47831 -ErrorAction Stop | Select-Object -First 1 } catch {}
+    if ($listener) { throw 'Port 47831 is occupied but primary Remote Commander health is unavailable; refusing unknown process.' }
+  }
+  $npm = if ($NpmPath) { [IO.Path]::GetFullPath($NpmPath) } else { (Get-Command npm.cmd -ErrorAction Stop).Source }
+  if (-not (Test-Path -LiteralPath $npm -PathType Leaf)) { throw 'npm executable missing for supervisor.' }
+  $out = Join-Path $VarDir 'mcp-autostart.out.log'
+  $err = Join-Path $VarDir 'mcp-autostart.err.log'
+  Start-Process -FilePath $npm -ArgumentList @('start','--silent') -WorkingDirectory $Root -WindowStyle Hidden -RedirectStandardOutput $out -RedirectStandardError $err | Out-Null
+  foreach ($i in 1..30) {
+    Start-Sleep -Milliseconds 500
+    if (Test-McpHealth 47831) { Write-SupervisorLog 'MCP_STARTED port=47831 profile=default'; return $true }
+  }
+  throw 'MCP_START_TIMEOUT port=47831'
+}

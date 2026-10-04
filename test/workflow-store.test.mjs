@@ -39,6 +39,49 @@ test('scheduler status distinguishes persisted nonterminal records from active l
  assert.equal(st.pendingMeaning,'PERSISTED_NONTERMINAL_RECORDS_NOT_LIVE_QUEUE');
  assert.equal(st.currentLeases,0);assert.equal(st.hasActiveLease,false);
 }finally{f.dispose();}});
+test('store scales beyond the legacy 1000-workflow ceiling and exposes bounded pages',()=>{const f=fixture({schedulerPolicy:{enabled:true}});let s=null;try{
+  f.s.close();
+  const db=new DatabaseSync(path.join(f.options.directory,'workflows.sqlite'));
+  try{
+    db.exec('BEGIN IMMEDIATE');
+    const ins=db.prepare("INSERT INTO workflows(id,revision,head,snapshot) VALUES(?,0,?,?)");
+    const sched=db.prepare("INSERT OR REPLACE INTO scheduler_jobs(workflow,lifecycle,enabled,next_run_at,lease_owner,lease_until,retry_count,last_failure,updated_at) VALUES(?,?,?,?,?,?,?,?,?)");
+    const now=new Date().toISOString();
+    for(let i=0;i<1001;i++){const id='seed'+String(i).padStart(4,'0');ins.run(id,'0'.repeat(64),'{}');sched.run(id,'CREATED',1,null,null,null,0,null,now);}
+    db.exec('COMMIT');
+  }catch(error){try{db.exec('ROLLBACK');}catch{}throw error;}finally{db.close();}
+  s=new WorkflowStore(f.options);
+  s.create({id:'overflowok',root:f.root,goal:'Persist after legacy cap',acceptance:['created'],steps:[{id:'one',title:'Create'}]});
+  const first=s.listPage({limit:100});
+  assert.equal(first.workflows.length,100);assert.equal(first.hasMore,true);assert.ok(first.nextAfter);
+  const second=s.listPage({after:first.nextAfter,limit:100});
+  assert.equal(second.workflows.length,100);assert.notEqual(second.workflows[0].id,first.workflows[0].id);
+  const batch=s.schedulerBatch({limit:25});
+  assert.equal(batch.workflows.length,25);assert.ok(batch.nextAfter);
+  assert.equal(s.get('overflowok').state.id,'overflowok');
+}finally{try{s?.close();}catch{}f.dispose();}});
+test('startup recovery scans beyond the legacy first 25 stale workflow candidates',()=>{const f=fixture({schedulerPolicy:{enabled:false}});let s=null;try{
+  for(let i=0;i<60;i++)f.create('stale'+String(i).padStart(3,'0'));
+  f.s.close();
+  const db=new DatabaseSync(path.join(f.options.directory,'workflows.sqlite'));
+  try{db.exec("UPDATE scheduler_jobs SET lifecycle='RUNNING',enabled=0");}finally{db.close();}
+  s=new WorkflowStore(f.options);
+  const recovery=s.schedulerStatus().startupRecovery;
+  assert.equal(recovery.scanned,60);
+  assert.equal(recovery.truncated,false);
+  assert.equal(recovery.remaining,0);
+  assert.equal(recovery.limit,2000);
+}finally{try{s?.close();}catch{}f.dispose();}});
+
+test('scheduler store installs indexes for bounded large-history recovery',()=>{const f=fixture({schedulerPolicy:{enabled:true}});try{
+  const db=new DatabaseSync(path.join(f.options.directory,'workflows.sqlite'),{readOnly:true});
+  try{
+    const names=db.prepare("SELECT name FROM sqlite_master WHERE type='index' AND name LIKE 'scheduler_jobs_%' ORDER BY name").all().map(x=>x.name);
+    assert.ok(names.includes('scheduler_jobs_enabled_workflow'));
+    assert.ok(names.includes('scheduler_jobs_lifecycle_updated_workflow'));
+  }finally{db.close();}
+}finally{f.dispose();}});
+
 test('stale revision cannot overwrite new memory',()=>{const f=fixture();try{f.create();f.s.note({id:'sample',expectedRevision:1,kind:'decision',text:'A'});assert.throws(()=>f.s.note({id:'sample',expectedRevision:1,kind:'decision',text:'B'}),/REVISION_CONFLICT/);}finally{f.dispose();}});
 test('exact duplicate returns receipt and never executes twice',async()=>{const f=fixture();try{
  f.create();let n=0;const h=host(async()=>{n++;return{ok:true};});const a={id:'sample',stepId:'first',expectedRevision:1,tool:'read_text',arguments:{path:'x'}};

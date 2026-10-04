@@ -96,12 +96,19 @@ const terminalCommand = process.platform === 'win32'
   : "printf 'TERM_PASS\\n'";
 const term = await startTerminal(ctx, { cwd: root, command: terminalCommand });
 let termOut = null;
-for (let attempt = 0; attempt < 20; attempt++) {
-  await new Promise((resolve) => setTimeout(resolve, 200));
-  termOut = await readTerminal(ctx, { id: term.id, consume: false });
-  if (/TERM_PASS/.test(termOut.stdout)) break;
+// PowerShell startup on a loaded Windows host can legitimately exceed four
+// seconds. Use the terminal's bounded long-poll contract instead of a tight
+// wall-clock assumption, while still failing promptly if the child exits
+// without producing the expected output.
+for (let attempt = 0; attempt < 3; attempt++) {
+  termOut = await readTerminal(ctx, { id: term.id, consume: false, waitMs: 5000 });
+  if (/TERM_PASS/.test(termOut.stdout) || termOut.running === false) break;
 }
-assert.match(termOut?.stdout ?? '', /TERM_PASS/);
+assert.match(
+  termOut?.stdout ?? '',
+  /TERM_PASS/,
+  `terminal output missing; running=${termOut?.running} exitCode=${termOut?.exitCode} stderr=${JSON.stringify(termOut?.stderr ?? '')}`
+);
 await stopTerminal(ctx, { id: term.id });
 
 const before = await readAnyFile(ctx, { path: path.join(root, 'a', 'b', 'x.txt') });

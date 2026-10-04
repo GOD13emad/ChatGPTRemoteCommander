@@ -2,6 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
+import net from 'node:net';
+import { spawn, spawnSync } from 'node:child_process';
+import { setTimeout as delay } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
@@ -70,7 +74,8 @@ test('auto updater is candidate-first, hardware-gated and commit-point aware',()
 
 
   assert.ok(s.includes('[string[]]$CommandArgs'), 'gate helper must not bind the PowerShell automatic $args variable');
-  assert.ok(s.includes('& npm.cmd @CommandArgs'), 'gate helper must pass the intended npm argument array');
+  assert.ok(!s.includes('& npm.cmd @CommandArgs'), 'Windows qualification must not launch npm outside the owned Job Object');
+  for(const marker of ['run-owned-process-tree-windows.ps1','qualification-job-','-TimeoutSeconds 1200','QUALIFICATION_FAILURE_RECORDED','AUTO_UPDATE_QUALIFICATION_BACKOFF','qualification-failure.json','Clear-QualificationFailure'])assert.ok(s.includes(marker),marker);
   assert.ok(s.includes("GATE_START gui-native-selftest"), 'unattended updater must run non-interactive native GUI self-test');
   assert.ok(s.includes("gui-control.ps1") && s.includes("-SelfTest"), 'GUI candidate gate must compile/validate native helper without desktop interaction');
   assert.ok(!s.includes("Run-Gate $stage.Dir 'gui-native' @('run','test:gui-native')"), 'unattended updater must not run interactive GUI E2E');
@@ -172,8 +177,11 @@ test('Windows routed-backend recovery is thresholded and fail-closed around live
   assert.ok(decision.indexOf("DEFER_TRANSIENT") < decision.indexOf("RECYCLE"));
   const backend=sup.slice(sup.indexOf('function Start-RoutedBackend'),sup.indexOf('function Start-RouterForRoute'));
   assert.ok(backend.includes('Start-Sleep -Milliseconds 500'),'recycle must include a final recovery probe');
-  assert.ok(backend.includes("if(-not $activity.Known -or $activity.Count -gt 0)"),'final recycle gate must re-check router activity');
-  assert.ok(backend.indexOf('Get-RouterBackendActivity') < backend.indexOf('Stop-OwnedRoutedBackend'),'activity proof must precede destructive stop');
+  assert.ok(backend.includes('$finalDecision=Get-RoutedBackendRecoveryDecision $false $misses $activity.Known $activity.Count $activity.OldestAgeMs'),'final recycle gate must recompute recovery from freshly re-read router activity');
+  const activityChecks=[...backend.matchAll(/Get-RouterBackendActivity/g)].map(match=>match.index);
+  assert.ok(activityChecks.length>=2,'routed backend recycle must re-read router activity immediately before destructive stop');
+  assert.ok(activityChecks.at(-1) < backend.indexOf('Stop-OwnedRoutedBackend'),'fresh activity proof must precede destructive stop');
+  assert.ok(backend.includes("if($finalDecision -notmatch '^RECYCLE')"),'fresh activity decision must fail closed unless recycle remains authorized');
 });
 
 test('installer delegates existing installations to candidate updater instead of in-place source mutation',()=>{
@@ -358,4 +366,119 @@ test('Windows updater overlays explicit owner runner policy for default and name
   assert.ok(targets.includes('$canonical=[string]$record.configPath'),'named profiles must retain their canonical owner config identity');
   assert.ok(targets.includes('Merge-OwnerPolicyConfig ([string]$rr.active.configPath) $canonical $profile'),'named profiles must apply the same guarded owner-policy overlay');
   assert.ok(targets.includes('PROFILE_CONFIG_MISSING'),'named profiles must fail closed when neither canonical nor routed config is usable');
+});
+
+
+const processExists=pid=>{
+  try{process.kill(pid,0);return true;}catch{return false;}
+};
+const waitUntil=async(fn,ms=5000)=>{
+  const end=Date.now()+ms;
+  while(Date.now()<end){if(await fn())return true;await delay(50);}
+  return false;
+};
+const reservePort=()=>new Promise((resolve,reject)=>{
+  const s=net.createServer();
+  s.once('error',reject);
+  s.listen(0,'127.0.0.1',()=>{const p=s.address().port;s.close(()=>resolve(p));});
+});
+const listenerOpen=port=>new Promise(resolve=>{
+  const socket=net.createConnection({host:'127.0.0.1',port});
+  let done=false;
+  const finish=value=>{if(done)return;done=true;socket.destroy();resolve(value);};
+  socket.setTimeout(300,()=>finish(false));
+  socket.once('connect',()=>finish(true));
+  socket.once('error',()=>finish(false));
+});
+
+test('Windows qualification Job Object leaves zero descendants after fail, leak-success, timeout, and wrapper termination', {timeout:45000}, async t=>{
+  if(process.platform!=='win32'){t.skip('Windows Job Object regression');return;}
+  const fixture=fs.mkdtempSync(path.join(os.tmpdir(),'rc-job-containment-'));
+  const runner=path.join(root,'tools','run-owned-process-tree-windows.ps1');
+  const node=process.execPath;
+  const rootScript=path.join(fixture,'root.mjs');
+  const childScript=path.join(fixture,'child.mjs');
+  const serverScript=path.join(fixture,'server.mjs');
+  fs.writeFileSync(serverScript,[
+    "import fs from 'node:fs';",
+    "import net from 'node:net';",
+    "const [portText,pidFile]=process.argv.slice(2);",
+    "const server=net.createServer(()=>{});",
+    "server.listen(Number(portText),'127.0.0.1',()=>fs.writeFileSync(pidFile,String(process.pid)));",
+    "setInterval(()=>{},1000);"
+  ].join('\n'));
+  fs.writeFileSync(childScript,[
+    "import fs from 'node:fs';",
+    "import {spawn} from 'node:child_process';",
+    "const [serverScript,portText,childPidFile,serverPidFile]=process.argv.slice(2);",
+    "fs.writeFileSync(childPidFile,String(process.pid));",
+    "spawn(process.execPath,[serverScript,portText,serverPidFile],{detached:true,stdio:'ignore'}).unref();",
+    "setInterval(()=>{},1000);"
+  ].join('\n'));
+  fs.writeFileSync(rootScript,[
+    "import {spawn} from 'node:child_process';",
+    "const [childScript,serverScript,portText,childPidFile,serverPidFile,mode]=process.argv.slice(2);",
+    "spawn(process.execPath,[childScript,serverScript,portText,childPidFile,serverPidFile],{detached:true,stdio:'ignore'}).unref();",
+    "if(mode==='hang')setInterval(()=>{},1000);else setTimeout(()=>process.exit(Number(mode)),700);"
+  ].join('\n'));
+
+  const run=async(mode,timeoutSeconds=8,runId='case')=>{
+    const port=await reservePort();
+    const childPidFile=path.join(fixture,runId+'.child.pid');
+    const serverPidFile=path.join(fixture,runId+'.server.pid');
+    const report=path.join(fixture,runId+'.report.json');
+    const args=[rootScript,childScript,serverScript,String(port),childPidFile,serverPidFile,String(mode)];
+    const psArgs=['-NoLogo','-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',runner,
+      '-Program',node,'-WorkingDirectory',fixture,'-ArgumentsJson',JSON.stringify(args),'-RunId',runId,
+      '-TimeoutSeconds',String(timeoutSeconds),'-DrainGraceMs','300','-ReportPath',report];
+    const result=spawnSync('pwsh.exe',psArgs,{cwd:root,encoding:'utf8',timeout:15000});
+    assert.ok(fs.existsSync(report),result.stderr||result.stdout||'missing report');
+    const data=JSON.parse(fs.readFileSync(report,'utf8'));
+    const childPid=fs.existsSync(childPidFile)?Number(fs.readFileSync(childPidFile,'utf8')):0;
+    const serverPid=fs.existsSync(serverPidFile)?Number(fs.readFileSync(serverPidFile,'utf8')):0;
+    assert.equal(data.activeAfterCleanup,0);
+    if(childPid)assert.equal(processExists(childPid),false,'child must be gone');
+    if(serverPid)assert.equal(processExists(serverPid),false,'grandchild server must be gone');
+    assert.equal(await listenerOpen(port),false,'listener must be gone');
+    return {result,data,port,childPid,serverPid,psArgs,childPidFile,serverPidFile};
+  };
+
+  for(let i=0;i<3;i++){
+    const x=await run('7',8,'fail-'+i);
+    assert.equal(x.result.status,7);
+    assert.equal(x.data.status,'FAIL_CLEANED');
+    assert.equal(x.data.cleanupRequired,true);
+  }
+
+  const passLeak=await run('0',8,'pass-leak');
+  assert.equal(passLeak.result.status,125);
+  assert.equal(passLeak.data.status,'DESCENDANT_LEAK_CLEANED');
+  assert.equal(passLeak.data.cleanupRequired,true);
+
+  const timed=await run('hang',1,'timeout');
+  assert.equal(timed.result.status,124);
+  assert.equal(timed.data.status,'TIMEOUT_CLEANED');
+  assert.equal(timed.data.cleanupRequired,true);
+
+  const port=await reservePort();
+  const childPidFile=path.join(fixture,'killed.child.pid');
+  const serverPidFile=path.join(fixture,'killed.server.pid');
+  const report=path.join(fixture,'killed.report.json');
+  const args=[rootScript,childScript,serverScript,String(port),childPidFile,serverPidFile,'hang'];
+  const psArgs=['-NoLogo','-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',runner,
+    '-Program',node,'-WorkingDirectory',fixture,'-ArgumentsJson',JSON.stringify(args),'-RunId','killed-wrapper',
+    '-TimeoutSeconds','60','-DrainGraceMs','300','-ReportPath',report];
+  const wrapper=spawn('pwsh.exe',psArgs,{cwd:root,stdio:'ignore'});
+  const ready=await waitUntil(()=>fs.existsSync(serverPidFile),7000);
+  assert.equal(ready,true,'grandchild server must start before wrapper termination');
+  const childPid=Number(fs.readFileSync(childPidFile,'utf8'));
+  const serverPid=Number(fs.readFileSync(serverPidFile,'utf8'));
+  assert.equal(processExists(childPid),true);
+  assert.equal(processExists(serverPid),true);
+  wrapper.kill('SIGTERM');
+  await new Promise(resolve=>wrapper.once('exit',resolve));
+  assert.equal(await waitUntil(()=>!processExists(childPid)&&!processExists(serverPid),5000),true,'KILL_ON_JOB_CLOSE must remove descendants when wrapper dies');
+  assert.equal(await listenerOpen(port),false,'wrapper termination must close grandchild listener');
+
+  fs.rmSync(fixture,{recursive:true,force:true});
 });

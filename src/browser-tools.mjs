@@ -5,6 +5,7 @@ import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { performance } from 'node:perf_hooks';
 import { BROWSER_RULES, browserError, browserToolDefinitions, validateBrowserInput } from './browser-contract.mjs';
 import { createBrowserProcessClient } from './browser-process.mjs';
+import { writeBrowserLeaseMarker, removeBrowserLeaseMarker, reapOrphanedIsolatedBrowserProfiles } from './browser-lease-store.mjs';
 export { browserToolDefinitions };
 
 const project=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
@@ -36,17 +37,24 @@ function resolveProfileRoot(cfg){
  const raw=typeof cfg.profileRoot==='string'&&cfg.profileRoot.trim()?cfg.profileRoot.trim():defaultProfileRoot();
  return path.resolve(raw.replace(/%([^%]+)%/g,(_,k)=>process.env[k]??process.env[k.toUpperCase()]??''));
 }
-export function createBrowserController({invoke=defaultInvoke,closeInvoke=defaultClose,now=()=>performance.now(),token=()=>randomBytes(24).toString('hex'),scheduleTimeout=setTimeout,cancelTimeout=clearTimeout}={}){
- let session=null,uncertain=false,timer=null,busy=false,expiryRequested=false;
+export function reapBrowserOrphans(ctx){
+ const cfg=ctx.config?.powerMode?.browserControl??{};
+ const root=resolveProfileRoot(cfg),instance=instanceSegment(ctx.config?.instance?.profile??'default');
+ return reapOrphanedIsolatedBrowserProfiles({instanceRoot:path.join(root,instance)});
+}
+export function createBrowserController({invoke=defaultInvoke,closeInvoke=defaultClose,now=()=>performance.now(),wallNow=()=>Date.now(),token=()=>randomBytes(24).toString('hex'),scheduleTimeout=setTimeout,cancelTimeout=clearTimeout}={}){
+ let session=null,uncertain=false,timer=null,busy=false,expiryRequested=false,expiredProfile=null;
  const clearTimer=()=>{if(timer)cancelTimeout(timer);timer=null;};
  const cleanupExpired=async()=>{
   if(!expiryRequested||busy)return;
   expiryRequested=false;
-  try{await invoke({action:'end'});}
+  const profile=expiredProfile;expiredProfile=null;
+  try{await invoke({action:'end'});if(profile)removeBrowserLeaseMarker(profile);}
   catch{closeInvoke();}
  };
  const expireSession=()=>{
   if(!session)return;
+  expiredProfile=session.profileDir;
   session=null;uncertain=false;timer=null;expiryRequested=true;
   if(!busy)queueMicrotask(()=>cleanupExpired().catch(()=>{}));
  };
@@ -91,19 +99,29 @@ export function createBrowserController({invoke=defaultInvoke,closeInvoke=defaul
       ? path.join(root,instance,'isolated-'+Date.now().toString(36)+'-'+token().slice(0,12))
       : path.join(root,instance,safeSegment(profile));
     const native=await invoke({action:'start',profileDir:dir,isolated:mode==='isolated',executable:cfg.executable});
+    const createdAt=wallNow(),expiresAt=createdAt+ttl*1000;
+    try{
+      writeBrowserLeaseMarker({profileDir:dir,instance:ctx.config?.instance?.profile??'default',isolated:mode==='isolated',createdAt,expiresAt,ownerPid:process.pid});
+    }catch{
+      try{await invoke({action:'end'});}catch{closeInvoke();}
+      throw browserError('BROWSER_LEASE_STATE_FAILED');
+    }
     session={id:token(),expires:now()+ttl*1000,ttl,mode,profile,profileDir:dir,isolated:mode==='isolated',
-      executable:cfg.executable,foreground:false};
+      executable:cfg.executable,foreground:false,createdAtEpochMs:createdAt,expiresAtEpochMs:expiresAt};
     uncertain=false;expiryRequested=false;arm(ttl);
     return {ok:true,lease:session.id,ttlSeconds:ttl,profile,mode,background:true,headless:true,
       userDesktopTouched:false,savedPasswordStoreAccess:false,browserProduct:native.browserProduct??null,backend:native.backend??'browser-headless'};
    }
    owns(input.lease);
    if(name==='browser_session_renew'){
-    const ttl=input.ttlSeconds??300;session.expires=now()+ttl*1000;session.ttl=ttl;arm(ttl);return {ok:true,ttlSeconds:ttl};
+    const ttl=input.ttlSeconds??300,expiresAt=wallNow()+ttl*1000;
+    writeBrowserLeaseMarker({profileDir:session.profileDir,instance:ctx.config?.instance?.profile??'default',isolated:session.isolated,createdAt:session.createdAtEpochMs,expiresAt,ownerPid:process.pid});
+    session.expires=now()+ttl*1000;session.expiresAtEpochMs=expiresAt;session.ttl=ttl;arm(ttl);return {ok:true,ttlSeconds:ttl};
    }
    if(name==='browser_session_end'){
-    clearTimer();session=null;uncertain=false;expiryRequested=false;
-    const r=await invoke({action:'end'});return {ok:true,closed:r.closed===true};
+    const profileDir=session.profileDir;
+    clearTimer();session=null;uncertain=false;expiryRequested=false;expiredProfile=null;
+    const r=await invoke({action:'end'});removeBrowserLeaseMarker(profileDir);return {ok:true,closed:r.closed===true};
    }
    if(name==='browser_foreground_requirement'){
     return {ok:true,approvalRequired:true,reason:input.reason,targetHost:input.targetHost??null,detail:input.detail??null,
