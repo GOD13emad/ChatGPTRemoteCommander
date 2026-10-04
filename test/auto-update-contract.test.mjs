@@ -70,6 +70,10 @@ test('auto updater is candidate-first, hardware-gated and commit-point aware',()
     'AUTO_UPDATE_PAUSED'
   ]) assert.ok(s.includes(marker),marker);
   assert.ok(s.includes("if(-not $Force -and (Test-Path -LiteralPath $PauseFile -PathType Leaf))"), 'automatic Windows update pause sentinel must fail before staging while explicit -Force remains available');
+  const promote=s.slice(s.indexOf('function Promote-Control'),s.indexOf('function Recycle-ControlSupervisor'));
+  for(const marker of ['diff --cached --quiet --','diff --ignore-space-at-eol --exit-code --','CONTROL_TRACKED_EOL_DRIFT_ACCEPTED'])assert.ok(promote.includes(marker),marker);
+  assert.ok(promote.indexOf('diff --cached --quiet --') < promote.indexOf('CONTROL_TRACKED_EOL_DRIFT_ACCEPTED'),'staged control changes must fail before EOL-only drift is accepted');
+  assert.ok(promote.indexOf('diff --ignore-space-at-eol --exit-code --') < promote.indexOf('CONTROL_TRACKED_EOL_DRIFT_ACCEPTED'),'substantive unstaged control changes must fail before EOL-only drift is accepted');
   assert.ok(s.includes('https://github.com/GOD13emad/ChatGPTRemoteCommander/releases/latest') && s.includes('Invoke-WebRequest') && s.includes('Invoke-RestMethod'),'Windows stable discovery must prefer published-release redirect with REST fallback');
   assert.ok(s.includes("MCP-Protocol-Version") && s.includes("2026-07-28") && s.includes("-Headers $headers"), 'internal updater MCP calls through the canonical router must identify as the current protocol and never self-poison legacy-host continuity state');
   assert.ok(s.includes("io.modelcontextprotocol/protocolVersion") && s.includes("_meta"), 'modern updater MCP calls must mirror the protocol marker in body metadata so header/body classification cannot fail');
@@ -151,6 +155,37 @@ test('auto updater is candidate-first, hardware-gated and commit-point aware',()
   assert.ok(s.indexOf('Verify-Tunnels') < s.indexOf('$cutoverCommitted=$true'), 'tunnels verified before commit point');
   const commitPoint=s.indexOf('$cutoverCommitted=$true');
   assert.ok(commitPoint>0 && s.indexOf('finalize-workflow-schema.mjs',commitPoint)>commitPoint, 'schema finalizes only after cutover commit in the main promotion path');
+});
+
+test('Windows control promotion classifier distinguishes historical CRLF drift from substantive or staged mutation',t=>{
+  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'rc-control-eol-'));
+  t.after(()=>fs.rmSync(dir,{recursive:true,force:true}));
+  const git=args=>spawnSync('git',args,{cwd:dir,encoding:'utf8'});
+  assert.equal(git(['init','-q']).status,0);
+  assert.equal(git(['config','user.name','RC Test']).status,0);
+  assert.equal(git(['config','user.email','rc-test@example.invalid']).status,0);
+  const script=path.join(dir,'legacy.ps1');
+  fs.writeFileSync(path.join(dir,'.gitattributes'),'*.ps1 text eol=crlf\n','utf8');
+  assert.equal(git(['add','.gitattributes']).status,0);
+  assert.equal(git(['commit','-qm','attributes']).status,0);
+  fs.writeFileSync(script,'one\r\ntwo\r\n','utf8');
+  const blob=git(['hash-object','-w','--no-filters','legacy.ps1']);
+  assert.equal(blob.status,0);
+  assert.match(blob.stdout.trim(),/^[0-9a-f]{40,64}$/);
+  assert.equal(git(['update-index','--add','--cacheinfo',`100644,${blob.stdout.trim()},legacy.ps1`]).status,0);
+  assert.equal(git(['commit','-qm','historical-crlf-blob']).status,0);
+  const dirty=git(['status','--porcelain','--untracked-files=no']);
+  assert.equal(dirty.status,0);
+  assert.match(dirty.stdout,/legacy\.ps1/,'fixture must reproduce historical CRLF dirty status');
+  assert.equal(git(['diff','--cached','--quiet','--']).status,0,'EOL-only fixture must have no staged mutation');
+  assert.equal(git(['diff','--ignore-space-at-eol','--exit-code','--']).status,0,'EOL-only fixture must be accepted by content classifier');
+
+  fs.appendFileSync(script,'three\r\n','utf8');
+  assert.notEqual(git(['diff','--ignore-space-at-eol','--exit-code','--']).status,0,'substantive unstaged mutation must remain blocked');
+  assert.equal(git(['restore','--worktree','--','legacy.ps1']).status,0);
+  fs.appendFileSync(path.join(dir,'.gitattributes'),'# staged\n','utf8');
+  assert.equal(git(['add','.gitattributes']).status,0);
+  assert.notEqual(git(['diff','--cached','--quiet','--']).status,0,'staged mutation must remain blocked');
 });
 
 test('stable router and supervisor preserve canonical ports while backends are versioned',()=>{
