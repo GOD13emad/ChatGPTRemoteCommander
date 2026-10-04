@@ -28,6 +28,16 @@ export function codexLaunchAuthorized(ctxOrConfig) {
     && config?.powerMode?.codexControl?.allowLaunch === true;
 }
 
+export function codexMaintenanceAuthorized(ctxOrConfig, input = {}) {
+  const config = ctxOrConfig?.config ?? ctxOrConfig;
+  return input?.confirmCurrentRequest === true
+    && config?.powerMode?.enabled === true
+    && config?.powerMode?.allowShell === true
+    && config?.powerMode?.allowProcessControl === true
+    && config?.capabilityProfile?.tier === 'FULL_POWER'
+    && config?.capabilityProfile?.explicitlyAuthorized === true;
+}
+
 export function isCodexExecutable(value) {
   const text = unquote(value).replaceAll('\\','/');
   const base = path.basename(text).toLowerCase();
@@ -211,11 +221,28 @@ export function commanderChildEnv(cwdOrSource, maybeSource, { allowCodex = false
   return env;
 }
 
+export function commanderCodexMaintenanceEnv(source = process.env) {
+  const env = { ...source };
+  for (const key of [
+    'OPENAI_API_KEY','OPENAI_BASE_URL','OPENAI_ORG_ID','OPENAI_ORGANIZATION',
+    'CODEX_API_KEY','CODEX_ACCESS_TOKEN','CODEX_REFRESH_TOKEN'
+  ]) delete env[key];
+  delete env.REMOTE_COMMANDER_NO_CODEX;
+  if (isCommanderNoCodexHome(env.CODEX_HOME)) delete env.CODEX_HOME;
+  env.REMOTE_COMMANDER_CODEX_MAINTENANCE = '1';
+  return env;
+}
+
 export const NO_CODEX_POLICY = Object.freeze({
   code: STATUS_CODE,
   mode: 'DEFAULT_DENY',
   default: 'CONTINUE_CHAT',
   externalHandoffRequiresCurrentChatChoice: true,
   commanderMayLaunchCodex: false,
+  scopedMaintenance: {
+    tool: 'codex_plugin_refresh',
+    requiresExplicitCurrentRequest: true,
+    arbitraryCodexLaunchAllowed: false
+  },
   reason: 'Remote Commander defaults to the current ChatGPT chat as the reasoning layer. Local Codex launch is denied unless an explicitly authorized Full-Power profile opts in.'
 });

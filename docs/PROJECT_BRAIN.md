@@ -719,3 +719,29 @@ HPC-154-66 completed the exact v0.10.11 source qualification without rerun or ti
 **Project Brain status:** CURRENT. Remote Commander v0.10.11 is the accepted stable release. Historical v0.10.10 failure evidence remains append-only.
 
 **Exact next action:** keep v0.10.11 as stable baseline; do not patch further without a new evidence-backed blocker. Separately continue Emad-PC owner-recovery and Linux host/session gates.
+
+
+### 2026-10-04 — CURRENT: v0.10.12 scoped Codex plugin maintenance candidate
+
+**Previous accepted state:** Remote Commander v0.10.11 remains the accepted stable release.
+
+**Finding:** the canonical `linux-project-skills` source is version **1.4.13** while the derived managed Codex cache remains at **1.4.9**. OpenAI Codex **0.157.1** source confirms that local non-curated plugin cache refresh is performed through `plugin/list` with `forceRefetch=true`; `plugin/reconcile` is remote-plugin-only, and app-server startup by itself is not evidence of a local-cache refresh. The current v0.10.11 Commander default-deny Codex policy exposes no narrow administrative route for this supported maintenance operation.
+
+**Decision / minimum sufficient control:** v0.10.12 adds `codex_plugin_refresh`, a fixed short-lived `codex app-server` maintenance sidecar. It requires `confirmCurrentRequest=true`, an explicitly authorized Full-Power profile, shell authority, and process-control authority. It does not enable or modify broad `powerMode.codexControl.allowLaunch`, accepts no prompt or arbitrary command/arguments, cannot invoke `exec`, `review`, turns, threads, agents, or delegation, strips OpenAI/Codex API credential environment variables, and uses one total synchronous deadline capped at eight seconds.
+
+**Local qualification:** `npm run check` PASS; `npm test` PASS; `npm run audit` PASS; `npm run check:qualification` PASS with main batch **265 total / 259 pass / 0 fail / 6 platform skips**; `npm run test:qualification` PASS with main batch **511 total / 505 pass / 0 fail / 6 platform skips**. Supplementary GUI contract **77/77**, Linux GUI contract, filesystem safety, headless process-launch policy, Windows runtime contract, source integrity, and schema continuity **9/9** all PASS.
+
+**Status:** ACCEPTED FOR PR / NOT RELEASED. v0.10.11 remains production authority until hosted exact-head gates, merge-tree identity, immutable publication, candidate-first rollout, and live post-cutover cache refresh are proven.
+
+**Open gates:** exact-head hosted Windows and Ubuntu CI; Linux and Windows Server Install canaries; merge-tree identity; immutable v0.10.12 tag/release; candidate-first exact-ref rollout; live `codex_plugin_refresh`; final verification that managed `linux-project-skills` cache is 1.4.13 and authoritative/cache hashes agree.
+
+**Exact next action:** commit only the isolated intended v0.10.12 delta, excluding the known EOL-only dirty PowerShell files; push a guarded PR and require all exact-head hosted gates before merge.
+
+
+#### 2026-10-04 — v0.10.12 final-tree hardening requalification
+
+Pre-PR review added two fail-closed transport controls without widening authority: `plugin/list` is now explicitly restricted to `marketplaceKinds=["local"]`, returned marketplace/plugin metadata is hard-bounded, text fields are clipped, and oversized app-server JSONL frames are rejected before parsing. Target-plugin lookup remains available even when the display summary is truncated.
+
+Because this changed executable code after the earlier qualification, the complete qualification was rerun on the final tree. `check:qualification`: **267 total / 261 pass / 0 fail / 6 platform skips**. `test:qualification`: **513 total / 507 pass / 0 fail / 6 platform skips**. GUI contract **77/77**, Linux GUI, filesystem safety, headless launch policy, Windows runtime, source integrity, schema continuity **9/9**, and `SECURITY_AUDIT_PASS` all passed.
+
+**CURRENT:** final local tree is QUALIFIED FOR PR; hosted exact-head gates and release/live E2E remain OPEN.

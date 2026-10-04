@@ -1,3 +1,11 @@
+## 0.10.12 - 2026-10-04
+
+- Add a narrowly scoped `codex_plugin_refresh` maintenance tool that starts a short-lived Codex app-server sidecar and performs only `initialize` / `initialized` / `plugin/list(forceRefetch=true)` to refresh configured local plugin caches through the supported Codex path.
+- Keep general Codex delegation default-deny: the maintenance tool accepts no prompt, arbitrary command or arguments and cannot invoke `exec`, `review`, turns, threads, or agents.
+- Require explicit confirmation from the current request plus an explicitly authorized Full-Power profile, while keeping `powerMode.codexControl.allowLaunch` unchanged.
+- Strip OpenAI/Codex API credentials from the maintenance sidecar environment, bound the complete synchronous maintenance budget to eight seconds, and add fail-closed protocol/schema regressions.
+- Advance runtime, installer, server-installer, plugin-template, release-contract and final-gate identity to v0.10.12; v0.10.11 remains the accepted stable baseline until all qualification and release gates pass.
+
 ## 0.10.11 - 2026-10-04
 
 - Fix Windows post-cutover control promotion when an older checkout is dirty only because historical CRLF blobs are reinterpreted by current EOL attributes.
