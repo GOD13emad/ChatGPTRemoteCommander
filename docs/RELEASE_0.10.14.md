@@ -1,7 +1,7 @@
 Remote Commander v0.10.14
 =========================
 
-This candidate closes a Linux post-cutover maintenance gap observed across the v0.10.11, v0.10.12 and v0.10.13 rollouts. The routed runtime successfully advanced, but the control checkout remained on v0.10.9 because two historical PowerShell files appeared dirty only from CR-at-EOL normalization. As a consequence, the maintenance tail did not record durable completion and the personal Remote Commander Work/Codex plugin source also remained stale until manually reconciled.
+This candidate closes multiple Linux post-cutover maintenance gaps observed across the v0.10.11–v0.10.13 history and reproduced during a live v0.10.14 candidate rollout. Historical CR-at-EOL drift prevented safe control promotion on recovery, the personal Work/Codex projection could remain stale, and—more importantly—a manual updater launched through a Commander terminal could be killed when that same old backend was retired. Successful completion also had no durable `last-update.json` receipt even though the path was defined.
 
 Linux control promotion
 -----------------------
@@ -13,6 +13,16 @@ The Linux updater now applies the same fail-closed distinction already proven on
 - the exact fetched commit is verified after forced detached checkout and logged as `CONTROL_PROMOTION_PASS`.
 
 The post-commit ERR trap remains active through maintenance, so failures after route cutover are classified instead of disappearing between `CUTOVER_COMMIT` and durable updater completion.
+
+Commander-owned invocation isolation
+------------------------------------
+When `auto-update-linux.sh` is invoked from a process tree owned by a managed Commander backend, it now detects that ancestry through a bounded `/proc` walk before taking the update lock. It re-executes the exact original arguments under `nohup setsid -f` with a one-shot `REMOTE_COMMANDER_AUTO_UPDATE_DETACHED=1` guard, logs `AUTO_UPDATE_SELF_DETACH_REQUESTED`, and lets the caller exit. Normal supervisor-launched updates and `--self-test` do not detach. Missing `setsid` fails closed.
+
+This prevents `drain_previous_once` / old-backend retirement from terminating the updater that is still responsible for control promotion, plugin synchronization, cleanup and durable PASS recording.
+
+Durable Linux update receipt
+----------------------------
+Before logging `AUTO_UPDATE_PASS` or `AUTO_UPDATE_MAINTENANCE_PASS`, the updater atomically writes a mode-0600 `last-update.json` receipt containing schema, Linux platform, pass type, exact version, exact 40-hex commit, bounded source ref and UTC completion timestamp. The write uses a same-directory temporary file plus atomic rename; invalid identity fails closed and does not replace the prior receipt.
 
 Work plugin projection sync
 ---------------------------
@@ -31,11 +41,11 @@ The operation is intentionally narrow:
 
 Qualification
 -------------
-Focused updater contract: 17 pass / 0 fail / 1 Windows-only skip.
+Focused Linux updater/installer/schema regressions after self-detach + durable-receipt hardening: 24 pass / 0 fail / 1 platform skip.
 
-`check:qualification`: 269 total / 263 pass / 0 fail / 6 platform skips.
+`check:qualification`: 270 total / 264 pass / 0 fail / 6 platform skips.
 
-`test:qualification`: 515 total / 509 pass / 0 fail / 6 platform skips.
+`test:qualification`: 516 total / 510 pass / 0 fail / 6 platform skips.
 
 Supplementary GUI contract 77/77, Linux GUI, filesystem safety, headless launch policy, Windows runtime contract, source integrity and schema continuity 9/9 all pass. `SECURITY_AUDIT_PASS`.
 
@@ -45,4 +55,4 @@ Current owner direction limits this milestone to Linux and Linux-specialized fun
 
 Acceptance
 ----------
-v0.10.13 remains the repository-wide accepted stable release. For the current Linux-only scope, v0.10.14 acceptance requires Linux qualification plus exact-commit rollout and post-cutover evidence on this host. Repository-wide merge/tag publication is deferred. Rollout acceptance specifically requires the control checkout to reach the release merge commit, durable updater completion evidence to reappear, and the personal Work/Codex plugin source plus managed Codex cache to report v0.10.14 with the same preserved app binding.
+v0.10.13 remains the repository-wide accepted stable release. For the current Linux-only scope, v0.10.14 acceptance requires Linux qualification plus exact-commit rollout and post-cutover evidence on this host. Repository-wide merge/tag publication is deferred. Rollout acceptance specifically requires one first-pass invocation from inside Commander to log `AUTO_UPDATE_SELF_DETACH_REQUESTED`, continue independently through cutover without a second recovery invocation, promote control to the exact candidate commit, synchronize the personal Work/Codex projection and managed cache to v0.10.14 with the same preserved binding, write the durable `last-update.json` PASS receipt, and finish with `AUTO_UPDATE_PASS`.

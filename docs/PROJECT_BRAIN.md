@@ -786,3 +786,18 @@ Because this changed executable code after the earlier qualification, the comple
 **Release interpretation:** v0.10.14 remains an exact-commit Linux candidate. Do not merge/tag it as a repository-wide cross-platform release under the current scope. Linux acceptance is based on Linux qualification, source/security integrity, candidate-first exact-commit rollout, control promotion completion, durable updater completion and Work/Codex projection/cache verification on the active Linux host.
 
 **Exact next action:** commit the Linux test-scope correction, close the cross-platform PR to prevent accidental merge, push the Linux candidate branch, then roll out that exact commit on the active Linux machine and verify all Linux post-cutover invariants.
+
+
+### 2026-10-05 — Linux updater self-termination root cause confirmed
+
+**Fact / live reproduction:** exact-commit v0.10.14 rollout from a Commander-owned terminal passed both qualification gates and cut over runtime to `b8a136f92bf3958dc87945c47b88672fb80f1337`, but the updater process disappeared immediately after `ROUTER_PREVIOUS_RETIRED`. No updater process remained and the same invocation never reached control promotion, Work plugin sync or final PASS. This demonstrates that retiring the backend that owns the invoking terminal can terminate the updater's own process tree.
+
+**Fact / recovery:** a second same-version maintenance invocation on the new runtime logged `CONTROL_EOL_DRIFT_TOLERATED`, promoted control to `b8a136f...`, synchronized the Work plugin to 0.10.14, logged `AUTO_UPDATE_MAINTENANCE_PASS` and requested supervisor recycle. Therefore EOL-only drift is a secondary control-promotion issue, not the complete explanation for the first-pass truncation.
+
+**Change:** the Linux updater now performs a bounded managed-backend ancestry check before acquiring the updater lock. A Commander-owned manual invocation re-execs the exact original arguments in an independent `setsid` session with a one-shot detached marker. Supervisor invocations and self-test remain unchanged. Missing `setsid` fails closed.
+
+**Change / durable completion:** Linux PASS paths now atomically write `last-update.json` before the PASS log. Receipt identity is validated (status, semver, exact commit and bounded source ref), file mode is 0600, and invalid rewrite attempts preserve the previous receipt.
+
+**Qualification on final pre-commit byte-state:** focused Linux updater/installer/schema set **24 pass / 0 fail / 1 platform skip**; `check:qualification` **270/264/0/6**; `test:qualification` **516/510/0/6**; GUI **77/77**; schema continuity **9/9**; `SOURCE_INTEGRITY_PASS`; `SECURITY_AUDIT_PASS`.
+
+**Current gate:** commit/push the exact Linux candidate and prove a new rollout started through Commander completes in one invocation after `AUTO_UPDATE_SELF_DETACH_REQUESTED`, with no same-version recovery run required.

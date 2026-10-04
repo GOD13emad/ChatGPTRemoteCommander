@@ -226,6 +226,58 @@ test('Linux control promotion accepts CR-at-EOL-only drift but blocks staged or 
 });
 
 
+
+test('Linux updater writes an atomic durable completion receipt',t=>{
+  const updater=read('auto-update-linux.sh');
+  const start=updater.indexOf('write_update_result(){');
+  const end=updater.indexOf('wait_health(){',start);
+  assert.ok(start>0 && end>start,'write_update_result must be a standalone helper');
+  const fn=updater.slice(start,end);
+  for(const marker of ['last-update.json','.tmp-','fs.renameSync','completedAt',"platform: 'linux'"]) assert.ok(fn.includes(marker)||updater.includes(marker),marker);
+  assert.ok(updater.includes('write_update_result maintenance_pass "$VERSION" "$COMMIT" "$REF"'),'maintenance PASS must persist a receipt before logging PASS');
+  assert.ok(updater.includes('write_update_result pass "$VERSION" "$COMMIT" "$REF"'),'normal PASS must persist a receipt before logging PASS');
+  if(process.platform==='win32'){t.skip('Linux shell fixture requires a native POSIX Bash environment');return;}
+
+  const fixture=fs.mkdtempSync(path.join(os.tmpdir(),'rc-update-result-'));
+  t.after(()=>fs.rmSync(fixture,{recursive:true,force:true}));
+  const resultFile=path.join(fixture,'state','last-update.json');
+  const harness=path.join(fixture,'receipt.sh');
+  fs.writeFileSync(harness,[
+    '#!/usr/bin/env bash',
+    'set -euo pipefail',
+    'RESULT_FILE="$1"; shift',
+    fn,
+    'write_update_result "$1" "$2" "$3" "$4"'
+  ].join('\n'));
+  fs.chmodSync(harness,0o755);
+  const commit='a'.repeat(40);
+  const run=spawnSync('bash',[harness,resultFile,'pass','0.10.14',commit,'fix/linux-control-promotion-v01014'],{encoding:'utf8'});
+  assert.equal(run.status,0,run.stderr||run.stdout);
+  const receipt=JSON.parse(fs.readFileSync(resultFile,'utf8'));
+  assert.deepEqual({
+    schema:receipt.schema,
+    platform:receipt.platform,
+    status:receipt.status,
+    version:receipt.version,
+    commit:receipt.commit,
+    sourceRef:receipt.sourceRef
+  },{
+    schema:1,
+    platform:'linux',
+    status:'pass',
+    version:'0.10.14',
+    commit,
+    sourceRef:'fix/linux-control-promotion-v01014'
+  });
+  assert.match(receipt.completedAt,/^\d{4}-\d{2}-\d{2}T/);
+  assert.equal(fs.statSync(resultFile).mode & 0o777,0o600);
+  assert.equal(fs.readdirSync(path.dirname(resultFile)).filter(x=>x.includes('.tmp-')).length,0,'atomic temp file must not remain');
+
+  const bad=spawnSync('bash',[harness,resultFile,'pass','0.10.14','not-a-commit','fix/linux-control-promotion-v01014'],{encoding:'utf8'});
+  assert.notEqual(bad.status,0,'invalid completion identity must fail closed');
+  assert.equal(JSON.parse(fs.readFileSync(resultFile,'utf8')).commit,commit,'failed rewrite must preserve prior durable receipt');
+});
+
 test('Linux updater atomically syncs an installed Work plugin while preserving its app binding',
   { skip: process.platform !== 'linux' ? 'Linux-only updater executable fixture' : false },
   t=>{
@@ -437,12 +489,25 @@ test('Linux updater is candidate-first, hardware-gated, routed and rollback-awar
     'sync_work_plugin_projection',
     'WORK_PLUGIN_SOURCE_SYNC_PASS',
     'WORK_PLUGIN_SOURCE_SYNC_SKIP',
+    'updater_has_commander_backend_ancestor',
+    'detach_from_commander_backend_if_needed',
+    'AUTO_UPDATE_SELF_DETACH_REQUESTED',
+    'AUTO_UPDATE_SELF_DETACH_BLOCK',
+    'REMOTE_COMMANDER_AUTO_UPDATE_DETACHED',
+    'setsid -f',
     '/snap/bin/geckodriver',
     '/usr/bin/geckodriver',
     '/usr/local/bin/geckodriver',
     '"$HOME/.local/bin/geckodriver"'
   ]) assert.ok(s.includes(marker),marker);
   assert.ok(s.indexOf('driver="$(command -v geckodriver') < s.indexOf('/snap/bin/geckodriver'),'Linux updater must prefer PATH geckodriver before explicit safe fallbacks');
+  const detachFn=s.slice(s.indexOf('updater_has_commander_backend_ancestor(){'),s.indexOf('wait_health(){'));
+  assert.ok(detachFn.includes('depth" -lt 16'),'Linux updater ancestry detection must be bounded');
+  assert.ok(detachFn.includes('$STATE_ROOT/releases/') && detachFn.includes('$INSTALL_DIR'),'Linux updater detach must recognize only managed Commander backend roots');
+  assert.ok(detachFn.includes('[[ "$SELF_TEST" == 1 ]] && return 0'),'Linux updater self-test must never detach');
+  assert.ok(s.indexOf('detach_from_commander_backend_if_needed') < s.indexOf('exec 9>"$STATE_ROOT/auto-update.lock"'),'Linux updater must detach from a Commander backend before taking the update lock');
+  assert.ok(s.includes('nohup setsid -f env REMOTE_COMMANDER_AUTO_UPDATE_DETACHED=1 /bin/bash "$SELF_PATH" "${ORIGINAL_ARGS[@]}"'),'Linux updater must preserve exact arguments while escaping the retiring backend process tree');
+
   assert.ok(!s.includes('git ls-remote --tags --refs'),'Linux stable discovery must never promote a raw tag without a published Release');
   assert.ok(s.includes("log 'AUTO_UPDATE_DRAIN_PENDING profile=default'"),'Linux committed cutover must defer unsafe drains');
   assert.ok(s.includes('drain_previous_once "$STAGE_DIR" "$OLD_PORT"'), 'Linux drain must use conservative shared policy');

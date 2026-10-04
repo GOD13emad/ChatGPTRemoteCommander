@@ -2,6 +2,8 @@
 set -euo pipefail
 
 INSTALL_DIR="${HOME}/.local/share/ChatGPTRemoteCommander"
+ORIGINAL_ARGS=("$@")
+SELF_PATH="$(readlink -f "${BASH_SOURCE[0]}")"
 SOURCE_REF=""
 EXPECTED_COMMIT=""
 FORCE=0
@@ -68,6 +70,63 @@ INSTALL_DIR="$(cd "$INSTALL_DIR" 2>/dev/null && pwd -P || printf '%s' "$INSTALL_
 mkdir -p "$RELEASE_ROOT" "$ROUTING_ROOT" "$RUNTIME_ROOT" "$BACKUP_ROOT" "$LOG_DIR"
 
 log(){ printf '%s %s\n' "$(date --iso-8601=seconds 2>/dev/null || date)" "$*" >> "$LOG_DIR/auto-update.log"; [[ "$SELF_TEST" == 1 ]] || printf '%s\n' "$*"; }
+
+updater_has_commander_backend_ancestor(){
+  local pid="${PPID:-0}" depth=0 cmd cwd parent
+  while [[ "$pid" =~ ^[0-9]+$ && "$pid" -gt 1 && "$depth" -lt 16 ]]; do
+    cmd="$(tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null || true)"
+    cwd="$(readlink -f "/proc/$pid/cwd" 2>/dev/null || true)"
+    if [[ "$cmd" == *"src/server-v0.3.mjs"* || "$cmd" == *"src/server.mjs"* ]]; then
+      if [[ "$cwd" == "$INSTALL_DIR" || "$cwd" == "$STATE_ROOT/releases/"* || "$cwd" == "$STATE_ROOT/runtimes/"* ]]; then
+        return 0
+      fi
+    fi
+    parent="$(awk '$1=="PPid:"{print $2}' "/proc/$pid/status" 2>/dev/null || true)"
+    [[ "$parent" =~ ^[0-9]+$ ]] || break
+    pid="$parent"
+    depth=$((depth+1))
+  done
+  return 1
+}
+
+detach_from_commander_backend_if_needed(){
+  [[ "$SELF_TEST" == 1 ]] && return 0
+  [[ "${REMOTE_COMMANDER_AUTO_UPDATE_DETACHED:-0}" == 1 ]] && return 0
+  updater_has_commander_backend_ancestor || return 0
+  if ! command -v setsid >/dev/null 2>&1; then
+    log 'AUTO_UPDATE_SELF_DETACH_BLOCK reason=setsid-missing'
+    return 1
+  fi
+  nohup setsid -f env REMOTE_COMMANDER_AUTO_UPDATE_DETACHED=1 /bin/bash "$SELF_PATH" "${ORIGINAL_ARGS[@]}" >>"$LOG_DIR/auto-update-detached.log" 2>&1 </dev/null &
+  log 'AUTO_UPDATE_SELF_DETACH_REQUESTED'
+  exit 0
+}
+
+write_update_result(){
+  local status="$1" version="$2" commit="$3" ref="$4"
+  node --input-type=module - "$RESULT_FILE" "$status" "$version" "$commit" "$ref" <<'NODE'
+import fs from 'node:fs';
+import path from 'node:path';
+const [, , file, status, version, commit, sourceRef] = process.argv;
+if (!/^(?:pass|maintenance_pass)$/.test(status)) process.exit(2);
+if (!/^\d+\.\d+\.\d+$/.test(version)) process.exit(3);
+if (!/^[0-9a-fA-F]{40}$/.test(commit)) process.exit(4);
+if (sourceRef.length > 128 || !/^[A-Za-z0-9._/-]+$/.test(sourceRef)) process.exit(5);
+fs.mkdirSync(path.dirname(file), { recursive: true });
+const tmp = file + '.tmp-' + process.pid;
+const payload = {
+  schema: 1,
+  platform: 'linux',
+  status,
+  version,
+  commit: commit.toLowerCase(),
+  sourceRef,
+  completedAt: new Date().toISOString()
+};
+fs.writeFileSync(tmp, JSON.stringify(payload, null, 2) + '\n', { mode: 0o600 });
+fs.renameSync(tmp, file);
+NODE
+}
 curl_fetch(){ curl --fail --silent --show-error --location --connect-timeout "$CURL_CONNECT_TIMEOUT" --max-time "$CURL_MAX_TIME" "$@"; }
 json_field(){ node "$1/tools/json-field.mjs" --file "$2" --field "$3" 2>/dev/null || true; }
 route_tsv(){ node "$1/tools/router-state.mjs" --state "$2" --tsv; }
@@ -537,6 +596,8 @@ cleanup_releases(){
   return "$remaining"
 }
 
+detach_from_commander_backend_if_needed
+
 mkdir -p "$INSTALL_DIR/var"
 exec 9>"$STATE_ROOT/auto-update.lock"
 if command -v flock >/dev/null 2>&1; then flock -n 9 || { log 'AUTO_UPDATE_ALREADY_RUNNING'; exit 0; }; fi
@@ -576,6 +637,7 @@ if [[ "$FORCE" != 1 && -f "$ROUTE" ]]; then
       install_linux_gui_backend "$STAGE_DIR" "$ACTIVE_CFG"
       sync_work_plugin_projection "$STAGE_DIR" "$VERSION" "$COMMIT"
       cleanup_releases || log 'AUTO_UPDATE_CLEANUP_PENDING_AFTER_MAINTENANCE'
+      write_update_result maintenance_pass "$VERSION" "$COMMIT" "$REF"
       log "AUTO_UPDATE_MAINTENANCE_PASS version=$VERSION"
       recycle_supervisor
       exit 0
@@ -765,5 +827,6 @@ install_linux_gui_backend "$STAGE_DIR" "$FINAL_CFG"
 promote_control "$COMMIT" "$REF"
 sync_work_plugin_projection "$STAGE_DIR" "$VERSION" "$COMMIT"
 cleanup_releases || log 'AUTO_UPDATE_CLEANUP_PENDING_AFTER_PROMOTION'
+write_update_result pass "$VERSION" "$COMMIT" "$REF"
 log "AUTO_UPDATE_PASS version=$VERSION commit=$COMMIT"
 recycle_supervisor

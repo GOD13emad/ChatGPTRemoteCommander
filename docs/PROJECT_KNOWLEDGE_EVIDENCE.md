@@ -1998,3 +1998,15 @@ Acceptance boundary: this is local exact-tree qualification only. GitHub hosted 
 - **Full local qualification:** `check:qualification` **269/263/0/6**; `test:qualification` **515/509/0/6**; GUI **77/77**; schema **9/9**; Linux GUI / FS safety / headless process launch / Windows runtime / source integrity PASS; `SECURITY_AUDIT_PASS`.
 - **Status:** local candidate **CONFIRMED QUALIFIED**. Hosted exact-head CI/canaries, merge/release provenance and Linux post-release E2E remain **OPEN**.
 - **Exact acceptance evidence required after rollout:** control HEAD equals v0.10.14 merge commit; updater log contains `CONTROL_EOL_DRIFT_TOLERATED`, `CONTROL_PROMOTION_PASS`, `WORK_PLUGIN_SOURCE_SYNC_PASS version=0.10.14`, durable `AUTO_UPDATE_PASS` or maintenance PASS, and supervisor recycle request/pass as applicable; personal Work plugin source and managed Codex cache both report 0.10.14 with binding bytes unchanged.
+
+
+### 2026-10-05 — Linux updater invocation-ownership hardening
+
+- **Confirmed live failure:** an exact-commit Linux candidate launched through Commander passed candidate qualification, committed the new route, then stopped immediately after retiring the previous backend. The updater process itself was no longer present. The runtime was healthy at 0.10.14, but control/plugin/final PASS work required a second maintenance invocation.
+- **Confirmed recovery:** same-version recovery promoted control and synchronized the personal plugin successfully, proving the post-cutover operations themselves work when their process survives.
+- **Root cause:** updater lifecycle was still coupled to the retiring Commander's process tree when manually launched via Commander. EOL-only control dirtiness was real but secondary.
+- **Control:** before lock acquisition, a bounded 16-level `/proc` ancestry scan recognizes only managed Commander server processes rooted at the canonical install/release/runtime locations. Such invocations re-exec exact original args under `nohup setsid -f` with one-shot recursion guard. Self-test and normal non-Commander ancestry remain in-process.
+- **Durable receipt:** Linux PASS paths now write `last-update.json` atomically before PASS logging; schema/platform/status/version/commit/sourceRef/completedAt are persisted with mode 0600. Malformed identity cannot replace an existing receipt.
+- **Focused regression:** **24 pass / 0 fail / 1 platform skip**, including real POSIX Work-plugin sync, atomic durable receipt, fail-closed bad receipt identity, Linux installer isolation/schema compatibility, and static bounded-detach contract.
+- **Full qualification:** `check:qualification` **270/264/0/6** and `test:qualification` **516/510/0/6**, GUI **77/77**, schema **9/9**, source integrity and security audit PASS.
+- **Open acceptance gate:** after commit/push, launch the exact candidate from Commander. One invocation must detach, finish cutover and post-cutover maintenance, persist the PASS receipt, and leave runtime/control/plugin/cache all on the same exact candidate with no follow-up recovery run.

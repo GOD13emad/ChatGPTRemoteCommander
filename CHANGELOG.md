@@ -1,6 +1,8 @@
 ## 0.10.14 - 2026-10-04
 
 - Fix Linux post-cutover control promotion when historical PowerShell files are dirty only because of CR-at-EOL normalization: staged or substantive mutations still fail closed, while proven EOL-only drift is auditable and tolerated.
+- Detach a manually invoked Linux updater from a managed Commander backend process tree before taking the update lock, so retiring the previous backend cannot terminate the updater that is performing the cutover.
+- Persist successful Linux update/maintenance completion atomically to `last-update.json` with exact version, commit, source ref and completion timestamp; invalid receipt identity fails closed without replacing the prior receipt.
 - Keep the updater ERR trap active after the route commit point so post-cutover maintenance failures are durably classified instead of silently truncating the maintenance tail.
 - Synchronize an already-installed personal Remote Commander Work/Codex plugin from the exact staged release template during both same-version maintenance recovery and normal post-cutover promotion.
 - Preserve the existing private app binding byte-for-byte, validate its shape without logging it, create a prestate backup, perform an atomic source swap with rollback, and verify portable/native versions and app references before PASS.
