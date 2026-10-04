@@ -1,6 +1,6 @@
 # Project Brain — ChatGPT Remote Commander
 
-Status: CURRENT — v0.10.9 RELEASED / MMZ LINUX LIVE + FRESH QUALIFICATION PASS / PUBLISHER-WINDOWS DUPLICATE-RUN CONTRADICTION OPEN
+Status: CURRENT — v0.10.9 RELEASED / MMZ LINUX LIVE + FRESH QUALIFICATION PASS / WINDOWS HOSTED TEST-HARNESS DETERMINISM GATE OPEN
 Updated: 2026-10-04
 Authority: immutable release/tag -> exact live route records -> exact-SHA CI/canary evidence -> project control/evidence records.
 
@@ -31,12 +31,13 @@ Authority: immutable release/tag -> exact live route records -> exact-SHA CI/can
 
 1. MMZ Linux exact-checkout fresh qualification/audit: **CLOSED / PASS**.
 2. Publisher-branch Windows duplicate-run failure is classified **PROBABLE timing/startup-latency flake; ROOT CAUSE UNVERIFIED**. Preserve as a watch gate; do not patch or rerun solely for this first occurrence. If it recurs meaningfully, perform historical/root-cause audit before changing the test or runtime.
-3. Keep Saeid rollout/connectivity and the separate CEF/Companion qualification outside Commander stable acceptance unless independently evidenced.
-4. Preserve durable delivery/history backlog as project state; no mass delete or blind replay.
+3. PR #120 exposed a separate historical fixture-startup family in `retry-http.test.mjs`: same head push CI PASS on Windows/Ubuntu, while PR-event Windows suite failed only before behavior assertions because the copied server missed its legacy ~10 s health window. Historical project evidence already accepts a 30 s elapsed startup deadline plus early child-exit diagnostics for this fixture family. **CURRENT mutation objective:** align this stale harness with that accepted pattern; runtime/product timeout semantics remain unchanged. Focused 10/10 and full MMZ Linux qualification/audit are now PASS; hosted Windows/Ubuntu on the patched head remains the promotion gate.
+4. Keep Saeid rollout/connectivity and the separate CEF/Companion qualification outside Commander stable acceptance unless independently evidenced.
+5. Preserve durable delivery/history backlog as project state; no mass delete or blind replay.
 
 ## Exact next action — current
 
-Keep the accepted release/runtime unchanged. Observe normal future Windows qualification evidence for recurrence of the interactive-terminal readiness failure; on a meaningful recurrence, stop and perform root-cause audit before any test/runtime change.
+Push the locally qualified `retry-http.test.mjs` harness alignment and require fresh hosted Windows/Ubuntu PR CI on the exact patched head. Do not merge PR #120 until the required hosted head is green. Keep the accepted v0.10.9 runtime unchanged.
 
 ## Previous accepted baseline — v0.10.8
 
