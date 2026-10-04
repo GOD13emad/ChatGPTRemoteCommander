@@ -1,10 +1,45 @@
 # Project Brain — ChatGPT Remote Commander
 
-Status: CURRENT — v0.10.8 RELEASED / THREE REACHABLE HOSTS ACCEPTED / SAEID HOST OFFLINE
-Updated: 2026-10-03
+Status: CURRENT — v0.10.9 RELEASED / MMZ LINUX LIVE + FRESH QUALIFICATION PASS / WINDOWS HOSTED TEST-HARNESS DETERMINISM GATE OPEN
+Updated: 2026-10-04
 Authority: immutable release/tag -> exact live route records -> exact-SHA CI/canary evidence -> project control/evidence records.
 
-## Current accepted baseline
+
+## Current accepted baseline — v0.10.9
+
+**Release authority — CONFIRMED / ACCEPTED**
+
+- Annotated tag object: `ef32598f34df99d9c0390ae04749c02088d42ea0`; tag `v0.10.9` peels exactly to product commit `157d2b18c2c2a2d6a144148230a30b0418eea8c4`.
+- GitHub release id `402919128` is stable, `draft=false`, `prerelease=false`, `immutable=true`, published `2026-10-04T08:21:50Z`, with exactly 19 assets carrying SHA-256 digests.
+- Exact product SHA `157d2b18...` has a successful `main` CI run `37188105744`: Ubuntu full check/test/audit PASS and Windows bounded qualification check/test/audit PASS.
+- Exact product SHA also has successful Release Sync run `37188105716`.
+- Current `main` is `6f192c96d51efb3eebdad4dfd49ff36df1888d4b`, two commits ahead of the product release SHA; comparison shows the only file delta is the one-shot publisher workflow `.github/workflows/release-v0.10.9-publish-once.yml`. Product release bytes remain bound to `157d2b18...`.
+
+**MMZ Linux host — CONFIRMED / FRESH V&V PASS**
+
+- Remote Commander `system_status` reports version `0.10.9` on `mmz-LOQ-15IRX9`.
+- Installed control checkout `/home/mmz/.local/share/ChatGPTRemoteCommander` is detached at exact product commit `157d2b18...`.
+- Two tracked Windows scripts appear modified only because CRLF was normalized to LF; `git diff --ignore-space-at-eol --exit-code` is clean for both, so semantic drift is not evidenced.
+- Fresh Linux `check:qualification && test:qualification && audit` completed against that exact checkout on 2026-10-04 with process exit `0`. Observed test batches had zero failures; the final audit reported `SECURITY_AUDIT_PASS` and no secret-key, tunnel-id, private-key, bearer-token, GitHub-token, tracked-local-config, or developer-path finding.
+
+**Contradictory evidence — OPEN / UNVERIFIED ROOT CAUSE**
+
+- A second CI run on branch `release/v0.10.9-publisher` at the same product SHA, run `37188394413`, failed the Windows `Run qualification check with bounded Windows file concurrency` step while its Ubuntu job passed.
+- Job log isolates the only failure to `test/process-tree-lifecycle.test.mjs`: `start_terminal remains interactive only when explicitly requested with an initial command`, error `interactive terminal did not accept initial command`. The test polls 80 times at 25 ms (~2 s readiness window); the failed instance lasted 2.533 s, while two successful exact-SHA main instances took 0.723 s and 0.698 s. Failure mechanism is therefore **PROBABLE hosted-Windows startup-latency/timing flake**, but root cause remains **UNVERIFIED** because no direct child-start trace proves it. This is one occurrence, so no test relaxation, product patch, or blind rerun is justified.
+
+## Open gates / critical path — current
+
+1. MMZ Linux exact-checkout fresh qualification/audit: **CLOSED / PASS**.
+2. Publisher-branch Windows duplicate-run failure is classified **PROBABLE timing/startup-latency flake; ROOT CAUSE UNVERIFIED**. Preserve as a watch gate; do not patch or rerun solely for this first occurrence. If it recurs meaningfully, perform historical/root-cause audit before changing the test or runtime.
+3. PR #120 exposed a separate historical fixture-startup family in `retry-http.test.mjs`: same head push CI PASS on Windows/Ubuntu, while PR-event Windows suite failed only before behavior assertions because the copied server missed its legacy ~10 s health window. Historical project evidence already accepts a 30 s elapsed startup deadline plus early child-exit diagnostics for this fixture family. **CURRENT mutation objective:** align this stale harness with that accepted pattern; runtime/product timeout semantics remain unchanged. Focused 10/10 and full MMZ Linux qualification/audit are now PASS; hosted Windows/Ubuntu on the patched head remains the promotion gate.
+4. Keep Saeid rollout/connectivity and the separate CEF/Companion qualification outside Commander stable acceptance unless independently evidenced.
+5. Preserve durable delivery/history backlog as project state; no mass delete or blind replay.
+
+## Exact next action — current
+
+Push the locally qualified `retry-http.test.mjs` harness alignment and require fresh hosted Windows/Ubuntu PR CI on the exact patched head. Do not merge PR #120 until the required hosted head is green. Keep the accepted v0.10.9 runtime unchanged.
+
+## Previous accepted baseline — v0.10.8
 
 **v0.10.8 — RELEASE ARTIFACT FINAL / ACCEPTED**
 

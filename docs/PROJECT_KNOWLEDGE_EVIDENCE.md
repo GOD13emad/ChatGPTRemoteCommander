@@ -1733,3 +1733,78 @@ Acceptance boundary: this is local exact-tree qualification only. GitHub hosted 
 **State/backlog boundary:** existing durable workflow/delivery/history records are not release garbage. They remain preserved; no mass cancel, synthetic acknowledgement, or blind replay was used to make rollout numbers look clean.
 
 **Reuse targets:** updater drain policy, release runbook, Windows regression suite, Project Brain/handoff, CEF integration boundary.
+
+
+## 2026-10-04 — v0.10.9 authority recovery and MMZ Linux fresh-audit start
+
+- **Context:** Continued deep audit on Emad laptop only after the prior session interruption. The visible source worktree was stale at v0.8.20, while the installed Commander runtime/control checkout was v0.10.9.
+- **Claim / Decision:** The authoritative stable release is `v0.10.9`, product commit `157d2b18c2c2a2d6a144148230a30b0418eea8c4`. Do not develop from the stale v0.8.20 checkout.
+- **Evidence / Source:** GitHub annotated tag object `ef32598f34df99d9c0390ae04749c02088d42ea0` peels to `157d2b18...`; immutable release id `402919128`, published `2026-10-04T08:21:50Z`, stable and not prerelease/draft, exactly 19 digest-bearing assets. Local installed checkout HEAD is `157d2b1`; Remote Commander system status reports `0.10.9`.
+- **Confidence / Status:** CONFIRMED / ACCEPTED for release identity and publication.
+- **Reuse Targets:** release report, handoff, project Brain, future upgrade baseline.
+- **Provenance:** GitHub repository `GOD13emad/ChatGPTRemoteCommander`; local control checkout `/home/mmz/.local/share/ChatGPTRemoteCommander`.
+
+- **Claim / Decision:** Exact release SHA has accepted hosted CI evidence.
+- **Evidence / Source:** GitHub Actions `CI` run `37188105744` on branch `main`, head `157d2b18...`, completed success. Ubuntu job completed full check, full test and audit successfully. Windows job completed bounded qualification check, bounded qualification suite and audit successfully. Release Sync run `37188105716` also completed success.
+- **Confidence / Status:** CONFIRMED / PASS for those exact hosted runs.
+- **Reuse Targets:** release acceptance, regression baseline, audit report.
+- **Provenance:** GitHub Actions metadata/job records for exact SHA.
+
+- **Claim / Decision:** A same-SHA publisher-branch Windows failure is contradictory evidence and is not to be hidden or blindly rerun.
+- **Evidence / Source:** CI run `37188394413` on `release/v0.10.9-publisher`, same head `157d2b18...`: Ubuntu PASS; Windows failed at `Run qualification check with bounded Windows file concurrency`. Current main comparison against release product SHA changes only `.github/workflows/release-v0.10.9-publish-once.yml`.
+- **Confidence / Status:** CONTRADICTORY / ROOT CAUSE UNVERIFIED. It does not invalidate the separate exact-SHA main PASS by itself, but it is an open reproducibility/root-cause item.
+- **Reuse Targets:** failure-prevention record, release evidence notes, next regression audit.
+- **Provenance:** GitHub Actions run/job metadata; GitHub compare `157d2b18... -> 6f192c96...`.
+
+- **Claim / Decision:** The two apparent local modifications in `enable-autostart.ps1` and `enable-boot-recovery.ps1` are EOL-only, not semantic drift.
+- **Evidence / Source:** `git diff --ignore-space-at-eol --exit-code -- enable-autostart.ps1 enable-boot-recovery.ps1` returned exit 0 and no diff.
+- **Confidence / Status:** CONFIRMED.
+- **Reuse Targets:** host audit, drift triage.
+- **Provenance:** MMZ Linux installed control checkout.
+
+- **Claim / Decision:** Fresh local Linux qualification is being executed against exact installed v0.10.9 checkout before any further product mutation.
+- **Method / Parameters:** `npm run check:qualification && npm run test:qualification && npm run audit` in `/home/mmz/.local/share/ChatGPTRemoteCommander`.
+- **Observed Result So Far:** zero failures in observed check/test batches; one observed major test batch reported `493 pass / 0 fail / 5 skipped`. Windows-only gates are expected platform skips on Linux.
+- **Confidence / Status:** IN PROGRESS / FINAL PASS UNPROVEN until terminal exits 0 and audit completes.
+- **Reuse Targets:** local acceptance, Project Brain promotion, handoff.
+- **Provenance:** Remote Commander persistent terminal `term-64`.
+
+
+### 2026-10-04 — MMZ Linux v0.10.9 fresh qualification closure
+
+- **Claim / Result:** Fresh local Linux qualification of the exact installed v0.10.9 control checkout completed successfully.
+- **Method / Parameters:** `npm run check:qualification && npm run test:qualification && npm run audit` in `/home/mmz/.local/share/ChatGPTRemoteCommander`, persistent terminal `term-64`.
+- **Evidence / Result:** terminal exited `0`; observed check/test batches reported zero failures, including a major `test:qualification` batch of `498 tests / 493 pass / 0 fail / 5 skipped` (platform skips), followed by `SECURITY_AUDIT_PASS`. Audit reported no secret-key, tunnel-id, private-key, bearer-token, GitHub-token, tracked-local-config, or developer-path finding.
+- **Confidence / Status:** CONFIRMED / PASS for MMZ Linux fresh qualification at exact v0.10.9 checkout.
+- **Limitation:** Windows-native Job Object/backup/BootCore gates are platform-specific and skipped on Linux; Windows acceptance remains grounded in the separate exact-SHA hosted Windows PASS. The publisher-branch duplicate Windows failure remains CONTRADICTORY / ROOT CAUSE UNVERIFIED.
+- **Reuse Targets:** Project Brain current baseline, local acceptance, handoff, release audit.
+- **Provenance:** Remote Commander terminal `term-64`; local checkout `/home/mmz/.local/share/ChatGPTRemoteCommander`.
+\n\n### 2026-10-04 — publisher Windows contradiction classified from job log\n\n- **Failure:** GitHub Actions run `37188394413`, Windows job `111395205264`, exact product SHA `157d2b18...`, had exactly one failing qualification test: `start_terminal remains interactive only when explicitly requested with an initial command` at `test/process-tree-lifecycle.test.mjs:178`; assertion message: `interactive terminal did not accept initial command`.\n- **Comparison:** The same exact-SHA main Windows job passed this test twice, with observed durations `723.0367 ms` and `698.4991 ms`. The failed instance lasted `2533.1981 ms`.\n- **Mechanism evidence:** The test checks readiness up to 80 times with 25 ms waits, giving an approximately 2 s polling window before failing. The failed duration exceeded that window; adjacent process-tree tests continued passing.\n- **Classification:** PROBABLE hosted-Windows startup-latency/timing flake; ROOT CAUSE UNVERIFIED because the log does not contain a direct child-start timing trace proving why `INTERACTIVE_READY` was delayed.\n- **Decision / Prevention:** First observed occurrence only. Do not weaken the test, patch runtime, or blind-rerun solely to make evidence green. Preserve the contradiction and watch ordinary future Windows qualification. On meaningful recurrence, perform historical/root-cause audit before mutation.\n- **Confidence / Status:** failure identity CONFIRMED; timing-flake mechanism PROBABLE; product defect UNPROVEN.\n- **Reuse Targets:** failure-prevention record, future CI regression triage, release audit.\n- **Provenance:** `gh run view 37188394413 --job 111395205264 --log`; successful comparator job `111394323916`; source test `test/process-tree-lifecycle.test.mjs`.\n
+
+### 2026-10-04 — PR #120 Windows fixture-startup historical audit and prevention alignment
+
+- **Context:** PR #120 head `5fe111831aae82a6a844f0224bc93dce26187651` produced two naturally triggered CI executions from the same push: push run `37200361661` and pull-request run `37200363394`.
+- **Observed evidence:** push run Windows and Ubuntu both completed PASS. On Windows, `HTTP retry hardening rejects long sync work before effect and bounds oversized responses` passed in both qualification check (`1933.4499 ms`) and qualification suite (`1968.7949 ms`). Pull-request run Ubuntu completed PASS and Windows qualification check completed PASS, but the Windows qualification suite failed exactly one test, the same HTTP retry test, before behavior assertions at `test/retry-http.test.mjs:60`; `healthy` remained false and total test duration was `14667.7206 ms`. Child stderr contained only the Node SQLite experimental warning.
+- **Historical family audit:** `retry-http.test.mjs` was previously widened by commit `7e48fe1` from 100×25 ms (~2.5 s) to 400×25 ms (~10 s) as `make retry HTTP readiness load-tolerant`. Later project evidence `E-CI-20260928-R12` identified fixed short fixture startup budgets as unrelated host-scheduling sensitivity. Subsequent accepted project patterns use a 30 s elapsed startup deadline plus early child-exit diagnostics (`transport-correlation-http.test.mjs`, `profile-instance-http.test.mjs`), with prior Windows stress and hosted-CI evidence. Windows qualification is already serialized to test-file concurrency 1, so further concurrency reduction is not available or justified.
+- **Root Cause -> Prevention -> Guard:** stale ~10 s readiness harness remains sensitive to hosted Windows startup variance -> align this one stale fixture with the already accepted 30 s elapsed readiness deadline and fail early if the child exits -> focused repeated regression, then full applicable regression and fresh hosted Windows/Ubuntu CI before merge.
+- **Scope / Decision:** test infrastructure only. No Commander runtime source, synchronous transport deadline, product timeout, release bytes, routing, authorization, or user-visible behavior is changed. Do not solve this by another blind timeout increase beyond the project’s already accepted 30 s fixture pattern.
+- **Confidence / Status:** failure identity CONFIRMED; hosted scheduling/startup sensitivity HIGHLY PROBABLE; deterministic product defect UNPROVEN. Prevention patch implemented locally but promotion remains OPEN pending regression.
+- **Reuse Targets:** CI determinism, fixture-server test design, release qualification, future failure-prevention audit.
+- **Provenance:** GitHub Actions runs `37200361661` / `37200363394`; jobs `111430614506` / `111430620043`; commits `7e48fe1`, `bb973bb`; current source `test/retry-http.test.mjs`.
+
+
+### 2026-10-04 — retry HTTP readiness prevention focused regression
+
+- **Mutation:** `test/retry-http.test.mjs` only: replaced legacy 400×25 ms readiness polling with the project’s accepted 30 s elapsed deadline, added fail-fast diagnostics when the child exits, and preserved the same 25 ms polling cadence. Runtime and product timeouts are unchanged.
+- **Focused validation:** `node --check test/retry-http.test.mjs` PASS, followed by 10 consecutive `node --test test/retry-http.test.mjs` executions on MMZ Linux. All 10/10 PASS; observed behavior-test durations were approximately 1.44–1.50 s and terminal marker `RETRY_HTTP_STRESS_PASS` completed with exit 0.
+- **Interpretation:** normal-case latency is unchanged in practice; the larger bound is startup headroom only. Linux focused regression supports harness correctness but does not substitute for hosted Windows validation of the original failure family.
+- **Confidence / Status:** focused local prevention PASS; hosted Windows/Ubuntu promotion gate OPEN.
+- **Provenance:** Remote Commander terminal `term-101`; worktree `/home/mmz/source/repos/ChatGPTRemoteCommander-v0109-brain-sync`.
+
+
+### 2026-10-04 — retry HTTP readiness prevention full local qualification
+
+- **Gate:** `npm run check:qualification && npm run test:qualification && npm run audit` executed on the patched PR worktree.
+- **Result:** process exit `0`. Qualification check completed with zero failures; qualification test main batch reported `498 tests / 493 pass / 0 fail / 5 skipped` (platform-specific skips), and the patched HTTP retry test passed in both applicable qualification passes (~1.45–1.49 s observed). Final security audit emitted `SECURITY_AUDIT_PASS` with no secret-key, tunnel-id, private-key, bearer-token, GitHub-token, tracked-local-config, or developer-path finding.
+- **Confidence / Status:** CONFIRMED / LOCAL FULL QUALIFICATION PASS. Original failure family is Windows hosted startup variance, so hosted Windows PR CI remains mandatory before merge.
+- **Provenance:** Remote Commander persistent terminal `term-103`; worktree `/home/mmz/source/repos/ChatGPTRemoteCommander-v0109-brain-sync`.
