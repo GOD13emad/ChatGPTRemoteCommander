@@ -1,10 +1,44 @@
 # Project Brain — ChatGPT Remote Commander
 
-Status: CURRENT — v0.10.8 RELEASED / THREE REACHABLE HOSTS ACCEPTED / SAEID HOST OFFLINE
-Updated: 2026-10-03
+Status: CURRENT — v0.10.9 RELEASED / MMZ LINUX LIVE + FRESH QUALIFICATION PASS / PUBLISHER-WINDOWS DUPLICATE-RUN CONTRADICTION OPEN
+Updated: 2026-10-04
 Authority: immutable release/tag -> exact live route records -> exact-SHA CI/canary evidence -> project control/evidence records.
 
-## Current accepted baseline
+
+## Current accepted baseline — v0.10.9
+
+**Release authority — CONFIRMED / ACCEPTED**
+
+- Annotated tag object: `ef32598f34df99d9c0390ae04749c02088d42ea0`; tag `v0.10.9` peels exactly to product commit `157d2b18c2c2a2d6a144148230a30b0418eea8c4`.
+- GitHub release id `402919128` is stable, `draft=false`, `prerelease=false`, `immutable=true`, published `2026-10-04T08:21:50Z`, with exactly 19 assets carrying SHA-256 digests.
+- Exact product SHA `157d2b18...` has a successful `main` CI run `37188105744`: Ubuntu full check/test/audit PASS and Windows bounded qualification check/test/audit PASS.
+- Exact product SHA also has successful Release Sync run `37188105716`.
+- Current `main` is `6f192c96d51efb3eebdad4dfd49ff36df1888d4b`, two commits ahead of the product release SHA; comparison shows the only file delta is the one-shot publisher workflow `.github/workflows/release-v0.10.9-publish-once.yml`. Product release bytes remain bound to `157d2b18...`.
+
+**MMZ Linux host — CONFIRMED / FRESH V&V PASS**
+
+- Remote Commander `system_status` reports version `0.10.9` on `mmz-LOQ-15IRX9`.
+- Installed control checkout `/home/mmz/.local/share/ChatGPTRemoteCommander` is detached at exact product commit `157d2b18...`.
+- Two tracked Windows scripts appear modified only because CRLF was normalized to LF; `git diff --ignore-space-at-eol --exit-code` is clean for both, so semantic drift is not evidenced.
+- Fresh Linux `check:qualification && test:qualification && audit` completed against that exact checkout on 2026-10-04 with process exit `0`. Observed test batches had zero failures; the final audit reported `SECURITY_AUDIT_PASS` and no secret-key, tunnel-id, private-key, bearer-token, GitHub-token, tracked-local-config, or developer-path finding.
+
+**Contradictory evidence — OPEN / UNVERIFIED ROOT CAUSE**
+
+- A second CI run on branch `release/v0.10.9-publisher` at the same product SHA, run `37188394413`, failed the Windows `Run qualification check with bounded Windows file concurrency` step while its Ubuntu job passed.
+- This does not erase the independent exact-SHA `main` Windows+Ubuntu PASS, and the publisher-only branch does not change product bytes. However the duplicate-run Windows failure is retained as contradictory evidence; root cause is **UNVERIFIED** and must not be rewritten as a product PASS or dismissed without evidence.
+
+## Open gates / critical path — current
+
+1. MMZ Linux exact-checkout fresh qualification/audit: **CLOSED / PASS**.
+2. Classify the publisher-branch Windows duplicate-run failure using job-level evidence. Do not blind-rerun it; if the same failure recurs meaningfully, stop patching and perform historical/root-cause audit.
+3. Keep Saeid rollout/connectivity and the separate CEF/Companion qualification outside Commander stable acceptance unless independently evidenced.
+4. Preserve durable delivery/history backlog as project state; no mass delete or blind replay.
+
+## Exact next action — current
+
+Investigate the publisher-Windows contradictory run from existing evidence before considering any rerun. Keep the accepted release/runtime unchanged unless a reproducible root cause demonstrates a product defect.
+
+## Previous accepted baseline — v0.10.8
 
 **v0.10.8 — RELEASE ARTIFACT FINAL / ACCEPTED**
 

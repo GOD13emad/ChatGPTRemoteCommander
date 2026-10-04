@@ -1733,3 +1733,49 @@ Acceptance boundary: this is local exact-tree qualification only. GitHub hosted 
 **State/backlog boundary:** existing durable workflow/delivery/history records are not release garbage. They remain preserved; no mass cancel, synthetic acknowledgement, or blind replay was used to make rollout numbers look clean.
 
 **Reuse targets:** updater drain policy, release runbook, Windows regression suite, Project Brain/handoff, CEF integration boundary.
+
+
+## 2026-10-04 — v0.10.9 authority recovery and MMZ Linux fresh-audit start
+
+- **Context:** Continued deep audit on Emad laptop only after the prior session interruption. The visible source worktree was stale at v0.8.20, while the installed Commander runtime/control checkout was v0.10.9.
+- **Claim / Decision:** The authoritative stable release is `v0.10.9`, product commit `157d2b18c2c2a2d6a144148230a30b0418eea8c4`. Do not develop from the stale v0.8.20 checkout.
+- **Evidence / Source:** GitHub annotated tag object `ef32598f34df99d9c0390ae04749c02088d42ea0` peels to `157d2b18...`; immutable release id `402919128`, published `2026-10-04T08:21:50Z`, stable and not prerelease/draft, exactly 19 digest-bearing assets. Local installed checkout HEAD is `157d2b1`; Remote Commander system status reports `0.10.9`.
+- **Confidence / Status:** CONFIRMED / ACCEPTED for release identity and publication.
+- **Reuse Targets:** release report, handoff, project Brain, future upgrade baseline.
+- **Provenance:** GitHub repository `GOD13emad/ChatGPTRemoteCommander`; local control checkout `/home/mmz/.local/share/ChatGPTRemoteCommander`.
+
+- **Claim / Decision:** Exact release SHA has accepted hosted CI evidence.
+- **Evidence / Source:** GitHub Actions `CI` run `37188105744` on branch `main`, head `157d2b18...`, completed success. Ubuntu job completed full check, full test and audit successfully. Windows job completed bounded qualification check, bounded qualification suite and audit successfully. Release Sync run `37188105716` also completed success.
+- **Confidence / Status:** CONFIRMED / PASS for those exact hosted runs.
+- **Reuse Targets:** release acceptance, regression baseline, audit report.
+- **Provenance:** GitHub Actions metadata/job records for exact SHA.
+
+- **Claim / Decision:** A same-SHA publisher-branch Windows failure is contradictory evidence and is not to be hidden or blindly rerun.
+- **Evidence / Source:** CI run `37188394413` on `release/v0.10.9-publisher`, same head `157d2b18...`: Ubuntu PASS; Windows failed at `Run qualification check with bounded Windows file concurrency`. Current main comparison against release product SHA changes only `.github/workflows/release-v0.10.9-publish-once.yml`.
+- **Confidence / Status:** CONTRADICTORY / ROOT CAUSE UNVERIFIED. It does not invalidate the separate exact-SHA main PASS by itself, but it is an open reproducibility/root-cause item.
+- **Reuse Targets:** failure-prevention record, release evidence notes, next regression audit.
+- **Provenance:** GitHub Actions run/job metadata; GitHub compare `157d2b18... -> 6f192c96...`.
+
+- **Claim / Decision:** The two apparent local modifications in `enable-autostart.ps1` and `enable-boot-recovery.ps1` are EOL-only, not semantic drift.
+- **Evidence / Source:** `git diff --ignore-space-at-eol --exit-code -- enable-autostart.ps1 enable-boot-recovery.ps1` returned exit 0 and no diff.
+- **Confidence / Status:** CONFIRMED.
+- **Reuse Targets:** host audit, drift triage.
+- **Provenance:** MMZ Linux installed control checkout.
+
+- **Claim / Decision:** Fresh local Linux qualification is being executed against exact installed v0.10.9 checkout before any further product mutation.
+- **Method / Parameters:** `npm run check:qualification && npm run test:qualification && npm run audit` in `/home/mmz/.local/share/ChatGPTRemoteCommander`.
+- **Observed Result So Far:** zero failures in observed check/test batches; one observed major test batch reported `493 pass / 0 fail / 5 skipped`. Windows-only gates are expected platform skips on Linux.
+- **Confidence / Status:** IN PROGRESS / FINAL PASS UNPROVEN until terminal exits 0 and audit completes.
+- **Reuse Targets:** local acceptance, Project Brain promotion, handoff.
+- **Provenance:** Remote Commander persistent terminal `term-64`.
+
+
+### 2026-10-04 — MMZ Linux v0.10.9 fresh qualification closure
+
+- **Claim / Result:** Fresh local Linux qualification of the exact installed v0.10.9 control checkout completed successfully.
+- **Method / Parameters:** `npm run check:qualification && npm run test:qualification && npm run audit` in `/home/mmz/.local/share/ChatGPTRemoteCommander`, persistent terminal `term-64`.
+- **Evidence / Result:** terminal exited `0`; observed check/test batches reported zero failures, including a major `test:qualification` batch of `498 tests / 493 pass / 0 fail / 5 skipped` (platform skips), followed by `SECURITY_AUDIT_PASS`. Audit reported no secret-key, tunnel-id, private-key, bearer-token, GitHub-token, tracked-local-config, or developer-path finding.
+- **Confidence / Status:** CONFIRMED / PASS for MMZ Linux fresh qualification at exact v0.10.9 checkout.
+- **Limitation:** Windows-native Job Object/backup/BootCore gates are platform-specific and skipped on Linux; Windows acceptance remains grounded in the separate exact-SHA hosted Windows PASS. The publisher-branch duplicate Windows failure remains CONTRADICTORY / ROOT CAUSE UNVERIFIED.
+- **Reuse Targets:** Project Brain current baseline, local acceptance, handoff, release audit.
+- **Provenance:** Remote Commander terminal `term-64`; local checkout `/home/mmz/.local/share/ChatGPTRemoteCommander`.
