@@ -188,6 +188,130 @@ test('Windows control promotion classifier distinguishes historical CRLF drift f
   assert.notEqual(git(['diff','--cached','--quiet','--']).status,0,'staged mutation must remain blocked');
 });
 
+test('Linux control promotion accepts CR-at-EOL-only drift but blocks staged or substantive mutation',t=>{
+  const updater=read('auto-update-linux.sh');
+  const promote=updater.slice(updater.indexOf('promote_control(){'),updater.indexOf('install_linux_gui_backend(){'));
+  assert.ok(promote.includes("git -C \"$INSTALL_DIR\" diff --cached --quiet --"),'Linux promotion must fail closed on staged mutation');
+  assert.ok(promote.includes("git -C \"$INSTALL_DIR\" diff --ignore-cr-at-eol --quiet --"),'Linux promotion may tolerate only CR-at-EOL working-tree drift');
+  assert.ok(promote.includes("CONTROL_EOL_DRIFT_TOLERATED"),'accepted historical EOL drift must be auditable');
+  assert.ok(promote.includes("CONTROL_TRACKED_DIRTY_BLOCK reason=staged"),'staged dirtiness must be auditable');
+  assert.ok(promote.includes("CONTROL_TRACKED_DIRTY_BLOCK reason=substantive"),'substantive dirtiness must be auditable');
+  assert.ok(promote.includes("CONTROL_PROMOTION_PASS commit=$commit"),'promotion must verify and record the exact commit');
+
+  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'rc-linux-control-eol-'));
+  t.after(()=>fs.rmSync(dir,{recursive:true,force:true}));
+  const git=args=>spawnSync('git',args,{cwd:dir,encoding:'utf8'});
+  assert.equal(git(['init','-q']).status,0);
+  assert.equal(git(['config','user.name','RC Test']).status,0);
+  assert.equal(git(['config','user.email','rc-test@example.invalid']).status,0);
+  const script=path.join(dir,'legacy.ps1');
+  fs.writeFileSync(path.join(dir,'.gitattributes'),'*.ps1 text eol=crlf\n','utf8');
+  assert.equal(git(['add','.gitattributes']).status,0);
+  assert.equal(git(['commit','-qm','attributes']).status,0);
+  fs.writeFileSync(script,'one\r\ntwo\r\n','utf8');
+  const blob=git(['hash-object','-w','--no-filters','legacy.ps1']);
+  assert.equal(blob.status,0);
+  assert.equal(git(['update-index','--add','--cacheinfo',`100644,${blob.stdout.trim()},legacy.ps1`]).status,0);
+  assert.equal(git(['commit','-qm','historical-crlf-blob']).status,0);
+  assert.match(git(['status','--porcelain','--untracked-files=no']).stdout,/legacy\.ps1/);
+  assert.equal(git(['diff','--cached','--quiet','--']).status,0);
+  assert.equal(git(['diff','--ignore-cr-at-eol','--quiet','--']).status,0,'CRLF-only drift must be tolerated');
+
+  fs.appendFileSync(script,'three\r\n','utf8');
+  assert.notEqual(git(['diff','--ignore-cr-at-eol','--quiet','--']).status,0,'substantive unstaged mutation must be blocked');
+  assert.equal(git(['restore','--worktree','--','legacy.ps1']).status,0);
+  fs.appendFileSync(path.join(dir,'.gitattributes'),'# staged\n','utf8');
+  assert.equal(git(['add','.gitattributes']).status,0);
+  assert.notEqual(git(['diff','--cached','--quiet','--']).status,0,'staged mutation must be blocked');
+});
+
+
+test('Linux updater atomically syncs an installed Work plugin while preserving its app binding',t=>{
+  const updater=read('auto-update-linux.sh');
+  const start=updater.indexOf('sync_work_plugin_projection(){');
+  const end=updater.indexOf('cleanup_releases(){',start);
+  assert.ok(start>0 && end>start,'sync_work_plugin_projection must be a standalone updater function');
+  const fn=updater.slice(start,end);
+
+  const fixture=fs.mkdtempSync(path.join(os.tmpdir(),'rc-work-plugin-sync-'));
+  t.after(()=>fs.rmSync(fixture,{recursive:true,force:true}));
+  const project=path.join(fixture,'candidate');
+  const template=path.join(project,'plugin-template');
+  const data=path.join(fixture,'data');
+  const backup=path.join(fixture,'backups');
+  const pluginRoot=path.join(data,'ChatGPTRemoteCommander','work-plugin','marketplace','plugins','chatgpt-remote-commander');
+  fs.mkdirSync(path.join(template,'.codex-plugin'),{recursive:true});
+  fs.mkdirSync(pluginRoot,{recursive:true});
+  fs.writeFileSync(path.join(template,'plugin.json'),JSON.stringify({
+    $schema:'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json',
+    name:'chatgpt-remote-commander',
+    version:'0.10.14',
+    extensions:{'com.openai':{interface:{displayName:'Remote Commander',shortDescription:'old'}}}
+  },null,2)+'\n');
+  fs.writeFileSync(path.join(template,'.codex-plugin','plugin.json'),JSON.stringify({
+    name:'chatgpt-remote-commander',
+    version:'0.10.14'
+  },null,2)+'\n');
+  fs.writeFileSync(path.join(template,'payload.txt'),'candidate\n');
+  fs.writeFileSync(path.join(pluginRoot,'plugin.json'),JSON.stringify({name:'chatgpt-remote-commander',version:'0.10.4'})+'\n');
+  fs.writeFileSync(path.join(pluginRoot,'.app.json'),JSON.stringify({
+    apps:{'remote-commander':{id:'asdk_app_TEST_BINDING_123',required:true}}
+  },null,2)+'\n');
+  const originalApp=fs.readFileSync(path.join(pluginRoot,'.app.json'));
+
+  const harness=path.join(fixture,'sync.sh');
+  fs.writeFileSync(harness,[
+    '#!/usr/bin/env bash',
+    'set -euo pipefail',
+    'log(){ printf "%s\\n" "$*"; }',
+    'BACKUP_ROOT="$1"; shift',
+    fn,
+    'sync_work_plugin_projection "$1" "$2" "$3"'
+  ].join('\n'));
+  fs.chmodSync(harness,0o755);
+
+  const commit='a'.repeat(40);
+  const result=spawnSync('bash',[harness,backup,project,'0.10.14',commit],{
+    encoding:'utf8',
+    env:{...process.env,XDG_DATA_HOME:data}
+  });
+  assert.equal(result.status,0,result.stderr||result.stdout);
+  assert.match(result.stdout,/WORK_PLUGIN_SOURCE_BACKUP_PASS/);
+  assert.match(result.stdout,/WORK_PLUGIN_SOURCE_SYNC_PASS version=0\.10\.14/);
+  assert.deepEqual(fs.readFileSync(path.join(pluginRoot,'.app.json')),originalApp,'app binding bytes must be preserved exactly');
+  const portable=JSON.parse(fs.readFileSync(path.join(pluginRoot,'plugin.json'),'utf8'));
+  const native=JSON.parse(fs.readFileSync(path.join(pluginRoot,'.codex-plugin','plugin.json'),'utf8'));
+  assert.equal(portable.version,'0.10.14');
+  assert.equal(native.version,'0.10.14');
+  assert.equal(portable.extensions['com.openai'].apps,'./.app.json');
+  assert.equal(portable.extensions['com.openai'].interface.displayName,'ChatGPT Remote Commander (Personal)');
+  assert.equal(portable.extensions['com.openai'].interface.shortDescription,'Use your registered Remote Commander app');
+  assert.equal(native.apps,'./.app.json');
+  assert.equal(fs.readFileSync(path.join(pluginRoot,'payload.txt'),'utf8'),'candidate\n');
+  assert.ok(fs.existsSync(path.join(backup,commit,'work-plugin','chatgpt-remote-commander','plugin.json')),'prestate backup must exist');
+
+  const absentData=path.join(fixture,'absent-data');
+  const absent=spawnSync('bash',[harness,backup,project,'0.10.14',commit],{
+    encoding:'utf8',
+    env:{...process.env,XDG_DATA_HOME:absentData}
+  });
+  assert.equal(absent.status,0,absent.stderr||absent.stdout);
+  assert.match(absent.stdout,/WORK_PLUGIN_SOURCE_SYNC_SKIP reason=not-installed/);
+
+  const badData=path.join(fixture,'bad-data');
+  const badRoot=path.join(badData,'ChatGPTRemoteCommander','work-plugin','marketplace','plugins','chatgpt-remote-commander');
+  fs.mkdirSync(badRoot,{recursive:true});
+  fs.writeFileSync(path.join(badRoot,'plugin.json'),'{"version":"0.10.4"}\n');
+  fs.writeFileSync(path.join(badRoot,'.app.json'),'{"apps":{"remote-commander":{"id":"not-a-valid-app-id"}}}\n');
+  const beforeBad=fs.readFileSync(path.join(badRoot,'plugin.json'),'utf8');
+  const bad=spawnSync('bash',[harness,backup,project,'0.10.14','b'.repeat(40)],{
+    encoding:'utf8',
+    env:{...process.env,XDG_DATA_HOME:badData}
+  });
+  assert.notEqual(bad.status,0,'malformed binding must fail closed');
+  assert.equal(fs.readFileSync(path.join(badRoot,'plugin.json'),'utf8'),beforeBad,'failed validation must not mutate installed plugin');
+});
+
 test('stable router and supervisor preserve canonical ports while backends are versioned',()=>{
   const router=read('src/stable-router.mjs'),switcher=read('tools/router-switch.mjs'),sup=read('supervisor-routing.ps1'),main=read('autostart-windows.ps1');
   for(const marker of ['ROUTER_GENERATION_CONFLICT','inflightByPort','inflightDetailsByPort','cancellable','subscriptions/listen','127.0.0.1','active.port'])assert.ok(router.includes(marker),marker);
@@ -306,6 +430,9 @@ test('Linux updater is candidate-first, hardware-gated, routed and rollback-awar
     '%{url_effective}',
     'install_linux_gui_backend',
     'LINUX_GUI_BACKEND_SYNCED',
+    'sync_work_plugin_projection',
+    'WORK_PLUGIN_SOURCE_SYNC_PASS',
+    'WORK_PLUGIN_SOURCE_SYNC_SKIP',
     '/snap/bin/geckodriver',
     '/usr/bin/geckodriver',
     '/usr/local/bin/geckodriver',
@@ -323,6 +450,7 @@ test('Linux updater is candidate-first, hardware-gated, routed and rollback-awar
   const cleanupOnlyLinux=currentMaintenance.slice(currentMaintenance.indexOf('if has_superseded_release; then'));
   assert.ok(currentMaintenance.includes('recycle_supervisor'),'Linux control-code promotion may recycle the supervisor');
   assert.ok(currentMaintenance.includes('install_linux_gui_backend "$STAGE_DIR" "$ACTIVE_CFG"'),'Linux control-code maintenance must synchronize the GUI backend before recycle');
+  assert.ok(currentMaintenance.includes('sync_work_plugin_projection "$STAGE_DIR" "$VERSION" "$COMMIT"'),'Linux control-code maintenance must synchronize the Work plugin projection before recycle');
   assert.ok(cleanupOnlyLinux.includes("AUTO_UPDATE_CLEANUP_PENDING") && !cleanupOnlyLinux.includes('recycle_supervisor'),'Linux release cleanup alone must never recycle a healthy supervisor');
   assert.ok(s.includes('stop_owned_candidate "$CANDIDATE_PID" "$STAGE_DIR"'), 'Linux validation failures must clean the exact spawned candidate');
   assert.ok(s.indexOf('trap validation_cleanup ERR') < s.indexOf('CANDIDATE_PID="$(start_backend'), 'Linux validation cleanup trap must be installed before candidate spawn');
@@ -340,10 +468,14 @@ test('Linux updater is candidate-first, hardware-gated, routed and rollback-awar
   assert.ok(gates>0 && cutover>gates,'Linux gates precede cutover');
   assert.ok(s.indexOf('tunnels_ready',cutover)<commit,'Linux tunnel verification precedes commit point');
   assert.ok(s.indexOf('finalize-workflow-schema.mjs',commit)>commit,'Linux schema finalization follows commit point');
+  const postCommit=s.slice(commit,s.indexOf('log "AUTO_UPDATE_PASS version=',commit));
+  assert.ok(!postCommit.includes('trap - ERR'),'Linux post-commit maintenance must retain the ERR trap so failures are durably classified');
+  assert.ok(s.includes("AUTO_UPDATE_POST_COMMIT_MAINTENANCE_REQUIRED"),'Linux post-commit maintenance failure must be explicitly logged');
   assert.ok(s.includes("systemctl --user restart --no-block chatgpt-remote-commander.service"), 'Linux systemd recycle must be asynchronous so the updater can finish its own cgroup work');
   assert.ok(s.includes('src/server-v0.3.mjs 9>&-'), 'Linux promoted backend must close inherited updater lock descriptor');
   assert.ok(s.includes('src/stable-router.mjs --listen-port 47831') && s.includes('9>&- >>"$log_file"'), 'Linux stable router must close inherited updater lock descriptor');
   assert.ok(s.includes('install_linux_gui_backend "$STAGE_DIR" "$FINAL_CFG"'),'Linux promotion must synchronize the GUI backend before control promotion');
+  assert.ok(s.includes('sync_work_plugin_projection "$STAGE_DIR" "$VERSION" "$COMMIT"'),'Linux promotion must synchronize the Work plugin projection before durable PASS');
   const finalPromote=s.lastIndexOf('promote_control "$COMMIT" "$REF"');
   const finalCleanup=s.indexOf('cleanup_releases',finalPromote);
   const finalPass=s.indexOf('AUTO_UPDATE_PASS version=',finalCleanup);

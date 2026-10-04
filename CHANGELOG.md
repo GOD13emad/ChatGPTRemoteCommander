@@ -1,3 +1,12 @@
+## 0.10.14 - 2026-10-04
+
+- Fix Linux post-cutover control promotion when historical PowerShell files are dirty only because of CR-at-EOL normalization: staged or substantive mutations still fail closed, while proven EOL-only drift is auditable and tolerated.
+- Keep the updater ERR trap active after the route commit point so post-cutover maintenance failures are durably classified instead of silently truncating the maintenance tail.
+- Synchronize an already-installed personal Remote Commander Work/Codex plugin from the exact staged release template during both same-version maintenance recovery and normal post-cutover promotion.
+- Preserve the existing private app binding byte-for-byte, validate its shape without logging it, create a prestate backup, perform an atomic source swap with rollback, and verify portable/native versions and app references before PASS.
+- Add executable Linux regressions for EOL-only control promotion plus Work plugin sync success, absent-plugin no-op, and malformed-binding fail-closed behavior.
+- Advance runtime, installer, server-installer, plugin-template, release-contract and final-gate identity to v0.10.14; v0.10.13 remains accepted stable until hosted and rollout gates pass.
+
 ## 0.10.13 - 2026-10-04
 
 - Extend the scoped `codex_plugin_refresh` result with a bounded summary of each Codex `PluginSummary.source` so local marketplace/cache mismatches can be diagnosed without exposing raw app-server output or enabling general Codex delegation.

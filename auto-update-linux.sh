@@ -369,13 +369,28 @@ recycle_supervisor(){
 }
 
 promote_control(){
-  local commit="$1" ref="$2" dirty resolved
+  local commit="$1" ref="$2" dirty resolved promoted
   dirty="$(git -C "$INSTALL_DIR" status --porcelain --untracked-files=no)"
-  [[ -z "$dirty" ]] || { echo 'control tracked dirty' >&2; return 1; }
+  if [[ -n "$dirty" ]]; then
+    if ! git -C "$INSTALL_DIR" diff --cached --quiet --; then
+      log 'CONTROL_TRACKED_DIRTY_BLOCK reason=staged'
+      echo 'control tracked dirty (staged)' >&2
+      return 1
+    fi
+    if ! git -C "$INSTALL_DIR" diff --ignore-cr-at-eol --quiet --; then
+      log 'CONTROL_TRACKED_DIRTY_BLOCK reason=substantive'
+      echo 'control tracked dirty (substantive)' >&2
+      return 1
+    fi
+    log 'CONTROL_EOL_DRIFT_TOLERATED'
+  fi
   git -C "$INSTALL_DIR" fetch --no-tags origin "$ref"
   resolved="$(git -C "$INSTALL_DIR" rev-parse 'FETCH_HEAD^{commit}')"
   [[ "$resolved" == "$commit" ]] || { echo 'control commit mismatch' >&2; return 1; }
   git -C "$INSTALL_DIR" checkout --detach --force "$commit" >/dev/null
+  promoted="$(git -C "$INSTALL_DIR" rev-parse HEAD 2>/dev/null || true)"
+  [[ "$promoted" == "$commit" ]] || { echo 'control promotion verification failed' >&2; return 1; }
+  log "CONTROL_PROMOTION_PASS commit=$commit"
 }
 
 install_linux_gui_backend(){
@@ -385,6 +400,119 @@ install_linux_gui_backend(){
   chmod +x "$project/tools/gui-control-linux.py" "$project/tools/install-gnome-gui-extension.sh"
   "$project/tools/install-gnome-gui-extension.sh"
   log "LINUX_GUI_BACKEND_SYNCED project=$project"
+}
+
+sync_work_plugin_projection(){
+  local project="$1" version="$2" commit="$3"
+  local template="$project/plugin-template"
+  local data_root="${XDG_DATA_HOME:-$HOME/.local/share}"
+  local plugin_root="$data_root/ChatGPTRemoteCommander/work-plugin/marketplace/plugins/chatgpt-remote-commander"
+  local parent stage retired backup app_sha
+
+  if [[ ! -d "$plugin_root" ]]; then
+    log 'WORK_PLUGIN_SOURCE_SYNC_SKIP reason=not-installed'
+    return 0
+  fi
+  [[ -f "$plugin_root/.app.json" && ! -L "$plugin_root/.app.json" ]] || {
+    log 'WORK_PLUGIN_SOURCE_SYNC_BLOCK reason=invalid-app-binding-file'
+    echo 'work plugin app binding is missing or unsafe' >&2
+    return 1
+  }
+  [[ -f "$template/plugin.json" && -f "$template/.codex-plugin/plugin.json" ]] || {
+    log 'WORK_PLUGIN_SOURCE_SYNC_BLOCK reason=missing-template'
+    echo 'work plugin template is incomplete' >&2
+    return 1
+  }
+
+  app_sha="$(sha256sum "$plugin_root/.app.json" | awk '{print $1}')"
+  node --input-type=module - "$template" "$version" "$plugin_root/.app.json" <<'NODE'
+import fs from 'node:fs';
+const [, , template, expectedVersion, appPath] = process.argv;
+const portable = JSON.parse(fs.readFileSync(template + '/plugin.json', 'utf8'));
+const native = JSON.parse(fs.readFileSync(template + '/.codex-plugin/plugin.json', 'utf8'));
+const app = JSON.parse(fs.readFileSync(appPath, 'utf8'));
+const id = app?.apps?.['remote-commander']?.id ?? '';
+if (portable.version !== expectedVersion || native.version !== expectedVersion) process.exit(2);
+if (!/^(?:asdk_app_|connector_|templated_apps_)[A-Za-z0-9_-]+$/.test(id)) process.exit(3);
+NODE
+
+  parent="$(dirname "$plugin_root")"
+  stage="$parent/.chatgpt-remote-commander.next-$$"
+  retired="$parent/.chatgpt-remote-commander.prev-$$"
+  backup="$BACKUP_ROOT/$commit/work-plugin/chatgpt-remote-commander"
+  [[ ! -e "$stage" && ! -e "$retired" ]] || {
+    log 'WORK_PLUGIN_SOURCE_SYNC_BLOCK reason=staging-collision'
+    echo 'work plugin staging path collision' >&2
+    return 1
+  }
+
+  mkdir -p "$stage"
+  cp -a "$template/." "$stage/"
+  cp -p "$plugin_root/.app.json" "$stage/.app.json"
+
+  node --input-type=module - "$stage" "$version" <<'NODE'
+import fs from 'node:fs';
+const [, , root, expectedVersion] = process.argv;
+const appPath = root + '/.app.json';
+const portablePath = root + '/plugin.json';
+const nativePath = root + '/.codex-plugin/plugin.json';
+const app = JSON.parse(fs.readFileSync(appPath, 'utf8'));
+const id = app?.apps?.['remote-commander']?.id ?? '';
+if (!/^(?:asdk_app_|connector_|templated_apps_)[A-Za-z0-9_-]+$/.test(id)) process.exit(2);
+const portable = JSON.parse(fs.readFileSync(portablePath, 'utf8'));
+const native = JSON.parse(fs.readFileSync(nativePath, 'utf8'));
+if (portable.version !== expectedVersion || native.version !== expectedVersion) process.exit(3);
+portable.extensions ??= {};
+portable.extensions['com.openai'] ??= {};
+portable.extensions['com.openai'].apps = './.app.json';
+portable.extensions['com.openai'].interface ??= {};
+portable.extensions['com.openai'].interface.displayName = 'ChatGPT Remote Commander (Personal)';
+portable.extensions['com.openai'].interface.shortDescription = 'Use your registered Remote Commander app';
+native.apps = './.app.json';
+fs.writeFileSync(portablePath, JSON.stringify(portable, null, 2) + '\n');
+fs.writeFileSync(nativePath, JSON.stringify(native, null, 2) + '\n');
+NODE
+
+  if [[ ! -d "$backup" ]]; then
+    mkdir -p "$(dirname "$backup")"
+    cp -a "$plugin_root" "$backup"
+    log "WORK_PLUGIN_SOURCE_BACKUP_PASS commit=$commit"
+  fi
+
+  mv "$plugin_root" "$retired"
+  if ! mv "$stage" "$plugin_root"; then
+    mv "$retired" "$plugin_root" || true
+    log 'WORK_PLUGIN_SOURCE_SYNC_BLOCK reason=swap-failed'
+    return 1
+  fi
+
+  if ! node --input-type=module - "$plugin_root" "$version" "$app_sha" <<'NODE'
+import crypto from 'node:crypto';
+import fs from 'node:fs';
+const [, , root, expectedVersion, expectedAppSha] = process.argv;
+const portable = JSON.parse(fs.readFileSync(root + '/plugin.json', 'utf8'));
+const native = JSON.parse(fs.readFileSync(root + '/.codex-plugin/plugin.json', 'utf8'));
+const appBytes = fs.readFileSync(root + '/.app.json');
+const app = JSON.parse(appBytes.toString('utf8'));
+const id = app?.apps?.['remote-commander']?.id ?? '';
+const appSha = crypto.createHash('sha256').update(appBytes).digest('hex');
+if (portable.version !== expectedVersion || native.version !== expectedVersion) process.exit(2);
+if (portable.extensions?.['com.openai']?.apps !== './.app.json') process.exit(3);
+if (portable.extensions?.['com.openai']?.interface?.displayName !== 'ChatGPT Remote Commander (Personal)') process.exit(4);
+if (portable.extensions?.['com.openai']?.interface?.shortDescription !== 'Use your registered Remote Commander app') process.exit(5);
+if (native.apps !== './.app.json') process.exit(6);
+if (!/^(?:asdk_app_|connector_|templated_apps_)[A-Za-z0-9_-]+$/.test(id)) process.exit(7);
+if (appSha !== expectedAppSha) process.exit(8);
+NODE
+  then
+    rm -rf "$plugin_root"
+    mv "$retired" "$plugin_root" || true
+    log 'WORK_PLUGIN_SOURCE_SYNC_BLOCK reason=post-verify-failed'
+    return 1
+  fi
+
+  rm -rf "$retired"
+  log "WORK_PLUGIN_SOURCE_SYNC_PASS version=$version"
 }
 
 cleanup_releases(){
@@ -446,6 +574,7 @@ if [[ "$FORCE" != 1 && -f "$ROUTE" ]]; then
       [[ -z "$LIVE_WF" ]] || node "$STAGE_DIR/tools/finalize-workflow-schema.mjs" --directory "$LIVE_WF"
       promote_control "$COMMIT" "$REF"
       install_linux_gui_backend "$STAGE_DIR" "$ACTIVE_CFG"
+      sync_work_plugin_projection "$STAGE_DIR" "$VERSION" "$COMMIT"
       cleanup_releases || log 'AUTO_UPDATE_CLEANUP_PENDING_AFTER_MAINTENANCE'
       log "AUTO_UPDATE_MAINTENANCE_PASS version=$VERSION"
       recycle_supervisor
@@ -615,7 +744,6 @@ node "$STAGE_DIR/tools/doctor.mjs" --url http://127.0.0.1:47831/mcp --expected-v
 node "$STAGE_DIR/tools/hardware-selftest.mjs" --url http://127.0.0.1:47831/mcp --config "$FINAL_CFG" --expected-version "$VERSION"
 tunnels_ready || { echo 'tunnel readiness failed' >&2; false; }
 CUTOVER_COMMITTED=1
-trap - ERR
 log "CUTOVER_COMMIT version=$VERSION commit=$COMMIT"
 
 if [[ -n "$OLD_PORT" ]]; then
@@ -635,6 +763,7 @@ fi
 node "$STAGE_DIR/tools/finalize-workflow-schema.mjs" --directory "$LIVE_WF"
 install_linux_gui_backend "$STAGE_DIR" "$FINAL_CFG"
 promote_control "$COMMIT" "$REF"
+sync_work_plugin_projection "$STAGE_DIR" "$VERSION" "$COMMIT"
 cleanup_releases || log 'AUTO_UPDATE_CLEANUP_PENDING_AFTER_PROMOTION'
 log "AUTO_UPDATE_PASS version=$VERSION commit=$COMMIT"
 recycle_supervisor

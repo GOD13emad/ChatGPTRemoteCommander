@@ -760,3 +760,20 @@ Because this changed executable code after the earlier qualification, the comple
 **Status:** ACCEPTED FOR PR / NOT RELEASED. v0.10.12 remains production authority until hosted exact-head gates, immutable release, exact-ref rollout, and live source-path diagnosis pass.
 
 **Open gate after rollout:** run `codex_plugin_refresh` against `linux-project-skills`, record the returned concrete source path/type, and reconcile why Codex lists/materializes 1.4.12 while the canonical source tree is 1.4.13. Do not hand-edit the managed Codex cache.
+
+
+### 2026-10-04 — CURRENT: v0.10.14 Linux post-cutover maintenance recovery candidate
+
+**Previous accepted state:** Remote Commander v0.10.13 is released and live on the Linux laptop at merge commit `6bdc26f172155cd833c0569083ea34a3d8d64392`. The scoped Codex maintenance E2E now confirms `linux-project-skills@personal` at **1.4.13** from the canonical local path, with source/cache manifest hashes equal. The personal Remote Commander Work/Codex projection was manually reconciled from 0.10.4 to **0.10.13**, preserving its private app binding, and Codex materialized the 0.10.13 cache successfully.
+
+**Finding:** routed runtime cutovers for v0.10.11, v0.10.12 and v0.10.13 succeeded, but the Linux control checkout remained at v0.10.9 and `last-update.json` was not durably completed. Live control status contains only `enable-autostart.ps1` and `enable-boot-recovery.ps1`; the index is clean and `git diff --ignore-space-at-eol --exit-code --` returns zero. Updater logs stop after post-cutover GUI synchronization, proving the maintenance tail was blocked by historical EOL-only dirtiness. This also allowed the personal Work plugin projection to remain stale until manual repair.
+
+**Decision / minimum sufficient control:** v0.10.14 makes Linux control promotion tolerate only proven CR-at-EOL drift while continuing to reject staged and substantive tracked mutation; verifies the promoted exact commit; retains the ERR trap after route commit; and adds an atomic `sync_work_plugin_projection` maintenance step. That step is no-op when the personal plugin is absent, validates the existing app binding without logging it, backs up prestate, stages from the exact immutable candidate template, preserves `.app.json` bytes, applies the same personal interface/app references as the Work installer, atomically swaps with rollback, and post-verifies versions plus binding hash.
+
+**Local qualification:** focused updater contract **17 pass / 0 fail / 1 Windows-only skip**; `check:qualification` **269 total / 263 pass / 0 fail / 6 platform skips**; `test:qualification` **515 total / 509 pass / 0 fail / 6 platform skips**; GUI **77/77**; schema continuity **9/9**; Linux GUI, FS safety, headless launch policy, Windows runtime, source integrity and `SECURITY_AUDIT_PASS` all PASS.
+
+**Status:** ACCEPTED FOR PR / NOT RELEASED. v0.10.13 remains production authority until exact-head hosted gates, merge-tree identity, immutable release and Linux rollout prove the post-cutover maintenance tail end-to-end.
+
+**Open gates:** Windows CI; Ubuntu CI; Linux Server Install Canary; Windows Server Install Canary; immutable v0.10.14 release; exact-ref Linux rollout; control HEAD == release merge commit; durable updater completion state; `WORK_PLUGIN_SOURCE_SYNC_PASS version=0.10.14`; personal Work plugin source/cache == 0.10.14 with binding preserved.
+
+**Exact next action:** stage only the intended v0.10.14 files, exclude the two historical EOL-only PowerShell worktree artifacts, push the branch and require all hosted exact-head gates before merge.
