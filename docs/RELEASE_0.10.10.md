@@ -11,6 +11,10 @@ Safety invariants
 -----------------
 Compaction remains storage-only. It does not synthesize acknowledgement, mark completed-undelivered history as delivered, mutate logical delivery rows, compact active leases, or include unresolved/dead-letter records. Archived reads remain transparent and content-hash verified.
 
+Server installer version coherence
+----------------------------------
+Windows and Linux server installers now default to the same v0.10.10 release identity as the main installers. The Windows bootstrap User-Agent is also version-aligned. Installer contract tests fail if these defaults drift again.
+
 Regression
 ----------
 A new regression creates multiple completed deliveries and runs compaction repeatedly with a limit of one. Every pass must archive the next eligible artifact, all logical states remain completed-undelivered, and no plain artifact remains after the final pass.

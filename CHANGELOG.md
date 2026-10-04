@@ -3,6 +3,7 @@
 - Fix durable delivery compaction so repeated bounded passes advance beyond artifacts that were already archived instead of repeatedly consuming the limit on the first page.
 - Preserve completed-undelivered state, exact correlation/acknowledgement semantics, transparent verified archived reads, and exclusion of active/unresolved/dead-letter deliveries.
 - Add a bounded multi-pass regression proving three successive limit=1 compactions archive three distinct artifacts without synthesizing acknowledgement.
+- Align Windows/Linux server-installer default refs and Windows bootstrap User-Agent with v0.10.10, with a regression preventing release/default drift.
 - Advance runtime, installer, plugin-template and release-contract identity to v0.10.10; publication remains gated by full cross-platform qualification.
 
 ## 0.10.9 - 2026-10-03

@@ -70,6 +70,10 @@ for (const required of [
 for (const forbidden of ['Add-MpPreference','Set-MpPreference','Remove-MpPreference']) {
   if (windowsServerInstaller.includes(forbidden)) throw new Error(`server installer must not mutate Defender exclusions/settings: ${forbidden}`);
 }
+if (!windowsServerInstaller.includes("[string]$SourceRef = 'v0.10.10'")) throw new Error('server-install-windows.ps1 default SourceRef must match current release');
+if (!windowsServerInstaller.includes('ChatGPTRemoteCommander-ServerInstaller/0.10.10')) throw new Error('server-install-windows.ps1 User-Agent must match current release');
+if (!linuxServerInstaller.includes('SOURCE_REF="${REMOTE_COMMANDER_SOURCE_REF:-v0.10.10}"')) throw new Error('server-install-linux.sh default SourceRef must match current release');
+if (!linuxServerInstaller.includes('default: v0.10.10')) throw new Error('server-install-linux.sh usage default must match current release');
 const publicConfig = JSON.parse(readFileSync('config.json','utf8'));
 if (publicConfig.auditMaxBytes !== 8388608 || publicConfig.auditKeepFiles !== 3) {
   throw new Error('config.json missing bounded audit defaults');
