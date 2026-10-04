@@ -13,6 +13,7 @@ import { withPathLocks } from './locks.mjs';
 import { guardFileWrite } from './file-write-guard.mjs';
 import { IS_WINDOWS, defaultBackupRoot, expandPathValue, shellName, shellSpec, spawnShell, terminateProcessTree } from './platform.mjs';
 import { assertEnumerationScope, boundedSearchVisitLimit } from './filesystem-enumeration-guard.mjs';
+import { refreshCodexPluginCache } from './codex-maintenance.mjs';
 
 const terminals = new Map();
 let terminalCounter = 1;
@@ -683,6 +684,18 @@ function terminalSnapshot(session, input = {}) {
   };
 }
 
+export async function codexPluginRefresh(ctx, input) {
+  power(ctx);
+  const next = { ...input };
+  if (input.cwd !== undefined) {
+    const cwd = await resolveExistingTarget(ctx, input.cwd);
+    const info = await stat(cwd);
+    if (!info.isDirectory()) throw new Error('cwd is not a directory');
+    next.cwd = cwd;
+  }
+  return refreshCodexPluginCache(ctx, next);
+}
+
 export async function startTerminal(ctx, input) {
   const cfg = power(ctx);
   if (cfg.allowProcessControl !== true || cfg.allowShell !== true) throw new Error('terminal control is disabled');
@@ -803,6 +816,7 @@ export const powerToolDefinitions = [
   { name: 'move_path', description: 'Move or rename a file/directory in a durable detached operation; optionally replace destination after backup. When this exact chat is already conversation-bound, include continuation for terminal handoff.', inputSchema: { type: 'object', properties: { source: { type: 'string' }, destination: { type: 'string' }, overwrite: { type: 'boolean' }, continuation: continuationInputSchema }, required: ['source', 'destination'], additionalProperties: false }, annotations: localDestructive },
   { name: 'delete_path', description: 'Delete in a durable detached operation with recoverable backup by default. Permanent deletion is separately policy-gated. When this exact chat is already conversation-bound, include continuation for terminal handoff.', inputSchema: { type: 'object', properties: { path: { type: 'string' }, permanent: { type: 'boolean' }, continuation: continuationInputSchema }, required: ['path'], additionalProperties: false }, annotations: localDestructive },
   { name: 'search_files', description: 'Search names and optionally bounded UTF-8 file content across Power Mode filesystem scope. The synchronous search is time-, result-, and entry-visit-bounded; recursive scans of a bare Windows volume root are refused.', inputSchema: { type: 'object', properties: { path: { type: 'string' }, pattern: { type: 'string' }, regex: { type: 'boolean' }, ignoreCase: { type: 'boolean' }, searchContent: { type: 'boolean' }, depth: { type: 'integer', minimum: 0, maximum: 32 }, maxResults: { type: 'integer', minimum: 1, maximum: 1000 }, maxContentBytes: { type: 'integer', minimum: 1024 }, maxDurationMs: { type: 'integer', minimum: 100, maximum: 10000 }, maxVisitedEntries: { type: 'integer', minimum: 1, maximum: 5000 } }, required: ['pattern'], additionalProperties: false }, annotations: ro },
+  { name: 'codex_plugin_refresh', description: 'Force-refresh Codex local plugin marketplace/cache through a short-lived app-server sidecar. Maintenance only: no prompts, exec, review, agent delegation, or arbitrary Codex arguments are accepted. Requires explicit confirmation from the current user request.', inputSchema: { type: 'object', properties: { confirmCurrentRequest: { type: 'boolean', enum: [true] }, cwd: { type: 'string' }, pluginName: { type: 'string', minLength: 1, maxLength: 256 }, timeoutMs: { type: 'integer', minimum: 1000, maximum: 8000 } }, required: ['confirmCurrentRequest'], additionalProperties: false }, annotations: openDestructive },
   { name: 'run_shell', description: 'Run a short bounded platform shell command (PowerShell 7 on Windows, Bash on Linux). Synchronous execution is hard-limited to 10 seconds with compact output. Use operation_start for longer/unknown/high-output work; if operation tools are not exposed by the client, use one-shot start_terminal + bounded read_terminal. Explicit Power Mode only.', inputSchema: { type: 'object', properties: { command: { type: 'string' }, cwd: { type: 'string' }, timeoutMs: { type: 'integer', minimum: 1000, maximum: 30000 } }, required: ['command'], additionalProperties: false }, annotations: openDestructive },
   { name: 'system_info', description: 'Return OS, CPU, memory, user, Node and runtime information.', inputSchema: { type: 'object', properties: {}, additionalProperties: false }, annotations: ro },
   { name: 'list_processes', description: 'List operating-system processes with PID and resource details when available.', inputSchema: { type: 'object', properties: {}, additionalProperties: false }, annotations: ro },
@@ -847,6 +861,7 @@ export async function executePowerTool(ctx, name, input) {
     case 'move_path': return movePath(ctx, input);
     case 'delete_path': return deletePath(ctx, input);
     case 'search_files': return searchFiles(ctx, input);
+    case 'codex_plugin_refresh': return codexPluginRefresh(ctx, input);
     case 'run_shell': return runShell(ctx, input);
     case 'system_info': return systemInfo(ctx);
     case 'list_processes': return listProcesses(ctx);

@@ -1951,3 +1951,24 @@ Acceptance boundary: this is local exact-tree qualification only. GitHub hosted 
 - **Decision / status:** v0.10.11 is ACCEPTED STABLE. No additional product patch is justified without new evidence.
 - **Open non-release gates:** Emad-PC owner recovery/post-reboot baseline; Linux laptop GNOME/session host gate.
 - **Reuse targets:** release checklist, Windows updater maintenance contract, future EOL migration decisions, incident runbook, stable-baseline handoff.
+
+
+### 2026-10-04 — v0.10.12 scoped Codex plugin maintenance qualification
+
+- **Fact / live baseline:** Remote Commander v0.10.11 is live and accepted stable; `powerMode.codexControl.allowLaunch=false`; installed standalone Codex is **0.157.1**; canonical `linux-project-skills` source is **1.4.13** while its derived managed cache contains **1.4.9**.
+- **Fact / authoritative Codex source:** in OpenAI Codex 0.157.1, local non-curated cache refresh is reached by `plugin/list` with `forceRefetch=true` via `refresh_non_curated_plugin_cache_for_context`. `plugin/reconcile` handles remote installed plugins and is not a local marketplace cache repair path. Logs for the current app-server session showed remote plugin synchronization but no local `plugin/list` after process start.
+- **Decision:** do not hand-edit/copy the derived Codex cache; do not inject protocol bytes into the live app-server stdio session; do not restart the whole Commander/tunnel supervisor for a cache refresh. Add a narrowly scoped supported-protocol sidecar instead.
+- **Security boundary:** child executable/subcommand are fixed to `codex app-server`; the only client methods are `initialize`, `initialized`, and `plugin/list`; `forceRefetch` is always true; input schema has no `command`, `args`, or `prompt`; explicit current-request confirmation and Full-Power shell/process authority are mandatory; broad Codex launch remains disabled; API/token environment variables are removed; total synchronous budget is <=8 seconds; raw sidecar stderr is not returned to chat.
+- **Regression evidence:** focused maintenance tests PASS, including no-spawn without explicit confirmation, exact fixed process invocation, fixed method sequence, force-refetch enforcement, credential stripping, and absence of arbitrary Codex/delegation escape hatches.
+- **Full local qualification:** `npm run check` PASS; `npm test` PASS; `SECURITY_AUDIT_PASS`; `check:qualification` main batch **265/259/0/6**; `test:qualification` main batch **511/505/0/6**; GUI **77/77**; Linux GUI, FS safety, headless launch policy, Windows runtime, source integrity, and schema continuity **9/9** PASS.
+- **Status:** local source candidate **CONFIRMED QUALIFIED**. Hosted exact-head CI/canaries, release provenance, production rollout, and live cache-refresh E2E remain **OPEN**; no final release claim is made.
+- **Exact next gate:** publish the isolated branch through GitHub PR, require Windows/Ubuntu CI plus Linux/Windows Server Install canaries on the exact head, then merge/tag/release only if all pass. After candidate-first rollout, call `codex_plugin_refresh` and verify managed cache version/hashes against the canonical 1.4.13 source.
+
+
+#### 2026-10-04 — v0.10.12 final-tree boundedness requalification
+
+- **Review finding:** initial sidecar protocol was fixed and time-bounded but its JSONL response line and returned marketplace/plugin summary did not yet have explicit size/count ceilings.
+- **Final control:** `plugin/list` now sends `marketplaceKinds:["local"]`; one JSONL frame is capped before parsing; returned marketplace and plugin lists and string fields are bounded; target-plugin lookup is preserved across summary truncation; RPC error text is clipped and raw RPC error objects are not attached.
+- **Focused regression:** maintenance suite **7/7 PASS**, including fixed local-only request, bounded summary with a target outside the displayed prefix, and oversized-frame fail-closed behavior.
+- **Final-tree qualification:** `check:qualification` **267 total / 261 pass / 0 fail / 6 skip**; `test:qualification` **513 total / 507 pass / 0 fail / 6 skip**; all supplemental gates PASS; `SECURITY_AUDIT_PASS`.
+- **Status:** this supersedes the earlier candidate counts as the evidence for the exact tree to be committed. Hosted CI/canaries, merge/release provenance, rollout, and live cache refresh remain OPEN.
