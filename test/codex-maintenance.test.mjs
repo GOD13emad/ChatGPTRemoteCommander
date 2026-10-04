@@ -30,6 +30,7 @@ function fakeSidecar(pluginListResult = null) {
         id: 'linux-project-skills@personal',
         name: 'linux-project-skills',
         localVersion: '1.4.13',
+        source: { type: 'local', path: '/home/test/.agents/plugins/plugins/linux-project-skills' },
         installed: true,
         enabled: true
       }]
@@ -132,6 +133,10 @@ test('maintenance sidecar runs only fixed app-server handshake and force-refetch
   assert.equal(result.forceRefetch, true);
   assert.equal(result.codexUserAgent, 'codex-cli/0.157.1');
   assert.equal(result.target?.localVersion, '1.4.13');
+  assert.deepEqual(result.target?.source, {
+    type: 'local',
+    path: '/home/test/.agents/plugins/plugins/linux-project-skills'
+  });
   assert.deepEqual(fake.spawnCalls.map(({ command, args }) => ({ command, args })), [
     { command: 'codex', args: ['app-server'] }
   ]);
@@ -157,6 +162,13 @@ test('maintenance response is hard-bounded while target lookup survives display 
       id: `plugin-${marketplaceIndex}-${pluginIndex}@personal`,
       name: marketplaceIndex === 39 && pluginIndex === 9 ? 'target-plugin' : `plugin-${marketplaceIndex}-${pluginIndex}`,
       localVersion: '1.0.0',
+      source: {
+        type: 'git',
+        url: 'https://example.invalid/' + 'x'.repeat(1000),
+        path: './plugin',
+        refName: 'main',
+        sha: 'a'.repeat(40)
+      },
       installed: true,
       enabled: true
     }))
@@ -174,6 +186,8 @@ test('maintenance response is hard-bounded while target lookup survives display 
   assert.equal(result.returnedPluginCount <= 256, true);
   assert.equal(result.truncated, true);
   assert.equal(result.target?.name, 'target-plugin');
+  assert.equal(result.target?.source?.type, 'git');
+  assert.equal(result.target?.source?.url?.length <= 512, true);
 });
 
 test('maintenance rejects an oversized app-server JSONL frame before parsing it', async () => {

@@ -15,11 +15,38 @@ function clippedText(value) {
   return value.length <= MAX_FIELD_CHARS ? value : value.slice(0, MAX_FIELD_CHARS);
 }
 
+function compactPluginSource(source) {
+  const type = clippedText(source?.type);
+  if (type === 'local') {
+    return { type, path: clippedText(source?.path) };
+  }
+  if (type === 'git') {
+    return {
+      type,
+      url: clippedText(source?.url),
+      path: clippedText(source?.path),
+      refName: clippedText(source?.refName),
+      sha: clippedText(source?.sha)
+    };
+  }
+  if (type === 'npm') {
+    return {
+      type,
+      package: clippedText(source?.package),
+      version: clippedText(source?.version),
+      registry: clippedText(source?.registry)
+    };
+  }
+  if (type === 'remote') return { type };
+  return null;
+}
+
 function compactPlugin(plugin) {
   return {
     id: clippedText(plugin?.id),
     name: clippedText(plugin?.name),
     localVersion: clippedText(plugin?.localVersion),
+    source: compactPluginSource(plugin?.source),
     installed: plugin?.installed === true,
     enabled: plugin?.enabled === true
   };

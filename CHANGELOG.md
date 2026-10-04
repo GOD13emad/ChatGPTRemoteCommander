@@ -1,3 +1,10 @@
+## 0.10.13 - 2026-10-04
+
+- Extend the scoped `codex_plugin_refresh` result with a bounded summary of each Codex `PluginSummary.source` so local marketplace/cache mismatches can be diagnosed without exposing raw app-server output or enabling general Codex delegation.
+- Support the official Codex 0.157.1 source variants `local`, `git`, `npm`, and `remote`; every returned source field remains subject to the existing 512-character field cap and overall marketplace/plugin response bounds.
+- Add regression coverage for local source-path preservation and bounded Git-source fields.
+- Advance current release/runtime/installer identity to v0.10.13; v0.10.12 remains the accepted stable baseline until qualification and release gates pass.
+
 ## 0.10.12 - 2026-10-04
 
 - Add a narrowly scoped `codex_plugin_refresh` maintenance tool that starts a short-lived Codex app-server sidecar and performs only `initialize` / `initialized` / `plugin/list(forceRefetch=true)` to refresh configured local plugin caches through the supported Codex path.

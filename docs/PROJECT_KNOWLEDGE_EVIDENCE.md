@@ -1972,3 +1972,15 @@ Acceptance boundary: this is local exact-tree qualification only. GitHub hosted 
 - **Focused regression:** maintenance suite **7/7 PASS**, including fixed local-only request, bounded summary with a target outside the displayed prefix, and oversized-frame fail-closed behavior.
 - **Final-tree qualification:** `check:qualification` **267 total / 261 pass / 0 fail / 6 skip**; `test:qualification` **513 total / 507 pass / 0 fail / 6 skip**; all supplemental gates PASS; `SECURITY_AUDIT_PASS`.
 - **Status:** this supersedes the earlier candidate counts as the evidence for the exact tree to be committed. Hosted CI/canaries, merge/release provenance, rollout, and live cache refresh remain OPEN.
+
+
+### 2026-10-04 — v0.10.13 bounded Codex source observability
+
+- **Fact / live v0.10.12:** runtime cutover succeeded to commit `42a73b9e8db10bad34efb76b62dbd72f8a00f434`; general `powerMode.codexControl.allowLaunch` remained false; the scoped maintenance E2E succeeded through Codex **0.157.1**.
+- **Fact / mismatch:** maintenance returned `linux-project-skills@personal localVersion=1.4.12`. Canonical source files at `~/.agents/plugins/plugins/linux-project-skills` report root Agent Plugins version **1.4.13** and Codex overlay **1.4.13+codex.20261004**. Effective Codex config maps marketplace `personal` to `/home/mmz/.agents/plugins` and enables `linux-project-skills@personal`.
+- **Fact / upstream protocol:** exact OpenAI Codex tag `rust-v0.157.1` defines `PluginSummary.source` and converts local marketplace sources into `PluginSource::Local { path }`; `plugin/list` with `marketplaceKinds=[local]` and `forceRefetch=true` invokes non-curated cache refresh. Root Agent Plugins v1 manifests are recognized in that exact version.
+- **Inference:** because v0.10.12 removed `PluginSummary.source` from its bounded response, the actual path represented by the 1.4.12 listing is still **UNVERIFIED**. Do not infer that it is the canonical 1.4.13 path until the protocol response proves it.
+- **Change:** v0.10.13 preserves a bounded source summary for official source types only. Local path, Git URL/path/ref/SHA, and npm package/version/registry are individually capped at 512 characters; remote source returns only its type.
+- **Security:** no raw app-server output, no new RPC method, no arbitrary Codex launch, no token/API credential exposure, and no authority expansion.
+- **Qualification:** focused **15/15 PASS**; `check:qualification` **267/261/0/6**; `test:qualification` **513/507/0/6**; GUI **77/77**; schema **9/9**; `SECURITY_AUDIT_PASS`.
+- **Status:** source candidate **CONFIRMED QUALIFIED LOCALLY**, hosted/release/live-E2E gates **OPEN**.
