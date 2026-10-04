@@ -193,6 +193,27 @@ test('identity-safe compaction preserves unread state and exact artifact bytes a
   } finally { f.dispose(); }
 });
 
+test('repeated bounded compaction advances past already archived artifacts',()=>{
+  const f=fixture(); const store=f.open();
+  try{
+    const artifacts=[];
+    for(let i=0;i<3;i++){
+      const artifact=store.writeArtifact({index:i,text:String(i).repeat(20000)});
+      artifacts.push(artifact);
+      store.publish({eventKey:'tool:progress-'+i+':final',correlationId:'chat-progress',source:'tool',sourceId:'progress-'+i,kind:'COMPLETED',artifact});
+    }
+    const first=store.compact({minAgeMs:0,limit:1});
+    const second=store.compact({minAgeMs:0,limit:1});
+    const third=store.compact({minAgeMs:0,limit:1});
+    assert.equal(first.archived,1);
+    assert.equal(second.archived,1);
+    assert.equal(third.archived,1);
+    assert.equal(store.health().storage.plainArtifacts,0);
+    assert.equal(store.health().storage.archivedArtifacts,3);
+    assert.equal(store.health().pending,3);
+  } finally { store.close(); f.dispose(); }
+});
+
 test('compaction excludes pending, unresolved and dead-letter deliveries without synthesizing ack',()=>{
   const f=fixture(); const store=f.open();
   try{
