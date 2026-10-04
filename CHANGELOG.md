@@ -5,6 +5,9 @@
 - Add a bounded multi-pass regression proving three successive limit=1 compactions archive three distinct artifacts without synthesizing acknowledgement.
 - Align Windows/Linux server-installer default refs and Windows bootstrap User-Agent with v0.10.10, with a regression preventing release/default drift.
 - Advance runtime, installer, plugin-template and release-contract identity to v0.10.10; publication remains gated by full cross-platform qualification.
+- Refuse Commander-native recursive `list_directory` / `search_files` at a bare Windows volume root and hard-cap synchronous search to 5,000 visited entries, with explicit truncation telemetry.
+- Add a reversible Windows unattended-update pause sentinel for degraded-host recovery without weakening explicit owner `-Force` authority.
+- Record the Emad-PC kernel-resource incident as a host/recovery boundary: abnormal System PID 4 handles/kernel pool are confirmed; `wcifs` attribution remains probable rather than stack-confirmed, and no automatic reboot/filter unload/System-handle closure is introduced.
 
 ## 0.10.9 - 2026-10-03
 
