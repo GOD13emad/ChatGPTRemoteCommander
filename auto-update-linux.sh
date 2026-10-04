@@ -662,6 +662,7 @@ validation_cleanup(){
 }
 trap validation_cleanup ERR
 
+run_gate "$STAGE_DIR" linux-gui-safety node tools/linux-gui-safety-audit.mjs
 run_gate "$STAGE_DIR" check npm run check:qualification
 run_gate "$STAGE_DIR" test npm run test:qualification
 run_gate "$STAGE_DIR" audit npm run audit
