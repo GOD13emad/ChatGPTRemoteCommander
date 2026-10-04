@@ -745,3 +745,18 @@ Pre-PR review added two fail-closed transport controls without widening authorit
 Because this changed executable code after the earlier qualification, the complete qualification was rerun on the final tree. `check:qualification`: **267 total / 261 pass / 0 fail / 6 platform skips**. `test:qualification`: **513 total / 507 pass / 0 fail / 6 platform skips**. GUI contract **77/77**, Linux GUI, filesystem safety, headless launch policy, Windows runtime, source integrity, schema continuity **9/9**, and `SECURITY_AUDIT_PASS` all passed.
 
 **CURRENT:** final local tree is QUALIFIED FOR PR; hosted exact-head gates and release/live E2E remain OPEN.
+
+
+### 2026-10-04 — CURRENT: v0.10.13 Codex maintenance source observability candidate
+
+**Previous accepted state:** Remote Commander v0.10.12 is released and live on Linux at commit `42a73b9e8db10bad34efb76b62dbd72f8a00f434`.
+
+**Post-rollout finding:** the scoped `codex_plugin_refresh` path works through Codex 0.157.1 and keeps broad Codex launch disabled, but `plugin/list(forceRefetch=true)` reports `linux-project-skills@personal` at **1.4.12** while the canonical local Agent Plugins manifest is **1.4.13** and its Codex overlay is **1.4.13+codex.20261004**. Exact Codex 0.157.1 source confirms `PluginSummary` already carries the concrete `source` object, but v0.10.12 intentionally omitted it from Commander's bounded summary, leaving the concrete listed source unproven.
+
+**Decision / minimum sufficient control:** v0.10.13 adds only bounded source observability to `codex_plugin_refresh`. Returned source types are limited to the official Codex 0.157.1 variants (`local`, `git`, `npm`, `remote`), every string remains capped at 512 characters, and existing JSONL frame / marketplace / plugin count bounds remain unchanged. No new method, prompt, command, argument, thread, turn, review, agent, or delegation surface is introduced.
+
+**Local qualification:** focused maintenance/no-Codex suite **15/15 PASS**; `check:qualification` PASS with main batch **267 total / 261 pass / 0 fail / 6 platform skips**; `test:qualification` PASS with main batch **513 total / 507 pass / 0 fail / 6 platform skips**; GUI **77/77**, schema continuity **9/9**, Linux GUI, FS safety, headless launch, Windows runtime, source integrity, and `SECURITY_AUDIT_PASS` all PASS.
+
+**Status:** ACCEPTED FOR PR / NOT RELEASED. v0.10.12 remains production authority until hosted exact-head gates, immutable release, exact-ref rollout, and live source-path diagnosis pass.
+
+**Open gate after rollout:** run `codex_plugin_refresh` against `linux-project-skills`, record the returned concrete source path/type, and reconcile why Codex lists/materializes 1.4.12 while the canonical source tree is 1.4.13. Do not hand-edit the managed Codex cache.
