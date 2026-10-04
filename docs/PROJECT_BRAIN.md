@@ -663,3 +663,31 @@ Post-reconcile focused local evidence: delivery + enumeration **18/18 PASS**, in
 ### 2026-10-04 — #122 bounded-enumeration refinement
 
 Deep review found that the initial 5,000-entry search budget still sat above bulk `readdir()`, so one huge directory could be enumerated before the budget fired. #122 now streams recursive directory entries with `opendir(bufferSize:1)`. Guard 6/6, smoke PASS and Project Engine 59/59 all pass locally. This closes the I/O-boundedness gap without widening authority or adding a shell-policy feature.
+
+
+### 2026-10-04 — CURRENT: v0.10.11 Windows control-promotion maintenance patch
+
+**Previous accepted state:** v0.10.10 was published from exact commit `b570d935466665903a776bcca88ff3e51dcdf088`; Release Sync succeeded and the immutable GitHub release carried 19 uploaded assets. Exact candidate-first qualification on healthy Windows host HPC-154-66 passed check/test/audit, native GUI self-test, doctor, hardware self-test, and `AUTO_UPDATE_CANDIDATE_PASS`.
+
+**Current delta / finding:** production canary cutover on HPC-154-66 successfully activated v0.10.10 at route generation 37, but post-commit maintenance stopped with `CONTROL_TRACKED_DIRTY`. Persistent route evidence points to v0.10.10 / `b570d935...` with no previous backend, while `last-update.json` reports `PROMOTED_MAINTENANCE_REQUIRED`.
+
+**Root cause:** the control checkout remained at v0.10.9 and reported only `enable-autostart.ps1` and `enable-boot-recovery.ps1` dirty. `git diff --ignore-space-at-eol --exit-code` passed, both files are governed by `text eol=crlf`, and a forced restore immediately reproduced the same status. This is a historical EOL-normalization false positive, not an owner content edit.
+
+**Decision / minimum sufficient control:** v0.10.11 changes only `Promote-Control`: staged changes remain forbidden; substantive unstaged changes remain forbidden; a fully unstaged EOL-only tracked diff may proceed after explicit evidence logging. No general dirty-tree bypass is introduced.
+
+**Regression evidence:** focused updater contract and parser gate pass after adding a real historical-CRLF Git fixture; the suite is 16/16 PASS including the Windows Job Object lifecycle regression. Full release qualification is still OPEN.
+
+**Roadmap → NOW:** targeted version/installer/release contracts → full local healthy-host qualification → GitHub PR exact-head hosted gates/canaries → merge → immutable v0.10.11 tag/release → exact-ref canary promotion and maintenance readback.
+
+**Open gates:** Emad-PC remains owner-recovery gated with no automatic reboot; Linux laptop GNOME control-plane/session remains a separate host gate.
+
+**Project Brain status:** CURRENT. v0.10.10 history remains immutable and append-only.
+
+**Exact next action:** finish v0.10.11 identity gates, then run full healthy-host qualification before any PR or tag.
+
+
+#### 2026-10-04 — v0.10.11 healthy-host full qualification PASS
+
+HPC-154-66 completed the exact v0.10.11 source qualification without rerun or timeout relaxation. `check:qualification` main suite: **260 tests / 255 pass / 0 fail / 5 platform skips**; supplementary FS safety, GUI contract 77/77, Linux GUI contract, headless launch, Windows runtime, source integrity, and schema continuity 9/9 all passed. `test:qualification` main suite: **506 tests / 500 pass / 0 fail / 6 platform skips**; browser cleanup/path encoding, concurrency smoke, FS safety, GUI contract 77/77, Linux GUI contract, headless launch, Windows runtime, source integrity, and schema continuity 9/9 all passed. Security audit ended with `SECURITY_AUDIT_PASS` and no tracked secret/developer-path finding.
+
+**Promotion status:** source candidate is locally ACCEPTED for GitHub PR, not yet released. **CURRENT →** commit the isolated v0.10.11 delta, push, and require exact-head hosted Windows/Ubuntu CI plus Linux/Windows Server install canaries before merge/tag.

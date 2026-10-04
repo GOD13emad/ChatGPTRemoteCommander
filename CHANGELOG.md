@@ -1,3 +1,10 @@
+## 0.10.11 - 2026-10-04
+
+- Fix Windows post-cutover control promotion when an older checkout is dirty only because historical CRLF blobs are reinterpreted by current EOL attributes.
+- Keep promotion fail-closed for staged changes and every substantive tracked mutation; only a completely unstaged EOL-only diff may pass, with explicit `CONTROL_TRACKED_EOL_DRIFT_ACCEPTED` evidence.
+- Add a real Git regression that reproduces the historical CRLF-blob state and proves substantive unstaged plus staged mutations remain blocked.
+- Advance runtime, installer, server-installer, plugin-template, release-contract and final-gate identity to v0.10.11; v0.10.10 remains immutable.
+
 ## 0.10.10 - 2026-10-04
 
 - Fix durable delivery compaction so repeated bounded passes advance beyond artifacts that were already archived instead of repeatedly consuming the limit on the first page.

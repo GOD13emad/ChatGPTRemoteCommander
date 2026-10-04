@@ -825,7 +825,13 @@ function Has-SupersededRelease {
 function Promote-Control([string]$Commit,[string]$Ref){
   $dirty=& git.exe -C $InstallDir status --porcelain --untracked-files=no
   if($LASTEXITCODE-ne 0){throw 'CONTROL_GIT_STATUS_FAIL'}
-  if($dirty){throw 'CONTROL_TRACKED_DIRTY'}
+  if($dirty){
+    & git.exe -C $InstallDir diff --cached --quiet --
+    if($LASTEXITCODE-ne 0){throw 'CONTROL_TRACKED_DIRTY'}
+    & git.exe -C $InstallDir diff --ignore-space-at-eol --exit-code -- | Out-Null
+    if($LASTEXITCODE-ne 0){throw 'CONTROL_TRACKED_DIRTY'}
+    Log 'CONTROL_TRACKED_EOL_DRIFT_ACCEPTED'
+  }
   & git.exe -C $InstallDir fetch --no-tags origin $Ref
   if($LASTEXITCODE-ne 0){throw 'CONTROL_FETCH_FAIL'}
   $resolved=(& git.exe -C $InstallDir rev-parse 'FETCH_HEAD^{commit}').Trim().ToLowerInvariant()

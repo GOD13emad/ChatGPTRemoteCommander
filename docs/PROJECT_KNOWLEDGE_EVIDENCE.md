@@ -1908,3 +1908,28 @@ Acceptance boundary: this is local exact-tree qualification only. GitHub hosted 
 - **Regression:** filesystem-enumeration guard **6/6 PASS**, including source-contract proof that recursive walkers use incremental `opendir` and no bulk `readdir`; `SMOKE_V03_PASS`; Project Engine / integration set **59/59 PASS**; syntax and `git diff --check` PASS.
 - **Scope boundary:** no shell parser/restriction was added. FULL_POWER `shell.unrestricted` semantics remain unchanged; recursive whole-volume shell sweeps remain an operationally forbidden default unless explicitly owner-directed.
 - **Reuse targets:** v0.10.10 release notes, filesystem safety contract, future Windows kernel-resource incident prevention.
+
+
+### 2026-10-04 — v0.10.10 canary post-cutover maintenance failure → v0.10.11 prevention
+
+- **Date / context:** healthy Windows canary HPC-154-66 after immutable v0.10.10 publication.
+- **Claim / status:** CONFIRMED. v0.10.10 routed runtime cutover succeeded, but control-code post-commit maintenance failed with `CONTROL_TRACKED_DIRTY`; release acceptance and runtime health are distinct from maintenance completion.
+- **Persistent evidence:** route `C:\Users\Administrator\AppData\Local\ChatGPTRemoteCommander\routing\default.json` SHA-256 `ac17648ff0b93df73b2f6925f8c386dfe696b7ab9d573accbbf780a9feeb9bc1` identified active v0.10.10 commit `b570d935466665903a776bcca88ff3e51dcdf088`, generation 37, previous=null. `last-update.json` SHA-256 `cbfcfabb71ad65731b23b8b160f4259e54caecbe25b0116ca9528157b6990934` recorded `PROMOTED_MAINTENANCE_REQUIRED` and `CONTROL_TRACKED_DIRTY`. Updater log SHA-256 at audit time: `b1e51ed92547b8ae4ae167fded3d1d56024d5e395226dd8eefea3e4abd79666c`.
+- **Root cause evidence:** control HEAD remained v0.10.9 `157d2b18c2c2a2d6a144148230a30b0418eea8c4`. Only `enable-autostart.ps1` and `enable-boot-recovery.ps1` were tracked-dirty; `git diff --ignore-space-at-eol --exit-code` returned 0. `git check-attr` reported `text: set`, `eol: crlf` for both and local `core.autocrlf=true`. Restoring from HEAD reproduced the dirty state, proving a normalization anomaly rather than user content mutation.
+- **Prestate preservation:** exact dirty copies were backed up under `update-backups\b570d935...\default\control-dirty-prestate-20261004`; SHA-256 values were `B9F557E2F5EE6E6EF12C3C0DF5882E1F235E218DDCC6FAC7C09421AA9CCC95F2` and `220C241B7534C821BE875DC4554B0986C4A7A3B5914FC0FF257736D8930D32DB`.
+- **Decision:** minimum sufficient guard change. If tracked dirtiness exists, promotion requires zero staged diff and zero unstaged diff after `--ignore-space-at-eol`; otherwise it fails with the existing `CONTROL_TRACKED_DIRTY`. Accepted EOL-only drift emits `CONTROL_TRACKED_EOL_DRIFT_ACCEPTED`.
+- **Regression:** a temporary Git repo commits an intentional raw CRLF blob using `hash-object --no-filters` plus `update-index --cacheinfo`; classifier accepts that EOL-only state, rejects a substantive unstaged append, and rejects a staged mutation. Targeted updater suite: 16/16 PASS.
+- **Confidence:** root cause CONFIRMED; v0.10.11 full release acceptance still UNPROVEN until full/hosted gates.
+- **Reuse targets:** Windows updater maintenance, release qualification, historical-EOL migration policy, incident prevention, Project Brain.
+
+
+#### 2026-10-04 — v0.10.11 full qualification evidence
+
+- **Context:** clean healthy Windows worktree on HPC-154-66, branch `fix/windows-control-eol-maintenance-v01011`.
+- **Result / status:** ACCEPTED FOR PR, not yet release-final.
+- **Check qualification:** main Node suite 260 total, 255 pass, 0 fail, 5 platform skips. Supplementary evidence: `FS_SAFETY_PASS`; GUI contract 77/77; `LINUX_GUI_CONTRACT_PASS`; `HEADLESS_PROCESS_LAUNCH_POLICY_PASS`; `WINDOWS_RUNTIME_CONTRACT_PASS`; `SOURCE_INTEGRITY_PASS`; schema continuity 9/9.
+- **Test qualification:** main Node suite 506 total, 500 pass, 0 fail, 6 platform skips. Supplementary browser initialization cleanup, Unicode/space path encoding, concurrency smoke, filesystem safety, GUI contract 77/77, Linux GUI contract, headless launch, Windows runtime, source integrity, and schema continuity all passed.
+- **Security:** `SECURITY_AUDIT_PASS`; no secret-key, tunnel-id, private-key, bearer-token, GitHub-token, tracked local-config, or developer-path finding.
+- **Specific prevention regression:** historical raw-CRLF blob classification plus substantive unstaged and staged rejection is included in the qualification path and passed; Windows Job Object zero-descendant regression also passed.
+- **Confidence:** local healthy-host qualification CONFIRMED. Hosted exact-head CI/canaries, merge-tree identity, immutable tag/release, and post-release canary maintenance are still OPEN.
+- **Exact next gate:** commit/push the isolated branch and require fresh GitHub hosted gates before merge.
