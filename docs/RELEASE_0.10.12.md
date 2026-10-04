@@ -21,7 +21,7 @@ OpenAI/Codex API-key and token environment variables are removed before the side
 
 Transport safety
 ----------------
-The entire synchronous sidecar interaction uses one shared deadline capped at eight seconds, below Commander's ten-second direct synchronous transport ceiling. The sidecar is terminated after the response, and the returned payload is reduced to bounded marketplace/plugin metadata rather than forwarding unbounded app-server output.
+The entire synchronous sidecar interaction uses one shared deadline capped at eight seconds, below Commander's ten-second direct synchronous transport ceiling. `plugin/list` is explicitly restricted to `marketplaceKinds=["local"]`. App-server JSONL frames are size-capped before parsing; returned marketplace/plugin counts and text fields are hard-bounded; target lookup still works when the display summary is truncated. The sidecar is terminated after the response rather than forwarding unbounded app-server output.
 
 Regression boundary
 -------------------
