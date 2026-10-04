@@ -1933,3 +1933,21 @@ Acceptance boundary: this is local exact-tree qualification only. GitHub hosted 
 - **Specific prevention regression:** historical raw-CRLF blob classification plus substantive unstaged and staged rejection is included in the qualification path and passed; Windows Job Object zero-descendant regression also passed.
 - **Confidence:** local healthy-host qualification CONFIRMED. Hosted exact-head CI/canaries, merge-tree identity, immutable tag/release, and post-release canary maintenance are still OPEN.
 - **Exact next gate:** commit/push the isolated branch and require fresh GitHub hosted gates before merge.
+
+
+### 2026-10-04 — v0.10.11 hosted, release, and production-canary acceptance
+
+- **Context:** completion of the v0.10.11 Windows control-promotion patch release.
+- **Hosted exact-head evidence / status:** CONFIRMED PASS. PR #123 head `39b222a8f3b59046326578a7e410ae81aab40524` passed Windows CI, Ubuntu CI, Linux clean-container Server Install Canary, and Windows Server bootstrap Server Install Canary. PR merged as `8666c29abe1194b314babe4bed24d06a2b398336`.
+- **Tree identity:** CONFIRMED. Merge commit tree `2ae494fe55eb318b977762c6c1b76e2056e19270` exactly matches the previously qualified tree.
+- **Release provenance:** annotated tag object `c1f6f2d9f2f45fb119adac6f49fa67cf1996e863` peels to `8666c29...`. GitHub Release `v0.10.11` published at 2026-10-04T17:13:40Z, draft=false, prerelease=false, assets=19. Release Sync succeeded.
+- **Production canary prestate:** HPC-154-66 running v0.10.10, FULL_POWER, activeOperations=0, queued=0, currentLeases=0.
+- **Exact-ref rollout:** updater source was the qualified v0.10.11 tree and target was `SourceRef=v0.10.11`, `ExpectedCommit=8666c29...`, explicit `-Force`.
+- **Qualification evidence:** check Job Object PASS, runId `qualification-check-8666c29abe11-49b014e12afa4ebeadedb0a491f8a80c`, childExitCode=0, activeAfterCleanup=0; test Job Object PASS, runId `qualification-test-8666c29abe11-82661cc0b087473884d61555d6066c2f`, childExitCode=0, activeAfterCleanup=0; audit Job Object PASS, runId `qualification-audit-8666c29abe11-7d8e7fdcf9f6404891c7eeca09bb1cf3`, childExitCode=0, activeAfterCleanup=0; `SECURITY_AUDIT_PASS`; native GUI self-test PASS; doctor PASS; hardware/shadow/live-store compatibility PASS; schema continuity decision `UNCHANGED_SCHEMA`.
+- **Critical regression closure:** updater log records `CONTROL_TRACKED_EOL_DRIFT_ACCEPTED` followed by `SUPERVISOR_RECYCLE_PASS`, cleanup of superseded v0.10.10/v0.10.9 release trees, and `AUTO_UPDATE_PASS version=0.10.11 commit=8666c29...`. This is direct evidence that the v0.10.10 post-cutover maintenance blocker is fixed.
+- **Persistent production evidence:** `routing/default.json` SHA-256 `e73b30f62167af92526c15b1d0aeabcd6b5e83f521f092fcec263554d754f2e7`; generation=39; active port=48832; active version=0.10.11; active commit=`8666c29...`; previous=null. `last-update.json` SHA-256 `571ef0a1e825c0c2de57d7799cbd4fd78279e0195e62652ce8863c87817ca0a5`; status=`PROMOTED`; completedAt=2026-10-04T17:23:30.9613047Z. Updater log SHA-256 at final audit: `fcf4ff7a18f34845eda88813b2dcf6675afbb0d503cd22b14dd189b9fece564b`.
+- **Poststate:** system reports v0.10.11 / HPC-154-66 / FULL_POWER / activeOperations=0 / queued=0 / currentLeases=0, config SHA-256 `1b3d22528061d92704ec70c49e2b31871f2583c659a4aa9ed11967148df3b7dd`.
+- **Control-checkout boundary:** control HEAD is `8666c29...`. Raw status still lists only `enable-autostart.ps1` and `enable-boot-recovery.ps1` as dirty. Index diff is empty and `git diff --ignore-space-at-eol --exit-code --` returns 0, so no substantive/staged owner mutation is present. This is the accepted historical EOL-only state, not a clean-status claim.
+- **Decision / status:** v0.10.11 is ACCEPTED STABLE. No additional product patch is justified without new evidence.
+- **Open non-release gates:** Emad-PC owner recovery/post-reboot baseline; Linux laptop GNOME/session host gate.
+- **Reuse targets:** release checklist, Windows updater maintenance contract, future EOL migration decisions, incident runbook, stable-baseline handoff.
