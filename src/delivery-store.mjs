@@ -354,10 +354,9 @@ export class DeliveryStore {
     const seen = new Set();
     let scanned = 0, archived = 0, alreadyArchived = 0, bytesBefore = 0, bytesAfter = 0;
     for (const row of rows) {
-      if (scanned >= limit) break;
       const item = this.decode(row);
       if (item.kind !== 'COMPLETED' || !item.artifact || seen.has(item.artifact.id)) continue;
-      seen.add(item.artifact.id); scanned += 1;
+      seen.add(item.artifact.id);
       const ref = item.artifact, targets = this.artifactPaths(ref.id);
       if (!fs.existsSync(targets.plain)) {
         if (fs.existsSync(targets.archive)) {
@@ -366,6 +365,8 @@ export class DeliveryStore {
         }
         continue;
       }
+      if (scanned >= limit) break;
+      scanned += 1;
       const before = regular(targets.plain);
       if (before.size !== ref.bytes) fail('DELIVERY_ARTIFACT_CHANGED');
       const bytes = fs.readFileSync(targets.plain);

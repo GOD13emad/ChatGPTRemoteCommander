@@ -56,8 +56,13 @@ test('HTTP retry hardening rejects long sync work before effect and bounds overs
     child = spawn(process.execPath, [path.join(serverRoot, 'src', 'server-v0.3.mjs')], { cwd: serverRoot, env: { ...process.env, REMOTE_COMMANDER_CONFIG: configPath }, stdio: ['ignore','pipe','pipe'] });
     let stderr = ''; child.stderr.on('data', c => { stderr += c.toString('utf8'); });
     let healthy = false;
-    for (let i=0;i<400;i+=1) { try { const r=await fetch(`http://127.0.0.1:${port}/health`); if(r.ok){healthy=true;break;} } catch {} await wait(25); }
-    assert.equal(healthy, true, stderr);
+    const startupDeadline = Date.now() + 30000;
+    while (Date.now() < startupDeadline) {
+      if (child.exitCode !== null) throw new Error(`retry fixture server exited before healthy: exitCode=${child.exitCode}; stderr=${stderr}`);
+      try { const r=await fetch(`http://127.0.0.1:${port}/health`); if(r.ok){healthy=true;break;} } catch {}
+      await wait(25);
+    }
+    assert.equal(healthy, true, `retry fixture server did not become healthy within 30000ms; stderr=${stderr}`);
 
     const direct = await rawPost(port, 1, 'run_project_command', { program: 'node', args: [fixture], cwd: canonicalDataRoot, timeoutMs: 15001 });
     assert.equal(direct.response.status, 200);
