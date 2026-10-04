@@ -801,3 +801,20 @@ Because this changed executable code after the earlier qualification, the comple
 **Qualification on final pre-commit byte-state:** focused Linux updater/installer/schema set **24 pass / 0 fail / 1 platform skip**; `check:qualification` **270/264/0/6**; `test:qualification` **516/510/0/6**; GUI **77/77**; schema continuity **9/9**; `SOURCE_INTEGRITY_PASS`; `SECURITY_AUDIT_PASS`.
 
 **Current gate:** commit/push the exact Linux candidate and prove a new rollout started through Commander completes in one invocation after `AUTO_UPDATE_SELF_DETACH_REQUESTED`, with no same-version recovery run required.
+
+
+### 2026-10-05 — Linux delivery beacon pollution root cause and candidate fix
+
+**OS/scope authority:** active host was re-verified as Linux before each action. Windows remains out of scope.
+
+**Fact / live evidence:** durable-delivery backlog grew above 420 while `deadLetter=0` and `unfinishedRequests=0`. Read-only SQLite inspection showed every pending row had `attempts=0`, a unique synthetic `transport-<sha256>` correlation, and no delivery-request reservation. Artifact metadata showed the backlog is overwhelmingly internal auto-deferred operations: copy_path 353, delete_path 67, move_path 8, plus 4 run_shell operation receipts; it is not evidence of hundreds of lost chat messages.
+
+**Root cause:** legacy/cached MCP mutation calls without explicit requestId derive a transport idempotency key. For auto-deferred copy/move/delete, that transport key was also reused as the operation delivery correlation. Async reconciliation then published every terminal receipt into durable delivery, and Linux `queue-only` continuation has no authenticated consumer for those synthetic correlations. Retry durability and user-visible delivery were therefore conflated.
+
+**Control:** transport-derived auto-deferred operations persist `deliveryMode=transport-retry-only`; worker/state/idempotency/restart recovery remain durable, but no actionable delivery event is published. Explicit operation/request correlations remain `durable` and preserve normal delivery behavior. Startup reconciliation skips persisted transport-only operations.
+
+**Historical repair:** a new `TRANSPORT_RECEIPT` state and bounded `delivery_reclassify_transport_receipts` tool reclassify only zero-attempt `source=operation` rows with an exact synthetic transport correlation and operation event identity. No artifact is deleted and no acknowledgement is synthesized; default list/beacon excludes these internal receipts while full/history reads remain possible.
+
+**Linux-focused qualification:** state/restart/delivery suite **38/38 PASS**; real HTTP transport regression **2/2 PASS**; combined Linux/core relevant suite **50/50 PASS**; `SOURCE_INTEGRITY_PASS`; `SECURITY_AUDIT_PASS`; `git diff --check` PASS.
+
+**Exact next action:** commit/push this Linux candidate, roll out the exact commit on the active Linux host, back up the live delivery store, reclassify only proven legacy transport receipts, then verify pending drops without artifact loss and that a new transport-derived copy does not increase pending while an explicit-request copy still does.

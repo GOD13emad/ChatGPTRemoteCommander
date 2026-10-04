@@ -2010,3 +2010,15 @@ Acceptance boundary: this is local exact-tree qualification only. GitHub hosted 
 - **Focused regression:** **24 pass / 0 fail / 1 platform skip**, including real POSIX Work-plugin sync, atomic durable receipt, fail-closed bad receipt identity, Linux installer isolation/schema compatibility, and static bounded-detach contract.
 - **Full qualification:** `check:qualification` **270/264/0/6** and `test:qualification` **516/510/0/6**, GUI **77/77**, schema **9/9**, source integrity and security audit PASS.
 - **Open acceptance gate:** after commit/push, launch the exact candidate from Commander. One invocation must detach, finish cutover and post-cutover maintenance, persist the PASS receipt, and leave runtime/control/plugin/cache all on the same exact candidate with no follow-up recovery run.
+
+
+### 2026-10-05 — Linux durable-delivery transport-receipt separation
+
+- **Confirmed Linux scope:** OS was re-read before each execution/mutation; all work in this Change Set is Linux/core-delivery only.
+- **Read-only DB evidence:** live pending delivery rows used unique synthetic `transport-<64hex>` correlations, all had zero claim attempts, and delivery request reservations were empty. Artifact metadata distribution was copy_path=353, delete_path=67, move_path=8, run_shell=4; terminal statuses were overwhelmingly SUCCEEDED.
+- **Interpretation:** `completionBeacon.pending` was counting internal operation receipts, not proving missing ChatGPT answer delivery. Synthetic transport keys are retry identities, not authenticated chat correlations.
+- **Future-state fix:** server marks only transport-derived AUTO_DEFERRED_MUTATIONS as `transport-retry-only`; async state persists the mode, terminal publishing suppresses actionable delivery, and restart discovery excludes those operations. Explicit requestId/correlation operations remain durable delivery.
+- **Backward compatibility:** reservations without a historical deliveryMode do not conflict on retry; old operation receipts may still be reconciled idempotently until explicitly reclassified.
+- **Legacy-state repair:** `TRANSPORT_RECEIPT` preserves the row and artifact while excluding it from actionable pending/beacon. Reclassification requires state COMPLETED_UNDELIVERED, attempts=0, source=operation, `transport-<sha256>` correlation, and `operation:` event identity. It does not delete artifacts or synthesize acknowledgement.
+- **Regression evidence:** focused state/restart/delivery **38/38 PASS**; HTTP transport split **2/2 PASS**; Linux/core relevant combined **50/50 PASS**; source integrity/security/diff checks PASS.
+- **Open live gate:** exact-commit rollout, delivery-store backup, bounded reclassification, post-repair pending/transportReceipts verification, and live new-operation A/B test.

@@ -1,5 +1,8 @@
 ## 0.10.14 - 2026-10-04
 
+- Separate Linux transport-derived auto-deferred operation receipts from user-actionable durable delivery: retry/idempotency state remains durable, while synthetic `transport-*` correlations no longer inflate completion-beacon pending counts.
+- Add bounded `TRANSPORT_RECEIPT` reclassification for legacy internal operation receipts with zero delivery attempts; artifacts and audit history are preserved and no user acknowledgement is synthesized.
+- Add Linux/core regressions proving transport-derived `copy_path` survives retry/restart without delivery pollution while explicit request IDs retain normal claim/ack-capable delivery semantics.
 - Fix Linux post-cutover control promotion when historical PowerShell files are dirty only because of CR-at-EOL normalization: staged or substantive mutations still fail closed, while proven EOL-only drift is auditable and tolerated.
 - Detach a manually invoked Linux updater from a managed Commander backend process tree before taking the update lock, so retiring the previous backend cannot terminate the updater that is performing the cutover.
 - Persist successful Linux update/maintenance completion atomically to `last-update.json` with exact version, commit, source ref and completion timestamp; invalid receipt identity fails closed without replacing the prior receipt.
