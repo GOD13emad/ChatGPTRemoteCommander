@@ -16,6 +16,7 @@ import {
   validateProgram
 } from './security-v0.3.mjs';
 import { resolveExistingTarget, writeAnyFile } from './power-tools-v0.3.mjs';
+import { assertEnumerationScope } from './filesystem-enumeration-guard.mjs';
 
 export function sha256(data) {
   return createHash('sha256').update(data).digest('hex');
@@ -95,6 +96,7 @@ export async function listDirectory(ctx, input) {
   const info = await stat(target);
   if (!info.isDirectory()) throw new Error('path is not a directory');
   const depth = Math.max(0, Math.min(Number(input.depth ?? 1), 4));
+  assertEnumerationScope({ target, depth, operation: 'list_directory' });
   const maxEntries = Math.max(1, Math.min(Number(input.maxEntries ?? 200), 500));
   const entries = [];
   await walkDirectory(target, depth, maxEntries, target, entries);

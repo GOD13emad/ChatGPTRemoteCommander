@@ -65,8 +65,11 @@ test('auto updater is candidate-first, hardware-gated and commit-point aware',()
     'Test-VersionGreater',
     'merge-primary-policy.mjs',
     'PRIMARY_POLICY_OVERLAY',
-    'PRIMARY_POLICY_MERGE_FAIL'
+    'PRIMARY_POLICY_MERGE_FAIL',
+    'auto-update-paused.json',
+    'AUTO_UPDATE_PAUSED'
   ]) assert.ok(s.includes(marker),marker);
+  assert.ok(s.includes("if(-not $Force -and (Test-Path -LiteralPath $PauseFile -PathType Leaf))"), 'automatic Windows update pause sentinel must fail before staging while explicit -Force remains available');
   assert.ok(s.includes('https://github.com/GOD13emad/ChatGPTRemoteCommander/releases/latest') && s.includes('Invoke-WebRequest') && s.includes('Invoke-RestMethod'),'Windows stable discovery must prefer published-release redirect with REST fallback');
   assert.ok(s.includes("MCP-Protocol-Version") && s.includes("2026-07-28") && s.includes("-Headers $headers"), 'internal updater MCP calls through the canonical router must identify as the current protocol and never self-poison legacy-host continuity state');
   assert.ok(s.includes("io.modelcontextprotocol/protocolVersion") && s.includes("_meta"), 'modern updater MCP calls must mirror the protocol marker in body metadata so header/body classification cannot fail');

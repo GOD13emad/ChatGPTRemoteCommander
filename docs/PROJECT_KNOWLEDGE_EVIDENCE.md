@@ -1733,3 +1733,85 @@ Acceptance boundary: this is local exact-tree qualification only. GitHub hosted 
 **State/backlog boundary:** existing durable workflow/delivery/history records are not release garbage. They remain preserved; no mass cancel, synthetic acknowledgement, or blind replay was used to make rollout numbers look clean.
 
 **Reuse targets:** updater drain policy, release runbook, Windows regression suite, Project Brain/handoff, CEF integration boundary.
+
+
+## 2026-10-04 — Emad-PC Windows kernel-resource incident, updater containment, and filesystem enumeration prevention
+
+**Context / main blocker:** Emad-PC-Ultimate remained on Commander v0.10.8 while exact v0.10.9 candidate qualification repeatedly failed on Windows process-lifecycle fixtures. Promotion was stopped before cutover. The main blocker is now host reliability, not a proven v0.10.9 runtime defect.
+
+### Claim 1 — host kernel-resource state is abnormal and invalidates release qualification
+- **Type:** Fact.
+- **Status:** CONFIRMED / HIGH.
+- **Local evidence:** approximately 3.326 million handles in System PID 4, with approximately 3.315 million of type `File`; independent Performance Monitor readback agreed with the System handle count. Paged pool was approximately 23.1 GB and nonpaged pool approximately 15.2 GB while about 59 GB physical RAM remained free.
+- **Tool provenance:** Microsoft Sysinternals Handle was downloaded from the official Sysinternals endpoint, Authenticode status was valid/Microsoft, and its ZIP SHA-256 was `279AAF8ECCB6F79147F4DCC6BA091FB895C4CB8B199A0DD186A4C76BC519D2CD`.
+- **Implication:** repeated process-spawn/timing qualification failures on this host are not accepted as product failures or product PASS evidence until host recovery and requalification.
+
+### Claim 2 — wcifs is the leading local attribution, but not yet stack-confirmed
+- **Type:** Inference from matching local + external evidence.
+- **Status:** PROBABLE / HIGH-CONFIDENCE, NOT CONFIRMED.
+- **Local evidence:** Windows 11 26H2 build 26300.9550; `wcifs` service RUNNING; wcifs filter instances attached to both C: and D:; `wcifs.sys` version 10.0.26100.9549, SHA-256 `01CCCBD757DDB19630BB356A49F66B7B1A7C86D7CFC827C13EECD551752D251A`; sampled System File handles used GrantedAccess `0x00120089`.
+- **External method evidence:** Microsoft-owned/open Windows repository reports describe wcifs-related System PID 4 File-handle accumulation, large paged/nonpaged pool growth, process-creation failure, and matching `0x00120089` File-handle access patterns. References: https://github.com/microsoft/Windows-Containers/issues/646 ; https://github.com/microsoft/Windows-Sandbox/issues/126 ; Sysinternals Handle documentation https://learn.microsoft.com/sysinternals/downloads/handle .
+- **Missing confirmation:** no local pool-tag or ETW/kernel stack trace has yet bound the leaked file objects to wcifs. Do not label wcifs root cause as CONFIRMED.
+
+### Claim 3 — v0.10.9 updater correctly failed closed
+- **Type:** Fact.
+- **Status:** CONFIRMED / HIGH.
+- **Evidence:** exact candidate `v0.10.9` / commit `157d2b18c2c2a2d6a144148230a30b0418eea8c4` staged on Emad-PC and ran qualification. Final check result: 253 tests, 246 pass, 2 fail, 5 skip; failures were Job Object fixture exit `1 != 7` and a `stop_terminal` fixture readiness miss. Updater emitted `AUTO_UPDATE_FAIL GATE_FAIL check` and did not promote.
+- **Boundary:** manual focused runs of the same Job Object path can pass with zero descendants after cleanup. This contradiction plus the kernel-resource state means the host cannot currently adjudicate product acceptance.
+
+### Claim 4 — an active development auto-update pin was repeatedly exercising the unhealthy host
+- **Type:** Fact.
+- **Status:** CONFIRMED / HIGH.
+- **Evidence:** installed `config.local.json` and active routed runtime config both contained `autoUpdate.sourceRef = fix/windows-lifecycle-qualification`. `app/var/autostart.log` records approximately hourly `AUTO_UPDATE_CHECK_STARTED sourceRef=fix/windows-lifecycle-qualification` from 2026-10-03 17:43 +03:30 through 2026-10-04 17:32 +03:30.
+- **Decision:** the branch pin is superseded for production operation. It must not continue unattended qualification while the host is in the current kernel-resource state.
+
+### Containment — live Emad-PC
+- **Status:** ACCEPTED CONTAINMENT / REVERSIBLE.
+- Installed updater control script was narrowly hot-patched to honor `%LOCALAPPDATA%\ChatGPTRemoteCommander\maintenance\auto-update-paused.json` for non-`-Force` runs.
+- Installed updater before SHA-256: `2114b7096252905ddeac0e274f22d12c080eef19e3e87bade046e64ea8617c6d`; after SHA-256: `5fedc45890b74645d095d301c0288f7d8cd2073ac5642b708ad0a75465776b0d`.
+- Automatic backup: `C:\Users\Aa.Emad\.chatgpt-remote-commander\backups\2026-10-04T14-20-33.636Z-62024-mutwrkro-8522e94a\C\Users\Aa.Emad\AppData\Local\ChatGPTRemoteCommander\app\auto-update-windows.ps1`.
+- Installed `config.local.json` had only the development `sourceRef` removed; all Full Power/capability/workflow settings were preserved. Before SHA-256 `0da327df1939cf494bef411b146e34ebc9b2516afe9e8c65123b4999d9656335`; after `0e03e28f7da12033fac8822ed17611a8909aa435e58f8f2fae454c902947bdc5`.
+- Config backup: `C:\Users\Aa.Emad\.chatgpt-remote-commander\backups\2026-10-04T14-20-38.551Z-62024-mutwrok7-38cc3a77\C\Users\Aa.Emad\AppData\Local\ChatGPTRemoteCommander\app\config.local.json`.
+- Pause sentinel SHA-256: `43d662858e19cffafeb2b5dd4a888db317abf3b7dc4cebdd15fe438ede9460fd`.
+- Post-check: updater invoked without `-Force` exited 0 immediately with `AUTO_UPDATE_PAUSED`; no fetch/stage/qualification started.
+- **Safety boundary:** no System handle was closed, wcifs was not unloaded, and no reboot/shutdown/logoff was performed.
+
+### Prevention candidate — source
+- **Authority/base:** clean worktree from `origin/main` commit `6f192c96d51efb3eebdad4dfd49ff36df1888d4b`, branch `fix/v0.10.10-windows-qualification-readiness-clean`.
+- New guard `src/filesystem-enumeration-guard.mjs` refuses recursive enumeration of a bare Windows volume root and caps synchronous `search_files` entry visits at 5000.
+- `list_directory` applies the Windows volume-root recursion guard; `search_files` applies the same guard and reports `visitedEntries` / `visitLimitHit`.
+- Windows updater source includes the same reversible pause-sentinel mechanism; explicit owner `-Force` remains available.
+- **Regression:** guard-focused 4/4 PASS; targeted MCP/schema/Linux-host compatibility set 14/14 PASS; updater sentinel contract 1/1 PASS; `git diff --check` PASS.
+- **Rigor boundary:** no full qualification was rerun on the contaminated Emad-PC host. Hosted healthy-runner CI and post-recovery local qualification remain mandatory.
+
+### Historical shell-attribution boundary
+- **Status:** UNPROVEN.
+- Commander audit intentionally does not retain raw `run_shell` arguments. Therefore it is not evidence-valid to claim which prior shell command, if any, caused the kernel leak. The audit does prove Power Mode full-filesystem operation and multiple bounded filesystem enumerations, but exact recursive shell sweeps cannot be reconstructed from the privacy-preserving audit log.
+
+### CEF/Saeid delta preserved from this audit
+- PR #59 Windows private-file guard originally failed hosted qualification for two qualification-only causes: cppcheck constness and PowerShell JSON quoting.
+- Narrow PR #60 corrections passed hosted Build + Windows native preview on exact SHA `b807acec568a864271866afbb20f77f6b518def4`; merged PR #59 head also passed both gates.
+- PR #59 was merged into the rc.2 line at merge commit `d20d2d64cc2e6ce8cbdfa30e67508a03c91aae58`.
+- **Boundary:** this accepts the rc.2 private-file guard delta only; it does not establish a stable final CEF product or completed Commander↔CEF end-to-end integration.
+
+**Reuse targets:** Windows incident runbook, updater policy, filesystem-tool design, release qualification, CEF Windows preview, Project Brain/handoff.
+
+## 2026-10-04 — Integrator independent verification of kernel-resource gate and prevention candidate
+
+**Context:** reconciliation worktree `integrate/v0.10.10-audit-20261004`, exact base `origin/main@6f192c96d51efb3eebdad4dfd49ff36df1888d4b`. This record independently verifies the parallel resource-recovery work before promotion.
+
+**Live host evidence:** Emad-PC readback measured System PID 4 handle count **3,326,455**, paged pool **23,125,159,936 bytes (21.537 GiB)**, nonpaged pool **14,976,872,448 bytes (13.948 GiB)**, and **65.425 GiB available physical memory**. `wcifs` was RUNNING/AUTO at `C:\WINDOWS\system32\drivers\wcifs.sys`, file version `10.0.26100.9549`; OS build reported `26300`. Status: **CONFIRMED abnormal kernel-resource state**. Attribution to wcifs remains **PROBABLE**, not stack-confirmed.
+
+**Load boundary:** contemporaneous CPU readback was 100%. The dominant consumers were four active LAMMPS `lmp.exe` ranks belonging to an unrelated thesis simulation. They were explicitly preserved and not terminated. High CPU explains scheduler latency but does not explain the persistent System handle/kernel-pool accumulation.
+
+**External evidence used for method choice:** Microsoft-owned issue trackers report matching 2026 failure patterns: System PID 4 File-handle growth, large paged/nonpaged pool, process-creation failures, persistence until reboot, and amplification by recursive drive-root enumeration. References: `microsoft/Windows-Containers#646`, `microsoft/Windows-Sandbox#126`, and `microsoft/WSL#41296`.
+
+**Integrator source delta:** accepted only the minimum prevention/control set from the parallel worktree: Windows bare-volume recursive enumeration refusal for native `list_directory`/`search_files`; a 5000-entry hard visit budget for synchronous `search_files`; reversible auto-update pause sentinel; and the recovery runbook/Brain/Evidence updates. Line-ending-only autostart/boot-recovery changes and speculative Job Object timing changes were not imported.
+
+**Regression wiring:** `test/filesystem-enumeration-guard.test.mjs` is now included in both normal test and qualification/check paths; `src/filesystem-enumeration-guard.mjs` is included in syntax checking.
+
+**Focused local evidence on contaminated host:** `git diff --check` PASS; enumeration guard **4/4 PASS**; updater pause contract **1/1 PASS**; MCP/schema compatibility **2/2 PASS**. Full qualification remains intentionally **DEFERRED/INVALID on this host** until owner-performed recovery because the current kernel state is a known confounder.
+
+**Safety/authority:** no reboot/shutdown/logoff, System-handle closure, filter unload, LAMMPS termination, workflow mass-cancel, or backlog rewriting was performed.
+
+**Exact next gate:** commit/push the isolated Integrator delta and require healthy hosted Windows + Ubuntu CI before merge; local Emad-PC promotion remains blocked on owner recovery and post-reboot baseline.

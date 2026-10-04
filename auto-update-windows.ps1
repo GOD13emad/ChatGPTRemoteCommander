@@ -21,6 +21,11 @@ if($GuiControl -and $StandardMode){throw 'GuiControl cannot be combined with Sta
 
 $Repo='https://github.com/GOD13emad/ChatGPTRemoteCommander.git'
 $StateRoot=Join-Path $env:LOCALAPPDATA 'ChatGPTRemoteCommander'
+$PauseFile=Join-Path $StateRoot 'maintenance\auto-update-paused.json'
+if(-not $Force -and (Test-Path -LiteralPath $PauseFile -PathType Leaf)){
+  Write-Output "AUTO_UPDATE_PAUSED file=$PauseFile"
+  exit 0
+}
 if([string]::IsNullOrWhiteSpace($InstallDir)){ $InstallDir=Join-Path $StateRoot 'app' }
 $InstallDir=[IO.Path]::GetFullPath($InstallDir)
 $ReleaseRoot=Join-Path $StateRoot 'releases'
