@@ -25,18 +25,18 @@ Authority: immutable release/tag -> exact live route records -> exact-SHA CI/can
 **Contradictory evidence — OPEN / UNVERIFIED ROOT CAUSE**
 
 - A second CI run on branch `release/v0.10.9-publisher` at the same product SHA, run `37188394413`, failed the Windows `Run qualification check with bounded Windows file concurrency` step while its Ubuntu job passed.
-- This does not erase the independent exact-SHA `main` Windows+Ubuntu PASS, and the publisher-only branch does not change product bytes. However the duplicate-run Windows failure is retained as contradictory evidence; root cause is **UNVERIFIED** and must not be rewritten as a product PASS or dismissed without evidence.
+- Job log isolates the only failure to `test/process-tree-lifecycle.test.mjs`: `start_terminal remains interactive only when explicitly requested with an initial command`, error `interactive terminal did not accept initial command`. The test polls 80 times at 25 ms (~2 s readiness window); the failed instance lasted 2.533 s, while two successful exact-SHA main instances took 0.723 s and 0.698 s. Failure mechanism is therefore **PROBABLE hosted-Windows startup-latency/timing flake**, but root cause remains **UNVERIFIED** because no direct child-start trace proves it. This is one occurrence, so no test relaxation, product patch, or blind rerun is justified.
 
 ## Open gates / critical path — current
 
 1. MMZ Linux exact-checkout fresh qualification/audit: **CLOSED / PASS**.
-2. Classify the publisher-branch Windows duplicate-run failure using job-level evidence. Do not blind-rerun it; if the same failure recurs meaningfully, stop patching and perform historical/root-cause audit.
+2. Publisher-branch Windows duplicate-run failure is classified **PROBABLE timing/startup-latency flake; ROOT CAUSE UNVERIFIED**. Preserve as a watch gate; do not patch or rerun solely for this first occurrence. If it recurs meaningfully, perform historical/root-cause audit before changing the test or runtime.
 3. Keep Saeid rollout/connectivity and the separate CEF/Companion qualification outside Commander stable acceptance unless independently evidenced.
 4. Preserve durable delivery/history backlog as project state; no mass delete or blind replay.
 
 ## Exact next action — current
 
-Investigate the publisher-Windows contradictory run from existing evidence before considering any rerun. Keep the accepted release/runtime unchanged unless a reproducible root cause demonstrates a product defect.
+Keep the accepted release/runtime unchanged. Observe normal future Windows qualification evidence for recurrence of the interactive-terminal readiness failure; on a meaningful recurrence, stop and perform root-cause audit before any test/runtime change.
 
 ## Previous accepted baseline — v0.10.8
 
