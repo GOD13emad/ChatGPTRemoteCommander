@@ -32,14 +32,21 @@ async function waitForClose(child,ms){
 async function forceTree(child,forceCloseMs){
  if(!child||child.exitCode!==null)return;
  if(process.platform==='win32'){
-  try{
-   const killer=spawn('taskkill.exe',['/PID',String(child.pid),'/T','/F'],{stdio:'ignore',windowsHide:true,shell:false});
-   await waitForClose(killer,forceCloseMs);
-  }catch{try{child.kill();}catch{}}
+  const attemptMs=Math.max(1000,Number(forceCloseMs)||0);
+  let treeStopped=false;
+  for(let attempt=0;attempt<3&&child.exitCode===null;attempt++){
+   try{
+    const killer=spawn('taskkill.exe',['/PID',String(child.pid),'/T','/F'],{stdio:'ignore',windowsHide:true,shell:false});
+    await waitForClose(killer,attemptMs);
+    await waitForClose(child,attemptMs);
+    if(child.exitCode!==null){treeStopped=true;break;}
+   }catch{}
+  }
+  if(!treeStopped&&child.exitCode===null){try{child.kill();}catch{}}
  }else{
   try{process.kill(-child.pid,'SIGKILL');}catch{try{child.kill('SIGKILL');}catch{}}
  }
- await waitForClose(child,forceCloseMs);
+ await waitForClose(child,Math.max(forceCloseMs,1000));
 }
 export function createBrowserProcessClient({file,args,timeoutMs=15000,startupTimeoutMs=15000,maxBytes=8*1024*1024,env=process.env,gracefulCloseMs=2500,forceCloseMs=1500}){
  let child=null,buffer=Buffer.alloc(0),startup=null,pending=null,stderrBytes=0,reserved=false,shutdown=null,ownedProfile=null,ownedProfileIsolated=false;

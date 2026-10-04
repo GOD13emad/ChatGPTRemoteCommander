@@ -16,7 +16,7 @@ export const deliveryToolDefinitions = [
 export function createDeliveryTools(store) {
   return {
     definitions:deliveryToolDefinitions,
-    status:()=>store.health(),
+    status:()=>store.summary(),
     execute(name,args={}) {
       if(name==='delivery_status') return store.health();
       if(name==='delivery_list') return store.list(args);

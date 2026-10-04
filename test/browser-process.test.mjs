@@ -99,7 +99,7 @@ test('forced helper shutdown terminates an owned descendant process tree',async(
 });
 
 test('unexpected helper exit terminates the independently owned browser process and removes an isolated profile',async()=>{
- const f=await fixture({timeoutMs:1500,gracefulCloseMs:60,forceCloseMs:400});
+ const f=await fixture({timeoutMs:5000,gracefulCloseMs:60,forceCloseMs:400});
  const profile=path.join(f.root,'unexpected-isolated'),marker=path.join(f.root,'unexpected.pid');
  try{
   await f.client.invoke({action:'start',isolated:true,profileDir:profile});
@@ -114,7 +114,7 @@ test('unexpected helper exit terminates the independently owned browser process 
 });
 
 test('unexpected helper exit terminates a persistent browser process but preserves its profile data',async()=>{
- const f=await fixture({timeoutMs:1500,gracefulCloseMs:60,forceCloseMs:400});
+ const f=await fixture({timeoutMs:5000,gracefulCloseMs:60,forceCloseMs:400});
  const profile=path.join(f.root,'unexpected-persistent'),marker=path.join(f.root,'persistent.pid');
  try{
   await f.client.invoke({action:'start',isolated:false,profileDir:profile});

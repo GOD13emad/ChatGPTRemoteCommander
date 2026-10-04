@@ -83,6 +83,17 @@ test('unbounded path mutations auto-defer, survive retry, and publish exact resu
     await fs.mkdir(source,{recursive:true});
     await fs.writeFile(path.join(source,'a.txt'),'alpha');
 
+    const unboundDestination=path.join(canonicalDataRoot,'unbound-copy');
+    await assert.rejects(
+      post(port,99,'copy_path',{
+        requestId:'deferred-copy-unbound-continuation',
+        source,destination:unboundDestination,
+        continuation:{projectId:'missing-chat',eventKey:'copy:unbound',root:canonicalDataRoot,summary:'must fail before worker creation'}
+      }),
+      /CONVERSATION_NOT_BOUND/
+    );
+    await assert.rejects(fs.access(unboundDestination));
+
     const copyArgs={requestId:'deferred-copy-1',source,destination:copied};
     const started=Date.now();
     const copy=await post(port,1,'copy_path',copyArgs);

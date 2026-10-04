@@ -8,7 +8,7 @@ import { synchronousCommandInput } from '../src/retry-guard.mjs';
 
 const def = name => powerToolDefinitions.find(x => x.name === name);
 
-test('host compatibility schema stays broad while v0.10.8 runtime stays hard bounded', async () => {
+test('host compatibility schema stays broad while v0.10.9 runtime stays hard bounded', async () => {
   assert.equal(def('run_shell').inputSchema.properties.timeoutMs.maximum, 30000);
   assert.equal(def('search_files').inputSchema.properties.maxResults.maximum, 1000);
   assert.equal(def('search_files').inputSchema.properties.maxContentBytes.maximum, undefined);
