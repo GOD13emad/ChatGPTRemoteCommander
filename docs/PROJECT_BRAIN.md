@@ -691,3 +691,31 @@ Deep review found that the initial 5,000-entry search budget still sat above bul
 HPC-154-66 completed the exact v0.10.11 source qualification without rerun or timeout relaxation. `check:qualification` main suite: **260 tests / 255 pass / 0 fail / 5 platform skips**; supplementary FS safety, GUI contract 77/77, Linux GUI contract, headless launch, Windows runtime, source integrity, and schema continuity 9/9 all passed. `test:qualification` main suite: **506 tests / 500 pass / 0 fail / 6 platform skips**; browser cleanup/path encoding, concurrency smoke, FS safety, GUI contract 77/77, Linux GUI contract, headless launch, Windows runtime, source integrity, and schema continuity 9/9 all passed. Security audit ended with `SECURITY_AUDIT_PASS` and no tracked secret/developer-path finding.
 
 **Promotion status:** source candidate is locally ACCEPTED for GitHub PR, not yet released. **CURRENT →** commit the isolated v0.10.11 delta, push, and require exact-head hosted Windows/Ubuntu CI plus Linux/Windows Server install canaries before merge/tag.
+
+
+### 2026-10-04 — FINAL RELEASE ACCEPTANCE: v0.10.11
+
+**Previous accepted state:** v0.10.11 source was locally qualified on healthy Windows and PR #123 was open, but hosted exact-head gates, immutable publication, and the post-release production maintenance path were still OPEN.
+
+**Current delta / key result:** PR #123 exact head `39b222a8f3b59046326578a7e410ae81aab40524` passed all required hosted gates: Windows CI PASS, Ubuntu CI PASS, Linux clean-container server canary PASS, and Windows Server bootstrap canary PASS. PR #123 merged as `8666c29abe1194b314babe4bed24d06a2b398336`. The merge tree is exactly `2ae494fe55eb318b977762c6c1b76e2056e19270`, byte-identical to the locally qualified tree.
+
+**Immutable release:** annotated tag `v0.10.11` object `c1f6f2d9f2f45fb119adac6f49fa67cf1996e863` peels to merge commit `8666c29...`. GitHub Release `Remote Commander v0.10.11` was published 2026-10-04T17:13:40Z, is neither draft nor prerelease, and contains 19 uploaded assets. Release Sync succeeded.
+
+**Post-release exact-ref production canary:** HPC-154-66 was idle before rollout (0 active operations, 0 queued, 0 workflow leases). Updater was invoked with `SourceRef=v0.10.11` and `ExpectedCommit=8666c29...`. Candidate qualification passed check, test, audit, native GUI self-test, doctor, hardware/shadow-store/live-store compatibility, and schema continuity. Qualification Job Objects ended with zero leaked descendants. Production cutover completed with route generation 39, active port 48832, version 0.10.11, exact commit `8666c29...`, previous=null.
+
+**Maintenance blocker closure:** the exact failure from v0.10.10 is now closed. The updater logged `CONTROL_TRACKED_EOL_DRIFT_ACCEPTED`, then `SUPERVISOR_RECYCLE_PASS`, release cleanup of superseded v0.10.10/v0.10.9 trees, and finally `AUTO_UPDATE_PASS version=0.10.11 commit=8666c29...`. `last-update.json` status is `PROMOTED` with completedAt 2026-10-04T17:23:30.9613047Z.
+
+**Known boundary:** the control checkout is now on HEAD `8666c29...`, but raw `git status` still reports only `enable-autostart.ps1` and `enable-boot-recovery.ps1` dirty because of the historical EOL anomaly. This is not an unproven content mutation: staged diff is empty and the complete unstaged diff passes `git diff --ignore-space-at-eol --exit-code`. v0.10.11 intentionally handles this safe EOL-only state rather than weakening dirty-tree protection generally.
+
+**Roadmap → NOW:**
+1. **DONE:** focused regression and full healthy-host local qualification.
+2. **DONE:** exact-head hosted Windows/Ubuntu CI and Linux/Windows Server canaries.
+3. **DONE:** PR #123 merge with qualified-tree identity preserved.
+4. **DONE:** immutable v0.10.11 tag/release and 19-asset publication.
+5. **DONE:** exact-ref HPC-154-66 production rollout and post-commit maintenance PASS.
+6. **OPEN OWNER/HOST GATE:** Emad-PC kernel-resource recovery/reboot and post-recovery baseline remain separate; no automatic reboot authority was exercised.
+7. **OPEN HOST GATE:** Linux laptop GNOME/session issue remains separate from the accepted v0.10.11 runtime.
+
+**Project Brain status:** CURRENT. Remote Commander v0.10.11 is the accepted stable release. Historical v0.10.10 failure evidence remains append-only.
+
+**Exact next action:** keep v0.10.11 as stable baseline; do not patch further without a new evidence-backed blocker. Separately continue Emad-PC owner-recovery and Linux host/session gates.
