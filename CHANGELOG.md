@@ -1,5 +1,8 @@
 ## 0.10.14 - 2026-10-04
 
+- Stabilize Linux durable-delivery identity across routed config-path rotation: final candidates preserve the active delivery directory/scope, fresh managed installs pin a stable device/profile scope, and diagnostic candidates use an isolated shadow store so qualification cannot pollute production delivery state.
+- Keep historical config-path-derived delivery stores intact for forensic recovery; cleanup is gated on a profile/reference audit and archive manifest rather than deletion.
+
 - Separate Linux transport-derived auto-deferred operation receipts from user-actionable durable delivery: retry/idempotency state remains durable, while synthetic `transport-*` correlations no longer inflate completion-beacon pending counts.
 - Add bounded `TRANSPORT_RECEIPT` reclassification for legacy internal operation receipts with zero delivery attempts; artifacts and audit history are preserved and no user acknowledgement is synthesized.
 - Add Linux/core regressions proving transport-derived `copy_path` survives retry/restart without delivery pollution while explicit request IDs retain normal claim/ack-capable delivery semantics.

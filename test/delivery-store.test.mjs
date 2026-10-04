@@ -153,6 +153,20 @@ test('default delivery location does not inherit workflow or async project state
 });
 
 
+test('explicit delivery scope survives versioned config-path rotation', async () => {
+  const { deliveryLocation, stableDeliveryScope } = await import('../src/delivery-store.mjs');
+  const scope=stableDeliveryScope({deviceName:'linux-host-a',instance:{profile:'default'}});
+  const directory=path.join(os.tmpdir(),'rc-delivery-stable-profile',scope);
+  const config={deviceName:'linux-host-a',instance:{profile:'default'},durableDelivery:{directory,scope}};
+  const first=deliveryLocation(config,path.join(os.tmpdir(),'runtime-a','config.json'));
+  const second=deliveryLocation(config,path.join(os.tmpdir(),'runtime-b','config.json'));
+  assert.equal(first.scope,scope);
+  assert.equal(second.scope,scope);
+  assert.equal(first.directory,path.resolve(directory));
+  assert.equal(second.directory,path.resolve(directory));
+  assert.notEqual(first.legacyScope,second.legacyScope);
+});
+
 test('identity-safe compaction preserves unread state and exact artifact bytes across restart',()=>{
   const f=fixture();
   try{

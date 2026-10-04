@@ -55,15 +55,23 @@ function within(root, target) {
   const relative = path.relative(root, target);
   return relative === '' || (!relative.startsWith('..' + path.sep) && relative !== '..' && !path.isAbsolute(relative));
 }
+export function stableDeliveryScope(config, profileOverride) {
+  const profile = String(profileOverride ?? config.instance?.profile ?? config.capabilityProfile?.id ?? 'default');
+  const deviceName = String(config.deviceName ?? os.hostname());
+  return digest(stableJson({ deviceName, profile }));
+}
 export function deliveryLocation(config, configPath) {
-  const scope = digest(stableJson({ configPath: path.resolve(configPath), profile: config.instance?.profile ?? 'default' }));
+  const legacyScope = digest(stableJson({ configPath: path.resolve(configPath), profile: config.instance?.profile ?? 'default' }));
+  const configuredScope = config.durableDelivery?.scope;
+  const scope = configuredScope === undefined ? legacyScope : opaqueId(configuredScope);
   const configured = config.durableDelivery?.directory;
   // Delivery metadata is intentionally not colocated with project/workflow/operation
-  // directories. Those may be project-owned or portable. Default to private
-  // per-profile Commander state; an explicit override is still validated later.
+  // directories. Those may be project-owned or portable. Candidate builders pin the
+  // active production directory + scope explicitly so route/config-path rotation does
+  // not split durable state; legacy ad-hoc configs keep path-derived isolation.
   const base = configured ? path.resolve(expandPathValue(configured))
     : path.join(os.homedir(), '.chatgpt-remote-commander', 'delivery', scope);
-  return { directory: base, scope, forbiddenRoots: config.allowedRoots ?? [] };
+  return { directory: base, scope, legacyScope, forbiddenRoots: config.allowedRoots ?? [] };
 }
 
 export class DeliveryStore {

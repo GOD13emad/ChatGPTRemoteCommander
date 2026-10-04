@@ -23,7 +23,7 @@ function fixture(t) {
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   const source = path.join(root, 'source'), target = path.join(root, 'custom-install');
   fs.mkdirSync(source);
-  for (const name of ['config.json', 'tools/build-candidate-config.mjs', 'tools/capability-migrate.mjs', 'tools/json-field.mjs', 'tools/tunnel-client-pin.json', 'src/capability-profile.mjs', 'src/project-runner-config.mjs', 'src/no-codex-policy.mjs']) {
+  for (const name of ['config.json', 'tools/build-candidate-config.mjs', 'tools/capability-migrate.mjs', 'tools/json-field.mjs', 'tools/tunnel-client-pin.json', 'src/capability-profile.mjs', 'src/project-runner-config.mjs', 'src/no-codex-policy.mjs', 'src/delivery-store.mjs', 'src/platform.mjs']) {
     write(path.join(source, name), fs.readFileSync(path.join(repository, name)));
   }
   write(path.join(source, 'tools/install-tunnel-client-linux.sh'), fs.readFileSync(path.join(repository, 'tools/install-tunnel-client-linux.sh')), true);

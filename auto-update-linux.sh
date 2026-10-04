@@ -682,8 +682,11 @@ MODE=preserve
 [[ "$POWER_MODE" == 1 ]] && MODE=full
 [[ "$STANDARD_MODE" == 1 ]] && MODE=standard
 build_cfg(){
-  local output="$1" wf="$2"
+  local output="$1" wf="$2" delivery_mode="${3:-preserve}"
   local args=("$STAGE_DIR/tools/build-candidate-config.mjs" --default "$STAGE_DIR/config.json" --existing "$ACTIVE_CFG" --output "$output" --profile-id default --port "$PORT" --state-dir "$STATE_DIR" --workflow-dir "$wf" --mode "$MODE" --provider-root "$STATE_ROOT")
+  if [[ "$delivery_mode" == shadow ]]; then
+    args+=(--delivery-directory "$BACKUP_ROOT/$COMMIT/default/delivery-shadow-$PORT" --delivery-scope "diagnostic-${COMMIT:0:32}-$PORT")
+  fi
   [[ -z "$BROWSER_EXECUTABLE" ]] || args+=(--browser-executable "$BROWSER_EXECUTABLE")
   [[ -z "$BROWSER_PROFILE_ROOT" ]] || args+=(--browser-profile-root "$BROWSER_PROFILE_ROOT")
   local c
@@ -693,7 +696,7 @@ build_cfg(){
 }
 
 DIAG_CFG="$STATE_DIR/diagnostic-config.json"
-build_cfg "$DIAG_CFG" "$SHADOW_WF" >/dev/null
+build_cfg "$DIAG_CFG" "$SHADOW_WF" shadow >/dev/null
 DIAG_SHA="$(sha256sum "$DIAG_CFG" | awk '{print $1}')"
 CANDIDATE_PID="$(start_backend "$STAGE_DIR" "$DIAG_CFG" "$STATE_DIR/diagnostic.log")"
 wait_health "$PORT" "$VERSION" "$DIAG_SHA" default || { stop_pid "$CANDIDATE_PID"; echo 'diagnostic health failed' >&2; exit 1; }
@@ -703,7 +706,7 @@ stop_owned_candidate "$CANDIDATE_PID" "$STAGE_DIR"
 CANDIDATE_PID=""
 
 FINAL_CFG="$STATE_DIR/config.json"
-build_cfg "$FINAL_CFG" "$LIVE_WF" >/dev/null
+build_cfg "$FINAL_CFG" "$LIVE_WF" preserve >/dev/null
 FINAL_SHA="$(sha256sum "$FINAL_CFG" | awk '{print $1}')"
 CANDIDATE_PID="$(start_backend "$STAGE_DIR" "$FINAL_CFG" "$STATE_DIR/server.log")"
 wait_health "$PORT" "$VERSION" "$FINAL_SHA" default || { stop_pid "$CANDIDATE_PID"; echo 'final candidate health failed' >&2; exit 1; }

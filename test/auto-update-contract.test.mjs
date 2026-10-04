@@ -500,6 +500,10 @@ test('Linux updater is candidate-first, hardware-gated, routed and rollback-awar
     '/usr/local/bin/geckodriver',
     '"$HOME/.local/bin/geckodriver"'
   ]) assert.ok(s.includes(marker),marker);
+  assert.ok(s.includes('build_cfg "$DIAG_CFG" "$SHADOW_WF" shadow'),'Linux diagnostic candidate must use an isolated delivery shadow');
+  assert.ok(s.includes('build_cfg "$FINAL_CFG" "$LIVE_WF" preserve'),'Linux final candidate must preserve active delivery identity');
+  assert.ok(s.includes('--delivery-directory "$BACKUP_ROOT/$COMMIT/default/delivery-shadow-$PORT"'),'Linux diagnostic delivery directory must stay inside candidate backup state');
+  assert.ok(s.includes('--delivery-scope "diagnostic-${COMMIT:0:32}-$PORT"'),'Linux diagnostic delivery scope must be explicit and per-candidate');
   assert.ok(s.indexOf('driver="$(command -v geckodriver') < s.indexOf('/snap/bin/geckodriver'),'Linux updater must prefer PATH geckodriver before explicit safe fallbacks');
   const detachFn=s.slice(s.indexOf('updater_has_commander_backend_ancestor(){'),s.indexOf('wait_health(){'));
   assert.ok(detachFn.includes('depth" -lt 16'),'Linux updater ancestry detection must be bounded');
