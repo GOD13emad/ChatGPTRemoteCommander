@@ -1,0 +1,23 @@
+{
+  "runtimeTarget": {
+    "name": ".NETCoreApp,Version=v10.0",
+    "signature": ""
+  },
+  "compilationOptions": {},
+  "targets": {
+    ".NETCoreApp,Version=v10.0": {
+      "RemoteCommander/0.10.13": {
+        "runtime": {
+          "RemoteCommander.dll": {}
+        }
+      }
+    }
+  },
+  "libraries": {
+    "RemoteCommander/0.10.13": {
+      "type": "project",
+      "serviceable": false,
+      "sha512": ""
+    }
+  }
+}
