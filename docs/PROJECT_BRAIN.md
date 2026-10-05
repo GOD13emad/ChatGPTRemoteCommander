@@ -870,3 +870,15 @@ Because this changed executable code after the earlier qualification, the comple
 
 
 **Post-fix full bounded qualification:** `npm run check:qualification` PASS on Windows; main batch **277 total / 270 pass / 0 fail / 7 platform skips**, with supplemental browser/GUI/installer/source/security gates completing under exit code 0. This supersedes the focused 7/7 evidence for local promotion readiness; hosted final-head gates remain authoritative for merge.
+
+### 2026-10-05 — PR #129 Windows terminal-readiness blocker repaired locally
+
+**Previous accepted state:** candidate `263589c` had Windows local bounded qualification PASS and Linux laptop exact-SHA acceptance PASS, but hosted Windows CI and Server Install Canary each failed the same interactive-terminal readiness test. Ubuntu CI and Linux clean-container canary were PASS.
+
+**Current delta:** root cause was narrowed to Windows interactive PowerShell startup/readiness semantics, not Access/Admin/Monitor logic. Windows interactive initial commands now execute through PowerShell argv (`-NoExit -Command <command>`) instead of being written to stdin before shell readiness; follow-up stdin remains supported. The regression waits across multiple bounded read chunks and uses a 15 s readiness ceiling justified by observed loaded-host startup variance. Three sequential targeted local runs are **6/6 PASS**.
+
+**Cross-platform evidence:** Linux laptop exact `263589c` acceptance PASS: 44 executed tests PASS + 1 Windows-only skip, Linux GUI contract PASS, source integrity PASS, security audit PASS; no live runtime mutation.
+
+**Status:** CURRENT candidate, not FINAL. Hosted Windows/Server gates must pass on the new commit, then Amirreza Server exact-head acceptance and exact-head full bounded qualification must pass before merge/promotion.
+
+**Exact next action:** commit only the Windows terminal-readiness repair + evidence, run `check:qualification` on that exact commit, push PR #129, then require hosted CI + Server Install Canary PASS and exact-head Amirreza acceptance before any runtime/release promotion.
