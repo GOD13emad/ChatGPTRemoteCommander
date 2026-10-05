@@ -870,3 +870,35 @@ Because this changed executable code after the earlier qualification, the comple
 
 
 **Post-fix full bounded qualification:** `npm run check:qualification` PASS on Windows; main batch **277 total / 270 pass / 0 fail / 7 platform skips**, with supplemental browser/GUI/installer/source/security gates completing under exit code 0. This supersedes the focused 7/7 evidence for local promotion readiness; hosted final-head gates remain authoritative for merge.
+
+### 2026-10-05 — PR #129 Windows terminal-readiness blocker repaired locally
+
+**Previous accepted state:** candidate `263589c` had Windows local bounded qualification PASS and Linux laptop exact-SHA acceptance PASS, but hosted Windows CI and Server Install Canary each failed the same interactive-terminal readiness test. Ubuntu CI and Linux clean-container canary were PASS.
+
+**Current delta:** root cause was narrowed to Windows interactive PowerShell startup/readiness semantics, not Access/Admin/Monitor logic. Windows interactive initial commands now execute through PowerShell argv (`-NoExit -Command <command>`) instead of being written to stdin before shell readiness; follow-up stdin remains supported. The regression waits across multiple bounded read chunks and uses a 15 s readiness ceiling justified by observed loaded-host startup variance. Three sequential targeted local runs are **6/6 PASS**.
+
+**Cross-platform evidence:** Linux laptop exact `263589c` acceptance PASS: 44 executed tests PASS + 1 Windows-only skip, Linux GUI contract PASS, source integrity PASS, security audit PASS; no live runtime mutation.
+
+**Status:** CURRENT candidate, not FINAL. Hosted Windows/Server gates must pass on the new commit, then Amirreza Server exact-head acceptance and exact-head full bounded qualification must pass before merge/promotion.
+
+**Exact next action:** commit only the Windows terminal-readiness repair + evidence, run `check:qualification` on that exact commit, push PR #129, then require hosted CI + Server Install Canary PASS and exact-head Amirreza acceptance before any runtime/release promotion.
+
+### 2026-10-05 — CURRENT authority moved to v0.10.15 hotfix
+
+**Previous accepted state:** `main` merged PR #129 as `b91fa45` and tagged `v0.10.14`; that tree equals PR head `db5053e`. The later terminal-readiness repair was not in main.
+
+**Current delta:** clean hotfix worktree `_rc_hotfix_v01015_20261005` is based on `b91fa45`; `42b4031` carries exactly the five-file repair/evidence delta. Release metadata is being bumped to `0.10.15` / `v0.10.15`. The overlapping recurring finalization task is paused, leaving this worktree as the sole writer.
+
+**Status:** CURRENT candidate, not FINAL. Do not rewrite `v0.10.14`. Exact-head Windows/Linux/Amirreza + hosted CI/canary + merge/tag/release/post-install gates remain OPEN.
+
+**Exact next action:** commit the narrow release-metadata bump, qualify that exact SHA, push the hotfix branch, open a dedicated PR, then require all cross-host/hosted gates before merge and release.
+
+### 2026-10-05 — v0.10.15 local qualification PASS
+
+**Key result:** candidate code `b6cdeec` completed bounded Windows qualification with **270 pass / 0 fail / 7 platform skips**, plus installer/onboarding/release/browser/GUI supplemental PASS gates.
+
+**Failure converted to guard:** the preceding `09f4e27` attempt failed because current-release contracts still pinned v0.10.14. Release identity is now treated as one atomic surface spanning package/runtime/installers/server installers/plugin templates/contracts/docs/final-gate naming.
+
+**Roadmap ← now:** local Windows qualification PASS ← **CURRENT**; hosted PR CI/server canary, Linux laptop exact-head acceptance, Amirreza exact-head acceptance, merge, immutable v0.10.15 tag/release and post-release readback remain OPEN.
+
+**Exact next action:** push the hotfix final documentation head, open the v0.10.15 PR, require exact-head hosted and cross-host PASS before merge/promotion.

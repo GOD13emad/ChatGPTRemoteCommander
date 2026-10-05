@@ -723,7 +723,7 @@ export async function startTerminal(ctx, input) {
     assertNoCodexCommand(command, { allowCodex });
     await assertNoCodexShellDelegation(command, cwd, { allowCodex });
   }
-  const child = spawnShell(interactive ? '' : command, {
+  const child = spawnShell(interactive && !IS_WINDOWS ? '' : command, {
     cwd, interactive, stdio: ['pipe', 'pipe', 'pipe'], env: commanderChildEnv(cwd, process.env, { allowCodex: codexLaunchAuthorized(ctx) })
   });
   const id = `term-${terminalCounter++}`;
@@ -743,7 +743,7 @@ export async function startTerminal(ctx, input) {
   child.once('close', (code, signal) => { session.running = false; session.exitCode = code; session.signal = signal; });
   child.once('error', (error) => { session.running = false; session.stderr += `\n${error.message}\n`; });
   terminals.set(id, session);
-  if (hasCommand && interactive) child.stdin.write(command + os.EOL);
+  if (hasCommand && interactive && !IS_WINDOWS) child.stdin.write(command + os.EOL);
   return { id, pid: child.pid, cwd, running: true, interactive, autoClose: !interactive };
 }
 function getTerminal(input) {
