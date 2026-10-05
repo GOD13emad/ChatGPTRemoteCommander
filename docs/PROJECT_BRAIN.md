@@ -902,3 +902,15 @@ Because this changed executable code after the earlier qualification, the comple
 **Roadmap ← now:** local Windows qualification PASS ← **CURRENT**; hosted PR CI/server canary, Linux laptop exact-head acceptance, Amirreza exact-head acceptance, merge, immutable v0.10.15 tag/release and post-release readback remain OPEN.
 
 **Exact next action:** push the hotfix final documentation head, open the v0.10.15 PR, require exact-head hosted and cross-host PASS before merge/promotion.
+
+### 2026-10-05 — v0.10.15 FINAL release milestone
+
+**Previous accepted state:** v0.10.14 was immutable production; v0.10.15 candidate had local + hosted + cross-host qualification PASS but release and live rollout were still OPEN.
+
+**Current delta:** PR #130 merged as `4438b546035da192999954dd40e78ddbb6a9e7bd`; annotated tag `v0.10.15` points to that exact merge commit; official release-sync published verified immutable assets. Live readback confirms v0.10.15 on the primary Windows PC, its isolated `saeed-emad` profile, the Linux laptop and Amirreza Server, all with healthy runtime responses.
+
+**Roadmap ← now:** code qualification PASS → hosted CI/canary PASS → cross-host acceptance PASS → merge PASS → immutable release PASS → live rollout/readback PASS ← **CURRENT / FINAL for v0.10.15 software release**.
+
+**Open / deferred:** physical AC-loss/reboot validation remains a distinct hardware/operations test; it is not inferred from software health and remains UNPROVEN until intentionally exercised.
+
+**Exact next action:** no further v0.10.15 software mutation. Preserve `v0.10.15` immutably; future product changes start from current `main` under a new change set/version.
