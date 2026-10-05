@@ -102,16 +102,36 @@ internal sealed class DashboardForm : Form
         return b;
     }
 
+    private int refreshEpoch;
+
     private async Task RefreshAsync()
     {
-        cards.Controls.Clear();
+        var epoch = Interlocked.Increment(ref refreshEpoch);
         var profiles = LoadProfiles();
-        summary.Text = profiles.Count == 0
-            ? "No routing profiles discovered."
-            : $"{profiles.Count} profile(s) • read-only dashboard • {Environment.MachineName}";
+        var rendered = new List<Control>(profiles.Count);
 
         foreach (var p in profiles)
-            cards.Controls.Add(await ProfileCardAsync(p));
+            rendered.Add(await ProfileCardAsync(p));
+
+        if (epoch != Volatile.Read(ref refreshEpoch) || IsDisposed)
+        {
+            foreach (var control in rendered) control.Dispose();
+            return;
+        }
+
+        cards.SuspendLayout();
+        try
+        {
+            cards.Controls.Clear();
+            summary.Text = profiles.Count == 0
+                ? "No routing profiles discovered."
+                : $"{profiles.Count} profile(s) • read-only dashboard • {Environment.MachineName}";
+            cards.Controls.AddRange(rendered.ToArray());
+        }
+        finally
+        {
+            cards.ResumeLayout();
+        }
     }
 
     private List<ProfileRow> LoadProfiles()
