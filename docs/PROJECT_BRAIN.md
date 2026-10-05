@@ -892,3 +892,13 @@ Because this changed executable code after the earlier qualification, the comple
 **Status:** CURRENT candidate, not FINAL. Do not rewrite `v0.10.14`. Exact-head Windows/Linux/Amirreza + hosted CI/canary + merge/tag/release/post-install gates remain OPEN.
 
 **Exact next action:** commit the narrow release-metadata bump, qualify that exact SHA, push the hotfix branch, open a dedicated PR, then require all cross-host/hosted gates before merge and release.
+
+### 2026-10-05 — v0.10.15 local qualification PASS
+
+**Key result:** candidate code `b6cdeec` completed bounded Windows qualification with **270 pass / 0 fail / 7 platform skips**, plus installer/onboarding/release/browser/GUI supplemental PASS gates.
+
+**Failure converted to guard:** the preceding `09f4e27` attempt failed because current-release contracts still pinned v0.10.14. Release identity is now treated as one atomic surface spanning package/runtime/installers/server installers/plugin templates/contracts/docs/final-gate naming.
+
+**Roadmap ← now:** local Windows qualification PASS ← **CURRENT**; hosted PR CI/server canary, Linux laptop exact-head acceptance, Amirreza exact-head acceptance, merge, immutable v0.10.15 tag/release and post-release readback remain OPEN.
+
+**Exact next action:** push the hotfix final documentation head, open the v0.10.15 PR, require exact-head hosted and cross-host PASS before merge/promotion.

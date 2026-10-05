@@ -2082,3 +2082,12 @@ Acceptance boundary: this is local exact-tree qualification only. GitHub hosted 
 - **Writer-control incident:** a scheduled finalization run overlapped the active chat writer and created/merged `db5053e`. The recurring Remote Commander finalization automation was paused before further mutation. This hotfix worktree is now the sole writer for release closure.
 - **Open gates:** exact-head Windows qualification after version bump, hosted CI/server canary, Linux laptop exact-head acceptance, Amirreza exact-head acceptance, merge, immutable tag/release, post-release install/readback. Until those pass, v0.10.15 is **UNPROVEN / candidate**.
 - **Reuse targets:** release notes, Project Brain handoff, CI/release process and one-writer failure-prevention guidance.
+
+### 2026-10-05 — v0.10.15 exact-code qualification and release-identity closure
+
+- **Candidate code SHA:** `b6cdeec` on `hotfix/v0.10.15-terminal-readiness`.
+- **First release-bump attempt:** `09f4e27` failed qualification because `test/installer-check.mjs` still required the v0.10.14 installer identity. This was classified as a release-contract failure, not ignored.
+- **Root cause / prevention:** current release identity was distributed across runtime, Linux/Windows installers, server installers, plugin templates, onboarding/release contracts, final-gate naming and server-install documentation. Updating only `package.json` and `install.ps1` was incomplete. The hotfix now advances all current identity surfaces together while leaving historical v0.10.14 evidence and generic test fixtures unchanged.
+- **Verification:** `npm run check:qualification` on `b6cdeec` completed with exit code 0. Main bounded batch: **277 total / 270 pass / 0 fail / 7 platform skips**. Installer check, onboarding plugin check, release asset contract, browser initialization/path gates, GUI contract and supplemental qualification gates all completed successfully.
+- **Status:** Windows exact-code qualification = **CONFIRMED PASS**. Hosted final-head CI/canary, Linux laptop, Amirreza server, merge/tag/release and post-release rollout remain OPEN.
+- **Reuse targets:** release checklist, version-bump procedure, failure-prevention rule: release-version advancement must update the whole declared identity surface atomically, not only package metadata.
