@@ -833,3 +833,22 @@ Because this changed executable code after the earlier qualification, the comple
 **Historical-state boundary:** the 1790 historical directories remain untouched and forensically recoverable. Before any cleanup, enumerate all current Linux routing/profile/config references, protect every referenced explicit or legacy scope, then archive unreferenced scope directories with a manifest and no deletion.
 
 **Exact next action:** commit/push only the Linux delivery-identity files, roll out the exact commit, verify the active config contains the same production delivery directory+scope as pre-rollout with `pending=0`, and verify the diagnostic candidate used its shadow store. Only then archive unreferenced historical delivery scopes.
+
+
+### 2026-10-05 — Cross-platform product-shell Access & Operations milestone
+
+**Previous accepted state:** cross-platform candidate baseline `383393d` combines the current Windows product shell with the v0.10.14 Linux stabilization changes. Production Windows is still v0.10.13; promotion is not implied.
+
+**Current delta / confirmed:** per-capability permission changes now reach the existing guarded capability migration path. Primary-profile edits are scoped through the qualified updater with `TargetProfile`; isolated profiles retain transactional reconfigure/rollback. Profile UI now exposes explicit access controls and authoritative inventory rather than treating stale version labels as profiles. The live Windows inventory remains `default` + `saeed-emad`; `10.04` is not a live profile.
+
+**Admin design:** current-user Task Scheduler `Interactive + Highest` is the selected minimum-sufficient elevation boundary. Registration requires one UAC, then an elevated probe/readback must PASS before the legacy HKCU Run launcher is disabled. No password/S4U credential is stored; removal/activation have rollback/fallback paths. Source/contract is complete; live task registration is still OPEN.
+
+**Monitoring:** workflow CLI wiring was repaired to consume full Commander config correctly and expand environment roots. It opens the real production SQLite store. Current live scheduler is recovery/readiness-only: `automaticExecution=false`, `runnerConfigured=false`, `persistedNonterminal=807`, `currentLeases=0`. Persisted RUNNING rows are explicitly not presented as live processes.
+
+**UI/package:** Dashboard now exposes Profiles & Access, Operations Monitor and Admin Runtime. Desktop build includes all three scripts; installer defines four Start Menu shortcuts using the product icon. Windows self-contained publish PASS, v0.10.14 executable SHA-256 `7af21bbaa8036906b0483eca89154460cd8b10219cd13e6615fcb475a655ea5b`; candidate dashboard runtime window observed.
+
+**Regression:** focused contracts **31/31 PASS**; `test:update` **78 pass / 0 fail / 2 platform skips** plus MCP Tasks **1/1 PASS**.
+
+**Status:** CURRENT candidate / not yet FINAL. Exact-head full qualification, commit/push/hosted CI, live Windows install/readback, Linux laptop and Amirreza Server acceptance, and a separate truthful timed-scheduler/same-chat-continuation change set remain open.
+
+**Exact next action:** exclude the two proven EOL-only checkout artifacts from staging, commit this Access & Operations change set with exact evidence, run exact-head qualification, then exercise the same commit on Windows/Linux/Amirreza before promotion.

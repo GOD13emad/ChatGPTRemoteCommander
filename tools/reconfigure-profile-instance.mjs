@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import { reconfigureProfileInstance } from '../src/profile-reconfigure.mjs';
 
 function parse(args){
-  const o={roots:[],powerMode:undefined,guiControl:undefined};
+  const o={roots:[],powerMode:undefined,guiControl:undefined,disableCapabilities:[],enableCapabilities:[]};
   for(let i=0;i<args.length;i++){
     const a=args[i];
     if(a==='--power'){o.powerMode=true;continue;}
@@ -15,6 +15,8 @@ function parse(args){
     else if(a==='--root')o.roots.push(v);
     else if(a==='--state-dir')o.stateDirectory=v;
     else if(a==='--base-config')o.baseConfigPath=v;
+    else if(a==='--disable-capability')o.disableCapabilities.push(v);
+    else if(a==='--enable-capability')o.enableCapabilities.push(v);
     else throw new Error('PROFILE_RECONFIGURE_ARGUMENT');
   }
   if(!o.profile)throw new Error('PROFILE_RECONFIGURE_PROFILE_REQUIRED');
@@ -28,5 +30,10 @@ function parse(args){
   return o;
 }
 const args=parse(process.argv.slice(2));
-const result=reconfigureProfileInstance({...args,allowedRoots:args.roots.length?args.roots:undefined});
+const result=reconfigureProfileInstance({
+  ...args,
+  allowedRoots:args.roots.length?args.roots:undefined,
+  disableCapabilities:args.disableCapabilities,
+  enableCapabilities:args.enableCapabilities
+});
 console.log(JSON.stringify(result));
