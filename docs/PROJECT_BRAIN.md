@@ -760,3 +760,76 @@ Because this changed executable code after the earlier qualification, the comple
 **Status:** ACCEPTED FOR PR / NOT RELEASED. v0.10.12 remains production authority until hosted exact-head gates, immutable release, exact-ref rollout, and live source-path diagnosis pass.
 
 **Open gate after rollout:** run `codex_plugin_refresh` against `linux-project-skills`, record the returned concrete source path/type, and reconcile why Codex lists/materializes 1.4.12 while the canonical source tree is 1.4.13. Do not hand-edit the managed Codex cache.
+
+
+### 2026-10-04 — CURRENT: v0.10.14 Linux post-cutover maintenance recovery candidate
+
+**Previous accepted state:** Remote Commander v0.10.13 is released and live on the Linux laptop at merge commit `6bdc26f172155cd833c0569083ea34a3d8d64392`. The scoped Codex maintenance E2E now confirms `linux-project-skills@personal` at **1.4.13** from the canonical local path, with source/cache manifest hashes equal. The personal Remote Commander Work/Codex projection was manually reconciled from 0.10.4 to **0.10.13**, preserving its private app binding, and Codex materialized the 0.10.13 cache successfully.
+
+**Finding:** routed runtime cutovers for v0.10.11, v0.10.12 and v0.10.13 succeeded, but the Linux control checkout remained at v0.10.9 and `last-update.json` was not durably completed. Live control status contains only `enable-autostart.ps1` and `enable-boot-recovery.ps1`; the index is clean and `git diff --ignore-space-at-eol --exit-code --` returns zero. Updater logs stop after post-cutover GUI synchronization, proving the maintenance tail was blocked by historical EOL-only dirtiness. This also allowed the personal Work plugin projection to remain stale until manual repair.
+
+**Decision / minimum sufficient control:** v0.10.14 makes Linux control promotion tolerate only proven CR-at-EOL drift while continuing to reject staged and substantive tracked mutation; verifies the promoted exact commit; retains the ERR trap after route commit; and adds an atomic `sync_work_plugin_projection` maintenance step. That step is no-op when the personal plugin is absent, validates the existing app binding without logging it, backs up prestate, stages from the exact immutable candidate template, preserves `.app.json` bytes, applies the same personal interface/app references as the Work installer, atomically swaps with rollback, and post-verifies versions plus binding hash.
+
+**Local qualification:** focused updater contract **17 pass / 0 fail / 1 Windows-only skip**; `check:qualification` **269 total / 263 pass / 0 fail / 6 platform skips**; `test:qualification` **515 total / 509 pass / 0 fail / 6 platform skips**; GUI **77/77**; schema continuity **9/9**; Linux GUI, FS safety, headless launch policy, Windows runtime, source integrity and `SECURITY_AUDIT_PASS` all PASS.
+
+**Status:** ACCEPTED FOR PR / NOT RELEASED. v0.10.13 remains production authority until exact-head hosted gates, merge-tree identity, immutable release and Linux rollout prove the post-cutover maintenance tail end-to-end.
+
+**Open gates:** Windows CI; Ubuntu CI; Linux Server Install Canary; Windows Server Install Canary; immutable v0.10.14 release; exact-ref Linux rollout; control HEAD == release merge commit; durable updater completion state; `WORK_PLUGIN_SOURCE_SYNC_PASS version=0.10.14`; personal Work plugin source/cache == 0.10.14 with binding preserved.
+
+**Exact next action:** stage only the intended v0.10.14 files, exclude the two historical EOL-only PowerShell worktree artifacts, push the branch and require all hosted exact-head gates before merge.
+
+
+### 2026-10-05 — Scope narrowed to Linux-only
+
+**Authority update:** current owner direction limits continued work to Linux and Linux-specialized components on the active Linux host. Windows implementation, debugging and Windows-specific release acceptance are DEFERRED and are not part of the current DoD.
+
+**Release interpretation:** v0.10.14 remains an exact-commit Linux candidate. Do not merge/tag it as a repository-wide cross-platform release under the current scope. Linux acceptance is based on Linux qualification, source/security integrity, candidate-first exact-commit rollout, control promotion completion, durable updater completion and Work/Codex projection/cache verification on the active Linux host.
+
+**Exact next action:** commit the Linux test-scope correction, close the cross-platform PR to prevent accidental merge, push the Linux candidate branch, then roll out that exact commit on the active Linux machine and verify all Linux post-cutover invariants.
+
+
+### 2026-10-05 — Linux updater self-termination root cause confirmed
+
+**Fact / live reproduction:** exact-commit v0.10.14 rollout from a Commander-owned terminal passed both qualification gates and cut over runtime to `b8a136f92bf3958dc87945c47b88672fb80f1337`, but the updater process disappeared immediately after `ROUTER_PREVIOUS_RETIRED`. No updater process remained and the same invocation never reached control promotion, Work plugin sync or final PASS. This demonstrates that retiring the backend that owns the invoking terminal can terminate the updater's own process tree.
+
+**Fact / recovery:** a second same-version maintenance invocation on the new runtime logged `CONTROL_EOL_DRIFT_TOLERATED`, promoted control to `b8a136f...`, synchronized the Work plugin to 0.10.14, logged `AUTO_UPDATE_MAINTENANCE_PASS` and requested supervisor recycle. Therefore EOL-only drift is a secondary control-promotion issue, not the complete explanation for the first-pass truncation.
+
+**Change:** the Linux updater now performs a bounded managed-backend ancestry check before acquiring the updater lock. A Commander-owned manual invocation re-execs the exact original arguments in an independent `setsid` session with a one-shot detached marker. Supervisor invocations and self-test remain unchanged. Missing `setsid` fails closed.
+
+**Change / durable completion:** Linux PASS paths now atomically write `last-update.json` before the PASS log. Receipt identity is validated (status, semver, exact commit and bounded source ref), file mode is 0600, and invalid rewrite attempts preserve the previous receipt.
+
+**Qualification on final pre-commit byte-state:** focused Linux updater/installer/schema set **24 pass / 0 fail / 1 platform skip**; `check:qualification` **270/264/0/6**; `test:qualification` **516/510/0/6**; GUI **77/77**; schema continuity **9/9**; `SOURCE_INTEGRITY_PASS`; `SECURITY_AUDIT_PASS`.
+
+**Current gate:** commit/push the exact Linux candidate and prove a new rollout started through Commander completes in one invocation after `AUTO_UPDATE_SELF_DETACH_REQUESTED`, with no same-version recovery run required.
+
+
+### 2026-10-05 — Linux delivery beacon pollution root cause and candidate fix
+
+**OS/scope authority:** active host was re-verified as Linux before each action. Windows remains out of scope.
+
+**Fact / live evidence:** durable-delivery backlog grew above 420 while `deadLetter=0` and `unfinishedRequests=0`. Read-only SQLite inspection showed every pending row had `attempts=0`, a unique synthetic `transport-<sha256>` correlation, and no delivery-request reservation. Artifact metadata showed the backlog is overwhelmingly internal auto-deferred operations: copy_path 353, delete_path 67, move_path 8, plus 4 run_shell operation receipts; it is not evidence of hundreds of lost chat messages.
+
+**Root cause:** legacy/cached MCP mutation calls without explicit requestId derive a transport idempotency key. For auto-deferred copy/move/delete, that transport key was also reused as the operation delivery correlation. Async reconciliation then published every terminal receipt into durable delivery, and Linux `queue-only` continuation has no authenticated consumer for those synthetic correlations. Retry durability and user-visible delivery were therefore conflated.
+
+**Control:** transport-derived auto-deferred operations persist `deliveryMode=transport-retry-only`; worker/state/idempotency/restart recovery remain durable, but no actionable delivery event is published. Explicit operation/request correlations remain `durable` and preserve normal delivery behavior. Startup reconciliation skips persisted transport-only operations.
+
+**Historical repair:** a new `TRANSPORT_RECEIPT` state and bounded `delivery_reclassify_transport_receipts` tool reclassify only zero-attempt `source=operation` rows with an exact synthetic transport correlation and operation event identity. No artifact is deleted and no acknowledgement is synthesized; default list/beacon excludes these internal receipts while full/history reads remain possible.
+
+**Linux-focused qualification:** state/restart/delivery suite **38/38 PASS**; real HTTP transport regression **2/2 PASS**; combined Linux/core relevant suite **50/50 PASS**; `SOURCE_INTEGRITY_PASS`; `SECURITY_AUDIT_PASS`; `git diff --check` PASS.
+
+**Exact next action:** commit/push this Linux candidate, roll out the exact commit on the active Linux host, back up the live delivery store, reclassify only proven legacy transport receipts, then verify pending drops without artifact loss and that a new transport-derived copy does not increase pending while an explicit-request copy still does.
+
+
+### 2026-10-05 — Linux delivery identity stabilization across routed updates
+
+**Previous accepted state:** live v0.10.14 commit `9fb2dacc96ee86b4e662de050e02d309aa11a85f` separates internal transport retry receipts from actionable delivery. After bounded legacy repair and exact-ID fallback-smoke cleanup, the active Linux delivery store reports `pending=0`, `deadLetter=0`, `unfinishedRequests=0`, and a live transport-derived `copy_path` completed with `deliveryMode=transport-retry-only` without increasing pending.
+
+**New finding / read-only inventory:** the historical default delivery root contains **1790 SQLite scope directories**, **313 empty scopes**, **20,974 total rows**, and **20,531 historical pending rows**. The largest obsolete scopes contain hundreds of rows. The current scope formula includes the absolute runtime `configPath`; routed candidate config paths rotate on updates and qualification/test configs therefore create separate scope identities. These old databases are not the active queue, but the fragmentation obscures durable continuity and pollutes per-user state.
+
+**Decision / minimum sufficient control:** do not mass-delete or mass-ack historical databases. Preserve backward compatibility for ad-hoc legacy configs, while making managed Linux candidate configs carry an explicit stable delivery identity. `deliveryLocation` now honors an explicit validated `durableDelivery.scope`; the candidate builder pins the currently active directory+scope when an existing config is supplied. A fresh managed install derives one stable scope from device identity + profile and stores it explicitly. Linux diagnostic candidates receive a dedicated delivery shadow and diagnostic scope; the final candidate preserves production delivery identity. Thus hardware/self-test effects cannot write into the production delivery queue while routed config-path rotation no longer fragments production state.
+
+**Qualification on final byte-state:** shared delivery/async/candidate/schema suite **49/49 PASS**; Linux GUI/installer/tunnel suite **11/11 PASS**; targeted Linux updater contract **1/1 PASS**; `bash -n auto-update-linux.sh` PASS; `git diff --check` PASS; `SOURCE_INTEGRITY_PASS`; `SECURITY_AUDIT_PASS`. A minimal Linux installer fixture initially missed the new builder dependency (`src/delivery-store.mjs` + `src/platform.mjs`); the fixture was aligned with the actual repository dependency graph and all Linux installer isolation tests then passed. Windows remains outside the acceptance scope.
+
+**Historical-state boundary:** the 1790 historical directories remain untouched and forensically recoverable. Before any cleanup, enumerate all current Linux routing/profile/config references, protect every referenced explicit or legacy scope, then archive unreferenced scope directories with a manifest and no deletion.
+
+**Exact next action:** commit/push only the Linux delivery-identity files, roll out the exact commit, verify the active config contains the same production delivery directory+scope as pre-rollout with `pending=0`, and verify the diagnostic candidate used its shadow store. Only then archive unreferenced historical delivery scopes.

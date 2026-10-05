@@ -1,3 +1,20 @@
+## 0.10.14 - 2026-10-04
+
+- Stabilize Linux durable-delivery identity across routed config-path rotation: final candidates preserve the active delivery directory/scope, fresh managed installs pin a stable device/profile scope, and diagnostic candidates use an isolated shadow store so qualification cannot pollute production delivery state.
+- Keep historical config-path-derived delivery stores intact for forensic recovery; cleanup is gated on a profile/reference audit and archive manifest rather than deletion.
+
+- Separate Linux transport-derived auto-deferred operation receipts from user-actionable durable delivery: retry/idempotency state remains durable, while synthetic `transport-*` correlations no longer inflate completion-beacon pending counts.
+- Add bounded `TRANSPORT_RECEIPT` reclassification for legacy internal operation receipts with zero delivery attempts; artifacts and audit history are preserved and no user acknowledgement is synthesized.
+- Add Linux/core regressions proving transport-derived `copy_path` survives retry/restart without delivery pollution while explicit request IDs retain normal claim/ack-capable delivery semantics.
+- Fix Linux post-cutover control promotion when historical PowerShell files are dirty only because of CR-at-EOL normalization: staged or substantive mutations still fail closed, while proven EOL-only drift is auditable and tolerated.
+- Detach a manually invoked Linux updater from a managed Commander backend process tree before taking the update lock, so retiring the previous backend cannot terminate the updater that is performing the cutover.
+- Persist successful Linux update/maintenance completion atomically to `last-update.json` with exact version, commit, source ref and completion timestamp; invalid receipt identity fails closed without replacing the prior receipt.
+- Keep the updater ERR trap active after the route commit point so post-cutover maintenance failures are durably classified instead of silently truncating the maintenance tail.
+- Synchronize an already-installed personal Remote Commander Work/Codex plugin from the exact staged release template during both same-version maintenance recovery and normal post-cutover promotion.
+- Preserve the existing private app binding byte-for-byte, validate its shape without logging it, create a prestate backup, perform an atomic source swap with rollback, and verify portable/native versions and app references before PASS.
+- Add executable Linux regressions for EOL-only control promotion plus Work plugin sync success, absent-plugin no-op, and malformed-binding fail-closed behavior.
+- Advance runtime, installer, server-installer, plugin-template, release-contract and final-gate identity to v0.10.14; v0.10.13 remains accepted stable until hosted and rollout gates pass.
+
 ## 0.10.13 - 2026-10-04
 
 - Extend the scoped `codex_plugin_refresh` result with a bounded summary of each Codex `PluginSummary.source` so local marketplace/cache mismatches can be diagnosed without exposing raw app-server output or enabling general Codex delegation.

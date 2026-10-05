@@ -220,10 +220,22 @@ async function backupAppendRecovery(ctx, target, before, appended) {
   return destination;
 }
 
+const linuxDirectGuiMutationPatterns = [
+  /(?:^|[;&|()'"`\s])(?:\/usr\/bin\/)?xdotool\s+(?:type|key|keydown|keyup|click|mousedown|mouseup|mousemove|mousemove_relative|windowactivate|windowfocus|windowraise|windowmove|windowsize)\b/i,
+  /(?:^|[;&|()'"`\s])(?:sudo\s+)?(?:\/[^\s'"]+\/)?(?:ydotool|wtype|xte|dotool)\b/i,
+  /(?:^|[;&|()'"`\s])(?:\/usr\/bin\/)?xinput\s+(?:set-prop|set-int-prop|set-button-map|float|reattach|disable|enable|map-to-output|create-master|remove-master|set-client-pointer)\b/i,
+  /(?:^|[;&|()'"`\s])(?:\/usr\/bin\/)?setxkbmap\b(?!\s+(?:-query|-print)\b)/i,
+  /(?:^|[;&|()'"`\s])(?:\/usr\/bin\/)?xmodmap\b(?!\s+(?:-pke|-pm|-pp|-pk)\b)/i
+];
+function assertNoDirectLinuxGuiMutation(command) {
+  if (process.platform !== 'linux') return;
+  for (const pattern of linuxDirectGuiMutationPatterns) if (pattern.test(command)) throw new Error('direct Linux GUI/input mutation is blocked; use Remote Commander GUI APIs');
+}
 function checkShell(ctx, command) {
   const cfg = power(ctx);
   if (cfg.allowShell !== true) throw new Error('shell execution is disabled');
   if (typeof command !== 'string' || command.trim().length === 0) throw new Error('command is required');
+  assertNoDirectLinuxGuiMutation(command);
   for (const raw of cfg.blockedShellPatterns || []) {
     const pattern = new RegExp(raw, 'i');
     if (pattern.test(command)) throw new Error(`command blocked by policy: ${raw}`);
@@ -266,7 +278,8 @@ export async function powerStatus(ctx) {
       root: backupRoot(ctx),
       retainedSnapshotsPerTarget: backupRetentionSnapshots(ctx),
       appendRecovery: 'verified-truncate-journal'
-    }
+    },
+    directGuiInjectionGuard: process.platform === 'linux'
   };
 }
 export async function fileInfo(ctx, input) {

@@ -10,7 +10,8 @@ export const deliveryToolDefinitions = [
   { name:'delivery_claim', description:'Claim one delivery for bounded presentation. Reusing the same attemptId is idempotent; a live different claim fails closed.', inputSchema:{type:'object',properties:{deliveryId:uuid,correlationId:id,attemptId:id,leaseMs:{type:'integer',minimum:1000,maximum:300000}},required:['deliveryId','correlationId','attemptId'],additionalProperties:false}, annotations:action },
   { name:'delivery_ack', description:'Acknowledge that an exact claimed delivery was presented. Repeated acknowledgement with the same attempt is idempotent.', inputSchema:{type:'object',properties:{deliveryId:uuid,correlationId:id,attemptId:id},required:['deliveryId','correlationId','attemptId'],additionalProperties:false}, annotations:action },
   { name:'delivery_read_artifact', description:'Read one bounded base64 chunk of a content-addressed delivery artifact, transparently from live or compact archive storage. Never returns an arbitrary filesystem path.', inputSchema:{type:'object',properties:{deliveryId:uuid,correlationId:id,offset:{type:'integer',minimum:0},maxBytes:{type:'integer',minimum:1,maximum:16384}},required:['deliveryId','correlationId'],additionalProperties:false}, annotations:ro },
-  { name:'delivery_compact', description:'Compact eligible completed delivery artifacts into verified compressed archive storage without acknowledging, deleting, or changing any delivery state. Pending, uncertain, blocked and dead-letter records remain fail-closed.', inputSchema:{type:'object',properties:{minAgeMs:{type:'integer',minimum:0,maximum:31536000000},limit:{type:'integer',minimum:1,maximum:100}},additionalProperties:false}, annotations:action }
+  { name:'delivery_compact', description:'Compact eligible completed delivery artifacts into verified compressed archive storage without acknowledging, deleting, or changing any delivery state. Pending, uncertain, blocked and dead-letter records remain fail-closed.', inputSchema:{type:'object',properties:{minAgeMs:{type:'integer',minimum:0,maximum:31536000000},limit:{type:'integer',minimum:1,maximum:100}},additionalProperties:false}, annotations:action },
+  { name:'delivery_reclassify_transport_receipts', description:'Reclassify bounded legacy internal transport-derived operation receipts from actionable undelivered state to TRANSPORT_RECEIPT. Requires source=operation, zero delivery attempts, an internal transport correlation and operation event identity. Does not delete artifacts or synthesize user acknowledgement.', inputSchema:{type:'object',properties:{limit:{type:'integer',minimum:1,maximum:10000}},additionalProperties:false}, annotations:action }
 ];
 
 export function createDeliveryTools(store) {
@@ -25,6 +26,7 @@ export function createDeliveryTools(store) {
       if(name==='delivery_ack') return store.ack(args);
       if(name==='delivery_read_artifact') return store.readArtifact(args);
       if(name==='delivery_compact') return store.compact(args);
+      if(name==='delivery_reclassify_transport_receipts') return store.reclassifyTransportReceipts(args);
       throw new Error('unknown delivery tool');
     }
   };

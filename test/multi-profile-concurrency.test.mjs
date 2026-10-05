@@ -6,7 +6,7 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { WorkflowStore } from '../src/workflow-store.mjs';
 import { MutationIdempotencyStore } from '../src/mutation-idempotency.mjs';
-import { DeliveryStore } from '../src/delivery-store.mjs';
+import { DeliveryStore, deliveryLocation } from '../src/delivery-store.mjs';
 import { buildProfileInstance } from '../src/profile-instances.mjs';
 
 function temp(prefix='rc-cross-profile-'){return fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(),prefix)));}
@@ -118,6 +118,36 @@ test('profile builder derives the same machine-global lease directory for isolat
   }finally{fs.rmSync(root,{recursive:true,force:true});}
 });
 
+test('candidate delivery identity is stable across routed config-path rotation',()=>{
+  const root=temp('rc-delivery-candidate-'),state=path.join(root,'state'),workflow=path.join(root,'workflow');
+  const project=path.join(root,'project');fs.mkdirSync(project,{recursive:true});fs.mkdirSync(state,{recursive:true});fs.mkdirSync(workflow,{recursive:true});
+  const defaults={
+    deviceName:'linux-fixture',host:'127.0.0.1',port:47831,allowedRoots:[project],allowedPrograms:['node'],
+    powerMode:{enabled:false,fullFilesystem:false,allowShell:false,allowProcessControl:false,allowPermanentDelete:false,guiControl:{enabled:false}},
+    durableWorkflows:{enabled:true,directory:workflow,scheduler:{enabled:true,oneWriterPerRoot:true,maxConcurrentProjects:1}}
+  };
+  const defaultPath=path.join(root,'default.json'),existingPath=path.join(root,'existing-v1.json');
+  fs.writeFileSync(defaultPath,JSON.stringify(defaults));
+  const existing={...defaults,instance:{profile:'default',isolated:false},capabilityProfile:{id:'default',schemaVersion:1,tier:'STANDARD',capabilities:[],disabledCapabilities:[]}};
+  fs.writeFileSync(existingPath,JSON.stringify(existing));
+  try{
+    const legacy=deliveryLocation(existing,existingPath);
+    const out1=path.join(root,'runtime-a','config.json'),out2=path.join(root,'runtime-b','config.json');
+    fs.mkdirSync(path.dirname(out1),{recursive:true});fs.mkdirSync(path.dirname(out2),{recursive:true});
+    let run=spawnSync(process.execPath,['tools/build-candidate-config.mjs','--default',defaultPath,'--existing',existingPath,'--output',out1,'--profile-id','default','--port','48010','--state-dir',path.join(root,'runtime-a'),'--workflow-dir',workflow],{cwd:path.resolve('.'),encoding:'utf8'});
+    assert.equal(run.status,0,run.stderr);
+    const first=JSON.parse(fs.readFileSync(out1,'utf8'));
+    assert.equal(first.durableDelivery.scope,legacy.scope);
+    assert.equal(first.durableDelivery.directory,legacy.directory);
+    run=spawnSync(process.execPath,['tools/build-candidate-config.mjs','--default',defaultPath,'--existing',out1,'--output',out2,'--profile-id','default','--port','48011','--state-dir',path.join(root,'runtime-b'),'--workflow-dir',workflow],{cwd:path.resolve('.'),encoding:'utf8'});
+    assert.equal(run.status,0,run.stderr);
+    const second=JSON.parse(fs.readFileSync(out2,'utf8'));
+    assert.equal(second.durableDelivery.scope,first.durableDelivery.scope);
+    assert.equal(second.durableDelivery.directory,first.durableDelivery.directory);
+    assert.notEqual(path.resolve(out1),path.resolve(out2));
+  }finally{fs.rmSync(root,{recursive:true,force:true});}
+});
+
 test('candidate config pins shared lease directory under the supplied machine state root',()=>{
   const root=temp(),state=path.join(root,'state'),runtime=path.join(root,'runtime'),workflow=path.join(root,'workflow'),out=path.join(root,'candidate.json');
   fs.mkdirSync(state,{recursive:true});fs.mkdirSync(runtime,{recursive:true});fs.mkdirSync(workflow,{recursive:true});
@@ -133,5 +163,7 @@ test('candidate config pins shared lease directory under the supplied machine st
     assert.equal(run.status,0,run.stderr);
     const cfg=JSON.parse(fs.readFileSync(out,'utf8'));
     assert.equal(cfg.durableWorkflows.rootLeaseDirectory,path.join(state,'shared','root-leases'));
+    assert.match(cfg.durableDelivery.scope,/^[a-f0-9]{64}$/);
+    assert.equal(cfg.durableDelivery.directory,path.join(os.homedir(),'.chatgpt-remote-commander','delivery','profiles',cfg.durableDelivery.scope));
   }finally{fs.rmSync(root,{recursive:true,force:true});}
 });

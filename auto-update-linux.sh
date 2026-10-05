@@ -2,6 +2,8 @@
 set -euo pipefail
 
 INSTALL_DIR="${HOME}/.local/share/ChatGPTRemoteCommander"
+ORIGINAL_ARGS=("$@")
+SELF_PATH="$(readlink -f "${BASH_SOURCE[0]}")"
 SOURCE_REF=""
 EXPECTED_COMMIT=""
 FORCE=0
@@ -68,6 +70,63 @@ INSTALL_DIR="$(cd "$INSTALL_DIR" 2>/dev/null && pwd -P || printf '%s' "$INSTALL_
 mkdir -p "$RELEASE_ROOT" "$ROUTING_ROOT" "$RUNTIME_ROOT" "$BACKUP_ROOT" "$LOG_DIR"
 
 log(){ printf '%s %s\n' "$(date --iso-8601=seconds 2>/dev/null || date)" "$*" >> "$LOG_DIR/auto-update.log"; [[ "$SELF_TEST" == 1 ]] || printf '%s\n' "$*"; }
+
+updater_has_commander_backend_ancestor(){
+  local pid="${PPID:-0}" depth=0 cmd cwd parent
+  while [[ "$pid" =~ ^[0-9]+$ && "$pid" -gt 1 && "$depth" -lt 16 ]]; do
+    cmd="$(tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null || true)"
+    cwd="$(readlink -f "/proc/$pid/cwd" 2>/dev/null || true)"
+    if [[ "$cmd" == *"src/server-v0.3.mjs"* || "$cmd" == *"src/server.mjs"* ]]; then
+      if [[ "$cwd" == "$INSTALL_DIR" || "$cwd" == "$STATE_ROOT/releases/"* || "$cwd" == "$STATE_ROOT/runtimes/"* ]]; then
+        return 0
+      fi
+    fi
+    parent="$(awk '$1=="PPid:"{print $2}' "/proc/$pid/status" 2>/dev/null || true)"
+    [[ "$parent" =~ ^[0-9]+$ ]] || break
+    pid="$parent"
+    depth=$((depth+1))
+  done
+  return 1
+}
+
+detach_from_commander_backend_if_needed(){
+  [[ "$SELF_TEST" == 1 ]] && return 0
+  [[ "${REMOTE_COMMANDER_AUTO_UPDATE_DETACHED:-0}" == 1 ]] && return 0
+  updater_has_commander_backend_ancestor || return 0
+  if ! command -v setsid >/dev/null 2>&1; then
+    log 'AUTO_UPDATE_SELF_DETACH_BLOCK reason=setsid-missing'
+    return 1
+  fi
+  nohup setsid -f env REMOTE_COMMANDER_AUTO_UPDATE_DETACHED=1 /bin/bash "$SELF_PATH" "${ORIGINAL_ARGS[@]}" >>"$LOG_DIR/auto-update-detached.log" 2>&1 </dev/null &
+  log 'AUTO_UPDATE_SELF_DETACH_REQUESTED'
+  exit 0
+}
+
+write_update_result(){
+  local status="$1" version="$2" commit="$3" ref="$4"
+  node --input-type=module - "$RESULT_FILE" "$status" "$version" "$commit" "$ref" <<'NODE'
+import fs from 'node:fs';
+import path from 'node:path';
+const [, , file, status, version, commit, sourceRef] = process.argv;
+if (!/^(?:pass|maintenance_pass)$/.test(status)) process.exit(2);
+if (!/^\d+\.\d+\.\d+$/.test(version)) process.exit(3);
+if (!/^[0-9a-fA-F]{40}$/.test(commit)) process.exit(4);
+if (sourceRef.length > 128 || !/^[A-Za-z0-9._/-]+$/.test(sourceRef)) process.exit(5);
+fs.mkdirSync(path.dirname(file), { recursive: true });
+const tmp = file + '.tmp-' + process.pid;
+const payload = {
+  schema: 1,
+  platform: 'linux',
+  status,
+  version,
+  commit: commit.toLowerCase(),
+  sourceRef,
+  completedAt: new Date().toISOString()
+};
+fs.writeFileSync(tmp, JSON.stringify(payload, null, 2) + '\n', { mode: 0o600 });
+fs.renameSync(tmp, file);
+NODE
+}
 curl_fetch(){ curl --fail --silent --show-error --location --connect-timeout "$CURL_CONNECT_TIMEOUT" --max-time "$CURL_MAX_TIME" "$@"; }
 json_field(){ node "$1/tools/json-field.mjs" --file "$2" --field "$3" 2>/dev/null || true; }
 route_tsv(){ node "$1/tools/router-state.mjs" --state "$2" --tsv; }
@@ -369,13 +428,28 @@ recycle_supervisor(){
 }
 
 promote_control(){
-  local commit="$1" ref="$2" dirty resolved
+  local commit="$1" ref="$2" dirty resolved promoted
   dirty="$(git -C "$INSTALL_DIR" status --porcelain --untracked-files=no)"
-  [[ -z "$dirty" ]] || { echo 'control tracked dirty' >&2; return 1; }
+  if [[ -n "$dirty" ]]; then
+    if ! git -C "$INSTALL_DIR" diff --cached --quiet --; then
+      log 'CONTROL_TRACKED_DIRTY_BLOCK reason=staged'
+      echo 'control tracked dirty (staged)' >&2
+      return 1
+    fi
+    if ! git -C "$INSTALL_DIR" diff --ignore-cr-at-eol --quiet --; then
+      log 'CONTROL_TRACKED_DIRTY_BLOCK reason=substantive'
+      echo 'control tracked dirty (substantive)' >&2
+      return 1
+    fi
+    log 'CONTROL_EOL_DRIFT_TOLERATED'
+  fi
   git -C "$INSTALL_DIR" fetch --no-tags origin "$ref"
   resolved="$(git -C "$INSTALL_DIR" rev-parse 'FETCH_HEAD^{commit}')"
   [[ "$resolved" == "$commit" ]] || { echo 'control commit mismatch' >&2; return 1; }
   git -C "$INSTALL_DIR" checkout --detach --force "$commit" >/dev/null
+  promoted="$(git -C "$INSTALL_DIR" rev-parse HEAD 2>/dev/null || true)"
+  [[ "$promoted" == "$commit" ]] || { echo 'control promotion verification failed' >&2; return 1; }
+  log "CONTROL_PROMOTION_PASS commit=$commit"
 }
 
 install_linux_gui_backend(){
@@ -385,6 +459,119 @@ install_linux_gui_backend(){
   chmod +x "$project/tools/gui-control-linux.py" "$project/tools/install-gnome-gui-extension.sh"
   "$project/tools/install-gnome-gui-extension.sh"
   log "LINUX_GUI_BACKEND_SYNCED project=$project"
+}
+
+sync_work_plugin_projection(){
+  local project="$1" version="$2" commit="$3"
+  local template="$project/plugin-template"
+  local data_root="${XDG_DATA_HOME:-$HOME/.local/share}"
+  local plugin_root="$data_root/ChatGPTRemoteCommander/work-plugin/marketplace/plugins/chatgpt-remote-commander"
+  local parent stage retired backup app_sha
+
+  if [[ ! -d "$plugin_root" ]]; then
+    log 'WORK_PLUGIN_SOURCE_SYNC_SKIP reason=not-installed'
+    return 0
+  fi
+  [[ -f "$plugin_root/.app.json" && ! -L "$plugin_root/.app.json" ]] || {
+    log 'WORK_PLUGIN_SOURCE_SYNC_BLOCK reason=invalid-app-binding-file'
+    echo 'work plugin app binding is missing or unsafe' >&2
+    return 1
+  }
+  [[ -f "$template/plugin.json" && -f "$template/.codex-plugin/plugin.json" ]] || {
+    log 'WORK_PLUGIN_SOURCE_SYNC_BLOCK reason=missing-template'
+    echo 'work plugin template is incomplete' >&2
+    return 1
+  }
+
+  app_sha="$(sha256sum "$plugin_root/.app.json" | awk '{print $1}')"
+  node --input-type=module - "$template" "$version" "$plugin_root/.app.json" <<'NODE'
+import fs from 'node:fs';
+const [, , template, expectedVersion, appPath] = process.argv;
+const portable = JSON.parse(fs.readFileSync(template + '/plugin.json', 'utf8'));
+const native = JSON.parse(fs.readFileSync(template + '/.codex-plugin/plugin.json', 'utf8'));
+const app = JSON.parse(fs.readFileSync(appPath, 'utf8'));
+const id = app?.apps?.['remote-commander']?.id ?? '';
+if (portable.version !== expectedVersion || native.version !== expectedVersion) process.exit(2);
+if (!/^(?:asdk_app_|connector_|templated_apps_)[A-Za-z0-9_-]+$/.test(id)) process.exit(3);
+NODE
+
+  parent="$(dirname "$plugin_root")"
+  stage="$parent/.chatgpt-remote-commander.next-$$"
+  retired="$parent/.chatgpt-remote-commander.prev-$$"
+  backup="$BACKUP_ROOT/$commit/work-plugin/chatgpt-remote-commander"
+  [[ ! -e "$stage" && ! -e "$retired" ]] || {
+    log 'WORK_PLUGIN_SOURCE_SYNC_BLOCK reason=staging-collision'
+    echo 'work plugin staging path collision' >&2
+    return 1
+  }
+
+  mkdir -p "$stage"
+  cp -a "$template/." "$stage/"
+  cp -p "$plugin_root/.app.json" "$stage/.app.json"
+
+  node --input-type=module - "$stage" "$version" <<'NODE'
+import fs from 'node:fs';
+const [, , root, expectedVersion] = process.argv;
+const appPath = root + '/.app.json';
+const portablePath = root + '/plugin.json';
+const nativePath = root + '/.codex-plugin/plugin.json';
+const app = JSON.parse(fs.readFileSync(appPath, 'utf8'));
+const id = app?.apps?.['remote-commander']?.id ?? '';
+if (!/^(?:asdk_app_|connector_|templated_apps_)[A-Za-z0-9_-]+$/.test(id)) process.exit(2);
+const portable = JSON.parse(fs.readFileSync(portablePath, 'utf8'));
+const native = JSON.parse(fs.readFileSync(nativePath, 'utf8'));
+if (portable.version !== expectedVersion || native.version !== expectedVersion) process.exit(3);
+portable.extensions ??= {};
+portable.extensions['com.openai'] ??= {};
+portable.extensions['com.openai'].apps = './.app.json';
+portable.extensions['com.openai'].interface ??= {};
+portable.extensions['com.openai'].interface.displayName = 'ChatGPT Remote Commander (Personal)';
+portable.extensions['com.openai'].interface.shortDescription = 'Use your registered Remote Commander app';
+native.apps = './.app.json';
+fs.writeFileSync(portablePath, JSON.stringify(portable, null, 2) + '\n');
+fs.writeFileSync(nativePath, JSON.stringify(native, null, 2) + '\n');
+NODE
+
+  if [[ ! -d "$backup" ]]; then
+    mkdir -p "$(dirname "$backup")"
+    cp -a "$plugin_root" "$backup"
+    log "WORK_PLUGIN_SOURCE_BACKUP_PASS commit=$commit"
+  fi
+
+  mv "$plugin_root" "$retired"
+  if ! mv "$stage" "$plugin_root"; then
+    mv "$retired" "$plugin_root" || true
+    log 'WORK_PLUGIN_SOURCE_SYNC_BLOCK reason=swap-failed'
+    return 1
+  fi
+
+  if ! node --input-type=module - "$plugin_root" "$version" "$app_sha" <<'NODE'
+import crypto from 'node:crypto';
+import fs from 'node:fs';
+const [, , root, expectedVersion, expectedAppSha] = process.argv;
+const portable = JSON.parse(fs.readFileSync(root + '/plugin.json', 'utf8'));
+const native = JSON.parse(fs.readFileSync(root + '/.codex-plugin/plugin.json', 'utf8'));
+const appBytes = fs.readFileSync(root + '/.app.json');
+const app = JSON.parse(appBytes.toString('utf8'));
+const id = app?.apps?.['remote-commander']?.id ?? '';
+const appSha = crypto.createHash('sha256').update(appBytes).digest('hex');
+if (portable.version !== expectedVersion || native.version !== expectedVersion) process.exit(2);
+if (portable.extensions?.['com.openai']?.apps !== './.app.json') process.exit(3);
+if (portable.extensions?.['com.openai']?.interface?.displayName !== 'ChatGPT Remote Commander (Personal)') process.exit(4);
+if (portable.extensions?.['com.openai']?.interface?.shortDescription !== 'Use your registered Remote Commander app') process.exit(5);
+if (native.apps !== './.app.json') process.exit(6);
+if (!/^(?:asdk_app_|connector_|templated_apps_)[A-Za-z0-9_-]+$/.test(id)) process.exit(7);
+if (appSha !== expectedAppSha) process.exit(8);
+NODE
+  then
+    rm -rf "$plugin_root"
+    mv "$retired" "$plugin_root" || true
+    log 'WORK_PLUGIN_SOURCE_SYNC_BLOCK reason=post-verify-failed'
+    return 1
+  fi
+
+  rm -rf "$retired"
+  log "WORK_PLUGIN_SOURCE_SYNC_PASS version=$version"
 }
 
 cleanup_releases(){
@@ -408,6 +595,8 @@ cleanup_releases(){
   done
   return "$remaining"
 }
+
+detach_from_commander_backend_if_needed
 
 mkdir -p "$INSTALL_DIR/var"
 exec 9>"$STATE_ROOT/auto-update.lock"
@@ -446,7 +635,9 @@ if [[ "$FORCE" != 1 && -f "$ROUTE" ]]; then
       [[ -z "$LIVE_WF" ]] || node "$STAGE_DIR/tools/finalize-workflow-schema.mjs" --directory "$LIVE_WF"
       promote_control "$COMMIT" "$REF"
       install_linux_gui_backend "$STAGE_DIR" "$ACTIVE_CFG"
+      sync_work_plugin_projection "$STAGE_DIR" "$VERSION" "$COMMIT"
       cleanup_releases || log 'AUTO_UPDATE_CLEANUP_PENDING_AFTER_MAINTENANCE'
+      write_update_result maintenance_pass "$VERSION" "$COMMIT" "$REF"
       log "AUTO_UPDATE_MAINTENANCE_PASS version=$VERSION"
       recycle_supervisor
       exit 0
@@ -471,6 +662,7 @@ validation_cleanup(){
 }
 trap validation_cleanup ERR
 
+run_gate "$STAGE_DIR" linux-gui-safety node tools/linux-gui-safety-audit.mjs
 run_gate "$STAGE_DIR" check npm run check:qualification
 run_gate "$STAGE_DIR" test npm run test:qualification
 run_gate "$STAGE_DIR" audit npm run audit
@@ -491,8 +683,11 @@ MODE=preserve
 [[ "$POWER_MODE" == 1 ]] && MODE=full
 [[ "$STANDARD_MODE" == 1 ]] && MODE=standard
 build_cfg(){
-  local output="$1" wf="$2"
+  local output="$1" wf="$2" delivery_mode="${3:-preserve}"
   local args=("$STAGE_DIR/tools/build-candidate-config.mjs" --default "$STAGE_DIR/config.json" --existing "$ACTIVE_CFG" --output "$output" --profile-id default --port "$PORT" --state-dir "$STATE_DIR" --workflow-dir "$wf" --mode "$MODE" --provider-root "$STATE_ROOT")
+  if [[ "$delivery_mode" == shadow ]]; then
+    args+=(--delivery-directory "$BACKUP_ROOT/$COMMIT/default/delivery-shadow-$PORT" --delivery-scope "diagnostic-${COMMIT:0:32}-$PORT")
+  fi
   [[ -z "$BROWSER_EXECUTABLE" ]] || args+=(--browser-executable "$BROWSER_EXECUTABLE")
   [[ -z "$BROWSER_PROFILE_ROOT" ]] || args+=(--browser-profile-root "$BROWSER_PROFILE_ROOT")
   local c
@@ -502,7 +697,7 @@ build_cfg(){
 }
 
 DIAG_CFG="$STATE_DIR/diagnostic-config.json"
-build_cfg "$DIAG_CFG" "$SHADOW_WF" >/dev/null
+build_cfg "$DIAG_CFG" "$SHADOW_WF" shadow >/dev/null
 DIAG_SHA="$(sha256sum "$DIAG_CFG" | awk '{print $1}')"
 CANDIDATE_PID="$(start_backend "$STAGE_DIR" "$DIAG_CFG" "$STATE_DIR/diagnostic.log")"
 wait_health "$PORT" "$VERSION" "$DIAG_SHA" default || { stop_pid "$CANDIDATE_PID"; echo 'diagnostic health failed' >&2; exit 1; }
@@ -512,7 +707,7 @@ stop_owned_candidate "$CANDIDATE_PID" "$STAGE_DIR"
 CANDIDATE_PID=""
 
 FINAL_CFG="$STATE_DIR/config.json"
-build_cfg "$FINAL_CFG" "$LIVE_WF" >/dev/null
+build_cfg "$FINAL_CFG" "$LIVE_WF" preserve >/dev/null
 FINAL_SHA="$(sha256sum "$FINAL_CFG" | awk '{print $1}')"
 CANDIDATE_PID="$(start_backend "$STAGE_DIR" "$FINAL_CFG" "$STATE_DIR/server.log")"
 wait_health "$PORT" "$VERSION" "$FINAL_SHA" default || { stop_pid "$CANDIDATE_PID"; echo 'final candidate health failed' >&2; exit 1; }
@@ -615,7 +810,6 @@ node "$STAGE_DIR/tools/doctor.mjs" --url http://127.0.0.1:47831/mcp --expected-v
 node "$STAGE_DIR/tools/hardware-selftest.mjs" --url http://127.0.0.1:47831/mcp --config "$FINAL_CFG" --expected-version "$VERSION"
 tunnels_ready || { echo 'tunnel readiness failed' >&2; false; }
 CUTOVER_COMMITTED=1
-trap - ERR
 log "CUTOVER_COMMIT version=$VERSION commit=$COMMIT"
 
 if [[ -n "$OLD_PORT" ]]; then
@@ -635,6 +829,8 @@ fi
 node "$STAGE_DIR/tools/finalize-workflow-schema.mjs" --directory "$LIVE_WF"
 install_linux_gui_backend "$STAGE_DIR" "$FINAL_CFG"
 promote_control "$COMMIT" "$REF"
+sync_work_plugin_projection "$STAGE_DIR" "$VERSION" "$COMMIT"
 cleanup_releases || log 'AUTO_UPDATE_CLEANUP_PENDING_AFTER_PROMOTION'
+write_update_result pass "$VERSION" "$COMMIT" "$REF"
 log "AUTO_UPDATE_PASS version=$VERSION commit=$COMMIT"
 recycle_supervisor
