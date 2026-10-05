@@ -852,3 +852,21 @@ Because this changed executable code after the earlier qualification, the comple
 **Status:** CURRENT candidate / not yet FINAL. Exact-head full qualification, commit/push/hosted CI, live Windows install/readback, Linux laptop and Amirreza Server acceptance, and a separate truthful timed-scheduler/same-chat-continuation change set remain open.
 
 **Exact next action:** exclude the two proven EOL-only checkout artifacts from staging, commit this Access & Operations change set with exact evidence, run exact-head qualification, then exercise the same commit on Windows/Linux/Amirreza before promotion.
+
+
+### 2026-10-05 — Hosted Windows interactive-terminal root cause and prevention
+
+**Previous accepted state:** product/access commit `263589c6381bfa9a0a62c430584b824b61bcd799` passed local bounded Windows qualification, Linux exact-head acceptance, Desktop v0.10.14 installation and live UI smoke. PR #129 then supplied independent hosted evidence.
+
+**Hosted finding / reproduced failure:** Ubuntu CI and Linux clean-container canary passed, but both Windows CI and Windows Server bootstrap independently failed the same contract: `start_terminal remains interactive only when explicitly requested with an initial command`. This repeated failure supersedes the earlier load-only interpretation. A local diagnostic rerun reproduced the semantic race: the interactive PowerShell prompt appeared, while the immediately-written startup statement had not executed.
+
+**Root cause:** Windows interactive terminal startup used plain `pwsh.exe -NoLogo -NoProfile` with piped stdin, then wrote the initial command immediately. That relies on implicit interactive-console stdin behavior and is not a stable redirected-stdin contract. Microsoft `about_Pwsh` documents `-Command -` as the explicit standard-input statement mode and `-NoExit` as keeping the process alive after startup commands.
+
+**Minimum sufficient fix:** Windows interactive sessions now launch `pwsh.exe -NoLogo -NoProfile -NoExit -Command -`. Initial command and later `send_terminal` messages share the same explicit stdin statement channel. One-shot sessions are unchanged. Linux interactive behavior is unchanged. Regression now verifies both `INTERACTIVE_READY` and a follow-up `INTERACTIVE_FOLLOWUP` before cleanup.
+
+**Focused evidence:** `test/process-tree-lifecycle.test.mjs` **7/7 PASS** on Windows after the implementation fix, including descendant termination, one-shot lifecycle, paged reads, bounded wait, interactive startup, follow-up input, and cleanup.
+
+**Status:** fix locally verified; full bounded qualification, final-head hosted CI/canaries and final-head cross-host acceptance remain OPEN. No merge or core promotion until those gates pass.
+
+
+**Post-fix full bounded qualification:** `npm run check:qualification` PASS on Windows; main batch **277 total / 270 pass / 0 fail / 7 platform skips**, with supplemental browser/GUI/installer/source/security gates completing under exit code 0. This supersedes the focused 7/7 evidence for local promotion readiness; hosted final-head gates remain authoritative for merge.

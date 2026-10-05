@@ -2052,3 +2052,14 @@ Acceptance boundary: this is local exact-tree qualification only. GitHub hosted 
 - **Reuse targets:** release notes, Windows operator guide, profile/access documentation, scheduler roadmap, final product acceptance.
 
 - **Method evidence / official sources:** Microsoft Learn documents `New-ScheduledTaskPrincipal -RunLevel Highest` as running with highest privileges and Task Scheduler security contexts as requiring `TASK_RUNLEVEL_HIGHEST` for elevated actions. Sources: https://learn.microsoft.com/en-us/powershell/module/scheduledtasks/new-scheduledtaskprincipal?view=windowsserver2025-ps and https://learn.microsoft.com/en-us/windows/win32/taskschd/security-contexts-for-running-tasks .
+
+
+### 2026-10-05 — Interactive PowerShell redirected-stdin contract
+
+- **Context:** PR #129 exact head `263589c...` failed the identical Windows interactive-terminal test in both hosted CI and Windows Server bootstrap, while Ubuntu paths passed.
+- **Observed evidence:** failure output showed PowerShell prompt text but no startup marker. A local diagnostic using a longer read wait reproduced the same state, proving the issue was not merely a 2-second test budget.
+- **Root cause:** plain interactive `pwsh` plus an immediate write to a pipe is not an explicit redirected-stdin command contract.
+- **Method evidence:** Microsoft Learn `about_Pwsh` specifies that `-Command -` reads commands from standard input and executes statements one at a time as if typed at the prompt; `-NoExit` keeps the session open. Source: https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_pwsh?view=powershell-7.5
+- **Decision:** Windows interactive Commander terminals use `-NoExit -Command -`; initial and follow-up commands use the same stdin stream. This is simpler and more deterministic than adding arbitrary sleeps or larger polling loops.
+- **Regression:** Windows process-tree/lifecycle suite 7/7 PASS; interactive test proves startup output, running state, follow-up command output, and cleanup.
+- **Failure prevention:** do not classify a repeated hosted timing symptom as flaky when two independent Windows gates fail the same contract. Reproduce the actual stream state and align process invocation with the platform's documented stdin mode.
