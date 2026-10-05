@@ -1,3 +1,10 @@
+## 0.10.15 - 2026-10-05
+
+- Fix Windows interactive terminal startup by executing the initial validated command through PowerShell argv instead of writing it to stdin before shell readiness.
+- Keep follow-up interactive input on the same stdin channel while preserving Linux interactive behavior.
+- Harden lifecycle qualification with bounded marker accumulation and readiness budgets validated under loaded Windows conditions.
+- Advance runtime, installers, server installers, plugin templates and release contracts to v0.10.15 without rewriting the immutable v0.10.14 release.
+
 ## 0.10.14 - 2026-10-04
 
 - Stabilize Linux durable-delivery identity across routed config-path rotation: final candidates preserve the active delivery directory/scope, fresh managed installs pin a stable device/profile scope, and diagnostic candidates use an isolated shadow store so qualification cannot pollute production delivery state.
