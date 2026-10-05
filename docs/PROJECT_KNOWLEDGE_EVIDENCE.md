@@ -2073,3 +2073,12 @@ Acceptance boundary: this is local exact-tree qualification only. GitHub hosted 
 - **Cross-platform acceptance before this repair:** exact SHA `263589c` on Linux laptop `aliemad-Labtop` passed 44/44 executed targeted tests with one Windows-only skip, Linux GUI contract, source-integrity and security audit; production runtime was not mutated. Fresh-clone setup used `npm install --ignore-scripts` because this repository intentionally has no package-lock, so `npm ci` is inapplicable.
 - **Status:** repair is locally targeted-qualified but not promoted. Exact-head bounded qualification, refreshed hosted CI/Server Canary, Windows Server acceptance and final release/promotion remain OPEN.
 - **Reuse targets:** CI reliability notes, terminal-control design, Windows operator documentation, release acceptance.
+
+### 2026-10-05 — v0.10.15 hotfix authority after premature v0.10.14 merge
+
+- **Context:** PR #129 was merged and tagged as `v0.10.14` at merge commit `b91fa4586c7317c46d7e13e1e58297cc407420d3` before the later local terminal-readiness refinement was complete. Tree audit confirmed `b91fa45` is byte-identical to its PR head `db5053e`.
+- **Authority:** immutable released baseline = `v0.10.14` / `b91fa45`. Hotfix branch `hotfix/v0.10.15-terminal-readiness` starts exactly from that merge commit; commit `42b4031` applies only the five-file terminal-readiness/evidence delta. No force-move or tag rewrite is permitted.
+- **Release decision:** publish the correction as `v0.10.15`, not by mutating `v0.10.14`. `package.json` version and Windows installer default `SourceRef` are bumped to `0.10.15`/ `v0.10.15` only.
+- **Writer-control incident:** a scheduled finalization run overlapped the active chat writer and created/merged `db5053e`. The recurring Remote Commander finalization automation was paused before further mutation. This hotfix worktree is now the sole writer for release closure.
+- **Open gates:** exact-head Windows qualification after version bump, hosted CI/server canary, Linux laptop exact-head acceptance, Amirreza exact-head acceptance, merge, immutable tag/release, post-release install/readback. Until those pass, v0.10.15 is **UNPROVEN / candidate**.
+- **Reuse targets:** release notes, Project Brain handoff, CI/release process and one-writer failure-prevention guidance.

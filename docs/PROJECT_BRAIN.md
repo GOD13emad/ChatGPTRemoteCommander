@@ -882,3 +882,13 @@ Because this changed executable code after the earlier qualification, the comple
 **Status:** CURRENT candidate, not FINAL. Hosted Windows/Server gates must pass on the new commit, then Amirreza Server exact-head acceptance and exact-head full bounded qualification must pass before merge/promotion.
 
 **Exact next action:** commit only the Windows terminal-readiness repair + evidence, run `check:qualification` on that exact commit, push PR #129, then require hosted CI + Server Install Canary PASS and exact-head Amirreza acceptance before any runtime/release promotion.
+
+### 2026-10-05 — CURRENT authority moved to v0.10.15 hotfix
+
+**Previous accepted state:** `main` merged PR #129 as `b91fa45` and tagged `v0.10.14`; that tree equals PR head `db5053e`. The later terminal-readiness repair was not in main.
+
+**Current delta:** clean hotfix worktree `_rc_hotfix_v01015_20261005` is based on `b91fa45`; `42b4031` carries exactly the five-file repair/evidence delta. Release metadata is being bumped to `0.10.15` / `v0.10.15`. The overlapping recurring finalization task is paused, leaving this worktree as the sole writer.
+
+**Status:** CURRENT candidate, not FINAL. Do not rewrite `v0.10.14`. Exact-head Windows/Linux/Amirreza + hosted CI/canary + merge/tag/release/post-install gates remain OPEN.
+
+**Exact next action:** commit the narrow release-metadata bump, qualify that exact SHA, push the hotfix branch, open a dedicated PR, then require all cross-host/hosted gates before merge and release.
