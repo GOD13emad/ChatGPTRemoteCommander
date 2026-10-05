@@ -21,3 +21,8 @@ connections.local.json
 /outputs/
 __pycache__/
 *.pyc
+
+# Remote Commander desktop generated outputs
+/desktop/RemoteCommanderDashboard/bin/
+/desktop/RemoteCommanderDashboard/obj/
+/dist/
