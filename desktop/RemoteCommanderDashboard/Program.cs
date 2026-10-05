@@ -48,6 +48,7 @@ internal sealed class DashboardForm : Form
         BackColor = Color.FromArgb(7, 22, 47);
         ForeColor = Color.White;
         Font = new Font("Segoe UI", 10f);
+        try { Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
 
         var header = new Panel { Dock = DockStyle.Top, Height = 112, Padding = new Padding(24, 18, 24, 12) };
         var title = new Label
@@ -72,6 +73,7 @@ internal sealed class DashboardForm : Form
         actions.Controls.Add(Button("Refresh", async (_, _) => await RefreshAsync()));
         actions.Controls.Add(Button("Open Logs", (_, _) => OpenPath(Path.Combine(stateRoot, "update-logs"))));
         actions.Controls.Add(Button("Open Data", (_, _) => OpenPath(stateRoot)));
+        actions.Controls.Add(Button("Manage Profiles", (_, _) => LaunchProfileManager()));
         actions.Controls.Add(Button("Open Browser", (_, _) => LaunchBrowser()));
         actions.Controls.Add(Button("Copy Diagnostics", (_, _) => CopyDiagnostics()));
 
@@ -118,15 +120,34 @@ internal sealed class DashboardForm : Form
         var result = new List<ProfileRow>();
         if (!Directory.Exists(routing)) return result;
 
-        foreach (var file in Directory.EnumerateFiles(routing, "*.json")
-                     .Where(x => !x.EndsWith(".runtime.json", StringComparison.OrdinalIgnoreCase))
+        foreach (var runtimePath in Directory.EnumerateFiles(routing, "*.runtime.json")
                      .OrderBy(x => x, StringComparer.OrdinalIgnoreCase))
         {
             try
             {
-                using var doc = JsonDocument.Parse(File.ReadAllText(file));
+                var fileName = Path.GetFileName(runtimePath);
+                var name = fileName[..^".runtime.json".Length];
+                if (string.IsNullOrWhiteSpace(name) ||
+                    name.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
+                    continue;
+
+                var statePath = Path.Combine(routing, name + ".json");
+                if (!File.Exists(statePath))
+                    continue;
+
+                using var doc = JsonDocument.Parse(File.ReadAllText(statePath));
                 var root = doc.RootElement;
-                var name = root.TryGetProperty("profile", out var profile) ? profile.GetString() ?? Path.GetFileNameWithoutExtension(file) : Path.GetFileNameWithoutExtension(file);
+                if (!root.TryGetProperty("profile", out var profile) ||
+                    !string.Equals(profile.GetString(), name, StringComparison.Ordinal))
+                    continue;
+
+                using var runtime = JsonDocument.Parse(File.ReadAllText(runtimePath));
+                var rr = runtime.RootElement;
+                if (!rr.TryGetProperty("stateFile", out var stateFile) ||
+                    !string.Equals(Path.GetFullPath(stateFile.GetString() ?? ""),
+                        Path.GetFullPath(statePath), StringComparison.OrdinalIgnoreCase))
+                    continue;
+
                 var generation = root.TryGetProperty("generation", out var gen) ? gen.GetInt32() : 0;
                 var active = root.GetProperty("active");
                 var version = active.TryGetProperty("version", out var ver) ? ver.GetString() ?? "unknown" : "unknown";
@@ -134,24 +155,15 @@ internal sealed class DashboardForm : Form
                 var backendPort = active.TryGetProperty("port", out var bp) ? bp.GetInt32() : 0;
                 var projectDir = active.TryGetProperty("projectDir", out var pd) ? pd.GetString() ?? "" : "";
                 DateTimeOffset? updated = root.TryGetProperty("updatedAt", out var ua) &&
-                                          DateTimeOffset.TryParse(ua.GetString(), out var parsed) ? parsed : null;
-
-                var runtimePath = Path.Combine(routing, name + ".runtime.json");
-                var routerPort = 0;
-                var routerPid = 0;
-                if (File.Exists(runtimePath))
-                {
-                    using var runtime = JsonDocument.Parse(File.ReadAllText(runtimePath));
-                    var rr = runtime.RootElement;
-                    routerPort = rr.TryGetProperty("port", out var rp) ? rp.GetInt32() : 0;
-                    routerPid = rr.TryGetProperty("pid", out var pid) ? pid.GetInt32() : 0;
-                }
+                                      DateTimeOffset.TryParse(ua.GetString(), out var parsed) ? parsed : null;
+                var routerPort = rr.TryGetProperty("port", out var rp) ? rp.GetInt32() : 0;
+                var routerPid = rr.TryGetProperty("pid", out var pid) ? pid.GetInt32() : 0;
 
                 result.Add(new ProfileRow(name, generation, version, commit, backendPort, routerPort, routerPid, updated, projectDir));
             }
             catch
             {
-                // Fail closed: malformed profile state is not rendered as healthy.
+                // Fail closed: only a canonical state/runtime pair is rendered.
             }
         }
         return result;
@@ -217,6 +229,29 @@ internal sealed class DashboardForm : Form
             return response.IsSuccessStatusCode;
         }
         catch { return false; }
+    }
+
+    private void LaunchProfileManager()
+    {
+        var manager = Path.Combine(AppContext.BaseDirectory, "profile-manager-windows.ps1");
+        if (!File.Exists(manager))
+        {
+            MessageBox.Show(this, "Profile Manager is not installed.", "Remote Commander",
+                MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
+
+        var pwsh = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
+            "PowerShell", "7", "pwsh.exe");
+        if (!File.Exists(pwsh)) pwsh = "pwsh.exe";
+
+        Process.Start(new ProcessStartInfo
+        {
+            FileName = pwsh,
+            UseShellExecute = true,
+            WindowStyle = ProcessWindowStyle.Hidden,
+            Arguments = $"-NoLogo -NoProfile -WindowStyle Hidden -File \"{manager}\""
+        });
     }
 
     private void LaunchBrowser()

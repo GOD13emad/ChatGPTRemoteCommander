@@ -11,7 +11,14 @@ $SourceExe=Join-Path $SourceDir 'RemoteCommander.exe'
 if(-not (Test-Path -LiteralPath $SourceExe -PathType Leaf)){throw "Desktop build missing: $SourceExe"}
 if(-not $InstallRoot){$InstallRoot=Join-Path $env:LOCALAPPDATA 'Programs\Remote Commander'}
 $InstallRoot=[IO.Path]::GetFullPath($InstallRoot)
-$VersionDir=Join-Path $InstallRoot ("v"+$Version)
+$Entries = Get-ChildItem -LiteralPath $SourceDir -File -Recurse | ForEach-Object {
+  $rel=[IO.Path]::GetRelativePath($SourceDir,$_.FullName).Replace('\','/')
+  $h=(Get-FileHash -Algorithm SHA256 -LiteralPath $_.FullName).Hash.ToLowerInvariant()
+  "$rel|$h"
+} | Sort-Object
+$Manifest=$Entries -join "`n"
+$PackageSha=[Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($Manifest))).ToLowerInvariant()
+$VersionDir=Join-Path $InstallRoot (("v"+$Version+"-")+$PackageSha.Substring(0,12))
 $Current=Join-Path $InstallRoot 'current'
 $StartMenu=Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs\Remote Commander'
 $Reg='HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\RemoteCommander'
