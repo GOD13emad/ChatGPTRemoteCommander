@@ -9,6 +9,7 @@ param(
   [switch]$DisableGuiControl,
   [string[]]$DisableCapability = @(),
   [string[]]$EnableCapability = @(),
+  [string[]]$TargetProfile = @(),
   [switch]$SelfTest,
   [switch]$NoPromote,
   [ValidateRange(5,300)][int]$DrainTimeoutSeconds = 60
@@ -18,6 +19,10 @@ $ErrorActionPreference='Stop'
 if($PowerMode -and $StandardMode){throw 'PowerMode and StandardMode are mutually exclusive.'}
 if($GuiControl -and $DisableGuiControl){throw 'GuiControl and DisableGuiControl are mutually exclusive.'}
 if($GuiControl -and $StandardMode){throw 'GuiControl cannot be combined with StandardMode.'}
+foreach($requestedProfile in $TargetProfile){
+  if($requestedProfile -notmatch '^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$' -or $requestedProfile -match '\.\.' -or $requestedProfile -in @('.','..')){throw "Invalid TargetProfile: $requestedProfile"}
+}
+$TargetProfile=@($TargetProfile|Select-Object -Unique)
 
 $Repo='https://github.com/GOD13emad/ChatGPTRemoteCommander.git'
 $StateRoot=Join-Path $env:LOCALAPPDATA 'ChatGPTRemoteCommander'
@@ -403,6 +408,12 @@ function Get-Targets {
         $items+=[pscustomobject]@{Profile=$profile;CanonicalPort=[int]$record.mcpPort;ExistingConfig=[IO.Path]::GetFullPath($cfg);RoutePath=$route;InstanceDir=$profileDir.FullName}
       }catch{throw "TARGET_DISCOVERY_FAIL $recordFile $($_.Exception.Message)"}
     }
+  }
+  if($TargetProfile.Count -gt 0){
+    $found=@($items|Where-Object { $TargetProfile -contains $_.Profile })
+    $missing=@($TargetProfile|Where-Object { $_ -notin @($found.Profile) })
+    if($missing.Count -gt 0){throw "TARGET_PROFILE_NOT_FOUND profiles=$($missing -join ',')"}
+    $items=$found
   }
   return @($items|Sort-Object CanonicalPort,Profile)
 }

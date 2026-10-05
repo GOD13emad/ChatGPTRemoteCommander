@@ -10,8 +10,17 @@ function atomicWrite(file, text) {
 }
 function stamp() { return new Date().toISOString().replaceAll(':','-') + '-' + process.pid; }
 
-export function reconfigureProfileInstance({ profile, stateDirectory, baseConfigPath, powerMode, guiControl, allowedRoots }) {
-  if (guiControl === true && powerMode !== true) throw new Error('PROFILE_RECONFIGURE_GUI_REQUIRES_POWER');
+export function reconfigureProfileInstance({
+  profile,
+  stateDirectory,
+  baseConfigPath,
+  powerMode,
+  guiControl,
+  allowedRoots,
+  disableCapabilities = [],
+  enableCapabilities = []
+}) {
+  if (guiControl === true && powerMode === false) throw new Error('PROFILE_RECONFIGURE_GUI_REQUIRES_POWER');
   if (typeof stateDirectory !== 'string' || !path.isAbsolute(stateDirectory)) throw new Error('PROFILE_RECONFIGURE_STATE_REQUIRED');
   const configFile = path.join(stateDirectory, 'config.json');
   const recordFile = path.join(stateDirectory, 'instance.json');
@@ -24,7 +33,18 @@ export function reconfigureProfileInstance({ profile, stateDirectory, baseConfig
   if (Number(oldConfig.port) !== Number(oldRecord.mcpPort)) throw new Error('PROFILE_RECONFIGURE_PORT_MISMATCH');
   const baseConfig = JSON.parse(fs.readFileSync(baseConfigPath, 'utf8'));
   const roots = allowedRoots?.length ? allowedRoots : oldConfig.allowedRoots;
-  const built = buildProfileInstance({ baseConfig, existingConfig: oldConfig, profile, port: oldRecord.mcpPort, stateDirectory, allowedRoots: roots, powerMode, guiControl });
+  const built = buildProfileInstance({
+    baseConfig,
+    existingConfig: oldConfig,
+    profile,
+    port: oldRecord.mcpPort,
+    stateDirectory,
+    allowedRoots: roots,
+    powerMode,
+    guiControl,
+    disableCapabilities,
+    enableCapabilities
+  });
   const nextRecord = { ...built.record, configPath: configFile };
 
   if (built.config.durableWorkflows.directory !== oldConfig.durableWorkflows?.directory) {
@@ -46,10 +66,14 @@ export function reconfigureProfileInstance({ profile, stateDirectory, baseConfig
     const afterConfig = fs.readFileSync(configFile, 'utf8');
     if (afterConfig !== built.json) throw new Error('PROFILE_RECONFIGURE_CONFIG_WRITE_MISMATCH');
     return {
-      profile, mcpPort: oldRecord.mcpPort, backupDir,
-      oldConfigSha256: oldRecord.configSha256, newConfigSha256: built.configSha256,
+      profile,
+      mcpPort: oldRecord.mcpPort,
+      backupDir,
+      oldConfigSha256: oldRecord.configSha256,
+      newConfigSha256: built.configSha256,
       powerMode: built.config.powerMode.enabled === true,
       guiControl: built.config.powerMode.guiControl?.enabled === true,
+      capabilityProfile: built.config.capabilityProfile,
       durableWorkflows: built.config.durableWorkflows.enabled === true,
       supervisorRecycleRequired: oldRecord.configSha256 !== built.configSha256
     };

@@ -24,7 +24,7 @@ export function defaultBackupRoot() {
 export function shellSpec(command, interactive = false) {
   if (IS_WINDOWS) {
     return interactive
-      ? { file: 'pwsh.exe', args: ['-NoLogo', '-NoProfile'] }
+      ? { file: 'pwsh.exe', args: ['-NoLogo', '-NoProfile', '-NoExit', '-Command', '-'] }
       : { file: 'pwsh.exe', args: ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', command] };
   }
   const shell = process.env.SHELL || '/bin/bash';

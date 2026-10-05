@@ -52,3 +52,32 @@ test('reconfigure can return to conservative Standard without changing identity'
   assert.equal(r.profile,'secondary');assert.equal(n.powerMode.enabled,false);assert.deepEqual(n.allowedPrograms,[]);assert.equal(n.instance.profile,'secondary');
  }finally{f.dispose();}
 });
+
+
+test('reconfigure persists explicit per-capability opt-outs and can re-enable them',()=>{
+ const f=fixture();try{
+  reconfigureProfileInstance({
+    profile:'secondary',stateDirectory:f.state,baseConfigPath:f.baseFile,powerMode:true,guiControl:true,
+    disableCapabilities:['browser.input','filesystem.permanent_delete','workflow.scheduler']
+  });
+  let n=JSON.parse(fs.readFileSync(path.join(f.state,'config.json'),'utf8'));
+  assert.equal(n.powerMode.browserControl.allowInput,false);
+  assert.equal(n.powerMode.allowPermanentDelete,false);
+  assert.equal(n.durableWorkflows.scheduler.enabled,false);
+  assert.ok(n.capabilityProfile.disabledCapabilities.includes('browser.input'));
+  assert.ok(n.capabilityProfile.disabledCapabilities.includes('filesystem.permanent_delete'));
+  assert.ok(n.capabilityProfile.disabledCapabilities.includes('workflow.scheduler'));
+
+  reconfigureProfileInstance({
+    profile:'secondary',stateDirectory:f.state,baseConfigPath:f.baseFile,
+    enableCapabilities:['browser.input','filesystem.permanent_delete','workflow.scheduler']
+  });
+  n=JSON.parse(fs.readFileSync(path.join(f.state,'config.json'),'utf8'));
+  assert.equal(n.powerMode.browserControl.allowInput,true);
+  assert.equal(n.powerMode.allowPermanentDelete,true);
+  assert.equal(n.durableWorkflows.scheduler.enabled,true);
+  assert.equal(n.capabilityProfile.disabledCapabilities.includes('browser.input'),false);
+  assert.equal(n.capabilityProfile.disabledCapabilities.includes('filesystem.permanent_delete'),false);
+  assert.equal(n.capabilityProfile.disabledCapabilities.includes('workflow.scheduler'),false);
+ }finally{f.dispose();}
+});

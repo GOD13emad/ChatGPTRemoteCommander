@@ -368,6 +368,7 @@ export function createAsyncOperationTools({ config, prepare, workerPath, deliver
       operationId,
       requestId: reservation.requestId,
       correlationId,
+      deliveryMode: reservation.deliveryMode ?? 'durable',
       inputHash: receipt.inputHash,
       tool: receipt.tool,
       continuation: reservation.continuation ?? null,
@@ -390,6 +391,10 @@ export function createAsyncOperationTools({ config, prepare, workerPath, deliver
   }
   async function publishTerminal(state) {
     if (!deliveryStore || !state || !TERMINAL.has(state.status)) return null;
+    if (state.deliveryMode === 'transport-retry-only') {
+      deliveryTracked.delete(state.operationId);
+      return null;
+    }
     const correlationId = correlationOf(state);
     if (!correlationId) return null;
     const p = opPaths(state.operationId);
@@ -628,6 +633,7 @@ export function createAsyncOperationTools({ config, prepare, workerPath, deliver
     if (!REQUEST_RE.test(input.requestId)) throw new Error('invalid requestId');
     const correlationId = input.correlationId ?? input.requestId;
     if (!REQUEST_RE.test(correlationId)) throw new Error('invalid correlationId');
+    const deliveryMode = input.__deliveryMode === 'transport-retry-only' ? 'transport-retry-only' : 'durable';
     const inputHash = hashJson({ tool: input.tool, arguments: input.arguments });
     const continuation = normalizeContinuation(input.continuation);
     if (continuation && validateContinuation) await validateContinuation(continuation);
@@ -639,7 +645,8 @@ export function createAsyncOperationTools({ config, prepare, workerPath, deliver
       const prior = await readJson(requestPath);
       if (prior.requestId !== input.requestId || prior.inputHash !== inputHash ||
           (prior.correlationId ?? prior.requestId) !== correlationId ||
-          (prior.continuationHash ?? null) !== continuationHash) {
+          (prior.continuationHash ?? null) !== continuationHash ||
+          (prior.deliveryMode !== undefined && prior.deliveryMode !== deliveryMode)) {
         throw new Error('REQUEST_ID_CONFLICT');
       }
       let priorState;
@@ -664,7 +671,7 @@ export function createAsyncOperationTools({ config, prepare, workerPath, deliver
     try {
       const handle = await open(requestPath, 'wx', 0o600);
       try {
-        await handle.writeFile(JSON.stringify({ requestId: input.requestId, correlationId, operationId, inputHash, continuationHash, continuation, createdAt: new Date().toISOString() }) + '\n');
+        await handle.writeFile(JSON.stringify({ requestId: input.requestId, correlationId, operationId, inputHash, continuationHash, continuation, deliveryMode, createdAt: new Date().toISOString() }) + '\n');
       } finally {
         await handle.close();
       }
@@ -676,7 +683,8 @@ export function createAsyncOperationTools({ config, prepare, workerPath, deliver
       const prior = await readJson(requestPath);
       if (prior.requestId !== input.requestId || prior.inputHash !== inputHash ||
           (prior.correlationId ?? prior.requestId) !== correlationId ||
-          (prior.continuationHash ?? null) !== continuationHash) {
+          (prior.continuationHash ?? null) !== continuationHash ||
+          (prior.deliveryMode !== undefined && prior.deliveryMode !== deliveryMode)) {
         throw new Error('REQUEST_ID_CONFLICT');
       }
       let priorState;
@@ -698,6 +706,7 @@ export function createAsyncOperationTools({ config, prepare, workerPath, deliver
       operationId,
       requestId: input.requestId,
       correlationId,
+      deliveryMode,
       inputHash,
       tool: input.tool,
       status: 'QUEUED',
@@ -710,7 +719,7 @@ export function createAsyncOperationTools({ config, prepare, workerPath, deliver
       continuation
     };
     await atomicJson(p.state, baseState);
-    if (deliveryStore) deliveryTracked.add(operationId);
+    if (deliveryStore && deliveryMode === 'durable') deliveryTracked.add(operationId);
     const execution = {
       kind: powerToolPlan ? 'power-tool' : 'process',
       operationId,
@@ -775,8 +784,17 @@ export function createAsyncOperationTools({ config, prepare, workerPath, deliver
     let entries = [];
     try { entries = await readdir(operationsDir, { withFileTypes: true }); }
     catch (error) { if (error?.code === 'ENOENT') return 0; throw error; }
-    for (const entry of entries) if (entry.isDirectory() && OP_RE.test(entry.name)) deliveryTracked.add(entry.name);
-    return entries.length;
+    let discovered = 0;
+    for (const entry of entries) {
+      if (!entry.isDirectory() || !OP_RE.test(entry.name)) continue;
+      discovered += 1;
+      try {
+        const state = await readStateProjection(opPaths(entry.name));
+        if (state?.deliveryMode === 'transport-retry-only') continue;
+      } catch {}
+      deliveryTracked.add(entry.name);
+    }
+    return discovered;
   }
   async function reconcileDeliveriesOnce(limit = deliveryBatchSize) {
     if (!deliveryStore || deliveryClosed) return { checked: 0, pending: deliveryTracked.size };

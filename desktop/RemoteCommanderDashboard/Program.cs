@@ -73,7 +73,9 @@ internal sealed class DashboardForm : Form
         actions.Controls.Add(Button("Refresh", async (_, _) => await RefreshAsync()));
         actions.Controls.Add(Button("Open Logs", (_, _) => OpenPath(Path.Combine(stateRoot, "update-logs"))));
         actions.Controls.Add(Button("Open Data", (_, _) => OpenPath(stateRoot)));
-        actions.Controls.Add(Button("Manage Profiles", (_, _) => LaunchProfileManager()));
+        actions.Controls.Add(Button("Profiles & Access", (_, _) => LaunchPowerShellTool("profile-manager-windows.ps1", "Profiles & Access")));
+        actions.Controls.Add(Button("Operations Monitor", (_, _) => LaunchPowerShellTool("operations-monitor-windows.ps1", "Operations Monitor")));
+        actions.Controls.Add(Button("Admin Runtime", (_, _) => LaunchPowerShellTool("admin-runtime-windows.ps1", "Admin Runtime")));
         actions.Controls.Add(Button("Open Browser", (_, _) => LaunchBrowser()));
         actions.Controls.Add(Button("Copy Diagnostics", (_, _) => CopyDiagnostics()));
 
@@ -251,12 +253,12 @@ internal sealed class DashboardForm : Form
         catch { return false; }
     }
 
-    private void LaunchProfileManager()
+    private void LaunchPowerShellTool(string fileName, string displayName)
     {
-        var manager = Path.Combine(AppContext.BaseDirectory, "profile-manager-windows.ps1");
-        if (!File.Exists(manager))
+        var tool = Path.Combine(AppContext.BaseDirectory, fileName);
+        if (!File.Exists(tool))
         {
-            MessageBox.Show(this, "Profile Manager is not installed.", "Remote Commander",
+            MessageBox.Show(this, $"{displayName} is not installed.", "Remote Commander",
                 MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return;
         }
@@ -270,7 +272,7 @@ internal sealed class DashboardForm : Form
             FileName = pwsh,
             UseShellExecute = true,
             WindowStyle = ProcessWindowStyle.Hidden,
-            Arguments = $"-NoLogo -NoProfile -WindowStyle Hidden -File \"{manager}\""
+            Arguments = $"-NoLogo -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File \"{tool}\""
         });
     }
 

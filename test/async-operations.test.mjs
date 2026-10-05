@@ -601,3 +601,65 @@ test('same async requestId with a changed correlation fails closed', async () =>
     await rm(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 });
   }
 });
+
+
+test('transport-retry-only operations remain durable without becoming actionable delivery across restart', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'rc-async-transport-receipt-'));
+  let first = null, second = null, delivery = null;
+  try {
+    const config = {
+      instance: { profile: 'transport-receipt-test' },
+      asyncOperations: { enabled: true, stateDir: path.join(root, 'ops'), maxOutputBytes: 1024 * 1024 }
+    };
+    const prepare = async () => ({
+      file: process.execPath,
+      args: ['-e', 'process.stdout.write("done")'],
+      cwd: root,
+      timeoutMs: 5000,
+      outputLimit: 1024 * 1024
+    });
+    delivery = new DeliveryStore({ directory: path.join(root, 'delivery'), scope: 'profile-transport' });
+    first = createAsyncOperationTools({ config, prepare, deliveryStore: delivery });
+    const transportId='transport-'+'c'.repeat(64);
+    const started = await first.execute('operation_start', {
+      requestId: transportId,
+      correlationId: transportId,
+      __deliveryMode: 'transport-retry-only',
+      tool: 'run_project_command',
+      arguments: { argv: ['done'] }
+    });
+    const terminal = await waitFor(first, started.operationId);
+    assert.equal(terminal.status,'SUCCEEDED');
+    assert.equal(terminal.deliveryMode,'transport-retry-only');
+    assert.equal(delivery.health().pending,0);
+    assert.equal(first.status().deliveryIntegration.tracked,0);
+
+    const statePath=path.join(root,'ops','operations',started.operationId,'state.json');
+    const persisted=JSON.parse(await readFile(statePath,'utf8'));
+    assert.equal(persisted.deliveryMode,'transport-retry-only');
+    await first.close?.(); first=null;
+
+    second = createAsyncOperationTools({ config, prepare, deliveryStore: delivery });
+    await second.reconcileDeliveries(500);
+    assert.equal(second.status().deliveryIntegration.tracked,0);
+    assert.equal(delivery.list({correlationId:transportId,includeDelivered:true}).items.length,0);
+
+    const explicit = await second.execute('operation_start', {
+      requestId:'explicit-delivery-operation',
+      correlationId:'chat-explicit-operation',
+      tool:'run_project_command',
+      arguments:{argv:['done']}
+    });
+    const explicitTerminal=await waitFor(second,explicit.operationId);
+    assert.equal(explicitTerminal.status,'SUCCEEDED');
+    const listed=delivery.list({correlationId:'chat-explicit-operation',includeDelivered:true});
+    assert.equal(listed.items.length,1);
+    assert.equal(listed.items[0].source,'operation');
+    assert.equal(delivery.health().pending,1);
+  } finally {
+    try { await first?.close?.(); } catch {}
+    try { await second?.close?.(); } catch {}
+    try { delivery?.close(); } catch {}
+    await rm(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 });
+  }
+});

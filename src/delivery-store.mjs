@@ -8,7 +8,7 @@ import { gzipSync, gunzipSync } from 'node:zlib';
 import { expandPathValue } from './platform.mjs';
 
 export const OPAQUE_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
-export const DELIVERY_STATES = Object.freeze(['COMPLETED_UNDELIVERED', 'DELIVERY_PENDING', 'DELIVERED', 'DEAD_LETTER']);
+export const DELIVERY_STATES = Object.freeze(['COMPLETED_UNDELIVERED', 'DELIVERY_PENDING', 'DELIVERED', 'TRANSPORT_RECEIPT', 'DEAD_LETTER']);
 const KINDS = new Set(['COMPLETED', 'FAILED', 'UNCERTAIN', 'WAITING_INPUT', 'BLOCKED', 'EXHAUSTED', 'CANCELLED', 'PAUSED']);
 const SOURCE_KINDS = new Set(['tool', 'operation', 'project']);
 const MAX_ARTIFACT_BYTES = 16 * 1024 * 1024;
@@ -55,15 +55,23 @@ function within(root, target) {
   const relative = path.relative(root, target);
   return relative === '' || (!relative.startsWith('..' + path.sep) && relative !== '..' && !path.isAbsolute(relative));
 }
+export function stableDeliveryScope(config, profileOverride) {
+  const profile = String(profileOverride ?? config.instance?.profile ?? config.capabilityProfile?.id ?? 'default');
+  const deviceName = String(config.deviceName ?? os.hostname());
+  return digest(stableJson({ deviceName, profile }));
+}
 export function deliveryLocation(config, configPath) {
-  const scope = digest(stableJson({ configPath: path.resolve(configPath), profile: config.instance?.profile ?? 'default' }));
+  const legacyScope = digest(stableJson({ configPath: path.resolve(configPath), profile: config.instance?.profile ?? 'default' }));
+  const configuredScope = config.durableDelivery?.scope;
+  const scope = configuredScope === undefined ? legacyScope : opaqueId(configuredScope);
   const configured = config.durableDelivery?.directory;
   // Delivery metadata is intentionally not colocated with project/workflow/operation
-  // directories. Those may be project-owned or portable. Default to private
-  // per-profile Commander state; an explicit override is still validated later.
+  // directories. Those may be project-owned or portable. Candidate builders pin the
+  // active production directory + scope explicitly so route/config-path rotation does
+  // not split durable state; legacy ad-hoc configs keep path-derived isolation.
   const base = configured ? path.resolve(expandPathValue(configured))
     : path.join(os.homedir(), '.chatgpt-remote-commander', 'delivery', scope);
-  return { directory: base, scope, forbiddenRoots: config.allowedRoots ?? [] };
+  return { directory: base, scope, legacyScope, forbiddenRoots: config.allowedRoots ?? [] };
 }
 
 export class DeliveryStore {
@@ -183,7 +191,7 @@ export class DeliveryStore {
     integer(after, 0, 0, Number.MAX_SAFE_INTEGER); integer(limit, 20, 1, 50);
     if (correlationId !== undefined) opaqueId(correlationId);
     const rows = this.db.prepare(`SELECT * FROM deliveries WHERE scope=? AND seq>?
-      AND (? IS NULL OR correlation=?) AND (?=1 OR state!='DELIVERED') ORDER BY seq LIMIT ?`)
+      AND (? IS NULL OR correlation=?) AND (?=1 OR state NOT IN ('DELIVERED','TRANSPORT_RECEIPT')) ORDER BY seq LIMIT ?`)
       .all(this.scope, after, correlationId ?? null, correlationId ?? null, includeDelivered ? 1 : 0, limit + 1);
     const items = rows.slice(0, limit).map(row => this.decode(row));
     return { items, nextCursor: rows.length > limit ? items.at(-1)?.cursor ?? null : null };
@@ -196,6 +204,7 @@ export class DeliveryStore {
         if (item.attemptId !== attemptId) fail('DELIVERY_ATTEMPT_CONFLICT');
         return { ...item, claimed: false, alreadyDelivered: true };
       }
+      if (item.state === 'TRANSPORT_RECEIPT') return { ...item, claimed: false, transportReceipt: true };
       if (item.state === 'DEAD_LETTER') return { ...item, claimed: false };
       if (item.attemptId === attemptId) return { ...item, claimed: true };
       if (item.state === 'DELIVERY_PENDING' && item.leaseUntil > Date.now()) fail('DELIVERY_CLAIM_BUSY');
@@ -326,7 +335,7 @@ export class DeliveryStore {
       "SELECT min(created_at) AS created_at FROM deliveries WHERE scope=? AND state IN ('COMPLETED_UNDELIVERED','DELIVERY_PENDING')"
     ).get(this.scope).created_at ?? null;
     const rows = this.db.prepare(
-      "SELECT payload,state FROM deliveries WHERE scope=? AND state IN ('COMPLETED_UNDELIVERED','DELIVERED')"
+      "SELECT payload,state FROM deliveries WHERE scope=? AND state IN ('COMPLETED_UNDELIVERED','DELIVERED','TRANSPORT_RECEIPT')"
     ).all(this.scope);
     const candidates = new Map();
     for (const row of rows) {
@@ -349,7 +358,7 @@ export class DeliveryStore {
     integer(limit, 50, 1, 100);
     const cutoff = new Date(Date.now() - minAgeMs).toISOString();
     const rows = this.db.prepare(
-      "SELECT * FROM deliveries WHERE scope=? AND state IN ('COMPLETED_UNDELIVERED','DELIVERED') AND created_at<=? AND payload LIKE ? ORDER BY seq LIMIT ?"
+      "SELECT * FROM deliveries WHERE scope=? AND state IN ('COMPLETED_UNDELIVERED','DELIVERED','TRANSPORT_RECEIPT') AND created_at<=? AND payload LIKE ? ORDER BY seq LIMIT ?"
     ).all(this.scope, cutoff, '%"kind":"COMPLETED"%', Math.min(10000, limit * 100));
     const seen = new Set();
     let scanned = 0, archived = 0, alreadyArchived = 0, bytesBefore = 0, bytesAfter = 0;
@@ -464,10 +473,38 @@ export class DeliveryStore {
     }
     return { recovered };
   }
+  reclassifyTransportReceipts({ limit = 1000 } = {}) {
+    integer(limit, 1000, 1, 10000);
+    const rows = this.db.prepare(`SELECT * FROM deliveries
+      WHERE scope=? AND state='COMPLETED_UNDELIVERED' AND attempts=0
+        AND correlation LIKE 'transport-%' AND event_key LIKE 'operation:%'
+      ORDER BY seq LIMIT ?`).all(this.scope, limit);
+    let scanned = 0, reclassified = 0;
+    const now = new Date().toISOString();
+    this.transaction(() => {
+      for (const row of rows) {
+        scanned += 1;
+        let item;
+        try { item = this.decode(row); } catch { continue; }
+        if (item.source !== 'operation') continue;
+        if (!/^transport-[a-f0-9]{64}$/.test(item.correlationId ?? '')) continue;
+        if (!String(row.event_key ?? '').startsWith('operation:')) continue;
+        const changed = this.db.prepare(`UPDATE deliveries
+          SET state='TRANSPORT_RECEIPT',updated_at=?
+          WHERE scope=? AND id=? AND state='COMPLETED_UNDELIVERED' AND attempts=0`)
+          .run(now, this.scope, item.deliveryId).changes;
+        reclassified += Number(changed ?? 0);
+      }
+    });
+    return {
+      scanned, reclassified, pendingAfter: this.summary().pending,
+      logicalStateChanged: reclassified > 0, acknowledgementSynthesized: false, artifactsDeleted: 0
+    };
+  }
   beacon(limit = 5) {
     integer(limit, 5, 1, 10);
     const items = this.db.prepare(`SELECT * FROM deliveries
-      WHERE scope=? AND state!='DELIVERED'
+      WHERE scope=? AND state NOT IN ('DELIVERED','TRANSPORT_RECEIPT')
       ORDER BY seq DESC LIMIT ?`).all(this.scope, limit).map(row => {
         const item = this.decode(row);
         return {
@@ -490,6 +527,7 @@ export class DeliveryStore {
     );
     return {
       pending: (counts.COMPLETED_UNDELIVERED ?? 0) + (counts.DELIVERY_PENDING ?? 0),
+      transportReceipts: counts.TRANSPORT_RECEIPT ?? 0,
       deadLetter: counts.DEAD_LETTER ?? 0,
       items,
       hostWakeAvailable: false,
@@ -504,6 +542,7 @@ export class DeliveryStore {
     return {
       durable: true, schema: 1, scope: this.scope, counts,
       pending: (counts.COMPLETED_UNDELIVERED ?? 0) + (counts.DELIVERY_PENDING ?? 0),
+      transportReceipts: counts.TRANSPORT_RECEIPT ?? 0,
       deadLetter: counts.DEAD_LETTER ?? 0,
       unfinishedRequests: this.db.prepare("SELECT count(*) AS n FROM requests WHERE scope=? AND status='RUNNING'")
         .get(this.scope).n,

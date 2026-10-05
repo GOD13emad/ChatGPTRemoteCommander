@@ -58,6 +58,22 @@ async function waitForFile(target, timeoutMs = 1500) {
   return exists(target);
 }
 
+async function readTerminalUntil(ctx, id, pattern, timeoutMs = 7000) {
+  const deadline = Date.now() + timeoutMs;
+  let stdout = '';
+  let stderr = '';
+  let state = null;
+  while (Date.now() < deadline) {
+    const waitMs = Math.min(1000, Math.max(1, deadline - Date.now()));
+    state = await readTerminal(ctx, { id, waitMs, maxChars: 4096 });
+    stdout += state.stdout;
+    stderr += state.stderr;
+    if (pattern.test(stdout)) return { ...state, stdout, stderr };
+    if (!state.running) break;
+  }
+  return { ...(state ?? await readTerminal(ctx, { id, maxChars: 4096 })), stdout, stderr };
+}
+
 test('run_shell timeout terminates the owned descendant process tree', { timeout: 10000 }, async (t) => {
   const root = await fixture(t);
   const marker = path.join(root, 'run-shell-leak.txt');
@@ -175,22 +191,23 @@ test('read_terminal bounded wait returns when new output arrives', { timeout: 10
   assert.ok(Date.now() - started < 2000);
   await stopTerminal(ctx,{id:session.id,remove:true});
 });
-test('start_terminal remains interactive only when explicitly requested with an initial command', { timeout: 10000 }, async (t) => {
+test('start_terminal remains interactive only when explicitly requested with an initial command', { timeout: 20000 }, async (t) => {
   const root = await fixture(t);
   const ctx = powerContext(root);
   const command = process.platform === 'win32' ? "Write-Output 'INTERACTIVE_READY'" : "printf 'INTERACTIVE_READY\\n'";
   const session = await startTerminal(ctx, { cwd: root, command, interactive: true });
   assert.equal(session.interactive,true);
   assert.equal(session.autoClose,false);
-  for (let i=0;i<80;i++) {
-    const state=await readTerminal(ctx,{id:session.id,consume:false});
-    if (/INTERACTIVE_READY/.test(state.stdout)) {
-      assert.equal(state.running,true);
-      await stopTerminal(ctx,{id:session.id,remove:true});
-      return;
-    }
-    await wait(25);
+  try {
+    const state=await readTerminalUntil(ctx,session.id,/INTERACTIVE_READY/,7000);
+    assert.match(state.stdout,/INTERACTIVE_READY/,'interactive terminal did not accept initial command within bounded readiness wait');
+    assert.equal(state.running,true);
+    const followup = process.platform === 'win32' ? "Write-Output 'INTERACTIVE_FOLLOWUP'" : "printf 'INTERACTIVE_FOLLOWUP\\n'";
+    await sendTerminal(ctx,{id:session.id,input:followup});
+    const next=await readTerminalUntil(ctx,session.id,/INTERACTIVE_FOLLOWUP/,7000);
+    assert.match(next.stdout,/INTERACTIVE_FOLLOWUP/,'interactive terminal did not accept follow-up input');
+    assert.equal(next.running,true);
+  } finally {
+    await stopTerminal(ctx,{id:session.id,remove:true}).catch(()=>{});
   }
-  await stopTerminal(ctx,{id:session.id,remove:true});
-  assert.fail('interactive terminal did not accept initial command');
 });

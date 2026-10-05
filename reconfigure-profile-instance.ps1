@@ -5,6 +5,8 @@ param(
   [switch]$StandardMode,
   [switch]$GuiControl,
   [switch]$DisableGuiControl,
+  [string[]]$EnableCapability = @(),
+  [string[]]$DisableCapability = @(),
   [ValidateRange(5,120)][int]$WaitSeconds = 45
 )
 $ErrorActionPreference='Stop'
@@ -12,6 +14,7 @@ if($PowerMode -and $StandardMode){throw '-PowerMode and -StandardMode are mutual
 if($GuiControl -and $DisableGuiControl){throw '-GuiControl and -DisableGuiControl are mutually exclusive.'}
 if($GuiControl -and $StandardMode){throw '-GuiControl cannot be combined with -StandardMode.'}
 if($Profile -notmatch '^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$' -or $Profile -match '\.\.' -or $Profile -in @('.','..')){throw 'Invalid profile name.'}
+if(@($EnableCapability | Where-Object { $DisableCapability -contains $_ }).Count -gt 0){throw 'The same capability cannot be both enabled and disabled.'}
 
 $Root=Split-Path -Parent $MyInvocation.MyCommand.Path
 $Tool=Join-Path $Root 'tools\reconfigure-profile-instance.mjs'
@@ -25,6 +28,8 @@ if($PowerMode){$args+='--power'}
 if($StandardMode){$args+='--standard'}
 if($GuiControl){$args+='--gui'}
 if($DisableGuiControl){$args+='--gui-off'}
+foreach($cap in $EnableCapability){$args+=@('--enable-capability',$cap)}
+foreach($cap in $DisableCapability){$args+=@('--disable-capability',$cap)}
 $json=& $node @args
 if($LASTEXITCODE -ne 0){throw 'Profile reconfiguration generator failed.'}
 try{$result=$json|ConvertFrom-Json}catch{throw 'Profile reconfiguration returned invalid JSON.'}
@@ -42,7 +47,8 @@ function Test-Expected([string]$Sha){
 foreach($i in 1..$WaitSeconds){
   Start-Sleep -Seconds 1
   if(Test-Expected $result.newConfigSha256){
-    Write-Host "PROFILE_RECONFIGURE_PASS profile=$Profile changed=true mcpPort=$($result.mcpPort) power=$($result.powerMode) gui=$($result.guiControl) configSha256=$($result.newConfigSha256) backup=$($result.backupDir)"
+    $caps=@($result.capabilityProfile.grantedCapabilities) -join ','
+    Write-Host "PROFILE_RECONFIGURE_PASS profile=$Profile changed=true mcpPort=$($result.mcpPort) power=$($result.powerMode) gui=$($result.guiControl) capabilities=$caps configSha256=$($result.newConfigSha256) backup=$($result.backupDir)"
     exit 0
   }
 }

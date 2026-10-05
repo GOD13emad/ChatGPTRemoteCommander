@@ -25,7 +25,7 @@ import {
 } from './no-codex-policy.mjs';
 
 let workflowTools = null;
-const VERSION = '0.10.13';
+const VERSION = '0.10.14';
 const MODERN_VERSION = '2026-07-28';
 const LEGACY_VERSIONS = ['2025-11-25', '2025-06-18', '2025-03-26'];
 const TASKS_EXTENSION = 'io.modelcontextprotocol/tasks';
@@ -340,7 +340,7 @@ function rpcError(id, code, message, data) {
   if (data !== undefined) error.data = data;
   return { jsonrpc: '2.0', id: id ?? null, error };
 }
-async function executeTool(name, args) {
+async function executeTool(name, args, executionContext = {}) {
   if (!toolDefinition(name)) throw protocolFailure(200, -32602, 'Unknown tool');
   if (AUTO_DEFERRED_MUTATIONS.has(name)) {
     const { requestId, continuation, ...effectArgs } = args ?? {};
@@ -349,7 +349,8 @@ async function executeTool(name, args) {
       correlationId: requestId,
       tool: name,
       arguments: effectArgs,
-      ...(continuation ? { continuation } : {})
+      ...(continuation ? { continuation } : {}),
+      ...(executionContext.requestIdSource === 'transport' ? { __deliveryMode: 'transport-retry-only' } : {})
     });
   }
   if (isDirectMutationTool(name)) {
@@ -652,7 +653,7 @@ async function handleMessage(req, message) {
       }
       await audit(ctx, { ...acceptedTrace(req, message, executionArgs, name), ...(requestIdSource ? { requestIdSource } : {}) });
       try {
-        const result = await executeTool(name, executionArgs);
+        const result = await executeTool(name, executionArgs, { requestIdSource });
         if (modern && name === 'operation_start' && clientSupportsTasks(message) && result?.operationId) {
           const task = await operationTask(result.operationId);
           return { status: 200, body: rpcTaskResult(message.id, task) };

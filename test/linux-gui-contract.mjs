@@ -5,36 +5,45 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 
 const read = p => fs.readFileSync(p,'utf8');
-const extension = read('gnome-extension/chatgpt-remote-commander@god13emad/extension.js');
-const metadata = JSON.parse(read('gnome-extension/chatgpt-remote-commander@god13emad/metadata.json'));
+const extension = read('gnome-extension/chatgpt-remote-commander-linux-safe@god13emad/extension.js');
+const metadata = JSON.parse(read('gnome-extension/chatgpt-remote-commander-linux-safe@god13emad/metadata.json'));
 const helper = read('tools/gui-control-linux.py');
 const installer = read('tools/install-gnome-gui-extension.sh');
 const controller = read('src/gui-tools-windows.mjs');
 const server = read('src/server-v0.3.mjs');
 const updater = read('auto-update-linux.sh');
 
-assert.equal(metadata.uuid,'chatgpt-remote-commander@god13emad');
+assert.equal(metadata.uuid,'chatgpt-remote-commander-linux-safe@god13emad');
 assert.ok(metadata['shell-version'].includes('46'));
 for (const marker of [
   'org.gnome.Shell.Extensions.ChatGPTRemoteCommander',
   'Gio.DBusExportedObject.wrapJSObject',
-  'create_virtual_device',
-  'notify_absolute_motion',
-  'notify_relative_motion',
-  'notify_button',
-  'notify_discrete_scroll',
-  'notify_keyval',
   'Shell.Screenshot',
   'screenshot_area',
   '_sameSnapshot',
+  'get_current_time_roundtrip',
+  'GUI_INPUT_MUST_USE_MUTTER_REMOTE_DESKTOP',
   'GUI_FOREGROUND_OR_GEOMETRY_CHANGED',
-  'GUI_LOCAL_STOP'
+  'GUI_LOCAL_STOP',
+  'this._service?.destroy()'
 ]) assert.ok(extension.includes(marker), 'extension missing '+marker);
+for (const forbidden of ['create_virtual_device','notify_absolute_motion','notify_relative_motion','notify_button','notify_keyval','xdotool','XTEST'])
+  assert.ok(!extension.includes(forbidden), 'extension must not contain direct input primitive '+forbidden);
 
 for (const marker of [
   'gui-extension-token',
   'Gio.DBusProxy.new_for_bus_sync',
   'save_to_bufferv',
+  'org.gnome.Mutter.RemoteDesktop',
+  'NotifyKeyboardKeycode',
+  'EnableClipboard',
+  'SetSelection',
+  'SelectionRead',
+  'SelectionWriteDone',
+  'NotifyPointerMotionRelative',
+  'NotifyPointerButton',
+  'session-is-owner',
+  'GUI_CLIPBOARD_OWNER_NOT_CONFIRMED',
   'GUI_GNOME_EXTENSION_UNAVAILABLE',
   '--server',
   '--self-test'
@@ -48,7 +57,9 @@ for (const marker of [
   'gnome-extensions disable "$UUID"',
   'wait_bridge',
   'grep -q "interface $BRIDGE_IFACE"',
-  'chmod 600 "$TOKEN"'
+  'chmod 600 "$TOKEN"',
+  'GNOME_GUI_EXTENSION_HELD_BY_GLOBAL_STOP',
+  'gnome-extension-quarantine'
 ]) assert.ok(installer.includes(marker), 'installer missing '+marker);
 
 assert.ok(!/(logout|logoff|reboot|shutdown)[ \t]/i.test(installer), 'GUI installer must never force session/system restart');
@@ -70,7 +81,7 @@ if (process.platform === 'linux' && !headlessValidation) {
 
   const tmp=fs.mkdtempSync(path.join(os.tmpdir(),'rc-gnome-installer-'));
   try {
-    const uuid='chatgpt-remote-commander@god13emad';
+    const uuid='chatgpt-remote-commander-linux-safe@god13emad';
     const fakeRoot=path.join(tmp,'root');
     const fakeTools=path.join(fakeRoot,'tools');
     const fakeSrc=path.join(fakeRoot,'gnome-extension',uuid);
@@ -100,7 +111,7 @@ exit 1
 cmd="$1"
 case "$cmd" in
   list)
-    if [ "$2" = "--active" ] && [ -f "$GNOME_TEST_STATE" ]; then echo "chatgpt-remote-commander@god13emad"; fi
+    if [ "$2" = "--active" ] && [ -f "$GNOME_TEST_STATE" ]; then echo "chatgpt-remote-commander-linux-safe@god13emad"; fi
     ;;
   disable)
     echo disable >> "$GNOME_TEST_CALLS"
@@ -131,7 +142,7 @@ exit 0
     let run=spawnSync('bash',[path.join(fakeTools,'install-gnome-gui-extension.sh')],{encoding:'utf8',env});
     assert.equal(run.status,0,run.stderr);
     assert.match(run.stdout,/GNOME_GUI_EXTENSION_UNCHANGED/);
-    assert.match(run.stdout,/GNOME_GUI_EXTENSION_ACTIVE changed=false/);
+    assert.match(run.stdout,/GNOME_GUI_EXTENSION_ACTIVE changed=false fresh=false/);
     assert.equal(fs.statSync(fakeDst).ino,inodeBefore,'byte-identical extension tree must not be replaced');
     assert.ok(!fs.existsSync(calls) || !fs.readFileSync(calls,'utf8').includes('disable'),'unchanged active extension must not be disabled');
 
@@ -141,11 +152,11 @@ exit 0
     run=spawnSync('bash',[path.join(fakeTools,'install-gnome-gui-extension.sh')],{encoding:'utf8',env});
     assert.equal(run.status,0,run.stderr);
     assert.match(run.stdout,/GNOME_GUI_EXTENSION_INSTALLED/);
-    assert.match(run.stdout,/GNOME_GUI_EXTENSION_ACTIVE changed=true/);
+    assert.match(run.stdout,/GNOME_GUI_EXTENSION_SESSION_RELOAD_REQUIRED changed=true fresh=false reason=gjs-module-cache/);
     assert.equal(fs.readFileSync(path.join(fakeDst,'extension.js'),'utf8'),'changed-v2\n');
-    assert.deepEqual(fs.readFileSync(calls,'utf8').trim().split(/\r?\n/),['disable','enable']);
+    assert.deepEqual(fs.readFileSync(calls,'utf8').trim().split(/\r?\n/),['disable']);
   } finally {
     fs.rmSync(tmp,{recursive:true,force:true});
   }
 }
-console.log(headlessValidation ? 'LINUX_GUI_CONTRACT_PASS mode=headless-static' : 'LINUX_GUI_CONTRACT_PASS');
+console.log('LINUX_GUI_CONTRACT_PASS');

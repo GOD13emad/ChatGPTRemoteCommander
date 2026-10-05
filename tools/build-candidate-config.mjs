@@ -1,8 +1,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
 import { createHash } from 'node:crypto';
 import { migrateCapabilityConfig, normalizeCapabilityProfile } from '../src/capability-profile.mjs';
 import { applyProjectRunnerConfig } from '../src/project-runner-config.mjs';
+import { deliveryLocation, stableDeliveryScope } from '../src/delivery-store.mjs';
 
 function parse(argv){
   const o={disableCapabilities:[],enableCapabilities:[],allowedRoots:[],allowedPrograms:[],mode:'preserve',requestGui:undefined};
@@ -26,6 +28,8 @@ function parse(argv){
     else if(a==='--provider-root')o.providerRoot=v;
     else if(a==='--browser-executable')o.browserExecutable=v;
     else if(a==='--browser-profile-root')o.browserProfileRoot=v;
+    else if(a==='--delivery-directory')o.deliveryDirectory=v;
+    else if(a==='--delivery-scope')o.deliveryScope=v;
     else throw new Error('CANDIDATE_CONFIG_ARGUMENT');
   }
   for(const k of ['defaultPath','outputPath','profileId','port','stateDirectory'])if(!o[k])throw new Error('CANDIDATE_CONFIG_REQUIRED');
@@ -70,6 +74,21 @@ if(a.profileId!=='default'){
   config.instance={profile:a.profileId,isolated:true};
 }else{
   config.instance={profile:'default',isolated:false};
+}
+if ((a.deliveryDirectory && !a.deliveryScope) || (!a.deliveryDirectory && a.deliveryScope)) {
+  throw new Error('CANDIDATE_CONFIG_DELIVERY_PAIR');
+}
+if (a.deliveryDirectory && a.deliveryScope) {
+  if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(a.deliveryScope)) throw new Error('CANDIDATE_CONFIG_DELIVERY_SCOPE');
+  config.durableDelivery={...(config.durableDelivery??{}),directory:path.resolve(a.deliveryDirectory),scope:a.deliveryScope};
+} else if (existing && a.existingPath) {
+  const prior=deliveryLocation(existing,a.existingPath);
+  config.durableDelivery={...(config.durableDelivery??{}),directory:prior.directory,scope:prior.scope};
+} else {
+  const scope=stableDeliveryScope(config,a.profileId);
+  config.durableDelivery={...(config.durableDelivery??{}),
+    directory:path.join(os.homedir(),'.chatgpt-remote-commander','delivery','profiles',scope),
+    scope};
 }
 const text=JSON.stringify(config,null,2)+'\n';
 atomic(a.outputPath,text);

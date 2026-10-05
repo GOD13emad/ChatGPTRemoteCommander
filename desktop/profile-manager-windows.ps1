@@ -1,268 +1,261 @@
-param()
-$ErrorActionPreference='Stop'
-Set-StrictMode -Version Latest
-
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
+[System.Windows.Forms.Application]::EnableVisualStyles()
 
+$ErrorActionPreference='Stop'
 $StateRoot=Join-Path $env:LOCALAPPDATA 'ChatGPTRemoteCommander'
-$Routing=Join-Path $StateRoot 'routing'
-$Instances=Join-Path $StateRoot 'instances'
-$TunnelDir=Join-Path $env:APPDATA 'tunnel-client'
-$CredentialDir=Join-Path $StateRoot 'credentials'
+$CoreRoot=Join-Path $StateRoot 'app'
+$RoutingRoot=Join-Path $StateRoot 'routing'
+$InstanceRoot=Join-Path $StateRoot 'instances'
+$ProfileDir=Join-Path $env:APPDATA 'tunnel-client'
 
 function Read-Json([string]$Path){
   if(-not(Test-Path -LiteralPath $Path -PathType Leaf)){return $null}
   try{return Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json}catch{return $null}
 }
-function Get-ProjectDir {
-  $state=Read-Json (Join-Path $Routing 'default.json')
-  $candidate=[string]$state.active.projectDir
-  if([string]::IsNullOrWhiteSpace($candidate) -or -not(Test-Path -LiteralPath $candidate -PathType Container)){
-    throw 'Active Commander project directory is unavailable.'
-  }
-  return [IO.Path]::GetFullPath($candidate)
+function Read-ProfilePort([string]$Profile){
+  $file=Join-Path $ProfileDir "$Profile.yaml"
+  if(-not(Test-Path -LiteralPath $file -PathType Leaf)){return 0}
+  $m=[regex]::Match((Get-Content -LiteralPath $file -Raw),'listen_addr:\s*["'']?127\.0\.0\.1:(\d+)')
+  if($m.Success){return [int]$m.Groups[1].Value}
+  return 0
 }
-function Get-ProfileRows {
-  $rows=[Collections.Generic.List[object]]::new()
-  $routingMap=@{}
-  if(Test-Path -LiteralPath $Routing){
-    Get-ChildItem -LiteralPath $Routing -File -Filter '*.runtime.json' -ErrorAction SilentlyContinue | ForEach-Object {
-      $name=$_.Name.Substring(0,$_.Name.Length-'.runtime.json'.Length)
-      $state=Read-Json (Join-Path $Routing ($name+'.json'))
-      $runtime=Read-Json $_.FullName
-      if($state -and $runtime -and [string]$state.profile -eq $name){
-        $routingMap[$name]=[pscustomobject]@{
-          Version=[string]$state.active.version
-          RouterPort=[int]$runtime.port
-          BackendPort=[int]$state.active.port
-        }
-      }
+function Get-ConfigForProfile([string]$Profile,[object]$Route,[object]$Instance){
+  $candidates=@()
+  if($Route -and $Route.active -and $Route.active.configPath){$candidates+=[string]$Route.active.configPath}
+  if($Instance -and $Instance.configPath){$candidates+=[string]$Instance.configPath}
+  if($Profile -eq 'default'){$candidates+=Join-Path $CoreRoot 'config.local.json';$candidates+=Join-Path $CoreRoot 'config.json'}
+  foreach($p in $candidates){if($p -and (Test-Path -LiteralPath $p -PathType Leaf)){return Read-Json $p}}
+  return $null
+}
+function Test-Cap([object]$Config,[string]$Cap){
+  if(-not $Config){return $false}
+  return @($Config.capabilityProfile.grantedCapabilities) -contains $Cap
+}
+function Get-Profiles{
+  $names=[System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+  [void]$names.Add('default')
+  if(Test-Path $ProfileDir){Get-ChildItem $ProfileDir -Filter '*.yaml' -File -ErrorAction SilentlyContinue|ForEach-Object{[void]$names.Add($_.BaseName)}}
+  if(Test-Path $RoutingRoot){Get-ChildItem $RoutingRoot -Filter '*.json' -File -ErrorAction SilentlyContinue|Where-Object{$_.Name -notlike '*.runtime.json'}|ForEach-Object{[void]$names.Add($_.BaseName)}}
+  if(Test-Path $InstanceRoot){Get-ChildItem $InstanceRoot -Directory -ErrorAction SilentlyContinue|ForEach-Object{[void]$names.Add($_.Name)}}
+  foreach($name in @($names|Sort-Object)){
+    $route=Read-Json (Join-Path $RoutingRoot "$name.json")
+    $instance=Read-Json (Join-Path (Join-Path $InstanceRoot $name) 'instance.json')
+    $cfg=Get-ConfigForProfile $name $route $instance
+    $health=Read-ProfilePort $name
+    $port=if($route -and $route.active){[int]$route.active.port}elseif($instance){[int]$instance.mcpPort}else{47831}
+    $version=if($route -and $route.active){[string]$route.active.version}else{'-'}
+    $gen=if($route){[int]$route.generation}else{0}
+    $type=if($name -eq 'default'){'Primary'}elseif($instance){'Isolated'}else{'Shared'}
+    $caps=@($cfg.capabilityProfile.grantedCapabilities)
+    [pscustomobject]@{
+      Profile=$name;Type=$type;McpPort=$port;HealthPort=$health;Version=$version;Generation=$gen
+      Access=if($cfg.powerMode.enabled){'Full Power'}else{'Standard'}
+      Gui=[bool]$cfg.powerMode.guiControl.enabled
+      Capabilities=($caps -join ',')
+      ConfigPath=if($route -and $route.active){[string]$route.active.configPath}elseif($instance){[string]$instance.configPath}else{''}
+      ProjectDir=if($route -and $route.active){[string]$route.active.projectDir}else{$CoreRoot}
+      Commit=if($route -and $route.active){[string]$route.active.commit}else{''}
+      RouteVersion=$version
+      IsPrimary=($name -eq 'default')
+      IsIsolated=[bool]$instance
     }
   }
-
-  $tunnels=@()
-  if(Test-Path -LiteralPath $TunnelDir){
-    $tunnels=Get-ChildItem -LiteralPath $TunnelDir -File -Filter '*.yaml' -ErrorAction SilentlyContinue |
-      Select-Object -ExpandProperty BaseName
-  }
-
-  $instanceNames=@()
-  if(Test-Path -LiteralPath $Instances){
-    $instanceNames=Get-ChildItem -LiteralPath $Instances -Directory -ErrorAction SilentlyContinue |
-      Where-Object { Test-Path -LiteralPath (Join-Path $_.FullName 'instance.json') } |
-      Select-Object -ExpandProperty Name
-  }
-
-  $names=[Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
-  [void]$names.Add('default')
-  foreach($name in $tunnels){
-    if($name -eq 'chatgpt-remote-commander'){[void]$names.Add('default')}else{[void]$names.Add($name)}
-  }
-  foreach($name in $instanceNames){[void]$names.Add($name)}
-  foreach($name in $routingMap.Keys){[void]$names.Add($name)}
-
-  foreach($name in ($names | Sort-Object)){
-    $primary=$name -eq 'default'
-    $tunnel=if($primary){'chatgpt-remote-commander'}else{$name}
-    $instance=Read-Json (Join-Path (Join-Path $Instances $name) 'instance.json')
-    $config=Read-Json (Join-Path (Join-Path $Instances $name) 'config.json')
-    $route=$routingMap[$name]
-    $hasTunnel=$tunnels -contains $tunnel
-    $hasCredential=Test-Path -LiteralPath (Join-Path $CredentialDir ($tunnel+'.dpapi')) -PathType Leaf
-    $role=if($primary){'Primary'}elseif($instance){'Isolated'}elseif($hasTunnel){'Available'}else{'Unknown'}
-    $status=if($route){'ONLINE'}elseif($instance){'CONFIGURED'}elseif($hasTunnel){'READY TO ADD'}else{'UNAVAILABLE'}
-    $power=if($primary){''}elseif($config){[bool]$config.powerMode.enabled}else{$false}
-    $gui=if($primary){''}elseif($config){[bool]$config.powerMode.guiControl.enabled}else{$false}
-    $rows.Add([pscustomobject]@{
-      Profile=$name
-      TunnelProfile=$tunnel
-      Role=$role
-      Status=$status
-      Version=if($route){$route.Version}else{''}
-      RouterPort=if($route){$route.RouterPort}else{0}
-      BackendPort=if($route){$route.BackendPort}elseif($instance){[int]$instance.mcpPort}else{0}
-      PowerMode=$power
-      GuiControl=$gui
-      Credential=if($hasCredential){'Present'}else{'Missing'}
-    })
-  }
-  return $rows
-}
-function Invoke-CommanderScript([string]$Script,[string[]]$Arguments){
-  $project=Get-ProjectDir
-  $path=Join-Path $project $Script
-  if(-not(Test-Path -LiteralPath $path -PathType Leaf)){throw "Required Commander script is missing: $Script"}
-  $pwsh=(Get-Command pwsh.exe -ErrorAction Stop).Source
-  $psi=[Diagnostics.ProcessStartInfo]::new()
-  $psi.FileName=$pwsh
-  $psi.WorkingDirectory=$project
-  $psi.UseShellExecute=$false
-  $psi.CreateNoWindow=$true
-  $psi.RedirectStandardOutput=$true
-  $psi.RedirectStandardError=$true
-  [void]$psi.ArgumentList.Add('-NoLogo')
-  [void]$psi.ArgumentList.Add('-NoProfile')
-  [void]$psi.ArgumentList.Add('-File')
-  [void]$psi.ArgumentList.Add($path)
-  foreach($a in $Arguments){[void]$psi.ArgumentList.Add($a)}
-  $p=[Diagnostics.Process]::Start($psi)
-  $stdout=$p.StandardOutput.ReadToEnd()
-  $stderr=$p.StandardError.ReadToEnd()
-  $p.WaitForExit()
-  if($p.ExitCode -ne 0){throw (($stderr+"`n"+$stdout).Trim())}
-  return $stdout.Trim()
-}
-function Selected-Row([Windows.Forms.DataGridView]$Grid){
-  if($Grid.SelectedRows.Count -lt 1){throw 'Select one profile first.'}
-  return $Grid.SelectedRows[0].DataBoundItem
 }
 
 $form=New-Object Windows.Forms.Form
-$form.Text='Remote Commander — Profile Manager'
-$form.Width=980
-$form.Height=610
-$form.MinimumSize=New-Object Drawing.Size 820,520
-$form.StartPosition='CenterParent'
-$form.BackColor=[Drawing.Color]::FromArgb(7,22,47)
-$form.ForeColor=[Drawing.Color]::White
-$form.Font=New-Object Drawing.Font 'Segoe UI',10
-$exe=Join-Path $PSScriptRoot 'RemoteCommander.exe'
-if(Test-Path -LiteralPath $exe){try{$form.Icon=[Drawing.Icon]::ExtractAssociatedIcon($exe)}catch{}}
+$form.Text='Remote Commander — Profiles & Access'
+$form.StartPosition='CenterScreen'
+$form.Size=New-Object Drawing.Size(1180,780)
+$form.MinimumSize=New-Object Drawing.Size(1040,680)
+$form.BackColor=[Drawing.Color]::FromArgb(16,23,34)
+$form.ForeColor=[Drawing.Color]::Gainsboro
+$form.Font=New-Object Drawing.Font('Segoe UI',10)
 
 $title=New-Object Windows.Forms.Label
-$title.Text='Manage Commander Profiles'
-$title.AutoSize=$true
-$title.Font=[Drawing.Font]::new('Segoe UI Semibold',20,[Drawing.FontStyle]::Bold)
-$title.Location=New-Object Drawing.Point 20,18
-$form.Controls.Add($title)
-
-$hint=New-Object Windows.Forms.Label
-$hint.Text='Profiles are created or changed only through Commander''s guarded profile scripts. The primary profile is never modified here.'
-$hint.AutoSize=$true
-$hint.ForeColor=[Drawing.Color]::FromArgb(185,199,221)
-$hint.Location=New-Object Drawing.Point 23,60
-$form.Controls.Add($hint)
+$title.Text='Profiles, permissions and runtime authority'
+$title.Font=New-Object Drawing.Font('Segoe UI Semibold',18)
+$title.AutoSize=$true;$title.Location=New-Object Drawing.Point(24,20);$form.Controls.Add($title)
+$subtitle=New-Object Windows.Forms.Label
+$subtitle.Text='Primary changes use qualified candidate cutover. Isolated profiles use transactional reconfigure + rollback.'
+$subtitle.AutoSize=$true;$subtitle.ForeColor=[Drawing.Color]::FromArgb(155,170,190);$subtitle.Location=New-Object Drawing.Point(26,58);$form.Controls.Add($subtitle)
 
 $grid=New-Object Windows.Forms.DataGridView
-$grid.Location=New-Object Drawing.Point 20,95
-$grid.Size=New-Object Drawing.Size 925,330
-$grid.Anchor='Top,Bottom,Left,Right'
-$grid.ReadOnly=$true
-$grid.AllowUserToAddRows=$false
-$grid.AllowUserToDeleteRows=$false
-$grid.MultiSelect=$false
-$grid.SelectionMode='FullRowSelect'
-$grid.AutoGenerateColumns=$true
-$grid.AutoSizeColumnsMode='Fill'
-$grid.BackgroundColor=[Drawing.Color]::FromArgb(12,34,65)
-$grid.GridColor=[Drawing.Color]::FromArgb(45,76,113)
-$grid.DefaultCellStyle.BackColor=[Drawing.Color]::FromArgb(12,34,65)
-$grid.DefaultCellStyle.ForeColor=[Drawing.Color]::White
-$grid.DefaultCellStyle.SelectionBackColor=[Drawing.Color]::FromArgb(18,82,135)
-$grid.DefaultCellStyle.SelectionForeColor=[Drawing.Color]::White
-$grid.ColumnHeadersDefaultCellStyle.BackColor=[Drawing.Color]::FromArgb(18,52,91)
-$grid.ColumnHeadersDefaultCellStyle.ForeColor=[Drawing.Color]::White
-$grid.EnableHeadersVisualStyles=$false
+$grid.Location=New-Object Drawing.Point(24,92);$grid.Size=New-Object Drawing.Size(1120,245)
+$grid.Anchor='Top,Left,Right'
+$grid.ReadOnly=$true;$grid.AllowUserToAddRows=$false;$grid.AllowUserToDeleteRows=$false
+$grid.SelectionMode='FullRowSelect';$grid.MultiSelect=$false;$grid.AutoSizeColumnsMode='Fill'
+$grid.BackgroundColor=[Drawing.Color]::FromArgb(20,29,43);$grid.BorderStyle='FixedSingle'
 $form.Controls.Add($grid)
 
-$power=New-Object Windows.Forms.CheckBox
-$power.Text='Power Mode'
-$power.AutoSize=$true
-$power.Location=New-Object Drawing.Point 24,440
-$power.Anchor='Bottom,Left'
-$form.Controls.Add($power)
+$access=New-Object Windows.Forms.GroupBox
+$access.Text='Selected profile access';$access.Location=New-Object Drawing.Point(24,350);$access.Size=New-Object Drawing.Size(760,300)
+$access.Anchor='Top,Left,Right';$form.Controls.Add($access)
 
-$gui=New-Object Windows.Forms.CheckBox
-$gui.Text='GUI Control'
-$gui.AutoSize=$true
-$gui.Location=New-Object Drawing.Point 145,440
-$gui.Anchor='Bottom,Left'
-$form.Controls.Add($gui)
+$power=New-Object Windows.Forms.CheckBox;$power.Text='Full Power';$power.Location=New-Object Drawing.Point(20,34);$power.AutoSize=$true;$access.Controls.Add($power)
+$gui=New-Object Windows.Forms.CheckBox;$gui.Text='GUI control';$gui.Location=New-Object Drawing.Point(150,34);$gui.AutoSize=$true;$access.Controls.Add($gui)
 
-$gui.Add_CheckedChanged({
-  if($gui.Checked -and -not $power.Checked){$power.Checked=$true}
-})
-$power.Add_CheckedChanged({
-  if(-not $power.Checked -and $gui.Checked){$gui.Checked=$false}
-})
-
-function New-Button([string]$Text,[int]$X,[int]$Width){
-  $b=New-Object Windows.Forms.Button
-  $b.Text=$Text
-  $b.Location=New-Object Drawing.Point $X,475
-  $b.Size=New-Object Drawing.Size $Width,36
-  $b.Anchor='Bottom,Left'
-  $b.FlatStyle='Flat'
-  $b.BackColor=[Drawing.Color]::FromArgb(18,52,91)
-  $b.ForeColor=[Drawing.Color]::White
-  $b.FlatAppearance.BorderColor=[Drawing.Color]::FromArgb(55,205,255)
-  $form.Controls.Add($b)
-  return $b
+$defs=@(
+  @('Full filesystem','filesystem.full'),
+  @('Shell execute','shell.execute'),
+  @('Process control','process.control'),
+  @('Permanent delete','filesystem.permanent_delete'),
+  @('Browser automation','browser.background'),
+  @('Browser navigation','browser.navigate'),
+  @('Browser input','browser.input'),
+  @('Browser screenshots','browser.screenshot'),
+  @('Workflow scheduler','workflow.scheduler'),
+  @('Project engine','workflow.project_engine'),
+  @('Auto update','lifecycle.auto_update'),
+  @('Zero-downtime update','lifecycle.zero_downtime_update')
+)
+$capBoxes=@{}
+for($i=0;$i -lt $defs.Count;$i++){
+  $box=New-Object Windows.Forms.CheckBox
+  $box.Text=$defs[$i][0];$box.Tag=$defs[$i][1];$box.AutoSize=$true
+  $col=$i%3;$row=[math]::Floor($i/3)
+  $box.Location=New-Object Drawing.Point((20+$col*235),(76+$row*38))
+  $access.Controls.Add($box);$capBoxes[$defs[$i][1]]=$box
 }
-$refresh=New-Button 'Refresh' 20 100
-$add=New-Button 'Add / Isolate' 130 135
-$reconfigure=New-Button 'Reconfigure' 275 130
-$open=New-Button 'Open Profile Data' 415 150
-$close=New-Button 'Close' 575 100
+
+$rootsLabel=New-Object Windows.Forms.Label;$rootsLabel.Text='Allowed roots (one per line)';$rootsLabel.AutoSize=$true;$rootsLabel.Location=New-Object Drawing.Point(20,230);$access.Controls.Add($rootsLabel)
+$roots=New-Object Windows.Forms.TextBox;$roots.Multiline=$true;$roots.ScrollBars='Vertical';$roots.Location=New-Object Drawing.Point(210,226);$roots.Size=New-Object Drawing.Size(525,55);$access.Controls.Add($roots)
+
+$actions=New-Object Windows.Forms.GroupBox
+$actions.Text='Actions';$actions.Location=New-Object Drawing.Point(800,350);$actions.Size=New-Object Drawing.Size(344,300);$actions.Anchor='Top,Right';$form.Controls.Add($actions)
+function Add-Button([string]$Text,[int]$Y){
+  $b=New-Object Windows.Forms.Button;$b.Text=$Text;$b.Location=New-Object Drawing.Point(20,$Y);$b.Size=New-Object Drawing.Size(304,36);$b.FlatStyle='Flat'
+  $b.BackColor=[Drawing.Color]::FromArgb(34,48,70);$b.ForeColor=[Drawing.Color]::White;$actions.Controls.Add($b);return $b
+}
+$apply=Add-Button 'Apply selected access policy' 30
+$add=Add-Button 'Add / isolate profile' 74
+$open=Add-Button 'Open profile data' 118
+$monitor=Add-Button 'Operations monitor' 162
+$admin=Add-Button 'Admin runtime' 206
+$refresh=Add-Button 'Refresh' 250
 
 $status=New-Object Windows.Forms.Label
-$status.Text='Ready'
-$status.AutoSize=$true
-$status.ForeColor=[Drawing.Color]::FromArgb(139,166,200)
-$status.Location=New-Object Drawing.Point 23,525
-$status.Anchor='Bottom,Left'
-$form.Controls.Add($status)
+$status.Text='Ready';$status.AutoSize=$false;$status.Location=New-Object Drawing.Point(24,668);$status.Size=New-Object Drawing.Size(1120,60);$status.Anchor='Left,Right,Bottom'
+$status.ForeColor=[Drawing.Color]::FromArgb(140,190,245);$form.Controls.Add($status)
 
-function Refresh-Grid {
-  $grid.DataSource=$null
-  $rows=Get-ProfileRows
-  $grid.DataSource=[Collections.ArrayList]@($rows)
-  if($grid.Columns['TunnelProfile']){$grid.Columns['TunnelProfile'].Visible=$false}
-  $status.Text="$($rows.Count) profile record(s)"
+$script:selected=$null
+function Update-Editor{
+  if(-not $grid.CurrentRow){return}
+  $script:selected=$grid.CurrentRow.DataBoundItem
+  if(-not $script:selected){return}
+  $cfg=if($script:selected.ConfigPath){Read-Json $script:selected.ConfigPath}else{$null}
+  $power.Checked=[bool]$cfg.powerMode.enabled
+  $gui.Checked=[bool]$cfg.powerMode.guiControl.enabled
+  foreach($cap in $capBoxes.Keys){$capBoxes[$cap].Checked=Test-Cap $cfg $cap}
+  $roots.Text=(@($cfg.allowedRoots)-join [Environment]::NewLine)
+  $canEdit=$script:selected.IsPrimary -or $script:selected.IsIsolated
+  $power.Enabled=$canEdit;$gui.Enabled=$canEdit;$roots.Enabled=$canEdit;$apply.Enabled=$canEdit
+  foreach($b in $capBoxes.Values){$b.Enabled=$canEdit -and $power.Checked}
+  $status.Text="Selected $($script:selected.Profile) [$($script:selected.Type)] — $($script:selected.Access), v$($script:selected.Version), generation $($script:selected.Generation)"
 }
-$refresh.Add_Click({try{Refresh-Grid}catch{[Windows.Forms.MessageBox]::Show($_.Exception.Message,'Remote Commander',[Windows.Forms.MessageBoxButtons]::OK,[Windows.Forms.MessageBoxIcon]::Error)|Out-Null}})
+$power.Add_CheckedChanged({foreach($b in $capBoxes.Values){$b.Enabled=$power.Enabled -and $power.Checked}})
+
+function Refresh-Grid{
+  try{
+    $items=@(Get-Profiles)
+    $grid.DataSource=$null;$grid.DataSource=[Collections.ArrayList]$items
+    foreach($name in @('Capabilities','ConfigPath','ProjectDir','Commit','RouteVersion','IsPrimary','IsIsolated','Gui')){if($grid.Columns[$name]){$grid.Columns[$name].Visible=$false}}
+    if($grid.Rows.Count -gt 0){$grid.Rows[0].Selected=$true;$grid.CurrentCell=$grid.Rows[0].Cells[0]}
+    Update-Editor
+    $status.Text="Profiles discovered: $($items.Count). Live profile inventory is authoritative; stale version labels are not treated as profiles."
+  }catch{$status.Text="Refresh failed: $($_.Exception.Message)"}
+}
+$grid.Add_SelectionChanged({Update-Editor})
+
+function Build-CapabilityChanges([object]$Cfg){
+  $enable=@();$disable=@()
+  foreach($cap in $capBoxes.Keys){
+    $want=[bool]$capBoxes[$cap].Checked
+    $has=Test-Cap $Cfg $cap
+    if($want -and -not $has){$enable+=$cap}
+    elseif(-not $want -and $has){$disable+=$cap}
+  }
+  return [pscustomobject]@{Enable=$enable;Disable=$disable}
+}
+function Invoke-HiddenPwsh([string]$Script,[string[]]$Args){
+  $pwsh=(Get-Command pwsh.exe -ErrorAction Stop).Source
+  $all=@('-NoLogo','-NoProfile','-NonInteractive','-WindowStyle','Hidden','-ExecutionPolicy','Bypass','-File',$Script)+$Args
+  $p=Start-Process -FilePath $pwsh -ArgumentList $all -WindowStyle Hidden -Wait -PassThru
+  return $p.ExitCode
+}
+
+$apply.Add_Click({
+  if(-not $script:selected){return}
+  try{
+    $cfg=if($script:selected.ConfigPath){Read-Json $script:selected.ConfigPath}else{$null}
+    if(-not $cfg){throw 'Selected profile config is unavailable.'}
+    $changes=Build-CapabilityChanges $cfg
+    $rootList=@($roots.Lines|ForEach-Object{$_.Trim()}|Where-Object{$_})
+    if($rootList.Count -eq 0){throw 'At least one allowed root is required.'}
+    if($script:selected.IsPrimary){
+      $updater=Join-Path $CoreRoot 'auto-update-windows.ps1'
+      if(-not(Test-Path $updater)){throw 'Primary safe updater is unavailable.'}
+      if(-not $script:selected.Commit){throw 'Primary route commit is unavailable.'}
+      $ref=if([string]$script:selected.RouteVersion -match '^v'){$script:selected.RouteVersion}else{"v$($script:selected.RouteVersion)"}
+      $args=@('-SourceRef',$ref,'-ExpectedCommit',$script:selected.Commit,'-Force','-TargetProfile','default')
+      $args+=if($power.Checked){@('-PowerMode')}else{@('-StandardMode')}
+      $args+=if($gui.Checked){@('-GuiControl')}else{@('-DisableGuiControl')}
+      foreach($c in $changes.Enable){$args+=@('-EnableCapability',$c)}
+      foreach($c in $changes.Disable){$args+=@('-DisableCapability',$c)}
+      $status.Text='Applying primary access policy through qualified candidate cutover...'
+      $form.Refresh()
+      $rc=Invoke-HiddenPwsh $updater $args
+      if($rc -ne 0){throw "Primary access update failed (exit $rc). See update logs."}
+    }else{
+      $script=Join-Path $CoreRoot 'reconfigure-profile-instance.ps1'
+      if(-not(Test-Path $script)){throw 'Profile reconfigure script is unavailable.'}
+      $args=@('-Profile',$script:selected.Profile)
+      foreach($r in $rootList){$args+=@('-AllowedRoot',$r)}
+      $args+=if($power.Checked){@('-PowerMode')}else{@('-StandardMode')}
+      $args+=if($gui.Checked){@('-GuiControl')}else{@('-DisableGuiControl')}
+      foreach($c in $changes.Enable){$args+=@('-EnableCapability',$c)}
+      foreach($c in $changes.Disable){$args+=@('-DisableCapability',$c)}
+      $status.Text='Applying isolated profile policy with rollback protection...';$form.Refresh()
+      $rc=Invoke-HiddenPwsh $script $args
+      if($rc -ne 0){throw "Profile reconfigure failed (exit $rc)."}
+    }
+    Refresh-Grid
+    $status.Text="Access policy applied and read back for $($script:selected.Profile)."
+  }catch{$status.Text="Apply failed: $($_.Exception.Message)"}
+})
+
 $add.Add_Click({
   try{
-    $row=Selected-Row $grid
-    if($row.Role -eq 'Primary'){throw 'The primary profile cannot be isolated or recreated here.'}
-    if($row.Role -eq 'Isolated'){throw 'This profile is already isolated. Use Reconfigure.'}
-    if($row.Credential -ne 'Present'){throw 'The selected tunnel profile has no local DPAPI credential. Enroll it before adding it to Commander.'}
-    $msg="Add '$($row.Profile)' as an isolated Commander profile?`n`nThis uses the existing enrolled tunnel profile. It does not log out of ChatGPT or change browser cookies."
-    if([Windows.Forms.MessageBox]::Show($msg,'Remote Commander',[Windows.Forms.MessageBoxButtons]::YesNo,[Windows.Forms.MessageBoxIcon]::Question) -ne [Windows.Forms.DialogResult]::Yes){return}
-    $args=@('-Profile',[string]$row.TunnelProfile)
+    $name=[Microsoft.VisualBasic.Interaction]::InputBox('Existing enrolled tunnel profile name to isolate:','Add / isolate profile','')
+    if([string]::IsNullOrWhiteSpace($name)){return}
+    if($name -eq 'default'){throw 'The primary profile is already managed.'}
+    $script=Join-Path $CoreRoot 'configure-profile-instance.ps1'
+    if(-not(Test-Path $script)){throw 'Isolation script is unavailable.'}
+    $args=@('-Profile',$name)
     if($power.Checked){$args+='-PowerMode'}
     if($gui.Checked){$args+='-GuiControl'}
-    $status.Text='Creating guarded isolated profile...'
-    $out=Invoke-CommanderScript 'configure-profile-instance.ps1' $args
-    $status.Text=($out -split "`r?`n" | Select-Object -Last 1)
+    $rc=Invoke-HiddenPwsh $script $args
+    if($rc -ne 0){throw "Isolation failed (exit $rc)."}
     Refresh-Grid
-  }catch{[Windows.Forms.MessageBox]::Show($_.Exception.Message,'Remote Commander',[Windows.Forms.MessageBoxButtons]::OK,[Windows.Forms.MessageBoxIcon]::Error)|Out-Null;$status.Text='Operation failed safely.'}
-})
-$reconfigure.Add_Click({
-  try{
-    $row=Selected-Row $grid
-    if($row.Role -ne 'Isolated'){throw 'Only an isolated secondary profile can be reconfigured here.'}
-    $msg="Reconfigure '$($row.Profile)'?`n`nThat profile may recycle briefly. Commander will use its existing backup/rollback guard if the new instance does not become healthy."
-    if([Windows.Forms.MessageBox]::Show($msg,'Remote Commander',[Windows.Forms.MessageBoxButtons]::YesNo,[Windows.Forms.MessageBoxIcon]::Warning) -ne [Windows.Forms.DialogResult]::Yes){return}
-    $args=@('-Profile',[string]$row.Profile)
-    if($power.Checked){$args+='-PowerMode'}else{$args+='-StandardMode'}
-    if($gui.Checked){$args+='-GuiControl'}else{$args+='-DisableGuiControl'}
-    $status.Text='Reconfiguring with rollback protection...'
-    $out=Invoke-CommanderScript 'reconfigure-profile-instance.ps1' $args
-    $status.Text=($out -split "`r?`n" | Select-Object -Last 1)
-    Refresh-Grid
-  }catch{[Windows.Forms.MessageBox]::Show($_.Exception.Message,'Remote Commander',[Windows.Forms.MessageBoxButtons]::OK,[Windows.Forms.MessageBoxIcon]::Error)|Out-Null;$status.Text='Operation failed safely.'}
+  }catch{$status.Text="Isolation failed: $($_.Exception.Message)"}
 })
 $open.Add_Click({
-  try{
-    $row=Selected-Row $grid
-    $path=Join-Path $Instances ([string]$row.Profile)
-    if(-not(Test-Path -LiteralPath $path)){New-Item -ItemType Directory -Force $path|Out-Null}
-    Start-Process explorer.exe -ArgumentList @($path)
-  }catch{[Windows.Forms.MessageBox]::Show($_.Exception.Message,'Remote Commander',[Windows.Forms.MessageBoxButtons]::OK,[Windows.Forms.MessageBoxIcon]::Error)|Out-Null}
+  if(-not $script:selected){return}
+  $p=if($script:selected.IsPrimary){$StateRoot}else{Join-Path $InstanceRoot $script:selected.Profile}
+  if(Test-Path $p){Start-Process explorer.exe -ArgumentList @($p)}
 })
-$close.Add_Click({$form.Close()})
+$monitor.Add_Click({
+  $p=Join-Path $PSScriptRoot 'operations-monitor-windows.ps1'
+  if(Test-Path $p){Start-Process pwsh.exe -WindowStyle Hidden -ArgumentList @('-NoLogo','-NoProfile','-WindowStyle','Hidden','-ExecutionPolicy','Bypass','-File',$p)}
+  else{$status.Text='Operations monitor is not installed.'}
+})
+$admin.Add_Click({
+  $p=Join-Path $PSScriptRoot 'admin-runtime-windows.ps1'
+  if(Test-Path $p){Start-Process pwsh.exe -WindowStyle Hidden -ArgumentList @('-NoLogo','-NoProfile','-WindowStyle','Hidden','-ExecutionPolicy','Bypass','-File',$p)}
+  else{$status.Text='Admin runtime manager is not installed.'}
+})
+$refresh.Add_Click({Refresh-Grid})
 
+Add-Type -AssemblyName Microsoft.VisualBasic
 Refresh-Grid
 [void]$form.ShowDialog()

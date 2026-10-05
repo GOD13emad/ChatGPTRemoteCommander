@@ -9,6 +9,9 @@ if(-not $SourceDir){$SourceDir=Join-Path $RepoRoot 'dist\desktop\remote-commande
 $SourceDir=[IO.Path]::GetFullPath($SourceDir)
 $SourceExe=Join-Path $SourceDir 'RemoteCommander.exe'
 if(-not (Test-Path -LiteralPath $SourceExe -PathType Leaf)){throw "Desktop build missing: $SourceExe"}
+foreach($tool in @('profile-manager-windows.ps1','operations-monitor-windows.ps1','admin-runtime-windows.ps1')){
+  if(-not(Test-Path -LiteralPath (Join-Path $SourceDir $tool) -PathType Leaf)){throw "Desktop tool missing: $tool"}
+}
 if(-not $InstallRoot){$InstallRoot=Join-Path $env:LOCALAPPDATA 'Programs\Remote Commander'}
 $InstallRoot=[IO.Path]::GetFullPath($InstallRoot)
 $Entries = Get-ChildItem -LiteralPath $SourceDir -File -Recurse | ForEach-Object {
@@ -30,12 +33,24 @@ if(Test-Path -LiteralPath $Current){Remove-Item -LiteralPath $Current -Force -Re
 New-Item -ItemType Junction -Path $Current -Target $VersionDir | Out-Null
 
 $Wsh=New-Object -ComObject WScript.Shell
-$Shortcut=$Wsh.CreateShortcut((Join-Path $StartMenu 'Remote Commander.lnk'))
-$Shortcut.TargetPath=Join-Path $Current 'RemoteCommander.exe'
-$Shortcut.WorkingDirectory=$Current
-$Shortcut.IconLocation=(Join-Path $Current 'RemoteCommander.exe')+',0'
-$Shortcut.Description='Remote Commander dashboard'
-$Shortcut.Save()
+$Icon=(Join-Path $Current 'RemoteCommander.exe')+',0'
+function New-RcShortcut([string]$Name,[string]$Target,[string]$Arguments,[string]$Description){
+  $shortcutPath=Join-Path $StartMenu ($Name+'.lnk')
+  $s=$Wsh.CreateShortcut($shortcutPath)
+  $s.TargetPath=$Target
+  $s.Arguments=$Arguments
+  $s.WorkingDirectory=$Current
+  $s.IconLocation=$Icon
+  $s.Description=$Description
+  $s.Save()
+  if(-not(Test-Path -LiteralPath $shortcutPath -PathType Leaf)){throw "Start Menu shortcut was not created: $Name"}
+  return $shortcutPath
+}
+$DashboardShortcut=New-RcShortcut 'Remote Commander' (Join-Path $Current 'RemoteCommander.exe') '' 'Remote Commander dashboard'
+$Pwsh=(Get-Command pwsh.exe -ErrorAction Stop).Source
+$ProfileShortcut=New-RcShortcut 'Remote Commander Profiles & Access' $Pwsh ('-NoLogo -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "'+(Join-Path $Current 'profile-manager-windows.ps1')+'"') 'Remote Commander profile and access manager'
+$MonitorShortcut=New-RcShortcut 'Remote Commander Operations Monitor' $Pwsh ('-NoLogo -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "'+(Join-Path $Current 'operations-monitor-windows.ps1')+'"') 'Remote Commander projects and operations monitor'
+$AdminShortcut=New-RcShortcut 'Remote Commander Admin Runtime' $Pwsh ('-NoLogo -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "'+(Join-Path $Current 'admin-runtime-windows.ps1')+'"') 'Remote Commander elevated runtime manager'
 
 $Uninstall=Join-Path $InstallRoot 'uninstall.ps1'
 $UninstallText=@"
@@ -53,11 +68,9 @@ New-ItemProperty -Path $Reg -Name DisplayName -Value 'Remote Commander' -Propert
 New-ItemProperty -Path $Reg -Name DisplayVersion -Value $Version -PropertyType String -Force | Out-Null
 New-ItemProperty -Path $Reg -Name Publisher -Value 'Remote Commander' -PropertyType String -Force | Out-Null
 New-ItemProperty -Path $Reg -Name InstallLocation -Value $InstallRoot -PropertyType String -Force | Out-Null
-New-ItemProperty -Path $Reg -Name DisplayIcon -Value ((Join-Path $Current 'RemoteCommander.exe')+',0') -PropertyType String -Force | Out-Null
-New-ItemProperty -Path $Reg -Name UninstallString -Value ('"'+(Get-Command pwsh.exe).Source+'" -NoProfile -File "'+$Uninstall+'"') -PropertyType String -Force | Out-Null
+New-ItemProperty -Path $Reg -Name DisplayIcon -Value $Icon -PropertyType String -Force | Out-Null
+New-ItemProperty -Path $Reg -Name UninstallString -Value ('"'+$Pwsh+'" -NoProfile -File "'+$Uninstall+'"') -PropertyType String -Force | Out-Null
 New-ItemProperty -Path $Reg -Name NoModify -Value 1 -PropertyType DWord -Force | Out-Null
 New-ItemProperty -Path $Reg -Name NoRepair -Value 1 -PropertyType DWord -Force | Out-Null
 
-$Check=Join-Path $StartMenu 'Remote Commander.lnk'
-if(-not (Test-Path -LiteralPath $Check -PathType Leaf)){throw 'Start Menu shortcut was not created'}
-Write-Output "REMOTE_COMMANDER_DESKTOP_INSTALL_PASS version=$Version install=$InstallRoot shortcut=$Check"
+Write-Output "REMOTE_COMMANDER_DESKTOP_INSTALL_PASS version=$Version install=$InstallRoot shortcuts=4 dashboard=$DashboardShortcut profiles=$ProfileShortcut monitor=$MonitorShortcut admin=$AdminShortcut"

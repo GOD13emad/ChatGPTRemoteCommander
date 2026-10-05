@@ -9,6 +9,7 @@ export { guiToolDefinitions };
 
 const project = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const stopFile = path.join(project, 'var', 'GUI_STOP');
+const globalStopFile = process.platform === 'linux' ? path.join(process.env.XDG_STATE_HOME || path.join(process.env.HOME || '', '.local', 'state'), 'chatgpt-remote-commander', 'GUI_STOP') : null;
 const windowsHelper = path.join(project, 'tools', 'gui-control.ps1');
 const linuxHelper = path.join(project, 'tools', 'gui-control-linux.py');
 const backendSpec = platform => platform === 'win32'
@@ -25,8 +26,11 @@ const invokeDefault = request => {
 };
 const closeInvokeDefault = () => persistentHelper?.close();
 async function stopped() {
-  try { await access(stopFile); return true; }
-  catch (error) { if (error.code === 'ENOENT') return false; throw guiError('GUI_STOP_CHECK_FAILED'); }
+  for (const candidate of [stopFile, globalStopFile].filter(Boolean)) {
+    try { await access(candidate); return true; }
+    catch (error) { if (error.code !== 'ENOENT') throw guiError('GUI_STOP_CHECK_FAILED'); }
+  }
+  return false;
 }
 const sameToken = (a, b) => typeof a === 'string' && typeof b === 'string' && Buffer.byteLength(a) === Buffer.byteLength(b) && timingSafeEqual(Buffer.from(a), Buffer.from(b));
 const bound = (v, low, high, defaultValue) => Number.isSafeInteger(v) ? Math.max(low, Math.min(high, v)) : defaultValue;
@@ -114,10 +118,16 @@ export function createGuiController({ platform = process.platform, now = () => p
       let result;
       try { result = await invoke(request); }
       catch (error) {
-        if (isInput) uncertain = true; // Unknown partial input: local restart/inspection, no blind retry.
+        if (isInput) {
+          uncertain = true; // Unknown partial input: invalidate all coordination state before suspension.
+          session = null; frame = null; closeInvoke();
+        }
         throw error;
       }
-      if (result?.ok !== true) { if (isInput) uncertain = true; throw guiError('GUI_NATIVE_FAILED'); }
+      if (result?.ok !== true) {
+        if (isInput) { uncertain = true; session = null; frame = null; closeInvoke(); }
+        throw guiError(result?.error || 'GUI_NATIVE_FAILED');
+      }
       if (name === 'gui_screenshot') {
         const { data, mimeType, ...meta } = result;
         if (!['image/jpeg', 'image/png'].includes(mimeType) || typeof data !== 'string' || data.length === 0 || data.length % 4 || data.length > Math.ceil(request.maxBytes / 3) * 4 || !/^[A-Za-z0-9+/]*={0,2}$/.test(data)) throw guiError('GUI_INVALID_IMAGE');

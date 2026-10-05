@@ -30,7 +30,18 @@ function safeProgramList(value) {
   return [...value];
 }
 
-export function buildProfileInstance({ baseConfig, existingConfig = null, profile, port, stateDirectory, allowedRoots, powerMode = undefined, guiControl = undefined }) {
+export function buildProfileInstance({
+  baseConfig,
+  existingConfig = null,
+  profile,
+  port,
+  stateDirectory,
+  allowedRoots,
+  powerMode = undefined,
+  guiControl = undefined,
+  disableCapabilities = [],
+  enableCapabilities = []
+}) {
   if (!baseConfig || typeof baseConfig !== 'object' || Array.isArray(baseConfig)) throw new Error('PROFILE_INSTANCE_BASE_CONFIG_REQUIRED');
   profile = validateProfileName(profile);
   port = validateMcpPort(port);
@@ -44,11 +55,11 @@ export function buildProfileInstance({ baseConfig, existingConfig = null, profil
     profileId: profile,
     requestPower: powerMode === true,
     requestStandard: powerMode === false,
-    requestGui: guiControl
+    requestGui: guiControl,
+    disableCapabilities,
+    enableCapabilities
   });
   const power = migrated.config.powerMode;
-  // A general-purpose interpreter/compiler is not a filesystem sandbox. Standard
-  // isolated profiles therefore receive no command allowlist at all.
   const programs = power.enabled === true ? basePrograms : [];
 
   const executionTools = power.enabled === true

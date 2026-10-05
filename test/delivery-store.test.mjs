@@ -153,6 +153,20 @@ test('default delivery location does not inherit workflow or async project state
 });
 
 
+test('explicit delivery scope survives versioned config-path rotation', async () => {
+  const { deliveryLocation, stableDeliveryScope } = await import('../src/delivery-store.mjs');
+  const scope=stableDeliveryScope({deviceName:'linux-host-a',instance:{profile:'default'}});
+  const directory=path.join(os.tmpdir(),'rc-delivery-stable-profile',scope);
+  const config={deviceName:'linux-host-a',instance:{profile:'default'},durableDelivery:{directory,scope}};
+  const first=deliveryLocation(config,path.join(os.tmpdir(),'runtime-a','config.json'));
+  const second=deliveryLocation(config,path.join(os.tmpdir(),'runtime-b','config.json'));
+  assert.equal(first.scope,scope);
+  assert.equal(second.scope,scope);
+  assert.equal(first.directory,path.resolve(directory));
+  assert.equal(second.directory,path.resolve(directory));
+  assert.notEqual(first.legacyScope,second.legacyScope);
+});
+
 test('identity-safe compaction preserves unread state and exact artifact bytes across restart',()=>{
   const f=fixture();
   try{
@@ -276,4 +290,67 @@ test('delivery compaction tool is additive and explicitly non-acknowledging',asy
   assert.equal(tool.annotations.destructiveHint,false);
   assert.equal(tool.inputSchema.additionalProperties,false);
   assert.match(tool.description,/without acknowledging/i);
+});
+
+
+test('internal transport receipts are reclassified without deleting artifacts or acknowledging user delivery',()=>{
+  const f=fixture(); const store=f.open();
+  try{
+    const transport='transport-'+'a'.repeat(64);
+    const transportArtifact=store.writeArtifact({tool:'copy_path',status:'SUCCEEDED',marker:'transport'});
+    const internal=store.publish({
+      eventKey:'operation:11111111-1111-4111-8111-111111111111:SUCCEEDED',
+      correlationId:transport,source:'operation',sourceId:'11111111-1111-4111-8111-111111111111',
+      kind:'COMPLETED',artifact:transportArtifact
+    });
+    const explicitArtifact=store.writeArtifact({tool:'copy_path',status:'SUCCEEDED',marker:'explicit'});
+    const explicit=store.publish({
+      eventKey:'operation:22222222-2222-4222-8222-222222222222:SUCCEEDED',
+      correlationId:'chat-explicit',source:'operation',sourceId:'22222222-2222-4222-8222-222222222222',
+      kind:'COMPLETED',artifact:explicitArtifact
+    });
+    const claimedArtifact=store.writeArtifact({tool:'delete_path',status:'SUCCEEDED',marker:'claimed'});
+    const claimed=store.publish({
+      eventKey:'operation:33333333-3333-4333-8333-333333333333:SUCCEEDED',
+      correlationId:'transport-'+'b'.repeat(64),source:'operation',sourceId:'33333333-3333-4333-8333-333333333333',
+      kind:'COMPLETED',artifact:claimedArtifact
+    });
+    store.claim({deliveryId:claimed.deliveryId,correlationId:'transport-'+'b'.repeat(64),attemptId:'attempt-live',leaseMs:60000});
+
+    const before=store.health();
+    assert.equal(before.pending,3);
+    const result=store.reclassifyTransportReceipts({limit:100});
+    assert.equal(result.reclassified,1);
+    assert.equal(result.acknowledgementSynthesized,false);
+    assert.equal(result.artifactsDeleted,0);
+    assert.equal(result.pendingAfter,2);
+
+    const after=store.health();
+    assert.equal(after.pending,2);
+    assert.equal(after.transportReceipts,1);
+    assert.equal(store.get(internal.deliveryId,transport).state,'TRANSPORT_RECEIPT');
+    assert.equal(store.get(explicit.deliveryId,'chat-explicit').state,'COMPLETED_UNDELIVERED');
+    assert.equal(store.get(claimed.deliveryId,'transport-'+'b'.repeat(64)).state,'DELIVERY_PENDING');
+    assert.equal(store.list({correlationId:transport}).items.length,0);
+    assert.equal(store.list({correlationId:transport,includeDelivered:true}).items[0].state,'TRANSPORT_RECEIPT');
+    assert.equal(store.claim({deliveryId:internal.deliveryId,correlationId:transport,attemptId:'attempt-after'}).transportReceipt,true);
+    const chunk=store.readArtifact({deliveryId:internal.deliveryId,correlationId:transport,maxBytes:16384});
+    assert.equal(JSON.parse(Buffer.from(chunk.data,'base64').toString('utf8')).marker,'transport');
+    assert.equal(store.beacon(10).items.some(x=>x.deliveryId===internal.deliveryId),false);
+
+    const repeat=store.reclassifyTransportReceipts({limit:100});
+    assert.equal(repeat.reclassified,0);
+    assert.equal(repeat.pendingAfter,2);
+  } finally { store.close(); f.dispose(); }
+});
+
+test('transport-receipt repair tool is bounded and explicitly non-acknowledging',async()=>{
+  const {deliveryToolDefinitions}=await import('../src/delivery-tools.mjs');
+  const tool=deliveryToolDefinitions.find(x=>x.name==='delivery_reclassify_transport_receipts');
+  assert.ok(tool);
+  assert.equal(tool.annotations.idempotentHint,true);
+  assert.equal(tool.annotations.destructiveHint,false);
+  assert.equal(tool.inputSchema.properties.limit.maximum,10000);
+  assert.equal(tool.inputSchema.additionalProperties,false);
+  assert.match(tool.description,/Does not delete artifacts or synthesize user acknowledgement/i);
 });
