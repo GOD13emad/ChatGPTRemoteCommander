@@ -1,3 +1,9 @@
+## 0.10.18 - 2026-10-07
+
+- Fix the Linux updater pre-cutover tunnel gate so a tunnel whose local `/readyz` OAuth-discovery subcheck is stale can still be admitted only when `/healthz` is `live` and `commands_poll_last_successful_timestamp_seconds` proves a recent successful control-plane poll.
+- Keep the fallback fail-closed for missing/zero/stale metrics or non-live health, and keep all tunnel verification before the cutover commit point.
+- Preserve Remote Commander Browser v0.8.0 as the immutable, hash-pinned optional Browser dependency and leave browser profile/login authority unchanged.
+- Advance runtime, installers, server installers and plugin release identity to v0.10.18 without moving or rewriting v0.10.17.
 ## 0.10.17 - 2026-10-06
 
 - Preserve per-run Windows qualification stdout/stderr with SHA-256 evidence while keeping the existing owned Job Object, timeout, cleanup, backoff and failure semantics unchanged.

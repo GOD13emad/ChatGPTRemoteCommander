@@ -1,11 +1,11 @@
 #ifndef MyVersion
-  #define MyVersion "0.10.17-dev"
+  #define MyVersion "0.10.18-dev"
 #endif
 #ifndef MyCommit
   #define MyCommit "0000000000000000000000000000000000000000"
 #endif
 #ifndef MySourceRef
-  #define MySourceRef "v0.10.17"
+  #define MySourceRef "v0.10.18"
 #endif
 #ifndef DesktopPayload
   #define DesktopPayload "..\dist\desktop\remote-commander-windows-x64"
