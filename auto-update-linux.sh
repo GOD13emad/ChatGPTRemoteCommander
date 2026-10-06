@@ -268,15 +268,39 @@ active_config(){
   [[ -f "$INSTALL_DIR/config.local.json" ]] && printf '%s\n' "$INSTALL_DIR/config.local.json" || printf '%s\n' "$INSTALL_DIR/config.json"
 }
 
+tunnel_control_plane_fresh(){
+  local port="$1" limit="${REMOTE_COMMANDER_TUNNEL_STALE_SECONDS:-90}" metrics last now age
+  [[ -n "$limit" && "$limit" =~ ^[1-9][0-9]{1,3}$ ]] || limit=90
+  metrics="$(curl -fsS --connect-timeout 1 --max-time 2 "http://127.0.0.1:$port/metrics" 2>/dev/null || true)"
+  [[ -n "$metrics" ]] || return 1
+  last="$(printf '%s\n' "$metrics" | awk '/^commands_poll_last_successful_timestamp_seconds([{ ]|$)/{print $NF;exit}')"
+  awk -v v="$last" 'BEGIN{exit !((v+0)>0)}' || return 1
+  now="$(date +%s)"
+  age="$(awk -v n="$now" -v b="$last" 'BEGIN{printf "%.0f",n-b}')"
+  awk -v n="$now" -v b="$last" -v l="$limit" 'BEGIN{age=n-b; exit !((age>=0)&&(age<=l))}' || return 1
+  printf '%s\n' "$age"
+}
+
+tunnel_profile_ready(){
+  local file="$1" raw hp ready live age
+  raw="$(cat "$file")"
+  [[ "$raw" == *'http://127.0.0.1:47831/mcp'* ]] || return 0
+  hp="$(printf '%s' "$raw" | sed -nE 's/.*listen_addr:[[:space:]]*["'\'']?127\.0\.0\.1:([0-9]+).*/\1/p' | head -n1)"
+  [[ -n "$hp" ]] || { log "TUNNEL_READINESS_BLOCK profile=$(basename "$file") reason=health-port-missing"; return 1; }
+  ready="$(curl -fsS --connect-timeout 1 --max-time 2 "http://127.0.0.1:$hp/readyz" 2>/dev/null || true)"
+  [[ "$ready" == ready ]] && return 0
+  live="$(curl -fsS --connect-timeout 1 --max-time 2 "http://127.0.0.1:$hp/healthz" 2>/dev/null || true)"
+  [[ "$live" == live ]] || { log "TUNNEL_READINESS_BLOCK profile=$(basename "$file") port=$hp reason=health-not-live"; return 1; }
+  age="$(tunnel_control_plane_fresh "$hp")" || { log "TUNNEL_READINESS_BLOCK profile=$(basename "$file") port=$hp reason=control-plane-stale-or-missing"; return 1; }
+  log "TUNNEL_READINESS_FRESH_FALLBACK profile=$(basename "$file") port=$hp pollAgeSeconds=$age"
+  return 0
+}
+
 tunnels_ready(){
   [[ -d "$PROFILE_DIR" ]] || return 0
-  local file raw hp
+  local file
   while IFS= read -r -d '' file; do
-    raw="$(cat "$file")"
-    [[ "$raw" == *'http://127.0.0.1:47831/mcp'* ]] || continue
-    hp="$(printf '%s' "$raw" | sed -nE 's/.*listen_addr:[[:space:]]*["'\'']?127\.0\.0\.1:([0-9]+).*/\1/p' | head -n1)"
-    [[ -n "$hp" ]] || continue
-    [[ "$(curl -fsS --connect-timeout 1 --max-time 2 "http://127.0.0.1:$hp/readyz" 2>/dev/null || true)" == ready ]] || return 1
+    tunnel_profile_ready "$file" || return 1
   done < <(find "$PROFILE_DIR" -maxdepth 1 -type f -name '*.yaml' -print0 2>/dev/null)
 }
 
