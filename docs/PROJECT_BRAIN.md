@@ -944,3 +944,13 @@ Because this changed executable code after the earlier qualification, the comple
 **Evidence:** focused affected fixtures 15/15 PASS across five consecutive iterations; full bounded Windows qualification again PASS with **275 pass / 0 fail / 7 skips** in the main batch.
 
 **← CURRENT:** commit/push exact fix head to PR #132 and require fresh hosted Windows CI + Windows clean Server canary. Browser rc.6 release remains the dependency before Commander release wiring and merge.
+
+### 2026-10-06 — v0.10.16 conversation handoff gate locally PASS
+
+**Previous delta:** bootstrap PATH and Project Engine deadline harness fixes at `8d40495` closed clean-server bootstrap and earlier scheduler timing failures. Push Windows CI and both server canaries were PASS, but PR-event Windows exposed one independent polling flake in `workflow-conversation.test.mjs`.
+
+**Current delta:** test now waits on the controller's existing serialized `drainPromise` rather than polling store state. No delivery/runtime timeout or retry behavior changed. Focused regression: 10/10 PASS. Full Windows `check:qualification + test:qualification + audit`: exit 0, main bounded batch 275 PASS / 0 FAIL / 7 skips.
+
+**Benchmark result:** Browser/profile ownership is aligned with Playwright MCP's persistent/isolated model. Remote hosted OAuth/device revocation is a future architecture option, not a current owner-bound release blocker. Windows publisher signing remains MISSING/EXTERNAL and must not be claimed FINAL without a real certificate/signing service.
+
+**← CURRENT:** commit/push the deterministic drain test fix from the isolated worktree, require fresh hosted PR CI on exact head, then pin the immutable Browser rc.6 release asset into Commander Setup and rerun release gates. Original dirty worktree remains untouched.

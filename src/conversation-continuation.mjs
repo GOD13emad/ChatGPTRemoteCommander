@@ -333,6 +333,7 @@ export function createConversationController({
     cancelEvent:(projectId,eventKey)=>store.cancelEvent(projectId,eventKey),
     unbind:pid=>store.unbind(pid),
     stats:()=>({...store.stats(),platform,deliveryMode:platform==='win32'?'existing-chat-uia':'queue-only'}),
+    drain:()=>drainPromise,
     execute:async(name,args)=>{
       if(name==='conversation_bind')return bind(args);
       if(name==='conversation_status')return status(args.projectId);
