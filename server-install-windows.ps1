@@ -1,9 +1,11 @@
 param(
-  [string]$SourceRef = 'v0.10.15',
+  [string]$SourceRef = 'v0.10.16',
   [string]$ExpectedCommit = '',
+  [ValidateSet('Power','Standard')][string]$AccessMode = 'Power',
   [ValidateSet('Auto','On','Off')][string]$GuiControl = 'Auto',
   [string]$InstallDir = '',
   [switch]$NoStartServer,
+  [switch]$PrerequisitesOnly,
   [switch]$KeepDownloads
 )
 
@@ -32,7 +34,7 @@ function Refresh-Path {
 
 function Invoke-Download([string]$Url,[string]$Destination) {
   Write-Host "Downloading $Url"
-  Invoke-WebRequest -UseBasicParsing -Uri $Url -OutFile $Destination -Headers @{'User-Agent'='ChatGPTRemoteCommander-ServerInstaller/0.10.15'}
+  Invoke-WebRequest -UseBasicParsing -Uri $Url -OutFile $Destination -Headers @{'User-Agent'='ChatGPTRemoteCommander-ServerInstaller/0.10.16'}
   if (-not (Test-Path -LiteralPath $Destination -PathType Leaf)) { throw "Download did not create $Destination" }
 }
 
@@ -167,7 +169,7 @@ function Ensure-Git([string]$Arch) {
     }
   }
 
-  $release = Invoke-RestMethod -Uri 'https://api.github.com/repos/git-for-windows/git/releases/latest' -Headers @{'User-Agent'='ChatGPTRemoteCommander-ServerInstaller/0.10.15'}
+  $release = Invoke-RestMethod -Uri 'https://api.github.com/repos/git-for-windows/git/releases/latest' -Headers @{'User-Agent'='ChatGPTRemoteCommander-ServerInstaller/0.10.16'}
   if ($release.draft -or $release.prerelease) { throw 'Git for Windows latest release is not stable.' }
   $pattern = if ($Arch -eq 'x64') { '^Git-.*-64-bit\.exe$' } else { '^Git-.*-arm64\.exe$' }
   $asset = @($release.assets | Where-Object { $_.name -match $pattern }) | Select-Object -First 1
@@ -233,6 +235,7 @@ function Write-AllowlistManifest([string]$Commit,[object]$Server,[object]$Defend
 if (-not (Test-Administrator)) { throw 'Run this server installer from an elevated Administrator shell.' }
 if ($SourceRef -notmatch '^[A-Za-z0-9._/-]{1,128}$') { throw 'Invalid SourceRef.' }
 if ($ExpectedCommit -and $ExpectedCommit -notmatch '^[0-9a-fA-F]{40}$') { throw 'ExpectedCommit must be a 40-hex SHA.' }
+if ($AccessMode -eq 'Standard' -and $GuiControl -eq 'On') { throw 'GuiControl On requires AccessMode Power.' }
 
 New-Item -ItemType Directory -Force -Path $Downloads | Out-Null
 $server = Get-ServerCoreState
@@ -249,6 +252,12 @@ try {
   $git = Ensure-Git $arch
   Refresh-Path
   $env:Path = @((Split-Path -Parent $node),(Split-Path -Parent $git),$env:Path) -join ';'
+
+  if ($PrerequisitesOnly) {
+    Write-AllowlistManifest 'PREREQUISITES_ONLY' $server $defender
+    Write-Host "SERVER_PREREQUISITES_PASS pwsh=$pwsh node=$node git=$git"
+    return
+  }
 
   New-Item -ItemType Directory -Path $stage | Out-Null
   & $git -C $stage init | Out-Null
@@ -276,10 +285,11 @@ try {
 
   $installer = Join-Path $stage 'install.ps1'
   if (-not (Test-Path -LiteralPath $installer -PathType Leaf)) { throw 'Staged install.ps1 is missing.' }
-  $args = @('-NoLogo','-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',$installer,'-PowerMode','-SourceRef',$SourceRef,'-ExpectedCommit',$resolved)
+  $args = @('-NoLogo','-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',$installer,'-SourceRef',$SourceRef,'-ExpectedCommit',$resolved)
+  if ($AccessMode -eq 'Power') { $args += '-PowerMode' } else { $args += '-StandardMode' }
   if ($InstallDir) { $args += @('-InstallDir',$InstallDir) }
   if (-not $NoStartServer) { $args += '-StartServer' }
-  if ($guiEnabled) { $args += '-GuiControl' } else { $args += '-DisableGuiControl' }
+  if ($guiEnabled -and $AccessMode -eq 'Power') { $args += '-GuiControl' } else { $args += '-DisableGuiControl' }
 
   & $pwsh @args
   if ($LASTEXITCODE -ne 0) { throw "Remote Commander install.ps1 failed with exit code $LASTEXITCODE" }

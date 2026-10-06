@@ -56,21 +56,31 @@ test('desktop access and operations UI is wired to real guarded backends',()=>{
   assert.ok(entry.includes("autostart-windows.ps1"));
 
   const build=read('desktop/build-windows.ps1');
-  for(const file of ['profile-manager-windows.ps1','operations-monitor-windows.ps1','admin-runtime-windows.ps1'])
-    assert.ok(build.includes(file),file);
+  for(const file of [
+    'profile-manager-windows.ps1','profile-enrollment-windows.ps1',
+    'operations-monitor-windows.ps1','admin-runtime-windows.ps1'
+  ]) assert.ok(build.includes(file),file);
 
   const install=read('desktop/install-windows.ps1');
-  for(const name of [
-    "New-RcShortcut 'Remote Commander'",
-    'Remote Commander Profiles & Access',
-    'Remote Commander Operations Monitor',
-    'Remote Commander Admin Runtime'
-  ]) assert.ok(install.includes(name),name);
-  assert.ok(install.includes('$s.IconLocation=$Icon'),'all tool shortcuts must use the product icon');
+  assert.ok(install.includes("[ValidateSet('Core','ControlMonitoring')][string]$Mode"));
+  assert.ok(install.includes("$DashboardShortcut=Join-Path $StartMenu 'Remote Commander.lnk'"));
+  assert.ok(install.includes('shortcuts=1'),'desktop installer must expose one public Commander shortcut');
+  assert.equal(install.includes("New-RcShortcut 'Remote Commander Profiles & Access'"),false);
+  assert.equal(install.includes("New-RcShortcut 'Remote Commander Operations Monitor'"),false);
+  assert.equal(install.includes("New-RcShortcut 'Remote Commander Admin Runtime'"),false);
+  for(const legacy of [
+    'Remote Commander Profiles & Access.lnk',
+    'Remote Commander Operations Monitor.lnk',
+    'Remote Commander Admin Runtime.lnk'
+  ]) assert.ok(install.includes(legacy),'legacy shortcut cleanup '+legacy);
+  assert.ok(install.includes('product-install.json'));
+  assert.ok(install.includes("controlMonitoring=($Mode -eq 'ControlMonitoring')"));
 
   const dashboard=read('desktop/RemoteCommanderDashboard/Program.cs');
-  for(const marker of ['Profiles & Access','Operations Monitor','Admin Runtime','LaunchPowerShellTool'])
-    assert.ok(dashboard.includes(marker),marker);
+  for(const marker of [
+    'Add Profiles','Profiles & Access','Operations Monitor','Admin Runtime',
+    'ToolInstalled','LaunchPendingProfileOnboarding','requested-profiles.txt'
+  ]) assert.ok(dashboard.includes(marker),marker);
 });
 
 test('Windows updater can target one named profile without changing default all-profile semantics',()=>{
@@ -126,8 +136,10 @@ test('workflow CLI opens a real store from full Commander config and expands env
 test('new Windows desktop/admin scripts parse without execution',t=>{
   if(process.platform!=='win32'){t.skip('Windows-only parser gate');return;}
   for(const script of [
-    'desktop/profile-manager-windows.ps1','desktop/operations-monitor-windows.ps1',
-    'desktop/admin-runtime-windows.ps1','desktop/build-windows.ps1','desktop/install-windows.ps1',
+    'desktop/profile-manager-windows.ps1','desktop/profile-enrollment-windows.ps1',
+    'desktop/operations-monitor-windows.ps1','desktop/admin-runtime-windows.ps1',
+    'desktop/build-windows.ps1','desktop/install-windows.ps1','installer/build-setup.ps1',
+    'server-install-windows.ps1','install.ps1','enable-autostart.ps1',
     'elevated-runtime-entry-windows.ps1','auto-update-windows.ps1','reconfigure-profile-instance.ps1'
   ]){
     const command='$t=$null;$e=$null;[Management.Automation.Language.Parser]::ParseFile((Resolve-Path "'+script+'"),[ref]$t,[ref]$e)|Out-Null;if($e.Count){$e|% Message;exit 2}';

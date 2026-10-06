@@ -73,17 +73,26 @@ internal sealed class DashboardForm : Form
         actions.Controls.Add(Button("Refresh", async (_, _) => await RefreshAsync()));
         actions.Controls.Add(Button("Open Logs", (_, _) => OpenPath(Path.Combine(stateRoot, "update-logs"))));
         actions.Controls.Add(Button("Open Data", (_, _) => OpenPath(stateRoot)));
-        actions.Controls.Add(Button("Profiles & Access", (_, _) => LaunchPowerShellTool("profile-manager-windows.ps1", "Profiles & Access")));
-        actions.Controls.Add(Button("Operations Monitor", (_, _) => LaunchPowerShellTool("operations-monitor-windows.ps1", "Operations Monitor")));
-        actions.Controls.Add(Button("Admin Runtime", (_, _) => LaunchPowerShellTool("admin-runtime-windows.ps1", "Admin Runtime")));
-        actions.Controls.Add(Button("Open Browser", (_, _) => LaunchBrowser()));
+        if (ToolInstalled("profile-enrollment-windows.ps1"))
+            actions.Controls.Add(Button("Add Profiles", (_, _) => LaunchPowerShellTool("profile-enrollment-windows.ps1", "Profile Setup")));
+        if (ToolInstalled("profile-manager-windows.ps1"))
+            actions.Controls.Add(Button("Profiles & Access", (_, _) => LaunchPowerShellTool("profile-manager-windows.ps1", "Profiles & Access")));
+        if (ToolInstalled("operations-monitor-windows.ps1"))
+            actions.Controls.Add(Button("Operations Monitor", (_, _) => LaunchPowerShellTool("operations-monitor-windows.ps1", "Operations Monitor")));
+        if (ToolInstalled("admin-runtime-windows.ps1"))
+            actions.Controls.Add(Button("Admin Runtime", (_, _) => LaunchPowerShellTool("admin-runtime-windows.ps1", "Admin Runtime")));
+        actions.Controls.Add(Button("Browser", (_, _) => LaunchBrowser()));
         actions.Controls.Add(Button("Copy Diagnostics", (_, _) => CopyDiagnostics()));
 
         Controls.Add(cards);
         Controls.Add(actions);
         Controls.Add(header);
 
-        Shown += async (_, _) => await RefreshAsync();
+        Shown += async (_, _) =>
+        {
+            await RefreshAsync();
+            LaunchPendingProfileOnboarding();
+        };
     }
 
     private Button Button(string text, EventHandler handler)
@@ -252,6 +261,25 @@ internal sealed class DashboardForm : Form
         }
         catch { return false; }
     }
+
+    private bool onboardingLaunched;
+
+    private void LaunchPendingProfileOnboarding()
+    {
+        if (onboardingLaunched || !ToolInstalled("profile-enrollment-windows.ps1")) return;
+        var queue = Path.Combine(stateRoot, "onboarding", "requested-profiles.txt");
+        if (!File.Exists(queue)) return;
+        try
+        {
+            if (!File.ReadLines(queue).Any(line => !string.IsNullOrWhiteSpace(line))) return;
+        }
+        catch { return; }
+        onboardingLaunched = true;
+        LaunchPowerShellTool("profile-enrollment-windows.ps1", "Profile Setup");
+    }
+
+    private static bool ToolInstalled(string fileName) =>
+        File.Exists(Path.Combine(AppContext.BaseDirectory, fileName));
 
     private void LaunchPowerShellTool(string fileName, string displayName)
     {

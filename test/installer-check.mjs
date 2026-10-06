@@ -16,7 +16,7 @@ for (const required of [
   'Detected active installation from Windows autostart',
   '$InstallDir = Resolve-InstallDir',
   'Tracked local changes exist in InstallDir',
-  "[string]$SourceRef = 'v0.10.15'",
+  "[string]$SourceRef = 'v0.10.16'",
   'ExpectedCommit',
   "rev-parse 'FETCH_HEAD^{commit}'",
   'incomplete Git checkout with no HEAD',
@@ -43,6 +43,8 @@ for (const required of [
   }
 }
 
+if (!windowsInstaller.includes('@($env:Path, $machine, $user)')) throw new Error('Refresh-Path must preserve validated process-local tool paths while merging refreshed machine/user PATH');
+if (!windowsInstaller.includes('[Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)')) throw new Error('Refresh-Path must deduplicate merged PATH entries case-insensitively');
 if (!windowsInstaller.includes('Write-Warning ("UPDATER_TEMP_CLEANUP_DEFER')) throw new Error('existing-update temp cleanup must be best-effort after update outcome is known');
 if (windowsInstaller.includes('if (Test-Path -LiteralPath $temp) { throw }')) throw new Error('temp cleanup must not convert a successful update into installer failure');
 if (windowsInstaller.includes('@openai/codex@')) throw new Error('install.ps1 must not provision Codex');
@@ -70,10 +72,10 @@ for (const required of [
 for (const forbidden of ['Add-MpPreference','Set-MpPreference','Remove-MpPreference']) {
   if (windowsServerInstaller.includes(forbidden)) throw new Error(`server installer must not mutate Defender exclusions/settings: ${forbidden}`);
 }
-if (!windowsServerInstaller.includes("[string]$SourceRef = 'v0.10.15'")) throw new Error('server-install-windows.ps1 default SourceRef must match current release');
-if (!windowsServerInstaller.includes('ChatGPTRemoteCommander-ServerInstaller/0.10.15')) throw new Error('server-install-windows.ps1 User-Agent must match current release');
-if (!linuxServerInstaller.includes('SOURCE_REF="${REMOTE_COMMANDER_SOURCE_REF:-v0.10.15}"')) throw new Error('server-install-linux.sh default SourceRef must match current release');
-if (!linuxServerInstaller.includes('default: v0.10.15')) throw new Error('server-install-linux.sh usage default must match current release');
+if (!windowsServerInstaller.includes("[string]$SourceRef = 'v0.10.16'")) throw new Error('server-install-windows.ps1 default SourceRef must match current release');
+if (!windowsServerInstaller.includes('ChatGPTRemoteCommander-ServerInstaller/0.10.16')) throw new Error('server-install-windows.ps1 User-Agent must match current release');
+if (!linuxServerInstaller.includes('SOURCE_REF="${REMOTE_COMMANDER_SOURCE_REF:-v0.10.16}"')) throw new Error('server-install-linux.sh default SourceRef must match current release');
+if (!linuxServerInstaller.includes('default: v0.10.16')) throw new Error('server-install-linux.sh usage default must match current release');
 const publicConfig = JSON.parse(readFileSync('config.json','utf8'));
 if (publicConfig.auditMaxBytes !== 8388608 || publicConfig.auditKeepFiles !== 3) {
   throw new Error('config.json missing bounded audit defaults');
@@ -114,7 +116,7 @@ for (const required of [
   'Alpine/musl is not qualified'
 ]) if (!linuxServerInstaller.includes(required)) throw new Error(`server-install-linux.sh missing server bootstrap behavior: ${required}`);
 for (const required of [
-  'SOURCE_REF="${REMOTE_COMMANDER_SOURCE_REF:-v0.10.15}"',
+  'SOURCE_REF="${REMOTE_COMMANDER_SOURCE_REF:-v0.10.16}"',
   '--source-ref',
   '--skip-tunnel-client',
   '--expected-commit',

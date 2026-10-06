@@ -914,3 +914,77 @@ Because this changed executable code after the earlier qualification, the comple
 **Open / deferred:** physical AC-loss/reboot validation remains a distinct hardware/operations test; it is not inferred from software health and remains UNPROVEN until intentionally exercised.
 
 **Exact next action:** no further v0.10.15 software mutation. Preserve `v0.10.15` immutably; future product changes start from current `main` under a new change set/version.
+
+### 2026-10-06 — CURRENT v0.10.16 single-product Windows installer candidate
+
+**Previous accepted state:** v0.10.15 is immutable production. Windows Commander runtime is healthy, but the installed Desktop shell/Start Menu packaging exposed internal tools as multiple applications. Remote Commander Browser is a separate pre-release line.
+
+**Current delta:** Start Menu was repaired to one public Commander shortcut plus the independently installed Browser shortcut. The candidate now implements one Windows Setup executable with `Core` and `Control & Monitoring` modes, multi-profile post-install onboarding, a correct per-user/UAC boundary, secure in-memory API-key handoff, a standards-compliant multi-size icon, and release automation for the Setup EXE. The conditional Browser component compiles but is intentionally hidden unless a verified standalone Browser installer is supplied.
+
+**Evidence:** both Inno compile branches PASS without warnings; focused installer/product contracts 9/9 PASS; update regression 83 pass / 0 fail / 2 platform skips plus MCP Tasks 1/1 PASS. Live runtime remains v0.10.15 and was not promoted by candidate testing.
+
+**Authority / boundary:** accepted production remains `v0.10.15`. v0.10.16 is **CURRENT candidate / UNPROVEN for release** until exact-head full qualification + hosted CI/canary + Linux laptop + Amirreza Server acceptance + merge/tag/release + post-release readback. Browser v0.8.0-rc.4 is not promoted into the Commander release and fully bidirectional integration remains OPEN.
+
+**Critical path ← CURRENT:** release-identity closure → exact-head qualification → hosted/cross-host gates → merge → immutable v0.10.16 tag/release with single-file Setup → live rollout/readback. Production Authenticode signing is an external certificate gate and is not fabricated with self-signing.
+
+**Exact next action:** complete the v0.10.16 release-identity/documentation delta, qualify the exact commit, then push and require hosted/cross-host evidence before promotion.
+
+### 2026-10-06 — Commander v0.10.16 single-shell change set locally PASS
+
+**Key result:** Windows bounded qualification finished with **275 pass / 0 fail / 7 skips**. Single public shell, Core vs Control+Monitoring component split, multi-profile enrollment and fresh-Windows prerequisite bootstrap are verified locally.
+
+**Authority:** branch base still equals current `origin/main 54bb5a1`; no writer overlap detected.
+
+**← CURRENT:** commit this qualified single-shell/monitoring/profile change set. Browser rc.5 release is the only dependency before the next Commander mutation: pin/verify/embed the released Browser Setup, then rerun exact-head Windows/Linux/Amirreza/hosted gates.
+
+### 2026-10-06 — Commander PR #132 Windows fixes locally PASS
+
+**Root causes closed:** clean bootstrap no longer loses verified process-only Git/Node paths; Project Engine early-timer regression now models real wall-clock semantics instead of assuming scheduler punctuality.
+
+**Evidence:** focused affected fixtures 15/15 PASS across five consecutive iterations; full bounded Windows qualification again PASS with **275 pass / 0 fail / 7 skips** in the main batch.
+
+**← CURRENT:** commit/push exact fix head to PR #132 and require fresh hosted Windows CI + Windows clean Server canary. Browser rc.6 release remains the dependency before Commander release wiring and merge.
+
+### 2026-10-06 — v0.10.16 conversation handoff gate locally PASS
+
+**Previous delta:** bootstrap PATH and Project Engine deadline harness fixes at `8d40495` closed clean-server bootstrap and earlier scheduler timing failures. Push Windows CI and both server canaries were PASS, but PR-event Windows exposed one independent polling flake in `workflow-conversation.test.mjs`.
+
+**Current delta:** test now waits on the controller's existing serialized `drainPromise` rather than polling store state. No delivery/runtime timeout or retry behavior changed. Focused regression: 10/10 PASS. Full Windows `check:qualification + test:qualification + audit`: exit 0, main bounded batch 275 PASS / 0 FAIL / 7 skips.
+
+**Benchmark result:** Browser/profile ownership is aligned with Playwright MCP's persistent/isolated model. Remote hosted OAuth/device revocation is a future architecture option, not a current owner-bound release blocker. Windows publisher signing remains MISSING/EXTERNAL and must not be claimed FINAL without a real certificate/signing service.
+
+**← CURRENT:** commit/push the deterministic drain test fix from the isolated worktree, require fresh hosted PR CI on exact head, then pin the immutable Browser rc.6 release asset into Commander Setup and rerun release gates. Original dirty worktree remains untouched.
+
+### 2026-10-06 — v0.10.16 final release integration
+
+**Previous accepted state:** PR #132 exact head `c00e379` had Windows/Linux CI and Server Install Canary PASS, single-shell Windows Setup implementation, profile enrollment, deterministic conversation drain and optional Browser compile hook. Browser bundling was deferred because no immutable standalone Browser Setup dependency had been published.
+
+**Current delta:** Browser v0.8.0-rc.8 is now a qualified immutable release. Commander release CI pins its Setup SHA-256 `c1f04ff74bf3f7caf8b192bc35c4bf4d08f1149a890a164df511bcdfd16893c3`, verifies the download before bundling, uses the verified portable Inno 6.7.3 bootstrap, runs the real Setup build on relevant PRs, and includes latest main Companion admission changes.
+
+**← CURRENT:** run local dependency fetch + contract tests + actual bundled Setup compile; then push the final exact head to PR #132 and require fresh hosted CI, Windows Server canary and Release Sync PR build PASS before marking ready/merging. After merge, tag `v0.10.16`, require immutable release publication and live asset readback.
+
+### 2026-10-06 — local bundled Setup mechanics PASS
+
+Browser rc.8 download/hash verification, pinned Inno acquisition, desktop payload build and actual Commander Setup compilation all PASS locally. The resulting Setup reports `browserBundled=true`. This is pre-push validation only because the worktree is intentionally dirty during the Change Set.
+
+**← CURRENT:** run full local suite, commit only intentional release-integration files, push to existing PR #132, then require fresh exact-head hosted gates including the new Release Sync PR build.
+
+### 2026-10-06 — local qualification anomaly disposition
+
+Full local `check:qualification` was not promoted to PASS: one unrelated Windows temp-directory after-hook cleanup returned EPERM. All fixture descendant PIDs were already dead, the directory deleted successfully once the runner exited, and a single targeted regression passed 1/1. No code patch was justified.
+
+**Gate:** fresh hosted exact-head CI/Server Canary/Release Sync must all PASS; otherwise stop promotion and investigate the hosted failure.
+
+### 2026-10-06 — Release Sync blocker: clean guard aligned with qualified Windows EOL policy
+
+**Failure:** exact-head Release Sync `37457196824` fetched and verified Inno + Browser successfully, then stopped because the Setup clean guard saw one tracked Windows checkout drift entry.
+
+**Root cause:** raw porcelain status rejected historical CRLF-only normalization already tolerated by the project's qualified control-promotion classifier.
+
+**Fix:** reject untracked, staged and substantive unstaged changes; allow only EOL-only tracked drift with an audit marker. No `-AllowDirty` in hosted release. **← CURRENT:** local no-AllowDirty compile, push fresh head, require all hosted gates PASS.
+
+### 2026-10-06 — clean-guard local V&V complete
+
+Negative regression rejected substantive unstaged drift; positive regression on the committed fix accepted only the single known EOL-only tracked drift and completed the Browser-bundled Setup build without `-AllowDirty`.
+
+**← CURRENT:** publish the superseding exact head to PR #132 and require fresh hosted Release Sync + CI + Server Canary PASS before promotion.

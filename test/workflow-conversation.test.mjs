@@ -106,11 +106,10 @@ test('resume fails closed while same-conversation handoff is actively claimed',a
     assert.equal(still.state.pendingChatHandoff.eventKey,'wf:proj:claimed');
 
     releaseSend();
-    const sent=await waitFor(async()=>{
-      const status=await controller.status('proj');
-      return status.store.counts.SENT===1;
-    });
-    assert.ok(sent);
+    await controller.drain();
+    const sent=await controller.status('proj');
+    assert.equal(sent.store.counts.SENT,1);
+    assert.equal(sent.pending.some(x=>x.eventKey==='wf:proj:claimed'),false);
     const resumed=await tools.execute('workflow_control',{
       id:'proj',expectedRevision:still.state.revision,action:'resume',reason:'handoff already delivered'
     });

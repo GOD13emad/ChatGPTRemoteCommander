@@ -1,6 +1,7 @@
 param(
   [string]$Profile = 'chatgpt-remote-commander',
   [string]$TunnelId,
+  [Security.SecureString]$RuntimeApiKey,
   [ValidateRange(0,65535)][int]$HealthPort = 0,
   [switch]$NoStart
 )
@@ -149,7 +150,11 @@ if (Test-Path -LiteralPath $CredFile -PathType Leaf) {
   $SecureKey = ConvertTo-SecureString $Encrypted
   Write-Host "Reusing existing DPAPI credential for profile $Profile."
 } else {
-  $SecureKey = Read-Host 'Paste Runtime API key once (input hidden; saved only after tunnel validation passes)' -AsSecureString
+  if ($RuntimeApiKey) {
+    $SecureKey = $RuntimeApiKey
+  } else {
+    $SecureKey = Read-Host 'Paste Runtime API key once (input hidden; saved only after tunnel validation passes)' -AsSecureString
+  }
   $PersistCredential = $true
 }
 
