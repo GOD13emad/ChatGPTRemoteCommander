@@ -1,0 +1,30 @@
+{
+  "schema": 1,
+  "revision": "RUNTIME_ADMISSION_R2",
+  "baseline": "54bb5a1aa8867788a8df2cc5ae98557e1d8a6698",
+  "scope": "ADDITIVE_EXPERIMENTAL_COMPONENT_NOT_INSTALLED_WORKER",
+  "frozenPublicSourceManifestUnchanged": true,
+  "syntheticTests": 63,
+  "files": [
+    {
+      "path": "experimental/project-companion-v1.1.2/src/runtime-admission.mjs",
+      "bytes": 8758,
+      "sha256": "f492c3d901b5ae815bfba4a6ad821aee8b17a7460a4de7d1797ceb9747e365e2"
+    },
+    {
+      "path": "experimental/project-companion-v1.1.2/test/runtime-admission.test.mjs",
+      "bytes": 11445,
+      "sha256": "17b6a656528f5550640d33f364b575253b171e2a9df9df5b1fd7d7ce3c02b99d"
+    },
+    {
+      "path": "experimental/project-companion-v1.1.2/RUNTIME_ADMISSION.md",
+      "bytes": 3535,
+      "sha256": "f19dfe644bd5780780e0f7211e71b062b43dcae2deb82e9878fb2aad4f42bfc7"
+    },
+    {
+      "path": ".github/workflows/companion-runtime-admission.yml",
+      "bytes": 1323,
+      "sha256": "a902b77139d6c2a1f055daa174be4f36133bcb94ab4905a6d1bfa19bdd8e1dc5"
+    }
+  ]
+}
