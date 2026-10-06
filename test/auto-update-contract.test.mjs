@@ -725,3 +725,73 @@ test('Windows qualification Job Object leaves zero descendants after fail, leak-
   assert.equal(await listenerOpen(port),false,'wrapper termination must close grandchild listener');
 
 });
+
+test('qualification output retention preserves owned-job and failure semantics',()=>{
+  const source=read('auto-update-windows.ps1');
+  const gate=source.slice(source.indexOf('function Run-Gate('),source.indexOf('function Run-GuiNativeSelfTest('));
+  for(const marker of ['qualification-output-','1> $stdoutPath','2> $stderrPath','GATE_OUTPUT_FILES','GATE_OUTPUT_HASH','stdout=$stdoutPath','stderr=$stderrPath'])assert.ok(gate.includes(marker),marker);
+  assert.ok(gate.includes('-TimeoutSeconds 1200 -DrainGraceMs 2000 -ReportPath $reportPath'));
+  assert.ok(gate.includes('Record-QualificationFailure $commit $Name $_.Exception.Message'));
+  assert.ok(gate.indexOf('GATE_OUTPUT_FILES')<gate.indexOf('& pwsh.exe'));
+});
+
+for(const scenario of ['success','failure','runner-failure']){
+  test(`qualification output retention native ${scenario}`,{timeout:60000},t=>{
+    if(process.platform!=='win32'){t.skip('native Windows qualification output');return;}
+    const dir=fs.mkdtempSync(path.join(os.tmpdir(),'rc-qual-output-'));
+    t.after(()=>fs.rmSync(dir,{recursive:true,force:true,maxRetries:8,retryDelay:100}));
+    fs.mkdirSync(path.join(dir,'tools'));
+    fs.mkdirSync(path.join(dir,'logs'));
+    const runner=path.join(dir,'tools','run-owned-process-tree-windows.ps1');
+    const expectedCode=scenario==='success'?0:scenario==='failure'?7:9;
+    if(scenario==='runner-failure'){
+      fs.writeFileSync(runner,'[Console]::Out.WriteLine("RC_QUAL_STDOUT"); [Console]::Error.WriteLine("RC_QUAL_STDERR"); exit 9\n');
+    }else{
+      fs.copyFileSync(path.join(root,'tools','run-owned-process-tree-windows.ps1'),runner);
+      fs.copyFileSync(path.join(root,'tools','owned-command-child.ps1'),path.join(dir,'tools','owned-command-child.ps1'));
+    }
+    fs.writeFileSync(path.join(dir,'package.json'),JSON.stringify({name:'rc-qualification-output-fixture',version:'1.0.0',private:true,scripts:{probe:'node probe.cjs'}}));
+    fs.writeFileSync(path.join(dir,'probe.cjs'),`process.stdout.write('RC_QUAL_STDOUT\\n'+'x'.repeat(16384),()=>process.stderr.write('RC_QUAL_STDERR\\n',()=>{process.exitCode=${expectedCode};}));\n`);
+    const source=read('auto-update-windows.ps1');
+    const begin=source.indexOf('function Run-Gate('),end=source.indexOf('function Run-GuiNativeSelfTest(');
+    assert.ok(begin>=0&&end>begin,'extract only the gate, never execute updater top level');
+    const fixture=path.join(dir,'gate-fixture.ps1');
+    fs.writeFileSync(fixture,[
+      "$ErrorActionPreference='Stop'",
+      "$script:QualificationCommit='46655c5ae7d5504956959dfc7f2126fcc6824b6a'",
+      "$LogDir=Join-Path $PSScriptRoot 'logs'",
+      "function Log([string]$Message){[IO.File]::AppendAllText((Join-Path $PSScriptRoot 'gate.log'),$Message+[Environment]::NewLine)}",
+      "function Record-QualificationFailure([string]$Commit,[string]$Name,[string]$Message){[IO.File]::WriteAllText((Join-Path $PSScriptRoot 'failure.json'),(@{commit=$Commit;gate=$Name;message=$Message}|ConvertTo-Json -Compress))}",
+      source.slice(begin,end),
+      "try{Run-Gate $PSScriptRoot 'check' @('run','probe');exit 0}catch{[Console]::Error.WriteLine($_.Exception.Message);exit 1}"
+    ].join('\n'));
+    const result=spawnSync('pwsh.exe',['-NoLogo','-NoProfile','-NonInteractive','-File',fixture],{cwd:dir,encoding:'utf8',timeout:55000,windowsHide:true,maxBuffer:1024*1024});
+    const diagnostic=[result.stdout,result.stderr,...fs.readdirSync(path.join(dir,'logs')).map(f=>f+': '+fs.readFileSync(path.join(dir,'logs',f),'utf8').slice(0,2500))].join('\n');
+    assert.ifError(result.error);
+    assert.equal(result.status,expectedCode===0?0:1,diagnostic);
+    const logs=fs.readdirSync(path.join(dir,'logs'));
+    const stdout=logs.filter(f=>f.endsWith('.stdout.log')),stderr=logs.filter(f=>f.endsWith('.stderr.log'));
+    assert.equal(stdout.length,1,'retain one stdout file per gate');
+    assert.equal(stderr.length,1,'retain one stderr file per gate');
+    assert.match(fs.readFileSync(path.join(dir,'logs',stdout[0]),'utf8'),/RC_QUAL_STDOUT/,diagnostic);
+    assert.match(fs.readFileSync(path.join(dir,'logs',stderr[0]),'utf8'),/RC_QUAL_STDERR/,diagnostic);
+    const audit=fs.readFileSync(path.join(dir,'gate.log'),'utf8');
+    assert.match(audit,/GATE_OUTPUT_FILES/);
+    assert.match(audit,/GATE_OUTPUT_HASH .*stdoutSha256=[0-9A-Fa-f]{64} .*stderrSha256=[0-9A-Fa-f]{64}/);
+    if(expectedCode!==0){
+      const failure=JSON.parse(fs.readFileSync(path.join(dir,'failure.json'),'utf8'));
+      assert.match(failure.message,new RegExp(`GATE_FAIL check exit=${expectedCode} `));
+      assert.ok(failure.message.includes(stdout[0])&&failure.message.includes(stderr[0]));
+      assert.doesNotMatch(audit,/GATE_PASS/,'a captured failure must never be promoted to success');
+    }else{
+      assert.match(audit,/GATE_PASS check/);
+      assert.equal(fs.existsSync(path.join(dir,'failure.json')),false);
+    }
+    if(scenario!=='runner-failure'){
+      const report=JSON.parse(fs.readFileSync(path.join(dir,'logs',logs.find(f=>f.startsWith('qualification-job-'))),'utf8'));
+      assert.equal(report.childExitCode,expectedCode);
+      assert.equal(report.activeAfterCleanup,0);
+      assert.deepEqual(report.leakedProcesses,[]);
+    }
+  });
+}
