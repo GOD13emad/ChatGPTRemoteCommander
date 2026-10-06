@@ -324,10 +324,16 @@ function Run-Gate([string]$Candidate,[string]$Name,[string[]]$CommandArgs){
   $runId=("qualification-{0}-{1}-{2}" -f $Name,$commit.Substring(0,12),([guid]::NewGuid().ToString('N')))
   $reportPath=Join-Path $LogDir ("qualification-job-{0}.json" -f $runId)
   $argumentsJson=@($CommandArgs)|ConvertTo-Json -Compress
+  $stdoutPath=Join-Path $LogDir ("qualification-output-{0}.stdout.log" -f $runId)
+  $stderrPath=Join-Path $LogDir ("qualification-output-{0}.stderr.log" -f $runId)
+  Log "GATE_OUTPUT_FILES runId=$runId stdout=$stdoutPath stderr=$stderrPath"
   try{
-    & pwsh.exe -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $runner -Program $npm -WorkingDirectory $Candidate -ArgumentsJson $argumentsJson -RunId $runId -TimeoutSeconds 1200 -DrainGraceMs 2000 -ReportPath $reportPath
+    & pwsh.exe -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $runner -Program $npm -WorkingDirectory $Candidate -ArgumentsJson $argumentsJson -RunId $runId -TimeoutSeconds 1200 -DrainGraceMs 2000 -ReportPath $reportPath 1> $stdoutPath 2> $stderrPath
     $code=$LASTEXITCODE
-    if($code-ne 0){throw "GATE_FAIL $Name exit=$code runId=$runId"}
+    $stdoutSha=(Get-FileHash -LiteralPath $stdoutPath -Algorithm SHA256).Hash
+    $stderrSha=(Get-FileHash -LiteralPath $stderrPath -Algorithm SHA256).Hash
+    Log "GATE_OUTPUT_HASH runId=$runId stdoutSha256=$stdoutSha stderrSha256=$stderrSha"
+    if($code-ne 0){throw "GATE_FAIL $Name exit=$code runId=$runId stdout=$stdoutPath stderr=$stderrPath"}
     Log "GATE_PASS $Name runId=$runId"
   }catch{
     Record-QualificationFailure $commit $Name $_.Exception.Message
