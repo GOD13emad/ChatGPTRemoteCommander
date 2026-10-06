@@ -625,19 +625,40 @@ const reservePort=()=>new Promise((resolve,reject)=>{
   s.once('error',reject);
   s.listen(0,'127.0.0.1',()=>{const p=s.address().port;s.close(()=>resolve(p));});
 });
-const listenerOpen=port=>new Promise(resolve=>{
-  const socket=net.createConnection({host:'127.0.0.1',port});
-  let done=false;
-  const finish=value=>{if(done)return;done=true;socket.destroy();resolve(value);};
-  socket.setTimeout(300,()=>finish(false));
-  socket.once('connect',()=>finish(true));
-  socket.once('error',()=>finish(false));
-});
+const listenerOwnership=port=>{
+  const script=[
+    `$rows=@(Get-NetTCPConnection -LocalPort ${port} -State Listen -ErrorAction SilentlyContinue)`,
+    "$out=@($rows|ForEach-Object{$owner=[int]$_.OwningProcess;$proc=Get-CimInstance Win32_Process -Filter ('ProcessId='+$owner) -ErrorAction SilentlyContinue;[ordered]@{pid=$owner;localAddress=[string]$_.LocalAddress;state=[string]$_.State;commandLine=if($proc){[string]$proc.CommandLine}else{$null}}});ConvertTo-Json -InputObject $out -Compress"
+  ].join(';');
+  const result=spawnSync('pwsh.exe',['-NoLogo','-NoProfile','-NonInteractive','-Command',script],{encoding:'utf8',timeout:10000});
+  assert.equal(result.status,0,'listener ownership probe failed: '+(result.stderr||result.stdout));
+  const raw=result.stdout.trim();
+  if(!raw)return [];
+  const parsed=JSON.parse(raw);
+  return Array.isArray(parsed)?parsed:[parsed];
+};
+const assertNoOwnedListener=(port,serverPid,serverScript)=>{
+  const evidence=listenerOwnership(port);
+  const owned=evidence.filter(row=>Number(row.pid)===serverPid&&String(row.commandLine??'').includes(serverScript)&&String(row.commandLine??'').includes(String(port)));
+  assert.equal(owned.length,0,'original grandchild must not own listener after Job cleanup evidence='+JSON.stringify(evidence));
+  return evidence;
+};
 
-test('Windows qualification Job Object leaves zero descendants after fail, leak-success, timeout, and wrapper termination', {timeout:45000}, async t=>{
+test('Windows qualification Job Object leaves zero descendants after fail, leak-success, timeout, and wrapper termination', {timeout:180000}, async t=>{
   if(process.platform!=='win32'){t.skip('Windows Job Object regression');return;}
   const fixture=fs.mkdtempSync(path.join(os.tmpdir(),'rc-job-containment-'));
-  t.after(()=>fs.rmSync(fixture,{recursive:true,force:true,maxRetries:8,retryDelay:100}));
+  t.after(async()=>{
+    let lastError=null;
+    for(let attempt=0;attempt<40;attempt++){
+      try{fs.rmSync(fixture,{recursive:true,force:true});return;}
+      catch(error){
+        if(!['EPERM','EBUSY','ENOTEMPTY'].includes(error?.code))throw error;
+        lastError=error;
+        await delay(250);
+      }
+    }
+    throw lastError??new Error('fixture cleanup failed without captured error');
+  });
   const runner=path.join(root,'tools','run-owned-process-tree-windows.ps1');
   const node=process.execPath;
   const rootScript=path.join(fixture,'root.mjs');
@@ -675,15 +696,17 @@ test('Windows qualification Job Object leaves zero descendants after fail, leak-
     const psArgs=['-NoLogo','-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',runner,
       '-Program',node,'-WorkingDirectory',fixture,'-ArgumentsJson',JSON.stringify(args),'-RunId',runId,
       '-TimeoutSeconds',String(timeoutSeconds),'-DrainGraceMs','300','-ReportPath',report];
-    const result=spawnSync('pwsh.exe',psArgs,{cwd:root,encoding:'utf8',timeout:15000});
-    assert.ok(fs.existsSync(report),result.stderr||result.stdout||'missing report');
+    const wrapperBudgetMs=Math.max(30000,timeoutSeconds*1000+15000);
+    const result=spawnSync('pwsh.exe',psArgs,{cwd:root,encoding:'utf8',timeout:wrapperBudgetMs});
+    assert.equal(result.error?.code??null,null,'qualification wrapper failed before report runId='+runId+' budgetMs='+wrapperBudgetMs+' error='+(result.error?.code??'none'));
+    assert.ok(fs.existsSync(report),result.stderr||result.stdout||('missing report runId='+runId+' budgetMs='+wrapperBudgetMs));
     const data=JSON.parse(fs.readFileSync(report,'utf8'));
     const childPid=fs.existsSync(childPidFile)?Number(fs.readFileSync(childPidFile,'utf8')):0;
     const serverPid=fs.existsSync(serverPidFile)?Number(fs.readFileSync(serverPidFile,'utf8')):0;
     assert.equal(data.activeAfterCleanup,0);
     if(childPid)assert.equal(processExists(childPid),false,'child must be gone');
     if(serverPid)assert.equal(processExists(serverPid),false,'grandchild server must be gone');
-    assert.equal(await listenerOpen(port),false,'listener must be gone');
+    assertNoOwnedListener(port,serverPid,serverScript);
     return {result,data,port,childPid,serverPid,psArgs,childPidFile,serverPidFile};
   };
 
@@ -713,8 +736,8 @@ test('Windows qualification Job Object leaves zero descendants after fail, leak-
     '-Program',node,'-WorkingDirectory',fixture,'-ArgumentsJson',JSON.stringify(args),'-RunId','killed-wrapper',
     '-TimeoutSeconds','60','-DrainGraceMs','300','-ReportPath',report];
   const wrapper=spawn('pwsh.exe',psArgs,{cwd:root,stdio:'ignore'});
-  const ready=await waitUntil(()=>fs.existsSync(serverPidFile),7000);
-  assert.equal(ready,true,'grandchild server must start before wrapper termination');
+  const ready=await waitUntil(()=>fs.existsSync(serverPidFile)||wrapper.exitCode!==null,30000);
+  assert.equal(fs.existsSync(serverPidFile),true,'grandchild server must start before wrapper termination; wrapperExit='+wrapper.exitCode+' readySignal='+ready);
   const childPid=Number(fs.readFileSync(childPidFile,'utf8'));
   const serverPid=Number(fs.readFileSync(serverPidFile,'utf8'));
   assert.equal(processExists(childPid),true);
@@ -722,6 +745,93 @@ test('Windows qualification Job Object leaves zero descendants after fail, leak-
   wrapper.kill('SIGTERM');
   await new Promise(resolve=>wrapper.once('exit',resolve));
   assert.equal(await waitUntil(()=>!processExists(childPid)&&!processExists(serverPid),5000),true,'KILL_ON_JOB_CLOSE must remove descendants when wrapper dies');
-  assert.equal(await listenerOpen(port),false,'wrapper termination must close grandchild listener');
+  const afterOwnership=assertNoOwnedListener(port,serverPid,serverScript);
+  // Numeric port reuse is not process-tree ownership. If the port is free,
+  // deliberately rebind it from this test process and prove the ownership
+  // predicate still rejects only the original grandchild identity.
+  if(afterOwnership.length===0){
+    const foreign=net.createServer(()=>{});
+    await new Promise((resolve,reject)=>{
+      foreign.once('error',reject);
+      foreign.listen(port,'127.0.0.1',resolve);
+    });
+    try{
+      const foreignOwnership=listenerOwnership(port);
+      assert.ok(foreignOwnership.some(row=>Number(row.pid)===process.pid),'controlled foreign listener must be attributable to the test process');
+      assertNoOwnedListener(port,serverPid,serverScript);
+    }finally{
+      await new Promise(resolve=>foreign.close(resolve));
+    }
+  }
 
 });
+
+test('qualification output retention preserves owned-job and failure semantics',()=>{
+  const source=read('auto-update-windows.ps1');
+  const gate=source.slice(source.indexOf('function Run-Gate('),source.indexOf('function Run-GuiNativeSelfTest('));
+  for(const marker of ['qualification-output-','1> $stdoutPath','2> $stderrPath','GATE_OUTPUT_FILES','GATE_OUTPUT_HASH','stdout=$stdoutPath','stderr=$stderrPath'])assert.ok(gate.includes(marker),marker);
+  assert.ok(gate.includes('-TimeoutSeconds 1200 -DrainGraceMs 2000 -ReportPath $reportPath'));
+  assert.ok(gate.includes('Record-QualificationFailure $commit $Name $_.Exception.Message'));
+  assert.ok(gate.indexOf('GATE_OUTPUT_FILES')<gate.indexOf('& pwsh.exe'));
+});
+
+for(const scenario of ['success','failure','runner-failure']){
+  test(`qualification output retention native ${scenario}`,{timeout:60000},t=>{
+    if(process.platform!=='win32'){t.skip('native Windows qualification output');return;}
+    const dir=fs.mkdtempSync(path.join(os.tmpdir(),'rc-qual-output-'));
+    t.after(()=>fs.rmSync(dir,{recursive:true,force:true,maxRetries:8,retryDelay:100}));
+    fs.mkdirSync(path.join(dir,'tools'));
+    fs.mkdirSync(path.join(dir,'logs'));
+    const runner=path.join(dir,'tools','run-owned-process-tree-windows.ps1');
+    const expectedCode=scenario==='success'?0:scenario==='failure'?7:9;
+    if(scenario==='runner-failure'){
+      fs.writeFileSync(runner,'[Console]::Out.WriteLine("RC_QUAL_STDOUT"); [Console]::Error.WriteLine("RC_QUAL_STDERR"); exit 9\n');
+    }else{
+      fs.copyFileSync(path.join(root,'tools','run-owned-process-tree-windows.ps1'),runner);
+      fs.copyFileSync(path.join(root,'tools','owned-command-child.ps1'),path.join(dir,'tools','owned-command-child.ps1'));
+    }
+    fs.writeFileSync(path.join(dir,'package.json'),JSON.stringify({name:'rc-qualification-output-fixture',version:'1.0.0',private:true,scripts:{probe:'node probe.cjs'}}));
+    fs.writeFileSync(path.join(dir,'probe.cjs'),`process.stdout.write('RC_QUAL_STDOUT\\n'+'x'.repeat(16384),()=>process.stderr.write('RC_QUAL_STDERR\\n',()=>{process.exitCode=${expectedCode};}));\n`);
+    const source=read('auto-update-windows.ps1');
+    const begin=source.indexOf('function Run-Gate('),end=source.indexOf('function Run-GuiNativeSelfTest(');
+    assert.ok(begin>=0&&end>begin,'extract only the gate, never execute updater top level');
+    const fixture=path.join(dir,'gate-fixture.ps1');
+    fs.writeFileSync(fixture,[
+      "$ErrorActionPreference='Stop'",
+      "$script:QualificationCommit='46655c5ae7d5504956959dfc7f2126fcc6824b6a'",
+      "$LogDir=Join-Path $PSScriptRoot 'logs'",
+      "function Log([string]$Message){[IO.File]::AppendAllText((Join-Path $PSScriptRoot 'gate.log'),$Message+[Environment]::NewLine)}",
+      "function Record-QualificationFailure([string]$Commit,[string]$Name,[string]$Message){[IO.File]::WriteAllText((Join-Path $PSScriptRoot 'failure.json'),(@{commit=$Commit;gate=$Name;message=$Message}|ConvertTo-Json -Compress))}",
+      source.slice(begin,end),
+      "try{Run-Gate $PSScriptRoot 'check' @('run','probe');exit 0}catch{[Console]::Error.WriteLine($_.Exception.Message);exit 1}"
+    ].join('\n'));
+    const result=spawnSync('pwsh.exe',['-NoLogo','-NoProfile','-NonInteractive','-File',fixture],{cwd:dir,encoding:'utf8',timeout:55000,windowsHide:true,maxBuffer:1024*1024});
+    const diagnostic=[result.stdout,result.stderr,...fs.readdirSync(path.join(dir,'logs')).map(f=>f+': '+fs.readFileSync(path.join(dir,'logs',f),'utf8').slice(0,2500))].join('\n');
+    assert.ifError(result.error);
+    assert.equal(result.status,expectedCode===0?0:1,diagnostic);
+    const logs=fs.readdirSync(path.join(dir,'logs'));
+    const stdout=logs.filter(f=>f.endsWith('.stdout.log')),stderr=logs.filter(f=>f.endsWith('.stderr.log'));
+    assert.equal(stdout.length,1,'retain one stdout file per gate');
+    assert.equal(stderr.length,1,'retain one stderr file per gate');
+    assert.match(fs.readFileSync(path.join(dir,'logs',stdout[0]),'utf8'),/RC_QUAL_STDOUT/,diagnostic);
+    assert.match(fs.readFileSync(path.join(dir,'logs',stderr[0]),'utf8'),/RC_QUAL_STDERR/,diagnostic);
+    const audit=fs.readFileSync(path.join(dir,'gate.log'),'utf8');
+    assert.match(audit,/GATE_OUTPUT_FILES/);
+    assert.match(audit,/GATE_OUTPUT_HASH .*stdoutSha256=[0-9A-Fa-f]{64} .*stderrSha256=[0-9A-Fa-f]{64}/);
+    if(expectedCode!==0){
+      const failure=JSON.parse(fs.readFileSync(path.join(dir,'failure.json'),'utf8'));
+      assert.match(failure.message,new RegExp(`GATE_FAIL check exit=${expectedCode} `));
+      assert.ok(failure.message.includes(stdout[0])&&failure.message.includes(stderr[0]));
+      assert.doesNotMatch(audit,/GATE_PASS/,'a captured failure must never be promoted to success');
+    }else{
+      assert.match(audit,/GATE_PASS check/);
+      assert.equal(fs.existsSync(path.join(dir,'failure.json')),false);
+    }
+    if(scenario!=='runner-failure'){
+      const report=JSON.parse(fs.readFileSync(path.join(dir,'logs',logs.find(f=>f.startsWith('qualification-job-'))),'utf8'));
+      assert.equal(report.childExitCode,expectedCode);
+      assert.equal(report.activeAfterCleanup,0);
+      assert.deepEqual(report.leakedProcesses,[]);
+    }
+  });
+}

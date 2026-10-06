@@ -13,17 +13,6 @@ function temp(){
   fs.mkdirSync(project,{recursive:true});
   return {base,project,state,dispose:()=>fs.rmSync(base,{recursive:true,force:true})};
 }
-async function waitFor(fn,{timeout=1500,interval=15}={}){
-  const end=Date.now()+timeout;
-  let value;
-  while(Date.now()<end){
-    value=await fn();
-    if(value)return value;
-    await new Promise(r=>setTimeout(r,interval));
-  }
-  return null;
-}
-
 test('durable outbox deduplicates the same event and rejects conflicting reuse',()=>{
   const f=temp();
   try{
@@ -51,10 +40,9 @@ test('uncertain send is never blindly retried',async()=>{
     await controller.bind({projectId:'p1',root:f.project,tabTitle:'Project One'});
     const queued=controller.handoff({projectId:'p1',eventKey:'evt:1',eventType:'NEEDS_CHAT',state:'BLOCKED'});
     assert.ok(queued.handoffId);
-    const item=await waitFor(async()=>{
-      const s=await controller.status('p1');
-      return s.pending.find(x=>x.handoffId===queued.handoffId&&x.state==='UNCERTAIN');
-    });
+    await controller.drain();
+    const status=await controller.status('p1');
+    const item=status.pending.find(x=>x.handoffId===queued.handoffId&&x.state==='UNCERTAIN');
     assert.ok(item);
     await new Promise(r=>setTimeout(r,100));
     assert.equal(sends,1);
@@ -73,10 +61,9 @@ test('ordinary deferral remains queued without duplicate send',async()=>{
   try{
     await controller.bind({projectId:'p1',root:f.project,tabTitle:'Project One'});
     const queued=controller.handoff({projectId:'p1',eventKey:'evt:2',eventType:'PROCESS_EXIT',state:'SUCCEEDED'});
-    const item=await waitFor(async()=>{
-      const s=await controller.status('p1');
-      return s.pending.find(x=>x.handoffId===queued.handoffId&&x.state==='DEFERRED');
-    });
+    await controller.drain();
+    const drained=await controller.status('p1');
+    const item=drained.pending.find(x=>x.handoffId===queued.handoffId&&x.state==='DEFERRED');
     assert.equal(item.lastCode,'WAITING_FOR_CHAT_TAB');
     assert.equal(sends,1);
     const status=await controller.status('p1');
@@ -98,11 +85,10 @@ test('acknowledged handoff is sent once and removed from pending queue',async()=
   try{
     await controller.bind({projectId:'p1',root:f.project,tabTitle:'Project One'});
     const queued=controller.handoff({projectId:'p1',eventKey:'evt:3',eventType:'OPERATION_COMPLETED',summary:'done'});
-    const sent=await waitFor(async()=>{
-      const s=await controller.status('p1');
-      return s.store.counts.SENT===1&&s.pending.length===0;
-    });
-    assert.ok(sent);
+    await controller.drain();
+    const sent=await controller.status('p1');
+    assert.equal(sent.store.counts.SENT,1);
+    assert.equal(sent.pending.length,0);
     assert.equal(sends,1);
   }finally{await controller.close();f.dispose();}
 });
@@ -116,10 +102,9 @@ test('linux mode preserves binding and queue without desktop injection',async()=
     const binding=await controller.bind({projectId:'p1',root:f.project,tabTitle:'Project One'});
     assert.equal(binding.code,'WINDOWS_UIA_REQUIRED');
     controller.handoff({projectId:'p1',eventKey:'evt:4',eventType:'NEEDS_CHAT'});
-    const pending=await waitFor(async()=>{
-      const s=await controller.status('p1');
-      return s.pending.find(x=>x.state==='DEFERRED');
-    });
+    await controller.drain();
+    const drained=await controller.status('p1');
+    const pending=drained.pending.find(x=>x.state==='DEFERRED');
     assert.ok(pending);
     assert.equal(pending.lastCode,'WAITING_FOR_WINDOWS_CHAT_HOST');
   }finally{await controller.close();f.dispose();}
@@ -136,7 +121,9 @@ test('unbind cancels deliverable handoffs and blocks new ones',async()=>{
   try{
     await controller.bind({projectId:'p1',root:f.project,tabTitle:'Project One'});
     controller.handoff({projectId:'p1',eventKey:'evt:5',eventType:'NEEDS_CHAT'});
-    await waitFor(async()=>{const s=await controller.status('p1');return s.pending.length===1;});
+    await controller.drain();
+    const pending=await controller.status('p1');
+    assert.equal(pending.pending.length,1);
     const out=controller.unbind('p1');
     assert.equal(out.unbound,true);
     assert.throws(()=>controller.handoff({projectId:'p1',eventKey:'evt:6',eventType:'NEEDS_CHAT'}),/CONVERSATION_NOT_BOUND/);

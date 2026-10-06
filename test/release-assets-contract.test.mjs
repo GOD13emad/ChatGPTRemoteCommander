@@ -5,8 +5,8 @@ const builder = readFileSync('tools/build-release-assets.sh','utf8');
 const workflow = readFileSync('.github/workflows/release-sync.yml','utf8');
 const browserFetcher = readFileSync('scripts/fetch-browser-setup.ps1','utf8');
 const innoFetcher = readFileSync('scripts/install-inno-setup.ps1','utf8');
-const browserVersion = '0.8.0-rc.8';
-const browserSha256 = 'c1f04ff74bf3f7caf8b192bc35c4bf4d08f1149a890a164df511bcdfd16893c3';
+const browserVersion = '0.8.0';
+const browserSha256 = '61fd810130845815dd20073f72051aec3b42c1a89b9577b3457f2190bd9b1a5e';
 if (!/^[0-9a-f]{64}$/.test(browserSha256)) throw new Error('Browser release SHA pin must be concrete');
 
 for (const required of [
@@ -39,8 +39,8 @@ for (const required of [
   'actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1',
   './scripts/install-inno-setup.ps1',
   './scripts/fetch-browser-setup.ps1',
-  "-Version '0.8.0-rc.8'",
-  "-Sha256 'c1f04ff74bf3f7caf8b192bc35c4bf4d08f1149a890a164df511bcdfd16893c3'",
+  "-Version '0.8.0'",
+  "-Sha256 '61fd810130845815dd20073f72051aec3b42c1a89b9577b3457f2190bd9b1a5e'",
   '-BrowserInstaller $browser',
   '.\\installer\\build-setup.ps1',
   'actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a',
@@ -63,6 +63,6 @@ if (!browserFetcher.includes('Get-FileHash') || !browserFetcher.includes('Browse
 if (!innoFetcher.includes('9c73c3bae7ed48d44112a0f48e66742c00090bdb5bef71d9d3c056c66e97b732')) throw new Error('Inno Setup compiler hash pin missing');
 if (!workflow.includes(browserVersion) || !workflow.includes(browserSha256)) throw new Error('Browser release pin missing from workflow');
 if (!workflow.includes('docs/RELEASE_${version}.md')) throw new Error('release notes must follow package version');
-if (pkg.version !== '0.10.16') throw new Error(`unexpected package version ${pkg.version}`);
+if (pkg.version !== '0.10.17') throw new Error(`unexpected package version ${pkg.version}`);
 
 console.log('RELEASE_ASSET_CONTRACT_PASS');
