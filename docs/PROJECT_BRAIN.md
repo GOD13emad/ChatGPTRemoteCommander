@@ -936,3 +936,11 @@ Because this changed executable code after the earlier qualification, the comple
 **Authority:** branch base still equals current `origin/main 54bb5a1`; no writer overlap detected.
 
 **← CURRENT:** commit this qualified single-shell/monitoring/profile change set. Browser rc.5 release is the only dependency before the next Commander mutation: pin/verify/embed the released Browser Setup, then rerun exact-head Windows/Linux/Amirreza/hosted gates.
+
+### 2026-10-06 — Commander PR #132 Windows fixes locally PASS
+
+**Root causes closed:** clean bootstrap no longer loses verified process-only Git/Node paths; Project Engine early-timer regression now models real wall-clock semantics instead of assuming scheduler punctuality.
+
+**Evidence:** focused affected fixtures 15/15 PASS across five consecutive iterations; full bounded Windows qualification again PASS with **275 pass / 0 fail / 7 skips** in the main batch.
+
+**← CURRENT:** commit/push exact fix head to PR #132 and require fresh hosted Windows CI + Windows clean Server canary. Browser rc.6 release remains the dependency before Commander release wiring and merge.

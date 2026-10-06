@@ -109,7 +109,7 @@ if (process.argv[2] === '--claim-worker') {
       if (signal.aborted) stop(); else signal.addEventListener('abort', stop, { once: true });
     }) });
     try {
-      await fixture.create(); await fixture.start({ durationMs: 1000 });
+      await fixture.create(); const started = await fixture.start({ durationMs: 1000 });
       let timerCalls=0;
       if(earlyWake){
         const nativeTimeout=globalThis.setTimeout;
@@ -119,7 +119,10 @@ if (process.argv[2] === '--claim-worker') {
         });
       }
       const result = await fixture.tick();
-      if(earlyWake)assert.ok(timerCalls>1,'an early timer must be rescheduled, not abort the planner');
+      if(earlyWake)assert.ok(
+        timerCalls>1 || Date.now()>=started.deadline,
+        'a genuinely early deadline timer must be rescheduled; a late callback may abort directly'
+      );
       assert.equal(aborted, true);
       assert.equal(result.status, 'EXHAUSTED');
       assert.equal(result.lastCode, 'PROJECT_DEADLINE_EXHAUSTED');

@@ -36,7 +36,15 @@ if ($ExpectedCommit -and $ExpectedCommit -notmatch '^[0-9a-fA-F]{40}$') {
 function Refresh-Path {
   $machine = [Environment]::GetEnvironmentVariable('Path','Machine')
   $user = [Environment]::GetEnvironmentVariable('Path','User')
-  $env:Path = "$machine;$user"
+  $seen = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+  $segments = foreach ($raw in @($env:Path, $machine, $user)) {
+    if ([string]::IsNullOrWhiteSpace($raw)) { continue }
+    foreach ($segment in ($raw -split ';')) {
+      $trimmed = $segment.Trim()
+      if ($trimmed -and $seen.Add($trimmed)) { $trimmed }
+    }
+  }
+  $env:Path = $segments -join ';'
 }
 
 function Require-Windows {

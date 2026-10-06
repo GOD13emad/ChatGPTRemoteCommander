@@ -2133,3 +2133,13 @@ Acceptance boundary: this is local exact-tree qualification only. GitHub hosted 
 - `.gitattributes` declares `*.ps1 text eol=crlf`, so repository blobs are canonically LF and Windows worktrees are CRLF. Historical `enable-autostart.ps1` was an unnormalized CRLF blob.
 - v0.10.16 substantively changes only the in-memory `SecureString RuntimeApiKey` parameter and the fallback prompt branch (**6 added / 1 removed semantic lines**). Committing the canonical LF blob makes Git report a larger raw line-count once, but prevents the file from appearing perpetually dirty after checkout and aligns it with the repository policy.
 - Audit rule: assess this file with semantic/ignore-EOL diff for the v0.10.15→v0.10.16 transition; future commits should remain normalized.
+
+### 2026-10-06 — PR #132 Windows hosted failures closed locally
+
+- **Windows Server canary root cause — CONFIRMED:** `server-install-windows.ps1` installed or verified Node.js and Git and prepended their exact directories to the live process PATH. The staged `install.ps1` then replaced PATH from Machine/User values only, discarding those validated process-only paths. The clean canary intentionally hides preinstalled Git/Node from persistent PATH, so `git.exe is required` followed.
+- **Fix/prevention:** `install.ps1 Refresh-Path` now merges the current process PATH first with refreshed Machine/User PATH and case-insensitively deduplicates entries. Installer contract tests require this behavior.
+- **Project Engine hosted failure root cause — CONFIRMED harness assumption:** the early-wake test mocked timeout delay to 5 ms and required more than one timer call, but a busy hosted runner may execute that first callback after the persisted deadline. Runtime already rechecks the remaining wall-clock duration and direct abort at/after deadline is correct.
+- **Fix/prevention:** test contract now requires either a reschedule when the callback is genuinely early or wall-clock at/after the persisted deadline when only one callback occurs. Runtime deadline semantics are unchanged.
+- **Focused regression:** five consecutive runs of the three affected fixtures (`deadline early=false`, `deadline early=true`, `cancel during effect`) all passed: 15/15 total, 0 failures. The cancellation fixture stayed about 0.19 s and therefore its timeout was not relaxed.
+- **Full Windows bounded qualification after fixes:** exit 0; main batch **282 total / 275 pass / 0 fail / 7 platform skips**; supplemental Browser/GUI/source gates completed without failure.
+- **Status:** local V&V PASS; hosted exact-head Windows CI and clean Server canary remain required before promotion.

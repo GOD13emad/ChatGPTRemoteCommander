@@ -43,6 +43,8 @@ for (const required of [
   }
 }
 
+if (!windowsInstaller.includes('@($env:Path, $machine, $user)')) throw new Error('Refresh-Path must preserve validated process-local tool paths while merging refreshed machine/user PATH');
+if (!windowsInstaller.includes('[Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)')) throw new Error('Refresh-Path must deduplicate merged PATH entries case-insensitively');
 if (!windowsInstaller.includes('Write-Warning ("UPDATER_TEMP_CLEANUP_DEFER')) throw new Error('existing-update temp cleanup must be best-effort after update outcome is known');
 if (windowsInstaller.includes('if (Test-Path -LiteralPath $temp) { throw }')) throw new Error('temp cleanup must not convert a successful update into installer failure');
 if (windowsInstaller.includes('@openai/codex@')) throw new Error('install.ps1 must not provision Codex');
