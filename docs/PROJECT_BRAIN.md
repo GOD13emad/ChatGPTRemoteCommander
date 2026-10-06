@@ -954,3 +954,23 @@ Because this changed executable code after the earlier qualification, the comple
 **Benchmark result:** Browser/profile ownership is aligned with Playwright MCP's persistent/isolated model. Remote hosted OAuth/device revocation is a future architecture option, not a current owner-bound release blocker. Windows publisher signing remains MISSING/EXTERNAL and must not be claimed FINAL without a real certificate/signing service.
 
 **← CURRENT:** commit/push the deterministic drain test fix from the isolated worktree, require fresh hosted PR CI on exact head, then pin the immutable Browser rc.6 release asset into Commander Setup and rerun release gates. Original dirty worktree remains untouched.
+
+### 2026-10-06 — v0.10.16 final release integration
+
+**Previous accepted state:** PR #132 exact head `c00e379` had Windows/Linux CI and Server Install Canary PASS, single-shell Windows Setup implementation, profile enrollment, deterministic conversation drain and optional Browser compile hook. Browser bundling was deferred because no immutable standalone Browser Setup dependency had been published.
+
+**Current delta:** Browser v0.8.0-rc.8 is now a qualified immutable release. Commander release CI pins its Setup SHA-256 `c1f04ff74bf3f7caf8b192bc35c4bf4d08f1149a890a164df511bcdfd16893c3`, verifies the download before bundling, uses the verified portable Inno 6.7.3 bootstrap, runs the real Setup build on relevant PRs, and includes latest main Companion admission changes.
+
+**← CURRENT:** run local dependency fetch + contract tests + actual bundled Setup compile; then push the final exact head to PR #132 and require fresh hosted CI, Windows Server canary and Release Sync PR build PASS before marking ready/merging. After merge, tag `v0.10.16`, require immutable release publication and live asset readback.
+
+### 2026-10-06 — local bundled Setup mechanics PASS
+
+Browser rc.8 download/hash verification, pinned Inno acquisition, desktop payload build and actual Commander Setup compilation all PASS locally. The resulting Setup reports `browserBundled=true`. This is pre-push validation only because the worktree is intentionally dirty during the Change Set.
+
+**← CURRENT:** run full local suite, commit only intentional release-integration files, push to existing PR #132, then require fresh exact-head hosted gates including the new Release Sync PR build.
+
+### 2026-10-06 — local qualification anomaly disposition
+
+Full local `check:qualification` was not promoted to PASS: one unrelated Windows temp-directory after-hook cleanup returned EPERM. All fixture descendant PIDs were already dead, the directory deleted successfully once the runner exited, and a single targeted regression passed 1/1. No code patch was justified.
+
+**Gate:** fresh hosted exact-head CI/Server Canary/Release Sync must all PASS; otherwise stop promotion and investigate the hosted failure.

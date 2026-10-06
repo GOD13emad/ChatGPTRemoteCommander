@@ -4,6 +4,18 @@ on:
   push:
     branches: [main]
     tags: ['v*']
+  pull_request:
+    paths:
+      - '.github/workflows/release-sync.yml'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'installer/**'
+      - 'scripts/fetch-browser-setup.ps1'
+      - 'scripts/install-inno-setup.ps1'
+      - 'desktop/**'
+      - 'install.ps1'
+      - 'server-install-windows.ps1'
+      - 'test/release-assets-contract.test.mjs'
 
 permissions:
   contents: write
@@ -14,30 +26,43 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
       - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
         with:
           dotnet-version: '10.0.x'
-      - name: Install pinned Inno Setup compiler
+      - name: Install verified pinned Inno Setup compiler
         shell: pwsh
         run: |
-          choco install innosetup --version=6.7.3 -y --no-progress
-          if ($LASTEXITCODE -ne 0) { throw "Inno Setup installation failed: $LASTEXITCODE" }
-      - name: Build single-file Windows setup
+          ./scripts/install-inno-setup.ps1
+      - name: Fetch verified Remote Commander Browser dependency
+        shell: pwsh
+        run: |
+          $browser=Join-Path $env:RUNNER_TEMP 'Remote-Commander-Browser-Setup-v0.8.0-rc.8.exe'
+          ./scripts/fetch-browser-setup.ps1 `
+            -Version '0.8.0-rc.8' `
+            -Sha256 'c1f04ff74bf3f7caf8b192bc35c4bf4d08f1149a890a164df511bcdfd16893c3' `
+            -Destination $browser
+      - name: Build single-file Windows setup with Browser
         shell: pwsh
         run: |
           $version = node -p "require('./package.json').version"
+          $commit=(git rev-parse HEAD).Trim()
+          $sourceRef=if('${{ github.event_name }}' -eq 'pull_request'){'${{ github.head_ref }}'}else{'${{ github.ref_name }}'}
+          $browser=Join-Path $env:RUNNER_TEMP 'Remote-Commander-Browser-Setup-v0.8.0-rc.8.exe'
           pwsh.exe -NoLogo -NoProfile -File .\installer\build-setup.ps1 `
             -VersionOverride $version `
-            -SourceRef '${{ github.ref_name }}' `
-            -ExpectedCommit '${{ github.sha }}'
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+            -SourceRef $sourceRef `
+            -ExpectedCommit $commit `
+            -BrowserInstaller $browser
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: remote-commander-windows-setup
           path: dist/installer/Remote-Commander-Setup-v*.exe
           if-no-files-found: error
 
   publish:
+    if: github.event_name != 'pull_request'
     needs: build-windows-setup
     runs-on: ubuntu-latest
     steps:
@@ -49,7 +74,7 @@ jobs:
         run: |
           set -euo pipefail
           bash tools/build-release-assets.sh dist/release
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: remote-commander-windows-setup
           path: dist/windows-setup

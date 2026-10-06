@@ -13,11 +13,11 @@ Change
 - Setup accepts one or more profile names and launches a dedicated post-install profile enrollment UI. Runtime API keys are passed in memory and are never placed on a child-process command line.
 - Profile enrollment retains the existing fail-closed tunnel validation and DPAPI persistence boundary.
 - The release workflow builds the single-file Setup on a pinned Windows runner toolchain, adds its SHA-256 to the release checksum manifest, and publishes it together with the existing immutable release assets.
-- The Setup source includes a compile-time optional Remote Commander Browser component. The component is exposed only when a verified standalone Browser installer is supplied to the build.
+- The Windows Setup bundles the qualified Remote Commander Browser v0.8.0-rc.8 as an optional component. Release CI downloads that immutable Browser release asset and verifies its pinned SHA-256 before the Commander Setup is compiled.
 
 Browser boundary
 ----------------
-The current Remote Commander Browser remains a separate pre-release line and is not bundled into v0.10.16. The installed v0.8.0-rc.4 Browser can be launched from Commander, but its Commander Companion is read-only and the Browser is not yet a fully bidirectional Commander backend. The existing Commander browser automation backend remains the separately qualified Chromium/CDP path. Bundling the Browser before its standalone installer and integration contract are stable would turn an unproven pre-release dependency into a production dependency, so v0.10.16 intentionally keeps that boundary explicit.
+Remote Commander Browser v0.8.0-rc.8 remains a separately versioned product, but its qualified standalone Windows Setup is now an immutable, hash-pinned dependency of the v0.10.16 Windows Setup. Selecting the Browser component runs that bundled installer silently without changing or automating the user's ChatGPT sign-in session. Commander discovers the Browser at its per-user `Remote Commander Browser\\current` install path. The Commander's existing Chromium/CDP automation backend remains a separate backend and is not replaced by the CEF Browser.
 
 Release discipline
 ------------------
