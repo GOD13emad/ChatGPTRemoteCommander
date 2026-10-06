@@ -1049,3 +1049,8 @@ Remote Commander Browser v0.8.0 is published non-draft/non-prerelease and immuta
 **Focused V&V:** updater SHA-256 `F9386861D4F27E0BBED47EAFBA9E40282C03CCF0763429A8F126DCBD786FEF6C`; executable regression SHA-256 `06AE6EBAC61965F42B88C7D0EEF54AF2719ACEBB720AB177FF7A1E6FF70D406E`. Six readiness tests PASS: native-ready accept; live+fresh fallback accept; stale metric reject; missing metric reject; non-live reject; fail-closed/pre-cutover contract. Existing Linux updater contract PASS, Linux tunnel lifecycle 5/5 PASS, Security Audit PASS. An initial test-harness PATH error and an initial optional-env `set -u` error were caught before commit; the source default now matches the supervisor `${REMOTE_COMMANDER_TUNNEL_STALE_SECONDS:-90}` pattern.
 
 **Status:** source fix VERIFIED locally but not yet published or promoted. v0.10.17 remains immutable. Exact next action: commit/push this single blocker fix, validate the exact commit on Linux against live metrics without route mutation, then prepare a separate v0.10.18 release-identity revision and run full hosted/local release gates.
+### 2026-10-07 — v0.10.18 release-identity candidate
+
+The single-blocker Linux tunnel-readiness fix is carried forward as a separate release-identity revision. v0.10.17 remains immutable and is not rewritten. Current candidate identity is v0.10.18; Browser dependency remains immutable stable v0.8.0 with its existing exact hash pin.
+
+**Gate:** release-identity focused contracts, then exact-head full Windows/Linux and hosted qualification. No live v0.10.18 mutation is accepted before those gates.

@@ -1,5 +1,5 @@
 param(
-  [string]$SourceRef = 'v0.10.17',
+  [string]$SourceRef = 'v0.10.18',
   [string]$ExpectedCommit = '',
   [ValidateSet('Power','Standard')][string]$AccessMode = 'Power',
   [ValidateSet('Auto','On','Off')][string]$GuiControl = 'Auto',
@@ -34,7 +34,7 @@ function Refresh-Path {
 
 function Invoke-Download([string]$Url,[string]$Destination) {
   Write-Host "Downloading $Url"
-  Invoke-WebRequest -UseBasicParsing -Uri $Url -OutFile $Destination -Headers @{'User-Agent'='ChatGPTRemoteCommander-ServerInstaller/0.10.17'}
+  Invoke-WebRequest -UseBasicParsing -Uri $Url -OutFile $Destination -Headers @{'User-Agent'='ChatGPTRemoteCommander-ServerInstaller/0.10.18'}
   if (-not (Test-Path -LiteralPath $Destination -PathType Leaf)) { throw "Download did not create $Destination" }
 }
 
@@ -169,7 +169,7 @@ function Ensure-Git([string]$Arch) {
     }
   }
 
-  $release = Invoke-RestMethod -Uri 'https://api.github.com/repos/git-for-windows/git/releases/latest' -Headers @{'User-Agent'='ChatGPTRemoteCommander-ServerInstaller/0.10.17'}
+  $release = Invoke-RestMethod -Uri 'https://api.github.com/repos/git-for-windows/git/releases/latest' -Headers @{'User-Agent'='ChatGPTRemoteCommander-ServerInstaller/0.10.18'}
   if ($release.draft -or $release.prerelease) { throw 'Git for Windows latest release is not stable.' }
   $pattern = if ($Arch -eq 'x64') { '^Git-.*-64-bit\.exe$' } else { '^Git-.*-arm64\.exe$' }
   $asset = @($release.assets | Where-Object { $_.name -match $pattern }) | Select-Object -First 1
