@@ -2,7 +2,7 @@
 
 - Preserve per-run Windows qualification stdout/stderr with SHA-256 evidence while keeping the existing owned Job Object, timeout, cleanup, backoff and failure semantics unchanged.
 - Add native regression coverage for successful child, failing child and failing runner diagnostic retention with zero leaked descendants.
-- Keep Remote Commander Browser v0.8.0-rc.8 as the same immutable, hash-pinned optional Browser dependency; no Browser sign-in/profile automation policy is widened.
+- Pin the immutable stable Remote Commander Browser v0.8.0 Setup (SHA-256 61fd810130845815dd20073f72051aec3b42c1a89b9577b3457f2190bd9b1a5e) as the optional Browser dependency; no Browser sign-in/profile automation policy is widened.
 - Advance runtime, installer, server installer and plugin release identity to v0.10.17 without rewriting the immutable v0.10.16 release.
 
 ## 0.10.16 - 2026-10-06

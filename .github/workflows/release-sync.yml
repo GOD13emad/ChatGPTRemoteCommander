@@ -38,10 +38,10 @@ jobs:
       - name: Fetch verified Remote Commander Browser dependency
         shell: pwsh
         run: |
-          $browser=Join-Path $env:RUNNER_TEMP 'Remote-Commander-Browser-Setup-v0.8.0-rc.8.exe'
+          $browser=Join-Path $env:RUNNER_TEMP 'Remote-Commander-Browser-Setup-v0.8.0.exe'
           ./scripts/fetch-browser-setup.ps1 `
-            -Version '0.8.0-rc.8' `
-            -Sha256 'c1f04ff74bf3f7caf8b192bc35c4bf4d08f1149a890a164df511bcdfd16893c3' `
+            -Version '0.8.0' `
+            -Sha256 '61fd810130845815dd20073f72051aec3b42c1a89b9577b3457f2190bd9b1a5e' `
             -Destination $browser
       - name: Build single-file Windows setup with Browser
         shell: pwsh
@@ -49,7 +49,7 @@ jobs:
           $version = node -p "require('./package.json').version"
           $commit=(git rev-parse HEAD).Trim()
           $sourceRef=if('${{ github.event_name }}' -eq 'pull_request'){'${{ github.head_ref }}'}else{'${{ github.ref_name }}'}
-          $browser=Join-Path $env:RUNNER_TEMP 'Remote-Commander-Browser-Setup-v0.8.0-rc.8.exe'
+          $browser=Join-Path $env:RUNNER_TEMP 'Remote-Commander-Browser-Setup-v0.8.0.exe'
           pwsh.exe -NoLogo -NoProfile -File .\installer\build-setup.ps1 `
             -VersionOverride $version `
             -SourceRef $sourceRef `
