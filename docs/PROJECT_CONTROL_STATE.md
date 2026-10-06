@@ -585,3 +585,16 @@ These open items are intentionally not auto-promoted or guessed and do not block
 - Current read-only liveness check supersedes the earlier snapshot: all four registered retained terminal PID sets are now dead and none of the retained ports is listening.
 - The existing v0.10.2 retained-maintenance code change remains the minimum sufficient correction: call the already-qualified safe reconciler in the CURRENT fast path before deferred-drain/release cleanup.
 - Live registry is intentionally unchanged until this exact branch passes fresh local/hosted authority gates and is merged/released.
+
+
+### 2026-10-06 — v0.10.17 diagnostics finalization candidate
+
+**Previous accepted state:** immutable v0.10.16 release at 46655c5ae7d5504956959dfc7f2126fcc6824b6a. One unattended Windows exact-release qualification failure retained lifecycle metadata but not child stdout/stderr.
+
+**Current delta:** candidate v0.10.17 contains the qualified diagnostics tree from PR #134 while preserving Job Object containment, timeout, cleanup, backoff and fail-closed exit semantics. Release identity advances without modifying the immutable v0.10.16 tag.
+
+**Historical failure audit:** three attempts of the superseded local release runner incorrectly required a cherry-picked commit SHA to equal the source commit SHA. Git records a new commit for a cherry-pick; content equivalence is therefore guarded by exact tree identity. The superseded runner is DO NOT RUN.
+
+**Current gate:** focused local qualification open; no tag or live runtime mutation has occurred.
+
+**Exact next action:** qualify this exact candidate on Windows/Linux and hosted gates, merge only if green, then tag/publish v0.10.17 and perform candidate-first fleet rollout/readback.
