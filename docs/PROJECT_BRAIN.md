@@ -914,3 +914,25 @@ Because this changed executable code after the earlier qualification, the comple
 **Open / deferred:** physical AC-loss/reboot validation remains a distinct hardware/operations test; it is not inferred from software health and remains UNPROVEN until intentionally exercised.
 
 **Exact next action:** no further v0.10.15 software mutation. Preserve `v0.10.15` immutably; future product changes start from current `main` under a new change set/version.
+
+### 2026-10-06 — CURRENT v0.10.16 single-product Windows installer candidate
+
+**Previous accepted state:** v0.10.15 is immutable production. Windows Commander runtime is healthy, but the installed Desktop shell/Start Menu packaging exposed internal tools as multiple applications. Remote Commander Browser is a separate pre-release line.
+
+**Current delta:** Start Menu was repaired to one public Commander shortcut plus the independently installed Browser shortcut. The candidate now implements one Windows Setup executable with `Core` and `Control & Monitoring` modes, multi-profile post-install onboarding, a correct per-user/UAC boundary, secure in-memory API-key handoff, a standards-compliant multi-size icon, and release automation for the Setup EXE. The conditional Browser component compiles but is intentionally hidden unless a verified standalone Browser installer is supplied.
+
+**Evidence:** both Inno compile branches PASS without warnings; focused installer/product contracts 9/9 PASS; update regression 83 pass / 0 fail / 2 platform skips plus MCP Tasks 1/1 PASS. Live runtime remains v0.10.15 and was not promoted by candidate testing.
+
+**Authority / boundary:** accepted production remains `v0.10.15`. v0.10.16 is **CURRENT candidate / UNPROVEN for release** until exact-head full qualification + hosted CI/canary + Linux laptop + Amirreza Server acceptance + merge/tag/release + post-release readback. Browser v0.8.0-rc.4 is not promoted into the Commander release and fully bidirectional integration remains OPEN.
+
+**Critical path ← CURRENT:** release-identity closure → exact-head qualification → hosted/cross-host gates → merge → immutable v0.10.16 tag/release with single-file Setup → live rollout/readback. Production Authenticode signing is an external certificate gate and is not fabricated with self-signing.
+
+**Exact next action:** complete the v0.10.16 release-identity/documentation delta, qualify the exact commit, then push and require hosted/cross-host evidence before promotion.
+
+### 2026-10-06 — Commander v0.10.16 single-shell change set locally PASS
+
+**Key result:** Windows bounded qualification finished with **275 pass / 0 fail / 7 skips**. Single public shell, Core vs Control+Monitoring component split, multi-profile enrollment and fresh-Windows prerequisite bootstrap are verified locally.
+
+**Authority:** branch base still equals current `origin/main 54bb5a1`; no writer overlap detected.
+
+**← CURRENT:** commit this qualified single-shell/monitoring/profile change set. Browser rc.5 release is the only dependency before the next Commander mutation: pin/verify/embed the released Browser Setup, then rerun exact-head Windows/Linux/Amirreza/hosted gates.

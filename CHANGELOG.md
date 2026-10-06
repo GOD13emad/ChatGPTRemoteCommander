@@ -1,3 +1,14 @@
+## 0.10.16 - 2026-10-06
+
+- Collapse Windows Start Menu exposure to one public Remote Commander application; Profiles & Access, Operations Monitor, and Admin Runtime remain internal pages/tools launched from the product shell.
+- Add a single-file Windows Setup executable with Commander Core and Commander + Control & Monitoring installation modes, optional desktop shortcut, and post-install multi-profile onboarding.
+- Keep per-user Commander/profile state in the original user context; elevate only verified machine-wide prerequisites, preserving DPAPI ownership and avoiding installation into the UAC administrator account.
+- Add secure in-memory profile enrollment support so Runtime API keys are not placed on command lines; legacy DPAPI persistence still occurs only after tunnel validation.
+- Standardize the product ICO as a multi-size Windows icon and add regression guards preventing internal tools from reappearing as separate Start Menu applications.
+- Add an optional compile-time Browser component hook. No Browser installer is bundled until the Browser has its own stable, verified standalone installer; the current Browser remains a separate pre-release product boundary.
+- Extend release automation with a pinned Windows build job for the single-file Setup artifact and checksum inclusion in immutable GitHub Releases.
+- Advance runtime, installers, server installers, plugin templates, contracts, and release identity to v0.10.16.
+
 ## 0.10.15 - 2026-10-05
 
 - Fix Windows interactive terminal startup by executing the initial validated command through PowerShell argv instead of writing it to stdin before shell readiness.

@@ -1,6 +1,7 @@
 param(
   [string]$SourceDir = '',
-  [string]$InstallRoot = ''
+  [string]$InstallRoot = '',
+  [ValidateSet('Core','ControlMonitoring')][string]$Mode = 'ControlMonitoring'
 )
 $ErrorActionPreference='Stop'
 $RepoRoot=(Resolve-Path (Join-Path $PSScriptRoot '..')).Path
@@ -9,15 +10,21 @@ if(-not $SourceDir){$SourceDir=Join-Path $RepoRoot 'dist\desktop\remote-commande
 $SourceDir=[IO.Path]::GetFullPath($SourceDir)
 $SourceExe=Join-Path $SourceDir 'RemoteCommander.exe'
 if(-not (Test-Path -LiteralPath $SourceExe -PathType Leaf)){throw "Desktop build missing: $SourceExe"}
-foreach($tool in @('profile-manager-windows.ps1','operations-monitor-windows.ps1','admin-runtime-windows.ps1')){
+
+$required=@('profile-manager-windows.ps1','profile-enrollment-windows.ps1')
+if($Mode -eq 'ControlMonitoring'){$required+=@('operations-monitor-windows.ps1','admin-runtime-windows.ps1')}
+foreach($tool in $required){
   if(-not(Test-Path -LiteralPath (Join-Path $SourceDir $tool) -PathType Leaf)){throw "Desktop tool missing: $tool"}
 }
+
 if(-not $InstallRoot){$InstallRoot=Join-Path $env:LOCALAPPDATA 'Programs\Remote Commander'}
 $InstallRoot=[IO.Path]::GetFullPath($InstallRoot)
-$Entries = Get-ChildItem -LiteralPath $SourceDir -File -Recurse | ForEach-Object {
-  $rel=[IO.Path]::GetRelativePath($SourceDir,$_.FullName).Replace('\','/')
-  $h=(Get-FileHash -Algorithm SHA256 -LiteralPath $_.FullName).Hash.ToLowerInvariant()
-  "$rel|$h"
+$selected=@('RemoteCommander.exe','profile-manager-windows.ps1','profile-enrollment-windows.ps1')
+if($Mode -eq 'ControlMonitoring'){$selected+=@('operations-monitor-windows.ps1','admin-runtime-windows.ps1')}
+$Entries = $selected | ForEach-Object {
+  $full=Join-Path $SourceDir $_
+  $h=(Get-FileHash -Algorithm SHA256 -LiteralPath $full).Hash.ToLowerInvariant()
+  "$_|$h"
 } | Sort-Object
 $Manifest=$Entries -join "`n"
 $PackageSha=[Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($Manifest))).ToLowerInvariant()
@@ -27,36 +34,61 @@ $StartMenu=Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs\Remote 
 $Reg='HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\RemoteCommander'
 
 New-Item -ItemType Directory -Force -Path $VersionDir,$StartMenu | Out-Null
-Copy-Item -Path (Join-Path $SourceDir '*') -Destination $VersionDir -Recurse -Force -ErrorAction Stop
+foreach($name in $selected){
+  Copy-Item -LiteralPath (Join-Path $SourceDir $name) -Destination (Join-Path $VersionDir $name) -Force -ErrorAction Stop
+}
+$InstallManifest=[ordered]@{
+  schema=1
+  product='Remote Commander'
+  version=$Version
+  mode=$Mode
+  controlMonitoring=($Mode -eq 'ControlMonitoring')
+  profilesUi=$true
+  browserBundled=$false
+  installedAt=(Get-Date).ToUniversalTime().ToString('o')
+}
+[IO.File]::WriteAllText((Join-Path $VersionDir 'product-install.json'),(($InstallManifest|ConvertTo-Json -Depth 4)+[Environment]::NewLine),[Text.UTF8Encoding]::new($false))
 
 if(Test-Path -LiteralPath $Current){Remove-Item -LiteralPath $Current -Force -Recurse}
 New-Item -ItemType Junction -Path $Current -Target $VersionDir | Out-Null
 
 $Wsh=New-Object -ComObject WScript.Shell
 $Icon=(Join-Path $Current 'RemoteCommander.exe')+',0'
-function New-RcShortcut([string]$Name,[string]$Target,[string]$Arguments,[string]$Description){
-  $shortcutPath=Join-Path $StartMenu ($Name+'.lnk')
-  $s=$Wsh.CreateShortcut($shortcutPath)
-  $s.TargetPath=$Target
-  $s.Arguments=$Arguments
-  $s.WorkingDirectory=$Current
-  $s.IconLocation=$Icon
-  $s.Description=$Description
-  $s.Save()
-  if(-not(Test-Path -LiteralPath $shortcutPath -PathType Leaf)){throw "Start Menu shortcut was not created: $Name"}
-  return $shortcutPath
-}
-$DashboardShortcut=New-RcShortcut 'Remote Commander' (Join-Path $Current 'RemoteCommander.exe') '' 'Remote Commander dashboard'
-$Pwsh=(Get-Command pwsh.exe -ErrorAction Stop).Source
-$ProfileShortcut=New-RcShortcut 'Remote Commander Profiles & Access' $Pwsh ('-NoLogo -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "'+(Join-Path $Current 'profile-manager-windows.ps1')+'"') 'Remote Commander profile and access manager'
-$MonitorShortcut=New-RcShortcut 'Remote Commander Operations Monitor' $Pwsh ('-NoLogo -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "'+(Join-Path $Current 'operations-monitor-windows.ps1')+'"') 'Remote Commander projects and operations monitor'
-$AdminShortcut=New-RcShortcut 'Remote Commander Admin Runtime' $Pwsh ('-NoLogo -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "'+(Join-Path $Current 'admin-runtime-windows.ps1')+'"') 'Remote Commander elevated runtime manager'
+$DashboardShortcut=Join-Path $StartMenu 'Remote Commander.lnk'
+$s=$Wsh.CreateShortcut($DashboardShortcut)
+$s.TargetPath=Join-Path $Current 'RemoteCommander.exe'
+$s.Arguments=''
+$s.WorkingDirectory=$Current
+$s.IconLocation=$Icon
+$s.Description='Remote Commander'
+$s.Save()
+if(-not(Test-Path -LiteralPath $DashboardShortcut -PathType Leaf)){throw 'Remote Commander Start Menu shortcut was not created.'}
 
+# Historical internal tools are implementation details, not separate Start Menu applications.
+foreach($legacy in @(
+  'Remote Commander Profiles & Access.lnk',
+  'Remote Commander Operations Monitor.lnk',
+  'Remote Commander Admin Runtime.lnk'
+)){
+  Remove-Item -LiteralPath (Join-Path $StartMenu $legacy) -Force -ErrorAction SilentlyContinue
+}
+
+$Pwsh=(Get-Command pwsh.exe -ErrorAction Stop).Source
 $Uninstall=Join-Path $InstallRoot 'uninstall.ps1'
 $UninstallText=@"
 `$ErrorActionPreference='Stop'
 `$StartMenu=Join-Path `$env:APPDATA 'Microsoft\Windows\Start Menu\Programs\Remote Commander'
-Remove-Item -LiteralPath `$StartMenu -Recurse -Force -ErrorAction SilentlyContinue
+foreach(`$name in @(
+  'Remote Commander.lnk',
+  'Remote Commander Profiles & Access.lnk',
+  'Remote Commander Operations Monitor.lnk',
+  'Remote Commander Admin Runtime.lnk'
+)){
+  Remove-Item -LiteralPath (Join-Path `$StartMenu `$name) -Force -ErrorAction SilentlyContinue
+}
+if((Test-Path `$StartMenu) -and -not(Get-ChildItem `$StartMenu -Force -ErrorAction SilentlyContinue)){
+  Remove-Item -LiteralPath `$StartMenu -Force -ErrorAction SilentlyContinue
+}
 Remove-Item -LiteralPath 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\RemoteCommander' -Recurse -Force -ErrorAction SilentlyContinue
 `$selfRoot='$($InstallRoot.Replace("'","''"))'
 Start-Process -FilePath 'cmd.exe' -ArgumentList '/d','/c',"timeout /t 1 /nobreak >nul & rmdir /s /q `"`$selfRoot`"" -WindowStyle Hidden
@@ -73,4 +105,4 @@ New-ItemProperty -Path $Reg -Name UninstallString -Value ('"'+$Pwsh+'" -NoProfil
 New-ItemProperty -Path $Reg -Name NoModify -Value 1 -PropertyType DWord -Force | Out-Null
 New-ItemProperty -Path $Reg -Name NoRepair -Value 1 -PropertyType DWord -Force | Out-Null
 
-Write-Output "REMOTE_COMMANDER_DESKTOP_INSTALL_PASS version=$Version install=$InstallRoot shortcuts=4 dashboard=$DashboardShortcut profiles=$ProfileShortcut monitor=$MonitorShortcut admin=$AdminShortcut"
+Write-Output "REMOTE_COMMANDER_DESKTOP_INSTALL_PASS version=$Version mode=$Mode install=$InstallRoot shortcuts=1 dashboard=$DashboardShortcut"

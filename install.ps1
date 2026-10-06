@@ -10,7 +10,7 @@ param(
   [switch]$StartServer,
   [switch]$SkipTunnelClient,
   [string]$TunnelClientVersion = '0.0.15',
-  [string]$SourceRef = 'v0.10.15',
+  [string]$SourceRef = 'v0.10.16',
   [string]$ExpectedCommit = ''
 )
 $ErrorActionPreference = 'Stop'
@@ -472,6 +472,7 @@ function Start-LocalServer {
 }
 
 Require-Windows
+Refresh-Path
 $InstallDir = Resolve-InstallDir
 $canonicalLiveInstall=[IO.Path]::GetFullPath((Join-Path $env:LOCALAPPDATA 'ChatGPTRemoteCommander\app'))
 $isCanonicalLiveInstall=([IO.Path]::GetFullPath($InstallDir).TrimEnd('\') -ieq $canonicalLiveInstall.TrimEnd('\'))
