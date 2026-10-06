@@ -988,3 +988,22 @@ Full local `check:qualification` was not promoted to PASS: one unrelated Windows
 Negative regression rejected substantive unstaged drift; positive regression on the committed fix accepted only the single known EOL-only tracked drift and completed the Browser-bundled Setup build without `-AllowDirty`.
 
 **← CURRENT:** publish the superseding exact head to PR #132 and require fresh hosted Release Sync + CI + Server Canary PASS before promotion.
+
+
+### 2026-10-06 — v0.10.16 immutable release closeout and Pro handoff
+
+**Previous accepted state:** PR #132 exact head `1fa397865144147b7d0388d3bb6576ce6c6653ec` had all hosted release gates PASS and was being independently cross-host validated.
+
+**Current delta:** PR #132 is MERGED as `46655c5ae7d5504956959dfc7f2126fcc6824b6a`. The merge tree is exactly `c27eb11f47e254edcf0141272ccf8cafbe81cc9e`, byte-identical to the qualified PR-head tree. Annotated tag `v0.10.16` peels to that merge commit and the official non-draft/non-prerelease release is published. Tag Release Sync run `37461615477` completed SUCCESS. Official Setup asset `Remote-Commander-Setup-v0.10.16.exe` is published with SHA-256 `03fd7b507ce195231b44df47bf9d486960992c5171d050cfdc629ab0478ba9a3`.
+
+**Evidence / V&V:** exact-head hosted Release Sync `37458395092`, CI `37458395128` and `37458390573`, and Server Install Canary `37458395018` are SUCCESS. Linux laptop exact-head worktree completed `npm run check` + `npm run audit` with exit 0, including `LINUX_GUI_CONTRACT_PASS`, `SOURCE_INTEGRITY_PASS`, and `SECURITY_AUDIT_PASS`. Amirreza Server source was independently proven equal to the qualified tree: 499/499 expected paths/blobs matched after only declared Windows CRLF normalization, and a synthetic test-only Git index reproduced tree `c27eb11f47e254edcf0141272ccf8cafbe81cc9e`; `npm run check` + `npm run audit` then completed exit 0 with `SOURCE_INTEGRITY_PASS` and `SECURITY_AUDIT_PASS`.
+
+**Authority:** immutable software release `v0.10.16` is **FINAL / ACCEPTED**. Do not move, rewrite, or reuse this tag. Browser dependency remains immutable `v0.8.0-rc.8` with pinned Setup SHA-256 `c1f04ff74bf3f7caf8b192bc35c4bf4d08f1149a890a164df511bcdfd16893c3`.
+
+**Live rollout:** at closeout readback, `aliemad-Labtop` already reports Commander `0.10.16`; `Emad-PC-Ultimate` and `HPC-154-66` still report `0.10.15`. The isolated `saeed-emad` profile was not independently read back in this closeout and is therefore **UNVERIFIED**. Live rollout is **PARTIAL / OPEN** even though the immutable software release is final.
+
+**One-writer event / failure prevention:** another writer merged, tagged, published, and partially rolled out the release while this chat was still validating cross-host gates. The resulting release was independently verified tree-equal and valid, but this overlap confirms that future promotion/rollout must begin with a one-writer authority audit. This chat intentionally performs no further live-runtime mutation after detecting the overlap.
+
+**Open / deferred:** production Authenticode publisher trust remains `MISSING/EXTERNAL`; physical AC-loss/reboot validation remains a separate deferred hardware/operations gate; fully bidirectional Browser↔Commander integration remains future development, not a v0.10.16 release blocker.
+
+**← CURRENT / HANDOFF:** close this chat at the immutable v0.10.16 release milestone. Exact next action for the Pro continuation chat: first perform read-only authority/concurrency readback of `origin/main`, `v0.10.16`, current live versions and any active writer; if Primary Windows, Amirreza Server or isolated profiles are still below 0.10.16, finish the official v0.10.16 rollout with backup/prestate and post-health/version readback. Only after rollout closure start new development from current `origin/main`; never mutate the v0.10.16 tag.
