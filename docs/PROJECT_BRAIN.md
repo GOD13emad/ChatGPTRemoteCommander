@@ -982,3 +982,9 @@ Full local `check:qualification` was not promoted to PASS: one unrelated Windows
 **Root cause:** raw porcelain status rejected historical CRLF-only normalization already tolerated by the project's qualified control-promotion classifier.
 
 **Fix:** reject untracked, staged and substantive unstaged changes; allow only EOL-only tracked drift with an audit marker. No `-AllowDirty` in hosted release. **← CURRENT:** local no-AllowDirty compile, push fresh head, require all hosted gates PASS.
+
+### 2026-10-06 — clean-guard local V&V complete
+
+Negative regression rejected substantive unstaged drift; positive regression on the committed fix accepted only the single known EOL-only tracked drift and completed the Browser-bundled Setup build without `-AllowDirty`.
+
+**← CURRENT:** publish the superseding exact head to PR #132 and require fresh hosted Release Sync + CI + Server Canary PASS before promotion.

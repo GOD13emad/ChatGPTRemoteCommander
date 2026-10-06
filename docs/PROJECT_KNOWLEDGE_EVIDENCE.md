@@ -2202,3 +2202,10 @@ Acceptance boundary: this is local exact-tree qualification only. GitHub hosted 
 
 - With the clean-guard Change Set still substantively unstaged, an actual `installer/build-setup.ps1` invocation without `-AllowDirty` failed before compilation with `Setup release build refuses substantive unstaged tracked changes.`
 - This confirms the revised classifier does not convert the release guard into a general dirty-worktree bypass. The remaining positive regression is to commit the Change Set and prove the same command accepts only the known EOL-only checkout drift.
+
+### 2026-10-06 — Setup clean guard positive EOL-only regression PASS
+
+- After committing the clean-guard fix, the local worktree contained only the known historical `enable-boot-recovery.ps1` EOL normalization drift.
+- An actual `installer/build-setup.ps1` invocation **without** `-AllowDirty` emitted `SETUP_TRACKED_EOL_DRIFT_ACCEPTED count=1`, then built the full v0.10.16 Setup successfully with Browser rc.8 bundled.
+- Build result: `REMOTE_COMMANDER_SETUP_BUILD_PASS`, commit `38adb8006e34d5bdd74556c1d8d31d7108d6cae1`, Setup SHA-256 `cd923b4c9f3bb36b52661e3b384d3f5ae66a16ee20a5a5dd5e15189a28a4b859`, `browserBundled=true`, Browser SHA-256 `c1f04ff74bf3f7caf8b192bc35c4bf4d08f1149a890a164df511bcdfd16893c3`.
+- Combined with the pre-commit negative regression, the guard now demonstrates both fail-closed substantive-drift behavior and explicit EOL-only admission locally. Hosted exact-head Release Sync remains the promotion authority.
