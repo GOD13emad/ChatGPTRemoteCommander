@@ -2222,3 +2222,7 @@ Acceptance boundary: this is local exact-tree qualification only. GitHub hosted 
 **Current gate:** focused local qualification open; no tag or live runtime mutation has occurred.
 
 **Exact next action:** qualify this exact candidate on Windows/Linux and hosted gates, merge only if green, then tag/publish v0.10.17 and perform candidate-first fleet rollout/readback.
+
+### 2026-10-06 — v0.10.17 hosted Windows Job Object harness latency
+
+Exact-head CI run 37496855550 failed only the pre-existing Job Object containment test with missing report at 15.046s. The test outer spawnSync killed pwsh at exactly 15000ms before the runner finally/report path could complete. Local Windows full qualification, Linux cross-host, Ubuntu hosted CI, new qualification-output tests, and Release Sync were already PASS. Mutation is test-only: give the outer wrapper a bounded minimum 30s budget, detect early wrapper exit, and emit explicit timeout diagnostics; production Job Object, child timeout, cleanup and exit semantics are unchanged. Promotion remains blocked pending targeted stress, full local requalification and fresh hosted exact-head Windows CI.

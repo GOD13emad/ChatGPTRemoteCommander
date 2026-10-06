@@ -634,10 +634,21 @@ const listenerOpen=port=>new Promise(resolve=>{
   socket.once('error',()=>finish(false));
 });
 
-test('Windows qualification Job Object leaves zero descendants after fail, leak-success, timeout, and wrapper termination', {timeout:45000}, async t=>{
+test('Windows qualification Job Object leaves zero descendants after fail, leak-success, timeout, and wrapper termination', {timeout:180000}, async t=>{
   if(process.platform!=='win32'){t.skip('Windows Job Object regression');return;}
   const fixture=fs.mkdtempSync(path.join(os.tmpdir(),'rc-job-containment-'));
-  t.after(()=>fs.rmSync(fixture,{recursive:true,force:true,maxRetries:8,retryDelay:100}));
+  t.after(async()=>{
+    let lastError=null;
+    for(let attempt=0;attempt<40;attempt++){
+      try{fs.rmSync(fixture,{recursive:true,force:true});return;}
+      catch(error){
+        if(!['EPERM','EBUSY','ENOTEMPTY'].includes(error?.code))throw error;
+        lastError=error;
+        await delay(250);
+      }
+    }
+    throw lastError??new Error('fixture cleanup failed without captured error');
+  });
   const runner=path.join(root,'tools','run-owned-process-tree-windows.ps1');
   const node=process.execPath;
   const rootScript=path.join(fixture,'root.mjs');
@@ -675,8 +686,10 @@ test('Windows qualification Job Object leaves zero descendants after fail, leak-
     const psArgs=['-NoLogo','-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',runner,
       '-Program',node,'-WorkingDirectory',fixture,'-ArgumentsJson',JSON.stringify(args),'-RunId',runId,
       '-TimeoutSeconds',String(timeoutSeconds),'-DrainGraceMs','300','-ReportPath',report];
-    const result=spawnSync('pwsh.exe',psArgs,{cwd:root,encoding:'utf8',timeout:15000});
-    assert.ok(fs.existsSync(report),result.stderr||result.stdout||'missing report');
+    const wrapperBudgetMs=Math.max(30000,timeoutSeconds*1000+15000);
+    const result=spawnSync('pwsh.exe',psArgs,{cwd:root,encoding:'utf8',timeout:wrapperBudgetMs});
+    assert.equal(result.error?.code??null,null,'qualification wrapper failed before report runId='+runId+' budgetMs='+wrapperBudgetMs+' error='+(result.error?.code??'none'));
+    assert.ok(fs.existsSync(report),result.stderr||result.stdout||('missing report runId='+runId+' budgetMs='+wrapperBudgetMs));
     const data=JSON.parse(fs.readFileSync(report,'utf8'));
     const childPid=fs.existsSync(childPidFile)?Number(fs.readFileSync(childPidFile,'utf8')):0;
     const serverPid=fs.existsSync(serverPidFile)?Number(fs.readFileSync(serverPidFile,'utf8')):0;
@@ -713,8 +726,8 @@ test('Windows qualification Job Object leaves zero descendants after fail, leak-
     '-Program',node,'-WorkingDirectory',fixture,'-ArgumentsJson',JSON.stringify(args),'-RunId','killed-wrapper',
     '-TimeoutSeconds','60','-DrainGraceMs','300','-ReportPath',report];
   const wrapper=spawn('pwsh.exe',psArgs,{cwd:root,stdio:'ignore'});
-  const ready=await waitUntil(()=>fs.existsSync(serverPidFile),7000);
-  assert.equal(ready,true,'grandchild server must start before wrapper termination');
+  const ready=await waitUntil(()=>fs.existsSync(serverPidFile)||wrapper.exitCode!==null,30000);
+  assert.equal(fs.existsSync(serverPidFile),true,'grandchild server must start before wrapper termination; wrapperExit='+wrapper.exitCode+' readySignal='+ready);
   const childPid=Number(fs.readFileSync(childPidFile,'utf8'));
   const serverPid=Number(fs.readFileSync(serverPidFile,'utf8'));
   assert.equal(processExists(childPid),true);
