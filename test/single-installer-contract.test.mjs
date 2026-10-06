@@ -80,6 +80,19 @@ test('installer collects only profile names; credentials are collected after ins
     'profile setup must not recursively relaunch itself');
 });
 
+test('release setup clean guard rejects staged, untracked and substantive drift but tolerates EOL-only checkout normalization',()=>{
+  const builder=read('installer/build-setup.ps1');
+  const workflow=read('.github/workflows/release-sync.yml');
+  assert.ok(builder.includes('ls-files --others --exclude-standard'));
+  assert.ok(builder.includes('diff --cached --quiet --'));
+  assert.ok(builder.includes('diff --ignore-space-at-eol --exit-code --'));
+  assert.ok(builder.includes('Setup release build refuses untracked files'));
+  assert.ok(builder.includes('Setup release build refuses staged tracked changes'));
+  assert.ok(builder.includes('Setup release build refuses substantive unstaged tracked changes'));
+  assert.ok(builder.includes('SETUP_TRACKED_EOL_DRIFT_ACCEPTED'));
+  assert.ok(!workflow.includes('-AllowDirty'),'hosted Release Sync must not bypass the clean-worktree guard');
+});
+
 test('browser component is compile-time optional until a standalone Browser installer is supplied',()=>{
   const iss=read('installer/RemoteCommander.iss');
   assert.ok(iss.includes('#ifdef BrowserSetup'));

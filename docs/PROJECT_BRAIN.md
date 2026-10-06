@@ -974,3 +974,11 @@ Browser rc.8 download/hash verification, pinned Inno acquisition, desktop payloa
 Full local `check:qualification` was not promoted to PASS: one unrelated Windows temp-directory after-hook cleanup returned EPERM. All fixture descendant PIDs were already dead, the directory deleted successfully once the runner exited, and a single targeted regression passed 1/1. No code patch was justified.
 
 **Gate:** fresh hosted exact-head CI/Server Canary/Release Sync must all PASS; otherwise stop promotion and investigate the hosted failure.
+
+### 2026-10-06 — Release Sync blocker: clean guard aligned with qualified Windows EOL policy
+
+**Failure:** exact-head Release Sync `37457196824` fetched and verified Inno + Browser successfully, then stopped because the Setup clean guard saw one tracked Windows checkout drift entry.
+
+**Root cause:** raw porcelain status rejected historical CRLF-only normalization already tolerated by the project's qualified control-promotion classifier.
+
+**Fix:** reject untracked, staged and substantive unstaged changes; allow only EOL-only tracked drift with an audit marker. No `-AllowDirty` in hosted release. **← CURRENT:** local no-AllowDirty compile, push fresh head, require all hosted gates PASS.

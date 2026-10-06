@@ -2188,3 +2188,17 @@ Acceptance boundary: this is local exact-tree qualification only. GitHub hosted 
 - **Environment evidence:** after the Node test runner exited, the exact generated temp directory was removable immediately with `Remove-Item -LiteralPath ... -Recurse -Force`; result `TEMP_CLEANUP_AFTER_PROCESS_EXIT=True`. This supports a transient Windows handle-release race at test after-hook cleanup rather than a retained descendant/product regression.
 - **Targeted regression:** one evidence-driven rerun of only `Windows qualification Job Object leaves zero descendants...` passed 1/1 in ~25 s. No source patch or retry loop was introduced.
 - **Status:** local full-check aggregate remains formally **not PASS** because its original run exited 1; root-cause classification is **Probable local cleanup race**, with targeted regression PASS. Fresh hosted exact-head CI remains the promotion authority and must pass before merge.
+
+### 2026-10-06 — hosted Release Sync clean-worktree failure: historical CRLF checkout drift admitted by existing classifier semantics
+
+- **Exact-head hosted evidence:** Commander PR #132 head `c18efe6a498ef0de0c80e7e4d00df8af9ce77cd4`, Release Sync run `37457196824`. Pinned Inno Setup step PASS; verified Browser rc.8 dependency fetch PASS; `Build single-file Windows setup with Browser` failed before compilation because `installer/build-setup.ps1` reported exactly one dirty entry.
+- **Reproduction/provenance:** fresh local Windows worktree from the same repository reports `enable-boot-recovery.ps1` as 186/186 changed solely due historical CRLF checkout normalization. `git diff --ignore-space-at-eol --exit-code -- enable-boot-recovery.ps1` returns 0. Repository `.gitattributes` requires `*.ps1 text eol=crlf`.
+- **Existing accepted project method:** `auto-update-windows.ps1::Promote-Control` already treats this historical Windows condition fail-closed: staged changes are rejected first, substantive unstaged differences are rejected with `git diff --ignore-space-at-eol`, and only then EOL-only drift is accepted with an auditable marker. `test/auto-update-contract.test.mjs` explicitly qualifies this behavior.
+- **Root cause:** the new Setup builder used raw `git status --porcelain` as a binary clean check, which conflicts with the repository's already-qualified Windows CRLF normalization model. This is a release-guard policy mismatch, not product source dirtiness.
+- **Fix:** Setup clean guard now independently rejects any untracked files, any staged tracked changes, and any substantive unstaged tracked changes. Only tracked EOL-only drift is accepted and emits `SETUP_TRACKED_EOL_DRIFT_ACCEPTED`. Hosted Release Sync is explicitly prohibited from using `-AllowDirty`.
+- **Regression:** single-installer contract asserts all four boundaries. After local commit, actual Setup compile without `-AllowDirty` must PASS on the known EOL-only worktree before push; fresh hosted exact-head Release Sync must then PASS.
+
+### 2026-10-06 — Setup clean guard pre-push negative regression PASS
+
+- With the clean-guard Change Set still substantively unstaged, an actual `installer/build-setup.ps1` invocation without `-AllowDirty` failed before compilation with `Setup release build refuses substantive unstaged tracked changes.`
+- This confirms the revised classifier does not convert the release guard into a general dirty-worktree bypass. The remaining positive regression is to commit the Change Set and prove the same command accepts only the known EOL-only checkout drift.

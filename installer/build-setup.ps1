@@ -23,9 +23,22 @@ if(-not $SourceRef){
 }
 if($SourceRef -notmatch '^[A-Za-z0-9._/-]{1,128}$'){throw "Invalid SourceRef: $SourceRef"}
 
-$dirty=@(git -C $Root status --porcelain --untracked-files=all)
-if($dirty.Count -gt 0 -and -not $AllowDirty){
-  throw "Setup release build requires a clean worktree. Dirty entries: $($dirty.Count)"
+if(-not $AllowDirty){
+  $untracked=@(& git.exe -C $Root ls-files --others --exclude-standard)
+  if($LASTEXITCODE -ne 0){throw 'Setup release build could not enumerate untracked files.'}
+  if($untracked.Count -gt 0){throw "Setup release build refuses untracked files: $($untracked.Count)"}
+
+  & git.exe -C $Root diff --cached --quiet --
+  if($LASTEXITCODE -ne 0){throw 'Setup release build refuses staged tracked changes.'}
+
+  & git.exe -C $Root diff --ignore-space-at-eol --exit-code -- | Out-Null
+  if($LASTEXITCODE -ne 0){throw 'Setup release build refuses substantive unstaged tracked changes.'}
+
+  $trackedDirty=@(& git.exe -C $Root status --porcelain --untracked-files=no)
+  if($LASTEXITCODE -ne 0){throw 'Setup release build could not inspect tracked worktree state.'}
+  if($trackedDirty.Count -gt 0){
+    Write-Output "SETUP_TRACKED_EOL_DRIFT_ACCEPTED count=$($trackedDirty.Count)"
+  }
 }
 
 & (Join-Path $Root 'desktop\build-windows.ps1')
