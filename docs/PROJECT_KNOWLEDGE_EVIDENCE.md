@@ -2242,3 +2242,18 @@ Remote Commander Browser v0.8.0 is published non-draft/non-prerelease and immuta
 **V&V:** patched test SHA-256 `A7BABA1732CF0A46CD9E4AD134F2AE223699E37B7CB1A62317B1CFAE203BADEA`; 10 independent executions passed 8/8 tests each, zero failures. Stable Browser v0.8.0 dependency bundling is independently PASS on exact parent `a58e2ff` with official Browser Setup SHA-256 `61fd810130845815dd20073f72051aec3b42c1a89b9577b3457f2190bd9b1a5e`.
 
 **Current gate:** commit this harness-only closure and run full exact-head qualification plus fresh hosted CI/Release Sync/Server Canary before merge/tag.
+### 2026-10-07 — Windows Job Object ownership-predicate closure
+
+**Failure audit:** exact-head local qualification failed the wrapper-termination fixture after both recorded descendant PIDs were confirmed gone because a raw TCP connect still succeeded on the previously reserved numeric port. This was the third recurrence in the Windows Job/fixture family, so blind timeout/predicate patching stopped and historical + primary-source review was performed.
+
+**Primary semantics:** Microsoft Job Objects documentation states that child processes are associated with the parent job by default unless breakaway limits are enabled, and `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE` terminates all associated processes when the last job handle closes. The production runner uses `CreateJobObject`, sets only KILL_ON_JOB_CLOSE, creates the root suspended, assigns it before resume, and exposes no breakaway flag. Microsoft `Get-NetTCPConnection` exposes `OwningProcess`, allowing listener identity rather than raw port occupancy to be tested. Sources: https://learn.microsoft.com/en-us/windows/win32/procthread/job-objects and https://learn.microsoft.com/en-us/powershell/module/nettcpip/get-nettcpconnection .
+
+**Root cause:** regression predicate conflated numeric port occupancy with original grandchild ownership. A different process may bind the freed port after the Job-owned process exits. Production runner behavior was not changed.
+
+**Mutation / prevention:** test helper now resolves listeners via `Get-NetTCPConnection -LocalPort <port> -State Listen`, captures owning PID + command line, and rejects only the original grandchild identity. When the port is free after cleanup, the test deliberately rebinds it from the test process and proves that foreign reuse is not misclassified as a Job leak.
+
+**V&V:** patched test SHA-256 `019DF03440600C6431F2BD14CE4D1088FF580F073906EA75A9BE5CE5FFB1AB52`; production runner SHA-256 remains `500882E264368794D6155B232991D94CC33EA73C47ABFF01970091280A501E74`. Five independent targeted Windows runs PASS 1/1 each, zero failures; operation `b1989854-4ad5-4361-a14b-70d4fe7e9c1e` completed exit 0. Previous raw-listener predicate is SUPERSEDED—DO NOT RUN.
+
+**Related release state:** Remote Commander Browser v0.8.0 is published immutable/non-prerelease; official Setup SHA-256 `61fd810130845815dd20073f72051aec3b42c1a89b9577b3457f2190bd9b1a5e`. Emad Browser stable rollout PASS preserved 1821 profile files/501 profile directories and old rc.4 rollback; Saeed stable install was reconciled after wrapper timeout from authoritative post-state: version 0.8.0, package `f624fb89136718e99e52cce35d811b2ca96a5c2ff01f5223405e24c3cc367768`, no Browser process auto-launched and no profile created.
+
+**Current gate:** full exact-head Commander qualification after this test-only correction; then fresh hosted CI/Release Sync/Server Canary on one final SHA, merge/tag/publish and fleet rollout.

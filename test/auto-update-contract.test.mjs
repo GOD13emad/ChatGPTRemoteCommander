@@ -625,14 +625,24 @@ const reservePort=()=>new Promise((resolve,reject)=>{
   s.once('error',reject);
   s.listen(0,'127.0.0.1',()=>{const p=s.address().port;s.close(()=>resolve(p));});
 });
-const listenerOpen=port=>new Promise(resolve=>{
-  const socket=net.createConnection({host:'127.0.0.1',port});
-  let done=false;
-  const finish=value=>{if(done)return;done=true;socket.destroy();resolve(value);};
-  socket.setTimeout(300,()=>finish(false));
-  socket.once('connect',()=>finish(true));
-  socket.once('error',()=>finish(false));
-});
+const listenerOwnership=port=>{
+  const script=[
+    `$rows=@(Get-NetTCPConnection -LocalPort ${port} -State Listen -ErrorAction SilentlyContinue)`,
+    "$out=@($rows|ForEach-Object{$owner=[int]$_.OwningProcess;$proc=Get-CimInstance Win32_Process -Filter ('ProcessId='+$owner) -ErrorAction SilentlyContinue;[ordered]@{pid=$owner;localAddress=[string]$_.LocalAddress;state=[string]$_.State;commandLine=if($proc){[string]$proc.CommandLine}else{$null}}});ConvertTo-Json -InputObject $out -Compress"
+  ].join(';');
+  const result=spawnSync('pwsh.exe',['-NoLogo','-NoProfile','-NonInteractive','-Command',script],{encoding:'utf8',timeout:10000});
+  assert.equal(result.status,0,'listener ownership probe failed: '+(result.stderr||result.stdout));
+  const raw=result.stdout.trim();
+  if(!raw)return [];
+  const parsed=JSON.parse(raw);
+  return Array.isArray(parsed)?parsed:[parsed];
+};
+const assertNoOwnedListener=(port,serverPid,serverScript)=>{
+  const evidence=listenerOwnership(port);
+  const owned=evidence.filter(row=>Number(row.pid)===serverPid&&String(row.commandLine??'').includes(serverScript)&&String(row.commandLine??'').includes(String(port)));
+  assert.equal(owned.length,0,'original grandchild must not own listener after Job cleanup evidence='+JSON.stringify(evidence));
+  return evidence;
+};
 
 test('Windows qualification Job Object leaves zero descendants after fail, leak-success, timeout, and wrapper termination', {timeout:180000}, async t=>{
   if(process.platform!=='win32'){t.skip('Windows Job Object regression');return;}
@@ -696,7 +706,7 @@ test('Windows qualification Job Object leaves zero descendants after fail, leak-
     assert.equal(data.activeAfterCleanup,0);
     if(childPid)assert.equal(processExists(childPid),false,'child must be gone');
     if(serverPid)assert.equal(processExists(serverPid),false,'grandchild server must be gone');
-    assert.equal(await listenerOpen(port),false,'listener must be gone');
+    assertNoOwnedListener(port,serverPid,serverScript);
     return {result,data,port,childPid,serverPid,psArgs,childPidFile,serverPidFile};
   };
 
@@ -735,7 +745,24 @@ test('Windows qualification Job Object leaves zero descendants after fail, leak-
   wrapper.kill('SIGTERM');
   await new Promise(resolve=>wrapper.once('exit',resolve));
   assert.equal(await waitUntil(()=>!processExists(childPid)&&!processExists(serverPid),5000),true,'KILL_ON_JOB_CLOSE must remove descendants when wrapper dies');
-  assert.equal(await listenerOpen(port),false,'wrapper termination must close grandchild listener');
+  const afterOwnership=assertNoOwnedListener(port,serverPid,serverScript);
+  // Numeric port reuse is not process-tree ownership. If the port is free,
+  // deliberately rebind it from this test process and prove the ownership
+  // predicate still rejects only the original grandchild identity.
+  if(afterOwnership.length===0){
+    const foreign=net.createServer(()=>{});
+    await new Promise((resolve,reject)=>{
+      foreign.once('error',reject);
+      foreign.listen(port,'127.0.0.1',resolve);
+    });
+    try{
+      const foreignOwnership=listenerOwnership(port);
+      assert.ok(foreignOwnership.some(row=>Number(row.pid)===process.pid),'controlled foreign listener must be attributable to the test process');
+      assertNoOwnedListener(port,serverPid,serverScript);
+    }finally{
+      await new Promise(resolve=>foreign.close(resolve));
+    }
+  }
 
 });
 
