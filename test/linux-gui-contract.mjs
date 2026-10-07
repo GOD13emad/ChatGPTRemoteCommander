@@ -155,7 +155,7 @@ exit 0
     run=spawnSync('bash',[path.join(fakeTools,'install-gnome-gui-extension.sh')],{encoding:'utf8',env});
     assert.equal(run.status,0,run.stderr);
     assert.match(run.stdout,/GNOME_GUI_EXTENSION_INSTALLED/);
-    assert.match(run.stdout,/GNOME_GUI_EXTENSION_SESSION_RELOAD_REQUIRED changed=true fresh=false reason=gjs-module-cache/);
+    assert.match(run.stdout,/GNOME_GUI_EXTENSION_SESSION_RELOAD_REQUIRED changed=true fresh=false reason=new-uuid-not-discoverable/);
     assert.equal(fs.readFileSync(path.join(fakeDst,'extension.js'),'utf8'),'changed-v2\n');
     assert.deepEqual(fs.readFileSync(calls,'utf8').trim().split(/\r?\n/),['disable']);
   } finally {

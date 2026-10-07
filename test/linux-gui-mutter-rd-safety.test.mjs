@@ -42,14 +42,16 @@ test('auto-update remains explicit-ref, expected-commit and candidate-first befo
   assert.match(updater,/run_gate/);
 });
 
-test('changed GNOME extension is never hot-reenabled inside the same GJS module cache',()=>{
-  assert.match(installer,/reason=gjs-module-cache/);
-  assert.match(installer,/fresh_install=false/); assert.match(installer,/\[\[ -e \"\$DST\" \]\] \|\| fresh_install=true/);
-  assert.match(installer,/\"\$changed\" == true && \"\$fresh_install\" != true/);
-  assert.match(installer,/if \[\[ \"\$changed\" == true && \"\$fresh_install\" != true \]\]/);
-  const guard='if [[ \"$changed\" == true && \"$fresh_install\" != true ]]';
-  const changed=installer.slice(installer.indexOf(guard),installer.indexOf('if command -v gnome-extensions',installer.indexOf(guard)));
-  assert.doesNotMatch(changed,/gnome-extensions enable/);
+test('GNOME upgrade uses only exact-hash known-safe fallback when v2 is undiscoverable',()=>{
+  assert.match(installer,/SAFE_FALLBACK_UUID='chatgpt-remote-commander-linux-safe@god13emad'/);
+  assert.match(installer,/SAFE_FALLBACK_EXTENSION_SHA256='084c6c1244b25b4a714b0978d7f59b0b02fa8dbce45a962bff6cda6d18a17caa'/);
+  assert.match(installer,/SAFE_FALLBACK_METADATA_SHA256='71375ff9ff21387355de83275be8a4b42361626208bcc120e7e41e6ffb08688e'/);
+  assert.match(installer,/v2_known_before=false/);
+  assert.match(installer,/activate_safe_fallback/);
+  assert.match(installer,/GNOME_GUI_EXTENSION_FALLBACK_ACTIVE/);
+  assert.match(installer,/new-uuid-not-discoverable/);
+  assert.doesNotMatch(installer,/gnome-shell --replace/);
+  assert.doesNotMatch(installer,/killall\s+gnome-shell/);
 });
 
 test('literal text uses Mutter clipboard plus physical keycodes, never extension clipboard or keysym remapping',()=>{
