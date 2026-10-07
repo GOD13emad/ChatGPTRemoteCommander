@@ -41,6 +41,22 @@ test('monitor snapshot is bounded and strips untrusted extra fields',()=>{
   assert.equal(unavailable.browser.reason,null);
 });
 
+test('Windows-style GUI status falls back to policy capabilities without overriding explicit capability fields',()=>{
+  const base={
+    identity:{deviceName:'win-host',profile:'default',version:'0.10.20',configSha256:'e'.repeat(64),port:48831,platform:'win32'},
+    gui:{enabled:true,available:true,uncertain:false,backend:'windows-user32-gdi',sessionType:null,reason:null,
+      policy:{allowScreenshot:true,allowMouse:true,allowKeyboard:true,allowWindowFocus:true}},
+    browser:{enabled:true,available:true,uncertain:false,backend:'chromium-cdp',reason:null},
+    workflows:{enabled:true,engineEnabled:true,runCount:0},
+    extensions:{items:[]},
+    operations:{active:0,lockedKeys:0}
+  };
+  const fallback=sanitizeMonitorSnapshot(base,4000);
+  assert.deepEqual(fallback.gui.capabilities,{screenshot:true,mouse:true,keyboard:true,focus:true});
+  const explicit=sanitizeMonitorSnapshot({...base,gui:{...base.gui,capabilities:{screenshot:false,mouse:false,keyboard:false,focus:false}}},4000);
+  assert.deepEqual(explicit.gui.capabilities,{screenshot:false,mouse:false,keyboard:false,focus:false});
+});
+
 test('linux monitor writer creates owner-private bounded snapshot',{skip:process.platform!=='linux'},async()=>{
   const base=await mkdtemp(path.join(os.tmpdir(),'rc-monitor-'));
   const root=path.join(base,'state','browser-companion');
