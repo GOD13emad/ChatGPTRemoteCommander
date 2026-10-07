@@ -4,16 +4,17 @@ import os from 'node:os';
 import path from 'node:path';
 import { mkdir, mkdtemp, writeFile, rm } from 'node:fs/promises';
 
-test('private Browser GUI_STOP blocks actual Core GUI admission before invoking native helper', async () => {
+test('private Browser GUI_STOP blocks actual Core GUI admission before invoking native helper', { skip: !['linux','win32'].includes(process.platform) }, async () => {
   const fixture = await mkdtemp(path.join(os.tmpdir(), 'rc-private-browser-stop-'));
-  const previous = process.env.XDG_STATE_HOME;
-  process.env.XDG_STATE_HOME = fixture;
+  const envKey = process.platform === 'win32' ? 'LOCALAPPDATA' : 'XDG_STATE_HOME';
+  const previous = process.env[envKey];
+  process.env[envKey] = fixture;
   try {
     // Fresh import to bind the fixture-only state root, not the user's real state.
     const { createGuiController } = await import('../src/gui-tools-windows.mjs?native_stop_fixture=1');
     let invocations = 0;
     const controller = createGuiController({
-      platform: 'linux',
+      platform: process.platform,
       invoke: async () => {
         invocations += 1;
         return { ok: true, available: true, backend: 'fixture' };
@@ -33,7 +34,9 @@ test('private Browser GUI_STOP blocks actual Core GUI admission before invoking 
         }
       }
     };
-    const privateRoot = path.join(fixture, 'chatgpt-remote-commander', 'browser-companion');
+    const privateRoot = process.platform === 'win32'
+      ? path.win32.join(fixture, 'ChatGPTRemoteCommander', 'browser-companion')
+      : path.posix.join(fixture, 'chatgpt-remote-commander', 'browser-companion');
     await mkdir(privateRoot, { recursive: true, mode: 0o700 });
     await writeFile(path.join(privateRoot, 'GUI_STOP'), 'COMMANDER_NATIVE_GUI_EMERGENCY_STOP\n', { mode: 0o600 });
     const status = await controller.execute(ctx, 'gui_status', {});
@@ -46,8 +49,8 @@ test('private Browser GUI_STOP blocks actual Core GUI admission before invoking 
     );
     assert.equal(invocations, 0, 'no GUI native process may be called while private STOP exists');
   } finally {
-    if (previous === undefined) delete process.env.XDG_STATE_HOME;
-    else process.env.XDG_STATE_HOME = previous;
+    if (previous === undefined) delete process.env[envKey];
+    else process.env[envKey] = previous;
     await rm(fixture, { recursive: true, force: true });
   }
 });
