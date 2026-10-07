@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import os from 'node:os';
 import path from 'node:path';
-import { mkdtemp, readFile, stat, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, stat, rm } from 'node:fs/promises';
 import { defaultBrowserCompanionRoot, sanitizeMonitorSnapshot, writeBrowserCompanionMonitor } from '../src/browser-companion-monitor.mjs';
 
 test('default roots are platform-separated from Chromium profile data',()=>{
@@ -41,7 +41,7 @@ test('monitor snapshot is bounded and strips untrusted extra fields',()=>{
   assert.equal(unavailable.browser.reason,null);
 });
 
-test('linux monitor writer creates owner-private bounded snapshot',async()=>{
+test('linux monitor writer creates owner-private bounded snapshot',{skip:process.platform!=='linux'},async()=>{
   const base=await mkdtemp(path.join(os.tmpdir(),'rc-monitor-'));
   const root=path.join(base,'state','browser-companion');
   try{
@@ -58,5 +58,24 @@ test('linux monitor writer creates owner-private bounded snapshot',async()=>{
     assert.equal(parsed.observedAtEpochMs,2000);
     assert.equal((await stat(root)).mode & 0o777,0o700);
     assert.equal((await stat(receipt.target)).mode & 0o777,0o600);
+  }finally{await rm(base,{recursive:true,force:true});}
+});
+
+test('windows monitor writer uses a pre-created local root without POSIX mode assumptions',{skip:process.platform!=='win32'},async()=>{
+  const base=await mkdtemp(path.join(os.tmpdir(),'rc-monitor-win-'));
+  const root=path.join(base,'browser-companion');
+  try{
+    await mkdir(root);
+    const receipt=await writeBrowserCompanionMonitor(root,{
+      identity:{deviceName:'host',profile:'default',version:'0.10.19',configSha256:'d'.repeat(64),port:48831,platform:'win32'},
+      gui:{enabled:true,available:false,uncertain:false,reason:'TEST'},
+      browser:{enabled:true,available:false,uncertain:false,reason:'TEST'},
+      workflows:{enabled:false,engineEnabled:false,runCount:0},
+      extensions:{items:[]},
+      operations:{active:0,lockedKeys:0}
+    },{platform:'win32',now:()=>3000});
+    const parsed=JSON.parse(await readFile(receipt.target,'utf8'));
+    assert.equal(parsed.identity.platform,'win32');
+    assert.equal(parsed.observedAtEpochMs,3000);
   }finally{await rm(base,{recursive:true,force:true});}
 });

@@ -11,12 +11,13 @@ export function defaultBrowserCompanionRoot({ platform = process.platform, env =
     return local ? path.win32.join(local, 'ChatGPTRemoteCommander', 'browser-companion') : '';
   }
   const state = env.XDG_STATE_HOME;
-  return state ? path.join(state, 'chatgpt-remote-commander', 'browser-companion')
-    : path.join(home, '.local', 'state', 'chatgpt-remote-commander', 'browser-companion');
+  return state ? path.posix.join(state, 'chatgpt-remote-commander', 'browser-companion')
+    : path.posix.join(home, '.local', 'state', 'chatgpt-remote-commander', 'browser-companion');
 }
 
 async function provePrivateRoot(root, { platform = process.platform } = {}) {
-  if (!root || !path.isAbsolute(root)) throw new Error('BROWSER_COMPANION_ROOT_INVALID');
+  const flavor = platform === 'win32' ? path.win32 : path.posix;
+  if (!root || !flavor.isAbsolute(root)) throw new Error('BROWSER_COMPANION_ROOT_INVALID');
   if (platform !== 'win32') {
     await mkdir(root, { recursive: true, mode: 0o700 });
     await chmod(root, 0o700);
@@ -95,8 +96,9 @@ export async function writeBrowserCompanionMonitor(root, input, options = {}) {
   const snapshot = sanitizeMonitorSnapshot(input, options.now?.() ?? Date.now());
   const data = JSON.stringify(snapshot) + '\n';
   if (Buffer.byteLength(data) > MAX_BYTES) throw new Error('BROWSER_COMPANION_SNAPSHOT_LIMIT');
-  const target = path.join(root, 'commander-monitor.json');
-  const temporary = path.join(root, '.commander-monitor-' + process.pid + '-' + randomUUID() + '.tmp');
+  const flavor = (options.platform ?? process.platform) === 'win32' ? path.win32 : path.posix;
+  const target = flavor.join(root, 'commander-monitor.json');
+  const temporary = flavor.join(root, '.commander-monitor-' + process.pid + '-' + randomUUID() + '.tmp');
   try {
     await writeFile(temporary, data, { encoding: 'utf8', mode: 0o600, flag: 'wx' });
     if ((options.platform ?? process.platform) !== 'win32') await chmod(temporary, 0o600);
