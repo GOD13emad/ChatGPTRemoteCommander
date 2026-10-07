@@ -349,6 +349,26 @@ def handle_input(req):
             return {'ok':True,'backend':'mutter-remote-desktop'}
     fail('GUI_UNKNOWN_ACTION')
 
+def encode_pixbuf(pix, fmt, quality=70):
+    if fmt == 'png':
+        ok,data=pix.save_to_bufferv('png',[],[])
+        return ok,data,'image/png',pix
+    source=pix
+    if pix.get_has_alpha():
+        rgb=GdkPixbuf.Pixbuf.new(GdkPixbuf.Colorspace.RGB,False,8,pix.get_width(),pix.get_height())
+        rgb.fill(0xffffffff)
+        pix.composite(rgb,0,0,pix.get_width(),pix.get_height(),0,0,1,1,GdkPixbuf.InterpType.NEAREST,255)
+        source=rgb
+    q=max(25,min(90,int(quality)))
+    ok,data=source.save_to_bufferv('jpeg',['quality'],[str(q)])
+    return ok,data,'image/jpeg',source
+
+def jpeg_rgba_self_test():
+    pix=GdkPixbuf.Pixbuf.new(GdkPixbuf.Colorspace.RGB,True,8,16,16)
+    pix.fill(0x4080c080)
+    ok,data,mime,encoded=encode_pixbuf(pix,'jpeg',75)
+    return bool(ok and mime=='image/jpeg' and not encoded.get_has_alpha() and data[:2]==b'\xff\xd8' and data[-2:]==b'\xff\xd9')
+
 def convert_screenshot(req,result):
     path=result.get('path')
     try:
@@ -357,13 +377,11 @@ def convert_screenshot(req,result):
         if pix.get_width()>max_width:
             width=max_width; height=max(1,round(pix.get_height()*width/pix.get_width())); pix=pix.scale_simple(width,height,GdkPixbuf.InterpType.BILINEAR)
         fmt=req.get('format','jpeg')
-        if fmt=='png': ok,data=pix.save_to_bufferv('png',[],[]); mime='image/png'
-        else:
-            q=max(25,min(90,int(req.get('quality',70)))); ok,data=pix.save_to_bufferv('jpeg',['quality'],[str(q)]); mime='image/jpeg'
+        ok,data,mime,encoded=encode_pixbuf(pix,fmt,req.get('quality',70))
         if not ok: return guierr('GUI_IMAGE_ENCODE_FAILED')
         limit=max(262144,min(4194304,int(req.get('maxBytes',2097152))))
         if len(data)>limit: return guierr('GUI_IMAGE_BYTE_LIMIT')
-        return {'ok':True,'data':base64.b64encode(data).decode('ascii'),'mimeType':mime,'width':pix.get_width(),'height':pix.get_height(),'snapshot':result.get('snapshot'),'capturedAt':result.get('capturedAt')}
+        return {'ok':True,'data':base64.b64encode(data).decode('ascii'),'mimeType':mime,'width':encoded.get_width(),'height':encoded.get_height(),'snapshot':result.get('snapshot'),'capturedAt':result.get('capturedAt')}
     except Exception: return guierr('GUI_IMAGE_ENCODE_FAILED')
     finally:
         if isinstance(path,str):
@@ -390,7 +408,9 @@ def handle(req):
 
 def main():
     if '--self-test' in sys.argv:
-        rd=mutter_capabilities(); print(json.dumps({'ok':True,'python':sys.version.split()[0],'gdkPixbuf':True,'contract':2,'mutterRemoteDesktop':rd,'globalStop':GLOBAL_STOP})); return 0
+        jpeg_ok=jpeg_rgba_self_test()
+        if not jpeg_ok: return 2
+        rd=mutter_capabilities(); print(json.dumps({'ok':True,'python':sys.version.split()[0],'gdkPixbuf':True,'jpegRgbaEncode':True,'contract':2,'mutterRemoteDesktop':rd,'globalStop':GLOBAL_STOP})); return 0
     if '--server' in sys.argv:
         print(json.dumps({'ok':True,'ready':True,'protocol':1}),flush=True)
         for line in sys.stdin:

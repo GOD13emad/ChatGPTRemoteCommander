@@ -1,6 +1,6 @@
 # Server installation
 
-This is the server-focused installation path for ChatGPT Remote Commander v0.10.19.
+This is the server-focused installation path for ChatGPT Remote Commander v0.10.20.
 
 ## Windows Server
 
@@ -27,7 +27,7 @@ Run from an elevated Administrator shell:
 For an exact release pin:
 
 ```powershell
-.\server-install-windows.ps1 -SourceRef v0.10.19 -ExpectedCommit <40-hex-release-commit>
+.\server-install-windows.ps1 -SourceRef v0.10.20 -ExpectedCommit <40-hex-release-commit>
 ```
 
 ### Defender / EDR / AppLocker behavior
@@ -58,10 +58,10 @@ chmod +x server-install-linux.sh
 Exact release pin:
 
 ```bash
-./server-install-linux.sh --source-ref v0.10.19 --expected-commit <40-hex-release-commit>
+./server-install-linux.sh --source-ref v0.10.20 --expected-commit <40-hex-release-commit>
 ```
 
-Alpine/musl is intentionally fail-closed in this server wrapper for v0.10.19 because that path is not part of the qualified installer matrix.
+Alpine/musl is intentionally fail-closed in this server wrapper for v0.10.20 because that path is not part of the qualified installer matrix.
 
 ## After installation
 

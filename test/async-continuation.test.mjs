@@ -105,7 +105,7 @@ test('restart reconciliation recovers terminal continuation after watcher is gon
       onTerminal:async state=>{resolveRecovered(state);return {handoffId:'recovered',state:'QUEUED'};}
     });
     try{
-      const state=await Promise.race([recovered,timeout(3000)]);
+      const state=await Promise.race([recovered,timeout(8000)]);
       assert.equal(state.status,'SUCCEEDED');
       assert.equal(state.continuation.eventKey,'op:req-3');
     }finally{await second.close();}

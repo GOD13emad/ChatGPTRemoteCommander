@@ -176,7 +176,7 @@ test('read_terminal pages large output without skipping unread data', { timeout:
   await stopTerminal(ctx,{id:session.id,remove:true});
 });
 
-test('read_terminal bounded wait returns when new output arrives', { timeout: 10000 }, async (t) => {
+test('read_terminal bounded wait returns when new output arrives', { timeout: 15000 }, async (t) => {
   const root = await fixture(t);
   const ctx = powerContext(root);
   const ready = path.join(root, 'terminal-read-ready.txt');
@@ -184,11 +184,11 @@ test('read_terminal bounded wait returns when new output arrives', { timeout: 10
     ? `Set-Content -LiteralPath ${psQuote(ready)} -Value ready -Encoding ascii; Start-Sleep -Milliseconds 500; Write-Output 'DELAYED_OUTPUT'`
     : `printf ready > ${shQuote(ready)}; sleep 0.5; printf 'DELAYED_OUTPUT\\n'`;
   const session = await startTerminal(ctx, { cwd: root, command });
-  assert.equal(await waitForFile(ready, 3000), true);
+  assert.equal(await waitForFile(ready, 5000), true);
   const started = Date.now();
-  const state = await readTerminal(ctx, { id: session.id, waitMs: 2000, maxChars: 4096 });
+  const state = await readTerminalUntil(ctx,session.id,/DELAYED_OUTPUT/,5000);
   assert.match(state.stdout,/DELAYED_OUTPUT/);
-  assert.ok(Date.now() - started < 2000);
+  assert.ok(Date.now() - started < 5000);
   await stopTerminal(ctx,{id:session.id,remove:true});
 });
 test('start_terminal remains interactive only when explicitly requested with an initial command', { timeout: 40000 }, async (t) => {

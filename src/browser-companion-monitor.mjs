@@ -40,6 +40,9 @@ export function sanitizeMonitorSnapshot(input, now = Date.now()) {
   };
   const truth = value => value === true;
   const cap = input?.gui?.capabilities ?? {};
+  const guiPolicy = input?.gui?.policy ?? {};
+  const capability = (name, policyName) =>
+    Object.prototype.hasOwnProperty.call(cap, name) ? truth(cap[name]) : truth(guiPolicy[policyName]);
   const extensions = Array.isArray(input?.extensions?.items) ? input.extensions.items.slice(0, 32).map(item => ({
     id: text(item?.id).slice(0, 64),
     version: text(item?.version).slice(0, 64)
@@ -65,10 +68,10 @@ export function sanitizeMonitorSnapshot(input, now = Date.now()) {
       sessionType: optionalText(input?.gui?.sessionType),
       reason: optionalText(input?.gui?.reason),
       capabilities: {
-        screenshot: truth(cap.screenshot),
-        mouse: truth(cap.mouse),
-        keyboard: truth(cap.keyboard),
-        focus: truth(cap.focus)
+        screenshot: capability('screenshot', 'allowScreenshot'),
+        mouse: capability('mouse', 'allowMouse'),
+        keyboard: capability('keyboard', 'allowKeyboard'),
+        focus: capability('focus', 'allowWindowFocus')
       }
     },
     browser: {
