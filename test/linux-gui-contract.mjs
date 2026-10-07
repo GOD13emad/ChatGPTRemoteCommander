@@ -79,6 +79,7 @@ if (process.platform === 'linux' && !headlessValidation) {
   assert.equal(self.status,0,self.stderr);
   const parsed=JSON.parse(self.stdout);
   assert.equal(parsed.ok,true);
+  assert.equal(parsed.jpegRgbaEncode,true);
   const bash=spawnSync('bash',['-n','tools/install-gnome-gui-extension.sh'],{encoding:'utf8'});
   assert.equal(bash.status,0,bash.stderr);
 
