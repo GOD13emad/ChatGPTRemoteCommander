@@ -15,10 +15,13 @@ const updater = read('auto-update-linux.sh');
 
 assert.equal(metadata.uuid,'chatgpt-remote-commander-linux-safe@god13emad');
 assert.ok(metadata['shell-version'].includes('46'));
+assert.ok(metadata['shell-version'].includes('50'));
 for (const marker of [
   'org.gnome.Shell.Extensions.ChatGPTRemoteCommander',
   'Gio.DBusExportedObject.wrapJSObject',
   'Shell.Screenshot',
+  "Main.layoutManager.monitors",
+  'Meta.is_wayland_compositor===undefined',
   'screenshot_area',
   '_sameSnapshot',
   'get_current_time_roundtrip',
