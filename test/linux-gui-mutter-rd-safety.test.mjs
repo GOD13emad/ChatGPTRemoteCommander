@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-const ext=await readFile(new URL('../gnome-extension/chatgpt-remote-commander-linux-safe@god13emad/extension.js',import.meta.url),'utf8');
+const ext=await readFile(new URL('../gnome-extension/chatgpt-remote-commander-linux-safe-v2@god13emad/extension.js',import.meta.url),'utf8');
 const helper=await readFile(new URL('../tools/gui-control-linux.py',import.meta.url),'utf8');
 const controller=await readFile(new URL('../src/gui-tools-windows.mjs',import.meta.url),'utf8');
 const shell=await readFile(new URL('../src/power-tools-v0.3.mjs',import.meta.url),'utf8');

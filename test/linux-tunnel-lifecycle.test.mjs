@@ -57,6 +57,22 @@ test('fresh linux installer delegates tunnel install to the single pinned helper
   assert.match(s,/chmod \+x[\s\S]*install-tunnel-client-linux\.sh/);
 });
 
+test('pinned tunnel release downloads use bounded transient retries without weakening hash gates',()=>{
+  const s=read('tools/install-tunnel-client-linux.sh');
+  assert.match(s,/curl_release_fetch\(\)/);
+  assert.match(s,/--retry 4/);
+  assert.match(s,/--retry-delay 2/);
+  assert.match(s,/--retry-max-time 90/);
+  assert.match(s,/--retry-connrefused/);
+  assert.doesNotMatch(s,/--retry-all-errors/);
+  assert.match(s,/curl_release_fetch "\$BASE\/SHA256SUMS[.]txt" "\$TMP\/SHA256SUMS[.]txt"/);
+  assert.match(s,/curl_release_fetch "\$BASE\/\$ASSET" "\$TMP\/\$ASSET"/);
+  assert.match(s,/ACTUAL_SUMS_SHA=.*sha256sum/);
+  assert.match(s,/ACTUAL_ASSET_SHA=.*sha256sum/);
+  assert.match(s,/Tunnel-client SHA256SUMS pin mismatch/);
+  assert.match(s,/Tunnel-client asset SHA-256 mismatch/);
+});
+
 test('tunnel pin has exact qualified v0.0.15 provenance',()=>{
   const pin=JSON.parse(read('tools/tunnel-client-pin.json'));
   assert.equal(pin.version,'0.0.15');

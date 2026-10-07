@@ -1,10 +1,10 @@
 {
-  "uuid": "chatgpt-remote-commander-linux-safe@god13emad",
+  "uuid": "chatgpt-remote-commander-linux-safe-v2@god13emad",
   "name": "ChatGPT Remote Commander Linux Safe GUI Backend",
   "description": "GNOME observation/focus backend for ChatGPT Remote Commander; raw input is routed through Mutter RemoteDesktop D-Bus, never direct Clutter virtual devices.",
   "shell-version": [
     "46",
     "50"
   ],
-  "version": 4
+  "version": 5
 }

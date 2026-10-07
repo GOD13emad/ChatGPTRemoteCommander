@@ -52,6 +52,17 @@ for cmd in node curl sha256sum unzip; do
 done
 mkdir -p "$INSTALL_DIR/tools" "$VAR_DIR"
 
+curl_release_fetch() {
+  local url="$1" output="$2"
+  # Release GETs are idempotent. Retry only curl's transient-error class
+  # (including HTTP 408/429/500/502/503/504) plus connection-refused,
+  # while keeping the existing timeout and mandatory SHA/provenance checks.
+  curl --fail --silent --show-error --location \
+    --connect-timeout 15 --max-time 180 \
+    --retry 4 --retry-delay 2 --retry-max-time 90 --retry-connrefused \
+    "$url" -o "$output"
+}
+
 verify_existing() {
   [[ -x "$FINAL_EXE" ]] || return 1
   local actual
@@ -72,14 +83,14 @@ cleanup(){
 }
 trap cleanup EXIT
 
-curl --fail --silent --show-error --location --connect-timeout 15 --max-time 180 "$BASE/SHA256SUMS.txt" -o "$TMP/SHA256SUMS.txt"
+curl_release_fetch "$BASE/SHA256SUMS.txt" "$TMP/SHA256SUMS.txt"
 ACTUAL_SUMS_SHA="$(sha256sum "$TMP/SHA256SUMS.txt" | awk '{print $1}')"
 [[ "$ACTUAL_SUMS_SHA" == "$SUMS_SHA" ]] || { echo 'Tunnel-client SHA256SUMS pin mismatch.' >&2; exit 1; }
 
 EXPECTED_ASSET_SHA="$(awk -v f="$ASSET" '$2==f {print $1}' "$TMP/SHA256SUMS.txt" | head -n1)"
 [[ "$EXPECTED_ASSET_SHA" =~ ^[0-9a-f]{64}$ ]] || { echo "Pinned tunnel-client asset is absent from SHA256SUMS: $ASSET" >&2; exit 1; }
 
-curl --fail --silent --show-error --location --connect-timeout 15 --max-time 180 "$BASE/$ASSET" -o "$TMP/$ASSET"
+curl_release_fetch "$BASE/$ASSET" "$TMP/$ASSET"
 ACTUAL_ASSET_SHA="$(sha256sum "$TMP/$ASSET" | awk '{print $1}')"
 [[ "$ACTUAL_ASSET_SHA" == "$EXPECTED_ASSET_SHA" ]] || { echo 'Tunnel-client asset SHA-256 mismatch.' >&2; exit 1; }
 
