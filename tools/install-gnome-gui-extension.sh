@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-UUID='chatgpt-remote-commander-linux-safe@god13emad'
-LEGACY_UUID='chatgpt-remote-commander@god13emad'
+UUID='chatgpt-remote-commander-linux-safe-v2@god13emad'
+LEGACY_UUIDS=('chatgpt-remote-commander-linux-safe@god13emad' 'chatgpt-remote-commander@god13emad')
 SRC="$ROOT/gnome-extension/$UUID"
 DST="${XDG_DATA_HOME:-$HOME/.local/share}/gnome-shell/extensions/$UUID"
 CFG="${XDG_CONFIG_HOME:-$HOME/.config}/chatgpt-remote-commander"
@@ -41,12 +41,13 @@ fi
 mkdir -p "$CFG" "$(dirname "$DST")" "$QUARANTINE"
 fresh_install=false
 [[ -e "$DST" ]] || fresh_install=true
-# Disable and quarantine the legacy UUID. A new UUID guarantees a fresh GJS module
-# in the current shell process and prevents stale cached input code from reloading.
-LEGACY_DST="${XDG_DATA_HOME:-$HOME/.local/share}/gnome-shell/extensions/$LEGACY_UUID"
-if [[ -d "$LEGACY_DST" ]]; then
-  if command -v gnome-extensions >/dev/null 2>&1; then gnome-extensions disable "$LEGACY_UUID" >/dev/null 2>&1 || true; fi
-  python3 - "$LEGACY_UUID" <<'PYLEGACY'
+# Disable and quarantine every superseded UUID. The fresh UUID guarantees a
+# new GJS module identity in the current shell process and avoids logout/reboot.
+for LEGACY_UUID in "${LEGACY_UUIDS[@]}"; do
+  LEGACY_DST="${XDG_DATA_HOME:-$HOME/.local/share}/gnome-shell/extensions/$LEGACY_UUID"
+  if [[ -d "$LEGACY_DST" ]]; then
+    if command -v gnome-extensions >/dev/null 2>&1; then gnome-extensions disable "$LEGACY_UUID" >/dev/null 2>&1 || true; fi
+    python3 - "$LEGACY_UUID" <<'PYLEGACY'
 import gi,sys
 gi.require_version('Gio','2.0')
 from gi.repository import Gio
@@ -54,8 +55,9 @@ uuid=sys.argv[1]; settings=Gio.Settings.new('org.gnome.shell')
 enabled=[x for x in settings.get_strv('enabled-extensions') if x != uuid]
 settings.set_strv('enabled-extensions',enabled); Gio.Settings.sync()
 PYLEGACY
-  mv "$LEGACY_DST" "$QUARANTINE/$LEGACY_UUID.$(date +%Y%m%d_%H%M%S)"
-fi
+    mv "$LEGACY_DST" "$QUARANTINE/$LEGACY_UUID.$(date +%Y%m%d_%H%M%S)"
+  fi
+done
 # Never leave backup extension directories in GNOME's live scan root.
 if [[ -e "$DST.prev" ]]; then mv "$DST.prev" "$QUARANTINE/$UUID.prev.$(date +%Y%m%d_%H%M%S)"; fi
 chmod 700 "$CFG"

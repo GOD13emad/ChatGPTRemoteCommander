@@ -5,15 +5,15 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 
 const read = p => fs.readFileSync(p,'utf8');
-const extension = read('gnome-extension/chatgpt-remote-commander-linux-safe@god13emad/extension.js');
-const metadata = JSON.parse(read('gnome-extension/chatgpt-remote-commander-linux-safe@god13emad/metadata.json'));
+const extension = read('gnome-extension/chatgpt-remote-commander-linux-safe-v2@god13emad/extension.js');
+const metadata = JSON.parse(read('gnome-extension/chatgpt-remote-commander-linux-safe-v2@god13emad/metadata.json'));
 const helper = read('tools/gui-control-linux.py');
 const installer = read('tools/install-gnome-gui-extension.sh');
 const controller = read('src/gui-tools-windows.mjs');
 const server = read('src/server-v0.3.mjs');
 const updater = read('auto-update-linux.sh');
 
-assert.equal(metadata.uuid,'chatgpt-remote-commander-linux-safe@god13emad');
+assert.equal(metadata.uuid,'chatgpt-remote-commander-linux-safe-v2@god13emad');
 assert.ok(metadata['shell-version'].includes('46'));
 assert.ok(metadata['shell-version'].includes('50'));
 for (const marker of [
@@ -84,7 +84,7 @@ if (process.platform === 'linux' && !headlessValidation) {
 
   const tmp=fs.mkdtempSync(path.join(os.tmpdir(),'rc-gnome-installer-'));
   try {
-    const uuid='chatgpt-remote-commander-linux-safe@god13emad';
+    const uuid='chatgpt-remote-commander-linux-safe-v2@god13emad';
     const fakeRoot=path.join(tmp,'root');
     const fakeTools=path.join(fakeRoot,'tools');
     const fakeSrc=path.join(fakeRoot,'gnome-extension',uuid);
@@ -114,7 +114,7 @@ exit 1
 cmd="$1"
 case "$cmd" in
   list)
-    if [ "$2" = "--active" ] && [ -f "$GNOME_TEST_STATE" ]; then echo "chatgpt-remote-commander-linux-safe@god13emad"; fi
+    if [ "$2" = "--active" ] && [ -f "$GNOME_TEST_STATE" ]; then echo "chatgpt-remote-commander-linux-safe-v2@god13emad"; fi
     ;;
   disable)
     echo disable >> "$GNOME_TEST_CALLS"

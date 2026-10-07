@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
-const extension=await readFile(path.join(root,'gnome-extension/chatgpt-remote-commander-linux-safe@god13emad/extension.js'),'utf8');
+const extension=await readFile(path.join(root,'gnome-extension/chatgpt-remote-commander-linux-safe-v2@god13emad/extension.js'),'utf8');
 const helper=await readFile(path.join(root,'tools/gui-control-linux.py'),'utf8');
 const controller=await readFile(path.join(root,'src/gui-tools-windows.mjs'),'utf8');
 const shell=await readFile(path.join(root,'src/power-tools-v0.3.mjs'),'utf8');

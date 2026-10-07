@@ -20,12 +20,14 @@ import { createDeliveryTools } from './delivery-tools.mjs';
 import { compactToolSuccessPayload, serializeBoundedJsonResponse, synchronousCommandInput } from './retry-guard.mjs';
 import { MutationIdempotencyStore } from './mutation-idempotency.mjs';
 import { createAgentExtensionRegistry } from './agent-extensions.mjs';
+import { startBrowserCompanionMonitor } from './browser-companion-monitor.mjs';
 import {
   NO_CODEX_POLICY, codexLaunchAuthorized, delegationRequirement, delegationStatus
 } from './no-codex-policy.mjs';
 
 let workflowTools = null;
-const VERSION = '0.10.18';
+let browserCompanionMonitor = null;
+const VERSION = '0.10.19';
 const MODERN_VERSION = '2026-07-28';
 const LEGACY_VERSIONS = ['2025-11-25', '2025-06-18', '2025-03-26'];
 const TASKS_EXTENSION = 'io.modelcontextprotocol/tasks';
@@ -374,6 +376,55 @@ async function executeDelegationTool(name, args) {
   throw new Error('DELEGATION_UNKNOWN_TOOL');
 }
 
+async function buildBrowserMonitorSnapshot() {
+  const workflowStatus = workflowTools
+    ? await workflowTools.execute('workflow_status', {})
+    : { enabled:false, engineEnabled:false, projectEngine:{ runs:[] } };
+  let gui = { enabled:GUI_ENABLED, available:false, backend:'', sessionType:'', reason:GUI_ENABLED?'UNAVAILABLE':'DISABLED', capabilities:{} };
+  if (GUI_ENABLED) {
+    try { gui = { enabled:true, ...(await executeGuiTool(ctx, 'gui_status', {})) }; }
+    catch (error) { gui = { enabled:true, available:false, backend:'', sessionType:'', reason:String(error?.code ?? error?.message ?? error), capabilities:{} }; }
+  }
+  let browser = { enabled:BROWSER_ENABLED, available:false, backend:'', reason:BROWSER_ENABLED?'UNAVAILABLE':'DISABLED' };
+  if (BROWSER_ENABLED) {
+    try { browser = { enabled:true, ...(await executeBrowserTool(ctx, 'browser_status', {})) }; }
+    catch (error) { browser = { enabled:true, available:false, backend:'', reason:String(error?.code ?? error?.message ?? error) }; }
+  }
+  let extensionItems = [];
+  try {
+    const listing = await agentExtensions.execute('agent_extension_list', {});
+    extensionItems = Array.isArray(listing?.items)
+      ? listing.items.map(item => ({ id:item.id, version:item.version }))
+      : [];
+  } catch { extensionItems = []; }
+  const runs = Array.isArray(workflowStatus?.projectEngine?.runs)
+    ? workflowStatus.projectEngine.runs
+    : Array.isArray(workflowStatus?.runs) ? workflowStatus.runs : [];
+  const concurrency = lockStats();
+  return {
+    identity: {
+      deviceName: config.deviceName || os.hostname(),
+      profile: config.instance?.profile ?? 'default',
+      version: VERSION,
+      configSha256,
+      port: config.port,
+      platform: process.platform
+    },
+    gui,
+    browser,
+    workflows: {
+      enabled: workflowStatus.enabled === true,
+      engineEnabled: workflowStatus.engineEnabled === true,
+      runCount: runs.length
+    },
+    extensions: { items:extensionItems },
+    operations: {
+      active:Number(concurrency.activeOperations ?? 0),
+      lockedKeys:Number(concurrency.lockedKeys ?? 0)
+    }
+  };
+}
+
 async function executeToolEffect(name, args) {
   if (!toolDefinition(name)) throw protocolFailure(200, -32602, 'Unknown tool');
   if (name.startsWith('delegation_')) return executeDelegationTool(name, args);
@@ -416,7 +467,8 @@ async function executeToolEffect(name, args) {
           conversationContinuation: 1,
           durableDelivery: 1,
           mutationIdempotency: 1,
-          agentExtensions: 1
+          agentExtensions: 1,
+          browserCompanionMonitor: 1
         },
         capabilityProfile: config.capabilityProfile ?? {
           id: config.instance?.profile ?? 'default',
@@ -438,6 +490,7 @@ async function executeToolEffect(name, args) {
         completionBeacon: deliveryStore.beacon(5),
         mutationIdempotency: mutationIdempotency.status(),
         agentExtensions: agentExtensions.status(),
+        browserCompanionMonitor: browserCompanionMonitor?.status() ?? { enabled:false, lastWriteAtEpochMs:0, lastError:'' },
         delegationPolicy: { ...NO_CODEX_POLICY, commanderMayLaunchCodex: codexLaunchAuthorized(ctx.config), status: delegationStatus(ctx.config) },
         powerMode: config.powerMode ?? { enabled: false },
         browserControl: { availability: BROWSER_ENABLED ? 'CHECK_browser_status' : 'DISABLED', enabled: BROWSER_ENABLED,
@@ -739,6 +792,12 @@ server.listen(config.port, config.host, async () => {
     }, null, 2) + '\n', { mode: 0o600 });
   } catch (error) {
     console.error('RUNTIME_STATE_WRITE_FAILED', error.message);
+  }
+  if (!browserCompanionMonitor) {
+    browserCompanionMonitor = startBrowserCompanionMonitor({
+      snapshot: buildBrowserMonitorSnapshot,
+      onError: error => console.error('BROWSER_COMPANION_MONITOR_FAILED', error)
+    });
   }
   console.log(`ChatGPT Remote Commander ${VERSION} listening at http://${config.host}:${config.port}/mcp`);
   console.log(`Allowed roots: ${roots.join(', ')}`);
