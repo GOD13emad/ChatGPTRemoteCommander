@@ -11,6 +11,12 @@ test('GNOME extension never creates or injects raw virtual input',()=>{
   for(const re of [/create_virtual_device\s*\(/,/notify_keyval\s*\(/,/notify_button\s*\(/,/notify_absolute_motion\s*\(/,/notify_relative_motion\s*\(/,/\bxdotool\b/i,/\bXTEST\b/i]) assert.doesNotMatch(ext,re);
   assert.match(ext,/get_current_time_roundtrip/); assert.match(ext,/GUI_INPUT_MUST_USE_MUTTER_REMOTE_DESKTOP/); assert.match(ext,/this\._service\?\.destroy\(\)/);
 });
+test('GNOME 50 compositor and monitor compatibility remains guarded',()=>{
+  assert.match(ext,/Main\.layoutManager\.monitors/);
+  assert.match(ext,/Meta\.is_wayland_compositor===undefined\|\|Meta\.is_wayland_compositor\(\)/);
+  assert.doesNotMatch(ext,/global\.display\.get_n_monitors/);
+  assert.doesNotMatch(ext,/global\.display\.get_primary_monitor/);
+});
 test('Linux helper uses Mutter RemoteDesktop with bounded per-operation release/stop',()=>{
   for(const x of ['org.gnome.Mutter.RemoteDesktop','CreateSession','Start','Stop','NotifyKeyboardKeycode','NotifyPointerButton','NotifyPointerMotionRelative','NotifyPointerAxisDiscrete','OPERATION_TIMEOUT_S','GUI_OPERATION_TIMEOUT']) assert.match(helper,new RegExp(x.replaceAll('.','\\.')));
   assert.match(helper,/for code in list\(reversed\(self\.buttons\)\)/); assert.match(helper,/for code in list\(reversed\(self\.keys\)\)/);
