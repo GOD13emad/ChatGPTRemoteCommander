@@ -1,0 +1,50 @@
+name: Linux Control Center (native preview)
+on:
+  pull_request:
+    paths:
+      - 'desktop/linux-control-center/**'
+      - '.github/workflows/linux-control-center.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  linux-gtk-center:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install native GTK4 and package validation dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-gi gir1.2-gtk-4.0 gir1.2-adw-1 desktop-file-utils
+
+      - name: Compile and independently test native UI and installer guards
+        run: |
+          set -euo pipefail
+          /usr/bin/python3 -m py_compile desktop/linux-control-center/control_center.py desktop/linux-control-center/install.py
+          /usr/bin/python3 -m unittest discover -s desktop/linux-control-center -p 'test_*.py' -v
+          /usr/bin/python3 - <<'PY'
+          import gi
+          gi.require_version('Gtk','4.0')
+          gi.require_version('Adw','1')
+          from gi.repository import Gtk, Adw
+          assert Gtk.get_major_version() == 4
+          print('GTK4_ADWAITA_NATIVE_DEPENDENCIES_PASS')
+          PY
+
+      - name: Verify read-only audit and safe installation dry run
+        run: |
+          set -euo pipefail
+          /usr/bin/python3 desktop/linux-control-center/control_center.py --audit > /tmp/rc-gtk-audit.json
+          /usr/bin/python3 - <<'PY'
+          import json
+          d=json.load(open('/tmp/rc-gtk-audit.json',encoding='utf-8'))
+          assert d['mode']=='READ_ONLY_CANDIDATE'
+          assert d['workflowControlEnabled'] is False
+          assert d['credentialAccess'] is False
+          print('OWNER_PRIVATE_READ_ONLY_ADMISSION_PASS')
+          PY
+          /usr/bin/python3 desktop/linux-control-center/install.py --dry-run
