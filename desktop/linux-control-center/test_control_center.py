@@ -37,6 +37,23 @@ class SafeMonitorTests(unittest.TestCase):
                 "gui":{"available":False,"reason":"UNVERIFIED"},
                 "browser":{"available":True},"operations":{"active":0},
                 "extensions":{"items":[]}}
+    def test_system_theme_resolution(self):
+        self.assertTrue(m.effective_system_dark("prefer-dark", "AppearanceStudio-MostWanted2005"))
+        self.assertFalse(m.effective_system_dark("prefer-light", "Yaru-dark"))
+        self.assertTrue(m.effective_system_dark("default", "Yaru-dark"))
+        self.assertFalse(m.effective_system_dark("default", "Yaru"))
+        self.assertTrue(m.effective_system_dark("default", "Yaru", "Adwaita-dark"))
+        self.assertFalse(m.effective_system_dark("default", "DARKNESS"))
+        self.assertFalse(m.effective_system_dark("", "", ""))
+
+    def test_live_os_theme_signals_are_listened_to(self):
+        source = P.read_text(encoding="utf-8")
+        self.assertIn('changed::color-scheme', source)
+        self.assertIn('changed::gtk-theme', source)
+        self.assertIn("Adw.ColorScheme.FORCE_DARK", source)
+        self.assertIn("Adw.ColorScheme.FORCE_LIGHT", source)
+        self.assertNotIn("set_string(", source)
+
     def test_fresh_monitor(self):
         self.dump(m.MONITOR,self.valid_monitor())
         s=m.monitor_status()

@@ -2,7 +2,7 @@
 
 **Status:** owner-private desktop monitoring preview. It is not a released Core upgrade, authenticated task editor, Browser-to-shell command bridge, or full project FINAL.
 
-This GTK4/Libadwaita application follows the host GNOME System Light/Dark preference without modifying browser settings. It provides tabs for Commander health, configured routing profiles, durable workflow metadata and safety/settings. It distinguishes **persisted workflow state from currently executing operations**: a RUNNING state in SQLite does not prove an active worker. No cookies, ChatGPT credentials, clipboard contents, generic shell calls or project files are read.
+This GTK4/Libadwaita application follows live GNOME color-scheme preferences and, when GNOME is Default, the effective GTK dark theme without modifying browser settings. It provides tabs for Commander health, configured routing profiles, durable workflow metadata and safety/settings. It distinguishes **persisted workflow state from currently executing operations**: a RUNNING state in SQLite does not prove an active worker. No cookies, ChatGPT credentials, clipboard contents, generic shell calls or project files are read.
 
 Security: owner-UID regular-file checks, no symlink input, bounded file/JSON sizes, monitor TTL/schema validation, canonical routing-pair validation, read-only SQLite mode=ro and PRAGMA query_only=ON, no workflow mutation, no user-supplied executable paths. Management changes need an independently qualified authenticated Core protocol; the preview does not fake their availability.
 

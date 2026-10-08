@@ -22,6 +22,20 @@ PROFILE_RE = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
 MAX_BYTES = 64 * 1024
 
 
+def effective_system_dark(preference: str, gtk_theme: str = "", gtk_override: str = "") -> bool:
+    """GNOME color-scheme has priority; in Default mode honor an explicitly
+    dark GTK theme. Do not write or change desktop preferences.
+    """
+    pref = (preference or "").strip().strip("\\'\\\"").casefold()
+    if pref == "prefer-dark":
+        return True
+    if pref == "prefer-light":
+        return False
+    selected = (gtk_override or gtk_theme or "").casefold()
+    return bool(re.search(r"(?:^|[-_: ])dark(?:$|[-_: ])", selected))
+
+
+
 def bounded_json(path: Path, limit=MAX_BYTES):
     """Read only owner-controlled regular files. Never follow symlink input."""
     try:
@@ -158,10 +172,37 @@ def run_gui():
     class Center(Adw.Application):
         def __init__(self):
             super().__init__(application_id=APP_ID, flags=Gio.ApplicationFlags.FLAGS_NONE)
-            Adw.StyleManager.get_default().set_color_scheme(Adw.ColorScheme.DEFAULT)
             self.stack = Gtk.Stack()
             self.stack.set_transition_type(Gtk.StackTransitionType.CROSSFADE)
             self.window = None
+            self._interface_settings = None
+            self.system_dark = False
+            try:
+                self._interface_settings = Gio.Settings.new("org.gnome.desktop.interface")
+                self._interface_settings.connect("changed::color-scheme", self.on_os_theme_changed)
+                self._interface_settings.connect("changed::gtk-theme", self.on_os_theme_changed)
+            except (RuntimeError, ValueError):
+                self._interface_settings = None
+            self.apply_system_theme()
+
+        def apply_system_theme(self):
+            pref = ""
+            gtk_theme = ""
+            if self._interface_settings is not None:
+                try:
+                    pref = self._interface_settings.get_string("color-scheme")
+                    gtk_theme = self._interface_settings.get_string("gtk-theme")
+                except (RuntimeError, ValueError):
+                    pref = ""
+                    gtk_theme = ""
+            self.system_dark = effective_system_dark(pref, gtk_theme, os.environ.get("GTK_THEME", ""))
+            Adw.StyleManager.get_default().set_color_scheme(
+                Adw.ColorScheme.FORCE_DARK if self.system_dark else Adw.ColorScheme.FORCE_LIGHT)
+
+        def on_os_theme_changed(self, *_args):
+            self.apply_system_theme()
+            if self.window is not None:
+                self.refresh()
 
         def do_activate(self):
             if self.window:
@@ -268,8 +309,10 @@ def run_gui():
                      "Metadata is read-only. RUNNING in the store does not prove a current worker lease.")
             for item in w:
                 self.row(self.page_tasks,item["id"],f"{item['state']} · revision {item['revision']}")
-            self.row(self.page_settings,"Appearance","Follows GNOME System Light/Dark automatically",
-                     "Provided by Libadwaita. System overrides and accessibility settings remain authoritative.")
+            self.row(self.page_settings,"Appearance",
+                     f"System theme: {'Dark' if self.system_dark else 'Light'}",
+                     "GNOME color-scheme takes priority; when Default, honor the effective GTK dark theme. "
+                     "Changes are observed without modifying user preferences.")
             self.row(self.page_settings,"Operations / Profile controls","Not enabled in this preview",
                      "A local unauthenticated JSON file or Browser-origin JavaScript must never authorize mutations. Use the connected Core tools with a bound session.")
             self.row(self.page_settings,"Data protection","No network, token inspection, cookie access, or arbitrary shell commands",
