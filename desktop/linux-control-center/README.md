@@ -24,3 +24,11 @@ Installer rejects root, unknown ownership, symlinks, changed source SHA, unknown
 Final acceptance needs real host/owner visual evidence of Overview, Profiles, Tasks, Settings, theme switching, icon, keyboard focus and logout/power return only when permitted. This preview does not close GUI emergency STOP, immutable installer, privileged recovery or ChatGPT-tab delivery gates.
 
 Rollback: only files listed in the verified private install-receipt.json, after exact SHA and owner review. Never delete other applications, historical backups, evidence, or entire user directories.
+
+## Local AI follow-up (Emad Linux, R3 candidate)
+
+The Tasks tab also displays **owner-private local Autofollow status** where that pilot exists. It reads only bounded, owner-owned regular files for the installed user timer and private receipt, verifies SHA256 against the recorded install receipt and cumulative Brain, and displays only the last report ID and model status. The model's untrusted plan text, prompts, workflow payloads and credentials are never rendered as commands or exported.
+
+`CONFIGURED_SOURCE_VERIFIED` means the local timer *files and private receipts* match; it does not prove the systemd timer is currently firing. Next/last actual timer execution must be established from systemd separately. This UI does not start/stop systemd units, execute model advice, mark tasks complete, clear GUI-uncertain states or send ChatGPT messages. A new model proposal is **not** progress or delivery until independently verified. The first independent timer run remains an open gate.
+
+R3 source SHA and tests belong to the pending CI/PR; do not overwrite the R2 owner installation until new CI, rollback and visual acceptance are independently verified.

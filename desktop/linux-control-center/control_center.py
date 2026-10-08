@@ -20,6 +20,8 @@ ROUTING = STATE / "routing"
 WORKFLOWS = STATE / "instances/default/workflows/workflows.sqlite"
 PROFILE_RE = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
 MAX_BYTES = 64 * 1024
+AUTOFOLLOW_ROOT = HOME / "source/repos/RC_AUTOFOLLOW_R1"
+AUTOFOLLOW_UNITS = HOME / ".config/systemd/user"
 
 
 def effective_system_dark(preference: str, gtk_theme: str = "", gtk_override: str = "") -> bool:
@@ -145,6 +147,67 @@ def workflows(limit=300):
     return records
 
 
+
+def autofollow_status(root=None, unit_dir=None):
+    """Show only explicit owner-private receipt metadata. Never trust plan text
+    as an action and never infer a live systemd process from old install logs.
+    """
+    import hashlib
+    project = Path(root) if root is not None else AUTOFOLLOW_ROOT
+    units = Path(unit_dir) if unit_dir is not None else AUTOFOLLOW_UNITS
+    fallback = {"state": "NOT_CONFIGURED_OR_UNVERIFIED", "modelStatus": "UNVERIFIED",
+                "timerLiveState": "UNVERIFIED_NO_SYSTEMD_QUERY", "workflowMutation": False,
+                "chatDeliveryBound": False, "lastReceiptId": "NONE"}
+    try:
+        if not project.is_dir() or project.is_symlink() or project.stat().st_uid != os.getuid():
+            return fallback
+        receipt = bounded_json(project / "INSTALL_R2_RECEIPT.json", 8192)
+        brain = bounded_json(project / "BRAIN_VERIFY_R1.json", 4096)
+        if not receipt or not brain:
+            return fallback
+        if receipt.get("status") != "PASS_USER_ONLY_AUTOFOLLOW_TIMER_R2":
+            return fallback
+        if receipt.get("workflowMutation") is not False or receipt.get("chatAccountBoundDelivery") is not False:
+            return fallback
+        expected = receipt.get("unitSha256")
+        if not isinstance(expected, dict):
+            return fallback
+        for name in ("rc-autofollow.service", "rc-autofollow.timer"):
+            p = units / name
+            if p.is_symlink() or not p.is_file() or p.stat().st_uid != os.getuid():
+                return fallback
+            if p.stat().st_mode & 0o022 or p.stat().st_size > 8192:
+                return fallback
+            actual = hashlib.sha256(p.read_bytes()).hexdigest()
+            if actual != expected.get(name):
+                return fallback
+        zip_path = project / "BRAIN_R1.zip"
+        if zip_path.is_symlink() or not zip_path.is_file() or zip_path.stat().st_uid != os.getuid():
+            return fallback
+        if zip_path.stat().st_size > 1_000_000:
+            return fallback
+        if brain.get("status") != "PASS_R1_CUMULATIVE_AUTOFOLLOW_ACCOUNT_TRANSFER":
+            return fallback
+        if hashlib.sha256(zip_path.read_bytes()).hexdigest() != brain.get("sha256"):
+            return fallback
+        report_dir = project / "RESULTS"
+        if report_dir.is_symlink() or not report_dir.is_dir():
+            return {"state": "CONFIGURED_NO_REPORT", **{k:v for k,v in fallback.items() if k!="state"}}
+        report = bounded_json(report_dir / "CURRENT.json", 16384)
+        base = {"state": "CONFIGURED_SOURCE_VERIFIED",
+                "modelStatus": "UNVERIFIED", "timerLiveState": "UNVERIFIED_NO_SYSTEMD_QUERY",
+                "workflowMutation": False, "chatDeliveryBound": False, "lastReceiptId": "NONE"}
+        if report and report.get("schema") == 1 and report.get("noActionsExecuted") is True and report.get("chatDelivery") is False:
+            ident = report.get("id")
+            value = report.get("modelStatus")
+            if isinstance(ident,str) and re.fullmatch(r"RUN_[0-9]{8}T[0-9]{6}Z",ident):
+                base["lastReceiptId"] = ident
+            if isinstance(value,str) and re.fullmatch(r"(?:PASS_PROPOSAL_ONLY|UNVERIFIED_[A-Za-z0-9_]{1,48}|SKIPPED_[A-Za-z0-9_]{1,48})",value):
+                base["modelStatus"] = value
+        return base
+    except (OSError, ValueError, TypeError):
+        return fallback
+
 def audit():
     data = monitor_status()
     result = {
@@ -158,6 +221,8 @@ def audit():
         "durableRunningIsNotActive": True,
         "workflowControlEnabled": False,
         "credentialAccess": False,
+        "localAIFollowup": autofollow_status()["state"],
+        "localAIWorkflowMutation": False,
     }
     print(json.dumps(result, ensure_ascii=False))
     return 0
@@ -304,6 +369,11 @@ def run_gui():
             for p in rows:
                 self.row(self.page_profiles,p["id"],f"Core {p['version']} · port {p['port']}",
                          f"Generation {p['generation']} · {p['root']}")
+            ai = autofollow_status()
+            self.row(self.page_tasks,"Local AI Follow-up",
+                     ai["state"] + " · " + ai["modelStatus"],
+                     "Timer active state not proven by private files; last receipt " +
+                     ai["lastReceiptId"] + ". Planning only: no task mutation, no ChatGPT delivery.")
             w=workflows()
             self.row(self.page_tasks,"Durable workflows",str(len(w)),
                      "Metadata is read-only. RUNNING in the store does not prove a current worker lease.")
