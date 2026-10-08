@@ -52,7 +52,7 @@ jobs:
             Write-Output ('HELPER_SHA256='+$name+':'+$expected.ToLowerInvariant())
           }
           $source=Get-Content desktop/RemoteCommanderDashboard/Program.cs -Raw
-          foreach($token in @('SystemDark()','Theme: System','ToolButton("Manage Profiles"','ToolButton("Workflow Monitor"')){
+          foreach($token in @('SystemDark()','Theme: System','ToolButton("Profiles & Access"','ToolButton("Operations Monitor"')){
             if(-not $source.Contains($token)){throw ('DASHBOARD_CONTRACT_MISSING='+$token)}
           }
           Write-Output 'DASHBOARD_MANAGEMENT_AND_THEME_CONTRACT_PASS'

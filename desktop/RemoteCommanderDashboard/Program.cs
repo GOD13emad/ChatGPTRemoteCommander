@@ -149,11 +149,11 @@ internal sealed class DashboardForm : Form
         themeButton.AccessibleDescription = "Cycle System, Light and Dark. System tracks Windows app theme.";
         actions.Controls.Add(themeButton);
         actions.Controls.Add(Button("Refresh", async (_, _) => await RefreshAsync()));
-        actions.Controls.Add(ToolButton("Add Profile", "profile-enrollment-windows.ps1",
+        actions.Controls.Add(ToolButton("Add Profiles", "profile-enrollment-windows.ps1",
             "Owner-authorized profile enrollment with existing Core validation"));
-        actions.Controls.Add(ToolButton("Manage Profiles", "profile-manager-windows.ps1",
+        actions.Controls.Add(ToolButton("Profiles & Access", "profile-manager-windows.ps1",
             "Manage profile connection and permissions using the installed native tool"));
-        actions.Controls.Add(ToolButton("Workflow Monitor", "operations-monitor-windows.ps1",
+        actions.Controls.Add(ToolButton("Operations Monitor", "operations-monitor-windows.ps1",
             "Read-only durable task status, revision and diagnostic evidence"));
         actions.Controls.Add(ToolButton("Admin Runtime", "admin-runtime-windows.ps1",
             "Existing user-visible Windows privilege and boot recovery diagnostics"));
