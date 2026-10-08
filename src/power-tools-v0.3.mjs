@@ -13,6 +13,7 @@ import { withPathLocks } from './locks.mjs';
 import { guardFileWrite } from './file-write-guard.mjs';
 import { IS_WINDOWS, defaultBackupRoot, expandPathValue, shellName, shellSpec, spawnShell, terminateProcessTree } from './platform.mjs';
 import { assertEnumerationScope, boundedSearchVisitLimit } from './filesystem-enumeration-guard.mjs';
+import { assertSafeSoftwareInventoryCommand } from './software-inventory-guard.mjs';
 import { refreshCodexPluginCache } from './codex-maintenance.mjs';
 
 const terminals = new Map();
@@ -236,6 +237,7 @@ function checkShell(ctx, command) {
   if (cfg.allowShell !== true) throw new Error('shell execution is disabled');
   if (typeof command !== 'string' || command.trim().length === 0) throw new Error('command is required');
   assertNoDirectLinuxGuiMutation(command);
+  assertSafeSoftwareInventoryCommand(command);
   for (const raw of cfg.blockedShellPatterns || []) {
     const pattern = new RegExp(raw, 'i');
     if (pattern.test(command)) throw new Error(`command blocked by policy: ${raw}`);

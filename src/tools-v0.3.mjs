@@ -17,6 +17,7 @@ import {
 } from './security-v0.3.mjs';
 import { resolveExistingTarget, writeAnyFile } from './power-tools-v0.3.mjs';
 import { assertEnumerationScope } from './filesystem-enumeration-guard.mjs';
+import { assertSafeSoftwareInventoryInvocation } from './software-inventory-guard.mjs';
 
 export function sha256(data) {
   return createHash('sha256').update(data).digest('hex');
@@ -219,6 +220,7 @@ export async function prepareProjectCommand(ctx, input) {
   if (!info.isDirectory()) throw new Error('cwd is not a directory');
   const args = validateCommandArgs(program, input.args ?? [], cwd, ctx.roots, { fullFilesystem });
   await assertNoCodexDelegatingScript(program, args, cwd, { allowCodex });
+  await assertSafeSoftwareInventoryInvocation(program, args, cwd);
   const requested = Number(input.timeoutMs ?? ctx.config.maxCommandMs);
   const timeoutMs = Math.max(1000, Math.min(requested, ctx.config.maxCommandMs));
   return { file: program, args, cwd, timeoutMs, outputLimit: 262144, fullFilesystem };
