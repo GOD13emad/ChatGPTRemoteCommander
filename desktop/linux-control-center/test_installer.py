@@ -24,14 +24,14 @@ class InstallerTest(unittest.TestCase):
         msg=json.loads(r.stdout)
         self.assertEqual(msg["status"],"PASS_OWNER_PRIVATE_CONTROL_CENTER_INSTALL")
         app=self.home/".local/share/remote-commander-control-center/control_center.py"
-        self.assertEqual(sha(app),"22e8716d312726fec90bd0ab9cc14787ef1b6f4a71311782bb69e40ad7d10f52")
+        self.assertEqual(sha(app),"40f11c75f6be87e81f789f0dab3738d4eca35bd750c37595e8e114a69356a64c")
         p=self.go("--verify")
         self.assertEqual(p.returncode,0,p.stderr)
         self.assertEqual(json.loads(p.stdout)["status"],"VERIFIED")
         again=self.go("--install")
         self.assertEqual(again.returncode,3)
         self.assertIn("UNSAFE_RERUN",again.stderr)
-        self.assertEqual(sha(app),"22e8716d312726fec90bd0ab9cc14787ef1b6f4a71311782bb69e40ad7d10f52")
+        self.assertEqual(sha(app),"40f11c75f6be87e81f789f0dab3738d4eca35bd750c37595e8e114a69356a64c")
     def test_unknown_preexisting_icon_is_preserved(self):
         target=self.home/".local/share/icons/hicolor/512x512/apps/remote-commander-control-center.png"
         target.parent.mkdir(parents=True)

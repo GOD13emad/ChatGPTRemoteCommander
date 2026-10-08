@@ -54,6 +54,64 @@ class SafeMonitorTests(unittest.TestCase):
         self.assertIn("Adw.ColorScheme.FORCE_LIGHT", source)
         self.assertNotIn("set_string(", source)
 
+    def test_future_core_telemetry_is_trustworthy_and_bounded(self):
+        record=self.valid_monitor()
+        record["workflows"]={"automaticExecution":False,"runnerConfigured":True,
+                             "persistedNonterminal":17,"currentLeases":0,"reconciliationRequired":6}
+        record["delivery"]={"available":True,"pending":61,"deadLetter":0,
+                            "transportReceipts":83,"authenticatedChatBound":False,
+                            "privateCorrelation":"SECRET"}
+        self.dump(m.MONITOR,record)
+        state=m.monitor_status()
+        self.assertEqual(state["state"],"CONNECTED")
+        self.assertEqual(state["automaticExecution"],"NO")
+        self.assertEqual(state["runnerConfigured"],"YES")
+        self.assertEqual(state["persistedNonterminal"],17)
+        self.assertEqual(state["currentLeases"],0)
+        self.assertEqual(state["reconciliationRequired"],6)
+        self.assertEqual(state["deliveryPending"],61)
+        self.assertEqual(state["authenticatedChatBound"],"NO")
+        self.assertNotIn("privateCorrelation",state)
+
+    def test_old_core_lacks_counters_without_fabricating_zero(self):
+        self.dump(m.MONITOR,self.valid_monitor())
+        state=m.monitor_status()
+        for field in ("persistedNonterminal","currentLeases","deliveryPending","reconciliationRequired"):
+            self.assertIsNone(state[field])
+            self.assertEqual(m.display_count(state[field]),"UNVERIFIED")
+        self.assertEqual(state["automaticExecution"],"UNVERIFIED")
+        self.assertEqual(state["deliveryState"],"UNVERIFIED")
+
+    def test_invalid_and_boolean_counts_are_never_reported(self):
+        snap=self.valid_monitor()
+        snap["workflows"]={"persistedNonterminal":True,"currentLeases":-1,
+                           "reconciliationRequired":1000001,"automaticExecution":"true"}
+        snap["delivery"]={"available":True,"pending":False,"deadLetter":"0",
+                          "authenticatedChatBound":"true"}
+        self.dump(m.MONITOR,snap)
+        state=m.monitor_status()
+        for field in ("persistedNonterminal","currentLeases","reconciliationRequired","deliveryPending","deliveryDeadLetter"):
+            self.assertIsNone(state[field])
+        self.assertEqual(state["authenticatedChatBound"],"UNVERIFIED")
+        self.assertEqual(state["automaticExecution"],"UNVERIFIED")
+
+    def test_untrusted_and_expired_data_do_not_export_counts(self):
+        stale=self.valid_monitor(adjust=-100000)
+        stale["workflows"]={"currentLeases":9}
+        stale["delivery"]={"available":True,"pending":41}
+        self.dump(m.MONITOR,stale)
+        state=m.monitor_status()
+        self.assertEqual(state["state"],"DISCONNECTED")
+        self.assertNotIn("deliveryPending",state)
+        self.assertNotIn("currentLeases",state)
+
+    def test_display_limits_and_read_only_gui_contract(self):
+        source=P.read_text(encoding="utf8")
+        self.assertIn("for item in w[:25]",source)
+        self.assertIn("Completion delivery backlog",source)
+        self.assertIn("Authenticated ChatGPT delivery",source)
+        self.assertIn('"workflowControlEnabled": False',source)
+
     def test_fresh_monitor(self):
         self.dump(m.MONITOR,self.valid_monitor())
         s=m.monitor_status()

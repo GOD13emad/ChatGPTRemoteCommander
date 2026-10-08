@@ -24,3 +24,14 @@ Installer rejects root, unknown ownership, symlinks, changed source SHA, unknown
 Final acceptance needs real host/owner visual evidence of Overview, Profiles, Tasks, Settings, theme switching, icon, keyboard focus and logout/power return only when permitted. This preview does not close GUI emergency STOP, immutable installer, privileged recovery or ChatGPT-tab delivery gates.
 
 Rollback: only files listed in the verified private install-receipt.json, after exact SHA and owner review. Never delete other applications, historical backups, evidence, or entire user directories.
+
+
+## R3 telemetry contract — forward compatible, read only
+The owner-private UI can show automatic runner enablement, currently active
+leases, persisted nonterminal workflow metadata, reconciliation requirements,
+and durable-delivery backlog when a future Core monitor includes these values.
+Core v0.10.20 does not export all these fields; the UI then displays
+UNVERIFIED instead of inventing zero or successful ChatGPT delivery.
+No task/profile mutation, receipt ACK, cookie read or scheduler change occurs.
+The display samples at most 300 stored workflows and renders at most 25 cards.
+Acceptance requires exact Core PR #149 compatibility plus actual owner UI testing.
