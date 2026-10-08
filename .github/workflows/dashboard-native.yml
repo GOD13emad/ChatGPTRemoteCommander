@@ -1,0 +1,66 @@
+name: Dashboard native Windows
+on:
+  pull_request:
+    paths:
+      - 'desktop/RemoteCommanderDashboard/**'
+      - '.github/workflows/dashboard-native.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  dashboard-native:
+    runs-on: windows-2022
+    timeout-minutes: 20
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install .NET 10 toolchain
+        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Build isolated standalone Windows dashboard
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          dotnet publish desktop/RemoteCommanderDashboard/RemoteCommanderDashboard.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:DebugType=None -p:DebugSymbols=false -p:Version=0.10.20 -o .qa/dashboard
+          if($LASTEXITCODE -ne 0){ throw 'DASHBOARD_BUILD_FAILED' }
+          $exe=Join-Path $PWD '.qa/dashboard/RemoteCommander.exe'
+          if(-not(Test-Path -LiteralPath $exe -PathType Leaf)){ throw 'DASHBOARD_EXE_MISSING' }
+          Write-Output ('DASHBOARD_EXE_SHA256='+(Get-FileHash -Algorithm SHA256 $exe).Hash.ToLowerInvariant())
+
+      - name: Verify compiled management helper scripts and identity
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $list=@('profile-manager-windows.ps1','profile-enrollment-windows.ps1','operations-monitor-windows.ps1','admin-runtime-windows.ps1')
+          foreach($name in $list){
+            $source=Join-Path 'desktop' $name
+            $dest=Join-Path '.qa/dashboard' $name
+            if(-not(Test-Path $source -PathType Leaf)){throw ('MISSING_HELPER='+$name)}
+            $tokens=$null
+            $errors=$null
+            [Management.Automation.Language.Parser]::ParseFile((Resolve-Path $source).Path,[ref]$tokens,[ref]$errors)|Out-Null
+            if(@($errors).Count -gt 0){throw ('INVALID_HELPER='+$name)}
+            if(Test-Path $dest){throw ('UNEXPECTED_HELPER_DEST='+$name)}
+            Copy-Item $source $dest -ErrorAction Stop
+            $expected=(Get-FileHash -Algorithm SHA256 $source).Hash
+            if((Get-FileHash -Algorithm SHA256 $dest).Hash -ne $expected){throw ('HELPER_SHA_CHANGED='+$name)}
+            Write-Output ('HELPER_SHA256='+$name+':'+$expected.ToLowerInvariant())
+          }
+          $source=Get-Content desktop/RemoteCommanderDashboard/Program.cs -Raw
+          foreach($token in @('SystemDark()','Theme: System','ToolButton("Manage Profiles"','ToolButton("Workflow Monitor"')){
+            if(-not $source.Contains($token)){throw ('DASHBOARD_CONTRACT_MISSING='+$token)}
+          }
+          Write-Output 'DASHBOARD_MANAGEMENT_AND_THEME_CONTRACT_PASS'
+
+      - name: Preserve unsigned staged dashboard candidate
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: remote-commander-dashboard-preview-win-x64
+          path: .qa/dashboard/
+          retention-days: 7
+          if-no-files-found: error

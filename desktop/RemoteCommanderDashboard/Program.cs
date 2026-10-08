@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using Microsoft.Win32;
 using System.Drawing;
 using System.Net.Http;
 using System.Text.Json;
@@ -38,12 +39,84 @@ internal sealed class DashboardForm : Form
     };
     private readonly HttpClient http = new() { Timeout = TimeSpan.FromSeconds(1.5) };
 
+    // User-level theme preference. Default is System; a change to the Windows
+    // AppsUseLightTheme registry value is observed without a Browser reload.
+    private int themeMode; // 0 System, 1 Light, 2 Dark (session scoped)
+    private bool dark;
+    private Panel? headerPanel;
+    private FlowLayoutPanel? actionsPanel;
+    private Label? titleLabel;
+    private Button? themeButton;
+    private readonly System.Windows.Forms.Timer themeTimer = new() { Interval = 3000 };
+
+    private static bool SystemDark()
+    {
+        try
+        {
+            using var key = Registry.CurrentUser.OpenSubKey(
+                @"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize", false);
+            return key?.GetValue("AppsUseLightTheme") is int value && value == 0;
+        }
+        catch { return false; } // legible light fallback when the OS key is missing
+    }
+
+    private Button ToolButton(string text, string file, string description)
+    {
+        var button = Button(text, (_, _) => LaunchPowerShellTool(file, text));
+        button.Enabled = ToolInstalled(file);
+        button.AccessibleDescription = button.Enabled ? description : description + " — missing installed helper";
+        if (!button.Enabled) button.Text = text + " (not installed)";
+        return button;
+    }
+
+    private void ApplyTheme(bool force = false)
+    {
+        var next = themeMode == 2 || (themeMode == 0 && SystemDark());
+        if (!force && next == dark) return;
+        dark = next;
+        var canvas = dark ? Color.FromArgb(16, 24, 39) : Color.FromArgb(246, 248, 252);
+        var panel = dark ? Color.FromArgb(28, 40, 58) : Color.White;
+        var text = dark ? Color.FromArgb(242, 247, 252) : Color.FromArgb(21, 35, 55);
+        var muted = dark ? Color.FromArgb(183, 203, 224) : Color.FromArgb(80, 99, 122);
+        var buttonBg = dark ? Color.FromArgb(39, 57, 79) : Color.FromArgb(233, 240, 250);
+        var accent = dark ? Color.FromArgb(139, 191, 255) : Color.FromArgb(32, 96, 211);
+        BackColor = canvas;
+        ForeColor = text;
+        cards.BackColor = canvas;
+        summary.ForeColor = muted;
+        if (headerPanel is not null) headerPanel.BackColor = canvas;
+        if (actionsPanel is not null)
+        {
+            actionsPanel.BackColor = canvas;
+            foreach (var control in actionsPanel.Controls.OfType<Button>())
+            {
+                control.BackColor = buttonBg;
+                control.ForeColor = control.Enabled ? text : muted;
+                control.FlatAppearance.BorderColor = accent;
+            }
+        }
+        if (titleLabel is not null) titleLabel.ForeColor = text;
+        if (themeButton is not null)
+            themeButton.Text = themeMode == 0 ? (dark ? "Theme: System (Dark)" : "Theme: System (Light)")
+                             : themeMode == 1 ? "Theme: Light" : "Theme: Dark";
+        foreach (var card in cards.Controls.OfType<Panel>())
+        {
+            card.BackColor = panel;
+            var labels = card.Controls.OfType<Label>().ToArray();
+            if (labels.Length > 0) labels[0].ForeColor = labels[0].Text.Contains("● ONLINE", StringComparison.Ordinal) ? (dark ? Color.FromArgb(117, 228, 171) : Color.FromArgb(13, 123, 74)) : (dark ? Color.FromArgb(255, 191, 123) : Color.FromArgb(165, 87, 29));
+            if (labels.Length > 1) labels[1].ForeColor = text;
+            if (labels.Length > 2) labels[2].ForeColor = muted;
+            if (labels.Length > 3) labels[3].ForeColor = muted;
+        }
+        Invalidate(true);
+    }
+
     public DashboardForm()
     {
         Text = "Remote Commander";
-        Width = 940;
-        Height = 650;
-        MinimumSize = new Size(760, 520);
+        Width = 1100;
+        Height = 740;
+        MinimumSize = new Size(850, 560);
         StartPosition = FormStartPosition.CenterScreen;
         BackColor = Color.FromArgb(7, 22, 47);
         ForeColor = Color.White;
@@ -66,30 +139,42 @@ internal sealed class DashboardForm : Form
         var actions = new FlowLayoutPanel
         {
             Dock = DockStyle.Top,
-            Height = 58,
+            Height = 110,
+            AutoScroll = true,
+            WrapContents = true,
             Padding = new Padding(20, 8, 20, 8),
             FlowDirection = FlowDirection.LeftToRight
         };
+        themeButton = Button("Theme: System", (_, _) => { themeMode = (themeMode + 1) % 3; ApplyTheme(true); });
+        themeButton.AccessibleDescription = "Cycle System, Light and Dark. System tracks Windows app theme.";
+        actions.Controls.Add(themeButton);
         actions.Controls.Add(Button("Refresh", async (_, _) => await RefreshAsync()));
+        actions.Controls.Add(ToolButton("Add Profile", "profile-enrollment-windows.ps1",
+            "Owner-authorized profile enrollment with existing Core validation"));
+        actions.Controls.Add(ToolButton("Manage Profiles", "profile-manager-windows.ps1",
+            "Manage profile connection and permissions using the installed native tool"));
+        actions.Controls.Add(ToolButton("Workflow Monitor", "operations-monitor-windows.ps1",
+            "Read-only durable task status, revision and diagnostic evidence"));
+        actions.Controls.Add(ToolButton("Admin Runtime", "admin-runtime-windows.ps1",
+            "Existing user-visible Windows privilege and boot recovery diagnostics"));
+        actions.Controls.Add(Button("Browser", (_, _) => LaunchBrowser()));
         actions.Controls.Add(Button("Open Logs", (_, _) => OpenPath(Path.Combine(stateRoot, "update-logs"))));
         actions.Controls.Add(Button("Open Data", (_, _) => OpenPath(stateRoot)));
-        if (ToolInstalled("profile-enrollment-windows.ps1"))
-            actions.Controls.Add(Button("Add Profiles", (_, _) => LaunchPowerShellTool("profile-enrollment-windows.ps1", "Profile Setup")));
-        if (ToolInstalled("profile-manager-windows.ps1"))
-            actions.Controls.Add(Button("Profiles & Access", (_, _) => LaunchPowerShellTool("profile-manager-windows.ps1", "Profiles & Access")));
-        if (ToolInstalled("operations-monitor-windows.ps1"))
-            actions.Controls.Add(Button("Operations Monitor", (_, _) => LaunchPowerShellTool("operations-monitor-windows.ps1", "Operations Monitor")));
-        if (ToolInstalled("admin-runtime-windows.ps1"))
-            actions.Controls.Add(Button("Admin Runtime", (_, _) => LaunchPowerShellTool("admin-runtime-windows.ps1", "Admin Runtime")));
-        actions.Controls.Add(Button("Browser", (_, _) => LaunchBrowser()));
         actions.Controls.Add(Button("Copy Diagnostics", (_, _) => CopyDiagnostics()));
 
         Controls.Add(cards);
         Controls.Add(actions);
         Controls.Add(header);
+        headerPanel = header;
+        titleLabel = title;
+        actionsPanel = actions;
+        themeTimer.Tick += (_, _) => ApplyTheme();
+        FormClosed += (_, _) => themeTimer.Stop();
 
         Shown += async (_, _) =>
         {
+            ApplyTheme(true);
+            themeTimer.Start();
             await RefreshAsync();
             LaunchPendingProfileOnboarding();
         };
@@ -138,6 +223,7 @@ internal sealed class DashboardForm : Form
                 ? "No routing profiles discovered."
                 : $"{profiles.Count} profile(s) • read-only dashboard • {Environment.MachineName}";
             cards.Controls.AddRange(rendered.ToArray());
+            ApplyTheme(true);
         }
         finally
         {
