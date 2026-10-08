@@ -56,6 +56,51 @@ def bounded_json(path: Path, limit=MAX_BYTES):
         return None
 
 
+def valid_count(data, name):
+    """Unknown, oversized, bool and invalid counts remain UNVERIFIED, never zero."""
+    if not isinstance(data, dict):
+        return None
+    value = data.get(name)
+    return value if type(value) is int and 0 <= value <= 1000000 else None
+
+
+def bool_state(data, name):
+    if not isinstance(data, dict):
+        return "UNVERIFIED"
+    if data.get(name) is True:
+        return "YES"
+    if data.get(name) is False:
+        return "NO"
+    return "UNVERIFIED"
+
+
+def optional_telemetry(snapshot):
+    """Only future Core fields are accepted; no inferred worker/chat delivery."""
+    w = snapshot.get("workflows")
+    d = snapshot.get("delivery")
+    if not isinstance(w, dict):
+        w = {}
+    if not isinstance(d, dict):
+        d = {}
+    has_delivery = d.get("available") is True
+    return {
+        "automaticExecution": bool_state(w, "automaticExecution"),
+        "runnerConfigured": bool_state(w, "runnerConfigured"),
+        "persistedNonterminal": valid_count(w, "persistedNonterminal"),
+        "currentLeases": valid_count(w, "currentLeases"),
+        "reconciliationRequired": valid_count(w, "reconciliationRequired"),
+        "deliveryState": "AVAILABLE" if has_delivery else "UNVERIFIED",
+        "deliveryPending": valid_count(d,"pending") if has_delivery else None,
+        "deliveryDeadLetter": valid_count(d,"deadLetter") if has_delivery else None,
+        "transportReceipts": valid_count(d,"transportReceipts") if has_delivery else None,
+        "authenticatedChatBound": bool_state(d, "authenticatedChatBound") if has_delivery else "UNVERIFIED"
+    }
+
+
+def display_count(value):
+    return str(value) if type(value) is int and 0 <= value <= 1000000 else "UNVERIFIED"
+
+
 def monitor_status():
     m = bounded_json(MONITOR, 16384)
     if not m or m.get("schema") != 1 or m.get("kind") != "COMMANDER_LIVE_MONITOR":
@@ -80,6 +125,7 @@ def monitor_status():
         "browser": "READY" if (m.get("browser") or {}).get("available") is True else "UNAVAILABLE",
         "activeOperations": operations.get("active", 0),
         "extensions": len((m.get("extensions") or {}).get("items") or []),
+        **optional_telemetry(m),
     }
 
 
@@ -294,8 +340,13 @@ def run_gui():
             self.row(self.page_overview,"Browser and Extensions",
                      f"Browser {m.get('browser','UNVERIFIED')} · Extensions {m.get('extensions','?')}")
             self.row(self.page_overview,"Active operations",
-                     str(m.get("activeOperations","UNVERIFIED")),
-                     "Active operations are not durable nonterminal workflow records.")
+                     display_count(m.get("activeOperations")),
+                     "Currently active Core operations, not durable RUNNING records.")
+            self.row(self.page_overview,"Workflow engine",
+                     f"Automatic execution: {m.get('automaticExecution','UNVERIFIED')} · "
+                     f"Runner configured: {m.get('runnerConfigured','UNVERIFIED')} · "
+                     f"Leases: {display_count(m.get('currentLeases'))}",
+                     "Absent or stale telemetry stays UNVERIFIED; persisted RUNNING never proves execution.")
             rows=profiles()
             self.row(self.page_profiles,"Profiles",str(len(rows)),
                      "Management actions require a verified, owner-authorized Core management channel.")
@@ -305,10 +356,28 @@ def run_gui():
                 self.row(self.page_profiles,p["id"],f"Core {p['version']} · port {p['port']}",
                          f"Generation {p['generation']} · {p['root']}")
             w=workflows()
-            self.row(self.page_tasks,"Durable workflows",str(len(w)),
-                     "Metadata is read-only. RUNNING in the store does not prove a current worker lease.")
-            for item in w:
+            self.row(self.page_tasks,"Durable workflows (bounded sample)",str(len(w)),
+                     "Up to 300 stored records inspected. This may not be the database total; no worker activity is inferred.")
+            self.row(self.page_tasks,"Persisted nonterminal records",
+                     display_count(m.get("persistedNonterminal")),
+                     "Stored non-final records are not a live queue or running process.")
+            self.row(self.page_tasks,"Reconciliation required",
+                     display_count(m.get("reconciliationRequired")),
+                     "Independent evidence is needed before retrying any uncertain effect.")
+            self.row(self.page_tasks,"Completion delivery backlog",
+                     f"Telemetry: {m.get('deliveryState','UNVERIFIED')} · "
+                     f"Pending: {display_count(m.get('deliveryPending'))} · "
+                     f"Dead letter: {display_count(m.get('deliveryDeadLetter'))}",
+                     "Pending receipts are not proof that a ChatGPT conversation received them.")
+            self.row(self.page_tasks,"Authenticated ChatGPT delivery",
+                     m.get("authenticatedChatBound","UNVERIFIED"),
+                     "Trusted-profile routing is not authenticated ChatGPT account/session identity.")
+            for item in w[:25]:
                 self.row(self.page_tasks,item["id"],f"{item['state']} · revision {item['revision']}")
+            if len(w)>25:
+                self.row(self.page_tasks,"More stored records",
+                         f"Showing 25 of {len(w)} sampled records",
+                         "Use authorized Core workflow tools for scoped details; no automatic tasks are started.")
             self.row(self.page_settings,"Appearance",
                      f"System theme: {'Dark' if self.system_dark else 'Light'}",
                      "GNOME color-scheme takes priority; when Default, honor the effective GTK dark theme. "
