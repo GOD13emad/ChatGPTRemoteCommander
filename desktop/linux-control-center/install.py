@@ -6,7 +6,7 @@ from pathlib import Path
 ROOT=Path(__file__).resolve().parent
 SRC=ROOT/"control_center.py"
 ICON_SRC=ROOT/"assets/logo.png"
-SRC_SHA="22e8716d312726fec90bd0ab9cc14787ef1b6f4a71311782bb69e40ad7d10f52"
+SRC_SHA="ee23db980da38a5cea2c08da117e406e1dc6e7bfa3672e13493870bf77975751"
 ICON_SHA="d724415693a4a4da8c20a065db978467ae979714d9b0559ace7dc33035461195"
 APP_ID="io.github.god13emad.RemoteCommander.ControlCenter"
 HOME=Path.home()

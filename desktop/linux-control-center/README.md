@@ -4,6 +4,8 @@
 
 This GTK4/Libadwaita application follows live GNOME color-scheme preferences and, when GNOME is Default, the effective GTK dark theme without modifying browser settings. It provides tabs for Commander health, configured routing profiles, durable workflow metadata and safety/settings. It distinguishes **persisted workflow state from currently executing operations**: a RUNNING state in SQLite does not prove an active worker. No cookies, ChatGPT credentials, clipboard contents, generic shell calls or project files are read.
 
+The Overview panel can additionally display optional private Core workflow runner and delivery backlog counters: persisted nonterminal, current leases, reconciliation required, automaticExecution, and pending/dead-letter. On accepted Core v0.10.20 those newer fields are unavailable, so it explicitly says UNVERIFIED / NOT EXPOSED rather than reporting fake zeros, work running or delivered chat. UI displays no user token or raw workflow content and never acknowledges/replays deliveries. Source dependency: draft Core monitor PR #149; preview remains read-only until independently qualified authenticated Core IPC.
+
 Security: owner-UID regular-file checks, no symlink input, bounded file/JSON sizes, monitor TTL/schema validation, canonical routing-pair validation, read-only SQLite mode=ro and PRAGMA query_only=ON, no workflow mutation, no user-supplied executable paths. Management changes need an independently qualified authenticated Core protocol; the preview does not fake their availability.
 
 ## Baseline and installation

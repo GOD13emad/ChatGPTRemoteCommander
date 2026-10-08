@@ -22,6 +22,13 @@ PROFILE_RE = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
 MAX_BYTES = 64 * 1024
 
 
+def safe_monitor_count(value):
+    # Do not confuse missing data, booleans, floats and negative values with 0.
+    return min(value, 1_000_000) if type(value) is int and value >= 0 else None
+
+
+
+
 def effective_system_dark(preference: str, gtk_theme: str = "", gtk_override: str = "") -> bool:
     """GNOME color-scheme has priority; in Default mode honor an explicitly
     dark GTK theme. Do not write or change desktop preferences.
@@ -70,6 +77,12 @@ def monitor_status():
     identity = m.get("identity") or {}
     gui = m.get("gui") or {}
     operations = m.get("operations") or {}
+    wf = m.get("workflows") if type(m.get("workflows")) is dict else {}
+    delivery = m.get("delivery") if type(m.get("delivery")) is dict else {}
+    wf_current = any(name in wf for name in (
+        "automaticExecution", "runnerConfigured", "persistedNonterminal",
+        "currentLeases", "reconciliationRequired"))
+    delivery_available = delivery.get("available") is True
     return {
         "state": "CONNECTED",
         "device": str(identity.get("deviceName", "?"))[:80],
@@ -78,7 +91,17 @@ def monitor_status():
         "gui": "READY" if gui.get("available") is True else "BLOCKED",
         "guiReason": str(gui.get("reason") or "")[:100],
         "browser": "READY" if (m.get("browser") or {}).get("available") is True else "UNAVAILABLE",
-        "activeOperations": operations.get("active", 0),
+        "activeOperations": safe_monitor_count(operations.get("active")),
+        "workflowTelemetryAvailable": wf_current,
+        "automaticExecution": wf.get("automaticExecution") if type(wf.get("automaticExecution")) is bool else None,
+        "runnerConfigured": wf.get("runnerConfigured") if type(wf.get("runnerConfigured")) is bool else None,
+        "persistedNonterminal": safe_monitor_count(wf.get("persistedNonterminal")),
+        "currentLeases": safe_monitor_count(wf.get("currentLeases")),
+        "reconciliationRequired": safe_monitor_count(wf.get("reconciliationRequired")),
+        "deliveryAvailable": delivery_available,
+        "deliveryPending": safe_monitor_count(delivery.get("pending")) if delivery_available else None,
+        "deliveryDeadLetter": safe_monitor_count(delivery.get("deadLetter")) if delivery_available else None,
+        "authenticatedChatBound": delivery.get("authenticatedChatBound") if delivery_available and type(delivery.get("authenticatedChatBound")) is bool else None,
         "extensions": len((m.get("extensions") or {}).get("items") or []),
     }
 
@@ -296,6 +319,31 @@ def run_gui():
             self.row(self.page_overview,"Active operations",
                      str(m.get("activeOperations","UNVERIFIED")),
                      "Active operations are not durable nonterminal workflow records.")
+            if m["state"] == "CONNECTED" and m.get("workflowTelemetryAvailable"):
+                auto=m.get("automaticExecution")
+                runner=m.get("runnerConfigured")
+                state="UNVERIFIED" if auto is None or runner is None else (
+                    "Configured" if auto and runner else "Not automatically executing")
+                show=lambda value: str(value) if value is not None else "UNVERIFIED"
+                self.row(self.page_overview,"Durable runner",state,
+                    f"Persisted nonterminal: {show(m.get('persistedNonterminal'))} · "
+                    f"Current leases: {show(m.get('currentLeases'))} · "
+                    f"Needs reconciliation: {show(m.get('reconciliationRequired'))}. "
+                    "Persisted RUNNING is not an active worker.")
+            else:
+                self.row(self.page_overview,"Durable runner","UNVERIFIED / NOT EXPOSED",
+                    "Installed Core does not yet export optional workflow telemetry. Do not invent zero counts.")
+            if m["state"] == "CONNECTED" and m.get("deliveryAvailable"):
+                show=lambda value: str(value) if value is not None else "UNVERIFIED"
+                bound=m.get("authenticatedChatBound")
+                binding="AUTHENTICATED" if bound is True else (
+                    "NOT AUTHENTICATED" if bound is False else "UNVERIFIED")
+                self.row(self.page_overview,"Chat delivery backlog",
+                    f"Pending {show(m.get('deliveryPending'))} · Dead letter {show(m.get('deliveryDeadLetter'))}",
+                    f"Tab/session identity: {binding}. Pending is NOT a delivered ChatGPT message.")
+            else:
+                self.row(self.page_overview,"Chat delivery backlog","UNVERIFIED / NOT EXPOSED",
+                    "The installed Core monitor does not provide verified private delivery counters.")
             rows=profiles()
             self.row(self.page_profiles,"Profiles",str(len(rows)),
                      "Management actions require a verified, owner-authorized Core management channel.")
