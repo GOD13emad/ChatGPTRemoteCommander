@@ -54,6 +54,50 @@ class SafeMonitorTests(unittest.TestCase):
         self.assertIn("Adw.ColorScheme.FORCE_LIGHT", source)
         self.assertNotIn("set_string(", source)
 
+    def test_old_core_does_not_falsely_claim_runner_or_delivery_zero(self):
+        self.dump(m.MONITOR,self.valid_monitor())
+        s=m.monitor_status()
+        self.assertEqual(s["state"],"CONNECTED")
+        self.assertFalse(s["workflowTelemetryAvailable"])
+        self.assertFalse(s["deliveryAvailable"])
+        self.assertIsNone(s["persistedNonterminal"])
+        self.assertIsNone(s["deliveryPending"])
+        self.assertIsNone(s["authenticatedChatBound"])
+
+    def test_typed_current_monitor_telemetry(self):
+        data=self.valid_monitor()
+        data["workflows"]={"automaticExecution":False,"runnerConfigured":False,
+                           "persistedNonterminal":105,"currentLeases":0,"reconciliationRequired":6,
+                           "secret":"DO_NOT_EXPORT"}
+        data["delivery"]={"available":True,"pending":1292,"deadLetter":0,
+                          "authenticatedChatBound":False,"credential":"PRIVATE"}
+        self.dump(m.MONITOR,data)
+        s=m.monitor_status()
+        self.assertTrue(s["workflowTelemetryAvailable"])
+        self.assertEqual(s["persistedNonterminal"],105)
+        self.assertEqual(s["currentLeases"],0)
+        self.assertEqual(s["reconciliationRequired"],6)
+        self.assertEqual(s["automaticExecution"],False)
+        self.assertEqual(s["deliveryPending"],1292)
+        self.assertEqual(s["authenticatedChatBound"],False)
+        self.assertNotIn("secret",s)
+        self.assertNotIn("credential",s)
+
+    def test_invalid_counters_fail_closed_and_are_bounded(self):
+        data=self.valid_monitor()
+        data["workflows"]={"persistedNonterminal":True,"currentLeases":-1,
+                           "reconciliationRequired":20000000}
+        data["delivery"]={"available":True,"pending":"5","deadLetter":-50,
+                          "authenticatedChatBound":"true"}
+        self.dump(m.MONITOR,data)
+        s=m.monitor_status()
+        self.assertIsNone(s["persistedNonterminal"])
+        self.assertIsNone(s["currentLeases"])
+        self.assertEqual(s["reconciliationRequired"],1000000)
+        self.assertIsNone(s["deliveryPending"])
+        self.assertIsNone(s["deliveryDeadLetter"])
+        self.assertIsNone(s["authenticatedChatBound"])
+
     def test_fresh_monitor(self):
         self.dump(m.MONITOR,self.valid_monitor())
         s=m.monitor_status()
