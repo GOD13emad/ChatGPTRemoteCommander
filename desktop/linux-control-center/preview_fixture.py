@@ -24,12 +24,26 @@ def dark(*_):
 
 if __name__=="__main__":
     def diagnose_pages(center):
-        pages = center.stack.get_pages()
-        total = pages.get_n_items()
-        visible = sum(1 for i in range(total) if pages.get_item(i).get_visible())
-        names = tuple(str(pages.get_item(i).get_title()) for i in range(total))
-        print(f"R36_NATIVE_STACK_PAGES={total}_VISIBLE={visible}", flush=True)
-        print("R36_NATIVE_STACK_TITLES=" + ",".join(names), flush=True)
+        # Inspect actual allocations after GTK layout, not merely visible=True
+        # on model pages; a visually absent navigation button fails the gate.
+        from gi.repository import GLib
+
+        def report():
+            pages = center.stack.get_pages()
+            total = pages.get_n_items()
+            visible = sum(1 for i in range(total) if pages.get_item(i).get_visible())
+            names = tuple(str(pages.get_item(i).get_title()) for i in range(total))
+            print(f"R36_NATIVE_STACK_PAGES={total}_VISIBLE={visible}", flush=True)
+            print("R36_NATIVE_STACK_TITLES=" + ",".join(names), flush=True)
+            buttons = tuple(center.nav_buttons.values())
+            drawn = sum(1 for b in buttons
+                        if b.get_visible() and b.get_allocated_height() >= 20)
+            active = sum(1 for b in buttons if b.has_css_class("rc-nav-active"))
+            print(f"R39_NAV_BUTTONS={len(buttons)}_DRAWN={drawn}_ACTIVE={active}",
+                  flush=True)
+            return GLib.SOURCE_REMOVE
+
+        GLib.timeout_add(1, report)
 
     raise SystemExit(run_dashboard(
         "io.github.god13emad.RemoteCommander.R35Synthetic",

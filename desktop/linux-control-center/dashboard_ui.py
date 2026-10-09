@@ -15,6 +15,17 @@ CSS = """
   border-right: 1px solid alpha(@borders, .5);
   padding: 14px 6px;
 }
+.rc-nav-button {
+  border-radius: 10px;
+  padding: 12px 15px;
+  margin: 2px 4px;
+  font-weight: 620;
+}
+.rc-nav-active {
+  background: alpha(@accent_bg_color, .18);
+  color: @accent_color;
+  font-weight: 750;
+}
 .rc-header-title { font-size: 19px; font-weight: 750; letter-spacing: -.3px; }
 .rc-header-subtitle { font-size: 11px; opacity: .7; }
 .rc-page-head { font-size: 25px; font-weight: 760; letter-spacing: -.45px; }
@@ -137,6 +148,7 @@ def run_dashboard(app_id: str,
             self.stack = Gtk.Stack()
             self.stack.set_transition_type(Gtk.StackTransitionType.CROSSFADE)
             self._card_labels = {}
+            self.nav_buttons = {}
             self._profile_rows = ()
             self._workflow_rows = ()
             self._task_widgets = []
@@ -155,6 +167,17 @@ def run_dashboard(app_id: str,
                     self._gnome_settings.connect("changed::gtk-theme", self._os_theme_changed)
             except (RuntimeError, ValueError, TypeError):
                 self._gnome_settings = None
+
+        def _select_nav(self, key):
+            # UI-local page selection only; no workflow or Commander action.
+            if key not in self.nav_buttons:
+                return
+            self.stack.set_visible_child_name(key)
+            for name, button in self.nav_buttons.items():
+                if name == key:
+                    button.add_css_class("rc-nav-active")
+                else:
+                    button.remove_css_class("rc-nav-active")
 
         def _os_theme_changed(self, *_args):
             self.apply_system_theme()
@@ -375,7 +398,28 @@ def run_dashboard(app_id: str,
             sidebar.set_size_request(212, -1)
             sidebar.add_css_class("rc-sidebar")
             sidebar.append(label("WORKSPACE", "rc-eyebrow"))
-            navigator = Gtk.StackSidebar()
+            # Explicit Native Gtk.Button navigation avoids the observed
+            # StackSidebar X11 issue showing only the selected page despite
+            # all four Gtk.StackPages reporting visible=True.
+            navigator = boxed(gap=4)
+            for nav_key, nav_title in (
+                ("overview", "Overview"),
+                ("profiles", "Profiles"),
+                ("tasks", "Workflows"),
+                ("security", "Security"),
+            ):
+                nav_button = Gtk.Button(label=nav_title)
+                nav_button.add_css_class("flat")
+                nav_button.add_css_class("rc-nav-button")
+                nav_button.set_hexpand(True)
+                nav_button.set_halign(Gtk.Align.FILL)
+                nav_button.set_tooltip_text("Show " + nav_title + " (read-only)")
+                nav_button.update_property(
+                    [Gtk.AccessibleProperty.LABEL], ["Show " + nav_title + " page"])
+                nav_button.connect(
+                    "clicked", lambda _btn, key=nav_key: self._select_nav(key))
+                navigator.append(nav_button)
+                self.nav_buttons[nav_key] = nav_button
             sidebar.append(navigator)
             sidebar.append(label("READ-ONLY MODE", "rc-section-caption"))
             workspace.append(sidebar)
@@ -394,10 +438,9 @@ def run_dashboard(app_id: str,
                 page.set_visible(True)
                 stack_page = self.stack.add_titled(page, key, title)
                 stack_page.set_visible(True)
-            # Attach sidebar after all pages exist; minimal GTK/Xvfb can
-            # otherwise expose only the initially selected stack child.
-            navigator.set_stack(self.stack)
-            self.stack.set_visible_child_name("overview")
+            # The tab model retains all four Gtk.StackPages. Owner interaction
+            # only changes which page is visible, never executes a workflow.
+            self._select_nav("overview")
             self._build_overview()
             self._build_profiles()
             self._build_tasks()

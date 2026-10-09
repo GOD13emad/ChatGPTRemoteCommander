@@ -54,11 +54,14 @@ class DashboardPresentationTests(unittest.TestCase):
         self.assertIn("flow.set_column_homogeneous(True)", source)
         self.assertIn("flow.attach(metric, index % 2, index // 2, 1, 1)", source)
         add_index=source.index("stack_page = self.stack.add_titled(page, key, title)")
-        bind_index=source.index("navigator.set_stack(self.stack)")
-        self.assertLess(add_index, bind_index)
+        nav_index=source.index('self._select_nav("overview")')
+        self.assertLess(add_index, nav_index)
         self.assertIn("page.set_visible(True)", source)
         self.assertIn("stack_page.set_visible(True)", source)
-        self.assertIn('self.stack.set_visible_child_name("overview")', source)
+        self.assertIn('self.stack.set_visible_child_name(key)', source)
+        self.assertIn("self.nav_buttons[nav_key] = nav_button", source)
+        self.assertIn("navigator.append(nav_button)", source)
+        self.assertNotIn("Gtk.StackSidebar()", source)
 
     def test_optional_synthetic_test_hook_is_disabled_in_real_app(self):
         source=P.read_text()
