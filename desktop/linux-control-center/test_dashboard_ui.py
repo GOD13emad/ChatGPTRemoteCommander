@@ -1,0 +1,64 @@
+import ast
+import importlib.util
+import pathlib
+import unittest
+
+P = pathlib.Path(__file__).with_name("dashboard_ui.py")
+spec = importlib.util.spec_from_file_location("r32_dash_ui", P)
+ui = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(ui)
+
+class DashboardPresentationTests(unittest.TestCase):
+    def test_healthy_state_exact_only(self):
+        for v in ("CONNECTED", "READY", "ONLINE", "PASS"):
+            self.assertEqual(ui.state_label(v)[1], "rc-success")
+        for v in ("UNKNOWN", "UNVERIFIED", "STALE", "RUNNING", "WAITING", None):
+            self.assertEqual(ui.state_label(v)[1], "rc-caution")
+    def test_blocked_and_failed_are_not_ok(self):
+        for v in ("FAILED", "ERROR", "DISCONNECTED", "BLOCKED"):
+            self.assertEqual(ui.state_label(v)[1], "rc-danger")
+    def test_counts_reject_spoof_and_bool(self):
+        for v in (True, False, 0.3, -1, None, "15", {}, 10_000_000):
+            self.assertEqual(ui.checked_count(v), "UNVERIFIED")
+        self.assertEqual(ui.checked_count(0), "0")
+        self.assertEqual(ui.checked_count(300), "300")
+    def test_profiles_truncated_and_never_mutated(self):
+        data = [{"id":"default","port":48832,"version":"0.10.20","generation":34,"root":"/tmp/test"}]
+        original = repr(data)
+        rows = ui.profile_rows(data)
+        self.assertEqual(rows[0][0], "default")
+        self.assertIn("48832", rows[0][1])
+        self.assertEqual(data.__repr__(), original)
+        self.assertEqual(ui.profile_rows([{"id":"x","port":"48832"}])[0][1].count("UNVERIFIED"), 3)
+    def test_persisted_running_is_not_live_green(self):
+        rows = ui.workflow_rows([{"id":"w1","revision":4,"state":"RUNNING"}, {"id":"w2","revision":0,"state":"FAILED"}])
+        self.assertEqual(rows[0][2],"rc-caution")
+        self.assertEqual(rows[1][2],"rc-danger")
+    def test_rows_bound_to_300(self):
+        many=[{"id":str(i),"state":"WAITING"} for i in range(700)]
+        self.assertEqual(len(ui.workflow_rows(many)),300)
+        self.assertEqual(len(ui.profile_rows(many)),300)
+    def test_presentation_never_imports_shell_or_network(self):
+        source=P.read_text()
+        tree=ast.parse(source)
+        imports=set()
+        for node in ast.walk(tree):
+            if isinstance(node,ast.Import):
+                imports.update(a.name.split(".")[0] for a in node.names)
+            if isinstance(node,ast.ImportFrom) and node.module:
+                imports.add(node.module.split(".")[0])
+        self.assertFalse(imports & {"subprocess","socket","requests","urllib","http","webbrowser","shutil"})
+        self.assertNotIn("os.system(", source)
+        self.assertNotIn("exec(", source)
+        self.assertNotIn("Gtk.Button.set_accessible_name", source)
+    def test_refresh_cannot_execute_core_commands(self):
+        source=P.read_text()
+        self.assertIn('Gtk.SearchEntry()',source)
+        self.assertIn('self._render_profiles(profile_data)',source)
+        self.assertIn('self._render_workflows(task_data)',source)
+        self.assertIn('if rows == self._workflow_rows:',source)
+        self.assertNotIn("LaunchPowerShellTool",source)
+        self.assertNotIn("self.stack.get_visible_child_name()",source)
+
+if __name__ == "__main__":
+    unittest.main(verbosity=2)
