@@ -39,6 +39,7 @@ export function sanitizeMonitorSnapshot(input, now = Date.now()) {
     return normalized ? normalized : null;
   };
   const truth = value => value === true;
+  const boundedCount = value => Number.isSafeInteger(value) && value >= 0 ? Math.min(value, 1000000) : 0;
   const cap = input?.gui?.capabilities ?? {};
   const guiPolicy = input?.gui?.policy ?? {};
   const capability = (name, policyName) =>
@@ -84,7 +85,20 @@ export function sanitizeMonitorSnapshot(input, now = Date.now()) {
     workflows: {
       enabled: truth(input?.workflows?.enabled),
       engineEnabled: truth(input?.workflows?.engineEnabled),
-      runCount: Number.isInteger(input?.workflows?.runCount) ? Math.max(0, Math.min(input.workflows.runCount, 10000)) : 0
+      runCount: Math.min(10000, boundedCount(input?.workflows?.runCount)),
+      automaticExecution: truth(input?.workflows?.automaticExecution),
+      runnerConfigured: truth(input?.workflows?.runnerConfigured),
+      persistedNonterminal: boundedCount(input?.workflows?.persistedNonterminal),
+      currentLeases: boundedCount(input?.workflows?.currentLeases),
+      reconciliationRequired: boundedCount(input?.workflows?.reconciliationRequired),
+      pendingMeaning: 'PERSISTED_NONTERMINAL_RECORDS_NOT_LIVE_QUEUE'
+    },
+    delivery: {
+      available: truth(input?.delivery?.available),
+      pending: boundedCount(input?.delivery?.pending),
+      deadLetter: boundedCount(input?.delivery?.deadLetter),
+      transportReceipts: boundedCount(input?.delivery?.transportReceipts),
+      authenticatedChatBound: truth(input?.delivery?.authenticatedChatBound)
     },
     extensions: { count: extensions.length, items: extensions },
     operations: {

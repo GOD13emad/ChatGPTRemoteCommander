@@ -400,6 +400,10 @@ async function buildBrowserMonitorSnapshot() {
   const runs = Array.isArray(workflowStatus?.projectEngine?.runs)
     ? workflowStatus.projectEngine.runs
     : Array.isArray(workflowStatus?.runs) ? workflowStatus.runs : [];
+  // Only safe aggregate counts; the private monitor must never contain
+  // delivery IDs, account cookies, workflow payloads, raw arguments or project paths.
+  let deliveryStatus = null;
+  try { deliveryStatus = deliveryTools.status(); } catch {}
   const concurrency = lockStats();
   return {
     identity: {
@@ -415,7 +419,19 @@ async function buildBrowserMonitorSnapshot() {
     workflows: {
       enabled: workflowStatus.enabled === true,
       engineEnabled: workflowStatus.engineEnabled === true,
-      runCount: runs.length
+      runCount: runs.length,
+      automaticExecution: workflowStatus.automaticExecution === true,
+      runnerConfigured: workflowStatus.runnerConfigured === true,
+      persistedNonterminal: workflowStatus.schedulerState?.persistedNonterminal ?? 0,
+      currentLeases: workflowStatus.schedulerState?.currentLeases ?? 0,
+      reconciliationRequired: workflowStatus.schedulerState?.reconciliationRequired ?? 0
+    },
+    delivery: {
+      available: deliveryStatus !== null,
+      pending: deliveryStatus?.pending ?? 0,
+      deadLetter: deliveryStatus?.deadLetter ?? 0,
+      transportReceipts: deliveryStatus?.transportReceipts ?? 0,
+      authenticatedChatBound: deliveryStatus?.identityBoundary === 'AUTHENTICATED_CHAT_BOUND'
     },
     extensions: { items:extensionItems },
     operations: {
