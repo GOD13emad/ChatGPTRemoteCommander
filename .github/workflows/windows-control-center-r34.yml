@@ -1,0 +1,31 @@
+name: Windows Control Center R34
+
+on:
+  pull_request:
+    paths:
+      - 'desktop/RemoteCommanderDashboard/**'
+      - 'desktop/tests-ui-r34/**'
+      - '.github/workflows/windows-control-center-r34.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-ui:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+      - name: Build native WinForms Control Center
+        shell: pwsh
+        run: dotnet build desktop/RemoteCommanderDashboard/RemoteCommanderDashboard.csproj -c Release --nologo -warnaserror
+      - name: Headless native control/theme/metrics tests
+        shell: pwsh
+        run: dotnet run --project desktop/tests-ui-r34/R34UiTests.csproj -c Release --nologo
+      - name: Source safety regression
+        shell: pwsh
+        run: node --test desktop/tests-ui-r34/safety.test.cjs
