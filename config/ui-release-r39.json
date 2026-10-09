@@ -1,0 +1,105 @@
+{
+  "schema": 1,
+  "revision": "R39",
+  "project": "Remote Commander unified native UX",
+  "status": "PRE_RELEASE_QUALIFICATION",
+  "productStatus": "PARTIAL_NOT_FINAL",
+  "baseline": {
+    "version": "0.10.20",
+    "commit": "362375c464948be3001b307650c13fc3353ed05b",
+    "saeidRouterGeneration": 34,
+    "saeidRouterSha256": "1de7e13638cecac0be939e8a3dcafce153f8a20b51f3c460d316dfa608812c04"
+  },
+  "components": {
+    "browser": {
+      "repo": "Usefull-Skills/chatgpt-cef-linux",
+      "version": "0.8.2",
+      "sha": "624295c55610a331c1531792f1040acb02fe4797",
+      "pr": 81,
+      "codeSigning": "MISSING",
+      "windowsArtifactSha256": null,
+      "linuxArtifactSha256": null,
+      "nativeVisualAccepted": false,
+      "linuxSandbox4755Accepted": false,
+      "immutableReleaseTag": null
+    },
+    "controlWindows": {
+      "repo": "GOD13emad/ChatGPTRemoteCommander",
+      "sha": "885270377ca6b8fb5e7736993d2688139a54680d",
+      "pr": 166,
+      "artifactSha256": null,
+      "nativeVisualAccepted": false,
+      "signedPublisher": "MISSING"
+    },
+    "controlLinux": {
+      "repo": "GOD13emad/ChatGPTRemoteCommander",
+      "sha": "b5eddea6b05a1a7cfe0e6dd273ab5fac9b87c413",
+      "pr": 165,
+      "artifactSha256": null,
+      "nativeVisualAccepted": false
+    }
+  },
+  "hosts": [
+    {
+      "id": "saeid-windows",
+      "platform": "windows",
+      "status": "CONNECTED",
+      "nativeAccepted": false,
+      "canaryAccepted": false,
+      "uninstallRollbackAccepted": false
+    },
+    {
+      "id": "emad-windows",
+      "platform": "windows",
+      "status": "CONNECTED",
+      "nativeAccepted": false,
+      "canaryAccepted": false,
+      "uninstallRollbackAccepted": false
+    },
+    {
+      "id": "emad-linux",
+      "platform": "linux",
+      "status": "CONNECTED",
+      "nativeAccepted": false,
+      "canaryAccepted": false,
+      "uninstallRollbackAccepted": false
+    },
+    {
+      "id": "mmz-linux",
+      "platform": "linux",
+      "status": "DISCONNECTED",
+      "nativeAccepted": false,
+      "canaryAccepted": false,
+      "uninstallRollbackAccepted": false
+    }
+  ],
+  "releaseGates": {
+    "exactHeadCIAllPass": false,
+    "ownerNativeAllHosts": false,
+    "codeSigningTrusted": false,
+    "immutableSHA256Assets": false,
+    "linuxSandboxAccepted": false,
+    "allHostsOnline": false,
+    "fourHostCanaryInstallUninstallRollback": false,
+    "authenticatedSameConversationAck": false
+  },
+  "release": {
+    "status": "BLOCKED",
+    "versionTag": null,
+    "externalCryptographicVerificationReceipt": null,
+    "ownerAcceptanceReceipt": null,
+    "autoUpdatesEnabled": false
+  },
+  "safety": {
+    "onlyPinnedArtifacts": true,
+    "noSandboxBypass": true,
+    "noLoginReset": true,
+    "noAutoReboot": true,
+    "noUnknownDeletes": true,
+    "preserveBaseline": true,
+    "stagedCanaryRequired": true
+  },
+  "openCriticalProductGates": 8,
+  "brain": "CURRENT_R29",
+  "exactNextAction": "Qualify Native Browser/Control Center on each OS with owner-approved GUI, trusted signed immutable installers SHA verified, MMZ tunnel recovery, same-chat ACK and 4-host canary/rollback before writing a separately audited transactional updater. No automatic promotion."
+}

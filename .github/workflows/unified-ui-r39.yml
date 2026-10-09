@@ -1,0 +1,56 @@
+name: R39 unified native UI integration (qualification only)
+
+on:
+  pull_request:
+    paths:
+      - 'config/ui-release-r39.json'
+      - 'tools/check-ui-release-r39.mjs'
+      - 'test/ui-release-r39.test.mjs'
+      - 'desktop/linux-control-center/**'
+      - 'desktop/RemoteCommanderDashboard/**'
+      - 'desktop/tests-ui-r34/**'
+      - '.github/workflows/unified-ui-r39.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  fail-closed-release-policy:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --test test/ui-release-r39.test.mjs
+      - name: Confirm unsigned/unverified four-host auto-update blocked
+        run: |
+          node tools/check-ui-release-r39.mjs --audit
+          if node tools/check-ui-release-r39.mjs --require-ready; then
+            echo 'UNSAFE_PREMATURE_RELEASE_PROMOTION' >&2
+            exit 71
+          fi
+          echo 'R39_FAIL_CLOSED_AUTO_UPDATE_GATE_PASS'
+  windows-native-control:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+      - name: Native WinForms build
+        shell: pwsh
+        run: dotnet build desktop/RemoteCommanderDashboard/RemoteCommanderDashboard.csproj -c Release --nologo -warnaserror
+      - name: Native headless component test
+        shell: pwsh
+        run: dotnet run --project desktop/tests-ui-r34/R34UiTests.csproj -c Release --nologo
+      - name: Authority and accessibility regression
+        shell: pwsh
+        run: node --test desktop/tests-ui-r34/safety.test.cjs
+  linux-control-safety:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 -B -m unittest discover -s desktop/linux-control-center -p 'test*.py' -v
+
