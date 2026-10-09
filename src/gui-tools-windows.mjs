@@ -1,4 +1,5 @@
 import path from 'node:path';
+import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { access } from 'node:fs/promises';
 import { randomBytes, timingSafeEqual } from 'node:crypto';
@@ -10,6 +11,19 @@ export { guiToolDefinitions };
 const project = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const stopFile = path.join(project, 'var', 'GUI_STOP');
 const globalStopFile = process.platform === 'linux' ? path.join(process.env.XDG_STATE_HOME || path.join(process.env.HOME || '', '.local', 'state'), 'chatgpt-remote-commander', 'GUI_STOP') : null;
+/** Monotonic emergency-stop signal from a deliberate double-click in the native
+ * Browser chrome. It is NOT a command transport: no start/resume/input is accepted.
+ * This path is separate from user browser profiles, and the native writer checks
+ * owner-only directory/file permissions. */
+export function browserNativeGuiStopPath({ platform = process.platform, env = process.env, home = os.homedir() } = {}) {
+  if (platform === 'win32') return env.LOCALAPPDATA
+    ? path.win32.join(env.LOCALAPPDATA, 'ChatGPTRemoteCommander', 'browser-companion', 'GUI_STOP') : null;
+  if (platform === 'linux') return path.posix.join(
+    env.XDG_STATE_HOME || path.posix.join(home, '.local', 'state'),
+    'chatgpt-remote-commander', 'browser-companion', 'GUI_STOP');
+  return null;
+}
+const browserNativeStopFile = browserNativeGuiStopPath();
 const windowsHelper = path.join(project, 'tools', 'gui-control.ps1');
 const linuxHelper = path.join(project, 'tools', 'gui-control-linux.py');
 const backendSpec = platform => platform === 'win32'
@@ -26,7 +40,7 @@ const invokeDefault = request => {
 };
 const closeInvokeDefault = () => persistentHelper?.close();
 async function stopped() {
-  for (const candidate of [stopFile, globalStopFile].filter(Boolean)) {
+  for (const candidate of [stopFile, globalStopFile, browserNativeStopFile].filter(Boolean)) {
     try { await access(candidate); return true; }
     catch (error) { if (error.code !== 'ENOENT') throw guiError('GUI_STOP_CHECK_FAILED'); }
   }
@@ -74,6 +88,7 @@ export function createGuiController({ platform = process.platform, now = () => p
       if (name === 'gui_session_begin') {
         if (current()) throw guiError('GUI_LEASE_BUSY');
         const status = await invoke({ action: 'status', stopFile });
+        if (status?.ok !== true) throw guiError(status?.error || 'GUI_NATIVE_FAILED');
         if (status.available !== true) throw guiError('GUI_DESKTOP_UNAVAILABLE');
         const ownerAuthorizedFallback = cfg.ownerAuthorizedTakeover === true && ctx.config?.capabilityProfile?.tier === 'FULL_POWER' && ctx.config?.capabilityProfile?.explicitlyAuthorized === true;
         const mode = input.mode ?? (ownerAuthorizedFallback ? 'takeover' : 'observe');
@@ -83,6 +98,7 @@ export function createGuiController({ platform = process.platform, now = () => p
       }
       if (name === 'gui_status') {
         const status = await invoke({ action: 'status', stopFile });
+        if (status?.ok !== true) throw guiError(status?.error || 'GUI_NATIVE_FAILED');
         return { ...status, enabled, busy: false, leased: !!current(), backend: status.backend ?? (platform === 'win32' ? 'windows-user32-gdi' : 'gnome-shell-wayland'), policy: {
           allowScreenshot: cfg.allowScreenshot === true, allowMouse: cfg.allowMouse === true,
           allowKeyboard: cfg.allowKeyboard === true, allowWindowFocus: cfg.allowWindowFocus === true,
@@ -125,7 +141,16 @@ export function createGuiController({ platform = process.platform, now = () => p
         throw error;
       }
       if (result?.ok !== true) {
-        if (isInput) { uncertain = true; session = null; frame = null; closeInvoke(); }
+        if (isInput) {
+          // An exact native mutex-busy receipt proves THIS call never submitted
+          // input. Every other failure, throw, timeout or forged response latches.
+          const notSubmitted = result?.ok === false &&
+            result?.error === 'GUI_NATIVE_BUSY' &&
+            result?.submission === 'NOT_SUBMITTED';
+          if (!notSubmitted) uncertain = true;
+          // Both cases consume the frame and revoke the lease; never auto-retry.
+          session = null; frame = null; closeInvoke();
+        }
         throw guiError(result?.error || 'GUI_NATIVE_FAILED');
       }
       if (name === 'gui_screenshot') {

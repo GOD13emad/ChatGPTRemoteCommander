@@ -11,6 +11,13 @@ function parseGuiResult(bytes) {
   }
   if (value.ok !== true) {
     const safeCode = /^[A-Z][A-Z0-9_]{1,79}$/.test(value.error ?? '') ? value.error : 'GUI_NATIVE_FAILED';
+    // The trusted native helper emits exactly this bounded pre-dispatch receipt
+    // only if it failed to acquire the GUI mutex BEFORE touching the desktop.
+    // Unexpected fields or a naked error string cannot claim non-submission.
+    if (safeCode === 'GUI_NATIVE_BUSY' && value.submission === 'NOT_SUBMITTED' &&
+        Object.keys(value).length === 3) {
+      return { ok: false, error: safeCode, submission: 'NOT_SUBMITTED' };
+    }
     throw guiError(safeCode);
   }
   return value;
