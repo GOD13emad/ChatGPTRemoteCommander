@@ -38,6 +38,16 @@ class DashboardPresentationTests(unittest.TestCase):
         many=[{"id":str(i),"state":"WAITING"} for i in range(700)]
         self.assertEqual(len(ui.workflow_rows(many)),300)
         self.assertEqual(len(ui.profile_rows(many)),300)
+    def test_missing_optional_gnome_schema_guard_precedes_settings_ctor(self):
+        source=P.read_text()
+        guard=source.index('schemas = Gio.SettingsSchemaSource.get_default()')
+        check=source.index('schemas.lookup("org.gnome.desktop.interface", True)')
+        construct=source.index('self._gnome_settings = Gio.Settings.new("org.gnome.desktop.interface")')
+        self.assertLess(guard, check)
+        self.assertLess(check, construct)
+        self.assertIn('if found is not None:', source)
+        self.assertIn('self._gnome_settings = None', source)
+
     def test_presentation_never_imports_shell_or_network(self):
         source=P.read_text()
         tree=ast.parse(source)

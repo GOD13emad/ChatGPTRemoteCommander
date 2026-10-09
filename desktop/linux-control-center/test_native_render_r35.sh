@@ -8,7 +8,7 @@ output="${GITHUB_WORKSPACE}/dist/ui-preview-r35"
 mkdir -p "$output"
 export RC_R35_PREVIEW_DIR="$output"
 dbus-run-session -- xvfb-run -a -s '-screen 0 1440x900x24' bash -euo pipefail -c '
-  export GDK_BACKEND=x11 GSETTINGS_BACKEND=memory NO_AT_BRIDGE=1
+  export GDK_BACKEND=x11 GSETTINGS_BACKEND=memory GTK_A11Y=none NO_AT_BRIDGE=1
   /usr/bin/python3 -B "$GITHUB_WORKSPACE/desktop/linux-control-center/preview_fixture.py" > "$RC_R35_PREVIEW_DIR/gtk.log" 2>&1 &
   pid=$!
   trap "kill $pid 2>/dev/null || true" EXIT

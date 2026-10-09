@@ -143,11 +143,17 @@ def run_dashboard(app_id: str,
             self._timer = 0
             self._gnome_settings = None
             try:
-                self._gnome_settings = Gio.Settings.new("org.gnome.desktop.interface")
-                self._gnome_settings.connect("changed::color-scheme", self._os_theme_changed)
-                self._gnome_settings.connect("changed::gtk-theme", self._os_theme_changed)
-            except (RuntimeError, ValueError):
-                pass
+                # Gio.Settings.new() aborts the process when the optional GNOME
+                # schema is missing (e.g. minimal Xvfb CI). Query first.
+                schemas = Gio.SettingsSchemaSource.get_default()
+                found = (schemas.lookup("org.gnome.desktop.interface", True)
+                         if schemas is not None else None)
+                if found is not None:
+                    self._gnome_settings = Gio.Settings.new("org.gnome.desktop.interface")
+                    self._gnome_settings.connect("changed::color-scheme", self._os_theme_changed)
+                    self._gnome_settings.connect("changed::gtk-theme", self._os_theme_changed)
+            except (RuntimeError, ValueError, TypeError):
+                self._gnome_settings = None
 
         def _os_theme_changed(self, *_args):
             self.apply_system_theme()
