@@ -1,0 +1,33 @@
+name: UI four-host release guard R37
+
+on:
+  pull_request:
+    paths:
+      - 'release/ui-r37/**'
+      - '.github/workflows/ui-release-gate-r37.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  release-guard:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Read-only synthetic release contract tests
+        run: node --test release/ui-r37/ui-release-guard.test.cjs
+      - name: Confirm real candidate BLOCKED, without side effects
+        shell: bash
+        run: |
+          set -euo pipefail
+          node release/ui-r37/ui-release-guard.cjs --status release/ui-r37/ui-channel-r37.json > release-gate.json
+          node -e "const r=require('./release-gate.json');if(r.status!=='BLOCKED'||r.automaticPromotionEnabled!==false||!r.blockedReasons.includes('HOST_OFFLINE:mmz-linux'))process.exit(1);console.log('R37_REAL_PRODUCTION_PROMOTION_BLOCKED_PASS reasons='+r.blockedReasons.length)"
