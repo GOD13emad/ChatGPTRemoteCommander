@@ -58,7 +58,10 @@ function Invoke-Cli([string]$Config,[string]$Action){
 function Apply-Filter{
   $q=$filter.Text.Trim()
   $items=if($q){@($script:all|Where-Object{($_.Profile+' '+$_.Id+' '+$_.Lifecycle+' '+$_.LastFailure) -like "*$q*"})}else{@($script:all)}
-  $grid.DataSource=$null;$grid.DataSource=[Collections.ArrayList]$items
+  $grid.DataSource=$null
+  $rows=[Collections.ArrayList]::new()
+  foreach($item in @($items)){[void]$rows.Add($item)}
+  $grid.DataSource=$rows
   $status.Text="Showing $($items.Count) of $($script:all.Count) persisted workflow records. 'RUNNING' is persisted lifecycle, not proof of a live process."
 }
 function Refresh-Monitor{
