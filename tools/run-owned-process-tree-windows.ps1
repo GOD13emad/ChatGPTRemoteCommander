@@ -19,9 +19,6 @@ if($ArgumentsJson){
   if($null-ne$parsed){$arguments=@($parsed|ForEach-Object{[string]$_})}
 }
 
-$childScript=Join-Path $PSScriptRoot 'owned-command-child.ps1'
-if(-not(Test-Path -LiteralPath $childScript -PathType Leaf)){throw 'OWNED_PROCESS_TREE_CHILD_HELPER_MISSING'}
-
 if(-not('RcQualificationJobNative' -as [type])){
   Add-Type -TypeDefinition @'
 using System;
@@ -281,7 +278,6 @@ function Get-ProcessEvidence([UInt64[]]$Ids){
   return @($rows)
 }
 
-$specPath=Join-Path $env:TEMP ("rc-owned-command-{0}-{1}.json" -f ($RunId -replace '[^A-Za-z0-9._-]','_'),$PID)
 $report=[ordered]@{
   schema=1
   runId=$RunId
@@ -306,19 +302,40 @@ $previousRunId=$env:RC_QUALIFICATION_RUN_ID
 $hadRunId=Test-Path Env:RC_QUALIFICATION_RUN_ID
 $exitCode=1
 try{
-  $spec=[ordered]@{program=$Program;arguments=@($arguments);workingDirectory=$WorkingDirectory}
-  [IO.File]::WriteAllText($specPath,($spec|ConvertTo-Json -Depth 8)+[Environment]::NewLine,[Text.UTF8Encoding]::new($false))
   $env:RC_QUALIFICATION_RUN_ID=$RunId
-
-  $pwsh=(Get-Command pwsh.exe -ErrorAction Stop).Source
-  $childArgs=@('-NoLogo','-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',$childScript,'-SpecPath',$specPath)
+  # Assign the *requested native executable* directly to the kill-on-close Job.
+  # A PowerShell trampoline can start children outside that Job under nested
+  # Jobs; only the exact executable assigned with CREATE_SUSPENDED is authoritative.
+  if(-not [IO.Path]::IsPathRooted($Program)){throw 'OWNED_PROCESS_TREE_UNSUPPORTED_PROGRAM'}
+  $resolvedProgram=[IO.Path]::GetFullPath($Program)
+  if(-not(Test-Path -LiteralPath $resolvedProgram -PathType Leaf)){throw 'OWNED_PROCESS_TREE_PROGRAM_NOT_FOUND'}
+  $resolvedArgs=@($arguments)
+  $extension=[IO.Path]::GetExtension($resolvedProgram).ToLowerInvariant()
+  if($extension -ceq '.cmd'){
+    # Qualification's documented npm.cmd uses a local npm-cli.js. Execute
+    # node.exe directly rather than CreateProcessW(.cmd) or an uncontrolled
+    # cmd.exe/PowerShell intermediary. Other batch scripts fail closed.
+    if([IO.Path]::GetFileName($resolvedProgram) -ine 'npm.cmd'){throw 'OWNED_PROCESS_TREE_UNSUPPORTED_PROGRAM'}
+    $npmDir=Split-Path -Parent $resolvedProgram
+    $npmCli=Join-Path $npmDir 'node_modules\npm\bin\npm-cli.js'
+    if(-not(Test-Path -LiteralPath $npmCli -PathType Leaf)){throw 'OWNED_PROCESS_TREE_NPM_CLI_MISSING'}
+    $localNode=Join-Path $npmDir 'node.exe'
+    $resolvedProgram=if(Test-Path -LiteralPath $localNode -PathType Leaf){$localNode}else{(Get-Command node.exe -ErrorAction Stop).Source}
+    $resolvedArgs=@($npmCli)+@($arguments)
+    $report.adapter='npm_cli_direct'
+  }elseif($extension -cne '.exe'){
+    throw 'OWNED_PROCESS_TREE_UNSUPPORTED_PROGRAM'
+  }else{
+    $report.adapter='native_exe'
+  }
+  $report.executedProgram=$resolvedProgram
   $commandParts=@()
-  $commandParts+=Quote-WindowsArgument $pwsh
-  foreach($arg in $childArgs){$commandParts+=Quote-WindowsArgument ([string]$arg)}
+  $commandParts+=Quote-WindowsArgument $resolvedProgram
+  foreach($arg in $resolvedArgs){$commandParts+=Quote-WindowsArgument ([string]$arg)}
   $commandLine=$commandParts -join ' '
 
   $job=[RcQualificationJobNative]::CreateKillOnCloseJob()
-  $pi=[RcQualificationJobNative]::CreateSuspended($pwsh,$commandLine,$WorkingDirectory)
+  $pi=[RcQualificationJobNative]::CreateSuspended($resolvedProgram,$commandLine,$WorkingDirectory)
   $report.rootPid=[int]$pi.dwProcessId
   try{
     [RcQualificationJobNative]::Assign($job,$pi.hProcess)
@@ -406,7 +423,6 @@ try{
     if($pi.hProcess-ne[IntPtr]::Zero){[RcQualificationJobNative]::CloseHandle($pi.hProcess)|Out-Null}
   }
   if($job-ne[IntPtr]::Zero){[RcQualificationJobNative]::CloseHandle($job)|Out-Null}
-  Remove-Item -LiteralPath $specPath -Force -ErrorAction SilentlyContinue
   if($hadRunId){$env:RC_QUALIFICATION_RUN_ID=$previousRunId}else{Remove-Item Env:RC_QUALIFICATION_RUN_ID -ErrorAction SilentlyContinue}
 }
 exit $exitCode
