@@ -106,7 +106,8 @@ def run_dashboard(app_id: str,
                   workflow_source: Callable,
                   followup_source: Callable,
                   dark_preference: Callable,
-                  argv=None):
+                  argv=None,
+                  native_test_observer=None):
     import gi
     gi.require_version("Gtk", "4.0")
     gi.require_version("Adw", "1")
@@ -413,6 +414,10 @@ def run_dashboard(app_id: str,
             self.window.connect("destroy", self._window_destroyed)
             self.refresh()
             self.window.present()
+            # Synthetic CI-only callback supplied by the trusted fixture.
+            # Production callers pass None; no Browser/Core mutation bridge.
+            if native_test_observer is not None:
+                native_test_observer(self)
 
         def _window_destroyed(self, *_args):
             self.window = None

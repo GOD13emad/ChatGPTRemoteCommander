@@ -60,6 +60,14 @@ class DashboardPresentationTests(unittest.TestCase):
         self.assertIn("stack_page.set_visible(True)", source)
         self.assertIn('self.stack.set_visible_child_name("overview")', source)
 
+    def test_optional_synthetic_test_hook_is_disabled_in_real_app(self):
+        source=P.read_text()
+        self.assertIn("native_test_observer=None", source)
+        self.assertIn("if native_test_observer is not None:", source)
+        self.assertLess(source.index("self.window.present()\n            # Synthetic"),
+                        source.index("if native_test_observer is not None:"))
+        self.assertNotIn("native_test_observer=", P.with_name("control_center.py").read_text())
+
     def test_presentation_never_imports_shell_or_network(self):
         source=P.read_text()
         tree=ast.parse(source)
