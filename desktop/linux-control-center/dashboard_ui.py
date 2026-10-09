@@ -398,12 +398,15 @@ def run_dashboard(app_id: str,
             workspace.set_vexpand(True)
             sidebar = boxed(gap=14)
             sidebar.set_size_request(212, -1)
+            sidebar.set_hexpand(False)
+            self.sidebar = sidebar
             sidebar.add_css_class("rc-sidebar")
             sidebar.append(label("WORKSPACE", "rc-eyebrow"))
             # Explicit Native Gtk.Button navigation avoids the observed
             # StackSidebar X11 issue showing only the selected page despite
             # all four Gtk.StackPages reporting visible=True.
             navigator = boxed(gap=4)
+            navigator.set_hexpand(False)
             for nav_key, nav_title in (
                 ("overview", "Overview"),
                 ("profiles", "Profiles"),
@@ -413,7 +416,8 @@ def run_dashboard(app_id: str,
                 nav_button = Gtk.Button(label=nav_title)
                 nav_button.add_css_class("flat")
                 nav_button.add_css_class("rc-nav-button")
-                nav_button.set_hexpand(True)
+                # The sidebar must never consume the flexible content width.
+                nav_button.set_hexpand(False)
                 nav_button.set_halign(Gtk.Align.FILL)
                 nav_button.set_tooltip_text("Show " + nav_title + " (read-only)")
                 nav_button.update_property(

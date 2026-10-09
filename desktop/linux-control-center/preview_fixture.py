@@ -43,6 +43,8 @@ if __name__=="__main__":
             active = sum(1 for b in buttons if b.has_css_class("rc-nav-active"))
             print(f"R39_NAV_BUTTONS={len(buttons)}_DRAWN={drawn}_ACTIVE={active}",
                   flush=True)
+            width = center.sidebar.get_allocated_width()
+            print(f"R43_SIDEBAR_WIDTH={width}", flush=True)
             return GLib.SOURCE_REMOVE
 
         GLib.timeout_add(1, report)

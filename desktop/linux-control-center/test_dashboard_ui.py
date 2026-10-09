@@ -67,8 +67,12 @@ class DashboardPresentationTests(unittest.TestCase):
         source=P.read_text()
         self.assertIn("native_test_observer=None", source)
         self.assertIn("if native_test_observer is not None:", source)
-        self.assertLess(source.index("self.window.present()\n            # Synthetic"),
-                        source.index("if native_test_observer is not None:"))
+        self.assertLess(source.index("self.window.present()"),
+                        source.index("native_test_observer(self)"))
+        self.assertIn("self.sidebar = sidebar", source)
+        self.assertIn("sidebar.set_hexpand(False)", source)
+        self.assertIn("navigator.set_hexpand(False)", source)
+        self.assertIn("nav_button.set_hexpand(False)", source)
         self.assertNotIn("native_test_observer=", P.with_name("control_center.py").read_text())
 
     def test_presentation_never_imports_shell_or_network(self):
