@@ -27,7 +27,8 @@ dbus-run-session -- xvfb-run -a -s '-screen 0 1440x900x24' bash -euo pipefail -c
   fi
   grep -q "^R36_NATIVE_STACK_PAGES=4_VISIBLE=4$" "$RC_R35_PREVIEW_DIR/gtk.log" || { cat "$RC_R35_PREVIEW_DIR/gtk.log"; echo "STACK_FOUR_PAGES_NOT_ACCEPTED" >&2; exit 69; }
   grep -q "^R39_NAV_BUTTONS=4_DRAWN=4_ACTIVE=1$" "$RC_R35_PREVIEW_DIR/gtk.log" || { cat "$RC_R35_PREVIEW_DIR/gtk.log"; echo "SIDEBAR_FOUR_VISUAL_BUTTONS_NOT_ACCEPTED" >&2; exit 70; }
-  sidebar_width="$(sed -nE 's/^R43_SIDEBAR_WIDTH=([0-9]+)$/\1/p' "$RC_R35_PREVIEW_DIR/gtk.log" | tail -n1)"
+  sidebar_width="$(grep -E "^R43_SIDEBAR_WIDTH=[0-9]+$" "$RC_R35_PREVIEW_DIR/gtk.log" | tail -n1)"
+  sidebar_width="${sidebar_width#R43_SIDEBAR_WIDTH=}"
   [[ "$sidebar_width" =~ ^[0-9]+$ ]] && ((sidebar_width >= 190 && sidebar_width <= 260)) || {
     cat "$RC_R35_PREVIEW_DIR/gtk.log"
     echo "SIDEBAR_WIDTH_OUT_OF_BOUNDS width=$sidebar_width" >&2

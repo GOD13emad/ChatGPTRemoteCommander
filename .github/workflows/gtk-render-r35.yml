@@ -16,6 +16,8 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+      - name: Shell parser preflight before modifying CI environment
+        run: bash -n desktop/linux-control-center/test_native_render_r35.sh
       - name: Install native isolated GTK/X11 screenshot dependencies
         run: |
           sudo apt-get update -qq
