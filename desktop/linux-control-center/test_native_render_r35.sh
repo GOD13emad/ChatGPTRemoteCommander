@@ -13,10 +13,25 @@ dbus-run-session -- xvfb-run -a -s '-screen 0 1440x900x24' bash -euo pipefail -c
   pid=$!
   trap "kill $pid 2>/dev/null || true" EXIT
   sleep 5
-  if ! kill -0 "$pid" 2>/dev/null; then cat "$RC_R35_PREVIEW_DIR/gtk.log"; echo "GTK_DIED_BEFORE_CAPTURE" >&2; exit 65; fi
+  # R39: collect X11 facts before asserting, not an alternative PASS.
+  echo "R39_APP_PROCESS:" > "$RC_R35_PREVIEW_DIR/x11-diagnostic.txt"
+  ps -o pid=,stat=,etime=,args= -p "$pid" >> "$RC_R35_PREVIEW_DIR/x11-diagnostic.txt" 2>&1 || true
+  echo "R39_WINDOW_TREE:" >> "$RC_R35_PREVIEW_DIR/x11-diagnostic.txt"
+  xwininfo -root -tree >> "$RC_R35_PREVIEW_DIR/x11-diagnostic.txt" 2>&1 || true
+  echo "R39_ALL_VISIBLE_WINDOW_NAMES:" >> "$RC_R35_PREVIEW_DIR/x11-diagnostic.txt"
+  xdotool search --onlyvisible --name '.*' 2>/dev/null |
+    while read -r id; do printf '%s: ' "$id"; xdotool getwindowname "$id" 2>/dev/null || true; done >> "$RC_R35_PREVIEW_DIR/x11-diagnostic.txt" || true
+  echo "R39_GTK_LOG:" >> "$RC_R35_PREVIEW_DIR/x11-diagnostic.txt"
+  cat "$RC_R35_PREVIEW_DIR/gtk.log" >> "$RC_R35_PREVIEW_DIR/x11-diagnostic.txt"
+  # Root image is diagnostics only; later assertions must still pass.
+  xwd -root -silent -out "$RC_R35_PREVIEW_DIR/debug-root.xwd" 2>/dev/null || true
+  if [[ -s "$RC_R35_PREVIEW_DIR/debug-root.xwd" ]]; then
+    convert "$RC_R35_PREVIEW_DIR/debug-root.xwd" "$RC_R35_PREVIEW_DIR/debug-root.png" || true
+  fi
+  if ! kill -0 "$pid" 2>/dev/null; then cat "$RC_R35_PREVIEW_DIR/x11-diagnostic.txt"; echo "GTK_DIED_BEFORE_CAPTURE" >&2; exit 65; fi
   winid="$(xdotool search --name "Remote Commander" | head -n 1 || true)"
-  if [[ -z "$winid" ]]; then cat "$RC_R35_PREVIEW_DIR/gtk.log"; echo "GTK_NATIVE_WINDOW_MISSING" >&2; exit 66; fi
-  grep -q "^R36_NATIVE_STACK_PAGES=4_VISIBLE=4$" "$RC_R35_PREVIEW_DIR/gtk.log" || { cat "$RC_R35_PREVIEW_DIR/gtk.log"; echo "SIDEBAR_FOUR_PAGES_NOT_ACCEPTED" >&2; exit 69; }
+  if [[ -z "$winid" ]]; then cat "$RC_R35_PREVIEW_DIR/x11-diagnostic.txt"; echo "GTK_NATIVE_WINDOW_MISSING" >&2; exit 66; fi
+  grep -q "^R36_NATIVE_STACK_PAGES=4_VISIBLE=4$" "$RC_R35_PREVIEW_DIR/gtk.log" || { cat "$RC_R35_PREVIEW_DIR/x11-diagnostic.txt"; echo "SIDEBAR_FOUR_PAGES_NOT_ACCEPTED" >&2; exit 69; }
   xdotool getwindowgeometry --shell "$winid" > "$RC_R35_PREVIEW_DIR/window.txt"
   xwd -root -silent -out "$RC_R35_PREVIEW_DIR/preview.xwd"
   test -s "$RC_R35_PREVIEW_DIR/preview.xwd"

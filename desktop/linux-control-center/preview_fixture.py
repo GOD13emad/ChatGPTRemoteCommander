@@ -23,6 +23,7 @@ def dark(*_):
     return False
 
 if __name__=="__main__":
+    print("R39_NATIVE_SYNTHETIC_FIXTURE_START", flush=True)
     def diagnose_pages(center):
         pages = center.stack.get_pages()
         total = pages.get_n_items()
