@@ -20,6 +20,10 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends python3-gi gir1.2-gtk-4.0 gir1.2-adw-1 xvfb xauth x11-apps xdotool imagemagick dbus-x11
+      - name: Preflight nested synthetic-shell quoting
+        run: |
+          bash -n desktop/linux-control-center/test_native_render_r35.sh
+          node --test desktop/linux-control-center/test_shell_r41.cjs
       - name: Render synthetic GTK4/Adwaita window under private Xvfb
         run: bash desktop/linux-control-center/test_native_render_r35.sh
       - name: Preserve isolated screenshot and receipt
