@@ -670,6 +670,7 @@ test('Windows qualification Job Object leaves zero descendants after fail, leak-
     "const [portText,pidFile]=process.argv.slice(2);",
     "const server=net.createServer(()=>{});",
     "server.listen(Number(portText),'127.0.0.1',()=>fs.writeFileSync(pidFile,String(process.pid)));",
+    "setTimeout(()=>process.exit(0),18000).unref();",
     "setInterval(()=>{},1000);"
   ].join('\n'));
   fs.writeFileSync(childScript,[
@@ -678,12 +679,14 @@ test('Windows qualification Job Object leaves zero descendants after fail, leak-
     "const [serverScript,portText,childPidFile,serverPidFile]=process.argv.slice(2);",
     "fs.writeFileSync(childPidFile,String(process.pid));",
     "spawn(process.execPath,[serverScript,portText,serverPidFile],{detached:true,stdio:'ignore'}).unref();",
+    "setTimeout(()=>process.exit(0),18000).unref();",
     "setInterval(()=>{},1000);"
   ].join('\n'));
   fs.writeFileSync(rootScript,[
     "import {spawn} from 'node:child_process';",
     "const [childScript,serverScript,portText,childPidFile,serverPidFile,mode]=process.argv.slice(2);",
     "spawn(process.execPath,[childScript,serverScript,portText,childPidFile,serverPidFile],{detached:true,stdio:'ignore'}).unref();",
+    "setTimeout(()=>process.exit(0),18000).unref();",
     "if(mode==='hang')setInterval(()=>{},1000);else setTimeout(()=>process.exit(Number(mode)),700);"
   ].join('\n'));
 
@@ -835,3 +838,22 @@ for(const scenario of ['success','failure','runner-failure']){
     }
   });
 }
+
+test('Windows qualification Job owns requested Program directly instead of spawning an intermediate shell',()=>{
+  const source=read('tools/run-owned-process-tree-windows.ps1');
+  assert.match(source,/CreateSuspended\(\$resolvedProgram,\$commandLine,\$WorkingDirectory\)/);
+  assert.match(source,/Quote-WindowsArgument \$resolvedProgram/);
+  assert.match(source,/foreach\(\$arg in \$resolvedArgs\)/);
+  assert.doesNotMatch(source,/CreateSuspended\(\$pwsh,/);
+});
+
+// R21 regression-first guard: native Job root must invoke npm-cli.js with Node,
+// not hand a .cmd to CreateProcessW or trampoline through a second PowerShell.
+test('R21 npm.cmd native Job adapter preserves qualification gates without shell trampoline',()=>{
+  const source=read('tools/run-owned-process-tree-windows.ps1');
+  assert.match(source,/npm-cli\.js/);
+  assert.match(source,/OWNED_PROCESS_TREE_UNSUPPORTED_PROGRAM/);
+  assert.match(source,/resolvedProgram/);
+  assert.match(source,/CreateSuspended\(\$resolvedProgram,\$commandLine,\$WorkingDirectory\)/);
+  assert.doesNotMatch(source,/CreateSuspended\(\$pwsh,/);
+});
