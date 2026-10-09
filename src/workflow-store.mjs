@@ -8,7 +8,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import {
   AUTONOMY_REVISION, AUTONOMY_SCHEMA, normalizeWorkflowState, normalizeExecutionProfile,
   normalizeSchedulerPolicy, normalizeAuthority, authorityCompatible, classifyTool,
-  reconciliationPlan, syncProjectBrain
+  reconciliationPlan, syncProjectBrain, safeRelative
 } from './workflow-autonomy.mjs';
 
 export const STORE_SCHEMA = AUTONOMY_SCHEMA;
@@ -482,6 +482,7 @@ export class WorkflowStore {
       seen.add(s.id);
       return { id: s.id, title: s.title, dependsOn: [...deps], status: 'pending' };
     });
+    const brainMarkdownPath = safeRelative(brainPath, 'PROJECT_BRAIN.md');
     return this.#transaction(() => {
       if (this.#db.prepare('SELECT id FROM workflows WHERE id=?').get(id)) fail('WORKFLOW_ALREADY_EXISTS');
       if (this.#db.prepare('SELECT COUNT(*) AS n FROM workflows').get().n >= 100000) fail('WORKFLOW_COUNT_LIMIT');
@@ -500,7 +501,7 @@ export class WorkflowStore {
         },
         finalization: { status:'UNVALIDATED', validatedAt:null, evidence:[] },
         brain: {
-          markdownPath: typeof brainPath === 'string' && brainPath ? brainPath : 'PROJECT_BRAIN.md',
+          markdownPath: brainMarkdownPath,
           jsonPath: 'project-brain.'+id+'.json', lastSyncedRevision:null, lastSyncSha256:null
         }
       };

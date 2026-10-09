@@ -33,6 +33,20 @@ test('creation, restart, typed notes and scoped search retain exact state',()=>{
     try {assert.deepEqual(s.get('sample'),before);assert.equal(s.search({id:'sample',query:'سلام'}).matches.length,1);assert.equal(s.get('sample').state.notes[0].verification,'UNVERIFIED');}finally{s.close();}
   }finally{f.dispose();}
 });
+test('Brain path is validated before workflow persistence; relative path synchronizes',()=>{
+  const f=fixture();try {
+    const details={id:'brainpath',root:f.root,goal:'Keep evidence',acceptance:['Brain written'],steps:[{id:'record',title:'Record'}]};
+    for(const brainPath of [path.join(f.root,'absolute.md'),'../escape.md','C:\\outside\\PROJECT_BRAIN.md']){
+      assert.throws(()=>f.s.create({...details,brainPath}),/WORKFLOW_BRAIN_PATH_INVALID/);
+      assert.equal(f.s.list().length,0);
+    }
+    f.s.create({...details,brainPath:'brain/PROJECT_BRAIN.md'});
+    fs.writeFileSync(path.join(f.root,'proof.txt'),'evidence');
+    const cp=f.s.checkpoint({id:'brainpath',expectedRevision:1,files:['proof.txt'],nextAction:'Verify',summary:'Checkpoint'});
+    assert.equal(cp.brainError,null);
+    assert.ok(fs.existsSync(path.join(f.root,'brain','PROJECT_BRAIN.md')));
+  }finally{f.dispose();}
+});
 test('scheduler status distinguishes persisted nonterminal records from active leases',()=>{const f=fixture({schedulerPolicy:{enabled:true}});try{
  f.create();const st=f.s.schedulerStatus();
  assert.equal(st.pending,1);assert.equal(st.persistedNonterminal,1);
