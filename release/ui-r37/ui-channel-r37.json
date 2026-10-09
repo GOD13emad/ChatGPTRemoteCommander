@@ -1,0 +1,157 @@
+{
+  "schema": 1,
+  "releaseId": "RC-UI-2026-10-10-R37",
+  "channel": "candidate",
+  "status": "BLOCKED",
+  "requestedAutomaticRollout": true,
+  "automaticPromotionEnabled": false,
+  "scope": "UI_ONLY",
+  "baselineCore": {
+    "version": "0.10.20",
+    "commit": "362375c464948be3001b307650c13fc3353ed05b",
+    "routerMustRemainUnchanged": true
+  },
+  "components": [
+    {
+      "id": "browser",
+      "repo": "Usefull-Skills/chatgpt-cef-linux",
+      "version": "0.8.2",
+      "candidateCommit": "ad7d923f69c7e698aaf83b0b5547a6c1752c3900",
+      "pr": 81,
+      "platforms": [
+        "windows",
+        "linux"
+      ]
+    },
+    {
+      "id": "control-windows",
+      "repo": "GOD13emad/ChatGPTRemoteCommander",
+      "version": "0.10.20-ui-r34",
+      "candidateCommit": "885270377ca6b8fb5e7736993d2688139a54680d",
+      "pr": 166,
+      "platforms": [
+        "windows"
+      ]
+    },
+    {
+      "id": "control-linux",
+      "repo": "GOD13emad/ChatGPTRemoteCommander",
+      "version": "0.10.20-ui-r36",
+      "candidateCommit": "b5eddea6b05a1a7cfe0e6dd273ab5fac9b87c413",
+      "pr": 165,
+      "platforms": [
+        "linux"
+      ]
+    }
+  ],
+  "packages": [
+    {
+      "id": "browser-win",
+      "platform": "windows",
+      "sha256": null,
+      "downloadUrl": null,
+      "signatureChainVerified": false,
+      "signatureEvidenceSha256": null,
+      "rollbackReceiptSha256": null
+    },
+    {
+      "id": "browser-linux",
+      "platform": "linux",
+      "sha256": null,
+      "downloadUrl": null,
+      "signatureChainVerified": null,
+      "signatureEvidenceSha256": null,
+      "rollbackReceiptSha256": null
+    },
+    {
+      "id": "control-win",
+      "platform": "windows",
+      "sha256": null,
+      "downloadUrl": null,
+      "signatureChainVerified": false,
+      "signatureEvidenceSha256": null,
+      "rollbackReceiptSha256": null
+    },
+    {
+      "id": "control-linux",
+      "platform": "linux",
+      "sha256": null,
+      "downloadUrl": null,
+      "signatureChainVerified": null,
+      "signatureEvidenceSha256": null,
+      "rollbackReceiptSha256": null
+    }
+  ],
+  "hosts": [
+    {
+      "id": "saeid-win",
+      "platform": "windows",
+      "reportedConnected": true,
+      "verifiedNativeVisual": false,
+      "canaryRollbackAccepted": false,
+      "ownerLocalPrivilegeReady": null,
+      "validationReceiptSha256": null
+    },
+    {
+      "id": "emad-win",
+      "platform": "windows",
+      "reportedConnected": true,
+      "verifiedNativeVisual": false,
+      "canaryRollbackAccepted": false,
+      "ownerLocalPrivilegeReady": null,
+      "validationReceiptSha256": null
+    },
+    {
+      "id": "emad-linux",
+      "platform": "linux",
+      "reportedConnected": true,
+      "verifiedNativeVisual": false,
+      "canaryRollbackAccepted": false,
+      "ownerLocalPrivilegeReady": false,
+      "validationReceiptSha256": null
+    },
+    {
+      "id": "mmz-linux",
+      "platform": "linux",
+      "reportedConnected": false,
+      "verifiedNativeVisual": false,
+      "canaryRollbackAccepted": false,
+      "ownerLocalPrivilegeReady": false,
+      "validationReceiptSha256": null
+    }
+  ],
+  "releaseGates": {
+    "sourceCIWindows": true,
+    "sourceCILinux": true,
+    "browserNativeLoginAndRTL": false,
+    "controlWindowsPhysicalVisual": false,
+    "controlLinuxPhysicalVisual": false,
+    "trustedWindowsCodeSignature": false,
+    "linuxBrowserSandboxOwnerAcceptance": false,
+    "fourHostInstalledRuntimeProven": false,
+    "fourHostUninstallRollbackProven": false,
+    "sessionAndProfilePreservationValidated": false,
+    "accountTransferBrainCurrent": true
+  },
+  "security": {
+    "productionCoreMutationAllowed": false,
+    "userBrowserProfileMutationAllowed": false,
+    "blindRepairAllowed": false,
+    "ownerSudoPasswordInChatAllowed": false,
+    "restartAllowed": false,
+    "artifactNamesFromLatestGuessingAllowed": false,
+    "localPackageShaAndSignatureMustBeIndependentlyChecked": true
+  },
+  "evidence": {
+    "acceptedBrain": "MAIN_R29",
+    "acceptedBrainSha256": "442eb6b31f0ea350688f414f83254247893002870d35ce2987900adade65a2d7",
+    "browserPR": "https://github.com/Usefull-Skills/chatgpt-cef-linux/pull/81",
+    "linuxControlPR": "https://github.com/GOD13emad/ChatGPTRemoteCommander/pull/165",
+    "windowsControlPR": "https://github.com/GOD13emad/ChatGPTRemoteCommander/pull/166",
+    "gtkSyntheticRenderLastAcceptedSha256": "ba813313de2c6c2f0775906f1ef83b90741b3a6607bb783ab7e12a66f6474fd3",
+    "gtkR36Physical": "FAILED_UNPROVEN",
+    "windowsReleaseSigner": "NO_PUBLIC_TRUSTED_SIGNER_VERIFIED",
+    "mmzConnection": "OFFLINE_TUNNEL_CLIENT_UNSEEN"
+  },
+  "expectedNextAction": "Keep automaticPromotionEnabled=false until verified signed v0.8.2 assets and native UI acceptance, exact SHA pinned candidate packages, root-owned Linux sandbox on owner device, four-host reconnect/canary+rollback, and approved host receipts. Verify every artifact locally before staged installation. Do not mutate Production v0.10.20 based on this manifest."
+}
