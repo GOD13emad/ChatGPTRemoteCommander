@@ -48,6 +48,35 @@ async function stopped() {
 }
 const sameToken = (a, b) => typeof a === 'string' && typeof b === 'string' && Buffer.byteLength(a) === Buffer.byteLength(b) && timingSafeEqual(Buffer.from(a), Buffer.from(b));
 const bound = (v, low, high, defaultValue) => Number.isSafeInteger(v) ? Math.max(low, Math.min(high, v)) : defaultValue;
+// This controller is a separate security boundary from the JSON helper parser.
+// Validate full own-key shape, descriptors and platform here as well: direct
+// callbacks must never downgrade a bad receipt into evidence of non-submission.
+function exactNativePreDispatchReceipt(value, platform) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  try {
+    if (Object.getPrototypeOf(value) !== Object.prototype) return false;
+    const keys = Reflect.ownKeys(value);
+    if (keys.length !== 3 || !['ok', 'error', 'submission'].every(k => keys.includes(k))) return false;
+    const fields = Object.fromEntries(keys.map(k => [k, Object.getOwnPropertyDescriptor(value, k)]));
+    if (Object.values(fields).some(d => !d || !Object.hasOwn(d, 'value') || d.enumerable !== true)) return false;
+    return fields.ok.value === false && fields.submission.value === 'NOT_SUBMITTED' &&
+      ((platform === 'win32' && fields.error.value === 'GUI_NATIVE_BUSY') ||
+        (platform === 'linux' && fields.error.value === 'GUI_FOREGROUND_OR_GEOMETRY_CHANGED'));
+  } catch { return false; } // Proxy/descriptor failures are never proof.
+}
+function nativeResponseOk(value) {
+  try { return value && typeof value === 'object' &&
+    Object.getOwnPropertyDescriptor(value, 'ok')?.value === true; }
+  catch { return false; }
+}
+function nativeResponseError(value) {
+  try {
+    const v = value && typeof value === 'object'
+      ? Object.getOwnPropertyDescriptor(value, 'error')?.value : null;
+    return typeof v === 'string' && /^[A-Z][A-Z0-9_]{1,79}$/.test(v) ? v : 'GUI_NATIVE_FAILED';
+  } catch { return 'GUI_NATIVE_FAILED'; }
+}
+
 
 /** One controller per MCP process. A lease prevents accidental cross-chat input.
  * It is NOT an account/OS sandbox. Another authorized shell or OS user can bypass
@@ -140,18 +169,14 @@ export function createGuiController({ platform = process.platform, now = () => p
         }
         throw error;
       }
-      if (result?.ok !== true) {
+      if (!nativeResponseOk(result)) {
         if (isInput) {
-          // An exact native mutex-busy receipt proves THIS call never submitted
-          // input. Every other failure, throw, timeout or forged response latches.
-          const notSubmitted = result?.ok === false &&
-            result?.error === 'GUI_NATIVE_BUSY' &&
-            result?.submission === 'NOT_SUBMITTED';
-          if (!notSubmitted) uncertain = true;
-          // Both cases consume the frame and revoke the lease; never auto-retry.
-          session = null; frame = null; closeInvoke();
+          // Only an exact native, platform-specific pre-dispatch receipt qualifies.
+          // Other errors, extra keys, getters and helper uncertainty always latch.
+          if (!exactNativePreDispatchReceipt(result, platform)) uncertain = true;
+          session = null; frame = null; closeInvoke(); // Never auto-replay.
         }
-        throw guiError(result?.error || 'GUI_NATIVE_FAILED');
+        throw guiError(nativeResponseError(result));
       }
       if (name === 'gui_screenshot') {
         const { data, mimeType, ...meta } = result;

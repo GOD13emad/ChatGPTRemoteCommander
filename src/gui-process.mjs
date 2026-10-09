@@ -14,8 +14,8 @@ function parseGuiResult(bytes) {
     // The trusted native helper emits exactly this bounded pre-dispatch receipt
     // only if it failed to acquire the GUI mutex BEFORE touching the desktop.
     // Unexpected fields or a naked error string cannot claim non-submission.
-    if (safeCode === 'GUI_NATIVE_BUSY' && value.submission === 'NOT_SUBMITTED' &&
-        Object.keys(value).length === 3) {
+    if ((safeCode === 'GUI_NATIVE_BUSY' || safeCode === 'GUI_FOREGROUND_OR_GEOMETRY_CHANGED') &&
+        value.submission === 'NOT_SUBMITTED' && Object.keys(value).length === 3) {
       return { ok: false, error: safeCode, submission: 'NOT_SUBMITTED' };
     }
     throw guiError(safeCode);

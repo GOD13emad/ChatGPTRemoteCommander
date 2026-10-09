@@ -279,7 +279,13 @@ def move_to(req, rd, target, deadline):
 
 def handle_input(req):
     deadline=time.monotonic()+OPERATION_TIMEOUT_S
-    observed=guard(req,deadline)
+    # Pre-dispatch GNOME frame check happens BEFORE creating a Mutter input
+    # session. Only the exact mismatch proves no input from THIS call.
+    try: observed=guard(req,deadline)
+    except GuiFailure as e:
+        if e.code=='GUI_FOREGROUND_OR_GEOMETRY_CHANGED':
+            return {'ok':False,'error':e.code,'submission':'NOT_SUBMITTED'}
+        raise
     action=req.get('action')
     with MutterInput(req,deadline) as rd:
         if action=='move': move_to(req,rd,point(req,observed),deadline); return {'ok':True,'backend':'mutter-remote-desktop'}
@@ -403,6 +409,10 @@ def handle(req):
         except GuiFailure as e: return guierr(e.code)
         except Exception: return guierr('GUI_MUTTER_REMOTE_DESKTOP_FAILED')
     r=invoke_extension(req,6000)
+    # Pinned GNOME extension: focusWindow._guard(req) checks frame before
+    # windows[].activate(). A generic failure or post-focus error is NOT proof.
+    if action=='focusWindow' and isinstance(r,dict) and set(r)=={'ok','error'} and r.get('ok') is False and r.get('error')=='GUI_FOREGROUND_OR_GEOMETRY_CHANGED':
+        return {'ok':False,'error':'GUI_FOREGROUND_OR_GEOMETRY_CHANGED','submission':'NOT_SUBMITTED'}
     if action=='screenshot' and r.get('ok'): return convert_screenshot(req,r)
     return r
 
