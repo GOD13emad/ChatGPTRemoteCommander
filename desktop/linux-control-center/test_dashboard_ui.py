@@ -54,11 +54,18 @@ class DashboardPresentationTests(unittest.TestCase):
         self.assertIn("flow.set_column_homogeneous(True)", source)
         self.assertIn("flow.attach(metric, index % 2, index // 2, 1, 1)", source)
         add_index=source.index("stack_page = self.stack.add_titled(page, key, title)")
-        bind_index=source.index("navigator.set_stack(self.stack)")
-        self.assertLess(add_index, bind_index)
+        button_index=source.index("self.nav_buttons[key] = button")
+        self.assertLess(add_index, button_index)
         self.assertIn("page.set_visible(True)", source)
         self.assertIn("stack_page.set_visible(True)", source)
         self.assertIn('self.stack.set_visible_child_name("overview")', source)
+        self.assertIn("button.connect(", source)
+        self.assertIn('"clicked"', source)
+        self.assertIn("lambda _button, destination=key:", source)
+        self.assertIn("self.stack.connect(\"notify::visible-child-name\", self._sync_nav)", source)
+        self.assertIn("button.add_css_class(\"rc-nav-button\")", source)
+        self.assertIn("button.update_property([Gtk.AccessibleProperty.LABEL]", source)
+        self.assertNotIn("Gtk.StackSidebar()", source)
 
     def test_optional_synthetic_test_hook_is_disabled_in_real_app(self):
         source=P.read_text()
@@ -88,7 +95,9 @@ class DashboardPresentationTests(unittest.TestCase):
         self.assertIn('self._render_workflows(task_data)',source)
         self.assertIn('if rows == self._workflow_rows:',source)
         self.assertNotIn("LaunchPowerShellTool",source)
-        self.assertNotIn("self.stack.get_visible_child_name()",source)
+        refresh_body = source[source.index("        def refresh(self):"):]
+        self.assertNotIn("self.stack.get_visible_child_name()", refresh_body)
+        self.assertIn("self.stack.get_visible_child_name()", source)
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -31,6 +31,18 @@ if __name__=="__main__":
         names = tuple(str(pages.get_item(i).get_title()) for i in range(total))
         print(f"R36_NATIVE_STACK_PAGES={total}_VISIBLE={visible}", flush=True)
         print("R36_NATIVE_STACK_TITLES=" + ",".join(names), flush=True)
+        expected_routes = ("overview", "profiles", "tasks", "security")
+        buttons = center.nav_buttons
+        if tuple(buttons) != expected_routes or len(buttons) != 4:
+            raise AssertionError("R43_EXPECTED_FOUR_NATIVE_NAV_BUTTONS")
+        for destination in ("profiles", "tasks", "security", "overview"):
+            control = buttons[destination]
+            if not control.get_visible() or control.get_parent() is None:
+                raise AssertionError("R43_NAV_BUTTON_NOT_VISIBLE")
+            control.emit("clicked")
+            if center.stack.get_visible_child_name() != destination:
+                raise AssertionError("R43_NAV_DESTINATION_NOT_SELECTED_" + destination)
+        print("R43_NATIVE_NAV_BUTTONS=4_ROUTING_PASS", flush=True)
 
     raise SystemExit(run_dashboard(
         "io.github.god13emad.RemoteCommander.R35Synthetic",

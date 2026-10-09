@@ -48,6 +48,16 @@ CSS = """
 .rc-footer { font-size: 11px; opacity: .63; padding: 10px 16px; }
 .rc-status-icon { margin-right: 6px; }
 .rc-stale-indicator { border-radius: 12px; padding: 8px 12px; }
+.rc-nav-button {
+  border-radius: 11px; padding: 10px 13px;
+  margin: 2px 3px; box-shadow: none;
+  min-height: 40px;
+}
+.rc-nav-button label { font-size: 13px; font-weight: 650; }
+.rc-nav-selected {
+  background: alpha(@accent_bg_color, .19);
+  color: @accent_color;
+}
 """
 
 
@@ -140,6 +150,7 @@ def run_dashboard(app_id: str,
             self._profile_rows = ()
             self._workflow_rows = ()
             self._task_widgets = []
+            self.nav_buttons = {}
             self._style_installed = False
             self._timer = 0
             self._gnome_settings = None
@@ -375,7 +386,11 @@ def run_dashboard(app_id: str,
             sidebar.set_size_request(212, -1)
             sidebar.add_css_class("rc-sidebar")
             sidebar.append(label("WORKSPACE", "rc-eyebrow"))
-            navigator = Gtk.StackSidebar()
+            # Use explicit native navigation controls. Gtk.StackSidebar under
+            # Xvfb reported four StackPages but rendered only one visible row.
+            # Routing stays local to Gtk.Stack, never the Commander Core.
+            navigator = boxed(gap=5)
+            navigator.set_hexpand(True)
             sidebar.append(navigator)
             sidebar.append(label("READ-ONLY MODE", "rc-section-caption"))
             workspace.append(sidebar)
@@ -394,10 +409,23 @@ def run_dashboard(app_id: str,
                 page.set_visible(True)
                 stack_page = self.stack.add_titled(page, key, title)
                 stack_page.set_visible(True)
-            # Attach sidebar after all pages exist; minimal GTK/Xvfb can
-            # otherwise expose only the initially selected stack child.
-            navigator.set_stack(self.stack)
+                button = Gtk.Button()
+                button.add_css_class("flat")
+                button.add_css_class("rc-nav-button")
+                button.set_hexpand(True)
+                button.set_child(label(title, "rc-nav-label"))
+                button.set_tooltip_text(f"Show {title} page")
+                button.update_property([Gtk.AccessibleProperty.LABEL],
+                                       [f"Show {title} page"])
+                button.connect(
+                    "clicked",
+                    lambda _button, destination=key:
+                        self.stack.set_visible_child_name(destination))
+                navigator.append(button)
+                self.nav_buttons[key] = button
+            self.stack.connect("notify::visible-child-name", self._sync_nav)
             self.stack.set_visible_child_name("overview")
+            self._sync_nav()
             self._build_overview()
             self._build_profiles()
             self._build_tasks()
@@ -418,6 +446,13 @@ def run_dashboard(app_id: str,
             # Production callers pass None; no Browser/Core mutation bridge.
             if native_test_observer is not None:
                 native_test_observer(self)
+
+        def _sync_nav(self, *_args):
+            selected = self.stack.get_visible_child_name()
+            for destination, button in self.nav_buttons.items():
+                button.remove_css_class("rc-nav-selected")
+                if destination == selected:
+                    button.add_css_class("rc-nav-selected")
 
         def _window_destroyed(self, *_args):
             self.window = None
