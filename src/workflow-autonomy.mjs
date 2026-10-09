@@ -125,7 +125,7 @@ export function normalizeWorkflowState(state, { authority, executionProfile, sch
   return next;
 }
 
-function safeRelative(value, fallback) {
+export function safeRelative(value, fallback) {
   const v = typeof value === 'string' && value ? value : fallback;
   if (path.isAbsolute(v) || /^[A-Za-z]:|^\\\\/.test(v) || v.split(/[\\/]/).includes('..')) throw new Error('WORKFLOW_BRAIN_PATH_INVALID');
   return v;
