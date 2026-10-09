@@ -383,14 +383,16 @@ def run_dashboard(app_id: str,
             workspace = boxed(vertical=False, gap=0)
             workspace.set_vexpand(True)
             sidebar = boxed(gap=14)
-            sidebar.set_size_request(212, -1)
+            sidebar.set_size_request(224, -1)
+            sidebar.set_hexpand(False)
             sidebar.add_css_class("rc-sidebar")
+            self._sidebar_native_widget = sidebar
             sidebar.append(label("WORKSPACE", "rc-eyebrow"))
             # Use explicit native navigation controls. Gtk.StackSidebar under
             # Xvfb reported four StackPages but rendered only one visible row.
             # Routing stays local to Gtk.Stack, never the Commander Core.
             navigator = boxed(gap=5)
-            navigator.set_hexpand(True)
+            navigator.set_hexpand(False)
             sidebar.append(navigator)
             sidebar.append(label("READ-ONLY MODE", "rc-section-caption"))
             workspace.append(sidebar)
@@ -412,7 +414,8 @@ def run_dashboard(app_id: str,
                 button = Gtk.Button()
                 button.add_css_class("flat")
                 button.add_css_class("rc-nav-button")
-                button.set_hexpand(True)
+                button.set_hexpand(False)
+                button.set_halign(Gtk.Align.FILL)
                 button.set_child(label(title, "rc-nav-label"))
                 button.set_tooltip_text(f"Show {title} page")
                 button.update_property([Gtk.AccessibleProperty.LABEL],

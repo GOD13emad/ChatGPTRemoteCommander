@@ -33,6 +33,7 @@ dbus-run-session -- xvfb-run -a -s '-screen 0 1440x900x24' bash -euo pipefail -c
   if [[ -z "$winid" ]]; then cat "$RC_R35_PREVIEW_DIR/x11-diagnostic.txt"; echo "GTK_NATIVE_WINDOW_MISSING" >&2; exit 66; fi
   grep -q "^R36_NATIVE_STACK_PAGES=4_VISIBLE=4$" "$RC_R35_PREVIEW_DIR/gtk.log" || { cat "$RC_R35_PREVIEW_DIR/x11-diagnostic.txt"; echo "SIDEBAR_FOUR_PAGES_NOT_ACCEPTED" >&2; exit 69; }
   grep -q "^R43_NATIVE_NAV_BUTTONS=4_ROUTING_PASS$" "$RC_R35_PREVIEW_DIR/gtk.log" || { cat "$RC_R35_PREVIEW_DIR/x11-diagnostic.txt"; echo "R43_NAV_BUTTON_INTERACTION_NOT_ACCEPTED" >&2; exit 70; }
+  grep -Eq "^R44_NATIVE_SIDEBAR_WIDTH_PASS=[0-9]+_OF_[0-9]+$" "$RC_R35_PREVIEW_DIR/gtk.log" || { cat "$RC_R35_PREVIEW_DIR/x11-diagnostic.txt"; echo "R44_SIDEBAR_WIDTH_NOT_ACCEPTED" >&2; exit 71; }
   xdotool getwindowgeometry --shell "$winid" > "$RC_R35_PREVIEW_DIR/window.txt"
   xwd -root -silent -out "$RC_R35_PREVIEW_DIR/preview.xwd"
   test -s "$RC_R35_PREVIEW_DIR/preview.xwd"

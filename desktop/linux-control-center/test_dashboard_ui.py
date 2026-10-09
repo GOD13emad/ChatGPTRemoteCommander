@@ -75,6 +75,14 @@ class DashboardPresentationTests(unittest.TestCase):
                         source.index("if native_test_observer is not None:"))
         self.assertNotIn("native_test_observer=", P.with_name("control_center.py").read_text())
 
+    def test_sidebar_remains_narrow_without_expanding_metric_content(self):
+        source = P.read_text()
+        self.assertIn("sidebar.set_size_request(224, -1)", source)
+        self.assertIn("sidebar.set_hexpand(False)", source)
+        self.assertIn("navigator.set_hexpand(False)", source)
+        self.assertIn("button.set_halign(Gtk.Align.FILL)", source)
+        self.assertIn("self._sidebar_native_widget = sidebar", source)
+
     def test_presentation_never_imports_shell_or_network(self):
         source=P.read_text()
         tree=ast.parse(source)

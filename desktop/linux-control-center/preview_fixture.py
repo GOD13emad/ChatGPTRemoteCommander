@@ -1,5 +1,7 @@
 """Synthetic fixture for isolated GitHub Actions Xvfb only; no owner data."""
 from dashboard_ui import run_dashboard
+import gi
+from gi.repository import GLib
 
 def monitor():
     return {"state":"CONNECTED","device":"CI synthetic preview","version":"0.10.20",
@@ -43,6 +45,15 @@ if __name__=="__main__":
             if center.stack.get_visible_child_name() != destination:
                 raise AssertionError("R43_NAV_DESTINATION_NOT_SELECTED_" + destination)
         print("R43_NATIVE_NAV_BUTTONS=4_ROUTING_PASS", flush=True)
+        def verify_actual_sidebar_width():
+            width = center._sidebar_native_widget.get_allocated_width()
+            window_width = center.window.get_width()
+            if 190 <= width <= 270 and window_width >= 900 and width * 100 <= window_width * 30:
+                print(f"R44_NATIVE_SIDEBAR_WIDTH_PASS={width}_OF_{window_width}", flush=True)
+            else:
+                print(f"R44_NATIVE_SIDEBAR_WIDTH_FAIL={width}_OF_{window_width}", flush=True)
+            return GLib.SOURCE_REMOVE
+        GLib.timeout_add_seconds(2, verify_actual_sidebar_width)
 
     raise SystemExit(run_dashboard(
         "io.github.god13emad.RemoteCommander.R35Synthetic",
