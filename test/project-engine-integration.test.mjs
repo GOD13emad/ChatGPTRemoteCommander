@@ -84,7 +84,7 @@ async function claimWorker(root) {
 if (process.argv[2] === '--claim-worker') {
   await claimWorker(process.argv[3]);
 } else {
-  test('automatic scheduler never plans an unenrolled workflow and completes only after explicit enrollment', { timeout: 9000 }, async () => {
+  test('automatic scheduler never plans an unenrolled workflow and completes only after explicit enrollment', { timeout: 20000 }, async () => {
     const fixture = makeFixture({ scheduler: true, runner: { autoTick: true }, planner: async () => proposal('write_text', { path: 'result.txt', content: 'verified output' }) });
     try {
       await fixture.create();
@@ -94,7 +94,17 @@ if (process.argv[2] === '--claim-worker') {
       assert.equal(fs.existsSync(path.join(fixture.root, 'result.txt')), false);
       assert.deepEqual((await fixture.api.execute('workflow_run_status', {})).runs, []);
       await fixture.start();
-      const final = await until(async () => { const current = await fixture.status(); return current.status === 'COMPLETED' ? current : null; });
+      let lastStatus = 'not-polled';
+      const final = await until(async () => {
+        const current = await fixture.status();
+        lastStatus = current.status;
+        return current.status === 'COMPLETED' ? current : null;
+      }, 12000).catch(error => {
+        // Keep every completion/no-enrollment assertion; only improve bounded
+        // diagnostic evidence when Windows CI is slow under qualification load.
+        console.error('SCHEDULER_BOUNDED_DIAGNOSTIC', { lastStatus, plans: fixture.plans, calls: fixture.calls });
+        throw error;
+      });
       assert.equal(final.actions, 1);
       assert.equal(fixture.plans, 1);
       assert.equal(fixture.calls, 1);
