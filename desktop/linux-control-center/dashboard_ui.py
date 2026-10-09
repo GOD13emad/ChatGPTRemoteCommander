@@ -261,19 +261,21 @@ def run_dashboard(app_id: str,
             self.overview.append(hero)
 
             section_heading(self.overview, "System health", "Current local observations, not scheduled workflow claims")
-            flow = Gtk.FlowBox()
-            flow.set_selection_mode(Gtk.SelectionMode.NONE)
-            flow.set_min_children_per_line(1)
-            flow.set_max_children_per_line(4)
-            flow.set_column_spacing(10)
-            flow.set_row_spacing(10)
-            for title, initial, description in [
+            flow = Gtk.Grid()
+            flow.set_column_homogeneous(True)
+            flow.set_column_spacing(12)
+            flow.set_row_spacing(12)
+            flow.set_hexpand(True)
+            for index, (title, initial, description) in enumerate([
                 ("Connection", "UNVERIFIED", "Waiting for owner-private monitor"),
                 ("Native GUI", "UNVERIFIED", "Input admission / STOP state"),
                 ("Browser", "UNVERIFIED", "Background browser readiness"),
                 ("Active operations", "UNVERIFIED", "Live only; not durable backlog"),
-            ]:
-                flow.append(self._metric(title, initial, description))
+            ]):
+                metric = self._metric(title, initial, description)
+                metric.set_hexpand(True)
+                metric.set_halign(Gtk.Align.FILL)
+                flow.attach(metric, index % 2, index // 2, 1, 1)
             self.overview.append(flow)
 
             section_heading(self.overview, "Instance summary",
@@ -373,7 +375,6 @@ def run_dashboard(app_id: str,
             sidebar.add_css_class("rc-sidebar")
             sidebar.append(label("WORKSPACE", "rc-eyebrow"))
             navigator = Gtk.StackSidebar()
-            navigator.set_stack(self.stack)
             sidebar.append(navigator)
             sidebar.append(label("READ-ONLY MODE", "rc-section-caption"))
             workspace.append(sidebar)
@@ -389,7 +390,13 @@ def run_dashboard(app_id: str,
                 ("tasks", "Workflows", self.tasks_scroll),
                 ("security", "Security", self.security_scroll),
             ):
-                self.stack.add_titled(page, key, title)
+                page.set_visible(True)
+                stack_page = self.stack.add_titled(page, key, title)
+                stack_page.set_visible(True)
+            # Attach sidebar after all pages exist; minimal GTK/Xvfb can
+            # otherwise expose only the initially selected stack child.
+            navigator.set_stack(self.stack)
+            self.stack.set_visible_child_name("overview")
             self._build_overview()
             self._build_profiles()
             self._build_tasks()

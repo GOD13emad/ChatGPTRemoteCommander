@@ -48,6 +48,18 @@ class DashboardPresentationTests(unittest.TestCase):
         self.assertIn('if found is not None:', source)
         self.assertIn('self._gnome_settings = None', source)
 
+    def test_balanced_two_by_two_metrics_and_four_visible_navigation_pages(self):
+        source=P.read_text()
+        self.assertIn("flow = Gtk.Grid()", source)
+        self.assertIn("flow.set_column_homogeneous(True)", source)
+        self.assertIn("flow.attach(metric, index % 2, index // 2, 1, 1)", source)
+        add_index=source.index("stack_page = self.stack.add_titled(page, key, title)")
+        bind_index=source.index("navigator.set_stack(self.stack)")
+        self.assertLess(add_index, bind_index)
+        self.assertIn("page.set_visible(True)", source)
+        self.assertIn("stack_page.set_visible(True)", source)
+        self.assertIn('self.stack.set_visible_child_name("overview")', source)
+
     def test_presentation_never_imports_shell_or_network(self):
         source=P.read_text()
         tree=ast.parse(source)

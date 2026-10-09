@@ -16,6 +16,7 @@ dbus-run-session -- xvfb-run -a -s '-screen 0 1440x900x24' bash -euo pipefail -c
   if ! kill -0 "$pid" 2>/dev/null; then cat "$RC_R35_PREVIEW_DIR/gtk.log"; echo "GTK_DIED_BEFORE_CAPTURE" >&2; exit 65; fi
   winid="$(xdotool search --name "Remote Commander" | head -n 1 || true)"
   if [[ -z "$winid" ]]; then cat "$RC_R35_PREVIEW_DIR/gtk.log"; echo "GTK_NATIVE_WINDOW_MISSING" >&2; exit 66; fi
+  grep -q "^R36_NATIVE_STACK_PAGES=4_VISIBLE=4$" "$RC_R35_PREVIEW_DIR/gtk.log" || { cat "$RC_R35_PREVIEW_DIR/gtk.log"; echo "SIDEBAR_FOUR_PAGES_NOT_ACCEPTED" >&2; exit 69; }
   xdotool getwindowgeometry --shell "$winid" > "$RC_R35_PREVIEW_DIR/window.txt"
   xwd -root -silent -out "$RC_R35_PREVIEW_DIR/preview.xwd"
   test -s "$RC_R35_PREVIEW_DIR/preview.xwd"
