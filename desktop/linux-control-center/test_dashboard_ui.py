@@ -80,6 +80,9 @@ class DashboardPresentationTests(unittest.TestCase):
         self.assertIn("center.sidebar.get_width()", source)
         self.assertIn("center.stack.get_width()", source)
         self.assertNotIn("center.sidebar.get_allocated_width()", source)
+        self.assertIn("GLib.timeout_add(180, report)", source)
+        self.assertIn("attempts[0] < 12", source)
+        self.assertIn("R47_ALLOCATION_TIMEOUT_AFTER_12_FRAMES", source)
 
     def test_presentation_never_imports_shell_or_network(self):
         source=P.read_text()

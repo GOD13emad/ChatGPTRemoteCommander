@@ -29,8 +29,19 @@ if __name__=="__main__":
         # Inspect actual allocations after GTK layout, not merely visible=True
         # on model pages; a visually absent navigation button fails the gate.
         from gi.repository import GLib
+        # The content width becomes meaningful after frame size allocation;
+        # poll only this synthetic X11 fixture, bounded to 12 observations.
+        attempts = [0]
 
         def report():
+            attempts[0] += 1
+            if (center.window.get_width() <= 0 or
+                    center.sidebar.get_width() <= 0 or
+                    center.stack.get_width() <= 0):
+                if attempts[0] < 12:
+                    return GLib.SOURCE_CONTINUE
+                print("R47_ALLOCATION_TIMEOUT_AFTER_12_FRAMES", flush=True)
+                return GLib.SOURCE_REMOVE
             pages = center.stack.get_pages()
             total = pages.get_n_items()
             visible = sum(1 for i in range(total) if pages.get_item(i).get_visible())
@@ -54,7 +65,7 @@ if __name__=="__main__":
             print(f"R46_STACK_WIDTH={stack_width}_WINDOW_WIDTH={window_width}", flush=True)
             return GLib.SOURCE_REMOVE
 
-        GLib.timeout_add(1, report)
+        GLib.timeout_add(180, report)
 
     raise SystemExit(run_dashboard(
         "io.github.god13emad.RemoteCommander.R35Synthetic",
