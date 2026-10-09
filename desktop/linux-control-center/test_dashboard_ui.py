@@ -75,6 +75,12 @@ class DashboardPresentationTests(unittest.TestCase):
         self.assertIn("nav_button.set_hexpand(False)", source)
         self.assertNotIn("native_test_observer=", P.with_name("control_center.py").read_text())
 
+    def test_native_geometry_diagnostic_uses_supported_gtk4_get_width(self):
+        source=P.with_name("preview_fixture.py").read_text()
+        self.assertIn("center.sidebar.get_width()", source)
+        self.assertIn("center.stack.get_width()", source)
+        self.assertNotIn("center.sidebar.get_allocated_width()", source)
+
     def test_presentation_never_imports_shell_or_network(self):
         source=P.read_text()
         tree=ast.parse(source)

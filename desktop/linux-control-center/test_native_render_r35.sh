@@ -27,13 +27,8 @@ dbus-run-session -- xvfb-run -a -s '-screen 0 1440x900x24' bash -euo pipefail -c
   fi
   grep -q "^R36_NATIVE_STACK_PAGES=4_VISIBLE=4$" "$RC_R35_PREVIEW_DIR/gtk.log" || { cat "$RC_R35_PREVIEW_DIR/gtk.log"; echo "STACK_FOUR_PAGES_NOT_ACCEPTED" >&2; exit 69; }
   grep -q "^R39_NAV_BUTTONS=4_DRAWN=4_ACTIVE=1$" "$RC_R35_PREVIEW_DIR/gtk.log" || { cat "$RC_R35_PREVIEW_DIR/gtk.log"; echo "SIDEBAR_FOUR_VISUAL_BUTTONS_NOT_ACCEPTED" >&2; exit 70; }
-  sidebar_width="$(grep -E "^R43_SIDEBAR_WIDTH=[0-9]+$" "$RC_R35_PREVIEW_DIR/gtk.log" | tail -n1)"
-  sidebar_width="${sidebar_width#R43_SIDEBAR_WIDTH=}"
-  [[ "$sidebar_width" =~ ^[0-9]+$ ]] && ((sidebar_width >= 190 && sidebar_width <= 260)) || {
-    cat "$RC_R35_PREVIEW_DIR/gtk.log"
-    echo "SIDEBAR_WIDTH_OUT_OF_BOUNDS width=$sidebar_width" >&2
-    exit 72
-  }
+  # Always capture the visible window BEFORE any viewport-width acceptance:
+  # an out-of-range width must preserve a real screenshot for diagnosis.
   xdotool getwindowgeometry --shell "$winid" > "$RC_R35_PREVIEW_DIR/window.txt"
   xwd -root -silent -out "$RC_R35_PREVIEW_DIR/preview.xwd"
   test -s "$RC_R35_PREVIEW_DIR/preview.xwd"
@@ -45,5 +40,13 @@ colors="$(identify -format '%k' "$output/preview.png")"
 [[ "$colors" =~ ^[0-9]+$ ]] || exit 67
 ((colors > 120)) || { echo "SCREENSHOT_EMPTY colors=$colors" >&2; exit 68; }
 sha="$(sha256sum "$output/preview.png" | cut -d ' ' -f 1)"
+sidebar_line="$(grep -E "^R46_SIDEBAR_CONTENT_WIDTH=[0-9]+$" "$output/gtk.log" | tail -n1 || true)"
+sidebar_width="${sidebar_line#R46_SIDEBAR_CONTENT_WIDTH=}"
+if [[ ! "$sidebar_width" =~ ^[0-9]+$ ]] || ((sidebar_width < 190 || sidebar_width > 260)); then
+  printf '{"schema":1,"revision":"R46","status":"FAIL_NATIVE_SIDEBAR_WIDTH_AFTER_CAPTURE","width":"%s","captureSHA256":"%s","ownerProfileTouched":false}\n' "$sidebar_width" "$sha" >"$output/FAIL_R46.json"
+  cat "$output/gtk.log"
+  echo "SIDEBAR_WIDTH_OUT_OF_BOUNDS capture_saved width=$sidebar_width" >&2
+  exit 72
+fi
 printf '{"schema":1,"revision":"R35","status":"PASS_SYNTHETIC_GTK4_ADWAITA_X11_RENDER_ONLY","captureSHA256":"%s","uniqueColors":%s,"userProfileTouched":false,"nativeOwnerAcceptance":false}\n' "$sha" "$colors" >"$output/PREVIEW_R35.json"
 echo "R35_SYNTHETIC_X11_RENDER_PASS sha256=$sha colors=$colors"

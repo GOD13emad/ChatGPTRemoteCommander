@@ -39,12 +39,19 @@ if __name__=="__main__":
             print("R36_NATIVE_STACK_TITLES=" + ",".join(names), flush=True)
             buttons = tuple(center.nav_buttons.values())
             drawn = sum(1 for b in buttons
-                        if b.get_visible() and b.get_allocated_height() >= 20)
+                        if b.get_visible() and b.get_height() >= 20)
             active = sum(1 for b in buttons if b.has_css_class("rc-nav-active"))
             print(f"R39_NAV_BUTTONS={len(buttons)}_DRAWN={drawn}_ACTIVE={active}",
                   flush=True)
-            width = center.sidebar.get_allocated_width()
-            print(f"R43_SIDEBAR_WIDTH={width}", flush=True)
+            # GTK4 >=4.12: get_width() is the supported content-width API.
+            # Capture real image independently before accepting width.
+            width = center.sidebar.get_width()
+            req_width, req_height = center.sidebar.get_size_request()
+            stack_width = center.stack.get_width()
+            window_width = center.window.get_width()
+            print(f"R46_SIDEBAR_CONTENT_WIDTH={width}", flush=True)
+            print(f"R46_SIDEBAR_REQUEST={req_width}_{req_height}", flush=True)
+            print(f"R46_STACK_WIDTH={stack_width}_WINDOW_WIDTH={window_width}", flush=True)
             return GLib.SOURCE_REMOVE
 
         GLib.timeout_add(1, report)
