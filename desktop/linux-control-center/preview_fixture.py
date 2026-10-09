@@ -1,5 +1,7 @@
 """Synthetic fixture for isolated GitHub Actions Xvfb only; no owner data."""
+print("R42_PHASE_FIXTURE_BOOT", flush=True)
 from dashboard_ui import run_dashboard
+print("R42_PHASE_UI_IMPORTED", flush=True)
 
 def monitor():
     return {"state":"CONNECTED","device":"CI synthetic preview","version":"0.10.20",

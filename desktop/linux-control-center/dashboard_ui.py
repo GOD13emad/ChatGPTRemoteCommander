@@ -369,6 +369,8 @@ def run_dashboard(app_id: str,
             self.security_page.append(self.theme_detail)
 
         def do_activate(self):
+            if native_test_observer is not None:
+                print("R42_PHASE_DO_ACTIVATE", flush=True)
             if self.window is not None:
                 self.window.present()
                 return
@@ -452,11 +454,19 @@ def run_dashboard(app_id: str,
                 "rc-footer")
             footer.set_halign(Gtk.Align.CENTER)
             root.append(footer)
+            if native_test_observer is not None:
+                print("R42_PHASE_SET_CONTENT", flush=True)
             self.window.set_content(root)
             self._timer = GLib.timeout_add_seconds(5, self._tick)
             self.window.connect("destroy", self._window_destroyed)
+            if native_test_observer is not None:
+                print("R42_PHASE_BEFORE_REFRESH", flush=True)
             self.refresh()
+            if native_test_observer is not None:
+                print("R42_PHASE_BEFORE_PRESENT", flush=True)
             self.window.present()
+            if native_test_observer is not None:
+                print("R42_PHASE_AFTER_PRESENT", flush=True)
             # Synthetic CI-only callback supplied by the trusted fixture.
             # Production callers pass None; no Browser/Core mutation bridge.
             if native_test_observer is not None:
