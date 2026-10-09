@@ -42,9 +42,18 @@ $script:all=@()
 function Read-Json([string]$Path){try{Get-Content -LiteralPath $Path -Raw|ConvertFrom-Json}catch{return $null}}
 function Invoke-Cli([string]$Config,[string]$Action){
   if(-not(Test-Path -LiteralPath $Cli -PathType Leaf)){throw "workflow-cli missing: $Cli"}
-  $raw=@(& node.exe $Cli $Config $Action 2>&1)
-  if($LASTEXITCODE -ne 0){throw (($raw|Out-String).Trim())}
-  return (($raw|Out-String)|ConvertFrom-Json)
+  $stderrPath=[IO.Path]::GetTempFileName()
+  try{
+    $raw=@(& node.exe $Cli $Config $Action 2> $stderrPath)
+    $exitCode=$LASTEXITCODE
+    if($exitCode -ne 0){
+      $diagnostic=Get-Content -LiteralPath $stderrPath -Raw -ErrorAction SilentlyContinue
+      throw ("Workflow CLI exit ${exitCode}: "+(($raw|Out-String).Trim())+" "+$diagnostic)
+    }
+    return (($raw|Out-String)|ConvertFrom-Json)
+  }finally{
+    Remove-Item -LiteralPath $stderrPath -Force -ErrorAction SilentlyContinue
+  }
 }
 function Apply-Filter{
   $q=$filter.Text.Trim()
