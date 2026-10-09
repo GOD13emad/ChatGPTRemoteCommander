@@ -20,7 +20,7 @@ dbus-run-session -- xvfb-run -a -s '-screen 0 1440x900x24' bash -euo pipefail -c
   xwininfo -root -tree >> "$RC_R35_PREVIEW_DIR/x11-diagnostic.txt" 2>&1 || true
   echo "R39_ALL_VISIBLE_WINDOW_NAMES:" >> "$RC_R35_PREVIEW_DIR/x11-diagnostic.txt"
   xdotool search --onlyvisible --name ".*" 2>/dev/null |
-    while read -r id; do printf '%s: ' "$id"; xdotool getwindowname "$id" 2>/dev/null || true; done >> "$RC_R35_PREVIEW_DIR/x11-diagnostic.txt" || true
+    while read -r id; do printf "%s: " "$id"; xdotool getwindowname "$id" 2>/dev/null || true; done >> "$RC_R35_PREVIEW_DIR/x11-diagnostic.txt" || true
   echo "R39_GTK_LOG:" >> "$RC_R35_PREVIEW_DIR/x11-diagnostic.txt"
   cat "$RC_R35_PREVIEW_DIR/gtk.log" >> "$RC_R35_PREVIEW_DIR/x11-diagnostic.txt"
   # Root image is diagnostics only; later assertions must still pass.
