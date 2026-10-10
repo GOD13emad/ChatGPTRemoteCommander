@@ -1,0 +1,120 @@
+{
+  "schema": 1,
+  "campaign": "RC_UI_R47",
+  "phase": "candidate",
+  "productionPromoted": false,
+  "baseline": {
+    "coreVersion": "0.10.20",
+    "lastAcceptedBrainRevision": "MAIN_R61",
+    "lastAcceptedBrainSha256": "9262117223821464f2f8eb3eaf9b83b1bf1ff0c22c40d63bd63ce997b149856a"
+  },
+  "components": {
+    "browser": {
+      "id": "browser",
+      "repository": "Usefull-Skills/chatgpt-cef-linux",
+      "version": "0.8.2",
+      "commit": "8d214c52852fa474509886c2374f85b5e616f86b",
+      "ci": {
+        "status": "PASS",
+        "workflowRuns": [
+          38046034967,
+          38046035028,
+          38046034978,
+          38046035120
+        ]
+      },
+      "stableArtifactSha256": null
+    },
+    "linux-control-center": {
+      "id": "linux-control-center",
+      "repository": "GOD13emad/ChatGPTRemoteCommander",
+      "version": "0.10.20",
+      "commit": "ffdf8be4ed04cc24a7de9740d57a41364be88c49",
+      "ci": {
+        "status": "PASS",
+        "workflowRuns": [
+          38006807756,
+          38006807753,
+          38006807705,
+          38006807717
+        ]
+      },
+      "stableArtifactSha256": null
+    },
+    "windows-control-center": {
+      "id": "windows-control-center",
+      "repository": "GOD13emad/ChatGPTRemoteCommander",
+      "version": "0.10.20",
+      "commit": "885270377ca6b8fb5e7736993d2688139a54680d",
+      "ci": {
+        "status": "PASS",
+        "workflowRuns": [
+          37998664309,
+          37998664409
+        ]
+      },
+      "stableArtifactSha256": null
+    }
+  },
+  "hosts": [
+    {
+      "id": "windows-primary",
+      "platform": "windows",
+      "connected": true,
+      "ownerVisualAccepted": false,
+      "rollbackReceiptAccepted": false,
+      "trustedCodeSignature": false
+    },
+    {
+      "id": "windows-secondary",
+      "platform": "windows",
+      "connected": true,
+      "ownerVisualAccepted": false,
+      "rollbackReceiptAccepted": false,
+      "trustedCodeSignature": false
+    },
+    {
+      "id": "linux-primary",
+      "platform": "linux",
+      "connected": true,
+      "ownerVisualAccepted": false,
+      "rollbackReceiptAccepted": false,
+      "runtimeSandboxAccepted": false
+    },
+    {
+      "id": "linux-secondary",
+      "platform": "linux",
+      "connected": false,
+      "ownerVisualAccepted": false,
+      "rollbackReceiptAccepted": false,
+      "runtimeSandboxAccepted": false
+    }
+  ],
+  "gates": {
+    "G1_NATIVE_GUI_STOP_MUTEX": {
+      "status": "OPEN"
+    },
+    "G2_NATIVE_CEF_BROWSER": {
+      "status": "OPEN"
+    },
+    "G3_CONTROL_CENTER_NATIVE": {
+      "status": "OPEN"
+    },
+    "G4_SMART_WORKFLOW_JOURNAL": {
+      "status": "OPEN"
+    },
+    "G5_RUNNER_SAME_CHAT_ACK": {
+      "status": "OPEN"
+    },
+    "G6_LINUX_SANDBOX_MMZ": {
+      "status": "OPEN"
+    },
+    "G7_GAME_VIDEO_OWNER_ACCEPTANCE": {
+      "status": "OPEN"
+    },
+    "G8_SIGNED_INSTALL_ROLLBACK": {
+      "status": "OPEN"
+    }
+  },
+  "independentReleaseAttestation": null
+}
