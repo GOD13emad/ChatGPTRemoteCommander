@@ -20,6 +20,7 @@ import { createDeliveryTools } from './delivery-tools.mjs';
 import { compactToolSuccessPayload, serializeBoundedJsonResponse, synchronousCommandInput } from './retry-guard.mjs';
 import { MutationIdempotencyStore } from './mutation-idempotency.mjs';
 import { createAgentExtensionRegistry } from './agent-extensions.mjs';
+import { createCoucouBridge } from './coucou-bridge.mjs';
 import { startBrowserCompanionMonitor } from './browser-companion-monitor.mjs';
 import {
   NO_CODEX_POLICY, codexLaunchAuthorized, delegationRequirement, delegationStatus
@@ -49,6 +50,8 @@ const configRaw = await readFile(configPath, 'utf8');
 const configSha256 = createHash('sha256').update(configRaw).digest('hex');
 const config = JSON.parse(configRaw);
 assertLocalTransport(config);
+// Off by default; emits only fixed status labels to a local opt-in Coucou hook.
+const coucouBridge = createCoucouBridge(config.coucouBridge);
 function expandEnvironment(value) { return expandPathValue(value); }
 config.allowedRoots = config.allowedRoots.map(expandEnvironment);
 const roots = await canonicalizeRoots(config.allowedRoots);
@@ -400,6 +403,10 @@ async function buildBrowserMonitorSnapshot() {
   const runs = Array.isArray(workflowStatus?.projectEngine?.runs)
     ? workflowStatus.projectEngine.runs
     : Array.isArray(workflowStatus?.runs) ? workflowStatus.runs : [];
+  // Only safe aggregate counts; the private monitor must never contain
+  // delivery IDs, account cookies, workflow payloads, raw arguments or project paths.
+  let deliveryStatus = null;
+  try { deliveryStatus = deliveryTools.status(); } catch {}
   const concurrency = lockStats();
   return {
     identity: {
@@ -415,7 +422,19 @@ async function buildBrowserMonitorSnapshot() {
     workflows: {
       enabled: workflowStatus.enabled === true,
       engineEnabled: workflowStatus.engineEnabled === true,
-      runCount: runs.length
+      runCount: runs.length,
+      automaticExecution: workflowStatus.automaticExecution === true,
+      runnerConfigured: workflowStatus.runnerConfigured === true,
+      persistedNonterminal: workflowStatus.schedulerState?.persistedNonterminal ?? 0,
+      currentLeases: workflowStatus.schedulerState?.currentLeases ?? 0,
+      reconciliationRequired: workflowStatus.schedulerState?.reconciliationRequired ?? 0
+    },
+    delivery: {
+      available: deliveryStatus !== null,
+      pending: deliveryStatus?.pending ?? 0,
+      deadLetter: deliveryStatus?.deadLetter ?? 0,
+      transportReceipts: deliveryStatus?.transportReceipts ?? 0,
+      authenticatedChatBound: deliveryStatus?.identityBoundary === 'AUTHENTICATED_CHAT_BOUND'
     },
     extensions: { items:extensionItems },
     operations: {
@@ -441,6 +460,7 @@ async function executeToolEffect(name, args) {
         : { enabled:false, engineEnabled:false, scheduler:false, automaticContinuation:false };
       return {
         name: 'chatgpt-remote-commander', version: VERSION,
+        coucouBridge: coucouBridge.status(),
         deviceName: config.deviceName || os.hostname(),
         platform: process.platform, arch: process.arch, shell: shellName(),
         protocols: [MODERN_VERSION, ...LEGACY_VERSIONS],
@@ -707,12 +727,15 @@ async function handleMessage(req, message) {
       await audit(ctx, { ...acceptedTrace(req, message, executionArgs, name), ...(requestIdSource ? { requestIdSource } : {}) });
       try {
         const result = await executeTool(name, executionArgs, { requestIdSource });
+        // Display telemetry never controls the response or receives tool inputs/outputs.
+        coucouBridge.emitTool(name, { failed: result?.ok === false || result?.isError === true });
         if (modern && name === 'operation_start' && clientSupportsTasks(message) && result?.operationId) {
           const task = await operationTask(result.operationId);
           return { status: 200, body: rpcTaskResult(message.id, task) };
         }
         return { status: 200, body: rpcResult(message.id, toolSuccessPayload(result), modern) };
       } catch (error) {
+        coucouBridge.emitTool(name, { failed: true });
         await audit(ctx, { action: 'tool_error', tool: name, ok: false, error: error.message });
         return { status: 200, body: rpcResult(message.id, toolErrorPayload(error.message), modern) };
       }

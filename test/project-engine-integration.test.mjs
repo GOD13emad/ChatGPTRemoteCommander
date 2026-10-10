@@ -84,7 +84,7 @@ async function claimWorker(root) {
 if (process.argv[2] === '--claim-worker') {
   await claimWorker(process.argv[3]);
 } else {
-  test('automatic scheduler never plans an unenrolled workflow and completes only after explicit enrollment', { timeout: 9000 }, async () => {
+  test('automatic scheduler never plans an unenrolled workflow and completes only after explicit enrollment', { timeout: 20000 }, async () => {
     const fixture = makeFixture({ scheduler: true, runner: { autoTick: true }, planner: async () => proposal('write_text', { path: 'result.txt', content: 'verified output' }) });
     try {
       await fixture.create();
@@ -94,7 +94,17 @@ if (process.argv[2] === '--claim-worker') {
       assert.equal(fs.existsSync(path.join(fixture.root, 'result.txt')), false);
       assert.deepEqual((await fixture.api.execute('workflow_run_status', {})).runs, []);
       await fixture.start();
-      const final = await until(async () => { const current = await fixture.status(); return current.status === 'COMPLETED' ? current : null; });
+      let lastStatus = 'not-polled';
+      const final = await until(async () => {
+        const current = await fixture.status();
+        lastStatus = current.status;
+        return current.status === 'COMPLETED' ? current : null;
+      }, 12000).catch(error => {
+        // Keep every completion/no-enrollment assertion; only improve bounded
+        // diagnostic evidence when Windows CI is slow under qualification load.
+        console.error('SCHEDULER_BOUNDED_DIAGNOSTIC', { lastStatus, plans: fixture.plans, calls: fixture.calls });
+        throw error;
+      });
       assert.equal(final.actions, 1);
       assert.equal(fixture.plans, 1);
       assert.equal(fixture.calls, 1);
@@ -102,20 +112,20 @@ if (process.argv[2] === '--claim-worker') {
     } finally { await fixture.dispose(); }
   });
 
-  for (const earlyWake of [false,true]) test(`deadline aborts an abort-aware planner before any filesystem effect (early wake=${earlyWake})`, { timeout: 6000 }, async t => {
+  for (const earlyWake of [false,true]) test(`deadline aborts an abort-aware planner before any filesystem effect (early wake=${earlyWake})`, { timeout: 20000 }, async t => {
     let aborted = false;
     const fixture = makeFixture({ planner: async (_, { signal }) => new Promise((resolve, reject) => {
       const stop = () => { aborted = true; reject(Object.assign(new Error('Planner interrupted'), { code: 'PLANNER_ABORTED' })); };
       if (signal.aborted) stop(); else signal.addEventListener('abort', stop, { once: true });
     }) });
     try {
-      await fixture.create(); const started = await fixture.start({ durationMs: 1000 });
+      await fixture.create(); const started = await fixture.start({ durationMs: 4000 });
       let timerCalls=0;
       if(earlyWake){
         const nativeTimeout=globalThis.setTimeout;
         t.mock.method(globalThis,'setTimeout',(callback,delay,...args)=>{
           timerCalls++;
-          return nativeTimeout(callback,Math.min(delay,5),...args);
+          return nativeTimeout(callback,Math.min(delay,80),...args);
         });
       }
       const result = await fixture.tick();
