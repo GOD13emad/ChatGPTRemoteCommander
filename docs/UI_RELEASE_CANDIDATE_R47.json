@@ -15,7 +15,7 @@
       "version": "0.8.2",
       "commit": "8d214c52852fa474509886c2374f85b5e616f86b",
       "ci": {
-        "status": "OPEN",
+        "status": "PASS",
         "workflowRuns": [
           38046034967,
           38046035028,

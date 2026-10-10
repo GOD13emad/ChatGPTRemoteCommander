@@ -48,26 +48,26 @@ test('CLI --require-ready cannot trigger update',()=>{
 });
 test('schema cardinalities',()=>{assert.equal(new Set(HOSTS).size,4);assert.equal(new Set(GATES).size,8);});
 
-test('R62 accepted Brain and new Browser HEAD reconcile without incomplete CI promotion',()=>{
+test('R63 new Browser HEAD has four completed success runs but fleet release is blocked',()=>{
  const m=original();
  assert.equal(m.baseline.lastAcceptedBrainRevision,'MAIN_R61');
  assert.equal(m.baseline.lastAcceptedBrainSha256,'9262117223821464f2f8eb3eaf9b83b1bf1ff0c22c40d63bd63ce997b149856a');
  assert.equal(m.components.browser.commit,'8d214c52852fa474509886c2374f85b5e616f86b');
- assert.equal(m.components.browser.ci.status,'OPEN');
- assert.ok(m.components.browser.ci.workflowRuns.includes(38046035120));
- assert.equal(m.components.browser.stableArtifactSha256,null);
+ assert.equal(m.components.browser.ci.status,'PASS');
+ assert.deepEqual([...m.components.browser.ci.workflowRuns].sort(),[38046034967,38046035028,38046034978,38046035120].sort());
  const result=evaluate(m);
  assert.equal(result.status,'BLOCKED');
  assert.equal(result.automaticDeploymentAuthorized,false);
- assert.ok(result.blockers.includes('COMPONENT:browser:CI'));
- assert.equal(result.blockers.length,25);
+ assert.ok(!result.blockers.includes('COMPONENT:browser:CI'));
+ assert.equal(result.blockers.length,24);
+ assert.equal(result.openCriticalGates.length,8);
 });
-test('R57 successful scoped rollback does not authorize unsigned fleet deployment',()=>{
- const m=original();
- m.components.browser.ci.status='PASS'; // Synthetic state, never GitHub truth.
- const r=evaluate(m);
- assert.equal(r.automaticDeploymentAuthorized,false);
- assert.equal(r.productionPromoted,false);
- assert.ok(r.blockers.includes('COMPONENT:browser:STABLE_ARTIFACT_MISSING'));
- assert.equal(r.openCriticalGates.length,8);
+test('missing new-head CI or unsigned fleet packages remain fail closed',()=>{
+ let m=original();m.components.browser.ci.status='OPEN';
+ const open=evaluate(m);assert.ok(open.blockers.includes('COMPONENT:browser:CI'));
+ assert.equal(open.blockers.length,25);
+ m=original();m.components.browser.ci.workflowRuns=[];bad(m,/CI_EVIDENCE/);
+ m=original();const success=evaluate(m);
+ assert.ok(success.blockers.includes('COMPONENT:browser:STABLE_ARTIFACT_MISSING'));
+ assert.equal(success.productionPromoted,false);assert.equal(success.automaticDeploymentAuthorized,false);
 });
