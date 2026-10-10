@@ -74,6 +74,7 @@ export function createGuiController({ platform = process.platform, now = () => p
       if (name === 'gui_session_begin') {
         if (current()) throw guiError('GUI_LEASE_BUSY');
         const status = await invoke({ action: 'status', stopFile });
+        if (status?.ok !== true) throw guiError(status?.error || 'GUI_NATIVE_FAILED');
         if (status.available !== true) throw guiError('GUI_DESKTOP_UNAVAILABLE');
         const ownerAuthorizedFallback = cfg.ownerAuthorizedTakeover === true && ctx.config?.capabilityProfile?.tier === 'FULL_POWER' && ctx.config?.capabilityProfile?.explicitlyAuthorized === true;
         const mode = input.mode ?? (ownerAuthorizedFallback ? 'takeover' : 'observe');
@@ -83,6 +84,7 @@ export function createGuiController({ platform = process.platform, now = () => p
       }
       if (name === 'gui_status') {
         const status = await invoke({ action: 'status', stopFile });
+        if (status?.ok !== true) throw guiError(status?.error || 'GUI_NATIVE_FAILED');
         return { ...status, enabled, busy: false, leased: !!current(), backend: status.backend ?? (platform === 'win32' ? 'windows-user32-gdi' : 'gnome-shell-wayland'), policy: {
           allowScreenshot: cfg.allowScreenshot === true, allowMouse: cfg.allowMouse === true,
           allowKeyboard: cfg.allowKeyboard === true, allowWindowFocus: cfg.allowWindowFocus === true,
@@ -125,7 +127,16 @@ export function createGuiController({ platform = process.platform, now = () => p
         throw error;
       }
       if (result?.ok !== true) {
-        if (isInput) { uncertain = true; session = null; frame = null; closeInvoke(); }
+        if (isInput) {
+          // An exact native mutex-busy receipt proves THIS call never submitted
+          // input. Every other failure, throw, timeout or forged response latches.
+          const notSubmitted = result?.ok === false &&
+            result?.error === 'GUI_NATIVE_BUSY' &&
+            result?.submission === 'NOT_SUBMITTED';
+          if (!notSubmitted) uncertain = true;
+          // Both cases consume the frame and revoke the lease; never auto-retry.
+          session = null; frame = null; closeInvoke();
+        }
         throw guiError(result?.error || 'GUI_NATIVE_FAILED');
       }
       if (name === 'gui_screenshot') {
