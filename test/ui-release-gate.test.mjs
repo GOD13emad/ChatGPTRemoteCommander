@@ -48,13 +48,13 @@ test('CLI --require-ready cannot trigger update',()=>{
 });
 test('schema cardinalities',()=>{assert.equal(new Set(HOSTS).size,4);assert.equal(new Set(GATES).size,8);});
 
-test('R58 exact HEAD reconciliation is explicitly NOT an installer authorization',()=>{
+test('R62 accepted Brain and new Browser HEAD reconcile without incomplete CI promotion',()=>{
  const m=original();
- assert.equal(m.baseline.lastAcceptedBrainRevision,'MAIN_R56');
- assert.equal(m.baseline.lastAcceptedBrainSha256,'0ebff33ebc6d4a3fd04398a8d28a801403c4977292a221ebd0b8d50c1e2637b0');
- assert.equal(m.components.browser.commit,'2561854b9452eba3a0906df5682537964d262ed8');
+ assert.equal(m.baseline.lastAcceptedBrainRevision,'MAIN_R61');
+ assert.equal(m.baseline.lastAcceptedBrainSha256,'9262117223821464f2f8eb3eaf9b83b1bf1ff0c22c40d63bd63ce997b149856a');
+ assert.equal(m.components.browser.commit,'8d214c52852fa474509886c2374f85b5e616f86b');
  assert.equal(m.components.browser.ci.status,'OPEN');
- assert.ok(m.components.browser.ci.workflowRuns.includes(38019813188));
+ assert.ok(m.components.browser.ci.workflowRuns.includes(38046035120));
  assert.equal(m.components.browser.stableArtifactSha256,null);
  const result=evaluate(m);
  assert.equal(result.status,'BLOCKED');
@@ -62,13 +62,12 @@ test('R58 exact HEAD reconciliation is explicitly NOT an installer authorization
  assert.ok(result.blockers.includes('COMPONENT:browser:CI'));
  assert.equal(result.blockers.length,25);
 });
-test('cannot silently assert Browser CI pass while R57 run remains cancelled',()=>{
+test('R57 successful scoped rollback does not authorize unsigned fleet deployment',()=>{
  const m=original();
- m.components.browser.ci.status='PASS';
- // Schema checks valid source shape, not GitHub truth: independent live
- // Workflow validation must precede this mutation. Candidate remains blocked.
+ m.components.browser.ci.status='PASS'; // Synthetic state, never GitHub truth.
  const r=evaluate(m);
  assert.equal(r.automaticDeploymentAuthorized,false);
+ assert.equal(r.productionPromoted,false);
  assert.ok(r.blockers.includes('COMPONENT:browser:STABLE_ARTIFACT_MISSING'));
- assert.equal(m.productionPromoted,false);
+ assert.equal(r.openCriticalGates.length,8);
 });
