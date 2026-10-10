@@ -310,15 +310,29 @@ try{
   [IO.File]::WriteAllText($specPath,($spec|ConvertTo-Json -Depth 8)+[Environment]::NewLine,[Text.UTF8Encoding]::new($false))
   $env:RC_QUALIFICATION_RUN_ID=$RunId
 
-  $pwsh=(Get-Command pwsh.exe -ErrorAction Stop).Source
-  $childArgs=@('-NoLogo','-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',$childScript,'-SpecPath',$specPath)
-  $commandParts=@()
-  $commandParts+=Quote-WindowsArgument $pwsh
-  foreach($arg in $childArgs){$commandParts+=Quote-WindowsArgument ([string]$arg)}
+  # Launch executables directly and suspended so the kill-on-close Job owns descendants.
+  $resolved=(Get-Command $Program -ErrorAction Stop).Source
+  if([IO.Path]::GetExtension($resolved).ToLowerInvariant() -eq '.exe'){
+    $app=$resolved
+    $commandParts=@(Quote-WindowsArgument $app)
+    foreach($arg in $arguments){$commandParts+=Quote-WindowsArgument ([string]$arg)}
+  }elseif([IO.Path]::GetFileName($resolved).ToLowerInvariant() -eq 'npm.cmd'){
+    # NPM's Windows .cmd shim normally adds another process-launching shell.
+    # Resolve the supported local Node npm CLI and execute it inside the Job.
+    $npmCli=Join-Path (Split-Path -Parent $resolved) 'node_modules\npm\bin\npm-cli.js'
+    if(-not(Test-Path -LiteralPath $npmCli -PathType Leaf)){throw 'NPM_NATIVE_CLI_MISSING'}
+    $app=(Get-Command node.exe -ErrorAction Stop).Source
+    $commandParts=@()
+    $commandParts+=Quote-WindowsArgument $app
+    $commandParts+=Quote-WindowsArgument $npmCli
+    foreach($arg in $arguments){$commandParts+=Quote-WindowsArgument ([string]$arg)}
+  }else{
+    throw 'QUALIFICATION_UNSUPPORTED_SHELL_WRAPPER_FAIL_CLOSED'
+  }
   $commandLine=$commandParts -join ' '
 
   $job=[RcQualificationJobNative]::CreateKillOnCloseJob()
-  $pi=[RcQualificationJobNative]::CreateSuspended($pwsh,$commandLine,$WorkingDirectory)
+  $pi=[RcQualificationJobNative]::CreateSuspended($app,$commandLine,$WorkingDirectory)
   $report.rootPid=[int]$pi.dwProcessId
   try{
     [RcQualificationJobNative]::Assign($job,$pi.hProcess)
