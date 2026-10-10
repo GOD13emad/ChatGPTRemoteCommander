@@ -1,4 +1,5 @@
 import path from 'node:path';
+import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { access } from 'node:fs/promises';
 import { randomBytes, timingSafeEqual } from 'node:crypto';
@@ -10,6 +11,19 @@ export { guiToolDefinitions };
 const project = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const stopFile = path.join(project, 'var', 'GUI_STOP');
 const globalStopFile = process.platform === 'linux' ? path.join(process.env.XDG_STATE_HOME || path.join(process.env.HOME || '', '.local', 'state'), 'chatgpt-remote-commander', 'GUI_STOP') : null;
+/** Monotonic emergency-stop signal from a deliberate double-click in the native
+ * Browser chrome. It is NOT a command transport: no start/resume/input is accepted.
+ * This path is separate from user browser profiles, and the native writer checks
+ * owner-only directory/file permissions. */
+export function browserNativeGuiStopPath({ platform = process.platform, env = process.env, home = os.homedir() } = {}) {
+  if (platform === 'win32') return env.LOCALAPPDATA
+    ? path.win32.join(env.LOCALAPPDATA, 'ChatGPTRemoteCommander', 'browser-companion', 'GUI_STOP') : null;
+  if (platform === 'linux') return path.posix.join(
+    env.XDG_STATE_HOME || path.posix.join(home, '.local', 'state'),
+    'chatgpt-remote-commander', 'browser-companion', 'GUI_STOP');
+  return null;
+}
+const browserNativeStopFile = browserNativeGuiStopPath();
 const windowsHelper = path.join(project, 'tools', 'gui-control.ps1');
 const linuxHelper = path.join(project, 'tools', 'gui-control-linux.py');
 const backendSpec = platform => platform === 'win32'
@@ -26,7 +40,7 @@ const invokeDefault = request => {
 };
 const closeInvokeDefault = () => persistentHelper?.close();
 async function stopped() {
-  for (const candidate of [stopFile, globalStopFile].filter(Boolean)) {
+  for (const candidate of [stopFile, globalStopFile, browserNativeStopFile].filter(Boolean)) {
     try { await access(candidate); return true; }
     catch (error) { if (error.code !== 'ENOENT') throw guiError('GUI_STOP_CHECK_FAILED'); }
   }
