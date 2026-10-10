@@ -5,21 +5,22 @@
   "productionPromoted": false,
   "baseline": {
     "coreVersion": "0.10.20",
-    "lastAcceptedBrainRevision": "MAIN_R29",
-    "lastAcceptedBrainSha256": "442eb6b31f0ea350688f414f83254247893002870d35ce2987900adade65a2d7"
+    "lastAcceptedBrainRevision": "MAIN_R56",
+    "lastAcceptedBrainSha256": "0ebff33ebc6d4a3fd04398a8d28a801403c4977292a221ebd0b8d50c1e2637b0"
   },
   "components": {
     "browser": {
       "id": "browser",
       "repository": "Usefull-Skills/chatgpt-cef-linux",
       "version": "0.8.2",
-      "commit": "624295c55610a331c1531792f1040acb02fe4797",
+      "commit": "2561854b9452eba3a0906df5682537964d262ed8",
       "ci": {
-        "status": "PASS",
+        "status": "OPEN",
         "workflowRuns": [
-          38000658917,
-          38000658926,
-          38000658981
+          38019813143,
+          38019813110,
+          38019813118,
+          38019813188
         ]
       },
       "stableArtifactSha256": null
