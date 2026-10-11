@@ -7,6 +7,7 @@ on:
       - 'desktop/tests-ui-r34/**'
       - 'desktop/install-windows.ps1'
       - 'test/ui-uninstall-preserve-r219.test.mjs'
+      - 'test/ui-legacy-inplace-r224.*'
       - '.github/workflows/windows-control-center-r34.yml'
   workflow_dispatch:
 
@@ -34,3 +35,11 @@ jobs:
       - name: Fail-closed generated Uninstall protection (R219)
         shell: pwsh
         run: node --test test/ui-uninstall-preserve-r219.test.mjs
+      - name: Exact legacy UI in-place migration policy (R224)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          node --test test/ui-legacy-inplace-r224.test.mjs
+          if($LASTEXITCODE -ne 0){throw 'R224_STATIC_CONTRACT_FAILED'}
+          & pwsh -NoLogo -NoProfile -NonInteractive -File test/ui-legacy-inplace-r224.ps1
+          if($LASTEXITCODE -ne 0){throw 'R224_SYNTHETIC_NEGATIVE_CASES_FAILED'}
