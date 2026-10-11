@@ -1,5 +1,7 @@
 # Project execution engine roadmap
 
+> **Historical roadmap snapshot (2026-09-25).** Its `CURRENT` and release-version statements are preserved for provenance, not as live baseline/promote instructions. See [RELEASE_AUTHORITY](RELEASE_AUTHORITY.md) for the current stable Core and integrated-product critical gates; workflow execution still requires explicit configured Runner and independent authenticated delivery acceptance.
+
 Date: 2026-09-25. Published release: v0.8.37; release candidate: v0.8.40. v0.8.38 and v0.8.39 remain historical unpublished tags.
 Project-engine baseline remains v0.8.37. v0.8.40 carries the reviewed browser feature from PR #16/#18 and adds direct-session durable command operations; neither expands autonomous Project Engine authority. Historical v0.8.38/v0.8.39 tags remain untouched.
 
