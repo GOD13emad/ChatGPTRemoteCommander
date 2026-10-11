@@ -12,9 +12,24 @@ dbus-run-session -- xvfb-run -a -s '-screen 0 1440x900x24' bash -euo pipefail -c
   /usr/bin/python3 -B "$GITHUB_WORKSPACE/desktop/linux-control-center/preview_fixture.py" > "$RC_R35_PREVIEW_DIR/gtk.log" 2>&1 &
   pid=$!
   trap "kill $pid 2>/dev/null || true" EXIT
-  sleep 5
-  if ! kill -0 "$pid" 2>/dev/null; then cat "$RC_R35_PREVIEW_DIR/gtk.log"; echo "GTK_DIED_BEFORE_CAPTURE" >&2; exit 65; fi
-  winid="$(xdotool search --name "Remote Commander" | head -n 1 || true)"
+  # R211: GTK4 toplevel surfaces and X11 mapping are asynchronous. A process
+  # still bootstrapping after an arbitrary 5s must not be a false UI FAIL.
+  # Poll only a private Xvfb display, with an explicit 25s bound and full
+  # read-only X11/process evidence on timeout; never auto-promote on missing UI.
+  winid=""
+  for attempt in $(seq 1 25); do
+    if ! kill -0 "$pid" 2>/dev/null; then
+      cat "$RC_R35_PREVIEW_DIR/gtk.log"
+      echo "R211_GTK_DIED_BEFORE_WINDOW attempt=$attempt" >&2
+      exit 65
+    fi
+    winid="$(xdotool search --name "Remote Commander" | head -n 1 || true)"
+    if [[ -n "$winid" ]]; then
+      echo "R211_WINDOW_READY_POLL=$attempt"
+      break
+    fi
+    sleep 1
+  done
   if [[ -z "$winid" ]]; then
     echo "R42_DIAGNOSTIC_GTK_PROCESS" >&2
     ps -o pid,ppid,stat,etime,wchan:24,cmd -p "$pid" >&2 || true
