@@ -1,0 +1,22 @@
+name: Windows UI Transactional Update R216
+
+on:
+  pull_request:
+    paths:
+      - 'desktop/install-windows.ps1'
+      - 'test/ui-transactional-update-native-r216.ps1'
+      - '.github/workflows/windows-ui-transactional-r216.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  hosted-private-native:
+    runs-on: windows-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - name: Native isolated UI update, SHA drift, fault rollback
+        shell: pwsh
+        run: ./test/ui-transactional-update-native-r216.ps1
