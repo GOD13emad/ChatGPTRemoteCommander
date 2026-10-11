@@ -1,0 +1,73 @@
+name: Core real promotion and rollback R170 (isolated Linux)
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/release-rollback-r170.yml'
+      - 'test/release-rollback-linux-r170.sh'
+      - 'auto-update-linux.sh'
+      - 'tools/router-switch.mjs'
+      - 'tools/router-state.mjs'
+      - 'src/stable-router.mjs'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: core-rollback-r170-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  linux-full-rollback:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v4
+        with:
+          node-version: '22'
+      - name: Install exact Linux GUI helper dependencies used by main CI
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install --yes python3-gi gir1.2-gdkpixbuf-2.0 gnome-shell-common
+          /usr/bin/python3 -c 'import gi; gi.require_version("GdkPixbuf","2.0"); from gi.repository import GdkPixbuf; print("R170_GDK_PIXBUF_PREFLIGHT_PASS")'
+      - name: Source parser and safe isolated host preflight
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha || github.sha }}"
+          bash -n test/release-rollback-linux-r170.sh
+          python3 -m py_compile test/release-rollback-owned-cleanup-r172.py
+          python3 test/release-rollback-owned-cleanup-r172.py --self-test
+          bash -n auto-update-linux.sh
+          node --check src/server-v0.3.mjs
+          test "$(node -p 'require("./package.json").version')" = '0.10.21'
+          test ! -e "$RUNNER_TEMP/remote-commander-rollback-r170"
+          echo R170_STATIC_PASS
+      - name: Real version promotion then rollback in fresh isolated runner
+        timeout-minutes: 38
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash test/release-rollback-linux-r170.sh "${{ github.event.pull_request.head.sha || github.sha }}"
+      - name: Preserve sandbox test logs only (never owner machine)
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: r170-linux-promotion-rollback-evidence
+          path: |
+            ${{ runner.temp }}/remote-commander-rollback-r170/START_R170.txt
+            ${{ runner.temp }}/remote-commander-rollback-r170/PROMOTE_R170.log
+            ${{ runner.temp }}/remote-commander-rollback-r170/ROLLBACK_R170.log
+            ${{ runner.temp }}/remote-commander-rollback-r170/ROUTE_AFTER_PROMOTE.json
+            ${{ runner.temp }}/remote-commander-rollback-r170/ROUTE_AFTER_ROLLBACK.json
+            ${{ runner.temp }}/remote-commander-rollback-r170/RETURN_R170.json
+            ${{ runner.temp }}/remote-commander-rollback-r170/CLEANUP_R172.json
+          if-no-files-found: warn
+          retention-days: 7
