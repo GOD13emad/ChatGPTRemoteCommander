@@ -416,6 +416,8 @@ drain_previous_once(){
   return 1
 }
 has_superseded_release(){
+  # R204: do not spin maintenance cleanups until owner has explicitly accepted.
+  [[ -f "$STATE_ROOT/maintenance/release-retirement-acceptance.json" ]] || return 1
   local active="" d
   [[ -f "$ROUTE" ]] && active="$(route_tsv "$STAGE_DIR" "$ROUTE" 2>/dev/null | awk -F '\t' '{print $8}')"
   for d in "$RELEASE_ROOT"/v*; do
@@ -604,6 +606,16 @@ NODE
 
 cleanup_releases(){
   local route="$ROUTING_ROOT/default.json" active="" d remaining=0
+  local ticket="$STATE_ROOT/maintenance/release-retirement-acceptance.json"
+  local gate="$INSTALL_DIR/tools/release-retirement-gate.mjs"
+  if [[ ! -f "$ticket" ]]; then
+    log 'RELEASE_RETIREMENT_DEFER owner-acceptance-missing'
+    return 0
+  fi
+  if [[ ! -f "$gate" ]]; then
+    log 'RELEASE_RETIREMENT_DEFER gate-not-in-current-install'
+    return 0
+  fi
   [[ -f "$route" ]] && active="$(route_tsv "$INSTALL_DIR" "$route" 2>/dev/null | awk -F '\t' '{print $8}')"
   for d in "$RELEASE_ROOT"/v*; do
     [[ -d "$d" ]] || continue
@@ -612,6 +624,12 @@ cleanup_releases(){
     fi
     if retained_project_protected "$INSTALL_DIR" "$d"; then
       log "RELEASE_CLEANUP_RETAINED_PROTECT name=$(basename "$d")"
+      continue
+    fi
+    # Every retirement must independently match exact owner ticket, target Git
+    # HEAD, ALL canonical route hashes, and ZERO previous/retained references.
+    if ! node "$gate" --state-root "$STATE_ROOT" --release-root "$RELEASE_ROOT" --routing-root "$ROUTING_ROOT" --target "$d" >/dev/null 2>&1; then
+      log "RELEASE_RETIREMENT_DEFER name=$(basename "$d") decision=OWNER_OR_REFERENCE_GATE"
       continue
     fi
     if rm -rf "$d" && [[ ! -d "$d" ]]; then

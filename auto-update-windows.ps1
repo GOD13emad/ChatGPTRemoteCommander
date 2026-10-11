@@ -836,6 +836,9 @@ function Complete-DeferredDrains {
   return @($pending)
 }
 function Has-SupersededRelease {
+  # R204: no automatic deletion before explicit owner release acceptance.
+  $ticket=Join-Path $StateRoot 'maintenance\release-retirement-acceptance.json'
+  if(-not(Test-Path -LiteralPath $ticket -PathType Leaf)){return $false}
   $protected=Get-ProtectedReleasePaths
   foreach($dir in Get-ChildItem -LiteralPath $ReleaseRoot -Directory -ErrorAction SilentlyContinue){
     $key=[IO.Path]::GetFullPath($dir.FullName).ToLowerInvariant()
@@ -903,11 +906,29 @@ function Get-ReleaseCleanupLockEvidence([string]$ReleasePath){
   return @($rows)
 }
 function Cleanup-Releases {
+  $ticket=Join-Path $StateRoot 'maintenance\release-retirement-acceptance.json'
+  $gate=Join-Path $InstallDir 'tools\release-retirement-gate.mjs'
+  if(-not(Test-Path -LiteralPath $ticket -PathType Leaf)){
+    Log 'RELEASE_RETIREMENT_DEFER owner-acceptance-missing'
+    return @('OWNER_ACCEPTANCE_REQUIRED')
+  }
+  if(-not(Test-Path -LiteralPath $gate -PathType Leaf)){
+    Log 'RELEASE_RETIREMENT_DEFER gate-not-in-current-install'
+    return @('GATE_NOT_IN_CURRENT_INSTALL')
+  }
   $protected=Get-ProtectedReleasePaths
   $remaining=@()
   foreach($d in Get-ChildItem -LiteralPath $ReleaseRoot -Directory -ErrorAction SilentlyContinue){
     $key=[IO.Path]::GetFullPath($d.FullName).ToLowerInvariant()
     if($protected.ContainsKey($key)){continue}
+    # R204: a ticket authorizes ONE immutable, unreferenced Git release only.
+    # Even a present ticket may be stale, broad, malformed or for another target.
+    $proof=& node.exe $gate --state-root $StateRoot --release-root $ReleaseRoot --routing-root $RoutingRoot --target $d.FullName 2>$null
+    if($LASTEXITCODE -ne 0){
+      Log "RELEASE_RETIREMENT_DEFER name=$($d.Name) decision=OWNER_OR_REFERENCE_GATE"
+      $remaining+=$d.Name
+      continue
+    }
     $removed=$false;$lastError=''
     foreach($attempt in 1..3){
       try{
