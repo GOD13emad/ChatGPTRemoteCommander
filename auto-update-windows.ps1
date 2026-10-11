@@ -266,6 +266,10 @@ function Get-LatestTag {
   return $tag
 }
 function Ensure-ProjectProvider([string]$ConfigPath){
+  if($NoPromote){
+    Log 'PROJECT_PROVIDER_CLEANUP_SKIPPED reason=no-promote'
+    return
+  }
   $legacyRoot=Join-Path $StateRoot 'tools\codex-cli'
   if(Test-Path -LiteralPath $legacyRoot){
     $prefix=[IO.Path]::GetFullPath($legacyRoot).TrimEnd('\\')+'\\'

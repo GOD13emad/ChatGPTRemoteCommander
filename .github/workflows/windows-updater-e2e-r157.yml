@@ -54,6 +54,11 @@ jobs:
           $c.powerMode.enabled=$false
           $c.powerMode.guiControl.enabled=$false
           $c.powerMode.browserControl.enabled=$false
+          # R161 negative side-effect fixture: a test-only provider tree must survive NoPromote.
+          $legacy=Join-Path $root 'STATE\ChatGPTRemoteCommander\tools\codex-cli'
+          New-Item -ItemType Directory -Path $legacy -ErrorAction Stop | Out-Null
+          $marker=Join-Path $legacy 'R161-PRESERVE.txt'
+          [IO.File]::WriteAllText($marker,'R161-NO-PROMOTE-PRESERVE',[Text.UTF8Encoding]::new($false))
           $path=Join-Path $root 'INSTALL\config.json'
           [IO.File]::WriteAllText($path,(ConvertTo-Json -InputObject $c -Depth 30)+[Environment]::NewLine,[Text.UTF8Encoding]::new($false))
           $r=Get-Content $path -Raw|ConvertFrom-Json
@@ -90,6 +95,8 @@ jobs:
           $sha=[string]$env:RC_E2E_SHA
           if(-not $root -or $sha -notmatch '^[0-9a-f]{40}$'){throw 'R157_VERIFY_PRESTATE_MISSING'}
           $state=Join-Path $root 'STATE\ChatGPTRemoteCommander'
+          $marker=Join-Path $state 'tools\codex-cli\R161-PRESERVE.txt'
+          if(-not(Test-Path -LiteralPath $marker -PathType Leaf) -or [IO.File]::ReadAllText($marker) -cne 'R161-NO-PROMOTE-PRESERVE'){throw 'R161_LEGACY_PROVIDER_MUTATED_IN_NOPROMOTE'}
           $reportPath=Join-Path $state 'last-update.json'
           if(-not(Test-Path $reportPath)){throw 'R157_NO_RESULT'}
           $report=Get-Content $reportPath -Raw -Encoding UTF8|ConvertFrom-Json
