@@ -614,7 +614,22 @@ cleanup_releases(){
       log "RELEASE_CLEANUP_RETAINED_PROTECT name=$(basename "$d")"
       continue
     fi
-    if rm -rf "$d" && [[ ! -d "$d" ]]; then
+    # R205: unknown/dirty/unaccepted folders never get deleted.
+    local retire_guard="$INSTALL_DIR/tools/release-retirement-gate-r205.mjs" verdict
+    if [[ ! -f "$retire_guard" ]]; then
+      log "RELEASE_RETIRE_DEFER name=$(basename "$d") reason=GUARD_NOT_INSTALLED"
+      remaining=1; continue
+    fi
+    if ! verdict="$(node "$retire_guard" --state-root "$STATE_ROOT" --release-root "$RELEASE_ROOT" --candidate "$d" --install-dir "$INSTALL_DIR" 2>&1)"; then
+      log "RELEASE_RETIRE_DEFER name=$(basename "$d") reason=GUARD_REJECTED evidence=$verdict"
+      remaining=1; continue
+    fi
+    if [[ "$verdict" != *'"status":"ALLOW"'* ]]; then
+      log "RELEASE_RETIRE_DEFER name=$(basename "$d") reason=INVALID_GUARD_RESULT"
+      remaining=1; continue
+    fi
+    log "RELEASE_RETIRE_AUTHORIZED name=$(basename "$d")"
+    if rm -rf -- "$d" && [[ ! -d "$d" ]]; then
       log "RELEASE_CLEANUP_PASS name=$(basename "$d")"
     else
       remaining=1
