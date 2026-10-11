@@ -11,6 +11,21 @@ import { fileURLToPath } from 'node:url';
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const read=f=>fs.readFileSync(path.join(root,f),'utf8');
 
+test('R205 retirement preflight is before any old release deletion on Windows and Linux',()=>{
+ const win=read('auto-update-windows.ps1'),linux=read('auto-update-linux.sh'),helper=read('tools/release-retirement-gate-r205.mjs');
+ const w=win.slice(win.indexOf('function Cleanup-Releases {'),win.indexOf('if($SelfTest){',win.indexOf('function Cleanup-Releases {')));
+ const l=linux.slice(linux.indexOf('cleanup_releases(){'),linux.indexOf('detach_from_commander_backend_if_needed',linux.indexOf('cleanup_releases(){')));
+ for(const marker of ['release-retirement-gate-r205.mjs','RELEASE_RETIRE_DEFER','GUARD_NOT_INSTALLED','RELEASE_RETIRE_AUTHORIZED']){
+   assert.ok(w.includes(marker) && l.includes(marker),'missing '+marker);
+ }
+ assert.ok(w.indexOf("if($gate.status-ne'ALLOW'")<w.indexOf('Remove-Item -LiteralPath $d.FullName'),'Windows must enforce result before delete');
+ assert.ok(l.indexOf('RELEASE_RETIRE_AUTHORIZED')<l.indexOf('rm -rf -- "$d"'),'Linux must enforce result before rm');
+ assert.ok(w.indexOf('Get-ReleaseCleanupLockEvidence $d.FullName')<w.indexOf('Remove-Item -LiteralPath $d.FullName'));
+ assert.ok(win.includes('RELEASE_PROCESS_ENUMERATION_UNVERIFIED'));
+ for(const name of ['CORE_RETIREMENT_ACCEPTED','POST_ACCEPTANCE_APPROVAL_MISSING','REFERENCED_BY_CURRENT_OR_PREVIOUS_ROUTE','REFERENCED_BY_RETAINED_BACKEND','RELEASE_TREE_HAS_LOCAL_DATA_OR_CHANGES','browserLoginPreserved','rollbackVerified','soakAccepted','explicitRetirementAccepted'])
+   assert.ok(helper.includes(name),'missing required safeguard: '+name);
+});
+
 test('NoPromote preserves legacy provider trees before any cleanup on both Windows and Linux',()=>{
   const win=read('auto-update-windows.ps1');
   const linux=read('auto-update-linux.sh');

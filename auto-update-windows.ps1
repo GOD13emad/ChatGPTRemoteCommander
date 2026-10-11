@@ -890,7 +890,7 @@ function Get-ReleaseCleanupLockEvidence([string]$ReleasePath){
   $full=[IO.Path]::GetFullPath($ReleasePath)
   $rows=@()
   try{
-    foreach($p in @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue)){
+    foreach($p in @(Get-CimInstance Win32_Process -ErrorAction Stop)){
       $exe=[string]$p.ExecutablePath;$cmd=[string]$p.CommandLine
       $match=($exe -and $exe.StartsWith($full,[StringComparison]::OrdinalIgnoreCase)) -or
         ($cmd -and $cmd.IndexOf($full,[StringComparison]::OrdinalIgnoreCase)-ge0)
@@ -899,7 +899,7 @@ function Get-ReleaseCleanupLockEvidence([string]$ReleasePath){
       }
       if($rows.Count-ge20){break}
     }
-  }catch{}
+  }catch{throw 'RELEASE_PROCESS_ENUMERATION_UNVERIFIED'}
   return @($rows)
 }
 function Cleanup-Releases {
@@ -908,6 +908,36 @@ function Cleanup-Releases {
   foreach($d in Get-ChildItem -LiteralPath $ReleaseRoot -Directory -ErrorAction SilentlyContinue){
     $key=[IO.Path]::GetFullPath($d.FullName).ToLowerInvariant()
     if($protected.ContainsKey($key)){continue}
+    # R205: preserve any directory lacking exact post-acceptance proof.
+    $retireGuard=Join-Path $InstallDir 'tools\release-retirement-gate-r205.mjs'
+    if(-not(Test-Path -LiteralPath $retireGuard -PathType Leaf)){
+      Log "RELEASE_RETIRE_DEFER name=$($d.Name) reason=GUARD_NOT_INSTALLED"
+      $remaining+=$d.Name;continue
+    }
+    try{
+      $owners=@(Get-ReleaseCleanupLockEvidence $d.FullName)
+      if($owners.Count-gt0){
+        Log "RELEASE_RETIRE_DEFER name=$($d.Name) reason=OWNED_PROCESS_RUNNING"
+        $remaining+=$d.Name;continue
+      }
+      $args=@('--state-root',$StateRoot,'--release-root',$ReleaseRoot,'--candidate',$d.FullName,'--install-dir',$InstallDir)
+      $lines=@(& node.exe $retireGuard @args 2>&1)
+      $exit=[int]$LASTEXITCODE
+      $json=if($lines.Count){[string]$lines[-1]}else{''}
+      if($exit-ne0){
+        Log "RELEASE_RETIRE_DEFER name=$($d.Name) reason=GUARD_REJECTED evidence=$json"
+        $remaining+=$d.Name;continue
+      }
+      $gate=$json|ConvertFrom-Json
+      if($gate.status-ne'ALLOW' -or [string]$gate.candidateName-ne[string]$d.Name){
+        Log "RELEASE_RETIRE_DEFER name=$($d.Name) reason=INVALID_GUARD_RESULT"
+        $remaining+=$d.Name;continue
+      }
+      Log "RELEASE_RETIRE_AUTHORIZED name=$($d.Name) commit=$($gate.candidateHead)"
+    }catch{
+      Log "RELEASE_RETIRE_DEFER name=$($d.Name) reason=GUARD_OR_PROCESS_EVIDENCE_UNVERIFIED"
+      $remaining+=$d.Name;continue
+    }
     $removed=$false;$lastError=''
     foreach($attempt in 1..3){
       try{
