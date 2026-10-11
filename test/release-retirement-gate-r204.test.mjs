@@ -29,7 +29,8 @@ function fixture(t){
  let target=path.join(releases,'fixture-initial');
  execFileSync('git',['init','-q',target],{timeout:10000});
  fs.writeFileSync(path.join(target,'package.json'),'{"version":"0.10.20"}\n');
- execFileSync('git',['-C',target,'add','package.json'],{timeout:10000});
+ fs.writeFileSync(path.join(target,'.gitignore'),'*.cacheignore\n');
+ execFileSync('git',['-C',target,'add','package.json','.gitignore'],{timeout:10000});
  execFileSync('git',['-C',target,'-c','user.name=Fixture','-c','user.email=fixture@example.test','commit','-q','-m','fixture'],{timeout:10000});
  const old=execFileSync('git',['-C',target,'rev-parse','HEAD'],{encoding:'utf8'}).trim();
  const name='v0.10.20-'+old.slice(0,12);
@@ -76,7 +77,7 @@ test('R204 pure policy requires one exact scoped timely owner-accepted ticket',(
  assert.equal(checkContract({...base,ticket,referencedPaths:[target]}).reason,'TARGET_STILL_REFERENCED');
  assert.equal(checkContract({...base,ticket,retainedPaths:[target]}).reason,'TARGET_STILL_REFERENCED');
 });
-test('R204 CLI refuses missing or modified approval and protects route previous, keeper and untracked data',t=>{
+test('R206 CLI blocks previous, retained, ignored data and active Linux process',async t=>{
  const f=fixture(t);
  gate(f,false,'OWNER_ACCEPTANCE_REQUIRED');
  f.writeTicket();
@@ -99,6 +100,19 @@ test('R204 CLI refuses missing or modified approval and protects route previous,
  fs.unlinkSync(retained);gate(f,true,'EXACT_OWNER_ACCEPTED_RETIREMENT');
  fs.writeFileSync(path.join(f.target,'unknown-user-file.txt'),'DO_NOT_DELETE\n');
  gate(f,false,'RELEASE_CONTAINS_UNKNOWN_LOCAL_CHANGES');
+ fs.unlinkSync(path.join(f.target,'unknown-user-file.txt'));
+ fs.writeFileSync(path.join(f.target,'session.cacheignore'),'SENSITIVE_IGNORED_DATA\n');
+ gate(f,false,'RELEASE_CONTAINS_UNKNOWN_LOCAL_CHANGES');
+ fs.unlinkSync(path.join(f.target,'session.cacheignore'));
+ if(process.platform!=='win32'){
+  const {spawn}=await import('node:child_process');
+  const child=spawn(process.execPath,['-e','setTimeout(()=>{},15000)'],
+   {cwd:f.target,stdio:'ignore'});
+  try {
+   gate(f,false,'TARGET_USED_BY_PROCESS');
+  } finally {child.kill('SIGTERM');}
+ }
+ gate(f,true,'EXACT_OWNER_ACCEPTED_RETIREMENT');
 });
 test('R204 rejects outside release root and symlinks',t=>{
  const f=fixture(t);f.writeTicket();
@@ -118,6 +132,9 @@ test('R204 Windows and Linux Updater destructive cleanup is after exact owner ti
  const end=linux.indexOf('\n}\n\n',li);
  assert.ok(li>0 && end>li,'R205 Linux cleanup function must have a bounded structural anchor');
  const l=linux.slice(li,end+2);
+ assert.ok(win.includes('decision=ACTIVE_PROCESS_REFERENCE'),'Windows process evidence must prevent retire');
+ const source=fs.readFileSync(new URL('../tools/release-retirement-gate.mjs',import.meta.url),'utf8');
+ assert.ok(source.includes("'--ignored'") && source.includes('TARGET_USED_BY_PROCESS'),'Ignore/runtime liveness guard');
  assert.ok(w.indexOf('owner-acceptance-missing')>=0&&w.indexOf('owner-acceptance-missing')<w.indexOf('Remove-Item -LiteralPath $d.FullName'));
  assert.ok(l.indexOf('owner-acceptance-missing')>=0&&l.indexOf('owner-acceptance-missing')<l.indexOf('if rm -rf "$d"'));
  assert.ok(w.includes('tools\\release-retirement-gate.mjs')&&l.includes('tools/release-retirement-gate.mjs'));
