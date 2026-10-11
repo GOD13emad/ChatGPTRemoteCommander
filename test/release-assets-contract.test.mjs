@@ -65,4 +65,26 @@ if (!workflow.includes(browserVersion) || !workflow.includes(browserSha256)) thr
 if (!workflow.includes('docs/RELEASE_${version}.md')) throw new Error('release notes must follow package version');
 if (pkg.version !== '0.10.21') throw new Error(`unexpected package version ${pkg.version}`);
 
+// R171: Provenance must fail closed before an immutable release can be published.
+for (const marker of [
+  'id-token: write',
+  'attestations: write',
+  'actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6',
+  "subject-path: 'dist/release/*'",
+  'R171_IMMUTABLE_TAG_AND_ASSETS_PREATTEST_PASS',
+  'git cat-file -t',
+  'refs/tags/$tag^{commit}',
+  'test "$count" -eq 20'
+]) if (!workflow.includes(marker)) throw new Error('R171_ATTESTATION_CONTRACT_MISSING ' + marker);
+const a=workflow.indexOf('id: release_identity');
+const b=workflow.indexOf('name: Attest immutable release assets');
+const c=workflow.indexOf('name: Publish matching qualified tag with assets');
+if (!(a>0 && b>a && c>b)) throw new Error('R171_ATTESTATION_ORDER_REJECT');
+const releaseOnly=workflow.slice(workflow.indexOf('  publish:'),c);
+if (!releaseOnly.includes('contents: write') || !releaseOnly.includes('id-token: write') || !releaseOnly.includes('attestations: write')) throw new Error('R171_PUBLISH_PERMISSIONS_REJECT');
+const buildSection=workflow.slice(workflow.indexOf('  build-windows-setup:'),workflow.indexOf('  publish:'));
+if (buildSection.includes('id-token: write') || buildSection.includes('attestations: write')) throw new Error('R171_BUILD_PERMISSIONS_WIDENED');
+if (!workflow.includes("if: ${{ steps.release_identity.outputs.accepted == 'true' }}")) throw new Error('R171_TAG_GUARD_MISSING');
+console.log('R171_ATTESTATION_CONTRACT_PASS');
+
 console.log('RELEASE_ASSET_CONTRACT_PASS');
