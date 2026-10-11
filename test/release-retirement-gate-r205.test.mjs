@@ -70,6 +70,35 @@ check('refuses ignored runtime or personal files hidden by Git status',f=>{
 },'RELEASE_HAS_IGNORED_OR_RUNTIME_DATA');
 check('refuses invalid git origin',f=>{git(f.candidate,'remote','set-url','origin','https://example.invalid/other.git');fs.writeFileSync(f.approvalPath,JSON.stringify(f.approve));},'UNKNOWN_GIT_ORIGIN');
 check('refuses stale approval',f=>{f.approve.expiresUtc='2026-10-10T00:00:00Z';fs.writeFileSync(f.approvalPath,JSON.stringify(f.approve));},'STALE_OR_INVALID_APPROVAL_WINDOW');
+test('R226 refuses post-acceptance tickets valid longer than 24 hours',t=>{
+ const f=fixture();t.after(f.cleanup);
+ f.approve.acceptedUtc='2026-10-12T11:00:00Z';
+ f.approve.expiresUtc='2026-10-13T11:00:01Z';
+ fs.writeFileSync(f.approvalPath,JSON.stringify(f.approve));
+ const result=f.read();
+ assert.equal(result.status,'DEFER',JSON.stringify(result));
+ assert.ok(result.reason.includes('STALE_OR_INVALID_APPROVAL_WINDOW'));
+ assert.ok(fs.existsSync(f.candidate),'guard may never delete');
+});
+test('R226 accepts 24-hour-or-shorter owner approval when all other gates pass',t=>{
+ const f=fixture();t.after(f.cleanup);
+ f.approve.acceptedUtc='2026-10-12T11:00:00Z';
+ f.approve.expiresUtc='2026-10-13T11:00:00Z';
+ fs.writeFileSync(f.approvalPath,JSON.stringify(f.approve));
+ const result=f.read();
+ assert.equal(result.status,'ALLOW',JSON.stringify(result));
+ assert.equal(result.retiredAfterAcceptance,true);
+});
+test('R226 refuses reversed acceptance time windows',t=>{
+ const f=fixture();t.after(f.cleanup);
+ f.approve.acceptedUtc='2026-10-12T12:00:00Z';
+ f.approve.expiresUtc='2026-10-12T11:59:59Z';
+ fs.writeFileSync(f.approvalPath,JSON.stringify(f.approve));
+ const result=f.read();
+ assert.equal(result.status,'DEFER',JSON.stringify(result));
+ assert.ok(result.reason.includes('STALE_OR_INVALID_APPROVAL_WINDOW'));
+});
+
 check('refuses wrong owner approval',f=>{f.approve.ownerUser='other-user';fs.writeFileSync(f.approvalPath,JSON.stringify(f.approve));},'APPROVAL_CONTRACT_OR_COMMIT_MISMATCH');
 check('refuses unaccepted Browser login',f=>{f.approve.browserLoginPreserved=false;fs.writeFileSync(f.approvalPath,JSON.stringify(f.approve));},'APPROVAL_CONTRACT_OR_COMMIT_MISMATCH');
 test('R205 refuses unrecognized folder names even under release root',t=>{
