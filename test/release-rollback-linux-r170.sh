@@ -20,6 +20,20 @@ if command -v ss >/dev/null; then
   ! ss -ltn | grep -Eq '127\.0\.0\.1:47831[[:space:]]' || { echo R170_PORT_IN_USE >&2; exit 67; }
 fi
 mkdir -m 700 -p "$ROOT/install" "$ROOT/state" "$ROOT/config" "$ROOT/data"
+# Always stop only Node routers/backends whose cwd and argv prove R170 sandbox ownership.
+# Unexpected residual processes fail closed and cannot be mistaken for host success.
+r172_cleanup_on_exit(){
+  local prior=$?
+  trap - EXIT
+  if [[ ! -e "$ROOT/CLEANUP_R172.json" ]]; then
+    if ! python3 "$WORKSPACE/test/release-rollback-owned-cleanup-r172.py" --root "$ROOT"; then
+      echo R172_FINAL_CLEANUP_FAILED >&2
+      [[ "$prior" != 0 ]] || prior=86
+    fi
+  fi
+  exit "$prior"
+}
+trap r172_cleanup_on_exit EXIT
 git clone --quiet --depth 1 --branch v0.10.20 https://github.com/GOD13emad/ChatGPTRemoteCommander.git "$ROOT/install"
 [[ "$(git -C "$ROOT/install" rev-parse HEAD)" == "$BASELINE" ]] || { echo R170_BASELINE_SHA_MISMATCH >&2; exit 68; }
 # Immutable v0.10.20 has a documented CRLF Git-blob vs eol=crlf attribute conflict.
@@ -105,6 +119,13 @@ print('R170_LINUX_ROLLBACK_ROUTE_PASS')
 PY
 curl -fsS --connect-timeout 2 --max-time 5 http://127.0.0.1:47831/health > "$ROOT/HEALTH_ROLLBACK.json"
 [[ -z "$(git -C "$WORKSPACE" status --porcelain)" ]] || { echo R170_SOURCE_CHANGED >&2; exit 77; }
+python3 "$WORKSPACE/test/release-rollback-owned-cleanup-r172.py" --root "$ROOT"
+python3 - "$ROOT/CLEANUP_R172.json" <<'PY'
+import json,sys
+r=json.load(open(sys.argv[1]))
+assert r["status"]=="PASS_ZERO_OWNED_NODE_AFTER_ROLLBACK" and not r["ownedAfter"]
+print("R172_ROLLBACK_ZERO_OWNED_NODE_ACCEPTED")
+PY
 python3 - "$ROOT" "$TARGET" "$BASELINE" "$START" <<'PY'
 import json,hashlib,pathlib,sys,datetime
 root=pathlib.Path(sys.argv[1])
@@ -118,6 +139,8 @@ record={
 'rollbackLogSha256':h(root/'ROLLBACK_R170.log'),
 'routePromoteSha256':h(root/'ROUTE_AFTER_PROMOTE.json'),
 'routeRollbackSha256':h(root/'ROUTE_AFTER_ROLLBACK.json'),
+'cleanupSha256':h(root/'CLEANUP_R172.json'),
+'ownedNodeCleanup':json.loads((root/'CLEANUP_R172.json').read_text()),
 'signingAndNativeUIAcceptance':'OPEN'
 }
 p=root/'RETURN_R170.json'
