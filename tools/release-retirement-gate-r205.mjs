@@ -71,6 +71,8 @@ export function inspectRetirement({stateRoot,releaseRoot,candidate,installDir,no
     const origin=git(target,'remote','get-url','origin').toLowerCase().replace(/\/$/,'');
     if(origin!==ORIGIN&&origin!==ORIGIN.replace(/\.git$/,''))return defer('UNKNOWN_GIT_ORIGIN');
     if(git(target,'status','--porcelain=v1','--untracked-files=all'))return defer('RELEASE_TREE_HAS_LOCAL_DATA_OR_CHANGES');
+    // Git status hides ignored files; user/runtime data must not be invisible to a deletion gate.
+    if(git(target,'ls-files','--others','--ignored','--exclude-standard'))return defer('RELEASE_HAS_IGNORED_OR_RUNTIME_DATA');
     const pkg=parse(path.join(target,'package.json'));
     if(pkg?.version!==m[1])return defer('PACKAGE_VERSION_MISMATCH');
   }catch{return defer('GIT_IDENTITY_OR_WORKTREE_UNVERIFIED');}

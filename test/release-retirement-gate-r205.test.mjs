@@ -63,6 +63,11 @@ check('refuses previous route references',f=>{f.route.previous={projectDir:f.can
 check('refuses corrupt route',f=>{fs.writeFileSync(f.routePath,'{corrupt');fs.writeFileSync(f.approvalPath,JSON.stringify(f.approve));},'ROUTE_OR_RETAINED_EVIDENCE_UNVERIFIED');
 check('refuses protected retained backend',f=>{fs.writeFileSync(path.join(f.stateRoot,'retained-backends.json'),JSON.stringify({schema:1,items:[{projectDir:f.candidate}]}));fs.writeFileSync(f.approvalPath,JSON.stringify(f.approve));},'REFERENCED_BY_RETAINED_BACKEND');
 check('refuses local modifications in candidate',f=>{fs.appendFileSync(path.join(f.candidate,'package.json'),' ');fs.writeFileSync(f.approvalPath,JSON.stringify(f.approve));},'RELEASE_TREE_HAS_LOCAL_DATA_OR_CHANGES');
+check('refuses ignored runtime or personal files hidden by Git status',f=>{
+ fs.appendFileSync(path.join(f.candidate,'.git','info','exclude'),'\nprivate-state\n');
+ fs.writeFileSync(path.join(f.candidate,'private-state'),'DO_NOT_DELETE');
+ fs.writeFileSync(f.approvalPath,JSON.stringify(f.approve));
+},'RELEASE_HAS_IGNORED_OR_RUNTIME_DATA');
 check('refuses invalid git origin',f=>{git(f.candidate,'remote','set-url','origin','https://example.invalid/other.git');fs.writeFileSync(f.approvalPath,JSON.stringify(f.approve));},'UNKNOWN_GIT_ORIGIN');
 check('refuses stale approval',f=>{f.approve.expiresUtc='2026-10-10T00:00:00Z';fs.writeFileSync(f.approvalPath,JSON.stringify(f.approve));},'STALE_OR_INVALID_APPROVAL_WINDOW');
 check('refuses wrong owner approval',f=>{f.approve.ownerUser='other-user';fs.writeFileSync(f.approvalPath,JSON.stringify(f.approve));},'APPROVAL_CONTRACT_OR_COMMIT_MISMATCH');
