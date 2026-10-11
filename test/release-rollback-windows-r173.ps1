@@ -34,15 +34,31 @@ function Readback([string]$Name,[string]$Sha,[string]$Version){
   Write-Output ('R173_'+$Name+'_IDENTITY_PASS')
 }
 function Update([string]$Name,[string]$Sha){
-  $file=Join-Path $Root ($Name+'.log')
-  & pwsh.exe '-NoProfile' '-NonInteractive' '-File' (Join-Path $Source 'auto-update-windows.ps1') '-InstallDir' $Install '-SourceRef' $Sha '-ExpectedCommit' $Sha '-TargetProfile' 'default' '-Force' *> $file
-  $exitCode=[int]$LASTEXITCODE
+  # R185: On Windows, PowerShell's native-command pipeline can remain open because
+  # background router/backend processes inherit redirected stdout/stderr handles.
+  # Start-Process without -Wait, then WaitForExit only on the exact updater PID.
+  # Do not use -Wait (that waits for the process tree and deadlocks on healthy routers).
+  $stdout=Join-Path $Root ($Name+'.stdout.log')
+  $stderr=Join-Path $Root ($Name+'.stderr.log')
+  if((Test-Path $stdout) -or (Test-Path $stderr)){throw ('R185_NO_BLIND_RERUN_'+$Name)}
+  if($Source -match '\s' -or $Install -match '\s'){throw 'R185_UNSAFE_ARGUMENT_PATH_WHITESPACE'}
+  $args=@('-NoLogo','-NoProfile','-NonInteractive','-File',(Join-Path $Source 'auto-update-windows.ps1'),'-InstallDir',$Install,'-SourceRef',$Sha,'-ExpectedCommit',$Sha,'-TargetProfile','default','-Force')
+  $updater=Start-Process -FilePath 'pwsh.exe' -ArgumentList $args -NoNewWindow -PassThru -RedirectStandardOutput $stdout -RedirectStandardError $stderr -ErrorAction Stop
+  if($null -eq $updater -or $updater.Id -le 0){throw 'R185_UPDATER_PID_UNAVAILABLE'}
+  Write-Output ('R185_'+$Name+'_UPDATER_PID='+$updater.Id)
+  $ended=$updater.WaitForExit(1100000)
+  if(-not $ended){
+    try{if(-not $updater.HasExited){$updater.Kill()}}catch{}
+    throw ('R185_'+$Name+'_UPDATER_PID_TIMEOUT_AFTER_1100_SECONDS')
+  }
+  $updater.Refresh()
+  $exitCode=[int]$updater.ExitCode
   $f=Join-Path $Root 'STATE\ChatGPTRemoteCommander\last-update.json'
   $result=if(Test-Path $f){Get-Content $f -Raw|ConvertFrom-Json}else{$null}
   $status=if($null -ne $result){[string]$result.status}else{'MISSING'}
-  $script:Stages+=@{name=$Name;exit=$exitCode;status=$status;logSHA=(Get-FileHash $file -Algorithm SHA256).Hash.ToLowerInvariant()}
-  Write-Output ('R173_'+$Name+'_EXIT='+$exitCode+'_STATUS='+$status)
-  if($exitCode -ne 0 -or $status -ne 'PROMOTED'){throw ('R173_'+$Name+'_NOT_ACCEPTED')}
+  $script:Stages+=@{name=$Name;exit=$exitCode;status=$status;updaterPid=$updater.Id;stdoutPath=$stdout;stderrPath=$stderr}
+  Write-Output ('R185_'+$Name+'_PROCESS_EXIT='+$exitCode+'_STATUS='+$status)
+  if($exitCode -ne 0 -or $status -ne 'PROMOTED'){throw ('R185_'+$Name+'_NOT_ACCEPTED')}
 }
 function Cleanup {
   $killed=@()
