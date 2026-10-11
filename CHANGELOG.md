@@ -1,3 +1,11 @@
+## 0.10.21 - 2026-10-11
+
+- Close the Windows qualification Job Object containment defect documented in #173: exact executable children start suspended, are assigned to the kill-on-close Job before resume, and detached Node descendants remain contained.
+- Execute local npm CLI through node.exe directly under the owned Job, rather than a command-shell wrapper; unsupported wrappers fail closed and the existing native descendant/owned-listener regressions remain active.
+- Carry forward candidate-first update, rollback/no-replay semantics, user/profile ownership and exact SHA policy without widening automatic GUI, browser or Codex authority.
+- Qualification before this release version bump: hosted Windows/Ubuntu PR #174 CI PASS; focused native Windows Job test PASS; Emad Windows exact candidate full check/test/audit PASS; separate real updater NoPromote E2E CANDIDATE_PASS with live Stable route unchanged. The exact v0.10.21 release candidate and immutable assets require new hosted gates before publication.
+- Keep Remote Commander Browser v0.8.1 pinned. Browser previews, native UI and authenticated autonomous Runner remain independent gates rather than being silently promoted.
+
 ## 0.10.18 - 2026-10-07
 
 - Fix the Linux updater pre-cutover tunnel gate so a tunnel whose local `/readyz` OAuth-discovery subcheck is stale can still be admitted only when `/healthz` is `live` and `commands_poll_last_successful_timestamp_seconds` proves a recent successful control-plane poll.
