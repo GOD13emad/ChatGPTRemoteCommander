@@ -1,5 +1,7 @@
 # Current project state
 
+> **HISTORICAL DOCUMENT — DO NOT TREAT PAST `CURRENT` OR `FINAL` LABELS AS PRESENT AUTHORITY.** This record began on 2026-09-28; it is retained for history. Current released Core is v0.10.20 and the separate Browser baseline is v0.8.1; see [RELEASE_AUTHORITY](RELEASE_AUTHORITY.md) for current boundaries and open integrated-product gates. Do not rerun historical install/update scripts solely because this archived page names them.
+
 Updated: 2026-09-28. Scope: public Remote Commander product/release status.
 
 ## Accepted release baseline
