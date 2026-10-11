@@ -929,6 +929,13 @@ function Cleanup-Releases {
       $remaining+=$d.Name
       continue
     }
+    # Final read-only liveness check before ANY recursive deletion.
+    $locks=@(Get-ReleaseCleanupLockEvidence $d.FullName)
+    if($locks.Count -gt 0){
+      Log "RELEASE_RETIREMENT_DEFER name=$($d.Name) decision=ACTIVE_PROCESS_REFERENCE owners=$(@($locks|ForEach-Object{$_.pid}) -join ',')"
+      $remaining+=$d.Name
+      continue
+    }
     $removed=$false;$lastError=''
     foreach($attempt in 1..3){
       try{
