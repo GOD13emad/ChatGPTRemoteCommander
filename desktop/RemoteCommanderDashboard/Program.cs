@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using Microsoft.Win32;
 using System.Drawing;
 using System.Net.Http;
 using System.Text.Json;
@@ -37,36 +38,95 @@ internal sealed class DashboardForm : Form
         Font = new Font("Segoe UI", 9.5f)
     };
     private readonly HttpClient http = new() { Timeout = TimeSpan.FromSeconds(1.5) };
+    private readonly DashboardChrome chrome = new();
+    private readonly System.Windows.Forms.Timer appearanceTimer = new() { Interval = 3000 };
+    private bool darkTheme;
+    private Panel? headerPanel;
+    private FlowLayoutPanel? actionsPanel;
+    private Label? titleLabel;
+
+    private static bool ReadWindowsDarkMode()
+    {
+        try
+        {
+            using var key = Registry.CurrentUser.OpenSubKey(
+                @"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize", false);
+            return key?.GetValue("AppsUseLightTheme") is int value && value == 0;
+        }
+        catch { return false; }
+    }
+
+    private void ApplyTheme(bool force = false)
+    {
+        var next = ReadWindowsDarkMode();
+        if (!force && next == darkTheme) return;
+        darkTheme = next;
+        var canvas = darkTheme ? Color.FromArgb(16, 24, 39) : Color.FromArgb(246, 248, 252);
+        var surface = darkTheme ? Color.FromArgb(28, 40, 58) : Color.White;
+        var foreground = darkTheme ? Color.FromArgb(241, 246, 253) : Color.FromArgb(20, 32, 49);
+        var muted = darkTheme ? Color.FromArgb(174, 194, 216) : Color.FromArgb(86, 105, 127);
+        var accent = darkTheme ? Color.FromArgb(147, 197, 253) : Color.FromArgb(29, 78, 216);
+        BackColor = canvas;
+        ForeColor = foreground;
+        cards.BackColor = canvas;
+        summary.ForeColor = muted;
+        headerPanel?.Invalidate();
+        if (headerPanel is not null) headerPanel.BackColor = canvas;
+        if (titleLabel is not null) titleLabel.ForeColor = foreground;
+        if (actionsPanel is not null)
+        {
+            actionsPanel.BackColor = canvas;
+            foreach (var b in actionsPanel.Controls.OfType<Button>())
+            {
+                b.BackColor = surface;
+                b.ForeColor = foreground;
+                b.FlatAppearance.BorderColor = accent;
+            }
+        }
+        chrome.ApplyTheme(darkTheme);
+        foreach (var card in cards.Controls.OfType<Panel>())
+        {
+            card.BackColor = surface;
+            var labels = card.Controls.OfType<Label>().ToArray();
+            for (var i = 0; i < labels.Length; i++)
+                labels[i].ForeColor = i == 0 ? accent : i == 1 ? foreground : muted;
+        }
+        Invalidate(true);
+    }
 
     public DashboardForm()
     {
         Text = "Remote Commander";
-        Width = 940;
-        Height = 650;
-        MinimumSize = new Size(760, 520);
+        Width = 1260;
+        Height = 820;
+        MinimumSize = new Size(900, 600);
+        AutoScaleMode = AutoScaleMode.Dpi;
+        AccessibleName = "Remote Commander Control Center — owner-private monitoring";
         StartPosition = FormStartPosition.CenterScreen;
         BackColor = Color.FromArgb(7, 22, 47);
         ForeColor = Color.White;
         Font = new Font("Segoe UI", 10f);
         try { Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
 
-        var header = new Panel { Dock = DockStyle.Top, Height = 112, Padding = new Padding(24, 18, 24, 12) };
+        var header = new Panel { Dock = DockStyle.Top, Height = 116, Padding = new Padding(26, 18, 26, 12) };
         var title = new Label
         {
             Text = "Remote Commander",
             AutoSize = true,
             ForeColor = Color.White,
-            Font = new Font("Segoe UI Semibold", 22f, FontStyle.Bold),
-            Location = new Point(24, 18)
+            Font = new Font("Segoe UI Semibold", 25f, FontStyle.Bold),
+            Location = new Point(26, 16)
         };
-        summary.Location = new Point(27, 60);
+        summary.Location = new Point(28, 66);
         header.Controls.Add(title);
         header.Controls.Add(summary);
 
         var actions = new FlowLayoutPanel
         {
             Dock = DockStyle.Top,
-            Height = 58,
+            Height = 96,
+            AutoScroll = true,
+            WrapContents = true,
             Padding = new Padding(20, 8, 20, 8),
             FlowDirection = FlowDirection.LeftToRight
         };
@@ -84,12 +144,23 @@ internal sealed class DashboardForm : Form
         actions.Controls.Add(Button("Browser", (_, _) => LaunchBrowser()));
         actions.Controls.Add(Button("Copy Diagnostics", (_, _) => CopyDiagnostics()));
 
+        chrome.Attach(cards);
         Controls.Add(cards);
+        Controls.Add(chrome.Search);
+        Controls.Add(chrome.Metrics);
         Controls.Add(actions);
         Controls.Add(header);
+        Controls.Add(chrome.Footer);
+        headerPanel = header;
+        actionsPanel = actions;
+        titleLabel = title;
+        appearanceTimer.Tick += (_, _) => ApplyTheme();
+        FormClosed += (_, _) => appearanceTimer.Stop();
 
         Shown += async (_, _) =>
         {
+            ApplyTheme(true);
+            appearanceTimer.Start();
             await RefreshAsync();
             LaunchPendingProfileOnboarding();
         };
@@ -138,6 +209,8 @@ internal sealed class DashboardForm : Form
                 ? "No routing profiles discovered."
                 : $"{profiles.Count} profile(s) • read-only dashboard • {Environment.MachineName}";
             cards.Controls.AddRange(rendered.ToArray());
+            chrome.Update(profiles);
+            ApplyTheme(true);
         }
         finally
         {
@@ -208,13 +281,15 @@ internal sealed class DashboardForm : Form
             Height = 132,
             Margin = new Padding(0, 0, 0, 12),
             Padding = new Padding(18),
-            BackColor = Color.FromArgb(12, 34, 65)
+            BackColor = Color.FromArgb(12, 34, 65),
+            Tag = p.Name
         };
 
+        DashboardChrome.RoundCard(card, 16);
         var online = await IsHealthyAsync(p.RouterPort, p.RouterPid);
         var dot = new Label
         {
-            Text = online ? "● ONLINE" : "● OFFLINE / UNVERIFIED",
+            Text = online ? "● ROUTER RESPONDS / IDENTITY UNVERIFIED" : "● NOT RESPONDING / UNVERIFIED",
             ForeColor = online ? Color.FromArgb(80, 220, 150) : Color.FromArgb(255, 164, 92),
             AutoSize = true,
             Font = new Font("Segoe UI Semibold", 9.5f),

@@ -1,0 +1,33 @@
+name: GTK native synthetic render R35
+
+on:
+  pull_request:
+    paths:
+      - 'desktop/linux-control-center/**'
+      - '.github/workflows/gtk-render-r35.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  native-x11-smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Shell parser preflight before modifying CI environment
+        run: bash -n desktop/linux-control-center/test_native_render_r35.sh
+      - name: Install native isolated GTK/X11 screenshot dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends python3-gi gir1.2-gtk-4.0 gir1.2-adw-1 xvfb xauth x11-apps xdotool imagemagick dbus-x11
+      - name: Render synthetic GTK4/Adwaita window under private Xvfb
+        run: bash desktop/linux-control-center/test_native_render_r35.sh
+      - name: Preserve isolated screenshot and receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gtk-control-center-r35-synthetic-visual
+          path: dist/ui-preview-r35/
+          if-no-files-found: warn
