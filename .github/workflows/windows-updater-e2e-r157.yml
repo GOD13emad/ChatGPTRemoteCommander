@@ -126,3 +126,56 @@ jobs:
           [IO.File]::WriteAllText($dest,(ConvertTo-Json -InputObject $receipt -Depth 5)+[Environment]::NewLine,[Text.UTF8Encoding]::new($false))
           Write-Output ('R157_PASS source='+$sha+' receiptSha='+(Get-FileHash $dest -Algorithm SHA256).Hash)
           Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value '**R157 PASS:** Exact-head Windows candidate-first NoPromote E2E, 3 owned qualification suites, Doctor/Store PASS, no route promotion or owned child leaks.'
+
+      - name: Prepare bounded redacted R209 failure diagnostics
+        if: ${{ failure() }}
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          Set-StrictMode -Version Latest
+          $root=[string]$env:RC_E2E_ROOT
+          if(-not $root){Write-Output 'R209_NO_PRESTATE_AVAILABLE';exit 0}
+          $temp=[IO.Path]::GetFullPath($env:RUNNER_TEMP).TrimEnd([char]92)+'\'
+          if(-not [IO.Path]::GetFullPath($root).StartsWith($temp,[StringComparison]::OrdinalIgnoreCase)){throw 'R209_PATH_OUTSIDE_RUNNER_TEMP'}
+          $state=Join-Path $root 'STATE\ChatGPTRemoteCommander'
+          $logs=Join-Path $state 'update-logs'
+          if(-not(Test-Path $logs -PathType Container)){Write-Output 'R209_NO_LOGS';exit 0}
+          $files=@(Get-ChildItem $logs -File -Filter 'qualification-output-qualification-test-*.stdout.log')
+          $errorLogs=@(Get-ChildItem $logs -File -Filter 'qualification-output-qualification-test-*.stderr.log')
+          $tail=@()
+          if($files.Count -eq 1){
+            $tail=@(Get-Content $files[0].FullName -Tail 105 -ErrorAction Stop | ForEach-Object {
+              $row=[string]$_
+              $row=$row -replace '(?i)sk-[a-z0-9_-]{16,}','[REDACTED]'
+              $row=$row -replace '(?i)gh[pousr]_[a-z0-9]{16,}','[REDACTED]'
+              $row=$row -replace '(?i)Bearer\s+[a-z0-9._-]+','Bearer [REDACTED]'
+              $row=$row -replace '(?i)(api[_-]?key|access[_-]?token|refresh[_-]?token|password|secret)\s*[=:]\s*\S+','$1=[REDACTED]'
+              $row.Substring(0,[Math]::Min(400,$row.Length))
+            })
+          }
+          $failed=Join-Path $state 'qualification-failure.json'
+          $report=Join-Path $state 'last-update.json'
+          $record=[ordered]@{
+            revision='R209';sourceCommit=$env:RC_E2E_SHA
+            status='CI_QUALIFICATION_FAILED_DIAGNOSTIC_ONLY'
+            gateLogCount=$files.Count;stderrLogCount=$errorLogs.Count
+            stdoutSha256=if($files.Count -eq 1){(Get-FileHash $files[0].FullName -Algorithm SHA256).Hash.ToLowerInvariant()}else{$null}
+            stderrSha256=if($errorLogs.Count -eq 1){(Get-FileHash $errorLogs[0].FullName -Algorithm SHA256).Hash.ToLowerInvariant()}else{$null}
+            qualificationFailureReceiptSha256=if(Test-Path $failed){(Get-FileHash $failed -Algorithm SHA256).Hash.ToLowerInvariant()}else{$null}
+            updaterReceiptSha256=if(Test-Path $report){(Get-FileHash $report -Algorithm SHA256).Hash.ToLowerInvariant()}else{$null}
+            boundedRedactedTail=$tail
+            productionHostTouched=$false
+          }
+          $path=Join-Path $root 'R209_FAILURE_DIAG.json'
+          if(Test-Path $path){throw 'R209_NO_BLIND_DIAGNOSTIC_OVERWRITE'}
+          [IO.File]::WriteAllText($path,((ConvertTo-Json -InputObject $record -Depth 6)+[Environment]::NewLine),[Text.UTF8Encoding]::new($false))
+          Write-Output ('R209_DIAGNOSTIC_SHA='+(Get-FileHash $path -Algorithm SHA256).Hash.ToLowerInvariant())
+
+      - name: Preserve sanitized R209 failure evidence (no raw secrets)
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: r209-isolated-windows-test-diagnostics
+          path: ${{ runner.temp }}/remote-commander-updater-r157/R209_FAILURE_DIAG.json
+          retention-days: 14
+          if-no-files-found: warn
