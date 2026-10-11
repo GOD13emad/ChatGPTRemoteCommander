@@ -1,6 +1,12 @@
 name: Windows UI Transactional Update R216
 
 on:
+  push:
+    branches:
+      - qa/ui-r216-native-transactional-gate
+    paths:
+      - 'test/ui-transactional-update-native-r216.ps1'
+      - '.github/workflows/windows-ui-transactional-r216.yml'
   pull_request:
     paths:
       - 'desktop/install-windows.ps1'
