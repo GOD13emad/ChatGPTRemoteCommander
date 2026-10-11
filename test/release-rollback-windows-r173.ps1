@@ -15,6 +15,7 @@ $Ports=[System.Collections.Generic.HashSet[int]]::new()
 [void]$Ports.Add(47831)
 $script:Stages=@()
 $Failure=$null
+. (Join-Path $Source 'test\router-ports-windows-r189.ps1')
 function Assert-Head([string]$Dir,[string]$Want){
   $got=(& git.exe -C $Dir rev-parse HEAD).Trim()
   if($LASTEXITCODE -ne 0 -or $got -ne $Want){throw ('R173_HEAD_MISMATCH_'+$Dir+'_'+$got)}
@@ -22,11 +23,10 @@ function Assert-Head([string]$Dir,[string]$Want){
 function Readback([string]$Name,[string]$Sha,[string]$Version){
   $route=Join-Path $Root 'STATE\ChatGPTRemoteCommander\routing\default.json'
   if(-not(Test-Path -LiteralPath $route -PathType Leaf)){throw ('R173_NO_ROUTE_'+$Name)}
-  $state=Get-Content $route -Raw|ConvertFrom-Json
-  if($state.profile -ne 'default' -or $state.active.commit -ne $Sha -or $state.active.version -ne $Version){throw ('R173_ROUTE_WRONG_'+$Name)}
-  foreach($p in @($state.active.port,$state.previous.port)){
-    if($null -ne $p -and [int]$p -gt 0){[void]$Ports.Add([int]$p)}
-  }
+  $state=Get-Content $route -Raw|ConvertFrom-Json -AsHashtable
+  $candidatePorts=@(Get-RouterPortsR189 -State $state)
+  if($state['profile'] -ne 'default' -or $state['active']['commit'] -ne $Sha -or $state['active']['version'] -ne $Version){throw ('R173_ROUTE_WRONG_'+$Name)}
+  foreach($port in $candidatePorts){[void]$Ports.Add([int]$port)}
   Copy-Item $route (Join-Path $Root ('ROUTE_'+$Name+'.json')) -ErrorAction Stop
   $health=Invoke-RestMethod 'http://127.0.0.1:47831/health' -TimeoutSec 6
   if($health.ok -ne $true -or [string]$health.version -ne $Version){throw ('R173_HEALTH_WRONG_'+$Name)}
