@@ -26,7 +26,7 @@ test('R205 retirement preflight is before any old release deletion on Windows an
    assert.ok(helper.includes(name),'missing required safeguard: '+name);
 });
 
-test('NoPromote preserves legacy provider trees before any cleanup on both Windows and Linux',()=>{
+test('R230 both NoPromote and normal Core upgrades preserve unknown legacy provider data',()=>{
   const win=read('auto-update-windows.ps1');
   const linux=read('auto-update-linux.sh');
   const w=win.slice(win.indexOf('function Ensure-ProjectProvider'),win.indexOf('function Stage-Release'));
@@ -34,12 +34,17 @@ test('NoPromote preserves legacy provider trees before any cleanup on both Windo
   assert.ok(w.startsWith('function Ensure-ProjectProvider') && l.startsWith('ensure_project_provider(){'));
   const wGuard=w.indexOf('if($NoPromote){');
   const lGuard=l.indexOf('if [[ "$NO_PROMOTE" == 1 ]]');
-  assert.ok(wGuard>0 && wGuard<w.indexOf('Remove-Item -LiteralPath $legacyRoot'),'Windows no-promotion must return before mutation');
-  assert.ok(lGuard>0 && lGuard<l.indexOf('rm -rf -- "$legacy_root"'),'Linux no-promotion must return before mutation');
-  assert.ok(w.slice(wGuard,w.indexOf('Remove-Item')).includes('return'),'Windows guard must return before Remove-Item');
-  assert.ok(l.slice(lGuard,l.indexOf('rm -rf -- "$legacy_root"')).includes('return 0'),'Linux guard must return before rm');
+  const wDisable=w.indexOf('PROJECT_PROVIDER_DISABLED policy=NO_CODEX_VIA_COMMANDER');
+  const lDisable=l.indexOf('PROJECT_PROVIDER_DISABLED policy=NO_CODEX_VIA_COMMANDER');
+  assert.ok(wGuard>=0&&lGuard>=0&&wDisable>wGuard&&lDisable>lGuard);
+  assert.ok(w.slice(wGuard,wDisable).includes('return'));
+  assert.ok(l.slice(lGuard,lDisable).includes('return 0'));
   assert.ok(w.includes('PROJECT_PROVIDER_CLEANUP_SKIPPED reason=no-promote'));
   assert.ok(l.includes('PROJECT_PROVIDER_CLEANUP_SKIPPED reason=no-promote'));
+  assert.ok(w.includes('LEGACY_CODEX_PROVIDER_CLEANUP_PENDING reason=OWNER_ACCEPTANCE_REQUIRED'));
+  assert.ok(l.includes('LEGACY_CODEX_PROVIDER_CLEANUP_PENDING reason=OWNER_ACCEPTANCE_REQUIRED'));
+  assert.ok(!/Remove-Item|del-item|Start-Process|Get-CimInstance/u.test(w),'Windows provider block must be non-mutating');
+  assert.ok(!/rm\s+-rf|chmod|chown|unlink|find\s+.*-delete/u.test(l),'Linux provider block must be non-mutating');
   assert.ok(win.includes('Ensure-ProjectProvider (Get-PrimaryConfig)') && linux.includes('ensure_project_provider "$STAGE_DIR" "$ACTIVE_CFG"'));
 });
 
@@ -608,13 +613,15 @@ test('Linux installer delegates existing installs and builds Full Power through 
 });
 
 
-test('updaters disable and retire the legacy Commander-private Codex provider',()=>{
+test('R230 legacy provider is disabled without unapproved cleanup on actual promotion',()=>{
   const win=read('auto-update-windows.ps1');
   const lin=read('auto-update-linux.sh');
-  for(const marker of ['Ensure-ProjectProvider','PROJECT_PROVIDER_DISABLED policy=NO_CODEX_VIA_COMMANDER','LEGACY_CODEX_PROVIDER_REMOVED','LEGACY_CODEX_PROVIDER_CLEANUP_PENDING']) assert.ok(win.includes(marker),marker);
-  for(const marker of ['ensure_project_provider','PROJECT_PROVIDER_DISABLED policy=NO_CODEX_VIA_COMMANDER','LEGACY_CODEX_PROVIDER_REMOVED','LEGACY_CODEX_PROVIDER_CLEANUP_PENDING']) assert.ok(lin.includes(marker),marker);
-  assert.ok(!win.includes('@openai/codex@'),'Windows updater must not install Codex');
-  assert.ok(!lin.includes('@openai/codex@'),'Linux updater must not install Codex');
+  for(const marker of ['Ensure-ProjectProvider','PROJECT_PROVIDER_DISABLED policy=NO_CODEX_VIA_COMMANDER','LEGACY_CODEX_PROVIDER_CLEANUP_PENDING reason=OWNER_ACCEPTANCE_REQUIRED']) assert.ok(win.includes(marker),marker);
+  for(const marker of ['ensure_project_provider','PROJECT_PROVIDER_DISABLED policy=NO_CODEX_VIA_COMMANDER','LEGACY_CODEX_PROVIDER_CLEANUP_PENDING reason=OWNER_ACCEPTANCE_REQUIRED']) assert.ok(lin.includes(marker),marker);
+  for(const s of [win,lin]) {
+    assert.ok(!s.includes('LEGACY_CODEX_PROVIDER_REMOVED'),'old implicit-delete success must be unreachable');
+    assert.ok(!s.includes('@openai/codex@'),'updater must not install a legacy provider');
+  }
 });
 
 test('router bootstrap is after no-promote and before schema-changing cutover',()=>{

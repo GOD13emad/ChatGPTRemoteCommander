@@ -168,25 +168,14 @@ ensure_project_provider(){
     log "PROJECT_PROVIDER_CLEANUP_SKIPPED reason=no-promote"
     return 0
   fi
-  local legacy_root="$STATE_ROOT/tools/codex-cli" in_use=0 exe
-  if [[ -d "$legacy_root" ]]; then
-    for link in /proc/[0-9]*/exe; do
-      exe="$(readlink -f "$link" 2>/dev/null || true)"
-      if [[ -n "$exe" && "$exe" == "$legacy_root/"* ]]; then in_use=1; break; fi
-    done
-    if [[ "$in_use" == 0 ]]; then
-      if rm -rf -- "$legacy_root"; then
-        log 'LEGACY_CODEX_PROVIDER_REMOVED policy=NO_CODEX_VIA_COMMANDER'
-      else
-        log 'LEGACY_CODEX_PROVIDER_CLEANUP_PENDING reason=remove_failed'
-      fi
-    else
-      log 'LEGACY_CODEX_PROVIDER_CLEANUP_PENDING activeProcesses=1'
-    fi
+  # R230: no unknown legacy tool projection is removed as a side effect of
+  # a Core update. Require independent exact owner acceptance before cleanup.
+  local legacy_root="$STATE_ROOT/tools/codex-cli"
+  if [[ -e "$legacy_root" || -L "$legacy_root" ]]; then
+    log 'LEGACY_CODEX_PROVIDER_CLEANUP_PENDING reason=OWNER_ACCEPTANCE_REQUIRED'
   fi
   log 'PROJECT_PROVIDER_DISABLED policy=NO_CODEX_VIA_COMMANDER'
 }
-
 ensure_browser_backend(){
   local helper="$1" cfg="$2" requested=0 tier exe driver
   if [[ "$POWER_MODE" == 1 ]]; then requested=1

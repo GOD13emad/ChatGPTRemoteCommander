@@ -270,26 +270,14 @@ function Ensure-ProjectProvider([string]$ConfigPath){
     Log 'PROJECT_PROVIDER_CLEANUP_SKIPPED reason=no-promote'
     return
   }
+  # R230: a disabled, unknown legacy tool projection is not an owner-accepted
+  # retired release. Do not inspect or delete its contents during a Core upgrade.
   $legacyRoot=Join-Path $StateRoot 'tools\codex-cli'
   if(Test-Path -LiteralPath $legacyRoot){
-    $prefix=[IO.Path]::GetFullPath($legacyRoot).TrimEnd('\\')+'\\'
-    $inUse=@(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object {
-      $_.ExecutablePath -and ([IO.Path]::GetFullPath([string]$_.ExecutablePath)).StartsWith($prefix,[StringComparison]::OrdinalIgnoreCase)
-    })
-    if($inUse.Count-eq 0){
-      try{
-        Remove-Item -LiteralPath $legacyRoot -Recurse -Force -ErrorAction Stop
-        Log 'LEGACY_CODEX_PROVIDER_REMOVED policy=NO_CODEX_VIA_COMMANDER'
-      }catch{
-        Log "LEGACY_CODEX_PROVIDER_CLEANUP_PENDING reason=$($_.Exception.GetType().Name)"
-      }
-    }else{
-      Log "LEGACY_CODEX_PROVIDER_CLEANUP_PENDING activeProcesses=$($inUse.Count)"
-    }
+    Log 'LEGACY_CODEX_PROVIDER_CLEANUP_PENDING reason=OWNER_ACCEPTANCE_REQUIRED'
   }
   Log 'PROJECT_PROVIDER_DISABLED policy=NO_CODEX_VIA_COMMANDER'
 }
-
 function Stage-Release([string]$Ref){
   $tmp=Join-Path $ReleaseRoot ("stage-{0}-{1}" -f ($Ref -replace '[^A-Za-z0-9._-]','_'),$PID)
   if(Test-Path $tmp){Remove-Item $tmp -Recurse -Force}
