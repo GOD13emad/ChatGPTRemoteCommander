@@ -164,6 +164,10 @@ stop_owned_candidate(){
 }
 run_gate(){ local project="$1" name="$2"; shift 2; log "GATE_START $name"; (cd "$project"; "$@"); log "GATE_PASS $name"; }
 ensure_project_provider(){
+  if [[ "$NO_PROMOTE" == 1 ]]; then
+    log "PROJECT_PROVIDER_CLEANUP_SKIPPED reason=no-promote"
+    return 0
+  fi
   local legacy_root="$STATE_ROOT/tools/codex-cli" in_use=0 exe
   if [[ -d "$legacy_root" ]]; then
     for link in /proc/[0-9]*/exe; do

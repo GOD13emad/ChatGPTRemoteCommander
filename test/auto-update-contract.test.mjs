@@ -11,6 +11,23 @@ import { fileURLToPath } from 'node:url';
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const read=f=>fs.readFileSync(path.join(root,f),'utf8');
 
+test('NoPromote preserves legacy provider trees before any cleanup on both Windows and Linux',()=>{
+  const win=read('auto-update-windows.ps1');
+  const linux=read('auto-update-linux.sh');
+  const w=win.slice(win.indexOf('function Ensure-ProjectProvider'),win.indexOf('function Stage-Release'));
+  const l=linux.slice(linux.indexOf('ensure_project_provider(){'),linux.indexOf('ensure_browser_backend(){'));
+  assert.ok(w.startsWith('function Ensure-ProjectProvider') && l.startsWith('ensure_project_provider(){'));
+  const wGuard=w.indexOf('if($NoPromote){');
+  const lGuard=l.indexOf('if [[ "$NO_PROMOTE" == 1 ]]');
+  assert.ok(wGuard>0 && wGuard<w.indexOf('Remove-Item -LiteralPath $legacyRoot'),'Windows no-promotion must return before mutation');
+  assert.ok(lGuard>0 && lGuard<l.indexOf('rm -rf -- "$legacy_root"'),'Linux no-promotion must return before mutation');
+  assert.ok(w.slice(wGuard,w.indexOf('Remove-Item')).includes('return'),'Windows guard must return before Remove-Item');
+  assert.ok(l.slice(lGuard,l.indexOf('rm -rf -- "$legacy_root"')).includes('return 0'),'Linux guard must return before rm');
+  assert.ok(w.includes('PROJECT_PROVIDER_CLEANUP_SKIPPED reason=no-promote'));
+  assert.ok(l.includes('PROJECT_PROVIDER_CLEANUP_SKIPPED reason=no-promote'));
+  assert.ok(win.includes('Ensure-ProjectProvider (Get-PrimaryConfig)') && linux.includes('ensure_project_provider "$STAGE_DIR" "$ACTIVE_CFG"'));
+});
+
 test('auto updater is candidate-first, hardware-gated and commit-point aware',()=>{
   const s=read('auto-update-windows.ps1');
   for(const marker of [
