@@ -43,7 +43,12 @@ export function checkContract({ ticket, targetName, targetCommit, activeCommit,
     return reject('ROUTE_HASH_STALE');
   if (!Array.isArray(referencedPaths) || !Array.isArray(retainedPaths))
     return reject('UNKNOWN_PROCESS_OR_ROUTE_REFERENCES');
-  if ([...referencedPaths, ...retainedPaths].some(p => path.resolve(p) === path.resolve(targetPath)))
+  // Compare true filesystem identity, not just lexical paths: active routes
+  // may point through a junction/symlink to the same retired directory.
+  const canonical = p => {
+    try { return fs.realpathSync(p); } catch { return path.resolve(p); }
+  };
+  if ([...referencedPaths, ...retainedPaths].some(p => canonical(p) === canonical(targetPath)))
     return reject('TARGET_STILL_REFERENCED');
   return { allow: true, reason: 'EXACT_OWNER_ACCEPTED_RETIREMENT' };
 }
@@ -77,10 +82,28 @@ function inspect({ stateRoot, releaseRoot, routingRoot, target }) {
     targetCommit = execFileSync('git', ['-C', release, 'rev-parse', 'HEAD'],
       { encoding: 'utf8', timeout: 5000 }).trim().toLowerCase();
     const gitStatus = execFileSync('git',
-      ['-C', release, 'status', '--porcelain', '--untracked-files=all'],
+      ['-C', release, 'status', '--porcelain', '--untracked-files=all', '--ignored'],
       { encoding: 'utf8', timeout: 5000 }).trim();
     if (gitStatus) return deny('RELEASE_CONTAINS_UNKNOWN_LOCAL_CHANGES');
   } catch { return deny('RELEASE_GIT_PROVENANCE_UNPROVEN'); }
+  // No release may be retired while any same-user running process has its cwd
+  // under the directory. Route and keeper checks alone are not enough.
+  if (process.platform !== 'win32' && fs.existsSync('/proc')) {
+    try {
+      for (const pid of fs.readdirSync('/proc').filter(n => /^[0-9]+$/.test(n))) {
+        let record;
+        try { record = fs.statSync('/proc/' + pid); } catch { continue; }
+        if (record.uid !== process.getuid()) continue;
+        let cwd;
+        try { cwd = fs.realpathSync('/proc/' + pid + '/cwd'); }
+        catch (e) {
+          if (e.code === 'EACCES' || e.code === 'EPERM') return deny('PROCESS_OWNERSHIP_UNVERIFIED');
+          continue;
+        }
+        if (cwd === release || cwd.startsWith(release + path.sep)) return deny('TARGET_USED_BY_PROCESS');
+      }
+    } catch { return deny('PROCESS_OWNERSHIP_UNVERIFIED'); }
+  }
   const routeHashes = {};
   const referenced = [];
   let activeCommit = null;
