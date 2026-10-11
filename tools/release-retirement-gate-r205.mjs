@@ -2,6 +2,7 @@
 // R205: read-only, fail-closed retirement authorization for versioned Core folders.
 // A normal update MUST NOT delete anything without a separate, evidence-bound
 // post-acceptance approval. This helper itself never deletes or changes files.
+// R226: acceptance tickets are valid for at most 24 hours (owner promise).
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
@@ -112,7 +113,7 @@ export function inspectRetirement({stateRoot,releaseRoot,candidate,installDir,no
       ||a.explicitRetirementAccepted!==true)return defer('APPROVAL_CONTRACT_OR_COMMIT_MISMATCH');
     const approved=Date.parse(a.acceptedUtc),expires=Date.parse(a.expiresUtc),clock=+new Date(now);
     if(!Number.isFinite(approved)||!Number.isFinite(expires)||!Number.isFinite(clock)
-      ||approved>clock||expires<clock||expires-approved>7*86400000)return defer('STALE_OR_INVALID_APPROVAL_WINDOW');
+      ||approved>clock||expires<clock||expires<approved||expires-approved>24*60*60*1000)return defer('STALE_OR_INVALID_APPROVAL_WINDOW');
   }catch{return defer('RETIREMENT_APPROVAL_UNVERIFIED');}
   return {status:'ALLOW',reason:[],candidateName:name,candidateHead,activeHead,retiredAfterAcceptance:true};
 }
