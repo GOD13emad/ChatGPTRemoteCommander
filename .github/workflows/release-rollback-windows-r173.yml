@@ -59,7 +59,9 @@ jobs:
           retention-days: 7
           path: |
             ${{ runner.temp }}/remote-commander-rollback-r173/RETURN_R173.json
-            ${{ runner.temp }}/remote-commander-rollback-r173/PROMOTE.log
-            ${{ runner.temp }}/remote-commander-rollback-r173/ROLLBACK.log
+            ${{ runner.temp }}/remote-commander-rollback-r173/PROMOTE.stdout.log
+            ${{ runner.temp }}/remote-commander-rollback-r173/PROMOTE.stderr.log
+            ${{ runner.temp }}/remote-commander-rollback-r173/ROLLBACK.stdout.log
+            ${{ runner.temp }}/remote-commander-rollback-r173/ROLLBACK.stderr.log
             ${{ runner.temp }}/remote-commander-rollback-r173/ROUTE_PROMOTE.json
             ${{ runner.temp }}/remote-commander-rollback-r173/ROUTE_ROLLBACK.json
