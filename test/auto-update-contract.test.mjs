@@ -48,6 +48,57 @@ test('R230 both NoPromote and normal Core upgrades preserve unknown legacy provi
   assert.ok(win.includes('Ensure-ProjectProvider (Get-PrimaryConfig)') && linux.includes('ensure_project_provider "$STAGE_DIR" "$ACTIVE_CFG"'));
 });
 
+test('R230 real updater helper execution leaves arbitrary legacy projection sentinel intact',t=>{
+ const sandbox=fs.mkdtempSync(path.join(os.tmpdir(),'rc-r230-preserve-'));
+ const toolsPath=path.join(sandbox,'tools','codex-cli');
+ fs.mkdirSync(path.join(toolsPath,'unknown-owner-subdir'),{recursive:true});
+ const sentinel=path.join(toolsPath,'unknown-owner-subdir','sentinel.txt');
+ fs.writeFileSync(sentinel,'R230_OWNER_DATA_NEVER_AUTO_DELETE');
+ t.after(()=>{
+   const tmp=path.resolve(os.tmpdir());
+   assert.equal(path.dirname(path.resolve(sandbox)),tmp,'fixture cleanup must be limited to this unique temp directory');
+   assert.match(path.basename(sandbox),/^rc-r230-preserve-/);
+   fs.rmSync(sandbox,{recursive:true,force:true});
+ });
+ const win=read('auto-update-windows.ps1'),linux=read('auto-update-linux.sh');
+ const windowsFn=win.slice(win.indexOf('function Ensure-ProjectProvider'),win.indexOf('function Stage-Release'));
+ const linuxFn=linux.slice(linux.indexOf('ensure_project_provider(){'),linux.indexOf('ensure_browser_backend(){'));
+ for(const promote of [false,true]){
+   const noPromote=promote?'$true':'$false';
+   let command,result;
+   if(process.platform==='win32'){
+     const escaped=sandbox.replace(/'/g,"''");
+     command=[
+       "$ErrorActionPreference='Stop'",
+       "$StateRoot='"+escaped+"'",
+       "$NoPromote="+noPromote,
+       "function Log([string]$message){Write-Output $message}",
+       windowsFn,
+       "Ensure-ProjectProvider 'dummy-config'"
+     ].join('\n');
+     const encoded=Buffer.from(command,'utf16le').toString('base64');
+     result=spawnSync('pwsh.exe',['-NoLogo','-NoProfile','-NonInteractive','-EncodedCommand',encoded],{encoding:'utf8',timeout:15000});
+   }else if(process.platform==='linux'){
+     command=[
+       'set -Eeuo pipefail',
+       'STATE_ROOT="$1"',
+       'NO_PROMOTE="$2"',
+       'log(){ printf "%s\\n" "$1"; }',
+       linuxFn,
+       'ensure_project_provider'
+     ].join('\n');
+     result=spawnSync('bash',['-c',command,'--',sandbox,promote?'1':'0'],{encoding:'utf8',timeout:15000});
+   }else{
+     return t.skip('R230 native execution is required only on Windows and Linux');
+   }
+   assert.equal(result.error,undefined,result.error?.message);
+   assert.equal(result.status,0,'native helper failed: '+result.stderr);
+   assert.equal(fs.readFileSync(sentinel,'utf8'),'R230_OWNER_DATA_NEVER_AUTO_DELETE','normal upgrade must preserve arbitrary nested owner data');
+   assert.ok(result.stdout.includes(promote?'PROJECT_PROVIDER_CLEANUP_SKIPPED reason=no-promote':'LEGACY_CODEX_PROVIDER_CLEANUP_PENDING reason=OWNER_ACCEPTANCE_REQUIRED'),result.stdout);
+   if(!promote)assert.ok(result.stdout.includes('PROJECT_PROVIDER_DISABLED policy=NO_CODEX_VIA_COMMANDER'));
+ }
+});
+
 test('auto updater is candidate-first, hardware-gated and commit-point aware',()=>{
   const s=read('auto-update-windows.ps1');
   for(const marker of [
