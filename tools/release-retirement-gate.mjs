@@ -86,24 +86,6 @@ function inspect({ stateRoot, releaseRoot, routingRoot, target }) {
       { encoding: 'utf8', timeout: 5000 }).trim();
     if (gitStatus) return deny('RELEASE_CONTAINS_UNKNOWN_LOCAL_CHANGES');
   } catch { return deny('RELEASE_GIT_PROVENANCE_UNPROVEN'); }
-  // No release may be retired while any same-user running process has its cwd
-  // under the directory. Route and keeper checks alone are not enough.
-  if (process.platform !== 'win32' && fs.existsSync('/proc')) {
-    try {
-      for (const pid of fs.readdirSync('/proc').filter(n => /^[0-9]+$/.test(n))) {
-        let record;
-        try { record = fs.statSync('/proc/' + pid); } catch { continue; }
-        if (record.uid !== process.getuid()) continue;
-        let cwd;
-        try { cwd = fs.realpathSync('/proc/' + pid + '/cwd'); }
-        catch (e) {
-          if (e.code === 'EACCES' || e.code === 'EPERM') return deny('PROCESS_OWNERSHIP_UNVERIFIED');
-          continue;
-        }
-        if (cwd === release || cwd.startsWith(release + path.sep)) return deny('TARGET_USED_BY_PROCESS');
-      }
-    } catch { return deny('PROCESS_OWNERSHIP_UNVERIFIED'); }
-  }
   const routeHashes = {};
   const referenced = [];
   let activeCommit = null;
@@ -146,8 +128,30 @@ function inspect({ stateRoot, releaseRoot, routingRoot, target }) {
       }
     } catch { return deny('RETAINED_BACKEND_STATE_UNVERIFIED'); }
   }
-  return checkContract({ ticket, targetName, targetCommit, activeCommit,
+  // Prove route/retained evidence first so targeted negative diagnoses survive
+  // even on Linux hosts with privacy-restricted /proc inspection.
+  const decision = checkContract({ ticket, targetName, targetCommit, activeCommit,
     routeHashes, referencedPaths: referenced, retainedPaths: retained, targetPath: release });
+  if (!decision.allow) return decision;
+  // No release may be retired while any same-user running process has its cwd
+  // under the directory. Route and keeper checks alone are not enough.
+  if (process.platform !== 'win32' && fs.existsSync('/proc')) {
+    try {
+      for (const pid of fs.readdirSync('/proc').filter(n => /^[0-9]+$/.test(n))) {
+        let record;
+        try { record = fs.statSync('/proc/' + pid); } catch { continue; }
+        if (record.uid !== process.getuid()) continue;
+        let cwd;
+        try { cwd = fs.realpathSync('/proc/' + pid + '/cwd'); }
+        catch (e) {
+          if (e.code === 'EACCES' || e.code === 'EPERM') return deny('PROCESS_OWNERSHIP_UNVERIFIED');
+          continue;
+        }
+        if (cwd === release || cwd.startsWith(release + path.sep)) return deny('TARGET_USED_BY_PROCESS');
+      }
+    } catch { return deny('PROCESS_OWNERSHIP_UNVERIFIED'); }
+  }
+  return decision;
 }
 
 if (process.argv[1] && path.basename(process.argv[1]) === 'release-retirement-gate.mjs') {
