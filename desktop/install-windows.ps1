@@ -1,7 +1,8 @@
 param(
   [string]$SourceDir = '',
   [string]$InstallRoot = '',
-  [ValidateSet('Core','ControlMonitoring')][string]$Mode = 'ControlMonitoring'
+  [ValidateSet('Core','ControlMonitoring')][string]$Mode = 'ControlMonitoring',
+  [switch]$StageOnly
 )
 $ErrorActionPreference='Stop'
 $RepoRoot=(Resolve-Path (Join-Path $PSScriptRoot '..')).Path
@@ -33,7 +34,16 @@ $Current=Join-Path $InstallRoot 'current'
 $StartMenu=Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs\Remote Commander'
 $Reg='HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\RemoteCommander'
 
-New-Item -ItemType Directory -Force -Path $VersionDir,$StartMenu | Out-Null
+# R198: Stage-Only is a narrowly scoped DEVELOPMENT installation. Never change
+# a live current pointer, shortcuts, HKCU uninstall entry, or a prior version.
+if($StageOnly){
+  if(-not $PSBoundParameters.ContainsKey('InstallRoot')){throw 'R198_EXPLICIT_DEV_INSTALL_ROOT_REQUIRED'}
+  $developmentBase=[IO.Path]::GetFullPath((Join-Path $env:USERPROFILE 'source\repos')).TrimEnd([char]'\')+'\'
+  if(-not $InstallRoot.StartsWith($developmentBase,[StringComparison]::OrdinalIgnoreCase)){throw 'R198_STAGE_ROOT_OUTSIDE_DEVELOPMENT'}
+  if(Test-Path -LiteralPath $InstallRoot){throw 'R198_STAGE_ROOT_MUST_BE_NEW'}
+}
+if($StageOnly){New-Item -ItemType Directory -Path $VersionDir -ErrorAction Stop|Out-Null}
+else{New-Item -ItemType Directory -Force -Path $VersionDir,$StartMenu|Out-Null}
 foreach($name in $selected){
   Copy-Item -LiteralPath (Join-Path $SourceDir $name) -Destination (Join-Path $VersionDir $name) -Force -ErrorAction Stop
 }
@@ -48,6 +58,12 @@ $InstallManifest=[ordered]@{
   installedAt=(Get-Date).ToUniversalTime().ToString('o')
 }
 [IO.File]::WriteAllText((Join-Path $VersionDir 'product-install.json'),(($InstallManifest|ConvertTo-Json -Depth 4)+[Environment]::NewLine),[Text.UTF8Encoding]::new($false))
+if($StageOnly){
+  $stamp=[ordered]@{schema=1;revision='R198';status='STAGED_ONLY_NO_LIVE_INTEGRATION';sourceVersion=$Version;sourceManifestSHA256=$PackageSha;installRoot=$InstallRoot;versionDir=$VersionDir;currentPointerChanged=$false;startMenuChanged=$false;registryChanged=$false;sourceModified=$false}
+  [IO.File]::WriteAllText((Join-Path $VersionDir 'STAGE_R198.json'),(($stamp|ConvertTo-Json -Depth 5)+[Environment]::NewLine),[Text.UTF8Encoding]::new($false))
+  Write-Output ('REMOTE_COMMANDER_UI_STAGE_ONLY_PASS version='+$Version+' root='+$VersionDir)
+  return
+}
 
 if(Test-Path -LiteralPath $Current){Remove-Item -LiteralPath $Current -Force -Recurse}
 New-Item -ItemType Junction -Path $Current -Target $VersionDir | Out-Null
