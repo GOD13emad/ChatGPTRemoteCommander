@@ -58,11 +58,14 @@ def main():
     parser.add_argument("--self-test", action="store_true")
     args = parser.parse_args()
     if args.self_test:
-        r = Path("/tmp/rc-r172-pure-test")
-        assert matches(r, str(r / "release"), b"/opt/node/bin/node\0src/server-v0.3.mjs\0")
-        assert matches(r, str(r / "release"), b"node\0src/stable-router.mjs\0")
-        assert not matches(r, "/home/user/private", b"node\0src/stable-router.mjs\0")
-        assert not matches(r, str(r / "release"), b"python3\0src/server-v0.3.mjs\0")
+        import tempfile
+        with tempfile.TemporaryDirectory(prefix="rc-r172-") as tmp:
+            r = Path(tmp).resolve()
+            (r / "release").mkdir()
+            assert matches(r, str(r / "release"), b"/opt/node/bin/node\0src/server-v0.3.mjs\0")
+            assert matches(r, str(r / "release"), b"node\0src/stable-router.mjs\0")
+            assert not matches(r, "/home/user/private", b"node\0src/stable-router.mjs\0")
+            assert not matches(r, str(r / "release"), b"python3\0src/server-v0.3.mjs\0")
         print("R172_IDENTITY_PURE_TEST_PASS")
         return
     if os.getenv("CI") != "true" or not os.getenv("RUNNER_TEMP") or not os.getenv("GITHUB_WORKSPACE"):
