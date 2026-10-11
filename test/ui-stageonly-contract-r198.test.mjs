@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-const installer=readFileSync(new URL('../desktop/install-windows.ps1',import.meta.url),'utf8');
+const installer=readFileSync(new URL('../desktop/install-windows.ps1',import.meta.url),'utf8').replace(/\r\n/g,'\n');
 test('R198 stage-only writes candidate without mutating installed current, HKCU or shortcuts',()=>{
  const beginning=installer.indexOf('if($StageOnly){\n  if(-not $PSBoundParameters.ContainsKey');
  const create=installer.indexOf('New-Item -ItemType Directory -Path $VersionDir');
