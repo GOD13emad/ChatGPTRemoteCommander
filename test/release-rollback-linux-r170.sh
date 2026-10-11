@@ -22,7 +22,18 @@ fi
 mkdir -m 700 -p "$ROOT/install" "$ROOT/state" "$ROOT/config" "$ROOT/data"
 git clone --quiet --depth 1 --branch v0.10.20 https://github.com/GOD13emad/ChatGPTRemoteCommander.git "$ROOT/install"
 [[ "$(git -C "$ROOT/install" rev-parse HEAD)" == "$BASELINE" ]] || { echo R170_BASELINE_SHA_MISMATCH >&2; exit 68; }
-[[ -z "$(git -C "$ROOT/install" status --porcelain)" ]] || { echo R170_BASELINE_WORKTREE_DIRTY >&2; exit 69; }
+# Immutable v0.10.20 has a documented CRLF Git-blob vs eol=crlf attribute conflict.
+# Accept ONLY that one known tracked path, with zero staged or non-EOL semantic differences.
+# New v0.10.21 source corrects the Git index blob; never reset or rewrite the signed old tag.
+dirty="$(git -C "$ROOT/install" status --porcelain --untracked-files=no)"
+if [[ -n "$dirty" ]]; then
+  [[ "$dirty" == ' M enable-boot-recovery.ps1' ]] || { echo R170_UNEXPECTED_BASELINE_DIRTY >&2; exit 69; }
+  [[ "$(git -C "$ROOT/install" rev-parse 'HEAD:enable-boot-recovery.ps1')" == '4a95652f898ca168bab0a9ed8764c8776bbef321' ]] || { echo R170_HISTORIC_BLOB_SHA_DRIFT >&2; exit 69; }
+  [[ "$(sha256sum "$ROOT/install/enable-boot-recovery.ps1"|cut -d' ' -f1)" == '220c241b7534c821be875dc4554b0986c4a7a3b5914fc0ff257736d8930d32db' ]] || { echo R170_WORKTREE_EOL_HASH_DRIFT >&2; exit 69; }
+  git -C "$ROOT/install" diff --cached --quiet -- || { echo R170_STAGED_DELTA_BLOCK >&2; exit 69; }
+  git -C "$ROOT/install" diff --ignore-space-at-eol --quiet -- || { echo R170_SEMANTIC_DELTA_BLOCK >&2; exit 69; }
+  echo R170_KNOWN_IMMUTABLE_V01020_EOL_DRIFT_ACCEPTED
+fi
 
 python3 - "$WORKSPACE/config.json" "$ROOT/install/config.local.json" "$WORKSPACE" <<'PY'
 import json,pathlib,sys
