@@ -1,5 +1,7 @@
 # Project Brain — ChatGPT Remote Commander
 
+> **HISTORICAL CHECKPOINT — SUPERSEDED AS CURRENT.** The `Status: CURRENT` text below was written for v0.10.9 on 2026-10-04 and is retained verbatim for provenance, not operational authority. For the published Core v0.10.20, separate Browser v0.8.1, and current open release/acceptance gates, use [RELEASE_AUTHORITY](RELEASE_AUTHORITY.md) and the immutable release/tag evidence. Private cumulative account-transfer Brains are not embedded in this public file.
+
 Status: CURRENT — v0.10.9 RELEASED / MMZ LINUX LIVE + FRESH QUALIFICATION PASS / WINDOWS HOSTED TEST-HARNESS DETERMINISM GATE OPEN
 Updated: 2026-10-04
 Authority: immutable release/tag -> exact live route records -> exact-SHA CI/canary evidence -> project control/evidence records.
