@@ -5,6 +5,8 @@ on:
     paths:
       - 'desktop/RemoteCommanderDashboard/**'
       - 'desktop/tests-ui-r34/**'
+      - 'desktop/install-windows.ps1'
+      - 'test/ui-uninstall-preserve-r219.test.mjs'
       - '.github/workflows/windows-control-center-r34.yml'
   workflow_dispatch:
 
@@ -29,3 +31,6 @@ jobs:
       - name: Source safety regression
         shell: pwsh
         run: node --test desktop/tests-ui-r34/safety.test.cjs
+      - name: Fail-closed generated Uninstall protection (R219)
+        shell: pwsh
+        run: node --test test/ui-uninstall-preserve-r219.test.mjs

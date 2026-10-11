@@ -197,23 +197,15 @@ foreach($legacy in @(
 
 $Pwsh=(Get-Command pwsh.exe -ErrorAction Stop).Source
 $Uninstall=Join-Path $InstallRoot 'uninstall.ps1'
+# R219: An uninstaller must never blindly delete the versioned installation
+# root, especially while a current Junction, rollback alias, unknown files
+# or user-owned state may still exist. Updating is transactional in place.
+# Until a separate independently approved exact-manifest retirement tool passes,
+# the registered Uninstall entry fails BEFORE changing files/registry/shortcuts.
 $UninstallText=@"
+#requires -Version 7.0
 `$ErrorActionPreference='Stop'
-`$StartMenu=Join-Path `$env:APPDATA 'Microsoft\Windows\Start Menu\Programs\Remote Commander'
-foreach(`$name in @(
-  'Remote Commander.lnk',
-  'Remote Commander Profiles & Access.lnk',
-  'Remote Commander Operations Monitor.lnk',
-  'Remote Commander Admin Runtime.lnk'
-)){
-  Remove-Item -LiteralPath (Join-Path `$StartMenu `$name) -Force -ErrorAction SilentlyContinue
-}
-if((Test-Path `$StartMenu) -and -not(Get-ChildItem `$StartMenu -Force -ErrorAction SilentlyContinue)){
-  Remove-Item -LiteralPath `$StartMenu -Force -ErrorAction SilentlyContinue
-}
-Remove-Item -LiteralPath 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\RemoteCommander' -Recurse -Force -ErrorAction SilentlyContinue
-`$selfRoot='$($InstallRoot.Replace("'","''"))'
-Start-Process -FilePath 'cmd.exe' -ArgumentList '/d','/c',"timeout /t 1 /nobreak >nul & rmdir /s /q `"`$selfRoot`"" -WindowStyle Hidden
+throw 'R219_UNINSTALL_REFUSED_NO_ACCEPTED_RETIREMENT_PLAN: Use transactional in-place Update. Explicit manifest, profile continuity, active-process, rollback and owner-acceptance evidence are required for a future safe uninstall; NOTHING WAS DELETED.'
 "@
 [IO.File]::WriteAllText($Uninstall,$UninstallText,(New-Object Text.UTF8Encoding($false)))
 
