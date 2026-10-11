@@ -7,24 +7,42 @@ output="${GITHUB_WORKSPACE}/dist/ui-preview-r35"
 [[ -f "$root/preview_fixture.py" && -f "$root/dashboard_ui.py" && ! -e "$output" ]] || { echo "SOURCE_OR_OUTPUT_CONFLICT" >&2; exit 62; }
 mkdir -p "$output"
 export RC_R35_PREVIEW_DIR="$output"
-dbus-run-session -- xvfb-run -a -s '-screen 0 1440x900x24' bash -euo pipefail -c '
+timeout --signal=TERM --kill-after=8s 90s dbus-run-session -- xvfb-run -a -s '-screen 0 1440x900x24' bash -euo pipefail -c '
   export GDK_BACKEND=x11 GSETTINGS_BACKEND=memory GTK_A11Y=none NO_AT_BRIDGE=1
   /usr/bin/python3 -B "$GITHUB_WORKSPACE/desktop/linux-control-center/preview_fixture.py" > "$RC_R35_PREVIEW_DIR/gtk.log" 2>&1 &
   pid=$!
   trap "kill $pid 2>/dev/null || true" EXIT
-  sleep 5
-  if ! kill -0 "$pid" 2>/dev/null; then cat "$RC_R35_PREVIEW_DIR/gtk.log"; echo "GTK_DIED_BEFORE_CAPTURE" >&2; exit 65; fi
-  winid="$(xdotool search --name "Remote Commander" | head -n 1 || true)"
-  if [[ -z "$winid" ]]; then
+  # R217: A fixed 5s sleep was not enough on cold hosted CI: Python could be
+  # alive but stalled on initial filesystem I/O before opening its X11 window.
+  # Poll ONLY this isolated Xvfb fixture with a hard deadline, checking both the
+  # actual native window and independently reported GTK layout observables.
+  deadline=$((SECONDS + 45))
+  winid=""
+  phase="WINDOW_PENDING"
+  while (( SECONDS < deadline )); do
+    if ! kill -0 "$pid" 2>/dev/null; then phase="FIXTURE_EXITED"; break; fi
+    winid="$(xdotool search --name "Remote Commander" | head -n 1 || true)"
+    if [[ -n "$winid" ]] &&
+       grep -q "^R36_NATIVE_STACK_PAGES=4_VISIBLE=4$" "$RC_R35_PREVIEW_DIR/gtk.log" &&
+       grep -q "^R39_NAV_BUTTONS=4_DRAWN=4_ACTIVE=1$" "$RC_R35_PREVIEW_DIR/gtk.log" &&
+       grep -Eq "^R46_SIDEBAR_CONTENT_WIDTH=[0-9]+$" "$RC_R35_PREVIEW_DIR/gtk.log"; then
+      phase="WINDOW_AND_LAYOUT_READY"
+      break
+    fi
+    sleep 0.5
+  done
+  if [[ "$phase" != "WINDOW_AND_LAYOUT_READY" ]]; then
+    echo "R217_BOUNDED_GTK_READINESS_FAIL phase=$phase deadline=45s" >&2
     echo "R42_DIAGNOSTIC_GTK_PROCESS" >&2
     ps -o pid,ppid,stat,etime,wchan:24,cmd -p "$pid" >&2 || true
     echo "R42_DIAGNOSTIC_X11_TREE" >&2
     xwininfo -root -tree 2>&1 | head -n 24 >&2 || true
     echo "R42_DIAGNOSTIC_GTK_LOG" >&2
     cat "$RC_R35_PREVIEW_DIR/gtk.log" >&2 || true
-    echo "GTK_NATIVE_WINDOW_MISSING" >&2
+    echo "GTK_NATIVE_WINDOW_OR_LAYOUT_NOT_READY" >&2
     exit 66
   fi
+  echo "R217_BOUNDED_GTK_READINESS_PASS phase=$phase"
   grep -q "^R36_NATIVE_STACK_PAGES=4_VISIBLE=4$" "$RC_R35_PREVIEW_DIR/gtk.log" || { cat "$RC_R35_PREVIEW_DIR/gtk.log"; echo "STACK_FOUR_PAGES_NOT_ACCEPTED" >&2; exit 69; }
   grep -q "^R39_NAV_BUTTONS=4_DRAWN=4_ACTIVE=1$" "$RC_R35_PREVIEW_DIR/gtk.log" || { cat "$RC_R35_PREVIEW_DIR/gtk.log"; echo "SIDEBAR_FOUR_VISUAL_BUTTONS_NOT_ACCEPTED" >&2; exit 70; }
   # Always capture the visible window BEFORE any viewport-width acceptance:
