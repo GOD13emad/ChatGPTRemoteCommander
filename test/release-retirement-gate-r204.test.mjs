@@ -114,7 +114,10 @@ test('R204 Windows and Linux Updater destructive cleanup is after exact owner ti
  const win=fs.readFileSync(new URL('../auto-update-windows.ps1',import.meta.url),'utf8');
  const linux=fs.readFileSync(new URL('../auto-update-linux.sh',import.meta.url),'utf8');
  const w=win.slice(win.indexOf('function Cleanup-Releases {'),win.indexOf('if($SelfTest)'));
- const l=linux.slice(linux.indexOf('cleanup_releases(){'),linux.indexOf('detach_from_commander_backend_if_needed'));
+ const li=linux.indexOf('cleanup_releases(){');
+ const end=linux.indexOf('\n}\n\n',li);
+ assert.ok(li>0 && end>li,'R205 Linux cleanup function must have a bounded structural anchor');
+ const l=linux.slice(li,end+2);
  assert.ok(w.indexOf('owner-acceptance-missing')>=0&&w.indexOf('owner-acceptance-missing')<w.indexOf('Remove-Item -LiteralPath $d.FullName'));
  assert.ok(l.indexOf('owner-acceptance-missing')>=0&&l.indexOf('owner-acceptance-missing')<l.indexOf('if rm -rf "$d"'));
  assert.ok(w.includes('tools\\release-retirement-gate.mjs')&&l.includes('tools/release-retirement-gate.mjs'));
