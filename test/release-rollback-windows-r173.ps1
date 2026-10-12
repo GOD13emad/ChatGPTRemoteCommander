@@ -58,6 +58,35 @@ function Update([string]$Name,[string]$Sha){
   $status=if($null -ne $result){[string]$result.status}else{'MISSING'}
   $script:Stages+=@{name=$Name;exit=$exitCode;status=$status;updaterPid=$updater.Id;stdoutPath=$stdout;stderrPath=$stderr}
   Write-Output ('R185_'+$Name+'_PROCESS_EXIT='+$exitCode+'_STATUS='+$status)
+  # CI-only R252: retain exact hashed qualification failure names, no raw logs.
+  if($Name -eq 'ROLLBACK' -and ($exitCode -ne 0 -or $status -ne 'PROMOTED')){
+    try{
+      $lines=Get-Content -LiteralPath $stdout -ErrorAction Stop
+      $rx='^GATE_OUTPUT_FILES runId=(qualification-test-'+$Baseline.Substring(0,12)+'-[0-9a-f]{32}) stdout=([^\r\n]+?) stderr='
+      $matches=@($lines|Where-Object {$_ -match $rx})
+      if($matches.Count -ne 1){throw 'NO_UNIQUE_TEST_OUTPUT'}
+      $null=$matches[0] -match $rx
+      $id=$Matches[1];$given=[IO.Path]::GetFullPath($Matches[2])
+      $inner=Join-Path $Root ('STATE\ChatGPTRemoteCommander\update-logs\qualification-output-'+$id+'.stdout.log')
+      if($given -cne [IO.Path]::GetFullPath($inner)){throw 'WRONG_LOG_PATH'}
+      $size=(Get-Item -LiteralPath $inner -ErrorAction Stop).Length
+      if($size -le 0 -or $size -gt 2097152){throw 'BAD_LOG_SIZE'}
+      $sha=(Get-FileHash -LiteralPath $inner -Algorithm SHA256).Hash
+      if(-not($lines|Where-Object {$_ -match ('^GATE_OUTPUT_HASH runId='+[regex]::Escape($id)+' stdoutSha256='+$sha+' ')})){
+        throw 'LOG_HASH_UNATTESTED'
+      }
+      $found=0
+      foreach($line in [IO.File]::ReadLines($inner)){
+        if($line -match '^\s*(?:not ok \d+ -|#\s*(?:fail|pass|tests)\s+\d+|.*\b(?:AssertionError|ERR_TEST_FAILURE)\b)'){
+          $safe=($line -replace '[^A-Za-z0-9 ._:(),/\[\]-]','?')
+          if($safe.Length -gt 160){$safe=$safe.Substring(0,160)}
+          Write-Output ('R252_QUAL_TEST_RESULT_'+$found+'='+$safe)
+          $found++;if($found -ge 24){break}
+        }
+      }
+      Write-Output ('R252_QUAL_LOG_SHA_PASS='+$sha+' markers='+$found)
+    }catch{Write-Output 'R252_QUAL_DIAG_UNAVAILABLE_FAIL_CLOSED'}
+  }
   if($exitCode -ne 0 -or $status -ne 'PROMOTED'){throw ('R185_'+$Name+'_NOT_ACCEPTED')}
 }
 function Cleanup {

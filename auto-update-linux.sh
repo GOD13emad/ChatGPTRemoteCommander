@@ -168,25 +168,14 @@ ensure_project_provider(){
     log "PROJECT_PROVIDER_CLEANUP_SKIPPED reason=no-promote"
     return 0
   fi
-  local legacy_root="$STATE_ROOT/tools/codex-cli" in_use=0 exe
-  if [[ -d "$legacy_root" ]]; then
-    for link in /proc/[0-9]*/exe; do
-      exe="$(readlink -f "$link" 2>/dev/null || true)"
-      if [[ -n "$exe" && "$exe" == "$legacy_root/"* ]]; then in_use=1; break; fi
-    done
-    if [[ "$in_use" == 0 ]]; then
-      if rm -rf -- "$legacy_root"; then
-        log 'LEGACY_CODEX_PROVIDER_REMOVED policy=NO_CODEX_VIA_COMMANDER'
-      else
-        log 'LEGACY_CODEX_PROVIDER_CLEANUP_PENDING reason=remove_failed'
-      fi
-    else
-      log 'LEGACY_CODEX_PROVIDER_CLEANUP_PENDING activeProcesses=1'
-    fi
+  # R230: no unknown legacy tool projection is removed as a side effect of
+  # a Core update. Require independent exact owner acceptance before cleanup.
+  local legacy_root="$STATE_ROOT/tools/codex-cli"
+  if [[ -e "$legacy_root" || -L "$legacy_root" ]]; then
+    log 'LEGACY_CODEX_PROVIDER_CLEANUP_PENDING reason=OWNER_ACCEPTANCE_REQUIRED'
   fi
   log 'PROJECT_PROVIDER_DISABLED policy=NO_CODEX_VIA_COMMANDER'
 }
-
 ensure_browser_backend(){
   local helper="$1" cfg="$2" requested=0 tier exe driver
   if [[ "$POWER_MODE" == 1 ]]; then requested=1
@@ -533,7 +522,32 @@ NODE
     return 1
   }
 
+  # R234: refuse unsafe projections and retain at most one inactive predecessor.
+  # A second update cannot silently multiply copies or erase rollback data.
+  if [[ -L "$plugin_root" ]]; then
+    log 'WORK_PLUGIN_SOURCE_SYNC_BLOCK reason=source-root-symlink'
+    return 1
+  fi
+  local unsafe_node previous
+  unsafe_node="$(find "$plugin_root" ! -type f ! -type d -print -quit)" || {
+    log 'WORK_PLUGIN_SOURCE_SYNC_BLOCK reason=source-enumeration-unverified'
+    return 1
+  }
+  [[ -z "$unsafe_node" ]] || {
+    log 'WORK_PLUGIN_SOURCE_SYNC_BLOCK reason=unknown-special-node'
+    return 1
+  }
+  for previous in "$parent"/.chatgpt-remote-commander.prev-* "$parent"/.chatgpt-remote-commander.failed-* "$parent"/.chatgpt-remote-commander.next-*; do
+    if [[ -e "$previous" || -L "$previous" ]]; then
+      log 'WORK_PLUGIN_SOURCE_SYNC_BLOCK reason=prior-snapshot-or-quarantine-awaiting-owner'
+      return 1
+    fi
+  done
+
   mkdir -p "$stage"
+  # Preserve unknown owner files in the newly active projection as well as
+  # its separately retained predecessor. Only template-owned files are updated.
+  cp -a "$plugin_root/." "$stage/"
   cp -a "$template/." "$stage/"
   cp -p "$plugin_root/.app.json" "$stage/.app.json"
 
@@ -566,10 +580,16 @@ NODE
     log "WORK_PLUGIN_SOURCE_BACKUP_PASS commit=$commit"
   fi
 
-  mv "$plugin_root" "$retired"
-  if ! mv "$stage" "$plugin_root"; then
-    mv "$retired" "$plugin_root" || true
-    log 'WORK_PLUGIN_SOURCE_SYNC_BLOCK reason=swap-failed'
+  if ! mv -T -- "$plugin_root" "$retired"; then
+    log 'WORK_PLUGIN_SOURCE_SYNC_BLOCK reason=retire-rename-failed'
+    return 1
+  fi
+  if ! mv -T -- "$stage" "$plugin_root"; then
+    if ! mv -T -- "$retired" "$plugin_root"; then
+      log 'WORK_PLUGIN_SOURCE_SYNC_BLOCK reason=rollback-restore-failed'
+      return 1
+    fi
+    log 'WORK_PLUGIN_SOURCE_SYNC_BLOCK reason=swap-failed-previous-restored'
     return 1
   fi
 
@@ -592,13 +612,24 @@ if (!/^(?:asdk_app_|connector_|templated_apps_)[A-Za-z0-9_-]+$/.test(id)) proces
 if (appSha !== expectedAppSha) process.exit(8);
 NODE
   then
-    rm -rf "$plugin_root"
-    mv "$retired" "$plugin_root" || true
+    # No recursive deletion on failed promotion: preserve the candidate for
+    # inspection and restore the exact previous tree.
+    local failed="$parent/.chatgpt-remote-commander.failed-${BASHPID}-${RANDOM}-${RANDOM}"
+    if [[ -e "$failed" || -L "$failed" ]] || ! mv -T -- "$plugin_root" "$failed"; then
+      log 'WORK_PLUGIN_SOURCE_SYNC_BLOCK reason=failed-projection-quarantine'
+      return 1
+    fi
+    if ! mv -T -- "$retired" "$plugin_root"; then
+      log 'WORK_PLUGIN_SOURCE_SYNC_BLOCK reason=rollback-restore-failed'
+      return 1
+    fi
     log 'WORK_PLUGIN_SOURCE_SYNC_BLOCK reason=post-verify-failed'
     return 1
   fi
 
-  rm -rf "$retired"
+  # Exact prior tree remains a single inactive rollback snapshot until
+  # separately documented owner acceptance; never silently retire it.
+  log "WORK_PLUGIN_RETIREMENT_PENDING reason=OWNER_ACCEPTANCE_REQUIRED path=$retired"
   log "WORK_PLUGIN_SOURCE_SYNC_PASS version=$version"
 }
 

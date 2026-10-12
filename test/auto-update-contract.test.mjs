@@ -26,7 +26,7 @@ test('R205 retirement preflight is before any old release deletion on Windows an
    assert.ok(helper.includes(name),'missing required safeguard: '+name);
 });
 
-test('NoPromote preserves legacy provider trees before any cleanup on both Windows and Linux',()=>{
+test('R230 both NoPromote and normal Core upgrades preserve unknown legacy provider data',()=>{
   const win=read('auto-update-windows.ps1');
   const linux=read('auto-update-linux.sh');
   const w=win.slice(win.indexOf('function Ensure-ProjectProvider'),win.indexOf('function Stage-Release'));
@@ -34,13 +34,69 @@ test('NoPromote preserves legacy provider trees before any cleanup on both Windo
   assert.ok(w.startsWith('function Ensure-ProjectProvider') && l.startsWith('ensure_project_provider(){'));
   const wGuard=w.indexOf('if($NoPromote){');
   const lGuard=l.indexOf('if [[ "$NO_PROMOTE" == 1 ]]');
-  assert.ok(wGuard>0 && wGuard<w.indexOf('Remove-Item -LiteralPath $legacyRoot'),'Windows no-promotion must return before mutation');
-  assert.ok(lGuard>0 && lGuard<l.indexOf('rm -rf -- "$legacy_root"'),'Linux no-promotion must return before mutation');
-  assert.ok(w.slice(wGuard,w.indexOf('Remove-Item')).includes('return'),'Windows guard must return before Remove-Item');
-  assert.ok(l.slice(lGuard,l.indexOf('rm -rf -- "$legacy_root"')).includes('return 0'),'Linux guard must return before rm');
+  const wDisable=w.indexOf('PROJECT_PROVIDER_DISABLED policy=NO_CODEX_VIA_COMMANDER');
+  const lDisable=l.indexOf('PROJECT_PROVIDER_DISABLED policy=NO_CODEX_VIA_COMMANDER');
+  assert.ok(wGuard>=0&&lGuard>=0&&wDisable>wGuard&&lDisable>lGuard);
+  assert.ok(w.slice(wGuard,wDisable).includes('return'));
+  assert.ok(l.slice(lGuard,lDisable).includes('return 0'));
   assert.ok(w.includes('PROJECT_PROVIDER_CLEANUP_SKIPPED reason=no-promote'));
   assert.ok(l.includes('PROJECT_PROVIDER_CLEANUP_SKIPPED reason=no-promote'));
+  assert.ok(w.includes('LEGACY_CODEX_PROVIDER_CLEANUP_PENDING reason=OWNER_ACCEPTANCE_REQUIRED'));
+  assert.ok(l.includes('LEGACY_CODEX_PROVIDER_CLEANUP_PENDING reason=OWNER_ACCEPTANCE_REQUIRED'));
+  assert.ok(!/Remove-Item|del-item|Start-Process|Get-CimInstance/u.test(w),'Windows provider block must be non-mutating');
+  assert.ok(!/rm\s+-rf|chmod|chown|unlink|find\s+.*-delete/u.test(l),'Linux provider block must be non-mutating');
   assert.ok(win.includes('Ensure-ProjectProvider (Get-PrimaryConfig)') && linux.includes('ensure_project_provider "$STAGE_DIR" "$ACTIVE_CFG"'));
+});
+
+test('R230 real updater helper execution leaves arbitrary legacy projection sentinel intact',t=>{
+ const sandbox=fs.mkdtempSync(path.join(os.tmpdir(),'rc-r230-preserve-'));
+ const toolsPath=path.join(sandbox,'tools','codex-cli');
+ fs.mkdirSync(path.join(toolsPath,'unknown-owner-subdir'),{recursive:true});
+ const sentinel=path.join(toolsPath,'unknown-owner-subdir','sentinel.txt');
+ fs.writeFileSync(sentinel,'R230_OWNER_DATA_NEVER_AUTO_DELETE');
+ t.after(()=>{
+   const tmp=path.resolve(os.tmpdir());
+   assert.equal(path.dirname(path.resolve(sandbox)),tmp,'fixture cleanup must be limited to this unique temp directory');
+   assert.match(path.basename(sandbox),/^rc-r230-preserve-/);
+   fs.rmSync(sandbox,{recursive:true,force:true});
+ });
+ const win=read('auto-update-windows.ps1'),linux=read('auto-update-linux.sh');
+ const windowsFn=win.slice(win.indexOf('function Ensure-ProjectProvider'),win.indexOf('function Stage-Release'));
+ const linuxFn=linux.slice(linux.indexOf('ensure_project_provider(){'),linux.indexOf('ensure_browser_backend(){'));
+ for(const promote of [false,true]){
+   const noPromote=promote?'$true':'$false';
+   let command,result;
+   if(process.platform==='win32'){
+     const escaped=sandbox.replace(/'/g,"''");
+     command=[
+       "$ErrorActionPreference='Stop'",
+       "$StateRoot='"+escaped+"'",
+       "$NoPromote="+noPromote,
+       "function Log([string]$message){Write-Output $message}",
+       windowsFn,
+       "Ensure-ProjectProvider 'dummy-config'"
+     ].join('\n');
+     const encoded=Buffer.from(command,'utf16le').toString('base64');
+     result=spawnSync('pwsh.exe',['-NoLogo','-NoProfile','-NonInteractive','-EncodedCommand',encoded],{encoding:'utf8',timeout:15000});
+   }else if(process.platform==='linux'){
+     command=[
+       'set -Eeuo pipefail',
+       'STATE_ROOT="$1"',
+       'NO_PROMOTE="$2"',
+       'log(){ printf "%s\\n" "$1"; }',
+       linuxFn,
+       'ensure_project_provider'
+     ].join('\n');
+     result=spawnSync('bash',['-c',command,'--',sandbox,promote?'1':'0'],{encoding:'utf8',timeout:15000});
+   }else{
+     return t.skip('R230 native execution is required only on Windows and Linux');
+   }
+   assert.equal(result.error,undefined,result.error?.message);
+   assert.equal(result.status,0,'native helper failed: '+result.stderr);
+   assert.equal(fs.readFileSync(sentinel,'utf8'),'R230_OWNER_DATA_NEVER_AUTO_DELETE','normal upgrade must preserve arbitrary nested owner data');
+   assert.ok(result.stdout.includes(promote?'PROJECT_PROVIDER_CLEANUP_SKIPPED reason=no-promote':'LEGACY_CODEX_PROVIDER_CLEANUP_PENDING reason=OWNER_ACCEPTANCE_REQUIRED'),result.stdout);
+   if(!promote)assert.ok(result.stdout.includes('PROJECT_PROVIDER_DISABLED policy=NO_CODEX_VIA_COMMANDER'));
+ }
 });
 
 test('auto updater is candidate-first, hardware-gated and commit-point aware',()=>{
@@ -318,7 +374,7 @@ test('Linux updater atomically syncs an installed Work plugin while preserving i
   const end=updater.indexOf('cleanup_releases(){',start);
   assert.ok(start>0 && end>start,'sync_work_plugin_projection must be a standalone updater function');
   const fn=updater.slice(start,end);
-  for(const marker of ['WORK_PLUGIN_SOURCE_SYNC_PASS','WORK_PLUGIN_SOURCE_SYNC_SKIP','WORK_PLUGIN_SOURCE_SYNC_BLOCK','sha256sum','mv "$plugin_root" "$retired"']) assert.ok(fn.includes(marker),marker);
+  for(const marker of ['WORK_PLUGIN_SOURCE_SYNC_PASS','WORK_PLUGIN_SOURCE_SYNC_SKIP','WORK_PLUGIN_SOURCE_SYNC_BLOCK','sha256sum','mv -T -- "$plugin_root" "$retired"']) assert.ok(fn.includes(marker),marker);
   if(process.platform==='win32'){t.skip('Linux shell fixture requires a native POSIX Bash environment');return;}
 
   const fixture=fs.mkdtempSync(path.join(os.tmpdir(),'rc-work-plugin-sync-'));
@@ -608,13 +664,15 @@ test('Linux installer delegates existing installs and builds Full Power through 
 });
 
 
-test('updaters disable and retire the legacy Commander-private Codex provider',()=>{
+test('R230 legacy provider is disabled without unapproved cleanup on actual promotion',()=>{
   const win=read('auto-update-windows.ps1');
   const lin=read('auto-update-linux.sh');
-  for(const marker of ['Ensure-ProjectProvider','PROJECT_PROVIDER_DISABLED policy=NO_CODEX_VIA_COMMANDER','LEGACY_CODEX_PROVIDER_REMOVED','LEGACY_CODEX_PROVIDER_CLEANUP_PENDING']) assert.ok(win.includes(marker),marker);
-  for(const marker of ['ensure_project_provider','PROJECT_PROVIDER_DISABLED policy=NO_CODEX_VIA_COMMANDER','LEGACY_CODEX_PROVIDER_REMOVED','LEGACY_CODEX_PROVIDER_CLEANUP_PENDING']) assert.ok(lin.includes(marker),marker);
-  assert.ok(!win.includes('@openai/codex@'),'Windows updater must not install Codex');
-  assert.ok(!lin.includes('@openai/codex@'),'Linux updater must not install Codex');
+  for(const marker of ['Ensure-ProjectProvider','PROJECT_PROVIDER_DISABLED policy=NO_CODEX_VIA_COMMANDER','LEGACY_CODEX_PROVIDER_CLEANUP_PENDING reason=OWNER_ACCEPTANCE_REQUIRED']) assert.ok(win.includes(marker),marker);
+  for(const marker of ['ensure_project_provider','PROJECT_PROVIDER_DISABLED policy=NO_CODEX_VIA_COMMANDER','LEGACY_CODEX_PROVIDER_CLEANUP_PENDING reason=OWNER_ACCEPTANCE_REQUIRED']) assert.ok(lin.includes(marker),marker);
+  for(const s of [win,lin]) {
+    assert.ok(!s.includes('LEGACY_CODEX_PROVIDER_REMOVED'),'old implicit-delete success must be unreachable');
+    assert.ok(!s.includes('@openai/codex@'),'updater must not install a legacy provider');
+  }
 });
 
 test('router bootstrap is after no-promote and before schema-changing cutover',()=>{
@@ -867,3 +925,117 @@ for(const scenario of ['success','failure','runner-failure']){
     }
   });
 }
+
+test('R234 Linux work-plugin updater preserves arbitrary owner data and retains only one previous snapshot',t=>{
+  const source=read('auto-update-linux.sh');
+  const begin=source.indexOf('sync_work_plugin_projection(){');
+  const end=source.indexOf('\ncleanup_releases(){',begin);
+  assert.ok(begin>=0&&end>begin,'must identify the exact plugin projection function');
+  const func=source.slice(begin,end);
+  for(const marker of [
+    'WORK_PLUGIN_RETIREMENT_PENDING reason=OWNER_ACCEPTANCE_REQUIRED',
+    'WORK_PLUGIN_SOURCE_SYNC_BLOCK reason=prior-snapshot-or-quarantine-awaiting-owner',
+    'WORK_PLUGIN_SOURCE_SYNC_BLOCK reason=unknown-special-node',
+    'cp -a "$plugin_root/." "$stage/"'
+  ])assert.ok(func.includes(marker),'missing safety guard '+marker);
+  assert.doesNotMatch(func,/\brm\s+-rf\b/,'no plugin tree can be silently deleted in the update function');
+  if(process.platform!=='linux')return t.skip('native Bash+Node work-plugin fixture is Linux-only');
+  const sandbox=fs.mkdtempSync(path.join(os.tmpdir(),'rc-r234-workplugin-'));
+  t.after(()=>{
+    assert.match(path.basename(sandbox),/^rc-r234-workplugin-/);
+    assert.equal(path.dirname(path.resolve(sandbox)),path.resolve(os.tmpdir()));
+    fs.rmSync(sandbox,{recursive:true,force:true});
+  });
+  const project=path.join(sandbox,'source'),template=path.join(project,'plugin-template');
+  const data=path.join(sandbox,'data'),backup=path.join(sandbox,'backup');
+  const version='0.10.21',commit='a'.repeat(40);
+  const projection=path.join(data,'ChatGPTRemoteCommander','work-plugin','marketplace','plugins','chatgpt-remote-commander');
+  fs.mkdirSync(path.join(template,'.codex-plugin'),{recursive:true});
+  fs.mkdirSync(path.join(projection,'owner-notes'),{recursive:true});
+  fs.writeFileSync(path.join(template,'plugin.json'),JSON.stringify({name:'chatgpt-remote-commander',version}));
+  fs.writeFileSync(path.join(template,'.codex-plugin','plugin.json'),JSON.stringify({name:'chatgpt-remote-commander',version}));
+  fs.writeFileSync(path.join(projection,'plugin.json'),JSON.stringify({name:'chatgpt-remote-commander',version:'0.10.20'}));
+  fs.writeFileSync(path.join(projection,'.app.json'),JSON.stringify({apps:{'remote-commander':{id:'asdk_app_R234_fixture'}}}));
+  fs.writeFileSync(path.join(projection,'owner-notes','custom.txt'),'OWNER_R234_MUST_PRESERVE');
+  const bash=[
+    'set -Eeuo pipefail',
+    'BACKUP_ROOT="$1"',
+    'export XDG_DATA_HOME="$2"',
+    'log(){ printf "%s\\n" "$1"; }',
+    func,
+    'sync_work_plugin_projection "$3" "$4" "$5"'
+  ].join('\n');
+  const invoke=()=>spawnSync('bash',['-c',bash,'--',backup,data,project,version,commit],{encoding:'utf8',timeout:15000});
+  const first=invoke();
+  assert.equal(first.error,undefined,first.error?.message);
+  assert.equal(first.status,0,first.stderr+' '+first.stdout);
+  assert.match(first.stdout,/WORK_PLUGIN_RETIREMENT_PENDING reason=OWNER_ACCEPTANCE_REQUIRED/);
+  const parent=path.dirname(projection);
+  const retained=fs.readdirSync(parent).filter(name=>name.startsWith('.chatgpt-remote-commander.prev-'));
+  assert.equal(retained.length,1,'one inactive predecessor is retained');
+  const custom=path.join('owner-notes','custom.txt');
+  assert.equal(fs.readFileSync(path.join(projection,custom),'utf8'),'OWNER_R234_MUST_PRESERVE');
+  assert.equal(fs.readFileSync(path.join(parent,retained[0],custom),'utf8'),'OWNER_R234_MUST_PRESERVE');
+  assert.equal(fs.readFileSync(path.join(backup,commit,'work-plugin','chatgpt-remote-commander',custom),'utf8'),'OWNER_R234_MUST_PRESERVE');
+  assert.equal(JSON.parse(fs.readFileSync(path.join(projection,'plugin.json'),'utf8')).version,version);
+  const second=invoke();
+  assert.notEqual(second.status,0,'re-update must fail closed while prior snapshot is retained');
+  assert.match(second.stdout,/prior-snapshot-or-quarantine-awaiting-owner/);
+  assert.equal(fs.readdirSync(parent).filter(name=>name.startsWith('.chatgpt-remote-commander.prev-')).length,1);
+  assert.equal(fs.readFileSync(path.join(projection,custom),'utf8'),'OWNER_R234_MUST_PRESERVE');
+});
+
+test('R254 Linux plugin post-verify failure preserves owner data and quarantines only failed projection', t=>{
+ const source=read('auto-update-linux.sh');
+ const begin=source.indexOf('sync_work_plugin_projection(){'),end=source.indexOf('\ncleanup_releases(){',begin);
+ assert.ok(begin>=0&&end>begin);
+ const func=source.slice(begin,end);
+ assert.match(func,/failed-\$\{BASHPID\}-\$\{RANDOM\}-\$\{RANDOM\}/);
+ assert.ok(func.includes('mv -T -- "$retired" "$plugin_root"'));
+ assert.ok(func.includes('prior-snapshot-or-quarantine-awaiting-owner'));
+ assert.doesNotMatch(func,/\brm\s+-rf\b/);
+ if(process.platform!=='linux')return t.skip('requires isolated Linux Bash and Node');
+ const box=fs.mkdtempSync(path.join(os.tmpdir(),'rc-r254-plugin-'));
+ t.after(()=>{assert.match(path.basename(box),/^rc-r254-plugin-/);assert.equal(path.dirname(path.resolve(box)),path.resolve(os.tmpdir()));fs.rmSync(box,{recursive:true,force:true});});
+ const project=path.join(box,'source'),tmpl=path.join(project,'plugin-template'),data=path.join(box,'data'),backup=path.join(box,'backup');
+ const version='0.10.21',commit='a'.repeat(40);
+ const parent=path.join(data,'ChatGPTRemoteCommander','work-plugin','marketplace','plugins');
+ const projection=path.join(parent,'chatgpt-remote-commander');
+ fs.mkdirSync(path.join(tmpl,'.codex-plugin'),{recursive:true});
+ fs.mkdirSync(path.join(projection,'owner-notes'),{recursive:true});
+ fs.writeFileSync(path.join(tmpl,'plugin.json'),JSON.stringify({name:'chatgpt-remote-commander',version}));
+ fs.writeFileSync(path.join(tmpl,'.codex-plugin','plugin.json'),JSON.stringify({name:'chatgpt-remote-commander',version}));
+ fs.writeFileSync(path.join(projection,'plugin.json'),JSON.stringify({name:'chatgpt-remote-commander',version:'0.10.20'}));
+ fs.writeFileSync(path.join(projection,'.app.json'),JSON.stringify({apps:{'remote-commander':{id:'asdk_app_R254_fixture'}}}));
+ fs.writeFileSync(path.join(projection,'owner-notes','private.txt'),'R254_PRIVATE_OWNER_DATA');
+ const origBinding=fs.readFileSync(path.join(projection,'.app.json'),'utf8');
+ const script=[
+ 'set -Eeuo pipefail',
+ 'BACKUP_ROOT="$1"',
+ 'export XDG_DATA_HOME="$2"',
+ 'log(){ printf "%s\\n" "$1"; }',
+ 'R254_calls=0',
+ 'node(){ R254_calls=$((R254_calls+1)); if [[ "$R254_calls" -eq 3 ]];then return 41;fi; command node "$@"; }',
+ func,
+ 'sync_work_plugin_projection "$3" "$4" "$5"'
+ ].join('\n');
+ const invoke=()=>spawnSync('bash',['-c',script,'--',backup,data,project,version,commit],{encoding:'utf8',timeout:15000});
+ const result=invoke();
+ assert.equal(result.error,undefined,result.error?.message);
+ assert.notEqual(result.status,0,'fault-injected post-verify must fail closed');
+ assert.match(result.stdout,/post-verify-failed/);
+ assert.equal(fs.readFileSync(path.join(projection,'owner-notes','private.txt'),'utf8'),'R254_PRIVATE_OWNER_DATA');
+ assert.equal(fs.readFileSync(path.join(projection,'.app.json'),'utf8'),origBinding);
+ assert.equal(JSON.parse(fs.readFileSync(path.join(projection,'plugin.json'),'utf8')).version,'0.10.20');
+ const failed=fs.readdirSync(parent).filter(n=>n.startsWith('.chatgpt-remote-commander.failed-'));
+ assert.equal(failed.length,1);
+ assert.match(failed[0],/^\.chatgpt-remote-commander\.failed-[0-9]+-[0-9]+-[0-9]+$/);
+ assert.equal(fs.readFileSync(path.join(parent,failed[0],'owner-notes','private.txt'),'utf8'),'R254_PRIVATE_OWNER_DATA');
+ assert.equal(JSON.parse(fs.readFileSync(path.join(parent,failed[0],'plugin.json'),'utf8')).version,version);
+ assert.equal(fs.readdirSync(parent).filter(n=>n.startsWith('.chatgpt-remote-commander.prev-')).length,0);
+ assert.equal(fs.readFileSync(path.join(backup,commit,'work-plugin','chatgpt-remote-commander','owner-notes','private.txt'),'utf8'),'R254_PRIVATE_OWNER_DATA');
+ const retry=invoke();
+ assert.notEqual(retry.status,0);
+ assert.match(retry.stdout,/prior-snapshot-or-quarantine-awaiting-owner/);
+ assert.equal(fs.readdirSync(parent).filter(n=>n.startsWith('.chatgpt-remote-commander.failed-')).length,1);
+});
