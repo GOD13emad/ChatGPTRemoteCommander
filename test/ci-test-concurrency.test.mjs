@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { boundNodeTestConcurrency, parseQualificationArgs, prioritizeSensitiveQualificationCommands } from '../tools/run-bounded-test-script.mjs';
+import { boundNodeTestConcurrency, parseQualificationArgs, prioritizeSensitiveQualificationCommands, isolateWindowsLeaseRegression } from '../tools/run-bounded-test-script.mjs';
 
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const read=rel=>fs.readFileSync(path.join(root,rel),'utf8');
@@ -83,4 +83,22 @@ test('hosted Windows priority mode runs scheduler-sensitive isolated fixtures be
     for(let i=0;i<ordered.length;i++) assert.ok(positions[i]>=0 && positions[i]<bulkIndex, ordered[i]+' must execute before bulk qualification');
     assert.ok(positions.every((position,index)=>index===0||positions[index-1]<position), 'sensitive fixtures must preserve deterministic priority order');
   }
+});
+
+
+test('R232 Windows isolated lease fixture executes once before bulk without a relaxed timeout',()=>{
+  const pkg=JSON.parse(read('package.json'));
+  const bounded=boundNodeTestConcurrency(pkg.scripts.test,1).command;
+  const ordered=prioritizeSensitiveQualificationCommands(bounded);
+  const isolated=isolateWindowsLeaseRegression(ordered);
+  const target='test/project-engine-integration.test.mjs';
+  const leader='node --test --test-concurrency=1 '+target+' && ';
+  assert.ok(isolated.startsWith(leader),'sensitive regression must start in a dedicated process');
+  assert.equal(isolated.split(target).length-1,1,'never skip or repeat the lease-regression file');
+  assert.equal(isolated,leader+ordered.replace(' '+target,''),'no other qualification test or command may change');
+  assert.ok(isolated.indexOf('test/mcp-tasks-extension.test.mjs')>leader.length,'other isolated fixtures remain covered');
+  const code=read('tools/run-bounded-test-script.mjs');
+  assert.ok(code.includes("if(args.script==='test'&&process.platform==='win32')command=isolateWindowsLeaseRegression(command);"));
+  assert.throws(()=>isolateWindowsLeaseRegression('node --test --test-concurrency=1 test/other.test.mjs'),/CI_LEASE_TEST_CARDINALITY/);
+  assert.throws(()=>isolateWindowsLeaseRegression(leader+leader+ordered),/CI_LEASE_TEST_CARDINALITY/);
 });

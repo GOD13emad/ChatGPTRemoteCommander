@@ -1,0 +1,14 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import {validate,blockers,evaluate} from '../tools/check-ui-release-r39.mjs';
+const doc=JSON.parse(readFileSync(new URL('../config/ui-release-r39.json',import.meta.url),'utf8'));
+const clone=()=>structuredClone(doc);
+test('pinned baseline, components and exact four hosts',()=>{assert.equal(validate(doc),doc);assert.equal(doc.hosts.length,4);});
+test('release and unattended install blocked when MMZ is disconnected',()=>{const x=evaluate(doc);assert.equal(x.status,'BLOCKED_FAIL_CLOSED');assert.equal(x.autoUpdatePerformed,false);assert.ok(x.blockers.includes('HOST_OFFLINE_mmz-linux'));});
+test('a green CI without signed immutable artifacts cannot qualify release',()=>{const d=clone();d.releaseGates.exactHeadCIAllPass=true;assert.ok(blockers(d).includes('WINDOWS_CONTROL_TRUSTED_SIGNATURE_MISSING'));assert.ok(blockers(d).includes('BROWSER_windowsArtifactSha256_MISSING'));});
+test('wrong Core baseline rejects before document acceptance',()=>{const d=clone();d.baseline.commit='123';assert.throws(()=>validate(d),/BASELINE/);});
+test('duplicate or missing host is rejected',()=>{const a=clone();a.hosts[3]=structuredClone(a.hosts[2]);assert.throws(()=>validate(a),/HOST_ID/);const b=clone();b.hosts.pop();assert.throws(()=>validate(b),/HOST_COUNT/);});
+test('unknown counts and security bypass are never silently accepted',()=>{const a=clone();a.openCriticalProductGates=0;assert.throws(()=>validate(a),/PRODUCT_GATES/);const b=clone();b.safety.noSandboxBypass=false;assert.throws(()=>validate(b),/SECURITY/);});
+test('owner GUI, canary and rollback are separate gates',()=>{const a=clone();a.hosts[0].canaryAccepted=true;assert.ok(blockers(a).includes('HOST_NATIVE_UNVERIFIED_saeid-windows'));assert.ok(blockers(a).includes('HOST_ROLLBACK_OPEN_saeid-windows'));});
+test('checker has no write, install or process-spawn API',()=>{const source=readFileSync(new URL('../tools/check-ui-release-r39.mjs',import.meta.url),'utf8');for(const v of ['child_process','spawn(','execSync','writeFileSync','fs.rename','rmSync','sudo ','Invoke-WebRequest'])assert.equal(source.includes(v),false,v);});

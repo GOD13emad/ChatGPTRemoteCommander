@@ -41,6 +41,25 @@ export function prioritizeSensitiveQualificationCommands(command){
   return [...SENSITIVE_QUALIFICATION_FILES.map(file=>byFile.get(file)),...rest].join(' && ');
 }
 
+
+// R232: keep the lease-cancellation regression as a dedicated Windows Node
+// test process before the large qualification batch. No timeout is enlarged.
+// A missing or duplicate test is an error, never an implicit skip.
+export function isolateWindowsLeaseRegression(command){
+  if(typeof command!=='string'||!command)throw new Error('CI_LEASE_TEST_COMMAND_INVALID');
+  const file='test/project-engine-integration.test.mjs';
+  if(command.split(file).length-1!==1)throw new Error('CI_LEASE_TEST_CARDINALITY');
+  const parts=command.split(' && ');
+  const index=parts.findIndex(part=>part.startsWith('node --test --test-concurrency=1 ')&&part.includes(' '+file));
+  if(index<0)throw new Error('CI_LEASE_TEST_BATCH_NOT_FOUND');
+  const prior=parts[index];
+  const isolated=prior.replace(' '+file,'');
+  if(isolated===prior||isolated.includes(file)||!isolated.startsWith('node --test --test-concurrency=1 test/'))
+    throw new Error('CI_LEASE_TEST_ISOLATION_INVALID');
+  parts[index]=isolated;
+  return 'node --test --test-concurrency=1 '+file+' && '+parts.join(' && ');
+}
+
 export function parseQualificationArgs(argv){
   const out={script:null,concurrency:null,prioritizeSensitive:false};
   for(let i=0;i<argv.length;i++){
@@ -63,7 +82,8 @@ function run(){
   const effectiveConcurrency=process.platform==='win32'?1:requestedConcurrency;
   const bounded=boundNodeTestConcurrency(original,effectiveConcurrency);
   const prioritizeSensitive=args.prioritizeSensitive||process.platform==='win32';
-  const command=prioritizeSensitive?prioritizeSensitiveQualificationCommands(bounded.command):bounded.command;
+  let command=prioritizeSensitive?prioritizeSensitiveQualificationCommands(bounded.command):bounded.command;
+  if(args.script==='test'&&process.platform==='win32')command=isolateWindowsLeaseRegression(command);
   console.log('CI_TEST_CONCURRENCY script='+args.script+' requestedConcurrency='+requestedConcurrency+' effectiveConcurrency='+effectiveConcurrency+' replacements='+bounded.replacements+' prioritizeSensitive='+prioritizeSensitive);
   const child=process.platform==='win32'
     ? spawnSync(process.env.ComSpec||'cmd.exe',['/d','/s','/c',command],{cwd:root,env:process.env,stdio:'inherit'})
