@@ -374,7 +374,7 @@ test('Linux updater atomically syncs an installed Work plugin while preserving i
   const end=updater.indexOf('cleanup_releases(){',start);
   assert.ok(start>0 && end>start,'sync_work_plugin_projection must be a standalone updater function');
   const fn=updater.slice(start,end);
-  for(const marker of ['WORK_PLUGIN_SOURCE_SYNC_PASS','WORK_PLUGIN_SOURCE_SYNC_SKIP','WORK_PLUGIN_SOURCE_SYNC_BLOCK','sha256sum','mv "$plugin_root" "$retired"']) assert.ok(fn.includes(marker),marker);
+  for(const marker of ['WORK_PLUGIN_SOURCE_SYNC_PASS','WORK_PLUGIN_SOURCE_SYNC_SKIP','WORK_PLUGIN_SOURCE_SYNC_BLOCK','sha256sum','mv -T -- "$plugin_root" "$retired"']) assert.ok(fn.includes(marker),marker);
   if(process.platform==='win32'){t.skip('Linux shell fixture requires a native POSIX Bash environment');return;}
 
   const fixture=fs.mkdtempSync(path.join(os.tmpdir(),'rc-work-plugin-sync-'));
@@ -934,7 +934,7 @@ test('R234 Linux work-plugin updater preserves arbitrary owner data and retains 
   const func=source.slice(begin,end);
   for(const marker of [
     'WORK_PLUGIN_RETIREMENT_PENDING reason=OWNER_ACCEPTANCE_REQUIRED',
-    'WORK_PLUGIN_SOURCE_SYNC_BLOCK reason=previous-retained-awaiting-owner',
+    'WORK_PLUGIN_SOURCE_SYNC_BLOCK reason=prior-snapshot-or-quarantine-awaiting-owner',
     'WORK_PLUGIN_SOURCE_SYNC_BLOCK reason=unknown-special-node',
     'cp -a "$plugin_root/." "$stage/"'
   ])assert.ok(func.includes(marker),'missing safety guard '+marker);
