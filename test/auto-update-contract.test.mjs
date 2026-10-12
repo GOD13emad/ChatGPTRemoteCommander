@@ -925,3 +925,117 @@ for(const scenario of ['success','failure','runner-failure']){
     }
   });
 }
+
+test('R234 Linux work-plugin updater preserves arbitrary owner data and retains only one previous snapshot',t=>{
+  const source=read('auto-update-linux.sh');
+  const begin=source.indexOf('sync_work_plugin_projection(){');
+  const end=source.indexOf('\ncleanup_releases(){',begin);
+  assert.ok(begin>=0&&end>begin,'must identify the exact plugin projection function');
+  const func=source.slice(begin,end);
+  for(const marker of [
+    'WORK_PLUGIN_RETIREMENT_PENDING reason=OWNER_ACCEPTANCE_REQUIRED',
+    'WORK_PLUGIN_SOURCE_SYNC_BLOCK reason=previous-retained-awaiting-owner',
+    'WORK_PLUGIN_SOURCE_SYNC_BLOCK reason=unknown-special-node',
+    'cp -a "$plugin_root/." "$stage/"'
+  ])assert.ok(func.includes(marker),'missing safety guard '+marker);
+  assert.doesNotMatch(func,/\brm\s+-rf\b/,'no plugin tree can be silently deleted in the update function');
+  if(process.platform!=='linux')return t.skip('native Bash+Node work-plugin fixture is Linux-only');
+  const sandbox=fs.mkdtempSync(path.join(os.tmpdir(),'rc-r234-workplugin-'));
+  t.after(()=>{
+    assert.match(path.basename(sandbox),/^rc-r234-workplugin-/);
+    assert.equal(path.dirname(path.resolve(sandbox)),path.resolve(os.tmpdir()));
+    fs.rmSync(sandbox,{recursive:true,force:true});
+  });
+  const project=path.join(sandbox,'source'),template=path.join(project,'plugin-template');
+  const data=path.join(sandbox,'data'),backup=path.join(sandbox,'backup');
+  const version='0.10.21',commit='a'.repeat(40);
+  const projection=path.join(data,'ChatGPTRemoteCommander','work-plugin','marketplace','plugins','chatgpt-remote-commander');
+  fs.mkdirSync(path.join(template,'.codex-plugin'),{recursive:true});
+  fs.mkdirSync(path.join(projection,'owner-notes'),{recursive:true});
+  fs.writeFileSync(path.join(template,'plugin.json'),JSON.stringify({name:'chatgpt-remote-commander',version}));
+  fs.writeFileSync(path.join(template,'.codex-plugin','plugin.json'),JSON.stringify({name:'chatgpt-remote-commander',version}));
+  fs.writeFileSync(path.join(projection,'plugin.json'),JSON.stringify({name:'chatgpt-remote-commander',version:'0.10.20'}));
+  fs.writeFileSync(path.join(projection,'.app.json'),JSON.stringify({apps:{'remote-commander':{id:'asdk_app_R234_fixture'}}}));
+  fs.writeFileSync(path.join(projection,'owner-notes','custom.txt'),'OWNER_R234_MUST_PRESERVE');
+  const bash=[
+    'set -Eeuo pipefail',
+    'BACKUP_ROOT="$1"',
+    'export XDG_DATA_HOME="$2"',
+    'log(){ printf "%s\\n" "$1"; }',
+    func,
+    'sync_work_plugin_projection "$3" "$4" "$5"'
+  ].join('\n');
+  const invoke=()=>spawnSync('bash',['-c',bash,'--',backup,data,project,version,commit],{encoding:'utf8',timeout:15000});
+  const first=invoke();
+  assert.equal(first.error,undefined,first.error?.message);
+  assert.equal(first.status,0,first.stderr+' '+first.stdout);
+  assert.match(first.stdout,/WORK_PLUGIN_RETIREMENT_PENDING reason=OWNER_ACCEPTANCE_REQUIRED/);
+  const parent=path.dirname(projection);
+  const retained=fs.readdirSync(parent).filter(name=>name.startsWith('.chatgpt-remote-commander.prev-'));
+  assert.equal(retained.length,1,'one inactive predecessor is retained');
+  const custom=path.join('owner-notes','custom.txt');
+  assert.equal(fs.readFileSync(path.join(projection,custom),'utf8'),'OWNER_R234_MUST_PRESERVE');
+  assert.equal(fs.readFileSync(path.join(parent,retained[0],custom),'utf8'),'OWNER_R234_MUST_PRESERVE');
+  assert.equal(fs.readFileSync(path.join(backup,commit,'work-plugin','chatgpt-remote-commander',custom),'utf8'),'OWNER_R234_MUST_PRESERVE');
+  assert.equal(JSON.parse(fs.readFileSync(path.join(projection,'plugin.json'),'utf8')).version,version);
+  const second=invoke();
+  assert.notEqual(second.status,0,'re-update must fail closed while prior snapshot is retained');
+  assert.match(second.stdout,/prior-snapshot-or-quarantine-awaiting-owner/);
+  assert.equal(fs.readdirSync(parent).filter(name=>name.startsWith('.chatgpt-remote-commander.prev-')).length,1);
+  assert.equal(fs.readFileSync(path.join(projection,custom),'utf8'),'OWNER_R234_MUST_PRESERVE');
+});
+
+test('R254 Linux plugin post-verify failure preserves owner data and quarantines only failed projection', t=>{
+ const source=read('auto-update-linux.sh');
+ const begin=source.indexOf('sync_work_plugin_projection(){'),end=source.indexOf('\ncleanup_releases(){',begin);
+ assert.ok(begin>=0&&end>begin);
+ const func=source.slice(begin,end);
+ assert.match(func,/failed-\$\{BASHPID\}-\$\{RANDOM\}-\$\{RANDOM\}/);
+ assert.ok(func.includes('mv -T -- "$retired" "$plugin_root"'));
+ assert.ok(func.includes('prior-snapshot-or-quarantine-awaiting-owner'));
+ assert.doesNotMatch(func,/\brm\s+-rf\b/);
+ if(process.platform!=='linux')return t.skip('requires isolated Linux Bash and Node');
+ const box=fs.mkdtempSync(path.join(os.tmpdir(),'rc-r254-plugin-'));
+ t.after(()=>{assert.match(path.basename(box),/^rc-r254-plugin-/);assert.equal(path.dirname(path.resolve(box)),path.resolve(os.tmpdir()));fs.rmSync(box,{recursive:true,force:true});});
+ const project=path.join(box,'source'),tmpl=path.join(project,'plugin-template'),data=path.join(box,'data'),backup=path.join(box,'backup');
+ const version='0.10.21',commit='a'.repeat(40);
+ const parent=path.join(data,'ChatGPTRemoteCommander','work-plugin','marketplace','plugins');
+ const projection=path.join(parent,'chatgpt-remote-commander');
+ fs.mkdirSync(path.join(tmpl,'.codex-plugin'),{recursive:true});
+ fs.mkdirSync(path.join(projection,'owner-notes'),{recursive:true});
+ fs.writeFileSync(path.join(tmpl,'plugin.json'),JSON.stringify({name:'chatgpt-remote-commander',version}));
+ fs.writeFileSync(path.join(tmpl,'.codex-plugin','plugin.json'),JSON.stringify({name:'chatgpt-remote-commander',version}));
+ fs.writeFileSync(path.join(projection,'plugin.json'),JSON.stringify({name:'chatgpt-remote-commander',version:'0.10.20'}));
+ fs.writeFileSync(path.join(projection,'.app.json'),JSON.stringify({apps:{'remote-commander':{id:'asdk_app_R254_fixture'}}}));
+ fs.writeFileSync(path.join(projection,'owner-notes','private.txt'),'R254_PRIVATE_OWNER_DATA');
+ const origBinding=fs.readFileSync(path.join(projection,'.app.json'),'utf8');
+ const script=[
+ 'set -Eeuo pipefail',
+ 'BACKUP_ROOT="$1"',
+ 'export XDG_DATA_HOME="$2"',
+ 'log(){ printf "%s\\n" "$1"; }',
+ 'R254_calls=0',
+ 'node(){ R254_calls=$((R254_calls+1)); if [[ "$R254_calls" -eq 3 ]];then return 41;fi; command node "$@"; }',
+ func,
+ 'sync_work_plugin_projection "$3" "$4" "$5"'
+ ].join('\n');
+ const invoke=()=>spawnSync('bash',['-c',script,'--',backup,data,project,version,commit],{encoding:'utf8',timeout:15000});
+ const result=invoke();
+ assert.equal(result.error,undefined,result.error?.message);
+ assert.notEqual(result.status,0,'fault-injected post-verify must fail closed');
+ assert.match(result.stdout,/post-verify-failed/);
+ assert.equal(fs.readFileSync(path.join(projection,'owner-notes','private.txt'),'utf8'),'R254_PRIVATE_OWNER_DATA');
+ assert.equal(fs.readFileSync(path.join(projection,'.app.json'),'utf8'),origBinding);
+ assert.equal(JSON.parse(fs.readFileSync(path.join(projection,'plugin.json'),'utf8')).version,'0.10.20');
+ const failed=fs.readdirSync(parent).filter(n=>n.startsWith('.chatgpt-remote-commander.failed-'));
+ assert.equal(failed.length,1);
+ assert.match(failed[0],/^\.chatgpt-remote-commander\.failed-[0-9]+-[0-9]+-[0-9]+$/);
+ assert.equal(fs.readFileSync(path.join(parent,failed[0],'owner-notes','private.txt'),'utf8'),'R254_PRIVATE_OWNER_DATA');
+ assert.equal(JSON.parse(fs.readFileSync(path.join(parent,failed[0],'plugin.json'),'utf8')).version,version);
+ assert.equal(fs.readdirSync(parent).filter(n=>n.startsWith('.chatgpt-remote-commander.prev-')).length,0);
+ assert.equal(fs.readFileSync(path.join(backup,commit,'work-plugin','chatgpt-remote-commander','owner-notes','private.txt'),'utf8'),'R254_PRIVATE_OWNER_DATA');
+ const retry=invoke();
+ assert.notEqual(retry.status,0);
+ assert.match(retry.stdout,/prior-snapshot-or-quarantine-awaiting-owner/);
+ assert.equal(fs.readdirSync(parent).filter(n=>n.startsWith('.chatgpt-remote-commander.failed-')).length,1);
+});
