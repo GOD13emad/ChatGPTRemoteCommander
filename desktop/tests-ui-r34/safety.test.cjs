@@ -41,3 +41,15 @@ test('existing Core management tools and Browser entry remain gated',()=>{
  assert.match(core,/LaunchBrowser\(\)/);
  assert.doesNotMatch(presentation,/CommandExecution|Credentials/);
 });
+
+test('R262 Control Center executable version must match Core release metadata',()=>{
+ const project=fs.readFileSync(path.join(ui,'RemoteCommanderDashboard.csproj'),'utf8');
+ const pack=JSON.parse(fs.readFileSync(path.resolve(__dirname,'..','..','package.json'),'utf8'));
+ const values=['Version','FileVersion','AssemblyVersion'].map(key=>{
+  const matches=[...project.matchAll(new RegExp('<'+key+'>([^<]+)</'+key+'>','g'))];
+  assert.equal(matches.length,1,key+' must occur exactly once');
+  return matches[0][1];
+ });
+ assert.deepEqual(values,[pack.version,pack.version+'.0',pack.version+'.0']);
+ assert.match(project,/<UseWindowsForms>true<\/UseWindowsForms>/);
+});
