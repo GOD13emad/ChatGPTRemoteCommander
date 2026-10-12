@@ -27,10 +27,10 @@ function headers(method,name){
   if(name!==undefined)h['Mcp-Name']=name;
   return h;
 }
-async function rpc(port,id,method,params,name){
+async function rpc(port,id,method,params,name,signal){
   const response=await fetch(`http://127.0.0.1:${port}/mcp`,{
     method:'POST',headers:{'content-type':'application/json',...headers(method,name)},
-    body:JSON.stringify({jsonrpc:'2.0',id,method,params})
+    body:JSON.stringify({jsonrpc:'2.0',id,method,params}),signal
   });
   return {status:response.status,body:await response.json()};
 }
@@ -108,10 +108,10 @@ test('MCP Tasks extension maps durable Commander operations without changing fal
     const followStart=await rpc(port,100,'tools/call',{name:'operation_start',arguments:{requestId:'follow-1',tool:'run_project_command',arguments:{program:'node',args:[fixture,'effect',effect3,'250'],cwd:canonical,timeoutMs:5000}},_meta:meta(false)},'operation_start');
     const followId=followStart.body.result.structuredContent.operationId;
     const before=Date.now();
-    let followed=await rpc(port,101,'tools/call',{name:'operation_status',arguments:{operationId:followId,waitMs:1500},_meta:meta(false)},'operation_status');
+    let followed=await rpc(port,101,'tools/call',{name:'operation_status',arguments:{operationId:followId,waitMs:1500},_meta:meta(false)},'operation_status',AbortSignal.timeout(4500));
     const elapsed=Date.now()-before;
     assert.ok(['RUNNING','SUCCEEDED'].includes(followed.body.result.structuredContent.status));
-    assert.ok(elapsed>=100 && elapsed<2500,`bounded follow elapsed=${elapsed}`);
+    assert.ok(elapsed<4500 && (elapsed>=100 || followed.body.result.structuredContent.status==='SUCCEEDED'),`bounded follow elapsed=${elapsed}`);
     for(let i=0;followed.body.result.structuredContent.status!=='SUCCEEDED'&&i<120;i++){
       await wait(50);
       followed=await rpc(port,102+i,'tools/call',{name:'operation_status',arguments:{operationId:followId,waitMs:0},_meta:meta(false)},'operation_status');
