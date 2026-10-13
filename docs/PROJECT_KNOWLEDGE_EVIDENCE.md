@@ -2275,3 +2275,21 @@ Remote Commander Browser v0.8.0 is published non-draft/non-prerelease and immuta
 The single-blocker Linux tunnel-readiness fix is carried forward as a separate release-identity revision. v0.10.17 remains immutable and is not rewritten. Current candidate identity is v0.10.18; Browser dependency remains immutable stable v0.8.0 with its existing exact hash pin.
 
 **Gate:** release-identity focused contracts, then exact-head full Windows/Linux and hosted qualification. No live v0.10.18 mutation is accepted before those gates.
+
+
+## E-20261013-PROVIDER — bounded external AI planner (source candidate, not released)
+
+**Date/context:** 2026-10-13, isolated development branch from GitHub main `e3fe4e3e22679ebdae346612f6e20d9879661b36`. Published immutable Core baseline is still v0.10.20; Linux MMZ service unchanged. Original dirty detached hotfix source preserved.
+
+**Decision:** Reuse existing opt-in `kind=command` Project Engine planner contract for an external `examples/provider-adapter/adapter.mjs` supporting pinned local Ollama and OpenRouter chat completion APIs. Do not alter Commander Core authority, workflows, tool dispatch, or permissions. This is proposal-only, not a separate execution framework.
+
+**Evidence / rejected alternatives / scope:** `docs/evidence/RC_PROVIDER_COMMAND_ADAPTER_20261013.md` includes primary official API references, alternatives rejected for complexity or privacy risk, policy boundaries, fixture tests, and exact next gates. A new native model-routing subsystem was rejected as unnecessary. OpenRouter cannot transmit context or use paid models without distinct opt-in. Planner's existing deterministic finalization remains authoritative.
+
+**Validation:** focused tests passed 41/41 including RED→GREEN for default-deny paid models; full check/test/audit passed once before package test-script integration. Integrated post-change qualification, Emad/Windows runtime, network credentials, actual inference quality and release are **OPEN / UNPROVEN** at this record point.
+
+**Confidence:** Confirmed for scoped local source behavior; Unverified for live model/provider execution and any deployment. **Reuse targets:** provider extension design, safety review, optional model benchmarks, Project Brain, technical documentation and research reporting. Do not relabel this candidate as FINAL.
+
+
+### E-20261013-PROVIDER qualification delta
+
+A scoped regression for requested output length was RED (field `max_tokens` missing) then GREEN after bounding each provider request to 1024 output tokens. Final targeted `node --test` = **42/42 PASS**. Full, post-integration `npm run check && npm test && npm run audit` = **PASS**, including SECURITY_AUDIT_PASS. The fail-closed CLI command smoke also PASSed with `ADAPTER_PROVIDER_DISABLED` and exit code 1. Raw full qualification log SHA-256 `43adb4d5da2cece07297c0017026aa257c21c82d78d1e643e354022371c29229`; source hashes and full context are in `docs/evidence/RC_PROVIDER_COMMAND_ADAPTER_20261013.md`. This does not establish real provider access or model accuracy; feature remains source-candidate-only.

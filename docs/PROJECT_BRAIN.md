@@ -1056,3 +1056,21 @@ Remote Commander Browser v0.8.0 is published non-draft/non-prerelease and immuta
 The single-blocker Linux tunnel-readiness fix is carried forward as a separate release-identity revision. v0.10.17 remains immutable and is not rewritten. Current candidate identity is v0.10.18; Browser dependency remains immutable stable v0.8.0 with its existing exact hash pin.
 
 **Gate:** release-identity focused contracts, then exact-head full Windows/Linux and hosted qualification. No live v0.10.18 mutation is accepted before those gates.
+
+
+## 2026-10-13 — External provider command adapter candidate (append-only history)
+
+**Authority:** `docs/RELEASE_AUTHORITY.md` remains the release authority: Core v0.10.20 immutable stable; Browser v0.8.1 separate stable; GitHub main v0.10.21 is development, not authorized promotion. This public Brain contains historical snapshots; this entry does not supersede private cumulative deployment Brain.
+
+**← CURRENT in this change set:** optional Ollama/OpenRouter proposal-only adapter developed in an isolated checkout from exact main `e3fe4e3e22679ebdae346612f6e20d9879661b36` on branch `feature/provider-command-adapter-20261013`. Old dirty detached tree and the installed Linux stable Commander remain untouched. No runner is enabled, no API key created, no live provider call made.
+
+**Completed evidence-backed:** existing planner baseline 32/32 PASS; new adapter and preexisting planner/runner combined 41/41 PASS; full check/test/audit PASS before package script integration. The new test is subsequently included in `npm test` and `npm run check`, with fresh qualification gate pending at the time of this entry.
+
+**Open/critical path:** fresh integrated qualification and exact diff → development-branch handoff (no stable promotion) → Emad Windows qualification → authorized live-provider and cost/latency benchmark → independent acceptance → eventual release decision. Ollama not installed and OpenRouter credential absent in the audited MMZ shell. Account/host status beyond MMZ UNVERIFIED. Progress percentage UNPROVEN.
+
+**Knowledge and evidence:** `docs/evidence/RC_PROVIDER_COMMAND_ADAPTER_20261013.md` and `docs/PROJECT_KNOWLEDGE_EVIDENCE.md#e-20261013-provider--bounded-external-ai-planner-source-candidate-not-released`. Brain status for this candidate: **INCOMPLETE / CANDIDATE**, not FINAL.
+
+
+### 2026-10-13 — Provider candidate verification update (append-only)
+
+Final same-tree local source qualification: new adapter 10/10, combined planner + runner + adapter 42/42, integrated `npm run check`, `npm test`, `npm run audit` all PASS with audit code `SECURITY_AUDIT_PASS`. Output-length ceiling `max_tokens=1024` added after reproducible RED→GREEN. Evidence SHA of full log `43adb4d5da2cece07297c0017026aa257c21c82d78d1e643e354022371c29229`, canonical candidate record `docs/evidence/RC_PROVIDER_COMMAND_ADAPTER_20261013.md`. Source-review/publish and actual-provider/native Emad qualifications remain OPEN. Do not promote stable or enable autonomous runner.
