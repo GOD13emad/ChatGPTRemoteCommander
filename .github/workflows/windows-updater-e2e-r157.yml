@@ -126,3 +126,20 @@ jobs:
           [IO.File]::WriteAllText($dest,(ConvertTo-Json -InputObject $receipt -Depth 5)+[Environment]::NewLine,[Text.UTF8Encoding]::new($false))
           Write-Output ('R157_PASS source='+$sha+' receiptSha='+(Get-FileHash $dest -Algorithm SHA256).Hash)
           Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value '**R157 PASS:** Exact-head Windows candidate-first NoPromote E2E, 3 owned qualification suites, Doctor/Store PASS, no route promotion or owned child leaks.'
+      - name: R470 derive a bounded, allowlisted failure diagnostic (no raw logs)
+        if: ${{ failure() }}
+        shell: pwsh
+        continue-on-error: true
+        run: |
+          $ErrorActionPreference='Stop'
+          if(-not $env:RC_E2E_ROOT -or -not $env:RC_E2E_SHA){Write-Output 'R470_DIAG_PRESTATE_MISSING'; exit 0}
+          & ./tools/diagnose-updater-gate-r470.ps1 -Root $env:RC_E2E_ROOT -ExpectedCommit $env:RC_E2E_SHA
+
+      - name: Upload sanitized R470 failing-test receipt only
+        if: ${{ failure() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: rc-r470-qualification-diagnostic
+          path: ${{ env.RC_E2E_ROOT }}/DIAGNOSTIC_R470.json
+          if-no-files-found: warn
+          retention-days: 7
