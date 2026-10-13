@@ -88,3 +88,22 @@ if (!workflow.includes("if: ${{ steps.release_identity.outputs.accepted == 'true
 console.log('R171_ATTESTATION_CONTRACT_PASS');
 
 console.log('RELEASE_ASSET_CONTRACT_PASS');
+
+// R09: the tagged immutable release must not publish an unsigned Windows installer.
+for (const marker of [
+  'id: verify_installer_signature',
+  'Get-AuthenticodeSignature -LiteralPath $setup',
+  "$signature.Status -eq 'Valid'",
+  'installer_signed: ${{ steps.verify_installer_signature.outputs.signed }}',
+  'Block unsigned setup before production release',
+  'SETUP_SIGNED: ${{ needs.build-windows-setup.outputs.installer_signed }}',
+  'signed=$(([string]$valid).ToLowerInvariant())',
+  'SIGNED_SETUP_RELEASE_GATE_PASS'
+]) if (!workflow.includes(marker)) throw new Error('R09_UNSIGNED_INSTALLER_RELEASE_GUARD_MISSING ' + marker);
+const identityAt=workflow.indexOf('id: release_identity');
+const signatureGateAt=workflow.indexOf('name: Block unsigned setup before production release');
+const attestAt=workflow.indexOf('name: Attest immutable release assets');
+const publishAt=workflow.indexOf('name: Publish matching qualified tag with assets');
+if (!(identityAt>0 && signatureGateAt>identityAt && attestAt>signatureGateAt && publishAt>attestAt))
+  throw new Error('R09_INSTALLER_SIGNATURE_GATE_ORDER_REJECT');
+console.log('R09_WINDOWS_SIGNATURE_PUBLISH_GUARD_PASS');
