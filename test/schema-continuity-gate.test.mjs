@@ -24,9 +24,16 @@ async function listen(s){
   }
   throw new Error('SAFE_TEST_PORT_UNAVAILABLE');
 }
-async function close(s){await new Promise(r=>s.close(r));}
-function schemaServer(tools){return server(async(req,res)=>{for await(const _ of req){}const data=Buffer.from(JSON.stringify({jsonrpc:'2.0',id:1,result:{tools}}));res.writeHead(200,{'content-type':'application/json','content-length':data.length});res.end(data);});}
-function statusServer(schemaContinuity){return server((req,res)=>{const data=Buffer.from(JSON.stringify({ok:true,router:true,schemaContinuity}));res.writeHead(200,{'content-type':'application/json','content-length':data.length});res.end(data);});}
+async function close(s){
+  // Revoke actively held HTTP sockets after stopping new requests. A lingering
+  // test connection must not keep the Windows qualification child alive.
+  await new Promise((resolve,reject)=>{
+    s.close(error=>error?reject(error):resolve());
+    s.closeAllConnections();
+  });
+}
+function schemaServer(tools){return server(async(req,res)=>{for await(const _ of req){}const data=Buffer.from(JSON.stringify({jsonrpc:'2.0',id:1,result:{tools}}));res.writeHead(200,{'content-type':'application/json','content-length':data.length,'connection':'close'});res.end(data);});}
+function statusServer(schemaContinuity){return server((req,res)=>{const data=Buffer.from(JSON.stringify({ok:true,router:true,schemaContinuity}));res.writeHead(200,{'content-type':'application/json','content-length':data.length,'connection':'close'});res.end(data);});}
 const tool=(required=[])=>({name:'write_text',inputSchema:{type:'object',properties:{path:{type:'string'},requestId:{type:'string'}},required}});
 
 async function run(oldTools,newTools,continuity){
@@ -35,6 +42,23 @@ async function run(oldTools,newTools,continuity){
  try{return await evaluateSchemaContinuity({oldUrl:`http://127.0.0.1:${ap}/mcp`,candidateUrl:`http://127.0.0.1:${bp}/mcp`,routerUrl:`http://127.0.0.1:${rp}/router/status`});}
  finally{await Promise.all([close(a),close(b),close(r)]);}
 }
+
+test('R479 fixture teardown closes an intentionally active HTTP request',{timeout:2500},async()=>{
+  const fixture=server((_req,_res)=>{}); // deliberate pending HTTP response
+  const port=await listen(fixture);
+  const incoming=once(fixture,'request');
+  const client=http.get('http://127.0.0.1:'+port+'/pending');
+  client.on('error',()=>{}); // connection is deliberately aborted at teardown
+  try{
+    await incoming;
+    await close(fixture);
+    assert.equal(fixture.listening,false);
+  }finally{
+    client.destroy();
+    if(fixture.listening)await close(fixture);
+  }
+});
+
 test('unchanged tool schema does not require negotiated refresh',async()=>{const x=await run([tool([])],[tool([])],null);assert.equal(x.ok,true);assert.equal(x.decision,'UNCHANGED_SCHEMA');});
 test('changed tool schema blocks without router continuity support',async()=>{const x=await run([tool([])],[tool(['requestId'])],null);assert.equal(x.ok,false);assert.equal(x.decision,'ROUTER_CONTINUITY_UNSUPPORTED');});
 test('changed tool schema blocks after any legacy MCP traffic',async()=>{const x=await run([tool([])],[tool(['requestId'])],{legacyMcpSeen:true,toolsListSubscribers:1});assert.equal(x.ok,false);assert.equal(x.decision,'LEGACY_HOST_SEEN');});
