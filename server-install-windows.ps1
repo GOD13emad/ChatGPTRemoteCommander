@@ -11,6 +11,10 @@ param(
 
 Set-StrictMode -Version 2.0
 $ErrorActionPreference = 'Stop'
+# A short-lived CI token is held only in the installer process memory. Remove the
+# environment copy before any child installer/Git/Node process can inherit it.
+$script:BootstrapGitHubToken = [Environment]::GetEnvironmentVariable('RC_GITHUB_API_TOKEN','Process')
+[Environment]::SetEnvironmentVariable('RC_GITHUB_API_TOKEN',$null,'Process')
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
 $Repo = 'https://github.com/GOD13emad/ChatGPTRemoteCommander.git'
@@ -169,7 +173,21 @@ function Ensure-Git([string]$Arch) {
     }
   }
 
-  $release = Invoke-RestMethod -Uri 'https://api.github.com/repos/git-for-windows/git/releases/latest' -Headers @{'User-Agent'='ChatGPTRemoteCommander-ServerInstaller/0.10.21'}
+  # Public GitHub shared runner IPs can exhaust the unauthenticated REST limit.
+  # Authentication is optional, fixed to this release-metadata endpoint only.
+  $headers = @{
+    'User-Agent'='ChatGPTRemoteCommander-ServerInstaller/0.10.21'
+    'X-GitHub-Api-Version'='2022-11-28'
+  }
+  if ($script:BootstrapGitHubToken) {
+    $headers['Authorization'] = 'Bearer ' + $script:BootstrapGitHubToken
+  }
+  try {
+    $release = Invoke-RestMethod -Uri 'https://api.github.com/repos/git-for-windows/git/releases/latest' -Headers $headers -TimeoutSec 30
+  } finally {
+    $script:BootstrapGitHubToken = $null
+    [void]$headers.Remove('Authorization')
+  }
   if ($release.draft -or $release.prerelease) { throw 'Git for Windows latest release is not stable.' }
   $pattern = if ($Arch -eq 'x64') { '^Git-.*-64-bit\.exe$' } else { '^Git-.*-arm64\.exe$' }
   $asset = @($release.assets | Where-Object { $_.name -match $pattern }) | Select-Object -First 1

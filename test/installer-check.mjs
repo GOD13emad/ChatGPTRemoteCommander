@@ -74,6 +74,22 @@ for (const forbidden of ['Add-MpPreference','Set-MpPreference','Remove-MpPrefere
 }
 if (!windowsServerInstaller.includes("[string]$SourceRef = 'v0.10.21'")) throw new Error('server-install-windows.ps1 default SourceRef must match current release');
 if (!windowsServerInstaller.includes('ChatGPTRemoteCommander-ServerInstaller/0.10.21')) throw new Error('server-install-windows.ps1 User-Agent must match current release');
+const serverCanaryWorkflow = readFileSync('.github/workflows/server-install-canary.yml','utf8');
+for (const required of [
+  "$script:BootstrapGitHubToken = [Environment]::GetEnvironmentVariable('RC_GITHUB_API_TOKEN','Process')",
+  "[Environment]::SetEnvironmentVariable('RC_GITHUB_API_TOKEN',$null,'Process')",
+  "['Authorization'] = 'Bearer ' + $script:BootstrapGitHubToken",
+  "Invoke-RestMethod -Uri 'https://api.github.com/repos/git-for-windows/git/releases/latest' -Headers $headers -TimeoutSec 30",
+  "$script:BootstrapGitHubToken = $null",
+  "Assert-Sha256 $path $expected",
+  "Assert-Authenticode $path",
+]) if (!windowsServerInstaller.includes(required)) throw new Error('server installer missing bounded authenticated Git metadata gate: '+required);
+for (const required of [
+  "contents: read",
+  "github.event.pull_request.head.repo.full_name == github.repository",
+  "RC_GITHUB_API_TOKEN: ${{ github.token }}",
+]) if (!serverCanaryWorkflow.includes(required)) throw new Error('server canary missing least-privilege same-repo token guard: '+required);
+
 if (!linuxServerInstaller.includes('SOURCE_REF="${REMOTE_COMMANDER_SOURCE_REF:-v0.10.21}"')) throw new Error('server-install-linux.sh default SourceRef must match current release');
 if (!linuxServerInstaller.includes('default: v0.10.21')) throw new Error('server-install-linux.sh usage default must match current release');
 const publicConfig = JSON.parse(readFileSync('config.json','utf8'));
