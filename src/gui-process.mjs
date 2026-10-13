@@ -11,7 +11,13 @@ function parseGuiResult(bytes) {
   }
   if (value.ok !== true) {
     const safeCode = /^[A-Z][A-Z0-9_]{1,79}$/.test(value.error ?? '') ? value.error : 'GUI_NATIVE_FAILED';
-    throw guiError(safeCode);
+    const failure = guiError(safeCode);
+    // Only the pinned Linux native guard may attest rejection before input dispatch.
+    if (safeCode === 'GUI_FOREGROUND_OR_GEOMETRY_CHANGED' &&
+        value.effect === 'NOT_APPLIED' && value.phase === 'PRE_DISPATCH_GUARD') {
+      failure.guiNotApplied = true;
+    }
+    throw failure;
   }
   return value;
 }
@@ -111,6 +117,14 @@ export function createGuiProcessClient({
     let value;
     try { value = parseGuiResult(line); }
     catch (error) {
+      if (error.guiNotApplied === true && pending && !startup) {
+        // Forward the exact no-effect receipt; no helper retry or input replay.
+        const p = pending;
+        clearPendingTimer();
+        pending = null;
+        p.reject(error);
+        return;
+      }
       const code = error.guiCode ?? (error.message || 'GUI_HELPER_BAD_JSON');
       fail(code);
       return;
