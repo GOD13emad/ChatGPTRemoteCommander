@@ -95,3 +95,85 @@ test('symlink input cannot be transferred as a regular file',(t)=>{
   assert.match(r.stderr,/Unsafe source/);
  });
 });
+
+
+test('interrupted final copy resumes only after byte-exact prefix verification',()=>{
+ withFixtures((src,dst)=>{
+  const data=crypto.randomBytes(512*1024+47),id='resume-prefix-001';
+  send(src,id,data);mirror(src,dst,id);
+  const folder=path.join(dst,'inbox');fs.mkdirSync(folder);
+  const part=path.join(folder,'.ctmesh-'+id+'.part');
+  fs.writeFileSync(part,data.subarray(0,131099));
+  const result=run(dst,'receive','--peer','PC','--id',id,'--dest',folder);
+  assert.equal(result.status,0,result.stderr);
+  const receipt=JSON.parse(result.stdout);
+  assert.equal(receipt.resumedBytes,131099);
+  assert.deepEqual(fs.readFileSync(path.join(folder,'sample.bin')),data);
+  assert.equal(fs.existsSync(part),false);
+  assert.equal(fs.existsSync(path.join(folder,'.ctmesh-'+id+'.lock')),false);
+ });
+});
+test('corrupt partial prefix fails closed and preserves bytes',()=>{
+ withFixtures((src,dst)=>{
+  const data=crypto.randomBytes(128*1024),id='resume-corrupt-001';
+  send(src,id,data);mirror(src,dst,id);
+  const folder=path.join(dst,'inbox');fs.mkdirSync(folder);
+  const part=path.join(folder,'.ctmesh-'+id+'.part');
+  const bad=Buffer.alloc(7000,0xaa);fs.writeFileSync(part,bad);
+  const result=run(dst,'receive','--peer','PC','--id',id,'--dest',folder);
+  assert.notEqual(result.status,0);
+  assert.match(result.stderr,/Partial prefix failed source verification/);
+  assert.deepEqual(fs.readFileSync(part),bad);
+  assert.equal(fs.existsSync(path.join(folder,'sample.bin')),false);
+ });
+});
+test('oversized partial is retained and never truncated',()=>{
+ withFixtures((src,dst)=>{
+  const data=crypto.randomBytes(4096),id='resume-oversize-001';
+  send(src,id,data);mirror(src,dst,id);
+  const folder=path.join(dst,'inbox');fs.mkdirSync(folder);
+  const part=path.join(folder,'.ctmesh-'+id+'.part');
+  fs.writeFileSync(part,Buffer.alloc(data.length+1,0xbb));
+  const result=run(dst,'receive','--peer','PC','--id',id,'--dest',folder);
+  assert.notEqual(result.status,0);
+  assert.match(result.stderr,/Untrusted or oversized partial/);
+  assert.equal(fs.statSync(part).size,data.length+1);
+  assert.equal(fs.existsSync(path.join(folder,'sample.bin')),false);
+ });
+});
+test('live owner lock blocks concurrent receive without modifying destination',()=>{
+ withFixtures((src,dst)=>{
+  const data=crypto.randomBytes(8192),id='lock-live-001';
+  const {receipt}=send(src,id,data);mirror(src,dst,id);
+  const folder=path.join(dst,'inbox');fs.mkdirSync(folder);
+  const lock=path.join(folder,'.ctmesh-'+id+'.lock');
+  const owner={schema:'ctmesh-receive-lock-v1',host:os.hostname(),peer:'PC',id,
+    sha256:receipt.sha256,pid:process.pid};
+  fs.writeFileSync(lock,JSON.stringify(owner)+'\n');
+  const result=run(dst,'receive','--peer','PC','--id',id,'--dest',folder);
+  assert.notEqual(result.status,0);
+  assert.match(result.stderr,/live or unverified process/);
+  assert.deepEqual(JSON.parse(fs.readFileSync(lock,'utf8')),owner);
+  assert.equal(fs.existsSync(path.join(folder,'sample.bin')),false);
+ });
+});
+test('verified dead-owner lock is reclaimed, foreign lock is never deleted',()=>{
+ withFixtures((src,dst)=>{
+  const data=crypto.randomBytes(16*1024),id='lock-stale-001';
+  const {receipt}=send(src,id,data);mirror(src,dst,id);
+  const folder=path.join(dst,'inbox');fs.mkdirSync(folder);
+  const lock=path.join(folder,'.ctmesh-'+id+'.lock');
+  const foreign={schema:'ctmesh-receive-lock-v1',host:'another-host',peer:'PC',id,
+    sha256:receipt.sha256,pid:2147483647};
+  fs.writeFileSync(lock,JSON.stringify(foreign)+'\n');
+  let result=run(dst,'receive','--peer','PC','--id',id,'--dest',folder);
+  assert.notEqual(result.status,0);
+  assert.match(result.stderr,/Untrusted receive lock/);
+  assert.equal(fs.existsSync(lock),true);
+  fs.writeFileSync(lock,JSON.stringify({...foreign,host:os.hostname()})+'\n');
+  result=run(dst,'receive','--peer','PC','--id',id,'--dest',folder);
+  assert.equal(result.status,0,result.stderr);
+  assert.deepEqual(fs.readFileSync(path.join(folder,'sample.bin')),data);
+  assert.equal(fs.existsSync(lock),false);
+ });
+});
