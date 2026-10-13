@@ -113,13 +113,13 @@ test('R468 dedicated Windows timing-sensitive project fixtures run once before b
   const ordered=prioritizeSensitiveQualificationCommands(boundNodeTestConcurrency(pkg.scripts.test,1).command);
   const lease=isolateWindowsLeaseRegression(ordered);
   const result=isolateWindowsTimingSensitiveRegressions(lease);
-  const files=['test/project-adaptive.test.mjs','test/project-delivery-correlation.test.mjs'];
+  const files=['test/project-adaptive.test.mjs','test/project-delivery-correlation.test.mjs','test/project-engine-review.test.mjs'];
   const prefix=files.map(f=>'node --test --test-concurrency=1 '+f).join(' && ')+' && ';
-  const expected=prefix+lease.replace(' '+files[0],'').replace(' '+files[1],'');
+  const expected=prefix+files.reduce((command,file)=>command.replace(' '+file,''),lease);
   assert.equal(result,expected,'only scheduling changes; full original tests retained');
   assert.ok(result.startsWith(prefix));
   assert.equal(result.split('node --test --test-concurrency=1 ').length-1,
-    lease.split('node --test --test-concurrency=1 ').length-1+2);
+    lease.split('node --test --test-concurrency=1 ').length-1+files.length);
   for(const file of files)assert.equal(result.split(file).length-1,1,'no duplicate, skip or rerun '+file);
   for(const file of files)assert.throws(
     ()=>isolateWindowsTimingSensitiveRegressions(lease.replace(' '+file,'')),

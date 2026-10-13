@@ -123,14 +123,38 @@ if (process.argv[2] === '--claim-worker') {
         timerCalls>1 || Date.now()>=started.deadline,
         'a genuinely early deadline timer must be rescheduled; a late callback may abort directly'
       );
-      assert.equal(aborted, true);
+      // An already-expired run can fail closed before entering its planner.
+      // Require AbortSignal only if the planner actually started.
+      if (fixture.plans === 0) {
+        assert.equal(aborted, false);
+        assert.ok(Date.now() >= started.deadline);
+        assert.equal(result.attempts, 0);
+      } else {
+        assert.equal(fixture.plans, 1);
+        assert.equal(aborted, true);
+        assert.equal(result.attempts, 1);
+      }
       assert.equal(result.status, 'EXHAUSTED');
       assert.equal(result.lastCode, 'PROJECT_DEADLINE_EXHAUSTED');
-      assert.equal(result.attempts, 1);
       assert.equal(fixture.calls, 0);
       assert.equal(fs.existsSync(path.join(fixture.root, 'result.txt')), false);
       assert.equal((await fixture.tick()).skipped, true);
-      assert.equal(fixture.plans, 1);
+    } finally { await fixture.dispose(); }
+  });
+
+  test('pre-expired deadline refuses planner and all filesystem effects', { timeout: 6000 }, async () => {
+    const fixture = makeFixture({ planner: async () => { throw Error('Expired run must not plan'); } });
+    try {
+      await fixture.create();
+      const started = await fixture.start({ durationMs: 1000 });
+      await sleep(Math.max(0, started.deadline - Date.now() + 25));
+      const result = await fixture.tick();
+      assert.equal(result.status, 'EXHAUSTED');
+      assert.equal(result.lastCode, 'PROJECT_DEADLINE_EXHAUSTED');
+      assert.equal(result.attempts, 0);
+      assert.equal(fixture.plans, 0);
+      assert.equal(fixture.calls, 0);
+      assert.equal(fs.existsSync(path.join(fixture.root, 'result.txt')), false);
     } finally { await fixture.dispose(); }
   });
 
