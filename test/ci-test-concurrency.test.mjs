@@ -149,8 +149,11 @@ test('R470 sanitized diagnostic workflow persists no raw qualification log and k
     "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
     'retention-days: 7',
     'if-no-files-found: warn',
-    'DIAGNOSTIC_R470.json'
+    'DIAGNOSTIC_R470.json',
+    'runner.temp }}/remote-commander-updater-r157/DIAGNOSTIC_R470.json'
   ]) assert.ok(workflow.includes(marker),marker);
+  assert.ok(!workflow.includes('env.RC_E2E_ROOT }}/DIAGNOSTIC_R470.json'),
+    'workflow expression context cannot trust a runtime-generated GITHUB_ENV value');
   assert.ok(workflow.indexOf('R470 derive a bounded')>workflow.indexOf('Independently verify exact Job receipts'));
   assert.ok(!workflow.includes('upload-artifact@v3'));
   assert.ok(workflow.includes('-NoPromote'),'keep original tested production path unchanged');
