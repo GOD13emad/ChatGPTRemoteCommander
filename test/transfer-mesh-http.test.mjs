@@ -18,12 +18,13 @@ test('MCP native transfer tools opt in, expose narrowly scoped schemas and execu
   await fs.mkdir(server);await fs.mkdir(input);await fs.mkdir(received);await fs.mkdir(pilot);
   await fs.cp(new URL('../src/',import.meta.url),path.join(server,'src'),{recursive:true});
   await fs.copyFile(new URL('../tools/commander-transfer-mesh/pilot-cli.mjs',import.meta.url),path.join(pilot,'transfer.mjs'));
+  await fs.copyFile(new URL('../tools/commander-transfer-mesh/durable-send.mjs',import.meta.url),path.join(pilot,'durable-send.mjs'));
   await fs.writeFile(path.join(pilot,'node.json'),JSON.stringify({alias:'PC',schema:'ctmesh-node-v1'}));
   const dataRoot=path.join(home,'data');await fs.mkdir(dataRoot);
   const cfg={host:'127.0.0.1',port:serverPort,allowedRoots:[dataRoot],allowedPrograms:['node'],maxReadBytes:1048576,maxWriteBytes:1048576,maxCommandMs:10000,
    auditLog:'var/audit.jsonl',durableDelivery:{directory:path.join(home,'delivery')},
    powerMode:{enabled:true,fullFilesystem:false,allowShell:false,allowProcessControl:false,allowPermanentDelete:false,backupRoot:path.join(home,'backups'),maxFileBytes:1048576,maxCommandMs:10000,maxOutputBytes:1048576,maxTerminalBufferBytes:1048576,blockedShellPatterns:[],guiControl:{enabled:false}},
-   transferMesh:{enabled:true,root:pilot,sourceRoots:[input],destinationRoots:[received]}};
+   transferMesh:{enabled:true,durableEnabled:true,root:pilot,sourceRoots:[input],destinationRoots:[received]}};
   const configPath=path.join(server,'config.json');
   await fs.writeFile(configPath,JSON.stringify(cfg));
   child=spawn(process.execPath,[path.join(server,'src/server-v0.3.mjs')],{cwd:server,env:{...process.env,REMOTE_COMMANDER_CONFIG:configPath},stdio:['ignore','pipe','pipe']});
@@ -32,7 +33,7 @@ test('MCP native transfer tools opt in, expose narrowly scoped schemas and execu
   for(let i=0;i<200;i++){try{const r=await fetch('http://127.0.0.1:'+serverPort+'/health');if(r.ok){healthy=true;break;}}catch{}await wait(25);}
   assert.equal(healthy,true,stderr);
   const list=await req(serverPort,'__list');const defs=list.tools.filter(x=>x.name.startsWith('transfer_mesh_'));
-  assert.equal(defs.length,4);
+  assert.equal(defs.length,8);
   assert.equal(defs.find(x=>x.name==='transfer_mesh_send').annotations.readOnlyHint,false);
   const info=await req(serverPort,'transfer_mesh_info');
   assert.equal(info.isError,false);
@@ -47,6 +48,19 @@ test('MCP native transfer tools opt in, expose narrowly scoped schemas and execu
   assert.equal(replay.isError,false,JSON.stringify(replay));
   const conflict=await req(serverPort,'transfer_mesh_send',{peer:'Linux',path:testFile,id:'http-good-001',requestId:'different-http-send-002'});
   assert.equal(conflict.isError,true);
+  const large=path.join(input,'long-file.dat');await fs.writeFile(large,Buffer.alloc(12*1024*1024,0x63));
+  const queued=await req(serverPort,'transfer_mesh_enqueue',{peer:'Linux',path:large,id:'http-durable-001',requestId:'fixed-http-durable-001'});
+  assert.equal(queued.isError,false,JSON.stringify(queued));
+  let progress=null;
+  for(let i=0;i<100;i++){
+    progress=await req(serverPort,'transfer_mesh_job_status',{peer:'Linux',id:'http-durable-001'});
+    if(JSON.stringify(progress).includes('"PUBLISHED"'))break;
+    await wait(70);
+  }
+  assert.equal(progress.isError,false,JSON.stringify(progress));
+  assert.match(JSON.stringify(progress),/"PUBLISHED"/);
+  assert.equal((await fs.stat(path.join(pilot,'pairs','Linux','transfers','http-durable-001','payload.bin'))).size,12*1024*1024);
+  await wait(350);
  }finally{
   if(child){child.kill();await Promise.race([once(child,'exit').catch(()=>{}),wait(1500)]);}
   await fs.rm(home,{recursive:true,force:true});

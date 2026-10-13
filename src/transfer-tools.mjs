@@ -27,6 +27,14 @@ export const transferMeshToolDefinitions = Object.freeze([
     peer: peerProperty, id: idProperty, dest: {type:'string',minLength:1,maxLength:4096}
   }, ['peer','id','dest'])
 ]);
+const durableNames = Object.freeze([
+ immutable('transfer_mesh_enqueue', 'Durably queue a large file for background local staging; returns QUEUED, not delivered or even published to the peer. Use job_status for local progress and transfer_mesh_status on the recipient for full SHA256 receipt.',{
+   peer:peerProperty,path:{type:'string',minLength:1,maxLength:4096},id:idProperty
+ },['peer','path','id']),
+ immutable('transfer_mesh_job_status','Read local durable staging progress and terminal state (not remote Syncthing delivery).',{peer:peerProperty,id:idProperty},['peer','id'],true),
+ immutable('transfer_mesh_job_resume','Resume a failed or interrupted local staging job after rechecking source identity and scope.',{peer:peerProperty,id:idProperty},['peer','id']),
+ immutable('transfer_mesh_job_cancel','Request cancellation of unpublished local staging; original source remains unchanged.',{peer:peerProperty,id:idProperty},['peer','id'])
+]);
 
 function within(child, parent) {
   const relative = path.relative(parent, child);
@@ -53,9 +61,13 @@ export function createTransferMeshTools({ config = {} } = {}) {
   const cli = canonicalExisting(path.join(root,'transfer.mjs'));
   const st = fs.lstatSync(cli);
   if (!st.isFile() || st.isSymbolicLink() || !within(cli,root)) throw new Error('TRANSFER_MESH_CLI_INVALID');
+  const durableEnabled = policy.durableEnabled === true;
+  const durableCli = durableEnabled ? canonicalExisting(path.join(root,'durable-send.mjs')) : null;
+  if(durableEnabled && (!within(durableCli,root) || !fs.lstatSync(durableCli).isFile() || fs.lstatSync(durableCli).isSymbolicLink())) throw new Error('TRANSFER_DURABLE_CLI_INVALID');
+  const definitions = [...transferMeshToolDefinitions, ...(durableEnabled?durableNames:[])];
   const spawnEnv = { ...process.env, COMMANDER_TRANSFER_HOME: root };
   async function execute(name, args = {}) {
-    if (!transferMeshToolDefinitions.some(t => t.name === name)) throw new Error('TRANSFER_UNKNOWN_TOOL');
+    if (!definitions.some(t => t.name === name)) throw new Error('TRANSFER_UNKNOWN_TOOL');
     if (args.peer !== undefined && !PEERS.includes(args.peer)) throw new Error('TRANSFER_UNKNOWN_PEER');
     if (args.id !== undefined && !ID_PATTERN.test(args.id)) throw new Error('TRANSFER_ID_INVALID');
     let cmd;
@@ -74,11 +86,37 @@ export function createTransferMeshTools({ config = {} } = {}) {
       const dest = allowedPath(args.dest, policy.destinationRoots, 'directory');
       cmd = ['receive','--peer',args.peer,'--id',args.id,'--dest',dest];
     }
-    const { stdout } = await execFileAsync(process.execPath, [cli, ...cmd], { ...opts, env: spawnEnv });
+    if (name === 'transfer_mesh_enqueue') {
+      if (!PEERS.includes(args.peer) || !ID_PATTERN.test(args.id)) throw new Error('TRANSFER_ARGS_INVALID');
+      const file=allowedPath(args.path,policy.sourceRoots,'file');
+      const allowedRoot=policy.sourceRoots.map(canonicalExisting).find(rootPath=>within(file,rootPath));
+      if(!allowedRoot)throw new Error('TRANSFER_PATH_NOT_ALLOWED');
+      cmd=['enqueue','--peer',args.peer,'--path',file,'--source-root',allowedRoot,'--id',args.id];
+    }
+    if (name === 'transfer_mesh_job_status') {
+      if (!PEERS.includes(args.peer) || !ID_PATTERN.test(args.id)) throw new Error('TRANSFER_ARGS_INVALID');
+      cmd=['job-status','--peer',args.peer,'--id',args.id];
+    }
+    if (name === 'transfer_mesh_job_resume') {
+      if (!PEERS.includes(args.peer) || !ID_PATTERN.test(args.id)) throw new Error('TRANSFER_ARGS_INVALID');
+      const jobPath=path.join(root,'jobs',args.peer,args.id+'.json');
+      const jobStat=fs.lstatSync(jobPath);
+      if(!jobStat.isFile() || jobStat.isSymbolicLink())throw new Error('TRANSFER_JOB_NOT_REGULAR');
+      const job=JSON.parse(fs.readFileSync(jobPath,'utf8'));
+      if(job.id!==args.id || job.peer!==args.peer)throw new Error('TRANSFER_JOB_IDENTITY_INVALID');
+      allowedPath(job.path,policy.sourceRoots,'file');
+      cmd=['resume','--peer',args.peer,'--id',args.id];
+    }
+    if (name === 'transfer_mesh_job_cancel') {
+      if (!PEERS.includes(args.peer) || !ID_PATTERN.test(args.id)) throw new Error('TRANSFER_ARGS_INVALID');
+      cmd=['cancel','--peer',args.peer,'--id',args.id];
+    }
+    const targetCli=durableEnabled && durableNames.some(t=>t.name===name)?durableCli:cli;
+    const { stdout } = await execFileAsync(process.execPath, [targetCli, ...cmd], { ...opts, env: spawnEnv });
     const lines = stdout.trim().split(/\r?\n/);
     const result = JSON.parse(lines.at(-1));
-    if (result?.schema && result.schema !== 'ctmesh-v1') throw new Error('TRANSFER_SCHEMA_UNEXPECTED');
+    if (result?.schema && !['ctmesh-v1','ctmesh-durable-v1'].includes(result.schema)) throw new Error('TRANSFER_SCHEMA_UNEXPECTED');
     return result;
   }
-  return { enabled:true, definitions: transferMeshToolDefinitions.map(x => ({...x, inputSchema:{...x.inputSchema, properties:{...x.inputSchema.properties}}})), execute };
+  return { enabled:true, definitions: definitions.map(x => ({...x, inputSchema:{...x.inputSchema, properties:{...x.inputSchema.properties}}})), execute };
 }
