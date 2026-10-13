@@ -60,6 +60,34 @@ export function isolateWindowsLeaseRegression(command){
   return 'node --test --test-concurrency=1 '+file+' && '+parts.join(' && ');
 }
 
+
+/**
+ * R468: isolate the two historically timing-sensitive Windows project fixtures
+ * before the bulk batch. This changes scheduling only: no timeout, budget,
+ * acceptance, or production state transition is modified.
+ *
+ * Node --test-concurrency=1 already bounds file parallelism; a separate process
+ * keeps cumulative fixture side effects/host contention outside these tests.
+ */
+export function isolateWindowsTimingSensitiveRegressions(command) {
+  if(typeof command!=='string'||!command)throw new Error('CI_WINDOWS_TIMING_COMMAND_INVALID');
+  const files=['test/project-adaptive.test.mjs','test/project-delivery-correlation.test.mjs'];
+  for(const file of files)
+    if(command.split(file).length-1!==1)throw new Error('CI_WINDOWS_TIMING_CARDINALITY');
+  const parts=command.split(' && ');
+  const isolated=[];
+  for(const file of files) {
+    const index=parts.findIndex(part=>part.startsWith('node --test --test-concurrency=1 ')&&part.includes(' '+file));
+    if(index<0)throw new Error('CI_WINDOWS_TIMING_BATCH_NOT_FOUND');
+    const before=parts[index],after=before.replace(' '+file,'');
+    if(after===before||!after.startsWith('node --test --test-concurrency=1 test/')||after.includes(file))
+      throw new Error('CI_WINDOWS_TIMING_ISOLATION_INVALID');
+    parts[index]=after;
+    isolated.push('node --test --test-concurrency=1 '+file);
+  }
+  return [...isolated,...parts].join(' && ');
+}
+
 export function parseQualificationArgs(argv){
   const out={script:null,concurrency:null,prioritizeSensitive:false};
   for(let i=0;i<argv.length;i++){
@@ -83,7 +111,10 @@ function run(){
   const bounded=boundNodeTestConcurrency(original,effectiveConcurrency);
   const prioritizeSensitive=args.prioritizeSensitive||process.platform==='win32';
   let command=prioritizeSensitive?prioritizeSensitiveQualificationCommands(bounded.command):bounded.command;
-  if(args.script==='test'&&process.platform==='win32')command=isolateWindowsLeaseRegression(command);
+  if(args.script==='test'&&process.platform==='win32'){
+    command=isolateWindowsLeaseRegression(command);
+    command=isolateWindowsTimingSensitiveRegressions(command);
+  }
   console.log('CI_TEST_CONCURRENCY script='+args.script+' requestedConcurrency='+requestedConcurrency+' effectiveConcurrency='+effectiveConcurrency+' replacements='+bounded.replacements+' prioritizeSensitive='+prioritizeSensitive);
   const child=process.platform==='win32'
     ? spawnSync(process.env.ComSpec||'cmd.exe',['/d','/s','/c',command],{cwd:root,env:process.env,stdio:'inherit'})
