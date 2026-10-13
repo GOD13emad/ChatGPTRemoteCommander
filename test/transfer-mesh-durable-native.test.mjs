@@ -102,3 +102,25 @@ test('durable CLI explicitly identifies its quota contract',()=>{
   assert.equal(instance.definitions.length,8);
  }finally{fs.rmSync(root,{recursive:true,force:true});}
 });
+
+test('transient first backend capability check retries once without relaxing the contract',()=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'rc-durable-coldstart-'));
+ try{
+  fs.copyFileSync(path.join(from,'pilot-cli.mjs'),path.join(root,'transfer.mjs'));
+  fs.writeFileSync(path.join(root,'node.json'),JSON.stringify({alias:'PC'}));
+  const marker=path.join(root,'startup-attempt.txt');
+  const backend = [
+   "import fs from 'node:fs';",
+   "const marker="+JSON.stringify(marker)+";",
+   "if (!fs.existsSync(marker)) { fs.writeFileSync(marker,'one'); process.exit(7); }",
+   "console.log(JSON.stringify({schema:'ctmesh-durable-v1',contractVersion:2,admissionQuotas:true,supports:['enqueue','job-status','resume','cancel']}));"
+  ].join('\n');
+  fs.writeFileSync(path.join(root,'durable-send.mjs'),backend);
+  const tools=createTransferMeshTools({config:{powerMode:{enabled:true},transferMesh:{
+   enabled:true,durableEnabled:true,root,sourceRoots:[root],destinationRoots:[root],
+   maxSourceBytes:1024,maxPendingBytes:8192,maxActiveJobs:1
+  }}});
+  assert.equal(tools.definitions.length,8);
+  assert.equal(fs.readFileSync(marker,'utf8'),'one');
+ }finally{fs.rmSync(root,{recursive:true,force:true,maxRetries:10,retryDelay:100});}
+});
