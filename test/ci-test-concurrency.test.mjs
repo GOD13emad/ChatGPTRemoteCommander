@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { boundNodeTestConcurrency, parseQualificationArgs, prioritizeSensitiveQualificationCommands, isolateWindowsLeaseRegression } from '../tools/run-bounded-test-script.mjs';
+import { boundNodeTestConcurrency, parseQualificationArgs, prioritizeSensitiveQualificationCommands, isolateWindowsLeaseRegression, isolateWindowsTimingSensitiveRegressions } from '../tools/run-bounded-test-script.mjs';
 
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const read=rel=>fs.readFileSync(path.join(root,rel),'utf8');
@@ -98,7 +98,36 @@ test('R232 Windows isolated lease fixture executes once before bulk without a re
   assert.equal(isolated,leader+ordered.replace(' '+target,''),'no other qualification test or command may change');
   assert.ok(isolated.indexOf('test/mcp-tasks-extension.test.mjs')>leader.length,'other isolated fixtures remain covered');
   const code=read('tools/run-bounded-test-script.mjs');
-  assert.ok(code.includes("if(args.script==='test'&&process.platform==='win32')command=isolateWindowsLeaseRegression(command);"));
+  assert.ok(code.includes("if(args.script==='test'&&process.platform==='win32'){") &&
+    code.includes("command=isolateWindowsLeaseRegression(command);") &&
+    code.includes("command=isolateWindowsTimingSensitiveRegressions(command);"));
   assert.throws(()=>isolateWindowsLeaseRegression('node --test --test-concurrency=1 test/other.test.mjs'),/CI_LEASE_TEST_CARDINALITY/);
   assert.throws(()=>isolateWindowsLeaseRegression(leader+leader+ordered),/CI_LEASE_TEST_CARDINALITY/);
+});
+
+
+test('R468 dedicated Windows timing-sensitive project fixtures run once before bulk without relaxing test deadlines',()=>{
+  const pkg=JSON.parse(read('package.json'));
+  const ordered=prioritizeSensitiveQualificationCommands(boundNodeTestConcurrency(pkg.scripts.test,1).command);
+  const lease=isolateWindowsLeaseRegression(ordered);
+  const result=isolateWindowsTimingSensitiveRegressions(lease);
+  const files=['test/project-adaptive.test.mjs','test/project-delivery-correlation.test.mjs'];
+  const prefix=files.map(f=>'node --test --test-concurrency=1 '+f).join(' && ')+' && ';
+  const expected=prefix+lease.replace(' '+files[0],'').replace(' '+files[1],'');
+  assert.equal(result,expected,'only scheduling changes; full original tests retained');
+  assert.ok(result.startsWith(prefix));
+  assert.equal(result.split('node --test --test-concurrency=1 ').length-1,
+    lease.split('node --test --test-concurrency=1 ').length-1+2);
+  for(const file of files)assert.equal(result.split(file).length-1,1,'no duplicate, skip or rerun '+file);
+  for(const file of files)assert.throws(
+    ()=>isolateWindowsTimingSensitiveRegressions(lease.replace(' '+file,'')),
+    /CI_WINDOWS_TIMING_CARDINALITY/
+  );
+  assert.throws(()=>isolateWindowsTimingSensitiveRegressions(prefix+lease),/CI_WINDOWS_TIMING_CARDINALITY/);
+  const runner=read('tools/run-bounded-test-script.mjs');
+  assert.ok(runner.includes('command=isolateWindowsLeaseRegression(command);'));
+  assert.ok(runner.includes('command=isolateWindowsTimingSensitiveRegressions(command);'));
+  // The underlying business logic and per-test timeouts are intentionally unchanged.
+  assert.ok(read('test/project-adaptive.test.mjs').includes("{ timeout: 6000 }"));
+  assert.ok(read('test/project-delivery-correlation.test.mjs').includes('maxDurationMs:10000'));
 });
