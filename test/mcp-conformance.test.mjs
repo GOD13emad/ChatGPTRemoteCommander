@@ -166,6 +166,24 @@ test('dual-era MCP contract, tool validation, cache hints and risk annotations',
     assert.equal(discover.body.result.resultType, 'complete');
     assert.deepEqual(discover.body.result.supportedVersions, [MODERN]);
     assert.deepEqual(discover.body.result.capabilities.extensions['io.modelcontextprotocol/tasks'], {});
+
+    // Until an authenticated principal is available, no Work events may be
+    // advertised and no forged principal/profile/correlation may subscribe.
+    assert.equal(discover.body.result.capabilities.events, undefined);
+    const bogusEvent = {
+      name: 'operation.completed',
+      arguments: { projectId: 'unverified-project' },
+      delivery: { mode: 'webhook', url: 'https://127.0.0.1/test', secret: 'whsec_' + Buffer.alloc(32).toString('base64') }
+    };
+    for (const [index, method] of ['events/list', 'events/subscribe', 'events/unsubscribe'].entries()) {
+      const attempt = await post(port, {
+        jsonrpc: '2.0', id: 100 + index, method,
+        params: { ...bogusEvent, _meta: modernMeta() }
+      }, modernHeaders(method));
+      assert.equal(attempt.status, 200);
+      assert.equal(attempt.body.error?.code, -32601, 'unauthenticated event lifecycle must remain disabled');
+    }
+
     assert.equal(discover.body.result.ttlMs, 30000);
     assert.equal(discover.body.result.cacheScope, 'private');
     assert.equal(discover.body.result._meta['io.modelcontextprotocol/serverInfo'].name, 'chatgpt-remote-commander');

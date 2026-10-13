@@ -1067,3 +1067,10 @@ The single-blocker Linux tunnel-readiness fix is carried forward as a separate r
 **Roadmap ← CURRENT:** [accepted Core baseline] → [MCP2 task/queue healthy] → **[CURRENT: fail-closed diagnostic proof]** → [auth/ownership boundary + safe callback contract] → [MCP Events signed subscription implementation] → [real Work callback/chat event/ACK canary] → [hosted Windows/Linux checks + rollback] → [eligible release promotion]. Completion of these latter gates is UNPROVEN. Exact next action: validate account/workspace MCP Events eligibility and authenticated principal mapping; do not push raw task artifacts to user-selected callback based on trusted-profile routing alone.
 
 **Knowledge:** same-date section in `docs/PROJECT_KNOWLEDGE_EVIDENCE.md`; official sources there. **Brain status:** CURRENT for this isolated candidate; not a multi-product final state.
+
+
+### R2 — 2026-10-13 — MCP Events auth-first design and no-advertise guard
+- Current branch: `audit/mmz-delivery-readiness-20261013`; development only. Scope: one blocker, owner-bound event authorization. Stable Core 0.10.20 and existing durable records untouched.
+- New knowledge/evidence: `docs/architecture/MCP_EVENTS_AUTH_BOUNDARY_R1_20261013.md`; official MCP Events + OAuth primary-source comparison and Work-only limitations in R2 evidence. Local MCP modern conformance test now prevents anonymous subscription and premature event advertisement; targeted PASS. No new runtime Events capabilities declared.
+- Roadmap CURRENT at G0: verified OAuth principal → project ownership gate → verified signed callback → durable subscription → Work E2E event/reply → cross-platform native/CI rollback → eventual release. G0 BLOCKED until authenticated gateway evidence; no automatic current-chat message delivery claim.
+- Post-change full `npm run check`, `npm test`, `npm run audit` all PASS (exit 0) on the isolated Linux candidate. No claim of hosted Windows/Ubuntu exact-head CI, Work subscription or cross-host live delivery. Maintain draft PR/no merge pending G0 and complete original CI.
