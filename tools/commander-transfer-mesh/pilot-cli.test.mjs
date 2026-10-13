@@ -177,3 +177,44 @@ test('verified dead-owner lock is reclaimed, foreign lock is never deleted',()=>
   assert.equal(fs.existsSync(lock),false);
  });
 });
+
+
+test('real child-process kill during final receive safely resumes a verified prefix',()=>{
+ withFixtures((src,dst)=>{
+  const id='killmid-finalcopy-001',data=crypto.randomBytes(8*1024*1024);
+  const {receipt}=send(src,id,data);mirror(src,dst,id);
+  const dest=path.join(dst,'inbox');fs.mkdirSync(dest);
+  const preload=path.join(dst,'killmid.cjs');
+  fs.writeFileSync(preload,[
+   "const fs=require('node:fs');",
+   "const original=fs.writeSync;",
+   "fs.writeSync=function(fd,buffer,offset,length,position){",
+   " const count=original.apply(this,arguments);",
+   " if(Buffer.isBuffer(buffer)&&length>=1048576&&count>0)process.kill(process.pid,'SIGKILL');",
+   " return count;",
+   "};"
+  ].join('\n'));
+  const killed=spawnSync(process.execPath,['--require',preload,cli,'receive','--peer','PC','--id',id,'--dest',dest],{
+   cwd:src,encoding:'utf8',env:{...process.env,COMMANDER_TRANSFER_HOME:dst},timeout:15000
+  });
+  const part=path.join(dest,'.ctmesh-'+id+'.part'),lock=path.join(dest,'.ctmesh-'+id+'.lock');
+  assert.notEqual(killed.status,0);
+  assert.equal(fs.existsSync(part),true);
+  assert.equal(fs.existsSync(lock),true);
+  const partialSize=fs.statSync(part).size;
+  assert.ok(partialSize>=1048576&&partialSize<data.length);
+  assert.equal(fs.existsSync(path.join(dest,'sample.bin')),false);
+  const done=run(dst,'receive','--peer','PC','--id',id,'--dest',dest);
+  assert.equal(done.status,0,done.stderr);
+  const verified=JSON.parse(done.stdout);
+  assert.equal(verified.status,'DELIVERED_HASH_VERIFIED');
+  assert.equal(verified.resumedBytes,partialSize);
+  assert.equal(verified.sha256,receipt.sha256);
+  assert.deepEqual(fs.readFileSync(path.join(dest,'sample.bin')),data);
+  assert.equal(fs.existsSync(part),false);
+  assert.equal(fs.existsSync(lock),false);
+  const repeated=run(dst,'receive','--peer','PC','--id',id,'--dest',dest);
+  assert.notEqual(repeated.status,0);
+  assert.match(repeated.stderr,/Destination exists/);
+ });
+});
