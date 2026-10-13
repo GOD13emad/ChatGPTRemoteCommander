@@ -74,6 +74,9 @@ const agentExtensionDirectories = configuredAgentExtensionDirectories.map(value 
   return path.isAbsolute(expanded) ? path.resolve(expanded) : path.resolve(projectDir, expanded);
 });
 const agentExtensions = createAgentExtensionRegistry({ directories: agentExtensionDirectories });
+const transferMesh = config.transferMesh?.enabled === true && config.powerMode?.enabled === true
+  ? (await import('./transfer-tools.mjs')).createTransferMeshTools({config})
+  : { enabled: false, definitions: [], execute: async () => { throw new Error('TRANSFER_MESH_DISABLED'); } };
 const GUI_BACKEND_SUPPORTED = process.platform === 'win32' || process.platform === 'linux';
 const GUI_ENABLED = GUI_BACKEND_SUPPORTED && config.powerMode?.enabled === true && config.powerMode?.guiControl?.enabled === true;
 const BROWSER_ENABLED = config.powerMode?.enabled === true && config.powerMode?.browserControl?.enabled === true;
@@ -208,6 +211,7 @@ const TOOLS = [
   ...asyncOperationTools.definitions,
   ...deliveryTools.definitions,
   ...agentExtensions.definitions,
+  ...transferMesh.definitions,
   ...powerToolDefinitions,
   ...(BROWSER_ENABLED ? browserToolDefinitions : []),
   ...(GUI_ENABLED ? guiToolDefinitions : [])
@@ -435,6 +439,7 @@ async function executeToolEffect(name, args) {
   if (name.startsWith('operation_')) return asyncOperationTools.execute(name, args);
   if (name.startsWith('delivery_')) return deliveryTools.execute(name, args);
   if (name.startsWith('agent_extension_')) return agentExtensions.execute(name, args);
+  if (name.startsWith('transfer_mesh_')) return transferMesh.execute(name, args);
   if (name.startsWith('workflow_')) return workflowTools.execute(name, args);
   switch (name) {
     case 'system_status': {
@@ -494,6 +499,7 @@ async function executeToolEffect(name, args) {
         completionBeacon: deliveryStore.beacon(5),
         mutationIdempotency: mutationIdempotency.status(),
         agentExtensions: agentExtensions.status(),
+        transferMesh: { enabled: transferMesh.enabled },
         browserCompanionMonitor: browserCompanionMonitor?.status() ?? { enabled:false, lastWriteAtEpochMs:0, lastError:'' },
         delegationPolicy: { ...NO_CODEX_POLICY, commanderMayLaunchCodex: codexLaunchAuthorized(ctx.config), status: delegationStatus(ctx.config) },
         powerMode: config.powerMode ?? { enabled: false },
