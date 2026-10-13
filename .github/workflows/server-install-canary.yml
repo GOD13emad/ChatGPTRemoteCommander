@@ -22,6 +22,8 @@ env:
 
 jobs:
   windows-server-bootstrap:
+    # This privileged canary must never run attacker-controlled fork PR installers.
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
     runs-on: windows-2022
     timeout-minutes: 35
     steps:
@@ -31,6 +33,8 @@ jobs:
           fetch-depth: 1
       - name: Exercise Windows Server bootstrap with Node/Git absent from PATH
         shell: pwsh
+        env:
+          RC_GITHUB_API_TOKEN: ${{ github.token }}
         run: |
           $ErrorActionPreference='Stop'
           $script=Join-Path $env:GITHUB_WORKSPACE 'server-install-windows.ps1'
