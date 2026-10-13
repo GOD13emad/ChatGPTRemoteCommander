@@ -1074,3 +1074,12 @@ The single-blocker Linux tunnel-readiness fix is carried forward as a separate r
 ### 2026-10-13 — Provider candidate verification update (append-only)
 
 Final same-tree local source qualification: new adapter 10/10, combined planner + runner + adapter 42/42, integrated `npm run check`, `npm test`, `npm run audit` all PASS with audit code `SECURITY_AUDIT_PASS`. Output-length ceiling `max_tokens=1024` added after reproducible RED→GREEN. Evidence SHA of full log `43adb4d5da2cece07297c0017026aa257c21c82d78d1e643e354022371c29229`, canonical candidate record `docs/evidence/RC_PROVIDER_COMMAND_ADAPTER_20261013.md`. Source-review/publish and actual-provider/native Emad qualifications remain OPEN. Do not promote stable or enable autonomous runner.
+
+
+### 2026-10-13 — MMZ Linux specialization, candidate gate
+
+**Previous accepted → current delta:** immutable Core v0.10.20 on `mmz-LOQ-15IRX9` unchanged. Installed external Agent Extension `linux-local-ai-provider` (new count 11 valid/0 invalid) and developed an optional Linux-only Qwen3 local launcher in isolated branch `feature/provider-command-adapter-20261013`; no model/runtime installed, no extra service/listener, no runner auto-execution enabled. Windows/Emad scope deferred by explicit user request.
+
+**Completed with evidence:** refreshed host hardware/OS/GPU checks (Ubuntu 26.04.1, RTX 4050 6 GiB, 16 GB RAM), pinned upstream Ollama v0.40.3 and official Qwen Q4_K_M hashes; local launcher RED→GREEN, targeted 12/12; post-change `npm run check`, `npm test`, `npm run audit` all PASS. Log SHA `abb570a8089e63fd6b6b75cb9d00166e47d36d7a4417e730cb19a0e501d6b0e2`. Detailed record `docs/evidence/RC_MMZ_LINUX_LOCAL_AI_20261013.md`; decisions and external skill provenance in `docs/PROJECT_KNOWLEDGE_EVIDENCE.md`.
+
+**← CURRENT / critical path:** SOURCE QUALIFIED + LOCAL SKILL REGISTERED, LIVE INFERENCE MISSING. Registry.ollama.ai timed out, while Hugging Face official GGUF supports byte-range GET; do not silently substitute unverifiable model files. Next exact action: when download+checksum can be completed, user-owned pinned runtime/model import, GPU live benchmark and opt-in isolated Commander proposal test. No percentage assigned. Brain status for candidate **INCOMPLETE**, older historical "CURRENT" entries remain superseded.
