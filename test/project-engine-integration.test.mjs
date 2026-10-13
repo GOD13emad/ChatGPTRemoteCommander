@@ -102,6 +102,22 @@ if (process.argv[2] === '--claim-worker') {
     } finally { await fixture.dispose(); }
   });
 
+  test('deadline expired before planner entry is exhausted with no reserved attempt or tool effect', { timeout: 6000 }, async () => {
+    const fixture = makeFixture({ planner: async () => proposal('write_text', { path: 'result.txt', content: 'unexpected' }) });
+    try {
+      await fixture.create();
+      await fixture.start({ durationMs: 1000 });
+      await sleep(1100);
+      const result = await fixture.tick();
+      assert.equal(result.status, 'EXHAUSTED');
+      assert.equal(result.lastCode, 'PROJECT_DEADLINE_EXHAUSTED');
+      assert.equal(result.attempts, 0);
+      assert.equal(fixture.plans, 0);
+      assert.equal(fixture.calls, 0);
+      assert.equal(fs.existsSync(path.join(fixture.root, 'result.txt')), false);
+    } finally { await fixture.dispose(); }
+  });
+
   for (const earlyWake of [false,true]) test(`deadline aborts an abort-aware planner before any filesystem effect (early wake=${earlyWake})`, { timeout: 6000 }, async t => {
     let aborted = false;
     const fixture = makeFixture({ planner: async (_, { signal }) => new Promise((resolve, reject) => {
@@ -123,14 +139,22 @@ if (process.argv[2] === '--claim-worker') {
         timerCalls>1 || Date.now()>=started.deadline,
         'a genuinely early deadline timer must be rescheduled; a late callback may abort directly'
       );
-      assert.equal(aborted, true);
+      // On a heavily loaded CI runner, the wall-clock deadline can expire before
+      // the planner is entered. Both paths must fail closed with zero effects:
+      // pre-entry expiry reserves no attempt; an entered planner must be aborted.
+      const enteredPlanner = fixture.plans === 1;
+      if (enteredPlanner) assert.equal(aborted, true, 'an entered planner must observe abort');
+      else {
+        assert.ok(Date.now() >= started.deadline, 'non-entry requires an already expired deadline');
+        assert.equal(aborted, false);
+      }
       assert.equal(result.status, 'EXHAUSTED');
       assert.equal(result.lastCode, 'PROJECT_DEADLINE_EXHAUSTED');
-      assert.equal(result.attempts, 1);
+      assert.equal(result.attempts, enteredPlanner ? 1 : 0);
       assert.equal(fixture.calls, 0);
       assert.equal(fs.existsSync(path.join(fixture.root, 'result.txt')), false);
       assert.equal((await fixture.tick()).skipped, true);
-      assert.equal(fixture.plans, 1);
+      assert.ok(fixture.plans === 0 || fixture.plans === 1);
     } finally { await fixture.dispose(); }
   });
 

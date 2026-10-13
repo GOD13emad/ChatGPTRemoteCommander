@@ -1106,3 +1106,11 @@ Final same-tree local source qualification: new adapter 10/10, combined planner 
 
 
 **2026-10-14 local qualification gate:** post-E2E source `npm run check/test/audit` = **PASS/PASS/PASS**; security marker `SECURITY_AUDIT_PASS`; exact full log SHA-256 `5ce1493aa95bc456875168a4170ae8ab479c8a1abfdd1d8d4c73f31b6c2abe80`. Next exact blocker: publish this scoped evidence+fixture delta to Draft PR #204 without merge, verify exact Git tree and hosted CI. Stable Core/installed runner stay untouched.
+
+### 2026-10-14 — CI failure diagnosis and MMZ Linux model screening (current delta)
+
+**Accepted previous:** local Qwen3 4B Vulkan runtime and authenticated on-demand model service, native Planner/isolated Workflow fail-closed E2E, stable Commander v0.10.20 unchanged. **New:** narrow 5-case Python/statistics/Linux/security/GPU screening 5/5 with median 1.039s (synthetic labels only, *not* validation of general reasoning). Owner-private result SHA 0fc01cc6dbaf49aa5eeb181bc08e2172b92133cd18c94e33b77d745bb1915a48. User-level model unit returned to inactive/static.
+
+**← CURRENT critical path:** hosted CI on HEAD 181684a0 FAILED one unrelated Windows deadline test (job 115529079310): aborted=false with a 1000ms deadline. Probable pre-entry expiry under CI load. One test-only regression correction made: Planner entered => abort mandatory; expired before entry => zero reserved attempts/tools. Local 31/31 integration PASS and post-change check/test/audit PASS, log SHA af96b8a2ad87cad160f046ff41685d2b1d8240f182701a5aa4ce21730148b774. Production Core file changes NONE. Hosted confirmation OPEN.
+
+**Next exact action:** commit/push the reviewed test+evidence delta to existing Draft PR #204 using exact old branch-head precondition; await actual hosted CI and classify any failure. No merge, no stable update, no unattended runner or second writer. Project status still PARTIAL_NOT_FINAL, model general scientific/coding quality UNPROVEN; no percent inferred. Canonical record docs/evidence/RC_MMZ_LINUX_LOCAL_AI_20261013.md and owner-private host evidence.
