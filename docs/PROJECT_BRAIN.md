@@ -1056,3 +1056,14 @@ Remote Commander Browser v0.8.0 is published non-draft/non-prerelease and immuta
 The single-blocker Linux tunnel-readiness fix is carried forward as a separate release-identity revision. v0.10.17 remains immutable and is not rewritten. Current candidate identity is v0.10.18; Browser dependency remains immutable stable v0.8.0 with its existing exact hash pin.
 
 **Gate:** release-identity focused contracts, then exact-head full Windows/Linux and hosted qualification. No live v0.10.18 mutation is accepted before those gates.
+
+
+## R1 — 2026-10-13 — Linux delivery acceptance guard (current local candidate)
+
+**Previous accepted authority:** immutable Core `v0.10.20` (`362375c`) on `mmz-LOQ-15IRX9`; development `v0.10.21` cloned at `fac2797`. Earlier historical CURRENT sections remain provenance, not promotion instructions.
+
+**Current delta:** scoped Doctor diagnostic and optional `--require-same-chat-delivery` fail-closed test in isolated `RC_DELIVERY_TASKS_R1_20261013`; no changes to stable running runtime or queue. 28/28 related automated tests PASS; security and installer checks PASS. Core doctor PASS / actual same-chat delivery BLOCKED due queue-only host and no authenticated principal/wake. OpenAI's eligible Work-only MCP Events webhook route is the evidence-based candidate; generic MCP Tasks polling is client-driven and is not spontaneous ChatGPT notification.
+
+**Roadmap ← CURRENT:** [accepted Core baseline] → [MCP2 task/queue healthy] → **[CURRENT: fail-closed diagnostic proof]** → [auth/ownership boundary + safe callback contract] → [MCP Events signed subscription implementation] → [real Work callback/chat event/ACK canary] → [hosted Windows/Linux checks + rollback] → [eligible release promotion]. Completion of these latter gates is UNPROVEN. Exact next action: validate account/workspace MCP Events eligibility and authenticated principal mapping; do not push raw task artifacts to user-selected callback based on trusted-profile routing alone.
+
+**Knowledge:** same-date section in `docs/PROJECT_KNOWLEDGE_EVIDENCE.md`; official sources there. **Brain status:** CURRENT for this isolated candidate; not a multi-product final state.
