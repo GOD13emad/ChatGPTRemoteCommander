@@ -18,3 +18,7 @@ Release requires new exact-version Windows/Linux hosted CI, server/installer can
 - No reboot, shutdown or logout is performed by this patch.
 
 See `docs/RELEASE_AUTHORITY.md` for dated released-baseline authority; older historical Brain and roadmap "CURRENT" labels are preserved as history.
+
+## Windows installer: UNSIGNED — explicit distribution limitation
+
+Windows installer: UNSIGNED. No trusted Authenticode publisher certificate is available for this version. Windows Defender SmartScreen or Smart App Control may warn or block execution. Do not disable or bypass those protections. Before considering the downloaded file, verify its SHA-256 against the immutable GitHub Release SHA256SUMS.txt and verify the GitHub attestation tied to the official repository, release tag and build workflow (see docs/UNSIGNED_WINDOWS_RELEASE_POLICY.md). A GitHub attestation proves build provenance, not OS publisher trust, software harmlessness or compatibility. Production unattended auto-update must not treat an unsigned release as equivalent to an Authenticode-signed release.

@@ -1,0 +1,10 @@
+{
+  "schema": "commander-unsigned-windows-release-v1",
+  "version": "0.10.21",
+  "tag": "v0.10.21",
+  "allowUnsignedWithGitHubAttestation": true,
+  "scope": "only-this-version",
+  "publishedInstallerSignature": "NotSigned",
+  "verification": "GitHub Sigstore build provenance + exact source tag/commit + SHA256SUMS.txt",
+  "riskAcknowledgement": "Unsigned Windows executable; SmartScreen or Smart App Control may warn or block; SHA256 and provenance do not replace Authenticode."
+}
