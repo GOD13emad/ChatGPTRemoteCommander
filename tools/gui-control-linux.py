@@ -279,8 +279,15 @@ def move_to(req, rd, target, deadline):
 
 def handle_input(req):
     deadline=time.monotonic()+OPERATION_TIMEOUT_S
-    observed=guard(req,deadline)
     action=req.get('action')
+    try:
+        observed=guard(req,deadline)
+    except GuiFailure as e:
+        # The GNOME snapshot guard runs before MutterInput and any pointer/keyboard dispatch.
+        # This receipt is limited to the exact click guard rejection, never an effectful failure.
+        if action=='click' and e.code=='GUI_FOREGROUND_OR_GEOMETRY_CHANGED':
+            return {'ok':False,'error':e.code,'effect':'NOT_APPLIED','phase':'PRE_DISPATCH_GUARD'}
+        raise
     with MutterInput(req,deadline) as rd:
         if action=='move': move_to(req,rd,point(req,observed),deadline); return {'ok':True,'backend':'mutter-remote-desktop'}
         if action=='moveRelative': rd.move(req['dx'],req['dy']); return {'ok':True,'backend':'mutter-remote-desktop'}
