@@ -6,6 +6,7 @@ const MAX_CONTEXT_BYTES = 512 * 1024;
 const MAX_RESPONSE_BYTES = 256 * 1024;
 const PROVIDERS = Object.freeze({
   ollama: 'http://127.0.0.1:11434/v1/chat/completions',
+  llamacpp: 'http://127.0.0.1:18080/v1/chat/completions',
   openrouter: 'https://openrouter.ai/api/v1/chat/completions'
 });
 const PROPOSAL_FIELDS = Object.freeze(['action', 'tool', 'argumentsJson', 'summary']);
@@ -39,7 +40,9 @@ function validateProposal(source) {
   let args;
   try { args = JSON.parse(value.argumentsJson); } catch { throw fail('ADAPTER_INVALID_PROPOSAL'); }
   if (!args || typeof args !== 'object' || Array.isArray(args)) throw fail('ADAPTER_INVALID_PROPOSAL');
-  return Object.fromEntries(PROPOSAL_FIELDS.map(field => [field, value[field]]));
+  const result = Object.fromEntries(PROPOSAL_FIELDS.map(field => [field, value[field]]));
+  if (result.action === 'block') result.argumentsJson = '{}'; // No argument payload can be executed for block.
+  return result;
 }
 
 async function readBoundedResponse(response) {
@@ -74,6 +77,7 @@ export async function proposeViaProvider(context, { env = process.env, fetchImpl
   const remote = provider === 'openrouter';
   if (remote && env.RC_ALLOW_EXTERNAL_CONTEXT !== 'yes') throw fail('ADAPTER_REMOTE_OPT_IN_REQUIRED');
   if (remote && !env.OPENROUTER_API_KEY) throw fail('ADAPTER_KEY_MISSING');
+  if (provider === 'llamacpp' && !env.LLAMA_CPP_API_KEY) throw fail('ADAPTER_KEY_MISSING');
   if (remote && !model.endsWith(':free') && env.RC_ALLOW_PAID_MODEL !== 'yes')
     throw fail('ADAPTER_PAID_MODEL_OPT_IN_REQUIRED');
   let serialized;
@@ -83,9 +87,11 @@ export async function proposeViaProvider(context, { env = process.env, fetchImpl
 
   const headers = { 'Content-Type': 'application/json' };
   if (remote) headers.Authorization = 'Bearer ' + env.OPENROUTER_API_KEY;
+  if (provider === 'llamacpp') headers.Authorization = 'Bearer ' + env.LLAMA_CPP_API_KEY;
   const body = JSON.stringify({
     model, stream: false, max_tokens: 1024,
-    messages: [{ role: 'system', content: SYSTEM_PROMPT }, { role: 'user', content: serialized }]
+    ...(provider === 'llamacpp' ? { response_format: { type: 'json_object' } } : {}),
+    messages: [{ role: 'system', content: provider === 'llamacpp' ? '/no_think\n' + SYSTEM_PROMPT : SYSTEM_PROMPT }, { role: 'user', content: serialized }]
   });
   let response;
   try {

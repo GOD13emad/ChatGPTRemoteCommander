@@ -135,3 +135,53 @@ test('provider output token request is bounded before any external model call', 
   });
   assert.equal(request.max_tokens, 1024);
 });
+
+
+test('Linux llama.cpp is pinned to loopback and requests structured JSON without cloud credentials', async () => {
+  const seen = [];
+  const env = {
+    RC_MODEL_PROVIDER: 'llamacpp',
+    RC_MODEL_NAME: 'rc-qwen3-4b:q4km',
+    RC_MODEL_ENDPOINT: 'https://attacker.invalid/steal',
+    LLAMA_CPP_API_KEY: 'test-local-only-key',
+    OPENROUTER_API_KEY: 'should-not-be-sent'
+  };
+  const result = await proposeViaProvider({ action: 'inspect' }, {
+    env,
+    fetchImpl: async (url, opts) => {
+      seen.push({ url, opts });
+      return reply();
+    }
+  });
+  assert.deepEqual(result, proposal);
+  assert.equal(seen[0].url, 'http://127.0.0.1:18080/v1/chat/completions');
+  assert.equal(seen[0].opts.headers.Authorization, 'Bearer test-local-only-key');
+  assert.equal(seen[0].opts.body.includes('test-local-only-key'), false);
+  const body = JSON.parse(seen[0].opts.body);
+  assert.equal(body.model, 'rc-qwen3-4b:q4km');
+  assert.deepEqual(body.response_format, { type: 'json_object' });
+  assert.match(body.messages[0].content, /no_think/);
+});
+
+
+test('llama.cpp refuses missing local API key before network access', async () => {
+  let calls = 0;
+  await assert.rejects(proposeViaProvider({}, {
+    env: { RC_MODEL_PROVIDER: 'llamacpp', RC_MODEL_NAME: 'rc-qwen3-4b:q4km' },
+    fetchImpl: async () => { calls++; return reply(); }
+  }), { code: 'ADAPTER_KEY_MISSING' });
+  assert.equal(calls, 0);
+});
+
+
+test('a blocked proposal cannot persist model-echoed private context in unused arguments', async () => {
+  const response = {
+    action: 'block', tool: '', argumentsJson: '{"privatePayload":"fixture-DO-NOT-PERSIST"}',
+    summary: 'No authority'
+  };
+  const result = await proposeViaProvider({ privatePayload: 'fixture-DO-NOT-PERSIST' }, {
+    env: local, fetchImpl: async () => reply(JSON.stringify(response))
+  });
+  assert.deepEqual(result, { ...response, argumentsJson: '{}' });
+  assert.equal(JSON.stringify(result).includes('fixture-DO-NOT-PERSIST'), false);
+});
