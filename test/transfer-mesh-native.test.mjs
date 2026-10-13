@@ -67,3 +67,16 @@ test('failed config and blocked symlink path',async(t)=>{
   await assert.rejects(a.tools.execute('transfer_mesh_send',{peer:'Linux',path:sym,id:'native-004'}),/TRANSFER_SYMLINK_DENIED/);
  });
 });
+
+test('synchronous send obeys source size limit even when durable backend is disabled',async()=>{
+ await fixture(async(a)=>{
+  const file=path.join(a.src,'too-large.dat');
+  fs.writeFileSync(file,Buffer.alloc(4096,0x51));
+  const tools=createTransferMeshTools({config:{powerMode:{enabled:true},transferMesh:{
+   enabled:true,durableEnabled:false,root:a.root,sourceRoots:[a.src],destinationRoots:[a.dest],
+   maxSourceBytes:1024,maxPendingBytes:8192,maxActiveJobs:1
+  }}});
+  await assert.rejects(tools.execute('transfer_mesh_send',{peer:'Linux',path:file,id:'synchronous-quota-001'}),/TRANSFER_SOURCE_SIZE_QUOTA/);
+  assert.equal(fs.existsSync(path.join(a.root,'pairs','Linux','transfers','synchronous-quota-001')),false);
+ });
+});

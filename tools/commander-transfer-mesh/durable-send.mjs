@@ -38,7 +38,7 @@ function atomicRename(from,to){
 function save(p,record){
  if(fs.existsSync(p.record) && !['PUBLISHED','CANCELLED','CANCEL_REQUESTED'].includes(record.status)){
   const last=recordRead(p);
-  if(['CANCEL_REQUESTED','CANCELLED'].includes(last.status))record.status='CANCEL_REQUESTED';
+  if(['CANCEL_REQUESTED','CANCELLED'].includes(last.status) && !(record.status==='INTERRUPTED' && record.errorCode==='PUBLISH_RECOVERY_REQUIRED'))record.status='CANCEL_REQUESTED';
  }
  const tmp=p.record+'.'+process.pid+'.'+crypto.randomUUID()+'.tmp';
  fs.writeFileSync(tmp,JSON.stringify(record)+'\n',{flag:'wx',mode:0o600});
@@ -144,9 +144,12 @@ function copyJob(p,j){
  checkInput(j);
  const recent=recordRead(p);
  if(['CANCEL_REQUESTED','CANCELLED'].includes(recent.status)){j.status='CANCELLED';save(p,j);return;}
- noExistingArtifact(p);
  fs.mkdirSync(path.dirname(p.destination),{recursive:true});
- fs.mkdirSync(p.destination,{recursive:false});
+ if(fs.existsSync(p.destination)){
+  const entry=fs.lstatSync(p.destination);
+  assertion(entry.isDirectory()&&!entry.isSymbolicLink(),'TRANSFER_PUBLICATION_PATH_UNSAFE');
+  assertion(fs.readdirSync(p.destination).length===0,'TRANSFER_ALREADY_PUBLISHED');
+ }else fs.mkdirSync(p.destination,{recursive:false});
  const payload=path.join(p.destination,'payload.bin');
  atomicRename(p.part,payload);
  const manifest={schema:'ctmesh-v1',id:j.id,from:j.from,to:j.peer,name:j.name,bytes:j.bytes,sha256:sourceSha,createdAt:j.createdAt};
@@ -167,6 +170,9 @@ function worker(p){
 function inspect(p){
  const j=recordRead(p);
  if(j.status==='CANCEL_REQUESTED' && !running(j.pid)){
+  if(fs.existsSync(path.join(p.destination,'payload.bin'))){
+   j.status='INTERRUPTED';j.errorCode='PUBLISH_RECOVERY_REQUIRED';save(p,j);return j;
+  }
   j.status='CANCELLED';save(p,j);
   return j;
  }
@@ -181,6 +187,10 @@ function inspect(p){
  return j;
 }
 try{
+ if(command==='capabilities'){
+  reply({schema:'ctmesh-durable-v1',contractVersion:2,admissionQuotas:true,
+    supports:['enqueue','job-status','resume','cancel'],workerPersistence:true,hashVerification:'sha256'});
+ }else{
  const peer=opt('peer'),id=opt('id'),p=safePaths(peer,id);
  if(command==='enqueue'){
   const source=opt('path'),sourceRoot=opt('source-root');
@@ -224,7 +234,9 @@ try{
  }else if(command==='cancel'){
   const j=inspect(p);
   assertion(!['PUBLISHED','CANCELLED'].includes(j.status),'ALREADY_TERMINAL');
+  assertion(!fs.existsSync(path.join(p.destination,'payload.bin')),'TRANSFER_PUBLISHED_RECOVERY_REQUIRED');
   j.status=j.status==='COPYING'||j.status==='VERIFYING'?'CANCEL_REQUESTED':'CANCELLED';
   save(p,j);reply(summary(j));
  }else{throw Error('UNKNOWN_COMMAND');}
+ }
 }catch(e){console.error('CTMESH_DURABLE_ERROR:'+String(e.message||e));process.exitCode=1;}

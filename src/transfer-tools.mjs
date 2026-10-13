@@ -1,7 +1,7 @@
 import os from 'node:os';
 import path from 'node:path';
 import fs from 'node:fs';
-import { execFile } from 'node:child_process';
+import { execFile, execFileSync } from 'node:child_process';
 import { promisify } from 'node:util';
 
 const execFileAsync = promisify(execFile);
@@ -73,6 +73,21 @@ export function createTransferMeshTools({ config = {} } = {}) {
   const durableEnabled = policy.durableEnabled === true;
   const durableCli = durableEnabled ? canonicalExisting(path.join(root,'durable-send.mjs')) : null;
   if(durableEnabled && (!within(durableCli,root) || !fs.lstatSync(durableCli).isFile() || fs.lstatSync(durableCli).isSymbolicLink())) throw new Error('TRANSFER_DURABLE_CLI_INVALID');
+  if(durableEnabled) {
+    // Fail closed on mixed R07 Core / older R06 Portable CLI. Older CLI ignores unknown --max-* flags.
+    let capability;
+    try {
+      const result=execFileSync(process.execPath,[durableCli,'capabilities'],{
+        timeout:3500,maxBuffer:8192,windowsHide:true,
+        env:{...process.env,COMMANDER_TRANSFER_HOME:root},encoding:'utf8'
+      });
+      capability=JSON.parse(result.trim());
+    }catch{throw new Error('TRANSFER_DURABLE_BACKEND_INCOMPATIBLE');}
+    if(capability.schema!=='ctmesh-durable-v1'||capability.contractVersion!==2||
+      capability.admissionQuotas!==true||
+      !['enqueue','job-status','resume','cancel'].every(n=>capability.supports?.includes(n)))
+      throw new Error('TRANSFER_DURABLE_BACKEND_INCOMPATIBLE');
+  }
   const definitions = [...transferMeshToolDefinitions, ...(durableEnabled?durableNames:[])];
   const spawnEnv = { ...process.env, COMMANDER_TRANSFER_HOME: root };
   async function execute(name, args = {}) {
@@ -84,6 +99,7 @@ export function createTransferMeshTools({ config = {} } = {}) {
     if (name === 'transfer_mesh_send') {
       if (!PEERS.includes(args.peer) || !ID_PATTERN.test(args.id)) throw new Error('TRANSFER_ARGS_INVALID');
       const file = allowedPath(args.path, policy.sourceRoots, 'file');
+      if (fs.statSync(file).size > limits.maxSourceBytes) throw new Error('TRANSFER_SOURCE_SIZE_QUOTA');
       cmd = ['send','--peer',args.peer,'--path',file,'--id',args.id];
     }
     if (name === 'transfer_mesh_status') {

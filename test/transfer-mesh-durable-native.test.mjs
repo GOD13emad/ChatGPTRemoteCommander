@@ -71,3 +71,34 @@ test('native durable admission respects per-device explicit maxSourceBytes',asyn
   assert.equal(fs.existsSync(path.join(root,'jobs','Linux','denied-oversized-001.json')),false);
  }finally{fs.rmSync(root,{recursive:true,force:true,maxRetries:10,retryDelay:100});}
 });
+
+test('native Core rejects mixed-version older durable CLI that cannot enforce quotas',()=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'rc-durable-compat-'));
+ try{
+  fs.copyFileSync(path.join(from,'pilot-cli.mjs'),path.join(root,'transfer.mjs'));
+  fs.writeFileSync(path.join(root,'durable-send.mjs'),"console.log(JSON.stringify({schema:'ctmesh-durable-v1',contractVersion:1,admissionQuotas:false,supports:['enqueue']}));\n");
+  fs.writeFileSync(path.join(root,'node.json'),JSON.stringify({alias:'PC'}));
+  assert.throws(()=>createTransferMeshTools({config:{powerMode:{enabled:true},transferMesh:{
+    enabled:true,durableEnabled:true,root,sourceRoots:[root],destinationRoots:[root],
+    maxSourceBytes:1024,maxPendingBytes:8192,maxActiveJobs:1
+  }}}),/TRANSFER_DURABLE_BACKEND_INCOMPATIBLE/);
+  const fallback=createTransferMeshTools({config:{powerMode:{enabled:true},transferMesh:{
+    enabled:true,durableEnabled:false,root,sourceRoots:[root],destinationRoots:[root]
+  }}});
+  assert.equal(fallback.definitions.length,4);
+  assert.equal(fs.existsSync(path.join(root,'jobs')),false);
+ }finally{fs.rmSync(root,{recursive:true,force:true});}
+});
+test('durable CLI explicitly identifies its quota contract',()=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'rc-durable-contract-'));
+ try{
+  fs.copyFileSync(path.join(from,'pilot-cli.mjs'),path.join(root,'transfer.mjs'));
+  fs.copyFileSync(path.join(from,'durable-send.mjs'),path.join(root,'durable-send.mjs'));
+  fs.writeFileSync(path.join(root,'node.json'),JSON.stringify({alias:'PC'}));
+  const instance=createTransferMeshTools({config:{powerMode:{enabled:true},transferMesh:{
+    enabled:true,durableEnabled:true,root,sourceRoots:[root],destinationRoots:[root],
+    maxSourceBytes:1024,maxPendingBytes:8192,maxActiveJobs:1
+  }}});
+  assert.equal(instance.definitions.length,8);
+ }finally{fs.rmSync(root,{recursive:true,force:true});}
+});
