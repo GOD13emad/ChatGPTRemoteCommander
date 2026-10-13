@@ -1094,3 +1094,15 @@ Final same-tree local source qualification: new adapter 10/10, combined planner 
 **Risk and failure closure:** parent terminal stop once left an owned descendant; PID/PGID checked before targeted termination, superseded by reliable user-systemd lifecycle (static/inactive). Invalid/echoed block argument payload reproduced and sanitized to `{}`. Service key itself never stored here. Final source suite raw-log SHA-256 `bbb0756508d9580508ce80640d02819069f532c81f8ccedcc5c031215711c3fc`; exact technical evidence `docs/evidence/RC_MMZ_LINUX_LOCAL_AI_20261013.md`; private device/service record remains EXTERNAL in protected local storage.
 
 **Open gates:** optional runner enrollment and independent acceptance, exact hosted CI after patch, model quality/latency/scientific comparisons, and explicit release decision. **Status: CURRENT milestone / PROJECT NOT FINAL**. Do not auto-enable GPU service or promote Core.
+
+
+### 2026-10-14 — MMZ native Planner→Workflow E2E; evidence-backed milestone
+
+**Previous accepted → current delta:** Previous proof covered authenticated llama.cpp/Qwen3-4B model response and CLI proposal. Two independent real-model checks now cover the *native Commander* Project Planner and *isolated* Project Engine Workflow run. `NATIVE_COMMAND_PLANNER_BLOCK_PASS` and `NATIVE_WORKFLOW_FAIL_CLOSED_PASS` repeated with exit 0. Workflow result `BLOCKED`, code `PROJECT_PLANNER_BLOCKED`, dispatchedTools=0, no false proof, temp state removed; max one planner call, no automatic scheduler. Log SHA `67375788c7c13a42d7815e6cffea833705f748a6711a4251893aaaa35c739da9`.
+
+**Roadmap ← CURRENT:** host/hardware audit PASS → pinned local runtime + model SHA PASS → Vulkan GPU live PASS → loopback/auth PASS → CLI proposal PASS → user-service lifecycle PASS → isolated native Planner E2E PASS → isolated Project Engine fail-closed E2E PASS → **NOW: exact-source qualification, draft PR synchronization/CI, model benchmark design** → later owner-authorized real workflow/independent acceptance, release gate. No unsupported percentage. Source detail `docs/evidence/RC_MMZ_LINUX_LOCAL_AI_20261013.md`; private service record external, credential omitted.
+
+**State/authority:** Stable installed Core v0.10.20 UNCHANGED; selected user-model systemd unit static/inactive, no port listener; runnerConfigured=false/automaticExecution=false. Candidate remains in one Linux branch, not promoted to Stable. **Open gates:** hosted CI on new diff, broader quality and context benchmarks, production root-sensitive runner enrollment and user-approved promotion. Project Brain current for this E2E milestone only, global FINAL remains UNPROVEN.
+
+
+**2026-10-14 local qualification gate:** post-E2E source `npm run check/test/audit` = **PASS/PASS/PASS**; security marker `SECURITY_AUDIT_PASS`; exact full log SHA-256 `5ce1493aa95bc456875168a4170ae8ab479c8a1abfdd1d8d4c73f31b6c2abe80`. Next exact blocker: publish this scoped evidence+fixture delta to Draft PR #204 without merge, verify exact Git tree and hosted CI. Stable Core/installed runner stay untouched.
