@@ -1082,3 +1082,9 @@ The single-blocker Linux tunnel-readiness fix is carried forward as a separate r
 - **Evidence:** full rationale/official sources and test provenance in cumulative `docs/PROJECT_KNOWLEDGE_EVIDENCE.md` R3. New source local only until fresh full regression/CI. Project state `DEVELOPMENT-CANDIDATE / INTEGRATION-BLOCKED`, not Final. Exact next action: finish exact-source full check/test/audit, commit and Draft PR update; then resolve external IdP/ACL/Work owner acceptance before wiring G0.
 
 - **R3 verification promotion:** full isolated `npm run check`, `npm test`, `npm run audit` all PASS exit 0 after policy module; only source-level candidate, no identity integration and no live Work receipt. Next exact action: commit/push for Draft PR #199, obtain hosted Win/Linux exact-head qualification; do not promote running Stable.
+
+
+### 2026-10-13 — R23 token-expiry TOCTOU guard (candidate)
+- Current source-only mutation objective: do not authorize a Work event if an OAuth token expires during the awaited project ACL check. New deterministic expiry regression RED before change, GREEN (6/6) afterward; simple clock recheck in `src/work-events-policy.mjs` without new production npm dependencies or runtime Events exposure.
+- Existing stable Core v0.10.20 unchanged; no change to custom extensions, Browser, or any durable completion records. Prior G0 policy `2917af1` remains accepted branch history; fresh full check/test/audit each PASS (exit 0); commit and hosted exact-head CI still pending at the time of this record.
+- Roadmap ←CURRENT: [Core/10 skills audited] → [G0 policy guard and TDD PASS] → [exact-source full test/CI OPEN] → **[real OAuth IdP/owner ACL/Work subscription MISSING]** → [signed callback and observed Work reply] → [all-host promotion]. R23 full rationale in Knowledge Evidence. Next safe step: finish qualification before source promotion; no auto-merge.

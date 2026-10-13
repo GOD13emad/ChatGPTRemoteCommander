@@ -73,3 +73,17 @@ test('malformed project IDs and missing verifier/ACL source fail closed', async 
     await assert.rejects(gate({ accessToken: 'fixture-token', projectId }), /forbidden|invalid/i);
   }
 });
+
+test('a token expiring during asynchronous project ACL lookup is never accepted', async () => {
+  const expiry = Math.floor(Date.now() / 1000) + 3600;
+  let simulatedNow = expiry - 5;
+  let aclCalls = 0;
+  const gate = createWorkEventAuthorizer({
+    issuer, resource,
+    nowEpochSeconds: () => simulatedNow,
+    verifyAccessToken: async () => ({ ...goodClaims(), expiresAt: expiry }),
+    resolveProjectAccess: async () => { aclCalls++; simulatedNow = expiry + 1; return project; }
+  });
+  await assert.rejects(gate({ accessToken: 'opaque-valid-verified-by-idp', projectId: 'project-alpha' }), /unauthorized/i);
+  assert.equal(aclCalls, 1);
+});
