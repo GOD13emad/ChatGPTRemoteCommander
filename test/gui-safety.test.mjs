@@ -200,6 +200,73 @@ test('uncertain native outcome suspends further GUI actions; no blind retry', as
   await assert.rejects(s.run('gui_screenshot',{lease:a.lease}),/GUI_OUTCOME_UNCERTAIN/);
   assert.equal((await s.run('gui_status')).uncertain,true);assert.equal(count,3);
 });
+
+test('Linux attested pre-dispatch click rejection preserves no-effect without replaying input',async()=>{
+  let clicks=0;
+  const s=setup({platform:'linux',invoke:async r=>{
+    if(r.action==='status')return {ok:true,available:true};
+    if(r.action==='screenshot')return image();
+    if(r.action==='click'){clicks++;throw Object.assign(new Error('GUI_FOREGROUND_OR_GEOMETRY_CHANGED'),{guiCode:'GUI_FOREGROUND_OR_GEOMETRY_CHANGED',guiNotApplied:true});}
+    return {ok:true};
+  }});
+  const a=await prepared(s);
+  await assert.rejects(s.run('gui_mouse_click',{...a,x:-720,y:10}),/GUI_FOREGROUND_OR_GEOMETRY_CHANGED/);
+  assert.notEqual((await s.run('gui_status')).uncertain,true);
+  await assert.rejects(s.run('gui_screenshot',{lease:a.lease}),/GUI_LEASE_REQUIRED_OR_EXPIRED/);
+  const next=await s.run('gui_session_begin',{mode:'observe'});
+  const fresh=await s.run('gui_screenshot',{lease:next.lease});
+  assert.ok(fresh.__structuredContent.frame);
+  assert.equal(clicks,1);
+  await s.run('gui_session_end',{lease:next.lease});
+});
+
+for(const [platform,tool,code,attested] of [
+  ['win32','gui_focus_window','GUI_FOCUS_NOT_CONFIRMED',true],
+  ['linux','gui_mouse_click','GUI_FOREGROUND_OR_GEOMETRY_CHANGED',false],
+  ['linux','gui_key_press','GUI_FOREGROUND_OR_GEOMETRY_CHANGED',true],
+  ['linux','gui_mouse_click','GUI_SENDINPUT_FAILED',true]
+])test('unknown input is still fail-closed on '+platform+'/'+tool+'/'+code+'/'+attested,async()=>{
+  const s=setup({platform,invoke:async r=>{
+    if(r.action==='status')return {ok:true,available:true};
+    if(r.action==='screenshot')return image();
+    throw Object.assign(new Error(code),{guiCode:code,guiNotApplied:attested});
+  }});
+  const a=await prepared(s);
+  const args=tool==='gui_focus_window'?{...a,handle:'123'}:tool==='gui_key_press'?{...a,keys:['A']}:{...a,x:-750,y:5};
+  await assert.rejects(s.run(tool,args),/GUI_/);
+  assert.equal((await s.run('gui_status')).uncertain,true);
+  await assert.rejects(s.run('gui_session_begin',{mode:'observe'}),/GUI_OUTCOME_UNCERTAIN/);
+});
+
+test('Linux native no-effect attestation occurs before MutterInput dispatch',async()=>{
+  const source=await fs.readFile(new URL('../tools/gui-control-linux.py',import.meta.url),'utf8');
+  const begin=source.indexOf('def handle_input(req):');
+  const end=source.indexOf('\ndef ',begin+1);
+  assert.ok(begin>=0&&end>begin);
+  const body=source.slice(begin,end);
+  assert.ok(body.includes("if action=='click' and e.code=='GUI_FOREGROUND_OR_GEOMETRY_CHANGED'"));
+  assert.ok(body.includes("'effect':'NOT_APPLIED','phase':'PRE_DISPATCH_GUARD'"));
+  assert.ok(body.indexOf('observed=guard(req,deadline)')<body.indexOf('with MutterInput(req,deadline)'));
+});
+
+test('persistent helper propagates exact pre-dispatch no-effect receipt without auto retry',async()=>{
+  const folder=await fs.mkdtemp(path.join(os.tmpdir(),'rc-gui-noeffect-'));
+  let client;
+  try{
+    const helper=path.join(folder,'helper.cjs');
+    const source=[
+      "process.stdout.write(JSON.stringify({ok:true,ready:true,protocol:1})+'\\n');",
+      "let buf='';let count=0;process.stdin.setEncoding('utf8');",
+      "process.stdin.on('data',part=>{buf+=part;while(buf.includes('\\n')){const p=buf.indexOf('\\n');const line=buf.slice(0,p);buf=buf.slice(p+1);const req=JSON.parse(line);count++;const value=req.mode==='guard'?{ok:false,error:'GUI_FOREGROUND_OR_GEOMETRY_CHANGED',effect:'NOT_APPLIED',phase:'PRE_DISPATCH_GUARD'}:{ok:true,count};process.stdout.write(JSON.stringify(value)+'\\n');}});"
+    ].join('');
+    await fs.writeFile(helper,source);
+    client=createGuiProcessClient({file:process.execPath,args:[helper],startupTimeoutMs:2500,timeoutMs:2500});
+    await assert.rejects(client.invoke({mode:'guard'}),e=>e.guiCode==='GUI_FOREGROUND_OR_GEOMETRY_CHANGED'&&e.guiNotApplied===true);
+    const state=await client.invoke({mode:'status'});
+    assert.equal(state.ok,true);assert.equal(state.count,2);
+  }finally{client?.close();await fs.rm(folder,{recursive:true,force:true});}
+});
+
 test('concurrent GUI requests are rejected, not queued for stale execution', async () => {
   let unblock;
   const s=setup({invoke:r => r.action==='status' ? Promise.resolve({ok:true,available:true}) : new Promise(resolve=>{unblock=()=>resolve(image());})});

@@ -119,7 +119,11 @@ export function createGuiController({ platform = process.platform, now = () => p
       try { result = await invoke(request); }
       catch (error) {
         if (isInput) {
-          uncertain = true; // Unknown partial input: invalidate all coordination state before suspension.
+          // Exact Linux click pre-dispatch rejection only; all other effects remain unknown.
+          // Always revoke the frame and lease. Never automatically retry the click.
+          const provenNoEffect = platform === 'linux' && name === 'gui_mouse_click' &&
+            error?.guiCode === 'GUI_FOREGROUND_OR_GEOMETRY_CHANGED' && error?.guiNotApplied === true;
+          uncertain = !provenNoEffect;
           session = null; frame = null; closeInvoke();
         }
         throw error;
