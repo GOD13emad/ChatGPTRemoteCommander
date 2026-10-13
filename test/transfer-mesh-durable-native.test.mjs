@@ -51,3 +51,23 @@ test('durable tools remain hidden if configuration does not enable them',()=>{
   assert.equal(t.definitions.some(x=>x.name==='transfer_mesh_enqueue'),false);
  }finally{fs.rmSync(root,{recursive:true,force:true});}
 });
+
+test('native durable admission respects per-device explicit maxSourceBytes',async()=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'rc-durable-limit-'));
+ try{
+  fs.copyFileSync(path.join(from,'pilot-cli.mjs'),path.join(root,'transfer.mjs'));
+  fs.copyFileSync(path.join(from,'durable-send.mjs'),path.join(root,'durable-send.mjs'));
+  fs.writeFileSync(path.join(root,'node.json'),JSON.stringify({alias:'PC'}));
+  const allowed=path.join(root,'allowed'),dest=path.join(root,'inbox');
+  fs.mkdirSync(allowed);fs.mkdirSync(dest);
+  const large=path.join(allowed,'rejected.dat');fs.writeFileSync(large,Buffer.alloc(4096));
+  const tools=createTransferMeshTools({config:{powerMode:{enabled:true},transferMesh:{
+    enabled:true,durableEnabled:true,root,sourceRoots:[allowed],destinationRoots:[dest],
+    maxSourceBytes:1024,maxPendingBytes:8192,maxActiveJobs:1
+  }}});
+  await assert.rejects(tools.execute('transfer_mesh_enqueue',{
+    peer:'Linux',path:large,id:'denied-oversized-001'
+  }),/TRANSFER_SOURCE_SIZE_QUOTA/);
+  assert.equal(fs.existsSync(path.join(root,'jobs','Linux','denied-oversized-001.json')),false);
+ }finally{fs.rmSync(root,{recursive:true,force:true,maxRetries:10,retryDelay:100});}
+});

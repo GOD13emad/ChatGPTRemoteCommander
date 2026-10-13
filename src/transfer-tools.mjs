@@ -61,6 +61,15 @@ export function createTransferMeshTools({ config = {} } = {}) {
   const cli = canonicalExisting(path.join(root,'transfer.mjs'));
   const st = fs.lstatSync(cli);
   if (!st.isFile() || st.isSymbolicLink() || !within(cli,root)) throw new Error('TRANSFER_MESH_CLI_INVALID');
+  const limits = {
+    maxSourceBytes: policy.maxSourceBytes ?? 16 * 1024 ** 3,
+    maxPendingBytes: policy.maxPendingBytes ?? 64 * 1024 ** 3,
+    maxActiveJobs: policy.maxActiveJobs ?? 3
+  };
+  for (const [key,value] of Object.entries(limits)) {
+    if (!Number.isSafeInteger(value) || value < 1) throw new Error('TRANSFER_LIMIT_INVALID_' + key);
+  }
+  if (limits.maxSourceBytes > limits.maxPendingBytes) throw new Error('TRANSFER_LIMIT_INCONSISTENT');
   const durableEnabled = policy.durableEnabled === true;
   const durableCli = durableEnabled ? canonicalExisting(path.join(root,'durable-send.mjs')) : null;
   if(durableEnabled && (!within(durableCli,root) || !fs.lstatSync(durableCli).isFile() || fs.lstatSync(durableCli).isSymbolicLink())) throw new Error('TRANSFER_DURABLE_CLI_INVALID');
@@ -91,7 +100,9 @@ export function createTransferMeshTools({ config = {} } = {}) {
       const file=allowedPath(args.path,policy.sourceRoots,'file');
       const allowedRoot=policy.sourceRoots.map(canonicalExisting).find(rootPath=>within(file,rootPath));
       if(!allowedRoot)throw new Error('TRANSFER_PATH_NOT_ALLOWED');
-      cmd=['enqueue','--peer',args.peer,'--path',file,'--source-root',allowedRoot,'--id',args.id];
+      cmd=['enqueue','--peer',args.peer,'--path',file,'--source-root',allowedRoot,'--id',args.id,
+        '--max-source-bytes',String(limits.maxSourceBytes),'--max-pending-bytes',String(limits.maxPendingBytes),
+        '--max-active-jobs',String(limits.maxActiveJobs)];
     }
     if (name === 'transfer_mesh_job_status') {
       if (!PEERS.includes(args.peer) || !ID_PATTERN.test(args.id)) throw new Error('TRANSFER_ARGS_INVALID');

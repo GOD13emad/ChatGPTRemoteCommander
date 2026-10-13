@@ -46,6 +46,39 @@ function save(p,record){
 }
 const summary=j=>({schema:'ctmesh-durable-v1',id:j.id,peer:j.peer,status:j.status,bytes:j.bytes,copiedBytes:j.copiedBytes||0,percent:j.bytes?Math.min(100,Math.floor((j.copiedBytes||0)*100/j.bytes)):100,sha256:j.sha256||null,errorCode:j.errorCode||null});
 const reply=j=>console.log(JSON.stringify(j));
+
+const quotas={
+ maxSourceBytes:Number(opt('max-source-bytes')??16*1024**3),
+ maxPendingBytes:Number(opt('max-pending-bytes')??64*1024**3),
+ maxActiveJobs:Number(opt('max-active-jobs')??3)
+};
+function enforceAdmission(bytes){
+ for(const [key,n] of Object.entries(quotas))assertion(Number.isSafeInteger(n)&&n>=1,'QUOTA_INVALID_'+key);
+ assertion(quotas.maxSourceBytes<=quotas.maxPendingBytes,'QUOTA_INCONSISTENT');
+ assertion(bytes<=quotas.maxSourceBytes,'TRANSFER_SOURCE_SIZE_QUOTA');
+ let pending=0,active=0;
+ const dir=path.join(root,'jobs');
+ for(const peerDir of fs.readdirSync(dir,{withFileTypes:true})){
+  if(!peerDir.isDirectory()||!peers.includes(peerDir.name))continue;
+  for(const item of fs.readdirSync(path.join(dir,peerDir.name),{withFileTypes:true})){
+   if(!item.name.endsWith('.json'))continue;
+   assertion(item.isFile()&&!item.isSymbolicLink(),'QUEUE_RECORD_UNSAFE');
+   const j=JSON.parse(fs.readFileSync(path.join(dir,peerDir.name,item.name),'utf8'));
+   assertion(Number.isSafeInteger(j.bytes)&&j.bytes>=0,'QUEUE_RECORD_INVALID');
+   if(['PUBLISHED','CANCELLED'].includes(j.status))continue;
+   pending+=j.bytes;
+   assertion(Number.isSafeInteger(pending),'QUEUE_BYTES_OVERFLOW');
+   if(['QUEUED','COPYING','VERIFYING','CANCEL_REQUESTED'].includes(j.status))active++;
+  }
+ }
+ assertion(pending+bytes<=quotas.maxPendingBytes,'TRANSFER_PENDING_BYTES_QUOTA');
+ assertion(active<quotas.maxActiveJobs,'TRANSFER_CONCURRENT_JOBS_QUOTA');
+ const disk=fs.statfsSync(root,{bigint:true});
+ const available=disk.bavail*disk.bsize;
+ // Reserve capacity for existing uncompleted jobs as well as this new one.
+ assertion(available>=BigInt(pending)+BigInt(bytes)+64n*1024n*1024n,'TRANSFER_DISK_SPACE_QUOTA');
+}
+
 function checkInput(j){
  const input=fs.realpathSync.native(j.path),allow=fs.realpathSync.native(j.sourceRoot);
  assertion(within(input,allow),'SOURCE_SCOPE_CHANGED');
@@ -158,11 +191,24 @@ try{
   assertion(!/[\\/:*?"<>|\x00-\x1f]/.test(path.basename(real)),'UNSAFE_FILENAME');
   const node=JSON.parse(fs.readFileSync(path.join(root,'node.json'),'utf8'));
   assertion(peers.includes(node.alias)&&node.alias!==peer,'LOCAL_IDENTITY_INVALID');
+  const jobsRoot=path.join(root,'jobs');
+  fs.mkdirSync(jobsRoot,{recursive:true});
   fs.mkdirSync(p.jobDir,{recursive:true});
-  assertion(!fs.existsSync(p.destination),'TRANSFER_ALREADY_PUBLISHED');
-  const j={schema:'ctmesh-durable-v1',id,peer,from:node.alias,path:real,sourceRoot:allow,name:path.basename(real),
-    bytes:st.size,mtimeMs:st.mtimeMs,ino:st.ino,dev:st.dev,copiedBytes:0,status:'QUEUED',createdAt:new Date().toISOString()};
-  fs.writeFileSync(p.record,JSON.stringify(j)+'\n',{flag:'wx',mode:0o600});
+  const admissionLock=path.join(jobsRoot,'.admission.lock');
+  // Exclusive reservation: concurrent enqueue processes cannot all pass the same quota snapshot.
+  const admissionFd=fs.openSync(admissionLock,'wx',0o600);
+  let j;
+  try{
+    fs.writeFileSync(admissionFd,JSON.stringify({pid:process.pid})+'\n');
+    assertion(!fs.existsSync(p.destination),'TRANSFER_ALREADY_PUBLISHED');
+    enforceAdmission(st.size);
+    j={schema:'ctmesh-durable-v1',id,peer,from:node.alias,path:real,sourceRoot:allow,name:path.basename(real),
+      bytes:st.size,mtimeMs:st.mtimeMs,ino:st.ino,dev:st.dev,copiedBytes:0,status:'QUEUED',createdAt:new Date().toISOString()};
+    fs.writeFileSync(p.record,JSON.stringify(j)+'\n',{flag:'wx',mode:0o600});
+  }finally{
+    fs.closeSync(admissionFd);
+    fs.rmSync(admissionLock,{force:true});
+  }
   launch(p);
   reply(summary(j));
  }else if(command==='work'){worker(p);}

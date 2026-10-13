@@ -613,7 +613,10 @@ if (process.argv[2] === '--claim-worker') {
     return {fixture,resumed,dispatches};
   }
 
-  test('crash after journaled worker import is adopted exactly once without replay', { timeout: 10000 }, async () => {
+  // Windows CI process spawning and SQLite file admission are nondeterministic under host contention.
+  // Preserve all crash/idempotency assertions; adjust ONLY the test harness watchdog.
+  const CRASH_RECOVERY_TEST_TIMEOUT_MS = process.platform === 'win32' ? 30000 : 10000;
+  test('crash after journaled worker import is adopted exactly once without replay', { timeout: CRASH_RECOVERY_TEST_TIMEOUT_MS }, async () => {
     const {fixture,resumed,dispatches}=await crashAfterWorkerImport();
     try {
       const result=await resumed.execute('workflow_run_tick',{runId:'run-one'});
@@ -628,7 +631,7 @@ if (process.argv[2] === '--claim-worker') {
     } finally { await resumed.close(); fs.rmSync(fixture.root,{recursive:true,force:true}); }
   });
 
-  test('tampered project import after crash blocks recovery without replay', { timeout: 10000 }, async () => {
+  test('tampered project import after crash blocks recovery without replay', { timeout: CRASH_RECOVERY_TEST_TIMEOUT_MS }, async () => {
     const {fixture,resumed,dispatches}=await crashAfterWorkerImport({tamperAfterCrash:true});
     try {
       const result=await resumed.execute('workflow_run_tick',{runId:'run-one'});
@@ -640,7 +643,7 @@ if (process.argv[2] === '--claim-worker') {
     } finally { await resumed.close(); fs.rmSync(fixture.root,{recursive:true,force:true}); }
   });
 
-  test('crash recovery refuses same bytes produced by a different journaled write call', { timeout: 10000 }, async () => {
+  test('crash recovery refuses same bytes produced by a different journaled write call', { timeout: CRASH_RECOVERY_TEST_TIMEOUT_MS }, async () => {
     const {fixture,resumed,dispatches}=await crashAfterWorkerImport({mismatchedJournal:true});
     try {
       assert.equal(fs.readFileSync(path.join(fixture.root,'result.txt'),'utf8'),'verified output crash recovery');
