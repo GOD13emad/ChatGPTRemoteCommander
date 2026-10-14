@@ -26,7 +26,7 @@ test('parseArgs enforces timeout bounds and known arguments', () => {
   assert.equal(parsed.json, true);
 });
 
-async function withMockServer({ version = '0.8.15', deviceName = 'device-a', tools, configSha256 = null }, fn) {
+async function withMockServer({ version = '0.8.15', deviceName = 'device-a', tools, configSha256 = null, deliveryMeta = {} }, fn) {
   const toolNames = tools || ['system_status', 'list_directory', 'read_text', 'write_text', 'run_project_command', 'gui_status'];
   const server = http.createServer(async (req, res) => {
     res.setHeader('content-type', 'application/json');
@@ -56,7 +56,8 @@ async function withMockServer({ version = '0.8.15', deviceName = 'device-a', too
             protocols: ['2026-07-28'],
             allowedRootsEnforced: false,
             powerMode: { enabled: true, fullFilesystem: true },
-            guiControl: { enabled: true }
+            guiControl: { enabled: true },
+            ...deliveryMeta
           }
         }
       }));
@@ -105,5 +106,40 @@ test('runDoctor reports missing core tool', async () => {
     const report = await runDoctor({ endpoint, expectedVersion: '0.8.10', timeoutMs: 10000 });
     assert.equal(report.ok, false);
     assert.match(report.checks.find((item) => item.name === 'tools/list').detail, /missing:/);
+  });
+});
+
+
+test('doctor separates a healthy core from blocked authenticated chat delivery', async () => {
+  const deliveryMeta = {
+    durableDelivery: { pending: 1513, identityBoundary: 'TRUSTED_PROFILE_NOT_AUTHENTICATED_CHAT' },
+    durableWorkflows: { authenticationBoundary: false },
+    completionBeacon: { pending: 1513, hostWakeAvailable: false },
+    conversationContinuation: { deliveryMode: 'queue-only' }
+  };
+  await withMockServer({ deliveryMeta }, async (endpoint) => {
+    const report = await runDoctor({ endpoint, expectedVersion: '0.8.15', timeoutMs: 10000 });
+    assert.equal(report.ok, true, 'core health must not be retroactively failed');
+    assert.equal(report.delivery?.status, 'BLOCKED');
+    assert.equal(report.delivery?.pending, 1513);
+    assert.equal(report.delivery?.authenticatedChat, false);
+    assert.equal(report.delivery?.hostWakeAvailable, false);
+    assert.match(report.warnings.join(' '), /delivery.*BLOCKED/i);
+  });
+});
+
+
+test('explicit same-chat acceptance gate blocks promotion without real host proof', async () => {
+  const deliveryMeta = {
+    durableDelivery: { pending: 1, identityBoundary: 'TRUSTED_PROFILE_NOT_AUTHENTICATED_CHAT' },
+    durableWorkflows: { authenticationBoundary: false },
+    completionBeacon: { pending: 1, hostWakeAvailable: false }
+  };
+  const options = parseArgs(['--require-same-chat-delivery']);
+  assert.equal(options.requireSameChatDelivery, true);
+  await withMockServer({ deliveryMeta }, async (endpoint) => {
+    const report = await runDoctor({ ...options, endpoint, expectedVersion: '0.8.15', timeoutMs: 10000 });
+    assert.equal(report.ok, false);
+    assert.equal(report.checks.find((x) => x.name === 'same-chat-delivery')?.ok, false);
   });
 });

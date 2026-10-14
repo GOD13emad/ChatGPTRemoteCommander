@@ -24,10 +24,11 @@ export function validateEndpoint(value) {
 }
 
 export function parseArgs(argv) {
-  const out = { endpoint: DEFAULT_ENDPOINT, expectedDevice: null, expectedVersion: null, configPath: null, json: false, timeoutMs: DEFAULT_TIMEOUT_MS };
+  const out = { endpoint: DEFAULT_ENDPOINT, expectedDevice: null, expectedVersion: null, configPath: null, json: false, requireSameChatDelivery: false, timeoutMs: DEFAULT_TIMEOUT_MS };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     if (arg === '--json') out.json = true;
+    else if (arg === '--require-same-chat-delivery') out.requireSameChatDelivery = true;
     else if (arg === '--url') out.endpoint = argv[++i];
     else if (arg === '--expected-device') out.expectedDevice = argv[++i];
     else if (arg === '--expected-version') out.expectedVersion = argv[++i];
@@ -142,6 +143,40 @@ export async function runDoctor(options = {}) {
     }
   }
 
+  // Delivery readiness is separate from Core health. A persisted completion is
+  // NOT an authenticated ChatGPT conversation receipt or a host wake-up.
+  let delivery = null;
+  if (status?.durableDelivery) {
+    const authenticatedChat = status.durableWorkflows?.authenticationBoundary === true &&
+      status.durableDelivery.identityBoundary === 'AUTHENTICATED_CHAT';
+    const hostWakeAvailable = status.completionBeacon?.hostWakeAvailable === true;
+    const pending = Number.isSafeInteger(status.durableDelivery.pending) && status.durableDelivery.pending >= 0
+      ? status.durableDelivery.pending : null;
+    const blockers = [];
+    if (!authenticatedChat) blockers.push('authenticated ChatGPT conversation identity not verified');
+    if (!hostWakeAvailable) blockers.push('host wake / verified event subscription unavailable');
+    if (status.conversationContinuation?.deliveryMode === 'queue-only') blockers.push('queue-only delivery mode');
+    // These status booleans can only establish preconditions, never a real
+    // delivery receipt: independent callback/host ACK acceptance is required.
+    delivery = {
+      status: blockers.length > 0 ? 'BLOCKED' : 'UNPROVEN',
+      pending, authenticatedChat, hostWakeAvailable,
+      deliveryMode: status.conversationContinuation?.deliveryMode ?? 'unknown',
+      blockers
+    };
+    warnings.push(`Chat delivery ${delivery.status}: ${blockers.join('; ') || 'no independently verified callback and host ACK'}`);
+  }
+
+  if (options.requireSameChatDelivery) {
+    checks.push({
+      name: 'same-chat-delivery',
+      ok: false,
+      detail: delivery
+        ? `${delivery.status}: authenticated subscription and end-to-end host callback/ACK are not independently verified`
+        : 'UNPROVEN: delivery telemetry and end-to-end host callback/ACK are missing'
+    });
+  }
+
   const failures = checks.filter((check) => !check.ok);
   return {
     ok: failures.length === 0,
@@ -157,6 +192,7 @@ export async function runDoctor(options = {}) {
     } : null,
     tools: { count: toolNames.length, guiCount: toolNames.filter((name) => name.startsWith('gui_')).length },
     checks,
+    delivery,
     warnings
   };
 }

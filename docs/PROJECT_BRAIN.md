@@ -1056,3 +1056,42 @@ Remote Commander Browser v0.8.0 is published non-draft/non-prerelease and immuta
 The single-blocker Linux tunnel-readiness fix is carried forward as a separate release-identity revision. v0.10.17 remains immutable and is not rewritten. Current candidate identity is v0.10.18; Browser dependency remains immutable stable v0.8.0 with its existing exact hash pin.
 
 **Gate:** release-identity focused contracts, then exact-head full Windows/Linux and hosted qualification. No live v0.10.18 mutation is accepted before those gates.
+
+
+## R1 — 2026-10-13 — Linux delivery acceptance guard (current local candidate)
+
+**Previous accepted authority:** immutable Core `v0.10.20` (`362375c`) on `mmz-LOQ-15IRX9`; development `v0.10.21` cloned at `fac2797`. Earlier historical CURRENT sections remain provenance, not promotion instructions.
+
+**Current delta:** scoped Doctor diagnostic and optional `--require-same-chat-delivery` fail-closed test in isolated `RC_DELIVERY_TASKS_R1_20261013`; no changes to stable running runtime or queue. 28/28 related automated tests PASS; security and installer checks PASS. Core doctor PASS / actual same-chat delivery BLOCKED due queue-only host and no authenticated principal/wake. OpenAI's eligible Work-only MCP Events webhook route is the evidence-based candidate; generic MCP Tasks polling is client-driven and is not spontaneous ChatGPT notification.
+
+**Roadmap ← CURRENT:** [accepted Core baseline] → [MCP2 task/queue healthy] → **[CURRENT: fail-closed diagnostic proof]** → [auth/ownership boundary + safe callback contract] → [MCP Events signed subscription implementation] → [real Work callback/chat event/ACK canary] → [hosted Windows/Linux checks + rollback] → [eligible release promotion]. Completion of these latter gates is UNPROVEN. Exact next action: validate account/workspace MCP Events eligibility and authenticated principal mapping; do not push raw task artifacts to user-selected callback based on trusted-profile routing alone.
+
+**Knowledge:** same-date section in `docs/PROJECT_KNOWLEDGE_EVIDENCE.md`; official sources there. **Brain status:** CURRENT for this isolated candidate; not a multi-product final state.
+
+
+### R2 — 2026-10-13 — MCP Events auth-first design and no-advertise guard
+- Current branch: `audit/mmz-delivery-readiness-20261013`; development only. Scope: one blocker, owner-bound event authorization. Stable Core 0.10.20 and existing durable records untouched.
+- New knowledge/evidence: `docs/architecture/MCP_EVENTS_AUTH_BOUNDARY_R1_20261013.md`; official MCP Events + OAuth primary-source comparison and Work-only limitations in R2 evidence. Local MCP modern conformance test now prevents anonymous subscription and premature event advertisement; targeted PASS. No new runtime Events capabilities declared.
+- Roadmap CURRENT at G0: verified OAuth principal → project ownership gate → verified signed callback → durable subscription → Work E2E event/reply → cross-platform native/CI rollback → eventual release. G0 BLOCKED until authenticated gateway evidence; no automatic current-chat message delivery claim.
+- Post-change full `npm run check`, `npm test`, `npm run audit` all PASS (exit 0) on the isolated Linux candidate. No claim of hosted Windows/Ubuntu exact-head CI, Work subscription or cross-host live delivery. Maintain draft PR/no merge pending G0 and complete original CI.
+
+
+### 2026-10-13 — R3 isolated G0 policy foundation, identity external
+- **Roadmap ←CURRENT:** stable Core `0.10.20` verified → G0 policy candidate implemented and focused tests PASS → **G0 cryptographically verified principal + authoritative project ownership MISSING** → G1 subscription/SSRF → G2 signed webhook → G3 Work-visible reply/ACK → G4 native cross-host rollout/recovery → FINAL. CI qualification must be rerun for new source tree.
+- **Current delta:** `src/work-events-policy.mjs` plus 5 fail-closed regression cases in `test/work-events-policy.test.mjs`, wired into both `check` and `test`. No runtime Events feature enabled; cryptographic JWT verification must be performed by provider-backed SDK middleware, not this policy. No profile-based user identity inference. Existing operation queue preserved.
+- **Evidence:** full rationale/official sources and test provenance in cumulative `docs/PROJECT_KNOWLEDGE_EVIDENCE.md` R3. New source local only until fresh full regression/CI. Project state `DEVELOPMENT-CANDIDATE / INTEGRATION-BLOCKED`, not Final. Exact next action: finish exact-source full check/test/audit, commit and Draft PR update; then resolve external IdP/ACL/Work owner acceptance before wiring G0.
+
+- **R3 verification promotion:** full isolated `npm run check`, `npm test`, `npm run audit` all PASS exit 0 after policy module; only source-level candidate, no identity integration and no live Work receipt. Next exact action: commit/push for Draft PR #199, obtain hosted Win/Linux exact-head qualification; do not promote running Stable.
+
+
+### 2026-10-13 — R23 token-expiry TOCTOU guard (candidate)
+- Current source-only mutation objective: do not authorize a Work event if an OAuth token expires during the awaited project ACL check. New deterministic expiry regression RED before change, GREEN (6/6) afterward; simple clock recheck in `src/work-events-policy.mjs` without new production npm dependencies or runtime Events exposure.
+- Existing stable Core v0.10.20 unchanged; no change to custom extensions, Browser, or any durable completion records. Prior G0 policy `2917af1` remains accepted branch history; fresh full check/test/audit each PASS (exit 0); commit and hosted exact-head CI still pending at the time of this record.
+- Roadmap ←CURRENT: [Core/10 skills audited] → [G0 policy guard and TDD PASS] → [exact-source full test/CI OPEN] → **[real OAuth IdP/owner ACL/Work subscription MISSING]** → [signed callback and observed Work reply] → [all-host promotion]. R23 full rationale in Knowledge Evidence. Next safe step: finish qualification before source promotion; no auto-merge.
+
+
+### R24 — 2026-10-13 — PR #199 integration with upstream Coucou, local qualification
+- Previous PR head `5d28f57`; moving source authority upstream main `a748669` introduced optional Coucou Bridge code. PR marked dirty because both branches edited long npm check/test strings in `package.json`. Saved exact local backup `backup/mmz-pr199-before-coucou-sync-20261013`; merged upstream main with no commit while reconciling both script test sets. No force, no change to stable v0.10.20 or durable queues.
+- Completed and evidence-backed: staged merge conflict resolution, 20/20 cross-feature Coucou+G0 focused tests, full local `npm run check`, `npm test`, `npm run audit` exits 0/0/0. Preserve Coucou as default-OFF **not permitted for MMZ Linux host** and G0 Events as unadvertised until authenticated user owner proof. Native stable service active, no restart.
+- Roadmap ← CURRENT: [Core stable authority] → [G0 source checks] → [upstream Coucou source merged and locally tested] → **[commit + exact-head hosted CI pending]** → [G0 externally authenticated IdP/ACL and Work subscription BLOCKED] → [G1/G2 signed subscription callback] → [G3 observed ChatGPT reply/ACK] → [G4 full native multi-host delivery rollback] → FINAL.
+- Knowledge R24 records exact common base and upstream hashes, failure root cause, preserved tests, Coucou opt-in policy and log paths. Brain CURRENT for this isolated development candidate; integrated release still NOT_FINAL. Exact safe next action: finish merge commit and GitHub CI, maintain Draft PR/no promotion or Coucou installation on MMZ.
