@@ -4,7 +4,10 @@
 set -Eeuo pipefail
 umask 077
 
-[[ "$CI" == true && -n "$GITHUB_WORKSPACE" && -n "$RUNNER_TEMP" ]] || { echo R170_CI_ONLY >&2; exit 61; }
+# Owner-PC safety: the real upgrade/rollback may run only on GitHub-hosted Linux.
+# CI is user-settable; the GitHub/runner identity must also match before any mutation.
+[[ "${GITHUB_ACTIONS:-}" == true && "${RUNNER_OS:-}" == Linux && "${RUNNER_ENVIRONMENT:-}" == github-hosted ]] || { echo R170_GITHUB_HOSTED_LINUX_ONLY >&2; exit 60; }
+[[ "${CI:-}" == true && -n "${GITHUB_WORKSPACE:-}" && -n "${RUNNER_TEMP:-}" ]] || { echo R170_CI_ONLY >&2; exit 61; }
 WORKSPACE="$(realpath "$GITHUB_WORKSPACE")"
 TEMPBASE="$(realpath "$RUNNER_TEMP")"
 TARGET="$(git -C "$WORKSPACE" rev-parse HEAD)"
