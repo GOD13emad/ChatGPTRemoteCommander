@@ -5,7 +5,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { boundNodeTestConcurrency, parseQualificationArgs, prioritizeSensitiveQualificationCommands, isolateWindowsLeaseRegression, isolateWindowsTimingSensitiveRegressions } from '../tools/run-bounded-test-script.mjs';
+import { boundNodeTestConcurrency, parseQualificationArgs, prioritizeSensitiveQualificationCommands, isolateWindowsLeaseRegression, isolateWindowsTimingSensitiveRegressions, isolateWindowsProcessTreeRegression } from '../tools/run-bounded-test-script.mjs';
 
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const read=rel=>fs.readFileSync(path.join(root,rel),'utf8');
@@ -113,13 +113,13 @@ test('R468 dedicated Windows timing-sensitive project fixtures run once before b
   const ordered=prioritizeSensitiveQualificationCommands(boundNodeTestConcurrency(pkg.scripts.test,1).command);
   const lease=isolateWindowsLeaseRegression(ordered);
   const result=isolateWindowsTimingSensitiveRegressions(lease);
-  const files=['test/project-adaptive.test.mjs','test/project-delivery-correlation.test.mjs'];
+  const files=['test/project-adaptive.test.mjs','test/project-delivery-correlation.test.mjs','test/project-engine-review.test.mjs'];
   const prefix=files.map(f=>'node --test --test-concurrency=1 '+f).join(' && ')+' && ';
-  const expected=prefix+lease.replace(' '+files[0],'').replace(' '+files[1],'');
+  const expected=prefix+files.reduce((command,file)=>command.replace(' '+file,''),lease);
   assert.equal(result,expected,'only scheduling changes; full original tests retained');
   assert.ok(result.startsWith(prefix));
   assert.equal(result.split('node --test --test-concurrency=1 ').length-1,
-    lease.split('node --test --test-concurrency=1 ').length-1+2);
+    lease.split('node --test --test-concurrency=1 ').length-1+files.length);
   for(const file of files)assert.equal(result.split(file).length-1,1,'no duplicate, skip or rerun '+file);
   for(const file of files)assert.throws(
     ()=>isolateWindowsTimingSensitiveRegressions(lease.replace(' '+file,'')),
@@ -134,6 +134,26 @@ test('R468 dedicated Windows timing-sensitive project fixtures run once before b
   assert.ok(read('test/project-delivery-correlation.test.mjs').includes('maxDurationMs:10000'));
 });
 
+
+test('R492 Windows process-tree regression is isolated exactly once with unchanged deadline and full test coverage',()=>{
+  const pkg=JSON.parse(read('package.json'));
+  const bounded=boundNodeTestConcurrency(pkg.scripts.test,1).command;
+  const prioritized=prioritizeSensitiveQualificationCommands(bounded);
+  const lease=isolateWindowsLeaseRegression(prioritized);
+  const timed=isolateWindowsTimingSensitiveRegressions(lease);
+  const isolated=isolateWindowsProcessTreeRegression(timed);
+  const name='test/process-tree-lifecycle.test.mjs';
+  const prefix='node --test --test-concurrency=1 '+name+' && ';
+  assert.ok(isolated.startsWith(prefix));
+  assert.equal(isolated.split(name).length-1,1);
+  assert.equal(isolated,prefix+timed.replace(' '+name,''),'only scheduling changes');
+  assert.ok(isolated.includes('test/boot-recovery-diagnostics.test.mjs'),'bulk coverage is retained');
+  assert.throws(()=>isolateWindowsProcessTreeRegression(timed.replace(' '+name,'')),/CI_PROCESS_TREE_CARDINALITY/);
+  assert.throws(()=>isolateWindowsProcessTreeRegression(prefix+timed),/CI_PROCESS_TREE_CARDINALITY/);
+  assert.ok(read('test/process-tree-lifecycle.test.mjs').includes('{ timeout: 25000 }'),'native test deadline unchanged');
+  const runner=read('tools/run-bounded-test-script.mjs');
+  assert.ok(runner.includes("command=isolateWindowsProcessTreeRegression(command);"));
+});
 
 test('R470 sanitized diagnostic workflow persists no raw qualification log and keeps updater fail closed',()=>{
   const script=read('tools/diagnose-updater-gate-r470.ps1');

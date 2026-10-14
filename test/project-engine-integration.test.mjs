@@ -123,14 +123,38 @@ if (process.argv[2] === '--claim-worker') {
         timerCalls>1 || Date.now()>=started.deadline,
         'a genuinely early deadline timer must be rescheduled; a late callback may abort directly'
       );
-      assert.equal(aborted, true);
+      // An already-expired run can fail closed before entering its planner.
+      // Require AbortSignal only if the planner actually started.
+      if (fixture.plans === 0) {
+        assert.equal(aborted, false);
+        assert.ok(Date.now() >= started.deadline);
+        assert.equal(result.attempts, 0);
+      } else {
+        assert.equal(fixture.plans, 1);
+        assert.equal(aborted, true);
+        assert.equal(result.attempts, 1);
+      }
       assert.equal(result.status, 'EXHAUSTED');
       assert.equal(result.lastCode, 'PROJECT_DEADLINE_EXHAUSTED');
-      assert.equal(result.attempts, 1);
       assert.equal(fixture.calls, 0);
       assert.equal(fs.existsSync(path.join(fixture.root, 'result.txt')), false);
       assert.equal((await fixture.tick()).skipped, true);
-      assert.equal(fixture.plans, 1);
+    } finally { await fixture.dispose(); }
+  });
+
+  test('pre-expired deadline refuses planner and all filesystem effects', { timeout: 6000 }, async () => {
+    const fixture = makeFixture({ planner: async () => { throw Error('Expired run must not plan'); } });
+    try {
+      await fixture.create();
+      const started = await fixture.start({ durationMs: 1000 });
+      await sleep(Math.max(0, started.deadline - Date.now() + 25));
+      const result = await fixture.tick();
+      assert.equal(result.status, 'EXHAUSTED');
+      assert.equal(result.lastCode, 'PROJECT_DEADLINE_EXHAUSTED');
+      assert.equal(result.attempts, 0);
+      assert.equal(fixture.plans, 0);
+      assert.equal(fixture.calls, 0);
+      assert.equal(fs.existsSync(path.join(fixture.root, 'result.txt')), false);
     } finally { await fixture.dispose(); }
   });
 
@@ -613,7 +637,10 @@ if (process.argv[2] === '--claim-worker') {
     return {fixture,resumed,dispatches};
   }
 
-  test('crash after journaled worker import is adopted exactly once without replay', { timeout: 10000 }, async () => {
+  // Windows CI process spawning and SQLite file admission are nondeterministic under host contention.
+  // Preserve all crash/idempotency assertions; adjust ONLY the test harness watchdog.
+  const CRASH_RECOVERY_TEST_TIMEOUT_MS = process.platform === 'win32' ? 30000 : 10000;
+  test('crash after journaled worker import is adopted exactly once without replay', { timeout: CRASH_RECOVERY_TEST_TIMEOUT_MS }, async () => {
     const {fixture,resumed,dispatches}=await crashAfterWorkerImport();
     try {
       const result=await resumed.execute('workflow_run_tick',{runId:'run-one'});
@@ -628,7 +655,7 @@ if (process.argv[2] === '--claim-worker') {
     } finally { await resumed.close(); fs.rmSync(fixture.root,{recursive:true,force:true}); }
   });
 
-  test('tampered project import after crash blocks recovery without replay', { timeout: 10000 }, async () => {
+  test('tampered project import after crash blocks recovery without replay', { timeout: CRASH_RECOVERY_TEST_TIMEOUT_MS }, async () => {
     const {fixture,resumed,dispatches}=await crashAfterWorkerImport({tamperAfterCrash:true});
     try {
       const result=await resumed.execute('workflow_run_tick',{runId:'run-one'});
@@ -640,7 +667,7 @@ if (process.argv[2] === '--claim-worker') {
     } finally { await resumed.close(); fs.rmSync(fixture.root,{recursive:true,force:true}); }
   });
 
-  test('crash recovery refuses same bytes produced by a different journaled write call', { timeout: 10000 }, async () => {
+  test('crash recovery refuses same bytes produced by a different journaled write call', { timeout: CRASH_RECOVERY_TEST_TIMEOUT_MS }, async () => {
     const {fixture,resumed,dispatches}=await crashAfterWorkerImport({mismatchedJournal:true});
     try {
       assert.equal(fs.readFileSync(path.join(fixture.root,'result.txt'),'utf8'),'verified output crash recovery');

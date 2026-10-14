@@ -88,3 +88,34 @@ if (!workflow.includes("if: ${{ steps.release_identity.outputs.accepted == 'true
 console.log('R171_ATTESTATION_CONTRACT_PASS');
 
 console.log('RELEASE_ASSET_CONTRACT_PASS');
+
+// R11: unsigned Windows distribution requires exact version opt-in, source provenance
+// and release notes. Authenticode status remains visible; no false signing claims.
+for (const m of [
+ 'id: verify_installer_signature',
+ 'Get-AuthenticodeSignature -LiteralPath $setup',
+ "signature.Status -eq 'Valid'",
+ 'installer_signed: ${{ steps.verify_installer_signature.outputs.signed }}',
+ 'Authorize Windows distribution mode for this exact version',
+ 'tools/verify-windows-release-policy.mjs',
+ 'Verify GitHub provenance of final installer before release',
+ 'gh attestation verify "$artifact" --repo "$GH_REPO"',
+ '--source-ref "refs/tags/$tag"',
+ '--source-digest "$commit"',
+ '--signer-workflow "$GH_REPO/.github/workflows/release-sync.yml"',
+ 'WINDOWS_RELEASE_GITHUB_PROVENANCE_VERIFIED'
+]) if (!workflow.includes(m)) throw new Error('UNSIGNED_ATTESTED_RELEASE_GUARD_MISSING ' + m);
+const releaseIdentityAt=workflow.indexOf('id: release_identity');
+const policyAt=workflow.indexOf('name: Authorize Windows distribution mode');
+const attestAt=workflow.indexOf('name: Attest immutable release assets');
+const verifyAt=workflow.indexOf('name: Verify GitHub provenance of final installer');
+const publishAt=workflow.indexOf('name: Publish matching qualified tag with assets');
+if (!(releaseIdentityAt>0 && policyAt>releaseIdentityAt && attestAt>policyAt &&
+ verifyAt>attestAt && publishAt>verifyAt)) throw new Error('UNSIGNED_ATTESTED_RELEASE_ORDER_REJECT');
+if (workflow.includes('name: Block unsigned setup before production release'))
+ throw new Error('LEGACY_UNSATISFIABLE_SIGNATURE_GATE_PRESENT');
+if (!workflow.includes('docs/UNSIGNED_WINDOWS_RELEASE_POLICY.*') ||
+ !workflow.includes('docs/RELEASE_0.10.21.md') ||
+ !workflow.includes('test/unsigned-windows-release-policy.test.mjs'))
+ throw new Error('UNSIGNED_RELEASE_POLICY_TRIGGER_MISSING');
+console.log('R11_SCOPED_UNSIGNED_ATTESTED_RELEASE_GUARD_PASS');
