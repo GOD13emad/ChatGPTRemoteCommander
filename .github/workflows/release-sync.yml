@@ -198,16 +198,22 @@ jobs:
             exit 0
           fi
           if gh release view "$tag" --repo "$GH_REPO" >/dev/null 2>&1; then
-            echo "RELEASE_SYNC_ALREADY_PUBLISHED tag=$tag"
+            echo "RELEASE_SYNC_EXISTING_DRAFT_OR_PUBLISHED_REVIEW_REQUIRED tag=$tag"
             exit 0
           fi
           test -f "$notes"
           (cd dist/release && sha256sum -c SHA256SUMS.txt)
           mapfile -t assets < <(find dist/release -maxdepth 1 -type f -printf '%p\n' | LC_ALL=C sort)
           test "${#assets[@]}" -eq 20
+          # R499: an attested asset bundle is NOT fleet owner acceptance.
+          # Publish only as an editable GitHub Draft; latest stable and auto-update
+          # continue to resolve the immutable v0.10.20 baseline until an owner-
+          # accepted serial rollout / rollback / offline-host reconciliation.
+          # Draft assets are uploaded atomically at creation, before immutability.
           gh release create "$tag" "${assets[@]}" \
             --repo "$GH_REPO" \
             --verify-tag \
             --title "Remote Commander $tag" \
-            --notes-file "$notes"
-          echo "RELEASE_SYNC_PUBLISHED tag=$tag assets=${#assets[@]}"
+            --notes-file "$notes" \
+            --draft
+          echo "RELEASE_SYNC_DRAFT_STAGED tag=$tag assets=${#assets[@]} ownerAcceptance=pending"
