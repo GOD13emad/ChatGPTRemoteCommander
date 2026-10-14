@@ -1,0 +1,27 @@
+# Mohammad Linux-only rollback-logic and release-readiness audit — 2026-10-14
+
+**Status: Linux Ubuntu hosted CI PASS / 19 local rollback-router logic tests PASS / R170 full promotion-and-rollback NOT RUN / live release NOT ACCEPTED.**
+
+## Previous accepted state
+- Only `mmz-LOQ-15IRX9` Ubuntu 26.04.1 LTS is in scope. The current installed stable Commander `v0.10.20`, commit `362375c464948be3001b307650c13fc3353ed05b`, remains active and health HTTP200, PID 5208 / NRestarts 0. Qwen3 stopped, runner/autoTick off, 11 valid extensions.
+- Draft PR #204 source at exact commit `543bac11bbf30077f2ec73b20bebd07963d59168`; latest Ubuntu job `test (ubuntu-latest)`, run `38548735410`, job `115801184355`, completed **success**. Release Sync also completed success. Aggregate CI run is failure **because a separate other-OS job failed**, which is excluded from this Linux-only acceptance. Do not misstate aggregate CI as fully passing or infer Ubuntu failure from aggregate result.
+- Previously accepted Linux: 22/22 Linux-specific test suite; isolated Linux v0.10.21 source install and Doctor PASS; 26-capability Full Power config dry-run preserved active authoritative config SHA; 97/97 tool names and input schemas exact compared with installed v0.10.20, no observed changes; model-native single- and two-step read-only isolated fixtures PASS. Canonical reports and SHA ledger in Project Brain/Knowledge and `docs/evidence/RC_MMZ_LINUX_FULLPOWER_CATALOG_20261014.md`.
+
+## Exact new evidence: bounded local rollback/router gates
+Ran once using current development source `543bac11bbf30077f2ec73b20bebd07963d59168`:
+`node --test test/stable-router.test.mjs test/router-schema-continuity.test.mjs test/router-source-bootstrap.test.mjs test/router-retire.test.mjs test/linux-updater-tunnel-readiness.test.mjs`.
+
+**19 PASS, 0 FAIL, 0 SKIPPED**, ~10.91 seconds. Test areas: atomic router switch and in-flight request drain; downstream disconnect accounting; router runtime/source hash; generation conflict and fail-closed previous identity; source bootstrap with owned router; failed candidate router restoring exact old source/route; controlled previous route retire; Linux tunnel readyz/fresh control-plane fallback and fail-closed stale/non-live conditions; schema subscription across route switch. This establishes bounded logic/unit/integration behavior, **not** an in-place production cutover or full version rollback.
+
+Authoritative EXTERNAL local log `~/.local/share/rc-local-ai/evidence/rc_mmz_linux_router_rollback_logic_20261014.log`, SHA256 `caa139bb6c75585401a30f8d346b4f4827c26729358032e283b8d15bc5c60495`. No production mutations. Postcheck active PID 5208/NRestarts 0, Router SHA `c1a31a6563e2842849acb21bf62c5e54b345d06f2652d4906ff8e74c9edfa744`, dev Git clean.
+
+## True rollback release authority: open and bounded
+- `test/release-rollback-linux-r170.sh` is an **CI-only real-promotion-and-rollback** acceptance harness, explicitly states **never run on a configured Commander host**. Its guards require `CI=true`, dedicated `GITHUB_WORKSPACE` and `RUNNER_TEMP`, a **fresh** isolated root, no existing installed Commander in HOME, and dedicated port 47831. Our actively connected Ubuntu laptop does not meet these safety requirements. Do **NOT** falsify CI variables or force execution locally.
+- `.github/workflows/release-rollback-r170.yml` triggers on changes to selected updater/router files or explicit `workflow_dispatch`. The current change set changed only evidence documentation, so that workflow was not automatically triggered by path filter. Its **exact current source HEAD** run is MISSING/UNVERIFIED, not PASS. Tooling in this environment does not expose an authorized Actions workflow_dispatch action; do not substitute other workflows or claim a successful R170.
+- No verified immutable official `v0.10.21` release tag exists; PR #204 remains Draft and unmerged. Current active Router `generation=116`, `previous=null`; the historic `v0.10.12` retained release is NOT an established one-click rollback route. A live promotion would use the current `v0.10.20` as the **previous** route, but this transition has not been executed/verified with live user sessions and credential/path continuity.
+- The `v0.10.21` Full Power transient 97-tool list check proves **catalog/schema parity**, not full GUI/browser behavior or executing privileged controls, retaining MCP client sessions, or working rollback under live traffic.
+
+## Disposition, critical path and owner-facing next action
+- **Accepted/closed:** Linux Ubuntu source CI for exact previous commit, local 19-case safe router-state logic, previously accepted installer/Doctor/Full Power tool catalog and read-only model workflow.
+- **Deferred/blocked:** R170 real promotion-and-rollback on a fresh ephemeral GitHub Ubuntu runner, official release/tag/owner acceptance, deployment preservation of router/config/durable delivery and active MCP session. No systemctl restart, git merge, tag publishing, browser login or automatic runner activation.
+- **Brain evidence:** this is a Linux-only meaningful checkpoint to propagate once into cumulative `docs/PROJECT_BRAIN.md` and `docs/PROJECT_KNOWLEDGE_EVIDENCE.md`. Retain private raw log SHA. Continue by running the existing R170 isolated workflow on the exact vetted release head through authorized GitHub Actions UI/dispatch, reviewing artifact/receipt and release authority; then only with a defensible rollback/session plan propose guarded live Linux promotion. No unsupported overall percentage or FINAL claim.
