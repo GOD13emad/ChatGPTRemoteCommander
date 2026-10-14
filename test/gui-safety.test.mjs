@@ -11,11 +11,28 @@ import { validateTransport } from '../src/transport-guard.mjs';
 const config = () => ({ config: { powerMode: { enabled: true, guiControl: { enabled: true, allowScreenshot: true, allowMouse: true, allowKeyboard: true, allowWindowFocus: true } } } });
 // Deliberately a protocol fixture, NOT proof of real screen capture.
 const image = () => ({ ok: true, data: Buffer.from('89504e470d0a1a0a00000000', 'hex').toString('base64'), mimeType: 'image/png', width: 800, height: 600, snapshot: { screenIndex: 0, bounds: { left: -800, top: 0, width: 800, height: 600 }, foreground: '123', processId: 10 } });
+function memoryIncidentStore() {
+  let active = null, sequence = 0;
+  return {
+    pending: async () => active,
+    begin: async tool => {
+      if (active) throw new Error('GUI_INCIDENT_UNRESOLVED');
+      active = { id: 'fixture-'+(++sequence), tool };
+      return active;
+    },
+    resolve: async handle => {
+      if (!active || active.id !== handle?.id || active.tool !== handle?.tool)
+        throw new Error('GUI_INCIDENT_RESOLUTION_MISMATCH');
+      active = null;
+    }
+  };
+}
 function setup(custom = {}) {
   let time = 1000, counter = 0, stop = false;
   const calls = [];
   const c = createGuiController({ platform: 'win32', now: () => time, token: () => (++counter).toString(16).padStart(48, '0'), isStopped: async () => stop,
-    invoke: async r => { calls.push(r); return r.action === 'screenshot' ? image() : { ok: true, available: true }; }, ...custom });
+    invoke: async r => { calls.push(r); return r.action === 'screenshot' ? image() : { ok: true, available: true }; },
+    incidentStore: memoryIncidentStore(), ...custom });
   const ctx = config();
   const run = (name, args = {}) => c.execute(ctx, name, args);
   return { ctx, run, calls, time: n => { time += n; }, stop: () => { stop = true; } };
