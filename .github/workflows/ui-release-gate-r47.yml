@@ -1,0 +1,25 @@
+name: Coordinated UI release gate R47
+on:
+  pull_request:
+    paths:
+      - 'tools/ui-release-gate.mjs'
+      - 'test/ui-release-gate.test.mjs'
+      - 'docs/UI_RELEASE_CANDIDATE_R47.json'
+      - '.github/workflows/ui-release-gate-r47.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  candidate-stays-blocked:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: node --test test/ui-release-gate.test.mjs
+      - run: node tools/ui-release-gate.mjs --manifest docs/UI_RELEASE_CANDIDATE_R47.json
