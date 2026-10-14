@@ -5,7 +5,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { boundNodeTestConcurrency, parseQualificationArgs, prioritizeSensitiveQualificationCommands, isolateWindowsLeaseRegression, isolateWindowsTimingSensitiveRegressions, isolateWindowsProcessTreeRegression } from '../tools/run-bounded-test-script.mjs';
+import { boundNodeTestConcurrency, parseQualificationArgs, prioritizeSensitiveQualificationCommands, isolateWindowsLeaseRegression, isolateWindowsTimingSensitiveRegressions, isolateWindowsProcessTreeRegression, isolateWindowsAgentHttpRegression } from '../tools/run-bounded-test-script.mjs';
 
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const read=rel=>fs.readFileSync(path.join(root,rel),'utf8');
@@ -153,6 +153,25 @@ test('R492 Windows process-tree regression is isolated exactly once with unchang
   assert.ok(read('test/process-tree-lifecycle.test.mjs').includes('{ timeout: 25000 }'),'native test deadline unchanged');
   const runner=read('tools/run-bounded-test-script.mjs');
   assert.ok(runner.includes("command=isolateWindowsProcessTreeRegression(command);"));
+});
+
+test('R500 Windows Agent Extension HTTP starts in its own bounded process, coverage unchanged',()=>{
+  const pkg=JSON.parse(read('package.json'));
+  const file='test/agent-extensions-http.test.mjs';
+  const prefix='node --test --test-concurrency=1 '+file+' && ';
+  for(const name of ['check','test']){
+    const bounded=boundNodeTestConcurrency(pkg.scripts[name],1).command;
+    const ordered=prioritizeSensitiveQualificationCommands(bounded);
+    const isolated=isolateWindowsAgentHttpRegression(ordered);
+    assert.ok(isolated.startsWith(prefix));
+    assert.equal(isolated.split(file).length-1,1,'file executes exactly once');
+    assert.equal(isolated,prefix+ordered.replace(' '+file,''),'no other command is changed');
+    assert.throws(()=>isolateWindowsAgentHttpRegression(ordered.replace(' '+file,'')),/CI_AGENT_HTTP_CARDINALITY/);
+    assert.throws(()=>isolateWindowsAgentHttpRegression(prefix+ordered),/CI_AGENT_HTTP_CARDINALITY/);
+  }
+  const runner=read('tools/run-bounded-test-script.mjs');
+  assert.ok(runner.includes("if(process.platform==='win32') command=isolateWindowsAgentHttpRegression(command);"));
+  assert.ok(read('test/agent-extensions-http.test.mjs').includes('for(let i=0;i<400;i++)'),'original native readiness budget preserved');
 });
 
 test('R470 sanitized diagnostic workflow persists no raw qualification log and keeps updater fail closed',()=>{
