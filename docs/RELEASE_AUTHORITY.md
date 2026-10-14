@@ -1,5 +1,15 @@
 # Current release authority — 2026-10-14
 
+## 2026-10-14 R498 authoritative source/release delta
+
+- The latest qualified and merged `main` **source candidate** is `bf9df020cbe7943ab20548685c13f49909cb9ff9`, exact tree `5ffd0e398cf90b1140d0feb119d5613e35249df0`. Post-merge CI and Release Sync PASS. This does **not** mean released Stable.
+- Earlier J01/Mesh PRs and their separate heads in the historical audit below have now been integrated through PR #211; that historical status is retained as provenance only. Release note `docs/RELEASE_0.10.21.md` states exact integrated feature scope and remaining acceptance gates.
+- Public immutable authority remains **Core v0.10.20** and **Browser v0.8.1** until an annotated `v0.10.21` tag, immutable 20-asset manifest, final-setup verified Sigstore attestation, and GitHub Release success have independently been recorded.
+- Installed Core on Emad-PC, Emad-Linux and MMZ-Linux still reports `0.10.20`; Saeid Windows is offline / cause unverified. Emad native Desktop was independently upgraded in-place to `0.10.20`; GUI historical effect still `NATIVE_OUTCOME_UNCERTAIN_RESTART_REQUIRED` and must not be replayed/cleared.
+- Separate owner-critical gates: native installed GUI/Browser profiles/RTL/HiDPI, Linux MMZ root-owned Chromium sandbox (owner password prompt currently pending), authenticated Same-chat Work events and configured Runner, safe in-place rollback on target devices, all-host deployment, full cumulative Brain. Planner PR #204 remains local-only, not auto-promoted.
+- An obsolete `0.10.20` Linux auto-updater removed a `0.10.21` NoPromote test directory after successful qualification. This is not a reason to delete any historical root. The current source includes R205 retirement guard; reverify after install. Do not run older updater cleanup against newly staged candidate directories before acceptance.
+
+
 This is the current **public release/roadmap pointer** for Remote Commander Core and its separately released Browser. It does **not** replace historic provenance, privately verified cumulative Project Brains, exact machine installation readbacks, or acceptance evidence.
 
 ## Immutable released baselines
