@@ -109,6 +109,27 @@ export function isolateWindowsProcessTreeRegression(command) {
   return 'node --test --test-concurrency=1 '+file+' && '+parts.join(' && ');
 }
 
+/**
+ * R500: Windows loaded-host native CI occasionally cannot start the isolated
+ * Agent Extension HTTP fixture within the existing readiness budget. Keep its
+ * original deadline and exact test body, but execute the file once in its own
+ * process before the high-volume suite; no skipped, duplicated, or widened
+ * tests. Missing/ambiguous coverage fails closed.
+ */
+export function isolateWindowsAgentHttpRegression(command) {
+  if(typeof command!=='string'||!command)throw new Error('CI_AGENT_HTTP_COMMAND_INVALID');
+  const file='test/agent-extensions-http.test.mjs';
+  if(command.split(file).length-1!==1)throw new Error('CI_AGENT_HTTP_CARDINALITY');
+  const parts=command.split(' && ');
+  const index=parts.findIndex(part=>part.startsWith('node --test --test-concurrency=1 ')&&part.includes(' '+file));
+  if(index<0)throw new Error('CI_AGENT_HTTP_BATCH_NOT_FOUND');
+  const original=parts[index],after=original.replace(' '+file,'');
+  if(after===original||after.includes(file)||!after.startsWith('node --test --test-concurrency=1 test/'))
+    throw new Error('CI_AGENT_HTTP_ISOLATION_INVALID');
+  parts[index]=after;
+  return 'node --test --test-concurrency=1 '+file+' && '+parts.join(' && ');
+}
+
 export function parseQualificationArgs(argv){
   const out={script:null,concurrency:null,prioritizeSensitive:false};
   for(let i=0;i<argv.length;i++){
@@ -132,6 +153,7 @@ function run(){
   const bounded=boundNodeTestConcurrency(original,effectiveConcurrency);
   const prioritizeSensitive=args.prioritizeSensitive||process.platform==='win32';
   let command=prioritizeSensitive?prioritizeSensitiveQualificationCommands(bounded.command):bounded.command;
+  if(process.platform==='win32') command=isolateWindowsAgentHttpRegression(command);
   if(args.script==='test'&&process.platform==='win32'){
     command=isolateWindowsLeaseRegression(command);
     command=isolateWindowsTimingSensitiveRegressions(command);
