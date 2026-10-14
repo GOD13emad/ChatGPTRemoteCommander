@@ -60,7 +60,9 @@ if (workflow.includes('gh release upload')) throw new Error('immutable release w
 // R499: v0.10.21 may be tagged and attested, but never silently become
 // latest Stable while owner endpoints have autoUpdate.enabled=true and the
 // Saeid host is unreachable. Preserve atomic full-asset draft creation.
-if (!workflow.includes('--notes-file "$notes" \\\n            --draft') ||
+if (!(workflow.includes('gh release create "$tag" "${assets[@]}"') &&
+      workflow.includes('--notes-file "$notes"') &&
+      workflow.includes('            --draft')) ||
     !workflow.includes('RELEASE_SYNC_DRAFT_STAGED tag=$tag') ||
     workflow.includes('RELEASE_SYNC_PUBLISHED tag=$tag assets='))
   throw new Error('R499_RELEASE_MUST_REMAIN_DRAFT_PENDING_FLEET_ACCEPTANCE');
