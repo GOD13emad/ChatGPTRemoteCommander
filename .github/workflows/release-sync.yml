@@ -16,6 +16,10 @@ on:
       - 'install.ps1'
       - 'server-install-windows.ps1'
       - 'test/release-assets-contract.test.mjs'
+      - 'test/unsigned-windows-release-policy.test.mjs'
+      - 'tools/verify-windows-release-policy.mjs'
+      - 'docs/UNSIGNED_WINDOWS_RELEASE_POLICY.*'
+      - 'docs/RELEASE_0.10.21.md'
 
 permissions:
   contents: read
@@ -23,6 +27,8 @@ permissions:
 jobs:
   build-windows-setup:
     runs-on: windows-latest
+    outputs:
+      installer_signed: ${{ steps.verify_installer_signature.outputs.signed }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -31,6 +37,9 @@ jobs:
       - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
         with:
           dotnet-version: '10.0.x'
+      - name: Test exact-version unsigned release policy
+        shell: pwsh
+        run: node --test test/unsigned-windows-release-policy.test.mjs
       - name: Install verified pinned Inno Setup compiler
         shell: pwsh
         run: |
@@ -55,6 +64,18 @@ jobs:
             -SourceRef $sourceRef `
             -ExpectedCommit $commit `
             -BrowserInstaller $browser
+      - name: Record final setup Authenticode verification
+        id: verify_installer_signature
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $version=node -p "require('./package.json').version"
+          $setup="dist/installer/Remote-Commander-Setup-v$version.exe"
+          if(-not(Test-Path -LiteralPath $setup -PathType Leaf)){throw 'SETUP_SIGNATURE_MISSING_FILE'}
+          $signature=Get-AuthenticodeSignature -LiteralPath $setup
+          $valid=($signature.Status -eq 'Valid' -and $null -ne $signature.SignerCertificate)
+          "signed=$(([string]$valid).ToLowerInvariant())" >> $env:GITHUB_OUTPUT
+          Write-Output ("FINAL_SETUP_AUTHENTICODE_STATUS=" + $signature.Status)
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: remote-commander-windows-setup
@@ -117,12 +138,50 @@ jobs:
           echo "R171_IMMUTABLE_TAG_AND_ASSETS_PREATTEST_PASS tag=$tag"
           echo "accepted=true" >> "$GITHUB_OUTPUT"
 
+      - name: Authorize Windows distribution mode for this exact version
+        if: ${{ steps.release_identity.outputs.accepted == 'true' }}
+        shell: bash
+        env:
+          SETUP_SIGNED: ${{ needs.build-windows-setup.outputs.installer_signed }}
+        run: |
+          set -euo pipefail
+          export RELEASE_VERSION="$(node -p "require('./package.json').version")"
+          export RELEASE_TAG="v${RELEASE_VERSION}"
+          node tools/verify-windows-release-policy.mjs
       - name: Attest immutable release assets with GitHub Sigstore provenance
         if: ${{ steps.release_identity.outputs.accepted == 'true' }}
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # official v4
         with:
           subject-path: 'dist/release/*'
 
+      - name: Verify GitHub provenance of final installer before release
+        if: ${{ steps.release_identity.outputs.accepted == 'true' }}
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          version="$(node -p "require('./package.json').version")"
+          tag="v${version}"
+          commit="$(git rev-parse HEAD)"
+          artifact="dist/release/Remote-Commander-Setup-v${version}.exe"
+          test -s "$artifact"
+          verified=false
+          for attempt in 1 2 3 4 5; do
+            if gh attestation verify "$artifact" --repo "$GH_REPO" \
+              --source-ref "refs/tags/$tag" --source-digest "$commit" \
+              --signer-workflow "$GH_REPO/.github/workflows/release-sync.yml" >/dev/null; then
+              verified=true
+              break
+            fi
+            if [ "$attempt" -lt 5 ]; then sleep 8; fi
+          done
+          if [ "$verified" != "true" ]; then
+            echo "::error::Final Windows setup provenance verification failed; publication denied."
+            exit 1
+          fi
+          echo "WINDOWS_RELEASE_GITHUB_PROVENANCE_VERIFIED tag=$tag commit=$commit"
       - name: Publish matching qualified tag with assets
         if: ${{ steps.release_identity.outputs.accepted == 'true' }}
         env:

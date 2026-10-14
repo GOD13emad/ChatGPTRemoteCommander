@@ -21,6 +21,8 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: '22'
+      - name: Verify large-file transfer preflight safety on both platforms
+        run: node --test tools/commander-transfer-mesh/large-transfer-preflight.test.mjs
       - name: Install Linux GUI helper dependencies
         if: runner.os == 'Linux'
         run: |

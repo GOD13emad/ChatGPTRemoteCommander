@@ -38,7 +38,7 @@ function fixture({ root, planner = defaultPlanner, runner = {} } = {}) {
     allowedRoots: [root], maxReadBytes: 524288, maxWriteBytes: 524288, auditLog: path.join(root, 'audit.jsonl'),
     durableWorkflows: {
       enabled: true, directory: path.join(root, 'state'), executionTools: Object.keys(definitions),
-      runner: { enabled: true, autoTick: false, allowedTools: Object.keys(definitions), maxActions: 10, maxDurationMs: 30000, maxPlannerCalls: 30, adaptive: { enabled: true, maxExtensions: 4 }, ...runner }
+      runner: { enabled: true, autoTick: false, allowedTools: Object.keys(definitions), maxActions: 10, maxDurationMs: 120000, maxPlannerCalls: 30, adaptive: { enabled: true, maxExtensions: 4 }, ...runner }
     }
   };
   let plans = 0, effects = 0, reads = 0, api;

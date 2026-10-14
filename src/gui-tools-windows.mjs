@@ -5,6 +5,7 @@ import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { performance } from 'node:perf_hooks';
 import { GUI_RULES, guiError, guiToolDefinitions, validateGuiInput } from './gui-contract.mjs';
 import { createGuiProcessClient, runGuiProcess } from './gui-process.mjs';
+import { createGuiInputIncidentStore } from './gui-incident-store.mjs';
 export { guiToolDefinitions };
 
 const project = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -40,7 +41,7 @@ const bound = (v, low, high, defaultValue) => Number.isSafeInteger(v) ? Math.max
  * application coordination; distinct trust levels require separate OS sessions.
  */
 export function createGuiController({ platform = process.platform, now = () => performance.now(), token = () => randomBytes(24).toString('hex'), isStopped = stopped,
-  invoke = invokeDefault, closeInvoke = closeInvokeDefault } = {}) {
+  invoke = invokeDefault, closeInvoke = closeInvokeDefault, incidentStore = createGuiInputIncidentStore() } = {}) {
   let session = null;
   let frame = null;
   let busy = false;
@@ -60,13 +61,21 @@ export function createGuiController({ platform = process.platform, now = () => p
     const supported = platform === 'win32' || platform === 'linux';
     const enabled = supported && power?.enabled === true && cfg.enabled === true;
     const blocked = await isStopped();
-    if (name === 'gui_status' && (!enabled || blocked || uncertain)) return {
-      enabled, available: false, blocked, uncertain, busy, leased: !!current(),
-      reason: !supported ? 'PLATFORM_BACKEND_UNSUPPORTED' : blocked ? 'LOCAL_GUI_STOP' : uncertain ? 'NATIVE_OUTCOME_UNCERTAIN_RESTART_REQUIRED' : 'GUI_DISABLED'
+    let pendingIncident = null, incidentStoreUnavailable = false;
+    try { pendingIncident = await incidentStore.pending(); }
+    catch { incidentStoreUnavailable = true; } // A corrupt/unreadable record never grants input.
+    const uncertainNow = uncertain || !!pendingIncident;
+    if (name === 'gui_status' && (!enabled || blocked || uncertainNow || incidentStoreUnavailable)) return {
+      enabled, available: false, blocked, uncertain: uncertainNow, busy, leased: !!current(),
+      incidentStoreUnavailable, incidentPending: !!pendingIncident,
+      reason: !supported ? 'PLATFORM_BACKEND_UNSUPPORTED' : blocked ? 'LOCAL_GUI_STOP' :
+        incidentStoreUnavailable ? 'GUI_INCIDENT_STORAGE_UNAVAILABLE' :
+        uncertainNow ? 'NATIVE_OUTCOME_UNCERTAIN_RESTART_REQUIRED' : 'GUI_DISABLED'
     };
     if (!enabled) throw guiError('GUI_DISABLED_OR_UNSUPPORTED');
     if (blocked) throw guiError('GUI_LOCAL_STOP');
-    if (uncertain) throw guiError('GUI_OUTCOME_UNCERTAIN_RESTART_REQUIRED');
+    if (incidentStoreUnavailable) throw guiError('GUI_INCIDENT_STORAGE_UNAVAILABLE');
+    if (uncertainNow) throw guiError('GUI_OUTCOME_UNCERTAIN_RESTART_REQUIRED');
     // No stale action queue: concurrent work must retry with a NEW observation.
     if (busy) throw guiError('GUI_BUSY');
     busy = true;
@@ -115,14 +124,27 @@ export function createGuiController({ platform = process.platform, now = () => p
         request.maxWidth = Math.min(parameters.maxWidth ?? 1600, bound(cfg.maxScreenshotWidth, 320, 1920, 1600));
         request.maxBytes = bound(cfg.maxScreenshotBytes, 262144, 4194304, 2097152);
       }
+      // Write and fsync a minimal private pending record BEFORE any mutating helper call.
+      // A crash between dispatch and native acknowledgment must not reset safety on restart.
+      let pendingHandle = null;
+      if (isInput) {
+        try { pendingHandle = await incidentStore.begin(name); }
+        catch {
+          session = null; frame = null; closeInvoke();
+          throw guiError('GUI_INCIDENT_STORAGE_UNAVAILABLE');
+        }
+      }
       let result;
       try { result = await invoke(request); }
       catch (error) {
         if (isInput) {
-          // Exact Linux click pre-dispatch rejection only; all other effects remain unknown.
-          // Always revoke the frame and lease. Never automatically retry the click.
+          // Exact Linux click pre-dispatch rejection only; no input was ever applied.
           const provenNoEffect = platform === 'linux' && name === 'gui_mouse_click' &&
             error?.guiCode === 'GUI_FOREGROUND_OR_GEOMETRY_CHANGED' && error?.guiNotApplied === true;
+          if (provenNoEffect) {
+            try { await incidentStore.resolve(pendingHandle); }
+            catch { uncertain = true; session = null; frame = null; closeInvoke(); throw guiError('GUI_INCIDENT_STORAGE_UNAVAILABLE'); }
+          }
           uncertain = !provenNoEffect;
           session = null; frame = null; closeInvoke();
         }
@@ -131,6 +153,13 @@ export function createGuiController({ platform = process.platform, now = () => p
       if (result?.ok !== true) {
         if (isInput) { uncertain = true; session = null; frame = null; closeInvoke(); }
         throw guiError(result?.error || 'GUI_NATIVE_FAILED');
+      }
+      if (isInput) {
+        try { await incidentStore.resolve(pendingHandle); }
+        catch {
+          uncertain = true; session = null; frame = null; closeInvoke();
+          throw guiError('GUI_INCIDENT_STORAGE_UNAVAILABLE');
+        }
       }
       if (name === 'gui_screenshot') {
         const { data, mimeType, ...meta } = result;
