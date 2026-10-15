@@ -1,10 +1,10 @@
 {
   "schema": "commander-unsigned-windows-release-v1",
-  "version": "0.10.23",
-  "tag": "v0.10.23",
-  "allowUnsignedWithGitHubAttestation": true,
+  "version": "0.10.24",
+  "tag": "v0.10.24",
+  "allowUnsignedWithGitHubAttestation": false,
   "scope": "only-this-version",
   "publishedInstallerSignature": "NotSigned",
   "verification": "GitHub Sigstore build provenance + exact source tag/commit + SHA256SUMS.txt",
-  "riskAcknowledgement": "Unsigned Windows executable; SmartScreen or Smart App Control may warn or block; SHA256 and provenance do not replace Authenticode."
+  "riskAcknowledgement": "Unsigned Windows executable; SmartScreen or Smart App Control may warn or block. No new version-specific owner consent is documented for v0.10.24. SHA256 and GitHub provenance do not replace Authenticode."
 }

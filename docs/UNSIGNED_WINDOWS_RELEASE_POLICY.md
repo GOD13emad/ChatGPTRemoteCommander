@@ -1,26 +1,11 @@
-# Windows unsigned release policy — v0.10.23
+# Windows unsigned release policy — v0.10.24: NOT YET AUTHORIZED
 
-Owner-directed, version-scoped distribution option (2026-10-14). Traditional code-signing certificate enrollment is unavailable. This policy does **not** claim that the final Windows installer is Authenticode-signed.
+The prior v0.10.23 unsigned-with-provenance exception is explicitly NOT reused for v0.10.24. The active policy sets allowUnsignedWithGitHubAttestation=false and scope=only-this-version.
 
-## Requirements for this one release
-- Immutable annotated `v0.10.23` tag referencing the exact release source commit; release notes and the fixed 20-asset manifest must be present.
-- `SHA256SUMS.txt` for all release assets verified at publish time.
-- A **GitHub Sigstore build-provenance attestation** must be created, then independently verified for the final Windows installer against the expected repository, signing workflow, tag and source commit **before** GitHub Release publication.
-- An explicit allowlist for *this tag only* in `docs/UNSIGNED_WINDOWS_RELEASE_POLICY.json`. This decision must not generalize to future versions.
-- The release notes must warn of the missing Authenticode publisher identity and potential SmartScreen/Smart App Control warnings. Do not disable or evade Windows security policies.
-- If trusted Authenticode signing becomes available, use that route. If neither a valid signature nor a verifiable GitHub attestation exists, the release must fail closed.
+- A true Authenticode publisher-signed installer may pass the signed route if version/tag match.
+- An unsigned installer, even with valid SHA256SUMS and GitHub Sigstore provenance, is currently denied. Source provenance cannot provide Windows publisher identity or prevent SmartScreen warnings.
+- No security dialog, Smart App Control policy, code signing or release tag should be bypassed, rewritten or suppressed.
+- The 20 assets, annotated immutable exact tag, notes, attestation source-ref/commit/signer and client-side checksum checks remain mandatory whenever a release is independently authorized.
+- Automatic Stable promotion and unattended fleet update remain forbidden until all native user, data-continuity and rollout gates close. Core v0.10.20 stays Stable, and old v0.10.23 Draft stays immutable.
 
-## Verification by recipient
-Verify the file SHA-256 against the `SHA256SUMS.txt` fetched from the matching official GitHub release, and run:
-
-```bash
-gh attestation verify Remote-Commander-Setup-v0.10.23.exe \
-  --repo GOD13emad/ChatGPTRemoteCommander \
-  --source-ref refs/tags/v0.10.23 \
-  --signer-workflow GOD13emad/ChatGPTRemoteCommander/.github/workflows/release-sync.yml
-```
-
-`gh attestation verify` checks where the artifact was built and which source was used. It does **not** grant OS publisher trust, guarantee absence of bugs/malware, or silence SmartScreen. If Windows refuses execution under the machine's policy, do not disable security controls.
-
-## Scope
-Applies only to the release **distribution gate**, not to automatic unattended upgrades. The four deployed stable Core `0.10.20` instances remain unchanged until the separate compatibility, data-preservation and rollback gates pass.
+A new scoped owner approval would require an independently reviewed policy and regression change. This document itself does NOT grant approval.
