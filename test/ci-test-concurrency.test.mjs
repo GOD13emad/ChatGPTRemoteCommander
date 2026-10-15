@@ -185,6 +185,8 @@ test('R470 sanitized diagnostic workflow persists no raw qualification log and k
   for(const marker of [
     "if: ${{ failure() }}",
     "github.event.pull_request.head.repo.full_name == github.repository",
+    "github.event_name == 'workflow_dispatch' && github.ref_type == 'branch'",
+    "failure() && ((github.event_name == 'pull_request'",
     "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
     'retention-days: 7',
     'if-no-files-found: warn',
@@ -196,6 +198,10 @@ test('R470 sanitized diagnostic workflow persists no raw qualification log and k
   assert.ok(workflow.indexOf('R470 derive a bounded')>workflow.indexOf('Independently verify exact Job receipts'));
   assert.ok(!workflow.includes('upload-artifact@v3'));
   assert.ok(workflow.includes('-NoPromote'),'keep original tested production path unchanged');
+  assert.equal((workflow.match(/DIAGNOSTIC_R470\.json/g)||[]).length,1,
+    'only the sanitized JSON is available to upload');
+  assert.ok(!workflow.includes("github.event_name == 'workflow_dispatch' && github.ref_type != 'branch'"),
+    'manual path must remain branch-only');
 });
 
 test('R470 Windows fixture extracts failing test and counters without persisting secrets, and refuses ambiguous logs', t=>{
