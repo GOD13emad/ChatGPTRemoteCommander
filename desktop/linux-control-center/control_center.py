@@ -16,6 +16,7 @@ APP_ID = "io.github.god13emad.RemoteCommander.ControlCenter"
 HOME = Path.home()
 STATE = HOME / ".local/state/chatgpt-remote-commander"
 MONITOR = STATE / "browser-companion/commander-monitor.json"
+AUTOMATION = STATE / "browser-companion/commander-automation.json"
 ROUTING = STATE / "routing"
 WORKFLOWS = STATE / "instances/default/workflows/workflows.sqlite"
 PROFILE_RE = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
@@ -72,6 +73,25 @@ def monitor_status():
     identity = m.get("identity") or {}
     gui = m.get("gui") or {}
     operations = m.get("operations") or {}
+    a = bounded_json(AUTOMATION, 4096)
+    valid_a = (isinstance(a, dict) and a.get("schema") == 1
+               and a.get("kind") == "COMMANDER_AUTOMATION_MONITOR"
+               and isinstance(a.get("observedAtEpochMs"), int)
+               and isinstance(a.get("expiresAtEpochMs"), int)
+               and a["observedAtEpochMs"] <= now + 30000
+               and a["observedAtEpochMs"] <= now <= a["expiresAtEpochMs"]
+               and a["expiresAtEpochMs"] - a["observedAtEpochMs"] <= 30000
+               and a.get("configSha256") == identity.get("configSha256")
+               and isinstance(identity.get("configSha256"), str)
+               and bool(re.fullmatch(r"[a-f0-9]{64}", identity["configSha256"])))
+    auto = a.get("automation") if valid_a else {}
+    if not isinstance(auto, dict):
+        auto = {}
+    configured = auto.get("runnerConfigured") is True
+    executing = configured and auto.get("automaticExecution") is True
+    model = auto.get("localModel") if auto.get("localModel") in (
+        "NOT_ATTACHED", "PROPOSAL_ONLY", "UNVERIFIED") else "UNVERIFIED"
+    credits = "DENY_IN_CORE" if auto.get("workCredits") == "DENY_IN_CORE" else "UNVERIFIED"
     return {
         "state": "CONNECTED",
         "device": str(identity.get("deviceName", "?"))[:80],
@@ -82,6 +102,11 @@ def monitor_status():
         "browser": "READY" if (m.get("browser") or {}).get("available") is True else "UNAVAILABLE",
         "activeOperations": operations.get("active", 0),
         "extensions": len((m.get("extensions") or {}).get("items") or []),
+        "automation": "ACTIVE" if executing else "MANUAL_ONLY" if configured else
+                      "NOT_CONFIGURED" if auto.get("runnerConfigured") is False else "UNVERIFIED",
+        "localAI": model,
+        "workCredits": credits,
+        "creditUsage": "UNVERIFIED",
     }
 
 

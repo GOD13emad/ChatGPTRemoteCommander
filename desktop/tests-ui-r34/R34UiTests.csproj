@@ -9,6 +9,7 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="../RemoteCommanderDashboard/DashboardChrome.cs" Link="DashboardChrome.cs"/>
+    <Compile Include="../RemoteCommanderDashboard/AutomationTelemetry.cs" Link="AutomationTelemetry.cs"/>
     <Compile Include="../RemoteCommanderDashboard/ProfileHealthEvidence.cs" Link="ProfileHealthEvidence.cs"/>
   </ItemGroup>
 </Project>

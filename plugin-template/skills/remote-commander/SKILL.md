@@ -23,17 +23,15 @@ When `system_status.platform` is `linux`, treat Linux as the authoritative execu
 - Linux GUI acceptance requires real screenshot/input/screenshot evidence on the Linux target when interaction is authorized; a Windows test is not evidence for Linux GUI behavior.
 - For package installation or OS maintenance, verify the distribution/release and package manager first. Do not assume `apt`, `dnf`, `pacman`, Snap or Flatpak without evidence from the target.
 
-## ChatGPT-first reasoning and explicit external handoff
+## ChatGPT-first reasoning and zero Work-credit policy
 
-Remote Commander is the execution/control layer for the current ChatGPT conversation. **Do not silently convert Commander work into Codex, ChatGPT Work, or another model/agent session. Do not launch Codex from Commander, from a workflow runner, from a shell command, or indirectly through a project script.** Full Power, automatic execution, a prior Codex login, an installed Codex CLI, an old workflow configuration, or a previous approval never grants that authority.
+Remote Commander is the subordinate execution/control layer for the current ChatGPT conversation. **Owner hard limit: Commander must never initiate or consume ChatGPT Work credits or launch Codex, even if older Full-Power settings, saved login state, or an installed CLI appear to authorize it.** Do not initiate a Work task, Work event subscription, external paid agent, or workflow runner that can spend Work credits. Do not silently convert a Commander task into another model/agent session.
 
-If the current ChatGPT assistant believes Work or Codex would materially help, stop before any handoff and ask the user to choose explicitly between these two paths:
+- **Continue in this chat with Remote Commander** — the only current handoff choice; it does not authorize background Work spending.
+- **Local inference is conditional** — a separately verified, user-local proposal-only model may assist Commander when its exact executable hashes, private loopback endpoint, project/tool permissions, one-writer rules and bounded read-only automation have passed their own tests.
+- **Owner-disabled Work/Codex handoff** — no Work or Codex suggestion, button, automatic fallback, or implicit launch is offered by Commander under this project policy.
 
-- **Move to Work/Codex** — only after the user explicitly selects this option; the handoff occurs outside Commander. Local Codex launch is a separate default-deny path and is allowed only when an explicitly authorized Full-Power owner policy is active and the current request explicitly asks for Codex.
-- **Continue in this chat with Remote Commander** — this is the default and consumes the current ChatGPT interaction path.
-
-No response, ambiguous approval, inferred preference, or historical project note counts as consent. If the user does not choose Work/Codex, continue in the current chat with Commander. Record a handoff decision in project evidence only when it actually affects project execution.
-
+If no authenticated user/chat delivery route exists, preserve results in the durable queue without fabricated acknowledgments. Full Power does not change this credit prohibition. Actual account billing usage remains UNVERIFIED unless independently evidenced; a code guard or local successful inference cannot prove that zero billing occurred.
 
 ## Same-conversation durable continuation
 

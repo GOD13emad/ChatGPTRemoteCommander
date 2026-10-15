@@ -94,6 +94,29 @@ export function sanitizeMonitorSnapshot(input, now = Date.now()) {
   };
 }
 
+// Separate private telemetry file: never widen the strict legacy v1 monitor
+// schema. Existing stable Browser 0.8.1 must continue parsing its original file.
+export function sanitizeAutomationSnapshot(input, now = Date.now()) {
+  const a = input?.automation ?? {};
+  const configured = a.runnerConfigured === true;
+  return {
+    schema: 1,
+    kind: 'COMMANDER_AUTOMATION_MONITOR',
+    observedAtEpochMs: now,
+    expiresAtEpochMs: now + 10000,
+    configSha256: /^[a-f0-9]{64}$/.test(input?.identity?.configSha256 ?? '')
+      ? input.identity.configSha256 : '',
+    automation: {
+      runnerConfigured: configured,
+      automaticExecution: configured && a.automaticExecution === true,
+      localModel: ['UNVERIFIED','NOT_ATTACHED','PROPOSAL_ONLY'].includes(a.localModel)
+        ? a.localModel : 'UNVERIFIED',
+      workCredits: a.workCredits === 'DENY_IN_CORE' ? 'DENY_IN_CORE' : 'UNVERIFIED',
+      creditUsage: 'UNVERIFIED'
+    }
+  };
+}
+
 export async function writeBrowserCompanionMonitor(root, input, options = {}) {
   await provePrivateRoot(root, options);
   const snapshot = sanitizeMonitorSnapshot(input, options.now?.() ?? Date.now());
@@ -106,6 +129,20 @@ export async function writeBrowserCompanionMonitor(root, input, options = {}) {
     await writeFile(temporary, data, { encoding: 'utf8', mode: 0o600, flag: 'wx' });
     if ((options.platform ?? process.platform) !== 'win32') await chmod(temporary, 0o600);
     await rename(temporary, target);
+    // A distinct companion preserves existing stable-Browser acceptance.
+    const automation = sanitizeAutomationSnapshot(input, snapshot.observedAtEpochMs);
+    const automationBytes = JSON.stringify(automation) + '\n';
+    if (Buffer.byteLength(automationBytes) > 4096) throw new Error('AUTOMATION_SNAPSHOT_LIMIT');
+    const secondary = flavor.join(root, 'commander-automation.json');
+    const tmpSecondary = flavor.join(root, '.commander-automation-' + process.pid + '-' + randomUUID() + '.tmp');
+    try {
+      await writeFile(tmpSecondary, automationBytes, { encoding: 'utf8', mode: 0o600, flag: 'wx' });
+      if ((options.platform ?? process.platform) !== 'win32') await chmod(tmpSecondary, 0o600);
+      await rename(tmpSecondary, secondary);
+    } catch (error) {
+      try { await unlink(tmpSecondary); } catch {}
+      throw error;
+    }
   } catch (error) {
     try { await unlink(temporary); } catch {}
     throw error;

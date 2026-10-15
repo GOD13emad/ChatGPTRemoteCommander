@@ -3,6 +3,7 @@ import { mkdtemp, writeFile, open, lstat, rm, realpath } from 'node:fs/promises'
 import os from 'node:os';
 import path from 'node:path';
 import { assertNoCodexDelegatingScript, assertNoCodexExecutable, commanderChildEnv } from './no-codex-policy.mjs';
+import { localCreditFreeProvider } from './no-work-credit-policy.mjs';
 
 const MAX_INPUT_BYTES = 512 * 1024;
 const FIELDS = ['action', 'tool', 'argumentsJson', 'summary'];
@@ -188,7 +189,8 @@ function runProcess(executable, args, input, { cwd, timeoutMs, maxOutputBytes, s
  * validates policy, revisions and action arguments before dispatching anything.
  * A command provider is operator-supplied code, not an isolation boundary.
  */
-export function createCommandPlanner(config, { allowCodex = false } = {}) {
+export function createCommandPlanner(config, { allowCodex = false, requireLocalCreditPolicy = false } = {}) {
+  if (requireLocalCreditPolicy && !localCreditFreeProvider(config)) throw fail('WORK_CREDITS_PROVIDER_BLOCKED');
   if (config?.kind === 'codex' && !allowCodex) throw fail('PLANNER_PROVIDER_FORBIDDEN');
   if (!config || !['codex', 'claude', 'command'].includes(config.kind)) throw fail('PLANNER_INVALID_CONFIG');
   const { kind, executable, model } = config;
@@ -222,6 +224,7 @@ export function createCommandPlanner(config, { allowCodex = false } = {}) {
       if (Buffer.byteLength(serialized, 'utf8') > MAX_INPUT_BYTES) throw fail('PLANNER_INPUT_LIMIT');
       let scratch, scratchRoot, cleanupSafe = true;
       try {
+        if (requireLocalCreditPolicy && !localCreditFreeProvider(config)) throw fail('WORK_CREDITS_PROVIDER_BLOCKED');
         await assertNoCodexDelegatingScript(executable, launchArgs, process.cwd(), { allowCodex });
         scratchRoot = await realpath(os.tmpdir());
         scratch = await realpath(await mkdtemp(path.join(scratchRoot, 'rc-project-planner-')));

@@ -18,13 +18,14 @@ class SafeMonitorTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory(prefix="rc-center-r1-")
         self.root = Path(self.tmp.name)
-        self.old = (m.MONITOR,m.ROUTING,m.WORKFLOWS)
+        self.old = (m.MONITOR,m.AUTOMATION,m.ROUTING,m.WORKFLOWS)
         m.MONITOR = self.root/"monitor.json"
+        m.AUTOMATION = self.root/"automation.json"
         m.ROUTING = self.root/"routing"
         m.WORKFLOWS = self.root/"workflows.sqlite"
         m.ROUTING.mkdir(mode=0o700)
     def tearDown(self):
-        m.MONITOR,m.ROUTING,m.WORKFLOWS = self.old
+        m.MONITOR,m.AUTOMATION,m.ROUTING,m.WORKFLOWS = self.old
         self.tmp.cleanup()
     def dump(self,p,obj):
         p.write_text(json.dumps(obj),encoding="utf8")
@@ -33,16 +34,38 @@ class SafeMonitorTests(unittest.TestCase):
         now=int(time.time()*1000)
         return {"schema":1,"kind":"COMMANDER_LIVE_MONITOR",
                 "observedAtEpochMs":now-100,"expiresAtEpochMs":now+10000+adjust,
-                "identity":{"deviceName":"fixture","version":"0.10.20","profile":"default"},
+                "identity":{"deviceName":"fixture","version":"0.10.20","profile":"default","configSha256":"a"*64},
                 "gui":{"available":False,"reason":"UNVERIFIED"},
                 "browser":{"available":True},"operations":{"active":0},
                 "extensions":{"items":[]}}
+    def valid_automation(self):
+        now=int(time.time()*1000)
+        return {"schema":1,"kind":"COMMANDER_AUTOMATION_MONITOR",
+                "observedAtEpochMs":now-100,"expiresAtEpochMs":now+10000,
+                "configSha256":"a"*64,
+                "automation":{"runnerConfigured":False,"automaticExecution":False,
+                              "localModel":"NOT_ATTACHED","workCredits":"DENY_IN_CORE"}}
     def test_fresh_monitor(self):
         self.dump(m.MONITOR,self.valid_monitor())
+        self.dump(m.AUTOMATION,self.valid_automation())
         s=m.monitor_status()
         self.assertEqual(s["state"],"CONNECTED")
         self.assertEqual(s["gui"],"BLOCKED")
         self.assertEqual(s["activeOperations"],0)
+        self.assertEqual(s["automation"],"NOT_CONFIGURED")
+        self.assertEqual(s["workCredits"],"DENY_IN_CORE")
+        self.assertEqual(s["creditUsage"],"UNVERIFIED")
+    def test_false_automation_claim_does_not_establish_auto_execution(self):
+        x=self.valid_monitor()
+        a=self.valid_automation()
+        a["automation"]={"runnerConfigured":False,"automaticExecution":True,
+                         "localModel":"ACTIVE","workCredits":"OK","creditUsage":"ZERO"}
+        self.dump(m.MONITOR,x)
+        self.dump(m.AUTOMATION,a)
+        s=m.monitor_status()
+        self.assertEqual(s["automation"],"NOT_CONFIGURED")
+        self.assertEqual(s["localAI"],"UNVERIFIED")
+        self.assertEqual(s["workCredits"],"UNVERIFIED")
     def test_stale_monitor_never_shows_connected(self):
         self.dump(m.MONITOR,self.valid_monitor(adjust=-100000))
         self.assertEqual(m.monitor_status()["state"],"DISCONNECTED")

@@ -1,6 +1,7 @@
 import os from 'node:os';
 import path from 'node:path';
 import { readFile, stat } from 'node:fs/promises';
+import { WORK_CREDIT_POLICY } from './no-work-credit-policy.mjs';
 
 const POLICY_CODE = 'CODEX_DELEGATION_FORBIDDEN';
 const STATUS_CODE = 'CODEX_DELEGATION_DEFAULT_DENY';
@@ -21,6 +22,9 @@ function unquote(value) {
 }
 
 export function codexLaunchAuthorized(ctxOrConfig) {
+  // Owner's explicit zero-Work-spend invariant supersedes prior optional
+  // FULL_POWER Codex launch consent and persists through migrations.
+  if (WORK_CREDIT_POLICY === 'DENY_WORK_CREDITS') return false;
   const config = ctxOrConfig?.config ?? ctxOrConfig;
   return config?.powerMode?.enabled === true
     && config?.capabilityProfile?.tier === 'FULL_POWER'
@@ -47,7 +51,14 @@ export function isCodexExecutable(value) {
     || /\/node_modules\/.bin\/codex(?:\.cmd|\.exe)?$/i.test(text);
 }
 
-export function delegationRequirement(reason = 'Work/Codex may be useful for this task.', config = null) {
+export function delegationRequirement(reason = 'Stay in this chat with Commander.', config = null) {
+  if (WORK_CREDIT_POLICY === 'DENY_WORK_CREDITS') return {
+    approvalRequired:false,policy:'no-work-credits',default:'continue_chat',
+    reason:String(reason).slice(0,2000),
+    options:[{id:'continue_chat',label:'Continue in this chat with Remote Commander'}],
+    commanderMayLaunchCodex:false,
+    nextStep:'Work and Codex handoff are disabled by owner credit policy. Continue in this chat; local proposal-only AI requires independent accepted authority.'
+  };
   const local = codexLaunchAuthorized(config);
   return {
     approvalRequired: true,
@@ -66,6 +77,9 @@ export function delegationRequirement(reason = 'Work/Codex may be useful for thi
 }
 
 export function delegationStatus(config = null) {
+  if (WORK_CREDIT_POLICY === 'DENY_WORK_CREDITS') return {
+    active:false,policy:'no-work-credits',default:'continue_chat',commanderMayLaunchCodex:false
+  };
   const local = codexLaunchAuthorized(config);
   return {
     active: false,
@@ -237,12 +251,14 @@ export const NO_CODEX_POLICY = Object.freeze({
   code: STATUS_CODE,
   mode: 'DEFAULT_DENY',
   default: 'CONTINUE_CHAT',
-  externalHandoffRequiresCurrentChatChoice: true,
+  externalHandoffRequiresCurrentChatChoice: WORK_CREDIT_POLICY !== 'DENY_WORK_CREDITS',
   commanderMayLaunchCodex: false,
   scopedMaintenance: {
     tool: 'codex_plugin_refresh',
     requiresExplicitCurrentRequest: true,
     arbitraryCodexLaunchAllowed: false
   },
-  reason: 'Remote Commander defaults to the current ChatGPT chat as the reasoning layer. Local Codex launch is denied unless an explicitly authorized Full-Power profile opts in.'
+  reason: WORK_CREDIT_POLICY === 'DENY_WORK_CREDITS'
+    ? 'Owner policy prohibits Commander-initiated Work credit spending and Codex launch regardless of Full Power.'
+    : 'Remote Commander defaults to the current ChatGPT chat. Codex launch requires explicit authorization.'
 });

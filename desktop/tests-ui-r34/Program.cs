@@ -16,9 +16,9 @@ internal static class Program
     {
         ApplicationConfiguration.Initialize();
         var chrome = new DashboardChrome();
-        if (chrome.Metrics is not TableLayoutPanel table || table.ColumnCount != 4)
+        if (chrome.Metrics is not TableLayoutPanel table || table.ColumnCount != 3 || table.RowCount != 2)
             throw new Exception("R34_METRIC_GRID_CARDINALITY");
-        if (table.Controls.Count != 4)
+        if (table.Controls.Count != 6)
             throw new Exception("R34_MISSING_METRICS");
 
         var cards = new FlowLayoutPanel { Width = 900, Height = 500 };
@@ -39,11 +39,14 @@ internal static class Program
                 new string('a', 64), new string('b', 64))
         };
         chrome.Update(profiles);
+        chrome.UpdateAutomation(new AutomationReadout("NOT_CONFIGURED", "NOT_ATTACHED", "DENY_IN_CORE", true));
         var actual = table.Controls.OfType<Panel>()
             .SelectMany(p => p.Controls.OfType<Label>())
             .Select(l => l.Text).ToArray();
         if (!actual.Contains("1") || !actual.Contains("0.10.20")
-            || !actual.Contains("UNVERIFIED") || !actual.Contains("READ ONLY"))
+            || !actual.Contains("UNVERIFIED") || !actual.Contains("READ ONLY")
+            || !actual.Contains("NOT_CONFIGURED") || !actual.Contains("DENY_IN_CORE")
+            || actual.Contains("ZERO"))
             throw new Exception("R34_FALSE_METRIC_VALUES");
 
         if (chrome.Search is not Panel search || search.Controls.OfType<TextBox>().Count() != 1)

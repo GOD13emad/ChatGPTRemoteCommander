@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { createHash } from 'node:crypto';
 import { applyProjectRunnerConfig, discoverQualifiedProjectProvider, mergeExplicitOwnerRunnerPolicy } from '../src/project-runner-config.mjs';
 import { normalizeCapabilityProfile } from '../src/capability-profile.mjs';
 
@@ -47,10 +48,10 @@ test('legacy Codex runner is migrated fail-closed', () => {
     provider:{kind:'codex',executable:'/state/tools/codex-cli/0.156.1/bin/codex',timeoutMs:30000}
   }});
   const result=applyProjectRunnerConfig(cfg,{platform:'linux'});
-  assert.equal(result.status,'CODEX_FORBIDDEN');
+  assert.equal(result.status,'WORK_CREDITS_PROVIDER_BLOCKED');
   assert.equal(result.config.durableWorkflows.runner.enabled,false);
   assert.equal(result.config.durableWorkflows.runner.autoTick,false);
-  assert.deepEqual(result.config.durableWorkflows.runner.provider,{kind:'disabled',reason:'NO_CODEX_VIA_COMMANDER'});
+  assert.deepEqual(result.config.durableWorkflows.runner.provider,{kind:'disabled',reason:'WORK_CREDITS_PROVIDER_BLOCKED'});
 });
 
 test('legacy top-level runner kind=codex is migrated fail-closed', () => {
@@ -70,22 +71,47 @@ test('Codex executable is forbidden even if disguised as command provider', () =
     provider:{kind:'command',executable:'C:\\state\\tools\\codex-cli\\0.156.1\\bin\\codex.exe'}
   }});
   const result=applyProjectRunnerConfig(cfg,{platform:'win32'});
-  assert.equal(result.status,'CODEX_FORBIDDEN');
+  assert.equal(result.status,'WORK_CREDITS_PROVIDER_BLOCKED');
   assert.equal(result.config.durableWorkflows.runner.enabled,false);
 });
 
-test('explicit non-Codex command runner may be preserved but is never auto-created', () => {
+test('unknown external or generic command runner is rejected even when owner has FULL_POWER', () => {
   const root=temp();
   try {
     const executable=makeCommand(root,'linux');
-    const cfg=base({runner:{enabled:true,autoTick:false,provider:{kind:'command',executable,timeoutMs:120000,maxOutputBytes:2*1024*1024}}});
+    const cfg=base({runner:{enabled:true,autoTick:false,provider:{kind:'command',executable,timeoutMs:120000}}});
     const result=applyProjectRunnerConfig(cfg,{platform:'linux'});
-    assert.equal(result.status,'PRESERVED_EXPLICIT_NON_CODEX_PROVIDER');
-    assert.equal(result.config.durableWorkflows.runner.enabled,true);
+    assert.equal(result.status,'WORK_CREDITS_PROVIDER_BLOCKED');
+    assert.equal(result.config.durableWorkflows.runner.enabled,false);
     assert.equal(result.config.durableWorkflows.runner.autoTick,false);
-    assert.equal(result.config.durableWorkflows.runner.provider.kind,'command');
-    assert.equal(result.config.durableWorkflows.runner.provider.timeoutMs,30000);
   } finally { fs.rmSync(root,{recursive:true,force:true}); }
+});
+
+test('trusted local Qwen command runner defaults to one direct planner without hidden team', {skip:process.platform!=='linux'},()=>{
+  const root=path.resolve('examples/provider-adapter');
+  const script=path.join(root,'linux-local-qwen3.sh');
+  const adapter=path.join(root,'adapter.mjs');
+  const hex=file=>createHash('sha256').update(fs.readFileSync(file)).digest('hex');
+  const cfg=base({runner:{
+    enabled:true,autoTick:true,allowedTools:['read_text'],maxActions:2,maxPlannerCalls:3,maxDurationMs:60000,
+    provider:{kind:'command',executable:'/bin/sh',args:[script],adapterFile:adapter,
+      scriptSha256:hex(script),adapterSha256:hex(adapter),
+      endpoint:'http://127.0.0.1:18080/v1/chat/completions',localOnly:true,creditPolicy:'DENY_WORK_CREDITS'}
+  }});
+  const result=applyProjectRunnerConfig(cfg,{platform:'linux'});
+  assert.equal(result.status,'PRESERVED_EXPLICIT_NON_CODEX_PROVIDER');
+  assert.equal(result.config.durableWorkflows.runner.enabled,true);
+  assert.equal(result.config.durableWorkflows.runner.autoTick,true);
+  assert.equal(result.config.durableWorkflows.runner.team,undefined);
+  assert.equal(result.config.durableWorkflows.runner.adaptive.enabled,false);
+  assert.equal(result.config.durableWorkflows.runner.worker.enabled,false);
+  const configManual=base({runner:{...cfg.durableWorkflows.runner,autoTick:undefined}});
+  const manual=applyProjectRunnerConfig(configManual,{platform:'linux'});
+  assert.equal(manual.status,'PRESERVED_EXPLICIT_NON_CODEX_PROVIDER');
+  assert.equal(manual.config.durableWorkflows.runner.autoTick,false);
+  assert.equal(manual.config.durableWorkflows.runner.adaptive.enabled,false);
+  assert.equal(manual.config.durableWorkflows.runner.worker.enabled,false);
+  assert.equal(manual.config.durableWorkflows.runner.team,undefined);
 });
 
 test('Standard authority disables an inherited runner', () => {
@@ -117,7 +143,7 @@ test('project engine capability represents authority independently of provider r
 });
 
 
-test('explicit owner-authorized Full-Power Codex runner is preserved', () => {
+test('explicit owner-authorized provider remains blocked under no-Work policy', () => {
   const root=temp();
   try {
     const executable=path.join(root,process.platform==='win32'?'codex.exe':'codex');
@@ -129,15 +155,14 @@ test('explicit owner-authorized Full-Power Codex runner is preserved', () => {
     }});
     cfg.powerMode.codexControl={allowLaunch:true};
     const result=applyProjectRunnerConfig(cfg,{platform:process.platform});
-    assert.equal(result.status,'PRESERVED_EXPLICIT_OWNER_CODEX_PROVIDER');
-    assert.equal(result.config.durableWorkflows.runner.enabled,true);
-    assert.equal(result.config.durableWorkflows.runner.autoTick,true);
-    assert.equal(result.config.durableWorkflows.runner.provider.kind,'codex');
-    assert.equal(result.config.durableWorkflows.runner.provider.timeoutMs,30000);
+    assert.equal(result.status,'WORK_CREDITS_PROVIDER_BLOCKED');
+    assert.equal(result.config.durableWorkflows.runner.enabled,false);
+    assert.equal(result.config.durableWorkflows.runner.autoTick,false);
+    assert.equal(result.config.durableWorkflows.runner.provider.kind,'disabled');
   } finally { fs.rmSync(root,{recursive:true,force:true}); }
 });
 
-test('historical policy-disabled active runner recovers only explicit canonical owner Codex runner', () => {
+test('historical policy-disabled runner is not automatically recovered', () => {
   const root=temp();
   try {
     const executable=path.join(root,process.platform==='win32'?'codex.exe':'codex');
@@ -150,14 +175,11 @@ test('historical policy-disabled active runner recovers only explicit canonical 
     canonical.powerMode.codexControl={allowLaunch:true};
     canonical.runtimeState='canonical-runtime-must-not-overlay';
     const result=mergeExplicitOwnerRunnerPolicy(active,canonical,{platform:process.platform});
-    assert.equal(result.merged,true);
-    assert.equal(result.status,'RECOVERED_EXPLICIT_OWNER_CODEX_PROVIDER');
+    assert.equal(result.merged,false);
+    assert.equal(result.status,'CANONICAL_OWNER_RUNNER_NOT_AUTHORIZED');
     assert.equal(result.config.runtimeState,'active-runtime');
-    assert.equal(result.config.durableWorkflows.runner.enabled,true);
-    assert.equal(result.config.durableWorkflows.runner.autoTick,true);
-    assert.equal(result.config.durableWorkflows.runner.provider.kind,'codex');
-    assert.equal(result.config.durableWorkflows.runner.provider.timeoutMs,30000);
-    assert.deepEqual(result.config.durableWorkflows.runner.allowedTools,['read_text','write_text']);
+    assert.equal(result.config.durableWorkflows.runner.enabled,false);
+    assert.deepEqual(result.config.durableWorkflows.runner.allowedTools,['read_text']);
   } finally { fs.rmSync(root,{recursive:true,force:true}); }
 });
 

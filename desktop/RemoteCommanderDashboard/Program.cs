@@ -212,6 +212,7 @@ internal sealed class DashboardForm : Form
                 : $"{profiles.Count} profile(s) • read-only dashboard • {Environment.MachineName}";
             cards.Controls.AddRange(rendered.ToArray());
             chrome.Update(profiles);
+            chrome.UpdateAutomation(AutomationTelemetry.Read(stateRoot));
             ApplyTheme(true);
         }
         finally

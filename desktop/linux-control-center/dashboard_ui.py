@@ -295,6 +295,8 @@ def run_dashboard(app_id: str,
                 ("Native GUI", "UNVERIFIED", "Input admission / STOP state"),
                 ("Browser", "UNVERIFIED", "Background browser readiness"),
                 ("Active operations", "UNVERIFIED", "Live only; not durable backlog"),
+                ("Automation", "UNVERIFIED", "Independent Runner status; no inferred execution"),
+                ("Work credits", "UNVERIFIED", "Core policy only; account usage unverified"),
             ]):
                 metric = self._metric(title, initial, description)
                 metric.set_hexpand(True)
@@ -560,6 +562,14 @@ def run_dashboard(app_id: str,
                 value.remove_css_class(css)
             if active == "UNVERIFIED":
                 value.add_css_class("rc-caution")
+            self._set_status(self._card_labels["Automation"][0],
+                             snapshot.get("automation", "UNVERIFIED"))
+            self._card_labels["Automation"][1].set_text(
+                "Local AI " + str(snapshot.get("localAI") or "UNVERIFIED")[:70])
+            self._set_status(self._card_labels["Work credits"][0],
+                             snapshot.get("workCredits", "UNVERIFIED"))
+            self._card_labels["Work credits"][1].set_text(
+                "Policy state only · account billing not monitored")
             self._render_profiles(profile_data)
             self._render_workflows(task_data)
             self.summary_line.set_text(

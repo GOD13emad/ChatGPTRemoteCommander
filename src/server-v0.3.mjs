@@ -22,6 +22,7 @@ import { MutationIdempotencyStore } from './mutation-idempotency.mjs';
 import { createAgentExtensionRegistry } from './agent-extensions.mjs';
 import { createCoucouBridge } from './coucou-bridge.mjs';
 import { startBrowserCompanionMonitor } from './browser-companion-monitor.mjs';
+import { WORK_CREDIT_POLICY } from './no-work-credit-policy.mjs';
 import {
   NO_CODEX_POLICY, codexLaunchAuthorized, delegationRequirement, delegationStatus
 } from './no-codex-policy.mjs';
@@ -115,6 +116,9 @@ const asyncOperationTools = createAsyncOperationTools({
 });
 
 function modelHandoffInstruction() {
+  if (WORK_CREDIT_POLICY === 'DENY_WORK_CREDITS') {
+    return ' Commander must not initiate ChatGPT Work, Codex or any billable Work handoff. Continue in this chat and allow only separately qualified local proposal-only AI under Commander-owned tool and project gates. Never infer permission to spend credits from Full Power or prior authorization.';
+  }
   if (codexLaunchAuthorized(config)) {
     return ' Stay in the current ChatGPT conversation and use Commander as the default execution layer. This Full-Power owner profile permits local Codex launch only when the current user request explicitly authorizes or asks for Codex; do not infer consent from silence or unrelated prior work.';
   }
@@ -376,7 +380,9 @@ async function executeTool(name, args, executionContext = {}) {
 async function executeDelegationTool(name, args) {
   if (name === 'delegation_requirement') {
     const result = delegationRequirement(args?.reason, ctx.config);
-    await audit(ctx, { action: name, ok: true, target: 'work_codex', approvalRequired: true, externalHandoffOnly: true });
+    await audit(ctx, { action: name, ok: true,
+      target: result.policy === 'no-work-credits' ? 'continue_chat' : 'work_codex',
+      approvalRequired: result.approvalRequired, externalHandoffOnly: result.policy === 'external-handoff-only' });
     return result;
   }
   if (name === 'delegation_status') return delegationStatus(ctx.config);
@@ -425,6 +431,12 @@ async function buildBrowserMonitorSnapshot() {
       runCount: runs.length
     },
     extensions: { items:extensionItems },
+    automation: {
+      runnerConfigured:workflowStatus.runnerConfigured===true,
+      automaticExecution:workflowStatus.automaticExecution===true,
+      localModel:workflowStatus.runnerConfigured===true?'UNVERIFIED':'NOT_ATTACHED',
+      workCredits:WORK_CREDIT_POLICY==='DENY_WORK_CREDITS'?'DENY_IN_CORE':'UNVERIFIED'
+    },
     operations: {
       active:Number(concurrency.activeOperations ?? 0),
       lockedKeys:Number(concurrency.lockedKeys ?? 0)
@@ -498,6 +510,7 @@ async function executeToolEffect(name, args) {
         durableDelivery: deliveryTools.status(),
         completionBeacon: deliveryStore.beacon(5),
         mutationIdempotency: mutationIdempotency.status(),
+        creditPolicy: { workCredits: WORK_CREDIT_POLICY, accountUsage: 'UNVERIFIED' },
         agentExtensions: agentExtensions.status(),
         transferMesh: { enabled: transferMesh.enabled },
         browserCompanionMonitor: browserCompanionMonitor?.status() ?? { enabled:false, lastWriteAtEpochMs:0, lastError:'' },
