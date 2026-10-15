@@ -116,6 +116,9 @@ const asyncOperationTools = createAsyncOperationTools({
 });
 
 function modelHandoffInstruction() {
+  if (WORK_CREDIT_POLICY === 'DENY_WORK_CREDITS') {
+    return ' Commander must not initiate ChatGPT Work, Codex or any billable Work handoff. Continue in this chat and allow only separately qualified local proposal-only AI under Commander-owned tool and project gates. Never infer permission to spend credits from Full Power or prior authorization.';
+  }
   if (codexLaunchAuthorized(config)) {
     return ' Stay in the current ChatGPT conversation and use Commander as the default execution layer. This Full-Power owner profile permits local Codex launch only when the current user request explicitly authorizes or asks for Codex; do not infer consent from silence or unrelated prior work.';
   }
@@ -377,7 +380,9 @@ async function executeTool(name, args, executionContext = {}) {
 async function executeDelegationTool(name, args) {
   if (name === 'delegation_requirement') {
     const result = delegationRequirement(args?.reason, ctx.config);
-    await audit(ctx, { action: name, ok: true, target: 'work_codex', approvalRequired: true, externalHandoffOnly: true });
+    await audit(ctx, { action: name, ok: true,
+      target: result.policy === 'no-work-credits' ? 'continue_chat' : 'work_codex',
+      approvalRequired: result.approvalRequired, externalHandoffOnly: result.policy === 'external-handoff-only' });
     return result;
   }
   if (name === 'delegation_status') return delegationStatus(ctx.config);

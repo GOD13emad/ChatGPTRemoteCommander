@@ -76,7 +76,7 @@ for (const required of ['codex plugin marketplace add GOD13emad/ChatGPTRemoteCom
 const workPrompt = read('plugin-template/WORK_INSTALL_PROMPT.md');
 for (const required of ['Read START_HERE.md first','WORK_SETUP.md','@plugin-creator','install-work-plugin.ps1/.sh','real tool invocation','gui_status','gui_screenshot']) if (!workPrompt.includes(required)) fail(`WORK_INSTALL_PROMPT missing ${required}`);
 const skill = read('plugin-template/skills/remote-commander/SKILL.md');
-for (const required of ['GUI Control workflow','gui_screenshot','gui_mouse_click','real-time/high-speed gameplay','ChatGPT-first reasoning and explicit external handoff','Continue in this chat with Remote Commander','Move to Work/Codex','Local Codex launch is a separate default-deny path']) if (!skill.includes(required)) fail(`remote-commander skill missing ${required}`);
+for (const required of ['GUI Control workflow','gui_screenshot','gui_mouse_click','real-time/high-speed gameplay','ChatGPT-first reasoning and zero Work-credit policy','Continue in this chat with Remote Commander','Owner-disabled Work/Codex handoff']) if (!skill.includes(required)) fail(`remote-commander skill missing ${required}`);
 const pluginSetup = read('docs/PLUGIN_SETUP.md');
 for (const required of ['Windows GUI Control capability','MCP image content','Native Computer Use remains a fallback','DEVICE_PLUGIN.json','Admin → Plugins → Add → Upload plugin','apps = "./.app.json"']) if (!pluginSetup.includes(required)) fail(`PLUGIN_SETUP missing ${required}`);
 const workPs = read('install-work-plugin.ps1');

@@ -32,36 +32,28 @@ test('Codex executables and private/package paths are recognized', () => {
   assert.equal(NO_CODEX_POLICY.commanderMayLaunchCodex,false);
 });
 
-test('handoff gate offers only continue-chat or external Work/Codex and starts nothing', () => {
+test('handoff gate permanently offers current chat only under no-Work policy', () => {
   const gate=delegationRequirement('Work/Codex may help');
-  assert.equal(gate.approvalRequired,true);
+  assert.equal(gate.approvalRequired,false);
   assert.equal(gate.default,'continue_chat');
-  assert.deepEqual(gate.options.map(x=>x.id),['work_codex','continue_chat']);
+  assert.deepEqual(gate.options.map(x=>x.id),['continue_chat']);
+  assert.equal(gate.policy,'no-work-credits');
   assert.equal(gate.commanderMayLaunchCodex,false);
   const status=delegationStatus();
   assert.equal(status.active,false);
-  assert.equal(status.policy,'external-handoff-only');
+  assert.equal(status.policy,'no-work-credits');
   assert.equal(status.commanderMayLaunchCodex,false);
+  assert.equal(NO_CODEX_POLICY.externalHandoffRequiresCurrentChatChoice,false);
 });
 
-test('explicit Full-Power owner opt-in authorizes local Codex launch policy only for that profile', () => {
-  const config={powerMode:{enabled:true,codexControl:{allowLaunch:true}},capabilityProfile:{tier:'FULL_POWER',explicitlyAuthorized:true}};
-  assert.equal(codexLaunchAuthorized(config),true);
-  assert.equal(delegationStatus(config).commanderMayLaunchCodex,true);
-  assert.equal(delegationRequirement('requested',config).commanderMayLaunchCodex,true);
-  assert.doesNotThrow(()=>assertNoCodexExecutable('codex.exe',{allowCodex:true}));
-  assert.doesNotThrow(()=>assertNoCodexCommand('codex exec -',{allowCodex:true}));
-  const env=commanderChildEnv(process.cwd(),{PATH:process.env.PATH,CODEX_HOME:'C:/owner-codex'},{allowCodex:true});
-  assert.equal(env.REMOTE_COMMANDER_NO_CODEX,undefined);
-  assert.equal(env.CODEX_HOME,'C:/owner-codex');
-  const inheritedSentinel=path.join(os.tmpdir(),'chatgpt-remote-commander-no-codex','12345');
-  const cleaned=commanderChildEnv(process.cwd(),{
-    PATH:process.env.PATH,
-    CODEX_HOME:inheritedSentinel,
-    REMOTE_COMMANDER_NO_CODEX:'1'
-  },{allowCodex:true});
-  assert.equal(cleaned.REMOTE_COMMANDER_NO_CODEX,undefined);
-  assert.equal(cleaned.CODEX_HOME,undefined);
+test('explicit FULL_POWER Codex launch flag never overrides zero-Work credit policy', () => {
+  const config={powerMode:{enabled:true,codexControl:{allowLaunch:true}},
+    capabilityProfile:{tier:'FULL_POWER',explicitlyAuthorized:true}};
+  assert.equal(codexLaunchAuthorized(config),false);
+  assert.equal(delegationStatus(config).commanderMayLaunchCodex,false);
+  assert.equal(delegationRequirement('requested',config).commanderMayLaunchCodex,false);
+  assert.equal(delegationRequirement('requested',config).options.length,1);
+  assert.throws(()=>assertNoCodexExecutable('codex.exe'),error=>error?.code===POLICY_CODE);
 });
 
 test('Codex opt-in is fail-closed outside explicitly authorized Full-Power', () => {
