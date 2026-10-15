@@ -1,3 +1,9 @@
+## 0.10.23 - 2026-10-15 (SOURCE CANDIDATE, NOT PUBLISHED STABLE)
+
+- Integrate owner-host Linux rollback control Git fix from PR #219: exact verified staged SHA and shallow update. R566-R569 regression-first, full isolated QA and hosted Windows/Linux CI accepted before integration.
+- Advance Core/Desktop/plugin/installer and the explicit one-version-only unsigned provenance policy to v0.10.23 while keeping original v0.10.22 tag and 20 assets unchanged.
+- New tagged Draft, native owner rollback acceptance, Windows Authenticode and profile/CEF acceptance, Work ACK/Mesh and powered-off fleet remain separate gates. Public Stable v0.10.20, Browser Stable v0.8.1.
+
 ## 0.10.22 - 2026-10-15 (version-locked candidate, NOT released Stable)
 
 - Version and release-policy synchronization after PR #217 Windows focus mutex J01 protection, based on main a90c7196cae3ca2bd471a0db3e42eb7eb89929eb.
