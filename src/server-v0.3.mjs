@@ -22,6 +22,7 @@ import { MutationIdempotencyStore } from './mutation-idempotency.mjs';
 import { createAgentExtensionRegistry } from './agent-extensions.mjs';
 import { createCoucouBridge } from './coucou-bridge.mjs';
 import { startBrowserCompanionMonitor } from './browser-companion-monitor.mjs';
+import { WORK_CREDIT_POLICY } from './no-work-credit-policy.mjs';
 import {
   NO_CODEX_POLICY, codexLaunchAuthorized, delegationRequirement, delegationStatus
 } from './no-codex-policy.mjs';
@@ -425,6 +426,12 @@ async function buildBrowserMonitorSnapshot() {
       runCount: runs.length
     },
     extensions: { items:extensionItems },
+    automation: {
+      runnerConfigured:workflowStatus.runnerConfigured===true,
+      automaticExecution:workflowStatus.automaticExecution===true,
+      localModel:workflowStatus.runnerConfigured===true?'UNVERIFIED':'NOT_ATTACHED',
+      workCredits:WORK_CREDIT_POLICY==='DENY_WORK_CREDITS'?'DENY_IN_CORE':'UNVERIFIED'
+    },
     operations: {
       active:Number(concurrency.activeOperations ?? 0),
       lockedKeys:Number(concurrency.lockedKeys ?? 0)
@@ -498,6 +505,7 @@ async function executeToolEffect(name, args) {
         durableDelivery: deliveryTools.status(),
         completionBeacon: deliveryStore.beacon(5),
         mutationIdempotency: mutationIdempotency.status(),
+        creditPolicy: { workCredits: WORK_CREDIT_POLICY, accountUsage: 'UNVERIFIED' },
         agentExtensions: agentExtensions.status(),
         transferMesh: { enabled: transferMesh.enabled },
         browserCompanionMonitor: browserCompanionMonitor?.status() ?? { enabled:false, lastWriteAtEpochMs:0, lastError:'' },

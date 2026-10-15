@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import os from 'node:os';
 import path from 'node:path';
 import { mkdtemp, mkdir, readFile, stat, rm } from 'node:fs/promises';
-import { defaultBrowserCompanionRoot, sanitizeMonitorSnapshot, writeBrowserCompanionMonitor } from '../src/browser-companion-monitor.mjs';
+import { defaultBrowserCompanionRoot, sanitizeMonitorSnapshot, sanitizeAutomationSnapshot, writeBrowserCompanionMonitor } from '../src/browser-companion-monitor.mjs';
 
 test('default roots are platform-separated from Chromium profile data',()=>{
   assert.equal(defaultBrowserCompanionRoot({platform:'win32',env:{LOCALAPPDATA:'C:\\Users\\u\\AppData\\Local'},home:'C:\\Users\\u'}),'C:\\Users\\u\\AppData\\Local\\ChatGPTRemoteCommander\\browser-companion');
@@ -16,6 +16,7 @@ test('monitor snapshot is bounded and strips untrusted extra fields',()=>{
     gui:{enabled:true,available:true,uncertain:true,backend:'gnome-mutter-remote-desktop',sessionType:'wayland',capabilities:{screenshot:true,mouse:true,keyboard:true,focus:true,other:true}},
     browser:{enabled:true,available:true,uncertain:true,backend:'chromium-cdp'},
     workflows:{enabled:true,engineEnabled:true,runCount:3},
+    automation:{runnerConfigured:true,automaticExecution:false,localModel:'PROPOSAL_ONLY',workCredits:'DENY_IN_CORE',token:'PRIVATE'},
     extensions:{items:[{id:'project-execution-brain',version:'1.3.1',path:'/secret'}]},
     operations:{active:1,lockedKeys:2}
   },1000);
@@ -26,6 +27,18 @@ test('monitor snapshot is bounded and strips untrusted extra fields',()=>{
   assert.equal('other' in s.gui.capabilities,false);
   assert.equal(s.gui.uncertain,true);
   assert.equal(s.browser.uncertain,true);
+  // Old Browser parser enforces exact v1 keys. Never change their shape.
+  assert.equal('automation' in s,false);
+  const qualified=sanitizeAutomationSnapshot({identity:{configSha256:'b'.repeat(64)},
+    automation:{runnerConfigured:true,automaticExecution:false,
+    localModel:'PROPOSAL_ONLY',workCredits:'DENY_IN_CORE',token:'SECRET'}},1000);
+  assert.deepEqual(qualified.automation,{runnerConfigured:true,automaticExecution:false,
+    localModel:'PROPOSAL_ONLY',workCredits:'DENY_IN_CORE',creditUsage:'UNVERIFIED'});
+  assert.equal('token' in qualified.automation,false);
+  const bad=sanitizeAutomationSnapshot({automation:{runnerConfigured:false,automaticExecution:true,
+    localModel:'ACTIVE_ONLINE',workCredits:'ENABLED',creditUsage:'ZERO'}},1000);
+  assert.deepEqual(bad.automation,{runnerConfigured:false,automaticExecution:false,
+    localModel:'UNVERIFIED',workCredits:'UNVERIFIED',creditUsage:'UNVERIFIED'});
   const unavailable=sanitizeMonitorSnapshot({
     identity:{deviceName:'host',profile:'default',version:'0.10.19',configSha256:'c'.repeat(64),port:48831,platform:'win32'},
     gui:{enabled:true,available:false,backend:'',sessionType:'',reason:''},
@@ -72,6 +85,11 @@ test('linux monitor writer creates owner-private bounded snapshot',{skip:process
     const raw=await readFile(receipt.target,'utf8');
     const parsed=JSON.parse(raw);
     assert.equal(parsed.observedAtEpochMs,2000);
+    assert.equal('automation' in parsed,false);
+    const auxiliary=JSON.parse(await readFile(path.join(root,'commander-automation.json'),'utf8'));
+    assert.equal(auxiliary.kind,'COMMANDER_AUTOMATION_MONITOR');
+    assert.equal(auxiliary.automation.workCredits,'UNVERIFIED');
+    assert.equal((await stat(path.join(root,'commander-automation.json'))).mode & 0o777,0o600);
     assert.equal((await stat(root)).mode & 0o777,0o700);
     assert.equal((await stat(receipt.target)).mode & 0o777,0o600);
   }finally{await rm(base,{recursive:true,force:true});}

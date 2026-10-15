@@ -10,7 +10,7 @@ internal sealed class DashboardChrome
     private FlowLayoutPanel? cards;
     private readonly TableLayoutPanel metrics = new()
     {
-        Dock = DockStyle.Top, Height = 122, ColumnCount = 4, RowCount = 1,
+        Dock = DockStyle.Top, Height = 238, ColumnCount = 3, RowCount = 2,
         Padding = new Padding(18, 8, 18, 8)
     };
     private readonly Panel searchBar = new() { Dock = DockStyle.Top, Height = 54, Padding = new Padding(24, 6, 24, 8) };
@@ -37,17 +37,19 @@ internal sealed class DashboardChrome
 
     public DashboardChrome()
     {
-        for (var i = 0; i < 4; i++)
-            metrics.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25f));
+        for (var i = 0; i < 3; i++)
+            metrics.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.333f));
         var items = new[]
         {
             ("Verified routing pairs", "UNVERIFIED", "Canonical state + runtime"),
             ("Core versions", "UNVERIFIED", "Reported metadata, not release"),
             ("Live operations", "UNVERIFIED", "No authenticated worker receipt"),
-            ("Control authority", "READ ONLY", "Mutation never inferred")
+            ("Control authority", "READ ONLY", "Mutation never inferred"),
+            ("Automation", "UNVERIFIED", "Runner state; never inferred"),
+            ("Work credits", "UNVERIFIED", "Core policy, not account billing")
         };
         for (var i = 0; i < items.Length; i++)
-            metrics.Controls.Add(Tile(items[i].Item1, items[i].Item2, items[i].Item3), i, 0);
+            metrics.Controls.Add(Tile(items[i].Item1, items[i].Item2, items[i].Item3), i % 3, i / 3);
         searchBar.Controls.Add(filter);
         filter.TextChanged += (_, _) => ApplyFilter();
     }
@@ -115,6 +117,13 @@ internal sealed class DashboardChrome
         Set(2, "UNVERIFIED", false);
         Set(3, "READ ONLY", false);
         ApplyFilter();
+    }
+    public void UpdateAutomation(AutomationReadout result)
+    {
+        Set(4, result.Automation, result.Verified);
+        Set(5, result.WorkCredits, result.Verified);
+        captions[4].Text = "Local AI: " + result.LocalAI;
+        captions[5].Text = "Account usage: UNVERIFIED";
     }
     private void Set(int index, string value, bool evidence)
     {

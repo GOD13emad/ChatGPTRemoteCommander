@@ -7,6 +7,7 @@ import { createProjectEngine } from './project-engine.mjs';
 import { createCommandPlanner } from './project-planner.mjs';
 import { createTeamPlanner } from './project-team.mjs';
 import { codexLaunchAuthorized } from './no-codex-policy.mjs';
+import { workCreditRunnerGate } from './no-work-credit-policy.mjs';
 
 const text = maxLength => ({ type: 'string', minLength: 1, maxLength });
 const id = { ...text(64), pattern: '^[a-z][a-z0-9_-]{0,63}$' };
@@ -359,7 +360,12 @@ export function createWorkflowTools({ config, roots, device, configSha256, looku
   if(conversationController)queueMicrotask(()=>{reconcileWorkflowChatHandoffs().catch(()=>{});});
   if(settings.runner?.enabled===true) {
     try {
-      const basePlanner=injectedPlanner??createCommandPlanner(settings.runner.provider,{allowCodex:codexLaunchAuthorized(config)});
+      // Enforce before creating a live provider even if an old config bypassed
+      // install-time normalization. Test-injected planners remain test-only.
+      if (!injectedPlanner && !workCreditRunnerGate(settings.runner).allowed) fail('WORK_CREDITS_PROVIDER_BLOCKED');
+      const basePlanner=injectedPlanner??createCommandPlanner(settings.runner.provider,{
+        allowCodex:false, requireLocalCreditPolicy:true
+      });
       const planner=settings.runner.team===undefined?basePlanner:createTeamPlanner({planner:basePlanner,
         workers:settings.runner.team.workers,maxParallel:settings.runner.team.maxParallel});
       const requested=settings.runner.allowedTools??['list_directory','read_text','file_info','write_text','create_directory'];

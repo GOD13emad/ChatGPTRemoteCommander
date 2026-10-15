@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import { codexLaunchAuthorized, isCodexExecutable } from './no-codex-policy.mjs';
+import { workCreditRunnerGate } from './no-work-credit-policy.mjs';
 
 const RUNNER_ALLOWED_TOOLS = Object.freeze([
   'list_directory','read_text','file_info','write_text','create_directory'
@@ -134,6 +135,14 @@ export function applyProjectRunnerConfig(config, { platform = process.platform }
   }
 
   const existing = next.durableWorkflows.runner;
+  // Refuse Work/Codex/Claude/cloud or unpinned command providers regardless
+  // of FULL_POWER and regardless of historical owner Codex authorization.
+  const creditGate = workCreditRunnerGate(existing, { platform });
+  if (!creditGate.allowed) {
+    next.durableWorkflows.runner = disableRunner(existing, creditGate.status);
+    next.durableWorkflows.runner.provider = { kind: 'disabled', reason: creditGate.status };
+    return { config: next, status: creditGate.status, provider: next.durableWorkflows.runner.provider };
+  }
   const provider = existing?.provider;
   const executable = provider?.executable;
   const codexConfigured = existing?.kind === 'codex' || provider?.kind === 'codex'
