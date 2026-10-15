@@ -77,11 +77,17 @@ function Update([string]$Name,[string]$Sha){
         throw 'LOG_HASH_UNATTESTED'
       }
       $found=0
+      $sawFailure=$false
       foreach($line in [IO.File]::ReadLines($inner)){
         if($line -match '^\s*(?:not ok \d+ -|#\s*(?:fail|pass|tests)\s+\d+|.*\b(?:AssertionError|ERR_TEST_FAILURE)\b)'){
+          $sawFailure=$true
           $safe=($line -replace '[^A-Za-z0-9 ._:(),/\[\]-]','?')
           if($safe.Length -gt 160){$safe=$safe.Substring(0,160)}
           Write-Output ('R252_QUAL_TEST_RESULT_'+$found+'='+$safe)
+          $found++;if($found -ge 24){break}
+        }elseif($sawFailure -and $line -match '[/\\](?<area>test|tools)[/\\](?<file>[A-Za-z0-9._-]+\.(?:mjs|js|ps1)):(?<row>\d+)'){
+          $relative=$Matches['area']+'/'+$Matches['file']+':'+$Matches['row']
+          Write-Output ('R252_QUAL_FAILURE_SOURCE_'+$found+'='+$relative)
           $found++;if($found -ge 24){break}
         }
       }
