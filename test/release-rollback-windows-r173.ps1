@@ -115,7 +115,7 @@ function Cleanup {
 if((Get-NetTCPConnection -State Listen -LocalPort 47831 -ErrorAction SilentlyContinue)){throw 'R173_CANONICAL_PORT_IN_USE'}
 if((Test-Path -LiteralPath $Root) -or (Test-Path -LiteralPath (Join-Path $OldLocal 'ChatGPTRemoteCommander'))){throw 'R173_NOT_ISOLATED'}
 Assert-Head $Source $ExpectedCommit
-if((Get-Content (Join-Path $Source 'package.json') -Raw|ConvertFrom-Json).version -ne '0.10.21'){throw 'R173_CANDIDATE_VERSION'}
+if((Get-Content (Join-Path $Source 'package.json') -Raw|ConvertFrom-Json).version -ne '0.10.22'){throw 'R173_CANDIDATE_VERSION'}
 New-Item -ItemType Directory -Path (Join-Path $Root 'STATE'),(Join-Path $Root 'ROAMING') -ErrorAction Stop|Out-Null
 & git.exe -c core.autocrlf=false clone --depth 1 --branch v0.10.20 https://github.com/GOD13emad/ChatGPTRemoteCommander.git $Install | Out-Host
 if($LASTEXITCODE -ne 0){throw 'R173_CLONE_FAIL'}
@@ -140,7 +140,7 @@ $env:APPDATA=Join-Path $Root 'ROAMING'
 try {
   Update 'PROMOTE' $ExpectedCommit
   Assert-Head $Install $ExpectedCommit
-  Readback 'PROMOTE' $ExpectedCommit '0.10.21'
+  Readback 'PROMOTE' $ExpectedCommit '0.10.22'
   Update 'ROLLBACK' $Baseline
   Assert-Head $Install $Baseline
   Readback 'ROLLBACK' $Baseline '0.10.20'
