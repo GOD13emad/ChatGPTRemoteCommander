@@ -57,10 +57,12 @@ function disableRunner(existing, reason = 'NO_AUTOMATIC_MODEL_PROVIDER') {
 function normalizedExplicitRunner(existing) {
   const current = clone(existing);
   const provider = clone(current.provider);
+  const trustedLocal = localCreditFreeProvider(provider);
   return {
     ...current,
     enabled: true,
-    autoTick: current.autoTick !== false,
+    // Never inherit unattended execution from FULL_POWER.
+    autoTick: trustedLocal ? current.autoTick === true : current.autoTick !== false,
     provider: {
       ...provider,
       timeoutMs: Math.min(Number.isSafeInteger(Number(provider.timeoutMs)) ? Number(provider.timeoutMs) : 30_000, 30_000),
@@ -69,21 +71,21 @@ function normalizedExplicitRunner(existing) {
         : 2 * 1024 * 1024
     },
     allowedTools: Array.isArray(current.allowedTools) && current.allowedTools.length
-      ? [...current.allowedTools] : [...RUNNER_ALLOWED_TOOLS],
-    maxActions: Number.isSafeInteger(Number(current.maxActions)) ? Number(current.maxActions) : 32,
-    maxDurationMs: Number.isSafeInteger(Number(current.maxDurationMs)) ? Number(current.maxDurationMs) : 300_000,
-    maxPlannerCalls: Number.isSafeInteger(Number(current.maxPlannerCalls)) ? Number(current.maxPlannerCalls) : 128,
+      ? [...current.allowedTools] : (trustedLocal ? ['read_text'] : [...RUNNER_ALLOWED_TOOLS]),
+    maxActions: Number.isSafeInteger(Number(current.maxActions)) ? Number(current.maxActions) : trustedLocal ? 2 : 32,
+    maxDurationMs: Number.isSafeInteger(Number(current.maxDurationMs)) ? Number(current.maxDurationMs) : trustedLocal ? 60_000 : 300_000,
+    maxPlannerCalls: Number.isSafeInteger(Number(current.maxPlannerCalls)) ? Number(current.maxPlannerCalls) : trustedLocal ? 3 : 128,
     adaptive: {
-      enabled: current.adaptive?.enabled !== false,
+      enabled: trustedLocal ? false : current.adaptive?.enabled !== false,
       maxExtensions: Number.isSafeInteger(Number(current.adaptive?.maxExtensions))
         ? Number(current.adaptive.maxExtensions) : 4
     },
     // A verified local read-only runner must not silently inherit two model
     // workers and a coordinator. One direct provider call is the default.
-    ...(localCreditFreeProvider(provider) && current.team === undefined
+    ...(trustedLocal && current.team === undefined
       ? {} : { team: current.team ?? clone(RUNNER_TEAM) }),
     worker: {
-      enabled: current.worker?.enabled !== false,
+      enabled: trustedLocal ? false : current.worker?.enabled !== false,
       maxArtifactBytes: Number.isSafeInteger(Number(current.worker?.maxArtifactBytes))
         ? Number(current.worker.maxArtifactBytes) : 65_536
     }

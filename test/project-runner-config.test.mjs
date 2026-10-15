@@ -103,6 +103,15 @@ test('trusted local Qwen command runner defaults to one direct planner without h
   assert.equal(result.config.durableWorkflows.runner.enabled,true);
   assert.equal(result.config.durableWorkflows.runner.autoTick,true);
   assert.equal(result.config.durableWorkflows.runner.team,undefined);
+  assert.equal(result.config.durableWorkflows.runner.adaptive.enabled,false);
+  assert.equal(result.config.durableWorkflows.runner.worker.enabled,false);
+  const configManual=base({runner:{...cfg.durableWorkflows.runner,autoTick:undefined}});
+  const manual=applyProjectRunnerConfig(configManual,{platform:'linux'});
+  assert.equal(manual.status,'PRESERVED_EXPLICIT_NON_CODEX_PROVIDER');
+  assert.equal(manual.config.durableWorkflows.runner.autoTick,false);
+  assert.equal(manual.config.durableWorkflows.runner.adaptive.enabled,false);
+  assert.equal(manual.config.durableWorkflows.runner.worker.enabled,false);
+  assert.equal(manual.config.durableWorkflows.runner.team,undefined);
 });
 
 test('Standard authority disables an inherited runner', () => {

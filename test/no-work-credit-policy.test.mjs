@@ -37,15 +37,16 @@ test('only same-directory pinned owner-private local script and adapter may qual
     scriptSha256:hash(fs.readFileSync(script)),adapterSha256:hash(fs.readFileSync(adapter)),adapterFile:adapter
   };
   assert.equal(localCreditFreeProvider(provider),true);
-  assert.equal(deny({enabled:true,provider}),true);
+  assert.equal(deny({enabled:true,provider,allowedTools:['read_text']}),true);
   const local={enabled:true,autoTick:true,provider,
-    allowedTools:['read_text'],maxActions:2,maxPlannerCalls:3,maxDurationMs:60000,
-    team:{workers:[{id:'planner',role:'Proposal only'}],maxParallel:1}};
+    allowedTools:['read_text'],maxActions:2,maxPlannerCalls:3,maxDurationMs:60000};
   assert.equal(workCreditRunnerGate(local).allowed,true);
   for(const invalid of [
     {...local,allowedTools:['write_text']},
     {...local,allowedTools:['read_text','run_shell']},
-    {...local,team:{maxParallel:2}},
+    {...local,team:{workers:[{id:'extra',role:'extra'}],maxParallel:1}},
+    {...local,adaptive:{enabled:true}},
+    {...local,worker:{enabled:true}},
     {...local,maxActions:25},
     {...local,maxPlannerCalls:500},
     {...local,maxDurationMs:300000},
