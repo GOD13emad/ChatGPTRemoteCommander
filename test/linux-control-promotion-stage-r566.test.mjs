@@ -56,7 +56,15 @@ function withFixture(fn){
   try{return fn(f);}
   finally{fs.rmSync(f.root,{recursive:true,force:true});}
 }
-test('verified local stage enables rollback without private origin branch',()=>withFixture(f=>{
+test('cross-platform updater contract validates exact staged commit and no origin lookup',()=>{
+  assert.match(promote,/staged_head="\$\(git -C "\$STAGE_DIR" rev-parse HEAD/);
+  assert.match(promote,/\[\[ "\$staged_head" == "\$commit" \]\]/);
+  assert.match(promote,/git -C "\$INSTALL_DIR" fetch --update-shallow --no-tags "\$STAGE_DIR" "\$commit"/);
+  assert.match(promote,/\[\[ "\$resolved" == "\$commit" \]\]/);
+  assert.doesNotMatch(promote,/git -C "\$INSTALL_DIR" fetch --no-tags origin/);
+});
+
+test('verified local stage enables rollback without private origin branch', {skip:process.platform!=='linux'?'Requires native Linux Bash fixture':false},()=>withFixture(f=>{
   assert.equal(git(['-C',f.control,'remote','get-url','origin']),f.newer.dir);
   const missing=spawnSync('git',['-C',f.control,'ls-remote','--exit-code','origin','refs/heads/rollback-r521'],{encoding:'utf8'});
   assert.equal(missing.status,2);
@@ -66,7 +74,7 @@ test('verified local stage enables rollback without private origin branch',()=>w
   assert.equal(JSON.parse(fs.readFileSync(path.join(f.control,'package.json'),'utf8')).version,'0.10.20');
   assert.equal(fs.readFileSync(path.join(f.control,'keep.txt'),'utf8'),f.sentinel);
 }));
-test('new and stable source roundtrip preserves user file across three cutovers',()=>withFixture(f=>{
+test('new and stable source roundtrip preserves user file across three cutovers', {skip:process.platform!=='linux'?'Requires native Linux Bash fixture':false},()=>withFixture(f=>{
   for(const stage of [f.old,f.newer,f.old]){
     const p=promoteInFixture(f,stage,stage.commit);
     assert.equal(p.status,0,p.stdout+'\n'+p.stderr);
@@ -74,13 +82,13 @@ test('new and stable source roundtrip preserves user file across three cutovers'
     assert.equal(fs.readFileSync(path.join(f.control,'keep.txt'),'utf8'),f.sentinel);
   }
 }));
-test('mismatched staged HEAD cannot promote different commit even if control contains it',()=>withFixture(f=>{
+test('mismatched staged HEAD cannot promote different commit even if control contains it', {skip:process.platform!=='linux'?'Requires native Linux Bash fixture':false},()=>withFixture(f=>{
   const head=git(['-C',f.control,'rev-parse','HEAD']);
   const p=promoteInFixture(f,f.old,f.newer.commit);
   assert.notEqual(p.status,0);
   assert.equal(git(['-C',f.control,'rev-parse','HEAD']),head);
 }));
-test('substantive unstaged and staged tracked changes remain blocked',()=>withFixture(f=>{
+test('substantive unstaged and staged tracked changes remain blocked', {skip:process.platform!=='linux'?'Requires native Linux Bash fixture':false},()=>withFixture(f=>{
   const head=git(['-C',f.control,'rev-parse','HEAD']);
   fs.writeFileSync(path.join(f.control,'package.json'),'{"version":"evil"}\n');
   for(const staged of [false,true]){
