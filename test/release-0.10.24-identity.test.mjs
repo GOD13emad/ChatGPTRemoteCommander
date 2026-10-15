@@ -24,7 +24,7 @@ test('new explicit version-scoped unsigned policy preserves warnings, denies fut
   assert.equal(p.version,version);
   assert.equal(p.tag,tag);
   assert.equal(p.scope,'only-this-version');
-  assert.equal(p.allowUnsignedWithGitHubAttestation,false);
+  assert.equal(p.allowUnsignedWithGitHubAttestation,true);
   assert.equal(p.publishedInstallerSignature,'NotSigned');
   assert.match(p.riskAcknowledgement,/SmartScreen/);
   const notes=read('docs/RELEASE_0.10.24.md');

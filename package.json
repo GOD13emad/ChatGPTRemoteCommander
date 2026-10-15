@@ -2,6 +2,9 @@
   "name": "chatgpt-remote-commander",
   "version": "0.10.24",
   "description": "Cross-platform MCP remote control server for ChatGPT with multi-account, multi-device and concurrent-chat support",
+  "author": "Aliakbar Emadoddin (GOD13emad)",
+  "contributors": ["MMZ (mohammadmohammadzadeh19960-code)"],
+  "publisherBrand": "TandemVector Labs (GitHub: Usefull-Skills)",
   "type": "module",
   "engines": {
     "node": ">=22"
