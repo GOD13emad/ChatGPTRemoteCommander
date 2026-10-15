@@ -59,10 +59,11 @@ function Update([string]$Name,[string]$Sha){
   $script:Stages+=@{name=$Name;exit=$exitCode;status=$status;updaterPid=$updater.Id;stdoutPath=$stdout;stderrPath=$stderr}
   Write-Output ('R185_'+$Name+'_PROCESS_EXIT='+$exitCode+'_STATUS='+$status)
   # CI-only R252: retain exact hashed qualification failure names, no raw logs.
-  if($Name -eq 'ROLLBACK' -and ($exitCode -ne 0 -or $status -ne 'PROMOTED')){
+  if(($Name -eq 'PROMOTE' -or $Name -eq 'ROLLBACK') -and ($exitCode -ne 0 -or $status -ne 'PROMOTED')){
     try{
       $lines=Get-Content -LiteralPath $stdout -ErrorAction Stop
-      $rx='^GATE_OUTPUT_FILES runId=(qualification-test-'+$Baseline.Substring(0,12)+'-[0-9a-f]{32}) stdout=([^\r\n]+?) stderr='
+      $diagnosticCommit=if($Name -eq 'PROMOTE'){$ExpectedCommit}else{$Baseline}
+      $rx='^GATE_OUTPUT_FILES runId=(qualification-test-'+$diagnosticCommit.Substring(0,12)+'-[0-9a-f]{32}) stdout=([^\r\n]+?) stderr='
       $matches=@($lines|Where-Object {$_ -match $rx})
       if($matches.Count -ne 1){throw 'NO_UNIQUE_TEST_OUTPUT'}
       $null=$matches[0] -match $rx
