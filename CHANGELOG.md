@@ -1,3 +1,9 @@
+# 0.10.24 - 2026-10-15 (SOURCE QUALIFICATION ONLY, NO TAG)
+
+- Align new candidate source version after security, Coucou privacy and verified Control Center patches.
+- Disallow unsigned v0.10.24 distribution until a fresh owner decision or Authenticode signature.
+- Preserve published v0.10.20 Stable and older v0.10.23 Draft and its release evidence.
+
 ## 0.10.23 - 2026-10-15 (SOURCE CANDIDATE, NOT PUBLISHED STABLE)
 
 - Integrate owner-host Linux rollback control Git fix from PR #219: exact verified staged SHA and shallow update. R566-R569 regression-first, full isolated QA and hosted Windows/Linux CI accepted before integration.
