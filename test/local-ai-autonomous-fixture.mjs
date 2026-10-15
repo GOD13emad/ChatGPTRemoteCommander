@@ -33,7 +33,6 @@ const raw={
     runner:{
       enabled:true,autoTick:true,allowedTools:['read_text'],
       maxActions:2,maxPlannerCalls:3,maxDurationMs:60000,
-      team:{workers:[{id:'planner',role:'Only propose a verified permitted read or block.'}],maxParallel:1},
       worker:{enabled:false},
       provider:{
         kind:'command',executable:'/bin/sh',args:[launcher],
@@ -84,7 +83,7 @@ try{
   const after=sha(path.join(root,filename));
   const success=final.status==='COMPLETED'&&after===expected&&actualToolCalls===1;
   console.log(JSON.stringify({result:success?'LOCAL_AUTOTICK_READ_PASS':'LOCAL_AUTOTICK_READ_UNPROVEN',
-    status:final.status,attempts,actualToolCalls,fixtureUnchanged:after===expected,
+    status:final.status,lastCode:final.lastCode??null,attempts,actualToolCalls,fixtureUnchanged:after===expected,
     model:'Qwen3-4B',network:'loopback-model-only',workCredits:'NO_WORK_CALLS_FROM_THIS_FIXTURE',
     productionDeployment:false}));
   if(!success)process.exitCode=1;

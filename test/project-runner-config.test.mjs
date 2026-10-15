@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { createHash } from 'node:crypto';
 import { applyProjectRunnerConfig, discoverQualifiedProjectProvider, mergeExplicitOwnerRunnerPolicy } from '../src/project-runner-config.mjs';
 import { normalizeCapabilityProfile } from '../src/capability-profile.mjs';
 
@@ -84,6 +85,24 @@ test('unknown external or generic command runner is rejected even when owner has
     assert.equal(result.config.durableWorkflows.runner.enabled,false);
     assert.equal(result.config.durableWorkflows.runner.autoTick,false);
   } finally { fs.rmSync(root,{recursive:true,force:true}); }
+});
+
+test('trusted local Qwen command runner defaults to one direct planner without hidden team', {skip:process.platform!=='linux'},()=>{
+  const root=path.resolve('examples/provider-adapter');
+  const script=path.join(root,'linux-local-qwen3.sh');
+  const adapter=path.join(root,'adapter.mjs');
+  const hex=file=>createHash('sha256').update(fs.readFileSync(file)).digest('hex');
+  const cfg=base({runner:{
+    enabled:true,autoTick:true,allowedTools:['read_text'],maxActions:2,maxPlannerCalls:3,maxDurationMs:60000,
+    provider:{kind:'command',executable:'/bin/sh',args:[script],adapterFile:adapter,
+      scriptSha256:hex(script),adapterSha256:hex(adapter),
+      endpoint:'http://127.0.0.1:18080/v1/chat/completions',localOnly:true,creditPolicy:'DENY_WORK_CREDITS'}
+  }});
+  const result=applyProjectRunnerConfig(cfg,{platform:'linux'});
+  assert.equal(result.status,'PRESERVED_EXPLICIT_NON_CODEX_PROVIDER');
+  assert.equal(result.config.durableWorkflows.runner.enabled,true);
+  assert.equal(result.config.durableWorkflows.runner.autoTick,true);
+  assert.equal(result.config.durableWorkflows.runner.team,undefined);
 });
 
 test('Standard authority disables an inherited runner', () => {

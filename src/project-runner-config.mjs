@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import { codexLaunchAuthorized, isCodexExecutable } from './no-codex-policy.mjs';
-import { workCreditRunnerGate } from './no-work-credit-policy.mjs';
+import { workCreditRunnerGate, localCreditFreeProvider } from './no-work-credit-policy.mjs';
 
 const RUNNER_ALLOWED_TOOLS = Object.freeze([
   'list_directory','read_text','file_info','write_text','create_directory'
@@ -78,7 +78,10 @@ function normalizedExplicitRunner(existing) {
       maxExtensions: Number.isSafeInteger(Number(current.adaptive?.maxExtensions))
         ? Number(current.adaptive.maxExtensions) : 4
     },
-    team: current.team ?? clone(RUNNER_TEAM),
+    // A verified local read-only runner must not silently inherit two model
+    // workers and a coordinator. One direct provider call is the default.
+    ...(localCreditFreeProvider(provider) && current.team === undefined
+      ? {} : { team: current.team ?? clone(RUNNER_TEAM) }),
     worker: {
       enabled: current.worker?.enabled !== false,
       maxArtifactBytes: Number.isSafeInteger(Number(current.worker?.maxArtifactBytes))
