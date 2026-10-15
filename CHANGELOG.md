@@ -1,3 +1,9 @@
+## 0.10.22 - 2026-10-15 (version-locked candidate, NOT released Stable)
+
+- Version and release-policy synchronization after PR #217 Windows focus mutex J01 protection, based on main a90c7196cae3ca2bd471a0db3e42eb7eb89929eb.
+- Preserve immutable v0.10.21 tag and original Draft; new annotated tag and attested twenty-asset Draft are independent admission gates.
+- Full native owner acceptance, trusted Windows provenance, serial fleet rollback, Work ACK, and powered-off host validation remain open. Stable Core v0.10.20 and Browser v0.8.1 unchanged.
+
 ## 0.10.21 - 2026-10-11
 
 - Close the Windows qualification Job Object containment defect documented in #173: exact executable children start suspended, are assigned to the kill-on-close Job before resume, and detached Node descendants remain contained.
