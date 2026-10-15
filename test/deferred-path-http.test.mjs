@@ -52,10 +52,13 @@ async function startServer(serverRoot,configPath,port) {
   });
   let stderr=''; child.stderr.on('data',c=>{stderr+=c.toString('utf8');});
   let foreignListener=false;
-  for(let i=0;i<400;i+=1) {
+  const readinessDeadline=Date.now()+10000;
+  while(Date.now()<readinessDeadline) {
     if(child.exitCode!==null) break;
     try {
-      const response=await fetch(`http://127.0.0.1:${port}/health`,{signal:AbortSignal.timeout(1000)});
+      const response=await fetch(`http://127.0.0.1:${port}/health`,{
+        signal:AbortSignal.timeout(Math.max(1,Math.min(1000,readinessDeadline-Date.now())))
+      });
       if(response.ok) {
         const health=await response.json();
         if(matchesFixtureHealth(health,configSha256) && child.exitCode===null)
