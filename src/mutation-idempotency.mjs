@@ -6,6 +6,18 @@ import path from 'node:path';
 import { createHash } from 'node:crypto';
 
 const REQUEST_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
+const LOWER_SHA256 = /^[a-f0-9]{64}$/;
+
+// Only pure, deterministic validation belongs here: no file access or tool effects.
+// On rejection, no PREPARED record is written and the same request ID is not burned.
+function rejectProvablyInvalidInput(tool, input) {
+  if (tool !== 'write_text' && tool !== 'write_file') return;
+  const expectedSha256 = input?.expectedSha256;
+  if (expectedSha256 !== undefined && !LOWER_SHA256.test(expectedSha256)) {
+    throw new Error('expectedSha256 must be a lowercase 64-hex SHA-256');
+  }
+}
+
 const digest = value => createHash('sha256').update(value).digest('hex');
 function stableJson(value) {
   if (Array.isArray(value)) return '[' + value.map(v => stableJson(v) ?? 'null').join(',') + ']';
@@ -64,6 +76,7 @@ export class MutationIdempotencyStore {
         if (existing.state === 'SUCCEEDED') return { duplicate: true, result: JSON.parse(existing.result_json) };
         fail('MUTATION_OUTCOME_UNCERTAIN');
       }
+      rejectProvablyInvalidInput(tool, input);
       const now = new Date().toISOString();
       this.db.prepare(`INSERT INTO mutations(scope,request_id,tool,input_hash,state,created_at,updated_at)
         VALUES(?,?,?,?, 'PREPARED', ?,?)`).run(this.scope, requestId, tool, inputHash, now, now);
