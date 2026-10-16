@@ -71,7 +71,7 @@ test('ordinary deferral remains queued without duplicate send',async()=>{
   }finally{await controller.close();f.dispose();}
 });
 
-test('acknowledged handoff is sent once and removed from pending queue',async()=>{
+test('UI acknowledgement remains uncertain without authenticated chat receipt',async()=>{
   const f=temp();let sends=0;
   const controller=createConversationController({
     directory:f.state,scope:'test',platform:'win32',helperPath:'unused',
@@ -87,8 +87,11 @@ test('acknowledged handoff is sent once and removed from pending queue',async()=
     const queued=controller.handoff({projectId:'p1',eventKey:'evt:3',eventType:'OPERATION_COMPLETED',summary:'done'});
     await controller.drain();
     const sent=await controller.status('p1');
-    assert.equal(sent.store.counts.SENT,1);
-    assert.equal(sent.pending.length,0);
+    assert.equal(sent.store.counts.SENT??0,0);
+    assert.equal(sent.store.counts.UNCERTAIN,1);
+    assert.equal(sent.pending.length,1);
+    assert.equal(sent.pending[0].lastCode,'UI_OBSERVED_NO_AUTHENTICATED_RECEIPT');
+    assert.equal(sent.binding.state,'UNCERTAIN');
     assert.equal(sends,1);
   }finally{await controller.close();f.dispose();}
 });
@@ -158,12 +161,16 @@ test('uncertain handoff requires explicit resolve before retry and resolve is id
     assert.ok(['DEFERRED','CLAIMED','SENT'].includes(retried.state));
     await new Promise(r=>setTimeout(r,160));
     status=await controller.status('p1');
-    assert.equal(status.pending.some(x=>x.handoffId===handoff.handoffId),false);
+    const uiOnly=status.pending.find(x=>x.handoffId===handoff.handoffId);
+    assert.equal(uiOnly.state,'UNCERTAIN');
+    assert.equal(uiOnly.lastCode,'UI_OBSERVED_NO_AUTHENTICATED_RECEIPT');
     assert.equal(sends,2);
 
     const confirmed=await controller.execute('conversation_resolve',{handoffId:handoff.handoffId,action:'confirm_sent'});
     assert.equal(confirmed.state,'SENT');
     assert.equal(sends,2);
+    status=await controller.status('p1');
+    assert.equal(status.pending.some(x=>x.handoffId===handoff.handoffId),false);
   }finally{await controller.close();f.dispose();}
 });
 
@@ -183,5 +190,32 @@ test('continuation binding rejects a different canonical project root',async()=>
       controller.validateContinuation({projectId:'p1',eventKey:'root:check',root:other}),
       /CONVERSATION_PROJECT_ROOT_MISMATCH/
     );
+  }finally{await controller.close();f.dispose();}
+});
+
+test('unverified UI observation defers subsequent handoffs without another send',async()=>{
+  const f=temp();let sends=0;
+  const controller=createConversationController({
+    directory:f.state,scope:'test',platform:'win32',helperPath:'unused',
+    invokeUia:async request=>{
+      if(request.action==='status')return {state:'READY',code:'CHAT_TAB_FOUND',processId:1};
+      sends+=1;return {state:'SENT',code:'UI_ACKNOWLEDGED'};
+    }
+  });
+  try{
+    await controller.bind({projectId:'p1',root:f.project,tabTitle:'Isolated Chat'});
+    const first=controller.handoff({projectId:'p1',eventKey:'evt:first',eventType:'NEEDS_CHAT'});
+    await controller.drain();
+    const second=controller.handoff({projectId:'p1',eventKey:'evt:second',eventType:'NEEDS_CHAT'});
+    await controller.drain();
+    const observed=await controller.status('p1');
+    assert.equal(observed.pending.find(x=>x.handoffId===first.handoffId).state,'UNCERTAIN');
+    const blocked=observed.pending.find(x=>x.handoffId===second.handoffId);
+    assert.equal(blocked.state,'DEFERRED');
+    assert.equal(blocked.lastCode,'BINDING_UNCERTAIN');
+    assert.equal(sends,1,'no additional UI send while binding has an unresolved observation');
+    const confirmed=await controller.execute('conversation_resolve',{handoffId:first.handoffId,action:'confirm_sent'});
+    assert.equal(confirmed.state,'SENT');
+    assert.equal(sends,1);
   }finally{await controller.close();f.dispose();}
 });
