@@ -63,7 +63,7 @@ function Update([string]$Name,[string]$Sha){
     try{
       $lines=Get-Content -LiteralPath $stdout -ErrorAction Stop
       $diagnosticCommit=if($Name -eq 'PROMOTE'){$ExpectedCommit}else{$Baseline}
-      $rx='^GATE_OUTPUT_FILES runId=(qualification-(?:check|test)-'+$diagnosticCommit.Substring(0,12)+'-[0-9a-f]{32}) stdout=([^\r\n]+?) stderr='
+      $rx='^GATE_OUTPUT_FILES runId=(qualification-test-'+$diagnosticCommit.Substring(0,12)+'-[0-9a-f]{32}) stdout=([^\r\n]+?) stderr='
       $matches=@($lines|Where-Object {$_ -match $rx})
       if($matches.Count -ne 1){throw 'NO_UNIQUE_TEST_OUTPUT'}
       $null=$matches[0] -match $rx
