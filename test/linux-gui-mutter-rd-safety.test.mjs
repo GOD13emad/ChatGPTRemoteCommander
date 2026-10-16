@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 const ext=await readFile(new URL('../gnome-extension/chatgpt-remote-commander-linux-safe-v2@god13emad/extension.js',import.meta.url),'utf8');
 const helper=await readFile(new URL('../tools/gui-control-linux.py',import.meta.url),'utf8');
 const controller=await readFile(new URL('../src/gui-tools-windows.mjs',import.meta.url),'utf8');
@@ -61,4 +63,15 @@ test('literal text uses Mutter clipboard plus physical keycodes, never extension
   assert.match(helper,/clipboard_restore\(saved\)/); assert.match(helper,/GUI_CLIPBOARD_OWNER_NOT_CONFIRMED/);
   assert.match(helper,/clipboard_owner_generation/); assert.match(helper,/clipboard_session_is_owner/);
   assert.doesNotMatch(helper,/NotifyKeyboardKeysym/);
+});
+
+test('isolated Mutter clipboard phase diagnostic tests execute without desktop input',()=>{
+  if (process.platform !== 'linux') return;
+  const cwd=fileURLToPath(new URL('../',import.meta.url));
+  const out=spawnSync('python3',['-B','-m','unittest','discover','-s','test','-p','test_gui_clipboard_diagnostic.py','-q'],{
+    cwd,encoding:'utf8',timeout:15000,env:{...process.env,PYTHONDONTWRITEBYTECODE:'1'}
+  });
+  assert.equal(out.status,0,out.stderr);
+  assert.match(out.stderr,/Ran 7 tests/);
+  assert.match(out.stderr,/OK/);
 });

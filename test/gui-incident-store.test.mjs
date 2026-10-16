@@ -7,6 +7,7 @@ import {spawnSync} from 'node:child_process';
 import {fileURLToPath, pathToFileURL} from 'node:url';
 import {createGuiController} from '../src/gui-tools-windows.mjs';
 import {createGuiInputIncidentStore} from '../src/gui-incident-store.mjs';
+import {createGuiProcessClient} from '../src/gui-process.mjs';
 
 const ownFile=async(run)=>{
  const root=await fs.mkdtemp(path.join(os.tmpdir(),'rc-gui-incident-j01-'));
@@ -157,3 +158,65 @@ test('incident file mode is private on POSIX hosts',()=>ownFile(async file=>{
  if(process.platform!=='win32')assert.equal(mode&0o077,0);
  await s.resolve(receipt);
 }));
+
+const privateClipDiag=()=>({
+ schema:'rc-clipboard-transfer-observation-v1',reason:'NO_REQUEST',
+ ownerConfirmed:true,selectionRequests:0,unsupportedRequests:0,
+ successfulTransfers:0,waitMs:800
+});
+
+test('failed Linux paste stores only fixed phase counters and never clears uncertain incident',()=>ownFile(async file=>{
+ const store=createGuiInputIncidentStore({file});
+ const c=controller(store,{platform:'linux',invoke:async req=>{
+   if(req.action==='status')return {ok:true,available:true};
+   if(req.action==='screenshot')return image();
+   throw Object.assign(new Error('GUI_CLIPBOARD_PASTE_NOT_CONFIRMED'),{
+      guiCode:'GUI_CLIPBOARD_PASTE_NOT_CONFIRMED',
+      guiClipboardDiagnostic:privateClipDiag()
+   });
+ }});
+ const a=await takeover(c);
+ await assert.rejects(c.run('gui_type_text',{...a,text:'PRIVATE-PROJECT-USER-CONTENT-MUST-NOT-STORE'}),/GUI_CLIPBOARD_PASTE_NOT_CONFIRMED/);
+ const bytes=await fs.readFile(file,'utf8'),record=JSON.parse(bytes);
+ assert.equal(bytes.includes('PRIVATE-PROJECT-USER-CONTENT-MUST-NOT-STORE'),false);
+ assert.deepEqual(record.clipboardDiagnostic,privateClipDiag());
+ assert.equal(record.status,'PENDING_NATIVE_EFFECT');
+ assert.equal(record.tool,'gui_type_text');
+ const fresh=controller(createGuiInputIncidentStore({file}),{platform:'linux'});
+ const status=await fresh.run('gui_status');
+ assert.equal(status.available,false);
+ assert.equal(status.incidentPending,true);
+ await assert.rejects(fresh.run('gui_session_begin',{mode:'observe'}),/GUI_OUTCOME_UNCERTAIN/);
+ assert.equal(fresh.calls,0);
+}));
+
+test('diagnostic cannot persist clipboard text, forged schema or annotation for different handle',()=>ownFile(async file=>{
+ const s=createGuiInputIncidentStore({file});
+ const h=await s.begin('gui_type_text');
+ await assert.rejects(s.annotateFailure(h,{...privateClipDiag(),text:'SECRET'}),/GUI_INCIDENT_DIAGNOSTIC_INVALID/);
+ await assert.rejects(s.annotateFailure({...h,id:'wrong-id'},privateClipDiag()),/GUI_INCIDENT_RESOLUTION_MISMATCH/);
+ const rec=JSON.parse(await fs.readFile(file,'utf8'));
+ assert.equal(Object.hasOwn(rec,'clipboardDiagnostic'),false);
+ await s.annotateFailure(h,privateClipDiag());
+ await s.annotateFailure(h,privateClipDiag()); // identical repeat is a semantic NO-OP
+ await assert.rejects(s.annotateFailure(h,{...privateClipDiag(),reason:'UNSUPPORTED_REQUEST',selectionRequests:1,unsupportedRequests:1}),/GUI_INCIDENT_DIAGNOSTIC_CONFLICT/);
+ assert.equal((await s.pending()).id,h.id);
+ assert.equal((await fs.readFile(file,'utf8')).includes('SECRET'),false);
+}));
+
+test('persistent GUI helper forwards only an exact approved clipboard observation schema',async ()=>{
+ const diag=privateClipDiag();
+ const script=[
+  'process.stdout.write(JSON.stringify({ok:true,ready:true,protocol:1})+"\\n");',
+  'process.stdin.on("data",()=>{process.stdout.write(JSON.stringify({ok:false,error:"GUI_CLIPBOARD_PASTE_NOT_CONFIRMED",clipboardDiagnostic:'+JSON.stringify(diag)+'})+"\\n");});'
+ ].join('');
+ const c=createGuiProcessClient({file:process.execPath,args:['-e',script],timeoutMs:5000,startupTimeoutMs:5000});
+ try {
+   await assert.rejects(c.invoke({action:'typeText'}),e=>{
+     assert.equal(e.guiCode,'GUI_CLIPBOARD_PASTE_NOT_CONFIRMED');
+     assert.notEqual(e.guiNotApplied,true);
+     assert.deepEqual(e.guiClipboardDiagnostic,diag);
+     return true;
+   });
+ } finally {c.close();}
+});
