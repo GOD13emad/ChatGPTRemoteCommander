@@ -209,13 +209,13 @@ test('R470 Windows fixture extracts failing test and counters without persisting
   const script=path.join(root,'tools','diagnose-updater-gate-r470.ps1');
   const sha='604ed6a8a0e0f95197fabcc92d93537142017a0b';
   const secret='ghp_R470_TEST_SENTINEL_SUPER_SECRET_SHOULD_NOT_APPEAR';
-  function run(names) {
+  function run(names, content=null) {
     const tmp=fs.mkdtempSync(path.join(os.tmpdir(),'rc-r470-diagnostic-'));
     try {
       const folder=path.join(tmp,'STATE','ChatGPTRemoteCommander','update-logs');
       fs.mkdirSync(folder,{recursive:true});
       for(const name of names)fs.writeFileSync(path.join(folder,name),
-        ['TAP version 13','not ok 245 - team reserves all calls before workers and executes only the coordinator proposal',
+        content??['TAP version 13','not ok 245 - team reserves all calls before workers and executes only the coordinator proposal',
         "failureType: 'testTimeoutFailure'",'code: ERR_TEST_FAILURE','# tests 521','# pass 520',
         '# fail 1','# cancelled 0','# duration_ms 25000','Authorization: Bearer '+secret].join('\n'),'utf8');
       const proc=spawnSync('pwsh.exe',['-NoProfile','-NonInteractive','-File',script,
@@ -238,6 +238,16 @@ test('R470 Windows fixture extracts failing test and counters without persisting
   assert.ok(one.failureTypes.includes('testTimeoutFailure'));
   assert.equal(one.rawLogIncluded,false);
   assert.equal(one.secretsIncluded,false);
+  // Real R157 workflow failure had a 64KiB log but no TAP markers.
+  // An empty diagnostic must never claim test failures were extracted.
+  const nonTap=run([file], 'synthetic non-TAP output\nAuthorization: Bearer '+secret);
+  assert.equal(nonTap.status,'LOG_HAS_NO_TAP_MARKERS');
+  assert.equal(nonTap.matchingLogCount,1);
+  assert.ok(nonTap.sourceBytes>0);
+  assert.deepEqual(nonTap.failureTests,[]);
+  assert.deepEqual(nonTap.tapCounts,{});
+  assert.equal(nonTap.rawLogIncluded,false);
+  assert.equal(nonTap.secretsIncluded,false);
   const many=run([file,file.replace('fixture','duplicate')]);
   assert.equal(many.status,'AMBIGUOUS_MULTIPLE_MATCHING_LOGS');
   assert.equal(many.failureTests.length,0,'never guess newest');
