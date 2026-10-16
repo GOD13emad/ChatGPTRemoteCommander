@@ -116,8 +116,18 @@ jobs:
           }
           $leftover=@(Get-CimInstance Win32_Process -Filter "Name='node.exe'"|Where-Object {([string]$_.CommandLine).Contains($root)})
           if($leftover.Count -gt 0){throw ('R157_ORPHANS_'+$leftover.Count)}
-          $stage=Join-Path $state ('releases\v0.10.23-'+$sha.Substring(0,12))
-          if(-not(Test-Path $stage) -or (git -C $stage rev-parse HEAD).Trim() -ne $sha){throw 'R157_EXACT_STAGE_MISSING'}
+          # Resolve version from the exact checked-out commit, not a base-branch pin.
+          $workspaceHead=(& git -C $env:GITHUB_WORKSPACE rev-parse HEAD).Trim().ToLowerInvariant()
+          if($LASTEXITCODE -ne 0 -or $workspaceHead -ne $sha){throw 'R157_WORKSPACE_SHA_DRIFT'}
+          $packagePath=Join-Path $env:GITHUB_WORKSPACE 'package.json'
+          $pkg=Get-Content -LiteralPath $packagePath -Raw -Encoding UTF8 | ConvertFrom-Json
+          $version=[string]$pkg.version
+          if($version -notmatch '^\d+\.\d+\.\d+$'){throw 'R157_SOURCE_VERSION_INVALID'}
+          if([string]$report.version -ne $version){throw 'R157_REPORT_VERSION_MISMATCH'}
+          $stage=Join-Path $state ("releases\v{0}-{1}" -f $version,$sha.Substring(0,12))
+          if(-not(Test-Path -LiteralPath $stage -PathType Container)){throw 'R157_EXACT_STAGE_MISSING'}
+          $stageHead=(& git -C $stage rev-parse HEAD).Trim().ToLowerInvariant()
+          if($LASTEXITCODE -ne 0 -or $stageHead -ne $sha){throw 'R157_STAGE_COMMIT_MISMATCH'}
           $receipt=[ordered]@{schema=1;revision='R157';status='PASS_HOSTED_WINDOWS_UPDATER_NOPROMOTE'
             exactCommit=$sha;qualifierReceipts=3;doctor='PASS';shadowStore='PASS'
             liveStoreCompatibility='PASS';ownedChildren=0;promoted=$false;stableBrowserUntouched=$true
