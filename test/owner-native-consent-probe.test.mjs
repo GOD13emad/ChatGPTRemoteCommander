@@ -36,7 +36,10 @@ test('Windows invokes OS RunAs only with fixed read-only elevated token probe',(
   const outer=Buffer.from(p.args.at(-1),'base64').toString('utf16le');
   assert.match(outer,/Start-Process/);
   assert.match(outer,/-Verb RunAs/);
-  assert.match(outer,/IsInRole/); // Part of the parent encoded child identity check.
+  const m=outer.match(/'-EncodedCommand','([A-Za-z0-9+/=]+)'/);
+  assert.ok(m);
+  const child=Buffer.from(m[1],'base64').toString('utf16le');
+  assert.match(child,/IsInRole/);
   assert.doesNotMatch(outer,/(?:password|passwd|sudoers|autoAdminLogon)/i);
 });
 test('Linux approval needs both exit zero and exact root-identity output',()=>{
