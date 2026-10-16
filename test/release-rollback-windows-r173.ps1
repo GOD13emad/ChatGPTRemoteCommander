@@ -63,10 +63,10 @@ function Update([string]$Name,[string]$Sha){
     try{
       $lines=Get-Content -LiteralPath $stdout -ErrorAction Stop
       $diagnosticCommit=if($Name -eq 'PROMOTE'){$ExpectedCommit}else{$Baseline}
-      $rx='^GATE_OUTPUT_FILES runId=(qualification-(?:check|test)-'+$diagnosticCommit.Substring(0,12)+'-[0-9a-f]{32}) stdout=([^\r\n]+?) stderr='
-      $matches=@($lines|Where-Object {$_ -match $rx})
-      if($matches.Count -ne 1){throw 'NO_UNIQUE_TEST_OUTPUT'}
-      $null=$matches[0] -match $rx
+      $rx='^GATE_OUTPUT_FILES runId=(qualification-test-'+$diagnosticCommit.Substring(0,12)+'-[0-9a-f]{32}) stdout=([^\r\n]+?) stderr='
+      $matchingLines=@($lines|Where-Object {$_ -match $rx})
+      if($matchingLines.Count -ne 1){throw 'NO_UNIQUE_TEST_OUTPUT'}
+      $null=$matchingLines[0] -match $rx
       $id=$Matches[1];$given=[IO.Path]::GetFullPath($Matches[2])
       $inner=Join-Path $Root ('STATE\ChatGPTRemoteCommander\update-logs\qualification-output-'+$id+'.stdout.log')
       if($given -cne [IO.Path]::GetFullPath($inner)){throw 'WRONG_LOG_PATH'}
@@ -92,7 +92,11 @@ function Update([string]$Name,[string]$Sha){
         }
       }
       Write-Output ('R252_QUAL_LOG_SHA_PASS='+$sha+' markers='+$found)
-    }catch{Write-Output 'R252_QUAL_DIAG_UNAVAILABLE_FAIL_CLOSED'}
+    }catch{
+      $safeReason=[string]$_.Exception.Message
+      if($safeReason -notin @('NO_UNIQUE_TEST_OUTPUT','WRONG_LOG_PATH','BAD_LOG_SIZE','LOG_HASH_UNATTESTED')){$safeReason='OTHER'}
+      Write-Output ('R252_QUAL_DIAG_UNAVAILABLE_FAIL_CLOSED reason='+$safeReason)
+    }
   }
   if($exitCode -ne 0 -or $status -ne 'PROMOTED'){throw ('R185_'+$Name+'_NOT_ACCEPTED')}
 }
