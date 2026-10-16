@@ -38,7 +38,7 @@ export function planOwnerConsent({ platform = process.platform, ownerPresent = f
   if(ownerPresent !== true) reject('EXPLICIT_CURRENT_OWNER_CONSENT_REQUIRED');
   if(!Number.isSafeInteger(timeoutMs) || timeoutMs < 1000 || timeoutMs > MAX_TIMEOUT_MS) reject('INVALID_APPROVAL_TIMEOUT');
   if(platform !== 'win32' && platform !== 'linux') reject('UNSUPPORTED_OS_NATIVE_APPROVAL');
-  const file = platform === 'win32' ? 'powershell.exe' : '/usr/bin/pkexec';
+  const file = platform === 'win32' ? 'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe' : '/usr/bin/pkexec';
   const args = platform === 'win32'
     ? ['-NoProfile','-NonInteractive','-EncodedCommand', Buffer.from(winParent,'utf16le').toString('base64')]
     : ['--disable-internal-agent','/usr/bin/id','-u'];
