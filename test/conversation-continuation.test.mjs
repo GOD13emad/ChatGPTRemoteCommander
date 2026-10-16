@@ -244,3 +244,29 @@ test('UI-only uncertainty survives a controller restart without duplicate delive
     }finally{await resumed.close();}
   }finally{f.dispose();}
 });
+
+test('rebinding cannot bypass unresolved outcome but is allowed after explicit disposition',async()=>{
+  const f=temp();let sends=0;
+  const controller=createConversationController({
+    directory:f.state,scope:'test',platform:'win32',helperPath:'unused',
+    invokeUia:async request=>{
+      if(request.action==='status')return {state:'READY',code:'CHAT_TAB_FOUND',processId:1};
+      sends+=1;return {state:'SENT',code:'UI_ACKNOWLEDGED'};
+    }
+  });
+  try{
+    const binding={projectId:'p1',root:f.project,tabTitle:'Isolated Chat'};
+    await controller.bind(binding);
+    const event=controller.handoff({projectId:'p1',eventKey:'evt:rebind',eventType:'NEEDS_CHAT'});
+    await controller.drain();
+    await assert.rejects(controller.bind(binding),/CONVERSATION_OUTCOME_UNCERTAIN/);
+    const state=await controller.status('p1');
+    assert.equal(state.binding.state,'UNCERTAIN');
+    assert.equal(state.pending.find(x=>x.handoffId===event.handoffId).state,'UNCERTAIN');
+    assert.equal(sends,1);
+    await controller.execute('conversation_resolve',{handoffId:event.handoffId,action:'confirm_sent'});
+    const rebound=await controller.bind(binding);
+    assert.equal(rebound.state,'BOUND');
+    assert.equal(sends,1);
+  }finally{await controller.close();f.dispose();}
+});
