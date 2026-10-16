@@ -7,7 +7,7 @@ import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
-import { createWorkflowTools } from '../src/workflow-tools.mjs';
+import { createWorkflowTools,WORKFLOW_TOOL_DEFINITIONS,PROJECT_ENGINE_TOOL_DEFINITIONS } from '../src/workflow-tools.mjs';
 import { WorkflowStore } from '../src/workflow-store.mjs';
 import { validateJsonSchema } from '../src/schema-validator.mjs';
 import { readText, writeText } from '../src/tools-v0.3.mjs';
@@ -176,7 +176,9 @@ if (['--crash-extension', '--crash-before-extension', '--crash-extension-extra']
       assert.equal(fs.readFileSync(path.join(f.root, 'result.txt'), 'utf8'), 'verified output');
       assert.equal((await f.state()).finalization.acceptanceResults[0], true);
       assert.equal((await f.api.execute('workflow_operations', { id: 'project' })).operations.length, 3);
-      assert.equal(f.api.definitions.length, 22);
+      assert.equal(f.api.definitions.length, WORKFLOW_TOOL_DEFINITIONS.length+PROJECT_ENGINE_TOOL_DEFINITIONS.length);
+      for(const name of ['workflow_roadmap','workflow_plan_insert','workflow_plan_edit','workflow_plan_prioritize'])
+        assert.equal(f.api.definitions.some(tool=>tool.name===name),true,name);
       assert.equal(f.api.definitions.some(tool => tool.name === 'workflow_needs_chat'), true);
       assert.equal(f.api.definitions.some(tool => tool.name === 'workflow_plan_extend'), false);
     } finally { await f.dispose(); }

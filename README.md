@@ -156,6 +156,27 @@ For Plugin packaging, icons, app binding, and private/workspace distribution, se
 
 Legacy-safe tools: `system_status`, `list_directory`, `read_text`, `write_text`, `run_project_command`. Power Mode can also expose the direct-session background browser tools (`browser_status`, session begin/renew/end, navigate, snapshot, screenshot, fill, click, wait, foreground-requirement coordination, and explicit same-profile foreground begin/end). These browser tools are not part of autonomous workflow execution. Power Mode adds `power_status`, `file_info`, `read_file`, `write_file`, `create_directory`, `copy_path`, `move_path`, `delete_path`, `search_files`, `run_shell`, `system_info`, `list_processes`, `kill_process`, and persistent terminal tools (`start_terminal`, `read_terminal`, `send_terminal`, `stop_terminal`).
 
+## Owner-directed persistent project roadmap
+
+ChatGPT and Remote Commander can manage one durable end-to-end project map
+without inventing another Project Brain or moving work to ChatGPT Work.
+The native roadmap interface exposes accepted goal/criteria, ordered step IDs,
+dependencies, blockers and next ready step through `workflow_roadmap`.
+An approved new step can be placed with `workflow_plan_insert` and user
+priority among independent pending steps can be changed with
+`workflow_plan_prioritize`. Pending task labels may also be edited with
+`workflow_plan_edit` without changing IDs or dependencies.
+Replays return receipts; unchanged edits are
+NO_OP and stale/conflicting edits are rejected. The existing
+`workflow_revise` handles goal/criteria changes.
+
+This is the **current ChatGPT + Commander conversation**, not a new Work app.
+If runnerConfigured=false, unattended execution is unavailable; ChatGPT
+can work through authorized ready steps with Commander, verify effects and
+advance the persistent plan. Full Power does not grant root, consent or
+cross-account authorization. See
+[Owner-directed workflow roadmap](docs/OWNER_ROADMAP.md).
+
 ## Security
 
 Filesystem containment is enforced, but command execution is **not an OS sandbox**. An allowlisted executable or project script may itself access resources beyond the configured roots. Treat command execution as privileged. See [SECURITY.md](SECURITY.md) and the point-in-time [SECURITY_AUDIT.md](SECURITY_AUDIT.md).
