@@ -30,7 +30,7 @@ if(Test-Path -LiteralPath $logRoot -PathType Container){
     if($sourceBytes -gt 8388608){$status='LOG_TOO_LARGE'}
     else {
       $sourceSha=(Get-FileHash -LiteralPath $source.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
-      $status='TAP_SUMMARY_EXTRACTED'
+      $status='LOG_HAS_NO_TAP_MARKERS'
       foreach($line in [IO.File]::ReadLines($source.FullName)){
         if($line -match '^\s*not ok\s+([0-9]+)\s+-\s+([^\r\n]+)$'){
           $number=[int]$Matches[1]
@@ -44,6 +44,9 @@ if(Test-Path -LiteralPath $logRoot -PathType Container){
         } elseif($line -match 'failureType:.*?(testTimeoutFailure|assertionFailure|uncaughtException|testCodeFailure|hookFailed|subtestsFailed)'){
           if($types.Count -lt 20){$types+=([string]$Matches[1])}
         }
+      }
+      if($failures.Count -gt 0 -or $types.Count -gt 0 -or $totals.Count -gt 0){
+        $status='TAP_SUMMARY_EXTRACTED'
       }
     }
   } elseif($count -gt 1) {$status='AMBIGUOUS_MULTIPLE_MATCHING_LOGS'}
