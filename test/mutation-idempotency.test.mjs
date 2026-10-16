@@ -115,3 +115,35 @@ test('provably invalid pre-effect input is rejected without PREPARED or UNCERTAI
     await fs.rm(root, { recursive:true, force:true });
   }
 });
+
+
+test('preflight rejects string-coercible SHA arrays and objects before reserving IDs', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'rc-sha-type-preflight-'));
+  let store;
+  try {
+    store = new MutationIdempotencyStore({ directory:root, scope:'sha-type-preflight' });
+    let callbacks = 0;
+    const badValues = [['a'.repeat(64)], { 0:'a'.repeat(64) }, 1234, null];
+    for (const tool of ['write_text','write_file']) {
+      for (const [index,bad] of badValues.entries()) {
+        const requestId = 'sha-type-' + tool + '-' + index;
+        const input = {path:'unchanged.txt', content:'synthetic', expectedSha256:bad};
+        await assert.rejects(store.execute({requestId,tool,input},async () => {
+          callbacks++;return {applied:true};
+        }),/expectedSha256 must be a lowercase 64-hex SHA-256/);
+        assert.equal(callbacks, 0);
+        assert.equal(store.status().states.PREPARED ?? 0, 0);
+        assert.equal(store.status().states.UNCERTAIN ?? 0, 0);
+      }
+    }
+    const accepted = await store.execute({
+      requestId:'sha-type-write_text-0',tool:'write_text',
+      input:{path:'unchanged.txt',content:'synthetic',expectedSha256:'a'.repeat(64)}
+    },async () => {callbacks++;return {applied:true};});
+    assert.equal(accepted.applied,true);
+    assert.equal(callbacks,1);
+  } finally {
+    store?.close();
+    await fs.rm(root,{recursive:true,force:true});
+  }
+});

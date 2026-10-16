@@ -13,7 +13,8 @@ const LOWER_SHA256 = /^[a-f0-9]{64}$/;
 function rejectProvablyInvalidInput(tool, input) {
   if (tool !== 'write_text' && tool !== 'write_file') return;
   const expectedSha256 = input?.expectedSha256;
-  if (expectedSha256 !== undefined && !LOWER_SHA256.test(expectedSha256)) {
+  if (expectedSha256 !== undefined &&
+      (typeof expectedSha256 !== 'string' || !LOWER_SHA256.test(expectedSha256))) {
     throw new Error('expectedSha256 must be a lowercase 64-hex SHA-256');
   }
 }
