@@ -219,3 +219,28 @@ test('unverified UI observation defers subsequent handoffs without another send'
     assert.equal(sends,1);
   }finally{await controller.close();f.dispose();}
 });
+
+test('UI-only uncertainty survives a controller restart without duplicate delivery',async()=>{
+  const f=temp();let sends=0;
+  const invokeUia=async req=>{
+    if(req.action==='status')return {state:'READY',code:'CHAT_TAB_FOUND',processId:1};
+    sends+=1;return {state:'SENT',code:'UI_ACKNOWLEDGED'};
+  };
+  try{
+    const first=createConversationController({directory:f.state,scope:'test',platform:'win32',helperPath:'unused',invokeUia});
+    await first.bind({projectId:'p1',root:f.project,tabTitle:'Isolated Chat'});
+    const handoff=first.handoff({projectId:'p1',eventKey:'evt:restart',eventType:'NEEDS_CHAT'});
+    await first.drain();
+    assert.equal((await first.status('p1')).pending[0].state,'UNCERTAIN');
+    await first.close();
+
+    const resumed=createConversationController({directory:f.state,scope:'test',platform:'win32',helperPath:'unused',invokeUia});
+    try{
+      await resumed.drain();
+      const after=await resumed.status('p1');
+      assert.equal(after.binding.state,'UNCERTAIN');
+      assert.equal(after.pending.find(x=>x.handoffId===handoff.handoffId).state,'UNCERTAIN');
+      assert.equal(sends,1,'restart must not resend UI-observed message');
+    }finally{await resumed.close();}
+  }finally{f.dispose();}
+});
