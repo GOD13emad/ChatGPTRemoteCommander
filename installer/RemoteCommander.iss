@@ -16,7 +16,10 @@ AppId={{7AB894C6-897D-43B7-B83A-24E1A8DF66A2}
 AppName=Remote Commander
 AppVersion={#MyVersion}
 AppVerName=Remote Commander {#MyVersion}
-AppPublisher=Remote Commander
+AppPublisher=TandemVector Labs
+AppPublisherURL=https://github.com/Usefull-Skills
+AppSupportURL=https://github.com/GOD13emad/ChatGPTRemoteCommander/issues
+; AppPublisher is installer metadata, not an Authenticode-trusted publisher identity.
 DefaultDirName={localappdata}\Programs\Remote Commander
 DefaultGroupName=Remote Commander
 DisableProgramGroupPage=yes
