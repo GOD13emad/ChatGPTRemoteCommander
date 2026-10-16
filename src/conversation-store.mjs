@@ -240,6 +240,7 @@ export class ConversationStore{
       if(!row)return {projectId:pid,eventKey,cancelled:false,state:'ABSENT'};
       if(row.state==='SENT'||row.state==='CANCELLED')return {projectId:pid,eventKey,cancelled:row.state==='CANCELLED',state:row.state};
       if(row.state==='CLAIMED')fail('CONVERSATION_CLAIM_BUSY');
+      if(row.state==='UNCERTAIN')fail('CONVERSATION_OUTCOME_UNCERTAIN');
       this.db.prepare("UPDATE handoffs SET state='CANCELLED',attempt_id=NULL,lease_until=NULL,last_code='WORKFLOW_RESUMED',updated_at=? WHERE scope=? AND id=?")
         .run(now(),this.scope,row.id);
       return {projectId:pid,eventKey,cancelled:true,state:'CANCELLED'};
