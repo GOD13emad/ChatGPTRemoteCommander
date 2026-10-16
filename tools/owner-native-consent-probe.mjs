@@ -22,7 +22,7 @@ const child = [
 const childB64 = Buffer.from(child, 'utf16le').toString('base64');
 const winParent = [
   "$ErrorActionPreference='Stop'",
-  "$exe=Join-Path $env:SystemRoot 'System32\\WindowsPowerShell\\v1.0\\powershell.exe'",
+  "$exe='C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe'",
   "try {",
   " $p=Start-Process -FilePath $exe -Verb RunAs -ArgumentList @('-NoProfile','-NonInteractive','-EncodedCommand','"+childB64+"') -PassThru -Wait -ErrorAction Stop",
   " if($p.ExitCode -eq 73){Write-Output '"+APPROVED_MARKER+"';exit 0}",
