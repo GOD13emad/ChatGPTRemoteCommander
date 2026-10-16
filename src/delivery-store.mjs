@@ -227,6 +227,7 @@ export class DeliveryStore {
       if (item.attemptId !== attemptId) fail('DELIVERY_ATTEMPT_CONFLICT');
       if (item.state === 'DELIVERED') return item;
       if (item.state !== 'DELIVERY_PENDING') fail('DELIVERY_NOT_CLAIMED');
+      if (!Number.isSafeInteger(item.leaseUntil) || item.leaseUntil <= Date.now()) fail('DELIVERY_LEASE_EXPIRED');
       this.db.prepare(`UPDATE deliveries
         SET state='DELIVERED',receipt=?,lease_until=NULL,updated_at=?
         WHERE scope=? AND id=?`)
