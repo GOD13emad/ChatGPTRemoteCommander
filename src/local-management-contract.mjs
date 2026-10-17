@@ -6,6 +6,7 @@
  * bind dispatch/readBack to the exact Core instance before enabling this gate.
  */
 import { createHmac, createHash, randomBytes, timingSafeEqual } from 'node:crypto';
+import { localManagementReason } from './local-management-reconcile.mjs';
 
 const MAX_WIRE_BYTES = 8192;
 const MAX_LIFETIME_MS = 15000;
@@ -141,7 +142,7 @@ export function createLocalManagementGateway({ target, key, dispatch, readBack,
         if (admissionFailure) throw new Error(admissionFailure);
         return dispatch('workflow_control', {
           id: payload.workflowId, expectedRevision: payload.expectedRevision,
-          action: ACTIONS[payload.action], reason: 'Explicit native Control Center action',
+          action: ACTIONS[payload.action], reason: localManagementReason(payload.requestId),
         });
       });
     } catch (error) {

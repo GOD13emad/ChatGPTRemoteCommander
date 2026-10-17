@@ -73,6 +73,17 @@ native('real Python client pause, duplicate and cancel use one resident Core and
   assert.equal(state.control.intent,'CANCELLED');assert.equal(state.steps[0].status,'pending');
   assert.equal((await f.tools.execute('workflow_status',{})).runnerConfigured,false);
   await ep.closed;assert.equal(fs.existsSync(ep.endpoint),false);
+  // After socket teardown, inspect the EXACT request ID using only the Core
+  // integrity-checked event journal; never dispatch or infer from current state.
+  const historical=await ep.inspectControl({workflowId:'sample',requestId:'pause-1',
+    action:'workflow.pause',expectedRevision:1});
+  assert.equal(historical.state,'JOURNALED_APPLIED');
+  assert.equal(historical.evidence.eventRevision,2);
+  assert.equal(historical.evidence.currentRevision,3);
+  assert.equal(historical.replayed,false);
+  assert.equal((await ep.inspectControl({workflowId:'sample',requestId:'absent-1',
+    action:'workflow.pause',expectedRevision:1})).state,'UNRESOLVED');
+  assert.equal(f.controls(),2);
 });
 native('a different actual client PID cannot obtain bootstrap',async t=>{
   const f=await fixture(t),ep=await f.open({expectedClientPid:1,idleMs:100}),client=rawClient(t,ep);

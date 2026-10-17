@@ -12,6 +12,7 @@ import {spawn} from 'node:child_process';
 import {randomBytes} from 'node:crypto';
 import {fileURLToPath} from 'node:url';
 import {createLocalManagementGateway} from './local-management-contract.mjs';
+import {inspectLocalManagementEvent} from './local-management-reconcile.mjs';
 
 const HELPER=fileURLToPath(new URL('../tools/local-management-windows.ps1',import.meta.url));
 const TARGET_KEYS=['deviceId','profileId','configSha256','routeGeneration'];
@@ -119,7 +120,10 @@ export async function startWindowsLocalManagement({enabled=false,target,readIden
       phase='READY';clearTimeout(startupTimer);
       readySettled=true;
       resolveReady(Object.freeze({pipeName,helperPid:child.pid,target:clone(original),
-        status,close,closed:exited,revoke:()=>revoke('MANAGEMENT_SESSION_REVOKED')}));
+        status,close,closed:exited,inspectControl: args => inspectLocalManagementEvent({
+          ...args,target:original,readIdentity,workflowTools
+        }),
+        revoke:()=>revoke('MANAGEMENT_SESSION_REVOKED')}));
       return;
     }
     if(v?.type==='peer') {

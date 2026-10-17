@@ -10,6 +10,7 @@ import { fileURLToPath } from 'node:url';
 import { spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { createLocalManagementGateway } from './local-management-contract.mjs';
+import {inspectLocalManagementEvent} from './local-management-reconcile.mjs';
 
 const HELPER = fileURLToPath(new URL('../tools/local-management-linux.py', import.meta.url));
 const AUTH = 'LINUX_SO_PEERCRED_SAME_UID_SESSION';
@@ -154,7 +155,10 @@ export async function startLinuxLocalManagement({ enabled = false, runtimeDirect
       endpoint = value.path; phase = 'READY'; clearTimeout(startupTimer);
       readySettled = true;
       resolveReady(Object.freeze({ endpoint, helperPid: child.pid, target: clone(fixedTarget),
-        status, close, closed: exited, revoke: () => revoke('MANAGEMENT_SESSION_REVOKED') }));
+        status, close, closed: exited, inspectControl: args => inspectLocalManagementEvent({
+          ...args,target:fixedTarget,readIdentity,workflowTools
+        }),
+        revoke: () => revoke('MANAGEMENT_SESSION_REVOKED') }));
       return;
     }
     if (value?.type === 'peer') {
