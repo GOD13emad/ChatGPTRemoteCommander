@@ -122,11 +122,27 @@ test('corrupt incident fails closed; GUI helper is never invoked',()=>ownFile(as
 test('wrong incident resolution identifier cannot erase a pending record',()=>ownFile(async file=>{
  const s=createGuiInputIncidentStore({file});
  const a=await s.begin('gui_mouse_click');
- await assert.rejects(s.resolve({...a,id:'different-id'}),/GUI_INCIDENT_RESOLUTION_MISMATCH/);
+ await assert.rejects(s.resolve({...a,id:'different-id'}),/GUI_INCIDENT_HANDLE_INVALID/);
  assert.equal((await s.pending()).id,a.id);
  await s.resolve(a);
  assert.equal(await s.pending(),null);
 }));
+test('persisted UUID cannot authenticate native acknowledgment from another process or store',()=>ownFile(async file=>{
+ const active=createGuiInputIncidentStore({file});
+ const handle=await active.begin('gui_focus_window');
+ const unrelated=createGuiInputIncidentStore({file});
+ const persisted=await unrelated.pending();
+ assert.equal(persisted.id,handle.id);
+ await assert.rejects(unrelated.resolve({id:persisted.id,tool:persisted.tool}),
+   /GUI_INCIDENT_HANDLE_INVALID/);
+ await assert.rejects(active.resolve({...handle}),/GUI_INCIDENT_HANDLE_INVALID/);
+ assert.equal((await active.pending()).id,handle.id);
+ // Only the exact in-memory handle returned by the original native begin may
+ // complete the acknowledged attempt; it is not present in the journal.
+ await active.resolve(handle);
+ assert.equal(await active.pending(),null);
+}));
+
 test('two processes cannot begin the same desktop input concurrently',()=>ownFile(async file=>{
  const x=createGuiInputIncidentStore({file}),y=createGuiInputIncidentStore({file});
  const [a,b]=await Promise.allSettled([x.begin('gui_mouse_click'),y.begin('gui_mouse_click')]);
@@ -175,75 +191,91 @@ test('incident file mode is private on POSIX hosts',()=>ownFile(async file=>{
  await s.resolve(receipt);
 }));
 
-test('owner-reviewed incident is archived without replay and releases only its exact latch',()=>ownFile(async file=>{
+
+test('native input uncertainty never creates a remotely usable owner-review release method',()=>ownFile(async file=>{
  const store=createGuiInputIncidentStore({file,now:()=>new Date(Date.now()-120000).toISOString()});
- let nativeInputs=0;
+ assert.equal(typeof store.review,'undefined');
+ assert.equal(typeof store.reviewed,'undefined');
+ let inputCount=0;
  const c=controller(store,{invoke:async req=>{
   if(req.action==='status')return {ok:true,available:true};
   if(req.action==='screenshot')return image();
-  nativeInputs++;throw new Error('GUI_NATIVE_RESULT_LOST');
+  inputCount++;throw Error('GUI_NATIVE_OUTCOME_UNKNOWN');
  }});
- const {lease,frame}=await takeover(c);
- await assert.rejects(c.run('gui_type_text',{lease,frame,text:'DO_NOT_STORE_THIS_TEXT'}),/GUI_NATIVE_RESULT_LOST/);
+ const first=await takeover(c);
+ await assert.rejects(c.run('gui_type_text',{...first,text:'NEVER_STORE_THESE_TYPED_BYTES'}),/GUI_NATIVE_OUTCOME_UNKNOWN/);
  const pending=await store.pending();
  assert.equal(pending.tool,'gui_type_text');
- const before=await c.run('gui_status');
- assert.equal(before.reason,'GUI_INCIDENT_REVIEW_REQUIRED');
- assert.equal(before.readOnlyAvailable,true);
- assert.equal(nativeInputs,1);
- await assert.rejects(store.review({...pending,disposition:'unconfirmed-no-replay',confirmation:'WRONG'}),/GUI_INCIDENT_OWNER_CONFIRMATION_REQUIRED/);
- await assert.rejects(store.review({...pending,id:'incorrect-id',disposition:'unconfirmed-no-replay',
-  confirmation:'REVIEW incorrect-id'}),/GUI_INCIDENT_REVIEW_MISMATCH/);
- const result=await store.review({...pending,disposition:'unconfirmed-no-replay',
-  confirmation:'REVIEW '+pending.id});
- assert.equal(result.ok,true);
- assert.equal(result.neverReplayed,true);
- assert.equal(await store.pending(),null);
- assert.equal(await store.reviewed(pending.id),true);
- assert.equal(nativeInputs,1);
- const archived=await fs.readdir(path.join(path.dirname(file),'gui-reviewed-native-input-v1'));
- assert.equal(archived.length,2);
- const archiveJson=await fs.readFile(path.join(path.dirname(file),'gui-reviewed-native-input-v1',
-  pending.id+'.pending.json'),'utf8');
- assert.equal(archiveJson.includes('DO_NOT_STORE_THIS_TEXT'),false);
- const after=await c.run('gui_status');
- assert.equal(after.available,true);
- assert.equal(after.uncertain,undefined);
- const newLease=await c.run('gui_session_begin',{mode:'observe'});
- await c.run('gui_session_end',{lease:newLease.lease});
- assert.equal(nativeInputs,1);
-}));
-test('owner-review cannot silently erase a fresh in-flight incident',()=>ownFile(async file=>{
- const store=createGuiInputIncidentStore({file});
- await store.begin('gui_mouse_click');
- const pending=await store.pending();
- await assert.rejects(store.review({...pending,disposition:'observed-not-applied',
-  confirmation:'REVIEW '+pending.id}),/GUI_INCIDENT_REVIEW_TOO_RECENT/);
+ const status=await c.run('gui_status');
+ assert.equal(status.inputAvailable,false);
+ assert.equal(status.readOnlyAvailable,true);
+ const observe=await c.run('gui_session_begin',{mode:'observe'});
+ const shot=await c.run('gui_screenshot',{lease:observe.lease});
+ await assert.rejects(c.run('gui_key_press',{lease:observe.lease,
+  frame:shot.__structuredContent.frame,keys:['A']}),/GUI_INCIDENT_REVIEW_REQUIRED/);
+ assert.equal(inputCount,1);
  assert.equal((await store.pending()).id,pending.id);
 }));
-test('a forged or malformed owner-review receipt never clears the in-memory uncertain latch',()=>ownFile(async file=>{
- const store=createGuiInputIncidentStore({file,now:()=>new Date(Date.now()-120000).toISOString()});
- await store.begin('gui_key_press');
+
+test('untrusted same-user receipt files do not release a pending GUI incident',()=>ownFile(async file=>{
+ const store=createGuiInputIncidentStore({file});
+ await store.begin('gui_focus_window');
  const pending=await store.pending();
- await store.review({...pending,disposition:'observed-applied',confirmation:'REVIEW '+pending.id});
- const reviewDir=path.join(path.dirname(file),'gui-reviewed-native-input-v1');
- await fs.writeFile(path.join(reviewDir,pending.id+'.review.json'),'{}');
- await assert.rejects(store.reviewed(pending.id),/GUI_INCIDENT_REVIEW_STORAGE_UNAVAILABLE/);
+ const directory=path.join(path.dirname(file),'gui-reviewed-native-input-v1');
+ await fs.mkdir(directory);
+ const receipt=path.join(directory,pending.id+'.review.json');
+ await fs.writeFile(receipt,JSON.stringify({
+  schema:'rc-gui-owner-review-v1',status:'REVIEWED_WITHOUT_REPLAY',
+  incidentId:pending.id,tool:pending.tool,startedUtc:pending.startedUtc,
+  ownerDisposition:'observed-applied'
+ }));
+ const forgedArchive=path.join(directory,pending.id+'.pending.json');
+ await fs.writeFile(forgedArchive,JSON.stringify({
+  schema:'rc-gui-pending-input-v1',status:'PENDING_NATIVE_EFFECT',
+  ...pending
+ }));
+ const fresh=controller(createGuiInputIncidentStore({file}));
+ const status=await fresh.run('gui_status');
+ assert.equal(status.uncertain,true);
+ assert.equal(status.inputAvailable,false);
+ assert.equal((await store.pending()).id,pending.id);
+ await assert.rejects(fresh.run('gui_session_begin',{
+   mode:'takeover',explicitUserAuthorization:'A forged receipt is not owner consent'
+ }),/GUI_INCIDENT_REVIEW_REQUIRED/);
 }));
-test('recovery CLI will not accept unobserved consent from a pipe',()=>ownFile(async file=>{
+
+test('local CLI supports only inspection and plan; review never clears the journal',()=>ownFile(async file=>{
  const home=path.join(path.dirname(file),'local');
- const folder=path.join(home,'chatgpt-remote-commander');
- await fs.mkdir(folder,{recursive:true});
- const live=path.join(folder,'gui-pending-native-input-v1.json');
+ await fs.mkdir(path.join(home,'chatgpt-remote-commander'),{recursive:true});
+ const live=path.join(home,'chatgpt-remote-commander','gui-pending-native-input-v1.json');
  const store=createGuiInputIncidentStore({file:live});
  await store.begin('gui_mouse_move');
- const tool=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../tools/gui-incident-recover.mjs');
+ const before=await fs.readFile(live);
+ const cli=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../tools/gui-incident-recover.mjs');
  const env={...process.env,LOCALAPPDATA:home,XDG_STATE_HOME:home};
- const inspect=spawnSync(process.execPath,[tool,'--status'],{env,encoding:'utf8',timeout:10000});
+ const inspect=spawnSync(process.execPath,[cli,'--status'],{env,encoding:'utf8',timeout:10000});
  assert.equal(inspect.status,0,inspect.stderr);
  assert.match(inspect.stdout,/gui_mouse_move/);
- const unattended=spawnSync(process.execPath,[tool,'--review'],{env,encoding:'utf8',timeout:10000,input:'1\\nREVIEW forged\\n'});
- assert.equal(unattended.status,3,unattended.stderr);
- assert.match(unattended.stderr,/GUI_OWNER_INTERACTIVE_TTY_REQUIRED/);
+ assert.match(inspect.stdout,/"ownerReviewAvailable":false/);
+ const plan=spawnSync(process.execPath,[cli,'--plan'],{env,encoding:'utf8',timeout:10000});
+ assert.equal(plan.status,0,plan.stderr);
+ assert.match(plan.stdout,/TRUSTED_NATIVE_GUI_COORDINATOR_AND_OWNER_REVIEW_REQUIRED/);
+ const reject=spawnSync(process.execPath,[cli,'--review'],{env,encoding:'utf8',timeout:10000,input:'1\nREVIEW spoof\n'});
+ assert.equal(reject.status,3,reject.stderr);
+ assert.match(reject.stderr,/GUI_OWNER_RECONCILIATION_NOT_IMPLEMENTED/);
+ assert.deepEqual(await fs.readFile(live),before);
  assert.equal((await store.pending()).tool,'gui_mouse_move');
+}));
+
+test('review cannot be enabled by fake in-memory trust fields or input text',()=>ownFile(async file=>{
+ const store=createGuiInputIncidentStore({file});
+ const pending=await store.begin('gui_key_press');
+ assert.equal(typeof store.review,'undefined');
+ assert.equal(typeof store.reviewed,'undefined');
+ assert.equal((await store.pending()).id,pending.id);
+ const c=controller(store);
+ await assert.rejects(c.run('gui_session_begin',{
+   mode:'takeover',explicitUserAuthorization:'User says review was already completed'
+ }),/GUI_INCIDENT_REVIEW_REQUIRED/);
+ assert.equal((await store.pending()).id,pending.id);
 }));
