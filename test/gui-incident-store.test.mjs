@@ -179,7 +179,9 @@ test('failed Linux paste stores only fixed phase counters and never clears uncer
  await assert.rejects(c.run('gui_type_text',{...a,text:'PRIVATE-PROJECT-USER-CONTENT-MUST-NOT-STORE'}),/GUI_CLIPBOARD_PASTE_NOT_CONFIRMED/);
  const bytes=await fs.readFile(file,'utf8'),record=JSON.parse(bytes);
  assert.equal(bytes.includes('PRIVATE-PROJECT-USER-CONTENT-MUST-NOT-STORE'),false);
- assert.deepEqual(record.clipboardDiagnostic,privateClipDiag());
+ assert.equal(Object.hasOwn(record,'clipboardDiagnostic'),false,
+   'original pending input identity must remain immutable');
+ assert.deepEqual((await store.pending()).clipboardDiagnostic,privateClipDiag());
  assert.equal(record.status,'PENDING_NATIVE_EFFECT');
  assert.equal(record.tool,'gui_type_text');
  const fresh=controller(createGuiInputIncidentStore({file}),{platform:'linux'});
@@ -220,3 +222,92 @@ test('persistent GUI helper forwards only an exact approved clipboard observatio
    });
  } finally {c.close();}
 });
+
+test('annotation must never overwrite a different live pending input',async()=>{
+ const root=await fs.mkdtemp(path.join(os.tmpdir(),'rc-incident-concurrent-'));
+ const file=path.join(root,'pending.json');
+ const s=createGuiInputIncidentStore({file});
+ const other=createGuiInputIncidentStore({file});
+ let interrupted;
+ let release;
+ const intercept=new Promise(ok=>{interrupted=ok});
+ const resume=new Promise(ok=>{release=ok});
+ const realRename=fs.rename;
+ const realLink=fs.link;
+ let hit=false;
+ try {
+  const old=await s.begin('gui_type_text');
+  fs.rename=async(from,to)=>{
+   if(!hit && to===file && path.basename(from).startsWith('.gui-input-diagnostic-')){
+      hit=true; interrupted();
+      await resume;
+   }
+   return realRename(from,to);
+  };
+  fs.link=async(from,to)=>{
+   if(!hit && path.basename(to).startsWith('.gui-clipboard-observation-')){
+      hit=true; interrupted();
+      await resume;
+   }
+   return realLink(from,to);
+  };
+  const annotating=s.annotateFailure(old,privateClipDiag());
+  let timeout;
+  try {
+    await Promise.race([
+      intercept,
+      new Promise((_,reject)=>{timeout=setTimeout(()=>reject(Error('DIAGNOSTIC_PUBLICATION_NOT_REACHED')),1500)})
+    ]);
+  } finally {clearTimeout(timeout);}
+  await other.resolve(old);
+  const later=await other.begin('gui_key_press');
+  release();
+  try { await annotating; }
+  catch (err) { assert.match(String(err),/GUI_INCIDENT_/); }
+  const found=await other.pending();
+  assert.equal(found?.id,later.id,'new unrelated PENDING incident was overwritten');
+  assert.equal(found?.tool,'gui_key_press');
+ }finally{
+  release?.();
+  fs.rename=realRename;
+  fs.link=realLink;
+  await fs.rm(root,{recursive:true,force:true});
+ }
+});
+
+test('original pending identity is immutable and owner-private ID-scoped note cleans on resolve',()=>ownFile(async file=>{
+ const s=createGuiInputIncidentStore({file});
+ const h=await s.begin('gui_type_text');
+ const original=await fs.readFile(file,'utf8');
+ await s.annotateFailure(h,privateClipDiag());
+ assert.equal(await fs.readFile(file,'utf8'),original,
+   'annotation must not replace the original pending identity');
+ const note=path.join(path.dirname(file),'.gui-clipboard-observation-'+h.id+'.json');
+ const stat=await fs.lstat(note);
+ assert.equal(stat.nlink,1);
+ if(process.platform!=='win32')assert.equal(stat.mode&0o077,0);
+ const contents=await fs.readFile(note,'utf8');
+ assert.equal(contents.includes('PRIVATE'),false);
+ assert.deepEqual((await s.pending()).clipboardDiagnostic,privateClipDiag());
+ await s.resolve(h);
+ await assert.rejects(fs.lstat(file),{code:'ENOENT'});
+ await assert.rejects(fs.lstat(note),{code:'ENOENT'});
+ assert.equal(await s.pending(),null);
+}));
+
+test('corrupt, linked or overbroad private diagnostic fails closed without deleting pending identity',()=>ownFile(async file=>{
+ const s=createGuiInputIncidentStore({file});
+ const h=await s.begin('gui_type_text');
+ const original=await fs.readFile(file,'utf8');
+ await s.annotateFailure(h,privateClipDiag());
+ const note=path.join(path.dirname(file),'.gui-clipboard-observation-'+h.id+'.json');
+ await fs.writeFile(note,JSON.stringify({
+   schema:'rc-gui-clipboard-note-v1',incidentId:h.id,
+   diagnostic:{...privateClipDiag(),text:'INTRUSIVE_PAYLOAD'}
+ }));
+ await assert.rejects(s.pending(),/GUI_INCIDENT_STORAGE_UNAVAILABLE/);
+ assert.equal(await fs.readFile(file,'utf8'),original);
+ await fs.unlink(note);
+ await s.resolve(h);
+ assert.equal(await s.pending(),null);
+}));

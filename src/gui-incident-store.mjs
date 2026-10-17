@@ -40,6 +40,32 @@ const defaultFile=()=>{
 export function createGuiInputIncidentStore({file=defaultFile(),now=()=>new Date().toISOString(),id=()=>randomUUID()}={}){
   if(!path.isAbsolute(file))throw fail('GUI_INCIDENT_PATH_INVALID');
   const folder=path.dirname(file);
+  // The pending-input identity file is immutable until an explicit resolve.
+  // A separate ID-scoped immutable observation cannot clobber a new incident.
+  const noteFile=id=>path.join(folder,'.gui-clipboard-observation-'+id+'.json');
+  async function readNote(incident) {
+    const target=noteFile(incident.id);
+    let st;
+    try { st=await fs.lstat(target); }
+    catch(e) {
+      if(e.code==='ENOENT')return null;
+      throw fail('GUI_INCIDENT_STORAGE_UNAVAILABLE');
+    }
+    if(!st.isFile()||st.isSymbolicLink()||st.nlink!==1||
+       st.size<1||st.size>2048||
+       (process.platform!=='win32' && (st.mode&0o077)))
+      throw fail('GUI_INCIDENT_STORAGE_UNAVAILABLE');
+    let observation;
+    try { observation=JSON.parse(await fs.readFile(target,'utf8')); }
+    catch { throw fail('GUI_INCIDENT_STORAGE_UNAVAILABLE'); }
+    if(!observation||typeof observation!=='object'||
+       Object.keys(observation).sort().join(',')!=='diagnostic,incidentId,schema'||
+       observation.schema!=='rc-gui-clipboard-note-v1'||
+       observation.incidentId!==incident.id||incident.tool!=='gui_type_text')
+      throw fail('GUI_INCIDENT_STORAGE_UNAVAILABLE');
+    try { return validClipboardDiagnostic(observation.diagnostic); }
+    catch { throw fail('GUI_INCIDENT_STORAGE_UNAVAILABLE'); }
+  }
   async function pending(){
     let st;
     try{st=await fs.lstat(file);}
@@ -61,7 +87,14 @@ export function createGuiInputIncidentStore({file=defaultFile(),now=()=>new Date
       catch { throw fail('GUI_INCIDENT_STORAGE_UNAVAILABLE'); }
       if(record.tool!=='gui_type_text')throw fail('GUI_INCIDENT_STORAGE_UNAVAILABLE');
     }
-    return {id:record.id,tool:record.tool,startedUtc:record.startedUtc};
+    const identity={id:record.id,tool:record.tool,startedUtc:record.startedUtc};
+    const note=await readNote(identity);
+    if(note && record.clipboardDiagnostic &&
+       JSON.stringify(validClipboardDiagnostic(record.clipboardDiagnostic))!==JSON.stringify(note))
+      throw fail('GUI_INCIDENT_STORAGE_UNAVAILABLE');
+    return note ? {...identity,clipboardDiagnostic:note} :
+      record.clipboardDiagnostic ? {...identity,clipboardDiagnostic:validClipboardDiagnostic(record.clipboardDiagnostic)} :
+      identity;
   }
   async function begin(tool){
     if(!INPUT_TOOLS.has(tool))throw fail('GUI_INCIDENT_TOOL_INVALID');
@@ -88,34 +121,53 @@ export function createGuiInputIncidentStore({file=defaultFile(),now=()=>new Date
     const current=await pending();
     if(!handle || current?.id!==handle.id || current?.tool!=='gui_type_text' ||
        handle.tool!=='gui_type_text')throw fail('GUI_INCIDENT_RESOLUTION_MISMATCH');
-    let existing;
-    try { existing=JSON.parse(await fs.readFile(file,'utf8')); }
-    catch { throw fail('GUI_INCIDENT_STORAGE_UNAVAILABLE'); }
-    if(existing?.id!==current.id || existing?.tool!==current.tool)
-      throw fail('GUI_INCIDENT_RESOLUTION_MISMATCH');
-    if(Object.hasOwn(existing,'clipboardDiagnostic')) {
-      if(JSON.stringify(existing.clipboardDiagnostic)===JSON.stringify(note))return;
+    if(current.clipboardDiagnostic) {
+      if(JSON.stringify(current.clipboardDiagnostic)===JSON.stringify(note))return;
       throw fail('GUI_INCIDENT_DIAGNOSTIC_CONFLICT');
     }
-    const next={...existing,clipboardDiagnostic:note};
     const dir=await fs.lstat(folder);
-    if(!dir.isDirectory() || dir.isSymbolicLink() ||
+    if(!dir.isDirectory()||dir.isSymbolicLink()||
        (typeof process.getuid==='function' &&
-         (dir.uid!==process.getuid() || (dir.mode&0o022))))
+        (dir.uid!==process.getuid() || (dir.mode&0o022))))
       throw fail('GUI_INCIDENT_STORAGE_UNAVAILABLE');
+    const target=noteFile(handle.id);
     const temp=path.join(folder,'.gui-input-diagnostic-'+randomUUID()+'.tmp');
     try {
       const fd=await fs.open(temp,'wx',0o600);
-      try { await fd.writeFile(JSON.stringify(next)+'\n','utf8'); await fd.sync(); }
-      finally { await fd.close(); }
+      try {
+        await fd.writeFile(JSON.stringify({
+          schema:'rc-gui-clipboard-note-v1',incidentId:handle.id,diagnostic:note
+        })+'\n','utf8');
+        await fd.sync();
+      }finally { await fd.close(); }
       const still=await pending();
       if(still?.id!==handle.id || still?.tool!==handle.tool)
         throw fail('GUI_INCIDENT_RESOLUTION_MISMATCH');
-      await fs.rename(temp,file);
-      if(process.platform!=='win32') {
-        const fd=await fs.open(folder,'r');
-        try { await fd.sync(); } finally { await fd.close(); }
+      // Exclusive hard-link publication never overwrites the pending identity
+      // (or an independently created diagnostic); works on NTFS and POSIX.
+      try { await fs.link(temp,target); }
+      catch(error) {
+        if(error.code==='EEXIST') {
+          const existing=await pending();
+          if(existing?.id!==handle.id)throw fail('GUI_INCIDENT_RESOLUTION_MISMATCH');
+          if(existing.clipboardDiagnostic &&
+             JSON.stringify(existing.clipboardDiagnostic)===JSON.stringify(note))return;
+          throw fail('GUI_INCIDENT_DIAGNOSTIC_CONFLICT');
+        }
+        throw error;
       }
+      // The hard-link is committed; remove our temporary additional link
+      // before any reader checks the private note's nlink==1 invariant.
+      await fs.unlink(temp);
+      if(process.platform!=='win32') {
+        const df=await fs.open(folder,'r');
+        try { await df.sync(); } finally { await df.close(); }
+      }
+      // Resolution raced publication: preserve the newer incident and fail
+      // closed. Any orphan note is keyed only to the *old* random incident ID.
+      const published=await pending();
+      if(published?.id!==handle.id || published?.tool!==handle.tool)
+        throw fail('GUI_INCIDENT_RESOLUTION_MISMATCH');
     } catch(error) {
       if(error?.guiCode)throw error;
       throw fail('GUI_INCIDENT_STORAGE_UNAVAILABLE');
@@ -126,6 +178,9 @@ export function createGuiInputIncidentStore({file=defaultFile(),now=()=>new Date
     const prior=await pending();
     if(!prior||prior.id!==handle.id||prior.tool!==handle.tool)throw fail('GUI_INCIDENT_RESOLUTION_MISMATCH');
     try{await fs.unlink(file);}catch{throw fail('GUI_INCIDENT_STORAGE_UNAVAILABLE');}
+    // No global cleanup: remove only the note tied to this incident ID.
+    try{await fs.unlink(noteFile(handle.id));}
+    catch(e){if(e.code!=='ENOENT')throw fail('GUI_INCIDENT_STORAGE_UNAVAILABLE');}
   }
   return {pending,begin,resolve,annotateFailure};
 }
