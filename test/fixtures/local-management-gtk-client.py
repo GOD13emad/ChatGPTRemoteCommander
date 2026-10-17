@@ -13,6 +13,7 @@ import urllib.parse
 repo = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(repo / 'desktop/linux-control-center'))
 from native_management import NativeManagementController
+from native_management_outbox import NativeRequestOutbox
 from native_management_view import attach_management_view
 from test_native_management_view import Gtk, Adw, GLib, Dialog, Center, await_state
 
@@ -39,7 +40,25 @@ def run(descriptor):
             con.close()
 
     with transport.NativeClient(descriptor["endpoint"], descriptor["serverPid"], target, timeout=3) as client:
-        controller = NativeManagementController(client, read_scoped)
+        mode = descriptor["mode"]
+        outbox = None
+        wrapped = client
+        if mode == "lostReceipt":
+            directory = pathlib.Path(descriptor["outboxDir"])
+            outbox = NativeRequestOutbox(directory, target)
+
+            class SimulatedLostReceipt:
+                # Test-only: send through the *real* authenticated socket, then
+                # hide the valid Core receipt to mimic an interrupted GUI link.
+                target = client.target
+
+                def control(self, action, workflow_id, revision, request_id):
+                    result = client.control(action, workflow_id, revision, request_id)
+                    assert result["state"] == "APPLIED"
+                    raise TimeoutError("SYNTHETIC_ONLY_LOST_REPLY_AFTER_CORE_COMMIT")
+
+            wrapped = SimulatedLostReceipt()
+        controller = NativeManagementController(wrapped, read_scoped, outbox)
         center = Center()
         view = attach_management_view(center, controller, Gtk, Adw, GLib)
         initial = read_scoped()["records"][0]
@@ -52,10 +71,11 @@ def run(descriptor):
         assert Dialog.last is not None and Dialog.last.default == "dismiss"
         assert "Device: fixture" in Dialog.last.body and "Revision: 1" in Dialog.last.body
         assert read_scoped()["records"][0]["revision"] == 1, "A click must not dispatch"
-        mode = descriptor["mode"]
-        Dialog.last.response("confirm" if mode == "confirm" else "dismiss")
+        Dialog.last.response("confirm" if mode in ("confirm", "lostReceipt") else "dismiss")
         if mode == "confirm":
             await_state(view, "APPLIED")
+        elif mode == "lostReceipt":
+            await_state(view, "UNCERTAIN")
         result = read_scoped()["records"][0]
         output = {
             "mode":mode,"action":verb,
@@ -65,7 +85,36 @@ def run(descriptor):
             "nativePeerUid":__import__('os').getuid(),
             "viewStatus":"ISOLATED_SYNTHETIC_GTK_SIGNAL_NOT_NATIVE_RENDER"
         }
-        view.close()
+        if mode == "lostReceipt":
+            assert outbox is not None
+            pending = outbox.pending()
+            assert len(pending) == 1 and pending[0]["state"] == "UNCERTAIN"
+            request = pending[0]
+            assert request["action"] == "workflow.pause"
+            assert result["revision"] == 2
+            output["requestId"] = request["requestId"]
+            output["pendingBeforeRestart"] = request["state"]
+            view.close()
+            outbox.close()
+
+            # Reopen the exact owner-private metadata file in this native
+            # process; no restored request may become an executable button.
+            reopened = NativeRequestOutbox(directory, target)
+            try:
+                safe_controller = NativeManagementController(client, read_scoped, reopened)
+                second_center = Center()
+                second_view = attach_management_view(second_center, safe_controller, Gtk, Adw, GLib)
+                assert not second_view.buttons
+                assert "RECONCILIATION REQUIRED" in second_view.note.get_text()
+                assert len(reopened.pending()) == 1
+                output["pendingAfterRestart"] = reopened.pending()[0]["state"]
+                output["buttonCountAfterRestart"] = len(second_view.buttons)
+                output["replayPrevented"] = True
+                second_view.close()
+            finally:
+                reopened.close()
+        else:
+            view.close()
         return output
 
 
