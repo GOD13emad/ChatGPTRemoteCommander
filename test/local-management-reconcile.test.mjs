@@ -69,11 +69,17 @@ test('read-only verification works after closing and reopening the same SQLite C
  await apply(f);
  await f.tools.close();
  const reopened=makeTools(f.root);
- t.after(async()=>reopened.tools.close());
- const status=await inspect(reopened.tools);
- assert.equal(status.state,'JOURNALED_APPLIED');
- assert.equal(status.evidence.currentRevision,2);
- assert.equal(reopened.effects(),0);
+ // The reopened SQLite handle must be closed BEFORE the fixture's existing
+ // t.after removes its temporary directory. Windows denies unlink on an open
+ // root-leases.sqlite; an after-hook registered later is too late.
+ try {
+   const status=await inspect(reopened.tools);
+   assert.equal(status.state,'JOURNALED_APPLIED');
+   assert.equal(status.evidence.currentRevision,2);
+   assert.equal(reopened.effects(),0);
+ } finally {
+   await reopened.tools.close();
+ }
 });
 
 test('missing marker means UNRESOLVED, even if current control intent happens to match',async t=>{
