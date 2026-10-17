@@ -1,6 +1,7 @@
 import os from 'node:os';
 import path from 'node:path';
-import { mkdir, lstat, chmod, writeFile, rename, unlink } from 'node:fs/promises';
+import { constants } from 'node:fs';
+import { mkdir, lstat, chmod, writeFile, rename, unlink, open } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 
 const MAX_BYTES = 64 * 1024;
@@ -15,19 +16,45 @@ export function defaultBrowserCompanionRoot({ platform = process.platform, env =
     : path.posix.join(home, '.local', 'state', 'chatgpt-remote-commander', 'browser-companion');
 }
 
+// Reject existing lexical symlinks before mkdir/chmod. This is not an openat-style
+// atomic namespace transaction; hostile concurrent ancestor replacement is a
+// separate boundary and must not be advertised as covered by these checks.
+async function rejectLinkedAncestors(root) {
+  const parts = path.posix.resolve(root).split('/').filter(Boolean);
+  let current = '/';
+  for (const part of parts) {
+    current = path.posix.join(current, part);
+    let st;
+    try { st = await lstat(current); }
+    catch (error) { if (error.code === 'ENOENT') return; throw error; }
+    if (st.isSymbolicLink() || !st.isDirectory()) throw new Error('BROWSER_COMPANION_ROOT_UNSAFE');
+  }
+}
+
 async function provePrivateRoot(root, { platform = process.platform } = {}) {
   const flavor = platform === 'win32' ? path.win32 : path.posix;
   if (!root || !flavor.isAbsolute(root)) throw new Error('BROWSER_COMPANION_ROOT_INVALID');
   if (platform !== 'win32') {
+    await rejectLinkedAncestors(root);
     await mkdir(root, { recursive: true, mode: 0o700 });
-    await chmod(root, 0o700);
+    await rejectLinkedAncestors(root);
   }
   let stat;
   try { stat = await lstat(root); } catch { throw new Error('BROWSER_COMPANION_ROOT_MISSING'); }
   if (!stat.isDirectory() || stat.isSymbolicLink()) throw new Error('BROWSER_COMPANION_ROOT_UNSAFE');
   if (platform !== 'win32') {
     if (typeof process.getuid === 'function' && stat.uid !== process.getuid()) throw new Error('BROWSER_COMPANION_ROOT_OWNER_MISMATCH');
-    if ((stat.mode & 0o077) !== 0) throw new Error('BROWSER_COMPANION_ROOT_NOT_PRIVATE');
+    // Apply permissions to the verified directory descriptor, never a followed link.
+    const handle = await open(root, constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW);
+    try {
+      const held = await handle.stat();
+      if (!held.isDirectory() || held.dev !== stat.dev || held.ino !== stat.ino || held.uid !== stat.uid) throw new Error('BROWSER_COMPANION_ROOT_CHANGED');
+      if ((held.mode & 0o777) !== 0o700) await handle.chmod(0o700);
+      const verified = await handle.stat();
+      if ((verified.mode & 0o077) !== 0) throw new Error('BROWSER_COMPANION_ROOT_NOT_PRIVATE');
+      const current = await lstat(root);
+      if (current.isSymbolicLink() || current.dev !== held.dev || current.ino !== held.ino) throw new Error('BROWSER_COMPANION_ROOT_CHANGED');
+    } finally { await handle.close(); }
   }
   return root;
 }

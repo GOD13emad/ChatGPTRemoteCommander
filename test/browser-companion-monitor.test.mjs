@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import os from 'node:os';
 import path from 'node:path';
-import { mkdtemp, mkdir, readFile, stat, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, stat, rm, symlink, chmod, writeFile } from 'node:fs/promises';
 import { defaultBrowserCompanionRoot, sanitizeMonitorSnapshot, writeBrowserCompanionMonitor } from '../src/browser-companion-monitor.mjs';
 
 test('default roots are platform-separated from Chromium profile data',()=>{
@@ -94,4 +94,33 @@ test('windows monitor writer uses a pre-created local root without POSIX mode as
     assert.equal(parsed.identity.platform,'win32');
     assert.equal(parsed.observedAtEpochMs,3000);
   }finally{await rm(base,{recursive:true,force:true});}
+});
+
+// A refusal must not mutate the rejected target or follow an existing ancestor link.
+test('monitor refuses a symlink root before changing target mode', {skip:process.platform==='win32'}, async()=>{
+  const base=await mkdtemp(path.join(os.tmpdir(),'rc-monitor-link-'));
+  try {
+    const target=path.join(base,'target'),root=path.join(base,'link');
+    await mkdir(target,{mode:0o755}); await chmod(target,0o755); await symlink(target,root);
+    await assert.rejects(writeBrowserCompanionMonitor(root,{}, {platform:process.platform}), /BROWSER_COMPANION_ROOT_UNSAFE/);
+    assert.equal((await stat(target)).mode & 0o777,0o755);
+  } finally {await rm(base,{recursive:true,force:true});}
+});
+test('monitor refuses a symlink ancestor without creating outside its lexical root', {skip:process.platform==='win32'}, async()=>{
+  const base=await mkdtemp(path.join(os.tmpdir(),'rc-monitor-ancestor-'));
+  try {
+    const target=path.join(base,'target'),alias=path.join(base,'alias');
+    await mkdir(target,{mode:0o755}); await chmod(target,0o755); await symlink(target,alias);
+    await assert.rejects(writeBrowserCompanionMonitor(path.join(alias,'new-monitor'),{}, {platform:process.platform}), /BROWSER_COMPANION_ROOT_UNSAFE/);
+    await assert.rejects(stat(path.join(target,'new-monitor')), {code:'ENOENT'});
+    assert.equal((await stat(target)).mode & 0o777,0o755);
+  } finally {await rm(base,{recursive:true,force:true});}
+});
+test('monitor refuses a regular-file root without changing its mode or bytes', {skip:process.platform==='win32'}, async()=>{
+  const base=await mkdtemp(path.join(os.tmpdir(),'rc-monitor-file-'));
+  try {
+    const root=path.join(base,'not-directory'); await writeFile(root,'sentinel',{mode:0o644}); await chmod(root,0o644);
+    await assert.rejects(writeBrowserCompanionMonitor(root,{}, {platform:process.platform}));
+    assert.equal((await stat(root)).mode & 0o777,0o644); assert.equal(await readFile(root,'utf8'),'sentinel');
+  } finally {await rm(base,{recursive:true,force:true});}
 });

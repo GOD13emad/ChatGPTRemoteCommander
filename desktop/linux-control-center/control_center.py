@@ -38,6 +38,15 @@ def effective_system_dark(preference: str, gtk_theme: str = "", gtk_override: st
 
 
 
+def unique_json_pairs(pairs):
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("Duplicate JSON key")
+        result[key] = value
+    return result
+
+
 def bounded_json(path: Path, limit=MAX_BYTES):
     """Read only owner-controlled regular files. Never follow symlink input."""
     try:
@@ -52,36 +61,57 @@ def bounded_json(path: Path, limit=MAX_BYTES):
             raw = f.read(limit + 1)
         if len(raw) > limit:
             return None
-        value = json.loads(raw)
+        value = json.loads(raw, object_pairs_hook=unique_json_pairs)
         return value if isinstance(value, dict) else None
     except (OSError, ValueError, TypeError, UnicodeError):
         return None
 
 
+def component_readiness(section, unavailable="UNAVAILABLE"):
+    """Telemetry classification only: never a permission grant or live session lease."""
+    if section.get("uncertain") is True:
+        return "UNCERTAIN"
+    if section.get("enabled") is False:
+        return "DISABLED"
+    if any(type(section.get(k)) is not bool for k in ("enabled", "available", "uncertain")):
+        return "UNVERIFIED"
+    return "READY" if section["available"] else unavailable
+
+
 def monitor_status():
     m = bounded_json(MONITOR, 16384)
-    if not m or m.get("schema") != 1 or m.get("kind") != "COMMANDER_LIVE_MONITOR":
+    if not m or type(m.get("schema")) is not int or m["schema"] != 1 or m.get("kind") != "COMMANDER_LIVE_MONITOR":
         return {"state": "UNVERIFIED", "reason": "Missing/untrusted private monitor"}
     now = int(time.time() * 1000)
-    expires = m.get("expiresAtEpochMs")
-    observed = m.get("observedAtEpochMs")
-    if not isinstance(expires, int) or not isinstance(observed, int):
-        return {"state": "UNVERIFIED", "reason": "Missing timestamps"}
-    if observed > now + 30000 or expires < now:
-        return {"state": "DISCONNECTED", "reason": "Monitor stale"}
-    identity = m.get("identity") or {}
-    gui = m.get("gui") or {}
-    operations = m.get("operations") or {}
+    expires, observed = m.get("expiresAtEpochMs"), m.get("observedAtEpochMs")
+    if type(expires) is not int or type(observed) is not int:
+        return {"state": "UNVERIFIED", "reason": "Missing/invalid timestamps"}
+    if expires < now or observed > now + 1000:
+        return {"state": "DISCONNECTED", "reason": "Monitor stale or future-dated"}
+    if observed < 0 or not 0 < expires - observed <= 30000:
+        return {"state": "UNVERIFIED", "reason": "Invalid monitor lifetime"}
+    for key in ("identity", "gui", "browser", "operations", "extensions"):
+        if key in m and not isinstance(m[key], dict):
+            return {"state": "UNVERIFIED", "reason": "Invalid monitor section"}
+    identity, gui = m.get("identity", {}), m.get("gui", {})
+    active = m.get("operations", {}).get("active")
+    active = active if type(active) is int and 0 <= active <= 999999 else None
+    items = m.get("extensions", {}).get("items")
+    # Schema 1's producer caps display at 32. Exactly 32 cannot establish a total.
+    valid_items = (isinstance(items, list) and len(items) <= 32 and
+                   all(isinstance(item, dict) and isinstance(item.get("id"), str) and
+                       0 < len(item["id"]) <= 64 for item in items))
+    shown = len(items) if valid_items else None
+    label = lambda key, maximum: identity.get(key, "?")[:maximum] if isinstance(identity.get(key, "?"), str) else "?"
     return {
-        "state": "CONNECTED",
-        "device": str(identity.get("deviceName", "?"))[:80],
-        "version": str(identity.get("version", "?"))[:40],
-        "profile": str(identity.get("profile", "?"))[:64],
-        "gui": "READY" if gui.get("available") is True else "BLOCKED",
-        "guiReason": str(gui.get("reason") or "")[:100],
-        "browser": "READY" if (m.get("browser") or {}).get("available") is True else "UNAVAILABLE",
-        "activeOperations": operations.get("active", 0),
-        "extensions": len((m.get("extensions") or {}).get("items") or []),
+        "state": "CONNECTED",  # fresh private observation, not authenticated chat delivery
+        "device": label("deviceName", 80), "version": label("version", 40), "profile": label("profile", 64),
+        "gui": component_readiness(gui, "BLOCKED"),
+        "guiReason": gui.get("reason", "")[:100] if isinstance(gui.get("reason", ""), str) else "",
+        "browser": component_readiness(m.get("browser", {})),
+        "activeOperations": active, "extensions": shown,
+        "extensionsTotal": shown if shown is not None and shown < 32 else None,
+        "extensionsMayBeTruncated": (shown == 32) if shown is not None else None,
     }
 
 
