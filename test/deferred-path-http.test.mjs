@@ -52,7 +52,11 @@ async function startServer(serverRoot,configPath,port) {
   });
   let stderr=''; child.stderr.on('data',c=>{stderr+=c.toString('utf8');});
   let foreignListener=false;
-  const readinessDeadline=Date.now()+10000;
+  // Under real Windows qualification load, package test runners can delay
+  // a *fresh* Core process beyond 10s before it even reaches /health.
+  // This remains a bounded wait and still rejects any port claimed by another
+  // listener unless its exact config SHA and server identity match.
+  const readinessDeadline=Date.now()+30000;
   while(Date.now()<readinessDeadline) {
     if(child.exitCode!==null) break;
     try {
