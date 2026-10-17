@@ -77,6 +77,33 @@ def attach_management_view(center, controller, Gtk, Adw, GLib):
                     raise ValueError("MANAGEMENT_TARGET_UNVERIFIED")
                 values = controller.list_controls()
                 if controller.disabled:
+                    # Pending requests are owner-private metadata, NOT Core
+                    # effect proof. They must remain visible after GUI restart
+                    # but must never become clickable replay buttons.
+                    pending = controller.pending_controls() if callable(getattr(
+                        controller, "pending_controls", None)) else ()
+                    if pending:
+                        self.target.set_text(
+                            f"Device {target['deviceId']} · profile {target['profileId']} · "
+                            f"route #{target['routeGeneration']} · config {target['configSha256'][:12]}")
+                        self._label(
+                            "RECONCILIATION REQUIRED — pending native request; "
+                            "do not repeat before independent Core journal inspection",
+                            "UNVERIFIED")
+                        for item in pending[:10]:
+                            if not isinstance(item, dict):
+                                continue
+                            ident = str(item.get("workflowId", "?"))[:64]
+                            revision = str(item.get("revision", "?"))[:7]
+                            status = str(item.get("state", "UNVERIFIED"))[:25]
+                            row = Gtk.ListBoxRow()
+                            row.set_selectable(False)
+                            row.set_activatable(False)
+                            row.set_child(Gtk.Label(
+                                label=f"{ident} · revision {revision} · {status} · NO RETRY",
+                                xalign=0, wrap=True))
+                            self.list.append(row)
+                        return
                     raise ValueError("MANAGEMENT_SESSION_UNAVAILABLE")
                 self.target.set_text(f"Device {target['deviceId']} · profile {target['profileId']} · "
                                      f"route #{target['routeGeneration']} · config {target['configSha256'][:12]}")

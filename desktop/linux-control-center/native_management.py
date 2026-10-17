@@ -94,10 +94,18 @@ def receipt_status(result, prepared, expected_target):
 
 class NativeManagementController:
     """A single-use-at-a-time UI controller; never silently reopens IPC sessions."""
-    def __init__(self, client, scoped_read):
+    def __init__(self, client, scoped_read, outbox=None):
         if not callable(scoped_read) or not callable(getattr(client, "control", None)):
             deny("MANAGEMENT_NATIVE_CLIENT_REQUIRED")
         self._target = _target(getattr(client, "target", None))
+        # Source-only opt-in; the default read-only Control Center does not
+        # discover/create an outbox, endpoint, privileged runner or secret.
+        if outbox is not None:
+            if (getattr(outbox, "target", None) != self._target or
+                    not all(callable(getattr(outbox, name, None)) for name in
+                            ("begin", "conclude", "has_unresolved", "pending"))):
+                deny("MANAGEMENT_OUTBOX_SCOPE_UNVERIFIED")
+        self._outbox = outbox
         self._client = client
         self._scoped_read = scoped_read
         self._guard = threading.Lock()
@@ -110,10 +118,28 @@ class NativeManagementController:
 
     @property
     def disabled(self):
-        return self._disabled
+        if self._disabled:
+            return True
+        if self._outbox is not None:
+            try:
+                return self._outbox.has_unresolved()
+            except Exception:
+                self._disabled = True
+                return True
+        return False
+
+    def pending_controls(self):
+        """Read-only, bounded owner-private pending metadata, no auto replay."""
+        if self._outbox is None:
+            return ()
+        try:
+            return self._outbox.pending()
+        except Exception:
+            self._disabled = True
+            return ()
 
     def list_controls(self):
-        if self._disabled:
+        if self.disabled:
             return ()
         return _records(self._scoped_read(), self._target)
 
@@ -123,6 +149,8 @@ class NativeManagementController:
         try:
             if self._disabled:
                 deny("MANAGEMENT_SESSION_UNAVAILABLE")
+            if self._outbox is not None and self.disabled:
+                deny("MANAGEMENT_PENDING_RECONCILIATION_REQUIRED")
             if type(action) is not str or action not in _ALLOWED or type(workflow_id) is not str or not _WORKFLOW.fullmatch(workflow_id) or type(revision) is not int or not 1 <= revision <= 10000:
                 deny("MANAGEMENT_REQUEST_UNVERIFIED")
             records = self.list_controls()
@@ -152,17 +180,37 @@ class NativeManagementController:
             self._prepared = None
             if self._disabled:
                 deny("MANAGEMENT_SESSION_UNAVAILABLE")
+            if self.disabled:
+                deny("MANAGEMENT_SESSION_UNAVAILABLE" if self._disabled else
+                     "MANAGEMENT_PENDING_RECONCILIATION_REQUIRED")
             record = next((x for x in self.list_controls() if x["id"] == proposal.workflow_id), None)
             if not record or record["revision"] != proposal.revision or record["state"] != proposal.state:
                 deny("MANAGEMENT_WORKFLOW_CHANGED")
+            # A durable owner-local intent is committed BEFORE the first
+            # dispatch. A failed outbox write never sends any command.
+            if self._outbox is not None:
+                try:
+                    self._outbox.begin(proposal)
+                except ManagementBlocked:
+                    raise
+                except Exception:
+                    self._disabled = True
+                    return {"state": "UNCERTAIN", "code": "MANAGEMENT_OUTBOX_WRITE_UNVERIFIED"}
             # No callback may convert a lost receipt into success or retry it.
             try:
                 raw = self._client.control(proposal.action, proposal.workflow_id,
                                            proposal.revision, proposal.request_id)
+                result = receipt_status(raw, proposal, self._target)
             except Exception:
-                self._disabled = True
-                return {"state": "UNCERTAIN", "code": "MANAGEMENT_TRANSPORT_OR_EFFECT_UNVERIFIED"}
-            result = receipt_status(raw, proposal, self._target)
+                result = {"state": "UNCERTAIN", "code": "MANAGEMENT_TRANSPORT_OR_EFFECT_UNVERIFIED"}
+            if self._outbox is not None:
+                state = {"APPLIED": "RECORDED", "REJECTED": "REJECTED",
+                         "UNCERTAIN": "UNCERTAIN"}[result["state"]]
+                try:
+                    self._outbox.conclude(proposal.request_id, state, result["code"])
+                except Exception:
+                    self._disabled = True
+                    return {"state": "UNCERTAIN", "code": "MANAGEMENT_OUTBOX_RESULT_UNVERIFIED"}
             if result["state"] == "UNCERTAIN":
                 self._disabled = True
             return result
