@@ -69,7 +69,8 @@ assert.ok(!/(logout|logoff|reboot|shutdown)[ \t]/i.test(installer), 'GUI install
 assert.ok(controller.includes("platform === 'linux'"));
 assert.ok(server.includes("process.platform === 'win32' || process.platform === 'linux'"));
 assert.ok(updater.includes('install_linux_gui_backend'));
-assert.ok(updater.includes('https://github.com/GOD13emad/ChatGPTRemoteCommander/releases/latest') && updater.includes('%{url_effective}'));
+assert.match(updater,/https:\/\/github[.]com\/GOD13emad\/ChatGPTRemoteCommander\/releases\/latest/);
+assert.ok(updater.includes('%{url_effective}'));
 
 const headlessValidation = process.env.REMOTE_COMMANDER_HEADLESS_VALIDATE === '1';
 if (process.platform === 'linux' && !headlessValidation) {

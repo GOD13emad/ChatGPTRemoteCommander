@@ -256,7 +256,8 @@ function Get-LatestTag {
   try{
     $latest=Invoke-WebRequest -Method Head -Uri 'https://github.com/GOD13emad/ChatGPTRemoteCommander/releases/latest' -MaximumRedirection 5 -TimeoutSec 20 -Headers @{'User-Agent'='ChatGPTRemoteCommander-Updater'}
     $effective=[string]$latest.BaseResponse.RequestMessage.RequestUri.AbsoluteUri
-    if($effective -match '/releases/tag/(v\d+\.\d+\.\d+)$'){ $tag=[string]$Matches[1] }
+    # Reject off-origin and lookalike redirect targets before accepting a stable tag.
+    if($effective -cmatch '^https://github[.]com/GOD13emad/ChatGPTRemoteCommander/releases/tag/(v\d+\.\d+\.\d+)$'){ $tag=[string]$Matches[1] }
   }catch{}
   if($tag -match '^v\d+\.\d+\.\d+$'){ return $tag }
   $release=Invoke-RestMethod 'https://api.github.com/repos/GOD13emad/ChatGPTRemoteCommander/releases/latest' -Headers @{'User-Agent'='ChatGPTRemoteCommander-Updater'} -TimeoutSec 20
