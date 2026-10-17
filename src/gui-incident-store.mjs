@@ -40,6 +40,37 @@ const defaultFile=()=>{
 export function createGuiInputIncidentStore({file=defaultFile(),now=()=>new Date().toISOString(),id=()=>randomUUID()}={}){
   if(!path.isAbsolute(file))throw fail('GUI_INCIDENT_PATH_INVALID');
   const folder=path.dirname(file);
+  const mutationLock=path.join(folder,'.gui-pending-input-mutation.lock');
+  async function ensureNoMutationLock() {
+    try { await fs.lstat(mutationLock); }
+    catch(e) {
+      if(e.code==='ENOENT')return;
+      throw fail('GUI_INCIDENT_STORAGE_UNAVAILABLE');
+    }
+    // A crash-held lock is deliberately never expired or stolen automatically.
+    throw fail('GUI_INCIDENT_MUTATION_BUSY');
+  }
+  async function withMutationLock(effect) {
+    try {
+      await fs.mkdir(folder,{recursive:true,mode:0o700});
+      const dir=await fs.lstat(folder);
+      if(!dir.isDirectory()||dir.isSymbolicLink()||
+         (typeof process.getuid==='function' &&
+          (dir.uid!==process.getuid() || (dir.mode&0o022))))
+        throw fail('GUI_INCIDENT_STORAGE_UNAVAILABLE');
+      await fs.mkdir(mutationLock,{mode:0o700}); // Cross-process exclusive acquisition.
+    } catch(e) {
+      if(e?.guiCode)throw e;
+      if(e?.code==='EEXIST')throw fail('GUI_INCIDENT_MUTATION_BUSY');
+      throw fail('GUI_INCIDENT_STORAGE_UNAVAILABLE');
+    }
+    try { return await effect(); }
+    finally {
+      // If this fails or the process dies, the lock remains fail-closed.
+      try { await fs.rmdir(mutationLock); }
+      catch { throw fail('GUI_INCIDENT_STORAGE_UNAVAILABLE'); }
+    }
+  }
   // The pending-input identity file is immutable until an explicit resolve.
   // A separate ID-scoped immutable observation cannot clobber a new incident.
   const noteFile=id=>path.join(folder,'.gui-clipboard-observation-'+id+'.json');
@@ -66,7 +97,7 @@ export function createGuiInputIncidentStore({file=defaultFile(),now=()=>new Date
     try { return validClipboardDiagnostic(observation.diagnostic); }
     catch { throw fail('GUI_INCIDENT_STORAGE_UNAVAILABLE'); }
   }
-  async function pending(){
+  async function pendingUnlocked(){
     let st;
     try{st=await fs.lstat(file);}
     catch(e){if(e.code==='ENOENT')return null;throw fail('GUI_INCIDENT_STORAGE_UNAVAILABLE');}
@@ -96,9 +127,9 @@ export function createGuiInputIncidentStore({file=defaultFile(),now=()=>new Date
       record.clipboardDiagnostic ? {...identity,clipboardDiagnostic:validClipboardDiagnostic(record.clipboardDiagnostic)} :
       identity;
   }
-  async function begin(tool){
+  async function beginUnlocked(tool){
     if(!INPUT_TOOLS.has(tool))throw fail('GUI_INCIDENT_TOOL_INVALID');
-    const prior=await pending();
+    const prior=await pendingUnlocked();
     if(prior)throw fail('GUI_INCIDENT_UNRESOLVED');
     try{
       await fs.mkdir(folder,{recursive:true,mode:0o700});
@@ -116,9 +147,9 @@ export function createGuiInputIncidentStore({file=defaultFile(),now=()=>new Date
       throw fail('GUI_INCIDENT_STORAGE_UNAVAILABLE'); // Fail before native input.
     }
   }
-  async function annotateFailure(handle, diagnostic) {
+  async function annotateFailureUnlocked(handle, diagnostic) {
     const note=validClipboardDiagnostic(diagnostic); // closed, content-free schema
-    const current=await pending();
+    const current=await pendingUnlocked();
     if(!handle || current?.id!==handle.id || current?.tool!=='gui_type_text' ||
        handle.tool!=='gui_type_text')throw fail('GUI_INCIDENT_RESOLUTION_MISMATCH');
     if(current.clipboardDiagnostic) {
@@ -140,7 +171,7 @@ export function createGuiInputIncidentStore({file=defaultFile(),now=()=>new Date
         })+'\n','utf8');
         await fd.sync();
       }finally { await fd.close(); }
-      const still=await pending();
+      const still=await pendingUnlocked();
       if(still?.id!==handle.id || still?.tool!==handle.tool)
         throw fail('GUI_INCIDENT_RESOLUTION_MISMATCH');
       // Exclusive hard-link publication never overwrites the pending identity
@@ -148,7 +179,7 @@ export function createGuiInputIncidentStore({file=defaultFile(),now=()=>new Date
       try { await fs.link(temp,target); }
       catch(error) {
         if(error.code==='EEXIST') {
-          const existing=await pending();
+          const existing=await pendingUnlocked();
           if(existing?.id!==handle.id)throw fail('GUI_INCIDENT_RESOLUTION_MISMATCH');
           if(existing.clipboardDiagnostic &&
              JSON.stringify(existing.clipboardDiagnostic)===JSON.stringify(note))return;
@@ -165,7 +196,7 @@ export function createGuiInputIncidentStore({file=defaultFile(),now=()=>new Date
       }
       // Resolution raced publication: preserve the newer incident and fail
       // closed. Any orphan note is keyed only to the *old* random incident ID.
-      const published=await pending();
+      const published=await pendingUnlocked();
       if(published?.id!==handle.id || published?.tool!==handle.tool)
         throw fail('GUI_INCIDENT_RESOLUTION_MISMATCH');
     } catch(error) {
@@ -173,14 +204,26 @@ export function createGuiInputIncidentStore({file=defaultFile(),now=()=>new Date
       throw fail('GUI_INCIDENT_STORAGE_UNAVAILABLE');
     } finally { await fs.unlink(temp).catch(()=>{}); }
   }
-  async function resolve(handle){
+  async function resolveUnlocked(handle){
     if(!handle||typeof handle.id!=='string')throw fail('GUI_INCIDENT_HANDLE_INVALID');
-    const prior=await pending();
-    if(!prior||prior.id!==handle.id||prior.tool!==handle.tool)throw fail('GUI_INCIDENT_RESOLUTION_MISMATCH');
-    try{await fs.unlink(file);}catch{throw fail('GUI_INCIDENT_STORAGE_UNAVAILABLE');}
-    // No global cleanup: remove only the note tied to this incident ID.
+    const prior=await pendingUnlocked();
+    if(!prior||prior.id!==handle.id||prior.tool!==handle.tool)
+      throw fail('GUI_INCIDENT_RESOLUTION_MISMATCH');
+    // Remove the ID-specific diagnostic first: on interruption the *identity*
+    // remains pending and fail-closed. Never erase a later incident's note.
     try{await fs.unlink(noteFile(handle.id));}
     catch(e){if(e.code!=='ENOENT')throw fail('GUI_INCIDENT_STORAGE_UNAVAILABLE');}
+    try{await fs.unlink(file);}catch{throw fail('GUI_INCIDENT_STORAGE_UNAVAILABLE');}
   }
+  async function pending(){
+    await ensureNoMutationLock();
+    const state=await pendingUnlocked();
+    await ensureNoMutationLock();
+    return state;
+  }
+  const begin=tool=>withMutationLock(()=>beginUnlocked(tool));
+  const resolve=handle=>withMutationLock(()=>resolveUnlocked(handle));
+  const annotateFailure=(handle,diagnostic)=>
+    withMutationLock(()=>annotateFailureUnlocked(handle,diagnostic));
   return {pending,begin,resolve,annotateFailure};
 }

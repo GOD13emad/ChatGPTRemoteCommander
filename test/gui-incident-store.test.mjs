@@ -259,13 +259,18 @@ test('annotation must never overwrite a different live pending input',async()=>{
       new Promise((_,reject)=>{timeout=setTimeout(()=>reject(Error('DIAGNOSTIC_PUBLICATION_NOT_REACHED')),1500)})
     ]);
   } finally {clearTimeout(timeout);}
+  await assert.rejects(other.resolve(old),/GUI_INCIDENT_MUTATION_BUSY/);
+  await assert.rejects(other.begin('gui_key_press'),/GUI_INCIDENT_MUTATION_BUSY/);
+  await assert.rejects(other.pending(),/GUI_INCIDENT_MUTATION_BUSY/);
+  release();
+  await annotating;
+  const observed=await other.pending();
+  assert.equal(observed?.id,old.id,'annotation cannot delete the pending identity');
+  assert.deepEqual(observed?.clipboardDiagnostic,privateClipDiag());
   await other.resolve(old);
   const later=await other.begin('gui_key_press');
-  release();
-  try { await annotating; }
-  catch (err) { assert.match(String(err),/GUI_INCIDENT_/); }
   const found=await other.pending();
-  assert.equal(found?.id,later.id,'new unrelated PENDING incident was overwritten');
+  assert.equal(found?.id,later.id,'new PENDING input must survive older annotation');
   assert.equal(found?.tool,'gui_key_press');
  }finally{
   release?.();
@@ -310,4 +315,61 @@ test('corrupt, linked or overbroad private diagnostic fails closed without delet
  await fs.unlink(note);
  await s.resolve(h);
  assert.equal(await s.pending(),null);
+}));
+
+
+test('stale resolution cannot delete a new pending native input',async()=>{
+ const root=await fs.mkdtemp(path.join(os.tmpdir(),'rc-gui-resolve-interleaving-'));
+ const file=path.join(root,'incident.json');
+ const a=createGuiInputIncidentStore({file});
+ const b=createGuiInputIncidentStore({file});
+ const original=fs.unlink;
+ let pause, resume;
+ const entered=new Promise(resolve=>{pause=resolve});
+ const continued=new Promise(resolve=>{resume=resolve});
+ let held=false;
+ try{
+   const first=await a.begin('gui_type_text');
+   fs.unlink=async target=>{
+      if(target===file && !held){held=true;pause();await continued;}
+      return original(target);
+   };
+   const staleResolve=a.resolve(first);
+   await Promise.race([entered,new Promise((_,reject)=>setTimeout(()=>reject(Error('NOT_INTERLEAVED')),1500))]);
+   await assert.rejects(b.resolve(first),/GUI_INCIDENT_MUTATION_BUSY/);
+   await assert.rejects(b.begin('gui_mouse_click'),/GUI_INCIDENT_MUTATION_BUSY/);
+   await assert.rejects(b.pending(),/GUI_INCIDENT_MUTATION_BUSY/);
+   resume();
+   await staleResolve;
+   const second=await b.begin('gui_mouse_click');
+   const current=await b.pending();
+   assert.equal(current?.id,second.id,'the newly created incident must remain pending');
+   assert.equal(current?.tool,'gui_mouse_click');
+ }finally{
+   resume?.();
+   fs.unlink=original;
+   await fs.rm(root,{recursive:true,force:true});
+ }
+});
+
+test('a persisted mutation lock fails closed on new controller, never auto-expires',()=>ownFile(async file=>{
+ const store=createGuiInputIncidentStore({file});
+ const receipt=await store.begin('gui_type_text');
+ const lock=path.join(path.dirname(file),'.gui-pending-input-mutation.lock');
+ await fs.mkdir(lock,{mode:0o700});
+ try {
+   const restarted=createGuiInputIncidentStore({file});
+   await assert.rejects(restarted.pending(),/GUI_INCIDENT_MUTATION_BUSY/);
+   await assert.rejects(restarted.begin('gui_key_press'),/GUI_INCIDENT_MUTATION_BUSY/);
+   await assert.rejects(restarted.resolve(receipt),/GUI_INCIDENT_MUTATION_BUSY/);
+   const guarded=controller(restarted,{platform:'linux'});
+   const status=await guarded.run('gui_status');
+   assert.equal(status.available,false);
+   assert.equal(status.incidentStoreUnavailable,true);
+   assert.equal(guarded.calls,0);
+   assert.equal((await fs.lstat(lock)).isDirectory(),true);
+   assert.equal((await fs.lstat(file)).isFile(),true);
+ } finally { await fs.rmdir(lock); }
+ await store.resolve(receipt);
+ assert.equal(await store.pending(),null);
 }));
