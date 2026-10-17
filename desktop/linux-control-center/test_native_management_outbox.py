@@ -107,6 +107,26 @@ class OutboxTests(unittest.TestCase):
         self.assertTrue(self.control.disabled)
         self.assertEqual(self.box.pending()[0]["state"], "UNCERTAIN")
 
+    def test_unknown_rejected_code_must_remain_pending_after_reopen(self):
+        real = self.client.control
+        def misleading(*args):
+            reply = real(*args)
+            reply["state"] = "REJECTED"
+            reply["code"] = "MANAGEMENT_OUTCOME_UNCERTAIN"
+            reply["newRevision"] = None
+            reply.pop("controlIntent", None)
+            return reply
+        self.client.control = misleading
+        result = self.control.submit_confirmed(self.prepare())
+        self.assertEqual(result["state"], "UNCERTAIN")
+        self.assertTrue(self.box.has_unresolved())
+        self.box.close()
+        reopened = NativeRequestOutbox(self.dir, T)
+        self.addCleanup(reopened.close)
+        self.assertTrue(reopened.has_unresolved())
+        self.assertEqual(reopened.pending()[0]["state"], "UNCERTAIN")
+        self.assertEqual(len(self.client.calls), 1)
+
     def test_same_attempt_cannot_be_reissued(self):
         p = self.prepare()
         self.box.begin(p)

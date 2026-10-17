@@ -72,6 +72,35 @@ class ManagementTests(unittest.TestCase):
         self.assertEqual(r["state"],"REJECTED")
         self.assertFalse(self.controller.disabled)
 
+    def test_unknown_rejection_code_never_unlocks_an_uncertain_effect(self):
+        genuine=self.client.control
+        def mislabeled(*args):
+            result=genuine(*args)
+            result["state"]="REJECTED"
+            result["code"]="MANAGEMENT_OUTCOME_UNCERTAIN"
+            result["newRevision"]=None
+            result.pop("controlIntent",None)
+            return result
+        self.client.control=mislabeled
+        result=self.controller.submit_confirmed(self.prepare())
+        self.assertEqual(result["state"],"UNCERTAIN")
+        self.assertEqual(result["code"],"MANAGEMENT_RESULT_UNVERIFIED")
+        self.assertTrue(self.controller.disabled)
+        self.assertEqual(len(self.client.calls),1)
+
+    def test_known_native_expiration_no_effect_stays_rejected(self):
+        genuine=self.client.control
+        def expired(*args):
+            result=genuine(*args)
+            result["state"]="REJECTED"
+            result["code"]="MANAGEMENT_EXPIRED_BEFORE_EFFECT"
+            result["newRevision"]=None
+            result.pop("controlIntent",None)
+            return result
+        self.client.control=expired
+        self.assertEqual(self.controller.submit_confirmed(self.prepare())["state"],"REJECTED")
+        self.assertFalse(self.controller.disabled)
+
     def test_uncertain_transport_disables_all_future_commands(self):
         self.client.effect="ERROR"
         r=self.controller.submit_confirmed(self.prepare())

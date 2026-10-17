@@ -14,6 +14,15 @@ from uuid import uuid4
 _WORKFLOW = re.compile(r"[a-z][a-z0-9_-]{0,63}\Z")
 _ALLOWED = {"workflow.pause": "PAUSED", "workflow.cancel": "CANCELLED"}
 _TERMINAL = {"COMPLETED", "CANCELLED"}
+# Only no-effect conclusions emitted by the resident Core admission contract
+# may unblock the owner-local pending request outbox. A syntactically uppercase
+# but unknown code can follow a dispatched effect and is always UNCERTAIN.
+_NO_EFFECT_CODES = frozenset((
+    "WORKFLOW_REVISION_CONFLICT", "WORKFLOW_NOT_FOUND", "WORKFLOW_CANCELLED",
+    "WORKFLOW_ALREADY_COMPLETED", "WORKFLOW_IDENTITY_CHANGED",
+    "MANAGEMENT_SESSION_REVOKED", "MANAGEMENT_EXPIRED_BEFORE_EFFECT",
+    "MANAGEMENT_TARGET_CHANGED",
+))
 
 
 class ManagementBlocked(ValueError):
@@ -87,7 +96,7 @@ def receipt_status(result, prepared, expected_target):
         return {"state": "UNCERTAIN", "code": "MANAGEMENT_RECEIPT_IDENTITY_UNVERIFIED"}
     if result.get("state") == "APPLIED" and result.get("code") == "MANAGEMENT_CONTROL_READBACK_VERIFIED" and type(result.get("newRevision")) is int and result["newRevision"] == prepared.revision + 1 and result.get("controlIntent") == _ALLOWED[prepared.action]:
         return {"state": "APPLIED", "code": "MANAGEMENT_CONTROL_READBACK_VERIFIED", "revision": result["newRevision"]}
-    if result.get("state") == "REJECTED" and result.get("newRevision") is None and type(result.get("code")) is str and re.fullmatch("[A-Z0-9_]{1,100}", result["code"]):
+    if result.get("state") == "REJECTED" and result.get("newRevision") is None and result.get("code") in _NO_EFFECT_CODES:
         return {"state": "REJECTED", "code": result["code"]}
     return {"state": "UNCERTAIN", "code": "MANAGEMENT_RESULT_UNVERIFIED"}
 
