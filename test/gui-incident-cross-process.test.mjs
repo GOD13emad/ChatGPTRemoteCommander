@@ -52,7 +52,9 @@ test('independent OS processes compete for one durable native incident, only one
  const outcomes=[JSON.parse(a.out),JSON.parse(b.out)];
  assert.equal(outcomes.filter(x=>x.accepted).length,1);
  assert.equal(outcomes.filter(x=>!x.accepted).length,1);
- assert.equal(outcomes.find(x=>!x.accepted).code,'GUI_INCIDENT_STORAGE_UNAVAILABLE');
+ assert.ok(['GUI_INCIDENT_UNRESOLVED','GUI_INCIDENT_STORAGE_UNAVAILABLE']
+  .includes(outcomes.find(x=>!x.accepted).code),
+  'Either observed pending evidence or losing exclusive wx must reject admission');
  const store=createGuiInputIncidentStore({file});
  const pending=await store.pending();
  assert.equal(pending.id,outcomes.find(x=>x.accepted).id);
