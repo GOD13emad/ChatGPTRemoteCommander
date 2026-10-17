@@ -135,19 +135,28 @@ class NativeRequestOutbox:
     def pending(self):
         with self._lock:
             self._check()
-            return tuple({"requestId": row[0], "workflowId": row[1],
-                          "revision": row[2], "action": row[3], "state": row[4]}
-                         for row in self._db.execute(
-                             "SELECT request_id, workflow, revision, action, state FROM attempts "
-                             "WHERE scope=? AND state IN ('IN_FLIGHT','UNCERTAIN') ORDER BY created_at, request_id LIMIT 1001",
-                             (self._scope,)).fetchall())
+            # A rotated route/profile must not hide unresolved older commands.
+            # Out-of-scope row identity is redacted; it exists only to explain
+            # why all controls are still safely blocked after a route switch.
+            return tuple(
+                ({"requestId": row[0], "workflowId": row[2],
+                  "revision": row[3], "action": row[4], "state": row[5]}
+                 if row[1] == self._scope else
+                 {"requestId": "OLDER_SCOPE_UNRESOLVED",
+                  "workflowId": "OLDER_SCOPE_UNRESOLVED",
+                  "revision": "UNVERIFIED", "action": "UNVERIFIED",
+                  "state": "UNCERTAIN_OTHER_SCOPE"})
+                for row in self._db.execute(
+                    "SELECT request_id, scope, workflow, revision, action, state FROM attempts "
+                    "WHERE state IN ('IN_FLIGHT','UNCERTAIN') ORDER BY created_at, request_id LIMIT 1001"
+                ).fetchall())
 
     def has_unresolved(self):
         with self._lock:
             self._check()
             return self._db.execute(
-                "SELECT 1 FROM attempts WHERE scope=? AND state IN ('IN_FLIGHT','UNCERTAIN') LIMIT 1",
-                (self._scope,)).fetchone() is not None
+                "SELECT 1 FROM attempts WHERE state IN ('IN_FLIGHT','UNCERTAIN') LIMIT 1"
+                ).fetchone() is not None
 
     def begin(self, proposal):
         """Durable intent BEFORE effect. Never mutates WorkflowStore."""
@@ -166,8 +175,8 @@ class NativeRequestOutbox:
             try:
                 self._db.execute("BEGIN IMMEDIATE")
                 blocked = self._db.execute(
-                    "SELECT 1 FROM attempts WHERE scope=? AND state IN ('IN_FLIGHT','UNCERTAIN') LIMIT 1",
-                    (self._scope,)).fetchone()
+                    "SELECT 1 FROM attempts WHERE state IN ('IN_FLIGHT','UNCERTAIN') LIMIT 1"
+                    ).fetchone()
                 if blocked:
                     _deny("MANAGEMENT_PENDING_RECONCILIATION_REQUIRED")
                 if self._db.execute("SELECT COUNT(*) FROM attempts").fetchone()[0] >= 1000:

@@ -144,6 +144,26 @@ class OutboxTests(unittest.TestCase):
             other.begin(dataclasses.replace(p, request_id=uuid4().hex))
         self.assertFalse(self.client.calls)
 
+    def test_rotated_route_cannot_hide_unresolved_prior_scope(self):
+        first = self.prepare()
+        self.box.begin(first)  # durable but effect result not known
+        new_target = {**T, "routeGeneration": T["routeGeneration"] + 1}
+        current = NativeRequestOutbox(self.dir, new_target)
+        self.addCleanup(current.close)
+        self.assertTrue(current.has_unresolved(),
+                        "A changed router generation must NOT hide uncertain prior effects")
+        rows = current.pending()
+        self.assertEqual(len(rows), 1)
+        self.assertNotEqual(rows[0]["workflowId"], first.workflow_id)
+        self.assertNotEqual(rows[0]["requestId"], first.request_id)
+        rotated_client = FakeClient()
+        rotated_client.target = new_target
+        scoped = NativeManagementController(rotated_client,
+            lambda: {"schema":1,"target":new_target,"records":self.records}, current)
+        self.assertTrue(scoped.disabled)
+        with self.assertRaisesRegex(ManagementBlocked, "MANAGEMENT_PENDING_RECONCILIATION_REQUIRED"):
+            scoped.prepare("alpha", 1, "workflow.cancel")
+
     def test_wrong_target_does_not_receive_pending_scope(self):
         different = {**T, "routeGeneration": T["routeGeneration"]+1}
         wrong = NativeRequestOutbox(self.dir, different)
