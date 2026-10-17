@@ -1039,3 +1039,21 @@ test('R254 Linux plugin post-verify failure preserves owner data and quarantines
  assert.match(retry.stdout,/prior-snapshot-or-quarantine-awaiting-owner/);
  assert.equal(fs.readdirSync(parent).filter(n=>n.startsWith('.chatgpt-remote-commander.failed-')).length,1);
 });
+
+test('R157 staged release lookup uses the pinned source version, not a fixed old tag',()=>{
+ const workflow=read('.github/workflows/windows-updater-e2e-r157.yml');
+ const version=JSON.parse(read('package.json')).version;
+ assert.match(version,/^\d+\.\d+\.\d+$/);
+ for(const requirement of [
+  "Join-Path $env:GITHUB_WORKSPACE 'package.json'",
+  "R157_SOURCE_PACKAGE_MISSING",
+  "R157_SOURCE_VERSION_INVALID",
+  "('releases\\v'+$sourceVersion+'-'+$sha.Substring(0,12))",
+  "(git -C $stage rev-parse HEAD).Trim() -ne $sha",
+  "R157_EXACT_STAGE_MISSING",
+  "R157_UNEXPECTED_ROUTE_PROMOTION",
+  "R157_JOB_NOT_ACCEPTED_"
+ ]) assert.ok(workflow.includes(requirement),'missing exact NoPromote safeguard: '+requirement);
+ assert.equal(workflow.includes("('releases\\v0.10.24-'+$sha.Substring(0,12))"),false);
+ assert.equal('releases\\v'+version+'-'+'f'.repeat(12),'releases\\v0.10.25-'+'f'.repeat(12));
+});
