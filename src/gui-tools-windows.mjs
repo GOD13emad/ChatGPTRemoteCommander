@@ -46,6 +46,7 @@ export function createGuiController({ platform = process.platform, now = () => p
   let frame = null;
   let busy = false;
   let uncertain = false;
+  let uncertainId = null;
   function current() {
     if (session && session.expires <= now()) { session = null; frame = null; closeInvoke(); }
     return session;
@@ -64,18 +65,49 @@ export function createGuiController({ platform = process.platform, now = () => p
     let pendingIncident = null, incidentStoreUnavailable = false;
     try { pendingIncident = await incidentStore.pending(); }
     catch { incidentStoreUnavailable = true; } // A corrupt/unreadable record never grants input.
+    // The incident is authoritative. Clearing an in-memory uncertainty requires
+    // an exact local owner-review receipt, not deletion or a process restart.
+    if (uncertain && !pendingIncident && uncertainId) {
+      try {
+        if (await incidentStore.reviewed(uncertainId)) {
+          uncertain = false; uncertainId = null;
+          session = null; frame = null; closeInvoke();
+        }
+      } catch { incidentStoreUnavailable = true; }
+    }
     const uncertainNow = uncertain || !!pendingIncident;
-    if (name === 'gui_status' && (!enabled || blocked || uncertainNow || incidentStoreUnavailable)) return {
-      enabled, available: false, blocked, uncertain: uncertainNow, busy, leased: !!current(),
-      incidentStoreUnavailable, incidentPending: !!pendingIncident,
-      reason: !supported ? 'PLATFORM_BACKEND_UNSUPPORTED' : blocked ? 'LOCAL_GUI_STOP' :
-        incidentStoreUnavailable ? 'GUI_INCIDENT_STORAGE_UNAVAILABLE' :
-        uncertainNow ? 'NATIVE_OUTCOME_UNCERTAIN_RESTART_REQUIRED' : 'GUI_DISABLED'
+    const observeOnly = uncertainNow || incidentStoreUnavailable;
+    if (name === 'gui_status' && (!enabled || blocked)) return {
+      enabled, available: false, inputAvailable: false, blocked, uncertain: uncertainNow,
+      busy, leased: !!current(), incidentStoreUnavailable, incidentPending: !!pendingIncident,
+      reason: !supported ? 'PLATFORM_BACKEND_UNSUPPORTED' : blocked ? 'LOCAL_GUI_STOP' : 'GUI_DISABLED'
     };
     if (!enabled) throw guiError('GUI_DISABLED_OR_UNSUPPORTED');
     if (blocked) throw guiError('GUI_LOCAL_STOP');
-    if (incidentStoreUnavailable) throw guiError('GUI_INCIDENT_STORAGE_UNAVAILABLE');
-    if (uncertainNow) throw guiError('GUI_OUTCOME_UNCERTAIN_RESTART_REQUIRED');
+    if (name === 'gui_status' && observeOnly) {
+      // Observe without making or acknowledging native input. Concurrent input is never
+      // queued behind a status probe: the owner may retry when the native call settles.
+      let native = { ok: false, available: false };
+      if (!busy) {
+        try { native = await invoke({ action: 'status', stopFile }); }
+        catch { /* A read-only helper failure never releases an incident. */ }
+      }
+      const readOnlyAvailable = native?.ok === true && native.available === true;
+      return {
+        ...native, enabled, available: readOnlyAvailable, readOnlyAvailable,
+        inputAvailable: false, blocked: false, busy, leased: !!current(),
+        uncertain: uncertainNow, incidentStoreUnavailable, incidentPending: !!pendingIncident,
+        incident: pendingIncident ?? null,
+        reason: incidentStoreUnavailable ? 'GUI_INCIDENT_STORAGE_UNAVAILABLE' : 'GUI_INCIDENT_REVIEW_REQUIRED'
+      };
+    }
+    if (observeOnly) {
+      const observation = new Set(['gui_status', 'gui_session_begin', 'gui_session_renew',
+        'gui_session_end', 'gui_screenshot', 'gui_cursor_position', 'gui_list_windows']);
+      if (!observation.has(name) || (name === 'gui_session_begin' && input.mode === 'takeover')) {
+        throw guiError(incidentStoreUnavailable ? 'GUI_INCIDENT_STORAGE_UNAVAILABLE' : 'GUI_INCIDENT_REVIEW_REQUIRED');
+      }
+    }
     // No stale action queue: concurrent work must retry with a NEW observation.
     if (busy) throw guiError('GUI_BUSY');
     busy = true;
@@ -86,7 +118,7 @@ export function createGuiController({ platform = process.platform, now = () => p
         if (status?.ok !== true) throw guiError(status?.error || 'GUI_NATIVE_FAILED');
         if (status.available !== true) throw guiError('GUI_DESKTOP_UNAVAILABLE');
         const ownerAuthorizedFallback = cfg.ownerAuthorizedTakeover === true && ctx.config?.capabilityProfile?.tier === 'FULL_POWER' && ctx.config?.capabilityProfile?.explicitlyAuthorized === true;
-        const mode = input.mode ?? (ownerAuthorizedFallback ? 'takeover' : 'observe');
+        const mode = observeOnly ? 'observe' : input.mode ?? (ownerAuthorizedFallback ? 'takeover' : 'observe');
         session = { id: token(), expires: now() + (input.ttlSeconds ?? 60) * 1000, mode, authorization: input.mode === 'takeover' ? 'per-call' : ownerAuthorizedFallback ? 'owner-persisted' : 'observe-default' };
         frame = null;
         return { ok: true, lease: session.id, ttlSeconds: input.ttlSeconds ?? 60, mode, authorization: session.authorization, coordinationOnly: true, interactiveTakeover: mode === 'takeover' };
@@ -151,21 +183,22 @@ export function createGuiController({ platform = process.platform, now = () => p
           const provenNoEffect = linuxNotApplied || windowsMutexNotSubmitted;
           if (provenNoEffect) {
             try { await incidentStore.resolve(pendingHandle); }
-            catch { uncertain = true; session = null; frame = null; closeInvoke(); throw guiError('GUI_INCIDENT_STORAGE_UNAVAILABLE'); }
+            catch { uncertain = true; uncertainId = pendingHandle?.id ?? null; session = null; frame = null; closeInvoke(); throw guiError('GUI_INCIDENT_STORAGE_UNAVAILABLE'); }
           }
           uncertain = !provenNoEffect;
+          uncertainId = provenNoEffect ? null : pendingHandle?.id ?? null;
           session = null; frame = null; closeInvoke();
         }
         throw error;
       }
       if (result?.ok !== true) {
-        if (isInput) { uncertain = true; session = null; frame = null; closeInvoke(); }
+        if (isInput) { uncertain = true; uncertainId = pendingHandle?.id ?? null; session = null; frame = null; closeInvoke(); }
         throw guiError(result?.error || 'GUI_NATIVE_FAILED');
       }
       if (isInput) {
         try { await incidentStore.resolve(pendingHandle); }
         catch {
-          uncertain = true; session = null; frame = null; closeInvoke();
+          uncertain = true; uncertainId = pendingHandle?.id ?? null; session = null; frame = null; closeInvoke();
           throw guiError('GUI_INCIDENT_STORAGE_UNAVAILABLE');
         }
       }
