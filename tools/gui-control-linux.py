@@ -18,9 +18,16 @@ GLOBAL_STOP=os.path.join(os.environ.get('XDG_STATE_HOME',os.path.expanduser('~/.
 OPERATION_TIMEOUT_S=6.0
 
 class GuiFailure(Exception):
-    def __init__(self, code): super().__init__(code); self.code=code
+    def __init__(self, code, clipboardDiagnostic=None):
+        super().__init__(code)
+        self.code=code
+        self.clipboardDiagnostic=clipboardDiagnostic
 
-def guierr(code): return {'ok':False,'error':code}
+def guierr(code, clipboardDiagnostic=None):
+    result={'ok':False,'error':code}
+    if code=='GUI_CLIPBOARD_PASTE_NOT_CONFIRMED' and clipboardDiagnostic is not None:
+        result['clipboardDiagnostic']=clipboardDiagnostic
+    return result
 def fail(code): raise GuiFailure(code)
 def remaining_ms(deadline, cap=2500):
     left=int((deadline-time.monotonic())*1000)
@@ -71,6 +78,9 @@ class MutterInput:
         self.clipboard_signal_ids=[]; self.clipboard_owner_seen=False; self.clipboard_owner_mimes=[]
         self.clipboard_owner_generation=0; self.clipboard_session_is_owner=False
         self.clipboard_payloads={}; self.clipboard_transfer_count=0; self.clipboard_error=None; self.clipboard_enabled=False
+        # Only counters/phase are retained for uncertain paste, never mime, bytes, serial or text.
+        self.clipboard_request_count=0; self.clipboard_unmatched_count=0
+        self.clipboard_stage_request_baseline=0; self.clipboard_stage_unmatched_baseline=0
     def _call(self, method, params=None, reply=None):
         check(self.req,self.deadline)
         try:
@@ -148,8 +158,10 @@ class MutterInput:
                 self.clipboard_session_is_owner=bool(options.get('session-is-owner',False)) if isinstance(options,dict) else False
                 return
             if signal == 'SelectionTransfer':
+                self.clipboard_request_count+=1
                 mime,serial=params.unpack(); payload=self.clipboard_payloads.get(str(mime))
                 if payload is None:
+                    self.clipboard_unmatched_count+=1
                     try: self.bus.call_sync(MUTTER_DEST,self.path,MUTTER_SESSION_IFACE,'SelectionWriteDone',GLib.Variant('(ub)',(int(serial),False)),None,Gio.DBusCallFlags.NONE,500,None)
                     except Exception: pass
                     return
@@ -204,10 +216,26 @@ class MutterInput:
         if not self._pump(0.80,lambda:self.clipboard_owner_generation>owner_before and self.clipboard_session_is_owner): fail('GUI_CLIPBOARD_OWNER_NOT_CONFIRMED')
         return self.clipboard_transfer_count
     def clipboard_wait_transfer(self, before, seconds, code):
-        if not self._pump(seconds,lambda:self.clipboard_transfer_count>before): fail(code)
+        if self._pump(seconds,lambda:self.clipboard_transfer_count>before):
+            return
+        requests=max(0,self.clipboard_request_count-self.clipboard_stage_request_baseline)
+        unmatched=max(0,self.clipboard_unmatched_count-self.clipboard_stage_unmatched_baseline)
+        reason=('NO_REQUEST' if requests==0 else
+                'UNSUPPORTED_REQUEST' if unmatched>=requests else 'UNCONFIRMED_TRANSFER')
+        # A SelectionTransfer callback means a consumer requested bytes, not that the UI pasted.
+        # Missing callback in this observation window is UNKNOWN native effect, never safe retry.
+        diagnostic={'schema':'rc-clipboard-transfer-observation-v1','reason':reason,
+                    'ownerConfirmed':bool(self.clipboard_session_is_owner),
+                    'selectionRequests':min(99,requests),
+                    'unsupportedRequests':min(99,unmatched),
+                    'successfulTransfers':min(99,max(0,self.clipboard_transfer_count-before)),
+                    'waitMs':min(1000,max(0,round(seconds*1000)))}
+        raise GuiFailure(code, diagnostic)
     def clipboard_stage(self, text):
         saved=self.clipboard_snapshot(); payload=text.encode('utf-8')
         before=self.clipboard_set({'text/plain;charset=utf-8':payload,'text/plain':payload})
+        self.clipboard_stage_request_baseline=self.clipboard_request_count
+        self.clipboard_stage_unmatched_baseline=self.clipboard_unmatched_count
         return saved,before
     def clipboard_restore(self, saved):
         self.clipboard_set(saved)
@@ -407,7 +435,7 @@ def handle(req):
         return ext
     if action in {'move','moveRelative','scroll','click','drag','typeText','keyPress'}:
         try: return handle_input(req)
-        except GuiFailure as e: return guierr(e.code)
+        except GuiFailure as e: return guierr(e.code,e.clipboardDiagnostic)
         except Exception: return guierr('GUI_MUTTER_REMOTE_DESKTOP_FAILED')
     r=invoke_extension(req,6000)
     if action=='screenshot' and r.get('ok'): return convert_screenshot(req,r)
