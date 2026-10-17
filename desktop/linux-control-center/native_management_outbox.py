@@ -212,6 +212,107 @@ class NativeRequestOutbox:
                 except sqlite3.DatabaseError:pass
                 _deny("MANAGEMENT_OUTBOX_WRITE_UNVERIFIED")
 
+    def inspect_pending(self, request_id, inspector):
+        """Read-only, explicit Core-journal review of one pending native request.
+
+        The inspector must be supplied by the trusted *native parent*, bound to
+        the correct resident Core and its read-only integrity-checked export.
+        Results never alter the outbox or authorize a second dispatch. A missing
+        marker is UNRESOLVED, not evidence that the control had no effect.
+        """
+        if type(request_id) is not str or not _REQ.fullmatch(request_id) or not callable(inspector):
+            _deny("MANAGEMENT_OUTBOX_INSPECTOR_REQUIRED")
+
+        def pending_row():
+            return self._db.execute(
+                "SELECT workflow,revision,action,state FROM attempts "
+                "WHERE request_id=? AND scope=? AND state IN ('IN_FLIGHT','UNCERTAIN')",
+                (request_id, self._scope)).fetchone()
+
+        with self._lock:
+            self._check()
+            try:
+                row = pending_row()
+            except sqlite3.DatabaseError:
+                _deny("MANAGEMENT_OUTBOX_STORAGE_UNAVAILABLE")
+            if row is None:
+                _deny("MANAGEMENT_OUTBOX_RECORD_NOT_PENDING")
+            workflow, revision, action, original_state = row
+            if (type(workflow) is not str or not re.fullmatch(r"[a-z][a-z0-9_-]{0,63}", workflow) or
+                    type(revision) is not int or not 1 <= revision <= 10000 or
+                    action not in ("workflow.pause", "workflow.cancel") or
+                    original_state not in _BLOCKED):
+                _deny("MANAGEMENT_OUTBOX_RECORD_UNVERIFIED")
+            identity = {"target": dict(self._target), "workflowId": workflow,
+                        "requestId": request_id, "action": action,
+                        "expectedRevision": revision}
+
+        def unverified(code="MANAGEMENT_INSPECTION_UNVERIFIED"):
+            return {"state": "UNVERIFIED", "code": code,
+                    "eventSha256": None, "eventRevision": None,
+                    "currentRevision": None, "workerTerminationVerified": False,
+                    "replayed": False}
+
+        # No write or re-dispatch occurs here; there is precisely one explicit
+        # call to the injected Core inspector.
+        try:
+            reply = inspector(dict(identity))
+        except Exception:
+            return unverified("MANAGEMENT_JOURNAL_UNAVAILABLE")
+        with self._lock:
+            self._check()
+            try:
+                current = pending_row()
+            except sqlite3.DatabaseError:
+                return unverified("MANAGEMENT_OUTBOX_STORAGE_UNAVAILABLE")
+            if current != row:
+                return unverified("MANAGEMENT_OUTBOX_RECORD_CHANGED")
+
+        common = {"schema", "state", "code", "action", "workflowId",
+                  "requestId", "expectedRevision", "evidenceKind",
+                  "replayed", "mutated", "evidence"}
+        if type(reply) is not dict or set(reply) != common or (
+                type(reply.get("schema")) is not int or reply["schema"] != 1 or
+                type(reply["state"]) is not str or type(reply["code"]) is not str or
+                reply["action"] != action or reply["workflowId"] != workflow or
+                reply["requestId"] != request_id or
+                type(reply["expectedRevision"]) is not int or
+                reply["expectedRevision"] != revision or
+                reply["evidenceKind"] != "CORE_VERIFIED_EVENT_CHAIN_ONLY" or
+                reply["replayed"] is not False or reply["mutated"] is not False):
+            return unverified()
+
+        if reply["state"] == "JOURNALED_APPLIED" and reply["code"] == "MANAGEMENT_CONTROL_EVENT_VERIFIED":
+            event = reply["evidence"]
+            expected = {"schema", "eventRevision", "eventSha256", "currentRevision",
+                        "workerTerminationVerified"}
+            if type(event) is not dict or set(event) != expected or (
+                    type(event["schema"]) is not int or event["schema"] != 1 or
+                    type(event["eventRevision"]) is not int or
+                    event["eventRevision"] != revision + 1 or
+                    type(event["currentRevision"]) is not int or
+                    event["currentRevision"] < event["eventRevision"] or
+                    type(event["eventSha256"]) is not str or
+                    not re.fullmatch(r"[a-f0-9]{64}", event["eventSha256"]) or
+                    event["workerTerminationVerified"] is not False):
+                return unverified()
+            return {"state": "JOURNALED_APPLIED", "code": reply["code"],
+                    "eventSha256": event["eventSha256"],
+                    "eventRevision": event["eventRevision"],
+                    "currentRevision": event["currentRevision"],
+                    "workerTerminationVerified": False, "replayed": False}
+        allowed_other = {
+            "UNRESOLVED": {"MANAGEMENT_NO_EXACT_CONTROL_EVENT"},
+            "CONFLICT": {"MANAGEMENT_REQUEST_MARKER_DUPLICATED",
+                         "MANAGEMENT_REQUEST_MARKER_MISMATCH"},
+            "UNVERIFIED": {"MANAGEMENT_TARGET_CHANGED",
+                           "MANAGEMENT_JOURNAL_INVALID",
+                           "MANAGEMENT_JOURNAL_UNAVAILABLE"},
+        }
+        if reply["state"] in allowed_other and reply["code"] in allowed_other[reply["state"]] and reply["evidence"] is None:
+            return {**unverified(reply["code"]), "state": reply["state"]}
+        return unverified()
+
     def close(self):
         with self._lock:
             if not self._closed:

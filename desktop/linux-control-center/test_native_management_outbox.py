@@ -206,6 +206,102 @@ class OutboxTests(unittest.TestCase):
         self.assertEqual(outcomes[0]["state"], "APPLIED")
         self.assertFalse(self.box.has_unresolved())
 
+    def test_explicit_read_only_core_proof_keeps_pending_without_replay(self):
+        request = self.prepare()
+        self.box.begin(request)
+        seen = []
+        def inspector(identity):
+            seen.append(identity)
+            return {
+                "schema": 1, "state": "JOURNALED_APPLIED",
+                "code": "MANAGEMENT_CONTROL_EVENT_VERIFIED",
+                "action": "workflow.pause", "workflowId": "alpha",
+                "requestId": request.request_id, "expectedRevision": 1,
+                "evidenceKind": "CORE_VERIFIED_EVENT_CHAIN_ONLY",
+                "replayed": False, "mutated": False,
+                "evidence": {"schema": 1, "eventRevision": 2,
+                             "eventSha256": "b" * 64, "currentRevision": 3,
+                             "workerTerminationVerified": False},
+            }
+        outcome = self.box.inspect_pending(request.request_id, inspector)
+        self.assertEqual(outcome["state"], "JOURNALED_APPLIED")
+        self.assertEqual(outcome["eventSha256"], "b" * 64)
+        self.assertFalse(outcome["replayed"])
+        self.assertTrue(self.box.has_unresolved())
+        self.assertEqual(self.box.pending()[0]["state"], "IN_FLIGHT")
+        self.assertEqual(seen[0]["target"], T)
+        self.assertEqual(seen[0]["requestId"], request.request_id)
+        self.assertEqual(self.client.calls, [])
+
+    def test_absent_core_event_remains_unresolved_and_blocking(self):
+        request = self.prepare()
+        self.box.begin(request)
+        def inspector(identity):
+            return {"schema": 1, "state": "UNRESOLVED",
+                    "code": "MANAGEMENT_NO_EXACT_CONTROL_EVENT",
+                    "action": identity["action"], "workflowId": identity["workflowId"],
+                    "requestId": identity["requestId"],
+                    "expectedRevision": identity["expectedRevision"],
+                    "evidenceKind": "CORE_VERIFIED_EVENT_CHAIN_ONLY",
+                    "replayed": False, "mutated": False, "evidence": None}
+        result = self.box.inspect_pending(request.request_id, inspector)
+        self.assertEqual(result["state"], "UNRESOLVED")
+        self.assertTrue(self.box.has_unresolved())
+        self.box.close()
+        fresh = NativeRequestOutbox(self.dir, T)
+        self.addCleanup(fresh.close)
+        self.assertTrue(fresh.has_unresolved())
+
+    def test_forged_identity_or_evidence_is_unverified(self):
+        req = self.prepare()
+        self.box.begin(req)
+        valid = {
+            "schema": 1, "state": "JOURNALED_APPLIED",
+            "code": "MANAGEMENT_CONTROL_EVENT_VERIFIED",
+            "action": "workflow.pause", "workflowId": "alpha",
+            "requestId": req.request_id, "expectedRevision": 1,
+            "evidenceKind": "CORE_VERIFIED_EVENT_CHAIN_ONLY",
+            "replayed": False, "mutated": False,
+            "evidence": {"schema": 1, "eventRevision": 2,
+                         "eventSha256": "e" * 64, "currentRevision": 2,
+                         "workerTerminationVerified": False},
+        }
+        for changed in (
+            {"requestId": "other-id"}, {"expectedRevision": True},
+            {"action": "workflow.cancel"}, {"schema": True},
+            {"evidenceKind": "FAKE"}, {"replayed": True}, {"mutated": True},
+            {"evidence": {**valid["evidence"], "eventSha256": "invalid"}},
+            {"evidence": {**valid["evidence"], "workerTerminationVerified": True}},
+            {"state": "APPLIED"}, {"state": []}, {"code": []},
+            {"expectedRevision": 1.0},
+            {"code": "MANAGEMENT_OUTCOME_UNCERTAIN"},
+            {"rogueField": 1},
+        ):
+            with self.subTest(changed=changed):
+                proof = {**valid, **changed}
+                report = self.box.inspect_pending(req.request_id, lambda _x, p=proof: p)
+                self.assertEqual(report["state"], "UNVERIFIED")
+                self.assertTrue(self.box.has_unresolved())
+        self.assertEqual(self.client.calls, [])
+
+    def test_unknown_request_id_never_invokes_inspector(self):
+        called = []
+        with self.assertRaisesRegex(ManagementBlocked, "MANAGEMENT_OUTBOX_RECORD_NOT_PENDING"):
+            self.box.inspect_pending("absent", lambda req: called.append(req))
+        self.assertEqual(called, [])
+
+    def test_inspector_error_preserves_original_pending_record(self):
+        req = self.prepare()
+        self.box.begin(req)
+        def fail(_identity):
+            raise TimeoutError("no Core readback")
+        report = self.box.inspect_pending(req.request_id, fail)
+        self.assertEqual(report["state"], "UNVERIFIED")
+        self.assertEqual(report["code"], "MANAGEMENT_JOURNAL_UNAVAILABLE")
+        self.assertTrue(self.box.has_unresolved())
+        self.assertEqual(self.box.pending()[0]["state"], "IN_FLIGHT")
+        self.assertEqual(self.client.calls, [])
+
     def test_if_storage_is_closed_no_new_effect(self):
         p = self.prepare()
         self.box.close()

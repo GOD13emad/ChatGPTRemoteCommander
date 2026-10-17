@@ -240,22 +240,34 @@ test('a changed runner policy cannot resolve an old input request',async()=>{
 });
 
 
-test('human WAITING_INPUT time does not consume the execution deadline',async()=>{
+test('human WAITING_INPUT time does not consume the execution deadline, even after a scheduler tick',async()=>{
   const f=fixture(async()=>ask());
+  const durationMs=6000; // planner admission must tolerate bounded Windows CI contention
   try{
     await f.create();
-    const initial=await f.start({durationMs:1000});
+    const initial=await f.start({durationMs});
     const wait=await f.tick();
     assert.equal(wait.status,'WAITING_INPUT');
     assert.ok(Number.isSafeInteger(wait.waitingStartedAt));
-    await new Promise(resolve=>setTimeout(resolve,1100));
+    // Cross the wall-clock deadline *only while waiting for the human*. This
+    // deliberately tests the queue scanner as well as subsequent resolution.
+    await new Promise(resolve=>setTimeout(resolve,durationMs+200));
+    const automatic=await f.api.execute('workflow_run_tick',{});
+    assert.equal(automatic.skipped,true);
+    // An explicit tick against the same pending run must not exhaust its
+    // suspended execution clock or reset when the human wait began.
+    const explicit=await f.api.execute('workflow_run_tick',{runId:'run-one'});
+    assert.equal(explicit.status,'WAITING_INPUT');
+    const stillWaiting=await f.api.execute('workflow_run_status',{runId:'run-one'});
+    assert.equal(stillWaiting.status,'WAITING_INPUT');
+    assert.equal(stillWaiting.waitingStartedAt,wait.waitingStartedAt);
     const state=(await f.api.execute('workflow_get',{id:'project'})).state;
     const resumed=await f.api.execute('workflow_run_resolve',{
       runId:'run-one',requestId:wait.pendingRequest.requestId,expectedRevision:state.revision,response:'Continue'
     });
     assert.equal(resumed.status,'QUEUED');
     assert.equal(resumed.waitingStartedAt,null);
-    assert.ok(resumed.totalWaitingMs>=1000);
-    assert.ok(resumed.deadline>=initial.deadline+1000);
+    assert.ok(resumed.totalWaitingMs>=durationMs);
+    assert.ok(resumed.deadline>=initial.deadline+durationMs);
   }finally{await f.dispose();}
 });
