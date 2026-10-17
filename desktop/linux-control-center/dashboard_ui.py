@@ -118,7 +118,8 @@ def run_dashboard(app_id: str,
                   followup_source: Callable,
                   dark_preference: Callable,
                   argv=None,
-                  native_test_observer=None):
+                  native_test_observer=None,
+                  management_controller=None):
     import gi
     gi.require_version("Gtk", "4.0")
     gi.require_version("Adw", "1")
@@ -427,7 +428,9 @@ def run_dashboard(app_id: str,
                 navigator.append(nav_button)
                 self.nav_buttons[nav_key] = nav_button
             sidebar.append(navigator)
-            sidebar.append(label("READ-ONLY MODE", "rc-section-caption"))
+            sidebar.append(label(
+                "READ-ONLY MODE" if management_controller is None else "OWNER-LOCAL CONTROL PREVIEW",
+                "rc-section-caption"))
             workspace.append(sidebar)
             self.stack.set_hexpand(True)
             self.stack.set_vexpand(True)
@@ -450,11 +453,16 @@ def run_dashboard(app_id: str,
             self._build_overview()
             self._build_profiles()
             self._build_tasks()
+            if management_controller is not None:
+                from native_management_view import attach_management_view
+                self.management_view = attach_management_view(self, management_controller, Gtk, Adw, GLib)
             self._build_security()
             workspace.append(self.stack)
             root.append(workspace)
             footer = label(
-                "Local snapshot only  •  No automation execution  •  No credentials or browser session access",
+                ("Local snapshot only  •  No automation execution  •  No credentials or browser session access"
+                 if management_controller is None else
+                 "Explicit Pause/Cancel · native owner session · no browser-origin authority"),
                 "rc-footer")
             footer.set_halign(Gtk.Align.CENTER)
             root.append(footer)
@@ -478,6 +486,8 @@ def run_dashboard(app_id: str,
 
         def _window_destroyed(self, *_args):
             self.window = None
+            if hasattr(self, "management_view"):
+                self.management_view.close()
             if self._timer:
                 GLib.source_remove(self._timer)
                 self._timer = 0
@@ -562,6 +572,8 @@ def run_dashboard(app_id: str,
                 value.add_css_class("rc-caution")
             self._render_profiles(profile_data)
             self._render_workflows(task_data)
+            if management_controller is not None and hasattr(self, "management_view"):
+                self.management_view.refresh()
             self.summary_line.set_text(
                 f"{len(profile_data)} verified profile(s)   ·   {len(task_data)} workflow record(s)")
             self.summary_detail.set_text(
