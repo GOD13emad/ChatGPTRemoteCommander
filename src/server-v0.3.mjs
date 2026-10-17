@@ -28,6 +28,9 @@ import {
 
 let workflowTools = null;
 let browserCompanionMonitor = null;
+// A foreground OWNER-only CLI flag is the sole optional source pilot entry.
+// Browser/MCP tool lists and all default installed server behavior are unchanged.
+const OWNER_NATIVE_PREVIEW_REQUESTED = process.argv.includes('--owner-native-gtk-preview');
 const VERSION = '0.10.25';
 const MODERN_VERSION = '2026-07-28';
 const LEGACY_VERSIONS = ['2025-11-25', '2025-06-18', '2025-03-26'];
@@ -814,4 +817,40 @@ server.listen(config.port, config.host, async () => {
   }
   console.log(`ChatGPT Remote Commander ${VERSION} listening at http://${config.host}:${config.port}/mcp`);
   console.log(`Allowed roots: ${roots.join(', ')}`);
+  // This is *not* a network/MCP tool. Even a local config file, connected web
+  // client, background systemd process or GUI automation cannot flip the flag.
+  // A foreground owner must deliberately start THIS SAME Core with the flag.
+  // The injected workflowTools variable above is its existing resident engine.
+  if (OWNER_NATIVE_PREVIEW_REQUESTED) {
+    if (process.platform !== 'linux' || process.stdin.isTTY !== true || !workflowTools) {
+      console.error('MANAGEMENT_NATIVE_OWNER_CONSOLE_REQUIRED');
+    } else {
+      try {
+        const { startResidentOwnerGtk } = await import('./native-owner-bootstrap.mjs');
+        const nativePreview = await startResidentOwnerGtk({
+          enabled: true,
+          localOwnerConsole: true,
+          deviceId: config.deviceName || os.hostname(),
+          profileId: config.capabilityProfile?.id ?? config.instance?.profile ?? 'default',
+          configSha256,
+          port: config.port,
+          routerStatePath: process.env.REMOTE_COMMANDER_OWNER_ROUTER_STATE,
+          workflowDirectory: config.durableWorkflows?.directory,
+          ownerStateDirectory: process.env.REMOTE_COMMANDER_OWNER_OUTBOX_DIR,
+          xdgRuntimeDirectory: process.env.XDG_RUNTIME_DIR,
+          workflowTools,
+        });
+        // Never surface socket descriptor, key, private workflow file paths,
+        // or any child output through the ordinary MCP HTTP response.
+        console.log('MANAGEMENT_NATIVE_OWNER_PREVIEW_STARTED');
+        void nativePreview.closed.catch(() => {
+          console.error('MANAGEMENT_NATIVE_OWNER_PREVIEW_CLOSE_UNVERIFIED');
+        });
+      } catch (error) {
+        console.error('MANAGEMENT_NATIVE_OWNER_PREVIEW_BLOCKED ' +
+          (typeof error?.managementCode === 'string'
+            ? error.managementCode : 'MANAGEMENT_OWNER_BOOTSTRAP_FAILED'));
+      }
+    }
+  }
 });

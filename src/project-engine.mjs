@@ -310,8 +310,15 @@ export function createProjectEngine({directory,planner,workerPlanner,execute,obs
       let selected=runId;
       if(!selected)for(const candidate of list().filter(r=>!TERMINAL.has(r.status))) {
         const s=await getWorkflow(candidate.workflowId);
-        if(candidate.pendingRequest&&candidate.policyHash===policyHash&&s.control?.intent!=='CANCELLED'&&Date.now()<candidate.deadline
-          &&candidate.attempts<candidate.maxActions&&candidate.plannerCalls+callsPerPlan<=candidate.maxPlannerCalls&&fingerprint(s)===candidate.workflowFingerprint)continue;
+        // The human WAITING_INPUT interval is excluded from execution time.
+        // A queued scanner must never expire a valid human request simply
+        // because the wall clock passed the original deadline. Policy, scope,
+        // cancellation and decision-budget changes remain enforced.
+        if(candidate.status==='WAITING_INPUT'&&candidate.pendingRequest&&
+          candidate.policyHash===policyHash&&s.control?.intent!=='CANCELLED'&&
+          candidate.attempts<candidate.maxActions&&
+          candidate.plannerCalls+callsPerPlan<=candidate.maxPlannerCalls&&
+          fingerprint(s)===candidate.workflowFingerprint)continue;
         if(s.control?.intent!=='PAUSED'){selected=candidate.runId;break;}
       }
       run=claim(selected);
@@ -342,7 +349,11 @@ export function createProjectEngine({directory,planner,workerPlanner,execute,obs
           r.pendingWorker=null;return save(r);
         });
       }
-      assertCurrent(run,state);
+      // claim() temporarily marks the run RUNNING even for a persisted human
+      // question. Enforce all existing scope/identity/policy checks, but do not
+      // debit human waiting time against the execution deadline.
+      assertCurrent(run,state,undefined,{ignoreDeadline:
+        Boolean(run.pendingRequest&&Number.isSafeInteger(run.waitingStartedAt))});
       if(run.pendingRequest){
         if(run.attempts>=run.maxActions||run.plannerCalls+callsPerPlan>run.maxPlannerCalls)return settle(run.runId,'EXHAUSTED','PROJECT_DECISION_BUDGET_EXHAUSTED');
         return settle(run.runId,'WAITING_INPUT','PROJECT_INPUT_REQUIRED');
