@@ -74,6 +74,20 @@ test('direct mutation requestId prevents duplicate append across lost ack and re
     assert.match(missing.result.content[0].text,/MUTATION_REQUEST_ID_REQUIRED|requestId/i);
     assert.equal(await fs.readFile(target,'utf8'),'');
 
+    // Malformed precondition is rejected before an at-most-once mutation record exists.
+    const noIntentTarget=path.join(canonicalDataRoot,'sha-rejected-then-accepted.txt');
+    const invalidShaArgs={requestId:'sha-preflight-text-1',path:noIntentTarget,content:'safe',expectedSha256:'NOT_A_SHA256'};
+    const rejected=await post(port,101,'write_text',invalidShaArgs);
+    assert.equal(rejected.result.isError,true);
+    assert.match(rejected.result.content[0].text,/expectedSha256 must be a lowercase 64-hex SHA-256/);
+    await assert.rejects(fs.stat(noIntentTarget), { code:'ENOENT' });
+    // The exact previously rejected ID is reusable with valid input because no intent was persisted.
+    const validAfterRejection=await post(port,102,'write_text',{
+      requestId:invalidShaArgs.requestId,path:noIntentTarget,content:'safe'
+    });
+    assert.equal(validAfterRejection.result.isError,false);
+    assert.equal(await fs.readFile(noIntentTarget,'utf8'),'safe');
+
     const args={requestId:'mut-http-1',path:target,content:'x',mode:'append'};
     const first=await post(port,2,'write_text',args);
     assert.equal(first.result.isError,false);
@@ -203,6 +217,21 @@ test('full-power direct mutation catalog requires requestId across file/process/
     }
     const names=new Set(directMutations.map(tool=>tool.name));
     assert.ok(names.has('write_text'), 'file mutation missing');
+    // Same no-effect preflight must cover the Full Power write_file catalog.
+    const powerTarget=path.join(canonicalDataRoot,'power-sha-preflight.txt');
+    const invalidPowerArgs={
+      requestId:'sha-preflight-power-1',path:powerTarget,content:'safe',expectedSha256:'INVALID'
+    };
+    const powerRejected=await post(port,103,'write_file',invalidPowerArgs);
+    assert.equal(powerRejected.result.isError,true);
+    assert.match(powerRejected.result.content[0].text,/expectedSha256 must be a lowercase 64-hex SHA-256/);
+    await assert.rejects(fs.stat(powerTarget), { code:'ENOENT' });
+    const powerValidAfterRejection=await post(port,104,'write_file',{
+      requestId:invalidPowerArgs.requestId,path:powerTarget,content:'safe'
+    });
+    assert.equal(powerValidAfterRejection.result.isError,false);
+    assert.equal(await fs.readFile(powerTarget,'utf8'),'safe');
+
     assert.ok(names.has('kill_process'), 'process mutation missing');
     assert.ok(names.has('send_terminal'), 'terminal mutation missing');
     assert.ok([...names].some(name=>name.startsWith('browser_')), 'browser mutation missing');
