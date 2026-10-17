@@ -26,7 +26,9 @@ class OwnerGtkBootstrapTests(unittest.TestCase):
         with sqlite3.connect(self.db) as conn:
             conn.execute("CREATE TABLE workflows (id TEXT, revision INTEGER, snapshot TEXT)")
             conn.execute("INSERT INTO workflows VALUES (?,?,?)",
-                         ("sample", 2, json.dumps({"lifecycleState":"WAITING"})))
+                         ("sample", 2, json.dumps({"schema":2,"id":"sample",
+                          "revision":2,"device":"fixture","configSha256":"1"*64,
+                          "authority":{"profileId":"default"},"lifecycleState":"WAITING"})))
         self.db.chmod(0o600)
         self.target = {"deviceId":"fixture","profileId":"default",
                        "configSha256":"1"*64,"routeGeneration":2}
@@ -64,6 +66,45 @@ class OwnerGtkBootstrapTests(unittest.TestCase):
             con.execute("UPDATE workflows SET snapshot=?", ('{"lifecycleState":"WAITING","lifecycleState":"CANCELLED"}',))
         with self.assertRaises(ValueError):
             self.module._read_workflow_rows(self.module._file(str(self.db)),self.target)
+
+    def test_foreign_or_corrupted_core_identity_fails_closed(self):
+        valid = {"schema": 2, "id": "sample", "revision": 2,
+                 "device": "fixture", "configSha256": "1"*64,
+                 "authority": {"profileId": "default"}, "lifecycleState": "WAITING"}
+        cases = {
+            "wrong-config": {"configSha256": "2"*64},
+            "wrong-profile": {"authority": {"profileId": "other"}},
+            "wrong-device": {"device": "other"},
+            "wrong-revision": {"revision": 3},
+            "wrong-id": {"id": "other"},
+            "bool-revision": {"revision": True},
+            "bool-schema": {"schema": True},
+            "invalid-state": {"lifecycleState": None},
+            "missing-authority": {"authority": {}},
+        }
+        for name, changed in cases.items():
+            with self.subTest(name=name):
+                state = {**valid, **changed}
+                with sqlite3.connect(self.db) as con:
+                    con.execute("UPDATE workflows SET snapshot=?",
+                                (json.dumps(state),))
+                with self.assertRaisesRegex(ValueError,
+                         "MANAGEMENT_WORKFLOW_SCOPE_UNVERIFIED"):
+                    self.module._read_workflow_rows(self.module._file(str(self.db)),
+                                                     self.target)
+
+    def test_one_foreign_row_blocks_entire_inventory(self):
+        foreign = {"schema": 2, "id": "foreign", "revision": 1,
+                   "device": "fixture", "configSha256": "1"*64,
+                   "authority": {"profileId": "other"},
+                   "lifecycleState": "WAITING"}
+        with sqlite3.connect(self.db) as con:
+            con.execute("INSERT INTO workflows VALUES (?,?,?)",
+                        ("foreign", 1, json.dumps(foreign)))
+        with self.assertRaisesRegex(ValueError,
+                                    "MANAGEMENT_WORKFLOW_SCOPE_UNVERIFIED"):
+            self.module._read_workflow_rows(self.module._file(str(self.db)),
+                                             self.target)
 
     def test_bounded_owner_descriptor_rejects_injected_commands(self):
         desc = {"schema":1,"endpoint":"/tmp/control.sock","serverPid":1234,

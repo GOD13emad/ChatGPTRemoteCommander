@@ -81,7 +81,22 @@ def _read_workflow_rows(db, target):
         entries = []
         for name, revision, snapshot in rows:
             item = json.loads(snapshot, object_pairs_hook=unique_json_pairs)
-            if type(item) is not dict:
+            # Snapshot content is untrusted data, not a profile or device
+            # authority. Reject the entire inventory if one row is unbound.
+            # The resident Core still verifies its own journal at mutation.
+            if (type(item) is not dict or
+                    type(item.get("schema")) is not int or item["schema"] not in (1, 2) or
+                    type(name) is not str or item.get("id") != name or
+                    type(revision) is not int or not 1 <= revision <= 10000 or
+                    type(item.get("revision")) is not int or item["revision"] != revision or
+                    type(item.get("device")) is not str or item["device"] != target["deviceId"] or
+                    type(item.get("configSha256")) is not str or
+                    item["configSha256"] != target["configSha256"] or
+                    type(item.get("authority")) is not dict or
+                    type(item["authority"].get("profileId")) is not str or
+                    item["authority"]["profileId"] != target["profileId"] or
+                    type(item.get("lifecycleState")) is not str or
+                    not 0 < len(item["lifecycleState"]) <= 40):
                 raise ValueError("MANAGEMENT_WORKFLOW_SCOPE_UNVERIFIED")
             entries.append({"id": name, "revision": revision,
                             "state": item["lifecycleState"],

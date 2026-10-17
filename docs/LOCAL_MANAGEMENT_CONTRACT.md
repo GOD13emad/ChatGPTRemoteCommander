@@ -168,3 +168,31 @@ A red SQLite test proved that the original NativeRequestOutbox checked IN_FLIGHT
 The corrected outbox conservatively checks the entire owner-private SQLite request inventory for any pending IN_FLIGHT/UNCERTAIN intent **before admitting any new control under any Router generation or profile sharing that owner file**. Database transactions use BEGIN IMMEDIATE to serialize competing GUI writers. Pending rows originating from another target are shown only as OLD/OTHER-SCOPE UNRESOLVED placeholders; the old request ID and workflow identity are not displayed in the new target. The inspector can still inspect only an EXACT scoped request using its original trusted Core identity, and no state is automatically cleared or retried. This intentionally favors global safety over unrelated-profile liveness until an independent owner/manual reconciliation mechanism is accepted.
 
 Verified with source red regression and Linux disposable SQLite green tests; no installed user outbox or WorkflowStore was touched. The default Control Center remains read-only and startup without the explicit foreground owner flag remains inert.
+
+
+### Owner-native GTK snapshot identity and profile binding
+
+Negative source QA found the native owner GTK preview accepting a SQLite snapshot when its
+device, authority.profileId, configSha256, id, or revision contradicted the active
+authenticated target or the workflows table. It previously stamped the *current*
+target.profileId onto every displayed record without checking the recorded authority.
+These are **display/inventory-scoping defects**: no Core authorization bypass was
+demonstrated, and the resident Core still validates identity/revision and its
+journal before applying any management effect.
+
+The read-only GTK inventory now requires a typed workflow snapshot schema,
+exact id/revision, exact device/configSha256 and exact recorded authority.profileId
+for every SQLite row. Any missing, malformed, foreign or stale record fails
+closed for the *entire* inventory, rather than displaying partial or mislabeled
+control buttons. Snapshot fields are untrusted data; this is identity validation,
+**not** independent proof that the historic Core event chain is intact. No
+outbox entry is cleared and no action is retried.
+
+Evidence includes the five-case disposable red reproducer in
+audit-evidence/commander-family/u01/native-owner-snapshot-binding/red.json,
+updated Python negative/positive tests and a separate Linux Node-to-Python
+cross-process test that creates a REAL disposable WorkflowStore using
+createWorkflowTools and checks correct identity plus foreign target rejection
+without mutating the store. All installed Core instances and user data remain
+untouched. Real owner GUI/Wayland accessibility acceptance and independent
+MMZ review remain OPEN.
