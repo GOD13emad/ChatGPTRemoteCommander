@@ -97,10 +97,10 @@ class Client:
         self.calls.append((action,workflow,revision,request))
         if self.mode=="FAIL":raise OSError("private endpoint")
         if self.mode=="REJECTED":
-            return {"state":"REJECTED","code":"WORKFLOW_REVISION_CONFLICT","requestId":request,"action":action,"workflowId":workflow,"expectedRevision":revision,"target":TARGET,"newRevision":None}
+            return {"schema":1,"state":"REJECTED","code":"WORKFLOW_REVISION_CONFLICT","requestId":request,"action":action,"workflowId":workflow,"expectedRevision":revision,"target":TARGET,"newRevision":None}
         self.rows[0]["revision"]=revision+1
         self.rows[0]["state"]="PAUSED" if action=="workflow.pause" else "CANCELLED"
-        return {"state":"APPLIED","code":"MANAGEMENT_CONTROL_READBACK_VERIFIED","requestId":request,"action":action,"workflowId":workflow,"expectedRevision":revision,"target":TARGET,"newRevision":revision+1,"controlIntent":self.rows[0]["state"]}
+        return {"schema":1,"state":"APPLIED","code":"MANAGEMENT_CONTROL_READBACK_VERIFIED","requestId":request,"action":action,"workflowId":workflow,"expectedRevision":revision,"target":TARGET,"newRevision":revision+1,"controlIntent":self.rows[0]["state"]}
 
 
 class Center:
@@ -201,6 +201,21 @@ class NativeViewTests(unittest.TestCase):
         self.view.close()
         self.view.confirm("alpha",1,"workflow.pause")
         self.assertIsNone(Dialog.last)
+        self.assertFalse(any(b.sensitive for b in self.view.buttons))
+
+
+    def test_view_never_promotes_missing_schema_receipt(self):
+        native=self.client.control
+        def malformed(*args):
+            result=native(*args)
+            result.pop("schema")
+            return result
+        self.client.control=malformed
+        self.view.buttons[0].emit("clicked")
+        Dialog.last.response("confirm")
+        await_state(self.view,"UNCERTAIN")
+        self.assertTrue(self.controller.disabled)
+        self.assertEqual(len(self.client.calls),1)
         self.assertFalse(any(b.sensitive for b in self.view.buttons))
 
 if __name__=="__main__":unittest.main()

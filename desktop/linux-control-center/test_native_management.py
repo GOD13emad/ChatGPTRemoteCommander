@@ -12,10 +12,10 @@ class FakeClient:
         self.calls.append((action,id,revision,request_id))
         if self.effect=="ERROR": raise TimeoutError("secret or path")
         if self.effect=="REJECTED":
-            return {"state":"REJECTED","code":"WORKFLOW_REVISION_CONFLICT","requestId":request_id,"action":action,"workflowId":id,"expectedRevision":revision,"target":T,"newRevision":None}
+            return {"schema":1,"state":"REJECTED","code":"WORKFLOW_REVISION_CONFLICT","requestId":request_id,"action":action,"workflowId":id,"expectedRevision":revision,"target":T,"newRevision":None}
         if self.effect=="SPOOF":
-            return {"state":"APPLIED","code":"MANAGEMENT_CONTROL_READBACK_VERIFIED","requestId":request_id,"action":action,"workflowId":"other","expectedRevision":revision,"target":T,"newRevision":revision+1,"controlIntent":"PAUSED"}
-        return {"state":"APPLIED","code":"MANAGEMENT_CONTROL_READBACK_VERIFIED","requestId":request_id,"action":action,"workflowId":id,"expectedRevision":revision,"target":T,"newRevision":revision+1,"controlIntent":"PAUSED" if action=="workflow.pause" else "CANCELLED"}
+            return {"schema":1,"state":"APPLIED","code":"MANAGEMENT_CONTROL_READBACK_VERIFIED","requestId":request_id,"action":action,"workflowId":"other","expectedRevision":revision,"target":T,"newRevision":revision+1,"controlIntent":"PAUSED"}
+        return {"schema":1,"state":"APPLIED","code":"MANAGEMENT_CONTROL_READBACK_VERIFIED","requestId":request_id,"action":action,"workflowId":id,"expectedRevision":revision,"target":T,"newRevision":revision+1,"controlIntent":"PAUSED" if action=="workflow.pause" else "CANCELLED"}
 
 class ManagementTests(unittest.TestCase):
     def setUp(self):
@@ -112,5 +112,44 @@ class ManagementTests(unittest.TestCase):
         from dataclasses import replace
         with self.assertRaisesRegex(ManagementBlocked,"MANAGEMENT_PROPOSAL_UNVERIFIED"):
             self.controller.submit_confirmed(replace(prop,target=(("profileId","other"),)))
+
+
+    def test_one_confirmation_token_cannot_dispatch_twice_after_rejection(self):
+        self.client.effect="REJECTED"
+        proposal=self.prepare()
+        result=self.controller.submit_confirmed(proposal)
+        self.assertEqual(result["state"],"REJECTED")
+        with self.assertRaisesRegex(ManagementBlocked,"MANAGEMENT_PROPOSAL_CONSUMED"):
+            self.controller.submit_confirmed(proposal)
+        self.assertEqual(len(self.client.calls),1)
+
+    def test_unprepared_or_superseded_proposal_cannot_dispatch(self):
+        from dataclasses import replace
+        proposal=self.prepare()
+        with self.assertRaisesRegex(ManagementBlocked,"MANAGEMENT_PROPOSAL_CONSUMED"):
+            self.controller.submit_confirmed(replace(proposal,request_id="forged"))
+        assert not self.client.calls
+        newer=self.prepare()
+        with self.assertRaisesRegex(ManagementBlocked,"MANAGEMENT_PROPOSAL_CONSUMED"):
+            self.controller.submit_confirmed(proposal)
+        self.assertEqual(self.controller.submit_confirmed(newer)["state"],"APPLIED")
+        self.assertEqual(len(self.client.calls),1)
+
+    def test_missing_or_wrong_receipt_schema_never_claims_applied(self):
+        for invalid in (None,True,2,"1"):
+            with self.subTest(schema=invalid):
+                item=FakeClient()
+                records=[{"id":"alpha","profileId":"default","revision":1,"state":"RUNNING"}]
+                control=NativeManagementController(item,lambda:{"schema":1,"target":T,"records":records})
+                valid=item.control
+                def fake(*args, value=invalid):
+                    result=valid(*args)
+                    if value is None:result.pop("schema")
+                    else:result["schema"]=value
+                    return result
+                item.control=fake
+                outcome=control.submit_confirmed(control.prepare("alpha",1,"workflow.pause"))
+                self.assertEqual(outcome["state"],"UNCERTAIN")
+                self.assertTrue(control.disabled)
 
 if __name__=="__main__":unittest.main()

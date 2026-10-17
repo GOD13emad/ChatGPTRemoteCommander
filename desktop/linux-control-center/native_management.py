@@ -76,7 +76,14 @@ class PreparedControl:
 
 def receipt_status(result, prepared, expected_target):
     """A label is never promoted to APPLIED by UI convenience."""
-    if type(result) is not dict or result.get("requestId") != prepared.request_id or result.get("action") != prepared.action or result.get("workflowId") != prepared.workflow_id or result.get("expectedRevision") != prepared.revision or result.get("target") != expected_target:
+    # A receipt is not trustworthy merely because one field says APPLIED.
+    expected = {"schema", "requestId", "action", "workflowId", "target",
+                "expectedRevision", "state", "code", "newRevision"}
+    if type(result) is not dict or type(result.get("schema")) is not int or result["schema"] != 1:
+        return {"state": "UNCERTAIN", "code": "MANAGEMENT_RECEIPT_SCHEMA_UNVERIFIED"}
+    if result.get("state") == "APPLIED":
+        expected.add("controlIntent")
+    if set(result) != expected or type(result.get("expectedRevision")) is not int or result.get("requestId") != prepared.request_id or result.get("action") != prepared.action or result.get("workflowId") != prepared.workflow_id or result.get("expectedRevision") != prepared.revision or result.get("target") != expected_target:
         return {"state": "UNCERTAIN", "code": "MANAGEMENT_RECEIPT_IDENTITY_UNVERIFIED"}
     if result.get("state") == "APPLIED" and result.get("code") == "MANAGEMENT_CONTROL_READBACK_VERIFIED" and type(result.get("newRevision")) is int and result["newRevision"] == prepared.revision + 1 and result.get("controlIntent") == _ALLOWED[prepared.action]:
         return {"state": "APPLIED", "code": "MANAGEMENT_CONTROL_READBACK_VERIFIED", "revision": result["newRevision"]}
@@ -95,6 +102,7 @@ class NativeManagementController:
         self._scoped_read = scoped_read
         self._guard = threading.Lock()
         self._disabled = False
+        self._prepared = None
 
     @property
     def target(self):
@@ -110,18 +118,25 @@ class NativeManagementController:
         return _records(self._scoped_read(), self._target)
 
     def prepare(self, workflow_id, revision, action):
-        if self._disabled:
-            deny("MANAGEMENT_SESSION_UNAVAILABLE")
-        if type(action) is not str or action not in _ALLOWED or type(workflow_id) is not str or not _WORKFLOW.fullmatch(workflow_id) or type(revision) is not int or not 1 <= revision <= 10000:
-            deny("MANAGEMENT_REQUEST_UNVERIFIED")
-        records = self.list_controls()
-        record = next((x for x in records if x["id"] == workflow_id), None)
-        if not record or record["revision"] != revision:
-            deny("MANAGEMENT_WORKFLOW_CHANGED")
-        if record["state"] in _TERMINAL or (action == "workflow.pause" and record["state"] == "PAUSED"):
-            deny("MANAGEMENT_ACTION_NOT_APPLICABLE")
-        return PreparedControl(workflow_id, revision, record["state"], action,
-                               tuple(sorted(self._target.items())), uuid4().hex)
+        if not self._guard.acquire(blocking=False):
+            deny("MANAGEMENT_BUSY")
+        try:
+            if self._disabled:
+                deny("MANAGEMENT_SESSION_UNAVAILABLE")
+            if type(action) is not str or action not in _ALLOWED or type(workflow_id) is not str or not _WORKFLOW.fullmatch(workflow_id) or type(revision) is not int or not 1 <= revision <= 10000:
+                deny("MANAGEMENT_REQUEST_UNVERIFIED")
+            records = self.list_controls()
+            record = next((x for x in records if x["id"] == workflow_id), None)
+            if not record or record["revision"] != revision:
+                deny("MANAGEMENT_WORKFLOW_CHANGED")
+            if record["state"] in _TERMINAL or (action == "workflow.pause" and record["state"] == "PAUSED"):
+                deny("MANAGEMENT_ACTION_NOT_APPLICABLE")
+            # A new deliberate click invalidates the prior (e.g. dismissed) dialog.
+            self._prepared = PreparedControl(workflow_id, revision, record["state"], action,
+                                              tuple(sorted(self._target.items())), uuid4().hex)
+            return self._prepared
+        finally:
+            self._guard.release()
 
     def submit_confirmed(self, proposal):
         # Only the native GTK confirmation response calls this method.
@@ -130,6 +145,11 @@ class NativeManagementController:
         if not self._guard.acquire(blocking=False):
             deny("MANAGEMENT_BUSY")
         try:
+            if self._prepared is not proposal:
+                deny("MANAGEMENT_PROPOSAL_CONSUMED")
+            # Consume before checking state, sending a request or waiting for a
+            # receipt. No second dispatch from this one confirmation is possible.
+            self._prepared = None
             if self._disabled:
                 deny("MANAGEMENT_SESSION_UNAVAILABLE")
             record = next((x for x in self.list_controls() if x["id"] == proposal.workflow_id), None)
