@@ -34,8 +34,8 @@ class SafeMonitorTests(unittest.TestCase):
         return {"schema":1,"kind":"COMMANDER_LIVE_MONITOR",
                 "observedAtEpochMs":now-100,"expiresAtEpochMs":now+10000+adjust,
                 "identity":{"deviceName":"fixture","version":"0.10.20","profile":"default"},
-                "gui":{"available":False,"reason":"UNVERIFIED"},
-                "browser":{"available":True},"operations":{"active":0},
+                "gui":{"enabled":True,"available":False,"uncertain":False,"reason":"UNVERIFIED"},
+                "browser":{"enabled":True,"available":True,"uncertain":False},"operations":{"active":0},
                 "extensions":{"items":[]}}
     def test_fresh_monitor(self):
         self.dump(m.MONITOR,self.valid_monitor())
@@ -79,6 +79,60 @@ class SafeMonitorTests(unittest.TestCase):
         c.execute("INSERT INTO workflows VALUES (?,?,?)",("../escape",1,json.dumps({"lifecycleState":"RUNNING"})))
         c.commit();c.close()
         self.assertEqual(m.workflows(),[])
+
+
+    def render_fixture(self, doc):
+        self.dump(m.MONITOR, doc)
+        return m.monitor_status()
+    def test_uncertain_gui_never_ready(self):
+        d=self.valid_monitor(); d['gui'].update(available=True, uncertain=True)
+        self.assertEqual(self.render_fixture(d)['gui'], 'UNCERTAIN')
+    def test_uncertain_browser_never_ready(self):
+        d=self.valid_monitor(); d['browser']['uncertain']=True
+        self.assertEqual(self.render_fixture(d)['browser'], 'UNCERTAIN')
+    def test_disabled_component_never_ready(self):
+        for key in ('gui','browser'):
+            with self.subTest(key=key):
+                d=self.valid_monitor();d[key].update(enabled=False,available=True)
+                self.assertEqual(self.render_fixture(d)[key], 'DISABLED')
+    def test_missing_component_flags_are_unverified(self):
+        for key in ('gui','browser'):
+            for flag in ('enabled','available','uncertain'):
+                with self.subTest(key=key,flag=flag):
+                    d=self.valid_monitor();d[key]['available']=True;d[key].pop(flag)
+                    self.assertEqual(self.render_fixture(d)[key], 'UNVERIFIED')
+    def test_missing_or_invalid_live_count_is_not_zero(self):
+        for value in (None,True,False,-1,1000000,'7',7.5):
+            with self.subTest(value=value):
+                d=self.valid_monitor();d['operations']['active']=value
+                self.assertIsNone(self.render_fixture(d)['activeOperations'])
+        d=self.valid_monitor();d.pop('operations')
+        self.assertIsNone(self.render_fixture(d)['activeOperations'])
+    def test_unknown_extension_inventory_not_zero(self):
+        d=self.valid_monitor();d.pop('extensions')
+        self.assertIsNone(self.render_fixture(d)['extensions'])
+    def test_malformed_nested_sections_never_raise_or_connect(self):
+        for key in ('identity','gui','browser','operations','extensions'):
+            with self.subTest(key=key):
+                d=self.valid_monitor();d[key]=['not-an-object']
+                self.assertEqual(self.render_fixture(d)['state'],'UNVERIFIED')
+    def test_boolean_schema_not_integer_version(self):
+        d=self.valid_monitor();d['schema']=True
+        self.assertEqual(self.render_fixture(d)['state'],'UNVERIFIED')
+    def test_invalid_expiry_window_never_connects(self):
+        for observed,expires in ((True,9999999999999),(1,9999999999999),(9999999999999,9999999999999)):
+            with self.subTest(observed=observed,expires=expires):
+                d=self.valid_monitor();d.update(observedAtEpochMs=observed,expiresAtEpochMs=expires)
+                self.assertNotEqual(self.render_fixture(d)['state'],'CONNECTED')
+    def test_duplicate_json_keys_are_rejected(self):
+        raw=json.dumps(self.valid_monitor());m.MONITOR.write_text(raw[:-1]+',"schema":1}',encoding='utf8');m.MONITOR.chmod(0o600)
+        self.assertEqual(m.monitor_status()['state'],'UNVERIFIED')
+    def test_explicit_complete_readiness_and_zero_preserved(self):
+        d=self.valid_monitor();d['gui']['available']=True;s=self.render_fixture(d)
+        self.assertEqual(s['gui'],'READY');self.assertEqual(s['browser'],'READY');self.assertEqual(s['activeOperations'],0)
+    def test_extension_cap_does_not_claim_exhaustive_total(self):
+        d=self.valid_monitor();d['extensions']['items']=[{'id':f'ext-{i}','version':'1.0.0'} for i in range(32)]
+        s=self.render_fixture(d);self.assertEqual(s['extensions'],32);self.assertIsNone(s['extensionsTotal']);self.assertTrue(s['extensionsMayBeTruncated'])
 
 
 if __name__=="__main__":
