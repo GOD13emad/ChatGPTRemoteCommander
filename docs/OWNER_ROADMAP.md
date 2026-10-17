@@ -81,6 +81,14 @@ DOES NOT run unattended. While ChatGPT is active, it can perform each authorized
 step directly with Commander, checkpoint after readback and continue to the
 accepted scope. No Work migration, Codex launch or root escalation is implicit.
 
+## Optional bounded automatic step execution
+
+A truly configured trusted non-Codex command provider can auto-tick one
+explicitly enrolled read-only step with native receipts and persistence.
+See [Runner boundaries](RUNNER_CHAT_COMMANDER_ONLY.md) and the native
+cross-platform test. This does not create a general language-model
+planner, root authority, or authorization for unknown tasks.
+
 ## Acceptance scope
 
 Disposable native WorkflowStore and adapter tests check true state change,
