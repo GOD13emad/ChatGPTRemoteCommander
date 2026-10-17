@@ -175,7 +175,9 @@ If runnerConfigured=false, unattended execution is unavailable; ChatGPT
 can work through authorized ready steps with Commander, verify effects and
 advance the persistent plan. Full Power does not grant root, consent or
 cross-account authorization. See
-[Owner-directed workflow roadmap](docs/OWNER_ROADMAP.md).
+[Owner-directed workflow roadmap](docs/OWNER_ROADMAP.md). For strictly
+bounded, trusted non-Codex steps with actual native scheduler readback,
+see [ChatGPT + Commander automatic execution](docs/RUNNER_CHAT_COMMANDER_ONLY.md).
 
 ## Security
 
