@@ -126,6 +126,10 @@ export class ConversationStore{
     for(const [items,code] of [[composerNames,'COMPOSER'],[sendNames,'SEND'],[stopNames,'STOP']]){
       if(!Array.isArray(items)||items.length<1||items.length>10||items.some(x=>typeof x!=='string'||!x.trim()||x.length>120))fail('CONVERSATION_'+code+'_NAMES_INVALID');
     }
+    // Rebinding must not reset a project's UNCERTAIN safety latch.
+    // Require explicit disposition of each unresolved send before rebinding.
+    const outstanding=this.db.prepare("SELECT 1 FROM handoffs WHERE scope=? AND project_id=? AND state='UNCERTAIN' LIMIT 1").get(this.scope,pid);
+    if(outstanding)fail('CONVERSATION_OUTCOME_UNCERTAIN');
     const existing=this.binding(pid),stamp=now();
     this.db.prepare(`INSERT INTO bindings(scope,project_id,project_root,browser,tab_title,composer_names,send_names,stop_names,state,created_at,updated_at,last_seen_at)
       VALUES(?,?,?,?,?,?,?,?,?,?,?,NULL)
@@ -240,6 +244,7 @@ export class ConversationStore{
       if(!row)return {projectId:pid,eventKey,cancelled:false,state:'ABSENT'};
       if(row.state==='SENT'||row.state==='CANCELLED')return {projectId:pid,eventKey,cancelled:row.state==='CANCELLED',state:row.state};
       if(row.state==='CLAIMED')fail('CONVERSATION_CLAIM_BUSY');
+      if(row.state==='UNCERTAIN')fail('CONVERSATION_OUTCOME_UNCERTAIN');
       this.db.prepare("UPDATE handoffs SET state='CANCELLED',attempt_id=NULL,lease_until=NULL,last_code='WORKFLOW_RESUMED',updated_at=? WHERE scope=? AND id=?")
         .run(now(),this.scope,row.id);
       return {projectId:pid,eventKey,cancelled:true,state:'CANCELLED'};
