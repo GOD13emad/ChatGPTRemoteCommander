@@ -992,8 +992,14 @@ try{
       }
       if(-not $currentStatus){throw 'AUTO_UPDATE_ACTIVE_MCP_STATUS_UNVERIFIED'}
       if([string]$currentStatus.version -ne $routedVersion){throw 'AUTO_UPDATE_ROUTE_MCP_VERSION_CONFLICT'}
-    } elseif(-not $currentStatus -and (Test-Path -LiteralPath (Join-Path $InstallDir 'package.json') -PathType Leaf)){
-      throw 'AUTO_UPDATE_DIRECT_MCP_STATUS_UNVERIFIED'
+    } elseif(-not $currentStatus){
+      # A fresh isolated install may contain package.json but have no live server
+      # or previous update receipt. Only a known deployed direct runtime is
+      # blocked when its MCP status is unavailable.
+      $directListeners=@(Get-NetTCPConnection -State Listen -LocalPort 47831 -ErrorAction SilentlyContinue)
+      if($directListeners.Count -gt 0 -or (Test-Path -LiteralPath $ResultFile -PathType Leaf)){
+        throw 'AUTO_UPDATE_DIRECT_MCP_STATUS_UNVERIFIED'
+      }
     }
   }
   if(-not $Force -and $currentStatus -and (Test-VersionGreater ([string]$currentStatus.version) $stage.Version)){
