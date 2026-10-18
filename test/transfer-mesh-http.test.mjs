@@ -9,7 +9,7 @@ import {once} from 'node:events';
 const wait=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 async function port(){const l=net.createServer();l.listen(0,'127.0.0.1');await once(l,'listening');const p=l.address().port;await new Promise(r=>l.close(r));return p;}
 async function req(p,name,args={},id=1){const res=await fetch('http://127.0.0.1:'+p+'/mcp',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id,method:name==='__list'?'tools/list':'tools/call',params:name==='__list'?{}:{name,arguments:args}})});const body=await res.json();assert.equal(res.status,200);return body.result;}
-test('MCP native transfer tools opt in, expose narrowly scoped schemas and execute authentic local send',async()=>{
+test('MCP native transfer tools opt in, expose narrowly scoped schemas and execute authentic local send',{timeout:75000},async()=>{
  const home=await fs.mkdtemp(path.join(os.tmpdir(),'ctmesh-native-http-'));
  const server=path.join(home,'server'),input=path.join(home,'inputs'),received=path.join(home,'received'),pilot=path.join(home,'pilot');
  const serverPort=await port();
@@ -28,10 +28,25 @@ test('MCP native transfer tools opt in, expose narrowly scoped schemas and execu
   const configPath=path.join(server,'config.json');
   await fs.writeFile(configPath,JSON.stringify(cfg));
   child=spawn(process.execPath,[path.join(server,'src/server-v0.3.mjs')],{cwd:server,env:{...process.env,REMOTE_COMMANDER_CONFIG:configPath},stdio:['ignore','pipe','pipe']});
-  child.stderr.on('data',x=>stderr+=x);
+  child.stderr.on('data',x=>{
+    if(stderr.length<8192)stderr+=String(x).slice(0,8192-stderr.length);
+  });
+  child.stdout.resume(); // Bounded runner logging must not block a live child's stdout pipe.
   let healthy=false;
-  for(let i=0;i<200;i++){try{const r=await fetch('http://127.0.0.1:'+serverPort+'/health');if(r.ok){healthy=true;break;}}catch{}await wait(25);}
-  assert.equal(healthy,true,stderr);
+  const startupDeadline=Date.now()+25000;
+  let startupReason='NOT_READY_WITHIN_BUDGET';
+  // A 5s fixed polling count failed on a loaded hosted Windows runner before the
+  // Core created /health. Preserve a bounded deadline and fail on true child exit.
+  while(Date.now()<startupDeadline){
+    if(child.exitCode!==null){startupReason='CHILD_EXIT_'+child.exitCode;break;}
+    try{
+      const health=await fetch('http://127.0.0.1:'+serverPort+'/health',
+        {signal:AbortSignal.timeout(1500)});
+      if(health.ok){healthy=true;break;}
+    }catch{}
+    await wait(75);
+  }
+  assert.equal(healthy,true,'TRANSFER_MESH_STARTUP_'+startupReason+': '+stderr.slice(-2048));
   const list=await req(serverPort,'__list');const defs=list.tools.filter(x=>x.name.startsWith('transfer_mesh_'));
   assert.equal(defs.length,8);
   assert.equal(defs.find(x=>x.name==='transfer_mesh_send').annotations.readOnlyHint,false);
