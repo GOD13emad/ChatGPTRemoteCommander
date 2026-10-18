@@ -238,7 +238,10 @@ begin
     CoreScript := ExpandConstant('{tmp}\install.ps1');
     Params :=
       '-NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "' + CoreScript + '"' +
-      ' -StartServer -StandardMode -SourceRef "{#MySourceRef}" -ExpectedCommit "{#MyCommit}"';
+      ; New installs are Standard by default; re-installs must preserve their
+      ; existing explicitly authorized capability profile. Do not pass an
+      ; involuntary -StandardMode to the candidate-first Core updater.
+      ' -StartServer -SourceRef "{#MySourceRef}" -ExpectedCommit "{#MyCommit}"';
     WizardForm.StatusLabel.Caption := 'Installing and verifying Remote Commander core for this user...';
     if not Exec(PwshPath, Params, '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
       RaiseException('Could not start Remote Commander core installer.');
