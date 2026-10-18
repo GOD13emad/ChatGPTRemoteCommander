@@ -68,9 +68,9 @@ export function createGuiController({ platform = process.platform, now = () => p
     const supported = platform === 'win32' || platform === 'linux';
     const enabled = supported && power?.enabled === true && cfg.enabled === true;
     const blocked = await isStopped();
-    let pendingIncident = null, incidentStoreUnavailable = false;
+    let pendingIncident = null, incidentStoreUnavailable = false, incidentRecoveryRequired = false;
     try { pendingIncident = await incidentStore.pending(); }
-    catch { incidentStoreUnavailable = true; } // A corrupt/unreadable record never grants input.
+    catch (error) { incidentStoreUnavailable = true; incidentRecoveryRequired = error?.guiCode === 'GUI_INCIDENT_RECOVERY_REQUIRED'; } // Never grant input from an unresolved record.
     // Never interpret a user-writable review receipt, restart or missing
     // journal as an authenticated owner release. A native result is the only
     // automatic resolution allowed by this controller.
@@ -78,7 +78,7 @@ export function createGuiController({ platform = process.platform, now = () => p
     const observeOnly = uncertainNow || incidentStoreUnavailable;
     if (name === 'gui_status' && (!enabled || blocked)) return {
       enabled, available: false, inputAvailable: false, blocked, uncertain: uncertainNow,
-      busy, leased: !!current(), incidentStoreUnavailable, incidentPending: !!pendingIncident,
+      busy, leased: !!current(), incidentStoreUnavailable, incidentRecoveryRequired, incidentPending: !!pendingIncident,
       reason: !supported ? 'PLATFORM_BACKEND_UNSUPPORTED' : blocked ? 'LOCAL_GUI_STOP' : 'GUI_DISABLED'
     };
     if (!enabled) throw guiError('GUI_DISABLED_OR_UNSUPPORTED');
@@ -95,9 +95,9 @@ export function createGuiController({ platform = process.platform, now = () => p
       return {
         ...native, enabled, available: readOnlyAvailable, readOnlyAvailable,
         inputAvailable: false, blocked: false, busy, leased: !!current(),
-        uncertain: uncertainNow, incidentStoreUnavailable, incidentPending: !!pendingIncident,
+        uncertain: uncertainNow, incidentStoreUnavailable, incidentRecoveryRequired, incidentPending: !!pendingIncident,
         incident: pendingIncident ?? null,
-        reason: incidentStoreUnavailable ? 'GUI_INCIDENT_STORAGE_UNAVAILABLE' : 'GUI_INCIDENT_REVIEW_REQUIRED'
+        reason: incidentRecoveryRequired ? 'GUI_INCIDENT_RECOVERY_REQUIRED' : incidentStoreUnavailable ? 'GUI_INCIDENT_STORAGE_UNAVAILABLE' : 'GUI_INCIDENT_REVIEW_REQUIRED'
       };
     }
     if (observeOnly) {

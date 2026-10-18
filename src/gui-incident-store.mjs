@@ -137,8 +137,80 @@ export function createGuiInputIncidentStore({file=defaultFile(),now=()=>new Date
     }
   }
 
+  // READ-ONLY crash forensics for a future OS-trusted owner broker.
+  // Finding a complete archive/terminal is never authentication or clearance.
+  async function inspectRecovery(){
+    const equal=(a,b)=>a.dev===b.dev&&a.ino===b.ino&&
+      a.nlink===b.nlink&&a.size===b.size&&
+      a.mtimeNs===b.mtimeNs&&a.ctimeNs===b.ctimeNs;
+    async function evidenceAt(candidate,original){
+      let before;
+      try{before=await fs.lstat(candidate,{bigint:true});}
+      catch(error){
+        if(error?.code==='ENOENT')return null;
+        throw fail('GUI_INCIDENT_STORAGE_UNAVAILABLE');
+      }
+      const limit=original?2048n:4096n;
+      if(!before.isFile()||before.isSymbolicLink()||
+        before.nlink!==1n||before.size<1n||before.size>limit)
+        throw fail('GUI_INCIDENT_STORAGE_UNAVAILABLE');
+      let handle;
+      try{
+        handle=await fs.open(candidate,constants.O_RDONLY|(constants.O_NOFOLLOW||0));
+        const opened=await handle.stat({bigint:true});
+        if(!equal(before,opened))throw fail('GUI_INCIDENT_STORAGE_UNAVAILABLE');
+        const raw=await handle.readFile();
+        const after=await handle.stat({bigint:true});
+        const named=await fs.lstat(candidate,{bigint:true});
+        if(!equal(before,after)||!equal(before,named)||
+          raw.length!==Number(before.size))throw fail('GUI_INCIDENT_STORAGE_UNAVAILABLE');
+        const evidence={
+          sha256:createHash('sha256').update(raw).digest('hex'),
+          bytes:raw.length
+        };
+        if(original){
+          // Archive must contain the *original* canonical pending bytes,
+          // not a fabricated "native not applied" or "reviewed" assertion.
+          const decoded=raw.toString('utf8');
+          const record=JSON.parse(decoded);
+          if(!record||Array.isArray(record)||typeof record!=='object'||
+            Object.keys(record).sort().join(',')!=='id,schema,startedUtc,status,tool'||
+            record.schema!==SCHEMA||record.status!=='PENDING_NATIVE_EFFECT'||
+            !INPUT_TOOLS.has(record.tool)||typeof record.id!=='string'||
+            !/^[a-zA-Z0-9-]{8,128}$/.test(record.id)||
+            typeof record.startedUtc!=='string'||record.startedUtc.length>48||
+            decoded!==JSON.stringify(record)+'\n')
+            throw fail('GUI_INCIDENT_STORAGE_UNAVAILABLE');
+          evidence.incident={id:record.id,tool:record.tool,startedUtc:record.startedUtc};
+        }
+        return evidence;
+      }catch{
+        throw fail('GUI_INCIDENT_STORAGE_UNAVAILABLE');
+      }finally{
+        if(handle)await handle.close().catch(()=>{});
+      }
+    }
+    // Keep the original and each marker separately identifiable; no marker
+    // content is interpreted as a trusted grant. Never create or move files.
+    const [pending,prepared,archive,terminal]=await Promise.all([
+      evidenceAt(file,true),evidenceAt(reviewArtifacts[0],false),
+      evidenceAt(reviewArtifacts[1],true),evidenceAt(reviewArtifacts[2],false)
+    ]);
+    if(!prepared&&!archive&&!terminal)return null;
+    const conflict=!!(pending&&archive);
+    const state=conflict?'CONFLICTING_ORIGINALS':
+      archive?'ORIGINAL_ARCHIVED_REVIEW_UNVERIFIED':
+      pending?'REVIEW_INTERRUPTED_OR_UNTRUSTED':
+      'ORIGINAL_MISSING_RECOVERY_REQUIRED';
+    return {
+      recoveryRequired:true,state,nativeOutcome:'UNKNOWN',noReplay:true,
+      releaseAuthorized:false,ownerAuthenticated:false,
+      original:pending,prepared,archive,terminal
+    };
+  }
+
   // No public administrative release API exists. Owner review must be
   // implemented by a separately trusted, product-owned native coordinator.
   // A mutable same-user JSON receipt is not proof of owner authorization.
-  return {pending,begin,resolve,inspect};
+  return {pending,begin,resolve,inspect,inspectRecovery};
 }

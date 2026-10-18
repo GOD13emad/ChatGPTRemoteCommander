@@ -39,3 +39,8 @@ The read-only fingerprint validation is reused for dispatch gating, avoiding an 
 ## Threat-model limit
 
 A remote Full Power shell running as the same OS account can edit user-writable files and invoke same-user processes. JS-only UI gating is **not** an OS security boundary. Do not advertise cryptographic or hardware-backed owner authorization until a distinct OS trust boundary is independently verified. The named mutex is a coordination primitive, not an identity proof.
+### Read-only recovery artifact inspection — local candidate (not deployed)
+
+The prior fail-closed review marker guard is complemented by a production-code `inspectRecovery()` **read-only** forensic method and clearer `gui_status.incidentRecoveryRequired`. It reopens original and archive with stable `lstat/fstat` identity checks, rejects symlinks/hardlinks, validates canonical original bytes and returns bounded hashes and explicit state labels. Prepared and terminal markers are fingerprinted **only** and never interpreted as permission. CLI `--status`/`--plan` can report incomplete or corrupt recovery instead of treating a missing live pending file as success. No new public MCP method, broker endpoint, archive writer or release path exists.
+
+The next code acceptance gate is a protected, incident-bound OS-local owner broker coupled to full native dispatcher quiescence and a durable writer. The forensic state labels do **not** satisfy those gates. Tests are structural/process-exit, not a real owner approval or a power-cut test.

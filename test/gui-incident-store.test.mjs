@@ -369,6 +369,8 @@ test('a PREPARED recovery artifact blocks mutations but allows incident observat
  const status=await c.run('gui_status');
  assert.equal(status.inputAvailable,false);
  assert.equal(status.incidentStoreUnavailable,true);
+ assert.equal(status.incidentRecoveryRequired,true);
+ assert.equal(status.reason,'GUI_INCIDENT_RECOVERY_REQUIRED');
  const obs=await c.run('gui_session_begin',{mode:'observe'});
  const shot=await c.run('gui_screenshot',{lease:obs.lease});
  assert.ok(shot.__structuredContent.frame);
@@ -385,6 +387,9 @@ test('a PREPARED recovery artifact blocks mutations but allows incident observat
  assert.equal(report.recoveryRequired,true);
  assert.equal(report.releaseAuthorized,false);
  assert.equal(report.noReplay,true);
+ assert.equal(report.recovery.state,'REVIEW_INTERRUPTED_OR_UNTRUSTED');
+ assert.equal(report.recovery.original.sha256,createHash('sha256').update(original).digest('hex'));
+ assert.equal(report.recovery.ownerAuthenticated,false);
  assert.deepEqual(await fs.readFile(file),original);
 }));
 
@@ -411,6 +416,11 @@ test('missing pending after an interrupted archive is never a new-input permit',
  const rc=await recoveryCli(['--plan'],{store:reopened,output:{write:x=>{out+=x;}},error:{write(){}}});
  assert.equal(rc,4);
  assert.equal(JSON.parse(out).disposition,'BLOCKED_UNRECONCILED_REVIEW_ARTIFACT');
+ const report=JSON.parse(out);
+ assert.equal(report.recovery.state,'ORIGINAL_ARCHIVED_REVIEW_UNVERIFIED');
+ assert.equal(report.recovery.original,null);
+ assert.equal(report.recovery.archive.sha256,createHash('sha256').update(original).digest('hex'));
+ assert.equal(report.recovery.releaseAuthorized,false);
  assert.deepEqual(await fs.readFile(archive),original);
  await assert.rejects(fs.lstat(file),{code:'ENOENT'});
 }));
@@ -453,4 +463,90 @@ test('duplicate-key pending evidence also blocks native controller dispatch',()=
   mode:'takeover',explicitUserAuthorization:'Ambiguous evidence cannot unlock input'
  }),/GUI_INCIDENT_STORAGE_UNAVAILABLE/);
  assert.equal(await fs.readFile(file,'utf8'),duplicate);
+}));
+
+test('read-only recovery inspection is absent until a marker appears',()=>ownFile(async file=>{
+ const store=createGuiInputIncidentStore({file});
+ assert.equal(await store.inspectRecovery(),null);
+ await store.begin('gui_key_press');
+ const before=await fs.readFile(file);
+ assert.equal(await store.inspectRecovery(),null);
+ assert.deepEqual(await fs.readFile(file),before);
+}));
+
+test('conflicting original and archive remain visible without granting permission',()=>ownFile(async file=>{
+ const store=createGuiInputIncidentStore({file});
+ await store.begin('gui_mouse_click');
+ const original=await fs.readFile(file);
+ await fs.writeFile(file+'.review-archive-v1.json',original,{flag:'wx'});
+ const result=await store.inspectRecovery();
+ assert.equal(result.state,'CONFLICTING_ORIGINALS');
+ assert.equal(result.recoveryRequired,true);
+ assert.equal(result.original.sha256,result.archive.sha256);
+ assert.equal(result.nativeOutcome,'UNKNOWN');
+ assert.equal(result.releaseAuthorized,false);
+ await assert.rejects(store.begin('gui_mouse_move'),/GUI_INCIDENT_RECOVERY_REQUIRED/);
+ assert.deepEqual(await fs.readFile(file),original);
+}));
+
+test('corrupt archived bytes never become authenticated recovery evidence',()=>ownFile(async file=>{
+ const store=createGuiInputIncidentStore({file});
+ await store.begin('gui_focus_window');
+ const archive=file+'.review-archive-v1.json';
+ await fs.rename(file,archive);
+ const before=await fs.readFile(archive);
+ const forged=before.toString('utf8').replace('PENDING_NATIVE_EFFECT','NOT_APPLIED');
+ await fs.writeFile(archive,forged);
+ await assert.rejects(store.inspectRecovery(),/GUI_INCIDENT_STORAGE_UNAVAILABLE/);
+ await assert.rejects(store.pending(),/GUI_INCIDENT_RECOVERY_REQUIRED/);
+ let out='';
+ const code=await recoveryCli(['--status'],{store,output:{write:x=>{out+=x;}},error:{write(){}}});
+ assert.equal(code,5);
+ const report=JSON.parse(out);
+ assert.equal(report.releaseAuthorized,false);
+ assert.equal(report.recovery,null);
+ assert.equal(report.inspectionError,'GUI_INCIDENT_STORAGE_UNAVAILABLE');
+ assert.equal(report.noReplay,true);
+ assert.equal(await fs.readFile(archive,'utf8'),forged);
+}));
+
+test('untrusted terminal marker is forensic metadata, never a clearance token',()=>ownFile(async file=>{
+ const marker=file+'.review-terminal-v1.json';
+ await fs.writeFile(marker,'{"authorization":true,"state":"REVIEWED_WITH_UNKNOWN_NATIVE_OUTCOME"}\\n');
+ const store=createGuiInputIncidentStore({file});
+ const recovery=await store.inspectRecovery();
+ assert.equal(recovery.state,'ORIGINAL_MISSING_RECOVERY_REQUIRED');
+ assert.equal(recovery.ownerAuthenticated,false);
+ assert.equal(recovery.releaseAuthorized,false);
+ assert.equal(recovery.original,null);
+ assert.ok(recovery.terminal.sha256);
+ assert.equal(recovery.terminal.incident,undefined);
+ await assert.rejects(store.begin('gui_type_text'),/GUI_INCIDENT_RECOVERY_REQUIRED/);
+}));
+
+test('hardlinked archived recovery evidence is rejected',()=>ownFile(async file=>{
+ const store=createGuiInputIncidentStore({file});
+ await store.begin('gui_mouse_drag');
+ const archive=file+'.review-archive-v1.json';
+ await fs.rename(file,archive);
+ const link=archive+'.alias';
+ await fs.link(archive,link);
+ try{
+  await assert.rejects(store.inspectRecovery(),/GUI_INCIDENT_STORAGE_UNAVAILABLE/);
+  await assert.rejects(store.begin('gui_type_text'),/GUI_INCIDENT_RECOVERY_REQUIRED/);
+ }finally{await fs.unlink(link);}
+}));
+
+test('recovery inspection cannot follow a symlinked archived original',{
+ skip:process.platform==='win32'
+},()=>ownFile(async file=>{
+ const store=createGuiInputIncidentStore({file});
+ await store.begin('gui_focus_window');
+ const archive=file+'.review-archive-v1.json';
+ await fs.rename(file,archive);
+ const backing=file+'.original';
+ await fs.rename(archive,backing);
+ await fs.symlink(backing,archive);
+ await assert.rejects(store.inspectRecovery(),/GUI_INCIDENT_STORAGE_UNAVAILABLE/);
+ await assert.rejects(store.pending(),/GUI_INCIDENT_RECOVERY_REQUIRED/);
 }));

@@ -23,12 +23,18 @@ export async function main(args=process.argv.slice(2),{store=createGuiInputIncid
     if(e?.guiCode!=='GUI_INCIDENT_RECOVERY_REQUIRED')throw e;
     // A prepared, archived or purportedly completed review is NOT proof
     // that a trusted native broker cleared the original uncertain effect.
+    // inspectRecovery is strictly forensic: even a matching archive,
+    // prepared marker or purported terminal cannot authorize a release.
+    let recovery=null,inspectionError=null;
+    try{recovery=await store.inspectRecovery();}
+    catch{inspectionError='GUI_INCIDENT_STORAGE_UNAVAILABLE';}
     output.write(JSON.stringify({
       pending:null,recoveryRequired:true,ownerReviewAvailable:false,
       nativeOutcome:'UNKNOWN',noReplay:true,noReleasePerformed:true,
-      releaseAuthorized:false,disposition:'BLOCKED_UNRECONCILED_REVIEW_ARTIFACT'
+      releaseAuthorized:false,disposition:'BLOCKED_UNRECONCILED_REVIEW_ARTIFACT',
+      recovery,inspectionError
     })+'\n');
-    return 4;
+    return inspectionError?5:4;
   }
   if(!incident){
     output.write(JSON.stringify({pending:false,ownerReviewAvailable:false,
