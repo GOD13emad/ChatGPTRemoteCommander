@@ -241,13 +241,18 @@ test('CI Windows runs the Transfer Mesh HTTP fixture alone without weakening rea
   const pkg=JSON.parse(read('package.json'));
   const original=prioritizeSensitiveQualificationCommands(boundNodeTestConcurrency(pkg.scripts.test,1).command);
   const agent=isolateWindowsAgentHttpRegression(original);
-  const lease=isolateWindowsLeaseRegression(agent);
-  const timed=isolateWindowsTimingSensitiveRegressions(lease);
+  const timed=isolateWindowsTimingSensitiveRegressions(agent);
   const tree=isolateWindowsProcessTreeRegression(timed);
-  const result=isolateWindowsTransferMeshHttpRegression(tree);
+  const transfer=isolateWindowsTransferMeshHttpRegression(tree);
+  const result=isolateWindowsLeaseRegression(transfer);
   const file='test/transfer-mesh-http.test.mjs',leader='node --test --test-concurrency=1 '+file+' && ';
-  assert.equal(result,leader+tree.replace(' '+file,''),'scheduling only; all other tests unchanged');
+  const scheduler='test/project-engine-integration.test.mjs';
+  const schedulerLeader='node --test --test-concurrency=1 '+scheduler+' && ';
+  assert.equal(transfer,leader+tree.replace(' '+file,''),'transfer scheduling only; all other tests unchanged');
+  assert.equal(result,schedulerLeader+transfer.replace(' '+scheduler,''),'scheduler scheduling only');
+  assert.ok(result.startsWith(schedulerLeader+leader),'bounded scheduler and HTTP fixture run first');
   assert.equal(result.split(file).length-1,1,'single execution is retained');
+  assert.equal(result.split(scheduler).length-1,1,'scheduler executes exactly once');
   assert.ok(result.includes('test/transfer-mesh-native.test.mjs'),'native transfer coverage stays enabled');
   assert.ok(result.includes('tools/commander-transfer-mesh/pilot-cli.test.mjs'));
   assert.ok(result.indexOf(file)<result.indexOf('test/transfer-mesh-native.test.mjs'),
@@ -258,6 +263,9 @@ test('CI Windows runs the Transfer Mesh HTTP fixture alone without weakening rea
     /CI_TRANSFER_HTTP_CARDINALITY/);
   const wrapper=read('tools/run-bounded-test-script.mjs');
   assert.ok(wrapper.includes("command=isolateWindowsTransferMeshHttpRegression(command);"));
+  assert.ok(wrapper.indexOf('command=isolateWindowsLeaseRegression(command);')>
+    wrapper.indexOf('command=isolateWindowsTransferMeshHttpRegression(command);'),
+    'last composed prefix is scheduled first; no additional test runs or deadlines');
   const fixture=read('test/transfer-mesh-http.test.mjs');
   assert.ok(fixture.includes('for(let i=0;i<200;i++)'),'same bounded readiness budget');
   assert.ok(fixture.includes('await wait(25)'),'same server-readiness poll');
