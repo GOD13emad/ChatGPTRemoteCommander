@@ -222,9 +222,9 @@ var
 begin
   Result := '';
   try
-    ; Existing per-user Git installation is an access-policy authority.
-    ; An ordinary Desktop/Control Center upgrade must not silently switch
-    ; a previously owner-authorized FULL_POWER profile to Standard.
+    // Existing per-user Git installation is an access-policy authority.
+    // An ordinary Desktop/Control Center upgrade must not silently switch
+    // a previously owner-authorized FULL_POWER profile to Standard.
     ExistingCoreGit := ExpandConstant('{localappdata}\ChatGPTRemoteCommander\app\.git');
     ExistingCore := DirExists(ExistingCoreGit) or FileExists(ExistingCoreGit);
     EnsurePowerShell7;
