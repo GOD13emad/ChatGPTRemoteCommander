@@ -6,11 +6,12 @@ import path from 'node:path';
 import {pathToFileURL} from 'node:url';
 import {stdout,stderr} from 'node:process';
 import {createGuiInputIncidentStore} from '../src/gui-incident-store.mjs';
+import {scanGuiDispatchers} from '../src/gui-dispatcher-preflight.mjs';
 
 export async function main(args=process.argv.slice(2),{store=createGuiInputIncidentStore(),
-  output=stdout,error=stderr}={}) {
-  if(args.length!==1||!['--status','--plan','--review'].includes(args[0])){
-    output.write('Usage: node tools/gui-incident-recover.mjs --status | --plan\n');
+  scanDispatchers=scanGuiDispatchers,output=stdout,error=stderr}={}) {
+  if(args.length!==1||!['--status','--plan','--preflight','--review'].includes(args[0])){
+    output.write('Usage: node tools/gui-incident-recover.mjs --status | --plan | --preflight\n');
     return 2;
   }
   if(args[0]==='--review'){
@@ -49,7 +50,34 @@ export async function main(args=process.argv.slice(2),{store=createGuiInputIncid
     nativeOutcome:'UNKNOWN',ownerReviewAvailable:false,noReplay:true,
     noReleasePerformed:true,releaseAuthorized:false
   };
-  if(args[0]==='--plan'){
+  if(args[0]==='--preflight'){
+    // Advisory enumeration is never the native lock or owner authentication.
+    let observed=null;
+    try{observed=await scanDispatchers();}
+    catch{ /* Incomplete process enumeration is never a zero-process claim. */ }
+    const valid=observed?.scan==='ADVISORY_ONLY'&&
+      ['PROCESS_CENSUS_ONLY','INCOMPLETE'].includes(observed.coverage)&&
+      Array.isArray(observed.active)&&observed.active.length<=1024&&
+      observed.active.every(p=>Number.isSafeInteger(p.pid)&&p.pid>0&&
+        Number.isSafeInteger(p.session)&&p.session>=0&&
+        ['core','native-helper'].includes(p.role));
+    const active=valid?observed.active.map(p=>({
+      pid:p.pid,session:p.session,role:p.role
+    })):null;
+    // Never forward injected trust booleans, command lines or secret fields.
+    const dispatchers={
+      scan:valid?'ADVISORY_ONLY':'FAILED',
+      coverage:valid?observed.coverage:'UNKNOWN',active,
+      activeCount:active?.length??null,quiescenceProven:false,
+      releaseAuthorized:false,noReplay:true,
+      limits:'Process inventory is advisory, not a native dispatch barrier'
+    };
+    output.write(JSON.stringify({
+      ...status,readOnlyPreflight:true,
+      disposition:'BLOCKED_NO_TRUSTED_RECONCILIATION',
+      dispatchers
+    })+'\n');
+  }else if(args[0]==='--plan'){
     output.write(JSON.stringify({
       ...status,readOnlyPreflight:true,
       disposition:'BLOCKED_NO_TRUSTED_RECONCILIATION',

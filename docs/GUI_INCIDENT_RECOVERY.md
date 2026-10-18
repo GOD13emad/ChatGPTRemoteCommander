@@ -42,3 +42,9 @@ When any adjacent `.review-prepared-v1.json`, `.review-archive-v1.json` or `.rev
 The archived original is validated as canonical `PENDING_NATIVE_EFFECT` bytes, with stable file identity, size and link rejection. Arbitrary marker contents are **not parsed as trusted consent**. `CONFLICTING_ORIGINALS`, `ORIGINAL_ARCHIVED_REVIEW_UNVERIFIED`, `REVIEW_INTERRUPTED_OR_UNTRUSTED` and `ORIGINAL_MISSING_RECOVERY_REQUIRED` are observational labels, not permission states. Corrupt or unsafe evidence yields `inspectionError:GUI_INCIDENT_STORAGE_UNAVAILABLE`; the CLI exits nonzero and input remains blocked.
 
 There is still no owner broker, trusted review transition, automatic unlock, manual deletion, or Replay in these tools. This inspection is *not* proof of power-loss durability or native authorization.
+
+### Native dispatcher preflight (read-only)
+
+`node tools/gui-incident-recover.mjs --preflight` adds a bounded **advisory** inventory of observed Commander Core and native GUI Helper processes. It reports only PID, session identifier and role, never command-line arguments or typed content. On Windows it reads Win32 process metadata; on Linux it reads `/proc`. Enumeration failure returns `scan:FAILED` and an unknown count, **not** a false zero. The command does not terminate processes, steal GUI leases, acquire the production Mutex, archive or clear any Incident.
+
+Even when `activeCount:0`, the output remains `quiescenceProven:false` and `releaseAuthorized:false`: an observation is not an atomic native dispatch barrier, and older or unavailable clients may not participate. This is a diagnostic prerequisite for the OS-local owner broker, **not** permission to move the pending journal or deploy the candidate.
