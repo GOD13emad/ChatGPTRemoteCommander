@@ -3,6 +3,9 @@ const mode = process.argv[2] ?? 'oneshot';
 const variant = process.argv[3] ?? 'valid';
 const variants = {
   valid: {ok:false,error:'GUI_NATIVE_BUSY',submission:'NOT_SUBMITTED'},
+  coordinator: {ok:false,error:'GUI_COORDINATOR_UNAVAILABLE',submission:'NOT_SUBMITTED'},
+  coordinatorExtra: {ok:false,error:'GUI_COORDINATOR_UNAVAILABLE',submission:'NOT_SUBMITTED',extra:'NOT_PROVEN'},
+  coordinatorMissing: {ok:false,error:'GUI_COORDINATOR_UNAVAILABLE'},
   missing: {ok:false,error:'GUI_NATIVE_BUSY'},
   extra: {ok:false,error:'GUI_NATIVE_BUSY',submission:'NOT_SUBMITTED',extra:true},
   forged: {ok:false,error:'GUI_NATIVE_FAILED',submission:'NOT_SUBMITTED'},

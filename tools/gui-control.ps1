@@ -1,10 +1,64 @@
-param([switch]$SelfTest,[switch]$Server)
+param([switch]$SelfTest,[switch]$Server,[switch]$CoordinatorSelfTest)
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 $utf8NoBom = [Text.UTF8Encoding]::new($false)
 [Console]::InputEncoding = $utf8NoBom
 [Console]::OutputEncoding = $utf8NoBom
 if (-not $IsWindows) { throw 'GUI_WINDOWS_ONLY' }
+
+# MutexAcl is available in the pinned PowerShell/.NET 10 Windows runtime.
+# Account-SID Global lock covers participating sessions; legacy Local lock
+# still covers older helpers in this single Windows session.
+# This is synchronization, NOT independently authenticated owner consent.
+function Open-RcGuiAccountInputMutex([string]$qaSuffix = '') {
+    $sid=[Security.Principal.WindowsIdentity]::GetCurrent().User
+    if($null -eq $sid){throw 'GUI_COORDINATOR_IDENTITY_MISSING'}
+    $name='Global\ChatGPTRemoteCommander.GuiInput.User.'+$sid.Value
+    if($qaSuffix){
+        if($qaSuffix -notmatch '^QA\.[a-f0-9]{32}$'){throw 'GUI_COORDINATOR_QA_SCOPE_INVALID'}
+        $name+='.'+$qaSuffix
+    }
+    $security=[Security.AccessControl.MutexSecurity]::new()
+    $security.AddAccessRule([Security.AccessControl.MutexAccessRule]::new(
+        $sid,[Security.AccessControl.MutexRights]::FullControl,
+        [Security.AccessControl.AccessControlType]::Allow))
+    $createdNew=$false
+    $handle=$null
+    try{
+        $handle=[Threading.MutexAcl]::Create($false,$name,[ref]$createdNew,$security)
+        # Preexisting mutexes ignore the supplied DACL: verify before use.
+        $current=[Security.AccessControl.MutexSecurity]::new($name,
+            [Security.AccessControl.AccessControlSections]'Access,Owner')
+        $owner=$current.GetOwner([Security.Principal.SecurityIdentifier])
+        $rules=@($current.GetAccessRules($true,$true,[Security.Principal.SecurityIdentifier]))
+        if($owner.Value -cne $sid.Value -or $rules.Count -ne 1 -or
+           $rules[0].IdentityReference.Value -cne $sid.Value -or
+           $rules[0].AccessControlType -ne [Security.AccessControl.AccessControlType]::Allow -or
+           $rules[0].MutexRights -ne [Security.AccessControl.MutexRights]::FullControl){
+            throw 'GUI_COORDINATOR_ACL_MISMATCH'
+        }
+        return $handle
+    }catch{
+        if($handle){$handle.Dispose()}
+        throw 'GUI_COORDINATOR_UNAVAILABLE'
+    }
+}
+if($CoordinatorSelfTest){
+    # Same function, random QA object; never acquire the production mutex.
+    $h=Open-RcGuiAccountInputMutex ('QA.'+[guid]::NewGuid().ToString('N'))
+    $held=$false
+    try{
+        $held=$h.WaitOne(0)
+        if(-not $held){throw 'GUI_COORDINATOR_QA_BUSY'}
+        @{ok=$true;fixtureOnly=$true;aclVerified=$true;acquired=$true;
+          noDesktopOrProductionMutexTouched=$true}|ConvertTo-Json -Compress
+    }finally{
+        if($held){$h.ReleaseMutex()}
+        $h.Dispose()
+    }
+    exit 0
+}
+
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 Add-Type -Path (Join-Path $PSScriptRoot 'gui-native.cs')
@@ -39,11 +93,23 @@ function Convert-GuiErrorPayload($record) {
 function Invoke-GuiRequest([hashtable]$req) {
 $owned = $false
 $mutex = $null
+$accountOwned = $false
+$accountMutex = $null
 $oldDpi = [IntPtr]::Zero
 try {
     $actions = @('status','screenshot','cursor','listWindows','move','moveRelative','scroll','click','drag','typeText','keyPress','focusWindow')
     if ($req['action'] -notin $actions) { throw 'GUI_UNKNOWN_ACTION' }
     $stop = Join-Path (Split-Path -Parent $PSScriptRoot) 'var\GUI_STOP'
+    # The account-wide lock excludes native input in participating Windows
+    # sessions. The existing Local lock also serializes older same-session helpers.
+    $mutation=$req['action'] -in @('move','moveRelative','scroll','click','drag','typeText','keyPress','focusWindow')
+    if($mutation){
+        try{ $accountMutex=Open-RcGuiAccountInputMutex }
+        catch{ return @{ok=$false;error='GUI_COORDINATOR_UNAVAILABLE';submission='NOT_SUBMITTED'} }
+        try { $accountOwned=$accountMutex.WaitOne(0) }
+        catch [Threading.AbandonedMutexException] { $accountOwned=$true; throw 'GUI_GLOBAL_MUTEX_ABANDONED' }
+        if(-not $accountOwned) { return @{ok=$false;error='GUI_NATIVE_BUSY';submission='NOT_SUBMITTED'} }
+    }
     # Fixed local path: a request may not replace the local emergency-stop file.
     $mutex = [Threading.Mutex]::new($false, 'Local\ChatGPTRemoteCommander.GuiInput')
     try { $owned = $mutex.WaitOne(0) } catch [Threading.AbandonedMutexException] { $owned=$true; throw 'GUI_PREVIOUS_HELPER_ABANDONED' }
@@ -84,7 +150,6 @@ try {
         if(-not $b.Contains($px,$py)) { throw 'GUI_POINT_OUTSIDE_MONITOR' }
         return @{X=$px;Y=$py}
     }
-    $mutation=$req['action'] -in @('move','moveRelative','scroll','click','drag','typeText','keyPress','focusWindow')
     if($mutation) {
         if(-not $req['expected']) { throw 'GUI_EXPECTED_FRAME_REQUIRED' }
         $observed=$req['expected']
@@ -181,6 +246,8 @@ try {
     if($oldDpi -ne [IntPtr]::Zero) { [void][RcGuiNative]::SetThreadDpiAwarenessContext($oldDpi) }
     if($owned) { $mutex.ReleaseMutex() }
     if($mutex) { $mutex.Dispose() }
+    if($accountOwned) { $accountMutex.ReleaseMutex() }
+    if($accountMutex) { $accountMutex.Dispose() }
 }
 }
 
