@@ -8,6 +8,7 @@ import {createHash} from 'node:crypto';
 import {fileURLToPath, pathToFileURL} from 'node:url';
 import {createGuiController} from '../src/gui-tools-windows.mjs';
 import {createGuiInputIncidentStore} from '../src/gui-incident-store.mjs';
+import {main as recoveryCli} from '../tools/gui-incident-recover.mjs';
 
 const ownFile=async(run)=>{
  const root=await fs.mkdtemp(path.join(os.tmpdir(),'rc-gui-incident-j01-'));
@@ -349,4 +350,107 @@ test('fingerprint changes when original pending bytes change, never gives cleara
  assert.equal(next.id,prior.id);
  assert.equal(next.nativeOutcome,'UNKNOWN');
  assert.equal(typeof store.review,'undefined');
+}));
+
+test('a PREPARED recovery artifact blocks mutations but allows incident observation',()=>ownFile(async file=>{
+ const store=createGuiInputIncidentStore({file});
+ await store.begin('gui_mouse_click');
+ const original=await fs.readFile(file);
+ await fs.writeFile(file+'.review-prepared-v1.json','SIMULATED_INCOMPLETE_REVIEW');
+ await assert.rejects(store.pending(),/GUI_INCIDENT_RECOVERY_REQUIRED/);
+ await assert.rejects(store.inspect(),/GUI_INCIDENT_RECOVERY_REQUIRED/);
+ let submitted=0;
+ const c=controller(store,{invoke:async req=>{
+  if(req.action==='status')return {ok:true,available:true};
+  if(req.action==='screenshot')return image();
+  submitted++;
+  return {ok:true};
+ }});
+ const status=await c.run('gui_status');
+ assert.equal(status.inputAvailable,false);
+ assert.equal(status.incidentStoreUnavailable,true);
+ const obs=await c.run('gui_session_begin',{mode:'observe'});
+ const shot=await c.run('gui_screenshot',{lease:obs.lease});
+ assert.ok(shot.__structuredContent.frame);
+ await assert.rejects(c.run('gui_session_begin',{
+  mode:'takeover',explicitUserAuthorization:'The review is incomplete'
+ }),/GUI_INCIDENT_STORAGE_UNAVAILABLE/);
+ assert.equal(submitted,0);
+ assert.deepEqual(await fs.readFile(file),original);
+ let out='';
+ const rc=await recoveryCli(['--status'],{store,output:{write:x=>{out+=x;}},error:{write(){}}});
+ assert.equal(rc,4);
+ const report=JSON.parse(out);
+ assert.equal(report.pending,null);
+ assert.equal(report.recoveryRequired,true);
+ assert.equal(report.releaseAuthorized,false);
+ assert.equal(report.noReplay,true);
+ assert.deepEqual(await fs.readFile(file),original);
+}));
+
+test('missing pending after an interrupted archive is never a new-input permit',()=>ownFile(async file=>{
+ const first=createGuiInputIncidentStore({file});
+ await first.begin('gui_focus_window');
+ const original=await fs.readFile(file);
+ const archive=file+'.review-archive-v1.json';
+ await fs.rename(file,archive); // disposable fixture only, never a live incident
+ const reopened=createGuiInputIncidentStore({file});
+ await assert.rejects(reopened.pending(),/GUI_INCIDENT_RECOVERY_REQUIRED/);
+ await assert.rejects(reopened.begin('gui_key_press'),/GUI_INCIDENT_RECOVERY_REQUIRED/);
+ const c=controller(reopened);
+ const status=await c.run('gui_status');
+ assert.equal(status.inputAvailable,false);
+ assert.equal(status.incidentStoreUnavailable,true);
+ assert.equal(status.available,true);
+ const obs=await c.run('gui_session_begin',{mode:'observe'});
+ await c.run('gui_screenshot',{lease:obs.lease});
+ await assert.rejects(c.run('gui_session_begin',{
+  mode:'takeover',explicitUserAuthorization:'An archive is not native proof'
+ }),/GUI_INCIDENT_STORAGE_UNAVAILABLE/);
+ let out='';
+ const rc=await recoveryCli(['--plan'],{store:reopened,output:{write:x=>{out+=x;}},error:{write(){}}});
+ assert.equal(rc,4);
+ assert.equal(JSON.parse(out).disposition,'BLOCKED_UNRECONCILED_REVIEW_ARTIFACT');
+ assert.deepEqual(await fs.readFile(archive),original);
+ await assert.rejects(fs.lstat(file),{code:'ENOENT'});
+}));
+
+test('a forged terminal review marker cannot release GUI without a native broker',()=>ownFile(async file=>{
+ const marker=file+'.review-terminal-v1.json';
+ await fs.writeFile(marker,JSON.stringify({reviewed:true,releaseAuthorized:true})+'\n');
+ const store=createGuiInputIncidentStore({file});
+ await assert.rejects(store.pending(),/GUI_INCIDENT_RECOVERY_REQUIRED/);
+ const c=controller(store);
+ const status=await c.run('gui_status');
+ assert.equal(status.inputAvailable,false);
+ assert.equal(status.incidentStoreUnavailable,true);
+ assert.equal(status.available,true);
+ await assert.rejects(c.run('gui_session_begin',{
+  mode:'takeover',explicitUserAuthorization:'Untrusted status marker'
+ }),/GUI_INCIDENT_STORAGE_UNAVAILABLE/);
+ const persisted=await fs.readFile(marker,'utf8');
+ assert.match(persisted,/releaseAuthorized/);
+}));
+
+test('duplicate-key pending evidence also blocks native controller dispatch',()=>ownFile(async file=>{
+ const store=createGuiInputIncidentStore({file});
+ await store.begin('gui_mouse_drag');
+ const original=await fs.readFile(file,'utf8');
+ const duplicate=original.replace(
+  '"status":"PENDING_NATIVE_EFFECT"',
+  '"status":"PENDING_NATIVE_EFFECT","status":"PENDING_NATIVE_EFFECT"'
+ );
+ assert.notEqual(duplicate,original);
+ await fs.writeFile(file,duplicate);
+ await assert.rejects(store.pending(),/GUI_INCIDENT_STORAGE_UNAVAILABLE/);
+ const c=controller(store);
+ const status=await c.run('gui_status');
+ assert.equal(status.inputAvailable,false);
+ assert.equal(status.incidentStoreUnavailable,true);
+ const obs=await c.run('gui_session_begin',{mode:'observe'});
+ await c.run('gui_screenshot',{lease:obs.lease});
+ await assert.rejects(c.run('gui_session_begin',{
+  mode:'takeover',explicitUserAuthorization:'Ambiguous evidence cannot unlock input'
+ }),/GUI_INCIDENT_STORAGE_UNAVAILABLE/);
+ assert.equal(await fs.readFile(file,'utf8'),duplicate);
 }));

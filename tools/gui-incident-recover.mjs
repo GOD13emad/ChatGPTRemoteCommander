@@ -17,7 +17,19 @@ export async function main(args=process.argv.slice(2),{store=createGuiInputIncid
     error.write('GUI_OWNER_RECONCILIATION_NOT_IMPLEMENTED: no trusted native owner broker; no incident was changed.\n');
     return 3;
   }
-  const incident=await store.inspect();
+  let incident;
+  try{incident=await store.inspect();}
+  catch(e){
+    if(e?.guiCode!=='GUI_INCIDENT_RECOVERY_REQUIRED')throw e;
+    // A prepared, archived or purportedly completed review is NOT proof
+    // that a trusted native broker cleared the original uncertain effect.
+    output.write(JSON.stringify({
+      pending:null,recoveryRequired:true,ownerReviewAvailable:false,
+      nativeOutcome:'UNKNOWN',noReplay:true,noReleasePerformed:true,
+      releaseAuthorized:false,disposition:'BLOCKED_UNRECONCILED_REVIEW_ARTIFACT'
+    })+'\n');
+    return 4;
+  }
   if(!incident){
     output.write(JSON.stringify({pending:false,ownerReviewAvailable:false,
       nativeOutcome:null,noReplay:true,noReleasePerformed:true,

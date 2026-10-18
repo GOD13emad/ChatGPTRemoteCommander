@@ -25,21 +25,29 @@ export function createGuiInputIncidentStore({file=defaultFile(),now=()=>new Date
   // Unexported per-instance authority: a prior persisted file, guessed ID or
   // freshly instantiated store can NEVER substitute for this begin() handle.
   const issuedHandles=new WeakSet();
+  // Reserve the crash-reconciliation namespace. A missing original file is
+  // NOT proof of recovery if any transaction artifact exists. These paths
+  // cannot grant authorization and are not created by normal GUI dispatch.
+  const reviewArtifacts=[
+    file+'.review-prepared-v1.json',
+    file+'.review-archive-v1.json',
+    file+'.review-terminal-v1.json'
+  ];
+  async function requireNoUnreconciledReview(){
+    for(const candidate of reviewArtifacts){
+      try{await fs.lstat(candidate);}
+      catch(e){
+        if(e?.code==='ENOENT')continue;
+        throw fail('GUI_INCIDENT_STORAGE_UNAVAILABLE');
+      }
+      throw fail('GUI_INCIDENT_RECOVERY_REQUIRED');
+    }
+  }
   async function pending(){
-    let st;
-    try{st=await fs.lstat(file);}
-    catch(e){if(e.code==='ENOENT')return null;throw fail('GUI_INCIDENT_STORAGE_UNAVAILABLE');}
-    if(!st.isFile()||st.isSymbolicLink()||st.nlink!==1||st.size<1||st.size>2048)
-      throw fail('GUI_INCIDENT_STORAGE_UNAVAILABLE');
-    let raw,record;
-    try{raw=await fs.readFile(file,'utf8');record=JSON.parse(raw);}
-    catch{throw fail('GUI_INCIDENT_STORAGE_UNAVAILABLE');}
-    if(record?.schema!==SCHEMA||record.status!=='PENDING_NATIVE_EFFECT'||
-      !INPUT_TOOLS.has(record.tool)||typeof record.id!=='string'||
-      !/^[a-zA-Z0-9-]{8,128}$/.test(record.id)||
-      typeof record.startedUtc!=='string'||record.startedUtc.length>48)
-      throw fail('GUI_INCIDENT_STORAGE_UNAVAILABLE');
-    return {id:record.id,tool:record.tool,startedUtc:record.startedUtc};
+    // Reuse the exact, canonical, race-checked reader; a looser reader
+    // could mistakenly permit native input during an interrupted review.
+    const record=await inspect();
+    return record?{id:record.id,tool:record.tool,startedUtc:record.startedUtc}:null;
   }
   async function begin(tool){
     if(!INPUT_TOOLS.has(tool))throw fail('GUI_INCIDENT_TOOL_INVALID');
@@ -50,6 +58,7 @@ export function createGuiInputIncidentStore({file=defaultFile(),now=()=>new Date
       const dir=await fs.lstat(folder);
       if(!dir.isDirectory()||dir.isSymbolicLink())throw fail('GUI_INCIDENT_STORAGE_UNAVAILABLE');
       const record={schema:SCHEMA,status:'PENDING_NATIVE_EFFECT',tool,id:id(),startedUtc:now()};
+      await requireNoUnreconciledReview();
       const fd=await fs.open(file,'wx',0o600); // Exclusive across processes; never truncate an unresolved incident.
       try{
         await fd.writeFile(JSON.stringify(record)+'\n','utf8');
@@ -68,17 +77,21 @@ export function createGuiInputIncidentStore({file=defaultFile(),now=()=>new Date
       throw fail('GUI_INCIDENT_HANDLE_INVALID');
     const prior=await pending();
     if(!prior||prior.id!==handle.id||prior.tool!==handle.tool)throw fail('GUI_INCIDENT_RESOLUTION_MISMATCH');
-    try{await fs.unlink(file);issuedHandles.delete(handle);}
+    try{await requireNoUnreconciledReview();await fs.unlink(file);issuedHandles.delete(handle);}
     catch{throw fail('GUI_INCIDENT_STORAGE_UNAVAILABLE');}
   }
 
   // Stable, privacy-minimal READ-ONLY fingerprint for incident diagnosis.
   // This is not a capability token and never authorizes input or archival.
   async function inspect(){
+    await requireNoUnreconciledReview();
     let before;
     try{before=await fs.lstat(file,{bigint:true});}
     catch(error){
-      if(error?.code==='ENOENT')return null;
+      if(error?.code==='ENOENT'){
+        await requireNoUnreconciledReview();
+        return null;
+      }
       throw fail('GUI_INCIDENT_STORAGE_UNAVAILABLE');
     }
     const safe=st=>st.isFile()&&!st.isSymbolicLink()&&st.nlink===1n&&
@@ -110,6 +123,7 @@ export function createGuiInputIncidentStore({file=defaultFile(),now=()=>new Date
         !/^[a-zA-Z0-9-]{8,128}$/.test(record.id)||
         typeof record.startedUtc!=='string'||record.startedUtc.length>48)
         throw fail('GUI_INCIDENT_STORAGE_UNAVAILABLE');
+      await requireNoUnreconciledReview();
       return {
         id:record.id,tool:record.tool,startedUtc:record.startedUtc,
         status:'PENDING_NATIVE_EFFECT',nativeOutcome:'UNKNOWN',

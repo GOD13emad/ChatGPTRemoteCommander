@@ -29,3 +29,9 @@ The `--status` output includes the exact **SHA-256 of the original incident file
 See `GUI_INCIDENT_RECONCILIATION_DESIGN.md`. The real release path must be a native product-owned transition, not a raw filesystem action from ChatGPT or a same-user mutable key/receipt. It must serialize all GUI dispatchers (not just a fixture writer), preserve exact original bytes, stage a durable journal, use an independently trusted owner-presence mechanism, and fail closed after unknown process/power outcomes.
 
 Do not manually delete or rename `gui-pending-native-input-v1.json` and do not forge `NOT_APPLIED`: an old `gui_type_text` may already have sent text. The installed Emad Windows and Linux runtimes remain unchanged until separately qualified deployment. No unsigned v0.10.25 release is authorized.
+
+## Interrupted review guard (isolated candidate)
+
+While the separate trusted-owner broker is unfinished, the incident store reserves three adjacent recovery artifact suffixes: `.review-prepared-v1.json`, `.review-archive-v1.json`, and `.review-terminal-v1.json` (all appended to the original pending filename). An artifact's **existence only** is treated as a blocker, not as proof that review succeeded. If a crash left an archived original but removed the pending pathname, new GUI input still remains denied; read-only screenshots can continue.
+
+In this state the read-only CLI `--status` / `--plan` returns `recoveryRequired:true`, `releaseAuthorized:false`, `noReplay:true` and exit code **4**. This is a fail-closed detection mechanism, **not** a working archive/release operation. Neither GUI tools nor text confirmation can delete the blocker. Do not manually create, edit, move or delete any recovery or original incident artifact on an operational host. Real owner consent, trusted review broker and controlled recovery remain pending.
