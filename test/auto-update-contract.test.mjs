@@ -99,6 +99,59 @@ test('R230 real updater helper execution leaves arbitrary legacy projection sent
  }
 });
 
+test('R-fleet unattended Stable check preserves newer persisted active route when MCP is unavailable',t=>{
+ const win=read('auto-update-windows.ps1');
+ const marker=win.indexOf('  # R-fleet: An accepted newer route');
+ const end=win.indexOf('  $currentStatus=$null',marker);
+ assert.ok(marker>win.indexOf('$script:QualificationCommit=$stage.Commit'),'guard follows stage identity');
+ assert.ok(end>marker && end<win.indexOf("Run-Gate $stage.Dir 'check'"),'guard must precede tests or promotion');
+ const snippet=win.slice(marker,end);
+ for(const key of ["if(-not $Force)", "Get-RoutePath 'default'","Read-Json $persistedRoutePath",
+   "Test-VersionGreater $persistedVersion $stage.Version","$report.authoritySource='PERSISTED_ROUTE'",
+   "AUTO_UPDATE_NEWER_PERSISTED_ROUTE","exit 0"])assert.ok(snippet.includes(key),'missing '+key);
+ if(process.platform!=='win32')return;
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'rc-route-no-downgrade-'));
+ t.after(()=>fs.rmSync(dir,{recursive:true,force:true}));
+ const fixture=path.join(dir,'default.json');
+ const run=(force,contents)=>{
+   if(contents===null){fs.rmSync(fixture,{force:true});}
+   else fs.writeFileSync(fixture,contents,'utf8');
+   const program=[
+     "$ErrorActionPreference='Stop'",
+     '$Force='+String(force?'$true':'$false'),
+     "$stage=[pscustomobject]@{Version='0.10.20'}",
+     "$report=[ordered]@{}",
+     "$ResultFile='unused-isolated-contract'",
+     'function Get-RoutePath([string]$Profile){return $env:RC_ROUTE_FIXTURE}',
+     'function Read-Json([string]$Path){return Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json -ErrorAction Stop}',
+     'function Test-VersionGreater([string]$Left,[string]$Right){return ([version]$Left -gt [version]$Right)}',
+     'function Atomic-Json([string]$Path,[object]$Value){Write-Output ("RECEIPT_STATUS="+$Value.status)}',
+     'function Log([string]$Message){Write-Output $Message}',
+     snippet,
+     "Write-Output 'CROSSED_GUARD'"
+   ].join('\n');
+   return spawnSync('pwsh.exe',['-NoLogo','-NoProfile','-NonInteractive','-Command',program],{
+     encoding:'utf8',timeout:15000,
+     env:{...process.env,RC_ROUTE_FIXTURE:fixture}
+   });
+ };
+ const newer=JSON.stringify({active:{version:'0.10.24',commit:'accepted-preview'}});
+ const blocked=run(false,newer);
+ assert.equal(blocked.status,0,blocked.stderr);
+ assert.match(blocked.stdout,/AUTO_UPDATE_NEWER_PERSISTED_ROUTE/);
+ assert.match(blocked.stdout,/RECEIPT_STATUS=NEWER_CURRENT/);
+ assert.doesNotMatch(blocked.stdout,/CROSSED_GUARD/);
+ const explicit=run(true,newer);
+ assert.equal(explicit.status,0,explicit.stderr);
+ assert.match(explicit.stdout,/CROSSED_GUARD/,'explicit Force is still available');
+ const fresh=run(false,null);
+ assert.equal(fresh.status,0,fresh.stderr);
+ assert.match(fresh.stdout,/CROSSED_GUARD/,'first install without route is unaffected');
+ const invalid=run(false,'{"active": ');
+ assert.notEqual(invalid.status,0,'unparseable persisted authority fails closed');
+ assert.doesNotMatch(invalid.stdout,/CROSSED_GUARD/);
+});
+
 test('auto updater is candidate-first, hardware-gated and commit-point aware',()=>{
   const s=read('auto-update-windows.ps1');
   for(const marker of [
