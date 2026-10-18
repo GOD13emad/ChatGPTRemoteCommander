@@ -31,7 +31,7 @@ const prelude=[
   "$InstallDir=Join-Path $root 'installed-app'",
   "$ResultFile=Join-Path $root 'result.json'",
   "$routePath=Join-Path $root 'default.json'",
-  "if($caseName -eq 'direct-unverified'){",
+  "if($caseName -match '^direct-'){",
   '  New-Item -ItemType Directory -Path $InstallDir -Force|Out-Null',
   '  [IO.File]::WriteAllText((Join-Path $InstallDir \'package.json\'),\'{"version":"0.10.24"}\')',
   '}else{',
@@ -43,10 +43,12 @@ const prelude=[
   'function Read-Json([string]$p){Get-Content -LiteralPath $p -Raw|ConvertFrom-Json}',
   'function Test-VersionGreater([string]$a,[string]$b){return ([version]$a -gt [version]$b)}',
   'function Invoke-Mcp([int]$p,[string]$n){',
-  "  if($caseName -in @('routed-newer','routed-unverified','direct-unverified')){throw 'SIMULATED_STATUS_TIMEOUT'}",
+  "  if($caseName -in @('routed-newer','routed-unverified','direct-active','direct-report','direct-fresh')){throw 'SIMULATED_STATUS_TIMEOUT'}",
   "  if($caseName -eq 'routed-mismatch'){return [pscustomobject]@{version='0.10.24'}}",
   "  return [pscustomobject]@{version='0.10.20'}",
   '}',
+  "function Get-NetTCPConnection { if($caseName -eq 'direct-active'){return [pscustomobject]@{LocalPort=47831;State='Listen'}} }",
+  "if($caseName -eq 'direct-report'){[IO.File]::WriteAllText($ResultFile,'{\"status\":\"PROMOTED\"}')} ",
   'function Atomic-Json([string]$p,[object]$v){}',
   "function Log([string]$s){Write-Output ('LOG='+$s)}"
 ].join('\n');
@@ -56,7 +58,9 @@ for(const c of [
   {name:'routed-unverified',exit:1,marker:'AUTO_UPDATE_ACTIVE_MCP_STATUS_UNVERIFIED'},
   {name:'routed-mismatch',exit:1,marker:'AUTO_UPDATE_ROUTE_MCP_VERSION_CONFLICT'},
   {name:'routed-equal',exit:0,marker:'GUARD_CONTINUED'},
-  {name:'direct-unverified',exit:1,marker:'AUTO_UPDATE_DIRECT_MCP_STATUS_UNVERIFIED'}
+  {name:'direct-active',exit:1,marker:'AUTO_UPDATE_DIRECT_MCP_STATUS_UNVERIFIED'},
+  {name:'direct-report',exit:1,marker:'AUTO_UPDATE_DIRECT_MCP_STATUS_UNVERIFIED'},
+  {name:'direct-fresh',exit:0,marker:'GUARD_CONTINUED'}
 ]){
   test('Windows updater version guard: '+c.name,{skip:process.platform!=='win32'},()=>{
     const dir=mkdtempSync(join(tmpdir(),'rc-updater-version-guard-'));
