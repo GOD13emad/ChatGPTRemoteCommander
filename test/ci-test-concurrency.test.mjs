@@ -63,6 +63,16 @@ test('qualification paths bound full test file concurrency',()=>{
   assert.ok(updateWindows.includes("Run-Gate $stage.Dir 'test' @('run','test:qualification')"));
 });
 
+test('protected CI check names occur only once per PR commit, while main pushes remain qualified',()=>{
+  const workflow=read('.github/workflows/ci.yml');
+  assert.match(workflow,/^on:\r?\n(?:  #.*\r?\n)*  push:\r?\n    branches: \[main\]\r?\n  pull_request:/m,
+    'feature branch pushes must not produce duplicate required Windows check contexts');
+  assert.match(workflow,/^\s+os: \[windows-latest, ubuntu-latest\]$/m,
+    'both operating systems remain in the mandatory PR matrix');
+  assert.match(workflow,/run: node tools\/run-bounded-test-script\.mjs --script test --concurrency 1 --prioritize-sensitive 1/,
+    'Windows qualification cannot be skipped or weakened');
+});
+
 test('bounded test wrapper rejects unsafe configuration',()=>{
   assert.throws(()=>boundNodeTestConcurrency('node --test test/a.test.mjs',0),/CI_TEST_CONCURRENCY_INVALID/);
   assert.throws(()=>boundNodeTestConcurrency('node test/a.mjs',2),/CI_TEST_COMMAND_MISSING/);
