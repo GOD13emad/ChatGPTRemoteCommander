@@ -275,7 +275,7 @@ function Invoke-GuiRaw([string]$raw) {
 }
 
 if($Server) {
-    @{ok=$true;ready=$true;protocol=1} | ConvertTo-Json -Compress
+    @{ok=$true;ready=$true;protocol=1;nativeInputCoordinator=1} | ConvertTo-Json -Compress
     [Console]::Out.Flush()
     while(($raw=[Console]::In.ReadLine()) -ne $null) {
         $payload=Invoke-GuiRaw $raw

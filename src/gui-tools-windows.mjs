@@ -19,13 +19,19 @@ const backendSpec = platform => platform === 'win32'
     ? { file: 'python3', args: [linuxHelper, '--server'], oneShotArgs: [linuxHelper] }
     : null;
 const defaultBackend = backendSpec(process.platform);
-const persistentHelper = defaultBackend ? createGuiProcessClient({ file: defaultBackend.file, args: defaultBackend.args }) : null;
+const persistentHelper = defaultBackend ? createGuiProcessClient({ file: defaultBackend.file, args: defaultBackend.args, requireNativeInputCoordinator: process.platform === 'win32' }) : null;
 const invokeDefault = request => {
   if (persistentHelper) return persistentHelper.invoke(request);
   if (!defaultBackend) throw guiError('GUI_PLATFORM_BACKEND_UNSUPPORTED');
   return runGuiProcess(request, { file: defaultBackend.file, args: defaultBackend.oneShotArgs });
 };
 const closeInvokeDefault = () => persistentHelper?.close();
+const prepareNativeInputDefault = async () => {
+  // Require a freshly validated *process* handshake before reserving J01.
+  // An older helper may still serve read-only observation, but cannot mutate.
+  if (!persistentHelper) throw guiError('GUI_HELPER_COORDINATOR_MISMATCH');
+  await persistentHelper.verifyNativeInputCoordinator();
+};
 async function stopped() {
   for (const candidate of [stopFile, globalStopFile].filter(Boolean)) {
     try { await access(candidate); return true; }
@@ -41,7 +47,8 @@ const bound = (v, low, high, defaultValue) => Number.isSafeInteger(v) ? Math.max
  * application coordination; distinct trust levels require separate OS sessions.
  */
 export function createGuiController({ platform = process.platform, now = () => performance.now(), token = () => randomBytes(24).toString('hex'), isStopped = stopped,
-  invoke = invokeDefault, closeInvoke = closeInvokeDefault, incidentStore = createGuiInputIncidentStore() } = {}) {
+  invoke = invokeDefault, closeInvoke = closeInvokeDefault, incidentStore = createGuiInputIncidentStore(),
+  prepareNativeInput = invoke === invokeDefault && platform === 'win32' ? prepareNativeInputDefault : null } = {}) {
   let session = null;
   let frame = null;
   let busy = false;
@@ -149,6 +156,16 @@ export function createGuiController({ platform = process.platform, now = () => p
       if (name === 'gui_screenshot') {
         request.maxWidth = Math.min(parameters.maxWidth ?? 1600, bound(cfg.maxScreenshotWidth, 320, 1920, 1600));
         request.maxBytes = bound(cfg.maxScreenshotBytes, 262144, 4194304, 2097152);
+      }
+      // Verify the pinned Windows helper *before* creating pending native-effect
+      // evidence. A mixed-version old helper is not admitted for input, although
+      // it may continue to serve read-only screenshot/status commands.
+      if (isInput && prepareNativeInput) {
+        try { await prepareNativeInput(); }
+        catch (error) {
+          session = null; frame = null; closeInvoke();
+          throw error?.guiCode ? error : guiError('GUI_HELPER_COORDINATOR_MISMATCH');
+        }
       }
       // Write and fsync a minimal private pending record BEFORE any mutating helper call.
       // A crash between dispatch and native acknowledgment must not reset safety on restart.
