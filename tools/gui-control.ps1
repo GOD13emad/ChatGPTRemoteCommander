@@ -39,6 +39,15 @@ function Open-RcGuiAccountInputMutex([string]$qaSuffix = '') {
         }
         return $handle
     }catch{
+        if($CoordinatorSelfTest){
+            # QA-only metadata; no SID, filesystem path or native UI content.
+            $diag=@{qaOnly=$true;ps=$PSVersionTable.PSVersion.ToString();
+              dotnetMajor=[Environment]::Version.Major;
+              mutexAclApiPresent=($null -ne [Type]::GetType('System.Threading.MutexAcl, System.Threading.AccessControl'));
+              failedAclValidation=([string]$_.Exception.Message -eq 'GUI_COORDINATOR_ACL_MISMATCH');
+              exceptionClass=$_.Exception.GetType().Name}
+            [Console]::Error.WriteLine(($diag | ConvertTo-Json -Compress))
+        }
         if($handle){$handle.Dispose()}
         throw 'GUI_COORDINATOR_UNAVAILABLE'
     }
