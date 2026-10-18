@@ -17,16 +17,34 @@ export async function main(args=process.argv.slice(2),{store=createGuiInputIncid
     error.write('GUI_OWNER_RECONCILIATION_NOT_IMPLEMENTED: no trusted native owner broker; no incident was changed.\n');
     return 3;
   }
-  const incident=await store.pending();
+  const incident=await store.inspect();
   if(!incident){
     output.write(JSON.stringify({pending:false,ownerReviewAvailable:false,
-      noReplay:true,noReleasePerformed:true})+'\n');
+      nativeOutcome:null,noReplay:true,noReleasePerformed:true,
+      releaseAuthorized:false})+'\n');
     return 0;
   }
-  const status={pending:true,incident,ownerReviewAvailable:false,
-    nativeOutcome:'UNKNOWN',noReplay:true,noReleasePerformed:true,
-    next:'TRUSTED_NATIVE_GUI_COORDINATOR_AND_OWNER_REVIEW_REQUIRED'};
-  output.write(JSON.stringify(status)+'\n');
+  const status={
+    pending:true,
+    incident:{id:incident.id,tool:incident.tool,startedUtc:incident.startedUtc},
+    evidence:{sha256:incident.evidenceSha256,bytes:incident.evidenceBytes},
+    nativeOutcome:'UNKNOWN',ownerReviewAvailable:false,noReplay:true,
+    noReleasePerformed:true,releaseAuthorized:false
+  };
+  if(args[0]==='--plan'){
+    output.write(JSON.stringify({
+      ...status,readOnlyPreflight:true,
+      disposition:'BLOCKED_NO_TRUSTED_RECONCILIATION',
+      prerequisites:[
+        'VERIFY_CURRENT_DESKTOP_WITH_OWNER',
+        'VERIFY_ALL_NATIVE_DISPATCHERS_QUIESCENT',
+        'TRUSTED_OS_LOCAL_OWNER_BROKER_REQUIRED',
+        'CRASH_SAFE_EXACT_INCIDENT_REVIEW_NOT_IMPLEMENTED'
+      ]
+    })+'\n');
+  }else{
+    output.write(JSON.stringify(status)+'\n');
+  }
   return 0;
 }
 if(process.argv[1] && import.meta.url===pathToFileURL(path.resolve(process.argv[1])).href){

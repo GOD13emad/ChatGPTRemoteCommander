@@ -20,6 +20,8 @@ node tools/gui-incident-recover.mjs --status
 node tools/gui-incident-recover.mjs --plan
 ```
 
+The `--status` output includes the exact **SHA-256 of the original incident file bytes**, its size, and the privacy-minimal operation ID/type/timestamp. The inspector uses read-only file access and stable before/after file metadata checks, refuses linked/ambiguous records and never accepts a review receipt as permission. `--plan` reports blockers (owner-broker unavailable, native dispatch quiescence unverified, crash-safe review not implemented); these statements are **not** positive attestation of device safety. Repeated reads are not a guarantee against an adversary already operating under the same OS user, and the fingerprint is evidence identity, not a release token.
+
 `--review` deliberately returns `GUI_OWNER_RECONCILIATION_NOT_IMPLEMENTED`; it cannot archive, clear, sign or replay anything. This is true even if launched locally with an interactive TTY.
 
 ## Product reconciliation design gate

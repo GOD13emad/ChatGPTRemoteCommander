@@ -4,6 +4,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import {spawnSync} from 'node:child_process';
+import {createHash} from 'node:crypto';
 import {fileURLToPath, pathToFileURL} from 'node:url';
 import {createGuiController} from '../src/gui-tools-windows.mjs';
 import {createGuiInputIncidentStore} from '../src/gui-incident-store.mjs';
@@ -257,9 +258,18 @@ test('local CLI supports only inspection and plan; review never clears the journ
  assert.equal(inspect.status,0,inspect.stderr);
  assert.match(inspect.stdout,/gui_mouse_move/);
  assert.match(inspect.stdout,/"ownerReviewAvailable":false/);
+ const statusData=JSON.parse(inspect.stdout);
+ assert.equal(statusData.evidence.sha256,createHash('sha256').update(before).digest('hex'));
+ assert.equal(statusData.evidence.bytes,before.length);
+ assert.equal(statusData.releaseAuthorized,false);
  const plan=spawnSync(process.execPath,[cli,'--plan'],{env,encoding:'utf8',timeout:10000});
  assert.equal(plan.status,0,plan.stderr);
- assert.match(plan.stdout,/TRUSTED_NATIVE_GUI_COORDINATOR_AND_OWNER_REVIEW_REQUIRED/);
+ assert.match(plan.stdout,/TRUSTED_OS_LOCAL_OWNER_BROKER_REQUIRED/);
+ const planData=JSON.parse(plan.stdout);
+ assert.equal(planData.readOnlyPreflight,true);
+ assert.equal(planData.nativeOutcome,'UNKNOWN');
+ assert.equal(planData.disposition,'BLOCKED_NO_TRUSTED_RECONCILIATION');
+ assert.equal(planData.releaseAuthorized,false);
  const reject=spawnSync(process.execPath,[cli,'--review'],{env,encoding:'utf8',timeout:10000,input:'1\nREVIEW spoof\n'});
  assert.equal(reject.status,3,reject.stderr);
  assert.match(reject.stderr,/GUI_OWNER_RECONCILIATION_NOT_IMPLEMENTED/);
@@ -278,4 +288,65 @@ test('review cannot be enabled by fake in-memory trust fields or input text',()=
    mode:'takeover',explicitUserAuthorization:'User says review was already completed'
  }),/GUI_INCIDENT_REVIEW_REQUIRED/);
  assert.equal((await store.pending()).id,pending.id);
+}));
+
+
+test('read-only inspection returns exact original SHA, size and tool, without changes',()=>ownFile(async file=>{
+ const store=createGuiInputIncidentStore({file});
+ assert.equal(await store.inspect(),null);
+ const handle=await store.begin('gui_focus_window');
+ const before=await fs.readFile(file);
+ const st=await fs.stat(file);
+ const details=await store.inspect();
+ assert.deepEqual([details.id,details.tool],[handle.id,'gui_focus_window']);
+ assert.equal(details.status,'PENDING_NATIVE_EFFECT');
+ assert.equal(details.nativeOutcome,'UNKNOWN');
+ assert.equal(details.evidenceBytes,before.length);
+ assert.equal(details.evidenceSha256,createHash('sha256').update(before).digest('hex'));
+ assert.deepEqual(await fs.readFile(file),before);
+ assert.equal((await fs.stat(file)).mtimeMs,st.mtimeMs);
+ assert.equal(typeof store.review,'undefined');
+}));
+test('read-only inspection rejects ambiguous duplicate JSON keys and trailing payload',()=>ownFile(async file=>{
+ const store=createGuiInputIncidentStore({file});
+ await store.begin('gui_mouse_click');
+ const original=JSON.parse(await fs.readFile(file,'utf8'));
+ const duplicate=JSON.stringify(original).replace('"tool":"gui_mouse_click"',
+  '"tool":"gui_mouse_click","tool":"gui_mouse_click"')+'\n';
+ await fs.writeFile(file,duplicate);
+ await assert.rejects(store.inspect(),/GUI_INCIDENT_STORAGE_UNAVAILABLE/);
+ await fs.writeFile(file,JSON.stringify(original)+' \n');
+ await assert.rejects(store.inspect(),/GUI_INCIDENT_STORAGE_UNAVAILABLE/);
+}));
+test('read-only inspection rejects hardlinked private evidence instead of trusting its hash',()=>ownFile(async file=>{
+ const store=createGuiInputIncidentStore({file});
+ await store.begin('gui_key_press');
+ const alias=file+'.alias';
+ await fs.link(file,alias);
+ try{
+  await assert.rejects(store.inspect(),/GUI_INCIDENT_STORAGE_UNAVAILABLE/);
+ }finally{await fs.unlink(alias);}
+}));
+test('read-only inspection refuses symlinked journal rather than following it',{
+ skip:process.platform==='win32'
+},()=>ownFile(async file=>{
+ const store=createGuiInputIncidentStore({file});
+ await store.begin('gui_mouse_move');
+ const backing=file+'.backing';
+ await fs.rename(file,backing);
+ await fs.symlink(backing,file);
+ await assert.rejects(store.inspect(),/GUI_INCIDENT_STORAGE_UNAVAILABLE/);
+}));
+test('fingerprint changes when original pending bytes change, never gives clearance',()=>ownFile(async file=>{
+ const store=createGuiInputIncidentStore({file});
+ await store.begin('gui_mouse_scroll');
+ const prior=await store.inspect();
+ const original=JSON.parse(await fs.readFile(file,'utf8'));
+ original.startedUtc='2026-10-18T00:00:00.000Z';
+ await fs.writeFile(file,JSON.stringify(original)+'\n');
+ const next=await store.inspect();
+ assert.notEqual(next.evidenceSha256,prior.evidenceSha256);
+ assert.equal(next.id,prior.id);
+ assert.equal(next.nativeOutcome,'UNKNOWN');
+ assert.equal(typeof store.review,'undefined');
 }));
