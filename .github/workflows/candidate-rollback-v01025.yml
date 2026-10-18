@@ -6,7 +6,7 @@ on:
       - '.github/workflows/candidate-rollback-v01025.yml'
       - 'test/release-rollback-linux-v01025.sh'
       - 'test/release-rollback-windows-v01025.ps1'
-      - 'test/release-rollback-owned-cleanup-r172.py'
+      - 'test/release-rollback-owned-cleanup-v01025.py'
       - 'test/router-ports-windows-r189.ps1'
       - 'auto-update-linux.sh'
       - 'auto-update-windows.ps1'
@@ -39,8 +39,8 @@ jobs:
           test "$(node -p 'require("./package.json").version')" = '0.10.25'
           bash -n test/release-rollback-linux-v01025.sh
           bash -n auto-update-linux.sh
-          python3 -m py_compile test/release-rollback-owned-cleanup-r172.py
-          python3 test/release-rollback-owned-cleanup-r172.py --self-test
+          python3 -c "import ast,pathlib; p=pathlib.Path('test/release-rollback-owned-cleanup-v01025.py'); ast.parse(p.read_text(),filename=str(p))"
+          python3 test/release-rollback-owned-cleanup-v01025.py --self-test
           sudo apt-get update
           sudo apt-get install --yes python3-gi gir1.2-gdkpixbuf-2.0 gnome-shell-common
           /usr/bin/python3 -c 'import gi; gi.require_version("GdkPixbuf","2.0"); from gi.repository import GdkPixbuf; print("V025L_GUI_LIBRARY_PASS")'
@@ -64,7 +64,7 @@ jobs:
             ${{ runner.temp }}/remote-commander-rollback-v025l/ROLLBACK_V025L.log
             ${{ runner.temp }}/remote-commander-rollback-v025l/ROUTE_AFTER_PROMOTE.json
             ${{ runner.temp }}/remote-commander-rollback-v025l/ROUTE_AFTER_ROLLBACK.json
-            ${{ runner.temp }}/remote-commander-rollback-v025l/CLEANUP_R172.json
+            ${{ runner.temp }}/remote-commander-rollback-v025l/CLEANUP_V025C.json
             ${{ runner.temp }}/remote-commander-rollback-v025l/RETURN_V025L.json
 
   windows-candidate-preview-rollback:

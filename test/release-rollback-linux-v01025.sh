@@ -28,9 +28,9 @@ mkdir -m 700 -p "$ROOT/install" "$ROOT/state" "$ROOT/config" "$ROOT/data"
 r172_cleanup_on_exit(){
   local prior=$?
   trap - EXIT
-  if [[ ! -e "$ROOT/CLEANUP_R172.json" ]]; then
-    if ! python3 "$WORKSPACE/test/release-rollback-owned-cleanup-r172.py" --root "$ROOT"; then
-      echo R172_FINAL_CLEANUP_FAILED >&2
+  if [[ ! -e "$ROOT/CLEANUP_V025C.json" ]]; then
+    if ! python3 "$WORKSPACE/test/release-rollback-owned-cleanup-v01025.py" --root "$ROOT"; then
+      echo V025C_FINAL_CLEANUP_FAILED >&2
       [[ "$prior" != 0 ]] || prior=86
     fi
   fi
@@ -114,12 +114,12 @@ print('V025L_LINUX_ROLLBACK_ROUTE_PASS')
 PY
 curl -fsS --connect-timeout 2 --max-time 5 http://127.0.0.1:47831/health > "$ROOT/HEALTH_ROLLBACK.json"
 [[ -z "$(git -C "$WORKSPACE" status --porcelain)" ]] || { echo V025L_SOURCE_CHANGED >&2; exit 77; }
-python3 "$WORKSPACE/test/release-rollback-owned-cleanup-r172.py" --root "$ROOT"
-python3 - "$ROOT/CLEANUP_R172.json" <<'PY'
+python3 "$WORKSPACE/test/release-rollback-owned-cleanup-v01025.py" --root "$ROOT"
+python3 - "$ROOT/CLEANUP_V025C.json" <<'PY'
 import json,sys
 r=json.load(open(sys.argv[1]))
 assert r["status"]=="PASS_ZERO_OWNED_NODE_AFTER_ROLLBACK" and not r["ownedAfter"]
-print("R172_ROLLBACK_ZERO_OWNED_NODE_ACCEPTED")
+print("V025C_ROLLBACK_ZERO_OWNED_NODE_ACCEPTED")
 PY
 python3 - "$ROOT" "$TARGET" "$BASELINE" "$START" <<'PY'
 import json,hashlib,pathlib,sys,datetime
@@ -134,8 +134,8 @@ record={
 'rollbackLogSha256':h(root/'ROLLBACK_V025L.log'),
 'routePromoteSha256':h(root/'ROUTE_AFTER_PROMOTE.json'),
 'routeRollbackSha256':h(root/'ROUTE_AFTER_ROLLBACK.json'),
-'cleanupSha256':h(root/'CLEANUP_R172.json'),
-'ownedNodeCleanup':json.loads((root/'CLEANUP_R172.json').read_text()),
+'cleanupSha256':h(root/'CLEANUP_V025C.json'),
+'ownedNodeCleanup':json.loads((root/'CLEANUP_V025C.json').read_text()),
 'signingAndNativeUIAcceptance':'OPEN'
 }
 p=root/'RETURN_V025L.json'
