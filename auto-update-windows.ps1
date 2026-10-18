@@ -990,6 +990,39 @@ try{
   }
   $currentStatus=$null
   try{$currentStatus=Invoke-Mcp 47831 'system_status'}catch{}
+  # Route authority is durable. A transient MCP status timeout cannot
+  # silently authorize a downgrade to an older stable GitHub release.
+  if(-not $Force){
+    $routePath=Get-RoutePath 'default'
+    if(Test-Path -LiteralPath $routePath -PathType Leaf){
+      try{
+        $routed=Read-Json $routePath
+        $routedVersion=[string]$routed.active.version
+        if($routed.schema -ne 1 -or $routed.profile -ne 'default' -or
+           $routedVersion -notmatch '^\d+\.\d+\.\d+$' -or
+           [string]$routed.active.commit -notmatch '^[0-9a-f]{40}$'){
+          throw 'INVALID_ACTIVE_ROUTE'
+        }
+      }catch{throw 'AUTO_UPDATE_ACTIVE_ROUTE_UNVERIFIED'}
+      if(Test-VersionGreater $routedVersion $stage.Version){
+        $report.status='NEWER_CURRENT';$report.currentVersion=$routedVersion
+        $report.completedAt=(Get-Date).ToUniversalTime().ToString('o')
+        Atomic-Json $ResultFile $report
+        Log "AUTO_UPDATE_NEWER_CURRENT current=$routedVersion latest=$($stage.Version) source=route"
+        exit 0
+      }
+      if(-not $currentStatus){throw 'AUTO_UPDATE_ACTIVE_MCP_STATUS_UNVERIFIED'}
+      if([string]$currentStatus.version -ne $routedVersion){throw 'AUTO_UPDATE_ROUTE_MCP_VERSION_CONFLICT'}
+    } elseif(-not $currentStatus){
+      # A fresh isolated install may contain package.json but have no live server
+      # or previous update receipt. Only a known deployed direct runtime is
+      # blocked when its MCP status is unavailable.
+      $directListeners=@(Get-NetTCPConnection -State Listen -LocalPort 47831 -ErrorAction SilentlyContinue)
+      if($directListeners.Count -gt 0 -or (Test-Path -LiteralPath $ResultFile -PathType Leaf)){
+        throw 'AUTO_UPDATE_DIRECT_MCP_STATUS_UNVERIFIED'
+      }
+    }
+  }
   if(-not $Force -and $currentStatus -and (Test-VersionGreater ([string]$currentStatus.version) $stage.Version)){
     $report.status='NEWER_CURRENT';$report.currentVersion=[string]$currentStatus.version;$report.completedAt=(Get-Date).ToUniversalTime().ToString('o')
     Atomic-Json $ResultFile $report
