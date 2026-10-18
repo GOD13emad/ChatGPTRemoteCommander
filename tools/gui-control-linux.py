@@ -1,11 +1,18 @@
 #!/usr/bin/env python3
 import base64, json, os, sys, time, select
 import fcntl, stat
-import gi
-gi.require_version('Gio','2.0')
-gi.require_version('GLib','2.0')
-gi.require_version('GdkPixbuf','2.0')
-from gi.repository import Gio, GLib, GdkPixbuf
+# Isolated cross-process coordinator tests import this module without a GNOME
+# desktop. Only that import mode may omit GI; direct GUI execution fails closed.
+try:
+    import gi
+    gi.require_version('Gio','2.0')
+    gi.require_version('GLib','2.0')
+    gi.require_version('GdkPixbuf','2.0')
+    from gi.repository import Gio, GLib, GdkPixbuf
+except ModuleNotFoundError as e:
+    if __name__ == '__main__' or e.name != 'gi':
+        raise
+    Gio = GLib = GdkPixbuf = None
 
 DEST='org.gnome.Shell'
 PATH='/org/gnome/Shell/Extensions/ChatGPTRemoteCommander'

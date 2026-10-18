@@ -1,6 +1,6 @@
 # Core Incident Reconciliation — constrained design decision
 
-**Status:** design candidate / NOT DEPLOYED. The legacy Emad Windows and Emad Linux `PENDING_NATIVE_EFFECT` records stay untouched. The originally attempted action is never replayed.
+**Status:** design candidate / NOT DEPLOYED. On 2026-10-19, both historical Emad Windows/Linux `PENDING_NATIVE_EFFECT` records were reviewed and archived using incident-bound, OS-local, one-time procedures. Both GUI backends returned available afterward, with no original input replay. These historical host actions did not install, merge or accept the candidate recovery architecture. No general trusted owner reconciliation broker is shipped.
 
 ## Acceptance contract
 

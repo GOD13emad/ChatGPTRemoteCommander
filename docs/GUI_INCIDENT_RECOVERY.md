@@ -1,6 +1,8 @@
 # Native GUI incident — safe observation and future reconciliation
 
-**Current scope:** OBSERVE-ONLY CANDIDATE. This branch does **not** provide a trusted owner-review/clearance action. No real pending incident is changed by these tools.
+**Current scope:** OBSERVE-ONLY CANDIDATE. This branch does **not** provide a trusted owner-review/clearance action. The incident-inspection tools never mutate historical J01 state.
+
+**Operational status, 2026-10-19:** The historical Emad-PC `gui_focus_window` and Emad Laptop `gui_type_text` incidents were separately reviewed by their OS-local owners using one-time, elevated recovery procedures. Both installed Core `0.10.24` instances subsequently reported GUI available, both Pending files were absent, and observe-only leases succeeded. Preserved original SHA-256 values: Windows `c2f5f93a5136d688339b880b4bafb7f7c9153b305c8a74f43e8221bc52a00c18`; Linux `3a2de3feaf3cce12baa430feac5fc22357231808e6ea474e295f5619bc1d434f`. Native outcomes remain `UNKNOWN`; no original input was replayed. These **operational incident dispositions are not acceptance or deployment of this candidate's unimplemented owner broker.** The one-time elevated scripts in user-writable QA roots have been retired and must not be reused as product features.
 
 ## What `NATIVE_OUTCOME_UNCERTAIN_RESTART_REQUIRED` means
 
