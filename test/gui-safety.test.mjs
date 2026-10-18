@@ -404,6 +404,61 @@ test('versioned helper handshake admits native input without replay',async()=>{
  }finally{client?.close();await fs.rm(folder,{recursive:true,force:true});}
 });
 
+
+test('Linux exact native lock denial clears only its own new J01, without replay',async()=>{
+ const store=memoryIncidentStore();let inputCalls=0;
+ const s=setup({platform:'linux',incidentStore:store,invoke:async r=>{
+   if(r.action==='status')return {ok:true,available:true};
+   if(r.action==='screenshot')return image();
+   inputCalls++;
+   throw Object.assign(new Error('GUI_NATIVE_BUSY'),{
+     guiCode:'GUI_NATIVE_BUSY',guiNotApplied:true,guiNativeMutexPreDispatch:true
+   });
+ }});
+ const seen=await prepared(s);
+ await assert.rejects(s.run('gui_key_press',{...seen,keys:['A']}),/GUI_NATIVE_BUSY/);
+ assert.equal(await store.pending(),null);
+ assert.equal(inputCalls,1,'Native request never replayed');
+ const status=await s.run('gui_status');
+ assert.equal(status.available,true);
+ assert.equal(status.uncertain,undefined);
+});
+
+test('forged Linux lock denial without native receipt keeps J01 blocked',async()=>{
+ const store=memoryIncidentStore();
+ const s=setup({platform:'linux',incidentStore:store,invoke:async r=>{
+   if(r.action==='status')return {ok:true,available:true};
+   if(r.action==='screenshot')return image();
+   throw Object.assign(new Error('GUI_NATIVE_BUSY'),{
+     guiCode:'GUI_NATIVE_BUSY',guiNotApplied:true
+   });
+ }});
+ const a=await prepared(s);
+ await assert.rejects(s.run('gui_key_press',{...a,keys:['A']}),/GUI_NATIVE_BUSY/);
+ assert.equal((await store.pending()).tool,'gui_key_press');
+ assert.equal((await s.run('gui_status')).inputAvailable,false);
+});
+
+test('exact native mutex non-submission receipt is distinct from a forged expanded one',async()=>{
+ const root=await fs.mkdtemp(path.join(os.tmpdir(),'rc-linux-receipt-protocol-'));
+ try{
+  const helper=path.join(root,'receipt.cjs');
+  await fs.writeFile(helper,
+    "let raw='';process.stdin.on('data',c=>raw+=c);process.stdin.on('end',()=>{"+
+    "const request=JSON.parse(raw);const r=request.forged?"+
+    "{ok:false,error:'GUI_NATIVE_BUSY',submission:'NOT_SUBMITTED',extra:true}:"+
+    "{ok:false,error:'GUI_NATIVE_BUSY',submission:'NOT_SUBMITTED'};"+
+    "process.stdout.write(JSON.stringify(r));});");
+  const opts={file:process.execPath,args:[helper],timeoutMs:3000};
+  await assert.rejects(runGuiProcess({action:'keyPress'},opts),error=>
+    error.guiCode==='GUI_NATIVE_BUSY'&&error.guiNativeMutexPreDispatch===true&&
+    error.guiNotApplied===true);
+  await assert.rejects(runGuiProcess({action:'keyPress',forged:true},opts),error=>
+    error.guiCode==='GUI_NATIVE_BUSY'&&error.guiNativeMutexPreDispatch!==true&&
+    error.guiNotApplied!==true);
+ }finally{await fs.rm(root,{recursive:true,force:true});}
+});
+
 test('coordinator mismatch before begin does not create a phantom J01 incident',async()=>{
  const store=memoryIncidentStore();
  const s=setup({incidentStore:store,prepareNativeInput:async()=>{

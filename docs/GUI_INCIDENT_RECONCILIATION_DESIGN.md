@@ -48,3 +48,11 @@ The next code acceptance gate is a protected, incident-bound OS-local owner brok
 ### Active native dispatcher inventory — read-only candidate
 
 The incident CLI now provides `--preflight`: a bounded cross-session process census of currently observed Commander Core and GUI Helper processes. The only returned native metadata is PID/session/role; raw command lines are never returned. Windows enumeration uses `Get-CimInstance Win32_Process`; Linux uses local `/proc`. Any failure is reported as unknown and always fail-closed. This work establishes **positive observed blockers**, not authoritative `allDispatchersQuiescent` and not a native Mutex lease. Mixed-version helpers, inaccessible processes, start/exit races, unknown sessions and future dispatch after enumeration still require a protected coordination cutover. No owner authorization, replay, native GUI input or live installed Core change is introduced.
+
+### Linux participating native helper coordinator (isolated, not deployed)
+
+The existing GNOME/Mutter helper now uses a **single account-UID native `fcntl.flock`** during mutating actions (including `focusWindow`) under `/run/user/<uid>/chatgpt-remote-commander-gui-input-v1.lock`. It checks runtime-directory owner/private permissions, the lock file's type/owner/link count/mode/inode and fails closed before native input when unavailable or busy. `status` and `screenshot` remain independent of this lock. A protocol-1 native helper advertises `nativeInputCoordinator:1`; new Core checks this on every startup/respawn before reserving J01. An old helper is observe-only for a new Core.
+
+Exact native `NOT_SUBMITTED` receipts from a pinned Linux helper can resolve **only a newly created** J01 incident without retry. Crash after native dispatch, ambiguous helper failure, and historical `UNKNOWN` incidents stay blocked. Disposable multi-process/crash/linked-lock tests confirm the scoped coordination behavior; they do not prove a complete installed fleet, unrelated mount namespaces, an authenticated owner review, or power-loss durability.
+
+**Migration gate:** quiesce or update every old Linux Core/Helper and every relevant session before enabling native input; advisory process census is not synchronization and legacy processes cannot be made cooperative by a new mutex.

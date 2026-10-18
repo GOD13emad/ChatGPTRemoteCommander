@@ -19,7 +19,7 @@ const backendSpec = platform => platform === 'win32'
     ? { file: 'python3', args: [linuxHelper, '--server'], oneShotArgs: [linuxHelper] }
     : null;
 const defaultBackend = backendSpec(process.platform);
-const persistentHelper = defaultBackend ? createGuiProcessClient({ file: defaultBackend.file, args: defaultBackend.args, requireNativeInputCoordinator: process.platform === 'win32' }) : null;
+const persistentHelper = defaultBackend ? createGuiProcessClient({ file: defaultBackend.file, args: defaultBackend.args, requireNativeInputCoordinator: process.platform === 'win32' || process.platform === 'linux' }) : null;
 const invokeDefault = request => {
   if (persistentHelper) return persistentHelper.invoke(request);
   if (!defaultBackend) throw guiError('GUI_PLATFORM_BACKEND_UNSUPPORTED');
@@ -48,7 +48,7 @@ const bound = (v, low, high, defaultValue) => Number.isSafeInteger(v) ? Math.max
  */
 export function createGuiController({ platform = process.platform, now = () => performance.now(), token = () => randomBytes(24).toString('hex'), isStopped = stopped,
   invoke = invokeDefault, closeInvoke = closeInvokeDefault, incidentStore = createGuiInputIncidentStore(),
-  prepareNativeInput = invoke === invokeDefault && platform === 'win32' ? prepareNativeInputDefault : null } = {}) {
+  prepareNativeInput = invoke === invokeDefault && ['win32','linux'].includes(platform) ? prepareNativeInputDefault : null } = {}) {
   let session = null;
   let frame = null;
   let busy = false;
@@ -189,7 +189,10 @@ export function createGuiController({ platform = process.platform, now = () => p
           const windowsMutexNotSubmitted = platform === 'win32' &&
             ['GUI_NATIVE_BUSY','GUI_COORDINATOR_UNAVAILABLE'].includes(error?.guiCode) && error?.guiNotApplied === true &&
             error?.guiWindowsMutexPreDispatch === true;
-          const provenNoEffect = linuxNotApplied || windowsMutexNotSubmitted;
+          const linuxMutexNotSubmitted = platform === 'linux' &&
+            ['GUI_NATIVE_BUSY','GUI_COORDINATOR_UNAVAILABLE'].includes(error?.guiCode) &&
+            error?.guiNotApplied === true && error?.guiNativeMutexPreDispatch === true;
+          const provenNoEffect = linuxNotApplied || windowsMutexNotSubmitted || linuxMutexNotSubmitted;
           if (provenNoEffect) {
             try { await incidentStore.resolve(pendingHandle); }
             catch { uncertain = true; session = null; frame = null; closeInvoke(); throw guiError('GUI_INCIDENT_STORAGE_UNAVAILABLE'); }

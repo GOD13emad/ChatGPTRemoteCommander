@@ -22,7 +22,8 @@ function parseGuiResult(bytes) {
         Reflect.ownKeys(value).length === 3 &&
         ['ok','error','submission'].every(key => Object.hasOwn(value,key))) {
       failure.guiNotApplied = true;
-      failure.guiWindowsMutexPreDispatch = true;
+      failure.guiWindowsMutexPreDispatch = true; // Kept for existing Windows compatibility.
+      failure.guiNativeMutexPreDispatch = true;
     }
     // Only the pinned Linux native guard may attest rejection before input dispatch.
     if (safeCode === 'GUI_FOREGROUND_OR_GEOMETRY_CHANGED' &&

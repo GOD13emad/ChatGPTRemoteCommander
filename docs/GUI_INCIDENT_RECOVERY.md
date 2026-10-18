@@ -48,3 +48,9 @@ There is still no owner broker, trusted review transition, automatic unlock, man
 `node tools/gui-incident-recover.mjs --preflight` adds a bounded **advisory** inventory of observed Commander Core and native GUI Helper processes. It reports only PID, session identifier and role, never command-line arguments or typed content. On Windows it reads Win32 process metadata; on Linux it reads `/proc`. Enumeration failure returns `scan:FAILED` and an unknown count, **not** a false zero. The command does not terminate processes, steal GUI leases, acquire the production Mutex, archive or clear any Incident.
 
 Even when `activeCount:0`, the output remains `quiescenceProven:false` and `releaseAuthorized:false`: an observation is not an atomic native dispatch barrier, and older or unavailable clients may not participate. This is a diagnostic prerequisite for the OS-local owner broker, **not** permission to move the pending journal or deploy the candidate.
+
+### Linux native coordination candidate
+
+The candidate Linux Native Helper serializes mutating GUI requests through a private account-scoped `flock` in `/run/user/<uid>`. Read-only GUI observation does not acquire it. New Core refuses native input if its Linux Helper lacks the coordination version; exact `NOT_SUBMITTED` receipts prove only a **new** request was never submitted. They never reconcile historical `PENDING_NATIVE_EFFECT`.
+
+This native coordination does not authenticate the owner or force legacy sessions to use the lock. No installed Linux Core, original J01 journal or active GUI session is changed by QA. A trusted local owner broker and mixed-version fleet quiescence remain required before any incident can be safely archived and input restored.
