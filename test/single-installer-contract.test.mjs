@@ -44,7 +44,7 @@ test('fresh Windows bootstrap elevates only machine prerequisites and returns to
   assert.ok(iss.includes("ShellExec('runas'"),'machine prerequisite boundary must explicitly elevate');
   assert.ok(iss.includes('-PrerequisitesOnly'));
   assert.ok(iss.includes("Exec(PwshPath, Params"),'per-user core install must use the non-elevated setup context');
-  assert.ok(iss.includes('-StartServer -StandardMode'));
+  assert.ok(iss.includes('-StartServer -SourceRef'));
   assert.ok(iss.includes('PowerShell-7.6.6-win-x64.msi'));
   assert.ok(iss.includes('958838FF55091E1C8705D89EFED0CC7E8245A3A6EF6C0CCFAE20015227108AD8'));
 
@@ -58,6 +58,29 @@ test('fresh Windows bootstrap elevates only machine prerequisites and returns to
   const prereqIndex=install.indexOf('Ensure-Prerequisites',refreshIndex);
   assert.ok(requireIndex>=0 && refreshIndex>requireIndex && prereqIndex>refreshIndex,
     'freshly installed machine prerequisites must be visible before prerequisite validation');
+});
+
+test('native setup preserves explicitly authorized Full Power on reinstall and defaults new installs to Standard', async()=>{
+  const iss=read('installer/RemoteCommander.iss');
+  const coreStart=iss.indexOf('CoreScript := ExpandConstant');
+  const execute=iss.indexOf('if not Exec(PwshPath, Params',coreStart);
+  assert.ok(coreStart>=0 && execute>coreStart);
+  const coreParams=iss.slice(coreStart,execute);
+  assert.ok(coreParams.includes('-StartServer -SourceRef "{#MySourceRef}" -ExpectedCommit "{#MyCommit}"'));
+  for(const forbidden of ['-StandardMode','-PowerMode','-GuiControl','-DisableGuiControl'])
+    assert.ok(!coreParams.includes("' "+forbidden),'setup must not implicitly change existing capability authority: '+forbidden);
+  const {migrateCapabilityConfig}=await import('../src/capability-profile.mjs');
+  const defaults=JSON.parse(read('config.json'));
+  const fresh=migrateCapabilityConfig({defaultConfig:defaults,existingConfig:null});
+  assert.equal(fresh.profile.tier,'STANDARD','new wizard installation still uses Standard');
+  assert.equal(fresh.config.powerMode.enabled,false);
+  const explicitlyFull=migrateCapabilityConfig({defaultConfig:defaults,existingConfig:null,requestPower:true,requestGui:true});
+  assert.equal(explicitlyFull.profile.tier,'FULL_POWER');
+  const upgrade=migrateCapabilityConfig({defaultConfig:defaults,existingConfig:explicitlyFull.config});
+  assert.equal(upgrade.profile.tier,'FULL_POWER','native reinstall must preserve owner Full Power');
+  assert.equal(upgrade.config.powerMode.guiControl.enabled,true);
+  const deliberate=migrateCapabilityConfig({defaultConfig:defaults,existingConfig:explicitlyFull.config,requestStandard:true});
+  assert.equal(deliberate.profile.tier,'STANDARD','explicit -StandardMode remains a deliberate downgrade');
 });
 
 test('installer collects only profile names; credentials are collected after install and passed in memory',()=>{
