@@ -19,6 +19,9 @@ function Open-RcGuiAccountInputMutex([string]$qaSuffix = '') {
         $name+='.'+$qaSuffix
     }
     $security=[Security.AccessControl.MutexSecurity]::new()
+    # Elevated Windows tokens may default the object owner to Administrators.
+    # Pin the owner to the token's actual account SID before creating it.
+    $security.SetOwner($sid)
     $security.AddAccessRule([Security.AccessControl.MutexAccessRule]::new(
         $sid,[Security.AccessControl.MutexRights]::FullControl,
         [Security.AccessControl.AccessControlType]::Allow))
