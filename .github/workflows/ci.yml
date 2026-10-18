@@ -1,7 +1,10 @@
 name: CI
 
 on:
+  # CI runs on PR commits once, and on main after merge.
+  # Do not create duplicate required check names from feature-branch pushes.
   push:
+    branches: [main]
   pull_request:
 
 permissions:
