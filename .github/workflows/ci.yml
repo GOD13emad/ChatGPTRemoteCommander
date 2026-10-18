@@ -1,7 +1,11 @@
 name: CI
 
+# A feature branch with a PR receives one required CI job from pull_request.
+# Retain CI for accepted main pushes and all release/other tag pushes.
 on:
   push:
+    branches: [main]
+    tags: ['**']
   pull_request:
 
 permissions:
