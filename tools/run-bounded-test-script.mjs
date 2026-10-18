@@ -175,10 +175,12 @@ function run(){
   let command=prioritizeSensitive?prioritizeSensitiveQualificationCommands(bounded.command):bounded.command;
   if(process.platform==='win32') command=isolateWindowsAgentHttpRegression(command);
   if(args.script==='test'&&process.platform==='win32'){
-    command=isolateWindowsLeaseRegression(command);
+    // Compose from broad groups to single-fixture priority: the last prefix
+    // executes first. Scheduler cold-start must precede resource-heavy suites.
     command=isolateWindowsTimingSensitiveRegressions(command);
     command=isolateWindowsProcessTreeRegression(command);
     command=isolateWindowsTransferMeshHttpRegression(command);
+    command=isolateWindowsLeaseRegression(command);
   }
   console.log('CI_TEST_CONCURRENCY script='+args.script+' requestedConcurrency='+requestedConcurrency+' effectiveConcurrency='+effectiveConcurrency+' replacements='+bounded.replacements+' prioritizeSensitive='+prioritizeSensitive);
   const child=process.platform==='win32'
