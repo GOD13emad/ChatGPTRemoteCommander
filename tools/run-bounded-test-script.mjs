@@ -130,6 +130,26 @@ export function isolateWindowsAgentHttpRegression(command) {
   return 'node --test --test-concurrency=1 '+file+' && '+parts.join(' && ');
 }
 
+/**
+ * CI Windows: preserve the exact 200x25ms readiness checks of the Transfer
+ * Mesh HTTP server while giving this owned loopback fixture one standalone
+ * test process before high-volume test batches. No deadlines, tool scopes,
+ * assertions or native transfer behavior are changed.
+ */
+export function isolateWindowsTransferMeshHttpRegression(command) {
+  if(typeof command!=='string'||!command)throw new Error('CI_TRANSFER_HTTP_COMMAND_INVALID');
+  const file='test/transfer-mesh-http.test.mjs';
+  if(command.split(file).length-1!==1)throw new Error('CI_TRANSFER_HTTP_CARDINALITY');
+  const parts=command.split(' && ');
+  const index=parts.findIndex(part=>part.startsWith('node --test --test-concurrency=1 ')&&part.includes(' '+file));
+  if(index<0)throw new Error('CI_TRANSFER_HTTP_BATCH_NOT_FOUND');
+  const original=parts[index],after=original.replace(' '+file,'');
+  if(after===original||after.includes(file)||!after.startsWith('node --test --test-concurrency=1 test/'))
+    throw new Error('CI_TRANSFER_HTTP_ISOLATION_INVALID');
+  parts[index]=after;
+  return 'node --test --test-concurrency=1 '+file+' && '+parts.join(' && ');
+}
+
 export function parseQualificationArgs(argv){
   const out={script:null,concurrency:null,prioritizeSensitive:false};
   for(let i=0;i<argv.length;i++){
@@ -158,6 +178,7 @@ function run(){
     command=isolateWindowsLeaseRegression(command);
     command=isolateWindowsTimingSensitiveRegressions(command);
     command=isolateWindowsProcessTreeRegression(command);
+    command=isolateWindowsTransferMeshHttpRegression(command);
   }
   console.log('CI_TEST_CONCURRENCY script='+args.script+' requestedConcurrency='+requestedConcurrency+' effectiveConcurrency='+effectiveConcurrency+' replacements='+bounded.replacements+' prioritizeSensitive='+prioritizeSensitive);
   const child=process.platform==='win32'
