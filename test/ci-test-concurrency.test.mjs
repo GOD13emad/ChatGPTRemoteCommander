@@ -5,7 +5,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { boundNodeTestConcurrency, parseQualificationArgs, prioritizeSensitiveQualificationCommands, isolateWindowsLeaseRegression, isolateWindowsTimingSensitiveRegressions, isolateWindowsProcessTreeRegression, isolateWindowsAgentHttpRegression } from '../tools/run-bounded-test-script.mjs';
+import { boundNodeTestConcurrency, parseQualificationArgs, prioritizeSensitiveQualificationCommands, isolateWindowsLeaseRegression, isolateWindowsTimingSensitiveRegressions, isolateWindowsProcessTreeRegression, isolateWindowsAgentHttpRegression, isolateWindowsTransferMeshHttpRegression } from '../tools/run-bounded-test-script.mjs';
 
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const read=rel=>fs.readFileSync(path.join(root,rel),'utf8');
@@ -235,4 +235,39 @@ test('R470 Windows fixture extracts failing test and counters without persisting
   const many=run([file,file.replace('fixture','duplicate')]);
   assert.equal(many.status,'AMBIGUOUS_MULTIPLE_MATCHING_LOGS');
   assert.equal(many.failureTests.length,0,'never guess newest');
+});
+
+test('CI Windows runs the Transfer Mesh HTTP fixture alone without weakening readiness or dropping coverage',()=>{
+  const pkg=JSON.parse(read('package.json'));
+  const original=prioritizeSensitiveQualificationCommands(boundNodeTestConcurrency(pkg.scripts.test,1).command);
+  const agent=isolateWindowsAgentHttpRegression(original);
+  const timed=isolateWindowsTimingSensitiveRegressions(agent);
+  const tree=isolateWindowsProcessTreeRegression(timed);
+  const transfer=isolateWindowsTransferMeshHttpRegression(tree);
+  const result=isolateWindowsLeaseRegression(transfer);
+  const file='test/transfer-mesh-http.test.mjs',leader='node --test --test-concurrency=1 '+file+' && ';
+  const scheduler='test/project-engine-integration.test.mjs';
+  const schedulerLeader='node --test --test-concurrency=1 '+scheduler+' && ';
+  assert.equal(transfer,leader+tree.replace(' '+file,''),'transfer scheduling only; all other tests unchanged');
+  assert.equal(result,schedulerLeader+transfer.replace(' '+scheduler,''),'scheduler scheduling only');
+  assert.ok(result.startsWith(schedulerLeader+leader),'bounded scheduler and HTTP fixture run first');
+  assert.equal(result.split(file).length-1,1,'single execution is retained');
+  assert.equal(result.split(scheduler).length-1,1,'scheduler executes exactly once');
+  assert.ok(result.includes('test/transfer-mesh-native.test.mjs'),'native transfer coverage stays enabled');
+  assert.ok(result.includes('tools/commander-transfer-mesh/pilot-cli.test.mjs'));
+  assert.ok(result.indexOf(file)<result.indexOf('test/transfer-mesh-native.test.mjs'),
+    'HTTP fixture is separated before the high-volume transfer group');
+  assert.throws(()=>isolateWindowsTransferMeshHttpRegression(tree.replace(' '+file,'')),
+    /CI_TRANSFER_HTTP_CARDINALITY/);
+  assert.throws(()=>isolateWindowsTransferMeshHttpRegression(leader+tree),
+    /CI_TRANSFER_HTTP_CARDINALITY/);
+  const wrapper=read('tools/run-bounded-test-script.mjs');
+  assert.ok(wrapper.includes("command=isolateWindowsTransferMeshHttpRegression(command);"));
+  assert.ok(wrapper.indexOf('command=isolateWindowsLeaseRegression(command);')>
+    wrapper.indexOf('command=isolateWindowsTransferMeshHttpRegression(command);'),
+    'last composed prefix is scheduled first; no additional test runs or deadlines');
+  const fixture=read('test/transfer-mesh-http.test.mjs');
+  assert.ok(fixture.includes('for(let i=0;i<200;i++)'),'same bounded readiness budget');
+  assert.ok(fixture.includes('await wait(25)'),'same server-readiness poll');
+  assert.ok(fixture.includes('assert.equal(healthy,true,stderr)'),'still fail closed if server cannot start');
 });
