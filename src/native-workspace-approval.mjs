@@ -71,9 +71,21 @@ export function createNativeWorkspaceApprovalVerifier({
   let key=null;
   if(trustedPublicKey!==null){
     try{
-      key=(trustedPublicKey?.type==='public'&&
-           trustedPublicKey?.asymmetricKeyType==='ed25519')
-        ? trustedPublicKey : createPublicKey(trustedPublicKey);
+      if(trustedPublicKey?.type==='public'){
+        key=trustedPublicKey;
+      }else if(typeof trustedPublicKey==='string'||
+                Buffer.isBuffer(trustedPublicKey)){
+        const pem=Buffer.isBuffer(trustedPublicKey)
+          ?trustedPublicKey.toString('utf8'):trustedPublicKey;
+        // Never accidentally hand a private-key PEM/KeyObject to the
+        // unprivileged verifier process, even if Node could derive its public
+        // key. Protected signer material must stay in its own trust boundary.
+        if(!pem.startsWith('-----BEGIN PUBLIC KEY-----\n'))
+          throw Error('Expected SPKI public-only PEM');
+        key=createPublicKey(pem);
+      }else{
+        throw Error('Only an Ed25519 public KeyObject or SPKI PEM is allowed');
+      }
       if(key.type!=='public'||key.asymmetricKeyType!=='ed25519')
         throw Error('Not Ed25519 public key');
     }catch{throw fault('NATIVE_APPROVAL_TRUST_ANCHOR_INVALID');}
