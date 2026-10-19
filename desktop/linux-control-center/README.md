@@ -18,3 +18,14 @@ Run `python3 -B -m unittest discover -s desktop/linux-control-center -p 'test*.p
 A synthetic GTK4 Broadway visual experiment **failed** (SIGSEGV in libgtk-4.so.1); this is an OPEN independent Native GUI validation gate. Backtrace SHA256 `eb2c970fdef8318f863082c629f72ffc74e0d12c133a7b6826403f70e40facd3`. Do not classify native rendering as PASS. All synthetic Broadway processes were terminated and the live desktop remained untouched.
 
 Never use this preview to assume real runner state, submit changes to user workflows or close STOP/Mutex gates. Production installation is not performed by this PR.
+
+## Native GUI workspace and monitor truthfulness (QA candidate)
+
+The overview distinguishes read-only GUI observation, native input requiring
+per-task authorization and an independently verified private desktop.
+An uncertain input remains BLOCKED even if the compositor can still capture
+frames. The on-disk monitor carries no authenticated input lease or private
+OS session grant, and a Wayland/X11 session label is not proof of isolation.
+Malformed capability flags, missing counters and inflated monitor expiry
+are not displayed as green. No GUI input, production update, installation,
+workspace creation or OS privilege change is performed by this candidate.
