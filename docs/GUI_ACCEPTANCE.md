@@ -53,3 +53,48 @@ Check independent accounts/tunnels reach the correct device, preserve credential
 Resolve all Critical/High OPEN findings in AUDIT_R1.md or document a reviewed scope restriction that actually removes the affected feature. Pin exact source/artifact hashes; test fresh install/update/rollback/stop/start with no secret loss. Synchronize documentation and Plugin assets. Review authoritative versus superseded branches explicitly. Promote only after review; no forced merge, automatic release, reboot or network reset.
 
 Native Linux GUI, high-speed gameplay, anti-cheat bypass, Secure Desktop control and unattended logon are not implied by Windows source availability.
+
+
+## Native X11 private-workspace QA pilot — 2026-10-19
+
+**Scope: source-only opt-in Linux QA, not Core deployment, release or production
+acceptance.** The executable test fixture is
+test/gui-private-x11-isolation-qa.py on the feat/gui-private-x11-worker-qa
+candidate. Set RC_QA_XVFB_BIN to an absolute trusted Xvfb binary and invoke
+python3 -B test/gui-private-x11-isolation-qa.py only in an approved QA context.
+The optional Xvfb binary was obtained as a user-local extraction of the
+Ubuntu xvfb package, not by root installation or alteration of an existing
+desktop. At the tested MMZ Linux host the package was
+2:21.1.22-1ubuntu1.2, SHA-256
+fac5e03c7a40668d475178efb85dc63b4b391b020e0e9f499a729d2b62466fe8.
+
+**Observed QA result:** two actual independent Xvfb processes on :1700
+and :1701 accepted unique synthetic keyboard input through two Tk test
+windows, with separate matching receipts and no cross-worker effect. Wrong
+Xauthority was refused, and read-only XWD snapshots came only from these
+private servers. Each workspace uses an owner-private temp root, its own
+Xauthority cookie, a distinct X socket, and -nolisten tcp; the test never
+invokes input on the person's Wayland display. Normal teardown closed both
+owned Tk and Xvfb processes. A separate controlled os._exit fixture
+tested PR_SET_PDEATHSIG: when its parent exited abruptly, both the private
+Tk process and Xvfb exited and the display socket disappeared. The re-read
+of QA slots showed no surviving server/socket. This validates the tested
+same-host failure path, **not** power-loss recovery or SIGKILL against Xvfb.
+
+**Not accepted:** production Core routing to native private displays; an
+OS-authenticated chat/workspace owner or human supervisor; protected observer
+and control handoff; same-OS-user hostile process isolation; simultaneous
+Linux Wayland/GNOME Remote Login; an independently provisioned Windows VM/RDS
+worker; installed-version compatibility and native GUI input-mutation
+authorization; resource/soak testing; public API or stable promotion.
+Private X11 process/profile separation is functional: other processes
+running as the same OS account are not treated as mutually untrusted.
+
+**Dependency chain:** (1) review native workspace identity and owner isolation
+across Commander profiles and crashes; (2) bind lifecycle to a trusted
+per-workspace broker/owner grant, default-deny external control and preserve
+other workspaces; (3) verify protected observer and time-bounded operator
+handoff, with mandatory agent re-observation; (4) test low-memory bounds,
+disconnect, same-user attacks, multiple host OSs and rollback; (5) independent
+review, guarded canary and release criteria. Do not merge or promote the
+feature solely from this QA evidence.
