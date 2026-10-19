@@ -168,6 +168,9 @@ export function createNativeWorkspaceCoordinator({
     const owner=subject(ctx);
     const ttl=seconds(ttlSeconds,30,600);
     sweep();
+    // Uncertain native cleanup may still own a display. Never admit another
+    // process until a separately trusted owner reconciles the quarantine.
+    if(cleanupFailures.length)throw fail('NATIVE_WORKSPACE_QUARANTINED');
     if(workers.size+reservations>=capacity)throw fail('NATIVE_WORKSPACE_CAPACITY');
     reservations++;
     let lease;
@@ -186,6 +189,9 @@ export function createNativeWorkspaceCoordinator({
       let worker=null;
       try{
         worker=await launchWorkspace({workspaceRef});
+        // Another concurrent startup/disposal may have failed during await.
+        // Abort this admission too, and attempt only its own worker teardown.
+        if(cleanupFailures.length)throw fail('NATIVE_WORKSPACE_QUARANTINED');
         if(!worker||worker.kind!=='native-private-x11'||
            worker.physicalDesktopInput!==false||
            !/^:[0-9]{1,5}$/.test(worker.displayId||'')||
@@ -410,7 +416,8 @@ export function createNativeWorkspaceCoordinator({
     const owner=subject(ctx);
     sweep();
     return {ownedWorkspaces:[...workers.values()].filter(e=>e.owner===owner&&!e.disposing).length,
-      capacity,availableSlots:Math.max(0,capacity-workers.size-reservations),
+      capacity,availableSlots:cleanupFailures.length?0:
+        Math.max(0,capacity-workers.size-reservations),
       cleanupFailures:cleanupFailures.length,productionIntegrated:false};
   }
   async function close(){

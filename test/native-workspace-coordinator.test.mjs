@@ -450,3 +450,118 @@ test('production Core has no implicit native-workspace QA auto-activation',async
   await assert.rejects(pool.open(owner),/NATIVE_WORKSPACE_BACKEND_UNCONFIGURED/);
   await pool.close();
 });
+
+// Additional source-only quarantine admission and concurrent-startup regressions.
+function syntheticCleanupWorker(index,{invalid=false,failCleanup=false,onClose=()=>{}}={}){
+  return {
+    kind:'native-private-x11',physicalDesktopInput:invalid,
+    displayId:':'+(1850+index),serverPid:56000+index,
+    observe:async()=>{throw Error('NOT_CALLED_BY_THIS_TEST');},
+    input:async()=>({submitted:true}),
+    close:async()=>{onClose(index);if(failCleanup)throw Error('SIMULATED_UNCERTAIN_NATIVE_CLEANUP');}
+  };
+}
+
+test('failed teardown of invalid launcher quarantines all further native admissions',async()=>{
+  let launched=0,closed=0;
+  const pool=createNativeWorkspaceCoordinator({
+    capacity:3,identityResolver:verified,
+    launchWorkspace:async()=>{
+      const n=++launched;
+      return syntheticCleanupWorker(n,{invalid:n===1,failCleanup:n===1,onClose:()=>{closed++;}});
+    }
+  });
+  try{
+    await assert.rejects(pool.open(owner),/NATIVE_WORKSPACE_BACKEND_UNTRUSTED/);
+    assert.equal(pool.status(owner).cleanupFailures,1);
+    assert.equal(pool.status(owner).availableSlots,0,
+      'unresolved native process may still own a display: no capacity must be advertised');
+    await assert.rejects(pool.open(other),/NATIVE_WORKSPACE_QUARANTINED/);
+    assert.equal(launched,1,'no fresh server may launch after unknown cleanup');
+  }finally{
+    await assert.rejects(pool.close(),/NATIVE_WORKSPACE_POOL_CLEANUP_FAILED/);
+  }
+  assert.equal(closed,1);
+});
+
+test('in-flight open started earlier cannot commit after a later cleanup failure',async()=>{
+  const released=deferred(),started=deferred();
+  let launched=0,closedGood=0,closedBad=0;
+  const pool=createNativeWorkspaceCoordinator({
+    capacity:2,identityResolver:verified,
+    launchWorkspace:async()=>{
+      const n=++launched;
+      if(n===1){
+        started.resolve();
+        await released.promise;
+        return syntheticCleanupWorker(n,{onClose:()=>{closedGood++;}});
+      }
+      if(n===2)return syntheticCleanupWorker(n,{
+        invalid:true,failCleanup:true,onClose:()=>{closedBad++;}
+      });
+      throw Error('UNEXPECTED_WORKER_3_LAUNCH');
+    }
+  });
+  const first=pool.open(owner);
+  await started.promise;
+  try{
+    await assert.rejects(pool.open(other),/NATIVE_WORKSPACE_BACKEND_UNTRUSTED/);
+    assert.equal(pool.status(owner).cleanupFailures,1);
+    released.resolve();
+    await assert.rejects(first,/NATIVE_WORKSPACE_QUARANTINED/);
+    assert.equal(closedGood,1,'the pending valid worker must also be cleaned');
+    assert.equal(closedBad,1);
+    assert.equal(launched,2);
+    assert.equal(pool.status(owner).availableSlots,0);
+  }finally{
+    released.resolve();
+    await assert.rejects(pool.close(),/NATIVE_WORKSPACE_POOL_CLEANUP_FAILED/);
+  }
+});
+
+test('successful cleanup of rejected backend does not quarantine capacity',async()=>{
+  let launched=0,closed=0;
+  const pool=createNativeWorkspaceCoordinator({
+    capacity:1,identityResolver:verified,
+    launchWorkspace:async()=>{
+      const n=++launched;
+      return syntheticCleanupWorker(n,{invalid:n===1,onClose:()=>{closed++;}});
+    }
+  });
+  try{
+    await assert.rejects(pool.open(owner),/NATIVE_WORKSPACE_BACKEND_UNTRUSTED/);
+    assert.equal(pool.status(owner).cleanupFailures,0);
+    assert.equal(pool.status(owner).availableSlots,1);
+    const healthy=await pool.open(other);
+    assert.equal(typeof healthy.lease,'string');
+    await pool.end(other,healthy.lease);
+  }finally{
+    await pool.close();
+  }
+  assert.equal(launched,2);
+  assert.equal(closed,2);
+});
+
+test('duplicate native target quarantine keeps existing worker open but bars new admission',async()=>{
+  let builds=0,closed=0;
+  const pool=createNativeWorkspaceCoordinator({
+    capacity:3,identityResolver:verified,
+    launchWorkspace:async()=>{
+      builds++;
+      const obj=syntheticCleanupWorker(1,{onClose:()=>{closed++;}});
+      return {...obj,displayId:':1851',serverPid:56001};
+    }
+  });
+  const first=await pool.open(owner);
+  try{
+    await assert.rejects(pool.open(other),/NATIVE_WORKSPACE_TARGET_COLLISION/);
+    assert.equal(pool.status(owner).cleanupFailures,1);
+    assert.equal(pool.status(owner).ownedWorkspaces,1);
+    assert.equal(pool.status(owner).availableSlots,0);
+    await assert.rejects(pool.open(other),/NATIVE_WORKSPACE_QUARANTINED/);
+    assert.equal(builds,2);
+  }finally{
+    await assert.rejects(pool.close(),/NATIVE_WORKSPACE_POOL_CLEANUP_FAILED/);
+  }
+  assert.equal(closed,1,'unknown duplicate must not kill the original native server twice');
+});
