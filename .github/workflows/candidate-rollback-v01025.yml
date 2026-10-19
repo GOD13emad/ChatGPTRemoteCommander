@@ -106,12 +106,33 @@ jobs:
         run: |
           $ErrorActionPreference='Stop'
           $root=Join-Path $env:RUNNER_TEMP 'remote-commander-rollback-v025w'
+          $candidate='${{ github.event.pull_request.head.sha || github.sha }}'
+          $baseline='890b637c5ff3c7dcc5df2c0b99031333d522c6e4'
           if(-not(Test-Path -LiteralPath $root -PathType Container)){
             Write-Output 'V025W_DIAG_ROOT_UNAVAILABLE'
           }else{
-            $sha='${{ github.event.pull_request.head.sha || github.sha }}'
-            & pwsh.exe -NoLogo -NoProfile -NonInteractive -File tools/diagnose-updater-gate-r470.ps1 -Root $root -ExpectedCommit $sha
-            if($LASTEXITCODE -ne 0){Write-Output 'V025W_DIAG_UNAVAILABLE_FAIL_CLOSED'}
+            try{
+              $receiptPath=Join-Path $root 'RETURN_V025W.json'
+              if(-not(Test-Path -LiteralPath $receiptPath -PathType Leaf)){
+                Write-Output 'V025W_DIAG_RECEIPT_UNAVAILABLE'
+              }else{
+                $receipt=Get-Content -LiteralPath $receiptPath -Raw -ErrorAction Stop | ConvertFrom-Json
+                if($receipt.schema -ne 1 -or $receipt.revision -ne 'V025W' -or
+                   [string]$receipt.candidateHead -cne $candidate -or
+                   [string]$receipt.baselineHead -cne $baseline){throw 'V025W_DIAG_RECEIPT_IDENTITY_MISMATCH'}
+                $failed=@($receipt.stages | Where-Object { [int]$_.exit -ne 0 -or [string]$_.status -eq 'FAILED' })
+                if($failed.Count -ne 1){throw 'V025W_DIAG_STAGE_AMBIGUOUS'}
+                $stage=[string]$failed[0].name
+                if($stage -ceq 'PROMOTE'){$target=$candidate}
+                elseif($stage -ceq 'ROLLBACK'){$target=$baseline}
+                else{throw 'V025W_DIAG_STAGE_UNEXPECTED'}
+                Write-Output ('V025W_DIAG_FAILED_STAGE='+$stage)
+                & pwsh.exe -NoLogo -NoProfile -NonInteractive -File tools/diagnose-updater-gate-r470.ps1 -Root $root -ExpectedCommit $target
+                if($LASTEXITCODE -ne 0){throw 'V025W_DIAG_TOOL_FAILED'}
+              }
+            }catch{
+              Write-Output 'V025W_DIAG_UNAVAILABLE_FAIL_CLOSED'
+            }
           }
       - name: Retain only scoped, short-lived CI evidence
         if: ${{ always() }}
