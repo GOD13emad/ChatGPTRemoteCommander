@@ -98,3 +98,51 @@ handoff, with mandatory agent re-observation; (4) test low-memory bounds,
 disconnect, same-user attacks, multiple host OSs and rollback; (5) independent
 review, guarded canary and release criteria. Do not merge or promote the
 feature solely from this QA evidence.
+
+
+## Native X11 coordination layer (candidate)
+
+This is a stacked, unmerged follow-up to PR #270. The source-only module
+src/native-workspace-coordinator.mjs does not register public MCP/Core tools,
+start OS sessions by default, take desktop focus or reconcile historical J01
+incidents. Its default identity resolver, launcher, observer authorizer and
+human control-handoff authorizer ALL fail closed.
+
+**Identity and scope:** Each lease is tied to an independently authenticated,
+conversation-bound identity from a future trusted Core adapter. An OS username,
+profile label, client-supplied chat ID and bearer token do not alone prove
+identity. Current tests use explicitly synthetic identities. Different chats
+under the same OS profile cannot use each other's leases in the tests.
+
+**Controller invariants:** Startup reserves capacity before the asynchronous
+native launch. OS target/display and server PID collisions fail closed; a
+duplicate handle never closes another owner's live server. A cleanup error is
+quarantined rather than treated as a reusable slot. Observer tokens expire,
+authorize one pre-captured bounded image only, and cannot trigger screenshots
+or input. Operator control handoff is default DENY and scopes action to a
+single independent worker, while unrelated workers continue. Expired/revoked
+handoff requires a fresh owner observation; each input is revision-checked.
+Native input with an ambiguous result is latched UNKNOWN without replay in the
+current in-memory process. Caller-provided DISPLAY, executable, shell command
+or environment is not an accepted native action.
+
+**Live source-QA (MMZ Linux):** On two actual disposable Xvfb/X11 servers,
+a synthetic supervisor captured only private frames, then entered a bounded
+synthetic string into workspace A while the separate agent continued working
+on B. Xauthority from B was rejected on A. The observer did not cause another
+native capture; after input its prior frame was stale. Both synthetic input
+receipts matched their own workers, and all test-owned processes/sockets were
+cleaned after the run. The optional integration test
+test/native-workspace-coordinator-xvfb.test.mjs is SKIPPED unless
+RC_QA_XVFB_BIN names an explicit approved Xvfb binary; the synthetic identity
+adapter is **not** authenticated ChatGPT identity. The separate original
+Python pilot proved PR_SET_PDEATHSIG only for its own child processes, NOT for
+the Node test or power failure.
+
+**Open before release:** trusted conversation identity; protected native
+per-workspace launcher; durable crash-safe native-effect/uncertainty journal
+across restarts; real authenticated supervisor UI and revocable time-bound
+owner consent; measured resource limits and disconnected/abnormal shutdown
+recovery; Linux GNOME and Windows VM/RDS acceptance; independent security
+review. CI on the exact hosted head is an additional gate. No installation,
+stable promotion or operating desktop takeover is authorized by this QA.
