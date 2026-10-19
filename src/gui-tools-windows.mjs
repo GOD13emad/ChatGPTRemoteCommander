@@ -65,17 +65,52 @@ export function createGuiController({ platform = process.platform, now = () => p
     try { pendingIncident = await incidentStore.pending(); }
     catch { incidentStoreUnavailable = true; } // A corrupt/unreadable record never grants input.
     const uncertainNow = uncertain || !!pendingIncident;
-    if (name === 'gui_status' && (!enabled || blocked || uncertainNow || incidentStoreUnavailable)) return {
-      enabled, available: false, blocked, uncertain: uncertainNow, busy, leased: !!current(),
+    // A *valid* native-input incident blocks all mutation, not visibility.
+    // Reading the current desktop neither acknowledges nor replays that input.
+    // A malformed/unreadable incident remains fail-closed; no speculative
+    // recovery is attempted by this controller.
+    const incidentObserveOnly = uncertainNow && !incidentStoreUnavailable;
+    if (name === 'gui_status' && (!enabled || blocked || incidentStoreUnavailable)) return {
+      enabled, available: false, readOnlyAvailable: false, inputAvailable: false,
+      blocked, uncertain: uncertainNow, busy, leased: !!current(),
       incidentStoreUnavailable, incidentPending: !!pendingIncident,
       reason: !supported ? 'PLATFORM_BACKEND_UNSUPPORTED' : blocked ? 'LOCAL_GUI_STOP' :
-        incidentStoreUnavailable ? 'GUI_INCIDENT_STORAGE_UNAVAILABLE' :
-        uncertainNow ? 'NATIVE_OUTCOME_UNCERTAIN_RESTART_REQUIRED' : 'GUI_DISABLED'
+        incidentStoreUnavailable ? 'GUI_INCIDENT_STORAGE_UNAVAILABLE' : 'GUI_DISABLED'
     };
     if (!enabled) throw guiError('GUI_DISABLED_OR_UNSUPPORTED');
     if (blocked) throw guiError('GUI_LOCAL_STOP');
     if (incidentStoreUnavailable) throw guiError('GUI_INCIDENT_STORAGE_UNAVAILABLE');
-    if (uncertainNow) throw guiError('GUI_OUTCOME_UNCERTAIN_RESTART_REQUIRED');
+    if (incidentObserveOnly) {
+      // A new incident must invalidate a previously issued takeover lease.
+      if (current()?.mode === 'takeover') {
+        session = null;
+        frame = null;
+        closeInvoke();
+      }
+      if (name === 'gui_status') {
+        let native = null;
+        if (!busy) {
+          try { native = await invoke({ action: 'status', stopFile }); }
+          catch { /* Read-only failure never changes incident state. */ }
+        }
+        const readOnlyAvailable = native?.ok === true && native.available === true;
+        return {
+          enabled, available: readOnlyAvailable, readOnlyAvailable,
+          inputAvailable: false, blocked: false, uncertain: true, busy,
+          leased: !!current(), incidentPending: !!pendingIncident,
+          incidentStoreUnavailable: false,
+          reason: 'GUI_INCIDENT_REVIEW_REQUIRED',
+          observationOnly: true,
+          backend: readOnlyAvailable ? native.backend ?? (platform === 'win32'
+            ? 'windows-user32-gdi' : 'gnome-shell-wayland') : undefined
+        };
+      }
+      if (!['gui_session_begin', 'gui_session_renew', 'gui_session_end',
+            'gui_screenshot', 'gui_cursor_position', 'gui_list_windows'].includes(name)
+          || (name === 'gui_session_begin' && input.mode === 'takeover')) {
+        throw guiError('GUI_INCIDENT_REVIEW_REQUIRED');
+      }
+    }
     // No stale action queue: concurrent work must retry with a NEW observation.
     if (busy) throw guiError('GUI_BUSY');
     busy = true;
@@ -86,8 +121,8 @@ export function createGuiController({ platform = process.platform, now = () => p
         if (status?.ok !== true) throw guiError(status?.error || 'GUI_NATIVE_FAILED');
         if (status.available !== true) throw guiError('GUI_DESKTOP_UNAVAILABLE');
         const ownerAuthorizedFallback = cfg.ownerAuthorizedTakeover === true && ctx.config?.capabilityProfile?.tier === 'FULL_POWER' && ctx.config?.capabilityProfile?.explicitlyAuthorized === true;
-        const mode = input.mode ?? (ownerAuthorizedFallback ? 'takeover' : 'observe');
-        session = { id: token(), expires: now() + (input.ttlSeconds ?? 60) * 1000, mode, authorization: input.mode === 'takeover' ? 'per-call' : ownerAuthorizedFallback ? 'owner-persisted' : 'observe-default' };
+        const mode = incidentObserveOnly ? 'observe' : input.mode ?? (ownerAuthorizedFallback ? 'takeover' : 'observe');
+        session = { id: token(), expires: now() + (input.ttlSeconds ?? 60) * 1000, mode, authorization: incidentObserveOnly ? 'incident-observe-only' : input.mode === 'takeover' ? 'per-call' : ownerAuthorizedFallback ? 'owner-persisted' : 'observe-default' };
         frame = null;
         return { ok: true, lease: session.id, ttlSeconds: input.ttlSeconds ?? 60, mode, authorization: session.authorization, coordinationOnly: true, interactiveTakeover: mode === 'takeover' };
       }
