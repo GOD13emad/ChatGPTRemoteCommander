@@ -1,0 +1,63 @@
+name: Native private workspace coordination QA (NoPromote)
+
+on:
+  pull_request:
+    paths:
+      - 'src/native-workspace-coordinator.mjs'
+      - 'test/native-workspace-coordinator*.test.mjs'
+      - 'test/gui-private-x11-isolation-qa.py'
+      - '.github/workflows/native-private-workspace-qa.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    name: Pure coordinator contract (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Syntax and scoped identity, lease, handoff, no-replay regressions
+        run: |
+          node --check src/native-workspace-coordinator.mjs
+          node --check test/native-workspace-coordinator.test.mjs
+          node --test test/native-workspace-coordinator.test.mjs
+
+  private-x11:
+    name: Linux actual Xvfb worker handoff (source QA only)
+    runs-on: ubuntu-24.04
+    needs: contract
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install disposable native X11 QA dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            xvfb xauth x11-utils xdotool ffmpeg python3-tk
+      - name: Exercise two private X servers without owner desktop or network input
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -x /usr/bin/Xvfb
+          test -x /usr/bin/ffmpeg
+          test -x /usr/bin/xdotool
+          env -u DISPLAY -u WAYLAND_DISPLAY \
+            RC_QA_XVFB_BIN=/usr/bin/Xvfb \
+            timeout --signal=TERM --kill-after=6s 95s \
+            node --test test/native-workspace-coordinator-xvfb.test.mjs
+      - name: State NoPromote boundary
+        run: |
+          echo 'SOURCE_ONLY_QA_PASS_IS_NOT_INSTALLATION_OR_NATIVE_OWNER_AUTH'
