@@ -6,6 +6,7 @@ import { performance } from 'node:perf_hooks';
 import { GUI_RULES, guiError, guiToolDefinitions, validateGuiInput } from './gui-contract.mjs';
 import { createGuiProcessClient, runGuiProcess } from './gui-process.mjs';
 import { createGuiInputIncidentStore } from './gui-incident-store.mjs';
+import { createGuiScopedOperationJournal } from './gui-scoped-operation-journal.mjs';
 export { guiToolDefinitions };
 
 const project = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -41,7 +42,8 @@ const bound = (v, low, high, defaultValue) => Number.isSafeInteger(v) ? Math.max
  * application coordination; distinct trust levels require separate OS sessions.
  */
 export function createGuiController({ platform = process.platform, now = () => performance.now(), token = () => randomBytes(24).toString('hex'), isStopped = stopped,
-  invoke = invokeDefault, closeInvoke = closeInvokeDefault, incidentStore = createGuiInputIncidentStore() } = {}) {
+  invoke = invokeDefault, closeInvoke = closeInvokeDefault, incidentStore = createGuiInputIncidentStore(),
+  scopedOperations = null } = {}) {
   let session = null;
   let frame = null;
   let busy = false;
@@ -69,8 +71,8 @@ export function createGuiController({ platform = process.platform, now = () => p
     // Reading the current desktop neither acknowledges nor replays that input.
     // A malformed/unreadable incident remains fail-closed; no speculative
     // recovery is attempted by this controller.
-    const incidentObserveOnly = uncertainNow && !incidentStoreUnavailable;
-    if (name === 'gui_status' && (!enabled || blocked || incidentStoreUnavailable)) return {
+    const incidentObserveOnly = !scopedOperations && uncertainNow && !incidentStoreUnavailable;
+    if (name === 'gui_status' && (!enabled || blocked || (!scopedOperations && incidentStoreUnavailable))) return {
       enabled, available: false, readOnlyAvailable: false, inputAvailable: false,
       blocked, uncertain: uncertainNow, busy, leased: !!current(),
       incidentStoreUnavailable, incidentPending: !!pendingIncident,
@@ -79,7 +81,7 @@ export function createGuiController({ platform = process.platform, now = () => p
     };
     if (!enabled) throw guiError('GUI_DISABLED_OR_UNSUPPORTED');
     if (blocked) throw guiError('GUI_LOCAL_STOP');
-    if (incidentStoreUnavailable) throw guiError('GUI_INCIDENT_STORAGE_UNAVAILABLE');
+    if (incidentStoreUnavailable && !scopedOperations) throw guiError('GUI_INCIDENT_STORAGE_UNAVAILABLE');
     if (incidentObserveOnly) {
       // A new incident must invalidate a previously issued takeover lease.
       if (current()?.mode === 'takeover') {
@@ -129,7 +131,24 @@ export function createGuiController({ platform = process.platform, now = () => p
       if (name === 'gui_status') {
         const status = await invoke({ action: 'status', stopFile });
         if (status?.ok !== true) throw guiError(status?.error || 'GUI_NATIVE_FAILED');
-        return { ...status, enabled, busy: false, leased: !!current(), backend: status.backend ?? (platform === 'win32' ? 'windows-user32-gdi' : 'gnome-shell-wayland'), policy: {
+        let scopedUnresolvedCount = null;
+        if (scopedOperations) {
+          try {scopedUnresolvedCount=(await scopedOperations.inspect()).unresolvedCount;}
+          catch { /* Status remains read-only; next input must still persist its own intent. */ }
+        }
+        return { ...status, enabled, busy: false, leased: !!current(),
+          ...(scopedOperations ? {
+            inputAvailable: status.available === true && !blocked,
+            scopedUnresolvedCount,
+            readOnlyAvailable: status.available === true,
+            incidentPending: !!pendingIncident,
+            legacyIncidentStorageUnverified: incidentStoreUnavailable,
+            historicalNativeOutcomeUncertain: uncertainNow,
+            scopedNativeIntents: true,
+            observationOnly: false,
+            reason: status.available ? 'GUI_SCOPED_ACTIONS_AVAILABLE' : 'GUI_DESKTOP_UNAVAILABLE'
+          } : {}),
+          backend: status.backend ?? (platform === 'win32' ? 'windows-user32-gdi' : 'gnome-shell-wayland'), policy: {
           allowScreenshot: cfg.allowScreenshot === true, allowMouse: cfg.allowMouse === true,
           allowKeyboard: cfg.allowKeyboard === true, allowWindowFocus: cfg.allowWindowFocus === true,
           defaultSessionMode: 'observe', explicitTakeoverRequired: true,
@@ -165,10 +184,10 @@ export function createGuiController({ platform = process.platform, now = () => p
       // A crash between dispatch and native acknowledgment must not reset safety on restart.
       let pendingHandle = null;
       if (isInput) {
-        try { pendingHandle = await incidentStore.begin(name); }
+        try { pendingHandle = await (scopedOperations ?? incidentStore).begin(name); }
         catch {
           session = null; frame = null; closeInvoke();
-          throw guiError('GUI_INCIDENT_STORAGE_UNAVAILABLE');
+          throw guiError(scopedOperations ? 'GUI_SCOPED_STORAGE_UNAVAILABLE' : 'GUI_INCIDENT_STORAGE_UNAVAILABLE');
         }
       }
       let result;
@@ -185,7 +204,7 @@ export function createGuiController({ platform = process.platform, now = () => p
             error?.guiWindowsMutexPreDispatch === true;
           const provenNoEffect = linuxNotApplied || windowsMutexNotSubmitted;
           if (provenNoEffect) {
-            try { await incidentStore.resolve(pendingHandle); }
+            try { await (scopedOperations ?? incidentStore).resolve(pendingHandle); }
             catch { uncertain = true; session = null; frame = null; closeInvoke(); throw guiError('GUI_INCIDENT_STORAGE_UNAVAILABLE'); }
           }
           uncertain = !provenNoEffect;
@@ -198,10 +217,10 @@ export function createGuiController({ platform = process.platform, now = () => p
         throw guiError(result?.error || 'GUI_NATIVE_FAILED');
       }
       if (isInput) {
-        try { await incidentStore.resolve(pendingHandle); }
+        try { await (scopedOperations ?? incidentStore).resolve(pendingHandle); }
         catch {
           uncertain = true; session = null; frame = null; closeInvoke();
-          throw guiError('GUI_INCIDENT_STORAGE_UNAVAILABLE');
+          throw guiError(scopedOperations ? 'GUI_SCOPED_STORAGE_UNAVAILABLE' : 'GUI_INCIDENT_STORAGE_UNAVAILABLE');
         }
       }
       if (name === 'gui_screenshot') {
@@ -222,5 +241,5 @@ export function createGuiController({ platform = process.platform, now = () => p
   }
   return { execute };
 }
-const controller = createGuiController();
+const controller = createGuiController({scopedOperations:createGuiScopedOperationJournal()});
 export async function executeGuiTool(ctx, name, input) { return controller.execute(ctx, name, input); }
