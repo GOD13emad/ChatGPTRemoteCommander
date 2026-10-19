@@ -66,6 +66,7 @@ export function createNativeWorkspaceCoordinator({
   launchWorkspace=async()=>{throw fail('NATIVE_WORKSPACE_BACKEND_UNCONFIGURED');},
   authorizeObserver=()=>false,
   authorizeHandoff=()=>false,
+  durableJournalFactory=async()=>null,
   clock=()=>performance.now(),
   token=issue,
   capacity=3
@@ -207,7 +208,18 @@ export function createNativeWorkspaceCoordinator({
           throw fail('NATIVE_WORKSPACE_TARGET_COLLISION');
         }
         if(closed)throw fail('NATIVE_WORKSPACE_POOL_CLOSED');
-        const entry={lease,owner,workspaceRef,worker,expiresAt:now()+ttl,
+        // Native mutation remains disabled without an explicit journal.
+        // The journal factory must come from the trusted local Core adapter,
+        // not an MCP caller or chat message.
+        const journal=await durableJournalFactory({workspaceRef,
+          ownerRef:digest(owner),backendRef:digest(worker.displayId)});
+        if(journal!==null&&(!journal||
+           typeof journal.prepare!=='function'||
+           typeof journal.acknowledge!=='function'||
+           typeof journal.inspect!=='function'))
+          throw fail('NATIVE_WORKSPACE_JOURNAL_UNTRUSTED');
+        if(closed)throw fail('NATIVE_WORKSPACE_POOL_CLOSED');
+        const entry={lease,owner,workspaceRef,worker,journal,expiresAt:now()+ttl,
           revision:0,ownerObserved:-1,operatorObserved:-1,
           needsOwnerObservation:true,uncertain:false,frame:null,handoff:null,
           busy:null,disposal:null,disposing:false,expireAfterIdle:false};
@@ -245,14 +257,39 @@ export function createNativeWorkspaceCoordinator({
     if(hasObserver)entry.frame={...frame,revision:entry.revision,at:now()};
     else entry.frame=null;
   }
-  async function input(entry,action){
+  async function input(entry,action,operationId){
     const validated=actionOf(action);
+    // Require a stable logical action key; a transport retry must not choose
+    // a new key and accidentally dispatch the same native input twice.
+    if(typeof operationId!=='string'||
+       !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(operationId))
+      throw fail('NATIVE_WORKSPACE_OPERATION_ID_REQUIRED');
     return withBusy(entry,async()=>{
+      if(!entry.journal)throw fail('NATIVE_WORKSPACE_DURABLE_JOURNAL_REQUIRED');
+      let handle;
+      try{
+        handle=await entry.journal.prepare({
+          workspaceRef:entry.workspaceRef,operationId,
+          kind:validated.kind,revision:entry.revision
+        });
+      }catch(error){
+        if(error?.code==='NATIVE_JOURNAL_DUPLICATE_OPERATION')
+          throw fail('NATIVE_WORKSPACE_DUPLICATE_OPERATION_NO_DISPATCH');
+        // A failed journal write can leave a partial pending record.
+        // Even though the native helper has not been invoked, fail closed.
+        entry.uncertain=true;
+        entry.needsOwnerObservation=true;
+        entry.operatorObserved=-1;
+        throw fail('NATIVE_WORKSPACE_JOURNAL_UNAVAILABLE_NO_INPUT');
+      }
       try{
         const result=await entry.worker.input(validated);
-        if(result?.submitted!==true)throw fail('NATIVE_WORKSPACE_NATIVE_OUTCOME_UNKNOWN');
+        if(result?.submitted!==true)
+          throw fail('NATIVE_WORKSPACE_NATIVE_OUTCOME_UNKNOWN');
+        await entry.journal.acknowledge(handle);
       }catch{
-        // The call may have reached a native GUI. No retry or local "clear".
+        // The call may have reached a private native GUI. No retry or
+        // same-user marker can release this pending operation.
         entry.uncertain=true;
         entry.revision++;
         entry.needsOwnerObservation=true;
@@ -262,19 +299,18 @@ export function createNativeWorkspaceCoordinator({
       entry.revision++;
       entry.needsOwnerObservation=true;
       entry.operatorObserved=-1;
-      // "submitted" does not prove that the UI applied the effect.
       return {submitted:true,nativeEffectConfirmed:false,
         revision:entry.revision,reobserveRequired:true};
     });
   }
-  async function inputOwner(ctx,lease,action,{expectedRevision}={}){
+  async function inputOwner(ctx,lease,action,{expectedRevision,operationId}={}){
     const entry=getOwned(ctx,lease);
     if(entry.uncertain)throw fail('NATIVE_WORKSPACE_UNCERTAIN_NO_REPLAY');
     if(entry.handoff)throw fail('NATIVE_WORKSPACE_CONTROL_HELD');
     if(entry.needsOwnerObservation||entry.ownerObserved!==entry.revision||
        expectedRevision!==entry.revision)
       throw fail('NATIVE_WORKSPACE_REOBSERVATION_REQUIRED');
-    return input(entry,action);
+    return input(entry,action,operationId);
   }
   async function grantObserver(ownerCtx,lease,viewerCtx,{ttlSeconds=60}={}){
     const entry=getOwned(ownerCtx,lease),viewer=subject(viewerCtx);
@@ -374,12 +410,12 @@ export function createNativeWorkspaceCoordinator({
       return {revision:entry.revision,frame,ownerInputPaused:true};
     });
   }
-  async function inputOperator(ctx,controlToken,action,{expectedRevision}={}){
+  async function inputOperator(ctx,controlToken,action,{expectedRevision,operationId}={}){
     const entry=controlEntry(ctx,controlToken);
     if(entry.uncertain)throw fail('NATIVE_WORKSPACE_UNCERTAIN_NO_REPLAY');
     if(entry.operatorObserved!==entry.revision||expectedRevision!==entry.revision)
       throw fail('NATIVE_WORKSPACE_REOBSERVATION_REQUIRED');
-    return input(entry,action);
+    return input(entry,action,operationId);
   }
   function endHandoff(ctx,controlToken){
     const entry=controlEntry(ctx,controlToken);

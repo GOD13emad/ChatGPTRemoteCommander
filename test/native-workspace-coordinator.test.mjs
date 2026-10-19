@@ -45,11 +45,29 @@ function frame(name,state){
   return {mimeType:'image/png',data:bytes.toString('base64')};
 }
 function fixture({capacity=3,authorizeObserver=()=>false,
-  authorizeHandoff=()=>false,clock=()=>1000,workerSetup=()=>({})}={}){
-  let seq=0;
+  authorizeHandoff=()=>false,clock=()=>1000,workerSetup=()=>({}),
+  durableJournalFactory=null}={}){
+  let seq=0,operationSerial=0;
   const workers=[];
-  const pool=createNativeWorkspaceCoordinator({
+  // Unit tests use an explicit synthetic in-memory journal. Durable behavior
+  // is checked separately against real owner-private disk and real Xvfb.
+  const qaJournalFactory=()=> {
+    const seen=new Set();
+    return {
+      prepare:async ({operationId})=>{
+        if(seen.has(operationId))throw Object.assign(
+          Error('NATIVE_JOURNAL_DUPLICATE_OPERATION'),
+          {code:'NATIVE_JOURNAL_DUPLICATE_OPERATION'});
+        seen.add(operationId);
+        return {operationId};
+      },
+      acknowledge:async()=>({submitted:true}),
+      inspect:async()=>({releaseAuthorized:false})
+    };
+  };
+  const native=createNativeWorkspaceCoordinator({
     capacity,identityResolver:verified,authorizeObserver,authorizeHandoff,clock,
+    durableJournalFactory:durableJournalFactory??qaJournalFactory,
     launchWorkspace:async()=>{
       const name='worker-'+(++seq),settings=workerSetup(name);
       const item={name,typed:[],viewed:0,closes:0,state:0,...settings};
@@ -76,6 +94,15 @@ function fixture({capacity=3,authorizeObserver=()=>false,
       return item.handle;
     }
   });
+  const pool={
+    ...native,
+    inputOwner:(ctx,lease,action,options={})=>native.inputOwner(
+      ctx,lease,action,{...options,
+        operationId:options.operationId??'qa-owner-'+(++operationSerial)}),
+    inputOperator:(ctx,controlToken,action,options={})=>native.inputOperator(
+      ctx,controlToken,action,{...options,
+        operationId:options.operationId??'qa-operator-'+(++operationSerial)})
+  };
   return {pool,workers};
 }
 
@@ -449,4 +476,110 @@ test('production Core has no implicit native-workspace QA auto-activation',async
   const pool=createNativeWorkspaceCoordinator({identityResolver:verified});
   await assert.rejects(pool.open(owner),/NATIVE_WORKSPACE_BACKEND_UNCONFIGURED/);
   await pool.close();
+});
+
+test('real GUI input is denied without an explicit durable journal binding',async()=>{
+  let nativeInputs=0,closed=0;
+  const pool=createNativeWorkspaceCoordinator({
+    identityResolver:verified,
+    launchWorkspace:async()=>({
+      kind:'native-private-x11',physicalDesktopInput:false,
+      displayId:':1858',serverPid:60558,
+      observe:async()=>({frame:frame('default-deny',0)}),
+      input:async()=>{nativeInputs++;return {submitted:true};},
+      close:async()=>{closed++;}
+    })
+  });
+  const a=await pool.open(owner);
+  const seen=await pool.observeOwner(owner,a.lease);
+  await assert.rejects(pool.inputOwner(owner,a.lease,
+    {kind:'click',x:3,y:4},
+    {expectedRevision:seen.revision,operationId:'caller-stable-action'}),
+    /NATIVE_WORKSPACE_DURABLE_JOURNAL_REQUIRED/);
+  assert.equal(nativeInputs,0);
+  await pool.close();
+  assert.equal(closed,1);
+});
+
+test('a stable action id cannot silently repeat after a new observation',async()=>{
+  const f=fixture();
+  const a=await f.pool.open(owner);
+  try{
+    const first=await f.pool.observeOwner(owner,a.lease);
+    await f.pool.inputOwner(owner,a.lease,{kind:'key',key:'Return'},
+      {expectedRevision:first.revision,operationId:'same-logical-action'});
+    const second=await f.pool.observeOwner(owner,a.lease);
+    await assert.rejects(f.pool.inputOwner(owner,a.lease,
+      {kind:'key',key:'Return'},
+      {expectedRevision:second.revision,operationId:'same-logical-action'}),
+      /NATIVE_WORKSPACE_DUPLICATE_OPERATION_NO_DISPATCH/);
+    assert.equal(f.workers[0].typed.length,1);
+  }finally{await f.pool.close();}
+});
+
+test('failed durable pre-dispatch Intent blocks only affected workspace',async()=>{
+  let journals=0,nativeA=0,nativeB=0;
+  const f=fixture({
+    durableJournalFactory:async()=>{
+      journals++;
+      if(journals===1)return {
+        prepare:async()=>{throw Error('disk sync refused');},
+        acknowledge:async()=>{},
+        inspect:async()=>({releaseAuthorized:false})
+      };
+      return {
+        prepare:async()=>({valid:true}),
+        acknowledge:async()=>({submitted:true}),
+        inspect:async()=>({releaseAuthorized:false})
+      };
+    },
+    workerSetup:name=>name==='worker-1'
+      ? {onInput:async()=>{nativeA++;return {submitted:true};}}
+      : {onInput:async()=>{nativeB++;return {submitted:true};}}
+  });
+  const a=await f.pool.open(owner),b=await f.pool.open(other);
+  try{
+    const [av,bv]=await Promise.all([
+      f.pool.observeOwner(owner,a.lease),f.pool.observeOwner(other,b.lease)
+    ]);
+    await assert.rejects(f.pool.inputOwner(owner,a.lease,
+      {kind:'key',key:'Return'},
+      {expectedRevision:av.revision,operationId:'write-denied'}),
+      /NATIVE_WORKSPACE_JOURNAL_UNAVAILABLE_NO_INPUT/);
+    assert.equal(nativeA,0);
+    await assert.rejects(f.pool.inputOwner(owner,a.lease,
+      {kind:'key',key:'Return'},
+      {expectedRevision:av.revision,operationId:'blind-retry'}),
+      /NATIVE_WORKSPACE_UNCERTAIN_NO_REPLAY/);
+    assert.equal((await f.pool.inputOwner(other,b.lease,
+      {kind:'key',key:'Return'},
+      {expectedRevision:bv.revision,operationId:'other-workspace'})).submitted,true);
+    assert.equal(nativeB,1);
+  }finally{await f.pool.close();}
+});
+
+test('post-native ACK failure leaves workspace uncertain and never replays',async()=>{
+  let inputs=0;
+  const f=fixture({
+    durableJournalFactory:async()=>({
+      prepare:async()=>({intent:true}),
+      acknowledge:async()=>{throw Error('lost durable ack');},
+      inspect:async()=>({releaseAuthorized:false})
+    }),
+    workerSetup:()=>({onInput:async()=>{inputs++;return {submitted:true};}})
+  });
+  const a=await f.pool.open(owner);
+  try{
+    const view=await f.pool.observeOwner(owner,a.lease);
+    await assert.rejects(f.pool.inputOwner(owner,a.lease,
+      {kind:'key',key:'Return'},
+      {expectedRevision:view.revision,operationId:'exact-action'}),
+      /NATIVE_WORKSPACE_NATIVE_OUTCOME_UNKNOWN/);
+    assert.equal(inputs,1);
+    await assert.rejects(f.pool.inputOwner(owner,a.lease,
+      {kind:'key',key:'Return'},
+      {expectedRevision:view.revision,operationId:'exact-action'}),
+      /NATIVE_WORKSPACE_UNCERTAIN_NO_REPLAY/);
+    assert.equal(inputs,1);
+  }finally{await f.pool.close();}
 });
