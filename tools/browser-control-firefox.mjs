@@ -3,11 +3,27 @@ import fs from 'node:fs';
 import path from 'node:path';
 import net from 'node:net';
 import { spawn } from 'node:child_process';
-import { createInterface } from 'node:readline';
 
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const safeCode=e=>/^[A-Z][A-Z0-9_]{1,79}$/.test(e?.browserCode??e?.message??'')?(e.browserCode??e.message):'BROWSER_NATIVE_FAILED';
 const fail=code=>Object.assign(new Error(code),{browserCode:code});
+async function* lfJsonLines(input){
+  // JSON permits U+2028/U+2029 inside strings. Only LF frames protocol records.
+  const decoder=new TextDecoder('utf-8');
+  let carry='';
+  for await(const bytes of input){
+    carry+=decoder.decode(bytes,{stream:true});
+    let at;
+    while((at=carry.indexOf('\n'))!==-1){
+      const line=carry.slice(0,at);
+      carry=carry.slice(at+1);
+      yield line.endsWith('\r')?line.slice(0,-1):line;
+    }
+  }
+  carry+=decoder.decode();
+  if(carry)yield carry.endsWith('\r')?carry.slice(0,-1):carry;
+}
+
 const redactUrl=value=>{
  try{
   const u=new URL(String(value));
@@ -137,7 +153,7 @@ async function handle(req){
 }
 async function respond(req){try{return await handle(req);}catch(e){return {ok:false,error:safeCode(e)};}}
 async function main(){
- if(process.argv.includes('--server')){process.stdout.write(JSON.stringify({ok:true,ready:true,protocol:1})+'\n');const rl=createInterface({input:process.stdin,crlfDelay:Infinity});try{for await(const line of rl){if(!line.trim())continue;let req;try{req=JSON.parse(line);}catch{process.stdout.write(JSON.stringify({ok:false,error:'BROWSER_HELPER_BAD_JSON'})+'\n');continue;}const out=await respond(req);process.stdout.write(JSON.stringify(out)+'\n');}}finally{await closeBrowser();}return;}
+ if(process.argv.includes('--server')){process.stdout.write(JSON.stringify({ok:true,ready:true,protocol:1})+'\n');const rl=lfJsonLines(process.stdin);try{for await(const line of rl){if(!line.trim())continue;let req;try{req=JSON.parse(line);}catch{process.stdout.write(JSON.stringify({ok:false,error:'BROWSER_HELPER_BAD_JSON'})+'\n');continue;}const out=await respond(req);process.stdout.write(JSON.stringify(out)+'\n');}}finally{await closeBrowser();}return;}
  let input='';for await(const chunk of process.stdin)input+=chunk;let req;try{req=JSON.parse(input);}catch{process.stdout.write(JSON.stringify({ok:false,error:'BROWSER_HELPER_BAD_JSON'}));process.exitCode=2;return;}const out=await respond(req);process.stdout.write(JSON.stringify(out));await closeBrowser();
 }
 for(const sig of ['SIGINT','SIGTERM'])process.on(sig,()=>{closeBrowser().finally(()=>process.exit(0));});
