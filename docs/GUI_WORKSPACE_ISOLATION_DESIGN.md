@@ -90,6 +90,17 @@ The same private Browser Worker pool now accepts an **internally authorized** te
 
 **Scoped evidence:** negative tests cover failed authorization, operator identity mismatch, live permission revocation, handoff expiry, forbidden action types, other-worker progress, owner mutation denial and post-handoff re-observation. A real Chromium test with two independent headless processes showed the human operator's scoped Fill/Click changed only one worker, the other worker continued, and the owner resumed only after re-reading its DOM. No session or main-screen GUI was changed. This is an internal tested contract, **not an operational supervisor with mouse/keyboard attachment**.
 
+## Core signal shutdown integration (isolated candidate)
+
+During QA, an important lifecycle gap was found: \`server-v0.3.mjs\` reaped orphaned isolated browser profiles at startup, but previously did not call \`closeBrowserController()\` on an ordinary process \`SIGTERM\`/\`SIGINT\`. This could leave helper/browser children and ephemeral profile content behind until a later startup. The server now reuses its existing \`browser-tools.mjs\` module for a **bounded, once-only shutdown handler**, without adding a service or public endpoint.
+
+- Stop the existing companion monitor; stop accepting new MCP connections with \`server.close()\`.
+- Concurrently drain HTTP requests and close owned Browser Controllers. Each private pool already preserves accepted in-flight operations until bounded completion. Repeated SIGTERM, SIGINT, or mixed signals remain bound to one idempotent shutdown path; the handler stays registered during draining so a repeated SIGTERM cannot bypass the cleanup. Legacy persistent sessions still have less comprehensive in-flight isolation than the private pool and must not be advertised as independently controlled workers.
+- Surface cleanup failures with a nonzero exit status; do not claim success if the worker shutdown failed. A 45-second deadline gives a bounded error path if a tool or socket cannot drain. A hard OS kill, power failure, or unrelated process crash still cannot guarantee an orderly shutdown; the existing startup orphan reaper remains necessary and is only as strong as the owned lease-marker validation.
+- No uncertain browser input is replayed. The physical GUI and persisted Native Incident files remain independent from this Browser feature.
+
+**Evidence:** deterministic tests cover shutdown race, repeated signals, worker cleanup failure, HTTP drain timeout and monitor teardown. A disposable subprocess on MMZ Linux handles a real \`SIGTERM\`, closes its local HTTP server and writes its cleanup receipt before exiting. On Windows, an in-repository Core HTTP fixture verifies that the new server import resolves without changing MCP schemas. This is **QA signal-path acceptance**, not a Windows-installed service restart/soak or a power-loss proof.
+
 ## What is NOT implemented
 
 1. **Independent Windows GUI workspaces:** Windows 11 Pro has one currently active WinSta0 input desktop per interactive window station. Multiple Windows Virtual Desktops do not create separate input device streams. A VM/isolated RDS session must be provisioned with correct OS, license, account and resource authority. Existing Windows global/local mutex code in PR #249 is a compatibility safety guard, not this architecture.

@@ -25,7 +25,12 @@ const defaultInvoke=async req=>{
  try{return await client.invoke(req);}
  finally{if(req.action==='end')defaultBrowserBackend=null;}
 };
-const defaultClose=()=>{defaultBrowserBackend=null;return Promise.allSettled([chromiumClient.close(),firefoxClient.close()]);};
+const defaultClose=async()=>{
+ defaultBrowserBackend=null;
+ const results=await Promise.allSettled([chromiumClient.close(),firefoxClient.close()]);
+ if(results.some(x=>x.status==='rejected'))
+  throw browserError('BROWSER_DEFAULT_HELPER_CLOSE_FAILED');
+};
 const sameToken=(a,b)=>typeof a==='string'&&typeof b==='string'&&Buffer.byteLength(a)===Buffer.byteLength(b)&&timingSafeEqual(Buffer.from(a),Buffer.from(b));
 const safeSegment=value=>typeof value==='string'&&/^[a-z][a-z0-9_-]{0,31}$/.test(value)?value:'default';
 const instanceSegment=value=>{const raw=typeof value==='string'&&value?value:'default';return raw==='default'?'default':'instance-'+Buffer.from(raw,'utf8').toString('hex');};
@@ -597,5 +602,72 @@ export async function executeBrowserTool(ctx,name,input){
  return controller.execute(ctx,name,input);
 }
 export async function closeBrowserController(){
- await Promise.allSettled([controller.close(),isolatedBrowserPool.close()]);
+ const results=await Promise.allSettled([
+  Promise.resolve().then(()=>controller.close()),
+  Promise.resolve().then(()=>isolatedBrowserPool.close())
+ ]);
+ if(results.some(x=>x.status==='rejected'))
+  throw browserError('BROWSER_SHUTDOWN_CLEANUP_FAILED');
+}
+
+// Bounded graceful close of the browser workers when the actual MCP Core
+// terminates. No new service, port, input capability or auto-replay path.
+// Signal cleanup is process-lifecycle management, not owner GUI recovery.
+export function attachBrowserServerShutdown({
+  server,closeBrowserController,stopMonitor=()=>{},processLike=process,
+  deadlineMs=45000,schedule=setTimeout,cancel=clearTimeout,
+  exit=code=>process.exit(code),
+  onError=code=>console.error(code)
+}={}){
+  if(typeof server?.close!=='function'||typeof closeBrowserController!=='function'||
+     typeof processLike?.on!=='function'||
+     !Number.isSafeInteger(deadlineMs)||deadlineMs<1000||deadlineMs>120000)
+    throw new Error('BROWSER_SHUTDOWN_SETUP_INVALID');
+  let closing=null;
+  const report=code=>{try{onError(code);}catch{}};
+  const shutdown=()=>{
+    if(closing)return closing;
+    closing=(async()=>{
+      let fail=false;
+      const deadline=schedule(()=>{
+        report('BROWSER_SHUTDOWN_DEADLINE_EXCEEDED');
+        exit(1);
+      },deadlineMs);
+      try{
+        try{stopMonitor();}catch{fail=true;report('BROWSER_MONITOR_STOP_FAILED');}
+        const closingServer=new Promise(resolve=>{
+          try{
+            server.close(error=>{
+              if(error&&error.code!=='ERR_SERVER_NOT_RUNNING'){
+                fail=true;report('BROWSER_HTTP_SERVER_CLOSE_FAILED');
+              }
+              resolve();
+            });
+          }catch{
+            fail=true;report('BROWSER_HTTP_SERVER_CLOSE_FAILED');
+            resolve();
+          }
+        });
+        // Await both the HTTP drain and the already accepted private
+        // worker actions; a new HTTP request cannot enter after close().
+        const results=await Promise.allSettled([
+          closingServer,Promise.resolve().then(closeBrowserController)
+        ]);
+        if(results.some(x=>x.status==='rejected')){
+          fail=true;report('BROWSER_WORKER_SHUTDOWN_FAILED');
+        }
+      }finally{
+        cancel(deadline);
+        if(fail)processLike.exitCode=1;
+      }
+    })();
+    return closing;
+  };
+  for(const sig of ['SIGTERM','SIGINT']){
+    processLike.on(sig,()=>{void shutdown().catch(()=>{
+      report('BROWSER_WORKER_SHUTDOWN_FAILED');
+      processLike.exitCode=1;
+    });});
+  }
+  return {shutdown};
 }

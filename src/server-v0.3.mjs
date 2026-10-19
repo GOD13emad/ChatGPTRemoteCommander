@@ -9,7 +9,7 @@ import { canonicalizeRoots } from './security-v0.3.mjs';
 import { audit, listDirectory, prepareProjectCommand, readText, runProjectCommand, writeText } from './tools-v0.3.mjs';
 import { executePowerTool, powerToolDefinitions, prepareDeferredPowerMutation, prepareShellCommand } from './power-tools-v0.3.mjs';
 import { executeGuiTool, guiToolDefinitions } from './gui-tools-windows.mjs';
-import { executeBrowserTool, browserToolDefinitions, reapBrowserOrphans } from './browser-tools.mjs';
+import { executeBrowserTool, browserToolDefinitions, reapBrowserOrphans, closeBrowserController, attachBrowserServerShutdown } from './browser-tools.mjs';
 import { lockStats } from './locks.mjs';
 import { expandPathValue, shellName } from './platform.mjs';
 import { formatToolInputErrors, validateJsonSchema } from './schema-validator.mjs';
@@ -814,4 +814,10 @@ server.listen(config.port, config.host, async () => {
   }
   console.log(`ChatGPT Remote Commander ${VERSION} listening at http://${config.host}:${config.port}/mcp`);
   console.log(`Allowed roots: ${roots.join(', ')}`);
+});
+attachBrowserServerShutdown({
+  server,
+  closeBrowserController,
+  stopMonitor:()=>browserCompanionMonitor?.stop?.(),
+  onError:code=>console.error(code)
 });
