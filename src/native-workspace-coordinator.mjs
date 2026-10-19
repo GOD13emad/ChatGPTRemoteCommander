@@ -74,6 +74,8 @@ export function createNativeWorkspaceCoordinator({
   if(!Number.isInteger(capacity)||capacity<1||capacity>8)
     throw fail('NATIVE_WORKSPACE_CAPACITY_INVALID');
   const workers=new Map();
+  // Reserve native identities while async journal creation is still pending.
+  const pendingNativeTargets=new Map();
   const observers=new Map();
   const reservedLeases=new Set();
   const starting=new Set();
@@ -169,6 +171,7 @@ export function createNativeWorkspaceCoordinator({
     const owner=subject(ctx);
     const ttl=seconds(ttlSeconds,30,600);
     sweep();
+    if(cleanupFailures.length)throw fail('NATIVE_WORKSPACE_QUARANTINED');
     if(workers.size+reservations>=capacity)throw fail('NATIVE_WORKSPACE_CAPACITY');
     reservations++;
     let lease;
@@ -196,7 +199,7 @@ export function createNativeWorkspaceCoordinator({
            typeof worker.input!=='function'||
            typeof worker.close!=='function')
           throw fail('NATIVE_WORKSPACE_BACKEND_UNTRUSTED');
-        const conflict=[...workers.values()].find(e=>
+        const conflict=[...workers.values(),...pendingNativeTargets.values()].find(e=>
           e.worker===worker||e.worker.displayId===worker.displayId||
           e.worker.serverPid===worker.serverPid);
         if(conflict){
@@ -207,7 +210,11 @@ export function createNativeWorkspaceCoordinator({
           cleanupFailures.push(workspaceRef);
           throw fail('NATIVE_WORKSPACE_TARGET_COLLISION');
         }
+        // Validate collision BEFORE cleanup of a newly returned wrapper: a
+        // duplicate wrapper may belong to an existing native process.
+        if(cleanupFailures.length)throw fail('NATIVE_WORKSPACE_QUARANTINED');
         if(closed)throw fail('NATIVE_WORKSPACE_POOL_CLOSED');
+        pendingNativeTargets.set(lease,{worker});
         // Native mutation remains disabled without an explicit journal.
         // The journal factory must come from the trusted local Core adapter,
         // not an MCP caller or chat message.
@@ -218,6 +225,8 @@ export function createNativeWorkspaceCoordinator({
            typeof journal.acknowledge!=='function'||
            typeof journal.inspect!=='function'))
           throw fail('NATIVE_WORKSPACE_JOURNAL_UNTRUSTED');
+        // Awaiting the journal must not bypass a concurrent cleanup failure.
+        if(cleanupFailures.length)throw fail('NATIVE_WORKSPACE_QUARANTINED');
         if(closed)throw fail('NATIVE_WORKSPACE_POOL_CLOSED');
         const entry={lease,owner,workspaceRef,worker,journal,expiresAt:now()+ttl,
           revision:0,ownerObserved:-1,operatorObserved:-1,
@@ -232,7 +241,11 @@ export function createNativeWorkspaceCoordinator({
           try{await worker.close();}catch{cleanupFailures.push(workspaceRef);}
         }
         throw error;
-      }finally{reservations--;reservedLeases.delete(lease);}
+      }finally{
+        pendingNativeTargets.delete(lease);
+        reservations--;
+        reservedLeases.delete(lease);
+      }
     })();
     starting.add(pending);
     pending.then(()=>starting.delete(pending),()=>starting.delete(pending));
@@ -446,7 +459,8 @@ export function createNativeWorkspaceCoordinator({
     const owner=subject(ctx);
     sweep();
     return {ownedWorkspaces:[...workers.values()].filter(e=>e.owner===owner&&!e.disposing).length,
-      capacity,availableSlots:Math.max(0,capacity-workers.size-reservations),
+      capacity,availableSlots:cleanupFailures.length?0:
+        Math.max(0,capacity-workers.size-reservations),
       cleanupFailures:cleanupFailures.length,productionIntegrated:false};
   }
   async function close(){
