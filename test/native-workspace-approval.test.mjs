@@ -61,6 +61,23 @@ test('no trusted signer or malicious key type never issues GUI permissions',()=>
     trustedPublicKey:publicKey,issuer:'broker.qa',
     audience:'rc-workspace.qa',host:'qa-host'
   }),/NATIVE_APPROVAL_TRUST_ANCHOR_INVALID/);
+  const ed=generateKeyPairSync('ed25519');
+  assert.throws(()=>createNativeWorkspaceApprovalVerifier({
+    trustedPublicKey:ed.privateKey,issuer:'broker.qa',
+    audience:'rc-workspace.qa',host:'qa-host'
+  }),/NATIVE_APPROVAL_TRUST_ANCHOR_INVALID/,
+  'Private key objects must never be accepted by the verifier');
+  assert.throws(()=>createNativeWorkspaceApprovalVerifier({
+    trustedPublicKey:ed.privateKey.export({type:'pkcs8',format:'pem'}),
+    issuer:'broker.qa',audience:'rc-workspace.qa',host:'qa-host'
+  }),/NATIVE_APPROVAL_TRUST_ANCHOR_INVALID/,
+  'Private-key PEM must not be accidentally parsed as public signer');
+  const pem=ed.publicKey.export({type:'spki',format:'pem'});
+  const readonlyGate=createNativeWorkspaceApprovalVerifier({
+    trustedPublicKey:pem,issuer:'broker.qa',
+    audience:'rc-workspace.qa',host:'qa-host'
+  });
+  assert.equal(readonlyGate.status().configured,true);
 });
 
 test('correct signed approval is narrowly scoped, single-use and not input itself',()=>{
