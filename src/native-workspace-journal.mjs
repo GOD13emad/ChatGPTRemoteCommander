@@ -8,7 +8,7 @@ import path from 'node:path';
 
 const HEX=/^[a-f0-9]{64}$/;
 const ID=/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
-const TOOLS=new Set(['click','type','key','scroll']);
+const TOOLS=new Set(['click','move','drag','type','key','scroll']);
 const LIMIT=128;
 const hash=s=>createHash('sha256').update(s).digest('hex');
 const failure=code=>Object.assign(new Error(code),{code});

@@ -583,3 +583,45 @@ test('post-native ACK failure leaves workspace uncertain and never replays',asyn
     assert.equal(inputs,1);
   }finally{await f.pool.close();}
 });
+
+
+test('generic mouse movement, drag and double click are revision-checked native actions',
+  async()=>{
+    const f=fixture();
+    const a=await f.pool.open(owner);
+    try{
+      const moves=[
+        {kind:'move',x:32,y:51},
+        {kind:'drag',from:{x:32,y:51},to:{x:154,y:112},
+         button:1,durationMs:180},
+        {kind:'click',x:154,y:112,button:1,count:2}
+      ];
+      for(let i=0;i<moves.length;i++){
+        const current=await f.pool.observeOwner(owner,a.lease);
+        assert.equal((await f.pool.inputOwner(owner,a.lease,moves[i],{
+          expectedRevision:current.revision,
+          operationId:'native-generic-'+i
+        })).submitted,true);
+      }
+      assert.deepEqual(f.workers[0].typed.map(x=>x.kind),
+        ['move','drag','click']);
+      const observed=await f.pool.observeOwner(owner,a.lease);
+      const invalid=[
+        {kind:'move',x:-1,y:51},
+        {kind:'click',x:12,y:40,button:9},
+        {kind:'click',x:12,y:40,count:3},
+        {kind:'drag',from:{x:30,y:20},to:{x:10,y:20},durationMs:5000},
+        {kind:'drag',from:{x:30,y:20,command:'whoami'},
+         to:{x:10,y:20}},
+        {kind:'drag',from:{x:2,y:5},to:{x:16,y:20},display:':0'},
+        {kind:'type',text:'text',env:{DISPLAY:':0'}}
+      ];
+      for(let i=0;i<invalid.length;i++)
+        await assert.rejects(f.pool.inputOwner(owner,a.lease,invalid[i],{
+          expectedRevision:observed.revision,
+          operationId:'invalid-native-'+i
+        }),/NATIVE_WORKSPACE_(ACTION_INVALID|TARGET_OVERRIDE_DENIED)/);
+      assert.equal(f.workers[0].typed.length,3,
+        'Bad input must not be submitted to any native worker');
+    }finally{await f.pool.close();}
+  });

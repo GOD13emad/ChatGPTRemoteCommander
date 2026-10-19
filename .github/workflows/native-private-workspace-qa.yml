@@ -6,6 +6,10 @@ on:
       - 'src/native-workspace-coordinator.mjs'
       - 'src/native-workspace-approval.mjs'
       - 'src/native-workspace-journal.mjs'
+      - 'src/native-private-x11-app-worker.mjs'
+      - 'tools/native-qa-parent-death-exec.py'
+      - 'test/native-private-x11-app-worker.test.mjs'
+      - 'test/fixture-native-generic-app-abrupt-exit.mjs'
       - 'tools/native-workspace-peer-broker-qa.py'
       - 'test/native-workspace-peer-broker-qa.test.py'
       - 'test/native-workspace-coordinator*.test.mjs'
@@ -35,6 +39,7 @@ jobs:
       - name: Syntax and scoped identity, lease, handoff, no-replay regressions
         run: |
           node --check src/native-workspace-coordinator.mjs
+          node --check src/native-private-x11-app-worker.mjs
           node --check src/native-workspace-approval.mjs
           node --check test/native-workspace-approval.test.mjs
           node --check test/native-workspace-coordinator.test.mjs
@@ -79,7 +84,7 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends \
-            xvfb xauth x11-utils xdotool ffmpeg python3-tk
+            xvfb xauth x11-utils xdotool ffmpeg python3-tk x11-apps zenity
       - name: Exercise two private X servers without owner desktop or network input
         shell: bash
         run: |
@@ -91,6 +96,18 @@ jobs:
             RC_QA_XVFB_BIN=/usr/bin/Xvfb \
             timeout --signal=TERM --kill-after=6s 95s \
             node --test test/native-workspace-coordinator-xvfb.test.mjs
+      - name: Exercise arbitrary native X11 programs, pointer and keyboard without browser
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -x /usr/bin/zenity
+          test -x /usr/bin/xclock
+          python3 -B -m py_compile tools/native-qa-parent-death-exec.py
+          env -u DISPLAY -u WAYLAND_DISPLAY \
+            RC_QA_XVFB_BIN=/usr/bin/Xvfb \
+            timeout --signal=TERM --kill-after=6s 95s \
+            node --test test/native-private-x11-app-worker.test.mjs
       - name: State NoPromote boundary
         run: |
           echo 'SOURCE_ONLY_QA_PASS_IS_NOT_INSTALLATION_OR_NATIVE_OWNER_AUTH'
+          echo 'GENERIC_X11_GUI_IS_NOT_VM_RDS_WAYLAND_OR_WINDOWS_PRODUCTION'
