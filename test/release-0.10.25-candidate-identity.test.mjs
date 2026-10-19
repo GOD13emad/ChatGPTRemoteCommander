@@ -49,3 +49,20 @@ test('future tagged release workflow remains guarded and no automatic publisher 
   assert.ok(read('test/release-assets-contract.test.mjs').includes('RELEASE_0.10.24.md'));
   assert.ok(read('docs/RELEASE_0.10.21.md').includes('Core v0.10.21'));
 });
+
+test('candidate rollback failure uploads bounded sanitized diagnostics, never raw qualification log',()=>{
+  const workflow=read('.github/workflows/candidate-rollback-v01025.yml');
+  const helper=read('tools/diagnose-updater-gate-r470.ps1');
+  for(const token of [
+    'Diagnose failed candidate using sanitized source-only phase evidence',
+    'if: ${{ failure() }}',
+    'tools/diagnose-updater-gate-r470.ps1',
+    'remote-commander-rollback-v025w/DIAGNOSTIC_R470.json'
+  ])assert.ok(workflow.includes(token),token);
+  assert.equal(workflow.split(String.fromCharCode(10)).some(line=>
+    line.includes('${{ runner.temp }}') &&
+    line.includes('qualification-output-') && line.includes('.log')
+  ),false,'Do not upload raw qualification output');
+  for(const marker of ['rawLogIncluded=$false','secretsIncluded=$false','absolutePathsIncluded=$false','NON_TAP_FAILURE_PHASE_IDENTIFIED'])
+    assert.ok(helper.includes(marker),marker);
+});

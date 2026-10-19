@@ -100,6 +100,19 @@ jobs:
           $ErrorActionPreference='Stop'
           & pwsh.exe -NoLogo -NoProfile -NonInteractive -File test/release-rollback-windows-v01025.ps1 -ExpectedCommit '${{ github.event.pull_request.head.sha || github.sha }}'
           if($LASTEXITCODE -ne 0){throw ('V025W_TEST_EXIT_'+$LASTEXITCODE)}
+      - name: Diagnose failed candidate using sanitized source-only phase evidence
+        if: ${{ failure() }}
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $root=Join-Path $env:RUNNER_TEMP 'remote-commander-rollback-v025w'
+          if(-not(Test-Path -LiteralPath $root -PathType Container)){
+            Write-Output 'V025W_DIAG_ROOT_UNAVAILABLE'
+          }else{
+            $sha='${{ github.event.pull_request.head.sha || github.sha }}'
+            & pwsh.exe -NoLogo -NoProfile -NonInteractive -File tools/diagnose-updater-gate-r470.ps1 -Root $root -ExpectedCommit $sha
+            if($LASTEXITCODE -ne 0){Write-Output 'V025W_DIAG_UNAVAILABLE_FAIL_CLOSED'}
+          }
       - name: Retain only scoped, short-lived CI evidence
         if: ${{ always() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -109,6 +122,7 @@ jobs:
           if-no-files-found: warn
           path: |
             ${{ runner.temp }}/remote-commander-rollback-v025w/RETURN_V025W.json
+            ${{ runner.temp }}/remote-commander-rollback-v025w/DIAGNOSTIC_R470.json
             ${{ runner.temp }}/remote-commander-rollback-v025w/PROMOTE.stdout.log
             ${{ runner.temp }}/remote-commander-rollback-v025w/PROMOTE.stderr.log
             ${{ runner.temp }}/remote-commander-rollback-v025w/ROLLBACK.stdout.log
