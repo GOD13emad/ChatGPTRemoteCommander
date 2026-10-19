@@ -1110,3 +1110,18 @@ test('R157 staged release lookup uses the pinned source version, not a fixed old
  assert.equal(workflow.includes("('releases\\v0.10.24-'+$sha.Substring(0,12))"),false);
  assert.equal('releases\\v'+version+'-'+'f'.repeat(12),'releases\\v0.10.25-'+'f'.repeat(12));
 });
+
+
+test('R170 isolated rollback qualification is version-scoped, not a release authorization',()=>{
+  const linux=read('test/release-rollback-linux-r170.sh');
+  const workflow=read('.github/workflows/release-rollback-r170.yml');
+  for(const expected of [
+    'SOURCE_VERSION=', '0.10.24 ||', '0.10.25 ]]',
+    'R170_ISOLATED_SOURCE_VERSION=', 'releaseAuthorization=false',
+    'AUTO_UPDATE_PASS version=$SOURCE_VERSION',
+    "assert r['active']['version']==sys.argv[3]"
+  ])assert.ok(linux.includes(expected),'missing isolated qualification constraint: '+expected);
+  assert.ok(workflow.includes("['0.10.24','0.10.25'].includes"));
+  assert.ok(!workflow.includes("'0.10.26'"),'future candidate requires explicit review');
+  assert.ok(linux.includes('R170_GITHUB_HOSTED_LINUX_ONLY'),'CI-only, not owner host');
+});
