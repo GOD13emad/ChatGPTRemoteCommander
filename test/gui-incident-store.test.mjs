@@ -23,9 +23,9 @@ const config={config:{powerMode:{enabled:true,guiControl:{
  enabled:true,allowScreenshot:true,allowMouse:true,allowKeyboard:true,allowWindowFocus:true
 }}}};
 function controller(incidentStore,{invoke=async(req)=>(req.action==='screenshot'?image():{ok:true,available:true}),platform='win32'}={}){
- let calls=0;
+ let calls=0, issued=0;
  const c=createGuiController({
-  platform,incidentStore,token:()=>('a'.repeat(48)),isStopped:async()=>false,
+  platform,incidentStore,token:()=>String(++issued).padStart(48,'0'),isStopped:async()=>false,
   invoke:async req=>{calls++;return invoke(req);},closeInvoke:()=>{},
   now:()=>1000
  });
@@ -72,9 +72,21 @@ test('unknown native input persists across fresh controller and never replays',(
  const status=await fresh.run('gui_status');
  assert.equal(status.uncertain,true);
  assert.equal(status.incidentPending,true);
- assert.equal(status.reason,'NATIVE_OUTCOME_UNCERTAIN_RESTART_REQUIRED');
- await assert.rejects(fresh.run('gui_session_begin',{mode:'observe'}),/GUI_OUTCOME_UNCERTAIN/);
- assert.equal(fresh.calls,0);
+ assert.equal(status.reason,'GUI_INCIDENT_REVIEW_REQUIRED');
+ assert.equal(status.available,true);
+ assert.equal(status.readOnlyAvailable,true);
+ assert.equal(status.inputAvailable,false);
+ const obs=await fresh.run('gui_session_begin',{mode:'observe'});
+ assert.equal(obs.mode,'observe');
+ assert.equal(obs.authorization,'incident-observe-only');
+ const picture=await fresh.run('gui_screenshot',{lease:obs.lease});
+ assert.ok(picture.__structuredContent.frame);
+ await fresh.run('gui_session_renew',{lease:obs.lease,ttlSeconds:40});
+ await fresh.run('gui_session_end',{lease:obs.lease});
+ await assert.rejects(fresh.run('gui_session_begin',{
+   mode:'takeover',explicitUserAuthorization:'Do not replay native input'
+ }),/GUI_INCIDENT_REVIEW_REQUIRED/);
+ assert.equal(JSON.parse(await fs.readFile(file,'utf8')).tool,'gui_type_text');
 }));
 test('strong Linux pre-dispatch no-effect proof clears pending evidence without replay',()=>ownFile(async file=>{
  const store=createGuiInputIncidentStore({file});
@@ -135,10 +147,63 @@ test('real child process termination leaves private pending evidence and blocks 
  assert.notEqual(killed.status,0);
  const fresh=controller(createGuiInputIncidentStore({file}));
  const status=await fresh.run('gui_status');
- assert.equal(status.available,false);
+ assert.equal(status.available,true);
+ assert.equal(status.inputAvailable,false);
  assert.equal(status.uncertain,true);
- await assert.rejects(fresh.run('gui_session_begin',{mode:'observe'}),/GUI_OUTCOME_UNCERTAIN/);
- assert.equal(fresh.calls,0);
+ const obs=await fresh.run('gui_session_begin',{mode:'observe'});
+ const img=await fresh.run('gui_screenshot',{lease:obs.lease});
+ assert.ok(img.__structuredContent.frame);
+ await assert.rejects(fresh.run('gui_mouse_click',{
+   lease:obs.lease,frame:img.__structuredContent.frame,x:8,y:12
+ }),/GUI_INCIDENT_REVIEW_REQUIRED/);
+ assert.equal((await fresh.run('gui_status')).incidentPending,true);
+}));
+test('pending incident denies every native mutation and preserves exact evidence',()=>ownFile(async file=>{
+ const store=createGuiInputIncidentStore({file});
+ await store.begin('gui_focus_window');
+ const original=await fs.readFile(file);
+ const c=controller(store);
+ const st=await c.run('gui_status');
+ assert.equal(st.inputAvailable,false);
+ assert.equal(st.readOnlyAvailable,true);
+ const obs=await c.run('gui_session_begin',{mode:'observe'});
+ const pic=await c.run('gui_screenshot',{lease:obs.lease});
+ for(const [tool,args] of [
+  ['gui_focus_window',{handle:'333'}],['gui_mouse_click',{x:15,y:25}],
+  ['gui_mouse_scroll',{delta:1}],['gui_type_text',{text:'NOT_REPLAYED'}],
+  ['gui_key_press',{keys:['A']}],['gui_mouse_move',{x:4,y:5}]
+ ]) {
+  await assert.rejects(c.run(tool,{...args,lease:obs.lease,
+    frame:pic.__structuredContent.frame}),/GUI_INCIDENT_REVIEW_REQUIRED/);
+ }
+ assert.deepEqual(await fs.readFile(file),original);
+ assert.equal((await c.run('gui_status')).incidentPending,true);
+}));
+test('pre-existing takeover lease is revoked when another profile records an incident',()=>ownFile(async file=>{
+ const store=createGuiInputIncidentStore({file});
+ const c=controller(store);
+ const lease=await c.run('gui_session_begin',{mode:'takeover',
+   explicitUserAuthorization:'Fixture-only separate OS-session test'});
+ await store.begin('gui_mouse_click');
+ const status=await c.run('gui_status');
+ assert.equal(status.uncertain,true);
+ assert.equal(status.inputAvailable,false);
+ await assert.rejects(c.run('gui_screenshot',{lease:lease.lease}),
+   /GUI_LEASE_REQUIRED_OR_EXPIRED/);
+ const observe=await c.run('gui_session_begin',{mode:'observe'});
+ assert.equal(observe.mode,'observe');
+ assert.notEqual(observe.lease,lease.lease);
+ assert.equal((await store.pending()).tool,'gui_mouse_click');
+}));
+test('an unreadable incident remains denied and never calls the native helper',()=>ownFile(async file=>{
+ await fs.writeFile(file,'invalid');
+ const c=controller(createGuiInputIncidentStore({file}));
+ const status=await c.run('gui_status');
+ assert.equal(status.available,false);
+ assert.equal(status.inputAvailable,false);
+ await assert.rejects(c.run('gui_session_begin',{mode:'observe'}),
+   /GUI_INCIDENT_STORAGE_UNAVAILABLE/);
+ assert.equal(c.calls,0);
 }));
 test('read-only status and screenshot do not create a phantom incident',()=>ownFile(async file=>{
  const store=createGuiInputIncidentStore({file});
