@@ -53,3 +53,56 @@ Check independent accounts/tunnels reach the correct device, preserve credential
 Resolve all Critical/High OPEN findings in AUDIT_R1.md or document a reviewed scope restriction that actually removes the affected feature. Pin exact source/artifact hashes; test fresh install/update/rollback/stop/start with no secret loss. Synchronize documentation and Plugin assets. Review authoritative versus superseded branches explicitly. Promote only after review; no forced merge, automatic release, reboot or network reset.
 
 Native Linux GUI, high-speed gameplay, anti-cheat bypass, Secure Desktop control and unattended logon are not implied by Windows source availability.
+
+
+## Pending-native-effect observe-only continuity (2026-10-19 QA)
+
+**Source branch:** fix/gui-uncertain-observe-only-20261019, pinned to
+main commit 5cd6ec545b37dca32d63dc31c462bbe6d1399f3f.
+Scope is only controller logic and tests: while a *valid* legacy
+PENDING_NATIVE_EFFECT record exists, gui_status may probe the native
+read-only backend and return readOnlyAvailable separately from
+inputAvailable:false; a new GUI lease can be observe only and can
+read screenshots, cursor and window list. Any mouse/keyboard/focus/scroll
+takeover still fails GUI_INCIDENT_REVIEW_REQUIRED. An existing takeover
+lease is revoked when the controller detects another profile's pending
+record. Corrupt/unreadable incident storage, a local emergency STOP,
+or an unavailable native backend remain fail-closed; no action is replayed,
+and no incident file is modified. The old generic
+GUI_OUTCOME_UNCERTAIN_RESTART_REQUIRED response is replaced for
+non-mutating observation on this source candidate only, not for an
+unauthorized input attempt. This is neither an owner reconciliation
+nor an input-safety bypass.
+
+**Evidence:** focused J01/controller/mutex test suites passed with
+18/18 tests (no failure, no skipped cases); full npm run check,
+npm test and npm run audit passed at the exact local QA tree, including
+SECURITY_AUDIT_PASS. Hosted CI acceptance remains a separate gate
+and must be checked on the exact GitHub PR SHA.
+
+**Immediate installed-fleet continuity, separately scoped:** Saeid
+Windows 0.10.24 and Emad PC Windows 0.10.24 retained their original
+active GUI source SHA-256
+A6A453333E1F6018A00207D59C75DD679392C88F4DD17946348F86FC55BE2E64.
+An owner-local GUI-Safe-Observer.ps1 support script (SHA-256
+15C9A82AEEACC4216EA4114F3CA831847F1CF51C655FAA135EC8D2E5E5093EE3)
+performed actual read-only screen capture in each active Windows
+console session, saved one PNG into a private ACL-restricted local
+folder, and did not call native input. The exact incident SHA-256
+before and after stayed identical on Saeid
+C0E8EE65EDE1BE9DDE630C4FD9263E89596C3B0AEAD8D2298E229DD4153A710E
+and Emad PC
+38E11C4D5A5BB740D6A0B01C132A5D6874E6CBBCDFAC25F4FD1DBC5B4718E16E.
+Both received the owner-facing Commander GUI Recovery Center Start Menu
+entry with a Safe screenshot command. This does not install the
+unmerged source patch, change stable version, reconcile a historical
+incident, or enable GUI input; direct legacy gui_session_begin may still
+return the old error until an independently accepted update is deployed.
+
+**Next release gates:** qualified native/backend safety and old-version
+compatibility; protected per-owner incident reconciliation, post-crash
+cross-profile quiescence, signed/revocable grants, zero-interference
+private desktop workers on Windows and Linux, Windows observed-image
+acceptance on exact candidate, NoPromote updater acceptance and
+guarded rollback. Detached/offline hosts must not be claimed fixed
+without exact host execution/readback.
