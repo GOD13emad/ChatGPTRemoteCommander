@@ -13,6 +13,7 @@ import os from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {createNativeWorkspaceCoordinator} from '../src/native-workspace-coordinator.mjs';
+import {createNativeWorkspaceJournal} from '../src/native-workspace-journal.mjs';
 
 const exec=promisify(execFile);
 const script=path.resolve(path.dirname(fileURLToPath(import.meta.url)),
@@ -174,9 +175,13 @@ test('two real private X servers: supervisor read-only, scoped input and handoff
     for(const binary of Object.values(commands))await access(binary,constants.X_OK);
     const root=await mkdtemp(path.join(os.tmpdir(),'rc-native-broker-live-'));
     await ensurePrivate(root);
+    const journalRoot=path.join(root,'native-journal');
+    await mkdir(journalRoot,{mode:0o700});
+    const journal=createNativeWorkspaceJournal({root:journalRoot});
     const reserved=new Set(),backends=[];
     const pool=createNativeWorkspaceCoordinator({
       identityResolver:identity,capacity:2,
+      durableJournalFactory:async()=>journal,
       launchWorkspace:async()=>{
         const label=backends.length===0?'A':'B';
         const w=await createPrivateWorker(label,root,raw,reserved);
@@ -216,13 +221,20 @@ test('two real private X servers: supervisor read-only, scoped input and handoff
       const [A,B]=await Promise.all([
         pool.inputOperator(reviewer,handoff.controlToken,
           {kind:'type',text:'SYNTHETIC_ONLY_A'},
-          {expectedRevision:humanView.revision}),
+          {expectedRevision:humanView.revision,operationId:'real-qa-human-a'}),
         pool.inputOwner(ownerB,b.lease,
           {kind:'type',text:'SYNTHETIC_ONLY_B'},
-          {expectedRevision:seenB.revision})
+          {expectedRevision:seenB.revision,operationId:'real-qa-agent-b'})
       ]);
       assert.equal(A.submitted,true);
       assert.equal(B.submitted,true);
+      const [persistA,persistB]=await Promise.all([
+        journal.inspect(a.workspaceRef),journal.inspect(b.workspaceRef)
+      ]);
+      assert.equal(persistA.recordPresent,true);
+      assert.equal(persistB.recordPresent,true);
+      assert.equal(persistA.releaseAuthorized,false);
+      assert.equal(persistB.releaseAuthorized,false);
       assert.equal(pool.readObserver(observer,viewGrant.viewerToken).stale,true);
       assert.deepEqual(await readOwned(backends[0].receipt),
         {worker:'A',synthetic:'SYNTHETIC_ONLY_A'});
