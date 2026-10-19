@@ -73,18 +73,26 @@ test('Windows native diagnostic chooses failed promotion or rollback commit, rej
   const {tmpdir}=await import('node:os');
   const {join}=await import('node:path');
   const {spawnSync}=await import('node:child_process');
-  const text=read('.github/workflows/candidate-rollback-v01025.yml');
-  const start=text.indexOf('      - name: Diagnose failed candidate using sanitized source-only phase evidence');
-  const finish=text.indexOf('      - name: Retain only scoped, short-lived CI evidence',start);
-  assert.ok(start>=0 && finish>start,'diagnostic step must exist before upload');
-  const excerpt=text.slice(start,finish);
-  const delimiter='        run: |\n';
-  const at=excerpt.indexOf(delimiter);
-  assert.ok(at>=0,'native diagnostic PowerShell body missing');
-  const command=excerpt.slice(at+delimiter.length).split('\n').filter(Boolean).map(line=>{
-    assert.ok(line.startsWith('          '),'unexpected native workflow indentation');
-    return line.slice(10);
-  }).join('\n');
+  // Git for Windows may check out the YAML with CRLF, while Ubuntu uses LF.
+  // Only normalize the fixture reader; the production CI workflow is unchanged.
+  const extractCommand=source=>{
+    const text=source.replace(/\r\n/g,'\n');
+    const start=text.indexOf('      - name: Diagnose failed candidate using sanitized source-only phase evidence');
+    const finish=text.indexOf('      - name: Retain only scoped, short-lived CI evidence',start);
+    assert.ok(start>=0 && finish>start,'diagnostic step must exist before upload');
+    const excerpt=text.slice(start,finish);
+    const delimiter='        run: |\n';
+    const at=excerpt.indexOf(delimiter);
+    assert.ok(at>=0,'native diagnostic PowerShell body missing');
+    return excerpt.slice(at+delimiter.length).split('\n').filter(Boolean).map(line=>{
+      assert.ok(line.startsWith('          '),'unexpected native workflow indentation');
+      return line.slice(10);
+    }).join('\n');
+  };
+  const raw=read('.github/workflows/candidate-rollback-v01025.yml');
+  const command=extractCommand(raw);
+  assert.equal(extractCommand(raw.replace(/\r?\n/g,'\r\n')),command,
+    'CRLF checkout must yield identical native diagnostic PowerShell');
   const ref=String.fromCharCode(36)+'{{ github.event.pull_request.head.sha || github.sha }}';
   assert.ok(command.includes(ref),'exact candidate ref must be present');
   const candidate='b'.repeat(40);
