@@ -48,8 +48,30 @@ def list_owned(root: Path):
     return sorted(set(found))
 
 
-def sha(path):
-    return hashlib.sha256(path.read_bytes()).hexdigest()
+def validated_sandbox(raw_root: str, raw_temp: str) -> Path:
+    """Accept exactly one disposable Linux CI child, rejecting traversal and symlinks.
+
+    Validate external path strings lexically and canonically *before* any file
+    access, process enumeration or receipt write. The CLI argument is only an
+    identity claim, never the authority for choosing a cleanup directory.
+    """
+    if not raw_root or not raw_temp or not os.path.isabs(raw_root) or not os.path.isabs(raw_temp):
+        raise SystemExit("V025C_SANDBOX_IDENTITY_FAILURE")
+    if ".." in Path(raw_root).parts or ".." in Path(raw_temp).parts:
+        raise SystemExit("V025C_SANDBOX_IDENTITY_FAILURE")
+    requested = os.path.normpath(raw_root)
+    temp = os.path.normpath(raw_temp)
+    expected = os.path.join(temp, "remote-commander-rollback-v025l")
+    if requested != expected:
+        raise SystemExit("V025C_SANDBOX_IDENTITY_FAILURE")
+    try:
+        if os.path.realpath(temp) != temp or os.path.realpath(expected) != expected:
+            raise SystemExit("V025C_SANDBOX_IDENTITY_FAILURE")
+        if not os.path.isdir(temp) or not os.path.isdir(expected):
+            raise SystemExit("V025C_SANDBOX_IDENTITY_FAILURE")
+    except (OSError, ValueError):
+        raise SystemExit("V025C_SANDBOX_IDENTITY_FAILURE") from None
+    return Path(expected)
 
 
 def main():
@@ -66,18 +88,37 @@ def main():
             assert matches(r, str(r / "release"), b"node\0src/stable-router.mjs\0")
             assert not matches(r, "/home/user/private", b"node\0src/stable-router.mjs\0")
             assert not matches(r, str(r / "release"), b"python3\0src/server-v0.3.mjs\0")
+            sandbox = r / "remote-commander-rollback-v025l"
+            sandbox.mkdir()
+            assert validated_sandbox(str(sandbox), str(r)) == sandbox
+            other = r / "other"
+            other.mkdir()
+            alias = r / "symlinked-sandbox"
+            alias.symlink_to(sandbox, target_is_directory=True)
+            rejected = [
+                (str(other), str(r)),
+                (str(alias), str(r)),
+                (str(sandbox / ".." / sandbox.name), str(r)),
+                (str(sandbox), str(r / "release")),
+                ("/tmp", str(r)),
+                ("relative/path", str(r)),
+            ]
+            for candidate, temp_root in rejected:
+                try:
+                    validated_sandbox(candidate, temp_root)
+                except SystemExit as failure:
+                    assert str(failure) == "V025C_SANDBOX_IDENTITY_FAILURE"
+                else:
+                    raise AssertionError("unsafe CI cleanup path accepted")
         print("V025C_IDENTITY_PURE_TEST_PASS")
         return
     if os.getenv("CI") != "true" or not os.getenv("RUNNER_TEMP") or not os.getenv("GITHUB_WORKSPACE"):
         raise SystemExit("V025C_CI_ONLY")
     if not args.root:
         raise SystemExit("V025C_ROOT_REQUIRED")
-    sandbox = Path(args.root).resolve(strict=True)
-    temp = Path(os.environ["RUNNER_TEMP"]).resolve(strict=True)
-    if sandbox != temp / "remote-commander-rollback-v025l":
-        raise SystemExit("V025C_SANDBOX_IDENTITY_FAILURE")
+    sandbox = validated_sandbox(args.root, os.environ["RUNNER_TEMP"])
     receipt = sandbox / "CLEANUP_V025C.json"
-    if receipt.exists():
+    if "CLEANUP_V025C.json" in os.listdir(sandbox):
         raise SystemExit("V025C_NO_BLIND_REWRITE")
     before = list_owned(sandbox)
     for pid in before:
@@ -102,10 +143,11 @@ def main():
         "ownedBefore": before, "ownedAfter": after, "cleanupUsed": bool(before),
         "externalNodeProcessesTouched": False, "root": str(sandbox)
     }
+    payload = json.dumps(record, indent=2) + "\n"
     with receipt.open("x", encoding="utf-8") as output:
-        json.dump(record, output, indent=2)
-        output.write("\n")
-    print("V025C_CLEANUP_STATUS=" + record["status"] + " receiptSha=" + sha(receipt))
+        output.write(payload)
+    print("V025C_CLEANUP_STATUS=" + record["status"] + " receiptSha="
+          + hashlib.sha256(payload.encode("utf-8")).hexdigest())
     if after:
         raise SystemExit(78)
 
