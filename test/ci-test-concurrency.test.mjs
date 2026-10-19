@@ -295,6 +295,37 @@ test('R470 does not misreport a non-TAP failure as a TAP summary; identifies onl
   }
 });
 
+test('R470 Node24 spec reporter failure is classified and sanitized with no raw user paths',t=>{
+  if(process.platform!=='win32')return t.skip('requires native Windows PowerShell');
+  const sha='604ed6a8a0e0f95197fabcc92d93537142017a0b';
+  const secret='ghp_TEST_SECRET_NOT_TO_PERSIST';
+  const tmp=fs.mkdtempSync(path.join(os.tmpdir(),'rc-r470-spec-'));
+  try{
+    const dir=path.join(tmp,'STATE','ChatGPTRemoteCommander','update-logs');
+    fs.mkdirSync(dir,{recursive:true});
+    const lines=['✖ R157 harmless formatting probe (1.8478ms)','ℹ tests 1','ℹ suites 0',
+      'ℹ pass 0','ℹ fail 1','ℹ duration_ms 144.5914','✖ failing tests:',
+      '✖ R157 harmless formatting probe (1.8478ms)',
+      'at C:\\Users\\Private\\report '+secret];
+    fs.writeFileSync(path.join(dir,'qualification-output-qualification-test-'+sha.slice(0,12)+'-spec.stdout.log'),
+      lines.join('\n'),'utf8');
+    const script=path.join(root,'tools','diagnose-updater-gate-r470.ps1');
+    const proc=spawnSync('pwsh.exe',['-NoProfile','-NonInteractive','-File',script,'-Root',tmp,
+      '-ExpectedCommit',sha],{encoding:'utf8',timeout:15000});
+    assert.equal(proc.status,0,proc.stderr||proc.stdout);
+    const raw=fs.readFileSync(path.join(tmp,'DIAGNOSTIC_R470.json'),'utf8');
+    assert.ok(!raw.includes(secret));
+    assert.ok(!raw.includes(tmp));
+    const report=JSON.parse(raw);
+    assert.equal(report.status,'SPEC_SUMMARY_EXTRACTED');
+    assert.deepEqual(report.specFailureTests,['R157 harmless formatting probe']);
+    assert.equal(report.specCounts.tests,'1');
+    assert.equal(report.specCounts.fail,'1');
+    assert.equal(report.failurePhaseIndex,null);
+    assert.equal(report.rawLogIncluded,false);
+  }finally{fs.rmSync(tmp,{recursive:true,force:true});}
+});
+
 test('CI Windows runs the Transfer Mesh HTTP fixture alone without weakening readiness or dropping coverage',()=>{
   const pkg=JSON.parse(read('package.json'));
   const original=prioritizeSensitiveQualificationCommands(boundNodeTestConcurrency(pkg.scripts.test,1).command);
