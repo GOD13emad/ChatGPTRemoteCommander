@@ -206,3 +206,68 @@ independent security acceptance must precede any operational rollout.
 
 Primary Node filesystem contract: https://nodejs.org/api/fs.html
 (wx exclusive create and FileHandle.sync for persistent receipt writes).
+
+
+## Signed scoped observer and controller approvals (source-only QA)
+
+Scope: this **stacked experimental extension** builds on the private X11
+workspace/coordination/journal QA. No operating-system owner identity,
+protected local Broker, privileged GUI path or real ChatGPT conversation
+binding is installed. There is no Core server import, new MCP endpoint,
+local private signing key file or default permission to control a GUI.
+Without a configured trusted Ed25519 public key the new verifier denies all
+requests. The Core coordinator's default observer and handoff callbacks
+continue to deny all access.
+
+The internal verification module is src/native-workspace-approval.mjs.
+An injected authorizer may consume a short-lived Ed25519 approval carrying:
+issuer, audience/resource, host, process-instance nonce/challenge, intended
+permission scope (observe OR control), exact workspace reference, native
+backend display/process fingerprint, verified owner principal reference,
+verified viewer/operator principal reference, one-time 256-bit nonce and
+issued/expiry times. Strict ordered signed bytes, exact field schema,
+base64url canonicalization and Ed25519 verification reject malformed or
+cross-scope requests. A bounded synchronous consumed-nonce map blocks
+re-use within the current process; process-instance binding rejects a
+prior-process grant after restart. TTL is at most 180 seconds for view and
+120 seconds for control, with shorter actual duration determined by the
+workspace/hand-off lease.
+
+A valid signature does NOT create trusted owner consent, authenticate a
+ChatGPT account/chat or establish OS-level isolation. It only verifies the
+origin and scope **if** the signer's public key was pinned from an
+independently protected, authenticated source. The test fixture generates
+a throwaway test-only Ed25519 keypair in memory, and synthetic identities
+are passed to the coordinator only inside explicitly named QA files.
+Do not treat readable same-user filesystem keys, caller-provided labels,
+client-supplied conversation metadata or a mutable approved-receipt JSON
+as a protected identity broker or private-key custody. The verifier
+rejects private-key PEM and private KeyObject inputs, accepting only an
+Ed25519 public KeyObject or public SPKI PEM supplied by a trusted adapter.
+The code never signs grants outside QA test fixtures.
+
+Native real-X11 QA on MMZ now rejects missing approval, rejects reuse of
+a successful observation approval, and requires an exact signed control
+approval for a single selected private Xvfb worker. The separate other
+worker remains functional; the original owner must reobserve after human
+input. Default-deny behavior and the earlier on-disk native input Intent
+journal remain independent requirements. Run the named scoped CI on both
+Linux and Windows and real Xvfb QA on a disposable test environment,
+then inspect its exact SHA. A green test is not a production-owner grant.
+
+Open before deployment:
+(1) an independently protected signer with verified OS principal/secure
+consent path and key rotation/revocation, not running under the same
+untrusted account context;
+(2) real ChatGPT conversation identity returned by an authenticated
+server-side integration, explicitly separate from MCP transport IDs;
+(3) authenticated broker-to-Core IPC and authoritative OS display/process
+ownership, with cross-process concurrency, replay and crash handling;
+(4) Windows VM/RDS, Linux protected Native Worker, supervisor UI, resource
+limits, stress and canary acceptance. The signed grant verifier is necessary
+but not sufficient. No existing historical J01 incident is cleared.
+
+Primary source references:
+- Node.js Crypto API, Ed25519 sign/verify: https://nodejs.org/api/crypto.html
+- Linux Unix peer credentials, SO_PEERCRED: https://man7.org/linux/man-pages/man7/unix.7.html
+- MCP protected resource authorization guidance: https://modelcontextprotocol.io/specification/2025-06-18/basic/authorization
