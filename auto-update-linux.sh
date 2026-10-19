@@ -783,6 +783,15 @@ build_cfg(){
 
 DIAG_CFG="$STATE_DIR/diagnostic-config.json"
 build_cfg "$DIAG_CFG" "$SHADOW_WF" shadow >/dev/null
+# Use the previously installed source as authority when available; during first
+# adoption, use the pinned and qualified staged source. Never trust an arbitrary
+# writable state-root guard for future releases.
+RUNNER_POLICY_GUARD="$INSTALL_DIR/tools/runner-policy-continuity.mjs"
+[[ -f "$RUNNER_POLICY_GUARD" ]] || RUNNER_POLICY_GUARD="$STAGE_DIR/tools/runner-policy-continuity.mjs"
+if ! node "$RUNNER_POLICY_GUARD" "$ACTIVE_CFG" "$DIAG_CFG"; then
+  log 'AUTO_UPDATE_RUNNER_POLICY_DIAGNOSTIC_BLOCKED'
+  exit 3
+fi
 DIAG_SHA="$(sha256sum "$DIAG_CFG" | awk '{print $1}')"
 CANDIDATE_PID="$(start_backend "$STAGE_DIR" "$DIAG_CFG" "$STATE_DIR/diagnostic.log")"
 wait_health "$PORT" "$VERSION" "$DIAG_SHA" default || { stop_pid "$CANDIDATE_PID"; echo 'diagnostic health failed' >&2; exit 1; }
@@ -793,6 +802,10 @@ CANDIDATE_PID=""
 
 FINAL_CFG="$STATE_DIR/config.json"
 build_cfg "$FINAL_CFG" "$LIVE_WF" preserve >/dev/null
+if ! node "$RUNNER_POLICY_GUARD" "$ACTIVE_CFG" "$FINAL_CFG"; then
+  log 'AUTO_UPDATE_RUNNER_POLICY_CHANGE_BLOCKED'
+  exit 3
+fi
 FINAL_SHA="$(sha256sum "$FINAL_CFG" | awk '{print $1}')"
 CANDIDATE_PID="$(start_backend "$STAGE_DIR" "$FINAL_CFG" "$STATE_DIR/server.log")"
 wait_health "$PORT" "$VERSION" "$FINAL_SHA" default || { stop_pid "$CANDIDATE_PID"; echo 'final candidate health failed' >&2; exit 1; }
