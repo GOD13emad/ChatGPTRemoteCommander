@@ -13,6 +13,8 @@ $logRoot=Join-Path $canonical 'STATE\ChatGPTRemoteCommander\update-logs'
 $failures=@()
 $totals=@{}
 $types=@()
+$specNames=@()
+$specTotals=@{}
 $phaseStarted=@()
 $phasePassed=@()
 $failedPhaseIndex=$null
@@ -48,6 +50,19 @@ if(Test-Path -LiteralPath $logRoot -PathType Container){
           if($failures.Count -lt 24){$failures+=([pscustomobject]@{index=$number;publicTestName=$label})}
         } elseif($line -match '^\s*#\s*(tests|pass|fail|cancelled|skipped|todo|duration_ms)\s+([0-9]+(?:\.[0-9]+)?)\s*$'){
           $totals[[string]$Matches[1]]=[string]$Matches[2]
+        } elseif($line -match '^\s*✖\s+(.+?)\s*$'){
+          # Node 24 uses the spec reporter by default, not TAP.
+          $label=[regex]::Replace(([string]$Matches[1]).Trim(),'\s+\([0-9]+(?:\.[0-9]+)?ms\)$','')
+          if($label -ne 'failing tests:' -and $label.Length -gt 0){
+            if($label -match '(?i)bearer|password|secret|cookie|token|private.?key|authorization|api.?key|[A-Za-z]:[\\/]|\\\\|/home/'){
+              $label='REDACTED_TEST_NAME'
+            }
+            $label=[regex]::Replace($label,'[^A-Za-z0-9 _()./+\\-]','?')
+            if($label.Length -gt 112){$label=$label.Substring(0,112)}
+            if($specNames.Count -lt 24 -and $specNames -notcontains $label){$specNames+=($label)}
+          }
+        } elseif($line -match '^\s*ℹ\s+(tests|suites|pass|fail|cancelled|skipped|todo|duration_ms)\s+([0-9]+(?:\.[0-9]+)?)\s*$'){
+          $specTotals[[string]$Matches[1]]=[string]$Matches[2]
         } elseif($line -match 'failureType:.*?(testTimeoutFailure|assertionFailure|uncaughtException|testCodeFailure|hookFailed|subtestsFailed)'){
           if($types.Count -lt 20){$types+=([string]$Matches[1])}
         }
@@ -55,6 +70,8 @@ if(Test-Path -LiteralPath $logRoot -PathType Container){
       if($failures.Count -gt 0 -or $types.Count -gt 0 -or
           ($totals.ContainsKey('fail') -and [double]$totals['fail'] -gt 0)){
         $status='TAP_SUMMARY_EXTRACTED'
+      } elseif($specNames.Count -gt 0 -or ($specTotals.ContainsKey('fail') -and [double]$specTotals['fail'] -gt 0)){
+        $status='SPEC_SUMMARY_EXTRACTED'
       } elseif($phaseStarted.Count -gt 0){
         $lastStarted=[int]$phaseStarted[-1]
         if($phasePassed.Count -eq ($phaseStarted.Count-1) -and
@@ -75,6 +92,7 @@ $report=[ordered]@{
   scope='READ_ONLY_HOSTED_NOPROMOTE_QUALIFICATION_FAILURE'
   matchingLogCount=$count;sourceBytes=$sourceBytes;sourceSha256=$sourceSha
   failureTests=$failures;failureTypes=$types;tapCounts=$totals
+  specFailureTests=$specNames;specCounts=$specTotals
   phaseMarkersObserved=$phaseStarted.Count;phasePassMarkersObserved=$phasePassed.Count
   failurePhaseIndex=$failedPhaseIndex
   rawLogIncluded=$false;secretsIncluded=$false;absolutePathsIncluded=$false
