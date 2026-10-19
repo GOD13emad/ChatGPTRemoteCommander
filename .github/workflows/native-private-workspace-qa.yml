@@ -6,6 +6,8 @@ on:
       - 'src/native-workspace-coordinator.mjs'
       - 'src/native-workspace-approval.mjs'
       - 'src/native-workspace-journal.mjs'
+      - 'tools/native-workspace-peer-broker-qa.py'
+      - 'test/native-workspace-peer-broker-qa.test.py'
       - 'test/native-workspace-coordinator*.test.mjs'
       - 'test/native-workspace-approval.test.mjs'
       - 'test/native-workspace-journal.test.mjs'
@@ -42,6 +44,26 @@ jobs:
       - name: Linux exact-disk native intent and process-exit no-replay tests
         if: matrix.os == 'ubuntu-24.04'
         run: node --test test/native-workspace-journal.test.mjs
+
+  peercred-linux:
+    name: Linux SO_PEERCRED transport QA (NoPromote, no native input)
+    runs-on: ubuntu-24.04
+    needs: contract
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate source and actual isolated Linux peer credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -B -m py_compile \
+            tools/native-workspace-peer-broker-qa.py \
+            test/native-workspace-peer-broker-qa.test.py
+          python3 -B test/native-workspace-peer-broker-qa.test.py
+      - name: Enforce no operational native GUI authorization
+        run: |
+          echo 'SO_PEERCRED_PROVES_OS_PID_UID_GID_ONLY__NOT_CHAT_IDENTITY_OR_OWNER_CONSENT'
+          echo 'NO_NATIVE_GUI_INPUT__NO_PRODUCTION_BROKER__NO_ROLLOUT'
 
   private-x11:
     name: Linux actual Xvfb worker handoff (source QA only)
