@@ -20,8 +20,13 @@ function run(filename, digest) {
     throw Error('HASH_MISMATCH');
   const lines=bytes.toString('utf8').replace(/\x1b\[[0-9;]*m/g,'').split(/\r?\n/);
   const failed=[],tokens=[],subtests=[],counts=[];
+  let lastPhaseStarted=null,lastPhasePassed=null;
   for(const line of lines){
     let match;
+    if((match=line.match(/^RC_QUAL_PHASE_(START|PASS)_([0-9]{2})$/))){
+      if(match[1]==='START')lastPhaseStarted=match[2];
+      else lastPhasePassed=match[2];
+    }
     if((match=line.match(/^\s*not ok \d+ - (.+)$/))&&failed.length<8)failed.push(safeName(match[1]));
     if((match=line.match(/^\s*# Subtest: (.+)$/))&&subtests.length<8000)subtests.push(safeName(match[1]));
     if((match=line.match(/^\s*# (tests|pass|fail|cancelled|skipped) (\d+)\s*$/)))counts.push([match[1],match[2]]);
@@ -31,6 +36,10 @@ function run(filename, digest) {
   }
   const lastSubtests=subtests.slice(-3);
   console.log('R252_DIAG_HASH_PASS bytes='+meta.size+' lines='+lines.length);
+  if(lastPhaseStarted!==null)console.log('R252_LAST_PHASE_STARTED='+lastPhaseStarted);
+  if(lastPhasePassed!==null)console.log('R252_LAST_PHASE_PASSED='+lastPhasePassed);
+  if(lastPhaseStarted!==null&&lastPhaseStarted!==lastPhasePassed)
+    console.log('R252_UNFINISHED_PHASE='+lastPhaseStarted);
   for(const [key,value] of counts.slice(-5))console.log('R252_TAP_'+key.toUpperCase()+'='+value);
   for(const n of failed)console.log('R252_FAILED_TEST='+n);
   for(const n of lastSubtests)console.log('R252_LAST_SUBTEST='+n);

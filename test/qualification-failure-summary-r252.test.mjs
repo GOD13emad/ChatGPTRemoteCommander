@@ -17,13 +17,15 @@ function fixture(t,content) {
  return {file,digest,exec:(given=digest)=>spawnSync(process.execPath,[helper,file,given],{encoding:'utf8',timeout:2000})};
 }
 test('sha-attested typed diagnostic reveals only test names, counts and codes',t=>{
- const f=fixture(t,'# Subtest: browser worker setup\nnot ok 4 - renderer wait timeout\n# fail 1\nWORKFLOW_TIMEOUT details hidden\n');
+ const f=fixture(t,'RC_QUAL_PHASE_START_00\nRC_QUAL_PHASE_PASS_00\nRC_QUAL_PHASE_START_01\n# Subtest: browser worker setup\nnot ok 4 - renderer wait timeout\n# fail 1\nWORKFLOW_TIMEOUT details hidden\n');
  const result=f.exec();
  assert.equal(result.status,0,result.stderr);
  assert.match(result.stdout,/R252_FAILED_TEST=renderer wait timeout/);
  assert.match(result.stdout,/R252_TAP_FAIL=1/);
  assert.match(result.stdout,/R252_LAST_SUBTEST=browser worker setup/);
  assert.match(result.stdout,/R252_FAILURE_TOKEN=WORKFLOW_TIMEOUT/);
+ assert.match(result.stdout,/R252_UNFINISHED_PHASE=01/);
+ assert.match(result.stdout,/R252_LAST_PHASE_PASSED=00/);
  assert.doesNotMatch(result.stdout,/details hidden/);
 });
 test('non TAP failure retains recent safe subtest, without exposing raw secrets',t=>{
