@@ -146,3 +146,63 @@ owner consent; measured resource limits and disconnected/abnormal shutdown
 recovery; Linux GNOME and Windows VM/RDS acceptance; independent security
 review. CI on the exact hosted head is an additional gate. No installation,
 stable promotion or operating desktop takeover is authorized by this QA.
+
+
+## Native per-workspace input Intent journal (QA candidate)
+
+This source-only, stacked follow-up adds
+src/native-workspace-journal.mjs and binds it into
+src/native-workspace-coordinator.mjs through an explicit trusted
+durableJournalFactory. The installed Core, public MCP tools and historical
+J01 native incident records are **unchanged**. The default factory returns
+no journal and **native mutation is refused**; a testing identity/provider
+is not actual ChatGPT account or conversation authentication.
+
+The Linux QA journal accepts only a pre-existing, private, canonical root
+chosen by the trusted host adapter. Each new workspace reference gets its
+own exclusive directory (failure on reuse, symlink or ambiguous state).
+Before any native dispatch it creates an exclusive intent receipt with
+open wx, an fsync of receipt and parent directory, and exact readback.
+The receipt includes only hashed operation/workspace identifiers, the
+action kind, revision and timestamp: no typed text, coordinates, GUI pixel
+data, credentials, session cookies or original action arguments.
+
+Only the original in-memory receipt handle can append an ACK after the
+native helper returns submitted:true. The ACK records
+NATIVE_SUBMITTED_UNVERIFIED; it does **not** claim observed UI effect.
+On native ambiguity or ACK failure, the selected workspace becomes
+uncertain and further input is denied without retry. A repeated stable
+operation ID cannot dispatch again, including after re-observation.
+A new process never treats even matching, same-user-writable intent/ACK
+files as trusted owner consent or automatic clearance. The old workspace
+is quarantined for independent recovery, while a distinct workspace
+reference can continue with its own journal. The journal is bounded at
+128 actions per workspace and never silently deletes evidence on expiry,
+shutdown or normal close.
+
+**Actual scope of verified tests:** dedicated Node durable journal tests
+cover directory owner/mode, exclusive creation, readback, forged handles,
+tampered/symlink receipts, same-workspace contention, ACKed old-run denial,
+and real abrupt child process exits both before the ACK and after a
+**synthetic** native effect. Live Linux two-Xvfb QA uses the journal
+binding with per-workspace synthetic input actions. Additional
+coordinator tests cover no journal/no native dispatch, duplicate action
+denial, failed Intent preflight and post-native ACK failure, with an
+unaffected second workspace. Run exact-head Linux and Windows CI before
+accepting any new remote candidate.
+
+**Limits / explicit OPEN gates:** This is not a protected owner broker,
+cross-process coordinator, secure identity provider, trusted Windows
+transaction primitive, crash-durable Core instance recovery or
+physical-power-loss guarantee. fsync gives bounded local-process-exit
+evidence on the tested Linux filesystem, not immunity to untrusted
+same-UID processes, hostile storage, filesystem corruption, forced kernel
+shutdown or OS/platform differences. Portable Windows durability and
+trusted root ACLs require separate acceptance. No automatic restart of a
+historical/native uncertain GUI action is authorized; real native cleanup
+and owner review remain out of scope. Launch/session attestation,
+authenticated supervisor control, native resource/soak gates and
+independent security acceptance must precede any operational rollout.
+
+Primary Node filesystem contract: https://nodejs.org/api/fs.html
+(wx exclusive create and FileHandle.sync for persistent receipt writes).
