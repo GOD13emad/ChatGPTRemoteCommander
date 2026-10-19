@@ -13,6 +13,11 @@ import sys
 import time
 
 PATTERNS = (b"src/server-v0.3.mjs", b"src/stable-router.mjs")
+# This process-killing helper runs only on the observed GitHub-hosted Ubuntu image.
+# Fail closed if GitHub changes the observed trusted runner temp location.
+# These constants, not --root or environment strings, own every IO path.
+CI_TEMP_ROOT = Path("/home/runner/work/_temp")
+CI_SANDBOX = CI_TEMP_ROOT / "remote-commander-rollback-v025l"
 
 
 def matches(root: Path, cwd: str, argv: bytes) -> bool:
@@ -49,30 +54,32 @@ def list_owned(root: Path):
 
 
 def validated_sandbox(raw_root: str, raw_temp: str) -> Path:
-    """Accept exactly one disposable Linux CI child, rejecting traversal and symlinks.
+    """Bind CI cleanup to a single known hosted-Ubuntu directory.
 
-    Validate external path strings lexically and canonically *before* any file
-    access, process enumeration or receipt write. The CLI argument is only an
-    identity claim, never the authority for choosing a cleanup directory.
+    The CLI and RUNNER_TEMP values are identity assertions ONLY. All actual
+    filesystem and process operations derive from literal CI_SANDBOX, and
+    ambiguous GitHub runner paths fail closed rather than expanding scope.
     """
+    if not isinstance(raw_root, str) or not isinstance(raw_temp, str):
+        raise SystemExit("V025C_SANDBOX_IDENTITY_FAILURE")
     if not raw_root or not raw_temp or not os.path.isabs(raw_root) or not os.path.isabs(raw_temp):
         raise SystemExit("V025C_SANDBOX_IDENTITY_FAILURE")
     if ".." in Path(raw_root).parts or ".." in Path(raw_temp).parts:
         raise SystemExit("V025C_SANDBOX_IDENTITY_FAILURE")
-    requested = os.path.normpath(raw_root)
-    temp = os.path.normpath(raw_temp)
-    expected = os.path.join(temp, "remote-commander-rollback-v025l")
-    if requested != expected:
+    if raw_root != str(CI_SANDBOX) or raw_temp != str(CI_TEMP_ROOT):
+        raise SystemExit("V025C_SANDBOX_IDENTITY_FAILURE")
+    if os.path.normpath(raw_root) != raw_root or os.path.normpath(raw_temp) != raw_temp:
         raise SystemExit("V025C_SANDBOX_IDENTITY_FAILURE")
     try:
-        if os.path.realpath(temp) != temp or os.path.realpath(expected) != expected:
+        if os.path.realpath(CI_TEMP_ROOT) != str(CI_TEMP_ROOT):
             raise SystemExit("V025C_SANDBOX_IDENTITY_FAILURE")
-        if not os.path.isdir(temp) or not os.path.isdir(expected):
+        if os.path.realpath(CI_SANDBOX) != str(CI_SANDBOX):
+            raise SystemExit("V025C_SANDBOX_IDENTITY_FAILURE")
+        if not os.path.isdir(CI_TEMP_ROOT) or not os.path.isdir(CI_SANDBOX):
             raise SystemExit("V025C_SANDBOX_IDENTITY_FAILURE")
     except (OSError, ValueError):
         raise SystemExit("V025C_SANDBOX_IDENTITY_FAILURE") from None
-    return Path(expected)
-
+    return CI_SANDBOX
 
 def main():
     parser = argparse.ArgumentParser()
@@ -88,13 +95,18 @@ def main():
             assert matches(r, str(r / "release"), b"node\0src/stable-router.mjs\0")
             assert not matches(r, "/home/user/private", b"node\0src/stable-router.mjs\0")
             assert not matches(r, str(r / "release"), b"python3\0src/server-v0.3.mjs\0")
+            from unittest import mock
             sandbox = r / "remote-commander-rollback-v025l"
             sandbox.mkdir()
-            assert validated_sandbox(str(sandbox), str(r)) == sandbox
             other = r / "other"
             other.mkdir()
             alias = r / "symlinked-sandbox"
             alias.symlink_to(sandbox, target_is_directory=True)
+            # Positive: mock only known CI filesystem probes without creating
+            # anything under the actual hosted-root path on this developer PC.
+            with mock.patch("os.path.realpath", side_effect=lambda p: str(p)), \
+                 mock.patch("os.path.isdir", return_value=True):
+                assert validated_sandbox(str(CI_SANDBOX), str(CI_TEMP_ROOT)) == CI_SANDBOX
             rejected = [
                 (str(other), str(r)),
                 (str(alias), str(r)),
@@ -102,6 +114,8 @@ def main():
                 (str(sandbox), str(r / "release")),
                 ("/tmp", str(r)),
                 ("relative/path", str(r)),
+                (str(CI_SANDBOX) + "/../remote-commander-rollback-v025l", str(CI_TEMP_ROOT)),
+                (str(CI_SANDBOX), str(r)),
             ]
             for candidate, temp_root in rejected:
                 try:
@@ -110,14 +124,23 @@ def main():
                     assert str(failure) == "V025C_SANDBOX_IDENTITY_FAILURE"
                 else:
                     raise AssertionError("unsafe CI cleanup path accepted")
+            with mock.patch("os.path.realpath", side_effect=lambda p: "/tmp/untrusted" if str(p) == str(CI_SANDBOX) else str(p)), \
+                 mock.patch("os.path.isdir", return_value=True):
+                try:
+                    validated_sandbox(str(CI_SANDBOX), str(CI_TEMP_ROOT))
+                except SystemExit as failure:
+                    assert str(failure) == "V025C_SANDBOX_IDENTITY_FAILURE"
+                else:
+                    raise AssertionError("symlinked fixed CI directory accepted")
         print("V025C_IDENTITY_PURE_TEST_PASS")
         return
     if os.getenv("CI") != "true" or not os.getenv("RUNNER_TEMP") or not os.getenv("GITHUB_WORKSPACE"):
         raise SystemExit("V025C_CI_ONLY")
     if not args.root:
         raise SystemExit("V025C_ROOT_REQUIRED")
-    sandbox = validated_sandbox(args.root, os.environ["RUNNER_TEMP"])
-    receipt = sandbox / "CLEANUP_V025C.json"
+    validated_sandbox(args.root, os.environ["RUNNER_TEMP"])
+    sandbox = CI_SANDBOX  # the trusted fixed root, never constructed from input
+    receipt = CI_SANDBOX / "CLEANUP_V025C.json"
     if "CLEANUP_V025C.json" in os.listdir(sandbox):
         raise SystemExit("V025C_NO_BLIND_REWRITE")
     before = list_owned(sandbox)
