@@ -1,5 +1,9 @@
 # Current release authority — 2026-10-14
 
+## 2026-10-19 release-first scope pointer — candidate / no promotion
+
+Owner direction: finish usable Core, Browser and Control Center releases separately, then supply later feature increments via safe, version-pinned GitHub automatic updates. The current **Core v0.10.25 is SOURCE CANDIDATE ONLY**, not a new published Stable or authorized unsigned Preview; the last verified installed Core on Saeid/MMZ is v0.10.24. The frozen scope, release-specific blockers, GitHub updater invariants, product separation and exact acceptance requirements are in [RELEASE_CANDIDATE_0.10.25](RELEASE_CANDIDATE_0.10.25.md). Earlier dated facts below remain historical evidence, not overriding promotion instructions. Never enable automatic updates, publish unsigned v0.10.25, merge unrelated Draft GUI branches or replace installed profiles merely because source QA passes.
+
 ## 2026-10-14 R498 authoritative source/release delta
 
 - The latest qualified and merged `main` **source candidate** is `bf9df020cbe7943ab20548685c13f49909cb9ff9`, exact tree `5ffd0e398cf90b1140d0feb119d5613e35249df0`. Post-merge CI and Release Sync PASS. This does **not** mean released Stable.
