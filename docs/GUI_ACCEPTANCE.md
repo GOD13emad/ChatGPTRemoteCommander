@@ -241,8 +241,10 @@ a throwaway test-only Ed25519 keypair in memory, and synthetic identities
 are passed to the coordinator only inside explicitly named QA files.
 Do not treat readable same-user filesystem keys, caller-provided labels,
 client-supplied conversation metadata or a mutable approved-receipt JSON
-as a protected identity broker or private-key custody. The code never
-signs grants outside QA test fixtures.
+as a protected identity broker or private-key custody. The verifier
+rejects private-key PEM and private KeyObject inputs, accepting only an
+Ed25519 public KeyObject or public SPKI PEM supplied by a trusted adapter.
+The code never signs grants outside QA test fixtures.
 
 Native real-X11 QA on MMZ now rejects missing approval, rejects reuse of
 a successful observation approval, and requires an exact signed control
