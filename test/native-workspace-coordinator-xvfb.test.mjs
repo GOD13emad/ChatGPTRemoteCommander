@@ -8,12 +8,13 @@ import {execFile,spawn} from 'node:child_process';
 import {promisify} from 'node:util';
 import {access,mkdir,mkdtemp,readFile,rm,stat} from 'node:fs/promises';
 import {constants} from 'node:fs';
-import {randomBytes} from 'node:crypto';
+import {createHash,generateKeyPairSync,randomBytes,sign} from 'node:crypto';
 import os from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {createNativeWorkspaceCoordinator} from '../src/native-workspace-coordinator.mjs';
 import {createNativeWorkspaceJournal} from '../src/native-workspace-journal.mjs';
+import {createNativeWorkspaceApprovalVerifier} from '../src/native-workspace-approval.mjs';
 
 const exec=promisify(execFile);
 const script=path.resolve(path.dirname(fileURLToPath(import.meta.url)),
@@ -179,6 +180,34 @@ test('two real private X servers: supervisor read-only, scoped input and handoff
     await mkdir(journalRoot,{mode:0o700});
     const journal=createNativeWorkspaceJournal({root:journalRoot});
     const reserved=new Set(),backends=[];
+    // TEST-ONLY ephemeral issuer key. No trusted OS authorization or
+    // authenticated ChatGPT identity is supplied by this fixture.
+    const qaKeys=generateKeyPairSync('ed25519');
+    const approvalGate=createNativeWorkspaceApprovalVerifier({
+      trustedPublicKey:qaKeys.publicKey,issuer:'synthetic-native-broker.qa',
+      audience:'rc-private-xvfb.qa',host:'isolated-qa-host'
+    });
+    const approvalInstance=approvalGate.challenge().processInstance;
+    const sha=value=>createHash('sha256').update(value).digest('hex');
+    const ownerRef=sha(ownerA.subject+'|'+ownerA.conversationId);
+    const viewerRef=sha(observer.subject+'|'+observer.conversationId);
+    const operatorRef=sha(reviewer.subject+'|'+reviewer.conversationId);
+    const makeApproval=(scope,workspaceRef,backendRef,subjectRef,ttlSeconds)=>{
+      const at=Date.now();
+      const payload={
+        schema:1,issuer:'synthetic-native-broker.qa',
+        audience:'rc-private-xvfb.qa',host:'isolated-qa-host',
+        instance:approvalInstance,scope,workspaceRef,backendRef,ownerRef,subjectRef,
+        nonce:randomBytes(32).toString('hex'),
+        issuedAt:at,expiresAt:at+ttlSeconds*1000
+      };
+      const raw=Buffer.from(JSON.stringify(payload),'utf8');
+      const signature=sign(null,Buffer.concat([
+        Buffer.from('RC_NATIVE_WORKSPACE_APPROVAL_V1\0','utf8'),raw
+      ]),qaKeys.privateKey);
+      return {body:raw.toString('base64url'),
+        signature:signature.toString('base64url')};
+    };
     const pool=createNativeWorkspaceCoordinator({
       identityResolver:identity,capacity:2,
       durableJournalFactory:async()=>journal,
@@ -188,7 +217,14 @@ test('two real private X servers: supervisor read-only, scoped input and handoff
         backends.push(w);
         return w;
       },
-      authorizeObserver:()=>true,authorizeHandoff:()=>true
+      authorizeObserver:({approval,ownerRef,viewerRef,workspaceRef,backendRef,ttlSeconds})=>
+        approvalGate.verifyAndConsume(approval,{
+          scope:'observe',ownerRef,subjectRef:viewerRef,workspaceRef,backendRef,ttlSeconds
+        }),
+      authorizeHandoff:({approval,ownerRef,operatorRef,workspaceRef,backendRef,ttlSeconds})=>
+        approvalGate.verifyAndConsume(approval,{
+          scope:'control',ownerRef,subjectRef:operatorRef,workspaceRef,backendRef,ttlSeconds
+        })
     });
     try{
       const a=await pool.open(ownerA),b=await pool.open(ownerB);
@@ -201,7 +237,14 @@ test('two real private X servers: supervisor read-only, scoped input and handoff
         ['-display',backends[0].displayId],
         {...backends[1].env,DISPLAY:backends[0].displayId},
         {timeout:2500}));
-      const viewGrant=await pool.grantObserver(ownerA,a.lease,observer);
+      await assert.rejects(pool.grantObserver(ownerA,a.lease,observer),
+        /NATIVE_WORKSPACE_OBSERVER_DENIED/);
+      const backendRefA=sha(backends[0].displayId+'\0'+backends[0].serverPid);
+      const viewApproval=makeApproval('observe',a.workspaceRef,backendRefA,viewerRef,60);
+      const viewGrant=await pool.grantObserver(ownerA,a.lease,observer,
+        {ttlSeconds:60,approval:viewApproval});
+      await assert.rejects(pool.grantObserver(ownerA,a.lease,observer,
+        {ttlSeconds:60,approval:viewApproval}),/NATIVE_WORKSPACE_OBSERVER_DENIED/);
       const [seenA,seenB]=await Promise.all([
         pool.observeOwner(ownerA,a.lease),pool.observeOwner(ownerB,b.lease)
       ]);
@@ -213,7 +256,12 @@ test('two real private X servers: supervisor read-only, scoped input and handoff
         'view-only client must not call native capture');
       await assert.rejects(pool.observeOwner(ownerB,a.lease),
         /NATIVE_WORKSPACE_LEASE_DENIED/);
-      const handoff=await pool.beginHandoff(ownerA,a.lease,reviewer);
+      await assert.rejects(pool.beginHandoff(ownerA,a.lease,reviewer),
+        /NATIVE_WORKSPACE_HANDOFF_DENIED/);
+      const handoff=await pool.beginHandoff(ownerA,a.lease,reviewer,{
+        ttlSeconds:45,
+        approval:makeApproval('control',a.workspaceRef,backendRefA,operatorRef,45)
+      });
       await assert.rejects(pool.inputOwner(ownerA,a.lease,
         {kind:'type',text:'SYNTHETIC_ONLY_A'},
         {expectedRevision:seenA.revision}),/NATIVE_WORKSPACE_CONTROL_HELD/);
