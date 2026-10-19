@@ -6,7 +6,7 @@ import {createHash, randomBytes} from 'node:crypto';
 
 const hex64=/^[a-f0-9]{64}$/;
 const subjectPattern=/^[A-Za-z0-9._:@-]{1,128}$/;
-const kinds=new Set(['click','type','key','scroll']);
+const kinds=new Set(['click','move','drag','type','key','scroll']);
 const digest=value=>createHash('sha256').update(value).digest('hex');
 const issue=()=>randomBytes(32).toString('hex');
 const fail=code=>Object.assign(new Error(code),{code});
@@ -36,20 +36,39 @@ const actionOf=value=>{
         Object.getPrototypeOf(value)===null)||!kinds.has(value.kind))
     throw fail('NATIVE_WORKSPACE_ACTION_INVALID');
   const shape={
-    click:['kind','x','y'],type:['kind','text'],
-    key:['kind','key'],scroll:['kind','delta']
+    click:['kind','x','y','button','count'],
+    move:['kind','x','y'],
+    drag:['kind','from','to','button','durationMs'],
+    type:['kind','text'],key:['kind','key'],scroll:['kind','delta']
   }[value.kind];
   if(Object.keys(value).some(key=>!shape.includes(key)))
     throw fail('NATIVE_WORKSPACE_TARGET_OVERRIDE_DENIED');
-  if(value.kind==='click'&&(!Number.isInteger(value.x)||
-      !Number.isInteger(value.y)||value.x<0||value.y<0||
-      value.x>65535||value.y>65535))throw fail('NATIVE_WORKSPACE_ACTION_INVALID');
+  const safePoint=p=>p&&typeof p==='object'&&!Array.isArray(p)&&
+    Object.keys(p).length===2&&
+    Object.hasOwn(p,'x')&&Object.hasOwn(p,'y')&&
+    Number.isInteger(p.x)&&Number.isInteger(p.y)&&
+    p.x>=0&&p.x<=65535&&p.y>=0&&p.y<=65535;
+  const safeButton=b=>b===undefined||(Number.isInteger(b)&&b>=1&&b<=3);
+  if((value.kind==='click'||value.kind==='move')&&
+      !safePoint({x:value.x,y:value.y}))
+    throw fail('NATIVE_WORKSPACE_ACTION_INVALID');
+  if(value.kind==='click'&&(!safeButton(value.button)||
+      (value.count!==undefined&&value.count!==1&&value.count!==2)))
+    throw fail('NATIVE_WORKSPACE_ACTION_INVALID');
+  if(value.kind==='drag'&&
+     (!safePoint(value.from)||!safePoint(value.to)||!safeButton(value.button)||
+      (value.durationMs!==undefined&&
+       (!Number.isInteger(value.durationMs)||value.durationMs<80||
+        value.durationMs>2000))))
+    throw fail('NATIVE_WORKSPACE_ACTION_INVALID');
   if(value.kind==='type'&&
       (typeof value.text!=='string'||value.text.length<1||
        value.text.length>4096||value.text.includes('\u0000')))
     throw fail('NATIVE_WORKSPACE_ACTION_INVALID');
   if(value.kind==='key'&&
-      !['Return','Escape','Tab','BackSpace','Up','Down','Left','Right','space']
+      !['Return','Escape','Tab','BackSpace','Up','Down','Left','Right',
+         'space','Delete','Home','End','Page_Up','Page_Down',
+         'ctrl+a','ctrl+c','ctrl+v','ctrl+s','ctrl+z','shift+Tab']
         .includes(value.key))throw fail('NATIVE_WORKSPACE_ACTION_INVALID');
   if(value.kind==='scroll'&&
       (!Number.isInteger(value.delta)||value.delta===0||
