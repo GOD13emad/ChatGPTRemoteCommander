@@ -271,3 +271,56 @@ Primary source references:
 - Node.js Crypto API, Ed25519 sign/verify: https://nodejs.org/api/crypto.html
 - Linux Unix peer credentials, SO_PEERCRED: https://man7.org/linux/man-pages/man7/unix.7.html
 - MCP protected resource authorization guidance: https://modelcontextprotocol.io/specification/2025-06-18/basic/authorization
+
+
+## Linux native workspace broker IPC transport QA (2026-10-19)
+
+**Status: source-only, deny-by-default transport proof; NOT an authenticated
+owner Broker, not installed and not an authorization to control a GUI.**
+The opt-in Python standard-library module
+tools/native-workspace-peer-broker-qa.py creates a disposable Linux AF_UNIX
+stream socket under an existing owner-private canonical temporary directory.
+No daemon, service, port, MCP tool, browser access, signing key, screenshot
+or GUI command is installed or exposed. The module has no CLI auto-start.
+
+SO_PEERCRED supplies the kernel's connection-time pid/uid/gid. A strict
+one-line, bounded, duplicate-key-rejecting JSON frame accepts only a
+non-mutating peer_status probe. The initial policy DENIES all peers. An
+explicit QA callback may allow the sanitized TRANSPORT_ONLY response, which
+ALWAYS reports nativeInputAuthorized:false, trustedConversationIdentity:false
+and ownerConsentVerified:false. Client-supplied UID/role/PID fields, unknown
+operations (including click/control), oversized messages, symlink/untrusted
+roots and duplicate live sockets fail closed.
+
+The socket uses private owner-only permissions, and shutdown unlinks only
+the exact test-owned socket inode. A deliberate process crash leaves its
+stale socket name quarantined; startup never deletes/reclaims an unknown
+name automatically. Invalid or stalled clients cannot permanently hang
+other test clients. This is only a same-UID, user-local prototype. Another
+program under the same Linux user can connect to its socket and may modify
+owner-writable data: the process PID/UID/GID is not ChatGPT identity or an
+independently protected grant. Testing that a UID matches does not authorize
+native input, owner consent, or screenshot disclosure.
+
+**Evidence:** 12/12 scoped real Unix socket/peer-credential tests on MMZ
+Linux PASS (source-QA), including an actual child process, exact observed
+kernel peer PID, default denial, malformed claims, stalled clients and
+crash-stale endpoint behavior. The NoPromote Ubuntu hosted job must pass at
+the exact new PR HEAD before that CI scope is accepted. This work does NOT
+change the signed Ed25519 verifier, durable input journal, previous PR head
+or installed Commander Core.
+
+**Open for real owner Broker:** a separately protected service principal
+and private signer/OS key custody, authenticated chat/user subject binding,
+owner-present authorization, protected IPC to native-worker allocator,
+peer identity and session attestation, revocation/rotation, cross-process
+same-session arbitration, Linux Wayland/private X11 and Windows VM/RDS
+acceptance. systemd --user services under the same user do NOT establish
+a distinct OS principal by themselves. Provisioning an independent OS
+principal or protected system service, if eventually required, must be
+reviewed and approved through native operating-system authorization. Until
+then observer and controller grants remain disabled operationally.
+
+Primary sources:
+- Linux SO_PEERCRED unix(7): https://man7.org/linux/man-pages/man7/unix.7.html
+- systemd service User= limitations: https://github.com/systemd/systemd/blob/main/man/systemd.exec.xml
