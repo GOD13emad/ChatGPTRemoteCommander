@@ -5,7 +5,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { boundNodeTestConcurrency, parseQualificationArgs, prioritizeSensitiveQualificationCommands, isolateWindowsLeaseRegression, isolateWindowsTimingSensitiveRegressions, isolateWindowsProcessTreeRegression, isolateWindowsAgentHttpRegression, isolateWindowsTransferMeshHttpRegression } from '../tools/run-bounded-test-script.mjs';
+import { boundNodeTestConcurrency, parseQualificationArgs, prioritizeSensitiveQualificationCommands, isolateWindowsLeaseRegression, isolateWindowsTimingSensitiveRegressions, isolateWindowsProcessTreeRegression, isolateWindowsAgentHttpRegression, isolateWindowsTransferMeshHttpRegression, markIsolatedQualificationPhases } from '../tools/run-bounded-test-script.mjs';
 
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const read=rel=>fs.readFileSync(path.join(root,rel),'utf8');
@@ -235,6 +235,64 @@ test('R470 Windows fixture extracts failing test and counters without persisting
   const many=run([file,file.replace('fixture','duplicate')]);
   assert.equal(many.status,'AMBIGUOUS_MULTIPLE_MATCHING_LOGS');
   assert.equal(many.failureTests.length,0,'never guess newest');
+});
+
+test('R157 qualifier markers are opt-in, index-only, and preserve all original commands',()=>{
+  const sample='node --test test/a.test.mjs && node test/b.mjs';
+  assert.equal(markIsolatedQualificationPhases(sample),
+    'echo RC_QUAL_PHASE_START_00 && node --test test/a.test.mjs && echo RC_QUAL_PHASE_PASS_00 && '+
+    'echo RC_QUAL_PHASE_START_01 && node test/b.mjs && echo RC_QUAL_PHASE_PASS_01');
+  assert.throws(()=>markIsolatedQualificationPhases('echo untrusted command'),/R157_PHASE_COMMAND_SHAPE_INVALID/);
+  const pkg=JSON.parse(read('package.json'));
+  const bounded=boundNodeTestConcurrency(pkg.scripts.test,1);
+  let command=prioritizeSensitiveQualificationCommands(bounded.command);
+  command=isolateWindowsAgentHttpRegression(command);
+  command=isolateWindowsTimingSensitiveRegressions(command);
+  command=isolateWindowsProcessTreeRegression(command);
+  command=isolateWindowsTransferMeshHttpRegression(command);
+  command=isolateWindowsLeaseRegression(command);
+  const groups=command.split(' && ');
+  const marked=markIsolatedQualificationPhases(command);
+  assert.ok(marked.length<7500,'preserve Windows cmd.exe length limit');
+  assert.equal((marked.match(/RC_QUAL_PHASE_START_\d{2}/g)||[]).length,groups.length);
+  assert.equal((marked.match(/RC_QUAL_PHASE_PASS_\d{2}/g)||[]).length,groups.length);
+  for(const [index,part] of groups.entries()){
+    assert.ok(marked.includes('RC_QUAL_PHASE_START_'+String(index).padStart(2,'0')+' && '+part+' && echo RC_QUAL_PHASE_PASS_'+String(index).padStart(2,'0')),
+      'each exact original command is preserved in its own observed phase');
+  }
+  const wrapper=read('tools/run-bounded-test-script.mjs');
+  assert.ok(wrapper.includes("process.env.RC_QUALIFICATION_RUN_ID"),'R157 opt-in is guarded');
+  assert.ok(wrapper.includes('command=markIsolatedQualificationPhases(command)'));
+});
+
+test('R470 does not misreport a non-TAP failure as a TAP summary; identifies only numeric phase',t=>{
+  if(process.platform!=='win32')return t.skip('native PowerShell fixture applies only to Windows');
+  const sha='604ed6a8a0e0f95197fabcc92d93537142017a0b';
+  const script=path.join(root,'tools','diagnose-updater-gate-r470.ps1');
+  const secret='ghp_R470_DO_NOT_INCLUDE_SECRET';
+  for(const [name,lines,status,index] of [
+    ['marked',['RC_QUAL_PHASE_START_00','RC_QUAL_PHASE_PASS_00','RC_QUAL_PHASE_START_01',
+      'Fatal: injected Windows private path C:\\Private\\User\\ ' +secret],'NON_TAP_FAILURE_PHASE_IDENTIFIED',1],
+    ['unmarked',['fatal error without TAP and without phase markers '+secret],'NON_TAP_FAILURE_UNCLASSIFIED',null],
+  ]){
+    const tmp=fs.mkdtempSync(path.join(os.tmpdir(),'rc-r470-nontap-'));
+    try{
+      const dir=path.join(tmp,'STATE','ChatGPTRemoteCommander','update-logs');
+      fs.mkdirSync(dir,{recursive:true});
+      fs.writeFileSync(path.join(dir,'qualification-output-qualification-test-'+sha.slice(0,12)+'-'+name+'.stdout.log'),lines.join('\n'),'utf8');
+      const proc=spawnSync('pwsh.exe',['-NoProfile','-NonInteractive','-File',script,'-Root',tmp,
+        '-ExpectedCommit',sha],{encoding:'utf8',timeout:15000});
+      assert.equal(proc.status,0,proc.stderr||proc.stdout);
+      const raw=fs.readFileSync(path.join(tmp,'DIAGNOSTIC_R470.json'),'utf8');
+      assert.ok(!raw.includes(secret),'raw secret must not appear in artifact');
+      assert.ok(!raw.includes(tmp),'absolute local path must not appear in artifact');
+      const report=JSON.parse(raw);
+      assert.equal(report.status,status);
+      assert.equal(report.failurePhaseIndex,index);
+      assert.equal(report.failureTests.length,0);
+      assert.equal(report.rawLogIncluded,false);
+    }finally{fs.rmSync(tmp,{recursive:true,force:true});}
+  }
 });
 
 test('CI Windows runs the Transfer Mesh HTTP fixture alone without weakening readiness or dropping coverage',()=>{

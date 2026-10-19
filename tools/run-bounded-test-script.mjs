@@ -150,6 +150,25 @@ export function isolateWindowsTransferMeshHttpRegression(command) {
   return 'node --test --test-concurrency=1 '+file+' && '+parts.join(' && ');
 }
 
+/**
+ * R157-only observation of the exact Windows qualification command chain.
+ * Mark the start/pass of each original command without changing the command,
+ * timeouts, test coverage or any production execution path. Only the isolated
+ * updater's RC_QUALIFICATION_RUN_ID opt-in enables these public numeric markers.
+ */
+export function markIsolatedQualificationPhases(command) {
+  if(typeof command!=='string'||!command)throw new Error('R157_PHASE_COMMAND_INVALID');
+  const parts=command.split(' && ');
+  if(parts.length<2||parts.length>90||parts.some(p=>!p.startsWith('node ')))
+    throw new Error('R157_PHASE_COMMAND_SHAPE_INVALID');
+  const marked=parts.map((part,index)=>{
+    const number=String(index).padStart(2,'0');
+    return 'echo RC_QUAL_PHASE_START_'+number+' && '+part+' && echo RC_QUAL_PHASE_PASS_'+number;
+  }).join(' && ');
+  if(marked.length>7500)throw new Error('R157_PHASE_WINDOWS_CMD_LENGTH');
+  return marked;
+}
+
 export function parseQualificationArgs(argv){
   const out={script:null,concurrency:null,prioritizeSensitive:false};
   for(let i=0;i<argv.length;i++){
@@ -182,6 +201,8 @@ function run(){
     command=isolateWindowsTransferMeshHttpRegression(command);
     command=isolateWindowsLeaseRegression(command);
   }
+  if(process.platform==='win32'&&args.script==='test'&&process.env.RC_QUALIFICATION_RUN_ID)
+    command=markIsolatedQualificationPhases(command);
   console.log('CI_TEST_CONCURRENCY script='+args.script+' requestedConcurrency='+requestedConcurrency+' effectiveConcurrency='+effectiveConcurrency+' replacements='+bounded.replacements+' prioritizeSensitive='+prioritizeSensitive);
   const child=process.platform==='win32'
     ? spawnSync(process.env.ComSpec||'cmd.exe',['/d','/s','/c',command],{cwd:root,env:process.env,stdio:'inherit'})
