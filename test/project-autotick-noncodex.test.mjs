@@ -11,7 +11,7 @@ const sha=raw=>createHash('sha256').update(raw).digest('hex');
 const delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 const NEWLINE='\n';
 
-function fixture(t,{stepId='inspect',stepTitle='Read exact owner-approved scratch receipt'}={}){
+function fixture(t,{stepId='inspect',stepTitle='Read exact owner-approved scratch receipt',maxActions=1,maxPlannerCalls=2}={}){
  const parent=fs.realpathSync.native(os.tmpdir());
  const root=fs.realpathSync.native(fs.mkdtempSync(path.join(parent,'rc-safe-autotick-')));
  const project=path.join(root,'project');
@@ -52,7 +52,7 @@ function fixture(t,{stepId='inspect',stepTitle='Read exact owner-approved scratc
    runner:{enabled:true,autoTick:true,
      provider:{kind:'command',executable:process.execPath,args:[plannerPath,file],
                timeoutMs:5000,maxOutputBytes:4096},
-     allowedTools:['read_text'],maxActions:1,maxDurationMs:25000,maxPlannerCalls:2,
+     allowedTools:['read_text'],maxActions,maxDurationMs:25000,maxPlannerCalls,
      adaptive:{enabled:false,maxExtensions:0},worker:{enabled:false},
      team:{workers:[{id:'reviewer',role:'Verify the single owner-approved scratch read only'}],maxParallel:1}}
   }
@@ -141,7 +141,9 @@ test('native non-Codex command provider auto-ticks exactly one read-only step an
 
 test('unrecognized natural-language task is suspended for owner instead of executed',
  {timeout:35000},async t=>{
- const f=fixture(t,{stepId:'unknown',stepTitle:'Run a broad unspecified command'});
+ // Allow one unused proposal/action budget while the owner request is pending.
+ // Separate engine budget tests still verify fail-closed EXHAUSTED on an overrun.
+ const f=fixture(t,{stepId:'unknown',stepTitle:'Run a broad unspecified command',maxActions:2,maxPlannerCalls:4});
  const workflow=await f.api.execute('workflow_create',{
   id:'autopilot',root:f.project,goal:'Review an untrusted new instruction',
   acceptance:['Owner scope is clarified'],
@@ -149,13 +151,20 @@ test('unrecognized natural-language task is suspended for owner instead of execu
  });
  const enqueued=await f.api.execute('workflow_run_start',{
   id:'autopilot',runId:'unknownrun',expectedRevision:workflow.state.revision,
-  maxActions:1,maxPlannerCalls:2,durationMs:24000,
+  maxActions:2,maxPlannerCalls:4,durationMs:24000,
   checks:[{criterion:0,type:'file_sha256',path:'proof.txt',sha256:sha(f.bytes)}]
  });
  assert.equal(enqueued.status,'QUEUED');
  const result=await awaitTerminal(f.api,'unknownrun');
  assert.equal(result.status,'WAITING_INPUT',JSON.stringify(result));
  assert.ok(result.pendingRequest?.question?.includes('Owner approval'));
+ // The auto-scheduler must not burn available budget or dispatch while waiting.
+ await delay(1450);
+ const stable=await f.api.execute('workflow_run_status',{runId:'unknownrun'});
+ assert.equal(stable.status,'WAITING_INPUT',JSON.stringify(stable));
+ assert.equal(stable.attempts,1);
+ assert.equal(stable.plannerCalls,2);
+ assert.equal(stable.pendingRequest.requestId,result.pendingRequest.requestId);
  assert.equal(f.dispatched.length,0);
  const state=await f.api.execute('workflow_get',{id:'autopilot'});
  assert.equal(state.state.steps[0].status,'pending');
