@@ -302,13 +302,18 @@ owner-writable data: the process PID/UID/GID is not ChatGPT identity or an
 independently protected grant. Testing that a UID matches does not authorize
 native input, owner consent, or screenshot disclosure.
 
-**Evidence:** 12/12 scoped real Unix socket/peer-credential tests on MMZ
-Linux PASS (source-QA), including an actual child process, exact observed
-kernel peer PID, default denial, malformed claims, stalled clients and
-crash-stale endpoint behavior. The NoPromote Ubuntu hosted job must pass at
-the exact new PR HEAD before that CI scope is accepted. This work does NOT
-change the signed Ed25519 verifier, durable input journal, previous PR head
-or installed Commander Core.
+**Evidence:** 12/12 scoped real Unix socket/peer-credential tests
+PASS independently on MMZ Linux (mmz-LOQ-15IRX9) and Emad Laptop Linux
+(aliemad-Labtop), both Python 3.14.4, both Exit 0 with no skipped cases.
+Cross-host tests used the exact same source SHA-256
+ad7dcb470b0af753a887364c4595e0e437b9327127e7f0275b3be21fddd0afef
+and test SHA-256
+eddb79559f28b885acdd4b22e422b1c0ca8105ed7e6c9c3a257eced3569964d3.
+They covered actual child PID matching, kernel peer credentials, default denial,
+malformed claims, stalled clients and crash-stale endpoint behavior. Hosted
+NoPromote Ubuntu CI must be checked on the exact amended PR HEAD. This work
+does NOT change the signed Ed25519 verifier, durable input journal, previous
+PR base, installed Commander Core, or the users' desktops.
 
 **Open for real owner Broker:** a separately protected service principal
 and private signer/OS key custody, authenticated chat/user subject binding,
