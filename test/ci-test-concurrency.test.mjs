@@ -5,7 +5,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { boundNodeTestConcurrency, parseQualificationArgs, prioritizeSensitiveQualificationCommands, isolateWindowsLeaseRegression, isolateWindowsTimingSensitiveRegressions, isolateWindowsProcessTreeRegression, isolateWindowsAgentHttpRegression, isolateWindowsTransferMeshHttpRegression, markIsolatedQualificationPhases } from '../tools/run-bounded-test-script.mjs';
+import { boundNodeTestConcurrency, parseQualificationArgs, prioritizeSensitiveQualificationCommands, isolateWindowsLeaseRegression, isolateWindowsTimingSensitiveRegressions, isolateWindowsProcessTreeRegression, isolateWindowsAgentHttpRegression, isolateWindowsTransferMeshHttpRegression, isolateWindowsWorkflowPlanRegression, markIsolatedQualificationPhases } from '../tools/run-bounded-test-script.mjs';
 
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const read=rel=>fs.readFileSync(path.join(root,rel),'utf8');
@@ -324,6 +324,35 @@ test('R470 Node24 spec reporter failure is classified and sanitized with no raw 
     assert.equal(report.failurePhaseIndex,null);
     assert.equal(report.rawLogIncluded,false);
   }finally{fs.rmSync(tmp,{recursive:true,force:true});}
+});
+
+test('Windows runs exact workflow-plan races before loaded CI; strict adaptive team deadline unchanged',()=>{
+  const pkg=JSON.parse(read('package.json'));
+  let command=prioritizeSensitiveQualificationCommands(boundNodeTestConcurrency(pkg.scripts.test,1).command);
+  command=isolateWindowsAgentHttpRegression(command);
+  command=isolateWindowsTimingSensitiveRegressions(command);
+  command=isolateWindowsProcessTreeRegression(command);
+  command=isolateWindowsTransferMeshHttpRegression(command);
+  command=isolateWindowsLeaseRegression(command);
+  const prior=command, file='test/workflow-plan.test.mjs';
+  command=isolateWindowsWorkflowPlanRegression(command);
+  assert.ok(command.startsWith('node --test --test-concurrency=1 '+file+' && '),'exact concurrency file is first');
+  assert.equal(command.split(file).length-1,1,'original workflow-plan tests still run exactly once');
+  assert.equal(command.replace('node --test --test-concurrency=1 '+file+' && ','').split(' && ').length,
+    prior.split(' && ').length,'one isolated command replaces one file inside the original batch');
+  assert.ok(command.includes('test/project-adaptive.test.mjs'));
+  assert.ok(command.includes('test/project-engine-integration.test.mjs'));
+  assert.ok(command.includes('test/boot-recovery-diagnostics.test.mjs'));
+  assert.throws(()=>isolateWindowsWorkflowPlanRegression(prior.replace(' '+file,'')),/CI_WORKFLOW_PLAN_CARDINALITY/);
+  const marked=markIsolatedQualificationPhases(command);
+  assert.ok(marked.length<7500,'bounded R157 Windows shell command with phase markers');
+  const source=read('test/project-adaptive.test.mjs');
+  const first=source.indexOf("  test('inspect, extend, read prerequisite");
+  const team=source.indexOf("  test('team reserves all calls before workers");
+  assert.ok(team>0 && first>team,'strict six-second team regression runs before crash workers');
+  assert.equal(source.split("test('team reserves all calls before workers").length-1,1);
+  assert.ok(source.includes("test('team reserves all calls before workers and executes only the coordinator proposal', { timeout: 6000 }"),
+    'preserve its exact original timeout');
 });
 
 test('CI Windows runs the Transfer Mesh HTTP fixture alone without weakening readiness or dropping coverage',()=>{

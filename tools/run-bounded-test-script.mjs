@@ -169,6 +169,25 @@ export function markIsolatedQualificationPhases(command) {
   return marked;
 }
 
+/**
+ * Windows qualification: run the real two-process workflow-plan SQLite race
+ * tests before the loaded crash/HTTP suites. The original short contention
+ * bounds and exact assertions remain unchanged; cardinality fails closed.
+ */
+export function isolateWindowsWorkflowPlanRegression(command) {
+  if(typeof command!=='string'||!command)throw new Error('CI_WORKFLOW_PLAN_COMMAND_INVALID');
+  const file='test/workflow-plan.test.mjs';
+  if(command.split(file).length-1!==1)throw new Error('CI_WORKFLOW_PLAN_CARDINALITY');
+  const parts=command.split(' && ');
+  const index=parts.findIndex(part=>part.startsWith('node --test --test-concurrency=1 ')&&part.includes(' '+file));
+  if(index<0)throw new Error('CI_WORKFLOW_PLAN_BATCH_NOT_FOUND');
+  const original=parts[index],after=original.replace(' '+file,'');
+  if(after===original||after.includes(file)||!after.startsWith('node --test --test-concurrency=1 test/'))
+    throw new Error('CI_WORKFLOW_PLAN_ISOLATION_INVALID');
+  parts[index]=after;
+  return 'node --test --test-concurrency=1 '+file+' && '+parts.join(' && ');
+}
+
 export function parseQualificationArgs(argv){
   const out={script:null,concurrency:null,prioritizeSensitive:false};
   for(let i=0;i<argv.length;i++){
@@ -200,6 +219,7 @@ function run(){
     command=isolateWindowsProcessTreeRegression(command);
     command=isolateWindowsTransferMeshHttpRegression(command);
     command=isolateWindowsLeaseRegression(command);
+    command=isolateWindowsWorkflowPlanRegression(command);
   }
   if(process.platform==='win32'&&args.script==='test'&&process.env.RC_QUALIFICATION_RUN_ID)
     command=markIsolatedQualificationPhases(command);
