@@ -34,15 +34,67 @@ class SafeMonitorTests(unittest.TestCase):
         return {"schema":1,"kind":"COMMANDER_LIVE_MONITOR",
                 "observedAtEpochMs":now-100,"expiresAtEpochMs":now+10000+adjust,
                 "identity":{"deviceName":"fixture","version":"0.10.20","profile":"default"},
-                "gui":{"available":False,"reason":"UNVERIFIED"},
-                "browser":{"available":True},"operations":{"active":0},
+                "gui":{"enabled":True,"available":False,"uncertain":False,"reason":"GUI_OFFLINE","capabilities":{"screenshot":True,"mouse":True}},
+                "browser":{"enabled":True,"available":True,"uncertain":False},"operations":{"active":0},
                 "extensions":{"items":[]}}
     def test_fresh_monitor(self):
         self.dump(m.MONITOR,self.valid_monitor())
         s=m.monitor_status()
         self.assertEqual(s["state"],"CONNECTED")
-        self.assertEqual(s["gui"],"BLOCKED")
+        self.assertEqual(s["gui"],"UNAVAILABLE")
         self.assertEqual(s["activeOperations"],0)
+    def test_uncertain_native_gui_blocks_input_despite_available_backend(self):
+        snap=self.valid_monitor()
+        snap["gui"].update(available=True,uncertain=True,backend="gnome-mutter")
+        self.dump(m.MONITOR,snap)
+        state=m.monitor_status()
+        self.assertEqual(state["gui"],"BLOCKED")
+        self.assertEqual(state["guiInput"],"BLOCKED")
+        self.assertEqual(state["privateDesktop"],"NOT_VERIFIED")
+    def test_native_observer_is_not_native_control(self):
+        snap=self.valid_monitor()
+        snap["gui"].update(available=True,backend="gnome-mutter",sessionType="wayland")
+        self.dump(m.MONITOR,snap)
+        state=m.monitor_status()
+        self.assertEqual(state["gui"],"OBSERVE_READY")
+        self.assertEqual(state["guiInput"],"TAKEOVER_REQUIRED")
+        self.assertEqual(state["privateDesktop"],"NOT_VERIFIED")
+        self.assertIn("wayland",state["guiReason"])
+    def test_malformed_and_missing_gui_flags_fail_closed(self):
+        snap=self.valid_monitor()
+        snap["gui"].update(available=True,uncertain="false")
+        self.dump(m.MONITOR,snap)
+        self.assertEqual(m.monitor_status()["gui"],"UNVERIFIED")
+        snap["gui"].update(uncertain=False,capabilities={})
+        self.dump(m.MONITOR,snap)
+        self.assertEqual(m.monitor_status()["gui"],"UNVERIFIED")
+        self.assertEqual(m.monitor_status()["guiInput"],"BLOCKED")
+        snap["gui"]["capabilities"]={"screenshot":True,"mouse":False}
+        self.dump(m.MONITOR,snap)
+        self.assertEqual(m.monitor_status()["gui"],"OBSERVE_READY")
+        self.assertEqual(m.monitor_status()["guiInput"],"INPUT_DISABLED")
+        snap["gui"]=["invalid"]
+        self.dump(m.MONITOR,snap)
+        self.assertEqual(m.monitor_status()["gui"],"UNVERIFIED")
+    def test_browser_uncertainty_and_missing_active_count_fail_closed(self):
+        snap=self.valid_monitor()
+        snap["browser"]["uncertain"]=True
+        snap["operations"]={}
+        self.dump(m.MONITOR,snap)
+        self.assertEqual(m.monitor_status()["browser"],"BLOCKED")
+        self.assertIsNone(m.monitor_status()["activeOperations"])
+        snap["operations"]["active"]=True
+        self.dump(m.MONITOR,snap)
+        self.assertIsNone(m.monitor_status()["activeOperations"])
+    def test_invalid_monitor_time_window_rejected(self):
+        snap=self.valid_monitor()
+        snap["expiresAtEpochMs"]+=24*3600*1000
+        self.dump(m.MONITOR,snap)
+        self.assertEqual(m.monitor_status()["state"],"DISCONNECTED")
+        snap=self.valid_monitor()
+        snap["observedAtEpochMs"]=True
+        self.dump(m.MONITOR,snap)
+        self.assertEqual(m.monitor_status()["state"],"UNVERIFIED")
     def test_stale_monitor_never_shows_connected(self):
         self.dump(m.MONITOR,self.valid_monitor(adjust=-100000))
         self.assertEqual(m.monitor_status()["state"],"DISCONNECTED")
