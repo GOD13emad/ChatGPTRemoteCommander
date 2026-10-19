@@ -329,3 +329,67 @@ then observer and controller grants remain disabled operationally.
 Primary sources:
 - Linux SO_PEERCRED unix(7): https://man7.org/linux/man-pages/man7/unix.7.html
 - systemd service User= limitations: https://github.com/systemd/systemd/blob/main/man/systemd.exec.xml
+
+
+## Generic native application GUI worker (source QA)
+
+**User goal:** operate native GUI-only applications through their own
+visual workspace, pointer and keyboard when an API, backend, console or
+usable accessibility/UIA route is unavailable. The worker must not be
+limited to web browsers and must not take over a user's physical display.
+
+**Implemented Linux X11 pilot:** src/native-private-x11-app-worker.mjs
+uses a trusted host-pinned application catalog (absolute executable,
+fixed argv and window title). The chat cannot supply an arbitrary binary,
+shell command, DISPLAY or XAUTHORITY. The launcher allocates a distinct
+owner-private high-numbered Xvfb display for each workspace, with a
+separate Xauthority cookie, private HOME/cache/config and no TCP listener.
+It starts a **native desktop app**, captures actual screen pixels through
+ffmpeg x11grab and sends XTEST pointer/keyboard actions using xdotool.
+This is not Chrome CDP, browser DOM interaction or a website API.
+
+The existing native-workspace-coordinator.mjs and
+native-workspace-journal.mjs now include mouse move, bounded drag,
+single/double click, text, key and scroll. Native actions require fresh
+observation and a persisted per-workspace intent, without blind replay
+of ambiguous results. Optional tools/native-qa-parent-death-exec.py sets
+Linux PR_SET_PDEATHSIG for each owned native child; this is test-only
+child lifecycle protection, not a cross-user security boundary.
+
+**Real MMZ Linux QA — 2026-10-19:** An actual Zenity GTK form and an
+unrelated XClock application ran concurrently on two isolated Xvfb X
+servers. Each produced a distinct valid PNG screenshot. In the clock
+workspace, pointer movement, drag, double-click, right-click and scroll
+succeeded; in the GTK form, keyboard input followed by Enter caused
+the native process to
+exit with the expected SHA-256 of synthetic text output. A foreign chat
+could not access the other workspace. Both on-disk journal receipts
+remained scope-specific. Normal close shut down exact owned processes
+and sockets. An additional controlled abrupt Node-parent-exit test
+proved the owned application and Xvfb both stopped and released the
+test socket. No owner's display, browser, mouse or keyboard was used.
+
+**Not yet accepted:** This does not demonstrate every GUI app (some
+reject synthetic X11 events or require real GPU, Wayland input or secure
+desktop). Same-Linux-UID processes are not mutually untrusted principals.
+No actual ChatGPT conversation identity/owner authorization, protected
+native broker, real supervisor, production launcher or resource quota is
+installed. Parent-death coverage is limited to tested children, not a
+full app process tree or power loss.
+
+**Windows/server dependency:** Do not drive somebody else's foreground
+WinSta0 desktop or interactive Session 0. Provide an independently
+provisioned and attested VM/RDP desktop/session under a protected owner
+principal, then connect this same view-input-reobserve interface through
+the authorized supervisor broker. Headless Chrome handles web apps only;
+it is not a Windows desktop worker. Owner consent, session authentication,
+key/approval protection, durable no-replay, resource/soak and Windows
+visual acceptance are required. No stable merge, rollout, old Windows GUI
+incident reset or production input enablement follows from this pilot.
+
+Primary references:
+- X.Org Xvfb: https://www.x.org/docs/man/man.pdf
+- xdotool/XTEST: https://man.archlinux.org/man/xdotool.1.en
+- Linux parent-death guard: https://man7.org/linux/man-pages/man2/PR_SET_PDEATHSIG.2const.html
+- Windows interactive service boundary:
+  https://learn.microsoft.com/en-us/windows/win32/services/interactive-services
