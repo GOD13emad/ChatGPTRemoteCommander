@@ -58,30 +58,73 @@ def bounded_json(path: Path, limit=MAX_BYTES):
         return None
 
 
+def gui_health(gui):
+    """Monitor observation never grants native input or private-desktop ownership."""
+    if not isinstance(gui,dict) or any(type(gui.get(k)) is not bool
+        for k in ("enabled","available","uncertain")):
+        return "UNVERIFIED","UNVERIFIED","No verified GUI telemetry"
+    reason=gui.get("reason")
+    reason=reason[:100] if isinstance(reason,str) else ""
+    if gui["uncertain"]:
+        return "BLOCKED","BLOCKED","Native input outcome uncertain; do not replay"
+    if not gui["enabled"]:
+        return "DISABLED","DISABLED","Native GUI disabled by Core policy"
+    if not gui["available"]:
+        return "UNAVAILABLE","BLOCKED",reason or "Native GUI backend unavailable"
+    cap=gui.get("capabilities")
+    if not isinstance(cap, dict) or cap.get("screenshot") is not True:
+        return "UNVERIFIED", "BLOCKED", "Screenshot capability not verified"
+    input_granted = any(cap.get(key) is True for key in ("mouse", "keyboard", "focus"))
+    parts=[v[:40] for v in (gui.get("backend"),gui.get("sessionType"))
+           if isinstance(v,str) and v]
+    where=" / ".join(parts) if parts else "Native backend observed"
+    if input_granted:
+        return "OBSERVE_READY", "TAKEOVER_REQUIRED", where + "; input needs explicit takeover"
+    return "OBSERVE_READY", "INPUT_DISABLED", where + "; native input capability disabled"
+
+
+def browser_health(browser):
+    if not isinstance(browser,dict) or any(type(browser.get(k)) is not bool
+        for k in ("enabled","available","uncertain")):
+        return "UNVERIFIED"
+    if browser["uncertain"]: return "BLOCKED"
+    if not browser["enabled"]: return "DISABLED"
+    return "READY" if browser["available"] else "UNAVAILABLE"
+
+
 def monitor_status():
-    m = bounded_json(MONITOR, 16384)
-    if not m or m.get("schema") != 1 or m.get("kind") != "COMMANDER_LIVE_MONITOR":
-        return {"state": "UNVERIFIED", "reason": "Missing/untrusted private monitor"}
-    now = int(time.time() * 1000)
-    expires = m.get("expiresAtEpochMs")
-    observed = m.get("observedAtEpochMs")
-    if not isinstance(expires, int) or not isinstance(observed, int):
-        return {"state": "UNVERIFIED", "reason": "Missing timestamps"}
-    if observed > now + 30000 or expires < now:
-        return {"state": "DISCONNECTED", "reason": "Monitor stale"}
-    identity = m.get("identity") or {}
-    gui = m.get("gui") or {}
-    operations = m.get("operations") or {}
+    m=bounded_json(MONITOR,16384)
+    if not m or type(m.get("schema")) is not int or m["schema"] != 1 or m.get("kind") != "COMMANDER_LIVE_MONITOR":
+        return {"state":"UNVERIFIED","reason":"Missing/untrusted private monitor"}
+    now=int(time.time()*1000)
+    observed=m.get("observedAtEpochMs")
+    expires=m.get("expiresAtEpochMs")
+    if type(observed) is not int or type(expires) is not int:
+        return {"state":"UNVERIFIED","reason":"Missing timestamps"}
+    if observed>now+30000 or observed>expires or expires<=now or expires-observed>60000:
+        return {"state":"DISCONNECTED","reason":"Monitor stale or invalid"}
+    identity=m.get("identity")
+    identity=identity if isinstance(identity,dict) else {}
+    operations=m.get("operations")
+    operations=operations if isinstance(operations,dict) else {}
+    extensions=m.get("extensions")
+    extensions=extensions if isinstance(extensions,dict) else {}
+    items=extensions.get("items")
+    observe,input_state,reason=gui_health(m.get("gui"))
+    active=operations.get("active")
+    if type(active) is not int or not 0<=active<=999999: active=None
     return {
-        "state": "CONNECTED",
-        "device": str(identity.get("deviceName", "?"))[:80],
-        "version": str(identity.get("version", "?"))[:40],
-        "profile": str(identity.get("profile", "?"))[:64],
-        "gui": "READY" if gui.get("available") is True else "BLOCKED",
-        "guiReason": str(gui.get("reason") or "")[:100],
-        "browser": "READY" if (m.get("browser") or {}).get("available") is True else "UNAVAILABLE",
-        "activeOperations": operations.get("active", 0),
-        "extensions": len((m.get("extensions") or {}).get("items") or []),
+        "state":"CONNECTED",
+        "device":str(identity.get("deviceName","?"))[:80],
+        "version":str(identity.get("version","?"))[:40],
+        "profile":str(identity.get("profile","?"))[:64],
+        "gui":observe,
+        "guiInput":input_state,
+        "guiReason":reason[:160],
+        "privateDesktop":"NOT_VERIFIED",
+        "browser":browser_health(m.get("browser")),
+        "activeOperations":active,
+        "extensions":len(items) if isinstance(items,list) else 0,
     }
 
 
