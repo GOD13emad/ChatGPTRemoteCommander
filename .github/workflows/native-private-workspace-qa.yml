@@ -4,8 +4,10 @@ on:
   pull_request:
     paths:
       - 'src/native-workspace-coordinator.mjs'
+      - 'src/native-workspace-approval.mjs'
       - 'src/native-workspace-journal.mjs'
       - 'test/native-workspace-coordinator*.test.mjs'
+      - 'test/native-workspace-approval.test.mjs'
       - 'test/native-workspace-journal.test.mjs'
       - 'test/gui-private-x11-isolation-qa.py'
       - '.github/workflows/native-private-workspace-qa.yml'
@@ -31,10 +33,12 @@ jobs:
       - name: Syntax and scoped identity, lease, handoff, no-replay regressions
         run: |
           node --check src/native-workspace-coordinator.mjs
+          node --check src/native-workspace-approval.mjs
+          node --check test/native-workspace-approval.test.mjs
           node --check test/native-workspace-coordinator.test.mjs
           node --check src/native-workspace-journal.mjs
           node --check test/native-workspace-journal.test.mjs
-          node --test test/native-workspace-coordinator.test.mjs
+          node --test test/native-workspace-coordinator.test.mjs test/native-workspace-approval.test.mjs
       - name: Linux exact-disk native intent and process-exit no-replay tests
         if: matrix.os == 'ubuntu-24.04'
         run: node --test test/native-workspace-journal.test.mjs
