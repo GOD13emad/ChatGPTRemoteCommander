@@ -312,7 +312,7 @@ export function createNativeWorkspaceCoordinator({
       throw fail('NATIVE_WORKSPACE_REOBSERVATION_REQUIRED');
     return input(entry,action,operationId);
   }
-  async function grantObserver(ownerCtx,lease,viewerCtx,{ttlSeconds=60}={}){
+  async function grantObserver(ownerCtx,lease,viewerCtx,{ttlSeconds=60,approval}={}){
     const entry=getOwned(ownerCtx,lease),viewer=subject(viewerCtx);
     const ttl=seconds(ttlSeconds,10,180);
     if(observers.size>=16||[...observers.values()].filter(g=>g.lease===lease).length>=4)
@@ -320,7 +320,9 @@ export function createNativeWorkspaceCoordinator({
     let authorized=false;
     try{authorized=await authorizeObserver({
       ownerRef:digest(entry.owner),viewerRef:digest(viewer),
-      workspaceRef:entry.workspaceRef,ttlSeconds})===true;
+      workspaceRef:entry.workspaceRef,
+      backendRef:digest(entry.worker.displayId+'\0'+entry.worker.serverPid),
+      ttlSeconds,approval})===true;
     }catch{/* fail closed */}
     sweep();
     if(!authorized||closed||entry.disposing||
@@ -365,7 +367,7 @@ export function createNativeWorkspaceCoordinator({
     if(![...observers.values()].some(g=>g.lease===lease))entry.frame=null;
     return {revoked:true,canInput:false};
   }
-  async function beginHandoff(ownerCtx,lease,operatorCtx,{ttlSeconds=45}={}){
+  async function beginHandoff(ownerCtx,lease,operatorCtx,{ttlSeconds=45,approval}={}){
     const entry=getOwned(ownerCtx,lease),operator=subject(operatorCtx);
     const ttl=seconds(ttlSeconds,10,120);
     if(entry.busy)throw fail('NATIVE_WORKSPACE_BUSY');
@@ -374,7 +376,9 @@ export function createNativeWorkspaceCoordinator({
     let authorized=false;
     try{authorized=await authorizeHandoff({
       ownerRef:digest(entry.owner),operatorRef:digest(operator),
-      workspaceRef:entry.workspaceRef,ttlSeconds})===true;
+      workspaceRef:entry.workspaceRef,
+      backendRef:digest(entry.worker.displayId+'\0'+entry.worker.serverPid),
+      ttlSeconds,approval})===true;
     }catch{/* fail closed */}
     sweep();
     if(!authorized||closed||entry.disposing||entry.busy||
