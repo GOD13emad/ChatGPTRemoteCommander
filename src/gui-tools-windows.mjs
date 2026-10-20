@@ -78,6 +78,14 @@ export function createGuiController({ platform = process.platform, now = () => p
     // desktop observation must not be confused with permission to send input:
     // this code never resolves/replays the journal or opens a takeover lease.
     const observeOnly = uncertainNow;
+    // An external dispatcher may create a pending incident while this
+    // controller still owns an older takeover lease. Demote permanently:
+    // clearing that incident elsewhere must not revive stale input rights.
+    if (observeOnly && current()?.mode === 'takeover') {
+      session.mode = 'observe';
+      session.authorization = 'incident-observe-only';
+      frame = null;
+    }
     if (name === 'gui_status' && observeOnly) {
       let native = {ok:false,available:false};
       if (!busy) {

@@ -13,11 +13,11 @@ const image=()=>({ok:true,
     foreground:'test-window',processId:123}
 });
 function fixture({platform='win32',pending=true,unreadable=false,stop=false,nativeAvailable=true}={}){
-  const calls=[];let resolved=0,beginCalled=0;
+  const calls=[];let resolved=0,beginCalled=0,activePending=pending;
   const incident={id:'disposable-e27-incident-00001',
     tool:'gui_mouse_click',startedUtc:'2026-10-20T00:00:00.000Z'};
   const store={
-    pending:async()=>{if(unreadable)throw new Error('STORAGE_UNAVAILABLE');return pending?incident:null;},
+    pending:async()=>{if(unreadable)throw new Error('STORAGE_UNAVAILABLE');return activePending?incident:null;},
     begin:async()=>{beginCalled++;throw new Error('GUI_INCIDENT_UNRESOLVED');},
     resolve:async()=>{resolved++;throw new Error('UNAUTHORIZED_RESOLUTION');}
   };
@@ -34,7 +34,7 @@ function fixture({platform='win32',pending=true,unreadable=false,stop=false,nati
     closeInvoke:()=>{},now:()=>1000,token:()=>('d'.repeat(48))
   });
   const run=(name,params={})=>controller.execute(config(),name,params);
-  return{run,calls,incident,
+  return{run,calls,incident,setPending:value=>{activePending=value;},
     counts:()=>({resolved,beginCalled})};
 }
 
@@ -67,6 +67,25 @@ for(const platform of ['win32','linux']){
     assert.deepEqual(f.counts(),{resolved:0,beginCalled:0});
     assert.deepEqual(f.calls,['status','status','screenshot']);
     assert.equal((await f.run('gui_status')).incidentPending,true);
+  });
+  test(platform+' demotes an existing takeover lease if an external incident appears',async()=>{
+    const f=fixture({platform,pending:false});
+    const auth=await f.run('gui_session_begin',{
+      mode:'takeover',explicitUserAuthorization:'Disposable test-only takeover approval'
+    });
+    assert.equal(auth.mode,'takeover');
+    f.setPending(true);
+    const status=await f.run('gui_status');
+    assert.equal(status.incidentPending,true);
+    assert.equal(status.inputAvailable,false);
+    await f.run('gui_session_renew',{lease:auth.lease});
+    const observed=await f.run('gui_screenshot',{lease:auth.lease});
+    f.setPending(false);
+    await assert.rejects(f.run('gui_mouse_click',{
+      lease:auth.lease,frame:observed.__structuredContent.frame,x:1,y:1
+    }),/GUI_TAKEOVER_NOT_AUTHORIZED/);
+    assert.deepEqual(f.counts(),{resolved:0,beginCalled:0});
+    await f.run('gui_session_end',{lease:auth.lease});
   });
   test(platform+' fails closed when incident evidence cannot be read',async()=>{
     const f=fixture({platform,unreadable:true});
