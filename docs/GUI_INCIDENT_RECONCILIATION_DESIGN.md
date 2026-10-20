@@ -100,3 +100,35 @@ public key, and default pipe ACLs are insufficient OS boundaries. Linux
 polkit and a privileged broker would require a *separate* implementation.
 Never claim the E35 protocol has restored GUI mouse/keyboard input or is
 ready to deploy to Emad PC or Linux.
+
+## E36 diagnostic nonce claim ledger (NO protected authority)
+
+\`src/gui-owner-review-ledger.mjs\` is a *separate testable staging
+building block* for a future OS-local broker; it MUST NOT be wired into
+the Commander input dispatcher as a release grant. With an independently
+provided absolute, preexisting private directory, a canonical incident
+challenge is hashed to a deterministic claim filename, created with
+\`O_CREAT|O_EXCL\` (and \`O_NOFOLLOW\` where supported), written and file-synced.
+A duplicate or a crashed partial claim marker causes **fail-closed refusal**;
+the marker is never deleted/reused. Concurrent same-host Node processes can
+produce only one successful *diagnostic claim* for the same exact challenge.
+No original J01 file or real desktop state is accessed.
+
+The class ALWAYS returns \`releaseAuthorized:false\`,
+\`ownerAuthenticated:false\`, \`fleetQuiescenceProven:false\` and
+\`storageTrusted:false\`, even for a first/valid claim; the process owns no
+OS principal or protected encryption key. Its path is *chosen by the caller*,
+and on Windows it CANNOT attest NTFS DACLs, service identity or directory
+metadata durability; even on POSIX it checks only a leaf directory and
+does not prove parent-chain, mount namespace, or full crash durability.
+A malicious same-account Commander shell could forge/delete a file or choose
+a new directory. The broker must be separately protected and must own
+anti-replay issuance, trusted identity, OS-owner presence, fleet quiescence
+and crash-safe archival before any GUI input can be released.
+
+\`test/gui-owner-review-ledger.test.mjs\` covers same-challenge serial
+claims, 25-way in-process race, 4-process atomic create race, changed
+nonce, corrupt partial claim, missing directory, forged transcript and
+POSIX symlink denial. A skipped symlink case on Windows is not an
+acceptance of Windows path security. The test is included in mandatory
+\`package.json\` checks. E36 is not deployable or sufficient owner authority.
