@@ -60,15 +60,21 @@ export async function main(args=process.argv.slice(2),{store=createGuiInputIncid
       Array.isArray(observed.active)&&observed.active.length<=1024&&
       observed.active.every(p=>Number.isSafeInteger(p.pid)&&p.pid>0&&
         Number.isSafeInteger(p.session)&&p.session>=0&&
-        ['core','native-helper'].includes(p.role));
+        ['core','native-helper'].includes(p.role)&&
+        (!Object.hasOwn(p,'observedVersion')||p.observedVersion===null||
+          (typeof p.observedVersion==='string'&&
+           /^[0-9]{1,4}[.][0-9]{1,4}[.][0-9]{1,4}$/.test(p.observedVersion))));
     const active=valid?observed.active.map(p=>({
-      pid:p.pid,session:p.session,role:p.role
+      pid:p.pid,session:p.session,role:p.role,observedVersion:p.observedVersion??null
     })):null;
     // Never forward injected trust booleans, command lines or secret fields.
     const dispatchers={
       scan:valid?'ADVISORY_ONLY':'FAILED',
       coverage:valid?observed.coverage:'UNKNOWN',active,
-      activeCount:active?.length??null,quiescenceProven:false,
+      activeCount:active?.length??null,
+      mixedVersionObserved:active?new Set(active.map(p=>p.observedVersion).filter(Boolean)).size>1:null,
+      unknownVersionCount:active?active.filter(p=>p.observedVersion===null).length:null,
+      compatibilityProven:false,quiescenceProven:false,
       releaseAuthorized:false,noReplay:true,
       limits:'Process inventory is advisory, not a native dispatch barrier'
     };
