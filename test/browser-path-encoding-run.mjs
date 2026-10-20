@@ -37,17 +37,23 @@ try{
  const values=['plain','x\u2028y','x\u2029y','x\u2028y\u2029z','tail\u2028value'];
  const msgs=values.map(value=>JSON.stringify({action:'status',unused:value}));
  if(!msgs[1].includes('\u2028')||!msgs[2].includes('\u2029'))throw Error('INVALID_RAW_JSON_TEST');
- const frames=msgs[0]+'\r\n'+msgs[1]+'\n'+msgs[2]+'\r\n'+msgs[3]+'\n'+msgs[4];
- for(const rel of ['tools/browser-control.mjs','tools/browser-control-firefox.mjs',
-                    'experimental/owned-browser-r3/tools/browser-control.mjs']){
-  const src=fileURLToPath(new URL(rel,srcRoot));
-  const child=spawnSync(process.execPath,[src,'--server'],{
-   cwd:fileURLToPath(srcRoot),input:frames,encoding:'utf8',timeout:15000,windowsHide:true
-  });
-  if(child.error||child.status!==0)throw Error('JSON_FRAMING_RUN '+rel+' '+String(child.stderr).slice(-300));
-  const reply=String(child.stdout).trim().split(/\r?\n/).filter(Boolean).map(x=>JSON.parse(x));
-  if(reply.length!==values.length+1||reply[0].ready!==true||
-     reply.slice(1).some(x=>x.ok!==true))throw Error('JSON_FRAMING_REGRESSION '+rel);
+ const sequences=[
+  msgs[0]+'\r\n'+msgs[1]+'\n'+msgs[2]+'\r\n'+msgs[3]+'\n'+msgs[4],
+  msgs.join('\r')+'\r',
+  msgs[0]+'\r'+msgs[1]+'\n'+msgs[2]+'\r\n'+msgs[3]+'\r'+msgs[4]+'\n'
+ ];
+ for(const frames of sequences){
+  for(const rel of ['tools/browser-control.mjs','tools/browser-control-firefox.mjs',
+                     'experimental/owned-browser-r3/tools/browser-control.mjs']){
+   const src=fileURLToPath(new URL(rel,srcRoot));
+   const child=spawnSync(process.execPath,[src,'--server'],{
+    cwd:fileURLToPath(srcRoot),input:frames,encoding:'utf8',timeout:15000,windowsHide:true
+   });
+   if(child.error||child.status!==0)throw Error('JSON_FRAMING_RUN '+rel+' '+String(child.stderr).slice(-300));
+   const reply=String(child.stdout).trim().split(/\r?\n/).filter(Boolean).map(x=>JSON.parse(x));
+   if(reply.length!==values.length+1||reply[0].ready!==true||
+      reply.slice(1).some(x=>x.ok!==true))throw Error('JSON_FRAMING_REGRESSION '+rel);
+  }
  }
  console.log(JSON.stringify({status:'BROWSER_PATH_ENCODING_PASS',space:true,unicode:true,helperProtocol:true}));
 }finally{

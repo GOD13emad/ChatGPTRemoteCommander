@@ -8,21 +8,36 @@ import { terminateProcessesUsingBrowserProfile, waitForBrowserDevToolsPort } fro
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const safeCode=e=>/^[A-Z][A-Z0-9_]{1,79}$/.test(e?.browserCode??e?.message??'')?(e.browserCode??e.message):'BROWSER_NATIVE_FAILED';
 const fail=code=>Object.assign(new Error(code),{browserCode:code});
-async function* lfJsonLines(input){
-  // JSON permits U+2028/U+2029 inside strings. Only LF frames protocol records.
+async function* protocolJsonLines(input){
+  // Preserve raw Unicode separators inside JSON; retain legacy CR, LF and CRLF records.
   const decoder=new TextDecoder('utf-8');
-  let carry='';
+  let carry='', skipLF=false;
   for await(const bytes of input){
-    carry+=decoder.decode(bytes,{stream:true});
+    let chunk=decoder.decode(bytes,{stream:true});
+    if(skipLF&&chunk.length){
+      if(chunk.startsWith('\n'))chunk=chunk.slice(1);
+      skipLF=false;
+    }
+    carry+=chunk;
     let at;
-    while((at=carry.indexOf('\n'))!==-1){
+    while((at=carry.search(/[\r\n]/))!==-1){
+      const separator=carry[at];
       const line=carry.slice(0,at);
       carry=carry.slice(at+1);
-      yield line.endsWith('\r')?line.slice(0,-1):line;
+      if(separator==='\r'){
+        if(carry.startsWith('\n'))carry=carry.slice(1);
+        else if(carry.length===0)skipLF=true;
+      }
+      yield line;
     }
   }
-  carry+=decoder.decode();
-  if(carry)yield carry.endsWith('\r')?carry.slice(0,-1):carry;
+  let tail=decoder.decode();
+  if(skipLF&&tail.length){
+    if(tail.startsWith('\n'))tail=tail.slice(1);
+    skipLF=false;
+  }
+  carry+=tail;
+  if(carry)yield carry;
 }
 
 const redactUrl=value=>{
@@ -319,7 +334,7 @@ async function respond(req){
 async function main(){
  if(process.argv.includes('--server')){
   process.stdout.write(JSON.stringify({ok:true,ready:true,protocol:1})+'\n');
-  const rl=lfJsonLines(process.stdin);
+  const rl=protocolJsonLines(process.stdin);
   try{for await(const line of rl){if(!line.trim())continue;let req;try{req=JSON.parse(line);}catch{process.stdout.write(JSON.stringify({ok:false,error:'BROWSER_HELPER_BAD_JSON'})+'\n');continue;}const out=await respond(req);process.stdout.write(JSON.stringify(out)+'\n');}}
   finally{await closeBrowser();}
   return;
