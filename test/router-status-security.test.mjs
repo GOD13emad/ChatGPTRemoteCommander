@@ -18,8 +18,9 @@ const url=port=>'http://127.0.0.1:'+port+'/router/status';
 
 test('router status allows only canonical numeric-loopback HTTP status endpoints',()=>{
   assert.equal(assertRouterStatusUrl('http://127.0.0.1:47831/router/status').href,'http://127.0.0.1:47831/router/status');
-  assert.equal(assertRouterStatusUrl('http://[::1]:47831/router/status').href,'http://[::1]:47831/router/status');
   for(const bad of [
+    'http://[::1]:47831/router/status',
+    'http://127.0.0.1:47832/router/status',
     'http://localhost:47831/router/status',
     'http://evil.example:47831/router/status',
     'https://127.0.0.1:47831/router/status',
@@ -52,14 +53,14 @@ test('invalid status URL is rejected before the first HTTP request',async()=>{
 });
 
 test('router status keeps valid numeric and cancellability semantics',async()=>{
-  const {server,port}=await listen((_req,res)=>{
-    res.writeHead(200,{'content-type':'application/json'});
-    res.end(JSON.stringify({ok:true,router:true,inflightByPort:{'52000':2},inflightDetailsByPort:{'52000':[{cancellable:true},{cancellable:true}]}}));
-  });
-  try{
-    const out=await queryRouterStatus(['--url',url(port),'--port','52000','--timeout-ms','2000','--json']);
-    assert.deepEqual(out,{count:2,cancellableOnly:true,details:[{cancellable:true},{cancellable:true}],json:true});
-  }finally{await close(server);}
+  const canonical='http://127.0.0.1:47831/router/status';
+  const request=async(endpoint,options)=>{
+    assert.equal(endpoint,canonical,'network sink must receive the immutable trusted Router URL');
+    assert.equal(options.redirect,'error');
+    return {ok:true,json:async()=>({ok:true,router:true,inflightByPort:{'52000':2},inflightDetailsByPort:{'52000':[{cancellable:true},{cancellable:true}]}})};
+  };
+  const out=await queryRouterStatus(['--url',canonical,'--port','52000','--timeout-ms','2000','--json'],request);
+  assert.deepEqual(out,{count:2,cancellableOnly:true,details:[{cancellable:true},{cancellable:true}],json:true});
 });
 
 test('router status refuses HTTP redirects rather than following their destination',async()=>{
@@ -67,7 +68,7 @@ test('router status refuses HTTP redirects rather than following their destinati
   const target=await listen((_req,res)=>{destinationHits++;res.writeHead(200);res.end('{}');});
   const source=await listen((_req,res)=>{res.writeHead(302,{location:url(target.port)});res.end();});
   try{
-    await assert.rejects(()=>queryRouterStatus(['--url',url(source.port),'--port','52000','--timeout-ms','2000']));
+    await assert.rejects(()=>queryRouterStatus(['--url','http://127.0.0.1:47831/router/status','--port','52000','--timeout-ms','2000'], (_trusted,options)=>fetch(url(source.port),options)));
     assert.equal(destinationHits,0,'redirect destination must not receive traffic');
   }finally{await Promise.all([close(source.server),close(target.server)]);}
 });
