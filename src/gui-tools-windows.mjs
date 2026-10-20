@@ -65,6 +65,16 @@ export function createGuiController({ platform = process.platform, now = () => p
     try { pendingIncident = await incidentStore.pending(); }
     catch { incidentStoreUnavailable = true; } // A corrupt/unreadable record never grants input.
     const uncertainNow = uncertain || !!pendingIncident;
+    // Any observed safety stop, disabled input or unreadable J01 evidence
+    // permanently revokes a preexisting takeover lease. Recovery of the
+    // underlying condition never silently restores prior desktop input rights.
+    if ((!enabled || blocked || incidentStoreUnavailable || uncertainNow) &&
+        current()?.mode === 'takeover') {
+      session.mode = 'observe';
+      session.authorization = uncertainNow ?
+        'incident-observe-only' : 'safety-stop-revoked';
+      frame = null;
+    }
     if (name === 'gui_status' && (!enabled || blocked || incidentStoreUnavailable)) return {
       enabled, available: false, inputAvailable: false, blocked, uncertain: uncertainNow,
       busy, leased: !!current(), incidentStoreUnavailable, incidentPending: !!pendingIncident,
@@ -78,14 +88,6 @@ export function createGuiController({ platform = process.platform, now = () => p
     // desktop observation must not be confused with permission to send input:
     // this code never resolves/replays the journal or opens a takeover lease.
     const observeOnly = uncertainNow;
-    // An external dispatcher may create a pending incident while this
-    // controller still owns an older takeover lease. Demote permanently:
-    // clearing that incident elsewhere must not revive stale input rights.
-    if (observeOnly && current()?.mode === 'takeover') {
-      session.mode = 'observe';
-      session.authorization = 'incident-observe-only';
-      frame = null;
-    }
     if (name === 'gui_status' && observeOnly) {
       let native = {ok:false,available:false};
       if (!busy) {

@@ -13,11 +13,11 @@ const image=()=>({ok:true,
     foreground:'test-window',processId:123}
 });
 function fixture({platform='win32',pending=true,unreadable=false,stop=false,nativeAvailable=true}={}){
-  const calls=[];let resolved=0,beginCalled=0,activePending=pending;
+  const calls=[];let resolved=0,beginCalled=0,activePending=pending,activeUnreadable=unreadable,activeStop=stop;
   const incident={id:'disposable-e27-incident-00001',
     tool:'gui_mouse_click',startedUtc:'2026-10-20T00:00:00.000Z'};
   const store={
-    pending:async()=>{if(unreadable)throw new Error('STORAGE_UNAVAILABLE');return activePending?incident:null;},
+    pending:async()=>{if(activeUnreadable)throw new Error('STORAGE_UNAVAILABLE');return activePending?incident:null;},
     begin:async()=>{beginCalled++;throw new Error('GUI_INCIDENT_UNRESOLVED');},
     resolve:async()=>{resolved++;throw new Error('UNAUTHORIZED_RESOLUTION');}
   };
@@ -30,11 +30,11 @@ function fixture({platform='win32',pending=true,unreadable=false,stop=false,nati
     throw new Error('NATIVE_INPUT_WOULD_HAVE_BEEN_SENT');
   };
   const controller=createGuiController({
-    platform,isStopped:async()=>stop,incidentStore:store,invoke,
+    platform,isStopped:async()=>activeStop,incidentStore:store,invoke,
     closeInvoke:()=>{},now:()=>1000,token:()=>('d'.repeat(48))
   });
   const run=(name,params={})=>controller.execute(config(),name,params);
-  return{run,calls,incident,setPending:value=>{activePending=value;},
+  return{run,calls,incident,setPending:value=>{activePending=value;},setUnreadable:value=>{activeUnreadable=value;},setStop:value=>{activeStop=value;},
     counts:()=>({resolved,beginCalled})};
 }
 
@@ -87,6 +87,26 @@ for(const platform of ['win32','linux']){
     assert.deepEqual(f.counts(),{resolved:0,beginCalled:0});
     await f.run('gui_session_end',{lease:auth.lease});
   });
+  for (const outage of ['store-unreadable','local-stop']) {
+    test(platform+' revokes preexisting takeover rights after '+outage+' clears',async()=>{
+      const f=fixture({platform,pending:false});
+      const old=await f.run('gui_session_begin',{
+        mode:'takeover',explicitUserAuthorization:'Disposable test-only approval'
+      });
+      assert.equal(old.mode,'takeover');
+      if (outage==='store-unreadable')f.setUnreadable(true);
+      else f.setStop(true);
+      const status=await f.run('gui_status');
+      assert.equal(status.available,false);
+      if (outage==='store-unreadable')f.setUnreadable(false);
+      else f.setStop(false);
+      const shot=await f.run('gui_screenshot',{lease:old.lease});
+      await assert.rejects(f.run('gui_key_press',{
+        lease:old.lease,frame:shot.__structuredContent.frame,keys:['A']
+      }),/GUI_TAKEOVER_NOT_AUTHORIZED/);
+      assert.deepEqual(f.counts(),{resolved:0,beginCalled:0});
+    });
+  }
   test(platform+' fails closed when incident evidence cannot be read',async()=>{
     const f=fixture({platform,unreadable:true});
     const status=await f.run('gui_status');
