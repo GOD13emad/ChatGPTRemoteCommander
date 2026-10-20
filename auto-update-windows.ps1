@@ -796,8 +796,22 @@ function Complete-DeferredDrains {
         continue
       }
       $st=Get-DrainStatus $canonical ([int]$old.port)
-      if($st.ok -and ($st.count-eq 0 -or $st.cancellableOnly)){
-        if($st.count-gt 0){Log "DRAIN_CANCEL_SAFE profile=$($route.profile) inflight=$($st.count)"}
+      if($st.ok -and $st.count-eq 0){
+        # Zero router inflight does not prove that the old backend has no
+        # GUI, browser or command work. Verify the full descendant tree and
+        # idle/lease status before stopping the old backend.
+        $idle=Get-StaleDrainEvidence $old $canonical
+        if($idle.safe){
+          Log "DRAIN_IDLE_PROVEN profile=$($route.profile) version=$($old.version)"
+          if(Stop-StaleBackendTree $old $canonical){
+            Retire-PreviousRoute $rf.FullName $old ([string]$route.profile)
+            continue
+          }
+        }else{
+          Log "DRAIN_IDLE_DEFER profile=$($route.profile) decision=$($idle.decision)"
+        }
+      }elseif($st.ok -and $st.cancellableOnly){
+        Log "DRAIN_CANCEL_SAFE profile=$($route.profile) inflight=$($st.count)"
         Stop-OldBackend $old
         if(-not(Test-OwnedOldBackend $old)){
           Retire-PreviousRoute $rf.FullName $old ([string]$route.profile)
