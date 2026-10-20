@@ -111,3 +111,12 @@ test('non-Linux delivery snapshot fails closed without pretending POSIX mode is 
      stateRoot:'not-authorized',profile:'default',expectedActiveCommit:sha
    }),/DELIVERY_HEALTH_LINUX_ONLY/);
  });
+
+test('reject state-relative delivery directory with symlinked parent escaping private root',
+ linuxOnly,t=>{
+  const f=fixture(t),link=path.join(f.root,'redirected'),c=JSON.parse(fs.readFileSync(f.configPath));
+  fs.symlinkSync(path.dirname(f.dir),link);
+  c.durableDelivery.directory=path.join(link,path.basename(f.dir));
+  fs.writeFileSync(f.configPath,JSON.stringify(c));
+  assert.throws(()=>readDeliveryHealth(f.params),/DELIVERY_HEALTH_LINKED_STORAGE/);
+});

@@ -23,14 +23,20 @@ function deliveryDirectory(root,configured,scope) {
   const privateExact=path.join(privateBase,scope);
   if(!isWithin(root,absolute) && absolute!==privateExact)
     fail('DELIVERY_HEALTH_OUTSIDE_TRUSTED_DELIVERY_ROOT');
+  // Resolve ALL ancestors, not merely the final directory. Otherwise an
+  // allowed-looking state-relative path can traverse a parent symlink outside
+  // the authorized state root while its last component remains a real folder.
+  const resolved=fs.realpathSync(absolute);
+  if(resolved!==absolute)
+    fail('DELIVERY_HEALTH_LINKED_STORAGE');
   if(absolute===privateExact){
     for(const x of [path.dirname(privateBase),privateBase,absolute]){
       const st=fs.lstatSync(x);
       if(!st.isDirectory()||st.isSymbolicLink())
         fail('DELIVERY_HEALTH_UNTRUSTED_PRIVATE_ROOT');
     }
-    if(fs.realpathSync(absolute)!==absolute)
-      fail('DELIVERY_HEALTH_PRIVATE_ROOT_LINKED');
+  }else if(!isWithin(root,resolved)){
+    fail('DELIVERY_HEALTH_OUTSIDE_STATE');
   }
   return absolute;
 }
