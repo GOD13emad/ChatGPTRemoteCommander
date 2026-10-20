@@ -41,6 +41,37 @@ test('monitor snapshot is bounded and strips untrusted extra fields',()=>{
   assert.equal(unavailable.browser.reason,null);
 });
 
+test('workflow and delivery telemetry are aggregate-only, bounded and never authorize execution',()=>{
+  const hostile={
+    identity:{deviceName:'host',profile:'default',version:'0.10.20',secret:'NOT_PUBLIC'},
+    workflows:{enabled:true,engineEnabled:true,runCount:2,automaticExecution:false,runnerConfigured:false,
+      persistedNonterminal:3,currentLeases:0,reconciliationRequired:1,privateWorkflowName:'PRIVATE'},
+    delivery:{available:true,pending:9999999999999,deadLetter:-12,transportReceipts:6,
+      authenticatedChatBound:'true',correlationId:'PRIVATE',secret:'DO_NOT_COPY'},
+    operations:{active:0,lockedKeys:0}
+  };
+  const clean=sanitizeMonitorSnapshot(hostile,1000);
+  assert.equal(clean.workflows.runCount,2);
+  assert.equal(clean.workflows.automaticExecution,false);
+  assert.equal(clean.workflows.runnerConfigured,false);
+  assert.equal(clean.workflows.persistedNonterminal,3);
+  assert.equal(clean.workflows.currentLeases,0);
+  assert.equal(clean.workflows.reconciliationRequired,1);
+  assert.equal(clean.workflows.pendingMeaning,'PERSISTED_NONTERMINAL_RECORDS_NOT_LIVE_QUEUE');
+  assert.equal(clean.delivery.available,true);
+  assert.equal(clean.delivery.pending,1000000);
+  assert.equal(clean.delivery.deadLetter,0);
+  assert.equal(clean.delivery.transportReceipts,6);
+  assert.equal(clean.delivery.authenticatedChatBound,false);
+  assert.equal('secret' in clean.identity,false);
+  assert.equal('privateWorkflowName' in clean.workflows,false);
+  assert.equal('secret' in clean.delivery,false);
+  assert.equal('correlationId' in clean.delivery,false);
+  const fallback=sanitizeMonitorSnapshot({},1000);
+  assert.equal(fallback.delivery.available,false);
+  assert.equal(fallback.workflows.automaticExecution,false);
+});
+
 test('Windows-style GUI status falls back to policy capabilities without overriding explicit capability fields',()=>{
   const base={
     identity:{deviceName:'win-host',profile:'default',version:'0.10.20',configSha256:'e'.repeat(64),port:48831,platform:'win32'},
