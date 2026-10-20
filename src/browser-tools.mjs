@@ -229,7 +229,7 @@ function makePrivateBrowserWorker(ctx){
 // remotely callable admin API is introduced.
 export function createIsolatedBrowserPool({
  maxWorkers=3,makeWorker=makePrivateBrowserWorker,clock=Date.now,
- authorizeObserverGrant=()=>false,observerToken=()=>randomBytes(32).toString('hex'),
+ authorizeObserverGrant=()=>false,authorizeObserverRead=()=>false,observerToken=()=>randomBytes(32).toString('hex'),
  authorizeControlHandoff=()=>false,controlToken=()=>randomBytes(32).toString('hex')
 }={}){
  if(!Number.isInteger(maxWorkers)||maxWorkers<1||maxWorkers>8)
@@ -441,7 +441,7 @@ export function createIsolatedBrowserPool({
   const token=observerToken();
   if(typeof token!=='string'||!/^[a-f0-9]{64}$/.test(token)||observers.has(digest(token)))
    throw browserError('BROWSER_OBSERVER_TOKEN_INVALID');
-  observers.set(digest(token),{lease,viewerProfile,
+  observers.set(digest(token),{lease,viewerProfile,ownerCtx,
    expiresAt:Math.min(entry.expiresAt,clock()+ttlSeconds*1000)});
   return {observerToken:token,scope:'VIEW_ONLY',expiresInSeconds:ttlSeconds,
    nativeInputAuthorized:false,physicalDesktopAccess:false};
@@ -460,6 +460,27 @@ export function createIsolatedBrowserPool({
   const entry=workers.get(grant.lease);
   if(!entry||entry.disposal||entry.expiresAt<=clock())
    throw browserError('BROWSER_OBSERVER_DENIED');
+  const ownerPolicy=grant.ownerCtx?.config?.powerMode;
+  if(ownerPolicy?.enabled!==true||
+     ownerPolicy?.browserControl?.enabled!==true||
+     ownerPolicy?.browserControl?.allowScreenshot!==true){
+   observers.delete(key);
+   if(![...observers.values()].some(g=>g.lease===entry.lease))
+    entry.observation=null;
+   throw browserError('BROWSER_OBSERVER_DENIED');
+  }
+  // Fail closed when a trusted reviewer has not reauthorized this read.
+  let readAuthorized=false;
+  try{readAuthorized=authorizeObserverRead({
+   ownerProfile:entry.ownerProfile,viewerProfile:grant.viewerProfile,
+   workspaceRef:digest(entry.lease)
+  })===true;}catch{/* No frame on verifier failure. */}
+  if(!readAuthorized){
+   observers.delete(key);
+   if(![...observers.values()].some(g=>g.lease===entry.lease))
+    entry.observation=null;
+   throw browserError('BROWSER_OBSERVER_DENIED');
+  }
   const frame=entry.observation;
   if(!frame)throw browserError('BROWSER_OBSERVER_FRAME_NOT_READY');
   const ageMs=Math.max(0,clock()-frame.capturedAt);
