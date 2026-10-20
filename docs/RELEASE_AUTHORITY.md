@@ -1,3 +1,9 @@
+## 2026-10-20 post-merge Windows MCP Tasks fixture readiness — scoped QA correction
+
+- Host CI run 39404729742, Windows job 118567804779, on merged main 6b2f7fe8eca2900b28e162369fd16b9f169ac0c2 failed only the mcp-tasks-extension server-health assertion at line 57. Its 400x25ms short startup polling loop did not observe a healthy isolated fixture under the loaded hosted Windows suite; stderr showed the SQLite experimental warning but no definitive server crash. The same product tree passed prior Windows PR CI and Ubuntu main CI.
+- Scoped fixture-only correction follows the repository's already accepted 30,000ms readiness pattern in test/profile-instance-http.test.mjs: wall-clock deadline, 300ms bounded health request attempts, explicit process-exit detection and bounded diagnostic stderr. Runtime code, protocol assertions, asynchronous operation deadlines, Browser/GUI scope, user profiles and installations are unchanged.
+- This is NOT a claim that post-fix hosted Windows CI passed. Require exact new-SHA Windows/Ubuntu CI, Release Sync, and an updated immutable Preview tag after verified merge. Historical failed job and source identity remain evidence.
+
 
 ### 2026-10-20 exact-head Linux promotion fault and scoped test isolation fix
 
