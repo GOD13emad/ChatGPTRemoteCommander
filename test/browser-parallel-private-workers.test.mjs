@@ -206,6 +206,9 @@ test('real Chromium workspace-scoped human handoff never interrupts another agen
  const pool=createIsolatedBrowserPool({
   maxWorkers:2,
   authorizeControlHandoff:({ownerProfile,operatorProfile})=>
+   ownerProfile==='same-core'&&operatorProfile==='human',
+  // Synthetic trusted permission for this isolated real-browser test only.
+  authorizeControlAction:({ownerProfile,operatorProfile})=>
    ownerProfile==='same-core'&&operatorProfile==='human'
  });
  const owner=cfg(root,'same-core',exe),human=cfg(root,'human',exe);

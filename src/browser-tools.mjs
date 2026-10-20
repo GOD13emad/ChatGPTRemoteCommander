@@ -230,7 +230,7 @@ function makePrivateBrowserWorker(ctx){
 export function createIsolatedBrowserPool({
  maxWorkers=3,makeWorker=makePrivateBrowserWorker,clock=Date.now,
  authorizeObserverGrant=()=>false,authorizeObserverRead=()=>false,observerToken=()=>randomBytes(32).toString('hex'),
- authorizeControlHandoff=()=>false,controlToken=()=>randomBytes(32).toString('hex')
+ authorizeControlHandoff=()=>false,authorizeControlAction=()=>false,controlToken=()=>randomBytes(32).toString('hex')
 }={}){
  if(!Number.isInteger(maxWorkers)||maxWorkers<1||maxWorkers>8)
   throw browserError('BROWSER_ISOLATED_CAPACITY_INVALID');
@@ -554,7 +554,7 @@ export function createIsolatedBrowserPool({
   const credential=controlToken();
   if(typeof credential!=='string'||!/^[a-f0-9]{64}$/.test(credential))
    throw browserError('BROWSER_WORKSPACE_OPERATOR_TOKEN_INVALID');
-  entry.handoff={tokenDigest:digest(credential),operatorProfile,
+  entry.handoff={tokenDigest:digest(credential),operatorProfile,ownerCtx,
    expiresAt:Math.min(entry.expiresAt,clock()+ttlSeconds*1000)};
   entry.reobserveRequired=true;
   return {controlToken:credential,scope:'PRIVATE_WORKSPACE_ONLY',
@@ -565,12 +565,35 @@ export function createIsolatedBrowserPool({
   if(!['browser_screenshot','browser_snapshot','browser_click','browser_fill'].includes(name))
    throw browserError('BROWSER_WORKSPACE_OPERATOR_ACTION_DENIED');
   const input=validateBrowserInput(name,{...raw,lease:entry.lease});
+  // Recheck the live owner policy before any delegated action.
+  const policy=entry.handoff?.ownerCtx?.config?.powerMode;
+  const ownCfg=policy?.browserControl;
+  if(policy?.enabled!==true||ownCfg?.enabled!==true||
+     (['browser_click','browser_fill'].includes(name)&&ownCfg.allowInput!==true)||
+     (name==='browser_screenshot'&&ownCfg.allowScreenshot!==true)){
+   entry.handoff=null;
+   entry.reobserveRequired=true;
+   throw browserError('BROWSER_WORKSPACE_OPERATOR_DENIED');
+  }
   const cfg=operatorCtx.config?.powerMode?.browserControl??{};
   if(operatorCtx.config?.powerMode?.enabled!==true||cfg.enabled!==true||
     ((name==='browser_click'||name==='browser_fill')&&cfg.allowInput!==true)||
     (name==='browser_screenshot'&&cfg.allowScreenshot!==true))
    throw browserError('BROWSER_WORKSPACE_OPERATOR_DENIED');
   if(entry.active)throw browserError('BROWSER_BUSY');
+  // An earlier handoff grant is not authorization for future actions.
+  // Consult the trusted operator authority for every delegated operation;
+  // fail closed and invalidate the token if permission was withdrawn.
+  let authorizedNow=false;
+  try{authorizedNow=authorizeControlAction({
+   ownerProfile:entry.ownerProfile,operatorProfile:profileOf(operatorCtx),
+   workspaceRef:digest(entry.lease),action:name
+  })===true;}catch{/* Never convert verifier failures to operator consent. */}
+  if(!authorizedNow){
+   entry.handoff=null;
+   entry.reobserveRequired=true;
+   throw browserError('BROWSER_WORKSPACE_OPERATOR_DENIED');
+  }
   if(['browser_fill','browser_click'].includes(name))entry.revision++;
   // Uses the existing private Controller: never the host desktop.
   // An uncertain action is not auto-retried; the Controller requires a
