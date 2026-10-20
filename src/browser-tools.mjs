@@ -230,7 +230,7 @@ function makePrivateBrowserWorker(ctx){
 export function createIsolatedBrowserPool({
  maxWorkers=3,makeWorker=makePrivateBrowserWorker,clock=Date.now,
  authorizeObserverGrant=()=>false,authorizeObserverRead=()=>false,observerToken=()=>randomBytes(32).toString('hex'),
- authorizeControlHandoff=()=>false,controlToken=()=>randomBytes(32).toString('hex')
+ authorizeControlHandoff=()=>false,authorizeControlAction=()=>false,controlToken=()=>randomBytes(32).toString('hex')
 }={}){
  if(!Number.isInteger(maxWorkers)||maxWorkers<1||maxWorkers>8)
   throw browserError('BROWSER_ISOLATED_CAPACITY_INVALID');
@@ -581,6 +581,19 @@ export function createIsolatedBrowserPool({
     (name==='browser_screenshot'&&cfg.allowScreenshot!==true))
    throw browserError('BROWSER_WORKSPACE_OPERATOR_DENIED');
   if(entry.active)throw browserError('BROWSER_BUSY');
+  // An earlier handoff grant is not authorization for future actions.
+  // Consult the trusted operator authority for every delegated operation;
+  // fail closed and invalidate the token if permission was withdrawn.
+  let authorizedNow=false;
+  try{authorizedNow=authorizeControlAction({
+   ownerProfile:entry.ownerProfile,operatorProfile:profileOf(operatorCtx),
+   workspaceRef:digest(entry.lease),action:name
+  })===true;}catch{/* Never convert verifier failures to operator consent. */}
+  if(!authorizedNow){
+   entry.handoff=null;
+   entry.reobserveRequired=true;
+   throw browserError('BROWSER_WORKSPACE_OPERATOR_DENIED');
+  }
   if(['browser_fill','browser_click'].includes(name))entry.revision++;
   // Uses the existing private Controller: never the host desktop.
   // An uncertain action is not auto-retried; the Controller requires a
