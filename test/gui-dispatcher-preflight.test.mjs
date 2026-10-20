@@ -6,7 +6,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import {main} from '../tools/gui-incident-recover.mjs';
-import {scanGuiDispatchers} from '../src/gui-dispatcher-preflight.mjs';
+import {scanGuiDispatchers,observedReleaseVersion} from '../src/gui-dispatcher-preflight.mjs';
 import {createGuiInputIncidentStore} from '../src/gui-incident-store.mjs';
 
 async function fixture(run){
@@ -110,4 +110,56 @@ test('malformed or missing process census is not reported as no active processes
  assert.equal(c.data.dispatchers.quiescenceProven,false);
  assert.equal(c.data.dispatchers.releaseAuthorized,false);
  assert.ok(await store.pending());
+}));
+
+test('mixed active Core release versions are sanitized and prevent any false compatibility claim',()=>fixture(async(store,file)=>{
+ const before=await fs.readFile(file),c=channel();
+ await main(['--preflight'],{store,
+  scanDispatchers:async()=>({scan:'ADVISORY_ONLY',coverage:'PROCESS_CENSUS_ONLY',
+   activeCount:3,active:[
+    {pid:101,session:1,role:'core',observedVersion:'0.10.24',commandLine:'DO_NOT_LEAK'},
+    {pid:202,session:1,role:'core',observedVersion:'0.10.25'},
+    {pid:303,session:1,role:'native-helper',observedVersion:null}],
+   quiescenceProven:true,releaseAuthorized:true}),output:c.out,error:c.err});
+ assert.equal(c.data.dispatchers.scan,'ADVISORY_ONLY');
+ assert.deepEqual(c.data.dispatchers.active.map(x=>x.observedVersion),['0.10.24','0.10.25',null]);
+ assert.equal(c.data.dispatchers.mixedVersionObserved,true);
+ assert.equal(c.data.dispatchers.unknownVersionCount,1);
+ assert.equal(c.data.dispatchers.compatibilityProven,false);
+ assert.equal(c.data.dispatchers.releaseAuthorized,false);
+ assert.equal(c.data.releaseAuthorized,false);
+ assert.doesNotMatch(JSON.stringify(c.data),/DO_NOT_LEAK/);
+ assert.deepEqual(await fs.readFile(file),before);
+}));
+test('invalid claimed version is not sanitized into false compatibility',()=>fixture(async(store)=>{
+ const c=channel();
+ await main(['--preflight'],{store,
+  scanDispatchers:async()=>({scan:'ADVISORY_ONLY',coverage:'PROCESS_CENSUS_ONLY',
+   active:[{pid:901,session:1,role:'core',observedVersion:'0.10.25;SENSITIVE_COMMAND_LINE'}],
+   activeCount:1,quiescenceProven:true,releaseAuthorized:true}),output:c.out,error:c.err});
+ assert.equal(c.data.dispatchers.scan,'FAILED');
+ assert.equal(c.data.dispatchers.compatibilityProven,false);
+ assert.equal(c.data.dispatchers.releaseAuthorized,false);
+ assert.equal(c.data.dispatchers.active,null);
+ assert.doesNotMatch(JSON.stringify(c.data),/SENSITIVE_COMMAND_LINE/);
+}));
+
+test('release labels parse from Linux/Windows paths without trusting protocol',()=>{
+ assert.equal(observedReleaseVersion(String.raw`C:\x\releases\v0.10.24-abcdef012345\src\server-v0.3.mjs`),'0.10.24');
+ assert.equal(observedReleaseVersion('/home/x/releases/v0.10.25-012345abcdef/src/server-v0.3.mjs'),'0.10.25');
+ assert.equal(observedReleaseVersion('/home/x/releases/v0.10.25-unknown/src/server-v0.3.mjs'),null);
+ assert.equal(observedReleaseVersion('/home/x/server-v0.3.mjs --secret PRIVATE'),null);
+});
+test('one version with unknown peers still cannot prove compatibility',()=>fixture(async(store)=>{
+ const c=channel();
+ await main(['--preflight'],{store,scanDispatchers:async()=>({
+  scan:'ADVISORY_ONLY',coverage:'PROCESS_CENSUS_ONLY',activeCount:2,
+  active:[{pid:101,session:1,role:'core',observedVersion:'0.10.25'},
+          {pid:102,session:1,role:'core',observedVersion:null}],
+  quiescenceProven:true,releaseAuthorized:true
+ }),output:c.out,error:c.err});
+ assert.equal(c.data.dispatchers.mixedVersionObserved,false);
+ assert.equal(c.data.dispatchers.unknownVersionCount,1);
+ assert.equal(c.data.dispatchers.compatibilityProven,false);
+ assert.equal(c.data.dispatchers.releaseAuthorized,false);
 }));

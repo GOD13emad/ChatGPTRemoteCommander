@@ -15,11 +15,20 @@ foreach($p in $procs){
   if($c -match '(?i)server-v0(?:[.]3|[.]2(?:[.]1)?)?[.]mjs'){$role='core'}
   elseif($c -match '(?i)gui-control[.]ps1' -and $c -match '(?i)-Server'){$role='native-helper'}
   if($null -ne $role){
-    $rows+=@{pid=[int]$p.ProcessId;session=[int]$p.SessionId;role=$role}
+    $version=$null
+    $found=[regex]::Match($c,'(?i)[\\/]releases[\\/]v(?<v>[0-9]{1,4}[.][0-9]{1,4}[.][0-9]{1,4})-[0-9a-f]{12}[\\/]')
+    if($found.Success){$version=$found.Groups['v'].Value}
+    $rows+=@{pid=[int]$p.ProcessId;session=[int]$p.SessionId;role=$role;observedVersion=$version}
   }
 }
 @{complete=$true;rows=@($rows)}|ConvertTo-Json -Depth 4 -Compress`;
 
+// Diagnostic release labels are user-writable process arguments, NEVER a proof
+// that native dispatchers cooperate with a coordination/owner-broker protocol.
+export const observedReleaseVersion=(command)=>{
+  const found=String(command).match(/(?:^|[\\/])releases[\\/]v([0-9]{1,4}[.][0-9]{1,4}[.][0-9]{1,4})-[0-9a-f]{12}(?:[\\/]|$)/i);
+  return found?.[1]??null;
+};
 const linuxMatch=(command)=>{
   if(/(?:^|\/)server-v0(?:\.3|\.2(?:\.1)?)?\.mjs(?:\s|$)/i.test(command))return 'core';
   if(/(?:^|\/)gui-control-linux\.py(?:\s|$)/i.test(command)&&/(?:^|\s)--server(?:\s|$)/i.test(command))return 'native-helper';
@@ -44,7 +53,7 @@ async function scanLinux(){
       const fields=stat.slice(stat.lastIndexOf(')')+2).split(' ');
       const value=Number(fields[3]);if(Number.isSafeInteger(value))session=value;
     }catch{uncertain++;}
-    rows.push({pid,session,role});
+    rows.push({pid,session,role,observedVersion:observedReleaseVersion(args.join(' '))});
   }
   return {complete:uncertain===0,rows,unreadableProcessRecords:uncertain};
 }
@@ -56,7 +65,11 @@ function validateRows(parsed){
       !Number.isSafeInteger(row.session)||row.session<0||
       !['core','native-helper'].includes(row.role))
       throw Error('GUI_DISPATCHER_SCAN_INVALID');
-    return {pid:row.pid,session:row.session,role:row.role};
+    const version=Object.hasOwn(row,'observedVersion')?row.observedVersion:null;
+    if(version!==null&&
+       (typeof version!=='string'||!/^[0-9]{1,4}[.][0-9]{1,4}[.][0-9]{1,4}$/.test(version)))
+      throw Error('GUI_DISPATCHER_SCAN_INVALID');
+    return {pid:row.pid,session:row.session,role:row.role,observedVersion:version};
   });
 }
 export async function scanGuiDispatchers({platform=process.platform}={}){
@@ -74,12 +87,16 @@ export async function scanGuiDispatchers({platform=process.platform}={}){
     return {
       scan:'ADVISORY_ONLY',coverage:result.complete===true?'PROCESS_CENSUS_ONLY':'INCOMPLETE',
       active:rows,activeCount:rows.length,
-      quiescenceProven:false,releaseAuthorized:false,noReplay:true,
+      // A semver label is advisory, never a signature/protocol attestation.
+      mixedVersionObserved:new Set(rows.map(r=>r.observedVersion).filter(Boolean)).size>1,
+      unknownVersionCount:rows.filter(r=>r.observedVersion===null).length,
+      compatibilityProven:false,quiescenceProven:false,releaseAuthorized:false,noReplay:true,
       limits:'A process census is not a cross-session native dispatch barrier'
     };
   }catch{
     // Enumeration failure MUST NOT be interpreted as zero dispatchers.
     return {scan:'FAILED',coverage:'UNKNOWN',active:null,activeCount:null,
+      mixedVersionObserved:null,unknownVersionCount:null,compatibilityProven:false,
       quiescenceProven:false,releaseAuthorized:false,noReplay:true,
       limits:'Dispatcher enumeration failed; no native coordination proven'};
   }
