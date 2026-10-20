@@ -5,7 +5,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { boundNodeTestConcurrency, parseQualificationArgs, prioritizeSensitiveQualificationCommands, isolateWindowsLeaseRegression, isolateWindowsTimingSensitiveRegressions, isolateWindowsProcessTreeRegression, isolateWindowsAgentHttpRegression, isolateWindowsTransferMeshHttpRegression, isolateWindowsWorkflowPlanRegression, markIsolatedQualificationPhases } from '../tools/run-bounded-test-script.mjs';
+import { boundNodeTestConcurrency, parseQualificationArgs, prioritizeSensitiveQualificationCommands, isolateWindowsLeaseRegression, isolateWindowsTimingSensitiveRegressions, isolateWindowsProcessTreeRegression, isolateWindowsAgentHttpRegression, isolateWindowsTransferMeshHttpRegression, isolateWindowsWorkflowPlanRegression, isolateWindowsAsyncHttpRegression, markIsolatedQualificationPhases } from '../tools/run-bounded-test-script.mjs';
 
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const read=rel=>fs.readFileSync(path.join(root,rel),'utf8');
@@ -237,6 +237,40 @@ test('R470 Windows fixture extracts failing test and counters without persisting
   assert.equal(many.failureTests.length,0,'never guess newest');
 });
 
+test('Windows async HTTP startup is isolated exactly once in both check and test without widening limits',()=>{
+  const pkg=JSON.parse(read('package.json'));
+  for(const scriptName of ['check','test']){
+    const bounded=boundNodeTestConcurrency(pkg.scripts[scriptName],1);
+    let before=prioritizeSensitiveQualificationCommands(bounded.command);
+    before=isolateWindowsAgentHttpRegression(before);
+    if(scriptName==='test'){
+      before=isolateWindowsTimingSensitiveRegressions(before);
+      before=isolateWindowsProcessTreeRegression(before);
+      before=isolateWindowsTransferMeshHttpRegression(before);
+      before=isolateWindowsLeaseRegression(before);
+      before=isolateWindowsWorkflowPlanRegression(before);
+    }
+    const file='test/async-http.test.mjs';
+    const leader='node --test --test-concurrency=1 '+file+' && ';
+    const isolated=isolateWindowsAsyncHttpRegression(before);
+    assert.equal(isolated,leader+before.replace(' '+file,''),'only move the existing test to a separate first command');
+    assert.equal(isolated.split(file).length-1,1,'the full async HTTP test must run exactly once');
+    assert.ok(isolated.includes('test/async-operations.test.mjs'),'existing async operation fixture remains covered');
+    assert.ok(isolated.includes('test/agent-extensions-http.test.mjs'),'existing HTTP fixture remains covered');
+    assert.throws(()=>isolateWindowsAsyncHttpRegression(isolated),/CI_ASYNC_HTTP_ISOLATION_INVALID/);
+  }
+  assert.throws(()=>isolateWindowsAsyncHttpRegression('node --test --test-concurrency=1 test/other.test.mjs'),/CI_ASYNC_HTTP_CARDINALITY/);
+  assert.throws(()=>isolateWindowsAsyncHttpRegression('node --test --test-concurrency=1 test/async-http.test.mjs test/async-http.test.mjs'),/CI_ASYNC_HTTP_CARDINALITY/);
+  const runner=read('tools/run-bounded-test-script.mjs');
+  assert.ok(runner.includes("if(process.platform==='win32') command=isolateWindowsAsyncHttpRegression(command);"));
+  assert.ok(runner.indexOf('command=isolateWindowsAsyncHttpRegression(command);') <
+    runner.lastIndexOf('command=isolateWindowsTimingSensitiveRegressions(command);'),
+    'strict deadline batch must be the final prepend in Windows test qualification');
+  const fixture=read('test/async-http.test.mjs');
+  assert.match(fixture,/attempt < 400/,'keep original fixed 400x25ms readiness budget');
+  assert.match(fixture,/const deadline = Date[.]now\(\) \+ 15000/,'keep operation terminal observation deadline');
+});
+
 test('R157 qualifier markers are opt-in, index-only, and preserve all original commands',()=>{
   const sample='node --test test/a.test.mjs && node test/b.mjs';
   assert.equal(markIsolatedQualificationPhases(sample),
@@ -247,11 +281,19 @@ test('R157 qualifier markers are opt-in, index-only, and preserve all original c
   const bounded=boundNodeTestConcurrency(pkg.scripts.test,1);
   let command=prioritizeSensitiveQualificationCommands(bounded.command);
   command=isolateWindowsAgentHttpRegression(command);
-  command=isolateWindowsTimingSensitiveRegressions(command);
   command=isolateWindowsProcessTreeRegression(command);
   command=isolateWindowsTransferMeshHttpRegression(command);
   command=isolateWindowsLeaseRegression(command);
+  command=isolateWindowsWorkflowPlanRegression(command);
+  command=isolateWindowsAsyncHttpRegression(command);
+  command=isolateWindowsTimingSensitiveRegressions(command);
   const groups=command.split(' && ');
+  assert.ok(groups[0].includes('test/project-adaptive.test.mjs'),'strict team timeout runs first');
+  assert.ok(groups[1].includes('test/project-delivery-correlation.test.mjs'));
+  assert.ok(groups[2].includes('test/project-engine-review.test.mjs'));
+  assert.ok(groups[3].includes('test/async-http.test.mjs'),'async HTTP still runs ahead of high-volume batch');
+  for(const file of ['test/project-adaptive.test.mjs','test/async-http.test.mjs'])
+    assert.equal(command.split(file).length-1,1,'exactly one regression '+file);
   const marked=markIsolatedQualificationPhases(command);
   assert.ok(marked.length<7500,'preserve Windows cmd.exe length limit');
   assert.equal((marked.match(/RC_QUAL_PHASE_START_\d{2}/g)||[]).length,groups.length);

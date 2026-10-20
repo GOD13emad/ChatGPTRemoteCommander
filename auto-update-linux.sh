@@ -220,7 +220,8 @@ latest_ref(){
     --connect-timeout "$CURL_CONNECT_TIMEOUT" --max-time "$CURL_MAX_TIME" \
     --output /dev/null --write-out '%{url_effective}' \
     https://github.com/GOD13emad/ChatGPTRemoteCommander/releases/latest 2>/dev/null || true)"
-  tag="$(printf '%s' "$effective" | sed -nE 's#^.*/releases/tag/(v[0-9]+\.[0-9]+\.[0-9]+)$#\1#p' | head -n1)"
+  # Require canonical HTTPS GitHub release URL, otherwise fall back to REST API.
+  tag="$(printf '%s' "$effective" | sed -nE 's#^https://github[.]com/GOD13emad/ChatGPTRemoteCommander/releases/tag/(v[0-9]+\.[0-9]+\.[0-9]+)$#\1#p' | head -n1)"
   if [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then printf '%s\n' "$tag"; return; fi
   body="$(curl_fetch -H 'User-Agent: ChatGPTRemoteCommander-Updater' https://api.github.com/repos/GOD13emad/ChatGPTRemoteCommander/releases/latest 2>/dev/null || true)"
   tag="$(printf '%s' "$body" | sed -nE 's/.*"tag_name"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p' | head -n1)"
