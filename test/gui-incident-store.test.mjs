@@ -75,16 +75,13 @@ test('unknown native input persists across fresh controller and never replays',(
  assert.equal(status.uncertain,true);
  assert.equal(status.incidentPending,true);
  assert.equal(status.reason,'GUI_INCIDENT_REVIEW_REQUIRED');
- assert.equal(status.available,true);
+ assert.equal(status.readOnlyAvailable,true);
  assert.equal(status.inputAvailable,false);
- const observation=await fresh.run('gui_session_begin',{mode:'observe'});
- const screenshot=await fresh.run('gui_screenshot',{lease:observation.lease});
- assert.ok(screenshot.__structuredContent.frame);
- await fresh.run('gui_session_end',{lease:observation.lease});
- await assert.rejects(fresh.run('gui_session_begin',{
-  mode:'takeover',explicitUserAuthorization:'No input while incident is pending'
- }),/GUI_INCIDENT_REVIEW_REQUIRED/);
- assert.equal((await store.pending()).tool,'gui_type_text');
+ const lease=await fresh.run('gui_session_begin',{mode:'observe'});
+ assert.equal(lease.mode,'observe');
+ await assert.rejects(fresh.run('gui_key_press',{lease:lease.lease,frame:'ignored',keys:['A']}),/GUI_INCIDENT_REVIEW_REQUIRED/);
+ assert.equal(fresh.calls,2);
+ assert.equal(await fs.readFile(file,'utf8'),json);
 }));
 test('strong Linux pre-dispatch no-effect proof clears pending evidence without replay',()=>ownFile(async file=>{
  const store=createGuiInputIncidentStore({file});
@@ -110,13 +107,11 @@ test('corrupt incident fails closed; GUI helper is never invoked',()=>ownFile(as
  const store=createGuiInputIncidentStore({file});
  const c=controller(store);
  const v=await c.run('gui_status');
- assert.equal(v.available,true);
+ assert.equal(v.available,false);
  assert.equal(v.inputAvailable,false);
  assert.equal(v.incidentStoreUnavailable,true);
  assert.equal(v.reason,'GUI_INCIDENT_STORAGE_UNAVAILABLE');
- const obs=await c.run('gui_session_begin',{mode:'observe'});
- await c.run('gui_screenshot',{lease:obs.lease});
- await c.run('gui_session_end',{lease:obs.lease});
+ await assert.rejects(c.run('gui_session_begin',{mode:'observe'}),/GUI_INCIDENT_STORAGE_UNAVAILABLE/);
  await assert.rejects(c.run('gui_session_begin',{
   mode:'takeover',explicitUserAuthorization:'Cannot take control with a corrupt incident'
  }),/GUI_INCIDENT_STORAGE_UNAVAILABLE/);
@@ -166,14 +161,15 @@ test('real child process termination leaves private pending evidence and blocks 
  assert.notEqual(killed.status,0);
  const fresh=controller(createGuiInputIncidentStore({file}));
  const status=await fresh.run('gui_status');
- assert.equal(status.available,true);
+ assert.equal(status.available,false);
  assert.equal(status.inputAvailable,false);
+ assert.equal(status.incidentPending,true);
  assert.equal(status.uncertain,true);
- const observation=await fresh.run('gui_session_begin',{mode:'observe'});
- await fresh.run('gui_screenshot',{lease:observation.lease});
- await assert.rejects(fresh.run('gui_session_begin',{
-  mode:'takeover',explicitUserAuthorization:'Do not reexecute a killed native action'
- }),/GUI_INCIDENT_REVIEW_REQUIRED/);
+ const observed=await fresh.run('gui_session_begin',{mode:'observe'});
+ assert.equal(observed.mode,'observe');
+ await assert.rejects(fresh.run('gui_mouse_click',{lease:observed.lease,frame:'ignored',x:1,y:1}),/GUI_INCIDENT_REVIEW_REQUIRED/);
+ assert.equal(fresh.calls,2);
+ assert.equal((await fs.readFile(file,'utf8')).includes('PENDING_NATIVE_EFFECT'),true);
 }));
 test('read-only status and screenshot do not create a phantom incident',()=>ownFile(async file=>{
  const store=createGuiInputIncidentStore({file});
@@ -371,9 +367,8 @@ test('a PREPARED recovery artifact blocks mutations but allows incident observat
  assert.equal(status.incidentStoreUnavailable,true);
  assert.equal(status.incidentRecoveryRequired,true);
  assert.equal(status.reason,'GUI_INCIDENT_RECOVERY_REQUIRED');
- const obs=await c.run('gui_session_begin',{mode:'observe'});
- const shot=await c.run('gui_screenshot',{lease:obs.lease});
- assert.ok(shot.__structuredContent.frame);
+ assert.equal(status.available,false);
+ await assert.rejects(c.run('gui_session_begin',{mode:'observe'}),/GUI_INCIDENT_STORAGE_UNAVAILABLE/);
  await assert.rejects(c.run('gui_session_begin',{
   mode:'takeover',explicitUserAuthorization:'The review is incomplete'
  }),/GUI_INCIDENT_STORAGE_UNAVAILABLE/);
@@ -406,9 +401,8 @@ test('missing pending after an interrupted archive is never a new-input permit',
  const status=await c.run('gui_status');
  assert.equal(status.inputAvailable,false);
  assert.equal(status.incidentStoreUnavailable,true);
- assert.equal(status.available,true);
- const obs=await c.run('gui_session_begin',{mode:'observe'});
- await c.run('gui_screenshot',{lease:obs.lease});
+ assert.equal(status.available,false);
+ await assert.rejects(c.run('gui_session_begin',{mode:'observe'}),/GUI_INCIDENT_STORAGE_UNAVAILABLE/);
  await assert.rejects(c.run('gui_session_begin',{
   mode:'takeover',explicitUserAuthorization:'An archive is not native proof'
  }),/GUI_INCIDENT_STORAGE_UNAVAILABLE/);
@@ -434,7 +428,8 @@ test('a forged terminal review marker cannot release GUI without a native broker
  const status=await c.run('gui_status');
  assert.equal(status.inputAvailable,false);
  assert.equal(status.incidentStoreUnavailable,true);
- assert.equal(status.available,true);
+ assert.equal(status.available,false);
+ await assert.rejects(c.run('gui_session_begin',{mode:'observe'}),/GUI_INCIDENT_STORAGE_UNAVAILABLE/);
  await assert.rejects(c.run('gui_session_begin',{
   mode:'takeover',explicitUserAuthorization:'Untrusted status marker'
  }),/GUI_INCIDENT_STORAGE_UNAVAILABLE/);
@@ -457,8 +452,8 @@ test('duplicate-key pending evidence also blocks native controller dispatch',()=
  const status=await c.run('gui_status');
  assert.equal(status.inputAvailable,false);
  assert.equal(status.incidentStoreUnavailable,true);
- const obs=await c.run('gui_session_begin',{mode:'observe'});
- await c.run('gui_screenshot',{lease:obs.lease});
+ assert.equal(status.available,false);
+ await assert.rejects(c.run('gui_session_begin',{mode:'observe'}),/GUI_INCIDENT_STORAGE_UNAVAILABLE/);
  await assert.rejects(c.run('gui_session_begin',{
   mode:'takeover',explicitUserAuthorization:'Ambiguous evidence cannot unlock input'
  }),/GUI_INCIDENT_STORAGE_UNAVAILABLE/);
