@@ -327,6 +327,49 @@ test('unknown native effect latches only affected workspace with no replay',asyn
   }finally{await f.pool.close();}
 });
 
+test('non-data action properties fail closed before any native dispatch',async()=>{
+  const f=fixture();
+  const a=await f.pool.open(owner);
+  try{
+    const view=await f.pool.observeOwner(owner,a.lease);
+    const click={kind:'click',x:15,y:20};
+    Object.defineProperty(click,'x',{enumerable:true,
+      get(){return 15;}});
+    await assert.rejects(f.pool.inputOwner(owner,a.lease,click,
+      {expectedRevision:view.revision,operationId:'accessor-click'}),
+      /NATIVE_WORKSPACE_ACTION_INVALID/);
+    let reads=0;
+    const from={y:16};
+    Object.defineProperty(from,'x',{enumerable:true,get(){
+      // Old validator read safe coordinates repeatedly, then dispatched a
+      // different point on its final spread. No untrusted getter may run.
+      return ++reads<=4?15:-500;
+    }});
+    await assert.rejects(f.pool.inputOwner(owner,a.lease,{
+      kind:'drag',from,to:{x:85,y:90},durationMs:240
+    },{expectedRevision:view.revision,operationId:'accessor-drag'}),
+    /NATIVE_WORKSPACE_ACTION_INVALID/);
+    assert.equal(reads,0,'do not execute untrusted native-action getters');
+    assert.equal(f.workers[0].typed.length,0);
+  }finally{await f.pool.close();}
+});
+
+test('claimed MCP client identity never authorizes a native workspace by default',async()=>{
+  let launches=0;
+  const pool=createNativeWorkspaceCoordinator({
+    launchWorkspace:async()=>{launches++;throw Error('SHOULD_NOT_RUN');}
+  });
+  try{
+    await assert.rejects(pool.open({
+      profile:'default',subject:'forged-user',conversationId:'forged-chat',
+      authenticated:true,conversationBound:true,
+      _meta:{'io.modelcontextprotocol/clientInfo':{
+        name:'ChatGPT',version:'999.0'},chatId:'forged-chat'}
+    }),/NATIVE_WORKSPACE_IDENTITY_UNVERIFIED/);
+    assert.equal(launches,0);
+  }finally{await pool.close();}
+});
+
 test('private input never accepts DISPLAY, environment, shell or unknown action kinds',async()=>{
   const f=fixture();
   const a=await f.pool.open(owner);
@@ -343,6 +386,51 @@ test('private input never accepts DISPLAY, environment, shell or unknown action 
         {expectedRevision:obs.revision}),/NATIVE_WORKSPACE_(TARGET_OVERRIDE_DENIED|ACTION_INVALID)/);
     }
     assert.equal(f.workers[0].typed.length,0);
+  }finally{await f.pool.close();}
+});
+
+test('atomic drag uses workspace lease, fresh frame, journal and strict native shape',async()=>{
+  const f=fixture();
+  const a=await f.pool.open(owner),b=await f.pool.open(other);
+  try{
+    const view=await f.pool.observeOwner(owner,a.lease);
+    const bad=[
+      {kind:'drag',from:{x:3,y:4},to:{x:80,y:40},durationMs:0},
+      {kind:'drag',from:{x:3,y:4},to:{x:3,y:4},durationMs:240},
+      {kind:'drag',from:{x:-1,y:4},to:{x:80,y:40},durationMs:240},
+      {kind:'drag',from:{x:3,y:4},to:{x:80,y:40},durationMs:240,DISPLAY:':0'},
+      {kind:'drag',from:{x:3,y:4,DISPLAY:':0'},to:{x:80,y:40},durationMs:240},
+      {kind:'drag',from:{x:3,y:4},to:{x:80,y:40},durationMs:240,button:4},
+      {kind:'drag',fromX:3,fromY:4,toX:80,toY:40,durationMs:240},
+      {kind:'mousedown',button:1}
+    ];
+    for(const action of bad)await assert.rejects(
+      f.pool.inputOwner(owner,a.lease,action,
+        {expectedRevision:view.revision,operationId:'invalid-drag'}),
+      /NATIVE_WORKSPACE_(TARGET_OVERRIDE_DENIED|ACTION_INVALID)/);
+    assert.equal(f.workers[0].typed.length,0);
+    const drag={kind:'drag',from:{x:3,y:4},to:{x:80,y:40},durationMs:240};
+    await assert.rejects(f.pool.inputOwner(other,a.lease,drag,
+      {expectedRevision:view.revision,operationId:'wrong-owner-drag'}),
+      /NATIVE_WORKSPACE_LEASE_DENIED/);
+    const received=await f.pool.inputOwner(owner,a.lease,drag,
+      {expectedRevision:view.revision,operationId:'one-atomic-drag'});
+    assert.equal(received.submitted,true);
+    assert.deepEqual(f.workers[0].typed,[drag]);
+    assert.equal(f.workers[1].typed.length,0);
+    await assert.rejects(f.pool.inputOwner(owner,a.lease,drag,
+      {expectedRevision:view.revision,operationId:'second-drag'}),
+      /NATIVE_WORKSPACE_REOBSERVATION_REQUIRED/);
+    const fresh=await f.pool.observeOwner(owner,a.lease);
+    await assert.rejects(f.pool.inputOwner(owner,a.lease,drag,
+      {expectedRevision:fresh.revision,operationId:'one-atomic-drag'}),
+      /NATIVE_WORKSPACE_DUPLICATE_OPERATION_NO_DISPATCH/);
+    assert.equal(f.workers[0].typed.length,1);
+    const bv=await f.pool.observeOwner(other,b.lease);
+    const otherDrag=await f.pool.inputOwner(other,b.lease,drag,
+      {expectedRevision:bv.revision,operationId:'independent-drag'});
+    assert.equal(otherDrag.submitted,true);
+    assert.equal(f.workers[1].typed.length,1);
   }finally{await f.pool.close();}
 });
 
@@ -583,45 +671,3 @@ test('post-native ACK failure leaves workspace uncertain and never replays',asyn
     assert.equal(inputs,1);
   }finally{await f.pool.close();}
 });
-
-
-test('generic mouse movement, drag and double click are revision-checked native actions',
-  async()=>{
-    const f=fixture();
-    const a=await f.pool.open(owner);
-    try{
-      const moves=[
-        {kind:'move',x:32,y:51},
-        {kind:'drag',from:{x:32,y:51},to:{x:154,y:112},
-         button:1,durationMs:180},
-        {kind:'click',x:154,y:112,button:1,count:2}
-      ];
-      for(let i=0;i<moves.length;i++){
-        const current=await f.pool.observeOwner(owner,a.lease);
-        assert.equal((await f.pool.inputOwner(owner,a.lease,moves[i],{
-          expectedRevision:current.revision,
-          operationId:'native-generic-'+i
-        })).submitted,true);
-      }
-      assert.deepEqual(f.workers[0].typed.map(x=>x.kind),
-        ['move','drag','click']);
-      const observed=await f.pool.observeOwner(owner,a.lease);
-      const invalid=[
-        {kind:'move',x:-1,y:51},
-        {kind:'click',x:12,y:40,button:9},
-        {kind:'click',x:12,y:40,count:3},
-        {kind:'drag',from:{x:30,y:20},to:{x:10,y:20},durationMs:5000},
-        {kind:'drag',from:{x:30,y:20,command:'whoami'},
-         to:{x:10,y:20}},
-        {kind:'drag',from:{x:2,y:5},to:{x:16,y:20},display:':0'},
-        {kind:'type',text:'text',env:{DISPLAY:':0'}}
-      ];
-      for(let i=0;i<invalid.length;i++)
-        await assert.rejects(f.pool.inputOwner(owner,a.lease,invalid[i],{
-          expectedRevision:observed.revision,
-          operationId:'invalid-native-'+i
-        }),/NATIVE_WORKSPACE_(ACTION_INVALID|TARGET_OVERRIDE_DENIED)/);
-      assert.equal(f.workers[0].typed.length,3,
-        'Bad input must not be submitted to any native worker');
-    }finally{await f.pool.close();}
-  });

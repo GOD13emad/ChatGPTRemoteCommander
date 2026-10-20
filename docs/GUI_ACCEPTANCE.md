@@ -393,3 +393,356 @@ Primary references:
 - Linux parent-death guard: https://man7.org/linux/man-pages/man2/PR_SET_PDEATHSIG.2const.html
 - Windows interactive service boundary:
   https://learn.microsoft.com/en-us/windows/win32/services/interactive-services
+
+
+## 2026-10-20 — Windows SQLite private journal QA (NoPromote)
+
+- Scope: Dedicated Emad Server QA worktree **qa/saeed-win-journal-sqlite-20261020**;
+  independent QA mirror on Amirreza Server. Production Core/router/plugin,
+  shared GUI and pre-existing dirty worktrees were not changed.
+- Implementation: **src/native-workspace-journal-win-sqlite-qa.mjs** invokes
+  **tools/native-workspace-journal-win-sqlite-helper-qa.mjs** through the local
+  Node executable for each pre-dispatch PREPARED and post-effect ACKED
+  SQLite transaction. The short-lived helper releases Windows SQLite handles
+  upon process exit; SQLite uses journal_mode=DELETE, synchronous=FULL,
+  BEGIN IMMEDIATE, bound SQL parameters and unique operation IDs.
+  No GUI keystrokes, coordinates or raw input bodies are stored in receipts.
+- Verified runtime evidence (Windows, Node 22.23.3, 2026-10-20):
+  - Emad Server: Node native-workspace-journal-win-sqlite-qa.test.mjs:
+    **8 PASS / 0 FAIL / 0 SKIP / exit 0**.
+  - Amirreza Server: three-file private mirror with SHA-256 matching
+    originals on Emad Server: **8 PASS / 0 FAIL / 0 SKIP / exit 0**,
+    without requiring Python.
+  - Coverage: intent-before-effect, replay denial across re-open,
+    per-workspace isolation after uncertain effect, actual child-process
+    termination after intent, and two independent competing processes.
+  - Negative tests first reproduced two failure paths: a missing SQLite file
+    was silently recreated on inspect or dispatch. The QA helper now requires
+    explicit one-time provision; prepare/ack fail closed when SQLite history
+    is absent, inspect cannot create a database, and repeated provision
+    cannot replace an existing database. Three new regression tests pass on
+    both Windows hosts.
+- Not production-qualified: authenticated ChatGPT conversation identity,
+  protected OS/session principal and Windows ACL/reparse-point security,
+  trusted owner-only provisioning and rollback-resistant history against
+  malicious same-SID tampering,
+  native Windows GUI worker or physical desktop non-interference, abnormal
+  power-loss validation, signed installation, hosted CI and soak/recovery
+  verification. Node 22 built-in SQLite is experimental. This QA module
+  is NOT imported by Core and is NOT a native GUI input grant.
+  No merge, remote push, plugin modification or live promotion.
+
+
+## 2026-10-20 — Epoch-bound Windows Journal and Session Broker QA (NoPromote)
+
+- Scope: Emad Server isolated QA branch and Amirreza Server read-only functional mirror;
+  no change to installed Core, any live Windows desktop, router, plugin or main branch.
+- Database-history integrity: a random per-root generation is written in a
+  separate exclusively created, fsynced QA marker and bound to the SQLite
+  metadata table. A missing DB with marker remaining refuses provisioning,
+  a missing marker refuses inspection and dispatch, and a swapped DB with a
+  different generation is refused before dispatch. An interrupted provisioning
+  attempt is NOT auto-repaired or retried. These are fail-closed QA properties,
+  not protection against intentional same-SID removal of BOTH files or a
+  malicious same-SID process forging metadata.
+- Windows Session Broker QA: untrusted caller/profile claims cannot issue a
+  control lease; a trusted-adapter attestation callback supplies principal and
+  allowed-workspace scopes. Observation receipts come only from the injected
+  native observer. Leases are process-local WeakMap capabilities, one-shot,
+  revision/age/TTL bounded and tied to one workspace. A supervisor takeover
+  invalidates existing control and requires another observation. In-flight
+  operations cannot be taken over; uncertain effects block only the affected
+  workspace. The broker exposes NO journal provisioning method.
+- Verification on both Emad Server and Amirreza Server (Windows Node 22.23.3):
+  - Epoch-bound SQLite Journal: **11 pass / 0 fail / 0 skip** per host.
+  - Broker QA: **11 pass / 0 fail / 0 skip** per host, including a real SQLite
+    journal with a simulated native dispatch and two concurrent mock workers.
+  - All cross-host mirrored source/test files were verified using SHA-256.
+- Critical boundary: this is an IN-PROCESS CONTRACT TEST, not proof of a
+  trusted ChatGPT conversation, Windows OS session identity, signed owner
+  approval, same-SID isolation, Windows VM/RDP per-Agent desktops, physical
+  keyboard/mouse separation, crash-consistent power-loss semantics, secure
+  ACLs or sustained soak. No native mouse/keyboard commands were executed,
+  and no production broker or worker was installed. A trusted, protected
+  owner/transport attestor and genuinely isolated Windows worker remain
+  release blockers.
+
+
+## 2026-10-20 — Session-bound lease and pre-dispatch attestation QA
+
+- Found and reproduced two missing checks in the QA Broker:
+  a different authenticated context with the same principal ID but a
+  different session could acquire a proof, and access revoked while an
+  asynchronous observation was pending could still produce a usable proof.
+- Changed QA contract: the trusted adapter must provide a non-empty,
+  validated principalId, sessionId, role and allowedWorkspaces. Observation,
+  acquisition, release and execution bind and revalidate principal, session,
+  role and workspace. A lease is not transferable merely because its
+  in-process object reference is shared with another caller. This is a QA
+  attestor interface, NOT actual ChatGPT account or conversation proof.
+- The Broker now revalidates authority and TTL at the exact native callback
+  boundary, even after an awaited journal PREPARED transaction. It refuses
+  a repeated effect callback for the same intent. Any failure leaves
+  outcome evaluation to the protected Journal; there is no silent replay.
+- Negative tests: stolen/forwarded lease, account revocation before execute,
+  revocation during a pending observation, revocation or expiry between
+  prepare and dispatch, repeated journal callback. All are fail closed in QA.
+- Independent verification on Emad Server and Amirreza Server:
+  **27/27 PASS, 0 FAIL, 0 SKIP, exit 0 on each host**, combining 11 SQLite
+  Journal tests with 16 Session Broker tests. Sources mirrored to Amirreza
+  were read back and SHA-256 verified. Emad Server had one earlier
+  UNCERTAIN test runner receipt without conclusive result; no test process
+  remained, and a subsequent fresh bounded run passed.
+- No changes to installed Core, Router, owner credentials, plugins, live
+  desktop sessions, or shared GitHub branches. No native mouse/keyboard
+  commands were executed. Release still requires genuine platform identity,
+  protected OS broker, Windows desktop isolation/ACL validation, real
+  native worker acceptance, hosted CI, soak and power-loss tests.
+
+
+## 2026-10-20 — Per-workspace subprocess IPC Worker QA (NoPromote)
+
+- Scope: private Emad Server QA branch and independently executed Amirreza
+  Server exact-source mirror. No installed Core, router, published plugin,
+  user's desktop or shared GitHub branch was changed.
+- Added src/native-workspace-worker-pool-win-qa.mjs and
+  tools/native-workspace-worker-child-win-qa.mjs. Each opaque workspace
+  launches its own Node child process with a dedicated IPC channel, a
+  workspace-bound mock observer and mock input callback, and an independent
+  operation counter. The worker receives a minimized process environment.
+  No native Windows mouse, keyboard, screenshot, WinSta or RDP APIs are used.
+- The pool refuses unallocated workspaces, duplicate allocation, invalid
+  operation kinds and duplicate mock operation IDs. A child exit or response
+  timeout rejects pending requests, marks that worker unavailable and does
+  not automatically replay or restart a possibly completed action.
+- End-to-end QA integrates the existing trusted-adapter simulation, the
+  session-bound Broker, the Windows SQLite intent journal and real Windows
+  child processes. A deliberate crash after PREPARED leaves only that
+  workspace uncertain; a different worker can still complete and ACK.
+  Separate child PIDs, independent frame digests and counters were observed.
+- Verified on Windows Node 22.23.3:
+  - Emad Server: combined Journal + Broker + Worker:
+    **31/31 PASS, 0 FAIL, 0 SKIP, exit 0**.
+  - Amirreza Server: exact 3-file QA mirror verified by SHA-256,
+    combined suite **31/31 PASS, 0 FAIL, 0 SKIP, exit 0**.
+  - After each run, process search found **zero** leftover mock-worker
+    child processes on either host.
+- Limitations / open release gates: Windows child-process separation under
+  the same account is not an OS security boundary or a separately isolated
+  interactive Windows desktop. The frame is a deterministic mock hash, not a
+  screenshot. The effect counter is not real input injection. Verified
+  ChatGPT conversation identity and protected owner/worker process tokens,
+  Windows per-Agent interactive desktops (VM/RDP/WinSta isolation), ACL and
+  hostile reparse-point audits, suspended/aborted process recovery, actual
+  Windows GUI worker integration, power-loss and hosted CI must still pass
+  before production promotion. Nothing here grants native desktop control.
+
+
+## 2026-10-20 — Windows Desktop Object Host and hidden Win32 windows (NoPromote)
+
+- Scope: Dedicated Emad Server Windows QA worktree, exact-source mirror
+  on Amirreza Server; installed Core, Router, plugin, Windows desktop
+  activation and production branches were not changed.
+- Grounding: Both hosts have Windows 10 Enterprise 19045, Node 22.23.3,
+  Windows Station WinSta0 and disconnected Administrator RDP session 2.
+  Windows desktop objects within a single WinSta0 have window/message
+  separation, but only one is the active input desktop at a time.
+- Added tools/native-desktop-object-probe-win-qa.ps1:
+  read-only Win32 Window Station, thread desktop and session inspection;
+  separate optional test created two temporary desktop objects with
+  CreateDesktopW, validated their names and CloseDesktop returned true.
+- Added tools/native-desktop-host-two-children-win-qa.ps1 and
+  tools/native-desktop-child-read-win-qa.ps1:
+  two actual PowerShell child processes are started concurrently on two
+  different temporary Win32 Desktop objects using STARTUPINFO.lpDesktop.
+  The children independently attest their WinSta0 desktop name, PID and
+  session ID. Each creates and then destroys a real but NOT SHOWN
+  Win32 STATIC window using CreateWindowExW and DestroyWindow.
+  Each HWND's owner process ID matches its child PID. All desktop handles
+  were closed and the disposable QA observation files removed.
+  No SwitchDesktop, SetThreadDesktop, ShowWindow, SendInput, mouse,
+  keyboard, screenshot, real application interaction or RDP reconnect
+  was performed.
+- Added test/native-desktop-host-win-qa.test.mjs:
+  requires both different desktop names/PIDs, both real windows
+  created/destroyed, matching window-owner PIDs, child exit codes 0
+  and CloseDesktop success, without changing the active desktop.
+- Both Emad Server and Amirreza Server independently reported:
+  **32/32 PASS, 0 FAIL, 0 SKIP, exit 0**, including the 11 Journal tests,
+  16 Broker tests, 4 IPC Worker tests and the real Desktop Host/window test.
+  The four new QA source/test files were compared across hosts by SHA-256.
+  No leftover desktop host output directories or long-lived child workers
+  were observed after test completion.
+- Not yet accepted for production: Win32 Desktop objects are NOT
+  independent Windows user sessions or isolated credentials. Both child
+  processes run under the same Administrator token, and the test window
+  was hidden; no independent framebuffer capture or real mouse/keyboard
+  injection has been demonstrated. Windows input-desktop limitations,
+  source-of-truth authenticated ChatGPT session attestation, protected
+  host tokens/ACLs, actual app GUI observation, and genuine VM/RDP
+  isolation remain critical release gates. No production promotion.
+
+
+## 2026-10-20 — Cross-process scoped Desktop window observation (NoPromote)
+
+- Starting state: clean QA branch at 96186780; two actual isolated desktop
+  objects and two hidden STATIC windows previously qualified on each host.
+- New observation: while each child keeps its own hidden Win32 STATIC window
+  alive for a bounded interval, the host invokes EnumDesktopWindows on
+  the explicit HDESK returned from CreateDesktopW for THAT private Desktop.
+  It reads window owner PID and exact QA window title. Enumeration is
+  restricted to the two new private QA desktops, never WinSta0\Default.
+- Both Emad and Amirreza independently observed exactly one matching QA
+  HWND owner PID on each desktop, matching its own child PID and NOT the
+  other desktop's PID. Real CreateWindowExW + DestroyWindow, child desktop
+  identity, and successful CloseDesktop were all reverified. This proves
+  cross-process read-only enumerability, not full-frame screen capture.
+- Windows 10 Enterprise 19045, session 2, WinSta0; the user-facing Default
+  desktop remains unmodified. No mouse/keyboard injection, window display,
+  SwitchDesktop, SetThreadDesktop, focus changes or RDP reconnect.
+- Source files copied to Amirreza and read-back SHA-256 matched the Emad
+  Server worktree. Combined Journal (11), Broker (16), Worker IPC (4) and
+  Desktop Host observer (1) suite: **32/32 PASS, zero failures, zero skips,
+  exit code 0 on EACH server**. The original per-workspace mock worker
+  and the Win32 Desktop Host remain separate QA implementations.
+- Release blockers unchanged: authenticated source-of-truth conversation
+  identities, process/OS trust isolation against same-SID peers, protected
+  provisioning and durable journal, joining Broker to the actual Desktop
+  Host, reliable per-desktop pixels and input mechanisms, crash/power-loss
+  behavior, concurrent human input isolation and hosted CI. This does not
+  prove a full independent GUI operator.
+
+
+## 2026-10-20 — Broker-linked ephemeral Desktop observations (NoPromote)
+
+- Scope: isolated Emad Server QA branch, exactly mirrored and independently
+  executed on Amirreza Server. No shared repository, production plugin,
+  installed Core, active desktop, real mouse or keyboard was modified.
+- New src/native-desktop-evidence-bridge-win-qa.mjs executes the local
+  Windows private Desktop Host probe and validates two distinct ephemeral
+  WinSta0 Desktop objects, each child session/PID, real Win32 hidden window
+  creation/destruction, host-side scoped EnumDesktopWindows observation,
+  matching PID and successful Desktop Handle closure. The bridge derives
+  per-workspace SHA-256 fingerprints using a fresh local random nonce.
+  These fingerprints are NON-PIXEL metadata, NOT authenticating signatures.
+- The QA Broker's native observation contract is now observation-only by
+  default. Acquisition of an input/action Lease from actual ephemeral
+  Desktop evidence is denied with BROKER_OBSERVATION_NON_ACTIONABLE.
+  The only explicitly action-capable QA observation mode is qa-simulated,
+  used by existing simulated IPC Worker tests. There is no
+  production native effect mode in this module.
+- Added negative tests for swapped desktops, duplicate worker PIDs, wrong
+  HWND owner PID, missing cleanup, reported window on the wrong Desktop,
+  changed session/window station, and forged no-input reporting. Verified
+  the Broker accepts scoped observation metadata for each authorized QA
+  principal but refuses actionable leases and invokes neither Journal
+  nor input dispatch for either Desktop.
+- Emad Server AND Amirreza Server: combined SQLite Journal (11), QA Broker
+  (16), IPC Worker (4), Desktop Host (1), Desktop evidence bridge (2):
+  34/34 PASS, 0 FAIL, 0 SKIP, exit 0 per host. All five
+  modified/new runtime and test files on the Amirreza mirror matched source
+  SHA-256. The QA observer is a one-shot process: the Desktop Host closes
+  its Desktops BEFORE the Broker sees evidence.
+- Remaining high-priority gates: retain a real per-Workspace Desktop Host
+  for the entire action lifecycle, bind a protected OS token and actual
+  source-verified ChatGPT conversation/session identity, implement reliable
+  per-desktop pixel capture, prove native input delivery and human
+  non-interference, validate ACL/reparse defenses and durable crash
+  recovery, hosted CI and rollback. This change deliberately DOES NOT
+  claim that an ephemeral read-only snapshot can authorize native input.
+
+
+## 2026-10-20 — Retained private Desktop lifecycle observations (NoPromote)
+
+- Scope: private Emad Server QA worktree and exact-source, independently
+  validated Amirreza Server QA mirror. No changes to installed Core,
+  Windows live desktop, router, published plugin or shared GitHub branch.
+- Added tools/native-desktop-lifecycle-host-win-qa.ps1, derived from
+  the existing read-only Windows Desktop Host. It creates TWO uniquely
+  named temporary WinSta0 Desktop objects and launches one PowerShell
+  child on each via STARTUPINFO.lpDesktop. Each child holds a real but
+  hidden Win32 STATIC window, which the host enumerates from the explicit
+  desktop handle. This version performs THREE additional distinct,
+  time-separated observations during each child's lifetime.
+- Each round must observe exactly its own child's PID, never the other
+  workspace. The Desktop handle and child remain the same across rounds.
+  The child exits with code 0, its hidden HWND is destroyed, handles are
+  closed and the dedicated two-file QA output directory is removed.
+  No active-desktop switch, user input, focus, screen capture, RDP
+  reconnect or production native effect occurs.
+- Added test/native-desktop-lifecycle-win-qa.test.mjs: asserts
+  two unique Desktop names and PIDs, three stable observation rounds,
+  no cross-workspace PID leak, real window creation/destruction,
+  no displayed windows, successful CloseDesktop, and clean exit.
+- Windows 10 Enterprise 19045, Node 22.23.3, disconnected RDP session 2:
+  Emad Server standalone 1/1 PASS; Amirreza Server standalone 1/1 PASS.
+  Exact two-file copy verified with SHA-256 readback.
+  Combined 6-suite regression: **35/35 PASS, 0 FAIL, 0 SKIP,
+  exit 0 on EACH server**.
+- Remaining blockers: this retained Desktop is alive only during a single
+  bounded QA host invocation, not a durable service spanning requests.
+  It remains same-token WinSta0 desktop-object separation, NOT a separate
+  authenticated Windows user session. There is no pixel-level observation,
+  native input delivery, independently authenticated ChatGPT conversation
+  ownership, hardened OS broker, or human-input non-interference proof.
+  No production promotion or deployment is authorized by these tests.
+
+
+## 2026-10-20 — Bounded live private Desktop host IPC and Broker QA (NoPromote)
+
+- Built a local observation-only Windows Desktop Host in
+  tools/native-desktop-pipe-host-win-qa.cs and the QA launcher
+  tools/native-desktop-pipe-host-win-qa.ps1. It holds TWO private WinSta0
+  Desktop objects and real hidden STATIC windows across distinct operating
+  system process requests (not just one script's in-memory observation
+  loop). The child worker is tools/native-live-desktop-child-win-qa.ps1.
+- A Windows named pipe with PipeOptions.CurrentUserOnly serves exactly
+  status, observeA, observeB and shutdown. Native input, arbitrary commands,
+  executable launches and access to WinSta0 Default are not available.
+  This is a SAME-WINDOWS-SID transport boundary, not chat attestation
+  or protection from malicious peers under the same Administrator token.
+- Real cross-request qualification: on BOTH Emad and Amirreza servers, an
+  independent detached host stayed alive while multiple separate Node
+  client processes called status and both observations. Worker PID and
+  private desktop name stayed constant across requests. A maliciously
+  unsupported "click" request returned QA_COMMAND_DENIED. Explicit
+  shutdown returned success; host process exited with code 0.
+- Additional controls: server lifetime capped at 60,000 ms (QA only).
+  Child window processes observe an owner stop event and parent death;
+  children have a bounded maximum lifetime of 70 seconds. A new test
+  deliberately omits shutdown and checks that timeout closes the host
+  and both child processes, with no automatic desktop activation.
+- Added src/native-desktop-live-evidence-bridge-win-qa.mjs. It validates
+  the named Desktop/PID/window metadata and feeds non-actionable,
+  per-workspace SHA-256 metadata observations to the existing Session
+  Broker. An input/action lease from these observations is refused.
+  The hash is NOT an OS attestation or image/screenshot digest. Separate
+  tests reject forged workspace slot, PID, desktop, missing window and
+  a falsely action-capable observation.
+- Independent eight-suite combined regression:
+  **39/39 PASS, 0 FAIL, 0 SKIP, exit 0 on EACH server** (Emad Server
+  and Amirreza Server). Following the 60-second QA lifetime cap, the
+  2-test persistent-pipe suite passed again on both hosts. All seven
+  new source/test files were verified against the Amirreza QA mirror
+  using SHA-256. Orphan process audit on both hosts reported zero live
+  QA pipe host/child processes and zero Desktop Host temporary folders.
+- Still NOT production qualified: a 60-second QA process is not an
+  always-on service or restart-safe broker, and the transport is
+  same-SID only. The Desktop objects are not separate Windows user
+  security sessions. Secure source-verified ChatGPT chat identity,
+  protected OS principal/worker privilege boundaries, journal power-loss
+  replay tests, pixel capture, real GUI input within retained desktops,
+  independent human input, supervisor takeover, SOAK/hosted CI, and
+  release rollback remain mandatory. No Core, plugin or live desktop
+  changes or production promotion were made.
+
+
+## 2026-10-21 — Unified native-workspace QA baseline (NoPromote)
+
+- Integration branch `integration/native-qa-unified-20261021` combines the retained Windows Desktop/IPC + SQLite journal QA series (ending at `1b1aec0`) with the scoped native coordinator input/admission hardening from `e5bcd05` (cherry-picked as `2a0f2fa`). Neither live Core nor the host GUI control route is changed.
+- A fresh exact-tree Windows run executed 12 native-workspace test files: 80 discovered, 70 PASS, 0 FAIL, 10 platform-specific SKIP, exit 0. Durable stdout SHA-256: `ab5376abeda6133eecdb53c1391e005d7012966774e4e4c7fc16765d9e5f4b26`. Includes real private WinSta0 Desktop observation and bounded IPC host tests, but NOT user-desktop takeover or production input.
+- An independent existing Linux QA source branch passed 87/87 scoped contract tests, exit 0, durable stdout SHA-256 `48589c3ca7ea0032c22cceed00cdfe5d934cd2daf312df548c962fea5465e218`. It is a different source tree, so this is NOT exact-tree Linux native acceptance of the unified branch.
+- Hosted QA now additionally checks Windows SQLite journal, simulated session broker, and isolated mock worker contracts. Hosted CI results remain unverified until the exact integration head has a real workflow receipt. WinSta0 interactive-session acceptance cannot be inferred from hosted headless Windows CI.
+- Windows desktop objects on the same interactive window station have exactly one active input desktop (Microsoft Learn: `/en-us/windows/desktop/winstation/desktops`). Consequently, the currently read-only private Desktop object host cannot substitute for independent simultaneous hardware-like keyboard/mouse input. Production requires an OS-supported independently interactive session or VM/desktop transport, protected OS ownership, authenticated per-chat attestation, live pixel capture and target-verified input/no-replay acceptance.
+- Linux host-local portable Xvfb binaries were prepared without administrator changes, but the native two-GUI input test was rejected by the current Commander host GUI/input execution policy; it was NOT retried by an alternate route and is NOT accepted. Existing J01 unknown-effect incidents remain unchanged.
+- Release decision: **SOURCE_QA_ONLY / NO_PROMOTE**. Core install, plugin distribution, J01 disposition, GitHub stable release and any system-wide GUI permission alteration are not authorized by these QA results.

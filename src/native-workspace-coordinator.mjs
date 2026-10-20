@@ -30,22 +30,40 @@ const frameOf=value=>{
     throw fail('NATIVE_WORKSPACE_FRAME_INVALID');
   return {mimeType:value.mimeType,data:value.data};
 };
-const actionOf=value=>{
+// Take one data-descriptor snapshot before validating or awaiting anything.
+// Accepting getters means validation can see a harmless coordinate while
+// the subsequent native dispatcher receives a different, unsafe value.
+const nativeDataSnapshot=value=>{
   if(!value||typeof value!=='object'||Array.isArray(value)||
       !(Object.getPrototypeOf(value)===Object.prototype||
-        Object.getPrototypeOf(value)===null)||!kinds.has(value.kind))
+        Object.getPrototypeOf(value)===null))
     throw fail('NATIVE_WORKSPACE_ACTION_INVALID');
+  const descriptors=Object.getOwnPropertyDescriptors(value);
+  const keys=Reflect.ownKeys(descriptors);
+  if(keys.some(key=>typeof key!=='string'||
+      !descriptors[key].enumerable||
+      !Object.hasOwn(descriptors[key],'value')))
+    throw fail('NATIVE_WORKSPACE_ACTION_INVALID');
+  return Object.fromEntries(keys.map(key=>[key,descriptors[key].value]));
+};
+const actionOf=raw=>{
+  const value=nativeDataSnapshot(raw);
+  if(!kinds.has(value.kind))throw fail('NATIVE_WORKSPACE_ACTION_INVALID');
+  if(value.kind==='drag'){
+    value.from=nativeDataSnapshot(value.from);
+    value.to=nativeDataSnapshot(value.to);
+  }
   const shape={
-    click:['kind','x','y','button','count'],
-    move:['kind','x','y'],
+    click:['kind','x','y','button','count'],move:['kind','x','y'],
     drag:['kind','from','to','button','durationMs'],
     type:['kind','text'],key:['kind','key'],scroll:['kind','delta']
   }[value.kind];
   if(Object.keys(value).some(key=>!shape.includes(key)))
     throw fail('NATIVE_WORKSPACE_TARGET_OVERRIDE_DENIED');
   const safePoint=p=>p&&typeof p==='object'&&!Array.isArray(p)&&
-    Object.keys(p).length===2&&
-    Object.hasOwn(p,'x')&&Object.hasOwn(p,'y')&&
+    (Object.getPrototypeOf(p)===Object.prototype||
+     Object.getPrototypeOf(p)===null)&&
+    Object.keys(p).length===2&&Object.hasOwn(p,'x')&&Object.hasOwn(p,'y')&&
     Number.isInteger(p.x)&&Number.isInteger(p.y)&&
     p.x>=0&&p.x<=65535&&p.y>=0&&p.y<=65535;
   const safeButton=b=>b===undefined||(Number.isInteger(b)&&b>=1&&b<=3);
@@ -56,10 +74,12 @@ const actionOf=value=>{
       (value.count!==undefined&&value.count!==1&&value.count!==2)))
     throw fail('NATIVE_WORKSPACE_ACTION_INVALID');
   if(value.kind==='drag'&&
-     (!safePoint(value.from)||!safePoint(value.to)||!safeButton(value.button)||
+     (!safePoint(value.from)||!safePoint(value.to)||
+      (value.from.x===value.to.x&&value.from.y===value.to.y)||
+      !safeButton(value.button)||
       (value.durationMs!==undefined&&
-       (!Number.isInteger(value.durationMs)||value.durationMs<80||
-        value.durationMs>2000))))
+       (!Number.isInteger(value.durationMs)||value.durationMs<120||
+        value.durationMs>1200))))
     throw fail('NATIVE_WORKSPACE_ACTION_INVALID');
   if(value.kind==='type'&&
       (typeof value.text!=='string'||value.text.length<1||
@@ -69,10 +89,16 @@ const actionOf=value=>{
       !['Return','Escape','Tab','BackSpace','Up','Down','Left','Right',
          'space','Delete','Home','End','Page_Up','Page_Down',
          'ctrl+a','ctrl+c','ctrl+v','ctrl+s','ctrl+z','shift+Tab']
-        .includes(value.key))throw fail('NATIVE_WORKSPACE_ACTION_INVALID');
+        .includes(value.key))
+    throw fail('NATIVE_WORKSPACE_ACTION_INVALID');
   if(value.kind==='scroll'&&
       (!Number.isInteger(value.delta)||value.delta===0||
-       Math.abs(value.delta)>20))throw fail('NATIVE_WORKSPACE_ACTION_INVALID');
+       Math.abs(value.delta)>20))
+    throw fail('NATIVE_WORKSPACE_ACTION_INVALID');
+  // Make nested drag coordinates immutable *by value* before the first await.
+  if(value.kind==='drag')return {...value,
+    from:{x:value.from.x,y:value.from.y},
+    to:{x:value.to.x,y:value.to.y}};
   return {...value};
 };
 
@@ -93,6 +119,8 @@ export function createNativeWorkspaceCoordinator({
   if(!Number.isInteger(capacity)||capacity<1||capacity>8)
     throw fail('NATIVE_WORKSPACE_CAPACITY_INVALID');
   const workers=new Map();
+  // Reserve native identities while async journal creation is still pending.
+  const pendingNativeTargets=new Map();
   const observers=new Map();
   const reservedLeases=new Set();
   const starting=new Set();
@@ -188,6 +216,7 @@ export function createNativeWorkspaceCoordinator({
     const owner=subject(ctx);
     const ttl=seconds(ttlSeconds,30,600);
     sweep();
+    if(cleanupFailures.length)throw fail('NATIVE_WORKSPACE_QUARANTINED');
     if(workers.size+reservations>=capacity)throw fail('NATIVE_WORKSPACE_CAPACITY');
     reservations++;
     let lease;
@@ -215,7 +244,7 @@ export function createNativeWorkspaceCoordinator({
            typeof worker.input!=='function'||
            typeof worker.close!=='function')
           throw fail('NATIVE_WORKSPACE_BACKEND_UNTRUSTED');
-        const conflict=[...workers.values()].find(e=>
+        const conflict=[...workers.values(),...pendingNativeTargets.values()].find(e=>
           e.worker===worker||e.worker.displayId===worker.displayId||
           e.worker.serverPid===worker.serverPid);
         if(conflict){
@@ -226,7 +255,11 @@ export function createNativeWorkspaceCoordinator({
           cleanupFailures.push(workspaceRef);
           throw fail('NATIVE_WORKSPACE_TARGET_COLLISION');
         }
+        // Validate collision BEFORE cleanup of a newly returned wrapper: a
+        // duplicate wrapper may belong to an existing native process.
+        if(cleanupFailures.length)throw fail('NATIVE_WORKSPACE_QUARANTINED');
         if(closed)throw fail('NATIVE_WORKSPACE_POOL_CLOSED');
+        pendingNativeTargets.set(lease,{worker});
         // Native mutation remains disabled without an explicit journal.
         // The journal factory must come from the trusted local Core adapter,
         // not an MCP caller or chat message.
@@ -237,6 +270,8 @@ export function createNativeWorkspaceCoordinator({
            typeof journal.acknowledge!=='function'||
            typeof journal.inspect!=='function'))
           throw fail('NATIVE_WORKSPACE_JOURNAL_UNTRUSTED');
+        // Awaiting the journal must not bypass a concurrent cleanup failure.
+        if(cleanupFailures.length)throw fail('NATIVE_WORKSPACE_QUARANTINED');
         if(closed)throw fail('NATIVE_WORKSPACE_POOL_CLOSED');
         const entry={lease,owner,workspaceRef,worker,journal,expiresAt:now()+ttl,
           revision:0,ownerObserved:-1,operatorObserved:-1,
@@ -251,7 +286,11 @@ export function createNativeWorkspaceCoordinator({
           try{await worker.close();}catch{cleanupFailures.push(workspaceRef);}
         }
         throw error;
-      }finally{reservations--;reservedLeases.delete(lease);}
+      }finally{
+        pendingNativeTargets.delete(lease);
+        reservations--;
+        reservedLeases.delete(lease);
+      }
     })();
     starting.add(pending);
     pending.then(()=>starting.delete(pending),()=>starting.delete(pending));
@@ -469,7 +508,8 @@ export function createNativeWorkspaceCoordinator({
     const owner=subject(ctx);
     sweep();
     return {ownedWorkspaces:[...workers.values()].filter(e=>e.owner===owner&&!e.disposing).length,
-      capacity,availableSlots:Math.max(0,capacity-workers.size-reservations),
+      capacity,availableSlots:cleanupFailures.length?0:
+        Math.max(0,capacity-workers.size-reservations),
       cleanupFailures:cleanupFailures.length,productionIntegrated:false};
   }
   async function close(){
