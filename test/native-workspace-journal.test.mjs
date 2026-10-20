@@ -16,6 +16,9 @@ async function scoped(fn){
   try{return await fn(root);}
   finally{await fs.rm(root,{recursive:true,force:true});}
 }
+// Disk durability cases run only on supported Linux hosts.
+// Windows must independently assert deny-before-dispatch (see Windows negative contract).
+const durableLinuxTest=process.platform==='linux'?test:test.skip;
 const intent=(workspaceRef,operationId,kind='type',revision=0)=>
   ({workspaceRef,operationId,kind,revision});
 
@@ -30,7 +33,7 @@ test('journal requires a trusted root and refuses invalid workspace names',async
   });
 });
 
-test('exclusive pre-dispatch intent, sync ACK, next action and no input text persisted',
+durableLinuxTest('exclusive pre-dispatch intent, sync ACK, next action and no input text persisted',
   async()=>scoped(async root=>{
     const A=ref(),j=createNativeWorkspaceJournal({root});
     const a=await j.prepare(intent(A,'stable-action-a'));
@@ -50,7 +53,24 @@ test('exclusive pre-dispatch intent, sync ACK, next action and no input text per
     assert.equal((await j.inspect(A)).releaseAuthorized,false);
   }));
 
-test('pending intent quarantines only its workspace, unrelated workspace can run',
+durableLinuxTest('drag is one durable intent/ACK without coordinates or pointer-down replay',
+  async()=>scoped(async root=>{
+    const ws=ref(),j=createNativeWorkspaceJournal({root});
+    const handle=await j.prepare(intent(ws,'drag-action-id','drag',2));
+    const dir=path.join(root,'workspace-'+ws);
+    const files=await fs.readdir(dir);
+    assert.equal(files.length,1);
+    const data=await fs.readFile(path.join(dir,files[0]),'utf8');
+    assert.equal(JSON.parse(data).kind,'drag');
+    assert.doesNotMatch(data,/drag-action-id|fromX|toY|durationMs|screen/);
+    const ack=await j.acknowledge(handle);
+    assert.equal(ack.nativeEffectConfirmed,false);
+    assert.equal((await fs.readdir(dir)).length,2);
+    await assert.rejects(j.prepare(intent(ws,'drag-action-id','drag',3)),
+      /DUPLICATE_OPERATION/);
+  }));
+
+durableLinuxTest('pending intent quarantines only its workspace, unrelated workspace can run',
   async()=>scoped(async root=>{
     const A=ref(),B=ref(),j=createNativeWorkspaceJournal({root});
     await j.prepare(intent(A,'unresolved'));
@@ -66,7 +86,7 @@ test('pending intent quarantines only its workspace, unrelated workspace can run
     assert.equal((await fs.readdir(path.join(root,'workspace-'+A))).length,1);
   }));
 
-test('previous process acknowledgement cannot authorize a new process',async()=>scoped(async root=>{
+durableLinuxTest('previous process acknowledgement cannot authorize a new process',async()=>scoped(async root=>{
   const A=ref(),first=createNativeWorkspaceJournal({root});
   const a=await first.prepare(intent(A,'first'));
   await first.acknowledge(a);
@@ -77,7 +97,7 @@ test('previous process acknowledgement cannot authorize a new process',async()=>
   assert.equal((await fresh.inspect(A)).releaseAuthorized,false);
 }));
 
-test('forged or cloned handle cannot acknowledge a pending native effect',
+durableLinuxTest('forged or cloned handle cannot acknowledge a pending native effect',
   async()=>scoped(async root=>{
     const A=ref(),j=createNativeWorkspaceJournal({root});
     const a=await j.prepare(intent(A,'first'));
@@ -87,7 +107,7 @@ test('forged or cloned handle cannot acknowledge a pending native effect',
     await assert.rejects(j.acknowledge(a),/HANDLE_INVALID/);
   }));
 
-test('simultaneous intents on a new workspace admit at most one action',
+durableLinuxTest('simultaneous intents on a new workspace admit at most one action',
   async()=>scoped(async root=>{
     const A=ref(),j=createNativeWorkspaceJournal({root});
     const outcomes=await Promise.allSettled([
@@ -98,7 +118,7 @@ test('simultaneous intents on a new workspace admit at most one action',
     assert.equal((await fs.readdir(path.join(root,'workspace-'+A))).length,1);
   }));
 
-test('tampering with receipt bytes and symlink paths blocks acknowledgement',
+durableLinuxTest('tampering with receipt bytes and symlink paths blocks acknowledgement',
   async()=>scoped(async root=>{
     const A=ref(),j=createNativeWorkspaceJournal({root});
     const a=await j.prepare(intent(A,'one'));
