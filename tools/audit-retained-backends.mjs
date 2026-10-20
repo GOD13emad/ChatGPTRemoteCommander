@@ -2,6 +2,7 @@
 // Read-only retained-backend triage. This tool NEVER retires process/state.
 import fs from 'node:fs';
 import path from 'node:path';
+import {probeOwnedRetainedReferences} from './retained-owned-process-probe.mjs';
 
 function fail(code){throw Error(code);}
 const args=process.argv.slice(2);
@@ -10,7 +11,8 @@ const value=flag=>{
   if(matches.length!==1||!args[matches[0]+1])fail('AUDIT_ARGUMENT');
   return args[matches[0]+1];
 };
-if(args.length!==6)fail('AUDIT_ARGUMENT');
+const withProcessRefs=args.length===7&&args[6]==='--with-process-refs';
+if(args.length!==6&&!withProcessRefs)fail('AUDIT_ARGUMENT');
 const state=fs.realpathSync(path.resolve(value('--state-root')));
 const profile=value('--profile');
 const expected=value('--expected-active-commit');
@@ -43,7 +45,7 @@ const registryPath=path.join(state,'retained-backends.json');
 const registry=read(registryPath);
 if(registry.schema!==1||!Array.isArray(registry.items)||registry.items.length>1024)
   fail('AUDIT_REGISTRY_INVALID');
-const result=[];
+const result=[],entryPaths=[];
 for(let index=0;index<registry.items.length;index++){
   const item=registry.items[index];
   if(item?.profile!==profile)continue;
@@ -56,6 +58,7 @@ for(let index=0;index<registry.items.length;index++){
   if(item.commit===route.active.commit)flag('MATCHES_ACTIVE_COMMIT');
   const release=contained(item.projectDir,'releases');
   const config=contained(item.configPath,'runtimes');
+  entryPaths.push([release,config]);
   if(existsEntry(release))flag('RELEASE_STILL_EXISTS');
   if(!Array.isArray(item.terminalPids)||item.terminalPids.length===0)
     flag('TERMINAL_PID_EVIDENCE_MISSING');
@@ -64,6 +67,7 @@ for(let index=0;index<registry.items.length;index++){
   try {
     const c=read(config);
     const marker=contained(c.runtimeState,'runtimes');
+    entryPaths.at(-1).push(marker);
     const m=read(marker);
     if(m.projectDir!==release||m.configSha256!==item.configSha256||
        m.version!==item.version||String(m.port)!==String(item.port)||
@@ -77,9 +81,23 @@ for(let index=0;index<registry.items.length;index++){
     outcome:reasons.length?'INCONCLUSIVE':'HISTORICAL_TERMINATED_CANDIDATE',
     reasons,action:'OWNER_REVIEW_REQUIRED_NO_AUTOMATIC_RETIREMENT'});
 }
+let processEvidence=null;
+if(withProcessRefs){
+  processEvidence=probeOwnedRetainedReferences(entryPaths);
+  for(let i=0;i<result.length;i++){
+    const refs=processEvidence.refPids[i];
+    result[i].ownedProcessRefCount=refs.length;
+    if(refs.length||processEvidence.unreadableOwned>0){
+      result[i].outcome='INCONCLUSIVE';
+      if(refs.length)result[i].reasons.push('SAME_OWNER_PROCESS_REFERENCES_HISTORIC_PATH');
+      if(processEvidence.unreadableOwned>0)result[i].reasons.push('OWNED_PROCESS_READ_INCOMPLETE');
+    }
+  }
+}
 console.log(JSON.stringify({schema:1,status:'READ_ONLY_RETAINED_AUDIT',profile,
   activeCommit:expected,registryCount:registry.items.length,profileCount:result.length,
   historicalCandidates:result.filter(x=>x.outcome==='HISTORICAL_TERMINATED_CANDIDATE').length,
   inconclusive:result.filter(x=>x.outcome==='INCONCLUSIVE').length,
-  caveat:'PID/marker disappearance does not prove no orphan descendants; never auto-delete.',
+  processEvidence:processEvidence&&{scope:processEvidence.scope,scanned:processEvidence.scanned,otherUser:processEvidence.otherUser,vanished:processEvidence.vanished,unreadableOwned:processEvidence.unreadableOwned},
+  caveat:'PID/path disappearance does not prove no orphan descendants, socket/lease activity or other-owner references; never auto-delete.',
   entries:result}));
