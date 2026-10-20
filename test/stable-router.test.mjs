@@ -149,3 +149,110 @@ test('upstream failure cannot underflow inflight accounting',async()=>{
    assert.equal(Number(router.status().inflightByPort[dead]||0),0);
  }finally{if(router)await router.close();fs.rmSync(root,{recursive:true,force:true});}
 });
+
+
+test('abandoned client connection stays visibly pending until the backend actually completes',async()=>{
+ const root=temp();let router,a,release,backendEntered;
+ const gated=new Promise(r=>release=r);
+ const entered=new Promise(r=>backendEntered=r);
+ try{
+   a=http.createServer(async(_req,res)=>{
+     backendEntered();
+     await gated;
+     res.writeHead(200,{'content-type':'application/json'});
+     res.end(JSON.stringify({ok:true}));
+   });
+   const backendPort=await listen(a),listenPort=await freePort();
+   const stateFile=path.join(root,'router.json');
+   writeRouterStateAtomic(stateFile,{
+     schema:1,profile:'default',generation:1,
+     active:{port:backendPort,version:'1',commit:'a'.repeat(40),
+       configSha256:'1'.repeat(64)},updatedAt:new Date().toISOString()
+   });
+   router=await startRouter({listenPort,stateFile});
+   const body=JSON.stringify({jsonrpc:'2.0',id:71,method:'tools/call',
+     params:{name:'run_shell',arguments:{command:'secret-not-for-router-status'}}});
+   const req=http.request({host:'127.0.0.1',port:listenPort,path:'/mcp',
+     method:'POST',headers:{'content-type':'application/json'}});
+   req.on('error',()=>{});
+   req.end(body);
+   await entered;
+   let tracked=false;
+   for(let i=0;i<60;i++){
+     if(router.status().inflightByPort[backendPort]===1){tracked=true;break;}
+     await new Promise(r=>setTimeout(r,10));
+   }
+   assert.equal(tracked,true);
+   const closed=new Promise(resolve=>req.once('close',resolve));
+   req.destroy();await closed;
+   let detail;
+   for(let i=0;i<60;i++){
+     detail=router.status().inflightDetailsByPort[backendPort]?.[0];
+     if(detail?.clientDisconnected)break;
+     await new Promise(r=>setTimeout(r,10));
+   }
+   assert.equal(detail?.clientDisconnected,true);
+   assert.equal(detail.backendConnectionObserved,true);
+   assert.equal(detail.backendResponseStarted,false);
+   assert.equal(detail.lastBackendResponseByteAt,null);
+   assert.equal(detail.cancellable,false);
+   assert.equal(router.status().inflightByPort[backendPort],1);
+   assert.equal(JSON.stringify(detail).includes('secret-not-for-router-status'),false);
+   release();
+   for(let i=0;i<100&&router.status().inflightByPort[backendPort]>0;i++)
+     await new Promise(r=>setTimeout(r,10));
+   assert.equal(router.status().inflightByPort[backendPort]||0,0);
+   assert.deepEqual(router.status().inflightDetailsByPort,{});
+ }finally{
+   release?.();
+   if(a)a.closeAllConnections?.();
+   if(router)await router.close();
+   if(a)await close(a);
+   fs.rmSync(root,{recursive:true,force:true});
+ }
+});
+
+test('partial backend response progress does not prematurely retire the mutating operation',async()=>{
+ const root=temp();let router,a,release;
+ const gated=new Promise(r=>release=r);
+ try{
+   a=http.createServer(async(_req,res)=>{
+     res.writeHead(200,{'content-type':'text/plain'});
+     res.write('part-one');
+     await gated;
+     res.end('part-two');
+   });
+   const backendPort=await listen(a),listenPort=await freePort();
+   const stateFile=path.join(root,'router.json');
+   writeRouterStateAtomic(stateFile,{
+     schema:1,profile:'default',generation:1,
+     active:{port:backendPort,version:'1',commit:'a'.repeat(40),
+       configSha256:'1'.repeat(64)},updatedAt:new Date().toISOString()
+   });
+   router=await startRouter({listenPort,stateFile});
+   const response=requestLocal(listenPort,'/mcp',{method:'POST',
+     headers:{'content-type':'application/json'},
+     body:JSON.stringify({jsonrpc:'2.0',id:72,method:'tools/call',
+       params:{name:'run_shell',arguments:{}}})});
+   let detail;
+   for(let i=0;i<100;i++){
+     detail=router.status().inflightDetailsByPort[backendPort]?.[0];
+     if(detail?.lastBackendResponseByteAt)break;
+     await new Promise(r=>setTimeout(r,10));
+   }
+   assert.equal(detail?.backendResponseStarted,true);
+   assert.equal(typeof detail.lastBackendResponseByteAt,'string');
+   assert.equal(detail.clientDisconnected,false);
+   assert.equal(router.status().inflightByPort[backendPort],1);
+   release();assert.equal((await response).status,200);
+   for(let i=0;i<100&&router.status().inflightByPort[backendPort]>0;i++)
+     await new Promise(r=>setTimeout(r,10));
+   assert.equal(router.status().inflightByPort[backendPort]||0,0);
+ }finally{
+   release?.();
+   if(a)a.closeAllConnections?.();
+   if(router)await router.close();
+   if(a)await close(a);
+   fs.rmSync(root,{recursive:true,force:true});
+ }
+});
