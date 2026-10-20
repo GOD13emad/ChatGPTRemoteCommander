@@ -323,12 +323,12 @@ test('failed worker teardown surfaces a cleanup failure rather than a false succ
  assert.equal(pool.count('alpha'),0);
 });
 
-function observerFixture({authorizeObserverGrant=()=>true,
+function observerFixture({authorizeObserverRead=()=>true,authorizeObserverGrant=()=>true,
  authorizeControlHandoff=()=>false,clock=()=>1000}={}){
  let sequence=0,workerSerial=0;
  const nativeActions=[],closures=[];
  const pool=createIsolatedBrowserPool({
-  maxWorkers:2,clock,authorizeObserverGrant,authorizeControlHandoff,
+  maxWorkers:2,clock,authorizeObserverGrant,authorizeObserverRead,authorizeControlHandoff,
   observerToken:()=> (++sequence).toString(16).padStart(64,'0'),
   makeWorker:()=>{
    const workerId=++workerSerial;
@@ -507,4 +507,53 @@ test('expired handoff resumes the owner only after a fresh snapshot',async()=>{
   await f.pool.execute(owner,'browser_snapshot',{lease:a.lease});
   assert.equal((await f.pool.execute(owner,'browser_click',{lease:a.lease,selector:'#x'})).clicked,true);
  }finally{await f.pool.close();}
+});
+test('owner screenshot authorization revocation invalidates a preexisting observer image grant',async()=>{
+ const f=observerFixture();
+ const owner=config('owner'),viewer=config('viewer');
+ try{
+  const lease=(await f.pool.execute(owner,'browser_session_begin',{mode:'isolated'})).lease;
+  const granted=await f.pool.grantObserver(owner,lease,{viewerProfile:'viewer'});
+  await f.pool.execute(owner,'browser_screenshot',{lease,format:'png',maxBytes:262144});
+  assert.equal(f.pool.readObserver(viewer,granted.observerToken).__structuredContent.observerReadOnly,true);
+  owner.config.powerMode.browserControl.allowScreenshot=false;
+  assert.throws(()=>f.pool.readObserver(viewer,granted.observerToken),/BROWSER_OBSERVER_DENIED/,
+   'Previously granted observers must no longer read cached private frames after owner revokes screenshot permission');
+ }finally{await f.pool.close();}
+});
+test('read authorization revocation invalidates cached observer token immediately',async()=>{
+ let allow=true;const f=observerFixture({authorizeObserverRead:()=>allow});
+ const owner=config('owner'),viewer=config('viewer');
+ try{
+  const lease=(await f.pool.execute(owner,'browser_session_begin',{mode:'isolated'})).lease;
+  const g=await f.pool.grantObserver(owner,lease,{viewerProfile:'viewer'});
+  await f.pool.execute(owner,'browser_screenshot',{lease,format:'png',maxBytes:262144});
+  assert.equal(f.pool.readObserver(viewer,g.observerToken).__structuredContent.observerReadOnly,true);
+  allow=false;
+  assert.throws(()=>f.pool.readObserver(viewer,g.observerToken),/BROWSER_OBSERVER_DENIED/);
+  allow=true;
+  assert.throws(()=>f.pool.readObserver(viewer,g.observerToken),/BROWSER_OBSERVER_DENIED/);
+ }finally{await f.pool.close();}
+});
+test('read verifier exceptions deny access without disclosing frame',async()=>{
+ const f=observerFixture({authorizeObserverRead:()=>{throw Error('PRIVATE_AUTH_ERROR');}});
+ const owner=config('owner'),viewer=config('viewer');
+ try{
+  const lease=(await f.pool.execute(owner,'browser_session_begin',{mode:'isolated'})).lease;
+  const g=await f.pool.grantObserver(owner,lease,{viewerProfile:'viewer'});
+  await f.pool.execute(owner,'browser_screenshot',{lease,format:'png',maxBytes:262144});
+  assert.throws(()=>f.pool.readObserver(viewer,g.observerToken),/BROWSER_OBSERVER_DENIED/);
+ }finally{await f.pool.close();}
+});
+test('a prior grant without a read-time authorizer does not allow private frame reads',async()=>{
+ const ctx=config('owner'),viewer=config('viewer');
+ const pool=createIsolatedBrowserPool({authorizeObserverGrant:()=>true,makeWorker:()=>({
+  controller:{execute:async(_ctx,name)=>name==='browser_session_begin'?{lease:'f'.repeat(48),ok:true}:{ok:true},close:async()=>{}},
+  close:async()=>{}
+ })});
+ try{
+  const lease=(await pool.execute(ctx,'browser_session_begin',{mode:'isolated'})).lease;
+  const g=await pool.grantObserver(ctx,lease,{viewerProfile:'viewer'});
+  assert.throws(()=>pool.readObserver(viewer,g.observerToken),/BROWSER_OBSERVER_DENIED/);
+ }finally{await pool.close();}
 });
