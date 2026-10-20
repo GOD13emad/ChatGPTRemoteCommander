@@ -157,7 +157,10 @@ test('a credentialed view-only observer sees a real private browser frame withou
  const pool=createIsolatedBrowserPool({
   maxWorkers:1,
   authorizeObserverGrant:async({ownerProfile,viewerProfile})=>
-   ownerProfile==='owner'&&viewerProfile==='supervisor'
+   ownerProfile==='owner'&&viewerProfile==='supervisor',
+   // Synthetic trusted policy decision; private frame reads default to DENY.
+   authorizeObserverRead:({ownerProfile,viewerProfile})=>
+    ownerProfile==='owner'&&viewerProfile==='supervisor'
  });
  const owner=cfg(root,'owner',exe),supervisor=cfg(root,'supervisor',exe);
  let lease=null;
