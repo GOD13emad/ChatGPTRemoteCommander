@@ -13,6 +13,7 @@ try{
  const helperDest=path.join(toolsDir,'browser-control.mjs');
  await copyFile(helperSource,helperDest);
  await copyFile(new URL('src/browser-owned-processes.mjs',srcRoot),path.join(srcDir,'browser-owned-processes.mjs'));
+ await copyFile(new URL('src/browser-devtools-port.mjs',srcRoot),path.join(srcDir,'browser-devtools-port.mjs'));
 
  for(const rel of ['test/browser-helper-init-failure-run.mjs','test/browser-helper-lifecycle-run.mjs']){
   const source=await readFile(new URL(rel,srcRoot),'utf8');
