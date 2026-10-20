@@ -554,7 +554,7 @@ export function createIsolatedBrowserPool({
   const credential=controlToken();
   if(typeof credential!=='string'||!/^[a-f0-9]{64}$/.test(credential))
    throw browserError('BROWSER_WORKSPACE_OPERATOR_TOKEN_INVALID');
-  entry.handoff={tokenDigest:digest(credential),operatorProfile,
+  entry.handoff={tokenDigest:digest(credential),operatorProfile,ownerCtx,
    expiresAt:Math.min(entry.expiresAt,clock()+ttlSeconds*1000)};
   entry.reobserveRequired=true;
   return {controlToken:credential,scope:'PRIVATE_WORKSPACE_ONLY',
@@ -565,6 +565,16 @@ export function createIsolatedBrowserPool({
   if(!['browser_screenshot','browser_snapshot','browser_click','browser_fill'].includes(name))
    throw browserError('BROWSER_WORKSPACE_OPERATOR_ACTION_DENIED');
   const input=validateBrowserInput(name,{...raw,lease:entry.lease});
+  // Recheck the live owner policy before any delegated action.
+  const policy=entry.handoff?.ownerCtx?.config?.powerMode;
+  const ownCfg=policy?.browserControl;
+  if(policy?.enabled!==true||ownCfg?.enabled!==true||
+     (['browser_click','browser_fill'].includes(name)&&ownCfg.allowInput!==true)||
+     (name==='browser_screenshot'&&ownCfg.allowScreenshot!==true)){
+   entry.handoff=null;
+   entry.reobserveRequired=true;
+   throw browserError('BROWSER_WORKSPACE_OPERATOR_DENIED');
+  }
   const cfg=operatorCtx.config?.powerMode?.browserControl??{};
   if(operatorCtx.config?.powerMode?.enabled!==true||cfg.enabled!==true||
     ((name==='browser_click'||name==='browser_fill')&&cfg.allowInput!==true)||
