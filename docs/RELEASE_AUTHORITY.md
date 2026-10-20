@@ -1,3 +1,8 @@
+
+### 2026-10-20 exact-head Linux promotion fault and scoped test isolation fix
+
+GitHub dedicated candidate rollback run 39400701020, Linux job 118554390618 on source d1072080c4dcfd0c1d5e8f70d7d20d1fa557047f, failed its updater qualification when test/concurrency-smoke.mjs attempted to bind a hardcoded test port 47931 and received EADDRINUSE. This is a fixture isolation defect, not evidence that the candidate runtime is safe or unsafe after successful promotion; its promotion did not pass. The proposed narrow correction asks the OS for an unused ephemeral loopback port and gives each smoke instance a unique UUID-owned fixture root/config/app. Fixed deadlines, assertions, owner data and production listen ports remain unchanged. Two independently started native Linux smoke tests completed simultaneously with exit 0 and CONCURRENCY_SMOKE_PASS. Hosted exact-corrected-SHA rollback is still an open gate until a fresh completed run; never inherit its old PASS or ignore the prior failure.
+
 ## 2026-10-20 unsigned v0.10.25 Preview admission (not a release receipt)
 
 A new exact-v0.10.25-only unsigned Preview exception was expressly requested by the project user. See docs/UNSIGNED_WINDOWS_RELEASE_POLICY_0.10.25.json. The previous v0.10.24 exception and Stable v0.10.20 authority remain unchanged; GitHub brand TandemVector Labs / Usefull-Skills and author Dr. Aliakbar Emadoddin do not replace Authenticode or publisher-verified installed acceptance. Stable auto-update remains disabled for this Preview.

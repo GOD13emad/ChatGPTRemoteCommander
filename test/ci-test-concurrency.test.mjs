@@ -459,3 +459,15 @@ test('CI Windows runs the Transfer Mesh HTTP fixture alone without weakening rea
   assert.ok(fixture.includes('await wait(25)'),'same server-readiness poll');
   assert.ok(fixture.includes('assert.equal(healthy,true,stderr)'),'still fail closed if server cannot start');
 });
+
+
+test('concurrency smoke reserves an OS-assigned port per run with unique owned roots',()=>{
+ const src=read('test/concurrency-smoke.mjs');
+ assert.match(src,/reservation\.listen\(0,'127\.0\.0\.1',resolve\)/);
+ assert.match(src,/const instanceId = randomUUID\(\);/);
+ assert.match(src,/\.tmp-concurrency-root-' \+ instanceId/);
+ assert.match(src,/\.tmp-concurrency-app-' \+ instanceId/);
+ assert.match(src,/reservation\.close\(err=>err\?reject\(err\):resolve\(\)\)/);
+ assert.doesNotMatch(src,/const port\s*=\s*47931/);
+ assert.match(src,/liveRuntimeStateAfter,[\s\S]*liveRuntimeStateBefore/);
+});
