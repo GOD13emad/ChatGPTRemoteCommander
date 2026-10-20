@@ -212,19 +212,21 @@ test('local emergency stop rejects capture and input without killing services', 
   await assert.rejects(s.run('gui_key_press',{...a,keys:['A']}),/GUI_LOCAL_STOP/);
   assert.equal(s.calls.length,2);
 });
-test('uncertain native outcome suspends further GUI actions; no blind retry', async () => {
+test('uncertain native outcome blocks all further input; only a fresh observe lease is allowed', async () => {
   let count=0;
   const s=setup({invoke:async r=>{count++;if(r.action==='status')return{ok:true,available:true};if(r.action==='screenshot')return image();throw new Error('GUI_SENDINPUT_FAILED');}});
   const a=await prepared(s); await assert.rejects(s.run('gui_key_press',{...a,keys:['A']}),/GUI_SENDINPUT_FAILED/);
   await assert.rejects(s.run('gui_screenshot',{lease:a.lease}),/GUI_LEASE_REQUIRED_OR_EXPIRED/);
-  const pending=await s.run('gui_status');
-  assert.equal(pending.uncertain,true);
-  assert.equal(pending.readOnlyAvailable,true);
-  const observer=await s.run('gui_session_begin',{mode:'observe'});
-  const capture=await s.run('gui_screenshot',{lease:observer.lease});
-  await assert.rejects(s.run('gui_key_press',{
-    lease:observer.lease,frame:capture.__structuredContent.frame,keys:['B']
-  }),/GUI_INCIDENT_REVIEW_REQUIRED/);
+  const status=await s.run('gui_status');
+  assert.equal(status.uncertain,true);
+  assert.equal(status.inputAvailable,false);
+  assert.equal(status.readOnlyAvailable,true);
+  await assert.rejects(s.run('gui_session_begin',{mode:'takeover',explicitUserAuthorization:'Synthetic consent'}),/GUI_INCIDENT_REVIEW_REQUIRED/);
+  const next=await s.run('gui_session_begin',{mode:'observe'});
+  assert.equal(next.mode,'observe');
+  const shot=await s.run('gui_screenshot',{lease:next.lease});
+  await assert.rejects(s.run('gui_key_press',{lease:next.lease,frame:shot.__structuredContent.frame,keys:['A']}),/GUI_INCIDENT_REVIEW_REQUIRED/);
+  await s.run('gui_session_end',{lease:next.lease});
   assert.equal(count,6);
 });
 
@@ -261,12 +263,14 @@ for(const [platform,tool,code,attested] of [
   const a=await prepared(s);
   const args=tool==='gui_focus_window'?{...a,handle:'123'}:tool==='gui_key_press'?{...a,keys:['A']}:{...a,x:-750,y:5};
   await assert.rejects(s.run(tool,args),/GUI_/);
-  assert.equal((await s.run('gui_status')).uncertain,true);
-  const observer=await s.run('gui_session_begin',{mode:'observe'});
-  const capture=await s.run('gui_screenshot',{lease:observer.lease});
-  await assert.rejects(s.run(tool,{...args,
-    lease:observer.lease,frame:capture.__structuredContent.frame
-  }),/GUI_INCIDENT_REVIEW_REQUIRED/);
+  const status=await s.run('gui_status');
+  assert.equal(status.uncertain,true);
+  assert.equal(status.inputAvailable,false);
+  const readOnly=await s.run('gui_session_begin',{mode:'observe'});
+  assert.equal(readOnly.mode,'observe');
+  const shot=await s.run('gui_screenshot',{lease:readOnly.lease});
+  await assert.rejects(s.run(tool,{...args,lease:readOnly.lease,frame:shot.__structuredContent.frame}),/GUI_INCIDENT_REVIEW_REQUIRED/);
+  await s.run('gui_session_end',{lease:readOnly.lease});
 });
 
 test('Linux native no-effect attestation occurs before MutterInput dispatch',async()=>{

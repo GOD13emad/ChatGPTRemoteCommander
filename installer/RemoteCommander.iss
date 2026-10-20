@@ -216,11 +216,17 @@ end;
 
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 var
-  PrereqScript, CoreScript, Params: String;
+  PrereqScript, CoreScript, Params, ExistingCoreGit: String;
+  ExistingCore: Boolean;
   ResultCode: Integer;
 begin
   Result := '';
   try
+    // Existing per-user Git installation is an access-policy authority.
+    // An ordinary Desktop/Control Center upgrade must not silently switch
+    // a previously owner-authorized FULL_POWER profile to Standard.
+    ExistingCoreGit := ExpandConstant('{localappdata}\ChatGPTRemoteCommander\app\.git');
+    ExistingCore := DirExists(ExistingCoreGit) or FileExists(ExistingCoreGit);
     EnsurePowerShell7;
 
     ExtractTemporaryFile('server-install-windows.ps1');
@@ -238,7 +244,8 @@ begin
     CoreScript := ExpandConstant('{tmp}\install.ps1');
     Params :=
       '-NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "' + CoreScript + '"' +
-      ' -StartServer -StandardMode -SourceRef "{#MySourceRef}" -ExpectedCommit "{#MyCommit}"';
+      ' -StartServer -SourceRef "{#MySourceRef}" -ExpectedCommit "{#MyCommit}"';
+    if not ExistingCore then Params := Params + ' -StandardMode';
     WizardForm.StatusLabel.Caption := 'Installing and verifying Remote Commander core for this user...';
     if not Exec(PwshPath, Params, '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
       RaiseException('Could not start Remote Commander core installer.');

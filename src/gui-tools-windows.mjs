@@ -75,37 +75,51 @@ export function createGuiController({ platform = process.platform, now = () => p
     // journal as an authenticated owner release. A native result is the only
     // automatic resolution allowed by this controller.
     const uncertainNow = uncertain || !!pendingIncident;
-    const observeOnly = uncertainNow || incidentStoreUnavailable;
-    if (name === 'gui_status' && (!enabled || blocked)) return {
-      enabled, available: false, inputAvailable: false, blocked, uncertain: uncertainNow,
-      busy, leased: !!current(), incidentStoreUnavailable, incidentRecoveryRequired, incidentPending: !!pendingIncident,
-      reason: !supported ? 'PLATFORM_BACKEND_UNSUPPORTED' : blocked ? 'LOCAL_GUI_STOP' : 'GUI_DISABLED'
+    // Any observed safety stop, disabled input or unreadable J01 evidence
+    // permanently revokes a preexisting takeover lease. Recovery of the
+    // underlying condition never silently restores prior desktop input rights.
+    if ((!enabled || blocked || incidentStoreUnavailable || uncertainNow) &&
+        current()?.mode === 'takeover') {
+      session.mode = 'observe';
+      session.authorization = uncertainNow ?
+        'incident-observe-only' : 'safety-stop-revoked';
+      frame = null;
+    }
+    if (name === 'gui_status' && (!enabled || blocked || incidentStoreUnavailable)) return {
+      enabled, available: false, inputAvailable: false, blocked, uncertain: uncertainNow, incidentRecoveryRequired,
+      busy, leased: !!current(), incidentStoreUnavailable, incidentPending: !!pendingIncident,
+      reason: !supported ? 'PLATFORM_BACKEND_UNSUPPORTED' : blocked ? 'LOCAL_GUI_STOP' :
+        incidentStoreUnavailable ? (incidentRecoveryRequired ? 'GUI_INCIDENT_RECOVERY_REQUIRED' : 'GUI_INCIDENT_STORAGE_UNAVAILABLE') : 'GUI_DISABLED'
     };
     if (!enabled) throw guiError('GUI_DISABLED_OR_UNSUPPORTED');
     if (blocked) throw guiError('GUI_LOCAL_STOP');
+    if (incidentStoreUnavailable) throw guiError('GUI_INCIDENT_STORAGE_UNAVAILABLE');
+    // An unacknowledged historical input may already have executed. Read-only
+    // desktop observation must not be confused with permission to send input:
+    // this code never resolves/replays the journal or opens a takeover lease.
+    const observeOnly = uncertainNow;
     if (name === 'gui_status' && observeOnly) {
-      // Observe without making or acknowledging native input. Concurrent input is never
-      // queued behind a status probe: the owner may retry when the native call settles.
-      let native = { ok: false, available: false };
+      let native = {ok:false,available:false};
       if (!busy) {
-        try { native = await invoke({ action: 'status', stopFile }); }
-        catch { /* A read-only helper failure never releases an incident. */ }
+        try {native=await invoke({action:'status',stopFile});}
+        catch { /* A read-only backend failure cannot release the incident. */ }
       }
-      const readOnlyAvailable = native?.ok === true && native.available === true;
+      const readOnlyAvailable=native?.ok===true&&native.available===true;
       return {
-        ...native, enabled, available: readOnlyAvailable, readOnlyAvailable,
-        inputAvailable: false, blocked: false, busy, leased: !!current(),
-        uncertain: uncertainNow, incidentStoreUnavailable, incidentRecoveryRequired, incidentPending: !!pendingIncident,
-        incident: pendingIncident ?? null,
-        reason: incidentRecoveryRequired ? 'GUI_INCIDENT_RECOVERY_REQUIRED' : incidentStoreUnavailable ? 'GUI_INCIDENT_STORAGE_UNAVAILABLE' : 'GUI_INCIDENT_REVIEW_REQUIRED'
+        enabled, available: false, readOnlyAvailable, inputAvailable: false,
+        blocked:false, uncertain:true, busy, leased: !!current(),
+        incidentStoreUnavailable:false, incidentPending:!!pendingIncident,
+        incident:pendingIncident??null, reason:'GUI_INCIDENT_REVIEW_REQUIRED'
       };
     }
     if (observeOnly) {
-      const observation = new Set(['gui_status', 'gui_session_begin', 'gui_session_renew',
-        'gui_session_end', 'gui_screenshot', 'gui_cursor_position', 'gui_list_windows']);
-      if (!observation.has(name) || (name === 'gui_session_begin' && input.mode === 'takeover')) {
-        throw guiError(incidentStoreUnavailable ? 'GUI_INCIDENT_STORAGE_UNAVAILABLE' : 'GUI_INCIDENT_REVIEW_REQUIRED');
-      }
+      const observations = new Set([
+        'gui_session_begin','gui_session_renew','gui_session_end',
+        'gui_screenshot','gui_cursor_position','gui_list_windows'
+      ]);
+      if (!observations.has(name) ||
+          (name==='gui_session_begin' && input.mode==='takeover'))
+        throw guiError('GUI_INCIDENT_REVIEW_REQUIRED');
     }
     // No stale action queue: concurrent work must retry with a NEW observation.
     if (busy) throw guiError('GUI_BUSY');
