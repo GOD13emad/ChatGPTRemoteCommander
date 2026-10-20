@@ -214,8 +214,16 @@ test('uncertain native outcome suspends further GUI actions; no blind retry', as
   let count=0;
   const s=setup({invoke:async r=>{count++;if(r.action==='status')return{ok:true,available:true};if(r.action==='screenshot')return image();throw new Error('GUI_SENDINPUT_FAILED');}});
   const a=await prepared(s); await assert.rejects(s.run('gui_key_press',{...a,keys:['A']}),/GUI_SENDINPUT_FAILED/);
-  await assert.rejects(s.run('gui_screenshot',{lease:a.lease}),/GUI_OUTCOME_UNCERTAIN/);
-  assert.equal((await s.run('gui_status')).uncertain,true);assert.equal(count,3);
+  assert.equal((await s.run('gui_status')).uncertain,true);
+  assert.equal(count,4); // Status read is allowed; no native input retry.
+  await assert.rejects(s.run('gui_screenshot',{lease:a.lease}),/GUI_LEASE_REQUIRED_OR_EXPIRED/);
+  const obs=await s.run('gui_session_begin',{mode:'observe'});
+  assert.equal(obs.mode,'observe');
+  const observedImage=await s.run('gui_screenshot',{lease:obs.lease});
+  assert.ok(observedImage.__structuredContent.frame);
+  await assert.rejects(s.run('gui_key_press',{lease:obs.lease,
+    frame:observedImage.__structuredContent.frame,keys:['A']}),/GUI_INCIDENT_REVIEW_REQUIRED/);
+  assert.equal(count,6); // Read-only begin+frame, never another input.
 });
 
 test('Linux attested pre-dispatch click rejection preserves no-effect without replaying input',async()=>{
@@ -251,8 +259,16 @@ for(const [platform,tool,code,attested] of [
   const a=await prepared(s);
   const args=tool==='gui_focus_window'?{...a,handle:'123'}:tool==='gui_key_press'?{...a,keys:['A']}:{...a,x:-750,y:5};
   await assert.rejects(s.run(tool,args),/GUI_/);
-  assert.equal((await s.run('gui_status')).uncertain,true);
-  await assert.rejects(s.run('gui_session_begin',{mode:'observe'}),/GUI_OUTCOME_UNCERTAIN/);
+  const status=await s.run('gui_status');
+  assert.equal(status.uncertain,true);
+  assert.equal(status.inputAvailable,false);
+  const obs=await s.run('gui_session_begin',{mode:'observe'});
+  assert.equal(obs.mode,'observe');
+  const shot=await s.run('gui_screenshot',{lease:obs.lease});
+  assert.ok(shot.__structuredContent.frame);
+  await assert.rejects(s.run('gui_mouse_click',{
+    lease:obs.lease,frame:shot.__structuredContent.frame,x:-720,y:10
+  }),/GUI_INCIDENT_REVIEW_REQUIRED/);
 });
 
 test('Linux native no-effect attestation occurs before MutterInput dispatch',async()=>{

@@ -53,3 +53,101 @@ Check independent accounts/tunnels reach the correct device, preserve credential
 Resolve all Critical/High OPEN findings in AUDIT_R1.md or document a reviewed scope restriction that actually removes the affected feature. Pin exact source/artifact hashes; test fresh install/update/rollback/stop/start with no secret loss. Synchronize documentation and Plugin assets. Review authoritative versus superseded branches explicitly. Promote only after review; no forced merge, automatic release, reboot or network reset.
 
 Native Linux GUI, high-speed gameplay, anti-cheat bypass, Secure Desktop control and unattended logon are not implied by Windows source availability.
+
+
+## Pending-native-effect observe-only continuity (2026-10-19 QA)
+
+**Source branch:** fix/gui-uncertain-observe-only-20261019, pinned to
+main commit 5cd6ec545b37dca32d63dc31c462bbe6d1399f3f.
+Scope is only controller logic and tests: while a *valid* legacy
+PENDING_NATIVE_EFFECT record exists, gui_status may probe the native
+read-only backend and return readOnlyAvailable separately from
+inputAvailable:false; a new GUI lease can be observe only and can
+read screenshots, cursor and window list. Any mouse/keyboard/focus/scroll
+takeover still fails GUI_INCIDENT_REVIEW_REQUIRED. An existing takeover
+lease is revoked when the controller detects another profile's pending
+record. Corrupt/unreadable incident storage, a local emergency STOP,
+or an unavailable native backend remain fail-closed; no action is replayed,
+and no incident file is modified. The old generic
+GUI_OUTCOME_UNCERTAIN_RESTART_REQUIRED response is replaced for
+non-mutating observation on this source candidate only, not for an
+unauthorized input attempt. This is neither an owner reconciliation
+nor an input-safety bypass.
+
+**Evidence:** focused J01/controller/mutex test suites passed with
+18/18 tests (no failure, no skipped cases); full npm run check,
+npm test and npm run audit passed at the exact local QA tree, including
+SECURITY_AUDIT_PASS. Hosted CI acceptance remains a separate gate
+and must be checked on the exact GitHub PR SHA.
+
+**Immediate installed-fleet continuity, separately scoped:** Saeid
+Windows 0.10.24 and Emad PC Windows 0.10.24 retained their original
+active GUI source SHA-256
+A6A453333E1F6018A00207D59C75DD679392C88F4DD17946348F86FC55BE2E64.
+An owner-local GUI-Safe-Observer.ps1 support script (SHA-256
+15C9A82AEEACC4216EA4114F3CA831847F1CF51C655FAA135EC8D2E5E5093EE3)
+performed actual read-only screen capture in each active Windows
+console session, saved one PNG into a private ACL-restricted local
+folder, and did not call native input. The exact incident SHA-256
+before and after stayed identical on Saeid
+C0E8EE65EDE1BE9DDE630C4FD9263E89596C3B0AEAD8D2298E229DD4153A710E
+and Emad PC
+38E11C4D5A5BB740D6A0B01C132A5D6874E6CBBCDFAC25F4FD1DBC5B4718E16E.
+Both received the owner-facing Commander GUI Recovery Center Start Menu
+entry with a Safe screenshot command. This does not install the
+unmerged source patch, change stable version, reconcile a historical
+incident, or enable GUI input; direct legacy gui_session_begin may still
+return the old error until an independently accepted update is deployed.
+
+**Next release gates:** qualified native/backend safety and old-version
+compatibility; protected per-owner incident reconciliation, post-crash
+cross-profile quiescence, signed/revocable grants, zero-interference
+private desktop workers on Windows and Linux, Windows observed-image
+acceptance on exact candidate, NoPromote updater acceptance and
+guarded rollback. Detached/offline hosts must not be claimed fixed
+without exact host execution/readback.
+
+
+## Scoped GUI native-operation continuity candidate — 2026-10-19
+
+**Status: isolated source QA; NOT deployed or stable-promoted.** On branch
+fix/gui-scoped-uncertainty-no-global-lock-20261019 the default running
+GUI controller uses src/gui-scoped-operation-journal.mjs for new native
+operations; no legacy incident is deleted, replayed or misclassified as
+known-not-applied. Existing read-only J01 controller behavior remains
+testable as an explicit legacy compatibility mode.
+
+**Product decision:** A historical user-account-scoped
+PENDING_NATIVE_EFFECT is *diagnostic evidence*, not a permanent device-wide
+lock. A fresh explicit takeover lease with a new screenshot/frame may
+perform a genuinely new GUI step. Before each mutation the scoped journal
+writes its own exclusive private durable intent file (operation GUID, type,
+UTC time; no typed text, coordinates or screen pixels) and syncs it;
+on verified helper submission the matching file is removed. A new error
+leaves only that operation's file unresolved. Next action requires a newly
+admitted lease and new screenshot; there is no background native replay.
+gui_status differentiates an available backend and scopedUnresolvedCount
+from historicalNativeOutcomeUncertain. The previous pending record is
+preserved byte-for-byte for owner review. App permissions, GUI_STOP,
+one-time frames, current-task takeover consent, Windows native helper
+mutex and OS privileges are not bypassed.
+
+**Known limits:** File-backed per-action records are not authenticated
+cross-process identities. The existing shared foreground Windows desktop
+cannot safely give each chat a simultaneous cursor; distinct VM/RDS
+desktop sessions are still required for real parallel native GUI.
+A native helper timeout leaves the specific action effect unknown and
+requires re-observation before any next step; the system cannot infer
+whether a save/submit already took effect. Emergency read-only support
+remains available independently of Core. Windows NTFS directory
+durability, forced power loss and cross-session migration need separate
+acceptance; do not promote a source-only candidate to all devices without
+the supported updater, per-profile compatibility and rollback.
+
+**V&V:** new scoped-journal/controller tests cover an existing legacy
+pending record, explicit new action, unknown action then independent next
+action, two simultaneous operation IDs, intact historical evidence,
+tampered records, and GUI_STOP. Existing legacy tests retain the old
+fail-closed compatibility expectations. 107/107 focused tests passed
+on MMZ Linux for the initial candidate. Full suite, Windows native
+disposable E2E and hosted CI are separate acceptance gates.
