@@ -5,7 +5,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { boundNodeTestConcurrency, parseQualificationArgs, prioritizeSensitiveQualificationCommands, isolateWindowsLeaseRegression, isolateWindowsTimingSensitiveRegressions, isolateWindowsProcessTreeRegression, isolateWindowsAgentHttpRegression, isolateWindowsTransferMeshHttpRegression, isolateWindowsWorkflowPlanRegression, markIsolatedQualificationPhases } from '../tools/run-bounded-test-script.mjs';
+import { boundNodeTestConcurrency, parseQualificationArgs, prioritizeSensitiveQualificationCommands, isolateWindowsLeaseRegression, isolateWindowsTimingSensitiveRegressions, isolateWindowsProcessTreeRegression, isolateWindowsAgentHttpRegression, isolateWindowsTransferMeshHttpRegression, isolateWindowsWorkflowPlanRegression, isolateWindowsAsyncHttpRegression, markIsolatedQualificationPhases } from '../tools/run-bounded-test-script.mjs';
 
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const read=rel=>fs.readFileSync(path.join(root,rel),'utf8');
@@ -237,6 +237,40 @@ test('R470 Windows fixture extracts failing test and counters without persisting
   assert.equal(many.failureTests.length,0,'never guess newest');
 });
 
+test('Windows async HTTP startup is isolated exactly once in both check and test without widening limits',()=>{
+  const pkg=JSON.parse(read('package.json'));
+  for(const scriptName of ['check','test']){
+    const bounded=boundNodeTestConcurrency(pkg.scripts[scriptName],1);
+    let before=prioritizeSensitiveQualificationCommands(bounded.command);
+    before=isolateWindowsAgentHttpRegression(before);
+    if(scriptName==='test'){
+      before=isolateWindowsTimingSensitiveRegressions(before);
+      before=isolateWindowsProcessTreeRegression(before);
+      before=isolateWindowsTransferMeshHttpRegression(before);
+      before=isolateWindowsLeaseRegression(before);
+      before=isolateWindowsWorkflowPlanRegression(before);
+    }
+    const file='test/async-http.test.mjs';
+    const leader='node --test --test-concurrency=1 '+file+' && ';
+    const isolated=isolateWindowsAsyncHttpRegression(before);
+    assert.equal(isolated,leader+before.replace(' '+file,''),'only move the existing test to a separate first command');
+    assert.equal(isolated.split(file).length-1,1,'the full async HTTP test must run exactly once');
+    assert.ok(isolated.includes('test/async-operations.test.mjs'),'existing async operation fixture remains covered');
+    assert.ok(isolated.includes('test/agent-extensions-http.test.mjs'),'existing HTTP fixture remains covered');
+    assert.throws(()=>isolateWindowsAsyncHttpRegression(isolated),/CI_ASYNC_HTTP_ISOLATION_INVALID/);
+  }
+  assert.throws(()=>isolateWindowsAsyncHttpRegression('node --test --test-concurrency=1 test/other.test.mjs'),/CI_ASYNC_HTTP_CARDINALITY/);
+  assert.throws(()=>isolateWindowsAsyncHttpRegression('node --test --test-concurrency=1 test/async-http.test.mjs test/async-http.test.mjs'),/CI_ASYNC_HTTP_CARDINALITY/);
+  const runner=read('tools/run-bounded-test-script.mjs');
+  assert.ok(runner.includes("if(process.platform==='win32') command=isolateWindowsAsyncHttpRegression(command);"));
+  assert.ok(runner.indexOf('command=isolateWindowsAsyncHttpRegression(command);') <
+    runner.lastIndexOf('command=isolateWindowsTimingSensitiveRegressions(command);'),
+    'strict deadline batch must be the final prepend in Windows test qualification');
+  const fixture=read('test/async-http.test.mjs');
+  assert.match(fixture,/attempt < 400/,'keep original fixed 400x25ms readiness budget');
+  assert.match(fixture,/const deadline = Date[.]now\(\) \+ 15000/,'keep operation terminal observation deadline');
+});
+
 test('R157 qualifier markers are opt-in, index-only, and preserve all original commands',()=>{
   const sample='node --test test/a.test.mjs && node test/b.mjs';
   assert.equal(markIsolatedQualificationPhases(sample),
@@ -247,11 +281,20 @@ test('R157 qualifier markers are opt-in, index-only, and preserve all original c
   const bounded=boundNodeTestConcurrency(pkg.scripts.test,1);
   let command=prioritizeSensitiveQualificationCommands(bounded.command);
   command=isolateWindowsAgentHttpRegression(command);
-  command=isolateWindowsTimingSensitiveRegressions(command);
   command=isolateWindowsProcessTreeRegression(command);
   command=isolateWindowsTransferMeshHttpRegression(command);
   command=isolateWindowsLeaseRegression(command);
+  command=isolateWindowsAsyncHttpRegression(command);
+  command=isolateWindowsTimingSensitiveRegressions(command);
+  command=isolateWindowsWorkflowPlanRegression(command);
   const groups=command.split(' && ');
+  assert.ok(groups[0].includes('test/workflow-plan.test.mjs'),'workflow-plan race runs first');
+  assert.ok(groups[1].includes('test/project-adaptive.test.mjs'),'strict team timeout follows workflow-plan');
+  assert.ok(groups[2].includes('test/project-delivery-correlation.test.mjs'));
+  assert.ok(groups[3].includes('test/project-engine-review.test.mjs'));
+  assert.ok(groups[4].includes('test/async-http.test.mjs'),'async HTTP still runs ahead of high-volume batch');
+  for(const file of ['test/project-adaptive.test.mjs','test/async-http.test.mjs'])
+    assert.equal(command.split(file).length-1,1,'exactly one regression '+file);
   const marked=markIsolatedQualificationPhases(command);
   assert.ok(marked.length<7500,'preserve Windows cmd.exe length limit');
   assert.equal((marked.match(/RC_QUAL_PHASE_START_\d{2}/g)||[]).length,groups.length);
@@ -355,6 +398,33 @@ test('Windows runs exact workflow-plan races before loaded CI; strict adaptive t
     'preserve its exact original timeout');
 });
 
+test('Windows short-deadline team reservation runs before process-tree and HTTP load without skipped tests',()=>{
+ const pkg=JSON.parse(read('package.json'));
+ const original=prioritizeSensitiveQualificationCommands(
+   boundNodeTestConcurrency(pkg.scripts.test,1).command);
+ let command=isolateWindowsAgentHttpRegression(original);
+ command=isolateWindowsProcessTreeRegression(command);
+ command=isolateWindowsTransferMeshHttpRegression(command);
+ command=isolateWindowsLeaseRegression(command);
+ command=isolateWindowsTimingSensitiveRegressions(command);
+ command=isolateWindowsWorkflowPlanRegression(command);
+ const commands=command.split(' && ');
+ const files=['test/workflow-plan.test.mjs','test/project-adaptive.test.mjs',
+   'test/process-tree-lifecycle.test.mjs','test/transfer-mesh-http.test.mjs'];
+ const positions=files.map(file=>commands.findIndex(part=>part.includes(' '+file)));
+ assert.deepEqual(positions.slice(0,2),[0,1],'workflow-plan and deadline-sensitive team fixture first');
+ assert.ok(positions[1]<positions[2]&&positions[1]<positions[3],
+   'short team budget must precede expensive owned child-process fixtures');
+ for(const file of files)assert.equal(command.split(file).length-1,1,'no skipped or repeated '+file);
+ const src=read('tools/run-bounded-test-script.mjs');
+ assert.ok(src.indexOf('command=isolateWindowsTimingSensitiveRegressions(command);')>
+   src.indexOf('command=isolateWindowsLeaseRegression(command);'));
+ assert.ok(src.indexOf('command=isolateWindowsWorkflowPlanRegression(command);')>
+   src.indexOf('command=isolateWindowsTimingSensitiveRegressions(command);'));
+ assert.ok(read('test/project-adaptive.test.mjs').includes(
+   "test('team reserves all calls before workers and executes only the coordinator proposal', { timeout: 6000 }"));
+});
+
 test('CI Windows runs the Transfer Mesh HTTP fixture alone without weakening readiness or dropping coverage',()=>{
   const pkg=JSON.parse(read('package.json'));
   const original=prioritizeSensitiveQualificationCommands(boundNodeTestConcurrency(pkg.scripts.test,1).command);
@@ -388,4 +458,16 @@ test('CI Windows runs the Transfer Mesh HTTP fixture alone without weakening rea
   assert.ok(fixture.includes('for(let i=0;i<200;i++)'),'same bounded readiness budget');
   assert.ok(fixture.includes('await wait(25)'),'same server-readiness poll');
   assert.ok(fixture.includes('assert.equal(healthy,true,stderr)'),'still fail closed if server cannot start');
+});
+
+
+test('concurrency smoke reserves an OS-assigned port per run with unique owned roots',()=>{
+ const src=read('test/concurrency-smoke.mjs');
+ assert.match(src,/reservation\.listen\(0,'127\.0\.0\.1',resolve\)/);
+ assert.match(src,/const instanceId = randomUUID\(\);/);
+ assert.match(src,/\.tmp-concurrency-root-' \+ instanceId/);
+ assert.match(src,/\.tmp-concurrency-app-' \+ instanceId/);
+ assert.match(src,/reservation\.close\(err=>err\?reject\(err\):resolve\(\)\)/);
+ assert.doesNotMatch(src,/const port\s*=\s*47931/);
+ assert.match(src,/liveRuntimeStateAfter,[\s\S]*liveRuntimeStateBefore/);
 });
