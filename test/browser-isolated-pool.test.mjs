@@ -324,11 +324,11 @@ test('failed worker teardown surfaces a cleanup failure rather than a false succ
 });
 
 function observerFixture({authorizeObserverRead=()=>true,authorizeObserverGrant=()=>true,
- authorizeControlHandoff=()=>false,clock=()=>1000}={}){
+ authorizeControlHandoff=()=>false,authorizeControlAction=()=>true,clock=()=>1000}={}){
  let sequence=0,workerSerial=0;
  const nativeActions=[],closures=[];
  const pool=createIsolatedBrowserPool({
-  maxWorkers:2,clock,authorizeObserverGrant,authorizeObserverRead,authorizeControlHandoff,
+  maxWorkers:2,clock,authorizeObserverGrant,authorizeObserverRead,authorizeControlHandoff,authorizeControlAction,
   observerToken:()=> (++sequence).toString(16).padStart(64,'0'),
   makeWorker:()=>{
    const workerId=++workerSerial;
@@ -610,4 +610,58 @@ test('revoking global owner Browser permission prevents all delegated reads or i
    /BROWSER_WORKSPACE_OPERATOR_DENIED/
   );
  }finally{await f.pool.close();}
+});
+test('independent trusted broker can revoke an already-issued operator handoff before click',async()=>{
+ let grantValid=true;
+ const f=observerFixture({
+  authorizeControlHandoff:()=>true,
+  authorizeControlAction:()=>grantValid
+ });
+ const owner=config('owner'),operator=config('operator');
+ try{
+  const lease=(await f.pool.execute(owner,'browser_session_begin',{mode:'isolated'})).lease;
+  const handoff=await f.pool.beginControlHandoff(owner,lease,{operatorProfile:'operator'});
+  grantValid=false;
+  await assert.rejects(
+   f.pool.controlAction(operator,handoff.controlToken,'browser_click',{selector:'#button'}),
+   /BROWSER_WORKSPACE_OPERATOR_DENIED/
+  );
+  assert.equal(f.nativeActions.includes('click'),false);
+ }finally{await f.pool.close();}
+});
+
+
+test('delegated handoff readmission requires a live authorizer and invalidates revoked tokens',async()=>{
+ let allow=true;
+ const f=observerFixture({
+  authorizeControlHandoff:()=>true,
+  authorizeControlAction:()=>allow
+ });
+ const owner=config('owner'),operator=config('operator');
+ try{
+  const lease=(await f.pool.execute(owner,'browser_session_begin',{mode:'isolated'})).lease;
+  const handoff=await f.pool.beginControlHandoff(owner,lease,{operatorProfile:'operator'});
+  assert.equal((await f.pool.controlAction(operator,handoff.controlToken,
+   'browser_click',{selector:'#a'})).clicked,true);
+  allow=false;
+  await assert.rejects(f.pool.controlAction(operator,handoff.controlToken,
+   'browser_click',{selector:'#b'}),/BROWSER_WORKSPACE_OPERATOR_DENIED/);
+  allow=true;
+  await assert.rejects(f.pool.controlAction(operator,handoff.controlToken,
+   'browser_click',{selector:'#c'}),/BROWSER_WORKSPACE_OPERATOR_DENIED/);
+  assert.equal(f.nativeActions.filter(x=>x==='click').length,1);
+ }finally{await f.pool.close();}
+});
+test('operator verifier exception and absent trusted callback never allow delegated click',async()=>{
+ const owner=config('owner'),operator=config('operator');
+ for(const decision of [()=>{throw Error('PRIVATE_AUTH_UNAVAILABLE');},null]){
+  const f=observerFixture({authorizeControlHandoff:()=>true,authorizeControlAction:decision});
+  try{
+   const lease=(await f.pool.execute(owner,'browser_session_begin',{mode:'isolated'})).lease;
+   const grant=await f.pool.beginControlHandoff(owner,lease,{operatorProfile:'operator'});
+   await assert.rejects(f.pool.controlAction(operator,grant.controlToken,
+    'browser_click',{selector:'#denied'}),/BROWSER_WORKSPACE_OPERATOR_DENIED/);
+   assert.equal(f.nativeActions.filter(x=>x==='click').length,0);
+  }finally{await f.pool.close();}
+ }
 });
