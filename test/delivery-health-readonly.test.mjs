@@ -8,6 +8,7 @@ import {spawnSync} from 'node:child_process';
 import {DeliveryStore} from '../src/delivery-store.mjs';
 import {readDeliveryHealth} from '../tools/delivery-health-readonly.mjs';
 const sha='a'.repeat(40);
+const linuxOnly={skip:process.platform!=='linux'};
 function fixture(t){
   const root=fs.mkdtempSync(path.join(os.tmpdir(),'rc-delivery-health-ro-'));
   t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
@@ -27,7 +28,7 @@ function fixture(t){
   return {root,dir,configPath,profile,scope,params:{stateRoot:root,profile,expectedActiveCommit:sha}};
 }
 function shaFile(p){return crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex');}
-test('read-only report is aggregate and never changes database contents',t=>{
+test('read-only report is aggregate and never changes database contents',linuxOnly,t=>{
   const f=fixture(t),db=path.join(f.dir,'delivery.sqlite');
   const before=shaFile(db);
   const r=readDeliveryHealth({...f.params,now:Date.now()});
@@ -45,7 +46,7 @@ test('read-only report is aggregate and never changes database contents',t=>{
   for(const secret of ['secret-chat-id','secret-project','private-test','secret-a','secret-b','delivery.sqlite'])
     assert.equal(serialized.includes(secret),false,secret);
 });
-test('fail closed on expected active commit and route rollback drift',t=>{
+test('fail closed on expected active commit and route rollback drift',linuxOnly,t=>{
   const f=fixture(t);
   assert.throws(()=>readDeliveryHealth({...f.params,expectedActiveCommit:'b'.repeat(40)}),/DELIVERY_HEALTH_ROUTE_DRIFT/);
   const p=path.join(f.root,'routing','default.json'),r=JSON.parse(fs.readFileSync(p));
@@ -53,19 +54,19 @@ test('fail closed on expected active commit and route rollback drift',t=>{
   fs.writeFileSync(p,JSON.stringify(r));
   assert.throws(()=>readDeliveryHealth(f.params),/DELIVERY_HEALTH_ROUTE_DRIFT/);
 });
-test('reject missing database and any symlink substitute',t=>{
+test('reject missing database and any symlink substitute',linuxOnly,t=>{
   const f=fixture(t),db=path.join(f.dir,'delivery.sqlite'),other=db+'.private';
   fs.renameSync(db,other);
   assert.throws(()=>readDeliveryHealth(f.params),/ENOENT/);
   fs.symlinkSync(other,db);
   assert.throws(()=>readDeliveryHealth(f.params),/DELIVERY_HEALTH_FILE_INVALID/);
 });
-test('reject database visible to other users',t=>{
+test('reject database visible to other users',linuxOnly,t=>{
   const f=fixture(t),db=path.join(f.dir,'delivery.sqlite');
   fs.chmodSync(db,0o644);
   assert.throws(()=>readDeliveryHealth(f.params),/DELIVERY_HEALTH_DB_PERMISSIONS/);
 });
-test('CLI accepts no raw-output or mutating options',t=>{
+test('CLI accepts no raw-output or mutating options',linuxOnly,t=>{
   const f=fixture(t);
   const tool=path.join(process.cwd(),'tools','delivery-health-readonly.mjs');
   const args=['--state-root',f.root,'--profile','default','--expected-active-commit',sha];
@@ -76,7 +77,7 @@ test('CLI accepts no raw-output or mutating options',t=>{
   assert.notEqual(bad.status,0);
 });
 
-test('reject arbitrary external database directory, even with matching scope',t=>{
+test('reject arbitrary external database directory, even with matching scope',linuxOnly,t=>{
  const f=fixture(t);
  const p=f.configPath,c=JSON.parse(fs.readFileSync(p));
  c.durableDelivery.directory=path.join(os.tmpdir(),'not-a-trusted-delivery-root','private-test');
@@ -84,7 +85,7 @@ test('reject arbitrary external database directory, even with matching scope',t=
  assert.throws(()=>readDeliveryHealth(f.params),/DELIVERY_HEALTH_OUTSIDE_TRUSTED_DELIVERY_ROOT/);
 });
 
-test('CLI never prints private paths even when database is unavailable',t=>{
+test('CLI never prints private paths even when database is unavailable',linuxOnly,t=>{
  const f=fixture(t),db=path.join(f.dir,'delivery.sqlite');
  fs.unlinkSync(db);
  const tool=path.join(process.cwd(),'tools','delivery-health-readonly.mjs');
@@ -95,7 +96,7 @@ test('CLI never prints private paths even when database is unavailable',t=>{
  assert.equal(r.stderr.includes(f.root),false);
  assert.equal(r.stdout,'');
 });
-test('reject symlinked configuration ancestry outside state root',t=>{
+test('reject symlinked configuration ancestry outside state root',linuxOnly,t=>{
  const f=fixture(t),real=path.join(f.root,'runtimes','current'),linked=path.join(f.root,'linked');
  fs.symlinkSync(real,linked);
  const router=path.join(f.root,'routing','default.json'),doc=JSON.parse(fs.readFileSync(router));
@@ -103,3 +104,10 @@ test('reject symlinked configuration ancestry outside state root',t=>{
  fs.writeFileSync(router,JSON.stringify(doc));
  assert.throws(()=>readDeliveryHealth(f.params),/DELIVERY_HEALTH_LINKED_METADATA/);
 });
+
+test('non-Linux delivery snapshot fails closed without pretending POSIX mode is an ACL',
+ {skip:process.platform==='linux'},()=>{
+   assert.throws(()=>readDeliveryHealth({
+     stateRoot:'not-authorized',profile:'default',expectedActiveCommit:sha
+   }),/DELIVERY_HEALTH_LINUX_ONLY/);
+ });

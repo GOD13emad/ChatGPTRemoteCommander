@@ -62,6 +62,10 @@ function pairs(rows) {
   return result;
 }
 export function readDeliveryHealth({stateRoot,profile,expectedActiveCommit,now=Date.now()}){
+  // POSIX 0600 mode is necessary to verify private active-profile DB access.
+  // Windows ACLs cannot be proven from fs.stat().mode: never silently treat
+  // Windows' emulated POSIX bits as private ACL enforcement.
+  if(process.platform!=='linux')fail('DELIVERY_HEALTH_LINUX_ONLY');
   if(typeof stateRoot!=='string'||!path.isAbsolute(stateRoot)||
      !/^[A-Za-z0-9_-]{1,64}$/.test(profile??'')||
      !/^[0-9a-f]{40}$/.test(expectedActiveCommit??'')||
