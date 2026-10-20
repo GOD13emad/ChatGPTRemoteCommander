@@ -56,3 +56,47 @@ The existing GNOME/Mutter helper now uses a **single account-UID native `fcntl.f
 Exact native `NOT_SUBMITTED` receipts from a pinned Linux helper can resolve **only a newly created** J01 incident without retry. Crash after native dispatch, ambiguous helper failure, and historical `UNKNOWN` incidents stay blocked. Disposable multi-process/crash/linked-lock tests confirm the scoped coordination behavior; they do not prove a complete installed fleet, unrelated mount namespaces, an authenticated owner review, or power-loss durability.
 
 **Migration gate:** quiesce or update every old Linux Core/Helper and every relevant session before enabling native input; advisory process census is not synchronization and legacy processes cannot be made cooperative by a new mutex.
+
+
+## E35 isolated cryptographic owner-review transcript (NOT an OS broker)
+
+A reusable *pure, stateless* transcript binding helper is staged at
+\`src/gui-owner-review-challenge.mjs\` (mandatory
+\`test/gui-owner-review-challenge.test.mjs\`). It does **not** accept owner
+consent, archive the original J01, open an input lease, communicate with OS
+credential providers, or write any filesystem data.
+
+- A proposal binds one exact original \`PENDING_NATIVE_EFFECT\` id/tool/start
+  time, raw-byte SHA-256 and byte length, a broker-provided 256-bit nonce,
+  and a canonical UTC issuance/expiry at most 120 seconds apart. The original
+  native effect always remains \`UNKNOWN\`; the transcript domain is distinct
+  from generic login, arbitrary text or tool arguments.
+- RSA-2048+ PKCS#1 v1.5 SHA-256 diagnostic verification rejects malformed
+  transcripts, forged ownership flags, mismatched J01 SHA, nonce replay,
+  overlong signatures, invalid key format and expired requests.
+- A caller may provide its **own** matching public/private key, so a
+  cryptographically valid signature **CANNOT** establish owner identity.
+  Therefore *every* result—including a valid signature—returns
+  \`ownerAuthenticated:false\`, \`fleetQuiescenceProven:false\` and
+  \`releaseAuthorized:false\`. A same-user file, local JSON proof, remote
+  shell or chat confirmation must never be substituted for the missing
+  privileged broker.
+- A future broker must issue and persist a one-use challenge under its
+  *separate protected principal*, enroll/store the owner-bound public key
+  out of reach of MCP/same-user scripts, request incident-specific owner
+  presence through the OS, verify freshness and key provenance, atomically
+  consume challenge, acquire coordinated native input quiescence across
+  **all** installed versions and sessions, then execute a separate
+  crash-safe original-byte J01 archive. The current transcript helper
+  implements **none** of those privileged effects or deployment gates.
+
+For a potential Windows Hello enrollment/UI, see Microsoft's
+[Windows Hello](https://learn.microsoft.com/en-us/windows/apps/develop/security/windows-hello)
+API documentation. A separate Windows protected service and carefully ACLed
+IPC boundary require independent review (see Microsoft's
+[named pipe impersonation](https://learn.microsoft.com/en-us/windows/win32/ipc/impersonating-a-named-pipe-client)
+documentation). Generic \`UserConsentVerifier\`, an unprotected same-user
+public key, and default pipe ACLs are insufficient OS boundaries. Linux
+polkit and a privileged broker would require a *separate* implementation.
+Never claim the E35 protocol has restored GUI mouse/keyboard input or is
+ready to deploy to Emad PC or Linux.
