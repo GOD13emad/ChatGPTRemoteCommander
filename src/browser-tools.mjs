@@ -1,4 +1,5 @@
 import os from 'node:os';
+import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomBytes, timingSafeEqual, createHash } from 'node:crypto';
@@ -34,12 +35,22 @@ const defaultClose=async()=>{
 const sameToken=(a,b)=>typeof a==='string'&&typeof b==='string'&&Buffer.byteLength(a)===Buffer.byteLength(b)&&timingSafeEqual(Buffer.from(a),Buffer.from(b));
 const safeSegment=value=>typeof value==='string'&&/^[a-z][a-z0-9_-]{0,31}$/.test(value)?value:'default';
 const instanceSegment=value=>{const raw=typeof value==='string'&&value?value:'default';return raw==='default'?'default':'instance-'+Buffer.from(raw,'utf8').toString('hex');};
-function defaultProfileRoot(){
- if(process.platform==='win32')return path.join(process.env.LOCALAPPDATA||os.homedir(),'ChatGPTRemoteCommander','browser-profiles');
- return path.join(os.homedir(),'.local','state','chatgpt-remote-commander','browser-profiles');
+// A confined Snap Firefox cannot use an arbitrary host-writable profile root.
+// Auto-select its writable common directory only for new default-root sessions.
+// An explicit configured profileRoot remains authoritative; no profile migration.
+export function defaultBrowserProfileRoot({
+ platform=process.platform,home=os.homedir(),executable=null,
+ localAppData=process.env.LOCALAPPDATA,pathExists=fs.existsSync
+}={}){
+ if(platform==='win32')return path.join(localAppData||home,'ChatGPTRemoteCommander','browser-profiles');
+ const snapCommon=path.join(home,'snap','firefox','common');
+ if(platform==='linux'&&isFirefoxExecutable(executable)&&
+    pathExists('/snap/bin/firefox')&&pathExists(snapCommon))
+  return path.join(snapCommon,'chatgpt-remote-commander','browser-profiles');
+ return path.join(home,'.local','state','chatgpt-remote-commander','browser-profiles');
 }
 function resolveProfileRoot(cfg){
- const raw=typeof cfg.profileRoot==='string'&&cfg.profileRoot.trim()?cfg.profileRoot.trim():defaultProfileRoot();
+ const raw=typeof cfg.profileRoot==='string'&&cfg.profileRoot.trim()?cfg.profileRoot.trim():defaultBrowserProfileRoot({executable:cfg.executable});
  return path.resolve(raw.replace(/%([^%]+)%/g,(_,k)=>process.env[k]??process.env[k.toUpperCase()]??''));
 }
 export function reapBrowserOrphans(ctx){
