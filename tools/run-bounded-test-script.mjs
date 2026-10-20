@@ -236,7 +236,6 @@ function run(){
     command=isolateWindowsProcessTreeRegression(command);
     command=isolateWindowsTransferMeshHttpRegression(command);
     command=isolateWindowsLeaseRegression(command);
-    command=isolateWindowsWorkflowPlanRegression(command);
   }
   if(process.platform==='win32') command=isolateWindowsAsyncHttpRegression(command);
   if(args.script==='test'&&process.platform==='win32'){
@@ -244,6 +243,8 @@ function run(){
     // isolated process before other process-heavy Windows fixture groups.
     // Keep timeout, test body, full coverage and cardinality unchanged.
     command=isolateWindowsTimingSensitiveRegressions(command);
+    // Short-deadline workflow-plan first, then team reservation, then async HTTP.
+    command=isolateWindowsWorkflowPlanRegression(command);
   }
   if(process.platform==='win32'&&args.script==='test'&&process.env.RC_QUALIFICATION_RUN_ID)
     command=markIsolatedQualificationPhases(command);

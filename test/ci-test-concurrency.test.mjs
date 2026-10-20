@@ -284,14 +284,15 @@ test('R157 qualifier markers are opt-in, index-only, and preserve all original c
   command=isolateWindowsProcessTreeRegression(command);
   command=isolateWindowsTransferMeshHttpRegression(command);
   command=isolateWindowsLeaseRegression(command);
-  command=isolateWindowsWorkflowPlanRegression(command);
   command=isolateWindowsAsyncHttpRegression(command);
   command=isolateWindowsTimingSensitiveRegressions(command);
+  command=isolateWindowsWorkflowPlanRegression(command);
   const groups=command.split(' && ');
-  assert.ok(groups[0].includes('test/project-adaptive.test.mjs'),'strict team timeout runs first');
-  assert.ok(groups[1].includes('test/project-delivery-correlation.test.mjs'));
-  assert.ok(groups[2].includes('test/project-engine-review.test.mjs'));
-  assert.ok(groups[3].includes('test/async-http.test.mjs'),'async HTTP still runs ahead of high-volume batch');
+  assert.ok(groups[0].includes('test/workflow-plan.test.mjs'),'workflow-plan race runs first');
+  assert.ok(groups[1].includes('test/project-adaptive.test.mjs'),'strict team timeout follows workflow-plan');
+  assert.ok(groups[2].includes('test/project-delivery-correlation.test.mjs'));
+  assert.ok(groups[3].includes('test/project-engine-review.test.mjs'));
+  assert.ok(groups[4].includes('test/async-http.test.mjs'),'async HTTP still runs ahead of high-volume batch');
   for(const file of ['test/project-adaptive.test.mjs','test/async-http.test.mjs'])
     assert.equal(command.split(file).length-1,1,'exactly one regression '+file);
   const marked=markIsolatedQualificationPhases(command);
@@ -395,6 +396,33 @@ test('Windows runs exact workflow-plan races before loaded CI; strict adaptive t
   assert.equal(source.split("test('team reserves all calls before workers").length-1,1);
   assert.ok(source.includes("test('team reserves all calls before workers and executes only the coordinator proposal', { timeout: 6000 }"),
     'preserve its exact original timeout');
+});
+
+test('Windows short-deadline team reservation runs before process-tree and HTTP load without skipped tests',()=>{
+ const pkg=JSON.parse(read('package.json'));
+ const original=prioritizeSensitiveQualificationCommands(
+   boundNodeTestConcurrency(pkg.scripts.test,1).command);
+ let command=isolateWindowsAgentHttpRegression(original);
+ command=isolateWindowsProcessTreeRegression(command);
+ command=isolateWindowsTransferMeshHttpRegression(command);
+ command=isolateWindowsLeaseRegression(command);
+ command=isolateWindowsTimingSensitiveRegressions(command);
+ command=isolateWindowsWorkflowPlanRegression(command);
+ const commands=command.split(' && ');
+ const files=['test/workflow-plan.test.mjs','test/project-adaptive.test.mjs',
+   'test/process-tree-lifecycle.test.mjs','test/transfer-mesh-http.test.mjs'];
+ const positions=files.map(file=>commands.findIndex(part=>part.includes(' '+file)));
+ assert.deepEqual(positions.slice(0,2),[0,1],'workflow-plan and deadline-sensitive team fixture first');
+ assert.ok(positions[1]<positions[2]&&positions[1]<positions[3],
+   'short team budget must precede expensive owned child-process fixtures');
+ for(const file of files)assert.equal(command.split(file).length-1,1,'no skipped or repeated '+file);
+ const src=read('tools/run-bounded-test-script.mjs');
+ assert.ok(src.indexOf('command=isolateWindowsTimingSensitiveRegressions(command);')>
+   src.indexOf('command=isolateWindowsLeaseRegression(command);'));
+ assert.ok(src.indexOf('command=isolateWindowsWorkflowPlanRegression(command);')>
+   src.indexOf('command=isolateWindowsTimingSensitiveRegressions(command);'));
+ assert.ok(read('test/project-adaptive.test.mjs').includes(
+   "test('team reserves all calls before workers and executes only the coordinator proposal', { timeout: 6000 }"));
 });
 
 test('CI Windows runs the Transfer Mesh HTTP fixture alone without weakening readiness or dropping coverage',()=>{
