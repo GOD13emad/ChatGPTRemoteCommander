@@ -18,6 +18,10 @@ if(!Object.hasOwn(route,'previous')||route.previous!==null)throw Error('PREVIOUS
 if(!Number.isSafeInteger(route.generation)||route.generation<1||!/^[0-9a-f]{64}$/i.test(String(route.active.configSha256??'')))throw Error('ROUTE_EVIDENCE_INVALID');
 const head=execFileSync('git',['-C',repo,'rev-parse','HEAD'],{encoding:'utf8',timeout:4000}).trim().toLowerCase();
 if(head!==expected)throw Error('CONTROL_HEAD_MISMATCH');
+try{execFileSync('git',['-C',repo,'diff','--cached','--quiet','--'],{timeout:4000,stdio:'ignore'});}
+catch{throw Error('CONTROL_STAGED_DIRTY');}
+try{execFileSync('git',['-C',repo,'diff','--ignore-space-at-eol','--quiet','--'],{timeout:4000,stdio:'ignore'});}
+catch{throw Error('CONTROL_TRACKED_DIRTY');}
 const retained=path.join(state,'retained-backends.json');
 if(fs.existsSync(retained)){
  const r=json(retained);

@@ -57,7 +57,14 @@ test('route reconciliation only records independently verified health and does n
  assert.match((await run([...args,'--write'])).err,/RETAINED_BACKEND_UNRESOLVED/);
  fs.unlinkSync(path.join(state,'retained-backends.json'));
  assert.match((await run([...args.slice(0,-1),'f'.repeat(40)])).err,/ROUTE_IDENTITY_INVALID/);
- route.generation=28;putRoute();
+ fs.writeFileSync(path.join(repo,'README.md'),'changed fixture');
+ assert.match((await run([...args,'--write'])).err,/CONTROL_TRACKED_DIRTY/);
+ fs.writeFileSync(path.join(repo,'README.md'),'fixture');
+ fs.writeFileSync(path.join(repo,'README.md'),'staged fixture');
+ git(repo,'add','README.md');
+ assert.match((await run([...args,'--write'])).err,/CONTROL_STAGED_DIRTY/);
+ git(repo,'reset','-q','--','README.md');
+ fs.writeFileSync(path.join(repo,'README.md'),'fixture'); route.generation=28;putRoute();
  const fresh=await run([...args,'--write']);
  assert.equal(fresh.code,0,fresh.err);
  assert.equal(JSON.parse(fs.readFileSync(proofPath,'utf8')).profiles.default.generation,28);
