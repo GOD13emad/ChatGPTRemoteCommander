@@ -132,3 +132,12 @@ nonce, corrupt partial claim, missing directory, forged transcript and
 POSIX symlink denial. A skipped symlink case on Windows is not an
 acceptance of Windows path security. The test is included in mandatory
 \`package.json\` checks. E36 is not deployable or sufficient owner authority.
+
+
+## E39 staged untrusted-evidence diagnostic admission (SOURCE ONLY / NO GUI RELEASE)
+
+`src/gui-owner-recovery-admission.mjs` combines E35 incident-bound challenge syntax with E36 **diagnostic-only** signature/claim results and the existing read-only dispatcher census into one deterministic blocker list. The result ALWAYS has `releaseAuthorized:false`, `ownerAuthenticated:false`, `protectedNonceConsumed:false`, `fleetQuiescenceProven:false`, `archiveTrusted:false`, `nativeOutcome:'UNKNOWN'` and `noReplay:true`. Caller-controlled booleans claiming `SYSTEM`, signed review, protected storage, physical presence or quiescence are explicitly never promoted to authority. Matching metadata/empty process census is not original-J01-byte verification, all-version input quiescence, a trusted OS broker, secure archival or a real native desktop acceptance test.
+
+Scope regression `test/gui-owner-recovery-admission.test.mjs` covers changed J01 SHA, wrong incident/tool/time/typed bytes, malformed challenge, forged authorization, missing/rejected diagnostic receipts, zero/positive/incomplete process census and hostile throwing input properties. Run by mandatory `npm run check`. Pure function only: no Windows service, pipe, mutex, browser access, filesystem writes, installed Commander patch or native input. It is not a claim that the protected owner broker has been built. PR #249 remains draft/security hold; broker enrollment, Windows protected pipe DACL + peer token and physical-owner presence, trusted one-use nonce issuance, globally coordinated legacy/current dispatcher cutover and original-byte archival remain separate acceptance gates.
+
+Primary platform constraints: Windows [Named Pipe Security and Access Rights](https://learn.microsoft.com/en-us/windows/win32/ipc/named-pipe-security-and-access-rights), [Kernel Object Namespaces](https://learn.microsoft.com/en-us/windows/win32/termserv/kernel-object-namespaces) and [Windows Hello](https://learn.microsoft.com/en-us/windows/apps/develop/security/windows-hello). Default pipe ACLs, `Global\\` naming, an OS username string or a caller-supplied public key do not authenticate the owner or authorize GUI input.
