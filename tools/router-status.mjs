@@ -2,16 +2,10 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 // Router status is an internal updater control plane endpoint, not a generic URL client.
+const ROUTER_STATUS_URL='http://127.0.0.1:47831/router/status';
 export function assertRouterStatusUrl(value){
-  if(typeof value!=='string'||value.length>256||value.includes('\\'))throw new Error('ROUTER_STATUS_URL_DENIED');
-  let url;
-  try{url=new URL(value);}catch{throw new Error('ROUTER_STATUS_URL_DENIED');}
-  const port=Number(url.port);
-  if(url.protocol!=='http:'||!['127.0.0.1','[::1]'].includes(url.hostname)
-    ||!Number.isSafeInteger(port)||port<1024||port>65535
-    ||url.username||url.password||url.search||url.hash
-    ||url.pathname!=='/router/status'||value!==url.href)throw new Error('ROUTER_STATUS_URL_DENIED');
-  return url;
+  if(value!==ROUTER_STATUS_URL)throw new Error('ROUTER_STATUS_URL_DENIED');
+  return new URL(ROUTER_STATUS_URL);
 }
 
 export function parseRouterStatusArgs(argv){
@@ -30,10 +24,10 @@ export function parseRouterStatusArgs(argv){
   return o;
 }
 
-export async function queryRouterStatus(argv){
+export async function queryRouterStatus(argv,request=fetch){
   const o=parseRouterStatusArgs(argv);
-  const url=assertRouterStatusUrl(o.url); // fail before any HTTP request
-  const response=await fetch(url,{redirect:'error',signal:AbortSignal.timeout(o.timeoutMs)});
+  assertRouterStatusUrl(o.url); // validate caller input before any HTTP request
+  const response=await request(ROUTER_STATUS_URL,{redirect:'error',signal:AbortSignal.timeout(o.timeoutMs)});
   if(!response.ok)throw new Error('ROUTER_STATUS_HTTP_'+response.status);
   const s=await response.json();
   if(!s?.ok||!s?.router)throw new Error('ROUTER_STATUS_INVALID');
