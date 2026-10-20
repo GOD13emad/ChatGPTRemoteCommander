@@ -1,3 +1,7 @@
+## 2026-10-20 unsigned v0.10.25 Preview admission (not a release receipt)
+
+A new exact-v0.10.25-only unsigned Preview exception was expressly requested by the project user. See docs/UNSIGNED_WINDOWS_RELEASE_POLICY_0.10.25.json. The previous v0.10.24 exception and Stable v0.10.20 authority remain unchanged; GitHub brand TandemVector Labs / Usefull-Skills and author Dr. Aliakbar Emadoddin do not replace Authenticode or publisher-verified installed acceptance. Stable auto-update remains disabled for this Preview.
+
 # Current release authority — 2026-10-14
 
 ## 2026-10-19 release-first scope pointer — candidate / no promotion
