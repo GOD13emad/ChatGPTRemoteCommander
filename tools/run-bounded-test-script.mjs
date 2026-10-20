@@ -174,6 +174,30 @@ export function markIsolatedQualificationPhases(command) {
  * tests before the loaded crash/HTTP suites. The original short contention
  * bounds and exact assertions remain unchanged; cardinality fails closed.
  */
+/**
+ * R157 Windows: this isolated MCP fixture starts its own server and performs
+ * strict protocol/validator assertions. In loaded candidate-first updater QA
+ * it once failed inside the bulk Windows batch (R470 spec summary: 478 pass,
+ * 14 skipped, 1 failed) while the same exact source passed regular Windows CI.
+ *
+ * Schedule the unmodified test file as a standalone early process. Missing,
+ * duplicate or ambiguous placement fails closed. No deadlines, assertions,
+ * security policy or production behavior are changed.
+ */
+export function isolateWindowsMcpConformanceRegression(command) {
+  if(typeof command!=='string'||!command)throw Error('CI_MCP_CONFORMANCE_COMMAND_INVALID');
+  const file='test/mcp-conformance.test.mjs';
+  if(command.split(file).length-1!==1)throw Error('CI_MCP_CONFORMANCE_CARDINALITY');
+  const parts=command.split(' && ');
+  const index=parts.findIndex(part=>part.startsWith('node --test --test-concurrency=1 ')&&part.includes(' '+file));
+  if(index<0)throw Error('CI_MCP_CONFORMANCE_BATCH_NOT_FOUND');
+  const original=parts[index],after=original.replace(' '+file,'');
+  if(after===original||after.includes(file)||!after.startsWith('node --test --test-concurrency=1 test/'))
+    throw Error('CI_MCP_CONFORMANCE_ISOLATION_INVALID');
+  parts[index]=after;
+  return 'node --test --test-concurrency=1 '+file+' && '+parts.join(' && ');
+}
+
 export function isolateWindowsWorkflowPlanRegression(command) {
   if(typeof command!=='string'||!command)throw new Error('CI_WORKFLOW_PLAN_COMMAND_INVALID');
   const file='test/workflow-plan.test.mjs';
@@ -245,6 +269,7 @@ function run(){
     command=isolateWindowsTimingSensitiveRegressions(command);
     // Short-deadline workflow-plan first, then team reservation, then async HTTP.
     command=isolateWindowsWorkflowPlanRegression(command);
+    command=isolateWindowsMcpConformanceRegression(command);
   }
   if(process.platform==='win32'&&args.script==='test'&&process.env.RC_QUALIFICATION_RUN_ID)
     command=markIsolatedQualificationPhases(command);

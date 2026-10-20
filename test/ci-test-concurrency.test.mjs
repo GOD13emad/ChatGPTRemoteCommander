@@ -5,7 +5,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { boundNodeTestConcurrency, parseQualificationArgs, prioritizeSensitiveQualificationCommands, isolateWindowsLeaseRegression, isolateWindowsTimingSensitiveRegressions, isolateWindowsProcessTreeRegression, isolateWindowsAgentHttpRegression, isolateWindowsTransferMeshHttpRegression, isolateWindowsWorkflowPlanRegression, isolateWindowsAsyncHttpRegression, markIsolatedQualificationPhases } from '../tools/run-bounded-test-script.mjs';
+import { boundNodeTestConcurrency, parseQualificationArgs, prioritizeSensitiveQualificationCommands, isolateWindowsLeaseRegression, isolateWindowsTimingSensitiveRegressions, isolateWindowsProcessTreeRegression, isolateWindowsAgentHttpRegression, isolateWindowsTransferMeshHttpRegression, isolateWindowsWorkflowPlanRegression, isolateWindowsAsyncHttpRegression, isolateWindowsMcpConformanceRegression, markIsolatedQualificationPhases } from '../tools/run-bounded-test-script.mjs';
 
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const read=rel=>fs.readFileSync(path.join(root,rel),'utf8');
@@ -470,4 +470,36 @@ test('concurrency smoke reserves an OS-assigned port per run with unique owned r
  assert.match(src,/reservation\.close\(err=>err\?reject\(err\):resolve\(\)\)/);
  assert.doesNotMatch(src,/const port\s*=\s*47931/);
  assert.match(src,/liveRuntimeStateAfter,[\s\S]*liveRuntimeStateBefore/);
+});
+
+
+test('R157 Windows dual-era MCP server conformance executes once early, unchanged coverage',()=>{
+  const pkg=JSON.parse(read('package.json'));
+  const original=prioritizeSensitiveQualificationCommands(boundNodeTestConcurrency(pkg.scripts.test,1).command);
+  const before=isolateWindowsWorkflowPlanRegression(
+    isolateWindowsTimingSensitiveRegressions(
+      isolateWindowsAsyncHttpRegression(
+        isolateWindowsLeaseRegression(
+          isolateWindowsTransferMeshHttpRegression(
+            isolateWindowsProcessTreeRegression(
+              isolateWindowsAgentHttpRegression(original)))))));
+  const file='test/mcp-conformance.test.mjs';
+  const prefix='node --test --test-concurrency=1 '+file+' && ';
+  const isolated=isolateWindowsMcpConformanceRegression(before);
+  assert.equal(isolated,prefix+before.replace(' '+file,''),
+    'only move original test file, preserving all other commands');
+  assert.equal(isolated.split(file).length-1,1,'no skipped, duplicated or repeated test');
+  assert.ok(isolated.includes('test/workflow-plan.test.mjs'));
+  assert.ok(isolated.includes('test/agent-extensions.test.mjs'),
+    'preserve unrelated existing bulk qualification coverage');
+  assert.ok(markIsolatedQualificationPhases(isolated).length<7500,
+    'R157 Windows cmd.exe phase-marked bound stays unchanged');
+  assert.throws(()=>isolateWindowsMcpConformanceRegression(before.replace(' '+file,'')),
+    /CI_MCP_CONFORMANCE_CARDINALITY/);
+  assert.throws(()=>isolateWindowsMcpConformanceRegression(prefix+before),
+    /CI_MCP_CONFORMANCE_CARDINALITY/);
+  assert.ok(read('tools/run-bounded-test-script.mjs').includes(
+    'command=isolateWindowsMcpConformanceRegression(command);'));
+  assert.match(read('test/mcp-conformance.test.mjs'),/attempt < 400/,
+    'original fixture readiness budget and body remain untouched');
 });
