@@ -140,7 +140,7 @@ test('real child process termination leaves private pending evidence and blocks 
  assert.notEqual(killed.status,0);
  const fresh=controller(createGuiInputIncidentStore({file}));
  const status=await fresh.run('gui_status');
- assert.equal(status.available,true);
+ assert.equal(status.available,false);
  assert.equal(status.inputAvailable,false);
  assert.equal(status.incidentPending,true);
  assert.equal(status.uncertain,true);

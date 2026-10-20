@@ -94,7 +94,7 @@ export function createGuiController({ platform = process.platform, now = () => p
       }
       const readOnlyAvailable=native?.ok===true&&native.available===true;
       return {
-        enabled, available: readOnlyAvailable, readOnlyAvailable, inputAvailable: false,
+        enabled, available: false, readOnlyAvailable, inputAvailable: false,
         blocked:false, uncertain:true, busy, leased: !!current(),
         incidentStoreUnavailable:false, incidentPending:!!pendingIncident,
         incident:pendingIncident??null, reason:'GUI_INCIDENT_REVIEW_REQUIRED'

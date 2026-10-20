@@ -43,7 +43,7 @@ for(const platform of ['win32','linux']){
     const f=fixture({platform});
     const status=await f.run('gui_status');
     assert.equal(status.enabled,true);
-    assert.equal(status.available,true);
+    assert.equal(status.available,false);
     assert.equal(status.readOnlyAvailable,true);
     assert.equal(status.inputAvailable,false);
     assert.equal(status.incidentPending,true);
