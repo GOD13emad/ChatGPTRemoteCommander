@@ -556,4 +556,58 @@ test('a prior grant without a read-time authorizer does not allow private frame 
   const g=await pool.grantObserver(ctx,lease,{viewerProfile:'viewer'});
   assert.throws(()=>pool.readObserver(viewer,g.observerToken),/BROWSER_OBSERVER_DENIED/);
  }finally{await pool.close();}
+});test('owner input revocation invalidates a live private handoff before operator click',async()=>{
+ const f=observerFixture({authorizeControlHandoff:()=>true});
+ const owner=config('owner'),operator=config('operator');
+ try{
+  const lease=(await f.pool.execute(owner,'browser_session_begin',{mode:'isolated'})).lease;
+  const grant=await f.pool.beginControlHandoff(owner,lease,{operatorProfile:'operator'});
+  owner.config.powerMode.browserControl.allowInput=false;
+  await assert.rejects(
+   f.pool.controlAction(operator,grant.controlToken,'browser_click',{selector:'#private'}),
+   /BROWSER_WORKSPACE_OPERATOR_DENIED/,
+   'An owner must be able to revoke previously granted operator input'
+  );
+  assert.equal(f.nativeActions.filter(x=>x==='click').length,0);
+ }finally{await f.pool.close();}
+});
+
+
+test('revoking owner screenshot permission invalidates delegated screenshots and token',async()=>{
+ const f=observerFixture({authorizeControlHandoff:()=>true});
+ const owner=config('owner'),operator=config('operator');
+ try{
+  const lease=(await f.pool.execute(owner,'browser_session_begin',{mode:'isolated'})).lease;
+  const grant=await f.pool.beginControlHandoff(owner,lease,{operatorProfile:'operator'});
+  owner.config.powerMode.browserControl.allowScreenshot=false;
+  await assert.rejects(
+   f.pool.controlAction(operator,grant.controlToken,'browser_screenshot',{format:'png',maxBytes:262144}),
+   /BROWSER_WORKSPACE_OPERATOR_DENIED/
+  );
+  owner.config.powerMode.browserControl.allowScreenshot=true;
+  await assert.rejects(
+   f.pool.controlAction(operator,grant.controlToken,'browser_screenshot',{format:'png',maxBytes:262144}),
+   /BROWSER_WORKSPACE_OPERATOR_DENIED/
+  );
+  assert.equal(f.nativeActions.filter(x=>x==='screenshot').length,0);
+ }finally{await f.pool.close();}
+});
+test('revoking global owner Browser permission prevents all delegated reads or input',async()=>{
+ const f=observerFixture({authorizeControlHandoff:()=>true});
+ const owner=config('owner'),operator=config('operator');
+ try{
+  const lease=(await f.pool.execute(owner,'browser_session_begin',{mode:'isolated'})).lease;
+  const grant=await f.pool.beginControlHandoff(owner,lease,{operatorProfile:'operator'});
+  owner.config.powerMode.enabled=false;
+  await assert.rejects(
+   f.pool.controlAction(operator,grant.controlToken,'browser_snapshot',{}),
+   /BROWSER_WORKSPACE_OPERATOR_DENIED/
+  );
+  assert.equal(f.nativeActions.filter(x=>x==='snapshot').length,0);
+  owner.config.powerMode.enabled=true;
+  await assert.rejects(
+   f.pool.controlAction(operator,grant.controlToken,'browser_snapshot',{}),
+   /BROWSER_WORKSPACE_OPERATOR_DENIED/
+  );
+ }finally{await f.pool.close();}
 });
