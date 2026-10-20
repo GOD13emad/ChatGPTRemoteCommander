@@ -73,3 +73,38 @@ test('symlink registry fails closed',t=>{
  catch(e){if(['EPERM','EACCES','ENOTSUP'].includes(e.code))return;throw e;}
  assert.notEqual(f.run().status,0);
 });
+
+test('optional same-owner Linux process path audit flags live reference and keeps registry unchanged',
+  {skip:process.platform!=='linux'},async t=>{
+ const {spawn}=await import('node:child_process');
+ const f=fixture(t),before=fs.readFileSync(f.retained);
+ const target=f.entry.configPath;
+ const worker=spawn(process.execPath,['-e','setTimeout(()=>{},20000)','--',target],
+   {stdio:'ignore'});
+ t.after(()=>{try{worker.kill('SIGTERM')}catch{}});
+ await new Promise((resolve,reject)=>{
+   if(worker.pid&&fs.existsSync('/proc/'+worker.pid+'/cmdline'))resolve();
+   else worker.once('spawn',resolve).once('error',reject);
+ });
+ const r=spawnSync(process.execPath,[tool,'--state-root',f.state,'--profile','default',
+  '--expected-active-commit',commit,'--with-process-refs'],{encoding:'utf8',timeout:4000});
+ assert.equal(r.status,0,r.stderr);
+ const j=JSON.parse(r.stdout);
+ assert.equal(j.processEvidence.scope,'SAME_UID_LINUX_PROC_PATHS_ONLY');
+ assert.ok(j.entries[0].reasons.includes('SAME_OWNER_PROCESS_REFERENCES_HISTORIC_PATH'),r.stdout);
+ assert.equal(j.inconclusive,1);
+ assert.deepEqual(fs.readFileSync(f.retained),before);
+});
+
+test('optional same-owner Linux process scan preserves historical-only classification when no refs',
+  {skip:process.platform!=='linux'},t=>{
+ const f=fixture(t);
+ const r=spawnSync(process.execPath,[tool,'--state-root',f.state,'--profile','default',
+  '--expected-active-commit',commit,'--with-process-refs'],{encoding:'utf8',timeout:4000});
+ assert.equal(r.status,0,r.stderr);
+ const j=JSON.parse(r.stdout);
+ assert.equal(j.historicalCandidates+j.inconclusive,1);
+ assert.equal(j.entries[0].ownedProcessRefCount,0);
+ if(j.processEvidence.unreadableOwned>0)
+  assert.ok(j.entries[0].reasons.includes('OWNED_PROCESS_READ_INCOMPLETE'));
+});
