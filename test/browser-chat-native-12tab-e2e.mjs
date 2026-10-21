@@ -19,12 +19,39 @@ async function until(fn,timeout=22000){
  }
  throw Error('WAIT_TIMEOUT');
 }
+async function inspectContexts(profile){
+ const port=Number((await readFile(path.join(profile,'DevToolsActivePort'),'utf8')).split(/\r?\n/)[0]);
+ assert.ok(Number.isInteger(port)&&port>0);
+ const version=await (await fetch('http://127.0.0.1:'+port+'/json/version')).json();
+ const socket=new WebSocket(version.webSocketDebuggerUrl),pending=new Map();
+ let seq=0;
+ await new Promise((resolve,reject)=>{
+  const timer=setTimeout(()=>reject(Error('CDP_INSPECT_CONNECT_TIMEOUT')),9000);
+  socket.addEventListener('open',()=>{clearTimeout(timer);resolve();},{once:true});
+  socket.addEventListener('error',()=>{clearTimeout(timer);reject(Error('CDP_INSPECT_CONNECT_FAILED'));},{once:true});
+ });
+ socket.addEventListener('message',event=>{
+  let reply;try{reply=JSON.parse(String(event.data));}catch{return}
+  const item=pending.get(reply.id);if(!item)return;
+  clearTimeout(item.timer);pending.delete(reply.id);
+  if(reply.error)item.reject(Error('CDP_INSPECT_COMMAND_FAILED'));else item.resolve(reply.result??{});
+ });
+ return {
+  send:(method,params={})=>new Promise((resolve,reject)=>{
+   const id=++seq,timer=setTimeout(()=>{pending.delete(id);reject(Error('CDP_INSPECT_TIMEOUT'))},7000);
+   pending.set(id,{resolve,reject,timer});
+   socket.send(JSON.stringify({id,method,params}));
+  }),
+  close:()=>socket.close()
+ };
+}
+
 async function run(){
  const base=await mkdtemp(path.join(os.tmpdir(),'rc-owned-browser-12chat-'));
  const wrapper=path.join(base,'chromium-isolated');
  const profile=path.join(base,'owned-profile');
  const lines=[],waiters=[],errors=[];
- let proc=null;
+ let proc=null,inspector=null;
  try{
   const binary=fs.existsSync('/usr/bin/google-chrome')?'/usr/bin/google-chrome':'/usr/bin/brave-browser';
   if(!fs.existsSync(binary))throw Error('OWNED_CHROMIUM_BINARY_MISSING');
@@ -55,7 +82,8 @@ async function run(){
   const tabs=[];
   for(let i=0;i<12;i++){
    const id='00000000-0000-4000-8000-'+String(i).padStart(12,'0');
-   const opened=await call({action:'chat_tab_open',url:'https://chatgpt.com/c/'+id});
+   const opened=await call({action:'chat_tab_open',url:'https://chatgpt.com/c/'+id,...(i<2?{isolatedContext:true}:{})});
+   assert.equal(opened.isolatedContext,i<2);
    assert.match(opened.tabRef,/^[a-f0-9]{32}$/);
    tabs.push(opened.tabRef);
   }
@@ -68,6 +96,23 @@ async function run(){
    return s.ready===true&&s.counts?.OPEN===12&&s.conversations?.length===12?s:null;
   },28000);
   assert.equal(snapshot.source,'COMMANDER_OWNED_BROWSER_CORE');
+  assert.equal(snapshot.isolatedContextCount,2);
+  assert.equal(snapshot.contextCleanupUncertain,false);
+  assert.equal(snapshot.managedTabs.filter(t=>t.isolatedContext).length,2);
+  inspector=await inspectContexts(profile);
+  const ids=(await inspector.send('Target.getBrowserContexts')).browserContextIds;
+  assert.equal(ids.length,2,'two Commander-created private contexts exist');
+  for(const [index,contextId] of ids.entries()){
+   await inspector.send('Storage.setCookies',{browserContextId:contextId,
+     cookies:[{name:'rc_isolation_qa',value:index?'B':'A',domain:'chatgpt.com',path:'/',secure:true}]});
+  }
+  for(const [index,contextId] of ids.entries()){
+   const cookies=(await inspector.send('Storage.getCookies',{browserContextId:contextId})).cookies;
+   assert.deepEqual(cookies.filter(c=>c.name==='rc_isolation_qa').map(c=>c.value),[index?'B':'A']);
+  }
+  const defaultCookies=(await inspector.send('Storage.getCookies')).cookies;
+  assert.equal(defaultCookies.some(c=>c.name==='rc_isolation_qa'),false);
+
   assert.equal(snapshot.cookiesRead,false);
   assert.equal(snapshot.chatAuthentication,'NOT_VERIFIED');
   assert.equal(snapshot.actionAuthorization,false);
@@ -97,11 +142,38 @@ async function run(){
   assert.equal(atLimit.counts.OPEN,16);
   await assert.rejects(()=>call({action:'chat_tab_open',url:'https://chatgpt.com/'}),
     /BROWSER_CHAT_TABS_LIMIT/);
+  const isolatedClose=await call({action:'chat_tab_close',tabRef:tabs[0]});
+  assert.equal(isolatedClose.closed,true);
+  const remaining=(await inspector.send('Target.getBrowserContexts')).browserContextIds;
+  assert.equal(remaining.length,1,'closing an owned tab disposes its private context');
+  assert.equal(await call({action:'chat_tabs'}).then(s=>s.isolatedContextCount),1);
+  await inspector.send('Target.disposeBrowserContext',{browserContextId:remaining[0]});
+  await until(async()=>{
+   const state=await call({action:'chat_tabs'});
+   return state.isolatedContextCount===0&&state.contextCleanupUncertain===false?state:null;
+  },10000);
+  assert.equal((await inspector.send('Target.getBrowserContexts')).browserContextIds.length,0,
+    'externally disposed context is recognized as already removed');
+  const replacement=await call({action:'chat_tab_open',url:'https://chatgpt.com/',isolatedContext:true});
+  assert.equal(replacement.isolatedContext,true);
+  const nextContext=(await inspector.send('Target.getBrowserContexts')).browserContextIds;
+  assert.equal(nextContext.length,1);
+  const externalTarget=(await inspector.send('Target.getTargets')).targetInfos
+    .find(t=>t.type==='page'&&t.browserContextId===nextContext[0]);
+  assert.ok(externalTarget,'replacement private-context page discoverable');
+  assert.equal((await inspector.send('Target.closeTarget',{targetId:externalTarget.targetId})).success,true);
+  await until(async()=>{
+   const state=await call({action:'chat_tabs'});
+   return state.isolatedContextCount===0&&state.contextCleanupUncertain===false?state:null;
+  },10000);
+  assert.equal((await inspector.send('Target.getBrowserContexts')).browserContextIds.length,0);
   await call({action:'end'});
   console.log(JSON.stringify({result:'COMMANDER_NATIVE_CDP_MANAGED_12_TAB_E2E_PASS',
     beforeOpen:snapshot.counts.OPEN,afterOpen:after.counts.OPEN,closed:after.counts.CLOSED,maxManagedTabsVerified:atLimit.managedTabs.length,
+    isolatedContextsVerified:2,cookieStorageIsolated:true,isolatedContextDisposed:true,externalContextReaped:true,externalContextDisposeReconciled:true,
     authenticatedChats:0,addonsUsed:0,primaryProfileTouched:false}));
  }finally{
+  try{inspector?.close()}catch{}
   if(proc){
    try{proc.stdin.end()}catch{}
    await Promise.race([new Promise(r=>proc.once('close',r)),sleep(2500)]);

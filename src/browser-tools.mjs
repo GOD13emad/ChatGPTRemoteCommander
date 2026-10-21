@@ -124,8 +124,20 @@ export function createBrowserController({invoke=defaultInvoke,closeInvoke=defaul
    }
    if(name==='browser_session_end'){
     const profileDir=session.profileDir;
+    let r;
+    try{
+     r=await invoke({action:'end'});
+     if(r?.closed!==true)throw browserError('BROWSER_SESSION_END_UNCONFIRMED');
+    }catch(error){
+     // Keep the lease and isolated-profile marker until owned helper closure is
+     // acknowledged. End is an owned, idempotent cleanup action and may be
+     // retried; all other mutations must fail closed after an ambiguous end.
+     uncertain=true;chatMutationUncertain=true;
+     throw error;
+    }
     clearTimer();session=null;uncertain=false;chatMutationUncertain=false;expiryRequested=false;expiredProfile=null;
-    const r=await invoke({action:'end'});removeBrowserLeaseMarker(profileDir);return {ok:true,closed:r.closed===true};
+    removeBrowserLeaseMarker(profileDir);
+    return {ok:true,closed:true};
    }
    if(chatMutationUncertain&&name==='browser_foreground_begin')throw browserError('BROWSER_CHAT_OUTCOME_UNCERTAIN_SESSION_RESET_REQUIRED');
    if(name==='browser_foreground_requirement'){
@@ -162,7 +174,7 @@ export function createBrowserController({invoke=defaultInvoke,closeInvoke=defaul
    const activity={background:!foregroundAtDispatch,userDesktopTouched:foregroundAtDispatch};
    try{
     let result;
-    if(name==='browser_chat_tab_open')result=await invoke({action:'chat_tab_open',url:input.url});
+    if(name==='browser_chat_tab_open')result=await invoke({action:'chat_tab_open',url:input.url,isolatedContext:input.isolatedContext===true});
     else if(name==='browser_chat_tab_close')result=await invoke({action:'chat_tab_close',tabRef:input.tabRef});
     else if(name==='browser_navigate')result=await invoke({action:'navigate',url:input.url,timeoutMs:input.timeoutMs??30000});
     else if(name==='browser_snapshot')result=await invoke({action:'snapshot',maxTextChars:input.maxTextChars??20000,maxElements:input.maxElements??120});
