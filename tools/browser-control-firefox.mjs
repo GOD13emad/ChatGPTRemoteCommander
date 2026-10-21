@@ -20,8 +20,11 @@ const redactUrl=value=>{
 };
 const exists=p=>{try{return fs.statSync(p).isFile();}catch{return false;}};
 function which(name){
+ const filenames=process.platform==='win32'&&!path.extname(name)?[name+'.exe',name]:[name];
  for(const dir of String(process.env.PATH??'').split(path.delimiter).filter(Boolean)){
-  const p=path.join(dir,name);if(exists(p))return p;
+  for(const filename of filenames){
+   const p=path.join(dir,filename);if(exists(p))return p;
+  }
  }
  return null;
 }
@@ -31,7 +34,7 @@ function detectFirefox(explicit){
  return null;
 }
 function detectGecko(){
- for(const p of [which('geckodriver'),'/snap/bin/geckodriver','/usr/bin/geckodriver'])if(p&&exists(p))return path.resolve(p);
+ for(const p of [which('geckodriver'),process.platform==='win32'?which('geckodriver.exe'):null,'/snap/bin/geckodriver','/usr/bin/geckodriver'])if(p&&exists(p))return path.resolve(p);
  return null;
 }
 async function freePort(){
