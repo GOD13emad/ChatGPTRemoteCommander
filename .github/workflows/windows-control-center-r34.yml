@@ -5,6 +5,7 @@ on:
     paths:
       - 'desktop/RemoteCommanderDashboard/**'
       - 'desktop/tests-ui-r34/**'
+      - 'test/profile-inventory-smoke/**'
       - 'desktop/install-windows.ps1'
       - 'test/ui-uninstall-preserve-r219.test.mjs'
       - 'test/ui-legacy-inplace-r224.*'
@@ -29,6 +30,9 @@ jobs:
       - name: Headless native control/theme/metrics tests
         shell: pwsh
         run: dotnet run --project desktop/tests-ui-r34/R34UiTests.csproj -c Release --nologo
+      - name: Isolated profile inventory security and live-shape fixture
+        shell: pwsh
+        run: dotnet run --project test/profile-inventory-smoke/IsolatedProfileInventorySmoke.csproj -c Release --nologo
       - name: Source safety regression
         shell: pwsh
         run: node --test desktop/tests-ui-r34/safety.test.cjs
