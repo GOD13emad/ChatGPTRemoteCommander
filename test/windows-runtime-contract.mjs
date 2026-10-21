@@ -210,4 +210,9 @@ for (const file of headlessFiles) {
   }
 }
 console.log('HEADLESS_PROCESS_LAUNCH_POLICY_PASS');
+const pollObserver = spawnSync(process.execPath,['--test','test/tunnel-control-plane-observer.test.mjs'],{
+  cwd:process.cwd(),encoding:'utf8',timeout:25000,windowsHide:true
+});
+if(pollObserver.status!==0)throw new Error('Windows tunnel control-plane observer regression failed: '+
+  (pollObserver.stderr||pollObserver.stdout));
 console.log('WINDOWS_RUNTIME_CONTRACT_PASS');

@@ -37,7 +37,7 @@ jobs:
           $sha='${{ github.event.pull_request.head.sha || github.sha }}'
           if((git rev-parse HEAD).Trim() -ne $sha){throw 'R173_WRONG_CHECKOUT_SHA'}
           $candidateVersion=[string]((Get-Content package.json -Raw|ConvertFrom-Json).version)
-          if($candidateVersion -notin @('0.10.24','0.10.25')){throw 'R173_UNSUPPORTED_VERSION'}
+          if($candidateVersion -notin @('0.10.24','0.10.25','0.10.26')){throw 'R173_UNSUPPORTED_VERSION'}
           $tokens=$null;$errs=$null
           [Management.Automation.Language.Parser]::ParseFile((Join-Path $env:GITHUB_WORKSPACE 'test/release-rollback-windows-r173.ps1'),[ref]$tokens,[ref]$errs)|Out-Null
           if(@($errs).Count){throw ('R173_PARSER_ERRORS_'+@($errs).Count)}
