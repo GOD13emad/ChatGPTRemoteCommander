@@ -8,8 +8,16 @@ ARCHIVE="$NAME.tar.gz"
 EXPECTED_SHA='8cac4150b844e48c5f6fbf90df84b306d49165bef77f716f5c61d20bad164073'
 URL="https://github.com/TandemVector-Labs/remote-commander-browser/releases/download/v${VERSION}/${ARCHIVE}"
 ACTION="${1:---plan-only}"
-[[ $# -le 1 ]] || { echo 'BROWSER_INSTALLER_USAGE --plan-only|--install' >&2; exit 2; }
-[[ "$ACTION" == '--plan-only' || "$ACTION" == '--install' ]] || { echo 'BROWSER_INSTALLER_USAGE --plan-only|--install' >&2; exit 2; }
+ARCHIVE_SOURCE=''
+case "$#" in
+  0|1) ;;
+  3) [[ "$ACTION" == '--install' && "$2" == '--archive-file' && -n "$3" ]] ||
+       { echo 'BROWSER_INSTALLER_USAGE --install --archive-file PATH' >&2; exit 2; }
+     ARCHIVE_SOURCE="$3" ;;
+  *) echo 'BROWSER_INSTALLER_USAGE --plan-only|--install [--archive-file PATH]' >&2; exit 2 ;;
+esac
+[[ "$ACTION" == '--plan-only' || "$ACTION" == '--install' ]] ||
+  { echo 'BROWSER_INSTALLER_USAGE --plan-only|--install' >&2; exit 2; }
 printf 'BROWSER_LINUX_PLAN version=%s arch=x86_64 desktop=X11 sudo=required sha256=%s action=%s\n' "$VERSION" "$EXPECTED_SHA" "$ACTION"
 if [[ "$ACTION" == '--plan-only' ]]; then echo 'BROWSER_PLAN_ONLY changesApplied=false'; exit 0; fi
 [[ "$(uname -m)" == x86_64 ]] || { echo 'BROWSER_LINUX_UNSUPPORTED_ARCH' >&2; exit 2; }
@@ -24,8 +32,14 @@ LAUNCHER="$HOME/.local/bin/chatgpt-cef-v2"
 sudo -v || { echo 'BROWSER_SANDBOX_SUDO_NOT_AUTHORIZED' >&2; exit 3; }
 WORK="$(mktemp -d)"
 trap 'rm -rf -- "$WORK"' EXIT
-curl --fail --location --proto '=https' --proto-redir '=https' --tlsv1.2 --retry 3 \
-  --connect-timeout 20 --max-time 2400 --output "$WORK/$ARCHIVE" "$URL"
+if [[ -n "$ARCHIVE_SOURCE" ]]; then
+  [[ -f "$ARCHIVE_SOURCE" && ! -L "$ARCHIVE_SOURCE" ]] ||
+    { echo 'BROWSER_LOCAL_ARCHIVE_UNAVAILABLE' >&2; exit 4; }
+  cp -- "$ARCHIVE_SOURCE" "$WORK/$ARCHIVE"
+else
+  curl --fail --location --proto '=https' --proto-redir '=https' --tlsv1.2 --retry 3 \
+    --connect-timeout 20 --max-time 2400 --output "$WORK/$ARCHIVE" "$URL"
+fi
 ACTUAL="$(sha256sum "$WORK/$ARCHIVE" | cut -d' ' -f1)"
 [[ "$ACTUAL" == "$EXPECTED_SHA" ]] || { echo 'BROWSER_RELEASE_SHA256_MISMATCH' >&2; exit 4; }
 while IFS= read -r member; do

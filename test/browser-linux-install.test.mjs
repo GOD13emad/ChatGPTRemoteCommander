@@ -18,3 +18,12 @@ test('Linux Browser planner runs offline and fails before any installation witho
  q=spawnSync('bash',[file,'--install'],opts);assert.equal(q.status,2,q.stderr);assert.match(q.stderr,/BROWSER_LINUX_(X11_REQUIRED|UNSUPPORTED_ARCH)/);
  q=spawnSync('bash',[file,'--other'],opts);assert.equal(q.status,2);
 });
+
+test('Browser release wrapper supports exactly validated local artifact path for one-download canary',()=>{
+ const s=fs.readFileSync(file,'utf8');
+ assert.match(s,/--install --archive-file PATH/);
+ assert.match(s,/ARCHIVE_SOURCE=/);
+ assert.match(s,/BROWSER_LOCAL_ARCHIVE_UNAVAILABLE/);
+ assert.match(s,/sha256sum "\$WORK\/\$ARCHIVE"/);
+ assert.ok(s.indexOf("if [[ -n \"$ARCHIVE_SOURCE\" ]]")<s.indexOf("ACTUAL=\"$(sha256sum"),'local artifact must be checksum-verified');
+});

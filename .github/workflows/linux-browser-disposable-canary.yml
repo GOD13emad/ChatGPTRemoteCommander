@@ -54,7 +54,8 @@ jobs:
           (cd "$pkg" && sha256sum -c SHA256SUMS.txt >/dev/null)
           /bin/bash tools/install-browser-linux.sh --plan-only |
             grep -F 'changesApplied=false'
-          /bin/bash "$pkg/install.sh"
+          /bin/bash tools/install-browser-linux.sh --install --archive-file "$archive"
+          echo BROWSER_WRAPPER_REAL_INSTALL_PASS
           test -x "$HOME/.local/bin/chatgpt-cef-v2"
           test "$(stat -Lc '%a %U %G' "$HOME/.local/share/chatgpt-cef-v2/runtime-v0.8.1/chrome-sandbox")" = '4755 root root'
           test "$(cat "$HOME/.config/chatgpt-cef-v2/keep")" = 'UNCHANGED_PROFILE_SENTINEL'
