@@ -106,6 +106,9 @@ function operate(method,root,workspaceRef,operationId,kind){
   const generation=markerGeneration(marker);
   const db=new DatabaseSync(file,{readOnly:method==='inspect'});
   try{
+    // Configure bounded contention handling BEFORE the first metadata SELECT.
+    // Without this, a competing helper can trigger an immediate SQLITE_BUSY.
+    db.exec('PRAGMA busy_timeout=4000;');
     const dbGeneration=db.prepare('SELECT generation FROM journal_meta WHERE id=1').get()?.generation;
     if(dbGeneration!==generation)throw fail('WIN_JOURNAL_GENERATION_MISMATCH');
     if(method==='inspect'){
@@ -113,7 +116,7 @@ function operate(method,root,workspaceRef,operationId,kind){
         'SELECT workspace_ref,operation_id,kind,state FROM native_intents WHERE operation_id=?'
       ).get(operationId)||null;
     }
-    db.exec('PRAGMA busy_timeout=4000; PRAGMA synchronous=FULL;');
+    db.exec('PRAGMA synchronous=FULL;');
     const mode=Object.values(db.prepare('PRAGMA journal_mode').get())[0];
     const sync=Object.values(db.prepare('PRAGMA synchronous').get())[0];
     if(mode!=='delete'||sync!==2)throw fail('WIN_JOURNAL_DURABILITY_UNAVAILABLE');

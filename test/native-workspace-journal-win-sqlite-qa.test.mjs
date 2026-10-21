@@ -102,7 +102,10 @@ if(process.env.RC_SQLITE_QA_CHILD==='1'){
       ]);
       for(const r of responses)assert.equal(r.code,0,r.err);
       assert.equal(responses.filter(r=>r.out.includes('ACCEPTED')).length,1,JSON.stringify(responses));
-      assert.equal(responses.filter(r=>r.out.includes('DENIED:WIN_JOURNAL_WORKSPACE_UNCERTAIN')).length,1,JSON.stringify(responses));
+      // Another helper can fail closed on transient SQLite storage contention;
+      // neither failure code authorizes a native effect or automatic retry.
+      const allowedDenials=new Set(['DENIED:WIN_JOURNAL_WORKSPACE_UNCERTAIN','DENIED:WIN_JOURNAL_STORAGE_UNAVAILABLE']);
+      assert.equal(responses.filter(r=>allowedDenials.has(r.out.trim())).length,1,JSON.stringify(responses));
       const j=createWindowsNativeJournalQA({root});
       assert.equal(['ACKED','PREPARED'].filter(s=>j.inspect('race-child-A')?.state===s||j.inspect('race-child-B')?.state===s).length>=1,true);
       j.close();
