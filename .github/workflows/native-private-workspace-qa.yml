@@ -4,6 +4,8 @@ on:
   pull_request:
     paths:
       - 'src/native-workspace-coordinator.mjs'
+      - 'src/native-workspace-pointer-router-qa.mjs'
+      - 'test/native-workspace-pointer-router-qa.test.mjs'
       - 'src/native-workspace-approval.mjs'
       - 'src/native-workspace-journal.mjs'
       - 'src/native-private-x11-app-worker.mjs'
@@ -19,6 +21,8 @@ on:
       - 'test/native-workspace-journal-windows-failclosed.test.mjs'
       - 'src/native-*win*qa.mjs'
       - 'test/native-*win*qa.test.mjs'
+      - 'test/native-uia-private-observer-win-qa.test.mjs'
+      - 'tools/native-uia-owned-*-win-qa.ps1'
       - 'tools/native-*win*qa.*'
       - 'tools/native-workspace-*-qa.mjs'
       - 'test/gui-private-x11-isolation-qa.py'
@@ -45,6 +49,8 @@ jobs:
       - name: Syntax and scoped identity, lease, handoff, no-replay regressions
         run: |
           node --check src/native-workspace-coordinator.mjs
+          node --check src/native-workspace-pointer-router-qa.mjs
+          node --check test/native-workspace-pointer-router-qa.test.mjs
           node --check src/native-private-x11-app-worker.mjs
           node --check src/native-workspace-approval.mjs
           node --check test/native-workspace-approval.test.mjs
@@ -52,8 +58,10 @@ jobs:
           node --check src/native-workspace-journal.mjs
           node --check test/native-workspace-journal.test.mjs
           node --check test/native-workspace-hardening-review.test.mjs
+          node --check test/native-uia-private-observer-win-qa.test.mjs
+          node --check test/native-desktop-verified-client-win-qa.test.mjs
           node --check test/native-workspace-journal-windows-failclosed.test.mjs
-          node --test test/native-workspace-coordinator.test.mjs test/native-workspace-approval.test.mjs test/native-workspace-hardening-review.test.mjs
+          node --test test/native-workspace-coordinator.test.mjs test/native-workspace-approval.test.mjs test/native-workspace-hardening-review.test.mjs test/native-workspace-pointer-router-qa.test.mjs
       - name: Windows journal must reject native effects without verified durability
         if: matrix.os == 'windows-latest'
         run: node --test test/native-workspace-journal-windows-failclosed.test.mjs
@@ -64,6 +72,17 @@ jobs:
           node --check src/native-workspace-session-broker-win-qa.mjs
           node --check src/native-workspace-worker-pool-win-qa.mjs
           node --test --test-concurrency=1 test/native-workspace-journal-win-sqlite-qa.test.mjs test/native-workspace-session-broker-win-qa.test.mjs test/native-workspace-worker-pool-win-qa.test.mjs
+      - name: Parse private-Desktop UIA QA PowerShell without launching GUI (NoPromote)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          foreach($name in @('tools/native-uia-owned-child-win-qa.ps1','tools/native-uia-owned-host-win-qa.ps1','tools/native-desktop-verified-client-win-qa.ps1')){
+            $tokens=$null; $errors=$null
+            [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $name),[ref]$tokens,[ref]$errors) | Out-Null
+            if($errors.Count){ throw ('UIA_QA_PARSE_FAILED '+$name) }
+          }
+          Write-Output 'QA_UIA_SOURCE_SYNTAX_ONLY__NO_DESKTOP_INPUT_OR_PROMOTION'
       - name: Linux exact-disk native intent and process-exit no-replay tests
         if: matrix.os == 'ubuntu-24.04'
         run: node --test test/native-workspace-journal.test.mjs

@@ -4,7 +4,7 @@ import net from 'node:net';
 const pipeName=process.argv[2]||'';
 const command=process.argv[3]||'';
 if(!/^rc_qa_desk_[a-f0-9]{32}$/.test(pipeName)||
-   !['status','observeA','observeB','shutdown'].includes(command)){
+   !['status','observeA','observeB','peer','shutdown'].includes(command)){
   process.stderr.write('QA_CLIENT_ARGUMENT_INVALID\n');process.exit(2);
 }
 const address='\\\\.\\pipe\\'+pipeName;
