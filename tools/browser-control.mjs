@@ -260,7 +260,9 @@ async function snapshot(req,sessionId=browser?.sessionId){
 function allowedChatDocumentUrl(value){
  try{
   const u=new URL(value);
-  return u.protocol==='https:'&&['chatgpt.com','chat.openai.com'].includes(u.hostname)&&!u.username&&!u.password&&!u.port;
+  return u.protocol==='https:'&&['chatgpt.com','chat.openai.com'].includes(u.hostname)&&
+   !u.username&&!u.password&&!u.port&&!u.search&&!u.hash&&
+   (u.pathname==='/'||/^\/(?:g\/[^/?#]{1,120}\/)?c\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/?$/i.test(u.pathname));
  }catch{return false;}
 }
 async function handle(req){

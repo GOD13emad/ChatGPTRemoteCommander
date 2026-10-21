@@ -185,8 +185,16 @@ async function run(){
     {targetId:qaTarget.targetId,flatten:true});
   try{
    await inspector.send('Page.enable',{},redirectSession);
-   await inspector.send('Page.navigate',{url:'https://example.invalid/redirect-test'},redirectSession);
+   await inspector.send('Page.navigate',{url:'https://chatgpt.com/api/auth/session'},redirectSession);
   }finally{await inspector.send('Target.detachFromTarget',{sessionId:redirectSession});}
+  await assert.rejects(()=>call({action:'chat_tab_snapshot',tabRef:tabs[0]}),
+    /BROWSER_CHAT_TARGET_ORIGIN_NOT_ALLOWED/);
+  const {sessionId:offOriginSession}=await inspector.send('Target.attachToTarget',
+    {targetId:qaTarget.targetId,flatten:true});
+  try{
+   await inspector.send('Page.enable',{},offOriginSession);
+   await inspector.send('Page.navigate',{url:'https://example.invalid/redirect-test'},offOriginSession);
+  }finally{await inspector.send('Target.detachFromTarget',{sessionId:offOriginSession});}
   await assert.rejects(()=>call({action:'chat_tab_snapshot',tabRef:tabs[0]}),
     /BROWSER_CHAT_TARGET_ORIGIN_NOT_ALLOWED/);
   const isolatedClose=await call({action:'chat_tab_close',tabRef:tabs[0]});
