@@ -153,6 +153,24 @@ if [[ "$PRODUCT_PLAN_ONLY" -eq 1 ]]; then
   fi
   exit 0
 fi
+# Selected Browser runtime requires a supported local X11 host. Check before
+# Core prerequisites, any downloads, state writes or credential enrollment.
+if [[ "$BROWSER_SELECTED" -eq 1 ]]; then
+  [[ "$(uname -m)" == x86_64 ]] ||
+    { echo 'BROWSER_LINUX_UNSUPPORTED_ARCH' >&2; exit 2; }
+  [[ -n "${DISPLAY:-}" ]] ||
+    { echo 'BROWSER_LINUX_X11_REQUIRED' >&2; exit 2; }
+  for tool in curl tar sha256sum sudo stat; do
+    command -v "$tool" >/dev/null 2>&1 ||
+      { echo "BROWSER_MISSING_PREREQUISITE $tool" >&2; exit 2; }
+  done
+  [[ ! -e "$HOME/.local/share/chatgpt-cef-v2/runtime-v0.8.1" &&
+     ! -L "$HOME/.local/share/chatgpt-cef-v2/runtime-v0.8.1" &&
+     ! -e "$HOME/.local/bin/chatgpt-cef-v2" &&
+     ! -L "$HOME/.local/bin/chatgpt-cef-v2" ]] ||
+    { echo 'BROWSER_EXISTING_RUNTIME_PRESERVED: separately verify repair' >&2; exit 2; }
+fi
+
 if [[ "$MODE_SET" -eq 0 && -t 0 ]]; then
   echo 'Choose installation mode:'
   echo '  1) Standard — restricted project/file access'

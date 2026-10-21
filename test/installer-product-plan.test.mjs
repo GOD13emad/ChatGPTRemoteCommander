@@ -120,3 +120,15 @@ test('Linux Browser selection requires bundled helper, reports online prerequisi
  assert.doesNotMatch(p.stdout,/selected=.*browser/);
  p=run('--plan-only','--all','--product','browser');assert.equal(p.status,2);
 });
+
+test('Linux Browser refuses unsupported real install before all Core mutations', {skip:process.platform==='win32'},()=>{
+ const temp=fs.mkdtempSync(path.join(os.tmpdir(),'rc-browser-prereq-'));
+ try{
+   const r=spawnSync('bash',[path.join(root,'setup-wizard.sh'),'--product','browser','--skip-install'],{
+     encoding:'utf8',timeout:3500,env:{...process.env,HOME:temp,XDG_STATE_HOME:path.join(temp,'state'),DISPLAY:'',WAYLAND_DISPLAY:''}
+   });
+   assert.equal(r.status,2,r.stderr);
+   assert.match(r.stderr,/BROWSER_LINUX_X11_REQUIRED|BROWSER_LINUX_UNSUPPORTED_ARCH/);
+   assert.equal(fs.existsSync(path.join(temp,'state')),false,'No user-state directory may be created');
+ }finally{fs.rmSync(temp,{recursive:true,force:true});}
+});
