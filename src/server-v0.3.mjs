@@ -74,6 +74,18 @@ const agentExtensionDirectories = configuredAgentExtensionDirectories.map(value 
   return path.isAbsolute(expanded) ? path.resolve(expanded) : path.resolve(projectDir, expanded);
 });
 const agentExtensions = createAgentExtensionRegistry({ directories: agentExtensionDirectories });
+// Notion REST and hosted Notion MCP are separate opt-in credential audiences.
+// Disabled configs must not load either client or change existing tool behavior.
+const notionTools = config.notion?.enabled === true
+  ? (await import('./notion-engine.mjs')).createNotionTools({
+      config: config.notion, profile: config.instance?.profile ?? 'default'
+    })
+  : { definitions: [], execute: async () => { throw new Error('NOTION_DISABLED'); } };
+const notionMcpTools = config.notionMcp?.enabled === true
+  ? (await import('./notion-mcp-engine.mjs')).createNotionMcpTools({
+      config: config.notionMcp, profile: config.instance?.profile ?? 'default'
+    })
+  : { definitions: [], execute: async () => { throw new Error('NOTION_MCP_DISABLED'); } };
 const transferMesh = config.transferMesh?.enabled === true && config.powerMode?.enabled === true
   ? (await import('./transfer-tools.mjs')).createTransferMeshTools({config})
   : { enabled: false, definitions: [], execute: async () => { throw new Error('TRANSFER_MESH_DISABLED'); } };
@@ -212,6 +224,8 @@ const TOOLS = [
   ...deliveryTools.definitions,
   ...agentExtensions.definitions,
   ...transferMesh.definitions,
+  ...notionTools.definitions,
+  ...notionMcpTools.definitions,
   ...powerToolDefinitions,
   ...(BROWSER_ENABLED ? browserToolDefinitions : []),
   ...(GUI_ENABLED ? guiToolDefinitions : [])
@@ -362,6 +376,10 @@ async function executeTool(name, args, executionContext = {}) {
       ...(executionContext.requestIdSource === 'transport' ? { __deliveryMode: 'transport-retry-only' } : {})
     });
   }
+  // OAuth callbacks are short process-local leases; never replay a stale login
+  // URL through a durable mutation idempotency receipt.
+  if (name === 'notion_connect_start' || name === 'notion_mcp_connect_start')
+    return executeToolEffect(name, args);
   if (isDirectMutationTool(name)) {
     const { requestId, ...effectArgs } = args ?? {};
     // Preserve no-effect transport/semantic/authority checks before durable mutation intent.
@@ -441,6 +459,8 @@ async function executeToolEffect(name, args) {
   if (name.startsWith('agent_extension_')) return agentExtensions.execute(name, args);
   if (name.startsWith('transfer_mesh_')) return transferMesh.execute(name, args);
   if (name.startsWith('workflow_')) return workflowTools.execute(name, args);
+  if (name.startsWith('notion_mcp_')) return notionMcpTools.execute(name, args);
+  if (name.startsWith('notion_')) return notionTools.execute(name, args);
   switch (name) {
     case 'system_status': {
       await audit(ctx, { action: 'system_status', ok: true });
