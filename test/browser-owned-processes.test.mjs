@@ -8,6 +8,7 @@ import {
  browserProfileArgument,
  argvHasExactArgument,
  commandLineHasExactArgument,
+ linuxCommandLineHasOwnedBrowserProfile,
  terminateProcessesUsingBrowserProfile,
  waitForBrowserDevToolsPort
 } from '../src/browser-owned-processes.mjs';
@@ -27,6 +28,19 @@ test('profile process matching requires the complete user-data-dir argument',()=
  assert.equal(commandLineHasExactArgument('chrome.exe "'+win+'-other" --flag',win),false);
 });
 
+test('Chrome Linux flattened process titles match exact owned profile only',()=>{
+ const argument=browserProfileArgument('/tmp/rc-browser-profile');
+ const flat='chrome --headless=new '+argument+' --disable-gpu';
+ assert.equal(linuxCommandLineHasOwnedBrowserProfile([flat],argument,'/opt/google/chrome/chrome'),true);
+ assert.equal(linuxCommandLineHasOwnedBrowserProfile(['chrome '+argument+'-other --headless'],argument,'/opt/google/chrome/chrome'),false);
+ assert.equal(linuxCommandLineHasOwnedBrowserProfile(['chrome --headless '+browserProfileArgument('/tmp/RC-browser-profile')+' --flag'],argument,'/opt/google/chrome/chrome'),false,
+   'Linux case-sensitive profiles must not collide');
+ assert.equal(linuxCommandLineHasOwnedBrowserProfile([flat],argument,'/usr/bin/node'),false);
+ assert.equal(linuxCommandLineHasOwnedBrowserProfile([flat],argument,'/usr/bin/python3'),false);
+ assert.equal(linuxCommandLineHasOwnedBrowserProfile(['chrome',argument],argument,'/usr/bin/node'),true,
+   'retain legacy exact-argv detection for owned QA fixtures');
+ assert.equal(linuxCommandLineHasOwnedBrowserProfile(['chrome --headless '+argument,'--flag'],argument,'/opt/google/chrome/chrome'),false);
+});
 test('terminating one owned profile never terminates a prefix-sibling process',async()=>{
  const root=path.join(os.tmpdir(),'rc-owned-profile-'+process.pid+'-'+Date.now().toString(36));
  const exact=path.join(root,'work'),sibling=path.join(root,'work-other');
