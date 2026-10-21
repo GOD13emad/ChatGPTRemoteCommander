@@ -127,10 +127,10 @@ async function ready(timeoutMs){
 }
 function killOwnedProfileProcesses(profileDir){return terminateProcessesUsingBrowserProfile(profileDir);}
 async function closeBrowser({preserveProfile=false}={}){
- const b=browser;browser=null;if(!b)return;
+ const b=browser;if(!b)return;
  try{await b.cdp?.send('Browser.close',{},undefined,2000);}catch{}
  try{b.cdp?.close();}catch{}
- if(b.child&&b.child.exitCode===null){
+ if(b.child&&b.child.exitCode===null&&b.child.signalCode===null){
   await Promise.race([new Promise(resolve=>b.child.once('close',resolve)),sleep(2500)]);
   if(b.child.exitCode===null){
    try{
@@ -165,6 +165,9 @@ async function closeBrowser({preserveProfile=false}={}){
   }
   if(!removed&&fs.existsSync(b.profileDir))throw fail('BROWSER_PROFILE_CLEANUP_FAILED');
  }
+ // Only forget the owned browser after its profile/process cleanup succeeds.
+ // A failed close remains retryable through the same owned helper session.
+ if(browser===b)browser=null;
 }
 async function startBrowserForRelaunch(prior,headless){
  let lastError=null,cleaned=false;
