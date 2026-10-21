@@ -69,10 +69,17 @@ async function stopDriver(child){
  try{child.kill('SIGKILL');}catch{}
 }
 async function closeBrowser({preserveProfile=false}={}){
- const b=browser;browser=null;if(!b)return;
+ const b=browser;if(!b)return;
  try{if(b.sessionId)await fetch('http://127.0.0.1:'+b.port+'/session/'+b.sessionId,{method:'DELETE',signal:AbortSignal.timeout(5000)});}catch{}
  await stopDriver(b.driver);
- if(b.isolated&&!preserveProfile){try{fs.rmSync(b.profileDir,{recursive:true,force:true});}catch{throw fail('BROWSER_PROFILE_CLEANUP_FAILED');}}
+ if(b.isolated&&!preserveProfile){
+  try{fs.rmSync(b.profileDir,{recursive:true,force:true});}
+  catch{throw fail('BROWSER_PROFILE_CLEANUP_FAILED');}
+  if(fs.existsSync(b.profileDir))throw fail('BROWSER_PROFILE_CLEANUP_FAILED');
+ }
+ // Preserve ownership when cleanup is incomplete: a later 'end' must retry
+ // this exact isolated profile, never give a false closed=true.
+ if(browser===b)browser=null;
 }
 async function startBrowser(req){
  if(browser)throw fail('BROWSER_SESSION_ALREADY_RUNNING');
