@@ -232,6 +232,25 @@ export function isolateWindowsAsyncHttpRegression(command) {
   return 'node --test --test-concurrency=1 '+file+' && '+parts.join(' && ');
 }
 
+/**
+ * Hosted Windows: the strict 6-second team-reservation regression must run
+ * before the long check/test process fixture sequence in the test phase.
+ * The file has already been isolated by isolateWindowsTimingSensitiveRegressions.
+ * Move that exact standalone command only; retain all tests, assertions,
+ * timeout budgets, other group order and fail-closed cardinality.
+ */
+export function prioritizeWindowsAdaptiveCold(command) {
+  if (typeof command !== 'string' || !command) throw new Error('CI_COLD_ADAPTIVE_COMMAND_INVALID');
+  const parts=command.split(' && ');
+  const exact='node --test --test-concurrency=1 test/project-adaptive.test.mjs';
+  if (parts.filter(part=>part.includes('test/project-adaptive.test.mjs')).length!==1)
+    throw new Error('CI_COLD_ADAPTIVE_CARDINALITY');
+  const index=parts.indexOf(exact);
+  if (index<0)throw new Error('CI_COLD_ADAPTIVE_NOT_ISOLATED');
+  parts.splice(index,1);
+  return [exact,...parts].join(' && ');
+}
+
 export function parseQualificationArgs(argv){
   const out={script:null,concurrency:null,prioritizeSensitive:false};
   for(let i=0;i<argv.length;i++){
@@ -270,6 +289,7 @@ function run(){
     // Short-deadline workflow-plan first, then team reservation, then async HTTP.
     command=isolateWindowsWorkflowPlanRegression(command);
     command=isolateWindowsMcpConformanceRegression(command);
+    command=prioritizeWindowsAdaptiveCold(command);
   }
   if(process.platform==='win32'&&args.script==='test'&&process.env.RC_QUALIFICATION_RUN_ID)
     command=markIsolatedQualificationPhases(command);

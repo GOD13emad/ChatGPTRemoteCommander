@@ -45,6 +45,7 @@ export function createGuiController({ platform = process.platform, now = () => p
   let session = null;
   let frame = null;
   let busy = false;
+  let queuedObservation = null;
   let uncertain = false;
   function current() {
     if (session && session.expires <= now()) { session = null; frame = null; closeInvoke(); }
@@ -53,7 +54,7 @@ export function createGuiController({ platform = process.platform, now = () => p
   function owns(value) {
     if (!current() || !sameToken(value, session.id)) throw guiError('GUI_LEASE_REQUIRED_OR_EXPIRED');
   }
-  async function execute(ctx, name, raw = {}) {
+  async function execute(ctx, name, raw = {}, alreadyWaited = false) {
     const input = validateGuiInput(name, raw);
     const rule = GUI_RULES.get(name);
     const power = ctx.config?.powerMode;
@@ -111,8 +112,22 @@ export function createGuiController({ platform = process.platform, now = () => p
           (name==='gui_session_begin' && input.mode==='takeover'))
         throw guiError('GUI_INCIDENT_REVIEW_REQUIRED');
     }
-    // No stale action queue: concurrent work must retry with a NEW observation.
-    if (busy) throw guiError('GUI_BUSY');
+    // One bounded waiter for read-only observation or lease cleanup only.
+    // Never queue mouse/keyboard/focus; their observed frame could be stale.
+    if (busy) {
+      const readOnly = new Set(['gui_status','gui_screenshot','gui_list_windows','gui_cursor_position','gui_session_end']);
+      if (alreadyWaited || !readOnly.has(name) || queuedObservation) throw guiError('GUI_BUSY');
+      await new Promise((resolve, reject) => {
+        const ticket = { resolve, timer: null };
+        ticket.timer = setTimeout(() => {
+          if (queuedObservation === ticket) queuedObservation = null;
+          reject(guiError('GUI_BUSY'));
+        }, 2500);
+        queuedObservation = ticket;
+      });
+      // Full re-admission: STOP, incident, lease, permissions and frame state may have changed.
+      return execute(ctx, name, raw, true);
+    }
     busy = true;
     try {
       if (name === 'gui_session_begin') {
@@ -218,7 +233,15 @@ export function createGuiController({ platform = process.platform, now = () => p
         return { __mcpContent: [{ type: 'image', mimeType, data }, { type: 'text', text: JSON.stringify(structured) }], __structuredContent: structured };
       }
       return isInput ? { ...result, submitted: true, visualVerificationRequired: true } : result;
-    } finally { busy = false; }
+    } finally {
+      busy = false;
+      if (queuedObservation) {
+        const ticket = queuedObservation;
+        queuedObservation = null;
+        clearTimeout(ticket.timer);
+        ticket.resolve();
+      }
+    }
   }
   return { execute };
 }
