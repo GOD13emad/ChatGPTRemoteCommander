@@ -41,7 +41,7 @@ internal sealed class DashboardChrome
             metrics.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25f));
         var items = new[]
         {
-            ("Verified routing pairs", "UNVERIFIED", "Canonical state + runtime"),
+            ("Discovered profiles", "UNVERIFIED", "Routed + isolated records"),
             ("Core versions", "UNVERIFIED", "Reported metadata, not release"),
             ("Live operations", "UNVERIFIED", "No authenticated worker receipt"),
             ("Control authority", "READ ONLY", "Mutation never inferred")
@@ -108,7 +108,7 @@ internal sealed class DashboardChrome
     public void Update(IEnumerable<ProfileRow> profiles)
     {
         var rows = profiles.ToList();
-        var versions = rows.Select(p => p.Version)
+        var versions = rows.Where(p => !p.IsolatedInstance).Select(p => p.Version)
                            .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         Set(0, rows.Count.ToString(), true);
         Set(1, versions.Count switch { 0 => "UNVERIFIED", 1 => versions[0], _ => "MIXED" }, true);
