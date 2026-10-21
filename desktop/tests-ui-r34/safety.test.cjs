@@ -26,7 +26,9 @@ test('UI features include accessible local profile search and DPI-safe resizing'
  assert.match(presentation,/AccessibleName = "Filter verified local routing profiles"/);
  assert.match(presentation,/SizeChanged/);
  assert.match(presentation,/ApplyFilter/);
- assert.match(presentation,/AccessibleName = \(evidence/);
+ assert.ok(presentation.includes('AccessibleName = metricTitles[index] + ": "'));
+ assert.ok(presentation.includes('AccessibleDescription = captions[index].Text'));
+ assert.ok(presentation.includes('metricTitles.Add(title)'));
  assert.match(core,/AutoScaleMode = AutoScaleMode\.Dpi;/);
 });
 test('Windows appearance follows read-only per-user system preference',()=>{
