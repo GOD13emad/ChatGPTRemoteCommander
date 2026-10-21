@@ -215,7 +215,26 @@ test('auto updater is candidate-first, hardware-gated and commit-point aware',()
   for(const marker of ['diff --cached --quiet --','diff --ignore-space-at-eol --exit-code --','CONTROL_TRACKED_EOL_DRIFT_ACCEPTED'])assert.ok(promote.includes(marker),marker);
   assert.ok(promote.indexOf('diff --cached --quiet --') < promote.indexOf('CONTROL_TRACKED_EOL_DRIFT_ACCEPTED'),'staged control changes must fail before EOL-only drift is accepted');
   assert.ok(promote.indexOf('diff --ignore-space-at-eol --exit-code --') < promote.indexOf('CONTROL_TRACKED_EOL_DRIFT_ACCEPTED'),'substantive unstaged control changes must fail before EOL-only drift is accepted');
-  assert.ok(s.includes('https://github.com/GOD13emad/ChatGPTRemoteCommander/releases/latest') && s.includes('Invoke-WebRequest') && s.includes('Invoke-RestMethod'),'Windows stable discovery must prefer published-release redirect with REST fallback');
+  const discovery=s.slice(s.indexOf('function Get-LatestTag {'),s.indexOf('function Ensure-ProjectProvider',s.indexOf('function Get-LatestTag {')));
+  assert.ok(discovery.startsWith('function Get-LatestTag {'), 'Windows stable release discovery function missing');
+  assert.ok(discovery.includes('Invoke-WebRequest')&&discovery.includes('Invoke-RestMethod'),'published redirect and REST fallback are both required');
+  const endpoints=[...discovery.matchAll(/'(https:\/\/[^']+)'/g)].map(x=>x[1]);
+  const isExpected=(value,host,pathname)=>{
+    try{
+      const u=new URL(value);
+      return u.protocol==='https:'&&u.hostname===host&&u.pathname===pathname&&
+        !u.username&&!u.password&&!u.port&&!u.search&&!u.hash;
+    }catch{return false;}
+  };
+  assert.equal(endpoints.length,2,'Windows release discovery must have exactly two pinned URLs');
+  assert.ok(isExpected(endpoints[0],'github.com','/GOD13emad/ChatGPTRemoteCommander/releases/latest'));
+  assert.ok(isExpected(endpoints[1],'api.github.com','/repos/GOD13emad/ChatGPTRemoteCommander/releases/latest'));
+  for(const unsafe of ['https://github.com.evil.invalid/GOD13emad/ChatGPTRemoteCommander/releases/latest',
+                       'https://github.com/GOD13emad/ChatGPTRemoteCommander/releases/latest?redirect=1',
+                       'https://github.com/GOD13emad/ChatGPTRemoteCommander/releases/latest-not-trusted',
+                       'http://github.com/GOD13emad/ChatGPTRemoteCommander/releases/latest']){
+    assert.equal(isExpected(unsafe,'github.com','/GOD13emad/ChatGPTRemoteCommander/releases/latest'),false);
+  }
   assert.ok(s.includes("MCP-Protocol-Version") && s.includes("2026-07-28") && s.includes("-Headers $headers"), 'internal updater MCP calls through the canonical router must identify as the current protocol and never self-poison legacy-host continuity state');
   assert.ok(s.includes("io.modelcontextprotocol/protocolVersion") && s.includes("_meta"), 'modern updater MCP calls must mirror the protocol marker in body metadata so header/body classification cannot fail');
   assert.ok(s.includes("io.modelcontextprotocol/clientCapabilities") && s.includes("io.modelcontextprotocol/clientInfo") && s.includes("Mcp-Method") && s.includes("Mcp-Name"), 'modern updater MCP calls must satisfy the complete server-side modern client contract');
