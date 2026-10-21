@@ -73,7 +73,7 @@ assert.ok(updater.includes('install_linux_gui_backend'));
 const discovery=updater.slice(updater.indexOf('latest_ref(){'),updater.indexOf('\nstage_release(){'));
 assert.ok(discovery.startsWith('latest_ref(){'), 'Linux release discovery function missing');
 assert.ok(discovery.includes("%{url_effective}"), 'published release redirect must be inspected');
-const endpoints=[...discovery.matchAll(/(?:^|\\s)(https:\/\/[^\\s'"\\\\]+)/gm)].map(x=>x[1]);
+const endpoints=[...discovery.matchAll(/(?:^|\s)(https:\/\/[^\s'"\\]+)/gm)].map(x=>x[1]);
 const trustedEndpoint=(value,host,pathname)=>{
   try{
     const u=new URL(value);
