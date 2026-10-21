@@ -22,6 +22,16 @@ class DashboardPresentationTests(unittest.TestCase):
             self.assertEqual(ui.checked_count(v), "UNVERIFIED")
         self.assertEqual(ui.checked_count(0), "0")
         self.assertEqual(ui.checked_count(300), "300")
+    def test_gui_monitor_never_claims_native_takeover_or_private_desktop(self):
+        self.assertEqual(ui.state_label("OBSERVE_READY")[1],"rc-success")
+        for state in ("TAKEOVER_REQUIRED","INPUT_DISABLED","NOT_VERIFIED","UNAVAILABLE"):
+            self.assertNotEqual(ui.state_label(state)[1],"rc-success")
+        self.assertEqual(ui.state_label("BLOCKED")[1],"rc-danger")
+        source=P.read_text()
+        for name in ("GUI observation","Native input","Private desktop"):
+            self.assertIn('"'+name+'"',source)
+        self.assertIn('snapshot.get("guiInput", "UNVERIFIED")',source)
+        self.assertIn('snapshot.get("privateDesktop", "NOT_VERIFIED")',source)
     def test_profiles_truncated_and_never_mutated(self):
         data = [{"id":"default","port":48832,"version":"0.10.20","generation":34,"root":"/tmp/test"}]
         original = repr(data)

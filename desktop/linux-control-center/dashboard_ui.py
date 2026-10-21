@@ -52,9 +52,9 @@ CSS = """
 .rc-list-caption { font-size: 12px; opacity: .72; }
 .rc-rule { padding: 16px; border: 1px solid alpha(@borders, .5);
   background: @card_bg_color; border-radius: 16px; }
-.rc-success { color: #13875f; }
-.rc-caution { color: #c67b21; }
-.rc-danger { color: #c75252; }
+.rc-success { color: @success_color; }
+.rc-caution { color: @warning_color; }
+.rc-danger { color: @error_color; }
 .rc-quiet { opacity: .72; }
 .rc-footer { font-size: 11px; opacity: .63; padding: 10px 16px; }
 .rc-status-icon { margin-right: 6px; }
@@ -72,7 +72,7 @@ def checked_count(value) -> str:
 def state_label(state: object) -> tuple[str, str]:
     """Return explicit user-facing state and severity class, no invented PASS."""
     text = str(state if isinstance(state, str) else "UNVERIFIED").strip().upper()[:42]
-    if text in {"CONNECTED", "READY", "ONLINE", "PASS"}:
+    if text in {"CONNECTED", "READY", "ONLINE", "PASS", "OBSERVE_READY"}:
         return text, "rc-success"
     if text in {"DISCONNECTED", "BLOCKED", "FAILED", "ERROR"}:
         return text, "rc-danger"
@@ -292,7 +292,9 @@ def run_dashboard(app_id: str,
             flow.set_hexpand(True)
             for index, (title, initial, description) in enumerate([
                 ("Connection", "UNVERIFIED", "Waiting for owner-private monitor"),
-                ("Native GUI", "UNVERIFIED", "Input admission / STOP state"),
+                ("GUI observation", "UNVERIFIED", "Screenshot readiness only"),
+                ("Native input", "UNVERIFIED", "Separate interactive authorization"),
+                ("Private desktop", "UNVERIFIED", "Independent OS session not verified"),
                 ("Browser", "UNVERIFIED", "Background browser readiness"),
                 ("Active operations", "UNVERIFIED", "Live only; not durable backlog"),
             ]):
@@ -545,10 +547,18 @@ def run_dashboard(app_id: str,
             self._set_status(self._card_labels["Connection"][0], connection)
             self._card_labels["Connection"][1].set_text(
                 str(snapshot.get("device") or "No accepted live device")[:100])
-            self._set_status(self._card_labels["Native GUI"][0],
+            self._set_status(self._card_labels["GUI observation"][0],
                              snapshot.get("gui", "UNVERIFIED"))
-            self._card_labels["Native GUI"][1].set_text(
+            self._card_labels["GUI observation"][1].set_text(
                 str(snapshot.get("guiReason") or "Physical STOP/Mutex separate")[:100])
+            self._set_status(self._card_labels["Native input"][0],
+                             snapshot.get("guiInput", "UNVERIFIED"))
+            self._card_labels["Native input"][1].set_text(
+                "No monitor receipt can grant native desktop control")
+            self._set_status(self._card_labels["Private desktop"][0],
+                             snapshot.get("privateDesktop", "NOT_VERIFIED"))
+            self._card_labels["Private desktop"][1].set_text(
+                "VM, Xpra or RDS requires independently verified allocation")
             self._set_status(self._card_labels["Browser"][0],
                              snapshot.get("browser", "UNVERIFIED"))
             self._card_labels["Browser"][1].set_text(
