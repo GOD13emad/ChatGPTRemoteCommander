@@ -1,0 +1,70 @@
+name: Notion Control Center integration QA (NoPromote)
+
+on:
+  pull_request:
+    paths:
+      - "src/notion-*.mjs"
+      - "src/server-v0.3.mjs"
+      - "tools/notion-*.mjs"
+      - "test/notion-*.mjs"
+      - "desktop/RemoteCommanderDashboard/NotionSetupForm.cs"
+      - "desktop/RemoteCommanderDashboard/Program.cs"
+      - "desktop/linux-control-center/**"
+      - ".github/workflows/notion-control-center-integration-qa.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  notion-linux:
+    name: Linux native Notion contract (qualification only)
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Verify REST and MCP are opt-in and secure
+        run: |
+          node --test --test-concurrency=1 test/notion-engine.test.mjs test/notion-mcp-engine.test.mjs test/notion-login.test.mjs test/notion-core-http.test.mjs test/notion-offline-fault-qualification-20261021.test.mjs
+      - name: Verify GTK Control Center and Notion credential controls
+        run: |
+          python -B -m unittest discover -s desktop/linux-control-center -p 'test*.py' -v
+          node test/linux-gui-contract.mjs
+      - name: Verify full repository credential scan
+        run: npm run audit
+
+  notion-windows:
+    name: Windows native Notion Control Center (qualification only)
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+      - name: Verify local vault, REST and MCP contracts
+        shell: pwsh
+        run: |
+          node --test --test-concurrency=1 test/notion-engine.test.mjs test/notion-mcp-engine.test.mjs test/notion-login.test.mjs test/notion-core-http.test.mjs test/notion-offline-fault-qualification-20261021.test.mjs
+          if($LASTEXITCODE -ne 0){throw 'NOTION_INTEGRATION_TEST_FAILED'}
+      - name: Build existing Windows Control Center without deployment
+        shell: pwsh
+        run: |
+          dotnet build desktop/RemoteCommanderDashboard/RemoteCommanderDashboard.csproj -c Release --nologo
+          if($LASTEXITCODE -ne 0){throw 'NOTION_DASHBOARD_BUILD_FAILED'}
+          dotnet run --project desktop/tests-ui-r34/R34UiTests.csproj -c Release --nologo
+          if($LASTEXITCODE -ne 0){throw 'NOTION_R34_SOURCE_CONTRACT_FAILED'}
+      - name: Verify full repository credential scan
+        shell: pwsh
+        run: |
+          npm run audit
+          if($LASTEXITCODE -ne 0){throw 'NOTION_SECURITY_AUDIT_FAILED'}
