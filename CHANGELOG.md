@@ -1,3 +1,9 @@
+# 0.10.26 - SOURCE CANDIDATE ONLY (2026-10-21; NOT RELEASED)
+
+- Prepare version-separated source identity following immutable v0.10.25 UNSIGNED Preview. This change does NOT publish or replace v0.10.25.
+- Carry merged read-only GUI_NATIVE_BUSY and GUI_BUSY fixes and Windows CI scheduling forward. Installer default refs, current host profiles, and rollback storage remain unchanged.
+- There is NO unsigned v0.10.26 authorization, tag, trusted signing certificate, published installer, or fleet rollout. Independent release admission and host canary are mandatory.
+
 # 0.10.25 - SOURCE CANDIDATE ONLY (2026-10-17, NOT RELEASED)
 
 - Native owner-editable durable roadmap in Commander, source parent merged PR #238 at 99d3908e848eee01714eb8e2832b4f5eba5f8df1.

@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { assertPinnedReleaseDiscovery } from './release-discovery-contract.mjs';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -69,7 +70,7 @@ assert.ok(!/(logout|logoff|reboot|shutdown)[ \t]/i.test(installer), 'GUI install
 assert.ok(controller.includes("platform === 'linux'"));
 assert.ok(server.includes("process.platform === 'win32' || process.platform === 'linux'"));
 assert.ok(updater.includes('install_linux_gui_backend'));
-assert.ok(updater.includes('https://github.com/GOD13emad/ChatGPTRemoteCommander/releases/latest') && updater.includes('%{url_effective}'));
+assertPinnedReleaseDiscovery(updater,'linux');
 
 const headlessValidation = process.env.REMOTE_COMMANDER_HEADLESS_VALIDATE === '1';
 if (process.platform === 'linux' && !headlessValidation) {
