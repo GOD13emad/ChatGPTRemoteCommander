@@ -7,7 +7,8 @@ internal sealed record ProfileRow(
     string Name, int Generation, string Version, string Commit,
     int BackendPort, int RouterPort, int RouterPid,
     DateTimeOffset? UpdatedAt, string ProjectDir,
-    string BackendConfigSha256, string RouterSourceSha256);
+    string BackendConfigSha256, string RouterSourceSha256,
+    bool IsolatedInstance = false);
 
 internal static class Program
 {
@@ -45,6 +46,20 @@ internal static class Program
         if (!actual.Contains("1") || !actual.Contains("0.10.20")
             || !actual.Contains("UNVERIFIED") || !actual.Contains("READ ONLY"))
             throw new Exception("R34_FALSE_METRIC_VALUES");
+
+        // Isolated records increase the profile count without inventing a Core version.
+        chrome.Update(profiles.Concat(new[] {
+            new ProfileRow("MMZ", 0, "unknown", "", 47836, 0, 0, null, "",
+                new string('c', 64), "", true)
+        }));
+        var isolatedMetricValues = table.Controls.OfType<Panel>()
+            .SelectMany(p => p.Controls.OfType<Label>())
+            .Select(l => l.Text).ToArray();
+        if (!isolatedMetricValues.Contains("2") ||
+            !isolatedMetricValues.Contains("0.10.20") ||
+            isolatedMetricValues.Contains("MIXED") ||
+            isolatedMetricValues.Contains("unknown"))
+            throw new Exception("R34_ISOLATED_METRIC_OR_VERSION_INVENTED");
 
         if (chrome.Search is not Panel search || search.Controls.OfType<TextBox>().Count() != 1)
             throw new Exception("R34_MISSING_ACCESSIBLE_SEARCH");
