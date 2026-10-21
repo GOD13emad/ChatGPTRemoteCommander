@@ -1,8 +1,14 @@
 # ChatGPT Remote Commander
 
-> **Official project brand:** **[TandemVector Labs](https://github.com/Usefull-Skills)**. Lead source/release maintainer: [Aliakbar Emadoddin](https://github.com/GOD13emad); supporting collaborator: [MMZ](https://github.com/mohammadmohammadzadeh19960-code). [Maintainer credits](docs/PUBLISHER_AND_MAINTAINERS.md). Windows v0.10.24 preview is **UNSIGNED**; checksums and GitHub provenance do not replace Authenticode or remove SmartScreen warnings. Current Stable remains v0.10.20.
+> **Project / product brand:** **TandemVector Labs**. Canonical public repository: [GOD13emad/ChatGPTRemoteCommander](https://github.com/GOD13emad/ChatGPTRemoteCommander). Principal author: [Dr. Aliakbar Emadoddin](https://github.com/GOD13emad); supporting maintainer: [MMZ](https://github.com/mohammadmohammadzadeh19960-code). [Publisher and maintainer credits](docs/PUBLISHER_AND_MAINTAINERS.md). Branding does **not** imply a legal-company certificate or Windows Authenticode signing.
 
-> **Current published Core is [v0.10.20](docs/RELEASE_0.10.20.md).** [Release authority and open gates](docs/RELEASE_AUTHORITY.md) distinguish stable Core, separate Browser stable, and unaccepted UI/Updater drafts. `main` is not itself a release.
+> **Stable Core: [v0.10.20](https://github.com/GOD13emad/ChatGPTRemoteCommander/releases/tag/v0.10.20). Public UNSIGNED Preview: [v0.10.25](https://github.com/GOD13emad/ChatGPTRemoteCommander/releases/tag/v0.10.25).** Both are published, but the Preview is **not** the Stable auto-update channel. A newer `v0.10.26` is a source/release candidate and **must not** be presented as public until its tagged release has been verified. `main` is not itself a release.
+
+### Try the public release and support the project
+
+[**Download the latest published unsigned Preview (v0.10.25)**](https://github.com/GOD13emad/ChatGPTRemoteCommander/releases/tag/v0.10.25) · [**Read the setup guide**](START_HERE.md) · [**Report a bug or suggest a feature**](https://github.com/GOD13emad/ChatGPTRemoteCommander/issues) · [**Star this repository if it is useful**](https://github.com/GOD13emad/ChatGPTRemoteCommander)
+
+The Windows Preview installer is **UNSIGNED**. Windows may display **Unknown publisher**; Microsoft **SmartScreen** or Smart App Control may warn or block. GitHub Sigstore build attestation and release SHA-256 checksums help verify origin and integrity, but **do not replace Authenticode**. Do not disable or bypass Windows security protections. The project plans to pursue a trusted signing certificate later.
 
 ![ChatGPT Remote Commander icon](assets/plugin-icon.png)
 
