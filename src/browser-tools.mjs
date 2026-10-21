@@ -43,7 +43,7 @@ export function reapBrowserOrphans(ctx){
  return reapOrphanedIsolatedBrowserProfiles({instanceRoot:path.join(root,instance)});
 }
 export function createBrowserController({invoke=defaultInvoke,closeInvoke=defaultClose,now=()=>performance.now(),wallNow=()=>Date.now(),token=()=>randomBytes(24).toString('hex'),scheduleTimeout=setTimeout,cancelTimeout=clearTimeout}={}){
- let session=null,uncertain=false,timer=null,busy=false,expiryRequested=false,expiredProfile=null;
+ let session=null,uncertain=false,chatMutationUncertain=false,timer=null,busy=false,expiryRequested=false,expiredProfile=null;
  const clearTimer=()=>{if(timer)cancelTimeout(timer);timer=null;};
  const cleanupExpired=async()=>{
   if(!expiryRequested||busy)return;
@@ -55,7 +55,7 @@ export function createBrowserController({invoke=defaultInvoke,closeInvoke=defaul
  const expireSession=()=>{
   if(!session)return;
   expiredProfile=session.profileDir;
-  session=null;uncertain=false;timer=null;expiryRequested=true;
+  session=null;uncertain=false;chatMutationUncertain=false;timer=null;expiryRequested=true;
   if(!busy)queueMicrotask(()=>cleanupExpired().catch(()=>{}));
  };
  const current=()=>{
@@ -79,7 +79,7 @@ export function createBrowserController({invoke=defaultInvoke,closeInvoke=defaul
    let native={ok:true,available:false,backend:null,active:false};
    try{native=await invoke({action:'status',executable:cfg.executable});}catch(error){native={ok:false,available:false,backend:null,active:false,reason:error.browserCode??'BROWSER_HELPER_UNAVAILABLE'};}
    current();
-   return {...native,enabled,busy,leased:!!session,uncertain,policy:{
+   return {...native,enabled,busy,leased:!!session,uncertain,sessionResetRequired:chatMutationUncertain,policy:{
     backgroundFirst:true,headlessOwnedProfileOnly:true,userDesktopTouchedByDefault:false,
     savedPasswordExtraction:false,userBrowserProfileReuse:false,
     foregroundFallback:'explicit-current-request-only',workflowBrowserAllowed:false,
@@ -108,14 +108,14 @@ export function createBrowserController({invoke=defaultInvoke,closeInvoke=defaul
     }
     session={id:token(),expires:now()+ttl*1000,ttl,mode,profile,profileDir:dir,isolated:mode==='isolated',
       executable:cfg.executable,foreground:false,createdAtEpochMs:createdAt,expiresAtEpochMs:expiresAt};
-    uncertain=false;expiryRequested=false;arm(ttl);
+    uncertain=false;chatMutationUncertain=false;expiryRequested=false;arm(ttl);
     return {ok:true,lease:session.id,ttlSeconds:ttl,profile,mode,background:true,headless:true,
       userDesktopTouched:false,savedPasswordStoreAccess:false,browserProduct:native.browserProduct??null,backend:native.backend??'browser-headless'};
    }
    owns(input.lease);
    if(name==='browser_chat_tabs'){
      const native=await invoke({action:'chat_tabs'});
-     return {...native,background:true,userDesktopTouched:false};
+     return {...native,sessionResetRequired:chatMutationUncertain,background:true,userDesktopTouched:false};
    }
    if(name==='browser_session_renew'){
     const ttl=input.ttlSeconds??300,expiresAt=wallNow()+ttl*1000;
@@ -124,9 +124,10 @@ export function createBrowserController({invoke=defaultInvoke,closeInvoke=defaul
    }
    if(name==='browser_session_end'){
     const profileDir=session.profileDir;
-    clearTimer();session=null;uncertain=false;expiryRequested=false;expiredProfile=null;
+    clearTimer();session=null;uncertain=false;chatMutationUncertain=false;expiryRequested=false;expiredProfile=null;
     const r=await invoke({action:'end'});removeBrowserLeaseMarker(profileDir);return {ok:true,closed:r.closed===true};
    }
+   if(chatMutationUncertain&&name==='browser_foreground_begin')throw browserError('BROWSER_CHAT_OUTCOME_UNCERTAIN_SESSION_RESET_REQUIRED');
    if(name==='browser_foreground_requirement'){
     return {ok:true,approvalRequired:true,reason:input.reason,targetHost:input.targetHost??null,detail:input.detail??null,
       backgroundSessionPreserved:true,desktopTakenOver:false,
@@ -151,7 +152,7 @@ export function createBrowserController({invoke=defaultInvoke,closeInvoke=defaul
     return {ok:true,foreground:false,headless:true,userDesktopTouched:false,sameOwnedProfile:true,
       browserProduct:native.browserProduct??null,backgroundResumed:true,resumeNavigationFailed:native.resumeNavigationFailed===true};
    }
-   if(uncertain&&['browser_navigate','browser_fill','browser_click','browser_chat_tab_open','browser_chat_tab_close'].includes(name))throw browserError('BROWSER_OUTCOME_UNCERTAIN_SNAPSHOT_REQUIRED');
+   if(uncertain&&['browser_navigate','browser_fill','browser_click','browser_chat_tab_open','browser_chat_tab_close'].includes(name))throw browserError(chatMutationUncertain?'BROWSER_CHAT_OUTCOME_UNCERTAIN_SESSION_RESET_REQUIRED':'BROWSER_OUTCOME_UNCERTAIN_SNAPSHOT_REQUIRED');
    const rule=BROWSER_RULES.get(name);
    if(['browser_navigate','browser_chat_tab_open','browser_chat_tab_close'].includes(name)&&cfg.allowNavigate!==true)throw browserError('BROWSER_NAVIGATION_DISABLED');
    if(['browser_fill','browser_click'].includes(name)&&cfg.allowInput!==true)throw browserError('BROWSER_INPUT_DISABLED');
@@ -171,8 +172,8 @@ export function createBrowserController({invoke=defaultInvoke,closeInvoke=defaul
     else if(name==='browser_wait')result=await invoke({action:'wait',selector:input.selector,textIncludes:input.textIncludes,urlIncludes:input.urlIncludes,timeoutMs:input.timeoutMs??5000});
     else throw browserError('BROWSER_UNKNOWN_TOOL');
     if(name==='browser_snapshot'){
-      uncertain=false;
-      result={...result,passwordValuesReturned:false,cookiesReturned:false,savedPasswordStoreAccess:false};
+      if(!chatMutationUncertain)uncertain=false;
+      result={...result,sessionResetRequired:chatMutationUncertain,passwordValuesReturned:false,cookiesReturned:false,savedPasswordStoreAccess:false};
     }
     if(name==='browser_screenshot'){
       const {data,mimeType,...meta}=result;
@@ -185,7 +186,7 @@ export function createBrowserController({invoke=defaultInvoke,closeInvoke=defaul
     }
     return {...result,...activity,...(['browser_fill','browser_click'].includes(name)?{verificationRecommended:true}:{})};
    }catch(error){
-    if(mutation)uncertain=true;
+    if(mutation){uncertain=true;if(name==='browser_chat_tab_open'||name==='browser_chat_tab_close')chatMutationUncertain=true;}
     throw error;
    }
   }finally{
@@ -193,7 +194,7 @@ export function createBrowserController({invoke=defaultInvoke,closeInvoke=defaul
    if(expiryRequested)await cleanupExpired();
   }
  };
- const close=()=>{clearTimer();session=null;uncertain=false;expiryRequested=false;closeInvoke();};
+ const close=()=>{clearTimer();session=null;uncertain=false;chatMutationUncertain=false;expiryRequested=false;closeInvoke();};
  return {execute,close};
 }
 const controller=createBrowserController();

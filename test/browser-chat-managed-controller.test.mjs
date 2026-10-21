@@ -9,15 +9,18 @@ import {BROWSER_RULES,validateBrowserInput} from '../src/browser-contract.mjs';
 function fixture(){
  const root=fs.mkdtempSync(path.join(os.tmpdir(),'rc-managed-tabs-controller-'));
  const actions=[];
- let failNext=false;
+ let failNext=null;
  const invoke=async req=>{
   actions.push(req);
   if(req.action==='start')return {ok:true,browserProduct:'Chromium QA'};
   if(req.action==='chat_tab_open'){
-   if(failNext){failNext=false;throw Error('BROWSER_CDP_TIMEOUT')}
+   if(failNext==='chat_tab_open'){failNext=null;throw Error('BROWSER_CDP_TIMEOUT')}
    return {ok:true,tabRef:'a'.repeat(32),owned:true};
   }
-  if(req.action==='chat_tab_close')return {ok:true,closed:true};
+  if(req.action==='chat_tab_close'){
+   if(failNext==='chat_tab_close'){failNext=null;throw Error('BROWSER_CDP_TIMEOUT')}
+   return {ok:true,closed:true};
+  }
   if(req.action==='chat_tabs')return {ok:true,source:'COMMANDER_OWNED_BROWSER_CORE',
     managedTabs:[{tabRef:'a'.repeat(32)}],ready:true};
   if(req.action==='snapshot')return {ok:true,title:'Private browser',text:'',elements:[]};
@@ -28,7 +31,7 @@ function fixture(){
    enabled:true,profileRoot:root,allowNavigate:true,allowInput:false,allowScreenshot:false
  }}}};
  const ctl=createBrowserController({invoke,token:()=> 'b'.repeat(48)});
- return {ctl,ctx,actions,fail(){failNext=true},done(){ctl.close();fs.rmSync(root,{recursive:true,force:true})}};
+ return {ctl,ctx,actions,fail(action='chat_tab_open'){failNext=action},done(){ctl.close();fs.rmSync(root,{recursive:true,force:true})}};
 }
 test('managed tab control is private, lease-gated and requires navigation permission',async()=>{
  const f=fixture();
@@ -57,16 +60,44 @@ test('managed tab control is private, lease-gated and requires navigation permis
   await assert.rejects(f.ctl.execute(f.ctx,'browser_chat_tab_open',{lease,url:'https://chatgpt.com/'}),/BROWSER_LEASE_REQUIRED_OR_EXPIRED/);
  }finally{f.done()}
 });
-test('failed managed-tab mutation blocks blind retry until reconciliation',async()=>{
+test('ambiguous managed-tab open requires session reset, not an unrelated DOM snapshot',async()=>{
  const f=fixture();
  try{
   const begun=await f.ctl.execute(f.ctx,'browser_session_begin',{mode:'isolated'}),lease=begun.lease;
   f.fail();
   await assert.rejects(f.ctl.execute(f.ctx,'browser_chat_tab_open',{lease,url:'https://chatgpt.com/'}),/BROWSER_CDP_TIMEOUT/);
-  await assert.rejects(f.ctl.execute(f.ctx,'browser_chat_tab_open',{lease,url:'https://chatgpt.com/'}),/BROWSER_OUTCOME_UNCERTAIN_SNAPSHOT_REQUIRED/);
+  await assert.rejects(f.ctl.execute(f.ctx,'browser_chat_tab_open',{lease,url:'https://chatgpt.com/'}),/BROWSER_CHAT_OUTCOME_UNCERTAIN_SESSION_RESET_REQUIRED/);
   await f.ctl.execute(f.ctx,'browser_snapshot',{lease});
-  const opened=await f.ctl.execute(f.ctx,'browser_chat_tab_open',{lease,url:'https://chatgpt.com/'});
+  await assert.rejects(f.ctl.execute(f.ctx,'browser_chat_tab_open',{lease,url:'https://chatgpt.com/'}),/BROWSER_CHAT_OUTCOME_UNCERTAIN_SESSION_RESET_REQUIRED/);
+  const observed=await f.ctl.execute(f.ctx,'browser_chat_tabs',{lease});
+  assert.equal(observed.sessionResetRequired,true);
+  await assert.rejects(f.ctl.execute(f.ctx,'browser_chat_tab_open',{lease,url:'https://chatgpt.com/'}),/BROWSER_CHAT_OUTCOME_UNCERTAIN_SESSION_RESET_REQUIRED/);
+  assert.equal(f.actions.filter(x=>x.action==='chat_tab_open').length,1);
+  await f.ctl.execute(f.ctx,'browser_session_end',{lease});
+  const fresh=await f.ctl.execute(f.ctx,'browser_session_begin',{mode:'isolated'});
+  const opened=await f.ctl.execute(f.ctx,'browser_chat_tab_open',{lease:fresh.lease,url:'https://chatgpt.com/'});
   assert.equal(opened.owned,true);
+  await f.ctl.execute(f.ctx,'browser_session_end',{lease:fresh.lease});
+ }finally{f.done()}
+});
+
+test('ambiguous managed-tab close remains blocked after read-only reconciliation',async()=>{
+ const f=fixture();
+ try{
+  const {lease}=await f.ctl.execute(f.ctx,'browser_session_begin',{mode:'isolated'});
+  const opened=await f.ctl.execute(f.ctx,'browser_chat_tab_open',{lease,url:'https://chatgpt.com/'});
+  f.fail('chat_tab_close');
+  await assert.rejects(f.ctl.execute(f.ctx,'browser_chat_tab_close',{lease,tabRef:opened.tabRef}),/BROWSER_CDP_TIMEOUT/);
+  const snap=await f.ctl.execute(f.ctx,'browser_snapshot',{lease});
+  assert.equal(snap.sessionResetRequired,true);
+  const state=await f.ctl.execute(f.ctx,'browser_status',{});
+  assert.equal(state.uncertain,true);
+  assert.equal(state.sessionResetRequired,true);
+  const observed=await f.ctl.execute(f.ctx,'browser_chat_tabs',{lease});
+  assert.equal(observed.sessionResetRequired,true);
+  await assert.rejects(f.ctl.execute(f.ctx,'browser_chat_tab_close',{lease,tabRef:opened.tabRef}),/BROWSER_CHAT_OUTCOME_UNCERTAIN_SESSION_RESET_REQUIRED/);
+  await assert.rejects(f.ctl.execute(f.ctx,'browser_chat_tab_open',{lease,url:'https://chatgpt.com/'}),/BROWSER_CHAT_OUTCOME_UNCERTAIN_SESSION_RESET_REQUIRED/);
+  assert.equal(f.actions.filter(x=>x.action==='chat_tab_close').length,1);
   await f.ctl.execute(f.ctx,'browser_session_end',{lease});
  }finally{f.done()}
 });
