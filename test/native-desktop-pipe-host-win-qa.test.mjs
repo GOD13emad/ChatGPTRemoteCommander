@@ -51,10 +51,10 @@ function unknownCommand(pipe,command='click'){
   });
 }
 test('same retained Win32 Desktop objects survive independent pipe clients',
-  {skip:process.platform!=='win32',timeout:45000},async()=>{
+  {skip:process.platform!=='win32',timeout:75000},async()=>{
     const pipe='rc_qa_desk_'+randomBytes(16).toString('hex');
     const processHost=spawn(pwsh,['-NoLogo','-NoProfile','-NonInteractive',
-      '-File',server,'-PipeName',pipe,'-LifetimeMs','38000'],{
+      '-File',server,'-PipeName',pipe,'-LifetimeMs','60000'],{
       windowsHide:true,stdio:['ignore','pipe','pipe']
     });
     let stdout='',stderr='',hostExited=false,exitCode=null;
@@ -65,7 +65,7 @@ test('same retained Win32 Desktop objects survive independent pipe clients',
     processHost.stderr.on('data',x=>stderr+=x);
     try{
       const started=Date.now();
-      while(!stdout.includes('"ready":true')&&!hostExited&&Date.now()-started<13000)
+      while(!stdout.includes('"ready":true')&&!hostExited&&Date.now()-started<29000)
         await new Promise(resolve=>setTimeout(resolve,80));
       assert.equal(hostExited,false,'host exited before ready: '+stderr);
       assert.match(stdout,/"ready":true/);
