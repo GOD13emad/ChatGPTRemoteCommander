@@ -124,8 +124,20 @@ export function createBrowserController({invoke=defaultInvoke,closeInvoke=defaul
    }
    if(name==='browser_session_end'){
     const profileDir=session.profileDir;
+    let r;
+    try{
+     r=await invoke({action:'end'});
+     if(r?.closed!==true)throw browserError('BROWSER_SESSION_END_UNCONFIRMED');
+    }catch(error){
+     // Keep the lease and isolated-profile marker until owned helper closure is
+     // acknowledged. End is an owned, idempotent cleanup action and may be
+     // retried; all other mutations must fail closed after an ambiguous end.
+     uncertain=true;chatMutationUncertain=true;
+     throw error;
+    }
     clearTimer();session=null;uncertain=false;chatMutationUncertain=false;expiryRequested=false;expiredProfile=null;
-    const r=await invoke({action:'end'});removeBrowserLeaseMarker(profileDir);return {ok:true,closed:r.closed===true};
+    removeBrowserLeaseMarker(profileDir);
+    return {ok:true,closed:true};
    }
    if(chatMutationUncertain&&name==='browser_foreground_begin')throw browserError('BROWSER_CHAT_OUTCOME_UNCERTAIN_SESSION_RESET_REQUIRED');
    if(name==='browser_foreground_requirement'){

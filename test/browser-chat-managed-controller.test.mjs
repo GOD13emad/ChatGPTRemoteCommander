@@ -24,7 +24,7 @@ function fixture(){
   if(req.action==='chat_tabs')return {ok:true,source:'COMMANDER_OWNED_BROWSER_CORE',
     managedTabs:[{tabRef:'a'.repeat(32)}],ready:true};
   if(req.action==='snapshot')return {ok:true,title:'Private browser',text:'',elements:[]};
-  if(req.action==='end')return {ok:true,closed:true};
+  if(req.action==='end'){if(failNext==='end'){failNext=null;throw Error('BROWSER_HELPER_TIMEOUT')}if(failNext==='end_unconfirmed'){failNext=null;return {ok:true,closed:false};}return {ok:true,closed:true};}
   throw Error('UNEXPECTED_'+req.action);
  };
  const ctx={config:{instance:{profile:'managed_qa'},powerMode:{enabled:true,browserControl:{
@@ -104,5 +104,36 @@ test('ambiguous managed-tab close remains blocked after read-only reconciliation
   await assert.rejects(f.ctl.execute(f.ctx,'browser_chat_tab_open',{lease,url:'https://chatgpt.com/'}),/BROWSER_CHAT_OUTCOME_UNCERTAIN_SESSION_RESET_REQUIRED/);
   assert.equal(f.actions.filter(x=>x.action==='chat_tab_close').length,1);
   await f.ctl.execute(f.ctx,'browser_session_end',{lease});
+ }finally{f.done()}
+});
+
+test('uncertain session end preserves owned lease for bounded cleanup retry',async()=>{
+ const f=fixture();
+ try{
+  const {lease}=await f.ctl.execute(f.ctx,'browser_session_begin',{mode:'isolated'});
+  f.fail('end');
+  await assert.rejects(f.ctl.execute(f.ctx,'browser_session_end',{lease}),/BROWSER_HELPER_TIMEOUT/);
+  await assert.rejects(f.ctl.execute(f.ctx,'browser_session_begin',{mode:'isolated'}),/BROWSER_LEASE_BUSY/);
+  await assert.rejects(f.ctl.execute(f.ctx,'browser_chat_tab_open',{lease,url:'https://chatgpt.com/'}),/BROWSER_CHAT_OUTCOME_UNCERTAIN_SESSION_RESET_REQUIRED/);
+  const list=await f.ctl.execute(f.ctx,'browser_chat_tabs',{lease});
+  assert.equal(list.sessionResetRequired,true);
+  const closed=await f.ctl.execute(f.ctx,'browser_session_end',{lease});
+  assert.equal(closed.closed,true);
+  assert.equal(f.actions.filter(a=>a.action==='end').length,2);
+  const next=await f.ctl.execute(f.ctx,'browser_session_begin',{mode:'isolated'});
+  assert.ok(next.lease);
+  await f.ctl.execute(f.ctx,'browser_session_end',{lease:next.lease});
+ }finally{f.done()}
+});
+
+test('unconfirmed helper end also retains owned lease until a confirmed cleanup',async()=>{
+ const f=fixture();
+ try{
+  const {lease}=await f.ctl.execute(f.ctx,'browser_session_begin',{mode:'isolated'});
+  f.fail('end_unconfirmed');
+  await assert.rejects(f.ctl.execute(f.ctx,'browser_session_end',{lease}),/BROWSER_SESSION_END_UNCONFIRMED/);
+  await assert.rejects(f.ctl.execute(f.ctx,'browser_session_begin',{mode:'isolated'}),/BROWSER_LEASE_BUSY/);
+  await assert.rejects(f.ctl.execute(f.ctx,'browser_chat_tab_close',{lease,tabRef:'a'.repeat(32)}),/BROWSER_CHAT_OUTCOME_UNCERTAIN_SESSION_RESET_REQUIRED/);
+  assert.equal((await f.ctl.execute(f.ctx,'browser_session_end',{lease})).closed,true);
  }finally{f.done()}
 });
