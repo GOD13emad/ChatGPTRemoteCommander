@@ -38,7 +38,9 @@ test('historical scoped unsigned Preview policy refuses candidate v0.10.26',()=>
   assert.throws(()=>evaluateWindowsRelease({
     signed:'false',version:newVersion,tag:'v'+newVersion,policy,releaseNotes:notes
   }),/WINDOWS_UNSIGNED_RELEASE_NOT_AUTHORIZED/);
-  assert.match(read('docs/RELEASE_CANDIDATE_0.10.26.md'),/does NOT authorize unsigned v0\.10\.26/);
+  assert.match(read('docs/RELEASE_CANDIDATE_0.10.26.md'),/do NOT authorize unsigned v0\.10\.26/);
+  assert.equal(json('docs/UNSIGNED_WINDOWS_RELEASE_POLICY_0.10.26.json').version,newVersion);
+  assert.match(read('docs/RELEASE_0.10.26.md'),/Windows installer: UNSIGNED/);
   const policy25=json('docs/UNSIGNED_WINDOWS_RELEASE_POLICY_0.10.25.json');
   const notes25=read('docs/RELEASE_0.10.25.md');
   assert.throws(()=>evaluateWindowsRelease({
