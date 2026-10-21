@@ -1108,7 +1108,7 @@ test('R157 staged release lookup uses the pinned source version, not a fixed old
   "R157_JOB_NOT_ACCEPTED_"
  ]) assert.ok(workflow.includes(requirement),'missing exact NoPromote safeguard: '+requirement);
  assert.equal(workflow.includes("('releases\\v0.10.24-'+$sha.Substring(0,12))"),false);
- assert.equal('releases\\v'+version+'-'+'f'.repeat(12),'releases\\v0.10.25-'+'f'.repeat(12));
+ assert.equal('releases\\v'+version+'-'+'f'.repeat(12),'releases\\v0.10.26-'+'f'.repeat(12));
 });
 
 
