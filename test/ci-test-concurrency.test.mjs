@@ -500,6 +500,15 @@ test('R157 Windows dual-era MCP server conformance executes once early, unchange
     /CI_MCP_CONFORMANCE_CARDINALITY/);
   assert.ok(read('tools/run-bounded-test-script.mjs').includes(
     'command=isolateWindowsMcpConformanceRegression(command);'));
-  assert.match(read('test/mcp-conformance.test.mjs'),/attempt < 400/,
-    'original fixture readiness budget and body remain untouched');
+  const mcpFixture=read('test/mcp-conformance.test.mjs');
+  assert.match(mcpFixture,/const healthDeadline = Date\.now\(\) \+ 30000;/,
+    'server health has a bounded 30-second startup budget');
+  assert.match(mcpFixture,/Date\.now\(\) < healthDeadline/,
+    'polling obeys actual wall-clock deadline');
+  assert.match(mcpFixture,/AbortSignal\.timeout\(1200\)/,
+    'each health request has its own bounded deadline');
+  assert.match(mcpFixture,/assert\.equal\(healthy, true,/,
+    'response.ok remains a strict admission requirement');
+  assert.doesNotMatch(mcpFixture,/attempt < 400/,
+    'old short fixed-attempt polling must not be reintroduced');
 });
