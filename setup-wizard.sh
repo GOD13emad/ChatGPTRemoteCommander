@@ -66,7 +66,25 @@ fi
 if [[ "$PRODUCT_ALL" -eq 1 && "${#PRODUCT_REQUESTS[@]}" -gt 0 ]]; then
   echo '--all conflicts with --product' >&2; exit 2
 fi
-if [[ "$PRODUCT_SELECTION_EXPLICIT" -eq 0 && -t 0 ]]; then
+if [[ "$PRODUCT_SELECTION_EXPLICIT" -eq 0 && ( -n "${DISPLAY:-}" || -n "${WAYLAND_DISPLAY:-}" ) ]] && command -v zenity >/dev/null 2>&1; then
+  # Core is mandatory; only the qualified optional Plugin enrollment is selectable.
+  # GUI cancel must fail closed before any installer/prerequisite or credential action.
+  if gui_choice="$(zenity --list --checklist \
+      --title='Remote Commander — Select products' \
+      --text='Remote Commander Core is required. Choose optional setup steps (not a promise of ChatGPT App activation).' \
+      --column='Include' --column='Product' --column='Details' \
+      TRUE 'work-plugin' 'ChatGPT Work Plugin — activation requires registered App ID' \
+      --separator='|' --width=690 --height=270)"; then
+    case "$gui_choice" in
+      'work-plugin') PRODUCT_ALL=1 ;;
+      '') PRODUCT_REQUESTS=(core) ;;
+      *) echo 'INVALID_GUI_PRODUCT_SELECTION' >&2; exit 2 ;;
+    esac
+  else
+    echo 'GUI_PRODUCT_SELECTION_CANCELLED' >&2
+    exit 2
+  fi
+elif [[ "$PRODUCT_SELECTION_EXPLICIT" -eq 0 && -t 0 ]]; then
   echo 'Select products available in the Linux public installer:'
   echo '  1) Core only'
   echo '  2) Core + ChatGPT Work Plugin setup (activation requires App ID)'
@@ -79,7 +97,12 @@ if [[ "$PRODUCT_SELECTION_EXPLICIT" -eq 0 && -t 0 ]]; then
     *) echo 'INVALID_PRODUCT_SELECTION' >&2; exit 2 ;;
   esac
 elif [[ "$PRODUCT_SELECTION_EXPLICIT" -eq 0 ]]; then
-  # Preserve --skip-plugin for existing automated installations.
+  # A desktop launch without any selectable UI must not silently install software.
+  if [[ -n "${DISPLAY:-}" || -n "${WAYLAND_DISPLAY:-}" ]]; then
+    echo 'GUI_PRODUCT_CHOOSER_UNAVAILABLE: install zenity or run with --all / --product core' >&2
+    exit 2
+  fi
+  # Preserve existing headless / automation onboarding defaults and --skip-plugin.
   if [[ "$SKIP_PLUGIN" -eq 1 ]]; then PRODUCT_REQUESTS=(core)
   else PRODUCT_ALL=1
   fi

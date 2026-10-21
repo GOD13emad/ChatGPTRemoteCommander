@@ -87,3 +87,20 @@ test('Linux wizard offline read-only listing, plan mode and invalid selection ha
     ['--plan-only','--product','work-plugin','--skip-plugin']
   ]){r=run(...args);assert.equal(r.status,2,JSON.stringify({args,stderr:r.stderr}));}
 });
+
+test('Linux GUI product selector honors optional selection and rejects cancellation without mutation', {skip:process.platform==='win32'},()=>{
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'rc-product-zenity-'));
+ try {
+   const binary=path.join(dir,'zenity');
+   fs.writeFileSync(binary,'#!/usr/bin/env bash\nif [[ "\${RC_ZENITY_CANCEL:-0}" == 1 ]]; then exit 1; fi\nprintf "%s\\n" "\${RC_ZENITY_RESULT:-work-plugin}"\n',{mode:0o755});
+   const pathVar=dir+path.delimiter+process.env.PATH;
+   const run=(result,cancel=false)=>spawnSync('bash',[path.join(root,'setup-wizard.sh'),'--plan-only'],{
+     encoding:'utf8',timeout:3500,
+     env:{...process.env,PATH:pathVar,DISPLAY:':190',WAYLAND_DISPLAY:'',RC_ZENITY_RESULT:result,RC_ZENITY_CANCEL:cancel?'1':'0'}
+   });
+   let a=run('work-plugin');assert.equal(a.status,0,a.stderr);assert.match(a.stdout,/selected=core,work-plugin changesApplied=false/);
+   a=run('');assert.equal(a.status,0,a.stderr);assert.match(a.stdout,/selected=core changesApplied=false/);
+   a=run('work-plugin',true);assert.equal(a.status,2);assert.match(a.stderr,/GUI_PRODUCT_SELECTION_CANCELLED/);
+   a=run('companion');assert.equal(a.status,2);assert.match(a.stderr,/INVALID_GUI_PRODUCT_SELECTION/);
+ } finally {fs.rmSync(dir,{recursive:true,force:true});}
+});
