@@ -87,13 +87,26 @@ async function startBrowser(req){
  if(!executable||!driverExecutable)throw fail('BROWSER_EXECUTABLE_NOT_FOUND');
  const profileDir=path.resolve(req.profileDir);fs.mkdirSync(profileDir,{recursive:true,mode:0o700});
  const port=await freePort();
- let driver;try{driver=spawn(driverExecutable,['--host','127.0.0.1','--port',String(port)],{stdio:'ignore',windowsHide:true,shell:false});}catch{throw fail('BROWSER_HELPER_START_FAILED');}
+ // Custom -profile can prevent geckodriver from learning Marionette's
+ // random port. Pin a distinct loopback port for the owned session only.
+ let marionettePort=await freePort();
+ while(marionettePort===port)marionettePort=await freePort();
+ let driver;try{driver=spawn(driverExecutable,['--host','127.0.0.1','--port',String(port),'--marionette-port',String(marionettePort)],{stdio:'ignore',windowsHide:true,shell:false});}catch{throw fail('BROWSER_HELPER_START_FAILED');}
  browser={driver,port,sessionId:null,profileDir,isolated:req.isolated===true,executable,driverExecutable,product:null,headless:req.headless!==false};
  try{
   await waitDriver(driver,port);
   const args=['-profile',profileDir];
   if(req.headless!==false)args.unshift('-headless');
-  const created=await http('POST','/session',{capabilities:{alwaysMatch:{browserName:'firefox','moz:firefoxOptions':{args}}}},15000);
+  // With Ubuntu's Snap geckodriver, /usr/bin/firefox is a launcher wrapper,
+  // not an executable inside the driver's confinement. Let the Snap driver
+  // choose its own in-container binary. Explicit stand-alone binaries must
+  // instead be passed to a non-Snap geckodriver.
+  const snapDriver=process.platform==='linux'&&driverExecutable==='/snap/bin/geckodriver';
+  const snapLauncher=executable==='/usr/bin/firefox'||executable==='/snap/bin/firefox';
+  if(snapDriver&&!snapLauncher&&executable!=='/snap/firefox/current/usr/lib/firefox/firefox')throw fail('BROWSER_EXECUTABLE_BACKEND_MISMATCH');
+  const options={args};
+  if(!snapDriver||!snapLauncher)options.binary=executable;
+  const created=await http('POST','/session',{capabilities:{alwaysMatch:{browserName:'firefox','moz:firefoxOptions':options}}},15000);
   if(!created?.sessionId)throw fail('BROWSER_DEVTOOLS_UNAVAILABLE');
   browser.sessionId=created.sessionId;browser.product='Firefox '+String(created.capabilities?.browserVersion??'').trim();
   return {ok:true,background:browser.headless,headless:browser.headless,foreground:!browser.headless,userDesktopTouched:!browser.headless,
