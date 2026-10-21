@@ -35,8 +35,9 @@ jobs:
       - name: Install system GTK introspection for native GUI contract
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends python3-gi gir1.2-gdkpixbuf-2.0 gir1.2-gtk-4.0 gir1.2-adw-1
-          /usr/bin/python3 -c "import gi; from gi.repository import Gio, GdkPixbuf"
+          sudo apt-get install -y --no-install-recommends python3-gi gir1.2-gdkpixbuf-2.0 gir1.2-gtk-4.0 gir1.2-adw-1 gnome-shell-common
+          /usr/bin/python3 -c "import gi; gi.require_version('GdkPixbuf', '2.0'); from gi.repository import Gio, GdkPixbuf"
+          gsettings list-schemas | grep -Fx 'org.gnome.shell'
       - name: Verify GTK Control Center and Notion credential controls
         run: |
           python -B -m unittest discover -s desktop/linux-control-center -p 'test*.py' -v
