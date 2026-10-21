@@ -176,45 +176,23 @@ function Test-TunnelReady([int]$Port) {
   }
 }
 
-$script:TunnelControlPlaneNextCheck = @{}
-$script:TunnelControlPlaneLastState = @{}
-
-# Observe actual remote polling, not just local /readyz. Observation must never
-# recycle a tunnel: 401/403 authorization failures require operator diagnosis.
-function Observe-TunnelControlPlane([string]$Profile, [int]$Port) {
-  if ($Port -le 0) { return }
-  $now = [DateTimeOffset]::UtcNow
-  $next = $script:TunnelControlPlaneNextCheck[$Profile]
-  if ($next -and $now -lt [DateTimeOffset]$next) { return }
-  $script:TunnelControlPlaneNextCheck[$Profile] = $now.AddSeconds(30)
-  try {
-    $result = Invoke-RestMethod "http://127.0.0.1:$Port/health/control-plane" -TimeoutSec 2 -ErrorAction Stop
-  } catch {
-    # Older tunnel clients may not expose this endpoint; do not affect uptime.
-    return
-  }
-  $state = [string]$result.status
-  $previous = [string]$script:TunnelControlPlaneLastState[$Profile]
-  if ($state -eq 'degraded') {
-    $category = [string]$result.details.failure_category
-    if ($category -notin @('http_error', 'network_error', 'timeout', 'auth_error', 'transport_error')) {
-      $category = 'other'
-    }
-    $http = [int]$result.details.http_status
-    if ($http -lt 100 -or $http -gt 599) { $http = 0 }
-    $key = "degraded/$category/$http"
-    if ($previous -ne $key) {
-      Write-SupervisorLog "TUNNEL_CONTROL_PLANE_DEGRADED profile=$Profile category=$category http=$http"
-    }
-    $script:TunnelControlPlaneLastState[$Profile] = $key
-  } elseif ($state -eq 'ok') {
-    if ($previous.StartsWith('degraded/')) {
-      Write-SupervisorLog "TUNNEL_CONTROL_PLANE_RECOVERED profile=$Profile"
-    }
-    $script:TunnelControlPlaneLastState[$Profile] = 'ok'
+$script:TunnelControlPlaneNextCheck = @{}; $script:TunnelControlPlaneLastState = @{}
+function Observe-TunnelControlPlane([string]$Profile,[int]$Port) {
+  if($Port -le 0){return}; $now=[DateTimeOffset]::UtcNow; $next=$script:TunnelControlPlaneNextCheck[$Profile]
+  if($next -and $now -lt [DateTimeOffset]$next){return}
+  $script:TunnelControlPlaneNextCheck[$Profile]=$now.AddSeconds(30)
+  try{$r=Invoke-RestMethod "http://127.0.0.1:$Port/health/control-plane" -TimeoutSec 2 -ErrorAction Stop}catch{return}
+  $previous=[string]$script:TunnelControlPlaneLastState[$Profile]
+  if([string]$r.status -eq 'degraded') {
+    $category=[string]$r.details.failure_category; if($category -notin @('http_error','network_error','timeout','auth_error','transport_error')){$category='other'}
+    $http=[int]$r.details.http_status; if($http -lt 100 -or $http -gt 599){$http=0}
+    $key="degraded/$category/$http"; if($previous -ne $key){Write-SupervisorLog "TUNNEL_CONTROL_PLANE_DEGRADED profile=$Profile category=$category http=$http"}
+    $script:TunnelControlPlaneLastState[$Profile]=$key
+  } elseif([string]$r.status -eq 'ok') {
+    if($previous.StartsWith('degraded/')){Write-SupervisorLog "TUNNEL_CONTROL_PLANE_RECOVERED profile=$Profile"}
+    $script:TunnelControlPlaneLastState[$Profile]='ok'
   }
 }
-
 function Get-TunnelProcess([string]$Profile, [string]$Exe) {
   $expected = [IO.Path]::GetFullPath($Exe)
   $escaped = [regex]::Escape($Profile)
