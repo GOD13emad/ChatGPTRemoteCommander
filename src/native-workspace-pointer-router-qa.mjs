@@ -4,6 +4,7 @@ import {randomBytes} from 'node:crypto';
 const fail=code=>Object.assign(new Error(code),{code});
 const own=(obj,key)=>Object.hasOwn(obj,key);
 const idRe=/^[a-zA-Z0-9._:-]{1,128}$/;
+const allowedKeys=new Set(['Return','Escape','Tab','BackSpace','Up','Down','Left','Right','Delete','Home','End','ctrl+a']);
 const snapshot=v=>{
  if(!v||typeof v!=='object'||Array.isArray(v)||
     ![Object.prototype,null].includes(Object.getPrototypeOf(v)))
@@ -16,7 +17,12 @@ const snapshot=v=>{
 export function createNativePointerRouter({attest=()=>null,clock=()=>Date.now(),
  ticket=()=>randomBytes(32).toString('hex'),capacity=8}={}){
  if(!Number.isInteger(capacity)||capacity<1||capacity>32)throw fail('POINTER_CAPACITY_INVALID');
- const sessions=new Map(),activeWorkspaces=new Map();
+ const sessions=new Map(),activeWorkspaces=new Map(),usedTokens=new Set();
+ function reapExpired(){
+  for(const [token,s] of sessions){
+   if(clock()>=s.deadline){sessions.delete(token);activeWorkspaces.delete(s.workspaceId);}
+  }
+ }
  function verified(raw){
   const x=attest(raw);
   if(!x||x.authenticated!==true||x.conversationBound!==true||
@@ -31,13 +37,15 @@ export function createNativePointerRouter({attest=()=>null,clock=()=>Date.now(),
      width<1||height<1||width>16384||height>16384||
      !Number.isInteger(ttlMs)||ttlMs<1000||ttlMs>120000)
     throw fail('POINTER_WORKSPACE_INVALID');
+  reapExpired();
   if(activeWorkspaces.has(workspaceId))throw fail('POINTER_WORKSPACE_BUSY');
   if(sessions.size>=capacity)throw fail('POINTER_CAPACITY_REACHED');
   const token=ticket();
-  if(typeof token!=='string'||!/^[a-f0-9]{64}$/.test(token)||sessions.has(token))
+  if(typeof token!=='string'||!/^[a-f0-9]{64}$/.test(token)||usedTokens.has(token)||usedTokens.size>=4096)
     throw fail('POINTER_TOKEN_INVALID');
   const s={workspaceId,generation,subject:id.subject,conversationId:id.conversationId,
    width,height,x:0,y:0,deadline:clock()+ttlMs,serial:0};
+  usedTokens.add(token);
   sessions.set(token,s);activeWorkspaces.set(workspaceId,token);
   return Object.freeze({token,workspaceId,generation});
  }
@@ -49,14 +57,22 @@ export function createNativePointerRouter({attest=()=>null,clock=()=>Date.now(),
   if(activeWorkspaces.get(s.workspaceId)!==token)
    throw fail('POINTER_WORKSPACE_REVOKED');
   const v=snapshot(input);
-  if(!['move','click','scroll'].includes(v.kind)||
-     Object.keys(v).some(k=>!['kind','x','y','delta','generation','serial'].includes(k))||
+  if(!['move','click','scroll','key','type'].includes(v.kind)||
+     Object.keys(v).some(k=>!['kind','x','y','delta','key','text','generation','serial'].includes(k))||
      v.generation!==s.generation||v.serial!==s.serial+1)
    throw fail('POINTER_ACTION_DENIED');
   if(v.kind==='scroll'){
    if(Object.keys(v).some(k=>!['kind','delta','generation','serial'].includes(k))||
       !Number.isInteger(v.delta)||!v.delta||Math.abs(v.delta)>1200)
     throw fail('POINTER_ACTION_DENIED');
+  }else if(v.kind==='key'){
+   if(Object.keys(v).some(k=>!['kind','key','generation','serial'].includes(k))||
+      !allowedKeys.has(v.key))throw fail('POINTER_ACTION_DENIED');
+  }else if(v.kind==='type'){
+   if(Object.keys(v).some(k=>!['kind','text','generation','serial'].includes(k))||
+      typeof v.text!=='string'||v.text.length<1||v.text.length>256||
+      /[\u0000-\u001f\u007f\ud800-\udfff]/u.test(v.text))
+     throw fail('POINTER_ACTION_DENIED');
   }else if(!Number.isInteger(v.x)||!Number.isInteger(v.y)||
     v.x<0||v.y<0||v.x>=s.width||v.y>=s.height||
     Object.keys(v).some(k=>!['kind','x','y','generation','serial'].includes(k)))
@@ -65,8 +81,12 @@ export function createNativePointerRouter({attest=()=>null,clock=()=>Date.now(),
   // This is a validated *request description*, not a dispatched OS action.
   s.serial++;
   return Object.freeze({workspaceId:s.workspaceId,generation:s.generation,
-    serial:s.serial,kind:v.kind,x:v.kind==='scroll'?s.x:v.x,
-    y:v.kind==='scroll'?s.y:v.y,delta:v.kind==='scroll'?v.delta:undefined,
+    serial:s.serial,kind:v.kind,
+    x:v.kind==='move'||v.kind==='click'?v.x:s.x,
+    y:v.kind==='move'||v.kind==='click'?v.y:s.y,
+    delta:v.kind==='scroll'?v.delta:undefined,
+    key:v.kind==='key'?v.key:undefined,
+    textLength:v.kind==='type'?v.text.length:undefined,
     dispatched:false});
  }
  function revoke(raw,token){
@@ -76,6 +96,6 @@ export function createNativePointerRouter({attest=()=>null,clock=()=>Date.now(),
    throw fail('POINTER_CONVERSATION_DENIED');
   sessions.delete(token);activeWorkspaces.delete(s.workspaceId);return true;
  }
- function inspect(){return Object.freeze({workspaceCount:activeWorkspaces.size,sessionCount:sessions.size});}
+ function inspect(){reapExpired();return Object.freeze({workspaceCount:activeWorkspaces.size,sessionCount:sessions.size});}
  return Object.freeze({open,action,revoke,inspect});
 }

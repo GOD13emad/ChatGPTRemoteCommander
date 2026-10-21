@@ -33,3 +33,41 @@ test('untrusted identities, accessors, malformed tokens and unauthorised revocat
  assert.throws(()=>r.revoke(b,x.token),/POINTER_CONVERSATION_DENIED/);
  assert.equal(r.inspect().workspaceCount,1);
 });
+
+test('independent keyboard routing does not leak typed content or OS input',()=>{
+ let seq=10;
+ const r=createNativePointerRouter({attest,ticket:()=>String(++seq).padStart(64,'0')});
+ const x=r.open(a,{workspaceId:'ws-key-a',generation:'gen-a',width:800,height:600});
+ const y=r.open(b,{workspaceId:'ws-key-b',generation:'gen-b',width:800,height:600});
+ const key=r.action(a,x.token,{kind:'key',key:'Tab',generation:'gen-a',serial:1});
+ const text=r.action(b,y.token,{kind:'type',text:'private example',generation:'gen-b',serial:1});
+ assert.equal(key.dispatched,false);
+ assert.equal(text.dispatched,false);
+ assert.equal(text.textLength,15);
+ assert.equal(JSON.stringify(text).includes('private example'),false);
+ assert.equal(text.x,0);
+ assert.equal(text.y,0);
+ assert.throws(()=>r.action(a,y.token,{kind:'key',key:'Escape',generation:'gen-b',serial:2}),/POINTER_CONVERSATION_DENIED/);
+ assert.throws(()=>r.action(a,x.token,{kind:'key',key:'Meta+F4',generation:'gen-a',serial:2}),/POINTER_ACTION_DENIED/);
+ assert.throws(()=>r.action(b,y.token,{kind:'type',text:'\u0000',generation:'gen-b',serial:2}),/POINTER_ACTION_DENIED/);
+ assert.throws(()=>r.action(b,y.token,{kind:'type',text:'x'.repeat(257),generation:'gen-b',serial:2}),/POINTER_ACTION_DENIED/);
+ assert.equal(r.action(b,y.token,{kind:'key',key:'Escape',generation:'gen-b',serial:2}).serial,2);
+ assert.equal(r.revoke(a,x.token),true);
+ assert.equal(r.inspect().sessionCount,1);
+});
+test('expired virtual workspace is reclaimed, but past lease credentials never recycle',()=>{
+ let now=5,seq=0,collision=false;
+ const r=createNativePointerRouter({attest,capacity:1,clock:()=>now,
+   ticket:()=>String(collision?1:++seq).padStart(64,'0')});
+ const x=r.open(a,{workspaceId:'recyclable',generation:'g1',width:100,height:100,ttlMs:1000});
+ assert.throws(()=>r.open(b,{workspaceId:'other',generation:'g2',width:100,height:100}),/POINTER_CAPACITY_REACHED/);
+ now=1006;
+ assert.deepEqual(r.inspect(),{workspaceCount:0,sessionCount:0});
+ collision=true;
+ assert.throws(()=>r.open(b,{workspaceId:'recyclable',generation:'g2',width:100,height:100}),/POINTER_TOKEN_INVALID/);
+ collision=false;
+ const y=r.open(b,{workspaceId:'recyclable',generation:'g2',width:100,height:100});
+ assert.notEqual(x.token,y.token);
+ assert.throws(()=>r.action(a,x.token,{kind:'move',x:1,y:1,generation:'g1',serial:1}),/POINTER_LEASE_INVALID/);
+ assert.equal(r.action(b,y.token,{kind:'move',x:3,y:4,generation:'g2',serial:1}).x,3);
+});

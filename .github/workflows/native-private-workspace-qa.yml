@@ -4,6 +4,8 @@ on:
   pull_request:
     paths:
       - 'src/native-workspace-coordinator.mjs'
+      - 'src/native-workspace-pointer-router-qa.mjs'
+      - 'test/native-workspace-pointer-router-qa.test.mjs'
       - 'src/native-workspace-approval.mjs'
       - 'src/native-workspace-journal.mjs'
       - 'src/native-private-x11-app-worker.mjs'
@@ -47,6 +49,8 @@ jobs:
       - name: Syntax and scoped identity, lease, handoff, no-replay regressions
         run: |
           node --check src/native-workspace-coordinator.mjs
+          node --check src/native-workspace-pointer-router-qa.mjs
+          node --check test/native-workspace-pointer-router-qa.test.mjs
           node --check src/native-private-x11-app-worker.mjs
           node --check src/native-workspace-approval.mjs
           node --check test/native-workspace-approval.test.mjs
@@ -57,7 +61,7 @@ jobs:
           node --check test/native-uia-private-observer-win-qa.test.mjs
           node --check test/native-desktop-verified-client-win-qa.test.mjs
           node --check test/native-workspace-journal-windows-failclosed.test.mjs
-          node --test test/native-workspace-coordinator.test.mjs test/native-workspace-approval.test.mjs test/native-workspace-hardening-review.test.mjs
+          node --test test/native-workspace-coordinator.test.mjs test/native-workspace-approval.test.mjs test/native-workspace-hardening-review.test.mjs test/native-workspace-pointer-router-qa.test.mjs
       - name: Windows journal must reject native effects without verified durability
         if: matrix.os == 'windows-latest'
         run: node --test test/native-workspace-journal-windows-failclosed.test.mjs
