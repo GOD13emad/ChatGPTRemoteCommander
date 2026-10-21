@@ -1,7 +1,8 @@
 import os from 'node:os';
+import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { randomBytes, timingSafeEqual } from 'node:crypto';
+import { randomBytes, timingSafeEqual, createHash } from 'node:crypto';
 import { performance } from 'node:perf_hooks';
 import { BROWSER_RULES, browserError, browserToolDefinitions, validateBrowserInput } from './browser-contract.mjs';
 import { createBrowserProcessClient } from './browser-process.mjs';
@@ -25,16 +26,31 @@ const defaultInvoke=async req=>{
  try{return await client.invoke(req);}
  finally{if(req.action==='end')defaultBrowserBackend=null;}
 };
-const defaultClose=()=>{defaultBrowserBackend=null;chromiumClient.close();firefoxClient.close();};
+const defaultClose=async()=>{
+ defaultBrowserBackend=null;
+ const results=await Promise.allSettled([chromiumClient.close(),firefoxClient.close()]);
+ if(results.some(x=>x.status==='rejected'))
+  throw browserError('BROWSER_DEFAULT_HELPER_CLOSE_FAILED');
+};
 const sameToken=(a,b)=>typeof a==='string'&&typeof b==='string'&&Buffer.byteLength(a)===Buffer.byteLength(b)&&timingSafeEqual(Buffer.from(a),Buffer.from(b));
 const safeSegment=value=>typeof value==='string'&&/^[a-z][a-z0-9_-]{0,31}$/.test(value)?value:'default';
 const instanceSegment=value=>{const raw=typeof value==='string'&&value?value:'default';return raw==='default'?'default':'instance-'+Buffer.from(raw,'utf8').toString('hex');};
-function defaultProfileRoot(){
- if(process.platform==='win32')return path.join(process.env.LOCALAPPDATA||os.homedir(),'ChatGPTRemoteCommander','browser-profiles');
- return path.join(os.homedir(),'.local','state','chatgpt-remote-commander','browser-profiles');
+// A confined Snap Firefox cannot use an arbitrary host-writable profile root.
+// Auto-select its writable common directory only for new default-root sessions.
+// An explicit configured profileRoot remains authoritative; no profile migration.
+export function defaultBrowserProfileRoot({
+ platform=process.platform,home=os.homedir(),executable=null,
+ localAppData=process.env.LOCALAPPDATA,pathExists=fs.existsSync
+}={}){
+ if(platform==='win32')return path.join(localAppData||home,'ChatGPTRemoteCommander','browser-profiles');
+ const snapCommon=path.join(home,'snap','firefox','common');
+ if(platform==='linux'&&isFirefoxExecutable(executable)&&
+    pathExists('/snap/bin/firefox')&&pathExists(snapCommon))
+  return path.join(snapCommon,'chatgpt-remote-commander','browser-profiles');
+ return path.join(home,'.local','state','chatgpt-remote-commander','browser-profiles');
 }
 function resolveProfileRoot(cfg){
- const raw=typeof cfg.profileRoot==='string'&&cfg.profileRoot.trim()?cfg.profileRoot.trim():defaultProfileRoot();
+ const raw=typeof cfg.profileRoot==='string'&&cfg.profileRoot.trim()?cfg.profileRoot.trim():defaultBrowserProfileRoot({executable:cfg.executable});
  return path.resolve(raw.replace(/%([^%]+)%/g,(_,k)=>process.env[k]??process.env[k.toUpperCase()]??''));
 }
 export function reapBrowserOrphans(ctx){
@@ -187,9 +203,526 @@ export function createBrowserController({invoke=defaultInvoke,closeInvoke=defaul
    if(expiryRequested)await cleanupExpired();
   }
  };
- const close=()=>{clearTimer();session=null;uncertain=false;expiryRequested=false;closeInvoke();};
+ const close=()=>{clearTimer();session=null;uncertain=false;expiryRequested=false;return closeInvoke();};
  return {execute,close};
 }
+// A separate headless Chromium/Firefox child per isolated browser lease.
+// Sessions from independent chats/profiles never share a CDP target,
+// browser cookies, foreground pointer, helper input queue or worker state.
+// Existing persistent sessions continue to use the legacy controller.
+function makePrivateBrowserWorker(ctx){
+ const cfg=ctx.config?.powerMode?.browserControl??{};
+ const helper=isFirefoxExecutable(cfg.executable)?firefoxHelper:chromiumHelper;
+ const client=createBrowserProcessClient({
+  file:process.execPath,args:[helper,'--server']
+ });
+ return {
+  controller:createBrowserController({
+   invoke:client.invoke,closeInvoke:()=>{void client.close().catch(()=>{});}
+  }),
+  close:()=>client.close()
+ };
+}
+
+// The pool uses existing browser_session_begin/browser_* tool schemas.
+// Only mode:"isolated" opts in; no new server, listening endpoint or
+// remotely callable admin API is introduced.
+export function createIsolatedBrowserPool({
+ maxWorkers=3,makeWorker=makePrivateBrowserWorker,clock=Date.now,
+ authorizeObserverGrant=()=>false,authorizeObserverRead=()=>false,observerToken=()=>randomBytes(32).toString('hex'),
+ authorizeControlHandoff=()=>false,authorizeControlAction=()=>false,controlToken=()=>randomBytes(32).toString('hex')
+}={}){
+ if(!Number.isInteger(maxWorkers)||maxWorkers<1||maxWorkers>8)
+  throw browserError('BROWSER_ISOLATED_CAPACITY_INVALID');
+ const workers=new Map(),pendingStarts=new Set(),observers=new Map();
+ let starting=0,closed=false,closing=null;
+ const profileOf=ctx=>String(ctx.config?.instance?.profile??'default');
+ const restrictToPrivate=ctx=>{
+  const cfg=ctx.config?.powerMode?.browserControl??{};
+  return {...ctx,config:{...ctx.config,powerMode:{...ctx.config.powerMode,
+   browserControl:{...cfg,allowForegroundFallback:false}}}};
+ };
+ async function dispose(entry){
+  if(entry.disposal)return entry.disposal;
+  // Observing a retired workspace must never expose another worker's frame.
+  for(const [id,g] of observers){
+   if(g.lease===entry.lease)observers.delete(id);
+  }
+  entry.observation=null;
+  entry.handoff=null;
+  if(workers.get(entry.lease)===entry)workers.delete(entry.lease);
+  entry.disposal=(async()=>{
+   try{await entry.worker.controller.close();}
+   finally{await entry.worker.close();}
+  })();
+  return entry.disposal;
+ }
+ async function waitForIdle(entry){
+  if(!entry.active)return;
+  await new Promise(resolve=>entry.idleWaiters.push(resolve));
+ }
+ async function invokeOwned(entry,ctx,name,input){
+  entry.active++;
+  try{return await entry.worker.controller.execute(restrictToPrivate(ctx),name,input);}
+  finally{
+   entry.active--;
+   if(entry.active===0){
+    if(entry.handoff&&entry.handoff.expiresAt<=clock()){
+     entry.handoff=null;
+     entry.reobserveRequired=true;
+    }
+    for(const resume of entry.idleWaiters.splice(0))resume();
+    if(entry.expireAfterIdle&&workers.get(entry.lease)===entry)
+     await dispose(entry);
+   }
+  }
+ }
+ async function prune(){
+  for(const entry of [...workers.values()]){
+   if(entry.expiresAt>clock())continue;
+   if(entry.active){entry.expireAfterIdle=true;continue;}
+   await dispose(entry);
+  }
+ }
+ const hasLease=id=>typeof id==='string'&&workers.has(id);
+ const count=profile=>[...workers.values()].filter(e=>
+  e.ownerProfile===String(profile??'default')&&e.expiresAt>clock()).length;
+ const execute=async(ctx,name,raw={})=>{
+  if(closed)throw browserError('BROWSER_POOL_CLOSED');
+  const input=validateBrowserInput(name,raw);
+  const cfg=ctx.config?.powerMode?.browserControl??{};
+  if(ctx.config?.powerMode?.enabled!==true||cfg.enabled!==true)
+   throw browserError('BROWSER_DISABLED');
+  if(name==='browser_status')return {
+   ok:true,background:true,headless:true,userDesktopTouched:false,
+   isolatedWorkersActive:count(profileOf(ctx)),
+   isolatedWorkerCapacity:maxWorkers
+  };
+  if(name==='browser_session_begin'){
+   if((input.mode??'persistent')!=='isolated')
+    throw browserError('BROWSER_ISOLATED_MODE_REQUIRED');
+   await prune();
+   if(closed)throw browserError('BROWSER_POOL_CLOSED');
+   if(workers.size+starting>=maxWorkers)
+    throw browserError('BROWSER_ISOLATED_CAPACITY');
+   // Reserve the slot synchronously BEFORE awaiting process startup.
+   starting++;
+   let resolveStart;
+   const pendingStart=new Promise(resolve=>{resolveStart=resolve;});
+   pendingStarts.add(pendingStart);
+   let worker;
+   try{
+    worker=makeWorker(ctx);
+    // No foreground fallback in a private worker. A human intervention
+    // belongs to an explicitly scoped viewer/control handoff, not WinSta0.
+    const privateCtx=restrictToPrivate(ctx);
+    const answer=await worker.controller.execute(privateCtx,name,input);
+    if(closed)throw browserError('BROWSER_POOL_CLOSED');
+    if(!answer?.lease||workers.has(answer.lease))
+     throw browserError('BROWSER_ISOLATED_LEASE_COLLISION');
+    workers.set(answer.lease,{lease:answer.lease,worker,
+     ownerProfile:profileOf(ctx),active:0,idleWaiters:[],
+     revision:0,observation:null,
+     handoff:null,reobserveRequired:false,
+     disposal:null,expireAfterIdle:false,
+     expiresAt:clock()+(input.ttlSeconds??300)*1000});
+    return {...answer,workerIsolation:'PRIVATE_BROWSER_PROCESS',
+      physicalDesktopInput:false};
+   }catch(error){
+    if(worker){
+     try{worker.controller.close();}finally{await worker.close();}
+    }
+    throw error;
+   }finally{
+    starting--;
+    pendingStarts.delete(pendingStart);
+    resolveStart();
+   }
+  }
+  const entry=workers.get(input.lease);
+  if(!entry||entry.ownerProfile!==profileOf(ctx))
+   throw browserError('BROWSER_LEASE_REQUIRED_OR_EXPIRED');
+  if(entry.expiresAt<=clock()){
+   if(entry.active)entry.expireAfterIdle=true;
+   else await dispose(entry);
+   throw browserError('BROWSER_LEASE_REQUIRED_OR_EXPIRED');
+  }
+  if(['browser_foreground_begin','browser_foreground_end'].includes(name))
+   throw browserError('BROWSER_ISOLATED_FOREGROUND_DENIED');
+  if(name==='browser_foreground_requirement')return {
+   ok:true,approvalRequired:true,backgroundSessionPreserved:true,
+   desktopTakenOver:false,viewerHandoffRequired:true,
+   nextStep:'Observe the private workspace; a human control handoff requires a future authenticated workspace-specific control path.'
+  };
+  if(entry.handoff&&entry.handoff.expiresAt<=clock()&&!entry.active){
+   entry.handoff=null;
+   entry.reobserveRequired=true;
+  }
+  if(name==='browser_session_end'&&entry.handoff)
+   throw browserError('BROWSER_WORKSPACE_CONTROL_HELD');
+  if(['browser_navigate','browser_fill','browser_click'].includes(name)){
+   if(entry.handoff)throw browserError('BROWSER_WORKSPACE_CONTROL_HELD');
+   if(entry.reobserveRequired)
+    throw browserError('BROWSER_WORKSPACE_REOBSERVATION_REQUIRED');
+  }
+  if(name==='browser_session_end'){
+   // A second controller request must not cancel an active native/browser
+   // action. A busy close is denied; explicit end after idle is still allowed.
+   try{
+    const result=await invokeOwned(entry,ctx,name,input);
+    await dispose(entry);
+    return result;
+   }catch(error){
+    if(error?.browserCode!=='BROWSER_BUSY')await dispose(entry);
+    throw error;
+   }
+  }
+  try{
+   if(['browser_navigate','browser_fill','browser_click'].includes(name))
+    entry.revision++;
+   const answer=await invokeOwned(entry,ctx,name,input);
+   if(name==='browser_screenshot'){
+    const image=answer?.__mcpContent?.find(x=>x?.type==='image');
+    const info=answer?.__structuredContent;
+    // One already-taken frame, bounded in memory, no separate observer I/O.
+    if(image&&typeof image.data==='string'&&
+       image.data.length<=1398112&&
+       ['image/jpeg','image/png'].includes(image.mimeType)&&
+       Number.isSafeInteger(info?.bytes)&&info.bytes<=1048576&&
+       [...observers.values()].some(g=>g.lease===entry.lease&&g.expiresAt>clock()))
+      entry.observation={image:{type:'image',mimeType:image.mimeType,data:image.data},
+       meta:{bytes:info.bytes,mimeType:image.mimeType},
+       capturedAt:clock(),revision:entry.revision};
+   }
+   if(name==='browser_snapshot'&&!entry.handoff)
+    entry.reobserveRequired=false;
+   if(name==='browser_session_renew')
+    entry.expiresAt=clock()+(input.ttlSeconds??300)*1000;
+   return answer;
+  }catch(error){
+   if(error?.browserCode==='BROWSER_LEASE_REQUIRED_OR_EXPIRED')
+    await dispose(entry);
+   throw error;
+  }
+ };
+ // Not published over MCP. A trusted management UI must supply an external
+ // authenticated grant verifier; default is explicit DENY.
+ const digest=id=>createHash('sha256').update(id).digest('hex');
+ const ownerFor=(ctx,lease)=>{
+  const entry=workers.get(lease);
+  if(!entry||entry.disposal||entry.ownerProfile!==profileOf(ctx)||
+     entry.expiresAt<=clock())throw browserError('BROWSER_LEASE_REQUIRED_OR_EXPIRED');
+  return entry;
+ };
+ const grantObserver=async(ownerCtx,lease,{viewerProfile,ttlSeconds=60}={})=>{
+  if(closed)throw browserError('BROWSER_POOL_CLOSED');
+  const entry=ownerFor(ownerCtx,lease);
+  const cfg=ownerCtx.config?.powerMode?.browserControl??{};
+  if(ownerCtx.config?.powerMode?.enabled!==true||cfg.enabled!==true||
+     cfg.allowScreenshot!==true)
+    throw browserError('BROWSER_OBSERVER_FORBIDDEN');
+  if(typeof viewerProfile!=='string'||!/^[A-Za-z0-9._-]{1,64}$/.test(viewerProfile)||
+     !Number.isInteger(ttlSeconds)||ttlSeconds<10||ttlSeconds>180)
+    throw browserError('BROWSER_OBSERVER_INVALID_SCOPE');
+  for(const [id,g] of observers){
+   if(g.expiresAt<=clock())observers.delete(id);
+  }
+  if(observers.size>=16||[...observers.values()].filter(x=>x.lease===lease).length>=4)
+   throw browserError('BROWSER_OBSERVER_CAPACITY');
+  let authorized=false;
+  try{authorized=await authorizeObserverGrant({
+   ownerProfile:entry.ownerProfile,viewerProfile,workspaceRef:digest(lease),ttlSeconds
+  })===true;}catch{/* Explicitly fail closed when an authorizer fails. */}
+  if(!authorized||closed||workers.get(lease)!==entry||
+     entry.expiresAt<=clock()||
+     ownerCtx.config?.powerMode?.enabled!==true||
+     ownerCtx.config?.powerMode?.browserControl?.allowScreenshot!==true)
+   throw browserError('BROWSER_OBSERVER_FORBIDDEN');
+  const token=observerToken();
+  if(typeof token!=='string'||!/^[a-f0-9]{64}$/.test(token)||observers.has(digest(token)))
+   throw browserError('BROWSER_OBSERVER_TOKEN_INVALID');
+  observers.set(digest(token),{lease,viewerProfile,ownerCtx,
+   expiresAt:Math.min(entry.expiresAt,clock()+ttlSeconds*1000)});
+  return {observerToken:token,scope:'VIEW_ONLY',expiresInSeconds:ttlSeconds,
+   nativeInputAuthorized:false,physicalDesktopAccess:false};
+ };
+ const readObserver=(viewerCtx,token)=>{
+  if(closed||typeof token!=='string'||!/^[a-f0-9]{64}$/.test(token))
+   throw browserError('BROWSER_OBSERVER_DENIED');
+  const key=digest(token),grant=observers.get(key);
+  if(!grant||grant.expiresAt<=clock()||profileOf(viewerCtx)!==grant.viewerProfile){
+   if(grant&&grant.expiresAt<=clock())observers.delete(key);
+   throw browserError('BROWSER_OBSERVER_DENIED');
+  }
+  const cfg=viewerCtx.config?.powerMode?.browserControl??{};
+  if(viewerCtx.config?.powerMode?.enabled!==true||cfg.enabled!==true||
+     cfg.allowScreenshot!==true)throw browserError('BROWSER_OBSERVER_DENIED');
+  const entry=workers.get(grant.lease);
+  if(!entry||entry.disposal||entry.expiresAt<=clock())
+   throw browserError('BROWSER_OBSERVER_DENIED');
+  const ownerPolicy=grant.ownerCtx?.config?.powerMode;
+  if(ownerPolicy?.enabled!==true||
+     ownerPolicy?.browserControl?.enabled!==true||
+     ownerPolicy?.browserControl?.allowScreenshot!==true){
+   observers.delete(key);
+   if(![...observers.values()].some(g=>g.lease===entry.lease))
+    entry.observation=null;
+   throw browserError('BROWSER_OBSERVER_DENIED');
+  }
+  // Fail closed when a trusted reviewer has not reauthorized this read.
+  let readAuthorized=false;
+  try{readAuthorized=authorizeObserverRead({
+   ownerProfile:entry.ownerProfile,viewerProfile:grant.viewerProfile,
+   workspaceRef:digest(entry.lease)
+  })===true;}catch{/* No frame on verifier failure. */}
+  if(!readAuthorized){
+   observers.delete(key);
+   if(![...observers.values()].some(g=>g.lease===entry.lease))
+    entry.observation=null;
+   throw browserError('BROWSER_OBSERVER_DENIED');
+  }
+  const frame=entry.observation;
+  if(!frame)throw browserError('BROWSER_OBSERVER_FRAME_NOT_READY');
+  const ageMs=Math.max(0,clock()-frame.capturedAt);
+  const metadata={...frame.meta,observerReadOnly:true,
+   workspaceRevision:entry.revision,frameRevision:frame.revision,
+   stale:entry.active>0||!!entry.handoff||
+    entry.revision!==frame.revision||ageMs>30000,
+   ageMs,physicalDesktopAccess:false,controlAuthorized:false};
+  return {
+   __mcpContent:[{...frame.image},
+    {type:'text',text:JSON.stringify(metadata)}],
+   __structuredContent:metadata
+  };
+ };
+ const revokeObserver=(ownerCtx,lease,token)=>{
+  ownerFor(ownerCtx,lease);
+  if(typeof token!=='string'||!/^[a-f0-9]{64}$/.test(token))
+   throw browserError('BROWSER_OBSERVER_DENIED');
+  const key=digest(token),entry=observers.get(key);
+  if(!entry||entry.lease!==lease)throw browserError('BROWSER_OBSERVER_DENIED');
+  observers.delete(key);
+  if(![...observers.values()].some(g=>g.lease===lease))
+   workers.get(lease).observation=null;
+  return {revoked:true,nativeInputAuthorized:false};
+ };
+ // Internal, workspace-scoped operator handoff; default DENY until a
+ // separately authenticated supervisor integration provides an authorizer.
+ const requireHandoff=(operatorCtx,token)=>{
+  if(closed||typeof token!=='string'||!/^[a-f0-9]{64}$/.test(token))
+   throw browserError('BROWSER_WORKSPACE_OPERATOR_DENIED');
+  const hash=digest(token);
+  for(const entry of workers.values()){
+   const h=entry.handoff;
+   if(!h||h.tokenDigest!==hash)continue;
+   if(h.expiresAt<=clock()){
+    if(!entry.active){entry.handoff=null;entry.reobserveRequired=true;}
+    throw browserError('BROWSER_WORKSPACE_OPERATOR_DENIED');
+   }
+   if(h.operatorProfile!==profileOf(operatorCtx)||entry.disposal||
+      entry.expiresAt<=clock())
+    throw browserError('BROWSER_WORKSPACE_OPERATOR_DENIED');
+   return entry;
+  }
+  throw browserError('BROWSER_WORKSPACE_OPERATOR_DENIED');
+ };
+ const beginControlHandoff=async(ownerCtx,lease,{operatorProfile,ttlSeconds=60}={})=>{
+  if(closed)throw browserError('BROWSER_POOL_CLOSED');
+  const entry=ownerFor(ownerCtx,lease);
+  if(typeof operatorProfile!=='string'||!/^[A-Za-z0-9._-]{1,64}$/.test(operatorProfile)||
+     !Number.isInteger(ttlSeconds)||ttlSeconds<10||ttlSeconds>120)
+   throw browserError('BROWSER_WORKSPACE_OPERATOR_INVALID_SCOPE');
+  const cfg=ownerCtx.config?.powerMode?.browserControl??{};
+  if(ownerCtx.config?.powerMode?.enabled!==true||cfg.enabled!==true||
+     cfg.allowInput!==true)
+   throw browserError('BROWSER_WORKSPACE_OPERATOR_FORBIDDEN');
+  if(entry.active)throw browserError('BROWSER_BUSY');
+  if(entry.handoff&&entry.handoff.expiresAt<=clock()){
+   entry.handoff=null;entry.reobserveRequired=true;
+  }
+  if(entry.handoff)throw browserError('BROWSER_WORKSPACE_CONTROL_HELD');
+  let authorized=false;
+  try{authorized=await authorizeControlHandoff({
+   ownerProfile:entry.ownerProfile,operatorProfile,
+   workspaceRef:digest(lease),ttlSeconds
+  })===true;}catch{/* An exception cannot turn into consent. */}
+  if(!authorized||closed||workers.get(lease)!==entry||
+     entry.expiresAt<=clock()||entry.active||entry.handoff||
+     ownerCtx.config?.powerMode?.enabled!==true||
+     ownerCtx.config?.powerMode?.browserControl?.allowInput!==true)
+   throw browserError('BROWSER_WORKSPACE_OPERATOR_FORBIDDEN');
+  const credential=controlToken();
+  if(typeof credential!=='string'||!/^[a-f0-9]{64}$/.test(credential))
+   throw browserError('BROWSER_WORKSPACE_OPERATOR_TOKEN_INVALID');
+  entry.handoff={tokenDigest:digest(credential),operatorProfile,ownerCtx,
+   expiresAt:Math.min(entry.expiresAt,clock()+ttlSeconds*1000)};
+  entry.reobserveRequired=true;
+  return {controlToken:credential,scope:'PRIVATE_WORKSPACE_ONLY',
+   ownerReobserveRequired:true,physicalDesktopAccess:false};
+ };
+ const controlAction=async(operatorCtx,credential,name,raw={})=>{
+  const entry=requireHandoff(operatorCtx,credential);
+  if(!['browser_screenshot','browser_snapshot','browser_click','browser_fill'].includes(name))
+   throw browserError('BROWSER_WORKSPACE_OPERATOR_ACTION_DENIED');
+  const input=validateBrowserInput(name,{...raw,lease:entry.lease});
+  // Recheck the live owner policy before any delegated action.
+  const policy=entry.handoff?.ownerCtx?.config?.powerMode;
+  const ownCfg=policy?.browserControl;
+  if(policy?.enabled!==true||ownCfg?.enabled!==true||
+     (['browser_click','browser_fill'].includes(name)&&ownCfg.allowInput!==true)||
+     (name==='browser_screenshot'&&ownCfg.allowScreenshot!==true)){
+   entry.handoff=null;
+   entry.reobserveRequired=true;
+   throw browserError('BROWSER_WORKSPACE_OPERATOR_DENIED');
+  }
+  const cfg=operatorCtx.config?.powerMode?.browserControl??{};
+  if(operatorCtx.config?.powerMode?.enabled!==true||cfg.enabled!==true||
+    ((name==='browser_click'||name==='browser_fill')&&cfg.allowInput!==true)||
+    (name==='browser_screenshot'&&cfg.allowScreenshot!==true))
+   throw browserError('BROWSER_WORKSPACE_OPERATOR_DENIED');
+  if(entry.active)throw browserError('BROWSER_BUSY');
+  // An earlier handoff grant is not authorization for future actions.
+  // Consult the trusted operator authority for every delegated operation;
+  // fail closed and invalidate the token if permission was withdrawn.
+  let authorizedNow=false;
+  try{authorizedNow=authorizeControlAction({
+   ownerProfile:entry.ownerProfile,operatorProfile:profileOf(operatorCtx),
+   workspaceRef:digest(entry.lease),action:name
+  })===true;}catch{/* Never convert verifier failures to operator consent. */}
+  if(!authorizedNow){
+   entry.handoff=null;
+   entry.reobserveRequired=true;
+   throw browserError('BROWSER_WORKSPACE_OPERATOR_DENIED');
+  }
+  if(['browser_fill','browser_click'].includes(name))entry.revision++;
+  // Uses the existing private Controller: never the host desktop.
+  // An uncertain action is not auto-retried; the Controller requires a
+  // fresh snapshot before another mutation.
+  const result=await invokeOwned(entry,operatorCtx,name,input);
+  return {...result,privateWorkspaceOnly:true,
+   physicalDesktopAccess:false,ownerReobserveRequired:true};
+ };
+ const endControlHandoff=(operatorCtx,credential)=>{
+  const entry=requireHandoff(operatorCtx,credential);
+  if(entry.active)throw browserError('BROWSER_BUSY');
+  entry.handoff=null;
+  entry.reobserveRequired=true;
+  return {released:true,ownerReobserveRequired:true,
+   physicalDesktopAccess:false};
+ };
+ const revokeControlHandoff=(ownerCtx,lease)=>{
+  const entry=ownerFor(ownerCtx,lease);
+  if(entry.active)throw browserError('BROWSER_BUSY');
+  const existed=!!entry.handoff;
+  entry.handoff=null;
+  if(existed)entry.reobserveRequired=true;
+  return {revoked:existed,ownerReobserveRequired:existed,
+   physicalDesktopAccess:false};
+ };
+ const close=()=>{
+  if(closing)return closing;
+  closed=true;
+  observers.clear();
+  closing=(async()=>{
+   await Promise.allSettled([...pendingStarts]);
+   const entries=[...workers.values()];
+   // Finish each workspace's accepted action before its owned helper is
+   // closed. Unrelated workspaces do not wait for one another.
+   const results=await Promise.allSettled(entries.map(async entry=>{
+    await waitForIdle(entry);
+    await dispose(entry);
+   }));
+   if(results.some(x=>x.status==='rejected'))
+    throw browserError('BROWSER_POOL_CLEANUP_FAILED');
+  })();
+  return closing;
+ };
+ return {execute,hasLease,count,grantObserver,readObserver,revokeObserver,
+  beginControlHandoff,controlAction,endControlHandoff,revokeControlHandoff,close};
+}
+
 const controller=createBrowserController();
-export async function executeBrowserTool(ctx,name,input){return controller.execute(ctx,name,input);}
-export function closeBrowserController(){controller.close();}
+const isolatedBrowserPool=createIsolatedBrowserPool();
+export async function executeBrowserTool(ctx,name,input){
+ if(name==='browser_session_begin'&&input?.mode==='isolated')
+  return isolatedBrowserPool.execute(ctx,name,input);
+ if(isolatedBrowserPool.hasLease(input?.lease))
+  return isolatedBrowserPool.execute(ctx,name,input);
+ if(name==='browser_status'){
+  const status=await controller.execute(ctx,name,input);
+  return {...status,isolatedWorkersActive:
+    isolatedBrowserPool.count(ctx.config?.instance?.profile??'default'),
+   isolatedWorkerCapacity:3};
+ }
+ return controller.execute(ctx,name,input);
+}
+export async function closeBrowserController(){
+ const results=await Promise.allSettled([
+  Promise.resolve().then(()=>controller.close()),
+  Promise.resolve().then(()=>isolatedBrowserPool.close())
+ ]);
+ if(results.some(x=>x.status==='rejected'))
+  throw browserError('BROWSER_SHUTDOWN_CLEANUP_FAILED');
+}
+
+// Bounded graceful close of the browser workers when the actual MCP Core
+// terminates. No new service, port, input capability or auto-replay path.
+// Signal cleanup is process-lifecycle management, not owner GUI recovery.
+export function attachBrowserServerShutdown({
+  server,closeBrowserController,stopMonitor=()=>{},processLike=process,
+  deadlineMs=45000,schedule=setTimeout,cancel=clearTimeout,
+  exit=code=>process.exit(code),
+  onError=code=>console.error(code)
+}={}){
+  if(typeof server?.close!=='function'||typeof closeBrowserController!=='function'||
+     typeof processLike?.on!=='function'||
+     !Number.isSafeInteger(deadlineMs)||deadlineMs<1000||deadlineMs>120000)
+    throw new Error('BROWSER_SHUTDOWN_SETUP_INVALID');
+  let closing=null;
+  const report=code=>{try{onError(code);}catch{}};
+  const shutdown=()=>{
+    if(closing)return closing;
+    closing=(async()=>{
+      let fail=false;
+      const deadline=schedule(()=>{
+        report('BROWSER_SHUTDOWN_DEADLINE_EXCEEDED');
+        exit(1);
+      },deadlineMs);
+      try{
+        try{stopMonitor();}catch{fail=true;report('BROWSER_MONITOR_STOP_FAILED');}
+        const closingServer=new Promise(resolve=>{
+          try{
+            server.close(error=>{
+              if(error&&error.code!=='ERR_SERVER_NOT_RUNNING'){
+                fail=true;report('BROWSER_HTTP_SERVER_CLOSE_FAILED');
+              }
+              resolve();
+            });
+          }catch{
+            fail=true;report('BROWSER_HTTP_SERVER_CLOSE_FAILED');
+            resolve();
+          }
+        });
+        // Await both the HTTP drain and the already accepted private
+        // worker actions; a new HTTP request cannot enter after close().
+        const results=await Promise.allSettled([
+          closingServer,Promise.resolve().then(closeBrowserController)
+        ]);
+        if(results.some(x=>x.status==='rejected')){
+          fail=true;report('BROWSER_WORKER_SHUTDOWN_FAILED');
+        }
+      }finally{
+        cancel(deadline);
+        if(fail)processLike.exitCode=1;
+      }
+    })();
+    return closing;
+  };
+  for(const sig of ['SIGTERM','SIGINT']){
+    processLike.on(sig,()=>{void shutdown().catch(()=>{
+      report('BROWSER_WORKER_SHUTDOWN_FAILED');
+      processLike.exitCode=1;
+    });});
+  }
+  return {shutdown};
+}
