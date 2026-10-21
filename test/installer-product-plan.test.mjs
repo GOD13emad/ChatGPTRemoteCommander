@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import {catalog,validateCatalog,createPlan,parseArgs} from '../tools/installer-product-plan.mjs';
@@ -71,7 +72,7 @@ test('Windows installer components and Linux Bash wizard keep exact catalog scop
 
 test('Linux wizard offline read-only listing, plan mode and invalid selection have no side effects', {skip:process.platform==='win32'},()=>{
   const wizard=path.join(root,'setup-wizard.sh');
-  const env={...process.env,HOME:'/tmp/rc-product-plan-unwritten-home',XDG_STATE_HOME:'/tmp/rc-product-plan-unwritten-state'};
+  const env={...process.env,HOME:'/tmp/rc-product-plan-unwritten-home',XDG_STATE_HOME:'/tmp/rc-product-plan-unwritten-state',DISPLAY:'',WAYLAND_DISPLAY:''};
   const run=(...args)=>spawnSync('bash',[wizard,...args],{env,encoding:'utf8',timeout:3500});
   let r=run('--list-products');assert.equal(r.status,0,r.stderr);assert.match(r.stdout,/browser\s+unavailable/);
   r=run('--plan-only','--all');assert.equal(r.status,0,r.stderr);assert.match(r.stdout,/INSTALL_PLAN platform=linux selected=core,work-plugin changesApplied=false/);
