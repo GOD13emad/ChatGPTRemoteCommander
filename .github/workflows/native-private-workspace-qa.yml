@@ -55,6 +55,7 @@ jobs:
           node --check test/native-workspace-journal.test.mjs
           node --check test/native-workspace-hardening-review.test.mjs
           node --check test/native-uia-private-observer-win-qa.test.mjs
+          node --check test/native-desktop-verified-client-win-qa.test.mjs
           node --check test/native-workspace-journal-windows-failclosed.test.mjs
           node --test test/native-workspace-coordinator.test.mjs test/native-workspace-approval.test.mjs test/native-workspace-hardening-review.test.mjs
       - name: Windows journal must reject native effects without verified durability
@@ -72,7 +73,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference='Stop'
-          foreach($name in @('tools/native-uia-owned-child-win-qa.ps1','tools/native-uia-owned-host-win-qa.ps1')){
+          foreach($name in @('tools/native-uia-owned-child-win-qa.ps1','tools/native-uia-owned-host-win-qa.ps1','tools/native-desktop-verified-client-win-qa.ps1')){
             $tokens=$null; $errors=$null
             [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $name),[ref]$tokens,[ref]$errors) | Out-Null
             if($errors.Count){ throw ('UIA_QA_PARSE_FAILED '+$name) }

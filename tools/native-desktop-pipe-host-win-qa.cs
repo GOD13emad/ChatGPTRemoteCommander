@@ -224,24 +224,31 @@ public static class RcQaRetainedDesktopPipeHost
           if(!GetNamedPipeClientProcessId(pipe.SafePipeHandle,out clientPid)||
              !GetNamedPipeClientSessionId(pipe.SafePipeHandle,out clientSession)||
              clientPid==0||clientSession!=(uint)sessionId)continue;
-          using(var reader=new StreamReader(pipe,Encoding.UTF8,false,1024,true))
-          using(var writer=new StreamWriter(pipe,new UTF8Encoding(false),1024,true)){
-            writer.AutoFlush=true;
-            string cmd;
-            using(var cancel=new CancellationTokenSource(1800)){
-              try{cmd=reader.ReadLineAsync(cancel.Token).GetAwaiter().GetResult();}
-              catch(OperationCanceledException){continue;}
+          try{
+            using(var reader=new StreamReader(pipe,Encoding.UTF8,false,1024,true))
+            using(var writer=new StreamWriter(pipe,new UTF8Encoding(false),1024,true)){
+              writer.AutoFlush=true;
+              string cmd;
+              using(var cancel=new CancellationTokenSource(1800)){
+                try{cmd=reader.ReadLineAsync(cancel.Token).GetAwaiter().GetResult();}
+                catch(OperationCanceledException){continue;}
+              }
+              // A disconnected client cannot crash the limited QA host.
+              if(string.IsNullOrEmpty(cmd))continue;
+              if(cmd=="shutdown"){
+                writer.WriteLine("{\"ok\":true,\"stopping\":true}");
+                done=true;
+              }else{
+                string reply;
+                try{reply=Response(cmd,workers,sessionId,clientPid,clientSession);}
+                catch{reply="{\"ok\":false,\"code\":\"QA_WORKER_UNAVAILABLE\"}";}
+                writer.WriteLine(reply);
+              }
             }
-            if(cmd=="shutdown"){
-              writer.WriteLine("{\"ok\":true,\"stopping\":true}");
-              done=true;
-            }else{
-              string reply;
-              try{reply=Response(cmd,workers,sessionId,clientPid,clientSession);}
-              catch{reply="{\"ok\":false,\"code\":\"QA_WORKER_UNAVAILABLE\"}";}
-              writer.WriteLine(reply);
-            }
-          }
+          }catch(IOException){
+            // Broken pipe: deny the request and continue accepting peers.
+            continue;
+          }catch(ObjectDisposedException){continue;}
         }
       }
       return 0;
