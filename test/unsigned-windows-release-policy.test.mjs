@@ -85,6 +85,17 @@ test('owner authorizes exact v0.10.26 UNSIGNED public Preview without Windows pu
    /WINDOWS_UNSIGNED_RELEASE_RISK_NOTICE_MISSING/);
 });
 
+test('draft release title reflects branded and observed v0.10.26 signing status',()=>{
+ const workflow=readFileSync('.github/workflows/release-sync.yml','utf8');
+ for(const expected of [
+  'SETUP_SIGNED: ${{ needs.build-windows-setup.outputs.installer_signed }}',
+  'title="TandemVector Labs | Remote Commander Core $tag"',
+  'if [ "$SETUP_SIGNED" = "false" ]',
+  'title="$title | UNSIGNED Preview"',
+  '--title "$title"','--verify-tag','--draft'
+ ])assert.ok(workflow.includes(expected),expected);
+});
+
 test('a valid signed same-version installer still qualifies independently',()=>{
  const x=evaluateWindowsRelease({...example,signed:'true'});
  assert.equal(x.allowed,true);
