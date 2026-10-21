@@ -113,6 +113,10 @@ export function createBrowserController({invoke=defaultInvoke,closeInvoke=defaul
       userDesktopTouched:false,savedPasswordStoreAccess:false,browserProduct:native.browserProduct??null,backend:native.backend??'browser-headless'};
    }
    owns(input.lease);
+   if(name==='browser_chat_tabs'){
+     const native=await invoke({action:'chat_tabs'});
+     return {...native,background:true,userDesktopTouched:false};
+   }
    if(name==='browser_session_renew'){
     const ttl=input.ttlSeconds??300,expiresAt=wallNow()+ttl*1000;
     writeBrowserLeaseMarker({profileDir:session.profileDir,instance:ctx.config?.instance?.profile??'default',isolated:session.isolated,createdAt:session.createdAtEpochMs,expiresAt,ownerPid:process.pid});
@@ -147,17 +151,19 @@ export function createBrowserController({invoke=defaultInvoke,closeInvoke=defaul
     return {ok:true,foreground:false,headless:true,userDesktopTouched:false,sameOwnedProfile:true,
       browserProduct:native.browserProduct??null,backgroundResumed:true,resumeNavigationFailed:native.resumeNavigationFailed===true};
    }
-   if(uncertain&&['browser_navigate','browser_fill','browser_click'].includes(name))throw browserError('BROWSER_OUTCOME_UNCERTAIN_SNAPSHOT_REQUIRED');
+   if(uncertain&&['browser_navigate','browser_fill','browser_click','browser_chat_tab_open','browser_chat_tab_close'].includes(name))throw browserError('BROWSER_OUTCOME_UNCERTAIN_SNAPSHOT_REQUIRED');
    const rule=BROWSER_RULES.get(name);
-   if(name==='browser_navigate'&&cfg.allowNavigate!==true)throw browserError('BROWSER_NAVIGATION_DISABLED');
+   if(['browser_navigate','browser_chat_tab_open','browser_chat_tab_close'].includes(name)&&cfg.allowNavigate!==true)throw browserError('BROWSER_NAVIGATION_DISABLED');
    if(['browser_fill','browser_click'].includes(name)&&cfg.allowInput!==true)throw browserError('BROWSER_INPUT_DISABLED');
    if(name==='browser_screenshot'&&cfg.allowScreenshot!==true)throw browserError('BROWSER_SCREENSHOT_DISABLED');
-   const mutation=['browser_navigate','browser_fill','browser_click'].includes(name);
+   const mutation=['browser_navigate','browser_fill','browser_click','browser_chat_tab_open','browser_chat_tab_close'].includes(name);
    const foregroundAtDispatch=session.foreground===true;
    const activity={background:!foregroundAtDispatch,userDesktopTouched:foregroundAtDispatch};
    try{
     let result;
-    if(name==='browser_navigate')result=await invoke({action:'navigate',url:input.url,timeoutMs:input.timeoutMs??30000});
+    if(name==='browser_chat_tab_open')result=await invoke({action:'chat_tab_open',url:input.url});
+    else if(name==='browser_chat_tab_close')result=await invoke({action:'chat_tab_close',tabRef:input.tabRef});
+    else if(name==='browser_navigate')result=await invoke({action:'navigate',url:input.url,timeoutMs:input.timeoutMs??30000});
     else if(name==='browser_snapshot')result=await invoke({action:'snapshot',maxTextChars:input.maxTextChars??20000,maxElements:input.maxElements??120});
     else if(name==='browser_screenshot')result=await invoke({action:'screenshot',format:input.format??'jpeg',quality:input.quality??70,maxBytes:input.maxBytes??2097152});
     else if(name==='browser_fill')result=await invoke({action:'fill',selector:input.selector,text:input.text});
