@@ -147,9 +147,20 @@ async function run(){
   const remaining=(await inspector.send('Target.getBrowserContexts')).browserContextIds;
   assert.equal(remaining.length,1,'closing an owned tab disposes its private context');
   assert.equal(await call({action:'chat_tabs'}).then(s=>s.isolatedContextCount),1);
+  await inspector.send('Target.disposeBrowserContext',{browserContextId:remaining[0]});
+  await until(async()=>{
+   const state=await call({action:'chat_tabs'});
+   return state.isolatedContextCount===0&&state.contextCleanupUncertain===false?state:null;
+  },10000);
+  assert.equal((await inspector.send('Target.getBrowserContexts')).browserContextIds.length,0,
+    'externally disposed context is recognized as already removed');
+  const replacement=await call({action:'chat_tab_open',url:'https://chatgpt.com/',isolatedContext:true});
+  assert.equal(replacement.isolatedContext,true);
+  const nextContext=(await inspector.send('Target.getBrowserContexts')).browserContextIds;
+  assert.equal(nextContext.length,1);
   const externalTarget=(await inspector.send('Target.getTargets')).targetInfos
-    .find(t=>t.type==='page'&&t.browserContextId===remaining[0]);
-  assert.ok(externalTarget,'remaining private-context page is discoverable');
+    .find(t=>t.type==='page'&&t.browserContextId===nextContext[0]);
+  assert.ok(externalTarget,'replacement private-context page discoverable');
   assert.equal((await inspector.send('Target.closeTarget',{targetId:externalTarget.targetId})).success,true);
   await until(async()=>{
    const state=await call({action:'chat_tabs'});
@@ -159,7 +170,7 @@ async function run(){
   await call({action:'end'});
   console.log(JSON.stringify({result:'COMMANDER_NATIVE_CDP_MANAGED_12_TAB_E2E_PASS',
     beforeOpen:snapshot.counts.OPEN,afterOpen:after.counts.OPEN,closed:after.counts.CLOSED,maxManagedTabsVerified:atLimit.managedTabs.length,
-    isolatedContextsVerified:2,cookieStorageIsolated:true,isolatedContextDisposed:true,externalContextReaped:true,
+    isolatedContextsVerified:2,cookieStorageIsolated:true,isolatedContextDisposed:true,externalContextReaped:true,externalContextDisposeReconciled:true,
     authenticatedChats:0,addonsUsed:0,primaryProfileTouched:false}));
  }finally{
   try{inspector?.close()}catch{}

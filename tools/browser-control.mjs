@@ -79,6 +79,30 @@ class Cdp {
  close(){try{this.ws?.close();}catch{}this.ws=null;}
 }
 let browser=null;
+async function disposeOwnedContext(owner,ref,contextId){
+ if(!contextId)return true;
+ const already=owner.contextDisposePending.get(ref);
+ if(already)return already;
+ const task=(async()=>{
+   try{
+     await owner.cdp.send('Target.disposeBrowserContext',{browserContextId:contextId},undefined,5000);
+   }catch{
+     // Chrome may already have disposed the context externally. Verify before
+     // treating a repeated disposal error as an unresolved side effect.
+     let remaining;
+     try{remaining=await owner.cdp.send('Target.getBrowserContexts',{},undefined,5000);}
+     catch{owner.contextCleanupUncertain=true;return false;}
+     if(!Array.isArray(remaining.browserContextIds)||remaining.browserContextIds.includes(contextId)){
+       owner.contextCleanupUncertain=true;return false;
+     }
+   }
+   if(owner.managedContexts.get(ref)===contextId)owner.managedContexts.delete(ref);
+   return true;
+ })();
+ owner.contextDisposePending.set(ref,task);
+ try{return await task;}
+ finally{if(owner.contextDisposePending.get(ref)===task)owner.contextDisposePending.delete(ref);}
+}
 async function portAlive(port){
  if(!Number.isInteger(port)||port<1||port>65535)return false;
  try{const c=new AbortController();const t=setTimeout(()=>c.abort(),350);const r=await fetch('http://127.0.0.1:'+port+'/json/version',{signal:c.signal});clearTimeout(t);return r.ok;}catch{return false;}
@@ -172,7 +196,7 @@ async function startBrowser(req){
  if(headless)args.unshift('--headless=new');
  args.push('about:blank');
  let child;try{child=spawn(executable,args,{stdio:['ignore','ignore','ignore'],windowsHide:headless,shell:false});}catch{throw fail('BROWSER_LAUNCH_FAILED');}
- browser={child,cdp:null,sessionId:null,targetId:null,profileDir,isolated:req.isolated===true,executable,product:null,port:null,headless,managedTabs:new Map(),managedContexts:new Map(),closingTargets:new Set(),contextCleanupUncertain:false};
+ browser={child,cdp:null,sessionId:null,targetId:null,profileDir,isolated:req.isolated===true,executable,product:null,port:null,headless,managedTabs:new Map(),managedContexts:new Map(),contextDisposePending:new Map(),closingTargets:new Set(),contextCleanupUncertain:false};
  try{
   const port=await waitForPortFile(portFile,child);browser.port=port;
   let version;try{version=await (await fetch('http://127.0.0.1:'+port+'/json/version')).json();}catch{throw fail('BROWSER_DEVTOOLS_UNAVAILABLE');}
@@ -190,9 +214,7 @@ async function startBrowser(req){
       const contextId=browser.managedContexts.get(ref);
       if(contextId&&!browser.closingTargets.has(id)){
         const owned=browser;
-        void owned.cdp.send('Target.disposeBrowserContext',{browserContextId:contextId},undefined,5000)
-          .then(()=>{if(owned.managedContexts.get(ref)===contextId)owned.managedContexts.delete(ref);})
-          .catch(()=>{owned.contextCleanupUncertain=true;});
+        void disposeOwnedContext(owned,ref,contextId).catch(()=>{owned.contextCleanupUncertain=true;});
       }
     }
   });
@@ -253,7 +275,13 @@ async function handle(req){
    }
    const managed=browser.managedTabs;
    const live=new Set((await browser.cdp.send('Target.getTargets',{},undefined,5000)).targetInfos?.map(x=>x.targetId)??[]);
-   for(const [ref,id] of managed)if(!live.has(id))managed.delete(ref);
+   for(const [ref,id] of managed)if(!live.has(id)){
+     managed.delete(ref);
+     const contextId=browser.managedContexts.get(ref);
+     if(contextId&&!await disposeOwnedContext(browser,ref,contextId))browser.contextCleanupUncertain=true;
+   }
+   // Include asynchronous targetDestroyed cleanup in the observed state.
+   await Promise.all([...browser.contextDisposePending.values()]);
    return {...observer.snapshot(),maxManagedTabs:16,
      isolatedContextCount:browser.managedContexts.size,contextCleanupUncertain:browser.contextCleanupUncertain,
      managedTabs:[...managed.keys()].map(tabRef=>({tabRef,isolatedContext:browser.managedContexts.has(tabRef)}))};
@@ -302,11 +330,8 @@ async function handle(req){
      if(res.success!==true)throw fail('BROWSER_CHAT_TAB_CLOSE_FAILED');
      browser.chatObserver?.destroyed(targetId);
      browser.managedTabs.delete(req.tabRef);
-     if(contextId){
-       try{await browser.cdp.send('Target.disposeBrowserContext',{browserContextId:contextId},undefined,5000);}
-       catch{browser.contextCleanupUncertain=true;throw fail('BROWSER_CHAT_CONTEXT_CLEANUP_UNCERTAIN');}
-       browser.managedContexts.delete(req.tabRef);
-     }
+     if(contextId&&!await disposeOwnedContext(browser,req.tabRef,contextId))
+       throw fail('BROWSER_CHAT_CONTEXT_CLEANUP_UNCERTAIN');
      return {ok:true,closed:true,scope:'COMMANDER_ONLY'};
    }finally{browser.closingTargets.delete(targetId);}
   }

@@ -9,7 +9,7 @@
 
 ## Optional ephemeral per-tab Chrome BrowserContext (source-only candidate)
 - The optional `browser_chat_tab_open.isolatedContext=true` creates a separate `Target.createBrowserContext({disposeOnDetach:true})`, and passes its opaque `browserContextId` directly to `Target.createTarget`. Default `false` preserves the prior single-owned-profile behavior. Browser Core never returns browser-context IDs, cookies, or account credentials to callers.
-- Explicit Commander-owned tab close disposes the associated context; externally closed tabs trigger bounded automatic disposal. Failed disposal fails closed for further managed-tab mutations until owned session reset. Maximum simultaneously managed tabs remains 16 and private contexts are bounded by 16.
+- Explicit Commander-owned tab close disposes the associated context; externally closed tabs trigger bounded automatic disposal. Failed disposal is reconciled against `Target.getBrowserContexts`; a context already absent after external disposal is considered clean. Truly unresolved/failed disposal fails closed for further managed-tab mutations until owned session reset. Destruction events and read-only target reconciliation serialize in-flight disposal to avoid double-delete races. Maximum simultaneously managed tabs remains 16 and private contexts are bounded by 16.
 - This is ephemeral **site storage separation**, not separate OS users, VMs, human/account authentication or persistence across Commander session end. Opening multiple real ChatGPT accounts, long-lived profile restore, CEF parity, foreground handoff and browser-crash recovery remain separate acceptance gates.
 
 ## Rejected architecture / migration
