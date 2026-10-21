@@ -10,6 +10,10 @@ for tool in tar gzip sha256sum mktemp sed; do
 done
 VERSION="$(node -p 'require(process.argv[1]).version' "$ROOT/package.json")"
 [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][A-Za-z0-9._-]+)?$ ]] || { echo 'Invalid source version' >&2; exit 2; }
+# The published launcher must fetch the exact source tree it was built from.
+# PR builds may produce QA archives; only matching release tags can install.
+SOURCE_COMMIT="$(git -C "$ROOT" rev-parse 'HEAD^{commit}')"
+[[ "$SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]] || { echo 'Missing exact build source commit' >&2; exit 2; }
 STAGE="$(mktemp -d)"
 trap 'rm -rf -- "$STAGE"' EXIT
 mkdir -p "$STAGE/payload/installer" "$STAGE/payload/tools"
@@ -23,8 +27,14 @@ cat > "$STAGE/payload/SETUP.sh" <<'LAUNCH'
 #!/usr/bin/env bash
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd -P)"
+# These build-time pins override ambient environment defaults and prevent
+# a new single-file installer from silently installing an older Core.
+export REMOTE_COMMANDER_SOURCE_REF='__RC_BUILD_SOURCE_REF__'
+export REMOTE_COMMANDER_EXPECTED_COMMIT='__RC_BUILD_SOURCE_COMMIT__'
 exec /bin/bash "$HERE/setup-wizard.sh" "$@"
 LAUNCH
+sed -i -e "s/__RC_BUILD_SOURCE_REF__/v$VERSION/" \
+       -e "s/__RC_BUILD_SOURCE_COMMIT__/$SOURCE_COMMIT/" "$STAGE/payload/SETUP.sh"
 cat > "$STAGE/payload/README.txt" <<'DOC'
 Remote Commander Linux single-file bootstrap (online)
 Run: bash Remote-Commander-Linux-Setup.run --list-products
