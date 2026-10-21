@@ -62,7 +62,7 @@ export function isolateWindowsLeaseRegression(command){
 
 
 /**
- * R01: isolate the three historically timing-sensitive Windows project fixtures
+ * R01: isolate the four historically timing-sensitive Windows project fixtures
  * before the bulk batch. This changes scheduling only: no timeout, budget,
  * acceptance, or production state transition is modified.
  *
@@ -71,7 +71,7 @@ export function isolateWindowsLeaseRegression(command){
  */
 export function isolateWindowsTimingSensitiveRegressions(command) {
   if(typeof command!=='string'||!command)throw new Error('CI_WINDOWS_TIMING_COMMAND_INVALID');
-  const files=['test/project-adaptive.test.mjs','test/project-delivery-correlation.test.mjs','test/project-engine-review.test.mjs'];
+  const files=['test/project-adaptive.test.mjs','test/project-delivery-correlation.test.mjs','test/project-engine-review.test.mjs','test/project-engine.test.mjs'];
   for(const file of files)
     if(command.split(file).length-1!==1)throw new Error('CI_WINDOWS_TIMING_CARDINALITY');
   const parts=command.split(' && ');
