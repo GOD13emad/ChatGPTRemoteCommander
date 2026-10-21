@@ -24,14 +24,14 @@ async function req(pipe,command){
   assert.equal(reply?.ok,true);
   return reply;
 }
-test('two private Desktop workers use UIA to inspect THEIR OWN Win32 windows',
-  {skip:process.platform!=='win32',timeout:49000},async()=>{
+async function exerciseOwnedWorkers(valueMode){
     const folder=await mkdtemp(path.join(os.tmpdir(),'rcqa-uia-owned-'));
     const pipe='rc_qa_desk_'+randomBytes(16).toString('hex');
     const host=spawn(pwsh,['-NoLogo','-NoProfile','-NonInteractive',
       '-File',hostScript,'-PipeName',pipe,'-LifetimeMs','42000'],{
        windowsHide:true,stdio:['ignore','pipe','pipe'],
-       env:{...process.env,RC_QA_UIA_RECEIPT_DIR:folder}
+       env:{...process.env,RC_QA_UIA_RECEIPT_DIR:folder,
+         RC_QA_UIA_VALUE_MODE:valueMode?'1':'0'}
     });
     let stdout='',stderr='',exited=false;
     const closed=new Promise(resolve=>host.once('close',code=>{exited=true;resolve(code)}));
@@ -41,7 +41,14 @@ test('two private Desktop workers use UIA to inspect THEIR OWN Win32 windows',
       const start=Date.now();
       while(!stdout.includes('"ready":true')&&!exited&&Date.now()-start<17500)
         await delay(70);
-      assert.equal(exited,false,'QA owned host failed: '+stderr.slice(-1200));
+      let diagnostics='';
+      if(exited && valueMode){
+        for(const file of await readdir(folder)){
+          if(/^uia-fail-[0-9]+\.txt$/.test(file))
+            diagnostics+=(await readFile(path.join(folder,file),'utf8')).slice(0,500);
+        }
+      }
+      assert.equal(exited,false,'QA owned host failed: '+diagnostics+' '+stderr.slice(-1200));
       assert.match(stdout,/"ready":true/);
       const status=await req(pipe,'status');
       assert.equal(status.workers.length,2);
@@ -57,14 +64,21 @@ test('two private Desktop workers use UIA to inspect THEIR OWN Win32 windows',
         const deadline=Date.now()+5000;
         while(Date.now()<deadline&&!evidence){
           try{evidence=await read(file)}catch(err){
-            if(err.code!=='ENOENT')throw err;
+            if(!['ENOENT','EBUSY','EPERM'].includes(err.code))throw err;
             await delay(75);
           }
         }
-        assert.ok(evidence,'NO_IN_DESKTOP_UIA_RECEIPT_'+w.pid+' '+stderr);
+        let diagnosis='';
+        if(!evidence){
+          try{diagnosis=await readFile(path.join(folder,'uia-fail-'+w.pid+'.txt'),'utf8')}
+          catch(err){if(!['ENOENT','EBUSY','EPERM'].includes(err.code))throw err;}
+        }
+        assert.ok(evidence,'NO_IN_DESKTOP_UIA_RECEIPT_'+w.pid+' '+diagnosis+' '+stderr);
         assert.deepEqual(evidence,{
           schema:1,pid:w.pid,titleVerified:true,uiaElementVerified:true,
-          effectMode:'observation-only',noPhysicalInput:true
+          effectMode:valueMode?'synthetic-valuepattern-only':'observation-only',
+          noPhysicalInput:true,
+          ...(valueMode?{valuePatternVerified:true,nativeReadbackVerified:true}:{})
         });
       }
       assert.deepEqual((await readdir(folder)).sort(),
@@ -81,6 +95,10 @@ test('two private Desktop workers use UIA to inspect THEIR OWN Win32 windows',
       assert.equal(stat.isSymbolicLink(),false);
       assert.equal(stat.isDirectory(),true);
       assert.ok(path.basename(folder).startsWith('rcqa-uia-owned-'));
-      await rm(folder,{recursive:true,force:true});
+      await rm(folder,{recursive:true,force:true,maxRetries:20,retryDelay:100});
     }
-  });
+}
+test('two private Desktop workers observe THEIR OWN Win32 windows',
+  {skip:process.platform!=='win32',timeout:49000},()=>exerciseOwnedWorkers(false));
+test('two private Desktop workers set and verify OWN synthetic EDIT ValuePattern',
+  {skip:process.platform!=='win32',timeout:49000},()=>exerciseOwnedWorkers(true));
