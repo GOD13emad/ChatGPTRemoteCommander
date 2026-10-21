@@ -93,7 +93,7 @@ test('Linux GUI product selector honors optional selection and rejects cancellat
  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'rc-product-zenity-'));
  try {
    const binary=path.join(dir,'zenity');
-   fs.writeFileSync(binary,'#!/usr/bin/env bash\nif [[ "\${RC_ZENITY_CANCEL:-0}" == 1 ]]; then exit 1; fi\nprintf "%s\\n" "\${RC_ZENITY_RESULT:-work-plugin}"\n',{mode:0o755});
+   fs.writeFileSync(binary,'#!/usr/bin/env bash\nif [[ "\${RC_ZENITY_CANCEL:-0}" == 1 ]]; then exit 1; fi\nprintf "%s\\n" "\${RC_ZENITY_RESULT-work-plugin}"\n',{mode:0o755});
    const pathVar=dir+path.delimiter+process.env.PATH;
    const run=(result,cancel=false)=>spawnSync('bash',[path.join(root,'setup-wizard.sh'),'--plan-only'],{
      encoding:'utf8',timeout:3500,
