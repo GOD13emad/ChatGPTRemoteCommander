@@ -1,4 +1,5 @@
 import test from 'node:test';
+import './release-discovery-url-security.test.mjs';
 import { assertPinnedReleaseDiscovery } from './release-discovery-contract.mjs';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
