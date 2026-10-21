@@ -44,7 +44,7 @@ export function createPlan({platform,all=false,products=[],browserBundled=false}
     const p=byId.get(id);if(!p)throw Error('UNKNOWN_PRODUCT '+id);
     const state=p.platforms[platform];
     if(state.status==='unavailable')throw Error('PRODUCT_UNAVAILABLE '+id+': '+state.reason);
-    if(state.status==='conditional'&&!browserBundled)throw Error('PRODUCT_NOT_BUNDLED '+id);
+    if(state.status==='conditional'&&!browserBundled)throw Error('PRODUCT_NEEDS_QUALIFIED_PAYLOAD '+id);
     if(seen.has(id))return;
     for(const dep of p.requires)add(dep);
     seen.add(id);

@@ -54,8 +54,11 @@
           "reason": "Selected only if BrowserSetup was verified and embedded at setup build time"
         },
         "linux": {
-          "status": "unavailable",
-          "reason": "Standalone Browser product is not bundled in the published Linux setup; core browser backend is not the same product"
+          "status": "conditional",
+          "method": "install-browser-linux.sh",
+          "reason": "Separate checksum-pinned stable Browser v0.8.1; Linux x86_64 X11 and interactive sudo required; not bundled offline",
+          "version": "0.8.1",
+          "sha256": "8cac4150b844e48c5f6fbf90df84b306d49165bef77f716f5c61d20bad164073"
         }
       }
     },

@@ -12,6 +12,8 @@ PRODUCT_LIST=0
 PRODUCT_PLAN_ONLY=0
 PRODUCT_REQUESTS=()
 PRODUCT_SELECTION_EXPLICIT=0
+BROWSER_SELECTED=0
+BROWSER_EXPLICIT_ALL=0
 TUNNEL_ID=""
 APP_ID=""
 PROFILE="chatgpt-remote-commander"
@@ -27,7 +29,7 @@ while [[ $# -gt 0 ]]; do
     --skip-install) SKIP_INSTALL=1; shift ;;
     --skip-connect) SKIP_CONNECT=1; shift ;;
     --skip-plugin) SKIP_PLUGIN=1; shift ;;
-    --all) PRODUCT_ALL=1; PRODUCT_SELECTION_EXPLICIT=1; shift ;;
+    --all) PRODUCT_ALL=1; BROWSER_EXPLICIT_ALL=1; PRODUCT_SELECTION_EXPLICIT=1; shift ;;
     --product) [[ $# -ge 2 ]] || { echo '--product requires an id' >&2; exit 2; }; PRODUCT_REQUESTS+=("$2"); PRODUCT_SELECTION_EXPLICIT=1; shift 2 ;;
     --list-products) PRODUCT_LIST=1; shift ;;
     --plan-only) PRODUCT_PLAN_ONLY=1; shift ;;
@@ -54,7 +56,7 @@ list_products(){
   cat <<'PRODUCTS'
 core              available          Remote Commander Core (required)
 control-center    unavailable        Native GTK Control Center is a read-only preview; no qualified installer
-browser           unavailable        Standalone Browser product is not bundled on Linux
+browser           conditional        Browser v0.8.1 (online 367 MB, Linux x86_64 X11 and sudo required)
 work-plugin       pending-activation ChatGPT Work Plugin setup; needs App ID after enrollment
 companion         unavailable        Private experimental companions are not public installer products
 PRODUCTS
@@ -67,17 +69,21 @@ if [[ "$PRODUCT_ALL" -eq 1 && "${#PRODUCT_REQUESTS[@]}" -gt 0 ]]; then
   echo '--all conflicts with --product' >&2; exit 2
 fi
 if [[ "$PRODUCT_SELECTION_EXPLICIT" -eq 0 && ( -n "${DISPLAY:-}" || -n "${WAYLAND_DISPLAY:-}" ) ]] && command -v zenity >/dev/null 2>&1; then
-  # Core is mandatory; only the qualified optional Plugin enrollment is selectable.
+  # Core is mandatory. Browser requires opt-in and a verified, sudo-configured X11 runtime.
   # GUI cancel must fail closed before any installer/prerequisite or credential action.
   if gui_choice="$(zenity --list --checklist \
       --title='Remote Commander — Select products' \
       --text='Remote Commander Core is required. Choose optional setup steps (not a promise of ChatGPT App activation).' \
       --column='Include' --column='Product' --column='Details' \
       TRUE 'work-plugin' 'ChatGPT Work Plugin — activation requires registered App ID' \
+      FALSE 'browser' 'Browser v0.8.1 — 367 MB online, X11, sudo sandbox' \
       --separator='|' --width=690 --height=270)"; then
+    # Zenity returns a delimited string. Accept exact choices only.
     case "$gui_choice" in
-      'work-plugin') PRODUCT_ALL=1 ;;
       '') PRODUCT_REQUESTS=(core) ;;
+      'work-plugin') PRODUCT_REQUESTS=(core work-plugin) ;;
+      'browser') PRODUCT_REQUESTS=(core browser) ;;
+      'work-plugin|browser'|'browser|work-plugin') PRODUCT_REQUESTS=(core work-plugin browser) ;;
       *) echo 'INVALID_GUI_PRODUCT_SELECTION' >&2; exit 2 ;;
     esac
   else
@@ -107,14 +113,27 @@ elif [[ "$PRODUCT_SELECTION_EXPLICIT" -eq 0 ]]; then
   else PRODUCT_ALL=1
   fi
 fi
-if [[ "$PRODUCT_ALL" -eq 1 ]]; then PRODUCT_REQUESTS=(core work-plugin); fi
+if [[ "$PRODUCT_ALL" -eq 1 ]]; then
+  PRODUCT_REQUESTS=(core work-plugin)
+  # Only an explicit --all on an X11 desktop adds the separately hosted Browser.
+  # Legacy headless automation must never trigger a 367 MB download and sudo.
+  if [[ "$BROWSER_EXPLICIT_ALL" -eq 1 && -n "${DISPLAY:-}" ]]; then
+    PRODUCT_REQUESTS+=(browser)
+  fi
+fi
+WIZARD_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 SELECTED_PLUGIN=0
 SEEN_CORE=0
 for product in "${PRODUCT_REQUESTS[@]}"; do
   case "$product" in
     core) [[ "$SEEN_CORE" -eq 0 ]] || { echo 'DUPLICATE_PRODUCT_SELECTION core' >&2; exit 2; }; SEEN_CORE=1 ;;
     work-plugin) [[ "$SELECTED_PLUGIN" -eq 0 ]] || { echo 'DUPLICATE_PRODUCT_SELECTION work-plugin' >&2; exit 2; }; SELECTED_PLUGIN=1 ;;
-    control-center|browser|companion)
+    browser)
+      [[ "$BROWSER_SELECTED" -eq 0 ]] || { echo 'DUPLICATE_PRODUCT_SELECTION browser' >&2; exit 2; }
+      [[ -f "$WIZARD_SCRIPT_DIR/tools/install-browser-linux.sh" ]] ||
+        { echo 'PRODUCT_NOT_BUNDLED browser installer component missing' >&2; exit 2; }
+      BROWSER_SELECTED=1 ;;
+    control-center|companion)
       echo "PRODUCT_UNAVAILABLE $product: not a qualified standalone Linux installer artifact" >&2; exit 2 ;;
     *) echo "UNKNOWN_PRODUCT $product" >&2; exit 2 ;;
   esac
@@ -125,9 +144,13 @@ fi
 if [[ "$SELECTED_PLUGIN" -eq 0 ]]; then SKIP_PLUGIN=1; fi
 SELECTED_PRODUCTS='core'
 if [[ "$SELECTED_PLUGIN" -eq 1 ]]; then SELECTED_PRODUCTS='core,work-plugin'; fi
+if [[ "$BROWSER_SELECTED" -eq 1 ]]; then SELECTED_PRODUCTS="$SELECTED_PRODUCTS,browser"; fi
 if [[ "$PRODUCT_PLAN_ONLY" -eq 1 ]]; then
   echo "INSTALL_PLAN platform=linux selected=$SELECTED_PRODUCTS changesApplied=false"
   if [[ "$SELECTED_PLUGIN" -eq 1 ]]; then echo 'WORK_PLUGIN_PENDING_APP_ID'; fi
+  if [[ "$BROWSER_SELECTED" -eq 1 ]]; then
+    echo 'BROWSER_REQUIRES_LINUX_X86_64_X11_INTERACTIVE_SUDO_ONLINE_367MB'
+  fi
   exit 0
 fi
 if [[ "$MODE_SET" -eq 0 && -t 0 ]]; then
@@ -184,6 +207,11 @@ HEALTH="$(curl -fsS --max-time 4 http://127.0.0.1:47831/health)"
 HEALTH="$HEALTH" node --input-type=module <<'NODE'
 const j=JSON.parse(process.env.HEALTH); if(!j.ok) process.exit(2);
 NODE
+
+if [[ "$BROWSER_SELECTED" -eq 1 ]]; then
+  echo 'Installing selected checksum-pinned Browser separately (interactive sudo, X11 required)...'
+  bash "$WIZARD_SCRIPT_DIR/tools/install-browser-linux.sh" --install
+fi
 
 if [[ "$SKIP_CONNECT" -eq 0 ]]; then
   connect="$INSTALL_ROOT/enable-autostart-linux.sh"

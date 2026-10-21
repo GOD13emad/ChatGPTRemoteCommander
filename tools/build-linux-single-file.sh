@@ -12,12 +12,13 @@ VERSION="$(node -p 'require(process.argv[1]).version' "$ROOT/package.json")"
 [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][A-Za-z0-9._-]+)?$ ]] || { echo 'Invalid source version' >&2; exit 2; }
 STAGE="$(mktemp -d)"
 trap 'rm -rf -- "$STAGE"' EXIT
-mkdir -p "$STAGE/payload/installer"
+mkdir -p "$STAGE/payload/installer" "$STAGE/payload/tools"
 for file in install.sh setup-wizard.sh; do
   test -f "$ROOT/$file" || { echo "Missing source $file" >&2; exit 2; }
   cp "$ROOT/$file" "$STAGE/payload/$file"
 done
 cp "$ROOT/installer/products.json" "$STAGE/payload/installer/products.json"
+cp "$ROOT/tools/install-browser-linux.sh" "$STAGE/payload/tools/install-browser-linux.sh"
 cat > "$STAGE/payload/SETUP.sh" <<'LAUNCH'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -30,10 +31,12 @@ Run: bash Remote-Commander-Linux-Setup.run --list-products
      bash Remote-Commander-Linux-Setup.run --plan-only --all
      bash Remote-Commander-Linux-Setup.run --all
 Selected supported product installation uses online distro/Node/tunnel-client sources.
-This bundle does NOT include unqualified standalone Browser or GTK preview.
+This bundle includes a checksum-pinned ONLINE installer for Browser v0.8.1.
+Browser requires X11, Linux x86_64 and interactive sudo to configure Chromium sandbox.
+The GTK Control Center preview and experimental companion are not qualified.
 Runtime API keys and tunnel IDs must be enrolled after installation, not baked into the file.
 DOC
-chmod 700 "$STAGE/payload/SETUP.sh" "$STAGE/payload/install.sh" "$STAGE/payload/setup-wizard.sh"
+chmod 700 "$STAGE/payload/SETUP.sh" "$STAGE/payload/install.sh" "$STAGE/payload/setup-wizard.sh" "$STAGE/payload/tools/install-browser-linux.sh"
 tar -czf "$STAGE/payload.tar.gz" -C "$STAGE/payload" .
 HASH="$(sha256sum "$STAGE/payload.tar.gz" | cut -d' ' -f1)"
 cat > "$STAGE/header" <<'HEADER'
