@@ -32,13 +32,13 @@ function execClient(pipe,command){
     });
   });
 }
-function unknownCommand(pipe){
+function unknownCommand(pipe,command='click'){
   return new Promise((resolve,reject)=>{
     const socket=net.createConnection('\\\\.\\pipe\\'+pipe);
     let body='',complete=false;
     const stop=()=>{complete=true;socket.destroy();};
     socket.setTimeout(3000);
-    socket.on('connect',()=>socket.write('click\n'));
+    socket.on('connect',()=>socket.write(command+'\n'));
     socket.on('data',data=>{
       body+=data;
       if(body.length>2000){stop();reject(Error('QA_UNBOUNDED_RESPONSE'));return;}
@@ -72,6 +72,16 @@ test('same retained Win32 Desktop objects survive independent pipe clients',
       const ready=JSON.parse(stdout.trim().split(/\r?\n/)[0]);
       assert.equal(ready.pipe,pipe);
       assert.equal(ready.sessionId>0,true);
+      const peer=await execClient(pipe,'peer');
+      assert.equal(peer.reply.ok,true);
+      assert.equal(peer.reply.transport,'win32-named-pipe');
+      assert.equal(peer.reply.clientPid,peer.clientPid);
+      assert.equal(peer.reply.clientSession,ready.sessionId);
+      assert.ok(peer.reply.clientPid>0);
+      // Any caller-provided PID/session syntax is a denied command,
+      // rather than overriding the OS-reported connected process.
+      const forged=await unknownCommand(pipe,'peer:1:1');
+      assert.deepEqual(forged,{ok:false,code:'QA_COMMAND_DENIED'});
       const first=await execClient(pipe,'status');
       const a=await execClient(pipe,'observeA');
       const b=await execClient(pipe,'observeB');

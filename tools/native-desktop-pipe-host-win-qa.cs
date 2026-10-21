@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.IO.Pipes;
+using Microsoft.Win32.SafeHandles;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -34,6 +35,10 @@ public static class RcQaRetainedDesktopPipeHost
   static extern bool CreateProcessW(string exe,StringBuilder cmd,IntPtr pa,
     IntPtr ta,bool inherit,uint flags,IntPtr env,string cwd,
     ref STARTUPINFO si,out PROCESS_INFORMATION pi);
+  [DllImport("kernel32.dll",SetLastError=true)]
+  static extern bool GetNamedPipeClientProcessId(SafePipeHandle handle,out uint pid);
+  [DllImport("kernel32.dll",SetLastError=true)]
+  static extern bool GetNamedPipeClientSessionId(SafePipeHandle handle,out uint session);
   [DllImport("kernel32.dll",SetLastError=true)]
   static extern uint WaitForSingleObject(IntPtr h,uint milliseconds);
   [DllImport("kernel32.dll",SetLastError=true)]
@@ -158,7 +163,8 @@ public static class RcQaRetainedDesktopPipeHost
       ",\"ownWindow\":"+(isolated?"true":"false")+
       ",\"effectMode\":\"observation-only\"}";
   }
-  static string Response(string command,Workspace[] work,int sessionId){
+  static string Response(string command,Workspace[] work,int sessionId,uint clientPid,uint clientSession){
+    if(command=="peer")return "{\"ok\":true,\"transport\":\"win32-named-pipe\",\"clientPid\":"+clientPid+",\"clientSession\":"+clientSession+"}";
     if(command=="observeA")return "{\"ok\":true,\"hostSession\":"+sessionId+
       ",\"result\":"+Details(work[0])+"}";
     if(command=="observeB")return "{\"ok\":true,\"hostSession\":"+sessionId+
@@ -211,6 +217,13 @@ public static class RcQaRetainedDesktopPipeHost
             try{pipe.WaitForConnectionAsync(cancel.Token).GetAwaiter().GetResult();}
             catch(OperationCanceledException){continue;}
           }
+          // OS-reported peer identity. CurrentUserOnly is necessary but not
+          // sufficient to bind a particular process/session to a request.
+          // This only attests a transport peer, NEVER a ChatGPT conversation.
+          uint clientPid,clientSession;
+          if(!GetNamedPipeClientProcessId(pipe.SafePipeHandle,out clientPid)||
+             !GetNamedPipeClientSessionId(pipe.SafePipeHandle,out clientSession)||
+             clientPid==0||clientSession!=(uint)sessionId)continue;
           using(var reader=new StreamReader(pipe,Encoding.UTF8,false,1024,true))
           using(var writer=new StreamWriter(pipe,new UTF8Encoding(false),1024,true)){
             writer.AutoFlush=true;
@@ -224,7 +237,7 @@ public static class RcQaRetainedDesktopPipeHost
               done=true;
             }else{
               string reply;
-              try{reply=Response(cmd,workers,sessionId);}
+              try{reply=Response(cmd,workers,sessionId,clientPid,clientSession);}
               catch{reply="{\"ok\":false,\"code\":\"QA_WORKER_UNAVAILABLE\"}";}
               writer.WriteLine(reply);
             }
