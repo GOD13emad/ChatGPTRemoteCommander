@@ -29,6 +29,7 @@ internal sealed class DashboardChrome
     };
     private readonly List<Panel> shells = new();
     private readonly List<Label> values = new();
+    private readonly List<string> metricTitles = new();
     private readonly List<Label> captions = new();
 
     public Control Metrics => metrics;
@@ -75,6 +76,7 @@ internal sealed class DashboardChrome
         card.Controls.Add(value);
         card.Controls.Add(header);
         shells.Add(card); values.Add(value); captions.Add(detail);
+        metricTitles.Add(title);
         return card;
     }
     public void Attach(FlowLayoutPanel cardsPanel)
@@ -119,7 +121,9 @@ internal sealed class DashboardChrome
     private void Set(int index, string value, bool evidence)
     {
         values[index].Text = value;
-        values[index].AccessibleName = (evidence ? "Evidence: " : "Not accepted: ") + value;
+        values[index].AccessibleName = metricTitles[index] + ": "
+            + (evidence ? "Recorded " : "Not accepted ") + value;
+        values[index].AccessibleDescription = captions[index].Text;
     }
     public void ApplyFilter()
     {

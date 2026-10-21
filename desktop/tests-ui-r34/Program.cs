@@ -47,6 +47,20 @@ internal static class Program
             || !actual.Contains("UNVERIFIED") || !actual.Contains("READ ONLY"))
             throw new Exception("R34_FALSE_METRIC_VALUES");
 
+        // Screen readers must identify each metric, not announce an ambiguous "Evidence: 1".
+        foreach (var tile in table.Controls.OfType<Panel>())
+        {
+            var labels = tile.Controls.OfType<Label>().ToArray();
+            var title = labels.Single(l => l.Text is "Discovered profiles" or "Core versions"
+                or "Live operations" or "Control authority");
+            var valueLabel = labels.Single(l => l.Font.Size > 16);
+            if (!(valueLabel.AccessibleName ?? "").Contains(title.Text,
+                    StringComparison.OrdinalIgnoreCase) ||
+                string.IsNullOrWhiteSpace(valueLabel.AccessibleDescription))
+                throw new Exception("R34_METRIC_CONTEXT_MISSING_FROM_ACCESSIBLE_NAME");
+        }
+        Console.WriteLine("R34_NATIVE_METRIC_SCREEN_READER_CONTEXT_PASS");
+
         // Isolated records increase the profile count without inventing a Core version.
         chrome.Update(profiles.Concat(new[] {
             new ProfileRow("MMZ", 0, "unknown", "", 47836, 0, 0, null, "",
