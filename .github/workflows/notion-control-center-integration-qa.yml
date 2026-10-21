@@ -32,10 +32,18 @@ jobs:
       - name: Verify REST and MCP are opt-in and secure
         run: |
           node --test --test-concurrency=1 test/notion-engine.test.mjs test/notion-mcp-engine.test.mjs test/notion-login.test.mjs test/notion-core-http.test.mjs test/notion-offline-fault-qualification-20261021.test.mjs
+      - name: Install system GTK introspection for native GUI contract
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends python3-gi gir1.2-gdkpixbuf-2.0 gir1.2-gtk-4.0 gir1.2-adw-1
+          /usr/bin/python3 -c "import gi; from gi.repository import Gio, GdkPixbuf"
       - name: Verify GTK Control Center and Notion credential controls
         run: |
           python -B -m unittest discover -s desktop/linux-control-center -p 'test*.py' -v
-          node test/linux-gui-contract.mjs
+          # Preserve the setup-node Node.js 22 binary while selecting Ubuntu's
+          # system Python with apt-provided gi for the full native GUI self-test.
+          node_binary="$(command -v node)"
+          PATH="/usr/bin:$PATH" "$node_binary" test/linux-gui-contract.mjs
       - name: Verify full repository credential scan
         run: npm run audit
 
