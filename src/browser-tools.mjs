@@ -113,6 +113,10 @@ export function createBrowserController({invoke=defaultInvoke,closeInvoke=defaul
       userDesktopTouched:false,savedPasswordStoreAccess:false,browserProduct:native.browserProduct??null,backend:native.backend??'browser-headless'};
    }
    owns(input.lease);
+   if(name==='browser_chat_tab_snapshot'){
+     const result=await invoke({action:'chat_tab_snapshot',tabRef:input.tabRef,maxTextChars:input.maxTextChars??20000,maxElements:input.maxElements??120});
+     return {...result,sessionResetRequired:chatMutationUncertain,background:true,userDesktopTouched:false,passwordValuesReturned:false,cookiesReturned:false,savedPasswordStoreAccess:false};
+   }
    if(name==='browser_chat_tabs'){
      const native=await invoke({action:'chat_tabs'});
      return {...native,sessionResetRequired:chatMutationUncertain,background:true,userDesktopTouched:false};

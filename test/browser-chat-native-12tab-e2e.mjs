@@ -23,7 +23,7 @@ async function inspectContexts(profile){
  const port=Number((await readFile(path.join(profile,'DevToolsActivePort'),'utf8')).split(/\r?\n/)[0]);
  assert.ok(Number.isInteger(port)&&port>0);
  const version=await (await fetch('http://127.0.0.1:'+port+'/json/version')).json();
- const socket=new WebSocket(version.webSocketDebuggerUrl),pending=new Map();
+ const socket=new WebSocket(version.webSocketDebuggerUrl),pending=new Map(),events=new Map();
  let seq=0;
  await new Promise((resolve,reject)=>{
   const timer=setTimeout(()=>reject(Error('CDP_INSPECT_CONNECT_TIMEOUT')),9000);
@@ -32,15 +32,17 @@ async function inspectContexts(profile){
  });
  socket.addEventListener('message',event=>{
   let reply;try{reply=JSON.parse(String(event.data));}catch{return}
+  if(!reply.id){try{events.get(reply.method)?.(reply.params??{},reply.sessionId);}catch{}return;}
   const item=pending.get(reply.id);if(!item)return;
   clearTimeout(item.timer);pending.delete(reply.id);
   if(reply.error)item.reject(Error('CDP_INSPECT_COMMAND_FAILED'));else item.resolve(reply.result??{});
  });
  return {
-  send:(method,params={})=>new Promise((resolve,reject)=>{
+  on:(method,listener)=>events.set(method,listener),
+  send:(method,params={},sessionId)=>new Promise((resolve,reject)=>{
    const id=++seq,timer=setTimeout(()=>{pending.delete(id);reject(Error('CDP_INSPECT_TIMEOUT'))},7000);
    pending.set(id,{resolve,reject,timer});
-   socket.send(JSON.stringify({id,method,params}));
+   socket.send(JSON.stringify({id,method,params,...(sessionId?{sessionId}:{})}));
   }),
   close:()=>socket.close()
  };
@@ -100,6 +102,41 @@ async function run(){
   assert.equal(snapshot.contextCleanupUncertain,false);
   assert.equal(snapshot.managedTabs.filter(t=>t.isolatedContext).length,2);
   inspector=await inspectContexts(profile);
+  await assert.rejects(()=>call({action:'chat_tab_snapshot',tabRef:'0'.repeat(32)}),/BROWSER_CHAT_TAB_NOT_OWNED/);
+  const qaTarget=(await inspector.send('Target.getTargets')).targetInfos
+    .find(t=>t.type==='page'&&t.url.includes('00000000-0000-4000-8000-000000000000'));
+  assert.ok(qaTarget,'owned private test target must exist');
+  const {sessionId:qaSession}=await inspector.send('Target.attachToTarget',{targetId:qaTarget.targetId,flatten:true});
+  try{
+   await inspector.send('Runtime.enable',{},qaSession);
+   await inspector.send('Page.enable',{},qaSession);
+   const html='<html><head><title>Commander synthetic tab</title></head><body><p>Read only synthetic tab data</p><input type="password" value="qa-secret-not-for-output"></body></html>';
+   const paused=[];
+   inspector.on('Fetch.requestPaused',(params,sessionId)=>{
+    if(sessionId!==qaSession)return;
+    paused.push(inspector.send('Fetch.fulfillRequest',{requestId:params.requestId,responseCode:200,
+      responseHeaders:[{name:'Content-Type',value:'text/html; charset=utf-8'}],
+      body:Buffer.from(html,'utf8').toString('base64')},sessionId));
+   });
+   await inspector.send('Fetch.enable',{patterns:[{urlPattern:'https://chatgpt.com/*',resourceType:'Document'}]},qaSession);
+   await inspector.send('Page.navigate',{url:qaTarget.url},qaSession);
+   await until(async()=>{
+    const loc=(await inspector.send('Runtime.evaluate',{expression:'location.href',returnByValue:true},qaSession)).result?.value;
+    const title=(await inspector.send('Runtime.evaluate',{expression:'document.title',returnByValue:true},qaSession)).result?.value;
+    return loc?.startsWith('https://chatgpt.com/')&&title==='Commander synthetic tab'?true:false;
+   },15000);
+   await Promise.all(paused);
+   await inspector.send('Fetch.disable',{},qaSession);
+  }finally{await inspector.send('Target.detachFromTarget',{sessionId:qaSession});}
+  const inspected=await call({action:'chat_tab_snapshot',tabRef:tabs[0],maxTextChars:1200,maxElements:10});
+  assert.equal(inspected.tabRef,tabs[0]);
+  assert.equal(inspected.isolatedContext,true);
+  assert.equal(inspected.passwordValuesReturned,false);
+  assert.equal(inspected.cookiesReturned,false);
+  assert.equal(inspected.background,true);
+  assert.match(inspected.text,/Read only synthetic tab data/);
+  assert.ok(!JSON.stringify(inspected).includes('qa-secret-not-for-output'));
+  assert.match(inspected.title,/Commander synthetic tab/);
   const ids=(await inspector.send('Target.getBrowserContexts')).browserContextIds;
   assert.equal(ids.length,2,'two Commander-created private contexts exist');
   for(const [index,contextId] of ids.entries()){
@@ -142,6 +179,24 @@ async function run(){
   assert.equal(atLimit.counts.OPEN,16);
   await assert.rejects(()=>call({action:'chat_tab_open',url:'https://chatgpt.com/'}),
     /BROWSER_CHAT_TABS_LIMIT/);
+  // A tab that has navigated away from the explicitly allowed ChatGPT
+  // origin must no longer yield its document through a valid old tabRef.
+  const {sessionId:redirectSession}=await inspector.send('Target.attachToTarget',
+    {targetId:qaTarget.targetId,flatten:true});
+  try{
+   await inspector.send('Page.enable',{},redirectSession);
+   await inspector.send('Page.navigate',{url:'https://chatgpt.com/api/auth/session'},redirectSession);
+  }finally{await inspector.send('Target.detachFromTarget',{sessionId:redirectSession});}
+  await assert.rejects(()=>call({action:'chat_tab_snapshot',tabRef:tabs[0]}),
+    /BROWSER_CHAT_TARGET_ORIGIN_NOT_ALLOWED/);
+  const {sessionId:offOriginSession}=await inspector.send('Target.attachToTarget',
+    {targetId:qaTarget.targetId,flatten:true});
+  try{
+   await inspector.send('Page.enable',{},offOriginSession);
+   await inspector.send('Page.navigate',{url:'https://example.invalid/redirect-test'},offOriginSession);
+  }finally{await inspector.send('Target.detachFromTarget',{sessionId:offOriginSession});}
+  await assert.rejects(()=>call({action:'chat_tab_snapshot',tabRef:tabs[0]}),
+    /BROWSER_CHAT_TARGET_ORIGIN_NOT_ALLOWED/);
   const isolatedClose=await call({action:'chat_tab_close',tabRef:tabs[0]});
   assert.equal(isolatedClose.closed,true);
   const remaining=(await inspector.send('Target.getBrowserContexts')).browserContextIds;
