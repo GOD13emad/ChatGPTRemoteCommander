@@ -111,9 +111,9 @@ async function waitForPortFile(file,child){
  try{return await waitForBrowserDevToolsPort(file,child);}
  catch(error){throw fail(error?.message==='BROWSER_LAUNCH_FAILED'?'BROWSER_LAUNCH_FAILED':'BROWSER_DEVTOOLS_TIMEOUT');}
 }
-async function evaluate(expression,{returnByValue=true,timeoutMs=30000}={}){
+async function evaluate(expression,{returnByValue=true,timeoutMs=30000,sessionId=browser?.sessionId}={}){
  if(!browser?.cdp||!browser.sessionId)throw fail('BROWSER_SESSION_NOT_RUNNING');
- const r=await browser.cdp.send('Runtime.evaluate',{expression,returnByValue,awaitPromise:true,userGesture:true},browser.sessionId,timeoutMs);
+ const r=await browser.cdp.send('Runtime.evaluate',{expression,returnByValue,awaitPromise:true,userGesture:true},sessionId,timeoutMs);
  if(r.exceptionDetails)throw fail('BROWSER_PAGE_SCRIPT_FAILED');
  return r.result?.value;
 }
@@ -238,11 +238,11 @@ async function startBrowser(req){
     profileMode:browser.isolated?'isolated':'persistent',browserProduct:browser.product,executable};
  }catch(e){await closeBrowser({preserveProfile:req.preserveProfileOnFailure===true});throw e;}
 }
-async function snapshot(req){
+async function snapshot(req,sessionId=browser?.sessionId){
  const maxText=Math.max(1000,Math.min(40000,req.maxTextChars??20000));
  const maxElements=Math.max(1,Math.min(300,req.maxElements??120));
  const expression=`(()=>{const clean=s=>String(s??'').replace(/\\s+/g,' ').trim();const text=(document.body?.innerText??'').slice(0,${maxText});const nodes=[...document.querySelectorAll('a,button,input,textarea,select,form')].slice(0,${maxElements}).map((el,i)=>{const tag=el.tagName.toLowerCase();const o={index:i,tag,id:el.id||null,name:el.getAttribute('name'),ariaLabel:el.getAttribute('aria-label'),placeholder:el.getAttribute('placeholder')};if(tag==='a'){o.text=clean(el.textContent).slice(0,200);o.href=el.href||null;}else if(tag==='button'){o.text=clean(el.textContent).slice(0,200);o.type=el.getAttribute('type')||null;}else if(tag==='input'){o.type=(el.getAttribute('type')||'text').toLowerCase();o.autocomplete=el.getAttribute('autocomplete');}else if(tag==='textarea'){o.autocomplete=el.getAttribute('autocomplete');}else if(tag==='select'){o.options=el.options?.length??0;}else if(tag==='form'){o.action=el.action||null;o.method=(el.method||'get').toLowerCase();}return o;});const inputs=[...document.querySelectorAll('input')];const passwordInputCount=inputs.filter(x=>(x.type||'').toLowerCase()==='password').length;const otpInputCount=inputs.filter(x=>(x.autocomplete||'').toLowerCase()==='one-time-code'||/otp|one.?time|verification.?code/i.test((x.name||'')+' '+(x.id||'')+' '+(x.placeholder||''))).length;const captchaDetected=!!document.querySelector('iframe[src*="recaptcha"],iframe[src*="hcaptcha"],[class*="captcha" i],[id*="captcha" i]');return {url:location.href,title:document.title,text,elements:nodes,signals:{passwordInputCount,otpInputCount,captchaDetected}};})()`;
- const value=await evaluate(expression,{timeoutMs:10000});
+ const value=await evaluate(expression,{timeoutMs:10000,sessionId});
  const signals=value?.signals??{};
  let suggestedForegroundReason=null;
  if(signals.captchaDetected)suggestedForegroundReason='captcha';
@@ -256,6 +256,12 @@ async function snapshot(req){
   return next;
  }):[];
  return {...value,url:pageUrl.url,urlQueryRedacted:pageUrl.queryRedacted,urlFragmentRedacted:pageUrl.fragmentRedacted,urlSchemeRedacted:pageUrl.schemeRedacted,elements,background:true,passwordValuesReturned:false,cookiesReturned:false,savedPasswordStoreAccess:false,foregroundFallbackSuggested:!!suggestedForegroundReason,suggestedForegroundReason};
+}
+function allowedChatDocumentUrl(value){
+ try{
+  const u=new URL(value);
+  return u.protocol==='https:'&&['chatgpt.com','chat.openai.com'].includes(u.hostname)&&!u.username&&!u.password&&!u.port;
+ }catch{return false;}
 }
 async function handle(req){
  switch(req.action){
@@ -288,6 +294,32 @@ async function handle(req){
    return {...observer.snapshot(),maxManagedTabs:16,
      isolatedContextCount:browser.managedContexts.size,contextCleanupUncertain:browser.contextCleanupUncertain,
      managedTabs:[...managed.keys()].map(tabRef=>({tabRef,isolatedContext:browser.managedContexts.has(tabRef)}))};
+  }
+  case 'chat_tab_snapshot':{
+   if(!browser?.cdp)throw fail('BROWSER_SESSION_NOT_RUNNING');
+   if(!/^[a-f0-9]{32}$/.test(String(req.tabRef??'')))throw fail('BROWSER_INVALID_ARGUMENTS');
+   const targetId=browser.managedTabs.get(req.tabRef);
+   if(!targetId)throw fail('BROWSER_CHAT_TAB_NOT_OWNED');
+   const current=(await browser.cdp.send('Target.getTargets',{},undefined,5000)).targetInfos?.find(t=>t.targetId===targetId);
+   if(!current||current.type!=='page')throw fail('BROWSER_CHAT_TAB_NOT_OWNED');
+   if(!allowedChatDocumentUrl(current.url))throw fail('BROWSER_CHAT_TARGET_ORIGIN_NOT_ALLOWED');
+   const {sessionId}=await browser.cdp.send('Target.attachToTarget',{targetId,flatten:true},undefined,8000);
+   if(typeof sessionId!=='string'||!sessionId)throw fail('BROWSER_CHAT_ATTACH_FAILED');
+   let outcome=null,error=null;
+   try{
+    await browser.cdp.send('Runtime.enable',{},sessionId,5000);
+    const observedUrl=await evaluate('location.href',{sessionId,timeoutMs:5000});
+    if(!allowedChatDocumentUrl(observedUrl))throw fail('BROWSER_CHAT_TARGET_ORIGIN_NOT_ALLOWED');
+    const snap=await snapshot(req,sessionId);
+    if(!allowedChatDocumentUrl(snap.url))throw fail('BROWSER_CHAT_TARGET_ORIGIN_NOT_ALLOWED');
+    const after=await evaluate('location.href',{sessionId,timeoutMs:5000});
+    if(!allowedChatDocumentUrl(after))throw fail('BROWSER_CHAT_TARGET_ORIGIN_NOT_ALLOWED');
+    outcome={ok:true,...snap,tabRef:req.tabRef,owned:true,isolatedContext:browser.managedContexts.has(req.tabRef)};
+   }catch(e){error=e;}
+   try{await browser.cdp.send('Target.detachFromTarget',{sessionId},undefined,5000);}
+   catch{throw fail('BROWSER_CHAT_INSPECT_DETACH_FAILED');}
+   if(error)throw error;
+   return outcome;
   }
   case 'chat_tab_open':{
    if(!browser?.cdp)throw fail('BROWSER_SESSION_NOT_RUNNING');

@@ -13,6 +13,7 @@ const profile=str(32,{pattern:'^[a-z][a-z0-9_-]{0,31}$'});
 const selector=str(512);
 const defs=[
  ['browser_chat_tabs','Read privacy-minimized ChatGPT tab presence from the Commander-owned Chromium browser core. No extension, Native Messaging, DOM text, account attestation or user-browser profile is involved.',object(lease,['lease']),ro],
+ ['browser_chat_tab_snapshot','Read a bounded DOM summary from one explicitly Commander-owned ChatGPT tab using a lease and opaque tabRef; no user-browser profile, cookies, password values or foreground interaction.',object({...lease,tabRef:str(32,{pattern:'^[a-f0-9]{32}$'}),maxTextChars:int(1000,40000),maxElements:int(1,300)},['lease','tabRef']),ro],
  ['browser_chat_tab_open','Open a lease-scoped ChatGPT tab in the Commander-owned browser only, maximum 16. Optional isolatedContext uses a separate ephemeral Chromium BrowserContext for cookie/storage isolation.',object({...lease,url:str(2048),isolatedContext:{type:'boolean'}},['lease','url']),open],
  ['browser_chat_tab_close','Close a Commander-owned tab by opaque handle.',object({...lease,tabRef:str(32,{pattern:'^[a-f0-9]{32}$'})},['lease','tabRef']),mutation],
  ['browser_status','Report zero-interference background-browser readiness. This never opens a page, touches the user desktop, reads cookies, or accesses the browser password store.',object(),ro],

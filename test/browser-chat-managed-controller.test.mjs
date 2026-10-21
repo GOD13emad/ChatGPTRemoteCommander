@@ -21,6 +21,7 @@ function fixture(){
    if(failNext==='chat_tab_close'){failNext=null;throw Error('BROWSER_CDP_TIMEOUT')}
    return {ok:true,closed:true};
   }
+  if(req.action==='chat_tab_snapshot')return {ok:true,tabRef:req.tabRef,title:'Synthetic private chat',text:'Synthetic safe content',elements:[],passwordValuesReturned:false,cookiesReturned:false};
   if(req.action==='chat_tabs')return {ok:true,source:'COMMANDER_OWNED_BROWSER_CORE',
     managedTabs:[{tabRef:'a'.repeat(32)}],ready:true};
   if(req.action==='snapshot')return {ok:true,title:'Private browser',text:'',elements:[]};
@@ -135,5 +136,28 @@ test('unconfirmed helper end also retains owned lease until a confirmed cleanup'
   await assert.rejects(f.ctl.execute(f.ctx,'browser_session_begin',{mode:'isolated'}),/BROWSER_LEASE_BUSY/);
   await assert.rejects(f.ctl.execute(f.ctx,'browser_chat_tab_close',{lease,tabRef:'a'.repeat(32)}),/BROWSER_CHAT_OUTCOME_UNCERTAIN_SESSION_RESET_REQUIRED/);
   assert.equal((await f.ctl.execute(f.ctx,'browser_session_end',{lease})).closed,true);
+ }finally{f.done()}
+});
+
+test('per-tab read-only snapshot is lease-scoped, bounded and does not clear uncertain mutations',async()=>{
+ const f=fixture();
+ try{
+  assert.equal(BROWSER_RULES.get('browser_chat_tab_snapshot').annotations.readOnlyHint,true);
+  await assert.rejects(f.ctl.execute(f.ctx,'browser_chat_tab_snapshot',{lease:'wrong',tabRef:'a'.repeat(32)}),/BROWSER_LEASE_REQUIRED_OR_EXPIRED/);
+  await assert.rejects(f.ctl.execute(f.ctx,'browser_chat_tab_snapshot',{lease:'x',tabRef:'../../escape'}),/BROWSER_INVALID_ARGUMENTS/);
+  const {lease}=await f.ctl.execute(f.ctx,'browser_session_begin',{mode:'isolated'});
+  const owned=await f.ctl.execute(f.ctx,'browser_chat_tab_snapshot',{lease,tabRef:'a'.repeat(32),maxTextChars:1200,maxElements:10});
+  assert.equal(owned.tabRef,'a'.repeat(32));
+  assert.equal(owned.text,'Synthetic safe content');
+  assert.equal(owned.userDesktopTouched,false);
+  assert.equal(f.actions.at(-1).action,'chat_tab_snapshot');
+  assert.equal(f.actions.at(-1).maxTextChars,1200);
+  assert.equal(f.actions.at(-1).maxElements,10);
+  f.fail('chat_tab_open');
+  await assert.rejects(f.ctl.execute(f.ctx,'browser_chat_tab_open',{lease,url:'https://chatgpt.com/'}),/BROWSER_CDP_TIMEOUT/);
+  const snap=await f.ctl.execute(f.ctx,'browser_chat_tab_snapshot',{lease,tabRef:'a'.repeat(32)});
+  assert.equal(snap.sessionResetRequired,true,'read-only snapshot cannot reconcile uncertain tab mutation');
+  await assert.rejects(f.ctl.execute(f.ctx,'browser_chat_tab_open',{lease,url:'https://chatgpt.com/'}),/BROWSER_CHAT_OUTCOME_UNCERTAIN_SESSION_RESET_REQUIRED/);
+  await f.ctl.execute(f.ctx,'browser_session_end',{lease});
  }finally{f.done()}
 });
