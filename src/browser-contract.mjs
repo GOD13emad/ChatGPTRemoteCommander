@@ -13,7 +13,7 @@ const profile=str(32,{pattern:'^[a-z][a-z0-9_-]{0,31}$'});
 const selector=str(512);
 const defs=[
  ['browser_chat_tabs','Read privacy-minimized ChatGPT tab presence from the Commander-owned Chromium browser core. No extension, Native Messaging, DOM text, account attestation or user-browser profile is involved.',object(lease,['lease']),ro],
- ['browser_chat_tab_open','Open a lease-scoped ChatGPT tab in the Commander-owned browser only, maximum 16.',object({...lease,url:str(2048)},['lease','url']),open],
+ ['browser_chat_tab_open','Open a lease-scoped ChatGPT tab in the Commander-owned browser only, maximum 16. Optional isolatedContext uses a separate ephemeral Chromium BrowserContext for cookie/storage isolation.',object({...lease,url:str(2048),isolatedContext:{type:'boolean'}},['lease','url']),open],
  ['browser_chat_tab_close','Close a Commander-owned tab by opaque handle.',object({...lease,tabRef:str(32,{pattern:'^[a-f0-9]{32}$'})},['lease','tabRef']),mutation],
  ['browser_status','Report zero-interference background-browser readiness. This never opens a page, touches the user desktop, reads cookies, or accesses the browser password store.',object(),ro],
  ['browser_session_begin','Start one owned headless browser session using a Commander-only profile. Persistent mode preserves that owned profile cookies/local storage between sessions; it never reuses or unlocks the user browser profile/password store.',object({ttlSeconds:int(30,1800),profile,mode:choice('persistent','isolated')},[]),coordination],

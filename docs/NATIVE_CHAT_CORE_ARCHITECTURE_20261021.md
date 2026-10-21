@@ -7,6 +7,11 @@
 - CEF Remote Commander Browser: in-process native observer `src/native_chat_observer.h`, wired to CEF `OnAddressChange`, tab creation/activation/closure and the existing companion panel. No browser add-on; existing control-center/CEF panel remains part of browser product.
 - Core authorizes durable project bindings and any future action. Browser observations are NOT account authentication or permission to send ChatGPT messages. Maintain independent ownership and user-approved action boundaries.
 
+## Optional ephemeral per-tab Chrome BrowserContext (source-only candidate)
+- The optional `browser_chat_tab_open.isolatedContext=true` creates a separate `Target.createBrowserContext({disposeOnDetach:true})`, and passes its opaque `browserContextId` directly to `Target.createTarget`. Default `false` preserves the prior single-owned-profile behavior. Browser Core never returns browser-context IDs, cookies, or account credentials to callers.
+- Explicit Commander-owned tab close disposes the associated context; externally closed tabs trigger bounded automatic disposal. Failed disposal fails closed for further managed-tab mutations until owned session reset. Maximum simultaneously managed tabs remains 16 and private contexts are bounded by 16.
+- This is ephemeral **site storage separation**, not separate OS users, VMs, human/account authentication or persistence across Commander session end. Opening multiple real ChatGPT accounts, long-lived profile restore, CEF parity, foreground handoff and browser-crash recovery remain separate acceptance gates.
+
 ## Rejected architecture / migration
 - Legacy `desktop/linux-control-center/chat-companion/` and private Emad `RC_MULTICHAT_EMAD_PILOT_R1/extension` are **QA prototypes only**, **deprecated/no-promote**, not prerequisites or architecture targets.
 - Do not blindly delete owner state/installed Native Host or modify active browser sessions. Revoke legacy host registrations only after verifying exact path/ID, whether an active process depends on it, and independent rollback.

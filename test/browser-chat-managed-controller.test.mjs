@@ -15,7 +15,7 @@ function fixture(){
   if(req.action==='start')return {ok:true,browserProduct:'Chromium QA'};
   if(req.action==='chat_tab_open'){
    if(failNext==='chat_tab_open'){failNext=null;throw Error('BROWSER_CDP_TIMEOUT')}
-   return {ok:true,tabRef:'a'.repeat(32),owned:true};
+   return {ok:true,tabRef:'a'.repeat(32),owned:true,isolatedContext:req.isolatedContext===true};
   }
   if(req.action==='chat_tab_close'){
    if(failNext==='chat_tab_close'){failNext=null;throw Error('BROWSER_CDP_TIMEOUT')}
@@ -50,12 +50,17 @@ test('managed tab control is private, lease-gated and requires navigation permis
   const opened=await f.ctl.execute(f.ctx,'browser_chat_tab_open',{lease,url:'https://chatgpt.com/'});
   assert.equal(opened.tabRef,'a'.repeat(32));
   assert.equal(opened.userDesktopTouched,false);
+  assert.equal(opened.isolatedContext,false);
+  await assert.rejects(f.ctl.execute(f.ctx,'browser_chat_tab_open',{lease,url:'https://chatgpt.com/',isolatedContext:'yes'}),/BROWSER_INVALID_ARGUMENTS/);
+  const isolated=await f.ctl.execute(f.ctx,'browser_chat_tab_open',{lease,url:'https://chatgpt.com/',isolatedContext:true});
+  assert.equal(isolated.isolatedContext,true);
+  assert.equal(f.actions.at(-1).isolatedContext,true);
   const list=await f.ctl.execute(f.ctx,'browser_chat_tabs',{lease});
   assert.equal(list.managedTabs.length,1);
   const closed=await f.ctl.execute(f.ctx,'browser_chat_tab_close',{lease,tabRef:opened.tabRef});
   assert.equal(closed.closed,true);
   assert.deepEqual(f.actions.filter(x=>x.action.startsWith('chat_')).map(x=>x.action),
-    ['chat_tab_open','chat_tabs','chat_tab_close']);
+    ['chat_tab_open','chat_tab_open','chat_tabs','chat_tab_close']);
   await f.ctl.execute(f.ctx,'browser_session_end',{lease});
   await assert.rejects(f.ctl.execute(f.ctx,'browser_chat_tab_open',{lease,url:'https://chatgpt.com/'}),/BROWSER_LEASE_REQUIRED_OR_EXPIRED/);
  }finally{f.done()}

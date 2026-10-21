@@ -162,7 +162,7 @@ export function createBrowserController({invoke=defaultInvoke,closeInvoke=defaul
    const activity={background:!foregroundAtDispatch,userDesktopTouched:foregroundAtDispatch};
    try{
     let result;
-    if(name==='browser_chat_tab_open')result=await invoke({action:'chat_tab_open',url:input.url});
+    if(name==='browser_chat_tab_open')result=await invoke({action:'chat_tab_open',url:input.url,isolatedContext:input.isolatedContext===true});
     else if(name==='browser_chat_tab_close')result=await invoke({action:'chat_tab_close',tabRef:input.tabRef});
     else if(name==='browser_navigate')result=await invoke({action:'navigate',url:input.url,timeoutMs:input.timeoutMs??30000});
     else if(name==='browser_snapshot')result=await invoke({action:'snapshot',maxTextChars:input.maxTextChars??20000,maxElements:input.maxElements??120});
