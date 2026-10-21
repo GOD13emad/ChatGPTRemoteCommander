@@ -5,7 +5,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { boundNodeTestConcurrency, parseQualificationArgs, prioritizeSensitiveQualificationCommands, isolateWindowsLeaseRegression, isolateWindowsTimingSensitiveRegressions, isolateWindowsProcessTreeRegression, isolateWindowsAgentHttpRegression, isolateWindowsTransferMeshHttpRegression, isolateWindowsWorkflowPlanRegression, isolateWindowsAsyncHttpRegression, isolateWindowsMcpConformanceRegression, markIsolatedQualificationPhases } from '../tools/run-bounded-test-script.mjs';
+import { boundNodeTestConcurrency, parseQualificationArgs, prioritizeSensitiveQualificationCommands, isolateWindowsLeaseRegression, isolateWindowsTimingSensitiveRegressions, isolateWindowsProcessTreeRegression, isolateWindowsAgentHttpRegression, isolateWindowsTransferMeshHttpRegression, isolateWindowsWorkflowPlanRegression, isolateWindowsAsyncHttpRegression, isolateWindowsMcpConformanceRegression, prioritizeWindowsAdaptiveCold, markIsolatedQualificationPhases } from '../tools/run-bounded-test-script.mjs';
 
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const read=rel=>fs.readFileSync(path.join(root,rel),'utf8');
@@ -508,4 +508,31 @@ test('R157 Windows dual-era MCP server conformance executes once early, unchange
     'command=isolateWindowsMcpConformanceRegression(command);'));
   assert.match(read('test/mcp-conformance.test.mjs'),/attempt < 400/,
     'original fixture readiness budget and body remain untouched');
+});
+
+test('strict Windows adaptive fixture is scheduled cold with all original groups intact',()=>{
+  const pkg=JSON.parse(read('package.json'));
+  let cmd=prioritizeSensitiveQualificationCommands(boundNodeTestConcurrency(pkg.scripts.test,1).command);
+  cmd=isolateWindowsAgentHttpRegression(cmd);
+  cmd=isolateWindowsProcessTreeRegression(cmd);
+  cmd=isolateWindowsTransferMeshHttpRegression(cmd);
+  cmd=isolateWindowsLeaseRegression(cmd);
+  cmd=isolateWindowsAsyncHttpRegression(cmd);
+  cmd=isolateWindowsTimingSensitiveRegressions(cmd);
+  cmd=isolateWindowsWorkflowPlanRegression(cmd);
+  cmd=isolateWindowsMcpConformanceRegression(cmd);
+  const old=cmd.split(' && ');
+  const target='node --test --test-concurrency=1 test/project-adaptive.test.mjs';
+  assert.ok(old.indexOf(target)>0,'the historical strict test was behind prior fixture groups');
+  const result=prioritizeWindowsAdaptiveCold(cmd);
+  const next=result.split(' && ');
+  assert.equal(next[0],target);
+  assert.deepEqual(next.slice(1),old.filter(c=>c!==target),'no other group order or body changes');
+  for(const c of old)assert.equal(next.filter(x=>x===c).length,old.filter(x=>x===c).length);
+  assert.equal(markIsolatedQualificationPhases(result).match(/RC_QUAL_PHASE_START_/g).length,next.length);
+  assert.throws(()=>prioritizeWindowsAdaptiveCold(result+' && '+target),/CI_COLD_ADAPTIVE_CARDINALITY/);
+  assert.throws(()=>prioritizeWindowsAdaptiveCold('node --test test/project-adaptive.test.mjs'),/CI_COLD_ADAPTIVE_NOT_ISOLATED/);
+  assert.throws(()=>prioritizeWindowsAdaptiveCold('node --test test/other.test.mjs'),/CI_COLD_ADAPTIVE_CARDINALITY/);
+  assert.ok(read('test/project-adaptive.test.mjs').includes("{ timeout: 6000 }"),'original strict test deadline unchanged');
+  assert.ok(read('tools/run-bounded-test-script.mjs').includes('command=prioritizeWindowsAdaptiveCold(command);'));
 });
