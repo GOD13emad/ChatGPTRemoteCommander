@@ -1,0 +1,35 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {createNativePointerRouter} from '../src/native-workspace-pointer-router-qa.mjs';
+const a={verified:true,subject:'agent-a',conversationId:'chat-a'},b={verified:true,subject:'agent-b',conversationId:'chat-b'};
+const attest=v=>v?.verified===true?{authenticated:true,conversationBound:true,subject:v.subject,conversationId:v.conversationId}:null;
+test('two virtual cursors have independent coordinate and serial state, no OS effect',()=>{
+ let now=1000,seq=0;
+ const r=createNativePointerRouter({attest,clock:()=>now,ticket:()=>String(++seq).padStart(64,'0')});
+ const x=r.open(a,{workspaceId:'display-a',generation:'gen-1',width:800,height:600});
+ const y=r.open(b,{workspaceId:'display-b',generation:'gen-2',width:1920,height:1080});
+ assert.equal(r.inspect().sessionCount,2);
+ const xa=r.action(a,x.token,{kind:'move',x:17,y:30,generation:'gen-1',serial:1});
+ const yb=r.action(b,y.token,{kind:'move',x:77,y:90,generation:'gen-2',serial:1});
+ assert.deepEqual([xa.x,yb.x,xa.dispatched,yb.dispatched],[17,77,false,false]);
+ assert.throws(()=>r.action(b,x.token,{kind:'click',x:10,y:10,generation:'gen-1',serial:2}),/POINTER_CONVERSATION_DENIED/);
+ assert.throws(()=>r.open(b,{workspaceId:'display-a',generation:'gen-1',width:800,height:600}),/POINTER_WORKSPACE_BUSY/);
+ assert.throws(()=>r.action(a,x.token,{kind:'click',x:10,y:10,generation:'old',serial:2}),/POINTER_ACTION_DENIED/);
+ assert.throws(()=>r.action(a,x.token,{kind:'move',x:900,y:1,generation:'gen-1',serial:2}),/POINTER_ACTION_DENIED/);
+ assert.equal(r.action(a,x.token,{kind:'click',x:10,y:10,generation:'gen-1',serial:2}).serial,2);
+ assert.throws(()=>r.action(a,x.token,{kind:'click',x:10,y:10,generation:'gen-1',serial:2}),/POINTER_ACTION_DENIED/);
+ assert.equal(r.revoke(a,x.token),true);
+ assert.throws(()=>r.action(a,x.token,{kind:'move',x:1,y:1,generation:'gen-1',serial:3}),/POINTER_LEASE_INVALID/);
+ now=32000;
+ assert.throws(()=>r.action(b,y.token,{kind:'click',x:1,y:1,generation:'gen-2',serial:2}),/POINTER_LEASE_INVALID/);
+});
+test('untrusted identities, accessors, malformed tokens and unauthorised revocation deny',()=>{
+ const r=createNativePointerRouter({attest});
+ assert.throws(()=>r.open({subject:'agent-a'},{workspaceId:'one',generation:'g',width:10,height:10}),/POINTER_AUTH_REQUIRED/);
+ const x=r.open(a,{workspaceId:'one',generation:'g',width:10,height:10});
+ const malicious={kind:'move',generation:'g',serial:1,y:2};
+ Object.defineProperty(malicious,'x',{enumerable:true,get(){return 2;}});
+ assert.throws(()=>r.action(a,x.token,malicious),/POINTER_REQUEST_INVALID/);
+ assert.throws(()=>r.revoke(b,x.token),/POINTER_CONVERSATION_DENIED/);
+ assert.equal(r.inspect().workspaceCount,1);
+});
