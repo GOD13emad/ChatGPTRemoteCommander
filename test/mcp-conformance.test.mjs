@@ -97,15 +97,22 @@ test('dual-era MCP contract, tool validation, cache hints and risk annotations',
     let stderr = '';
     child.stderr.on('data', chunk => { stderr += chunk.toString('utf8'); });
 
+    // A busy hosted Windows runner can take longer than 10s to copy/load the
+    // isolated server. Check a bounded wall-clock deadline, not 400 tight polls.
+    // Early child exit is still a failure; health semantics remain unchanged.
     let healthy = false;
-    for (let attempt = 0; attempt < 400; attempt += 1) {
+    const healthDeadline = Date.now() + 30000;
+    while (Date.now() < healthDeadline &&
+      child.exitCode === null && child.signalCode === null) {
       try {
-        const response = await fetch(`http://127.0.0.1:${port}/health`);
+        const response = await fetch(`http://127.0.0.1:${port}/health`, {
+          signal: AbortSignal.timeout(1200)
+        });
         if (response.ok) { healthy = true; break; }
       } catch {}
-      await wait(25);
+      await wait(100);
     }
-    assert.equal(healthy, true, stderr);
+    assert.equal(healthy, true, `MCP server health not ready within 30s or exited: ${stderr}`);
 
     const legacyInit = await post(port, {
       jsonrpc: '2.0', id: 1, method: 'initialize',
