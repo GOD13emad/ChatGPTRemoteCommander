@@ -8,7 +8,7 @@ import { isDeepStrictEqual } from 'node:util';
 function readConfig(filename) {
   if (typeof filename !== 'string' || !path.isAbsolute(filename)) throw Error('INVALID_PATH');
   const st = fs.lstatSync(filename);
-  if (!st.isFile() || st.isSymbolicLink() || st.size < 2 || st.size > 2 * 1024 * 1024) throw Error('INVALID_FILE');
+  if (!st.isFile() || st.isSymbolicLink() || st.nlink !== 1 || st.size < 2 || st.size > 2 * 1024 * 1024) throw Error('INVALID_FILE');
   const doc = JSON.parse(fs.readFileSync(filename, 'utf8'));
   if (!doc || typeof doc !== 'object' || Array.isArray(doc)) throw Error('INVALID_CONFIG');
   return doc;
