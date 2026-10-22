@@ -2,7 +2,7 @@ param(
   [string]$SourceRef = 'v0.10.24',
   [string]$ExpectedCommit = '',
   [ValidateSet('Power','Standard')][string]$AccessMode = 'Power',
-  [ValidateSet('Auto','On','Off')][string]$GuiControl = 'Auto',
+  [ValidateSet('Auto','On','Off')][string]$GuiControl = 'Off',
   [string]$InstallDir = '',
   [switch]$NoStartServer,
   [switch]$PrerequisitesOnly,
@@ -214,7 +214,7 @@ function Get-ServerCoreState {
   } catch {
     $type = 'Unknown'
   }
-  return [ordered]@{ installationType=$type; isServerCore=($type -eq 'Server Core'); isWindowsServer=($type -match '^Server') }
+  return [ordered]@{ installationType=$type; isServerCore=($type -eq 'Server Core') }
 }
 
 function Get-DefenderState {
@@ -298,7 +298,7 @@ try {
     if ($server.isServerCore) { throw 'GUI control cannot be enabled on Windows Server Core. Use -GuiControl Off or Auto.' }
     $guiEnabled = $true
   } elseif ($GuiControl -eq 'Auto') {
-    $guiEnabled = ([string]$server.installationType -eq 'Client') -and (-not [bool]$server.isWindowsServer)
+    $guiEnabled = $false # Server installer defaults headless regardless of Windows SKU or RDP.
   }
 
   $installer = Join-Path $stage 'install.ps1'

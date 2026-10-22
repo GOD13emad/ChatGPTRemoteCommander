@@ -75,9 +75,9 @@ for (const forbidden of ['Add-MpPreference','Set-MpPreference','Remove-MpPrefere
 if (!windowsServerInstaller.includes("[string]$SourceRef = 'v0.10.24'")) throw new Error('server-install-windows.ps1 default SourceRef must match current release');
 if (!windowsServerInstaller.includes('ChatGPTRemoteCommander-ServerInstaller/0.10.24')) throw new Error('server-install-windows.ps1 User-Agent must match current release');
 for (const required of [
-  "isWindowsServer=($type -match '^Server')",
-  "$guiEnabled = ([string]$server.installationType -eq 'Client') -and (-not [bool]$server.isWindowsServer)"
-]) if (!windowsServerInstaller.includes(required)) throw new Error('Server GUI Auto policy must disable native desktop on monitorless Windows Server: '+required);
+  "[string]$GuiControl = 'Off'",
+  "$guiEnabled = $false # Server installer defaults headless regardless of Windows SKU or RDP."
+]) if (!windowsServerInstaller.includes(required)) throw new Error('Server install must select headless by default even on Client-SKU hosts: '+required);
 const serverCanaryWorkflow = readFileSync('.github/workflows/server-install-canary.yml','utf8');
 for (const required of [
   "$script:BootstrapGitHubToken = [Environment]::GetEnvironmentVariable('RC_GITHUB_API_TOKEN','Process')",
