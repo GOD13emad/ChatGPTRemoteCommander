@@ -29,6 +29,18 @@ function Assert-ContextRejected([string]$Name,[string]$Expected,[scriptblock]$Ac
 Assert-ContextRejected 'SYSTEM_SID_REDIRECTED_PROFILE' 'CORE_PUBLIC_INSTALL_SYSTEM_CONTEXT' {
   Assert-CorePublicInstallContext -IdentitySid 'S-1-5-18' -ProfilePath 'C:\Users\TestUser' -RoamingAppData 'C:\Users\TestUser\AppData\Roaming' -LocalAppData 'C:\Users\TestUser\AppData\Local'
 }
+Assert-ContextRejected 'LOCAL_SERVICE_SID_REDIRECTED_PROFILE' 'CORE_PUBLIC_INSTALL_SYSTEM_CONTEXT' {
+  Assert-CorePublicInstallContext -IdentitySid 'S-1-5-19' -ProfilePath 'C:\Users\TestUser' -RoamingAppData 'C:\Users\TestUser\AppData\Roaming' -LocalAppData 'C:\Users\TestUser\AppData\Local'
+}
+Assert-ContextRejected 'NETWORK_SERVICE_SID_REDIRECTED_PROFILE' 'CORE_PUBLIC_INSTALL_SYSTEM_CONTEXT' {
+  Assert-CorePublicInstallContext -IdentitySid 'S-1-5-20' -ProfilePath 'C:\Users\TestUser' -RoamingAppData 'C:\Users\TestUser\AppData\Roaming' -LocalAppData 'C:\Users\TestUser\AppData\Local'
+}
+Assert-ContextRejected 'LOCAL_SERVICE_PROFILE_PATH' 'CORE_PUBLIC_INSTALL_SYSTEMPROFILE_PATH' {
+  Assert-CorePublicInstallContext -IdentitySid 'S-1-5-21-100-200-300-1001' -ProfilePath 'C:\Users\TestUser' -RoamingAppData 'C:\Windows\ServiceProfiles\LocalService\AppData\Roaming' -LocalAppData 'C:\Users\TestUser\AppData\Local'
+}
+Assert-ContextRejected 'NETWORK_SERVICE_PROFILE_PATH' 'CORE_PUBLIC_INSTALL_SYSTEMPROFILE_PATH' {
+  Assert-CorePublicInstallContext -IdentitySid 'S-1-5-21-100-200-300-1001' -ProfilePath 'C:\Users\TestUser' -RoamingAppData 'C:\Users\TestUser\AppData\Roaming' -LocalAppData 'C:\Windows\ServiceProfiles\NetworkService\AppData\Local'
+}
 Assert-ContextRejected 'SYSTEMPROFILE_ROAMING_APPDATA' 'CORE_PUBLIC_INSTALL_SYSTEMPROFILE_PATH' {
   Assert-CorePublicInstallContext -IdentitySid 'S-1-5-21-100-200-300-1001' -ProfilePath 'C:\Users\TestUser' -RoamingAppData 'C:\Windows\System32\config\systemprofile\AppData\Roaming' -LocalAppData 'C:\Users\TestUser\AppData\Local'
 }
