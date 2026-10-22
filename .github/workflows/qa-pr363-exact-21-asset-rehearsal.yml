@@ -15,7 +15,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: 599c1feaaba86d8a3f2e36b66604191ff42566d9
+          ref: 250a93b3c46cbf041f1035322216596d758941e3
           fetch-depth: 0
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
@@ -24,7 +24,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = '599c1feaaba86d8a3f2e36b66604191ff42566d9'
+          test "$(git rev-parse HEAD)" = '250a93b3c46cbf041f1035322216596d758941e3'
           test "$(node -p "require('./package.json').version")" = '0.10.26'
           if git show-ref --verify --quiet 'refs/tags/v0.10.26'; then
             echo 'QA_FAIL_RELEASE_TAG_ALREADY_EXISTS'
@@ -39,8 +39,8 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p dist/qa/windows dist/qa/linux
-          gh run download 39848089262 --repo "$GH_REPO" --name remote-commander-windows-setup --dir dist/qa/windows
-          gh run download 39848089262 --repo "$GH_REPO" --name remote-commander-linux-onefile-QA --dir dist/qa/linux
+          gh run download 39857779102 --repo "$GH_REPO" --name remote-commander-windows-setup --dir dist/qa/windows
+          gh run download 39857779102 --repo "$GH_REPO" --name remote-commander-linux-onefile-QA --dir dist/qa/linux
           test -s dist/qa/windows/Remote-Commander-Setup-v0.10.26.exe
           test -s dist/qa/linux/Remote-Commander-Linux-Setup.run
           test -s dist/qa/linux/Remote-Commander-Linux-Setup.run.sha256
@@ -49,13 +49,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = '599c1feaaba86d8a3f2e36b66604191ff42566d9'
+          test "$(git rev-parse HEAD)" = '250a93b3c46cbf041f1035322216596d758941e3'
           bash tools/build-release-assets.sh dist/release
           windows='dist/qa/windows/Remote-Commander-Setup-v0.10.26.exe'
           linux='dist/qa/linux/Remote-Commander-Linux-Setup.run'
           linux_manifest="$linux.sha256"
-          want_win='c3c7054c2172a9391b935867d9555cfbbe88f30e1e2f34cd444ee383b7d7f8bf'
-          want_linux='50429ae74ff7966bb61547c6593eb2f425f1c275c66c5e3b736ab7ad6b0da413'
+          want_win='047c04126ef82dc6bef95a0091ae82409a801e1c306d8f46afb7a8274c330066'
+          want_linux='aff6abefdbdbe2dc63bf1e5e9e68a77eb2d0a5ee8ad167ba0acd743612a58aef'
           test "$(sha256sum "$windows" | cut -d' ' -f1)" = "$want_win"
           test "$(sha256sum "$linux" | cut -d' ' -f1)" = "$want_linux"
           test "$(awk 'NR==1 {print $1}' "$linux_manifest")" = "$want_linux"
@@ -71,10 +71,10 @@ jobs:
           )
           mkdir -p dist/qa/proof
           {
-            echo 'SOURCE_SHA=599c1feaaba86d8a3f2e36b66604191ff42566d9'
-            echo 'SOURCE_QA_RUN=39848089262'
-            echo 'WINDOWS_RAW_SHA256=c3c7054c2172a9391b935867d9555cfbbe88f30e1e2f34cd444ee383b7d7f8bf'
-            echo 'LINUX_RAW_SHA256=50429ae74ff7966bb61547c6593eb2f425f1c275c66c5e3b736ab7ad6b0da413'
+            echo 'SOURCE_SHA=250a93b3c46cbf041f1035322216596d758941e3'
+            echo 'SOURCE_QA_RUN=39857779102'
+            echo 'WINDOWS_RAW_SHA256=047c04126ef82dc6bef95a0091ae82409a801e1c306d8f46afb7a8274c330066'
+            echo 'LINUX_RAW_SHA256=aff6abefdbdbe2dc63bf1e5e9e68a77eb2d0a5ee8ad167ba0acd743612a58aef'
             echo 'ASSET_COUNT_INCLUDING_MANIFEST=21'
             echo 'MANIFEST_ENTRY_COUNT=20'
             sha256sum dist/release/SHA256SUMS.txt
