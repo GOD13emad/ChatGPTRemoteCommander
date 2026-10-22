@@ -35,5 +35,7 @@ test('versioned ZIP wizards use exact source tag+commit rather than stale defaul
     const script = read(name,'setup-wizard.sh');
     assert.ok(script.includes(shellRef),name);
     assert.ok(script.includes(shellCommit),name);
+    assert.ok(script.includes('bash "$INSTALLER" "$' + '{args[@]}"'),name);
+
   }
 });
