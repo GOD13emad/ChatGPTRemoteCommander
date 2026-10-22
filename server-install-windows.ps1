@@ -214,7 +214,7 @@ function Get-ServerCoreState {
   } catch {
     $type = 'Unknown'
   }
-  return [ordered]@{ installationType=$type; isServerCore=($type -eq 'Server Core') }
+  return [ordered]@{ installationType=$type; isServerCore=($type -eq 'Server Core'); isWindowsServer=($type -match '^Server') }
 }
 
 function Get-DefenderState {
@@ -298,7 +298,7 @@ try {
     if ($server.isServerCore) { throw 'GUI control cannot be enabled on Windows Server Core. Use -GuiControl Off or Auto.' }
     $guiEnabled = $true
   } elseif ($GuiControl -eq 'Auto') {
-    $guiEnabled = -not [bool]$server.isServerCore
+    $guiEnabled = ([string]$server.installationType -eq 'Client') -and (-not [bool]$server.isWindowsServer)
   }
 
   $installer = Join-Path $stage 'install.ps1'
