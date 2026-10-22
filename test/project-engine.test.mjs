@@ -41,6 +41,26 @@ function fixture(planner,extra={}) {
   };
 }
 
+test('human WAITING_INPUT time does not consume the execution deadline',async()=>{
+  const f=fixture(async()=>ask());
+  try{
+    await f.create();
+    const initial=await f.start({durationMs:1000});
+    const wait=await f.tick();
+    assert.equal(wait.status,'WAITING_INPUT');
+    assert.ok(Number.isSafeInteger(wait.waitingStartedAt));
+    await new Promise(resolve=>setTimeout(resolve,1100));
+    const state=(await f.api.execute('workflow_get',{id:'project'})).state;
+    const resumed=await f.api.execute('workflow_run_resolve',{
+      runId:'run-one',requestId:wait.pendingRequest.requestId,expectedRevision:state.revision,response:'Continue'
+    });
+    assert.equal(resumed.status,'QUEUED');
+    assert.equal(resumed.waitingStartedAt,null);
+    assert.ok(resumed.totalWaitingMs>=1000);
+    assert.ok(resumed.deadline>=initial.deadline+1000);
+  }finally{await f.dispose();}
+});
+
 test('real filesystem operation is journaled and independent evidence finalizes with Brain',async()=>{
   const f=fixture(async()=>proposal('write_text',{path:'result.txt',content:'verified output'}));
   try{await f.create();await f.start();const first=await f.tick();assert.equal(first.status,'QUEUED');assert.equal(f.calls,1);
@@ -236,26 +256,5 @@ test('a changed runner policy cannot resolve an old input request',async()=>{
     await assert.rejects(f.api.execute('workflow_run_resolve',{runId:'run-one',requestId:wait.pendingRequest.requestId,expectedRevision:revision,response:'Continue'}),/PROJECT_POLICY_CHANGED/);
     await f.api.execute('workflow_run_tick',{});
     const result=await f.api.execute('workflow_run_status',{runId:'run-one'});assert.equal(result.status,'BLOCKED');assert.equal(result.lastCode,'PROJECT_POLICY_CHANGED');assert.equal(f.calls,0);
-  }finally{await f.dispose();}
-});
-
-
-test('human WAITING_INPUT time does not consume the execution deadline',async()=>{
-  const f=fixture(async()=>ask());
-  try{
-    await f.create();
-    const initial=await f.start({durationMs:1000});
-    const wait=await f.tick();
-    assert.equal(wait.status,'WAITING_INPUT');
-    assert.ok(Number.isSafeInteger(wait.waitingStartedAt));
-    await new Promise(resolve=>setTimeout(resolve,1100));
-    const state=(await f.api.execute('workflow_get',{id:'project'})).state;
-    const resumed=await f.api.execute('workflow_run_resolve',{
-      runId:'run-one',requestId:wait.pendingRequest.requestId,expectedRevision:state.revision,response:'Continue'
-    });
-    assert.equal(resumed.status,'QUEUED');
-    assert.equal(resumed.waitingStartedAt,null);
-    assert.ok(resumed.totalWaitingMs>=1000);
-    assert.ok(resumed.deadline>=initial.deadline+1000);
   }finally{await f.dispose();}
 });
