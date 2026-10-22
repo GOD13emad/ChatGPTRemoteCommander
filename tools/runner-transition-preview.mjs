@@ -11,18 +11,31 @@ const reject = (code) => { throw Error(code); };
 
 function readBounded(name, privateOwner = false) {
   if (typeof name !== 'string' || !path.isAbsolute(name)) reject('INVALID_PATH');
-  const st = fs.lstatSync(name);
-  if (!st.isFile() || st.isSymbolicLink() || st.nlink !== 1 || st.size < 2 || st.size > 2 * 1024 * 1024)
-    reject('INVALID_FILE');
-  if (privateOwner && process.platform !== 'win32') {
-    if ((st.mode & 0o077) !== 0 || st.uid !== process.getuid())
-      reject('UNTRUSTED_APPROVAL_FILE');
+  // The pathname is used for selection only. Bind the read to an opened file
+  // descriptor and check identity before/after to avoid path replacement races.
+  const first = fs.lstatSync(name);
+  if (!first.isFile() || first.isSymbolicLink() || first.nlink !== 1
+    || first.size < 2 || first.size > 2 * 1024 * 1024) reject('INVALID_FILE');
+  const fd = fs.openSync(name, fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW ?? 0));
+  try {
+    const st = fs.fstatSync(fd);
+    const identical = (a, b) => a.dev === b.dev && a.ino === b.ino
+      && a.mode === b.mode && a.uid === b.uid && a.gid === b.gid
+      && a.nlink === b.nlink && a.size === b.size
+      && a.mtimeMs === b.mtimeMs && a.ctimeMs === b.ctimeMs;
+    if (!st.isFile() || st.nlink !== 1 || st.size < 2 || st.size > 2 * 1024 * 1024
+      || !identical(first, st)) reject('FILE_CHANGED_DURING_READ');
+    if (privateOwner && process.platform !== 'win32') {
+      if ((st.mode & 0o077) !== 0 || st.uid !== process.getuid())
+        reject('UNTRUSTED_APPROVAL_FILE');
+    }
+    const bytes = fs.readFileSync(fd);
+    if (!identical(st, fs.fstatSync(fd)) || !identical(st, fs.lstatSync(name))
+      || bytes.byteLength !== st.size) reject('FILE_CHANGED_DURING_READ');
+    return bytes;
+  } finally {
+    fs.closeSync(fd);
   }
-  const bytes = fs.readFileSync(name);
-  const again = fs.lstatSync(name);
-  if (again.ino !== st.ino || again.dev !== st.dev || again.size !== st.size || again.mtimeMs !== st.mtimeMs)
-    reject('FILE_CHANGED_DURING_READ');
-  return bytes;
 }
 function objectFrom(buffer) {
   const obj = JSON.parse(buffer.toString('utf8'));
@@ -68,16 +81,18 @@ function main() {
     || Object.keys(grant).sort().join(',') !== 'payload,signature'
     || typeof grant.signature !== 'string' || !/^[A-Za-z0-9+/]{86}==$/.test(grant.signature))
     reject('INVALID_APPROVAL');
-  const required = ['schema','intent','profile','activeConfigSha256','candidateRunnerSha256',
+  const required = ['schema','intent','profile','activeConfigSha256','candidateConfigSha256','candidateRunnerSha256',
     'allowedChangedFields','issuedAtUtc','expiresAtUtc'];
   if (Object.keys(payload).sort().join(',') !== required.sort().join(',')
     || payload.schema !== 1 || payload.intent !== 'owner-approved-runner-transition'
     || payload.profile !== 'default' || !validHash(payload.activeConfigSha256)
+    || !validHash(payload.candidateConfigSha256)
     || !validHash(payload.candidateRunnerSha256)
     || !Array.isArray(payload.allowedChangedFields)
     || !isDeepStrictEqual([...payload.allowedChangedFields].sort(), [...changes].sort()))
     reject('INVALID_APPROVAL');
   if (payload.activeConfigSha256 !== sha256(currentRaw)
+    || payload.candidateConfigSha256 !== sha256(candidateRaw)
     || payload.candidateRunnerSha256 !== sha256(JSON.stringify(candidate.durableWorkflows.runner)))
     reject('APPROVAL_HASH_MISMATCH');
   if (!validUtc(payload.issuedAtUtc) || !validUtc(payload.expiresAtUtc))
