@@ -163,4 +163,7 @@ exit 0
     fs.rmSync(tmp,{recursive:true,force:true});
   }
 }
+const ownerGuiContract = spawnSync(process.execPath, ['--test','test/gui-owner-delegation.test.mjs'],
+  {encoding:'utf8',timeout:10000});
+assert.equal(ownerGuiContract.status,0,ownerGuiContract.stderr || ownerGuiContract.stdout);
 console.log('LINUX_GUI_CONTRACT_PASS');
