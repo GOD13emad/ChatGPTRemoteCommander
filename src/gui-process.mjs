@@ -27,6 +27,24 @@ function parseGuiResult(bytes) {
         value.effect === 'NOT_APPLIED' && value.phase === 'PRE_DISPATCH_GUARD') {
       failure.guiNotApplied = true;
     }
+    // Strict, content-free Linux clipboard diagnosis. This is evidence of
+    // a requested transfer (or its absence), NEVER proof that paste occurred.
+    const d = value.clipboardDiagnostic;
+    if (safeCode === 'GUI_CLIPBOARD_PASTE_NOT_CONFIRMED' &&
+        value.ok === false && d && typeof d === 'object' && !Array.isArray(d) &&
+        Object.getPrototypeOf(d) === Object.prototype &&
+        Object.keys(d).sort().join(',') ===
+          'ownerConfirmed,reason,schema,selectionRequests,successfulTransfers,unsupportedRequests,waitMs' &&
+        d.schema === 'rc-clipboard-transfer-observation-v1' &&
+        ['NO_REQUEST','UNSUPPORTED_REQUEST','UNCONFIRMED_TRANSFER'].includes(d.reason) &&
+        typeof d.ownerConfirmed === 'boolean' &&
+        ['selectionRequests','successfulTransfers','unsupportedRequests'].every(k=>
+          Number.isSafeInteger(d[k]) && d[k]>=0 && d[k]<=99) &&
+        d.unsupportedRequests <= d.selectionRequests &&
+        d.successfulTransfers <= d.selectionRequests &&
+        Number.isSafeInteger(d.waitMs) && d.waitMs>=0 && d.waitMs<=1000) {
+      failure.guiClipboardDiagnostic = Object.freeze({ ...d });
+    }
     throw failure;
   }
   return value;
@@ -127,7 +145,7 @@ export function createGuiProcessClient({
     let value;
     try { value = parseGuiResult(line); }
     catch (error) {
-      if (error.guiNotApplied === true && pending && !startup) {
+      if ((error.guiNotApplied === true || error.guiClipboardDiagnostic) && pending && !startup) {
         // Forward the exact no-effect receipt; no helper retry or input replay.
         const p = pending;
         clearPendingTimer();

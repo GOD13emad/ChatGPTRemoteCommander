@@ -7,6 +7,7 @@ import {spawnSync} from 'node:child_process';
 import {fileURLToPath, pathToFileURL} from 'node:url';
 import {createGuiController} from '../src/gui-tools-windows.mjs';
 import {createGuiInputIncidentStore} from '../src/gui-incident-store.mjs';
+import {createGuiProcessClient} from '../src/gui-process.mjs';
 
 const ownFile=async(run)=>{
  const root=await fs.mkdtemp(path.join(os.tmpdir(),'rc-gui-incident-j01-'));
@@ -166,4 +167,219 @@ test('incident file mode is private on POSIX hosts',()=>ownFile(async file=>{
  const mode=(await fs.stat(file)).mode;
  if(process.platform!=='win32')assert.equal(mode&0o077,0);
  await s.resolve(receipt);
+}));
+
+const privateClipDiag=()=>({
+ schema:'rc-clipboard-transfer-observation-v1',reason:'NO_REQUEST',
+ ownerConfirmed:true,selectionRequests:0,unsupportedRequests:0,
+ successfulTransfers:0,waitMs:800
+});
+
+test('failed Linux paste stores only fixed phase counters and never clears uncertain incident',()=>ownFile(async file=>{
+ const store=createGuiInputIncidentStore({file});
+ const c=controller(store,{platform:'linux',invoke:async req=>{
+   if(req.action==='status')return {ok:true,available:true};
+   if(req.action==='screenshot')return image();
+   throw Object.assign(new Error('GUI_CLIPBOARD_PASTE_NOT_CONFIRMED'),{
+      guiCode:'GUI_CLIPBOARD_PASTE_NOT_CONFIRMED',
+      guiClipboardDiagnostic:privateClipDiag()
+   });
+ }});
+ const a=await takeover(c);
+ await assert.rejects(c.run('gui_type_text',{...a,text:'PRIVATE-PROJECT-USER-CONTENT-MUST-NOT-STORE'}),/GUI_CLIPBOARD_PASTE_NOT_CONFIRMED/);
+ const bytes=await fs.readFile(file,'utf8'),record=JSON.parse(bytes);
+ assert.equal(bytes.includes('PRIVATE-PROJECT-USER-CONTENT-MUST-NOT-STORE'),false);
+ assert.equal(Object.hasOwn(record,'clipboardDiagnostic'),false,
+   'original pending input identity must remain immutable');
+ assert.deepEqual((await store.pending()).clipboardDiagnostic,privateClipDiag());
+ assert.equal(record.status,'PENDING_NATIVE_EFFECT');
+ assert.equal(record.tool,'gui_type_text');
+ const fresh=controller(createGuiInputIncidentStore({file}),{platform:'linux'});
+ const status=await fresh.run('gui_status');
+ assert.equal(status.available,false);
+ assert.equal(status.incidentPending,true);
+ await assert.rejects(fresh.run('gui_session_begin',{mode:'observe'}),/GUI_OUTCOME_UNCERTAIN/);
+ assert.equal(fresh.calls,0);
+}));
+
+test('diagnostic cannot persist clipboard text, forged schema or annotation for different handle',()=>ownFile(async file=>{
+ const s=createGuiInputIncidentStore({file});
+ const h=await s.begin('gui_type_text');
+ await assert.rejects(s.annotateFailure(h,{...privateClipDiag(),text:'SECRET'}),/GUI_INCIDENT_DIAGNOSTIC_INVALID/);
+ await assert.rejects(s.annotateFailure({...h,id:'wrong-id'},privateClipDiag()),/GUI_INCIDENT_RESOLUTION_MISMATCH/);
+ const rec=JSON.parse(await fs.readFile(file,'utf8'));
+ assert.equal(Object.hasOwn(rec,'clipboardDiagnostic'),false);
+ await s.annotateFailure(h,privateClipDiag());
+ await s.annotateFailure(h,privateClipDiag()); // identical repeat is a semantic NO-OP
+ await assert.rejects(s.annotateFailure(h,{...privateClipDiag(),reason:'UNSUPPORTED_REQUEST',selectionRequests:1,unsupportedRequests:1}),/GUI_INCIDENT_DIAGNOSTIC_CONFLICT/);
+ assert.equal((await s.pending()).id,h.id);
+ assert.equal((await fs.readFile(file,'utf8')).includes('SECRET'),false);
+}));
+
+test('persistent GUI helper forwards only an exact approved clipboard observation schema',async ()=>{
+ const diag=privateClipDiag();
+ const script=[
+  'process.stdout.write(JSON.stringify({ok:true,ready:true,protocol:1})+"\\n");',
+  'process.stdin.on("data",()=>{process.stdout.write(JSON.stringify({ok:false,error:"GUI_CLIPBOARD_PASTE_NOT_CONFIRMED",clipboardDiagnostic:'+JSON.stringify(diag)+'})+"\\n");});'
+ ].join('');
+ const c=createGuiProcessClient({file:process.execPath,args:['-e',script],timeoutMs:5000,startupTimeoutMs:5000});
+ try {
+   await assert.rejects(c.invoke({action:'typeText'}),e=>{
+     assert.equal(e.guiCode,'GUI_CLIPBOARD_PASTE_NOT_CONFIRMED');
+     assert.notEqual(e.guiNotApplied,true);
+     assert.deepEqual(e.guiClipboardDiagnostic,diag);
+     return true;
+   });
+ } finally {c.close();}
+});
+
+test('annotation must never overwrite a different live pending input',async()=>{
+ const root=await fs.mkdtemp(path.join(os.tmpdir(),'rc-incident-concurrent-'));
+ const file=path.join(root,'pending.json');
+ const s=createGuiInputIncidentStore({file});
+ const other=createGuiInputIncidentStore({file});
+ let interrupted;
+ let release;
+ const intercept=new Promise(ok=>{interrupted=ok});
+ const resume=new Promise(ok=>{release=ok});
+ const realRename=fs.rename;
+ const realLink=fs.link;
+ let hit=false;
+ try {
+  const old=await s.begin('gui_type_text');
+  fs.rename=async(from,to)=>{
+   if(!hit && to===file && path.basename(from).startsWith('.gui-input-diagnostic-')){
+      hit=true; interrupted();
+      await resume;
+   }
+   return realRename(from,to);
+  };
+  fs.link=async(from,to)=>{
+   if(!hit && path.basename(to).startsWith('.gui-clipboard-observation-')){
+      hit=true; interrupted();
+      await resume;
+   }
+   return realLink(from,to);
+  };
+  const annotating=s.annotateFailure(old,privateClipDiag());
+  let timeout;
+  try {
+    await Promise.race([
+      intercept,
+      new Promise((_,reject)=>{timeout=setTimeout(()=>reject(Error('DIAGNOSTIC_PUBLICATION_NOT_REACHED')),1500)})
+    ]);
+  } finally {clearTimeout(timeout);}
+  await assert.rejects(other.resolve(old),/GUI_INCIDENT_MUTATION_BUSY/);
+  await assert.rejects(other.begin('gui_key_press'),/GUI_INCIDENT_MUTATION_BUSY/);
+  await assert.rejects(other.pending(),/GUI_INCIDENT_MUTATION_BUSY/);
+  release();
+  await annotating;
+  const observed=await other.pending();
+  assert.equal(observed?.id,old.id,'annotation cannot delete the pending identity');
+  assert.deepEqual(observed?.clipboardDiagnostic,privateClipDiag());
+  await other.resolve(old);
+  const later=await other.begin('gui_key_press');
+  const found=await other.pending();
+  assert.equal(found?.id,later.id,'new PENDING input must survive older annotation');
+  assert.equal(found?.tool,'gui_key_press');
+ }finally{
+  release?.();
+  fs.rename=realRename;
+  fs.link=realLink;
+  await fs.rm(root,{recursive:true,force:true});
+ }
+});
+
+test('original pending identity is immutable and owner-private ID-scoped note cleans on resolve',()=>ownFile(async file=>{
+ const s=createGuiInputIncidentStore({file});
+ const h=await s.begin('gui_type_text');
+ const original=await fs.readFile(file,'utf8');
+ await s.annotateFailure(h,privateClipDiag());
+ assert.equal(await fs.readFile(file,'utf8'),original,
+   'annotation must not replace the original pending identity');
+ const note=path.join(path.dirname(file),'.gui-clipboard-observation-'+h.id+'.json');
+ const stat=await fs.lstat(note);
+ assert.equal(stat.nlink,1);
+ if(process.platform!=='win32')assert.equal(stat.mode&0o077,0);
+ const contents=await fs.readFile(note,'utf8');
+ assert.equal(contents.includes('PRIVATE'),false);
+ assert.deepEqual((await s.pending()).clipboardDiagnostic,privateClipDiag());
+ await s.resolve(h);
+ await assert.rejects(fs.lstat(file),{code:'ENOENT'});
+ await assert.rejects(fs.lstat(note),{code:'ENOENT'});
+ assert.equal(await s.pending(),null);
+}));
+
+test('corrupt, linked or overbroad private diagnostic fails closed without deleting pending identity',()=>ownFile(async file=>{
+ const s=createGuiInputIncidentStore({file});
+ const h=await s.begin('gui_type_text');
+ const original=await fs.readFile(file,'utf8');
+ await s.annotateFailure(h,privateClipDiag());
+ const note=path.join(path.dirname(file),'.gui-clipboard-observation-'+h.id+'.json');
+ await fs.writeFile(note,JSON.stringify({
+   schema:'rc-gui-clipboard-note-v1',incidentId:h.id,
+   diagnostic:{...privateClipDiag(),text:'INTRUSIVE_PAYLOAD'}
+ }));
+ await assert.rejects(s.pending(),/GUI_INCIDENT_STORAGE_UNAVAILABLE/);
+ assert.equal(await fs.readFile(file,'utf8'),original);
+ await fs.unlink(note);
+ await s.resolve(h);
+ assert.equal(await s.pending(),null);
+}));
+
+
+test('stale resolution cannot delete a new pending native input',async()=>{
+ const root=await fs.mkdtemp(path.join(os.tmpdir(),'rc-gui-resolve-interleaving-'));
+ const file=path.join(root,'incident.json');
+ const a=createGuiInputIncidentStore({file});
+ const b=createGuiInputIncidentStore({file});
+ const original=fs.unlink;
+ let pause, resume;
+ const entered=new Promise(resolve=>{pause=resolve});
+ const continued=new Promise(resolve=>{resume=resolve});
+ let held=false;
+ try{
+   const first=await a.begin('gui_type_text');
+   fs.unlink=async target=>{
+      if(target===file && !held){held=true;pause();await continued;}
+      return original(target);
+   };
+   const staleResolve=a.resolve(first);
+   await Promise.race([entered,new Promise((_,reject)=>setTimeout(()=>reject(Error('NOT_INTERLEAVED')),1500))]);
+   await assert.rejects(b.resolve(first),/GUI_INCIDENT_MUTATION_BUSY/);
+   await assert.rejects(b.begin('gui_mouse_click'),/GUI_INCIDENT_MUTATION_BUSY/);
+   await assert.rejects(b.pending(),/GUI_INCIDENT_MUTATION_BUSY/);
+   resume();
+   await staleResolve;
+   const second=await b.begin('gui_mouse_click');
+   const current=await b.pending();
+   assert.equal(current?.id,second.id,'the newly created incident must remain pending');
+   assert.equal(current?.tool,'gui_mouse_click');
+ }finally{
+   resume?.();
+   fs.unlink=original;
+   await fs.rm(root,{recursive:true,force:true});
+ }
+});
+
+test('a persisted mutation lock fails closed on new controller, never auto-expires',()=>ownFile(async file=>{
+ const store=createGuiInputIncidentStore({file});
+ const receipt=await store.begin('gui_type_text');
+ const lock=path.join(path.dirname(file),'.gui-pending-input-mutation.lock');
+ await fs.mkdir(lock,{mode:0o700});
+ try {
+   const restarted=createGuiInputIncidentStore({file});
+   await assert.rejects(restarted.pending(),/GUI_INCIDENT_MUTATION_BUSY/);
+   await assert.rejects(restarted.begin('gui_key_press'),/GUI_INCIDENT_MUTATION_BUSY/);
+   await assert.rejects(restarted.resolve(receipt),/GUI_INCIDENT_MUTATION_BUSY/);
+   const guarded=controller(restarted,{platform:'linux'});
+   const status=await guarded.run('gui_status');
+   assert.equal(status.available,false);
+   assert.equal(status.incidentStoreUnavailable,true);
+   assert.equal(guarded.calls,0);
+   assert.equal((await fs.lstat(lock)).isDirectory(),true);
+   assert.equal((await fs.lstat(file)).isFile(),true);
+ } finally { await fs.rmdir(lock); }
+ await store.resolve(receipt);
+ assert.equal(await store.pending(),null);
 }));

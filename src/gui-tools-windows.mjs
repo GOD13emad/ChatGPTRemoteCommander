@@ -190,6 +190,13 @@ export function createGuiController({ platform = process.platform, now = () => p
       try { result = await invoke(request); }
       catch (error) {
         if (isInput) {
+          // Preserve only strictly validated, non-content clipboard phase evidence.
+          // A failure to annotate is still an uncertain native effect; never replay.
+          if (name === 'gui_type_text' && error?.guiClipboardDiagnostic &&
+              typeof incidentStore.annotateFailure === 'function') {
+            try { await incidentStore.annotateFailure(pendingHandle,error.guiClipboardDiagnostic); }
+            catch { /* Existing pending incident remains fail-closed. */ }
+          }
           // Exact Linux click pre-dispatch rejection only; no input was ever applied.
           const linuxNotApplied = platform === 'linux' && name === 'gui_mouse_click' &&
             error?.guiCode === 'GUI_FOREGROUND_OR_GEOMETRY_CHANGED' && error?.guiNotApplied === true;
