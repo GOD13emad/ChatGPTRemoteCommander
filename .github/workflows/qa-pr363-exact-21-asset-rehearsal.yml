@@ -1,0 +1,92 @@
+name: v0.10.26 Exact 21 Asset Manifest QA (NoPublish)
+
+on:
+  push:
+    branches: ['qa/v01026-pr363-manifest-rehearsal-20261023']
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  verify-exact-21-assets:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: 599c1feaaba86d8a3f2e36b66604191ff42566d9
+          fetch-depth: 0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '22'
+      - name: Verify exact immutable release candidate and no tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = '599c1feaaba86d8a3f2e36b66604191ff42566d9'
+          test "$(node -p "require('./package.json').version")" = '0.10.26'
+          if git show-ref --verify --quiet 'refs/tags/v0.10.26'; then
+            echo 'QA_FAIL_RELEASE_TAG_ALREADY_EXISTS'
+            exit 1
+          fi
+          echo 'QA_SOURCE_599C1FEA_AND_NO_TAG_PASS'
+      - name: Fetch existing signed-identity GitHub QA artifacts only
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist/qa/windows dist/qa/linux
+          gh run download 39848089262 --repo "$GH_REPO" --name remote-commander-windows-setup --dir dist/qa/windows
+          gh run download 39848089262 --repo "$GH_REPO" --name remote-commander-linux-onefile-QA --dir dist/qa/linux
+          test -s dist/qa/windows/Remote-Commander-Setup-v0.10.26.exe
+          test -s dist/qa/linux/Remote-Commander-Linux-Setup.run
+          test -s dist/qa/linux/Remote-Commander-Linux-Setup.run.sha256
+          echo 'QA_HOSTED_ARTIFACTS_RETRIEVED_PASS'
+      - name: Rebuild and verify all 21 assets without publication
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = '599c1feaaba86d8a3f2e36b66604191ff42566d9'
+          bash tools/build-release-assets.sh dist/release
+          windows='dist/qa/windows/Remote-Commander-Setup-v0.10.26.exe'
+          linux='dist/qa/linux/Remote-Commander-Linux-Setup.run'
+          linux_manifest="$linux.sha256"
+          want_win='c3c7054c2172a9391b935867d9555cfbbe88f30e1e2f34cd444ee383b7d7f8bf'
+          want_linux='50429ae74ff7966bb61547c6593eb2f425f1c275c66c5e3b736ab7ad6b0da413'
+          test "$(sha256sum "$windows" | cut -d' ' -f1)" = "$want_win"
+          test "$(sha256sum "$linux" | cut -d' ' -f1)" = "$want_linux"
+          test "$(awk 'NR==1 {print $1}' "$linux_manifest")" = "$want_linux"
+          cp "$windows" 'dist/release/Remote-Commander-Setup-v0.10.26.exe'
+          cp "$linux" 'dist/release/Remote-Commander-Linux-Setup.run'
+          (
+            cd dist/release
+            sha256sum Remote-Commander-Setup-v0.10.26.exe Remote-Commander-Linux-Setup.run >> SHA256SUMS.txt
+            LC_ALL=C sort -k2 -o SHA256SUMS.txt SHA256SUMS.txt
+            sha256sum -c SHA256SUMS.txt
+            test "$(find . -mindepth 1 -maxdepth 1 -type f | wc -l)" -eq 21
+            test "$(wc -l < SHA256SUMS.txt)" -eq 20
+          )
+          mkdir -p dist/qa/proof
+          {
+            echo 'SOURCE_SHA=599c1feaaba86d8a3f2e36b66604191ff42566d9'
+            echo 'SOURCE_QA_RUN=39848089262'
+            echo 'WINDOWS_RAW_SHA256=c3c7054c2172a9391b935867d9555cfbbe88f30e1e2f34cd444ee383b7d7f8bf'
+            echo 'LINUX_RAW_SHA256=50429ae74ff7966bb61547c6593eb2f425f1c275c66c5e3b736ab7ad6b0da413'
+            echo 'ASSET_COUNT_INCLUDING_MANIFEST=21'
+            echo 'MANIFEST_ENTRY_COUNT=20'
+            sha256sum dist/release/SHA256SUMS.txt
+            echo 'PUBLISH_PERFORMED=false'
+            echo 'SIGNED_ATTESTATION_CREATED=false'
+          } | tee dist/qa/proof/receipt.txt
+          echo 'PR363_EXACT_599C_21_ASSET_PRETAG_QA_PASS'
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: pr363-exact-599c-21-asset-manifest-proof
+          path: |
+            dist/release/SHA256SUMS.txt
+            dist/qa/proof/receipt.txt
+          if-no-files-found: error
+          retention-days: 7
