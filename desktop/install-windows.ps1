@@ -8,21 +8,27 @@ param(
 )
 $ErrorActionPreference='Stop'
 
+function Assert-CorePublicInstallSession {
+  param([int]$SessionId)
+  if($SessionId -le 0){throw 'CORE_PUBLIC_INSTALL_NONINTERACTIVE_SESSION'}
+}
+
 function Assert-CorePublicInstallContext {
   param([string]$IdentitySid,[string]$ProfilePath,[string]$RoamingAppData,[string]$LocalAppData)
-  if($IdentitySid -eq 'S-1-5-18'){throw 'CORE_PUBLIC_INSTALL_SYSTEM_CONTEXT'}
+  if($IdentitySid -in @('S-1-5-18','S-1-5-19','S-1-5-20')){throw 'CORE_PUBLIC_INSTALL_SYSTEM_CONTEXT'}
   if([string]::IsNullOrWhiteSpace($IdentitySid) -or [string]::IsNullOrWhiteSpace($ProfilePath) -or
      [string]::IsNullOrWhiteSpace($RoamingAppData) -or [string]::IsNullOrWhiteSpace($LocalAppData)){
     throw 'CORE_PUBLIC_INSTALL_IDENTITY_INCOMPLETE'
   }
   foreach($path in @($ProfilePath,$RoamingAppData,$LocalAppData)){
-    if($path -match '(?i)(^|[\\/])systemprofile([\\/]|$)'){
+    if($path -match '(?i)(^|[\\/])(systemprofile|ServiceProfiles)([\\/]|$)'){
       throw 'CORE_PUBLIC_INSTALL_SYSTEMPROFILE_PATH'
     }
   }
 }
 
 if(-not $NoPublicIntegration -and -not $StageOnly){
+  Assert-CorePublicInstallSession -SessionId ([Diagnostics.Process]::GetCurrentProcess().SessionId)
   $CurrentWindowsIdentity=[Security.Principal.WindowsIdentity]::GetCurrent()
   Assert-CorePublicInstallContext -IdentitySid $CurrentWindowsIdentity.User.Value -ProfilePath $env:USERPROFILE -RoamingAppData $env:APPDATA -LocalAppData $env:LOCALAPPDATA
 }
