@@ -69,7 +69,27 @@ assert.ok(!/(logout|logoff|reboot|shutdown)[ \t]/i.test(installer), 'GUI install
 assert.ok(controller.includes("platform === 'linux'"));
 assert.ok(server.includes("process.platform === 'win32' || process.platform === 'linux'"));
 assert.ok(updater.includes('install_linux_gui_backend'));
-assert.ok(updater.includes('https://github.com/GOD13emad/ChatGPTRemoteCommander/releases/latest') && updater.includes('%{url_effective}'));
+// Extract the actual release-discovery endpoints, not a URL substring that can be a lookalike.
+const discovery=updater.slice(updater.indexOf('latest_ref(){'),updater.indexOf('\nstage_release(){'));
+assert.ok(discovery.startsWith('latest_ref(){'), 'Linux release discovery function missing');
+assert.ok(discovery.includes("%{url_effective}"), 'published release redirect must be inspected');
+const endpoints=[...discovery.matchAll(/(?:^|\s)(https:\/\/[^\s'"\\]+)/gm)].map(x=>x[1]);
+const trustedEndpoint=(value,host,pathname)=>{
+  try{
+    const u=new URL(value);
+    return u.protocol==='https:'&&u.hostname===host&&u.pathname===pathname&&
+      !u.username&&!u.password&&!u.port&&!u.search&&!u.hash;
+  }catch{return false;}
+};
+assert.equal(endpoints.length,2,'exactly GitHub release redirect and API fallback are permitted');
+assert.ok(trustedEndpoint(endpoints[0],'github.com','/GOD13emad/ChatGPTRemoteCommander/releases/latest'));
+assert.ok(trustedEndpoint(endpoints[1],'api.github.com','/repos/GOD13emad/ChatGPTRemoteCommander/releases/latest'));
+for(const unsafe of ['https://github.com.evil.invalid/GOD13emad/ChatGPTRemoteCommander/releases/latest',
+                     'http://github.com/GOD13emad/ChatGPTRemoteCommander/releases/latest',
+                     'https://github.com/GOD13emad/ChatGPTRemoteCommander/releases/latest?next=evil',
+                     'https://github.com/GOD13emad/ChatGPTRemoteCommander/releases/latest/extra']){
+  assert.equal(trustedEndpoint(unsafe,'github.com','/GOD13emad/ChatGPTRemoteCommander/releases/latest'),false);
+}
 
 const headlessValidation = process.env.REMOTE_COMMANDER_HEADLESS_VALIDATE === '1';
 if (process.platform === 'linux' && !headlessValidation) {
