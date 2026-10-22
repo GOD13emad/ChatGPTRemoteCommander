@@ -24,7 +24,7 @@ The Windows installer has **no Authenticode signature** and may display **Unknow
 ## Verify the public download before use
 
 1. Confirm the release is marked **Prerelease**, the exact annotated `v0.10.26` Git tag, and the peeled source commit.
-2. Check all **20 release assets** against `SHA256SUMS.txt`, including `Remote-Commander-Setup-v0.10.26.exe`.
+2. Verify that `SHA256SUMS.txt` lists and validates all **20 payload files**; together with the manifest, the release contains **21 assets**, including `Remote-Commander-Setup-v0.10.26.exe` and `Remote-Commander-Linux-Setup.run`.
 3. Verify **GitHub Sigstore provenance / GitHub attestation** against that tag, commit and `.github/workflows/release-sync.yml`; an attestation verifies CI build identity, not Windows signer identity.
 4. Confirm the EXE reports `NotSigned` in Windows Authenticode checks; its advertised project brand is **not** a Windows-trusted publisher.
 5. Install only on an explicitly chosen profile/device after preserving current user data and a verified rollback. Do not infer owner fleet opt-in from the GitHub release.

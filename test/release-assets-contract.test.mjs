@@ -3,6 +3,16 @@ import { readFileSync } from 'node:fs';
 const pkg = JSON.parse(readFileSync('package.json','utf8'));
 const builder = readFileSync('tools/build-release-assets.sh','utf8');
 const workflow = readFileSync('.github/workflows/release-sync.yml','utf8');
+// A v0.10.26 Preview has 19 base files (including the manifest) plus two
+// verified single-file installers. Count the manifest separately from payloads.
+if (pkg.version === '0.10.26') {
+  const releaseNotes = readFileSync('docs/RELEASE_0.10.26.md','utf8');
+  if (!/20 payload files/.test(releaseNotes) || !/21 assets/.test(releaseNotes) ||
+      !releaseNotes.includes('Remote-Commander-Linux-Setup.run') ||
+      !workflow.includes('expected_count=21'))
+    throw new Error('R177_RELEASE_026_ASSET_COUNT_DISCLOSURE_MISMATCH');
+}
+
 const releaseSyncPathSection = workflow.replace(/\r\n/g, '\n').split('  pull_request:\n')[1]?.split('\npermissions:')[0] || '';
 if (!releaseSyncPathSection.includes("      - 'install.sh'"))
   throw new Error('RELEASE_SYNC_LINUX_INSTALL_SOURCE_TRIGGER_MISSING');
@@ -38,6 +48,12 @@ for (const required of [
 }
 if (!builder.includes('[[ "$count" -eq 19 ]]')) throw new Error('release asset count guard missing');
 if (!builder.includes('Release commit: $COMMIT')) throw new Error('installer bundle provenance missing');
+
+if (!builder.includes('PIN_WIZARDS') ||
+    !builder.includes('"$installer_stage/setup-wizard.ps1" "$windows_stage/setup-wizard.ps1"') ||
+    !builder.includes('"$installer_stage/setup-wizard.sh" "$linux_stage/setup-wizard.sh"'))
+  throw new Error('R178_VERSIONED_ZIP_SETUP_SOURCE_PIN_MISSING');
+
 
 for (const required of [
   'actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1',
