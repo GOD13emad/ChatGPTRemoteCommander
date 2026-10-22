@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { createHash, generateKeyPairSync, sign } from 'node:crypto';
+import { createHash, generateKeyPairSync, sign, randomBytes } from 'node:crypto';
+import { grantSigningBytes } from '../tools/runner-owner-grant-signature.mjs';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
@@ -33,8 +34,8 @@ function fixture(t){
     candidateConfigSha256:hash(fs.readFileSync(files.candidate)),
     candidateRunnerSha256:hash(JSON.stringify(JSON.parse(fs.readFileSync(files.candidate)).durableWorkflows.runner)),
     allowedChangedFields:changes,issuedAtUtc:later(-60000),expiresAtUtc:later(240000),
-    routerGeneration:generation,activeCommit:commit};
-  const signature=sign(null,Buffer.from(JSON.stringify(payload)),privateKey).toString('base64');
+    routerGeneration:generation,activeCommit:commit,approvalId:randomBytes(16).toString('hex')};
+  const signature=sign(null,grantSigningBytes(payload),privateKey).toString('base64');
   return {payload,signature};
  }
  write('current',current); write('candidate',candidate);
@@ -120,7 +121,7 @@ test('expired or invalidly long approvals never pass',t=>{
  const f=fixture(t);
  for(const [issuedAtUtc,expiresAtUtc] of [[later(-180000),later(-60000)],[later(-1000),later(3600000)],[later(600000),later(660000)]]){
   const a=f.grant();a.payload.issuedAtUtc=issuedAtUtc;a.payload.expiresAtUtc=expiresAtUtc;
-  a.signature=sign(null,Buffer.from(JSON.stringify(a.payload)),f.privateKey).toString('base64');
+  a.signature=sign(null,grantSigningBytes(a.payload),f.privateKey).toString('base64');
   f.write('approval',a);blocked(f.run(),'APPROVAL_EXPIRED_OR_NOT_YET_VALID');
  }
 });
@@ -128,7 +129,7 @@ test('wrong declared scope and extra approval keys are rejected',t=>{
  const f=fixture(t);
  for(const transform of [a=>{a.payload.allowedChangedFields=['maxPlannerCalls','provider.args'];},a=>{a.payload.profile='some-other-profile';},a=>{a.payload.unexpected=1;} ]){
   const a=f.grant();transform(a);
-  a.signature=sign(null,Buffer.from(JSON.stringify(a.payload)),f.privateKey).toString('base64');
+  a.signature=sign(null,grantSigningBytes(a.payload),f.privateKey).toString('base64');
   f.write('approval',a);blocked(f.run(),'INVALID_APPROVAL');
  }
 });
@@ -155,7 +156,7 @@ test('changed active release commit invalidates previously signed approval',t=>{
 });
 test('signer must include exact current router generation and source commit',t=>{
  const f=fixture(t);const grant=f.grant();grant.payload.routerGeneration=f.generation+1;
- grant.signature=sign(null,Buffer.from(JSON.stringify(grant.payload)),f.privateKey).toString('base64');
+ grant.signature=sign(null,grantSigningBytes(grant.payload),f.privateKey).toString('base64');
  f.write('approval',grant);blocked(f.run(),'ROUTER_STATE_MISMATCH');
 });
 test('router with a different selected active config path is rejected',t=>{
@@ -167,6 +168,27 @@ test('router aliases are rejected',t=>{
  const f=fixture(t);const orig=f.files.router;const aliased=path.join(f.root,'default.alias.json');
  fs.renameSync(orig,aliased);try{fs.symlinkSync(aliased,orig)}catch(e){return t.skip('symlink unsupported: '+e.code)}
  blocked(f.run(),'INVALID_FILE');
+});
+test('owner preview signing is domain-separated and deterministic across payload property order',t=>{
+ const f=fixture(t);const a=f.grant();
+ const original=grantSigningBytes(a.payload);
+ const reversed=Object.fromEntries(Object.entries(a.payload).reverse());
+ assert.deepEqual(grantSigningBytes(reversed),original);
+ a.payload=reversed;a.signature=sign(null,grantSigningBytes(reversed),f.privateKey).toString('base64');
+ f.write('approval',a);assert.equal(f.run().status,0);
+});
+test('an old raw JSON payload signature is rejected by versioned preview verifier',t=>{
+ const f=fixture(t);const a=f.grant();a.signature=sign(null,Buffer.from(JSON.stringify(a.payload)),f.privateKey).toString('base64');
+ f.write('approval',a);blocked(f.run(),'BAD_APPROVAL_SIGNATURE');
+});
+test('approval IDs must be lowercase 128-bit hex identifiers',t=>{
+ const f=fixture(t);for(const invalid of ['','0'.repeat(31),'F'.repeat(32),'z'.repeat(32)]){
+  const a=f.grant();a.payload.approvalId=invalid;a.signature=sign(null,grantSigningBytes(a.payload),f.privateKey).toString('base64');
+  f.write('approval',a);blocked(f.run(),'INVALID_APPROVAL');
+ }
+});
+test('repeated synthetic grant stays preview-only; replay consumption is not claimed',t=>{
+ const f=fixture(t);assert.equal(f.run().status,0);assert.equal(f.run().status,0);
 });
 test('malformed and unsigned grants cannot pass',t=>{
  const f=fixture(t);
