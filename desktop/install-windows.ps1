@@ -8,6 +8,11 @@ param(
 )
 $ErrorActionPreference='Stop'
 
+function Assert-CorePublicInstallSession {
+  param([int]$SessionId)
+  if($SessionId -le 0){throw 'CORE_PUBLIC_INSTALL_NONINTERACTIVE_SESSION'}
+}
+
 function Assert-CorePublicInstallContext {
   param([string]$IdentitySid,[string]$ProfilePath,[string]$RoamingAppData,[string]$LocalAppData)
   if($IdentitySid -in @('S-1-5-18','S-1-5-19','S-1-5-20')){throw 'CORE_PUBLIC_INSTALL_SYSTEM_CONTEXT'}
@@ -23,6 +28,7 @@ function Assert-CorePublicInstallContext {
 }
 
 if(-not $NoPublicIntegration -and -not $StageOnly){
+  Assert-CorePublicInstallSession -SessionId ([Diagnostics.Process]::GetCurrentProcess().SessionId)
   $CurrentWindowsIdentity=[Security.Principal.WindowsIdentity]::GetCurrent()
   Assert-CorePublicInstallContext -IdentitySid $CurrentWindowsIdentity.User.Value -ProfilePath $env:USERPROFILE -RoamingAppData $env:APPDATA -LocalAppData $env:LOCALAPPDATA
 }
