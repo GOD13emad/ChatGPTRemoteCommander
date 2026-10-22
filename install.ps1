@@ -365,6 +365,48 @@ function Configure-LocalPolicy {
   Write-Host "Permanent delete: $(if ($effective.powerMode.allowPermanentDelete) {'ENABLED'} else {'disabled'})"
   Write-Host "Capability self-test: $($migration.selfTest.code)"
 }
+function Assert-CompleteCandidateAuditHistory {
+  param([Parameter(Mandatory)][string]$Candidate,[string]$ExpectedSha='',[Parameter(Mandatory)][string]$AllowedOrigin)
+  $expected=(& git.exe -C $Candidate rev-parse HEAD).Trim().ToLowerInvariant()
+  if ($LASTEXITCODE -ne 0 -or $expected -notmatch '^[0-9a-f]{40}$') { throw 'INSTALL_AUDIT_HEAD_INVALID' }
+  if ($ExpectedSha -and $expected -ne $ExpectedSha.ToLowerInvariant()) { throw 'INSTALL_AUDIT_HEAD_MISMATCH' }
+  $dirty=@(& git.exe -C $Candidate status --porcelain --untracked-files=no)
+  if ($LASTEXITCODE -ne 0 -or $dirty.Count -gt 0) { throw 'INSTALL_AUDIT_TRACKED_TREE_DIRTY' }
+  $shallow=(& git.exe -C $Candidate rev-parse --is-shallow-repository).Trim()
+  if ($LASTEXITCODE -ne 0 -or $shallow -notin @('true','false')) { throw 'INSTALL_AUDIT_SHALLOW_STATE_INVALID' }
+  if ($shallow -eq 'true') {
+    $origin=(& git.exe -C $Candidate remote get-url origin).Trim()
+    if ($LASTEXITCODE -ne 0 -or $origin -cne $AllowedOrigin) { throw 'INSTALL_AUDIT_ORIGIN_MISMATCH' }
+    Write-Host 'INSTALL_AUDIT_HISTORY_FETCH_START'
+    $psi=[Diagnostics.ProcessStartInfo]::new('git.exe')
+    $psi.UseShellExecute=$false
+    $psi.CreateNoWindow=$true
+    $psi.Environment['GIT_TERMINAL_PROMPT']='0'
+    $psi.Environment['GCM_INTERACTIVE']='never'
+    $psi.Environment['GIT_ASKPASS']=''
+    foreach($argument in @('-C',$Candidate,'fetch','--quiet','--no-tags','--unshallow','origin',$expected)){
+      [void]$psi.ArgumentList.Add([string]$argument)
+    }
+    $child=[Diagnostics.Process]::Start($psi)
+    if ($null -eq $child) { throw 'INSTALL_AUDIT_HISTORY_FETCH_START_FAILED' }
+    try {
+      if (-not $child.WaitForExit(120000)) {
+        try { $child.Kill($true) } catch {}
+        [void]$child.WaitForExit(5000)
+        throw 'INSTALL_AUDIT_HISTORY_FETCH_TIMEOUT'
+      }
+      if ($child.ExitCode -ne 0) { throw 'INSTALL_AUDIT_HISTORY_FETCH_FAILED' }
+    } finally { $child.Dispose() }
+  }
+  $after=(& git.exe -C $Candidate rev-parse HEAD).Trim().ToLowerInvariant()
+  $isShallow=(& git.exe -C $Candidate rev-parse --is-shallow-repository).Trim()
+  $afterDirty=@(& git.exe -C $Candidate status --porcelain --untracked-files=no)
+  if ($LASTEXITCODE -ne 0 -or $after -ne $expected -or $isShallow -ne 'false' -or $afterDirty.Count -gt 0) {
+    throw 'INSTALL_AUDIT_HISTORY_INTEGRITY_FAILED'
+  }
+  Write-Host 'INSTALL_AUDIT_FULL_HISTORY_PASS'
+}
+
 function Test-Installation {
   Push-Location -LiteralPath $InstallDir
   try {
@@ -376,6 +418,7 @@ function Test-Installation {
     if ($LASTEXITCODE -ne 0) {
       throw 'npm run test:qualification failed'
     }
+    Assert-CompleteCandidateAuditHistory -Candidate $InstallDir -ExpectedSha $ExpectedCommit -AllowedOrigin $Repo
     & npm.cmd run audit
     if ($LASTEXITCODE -ne 0) {
       throw 'security audit failed'
