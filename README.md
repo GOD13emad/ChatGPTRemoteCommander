@@ -1,6 +1,6 @@
 # ChatGPT Remote Commander
 
-> **Official project brand:** **[TandemVector Labs](https://github.com/Usefull-Skills)**. Lead source/release maintainer: [Aliakbar Emadoddin](https://github.com/GOD13emad); supporting collaborator: [MMZ](https://github.com/mohammadmohammadzadeh19960-code). [Maintainer credits](docs/PUBLISHER_AND_MAINTAINERS.md). Windows v0.10.24 preview is **UNSIGNED**; checksums and GitHub provenance do not replace Authenticode or remove SmartScreen warnings. Current Stable remains v0.10.20.
+> **Official project brand:** **[TandemVector Labs](https://github.com/TandemVector-Labs)**. Lead source/release maintainer: [Aliakbar Emadoddin](https://github.com/GOD13emad); supporting collaborator: [MMZ](https://github.com/mohammadmohammadzadeh19960-code). [Maintainer credits](docs/PUBLISHER_AND_MAINTAINERS.md). Core **v0.10.25 UNSIGNED Preview** was published separately from current Stable **v0.10.20**. Checksums/GitHub provenance do not replace Authenticode or remove SmartScreen warnings; Core v0.10.26 remains an unpromoted source candidate.
 
 > **Current published Core is [v0.10.20](docs/RELEASE_0.10.20.md).** [Release authority and open gates](docs/RELEASE_AUTHORITY.md) distinguish stable Core, separate Browser stable, and unaccepted UI/Updater drafts. `main` is not itself a release.
 
@@ -12,7 +12,7 @@ Cross-platform Windows + Linux MCP server for controlled remote project and mach
 
 **Setup guides in 10 languages:** [English](docs/SETUP.en.md) · [فارسی](docs/SETUP.fa.md) · [العربية](docs/SETUP.ar.md) · [Türkçe](docs/SETUP.tr.md) · [Español](docs/SETUP.es.md) · [Français](docs/SETUP.fr.md) · [Deutsch](docs/SETUP.de.md) · [Русский](docs/SETUP.ru.md) · [简体中文](docs/SETUP.zh-CN.md) · [日本語](docs/SETUP.ja.md)
 
-[Documentation index](docs/README.md) · [Server install](docs/SERVER_INSTALL.md) · [Current release: v0.10.20](docs/RELEASE_0.10.20.md) · [Project status](docs/PROJECT_CONTROL_STATE.md) · [Development roadmap](docs/PROJECT_ENGINE_ROADMAP.md)
+[Documentation index](docs/README.md) · [Current Project Brain](docs/PROJECT_BRAIN.md) · [Release authority](docs/RELEASE_AUTHORITY.md) · [Stable v0.10.20](docs/RELEASE_0.10.20.md) · [UNSIGNED Preview v0.10.25](docs/RELEASE_0.10.25.md) · [Historical project state](docs/PROJECT_CONTROL_STATE.md)
 
 [Finite companion 1.0.0 source-review snapshot](experimental/finite-companion-v1.0.0/README.md) · [گزارش فارسی همراه](docs/COMPANION_1.0.0_20261003_FA.md). This separate, owner-scoped companion was privately accepted on core 0.10.6; it is not a public installer, core upgrade, or general autonomous agent. Compatibility with the current core and same-chat retry recovery remain unproven.
 

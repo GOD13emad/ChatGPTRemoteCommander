@@ -4,7 +4,7 @@
 
 ## Current product documentation
 
-- [Current project state](PROJECT_CONTROL_STATE.md) and [development roadmap](PROJECT_ENGINE_ROADMAP.md).
+- [Current Project Brain](PROJECT_BRAIN.md) and [release authority](RELEASE_AUTHORITY.md); [historical project state](PROJECT_CONTROL_STATE.md) and [historical engine roadmap](PROJECT_ENGINE_ROADMAP.md) are retained for provenance.
 - [v0.8.35 release qualification](RELEASE_0.8.35.md) and [engineering decisions/evidence](PROJECT_KNOWLEDGE_EVIDENCE.md).
 - [Project execution](PROJECT_ENGINE.md), [adaptive planning](PROJECT_ENGINE_ADAPTIVE.md) and [durable questions/responses](PROJECT_ENGINE_DECISIONS.md).
 - [Durable workflows](DURABLE_WORKFLOWS_R1.md), [profile isolation](PROFILE_ISOLATION_R1.md), [filesystem integrity](FS_INTEGRITY_R1.md) and [GUI acceptance](GUI_ACCEPTANCE.md).
