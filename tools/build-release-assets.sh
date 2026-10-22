@@ -91,6 +91,11 @@ assert script.startswith(header), "Linux wizard shebang changed"
 assert "REMOTE_COMMANDER_SOURCE_REF=" not in script and "REMOTE_COMMANDER_EXPECTED_COMMIT=" not in script
 pinned = ("export REMOTE_COMMANDER_SOURCE_REF='v" + version + "'\n"
           "export REMOTE_COMMANDER_EXPECTED_COMMIT='" + commit + "'\n")
+# Some standard ZIP extractors do not restore executable permission bits.
+# Execute the Bash installer via the interpreter, independent of chmod.
+call = '  "$INSTALLER" "$' + '{args[@]}"'
+assert script.count(call) == 1, "Linux installer invocation changed"
+script = script.replace(call, '  bash "$INSTALLER" "$' + '{args[@]}"')
 sh.write_text(header + pinned + script[len(header):])
 PIN_WIZARDS
 cat > "$installer_stage/README-INSTALL.txt" <<EOF
