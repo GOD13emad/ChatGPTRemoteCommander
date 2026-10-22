@@ -26,6 +26,21 @@ function Assert-ContextRejected([string]$Name,[string]$Expected,[scriptblock]$Ac
   if(-not $failed){throw ('UNSAFE_CONTEXT_ACCEPTED_'+$Name)}
   "PASS_REJECT_$Name"
 }
+$sessionFns=@($ast.FindAll({
+  param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and
+    $node.Name -eq 'Assert-CorePublicInstallSession'
+},$true))
+if($sessionFns.Count -ne 1){throw 'CORE_PUBLIC_INSTALL_SESSION_GUARD_MISSING'}
+. ([scriptblock]::Create($sessionFns[0].Extent.Text))
+if($ast.Extent.Text -notmatch 'Assert-CorePublicInstallSession\s+-SessionId\s+\(\[Diagnostics\.Process\]::GetCurrentProcess\(\)\.SessionId\)'){throw 'CORE_PUBLIC_INSTALL_SESSION_CALL_MISSING'}
+Assert-CorePublicInstallSession -SessionId 1
+'PASS_INTERACTIVE_SESSION_GUARD'
+Assert-ContextRejected 'NONINTERACTIVE_SESSION_ZERO' 'CORE_PUBLIC_INSTALL_NONINTERACTIVE_SESSION' {
+  Assert-CorePublicInstallSession -SessionId 0
+}
+Assert-ContextRejected 'INVALID_NEGATIVE_SESSION' 'CORE_PUBLIC_INSTALL_NONINTERACTIVE_SESSION' {
+  Assert-CorePublicInstallSession -SessionId -1
+}
 Assert-ContextRejected 'SYSTEM_SID_REDIRECTED_PROFILE' 'CORE_PUBLIC_INSTALL_SYSTEM_CONTEXT' {
   Assert-CorePublicInstallContext -IdentitySid 'S-1-5-18' -ProfilePath 'C:\Users\TestUser' -RoamingAppData 'C:\Users\TestUser\AppData\Roaming' -LocalAppData 'C:\Users\TestUser\AppData\Local'
 }
