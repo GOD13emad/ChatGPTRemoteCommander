@@ -66,15 +66,24 @@ function validatePolicy(current, candidate) {
   return changed;
 }
 function main() {
-  if (process.argv.length !== 6) reject('INVALID_ARGS');
-  const [oldPath, newPath, approvalPath, publicKeyPath] = process.argv.slice(2);
-  if ([oldPath, newPath, approvalPath, publicKeyPath].some(v => typeof v !== 'string' || !path.isAbsolute(v)))
+  if (process.argv.length !== 7) reject('INVALID_ARGS');
+  const [oldPath, newPath, approvalPath, publicKeyPath, routerPath] = process.argv.slice(2);
+  if ([oldPath, newPath, approvalPath, publicKeyPath, routerPath].some(v => typeof v !== 'string' || !path.isAbsolute(v)))
     reject('INVALID_PATH');
   const currentRaw = readBounded(oldPath);
   const candidateRaw = readBounded(newPath);
   const current = objectFrom(currentRaw);
   const candidate = objectFrom(candidateRaw);
   const changes = validatePolicy(current.durableWorkflows?.runner, candidate.durableWorkflows?.runner);
+  const router = objectFrom(readBounded(routerPath, true));
+  const routerActive = router.active;
+  if (path.basename(routerPath) !== 'default.json'
+    || !Number.isSafeInteger(router.generation) || router.generation < 1
+    || !routerActive || !validHash(routerActive.configSha256)
+    || typeof routerActive.commit !== 'string' || !/^[a-f0-9]{40}$/.test(routerActive.commit)
+    || routerActive.configPath !== oldPath
+    || routerActive.configSha256 !== sha256(currentRaw))
+    reject('ROUTER_STATE_MISMATCH');
   const grant = objectFrom(readBounded(approvalPath, true));
   const payload = grant.payload;
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)
@@ -82,15 +91,20 @@ function main() {
     || typeof grant.signature !== 'string' || !/^[A-Za-z0-9+/]{86}==$/.test(grant.signature))
     reject('INVALID_APPROVAL');
   const required = ['schema','intent','profile','activeConfigSha256','candidateConfigSha256','candidateRunnerSha256',
-    'allowedChangedFields','issuedAtUtc','expiresAtUtc'];
+    'allowedChangedFields','issuedAtUtc','expiresAtUtc','routerGeneration','activeCommit'];
   if (Object.keys(payload).sort().join(',') !== required.sort().join(',')
     || payload.schema !== 1 || payload.intent !== 'owner-approved-runner-transition'
-    || payload.profile !== 'default' || !validHash(payload.activeConfigSha256)
+    || payload.profile !== 'default'
+    || !Number.isSafeInteger(payload.routerGeneration) || payload.routerGeneration < 1
+    || typeof payload.activeCommit !== 'string' || !/^[a-f0-9]{40}$/.test(payload.activeCommit)
+    || !validHash(payload.activeConfigSha256)
     || !validHash(payload.candidateConfigSha256)
     || !validHash(payload.candidateRunnerSha256)
     || !Array.isArray(payload.allowedChangedFields)
     || !isDeepStrictEqual([...payload.allowedChangedFields].sort(), [...changes].sort()))
     reject('INVALID_APPROVAL');
+  if (payload.routerGeneration !== router.generation || payload.activeCommit !== routerActive.commit)
+    reject('ROUTER_STATE_MISMATCH');
   if (payload.activeConfigSha256 !== sha256(currentRaw)
     || payload.candidateConfigSha256 !== sha256(candidateRaw)
     || payload.candidateRunnerSha256 !== sha256(JSON.stringify(candidate.durableWorkflows.runner)))
@@ -110,7 +124,7 @@ function main() {
 try { main(); } catch (e) {
   const known = new Set([
     'INVALID_ARGS','INVALID_PATH','INVALID_FILE','UNTRUSTED_APPROVAL_FILE','FILE_CHANGED_DURING_READ',
-    'INVALID_DOCUMENT','UNSUPPORTED_TRANSITION','UNBOUNDED_POLICY_CHANGE','INVALID_APPROVAL',
+    'INVALID_DOCUMENT','ROUTER_STATE_MISMATCH','UNSUPPORTED_TRANSITION','UNBOUNDED_POLICY_CHANGE','INVALID_APPROVAL',
     'APPROVAL_HASH_MISMATCH','INVALID_APPROVAL_TIME','APPROVAL_EXPIRED_OR_NOT_YET_VALID',
     'UNTRUSTED_KEY_TYPE','BAD_APPROVAL_SIGNATURE'
   ]);
