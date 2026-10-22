@@ -380,7 +380,7 @@ async function executeTool(name, args, executionContext = {}) {
     // execution remains hard-bounded to 15 seconds at runtime.
     if (name === 'run_project_command') await prepareProjectCommand(ctx, synchronousCommandInput(effectArgs));
     if (name === 'run_shell') await prepareShellCommand(ctx, synchronousCommandInput(effectArgs));
-    return mutationIdempotency.execute({ requestId, tool: name, input: effectArgs }, () => executeToolEffect(name, effectArgs));
+    return mutationIdempotency.execute({ requestId, tool: name, input: effectArgs }, () => executeToolEffect(name, effectArgs, { requestId }));
   }
   return executeToolEffect(name, args);
 }
@@ -443,7 +443,7 @@ async function buildBrowserMonitorSnapshot() {
   };
 }
 
-async function executeToolEffect(name, args) {
+async function executeToolEffect(name, args, delegationContext = {}) {
   if (!toolDefinition(name)) throw protocolFailure(200, -32602, 'Unknown tool');
   if (name.startsWith('delegation_')) return executeDelegationTool(name, args);
   if (name.startsWith('conversation_')) return conversationController.execute(name, args);
@@ -541,7 +541,7 @@ async function executeToolEffect(name, args) {
         return result;
       }
       if (name.startsWith('gui_')) {
-        const proxy = ownerGuiProxy ? await ownerGuiProxy.execute(name, args) : { handled: false };
+        const proxy = ownerGuiProxy ? await ownerGuiProxy.execute(name, args, delegationContext) : { handled: false };
         const result = proxy.handled ? proxy.value : await executeGuiTool(ctx, name, args);
         await audit(ctx, { action: name, ok: true, powerMode: true, guiControl: true,
           ...(proxy.handled ? { delegatedOwnerGui: true } : {}) });

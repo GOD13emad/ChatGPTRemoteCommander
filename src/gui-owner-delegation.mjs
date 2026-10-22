@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 
 const TOOL_NAMES = new Set([
@@ -7,6 +8,7 @@ const TOOL_NAMES = new Set([
 ]);
 const PROFILE = 'owner-gui-v1';
 const AUTH_PATTERN = /^[a-f0-9]{64}$/;
+const REQUEST_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 
 export function createOwnerGuiReadOnlyProxy({
   config, primaryStatus, fetchImpl = globalThis.fetch, readFileImpl = readFile
@@ -51,7 +53,7 @@ export function createOwnerGuiReadOnlyProxy({
     return result.structuredContent;
   }
   return {
-    async execute(name, args = {}) {
+    async execute(name, args = {}, context = {}) {
       if (!TOOL_NAMES.has(name)) return { handled: false };
       const primary = await primaryStatus();
       if (!primary || primary.enabled !== true || primary.available !== false ||
@@ -69,7 +71,15 @@ export function createOwnerGuiReadOnlyProxy({
         if (value.available !== true || value.enabled !== true) return { handled: false };
         return { handled: true, value: { ...value, delegated: true, delegatedMode: 'observe' } };
       }
-      const value = await rpc(name, args);
+      let forwardedArgs = args;
+      if (name === 'gui_session_begin' || name === 'gui_session_end') {
+        const upstreamId = context.requestId;
+        if (typeof upstreamId !== 'string' || !REQUEST_ID_PATTERN.test(upstreamId))
+          throw Error('OWNER_GUI_REQUEST_ID_REQUIRED');
+        const hash = createHash('sha256').update(PROFILE + ':' + name + ':' + upstreamId).digest('hex');
+        forwardedArgs = { ...args, requestId: 'ogui-' + hash.slice(0, 48) };
+      }
+      const value = await rpc(name, forwardedArgs);
       return { handled: true, value };
     }
   };

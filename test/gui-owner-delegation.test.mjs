@@ -84,7 +84,7 @@ test('upstream 403 and malformed credentials fail closed', async () => {
 });
 test('validated status/lease pass through and image content preserves contract', async () => {
   const lease=make({handler:()=>({ok:true,lease:'xyz',mode:'observe'})});
-  assert.deepEqual((await lease.proxy.execute('gui_session_begin',{mode:'observe'})).value,{ok:true,lease:'xyz',mode:'observe'});
+  assert.deepEqual((await lease.proxy.execute('gui_session_begin',{mode:'observe'},{requestId:'existing-lease-test-1'})).value,{ok:true,lease:'xyz',mode:'observe'});
   const calls=[];
   const imageProxy=createOwnerGuiReadOnlyProxy({
     config:cfg(), primaryStatus:primary, readFileImpl:async()=>authorized(),
@@ -115,4 +115,20 @@ test('malformed JSON and downstream errors are generic', async () => {
     fetchImpl:async()=>({status:200,text:async()=>JSON.stringify({jsonrpc:'2.0',id:1,result:{isError:true}})})
   });
   await assert.rejects(()=>q.execute('gui_status'),/RPC_REJECTED/);
+});
+
+test('observe lease forwards a stable, distinct mutation correlation without credential leakage', async () => {
+  const {proxy,captured} = make({handler:()=>({ok:true,mode:'observe',lease:'lease-only'})});
+  await assert.rejects(()=>proxy.execute('gui_session_begin',{mode:'observe'}),/OWNER_GUI_REQUEST_ID_REQUIRED/);
+  assert.equal(captured.length,0);
+  const metadata={requestId:'session-test-987'};
+  await proxy.execute('gui_session_begin',{mode:'observe'},metadata);
+  await proxy.execute('gui_session_begin',{mode:'observe'},metadata);
+  await proxy.execute('gui_session_end',{lease:'lease-only'},metadata);
+  assert.equal(captured.length,3);
+  const [first,retry,end]=captured.map(v=>v.rpc.params.arguments.requestId);
+  assert.match(first,/^ogui-[a-f0-9]{48}$/);
+  assert.equal(first,retry);
+  assert.notEqual(first,end);
+  assert.ok(!JSON.stringify(captured.map(v=>v.rpc)).includes('session-test-987'));
 });
