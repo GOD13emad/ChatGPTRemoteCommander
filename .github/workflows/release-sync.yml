@@ -11,6 +11,7 @@ on:
       - 'package-lock.json'
       - 'installer/**'
       - 'setup-wizard.sh'
+      - 'install.sh'
       - 'tools/build-linux-single-file.sh'
       - 'tools/installer-product-plan.mjs'
       - 'test/installer-product-plan.test.mjs'
