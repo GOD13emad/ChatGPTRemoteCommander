@@ -49,6 +49,12 @@ for (const required of [
 if (!builder.includes('[[ "$count" -eq 19 ]]')) throw new Error('release asset count guard missing');
 if (!builder.includes('Release commit: $COMMIT')) throw new Error('installer bundle provenance missing');
 
+if (!builder.includes('PIN_WIZARDS') ||
+    !builder.includes('"$installer_stage/setup-wizard.ps1" "$windows_stage/setup-wizard.ps1"') ||
+    !builder.includes('"$installer_stage/setup-wizard.sh" "$linux_stage/setup-wizard.sh"'))
+  throw new Error('R178_VERSIONED_ZIP_SETUP_SOURCE_PIN_MISSING');
+
+
 for (const required of [
   'actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1',
   './scripts/install-inno-setup.ps1',
