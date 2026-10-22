@@ -7,6 +7,26 @@ param(
   [ValidateSet('None','AfterBaselineMove','AfterCandidateMove')][string]$TestFailurePoint='None'
 )
 $ErrorActionPreference='Stop'
+
+function Assert-CorePublicInstallContext {
+  param([string]$IdentitySid,[string]$ProfilePath,[string]$RoamingAppData,[string]$LocalAppData)
+  if($IdentitySid -eq 'S-1-5-18'){throw 'CORE_PUBLIC_INSTALL_SYSTEM_CONTEXT'}
+  if([string]::IsNullOrWhiteSpace($IdentitySid) -or [string]::IsNullOrWhiteSpace($ProfilePath) -or
+     [string]::IsNullOrWhiteSpace($RoamingAppData) -or [string]::IsNullOrWhiteSpace($LocalAppData)){
+    throw 'CORE_PUBLIC_INSTALL_IDENTITY_INCOMPLETE'
+  }
+  foreach($path in @($ProfilePath,$RoamingAppData,$LocalAppData)){
+    if($path -match '(?i)(^|[\\/])systemprofile([\\/]|$)'){
+      throw 'CORE_PUBLIC_INSTALL_SYSTEMPROFILE_PATH'
+    }
+  }
+}
+
+if(-not $NoPublicIntegration -and -not $StageOnly){
+  $CurrentWindowsIdentity=[Security.Principal.WindowsIdentity]::GetCurrent()
+  Assert-CorePublicInstallContext -IdentitySid $CurrentWindowsIdentity.User.Value -ProfilePath $env:USERPROFILE -RoamingAppData $env:APPDATA -LocalAppData $env:LOCALAPPDATA
+}
+
 $RepoRoot=(Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $Version=((Get-Content (Join-Path $RepoRoot 'package.json') -Raw | ConvertFrom-Json).version)
 if(-not $SourceDir){$SourceDir=Join-Path $RepoRoot 'dist\desktop\remote-commander-windows-x64'}
