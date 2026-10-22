@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 
 // A browser launcher can exit after handing off its custom profile to a child.
@@ -31,9 +32,9 @@ export function browserProfileArgument(profileDir){
 export function argvHasExactArgument(argv,argument){
  return Array.isArray(argv)&&typeof argument==='string'&&argv.some(value=>value===argument);
 }
-export function commandLineHasExactArgument(commandLine,argument){
+export function commandLineHasExactArgument(commandLine,argument,{caseSensitive=false}={}){
  if(typeof commandLine!=='string'||typeof argument!=='string'||!argument)return false;
- const hay=commandLine.toLowerCase(),needle=argument.toLowerCase();
+ const hay=caseSensitive?commandLine:commandLine.toLowerCase(),needle=caseSensitive?argument:argument.toLowerCase();
  let from=0;
  while(from<=hay.length-needle.length){
   const i=hay.indexOf(needle,from);if(i<0)return false;
@@ -44,6 +45,21 @@ export function commandLineHasExactArgument(commandLine,argument){
   from=i+1;
  }
  return false;
+}
+// Chromium on Linux may rewrite /proc/<pid>/cmdline into a single space-
+ // delimited process-title string rather than NUL-separated argv. Accept that
+ // fallback only when /proc/<pid>/exe resolves to a known browser executable.
+ // Preserve exact argument boundary matching: a profile-prefix sibling cannot
+ // be mistaken for the owned profile.
+const linuxBrowserExecutables=new Set([
+ 'chrome','chromium','chromium-browser','brave','brave-browser',
+ 'microsoft-edge','msedge','chrome-headless-shell','headless_shell'
+]);
+export function linuxCommandLineHasOwnedBrowserProfile(argv,argument,executable){
+ if(argvHasExactArgument(argv,argument))return true;
+ if(!Array.isArray(argv)||argv.length!==1||typeof argv[0]!=='string'||typeof executable!=='string')return false;
+ if(!linuxBrowserExecutables.has(path.basename(executable)))return false;
+ return commandLineHasExactArgument(argv[0],argument,{caseSensitive:true});
 }
 function windowsProcessesWithProfileArgs(){
  const script="[Console]::OutputEncoding=[Text.UTF8Encoding]::new(); Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -and $_.CommandLine -match '--user-data-dir=' } | Select-Object ProcessId,CommandLine | ConvertTo-Json -Compress";
@@ -74,7 +90,12 @@ export function findProcessesUsingBrowserProfile(profileDir,{platform=process.pl
    if(!/^\d+$/.test(name))continue;
    const pid=Number(name);if(pid===selfPid)continue;
    let argv;try{argv=fs.readFileSync('/proc/'+name+'/cmdline','utf8').split('\0').filter(Boolean);}catch{continue;}
-   if(argvHasExactArgument(argv,argument))found.push(pid);
+   if(argvHasExactArgument(argv,argument)){found.push(pid);continue;}
+   // Do not trust an arbitrary process that merely mentions a profile path.
+   // Chrome's rewritten process title is eligible only with Chrome's real exe.
+   if(argv.length!==1||!argv[0].includes(argument))continue;
+   let exe;try{exe=fs.readlinkSync('/proc/'+name+'/exe');}catch{continue;}
+   if(linuxCommandLineHasOwnedBrowserProfile(argv,argument,exe))found.push(pid);
   }
  }
  return [...new Set(found)];

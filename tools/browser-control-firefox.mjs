@@ -20,8 +20,11 @@ const redactUrl=value=>{
 };
 const exists=p=>{try{return fs.statSync(p).isFile();}catch{return false;}};
 function which(name){
+ const filenames=process.platform==='win32'&&!path.extname(name)?[name+'.exe',name]:[name];
  for(const dir of String(process.env.PATH??'').split(path.delimiter).filter(Boolean)){
-  const p=path.join(dir,name);if(exists(p))return p;
+  for(const filename of filenames){
+   const p=path.join(dir,filename);if(exists(p))return p;
+  }
  }
  return null;
 }
@@ -31,7 +34,7 @@ function detectFirefox(explicit){
  return null;
 }
 function detectGecko(){
- for(const p of [which('geckodriver'),'/snap/bin/geckodriver','/usr/bin/geckodriver'])if(p&&exists(p))return path.resolve(p);
+ for(const p of [which('geckodriver'),process.platform==='win32'?which('geckodriver.exe'):null,'/snap/bin/geckodriver','/usr/bin/geckodriver'])if(p&&exists(p))return path.resolve(p);
  return null;
 }
 async function freePort(){
@@ -69,10 +72,17 @@ async function stopDriver(child){
  try{child.kill('SIGKILL');}catch{}
 }
 async function closeBrowser({preserveProfile=false}={}){
- const b=browser;browser=null;if(!b)return;
+ const b=browser;if(!b)return;
  try{if(b.sessionId)await fetch('http://127.0.0.1:'+b.port+'/session/'+b.sessionId,{method:'DELETE',signal:AbortSignal.timeout(5000)});}catch{}
  await stopDriver(b.driver);
- if(b.isolated&&!preserveProfile){try{fs.rmSync(b.profileDir,{recursive:true,force:true});}catch{throw fail('BROWSER_PROFILE_CLEANUP_FAILED');}}
+ if(b.isolated&&!preserveProfile){
+  try{fs.rmSync(b.profileDir,{recursive:true,force:true});}
+  catch{throw fail('BROWSER_PROFILE_CLEANUP_FAILED');}
+  if(fs.existsSync(b.profileDir))throw fail('BROWSER_PROFILE_CLEANUP_FAILED');
+ }
+ // Preserve ownership when cleanup is incomplete: a later 'end' must retry
+ // this exact isolated profile, never give a false closed=true.
+ if(browser===b)browser=null;
 }
 async function startBrowser(req){
  if(browser)throw fail('BROWSER_SESSION_ALREADY_RUNNING');
@@ -80,13 +90,26 @@ async function startBrowser(req){
  if(!executable||!driverExecutable)throw fail('BROWSER_EXECUTABLE_NOT_FOUND');
  const profileDir=path.resolve(req.profileDir);fs.mkdirSync(profileDir,{recursive:true,mode:0o700});
  const port=await freePort();
- let driver;try{driver=spawn(driverExecutable,['--host','127.0.0.1','--port',String(port)],{stdio:'ignore',windowsHide:true,shell:false});}catch{throw fail('BROWSER_HELPER_START_FAILED');}
+ // Custom -profile can prevent geckodriver from learning Marionette's
+ // random port. Pin a distinct loopback port for the owned session only.
+ let marionettePort=await freePort();
+ while(marionettePort===port)marionettePort=await freePort();
+ let driver;try{driver=spawn(driverExecutable,['--host','127.0.0.1','--port',String(port),'--marionette-port',String(marionettePort)],{stdio:'ignore',windowsHide:true,shell:false});}catch{throw fail('BROWSER_HELPER_START_FAILED');}
  browser={driver,port,sessionId:null,profileDir,isolated:req.isolated===true,executable,driverExecutable,product:null,headless:req.headless!==false};
  try{
   await waitDriver(driver,port);
   const args=['-profile',profileDir];
   if(req.headless!==false)args.unshift('-headless');
-  const created=await http('POST','/session',{capabilities:{alwaysMatch:{browserName:'firefox','moz:firefoxOptions':{args}}}},15000);
+  // With Ubuntu's Snap geckodriver, /usr/bin/firefox is a launcher wrapper,
+  // not an executable inside the driver's confinement. Let the Snap driver
+  // choose its own in-container binary. Explicit stand-alone binaries must
+  // instead be passed to a non-Snap geckodriver.
+  const snapDriver=process.platform==='linux'&&driverExecutable==='/snap/bin/geckodriver';
+  const snapLauncher=executable==='/usr/bin/firefox'||executable==='/snap/bin/firefox';
+  if(snapDriver&&!snapLauncher&&executable!=='/snap/firefox/current/usr/lib/firefox/firefox')throw fail('BROWSER_EXECUTABLE_BACKEND_MISMATCH');
+  const options={args};
+  if(!snapDriver||!snapLauncher)options.binary=executable;
+  const created=await http('POST','/session',{capabilities:{alwaysMatch:{browserName:'firefox','moz:firefoxOptions':options}}},15000);
   if(!created?.sessionId)throw fail('BROWSER_DEVTOOLS_UNAVAILABLE');
   browser.sessionId=created.sessionId;browser.product='Firefox '+String(created.capabilities?.browserVersion??'').trim();
   return {ok:true,background:browser.headless,headless:browser.headless,foreground:!browser.headless,userDesktopTouched:!browser.headless,
