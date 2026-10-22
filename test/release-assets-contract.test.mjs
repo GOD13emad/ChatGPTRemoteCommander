@@ -50,7 +50,7 @@ for (const required of [
   'bash tools/build-release-assets.sh dist/release',
   'sha256sum -c SHA256SUMS.txt',
   'mapfile -t assets',
-  'test "${#assets[@]}" -eq 20',
+  'test "${#assets[@]}" -eq "$expected_count"',
   'gh release create "$tag" "${assets[@]}"',
   '--verify-tag'
 ]) {
@@ -84,7 +84,7 @@ for (const marker of [
   'R171_IMMUTABLE_TAG_AND_ASSETS_PREATTEST_PASS',
   'git cat-file -t',
   'refs/tags/$tag^{commit}',
-  'test "$count" -eq 20'
+  'test "$count" -eq "$expected_count"'
 ]) if (!workflow.includes(marker)) throw new Error('R171_ATTESTATION_CONTRACT_MISSING ' + marker);
 const a=workflow.indexOf('id: release_identity');
 const b=workflow.indexOf('name: Attest immutable release assets');
@@ -129,3 +129,14 @@ if (!workflow.includes('docs/UNSIGNED_WINDOWS_RELEASE_POLICY.*') ||
  !workflow.includes('test/unsigned-windows-release-policy.test.mjs'))
  throw new Error('UNSIGNED_RELEASE_POLICY_TRIGGER_MISSING');
 console.log('R11_SCOPED_UNSIGNED_ATTESTED_RELEASE_GUARD_PASS');
+
+for (const marker of [
+  'needs: [build-windows-setup, build-linux-bootstrap]',
+  'remote-commander-linux-onefile-QA',
+  'Add verified Linux single-file setup for v0.10.26+',
+  'LINUX_ONEFILE_LEGACY_SKIP',
+  'LINUX_ONEFILE_RELEASE_ASSET_VERIFIED',
+  'sha256sum Remote-Commander-Linux-Setup.run >> SHA256SUMS.txt',
+  'expected_count=21'
+]) if (!workflow.includes(marker)) throw Error('LINUX_ONEFILE_RELEASE_GATE_MISSING '+marker);
+if (workflow.indexOf('LINUX_ONEFILE_RELEASE_ASSET_VERIFIED')>workflow.indexOf('id: release_identity')) throw Error('LINUX_ASSET_MUST_PRECEDE_ATTESTATION');
