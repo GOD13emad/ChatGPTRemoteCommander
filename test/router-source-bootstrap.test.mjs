@@ -15,7 +15,11 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 const sha = file => createHash('sha256').update(fs.readFileSync(file)).digest('hex');
 async function freePort(){const s=net.createServer();s.listen(0,'127.0.0.1');await once(s,'listening');const p=s.address().port;await new Promise(r=>s.close(r));return p;}
 async function waitStatus(url,expected){
-  for(let i=0;i<100;i+=1){try{const r=await fetch(url);if(r.ok){const x=await r.json();if(!expected||x.sourceSha256===expected)return x;}}catch{}await sleep(50);}
+  const deadline=Date.now()+12000;
+  while(Date.now()<deadline){
+    try{const r=await fetch(url,{signal:AbortSignal.timeout(1500)});if(r.ok){const x=await r.json();if(!expected||x.sourceSha256===expected)return x;}}catch{}
+    await sleep(50);
+  }
   throw new Error('TEST_ROUTER_READY_TIMEOUT');
 }
 const alive = pid => { try { process.kill(Number(pid),0); return true; } catch { return false; } };
@@ -37,7 +41,15 @@ async function fixture(candidateBody){
   const route={schema:1,profile:'default',generation:7,active:{port:backendPort,version:'1',commit:'a'.repeat(40),configSha256:'1'.repeat(64),projectDir:oldProject,configPath:path.join(root,'config.json')},updatedAt:new Date().toISOString()};
   await fsp.writeFile(stateFile,JSON.stringify(route,null,2)+'\n');
   const child=spawn(process.execPath,[oldSource,'--listen-port',String(port),'--state-file',stateFile,'--runtime-file',runtimeFile],{cwd:oldProject,stdio:'ignore',windowsHide:true});
-  await waitStatus(`http://127.0.0.1:${port}/router/status`,sha(oldSource));
+  try{
+    await waitStatus('http://127.0.0.1:' + port + '/router/status',sha(oldSource));
+  }catch(error){
+    // A readiness failure must not leak a fixture router or unbounded test.
+    await killRuntime(runtimeFile);
+    if(alive(child.pid)){try{child.kill('SIGKILL');}catch{}}
+    await fsp.rm(root,{recursive:true,force:true,maxRetries:20,retryDelay:100});
+    throw error;
+  }
   return {root,oldProject,candidateProject,oldSource,candidateSource,port,stateFile,runtimeFile,logFile,child,routeBytes:await fsp.readFile(stateFile)};
 }
 test('router source bootstrap replaces owned router and preserves route bytes',async()=>{

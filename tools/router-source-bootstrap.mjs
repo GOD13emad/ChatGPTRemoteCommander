@@ -60,7 +60,7 @@ function commandLine(pid) {
   pid = Number(pid);
   if (process.platform === 'win32') {
     const script = '$p=Get-CimInstance Win32_Process -Filter "ProcessId = ' + pid + '"; if($p){[Console]::Out.Write($p.CommandLine)}';
-    const result = spawnSync('pwsh.exe', ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', script], { encoding: 'utf8', windowsHide: true });
+    const result = spawnSync('pwsh.exe', ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', script], { encoding: 'utf8', windowsHide: true, timeout: 8000, maxBuffer: 64 * 1024 });
     if (result.status !== 0) throw new Error('ROUTER_PROCESS_QUERY_FAILED');
     return result.stdout || '';
   }
