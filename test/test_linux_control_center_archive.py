@@ -12,7 +12,7 @@ import zipfile
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 BUILDER = ROOT / "tools/build-linux-control-center-preview.py"
 SOURCES = {"control_center.py", "dashboard_ui.py", "notion_panel.py"}
-OTHER = {"run-control-center.sh", "README.txt", "MANIFEST.json", "SHA256SUMS.txt"}
+OTHER = {"run-control-center.sh", "README.txt", "MANIFEST.json", "SHA256SUMS.txt", "manage-userlocal.py"}
 
 
 def build(output):
@@ -42,7 +42,7 @@ class LinuxGtkPreviewArchiveTests(unittest.TestCase):
                                     for n in names))
                 by_name = {pathlib.PurePosixPath(name).name: archive.read(name) for name in names}
                 sha_lines = by_name["SHA256SUMS.txt"].decode().splitlines()
-                self.assertEqual(len(sha_lines), 6)
+                self.assertEqual(len(sha_lines), 7)
                 for line in sha_lines:
                     sha, filename = line.split("  ", 1)
                     self.assertEqual(sha, hashlib.sha256(by_name[filename]).hexdigest())
@@ -53,7 +53,7 @@ class LinuxGtkPreviewArchiveTests(unittest.TestCase):
                 self.assertEqual(manifest["sourceCommit"], expected)
                 self.assertFalse(manifest["installationPerformed"])
                 self.assertFalse(manifest["nativeGuiAccepted"])
-                self.assertEqual(set(manifest["files"]), SOURCES | {"run-control-center.sh", "README.txt"})
+                self.assertEqual(set(manifest["files"]), SOURCES | {"run-control-center.sh", "README.txt", "manage-userlocal.py"})
                 for name, sha in manifest["files"].items():
                     self.assertEqual(sha, hashlib.sha256(by_name[name]).hexdigest())
                 archive.extractall(root / "extract")

@@ -6,6 +6,8 @@ on:
       - '.github/workflows/linux-control-center-preview-package.yml'
       - 'tools/build-linux-control-center-preview.py'
       - 'test/test_linux_control_center_archive.py'
+      - 'test/test_linux_control_center_userlocal_lifecycle.py'
+      - 'tools/manage-linux-control-center-qa.py'
       - 'desktop/linux-control-center/**'
       - 'package.json'
   workflow_dispatch:
@@ -32,6 +34,7 @@ jobs:
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha || github.sha }}"
           python3 -B -m unittest discover -s test -p test_linux_control_center_archive.py -v
+          python3 -B -m unittest discover -s test -p test_linux_control_center_userlocal_lifecycle.py -v
           python3 -B -m unittest discover -s desktop/linux-control-center -p 'test*.py' -v
           python3 tools/build-linux-control-center-preview.py --output "$RUNNER_TEMP/Remote-Commander-Linux-Control-Center-QA.zip"
           sha256sum "$RUNNER_TEMP/Remote-Commander-Linux-Control-Center-QA.zip"
