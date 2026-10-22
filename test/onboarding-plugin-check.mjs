@@ -52,6 +52,48 @@ for (const required of [
   'device-specific Plugin ZIP'
 ]) if (!start.includes(required)) fail(`START_HERE missing: ${required}`);
 
+// ChatGPT is the primary tool caller. Verify source guardrails against
+// cross-account API-key inheritance; this contract does not certify live
+// ChatGPT identity, Platform RBAC, or an actual tunnel credential.
+for (const marker of [
+  'Codex is not required',
+  'does **not** automatically supply a retrievable `OPENAI_API_KEY`',
+  'matching profile credential',
+  'an active connection alone does not authenticate'
+]) if (!start.includes(marker)) fail('ChatGPT account/Runtime key boundary missing: ' + marker);
+const pluginDoc = read('docs/PLUGIN_SETUP.md');
+for (const marker of ['ChatGPT-only default (no Codex required)', 'Optional Codex/Work distribution only', 'No authentication', 'session token'])
+  if (!pluginDoc.includes(marker)) fail('ChatGPT-first installer instructions missing: ' + marker);
+const skillDoc = read('plugin-template/skills/remote-commander/SKILL.md');
+for (const marker of ['ChatGPT-first key boundary', 'locally enrolled Runtime API key', 'system_status'])
+  if (!skillDoc.includes(marker)) fail('Remote Commander skill caller/key boundary missing: ' + marker);
+const linuxEnrollment = read('connect-chatgpt-account.sh');
+if (!linuxEnrollment.includes('unset OPENAI_API_KEY') ||
+    !linuxEnrollment.includes('export CONTROL_PLANE_API_KEY="$RUNTIME_KEY"'))
+  fail('Linux interactive enrollment must isolate ambient key from this profile Runtime key');
+const linuxSupervisor = read('autostart-linux.sh');
+if (!linuxSupervisor.includes('env -u OPENAI_API_KEY CONTROL_PLANE_API_KEY="$(cat "$cred")"'))
+  fail('Linux persistent supervisor must use local profile credential without global OpenAI key');
+const windowsEnrollment = read('enable-autostart.ps1');
+for (const marker of [
+  'Reusing existing DPAPI credential for profile',
+  '$HadAmbientOpenAiApiKey = Test-Path Env:OPENAI_API_KEY',
+  'Remove-Item Env:OPENAI_API_KEY -ErrorAction SilentlyContinue',
+  '$env:CONTROL_PLANE_API_KEY = $PlainKey',
+  '$env:OPENAI_API_KEY = $AmbientOpenAiApiKey'
+]) if (!windowsEnrollment.includes(marker))
+  fail('Windows interactive enrollment must isolate and restore ambient OpenAI key: ' + marker);
+const windowsSupervisor = read('windows-supervisor-runtime.ps1');
+for (const marker of [
+  'Read-RcCredentialPlainText $Item.Credential',
+  "Environment['CONTROL_PLANE_API_KEY']=$ApiKey",
+  "Environment.Remove('OPENAI_API_KEY')"
+]) {
+  const source = marker.startsWith('Read-RcCredentialPlainText')
+    ? read('autostart-windows.ps1') : windowsSupervisor;
+  if (!source.includes(marker)) fail('Windows supervisor profile key isolation missing: ' + marker);
+}
+
 const plugin = JSON.parse(read('plugin-template/plugin.json'));
 if (plugin.version !== pkg.version) fail('plugin version does not match package version');
 if (plugin.name !== 'chatgpt-remote-commander') fail('unexpected plugin name');

@@ -174,6 +174,8 @@ The local MCP target is:
 
 Do not expose port 47831 to the public internet. Secure MCP Tunnel is outbound-only and is intended to keep the MCP server private.
 
+**ChatGPT-first and per-account credential boundary:** ChatGPT is the conversation, reasoning and tool-invocation interface; **Codex is not required**. A ChatGPT login/subscription does **not** automatically supply a retrievable `OPENAI_API_KEY` to Commander. The separate **Platform Runtime API key for this user's Tunnel** must be enrolled with the hidden local prompt for **this device/profile**. When ChatGPT invokes the MCP tool, the registered app selects that Tunnel, whose local client uses the matching profile credential; it must not borrow another user's credential, an inherited shell `OPENAI_API_KEY`, or an account's ChatGPT session cookie. The Plugin ZIP and `.app.json` contain no Runtime key. Use a distinct Tunnel and credential for another user or device and an isolated OS security principal when trust levels differ. App/Tunnel access is subject to ChatGPT workspace and Platform RBAC; an active connection alone does not authenticate the calling ChatGPT human inside the MCP server. For supported full write/GUI features, check the account plan, enabled tools, host capabilities and action confirmations rather than promising unrestricted access.
+
 ## 3. One-time persistent enrollment
 
 ### Windows
