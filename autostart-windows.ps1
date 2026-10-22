@@ -281,6 +281,7 @@ if ($SelfTest) {
 }
 
 $missingLogged = @{}
+$ownerUnknownLogged = @{}
 try {
   Write-SupervisorLog "SUPERVISOR_STARTED pid=$PID root=$Root"
 
@@ -309,7 +310,16 @@ try {
           }
           [void]$missingLogged.Remove($item.Profile)
           $process = Get-TunnelProcess $item.Profile $exe
-          if (-not $process -or -not (Test-TunnelReady $item.HealthPort)) { Start-TunnelProfile $item }
+          $ready = Test-TunnelReady $item.HealthPort
+          if (-not $process -and $ready) {
+            if (-not $ownerUnknownLogged.ContainsKey($item.Profile)) {
+              Write-SupervisorLog "TUNNEL_OWNER_UNVERIFIED profile=$($item.Profile) port=$($item.HealthPort); skipping competing launch"
+              $ownerUnknownLogged[$item.Profile] = $true
+            }
+            continue
+          }
+          [void]$ownerUnknownLogged.Remove($item.Profile)
+          if (-not $process -or -not $ready) { Start-TunnelProfile $item }
         } catch {
           Write-SupervisorLog "PROFILE_ITERATION_ERROR profile=$($item.Profile) $($_.Exception.Message)"
           continue
