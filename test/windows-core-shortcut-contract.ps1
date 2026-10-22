@@ -12,6 +12,31 @@ $functionNodes=@($ast.FindAll({
 },$true))
 if($functionNodes.Count -ne 1){throw 'WINDOWS_SHORTCUT_CONTRACT_FUNCTION_MISSING'}
 . ([scriptblock]::Create($functionNodes[0].Extent.Text))
+$contextFns=@($ast.FindAll({
+  param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and
+    $node.Name -eq 'Assert-CorePublicInstallContext'
+},$true))
+if($contextFns.Count -ne 1){throw 'CORE_PUBLIC_CONTEXT_CONTRACT_MISSING'}
+. ([scriptblock]::Create($contextFns[0].Extent.Text))
+Assert-CorePublicInstallContext -IdentitySid 'S-1-5-21-100-200-300-1001' -ProfilePath 'C:\Users\TestUser' -RoamingAppData 'C:\Users\TestUser\AppData\Roaming' -LocalAppData 'C:\Users\TestUser\AppData\Local'
+'PASS_NORMAL_USER_CONTEXT'
+function Assert-ContextRejected([string]$Name,[string]$Expected,[scriptblock]$Action) {
+  $failed=$false
+  try { & $Action } catch { if($_.Exception.Message -ne $Expected){throw ('WRONG_CONTEXT_REJECTION_'+$Name+':'+$_.Exception.Message)}; $failed=$true }
+  if(-not $failed){throw ('UNSAFE_CONTEXT_ACCEPTED_'+$Name)}
+  "PASS_REJECT_$Name"
+}
+Assert-ContextRejected 'SYSTEM_SID_REDIRECTED_PROFILE' 'CORE_PUBLIC_INSTALL_SYSTEM_CONTEXT' {
+  Assert-CorePublicInstallContext -IdentitySid 'S-1-5-18' -ProfilePath 'C:\Users\TestUser' -RoamingAppData 'C:\Users\TestUser\AppData\Roaming' -LocalAppData 'C:\Users\TestUser\AppData\Local'
+}
+Assert-ContextRejected 'SYSTEMPROFILE_ROAMING_APPDATA' 'CORE_PUBLIC_INSTALL_SYSTEMPROFILE_PATH' {
+  Assert-CorePublicInstallContext -IdentitySid 'S-1-5-21-100-200-300-1001' -ProfilePath 'C:\Users\TestUser' -RoamingAppData 'C:\Windows\System32\config\systemprofile\AppData\Roaming' -LocalAppData 'C:\Users\TestUser\AppData\Local'
+}
+Assert-ContextRejected 'MISSING_USER_IDENTITY' 'CORE_PUBLIC_INSTALL_IDENTITY_INCOMPLETE' {
+  Assert-CorePublicInstallContext -IdentitySid '' -ProfilePath 'C:\Users\TestUser' -RoamingAppData 'C:\Users\TestUser\AppData\Roaming' -LocalAppData 'C:\Users\TestUser\AppData\Local'
+}
+
+
 $qa=Join-Path ([IO.Path]::GetTempPath()) ('rc-shortcut-contract-'+[guid]::NewGuid().ToString('N'))
 $exe=Join-Path $qa 'bin\RemoteCommander.exe'
 $other=Join-Path $qa 'bin\other.exe'
