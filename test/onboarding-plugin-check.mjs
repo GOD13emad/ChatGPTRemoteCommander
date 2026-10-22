@@ -7,7 +7,7 @@ const exists = (p) => fs.existsSync(path.join(root, p));
 const fail = (m) => { throw new Error(m); };
 
 const pkg = JSON.parse(read('package.json'));
-if (pkg.version !== '0.10.26') fail('source-candidate package version must be 0.10.26');
+if (pkg.version !== '0.10.25') fail('source-candidate package version must be 0.10.25');
 const serverSource = read('src/server-v0.3.mjs');
 const serverVersion = serverSource.match(/const VERSION = '([^']+)'/u)?.[1];
 if (serverVersion !== pkg.version) fail(`server runtime version ${serverVersion ?? 'missing'} does not match package version ${pkg.version}`);
@@ -29,6 +29,13 @@ for (const required of [
   'Single source of truth for assisted installation',
   'Full / Power Mode',
   'Never paste it into ChatGPT',
+  'Plugins → + → Add custom MCP server',
+  'the adopter\'s own ChatGPT account and workspace',
+  'distinct tunnel per device',
+  'I understand and want to continue',
+  'Create as a plugin',
+  'Developer Mode is **not required**',
+  'Never ask them to copy another person\'s',
   'Connection**, choose **Tunnel**',
   'No authentication / None',
   'Scan Tools',
