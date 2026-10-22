@@ -28,6 +28,7 @@ function fixture(t){
  function grant(changes=['maxPlannerCalls']){
   const payload={schema:1,intent:'owner-approved-runner-transition',profile:'default',
     activeConfigSha256:hash(fs.readFileSync(files.current)),
+    candidateConfigSha256:hash(fs.readFileSync(files.candidate)),
     candidateRunnerSha256:hash(JSON.stringify(JSON.parse(fs.readFileSync(files.candidate)).durableWorkflows.runner)),
     allowedChangedFields:changes,issuedAtUtc:later(-60000),expiresAtUtc:later(240000)};
   const signature=sign(null,Buffer.from(JSON.stringify(payload)),privateKey).toString('base64');
@@ -81,6 +82,11 @@ test('modified candidate command invalidates signed approval',t=>{
  c.durableWorkflows.runner.provider.args=['-lc','second-unapproved-command'];f.write('candidate',c);
  blocked(f.run(),'APPROVAL_HASH_MISMATCH');
 });
+test('unrelated candidate configuration drift invalidates signed approval',t=>{
+ const f=fixture(t);const c=structuredClone(f.candidate);c.host='0.0.0.0';
+ f.write('candidate',c);blocked(f.run(),'APPROVAL_HASH_MISMATCH');
+});
+
 test('any expanded filesystem tools beyond two allowed fields are rejected',t=>{
  const f=fixture(t);const c=structuredClone(f.candidate);c.durableWorkflows.runner.allowedTools=['read_text','run_shell'];
  f.write('candidate',c);f.write('approval',f.grant());
