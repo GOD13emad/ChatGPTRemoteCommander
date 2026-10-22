@@ -18,7 +18,7 @@ $contextFns=@($ast.FindAll({
 },$true))
 if($contextFns.Count -ne 1){throw 'CORE_PUBLIC_CONTEXT_CONTRACT_MISSING'}
 . ([scriptblock]::Create($contextFns[0].Extent.Text))
-Assert-CorePublicInstallContext -IdentitySid 'S-1-5-21-100-200-300-1001' -ProfilePath 'C:\Users\TestUser' -RoamingAppData 'C:\Users\TestUser\AppData\Roaming' -LocalAppData 'C:\Users\TestUser\AppData\Local'
+Assert-CorePublicInstallContext -IdentitySid 'S-1-5-21-100-200-300-1001' -ProfilePath 'C:\Users\TestUser' -RoamingAppData 'C:\Users\TestUser\AppData\Roaming' -LocalAppData 'C:\Users\TestUser\AppData\Local' -SessionId 1
 'PASS_NORMAL_USER_CONTEXT'
 function Assert-ContextRejected([string]$Name,[string]$Expected,[scriptblock]$Action) {
   $failed=$false
@@ -27,16 +27,31 @@ function Assert-ContextRejected([string]$Name,[string]$Expected,[scriptblock]$Ac
   "PASS_REJECT_$Name"
 }
 Assert-ContextRejected 'SYSTEM_SID_REDIRECTED_PROFILE' 'CORE_PUBLIC_INSTALL_SYSTEM_CONTEXT' {
-  Assert-CorePublicInstallContext -IdentitySid 'S-1-5-18' -ProfilePath 'C:\Users\TestUser' -RoamingAppData 'C:\Users\TestUser\AppData\Roaming' -LocalAppData 'C:\Users\TestUser\AppData\Local'
+  Assert-CorePublicInstallContext -IdentitySid 'S-1-5-18' -ProfilePath 'C:\Users\TestUser' -RoamingAppData 'C:\Users\TestUser\AppData\Roaming' -LocalAppData 'C:\Users\TestUser\AppData\Local' -SessionId 1
 }
 Assert-ContextRejected 'SYSTEMPROFILE_ROAMING_APPDATA' 'CORE_PUBLIC_INSTALL_SYSTEMPROFILE_PATH' {
-  Assert-CorePublicInstallContext -IdentitySid 'S-1-5-21-100-200-300-1001' -ProfilePath 'C:\Users\TestUser' -RoamingAppData 'C:\Windows\System32\config\systemprofile\AppData\Roaming' -LocalAppData 'C:\Users\TestUser\AppData\Local'
+  Assert-CorePublicInstallContext -IdentitySid 'S-1-5-21-100-200-300-1001' -ProfilePath 'C:\Users\TestUser' -RoamingAppData 'C:\Windows\System32\config\systemprofile\AppData\Roaming' -LocalAppData 'C:\Users\TestUser\AppData\Local' -SessionId 1
 }
 Assert-ContextRejected 'MISSING_USER_IDENTITY' 'CORE_PUBLIC_INSTALL_IDENTITY_INCOMPLETE' {
-  Assert-CorePublicInstallContext -IdentitySid '' -ProfilePath 'C:\Users\TestUser' -RoamingAppData 'C:\Users\TestUser\AppData\Roaming' -LocalAppData 'C:\Users\TestUser\AppData\Local'
+  Assert-CorePublicInstallContext -IdentitySid '' -ProfilePath 'C:\Users\TestUser' -RoamingAppData 'C:\Users\TestUser\AppData\Roaming' -LocalAppData 'C:\Users\TestUser\AppData\Local' -SessionId 1
 }
 
 
+Assert-ContextRejected 'LOCALSERVICE_SID' 'CORE_PUBLIC_INSTALL_SERVICE_CONTEXT' {
+  Assert-CorePublicInstallContext -IdentitySid 'S-1-5-19' -ProfilePath 'C:\Users\TestUser' -RoamingAppData 'C:\Users\TestUser\AppData\Roaming' -LocalAppData 'C:\Users\TestUser\AppData\Local' -SessionId 1
+}
+Assert-ContextRejected 'NETWORKSERVICE_SID' 'CORE_PUBLIC_INSTALL_SERVICE_CONTEXT' {
+  Assert-CorePublicInstallContext -IdentitySid 'S-1-5-20' -ProfilePath 'C:\Users\TestUser' -RoamingAppData 'C:\Users\TestUser\AppData\Roaming' -LocalAppData 'C:\Users\TestUser\AppData\Local' -SessionId 1
+}
+Assert-ContextRejected 'SERVICEPROFILE_PATH' 'CORE_PUBLIC_INSTALL_SERVICEPROFILE_PATH' {
+  Assert-CorePublicInstallContext -IdentitySid 'S-1-5-21-100-200-300-1001' -ProfilePath 'C:\Windows\ServiceProfiles\LocalService' -RoamingAppData 'C:\Users\TestUser\AppData\Roaming' -LocalAppData 'C:\Users\TestUser\AppData\Local' -SessionId 1
+}
+Assert-ContextRejected 'SESSION0_USER_REDIRECT' 'CORE_PUBLIC_INSTALL_NONINTERACTIVE_SESSION' {
+  Assert-CorePublicInstallContext -IdentitySid 'S-1-5-21-100-200-300-1001' -ProfilePath 'C:\Users\TestUser' -RoamingAppData 'C:\Users\TestUser\AppData\Roaming' -LocalAppData 'C:\Users\TestUser\AppData\Local' -SessionId 0
+}
+Assert-ContextRejected 'SESSION_OMITTED' 'CORE_PUBLIC_INSTALL_NONINTERACTIVE_SESSION' {
+  Assert-CorePublicInstallContext -IdentitySid 'S-1-5-21-100-200-300-1001' -ProfilePath 'C:\Users\TestUser' -RoamingAppData 'C:\Users\TestUser\AppData\Roaming' -LocalAppData 'C:\Users\TestUser\AppData\Local'
+}
 $qa=Join-Path ([IO.Path]::GetTempPath()) ('rc-shortcut-contract-'+[guid]::NewGuid().ToString('N'))
 $exe=Join-Path $qa 'bin\RemoteCommander.exe'
 $other=Join-Path $qa 'bin\other.exe'

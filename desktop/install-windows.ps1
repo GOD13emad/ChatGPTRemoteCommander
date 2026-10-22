@@ -9,13 +9,19 @@ param(
 $ErrorActionPreference='Stop'
 
 function Assert-CorePublicInstallContext {
-  param([string]$IdentitySid,[string]$ProfilePath,[string]$RoamingAppData,[string]$LocalAppData)
+  param([string]$IdentitySid,[string]$ProfilePath,[string]$RoamingAppData,[string]$LocalAppData,[int]$SessionId)
   if($IdentitySid -eq 'S-1-5-18'){throw 'CORE_PUBLIC_INSTALL_SYSTEM_CONTEXT'}
+  if($IdentitySid -in @('S-1-5-19','S-1-5-20')){throw 'CORE_PUBLIC_INSTALL_SERVICE_CONTEXT'}
+  # Session 0 is reserved for services; omitted SessionId defaults to zero (fail closed).
+  if($SessionId -le 0){throw 'CORE_PUBLIC_INSTALL_NONINTERACTIVE_SESSION'}
   if([string]::IsNullOrWhiteSpace($IdentitySid) -or [string]::IsNullOrWhiteSpace($ProfilePath) -or
      [string]::IsNullOrWhiteSpace($RoamingAppData) -or [string]::IsNullOrWhiteSpace($LocalAppData)){
     throw 'CORE_PUBLIC_INSTALL_IDENTITY_INCOMPLETE'
   }
   foreach($path in @($ProfilePath,$RoamingAppData,$LocalAppData)){
+    if($path -match '(?i)(^|[\\/])ServiceProfiles([\\/]|$)'){
+      throw 'CORE_PUBLIC_INSTALL_SERVICEPROFILE_PATH'
+    }
     if($path -match '(?i)(^|[\\/])systemprofile([\\/]|$)'){
       throw 'CORE_PUBLIC_INSTALL_SYSTEMPROFILE_PATH'
     }
@@ -24,7 +30,7 @@ function Assert-CorePublicInstallContext {
 
 if(-not $NoPublicIntegration -and -not $StageOnly){
   $CurrentWindowsIdentity=[Security.Principal.WindowsIdentity]::GetCurrent()
-  Assert-CorePublicInstallContext -IdentitySid $CurrentWindowsIdentity.User.Value -ProfilePath $env:USERPROFILE -RoamingAppData $env:APPDATA -LocalAppData $env:LOCALAPPDATA
+  Assert-CorePublicInstallContext -IdentitySid $CurrentWindowsIdentity.User.Value -ProfilePath $env:USERPROFILE -RoamingAppData $env:APPDATA -LocalAppData $env:LOCALAPPDATA -SessionId ([Diagnostics.Process]::GetCurrentProcess().SessionId)
 }
 
 $RepoRoot=(Resolve-Path (Join-Path $PSScriptRoot '..')).Path
