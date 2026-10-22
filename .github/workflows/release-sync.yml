@@ -270,6 +270,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
+          SETUP_SIGNED: ${{ needs.build-windows-setup.outputs.installer_signed }}
         shell: bash
         run: |
           set -euo pipefail
@@ -295,10 +296,17 @@ jobs:
           # continue to resolve the immutable v0.10.20 baseline until an owner-
           # accepted serial rollout / rollback / offline-host reconciliation.
           # Draft assets are uploaded atomically at creation, before immutability.
+          title="Remote Commander $tag"
+          if [ "$version" = "0.10.26" ]; then
+            title="TandemVector Labs | Remote Commander Core $tag"
+            if [ "$SETUP_SIGNED" = "false" ]; then
+              title="$title | UNSIGNED Preview"
+            fi
+          fi
           gh release create "$tag" "${assets[@]}" \
             --repo "$GH_REPO" \
             --verify-tag \
-            --title "Remote Commander $tag" \
+            --title "$title" \
             --notes-file "$notes" \
             --draft
           echo "RELEASE_SYNC_DRAFT_STAGED tag=$tag assets=${#assets[@]} ownerAcceptance=pending"
