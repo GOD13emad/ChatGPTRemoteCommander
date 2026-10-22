@@ -83,7 +83,19 @@ test('agent extension tools are exposed read-only and return validated manifests
     assert.match(skill.sha256,/^[0-9a-f]{64}$/);
     assert.match(skill.skill,/Fixture Extension/);
   } finally {
-    if(child){child.kill();await Promise.race([once(child,'close'),wait(5000)]);}
+    if(child){
+      child.kill();
+      // Keep the 5 s close deadline, but never retain its event-loop timer on fast exit.
+      let closeTimer;
+      try {
+        await Promise.race([
+          once(child,'close'),
+          new Promise(resolve=>{closeTimer=setTimeout(resolve,5000);})
+        ]);
+      } finally {
+        clearTimeout(closeTimer);
+      }
+    }
     await fs.rm(root,{recursive:true,force:true});
   }
 });
