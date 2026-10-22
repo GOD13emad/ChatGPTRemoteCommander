@@ -19,6 +19,19 @@ test('candidate source runtime and plugin identity agree without public release 
   assert.match(read('docs/RELEASE_CANDIDATE_0.10.26.md'),/SOURCE CANDIDATE ONLY/);
 });
 
+test('both default qualification suites exercise exact post-tag identity guard',()=>{
+  const scripts=json('package.json').scripts;
+  for(const name of ['test','check']) {
+    const script=scripts[name];
+    const gate='node --test test/release-sync-posttag-guard.test.mjs';
+    assert.equal(script.split(gate).length-1,1,`missing or duplicate ${name} release identity gate`);
+    assert.ok(script.includes('node --test test/release-0.10.26-candidate-identity.test.mjs'),
+      `release identity self-check absent in ${name}`);
+  }
+  assert.match(scripts['check:qualification'],/--script check/);
+  assert.match(scripts['test:qualification'],/--script test/);
+});
+
 test('installer default remains at prior verified Preview rather than untagged candidate',()=>{
   for(const p of ['install.ps1','install.sh','server-install-windows.ps1','server-install-linux.sh'])
     assert.ok(read(p).includes(previousTag),p);
