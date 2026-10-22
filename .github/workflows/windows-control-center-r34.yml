@@ -6,6 +6,7 @@ on:
       - 'desktop/RemoteCommanderDashboard/**'
       - 'desktop/tests-ui-r34/**'
       - 'desktop/install-windows.ps1'
+      - 'test/windows-core-shortcut-contract.ps1'
       - 'test/ui-uninstall-preserve-r219.test.mjs'
       - 'test/ui-legacy-inplace-r224.*'
       - '.github/workflows/windows-control-center-r34.yml'
@@ -23,6 +24,9 @@ jobs:
       - uses: actions/setup-dotnet@v5
         with:
           dotnet-version: '10.0.x'
+      - name: Validate Core Start Menu shortcut destinations (private fixtures only)
+        shell: pwsh
+        run: pwsh -NoLogo -NoProfile -File test/windows-core-shortcut-contract.ps1
       - name: Build native WinForms Control Center
         shell: pwsh
         run: dotnet build desktop/RemoteCommanderDashboard/RemoteCommanderDashboard.csproj -c Release --nologo -warnaserror
