@@ -9,6 +9,7 @@ import { canonicalizeRoots } from './security-v0.3.mjs';
 import { audit, listDirectory, prepareProjectCommand, readText, runProjectCommand, writeText } from './tools-v0.3.mjs';
 import { executePowerTool, powerToolDefinitions, prepareDeferredPowerMutation, prepareShellCommand } from './power-tools-v0.3.mjs';
 import { executeGuiTool, guiToolDefinitions } from './gui-tools-windows.mjs';
+import { createOwnerGuiReadOnlyProxy } from './gui-owner-delegation.mjs';
 import { executeBrowserTool, browserToolDefinitions, reapBrowserOrphans } from './browser-tools.mjs';
 import { lockStats } from './locks.mjs';
 import { expandPathValue, shellName } from './platform.mjs';
@@ -64,6 +65,16 @@ const ctx = {
   roots,
   auditLog: path.resolve(projectDir, config.auditLog || 'var/audit.jsonl')
 };
+let ownerGuiProxy = null;
+let ownerGuiProxyConfigError = null;
+try {
+  ownerGuiProxy = createOwnerGuiReadOnlyProxy({
+    config, primaryStatus: () => executeGuiTool(ctx, 'gui_status', {})
+  });
+} catch (error) {
+  // Optional GUI routing must not prevent the primary Core from starting.
+  ownerGuiProxyConfigError = String(error?.message ?? error);
+}
 const configuredAgentExtensionDirectories = config.agentExtensions?.enabled === false
   ? []
   : (Array.isArray(config.agentExtensions?.directories) && config.agentExtensions.directories.length
@@ -509,6 +520,8 @@ async function executeToolEffect(name, args) {
             foregroundFallback:'explicit-current-request-only', workflowBrowserAllowed:false,
             userBrowserProfileReuse:false, savedPasswordExtraction:false, foregroundInterferenceByDefault:false } },
         guiControl: { backendSupported: GUI_BACKEND_SUPPORTED, availability: 'CHECK_gui_status', enabled: GUI_ENABLED,
+          ownerDelegation: { configured:config.ownerGuiDelegation?.enabled === true,
+            accepted:!!ownerGuiProxy, mode:'observe-only', ...(ownerGuiProxyConfigError ? { error:ownerGuiProxyConfigError } : {}) },
           policy: { ...(config.powerMode?.guiControl ?? { enabled:false }), interactionPolicy:'explicit-current-request-only',
             defaultSessionMode:'observe', backgroundPreferred:true, workflowTakeoverAllowed:false, foregroundInterferenceByDefault:false } }
       };
@@ -528,8 +541,10 @@ async function executeToolEffect(name, args) {
         return result;
       }
       if (name.startsWith('gui_')) {
-        const result = await executeGuiTool(ctx, name, args);
-        await audit(ctx, { action: name, ok: true, powerMode: true, guiControl: true });
+        const proxy = ownerGuiProxy ? await ownerGuiProxy.execute(name, args) : { handled: false };
+        const result = proxy.handled ? proxy.value : await executeGuiTool(ctx, name, args);
+        await audit(ctx, { action: name, ok: true, powerMode: true, guiControl: true,
+          ...(proxy.handled ? { delegatedOwnerGui: true } : {}) });
         return result;
       }
       const result = await executePowerTool(ctx, name, args);
