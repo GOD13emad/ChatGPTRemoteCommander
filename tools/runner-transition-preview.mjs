@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { createHash, createPublicKey, verify } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
+import { grantSigningBytes } from './runner-owner-grant-signature.mjs';
 
 const sha256 = (bytes) => createHash('sha256').update(bytes).digest('hex');
 const reject = (code) => { throw Error(code); };
@@ -91,12 +92,13 @@ function main() {
     || typeof grant.signature !== 'string' || !/^[A-Za-z0-9+/]{86}==$/.test(grant.signature))
     reject('INVALID_APPROVAL');
   const required = ['schema','intent','profile','activeConfigSha256','candidateConfigSha256','candidateRunnerSha256',
-    'allowedChangedFields','issuedAtUtc','expiresAtUtc','routerGeneration','activeCommit'];
+    'allowedChangedFields','issuedAtUtc','expiresAtUtc','routerGeneration','activeCommit','approvalId'];
   if (Object.keys(payload).sort().join(',') !== required.sort().join(',')
     || payload.schema !== 1 || payload.intent !== 'owner-approved-runner-transition'
     || payload.profile !== 'default'
     || !Number.isSafeInteger(payload.routerGeneration) || payload.routerGeneration < 1
     || typeof payload.activeCommit !== 'string' || !/^[a-f0-9]{40}$/.test(payload.activeCommit)
+    || typeof payload.approvalId !== 'string' || !/^[a-f0-9]{32}$/.test(payload.approvalId)
     || !validHash(payload.activeConfigSha256)
     || !validHash(payload.candidateConfigSha256)
     || !validHash(payload.candidateRunnerSha256)
@@ -117,7 +119,7 @@ function main() {
   const key = createPublicKey(readBounded(publicKeyPath, true));
   if (key.asymmetricKeyType !== 'ed25519') reject('UNTRUSTED_KEY_TYPE');
   const signature = Buffer.from(grant.signature, 'base64');
-  if (signature.length !== 64 || !verify(null, Buffer.from(JSON.stringify(payload)), key, signature))
+  if (signature.length !== 64 || !verify(null, grantSigningBytes(payload), key, signature))
     reject('BAD_APPROVAL_SIGNATURE');
   process.stdout.write('OWNER_TRANSITION_PREVIEW_VALIDATED_ONLY\n');
 }
