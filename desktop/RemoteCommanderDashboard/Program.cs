@@ -18,7 +18,8 @@ internal sealed record ProfileRow(
     DateTimeOffset? UpdatedAt,
     string ProjectDir,
     string BackendConfigSha256,
-    string RouterSourceSha256);
+    string RouterSourceSha256,
+    bool IsolatedInstance = false);
 
 internal sealed class DashboardForm : Form
 {
@@ -126,8 +127,8 @@ internal sealed class DashboardForm : Form
         var actions = new FlowLayoutPanel
         {
             Dock = DockStyle.Top,
-            Height = 96,
-            AutoScroll = true,
+            Height = 108,
+            AutoScroll = false,
             WrapContents = true,
             Padding = new Padding(20, 8, 20, 8),
             FlowDirection = FlowDirection.LeftToRight
@@ -145,6 +146,25 @@ internal sealed class DashboardForm : Form
             actions.Controls.Add(Button("Admin Runtime", (_, _) => LaunchPowerShellTool("admin-runtime-windows.ps1", "Admin Runtime")));
         actions.Controls.Add(Button("Browser", (_, _) => LaunchBrowser()));
         actions.Controls.Add(Button("Copy Diagnostics", (_, _) => CopyDiagnostics()));
+        // Keep every action fully visible on narrow windows and non-default DPI.
+        void FitActions()
+        {
+            var usable = Math.Max(1, actions.ClientSize.Width - actions.Padding.Horizontal - 6);
+            var occupied = 0;
+            var rows = 1;
+            foreach (var button in actions.Controls.OfType<Button>())
+            {
+                var width = button.Width + button.Margin.Horizontal;
+                if (occupied > 0 && occupied + width > usable) { rows++; occupied = 0; }
+                occupied += width;
+            }
+            var rowHeight = actions.Controls.OfType<Button>()
+                .Select(button => button.Height + button.Margin.Vertical).DefaultIfEmpty(40).Max();
+            var desired = Math.Max(70, actions.Padding.Vertical + rows * rowHeight + 6);
+            if (actions.Height != desired) actions.Height = desired;
+        }
+        actions.ClientSizeChanged += (_, _) => FitActions();
+        FitActions();
 
         chrome.Attach(cards);
         Controls.Add(cards);
@@ -208,7 +228,7 @@ internal sealed class DashboardForm : Form
         {
             cards.Controls.Clear();
             summary.Text = profiles.Count == 0
-                ? "No routing profiles discovered."
+                ? "No verified profile records discovered."
                 : $"{profiles.Count} profile(s) • read-only dashboard • {Environment.MachineName}";
             cards.Controls.AddRange(rendered.ToArray());
             chrome.Update(profiles);
@@ -224,8 +244,7 @@ internal sealed class DashboardForm : Form
     {
         var routing = Path.Combine(stateRoot, "routing");
         var result = new List<ProfileRow>();
-        if (!Directory.Exists(routing)) return result;
-
+        if (Directory.Exists(routing))
         foreach (var runtimePath in Directory.EnumerateFiles(routing, "*.runtime.json")
                      .OrderBy(x => x, StringComparer.OrdinalIgnoreCase))
         {
@@ -277,7 +296,14 @@ internal sealed class DashboardForm : Form
                 // Fail closed: only a canonical state/runtime pair is rendered.
             }
         }
-        return result;
+        foreach (var item in IsolatedProfileInventory.Discover(stateRoot))
+        {
+            if (result.Any(p => string.Equals(p.Name, item.Name, StringComparison.OrdinalIgnoreCase)))
+                continue;
+            result.Add(new ProfileRow(item.Name, 0, "unknown", "", item.Port, 0, 0,
+                null, "", item.ConfigSha256, "", true));
+        }
+        return result.OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase).ToList();
     }
 
     private async Task<Control> ProfileCardAsync(ProfileRow p)
@@ -296,7 +322,9 @@ internal sealed class DashboardForm : Form
         var verified = await IsVerifiedAsync(p);
         var dot = new Label
         {
-            Text = verified ? "● ROUTER + BACKEND IDENTITY VERIFIED" : "● ROUTER / BACKEND UNVERIFIED",
+            Text = p.IsolatedInstance
+                ? (verified ? "● ISOLATED MCP IDENTITY VERIFIED" : "● ISOLATED MCP UNVERIFIED")
+                : (verified ? "● ROUTER + BACKEND IDENTITY VERIFIED" : "● ROUTER / BACKEND UNVERIFIED"),
             ForeColor = verified ? Color.FromArgb(80, 220, 150) : Color.FromArgb(255, 164, 92),
             AutoSize = true,
             Font = new Font("Segoe UI Semibold", 9.5f),
@@ -312,14 +340,18 @@ internal sealed class DashboardForm : Form
         };
         var version = new Label
         {
-            Text = $"v{p.Version} • generation {p.Generation} • backend {p.BackendPort} • router {p.RouterPort}",
+            Text = p.IsolatedInstance
+                ? $"Isolated instance • MCP {p.BackendPort} • No router"
+                : $"v{p.Version} • generation {p.Generation} • backend {p.BackendPort} • router {p.RouterPort}",
             AutoSize = true,
             ForeColor = Color.FromArgb(190, 207, 229),
             Location = new Point(20, 75)
         };
         var commit = new Label
         {
-            Text = string.IsNullOrWhiteSpace(p.Commit) ? "commit unknown" : $"commit {p.Commit[..Math.Min(12, p.Commit.Length)]}",
+            Text = p.IsolatedInstance
+                ? $"Config SHA-256 {p.BackendConfigSha256[..Math.Min(12, p.BackendConfigSha256.Length)]}"
+                : (string.IsNullOrWhiteSpace(p.Commit) ? "commit unknown" : $"commit {p.Commit[..Math.Min(12, p.Commit.Length)]}"),
             AutoSize = true,
             ForeColor = Color.FromArgb(139, 166, 200),
             Location = new Point(20, 99)
@@ -334,6 +366,33 @@ internal sealed class DashboardForm : Form
     private async Task<bool> IsVerifiedAsync(ProfileRow profile)
     {
         // A healthy response on a reused local port is not proof of this profile's identity.
+        if (profile.IsolatedInstance)
+        {
+            if (profile.BackendPort is < 1024 or > 65535 ||
+                profile.BackendConfigSha256.Length != 64) return false;
+            try
+            {
+                using var response = await http.GetAsync(
+                    $"http://127.0.0.1:{profile.BackendPort}/health");
+                if (!response.IsSuccessStatusCode ||
+                    response.Content.Headers.ContentLength is > 16384) return false;
+                var body = await response.Content.ReadAsStringAsync();
+                if (body.Length > 16384) return false;
+                using var doc = JsonDocument.Parse(body);
+                var root = doc.RootElement;
+                return root.TryGetProperty("ok", out var ok) && ok.ValueKind == JsonValueKind.True &&
+                    root.TryGetProperty("configSha256", out var sha) &&
+                    sha.ValueKind == JsonValueKind.String &&
+                    string.Equals(sha.GetString(), profile.BackendConfigSha256, StringComparison.Ordinal) &&
+                    root.TryGetProperty("instance", out var inst) &&
+                    inst.ValueKind == JsonValueKind.Object &&
+                    inst.TryGetProperty("profile", out var name) && name.ValueKind == JsonValueKind.String &&
+                    string.Equals(name.GetString(), profile.Name, StringComparison.Ordinal) &&
+                    inst.TryGetProperty("isolated", out var isolated) &&
+                    isolated.ValueKind == JsonValueKind.True;
+            }
+            catch { return false; }
+        }
         if (!ProfileHealthEvidence.Plausible(profile)) return false;
         try
         {
@@ -420,7 +479,9 @@ internal sealed class DashboardForm : Form
     private void CopyDiagnostics()
     {
         var lines = LoadProfiles().Select(p =>
-            $"{p.Name}: v{p.Version}, generation={p.Generation}, backend={p.BackendPort}, router={p.RouterPort}, commit={p.Commit}");
+            p.IsolatedInstance
+                ? $"{p.Name}: isolated, mcp={p.BackendPort}, configSha256={p.BackendConfigSha256}"
+                : $"{p.Name}: v{p.Version}, generation={p.Generation}, backend={p.BackendPort}, router={p.RouterPort}, commit={p.Commit}");
         Clipboard.SetText(string.Join(Environment.NewLine, lines));
         MessageBox.Show(this, "Profile diagnostics copied to clipboard.", "Remote Commander",
             MessageBoxButtons.OK, MessageBoxIcon.Information);
