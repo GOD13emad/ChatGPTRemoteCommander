@@ -3,6 +3,10 @@ import { readFileSync } from 'node:fs';
 const pkg = JSON.parse(readFileSync('package.json','utf8'));
 const builder = readFileSync('tools/build-release-assets.sh','utf8');
 const workflow = readFileSync('.github/workflows/release-sync.yml','utf8');
+const releaseSyncPathSection = workflow.replace(/\r\n/g, '\n').split('  pull_request:\n')[1]?.split('\npermissions:')[0] || '';
+if (!releaseSyncPathSection.includes("      - 'install.sh'"))
+  throw new Error('RELEASE_SYNC_LINUX_INSTALL_SOURCE_TRIGGER_MISSING');
+
 const browserFetcher = readFileSync('scripts/fetch-browser-setup.ps1','utf8');
 const innoFetcher = readFileSync('scripts/install-inno-setup.ps1','utf8');
 const browserVersion = '0.8.1';
