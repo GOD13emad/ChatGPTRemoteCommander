@@ -10,6 +10,11 @@ on:
       - 'package.json'
       - 'package-lock.json'
       - 'installer/**'
+      - 'setup-wizard.sh'
+      - 'tools/build-linux-single-file.sh'
+      - 'tools/installer-product-plan.mjs'
+      - 'test/installer-product-plan.test.mjs'
+      - 'test/linux-single-file-installer.test.mjs'
       - 'scripts/fetch-browser-setup.ps1'
       - 'scripts/install-inno-setup.ps1'
       - 'desktop/**'
@@ -81,6 +86,40 @@ jobs:
           name: remote-commander-windows-setup
           path: dist/installer/Remote-Commander-Setup-v*.exe
           if-no-files-found: error
+
+  build-linux-bootstrap:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '22'
+      - name: Verify product catalog and self-extracting Linux installer
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash -n setup-wizard.sh tools/build-linux-single-file.sh
+          node --test test/installer-product-plan.test.mjs test/linux-single-file-installer.test.mjs
+      - name: Build verified Linux single-file bootstrap for QA
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash tools/build-linux-single-file.sh dist/installer/Remote-Commander-Linux-Setup.run
+          bash dist/installer/Remote-Commander-Linux-Setup.run --plan-only --all |
+            grep -F 'changesApplied=false'
+          sha256sum dist/installer/Remote-Commander-Linux-Setup.run |
+            tee dist/installer/Remote-Commander-Linux-Setup.run.sha256
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: remote-commander-linux-onefile-QA
+          path: |
+            dist/installer/Remote-Commander-Linux-Setup.run
+            dist/installer/Remote-Commander-Linux-Setup.run.sha256
+          if-no-files-found: error
+          retention-days: 7
 
   publish:
     if: github.event_name != 'pull_request'
