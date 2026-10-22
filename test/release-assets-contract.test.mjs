@@ -3,6 +3,16 @@ import { readFileSync } from 'node:fs';
 const pkg = JSON.parse(readFileSync('package.json','utf8'));
 const builder = readFileSync('tools/build-release-assets.sh','utf8');
 const workflow = readFileSync('.github/workflows/release-sync.yml','utf8');
+// A v0.10.26 Preview has 19 base files (including the manifest) plus two
+// verified single-file installers. Count the manifest separately from payloads.
+if (pkg.version === '0.10.26') {
+  const releaseNotes = readFileSync('docs/RELEASE_0.10.26.md','utf8');
+  if (!/20 payload files/.test(releaseNotes) || !/21 assets/.test(releaseNotes) ||
+      !releaseNotes.includes('Remote-Commander-Linux-Setup.run') ||
+      !workflow.includes('expected_count=21'))
+    throw new Error('R177_RELEASE_026_ASSET_COUNT_DISCLOSURE_MISMATCH');
+}
+
 const releaseSyncPathSection = workflow.replace(/\r\n/g, '\n').split('  pull_request:\n')[1]?.split('\npermissions:')[0] || '';
 if (!releaseSyncPathSection.includes("      - 'install.sh'"))
   throw new Error('RELEASE_SYNC_LINUX_INSTALL_SOURCE_TRIGGER_MISSING');
