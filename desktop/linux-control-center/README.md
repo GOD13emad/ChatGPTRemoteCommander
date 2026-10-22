@@ -37,6 +37,7 @@ From an extracted ZIP, run `python3 manage-userlocal.py --status --ack-qa-only` 
 
 - `python3 manage-userlocal.py --install --ack-qa-only`: install a verified archive under `~/.local/share/RemoteCommander-ControlCenter-QA-Only/current`; a pre-existing verified QA version can move to `previous`. No `sudo`, service, login, autostart, installed Commander profile, or OS-global change
 - `python3 manage-userlocal.py --rollback --ack-qa-only`: atomically swap the two verified QA slots; never change Core or any other product
+- `python3 manage-userlocal.py --recover --ack-qa-only`: only repair recognized and byte-verified interrupted QA staging or rollback renames, rejecting ambiguous or unknown files
 - `python3 manage-userlocal.py --uninstall --ack-qa-only`: delete only byte-verified, owner-private QA slot files; unknown files or tampering prevent deletion
 
 One rollback slot is retained; a second upgrade is refused until the previous QA slot is handled. No automatic promotion or updates. QA-only SHA256 manifests detect tampering, **not publisher authenticity**. This is not a signed or independently accepted public Linux installer. Other user-owned files and the production application must never be modified.

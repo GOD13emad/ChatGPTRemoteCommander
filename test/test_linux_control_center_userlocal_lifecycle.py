@@ -2,6 +2,8 @@
 import hashlib
 import json
 import os
+import importlib.util
+from unittest.mock import patch
 from pathlib import Path
 import shutil
 import subprocess
@@ -113,6 +115,100 @@ class UserLocalLifecycleTests(unittest.TestCase):
                            capture_output=True, text=True, timeout=8)
         self.assertEqual(r.returncode, 2)
         self.assertFalse(self.scope.exists())
+
+    def test_failed_second_promotion_rename_restores_accepted_current(self):
+        self.assert_ok("--install")
+        current = self.scope / "current"
+        original = json.loads((current / "MANIFEST.json").read_text())["sourceCommit"]
+        update = self.base / "failed-promote-update"
+        shutil.copytree(self.source, update)
+        manifest = update / "MANIFEST.json"
+        document = json.loads(manifest.read_text())
+        document["sourceCommit"] = ("a" if original[0] != "a" else "b") + original[1:]
+        manifest.write_text(json.dumps(document, sort_keys=True, indent=2) + "\n")
+        (update / "SHA256SUMS.txt").write_text("".join(
+            hashlib.sha256((update / name).read_bytes()).hexdigest() + "  " + name + "\n"
+            for name in sorted(FILES - {"SHA256SUMS.txt"})
+        ))
+        spec = importlib.util.spec_from_file_location("gtk_qa_manager", self.cli)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        replace = module.os.replace
+        injected = []
+
+        def fail_second(source, destination):
+            if Path(destination) == current and Path(source).name.startswith(".stage-"):
+                injected.append(True)
+                raise OSError("simulated atomic promote failure")
+            return replace(source, destination)
+
+        with patch.object(module.os, "replace", side_effect=fail_second):
+            with self.assertRaises(OSError):
+                module.install(update, self.scope)
+        self.assertEqual(len(injected), 1)
+        self.assertEqual(
+            json.loads((current / "MANIFEST.json").read_text())["sourceCommit"],
+            original,
+        )
+        self.assertEqual({x.name for x in self.scope.iterdir()}, {"current"})
+        self.assert_ok("--uninstall")
+
+    def test_recover_verifiable_interrupted_upgrade_without_touching_core(self):
+        self.assert_ok("--install")
+        current = self.scope / "current"
+        original = json.loads((current / "MANIFEST.json").read_text())["sourceCommit"]
+        stage = self.scope / (".stage-" + "1" * 24)
+        shutil.copytree(self.source, stage)
+        os.replace(current, self.scope / "previous")
+        r = self.assert_ok("--recover")
+        self.assertIn("QA_USERLOCAL_RECOVER_PASS", r.stdout)
+        self.assertEqual(json.loads((current / "MANIFEST.json").read_text())["sourceCommit"], original)
+        self.assertEqual({x.name for x in self.scope.iterdir()}, {"current"})
+        self.assert_ok("--uninstall")
+
+    def test_recover_rollback_first_rename_and_refuse_corrupt_pending(self):
+        self.assert_ok("--install")
+        current = self.scope / "current"
+        original = json.loads((current / "MANIFEST.json").read_text())["sourceCommit"]
+        previous = self.scope / "previous"
+        shutil.copytree(current, previous)
+        pending = self.scope / (".swap-" + "2" * 24)
+        os.replace(current, pending)
+        self.assertIn("QA_USERLOCAL_RECOVER_PASS", self.assert_ok("--recover").stdout)
+        self.assertEqual(json.loads((current / "MANIFEST.json").read_text())["sourceCommit"], original)
+        self.assertTrue(previous.is_dir())
+        self.assertFalse(pending.exists())
+        self.assert_ok("--uninstall")
+        self.assert_ok("--install")
+        stage = self.scope / (".stage-" + "3" * 24)
+        stage.mkdir(mode=0o700)
+        foreign = stage / "UNMANAGED.txt"
+        foreign.write_text("never delete me")
+        r = self.run_manager("--recover")
+        self.assertEqual(r.returncode, 2)
+        self.assertEqual(foreign.read_text(), "never delete me")
+        self.assertTrue((self.scope / "current").is_dir())
+
+    def test_recover_rollback_second_rename_restores_original_order(self):
+        self.assert_ok("--install")
+        current = self.scope / "current"
+        accepted = json.loads((current / "MANIFEST.json").read_text())["sourceCommit"]
+        old = self.scope / "previous"
+        shutil.copytree(current, old)
+        pending = self.scope / (".swap-" + "4" * 24)
+        os.replace(current, pending)
+        os.replace(old, current)
+        self.assert_ok("--recover")
+        self.assertEqual({x.name for x in self.scope.iterdir()}, {"current", "previous"})
+        self.assertEqual(
+            json.loads((current / "MANIFEST.json").read_text())["sourceCommit"],
+            accepted,
+        )
+        self.assertEqual(
+            json.loads((old / "MANIFEST.json").read_text())["sourceCommit"],
+            accepted,
+        )
+        self.assert_ok("--uninstall")
 
     def test_unmanaged_qa_root_prevents_install_and_deletion(self):
         self.scope.mkdir(parents=True, mode=0o700)

@@ -198,6 +198,48 @@ def rollback(prefix: Path):
     print("QA_USERLOCAL_ROLLBACK_PASS", active["sourceCommit"], "->", historical["sourceCommit"])
 
 
+
+def recover(prefix: Path):
+    """Repair only verified, interrupted QA rename sequences. Never remove unknowns.
+
+    Cannot infer user intent if more than one pending operation exists.
+    """
+    if not prefix.exists() and not prefix.is_symlink():
+        print("QA_ALREADY_ABSENT")
+        return
+    ordinary(prefix, directory=True)
+    names = {x.name for x in prefix.iterdir()}
+    stages = [name for name in names if re.fullmatch(r"[.]stage-[0-9a-f]{24}", name)]
+    swaps = [name for name in names if re.fullmatch(r"[.]swap-[0-9a-f]{24}", name)]
+    if (len(stages) + len(swaps) > 1
+            or names - {"current", "previous", *stages, *swaps}):
+        refuse("AMBIGUOUS_QA_RECOVERY")
+    current, previous = prefix / "current", prefix / "previous"
+    if current.exists() or current.is_symlink():
+        read_payload(current)
+    if previous.exists() or previous.is_symlink():
+        read_payload(previous)
+    pending = prefix / (stages + swaps)[0] if (stages or swaps) else None
+    if pending is not None:
+        read_payload(pending)
+    if stages:
+        if not current.exists() and previous.exists():
+            os.replace(previous, current)
+        remove_owned(pending)
+    elif swaps:
+        if not previous.exists() and current.exists():
+            os.replace(current, previous)
+            os.replace(pending, current)
+        elif previous.exists() and not current.exists():
+            os.replace(pending, current)
+        else:
+            refuse("AMBIGUOUS_ROLLBACK_RECOVERY")
+    elif not current.exists() and previous.exists():
+        # A verified crash after upgrading current->previous but prior to
+        # committing a replacement slot; restore the last accepted current.
+        os.replace(previous, current)
+    print("QA_USERLOCAL_RECOVER_PASS")
+
 def uninstall(prefix: Path):
     safe_children(prefix)
     if not prefix.is_dir():
@@ -218,6 +260,7 @@ def main():
     group.add_argument("--rollback", action="store_true")
     group.add_argument("--uninstall", action="store_true")
     group.add_argument("--status", action="store_true")
+    group.add_argument("--recover", action="store_true")
     parser.add_argument("--ack-qa-only", action="store_true")
     args = parser.parse_args()
     if not args.ack_qa_only:
@@ -232,6 +275,8 @@ def main():
         rollback(prefix)
     elif args.uninstall:
         uninstall(prefix)
+    elif args.recover:
+        recover(prefix)
     else:
         safe_children(prefix)
         data = read_payload(prefix / "current") if (prefix / "current").is_dir() else None

@@ -63,6 +63,7 @@ def pack(output: Path):
         "This is a portable read-only preview, NOT a public Linux installer.\n"
         "Optional QA lifecycle (explicit consent): python3 manage-userlocal.py --install --ack-qa-only\n"
         "After QA: python3 manage-userlocal.py --uninstall --ack-qa-only\n"
+        "Interrupted QA rename recovery: python3 manage-userlocal.py --recover --ack-qa-only\n"
         "Rollback previous QA slot: python3 manage-userlocal.py --rollback --ack-qa-only\n"
         "No service, desktop entry, credential, profile, system file or auto-update is installed.\n"
         "Run: sh ./run-control-center.sh --audit (no native GUI required).\n"
