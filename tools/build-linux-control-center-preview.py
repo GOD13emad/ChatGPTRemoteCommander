@@ -55,11 +55,16 @@ def pack(output: Path):
         if not stat.S_ISREG(info.st_mode) or info.st_size > 1024 * 1024:
             raise ValueError("UNSAFE_SOURCE_FILE " + src)
         entries[Path(src).name] = path.read_bytes()
+    entries["manage-userlocal.py"] = (ROOT / "tools/manage-linux-control-center-qa.py").read_bytes()
     entries["run-control-center.sh"] = LAUNCHER.encode("utf-8")
     entries["README.txt"] = (
         f"Remote Commander Linux Control Center v{version} (QA SOURCE PREVIEW)\n"
         f"Exact repository source commit: {commit}\n"
         "This is a portable read-only preview, NOT a public Linux installer.\n"
+        "Optional QA lifecycle (explicit consent): python3 manage-userlocal.py --install --ack-qa-only\n"
+        "After QA: python3 manage-userlocal.py --uninstall --ack-qa-only\n"
+        "Interrupted QA rename recovery: python3 manage-userlocal.py --recover --ack-qa-only\n"
+        "Rollback previous QA slot: python3 manage-userlocal.py --rollback --ack-qa-only\n"
         "No service, desktop entry, credential, profile, system file or auto-update is installed.\n"
         "Run: sh ./run-control-center.sh --audit (no native GUI required).\n"
         "For manual GTK4/Adwaita testing: sh ./run-control-center.sh\n"
