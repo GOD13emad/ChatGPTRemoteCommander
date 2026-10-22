@@ -20,27 +20,32 @@ const later = ms=>new Date(Date.now()+ms).toISOString().replace(/\.\d{3}Z$/,'Z')
 function fixture(t){
  const root=fs.mkdtempSync(path.join(os.tmpdir(),'rc-signed-preview-'));
  t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
- const files=Object.fromEntries(['current','candidate','approval','pubkey'].map(k=>[k,path.join(root,k+'.json')]));
+ const files=Object.fromEntries(['current','candidate','approval','pubkey','router'].map(k=>[k,path.join(root,k+'.json')]));
  const {privateKey,publicKey}=generateKeyPairSync('ed25519');
  const current={durableWorkflows:{runner:structuredClone(runner)},host:'127.0.0.1'};
  const candidate=structuredClone(current); candidate.durableWorkflows.runner.maxPlannerCalls=3;
+ const commit='b5cc8bb16876831c829ba7597c27725d80184f5c';
+ const generation=128;
  function write(k,content){fs.writeFileSync(files[k],typeof content==='string'?content:JSON.stringify(content),{mode:0o600});}
  function grant(changes=['maxPlannerCalls']){
   const payload={schema:1,intent:'owner-approved-runner-transition',profile:'default',
     activeConfigSha256:hash(fs.readFileSync(files.current)),
     candidateConfigSha256:hash(fs.readFileSync(files.candidate)),
     candidateRunnerSha256:hash(JSON.stringify(JSON.parse(fs.readFileSync(files.candidate)).durableWorkflows.runner)),
-    allowedChangedFields:changes,issuedAtUtc:later(-60000),expiresAtUtc:later(240000)};
+    allowedChangedFields:changes,issuedAtUtc:later(-60000),expiresAtUtc:later(240000),
+    routerGeneration:generation,activeCommit:commit};
   const signature=sign(null,Buffer.from(JSON.stringify(payload)),privateKey).toString('base64');
   return {payload,signature};
  }
  write('current',current); write('candidate',candidate);
+ write('router',{generation,active:{commit,configPath:files.current,configSha256:hash(fs.readFileSync(files.current))}});
+ fs.renameSync(files.router,path.join(root,'default.json'));files.router=path.join(root,'default.json');
  fs.writeFileSync(files.pubkey,publicKey.export({type:'spki',format:'pem'}),{mode:0o600});
  write('approval',grant());
- function run(argv=[files.current,files.candidate,files.approval,files.pubkey]){
+ function run(argv=[files.current,files.candidate,files.approval,files.pubkey,files.router]){
   return spawnSync(process.execPath,[verify,...argv],{encoding:'utf8',timeout:4000});
  }
- return {root,files,current,candidate,write,grant,run,privateKey};
+ return {root,files,current,candidate,write,grant,run,privateKey,generation,commit};
 }
 function blocked(result,code){
  assert.equal(result.status,3,result.stdout+' '+result.stderr);
@@ -74,7 +79,7 @@ test('edited signature never passes',t=>{
 });
 test('modified active configuration invalidates prior signed approval',t=>{
  const f=fixture(t);f.write('current',{...f.current,port:5555});
- blocked(f.run(),'APPROVAL_HASH_MISMATCH');
+ blocked(f.run(),'ROUTER_STATE_MISMATCH');
 });
 test('modified candidate command invalidates signed approval',t=>{
  const f=fixture(t);const c=structuredClone(f.candidate);c.durableWorkflows.runner.provider.args=['-lc','unapproved-command'];
@@ -137,6 +142,30 @@ test('candidate symlinks and hardlinks are rejected',t=>{
  blocked(f.run(),'INVALID_FILE');
  fs.unlinkSync(f.files.candidate);
  try {fs.linkSync(f.files.current,f.files.candidate);}catch(e){return t.skip('hardlink unavailable: '+e.code)}
+ blocked(f.run(),'INVALID_FILE');
+});
+test('changed router generation invalidates a previously signed approval',t=>{
+ const f=fixture(t);const router=JSON.parse(fs.readFileSync(f.files.router));router.generation++;
+ f.write('router',router);blocked(f.run(),'ROUTER_STATE_MISMATCH');
+});
+test('changed active release commit invalidates previously signed approval',t=>{
+ const f=fixture(t);const router=JSON.parse(fs.readFileSync(f.files.router));
+ router.active.commit='a'.repeat(40);f.write('router',router);
+ blocked(f.run(),'ROUTER_STATE_MISMATCH');
+});
+test('signer must include exact current router generation and source commit',t=>{
+ const f=fixture(t);const grant=f.grant();grant.payload.routerGeneration=f.generation+1;
+ grant.signature=sign(null,Buffer.from(JSON.stringify(grant.payload)),f.privateKey).toString('base64');
+ f.write('approval',grant);blocked(f.run(),'ROUTER_STATE_MISMATCH');
+});
+test('router with a different selected active config path is rejected',t=>{
+ const f=fixture(t);const router=JSON.parse(fs.readFileSync(f.files.router));
+ router.active.configPath=path.join(f.root,'other-config.json');f.write('router',router);
+ blocked(f.run(),'ROUTER_STATE_MISMATCH');
+});
+test('router aliases are rejected',t=>{
+ const f=fixture(t);const orig=f.files.router;const aliased=path.join(f.root,'default.alias.json');
+ fs.renameSync(orig,aliased);try{fs.symlinkSync(aliased,orig)}catch(e){return t.skip('symlink unsupported: '+e.code)}
  blocked(f.run(),'INVALID_FILE');
 });
 test('malformed and unsigned grants cannot pass',t=>{
