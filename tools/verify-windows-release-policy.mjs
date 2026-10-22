@@ -8,7 +8,7 @@ export function evaluateWindowsRelease({signed,version,tag,policy,releaseNotes})
   if (signed === 'true') return {mode:'AUTHENTICODE_SIGNED',allowed:true};
   if (signed !== 'false') throw new Error('WINDOWS_RELEASE_SIGNATURE_STATUS_UNVERIFIED');
   if (policy?.schema !== 'commander-unsigned-windows-release-v1' ||
-      !['0.10.24','0.10.25'].includes(version) ||
+      !['0.10.24','0.10.25','0.10.26'].includes(version) ||
       policy.version !== version || policy.tag !== tag ||
       policy.allowUnsignedWithGitHubAttestation !== true ||
       policy.scope !== 'only-this-version' ||
@@ -31,7 +31,9 @@ if (ownScript) {
     const tag=process.env.RELEASE_TAG??'';
     const signed=process.env.SETUP_SIGNED??'';
     if(!/^\d+\.\d+\.\d+$/.test(version))throw new Error('WINDOWS_RELEASE_VERSION_INVALID');
-    const policyPath=version==='0.10.25'?'docs/UNSIGNED_WINDOWS_RELEASE_POLICY_0.10.25.json':'docs/UNSIGNED_WINDOWS_RELEASE_POLICY.json';
+    const policyPath=['0.10.25','0.10.26'].includes(version)
+      ? `docs/UNSIGNED_WINDOWS_RELEASE_POLICY_${version}.json`
+      : 'docs/UNSIGNED_WINDOWS_RELEASE_POLICY.json';
     const policy=JSON.parse(readFileSync(policyPath,'utf8'));
     const releaseNotes=readFileSync(`docs/RELEASE_${version}.md`,'utf8');
     const decision=evaluateWindowsRelease({signed,version,tag,policy,releaseNotes});
