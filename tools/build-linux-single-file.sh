@@ -47,7 +47,15 @@ The GTK Control Center preview and experimental companion are not qualified.
 Runtime API keys and tunnel IDs must be enrolled after installation, not baked into the file.
 DOC
 chmod 700 "$STAGE/payload/SETUP.sh" "$STAGE/payload/install.sh" "$STAGE/payload/setup-wizard.sh" "$STAGE/payload/tools/install-browser-linux.sh"
-tar -czf "$STAGE/payload.tar.gz" -C "$STAGE/payload" .
+# Normalize metadata and gzip headers; an immutable source commit must yield
+# the same installer bytes across build hosts, temp directories and umasks.
+SOURCE_DATE_EPOCH="$(git -C "$ROOT" show -s --format=%ct "$SOURCE_COMMIT")"
+[[ "$SOURCE_DATE_EPOCH" =~ ^[0-9]+$ ]] || { echo 'Invalid source commit epoch' >&2; exit 2; }
+chmod 755 "$STAGE/payload" "$STAGE/payload/installer" "$STAGE/payload/tools"
+chmod 644 "$STAGE/payload/installer/products.json" "$STAGE/payload/README.txt"
+tar --format=ustar --sort=name --mtime="@$SOURCE_DATE_EPOCH" \
+    --owner=0 --group=0 --numeric-owner -cf - -C "$STAGE/payload" . \
+  | gzip -n > "$STAGE/payload.tar.gz"
 HASH="$(sha256sum "$STAGE/payload.tar.gz" | cut -d' ' -f1)"
 cat > "$STAGE/header" <<'HEADER'
 #!/usr/bin/env bash
