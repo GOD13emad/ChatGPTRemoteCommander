@@ -189,8 +189,8 @@ export function markIsolatedQualificationPhases(command) {
     throw new Error('R157_PHASE_COMMAND_SHAPE_INVALID');
   const marked=parts.map((part,index)=>{
     const number=String(index).padStart(2,'0');
-    return 'echo RC_QUAL_PHASE_START_'+number+' && '+part+' && echo RC_QUAL_PHASE_PASS_'+number;
-  }).join(' && ');
+    return 'echo RC_QUAL_PHASE_START_'+number+'&&'+part+'&&echo RC_QUAL_PHASE_PASS_'+number;
+  }).join('&&');
   if(marked.length>7500)throw new Error('R157_PHASE_WINDOWS_CMD_LENGTH');
   return marked;
 }
