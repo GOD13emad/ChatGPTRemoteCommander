@@ -549,7 +549,7 @@ test('Windows startup-sensitive HTTP fixtures stay exact, early, and individuall
   before=isolateWindowsTimingSensitiveRegressions(before);
   before=isolateWindowsWorkflowPlanRegression(before);
   before=isolateWindowsMcpConformanceRegression(before);
-  const names=['test/workflow-http.test.mjs','test/browser-process.test.mjs','test/transport-correlation-http.test.mjs'];
+  const names=['test/workflow-http.test.mjs','test/browser-process.test.mjs','test/transport-correlation-http.test.mjs','test/retry-http.test.mjs'];
   const after=isolateWindowsStartupReadinessRegressions(before);
   const expected=names.map(file=>'node --test --test-concurrency=1 '+file).join(' && ')+' && ';
   assert.ok(after.startsWith(expected));
@@ -564,9 +564,11 @@ test('Windows startup-sensitive HTTP fixtures stay exact, early, and individuall
   }
   const cold=prioritizeWindowsAdaptiveCold(after).split(' && ');
   assert.equal(cold[0],'node --test --test-concurrency=1 test/project-adaptive.test.mjs');
-  assert.deepEqual(cold.slice(1,4),names.map(file=>'node --test --test-concurrency=1 '+file));
+  assert.deepEqual(cold.slice(1,5),names.map(file=>'node --test --test-concurrency=1 '+file));
   assert.ok(read('test/transport-correlation-http.test.mjs').includes('30000'),
     'host regression preserves the original 30-second readiness deadline');
+  assert.ok(read('test/retry-http.test.mjs').includes('startupDeadline = Date.now() + 30000'),
+    'HTTP retry test must retain its original 30-second readiness bound');
   assert.ok(read('tools/run-bounded-test-script.mjs').includes(
     'command=isolateWindowsStartupReadinessRegressions(command);'));
 });
