@@ -58,3 +58,15 @@ test('Windows isolated rollback invokes the redacted diagnostic after verified l
  assert.ok(hash>=0&&helper>hash);
  assert.ok(source.includes('R252_SUMMARY_FAILED_FAIL_CLOSED'));
 });
+
+test('R173 failure-only diagnostic is SHA-pinned, typed, and never uploads raw qualification logs',()=>{
+ const workflow=fs.readFileSync(path.join(root,'.github/workflows/release-rollback-windows-r173.yml'),'utf8');
+ assert.equal((workflow.match(/- name: R470 bounded failure classification without raw logs/g)||[]).length,1);
+ assert.match(workflow,/if: \$\{\{ failure\(\) \}\}/);
+ assert.match(workflow,/tools\/diagnose-updater-gate-r470\.ps1 -Root \$root -ExpectedCommit '\$\{\{ github\.event\.pull_request\.head\.sha \|\| github\.sha \}\}'/);
+ assert.match(workflow,/\/remote-commander-rollback-r173\/DIAGNOSTIC_R470\.json/);
+ assert.match(workflow,/name: Upload scoped CI-only evidence[\s\S]*if: \$\{\{ always\(\) \}\}/);
+ const diagnostic=fs.readFileSync(path.join(root,'tools/diagnose-updater-gate-r470.ps1'),'utf8');
+ assert.match(diagnostic,/rawLogIncluded=\$false;secretsIncluded=\$false;absolutePathsIncluded=\$false/);
+ assert.match(diagnostic,/DIAGNOSTIC_R470\.json/);
+});

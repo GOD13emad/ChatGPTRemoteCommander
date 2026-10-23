@@ -54,6 +54,16 @@ jobs:
           $ErrorActionPreference='Stop'
           & pwsh.exe -NoLogo -NoProfile -NonInteractive -File test/release-rollback-windows-r173.ps1 -ExpectedCommit '${{ github.event.pull_request.head.sha || github.sha }}'
           if($LASTEXITCODE -ne 0){throw ('R173_NONZERO_'+$LASTEXITCODE)}
+      - name: R470 bounded failure classification without raw logs
+        if: ${{ failure() }}
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $root=Join-Path $env:RUNNER_TEMP 'remote-commander-rollback-r173'
+          if(Test-Path -LiteralPath $root -PathType Container){
+            & pwsh.exe -NoLogo -NoProfile -NonInteractive -File tools/diagnose-updater-gate-r470.ps1 -Root $root -ExpectedCommit '${{ github.event.pull_request.head.sha || github.sha }}'
+            if($LASTEXITCODE -ne 0){Write-Output 'R470_DIAG_UNAVAILABLE_FAIL_CLOSED'}
+          }else{Write-Output 'R470_NO_ISOLATED_STATE'}
       - name: Upload scoped CI-only evidence
         if: ${{ always() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -63,6 +73,7 @@ jobs:
           retention-days: 7
           path: |
             ${{ runner.temp }}/remote-commander-rollback-r173/RETURN_R173.json
+            ${{ runner.temp }}/remote-commander-rollback-r173/DIAGNOSTIC_R470.json
             ${{ runner.temp }}/remote-commander-rollback-r173/PROMOTE.stdout.log
             ${{ runner.temp }}/remote-commander-rollback-r173/PROMOTE.stderr.log
             ${{ runner.temp }}/remote-commander-rollback-r173/ROLLBACK.stdout.log
