@@ -62,7 +62,7 @@ export function isolateWindowsLeaseRegression(command){
 
 
 /**
- * R01: isolate the three historically timing-sensitive Windows project fixtures
+ * R01: isolate the four historically timing-sensitive Windows project fixtures
  * before the bulk batch. This changes scheduling only: no timeout, budget,
  * acceptance, or production state transition is modified.
  *
@@ -71,7 +71,7 @@ export function isolateWindowsLeaseRegression(command){
  */
 export function isolateWindowsTimingSensitiveRegressions(command) {
   if(typeof command!=='string'||!command)throw new Error('CI_WINDOWS_TIMING_COMMAND_INVALID');
-  const files=['test/project-adaptive.test.mjs','test/project-delivery-correlation.test.mjs','test/project-engine-review.test.mjs'];
+  const files=['test/project-adaptive.test.mjs','test/project-delivery-correlation.test.mjs','test/project-engine-review.test.mjs','test/project-engine.test.mjs'];
   for(const file of files)
     if(command.split(file).length-1!==1)throw new Error('CI_WINDOWS_TIMING_CARDINALITY');
   const parts=command.split(' && ');
@@ -148,6 +148,32 @@ export function isolateWindowsTransferMeshHttpRegression(command) {
     throw new Error('CI_TRANSFER_HTTP_ISOLATION_INVALID');
   parts[index]=after;
   return 'node --test --test-concurrency=1 '+file+' && '+parts.join(' && ');
+}
+
+/**
+ * Keep unchanged Windows browser-owned-process, workflow HTTP and transport correlation startup
+ * fixtures in dedicated early test processes. Both have failed only under
+ * loaded full-host qualification and passed unchanged when run in isolation.
+ * Preserve exact assertions, timeouts, and one execution of every test file.
+ */
+export function isolateWindowsStartupReadinessRegressions(command) {
+  if(typeof command!=='string'||!command)throw new Error('CI_STARTUP_READINESS_COMMAND_INVALID');
+  const files=['test/workflow-http.test.mjs','test/browser-process.test.mjs','test/transport-correlation-http.test.mjs'];
+  const parts=command.split(' && ');
+  const isolated=[];
+  for(const file of files) {
+    if(command.split(file).length-1!==1)throw new Error('CI_STARTUP_READINESS_CARDINALITY');
+    const index=parts.findIndex(part=>part.startsWith('node --test --test-concurrency=1 ')&&part.includes(' '+file));
+    if(index<0)throw new Error('CI_STARTUP_READINESS_TEST_NOT_FOUND');
+    const before=parts[index],after=before.replace(' '+file,'');
+    if(before===after)throw new Error('CI_STARTUP_READINESS_ISOLATION_INVALID');
+    if(after==='node --test --test-concurrency=1')parts.splice(index,1);
+    else if(!after.startsWith('node --test --test-concurrency=1 test/')||after.includes(file))
+      throw new Error('CI_STARTUP_READINESS_ISOLATION_INVALID');
+    else parts[index]=after;
+    isolated.push('node --test --test-concurrency=1 '+file);
+  }
+  return [...isolated,...parts].join(' && ');
 }
 
 /**
@@ -289,6 +315,7 @@ function run(){
     // Short-deadline workflow-plan first, then team reservation, then async HTTP.
     command=isolateWindowsWorkflowPlanRegression(command);
     command=isolateWindowsMcpConformanceRegression(command);
+    command=isolateWindowsStartupReadinessRegressions(command);
     command=prioritizeWindowsAdaptiveCold(command);
   }
   if(process.platform==='win32'&&args.script==='test'&&process.env.RC_QUALIFICATION_RUN_ID)

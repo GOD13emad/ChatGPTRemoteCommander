@@ -694,6 +694,28 @@ if [[ "$SELF_TEST" == 1 ]]; then
 fi
 
 REF="$(latest_ref)"
+# A newer approved Preview route makes an older published Stable tag obsolete.
+# Reject it before stage_release creates another old source checkout.
+if [[ "$FORCE" != 1 && "$REF" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ && -f "$ROUTING_ROOT/default.json" ]]; then
+  TAG_VERSION="$(printf '%s' "$REF" | cut -c2-)"
+  ROUTED_PREVIEW_VERSION="$(node --input-type=module - "$ROUTING_ROOT/default.json" <<'NODE'
+import fs from 'node:fs';
+const state=JSON.parse(fs.readFileSync(process.argv[2],'utf8'));
+const version=String(state?.active?.version??'');
+const commit=String(state?.active?.commit??'');
+if(state?.schema!==1 || state?.profile!=='default' ||
+   !/^\d+\.\d+\.\d+$/.test(version) || !/^[0-9a-f]{40}$/.test(commit)){
+  console.error('AUTO_UPDATE_ACTIVE_ROUTE_UNVERIFIED');
+  process.exit(2);
+}
+console.log(version);
+NODE
+)"
+  if version_gt "$ROUTED_PREVIEW_VERSION" "$TAG_VERSION"; then
+    log "AUTO_UPDATE_NEWER_PERSISTED_ROUTE_PRESTAGE current=$ROUTED_PREVIEW_VERSION target=$TAG_VERSION"
+    exit 0
+  fi
+fi
 IFS=$'\t' read -r COMMIT VERSION STAGE_DIR < <(stage_release "$REF")
 ACTIVE_CFG="$(active_config "$STAGE_DIR")"
 AUTO_ENABLED="$(json_field "$STAGE_DIR" "$ACTIVE_CFG" autoUpdate.enabled)"
