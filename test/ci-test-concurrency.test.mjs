@@ -564,7 +564,7 @@ test('Windows startup-sensitive HTTP fixtures stay exact, early, and individuall
   }
   const cold=prioritizeWindowsAdaptiveCold(after).split(' && ');
   assert.equal(cold[0],'node --test --test-concurrency=1 test/project-adaptive.test.mjs');
-  assert.deepEqual(cold.slice(1,4),names.map(file=>'node --test --test-concurrency=1 '+file));
+  assert.deepEqual(cold.slice(1,1+names.length),names.map(file=>'node --test --test-concurrency=1 '+file));
   assert.ok(read('test/transport-correlation-http.test.mjs').includes('30000'),
     'host regression preserves the original 30-second readiness deadline');
   assert.ok(read('tools/run-bounded-test-script.mjs').includes(
