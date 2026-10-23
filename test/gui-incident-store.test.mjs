@@ -23,9 +23,9 @@ const config={config:{powerMode:{enabled:true,guiControl:{
  enabled:true,allowScreenshot:true,allowMouse:true,allowKeyboard:true,allowWindowFocus:true
 }}}};
 function controller(incidentStore,{invoke=async(req)=>(req.action==='screenshot'?image():{ok:true,available:true}),platform='win32'}={}){
- let calls=0;
+ let calls=0, issued=0;
  const c=createGuiController({
-  platform,incidentStore,token:()=>('a'.repeat(48)),isStopped:async()=>false,
+  platform,incidentStore,token:()=>String(++issued).padStart(48,'0'),isStopped:async()=>false,
   invoke:async req=>{calls++;return invoke(req);},closeInvoke:()=>{},
   now:()=>1000
  });
