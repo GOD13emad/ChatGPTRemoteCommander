@@ -151,14 +151,14 @@ export function isolateWindowsTransferMeshHttpRegression(command) {
 }
 
 /**
- * Keep unchanged Windows browser-owned-process, workflow HTTP and transport correlation startup
+ * Keep unchanged Windows browser-owned-process, workflow HTTP, transport correlation and HTTP retry startup
  * fixtures in dedicated early test processes. Both have failed only under
  * loaded full-host qualification and passed unchanged when run in isolation.
  * Preserve exact assertions, timeouts, and one execution of every test file.
  */
 export function isolateWindowsStartupReadinessRegressions(command) {
   if(typeof command!=='string'||!command)throw new Error('CI_STARTUP_READINESS_COMMAND_INVALID');
-  const files=['test/workflow-http.test.mjs','test/browser-process.test.mjs','test/transport-correlation-http.test.mjs'];
+  const files=['test/workflow-http.test.mjs','test/browser-process.test.mjs','test/transport-correlation-http.test.mjs','test/retry-http.test.mjs'];
   const parts=command.split(' && ');
   const isolated=[];
   for(const file of files) {
