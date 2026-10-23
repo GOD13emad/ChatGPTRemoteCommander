@@ -58,3 +58,22 @@ test('single-file Linux launcher supports offline product plan and rejects corru
   assert.match(result.stderr,/LINUX_PAYLOAD_SHA256_MISMATCH/);
  }finally{fs.rmSync(dir,{recursive:true,force:true});}
 });
+
+
+test('single-file builder rejects a dirty source checkout before issuing a pinned artifact',
+  {skip:process.platform==='win32'},()=>{
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'rc-linux-source-dirty-'));
+ const clone=path.join(dir,'repo');
+ const out=path.join(dir,'dirty.run');
+ try{
+  const git=spawnSync('git',['clone','--quiet','--no-hardlinks',root,clone],
+    {encoding:'utf8',timeout:15000});
+  assert.equal(git.status,0,git.stderr);
+  fs.appendFileSync(path.join(clone,'installer/products.json'),'\n');
+  const call=spawnSync('bash',[path.join(clone,'tools/build-linux-single-file.sh'),out],
+    {encoding:'utf8',timeout:15000});
+  assert.equal(call.status,2,call.stderr||call.stdout);
+  assert.match(call.stderr,/LINUX_BOOTSTRAP_SOURCE_DIRTY/);
+  assert.equal(fs.existsSync(out),false);
+ }finally{fs.rmSync(dir,{recursive:true,force:true});}
+});

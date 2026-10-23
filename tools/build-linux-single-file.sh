@@ -14,6 +14,12 @@ VERSION="$(node -p 'require(process.argv[1]).version' "$ROOT/package.json")"
 # PR builds may produce QA archives; only matching release tags can install.
 SOURCE_COMMIT="$(git -C "$ROOT" rev-parse 'HEAD^{commit}')"
 [[ "$SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]] || { echo 'Missing exact build source commit' >&2; exit 2; }
+# The pinned source SHA must identify the bytes staged into the installer.
+# Refuse tracked modifications and untracked non-ignored inputs before copying.
+if [[ -n "$(git -C "$ROOT" status --porcelain --untracked-files=normal)" ]]; then
+  echo 'LINUX_BOOTSTRAP_SOURCE_DIRTY' >&2
+  exit 2
+fi
 STAGE="$(mktemp -d)"
 trap 'rm -rf -- "$STAGE"' EXIT
 mkdir -p "$STAGE/payload/installer" "$STAGE/payload/tools"
