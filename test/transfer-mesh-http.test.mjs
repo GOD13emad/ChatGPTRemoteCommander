@@ -30,7 +30,8 @@ test('MCP native transfer tools opt in, expose narrowly scoped schemas and execu
   child=spawn(process.execPath,[path.join(server,'src/server-v0.3.mjs')],{cwd:server,env:{...process.env,REMOTE_COMMANDER_CONFIG:configPath},stdio:['ignore','pipe','pipe']});
   child.stderr.on('data',x=>stderr+=x);
   let healthy=false;
-  for(let i=0;i<200;i++){try{const r=await fetch('http://127.0.0.1:'+serverPort+'/health');if(r.ok){healthy=true;break;}}catch{}await wait(25);}
+  const startupDeadline=Date.now()+15_000; // Bound cold-start under loaded isolated Windows CI.
+   while(Date.now()<startupDeadline && child.exitCode===null){try{const r=await fetch('http://127.0.0.1:'+serverPort+'/health',{signal:AbortSignal.timeout(1500)});if(r.ok){healthy=true;break;}}catch{}await wait(25);}
   assert.equal(healthy,true,stderr);
   const list=await req(serverPort,'__list');const defs=list.tools.filter(x=>x.name.startsWith('transfer_mesh_'));
   assert.equal(defs.length,8);

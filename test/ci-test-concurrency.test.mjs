@@ -113,7 +113,7 @@ test('R468 dedicated Windows timing-sensitive project fixtures run once before b
   const ordered=prioritizeSensitiveQualificationCommands(boundNodeTestConcurrency(pkg.scripts.test,1).command);
   const lease=isolateWindowsLeaseRegression(ordered);
   const result=isolateWindowsTimingSensitiveRegressions(lease);
-  const files=['test/project-adaptive.test.mjs','test/project-delivery-correlation.test.mjs','test/project-engine-review.test.mjs'];
+  const files=['test/project-adaptive.test.mjs','test/project-delivery-correlation.test.mjs','test/project-engine-review.test.mjs','test/project-engine.test.mjs'];
   const prefix=files.map(f=>'node --test --test-concurrency=1 '+f).join(' && ')+' && ';
   const expected=prefix+files.reduce((command,file)=>command.replace(' '+file,''),lease);
   assert.equal(result,expected,'only scheduling changes; full original tests retained');
@@ -130,6 +130,11 @@ test('R468 dedicated Windows timing-sensitive project fixtures run once before b
   assert.ok(runner.includes('command=isolateWindowsLeaseRegression(command);'));
   assert.ok(runner.includes('command=isolateWindowsTimingSensitiveRegressions(command);'));
   // The underlying business logic and per-test timeouts are intentionally unchanged.
+  const projectEngineSource=read('test/project-engine.test.mjs');
+  assert.ok(projectEngineSource.indexOf("test('human WAITING_INPUT time does not consume the execution deadline'") <
+    projectEngineSource.indexOf("test('real filesystem operation"), 'WAITING_INPUT timer must run before loaded fixture tests');
+  assert.ok(projectEngineSource.includes('durationMs:1000') && projectEngineSource.includes('setTimeout(resolve,1100)'),
+    'strict original short execution duration and waiting interval must remain unchanged');
   assert.ok(read('test/project-adaptive.test.mjs').includes("{ timeout: 6000 }"));
   assert.ok(read('test/project-delivery-correlation.test.mjs').includes('maxDurationMs:10000'));
 });
@@ -292,7 +297,8 @@ test('R157 qualifier markers are opt-in, index-only, and preserve all original c
   assert.ok(groups[1].includes('test/project-adaptive.test.mjs'),'strict team timeout follows workflow-plan');
   assert.ok(groups[2].includes('test/project-delivery-correlation.test.mjs'));
   assert.ok(groups[3].includes('test/project-engine-review.test.mjs'));
-  assert.ok(groups[4].includes('test/async-http.test.mjs'),'async HTTP still runs ahead of high-volume batch');
+  assert.ok(groups[4].includes('test/project-engine.test.mjs'),'WAITING_INPUT deadline regression runs in its own early process');
+  assert.ok(groups[5].includes('test/async-http.test.mjs'),'async HTTP still runs ahead of high-volume batch');
   for(const file of ['test/project-adaptive.test.mjs','test/async-http.test.mjs'])
     assert.equal(command.split(file).length-1,1,'exactly one regression '+file);
   const marked=markIsolatedQualificationPhases(command);
@@ -425,7 +431,7 @@ test('Windows short-deadline team reservation runs before process-tree and HTTP 
    "test('team reserves all calls before workers and executes only the coordinator proposal', { timeout: 6000 }"));
 });
 
-test('CI Windows runs the Transfer Mesh HTTP fixture alone without weakening readiness or dropping coverage',()=>{
+test('CI Windows isolates Transfer Mesh HTTP with bounded cold-start and unchanged functional assertions',()=>{
   const pkg=JSON.parse(read('package.json'));
   const original=prioritizeSensitiveQualificationCommands(boundNodeTestConcurrency(pkg.scripts.test,1).command);
   const agent=isolateWindowsAgentHttpRegression(original);
@@ -455,7 +461,9 @@ test('CI Windows runs the Transfer Mesh HTTP fixture alone without weakening rea
     wrapper.indexOf('command=isolateWindowsTransferMeshHttpRegression(command);'),
     'last composed prefix is scheduled first; no additional test runs or deadlines');
   const fixture=read('test/transfer-mesh-http.test.mjs');
-  assert.ok(fixture.includes('for(let i=0;i<200;i++)'),'same bounded readiness budget');
+  assert.ok(fixture.includes('const startupDeadline=Date.now()+15_000'),'explicit finite CI cold-start budget');
+  assert.ok(fixture.includes('child.exitCode===null'),'a crashed child must not wait to timeout');
+  assert.ok(fixture.includes('AbortSignal.timeout(1500)'),'each health probe remains bounded');
   assert.ok(fixture.includes('await wait(25)'),'same server-readiness poll');
   assert.ok(fixture.includes('assert.equal(healthy,true,stderr)'),'still fail closed if server cannot start');
 });

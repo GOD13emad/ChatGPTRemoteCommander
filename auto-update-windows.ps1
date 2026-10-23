@@ -306,6 +306,69 @@ function Stage-Release([string]$Ref){
   }
   return [pscustomobject]@{Ref=$Ref;Commit=$commit;Version=$version;Dir=$final}
 }
+function Assert-CompleteCandidateAuditHistory {
+  param([Parameter(Mandatory)][string]$Candidate,[string]$ExpectedSha='',[Parameter(Mandatory)][string]$AllowedOrigin)
+  function Test-HistoricalEolOnly {
+    param([string]$Candidate,[string]$ExpectedSha,[string]$AllowedOrigin,[string[]]$Changed)
+    # Only the immutable v0.10.20 baseline EOL anomaly is permitted.
+    # Other tracked/staged changes and untrusted origins still fail closed.
+    $baseline='362375c464948be3001b307650c13fc3353ed05b'
+    if ($ExpectedSha -cne $baseline -or $Changed.Count -ne 1 -or $Changed[0] -cne ' M enable-boot-recovery.ps1') { return $false }
+    $origin=(& git.exe -C $Candidate remote get-url origin).Trim()
+    if ($LASTEXITCODE -ne 0 -or $origin -cne $AllowedOrigin) { return $false }
+    & git.exe -C $Candidate diff --cached --quiet --
+    if ($LASTEXITCODE -ne 0) { return $false }
+    $blob=(& git.exe -C $Candidate rev-parse HEAD:enable-boot-recovery.ps1).Trim().ToLowerInvariant()
+    if ($LASTEXITCODE -ne 0 -or $blob -notmatch '^[0-9a-f]{40}$') { return $false }
+    $raw=(& git.exe -C $Candidate hash-object --no-filters -- enable-boot-recovery.ps1).Trim().ToLowerInvariant()
+    if ($LASTEXITCODE -ne 0 -or $raw -cne $blob) { return $false }
+    return $true
+  }
+  $expected=(& git.exe -C $Candidate rev-parse HEAD).Trim().ToLowerInvariant()
+  if ($LASTEXITCODE -ne 0 -or $expected -notmatch '^[0-9a-f]{40}$') { throw 'INSTALL_AUDIT_HEAD_INVALID' }
+  if ($ExpectedSha -and $expected -ne $ExpectedSha.ToLowerInvariant()) { throw 'INSTALL_AUDIT_HEAD_MISMATCH' }
+  $dirty=@(& git.exe -C $Candidate status --porcelain --untracked-files=no)
+  $dirtyExit=$LASTEXITCODE
+  if ($dirtyExit -ne 0 -or ($dirty.Count -gt 0 -and -not (Test-HistoricalEolOnly -Candidate $Candidate -ExpectedSha $ExpectedSha -AllowedOrigin $AllowedOrigin -Changed $dirty))) {
+    throw 'INSTALL_AUDIT_TRACKED_TREE_DIRTY'
+  }
+  $shallow=(& git.exe -C $Candidate rev-parse --is-shallow-repository).Trim()
+  if ($LASTEXITCODE -ne 0 -or $shallow -notin @('true','false')) { throw 'INSTALL_AUDIT_SHALLOW_STATE_INVALID' }
+  if ($shallow -eq 'true') {
+    $origin=(& git.exe -C $Candidate remote get-url origin).Trim()
+    if ($LASTEXITCODE -ne 0 -or $origin -cne $AllowedOrigin) { throw 'INSTALL_AUDIT_ORIGIN_MISMATCH' }
+    Write-Host 'INSTALL_AUDIT_HISTORY_FETCH_START'
+    $psi=[Diagnostics.ProcessStartInfo]::new('git.exe')
+    $psi.UseShellExecute=$false
+    $psi.CreateNoWindow=$true
+    $psi.Environment['GIT_TERMINAL_PROMPT']='0'
+    $psi.Environment['GCM_INTERACTIVE']='never'
+    $psi.Environment['GIT_ASKPASS']=''
+    foreach($argument in @('-C',$Candidate,'fetch','--quiet','--no-tags','--unshallow','origin',$expected)){
+      [void]$psi.ArgumentList.Add([string]$argument)
+    }
+    $child=[Diagnostics.Process]::Start($psi)
+    if ($null -eq $child) { throw 'INSTALL_AUDIT_HISTORY_FETCH_START_FAILED' }
+    try {
+      if (-not $child.WaitForExit(120000)) {
+        try { $child.Kill($true) } catch {}
+        [void]$child.WaitForExit(5000)
+        throw 'INSTALL_AUDIT_HISTORY_FETCH_TIMEOUT'
+      }
+      if ($child.ExitCode -ne 0) { throw 'INSTALL_AUDIT_HISTORY_FETCH_FAILED' }
+    } finally { $child.Dispose() }
+  }
+  $after=(& git.exe -C $Candidate rev-parse HEAD).Trim().ToLowerInvariant()
+  $isShallow=(& git.exe -C $Candidate rev-parse --is-shallow-repository).Trim()
+  $afterDirty=@(& git.exe -C $Candidate status --porcelain --untracked-files=no)
+  $afterStatus=$LASTEXITCODE
+  if ($afterStatus -ne 0 -or $after -ne $expected -or $isShallow -ne 'false' -or
+      ($afterDirty.Count -gt 0 -and -not (Test-HistoricalEolOnly -Candidate $Candidate -ExpectedSha $ExpectedSha -AllowedOrigin $AllowedOrigin -Changed $afterDirty))) {
+    throw 'INSTALL_AUDIT_HISTORY_INTEGRITY_FAILED'
+  }
+  Write-Host 'INSTALL_AUDIT_FULL_HISTORY_PASS'
+}
+
 function Run-Gate([string]$Candidate,[string]$Name,[string[]]$CommandArgs){
   Log "GATE_START $Name"
   if(-not $CommandArgs -or $CommandArgs.Count -lt 1){throw "GATE_ARGUMENTS_MISSING $Name"}
@@ -1110,6 +1173,7 @@ try{
   try{
     Run-Gate $stage.Dir 'check' @('run','check:qualification')
     Run-Gate $stage.Dir 'test' @('run','test:qualification')
+    Assert-CompleteCandidateAuditHistory -Candidate $stage.Dir -ExpectedSha $stage.Commit -AllowedOrigin $Repo
     Run-Gate $stage.Dir 'audit' @('run','audit')
     Ensure-ProjectProvider (Get-PrimaryConfig)
     if($primaryConfig.powerMode.enabled-eq $true -and $primaryConfig.powerMode.guiControl.enabled-eq $true){

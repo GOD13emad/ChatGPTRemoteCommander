@@ -20,7 +20,36 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  version_scope:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    outputs:
+      v025: ${{ steps.source.outputs.v025 }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 1
+      - name: Pin exact source and classify legacy v0.10.25 applicability
+        id: source
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha || github.sha }}"
+          python3 - <<'PY_VERSION_SCOPE'
+          import json, os, re
+          with open('package.json', encoding='utf-8') as f: version = json.load(f)['version']
+          if not isinstance(version, str) or not re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+(?:[-+][A-Za-z0-9.-]+)?', version):
+              raise SystemExit('V025_SCOPE_INVALID_VERSION')
+          applicable = version == '0.10.25'
+          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as f:
+              f.write('v025=' + ('true' if applicable else 'false') + '\n')
+          print('V025_SCOPE_APPLICABLE' if applicable else 'V025_SCOPE_NOT_APPLICABLE')
+          PY_VERSION_SCOPE
+
   linux-candidate-preview-rollback:
+    needs: version_scope
+    if: ${{ needs.version_scope.outputs.v025 == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 50
     steps:
@@ -68,6 +97,8 @@ jobs:
             ${{ runner.temp }}/remote-commander-rollback-v025l/RETURN_V025L.json
 
   windows-candidate-preview-rollback:
+    needs: version_scope
+    if: ${{ needs.version_scope.outputs.v025 == 'true' }}
     runs-on: windows-latest
     timeout-minutes: 60
     steps:

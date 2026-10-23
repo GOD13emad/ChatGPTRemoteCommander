@@ -47,6 +47,7 @@ Name: "custom"; Description: "Custom"; Flags: iscustom
 [Components]
 Name: "core"; Description: "Remote Commander Core and profile management"; Types: core complete custom; Flags: fixed
 Name: "controlmonitor"; Description: "Control && Monitoring panel"; Types: complete
+Name: "workplugin"; Description: "ChatGPT Work Plugin setup (requires registered App ID after install)"; Types: complete
 #ifdef BrowserSetup
   #define BrowserSetupName ExtractFileName(BrowserSetup)
 Name: "browser"; Description: "Remote Commander Browser"; Types: complete
@@ -258,7 +259,7 @@ end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
 var
-  QueueDir, QueuePath, Normalized, Mode, Manifest: String;
+  QueueDir, QueuePath, Normalized, Mode, Manifest, PluginStatus: String;
 begin
   if CurStep <> ssPostInstall then Exit;
 
@@ -272,6 +273,8 @@ begin
 
   if WizardIsComponentSelected('controlmonitor') then Mode := 'ControlMonitoring'
   else Mode := 'Core';
+  if WizardIsComponentSelected('workplugin') then PluginStatus := 'PENDING_APP_ID'
+  else PluginStatus := 'NOT_REQUESTED';
 
   Manifest :=
     '{' + #13#10 +
@@ -279,7 +282,9 @@ begin
     '  "product": "Remote Commander",' + #13#10 +
     '  "version": "{#MyVersion}",' + #13#10 +
     '  "mode": "' + Mode + '",' + #13#10 +
-    '  "controlMonitoring": ' + JsonBool(WizardIsComponentSelected('controlmonitor')) + ',' + #13#10 +
+    '  "controlMonitoring": ' + JsonBool(WizardIsComponentSelected('controlmonitor')) + ',' + #13#10
+    '  "workPluginSelected": ' + JsonBool(WizardIsComponentSelected('workplugin')) + ',' + #13#10
+    '  "workPluginStatus": "' + PluginStatus + '",' + #13#10 +
 #ifdef BrowserSetup
     '  "browserSelected": ' + JsonBool(WizardIsComponentSelected('browser')) + ',' + #13#10 +
 #else
