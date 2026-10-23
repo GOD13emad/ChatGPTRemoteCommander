@@ -5,7 +5,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { boundNodeTestConcurrency, parseQualificationArgs, prioritizeSensitiveQualificationCommands, isolateWindowsLeaseRegression, isolateWindowsTimingSensitiveRegressions, isolateWindowsProcessTreeRegression, isolateWindowsAgentHttpRegression, isolateWindowsTransferMeshHttpRegression, isolateWindowsWorkflowPlanRegression, isolateWindowsAsyncHttpRegression, isolateWindowsMcpConformanceRegression, prioritizeWindowsAdaptiveCold, markIsolatedQualificationPhases } from '../tools/run-bounded-test-script.mjs';
+import { boundNodeTestConcurrency, parseQualificationArgs, prioritizeSensitiveQualificationCommands, isolateWindowsLeaseRegression, isolateWindowsTimingSensitiveRegressions, isolateWindowsProcessTreeRegression, isolateWindowsAgentHttpRegression, isolateWindowsTransferMeshHttpRegression, isolateWindowsWorkflowPlanRegression, isolateWindowsAsyncHttpRegression, isolateWindowsMcpConformanceRegression, isolateWindowsStartupReadinessRegressions, prioritizeWindowsAdaptiveCold, markIsolatedQualificationPhases } from '../tools/run-bounded-test-script.mjs';
 
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const read=rel=>fs.readFileSync(path.join(root,rel),'utf8');
@@ -535,4 +535,38 @@ test('strict Windows adaptive fixture is scheduled cold with all original groups
   assert.throws(()=>prioritizeWindowsAdaptiveCold('node --test test/other.test.mjs'),/CI_COLD_ADAPTIVE_CARDINALITY/);
   assert.ok(read('test/project-adaptive.test.mjs').includes("{ timeout: 6000 }"),'original strict test deadline unchanged');
   assert.ok(read('tools/run-bounded-test-script.mjs').includes('command=prioritizeWindowsAdaptiveCold(command);'));
+});
+
+
+test('Windows startup-sensitive HTTP fixtures stay exact, early, and individually isolated',()=>{
+  const pkg=JSON.parse(read('package.json'));
+  const original=prioritizeSensitiveQualificationCommands(boundNodeTestConcurrency(pkg.scripts.test,1).command);
+  let before=isolateWindowsAgentHttpRegression(original);
+  before=isolateWindowsProcessTreeRegression(before);
+  before=isolateWindowsTransferMeshHttpRegression(before);
+  before=isolateWindowsLeaseRegression(before);
+  before=isolateWindowsAsyncHttpRegression(before);
+  before=isolateWindowsTimingSensitiveRegressions(before);
+  before=isolateWindowsWorkflowPlanRegression(before);
+  before=isolateWindowsMcpConformanceRegression(before);
+  const names=['test/workflow-http.test.mjs','test/browser-process.test.mjs','test/transport-correlation-http.test.mjs'];
+  const after=isolateWindowsStartupReadinessRegressions(before);
+  const expected=names.map(file=>'node --test --test-concurrency=1 '+file).join(' && ')+' && ';
+  assert.ok(after.startsWith(expected));
+  const files=cmd=>(cmd.match(/test\/[A-Za-z0-9_.-]+\.test\.mjs/g)||[]).sort();
+  assert.deepEqual(files(after),files(before),'not a single test file is added or lost');
+  for(const file of names){
+    assert.equal(after.split(file).length-1,1,'one invocation of '+file);
+    assert.throws(()=>isolateWindowsStartupReadinessRegressions(before.replace(' '+file,'')),
+      /CI_STARTUP_READINESS_CARDINALITY/);
+    assert.throws(()=>isolateWindowsStartupReadinessRegressions('node --test --test-concurrency=1 '+file+' && '+before),
+      /CI_STARTUP_READINESS_CARDINALITY/);
+  }
+  const cold=prioritizeWindowsAdaptiveCold(after).split(' && ');
+  assert.equal(cold[0],'node --test --test-concurrency=1 test/project-adaptive.test.mjs');
+  assert.deepEqual(cold.slice(1,4),names.map(file=>'node --test --test-concurrency=1 '+file));
+  assert.ok(read('test/transport-correlation-http.test.mjs').includes('30000'),
+    'host regression preserves the original 30-second readiness deadline');
+  assert.ok(read('tools/run-bounded-test-script.mjs').includes(
+    'command=isolateWindowsStartupReadinessRegressions(command);'));
 });
