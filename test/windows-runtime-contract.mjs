@@ -182,6 +182,9 @@ if (process.platform === 'win32') {
   const policy = spawnSync('pwsh.exe',['-NoLogo','-NoProfile','-File','test/supervisor-recovery-policy-windows.ps1'],{encoding:'utf8',windowsHide:true});
   if(policy.status!==0) throw new Error('supervisor recovery policy failed: '+(policy.stderr||policy.stdout));
   if(!policy.stdout.includes('SUPERVISOR_RECOVERY_POLICY_PASS')) throw new Error('supervisor recovery policy marker missing');
+  const crossSession = spawnSync('pwsh.exe',['-NoLogo','-NoProfile','-NonInteractive','-File','test/supervisor-cross-session-guard.test.ps1'],{encoding:'utf8',timeout:10000,windowsHide:true});
+  if(crossSession.status!==0) throw new Error('cross-session supervisor guard failed: '+(crossSession.stderr||crossSession.stdout));
+  if(!crossSession.stdout.includes('REGRESSION_PASS cases=7')) throw new Error('cross-session supervisor guard marker missing');
   const stale = spawnSync('pwsh.exe',['-NoLogo','-NoProfile','-NonInteractive','-File','test/stale-drain-policy-windows.ps1'],{encoding:'utf8',windowsHide:true});
   if(stale.status!==0) throw new Error('stale drain policy failed: '+(stale.stderr||stale.stdout));
   if(!stale.stdout.includes('STALE_DRAIN_POLICY_PASS')) throw new Error('stale drain policy marker missing');

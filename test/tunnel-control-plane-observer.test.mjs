@@ -19,7 +19,11 @@ test('Windows tunnel supervision observes control plane without restarting or ex
     'category=$category','http=$http','Write-SupervisorLog'
   ]) assert.ok(observer.includes(marker),'missing '+marker);
   assert.match(source,/Observe-TunnelControlPlane \$item\.Profile \$item\.HealthPort/u);
-  assert.match(source,/if \(-not \$process -or -not \(Test-TunnelReady \$item\.HealthPort\)\) \{ Start-TunnelProfile \$item \}\s+Observe-TunnelControlPlane/u);
+  // The cross-session healthy-tunnel guard skips competitor launches. Observe
+  // before that guard so a SYSTEM-owned healthy tunnel still reports degradation.
+  assert.match(source,/\$ready = Test-TunnelReady \$item\.HealthPort\s+Observe-TunnelControlPlane \$item\.Profile \$item\.HealthPort\s+if \(-not \$process -and \$ready\)/u);
+  assert.match(source,/if \(-not \$process -or -not \$ready\) \{ Start-TunnelProfile \$item \}/u);
+  assert.match(source,/TUNNEL_OWNER_UNVERIFIED/u);
   assert.doesNotMatch(observer,/Stop-Process|Start-Process|Restart-Service|Read-RcCredential|CONTROL_PLANE_API_KEY/u);
 });
 
