@@ -549,11 +549,11 @@ test('Windows startup-sensitive HTTP fixtures stay exact, early, and individuall
   before=isolateWindowsTimingSensitiveRegressions(before);
   before=isolateWindowsWorkflowPlanRegression(before);
   before=isolateWindowsMcpConformanceRegression(before);
-  const names=['test/workflow-http.test.mjs','test/browser-process.test.mjs','test/transport-correlation-http.test.mjs'];
+  const names=['test/workflow-http.test.mjs','test/browser-process.test.mjs','test/transport-correlation-http.test.mjs','tools/commander-transfer-mesh/backend-update.test.mjs'];
   const after=isolateWindowsStartupReadinessRegressions(before);
   const expected=names.map(file=>'node --test --test-concurrency=1 '+file).join(' && ')+' && ';
   assert.ok(after.startsWith(expected));
-  const files=cmd=>(cmd.match(/test\/[A-Za-z0-9_.-]+\.test\.mjs/g)||[]).sort();
+  const files=cmd=>(cmd.match(/(?:test|tools\/commander-transfer-mesh)\/[A-Za-z0-9_.-]+\.test\.mjs/g)||[]).sort();
   assert.deepEqual(files(after),files(before),'not a single test file is added or lost');
   for(const file of names){
     assert.equal(after.split(file).length-1,1,'one invocation of '+file);
