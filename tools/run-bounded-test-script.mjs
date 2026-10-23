@@ -151,14 +151,14 @@ export function isolateWindowsTransferMeshHttpRegression(command) {
 }
 
 /**
- * Keep unchanged Windows browser-owned-process, workflow HTTP and transport correlation startup
+ * Keep unchanged Windows browser-owned-process, workflow HTTP, transport correlation and HTTP retry startup
  * fixtures in dedicated early test processes. Both have failed only under
  * loaded full-host qualification and passed unchanged when run in isolation.
  * Preserve exact assertions, timeouts, and one execution of every test file.
  */
 export function isolateWindowsStartupReadinessRegressions(command) {
   if(typeof command!=='string'||!command)throw new Error('CI_STARTUP_READINESS_COMMAND_INVALID');
-  const files=['test/workflow-http.test.mjs','test/browser-process.test.mjs','test/transport-correlation-http.test.mjs'];
+  const files=['test/workflow-http.test.mjs','test/browser-process.test.mjs','test/transport-correlation-http.test.mjs','test/retry-http.test.mjs','test/doctor.test.mjs','test/project-autotick-noncodex.test.mjs'];
   const parts=command.split(' && ');
   const isolated=[];
   for(const file of files) {
@@ -189,8 +189,8 @@ export function markIsolatedQualificationPhases(command) {
     throw new Error('R157_PHASE_COMMAND_SHAPE_INVALID');
   const marked=parts.map((part,index)=>{
     const number=String(index).padStart(2,'0');
-    return 'echo RC_QUAL_PHASE_START_'+number+' && '+part+' && echo RC_QUAL_PHASE_PASS_'+number;
-  }).join(' && ');
+    return 'echo RC_QUAL_PHASE_START_'+number+'&&'+part+'&&echo RC_QUAL_PHASE_PASS_'+number;
+  }).join('&&');
   if(marked.length>7500)throw new Error('R157_PHASE_WINDOWS_CMD_LENGTH');
   return marked;
 }
