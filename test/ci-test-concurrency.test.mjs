@@ -279,8 +279,8 @@ test('Windows async HTTP startup is isolated exactly once in both check and test
 test('R157 qualifier markers are opt-in, index-only, and preserve all original commands',()=>{
   const sample='node --test test/a.test.mjs && node test/b.mjs';
   assert.equal(markIsolatedQualificationPhases(sample),
-    'echo RC_QUAL_PHASE_START_00 && node --test test/a.test.mjs && echo RC_QUAL_PHASE_PASS_00 && '+
-    'echo RC_QUAL_PHASE_START_01 && node test/b.mjs && echo RC_QUAL_PHASE_PASS_01');
+    'echo RC_QUAL_PHASE_START_00&&node --test test/a.test.mjs&&echo RC_QUAL_PHASE_PASS_00&&'+
+    'echo RC_QUAL_PHASE_START_01&&node test/b.mjs&&echo RC_QUAL_PHASE_PASS_01');
   assert.throws(()=>markIsolatedQualificationPhases('echo untrusted command'),/R157_PHASE_COMMAND_SHAPE_INVALID/);
   const pkg=JSON.parse(read('package.json'));
   const bounded=boundNodeTestConcurrency(pkg.scripts.test,1);
@@ -306,7 +306,7 @@ test('R157 qualifier markers are opt-in, index-only, and preserve all original c
   assert.equal((marked.match(/RC_QUAL_PHASE_START_\d{2}/g)||[]).length,groups.length);
   assert.equal((marked.match(/RC_QUAL_PHASE_PASS_\d{2}/g)||[]).length,groups.length);
   for(const [index,part] of groups.entries()){
-    assert.ok(marked.includes('RC_QUAL_PHASE_START_'+String(index).padStart(2,'0')+' && '+part+' && echo RC_QUAL_PHASE_PASS_'+String(index).padStart(2,'0')),
+    assert.ok(marked.includes('RC_QUAL_PHASE_START_'+String(index).padStart(2,'0')+'&&'+part+'&&echo RC_QUAL_PHASE_PASS_'+String(index).padStart(2,'0')),
       'each exact original command is preserved in its own observed phase');
   }
   const wrapper=read('tools/run-bounded-test-script.mjs');
@@ -549,7 +549,7 @@ test('Windows startup-sensitive HTTP fixtures stay exact, early, and individuall
   before=isolateWindowsTimingSensitiveRegressions(before);
   before=isolateWindowsWorkflowPlanRegression(before);
   before=isolateWindowsMcpConformanceRegression(before);
-  const names=['test/workflow-http.test.mjs','test/browser-process.test.mjs','test/transport-correlation-http.test.mjs','test/retry-http.test.mjs'];
+  const names=['test/workflow-http.test.mjs','test/browser-process.test.mjs','test/transport-correlation-http.test.mjs','test/retry-http.test.mjs','test/doctor.test.mjs','test/project-autotick-noncodex.test.mjs'];
   const after=isolateWindowsStartupReadinessRegressions(before);
   const expected=names.map(file=>'node --test --test-concurrency=1 '+file).join(' && ')+' && ';
   assert.ok(after.startsWith(expected));
@@ -564,7 +564,13 @@ test('Windows startup-sensitive HTTP fixtures stay exact, early, and individuall
   }
   const cold=prioritizeWindowsAdaptiveCold(after).split(' && ');
   assert.equal(cold[0],'node --test --test-concurrency=1 test/project-adaptive.test.mjs');
-  assert.deepEqual(cold.slice(1,5),names.map(file=>'node --test --test-concurrency=1 '+file));
+  assert.deepEqual(cold.slice(1,1+names.length),names.map(file=>'node --test --test-concurrency=1 '+file));
+  // R157 actual full-chain envelope: exact original file cardinality, every phase
+  // retains its start/pass marker and the existing Windows command cap remains 7500.
+  const phases=markIsolatedQualificationPhases(cold.join(' && '));
+  assert.ok(phases.length<7500,'actual full qualification command must fit R157 cmd.exe cap');
+  assert.equal((phases.match(/RC_QUAL_PHASE_START_/g)||[]).length,cold.length);
+  assert.equal((phases.match(/RC_QUAL_PHASE_PASS_/g)||[]).length,cold.length);
   assert.ok(read('test/transport-correlation-http.test.mjs').includes('30000'),
     'host regression preserves the original 30-second readiness deadline');
   assert.ok(read('test/retry-http.test.mjs').includes('startupDeadline = Date.now() + 30000'),
