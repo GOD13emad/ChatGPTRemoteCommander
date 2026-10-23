@@ -36,12 +36,10 @@ if (-not $SelfTest) {
   $mutex = [Threading.Mutex]::new($false, 'Local\ChatGPTRemoteCommanderSupervisor', [ref]$created)
   if (-not $created) { exit 0 }
 }
-
 function Get-McpHealth([int]$Port) {
   try { return Invoke-RestMethod "http://127.0.0.1:$Port/health" -TimeoutSec 2 }
   catch { return $null }
 }
-
 function Test-McpHealth([int]$Port,[string]$ExpectedConfigSha='',[string]$ExpectedProfile='') {
   $h = Get-McpHealth $Port
   if (-not $h -or -not $h.ok -or $h.name -ne 'chatgpt-remote-commander') { return $false }
@@ -72,7 +70,6 @@ function Find-TunnelExe {
 
   return $exe
 }
-
 function Get-InstanceRecord([string]$Profile) {
   if (-not (Test-RcProfileName $Profile)) { throw "invalid instance profile $Profile" }
   $dir = Join-Path $InstanceRoot $Profile
@@ -91,7 +88,6 @@ function Get-InstanceRecord([string]$Profile) {
   if ([int]$cfg.port -ne $port -or [string]$cfg.instance.profile -ne $Profile -or $cfg.instance.isolated -ne $true) { throw "instance config identity mismatch $Profile" }
   return [pscustomobject]@{ Profile=$Profile; Port=$port; ConfigPath=$actualConfig; ConfigSha256=$sha; StateDir=$dir }
 }
-
 function Stop-OwnedMcpInstance($Instance, [int]$ListenerPid) {
   $markerFile = Join-Path $Instance.StateDir 'mcp-runtime.json'
   if (-not (Test-Path -LiteralPath $markerFile -PathType Leaf)) {
@@ -111,7 +107,6 @@ function Stop-OwnedMcpInstance($Instance, [int]$ListenerPid) {
   }
   throw "owned instance did not release port $($Instance.Port)"
 }
-
 function Start-McpInstance($Instance) {
   if (Test-McpHealth $Instance.Port $Instance.ConfigSha256 $Instance.Profile) { return }
   $listener = Get-NetTCPConnection -State Listen -LocalPort $Instance.Port -ErrorAction SilentlyContinue | Select-Object -First 1
@@ -162,12 +157,10 @@ function Get-ManagedProfiles {
   }
   return $items
 }
-
 function Test-TunnelReady([int]$Port) {
   if ($Port -le 0) {
     return $false
   }
-
   try {
     $response = Invoke-WebRequest -Uri "http://127.0.0.1:$Port/readyz" -UseBasicParsing -TimeoutSec 2
     return ($response.StatusCode -eq 200 -and $response.Content.Trim() -eq 'ready')
@@ -175,7 +168,6 @@ function Test-TunnelReady([int]$Port) {
     return $false
   }
 }
-
 $script:TunnelControlPlaneNextCheck = @{}; $script:TunnelControlPlaneLastState = @{}
 function Observe-TunnelControlPlane([string]$Profile,[int]$Port) {
   if($Port -le 0){return}; $now=[DateTimeOffset]::UtcNow; $next=$script:TunnelControlPlaneNextCheck[$Profile]
@@ -206,7 +198,6 @@ function Get-TunnelProcess([string]$Profile, [string]$Exe) {
     } |
     Select-Object -First 1
 }
-
 function Start-TunnelProfile($Item) {
   if (-not (Test-Path -LiteralPath $Item.Credential -PathType Leaf)) {
     throw "credential not enrolled for profile $($Item.Profile)"
@@ -265,7 +256,6 @@ function Start-TunnelProfile($Item) {
     $plain = $null
   }
 }
-
 . (Join-Path $Root 'supervisor-routing.ps1')
 
 if ($SelfTest) {
@@ -296,12 +286,10 @@ if ($SelfTest) {
   if (-not $result.ok) { exit 3 }
   exit 0
 }
-
 $missingLogged = @{}
 $ownerUnknownLogged = @{}
 try {
   Write-SupervisorLog "SUPERVISOR_STARTED pid=$PID root=$Root"
-
   while ($true) {
     try {
       $primaryReady=$true
