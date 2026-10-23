@@ -4,6 +4,8 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { guiToolDefinitions, validateGuiInput } from '../src/gui-contract.mjs';
+import {spawnSync} from 'node:child_process';
+import {fileURLToPath} from 'node:url';
 import { createGuiController } from '../src/gui-tools-windows.mjs';
 import { createGuiProcessClient, runGuiProcess } from '../src/gui-process.mjs';
 import { validateTransport } from '../src/transport-guard.mjs';
@@ -441,4 +443,167 @@ test('helper process JSON lifecycle, malformed JSON and output bounds',async()=>
     await assert.rejects(runGuiProcess({mode:'hang'},{...options,timeoutMs:200}),/GUI_HELPER_TIMEOUT/);
     await assert.rejects(runGuiProcess({}, {file:path.join(root,'not-an-executable'),args:[],timeoutMs:200}),/GUI_HELPER_START_FAILED/);
   } finally { await fs.rm(root,{recursive:true,force:true}); }
+});
+
+
+test('legacy helper startup is observation-only; no input request is sent',async()=>{
+ const folder=await fs.mkdtemp(path.join(os.tmpdir(),'rc-gui-coord-legacy-'));
+ let client;
+ try {
+  const helper=path.join(folder,'old-helper.cjs');
+  const code=[
+   "process.stdout.write(JSON.stringify({ok:true,ready:true,protocol:1})+'\\n');",
+   "let b='';let writes=0;process.stdin.setEncoding('utf8');",
+   "process.stdin.on('data',chunk=>{b+=chunk;for(;;){const i=b.indexOf('\\n');if(i<0)break;",
+   "const text=b.slice(0,i);b=b.slice(i+1);const request=JSON.parse(text);writes++;",
+   "process.stdout.write(JSON.stringify({ok:true,writes,action:request.action})+'\\n');}});"
+  ].join('');
+  await fs.writeFile(helper,code);
+  client=createGuiProcessClient({file:process.execPath,args:[helper],
+    startupTimeoutMs:2500,timeoutMs:2500,requireNativeInputCoordinator:true});
+  const status=await client.invoke({action:'status'});
+  assert.equal(status.ok,true);assert.equal(status.writes,1);
+  await assert.rejects(client.verifyNativeInputCoordinator(),
+    e=>e.guiCode==='GUI_HELPER_COORDINATOR_MISMATCH');
+  await assert.rejects(client.invoke({action:'click'}),
+    e=>e.guiCode==='GUI_HELPER_COORDINATOR_MISMATCH');
+  const second=await client.invoke({action:'status'});
+  assert.equal(second.writes,2,'Mutation was never written to old worker stdin');
+ } finally {client?.close();await fs.rm(folder,{recursive:true,force:true});}
+});
+
+test('versioned helper handshake admits native input without replay',async()=>{
+ const folder=await fs.mkdtemp(path.join(os.tmpdir(),'rc-gui-coord-v1-'));
+ let client;
+ try {
+  const helper=path.join(folder,'new-helper.cjs');
+  const code=[
+   "process.stdout.write(JSON.stringify({ok:true,ready:true,protocol:1,nativeInputCoordinator:1})+'\\n');",
+   "let b='';let writes=0;process.stdin.setEncoding('utf8');",
+   "process.stdin.on('data',chunk=>{b+=chunk;for(;;){const i=b.indexOf('\\n');if(i<0)break;",
+   "const text=b.slice(0,i);b=b.slice(i+1);const request=JSON.parse(text);writes++;",
+   "process.stdout.write(JSON.stringify({ok:true,writes,action:request.action})+'\\n');}});"
+  ].join('');
+  await fs.writeFile(helper,code);
+  client=createGuiProcessClient({file:process.execPath,args:[helper],
+    startupTimeoutMs:2500,timeoutMs:2500,requireNativeInputCoordinator:true});
+  assert.equal(await client.verifyNativeInputCoordinator(),true);
+  const result=await client.invoke({action:'click'});
+  assert.equal(result.action,'click');assert.equal(result.writes,1);
+ }finally{client?.close();await fs.rm(folder,{recursive:true,force:true});}
+});
+
+
+test('Linux exact native lock denial clears only its own new J01, without replay',async()=>{
+ const store=memoryIncidentStore();let inputCalls=0;
+ const s=setup({platform:'linux',incidentStore:store,invoke:async r=>{
+   if(r.action==='status')return {ok:true,available:true};
+   if(r.action==='screenshot')return image();
+   inputCalls++;
+   throw Object.assign(new Error('GUI_NATIVE_BUSY'),{
+     guiCode:'GUI_NATIVE_BUSY',guiNotApplied:true,guiNativeMutexPreDispatch:true
+   });
+ }});
+ const seen=await prepared(s);
+ await assert.rejects(s.run('gui_key_press',{...seen,keys:['A']}),/GUI_NATIVE_BUSY/);
+ assert.equal(await store.pending(),null);
+ assert.equal(inputCalls,1,'Native request never replayed');
+ const status=await s.run('gui_status');
+ assert.equal(status.available,true);
+ assert.equal(status.uncertain,undefined);
+});
+
+test('forged Linux lock denial without native receipt keeps J01 blocked',async()=>{
+ const store=memoryIncidentStore();
+ const s=setup({platform:'linux',incidentStore:store,invoke:async r=>{
+   if(r.action==='status')return {ok:true,available:true};
+   if(r.action==='screenshot')return image();
+   throw Object.assign(new Error('GUI_NATIVE_BUSY'),{
+     guiCode:'GUI_NATIVE_BUSY',guiNotApplied:true
+   });
+ }});
+ const a=await prepared(s);
+ await assert.rejects(s.run('gui_key_press',{...a,keys:['A']}),/GUI_NATIVE_BUSY/);
+ assert.equal((await store.pending()).tool,'gui_key_press');
+ assert.equal((await s.run('gui_status')).inputAvailable,false);
+});
+
+test('exact native mutex non-submission receipt is distinct from a forged expanded one',async()=>{
+ const root=await fs.mkdtemp(path.join(os.tmpdir(),'rc-linux-receipt-protocol-'));
+ try{
+  const helper=path.join(root,'receipt.cjs');
+  await fs.writeFile(helper,
+    "let raw='';process.stdin.on('data',c=>raw+=c);process.stdin.on('end',()=>{"+
+    "const request=JSON.parse(raw);const r=request.forged?"+
+    "{ok:false,error:'GUI_NATIVE_BUSY',submission:'NOT_SUBMITTED',extra:true}:"+
+    "{ok:false,error:'GUI_NATIVE_BUSY',submission:'NOT_SUBMITTED'};"+
+    "process.stdout.write(JSON.stringify(r));});");
+  const opts={file:process.execPath,args:[helper],timeoutMs:3000};
+  await assert.rejects(runGuiProcess({action:'keyPress'},opts),error=>
+    error.guiCode==='GUI_NATIVE_BUSY'&&error.guiNativeMutexPreDispatch===true&&
+    error.guiNotApplied===true);
+  await assert.rejects(runGuiProcess({action:'keyPress',forged:true},opts),error=>
+    error.guiCode==='GUI_NATIVE_BUSY'&&error.guiNativeMutexPreDispatch!==true&&
+    error.guiNotApplied!==true);
+ }finally{await fs.rm(root,{recursive:true,force:true});}
+});
+
+test('coordinator mismatch before begin does not create a phantom J01 incident',async()=>{
+ const store=memoryIncidentStore();
+ const s=setup({incidentStore:store,prepareNativeInput:async()=>{
+  throw Object.assign(new Error('GUI_HELPER_COORDINATOR_MISMATCH'),{
+   guiCode:'GUI_HELPER_COORDINATOR_MISMATCH'
+  });
+ }});
+ const observed=await prepared(s);
+ await assert.rejects(s.run('gui_mouse_click',{...observed,x:-720,y:10}),
+   /GUI_HELPER_COORDINATOR_MISMATCH/);
+ assert.equal(await store.pending(),null,'No pre-dispatch incident created');
+ assert.equal(s.calls.length,2,'Only read-only status and screenshot reached stub helper');
+ await assert.rejects(s.run('gui_screenshot',{lease:observed.lease}),/GUI_LEASE_REQUIRED_OR_EXPIRED/);
+ const status=await s.run('gui_status');
+ assert.equal(status.available,true);
+});
+
+test('Windows native helper advertises exact coordination handshake without desktop input',{
+ skip:process.platform!=='win32'
+},()=>{
+ const helper=new URL('../tools/gui-control.ps1',import.meta.url);
+ const r=spawnSync('pwsh',['-NoLogo','-NoProfile','-NonInteractive','-File',
+    fileURLToPath(helper),'-Server'],{
+   encoding:'utf8',windowsHide:true,input:'',timeout:12000
+ });
+ assert.equal(r.status,0,r.stderr);
+ const first=r.stdout.trim().split(/\r?\n/)[0];
+ const payload=JSON.parse(first);
+ assert.equal(payload.ok,true);assert.equal(payload.ready,true);
+ assert.equal(payload.protocol,1);
+ assert.equal(payload.nativeInputCoordinator,1);
+});
+
+
+test('helper downgrade after initial attestation is rechecked before any input',async()=>{
+ const folder=await fs.mkdtemp(path.join(os.tmpdir(),'rc-gui-coord-downgrade-'));
+ let client;
+ try {
+  const helper=path.join(folder,'helper.cjs');
+  const template=verified=>[
+   "process.stdout.write(JSON.stringify({ok:true,ready:true,protocol:1"+
+     (verified?",nativeInputCoordinator:1":"")+"})+'\\n');",
+   "let buf='';let count=0;process.stdin.setEncoding('utf8');",
+   "process.stdin.on('data',chunk=>{buf+=chunk;for(;;){const i=buf.indexOf('\\n');",
+   "if(i<0)break;const t=buf.slice(0,i);buf=buf.slice(i+1);",
+   "const r=JSON.parse(t);count++;process.stdout.write(JSON.stringify({ok:true,count,action:r.action})+'\\n');}});"
+  ].join('');
+  await fs.writeFile(helper,template(true));
+  client=createGuiProcessClient({file:process.execPath,args:[helper],
+   timeoutMs:2500,startupTimeoutMs:2500,requireNativeInputCoordinator:true});
+  assert.equal(await client.verifyNativeInputCoordinator(),true);
+  client.close();
+  await fs.writeFile(helper,template(false));
+  await assert.rejects(client.invoke({action:'click'}),
+    e=>e.guiCode==='GUI_HELPER_COORDINATOR_MISMATCH');
+  assert.equal((await client.invoke({action:'status'})).count,1,
+   'A downgraded helper observed status but did not receive the click');
+ } finally {client?.close();await fs.rm(folder,{recursive:true,force:true});}
 });

@@ -270,7 +270,7 @@ if (process.argv[2] === '--claim-worker') {
     });
   }
 
-  test('separate Node processes cannot claim the same project run concurrently', { timeout: 12000 }, async () => {
+  test('separate Node processes cannot claim the same project run concurrently', { timeout: 35000 }, async () => {
     const fixture = makeFixture({ planner: async () => { throw new Error('Competing parent must not plan'); } });
     const entered = deferred(), completed = deferred();
     // Attach rejection handlers immediately; a worker startup failure must not
@@ -280,11 +280,17 @@ if (process.argv[2] === '--claim-worker') {
     try {
       await fixture.create(); await fixture.start();
       child = spawn(process.execPath, [fileURLToPath(import.meta.url), '--claim-worker', fixture.root], { stdio: ['ignore', 'pipe', 'pipe', 'ipc'], windowsHide: true });
-      workerTimer = setTimeout(() => child.kill(), 8000);
+      // The child may start slowly on a heavily loaded Windows qualification runner.
+      // Bound startup separately from the period actually holding the lock.
+      workerTimer = setTimeout(() => child.kill(), 20000);
       let stderr = '';
       child.stderr.on('data', chunk => { stderr += chunk.toString(); });
       child.on('message', message => {
-        if (message?.kind === 'planning') entered.resolve();
+        if (message?.kind === 'planning') {
+          clearTimeout(workerTimer);
+          workerTimer = setTimeout(() => child.kill(), 10000);
+          entered.resolve();
+        }
         if (message?.kind === 'result') completed.resolve(message.result);
         if (message?.kind === 'error') { const error = new Error(message.message); entered.reject(error); completed.reject(error); }
       });

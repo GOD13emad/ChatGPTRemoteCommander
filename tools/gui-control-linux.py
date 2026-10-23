@@ -1,10 +1,18 @@
 #!/usr/bin/env python3
 import base64, json, os, sys, time, select
-import gi
-gi.require_version('Gio','2.0')
-gi.require_version('GLib','2.0')
-gi.require_version('GdkPixbuf','2.0')
-from gi.repository import Gio, GLib, GdkPixbuf
+import fcntl, stat
+# Isolated cross-process coordinator tests import this module without a GNOME
+# desktop. Only that import mode may omit GI; direct GUI execution fails closed.
+try:
+    import gi
+    gi.require_version('Gio','2.0')
+    gi.require_version('GLib','2.0')
+    gi.require_version('GdkPixbuf','2.0')
+    from gi.repository import Gio, GLib, GdkPixbuf
+except ModuleNotFoundError as e:
+    if __name__ == '__main__' or e.name != 'gi':
+        raise
+    Gio = GLib = GdkPixbuf = None
 
 DEST='org.gnome.Shell'
 PATH='/org/gnome/Shell/Extensions/ChatGPTRemoteCommander'
@@ -16,6 +24,60 @@ MUTTER_SESSION_IFACE='org.gnome.Mutter.RemoteDesktop.Session'
 TOKEN_PATH=os.path.join(os.environ.get('XDG_CONFIG_HOME',os.path.expanduser('~/.config')),'chatgpt-remote-commander','gui-extension-token')
 GLOBAL_STOP=os.path.join(os.environ.get('XDG_STATE_HOME',os.path.expanduser('~/.local/state')),'chatgpt-remote-commander','GUI_STOP')
 OPERATION_TIMEOUT_S=6.0
+
+# Account-wide advisory native input serialization for participating Linux
+# helpers. /run/user/<uid> is stable across the account's desktop sessions
+# on supported systemd hosts. It is NOT owner authentication and does not
+# compel old helpers or separate mount namespaces to participate.
+COORD_NAME='chatgpt-remote-commander-gui-input-v1.lock'
+MUTATING_ACTIONS=frozenset({'move','moveRelative','scroll','click','drag','typeText','keyPress','focusWindow'})
+
+def _native_input_lock(root=None):
+    # Root override is for isolated QA Python calls only; handle() never
+    # accepts a root from stdin, environment, config or an MCP request.
+    if root is None:
+        root='/run/user/'+str(os.getuid())
+    fd=None
+    try:
+        d=os.lstat(root)
+        if not stat.S_ISDIR(d.st_mode) or d.st_uid!=os.getuid() or d.st_mode & 0o077:
+            return None,'GUI_COORDINATOR_UNAVAILABLE'
+        name=os.path.join(root,COORD_NAME)
+        flags=os.O_CREAT|os.O_RDWR|os.O_NOFOLLOW|getattr(os,'O_CLOEXEC',0)
+        fd=os.open(name,flags,0o600)
+        st=os.fstat(fd)
+        named=os.lstat(name)
+        if (not stat.S_ISREG(st.st_mode) or st.st_uid!=os.getuid() or
+                st.st_nlink!=1 or st.st_mode & 0o077 or
+                (st.st_dev,st.st_ino)!=(named.st_dev,named.st_ino)):
+            os.close(fd)
+            return None,'GUI_COORDINATOR_UNAVAILABLE'
+        try: fcntl.flock(fd,fcntl.LOCK_EX|fcntl.LOCK_NB)
+        except BlockingIOError:
+            os.close(fd)
+            return None,'GUI_NATIVE_BUSY'
+        except OSError:
+            os.close(fd)
+            return None,'GUI_COORDINATOR_UNAVAILABLE'
+        named=os.lstat(name)
+        if (st.st_dev,st.st_ino)!=(named.st_dev,named.st_ino):
+            os.close(fd)
+            return None,'GUI_COORDINATOR_UNAVAILABLE'
+        return fd,None
+    except OSError:
+        if fd is not None:
+            try: os.close(fd)
+            except OSError: pass
+        return None,'GUI_COORDINATOR_UNAVAILABLE'
+
+def coordinated_native_result(run,root=None):
+    fd,error=_native_input_lock(root)
+    if error:
+        # Exact three-field pre-dispatch receipt; no native action was sent.
+        return {'ok':False,'error':error,'submission':'NOT_SUBMITTED'}
+    try: return run()
+    finally: os.close(fd)
+
 
 class GuiFailure(Exception):
     def __init__(self, code): super().__init__(code); self.code=code
@@ -405,10 +467,13 @@ def handle(req):
         rd=mutter_capabilities(); caps=dict(ext.get('capabilities') or {}); caps['mouse']=rd['available']; caps['keyboard']=rd['available']
         ext.update({'available':bool(ext.get('available',True) and rd['available']),'backend':'gnome-mutter-remote-desktop','inputTransport':'org.gnome.Mutter.RemoteDesktop','mutterRemoteDesktop':rd,'capabilities':caps})
         return ext
-    if action in {'move','moveRelative','scroll','click','drag','typeText','keyPress'}:
-        try: return handle_input(req)
-        except GuiFailure as e: return guierr(e.code)
-        except Exception: return guierr('GUI_MUTTER_REMOTE_DESKTOP_FAILED')
+    if action in MUTATING_ACTIONS:
+        def invoke_mutation():
+            if action=='focusWindow': return invoke_extension(req,6000)
+            try: return handle_input(req)
+            except GuiFailure as e: return guierr(e.code)
+            except Exception: return guierr('GUI_MUTTER_REMOTE_DESKTOP_FAILED')
+        return coordinated_native_result(invoke_mutation)
     r=invoke_extension(req,6000)
     if action=='screenshot' and r.get('ok'): return convert_screenshot(req,r)
     return r
@@ -419,7 +484,7 @@ def main():
         if not jpeg_ok: return 2
         rd=mutter_capabilities(); print(json.dumps({'ok':True,'python':sys.version.split()[0],'gdkPixbuf':True,'jpegRgbaEncode':True,'contract':2,'mutterRemoteDesktop':rd,'globalStop':GLOBAL_STOP})); return 0
     if '--server' in sys.argv:
-        print(json.dumps({'ok':True,'ready':True,'protocol':1}),flush=True)
+        print(json.dumps({'ok':True,'ready':True,'protocol':1,'nativeInputCoordinator':1}),flush=True)
         for line in sys.stdin:
             try: out=guierr('GUI_REQUEST_LIMIT') if len(line)>32768 else handle(json.loads(line))
             except Exception: out=guierr('GUI_NATIVE_FAILED')

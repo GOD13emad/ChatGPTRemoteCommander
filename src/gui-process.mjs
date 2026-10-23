@@ -1,6 +1,8 @@
 import { spawn } from 'node:child_process';
 import { guiError } from './gui-contract.mjs';
 
+const nativeMutationActions = new Set(['move','moveRelative','scroll','click','drag','typeText','keyPress','focusWindow']);
+
 function parseGuiResult(bytes) {
   let value;
   try {
@@ -12,15 +14,16 @@ function parseGuiResult(bytes) {
   if (value.ok !== true) {
     const safeCode = /^[A-Z][A-Z0-9_]{1,79}$/.test(value.error ?? '') ? value.error : 'GUI_NATIVE_FAILED';
     const failure = guiError(safeCode);
-    // Only the fixed Windows helper can report a mutex denial before dispatch.
+    // Only the pinned Windows helper's exact, pre-native guard refusal proves no input submission.
     // Exact closed schema: extra fields, naked errors and transport failures are unsafe.
-    if (safeCode === 'GUI_NATIVE_BUSY' && value.ok === false &&
-        value.error === 'GUI_NATIVE_BUSY' && value.submission === 'NOT_SUBMITTED' &&
+    if (['GUI_NATIVE_BUSY','GUI_COORDINATOR_UNAVAILABLE'].includes(safeCode) && value.ok === false &&
+        value.error === safeCode && value.submission === 'NOT_SUBMITTED' &&
         Object.getPrototypeOf(value) === Object.prototype &&
         Reflect.ownKeys(value).length === 3 &&
         ['ok','error','submission'].every(key => Object.hasOwn(value,key))) {
       failure.guiNotApplied = true;
-      failure.guiWindowsMutexPreDispatch = true;
+      failure.guiWindowsMutexPreDispatch = true; // Kept for existing Windows compatibility.
+      failure.guiNativeMutexPreDispatch = true;
     }
     // Only the pinned Linux native guard may attest rejection before input dispatch.
     if (safeCode === 'GUI_FOREGROUND_OR_GEOMETRY_CHANGED' &&
@@ -86,7 +89,8 @@ export function createGuiProcessClient({
   timeoutMs = 15000,
   startupTimeoutMs = 15000,
   maxBytes = 7 * 1024 * 1024,
-  env = process.env
+  env = process.env,
+  requireNativeInputCoordinator = false
 }) {
   let child = null;
   let buffer = Buffer.alloc(0);
@@ -94,6 +98,7 @@ export function createGuiProcessClient({
   let pending = null;
   let stderrBytes = 0;
   let intentionalClose = false;
+  let nativeInputCoordinatorReady = false;
 
   const clearPendingTimer = () => {
     if (pending?.timer) clearTimeout(pending.timer);
@@ -121,6 +126,7 @@ export function createGuiProcessClient({
       p.reject(error);
     }
     buffer = Buffer.alloc(0);
+    nativeInputCoordinatorReady = false;
     killChild();
   };
   const completeLine = line => {
@@ -141,6 +147,7 @@ export function createGuiProcessClient({
     }
     if (startup) {
       if (value.ready !== true || value.protocol !== 1) { fail('GUI_HELPER_BAD_JSON'); return; }
+      nativeInputCoordinatorReady = value.nativeInputCoordinator === 1;
       const s = startup;
       clearStartupTimer();
       startup = null;
@@ -175,6 +182,7 @@ export function createGuiProcessClient({
     intentionalClose = false;
     buffer = Buffer.alloc(0);
     stderrBytes = 0;
+    nativeInputCoordinatorReady = false;
     let spawned;
     try { spawned = spawn(file, args, { windowsHide: true, env, stdio: ['pipe', 'pipe', 'pipe'], shell: false }); }
     catch { return Promise.reject(guiError('GUI_HELPER_START_FAILED')); }
@@ -202,10 +210,20 @@ export function createGuiProcessClient({
     return promise;
   };
 
+  const verifyNativeInputCoordinator = async () => {
+    await start();
+    if (!child || child.exitCode !== null || child.killed) throw guiError('GUI_HELPER_EXIT_FAILED');
+    if (!nativeInputCoordinatorReady) throw guiError('GUI_HELPER_COORDINATOR_MISMATCH');
+    return true;
+  };
+
   const invoke = async request => {
     if (pending) throw guiError('GUI_HELPER_BUSY');
     await start();
     if (!child || child.exitCode !== null || child.killed) throw guiError('GUI_HELPER_EXIT_FAILED');
+    // Revalidate after every helper restart: a legacy helper may not receive input.
+    if (requireNativeInputCoordinator && nativeMutationActions.has(request?.action) && !nativeInputCoordinatorReady)
+      throw guiError('GUI_HELPER_COORDINATOR_MISMATCH');
     return new Promise((resolve, reject) => {
       pending = {
         resolve,
@@ -234,8 +252,9 @@ export function createGuiProcessClient({
       p.reject(guiError('GUI_HELPER_EXIT_FAILED'));
     }
     buffer = Buffer.alloc(0);
+    nativeInputCoordinatorReady = false;
     killChild();
   };
 
-  return { invoke, close };
+  return { invoke, close, verifyNativeInputCoordinator };
 }

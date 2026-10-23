@@ -19,13 +19,19 @@ const backendSpec = platform => platform === 'win32'
     ? { file: 'python3', args: [linuxHelper, '--server'], oneShotArgs: [linuxHelper] }
     : null;
 const defaultBackend = backendSpec(process.platform);
-const persistentHelper = defaultBackend ? createGuiProcessClient({ file: defaultBackend.file, args: defaultBackend.args }) : null;
+const persistentHelper = defaultBackend ? createGuiProcessClient({ file: defaultBackend.file, args: defaultBackend.args, requireNativeInputCoordinator: process.platform === 'win32' || process.platform === 'linux' }) : null;
 const invokeDefault = request => {
   if (persistentHelper) return persistentHelper.invoke(request);
   if (!defaultBackend) throw guiError('GUI_PLATFORM_BACKEND_UNSUPPORTED');
   return runGuiProcess(request, { file: defaultBackend.file, args: defaultBackend.oneShotArgs });
 };
 const closeInvokeDefault = () => persistentHelper?.close();
+const prepareNativeInputDefault = async () => {
+  // Require a freshly validated *process* handshake before reserving J01.
+  // An older helper may still serve read-only observation, but cannot mutate.
+  if (!persistentHelper) throw guiError('GUI_HELPER_COORDINATOR_MISMATCH');
+  await persistentHelper.verifyNativeInputCoordinator();
+};
 async function stopped() {
   for (const candidate of [stopFile, globalStopFile].filter(Boolean)) {
     try { await access(candidate); return true; }
@@ -41,7 +47,8 @@ const bound = (v, low, high, defaultValue) => Number.isSafeInteger(v) ? Math.max
  * application coordination; distinct trust levels require separate OS sessions.
  */
 export function createGuiController({ platform = process.platform, now = () => performance.now(), token = () => randomBytes(24).toString('hex'), isStopped = stopped,
-  invoke = invokeDefault, closeInvoke = closeInvokeDefault, incidentStore = createGuiInputIncidentStore() } = {}) {
+  invoke = invokeDefault, closeInvoke = closeInvokeDefault, incidentStore = createGuiInputIncidentStore(),
+  prepareNativeInput = invoke === invokeDefault && ['win32','linux'].includes(platform) ? prepareNativeInputDefault : null } = {}) {
   let session = null;
   let frame = null;
   let busy = false;
@@ -62,9 +69,12 @@ export function createGuiController({ platform = process.platform, now = () => p
     const supported = platform === 'win32' || platform === 'linux';
     const enabled = supported && power?.enabled === true && cfg.enabled === true;
     const blocked = await isStopped();
-    let pendingIncident = null, incidentStoreUnavailable = false;
+    let pendingIncident = null, incidentStoreUnavailable = false, incidentRecoveryRequired = false;
     try { pendingIncident = await incidentStore.pending(); }
-    catch { incidentStoreUnavailable = true; } // A corrupt/unreadable record never grants input.
+    catch (error) { incidentStoreUnavailable = true; incidentRecoveryRequired = error?.guiCode === 'GUI_INCIDENT_RECOVERY_REQUIRED'; } // Never grant input from an unresolved record.
+    // Never interpret a user-writable review receipt, restart or missing
+    // journal as an authenticated owner release. A native result is the only
+    // automatic resolution allowed by this controller.
     const uncertainNow = uncertain || !!pendingIncident;
     // Any observed safety stop, disabled input or unreadable J01 evidence
     // permanently revokes a preexisting takeover lease. Recovery of the
@@ -77,10 +87,10 @@ export function createGuiController({ platform = process.platform, now = () => p
       frame = null;
     }
     if (name === 'gui_status' && (!enabled || blocked || incidentStoreUnavailable)) return {
-      enabled, available: false, inputAvailable: false, blocked, uncertain: uncertainNow,
+      enabled, available: false, inputAvailable: false, blocked, uncertain: uncertainNow, incidentRecoveryRequired,
       busy, leased: !!current(), incidentStoreUnavailable, incidentPending: !!pendingIncident,
       reason: !supported ? 'PLATFORM_BACKEND_UNSUPPORTED' : blocked ? 'LOCAL_GUI_STOP' :
-        incidentStoreUnavailable ? 'GUI_INCIDENT_STORAGE_UNAVAILABLE' : 'GUI_DISABLED'
+        incidentStoreUnavailable ? (incidentRecoveryRequired ? 'GUI_INCIDENT_RECOVERY_REQUIRED' : 'GUI_INCIDENT_STORAGE_UNAVAILABLE') : 'GUI_DISABLED'
     };
     if (!enabled) throw guiError('GUI_DISABLED_OR_UNSUPPORTED');
     if (blocked) throw guiError('GUI_LOCAL_STOP');
@@ -176,6 +186,16 @@ export function createGuiController({ platform = process.platform, now = () => p
         request.maxWidth = Math.min(parameters.maxWidth ?? 1600, bound(cfg.maxScreenshotWidth, 320, 1920, 1600));
         request.maxBytes = bound(cfg.maxScreenshotBytes, 262144, 4194304, 2097152);
       }
+      // Verify the pinned Windows helper *before* creating pending native-effect
+      // evidence. A mixed-version old helper is not admitted for input, although
+      // it may continue to serve read-only screenshot/status commands.
+      if (isInput && prepareNativeInput) {
+        try { await prepareNativeInput(); }
+        catch (error) {
+          session = null; frame = null; closeInvoke();
+          throw error?.guiCode ? error : guiError('GUI_HELPER_COORDINATOR_MISMATCH');
+        }
+      }
       // Write and fsync a minimal private pending record BEFORE any mutating helper call.
       // A crash between dispatch and native acknowledgment must not reset safety on restart.
       let pendingHandle = null;
@@ -193,17 +213,21 @@ export function createGuiController({ platform = process.platform, now = () => p
           // Exact Linux click pre-dispatch rejection only; no input was ever applied.
           const linuxNotApplied = platform === 'linux' && name === 'gui_mouse_click' &&
             error?.guiCode === 'GUI_FOREGROUND_OR_GEOMETRY_CHANGED' && error?.guiNotApplied === true;
-          // Windows focus only: native helper's exact pre-dispatch mutex receipt.
+          // Windows: exact closed-schema native pre-dispatch denial before ANY GUI input.
           // Does not resolve historical incidents, change other input, or permit replay.
-          const windowsMutexNotSubmitted = platform === 'win32' && name === 'gui_focus_window' &&
-            error?.guiCode === 'GUI_NATIVE_BUSY' && error?.guiNotApplied === true &&
+          const windowsMutexNotSubmitted = platform === 'win32' &&
+            ['GUI_NATIVE_BUSY','GUI_COORDINATOR_UNAVAILABLE'].includes(error?.guiCode) && error?.guiNotApplied === true &&
             error?.guiWindowsMutexPreDispatch === true;
-          const provenNoEffect = linuxNotApplied || windowsMutexNotSubmitted;
+          const linuxMutexNotSubmitted = platform === 'linux' &&
+            ['GUI_NATIVE_BUSY','GUI_COORDINATOR_UNAVAILABLE'].includes(error?.guiCode) &&
+            error?.guiNotApplied === true && error?.guiNativeMutexPreDispatch === true;
+          const provenNoEffect = linuxNotApplied || windowsMutexNotSubmitted || linuxMutexNotSubmitted;
           if (provenNoEffect) {
             try { await incidentStore.resolve(pendingHandle); }
             catch { uncertain = true; session = null; frame = null; closeInvoke(); throw guiError('GUI_INCIDENT_STORAGE_UNAVAILABLE'); }
           }
           uncertain = !provenNoEffect;
+
           session = null; frame = null; closeInvoke();
         }
         throw error;

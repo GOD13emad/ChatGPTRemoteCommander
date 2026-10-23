@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
+import {spawnSync} from 'node:child_process';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {runGuiProcess,createGuiProcessClient} from '../src/gui-process.mjs';
@@ -35,7 +36,9 @@ async function armed(c) {
 test('one-shot helper recognizes only exact three-field pre-dispatch Windows mutex receipt',async()=>{
   await assert.rejects(runGuiProcess({action:'focusWindow'},{file:process.execPath,args:[fixture,'oneshot','valid'],timeoutMs:6000}),
     e=>e.guiCode==='GUI_NATIVE_BUSY' && e.guiNotApplied===true && e.guiWindowsMutexPreDispatch===true);
-  for(const variant of ['missing','extra','forged','wrong']) {
+  await assert.rejects(runGuiProcess({action:'focusWindow'},{file:process.execPath,args:[fixture,'oneshot','coordinator'],timeoutMs:6000}),
+    e=>e.guiCode==='GUI_COORDINATOR_UNAVAILABLE' && e.guiNotApplied===true && e.guiWindowsMutexPreDispatch===true);
+  for(const variant of ['missing','extra','forged','wrong','coordinatorExtra','coordinatorMissing']) {
     await assert.rejects(runGuiProcess({action:'focusWindow'},{file:process.execPath,args:[fixture,'oneshot',variant],timeoutMs:6000}),
       e=>e.guiNotApplied!==true && e.guiWindowsMutexPreDispatch!==true);
   }
@@ -96,4 +99,50 @@ test('Windows status failure never claims live desktop readiness',async()=>{
   await assert.rejects(c.execute(config,'gui_status',{}),/GUI_NATIVE_BUSY/);
   await assert.rejects(c.execute(config,'gui_session_begin',{mode:'observe'}),/GUI_NATIVE_BUSY/);
   assert.equal(calls,2);
+});
+
+test('exact native no-dispatch receipt clears pending for all GUI input families',async()=>{
+ const actions=[
+  ['gui_mouse_move',{x:12,y:16}],
+  ['gui_mouse_delta',{dx:1,dy:2}],
+  ['gui_mouse_scroll',{delta:120}],
+  ['gui_mouse_click',{x:12,y:16}],
+  ['gui_mouse_drag',{from:{x:12,y:16},to:{x:20,y:25}}],
+  ['gui_type_text',{text:'fixture-only-NEVER_TYPE'}],
+  ['gui_key_press',{keys:['ENTER']}],
+  ['gui_focus_window',{handle:'111'}]
+ ];
+ for(const kind of ['valid','coordinator']) {
+  for(const [tool,params] of actions) {
+   await withStore(async file=>{
+    const store=createGuiInputIncidentStore({file});
+    let attempts=0;
+    const c=fake(store,async()=>{
+     attempts++;
+     return runGuiProcess({action:'focusWindow'},{
+      file:process.execPath,args:[fixture,'oneshot',kind],timeoutMs:6000
+     });
+    });
+    const owner=await armed(c);
+    const code=kind==='valid'?'GUI_NATIVE_BUSY':'GUI_COORDINATOR_UNAVAILABLE';
+    await assert.rejects(c.run(tool,{...owner,...params}),e=>e.guiCode===code);
+    assert.equal(attempts,1,'Exactly one native helper call, no replay');
+    assert.equal(await store.pending(),null,'Proven not-submitted input is not durable UNKNOWN');
+    await assert.rejects(c.run('gui_screenshot',{lease:owner.lease}),/GUI_LEASE_REQUIRED_OR_EXPIRED/);
+   });
+  }
+ }
+});
+test('native Windows coordinator ACL QA is private and never opens production mutex',{
+ skip:process.platform!=='win32'
+},()=>{
+ const p=fileURLToPath(new URL('../tools/gui-control.ps1',import.meta.url));
+ const r=spawnSync('pwsh',['-NoLogo','-NoProfile','-NonInteractive','-File',p,'-CoordinatorSelfTest'],{
+  encoding:'utf8',windowsHide:true,timeout:12000
+ });
+ assert.equal(r.status,0,r.stderr);
+ const q=JSON.parse(r.stdout.trim());
+ assert.equal(q.ok,true);assert.equal(q.fixtureOnly,true);
+ assert.equal(q.aclVerified,true);assert.equal(q.acquired,true);
+ assert.equal(q.noDesktopOrProductionMutexTouched,true);
 });
