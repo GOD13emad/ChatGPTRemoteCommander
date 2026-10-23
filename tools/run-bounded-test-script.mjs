@@ -273,8 +273,13 @@ export function prioritizeWindowsAdaptiveCold(command) {
     throw new Error('CI_COLD_ADAPTIVE_CARDINALITY');
   const index=parts.indexOf(exact);
   if (index<0)throw new Error('CI_COLD_ADAPTIVE_NOT_ISOLATED');
+  const lease='node --test --test-concurrency=1 test/project-engine-integration.test.mjs';
+  if(parts.filter(part=>part.includes('test/project-engine-integration.test.mjs')).length!==1)
+    throw new Error('CI_COLD_LEASE_CARDINALITY');
+  if(!parts.includes(lease))throw new Error('CI_COLD_LEASE_NOT_ISOLATED');
   parts.splice(index,1);
-  return [exact,...parts].join(' && ');
+  parts.splice(parts.indexOf(lease),1);
+  return [exact,lease,...parts].join(' && ');
 }
 
 export function parseQualificationArgs(argv){

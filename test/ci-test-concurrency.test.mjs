@@ -527,10 +527,14 @@ test('strict Windows adaptive fixture is scheduled cold with all original groups
   const result=prioritizeWindowsAdaptiveCold(cmd);
   const next=result.split(' && ');
   assert.equal(next[0],target);
-  assert.deepEqual(next.slice(1),old.filter(c=>c!==target),'no other group order or body changes');
+  const lease='node --test --test-concurrency=1 test/project-engine-integration.test.mjs';
+  assert.equal(next[1],lease,'scheduler integration runs second before load fixtures');
+  assert.deepEqual(next.slice(2),old.filter(c=>c!==target&&c!==lease),'all remaining groups unchanged');
+  assert.ok(markIsolatedQualificationPhases(result).length<7500,'original R157 cmd bound unchanged');
   for(const c of old)assert.equal(next.filter(x=>x===c).length,old.filter(x=>x===c).length);
   assert.equal(markIsolatedQualificationPhases(result).match(/RC_QUAL_PHASE_START_/g).length,next.length);
   assert.throws(()=>prioritizeWindowsAdaptiveCold(result+' && '+target),/CI_COLD_ADAPTIVE_CARDINALITY/);
+  assert.throws(()=>prioritizeWindowsAdaptiveCold(result+' && '+lease),/CI_COLD_LEASE_CARDINALITY/);
   assert.throws(()=>prioritizeWindowsAdaptiveCold('node --test test/project-adaptive.test.mjs'),/CI_COLD_ADAPTIVE_NOT_ISOLATED/);
   assert.throws(()=>prioritizeWindowsAdaptiveCold('node --test test/other.test.mjs'),/CI_COLD_ADAPTIVE_CARDINALITY/);
   assert.ok(read('test/project-adaptive.test.mjs').includes("{ timeout: 6000 }"),'original strict test deadline unchanged');
@@ -564,7 +568,8 @@ test('Windows startup-sensitive HTTP fixtures stay exact, early, and individuall
   }
   const cold=prioritizeWindowsAdaptiveCold(after).split(' && ');
   assert.equal(cold[0],'node --test --test-concurrency=1 test/project-adaptive.test.mjs');
-  assert.deepEqual(cold.slice(1,1+names.length),names.map(file=>'node --test --test-concurrency=1 '+file));
+  assert.equal(cold[1],'node --test --test-concurrency=1 test/project-engine-integration.test.mjs');
+  assert.deepEqual(cold.slice(2,2+names.length),names.map(file=>'node --test --test-concurrency=1 '+file));
   // R157 actual full-chain envelope: exact original file cardinality, every phase
   // retains its start/pass marker and the existing Windows command cap remains 7500.
   const phases=markIsolatedQualificationPhases(cold.join(' && '));
