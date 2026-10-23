@@ -14,6 +14,14 @@ TARGET="$(git -C "$WORKSPACE" rev-parse HEAD)"
 EXPECTED="$1"
 BASELINE='362375c464948be3001b307650c13fc3353ed05b'
 [[ "$TARGET" == "$EXPECTED" && "$TARGET" =~ ^[a-f0-9]{40}$ ]] || { echo R170_SOURCE_SHA_MISMATCH >&2; exit 62; }
+# Reject a source checkout already dirty at job start. This distinguishes a
+# malformed tracked blob from a mutation caused by the promotion/rollback.
+# Report only Git path statuses; never clean/reset and never bypass the gate.
+if [[ -n "$(git -C "$WORKSPACE" status --porcelain)" ]]; then
+  echo R170_SOURCE_PREEXISTING_DIRTY >&2
+  git -C "$WORKSPACE" status --short >&2
+  exit 77
+fi
 SOURCE_VERSION="$(node -p "require('$WORKSPACE/package.json').version")"
 [[ "$SOURCE_VERSION" == 0.10.24 || "$SOURCE_VERSION" == 0.10.25 || "$SOURCE_VERSION" == 0.10.26 ]] || { echo R170_SOURCE_VERSION_NOT_QUALIFIED >&2; exit 63; }
 echo "R170_ISOLATED_SOURCE_VERSION=$SOURCE_VERSION releaseAuthorization=false"
