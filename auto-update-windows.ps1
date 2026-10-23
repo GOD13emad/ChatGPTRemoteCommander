@@ -308,11 +308,28 @@ function Stage-Release([string]$Ref){
 }
 function Assert-CompleteCandidateAuditHistory {
   param([Parameter(Mandatory)][string]$Candidate,[string]$ExpectedSha='',[Parameter(Mandatory)][string]$AllowedOrigin)
+  function Test-HistoricalEolOnly {
+    param([string]$Candidate,[string]$ExpectedSha,[string]$AllowedOrigin,[string[]]$Changed)
+    # Only the immutable v0.10.20 baseline EOL anomaly is permitted.
+    # Other tracked/staged changes and untrusted origins still fail closed.
+    $baseline='362375c464948be3001b307650c13fc3353ed05b'
+    if ($ExpectedSha -cne $baseline -or $Changed.Count -ne 1 -or $Changed[0] -cne ' M enable-boot-recovery.ps1') { return $false }
+    $origin=(& git.exe -C $Candidate remote get-url origin).Trim()
+    if ($LASTEXITCODE -ne 0 -or $origin -cne $AllowedOrigin) { return $false }
+    & git.exe -C $Candidate diff --cached --quiet --
+    if ($LASTEXITCODE -ne 0) { return $false }
+    & git.exe -C $Candidate diff --ignore-space-at-eol --quiet --
+    if ($LASTEXITCODE -ne 0) { return $false }
+    return $true
+  }
   $expected=(& git.exe -C $Candidate rev-parse HEAD).Trim().ToLowerInvariant()
   if ($LASTEXITCODE -ne 0 -or $expected -notmatch '^[0-9a-f]{40}$') { throw 'INSTALL_AUDIT_HEAD_INVALID' }
   if ($ExpectedSha -and $expected -ne $ExpectedSha.ToLowerInvariant()) { throw 'INSTALL_AUDIT_HEAD_MISMATCH' }
   $dirty=@(& git.exe -C $Candidate status --porcelain --untracked-files=no)
-  if ($LASTEXITCODE -ne 0 -or $dirty.Count -gt 0) { throw 'INSTALL_AUDIT_TRACKED_TREE_DIRTY' }
+  $dirtyExit=$LASTEXITCODE
+  if ($dirtyExit -ne 0 -or ($dirty.Count -gt 0 -and -not (Test-HistoricalEolOnly -Candidate $Candidate -ExpectedSha $ExpectedSha -AllowedOrigin $AllowedOrigin -Changed $dirty))) {
+    throw 'INSTALL_AUDIT_TRACKED_TREE_DIRTY'
+  }
   $shallow=(& git.exe -C $Candidate rev-parse --is-shallow-repository).Trim()
   if ($LASTEXITCODE -ne 0 -or $shallow -notin @('true','false')) { throw 'INSTALL_AUDIT_SHALLOW_STATE_INVALID' }
   if ($shallow -eq 'true') {
@@ -342,7 +359,9 @@ function Assert-CompleteCandidateAuditHistory {
   $after=(& git.exe -C $Candidate rev-parse HEAD).Trim().ToLowerInvariant()
   $isShallow=(& git.exe -C $Candidate rev-parse --is-shallow-repository).Trim()
   $afterDirty=@(& git.exe -C $Candidate status --porcelain --untracked-files=no)
-  if ($LASTEXITCODE -ne 0 -or $after -ne $expected -or $isShallow -ne 'false' -or $afterDirty.Count -gt 0) {
+  $afterStatus=$LASTEXITCODE
+  if ($afterStatus -ne 0 -or $after -ne $expected -or $isShallow -ne 'false' -or
+      ($afterDirty.Count -gt 0 -and -not (Test-HistoricalEolOnly -Candidate $Candidate -ExpectedSha $ExpectedSha -AllowedOrigin $AllowedOrigin -Changed $afterDirty))) {
     throw 'INSTALL_AUDIT_HISTORY_INTEGRITY_FAILED'
   }
   Write-Host 'INSTALL_AUDIT_FULL_HISTORY_PASS'
