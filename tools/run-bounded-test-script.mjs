@@ -158,7 +158,7 @@ export function isolateWindowsTransferMeshHttpRegression(command) {
  */
 export function isolateWindowsStartupReadinessRegressions(command) {
   if(typeof command!=='string'||!command)throw new Error('CI_STARTUP_READINESS_COMMAND_INVALID');
-  const files=['test/workflow-http.test.mjs','test/browser-process.test.mjs','test/transport-correlation-http.test.mjs','test/retry-http.test.mjs'];
+  const files=['test/workflow-http.test.mjs','test/browser-process.test.mjs','test/transport-correlation-http.test.mjs','test/retry-http.test.mjs','test/doctor.test.mjs','test/project-autotick-noncodex.test.mjs'];
   const parts=command.split(' && ');
   const isolated=[];
   for(const file of files) {
