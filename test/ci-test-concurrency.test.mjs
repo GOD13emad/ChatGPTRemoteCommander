@@ -5,7 +5,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { boundNodeTestConcurrency, parseQualificationArgs, prioritizeSensitiveQualificationCommands, isolateWindowsLeaseRegression, isolateWindowsTimingSensitiveRegressions, isolateWindowsProcessTreeRegression, isolateWindowsAgentHttpRegression, isolateWindowsTransferMeshHttpRegression, isolateWindowsWorkflowPlanRegression, isolateWindowsAsyncHttpRegression, isolateWindowsMcpConformanceRegression, prioritizeWindowsAdaptiveCold, markIsolatedQualificationPhases } from '../tools/run-bounded-test-script.mjs';
+import { boundNodeTestConcurrency, parseQualificationArgs, prioritizeSensitiveQualificationCommands, isolateWindowsLeaseRegression, isolateWindowsTimingSensitiveRegressions, isolateWindowsProcessTreeRegression, isolateWindowsAgentHttpRegression, isolateWindowsTransferMeshHttpRegression, isolateWindowsWorkflowPlanRegression, isolateWindowsAsyncHttpRegression, isolateWindowsMcpConformanceRegression, prioritizeWindowsAdaptiveCold, isolateWindowsProjectEngineRecoveryRegressions, markIsolatedQualificationPhases } from '../tools/run-bounded-test-script.mjs';
 
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const read=rel=>fs.readFileSync(path.join(root,rel),'utf8');
@@ -88,6 +88,40 @@ test('hosted Windows priority mode runs scheduler-sensitive isolated fixtures be
 });
 
 
+test('R157 isolated Windows engine recovery is bounded and preserves full test coverage',async()=>{
+  const {planProjectEngineRecoveryFixtures}=await import('../tools/run-project-engine-recovery-fixtures.mjs');
+  const file='test/project-engine-integration.test.mjs';
+  const exact='node --test --test-concurrency=1 '+file;
+  const actual=isolateWindowsProjectEngineRecoveryRegressions(exact+' && node --test --test-concurrency=1 test/other.test.mjs');
+  assert.equal(actual,'node tools/run-project-engine-recovery-fixtures.mjs && node --test --test-concurrency=1 test/other.test.mjs');
+  assert.throws(()=>isolateWindowsProjectEngineRecoveryRegressions(exact+' && '+exact),/CI_ENGINE_RECOVERY_CARDINALITY/);
+  assert.throws(()=>isolateWindowsProjectEngineRecoveryRegressions('node --test --test-concurrency=1 test/other.test.mjs'),/CI_ENGINE_RECOVERY_CARDINALITY/);
+  const plans=planProjectEngineRecoveryFixtures();
+  assert.equal(plans.length,3);
+  assert.ok(plans[0].some(x=>x.includes('automatic scheduler never plans')));
+  assert.ok(plans[1].some(x=>x.includes('tampered project import')));
+  assert.ok(plans[2].some(x=>x.startsWith('--test-skip-pattern=')&&x.includes('automatic scheduler')&&x.includes('tampered project import')));
+  assert.ok(plans.every(x=>x.at(-1)===file&&x.includes('--test-concurrency=1')));
+  const source=read(file);
+  for(const name of ['automatic scheduler never plans an unenrolled workflow and completes only after explicit enrollment','tampered project import after crash blocks recovery without replay'])
+    assert.equal(source.split("test('"+name+"'").length-1,1,'original assertion unchanged');
+  const pkg=JSON.parse(read('package.json'));
+  let command=prioritizeSensitiveQualificationCommands(boundNodeTestConcurrency(pkg.scripts.test,1).command);
+  command=isolateWindowsAgentHttpRegression(command);
+  command=isolateWindowsProcessTreeRegression(command);
+  command=isolateWindowsTransferMeshHttpRegression(command);
+  command=isolateWindowsLeaseRegression(command);
+  command=isolateWindowsAsyncHttpRegression(command);
+  command=isolateWindowsTimingSensitiveRegressions(command);
+  command=isolateWindowsWorkflowPlanRegression(command);
+  command=isolateWindowsMcpConformanceRegression(command);
+  command=prioritizeWindowsAdaptiveCold(command);
+  command=isolateWindowsProjectEngineRecoveryRegressions(command);
+  assert.equal(command.split('tools/run-project-engine-recovery-fixtures.mjs').length-1,1);
+  const marked=markIsolatedQualificationPhases(command);
+  assert.ok(marked.length<7500,'preserve fail-closed Windows cmd.exe and R157 diagnostic bound');
+  assert.ok(read('tools/run-bounded-test-script.mjs').includes('command=isolateWindowsProjectEngineRecoveryRegressions(command);'));
+});
 test('R232 Windows isolated lease fixture executes once before bulk without a relaxed timeout',()=>{
   const pkg=JSON.parse(read('package.json'));
   const bounded=boundNodeTestConcurrency(pkg.scripts.test,1).command;

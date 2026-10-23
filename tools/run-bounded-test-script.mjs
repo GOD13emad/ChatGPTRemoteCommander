@@ -251,6 +251,26 @@ export function prioritizeWindowsAdaptiveCold(command) {
   return [exact,...parts].join(' && ');
 }
 
+/**
+ * Hosted R157 Windows cancellation recovery: two different scheduler/crash
+ * fixtures were cancelled on separate CI attempts. Both passed separately
+ * on a real Windows host. Execute each once in a separate test process and
+ * execute every remaining test once, without relaxing safety assertions.
+ */
+/**
+ * R157: keep the Windows command line bounded while a single controlled
+ * child runner gives separately cancelled scheduler/crash fixtures independent
+ * Node processes. Full acceptance assertions are preserved unchanged.
+ */
+export function isolateWindowsProjectEngineRecoveryRegressions(command){
+  if(typeof command!=='string'||!command)throw Error('CI_ENGINE_RECOVERY_COMMAND_INVALID');
+  const exact='node --test --test-concurrency=1 test/project-engine-integration.test.mjs';
+  const parts=command.split(' && ');
+  const match=parts.flatMap((part,index)=>part===exact?[index]:[]);
+  if(match.length!==1)throw Error('CI_ENGINE_RECOVERY_CARDINALITY');
+  parts[match[0]]='node tools/run-project-engine-recovery-fixtures.mjs';
+  return parts.join(' && ');
+}
 export function parseQualificationArgs(argv){
   const out={script:null,concurrency:null,prioritizeSensitive:false};
   for(let i=0;i<argv.length;i++){
@@ -290,6 +310,7 @@ function run(){
     command=isolateWindowsWorkflowPlanRegression(command);
     command=isolateWindowsMcpConformanceRegression(command);
     command=prioritizeWindowsAdaptiveCold(command);
+    command=isolateWindowsProjectEngineRecoveryRegressions(command);
   }
   if(process.platform==='win32'&&args.script==='test'&&process.env.RC_QUALIFICATION_RUN_ID)
     command=markIsolatedQualificationPhases(command);

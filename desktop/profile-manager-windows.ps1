@@ -86,6 +86,17 @@ $grid.Anchor='Top,Left,Right'
 $grid.ReadOnly=$true;$grid.AllowUserToAddRows=$false;$grid.AllowUserToDeleteRows=$false
 $grid.SelectionMode='FullRowSelect';$grid.MultiSelect=$false;$grid.AutoSizeColumnsMode='Fill'
 $grid.BackgroundColor=[Drawing.Color]::FromArgb(20,29,43);$grid.BorderStyle='FixedSingle'
+$grid.EnableHeadersVisualStyles=$false
+$grid.ColumnHeadersDefaultCellStyle.BackColor=[Drawing.Color]::FromArgb(35,50,70)
+$grid.ColumnHeadersDefaultCellStyle.ForeColor=[Drawing.Color]::White
+$grid.DefaultCellStyle.BackColor=[Drawing.Color]::FromArgb(24,35,50)
+$grid.DefaultCellStyle.ForeColor=[Drawing.Color]::Gainsboro
+$grid.DefaultCellStyle.SelectionBackColor=[Drawing.Color]::FromArgb(45,101,160)
+$grid.DefaultCellStyle.SelectionForeColor=[Drawing.Color]::White
+$grid.AlternatingRowsDefaultCellStyle.BackColor=[Drawing.Color]::FromArgb(28,42,58)
+$grid.RowHeadersDefaultCellStyle.BackColor=[Drawing.Color]::FromArgb(35,50,70)
+$grid.RowHeadersDefaultCellStyle.ForeColor=[Drawing.Color]::White
+$grid.GridColor=[Drawing.Color]::FromArgb(60,75,93)
 $form.Controls.Add($grid)
 
 $access=New-Object Windows.Forms.GroupBox
@@ -160,7 +171,15 @@ function Refresh-Grid{
     $items=@(Get-Profiles)
     $grid.DataSource=$null;$grid.DataSource=[Collections.ArrayList]$items
     foreach($name in @('Capabilities','ConfigPath','ProjectDir','Commit','RouteVersion','IsPrimary','IsIsolated','Gui')){if($grid.Columns[$name]){$grid.Columns[$name].Visible=$false}}
-    if($grid.Rows.Count -gt 0){$grid.Rows[0].Selected=$true;$grid.CurrentCell=$grid.Rows[0].Cells[0]}
+    if($grid.Rows.Count -gt 0){
+      $pick=0
+      if($script:selected -and $script:selected.Profile){
+        for($j=0;$j -lt $grid.Rows.Count;$j++){
+          if([string]$grid.Rows[$j].Cells['Profile'].Value -eq [string]$script:selected.Profile){$pick=$j;break}
+        }
+      }
+      $grid.Rows[$pick].Selected=$true;$grid.CurrentCell=$grid.Rows[$pick].Cells[0]
+    }
     Update-Editor
     $status.Text="Profiles discovered: $($items.Count). Live profile inventory is authoritative; stale version labels are not treated as profiles."
   }catch{$status.Text="Refresh failed: $($_.Exception.Message)"}
@@ -177,11 +196,28 @@ function Build-CapabilityChanges([object]$Cfg){
   }
   return [pscustomobject]@{Enable=$enable;Disable=$disable}
 }
-function Invoke-HiddenPwsh([string]$Script,[string[]]$Args){
+function Invoke-HiddenPwsh([string]$Script,[string[]]$Arguments){
   $pwsh=(Get-Command pwsh.exe -ErrorAction Stop).Source
-  $all=@('-NoLogo','-NoProfile','-NonInteractive','-WindowStyle','Hidden','-ExecutionPolicy','Bypass','-File',$Script)+$Args
-  $p=Start-Process -FilePath $pwsh -ArgumentList $all -WindowStyle Hidden -Wait -PassThru
-  return $p.ExitCode
+  $cmdArgs=@('-NoLogo','-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',$Script)+@($Arguments)
+  $psi=[Diagnostics.ProcessStartInfo]::new()
+  $psi.FileName=$pwsh;$psi.UseShellExecute=$false;$psi.CreateNoWindow=$true
+  $psi.RedirectStandardOutput=$true;$psi.RedirectStandardError=$true
+  foreach($arg in $cmdArgs){[void]$psi.ArgumentList.Add([string]$arg)}
+  $p=[Diagnostics.Process]::Start($psi)
+  try{
+    $stdoutTask=$p.StandardOutput.ReadToEndAsync()
+    $stderrTask=$p.StandardError.ReadToEndAsync()
+    $p.WaitForExit()
+    $stdout=$stdoutTask.GetAwaiter().GetResult()
+    $stderr=$stderrTask.GetAwaiter().GetResult()
+    if($p.ExitCode -ne 0){
+      $detail=if([string]::IsNullOrWhiteSpace($stderr)){$stdout}else{$stderr}
+      $detail=($detail -split '\r?\n'|Where-Object {$_ -and $_.Trim()}|Select-Object -Last 4) -join ' | '
+      if($detail.Length -gt 900){$detail=$detail.Substring($detail.Length-900)}
+      throw "Profile command failed (exit $($p.ExitCode)): $detail"
+    }
+    return $p.ExitCode
+  }finally{$p.Dispose()}
 }
 
 $apply.Add_Click({
@@ -190,8 +226,9 @@ $apply.Add_Click({
     $cfg=if($script:selected.ConfigPath){Read-Json $script:selected.ConfigPath}else{$null}
     if(-not $cfg){throw 'Selected profile config is unavailable.'}
     $changes=Build-CapabilityChanges $cfg
-    $rootList=@($roots.Lines|ForEach-Object{$_.Trim()}|Where-Object{$_})
+    $rootList=@($roots.Lines|ForEach-Object{[Environment]::ExpandEnvironmentVariables($_.Trim())}|Where-Object{$_})
     if($rootList.Count -eq 0){throw 'At least one allowed root is required.'}
+    foreach($r in $rootList){if(-not [IO.Path]::IsPathFullyQualified($r)){throw "Allowed root must be an absolute path: $r"}}
     if($script:selected.IsPrimary){
       $updater=Join-Path $CoreRoot 'auto-update-windows.ps1'
       if(-not(Test-Path $updater)){throw 'Primary safe updater is unavailable.'}
