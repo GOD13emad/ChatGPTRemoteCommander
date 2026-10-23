@@ -377,8 +377,10 @@ function Assert-CompleteCandidateAuditHistory {
     if ($LASTEXITCODE -ne 0 -or $origin -cne $AllowedOrigin) { return $false }
     & git.exe -C $Candidate diff --cached --quiet --
     if ($LASTEXITCODE -ne 0) { return $false }
-    & git.exe -C $Candidate diff --ignore-space-at-eol --quiet --
-    if ($LASTEXITCODE -ne 0) { return $false }
+    $blob=(& git.exe -C $Candidate rev-parse HEAD:enable-boot-recovery.ps1).Trim().ToLowerInvariant()
+    if ($LASTEXITCODE -ne 0 -or $blob -notmatch '^[0-9a-f]{40}$') { return $false }
+    $raw=(& git.exe -C $Candidate hash-object --no-filters -- enable-boot-recovery.ps1).Trim().ToLowerInvariant()
+    if ($LASTEXITCODE -ne 0 -or $raw -cne $blob) { return $false }
     return $true
   }
   $expected=(& git.exe -C $Candidate rev-parse HEAD).Trim().ToLowerInvariant()

@@ -17,7 +17,7 @@ if($stageCall -lt 0 -or $updateAudit -le $stageCall){throw 'UPDATER_AUDIT_GATE_O
 if($source.Contains('tools\windows-audit-history.ps1') -or $updater.Contains('tools\windows-audit-history.ps1')){throw 'STANDALONE_OLD_DEPENDENCY_REMAINED'}
 if($source.Substring($a,$b-$a).Trim() -ne $updater.Substring($ua,$ub-$ua).Trim()){throw 'STANDALONE_GUARD_DIVERGED'}
 $guardBody=$source.Substring($a,$b-$a)
-foreach($required in @('362375c464948be3001b307650c13fc3353ed05b',' M enable-boot-recovery.ps1','diff --cached --quiet --','diff --ignore-space-at-eol --quiet --','remote get-url origin')) {
+foreach($required in @('362375c464948be3001b307650c13fc3353ed05b',' M enable-boot-recovery.ps1','diff --cached --quiet --','hash-object --no-filters --','rev-parse HEAD:enable-boot-recovery.ps1','remote get-url origin')) {
   if(-not $guardBody.Contains($required)){throw ('LEGACY_EOL_RESTRICTION_MISSING_'+$required)}
 }
 . ([ScriptBlock]::Create($source.Substring($a,$b-$a)))
