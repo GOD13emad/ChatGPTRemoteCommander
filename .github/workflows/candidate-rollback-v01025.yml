@@ -20,7 +20,32 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  candidate_version_gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      enabled: ${{ steps.version.outputs.enabled }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 1
+      - id: version
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          version="$(node -p 'JSON.parse(require("node:fs").readFileSync("package.json","utf8")).version')"
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || exit 2
+          if [[ "$version" == '0.10.25' ]]; then
+            echo 'enabled=true' >> "$GITHUB_OUTPUT"
+            echo 'V025_VERSION_SCOPE_ACTIVE'
+          else
+            echo 'enabled=false' >> "$GITHUB_OUTPUT"
+            echo "V025_VERSION_SCOPE_SKIPPED actual=$version"
+          fi
   linux-candidate-preview-rollback:
+    needs: candidate_version_gate
+    if: ${{ needs.candidate_version_gate.outputs.enabled == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 50
     steps:
@@ -68,6 +93,8 @@ jobs:
             ${{ runner.temp }}/remote-commander-rollback-v025l/RETURN_V025L.json
 
   windows-candidate-preview-rollback:
+    needs: candidate_version_gate
+    if: ${{ needs.candidate_version_gate.outputs.enabled == 'true' }}
     runs-on: windows-latest
     timeout-minutes: 60
     steps:
