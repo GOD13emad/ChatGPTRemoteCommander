@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { spawn, spawnSync } from 'node:child_process';
-import { pathToFileURL } from 'node:url';
+import { pathToFileURL, fileURLToPath } from 'node:url';
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 const sha256File = file => createHash('sha256').update(fs.readFileSync(file)).digest('hex');
@@ -61,8 +61,16 @@ function commandLine(pid) {
   if (process.platform === 'win32') {
     const script = '$p=Get-CimInstance Win32_Process -Filter "ProcessId = ' + pid + '"; if($p){[Console]::Out.Write($p.CommandLine)}';
     const result = spawnSync('pwsh.exe', ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', script], { encoding: 'utf8', windowsHide: true, timeout: 8000, maxBuffer: 64 * 1024 });
-    if (result.status !== 0) throw new Error('ROUTER_PROCESS_QUERY_FAILED');
-    return result.stdout || '';
+    if (result.status === 0 && result.stdout?.trim()) return result.stdout;
+    // CIM may fail after a Windows account rename while an old logon token is still active.
+    // The native fallback is read-only; all missing/unverifiable identity remains DENIED.
+    const helper = fileURLToPath(new URL('./router-commandline-windows.ps1', import.meta.url));
+    const pidArg = String(pid);
+    const native = spawnSync('pwsh.exe',
+      ['-NoLogo', '-NoProfile', '-NonInteractive', '-File', helper, '-ProcessId', pidArg],
+      { encoding: 'utf8', windowsHide: true, timeout: 12000, maxBuffer: 64 * 1024 });
+    if (native.status !== 0 || !native.stdout?.trim()) throw new Error('ROUTER_PROCESS_QUERY_FAILED');
+    return native.stdout;
   }
   return fs.readFileSync('/proc/' + pid + '/cmdline').toString('utf8').replaceAll('\0', ' ');
 }
