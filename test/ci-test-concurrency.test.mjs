@@ -431,7 +431,7 @@ test('Windows short-deadline team reservation runs before process-tree and HTTP 
    "test('team reserves all calls before workers and executes only the coordinator proposal', { timeout: 6000 }"));
 });
 
-test('CI Windows runs the Transfer Mesh HTTP fixture alone without weakening readiness or dropping coverage',()=>{
+test('CI Windows isolates Transfer Mesh HTTP with bounded cold-start and unchanged functional assertions',()=>{
   const pkg=JSON.parse(read('package.json'));
   const original=prioritizeSensitiveQualificationCommands(boundNodeTestConcurrency(pkg.scripts.test,1).command);
   const agent=isolateWindowsAgentHttpRegression(original);
@@ -461,7 +461,9 @@ test('CI Windows runs the Transfer Mesh HTTP fixture alone without weakening rea
     wrapper.indexOf('command=isolateWindowsTransferMeshHttpRegression(command);'),
     'last composed prefix is scheduled first; no additional test runs or deadlines');
   const fixture=read('test/transfer-mesh-http.test.mjs');
-  assert.ok(fixture.includes('for(let i=0;i<200;i++)'),'same bounded readiness budget');
+  assert.ok(fixture.includes('const startupDeadline=Date.now()+15_000'),'explicit finite CI cold-start budget');
+  assert.ok(fixture.includes('child.exitCode===null'),'a crashed child must not wait to timeout');
+  assert.ok(fixture.includes('AbortSignal.timeout(1500)'),'each health probe remains bounded');
   assert.ok(fixture.includes('await wait(25)'),'same server-readiness poll');
   assert.ok(fixture.includes('assert.equal(healthy,true,stderr)'),'still fail closed if server cannot start');
 });
