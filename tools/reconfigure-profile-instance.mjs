@@ -17,6 +17,7 @@ function parse(args){
     else if(a==='--base-config')o.baseConfigPath=v;
     else if(a==='--disable-capability')o.disableCapabilities.push(v);
     else if(a==='--enable-capability')o.enableCapabilities.push(v);
+    else if(a==='--expected-config-sha256')o.expectedConfigSha256=v;
     else throw new Error('PROFILE_RECONFIGURE_ARGUMENT');
   }
   if(!o.profile)throw new Error('PROFILE_RECONFIGURE_PROFILE_REQUIRED');
