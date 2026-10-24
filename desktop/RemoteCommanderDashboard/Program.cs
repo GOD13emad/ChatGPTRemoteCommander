@@ -505,6 +505,7 @@ internal sealed class DashboardForm : Form
             {
                 "OWNER_INTERACTIVE_SESSION_REQUIRED" => "Open Control Center inside the signed-in owner's desktop.",
                 "OWNER_GUI_CONFIG_NOT_VERIFIED" => "The native owner-GUI configuration needs verification.",
+                "OWNER_WORKER_IDENTITY_UNVERIFIED" => "The interactive GUI worker's Windows owner SID or session does not match.",
                 "PENDING_NATIVE_EFFECT_REQUIRES_REVIEW" => "An uncertain GUI effect requires independent review.",
                 "OS_TRUSTED_OWNER_CONSENT_BROKER_REQUIRED" => "Independent native owner consent and security review are required.",
                 _ => "Native owner approval has not been verified."
