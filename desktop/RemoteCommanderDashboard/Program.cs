@@ -140,6 +140,8 @@ internal sealed class DashboardForm : Form
             actions.Controls.Add(Button("Add Profiles", (_, _) => LaunchPowerShellTool("profile-enrollment-windows.ps1", "Profile Setup")));
         if (ToolInstalled("profile-manager-windows.ps1"))
             actions.Controls.Add(Button("Profiles & Access", (_, _) => LaunchPowerShellTool("profile-manager-windows.ps1", "Profiles & Access")));
+        if (ToolInstalled("owner-gui-native-readiness.ps1"))
+            actions.Controls.Add(Button("Owner GUI Readiness", async (_, _) => await ShowOwnerGuiReadinessAsync()));
         if (ToolInstalled("operations-monitor-windows.ps1"))
             actions.Controls.Add(Button("Operations Monitor", (_, _) => LaunchPowerShellTool("operations-monitor-windows.ps1", "Operations Monitor")));
         if (ToolInstalled("admin-runtime-windows.ps1"))
@@ -454,6 +456,71 @@ internal sealed class DashboardForm : Form
             WindowStyle = ProcessWindowStyle.Hidden,
             Arguments = $"-NoLogo -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File \"{tool}\""
         });
+    }
+
+    // Native owner diagnostic only: never interpret a report as takeover permission.
+    private async Task ShowOwnerGuiReadinessAsync()
+    {
+        var tool = Path.Combine(AppContext.BaseDirectory, "owner-gui-native-readiness.ps1");
+        if (!File.Exists(tool)) return;
+        var pwsh = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
+            "PowerShell", "7", "pwsh.exe");
+        if (!File.Exists(pwsh)) pwsh = "pwsh.exe";
+        try
+        {
+            var start = new ProcessStartInfo
+            {
+                FileName = pwsh,
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                CreateNoWindow = true
+            };
+            foreach (var arg in new[] { "-NoLogo", "-NoProfile", "-NonInteractive", "-File", tool })
+                start.ArgumentList.Add(arg);
+            using var proc = new Process { StartInfo = start };
+            if (!proc.Start()) throw new InvalidOperationException("Diagnostic failed to start.");
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(12));
+            var output = proc.StandardOutput.ReadToEndAsync();
+            var errors = proc.StandardError.ReadToEndAsync();
+            try { await proc.WaitForExitAsync(timeout.Token); }
+            catch (OperationCanceledException)
+            {
+                if (!proc.HasExited) proc.Kill(entireProcessTree: true);
+                throw new InvalidOperationException("Diagnostic timed out.");
+            }
+            var text = await output;
+            _ = await errors; // Never display arbitrary stderr with sensitive local paths.
+            if (proc.ExitCode != 0) throw new InvalidOperationException("Diagnostic returned an error.");
+            using var json = JsonDocument.Parse(text);
+            var result = json.RootElement;
+            if (result.GetProperty("schema").GetString() != "rc-owner-gui-native-readiness-v1" ||
+                result.GetProperty("status").GetString() != "NOT_AUTHORIZED" ||
+                result.GetProperty("takeoverAuthorized").GetBoolean() ||
+                result.GetProperty("osTrustedOwnerConsentVerified").GetBoolean() ||
+                result.GetProperty("incidentEffectReconciled").GetBoolean() ||
+                result.GetProperty("inputExecuted").GetBoolean())
+                throw new InvalidOperationException("Unsafe or invalid owner-GUI report.");
+            var explanation = result.GetProperty("reason").GetString() switch
+            {
+                "OWNER_INTERACTIVE_SESSION_REQUIRED" => "Open Control Center inside the signed-in owner's desktop.",
+                "OWNER_GUI_CONFIG_NOT_VERIFIED" => "The native owner-GUI configuration needs verification.",
+                "PENDING_NATIVE_EFFECT_REQUIRES_REVIEW" => "An uncertain GUI effect requires independent review.",
+                "OS_TRUSTED_OWNER_CONSENT_BROKER_REQUIRED" => "Independent native owner consent and security review are required.",
+                _ => "Native owner approval has not been verified."
+            };
+            MessageBox.Show(this,
+                "Owner GUI: observation only. Takeover: NOT AUTHORIZED." +
+                Environment.NewLine + Environment.NewLine + explanation +
+                Environment.NewLine + Environment.NewLine + "No desktop input was executed.",
+                "Owner GUI Readiness", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        }
+        catch
+        {
+            MessageBox.Show(this,
+                "Owner GUI diagnostic could not be verified; takeover remains blocked.",
+                "Owner GUI Readiness", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        }
     }
 
     private void LaunchBrowser()

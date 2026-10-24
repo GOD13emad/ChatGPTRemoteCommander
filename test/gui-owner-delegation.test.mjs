@@ -132,3 +132,50 @@ test('observe lease forwards a stable, distinct mutation correlation without cre
   assert.notEqual(first,end);
   assert.ok(!JSON.stringify(captured.map(v=>v.rpc)).includes('session-test-987'));
 });
+
+test('observe-only delegated GUI status never advertises forbidden native desktop input', async () => {
+  const inputReady = make({
+    handler: () => ({
+      ok: true, available: true, enabled: true,
+      capabilities: { screenshot: true, listWindows: true, mouse: true, keyboard: true, focus: true },
+      policy: {
+        allowScreenshot: true, allowMouse: true, allowKeyboard: true, allowWindowFocus: true,
+        ownerAuthorizedTakeover: true, defaultSessionMode: 'takeover'
+      }
+    })
+  });
+  const response = await inputReady.proxy.execute('gui_status');
+  assert.equal(response.handled,true);
+  assert.equal(response.value.available,true);
+  assert.equal(response.value.capabilities.screenshot,true);
+  assert.equal(response.value.capabilities.listWindows,true);
+  assert.equal(response.value.capabilities.mouse,false);
+  assert.equal(response.value.capabilities.keyboard,false);
+  assert.equal(response.value.capabilities.focus,false);
+  assert.equal(response.value.policy.allowMouse,false);
+  assert.equal(response.value.policy.allowKeyboard,false);
+  assert.equal(response.value.policy.allowWindowFocus,false);
+  assert.equal(response.value.policy.ownerAuthorizedTakeover,false);
+  assert.equal(response.value.takeoverAvailable,false);
+  assert.equal(response.value.inputAvailable,false);
+  assert.equal(response.value.takeoverBlockReason,'OWNER_GUI_OBSERVE_ONLY');
+  await assert.rejects(
+    () => inputReady.proxy.execute('gui_session_begin',{mode:'takeover'}),
+    /OWNER_GUI_OBSERVE_ONLY/
+  );
+  assert.equal(inputReady.captured.length,1,'native takeover request must not reach owner worker');
+});
+
+test('delegated status is a fresh copy; redaction must not mutate native policy objects', async () => {
+  const input = {
+    available: true, enabled: true,
+    capabilities: {mouse:true,keyboard:true,focus:true},
+    policy: {allowMouse:true,allowKeyboard:true,allowWindowFocus:true}
+  };
+  const {proxy}=make({handler:()=>input});
+  const result=await proxy.execute('gui_status');
+  assert.equal(result.value.capabilities.mouse,false);
+  assert.equal(input.capabilities.mouse,true);
+  assert.equal(result.value.policy.allowMouse,false);
+  assert.equal(input.policy.allowMouse,true);
+});

@@ -69,7 +69,29 @@ export function createOwnerGuiReadOnlyProxy({
       if (name === 'gui_status') {
         const value = await rpc(name, args);
         if (value.available !== true || value.enabled !== true) return { handled: false };
-        return { handled: true, value: { ...value, delegated: true, delegatedMode: 'observe' } };
+        // The native owner worker may report window focus as available, but
+        // this cross-session bridge intentionally forwards observation only.
+        // Never advertise focus/mouse/keyboard which this bridge cannot execute.
+        return { handled: true, value: {
+          ...value,
+          delegated: true,
+          delegatedMode: 'observe',
+          capabilities: {
+            ...value.capabilities,
+            mouse: false, keyboard: false, focus: false
+          },
+          policy: {
+            ...value.policy,
+            allowMouse: false,
+            allowKeyboard: false,
+            allowWindowFocus: false,
+            defaultSessionMode: 'observe',
+            ownerAuthorizedTakeover: false
+          },
+          takeoverAvailable: false,
+          takeoverBlockReason: 'OWNER_GUI_OBSERVE_ONLY',
+          inputAvailable: false
+        } };
       }
       let forwardedArgs = args;
       if (name === 'gui_session_begin' || name === 'gui_session_end') {
