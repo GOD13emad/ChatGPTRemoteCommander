@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { createHash } from 'node:crypto';
 import { buildProfileInstance, validateInstanceRecord } from './profile-instances.mjs';
 
 function atomicWrite(file, text) {
@@ -18,17 +19,36 @@ export function reconfigureProfileInstance({
   guiControl,
   allowedRoots,
   disableCapabilities = [],
-  enableCapabilities = []
+  enableCapabilities = [],
+  expectedConfigSha256 = undefined
 }) {
   if (guiControl === true && powerMode === false) throw new Error('PROFILE_RECONFIGURE_GUI_REQUIRES_POWER');
   if (typeof stateDirectory !== 'string' || !path.isAbsolute(stateDirectory)) throw new Error('PROFILE_RECONFIGURE_STATE_REQUIRED');
+  const lockFile = path.join(stateDirectory, '.profile-reconfigure.lock');
+  // A single independent profile may be edited by multiple owner consoles.
+  // Reject concurrent writers rather than blindly overwriting their policy.
+  let lockFd;
+  try { lockFd = fs.openSync(lockFile, 'wx', 0o600); }
+  catch (error) {
+    if (error?.code === 'EEXIST') throw new Error('PROFILE_RECONFIGURE_BUSY');
+    throw error;
+  }
+  try {
   const configFile = path.join(stateDirectory, 'config.json');
   const recordFile = path.join(stateDirectory, 'instance.json');
   if (!fs.existsSync(configFile) || !fs.existsSync(recordFile)) throw new Error('PROFILE_RECONFIGURE_INSTANCE_MISSING');
 
   const oldConfigText = fs.readFileSync(configFile, 'utf8');
+  const oldConfigHash = createHash('sha256').update(oldConfigText).digest('hex');
   const oldConfig = JSON.parse(oldConfigText);
   const oldRecord = validateInstanceRecord(JSON.parse(fs.readFileSync(recordFile, 'utf8')));
+  if (oldRecord.configSha256 !== oldConfigHash) throw new Error('PROFILE_RECONFIGURE_RECORD_CONFIG_MISMATCH');
+  if (expectedConfigSha256 !== undefined) {
+    if (typeof expectedConfigSha256 !== 'string' || !/^[a-f0-9]{64}$/.test(expectedConfigSha256)) {
+      throw new Error('PROFILE_RECONFIGURE_EXPECTED_CONFIG_SHA_INVALID');
+    }
+    if (oldConfigHash !== expectedConfigSha256) throw new Error('PROFILE_RECONFIGURE_STALE_POLICY');
+  }
   if (oldRecord.profile !== profile || oldConfig.instance?.profile !== profile || oldConfig.instance?.isolated !== true) throw new Error('PROFILE_RECONFIGURE_IDENTITY_MISMATCH');
   if (Number(oldConfig.port) !== Number(oldRecord.mcpPort)) throw new Error('PROFILE_RECONFIGURE_PORT_MISMATCH');
   const baseConfig = JSON.parse(fs.readFileSync(baseConfigPath, 'utf8'));
@@ -81,5 +101,8 @@ export function reconfigureProfileInstance({
     atomicWrite(configFile, beforeConfig.toString('utf8'));
     atomicWrite(recordFile, beforeRecord.toString('utf8'));
     throw error;
+  }
+  } finally {
+    try { fs.closeSync(lockFd); } finally { fs.unlinkSync(lockFile); }
   }
 }
