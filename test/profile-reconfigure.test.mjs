@@ -81,3 +81,58 @@ test('reconfigure persists explicit per-capability opt-outs and can re-enable th
   assert.equal(n.capabilityProfile.disabledCapabilities.includes('workflow.scheduler'),false);
  }finally{f.dispose();}
 });
+
+
+test('backend expected policy digest accepts unchanged isolated profile only',()=>{
+ const f=fixture();try{
+   const cfgFile=path.join(f.state,'config.json');
+   const old=fs.readFileSync(cfgFile);
+   const hash=createHash('sha256').update(old).digest('hex');
+   const r=reconfigureProfileInstance({profile:'secondary',stateDirectory:f.state,baseConfigPath:f.baseFile,
+     powerMode:true,expectedConfigSha256:hash});
+   assert.equal(r.oldConfigSha256,hash);
+   assert.notEqual(r.newConfigSha256,hash);
+   assert.throws(()=>reconfigureProfileInstance({profile:'secondary',stateDirectory:f.state,
+     baseConfigPath:f.baseFile,powerMode:false,expectedConfigSha256:hash}),/PROFILE_RECONFIGURE_STALE_POLICY/);
+   assert.equal(fs.readFileSync(cfgFile,'utf8').includes('"instance"'),true);
+   assert.equal(fs.existsSync(path.join(f.state,'.profile-reconfigure.lock')),false);
+ } finally{f.dispose();}
+});
+
+test('backend refuses tampered config-record pair before creating a backup',()=>{
+ const f=fixture();try{
+   const cfgFile=path.join(f.state,'config.json');
+   fs.appendFileSync(cfgFile,' ');
+   const backups=path.join(f.state,'backups');
+   assert.throws(()=>reconfigureProfileInstance({profile:'secondary',stateDirectory:f.state,
+     baseConfigPath:f.baseFile}),/PROFILE_RECONFIGURE_RECORD_CONFIG_MISMATCH/);
+   assert.equal(fs.existsSync(backups),false);
+   assert.equal(fs.existsSync(path.join(f.state,'.profile-reconfigure.lock')),false);
+ }finally{f.dispose();}
+});
+
+test('backend concurrent profile edit lock fails closed and leaves all files unchanged',()=>{
+ const f=fixture();try{
+  const configFile=path.join(f.state,'config.json');
+  const recordFile=path.join(f.state,'instance.json');
+  const config=fs.readFileSync(configFile),record=fs.readFileSync(recordFile);
+  fs.writeFileSync(path.join(f.state,'.profile-reconfigure.lock'),'editor already active');
+  assert.throws(()=>reconfigureProfileInstance({profile:'secondary',stateDirectory:f.state,
+    baseConfigPath:f.baseFile,powerMode:true}),/PROFILE_RECONFIGURE_BUSY/);
+  assert.deepEqual(fs.readFileSync(configFile),config);
+  assert.deepEqual(fs.readFileSync(recordFile),record);
+  assert.equal(fs.existsSync(path.join(f.state,'backups')),false);
+ }finally{f.dispose();}
+});
+
+test('invalid expected digest fails closed without any access or file changes',()=>{
+ const f=fixture();try{
+   const cfg=path.join(f.state,'config.json');
+   const bytes=fs.readFileSync(cfg);
+   assert.throws(()=>reconfigureProfileInstance({profile:'secondary',stateDirectory:f.state,
+     baseConfigPath:f.baseFile,powerMode:true,expectedConfigSha256:'invalid'}),
+       /PROFILE_RECONFIGURE_EXPECTED_CONFIG_SHA_INVALID/);
+   assert.deepEqual(fs.readFileSync(cfg),bytes);
+   assert.equal(fs.existsSync(path.join(f.state,'.profile-reconfigure.lock')),false);
+ }finally{f.dispose();}
+});
