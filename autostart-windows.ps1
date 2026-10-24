@@ -14,7 +14,6 @@ $ErrorActionPreference = 'Stop'
 # Never inherit an isolated MCP config into the global supervisor. Primary startup
 # uses the app's normal config selection; isolated instances set their config explicitly.
 Remove-Item Env:REMOTE_COMMANDER_CONFIG -ErrorAction SilentlyContinue
-
 $Root = Split-Path -Parent $MyInvocation.MyCommand.Path
 . (Join-Path $Root 'windows-supervisor-runtime.ps1')
 $runtime = Initialize-WindowsSupervisorRuntime $Root $OwnerUserProfile ([bool]$BootCore)
@@ -24,12 +23,10 @@ $CredDir = $runtime.CredDir
 $ProfileDir = $runtime.ProfileDir
 $InstanceRoot = $runtime.InstanceRoot
 New-Item -ItemType Directory -Force -Path $VarDir,$CredDir,$InstanceRoot | Out-Null
-
 function Write-SupervisorLog([string]$Message) {
   $line = "$(Get-Date -Format o) $Message"
   Add-Content -LiteralPath (Join-Path $VarDir 'autostart.log') -Value $line -Encoding utf8
 }
-
 $created = $false
 $mutex = $null
 if (-not $SelfTest) {

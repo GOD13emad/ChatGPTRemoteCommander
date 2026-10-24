@@ -24,6 +24,7 @@ $item=[pscustomobject]@{Profile='saeed-emad';HealthPort=47833}
 function Get-TunnelProcess {param($Profile,$Exe);return $script:fakeProcess}
 function Test-TunnelReady {param($Port);$script:checks++;return [bool]$script:fakeReady}
 function Observe-TunnelControlPlane {param($Profile,$Port);$script:observes++}
+function Try-RecoverTunnelControlPlane {param($Item,$Process,$Ready,$Exe,$Probe);if($null -ne $Probe){throw 'ISOLATED_RECOVERY_MOCK_UNEXPECTED_PROBE'}}
 function Start-TunnelProfile {param($ProfileItem);$script:starts++}
 function Write-SupervisorLog {param($Message);[void]$script:logs.Add([string]$Message)}
 function Assert-Case([string]$Name,[object]$Process,[bool]$Ready,[int]$WantStarts,[int]$WantLogCount,[bool]$WantCached) {
