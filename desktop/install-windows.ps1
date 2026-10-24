@@ -41,7 +41,7 @@ $SourceExe=Join-Path $SourceDir 'RemoteCommander.exe'
 if(-not (Test-Path -LiteralPath $SourceExe -PathType Leaf)){throw "Desktop build missing: $SourceExe"}
 
 $required=@('profile-manager-windows.ps1','profile-enrollment-windows.ps1')
-if($Mode -eq 'ControlMonitoring'){$required+=@('operations-monitor-windows.ps1','admin-runtime-windows.ps1')}
+if($Mode -eq 'ControlMonitoring'){$required+=@('operations-monitor-windows.ps1','admin-runtime-windows.ps1','owner-gui-native-readiness.ps1')}
 foreach($tool in $required){
   if(-not(Test-Path -LiteralPath (Join-Path $SourceDir $tool) -PathType Leaf)){throw "Desktop tool missing: $tool"}
 }
@@ -49,7 +49,7 @@ foreach($tool in $required){
 if(-not $InstallRoot){$InstallRoot=Join-Path $env:LOCALAPPDATA 'Programs\Remote Commander'}
 $InstallRoot=[IO.Path]::GetFullPath($InstallRoot)
 $selected=@('RemoteCommander.exe','profile-manager-windows.ps1','profile-enrollment-windows.ps1')
-if($Mode -eq 'ControlMonitoring'){$selected+=@('operations-monitor-windows.ps1','admin-runtime-windows.ps1')}
+if($Mode -eq 'ControlMonitoring'){$selected+=@('operations-monitor-windows.ps1','admin-runtime-windows.ps1','owner-gui-native-readiness.ps1')}
 $Entries = $selected | ForEach-Object {
   $full=Join-Path $SourceDir $_
   $h=(Get-FileHash -Algorithm SHA256 -LiteralPath $full).Hash.ToLowerInvariant()
