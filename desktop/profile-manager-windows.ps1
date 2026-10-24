@@ -99,6 +99,33 @@ function Get-Profiles{
   }
 }
 
+# A disabled GUI button is not an authorization boundary. Re-evaluate the
+# account ownership and config fingerprint before invoking any mutating tool.
+function Assert-EditableSelection([object]$Selection,[object[]]$Rows,[string]$ExpectedHash){
+  if(-not $Selection -or -not ($Selection.IsPrimary -or $Selection.IsIsolated)){
+    throw 'Shared account, headless worker, or unknown profile is read-only.'
+  }
+  $matches=@($Rows|Where-Object {$_.Profile -eq $Selection.Profile})
+  if($matches.Count -ne 1){throw 'Selected profile is no longer uniquely present.'}
+  $fresh=$matches[0]
+  if(-not ($fresh.IsPrimary -or $fresh.IsIsolated) -or
+     [bool]$fresh.IsPrimary -ne [bool]$Selection.IsPrimary -or
+     [bool]$fresh.IsIsolated -ne [bool]$Selection.IsIsolated -or
+     [string]$fresh.ConfigPath -ne [string]$Selection.ConfigPath -or
+     [string]$fresh.Commit -ne [string]$Selection.Commit -or
+     [int]$fresh.Generation -ne [int]$Selection.Generation){
+    throw 'Profile route or permission boundary changed. Refresh first.'
+  }
+  $file=[string]$fresh.ConfigPath
+  if(-not $file -or -not(Test-Path -LiteralPath $file -PathType Leaf) -or
+     (Get-Item -LiteralPath $file).Attributes -band [IO.FileAttributes]::ReparsePoint){
+    throw 'Profile config path is missing or redirected.'
+  }
+  if(-not $ExpectedHash -or (Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash -ne $ExpectedHash){
+    throw 'Profile policy changed after selection. Refresh first.'
+  }
+  return $true
+}
 $form=New-Object Windows.Forms.Form
 $form.Text='Remote Commander — Profiles & Access'
 $form.StartPosition='CenterScreen'
@@ -191,6 +218,7 @@ function Update-Editor{
   $script:selected=$grid.CurrentRow.DataBoundItem
   if(-not $script:selected){return}
   $cfg=if($script:selected.ConfigPath){Read-Json $script:selected.ConfigPath}else{$null}
+  $script:selectedFingerprint=if($script:selected.ConfigPath -and (Test-Path -LiteralPath $script:selected.ConfigPath -PathType Leaf)){(Get-FileHash -LiteralPath $script:selected.ConfigPath -Algorithm SHA256).Hash}else{""}
   $power.Checked=[bool]$cfg.powerMode.enabled
   $gui.Checked=[bool]$cfg.powerMode.guiControl.enabled
   foreach($cap in $capBoxes.Keys){$capBoxes[$cap].Checked=Test-Cap $cfg $cap}
@@ -259,7 +287,10 @@ function Invoke-HiddenPwsh([string]$Script,[string[]]$Arguments){
 $apply.Add_Click({
   if(-not $script:selected){return}
   try{
+    # Do not let an inherited account tunnel be edited via a stale form.
+    [void](Assert-EditableSelection $script:selected @(Get-Profiles) $script:selectedFingerprint)
     $cfg=if($script:selected.ConfigPath){Read-Json $script:selected.ConfigPath}else{$null}
+  $script:selectedFingerprint=if($script:selected.ConfigPath -and (Test-Path -LiteralPath $script:selected.ConfigPath -PathType Leaf)){(Get-FileHash -LiteralPath $script:selected.ConfigPath -Algorithm SHA256).Hash}else{""}
     if(-not $cfg){throw 'Selected profile config is unavailable.'}
     $changes=Build-CapabilityChanges $cfg
     $rootList=@($roots.Lines|ForEach-Object{[Environment]::ExpandEnvironmentVariables($_.Trim())}|Where-Object{$_})
