@@ -91,7 +91,13 @@ def profile_rows(rows: list[dict]) -> tuple[tuple[str, str, str], ...]:
         version = str(row.get("version", "UNVERIFIED"))[:30]
         port = checked_count(row.get("port"))
         generation = checked_count(row.get("generation"))
-        detail = f"Core {version}  ·  port {port}  ·  generation {generation}"
+        kind = row.get("type")
+        if kind == "ACCOUNT_TUNNEL":
+            detail = "Independent account tunnel · Core permission scope not yet verified"
+        elif kind == "GUI_WORKER":
+            detail = f"Owner GUI worker · local port {port} · separate GUI permission policy"
+        else:
+            detail = f"Core {version}  ·  port {port}  ·  generation {generation}"
         root = str(row.get("root") or "")[:160]
         result.append((name, detail, root))
     return tuple(result)
@@ -560,7 +566,8 @@ def run_dashboard(app_id: str,
             self._set_status(self._card_labels["Browser"][0],
                              snapshot.get("browser", "UNVERIFIED"))
             self._card_labels["Browser"][1].set_text(
-                "Background only; CEF validation separate")
+                str(snapshot.get("browserReason") or
+                    "Background only; CEF validation separate")[:100])
             active = checked_count(snapshot.get("activeOperations"))
             value = self._card_labels["Active operations"][0]
             value.set_text(active)
