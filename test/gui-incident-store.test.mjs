@@ -4,6 +4,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import {spawnSync} from 'node:child_process';
+import {createHash} from 'node:crypto';
 import {fileURLToPath, pathToFileURL} from 'node:url';
 import {createGuiController} from '../src/gui-tools-windows.mjs';
 import {createGuiInputIncidentStore} from '../src/gui-incident-store.mjs';
@@ -166,4 +167,43 @@ test('incident file mode is private on POSIX hosts',()=>ownFile(async file=>{
  const mode=(await fs.stat(file)).mode;
  if(process.platform!=='win32')assert.equal(mode&0o077,0);
  await s.resolve(receipt);
+}));
+
+
+test('read-only incident inspect binds original exact raw bytes, never issues GUI authority',()=>ownFile(async file=>{
+ const store=createGuiInputIncidentStore({file});
+ const created=await store.begin('gui_focus_window');
+ const before=await fs.readFile(file);
+ const sha=createHash('sha256').update(before).digest('hex');
+ const evidence=await store.inspect();
+ assert.equal(evidence.id,created.id);
+ assert.equal(evidence.tool,created.tool);
+ assert.equal(evidence.status,'PENDING_NATIVE_EFFECT');
+ assert.equal(evidence.nativeOutcome,'UNKNOWN');
+ assert.equal(evidence.evidenceSha256,sha);
+ assert.equal(evidence.evidenceBytes,before.length);
+ assert.equal(evidence.ownerAuthenticated,false);
+ assert.equal(evidence.releaseAuthorized,false);
+ assert.equal(evidence.noReplay,true);
+ assert.equal(Object.isFrozen(evidence),true);
+ assert.deepEqual(await fs.readFile(file),before);
+ assert.deepEqual(await store.pending(),{
+  id:evidence.id,tool:evidence.tool,startedUtc:evidence.startedUtc
+ });
+}));
+
+test('incident inspection fails closed during unresolved guard or corrupt evidence, never erases it',()=>ownFile(async file=>{
+ const store=createGuiInputIncidentStore({file});
+ await store.begin('gui_type_text');
+ const prior=await fs.readFile(file);
+ const guard=file+'.exclusive-incident-v1';
+ await fs.writeFile(guard,'native operation unknown');
+ await assert.rejects(store.inspect(),/GUI_INCIDENT_STORAGE_UNAVAILABLE/);
+ assert.deepEqual(await fs.readFile(file),prior);
+ assert.equal((await fs.readFile(guard,'utf8')),'native operation unknown');
+ await fs.unlink(guard);
+ await fs.writeFile(file,'invalid incident evidence');
+ const corrupt=await fs.readFile(file);
+ await assert.rejects(store.inspect(),/GUI_INCIDENT_STORAGE_UNAVAILABLE/);
+ assert.deepEqual(await fs.readFile(file),corrupt);
 }));
