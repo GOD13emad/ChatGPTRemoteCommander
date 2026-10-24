@@ -20,6 +20,16 @@ function Read-ProfilePort([string]$Profile){
   if($m.Success){return [int]$m.Groups[1].Value}
   return 0
 }
+function Read-TunnelBackendPort([string]$Profile){
+  $file=Join-Path $ProfileDir "$Profile.yaml"
+  if(-not(Test-Path -LiteralPath $file -PathType Leaf)){return 0}
+  try{
+    $raw=Get-Content -LiteralPath $file -Raw
+    $m=[regex]::Match($raw,'url:\s*["'']?http://127\.0\.0\.1:(\d+)/mcp')
+    if($m.Success){return [int]$m.Groups[1].Value}
+  }catch{}
+  return 0
+}
 function Get-ConfigForProfile([string]$Profile,[object]$Route,[object]$Instance){
   $candidates=@()
   if($Route -and $Route.active -and $Route.active.configPath){$candidates+=[string]$Route.active.configPath}
@@ -42,23 +52,49 @@ function Get-Profiles{
     $route=Read-Json (Join-Path $RoutingRoot "$name.json")
     $instance=Read-Json (Join-Path (Join-Path $InstanceRoot $name) 'instance.json')
     $cfg=Get-ConfigForProfile $name $route $instance
+    $isInherited=$false;$baseRoute=$null
+    $tunnelPort=Read-TunnelBackendPort $name
+    # Shared account tunnels that point to default cannot have separate access policy.
+    if(-not $cfg -and -not $route -and -not $instance -and $name -ne 'default' -and $tunnelPort -eq 47831){
+      $baseRoute=Read-Json (Join-Path $RoutingRoot 'default.json')
+      $base=Get-ConfigForProfile 'default' $baseRoute $null
+      if($base -and $baseRoute.active.configPath){
+        $cfg=$base;$isInherited=$true
+      }
+    }
     $health=Read-ProfilePort $name
-    $port=if($route -and $route.active){[int]$route.active.port}elseif($instance){[int]$instance.mcpPort}else{47831}
-    $version=if($route -and $route.active){[string]$route.active.version}else{'-'}
+    $port=if($route -and $route.active){[int]$route.active.port}elseif($instance){[int]$instance.mcpPort}elseif($isInherited){$tunnelPort}else{0}
+    $version=if($route -and $route.active){[string]$route.active.version}elseif($isInherited){[string]$baseRoute.active.version}else{'UNVERIFIED'}
     $gen=if($route){[int]$route.generation}else{0}
-    $type=if($name -eq 'default'){'Primary'}elseif($instance){'Isolated'}else{'Shared'}
+    $type=if($name -eq 'default'){'Primary'}elseif($instance){'Isolated'}elseif($isInherited){'Shared (inherited)'}else{'Shared (unverified)'}
     $caps=@($cfg.capabilityProfile.grantedCapabilities)
     [pscustomobject]@{
       Profile=$name;Type=$type;McpPort=$port;HealthPort=$health;Version=$version;Generation=$gen
-      Access=if($cfg.powerMode.enabled){'Full Power'}else{'Standard'}
+      Access=if(-not $cfg){'UNVERIFIED'}elseif($isInherited){if($cfg.powerMode.enabled){'Inherited Full Power'}else{'Inherited Standard'}}elseif($cfg.powerMode.enabled){'Full Power'}else{'Standard'}
       Gui=[bool]$cfg.powerMode.guiControl.enabled
       Capabilities=($caps -join ',')
-      ConfigPath=if($route -and $route.active){[string]$route.active.configPath}elseif($instance){[string]$instance.configPath}else{''}
+      ConfigPath=if($route -and $route.active){[string]$route.active.configPath}elseif($instance){[string]$instance.configPath}elseif($isInherited){[string]$baseRoute.active.configPath}else{''}
       ProjectDir=if($route -and $route.active){[string]$route.active.projectDir}else{$CoreRoot}
       Commit=if($route -and $route.active){[string]$route.active.commit}else{''}
       RouteVersion=$version
       IsPrimary=($name -eq 'default')
       IsIsolated=[bool]$instance
+    }
+  }
+  # Independent headless worker is neither an account tunnel nor an editable profile.
+  foreach($dir in @('C:\ProgramData\ChatGPTRemoteCommander\server-headless-v1',(Join-Path $StateRoot 'server-headless-v1'))){
+    $config=Join-Path $dir 'config.json'
+    $worker=Read-Json $config
+    if($worker -and $worker.instance.profile -eq 'server-headless' -and [int]$worker.port -eq 48971){
+      [pscustomobject]@{
+        Profile='server-headless';Type='Headless worker (read-only)'
+        McpPort=48971;HealthPort=0;Version='INDEPENDENT';Generation=0
+        Access=if($worker.powerMode.enabled){'Worker Full Power'}else{'Worker Restricted'}
+        Gui=$false;Capabilities=(@($worker.capabilityProfile.grantedCapabilities) -join ',')
+        ConfigPath=$config;ProjectDir=$dir;Commit='';RouteVersion='INDEPENDENT'
+        IsPrimary=$false;IsIsolated=$false
+      }
+      break
     }
   }
 }
@@ -296,3 +332,4 @@ $refresh.Add_Click({Refresh-Grid})
 Add-Type -AssemblyName Microsoft.VisualBasic
 Refresh-Grid
 [void]$form.ShowDialog()
+
