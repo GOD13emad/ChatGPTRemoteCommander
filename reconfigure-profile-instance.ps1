@@ -7,7 +7,8 @@ param(
   [switch]$DisableGuiControl,
   [string[]]$EnableCapability = @(),
   [string[]]$DisableCapability = @(),
-  [ValidateRange(5,120)][int]$WaitSeconds = 45
+  [ValidateRange(5,120)][int]$WaitSeconds = 45,
+  [ValidatePattern('^[a-fA-F0-9]{64}$')][string]$ExpectedConfigSha256
 )
 $ErrorActionPreference='Stop'
 if($PowerMode -and $StandardMode){throw '-PowerMode and -StandardMode are mutually exclusive.'}
@@ -30,6 +31,7 @@ if($GuiControl){$args+='--gui'}
 if($DisableGuiControl){$args+='--gui-off'}
 foreach($cap in $EnableCapability){$args+=@('--enable-capability',$cap)}
 foreach($cap in $DisableCapability){$args+=@('--disable-capability',$cap)}
+if($ExpectedConfigSha256){$args+=@('--expected-config-sha256',$ExpectedConfigSha256.ToLowerInvariant())}
 $json=& $node @args
 if($LASTEXITCODE -ne 0){throw 'Profile reconfiguration generator failed.'}
 try{$result=$json|ConvertFrom-Json}catch{throw 'Profile reconfiguration returned invalid JSON.'}
@@ -44,6 +46,77 @@ function Test-Expected([string]$Sha){
     return [bool]($h.ok -and [string]$h.configSha256 -eq $Sha -and [string]$h.instance.profile -eq $Profile)
   }catch{return $false}
 }
+# Restore only if this invocation's newly-installed policy is still current.
+# The same per-profile lock used by Node must cover all rollback writes.
+function Restore-ProfileBackupIfStillCurrent(
+  [string]$ProfileState,
+  [string]$BackupDir,
+  [string]$ProfileName,
+  [string]$OriginalSha256,
+  [string]$ExpectedLiveSha256
+){
+  $state=[IO.Path]::GetFullPath($ProfileState)
+  $backup=[IO.Path]::GetFullPath($BackupDir)
+  $backupsRoot=[IO.Path]::GetFullPath((Join-Path $state 'backups'))
+  $prefix=$backupsRoot.TrimEnd([IO.Path]::DirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar
+  if(-not $backup.StartsWith($prefix,[StringComparison]::OrdinalIgnoreCase)){
+    throw 'PROFILE_RECONFIGURE_ROLLBACK_BACKUP_SCOPE_INVALID'
+  }
+  $oldConfig=Join-Path $backup 'config.json'
+  $oldRecord=Join-Path $backup 'instance.json'
+  $config=Join-Path $state 'config.json'
+  $record=Join-Path $state 'instance.json'
+  foreach($file in @($oldConfig,$oldRecord,$config,$record)){
+    if(-not(Test-Path -LiteralPath $file -PathType Leaf) -or
+       (Get-Item -LiteralPath $file).Attributes -band [IO.FileAttributes]::ReparsePoint){
+      throw 'PROFILE_RECONFIGURE_ROLLBACK_FILE_INVALID'
+    }
+  }
+  $oldRecordData=Get-Content -LiteralPath $oldRecord -Raw|ConvertFrom-Json
+  if([string]$oldRecordData.profile -ne $ProfileName -or
+     [string]$oldRecordData.configSha256 -ne $OriginalSha256 -or
+     (Get-FileHash -LiteralPath $oldConfig -Algorithm SHA256).Hash -ne $OriginalSha256){
+    throw 'PROFILE_RECONFIGURE_ROLLBACK_BACKUP_MISMATCH'
+  }
+  $lockPath=Join-Path $state '.profile-reconfigure.lock'
+  $lock=$null
+  try{
+    try{
+      $lock=[IO.File]::Open($lockPath,[IO.FileMode]::CreateNew,
+        [IO.FileAccess]::ReadWrite,[IO.FileShare]::None)
+    }catch [IO.IOException]{
+      throw 'PROFILE_RECONFIGURE_ROLLBACK_BUSY'
+    }
+    $currentRecord=Get-Content -LiteralPath $record -Raw|ConvertFrom-Json
+    $currentHash=(Get-FileHash -LiteralPath $config -Algorithm SHA256).Hash
+    if($currentHash -ne $ExpectedLiveSha256 -or
+       [string]$currentRecord.configSha256 -ne $ExpectedLiveSha256 -or
+       [string]$currentRecord.profile -ne $ProfileName){
+      throw 'PROFILE_RECONFIGURE_ROLLBACK_STALE_POLICY'
+    }
+    $stamp=[Guid]::NewGuid().ToString('N')
+    $tempConfig=Join-Path $state ('.config.rollback-'+$stamp)
+    $tempRecord=Join-Path $state ('.instance.rollback-'+$stamp)
+    try{
+      [IO.File]::WriteAllBytes($tempConfig,[IO.File]::ReadAllBytes($oldConfig))
+      [IO.File]::WriteAllBytes($tempRecord,[IO.File]::ReadAllBytes($oldRecord))
+      # Atomic, same-directory rename for each independently validated file.
+      [IO.File]::Move($tempConfig,$config,$true)
+      [IO.File]::Move($tempRecord,$record,$true)
+    }finally{
+      Remove-Item -LiteralPath $tempConfig,$tempRecord -Force -ErrorAction SilentlyContinue
+    }
+    if((Get-FileHash -LiteralPath $config -Algorithm SHA256).Hash -ne $OriginalSha256){
+      throw 'PROFILE_RECONFIGURE_ROLLBACK_WRITE_UNVERIFIED'
+    }
+  }finally{
+    if($lock){
+      $lock.Dispose()
+      Remove-Item -LiteralPath $lockPath -Force -ErrorAction Stop
+    }
+  }
+}
+
 foreach($i in 1..$WaitSeconds){
   Start-Sleep -Seconds 1
   if(Test-Expected $result.newConfigSha256){
@@ -53,16 +126,7 @@ foreach($i in 1..$WaitSeconds){
   }
 }
 
-$backup=[IO.Path]::GetFullPath([string]$result.backupDir)
-$expectedPrefix=[IO.Path]::GetFullPath((Join-Path $StateDir 'backups'))
-if(-not $backup.StartsWith($expectedPrefix,[StringComparison]::OrdinalIgnoreCase)){throw 'Profile reconfiguration timeout and backup path is not trusted.'}
-$oldConfig=Join-Path $backup 'config.json';$oldRecord=Join-Path $backup 'instance.json'
-if(-not(Test-Path $oldConfig -PathType Leaf) -or -not(Test-Path $oldRecord -PathType Leaf)){throw 'Profile reconfiguration timeout and rollback backup is incomplete.'}
-$record=Get-Content $oldRecord -Raw|ConvertFrom-Json
-if([string]$record.configSha256 -ne [string]$result.oldConfigSha256){throw 'Profile reconfiguration timeout and rollback record hash mismatches.'}
-if((Get-FileHash $oldConfig -Algorithm SHA256).Hash.ToLowerInvariant() -ne [string]$result.oldConfigSha256){throw 'Profile reconfiguration timeout and rollback config hash mismatches.'}
-Copy-Item $oldConfig (Join-Path $StateDir 'config.json') -Force
-Copy-Item $oldRecord (Join-Path $StateDir 'instance.json') -Force
+Restore-ProfileBackupIfStillCurrent -ProfileState $StateDir -BackupDir $result.backupDir -ProfileName $Profile -OriginalSha256 $result.oldConfigSha256 -ExpectedLiveSha256 $result.newConfigSha256
 foreach($i in 1..$WaitSeconds){
   Start-Sleep -Seconds 1
   if(Test-Expected $result.oldConfigSha256){throw "PROFILE_RECONFIGURE_ROLLED_BACK profile=$Profile reason=new-instance-timeout"}

@@ -313,7 +313,7 @@ $apply.Add_Click({
     }else{
       $script=Join-Path $CoreRoot 'reconfigure-profile-instance.ps1'
       if(-not(Test-Path $script)){throw 'Profile reconfigure script is unavailable.'}
-      $args=@('-Profile',$script:selected.Profile)
+      $args=@('-Profile',$script:selected.Profile,'-ExpectedConfigSha256',$script:selectedFingerprint)
       foreach($r in $rootList){$args+=@('-AllowedRoot',$r)}
       $args+=if($power.Checked){@('-PowerMode')}else{@('-StandardMode')}
       $args+=if($gui.Checked){@('-GuiControl')}else{@('-DisableGuiControl')}
