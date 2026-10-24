@@ -14,6 +14,11 @@ foreach($name in @('profile-manager-windows.ps1','profile-enrollment-windows.ps1
   if(-not(Test-Path -LiteralPath $source -PathType Leaf)){throw "Desktop tool missing: $name"}
   Copy-Item -LiteralPath $source -Destination (Join-Path $OutputDir $name) -Force
 }
+$OwnerPreflight=Join-Path $Root 'tools\owner-gui-native-readiness.ps1'
+if(-not(Test-Path -LiteralPath $OwnerPreflight -PathType Leaf)){
+ throw 'Owner GUI readiness tool missing'
+}
+Copy-Item -LiteralPath $OwnerPreflight -Destination (Join-Path $OutputDir 'owner-gui-native-readiness.ps1') -Force
 $Exe=Join-Path $OutputDir 'RemoteCommander.exe'
 if(-not (Test-Path -LiteralPath $Exe -PathType Leaf)){throw 'RemoteCommander.exe missing after publish'}
 $Sha=(Get-FileHash -Algorithm SHA256 -LiteralPath $Exe).Hash.ToLowerInvariant()
