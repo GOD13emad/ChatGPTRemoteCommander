@@ -7,7 +7,8 @@ param(
   [switch]$DisableGuiControl,
   [string[]]$EnableCapability = @(),
   [string[]]$DisableCapability = @(),
-  [ValidateRange(5,120)][int]$WaitSeconds = 45
+  [ValidateRange(5,120)][int]$WaitSeconds = 45,
+  [ValidatePattern('^[a-fA-F0-9]{64}$')][string]$ExpectedConfigSha256
 )
 $ErrorActionPreference='Stop'
 if($PowerMode -and $StandardMode){throw '-PowerMode and -StandardMode are mutually exclusive.'}
@@ -30,6 +31,7 @@ if($GuiControl){$args+='--gui'}
 if($DisableGuiControl){$args+='--gui-off'}
 foreach($cap in $EnableCapability){$args+=@('--enable-capability',$cap)}
 foreach($cap in $DisableCapability){$args+=@('--disable-capability',$cap)}
+if($ExpectedConfigSha256){$args+=@('--expected-config-sha256',$ExpectedConfigSha256.ToLowerInvariant())}
 $json=& $node @args
 if($LASTEXITCODE -ne 0){throw 'Profile reconfiguration generator failed.'}
 try{$result=$json|ConvertFrom-Json}catch{throw 'Profile reconfiguration returned invalid JSON.'}
