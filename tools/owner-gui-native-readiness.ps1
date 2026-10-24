@@ -31,17 +31,45 @@ if($configPresent) {
 # Even a clean local incident pathname is not evidence of that disposition.
 $pendingPath=Join-Path $env:LOCALAPPDATA 'chatgpt-remote-commander\gui-pending-native-input-v1.json'
 $pendingPathExists=Test-Path -LiteralPath $pendingPath
+# A same-session process is not proof of the owner's Windows identity.
+# Compare the Win32_Process owner SID to the caller's token SID,
+# require exactly one matching worker; never emit a SID or command line.
+function Test-OwnerWorkerIdentity {
+  param([object[]]$Processes,[int]$ExpectedSession,[string]$ExpectedSid,[scriptblock]$OwnerSidLookup)
+  if($ExpectedSession -le 0 -or [string]::IsNullOrWhiteSpace($ExpectedSid) -or
+     -not $OwnerSidLookup){return $false}
+  $candidates=@($Processes | Where-Object {
+    [int]$_.SessionId -eq $ExpectedSession -and
+    [string]$_.Name -eq 'node.exe' -and
+    [string]$_.CommandLine -match 'server-v0\.3\.mjs'
+  })
+  if($candidates.Count -ne 1){return $false}
+  try{
+    $identity= & $OwnerSidLookup $candidates[0]
+    return ($null -ne $identity -and [string]$identity -ceq $ExpectedSid)
+  }catch{return $false}
+}
+
 $workerCount=0
+$workerSidVerified=$false
 if($interactive){
- try {
-   $workerCount=@(Get-CimInstance Win32_Process -Filter "Name='node.exe'" |
-     Where-Object { $_.SessionId -eq $session -and
-       [string]$_.CommandLine -match 'server-v0\.3\.mjs' }).Count
- } catch { $workerCount=0 }
+  try{
+    $candidates=@(Get-CimInstance Win32_Process -Filter "Name='node.exe'" |
+      Where-Object { $_.SessionId -eq $session -and
+        [string]$_.CommandLine -match 'server-v0\.3\.mjs' })
+    $workerCount=$candidates.Count
+    $workerSidVerified=Test-OwnerWorkerIdentity -Processes $candidates -ExpectedSession $session -ExpectedSid ([string]$identity.User.Value) -OwnerSidLookup {
+      param($worker)
+      $sid=Invoke-CimMethod -InputObject $worker -MethodName GetOwnerSid -ErrorAction Stop
+      if([int]$sid.ReturnValue -ne 0){return $null}
+      return [string]$sid.Sid
+    }
+  }catch{ $workerSidVerified=$false }
 }
 $reason=if(-not $interactive){'OWNER_INTERACTIVE_SESSION_REQUIRED'}
   elseif(-not $configValid){'OWNER_GUI_CONFIG_NOT_VERIFIED'}
   elseif($pendingPathExists){'PENDING_NATIVE_EFFECT_REQUIRES_REVIEW'}
+  elseif(-not $workerSidVerified){'OWNER_WORKER_IDENTITY_UNVERIFIED'}
   else {'OS_TRUSTED_OWNER_CONSENT_BROKER_REQUIRED'}
 # No code path in this diagnostic may indicate that a GUI input was authorized.
 [pscustomobject]@{
@@ -50,6 +78,7 @@ $reason=if(-not $interactive){'OWNER_INTERACTIVE_SESSION_REQUIRED'}
  reason=$reason
  sessionInteractiveOwnerCandidate=$interactive
  ownerWorkerSameSessionPresent=($workerCount -gt 0)
+ ownerWorkerIdentityVerified=$workerSidVerified
  ownerConfigValid=$configValid
  ownerInputPolicyRestricted=$inputPolicyRestricted
  incidentPendingPathPresent=$pendingPathExists
