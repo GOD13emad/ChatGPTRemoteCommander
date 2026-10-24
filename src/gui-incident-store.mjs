@@ -3,7 +3,7 @@
 // An unresolved record has NO automatic expiry or reset-on-restart path.
 import path from 'node:path';
 import os from 'node:os';
-import {randomUUID} from 'node:crypto';
+import {randomUUID,createHash} from 'node:crypto';
 import {constants} from 'node:fs';
 import fs from 'node:fs/promises';
 import {assertUnredirectedDirectoryAncestors} from './managed-path-anchor.mjs';
@@ -54,7 +54,7 @@ export function createGuiInputIncidentStore({file=defaultFile(),now=()=>new Date
       }
     }
   }
-  async function pendingInternal(){
+  async function pendingInternal(includeEvidence=false){
     assertUnredirectedDirectoryAncestors(folder,'GUI_INCIDENT_STORAGE_UNAVAILABLE');
     try{assertPrivateFolder(await fs.lstat(folder));}
     catch(e){if(e.code==='ENOENT')return null;throw fail('GUI_INCIDENT_STORAGE_UNAVAILABLE');}
@@ -74,7 +74,7 @@ export function createGuiInputIncidentStore({file=defaultFile(),now=()=>new Date
     let handle;
     try{handle=await fs.open(file,flags);}
     catch{throw fail('GUI_INCIDENT_STORAGE_UNAVAILABLE');}
-    let record;
+    let record,evidenceSha256,evidenceBytes;
     try{
       const [st,named]=await Promise.all([handle.stat(),fs.lstat(file)]);
       if(!st.isFile()||!named.isFile()||named.isSymbolicLink()||
@@ -92,7 +92,12 @@ export function createGuiInputIncidentStore({file=defaultFile(),now=()=>new Date
         used+=bytesRead;
       }
       if(used!==st.size||used<1||used>2048)throw fail('GUI_INCIDENT_STORAGE_UNAVAILABLE');
-      record=JSON.parse(buffer.subarray(0,used).toString('utf8'));
+      const evidence=buffer.subarray(0,used);
+      record=JSON.parse(evidence.toString('utf8'));
+      if(includeEvidence){
+        evidenceSha256=createHash('sha256').update(evidence).digest('hex');
+        evidenceBytes=used;
+      }
     }catch{throw fail('GUI_INCIDENT_STORAGE_UNAVAILABLE');}
     finally{
       try{await handle.close();}
@@ -103,12 +108,27 @@ export function createGuiInputIncidentStore({file=defaultFile(),now=()=>new Date
       !/^[a-zA-Z0-9-]{8,128}$/.test(record.id)||
       typeof record.startedUtc!=='string'||record.startedUtc.length>48)
       throw fail('GUI_INCIDENT_STORAGE_UNAVAILABLE');
-    return {id:record.id,tool:record.tool,startedUtc:record.startedUtc};
+    const common={id:record.id,tool:record.tool,startedUtc:record.startedUtc};
+    if(!includeEvidence)return common;
+    // This snapshot proves the bytes read, NOT effect outcome or owner consent.
+    return Object.freeze({
+      ...common,status:'PENDING_NATIVE_EFFECT',nativeOutcome:'UNKNOWN',
+      evidenceSha256,evidenceBytes,
+      ownerAuthenticated:false,releaseAuthorized:false,noReplay:true
+    });
   }
-  async function pending(){
+  async function pending(includeEvidence=false){
     // A crashed or concurrent resolution must never be read as "no incident".
     try{await fs.lstat(guard);}
-    catch(e){if(e?.code==='ENOENT')return pendingInternal();}
+    catch(e){if(e?.code==='ENOENT')return pendingInternal(includeEvidence);}
+    throw fail('GUI_INCIDENT_STORAGE_UNAVAILABLE');
+  }
+  async function inspect(){
+    // Never read raw user input: only strict J01 metadata and a digest.
+    // The existing incident guard remains authoritative and fails closed.
+    const snapshot=await pending(true);
+    try{await fs.lstat(guard);}
+    catch(e){if(e?.code==='ENOENT')return snapshot;}
     throw fail('GUI_INCIDENT_STORAGE_UNAVAILABLE');
   }
   async function begin(tool){
@@ -158,5 +178,5 @@ export function createGuiInputIncidentStore({file=defaultFile(),now=()=>new Date
       catch{preserveGuard();throw fail('GUI_INCIDENT_STORAGE_UNAVAILABLE');}
     });
   }
-  return {pending,begin,resolve};
+  return {pending,begin,resolve,inspect};
 }
