@@ -180,11 +180,14 @@ function Observe-TunnelControlPlane([string]$Profile,[int]$Port) {
     $http=[int]$r.details.http_status; if($http -lt 100 -or $http -gt 599){$http=0}
     $key="degraded/$category/$http"; if($previous -ne $key){Write-SupervisorLog "TUNNEL_CONTROL_PLANE_DEGRADED profile=$Profile category=$category http=$http"}
     $script:TunnelControlPlaneLastState[$Profile]=$key
+    return [pscustomobject]@{status='degraded'; category=$category; http=$http}
   } elseif([string]$r.status -eq 'ok') {
     if($previous.StartsWith('degraded/')){Write-SupervisorLog "TUNNEL_CONTROL_PLANE_RECOVERED profile=$Profile"}
     $script:TunnelControlPlaneLastState[$Profile]='ok'
+    return [pscustomobject]@{status='ok'}
   }
 }
+. (Join-Path $Root 'tools\tunnel-control-plane-recovery-windows.ps1')
 function Get-TunnelProcess([string]$Profile, [string]$Exe) {
   $expected = [IO.Path]::GetFullPath($Exe)
   $escaped = [regex]::Escape($Profile)
@@ -316,7 +319,8 @@ try {
           [void]$missingLogged.Remove($item.Profile)
           $process = Get-TunnelProcess $item.Profile $exe
           $ready = Test-TunnelReady $item.HealthPort
-          Observe-TunnelControlPlane $item.Profile $item.HealthPort
+          $probe = Observe-TunnelControlPlane $item.Profile $item.HealthPort
+          Try-RecoverTunnelControlPlane $item $process $ready $exe $probe
           if (-not $process -and $ready) {
             if (-not $ownerUnknownLogged.ContainsKey($item.Profile)) {
               Write-SupervisorLog "TUNNEL_OWNER_UNVERIFIED profile=$($item.Profile) port=$($item.HealthPort); skipping competing launch"

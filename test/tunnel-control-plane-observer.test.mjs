@@ -8,9 +8,9 @@ import { fileURLToPath } from 'node:url';
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const source=fs.readFileSync(path.join(root,'autostart-windows.ps1'),'utf8');
 const begin=source.indexOf('$script:TunnelControlPlaneNextCheck = @{}');
-const end=source.indexOf('function Get-TunnelProcess',begin);
+const end=source.indexOf(". (Join-Path $Root ",begin);
 
-test('Windows tunnel supervision observes control plane without restarting or exposing credentials',()=>{
+test('Windows tunnel supervision observes and safely hands degraded status to bounded recovery',()=>{
   assert.ok(begin>=0&&end>begin,'standalone supervisor observation function required');
   const observer=source.slice(begin,end);
   for(const marker of [
@@ -21,13 +21,13 @@ test('Windows tunnel supervision observes control plane without restarting or ex
   assert.match(source,/Observe-TunnelControlPlane \$item\.Profile \$item\.HealthPort/u);
   // The cross-session healthy-tunnel guard skips competitor launches. Observe
   // before that guard so a SYSTEM-owned healthy tunnel still reports degradation.
-  assert.match(source,/\$ready = Test-TunnelReady \$item\.HealthPort\s+Observe-TunnelControlPlane \$item\.Profile \$item\.HealthPort\s+if \(-not \$process -and \$ready\)/u);
+  assert.match(source,/\$ready = Test-TunnelReady \$item\.HealthPort\s+\$probe = Observe-TunnelControlPlane \$item\.Profile \$item\.HealthPort\s+Try-RecoverTunnelControlPlane \$item \$process \$ready \$exe \$probe\s+if \(-not \$process -and \$ready\)/u);
   assert.match(source,/if \(-not \$process -or -not \$ready\) \{ Start-TunnelProfile \$item \}/u);
   assert.match(source,/TUNNEL_OWNER_UNVERIFIED/u);
   assert.doesNotMatch(observer,/Stop-Process|Start-Process|Restart-Service|Read-RcCredential|CONTROL_PLANE_API_KEY/u);
 });
 
-test('Windows mock 403 stays degraded until polling recovers and never enters a restart loop',
+test('Windows mock 403 remains logged until polling recovers, with bounded separate restart policy',
   {skip:process.platform!=='win32'},()=>{
     const result=spawnSync('pwsh.exe',[
       '-NoLogo','-NoProfile','-NonInteractive',

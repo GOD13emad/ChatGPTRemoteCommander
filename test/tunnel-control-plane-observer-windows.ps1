@@ -1,7 +1,7 @@
 $ErrorActionPreference='Stop'
 $source=Get-Content -LiteralPath (Join-Path $PSScriptRoot '..\autostart-windows.ps1') -Raw
 $start=$source.IndexOf('$script:TunnelControlPlaneNextCheck = @{}')
-$end=$source.IndexOf('function Get-TunnelProcess',$start)
+$end=$source.IndexOf('. (Join-Path $Root ',$start)
 if($start -lt 0 -or $end -le $start){throw 'OBSERVER_SOURCE_NOT_FOUND'}
 
 $script:MockStatus='degraded'
