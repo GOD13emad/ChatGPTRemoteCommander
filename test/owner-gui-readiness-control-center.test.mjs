@@ -1,0 +1,30 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+const ui=fs.readFileSync('desktop/RemoteCommanderDashboard/Program.cs','utf8');
+const pack=fs.readFileSync('desktop/build-windows.ps1','utf8');
+const install=fs.readFileSync('desktop/install-windows.ps1','utf8');
+const script=fs.readFileSync('tools/owner-gui-native-readiness.ps1','utf8');
+test('Control Center presents a read-only owner GUI readiness action',()=>{
+ assert.ok(ui.includes('Button("Owner GUI Readiness"'));
+ assert.ok(ui.includes('ShowOwnerGuiReadinessAsync()'));
+ assert.ok(ui.includes('takeoverAuthorized'));
+ assert.ok(ui.includes('osTrustedOwnerConsentVerified'));
+ assert.ok(ui.includes('incidentEffectReconciled'));
+ assert.ok(ui.includes('NOT_AUTHORIZED'));
+ assert.ok(ui.includes('Open Control Center inside the signed-in owner'));
+ assert.ok(ui.includes('UseShellExecute = false'));
+ assert.ok(ui.includes('CreateNoWindow = true'));
+ assert.ok(ui.includes('RedirectStandardOutput = true'));
+ assert.ok(ui.includes('ArgumentList.Add(arg)'));
+ assert.ok(ui.includes('TimeSpan.FromSeconds(12)'));
+ assert.ok(!ui.includes('takeoverAuthorized = true'));
+});
+test('native diagnostic is part of the ControlMonitoring hashed payload, not Core-only',()=>{
+ assert.match(pack,/Join-Path \$Root 'tools\\owner-gui-native-readiness\.ps1'/);
+ assert.ok(pack.includes("'owner-gui-native-readiness.ps1') -Force"));
+ assert.equal((install.match(/'owner-gui-native-readiness\.ps1'/g)||[]).length,2);
+ assert.ok(install.includes("if($Mode -eq 'ControlMonitoring')"));
+ assert.match(script,/takeoverAuthorized=\$false/);
+ assert.match(script,/modifiesState=\$false/);
+});
