@@ -68,3 +68,18 @@ try {
   assert.equal(result.status, 0, (result.stdout || '') + (result.stderr || ''));
   assert.match(result.stdout, /NATIVE_ACCESS_GUARD_PASS/);
 });
+
+
+test('GUI passes selected config fingerprint through Windows to backend expected-config CAS',()=>{
+ assert.ok(source.includes("'-ExpectedConfigSha256',$script:selectedFingerprint"));
+ const win=fs.readFileSync('reconfigure-profile-instance.ps1','utf8');
+ assert.match(win,/\[string\]\$ExpectedConfigSha256/);
+ assert.match(win, /--expected-config-sha256/);
+ const cli=fs.readFileSync('tools/reconfigure-profile-instance.mjs','utf8');
+ assert.ok(cli.includes("a==='--expected-config-sha256'"));
+ const backend=fs.readFileSync('src/profile-reconfigure.mjs','utf8');
+ for(const marker of ['PROFILE_RECONFIGURE_STALE_POLICY','PROFILE_RECONFIGURE_BUSY',
+  'PROFILE_RECONFIGURE_RECORD_CONFIG_MISMATCH', "fs.openSync(lockFile, 'wx'"]){
+   assert.ok(backend.includes(marker),marker);
+ }
+});
