@@ -3,8 +3,9 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
-import { terminateProcessesUsingBrowserProfile, waitForBrowserDevToolsPort } from '../src/browser-owned-processes.mjs';
+import { terminateProcessesUsingBrowserProfile } from '../src/browser-owned-processes.mjs';
 import { createInterface } from 'node:readline';
+import { waitForDevToolsPortFile } from '../src/browser-devtools-port.mjs';
 
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const safeCode=e=>/^[A-Z][A-Z0-9_]{1,79}$/.test(e?.browserCode??e?.message??'')?(e.browserCode??e.message):'BROWSER_NATIVE_FAILED';
@@ -78,10 +79,6 @@ let browser=null;
 async function portAlive(port){
  if(!Number.isInteger(port)||port<1||port>65535)return false;
  try{const c=new AbortController();const t=setTimeout(()=>c.abort(),350);const r=await fetch('http://127.0.0.1:'+port+'/json/version',{signal:c.signal});clearTimeout(t);return r.ok;}catch{return false;}
-}
-async function waitForPortFile(file,child){
- try{return await waitForBrowserDevToolsPort(file,child);}
- catch(error){throw fail(error?.message==='BROWSER_LAUNCH_FAILED'?'BROWSER_LAUNCH_FAILED':'BROWSER_DEVTOOLS_TIMEOUT');}
 }
 async function evaluate(expression,{returnByValue=true,timeoutMs=30000}={}){
  if(!browser?.cdp||!browser.sessionId)throw fail('BROWSER_SESSION_NOT_RUNNING');
@@ -170,7 +167,7 @@ async function startBrowser(req){
  let child;try{child=spawn(executable,args,{stdio:['ignore','ignore','ignore'],windowsHide:headless,shell:false});}catch{throw fail('BROWSER_LAUNCH_FAILED');}
  browser={child,cdp:null,sessionId:null,targetId:null,profileDir,isolated:req.isolated===true,executable,product:null,port:null,headless};
  try{
-  const port=await waitForPortFile(portFile,child);browser.port=port;
+  const port=await waitForDevToolsPortFile(portFile,child);browser.port=port;
   let version;try{version=await (await fetch('http://127.0.0.1:'+port+'/json/version')).json();}catch{throw fail('BROWSER_DEVTOOLS_UNAVAILABLE');}
   if(typeof version.webSocketDebuggerUrl!=='string')throw fail('BROWSER_DEVTOOLS_UNAVAILABLE');
   browser.product=version.Browser??null;
