@@ -1,6 +1,9 @@
 # Remote Commander suite — 0.11 release train
 **Opened:** 2026-10-27 · **Status:** INTEGRATION CANDIDATE / NO PUBLIC RELEASE / NO HOST PROMOTION
 
+## 0.11.0-dev.8 — Windows Parser/R157 qualification correction
+
+Dev.7 Windows native PowerShell ParseFile failed (20 diagnostic errors at malformed prerelease route expression). Dev.8 reconstructs from known good dev.6 script and applies exact two route guards and shared comparison without string-template expansion. CI's R157 postcondition validates a qualified version **and** the all-false development NoPromote manifest. Exact SHA Windows parser, R157, R173, Linux R170, full CI and real rollback are still independent OPEN gates. Five live working Core 0.10.26 routes must be preserved.
 ## 0.11.0-dev.7 — one bounded SemVer parser for both Native Updaters
 
 One shared Node comparison (strict stable/dev.N/rc.N, fail-closed malformed versions) feeds both Windows and Linux native updaters. Linux update receipt serializes a bounded candidate version; route guards accept a legitimate prerelease identifier. The public Stable discovery path remains exact stable tags and explicit NoPromote flags remain false. **Not yet promoted**: requirement to reproduce hosted R170/R173/R157 plus native rollback and then five-host cutover remains open. Independent CI test step prevents repeating Windows command-length regression.

@@ -13,8 +13,8 @@
     <Product>Remote Commander by TandemVector Labs</Product>
     <Description>Unsigned Windows preview distributed by the Remote Commander project. Publisher identity not Authenticode verified.</Description>
     <RootNamespace>RemoteCommander</RootNamespace>
-    <Version>0.11.0-dev.7</Version>
-    <FileVersion>0.11.0.7</FileVersion>
-    <AssemblyVersion>0.11.0.7</AssemblyVersion>
+    <Version>0.11.0-dev.8</Version>
+    <FileVersion>0.11.0.8</FileVersion>
+    <AssemblyVersion>0.11.0.8</AssemblyVersion>
   </PropertyGroup>
 </Project>

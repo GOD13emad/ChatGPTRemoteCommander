@@ -1,3 +1,9 @@
+# 0.11.0-dev.8 — repair native Windows parser and match R157 NoPromote source identity (2026-10-27)
+
+- A dev.7 textual substitution malformed two Windows PowerShell prerelease route-validation expressions; real PowerShell Parser found 20 errors on the pinned source. Restored the last known parseable dev.6 Windows updater and reapplied only the shared SemVer comparator and two route checks using literal, non-interpolating changes.
+- R157's source version gate now allows only strict Stable/dev.N/rc.N syntax and still requires `tools/isolated-qa-policy.mjs` to reject a changed/all-approved release manifest during developer qualification.
+- No claim of Windows repair until native Parser and CI prove it. Five production machines and their current routes are unchanged; NoPromote remains all false.
+
 # 0.11.0-dev.7 — shared prerelease-aware native updater version comparisons (2026-10-27; Draft / NoPromote)
 
 - Added strict `tools/semver-release.mjs` comparing `major.minor.patch`, `dev.N`, and `rc.N` in one deterministic implementation for Windows and Linux. Invalid/ambiguous versions fail closed.
