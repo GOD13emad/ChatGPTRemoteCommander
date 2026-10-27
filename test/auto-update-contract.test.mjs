@@ -1099,7 +1099,12 @@ test('R254 Linux plugin post-verify failure preserves owner data and quarantines
 test('R157 staged release lookup uses the pinned source version, not a fixed old tag',()=>{
  const workflow=read('.github/workflows/windows-updater-e2e-r157.yml');
  const version=JSON.parse(read('package.json')).version;
- assert.match(version,/^\d+\.\d+\.\d+$/);
+ const train=JSON.parse(read('docs/release-train-0.11.json'));
+ assert.ok(/^\d+\.\d+\.\d+$/.test(version) ||
+   (/^0\.11\.0-dev\.[1-9]\d*$/.test(version) &&
+    train.sourceVersion===version && train.status==='INTEGRATION_CANDIDATE_NOT_FINAL' &&
+    train.publishApproved===false && train.installedPromotionApproved===false &&
+    train.autoupdateApproved===false),'only exact manifest-gated development SemVer is admitted');
  for(const requirement of [
   "Join-Path $env:GITHUB_WORKSPACE 'package.json'",
   "R157_SOURCE_PACKAGE_MISSING",
