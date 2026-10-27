@@ -109,7 +109,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 const [, , file, status, version, commit, sourceRef] = process.argv;
 if (!/^(?:pass|maintenance_pass)$/.test(status)) process.exit(2);
-if (!/^\d+\.\d+\.\d+$/.test(version)) process.exit(3);
+if (!/^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-(?:dev|rc)\.[1-9]\d*)?$/.test(version)) process.exit(3);
 if (!/^[0-9a-fA-F]{40}$/.test(commit)) process.exit(4);
 if (sourceRef.length > 128 || !/^[A-Za-z0-9._/-]+$/.test(sourceRef)) process.exit(5);
 fs.mkdirSync(path.dirname(file), { recursive: true });
@@ -131,10 +131,12 @@ curl_fetch(){ curl --fail --silent --show-error --location --connect-timeout "$C
 json_field(){ node "$1/tools/json-field.mjs" --file "$2" --field "$3" 2>/dev/null || true; }
 route_tsv(){ node "$1/tools/router-state.mjs" --state "$2" --tsv; }
 version_gt(){
-  [[ "$1" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ && "$2" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "AUTO_UPDATE_VERSION_COMPARE_INVALID left=$1 right=$2" >&2; return 2; }
-  local IFS=. a1 a2 a3 b1 b2 b3
-  read -r a1 a2 a3 <<< "$1"; read -r b1 b2 b3 <<< "$2"
-  ((10#$a1 > 10#$b1)) || { ((10#$a1 == 10#$b1)) && ((10#$a2 > 10#$b2)); } || { ((10#$a1 == 10#$b1)) && ((10#$a2 == 10#$b2)) && ((10#$a3 > 10#$b3)); }
+  local order
+  order="$(node "$(dirname "$SELF_PATH")/tools/semver-release.mjs" compare "$1" "$2")" || {
+    echo 'AUTO_UPDATE_VERSION_COMPARE_INVALID' >&2
+    exit 2
+  }
+  [[ "$order" == gt ]]
 }
 
 wait_health(){
@@ -704,7 +706,7 @@ const state=JSON.parse(fs.readFileSync(process.argv[2],'utf8'));
 const version=String(state?.active?.version??'');
 const commit=String(state?.active?.commit??'');
 if(state?.schema!==1 || state?.profile!=='default' ||
-   !/^\d+\.\d+\.\d+$/.test(version) || !/^[0-9a-f]{40}$/.test(commit)){
+   !/^\d+\.\d+\.\d+(?:-(?:dev|rc)\.[1-9]\d*)?$/.test(version) || !/^[0-9a-f]{40}$/.test(commit)){
   console.error('AUTO_UPDATE_ACTIVE_ROUTE_UNVERIFIED');
   process.exit(2);
 }

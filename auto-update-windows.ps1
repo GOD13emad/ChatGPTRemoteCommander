@@ -248,7 +248,11 @@ function Get-FreePort([System.Collections.Generic.HashSet[int]]$Used){
   throw 'NO_PRIVATE_BACKEND_PORT'
 }
 function Test-VersionGreater([string]$Left,[string]$Right){
-  try{return ([version]$Left -gt [version]$Right)}catch{throw "AUTO_UPDATE_VERSION_COMPARE_INVALID left=$Left right=$Right"}
+  $tool=Join-Path $PSScriptRoot 'tools\semver-release.mjs'
+  if(-not(Test-Path -LiteralPath $tool -PathType Leaf)){throw 'AUTO_UPDATE_VERSION_COMPARE_HELPER_MISSING'}
+  $comparison=(& node.exe $tool compare $Left $Right | Out-String).Trim()
+  if($LASTEXITCODE -ne 0 -or $comparison -notin @('gt','eq','lt')){throw 'AUTO_UPDATE_VERSION_COMPARE_INVALID'}
+  return ($comparison -ceq 'gt')
 }
 function Get-LatestTag {
   if($SourceRef){ return $SourceRef }
@@ -974,7 +978,7 @@ try{
       $routeDoc=Read-Json $routeFile
       $activeVersion=[string]$routeDoc.active.version
       if($routeDoc.schema -ne 1 -or [string]$routeDoc.profile -ne 'default' -or
-         $activeVersion -notmatch '^\d+\.\d+\.\d+$' -or
+         $activeVersion -notmatch '^\d+\.\d+\.\d+(?:-(?:dev|rc)\.[1-9]\d*)? -or
          [string]$routeDoc.active.commit -notmatch '^[0-9a-f]{40}$'){
         throw 'AUTO_UPDATE_ACTIVE_ROUTE_UNVERIFIED'
       }
@@ -1027,6 +1031,794 @@ try{
         $routedVersion=[string]$routed.active.version
         if($routed.schema -ne 1 -or $routed.profile -ne 'default' -or
            $routedVersion -notmatch '^\d+\.\d+\.\d+$' -or
+           [string]$routed.active.commit -notmatch '^[0-9a-f]{40}$'){
+          throw 'INVALID_ACTIVE_ROUTE'
+        }
+      }catch{throw 'AUTO_UPDATE_ACTIVE_ROUTE_UNVERIFIED'}
+      if(Test-VersionGreater $routedVersion $stage.Version){
+        $report.status='NEWER_CURRENT';$report.currentVersion=$routedVersion
+        $report.completedAt=(Get-Date).ToUniversalTime().ToString('o')
+        Atomic-Json $ResultFile $report
+        Log "AUTO_UPDATE_NEWER_CURRENT current=$routedVersion latest=$($stage.Version) source=route"
+        exit 0
+      }
+      if(-not $currentStatus){throw 'AUTO_UPDATE_ACTIVE_MCP_STATUS_UNVERIFIED'}
+      if([string]$currentStatus.version -ne $routedVersion){throw 'AUTO_UPDATE_ROUTE_MCP_VERSION_CONFLICT'}
+    } elseif(-not $currentStatus){
+      # A fresh isolated install may contain package.json but have no live server
+      # or previous update receipt. Only a known deployed direct runtime is
+      # blocked when its MCP status is unavailable.
+      $directListeners=@(Get-NetTCPConnection -State Listen -LocalPort 47831 -ErrorAction SilentlyContinue)
+      if($directListeners.Count -gt 0 -or (Test-Path -LiteralPath $ResultFile -PathType Leaf)){
+        throw 'AUTO_UPDATE_DIRECT_MCP_STATUS_UNVERIFIED'
+      }
+    }
+  }
+  if(-not $Force -and $currentStatus -and (Test-VersionGreater ([string]$currentStatus.version) $stage.Version)){
+    $report.status='NEWER_CURRENT';$report.currentVersion=[string]$currentStatus.version;$report.completedAt=(Get-Date).ToUniversalTime().ToString('o')
+    Atomic-Json $ResultFile $report
+    Log "AUTO_UPDATE_NEWER_CURRENT current=$($currentStatus.version) latest=$($stage.Version)"
+    exit 0
+  }
+  if(-not $Force -and $currentStatus -and [string]$currentStatus.version-eq $stage.Version){
+    $route=Get-RoutePath 'default'
+    $controlHead=''
+    try{$controlHead=(& git.exe -C $InstallDir rev-parse HEAD).Trim().ToLowerInvariant()}catch{}
+    if(-not(Test-Path $route) -and $controlHead-eq $stage.Commit){
+      Complete-RetainedBackends
+      $report.status='CURRENT';$report.currentVersion=[string]$currentStatus.version;$report.completedAt=(Get-Date).ToUniversalTime().ToString('o')
+      Atomic-Json $ResultFile $report
+      Log "AUTO_UPDATE_CURRENT direct=true commit=$controlHead version=$($currentStatus.version)"
+      exit 0
+    }
+    if(Test-Path $route){
+      $rs=Read-Json $route
+      if([string]$rs.active.commit-eq $stage.Commit){
+        $controlHead=''
+        try{$controlHead=(& git.exe -C $InstallDir rev-parse HEAD).Trim().ToLowerInvariant()}catch{}
+        Complete-RetainedBackends
+        $pendingDrains=@(Complete-DeferredDrains)
+        if($pendingDrains.Count-gt 0){
+          if($controlHead-ne $stage.Commit){
+            Log "AUTO_UPDATE_MAINTENANCE controlHead=$controlHead target=$($stage.Commit)"
+            Promote-Control $stage.Commit $ref
+          }
+          $report.status='DRAIN_PENDING';$report.pendingDrains=@($pendingDrains);$report.completedAt=(Get-Date).ToUniversalTime().ToString('o')
+          Atomic-Json $ResultFile $report
+          Log "AUTO_UPDATE_DRAIN_PENDING profiles=$($pendingDrains -join ',')"
+          exit 0
+        }
+        $controlMismatch=($controlHead-ne $stage.Commit)
+        if($controlMismatch){
+          Log "AUTO_UPDATE_MAINTENANCE controlHead=$controlHead target=$($stage.Commit)"
+          foreach($rf in Get-ChildItem -LiteralPath $RoutingRoot -Filter '*.json' -File -ErrorAction SilentlyContinue){
+            if($rf.Name -like '*.runtime.json'){continue}
+            try{
+              $rr=Read-Json $rf.FullName
+              $cfg=Read-Json ([string]$rr.active.configPath)
+              $wfDir=[string]$cfg.durableWorkflows.directory
+              if($wfDir){
+                & node.exe (Join-Path $stage.Dir 'tools\finalize-workflow-schema.mjs') --directory $wfDir
+                if($LASTEXITCODE-ne 0){throw "MAINTENANCE_SCHEMA_FINALIZE_FAIL profile=$($rr.profile)"}
+              }
+            }catch{throw}
+          }
+          Promote-Control $stage.Commit $ref
+          Recycle-ControlSupervisor
+          $cleanupPending=@(Cleanup-Releases)
+          $report.status=if($cleanupPending.Count-gt0){'MAINTENANCE_REPAIRED_CLEANUP_PENDING'}else{'MAINTENANCE_REPAIRED'}
+          $report.cleanupPending=@($cleanupPending)
+          $report.completedAt=(Get-Date).ToUniversalTime().ToString('o')
+          Atomic-Json $ResultFile $report
+          Log "AUTO_UPDATE_MAINTENANCE_PASS version=$($stage.Version) cleanupPending=$($cleanupPending.Count)"
+          exit 0
+        }
+        $cleanupPending=@(Cleanup-Releases)
+        if($cleanupPending.Count-gt0){
+          $report.status='CLEANUP_PENDING';$report.cleanupPending=@($cleanupPending);$report.completedAt=(Get-Date).ToUniversalTime().ToString('o')
+          Atomic-Json $ResultFile $report
+          Log "AUTO_UPDATE_CLEANUP_PENDING releases=$($cleanupPending -join ',')"
+          exit 0
+        }
+        Log "AUTO_UPDATE_CURRENT version=$($stage.Version)"
+        $report.status='CURRENT';$report.completedAt=(Get-Date).ToUniversalTime().ToString('o');Atomic-Json $ResultFile $report;exit 0
+      }
+    }
+  }
+
+  $backoff=Get-ActiveQualificationBackoff $stage.Commit
+  if($backoff){
+    $report.status='QUALIFICATION_BACKOFF'
+    $report.qualificationBackoff=$backoff
+    $report.completedAt=(Get-Date).ToUniversalTime().ToString('o')
+    Atomic-Json $ResultFile $report
+    Log "AUTO_UPDATE_QUALIFICATION_BACKOFF commit=$($stage.Commit) gate=$($backoff.gate) count=$($backoff.count) nextRetryAt=$($backoff.nextRetryAt)"
+    exit 0
+  }
+
+  Push-Location $stage.Dir
+  try{
+    Run-Gate $stage.Dir 'check' @('run','check:qualification')
+    Run-Gate $stage.Dir 'test' @('run','test:qualification')
+    Run-Gate $stage.Dir 'audit' @('run','audit')
+    Ensure-ProjectProvider (Get-PrimaryConfig)
+    if($primaryConfig.powerMode.enabled-eq $true -and $primaryConfig.powerMode.guiControl.enabled-eq $true){
+      # Unattended updates must not steal desktop focus. Full interactive GUI E2E
+      # remains a release gate; candidate hardware validation later requires gui_status.
+      Run-GuiNativeSelfTest $stage.Dir
+    }
+  }finally{Pop-Location}
+  Clear-QualificationFailure $stage.Commit
+
+  $targets=Get-Targets
+  $used=[System.Collections.Generic.HashSet[int]]::new()
+  foreach($t in $targets){[void]$used.Add([int]$t.CanonicalPort)}
+  if(Test-Path $ProfileDir){
+    foreach($f in Get-ChildItem $ProfileDir -Filter '*.yaml' -File -ErrorAction SilentlyContinue){
+      $raw=Get-Content $f.FullName -Raw
+      foreach($rx in @('listen_addr:\s*["'']?127\.0\.0\.1:(\d+)','url:\s*["'']?http://127\.0\.0\.1:(\d+)/mcp')){
+        $m=[regex]::Match($raw,$rx);if($m.Success){[void]$used.Add([int]$m.Groups[1].Value)}
+      }
+    }
+  }
+  $device=if($currentStatus){[string]$currentStatus.deviceName}else{$env:COMPUTERNAME}
+  $explicitProfileMutation=[bool]($Force -or $PowerMode -or $StandardMode -or $GuiControl -or $DisableGuiControl -or @($DisableCapability).Count-gt0 -or @($EnableCapability).Count-gt0)
+  foreach($t in $targets){
+    if(-not $explicitProfileMutation -and (Test-Path -LiteralPath $t.RoutePath -PathType Leaf)){
+      try{
+        $liveRoute=Read-Json $t.RoutePath
+        if($liveRoute.active -and [string]$liveRoute.active.commit-eq[string]$stage.Commit -and -not $liveRoute.previous){
+          Log "AUTO_UPDATE_PROFILE_CURRENT_SKIP profile=$($t.Profile) commit=$($stage.Commit)"
+          continue
+        }
+      }catch{throw "PROFILE_CURRENT_CHECK_FAIL profile=$($t.Profile) $($_.Exception.Message)"}
+    }
+    $port=Get-FreePort $used
+    $runtimeLeaf="port-$port"
+    $stateDir=Join-Path $RuntimeRoot (Join-Path $stage.Commit (Join-Path $t.Profile $runtimeLeaf))
+    New-Item -ItemType Directory -Force -Path $stateDir|Out-Null
+    $existingPolicy=Read-Json $t.ExistingConfig
+    $liveWorkflowDir=[string]$existingPolicy.durableWorkflows.directory
+    $backupDir=Join-Path $StateRoot (Join-Path 'update-backups' (Join-Path $stage.Commit (Join-Path $t.Profile $runtimeLeaf)))
+    $shadowWorkflowDir=Join-Path $backupDir 'workflow-shadow'
+    New-Item -ItemType Directory -Force -Path $backupDir|Out-Null
+    Copy-Item -LiteralPath $t.ExistingConfig -Destination (Join-Path $backupDir 'config.before.json') -Force
+    if($liveWorkflowDir){
+      & node.exe (Join-Path $stage.Dir 'tools\copy-workflow-store.mjs') --source-dir $liveWorkflowDir --dest-dir $shadowWorkflowDir
+      if($LASTEXITCODE-ne 0){throw "WORKFLOW_SHADOW_COPY_FAIL profile=$($t.Profile)"}
+    }
+
+    $cfg=Join-Path $stateDir 'diagnostic-config.json'
+    $buildArgs=@((Join-Path $stage.Dir 'tools\build-candidate-config.mjs'),'--default',(Join-Path $stage.Dir 'config.json'),'--existing',$t.ExistingConfig,'--output',$cfg,'--profile-id',$t.Profile,'--port',[string]$port,'--state-dir',$stateDir,'--workflow-dir',$shadowWorkflowDir,'--provider-root',$StateRoot)
+    if($PowerMode){$buildArgs+=@('--mode','full')}elseif($StandardMode){$buildArgs+=@('--mode','standard')}else{$buildArgs+=@('--mode','preserve')}
+    if($GuiControl){$buildArgs+=@('--gui','on')}elseif($DisableGuiControl){$buildArgs+=@('--gui','off')}
+    foreach($cap in $DisableCapability){$buildArgs+=@('--disable-capability',$cap)}
+    foreach($cap in $EnableCapability){$buildArgs+=@('--enable-capability',$cap)}
+    & node.exe @buildArgs
+    if($LASTEXITCODE-ne 0){throw "CANDIDATE_CONFIG_FAIL profile=$($t.Profile)"}
+    $sha=(Get-FileHash -LiteralPath $cfg -Algorithm SHA256).Hash.ToLowerInvariant()
+    $p=Start-Backend $stage.Dir $cfg $stateDir
+    $currentCandidate=[pscustomobject]@{Profile=$t.Profile;Port=$port;Process=$p;ConfigPath=$cfg}
+    $h=Wait-Health $port $stage.Version $sha $t.Profile
+    & node.exe (Join-Path $stage.Dir 'tools\doctor.mjs') --url "http://127.0.0.1:$port/mcp" --expected-device $device --expected-version $stage.Version --config $cfg --json
+    if($LASTEXITCODE-ne 0){throw "CANDIDATE_DOCTOR_FAIL profile=$($t.Profile)"}
+    $status=Invoke-Mcp $port 'system_status'
+    $expected=Read-Json $cfg
+    if($expected.capabilityProfile.tier-eq 'FULL_POWER'){
+      if($status.capabilityProfile.tier-ne 'FULL_POWER' -or $status.capabilityProfile.autoEnableNewCapabilities-ne $true){throw "FULL_POWER_PROFILE_FAIL profile=$($t.Profile)"}
+      $disabled=@($expected.capabilityProfile.disabledCapabilities)
+      if(-not($disabled -contains 'filesystem.full') -and $status.powerMode.fullFilesystem-ne $true){throw 'FULL_POWER_FILESYSTEM_FAIL'}
+      if(-not($disabled -contains 'shell.execute') -and $status.powerMode.allowShell-ne $true){throw 'FULL_POWER_SHELL_FAIL'}
+      if(-not($disabled -contains 'process.control') -and $status.powerMode.allowProcessControl-ne $true){throw 'FULL_POWER_PROCESS_FAIL'}
+      if(-not($disabled -contains 'filesystem.permanent_delete') -and $status.powerMode.allowPermanentDelete-ne $true){throw 'FULL_POWER_DELETE_FAIL'}
+      [void](Invoke-Mcp $port 'file_info' @{path=$env:TEMP})
+      [void](Invoke-Mcp $port 'system_info')
+      [void](Invoke-Mcp $port 'list_processes')
+      if(-not($disabled -contains 'shell.execute')){
+        $shell=Invoke-Mcp $port 'run_shell' @{requestId=("autoupdate-shell-{0}-{1}" -f $t.Profile,$port);command='Write-Output RC_AUTOUPDATE_SHELL_PASS';timeoutMs=10000}
+        if([string]$shell.stdout -notmatch 'RC_AUTOUPDATE_SHELL_PASS'){throw 'FULL_POWER_SHELL_E2E_FAIL'}
+      }
+      if($expected.powerMode.guiControl.enabled-eq $true){
+        if($status.guiControl.backendSupported-ne $true -or $status.guiControl.enabled-ne $true){throw "GUI_POLICY_STATUS_FAIL profile=$($t.Profile)"}
+      }
+    }
+    if($expected.durableWorkflows.enabled-eq $true){
+      $wf=Invoke-Mcp $port 'workflow_health'
+      if($wf.ok-ne $true -or [string]$wf.databaseIntegrity-ne 'ok'){throw "WORKFLOW_HEALTH_FAIL profile=$($t.Profile)"}
+    }
+
+    # Diagnostic backend passed on a shadow store. Rebuild against the live durable
+    # store while its DB is still v1-compatible, then run identity/doctor once more.
+    Stop-OwnedCandidate $currentCandidate -Strict
+    $currentCandidate=$null
+    foreach($i in 1..40){Start-Sleep -Milliseconds 100;if(-not(Get-NetTCPConnection -State Listen -LocalPort $port -ErrorAction SilentlyContinue)){break}}
+    $finalCfg=Join-Path $stateDir 'config.json'
+    $finalArgs=@((Join-Path $stage.Dir 'tools\build-candidate-config.mjs'),'--default',(Join-Path $stage.Dir 'config.json'),'--existing',$t.ExistingConfig,'--output',$finalCfg,'--profile-id',$t.Profile,'--port',[string]$port,'--state-dir',$stateDir,'--provider-root',$StateRoot)
+    if($liveWorkflowDir){$finalArgs+=@('--workflow-dir',$liveWorkflowDir)}
+    if($PowerMode){$finalArgs+=@('--mode','full')}elseif($StandardMode){$finalArgs+=@('--mode','standard')}else{$finalArgs+=@('--mode','preserve')}
+    if($GuiControl){$finalArgs+=@('--gui','on')}elseif($DisableGuiControl){$finalArgs+=@('--gui','off')}
+    foreach($cap in $DisableCapability){$finalArgs+=@('--disable-capability',$cap)}
+    foreach($cap in $EnableCapability){$finalArgs+=@('--enable-capability',$cap)}
+    & node.exe @finalArgs
+    if($LASTEXITCODE-ne 0){throw "FINAL_CONFIG_FAIL profile=$($t.Profile)"}
+    $finalSha=(Get-FileHash -LiteralPath $finalCfg -Algorithm SHA256).Hash.ToLowerInvariant()
+    $p=Start-Backend $stage.Dir $finalCfg $stateDir
+    $currentCandidate=[pscustomobject]@{Profile=$t.Profile;Port=$port;Process=$p;ConfigPath=$finalCfg}
+    [void](Wait-Health $port $stage.Version $finalSha $t.Profile)
+    & node.exe (Join-Path $stage.Dir 'tools\doctor.mjs') --url "http://127.0.0.1:$port/mcp" --expected-device $device --expected-version $stage.Version --config $finalCfg --json
+    if($LASTEXITCODE-ne 0){throw "FINAL_CANDIDATE_DOCTOR_FAIL profile=$($t.Profile)"}
+    if((Read-Json $finalCfg).durableWorkflows.enabled-eq $true){
+      $wf=Invoke-Mcp $port 'workflow_health'
+      if($wf.ok-ne $true -or [string]$wf.databaseIntegrity-ne 'ok'){throw "FINAL_WORKFLOW_HEALTH_FAIL profile=$($t.Profile)"}
+    }
+    $c=[pscustomobject]@{Profile=$t.Profile;CanonicalPort=$t.CanonicalPort;Port=$port;Version=$stage.Version;Commit=$stage.Commit;ConfigSha=$finalSha;ConfigPath=$finalCfg;ProjectDir=$stage.Dir;Process=$p;Target=$t;WorkflowDir=$liveWorkflowDir;BackupDir=$backupDir}
+    $candidates+=$c
+    $currentCandidate=$null
+    $report.profiles+=@{profile=$t.Profile;candidatePort=$port;configSha256=$finalSha;doctor='PASS';hardware='PASS';shadowStore='PASS';liveStoreCompatibility='PASS'}
+  }
+
+  if($NoPromote){
+    foreach($c in $candidates){Stop-OwnedCandidate $c -Strict}
+    $report.status='CANDIDATE_PASS';$report.completedAt=(Get-Date).ToUniversalTime().ToString('o')
+    Atomic-Json $ResultFile $report
+    Log 'AUTO_UPDATE_CANDIDATE_PASS'
+    exit 0
+  }
+
+  $routerBootstrapDeferred=@()
+  foreach($c in $candidates){
+    $t=$c.Target
+    if(-not(Test-Path -LiteralPath $t.RoutePath -PathType Leaf)){continue}
+    $liveRoute=Read-Json $t.RoutePath
+    if(-not($liveRoute.active -and $liveRoute.active.port)){continue}
+    $pre=Get-SchemaContinuityProbe $stage.Dir ([int]$liveRoute.active.port) ([int]$c.Port) ([int]$t.CanonicalPort)
+    $bootstrap=Ensure-RouterCandidateSource $t $stage.Dir
+    if($bootstrap.changed -eq $true -and $pre.changed -eq $true){
+      $routerBootstrapDeferred+=[string]$t.Profile
+      continue
+    }
+    $gate=Get-SchemaContinuityProbe $stage.Dir ([int]$liveRoute.active.port) ([int]$c.Port) ([int]$t.CanonicalPort)
+    if(-not $gate.ok){throw "SCHEMA_CONTINUITY_GATE_FAIL profile=$($t.Profile) decision=$($gate.decision)"}
+    Log "SCHEMA_CONTINUITY_GATE_PASS profile=$($t.Profile) decision=$($gate.decision)"
+  }
+  if($routerBootstrapDeferred.Count-gt0){
+    foreach($c in $candidates){Stop-OwnedCandidate $c -Strict}
+    $report.status='ROUTER_BOOTSTRAPPED_RETRY_REQUIRED'
+    $report.routerBootstrapProfiles=@($routerBootstrapDeferred)
+    $report.completedAt=(Get-Date).ToUniversalTime().ToString('o')
+    Atomic-Json $ResultFile $report
+    Log "AUTO_UPDATE_ROUTER_BOOTSTRAPPED_RETRY_REQUIRED profiles=$($routerBootstrapDeferred -join ',')"
+    exit 0
+  }
+  # Admission is profile-scoped. One account may have a legitimate long-lived
+  # previous backend while another account is safe to promote independently.
+  $deferredProfiles=@()
+  Complete-RetainedBackends
+  $existingDrainBlocks=@(Complete-DeferredDrains)
+  if($existingDrainBlocks.Count-gt0){
+    foreach($profile in $existingDrainBlocks){
+      foreach($c in @($candidates|Where-Object{$_.Profile-eq$profile})){Stop-OwnedCandidate $c -Strict}
+      if(-not($deferredProfiles -contains [string]$profile)){$deferredProfiles+=[string]$profile}
+    }
+    $candidates=@($candidates|Where-Object{$deferredProfiles -notcontains [string]$_.Profile})
+    $report.pendingDrains=@($existingDrainBlocks)
+    Log "AUTO_UPDATE_EXISTING_DRAIN_DEFER profiles=$($existingDrainBlocks -join ',')"
+    if($candidates.Count-eq0){
+      $report.status='BLOCKED_EXISTING_DRAIN'
+      $report.completedAt=(Get-Date).ToUniversalTime().ToString('o')
+      Atomic-Json $ResultFile $report
+      Log "AUTO_UPDATE_EXISTING_DRAIN_BLOCK profiles=$($existingDrainBlocks -join ',')"
+      exit 0
+    }
+  }
+
+  $terminalPreserve=@()
+  foreach($c in $candidates){
+    $t=$c.Target
+    if(-not(Test-Path -LiteralPath $t.RoutePath -PathType Leaf)){continue}
+    $liveRoute=Read-Json $t.RoutePath
+    if(-not $liveRoute.active){continue}
+    $terms=@(Get-PersistentTerminalChildren $liveRoute.active)
+    if($terms.Count-gt0){
+      $terminalPreserve+=[pscustomobject]@{profile=$t.Profile;pids=@($terms|ForEach-Object{[int]$_.ProcessId})}
+      Log "AUTO_UPDATE_ACTIVE_TERMINALS_PRESERVE profile=$($t.Profile) pids=$(@($terms|ForEach-Object{[int]$_.ProcessId}) -join ',')"
+    }
+  }
+  if($terminalPreserve.Count-gt0){$report.terminalPreserve=@($terminalPreserve)}
+
+  foreach($c in $candidates){
+    $t=$c.Target
+    if(Test-Path $t.RoutePath){
+      $routeBackups[$t.Profile]=Get-Content -LiteralPath $t.RoutePath -Raw
+      Switch-Route $t $c
+    }else{
+      $initialDirect[$t.Profile]=Stop-OwnedDirect $t
+      Write-InitialRoute $t $c
+      [void](Start-Router $t.CanonicalPort $t.RoutePath (Join-Path $stage.Dir 'src\stable-router.mjs') $t.Profile)
+    }
+  }
+
+  foreach($c in $candidates){Verify-Canonical $c.Target $c}
+  Verify-Tunnels
+  $cutoverCommitted=$true
+  $report.cutoverCommittedAt=(Get-Date).ToUniversalTime().ToString('o')
+
+  $pendingDrains=@()
+  foreach($c in $candidates){
+    if($routeBackups.ContainsKey($c.Profile)){
+      $old=($routeBackups[$c.Profile]|ConvertFrom-Json).active
+      if(-not(Drain-Previous $c.Target $old)){$pendingDrains+=[string]$c.Profile}
+    }
+  }
+  if($pendingDrains.Count-gt 0 -or $deferredProfiles.Count-gt 0){
+    Promote-Control $stage.Commit $ref
+    $allPending=@($pendingDrains)+@($deferredProfiles)|Select-Object -Unique
+    $report.pendingDrains=@($allPending)
+    $report.deferredProfiles=@($deferredProfiles)
+    $report.status=if($deferredProfiles.Count-gt0){'PROMOTED_PARTIAL'}else{'PROMOTED_DRAIN_PENDING'}
+    $report.completedAt=(Get-Date).ToUniversalTime().ToString('o')
+    Atomic-Json $ResultFile $report
+    if($deferredProfiles.Count-gt0){Log "AUTO_UPDATE_PROFILE_DEFER profiles=$($deferredProfiles -join ',')"}
+    if($pendingDrains.Count-gt0){Log "AUTO_UPDATE_DRAIN_PENDING profiles=$($pendingDrains -join ',')"}
+    exit 0
+  }
+
+  foreach($c in $candidates){
+    if($c.WorkflowDir){
+      & node.exe (Join-Path $stage.Dir 'tools\finalize-workflow-schema.mjs') --directory $c.WorkflowDir
+      if($LASTEXITCODE-ne 0){throw "WORKFLOW_SCHEMA_FINALIZE_FAIL profile=$($c.Profile)"}
+      $wf=Invoke-Mcp $c.CanonicalPort 'workflow_health'
+      if([int]$wf.databaseSchemaVersion-ne 2){throw "WORKFLOW_SCHEMA_FINALIZE_VERIFY_FAIL profile=$($c.Profile)"}
+    }
+  }
+
+  Promote-Control $stage.Commit $ref
+  Recycle-ControlSupervisor
+  Cleanup-Releases
+  $report.status='PROMOTED';$report.completedAt=(Get-Date).ToUniversalTime().ToString('o')
+  Atomic-Json $ResultFile $report
+  Log "AUTO_UPDATE_PASS version=$($stage.Version) commit=$($stage.Commit)"
+}catch{
+  $report.status='FAILED';$report.error=$_.Exception.Message;$report.completedAt=(Get-Date).ToUniversalTime().ToString('o')
+  try{Atomic-Json $ResultFile $report}catch{}
+  Log "AUTO_UPDATE_FAIL $($_.Exception.Message)"
+  if(-not $cutoverCommitted){
+    try{Stop-OwnedCandidate $currentCandidate}catch{}
+    foreach($c in $candidates){try{Stop-OwnedCandidate $c}catch{}}
+    foreach($profile in @($routeBackups.Keys)){
+      try{[IO.File]::WriteAllText((Get-RoutePath $profile),[string]$routeBackups[$profile],[Text.UTF8Encoding]::new($false))}catch{}
+    }
+  }else{
+    $report.status='PROMOTED_MAINTENANCE_REQUIRED'
+    try{Atomic-Json $ResultFile $report}catch{}
+    Log 'AUTO_UPDATE_POST_COMMIT_MAINTENANCE_REQUIRED'
+  }
+  throw
+}finally{
+  try{$mutex.ReleaseMutex()}catch{}
+  $mutex.Dispose()
+}
+ -or
+         [string]$routeDoc.active.commit -notmatch '^[0-9a-f]{40}$'){
+        throw 'AUTO_UPDATE_ACTIVE_ROUTE_UNVERIFIED'
+      }
+      if(Test-VersionGreater $activeVersion $tagVersion){
+        $report.status='NEWER_CURRENT'
+        $report.ref=$ref
+        $report.version=$tagVersion
+        $report.currentVersion=$activeVersion
+        $report.authoritySource='PERSISTED_ROUTE_PRESTAGE'
+        $report.completedAt=(Get-Date).ToUniversalTime().ToString('o')
+        Atomic-Json $ResultFile $report
+        Log "AUTO_UPDATE_NEWER_PERSISTED_ROUTE_PRESTAGE current=$activeVersion target=$tagVersion"
+        exit 0
+      }
+    }
+  }
+  $stage=Stage-Release $ref
+  $report.ref=$ref;$report.commit=$stage.Commit;$report.version=$stage.Version
+  $script:QualificationCommit=$stage.Commit
+  # R-fleet: An accepted newer route is a durable version authority even when
+  # the canonical MCP is temporarily unavailable during a restart. An unattended
+  # Stable check must not silently replace a newer approved preview with Stable.
+  # An explicit -Force remains the deliberate rollback escape hatch.
+  if(-not $Force){
+    $persistedRoutePath=Get-RoutePath 'default'
+    if(Test-Path -LiteralPath $persistedRoutePath -PathType Leaf){
+      $persistedRoute=Read-Json $persistedRoutePath
+      $persistedVersion=[string]$persistedRoute.active.version
+      if(-not $persistedVersion){throw 'AUTO_UPDATE_PERSISTED_ROUTE_VERSION_MISSING'}
+      if(Test-VersionGreater $persistedVersion $stage.Version){
+        $report.status='NEWER_CURRENT'
+        $report.currentVersion=$persistedVersion
+        $report.authoritySource='PERSISTED_ROUTE'
+        $report.completedAt=(Get-Date).ToUniversalTime().ToString('o')
+        Atomic-Json $ResultFile $report
+        Log "AUTO_UPDATE_NEWER_PERSISTED_ROUTE current=$persistedVersion target=$($stage.Version)"
+        exit 0
+      }
+    }
+  }
+  $currentStatus=$null
+  try{$currentStatus=Invoke-Mcp 47831 'system_status'}catch{}
+  # Route authority is durable. A transient MCP status timeout cannot
+  # silently authorize a downgrade to an older stable GitHub release.
+  if(-not $Force){
+    $routePath=Get-RoutePath 'default'
+    if(Test-Path -LiteralPath $routePath -PathType Leaf){
+      try{
+        $routed=Read-Json $routePath
+        $routedVersion=[string]$routed.active.version
+        if($routed.schema -ne 1 -or $routed.profile -ne 'default' -or
+           $routedVersion -notmatch '^\d+\.\d+\.\d+(?:-(?:dev|rc)\.[1-9]\d*)? -or
+           [string]$routed.active.commit -notmatch '^[0-9a-f]{40}$'){
+          throw 'INVALID_ACTIVE_ROUTE'
+        }
+      }catch{throw 'AUTO_UPDATE_ACTIVE_ROUTE_UNVERIFIED'}
+      if(Test-VersionGreater $routedVersion $stage.Version){
+        $report.status='NEWER_CURRENT';$report.currentVersion=$routedVersion
+        $report.completedAt=(Get-Date).ToUniversalTime().ToString('o')
+        Atomic-Json $ResultFile $report
+        Log "AUTO_UPDATE_NEWER_CURRENT current=$routedVersion latest=$($stage.Version) source=route"
+        exit 0
+      }
+      if(-not $currentStatus){throw 'AUTO_UPDATE_ACTIVE_MCP_STATUS_UNVERIFIED'}
+      if([string]$currentStatus.version -ne $routedVersion){throw 'AUTO_UPDATE_ROUTE_MCP_VERSION_CONFLICT'}
+    } elseif(-not $currentStatus){
+      # A fresh isolated install may contain package.json but have no live server
+      # or previous update receipt. Only a known deployed direct runtime is
+      # blocked when its MCP status is unavailable.
+      $directListeners=@(Get-NetTCPConnection -State Listen -LocalPort 47831 -ErrorAction SilentlyContinue)
+      if($directListeners.Count -gt 0 -or (Test-Path -LiteralPath $ResultFile -PathType Leaf)){
+        throw 'AUTO_UPDATE_DIRECT_MCP_STATUS_UNVERIFIED'
+      }
+    }
+  }
+  if(-not $Force -and $currentStatus -and (Test-VersionGreater ([string]$currentStatus.version) $stage.Version)){
+    $report.status='NEWER_CURRENT';$report.currentVersion=[string]$currentStatus.version;$report.completedAt=(Get-Date).ToUniversalTime().ToString('o')
+    Atomic-Json $ResultFile $report
+    Log "AUTO_UPDATE_NEWER_CURRENT current=$($currentStatus.version) latest=$($stage.Version)"
+    exit 0
+  }
+  if(-not $Force -and $currentStatus -and [string]$currentStatus.version-eq $stage.Version){
+    $route=Get-RoutePath 'default'
+    $controlHead=''
+    try{$controlHead=(& git.exe -C $InstallDir rev-parse HEAD).Trim().ToLowerInvariant()}catch{}
+    if(-not(Test-Path $route) -and $controlHead-eq $stage.Commit){
+      Complete-RetainedBackends
+      $report.status='CURRENT';$report.currentVersion=[string]$currentStatus.version;$report.completedAt=(Get-Date).ToUniversalTime().ToString('o')
+      Atomic-Json $ResultFile $report
+      Log "AUTO_UPDATE_CURRENT direct=true commit=$controlHead version=$($currentStatus.version)"
+      exit 0
+    }
+    if(Test-Path $route){
+      $rs=Read-Json $route
+      if([string]$rs.active.commit-eq $stage.Commit){
+        $controlHead=''
+        try{$controlHead=(& git.exe -C $InstallDir rev-parse HEAD).Trim().ToLowerInvariant()}catch{}
+        Complete-RetainedBackends
+        $pendingDrains=@(Complete-DeferredDrains)
+        if($pendingDrains.Count-gt 0){
+          if($controlHead-ne $stage.Commit){
+            Log "AUTO_UPDATE_MAINTENANCE controlHead=$controlHead target=$($stage.Commit)"
+            Promote-Control $stage.Commit $ref
+          }
+          $report.status='DRAIN_PENDING';$report.pendingDrains=@($pendingDrains);$report.completedAt=(Get-Date).ToUniversalTime().ToString('o')
+          Atomic-Json $ResultFile $report
+          Log "AUTO_UPDATE_DRAIN_PENDING profiles=$($pendingDrains -join ',')"
+          exit 0
+        }
+        $controlMismatch=($controlHead-ne $stage.Commit)
+        if($controlMismatch){
+          Log "AUTO_UPDATE_MAINTENANCE controlHead=$controlHead target=$($stage.Commit)"
+          foreach($rf in Get-ChildItem -LiteralPath $RoutingRoot -Filter '*.json' -File -ErrorAction SilentlyContinue){
+            if($rf.Name -like '*.runtime.json'){continue}
+            try{
+              $rr=Read-Json $rf.FullName
+              $cfg=Read-Json ([string]$rr.active.configPath)
+              $wfDir=[string]$cfg.durableWorkflows.directory
+              if($wfDir){
+                & node.exe (Join-Path $stage.Dir 'tools\finalize-workflow-schema.mjs') --directory $wfDir
+                if($LASTEXITCODE-ne 0){throw "MAINTENANCE_SCHEMA_FINALIZE_FAIL profile=$($rr.profile)"}
+              }
+            }catch{throw}
+          }
+          Promote-Control $stage.Commit $ref
+          Recycle-ControlSupervisor
+          $cleanupPending=@(Cleanup-Releases)
+          $report.status=if($cleanupPending.Count-gt0){'MAINTENANCE_REPAIRED_CLEANUP_PENDING'}else{'MAINTENANCE_REPAIRED'}
+          $report.cleanupPending=@($cleanupPending)
+          $report.completedAt=(Get-Date).ToUniversalTime().ToString('o')
+          Atomic-Json $ResultFile $report
+          Log "AUTO_UPDATE_MAINTENANCE_PASS version=$($stage.Version) cleanupPending=$($cleanupPending.Count)"
+          exit 0
+        }
+        $cleanupPending=@(Cleanup-Releases)
+        if($cleanupPending.Count-gt0){
+          $report.status='CLEANUP_PENDING';$report.cleanupPending=@($cleanupPending);$report.completedAt=(Get-Date).ToUniversalTime().ToString('o')
+          Atomic-Json $ResultFile $report
+          Log "AUTO_UPDATE_CLEANUP_PENDING releases=$($cleanupPending -join ',')"
+          exit 0
+        }
+        Log "AUTO_UPDATE_CURRENT version=$($stage.Version)"
+        $report.status='CURRENT';$report.completedAt=(Get-Date).ToUniversalTime().ToString('o');Atomic-Json $ResultFile $report;exit 0
+      }
+    }
+  }
+
+  $backoff=Get-ActiveQualificationBackoff $stage.Commit
+  if($backoff){
+    $report.status='QUALIFICATION_BACKOFF'
+    $report.qualificationBackoff=$backoff
+    $report.completedAt=(Get-Date).ToUniversalTime().ToString('o')
+    Atomic-Json $ResultFile $report
+    Log "AUTO_UPDATE_QUALIFICATION_BACKOFF commit=$($stage.Commit) gate=$($backoff.gate) count=$($backoff.count) nextRetryAt=$($backoff.nextRetryAt)"
+    exit 0
+  }
+
+  Push-Location $stage.Dir
+  try{
+    Run-Gate $stage.Dir 'check' @('run','check:qualification')
+    Run-Gate $stage.Dir 'test' @('run','test:qualification')
+    Run-Gate $stage.Dir 'audit' @('run','audit')
+    Ensure-ProjectProvider (Get-PrimaryConfig)
+    if($primaryConfig.powerMode.enabled-eq $true -and $primaryConfig.powerMode.guiControl.enabled-eq $true){
+      # Unattended updates must not steal desktop focus. Full interactive GUI E2E
+      # remains a release gate; candidate hardware validation later requires gui_status.
+      Run-GuiNativeSelfTest $stage.Dir
+    }
+  }finally{Pop-Location}
+  Clear-QualificationFailure $stage.Commit
+
+  $targets=Get-Targets
+  $used=[System.Collections.Generic.HashSet[int]]::new()
+  foreach($t in $targets){[void]$used.Add([int]$t.CanonicalPort)}
+  if(Test-Path $ProfileDir){
+    foreach($f in Get-ChildItem $ProfileDir -Filter '*.yaml' -File -ErrorAction SilentlyContinue){
+      $raw=Get-Content $f.FullName -Raw
+      foreach($rx in @('listen_addr:\s*["'']?127\.0\.0\.1:(\d+)','url:\s*["'']?http://127\.0\.0\.1:(\d+)/mcp')){
+        $m=[regex]::Match($raw,$rx);if($m.Success){[void]$used.Add([int]$m.Groups[1].Value)}
+      }
+    }
+  }
+  $device=if($currentStatus){[string]$currentStatus.deviceName}else{$env:COMPUTERNAME}
+  $explicitProfileMutation=[bool]($Force -or $PowerMode -or $StandardMode -or $GuiControl -or $DisableGuiControl -or @($DisableCapability).Count-gt0 -or @($EnableCapability).Count-gt0)
+  foreach($t in $targets){
+    if(-not $explicitProfileMutation -and (Test-Path -LiteralPath $t.RoutePath -PathType Leaf)){
+      try{
+        $liveRoute=Read-Json $t.RoutePath
+        if($liveRoute.active -and [string]$liveRoute.active.commit-eq[string]$stage.Commit -and -not $liveRoute.previous){
+          Log "AUTO_UPDATE_PROFILE_CURRENT_SKIP profile=$($t.Profile) commit=$($stage.Commit)"
+          continue
+        }
+      }catch{throw "PROFILE_CURRENT_CHECK_FAIL profile=$($t.Profile) $($_.Exception.Message)"}
+    }
+    $port=Get-FreePort $used
+    $runtimeLeaf="port-$port"
+    $stateDir=Join-Path $RuntimeRoot (Join-Path $stage.Commit (Join-Path $t.Profile $runtimeLeaf))
+    New-Item -ItemType Directory -Force -Path $stateDir|Out-Null
+    $existingPolicy=Read-Json $t.ExistingConfig
+    $liveWorkflowDir=[string]$existingPolicy.durableWorkflows.directory
+    $backupDir=Join-Path $StateRoot (Join-Path 'update-backups' (Join-Path $stage.Commit (Join-Path $t.Profile $runtimeLeaf)))
+    $shadowWorkflowDir=Join-Path $backupDir 'workflow-shadow'
+    New-Item -ItemType Directory -Force -Path $backupDir|Out-Null
+    Copy-Item -LiteralPath $t.ExistingConfig -Destination (Join-Path $backupDir 'config.before.json') -Force
+    if($liveWorkflowDir){
+      & node.exe (Join-Path $stage.Dir 'tools\copy-workflow-store.mjs') --source-dir $liveWorkflowDir --dest-dir $shadowWorkflowDir
+      if($LASTEXITCODE-ne 0){throw "WORKFLOW_SHADOW_COPY_FAIL profile=$($t.Profile)"}
+    }
+
+    $cfg=Join-Path $stateDir 'diagnostic-config.json'
+    $buildArgs=@((Join-Path $stage.Dir 'tools\build-candidate-config.mjs'),'--default',(Join-Path $stage.Dir 'config.json'),'--existing',$t.ExistingConfig,'--output',$cfg,'--profile-id',$t.Profile,'--port',[string]$port,'--state-dir',$stateDir,'--workflow-dir',$shadowWorkflowDir,'--provider-root',$StateRoot)
+    if($PowerMode){$buildArgs+=@('--mode','full')}elseif($StandardMode){$buildArgs+=@('--mode','standard')}else{$buildArgs+=@('--mode','preserve')}
+    if($GuiControl){$buildArgs+=@('--gui','on')}elseif($DisableGuiControl){$buildArgs+=@('--gui','off')}
+    foreach($cap in $DisableCapability){$buildArgs+=@('--disable-capability',$cap)}
+    foreach($cap in $EnableCapability){$buildArgs+=@('--enable-capability',$cap)}
+    & node.exe @buildArgs
+    if($LASTEXITCODE-ne 0){throw "CANDIDATE_CONFIG_FAIL profile=$($t.Profile)"}
+    $sha=(Get-FileHash -LiteralPath $cfg -Algorithm SHA256).Hash.ToLowerInvariant()
+    $p=Start-Backend $stage.Dir $cfg $stateDir
+    $currentCandidate=[pscustomobject]@{Profile=$t.Profile;Port=$port;Process=$p;ConfigPath=$cfg}
+    $h=Wait-Health $port $stage.Version $sha $t.Profile
+    & node.exe (Join-Path $stage.Dir 'tools\doctor.mjs') --url "http://127.0.0.1:$port/mcp" --expected-device $device --expected-version $stage.Version --config $cfg --json
+    if($LASTEXITCODE-ne 0){throw "CANDIDATE_DOCTOR_FAIL profile=$($t.Profile)"}
+    $status=Invoke-Mcp $port 'system_status'
+    $expected=Read-Json $cfg
+    if($expected.capabilityProfile.tier-eq 'FULL_POWER'){
+      if($status.capabilityProfile.tier-ne 'FULL_POWER' -or $status.capabilityProfile.autoEnableNewCapabilities-ne $true){throw "FULL_POWER_PROFILE_FAIL profile=$($t.Profile)"}
+      $disabled=@($expected.capabilityProfile.disabledCapabilities)
+      if(-not($disabled -contains 'filesystem.full') -and $status.powerMode.fullFilesystem-ne $true){throw 'FULL_POWER_FILESYSTEM_FAIL'}
+      if(-not($disabled -contains 'shell.execute') -and $status.powerMode.allowShell-ne $true){throw 'FULL_POWER_SHELL_FAIL'}
+      if(-not($disabled -contains 'process.control') -and $status.powerMode.allowProcessControl-ne $true){throw 'FULL_POWER_PROCESS_FAIL'}
+      if(-not($disabled -contains 'filesystem.permanent_delete') -and $status.powerMode.allowPermanentDelete-ne $true){throw 'FULL_POWER_DELETE_FAIL'}
+      [void](Invoke-Mcp $port 'file_info' @{path=$env:TEMP})
+      [void](Invoke-Mcp $port 'system_info')
+      [void](Invoke-Mcp $port 'list_processes')
+      if(-not($disabled -contains 'shell.execute')){
+        $shell=Invoke-Mcp $port 'run_shell' @{requestId=("autoupdate-shell-{0}-{1}" -f $t.Profile,$port);command='Write-Output RC_AUTOUPDATE_SHELL_PASS';timeoutMs=10000}
+        if([string]$shell.stdout -notmatch 'RC_AUTOUPDATE_SHELL_PASS'){throw 'FULL_POWER_SHELL_E2E_FAIL'}
+      }
+      if($expected.powerMode.guiControl.enabled-eq $true){
+        if($status.guiControl.backendSupported-ne $true -or $status.guiControl.enabled-ne $true){throw "GUI_POLICY_STATUS_FAIL profile=$($t.Profile)"}
+      }
+    }
+    if($expected.durableWorkflows.enabled-eq $true){
+      $wf=Invoke-Mcp $port 'workflow_health'
+      if($wf.ok-ne $true -or [string]$wf.databaseIntegrity-ne 'ok'){throw "WORKFLOW_HEALTH_FAIL profile=$($t.Profile)"}
+    }
+
+    # Diagnostic backend passed on a shadow store. Rebuild against the live durable
+    # store while its DB is still v1-compatible, then run identity/doctor once more.
+    Stop-OwnedCandidate $currentCandidate -Strict
+    $currentCandidate=$null
+    foreach($i in 1..40){Start-Sleep -Milliseconds 100;if(-not(Get-NetTCPConnection -State Listen -LocalPort $port -ErrorAction SilentlyContinue)){break}}
+    $finalCfg=Join-Path $stateDir 'config.json'
+    $finalArgs=@((Join-Path $stage.Dir 'tools\build-candidate-config.mjs'),'--default',(Join-Path $stage.Dir 'config.json'),'--existing',$t.ExistingConfig,'--output',$finalCfg,'--profile-id',$t.Profile,'--port',[string]$port,'--state-dir',$stateDir,'--provider-root',$StateRoot)
+    if($liveWorkflowDir){$finalArgs+=@('--workflow-dir',$liveWorkflowDir)}
+    if($PowerMode){$finalArgs+=@('--mode','full')}elseif($StandardMode){$finalArgs+=@('--mode','standard')}else{$finalArgs+=@('--mode','preserve')}
+    if($GuiControl){$finalArgs+=@('--gui','on')}elseif($DisableGuiControl){$finalArgs+=@('--gui','off')}
+    foreach($cap in $DisableCapability){$finalArgs+=@('--disable-capability',$cap)}
+    foreach($cap in $EnableCapability){$finalArgs+=@('--enable-capability',$cap)}
+    & node.exe @finalArgs
+    if($LASTEXITCODE-ne 0){throw "FINAL_CONFIG_FAIL profile=$($t.Profile)"}
+    $finalSha=(Get-FileHash -LiteralPath $finalCfg -Algorithm SHA256).Hash.ToLowerInvariant()
+    $p=Start-Backend $stage.Dir $finalCfg $stateDir
+    $currentCandidate=[pscustomobject]@{Profile=$t.Profile;Port=$port;Process=$p;ConfigPath=$finalCfg}
+    [void](Wait-Health $port $stage.Version $finalSha $t.Profile)
+    & node.exe (Join-Path $stage.Dir 'tools\doctor.mjs') --url "http://127.0.0.1:$port/mcp" --expected-device $device --expected-version $stage.Version --config $finalCfg --json
+    if($LASTEXITCODE-ne 0){throw "FINAL_CANDIDATE_DOCTOR_FAIL profile=$($t.Profile)"}
+    if((Read-Json $finalCfg).durableWorkflows.enabled-eq $true){
+      $wf=Invoke-Mcp $port 'workflow_health'
+      if($wf.ok-ne $true -or [string]$wf.databaseIntegrity-ne 'ok'){throw "FINAL_WORKFLOW_HEALTH_FAIL profile=$($t.Profile)"}
+    }
+    $c=[pscustomobject]@{Profile=$t.Profile;CanonicalPort=$t.CanonicalPort;Port=$port;Version=$stage.Version;Commit=$stage.Commit;ConfigSha=$finalSha;ConfigPath=$finalCfg;ProjectDir=$stage.Dir;Process=$p;Target=$t;WorkflowDir=$liveWorkflowDir;BackupDir=$backupDir}
+    $candidates+=$c
+    $currentCandidate=$null
+    $report.profiles+=@{profile=$t.Profile;candidatePort=$port;configSha256=$finalSha;doctor='PASS';hardware='PASS';shadowStore='PASS';liveStoreCompatibility='PASS'}
+  }
+
+  if($NoPromote){
+    foreach($c in $candidates){Stop-OwnedCandidate $c -Strict}
+    $report.status='CANDIDATE_PASS';$report.completedAt=(Get-Date).ToUniversalTime().ToString('o')
+    Atomic-Json $ResultFile $report
+    Log 'AUTO_UPDATE_CANDIDATE_PASS'
+    exit 0
+  }
+
+  $routerBootstrapDeferred=@()
+  foreach($c in $candidates){
+    $t=$c.Target
+    if(-not(Test-Path -LiteralPath $t.RoutePath -PathType Leaf)){continue}
+    $liveRoute=Read-Json $t.RoutePath
+    if(-not($liveRoute.active -and $liveRoute.active.port)){continue}
+    $pre=Get-SchemaContinuityProbe $stage.Dir ([int]$liveRoute.active.port) ([int]$c.Port) ([int]$t.CanonicalPort)
+    $bootstrap=Ensure-RouterCandidateSource $t $stage.Dir
+    if($bootstrap.changed -eq $true -and $pre.changed -eq $true){
+      $routerBootstrapDeferred+=[string]$t.Profile
+      continue
+    }
+    $gate=Get-SchemaContinuityProbe $stage.Dir ([int]$liveRoute.active.port) ([int]$c.Port) ([int]$t.CanonicalPort)
+    if(-not $gate.ok){throw "SCHEMA_CONTINUITY_GATE_FAIL profile=$($t.Profile) decision=$($gate.decision)"}
+    Log "SCHEMA_CONTINUITY_GATE_PASS profile=$($t.Profile) decision=$($gate.decision)"
+  }
+  if($routerBootstrapDeferred.Count-gt0){
+    foreach($c in $candidates){Stop-OwnedCandidate $c -Strict}
+    $report.status='ROUTER_BOOTSTRAPPED_RETRY_REQUIRED'
+    $report.routerBootstrapProfiles=@($routerBootstrapDeferred)
+    $report.completedAt=(Get-Date).ToUniversalTime().ToString('o')
+    Atomic-Json $ResultFile $report
+    Log "AUTO_UPDATE_ROUTER_BOOTSTRAPPED_RETRY_REQUIRED profiles=$($routerBootstrapDeferred -join ',')"
+    exit 0
+  }
+  # Admission is profile-scoped. One account may have a legitimate long-lived
+  # previous backend while another account is safe to promote independently.
+  $deferredProfiles=@()
+  Complete-RetainedBackends
+  $existingDrainBlocks=@(Complete-DeferredDrains)
+  if($existingDrainBlocks.Count-gt0){
+    foreach($profile in $existingDrainBlocks){
+      foreach($c in @($candidates|Where-Object{$_.Profile-eq$profile})){Stop-OwnedCandidate $c -Strict}
+      if(-not($deferredProfiles -contains [string]$profile)){$deferredProfiles+=[string]$profile}
+    }
+    $candidates=@($candidates|Where-Object{$deferredProfiles -notcontains [string]$_.Profile})
+    $report.pendingDrains=@($existingDrainBlocks)
+    Log "AUTO_UPDATE_EXISTING_DRAIN_DEFER profiles=$($existingDrainBlocks -join ',')"
+    if($candidates.Count-eq0){
+      $report.status='BLOCKED_EXISTING_DRAIN'
+      $report.completedAt=(Get-Date).ToUniversalTime().ToString('o')
+      Atomic-Json $ResultFile $report
+      Log "AUTO_UPDATE_EXISTING_DRAIN_BLOCK profiles=$($existingDrainBlocks -join ',')"
+      exit 0
+    }
+  }
+
+  $terminalPreserve=@()
+  foreach($c in $candidates){
+    $t=$c.Target
+    if(-not(Test-Path -LiteralPath $t.RoutePath -PathType Leaf)){continue}
+    $liveRoute=Read-Json $t.RoutePath
+    if(-not $liveRoute.active){continue}
+    $terms=@(Get-PersistentTerminalChildren $liveRoute.active)
+    if($terms.Count-gt0){
+      $terminalPreserve+=[pscustomobject]@{profile=$t.Profile;pids=@($terms|ForEach-Object{[int]$_.ProcessId})}
+      Log "AUTO_UPDATE_ACTIVE_TERMINALS_PRESERVE profile=$($t.Profile) pids=$(@($terms|ForEach-Object{[int]$_.ProcessId}) -join ',')"
+    }
+  }
+  if($terminalPreserve.Count-gt0){$report.terminalPreserve=@($terminalPreserve)}
+
+  foreach($c in $candidates){
+    $t=$c.Target
+    if(Test-Path $t.RoutePath){
+      $routeBackups[$t.Profile]=Get-Content -LiteralPath $t.RoutePath -Raw
+      Switch-Route $t $c
+    }else{
+      $initialDirect[$t.Profile]=Stop-OwnedDirect $t
+      Write-InitialRoute $t $c
+      [void](Start-Router $t.CanonicalPort $t.RoutePath (Join-Path $stage.Dir 'src\stable-router.mjs') $t.Profile)
+    }
+  }
+
+  foreach($c in $candidates){Verify-Canonical $c.Target $c}
+  Verify-Tunnels
+  $cutoverCommitted=$true
+  $report.cutoverCommittedAt=(Get-Date).ToUniversalTime().ToString('o')
+
+  $pendingDrains=@()
+  foreach($c in $candidates){
+    if($routeBackups.ContainsKey($c.Profile)){
+      $old=($routeBackups[$c.Profile]|ConvertFrom-Json).active
+      if(-not(Drain-Previous $c.Target $old)){$pendingDrains+=[string]$c.Profile}
+    }
+  }
+  if($pendingDrains.Count-gt 0 -or $deferredProfiles.Count-gt 0){
+    Promote-Control $stage.Commit $ref
+    $allPending=@($pendingDrains)+@($deferredProfiles)|Select-Object -Unique
+    $report.pendingDrains=@($allPending)
+    $report.deferredProfiles=@($deferredProfiles)
+    $report.status=if($deferredProfiles.Count-gt0){'PROMOTED_PARTIAL'}else{'PROMOTED_DRAIN_PENDING'}
+    $report.completedAt=(Get-Date).ToUniversalTime().ToString('o')
+    Atomic-Json $ResultFile $report
+    if($deferredProfiles.Count-gt0){Log "AUTO_UPDATE_PROFILE_DEFER profiles=$($deferredProfiles -join ',')"}
+    if($pendingDrains.Count-gt0){Log "AUTO_UPDATE_DRAIN_PENDING profiles=$($pendingDrains -join ',')"}
+    exit 0
+  }
+
+  foreach($c in $candidates){
+    if($c.WorkflowDir){
+      & node.exe (Join-Path $stage.Dir 'tools\finalize-workflow-schema.mjs') --directory $c.WorkflowDir
+      if($LASTEXITCODE-ne 0){throw "WORKFLOW_SCHEMA_FINALIZE_FAIL profile=$($c.Profile)"}
+      $wf=Invoke-Mcp $c.CanonicalPort 'workflow_health'
+      if([int]$wf.databaseSchemaVersion-ne 2){throw "WORKFLOW_SCHEMA_FINALIZE_VERIFY_FAIL profile=$($c.Profile)"}
+    }
+  }
+
+  Promote-Control $stage.Commit $ref
+  Recycle-ControlSupervisor
+  Cleanup-Releases
+  $report.status='PROMOTED';$report.completedAt=(Get-Date).ToUniversalTime().ToString('o')
+  Atomic-Json $ResultFile $report
+  Log "AUTO_UPDATE_PASS version=$($stage.Version) commit=$($stage.Commit)"
+}catch{
+  $report.status='FAILED';$report.error=$_.Exception.Message;$report.completedAt=(Get-Date).ToUniversalTime().ToString('o')
+  try{Atomic-Json $ResultFile $report}catch{}
+  Log "AUTO_UPDATE_FAIL $($_.Exception.Message)"
+  if(-not $cutoverCommitted){
+    try{Stop-OwnedCandidate $currentCandidate}catch{}
+    foreach($c in $candidates){try{Stop-OwnedCandidate $c}catch{}}
+    foreach($profile in @($routeBackups.Keys)){
+      try{[IO.File]::WriteAllText((Get-RoutePath $profile),[string]$routeBackups[$profile],[Text.UTF8Encoding]::new($false))}catch{}
+    }
+  }else{
+    $report.status='PROMOTED_MAINTENANCE_REQUIRED'
+    try{Atomic-Json $ResultFile $report}catch{}
+    Log 'AUTO_UPDATE_POST_COMMIT_MAINTENANCE_REQUIRED'
+  }
+  throw
+}finally{
+  try{$mutex.ReleaseMutex()}catch{}
+  $mutex.Dispose()
+}
+ -or
            [string]$routed.active.commit -notmatch '^[0-9a-f]{40}$'){
           throw 'INVALID_ACTIVE_ROUTE'
         }

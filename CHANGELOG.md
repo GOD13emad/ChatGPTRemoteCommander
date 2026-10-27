@@ -1,3 +1,9 @@
+# 0.11.0-dev.7 — shared prerelease-aware native updater version comparisons (2026-10-27; Draft / NoPromote)
+
+- Added strict `tools/semver-release.mjs` comparing `major.minor.patch`, `dev.N`, and `rc.N` in one deterministic implementation for Windows and Linux. Invalid/ambiguous versions fail closed.
+- Linux updater writes its own development result safely and admits prerelease route identities; Windows now uses the shared comparison for pinned route and current-version guards. Stable latest-release discovery and the all-false release manifest stay unchanged.
+- Added cross-platform positive/negative regression tests as a separate bounded CI step. Host rollout and real R170/R173/R157 rollback remain unaccepted until exact-head hosted CI succeeds; active routes unchanged.
+
 # 0.11.0-dev.6 — fix hosted Windows command-length regression, retain isolated QA coverage (2026-10-27; Draft / NoPromote)
 
 - dev.5 introduced exact all-false manifest qualification for R170/R173 plus the correct Windows Server development evidence path. Hosted preflights now admit development, but the native promotion and Windows/Linux Canary failed.

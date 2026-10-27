@@ -2,6 +2,10 @@
 
 ## CURRENT AUDIT — 2026-10-27: cross-product evidence and architecture
 
+### RC011-SEMVER-20261027 — dev.7 source correction, scoped acceptance only
+
+CI failure provenance: dev.6 hosted CI and Windows/Linux Server Canary passed; isolated Linux real rollback R170 produced `PROMOTE_CODE=3`, Windows R173 `R185_PROMOTE_NOT_ACCEPTED`, Windows R157 `GATE_FAIL test exit=1`. Precise promotion logs are preserved as GitHub Action artifacts and not fully read in this tool session. Source inspection found Linux `write_update_result` rejected development labels with exit code 3, Linux `version_gt` required three numeric fields, Windows `Test-VersionGreater` used `[version]` and Windows pre-stage route guards rejected prerelease. Dev.7 adds deterministic shared prerelease compare CLI/negative unit tests and fixes these contracts, **without** relaxing latest-public-Stable discovery or any NoPromote manifest flags. This is a repair candidate, not proof that native promotion and rollback now pass. User's five-host actual-work priority remains: do not disrupt 0.10.26 shell/file/browser routes until all hosted and live-host guards pass. No multiuser GUI/OS elevation is granted here.
+
 ### RC011-FLEET-OPS-20261027 — five-host work-ready smoke, blocked GUI paths
 
 **User priority:** Make all five existing machines practically useful for work **before** other feature expansion or publishing `0.11`. This is an operations-first acceptance track, not a release override. Date/source: live direct Remote Commander status, shell/file roundtrips and isolated-browser API calls on all five hosts during this conversation (2026-10-27). Event key `RC011-FLEET-OPS-20261027`. Privileged policy remains unchanged.

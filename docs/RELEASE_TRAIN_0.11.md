@@ -1,6 +1,10 @@
 # Remote Commander suite — 0.11 release train
 **Opened:** 2026-10-27 · **Status:** INTEGRATION CANDIDATE / NO PUBLIC RELEASE / NO HOST PROMOTION
 
+## 0.11.0-dev.7 — one bounded SemVer parser for both Native Updaters
+
+One shared Node comparison (strict stable/dev.N/rc.N, fail-closed malformed versions) feeds both Windows and Linux native updaters. Linux update receipt serializes a bounded candidate version; route guards accept a legitimate prerelease identifier. The public Stable discovery path remains exact stable tags and explicit NoPromote flags remain false. **Not yet promoted**: requirement to reproduce hosted R170/R173/R157 plus native rollback and then five-host cutover remains open. Independent CI test step prevents repeating Windows command-length regression.
+
 ## P0 fleet task usability — 2026-10-27 (user's current first priority)
 
 The overriding delivery order is **make all five current computers useful for real work**, retaining their existing working Core `0.10.26` routes until the replacement passes native rollback. This does **not** authorize new broad Administrator/root privileges, interactive input without consent, a premature 0.11 release, or silent overwrite of dirty checkouts. The exact observational record, scope and incident ID are in existing [PROJECT_BRAIN](PROJECT_BRAIN.md#rc011-fleet-ops-20261027--five-host-work-ready-smoke-blocked-gui-paths); this roadmap tracks next acceptance only.
