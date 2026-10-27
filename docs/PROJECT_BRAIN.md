@@ -1,5 +1,23 @@
 # Project Brain — ChatGPT Remote Commander
 
+## FLEET-CONTROL-20261028 — scope-limited live control acceptance
+
+**User priority:** restore practical Commander system control on all five existing devices before an unqualified 0.11 rollout. Scope is the five connected MCP endpoints only, date 2026-10-28; no general product FINAL, stable or signed release is claimed.
+
+**Exact live verified (5/5):** Core `0.10.26` online on Emad Windows PC, Emad Linux, Amir Windows Server, Emad Windows Server and MMZ Linux; each started a separately owned 60-second Terminal canary with the marker `RC_CONTROL_CANARY_ACTIVE`, returned that marker through `read_terminal`, then `stop_terminal` returned `running=false`. Earlier same-session file Temp roundtrip and isolated owned headless browser `https://example.com` navigation/DOM/read/release PASS on all five. This proves current Shell, filesystem, process lifecycle and browser subset, not full GUI or cross-device project coordination. Final status readback: each `activeOperations=0`, Browser `active=false,leased=false`; no user desktop/owner browser profile changed.
+
+**GUI evidence and strict boundaries:**
+- Emad Windows PC: interactive Cua Driver process in OS Session 1; Commander MCP endpoint in `SYSTEM / Session 0`. Delegated GUI `observe` leased/listed 9 windows successfully, but `takeover` explicitly refused `OWNER_GUI_OBSERVE_ONLY`. Verified source `src/gui-owner-delegation.mjs` is a deliberately read-only proxy (tools and mode restricted); never widen SYSTEM/session credentials or fake a user grant. Needed: same-OS-owner worker with independently validated, time-bound native permission and tested revoke/input; source/release gate remains OPEN.
+- Emad Linux: read-only GUI lease and window enumeration (3 windows) PASS. `gui-pending-native-input-v1.json` contains incident ID `d560c678-a656-457e-8b92-88c503ab8e8f` for a `gui_mouse_click` with uncertain native effect. Keep fail-closed `GUI_INCIDENT_REVIEW_REQUIRED` until same-effect owner reconciliation, preserve evidence, **no replay or blind deletion**. Two owner-local private Xvfb displays :1960/:1961 respond to read-only X11 geometry queries; attempting shell-driven GUI mutation was correctly blocked by Commander policy, and was NOT repeated.
+- MMZ Linux: owner KDE Wayland portal, same-user GUI API observation of one window PASS. A legitimate short `takeover` lease and fresh screenshot produced a native-consented portal stream. Official `gui_mouse_delta` +1 pixel then -1 pixel each returned `ok=true,nativeAcknowledged=true`; cursor readback moved from (716,446) to (717,446) and returned to (716,446). No click, typing or focus change, and lease ended; this is a bounded native input canary, **not** general GUI application acceptance. After lease close portal reports no permanently active consented session, as expected for ephemeral consent.
+- Two Windows Servers: Shell/process/Browser headless work PASS; `gui_status.screens=[]`, `available=false`. Windows sessions exist but no available drawable display in those execution contexts. Do not simulate a user desktop or take over another RDP session merely to mark GUI PASS. Dedicated headless server capability is the accepted path; optional isolated virtual GUI has a separate admission gate.
+
+**Status:** operational remote command/task control PASS on 5/5; GUI observation PASS on 3 desktop clients; native input narrowly PASS on MMZ, OPEN on Emad Windows and Emad Linux. Autonomous Workflow execution and cross-device fenced writers remain OPEN. Installed production routes kept at 0.10.26, no host upgrades or restarts. ChatGPT Chat used existing Commander connectors; ChatGPT Work was not invoked.
+
+**Next direct dependency:** owner-session input worker with scoped Cua/bridge permission on Emad Windows, and owner disposition of Emad Linux incident with preserved uncertain-effect record. Proceed with headless server and MMZ scoped actions independently. Dev.9 exact-source QA remains separate from fleet installation.
+
+---
+
 ## CURRENT ARCHITECTURE DECISION — 2026-10-28 (owner-accepted design; NOT product FINAL)
 
 **Single product for all eligible machines:** the accepted future topology is one Remote Commander product/core/API/capability schema and release manifest, deployed through Windows Desktop, Linux Desktop and Headless Server adapters. Server is a runtime profile, not a separate OS. This supersedes historical *future-topology* proposals for independently operated products; it does not rewrite historical source branches, releases, signed/unsigned admission, tested environments or independent Browser/Control Center provenance.
