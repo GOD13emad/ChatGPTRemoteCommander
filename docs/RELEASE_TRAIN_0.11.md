@@ -1,6 +1,10 @@
 # Remote Commander suite — 0.11 release train
 **Opened:** 2026-10-27 · **Status:** INTEGRATION CANDIDATE / NO PUBLIC RELEASE / NO HOST PROMOTION
 
+## 0.11.0-dev.9 — LF-normalized Git blob for Windows router helper (source-only QA)
+
+Hosted R170 on dev.8 promoted and rolled back Linux successfully (`PROMOTE_CODE=0`, `ROLLBACK_CODE=0`) but failed the final source-clean check (`R170_SOURCE_CHANGED`). Independently reproduced a dirty clean checkout: Git blob `2cfa8b57d485c03795a56291f1516813b2476797` stored 37 CRLF line endings despite `.gitattributes` `text eol=crlf`; worktree status immediately showed ` M tools/router-commandline-windows.ps1`. Normalize only that Git blob to LF, preserve CRLF platform checkout and test the exact Git blob so the invariant cannot silently regress. This does NOT assume it was the only R170 dirty path; hosted exact-SHA R170 must confirm. Windows R173 and R157 still require independent correction and hosted proof, and all fleet promotions remain forbidden before those gates.
+
 ## 0.11.0-dev.8 — Windows Parser/R157 qualification correction
 
 Dev.7 Windows native PowerShell ParseFile failed (20 diagnostic errors at malformed prerelease route expression). Dev.8 reconstructs from known good dev.6 script and applies exact two route guards and shared comparison without string-template expansion. CI's R157 postcondition validates a qualified version **and** the all-false development NoPromote manifest. Exact SHA Windows parser, R157, R173, Linux R170, full CI and real rollback are still independent OPEN gates. Five live working Core 0.10.26 routes must be preserved.
