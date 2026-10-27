@@ -1,3 +1,9 @@
+# 0.11.0-dev.10 — deterministic human-waiting deadline fixture (2026-10-28; DRAFT / NoPromote)
+
+- During a native Windows full suite, dev.9 recorded 610 PASS, 1 failing human-wait deadline, 1 cancelled strict 6s adaptive collaboration test, and 16 SKIP; exact two files alone passed 49/49. The original strict six-second adaptive collaboration test, its source text and cold-first CI order remain **unchanged**.
+- The 1-second `WAITING_INPUT` fixture occasionally expired **before entering input-wait state** under heavy Windows process startup. The fixture now reserves 10s of execution allowance and still checks a real 1.1s human delay, that the wait is excluded from the execution budget, and that the deadline advances by at least the recorded delay. Core deadlines, action limits, release policy, security, scheduling, GUI and actual installed profiles are untouched.
+- Exact-head hosted Windows R157/R173, Linux R170 and integration gates must pass before any update/publish. Full release train remains NoPromote.
+
 # 0.11.0-dev.9 — normalize Windows router script source blob for Linux R170 integrity (2026-10-28; DRAFT / NoPromote)
 
 - Re-encode exactly `tools/router-commandline-windows.ps1` in Git as LF while retaining `.gitattributes` checkout policy `text eol=crlf`. The original dev.8 blob had 37 CRLF endings and produced a dirty Git status immediately after a fresh Linux checkout. This is a byte normalization with zero semantic diff, not a relaxation of R170 source-change checks.

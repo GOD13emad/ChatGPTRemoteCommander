@@ -45,7 +45,9 @@ test('human WAITING_INPUT time does not consume the execution deadline',async()=
   const f=fixture(async()=>ask());
   try{
     await f.create();
-    const initial=await f.start({durationMs:1000});
+    // Keep the persisted execution deadline separate from OS-load-dependent startup.
+    // The real 1.1s human waiting interval still must extend the original deadline.
+    const initial=await f.start({durationMs:10000});
     const wait=await f.tick();
     assert.equal(wait.status,'WAITING_INPUT');
     assert.ok(Number.isSafeInteger(wait.waitingStartedAt));
