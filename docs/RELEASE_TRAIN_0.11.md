@@ -7,6 +7,26 @@
 - `v1.0.0`: **first Stable**, based on the same suite after all owner GUI, server headless, browser/login, cross-host, rollback, security and independent acceptance gates PASS. Never promote by changing the version string alone.
 - Prior published Core `v0.10.20` and Browser `v0.8.1` are historical release artifacts, not accepted fully stable suite. Do not alter immutable tags/assets, and do not break legacy updater latest endpoints until the migration is verified.
 
+## Current cross-product delivery roadmap — 2026-10-27
+
+This is the active integrated suite roadmap. Historical engine-only PROJECT_ENGINE_ROADMAP.md remains valuable provenance, not this product's active release plan. Source and external-adoption evidence belong to the current checkpoint in PROJECT_BRAIN.md, not duplicated per-revision authority files.
+
+| Gate | Pinned status at dev.3 SHA a06fe7ec | Closing evidence |
+| --- | --- | --- |
+| P0 Core + fleet | Five primary Core 0.10.26; five isolated dev.3 loopback health PASS; canonical Git roots diverge with live uncommitted work | Correct owner/profile routing; exact source integrity; preserve active tunnel and owner data |
+| P0 Installer / rollback | Linux R170 FAIL, Windows R173 FAIL, Windows Server Canary FAIL; Linux clean canary PASS | Full isolated Windows + Linux promotion AND rollback, safe server bootstrap, no bypass or duplicate permanent roots |
+| P0 Suite composition | 9 manifest components all verified=false; Windows and GTK UI QA and Browser Linux canary are scoped PASS | SHA-pinned Core, independent CEF Browser, native Control Center, GUI, Transfer, Workers, multi-user and Updater actual packages |
+| P0 Native authorization | Owner GUI observe-only / incidents and Linux Portal grants still unaccepted | Authenticated same-user input, policy and revoke, independent account/profile isolation; server headless path without monitor |
+| P0 Installer integration | Candidate is a localhost QA sidecar, NOT the production MCP route | Tested one active package per host; update/restart/rollback with device-specific receipts, no junctions |
+| P0 Release milestone | PR #409 Draft; Stable and publish flags false | v0.11.0 prerelease only after cross-product/5-host/security/provenance acceptance; v1.0.0 first Stable only after independent signoff |
+| P1 Browser and worker UX | Browser Automation and journal exist; extension integration not proven fleet-wide | Bounded Playwright locator and diagnostics, worker resume and acknowledgments with no blind resend |
+| P1 Transfer and observability | Existing Mesh + selected private Syncthing evidence historically scoped to two hosts | Five-host transfer SHA/recovery + opt-in redacted trace and resource limits |
+| P2 external orchestrators/graph memory | Proposal only | Compare existing execution engine against LangGraph/Temporal/OpenHands/Graphiti on same workload and budget before adoption |
+
+**Upstream selection policy.** Core MCP: modelcontextprotocol/typescript-sdk v2; Windows GUI: FlaUI / Microsoft winappCli; Linux GUI: xdg-desktop-portal + libei/EIS; native Browser: existing CEF with optional Playwright MCP and Chrome DevTools MCP adapters; workspace and Codex UX: CoS / codex-chatgpt-web design-only until explicit consent and security review; multi-agent UI: OpenHands patterns; Mesh: tus protocol plus existing transport; identity policy: node-casbin only if required; telemetry: OpenTelemetry JS; binary provenance: Sigstore Cosign plus CodeQL/secrets. Keep one Commander engine. Pin versions/licenses, test positive/negative routes, and prevent profile/cookie sharing. Do not auto-install all external projects on five hosts.
+
+**Evidence gate:** source inventory is not semantic review of all files; project conversation summaries are not all ChatGPT archives. Track remaining coverage without claiming 100%. No host or release was changed by this documentation audit.
+
 ## Authoritative scope
 Core, Browser Commander (including independent CEF UI), Control Center / user permissions, headless Windows servers, Linux desktops, GUI same-user private seats, Transfer Mesh, Project/Workflow Engine, local AI & scheduled Workers, profile/login ownership, deployment & updater. Browser has a separate source repo and release line; its independently versioned build must be pinned by SHA in the eventual suite release manifest. No unverified external components can silently count as integrated.
 
