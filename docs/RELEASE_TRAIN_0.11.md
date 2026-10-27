@@ -1,6 +1,23 @@
 # Remote Commander suite — 0.11 release train
 **Opened:** 2026-10-27 · **Status:** INTEGRATION CANDIDATE / NO PUBLIC RELEASE / NO HOST PROMOTION
 
+## P0 fleet task usability — 2026-10-27 (user's current first priority)
+
+The overriding delivery order is **make all five current computers useful for real work**, retaining their existing working Core `0.10.26` routes until the replacement passes native rollback. This does **not** authorize new broad Administrator/root privileges, interactive input without consent, a premature 0.11 release, or silent overwrite of dirty checkouts. The exact observational record, scope and incident ID are in existing [PROJECT_BRAIN](PROJECT_BRAIN.md#rc011-fleet-ops-20261027--five-host-work-ready-smoke-blocked-gui-paths); this roadmap tracks next acceptance only.
+
+| Immediate operational gate | Direct five-host evidence | Unclosed DoD |
+| --- | --- | --- |
+| OPS-1 Core / Shell / Files / Git | **5/5 PASS**: distinct MCP endpoint, temporary write/read/cleanup, Node/Git, primary localhost Health 0.10.26 and dev.3 sidecar Health | Preserve routing and rollback path; no further change required for safe baseline work |
+| OPS-2 Browser for routine web tasks | **5/5 PASS**: isolated background owner-only session begin → local navigation → DOM observation → session end; all `userDesktopTouched=false` | Confirm separately packaged CEF browser, authenticated profile isolation and site-specific consent before claiming all Browser Commander features |
+| OPS-3 Durable project state | **5/5 DB integrity PASS**; Scheduler enabled, **automatic execution OFF**; only MMZ has read-only proposal Runner | Validate per-project consent, output receipts, stop/revoke and restart; no mass resume of historical persisted nonterminal records |
+| OPS-4 GUI work on desktops | Windows Emad **observe-only** (mouse/keyboard disabled); Linux Emad ambiguous mouse incident **pending** but observe lease/window enumeration PASS; MMZ Wayland owner consent **not active** | For Windows owner-bound Cua connection without pipe ACL widening, Linux incident effect reconciliation before input reset, MMZ native Portal consent and E2E; no UI actions on headless servers |
+| OPS-5 Multi-user / privilege | Per-user permanent Workers and centrally revocable grants **NOT DONE**; OS native tokens vary, FULL_POWER is not Admin/root | SID/UID+session-bound Workers; Control Center grant/expiry/revoke; narrow OS-elevated broker with native UAC/sudo/polkit and negative cross-user tests |
+| OPS-6 0.11 replacement | All five primary hosts **still 0.10.26**, dev.3 locally available but not routed; dev.6 source only, native R170/R173/R157 promotions **FAIL** | Fix prerelease SemVer/real rollback and test each platform, package Core+CEF+ControlCenter+Mesh+Workers+Installer then guarded five-host primary cutover/readback |
+| OPS-7 Stable | All nine suite acceptance flags `false` | Release 0.11 prerelease only after OPS-4/5/6; 1.0 Stable only after full independent acceptance and operational soak |
+
+**Action rule:** For live work *now*, route authorized shell/filesystem/read-only project tasks and background-owned Browser through current verified connections instead of requiring an unqualified 0.11 rollout. Where an interactive operation is indispensable, provide the exact smallest owner-attended GUI approval path; keep unaffected machine operations running. Do not reintroduce the older problematic GUI user-session permissions by silently elevating SYSTEM or compromising another account. After native rollback is proven, migrate one host at a time without junctions, check all five, and retain one canonical product installation per host.
+
+
 ## Version rules
 - Every code-changing integration must increment its source/pre-release identity with traceable commit, changelog and tests (`0.11.0-dev.N`, then `0.11.0-rc.N`).
 - `v0.11.0`: one suite, all required products included, tagged and published as **GitHub Pre-release**, not Stable, only after required gates PASS.
