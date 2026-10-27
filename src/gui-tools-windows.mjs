@@ -6,6 +6,7 @@ import { performance } from 'node:perf_hooks';
 import { GUI_RULES, guiError, guiToolDefinitions, validateGuiInput } from './gui-contract.mjs';
 import { createGuiProcessClient, runGuiProcess } from './gui-process.mjs';
 import { createGuiInputIncidentStore } from './gui-incident-store.mjs';
+import { createOwnerReviewedGuiStore } from './gui-owner-recovery-store.mjs';
 export { guiToolDefinitions };
 
 const project = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -68,6 +69,7 @@ export function createGuiController({ platform = process.platform, now = () => p
     if (name === 'gui_status' && (!enabled || blocked || uncertainNow || incidentStoreUnavailable)) return {
       enabled, available: false, blocked, uncertain: uncertainNow, busy, leased: !!current(),
       incidentStoreUnavailable, incidentPending: !!pendingIncident,
+      ...(incidentStoreUnavailable ? {} : await incidentStore.recoveryState?.()),
       reason: !supported ? 'PLATFORM_BACKEND_UNSUPPORTED' : blocked ? 'LOCAL_GUI_STOP' :
         incidentStoreUnavailable ? 'GUI_INCIDENT_STORAGE_UNAVAILABLE' :
         uncertainNow ? 'NATIVE_OUTCOME_UNCERTAIN_RESTART_REQUIRED' : 'GUI_DISABLED'
@@ -94,7 +96,9 @@ export function createGuiController({ platform = process.platform, now = () => p
       if (name === 'gui_status') {
         const status = await invoke({ action: 'status', stopFile });
         if (status?.ok !== true) throw guiError(status?.error || 'GUI_NATIVE_FAILED');
-        return { ...status, enabled, busy: false, leased: !!current(), backend: status.backend ?? (platform === 'win32' ? 'windows-user32-gdi' : 'gnome-shell-wayland'), policy: {
+        return { ...status, enabled, busy: false, leased: !!current(),
+          ...await incidentStore.recoveryState?.(),
+          backend: status.backend ?? (platform === 'win32' ? 'windows-user32-gdi' : 'gnome-shell-wayland'), policy: {
           allowScreenshot: cfg.allowScreenshot === true, allowMouse: cfg.allowMouse === true,
           allowKeyboard: cfg.allowKeyboard === true, allowWindowFocus: cfg.allowWindowFocus === true,
           defaultSessionMode: 'observe', explicitTakeoverRequired: true,
@@ -187,5 +191,6 @@ export function createGuiController({ platform = process.platform, now = () => p
   }
   return { execute };
 }
-const controller = createGuiController();
+const controller = createGuiController(process.platform === 'win32'
+  ? {incidentStore:createOwnerReviewedGuiStore()} : {});
 export async function executeGuiTool(ctx, name, input) { return controller.execute(ctx, name, input); }
