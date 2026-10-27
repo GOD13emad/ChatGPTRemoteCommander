@@ -15,6 +15,10 @@
 - [REA](https://github.com/morluto/rea) (MIT) is lawful binary/app analysis and evidence collection **on authorized apps**, not GUI runtime. [colibri](https://github.com/JustVugg/colibri) (Apache-2.0) is disk-streamed MoE local inference; needs model/RAM/disk benchmark and is **not** the workflow orchestrator. Existing local Ollama/llama.cpp should be qualified first.
 - Proof status: implementation and narrow unit tests only; not OS user-worker deployment, local-model semantic correctness, full CI, fleet promotion or Stable.
 
+## 0.11.0-dev.6 — CI qualification command-size corrective gate (2026-10-27, NOT FINAL)
+
+Dev.5 formally tested exact-manifest NoPromote version admission in both R170/R173 and separated dev Windows Server Canary evidence from stable allowlist requirements. Hosted R170 source version preflight passed; real promotion did not. CI and both Canaries failed the separate `R157_PHASE_WINDOWS_CMD_LENGTH` protection after inline Node test additions. Dev.6 restores the original bounded check/test scripts and moves new policy-negative tests to a dedicated CI step. Acceptance remains blocked until exact dev.6 CI, R170/R173/R157, Server Canary and actual 5/5 host integration show their own PASS receipts. The release-train manifest stays all false.
+
 ## Current cross-product delivery roadmap — 2026-10-27 (integrated architecture decided; acceptance NOT FINAL)
 
 **Decision event `RC011-UPSTREAM-ARCH-20261027`.** The existing [PROJECT_BRAIN](PROJECT_BRAIN.md#rc011-upstream-arch-20261027--component-specific-last-release-decisions) holds the one evidence-backed upstream release inventory (as of 2026-10-27), alternatives, licenses and detailed host deltas. This Roadmap is the **single active suite-wide sequence**, superseding this section's earlier dev.3-only gate snapshot. No new authoritative Brain, Index, package-lock or mutable `latest` installed-version claim is created here.

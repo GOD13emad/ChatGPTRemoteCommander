@@ -1,3 +1,9 @@
+# 0.11.0-dev.6 — fix hosted Windows command-length regression, retain isolated QA coverage (2026-10-27; Draft / NoPromote)
+
+- dev.5 introduced exact all-false manifest qualification for R170/R173 plus the correct Windows Server development evidence path. Hosted preflights now admit development, but the native promotion and Windows/Linux Canary failed.
+- Root cause observed on exact dev.5 hosted Windows and Linux CI: extra inline npm check/test entries exceeded the existing 7500-character grouped Windows qualification command contract (`R157_PHASE_WINDOWS_CMD_LENGTH`). That also aborted the Windows Server installer and Linux promotion.
+- dev.6 preserves all original main check/test suites and runs the isolated version-policy regressions as a separate GitHub CI step. No release/promotion flags, OS rights, user profiles or active machines modified. Hosted native R170/R173/R157/Canary acceptance remains OPEN until proven by new exact-head receipts.
+
 # 0.11.0-dev.4 — opt-in local Ollama planner adapter (2026-10-27; DRAFT / NoPromote)
 
 - Adds a localhost-only, explicitly configured `command` provider for existing journaled Workflow Runner; no default model, autoTick, account privilege, tool execution, cross-user access or release promotion.

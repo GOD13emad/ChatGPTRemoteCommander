@@ -5,7 +5,7 @@ const root=new URL('../',import.meta.url);
 const read=p=>readFileSync(new URL(p,root),'utf8');
 test('0.11 development train never masquerades as Stable or approved promotion',()=>{
  const a=JSON.parse(read('docs/release-train-0.11.json'));
- assert.equal(a.train,'0.11');assert.equal(a.sourceVersion,'0.11.0-dev.5');
+ assert.equal(a.train,'0.11');assert.equal(a.sourceVersion,'0.11.0-dev.6');
  assert.equal(a.targetPrerelease,'0.11.0');assert.equal(a.firstStable,'1.0.0');
  assert.equal(a.isStable,false);assert.equal(a.publishApproved,false);
  assert.equal(a.autoupdateApproved,false);assert.equal(a.installedPromotionApproved,false);
@@ -16,15 +16,15 @@ test('0.11 development train never masquerades as Stable or approved promotion',
  assert.equal(a.fleet.length,5);
 });
 test('server, plugin, npm package and Windows Control Center development identity agree',()=>{
- const ver='0.11.0-dev.5';
+ const ver='0.11.0-dev.6';
  assert.equal(JSON.parse(read('package.json')).version,ver);
  assert.equal(JSON.parse(read('plugin-template/plugin.json')).version,ver);
  assert.equal(JSON.parse(read('plugin-template/.codex-plugin/plugin.json')).version,ver);
  assert.ok(read('src/server-v0.3.mjs').includes("const VERSION = '"+ver+"';"));
  const cs=read('desktop/RemoteCommanderDashboard/RemoteCommanderDashboard.csproj');
  assert.ok(cs.includes('<Version>'+ver+'</Version>'));
- assert.ok(cs.includes('<FileVersion>0.11.0.5</FileVersion>'));
- assert.ok(cs.includes('<AssemblyVersion>0.11.0.5</AssemblyVersion>'));
+ assert.ok(cs.includes('<FileVersion>0.11.0.6</FileVersion>'));
+ assert.ok(cs.includes('<AssemblyVersion>0.11.0.6</AssemblyVersion>'));
 });
 test('historical releases are not silently deleted or accepted as product stable',()=>{
  const a=JSON.parse(read('docs/release-train-0.11.json'));

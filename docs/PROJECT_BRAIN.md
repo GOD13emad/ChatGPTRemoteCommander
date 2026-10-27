@@ -2,6 +2,10 @@
 
 ## CURRENT AUDIT — 2026-10-27: cross-product evidence and architecture
 
+### RC011-HOSTED-QA-20261027 — dev.5 failure / dev.6 scoped correction
+
+Source dev.5 `191ab2d5a2fd0a8ab967bb232e30ade8d2797be6` had local negative manifest/release identity/auto-update-contract tests 38 PASS, 4 Windows-only SKIP. Hosted exact-dev.5 R170's hardcoded-version preflight moved from FAIL to PASS (`RC011_DEVELOPMENT_NOPROMOTE_QA_VERSION_ADMITTED_ONLY`), but promotion remained FAILED. Hosted both-platform CI and both Server Canaries then failed because the additional inlined npm `check` / `test` commands exceeded the existing bounded Windows CLI grouping contract (`R157_PHASE_WINDOWS_CMD_LENGTH`), not because the server dev allowlist guard had been fully exercised. Dev.6 restores unchanged full-suite command-string length and moves negative policy unit tests to a separate CI step; native actual R170/R173/R157 and Windows+Linux Canary must be freshly qualified before passing. This is source/CI correction only. One writer used GitHub integration branch; five dirty host source trees and active production routes were not changed.
+
 ### RC011-UPSTREAM-ARCH-20261027 — component-specific last-release decisions
 
 **Event/authority.** Active integration architecture decision and upstream-release research dated 2026-10-27; no external package or privileged service is installed by this record. Primary source: official GitHub repositories/releases read live through connected GitHub; tag refers to the identified component, not a generic monorepo `latest`. Release metadata are **candidate pins to qualify**, not accepted binary digests or auto-update instructions. Before deploy, freeze resolved upstream commit/tree, dependency lockfiles, hashes, licenses/NOTICE, compatibility/perf/security matrix, and offline artifacts. Always evaluate the newest applicable upstream component release available **at the time of admission**, but never auto-track a mutable main/nightly/rolling tag on deployed hosts.
