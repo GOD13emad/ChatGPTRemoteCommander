@@ -20,7 +20,7 @@ test('candidate source runtime and plugin identity agree without public release 
    assert.ok(cs.includes('<FileVersion>0.10.26.0</FileVersion>'));
    assert.ok(cs.includes('<AssemblyVersion>0.10.26.0</AssemblyVersion>'));
  }else{
-   assert.match(current,/^0\\.11\\.0-dev\\.[1-9][0-9]*$/);
+   assert.match(current,/^0\.11\.0-dev\.[1-9][0-9]*$/);
    assert.equal(train.sourceVersion,current);
    assert.equal(train.status,'INTEGRATION_CANDIDATE_NOT_FINAL');
    assert.equal(train.channel,'development');
