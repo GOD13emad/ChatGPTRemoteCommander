@@ -19,6 +19,7 @@ test('server, plugin, npm package and Windows Control Center development identit
  const ver='0.11.0-dev.1';
  assert.equal(JSON.parse(read('package.json')).version,ver);
  assert.equal(JSON.parse(read('plugin-template/plugin.json')).version,ver);
+ assert.equal(JSON.parse(read('plugin-template/.codex-plugin/plugin.json')).version,ver);
  assert.ok(read('src/server-v0.3.mjs').includes("const VERSION = '"+ver+"';"));
  const cs=read('desktop/RemoteCommanderDashboard/RemoteCommanderDashboard.csproj');
  assert.ok(cs.includes('<Version>'+ver+'</Version>'));
