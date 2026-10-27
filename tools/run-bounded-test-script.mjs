@@ -277,6 +277,21 @@ export function prioritizeWindowsAdaptiveCold(command) {
   return [exact,...parts].join(' && ');
 }
 
+/**
+ * R157: an inline cmd.exe command has a small Windows length limit. Splitting
+ * only at the source-controlled && boundaries preserves strict order, exact
+ * test invocations and fail-fast behavior while allowing indexed receipts.
+ * Each command is independently bounded before being passed to cmd.exe.
+ */
+export function splitWindowsQualificationCommands(command) {
+  if(typeof command!=='string'||!command)throw new Error('R157_PHASE_COMMAND_INVALID');
+  const parts=command.split(' && ');
+  if(parts.length<2||parts.length>90||parts.some(part=>
+    !part.startsWith('node ')||part.includes('\n')||part.includes('\r')||part.length>7000))
+    throw new Error('R157_PHASE_COMMAND_SHAPE_INVALID');
+  return parts;
+}
+
 export function parseQualificationArgs(argv){
   const out={script:null,concurrency:null,prioritizeSensitive:false};
   for(let i=0;i<argv.length;i++){
@@ -318,9 +333,21 @@ function run(){
     command=isolateWindowsStartupReadinessRegressions(command);
     command=prioritizeWindowsAdaptiveCold(command);
   }
-  if(process.platform==='win32'&&args.script==='test'&&process.env.RC_QUALIFICATION_RUN_ID)
-    command=markIsolatedQualificationPhases(command);
+  const phases=process.platform==='win32'&&args.script==='test'&&process.env.RC_QUALIFICATION_RUN_ID
+    ?splitWindowsQualificationCommands(command):null;
   console.log('CI_TEST_CONCURRENCY script='+args.script+' requestedConcurrency='+requestedConcurrency+' effectiveConcurrency='+effectiveConcurrency+' replacements='+bounded.replacements+' prioritizeSensitive='+prioritizeSensitive);
+  if(phases){
+    for(const [index,part] of phases.entries()){
+      const marker=String(index).padStart(2,'0');
+      console.log('RC_QUAL_PHASE_START_'+marker);
+      const phase=spawnSync(process.env.ComSpec||'cmd.exe',['/d','/s','/c',part],{cwd:root,env:process.env,stdio:'inherit'});
+      if(phase.error)throw phase.error;
+      if(phase.signal)throw new Error('CI_TEST_SIGNAL_'+phase.signal);
+      if(phase.status!==0){process.exitCode=Number.isInteger(phase.status)?phase.status:1;return;}
+      console.log('RC_QUAL_PHASE_PASS_'+marker);
+    }
+    return;
+  }
   const child=process.platform==='win32'
     ? spawnSync(process.env.ComSpec||'cmd.exe',['/d','/s','/c',command],{cwd:root,env:process.env,stdio:'inherit'})
     : spawnSync('/bin/sh',['-lc',command],{cwd:root,env:process.env,stdio:'inherit'});

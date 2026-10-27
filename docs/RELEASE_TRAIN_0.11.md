@@ -1,6 +1,10 @@
 # Remote Commander suite — 0.11 release train
 **Opened:** 2026-10-27 · **Status:** INTEGRATION CANDIDATE / NO PUBLIC RELEASE / NO HOST PROMOTION
 
+## 0.11.0-dev.11 — bounded Windows qualification per command (NoPromote)
+
+Exact `dev.10` R157 isolated native preflight and `check` passed but `test` aborted *before any suite* because index-only qualification markers made the **aggregate** `cmd.exe /c` command too long (`R157_PHASE_WINDOWS_CMD_LENGTH`). Same exact source's `npm test` passed outside R157 on Windows Emad and Windows Amir. Replace only the R157 opt-in Windows execution strategy with strict sequential independent `cmd.exe` invocations for each validated original `node` segment, keeping start/pass numeric receipts and stopping on first nonzero. A segment over 7000 characters or an unsafe/ambiguous group still fails closed. Preserve full test coverage, production Core execution semantics and all security gates. Hosted exact-head R157/R173 must requalify.
+
 ## 0.11.0-dev.10 — deterministic waiting-budget test under Windows fixture load (QA-only)
 
 Dev.9 real Windows full-suite failed a 1s synthetic input-wait budget before it could enter WAITING_INPUT, plus strict team fixture cancellation under load. The team reservation test stays **exactly six seconds, unchanged** and is already independently prioritized cold in Windows CI. Only the synthetic human-waiting test's initial execution duration is raised to 10s; the full real 1.1s wait, deadline extension and resume assertions remain. No runtime budget or security policy changes. Source remains NoPromote; R157/R173 require exact-head hosted qualification. Linux GUI fixture also injects an isolated synthetic GNOME Gio schema for KDE/headless test hosts; no system GSettings changes or runtime GUI capability widening.

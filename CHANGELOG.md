@@ -1,3 +1,9 @@
+# 0.11.0-dev.11 — eliminate Windows cmd.exe whole-chain length bottleneck (2026-10-28; DRAFT / NoPromote)
+
+- Reproduced exact dev.10 R157 in **both** Emad Windows and Amir Windows with isolated `NoPromote` state. `npm test` from the exact source passed on both hosts, while Windows updater test qualification failed deterministically in `run-bounded-test-script.mjs` with `R157_PHASE_WINDOWS_CMD_LENGTH`: 43 ordered Node test groups, individual commands up to 2161 characters, but all combined phase markers exceed the safe Windows cmd.exe inline limit.
+- In R157-only mode execute each exact validated source-controlled `node ...` group as its own bounded `cmd.exe` child, emitting original numeric start/pass markers. Preserve every test, ordering, failure stop, environment, process exit-code, updater state and `NoPromote` guard; no dynamic shell/script writing, permission extension or public publication.
+- New regression verifies a 65-group chain that would fail the old aggregate bound succeeds as a sequence of length-bounded commands and keeps fail-fast/code unchanged. Native Windows hosted R157/R173 acceptance and cross-platform qualification remain **OPEN**. No five-host Core cutover, stable tag or Work credits.
+
 # 0.11.0-dev.10 — deterministic human-waiting deadline fixture (2026-10-28; DRAFT / NoPromote)
 
 - During a native Windows full suite, dev.9 recorded 610 PASS, 1 failing human-wait deadline, 1 cancelled strict 6s adaptive collaboration test, and 16 SKIP; exact two files alone passed 49/49. The original strict six-second adaptive collaboration test, its source text and cold-first CI order remain **unchanged**.

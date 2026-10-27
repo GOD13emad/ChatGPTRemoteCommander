@@ -5,7 +5,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { boundNodeTestConcurrency, parseQualificationArgs, prioritizeSensitiveQualificationCommands, isolateWindowsLeaseRegression, isolateWindowsTimingSensitiveRegressions, isolateWindowsProcessTreeRegression, isolateWindowsAgentHttpRegression, isolateWindowsTransferMeshHttpRegression, isolateWindowsWorkflowPlanRegression, isolateWindowsAsyncHttpRegression, isolateWindowsMcpConformanceRegression, isolateWindowsStartupReadinessRegressions, prioritizeWindowsAdaptiveCold, markIsolatedQualificationPhases } from '../tools/run-bounded-test-script.mjs';
+import { boundNodeTestConcurrency, parseQualificationArgs, prioritizeSensitiveQualificationCommands, isolateWindowsLeaseRegression, isolateWindowsTimingSensitiveRegressions, isolateWindowsProcessTreeRegression, isolateWindowsAgentHttpRegression, isolateWindowsTransferMeshHttpRegression, isolateWindowsWorkflowPlanRegression, isolateWindowsAsyncHttpRegression, isolateWindowsMcpConformanceRegression, isolateWindowsStartupReadinessRegressions, prioritizeWindowsAdaptiveCold, markIsolatedQualificationPhases, splitWindowsQualificationCommands } from '../tools/run-bounded-test-script.mjs';
 
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const read=rel=>fs.readFileSync(path.join(root,rel),'utf8');
@@ -311,7 +311,22 @@ test('R157 qualifier markers are opt-in, index-only, and preserve all original c
   }
   const wrapper=read('tools/run-bounded-test-script.mjs');
   assert.ok(wrapper.includes("process.env.RC_QUALIFICATION_RUN_ID"),'R157 opt-in is guarded');
-  assert.ok(wrapper.includes('command=markIsolatedQualificationPhases(command)'));
+  assert.ok(wrapper.includes('splitWindowsQualificationCommands(command)'));
+});
+
+test('R157 isolates every owned Windows phase so total command length cannot defeat qualification',()=>{
+  const original=Array.from({length:90},(_,i)=>'node --test test/phase-'+i+'-'+ 'x'.repeat(70)+'.test.mjs').join(' && ');
+  assert.throws(()=>markIsolatedQualificationPhases(original),/R157_PHASE_WINDOWS_CMD_LENGTH/);
+  const phases=splitWindowsQualificationCommands(original);
+  assert.equal(phases.length,90);
+  assert.deepEqual(phases,original.split(' && '));
+  assert.ok(phases.every(part=>part.length<7000));
+  assert.throws(()=>splitWindowsQualificationCommands('node test/a.mjs && echo untrusted'),/R157_PHASE_COMMAND_SHAPE_INVALID/);
+  assert.throws(()=>splitWindowsQualificationCommands('node test/a.mjs && node '+ 'a'.repeat(7200)),/R157_PHASE_COMMAND_SHAPE_INVALID/);
+  const wrapper=read('tools/run-bounded-test-script.mjs');
+  assert.ok(wrapper.includes("console.log('RC_QUAL_PHASE_START_'+marker)"));
+  assert.ok(wrapper.includes("console.log('RC_QUAL_PHASE_PASS_'+marker)"));
+  assert.ok(wrapper.includes("if(phase.status!==0){process.exitCode="),'failure must stop subsequent tests');
 });
 
 test('R470 does not misreport a non-TAP failure as a TAP summary; identifies only numeric phase',t=>{
