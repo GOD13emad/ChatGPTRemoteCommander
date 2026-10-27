@@ -1,3 +1,8 @@
+# 0.11.0-dev.9 — normalize Windows router script source blob for Linux R170 integrity (2026-10-28; DRAFT / NoPromote)
+
+- Re-encode exactly `tools/router-commandline-windows.ps1` in Git as LF while retaining `.gitattributes` checkout policy `text eol=crlf`. The original dev.8 blob had 37 CRLF endings and produced a dirty Git status immediately after a fresh Linux checkout. This is a byte normalization with zero semantic diff, not a relaxation of R170 source-change checks.
+- Pin a source-blob normalization regression; preserve Windows runtime CRLF behavior, all updater rollback/NoPromote/security gates and production `0.10.26` installs. Require independent hosted R170/R173/R157 and Windows+Linux parser/full-suite gates before qualification.
+
 # 0.11.0-dev.8 — repair native Windows parser and match R157 NoPromote source identity (2026-10-27)
 
 - A dev.7 textual substitution malformed two Windows PowerShell prerelease route-validation expressions; real PowerShell Parser found 20 errors on the pinned source. Restored the last known parseable dev.6 Windows updater and reapplied only the shared SemVer comparator and two route checks using literal, non-interpolating changes.
