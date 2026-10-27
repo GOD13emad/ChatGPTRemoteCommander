@@ -32,8 +32,16 @@ jobs:
       - name: Install Linux GUI helper dependencies
         if: runner.os == 'Linux'
         run: |
-          sudo apt-get update
+          # Limit index updates to signed Ubuntu sources; unrelated vendor feeds can return 403.
+          test -f /etc/apt/sources.list.d/ubuntu.sources
+          sudo apt-get update \
+            -o Dir::Etc::sourcelist=sources.list.d/ubuntu.sources \
+            -o Dir::Etc::sourceparts=-
           sudo apt-get install --yes python3-gi gir1.2-gdkpixbuf-2.0 gnome-shell-common
+      - name: Validate isolated 0.11 QA manifest and negative version cases
+        run: node --test test/isolated-qa-policy.test.mjs
+      - name: Check prerelease SemVer and updater fail-closed rules
+        run: node --test test/semver-release.test.mjs
       - name: Run qualification check with bounded Windows file concurrency
         if: runner.os == 'Windows'
         run: node tools/run-bounded-test-script.mjs --script check --concurrency 1 --prioritize-sensitive 1

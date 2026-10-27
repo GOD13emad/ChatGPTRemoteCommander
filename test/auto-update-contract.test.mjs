@@ -1,4 +1,6 @@
 import test from 'node:test';
+import './release-discovery-url-security.test.mjs';
+import { assertPinnedReleaseDiscovery } from './release-discovery-contract.mjs';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -215,7 +217,8 @@ test('auto updater is candidate-first, hardware-gated and commit-point aware',()
   for(const marker of ['diff --cached --quiet --','diff --ignore-space-at-eol --exit-code --','CONTROL_TRACKED_EOL_DRIFT_ACCEPTED'])assert.ok(promote.includes(marker),marker);
   assert.ok(promote.indexOf('diff --cached --quiet --') < promote.indexOf('CONTROL_TRACKED_EOL_DRIFT_ACCEPTED'),'staged control changes must fail before EOL-only drift is accepted');
   assert.ok(promote.indexOf('diff --ignore-space-at-eol --exit-code --') < promote.indexOf('CONTROL_TRACKED_EOL_DRIFT_ACCEPTED'),'substantive unstaged control changes must fail before EOL-only drift is accepted');
-  assert.ok(s.includes('https://github.com/GOD13emad/ChatGPTRemoteCommander/releases/latest') && s.includes('Invoke-WebRequest') && s.includes('Invoke-RestMethod'),'Windows stable discovery must prefer published-release redirect with REST fallback');
+  assertPinnedReleaseDiscovery(s,'windows');
+   assert.ok(s.includes('Invoke-RestMethod'), 'Windows stable discovery must retain REST fallback');
   assert.ok(s.includes("MCP-Protocol-Version") && s.includes("2026-07-28") && s.includes("-Headers $headers"), 'internal updater MCP calls through the canonical router must identify as the current protocol and never self-poison legacy-host continuity state');
   assert.ok(s.includes("io.modelcontextprotocol/protocolVersion") && s.includes("_meta"), 'modern updater MCP calls must mirror the protocol marker in body metadata so header/body classification cannot fail');
   assert.ok(s.includes("io.modelcontextprotocol/clientCapabilities") && s.includes("io.modelcontextprotocol/clientInfo") && s.includes("Mcp-Method") && s.includes("Mcp-Name"), 'modern updater MCP calls must satisfy the complete server-side modern client contract');
@@ -623,7 +626,6 @@ test('Linux updater is candidate-first, hardware-gated, routed and rollback-awar
     'retained-backends.mjs',
     'RELEASE_CLEANUP_RETAINED_PROTECT',
     'AUTO_UPDATE_EXISTING_DRAIN_BLOCK',
-    'https://github.com/GOD13emad/ChatGPTRemoteCommander/releases/latest',
     '%{url_effective}',
     'install_linux_gui_backend',
     'LINUX_GUI_BACKEND_SYNCED',
@@ -641,6 +643,7 @@ test('Linux updater is candidate-first, hardware-gated, routed and rollback-awar
     '/usr/local/bin/geckodriver',
     '"$HOME/.local/bin/geckodriver"'
   ]) assert.ok(s.includes(marker),marker);
+  assertPinnedReleaseDiscovery(s,'linux');
   assert.ok(s.includes('build_cfg "$DIAG_CFG" "$SHADOW_WF" shadow'),'Linux diagnostic candidate must use an isolated delivery shadow');
   assert.ok(s.includes('build_cfg "$FINAL_CFG" "$LIVE_WF" preserve'),'Linux final candidate must preserve active delivery identity');
   assert.ok(s.includes('--delivery-directory "$BACKUP_ROOT/$COMMIT/default/delivery-shadow-$PORT"'),'Linux diagnostic delivery directory must stay inside candidate backup state');
@@ -1096,7 +1099,12 @@ test('R254 Linux plugin post-verify failure preserves owner data and quarantines
 test('R157 staged release lookup uses the pinned source version, not a fixed old tag',()=>{
  const workflow=read('.github/workflows/windows-updater-e2e-r157.yml');
  const version=JSON.parse(read('package.json')).version;
- assert.match(version,/^\d+\.\d+\.\d+$/);
+ const train=JSON.parse(read('docs/release-train-0.11.json'));
+ assert.ok(/^\d+\.\d+\.\d+$/.test(version) ||
+   (/^0\.11\.0-dev\.[1-9]\d*$/.test(version) &&
+    train.sourceVersion===version && train.status==='INTEGRATION_CANDIDATE_NOT_FINAL' &&
+    train.publishApproved===false && train.installedPromotionApproved===false &&
+    train.autoupdateApproved===false),'only exact manifest-gated development SemVer is admitted');
  for(const requirement of [
   "Join-Path $env:GITHUB_WORKSPACE 'package.json'",
   "R157_SOURCE_PACKAGE_MISSING",
@@ -1108,7 +1116,8 @@ test('R157 staged release lookup uses the pinned source version, not a fixed old
   "R157_JOB_NOT_ACCEPTED_"
  ]) assert.ok(workflow.includes(requirement),'missing exact NoPromote safeguard: '+requirement);
  assert.equal(workflow.includes("('releases\\v0.10.24-'+$sha.Substring(0,12))"),false);
- assert.equal('releases\\v'+version+'-'+'f'.repeat(12),'releases\\v0.10.25-'+'f'.repeat(12));
+ assert.equal('releases\\v'+version+'-'+'f'.repeat(12),
+   'releases\\v'+JSON.parse(read('package.json')).version+'-'+'f'.repeat(12));
 });
 
 
@@ -1116,12 +1125,25 @@ test('R170 isolated rollback qualification is version-scoped, not a release auth
   const linux=read('test/release-rollback-linux-r170.sh');
   const workflow=read('.github/workflows/release-rollback-r170.yml');
   for(const expected of [
-    'SOURCE_VERSION=', '0.10.24 ||', '0.10.25 ]]',
+    'SOURCE_VERSION=', 'isolated-qa-policy.mjs', 'R170_SOURCE_VERSION_NOT_QUALIFIED',
     'R170_ISOLATED_SOURCE_VERSION=', 'releaseAuthorization=false',
     'AUTO_UPDATE_PASS version=$SOURCE_VERSION',
     "assert r['active']['version']==sys.argv[3]"
   ])assert.ok(linux.includes(expected),'missing isolated qualification constraint: '+expected);
-  assert.ok(workflow.includes("['0.10.24','0.10.25'].includes"));
-  assert.ok(!workflow.includes("'0.10.26'"),'future candidate requires explicit review');
+  assert.ok(workflow.includes('isolated-qa-policy.mjs'));
+  assert.ok(!workflow.includes("'0.10.27'"),'future candidate requires explicit review');
   assert.ok(linux.includes('R170_GITHUB_HOSTED_LINUX_ONLY'),'CI-only, not owner host');
+});
+
+test('R173 Windows rollback source qualification allows only explicitly reviewed versions',()=>{
+  const qa=read('test/release-rollback-windows-r173.ps1');
+  const workflow=read('.github/workflows/release-rollback-windows-r173.yml');
+  for(const body of [qa,workflow]){
+    assert.ok(body.includes('isolated-qa-policy.mjs'),'explicit exact-manifest QA version gate');
+    assert.ok(!body.includes("'0.10.27'"),'next unreviewed version is not admitted');
+  }
+  assert.ok(workflow.includes('R173_UNSUPPORTED_VERSION'),'preflight must fail closed');
+  assert.ok(qa.includes('R173_CANDIDATE_VERSION'),'native updater test must fail closed');
+  assert.ok(workflow.includes('github.event.pull_request.head.sha || github.sha'),'exact SHA');
+  assert.ok(!workflow.includes('gh release create'),'QA workflow is not release authority');
 });

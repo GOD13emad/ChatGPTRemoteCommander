@@ -2,7 +2,7 @@ param(
   [string]$SourceRef = 'v0.10.24',
   [string]$ExpectedCommit = '',
   [ValidateSet('Power','Standard')][string]$AccessMode = 'Power',
-  [ValidateSet('Auto','On','Off')][string]$GuiControl = 'Auto',
+  [ValidateSet('Auto','On','Off')][string]$GuiControl = 'Off',
   [string]$InstallDir = '',
   [switch]$NoStartServer,
   [switch]$PrerequisitesOnly,
@@ -291,14 +291,28 @@ try {
   if ($LASTEXITCODE -ne 0) { throw 'git checkout failed.' }
   $package = Get-Content -LiteralPath (Join-Path $stage 'package.json') -Raw | ConvertFrom-Json
   $expectedVersion = [string]$package.version
-  if ($expectedVersion -notmatch '^\d+\.\d+\.\d+$') { throw 'Staged package version is invalid.' }
+  if ($expectedVersion -notmatch '^\d+\.\d+\.\d+$') {
+    # Development bootstrap is for a SHA-pinned isolated candidate only.
+    $manifestPath = Join-Path $stage 'docs\release-train-0.11.json'
+    if ($expectedVersion -cnotmatch '^0\.11\.0-dev\.[1-9][0-9]*$' -or
+        -not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) { throw 'Staged package version is invalid.' }
+    $train = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+    if ($train.sourceVersion -cne $expectedVersion -or
+        $train.status -cne 'INTEGRATION_CANDIDATE_NOT_FINAL' -or
+        $train.channel -cne 'development' -or
+        $train.isStable -ne $false -or
+        $train.publishApproved -ne $false -or
+        $train.autoupdateApproved -ne $false -or
+        $train.installedPromotionApproved -ne $false -or
+        $null -ne $train.releaseTag) { throw 'Staged development manifest is not fail-closed.' }
+  }
 
   $guiEnabled = $false
   if ($GuiControl -eq 'On') {
     if ($server.isServerCore) { throw 'GUI control cannot be enabled on Windows Server Core. Use -GuiControl Off or Auto.' }
     $guiEnabled = $true
   } elseif ($GuiControl -eq 'Auto') {
-    $guiEnabled = -not [bool]$server.isServerCore
+    $guiEnabled = $false # Server installer defaults headless regardless of Windows SKU or RDP.
   }
 
   $installer = Join-Path $stage 'install.ps1'

@@ -248,7 +248,11 @@ function Get-FreePort([System.Collections.Generic.HashSet[int]]$Used){
   throw 'NO_PRIVATE_BACKEND_PORT'
 }
 function Test-VersionGreater([string]$Left,[string]$Right){
-  try{return ([version]$Left -gt [version]$Right)}catch{throw "AUTO_UPDATE_VERSION_COMPARE_INVALID left=$Left right=$Right"}
+  $helper=Join-Path $PSScriptRoot 'tools\semver-release.mjs'
+  if(-not(Test-Path -LiteralPath $helper -PathType Leaf)){throw 'AUTO_UPDATE_VERSION_COMPARE_HELPER_MISSING'}
+  $comparison=(& node.exe $helper compare $Left $Right | Out-String).Trim()
+  if($LASTEXITCODE -ne 0 -or $comparison -notin @('gt','eq','lt')){throw 'AUTO_UPDATE_VERSION_COMPARE_INVALID'}
+  return ($comparison -ceq 'gt')
 }
 function Get-LatestTag {
   if($SourceRef){ return $SourceRef }
@@ -965,6 +969,32 @@ try{
   $primaryConfig=Read-Json (Get-PrimaryConfig)
   if(-not $Force -and $primaryConfig.autoUpdate.enabled-ne $true){Log 'AUTO_UPDATE_DISABLED';$report.status='DISABLED';Atomic-Json $ResultFile $report;exit 0}
   $ref=Get-LatestTag
+  # Skip staging obsolete Stable checkouts while a newer approved Preview route runs.
+  # Explicit -Force and SHA refs keep their existing qualification semantics.
+  if(-not $Force -and $ref -match '^v(\d+\.\d+\.\d+)$'){
+    $tagVersion=[string]$Matches[1]
+    $routeFile=Get-RoutePath 'default'
+    if(Test-Path -LiteralPath $routeFile -PathType Leaf){
+      $routeDoc=Read-Json $routeFile
+      $activeVersion=[string]$routeDoc.active.version
+      if($routeDoc.schema -ne 1 -or [string]$routeDoc.profile -ne 'default' -or
+         $activeVersion -notmatch '^\d+\.\d+\.\d+(?:-(?:dev|rc)\.[1-9]\d*)?$' -or
+         [string]$routeDoc.active.commit -notmatch '^[0-9a-f]{40}$'){
+        throw 'AUTO_UPDATE_ACTIVE_ROUTE_UNVERIFIED'
+      }
+      if(Test-VersionGreater $activeVersion $tagVersion){
+        $report.status='NEWER_CURRENT'
+        $report.ref=$ref
+        $report.version=$tagVersion
+        $report.currentVersion=$activeVersion
+        $report.authoritySource='PERSISTED_ROUTE_PRESTAGE'
+        $report.completedAt=(Get-Date).ToUniversalTime().ToString('o')
+        Atomic-Json $ResultFile $report
+        Log "AUTO_UPDATE_NEWER_PERSISTED_ROUTE_PRESTAGE current=$activeVersion target=$tagVersion"
+        exit 0
+      }
+    }
+  }
   $stage=Stage-Release $ref
   $report.ref=$ref;$report.commit=$stage.Commit;$report.version=$stage.Version
   $script:QualificationCommit=$stage.Commit
@@ -1000,7 +1030,7 @@ try{
         $routed=Read-Json $routePath
         $routedVersion=[string]$routed.active.version
         if($routed.schema -ne 1 -or $routed.profile -ne 'default' -or
-           $routedVersion -notmatch '^\d+\.\d+\.\d+$' -or
+           $routedVersion -notmatch '^\d+\.\d+\.\d+(?:-(?:dev|rc)\.[1-9]\d*)?$' -or
            [string]$routed.active.commit -notmatch '^[0-9a-f]{40}$'){
           throw 'INVALID_ACTIVE_ROUTE'
         }
