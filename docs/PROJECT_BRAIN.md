@@ -1,5 +1,15 @@
 # Project Brain — ChatGPT Remote Commander
 
+## CURRENT POLICY — unified forward-only development train, 2026-10-28
+
+**Owner acceptance:** exactly one centrally governed Commander installation per host, three runtime profiles (Windows Desktop, Linux Desktop, Windows/Linux Headless Server), same Git source/manifest for personal and organizational fork, ChatGPT Chat-owned execution (no ChatGPT Work use or Work credits). `TandemVector-Labs/ChatGPTRemoteCommander` is already the actual GitHub fork of `GOD13emad/ChatGPTRemoteCommander`; its protected `main` must be synchronized via reviewed PR #195, not force-updated.
+
+**Changed development gate:** numbered pre-v1 dev builds run **forward-only**; return-to-legacy `0.10.x` rollback qualification is deferred until `v1.0.0` Stable acceptance. Retain previous fault evidence, source integrity and installed configuration rescue, avoid destructive disconnection, require exact native install/start/function/readback on each host. This does NOT waive native Windows CI, installer safety, data isolation or Security/R157 NoPromote, and does not turn a staged source into a running release. Existing `0.10.26` and side-staged `0.11.0-dev.9`/Cua 0.38.0 are historical verified scope only.
+
+**Single authoritative detailed spec:** [COMMANDER_ARCHITECTURE.md](COMMANDER_ARCHITECTURE.md); development/Stable gate status: [RELEASE_AUTHORITY.md](RELEASE_AUTHORITY.md). **Next critical edge:** validate new exactly-versioned dev build, native Windows/Linux/Server installer with combined components, install on 5 hosts with same live API contract, then dependency-aware retire old executable routes; thereafter Browser Commander and Control Center acceptance and independent v1 Stable. Linux Control Center native distribution and Windows Session 0 owner GUI worker remain OPEN. The user-requested final installation/cleanup is **not** yet verified.
+
+---
+
 ## FLEET-CONTROL-20261028 — scope-limited live control acceptance
 
 **User priority:** restore practical Commander system control on all five existing devices before an unqualified 0.11 rollout. Scope is the five connected MCP endpoints only, date 2026-10-28; no general product FINAL, stable or signed release is claimed.
