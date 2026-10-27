@@ -54,6 +54,10 @@ test('R262 Control Center executable version must match Core release metadata',(
   assert.equal(matches.length,1,key+' must occur exactly once');
   return matches[0][1];
  });
- assert.deepEqual(values,[pack.version,pack.version+'.0',pack.version+'.0']);
+ const parsed=/^(\d+)\.(\d+)\.(\d+)(?:-(?:dev|rc)\.(\d+))?$/.exec(pack.version);
+ assert.ok(parsed,'Core version must be supported numeric or dev/rc SemVer');
+ const [,major,minor,patch,preNumber]=parsed;
+ const fileVersion=[major,minor,patch,preNumber??'0'].join('.');
+ assert.deepEqual(values,[pack.version,fileVersion,fileVersion]);
  assert.match(project,/<UseWindowsForms>true<\/UseWindowsForms>/);
 });
