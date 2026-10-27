@@ -1,3 +1,10 @@
+# 0.11.0-dev.2 — isolated development bootstrap and SemVer QA guards (2026-10-27; DRAFT / NO PROMOTION)
+
+- Exact-head 0.11 developer branch: allow manifest-gated, non-promotable prerelease identity through Windows/Linux clean-server bootstrap; retain stable version validation unchanged.
+- Historical v0.10.25 rollback workflow skips newer well-formed dev versions; it does not execute for them.
+- R157 source-ref unit contract no longer hardcodes v0.10.26 and remains tied to the pinned package version.
+- All release, auto-update, installed promotion and component acceptance gates remain false. R170/R173 real rollback, end-to-end 5-host installation, signing, independent review and Stable acceptance remain OPEN.
+
 # 0.11.0-dev.1 — integration train opened (2026-10-27; DRAFT / NO PROMOTION)
 
 - Owner-defined version policy: develop as 0.11, publish 0.11.0 only to Pre-release channel after all acceptance gates, reserve 1.0.0 as first verified Stable.
