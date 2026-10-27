@@ -1,5 +1,19 @@
 # Project Brain — ChatGPT Remote Commander
 
+## CURRENT ARCHITECTURE DECISION — 2026-10-28 (owner-accepted design; NOT product FINAL)
+
+**Single product for all eligible machines:** the accepted future topology is one Remote Commander product/core/API/capability schema and release manifest, deployed through Windows Desktop, Linux Desktop and Headless Server adapters. Server is a runtime profile, not a separate OS. This supersedes historical *future-topology* proposals for independently operated products; it does not rewrite historical source branches, releases, signed/unsigned admission, tested environments or independent Browser/Control Center provenance.
+
+**Execution owner / quota:** active **ChatGPT Chat** is primary reasoner, tool orchestrator, verifier and deliverer. Use best suitable tools, including a Codex task harness with ChatGPT Web model transport and compatible CoS-style local workers; Codex is **not banned**. **Do not invoke ChatGPT Work or route any project job through it**. The product must expose tool/provider routes and verify no Work invocation; no claim of guaranteed account-side zero billing/limits from an unofficial bridge. Existing security, provider and user-account limitations remain. A local operator's approval does not equate to an authorized new service or automated ChatGPT wake.
+
+**Shared coordination:** multi-user/profile/device, multi-chat and concurrent task support require per-user identity/RBAC, isolated browser secrets, durable task receipts, one **globally fenced** writer per canonical project root (not only machine-local locks), Git worktrees and conflict-safe merge. Browser defaults to owned Chromium/CEF when qualified, with Playwright engines for coverage; desktop control uses safe native adapters plus evaluation of Cua, with headless server capability detection. Retain one WorkflowStore, Brain/roadmap authority and release authority, with no redundant execution engine.
+
+**Canonical architecture specification and implementation DoD:** [COMMANDER_ARCHITECTURE.md](COMMANDER_ARCHITECTURE.md). **Active architecture delivery order:** (A) capability contract/install manifest; (B) authenticated Coordinator/distributed lock; (C) chat-owned Codex-Web/CoS routing without Work; (D) browser; (E) GUI/headless; (F) cross-chat worktree execution; (G) exact-version Windows/Linux/Server canary, rollback and authorized release. All A–G runtime acceptance gates remain **OPEN** as of this decision; the architecture being agreed and documented is **not** proof of implementation, stable qualification or fleet rollout.
+
+**Scoped evidence:** connected `aliemad-Labtop` reported installed `0.10.26` with `automaticExecution=false`, `runnerConfigured=false`, `oneWriterScope=machine`; GitHub source baseline for this architecture branch was `main` `92620bfb350424d50316f396f8f98d049848c5a8`. These are separate observed contexts; no claim that installed runtime equals GitHub head. **Next action:** implement A+B in existing project development flow and qualify independently. Existing tests, older plans, protected reviews and release evidence retain their original scope.
+
+---
+
 ## CURRENT AUDIT — 2026-10-27: cross-product evidence and architecture
 
 ### RC011-WINDOWS-PARSER-20261027 — dev.8 fail-closed repair
