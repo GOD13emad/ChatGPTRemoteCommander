@@ -8,15 +8,29 @@ const newVersion='0.10.26', previousVersion='0.10.24';
 const previousTag='v0.10.24';
 
 test('candidate source runtime and plugin identity agree without public release claims',()=>{
-  assert.equal(json('package.json').version,newVersion);
-  assert.match(read('src/server-v0.3.mjs'),/const VERSION = '0\.10\.26';/);
-  for(const p of ['plugin-template/plugin.json','plugin-template/.codex-plugin/plugin.json'])
-    assert.equal(json(p).version,newVersion,p);
-  const cs=read('desktop/RemoteCommanderDashboard/RemoteCommanderDashboard.csproj');
-  for(const token of ['<Version>0.10.26</Version>','<FileVersion>0.10.26.0</FileVersion>',
-                       '<AssemblyVersion>0.10.26.0</AssemblyVersion>'])
-    assert.ok(cs.includes(token),token);
-  assert.match(read('docs/RELEASE_CANDIDATE_0.10.26.md'),/SOURCE CANDIDATE ONLY/);
+ const current=json('package.json').version;
+ const train=json('docs/release-train-0.11.json');
+ const server=read('src/server-v0.3.mjs');
+ const cs=read('desktop/RemoteCommanderDashboard/RemoteCommanderDashboard.csproj');
+ for(const p of ['plugin-template/plugin.json','plugin-template/.codex-plugin/plugin.json'])
+   assert.equal(json(p).version,current,p);
+ assert.ok(server.includes("const VERSION = '"+current+"';"));
+ assert.ok(cs.includes('<Version>'+current+'</Version>'));
+ if(current===newVersion){
+   assert.ok(cs.includes('<FileVersion>0.10.26.0</FileVersion>'));
+   assert.ok(cs.includes('<AssemblyVersion>0.10.26.0</AssemblyVersion>'));
+ }else{
+   assert.match(current,/^0\\.11\\.0-dev\\.[1-9][0-9]*$/);
+   assert.equal(train.sourceVersion,current);
+   assert.equal(train.status,'INTEGRATION_CANDIDATE_NOT_FINAL');
+   assert.equal(train.channel,'development');
+   for(const gate of ['isStable','publishApproved','autoupdateApproved','installedPromotionApproved'])
+     assert.equal(train[gate],false,gate);
+   assert.equal(train.releaseTag,null);
+   const fileVersion='0.11.0.'+current.split('.').at(-1);
+   for(const tag of ['FileVersion','AssemblyVersion'])assert.ok(cs.includes('<'+tag+'>'+fileVersion+'</'+tag+'>'));
+ }
+ assert.match(read('docs/RELEASE_CANDIDATE_0.10.26.md'),/SOURCE CANDIDATE ONLY/);
 });
 
 test('both default qualification suites exercise exact post-tag identity guard',()=>{

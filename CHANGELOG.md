@@ -1,3 +1,9 @@
+# 0.11.0-dev.3 — preserve historical 0.10.26 identity and qualify separate suite identity (2026-10-27; DRAFT / NO PROMOTION)
+
+- Reworked legacy release candidate test to keep historical exact 0.10.26 protections while independently verifying the current development manifest, Core, plugins and native Control Center identity.
+- Updated source, plugin, UI assembly, Manifest and docs together. No new release or fleet install is authorized.
+- Native R170/R173 rollback and 5/5 host acceptance remain unresolved.
+
 # 0.11.0-dev.2 — isolated development bootstrap and SemVer QA guards (2026-10-27; DRAFT / NO PROMOTION)
 
 - Exact-head 0.11 developer branch: allow manifest-gated, non-promotable prerelease identity through Windows/Linux clean-server bootstrap; retain stable version validation unchanged.

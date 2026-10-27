@@ -25,3 +25,8 @@ This initial `0.11.0-dev.1` change only aligns the source version train and poli
 ## 0.11.0-dev.2 — candidate-only bootstrap correction (2026-10-27)
 
 Core, Plugin, Codex Plugin, Windows UI numeric assembly identity and suite manifest advanced together from dev.1 to dev.2. Server bootstrap admits prerelease only with exact matching development manifest whose release/publish/autoupdate/promote flags are all false. Historical 0.10.25 rollback QA now skips this development version. R170/R173 rollback, public packaging, native acceptance and fleet promotion remain open; this is not an install approval.
+
+
+## 0.11.0-dev.3 — candidate identity qualification (2026-10-27)
+
+Retain historical 0.10.26 release policy regression while accepting the exact all-false 0.11 development manifest for cross-platform source identity. Does not relax native rollback/installed suite acceptance or authorize release.

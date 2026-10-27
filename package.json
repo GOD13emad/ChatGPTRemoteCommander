@@ -1,6 +1,6 @@
 {
   "name": "chatgpt-remote-commander",
-  "version": "0.11.0-dev.2",
+  "version": "0.11.0-dev.3",
   "description": "Cross-platform MCP remote control server for ChatGPT with multi-account, multi-device and concurrent-chat support",
   "author": "Aliakbar Emadoddin (GOD13emad)",
   "contributors": ["MMZ (mohammadmohammadzadeh19960-code)"],
