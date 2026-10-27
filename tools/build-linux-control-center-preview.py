@@ -39,7 +39,22 @@ def checked_git(*args):
 
 def pack(output: Path):
     version = json.loads((ROOT / "package.json").read_text(encoding="utf-8"))["version"]
-    if not re.fullmatch(r"\d+\.\d+\.\d+", version):
+    stable_semver = re.fullmatch(r"\d+\.\d+\.\d+", version)
+    dev_semver = re.fullmatch(r"0\.11\.0-(?:dev|rc)\.[1-9][0-9]*", version)
+    if dev_semver:
+        release_train_path = ROOT / "docs/release-train-0.11.json"
+        if not release_train_path.is_file():
+            raise ValueError("INVALID_SOURCE_VERSION")
+        release_train = json.loads(release_train_path.read_text(encoding="utf-8"))
+        if (
+            release_train.get("sourceVersion") != version
+            or release_train.get("isStable") is not False
+            or release_train.get("publishApproved") is not False
+            or release_train.get("autoupdateApproved") is not False
+            or release_train.get("installedPromotionApproved") is not False
+        ):
+            raise ValueError("UNACCEPTED_DEV_RELEASE_TRAIN")
+    elif not stable_semver:
         raise ValueError("INVALID_SOURCE_VERSION")
     commit = checked_git("rev-parse", "HEAD^{commit}")
     if not re.fullmatch(r"[0-9a-f]{40}", commit):
