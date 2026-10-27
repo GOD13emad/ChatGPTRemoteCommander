@@ -1,6 +1,8 @@
 # ChatGPT Remote Commander
 
-> **Official project brand:** **[TandemVector Labs](https://github.com/Usefull-Skills)**. Lead source/release maintainer: [Aliakbar Emadoddin](https://github.com/GOD13emad); supporting collaborator: [MMZ](https://github.com/mohammadmohammadzadeh19960-code). [Maintainer credits](docs/PUBLISHER_AND_MAINTAINERS.md). Windows v0.10.24 preview is **UNSIGNED**; checksums and GitHub provenance do not replace Authenticode or remove SmartScreen warnings. Current Stable remains v0.10.20.
+> **Release reset (2026-10-27):** `0.11.0-dev.1` is the integrated-development train. The suite has **no currently accepted Stable**. Prior GitHub releases remain historical artifacts; a GitHub `Latest` badge is not full-product acceptance. `1.0.0` is reserved as the first fully verified Stable. See [0.11 release train](docs/RELEASE_TRAIN_0.11.md).
+
+> **Official project brand:** **[TandemVector Labs](https://github.com/Usefull-Skills)**. Lead source/release maintainer: [Aliakbar Emadoddin](https://github.com/GOD13emad); supporting collaborator: [MMZ](https://github.com/mohammadmohammadzadeh19960-code). [Maintainer credits](docs/PUBLISHER_AND_MAINTAINERS.md). Windows v0.10.24 preview is **UNSIGNED**; checksums and GitHub provenance do not replace Authenticode or remove SmartScreen warnings. The previous historically published Core release was v0.10.20 (not accepted as integrated-suite Stable).
 
 > **Current published Core is [v0.10.20](docs/RELEASE_0.10.20.md).** [Release authority and open gates](docs/RELEASE_AUTHORITY.md) distinguish stable Core, separate Browser stable, and unaccepted UI/Updater drafts. `main` is not itself a release.
 

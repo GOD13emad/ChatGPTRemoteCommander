@@ -1,3 +1,9 @@
+# Release authority reset — 2026-10-27 (integration train, not a public release)
+
+The owner rescinded **integrated Stable acceptance** for all prior Core/Browser builds. Historical GitHub tags/assets/immutable SHA evidence are preserved unchanged, but the older `Latest` badge must not be interpreted as current product stability. The current **development train** is `0.11.0-dev.1`; `v0.11.0` is the planned **Pre-release** only after cross-product runtime/build/security/fleet gates. The **first acceptable Stable** version is reserved as `v1.0.0`, with independent signoff. No automatic stable-channel upgrade or fleet promotion follows from this document or a package-version bump. The previously published older GitHub release flags remain pending explicit distribution-channel migration, to avoid breaking legacy `releases/latest/download` clients; release metadata and installed binary state are separate. See [versioned gates](RELEASE_TRAIN_0.11.md).
+
+---
+
 ## 2026-10-20 post-merge Windows MCP Tasks fixture readiness — scoped QA correction
 
 - Host CI run 39404729742, Windows job 118567804779, on merged main 6b2f7fe8eca2900b28e162369fd16b9f169ac0c2 failed only the mcp-tasks-extension server-health assertion at line 57. Its 400x25ms short startup polling loop did not observe a healthy isolated fixture under the loaded hosted Windows suite; stderr showed the SQLite experimental warning but no definitive server crash. The same product tree passed prior Windows PR CI and Ubuntu main CI.

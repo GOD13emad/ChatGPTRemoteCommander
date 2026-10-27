@@ -1,3 +1,9 @@
+# 0.11.0-dev.1 — integration train opened (2026-10-27; DRAFT / NO PROMOTION)
+
+- Owner-defined version policy: develop as 0.11, publish 0.11.0 only to Pre-release channel after all acceptance gates, reserve 1.0.0 as first verified Stable.
+- Align Core server, npm package, plugin template and Control Center .NET display/file versions for an isolated source candidate; no installer, browser profile, workflow, session or live host was changed.
+- Record all component, fleet, signing, security and rollback gates as explicit unaccepted requirements. Earlier labels do not qualify an integrated Stable.
+
 # 0.10.26 - SOURCE CANDIDATE ONLY (2026-10-21; NOT RELEASED)
 
 - Prepare version-separated source identity following immutable v0.10.25 UNSIGNED Preview. This change does NOT publish or replace v0.10.25.
