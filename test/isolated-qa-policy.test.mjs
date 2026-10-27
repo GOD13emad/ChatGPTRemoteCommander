@@ -4,7 +4,7 @@ import {readFileSync} from 'node:fs';
 import {qualifyIsolatedQa} from '../tools/isolated-qa-policy.mjs';
 const manifest=JSON.parse(readFileSync(new URL('../docs/release-train-0.11.json',import.meta.url),'utf8'));
 test('exact dev version requires an all-false NoPromote source manifest',()=>{
- assert.equal(qualifyIsolatedQa('0.11.0-dev.5',manifest),'DEVELOPMENT_NOPROMOTE_QA');
+ assert.equal(qualifyIsolatedQa(manifest.sourceVersion,manifest),'DEVELOPMENT_NOPROMOTE_QA');
  for(const v of ['0.11.0-dev.4','0.11.0-dev.0','0.11.0','0.11.0-rc.1','1.0.0','0.10.27'])
  assert.throws(()=>qualifyIsolatedQa(v,manifest),/RC011_QA_/);
 });
@@ -18,5 +18,5 @@ test('publication flags and false component acceptance cannot qualify',()=>{
   {components:manifest.components.map((x,i)=>i===0?{...x,verified:true}:x)},
   {acceptance:{...manifest.acceptance,rollback:true}},
   {distribution:{noPublicStableAccepted:false}}])
- assert.throws(()=>qualifyIsolatedQa('0.11.0-dev.5',{...manifest,...patch}),/RC011_QA_POLICY_DENIED/);
+ assert.throws(()=>qualifyIsolatedQa(manifest.sourceVersion,{...manifest,...patch}),/RC011_QA_POLICY_DENIED/);
 });
