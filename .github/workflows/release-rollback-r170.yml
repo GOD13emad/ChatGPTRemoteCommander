@@ -48,7 +48,7 @@ jobs:
           bash -n auto-update-linux.sh
           node --check src/server-v0.3.mjs
           # Only explicit versions may run isolated QA; no release/signing authority.
-          node -e "if(!['0.10.24','0.10.25','0.10.26'].includes(require('./package.json').version)) process.exit(1)"
+          node tools/isolated-qa-policy.mjs
           test ! -e "$RUNNER_TEMP/remote-commander-rollback-r170"
           echo R170_STATIC_PASS
       - name: Real version promotion then rollback in fresh isolated runner

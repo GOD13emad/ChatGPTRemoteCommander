@@ -15,7 +15,7 @@ EXPECTED="$1"
 BASELINE='362375c464948be3001b307650c13fc3353ed05b'
 [[ "$TARGET" == "$EXPECTED" && "$TARGET" =~ ^[a-f0-9]{40}$ ]] || { echo R170_SOURCE_SHA_MISMATCH >&2; exit 62; }
 SOURCE_VERSION="$(node -p "require('$WORKSPACE/package.json').version")"
-[[ "$SOURCE_VERSION" == 0.10.24 || "$SOURCE_VERSION" == 0.10.25 || "$SOURCE_VERSION" == 0.10.26 ]] || { echo R170_SOURCE_VERSION_NOT_QUALIFIED >&2; exit 63; }
+node "$WORKSPACE/tools/isolated-qa-policy.mjs" || { echo R170_SOURCE_VERSION_NOT_QUALIFIED >&2; exit 63; }
 echo "R170_ISOLATED_SOURCE_VERSION=$SOURCE_VERSION releaseAuthorization=false"
 ROOT="$TEMPBASE/remote-commander-rollback-r170"
 [[ "$ROOT" == "$TEMPBASE/"* && ! -e "$ROOT" ]] || { echo R170_SANDBOX_NOT_FRESH >&2; exit 64; }
