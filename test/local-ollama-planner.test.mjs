@@ -12,7 +12,7 @@ test('local-only endpoint and exact structured no-effect proposal',async()=>{
  }});
  assert.deepEqual(p,call);
  assert.equal(sent.stream,false);assert.equal(sent.format,'json');
- assert.ok(!JSON.stringify(sent).includes('shell'));
+ assert.equal(Object.hasOwn(sent,'tools'),false);
 });
 test('explicit block without tool accepted',()=>assert.deepEqual(validateLocalProposal(block,context),block));
 test('model cannot nominate unlisted tool or scope expansion',()=>{
