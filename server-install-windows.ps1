@@ -291,7 +291,106 @@ try {
   if ($LASTEXITCODE -ne 0) { throw 'git checkout failed.' }
   $package = Get-Content -LiteralPath (Join-Path $stage 'package.json') -Raw | ConvertFrom-Json
   $expectedVersion = [string]$package.version
-  if ($expectedVersion -notmatch '^\d+\.\d+\.\d+$') { throw 'Staged package version is invalid.' }
+  if ($expectedVersion -notmatch '^\d+\.\d+\.\d+
+
+  $guiEnabled = $false
+  if ($GuiControl -eq 'On') {
+    if ($server.isServerCore) { throw 'GUI control cannot be enabled on Windows Server Core. Use -GuiControl Off or Auto.' }
+    $guiEnabled = $true
+  } elseif ($GuiControl -eq 'Auto') {
+    $guiEnabled = $false # Server installer defaults headless regardless of Windows SKU or RDP.
+  }
+
+  $installer = Join-Path $stage 'install.ps1'
+  if (-not (Test-Path -LiteralPath $installer -PathType Leaf)) { throw 'Staged install.ps1 is missing.' }
+  $args = @('-NoLogo','-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',$installer,'-SourceRef',$SourceRef,'-ExpectedCommit',$resolved)
+  if ($AccessMode -eq 'Power') { $args += '-PowerMode' } else { $args += '-StandardMode' }
+  if ($InstallDir) { $args += @('-InstallDir',$InstallDir) }
+  if (-not $NoStartServer) { $args += '-StartServer' }
+  if ($guiEnabled -and $AccessMode -eq 'Power') { $args += '-GuiControl' } else { $args += '-DisableGuiControl' }
+
+  & $pwsh @args
+  if ($LASTEXITCODE -ne 0) { throw "Remote Commander install.ps1 failed with exit code $LASTEXITCODE" }
+
+  if (-not $NoStartServer) {
+    $health = Invoke-RestMethod -Uri 'http://127.0.0.1:47831/health' -TimeoutSec 5
+    if (-not $health.ok -or [string]$health.version -ne $expectedVersion) { throw "Installed MCP health/version validation failed; expected $expectedVersion." }
+  }
+
+  Write-AllowlistManifest $resolved $server $defender
+  Write-Host ''
+  Write-Host 'SERVER_INSTALL_WINDOWS_PASS'
+  Write-Host "Source commit: $resolved"
+  Write-Host "GUI control: $guiEnabled"
+  Write-Host "Allowlist evidence: $ManifestPath"
+  Write-Host "Reboot recommended by prerequisite installer: $RebootRecommended"
+  Write-Host 'No antivirus exclusions were added.'
+} catch {
+  Write-AllowlistManifest '' $server $defender
+  Write-Error ("SERVER_INSTALL_WINDOWS_FAIL: " + $_.Exception.Message)
+  throw
+} finally {
+  if (Test-Path -LiteralPath $stage) { Remove-Item -LiteralPath $stage -Recurse -Force -ErrorAction SilentlyContinue }
+  if (-not $KeepDownloads -and (Test-Path -LiteralPath $Downloads)) { Remove-Item -LiteralPath $Downloads -Recurse -Force -ErrorAction SilentlyContinue }
+}
+) {
+    # Isolated development bootstrap only: an explicit all-false suite manifest is
+    # required. This cannot authorize a release, automatic update or host promotion.
+    $manifestPath = Join-Path $stage 'docs\release-train-0.11.json'
+    if ($expectedVersion -cnotmatch '^0\.11\.0-dev\.[1-9][0-9]*
+
+  $guiEnabled = $false
+  if ($GuiControl -eq 'On') {
+    if ($server.isServerCore) { throw 'GUI control cannot be enabled on Windows Server Core. Use -GuiControl Off or Auto.' }
+    $guiEnabled = $true
+  } elseif ($GuiControl -eq 'Auto') {
+    $guiEnabled = $false # Server installer defaults headless regardless of Windows SKU or RDP.
+  }
+
+  $installer = Join-Path $stage 'install.ps1'
+  if (-not (Test-Path -LiteralPath $installer -PathType Leaf)) { throw 'Staged install.ps1 is missing.' }
+  $args = @('-NoLogo','-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',$installer,'-SourceRef',$SourceRef,'-ExpectedCommit',$resolved)
+  if ($AccessMode -eq 'Power') { $args += '-PowerMode' } else { $args += '-StandardMode' }
+  if ($InstallDir) { $args += @('-InstallDir',$InstallDir) }
+  if (-not $NoStartServer) { $args += '-StartServer' }
+  if ($guiEnabled -and $AccessMode -eq 'Power') { $args += '-GuiControl' } else { $args += '-DisableGuiControl' }
+
+  & $pwsh @args
+  if ($LASTEXITCODE -ne 0) { throw "Remote Commander install.ps1 failed with exit code $LASTEXITCODE" }
+
+  if (-not $NoStartServer) {
+    $health = Invoke-RestMethod -Uri 'http://127.0.0.1:47831/health' -TimeoutSec 5
+    if (-not $health.ok -or [string]$health.version -ne $expectedVersion) { throw "Installed MCP health/version validation failed; expected $expectedVersion." }
+  }
+
+  Write-AllowlistManifest $resolved $server $defender
+  Write-Host ''
+  Write-Host 'SERVER_INSTALL_WINDOWS_PASS'
+  Write-Host "Source commit: $resolved"
+  Write-Host "GUI control: $guiEnabled"
+  Write-Host "Allowlist evidence: $ManifestPath"
+  Write-Host "Reboot recommended by prerequisite installer: $RebootRecommended"
+  Write-Host 'No antivirus exclusions were added.'
+} catch {
+  Write-AllowlistManifest '' $server $defender
+  Write-Error ("SERVER_INSTALL_WINDOWS_FAIL: " + $_.Exception.Message)
+  throw
+} finally {
+  if (Test-Path -LiteralPath $stage) { Remove-Item -LiteralPath $stage -Recurse -Force -ErrorAction SilentlyContinue }
+  if (-not $KeepDownloads -and (Test-Path -LiteralPath $Downloads)) { Remove-Item -LiteralPath $Downloads -Recurse -Force -ErrorAction SilentlyContinue }
+}
+ -or
+        -not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) { throw 'Staged package version is invalid.' }
+    $train = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+    if ($train.sourceVersion -cne $expectedVersion -or
+        $train.status -cne 'INTEGRATION_CANDIDATE_NOT_FINAL' -or
+        $train.channel -cne 'development' -or
+        $train.isStable -ne $false -or
+        $train.publishApproved -ne $false -or
+        $train.autoupdateApproved -ne $false -or
+        $train.installedPromotionApproved -ne $false -or
+        $null -ne $train.releaseTag) { throw 'Staged development manifest is not fail-closed.' }
+  }
 
   $guiEnabled = $false
   if ($GuiControl -eq 'On') {
