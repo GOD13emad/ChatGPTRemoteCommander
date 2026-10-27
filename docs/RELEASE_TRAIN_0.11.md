@@ -3,7 +3,7 @@
 
 ## 0.11.0-dev.10 — deterministic waiting-budget test under Windows fixture load (QA-only)
 
-Dev.9 real Windows full-suite failed a 1s synthetic input-wait budget before it could enter WAITING_INPUT, plus strict team fixture cancellation under load. The team reservation test stays **exactly six seconds, unchanged** and is already independently prioritized cold in Windows CI. Only the synthetic human-waiting test's initial execution duration is raised to 10s; the full real 1.1s wait, deadline extension and resume assertions remain. No runtime budget or security policy changes. Source remains NoPromote; R157/R173 require exact-head hosted qualification.
+Dev.9 real Windows full-suite failed a 1s synthetic input-wait budget before it could enter WAITING_INPUT, plus strict team fixture cancellation under load. The team reservation test stays **exactly six seconds, unchanged** and is already independently prioritized cold in Windows CI. Only the synthetic human-waiting test's initial execution duration is raised to 10s; the full real 1.1s wait, deadline extension and resume assertions remain. No runtime budget or security policy changes. Source remains NoPromote; R157/R173 require exact-head hosted qualification. Linux GUI fixture also injects an isolated synthetic GNOME Gio schema for KDE/headless test hosts; no system GSettings changes or runtime GUI capability widening.
 
 ## 0.11.0-dev.9 — LF-normalized Git blob for Windows router helper (source-only QA)
 

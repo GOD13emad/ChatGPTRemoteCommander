@@ -2,6 +2,7 @@
 
 - During a native Windows full suite, dev.9 recorded 610 PASS, 1 failing human-wait deadline, 1 cancelled strict 6s adaptive collaboration test, and 16 SKIP; exact two files alone passed 49/49. The original strict six-second adaptive collaboration test, its source text and cold-first CI order remain **unchanged**.
 - The 1-second `WAITING_INPUT` fixture occasionally expired **before entering input-wait state** under heavy Windows process startup. The fixture now reserves 10s of execution allowance and still checks a real 1.1s human delay, that the wait is excluded from the execution budget, and that the deadline advances by at least the recorded delay. Core deadlines, action limits, release policy, security, scheduling, GUI and actual installed profiles are untouched.
+- Portable Linux GUI contract now runs GNOME installer simulation against a private, compiled `org.gnome.shell` settings schema under `GSETTINGS_BACKEND=memory`; this avoids GLib fatal abort on KDE/Wayland hosts without installing GNOME globally or touching the real session. The original GUI security assertions and installer actions remain enforced.
 - Exact-head hosted Windows R157/R173, Linux R170 and integration gates must pass before any update/publish. Full release train remains NoPromote.
 
 # 0.11.0-dev.9 — normalize Windows router script source blob for Linux R170 integrity (2026-10-28; DRAFT / NoPromote)
