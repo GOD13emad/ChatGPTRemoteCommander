@@ -7,7 +7,18 @@ const exists = (p) => fs.existsSync(path.join(root, p));
 const fail = (m) => { throw new Error(m); };
 
 const pkg = JSON.parse(read('package.json'));
-if (pkg.version !== '0.10.25') fail('source-candidate package version must be 0.10.25');
+// Preserve the exact historical 0.10.26 acceptance gate, while admitting only
+// explicitly marked non-publishable 0.11 development candidates.
+if (pkg.version !== '0.10.26') {
+  if (!/^0\.11\.0-(?:dev|rc)\.[1-9][0-9]*$/.test(pkg.version) ||
+      !exists('docs/release-train-0.11.json'))
+    fail('source-candidate package version not allowed by release train');
+  const train = JSON.parse(read('docs/release-train-0.11.json'));
+  if (train.sourceVersion !== pkg.version || train.isStable !== false ||
+      train.publishApproved !== false || train.autoupdateApproved !== false ||
+      train.installedPromotionApproved !== false || train.releaseTag !== null)
+    fail('0.11 source candidate lacks explicit non-promotion release authority');
+}
 const serverSource = read('src/server-v0.3.mjs');
 const serverVersion = serverSource.match(/const VERSION = '([^']+)'/u)?.[1];
 if (serverVersion !== pkg.version) fail(`server runtime version ${serverVersion ?? 'missing'} does not match package version ${pkg.version}`);

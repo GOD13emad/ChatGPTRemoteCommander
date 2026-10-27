@@ -4,29 +4,56 @@ import { readFileSync } from 'node:fs';
 import { evaluateWindowsRelease } from '../tools/verify-windows-release-policy.mjs';
 const read=p=>readFileSync(p,'utf8');
 const json=p=>JSON.parse(read(p));
-const newVersion='0.10.25', previousVersion='0.10.24';
+const newVersion='0.10.26', previousVersion='0.10.24';
 const previousTag='v0.10.24';
 
 test('candidate source runtime and plugin identity agree without public release claims',()=>{
-  assert.equal(json('package.json').version,newVersion);
-  assert.match(read('src/server-v0.3.mjs'),/const VERSION = '0\.10\.25';/);
-  for(const p of ['plugin-template/plugin.json','plugin-template/.codex-plugin/plugin.json'])
-    assert.equal(json(p).version,newVersion,p);
-  const cs=read('desktop/RemoteCommanderDashboard/RemoteCommanderDashboard.csproj');
-  for(const token of ['<Version>0.10.25</Version>','<FileVersion>0.10.25.0</FileVersion>',
-                       '<AssemblyVersion>0.10.25.0</AssemblyVersion>'])
-    assert.ok(cs.includes(token),token);
-  assert.match(read('docs/RELEASE_CANDIDATE_0.10.25.md'),/SOURCE CANDIDATE ONLY/);
+ const current=json('package.json').version;
+ const train=json('docs/release-train-0.11.json');
+ const server=read('src/server-v0.3.mjs');
+ const cs=read('desktop/RemoteCommanderDashboard/RemoteCommanderDashboard.csproj');
+ for(const p of ['plugin-template/plugin.json','plugin-template/.codex-plugin/plugin.json'])
+   assert.equal(json(p).version,current,p);
+ assert.ok(server.includes("const VERSION = '"+current+"';"));
+ assert.ok(cs.includes('<Version>'+current+'</Version>'));
+ if(current===newVersion){
+   assert.ok(cs.includes('<FileVersion>0.10.26.0</FileVersion>'));
+   assert.ok(cs.includes('<AssemblyVersion>0.10.26.0</AssemblyVersion>'));
+ }else{
+   assert.match(current,/^0\.11\.0-dev\.[1-9][0-9]*$/);
+   assert.equal(train.sourceVersion,current);
+   assert.equal(train.status,'INTEGRATION_CANDIDATE_NOT_FINAL');
+   assert.equal(train.channel,'development');
+   for(const gate of ['isStable','publishApproved','autoupdateApproved','installedPromotionApproved'])
+     assert.equal(train[gate],false,gate);
+   assert.equal(train.releaseTag,null);
+   const fileVersion='0.11.0.'+current.split('.').at(-1);
+   for(const tag of ['FileVersion','AssemblyVersion'])assert.ok(cs.includes('<'+tag+'>'+fileVersion+'</'+tag+'>'));
+ }
+ assert.match(read('docs/RELEASE_CANDIDATE_0.10.26.md'),/SOURCE CANDIDATE ONLY/);
+});
+
+test('both default qualification suites exercise exact post-tag identity guard',()=>{
+  const scripts=json('package.json').scripts;
+  for(const name of ['test','check']) {
+    const script=scripts[name];
+    const gate='node --test test/release-sync-posttag-guard.test.mjs';
+    assert.equal(script.split(gate).length-1,1,`missing or duplicate ${name} release identity gate`);
+    assert.ok(script.includes('node --test test/release-0.10.26-candidate-identity.test.mjs'),
+      `release identity self-check absent in ${name}`);
+  }
+  assert.match(scripts['check:qualification'],/--script check/);
+  assert.match(scripts['test:qualification'],/--script test/);
 });
 
 test('installer default remains at prior verified Preview rather than untagged candidate',()=>{
   for(const p of ['install.ps1','install.sh','server-install-windows.ps1','server-install-linux.sh'])
     assert.ok(read(p).includes(previousTag),p);
   assert.ok(read('server-install-windows.ps1').includes('ServerInstaller/0.10.24'));
-  assert.match(read('test/release-assets-contract.test.mjs'),/0\.10\.25/);
+  assert.match(read('test/release-assets-contract.test.mjs'),/0\.10\.26/);
 });
 
-test('historical scoped unsigned Preview policy refuses v0.10.25',()=>{
+test('historical scoped unsigned Preview policy refuses candidate v0.10.26',()=>{
   const policy=json('docs/UNSIGNED_WINDOWS_RELEASE_POLICY.json');
   assert.equal(policy.version,previousVersion);
   assert.equal(policy.tag,previousTag);
@@ -38,7 +65,15 @@ test('historical scoped unsigned Preview policy refuses v0.10.25',()=>{
   assert.throws(()=>evaluateWindowsRelease({
     signed:'false',version:newVersion,tag:'v'+newVersion,policy,releaseNotes:notes
   }),/WINDOWS_UNSIGNED_RELEASE_NOT_AUTHORIZED/);
-  assert.match(read('docs/RELEASE_CANDIDATE_0.10.25.md'),/does NOT authorize unsigned v0\.10\.25/);
+  assert.match(read('docs/RELEASE_CANDIDATE_0.10.26.md'),/do NOT authorize unsigned v0\.10\.26/);
+  assert.equal(json('docs/UNSIGNED_WINDOWS_RELEASE_POLICY_0.10.26.json').version,newVersion);
+  assert.match(read('docs/RELEASE_0.10.26.md'),/Windows installer: UNSIGNED/);
+  const policy25=json('docs/UNSIGNED_WINDOWS_RELEASE_POLICY_0.10.25.json');
+  const notes25=read('docs/RELEASE_0.10.25.md');
+  assert.throws(()=>evaluateWindowsRelease({
+    signed:'false',version:newVersion,tag:'v'+newVersion,policy:policy25,releaseNotes:notes25
+  }),/WINDOWS_UNSIGNED_RELEASE_NOT_AUTHORIZED/);
+
 });
 
 test('future tagged release workflow remains guarded and no automatic publisher promotion',()=>{
