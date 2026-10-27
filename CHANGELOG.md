@@ -1,4 +1,10 @@
-# 0.11.0-dev.3 — preserve historical 0.10.26 identity and qualify separate suite identity (2026-10-27; DRAFT / NO PROMOTION)
+# 0.11.0-dev.4 — opt-in local Ollama planner adapter (2026-10-27; DRAFT / NoPromote)
+
+- Adds a localhost-only, explicitly configured `command` provider for existing journaled Workflow Runner; no default model, autoTick, account privilege, tool execution, cross-user access or release promotion.
+- Rejects undeclared tools, unexpected proposal shapes, oversized/model-error responses and all non-loopback inference endpoints. Native same-user/GUI/rollback gates remain open.
+- Sources for future adapter admission: Cua Driver, Agent-S4, UFO3, UI-TARS Desktop, OpenAdapt, Xpra, REA and colibri; no silent installation or parallel engine.
+
+# 0.11.0-dev.4 — preserve historical 0.10.26 identity and qualify separate suite identity (2026-10-27; DRAFT / NO PROMOTION)
 
 - Reworked legacy release candidate test to keep historical exact 0.10.26 protections while independently verifying the current development manifest, Core, plugins and native Control Center identity.
 - Updated source, plugin, UI assembly, Manifest and docs together. No new release or fleet install is authorized.
