@@ -11,6 +11,7 @@ import { executePowerTool, powerToolDefinitions, prepareDeferredPowerMutation, p
 import { executeGuiTool, guiToolDefinitions } from './gui-tools-windows.mjs';
 import { createWorkspaceTargetTools, workspaceTargetDefinitions, workspaceOwnerRequestContext } from './workspace-target-tools.mjs';
 import { createOwnerGuiReadOnlyProxy } from './gui-owner-delegation.mjs';
+import { createOwnerWorkspaceReadOnlyProxy } from './owner-workspace-delegation.mjs';
 import { executeBrowserTool, browserToolDefinitions, reapBrowserOrphans } from './browser-tools.mjs';
 import { lockStats } from './locks.mjs';
 import { expandPathValue, shellName } from './platform.mjs';
@@ -68,6 +69,8 @@ const ctx = {
 };
 // Process-scoped window/lease bindings are shared across HTTP requests; never share across users or hosts.
 const workspaceTargetBindings = new Map();
+let ownerWorkspaceReadOnlyProxy = null;
+let ownerWorkspaceProxyConfigError = null;
 let ownerGuiProxy = null;
 let ownerGuiProxyConfigError = null;
 try {
@@ -77,6 +80,13 @@ try {
 } catch (error) {
   // Optional GUI routing must not prevent the primary Core from starting.
   ownerGuiProxyConfigError = String(error?.message ?? error);
+}
+try {
+  ownerWorkspaceReadOnlyProxy = createOwnerWorkspaceReadOnlyProxy({
+    config, primaryStatus: () => executeGuiTool(ctx,'gui_status',{})
+  });
+} catch(error) {
+  ownerWorkspaceProxyConfigError = String(error?.message ?? error);
 }
 const configuredAgentExtensionDirectories = config.agentExtensions?.enabled === false
   ? []
@@ -544,6 +554,9 @@ async function executeToolEffect(name, args, delegationContext = {}) {
             foregroundFallback:'explicit-current-request-only', workflowBrowserAllowed:false,
             userBrowserProfileReuse:false, savedPasswordExtraction:false, foregroundInterferenceByDefault:false } },
         guiControl: { backendSupported: GUI_BACKEND_SUPPORTED, availability: 'CHECK_gui_status', enabled: GUI_ENABLED,
+          ownerWorkspaceDelegation: { configured:config.ownerWorkspaceDelegation?.enabled === true,
+            accepted:!!ownerWorkspaceReadOnlyProxy,mode:'read-only-list',
+            ...(ownerWorkspaceProxyConfigError?{error:ownerWorkspaceProxyConfigError}:{}) },
           ownerDelegation: { configured:config.ownerGuiDelegation?.enabled === true,
             accepted:!!ownerGuiProxy, mode:'observe-only', ...(ownerGuiProxyConfigError ? { error:ownerGuiProxyConfigError } : {}) },
           policy: { ...(config.powerMode?.guiControl ?? { enabled:false }), interactionPolicy:'explicit-current-request-only',
@@ -565,6 +578,15 @@ async function executeToolEffect(name, args, delegationContext = {}) {
         return result;
       }
       if (name.startsWith('workspace_target_')) {
+        // Prefer the existing same-owner CUA broker for explicit read-only inventory.
+        // Never pass focus, input, browser contents or arbitrary RPC names to this bridge.
+        if(name==='workspace_target_list' && ownerWorkspaceReadOnlyProxy){
+          const delegated=await ownerWorkspaceReadOnlyProxy.execute(name,args);
+          if(delegated.handled){
+            await audit(ctx,{action:name,ok:true,workspaceTarget:true,delegatedOwnerWorkspace:true});
+            return delegated.value;
+          }
+        }
         // A read-only list still opens/closes the owner's short-lived observe lease.
         // Give both delegated subcalls one request-scoped id; never reuse a fixed id across chats.
         const ownerRequestContext=workspaceOwnerRequestContext(delegationContext,args);
