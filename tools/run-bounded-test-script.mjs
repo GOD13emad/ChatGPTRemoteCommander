@@ -71,7 +71,7 @@ export function isolateWindowsLeaseRegression(command){
  */
 export function isolateWindowsTimingSensitiveRegressions(command) {
   if(typeof command!=='string'||!command)throw new Error('CI_WINDOWS_TIMING_COMMAND_INVALID');
-  const files=['test/project-adaptive.test.mjs','test/project-delivery-correlation.test.mjs','test/project-engine-review.test.mjs','test/project-engine.test.mjs'];
+  const files=['test/project-adaptive.test.mjs','test/project-delivery-correlation.test.mjs','test/project-engine-review.test.mjs','test/project-engine.test.mjs','test/project-autotick-noncodex.test.mjs'];
   for(const file of files)
     if(command.split(file).length-1!==1)throw new Error('CI_WINDOWS_TIMING_CARDINALITY');
   const parts=command.split(' && ');
