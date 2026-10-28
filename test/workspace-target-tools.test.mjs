@@ -75,7 +75,7 @@ test('lease is bound to exact pid and handle and cannot be reused on another win
 });
 test('one process-scoped lease registry persists across adapter instances but cannot be reused by outsiders',async()=>{
  const bindings=new Map(), calls=[];
- const gui=async(name,args)=>{calls.push(name);if(name==='gui_status')return {ok:true,available:true};if(name==='gui_session_begin')return {ok:true,lease:'shared-lease'};if(name==='gui_list_windows')return {windows:[{processId:333,handle:'444',focused:true}]};if(name==='gui_session_end')return {ok:true};if(name==='gui_screenshot')return {ok:true,frame:'shared-frame'};throw Error('INVALID_TOOL');};
+ const gui=async(name,args)=>{calls.push(name);if(name==='gui_status')return {ok:true,available:true};if(name==='gui_session_begin')return {ok:true,lease:'shared-lease',mode:args.mode};if(name==='gui_list_windows')return {windows:[{processId:333,handle:'444',focused:true}]};if(name==='gui_session_end')return {ok:true};if(name==='gui_screenshot')return {ok:true,frame:'shared-frame'};throw Error('INVALID_TOOL');};
  const a=createWorkspaceTargetTools({gui,bindings});
  const b=createWorkspaceTargetTools({gui,bindings});
  const l=await a.execute('workspace_target_open',{processId:333,handle:'444',mode:'observe'});
@@ -94,4 +94,38 @@ test('owner delegated mutation preserves existing receipt ID and rejects invalid
  assert.equal(v.requestId,'stable-native-request-1');
  assert.deepEqual(workspaceOwnerRequestContext({}, {requestId:'provided-rpc-call'}),{requestId:'provided-rpc-call'});
  assert.throws(()=>workspaceOwnerRequestContext({}, {},()=> 'invalid request id'),/WORKSPACE_TARGET_REQUEST_ID_INVALID/);
+});
+
+test('Windows PascalCase owner GUI windows normalize to exact identity without guessing executable from title',async()=>{
+ const windows=[{Handle:'6291479',ProcessId:3184,Title:'Existing owner tab',Focused:false},{Handle:6291481,ProcessId:3185,Title:'Firefox - title only'}];
+ const {api,calls}=mock({windows});
+ const all=await api.execute('workspace_target_list',{application:'all'});
+ assert.equal(all.windows.length,2);
+ assert.deepEqual(all.windows.map(w=>[w.processId,w.handle]),[[3184,'6291479'],[3185,'6291481']]);
+ assert.equal(all.windows[0].focused,false);
+ const firefox=await api.execute('workspace_target_list',{application:'firefox'});
+ assert.equal(firefox.windows.length,0,'titles must not be used as executable identity');
+ const l=await api.execute('workspace_target_open',{processId:3184,handle:'6291479',mode:'observe'});
+ assert.equal(l.processId,3184);
+ await api.execute('workspace_target_end',{lease:l.lease});
+ assert.equal(calls.at(-1).name,'gui_session_end');
+});
+test('Windows executable metadata can identify Firefox without launching or copying its profile',async()=>{
+ const {api}=mock({windows:[{Handle:'5080',ProcessId:2100,ProcessName:'firefox.exe',Title:'Research',Focused:false},{Handle:'5081',ProcessId:2101,ProcessName:'brave.exe',Title:'Firefox is great'}]});
+ const r=await api.execute('workspace_target_list',{application:'firefox'});
+ assert.deepEqual(r.windows.map(w=>[w.processId,w.handle]),[[2100,'5080']]);
+});
+test('native observe-only lease cannot be relabeled as takeover by Workspace adapter',async()=>{
+ const calls=[];
+ const gui=async(name,args)=>{
+  calls.push(name);
+  if(name==='gui_status')return {ok:true,available:true};
+  if(name==='gui_session_begin')return {ok:true,lease:'native-observe-only',mode:'observe'};
+  if(name==='gui_session_end')return {ok:true};
+  if(name==='gui_list_windows')return {windows:[{processId:9,handle:'200',focused:true}]};
+  throw Error('unexpected '+name);
+ };
+ const api=createWorkspaceTargetTools({gui,bindings:new Map()});
+ await assert.rejects(api.execute('workspace_target_open',{processId:9,handle:'200',mode:'takeover',explicitUserAuthorization:'Owner approved test action'}),/WORKSPACE_TARGET_MODE_NOT_GRANTED/);
+ assert.deepEqual(calls,['gui_status','gui_session_begin','gui_session_end']);
 });
