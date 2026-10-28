@@ -1,6 +1,10 @@
 # Remote Commander suite — 0.11 release train
 **Opened:** 2026-10-27 · **Status:** INTEGRATION CANDIDATE / NO PUBLIC RELEASE / NO HOST PROMOTION
 
+## 0.11.0-dev.15 — retain accepted fifth transfer peer without second engine
+
+Direct installed source comparison on MMZ Linux and Windows Emad identified a single PEERS enum delta in the native transfer adapter: missing MMZ. The canonical adapter now enumerates PC/Linux/MMZ/EmadServer/Amirreza; transport, source/destination allowlists and confirmations remain unchanged. Regression uses static metadata only. Legacy .candidate.mjs implementations remain non-authoritative evidence, not a second engine. Separate takeover-enabled GUI candidate is unaccepted and must not be silently promoted. Full suite/public release and all-host acceptance remain NoPromote.
+
 ## 0.11.0-dev.14 — targeted R157 hosted Windows autotick scheduling correction
 
 The verified GitHub R470 diagnostic for dev.13 identifies a single native non-Codex command-provider autotick test failure under loaded Windows R157; the identical isolated test passes on Windows Emad. Run the unchanged test file exactly once before high-volume Windows qualification groups. No test skipping, timeout relaxation, auto elevation, GUI capability change or production promotion. The version remains development / NoPromote until exact-SHA hosted R157 and component/fleet acceptance pass.
