@@ -1,6 +1,10 @@
 # Remote Commander suite — 0.11 release train
 **Opened:** 2026-10-27 · **Status:** INTEGRATION CANDIDATE / NO PUBLIC RELEASE / NO HOST PROMOTION
 
+## 0.11.0-dev.16 — Workspace Target and local Runner QA, development / NoPromote
+
+New `workspace_target_*` tools route exact existing owner-window identity through the native GUI contract; this does not copy Firefox profiles or use WebDriver for the live user's browser. CUA/GUI authorization, fresh frame, owner consent and negative cross-session tests remain required. Local Ollama `qwen3:4b-instruct` on Emad Linux independently completed one read-only enrolled Runner E2E with `PROJECT_ACCEPTANCE_VERIFIED` after increasing bounded provider timeout to 24 seconds. No cross-host unattended execution or Stable promotion is inferred. All release acceptance flags remain false.
+
 ## 0.11.0-dev.15 — retain accepted fifth transfer peer without second engine
 
 Direct installed source comparison on MMZ Linux and Windows Emad identified a single PEERS enum delta in the native transfer adapter: missing MMZ. The canonical adapter now enumerates PC/Linux/MMZ/EmadServer/Amirreza; transport, source/destination allowlists and confirmations remain unchanged. Regression uses static metadata only. Legacy .candidate.mjs implementations remain non-authoritative evidence, not a second engine. Separate takeover-enabled GUI candidate is unaccepted and must not be silently promoted. Full suite/public release and all-host acceptance remain NoPromote.
