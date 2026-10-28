@@ -171,8 +171,24 @@ hasAll(account, [
   "HealthPort"
 ], 'connect-chatgpt-account.ps1');
 
+const profileManager=read('desktop/profile-manager-windows.ps1');
+hasAll(profileManager, [
+  'Read-TunnelBackendPort',
+  'Shared (inherited)',
+  'Shared (unverified)',
+  'Headless worker (read-only)',
+  'Assert-EditableSelection',
+  'Selected profile is no longer uniquely present.',
+  'Profile route or permission boundary changed. Refresh first.',
+  'Profile policy changed after selection. Refresh first.',
+  '[void](Assert-EditableSelection $script:selected @(Get-Profiles) $script:selectedFingerprint)'
+], 'Windows profile manager fail-closed multi-user contract');
+if (!profileManager.includes("throw 'Shared account, headless worker, or unknown profile is read-only.'")) {
+  throw new Error('Windows profile manager cannot mutate inherited account tunnels or headless workers');
+}
+
 if (process.platform === 'win32') {
-  for (const script of ['autostart-windows.ps1','windows-supervisor-runtime.ps1','enable-boot-recovery.ps1','handoff-user-session-windows.ps1','disable-boot-recovery.ps1']) {
+  for (const script of ['autostart-windows.ps1','windows-supervisor-runtime.ps1','enable-boot-recovery.ps1','handoff-user-session-windows.ps1','disable-boot-recovery.ps1','desktop/profile-manager-windows.ps1']) {
     const parse = spawnSync('pwsh.exe', ['-NoLogo','-NoProfile','-Command',
       '$t=$null;$e=$null;[void][System.Management.Automation.Language.Parser]::ParseFile("'+script+'",[ref]$t,[ref]$e);if($e.Count){$e|ForEach-Object{$_.Message};exit 1}'],
       { encoding:'utf8', windowsHide:true });

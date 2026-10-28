@@ -9,7 +9,7 @@ test('SemVer dev/rc/stable numeric ordering and rollback',()=>{
  for(const [a,b] of [
  ['0.11.0-dev.7','0.11.0-dev.6'],['0.11.0-rc.1','0.11.0-dev.999'],
  ['0.11.0','0.11.0-rc.99'],['0.11.0-dev.7','0.10.26'],
- ['1.0.0','0.11.0'],['0.11.0-dev.12','0.11.0-dev.11'],['0.11.0-dev.11','0.11.0-dev.10'],['0.11.0-dev.10','0.11.0-dev.9']]){
+ ['1.0.0','0.11.0'],['0.11.0-dev.13','0.11.0-dev.12'],['0.11.0-dev.12','0.11.0-dev.11'],['0.11.0-dev.11','0.11.0-dev.10'],['0.11.0-dev.10','0.11.0-dev.9']]){
   assert.equal(compareReleaseVersions(a,b),1,a);assert.equal(compareReleaseVersions(b,a),-1,b);
  }
  for(const v of ['0.11.0-dev.7','0.11.0','0.10.20'])assert.equal(compareReleaseVersions(v,v),0);

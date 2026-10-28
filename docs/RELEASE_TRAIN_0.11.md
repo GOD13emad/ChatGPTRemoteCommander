@@ -1,6 +1,10 @@
 # Remote Commander suite — 0.11 release train
 **Opened:** 2026-10-27 · **Status:** INTEGRATION CANDIDATE / NO PUBLIC RELEASE / NO HOST PROMOTION
 
+## 0.11.0-dev.13 — preserve per-host local GUI, profile and tunnel fixes
+
+The active installed 0.10.26 trees on Aliemad Linux, MMZ Linux and two Windows servers contain *substantive owner-local tracked differences*. Bring matching owner-local source into the one upstream release branch: Windows shared-account inherited/read-only enforcement and owner policy SHA guard, Linux Control Center multi-profile evidence, and MMZ quarantine preservation. Do not override current common dev-aware updater monotonicity with older installed parser code. Full test suites, per-user/profile role isolation and native installation/cutover receipts are required independently. NoPromote until accepted.
+
 ## 0.11.0-dev.12 — Windows qualification check HTTP readiness isolation
 
 Full native `0.11.0-dev.11` `NoPromote` on headless Emad Windows Server failed solely in `workflow-http.test.mjs` under `npm run check:qualification` with an HTTP health timeout; same original test passed 4/4 in isolation. Move the existing Windows HTTP fixture groups for the **check** gate ahead of loaded general tests without changing deadlines, assertions, capabilities or permissions. Preserve all previous development failures and accept new build only on its own exact-head receipts.
