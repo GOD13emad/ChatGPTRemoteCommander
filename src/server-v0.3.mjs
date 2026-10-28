@@ -66,6 +66,8 @@ const ctx = {
   roots,
   auditLog: path.resolve(projectDir, config.auditLog || 'var/audit.jsonl')
 };
+// Process-scoped window/lease bindings are shared across HTTP requests; never share across users or hosts.
+const workspaceTargetBindings = new Map();
 let ownerGuiProxy = null;
 let ownerGuiProxyConfigError = null;
 try {
@@ -564,6 +566,7 @@ async function executeToolEffect(name, args, delegationContext = {}) {
       }
       if (name.startsWith('workspace_target_')) {
         const adapter=createWorkspaceTargetTools({
+          bindings:workspaceTargetBindings,
           gui:async(tool,input)=>{
             const proxy=ownerGuiProxy ? await ownerGuiProxy.execute(tool,input,delegationContext) : {handled:false};
             return proxy.handled ? proxy.value : executeGuiTool(ctx,tool,input);
