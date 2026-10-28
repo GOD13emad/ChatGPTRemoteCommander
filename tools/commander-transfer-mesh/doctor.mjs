@@ -7,6 +7,7 @@ import {execFileSync} from 'node:child_process';
 const IDS={
  PC:'EFE6R4U-O3B6JVV-N4OKZFL-7X4U24W-A5GFD4G-TM4OPRK-AXBDALA-OCJUBQ6',
  Linux:'6YUIRAM-GDPWPT4-XXX2DD7-K2M7G23-F246XXK-ENQQ3G2-RHIQI2Y-TDRJGAB',
+ MMZ:'SHNJRDO-UUT55KW-GKFAAYO-X7QB33A-VNRTY4H-ES3H3PD-KB5TMCW-GSYEDAR',
  EmadServer:'YMR5MPK-PW254V4-UX6FHRA-IYBRSN6-BGJMRNO-TTKJGX7-MQEOL3R-LP2VOQF',
  Amirreza:'X6EKTD2-6ZF3WUF-L2AQAHU-VYIQACY-A5BXTIP-F5U5UJE-AT6EREF-2PG6UA6'
 };
@@ -58,7 +59,8 @@ try {
  output.staleMisconfiguredActive=scoped.filter(f=>!expected.some(x=>x.id===f.id)&&!f.paused).length;
  if(output.staleMisconfiguredActive)err(new Error('Unexpected active shared folders'));
  const broadcast=folders.find(x=>x.id==='ctmesh-pilot-20261013');
- output.legacyBroadcastPaused=broadcast?.paused===true;
+ // A fresh fifth peer has no historical broadcast folder; absence is safe.
+ output.legacyBroadcastPaused=!broadcast || broadcast.paused===true;
  if(!output.legacyBroadcastPaused)err(new Error('Legacy broadcast not paused'));
  for(const [id,info] of Object.entries(connected.connections||{})){
   if(id===IDS[node.alias]||!Object.values(IDS).includes(id)||!info.connected)continue;
@@ -66,7 +68,7 @@ try {
   const kind=String(info.type||'unknown');
   output.transports[kind]=(output.transports[kind]||0)+1;
  }
- if(output.activePairCount!==3)err(new Error('Expected exactly three active pairs'));
+ if(output.activePairCount!==Object.keys(IDS).length-1)err(new Error('Expected exactly '+(Object.keys(IDS).length-1)+' active pairs'));
  output.ok=output.errors.length===0;
 }catch(e){err(e);}
 console.log(JSON.stringify(output));
