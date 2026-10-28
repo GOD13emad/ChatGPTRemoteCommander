@@ -29,8 +29,23 @@ export function workspaceOwnerRequestContext(context={},args={},createId=randomU
 }
 function reject(code){throw Object.assign(new Error('WORKSPACE_TARGET_'+code),{rpcCode:-32602,workspaceCode:code});}
 function assertIdentity(args){if(!Number.isSafeInteger(args.processId)||args.processId<=0||typeof args.handle!=='string'||!(/^[1-9][0-9]{0,18}$/.test(args.handle)))reject('INVALID_IDENTITY');}
-function findWindow(windows,args){assertIdentity(args);return (Array.isArray(windows?.windows)?windows.windows:[]).find(w=>w.processId===args.processId&&String(w.handle)===args.handle);}
-function safeApplication(w){return /firefox/i.test(String(w.wmClass||''));}
+// Windows native helper returns PascalCase, Linux returns camelCase. Do not infer the
+// executable from an untrusted window title; preserve exact OS pid/window handle identity.
+export function normalizeWorkspaceWindow(w){
+ if(!w||typeof w!=='object')return null;
+ const pid=w.processId??w.ProcessId??w.pid;
+ const id=w.handle??w.Handle??w.window_id;
+ const handle=typeof id==='string'?id:Number.isSafeInteger(id)?String(id):'';
+ if(!Number.isSafeInteger(pid)||pid<1||!/^[1-9][0-9]{0,18}$/.test(handle))return null;
+ const wmClass=typeof w.wmClass==='string'?w.wmClass:typeof w.WmClass==='string'?w.WmClass:'';
+ const appName=typeof w.appName==='string'?w.appName:typeof w.application==='string'?w.application:typeof w.ProcessName==='string'?w.ProcessName:'';
+ return {processId:pid,handle,title:String(w.title??w.Title??''),wmClass,appName,focused:w.focused===true||w.Focused===true};
+}
+function normalizedWindows(rows){
+ return (Array.isArray(rows?.windows)?rows.windows:[]).map(normalizeWorkspaceWindow).filter(Boolean);
+}
+function findWindow(rows,args){assertIdentity(args);return normalizedWindows(rows).find(w=>w.processId===args.processId&&w.handle===args.handle);}
+function safeApplication(w){return /(^|[^a-z])firefox([._-]?(firefox|exe))?($|[^a-z])/i.test(w.wmClass+' '+w.appName);}
 export function createWorkspaceTargetTools({gui,bindings=new Map()}){
  if(typeof gui!=='function')throw Error('WORKSPACE_GUI_BACKEND_REQUIRED');
  if(!(bindings instanceof Map))throw Error('WORKSPACE_TARGET_BINDINGS_INVALID');
@@ -54,7 +69,7 @@ export function createWorkspaceTargetTools({gui,bindings=new Map()}){
     await status();const session=await gui('gui_session_begin',{mode:'observe',ttlSeconds:30});
     if(!session?.ok||!session.lease)reject('OBSERVE_LEASE_UNAVAILABLE');
     try{const rows=await enumerate(session.lease);
-      return {ok:true,backend:'owner-native-gui',application:args.application||'all',windows:(rows.windows||[]).filter(w=>args.application!=='firefox'||safeApplication(w)).map(w=>({processId:w.processId,handle:String(w.handle),title:w.title,wmClass:w.wmClass,focused:w.focused})),privateProfileAccess:false};
+      return {ok:true,backend:'owner-native-gui',application:args.application||'all',windows:normalizedWindows(rows).filter(w=>args.application!=='firefox'||safeApplication(w)).map(w=>({processId:w.processId,handle:w.handle,title:w.title,wmClass:w.wmClass,appName:w.appName,focused:w.focused})),privateProfileAccess:false};
     }finally{await gui('gui_session_end',{lease:session.lease});}
    }
    case 'workspace_target_open':{
@@ -63,6 +78,10 @@ export function createWorkspaceTargetTools({gui,bindings=new Map()}){
     const input={mode:args.mode||'observe',ttlSeconds:60,...(args.mode==='takeover'?{explicitUserAuthorization:args.explicitUserAuthorization}:{})};
     const session=await gui('gui_session_begin',input);
     if(!session?.ok||!session.lease)reject('LEASE_UNAVAILABLE');
+    if(session.mode!==input.mode){
+     await gui('gui_session_end',{lease:session.lease});
+     reject('MODE_NOT_GRANTED');
+    }
     try{
      const rows=await enumerate(session.lease);
      if(!findWindow(rows,args))reject('WINDOW_CHANGED_OR_MISSING');
