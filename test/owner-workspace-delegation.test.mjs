@@ -56,7 +56,7 @@ test('native windows list is exact, bounds checked, and does not infer identity 
  }
 });
 test('blocked, uncertain, healthy-primary and missing native owner status cannot bridge',async()=>{
- for(const prop of [{blocked:true},{uncertain:true},{incidentPending:true},{incidentStoreUnavailable:true},{available:true},{enabled:false}]){
+ for(const prop of [{blocked:true},{uncertain:true},{incidentPending:true},{incidentStoreUnavailable:true},{reason:'NATIVE_OUTCOME_UNCERTAIN_RESTART_REQUIRED'},{available:true},{enabled:false}]){
   const {broker,calls}=fixture({primary:()=>({...healthyDenied(),...prop})});
   assert.equal((await broker.execute('workspace_target_list',{})).handled,false);
   assert.equal(calls.length,0);
