@@ -94,7 +94,28 @@ if [[ -n "$EXPECTED_COMMIT" && "${resolved,,}" != "${EXPECTED_COMMIT,,}" ]]; the
 fi
 git -C "$stage" checkout --detach "$resolved" >/dev/null
 expected_version="$(sed -nE 's/.*"version"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p' "$stage/package.json" | head -n1)"
-[[ "$expected_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo 'Staged package version is invalid.' >&2; exit 1; }
+if ! [[ "$expected_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+  # No extra dependency on clean hosts: python3 is already a bootstrap prerequisite.
+  # Only explicit non-promotable 0.11 dev source is valid in this isolated path.
+  if ! [[ "$expected_version" =~ ^0\.11\.0-dev\.[1-9][0-9]*$ ]] ||
+     ! python3 - "$stage/docs/release-train-0.11.json" "$expected_version" <<'PY'
+import json,sys
+try:
+    with open(sys.argv[1],encoding='utf-8') as f: train=json.load(f)
+    assert train['sourceVersion']==sys.argv[2]
+    assert train['status']=='INTEGRATION_CANDIDATE_NOT_FINAL'
+    assert train['channel']=='development'
+    for key in ('isStable','publishApproved','autoupdateApproved','installedPromotionApproved'):
+        assert train[key] is False
+    assert train['releaseTag'] is None
+except (OSError, ValueError, KeyError, AssertionError):
+    sys.exit(1)
+PY
+  then
+    echo 'Staged package version is invalid.' >&2
+    exit 1
+  fi
+fi
 
 installer="$stage/install.sh"
 [[ -f "$installer" ]] || { echo 'Staged install.sh is missing.' >&2; exit 1; }

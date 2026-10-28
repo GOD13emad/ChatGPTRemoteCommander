@@ -1,3 +1,70 @@
+# 0.11.0-dev.11 — eliminate Windows cmd.exe whole-chain length bottleneck (2026-10-28; DRAFT / NoPromote)
+
+- Reproduced exact dev.10 R157 in **both** Emad Windows and Amir Windows with isolated `NoPromote` state. `npm test` from the exact source passed on both hosts, while Windows updater test qualification failed deterministically in `run-bounded-test-script.mjs` with `R157_PHASE_WINDOWS_CMD_LENGTH`: 43 ordered Node test groups, individual commands up to 2161 characters, but all combined phase markers exceed the safe Windows cmd.exe inline limit.
+- In R157-only mode execute each exact validated source-controlled `node ...` group as its own bounded `cmd.exe` child, emitting original numeric start/pass markers. Preserve every test, ordering, failure stop, environment, process exit-code, updater state and `NoPromote` guard; no dynamic shell/script writing, permission extension or public publication.
+- New regression verifies a 65-group chain that would fail the old aggregate bound succeeds as a sequence of length-bounded commands and keeps fail-fast/code unchanged. Native Windows hosted R157/R173 acceptance and cross-platform qualification remain **OPEN**. No five-host Core cutover, stable tag or Work credits.
+
+# 0.11.0-dev.10 — deterministic human-waiting deadline fixture (2026-10-28; DRAFT / NoPromote)
+
+- During a native Windows full suite, dev.9 recorded 610 PASS, 1 failing human-wait deadline, 1 cancelled strict 6s adaptive collaboration test, and 16 SKIP; exact two files alone passed 49/49. The original strict six-second adaptive collaboration test, its source text and cold-first CI order remain **unchanged**.
+- The 1-second `WAITING_INPUT` fixture occasionally expired **before entering input-wait state** under heavy Windows process startup. The fixture now reserves 10s of execution allowance and still checks a real 1.1s human delay, that the wait is excluded from the execution budget, and that the deadline advances by at least the recorded delay. Core deadlines, action limits, release policy, security, scheduling, GUI and actual installed profiles are untouched.
+- Portable Linux GUI contract now runs GNOME installer simulation against a private, compiled `org.gnome.shell` settings schema under `GSETTINGS_BACKEND=memory`; this avoids GLib fatal abort on KDE/Wayland hosts without installing GNOME globally or touching the real session. The original GUI security assertions and installer actions remain enforced.
+- Exact-head hosted Windows R157/R173, Linux R170 and integration gates must pass before any update/publish. Full release train remains NoPromote.
+
+# 0.11.0-dev.9 — normalize Windows router script source blob for Linux R170 integrity (2026-10-28; DRAFT / NoPromote)
+
+- Re-encode exactly `tools/router-commandline-windows.ps1` in Git as LF while retaining `.gitattributes` checkout policy `text eol=crlf`. The original dev.8 blob had 37 CRLF endings and produced a dirty Git status immediately after a fresh Linux checkout. This is a byte normalization with zero semantic diff, not a relaxation of R170 source-change checks.
+- Pin a source-blob normalization regression; preserve Windows runtime CRLF behavior, all updater rollback/NoPromote/security gates and production `0.10.26` installs. Require independent hosted R170/R173/R157 and Windows+Linux parser/full-suite gates before qualification.
+
+# 0.11.0-dev.8 — repair native Windows parser and match R157 NoPromote source identity (2026-10-27)
+
+- A dev.7 textual substitution malformed two Windows PowerShell prerelease route-validation expressions; real PowerShell Parser found 20 errors on the pinned source. Restored the last known parseable dev.6 Windows updater and reapplied only the shared SemVer comparator and two route checks using literal, non-interpolating changes.
+- R157's source version gate now allows only strict Stable/dev.N/rc.N syntax and still requires `tools/isolated-qa-policy.mjs` to reject a changed/all-approved release manifest during developer qualification.
+- No claim of Windows repair until native Parser and CI prove it. Five production machines and their current routes are unchanged; NoPromote remains all false.
+
+# 0.11.0-dev.7 — shared prerelease-aware native updater version comparisons (2026-10-27; Draft / NoPromote)
+
+- Added strict `tools/semver-release.mjs` comparing `major.minor.patch`, `dev.N`, and `rc.N` in one deterministic implementation for Windows and Linux. Invalid/ambiguous versions fail closed.
+- Linux updater writes its own development result safely and admits prerelease route identities; Windows now uses the shared comparison for pinned route and current-version guards. Stable latest-release discovery and the all-false release manifest stay unchanged.
+- Added cross-platform positive/negative regression tests as a separate bounded CI step. Host rollout and real R170/R173/R157 rollback remain unaccepted until exact-head hosted CI succeeds; active routes unchanged.
+
+# 0.11.0-dev.6 — fix hosted Windows command-length regression, retain isolated QA coverage (2026-10-27; Draft / NoPromote)
+
+- dev.5 introduced exact all-false manifest qualification for R170/R173 plus the correct Windows Server development evidence path. Hosted preflights now admit development, but the native promotion and Windows/Linux Canary failed.
+- Root cause observed on exact dev.5 hosted Windows and Linux CI: extra inline npm check/test entries exceeded the existing 7500-character grouped Windows qualification command contract (`R157_PHASE_WINDOWS_CMD_LENGTH`). That also aborted the Windows Server installer and Linux promotion.
+- dev.6 preserves all original main check/test suites and runs the isolated version-policy regressions as a separate GitHub CI step. No release/promotion flags, OS rights, user profiles or active machines modified. Hosted native R170/R173/R157/Canary acceptance remains OPEN until proven by new exact-head receipts.
+
+# 0.11.0-dev.4 — opt-in local Ollama planner adapter (2026-10-27; DRAFT / NoPromote)
+
+- Adds a localhost-only, explicitly configured `command` provider for existing journaled Workflow Runner; no default model, autoTick, account privilege, tool execution, cross-user access or release promotion.
+- Rejects undeclared tools, unexpected proposal shapes, oversized/model-error responses and all non-loopback inference endpoints. Native same-user/GUI/rollback gates remain open.
+- Sources for future adapter admission: Cua Driver, Agent-S4, UFO3, UI-TARS Desktop, OpenAdapt, Xpra, REA and colibri; no silent installation or parallel engine.
+
+# 0.11.0-dev.4 — preserve historical 0.10.26 identity and qualify separate suite identity (2026-10-27; DRAFT / NO PROMOTION)
+
+- Reworked legacy release candidate test to keep historical exact 0.10.26 protections while independently verifying the current development manifest, Core, plugins and native Control Center identity.
+- Updated source, plugin, UI assembly, Manifest and docs together. No new release or fleet install is authorized.
+- Native R170/R173 rollback and 5/5 host acceptance remain unresolved.
+
+# 0.11.0-dev.2 — isolated development bootstrap and SemVer QA guards (2026-10-27; DRAFT / NO PROMOTION)
+
+- Exact-head 0.11 developer branch: allow manifest-gated, non-promotable prerelease identity through Windows/Linux clean-server bootstrap; retain stable version validation unchanged.
+- Historical v0.10.25 rollback workflow skips newer well-formed dev versions; it does not execute for them.
+- R157 source-ref unit contract no longer hardcodes v0.10.26 and remains tied to the pinned package version.
+- All release, auto-update, installed promotion and component acceptance gates remain false. R170/R173 real rollback, end-to-end 5-host installation, signing, independent review and Stable acceptance remain OPEN.
+
+# 0.11.0-dev.1 — integration train opened (2026-10-27; DRAFT / NO PROMOTION)
+
+- Owner-defined version policy: develop as 0.11, publish 0.11.0 only to Pre-release channel after all acceptance gates, reserve 1.0.0 as first verified Stable.
+- Align Core server, npm package, plugin template and Control Center .NET display/file versions for an isolated source candidate; no installer, browser profile, workflow, session or live host was changed.
+- Record all component, fleet, signing, security and rollback gates as explicit unaccepted requirements. Earlier labels do not qualify an integrated Stable.
+
+# 0.10.26 - SOURCE CANDIDATE ONLY (2026-10-21; NOT RELEASED)
+
+- Prepare version-separated source identity following immutable v0.10.25 UNSIGNED Preview. This change does NOT publish or replace v0.10.25.
+- Carry merged read-only GUI_NATIVE_BUSY and GUI_BUSY fixes and Windows CI scheduling forward. Installer default refs, current host profiles, and rollback storage remain unchanged.
+- There is NO unsigned v0.10.26 authorization, tag, trusted signing certificate, published installer, or fleet rollout. Independent release admission and host canary are mandatory.
+
 # 0.10.25 - SOURCE CANDIDATE ONLY (2026-10-17, NOT RELEASED)
 
 - Native owner-editable durable roadmap in Commander, source parent merged PR #238 at 99d3908e848eee01714eb8e2832b4f5eba5f8df1.

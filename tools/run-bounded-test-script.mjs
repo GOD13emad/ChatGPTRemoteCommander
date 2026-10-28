@@ -62,7 +62,7 @@ export function isolateWindowsLeaseRegression(command){
 
 
 /**
- * R01: isolate the three historically timing-sensitive Windows project fixtures
+ * R01: isolate the four historically timing-sensitive Windows project fixtures
  * before the bulk batch. This changes scheduling only: no timeout, budget,
  * acceptance, or production state transition is modified.
  *
@@ -71,7 +71,7 @@ export function isolateWindowsLeaseRegression(command){
  */
 export function isolateWindowsTimingSensitiveRegressions(command) {
   if(typeof command!=='string'||!command)throw new Error('CI_WINDOWS_TIMING_COMMAND_INVALID');
-  const files=['test/project-adaptive.test.mjs','test/project-delivery-correlation.test.mjs','test/project-engine-review.test.mjs'];
+  const files=['test/project-adaptive.test.mjs','test/project-delivery-correlation.test.mjs','test/project-engine-review.test.mjs','test/project-engine.test.mjs'];
   for(const file of files)
     if(command.split(file).length-1!==1)throw new Error('CI_WINDOWS_TIMING_CARDINALITY');
   const parts=command.split(' && ');
@@ -148,6 +148,32 @@ export function isolateWindowsTransferMeshHttpRegression(command) {
     throw new Error('CI_TRANSFER_HTTP_ISOLATION_INVALID');
   parts[index]=after;
   return 'node --test --test-concurrency=1 '+file+' && '+parts.join(' && ');
+}
+
+/**
+ * Keep unchanged Windows browser-owned-process, workflow HTTP and transport correlation startup
+ * fixtures in dedicated early test processes. Both have failed only under
+ * loaded full-host qualification and passed unchanged when run in isolation.
+ * Preserve exact assertions, timeouts, and one execution of every test file.
+ */
+export function isolateWindowsStartupReadinessRegressions(command) {
+  if(typeof command!=='string'||!command)throw new Error('CI_STARTUP_READINESS_COMMAND_INVALID');
+  const files=['test/workflow-http.test.mjs','test/browser-process.test.mjs','test/transport-correlation-http.test.mjs'];
+  const parts=command.split(' && ');
+  const isolated=[];
+  for(const file of files) {
+    if(command.split(file).length-1!==1)throw new Error('CI_STARTUP_READINESS_CARDINALITY');
+    const index=parts.findIndex(part=>part.startsWith('node --test --test-concurrency=1 ')&&part.includes(' '+file));
+    if(index<0)throw new Error('CI_STARTUP_READINESS_TEST_NOT_FOUND');
+    const before=parts[index],after=before.replace(' '+file,'');
+    if(before===after)throw new Error('CI_STARTUP_READINESS_ISOLATION_INVALID');
+    if(after==='node --test --test-concurrency=1')parts.splice(index,1);
+    else if(!after.startsWith('node --test --test-concurrency=1 test/')||after.includes(file))
+      throw new Error('CI_STARTUP_READINESS_ISOLATION_INVALID');
+    else parts[index]=after;
+    isolated.push('node --test --test-concurrency=1 '+file);
+  }
+  return [...isolated,...parts].join(' && ');
 }
 
 /**
@@ -251,6 +277,21 @@ export function prioritizeWindowsAdaptiveCold(command) {
   return [exact,...parts].join(' && ');
 }
 
+/**
+ * R157: an inline cmd.exe command has a small Windows length limit. Splitting
+ * only at the source-controlled && boundaries preserves strict order, exact
+ * test invocations and fail-fast behavior while allowing indexed receipts.
+ * Each command is independently bounded before being passed to cmd.exe.
+ */
+export function splitWindowsQualificationCommands(command) {
+  if(typeof command!=='string'||!command)throw new Error('R157_PHASE_COMMAND_INVALID');
+  const parts=command.split(' && ');
+  if(parts.length<2||parts.length>90||parts.some(part=>
+    !part.startsWith('node ')||part.includes('\n')||part.includes('\r')||part.length>7000))
+    throw new Error('R157_PHASE_COMMAND_SHAPE_INVALID');
+  return parts;
+}
+
 export function parseQualificationArgs(argv){
   const out={script:null,concurrency:null,prioritizeSensitive:false};
   for(let i=0;i<argv.length;i++){
@@ -289,11 +330,24 @@ function run(){
     // Short-deadline workflow-plan first, then team reservation, then async HTTP.
     command=isolateWindowsWorkflowPlanRegression(command);
     command=isolateWindowsMcpConformanceRegression(command);
+    command=isolateWindowsStartupReadinessRegressions(command);
     command=prioritizeWindowsAdaptiveCold(command);
   }
-  if(process.platform==='win32'&&args.script==='test'&&process.env.RC_QUALIFICATION_RUN_ID)
-    command=markIsolatedQualificationPhases(command);
+  const phases=process.platform==='win32'&&args.script==='test'&&process.env.RC_QUALIFICATION_RUN_ID
+    ?splitWindowsQualificationCommands(command):null;
   console.log('CI_TEST_CONCURRENCY script='+args.script+' requestedConcurrency='+requestedConcurrency+' effectiveConcurrency='+effectiveConcurrency+' replacements='+bounded.replacements+' prioritizeSensitive='+prioritizeSensitive);
+  if(phases){
+    for(const [index,part] of phases.entries()){
+      const marker=String(index).padStart(2,'0');
+      console.log('RC_QUAL_PHASE_START_'+marker);
+      const phase=spawnSync(process.env.ComSpec||'cmd.exe',['/d','/s','/c',part],{cwd:root,env:process.env,stdio:'inherit'});
+      if(phase.error)throw phase.error;
+      if(phase.signal)throw new Error('CI_TEST_SIGNAL_'+phase.signal);
+      if(phase.status!==0){process.exitCode=Number.isInteger(phase.status)?phase.status:1;return;}
+      console.log('RC_QUAL_PHASE_PASS_'+marker);
+    }
+    return;
+  }
   const child=process.platform==='win32'
     ? spawnSync(process.env.ComSpec||'cmd.exe',['/d','/s','/c',command],{cwd:root,env:process.env,stdio:'inherit'})
     : spawnSync('/bin/sh',['-lc',command],{cwd:root,env:process.env,stdio:'inherit'});

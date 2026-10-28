@@ -123,7 +123,8 @@ if((Get-NetTCPConnection -State Listen -LocalPort 47831 -ErrorAction SilentlyCon
 if((Test-Path -LiteralPath $Root) -or (Test-Path -LiteralPath (Join-Path $OldLocal 'ChatGPTRemoteCommander'))){throw 'R173_NOT_ISOLATED'}
 Assert-Head $Source $ExpectedCommit
 $CandidateVersion=[string]((Get-Content (Join-Path $Source 'package.json') -Raw|ConvertFrom-Json).version)
-if($CandidateVersion -notin @('0.10.24','0.10.25')){throw 'R173_CANDIDATE_VERSION'}
+& node.exe (Join-Path $Source 'tools/isolated-qa-policy.mjs')
+ if($LASTEXITCODE -ne 0){throw 'R173_CANDIDATE_VERSION_POLICY'}
 New-Item -ItemType Directory -Path (Join-Path $Root 'STATE'),(Join-Path $Root 'ROAMING') -ErrorAction Stop|Out-Null
 & git.exe -c core.autocrlf=false clone --depth 1 --branch v0.10.20 https://github.com/GOD13emad/ChatGPTRemoteCommander.git $Install | Out-Host
 if($LASTEXITCODE -ne 0){throw 'R173_CLONE_FAIL'}
