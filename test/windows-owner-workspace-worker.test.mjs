@@ -21,3 +21,11 @@ test('receipts are request-bound and redact window titles and browser sessions',
   assert.match(script,/window_id/);
   assert.doesNotMatch(script,/\$_\.title|\$_\.cookie|\$_\.profile/);
 });
+
+test('same-request receipt is atomic create-only with durable flush, never replaceable',()=>{
+ assert.match(script,/\[IO\.File\]::Open\(\$receipt,\[IO\.FileMode\]::CreateNew,\[IO\.FileAccess\]::Write,\[IO\.FileShare\]::None\)/);
+ assert.match(script,/\$file\.Flush\(\$true\)/);
+ assert.match(script,/finally\s*\{\s*\$file\.Dispose\(\)/);
+ assert.doesNotMatch(script,/Set-Content\s+-LiteralPath\s+\$receipt/);
+ assert.doesNotMatch(script,/\[IO\.FileMode\]::(?:Create|OpenOrCreate|Truncate)\b/);
+});
