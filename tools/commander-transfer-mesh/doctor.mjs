@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import {execFileSync} from 'node:child_process';
+import {fileURLToPath} from 'node:url';
 const IDS={
  PC:'EFE6R4U-O3B6JVV-N4OKZFL-7X4U24W-A5GFD4G-TM4OPRK-AXBDALA-OCJUBQ6',
  Linux:'6YUIRAM-GDPWPT4-XXX2DD7-K2M7G23-F246XXK-ENQQ3G2-RHIQI2Y-TDRJGAB',
@@ -15,8 +16,27 @@ const root=process.env.COMMANDER_TRANSFER_HOME || (process.platform==='win32'
  ?path.join(process.env.LOCALAPPDATA||path.join(os.homedir(),'AppData','Local'),'CommanderTransferPilot')
  :path.join(os.homedir(),'.local','share','commander-transfer-pilot'));
 const output={schema:'ctmesh-doctor-v1',ok:false,alias:null,version:null,apiStatus:'unavailable',
- activePairCount:0,legacyBroadcastPaused:false,staleMisconfiguredActive:0,connectedPeers:0,transports:{},errors:[]};
+ activePairCount:0,legacyBroadcastPaused:false,staleMisconfiguredActive:0,connectedPeers:0,
+ expectedPeers:Object.keys(IDS).length-1,disconnectedPeers:[],connectivityReady:false,transports:{},errors:[]};
 function err(e){output.errors.push(String(e?.message||e).slice(0,200).replace(/<apikey>.*?<\/apikey>/ig,'[REDACTED]'));}
+export function evaluatePeerConnectivity(connections,alias){
+ if(!Object.hasOwn(IDS,alias))throw Error('Unknown local peer');
+ const rows=connections?.connections;
+ if(!rows||typeof rows!=='object'||Array.isArray(rows))throw Error('Invalid connection response');
+ const expected=Object.entries(IDS).filter(([name])=>name!==alias);
+ const disconnectedPeers=[],transports={};
+ let connectedPeers=0;
+ for(const [name,id] of expected){
+  const info=rows[id];
+  if(info?.connected!==true){disconnectedPeers.push(name);continue;}
+  connectedPeers++;
+  const kind=String(info.type||'unknown');
+  transports[kind]=(transports[kind]||0)+1;
+ }
+ return {connectedPeers,expectedPeers:expected.length,disconnectedPeers,transports,
+  allConnected:disconnectedPeers.length===0};
+}
+async function main(){
 try {
  const node=JSON.parse(fs.readFileSync(path.join(root,'node.json'),'utf8'));
  output.alias=node.alias;
@@ -62,14 +82,17 @@ try {
  // A fresh fifth peer has no historical broadcast folder; absence is safe.
  output.legacyBroadcastPaused=!broadcast || broadcast.paused===true;
  if(!output.legacyBroadcastPaused)err(new Error('Legacy broadcast not paused'));
- for(const [id,info] of Object.entries(connected.connections||{})){
-  if(id===IDS[node.alias]||!Object.values(IDS).includes(id)||!info.connected)continue;
-  output.connectedPeers++;
-  const kind=String(info.type||'unknown');
-  output.transports[kind]=(output.transports[kind]||0)+1;
- }
+ const connectivity=evaluatePeerConnectivity(connected,node.alias);
+ output.connectedPeers=connectivity.connectedPeers;
+ output.expectedPeers=connectivity.expectedPeers;
+ output.disconnectedPeers=connectivity.disconnectedPeers;
+ output.transports=connectivity.transports;
  if(output.activePairCount!==Object.keys(IDS).length-1)err(new Error('Expected exactly '+(Object.keys(IDS).length-1)+' active pairs'));
  output.ok=output.errors.length===0;
+ // Configuration health and live reachability are independent acceptance gates.
+ output.connectivityReady=output.ok&&connectivity.allConnected;
 }catch(e){err(e);}
 console.log(JSON.stringify(output));
 if(!output.ok)process.exitCode=1;
+}
+if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url))await main();
