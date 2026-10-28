@@ -2,6 +2,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { access } from 'node:fs/promises';
 import { randomBytes, timingSafeEqual } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
 import { performance } from 'node:perf_hooks';
 import { GUI_RULES, guiError, guiToolDefinitions, validateGuiInput } from './gui-contract.mjs';
 import { createGuiProcessClient, runGuiProcess } from './gui-process.mjs';
@@ -12,14 +13,37 @@ const project = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const stopFile = path.join(project, 'var', 'GUI_STOP');
 const globalStopFile = process.platform === 'linux' ? path.join(process.env.XDG_STATE_HOME || path.join(process.env.HOME || '', '.local', 'state'), 'chatgpt-remote-commander', 'GUI_STOP') : null;
 const windowsHelper = path.join(project, 'tools', 'gui-control.ps1');
-const linuxHelper = path.join(project, 'tools', 'gui-control-linux.py');
+// Select a native helper for the *actual session*, never GNOME Mutter on KDE.
+const kdeDesktop = (() => {
+  if (process.platform === 'linux' && process.env.RC_FORCE_KDE_PORTAL === '1') return true;
+  if (/(?:^|:)(?:KDE|plasma)(?=:|$)/i.test(
+    [process.env.XDG_CURRENT_DESKTOP ?? '', process.env.XDG_SESSION_DESKTOP ?? ''].join(':'))) return true;
+  if (process.platform !== 'linux') return false;
+  try {
+    const uid = process.getuid();
+    const sessions = execFileSync('/usr/bin/loginctl', ['list-sessions','--no-legend','--no-pager'],
+      { encoding:'utf8', timeout:2500, maxBuffer:32768 });
+    for (const line of sessions.split('\n')) {
+      const [sid, owner] = line.trim().split(/\s+/);
+      if (String(owner) !== String(uid) || !/^[A-Za-z0-9]+$/.test(sid || '')) continue;
+      const detail = execFileSync('/usr/bin/loginctl', ['show-session',sid,
+        '-p','Desktop','-p','Type','-p','Active'],
+        { encoding:'utf8', timeout:2500, maxBuffer:8192 });
+      if (/^Desktop=KDE$/m.test(detail) && /^Type=wayland$/m.test(detail) &&
+          /^Active=yes$/m.test(detail)) return true;
+    }
+  } catch { /* Missing session metadata never grants input. */ }
+  return false;
+})();
+const linuxHelper = path.join(project, 'tools', kdeDesktop ?
+  'gui-control-kde-portal.py' : 'gui-control-linux.py');
 const backendSpec = platform => platform === 'win32'
   ? { file: 'pwsh.exe', args: ['-NoLogo', '-NoProfile', '-NonInteractive', '-File', windowsHelper, '-Server'], oneShotArgs: ['-NoLogo', '-NoProfile', '-NonInteractive', '-File', windowsHelper] }
   : platform === 'linux'
     ? { file: 'python3', args: [linuxHelper, '--server'], oneShotArgs: [linuxHelper] }
     : null;
 const defaultBackend = backendSpec(process.platform);
-const persistentHelper = defaultBackend ? createGuiProcessClient({ file: defaultBackend.file, args: defaultBackend.args }) : null;
+const persistentHelper = defaultBackend ? createGuiProcessClient({ file: defaultBackend.file, args: defaultBackend.args, timeoutForRequest: request => kdeDesktop && request.action==='screenshot' ? 60000 : 15000 }) : null;
 const invokeDefault = request => {
   if (persistentHelper) return persistentHelper.invoke(request);
   if (!defaultBackend) throw guiError('GUI_PLATFORM_BACKEND_UNSUPPORTED');
@@ -59,6 +83,7 @@ export function createGuiController({ platform = process.platform, now = () => p
     const rule = GUI_RULES.get(name);
     const power = ctx.config?.powerMode;
     const cfg = power?.guiControl ?? {};
+    const invokeNative = request => invoke(platform==='linux' && kdeDesktop && cfg.kdePortalRuntime===true ? {...request,kdePortalRuntime:true} : request);
     const supported = platform === 'win32' || platform === 'linux';
     const enabled = supported && power?.enabled === true && cfg.enabled === true;
     const blocked = await isStopped();
@@ -92,7 +117,7 @@ export function createGuiController({ platform = process.platform, now = () => p
     if (name === 'gui_status' && observeOnly) {
       let native = {ok:false,available:false};
       if (!busy) {
-        try {native=await invoke({action:'status',stopFile});}
+        try {native=await invokeNative({action:'status',stopFile});}
         catch { /* A read-only backend failure cannot release the incident. */ }
       }
       const readOnlyAvailable=native?.ok===true&&native.available===true;
@@ -132,7 +157,7 @@ export function createGuiController({ platform = process.platform, now = () => p
     try {
       if (name === 'gui_session_begin') {
         if (current()) throw guiError('GUI_LEASE_BUSY');
-        const status = await invoke({ action: 'status', stopFile });
+        const status = await invokeNative({ action: 'status', stopFile });
         if (status?.ok !== true) throw guiError(status?.error || 'GUI_NATIVE_FAILED');
         if (status.available !== true) throw guiError('GUI_DESKTOP_UNAVAILABLE');
         const ownerAuthorizedFallback = cfg.ownerAuthorizedTakeover === true && ctx.config?.capabilityProfile?.tier === 'FULL_POWER' && ctx.config?.capabilityProfile?.explicitlyAuthorized === true;
@@ -142,7 +167,7 @@ export function createGuiController({ platform = process.platform, now = () => p
         return { ok: true, lease: session.id, ttlSeconds: input.ttlSeconds ?? 60, mode, authorization: session.authorization, coordinationOnly: true, interactiveTakeover: mode === 'takeover' };
       }
       if (name === 'gui_status') {
-        const status = await invoke({ action: 'status', stopFile });
+        const status = await invokeNative({ action: 'status', stopFile });
         if (status?.ok !== true) throw guiError(status?.error || 'GUI_NATIVE_FAILED');
         return { ...status, enabled, busy: false, leased: !!current(), backend: status.backend ?? (platform === 'win32' ? 'windows-user32-gdi' : 'gnome-shell-wayland'), policy: {
           allowScreenshot: cfg.allowScreenshot === true, allowWindowEnumeration: cfg.allowWindowEnumeration === true || cfg.allowWindowFocus === true, allowMouse: cfg.allowMouse === true,
@@ -185,14 +210,14 @@ export function createGuiController({ platform = process.platform, now = () => p
       // A crash between dispatch and native acknowledgment must not reset safety on restart.
       let pendingHandle = null;
       if (isInput) {
-        try { pendingHandle = await incidentStore.begin(name); }
+        try { pendingHandle = await incidentStore.begin(name); if(platform==='linux' && kdeDesktop) request.nativeOperationId=pendingHandle.id; }
         catch {
           session = null; frame = null; closeInvoke();
           throw guiError('GUI_INCIDENT_STORAGE_UNAVAILABLE');
         }
       }
       let result;
-      try { result = await invoke(request); }
+      try { result = await invokeNative(request); }
       catch (error) {
         if (isInput) {
           // Exact Linux click pre-dispatch rejection only; no input was ever applied.
@@ -203,7 +228,10 @@ export function createGuiController({ platform = process.platform, now = () => p
           const windowsMutexNotSubmitted = platform === 'win32' && name === 'gui_focus_window' &&
             error?.guiCode === 'GUI_NATIVE_BUSY' && error?.guiNotApplied === true &&
             error?.guiWindowsMutexPreDispatch === true;
-          const provenNoEffect = linuxNotApplied || windowsMutexNotSubmitted;
+          const kdeNotApplied = platform === 'linux' && kdeDesktop &&
+            error?.guiKdePreDispatch === true && error?.guiNotApplied === true &&
+            ['GUI_KDE_PRECHECK_FAILED','GUI_FOREGROUND_OR_GEOMETRY_CHANGED'].includes(error?.guiCode);
+          const provenNoEffect = linuxNotApplied || windowsMutexNotSubmitted || kdeNotApplied;
           if (provenNoEffect) {
             try { await incidentStore.resolve(pendingHandle); }
             catch { uncertain = true; session = null; frame = null; closeInvoke(); throw guiError('GUI_INCIDENT_STORAGE_UNAVAILABLE'); }
