@@ -1,3 +1,9 @@
+# 0.11.0-dev.12 — isolate native Windows check-gate HTTP startup fixtures (2026-10-28; DRAFT / NoPromote)
+
+- Production-like Windows Server Emad exact dev.11 updater `check:qualification` failed in `workflow-http.test.mjs` on a 35s health timeout during loaded sequential qualification. Same source on that host passed the exact original test `4/4` in a standalone process in ~8s. Hosted Windows R157/R173 and two native Windows 43/43 `test:qualification` passes remain valid for dev.11 only.
+- On Windows **check** qualification, execute the three existing HTTP/browser startup-sensitive fixture groups separately and early, analogous to the successful Windows **test** scheduling already in dev.11. Every test assertion, original timeout, security policy, phase boundary, fail-closed behavior, and production runtime stays unchanged. Add regression covering no skipped or duplicated check files.
+- Require exact-head hosted R157/R173/CI and five-host full native candidate receipts for dev.12. No installed promotion or Stable release is asserted.
+
 # 0.11.0-dev.11 — eliminate Windows cmd.exe whole-chain length bottleneck (2026-10-28; DRAFT / NoPromote)
 
 - Reproduced exact dev.10 R157 in **both** Emad Windows and Amir Windows with isolated `NoPromote` state. `npm test` from the exact source passed on both hosts, while Windows updater test qualification failed deterministically in `run-bounded-test-script.mjs` with `R157_PHASE_WINDOWS_CMD_LENGTH`: 43 ordered Node test groups, individual commands up to 2161 characters, but all combined phase markers exceed the safe Windows cmd.exe inline limit.
