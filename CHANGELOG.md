@@ -1,3 +1,9 @@
+# 0.11.0-dev.16 — owner-session Workspace Target + bounded local Runner (2026-10-28; development / NoPromote)
+
+- Add a new exact-window Workspace Target MCP contract for the owner's **already-running** Firefox and other GUI windows, without copying cookies/profiles or relaunching the browser. Native GUI leases, fresh frames, explicit takeover, and focused-window checks remain mandatory.
+- Increase bounded local Ollama proposal timeout from 12 to 24 seconds (below the parent 30-second deadline). On Emad Linux the qwen3:4b-instruct offline runner completed one enrolled read-only step, independently verified SHA-256, and reached `PROJECT_ACCEPTANCE_VERIFIED` after a prior 12-second timeout negative result. No implicit project enrollment.
+- Cross-host GUI ownership, fifth Core connector, signed artifacts and installed promotion remain NoPromote pending exact-commit tests and independent acceptance.
+
 # 0.11.0-dev.15 — reconcile fifth MMZ transfer peer into unified Core (2026-10-28; development / NoPromote)
 
 - Direct comparison of installed Windows Emad + MMZ Linux transfer candidates to canonical dev.14 found one missing enum member: MMZ. Merge missing peer into existing Core transfer-tools, with no duplicate transfer engine or legacy candidate file.
