@@ -1,3 +1,4 @@
+import {randomUUID} from 'node:crypto';
 // Explicit, application-scoped Workspace Target route for existing owner desktop windows.
 // This never opens another browser, copies a profile, reads cookies, or bypasses native GUI guards.
 const obj=(properties={},required=[])=>({type:'object',properties,required,additionalProperties:false});
@@ -19,6 +20,13 @@ export const workspaceTargetDefinitions=[
  def('workspace_target_type','Type literal text only when the exact existing window is currently focused, with a fresh native frame.',obj({...bound,text:{type:'string',minLength:1,maxLength:1024}},['processId','handle','lease','frame','text']),mutate),
  def('workspace_target_end','Release only the provided native GUI lease.',obj({lease:text()},['lease']),coordinate)
 ];
+const REQUEST_ID_PATTERN=/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
+export function workspaceOwnerRequestContext(context={},args={},createId=randomUUID){
+ const existing=context.requestId??args.requestId;
+ const id=existing??('workspace-'+createId());
+ if(typeof id!=='string'||!REQUEST_ID_PATTERN.test(id))reject('REQUEST_ID_INVALID');
+ return {...context,requestId:id};
+}
 function reject(code){throw Object.assign(new Error('WORKSPACE_TARGET_'+code),{rpcCode:-32602,workspaceCode:code});}
 function assertIdentity(args){if(!Number.isSafeInteger(args.processId)||args.processId<=0||typeof args.handle!=='string'||!(/^[1-9][0-9]{0,18}$/.test(args.handle)))reject('INVALID_IDENTITY');}
 function findWindow(windows,args){assertIdentity(args);return (Array.isArray(windows?.windows)?windows.windows:[]).find(w=>w.processId===args.processId&&String(w.handle)===args.handle);}
