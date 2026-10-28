@@ -479,3 +479,32 @@ test('helper process JSON lifecycle, malformed JSON and output bounds',async()=>
     await assert.rejects(runGuiProcess({}, {file:path.join(root,'not-an-executable'),args:[],timeoutMs:200}),/GUI_HELPER_START_FAILED/);
   } finally { await fs.rm(root,{recursive:true,force:true}); }
 });
+
+
+test('KDE portal exact pre-dispatch attestation is accepted but extra fields are not',async()=>{
+  const folder=await fs.mkdtemp(path.join(os.tmpdir(),'rc-gui-kde-noeffect-'));
+  let client;
+  try {
+    const helper=path.join(folder,'helper.cjs');
+    const source=[
+      "process.stdout.write(JSON.stringify({ok:true,ready:true,protocol:1})+'\\n');",
+      "let buf='';let count=0;process.stdin.setEncoding('utf8');",
+      "process.stdin.on('data',part=>{buf+=part;while(buf.includes('\\n')){const p=buf.indexOf('\\n');const line=buf.slice(0,p);buf=buf.slice(p+1);const req=JSON.parse(line);count++;const receipt={ok:false,error:'GUI_KDE_PRECHECK_FAILED',effect:'NOT_APPLIED',phase:'PRE_DISPATCH_GUARD',backend:'kde-wayland-xdg-portal'};if(req.extra)receipt.arbitraryField=true;process.stdout.write(JSON.stringify(receipt)+'\\n');}});"
+    ].join('');
+    await fs.writeFile(helper,source);
+    client=createGuiProcessClient({file:process.execPath,args:[helper],startupTimeoutMs:2500,timeoutMs:2500});
+    await assert.rejects(client.invoke({extra:false}),e=>e.guiKdePreDispatch===true&&e.guiNotApplied===true&&e.guiCode==='GUI_KDE_PRECHECK_FAILED');
+    await assert.rejects(client.invoke({extra:true}),e=>e.guiKdePreDispatch!==true&&e.guiCode==='GUI_KDE_PRECHECK_FAILED');
+  }finally{client?.close();await fs.rm(folder,{recursive:true,force:true});}
+});
+test('KDE native helper is bundled and dispatch stays bound to KDE session and explicit runtime flag',async()=>{
+  for(const file of ['gui-control-kde-portal.py','kde_portal_runtime.py','kde_workspace_observer.py','kde_emergency_stop.py']){
+    assert.ok((await fs.stat(new URL('../tools/'+file,import.meta.url))).isFile());
+  }
+  const source=await fs.readFile(new URL('../src/gui-tools-windows.mjs',import.meta.url),'utf8');
+  assert.ok(source.includes("execFileSync('/usr/bin/loginctl'"));
+  assert.ok(source.includes("'gui-control-kde-portal.py' : 'gui-control-linux.py'"));
+  assert.ok(source.includes("cfg.kdePortalRuntime===true"));
+  assert.ok(source.includes('request.nativeOperationId=pendingHandle.id'));
+  assert.ok(source.includes('error?.guiKdePreDispatch === true'));
+});
