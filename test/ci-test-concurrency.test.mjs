@@ -314,6 +314,29 @@ test('R157 qualifier markers are opt-in, index-only, and preserve all original c
   assert.ok(wrapper.includes('splitWindowsQualificationCommands(command)'));
 });
 
+test('Windows check gate isolates native HTTP startup groups without removing coverage',()=>{
+  const pkg=JSON.parse(read('package.json'));
+  let command=prioritizeSensitiveQualificationCommands(
+    boundNodeTestConcurrency(pkg.scripts.check,1).command);
+  command=isolateWindowsAgentHttpRegression(command);
+  const original=command.split(' && ');
+  const result=isolateWindowsStartupReadinessRegressions(command);
+  const after=result.split(' && ');
+  const cold=['test/workflow-http.test.mjs','test/browser-process.test.mjs',
+    'test/transport-correlation-http.test.mjs'];
+  assert.deepEqual(after.slice(0,3),cold.map(file=>
+    'node --test --test-concurrency=1 '+file));
+  for(const file of cold)assert.equal(result.split(file).length-1,1);
+  assert.equal(after.length,original.length+2);
+  for(const section of original)if(!cold.some(file=>section.includes(' '+file)))
+    assert.ok(after.includes(section),'preserve every other check group');
+  const runner=read('tools/run-bounded-test-script.mjs');
+  assert.ok(runner.includes("if(process.platform==='win32'&&args.script==='check')"));
+  assert.ok(runner.includes('command=isolateWindowsStartupReadinessRegressions(command);'));
+  assert.equal(isolateWindowsStartupReadinessRegressions(result),result,
+    'reapplying the exact independent scheduling is idempotent');
+});
+
 test('R157 isolates every owned Windows phase so total command length cannot defeat qualification',()=>{
   const original=Array.from({length:90},(_,i)=>'node --test test/phase-'+i+'-'+ 'x'.repeat(70)+'.test.mjs').join(' && ');
   assert.throws(()=>markIsolatedQualificationPhases(original),/R157_PHASE_WINDOWS_CMD_LENGTH/);

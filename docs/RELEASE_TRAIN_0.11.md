@@ -1,6 +1,10 @@
 # Remote Commander suite — 0.11 release train
 **Opened:** 2026-10-27 · **Status:** INTEGRATION CANDIDATE / NO PUBLIC RELEASE / NO HOST PROMOTION
 
+## 0.11.0-dev.12 — Windows qualification check HTTP readiness isolation
+
+Full native `0.11.0-dev.11` `NoPromote` on headless Emad Windows Server failed solely in `workflow-http.test.mjs` under `npm run check:qualification` with an HTTP health timeout; same original test passed 4/4 in isolation. Move the existing Windows HTTP fixture groups for the **check** gate ahead of loaded general tests without changing deadlines, assertions, capabilities or permissions. Preserve all previous development failures and accept new build only on its own exact-head receipts.
+
 ## 0.11.0-dev.11 — bounded Windows qualification per command (NoPromote)
 
 Exact `dev.10` R157 isolated native preflight and `check` passed but `test` aborted *before any suite* because index-only qualification markers made the **aggregate** `cmd.exe /c` command too long (`R157_PHASE_WINDOWS_CMD_LENGTH`). Same exact source's `npm test` passed outside R157 on Windows Emad and Windows Amir. Replace only the R157 opt-in Windows execution strategy with strict sequential independent `cmd.exe` invocations for each validated original `node` segment, keeping start/pass numeric receipts and stopping on first nonzero. A segment over 7000 characters or an unsafe/ambiguous group still fails closed. Preserve full test coverage, production Core execution semantics and all security gates. Hosted exact-head R157/R173 must requalify.

@@ -316,6 +316,10 @@ function run(){
   const prioritizeSensitive=args.prioritizeSensitive||process.platform==='win32';
   let command=prioritizeSensitive?prioritizeSensitiveQualificationCommands(bounded.command):bounded.command;
   if(process.platform==='win32') command=isolateWindowsAgentHttpRegression(command);
+  // Check-gate HTTP startup tests require cold standalone Windows processes.
+  // Preserve exact invocation, timeouts, cardinality and fail-fast behavior.
+  if(process.platform==='win32'&&args.script==='check')
+    command=isolateWindowsStartupReadinessRegressions(command);
   if(args.script==='test'&&process.platform==='win32'){
     command=isolateWindowsProcessTreeRegression(command);
     command=isolateWindowsTransferMeshHttpRegression(command);
