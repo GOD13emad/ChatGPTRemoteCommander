@@ -122,6 +122,43 @@ test('disabled screenshot capability is enforced before invoking helper', async 
   const s=setup(); const {lease}=await s.run('gui_session_begin'); s.ctx.config.powerMode.guiControl.allowScreenshot=false;
   await assert.rejects(s.run('gui_screenshot',{lease}),/GUI_CAPABILITY_DISABLED/); assert.equal(s.calls.length,1);
 });
+test('read-only window enumeration is independent of focus and input permissions',async()=>{
+  const s=setup();
+  const gui=s.ctx.config.powerMode.guiControl;
+  gui.allowWindowEnumeration=true;
+  gui.allowWindowFocus=false;
+  gui.allowMouse=false;
+  gui.allowKeyboard=false;
+  const policy=await s.run('gui_status');
+  assert.equal(policy.policy.allowWindowEnumeration,true);
+  assert.equal(policy.policy.allowWindowFocus,false);
+  const {lease}=await s.run('gui_session_begin',{mode:'observe'});
+  const windows=await s.run('gui_list_windows',{lease});
+  assert.equal(windows.ok,true);
+  assert.deepEqual(s.calls.map(c=>c.action),['status','status','listWindows']);
+  await assert.rejects(s.run('gui_focus_window',{lease,frame:'unused',handle:'1'}),/GUI_CAPABILITY_DISABLED/);
+  await assert.rejects(s.run('gui_mouse_click',{lease,frame:'unused',x:1,y:1}),/GUI_CAPABILITY_DISABLED/);
+  assert.deepEqual(s.calls.map(c=>c.action),['status','status','listWindows']);
+  await s.run('gui_session_end',{lease});
+});
+test('window enumeration must be explicitly permitted without legacy focus grant',async()=>{
+  const s=setup();
+  const gui=s.ctx.config.powerMode.guiControl;
+  gui.allowWindowEnumeration=false;
+  gui.allowWindowFocus=false;
+  const {lease}=await s.run('gui_session_begin',{mode:'observe'});
+  await assert.rejects(s.run('gui_list_windows',{lease}),/GUI_CAPABILITY_DISABLED/);
+  assert.deepEqual(s.calls.map(c=>c.action),['status']);
+  await s.run('gui_session_end',{lease});
+});
+test('legacy allowWindowFocus true preserves read-only window listing while migration is pending',async()=>{
+  const s=setup();
+  delete s.ctx.config.powerMode.guiControl.allowWindowEnumeration;
+  const {lease}=await s.run('gui_session_begin',{mode:'observe'});
+  assert.equal((await s.run('gui_list_windows',{lease})).ok,true);
+  assert.equal((await s.run('gui_status')).policy.allowWindowEnumeration,true);
+  await s.run('gui_session_end',{lease});
+});
 test('mouse permission cannot be escalated to keyboard via extra action', async () => {
   const s=setup(); const a=await prepared(s); s.ctx.config.powerMode.guiControl.allowKeyboard=false;
   await assert.rejects(s.run('gui_mouse_move',{...a,x:0,y:0,action:'typeText',text:'NO'}),/GUI_INVALID/);
