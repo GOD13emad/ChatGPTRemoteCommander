@@ -27,7 +27,8 @@ export function createOwnerWorkspaceReadOnlyProxy({
    try{primary=await primaryStatus();}catch{return {handled:false};}
    if(primary?.enabled!==true||primary.available!==false||
       primary.blocked===true||primary.uncertain===true||
-      primary.incidentPending===true||primary.incidentStoreUnavailable===true)
+      primary.incidentPending===true||primary.incidentStoreUnavailable===true||
+      primary.reason==='NATIVE_OUTCOME_UNCERTAIN_RESTART_REQUIRED')
      return {handled:false};
    const secret=(await readFileImpl(policy.authFile,'utf8')).trim();
    if(!AUTH.test(secret))error('AUTH_INVALID');
