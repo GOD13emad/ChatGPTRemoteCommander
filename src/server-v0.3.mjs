@@ -9,7 +9,7 @@ import { canonicalizeRoots } from './security-v0.3.mjs';
 import { audit, listDirectory, prepareProjectCommand, readText, runProjectCommand, writeText } from './tools-v0.3.mjs';
 import { executePowerTool, powerToolDefinitions, prepareDeferredPowerMutation, prepareShellCommand } from './power-tools-v0.3.mjs';
 import { executeGuiTool, guiToolDefinitions } from './gui-tools-windows.mjs';
-import { createWorkspaceTargetTools, workspaceTargetDefinitions } from './workspace-target-tools.mjs';
+import { createWorkspaceTargetTools, workspaceTargetDefinitions, workspaceOwnerRequestContext } from './workspace-target-tools.mjs';
 import { createOwnerGuiReadOnlyProxy } from './gui-owner-delegation.mjs';
 import { executeBrowserTool, browserToolDefinitions, reapBrowserOrphans } from './browser-tools.mjs';
 import { lockStats } from './locks.mjs';
@@ -565,10 +565,13 @@ async function executeToolEffect(name, args, delegationContext = {}) {
         return result;
       }
       if (name.startsWith('workspace_target_')) {
+        // A read-only list still opens/closes the owner's short-lived observe lease.
+        // Give both delegated subcalls one request-scoped id; never reuse a fixed id across chats.
+        const ownerRequestContext=workspaceOwnerRequestContext(delegationContext,args);
         const adapter=createWorkspaceTargetTools({
           bindings:workspaceTargetBindings,
           gui:async(tool,input)=>{
-            const proxy=ownerGuiProxy ? await ownerGuiProxy.execute(tool,input,delegationContext) : {handled:false};
+            const proxy=ownerGuiProxy ? await ownerGuiProxy.execute(tool,input,ownerRequestContext) : {handled:false};
             return proxy.handled ? proxy.value : executeGuiTool(ctx,tool,input);
           }
         });
