@@ -36,5 +36,15 @@ if($Action -eq 'Probe'){
   $payload=[ordered]@{schema=1;requestId=$RequestId;status='OWNER_WINDOWS_ENUMERATED';action=$Action;sessionId=$proc.SessionId;identity=$identity.Name;windows=$entries}
 }
 # Machine accounts may read the receipt for dispatch; no passwords, cookies, titles or tokens.
-$payload | ConvertTo-Json -Compress -Depth 6 | Set-Content -LiteralPath $receipt -Encoding utf8 -NoNewline
+# CreateNew is atomic: concurrent calls with the same RequestId can never overwrite a receipt.
+# Preserve an incomplete receipt on a write failure; a retry must be reconciled, not replayed.
+$json=$payload | ConvertTo-Json -Compress -Depth 6
+$bytes=[Text.UTF8Encoding]::new($false).GetBytes($json)
+$file=[IO.File]::Open($receipt,[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::None)
+try {
+  $file.Write($bytes,0,$bytes.Length)
+  $file.Flush($true)
+} finally {
+  $file.Dispose()
+}
 Write-Output "OWNER_WORKSPACE_RECEIPT_CREATED"
