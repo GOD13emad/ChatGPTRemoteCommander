@@ -9,6 +9,7 @@ import { canonicalizeRoots } from './security-v0.3.mjs';
 import { audit, listDirectory, prepareProjectCommand, readText, runProjectCommand, writeText } from './tools-v0.3.mjs';
 import { executePowerTool, powerToolDefinitions, prepareDeferredPowerMutation, prepareShellCommand } from './power-tools-v0.3.mjs';
 import { executeGuiTool, guiToolDefinitions } from './gui-tools-windows.mjs';
+import { createWorkspaceTargetTools, workspaceTargetDefinitions } from './workspace-target-tools.mjs';
 import { createOwnerGuiReadOnlyProxy } from './gui-owner-delegation.mjs';
 import { executeBrowserTool, browserToolDefinitions, reapBrowserOrphans } from './browser-tools.mjs';
 import { lockStats } from './locks.mjs';
@@ -29,7 +30,7 @@ import {
 
 let workflowTools = null;
 let browserCompanionMonitor = null;
-const VERSION = '0.11.0-dev.15';
+const VERSION = '0.11.0-dev.16';
 const MODERN_VERSION = '2026-07-28';
 const LEGACY_VERSIONS = ['2025-11-25', '2025-06-18', '2025-03-26'];
 const TASKS_EXTENSION = 'io.modelcontextprotocol/tasks';
@@ -239,7 +240,8 @@ const TOOLS = [
   ...notionMcpTools.definitions,
   ...powerToolDefinitions,
   ...(BROWSER_ENABLED ? browserToolDefinitions : []),
-  ...(GUI_ENABLED ? guiToolDefinitions : [])
+  ...(GUI_ENABLED ? guiToolDefinitions : []),
+  ...(GUI_ENABLED ? workspaceTargetDefinitions : [])
 ];
 
 const AUTO_DEFERRED_MUTATIONS = new Set(['copy_path', 'move_path', 'delete_path']);
@@ -558,6 +560,17 @@ async function executeToolEffect(name, args, delegationContext = {}) {
       if (name.startsWith('browser_')) {
         const result = await executeBrowserTool(ctx, name, args);
         await audit(ctx, { action: name, ok: true, powerMode: true, browserControl: true });
+        return result;
+      }
+      if (name.startsWith('workspace_target_')) {
+        const adapter=createWorkspaceTargetTools({
+          gui:async(tool,input)=>{
+            const proxy=ownerGuiProxy ? await ownerGuiProxy.execute(tool,input,delegationContext) : {handled:false};
+            return proxy.handled ? proxy.value : executeGuiTool(ctx,tool,input);
+          }
+        });
+        const result=await adapter.execute(name,args);
+        await audit(ctx,{action:name,ok:true,workspaceTarget:true,powerMode:true});
         return result;
       }
       if (name.startsWith('gui_')) {
