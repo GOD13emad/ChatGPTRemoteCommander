@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createWorkspaceTargetTools,workspaceTargetDefinitions} from '../src/workspace-target-tools.mjs';
+import {createWorkspaceTargetTools,workspaceTargetDefinitions,workspaceOwnerRequestContext} from '../src/workspace-target-tools.mjs';
 
 function mock({windows=[{processId:333,handle:'444',title:'Science - Mozilla Firefox',wmClass:'firefox_firefox',focused:true}],allowInput=false}={}){
  const calls=[];
@@ -81,4 +81,17 @@ test('one process-scoped lease registry persists across adapter instances but ca
  const l=await a.execute('workspace_target_open',{processId:333,handle:'444',mode:'observe'});
  assert.equal((await b.execute('workspace_target_snapshot',{processId:333,handle:'444',lease:l.lease})).frame,'shared-frame');
  await assert.rejects(createWorkspaceTargetTools({gui}).execute('workspace_target_snapshot',{processId:333,handle:'444',lease:l.lease}),/WORKSPACE_TARGET_LEASE_UNBOUND_OR_EXPIRED/);
+});
+
+test('owner read-only list derives a distinct bounded request ID for delegated observe lease',()=>{
+ const one=workspaceOwnerRequestContext({}, {},()=> '11111111-1111-4111-8111-111111111111');
+ const two=workspaceOwnerRequestContext({}, {},()=> '22222222-2222-4222-8222-222222222222');
+ assert.equal(one.requestId,'workspace-11111111-1111-4111-8111-111111111111');
+ assert.notEqual(one.requestId,two.requestId);
+});
+test('owner delegated mutation preserves existing receipt ID and rejects invalid IDs',()=>{
+ const v=workspaceOwnerRequestContext({requestId:'stable-native-request-1'}, {requestId:'different-id'});
+ assert.equal(v.requestId,'stable-native-request-1');
+ assert.deepEqual(workspaceOwnerRequestContext({}, {requestId:'provided-rpc-call'}),{requestId:'provided-rpc-call'});
+ assert.throws(()=>workspaceOwnerRequestContext({}, {},()=> 'invalid request id'),/WORKSPACE_TARGET_REQUEST_ID_INVALID/);
 });
