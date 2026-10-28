@@ -33,6 +33,13 @@ hasAll(updater, [
   "finalize-workflow-schema.mjs"
 ], 'auto-update-windows.ps1');
 
+// The staged candidate's MCP system_status can be delayed by Windows cold-load
+// I/O. Allow bounded warm-up, but require both full staged Doctor checks.
+const candidateDoctorLines = updater.split('\n').filter(line=>line.includes("'tools\\doctor.mjs'"));
+if(candidateDoctorLines.length!==2 ||
+   candidateDoctorLines.some(line=>!line.includes('--timeout-ms 15000 --json')))
+  throw new Error('Windows candidate doctor must use explicit bounded 15-second readiness probes');
+
 const enable = read('enable-autostart.ps1');
 if (!enable.includes("^tunnel_[0-9a-f]{32}$")) throw new Error('Windows enrollment must enforce official tunnel ID format');
 hasAll(enable, [
@@ -171,8 +178,24 @@ hasAll(account, [
   "HealthPort"
 ], 'connect-chatgpt-account.ps1');
 
+const profileManager=read('desktop/profile-manager-windows.ps1');
+hasAll(profileManager, [
+  'Read-TunnelBackendPort',
+  'Shared (inherited)',
+  'Shared (unverified)',
+  'Headless worker (read-only)',
+  'Assert-EditableSelection',
+  'Selected profile is no longer uniquely present.',
+  'Profile route or permission boundary changed. Refresh first.',
+  'Profile policy changed after selection. Refresh first.',
+  '[void](Assert-EditableSelection $script:selected @(Get-Profiles) $script:selectedFingerprint)'
+], 'Windows profile manager fail-closed multi-user contract');
+if (!profileManager.includes("throw 'Shared account, headless worker, or unknown profile is read-only.'")) {
+  throw new Error('Windows profile manager cannot mutate inherited account tunnels or headless workers');
+}
+
 if (process.platform === 'win32') {
-  for (const script of ['autostart-windows.ps1','windows-supervisor-runtime.ps1','enable-boot-recovery.ps1','handoff-user-session-windows.ps1','disable-boot-recovery.ps1']) {
+  for (const script of ['autostart-windows.ps1','windows-supervisor-runtime.ps1','enable-boot-recovery.ps1','handoff-user-session-windows.ps1','disable-boot-recovery.ps1','desktop/profile-manager-windows.ps1']) {
     const parse = spawnSync('pwsh.exe', ['-NoLogo','-NoProfile','-Command',
       '$t=$null;$e=$null;[void][System.Management.Automation.Language.Parser]::ParseFile("'+script+'",[ref]$t,[ref]$e);if($e.Count){$e|ForEach-Object{$_.Message};exit 1}'],
       { encoding:'utf8', windowsHide:true });

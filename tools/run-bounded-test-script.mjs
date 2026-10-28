@@ -224,6 +224,28 @@ export function isolateWindowsMcpConformanceRegression(command) {
   return 'node --test --test-concurrency=1 '+file+' && '+parts.join(' && ');
 }
 
+/**
+ * R157: run the original native scheduler-autotick test file in its own cold
+ * Windows process. Hosted NoPromote failed this exact spec in the late bulk
+ * batch (R470), while the identical test passed on the Windows owner host.
+ * No test, assertion, deadline or security gate is relaxed or skipped.
+ */
+export function isolateWindowsAutotickRegression(command) {
+  if(typeof command!=='string'||!command)throw Error('CI_AUTOTICK_COMMAND_INVALID');
+  const file='test/project-autotick-noncodex.test.mjs';
+  if(command.split(file).length-1!==1)throw Error('CI_AUTOTICK_CARDINALITY');
+  const parts=command.split(' && ');
+  const index=parts.findIndex(part=>part.startsWith('node --test --test-concurrency=1 ')&&part.includes(' '+file));
+  if(index<0)throw Error('CI_AUTOTICK_BATCH_NOT_FOUND');
+  const before=parts[index],after=before.replace(' '+file,'');
+  if(after===before||after.includes(file))throw Error('CI_AUTOTICK_ISOLATION_INVALID');
+  if(after==='node --test --test-concurrency=1')parts.splice(index,1);
+  else if(!after.startsWith('node --test --test-concurrency=1 test/'))
+    throw Error('CI_AUTOTICK_ISOLATION_INVALID');
+  else parts[index]=after;
+  return 'node --test --test-concurrency=1 '+file+' && '+parts.join(' && ');
+}
+
 export function isolateWindowsWorkflowPlanRegression(command) {
   if(typeof command!=='string'||!command)throw new Error('CI_WORKFLOW_PLAN_COMMAND_INVALID');
   const file='test/workflow-plan.test.mjs';
@@ -336,6 +358,7 @@ function run(){
     command=isolateWindowsMcpConformanceRegression(command);
     command=isolateWindowsStartupReadinessRegressions(command);
     command=prioritizeWindowsAdaptiveCold(command);
+    command=isolateWindowsAutotickRegression(command);
   }
   const phases=process.platform==='win32'&&args.script==='test'&&process.env.RC_QUALIFICATION_RUN_ID
     ?splitWindowsQualificationCommands(command):null;

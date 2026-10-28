@@ -1,3 +1,18 @@
+# 0.11.0-dev.14 — isolate hosted Windows R157 native autotick regression (2026-10-28; development / NoPromote)
+
+- Exact R470 CI artifact for dev.13 identifies one failed native non-Codex autotick test under loaded hosted Windows R157 (447 pass / 1 fail / 16 skip); identical test passes on owner Windows in isolation.
+- Schedule the unchanged test file once in a dedicated cold Windows qualification process before high-volume groups; preserve the test body, deadlines, full coverage, fail-fast, NoPromote and production permissions.
+- New regression checks reject missing/duplicated coverage. Hosted exact-SHA Windows R157 and full fleet acceptance remain pending.
+
+# 0.11.0-dev.13 — converge per-host profile/UI and safe tunnel behavior (2026-10-28; DRAFT / NoPromote)
+
+- Preserve and consolidate **existing, verified-local** five-host source deltas into the **single** release train. On both Windows Servers, the identical owner-local `profile-manager-windows.ps1` adds safe distinct inherited/shared/headless inventory, fail-closed edit capability checks against fresh route and config SHA, and refuses editing unrelated headless worker. Import exact common source rather than deleting it during Core update.
+- On Aliemad Linux, owner-local read-only GTK Control Center distinguishes owner GUI worker, default Core Browser/operation observations, and Saeed account tunnel; it prevents unverified cross-profile readiness and carries seven additional focused assertions. Preserve full 15-test native Linux suite and render contract.
+- On MMZ Linux, preserve the existing rejected-tunnel quarantine file when fallback is healthy, rather than silently unquarantining it on success. Import the exact 2-line guard; no broadened tunnel privilege.
+- Native headless Emad Windows dev.12 `NoPromote` passed full check+test but the candidate Doctor's `system_status` exceeded its 5s cold-start fetch timeout, while tools/list returned 104 tools and health was reachable. Use an explicit bounded 15s **only** for diagnostic and final staging Doctor requests (under its existing 30s maximum); preserve every correctness assertion, fail-closed exit, user permission and ordinary runtime/tool time limits. Static guard requires both calls. Exact-head Windows/server validation remains OPEN.
+- Do not copy the older aliemad-local `auto-update-linux.sh` version parser back into the current shared source: shared source already contains the stricter dev/rc-aware pre-stage monotonicity guard. No access elevation, credential changes, ChatGPT Work execution or release approval. Local live app trees remain untouched.
+- New dev.13 exact-source candidate is NoPromote; require independent CI, native five-host check/test, profile isolation and updater acceptance before source merge/installer cutover. No deployed version or Stable claim.
+
 # 0.11.0-dev.12 — isolate native Windows check-gate HTTP startup fixtures (2026-10-28; DRAFT / NoPromote)
 
 - Production-like Windows Server Emad exact dev.11 updater `check:qualification` failed in `workflow-http.test.mjs` on a 35s health timeout during loaded sequential qualification. Same source on that host passed the exact original test `4/4` in a standalone process in ~8s. Hosted Windows R157/R173 and two native Windows 43/43 `test:qualification` passes remain valid for dev.11 only.
