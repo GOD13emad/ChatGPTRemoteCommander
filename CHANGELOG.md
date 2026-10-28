@@ -1,3 +1,9 @@
+# 0.11.0-dev.15 — reconcile fifth MMZ transfer peer into unified Core (2026-10-28; development / NoPromote)
+
+- Direct comparison of installed Windows Emad + MMZ Linux transfer candidates to canonical dev.14 found one missing enum member: MMZ. Merge missing peer into existing Core transfer-tools, with no duplicate transfer engine or legacy candidate file.
+- Preserve original four peers and explicitly verify five-peer schema. Security allowlists, transfer hashes, destination collision protection and NoPromote policy unchanged.
+- Historical GUI takeover candidate is not activated: it expands cross-session authority and requires separate owner consent and negative tests. CI, native fleet promotion and Stable remain gated.
+
 # 0.11.0-dev.14 — isolate hosted Windows R157 native autotick regression (2026-10-28; development / NoPromote)
 
 - Exact R470 CI artifact for dev.13 identifies one failed native non-Codex autotick test under loaded hosted Windows R157 (447 pass / 1 fail / 16 skip); identical test passes on owner Windows in isolation.
