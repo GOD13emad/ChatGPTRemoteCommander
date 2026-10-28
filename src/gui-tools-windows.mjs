@@ -79,6 +79,7 @@ export function createGuiController({ platform = process.platform, now = () => p
     if (name === 'gui_status' && (!enabled || blocked || incidentStoreUnavailable)) return {
       enabled, available: false, inputAvailable: false, blocked, uncertain: uncertainNow,
       busy, leased: !!current(), incidentStoreUnavailable, incidentPending: !!pendingIncident,
+      ...(incidentStoreUnavailable ? {} : await incidentStore.recoveryState?.()),
       reason: !supported ? 'PLATFORM_BACKEND_UNSUPPORTED' : blocked ? 'LOCAL_GUI_STOP' :
         incidentStoreUnavailable ? 'GUI_INCIDENT_STORAGE_UNAVAILABLE' : 'GUI_DISABLED'
     };
@@ -144,7 +145,8 @@ export function createGuiController({ platform = process.platform, now = () => p
       if (name === 'gui_status') {
         const status = await invoke({ action: 'status', stopFile });
         if (status?.ok !== true) throw guiError(status?.error || 'GUI_NATIVE_FAILED');
-        return { ...status, enabled, busy: false, leased: !!current(), backend: status.backend ?? (platform === 'win32' ? 'windows-user32-gdi' : 'gnome-shell-wayland'), policy: {
+        return { ...status, enabled, busy: false, leased: !!current(),
+          ...await incidentStore.recoveryState?.(), backend: status.backend ?? (platform === 'win32' ? 'windows-user32-gdi' : 'gnome-shell-wayland'), policy: {
           allowScreenshot: cfg.allowScreenshot === true, allowMouse: cfg.allowMouse === true,
           allowKeyboard: cfg.allowKeyboard === true, allowWindowFocus: cfg.allowWindowFocus === true,
           defaultSessionMode: 'observe', explicitTakeoverRequired: true,
@@ -245,5 +247,19 @@ export function createGuiController({ platform = process.platform, now = () => p
   }
   return { execute };
 }
-const controller = createGuiController();
-export async function executeGuiTool(ctx, name, input) { return controller.execute(ctx, name, input); }
+// Optional local owner review must not add an eager dependency to minimal
+// Core fixtures or profiles that did not opt in. One promise owns initialization
+// so simultaneous first calls cannot create independent desktop leases.
+let controllerPromise;
+export async function executeGuiTool(ctx, name, input) {
+  controllerPromise ??= (async () => {
+    if (process.platform === 'win32' && ctx.config?.guiOwnerRecovery?.enabled === true) {
+      const {createOwnerReviewedGuiStore} = await import('./gui-owner-recovery-store.mjs');
+      return createGuiController({incidentStore:createOwnerReviewedGuiStore({
+        reviewReceiptName:'gui-owner-recovery-v1-026.json'
+      })});
+    }
+    return createGuiController();
+  })();
+  return (await controllerPromise).execute(ctx, name, input);
+}
