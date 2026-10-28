@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
 import {createWorkspaceTargetTools,workspaceTargetDefinitions,workspaceOwnerRequestContext} from '../src/workspace-target-tools.mjs';
 
 function mock({windows=[{processId:333,handle:'444',title:'Science - Mozilla Firefox',wmClass:'firefox_firefox',focused:true}],allowInput=false}={}){
@@ -128,4 +129,13 @@ test('native observe-only lease cannot be relabeled as takeover by Workspace ada
  const api=createWorkspaceTargetTools({gui,bindings:new Map()});
  await assert.rejects(api.execute('workspace_target_open',{processId:9,handle:'200',mode:'takeover',explicitUserAuthorization:'Owner approved test action'}),/WORKSPACE_TARGET_MODE_NOT_GRANTED/);
  assert.deepEqual(calls,['gui_status','gui_session_begin','gui_session_end']);
+});
+
+test('Windows native read-only discovery reports OS process identity and foreground HWND',()=>{
+ const helper=readFileSync(new URL('../tools/gui-control.ps1',import.meta.url),'utf8');
+ assert.match(helper,/\$foreground=\[RcGuiNative\]::Foreground\(\)/);
+ assert.match(helper,/Get-Process -Id \$processId -ErrorAction Stop/);
+ assert.match(helper,/ProcessName=\$names\[\$key\]/);
+ assert.match(helper,/Focused=\(\[string\]\$entry\.Handle -ceq \$foreground\)/);
+ assert.match(helper,/catch \{ \} # A protected\/exiting process never gains a guessed name\./);
 });
