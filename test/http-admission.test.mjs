@@ -27,7 +27,7 @@ test('real candidate HTTP dispatcher blocks browser origins and keeps local JSON
     await fs.writeFile(path.join(root,'src','delivery-store.mjs'),'import path from "node:path"; export const deliveryLocation=()=>({directory:path.join(path.dirname(process.env.REMOTE_COMMANDER_CONFIG),".delivery"),scope:"stub",forbiddenRoots:[]}); export class DeliveryStore { constructor(location){this.directory=location.directory;this.scope=location.scope;} health(){return {durable:true,schema:1,pending:0,deadLetter:0};} beacon(){return {pending:0,deadLetter:0,items:[],hostWakeAvailable:false,identityBoundary:"TRUSTED_PROFILE_NOT_AUTHENTICATED_CHAT"};} }');
     await fs.writeFile(path.join(root,'src','delivery-tools.mjs'),'export const createDeliveryTools=store=>({definitions:[],status:()=>store.health(),execute:async()=>({stub:true})});');
     await fs.writeFile(path.join(root,'src','mutation-idempotency.mjs'),'export class MutationIdempotencyStore { constructor(){} status(){return {enabled:true,durable:true,rawArgumentsStored:false,states:{}};} async execute(_request,effect){return effect();} }');
-    await fs.writeFile(path.join(root,'config.json'),JSON.stringify({host:'127.0.0.1',port,allowedRoots:[root],allowedPrograms:[],asyncOperations:{enabled:true,stateDir:path.join(root,'operations'),deliveryReconcileMs:60000,deliveryReconcileBatch:1},powerMode:{enabled:true,fullFilesystem:true,guiControl:{enabled:false}}}));
+    await fs.writeFile(path.join(root,'config.json'),JSON.stringify({host:'127.0.0.1',port,allowedRoots:[root],allowedPrograms:[],asyncOperations:{enabled:true,stateDir:path.join(root,'operations'),deliveryReconcileMs:60000,deliveryReconcileBatch:1},powerMode:{enabled:true,fullFilesystem:true,guiControl:{enabled:true}}}));
     child=spawn(process.execPath,[path.join(root,'src','server-v0.3.mjs')],{env:{...process.env,REMOTE_COMMANDER_CONFIG:path.join(root,'config.json')},stdio:['ignore','pipe','pipe']});
     let stderr='';child.stderr.on('data',c=>stderr+=c);
     let alive=false;
@@ -48,6 +48,12 @@ test('real candidate HTTP dispatcher blocks browser origins and keeps local JSON
       body:JSON.stringify({jsonrpc:'2.0',id:11,method:'tools/list',params:{}})
     });
     const listed=await listResponse.json();
+    for(const name of ['workspace_target_list','workspace_target_open','workspace_target_snapshot','workspace_target_focus','workspace_target_click','workspace_target_type','workspace_target_end']){
+      const t=listed.result.tools.find(tool=>tool.name===name);
+      assert.ok(t,name+' must be advertised over real MCP when GUI is enabled');
+      assert.equal(t.inputSchema.additionalProperties,false);
+    }
+    assert.equal(listed.result.tools.find(t=>t.name==='workspace_target_type').annotations.destructiveHint,true);
     const legacyListTool=listed.result.tools.find(tool=>tool.name==='list_directory');
     const legacyRunTool=listed.result.tools.find(tool=>tool.name==='run_project_command');
     assert.match(legacyListTool.description,/outside configured allowedRoots/);
