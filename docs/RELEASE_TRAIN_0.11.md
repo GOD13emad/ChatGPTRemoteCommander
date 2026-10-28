@@ -1,6 +1,10 @@
 # Remote Commander suite — 0.11 release train
 **Opened:** 2026-10-27 · **Status:** INTEGRATION CANDIDATE / NO PUBLIC RELEASE / NO HOST PROMOTION
 
+## 0.11.0-dev.14 — targeted R157 hosted Windows autotick scheduling correction
+
+The verified GitHub R470 diagnostic for dev.13 identifies a single native non-Codex command-provider autotick test failure under loaded Windows R157; the identical isolated test passes on Windows Emad. Run the unchanged test file exactly once before high-volume Windows qualification groups. No test skipping, timeout relaxation, auto elevation, GUI capability change or production promotion. The version remains development / NoPromote until exact-SHA hosted R157 and component/fleet acceptance pass.
+
 ## 0.11.0-dev.13 — preserve per-host local GUI, profile and tunnel fixes
 
 The active installed 0.10.26 trees on Aliemad Linux, MMZ Linux and two Windows servers contain *substantive owner-local tracked differences*. Bring matching owner-local source into the one upstream release branch: Windows shared-account inherited/read-only enforcement and owner policy SHA guard, Linux Control Center multi-profile evidence, and MMZ quarantine preservation. Do not override current common dev-aware updater monotonicity with older installed parser code. Full test suites, per-user/profile role isolation and native installation/cutover receipts are required independently. NoPromote until accepted.

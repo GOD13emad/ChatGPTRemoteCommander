@@ -5,7 +5,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { boundNodeTestConcurrency, parseQualificationArgs, prioritizeSensitiveQualificationCommands, isolateWindowsLeaseRegression, isolateWindowsTimingSensitiveRegressions, isolateWindowsProcessTreeRegression, isolateWindowsAgentHttpRegression, isolateWindowsTransferMeshHttpRegression, isolateWindowsWorkflowPlanRegression, isolateWindowsAsyncHttpRegression, isolateWindowsMcpConformanceRegression, isolateWindowsStartupReadinessRegressions, prioritizeWindowsAdaptiveCold, markIsolatedQualificationPhases, splitWindowsQualificationCommands } from '../tools/run-bounded-test-script.mjs';
+import { boundNodeTestConcurrency, parseQualificationArgs, prioritizeSensitiveQualificationCommands, isolateWindowsLeaseRegression, isolateWindowsTimingSensitiveRegressions, isolateWindowsProcessTreeRegression, isolateWindowsAgentHttpRegression, isolateWindowsTransferMeshHttpRegression, isolateWindowsWorkflowPlanRegression, isolateWindowsAsyncHttpRegression, isolateWindowsMcpConformanceRegression, isolateWindowsAutotickRegression, isolateWindowsStartupReadinessRegressions, prioritizeWindowsAdaptiveCold, markIsolatedQualificationPhases, splitWindowsQualificationCommands } from '../tools/run-bounded-test-script.mjs';
 
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const read=rel=>fs.readFileSync(path.join(root,rel),'utf8');
@@ -72,6 +72,23 @@ test('bounded test wrapper rejects unsafe configuration',()=>{
   assert.throws(()=>parseQualificationArgs(['--script','audit','--concurrency','2']),/CI_TEST_SCRIPT_NOT_ALLOWED/);
 });
 
+
+test('R157 schedules native autotick once outside the heavy Windows batch',()=>{
+  const pkg=JSON.parse(read('package.json'));
+  const original=prioritizeSensitiveQualificationCommands(
+    boundNodeTestConcurrency(pkg.scripts.test,1).command);
+  const file='test/project-autotick-noncodex.test.mjs';
+  const isolated=isolateWindowsAutotickRegression(original);
+  assert.equal(isolated.split(file).length-1,1,'exactly one original autotick test');
+  assert.equal(isolated.split(' && ')[0],'node --test --test-concurrency=1 '+file);
+  assert.equal(isolated.split(' && ').length,original.split(' && ').length+1);
+  assert.ok(isolated.includes('test/project-engine-integration.test.mjs'));
+  assert.equal(isolateWindowsAutotickRegression(isolated),isolated,'already isolated scheduling is idempotent');
+  assert.throws(()=>isolateWindowsAutotickRegression(original.replace(' '+file,'')),/CI_AUTOTICK_CARDINALITY/);
+  assert.throws(()=>isolateWindowsAutotickRegression(original+' && node --test --test-concurrency=1 '+file),/CI_AUTOTICK_CARDINALITY/);
+  const code=read('tools/run-bounded-test-script.mjs');
+  assert.ok(code.includes('command=isolateWindowsAutotickRegression(command);'));
+});
 
 test('hosted Windows priority mode runs scheduler-sensitive isolated fixtures before the bulk qualification batch',()=>{
   const pkg=JSON.parse(read('package.json'));

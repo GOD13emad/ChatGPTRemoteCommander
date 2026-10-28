@@ -1,3 +1,9 @@
+# 0.11.0-dev.14 — isolate hosted Windows R157 native autotick regression (2026-10-28; development / NoPromote)
+
+- Exact R470 CI artifact for dev.13 identifies one failed native non-Codex autotick test under loaded hosted Windows R157 (447 pass / 1 fail / 16 skip); identical test passes on owner Windows in isolation.
+- Schedule the unchanged test file once in a dedicated cold Windows qualification process before high-volume groups; preserve the test body, deadlines, full coverage, fail-fast, NoPromote and production permissions.
+- New regression checks reject missing/duplicated coverage. Hosted exact-SHA Windows R157 and full fleet acceptance remain pending.
+
 # 0.11.0-dev.13 — converge per-host profile/UI and safe tunnel behavior (2026-10-28; DRAFT / NoPromote)
 
 - Preserve and consolidate **existing, verified-local** five-host source deltas into the **single** release train. On both Windows Servers, the identical owner-local `profile-manager-windows.ps1` adds safe distinct inherited/shared/headless inventory, fail-closed edit capability checks against fresh route and config SHA, and refuses editing unrelated headless worker. Import exact common source rather than deleting it during Core update.
