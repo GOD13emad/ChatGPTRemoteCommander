@@ -1200,7 +1200,7 @@ try{
     $p=Start-Backend $stage.Dir $cfg $stateDir
     $currentCandidate=[pscustomobject]@{Profile=$t.Profile;Port=$port;Process=$p;ConfigPath=$cfg}
     $h=Wait-Health $port $stage.Version $sha $t.Profile
-    & node.exe (Join-Path $stage.Dir 'tools\doctor.mjs') --url "http://127.0.0.1:$port/mcp" --expected-device $device --expected-version $stage.Version --config $cfg --json
+    & node.exe (Join-Path $stage.Dir 'tools\doctor.mjs') --url "http://127.0.0.1:$port/mcp" --expected-device $device --expected-version $stage.Version --config $cfg --timeout-ms 15000 --json
     if($LASTEXITCODE-ne 0){throw "CANDIDATE_DOCTOR_FAIL profile=$($t.Profile)"}
     $status=Invoke-Mcp $port 'system_status'
     $expected=Read-Json $cfg
@@ -1245,7 +1245,7 @@ try{
     $p=Start-Backend $stage.Dir $finalCfg $stateDir
     $currentCandidate=[pscustomobject]@{Profile=$t.Profile;Port=$port;Process=$p;ConfigPath=$finalCfg}
     [void](Wait-Health $port $stage.Version $finalSha $t.Profile)
-    & node.exe (Join-Path $stage.Dir 'tools\doctor.mjs') --url "http://127.0.0.1:$port/mcp" --expected-device $device --expected-version $stage.Version --config $finalCfg --json
+    & node.exe (Join-Path $stage.Dir 'tools\doctor.mjs') --url "http://127.0.0.1:$port/mcp" --expected-device $device --expected-version $stage.Version --config $finalCfg --timeout-ms 15000 --json
     if($LASTEXITCODE-ne 0){throw "FINAL_CANDIDATE_DOCTOR_FAIL profile=$($t.Profile)"}
     if((Read-Json $finalCfg).durableWorkflows.enabled-eq $true){
       $wf=Invoke-Mcp $port 'workflow_health'

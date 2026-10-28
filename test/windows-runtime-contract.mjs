@@ -33,6 +33,13 @@ hasAll(updater, [
   "finalize-workflow-schema.mjs"
 ], 'auto-update-windows.ps1');
 
+// The staged candidate's MCP system_status can be delayed by Windows cold-load
+// I/O. Allow bounded warm-up, but require both full staged Doctor checks.
+const candidateDoctorLines = updater.split('\n').filter(line=>line.includes("'tools\\doctor.mjs'"));
+if(candidateDoctorLines.length!==2 ||
+   candidateDoctorLines.some(line=>!line.includes('--timeout-ms 15000 --json')))
+  throw new Error('Windows candidate doctor must use explicit bounded 15-second readiness probes');
+
 const enable = read('enable-autostart.ps1');
 if (!enable.includes("^tunnel_[0-9a-f]{32}$")) throw new Error('Windows enrollment must enforce official tunnel ID format');
 hasAll(enable, [
