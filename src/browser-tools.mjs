@@ -97,7 +97,8 @@ export function createBrowserController({invoke=defaultInvoke,closeInvoke=defaul
   if(requireExistingUserSession&&name!=='browser_session_end'){
    const isolatedBegin=allowOwnedIsolatedSession&&name==='browser_session_begin'&&input.mode==='isolated';
    const isolatedContinuation=allowOwnedIsolatedSession&&session?.isolated===true&&
-     name!=='browser_session_begin'&&name!=='browser_foreground_begin';
+     name!=='browser_session_begin'&&name!=='browser_foreground_begin'&&
+     name!=='browser_foreground_requirement';
    if(!isolatedBegin&&!isolatedContinuation)
     throw browserError('BROWSER_EXISTING_USER_SESSION_REQUIRED_USE_WORKSPACE');
   }
