@@ -75,6 +75,10 @@ export function createBrowserController({invoke=defaultInvoke,closeInvoke=defaul
   const input=validateBrowserInput(name,raw);
   const cfg=ctx.config?.powerMode?.browserControl??{};
   const enabled=ctx.config?.powerMode?.enabled===true&&cfg.enabled===true;
+  const requireExistingUserSession=cfg.requireExistingUserSession!==false;
+  // An explicit opt-in enables only ephemeral Commander-owned browser profiles.
+  // It never attaches to an existing user's browser or relaxes desktop consent.
+  const allowOwnedIsolatedSession=requireExistingUserSession&&cfg.allowOwnedIsolatedSession===true;
   if(name==='browser_status'){
    let native={ok:true,available:false,backend:null,active:false};
    try{native=await invoke({action:'status',executable:cfg.executable});}catch(error){native={ok:false,available:false,backend:null,active:false,reason:error.browserCode??'BROWSER_HELPER_UNAVAILABLE'};}
@@ -82,12 +86,22 @@ export function createBrowserController({invoke=defaultInvoke,closeInvoke=defaul
    return {...native,enabled,busy,leased:!!session,uncertain,sessionResetRequired:chatMutationUncertain,policy:{
     backgroundFirst:true,headlessOwnedProfileOnly:true,userDesktopTouchedByDefault:false,
     savedPasswordExtraction:false,userBrowserProfileReuse:false,
+    requireExistingUserSession,allowOwnedIsolatedSession,
+    ownerSessionRoute:requireExistingUserSession?'workspace_target_or_accessibility':'optional',
     foregroundFallback:'explicit-current-request-only',workflowBrowserAllowed:false,
     allowForegroundFallback:cfg.allowForegroundFallback===true,
     allowNavigate:cfg.allowNavigate===true,allowInput:cfg.allowInput===true,allowScreenshot:cfg.allowScreenshot===true
    }};
   }
   if(!enabled)throw browserError('BROWSER_DISABLED');
+  if(requireExistingUserSession&&name!=='browser_session_end'){
+   const isolatedBegin=allowOwnedIsolatedSession&&name==='browser_session_begin'&&input.mode==='isolated';
+   const isolatedContinuation=allowOwnedIsolatedSession&&session?.isolated===true&&
+     name!=='browser_session_begin'&&name!=='browser_foreground_begin'&&
+     name!=='browser_foreground_requirement';
+   if(!isolatedBegin&&!isolatedContinuation)
+    throw browserError('BROWSER_EXISTING_USER_SESSION_REQUIRED_USE_WORKSPACE');
+  }
   if(busy)throw browserError('BROWSER_BUSY');
   busy=true;
   try{

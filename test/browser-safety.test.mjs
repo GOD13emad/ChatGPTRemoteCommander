@@ -6,7 +6,7 @@ import { createBrowserController } from '../src/browser-tools.mjs';
 const config=()=>({instance:{profile:'default'},powerMode:{enabled:true,browserControl:{
  enabled:true,allowNavigate:true,allowInput:true,allowScreenshot:true,allowForegroundFallback:true,
  backgroundFirst:true,foregroundFallback:'explicit-current-request-only',workflowBrowserAllowed:false,
- userBrowserProfileReuse:false,savedPasswordExtraction:false
+ requireExistingUserSession:false,userBrowserProfileReuse:false,savedPasswordExtraction:false
 }}});
 function fixture(overrides={}){
  let t=0,calls=[],closed=0,failClick=false;
@@ -27,6 +27,47 @@ function fixture(overrides={}){
  const ctl=createBrowserController({invoke,closeInvoke:()=>{closed++;},now:()=>t,token:(()=>{let n=0;return()=>String(++n).padStart(48,'a');})(),...overrides});
  return {ctl,ctx:{config:config()},calls,get closed(){return closed;},failClick:()=>{failClick=true;},time:v=>{t=v;}};
 }
+test('owner existing-profile policy blocks duplicate browsers unless independently opted in',async()=>{
+ const f=fixture();delete f.ctx.config.powerMode.browserControl.requireExistingUserSession;
+ await assert.rejects(f.ctl.execute(f.ctx,'browser_session_begin',{mode:'isolated'}),
+  /BROWSER_EXISTING_USER_SESSION_REQUIRED_USE_WORKSPACE/);
+ assert.equal(f.calls.some(x=>x.action==='start'),false);
+ f.ctx.config.powerMode.browserControl.requireExistingUserSession=true;
+ f.ctx.config.powerMode.browserControl.allowOwnedIsolatedSession=true;
+ await assert.rejects(f.ctl.execute(f.ctx,'browser_session_begin',{mode:'persistent'}),
+  /BROWSER_EXISTING_USER_SESSION_REQUIRED_USE_WORKSPACE/);
+ await assert.rejects(f.ctl.execute(f.ctx,'browser_session_begin',{}),
+  /BROWSER_EXISTING_USER_SESSION_REQUIRED_USE_WORKSPACE/);
+ assert.equal(f.calls.some(x=>x.action==='start'),false);
+});
+
+test('opt-in isolated session permits only an ephemeral owner profile and never foreground takeover',async()=>{
+ const f=fixture();f.ctx.config.powerMode.browserControl.requireExistingUserSession=true;
+ f.ctx.config.powerMode.browserControl.allowOwnedIsolatedSession=true;
+ const status=await f.ctl.execute(f.ctx,'browser_status',{});
+ assert.equal(status.policy.requireExistingUserSession,true);
+ assert.equal(status.policy.allowOwnedIsolatedSession,true);
+ const session=await f.ctl.execute(f.ctx,'browser_session_begin',{mode:'isolated',ttlSeconds:60});
+ assert.equal(session.mode,'isolated');assert.equal(session.userDesktopTouched,false);
+ const started=f.calls.find(x=>x.action==='start');
+ assert.equal(started.isolated,true);
+ assert.match(started.profileDir,/isolated-/);
+ const navigated=await f.ctl.execute(f.ctx,'browser_navigate',{lease:session.lease,url:'https://example.test'});
+ assert.equal(navigated.userDesktopTouched,false);
+ await assert.rejects(f.ctl.execute(f.ctx,'browser_foreground_begin',{
+  lease:session.lease,explicitUserAuthorization:'User asked to open existing account browser'
+ }),/BROWSER_EXISTING_USER_SESSION_REQUIRED_USE_WORKSPACE/);
+ assert.equal(f.calls.some(x=>x.action==='relaunch'),false);
+ await assert.rejects(f.ctl.execute(f.ctx,'browser_foreground_requirement',{
+  lease:session.lease,reason:'saved-browser-credential',targetHost:'example.test'
+ }),/BROWSER_EXISTING_USER_SESSION_REQUIRED_USE_WORKSPACE/);
+ f.ctx.config.powerMode.browserControl.allowOwnedIsolatedSession=false;
+ await assert.rejects(f.ctl.execute(f.ctx,'browser_navigate',{
+  lease:session.lease,url:'https://example.test/after-revoke'
+ }),/BROWSER_EXISTING_USER_SESSION_REQUIRED_USE_WORKSPACE/);
+ assert.equal((await f.ctl.execute(f.ctx,'browser_session_end',{lease:session.lease})).closed,true);
+});
+
 test('background browser status advertises zero-interference and no password-store extraction',async()=>{
  const f=fixture();const s=await f.ctl.execute(f.ctx,'browser_status',{});
  assert.equal(s.available,true);assert.equal(s.policy.backgroundFirst,true);

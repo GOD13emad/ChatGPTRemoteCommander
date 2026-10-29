@@ -6,7 +6,8 @@ const html='<!doctype html><html><meta charset="utf-8"><title>RC Background Brow
 const server=http.createServer((req,res)=>{res.writeHead(200,{'content-type':'text/html; charset=utf-8'});res.end(html);});
 server.listen(0,'127.0.0.1');await once(server,'listening');
 const url='http://127.0.0.1:'+server.address().port;
-const config={instance:{profile:'native-e2e'},powerMode:{enabled:true,browserControl:{enabled:true,allowNavigate:true,allowInput:true,allowScreenshot:true,backgroundFirst:true,foregroundFallback:'explicit-current-request-only',workflowBrowserAllowed:false,userBrowserProfileReuse:false,savedPasswordExtraction:false}}};
+const ownerIsolated=process.env.RC_BROWSER_NATIVE_OWNER_ISOLATED==='1';
+const config={instance:{profile:'native-e2e'},powerMode:{enabled:true,browserControl:{enabled:true,allowNavigate:true,allowInput:true,allowScreenshot:true,backgroundFirst:true,foregroundFallback:'explicit-current-request-only',workflowBrowserAllowed:false,requireExistingUserSession:ownerIsolated,allowOwnedIsolatedSession:ownerIsolated,userBrowserProfileReuse:false,savedPasswordExtraction:false}}};
 const ctl=createBrowserController();
 let lease;
 try{
@@ -36,10 +37,18 @@ try{
   if(!after.text.includes('سلام_background_123'))throw Error('DOM_VERIFY_FAIL');
   const image=await ctl.execute({config},'browser_screenshot',{lease,format:'png',maxBytes:2097152});
   if(image.__structuredContent?.mimeType!=='image/png'||image.__structuredContent.bytes<8)throw Error('SCREENSHOT_FAIL');
-  const approval=await ctl.execute({config},'browser_foreground_requirement',{lease,reason:'saved-browser-credential',targetHost:'127.0.0.1',detail:'fixture only'});
-  if(!approval.approvalRequired||approval.desktopTakenOver!==false)throw Error('APPROVAL_FLOW_FAIL');
+  let approvalOnDemand=false,foregroundBlocked=false;
+  const approvalArgs={lease,reason:'saved-browser-credential',targetHost:'127.0.0.1',detail:'fixture only'};
+  if(ownerIsolated){
+   try{await ctl.execute({config},'browser_foreground_requirement',approvalArgs);throw Error('ISOLATED_FOREGROUND_NOT_BLOCKED');}
+   catch(error){if(error.browserCode!=='BROWSER_EXISTING_USER_SESSION_REQUIRED_USE_WORKSPACE')throw error;foregroundBlocked=true;}
+  }else{
+   const approval=await ctl.execute({config},'browser_foreground_requirement',approvalArgs);
+   if(!approval.approvalRequired||approval.desktopTakenOver!==false)throw Error('APPROVAL_FLOW_FAIL');
+   approvalOnDemand=true;
+  }
   await ctl.execute({config},'browser_session_end',{lease});lease=null;
-  console.log(JSON.stringify({status:'BROWSER_NATIVE_PASS',backend:status.backend,browserProduct:begun.browserProduct,background:true,userDesktopTouched:false,passwordStoreExtracted:false,urlSecretsRedacted:true,authSignal:true,domVerified:true,screenshotBytes:image.__structuredContent.bytes,approvalOnDemand:true}));
+  console.log(JSON.stringify({status:'BROWSER_NATIVE_PASS',backend:status.backend,browserProduct:begun.browserProduct,background:true,userDesktopTouched:false,passwordStoreExtracted:false,urlSecretsRedacted:true,authSignal:true,domVerified:true,screenshotBytes:image.__structuredContent.bytes,approvalOnDemand,foregroundBlocked}));
  }
 }finally{
  if(lease)try{await ctl.execute({config},'browser_session_end',{lease});}catch{}
