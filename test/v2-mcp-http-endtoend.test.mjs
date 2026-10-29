@@ -90,10 +90,14 @@ test('full isolated HTTP → JWT/JWKS → owner-issued attestation → SQLite gr
     verifyAccessToken:verifier,
     resolvePrincipal:async(subject)=>subject==='oauth-user'?'principal':null,
     observedNativeSession:async()=> 'owner-seat',
-    resolveTrustedInvocation:async()=>{
+    resolveTrustedInvocation:async(action)=>{
+      // Platform session is captured from trusted transport, not action args.
       const entry=entries.get(proof.sessionHandle);
-      return entry?ownerIssue({sessionHandle:proof.sessionHandle,
-        tool:'write_text',args:entry.args}):null;
+      if(!entry)return null;
+      assert.deepEqual(Object.keys(action).sort(),
+        ['arguments','expectedRevision','stepId','tool'].sort());
+      return ownerIssue({sessionHandle:proof.sessionHandle,
+        tool:action.tool,args:action.arguments});
     },
     workflowStore:store,grantRegistry:grants,
     authorizeTool:async(t,a,s)=>{
