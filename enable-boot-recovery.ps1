@@ -21,10 +21,9 @@ if ([IO.Path]::GetFullPath($env:USERPROFILE) -ne $OwnerUserProfile) {
 }
 $OwnerLocal = Join-Path $OwnerUserProfile 'AppData\Local'
 $OwnerRoaming = Join-Path $OwnerUserProfile 'AppData\Roaming'
-$StableRoot = Join-Path $OwnerLocal 'ChatGPTRemoteCommander\app'
-$stableSupervisor = Join-Path $StableRoot 'autostart-windows.ps1'
-$stableHandoff = Join-Path $StableRoot 'handoff-user-session-windows.ps1'
-$Root = if((Test-Path -LiteralPath $stableSupervisor -PathType Leaf) -and (Test-Path -LiteralPath $stableHandoff -PathType Leaf)){$StableRoot}else{$SourceRoot}
+# Use only the invoked release. A stale legacy app must never override
+# the source that matches routing/default.json on this owner profile.
+$Root = [IO.Path]::GetFullPath($SourceRoot)
 $RouteFile = Join-Path $OwnerLocal 'ChatGPTRemoteCommander\routing\default.json'
 if(-not(Test-Path -LiteralPath $RouteFile -PathType Leaf)){
   throw 'BOOT_RECOVERY_ACTIVE_ROUTE_MISSING'
@@ -38,7 +37,8 @@ if([string]::IsNullOrWhiteSpace($activeProjectDir) -or
 
 $CredDir = Join-Path $OwnerLocal 'ChatGPTRemoteCommander\credentials'
 $ProfileDir = Join-Path $OwnerRoaming 'tunnel-client'
-$VarDir = Join-Path $Root 'var'
+# Probe and runtime receipts survive release replacement and live outside code.
+$VarDir = Join-Path $OwnerLocal 'ChatGPTRemoteCommander\var'
 New-Item -ItemType Directory -Force -Path $VarDir | Out-Null
 $Supervisor = Join-Path $Root 'autostart-windows.ps1'
 $Handoff = Join-Path $Root 'handoff-user-session-windows.ps1'
