@@ -22,17 +22,49 @@ const tunnelPattern = patterns.find(([type]) => type === 'Tunnel identifier')[1]
 if (!tunnelPattern.test('tunnel' + '_' + '0123456789abcdef'.repeat(2)) || tunnelPattern.test('tunnel_control_plane_fresh') || tunnelPattern.test('TUNNEL_HEALTH_UNKNOWN_LISTENER')) {
   throw new Error('Tunnel identifier audit pattern regression');
 }
+// A separate V2 test branch contains two known *invalid* PEM header strings
+// with no matching key footer or encoded key. Their exact immutable source
+// lines were inspected without printing any potential credentials.
+// Only these 2 exact added diff lines at this exact Git commit/path are exempt;
+// all other key headers, including other lines in the same file, remain findings.
+const KNOWN_INVALID_PEM_FIXTURE = Object.freeze({
+  commit: 'd890bd978b07aa738ceeef97bd6af2782538bac1',
+  path: 'test/v2-mcp-http-ingress.test.mjs',
+  fingerprints: new Set(['c5a00fec5ba8ec5e','642666ec0adf94ef'])
+});
+function lineFingerprint(line) {
+  let hash = 0xcbf29ce484222325n;
+  for (const byte of Buffer.from(line, 'utf8')) {
+    hash = BigInt.asUintN(64, (hash ^ BigInt(byte)) * 0x100000001b3n);
+  }
+  return hash.toString(16).padStart(16,'0');
+}
+function knownInvalidPemFixture(type, line, commit, file) {
+  return type === 'Private key block' &&
+    commit === KNOWN_INVALID_PEM_FIXTURE.commit &&
+    file === KNOWN_INVALID_PEM_FIXTURE.path &&
+    line.startsWith('+  privateKeyPem:') &&
+    KNOWN_INVALID_PEM_FIXTURE.fingerprints.has(lineFingerprint(line));
+}
+
 // Scan complete Git history without buffering the entire potentially multi-GB patch.
 // Lines are bounded; anything above the bound fails closed instead of being skipped.
 function makeHistoryScanner(rules) {
   const hits = new Set();
-  let pending = '', preceding = '';
+  let pending = '', preceding = '', currentCommit = '', currentFile = '';
   const limit = 16 * 1024 * 1024;
   function scanLine(line) {
+    if (/^commit [a-f0-9]{40}(?:\\r?\\n)?$/.test(line)) {
+      currentCommit = line.slice(7,47);
+      currentFile = '';
+    } else if (line.startsWith('diff --git a/')) {
+      const marker = line.indexOf(' b/');
+      currentFile = marker >= 0 ? line.slice(marker+3).trim() : '';
+    }
     const sample = preceding + line;
     for (const [name, pattern] of rules) {
       pattern.lastIndex = 0;
-      if (pattern.test(sample)) hits.add(name);
+      if (pattern.test(sample) && !knownInvalidPemFixture(name, line, currentCommit, currentFile)) hits.add(name);
     }
     preceding = sample.slice(-512);
   }
@@ -53,6 +85,21 @@ function makeHistoryScanner(rules) {
     }
   };
 }
+// In-memory negative controls: an arbitrary new key header still fails, and
+// the known fixture allowlist must never suppress the same marker elsewhere.
+const privateKeyMarker = '-----BEGIN ' + 'PRIVATE KEY-----';
+const negativeScanner = makeHistoryScanner(patterns);
+negativeScanner.write('commit ' + 'f'.repeat(40) + '\\n');
+negativeScanner.write('diff --git a/test/other.test.mjs b/test/other.test.mjs\\n');
+negativeScanner.write('+  privateKeyPem:\\'' + privateKeyMarker + '\\'\\n');
+if (!negativeScanner.finish().has('Private key block')) {
+  throw new Error('SECURITY_AUDIT_PRIVATE_KEY_NEGATIVE_CONTROL_FAILED');
+}
+if (knownInvalidPemFixture('Private key block', '+  privateKeyPem:\\'' + privateKeyMarker + '\\'\\n',
+    KNOWN_INVALID_PEM_FIXTURE.commit, KNOWN_INVALID_PEM_FIXTURE.path)) {
+  throw new Error('SECURITY_AUDIT_FIXTURE_EXEMPTION_TOO_BROAD');
+}
+
 const boundaryProbe = makeHistoryScanner(patterns);
 boundaryProbe.write('tunnel' + '_0123456789abcdef');
 boundaryProbe.write('0123456789abcdef\nBearer \n');
