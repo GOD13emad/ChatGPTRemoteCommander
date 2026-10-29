@@ -9,8 +9,6 @@ import { canonicalizeRoots } from './security-v0.3.mjs';
 import { audit, listDirectory, prepareProjectCommand, readText, runProjectCommand, writeText } from './tools-v0.3.mjs';
 import { executePowerTool, powerToolDefinitions, prepareDeferredPowerMutation, prepareShellCommand } from './power-tools-v0.3.mjs';
 import { executeGuiTool, guiToolDefinitions } from './gui-tools-windows.mjs';
-import { createOwnerWorkspaceProxy } from './owner-workspace-proxy.mjs';
-import { executeWorkspaceTool, assertWorkspaceToolPolicy, workspaceToolDefinitions } from './workspace-tools.mjs';
 import { createOwnerGuiReadOnlyProxy } from './gui-owner-delegation.mjs';
 import { executeBrowserTool, browserToolDefinitions, reapBrowserOrphans } from './browser-tools.mjs';
 import { lockStats } from './locks.mjs';
@@ -167,6 +165,10 @@ const delegationToolDefinitions = [
   }
 ];
 
+const workspaceBundle = config.ownerWorkspaceDelegation?.enabled === true
+  ? await import('./workspace-tools.mjs') : null;
+const ownerWorkspaceFactory = config.ownerWorkspaceDelegation?.enabled === true
+  ? await import('./owner-workspace-proxy.mjs') : null;
 const TOOLS = [
   {
     name: 'system_status',
@@ -242,9 +244,9 @@ const TOOLS = [
   ...powerToolDefinitions,
   ...(BROWSER_ENABLED ? browserToolDefinitions : []),
   ...(GUI_ENABLED ? guiToolDefinitions : []),
-  ...(config.ownerWorkspaceDelegation?.enabled === true ? workspaceToolDefinitions : [])
+  ...(workspaceBundle ? workspaceBundle.workspaceToolDefinitions : [])
 ];
-const ownerWorkspaceProxy = createOwnerWorkspaceProxy({ config });
+const ownerWorkspaceProxy = ownerWorkspaceFactory?.createOwnerWorkspaceProxy({ config }) ?? null;
 
 const AUTO_DEFERRED_MUTATIONS = new Set(['copy_path', 'move_path', 'delete_path']);
 const MUTATION_REQUEST_ID_SCHEMA = {
@@ -560,8 +562,8 @@ async function executeToolEffect(name, args, delegationContext = {}) {
       return runProjectCommand(ctx, args);
     default: {
       if (name.startsWith('workspace_')) {
-        assertWorkspaceToolPolicy(config, name, args);
-        if (!ownerWorkspaceProxy) throw new Error('WORKSPACE_OWNER_PROXY_DISABLED');
+        if (!workspaceBundle || !ownerWorkspaceProxy) throw new Error('WORKSPACE_OWNER_PROXY_DISABLED');
+        workspaceBundle.assertWorkspaceToolPolicy(config, name, args);
         const response = await ownerWorkspaceProxy.execute(name, args, delegationContext);
         if (!response.handled) throw new Error('WORKSPACE_OWNER_TOOL_REJECTED');
         const result = response.value;
