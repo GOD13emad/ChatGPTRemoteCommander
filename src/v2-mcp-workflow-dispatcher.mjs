@@ -87,8 +87,12 @@ export function createV2CandidateMcpDispatcher({
         &&Number.isSafeInteger(now())
         &&claims.notBeforeMs<=now()&&claims.expiresAtMs>now()
         &&typeof claims.subject==='string'&&claims.subject.length>0
-        &&Array.isArray(claims.scopes)&&claims.scopes.includes(scopes[0]);
+        &&Array.isArray(claims.scopes);
       if(!validClaims)fail('V2_OAUTH_VERIFICATION_REQUIRED');
+      // Every scope advertised for this operation must be present in the
+      // verified access token, not only the first scope in the array.
+      if(!scopes.every(scope=>claims.scopes.includes(scope)))
+        fail('V2_OAUTH_SCOPE_OR_SUBJECT_REQUIRED');
       // Resolution is intentionally independent of any caller-controlled
       // route, conversation ID, profile, device, or MCP session handle.
       trusted=await resolveTrustedInvocation();
