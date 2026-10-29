@@ -1,0 +1,119 @@
+{
+  "schema": 1,
+  "id": "UI_R40",
+  "stage": "DRAFT_NOT_RELEASED",
+  "date": "2026-10-10",
+  "core": {
+    "version": "0.10.20",
+    "sha": "362375c464948be3001b307650c13fc3353ed05b",
+    "routerSha": "1de7e13638cecac0be939e8a3dcafce153f8a20b51f3c460d316dfa608812c04",
+    "acceptedBrain": "MAIN_R29",
+    "brainSha": "442eb6b31f0ea350688f414f83254247893002870d35ce2987900adade65a2d7"
+  },
+  "components": [
+    {
+      "id": "browser",
+      "version": "0.8.2",
+      "repo": "Usefull-Skills/chatgpt-cef-linux",
+      "pr": 81,
+      "sha": "624295c55610a331c1531792f1040acb02fe4797",
+      "merged": false,
+      "visualAccepted": false,
+      "signatureValid": false,
+      "rollbackAccepted": false
+    },
+    {
+      "id": "control-windows",
+      "version": "R34",
+      "repo": "GOD13emad/ChatGPTRemoteCommander",
+      "pr": 166,
+      "sha": "885270377ca6b8fb5e7736993d2688139a54680d",
+      "merged": false,
+      "visualAccepted": false,
+      "signatureValid": false,
+      "rollbackAccepted": false
+    },
+    {
+      "id": "control-linux",
+      "version": "R41",
+      "repo": "GOD13emad/ChatGPTRemoteCommander",
+      "pr": 165,
+      "sha": "1c8178d8ef3affdc114f84bdb6fb5aadc72a099e",
+      "merged": false,
+      "visualAccepted": false,
+      "signatureValid": false,
+      "rollbackAccepted": false
+    }
+  ],
+  "hosts": [
+    {
+      "id": "saeid-windows",
+      "os": "windows",
+      "connected": true,
+      "nativeGUIAccepted": false,
+      "uncertain": false,
+      "browserLease": false,
+      "browserInstalled": false,
+      "controlInstalled": false,
+      "ownerAccepted": false,
+      "sessionPreserved": "UNVERIFIED",
+      "rollbackSha": null
+    },
+    {
+      "id": "emad-windows",
+      "os": "windows",
+      "connected": true,
+      "nativeGUIAccepted": false,
+      "uncertain": true,
+      "browserLease": true,
+      "browserInstalled": false,
+      "controlInstalled": false,
+      "ownerAccepted": false,
+      "sessionPreserved": "UNVERIFIED",
+      "rollbackSha": null
+    },
+    {
+      "id": "emad-linux",
+      "os": "linux",
+      "connected": true,
+      "nativeGUIAccepted": false,
+      "uncertain": false,
+      "browserLease": false,
+      "browserInstalled": false,
+      "controlInstalled": false,
+      "ownerAccepted": false,
+      "sessionPreserved": "UNVERIFIED",
+      "rollbackSha": null
+    },
+    {
+      "id": "mmz-linux",
+      "os": "linux",
+      "connected": false,
+      "nativeGUIAccepted": false,
+      "uncertain": false,
+      "browserLease": false,
+      "browserInstalled": false,
+      "controlInstalled": false,
+      "ownerAccepted": false,
+      "sessionPreserved": "UNVERIFIED",
+      "rollbackSha": null,
+      "localSudoRequired": true,
+      "sourceRootMissing": true,
+      "scope": "Commander+Browser only"
+    }
+  ],
+  "gates": {
+    "trustedWindowsAuthenticode": false,
+    "linuxSandbox4755Accepted": false,
+    "threeUiNativeAcceptance": false,
+    "sessionPersistenceOwnerValidated": false,
+    "runnerExactChatAck": false,
+    "signedFourHostCanary": false,
+    "uninstallRollbackFourHost": false,
+    "acceptedFinalBrain": false
+  },
+  "signedArtifacts": [],
+  "automaticPromotionAuthorized": false,
+  "releaseTag": null,
+  "notes": "No auto merge, no automatic installer, no user browser logout, no forced reboot. This is an evidence gate only."
+}
