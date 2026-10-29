@@ -16,6 +16,7 @@ function https(value){
 function includesString(values,required){
   return Array.isArray(values)&&values.includes(required)&&values.every(v=>typeof v==='string');
 }
+const TOKEN_AUTH_METHODS=new Set(['none','private_key_jwt','client_secret_basic','client_secret_post']);
 /** Returns only the verified public metadata needed by the OAuth JWT boundary. */
 export function validateV2OAuthProvider({
   issuer,resource,metadata,requiredScope='commander.workflow',
@@ -43,6 +44,17 @@ export function validateV2OAuthProvider({
     fail('V2_PROVIDER_SCOPE_NOT_ADVERTISED');
   if(!['pre-registered','client-id-metadata','dynamic'].includes(clientRegistration))
     fail('V2_PROVIDER_CLIENT_REGISTRATION_REQUIRED');
+  // ChatGPT cannot exchange a PKCE authorization code unless the issuer
+  // advertises at least one supported token-endpoint client-auth method.
+  const tokenMethods=metadata.token_endpoint_auth_methods_supported;
+  if(!Array.isArray(tokenMethods)||tokenMethods.length<1||tokenMethods.length>16
+    ||tokenMethods.some(m=>typeof m!=='string')
+    ||!tokenMethods.some(m=>TOKEN_AUTH_METHODS.has(m)))
+    fail('V2_PROVIDER_TOKEN_AUTH_METHOD_UNSUPPORTED');
+  if(clientRegistration==='client-id-metadata'
+    &&!tokenMethods.some(m=>m==='none'||m==='private_key_jwt'))
+    fail('V2_PROVIDER_CIMD_TOKEN_AUTH_METHOD_UNSUPPORTED');
+
   if(clientRegistration==='client-id-metadata'
     && metadata.client_id_metadata_document_supported!==true)
     fail('V2_PROVIDER_CIMD_UNSUPPORTED');
@@ -53,6 +65,7 @@ export function validateV2OAuthProvider({
     issuer:trustedIssuer,audience,
     authorizationEndpoint,tokenEndpoint,jwksUri,
     scope:requiredScope,clientRegistration,
+    tokenEndpointAuthMethods:Object.freeze([...new Set(tokenMethods.filter(m=>TOKEN_AUTH_METHODS.has(m)))]),
     // A positive preflight is not user authorization or authenticated chat identity.
     claimOfAuthenticatedChat:false
   });
