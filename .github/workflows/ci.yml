@@ -54,4 +54,6 @@ jobs:
       - name: Run full test suite
         if: runner.os != 'Windows'
         run: npm test
+      - name: Verify primary Operator MCP and policy contract
+        run: npm run test:operator
       - run: npm run audit
