@@ -85,17 +85,17 @@ function makeHistoryScanner(rules) {
     }
   };
 }
-// In-memory negative controls: an arbitrary new key header still fails, and
-// the known fixture allowlist must never suppress the same marker elsewhere.
+// In-memory negative controls: arbitrary key headers are still rejected.
 const privateKeyMarker = '-----BEGIN ' + 'PRIVATE KEY-----';
+const fakeLine = "+  privateKeyPem:'" + privateKeyMarker + "'\n";
 const negativeScanner = makeHistoryScanner(patterns);
-negativeScanner.write('commit ' + 'f'.repeat(40) + '\\n');
-negativeScanner.write('diff --git a/test/other.test.mjs b/test/other.test.mjs\\n');
-negativeScanner.write('+  privateKeyPem:\\'' + privateKeyMarker + '\\'\\n');
+negativeScanner.write('commit ' + 'f'.repeat(40) + '\n');
+negativeScanner.write('diff --git a/test/other.test.mjs b/test/other.test.mjs\n');
+negativeScanner.write(fakeLine);
 if (!negativeScanner.finish().has('Private key block')) {
   throw new Error('SECURITY_AUDIT_PRIVATE_KEY_NEGATIVE_CONTROL_FAILED');
 }
-if (knownInvalidPemFixture('Private key block', '+  privateKeyPem:\\'' + privateKeyMarker + '\\'\\n',
+if (knownInvalidPemFixture('Private key block', fakeLine,
     KNOWN_INVALID_PEM_FIXTURE.commit, KNOWN_INVALID_PEM_FIXTURE.path)) {
   throw new Error('SECURITY_AUDIT_FIXTURE_EXEMPTION_TOO_BROAD');
 }
