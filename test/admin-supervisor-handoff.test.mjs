@@ -22,3 +22,9 @@ test('UAC/elevated token proof and ProbeOnly gate precede any supervisor launch'
   assert.ok(p>=0 && q>p && launch>q);
   assert.match(elevated,/\[Security\.Principal\.WindowsPrincipal\]/);
 });
+
+// Source-only guard: native cross-session SYSTEM/owner admission remains a release gate.
+test('admin supervisor uses cross-session mutex namespace instead of Local session scope',()=>{
+  assert.match(autostart,/\[Threading\.Mutex\]::new\(\$false,\s*'Global\\ChatGPTRemoteCommanderSupervisor'/);
+  assert.doesNotMatch(autostart,/'Local\\ChatGPTRemoteCommanderSupervisor'/);
+});

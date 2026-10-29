@@ -34,7 +34,9 @@ function Write-SupervisorLog([string]$Message) {
 $created = $false
 $mutex = $null
 if (-not $SelfTest) {
-  $mutex = [Threading.Mutex]::new($false, 'Local\ChatGPTRemoteCommanderSupervisor', [ref]$created)
+  # Global namespace coordinates SYSTEM Session 0 and elevated owner sessions.
+  # This alone cannot detect a still-live legacy Local-namespace supervisor.
+  $mutex = [Threading.Mutex]::new($false, 'Global\ChatGPTRemoteCommanderSupervisor', [ref]$created)
   if (-not $created) { if ($FailIfRunning) { throw 'ADMIN_RUNTIME_EXISTING_SUPERVISOR_REQUIRES_CONTROLLED_HANDOFF' }; exit 0 }
 }
 function Get-McpHealth([int]$Port) {
