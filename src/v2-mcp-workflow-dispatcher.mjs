@@ -95,7 +95,14 @@ export function createV2CandidateMcpDispatcher({
         fail('V2_OAUTH_SCOPE_OR_SUBJECT_REQUIRED');
       // Resolution is intentionally independent of any caller-controlled
       // route, conversation ID, profile, device, or MCP session handle.
-      trusted=await resolveTrustedInvocation();
+      // The owner may sign the exact requested action, but the selected
+      // conversation/host/profile/seat remain private to its native resolver.
+      // Supply no OAuth bearer, platform session, or caller-selected route.
+      const ownerAction=Object.freeze({
+        tool:args.tool,arguments:structuredClone(args.arguments),
+        stepId:args.stepId,expectedRevision:args.expectedRevision
+      });
+      trusted=await resolveTrustedInvocation(ownerAction);
       if(!exact(trusted,['route','assertion']))
         fail('V2_MCP_CHAT_ATTESTATION_REQUIRED');
       const r=normalizeV2Route(trusted.route);
