@@ -5,7 +5,10 @@
 // to an owner-issued, independently signed, action-bound invocation. NEVER derive
 // such authority from user JSON, x-chat-id headers, or openai/session alone.
 import http from 'node:http';
+import https from 'node:https';
 import { createV2ProtectedResourceMetadata } from './v2-oauth-resource-metadata.mjs';
+import { createV2DirectMtlsTransportAttestor } from './v2-direct-mtls-attestor.mjs';
+import { createV2OpenAiClientTlsOptions, V2_OPENAI_CONNECTORS_CA_PIN } from './v2-openai-mtls-trust.mjs';
 
 const ERROR_HEADERS=Object.freeze({
   'cache-control':'no-store','content-type':'application/json; charset=utf-8'
@@ -168,5 +171,40 @@ export function createV2CandidateHttpIngress({
     createUnboundServer:()=>http.createServer(handle),
     protectedResource:discovery,
     requiredTransport: 'authenticated-mtls-or-trusted-proxy'
+  });
+}
+
+/**
+ * Compose the existing candidate MCP HTTP handler behind a direct OpenAI mTLS
+ * HTTPS listener, without opening a port or downgrading to plaintext HTTP.
+ * It remains a candidate: the owner supplies protected server key/cert,
+ * configured OAuth identity, and a dispatcher factory which independently
+ * validates access tokens, native signed route assertions and grants.
+ * A TLS-authenticated client alone cannot authorize a workflow operation.
+ */
+export function createV2CandidateDirectHttpsGateway({
+  resource,authorizationServers,scopes=['commander.workflow'],
+  certificatePem,privateKeyPem,dispatcherFactory,
+  sessionSource='openai/session',resolveTrustedSession,
+  now=Date.now,maxBodyBytes=65536
+}={}){
+  if(typeof now!=='function')fail('V2_HTTPS_TRUSTED_CLOCK_REQUIRED');
+  const tlsOptions=createV2OpenAiClientTlsOptions({
+    certificatePem,privateKeyPem,now:now()
+  });
+  const attestTransport=createV2DirectMtlsTransportAttestor({
+    intermediateDerSha256:V2_OPENAI_CONNECTORS_CA_PIN,
+    sessionSource,resolveTrustedSession,now
+  });
+  const ingress=createV2CandidateHttpIngress({
+    resource,authorizationServers,scopes,attestTransport,
+    dispatcherFactory,maxBodyBytes
+  });
+  return Object.freeze({
+    protectedResource:ingress.protectedResource,
+    requiredTransport:'direct-openai-mtls',
+    // The returned server is not listening: binding or deployment is a
+    // separate, explicitly authorized operation after live OAuth acceptance.
+    createUnboundTlsServer:()=>https.createServer(tlsOptions,ingress.handle)
   });
 }
