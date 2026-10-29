@@ -217,3 +217,20 @@ test('explicitly authorized valid team stays unchanged', () => {
     assert.deepEqual(result.config.durableWorkflows.runner.team,team);
   } finally {fs.rmSync(root,{recursive:true,force:true});}
 });
+
+test('explicit runner without optional worker maxArtifactBytes preserves omission across upgrade',()=>{
+ const root=temp();
+ try{
+  const executable=makeCommand(root,'linux');
+  const first=base({runner:{
+    enabled:true,autoTick:false,provider:{kind:'command',executable,timeoutMs:30000,maxOutputBytes:4096},
+    allowedTools:['read_text'],maxActions:2,maxPlannerCalls:2,maxDurationMs:120000,
+    adaptive:{enabled:false,maxExtensions:0},worker:{enabled:true}
+  }});
+  const result=applyProjectRunnerConfig(first,{platform:'linux'});
+  assert.equal(result.status,'PRESERVED_EXPLICIT_NON_CODEX_PROVIDER');
+  assert.deepEqual(result.config.durableWorkflows.runner.worker,{enabled:true});
+  const second=applyProjectRunnerConfig(result.config,{platform:'linux'});
+  assert.deepEqual(second.config.durableWorkflows.runner,result.config.durableWorkflows.runner);
+ }finally{fs.rmSync(root,{recursive:true,force:true});}
+});
