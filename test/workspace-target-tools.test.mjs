@@ -139,3 +139,59 @@ test('Windows native read-only discovery reports OS process identity and foregro
  assert.match(helper,/Focused=\(\[string\]\$entry\.Handle -ceq \$foreground\)/);
  assert.match(helper,/catch \{ \} # A protected\/exiting process never gains a guessed name\./);
 });
+
+test('GNOME dual-screen Firefox snapshot follows exact owning monitor, not default desktop',async()=>{
+ const bounds={left:1920,top:35,width:1900,height:1035};
+ const window={processId:333,handle:'444',title:'Owner Firefox',wmClass:'firefox_firefox',
+   focused:true,screenIndex:1,bounds};
+ const calls=[];
+ const gui=async(name,args)=>{
+  calls.push({name,args});
+  if(name==='gui_status')return {ok:true,available:true,screens:[
+    {index:0,left:0,top:0,width:1920,height:1080},{index:1,left:1920,top:0,width:1920,height:1080}]};
+  if(name==='gui_session_begin')return {ok:true,lease:'monitor-lease',mode:args.mode};
+  if(name==='gui_list_windows')return {ok:true,windows:[window]};
+  if(name==='gui_screenshot')return {ok:true,frame:'monitor-1-frame',screenIndex:args.screenIndex};
+  if(name==='gui_focus_window'||name==='gui_mouse_click'||name==='gui_type_text')return {ok:true};
+  if(name==='gui_session_end')return {ok:true};
+  throw Error('UNEXPECTED_'+name);
+ };
+ const api=createWorkspaceTargetTools({gui});
+ const list=await api.execute('workspace_target_list',{application:'firefox'});
+ assert.equal(list.windows[0].screenIndex,1);
+ assert.deepEqual(list.windows[0].bounds,bounds);
+ const open=await api.execute('workspace_target_open',{processId:333,handle:'444',mode:'takeover',explicitUserAuthorization:'Owner P12 verification'});
+ const shot=await api.execute('workspace_target_snapshot',{processId:333,handle:'444',lease:open.lease});
+ assert.equal(shot.frame,'monitor-1-frame');
+ assert.equal(calls.find(x=>x.name==='gui_screenshot').args.screenIndex,1);
+ await assert.rejects(api.execute('workspace_target_click',
+   {processId:333,handle:'444',lease:open.lease,frame:shot.frame,x:300,y:500}),
+   /WORKSPACE_TARGET_POINT_OUTSIDE_TARGET_WINDOW/);
+ assert.equal(calls.filter(x=>x.name==='gui_mouse_click').length,0);
+ assert.equal((await api.execute('workspace_target_click',
+   {processId:333,handle:'444',lease:open.lease,frame:shot.frame,x:2200,y:500})).ok,true);
+ window.screenIndex=0;
+ await assert.rejects(api.execute('workspace_target_type',
+   {processId:333,handle:'444',lease:open.lease,frame:shot.frame,text:'NEVER'}),
+   /WORKSPACE_TARGET_WINDOW_MOVED_MONITOR/);
+ assert.equal(calls.filter(x=>x.name==='gui_type_text').length,0);
+ assert.equal((await api.execute('workspace_target_end',{lease:open.lease})).ok,true);
+});
+
+test('multi-monitor target with unverified window monitor fails closed before input',async()=>{
+ const calls=[];
+ const gui=async(name,args)=>{
+  calls.push(name);
+  if(name==='gui_status')return {ok:true,available:true,screens:[{index:0},{index:1}]};
+  if(name==='gui_session_begin')return {ok:true,lease:'fail-closed',mode:args.mode};
+  if(name==='gui_list_windows')return {ok:true,windows:[{processId:333,handle:'444',focused:true}]};
+  if(name==='gui_session_end')return {ok:true};
+  throw Error('MUTATION_MUST_NOT_RUN');
+ };
+ const api=createWorkspaceTargetTools({gui});
+ await assert.rejects(api.execute('workspace_target_open',{processId:333,handle:'444',
+   mode:'takeover',explicitUserAuthorization:'Owner P12 verification'}),
+   /WORKSPACE_TARGET_TARGET_MONITOR_UNVERIFIED/);
+ assert.equal(calls.at(-1),'gui_session_end');
+ assert.equal(calls.includes('gui_screenshot'),false);
+});

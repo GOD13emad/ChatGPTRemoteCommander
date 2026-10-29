@@ -1,3 +1,8 @@
+# 0.11.0-dev.17 — GNOME multi-monitor Workspace Target bounds (2026-10-29; development / NoPromote)
+
+- Firefox/P12 blocker: GNOME Meta.Window inventory now reports verified monitor index and window-frame bounds. Workspace Target binds to the exact owner window+monitor and refuses missing multi-monitor metadata, changed geometry or coordinates outside its rectangle. Native screenshot uses the target monitor instead of assuming display 0; no generic GUI injection or credential extraction.
+- Prior dev.16 route is the pilot baseline; this dev.17 source is not Stable or installed until exact-commit native installation and actual frame/click/type tests. Existing original Firefox profile remains untouched.
+
 # 0.11.0-dev.16 — owner-session Workspace Target + bounded local Runner (2026-10-28; development / NoPromote)
 
 - Add a new exact-window Workspace Target MCP contract for the owner's **already-running** Firefox and other GUI windows, without copying cookies/profiles or relaunching the browser. Native GUI leases, fresh frames, explicit takeover, and focused-window checks remain mandatory.

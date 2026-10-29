@@ -39,7 +39,13 @@ export function normalizeWorkspaceWindow(w){
  if(!Number.isSafeInteger(pid)||pid<1||!/^[1-9][0-9]{0,18}$/.test(handle))return null;
  const wmClass=typeof w.wmClass==='string'?w.wmClass:typeof w.WmClass==='string'?w.WmClass:'';
  const appName=typeof w.appName==='string'?w.appName:typeof w.application==='string'?w.application:typeof w.ProcessName==='string'?w.ProcessName:'';
- return {processId:pid,handle,title:String(w.title??w.Title??''),wmClass,appName,focused:w.focused===true||w.Focused===true};
+ const monitor=w.screenIndex??w.ScreenIndex;
+ const screenIndex=Number.isSafeInteger(monitor)&&monitor>=0&&monitor<=31?monitor:null;
+ const b=w.bounds??w.Bounds;
+ const bounds=b&&[b.left,b.top,b.width,b.height].every(Number.isSafeInteger)&&b.width>0&&b.height>0
+   ? {left:b.left,top:b.top,width:b.width,height:b.height}:null;
+ return {processId:pid,handle,title:String(w.title??w.Title??''),wmClass,appName,
+   focused:w.focused===true||w.Focused===true,...(screenIndex===null?{}:{screenIndex}),...(bounds?{bounds}:{})};
 }
 function normalizedWindows(rows){
  return (Array.isArray(rows?.windows)?rows.windows:[]).map(normalizeWorkspaceWindow).filter(Boolean);
@@ -62,18 +68,25 @@ export function createWorkspaceTargetTools({gui,bindings=new Map()}){
  };
  const status=async()=>{const s=await gui('gui_status',{});if(s?.ok!==true||s.available!==true)reject('GUI_UNAVAILABLE');return s;};
  const enumerate=lease=>gui('gui_list_windows',{lease});
- const exact=async args=>{validateLease(args);const rows=await enumerate(args.lease);const w=findWindow(rows,args);if(!w)reject('WINDOW_CHANGED_OR_MISSING');return w;};
+ const exact=async args=>{
+  const binding=validateLease(args);
+  const rows=await enumerate(args.lease);const w=findWindow(rows,args);
+  if(!w)reject('WINDOW_CHANGED_OR_MISSING');
+  if(binding.screenIndex!==null && w.screenIndex!==binding.screenIndex)reject('WINDOW_MOVED_MONITOR');
+  if(binding.bounds && JSON.stringify(w.bounds)!==JSON.stringify(binding.bounds))reject('WINDOW_GEOMETRY_CHANGED');
+  return w;
+ };
  return {definitions:workspaceTargetDefinitions,execute:async(name,args={})=>{
   switch(name){
    case 'workspace_target_list':{
     await status();const session=await gui('gui_session_begin',{mode:'observe',ttlSeconds:30});
     if(!session?.ok||!session.lease)reject('OBSERVE_LEASE_UNAVAILABLE');
     try{const rows=await enumerate(session.lease);
-      return {ok:true,backend:'owner-native-gui',application:args.application||'all',windows:normalizedWindows(rows).filter(w=>args.application!=='firefox'||safeApplication(w)).map(w=>({processId:w.processId,handle:w.handle,title:w.title,wmClass:w.wmClass,appName:w.appName,focused:w.focused})),privateProfileAccess:false};
+      return {ok:true,backend:'owner-native-gui',application:args.application||'all',windows:normalizedWindows(rows).filter(w=>args.application!=='firefox'||safeApplication(w)).map(w=>({processId:w.processId,handle:w.handle,title:w.title,wmClass:w.wmClass,appName:w.appName,focused:w.focused,...(w.screenIndex===undefined?{}:{screenIndex:w.screenIndex}),...(w.bounds?{bounds:w.bounds}:{})})),privateProfileAccess:false};
     }finally{await gui('gui_session_end',{lease:session.lease});}
    }
    case 'workspace_target_open':{
-    await status();assertIdentity(args);prune();if(bindings.size>=32)reject('LEASE_CAPACITY');
+    const guiState=await status();assertIdentity(args);prune();if(bindings.size>=32)reject('LEASE_CAPACITY');
     if(args.mode==='takeover'&&(!args.explicitUserAuthorization||args.explicitUserAuthorization.length<5))reject('AUTHORIZATION_REQUIRED');
     const input={mode:args.mode||'observe',ttlSeconds:60,...(args.mode==='takeover'?{explicitUserAuthorization:args.explicitUserAuthorization}:{})};
     const session=await gui('gui_session_begin',input);
@@ -84,14 +97,30 @@ export function createWorkspaceTargetTools({gui,bindings=new Map()}){
     }
     try{
      const rows=await enumerate(session.lease);
-     if(!findWindow(rows,args))reject('WINDOW_CHANGED_OR_MISSING');
-     bindings.set(session.lease,{processId:args.processId,handle:args.handle,mode:input.mode,expiresAt:Date.now()+60000});
+     const window=findWindow(rows,args);
+     if(!window)reject('WINDOW_CHANGED_OR_MISSING');
+     if((guiState.screens?.length??0)>1&&(window.screenIndex===undefined||!window.bounds))reject('TARGET_MONITOR_UNVERIFIED');
+     bindings.set(session.lease,{processId:args.processId,handle:args.handle,mode:input.mode,
+       screenIndex:window.screenIndex??null,bounds:window.bounds??null,expiresAt:Date.now()+60000});
     }catch(e){await gui('gui_session_end',{lease:session.lease});throw e;}
     return {ok:true,lease:session.lease,mode:input.mode,processId:args.processId,handle:args.handle,source:'existing-owner-window',profileInherited:false};
    }
-   case 'workspace_target_snapshot':{await exact(args);return gui('gui_screenshot',{lease:args.lease,format:'jpeg',quality:55,maxWidth:1280});}
+   case 'workspace_target_snapshot':{
+    const w=await exact(args),st=await status();
+    if((st.screens?.length??0)>1&&w.screenIndex===undefined)reject('TARGET_MONITOR_UNVERIFIED');
+    if(w.screenIndex!==undefined&&Array.isArray(st.screens)&&st.screens.length&&
+       !st.screens.some(s=>s.index===w.screenIndex))reject('TARGET_MONITOR_CHANGED');
+    return gui('gui_screenshot',{lease:args.lease,format:'jpeg',quality:55,maxWidth:1280,
+      ...(w.screenIndex===undefined?{}:{screenIndex:w.screenIndex})});
+   }
    case 'workspace_target_focus':{validateLease(args,true);await exact(args);return gui('gui_focus_window',{lease:args.lease,frame:args.frame,handle:args.handle});}
-   case 'workspace_target_click':{validateLease(args,true);const w=await exact(args);if(w.focused!==true)reject('FOCUS_NOT_CONFIRMED');return gui('gui_mouse_click',{lease:args.lease,frame:args.frame,x:args.x,y:args.y});}
+   case 'workspace_target_click':{
+    validateLease(args,true);const w=await exact(args);
+    if(w.focused!==true)reject('FOCUS_NOT_CONFIRMED');
+    if(w.bounds&&(args.x<w.bounds.left||args.x>=w.bounds.left+w.bounds.width||
+      args.y<w.bounds.top||args.y>=w.bounds.top+w.bounds.height))reject('POINT_OUTSIDE_TARGET_WINDOW');
+    return gui('gui_mouse_click',{lease:args.lease,frame:args.frame,x:args.x,y:args.y});
+   }
    case 'workspace_target_type':{validateLease(args,true);const w=await exact(args);if(w.focused!==true)reject('FOCUS_NOT_CONFIRMED');return gui('gui_type_text',{lease:args.lease,frame:args.frame,text:args.text});}
    case 'workspace_target_end':{
     prune();if(!bindings.has(args.lease))reject('LEASE_UNBOUND_OR_EXPIRED');

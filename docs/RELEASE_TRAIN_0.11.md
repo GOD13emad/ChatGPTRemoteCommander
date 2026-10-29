@@ -1,3 +1,7 @@
+## 0.11.0-dev.17 — owner GNOME per-window monitor binding, development / NoPromote
+
+Targeted Firefox dual-monitor correction after real Emad host observation: prior `workspace_target_snapshot` produced display 0 even though an owner Firefox window was reported on another display. Add verified `Meta.Window.get_monitor()` and `get_frame_rect()` to native inventory, persist monitor/window geometry per lease, require matching target and reject off-window coordinates; candidate-source acceptance and exact native readback are separate mandatory gates. Existing dev.16 pilot remains active until accepted promotion. No credentials, browser profiles or cookies are read.
+
 # Remote Commander suite — 0.11 release train
 **Opened:** 2026-10-27 · **Status:** INTEGRATION CANDIDATE / NO PUBLIC RELEASE / NO HOST PROMOTION
 
