@@ -18,6 +18,27 @@ const patterns = [
   ['GitHub token', new RegExp('gh' + '[pousr]_' + '[A-Za-z0-9]{20,}', 'i')],
   ['Developer Windows path', /C:\\Users\\[^\\\r\n]+\\source\\repos\\ChatGPTRemoteCommander/i]
 ];
+
+// Reject every real private-key marker, except this precisely known V2 test
+// placeholder (a JavaScript string containing the literal backslash-n and
+// the word "fixture"; it is not a PEM or a credential). This exception applies
+// to individual marker occurrences, including those in git history. It must
+// never suppress a separate PEM marker anywhere in the same file or commit.
+const mockPemHeader = '-----BEGIN ' + 'PRIVATE KEY-----';
+const mockPemLiteral = mockPemHeader + String.raw`\nfixture`;
+function secretPatternMatches(type,pattern,text) {
+  const sample=type==='Private key block'
+    ? text.replaceAll(mockPemLiteral,'[MOCK_V2_TLS_KEY_PLACEHOLDER]')
+    : text;
+  pattern.lastIndex=0;
+  return pattern.test(sample);
+}
+const pemHeaderPattern=patterns.find(([type])=>type==='Private key block')[1];
+if(secretPatternMatches('Private key block',pemHeaderPattern,mockPemLiteral)
+  ||!secretPatternMatches('Private key block',pemHeaderPattern,mockPemHeader+'\\nACTUAL-KEY')
+  ||!secretPatternMatches('Private key block',pemHeaderPattern,mockPemLiteral+' '+'-----BEGIN '+'PRIVATE KEY-----'))
+  throw new Error('Private-key pattern exception regression');
+
 const tunnelPattern = patterns.find(([type]) => type === 'Tunnel identifier')[1];
 if (!tunnelPattern.test('tunnel' + '_' + '0123456789abcdef'.repeat(2)) || tunnelPattern.test('tunnel_control_plane_fresh') || tunnelPattern.test('TUNNEL_HEALTH_UNKNOWN_LISTENER')) {
   throw new Error('Tunnel identifier audit pattern regression');
@@ -31,8 +52,7 @@ function makeHistoryScanner(rules) {
   function scanLine(line) {
     const sample = preceding + line;
     for (const [name, pattern] of rules) {
-      pattern.lastIndex = 0;
-      if (pattern.test(sample)) hits.add(name);
+      if (secretPatternMatches(name,pattern,sample)) hits.add(name);
     }
     preceding = sample.slice(-512);
   }
@@ -100,8 +120,8 @@ for (const file of tracked) {
   let text;
   try { text = await readFile(file, 'utf8'); } catch { continue; }
   for (const [type, pattern] of patterns) {
-    pattern.lastIndex = 0;
-    if (pattern.test(text)) findings.push({ scope: 'CURRENT', type, location: file });
+    if (secretPatternMatches(type,pattern,text))
+      findings.push({ scope: 'CURRENT', type, location: file });
   }
 }
 
