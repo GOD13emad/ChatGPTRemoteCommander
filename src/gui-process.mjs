@@ -27,6 +27,16 @@ function parseGuiResult(bytes) {
         value.effect === 'NOT_APPLIED' && value.phase === 'PRE_DISPATCH_GUARD') {
       failure.guiNotApplied = true;
     }
+    // GNOME coordinate rejection before MutterInput is deterministic no-effect.
+    // Require the exact closed receipt; never infer from an error code alone.
+    if (safeCode==='GUI_POINT_OUTSIDE_MONITOR' && value.ok===false &&
+        value.error==='GUI_POINT_OUTSIDE_MONITOR' &&
+        value.effect==='NOT_APPLIED' && value.phase==='PRE_DISPATCH_GUARD' &&
+        Object.getPrototypeOf(value)===Object.prototype &&
+        Reflect.ownKeys(value).length===4 &&
+        ['ok','error','effect','phase'].every(k=>Object.hasOwn(value,k))) {
+      failure.guiNotApplied=true;
+    }
     // A KDE error is proven to have had no effect only with the exact five-field
     // portal pre-dispatch attestation; never unlock uncertain input on a generic error.
     if (['GUI_KDE_PRECHECK_FAILED','GUI_FOREGROUND_OR_GEOMETRY_CHANGED'].includes(safeCode) &&

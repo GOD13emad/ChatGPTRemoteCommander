@@ -222,7 +222,8 @@ export function createGuiController({ platform = process.platform, now = () => p
         if (isInput) {
           // Exact Linux click pre-dispatch rejection only; no input was ever applied.
           const linuxNotApplied = platform === 'linux' && name === 'gui_mouse_click' &&
-            error?.guiCode === 'GUI_FOREGROUND_OR_GEOMETRY_CHANGED' && error?.guiNotApplied === true;
+            ['GUI_FOREGROUND_OR_GEOMETRY_CHANGED','GUI_POINT_OUTSIDE_MONITOR'].includes(error?.guiCode) &&
+            error?.guiNotApplied === true;
           // Windows focus only: native helper's exact pre-dispatch mutex receipt.
           // Does not resolve historical incidents, change other input, or permit replay.
           const windowsMutexNotSubmitted = platform === 'win32' && name === 'gui_focus_window' &&

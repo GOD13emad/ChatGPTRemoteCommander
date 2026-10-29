@@ -287,6 +287,7 @@ test('Linux attested pre-dispatch click rejection preserves no-effect without re
 for(const [platform,tool,code,attested] of [
   ['win32','gui_focus_window','GUI_FOCUS_NOT_CONFIRMED',true],
   ['linux','gui_mouse_click','GUI_FOREGROUND_OR_GEOMETRY_CHANGED',false],
+  ['linux','gui_mouse_click','GUI_POINT_OUTSIDE_MONITOR',false],
   ['linux','gui_key_press','GUI_FOREGROUND_OR_GEOMETRY_CHANGED',true],
   ['linux','gui_mouse_click','GUI_SENDINPUT_FAILED',true]
 ])test('unknown input is still fail-closed on '+platform+'/'+tool+'/'+code+'/'+attested,async()=>{
@@ -308,6 +309,26 @@ for(const [platform,tool,code,attested] of [
   await s.run('gui_session_end',{lease:readOnly.lease});
 });
 
+test('exact GNOME off-monitor native click preflight clears its own incident without input replay',async()=>{
+  let nativeCalls=0;
+  const s=setup({platform:'linux',invoke:async r=>{
+    if(r.action==='status')return {ok:true,available:true};
+    if(r.action==='screenshot')return image();
+    if(r.action==='click'){nativeCalls++;throw Object.assign(
+      new Error('GUI_POINT_OUTSIDE_MONITOR'),
+      {guiCode:'GUI_POINT_OUTSIDE_MONITOR',guiNotApplied:true}
+    );}
+    throw Error('UNEXPECTED_NATIVE_REQUEST');
+  }});
+  const a=await prepared(s);
+  await assert.rejects(s.run('gui_mouse_click',{...a,x:65000,y:65000}),/GUI_POINT_OUTSIDE_MONITOR/);
+  assert.equal(nativeCalls,1);
+  assert.notEqual((await s.run('gui_status')).uncertain,true);
+  const next=await s.run('gui_session_begin',{mode:'observe'});
+  assert.equal(next.mode,'observe');
+  await s.run('gui_session_end',{lease:next.lease});
+});
+
 test('Linux native no-effect attestation occurs before MutterInput dispatch',async()=>{
   const source=await fs.readFile(new URL('../tools/gui-control-linux.py',import.meta.url),'utf8');
   const begin=source.indexOf('def handle_input(req):');
@@ -317,6 +338,10 @@ test('Linux native no-effect attestation occurs before MutterInput dispatch',asy
   assert.ok(body.includes("if action=='click' and e.code=='GUI_FOREGROUND_OR_GEOMETRY_CHANGED'"));
   assert.ok(body.includes("'effect':'NOT_APPLIED','phase':'PRE_DISPATCH_GUARD'"));
   assert.ok(body.indexOf('observed=guard(req,deadline)')<body.indexOf('with MutterInput(req,deadline)'));
+  assert.ok(body.indexOf('guarded_click_point=point(req,observed)')<
+            body.indexOf('with MutterInput(req,deadline)'));
+  assert.ok(body.includes("if e.code=='GUI_POINT_OUTSIDE_MONITOR'"));
+
 });
 
 test('persistent helper propagates exact pre-dispatch no-effect receipt without auto retry',async()=>{
