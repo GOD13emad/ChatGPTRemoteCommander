@@ -334,3 +334,26 @@ test('unsupported modern version and missing capabilities fail closed without ef
   assert.equal(f.effects(),0);
  }finally{f.close();}
 });
+
+test('multiple advertised OAuth scopes are all enforced before native lookup or effects',async()=>{
+ const f=fixture();try{
+  let lookups=0;
+  const required=['commander.workflow','commander.seat'];
+  const d=f.mk({scopes:required,resolveTrustedInvocation:async()=>{
+   lookups++;return f.base.resolveTrustedInvocation();
+  }});
+  assert.deepEqual(d.descriptor.securitySchemes,[{type:'oauth2',scopes:required}]);
+  const partial=await d.call({authorization:'Bearer '+jwt(),toolName:'v2_workflow_step',args:f.input});
+  assert.equal(partial.isError,true);
+  assert.match(partial._meta['mcp/www_authenticate'][0],/insufficient_scope/);
+  assert.equal(lookups,0);
+  assert.equal(f.effects(),0);
+  const full=await d.call({
+   authorization:'Bearer '+jwt({scope:'commander.workflow commander.seat'}),
+   toolName:'v2_workflow_step',args:f.input
+  });
+  assert.equal(full.isError,undefined);
+  assert.equal(lookups,1);
+  assert.equal(f.effects(),1);
+ }finally{f.close();}
+});
