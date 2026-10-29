@@ -60,15 +60,21 @@ server.stdout.on('data', (chunk) => { serverOutput += chunk.toString('utf8'); })
 server.stderr.on('data', (chunk) => { serverOutput += chunk.toString('utf8'); });
 process.once('exit', () => { try { server.kill('SIGTERM'); } catch {} });
 
-async function waitForHealth() {
-  for (let attempt = 0; attempt < 100; attempt += 1) {
+async function waitForHealth(timeoutMs = 30000) {
+  // The Windows CI host may start a fresh Node/SQLite worker slowly after
+  // the qualification suite. Use the same bounded readiness budget as the
+  // runtime-state check, while failing immediately if the child exits.
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (server.exitCode !== null || server.signalCode !== null)
+      throw new Error(`server exited before health readiness: ${serverOutput}`);
     try {
       const response = await fetch(`http://127.0.0.1:${port}/health`);
       if (response.ok) return;
     } catch { /* startup */ }
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
-  throw new Error(`server did not become healthy: ${serverOutput}`);
+  throw new Error(`server did not become healthy within ${timeoutMs}ms: ${serverOutput}`);
 }
 
 async function waitForRuntimeState(timeoutMs = 30000) {
