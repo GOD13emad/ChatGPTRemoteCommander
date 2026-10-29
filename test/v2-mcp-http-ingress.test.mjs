@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
-import { createV2CandidateHttpIngress } from '../src/v2-mcp-http-ingress.mjs';
+import { createV2CandidateHttpIngress, createV2CandidateDirectHttpsGateway } from '../src/v2-mcp-http-ingress.mjs';
 import { createV2McpOAuthContract } from '../src/v2-mcp-oauth-contract.mjs';
 
 const resource='https://commander.example.test/mcp-v2';
@@ -306,4 +306,27 @@ test('injected body/headers cannot replace platform-owned tool-call metadata',as
   assert.equal(response.body.error,'platform_session_required');
   assert.equal(lookups,0);
  });
+});
+
+test('direct HTTPS candidate composition requires pinned mTLS and owner TLS identity',()=>{
+ const base={resource:'https://commander.example.test/mcp-v2',
+  authorizationServers:['https://issuer.example.test'],dispatcherFactory:factory};
+ assert.throws(()=>createV2CandidateDirectHttpsGateway(base),
+  {code:'V2_HTTPS_SERVER_IDENTITY_REQUIRED'});
+ assert.throws(()=>createV2CandidateDirectHttpsGateway({...base,
+  certificatePem:'-----BEGIN CERTIFICATE-----\\nfixture',
+  privateKeyPem:'-----BEGIN PRIVATE KEY-----\\nfixture',
+  sessionSource:'native-owner'}),
+  {code:'V2_MTLS_OPERATOR_CONFIGURATION_REQUIRED'});
+ const candidate=createV2CandidateDirectHttpsGateway({...base,
+  certificatePem:'-----BEGIN CERTIFICATE-----\\nfixture',
+  privateKeyPem:'-----BEGIN PRIVATE KEY-----\\nfixture'});
+ assert.equal(candidate.requiredTransport,'direct-openai-mtls');
+ assert.equal(candidate.createUnboundServer,undefined);
+ assert.equal(typeof candidate.createUnboundTlsServer,'function');
+ assert.equal(candidate.protectedResource.body.resource,base.resource);
+ assert.equal(Object.isFrozen(candidate),true);
+ // A fabricated TLS identity cannot create a usable listener; the real key
+ // and certificate must come from an owner-controlled secret store.
+ assert.throws(()=>candidate.createUnboundTlsServer());
 });
