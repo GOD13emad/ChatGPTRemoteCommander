@@ -12,6 +12,9 @@ import { executeGuiTool, guiToolDefinitions } from './gui-tools-windows.mjs';
 import { createWorkspaceTargetTools, workspaceTargetDefinitions, workspaceOwnerRequestContext } from './workspace-target-tools.mjs';
 import { createOwnerGuiReadOnlyProxy } from './gui-owner-delegation.mjs';
 import { createOwnerWorkspaceReadOnlyProxy } from './owner-workspace-delegation.mjs';
+import { createOwnerWorkspaceProxy } from './owner-workspace-proxy.mjs';
+import { executeWorkspaceTool, assertWorkspaceToolPolicy, workspaceToolDefinitions } from './workspace-tools.mjs';
+import { exposedGuiTools, assertLegacyGuiPermitted } from './gui-target-only-policy.mjs';
 import { executeBrowserTool, browserToolDefinitions, reapBrowserOrphans } from './browser-tools.mjs';
 import { lockStats } from './locks.mjs';
 import { expandPathValue, shellName } from './platform.mjs';
@@ -69,6 +72,7 @@ const ctx = {
 };
 // Process-scoped window/lease bindings are shared across HTTP requests; never share across users or hosts.
 const workspaceTargetBindings = new Map();
+const legacyWorkspaceProxy = createOwnerWorkspaceProxy({config});
 let ownerWorkspaceReadOnlyProxy = null;
 let ownerWorkspaceProxyConfigError = null;
 let ownerGuiProxy = null;
@@ -252,7 +256,8 @@ const TOOLS = [
   ...notionMcpTools.definitions,
   ...powerToolDefinitions,
   ...(BROWSER_ENABLED ? browserToolDefinitions : []),
-  ...(GUI_ENABLED ? guiToolDefinitions : []),
+  ...(GUI_ENABLED ? exposedGuiTools(config,guiToolDefinitions) : []),
+  ...workspaceToolDefinitions,
   ...(GUI_ENABLED ? workspaceTargetDefinitions : [])
 ];
 
@@ -577,6 +582,18 @@ async function executeToolEffect(name, args, delegationContext = {}) {
         await audit(ctx, { action: name, ok: true, powerMode: true, browserControl: true });
         return result;
       }
+      if (name.startsWith('workspace_') && !name.startsWith('workspace_target_')) {
+        assertWorkspaceToolPolicy(config,name,args);
+        const delegated=legacyWorkspaceProxy
+          ? await legacyWorkspaceProxy.execute(name,args,delegationContext)
+          : {handled:false};
+        const result=delegated.handled
+          ? delegated.value
+          : await executeWorkspaceTool(ctx,name,args);
+        await audit(ctx,{action:name,ok:result?.ok!==false,workspace:true,
+          delegatedOwnerWorkspace:delegated.handled});
+        return result;
+      }
       if (name.startsWith('workspace_target_')) {
         // Prefer the existing same-owner CUA broker for explicit read-only inventory.
         // Never pass focus, input, browser contents or arbitrary RPC names to this bridge.
@@ -602,6 +619,7 @@ async function executeToolEffect(name, args, delegationContext = {}) {
         return result;
       }
       if (name.startsWith('gui_')) {
+        assertLegacyGuiPermitted(config,name,args);
         const proxy = ownerGuiProxy ? await ownerGuiProxy.execute(name, args, delegationContext) : { handled: false };
         const result = proxy.handled ? proxy.value : await executeGuiTool(ctx, name, args);
         await audit(ctx, { action: name, ok: true, powerMode: true, guiControl: true,
