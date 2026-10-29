@@ -17,6 +17,7 @@ import { createOwnerWorkspaceProxy } from './owner-workspace-proxy.mjs';
 import { executeWorkspaceTool, assertWorkspaceToolPolicy, workspaceToolDefinitions } from './workspace-tools.mjs';
 import { exposedGuiTools, assertLegacyGuiPermitted } from './gui-target-only-policy.mjs';
 import { executeBrowserTool, browserToolDefinitions, reapBrowserOrphans } from './browser-tools.mjs';
+import { createOperatorCore } from './operator-core.mjs';
 import { lockStats } from './locks.mjs';
 import { expandPathValue, shellName } from './platform.mjs';
 import { formatToolInputErrors, validateJsonSchema } from './schema-validator.mjs';
@@ -314,6 +315,16 @@ if (config.durableWorkflows?.enabled === true) {
   });
   TOOLS.push(...workflowTools.definitions);
 }
+// The shared Operator facade does not create a second AI model, scheduler or permission boundary.
+// It delegates a single enrolled project step to the same workflow engine.
+const operatorTools = createOperatorCore({
+  config, platform:process.platform, toolNames:()=>TOOLS.map(item=>item.name),
+  readWorkflow:async()=>workflowTools?workflowTools.execute('workflow_status',{}):{enabled:false,runnerConfigured:false},
+  readBrowser:BROWSER_ENABLED?()=>executeBrowserTool(ctx,'browser_status',{}):undefined,
+  readGui:GUI_ENABLED?()=>executeGuiTool(ctx,'gui_status',{}):undefined,
+  advance:workflowTools?runId=>workflowTools.execute('workflow_run_tick',{runId}):undefined
+});
+TOOLS.push(...operatorTools.definitions);
 function serverMeta() {
   return { 'io.modelcontextprotocol/serverInfo': { name: 'chatgpt-remote-commander', version: VERSION } };
 }
@@ -492,6 +503,7 @@ async function executeToolEffect(name, args, delegationContext = {}) {
   if (name.startsWith('agent_extension_')) return agentExtensions.execute(name, args);
   if (name.startsWith('transfer_mesh_')) return transferMesh.execute(name, args);
   if (name.startsWith('workflow_')) return workflowTools.execute(name, args);
+  if (name.startsWith('operator_')) return operatorTools.execute(name, args);
   if (name.startsWith('notion_mcp_')) return notionMcpTools.execute(name, args);
   if (name.startsWith('notion_')) return notionTools.execute(name, args);
   switch (name) {
