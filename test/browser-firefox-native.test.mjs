@@ -29,6 +29,8 @@ test('Linux Firefox WebDriver backend provides the background browser contract',
  const config={instance:{profile:'firefox-e2e'},powerMode:{enabled:true,browserControl:{
   enabled:true,executable:firefox,profileRoot:root,allowNavigate:true,allowInput:true,allowScreenshot:true,
   backgroundFirst:true,foregroundFallback:'explicit-current-request-only',workflowBrowserAllowed:false,
+  requireExistingUserSession:process.env.RC_BROWSER_NATIVE_OWNER_ISOLATED==='1',
+  allowOwnedIsolatedSession:process.env.RC_BROWSER_NATIVE_OWNER_ISOLATED==='1',
   userBrowserProfileReuse:false,savedPasswordExtraction:false,allowForegroundFallback:true
  }}};
  let lease;
