@@ -6,7 +6,8 @@ const html='<!doctype html><html><meta charset="utf-8"><title>RC Background Brow
 const server=http.createServer((req,res)=>{res.writeHead(200,{'content-type':'text/html; charset=utf-8'});res.end(html);});
 server.listen(0,'127.0.0.1');await once(server,'listening');
 const url='http://127.0.0.1:'+server.address().port;
-const config={instance:{profile:'native-e2e'},powerMode:{enabled:true,browserControl:{enabled:true,allowNavigate:true,allowInput:true,allowScreenshot:true,backgroundFirst:true,foregroundFallback:'explicit-current-request-only',workflowBrowserAllowed:false,userBrowserProfileReuse:false,savedPasswordExtraction:false}}};
+const ownerIsolated=process.env.RC_BROWSER_NATIVE_OWNER_ISOLATED==='1';
+const config={instance:{profile:'native-e2e'},powerMode:{enabled:true,browserControl:{enabled:true,allowNavigate:true,allowInput:true,allowScreenshot:true,backgroundFirst:true,foregroundFallback:'explicit-current-request-only',workflowBrowserAllowed:false,requireExistingUserSession:ownerIsolated,allowOwnedIsolatedSession:ownerIsolated,userBrowserProfileReuse:false,savedPasswordExtraction:false}}};
 const ctl=createBrowserController();
 let lease;
 try{
