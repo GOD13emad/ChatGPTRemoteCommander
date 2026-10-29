@@ -20,10 +20,16 @@ const TOKEN_AUTH_METHODS=new Set(['none','private_key_jwt','client_secret_basic'
 /** Returns only the verified public metadata needed by the OAuth JWT boundary. */
 export function validateV2OAuthProvider({
   issuer,resource,metadata,requiredScope='commander.workflow',
-  clientRegistration='pre-registered'
+  requiredScopes,clientRegistration='pre-registered'
 }){
   const trustedIssuer=https(issuer),audience=https(resource);
-  if(typeof requiredScope!=='string'||!/^[A-Za-z][A-Za-z0-9._:-]{0,127}$/.test(requiredScope))
+  // The dispatcher enforces every advertised scope. Preflight must not accept
+  // an IdP advertising only the first scope of a multi-scope V2 tool.
+  const requestedScopes=requiredScopes===undefined?[requiredScope]:requiredScopes;
+  const SCOPE=/^[A-Za-z][A-Za-z0-9._:-]{0,127}$/;
+  if(!Array.isArray(requestedScopes)||requestedScopes.length<1
+    ||requestedScopes.length>32||new Set(requestedScopes).size!==requestedScopes.length
+    ||requestedScopes.some(s=>typeof s!=='string'||!SCOPE.test(s)))
     fail('V2_PROVIDER_SCOPE_INVALID');
   if(!metadata||typeof metadata!=='object'||Array.isArray(metadata))
     fail('V2_PROVIDER_METADATA_REQUIRED');
@@ -40,7 +46,7 @@ export function validateV2OAuthProvider({
   if(!includesString(metadata.code_challenge_methods_supported,'S256'))
     fail('V2_PROVIDER_PKCE_S256_REQUIRED');
   if(metadata.scopes_supported!==undefined
-    && !includesString(metadata.scopes_supported,requiredScope))
+    && requestedScopes.some(scope=>!includesString(metadata.scopes_supported,scope)))
     fail('V2_PROVIDER_SCOPE_NOT_ADVERTISED');
   if(!['pre-registered','client-id-metadata','dynamic'].includes(clientRegistration))
     fail('V2_PROVIDER_CLIENT_REGISTRATION_REQUIRED');
@@ -64,7 +70,7 @@ export function validateV2OAuthProvider({
   return Object.freeze({
     issuer:trustedIssuer,audience,
     authorizationEndpoint,tokenEndpoint,jwksUri,
-    scope:requiredScope,clientRegistration,
+    scope:requestedScopes[0],scopes:Object.freeze([...requestedScopes]),clientRegistration,
     tokenEndpointAuthMethods:Object.freeze([...new Set(tokenMethods.filter(m=>TOKEN_AUTH_METHODS.has(m)))]),
     // A positive preflight is not user authorization or authenticated chat identity.
     claimOfAuthenticatedChat:false
