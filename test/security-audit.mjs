@@ -25,7 +25,7 @@ const patterns = [
 // to individual marker occurrences, including those in git history. It must
 // never suppress a separate PEM marker anywhere in the same file or commit.
 const mockPemHeader = '-----BEGIN ' + 'PRIVATE KEY-----';
-const mockPemLiteral = mockPemHeader + String.raw`\nfixture`;
+const mockPemLiteral = mockPemHeader + String.raw`\\nfixture`;
 function secretPatternMatches(type,pattern,text) {
   const sample=type==='Private key block'
     ? text.replaceAll(mockPemLiteral,'[MOCK_V2_TLS_KEY_PLACEHOLDER]')
