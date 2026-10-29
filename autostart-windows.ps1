@@ -8,7 +8,8 @@ param(
   [ValidateSet('CurrentUser','LocalMachine')][string]$CredentialScope = 'CurrentUser',
   [string]$NpmPath = '',
   [string]$NodePath = '',
-  [switch]$BootCore
+  [switch]$BootCore,
+  [switch]$FailIfRunning
 )
 $ErrorActionPreference = 'Stop'
 # Never inherit an isolated MCP config into the global supervisor. Primary startup
@@ -34,7 +35,10 @@ $created = $false
 $mutex = $null
 if (-not $SelfTest) {
   $mutex = [Threading.Mutex]::new($false, 'Local\ChatGPTRemoteCommanderSupervisor', [ref]$created)
-  if (-not $created) { exit 0 }
+  if (-not $created) {
+    if ($FailIfRunning) { throw 'ADMIN_RUNTIME_EXISTING_SUPERVISOR_REQUIRES_CONTROLLED_HANDOFF' }
+    exit 0
+  }
 }
 function Get-McpHealth([int]$Port) {
   try { return Invoke-RestMethod "http://127.0.0.1:$Port/health" -TimeoutSec 2 }
