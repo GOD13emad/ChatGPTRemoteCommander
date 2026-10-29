@@ -145,11 +145,13 @@ export function createOperatorCore({config={},platform=process.platform,toolName
       case 'operator_advance': {
         if(typeof args.runId!=='string'||!runIdSchema.pattern||!new RegExp(runIdSchema.pattern).test(args.runId))
           throw Object.assign(new Error('OPERATOR_RUN_ID_INVALID'),{operatorCode:'OPERATOR_RUN_ID_INVALID'});
+        if(typeof args.requestId!=='string'||!new RegExp(operatorToolDefinitions[2].inputSchema.properties.requestId.pattern).test(args.requestId))
+          throw Object.assign(new Error('OPERATOR_REQUEST_ID_INVALID'),{operatorCode:'OPERATOR_REQUEST_ID_INVALID'});
         if(typeof advance!=='function')throw Object.assign(new Error('OPERATOR_RUNNER_UNAVAILABLE'),{operatorCode:'OPERATOR_RUNNER_UNAVAILABLE'});
         const s=await status();
         if(!s.routes.workflow)throw Object.assign(new Error('OPERATOR_RUNNER_UNAVAILABLE'),{operatorCode:'OPERATOR_RUNNER_UNAVAILABLE'});
         // Only the existing Project Engine may authorize and journal the next effect.
-        return advance(args.runId);
+        return advance(args.runId,args.requestId);
       }
       default: throw Object.assign(new Error('OPERATOR_TOOL_UNKNOWN'),{operatorCode:'OPERATOR_TOOL_UNKNOWN'});
     }
