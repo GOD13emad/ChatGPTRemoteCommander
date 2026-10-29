@@ -5,7 +5,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {
-  verifyV2CallerAssertion as verifyRaw,createV2VerifiedObservedCaller as createRaw,v2ActionDigest
+  verifyV2CallerAssertion as verifyRaw,createV2VerifiedObservedCaller as createRaw,
+  createV2NativeOwnerAssertionIssuer,v2ActionDigest
 } from '../src/v2-caller-assertion.mjs';
 import { executeV2WorkflowStep } from '../src/v2-workflow-gateway.mjs';
 import { WorkflowStore } from '../src/workflow-store.mjs';
@@ -160,4 +161,63 @@ test('noncanonical or dangerous arguments never produce an authorization digest'
     assert.throws(()=>v2ActionDigest('write_text',args),{code:'V2_ASSERTION_ARGUMENTS_INVALID'});
   }
   assert.throws(()=>v2ActionDigest('shell;rm -rf',ARGS),{code:'V2_ASSERTION_ACTION_INVALID'});
+});
+
+test('native issuer binds trusted session, native OS seat and exact action without accepting caller routes',async()=>{
+  const r=route();let approvals=0;
+  const issue=createV2NativeOwnerAssertionIssuer({
+    issuer:trust.issuer,audience:trust.audience,keyId:'key1',
+    privateKey,resolveNativeRoute:async(handle)=>{
+      assert.equal(handle,'attested-chat-a');return r;
+    },
+    observedNativeSession:async()=> 'session-1',
+    authorizeIssue:async(ctx)=>{
+      approvals++;assert.equal(ctx.route.conversationId,'chat-a');
+      assert.equal(ctx.osSessionId,'session-1');
+      assert.equal(ctx.argumentsHash,v2ActionDigest('write_text',ARGS));
+      return true;
+    },
+    now:()=>NOW,nonce:()=> 'unique-nonce',ttlMs:30000
+  });
+  const issued=await issue({sessionHandle:'attested-chat-a',tool:'write_text',
+    args:ARGS,route:route({conversationId:'attacker-chat'})});
+  assert.equal(approvals,1);
+  assert.equal(issued.route.conversationId,'chat-a');
+  assert.equal(Object.isFrozen(issued.assertion.claims),true);
+  assert.equal(issued.assertion.claims.expiresAtMs,NOW+30000);
+  assert.equal(verifyV2CallerAssertion({route:r,assertion:issued.assertion,
+    trust,nowMs:NOW}).conversationId,'chat-a');
+  assert.throws(()=>verifyV2CallerAssertion({
+    route:route({conversationId:'attacker-chat'}),assertion:issued.assertion,
+    trust,nowMs:NOW}),{code:'V2_ASSERTION_ROUTE_MISMATCH'});
+  assert.throws(()=>verifyRaw({route:r,assertion:issued.assertion,trust,
+    tool:'write_text',args:{path:'fixture.txt',content:'modified'},
+    nowMs:NOW}),{code:'V2_ASSERTION_ACTION_MISMATCH'});
+});
+test('owner issuer refuses unsupported key, forged seat, absent consent and mutable action',async()=>{
+  const base={
+    issuer:trust.issuer,audience:trust.audience,keyId:'key1',
+    privateKey,resolveNativeRoute:async()=>route(),
+    observedNativeSession:async()=> 'session-1',
+    authorizeIssue:async()=>true,now:()=>NOW,nonce:()=> 'good-nonce'
+  };
+  assert.throws(()=>createV2NativeOwnerAssertionIssuer({...base,privateKey:publicKey}),
+    {code:'V2_ASSERTION_OWNER_ISSUER_CONFIG_REQUIRED'});
+  assert.throws(()=>createV2NativeOwnerAssertionIssuer({...base,ttlMs:120001}),
+    {code:'V2_ASSERTION_OWNER_ISSUER_CONFIG_REQUIRED'});
+  const rejected=createV2NativeOwnerAssertionIssuer({...base,authorizeIssue:async()=>false});
+  await assert.rejects(rejected({sessionHandle:'attested-chat-a',tool:'write_text',args:ARGS}),
+    {code:'V2_ASSERTION_OWNER_CONSENT_REQUIRED'});
+  const wrongSeat=createV2NativeOwnerAssertionIssuer({...base,observedNativeSession:async()=>null});
+  await assert.rejects(wrongSeat({sessionHandle:'attested-chat-a',tool:'write_text',args:ARGS}),
+    {code:'V2_ASSERTION_NATIVE_SESSION_MISMATCH'});
+  await assert.rejects(createV2NativeOwnerAssertionIssuer(base)({
+    sessionHandle:'invalid chat',tool:'write_text',args:ARGS
+  }),{code:'V2_ASSERTION_ATTESTED_SESSION_REQUIRED'});
+  const args={path:'fixture.txt',content:'hi'};
+  const mutate=createV2NativeOwnerAssertionIssuer({...base,authorizeIssue:async()=>{
+    args.content='changed';return true;
+  }});
+  await assert.rejects(mutate({sessionHandle:'attested-chat-a',tool:'write_text',args}),
+    {code:'V2_ASSERTION_ACTION_MISMATCH'});
 });
