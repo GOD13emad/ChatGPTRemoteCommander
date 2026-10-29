@@ -164,17 +164,9 @@ Register-ScheduledTask -TaskName $HandoffTaskName -Action $handoffAction -Trigge
 
 $runKey='HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
 New-Item -Path $runKey -Force | Out-Null
-$launcher=Join-Path $Root 'launch-supervisor-hidden.vbs'
-$pwshVbs=$pwsh.Replace('"','""')
-$supervisorVbs=$Supervisor.Replace('"','""')
-$vbs=@(
-  'Set sh = CreateObject("WScript.Shell")',
-  ('cmd = Chr(34) & "{0}" & Chr(34) & " -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File " & Chr(34) & "{1}" & Chr(34)' -f $pwshVbs,$supervisorVbs),
-  'Call sh.Run(cmd, 0, False)'
-)
-[IO.File]::WriteAllLines($launcher,$vbs,[Text.UTF8Encoding]::new($false))
-$wscript=Join-Path $env:WINDIR 'System32\wscript.exe'
-$logonCommand='"{0}" //B //NoLogo "{1}"' -f $wscript,$launcher
+# Keep the user startup entry tied to the routed executable; no generated
+# launcher lives in the immutable release directory.
+$logonCommand='"{0}" -NoLogo -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File "{1}"' -f $pwsh,$Supervisor
 New-ItemProperty -Path $runKey -Name 'ChatGPTRemoteCommander' -Value $logonCommand -PropertyType String -Force | Out-Null
 
 if(-not $NoStart){
