@@ -9,6 +9,7 @@ const md={
  jwks_uri:issuer+'/keys',response_types_supported:['code'],
  grant_types_supported:['authorization_code'],code_challenge_methods_supported:['S256'],
  scopes_supported:['commander.workflow'],client_id_metadata_document_supported:true,
+ token_endpoint_auth_methods_supported:['none','private_key_jwt'],
  registration_endpoint:issuer+'/register'
 };
 const call=(changes={},config={})=>validateV2OAuthProvider({
@@ -67,4 +68,16 @@ test('malformed and header-injected provider URLs are rejected',()=>{
    {code:'V2_PROVIDER_HTTPS_REQUIRED'});
  assert.throws(()=>call({token_endpoint:'https://idp.example.test/token?q=steal'}),
    {code:'V2_PROVIDER_HTTPS_REQUIRED'});
+});
+test('token exchange methods must be published and compatible with ChatGPT client mode',()=>{
+ for(const value of [undefined,[],['tls_client_auth'],['none',7]]){
+  assert.throws(()=>call({token_endpoint_auth_methods_supported:value}),
+   {code:'V2_PROVIDER_TOKEN_AUTH_METHOD_UNSUPPORTED'});
+ }
+ assert.deepEqual(call().tokenEndpointAuthMethods,['none','private_key_jwt']);
+ assert.throws(()=>call({token_endpoint_auth_methods_supported:['client_secret_basic']},
+   {clientRegistration:'client-id-metadata'}),
+  {code:'V2_PROVIDER_CIMD_TOKEN_AUTH_METHOD_UNSUPPORTED'});
+ assert.deepEqual(call({token_endpoint_auth_methods_supported:['client_secret_basic']}).tokenEndpointAuthMethods,
+  ['client_secret_basic']);
 });
