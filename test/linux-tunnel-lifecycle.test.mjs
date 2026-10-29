@@ -98,3 +98,35 @@ test('linux lifecycle shell files parse and tunnel installer self-test resolves 
   assert.equal(body.version,'0.0.15');
   assert.equal(body.tag,'v0.0.15');
 });
+
+
+test('Linux updater supervisor recycle must not inherit the held flock descriptor',()=>{
+  const text=read('auto-update-linux.sh');
+  const begin=text.indexOf('recycle_supervisor(){');
+  const end=text.indexOf('\npromote_control(){',begin);
+  assert.ok(begin>=0&&end>begin,'recycle supervisor function must be present');
+  const recycle=text.slice(begin,end);
+  assert.match(recycle,/nohup \/bin\/bash "\$INSTALL_DIR\/autostart-linux\.sh" 9>&- >>"\$INSTALL_DIR\/var\/autostart-launch\.log"/u,
+    'persistent child must close updater lock FD9 to permit subsequent explicit rollback');
+  assert.match(text,/start_backend\(\)\{[\s\S]*?nohup node src\/server-v0\.3\.mjs 9>&-/u);
+  assert.match(text,/start_router\(\)\{[\s\S]*?nohup node src\/stable-router\.mjs [^\n]*9>&-/u);
+});
+
+test('Linux flock on updater lock is released after FD9-closed child spawn', {skip:process.platform!=='linux'},()=>{
+  const fixture=[
+    'set -euo pipefail',
+    'tmp="$(mktemp -d)"',
+    "trap 'rm -rf \"$tmp\"' EXIT",
+    'exec 9>"$tmp/update.lock"',
+    'flock -n 9',
+    'sleep 0.2 9>&- &',
+    'pid=$!',
+    'exec 9>&-',
+    'flock -n "$tmp/update.lock" true',
+    'wait "$pid"',
+    'echo UPDATER_FD9_RELEASE_PASS'
+  ].join('\n');
+  const r=spawnSync('bash',['-c',fixture],{encoding:'utf8',timeout:5000});
+  assert.equal(r.status,0,r.stderr||r.stdout);
+  assert.match(r.stdout,/UPDATER_FD9_RELEASE_PASS/u);
+});

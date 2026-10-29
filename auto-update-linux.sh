@@ -442,7 +442,7 @@ recycle_supervisor(){
     had=1; kill "$pid" 2>/dev/null || true
   done < <(pgrep -f "/bin/bash $INSTALL_DIR/autostart-linux.sh|bash $INSTALL_DIR/autostart-linux.sh" 2>/dev/null || true)
   if [[ "$had" == 1 ]]; then
-    nohup /bin/bash "$INSTALL_DIR/autostart-linux.sh" >>"$INSTALL_DIR/var/autostart-launch.log" 2>&1 &
+    nohup /bin/bash "$INSTALL_DIR/autostart-linux.sh" 9>&- >>"$INSTALL_DIR/var/autostart-launch.log" 2>&1 &
     log "SUPERVISOR_RECYCLE_PASS mode=process pid=$!"
   fi
 }
