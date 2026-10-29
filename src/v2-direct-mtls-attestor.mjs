@@ -46,7 +46,7 @@ export function createV2DirectMtlsTransportAttestor({
       return Object.freeze({authenticated:false});
     const actual= createHash('sha256').update(cert.issuerCertificate.raw).digest('hex');
     if(actual!==issuerDigest)return Object.freeze({authenticated:false});
-    if(!certificateDnsNames(cert.subjectaltname).includes(EXPECTED_DNS))
+    if(!certificateDnsNames(cert.subjectaltname).some(name=>name===EXPECTED_DNS))
       return Object.freeze({authenticated:false});
     if(!Array.isArray(cert.ext_key_usage)
       ||!cert.ext_key_usage.includes(CLIENT_AUTH_OID))
