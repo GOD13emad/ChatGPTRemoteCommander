@@ -1,5 +1,24 @@
 # Project Brain — ChatGPT Remote Commander
 
+## Latest scoped audit — 2026-10-29 (OPEN / NOT FINAL)
+
+### RC011-LIVE-FLEET-AUDIT-20261029 — current-source and five-endpoint reconciliation
+
+**Owner objective and accepted architecture:** Complete the already accepted one-product, three-environment Commander scope in [COMMANDER_ARCHITECTURE.md](COMMANDER_ARCHITECTURE.md): Core, authenticated Coordinator/multi-chat + multi-user/profile access, Browser Commander, safe GUI/Cua, Control Center, durable Workflow/Project Engine and bounded AI Workers, plus one supervised installer/updater. Dev train `0.11.0-dev.N` is forward-only before first Stable v1.0.0, but native installation/startup, account/session consent, security, reproducibility and component acceptance remain mandatory under [RELEASE_AUTHORITY.md](RELEASE_AUTHORITY.md). All-account chat coverage and line-by-line whole-source completeness have **not** been established by this audit.
+
+**Authoritative source and live divergence (read-only evidence in this audit):**
+- Personal canonical GitHub `GOD13emad/ChatGPTRemoteCommander`, `main=ea8b6fec311df55ec2802a371c3bbcb41294b3e4` at observation; organizational `TandemVector-Labs/ChatGPTRemoteCommander` is a protected-review fork, not a separate product.
+- Personal `main` package identity `0.11.0-dev.15` at that exact source observation. Five distinct currently connected MCP endpoints all answered `system_status.version=0.11.0-dev.18`; runtime version text alone does **not** authenticate installed binary Git SHA or confirm component parity.
+- Existing canonical development checkouts on five devices were inspected without touching installations or user working data: Linux desktop `f1570d7` with tracked modifications; owner Windows desktop `54bb5a1` with tracked modifications; two Windows headless servers `e337f0e` with clean tracked source; MMZ Linux desktop `e337f0e` with tracked modifications. All are behind the observed personal main. Changes in companion/autostart and GUI/docs/test areas remain preserved; no automatic merge/cleanup/reinstall authorized by this audit.
+- This ChatGPT tool connection exposes **101, 101, 97, 105, 101** distinct action names respectively on the Linux desktop, owner Windows desktop, first Windows server, second Windows server and MMZ Linux. The counts are *client tool exposure*, not proof of full behavior or 117 tools. No duplicate action name was found within each exact endpoint. Complete `workspace_target_*` owner interaction operations are not exposed here; one server currently exposes only `workspace_target_reconcile`. Schema/installation parity is therefore OPEN.
+- Linux desktop GUI backend GNOME Wayland available subject to current-request takeover/incident handling; Windows owner desktop observes Session 1 but `allowMouse=false`, `allowKeyboard=false`; both headless Windows servers report no GUI screens; MMZ Linux KDE Portal shows `consentRequired=true` with no consented session. No cross-user GUI authorization is inferred from `FULL_POWER`.
+- Workflow scheduler readiness differs from actual run permission: Linux desktop reports `automaticExecution=true` within an explicitly enrolled, proposal-only bounded configuration; other four endpoints reported `automaticExecution=false`. No autonomous fleet acceptance or multi-chat identity/lock guarantee is claimed.
+
+**Open DoD gates (not PASS):** (1) reconcile exact source SHA/installed executable hash/manifest and active route on every host; (2) source-controlled API/tool schema parity, identity and single-writer evidence; (3) consented GUI and authorized user-owner browser E2E, plus headless negative tests; (4) native Windows/Linux installation, NoPromote integrity, fresh startup, component and profile isolation, recovery; (5) independent code/security review and exact candidate CI; (6) five-host rollout receipts and owner acceptance, then Stable recovery/rollback and soak qualification. Historical PASS applies only to its exact version and scope.
+
+**Continuity / coordination:** No project code, installer, service, Git worktree or user desktop was modified by these read-only fleet probes. Notion coordination project is mapped, but the existing workspace rejected the content insertion because free block quota was exhausted; status `NOTION_SYNC_PENDING` and no successful Notion edit is claimed. This is one uniquely keyed current-audit event; preserve R0 and the historical records below. Next: compare current dev branch/host runtime exact SHAs and choose one existing clean canonical writer under review before any executable promotion.
+
+
 ## HISTORICAL AUDIT — 2026-10-27: cross-product evidence and architecture
 
 ### RC011-WINDOWS-PARSER-20261027 — dev.8 fail-closed repair
