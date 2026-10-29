@@ -63,6 +63,33 @@ test('human WAITING_INPUT time does not consume the execution deadline',async()=
   }finally{await f.dispose();}
 });
 
+test('operator step requestId is durably admitted once across retries and restarts',async()=>{
+  const f=fixture(async()=>proposal('write_text',{path:'result.txt',content:'verified output'}));
+  try {
+    await f.create();await f.start();
+    const first=await f.api.execute('workflow_run_tick',{runId:'run-one',requestId:'advance-1'});
+    assert.equal(first.status,'QUEUED');assert.equal(f.calls,1);
+    let retry=await f.api.execute('workflow_run_tick',{runId:'run-one',requestId:'advance-1'});
+    assert.equal(retry.skipped,true);
+    assert.equal(retry.reason,'PROJECT_OPERATOR_REQUEST_ALREADY_ADMITTED');
+    assert.equal(f.calls,1);
+    await f.reopen();
+    retry=await f.api.execute('workflow_run_tick',{runId:'run-one',requestId:'advance-1'});
+    assert.equal(retry.reason,'PROJECT_OPERATOR_REQUEST_ALREADY_ADMITTED');
+    assert.equal(f.calls,1);
+    const final=await f.api.execute('workflow_run_tick',{runId:'run-one',requestId:'advance-2'});
+    assert.equal(final.status,'COMPLETED');
+    assert.equal(f.calls,1);
+  } finally { await f.dispose(); }
+});
+test('malformed operator requestId fails before planner and effects',async()=>{
+  const f=fixture(async()=>proposal('write_text',{path:'result.txt',content:'verified output'}));
+  try {
+    await f.create();await f.start();
+    await assert.rejects(f.api.execute('workflow_run_tick',{runId:'run-one',requestId:'../unsafe'}),/PROJECT_OPERATOR_REQUEST_ID_INVALID/);
+    assert.equal(f.calls,0);
+  } finally {await f.dispose();}
+});
 test('real filesystem operation is journaled and independent evidence finalizes with Brain',async()=>{
   const f=fixture(async()=>proposal('write_text',{path:'result.txt',content:'verified output'}));
   try{await f.create();await f.start();const first=await f.tick();assert.equal(first.status,'QUEUED');assert.equal(f.calls,1);
