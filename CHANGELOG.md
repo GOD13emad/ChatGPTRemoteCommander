@@ -1,3 +1,8 @@
+# 0.11.0-dev.18 — PID-verified Firefox AT-SPI semantic control (2026-10-29, NoPromote)
+
+- New explicit short-lived Workspace Accessibility tools on Linux: exact Firefox PID/HWND, focused target, owner takeover lease, fresh single-use labeled element tokens; native AT-SPI role/name/action validation. No pointer coordinates, monitor bypass, browser profile access, cookies or credential reads.
+- Dual-monitor Workspace Target's coordinate guard remains fail-closed. Release, installation and GUI input acceptance are separate from source qualification. No Stable or auto-update promotion approved.
+
 # 0.11.0-dev.17 — GNOME multi-monitor Workspace Target bounds (2026-10-29; development / NoPromote)
 
 - Firefox/P12 blocker: GNOME Meta.Window inventory now reports verified monitor index and window-frame bounds. Workspace Target binds to the exact owner window+monitor and refuses missing multi-monitor metadata, changed geometry or coordinates outside its rectangle. Native screenshot uses the target monitor instead of assuming display 0; no generic GUI injection or credential extraction.

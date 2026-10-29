@@ -1,3 +1,7 @@
+## 0.11.0-dev.18 — GNOME Firefox semantic input, development / NoPromote
+
+AT-SPI is a distinct owner accessibility route requiring exact PID/HWND, focused window, current explicit takeover authorization and fresh one-shot accessibility element receipt. The original multi-monitor native pointer guard is unchanged. The browser's existing profile and institutional authentication are not copied or inspected. Pilot owner GTK control QA is PASS; real Firefox mutation and 52 P12 searches need independent authorization-scoped verification.
+
 ## 0.11.0-dev.17 — owner GNOME per-window monitor binding, development / NoPromote
 
 Targeted Firefox dual-monitor correction after real Emad host observation: prior `workspace_target_snapshot` produced display 0 even though an owner Firefox window was reported on another display. Add verified `Meta.Window.get_monitor()` and `get_frame_rect()` to native inventory, persist monitor/window geometry per lease, require matching target and reject off-window coordinates; candidate-source acceptance and exact native readback are separate mandatory gates. Existing dev.16 pilot remains active until accepted promotion. No credentials, browser profiles or cookies are read.

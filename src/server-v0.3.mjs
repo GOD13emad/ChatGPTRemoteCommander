@@ -10,6 +10,7 @@ import { audit, listDirectory, prepareProjectCommand, readText, runProjectComman
 import { executePowerTool, powerToolDefinitions, prepareDeferredPowerMutation, prepareShellCommand } from './power-tools-v0.3.mjs';
 import { executeGuiTool, guiToolDefinitions } from './gui-tools-windows.mjs';
 import { createWorkspaceTargetTools, workspaceTargetDefinitions, workspaceOwnerRequestContext } from './workspace-target-tools.mjs';
+import { createWorkspaceAccessibilityTools, workspaceAccessibilityDefinitions } from './workspace-accessibility-tools.mjs';
 import { createOwnerGuiReadOnlyProxy } from './gui-owner-delegation.mjs';
 import { createOwnerWorkspaceReadOnlyProxy } from './owner-workspace-delegation.mjs';
 import { createOwnerWorkspaceProxy } from './owner-workspace-proxy.mjs';
@@ -34,7 +35,7 @@ import {
 
 let workflowTools = null;
 let browserCompanionMonitor = null;
-const VERSION = '0.11.0-dev.17';
+const VERSION = '0.11.0-dev.18';
 const MODERN_VERSION = '2026-07-28';
 const LEGACY_VERSIONS = ['2025-11-25', '2025-06-18', '2025-03-26'];
 const TASKS_EXTENSION = 'io.modelcontextprotocol/tasks';
@@ -72,6 +73,7 @@ const ctx = {
 };
 // Process-scoped window/lease bindings are shared across HTTP requests; never share across users or hosts.
 const workspaceTargetBindings = new Map();
+const workspaceAccessibilitySessions = new Map();
 const legacyWorkspaceProxy = createOwnerWorkspaceProxy({config});
 let ownerWorkspaceReadOnlyProxy = null;
 let ownerWorkspaceProxyConfigError = null;
@@ -258,7 +260,8 @@ const TOOLS = [
   ...(BROWSER_ENABLED ? browserToolDefinitions : []),
   ...(GUI_ENABLED ? exposedGuiTools(config,guiToolDefinitions) : []),
   ...workspaceToolDefinitions,
-  ...(GUI_ENABLED ? workspaceTargetDefinitions : [])
+  ...(GUI_ENABLED ? workspaceTargetDefinitions : []),
+  ...(GUI_ENABLED && process.platform==='linux' ? workspaceAccessibilityDefinitions : [])
 ];
 
 const AUTO_DEFERRED_MUTATIONS = new Set(['copy_path', 'move_path', 'delete_path']);
@@ -580,6 +583,21 @@ async function executeToolEffect(name, args, delegationContext = {}) {
       if (name.startsWith('browser_')) {
         const result = await executeBrowserTool(ctx, name, args);
         await audit(ctx, { action: name, ok: true, powerMode: true, browserControl: true });
+        return result;
+      }
+      if (name.startsWith('workspace_accessibility_')) {
+        if(process.platform!=='linux')throw Error('WORKSPACE_ACCESSIBILITY_LINUX_ONLY');
+        const ownerRequestContext=workspaceOwnerRequestContext(delegationContext,args);
+        const adapter=createWorkspaceAccessibilityTools({
+          sessions:workspaceAccessibilitySessions,
+          gui:async(tool,input)=>{
+            const proxy=ownerGuiProxy ? await ownerGuiProxy.execute(tool,input,ownerRequestContext) : {handled:false};
+            return proxy.handled ? proxy.value : executeGuiTool(ctx,tool,input);
+          }
+        });
+        const result=await adapter.execute(name,args);
+        await audit(ctx,{action:name,ok:result?.ok===true,workspaceAccessibility:true,
+          semanticOnly:true,powerMode:true});
         return result;
       }
       if (name.startsWith('workspace_') && !name.startsWith('workspace_target_')) {
