@@ -97,6 +97,14 @@ hasAll(bootEnable, [
 if (bootEnable.includes('$StableRoot') || bootEnable.includes(String.raw`$VarDir = Join-Path $Root 'var'`)) {
   throw new Error('Boot recovery must not select legacy app code or create release-local runtime state');
 }
+hasAll(bootEnable, [
+  '$logonCommand=',
+  '-WindowStyle Hidden -ExecutionPolicy Bypass -File',
+  'New-ItemProperty -Path $runKey'
+], 'enable-boot-recovery.ps1 startup');
+if (bootEnable.includes('launch-supervisor-hidden.vbs') || bootEnable.includes('[IO.File]::WriteAllLines($launcher')) {
+  throw new Error('Boot recovery must not generate launchers inside the installed release');
+}
 for (const forbidden of ['AutoAdminLogon =', 'DefaultPassword', '-LogonType Password']) {
   if (bootEnable.includes(forbidden)) throw new Error('boot recovery unsafe marker: ' + forbidden);
 }
