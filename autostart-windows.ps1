@@ -54,8 +54,7 @@ function Test-McpHealth([int]$Port,[string]$ExpectedConfigSha='',[string]$Expect
 $script:PrimaryHealthFailures = 0
 
 function Find-TunnelExe {
-  $stableAppRoot = Join-Path (Join-Path $OwnerUserProfile 'AppData\Local') 'ChatGPTRemoteCommander\app'
-  $stateFile = Join-Path $stableAppRoot 'var\tunnel-client.json'
+  $stateFile = Join-Path (Join-Path $OwnerUserProfile 'AppData\Local') 'ChatGPTRemoteCommander\var\tunnel-client.json'
   if (-not (Test-Path -LiteralPath $stateFile -PathType Leaf)) {
     throw 'Pinned tunnel-client state missing; run install.ps1.'
   }
