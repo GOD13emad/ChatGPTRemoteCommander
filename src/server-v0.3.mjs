@@ -322,7 +322,7 @@ const operatorTools = createOperatorCore({
   readWorkflow:async()=>workflowTools?workflowTools.execute('workflow_status',{}):{enabled:false,runnerConfigured:false},
   readBrowser:BROWSER_ENABLED?()=>executeBrowserTool(ctx,'browser_status',{}):undefined,
   readGui:GUI_ENABLED?()=>executeGuiTool(ctx,'gui_status',{}):undefined,
-  advance:workflowTools?runId=>workflowTools.execute('workflow_run_tick',{runId}):undefined
+  advance:workflowTools?(runId,requestId)=>workflowTools.execute('workflow_run_tick',{runId,requestId}):undefined
 });
 TOOLS.push(...operatorTools.definitions);
 function serverMeta() {
