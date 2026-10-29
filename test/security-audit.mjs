@@ -64,7 +64,10 @@ function makeHistoryScanner(rules) {
     const sample = preceding + line;
     for (const [name, pattern] of rules) {
       pattern.lastIndex = 0;
-      if (pattern.test(sample) && !knownInvalidPemFixture(name, line, currentCommit, currentFile)) hits.add(name);
+      // PEM headers occupy one logical line. Reusing preceding context here
+      // would rediscover an exempt test header on every subsequent line.
+      const candidate = name === 'Private key block' ? line : sample;
+      if (pattern.test(candidate) && !knownInvalidPemFixture(name, line, currentCommit, currentFile)) hits.add(name);
     }
     preceding = sample.slice(-512);
   }
