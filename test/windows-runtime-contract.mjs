@@ -54,6 +54,12 @@ hasAll(enable, [
 ], 'enable-autostart.ps1');
 
 const supervisor = read('autostart-windows.ps1');
+if (!supervisor.includes(String.raw`ChatGPTRemoteCommander\var\tunnel-client.json`)) {
+  throw new Error('Supervisor must load the persistent tunnel pin outside the old app installation');
+}
+if (supervisor.includes(String.raw`ChatGPTRemoteCommander\app`)) {
+  throw new Error('Supervisor must not depend on the obsolete app directory');
+}
 hasAll(supervisor, [
   "tunnel-client.json",
   "PROFILE_SKIPPED_INVALID",
