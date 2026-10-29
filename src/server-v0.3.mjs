@@ -9,6 +9,8 @@ import { canonicalizeRoots } from './security-v0.3.mjs';
 import { audit, listDirectory, prepareProjectCommand, readText, runProjectCommand, writeText } from './tools-v0.3.mjs';
 import { executePowerTool, powerToolDefinitions, prepareDeferredPowerMutation, prepareShellCommand } from './power-tools-v0.3.mjs';
 import { executeGuiTool, guiToolDefinitions } from './gui-tools-windows.mjs';
+import { createOwnerWorkspaceProxy } from './owner-workspace-proxy.mjs';
+import { executeWorkspaceTool, assertWorkspaceToolPolicy, workspaceToolDefinitions } from './workspace-tools.mjs';
 import { createOwnerGuiReadOnlyProxy } from './gui-owner-delegation.mjs';
 import { executeBrowserTool, browserToolDefinitions, reapBrowserOrphans } from './browser-tools.mjs';
 import { lockStats } from './locks.mjs';
@@ -239,8 +241,10 @@ const TOOLS = [
   ...notionMcpTools.definitions,
   ...powerToolDefinitions,
   ...(BROWSER_ENABLED ? browserToolDefinitions : []),
-  ...(GUI_ENABLED ? guiToolDefinitions : [])
+  ...(GUI_ENABLED ? guiToolDefinitions : []),
+  ...(config.ownerWorkspaceDelegation?.enabled === true ? workspaceToolDefinitions : [])
 ];
+const ownerWorkspaceProxy = createOwnerWorkspaceProxy({ config });
 
 const AUTO_DEFERRED_MUTATIONS = new Set(['copy_path', 'move_path', 'delete_path']);
 const MUTATION_REQUEST_ID_SCHEMA = {
@@ -555,6 +559,16 @@ async function executeToolEffect(name, args, delegationContext = {}) {
     case 'run_project_command':
       return runProjectCommand(ctx, args);
     default: {
+      if (name.startsWith('workspace_')) {
+        assertWorkspaceToolPolicy(config, name, args);
+        if (!ownerWorkspaceProxy) throw new Error('WORKSPACE_OWNER_PROXY_DISABLED');
+        const response = await ownerWorkspaceProxy.execute(name, args, delegationContext);
+        if (!response.handled) throw new Error('WORKSPACE_OWNER_TOOL_REJECTED');
+        const result = response.value;
+        await audit(ctx, { action:name, ok:result?.ok!==false,
+          workspace:true, delegatedOwnerWorkspace:true });
+        return result;
+      }
       if (name.startsWith('browser_')) {
         const result = await executeBrowserTool(ctx, name, args);
         await audit(ctx, { action: name, ok: true, powerMode: true, browserControl: true });
