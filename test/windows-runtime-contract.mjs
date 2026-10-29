@@ -53,16 +53,6 @@ hasAll(enable, [
   "Test-AnyProfileProcess"
 ], 'enable-autostart.ps1');
 
-const recovery = read('enable-boot-recovery.ps1');
-hasAll(recovery, [
-  '$Root = [IO.Path]::GetFullPath($SourceRoot)',
-  'BOOT_RECOVERY_ACTIVE_ROUTE_MISMATCH_STALE_ROOT',
-  String.raw`$VarDir = Join-Path $OwnerLocal 'ChatGPTRemoteCommander\var'`
-], 'enable-boot-recovery.ps1');
-if (recovery.includes('$StableRoot') || recovery.includes(String.raw`$VarDir = Join-Path $Root 'var'`)) {
-  throw new Error('Boot recovery must not pin itself to legacy app code or store receipts inside release code');
-}
-
 const supervisor = read('autostart-windows.ps1');
 if (!supervisor.includes(String.raw`ChatGPTRemoteCommander\var\tunnel-client.json`)) {
   throw new Error('Supervisor must load the persistent tunnel pin outside the old app installation');
@@ -100,10 +90,13 @@ hasAll(bootEnable, [
   "New-ScheduledTaskTrigger -AtLogOn",
   "autoAdminLogonRequired=$false",
   "plaintextCredentialPersisted=$false",
-  "ChatGPTRemoteCommander\\app",
-  "$stableSupervisor",
-  "$stableHandoff"
+  '$Root = [IO.Path]::GetFullPath($SourceRoot)',
+  "BOOT_RECOVERY_ACTIVE_ROUTE_MISMATCH_STALE_ROOT",
+  String.raw`$VarDir = Join-Path $OwnerLocal 'ChatGPTRemoteCommander\var'`
 ], 'enable-boot-recovery.ps1');
+if (bootEnable.includes('$StableRoot') || bootEnable.includes(String.raw`$VarDir = Join-Path $Root 'var'`)) {
+  throw new Error('Boot recovery must not select legacy app code or create release-local runtime state');
+}
 for (const forbidden of ['AutoAdminLogon =', 'DefaultPassword', '-LogonType Password']) {
   if (bootEnable.includes(forbidden)) throw new Error('boot recovery unsafe marker: ' + forbidden);
 }
