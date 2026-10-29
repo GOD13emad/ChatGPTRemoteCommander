@@ -221,3 +221,34 @@ test('owner issuer refuses unsupported key, forged seat, absent consent and muta
   await assert.rejects(mutate({sessionHandle:'attested-chat-a',tool:'write_text',args}),
     {code:'V2_ASSERTION_ACTION_MISMATCH'});
 });
+
+test('owner issuer refuses route or seat reassignment during async consent',async()=>{
+  let boundRoute=route(),seat='session-1',approvals=0;
+  const base={
+    issuer:trust.issuer,audience:trust.audience,keyId:'key1',
+    privateKey,
+    resolveNativeRoute:async()=>boundRoute,
+    observedNativeSession:async()=>seat,
+    now:()=>NOW,nonce:()=> 'unique-nonce'
+  };
+  const switchedRoute=createV2NativeOwnerAssertionIssuer({...base,
+    authorizeIssue:async()=>{approvals++;boundRoute=route({conversationId:'chat-b'});return true;}
+  });
+  await assert.rejects(switchedRoute({
+    sessionHandle:'attested-chat-a',tool:'write_text',args:ARGS
+  }),{code:'V2_ASSERTION_NATIVE_ROUTE_CHANGED'});
+  assert.equal(approvals,1);
+  boundRoute=route();
+  const switchedSeat=createV2NativeOwnerAssertionIssuer({...base,
+    authorizeIssue:async()=>{approvals++;seat='session-2';return true;}
+  });
+  await assert.rejects(switchedSeat({
+    sessionHandle:'attested-chat-a',tool:'write_text',args:ARGS
+  }),{code:'V2_ASSERTION_NATIVE_SESSION_MISMATCH'});
+  assert.equal(approvals,2);
+  seat='session-1';
+  const stable=createV2NativeOwnerAssertionIssuer({...base,authorizeIssue:async()=>true});
+  const issued=await stable({sessionHandle:'attested-chat-a',tool:'write_text',args:ARGS});
+  assert.equal(issued.assertion.claims.conversationId,'chat-a');
+  assert.equal(issued.assertion.claims.osSessionId,'session-1');
+});

@@ -164,7 +164,15 @@ export function createV2NativeOwnerAssertionIssuer({
       sessionHandle,route,osSessionId:session,tool,argumentsHash
     }));
     if(permission!==true)fail('V2_ASSERTION_OWNER_CONSENT_REQUIRED');
-    // Reject mutation of the input during the asynchronous authorization.
+    // The user can switch desktop sessions, revoke a binding or reassign a
+    // conversation while the owner's async consent check is pending. Never
+    // sign an identity that the trusted native resolver no longer observes.
+    const verifiedRoute=normalizeV2Route(await resolveNativeRoute(sessionHandle));
+    if(JSON.stringify(verifiedRoute)!==JSON.stringify(route))
+      fail('V2_ASSERTION_NATIVE_ROUTE_CHANGED');
+    if(await observedNativeSession(verifiedRoute)!==session)
+      fail('V2_ASSERTION_NATIVE_SESSION_MISMATCH');
+    // Reject mutation of the requested action during the async checks.
     if(v2ActionDigest(tool,args)!==argumentsHash)
       fail('V2_ASSERTION_ACTION_MISMATCH');
     const claims=Object.freeze({
