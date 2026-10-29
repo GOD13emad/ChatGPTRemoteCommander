@@ -1,5 +1,28 @@
 # Project Brain — ChatGPT Remote Commander
 
+## Latest validated implementation delta — 2026-10-30 (SOURCE CANDIDATE / NOT INSTALLED)
+
+### RC011-INTELLIGENT-OPERATOR-20261030 — canonical primary operator candidate
+
+**User target:** Make the single installed Commander on each Windows/Linux/Headless system act as a smart, human-like task operator: observe the computer, plan with available AI, run authorized tools, check outcomes, reconcile interrupted work, and finish the actual project. Uniform API/capabilities across managed systems with native OS adapters; not a license to bypass native session/UAC/sudo boundaries. Preserve existing ChatGPT-owned reasoning and singular Coordinator/WorkflowStore; do **not** install a competing CoS/Codex engine or a second Brain.
+
+**Implemented in canonical GitHub source:** independent stacked branch `feat/rc011-operator-core-20261030`, new [PR #430](https://github.com/GOD13emad/ChatGPTRemoteCommander/pull/430), based on Browser [PR #429](https://github.com/GOD13emad/ChatGPTRemoteCommander/pull/429), itself dependent on dev.18 source [PR #425](https://github.com/GOD13emad/ChatGPTRemoteCommander/pull/425). Adds three *common* MCP tools `operator_status`, `operator_route`, `operator_advance` in `src/operator-core.mjs`, registered through the **existing** `src/server-v0.3.mjs`. These expose current workflow/browser/GUI readiness; route to an existing project, file/shell, Commander-owned isolated browser or consented user Workspace; and advance at most **one already-enrolled step** through `workflow_run_tick` with the normal idempotency/receipts. No native GUI permissions, shell elevations, new model provider, unattended unbounded loop, browser cookie transfer, or alternative execution engine were added. Architecture updated in the **existing** `docs/COMMANDER_ARCHITECTURE.md`; new tests wired to package `test` and `check` scripts.
+
+**Direct exact-source QA receipts:** PR #430 source at `cf7d559a9cfa53fc4c3dbdeaf1d4c4dd2ab54ef3`. Disposable GitHub branch clones on **all five** hosts ran `node --test test/operator-core.test.mjs test/operator-http.test.mjs`: **19/19 PASS** with exit 0 on owner Windows (operation `4a0a3a90-0cef-4423-92b3-471e3aed8060`), MMZ Linux (`61b53f43-137a-4d44-8117-da8bb1cadd54`), Amir Windows server (`888f88cd-87fd-44af-90bc-d5e033d834aa`), Emad Windows server (`e5492d9b-aa88-4d6f-a220-af1c625e1d30`), and owner Linux (`3e6ea7c4-6cc2-4106-8971-652b9223a0b4`). Owner Windows and MMZ Linux also ran combined `mcp-conformance` + `schema-continuity-gate` + Operator regression: **30/30 PASS** each, exit 0 (operations `4d0c433b-b284-490c-861a-c47623b90b9e`, `e5746394-2205-47a9-a8c2-cb85bd787d53`). Tests use isolated MCP test servers, never logged-in user browsers or productive services. Source tests PASS, **NOT** installed-fleet/interactive-human-level acceptance.
+
+**Infrastructure inventory read directly from these hosts, not upgraded:**
+- Owner Windows: Node 26.7.0 / npm 12.2.1 / PowerShell 7.6.8 / Python 3.14.7 / Git 2.56.0.windows.2 / .NET SDK 10.0.401.
+- Amir Windows Server: Node 22.23.3 / npm 10.9.9 / PowerShell 7.6.6 / Git 2.55.0.windows.5; plain `python` and `dotnet` not found on current PATH (absence of tools on PATH is not absence of every possible installation).
+- Emad Windows Server: Node 22.23.3 / npm 10.9.9 / PowerShell 7.6.6 / Git 2.56.0.windows.1; plain `python` and `dotnet` not found on current PATH.
+- Owner Linux: Node 22.23.2 / npm 10.9.8 / Python 3.14.4 / Git 2.53.0 / Firefox 158.0, `pwsh` not on PATH.
+- MMZ Linux: Node 24.22.2 / npm 11.19.1 / Python 3.14.4 / Git 2.56.0 / Firefox 159.0, `pwsh` not on PATH.
+
+**Verified external version targets (2026-10-30):** Node.js 26.13.0 LTS (nodejs.org blog Oct 28), PowerShell 7.6.9 latest stable (PowerShell GitHub Oct 25), Python 3.14.10 security-maintenance or 3.15.2 latest major (python.org Oct 25), current MCP protocol spec 2026-07-28 (MCP blog). Latest major does NOT automatically mean best compatible runtime for each Core/browser/GUI/installer component. Audit exact source/ABI, pin official artifact hash and signature when available, stage user-local with unchanged active runtime, qualify multi-host native tests, and promote only with candidate manifest/NoPromote/health receipt. **No five-host Node/Python/PowerShell/Firefox updates have been claimed or performed in this delta.**
+
+**CI/review gate:** At readback PR #430 CI/Release Sync/Server Install Canary and Windows updater R157 NoPromote had started, with Linux Control Center portable QA NoPromote completed SUCCESS. Independent MMZ code review requested; PR remains Draft until exact-head CI. Parent PR #429 original R157 failed, but the single failed-job rerun completed SUCCESS at exact head `c9a1dce...`; never merge before independent review and full source chain. Notion remains `NOTION_SYNC_PENDING` due to previously verified workspace quota; GitHub Project Brain remains canonical for these technical records.
+
+**Unclosed acceptance:** (1) Native full-body Operator/AI loop `observe → plan → act → verify → checkpoint` for real owner workflows beyond one bounded step; (2) same actionable GUI + Browser contract and interactive session consent on desktop OS; (3) multi-chat-per-host identity and distributed single-writer; (4) staged verified infrastructure upgrades; (5) exact new dev build, signed manifest and NoPromote + installed five-host E2E; (6) Control Center/Browser Commander/Recovery and `v1.0.0` stable release. Do not confuse common three-tool schema or 19/19 PASS with complete autonomy.
+
 ## Latest scoped audit — 2026-10-29 (OPEN / NOT FINAL)
 
 ### RC011-LIVE-FLEET-AUDIT-20261029 — current-source and five-endpoint reconciliation
