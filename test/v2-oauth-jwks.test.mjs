@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { generateKeyPairSync, sign } from 'node:crypto';
+import { createPublicKey, generateKeyPairSync, sign } from 'node:crypto';
 import { createV2JwksTokenVerifier,fetchV2Jwks } from '../src/v2-oauth-jwks.mjs';
 import { createV2OAuthObservedCaller } from '../src/v2-oauth-caller.mjs';
 import { v2ActionDigest } from '../src/v2-caller-assertion.mjs';
@@ -170,12 +170,12 @@ test('scope-less and numeric dates outside JS precise range are refused',async()
   await assert.rejects(verify(token('EdDSA',payload({exp:Number.MAX_SAFE_INTEGER}))),
     {code:'V2_JWT_TIME_INVALID'});
 });
-test('RSA public keys below 2048 bits are rejected even if signature verifies',async()=>{
-  const weak=generateKeyPairSync('rsa',{modulusLength:1024});
-  const weakJwk={...weak.publicKey.export({format:'jwk'}),
+test('RSA public keys below 2048 bits are rejected before verifying a signature',async()=>{
+  const weakJwk={kty:'RSA',n:Buffer.alloc(128,0xff).toString('base64url'),e:'AQAB',
     kid:'RS256',alg:'RS256',use:'sig',key_ops:['verify']};
+  assert.equal(createPublicKey({key:weakJwk,format:'jwk'}).asymmetricKeyDetails.modulusLength,1024);
   const verifier=createV2JwksTokenVerifier({...config,
     request:async()=>response({keys:[weakJwk]})});
-  await assert.rejects(verifier(token('RS256',payload(),weak.privateKey)),
+  await assert.rejects(verifier(token('RS256')),
     {code:'V2_JWKS_KEY_REJECTED'});
 });
