@@ -3,7 +3,7 @@
 // The issuer must independently authenticate the user, native OS session, and
 // conversation; ordinary MCP headers, bodies, handles and URL parameters are
 // never a trusted issuer. Do not wire into unauthenticated legacy HTTP.
-import { verify, KeyObject, createHash } from 'node:crypto';
+import { verify, sign, KeyObject, createHash, randomUUID } from 'node:crypto';
 import { normalizeV2Route } from './v2-routing-contract.mjs';
 
 const ID=/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
@@ -122,5 +122,60 @@ export function createV2VerifiedObservedCaller({
       hostId:caller.hostId,principalId:caller.principalId,
       profileId:caller.profileId,conversationId:caller.conversationId
     });
+  };
+}
+
+/**
+ * Owner-worker-only producer for the exact assertion that the V2 verifier
+ * already consumes. Never export an RPC tool or expose this private-key
+ * capability to the MCP dispatcher or the HTTP request. The resolver must
+ * read an independently attested session-to-route map owned by the host,
+ * not route information from tool arguments, chat text or HTTP headers.
+ *
+ * The authorizeIssue callback must positively authenticate the native owner
+ * and its consent for this session/route/action before any signature exists.
+ * OAuth user validation and grant checks remain separate mandatory gates.
+ */
+export function createV2NativeOwnerAssertionIssuer({
+  issuer,audience,keyId,privateKey,resolveNativeRoute,observedNativeSession,
+  authorizeIssue,now=Date.now,nonce=randomUUID,ttlMs=30000
+}={}){
+  if(!safe(issuer)||!safe(audience)||!safe(keyId)
+    ||!(privateKey instanceof KeyObject)||privateKey.type!=='private'
+    ||privateKey.asymmetricKeyType!=='ed25519'
+    ||typeof resolveNativeRoute!=='function'
+    ||typeof observedNativeSession!=='function'
+    ||typeof authorizeIssue!=='function'
+    ||typeof now!=='function'||typeof nonce!=='function'
+    ||!Number.isSafeInteger(ttlMs)||ttlMs<1000||ttlMs>MAX_LIFETIME_MS)
+    fail('V2_ASSERTION_OWNER_ISSUER_CONFIG_REQUIRED');
+  return async({sessionHandle,tool,args}={})=>{
+    if(!safe(sessionHandle))fail('V2_ASSERTION_ATTESTED_SESSION_REQUIRED');
+    // All route/OS identity values are produced by private native callbacks.
+    // An unauthenticated caller must never supply them to the signing API.
+    const route=normalizeV2Route(await resolveNativeRoute(sessionHandle));
+    const session=await observedNativeSession(route);
+    if(!safe(session))fail('V2_ASSERTION_NATIVE_SESSION_MISMATCH');
+    const argumentsHash=v2ActionDigest(tool,args),issuedAtMs=now(),freshNonce=nonce();
+    if(!Number.isSafeInteger(issuedAtMs)
+      ||!Number.isSafeInteger(issuedAtMs+ttlMs)
+      ||!safe(freshNonce))fail('V2_ASSERTION_ISSUER_CLOCK_OR_NONCE_INVALID');
+    const permission=await authorizeIssue(Object.freeze({
+      sessionHandle,route,osSessionId:session,tool,argumentsHash
+    }));
+    if(permission!==true)fail('V2_ASSERTION_OWNER_CONSENT_REQUIRED');
+    // Reject mutation of the input during the asynchronous authorization.
+    if(v2ActionDigest(tool,args)!==argumentsHash)
+      fail('V2_ASSERTION_ACTION_MISMATCH');
+    const claims=Object.freeze({
+      issuer,audience,hostId:route.hostId,principalId:route.principalId,
+      profileId:route.profileId,conversationId:route.conversationId,
+      operationId:route.operationId,targetKind:route.target.kind,
+      targetId:route.target.id,osSessionId:session,tool,argumentsHash,
+      issuedAtMs,expiresAtMs:issuedAtMs+ttlMs,nonce:freshNonce
+    });
+    const signature=sign(null,serialize(keyId,claims),privateKey).toString('base64url');
+    const assertion=Object.freeze({schema:2,keyId,claims,signature});
+    return Object.freeze({route,assertion});
   };
 }
