@@ -129,6 +129,29 @@ test('valid signed OAuth JWT + native session assertion drives one actual Workfl
   assert.equal(f.effects(),1);
  }finally{f.close();}
 });
+test('native action resolver sees exact tool payload but no bearer, chat or route authority',async()=>{
+ const f=fixture();try{
+  let looked=0;
+  const d=f.mk({resolveTrustedInvocation:async(action)=>{
+    looked++;
+    assert.deepEqual(Object.keys(action).sort(),
+      ['arguments','expectedRevision','stepId','tool'].sort());
+    assert.equal(Object.isFrozen(action),true);
+    assert.equal(action.tool,'write_text');
+    assert.equal(action.stepId,'write');
+    assert.equal(action.expectedRevision,1);
+    assert.deepEqual(action.arguments,f.args);
+    assert.notEqual(action.arguments,f.args);
+    assert.equal(action.sessionHandle,undefined);
+    return f.base.resolveTrustedInvocation();
+  }});
+  const r=await d.call({authorization:'Bearer '+jwt(),
+    toolName:'v2_workflow_step',args:f.input});
+  assert.equal(r.isError,undefined);
+  assert.equal(looked,1);
+  assert.equal(f.effects(),1);
+ }finally{f.close();}
+});
 test('missing independently attested conversation rejects an otherwise valid OAuth user',async()=>{
  const f=fixture();try{
   const d=f.mk({resolveTrustedInvocation:async()=>null});
