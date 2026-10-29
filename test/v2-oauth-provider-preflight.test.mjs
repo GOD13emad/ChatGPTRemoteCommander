@@ -81,3 +81,18 @@ test('token exchange methods must be published and compatible with ChatGPT clien
  assert.deepEqual(call({token_endpoint_auth_methods_supported:['client_secret_basic']}).tokenEndpointAuthMethods,
   ['client_secret_basic']);
 });
+test('multi-scope OAuth preflight rejects an IdP missing any required scope',()=>{
+ const requiredScopes=['commander.workflow','commander.seat'];
+ assert.throws(()=>call({}, {requiredScopes}),{code:'V2_PROVIDER_SCOPE_NOT_ADVERTISED'});
+ const accepted=call({scopes_supported:requiredScopes},{requiredScopes});
+ assert.deepEqual(accepted.scopes,requiredScopes);
+ assert.equal(accepted.scope,'commander.workflow');
+ assert.equal(Object.isFrozen(accepted.scopes),true);
+ assert.deepEqual(call({scopes_supported:undefined},{requiredScopes}).scopes,requiredScopes);
+ for(const invalid of [[],['commander.workflow','commander.workflow'],
+   ['commander.workflow','bad scope'],['commander.workflow',42],
+   ['commander.workflow', '\\r\\nInjected']]){
+  assert.throws(()=>call({scopes_supported:requiredScopes},{requiredScopes:invalid}),
+    {code:'V2_PROVIDER_SCOPE_INVALID'});
+ }
+});
