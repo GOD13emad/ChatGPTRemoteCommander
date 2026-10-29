@@ -58,6 +58,9 @@ test('opt-in isolated session permits only an ephemeral owner profile and never 
   lease:session.lease,explicitUserAuthorization:'User asked to open existing account browser'
  }),/BROWSER_EXISTING_USER_SESSION_REQUIRED_USE_WORKSPACE/);
  assert.equal(f.calls.some(x=>x.action==='relaunch'),false);
+ await assert.rejects(f.ctl.execute(f.ctx,'browser_foreground_requirement',{
+  lease:session.lease,reason:'saved-browser-credential',targetHost:'example.test'
+ }),/BROWSER_EXISTING_USER_SESSION_REQUIRED_USE_WORKSPACE/);
  f.ctx.config.powerMode.browserControl.allowOwnedIsolatedSession=false;
  await assert.rejects(f.ctl.execute(f.ctx,'browser_navigate',{
   lease:session.lease,url:'https://example.test/after-revoke'
