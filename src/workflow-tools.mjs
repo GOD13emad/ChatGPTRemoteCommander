@@ -95,7 +95,7 @@ export const PROJECT_ENGINE_TOOL_DEFINITIONS = [
   definition('workflow_run_resolve','Record an explicit response to an open project input request and queue the same run. Preserves scope, checks and consumed budgets. Configured automatic scheduling may subsequently execute it. Never submit credentials.',obj({
     runId:id,requestId:text(64),expectedRevision:rev,response:text(2000)
   },['runId','requestId','expectedRevision','response']),{...action,idempotentHint:true}),
-  definition('workflow_run_tick','Execute at most one bounded planner/tool step, or independently verify and finalize an enrolled project.',obj({runId:id}),action)
+  definition('workflow_run_tick','Execute at most one bounded planner/tool step, or independently verify and finalize an enrolled project. Optional stable requestId durably prevents duplicate operator advances after a lost receipt.',obj({runId:id,requestId:text(128)}),action)
 ];
 
 const SAFE_KNOWN = new Set(FULL_WORKFLOW_EXECUTION_TOOLS);
@@ -389,7 +389,7 @@ export function createWorkflowTools({ config, roots, device, configSha256, looku
         }
         case 'workflow_run_tick': {
           if(!engine)fail('WORKFLOW_RUNNER_DISABLED');
-          const result=await engine.tick(args.runId);reconcileProjectDeliveries();return result;
+          const result=await engine.tick(args.runId,args.requestId);reconcileProjectDeliveries();return result;
         }
         case 'workflow_call': {
           const outcome = await store.call(args, {
