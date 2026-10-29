@@ -21,7 +21,7 @@ const fixture=(overrides={})=>{
   readWorkflow:overrides.readWorkflow??(async()=>({enabled:true,runnerConfigured:true,automaticExecution:false})),
   readBrowser:overrides.readBrowser??(async()=>({available:true,backend:'chromium-cdp',policy:{requireExistingUserSession:true,allowOwnedIsolatedSession:false}})),
   readGui:overrides.readGui??(async()=>({available:true,backend:'cua-owner'})),
-  advance:overrides.advance===null?undefined:async runId=>{tickCalls++;return {runId,status:'QUEUED',tickCalls};}
+  advance:overrides.advance===null?undefined:async (runId,requestId)=>{tickCalls++;return {runId,requestId,status:'QUEUED',tickCalls};}
  });
  return {operator,get tickCalls(){return tickCalls;}};
 };
@@ -109,18 +109,20 @@ test('unavailable subsystem and status error fail closed without leaking details
 });
 test('operator advances exactly one existing run step through injected engine',async()=>{
  const f=fixture();
- const r=await f.operator.execute('operator_advance',{runId:'my_run'});
- assert.deepEqual(r,{runId:'my_run',status:'QUEUED',tickCalls:1});
+ const r=await f.operator.execute('operator_advance',{runId:'my_run',requestId:'step-one'});
+ assert.deepEqual(r,{runId:'my_run',requestId:'step-one',status:'QUEUED',tickCalls:1});
  assert.equal(f.tickCalls,1);
 });
 test('invalid run identifiers cannot invoke the underlying workflow',async()=>{
  const f=fixture();
- await assert.rejects(f.operator.execute('operator_advance',{runId:'../../other'}),/OPERATOR_RUN_ID_INVALID/);
+ await assert.rejects(f.operator.execute('operator_advance',{runId:'../../other',requestId:'safe-one'}),/OPERATOR_RUN_ID_INVALID/);
+ await assert.rejects(f.operator.execute('operator_advance',{runId:'valid',requestId:'../unsafe'}),/OPERATOR_REQUEST_ID_INVALID/);
+ await assert.rejects(f.operator.execute('operator_advance',{runId:'valid'}),/OPERATOR_REQUEST_ID_INVALID/);
  assert.equal(f.tickCalls,0);
 });
 test('no engine / disabled workflow refuses delegated effects',async()=>{
  const f=fixture({readWorkflow:async()=>({enabled:false,runnerConfigured:false})});
- await assert.rejects(f.operator.execute('operator_advance',{runId:'project'}),/OPERATOR_RUNNER_UNAVAILABLE/);
+ await assert.rejects(f.operator.execute('operator_advance',{runId:'project',requestId:'step-one'}),/OPERATOR_RUNNER_UNAVAILABLE/);
  assert.equal(f.tickCalls,0);
 });
 test('release route preserves exact build and user acceptance gates',async()=>{
