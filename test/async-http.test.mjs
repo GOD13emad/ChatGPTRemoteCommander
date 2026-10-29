@@ -37,7 +37,9 @@ async function post(port, id, name, args) {
 }
 
 async function waitTerminal(port, operationId) {
-  const deadline = Date.now() + 15000;
+  // Bounded headroom for scheduled Windows hosted workers; operation_start's
+  // separate sub-second response and all idempotency/effect checks stay strict.
+  const deadline = Date.now() + 30000;
   let id = 100;
   while (Date.now() < deadline) {
     const state = await post(port, id++, 'operation_status', { operationId });
