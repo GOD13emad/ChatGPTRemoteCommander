@@ -25,6 +25,17 @@ $StableRoot = Join-Path $OwnerLocal 'ChatGPTRemoteCommander\app'
 $stableSupervisor = Join-Path $StableRoot 'autostart-windows.ps1'
 $stableHandoff = Join-Path $StableRoot 'handoff-user-session-windows.ps1'
 $Root = if((Test-Path -LiteralPath $stableSupervisor -PathType Leaf) -and (Test-Path -LiteralPath $stableHandoff -PathType Leaf)){$StableRoot}else{$SourceRoot}
+$RouteFile = Join-Path $OwnerLocal 'ChatGPTRemoteCommander\routing\default.json'
+if(-not(Test-Path -LiteralPath $RouteFile -PathType Leaf)){
+  throw 'BOOT_RECOVERY_ACTIVE_ROUTE_MISSING'
+}
+$route = Get-Content -LiteralPath $RouteFile -Raw | ConvertFrom-Json
+$activeProjectDir = [string]$route.active.projectDir
+if([string]::IsNullOrWhiteSpace($activeProjectDir) -or
+   [IO.Path]::GetFullPath($activeProjectDir) -ne [IO.Path]::GetFullPath($Root)){
+  throw 'BOOT_RECOVERY_ACTIVE_ROUTE_MISMATCH_STALE_ROOT'
+}
+
 $CredDir = Join-Path $OwnerLocal 'ChatGPTRemoteCommander\credentials'
 $ProfileDir = Join-Path $OwnerRoaming 'tunnel-client'
 $VarDir = Join-Path $Root 'var'
