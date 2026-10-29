@@ -54,7 +54,7 @@ function makeHistoryScanner(rules) {
   let pending = '', preceding = '', currentCommit = '', currentFile = '';
   const limit = 16 * 1024 * 1024;
   function scanLine(line) {
-    if (/^commit [a-f0-9]{40}(?:\\r?\\n)?$/.test(line)) {
+    if (/^commit [a-f0-9]{40}(?=\s|$)/.test(line)) {
       currentCommit = line.slice(7,47);
       currentFile = '';
     } else if (line.startsWith('diff --git a/')) {
@@ -98,6 +98,19 @@ if (!negativeScanner.finish().has('Private key block')) {
 if (knownInvalidPemFixture('Private key block', fakeLine,
     KNOWN_INVALID_PEM_FIXTURE.commit, KNOWN_INVALID_PEM_FIXTURE.path)) {
   throw new Error('SECURITY_AUDIT_FIXTURE_EXEMPTION_TOO_BROAD');
+}
+
+// Git log may decorate refs after the commit hash. Preserve source provenance
+// for both decorated and undecorated headers without skipping other key markers.
+for (const decorated of [false,true]) {
+  const probe = makeHistoryScanner(patterns);
+  probe.write('commit ' + 'f'.repeat(40) +
+    (decorated ? ' (HEAD -> a-feature)\n' : '\n'));
+  probe.write('diff --git a/test/other.test.mjs b/test/other.test.mjs\n');
+  probe.write(fakeLine);
+  if (!probe.finish().has('Private key block')) {
+    throw new Error('SECURITY_AUDIT_DECORATED_COMMIT_NEGATIVE_CONTROL_FAILED');
+  }
 }
 
 const boundaryProbe = makeHistoryScanner(patterns);
