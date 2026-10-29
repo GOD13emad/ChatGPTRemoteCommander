@@ -282,3 +282,22 @@ test('isolated OAuth HTTP WorkflowStore: two chats, same-root lease, revoked gra
    registry.close();store.close();fs.rmSync(dir,{recursive:true,force:true});
  }
 });
+
+test('multi-scope OAuth recheck denies token scope downgrade or mutated policy',async()=>{
+ const requiredScopes=['commander.workflow','commander.seat'];
+ let currentScopes=['commander.workflow','commander.seat'];
+ const observed=create({overrides:{
+  requiredScopes,
+  verifyAccessToken:async t=>({
+   ...(await verifyFixtureJwt(t)),scopes:currentScopes
+  })
+ }});
+ assert.equal((await observed()).conversationId,'chat-a');
+ requiredScopes.splice(1,1); // caller cannot shrink already created policy
+ currentScopes=['commander.workflow'];
+ await assert.rejects(observed(),{code:'V2_OAUTH_SCOPE_OR_SUBJECT_REQUIRED'});
+ assert.throws(()=>create({overrides:{requiredScopes:[]}}),
+   {code:'V2_OAUTH_RESOURCE_CONFIG_REQUIRED'});
+ assert.throws(()=>create({overrides:{requiredScopes:['commander.workflow','commander.workflow']}}),
+   {code:'V2_OAUTH_RESOURCE_CONFIG_REQUIRED'});
+});

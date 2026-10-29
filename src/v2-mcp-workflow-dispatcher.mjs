@@ -52,6 +52,7 @@ export function createV2CandidateMcpDispatcher({
     inputSchema,
     annotations:{readOnlyHint:false,destructiveHint:false,openWorldHint:false}
   });
+  const enforcedScopes=descriptor.securitySchemes[0].scopes;
   const denied=(code='V2_MCP_OPERATION_DENIED')=>Object.freeze({
     isError:true,content:Object.freeze([Object.freeze({
       type:'text',text:'Commander V2 request denied: '+code
@@ -91,7 +92,7 @@ export function createV2CandidateMcpDispatcher({
       if(!validClaims)fail('V2_OAUTH_VERIFICATION_REQUIRED');
       // Every scope advertised for this operation must be present in the
       // verified access token, not only the first scope in the array.
-      if(!scopes.every(scope=>claims.scopes.includes(scope)))
+      if(!enforcedScopes.every(scope=>claims.scopes.includes(scope)))
         fail('V2_OAUTH_SCOPE_OR_SUBJECT_REQUIRED');
       // Resolution is intentionally independent of any caller-controlled
       // route, conversation ID, profile, device, or MCP session handle.
@@ -113,7 +114,7 @@ export function createV2CandidateMcpDispatcher({
         assertion:trusted.assertion,assertionTrust,
         readAuthorization:async()=>authorization,
         verifyAccessToken,resolvePrincipal,observedNativeSession,
-        issuer,audience,requiredScope:scopes[0],now
+        issuer,audience,requiredScopes:enforcedScopes,now
       });
       const result=await executeV2WorkflowStep({
         route:r,stepId:args.stepId,expectedRevision:args.expectedRevision,

@@ -380,3 +380,32 @@ test('multiple advertised OAuth scopes are all enforced before native lookup or 
   assert.equal(f.effects(),1);
  }finally{f.close();}
 });
+
+test('scope downgrade after entry OAuth check never reaches WorkflowStore effects',async()=>{
+ const f=fixture();try{
+  let verified=0,lookups=0;
+  const required=['commander.workflow','commander.seat'];
+  const fullScopes=Object.freeze([...required]);
+  const d=f.mk({
+   scopes:required,
+   verifyAccessToken:async token=>{
+    const c=await f.base.verifyAccessToken(token);
+    verified++;
+    return {...c,scopes:verified===1?fullScopes:['commander.workflow']};
+   },
+   resolveTrustedInvocation:async action=>{
+    lookups++;return f.base.resolveTrustedInvocation(action);
+   }
+  });
+  required.splice(1,1);
+  const result=await d.call({
+   authorization:'Bearer '+jwt({scope:'commander.workflow commander.seat'}),
+   toolName:'v2_workflow_step',args:f.input
+  });
+  assert.equal(result.isError,true);
+  assert.match(result._meta['mcp/www_authenticate'][0],/insufficient_scope/);
+  assert.equal(verified,2);
+  assert.equal(lookups,1);
+  assert.equal(f.effects(),0);
+ }finally{f.close();}
+});

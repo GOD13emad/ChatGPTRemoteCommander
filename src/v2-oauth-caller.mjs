@@ -13,13 +13,18 @@ function requireCallback(v){if(typeof v!=='function')fail('V2_OAUTH_TRUSTED_CALL
 export function createV2OAuthObservedCaller({
   route,tool,args,assertion,assertionTrust,readAuthorization,
   verifyAccessToken,resolvePrincipal,observedNativeSession,
-  issuer,audience,requiredScope='commander.workflow',now=Date.now
+  issuer,audience,requiredScope='commander.workflow',requiredScopes,now=Date.now
 }){
   const r=normalizeV2Route(route);
   for(const v of [readAuthorization,verifyAccessToken,resolvePrincipal,observedNativeSession,now])requireCallback(v);
-  if(!isId(requiredScope)||typeof issuer!=='string'||!issuer.startsWith('https://')
+  const enforcedScopes=requiredScopes===undefined?[requiredScope]:requiredScopes;
+  if(!Array.isArray(enforcedScopes)||enforcedScopes.length<1
+    ||enforcedScopes.length>32||new Set(enforcedScopes).size!==enforcedScopes.length
+    ||enforcedScopes.some(scope=>!isId(scope))
+    ||typeof issuer!=='string'||!issuer.startsWith('https://')
     ||typeof audience!=='string'||!audience.startsWith('https://'))
     fail('V2_OAUTH_RESOURCE_CONFIG_REQUIRED');
+  const scopeSnapshot=Object.freeze([...enforcedScopes]);
   const observedAssertion=createV2VerifiedObservedCaller({
     route:r,tool,args,assertion,trust:assertionTrust,observedNativeSession,now
   });
@@ -42,7 +47,7 @@ export function createV2OAuthObservedCaller({
     if(claims.issuer!==issuer||claims.audience!==audience)
       fail('V2_OAUTH_ISSUER_OR_AUDIENCE_MISMATCH');
     if(!isId(claims.subject)||!Array.isArray(claims.scopes)
-      ||!claims.scopes.includes(requiredScope))
+      ||!scopeSnapshot.every(scope=>claims.scopes.includes(scope)))
       fail('V2_OAUTH_SCOPE_OR_SUBJECT_REQUIRED');
     const principal=await resolvePrincipal(claims.subject);
     if(!isId(principal)||principal!==r.principalId)
