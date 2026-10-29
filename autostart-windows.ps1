@@ -35,10 +35,7 @@ $created = $false
 $mutex = $null
 if (-not $SelfTest) {
   $mutex = [Threading.Mutex]::new($false, 'Local\ChatGPTRemoteCommanderSupervisor', [ref]$created)
-  if (-not $created) {
-    if ($FailIfRunning) { throw 'ADMIN_RUNTIME_EXISTING_SUPERVISOR_REQUIRES_CONTROLLED_HANDOFF' }
-    exit 0
-  }
+  if (-not $created) { if ($FailIfRunning) { throw 'ADMIN_RUNTIME_EXISTING_SUPERVISOR_REQUIRES_CONTROLLED_HANDOFF' }; exit 0 }
 }
 function Get-McpHealth([int]$Port) {
   try { return Invoke-RestMethod "http://127.0.0.1:$Port/health" -TimeoutSec 2 }
