@@ -125,7 +125,9 @@ hasAll(handoff, [
 ], 'handoff-user-session-windows.ps1');
 if (!handoff.includes("HANDOFF_BUSY_STATE_UNVERIFIED") ||
     !handoff.includes("HANDOFF_BUSY_STATE_INVALID") ||
-    !handoff.includes('return [pscustomobject]@{active=1;leases=1}') ||
+    !handoff.includes('return [pscustomobject]@{active=1;queued=1;leases=1}') ||
+    !handoff.includes('$busy.queued -eq 0') ||
+    !handoff.includes('$busy.queued -ne 0') ||
     handoff.includes('return [pscustomobject]@{active=0;leases=0}')) {
   throw new Error('Owner handoff must fail closed when Commander status is missing or invalid');
 }
