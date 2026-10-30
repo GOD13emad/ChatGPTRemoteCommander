@@ -69,7 +69,7 @@ $socket='\\.\pipe\rc-workspace-cua-v038'
 $driver=$null
 try{
  $driver=Start-Process -FilePath $cua -ArgumentList @('serve','--socket',$socket,
-   '--no-overlay','--permission-mode','standard') -WindowStyle Hidden -PassThru
+   '--no-overlay','--permission-mode','standard','--grant','existing-profile') -WindowStyle Hidden -PassThru
  Start-Sleep -Seconds 2
  if($driver.HasExited){throw 'OWNER_CUA_START_FAILED'}
  $probe=& $cua call --socket $socket list_windows '{}'
