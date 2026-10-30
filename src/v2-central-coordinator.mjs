@@ -11,6 +11,13 @@ import { normalizeV2Route, v2ResourceLeaseKey, v2OperationKey } from './v2-routi
 // Trusted coordinator-side inventory identifies ONE shared physical resource.
 // Untrusted route arguments cannot supply a global resource identity.
 const GLOBAL_RESOURCE_ID=/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
+const RECEIPT_ID=/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
+const RECEIPT_SHA=/^[a-f0-9]{64}$/;
+function receiptInput(receiptId,digest){
+ if(typeof receiptId!=='string'||!RECEIPT_ID.test(receiptId)||
+   (digest!==undefined&&(typeof digest!=='string'||!RECEIPT_SHA.test(digest))))
+    fail('V2_COORDINATOR_RECEIPT_INPUT_INVALID');
+}
 
 
 function fail(code) { throw Object.assign(new Error(code), { code }); }
@@ -66,12 +73,19 @@ export class V2CentralCoordinator {
       if (this.db.prepare('PRAGMA journal_mode').get().journal_mode!=='delete')
         fail('V2_COORDINATOR_JOURNAL_MODE');
       const version=this.db.prepare('PRAGMA user_version').get().user_version;
-      if (version>1) fail('V2_COORDINATOR_SCHEMA_TOO_NEW');
+      if (version>2) fail('V2_COORDINATOR_SCHEMA_TOO_NEW');
       this.db.exec(`CREATE TABLE IF NOT EXISTS v2_global_lease (
         resource TEXT PRIMARY KEY, holder TEXT NOT NULL, lease_id TEXT NOT NULL,
         fence INTEGER NOT NULL CHECK(fence>=1),
         expires_at_ms INTEGER NOT NULL, clock_floor_ms INTEGER NOT NULL
-      ); PRAGMA user_version=1;`);
+      );
+      CREATE TABLE IF NOT EXISTS v2_fenced_receipt (
+        resource TEXT NOT NULL, receipt_id TEXT NOT NULL,
+        digest TEXT NOT NULL, holder TEXT NOT NULL,
+        lease_id TEXT NOT NULL, fence INTEGER NOT NULL CHECK(fence>=1),
+        committed_at_ms INTEGER NOT NULL,
+        PRIMARY KEY (resource,receipt_id)
+      ); PRAGMA user_version=2;`);
     } catch(error) { this.db.close();throw error; }
   }
   clock() {
@@ -192,6 +206,46 @@ export class V2CentralCoordinator {
       try {await this.release({route,lease});}
       catch { /* Never overwrite an original execution error or claim recovery. */ }
     }
+  }
+  // Atomic database-owned effect, deliberately *not* a filesystem, browser,
+  // GUI or other external resource mutation. BEGIN IMMEDIATE serializes lease
+  // check and receipt INSERT across independent connections/processes.
+  async commitFencedReceipt({route,lease,receiptId,digest}) {
+    validLease(lease);receiptInput(receiptId,digest);
+    if(digest===undefined)fail('V2_COORDINATOR_RECEIPT_INPUT_INVALID');
+    const {resource,holder}=await this.scope(route);
+    const ms=this.clock();
+    if(lease.resource!==undefined&&lease.resource!==resource)
+      fail('V2_COORDINATOR_STALE_LEASE');
+    return this.transaction(()=>{
+      const owner=this.row(resource);this.checkClock(owner,ms);
+      if(!owner||owner.holder!==holder||owner.lease_id!==lease.id||
+         owner.fence!==lease.fence||owner.expires_at_ms<=ms)
+        fail('V2_COORDINATOR_STALE_LEASE');
+      const prior=this.db.prepare(`SELECT * FROM v2_fenced_receipt
+         WHERE resource=? AND receipt_id=?`).get(resource,receiptId);
+      if(prior) {
+        if(prior.holder!==holder||prior.lease_id!==lease.id||
+           prior.fence!==lease.fence||prior.digest!==digest)
+          fail('V2_COORDINATOR_RECEIPT_CONFLICT');
+        return Object.freeze({receiptId,digest,fence:prior.fence,committed:true,replayed:true});
+      }
+      this.db.prepare(`INSERT INTO v2_fenced_receipt
+        (resource,receipt_id,digest,holder,lease_id,fence,committed_at_ms)
+        VALUES (?,?,?,?,?,?,?)`).run(
+        resource,receiptId,digest,holder,lease.id,lease.fence,ms);
+      return Object.freeze({receiptId,digest,fence:lease.fence,committed:true,replayed:false});
+    });
+  }
+  // Explicit lost-ACK reconciliation, only via a separately authorized route;
+  // never guesses success from lease acquisition or a transport timeout.
+  async getFencedReceipt({route,receiptId}) {
+    receiptInput(receiptId);
+    const {resource}=await this.scope(route);
+    const row=this.db.prepare(`SELECT receipt_id,digest,fence FROM v2_fenced_receipt
+      WHERE resource=? AND receipt_id=?`).get(resource,receiptId);
+    return row?Object.freeze({receiptId:row.receipt_id,digest:row.digest,
+      fence:row.fence,committed:true}):null;
   }
   close(){this.db.close();}
 }

@@ -49,21 +49,23 @@ function send(res,status,payload){
 }
 function errorStatus(code){
  if(code==='V2_RPC_BODY_SHAPE')return 400;
+ if(code==='V2_COORDINATOR_RECEIPT_CONFLICT')return 409;
  if(code==='V2_COORDINATOR_RESOURCE_BUSY')return 409;
  if(code==='V2_COORDINATOR_AUTH_REQUIRED')return 403;
  if(code==='V2_COORDINATOR_STALE_LEASE'||code==='V2_COORDINATOR_CLOCK_ROLLBACK')return 409;
  if(code.startsWith('V2_ROUTE_')||code==='V2_COORDINATOR_LEASE_INVALID'||
     code==='V2_COORDINATOR_TTL_INVALID'||code==='V2_COORDINATOR_GLOBAL_RESOURCE_UNMAPPED'||
-    code==='V2_COORDINATOR_GLOBAL_RESOURCE_INVALID')return 422;
+    code==='V2_COORDINATOR_GLOBAL_RESOURCE_INVALID'||
+    code==='V2_COORDINATOR_RECEIPT_INPUT_INVALID')return 422;
  return 503; // Unknown exceptions must not expose internals or succeed.
 }
 export function createV2CoordinatorRpcServer({coordinator,lookupToken}={}){
  if(!coordinator||typeof lookupToken!=='function'||
-  ['acquire','renew','assertCurrent','release'].some(k=>typeof coordinator[k]!=='function'))
+  ['acquire','renew','assertCurrent','release','commitFencedReceipt','getFencedReceipt'].some(k=>typeof coordinator[k]!=='function'))
   fail('V2_RPC_TRUSTED_BOOTSTRAP_REQUIRED');
  const server=http.createServer(async(req,res)=>{
   const url=req.url;
-  if(req.method!=='POST'||typeof url!=='string'||!/^\/v2\/lease\/(acquire|renew|assert|release)$/.test(url)){
+  if(req.method!=='POST'||typeof url!=='string'||!/^\/v2\/lease\/(acquire|renew|assert|release|commit-receipt|get-receipt)$/.test(url)){
    send(res,404,{error:'V2_RPC_NOT_FOUND'});return;
   }
   if(req.headers.origin||req.headers.cookie||req.headers['transfer-encoding']||
@@ -97,14 +99,27 @@ export function createV2CoordinatorRpcServer({coordinator,lookupToken}={}){
   catch{send(res,400,{error:'V2_RPC_BODY_JSON'});return;}
   if(!input||typeof input!=='object'||Array.isArray(input)||
    !Object.hasOwn(input,'route')||
-   Object.keys(input).some(k=>!['route','lease','ttlMs'].includes(k))){
+   Object.keys(input).some(k=>!['route','lease','ttlMs','receiptId','digest'].includes(k))){
    send(res,400,{error:'V2_RPC_BODY_SHAPE'});return;
   }
   const action=url.split('/').at(-1);
   try{
    const route=assertV2CallerBinding(input.route,binding);
+   const receiptAction=action==='commit-receipt'||action==='get-receipt';
+   if(!receiptAction&&(input.receiptId!==undefined||input.digest!==undefined))
+     throw fail('V2_RPC_BODY_SHAPE');
+   if(receiptAction&&input.ttlMs!==undefined)throw fail('V2_RPC_BODY_SHAPE');
+   if(action==='get-receipt'&&(input.lease!==undefined||input.digest!==undefined))
+     throw fail('V2_RPC_BODY_SHAPE');
+   if(action==='commit-receipt'&&input.lease===undefined)
+     throw fail('V2_RPC_BODY_SHAPE');
    let output;
-   if(action==='acquire'){
+   if(action==='commit-receipt'){
+    output=await coordinator.commitFencedReceipt({
+     route,lease:input.lease,receiptId:input.receiptId,digest:input.digest});
+   }else if(action==='get-receipt'){
+    output=await coordinator.getFencedReceipt({route,receiptId:input.receiptId});
+   }else if(action==='acquire'){
     if(input.lease!==undefined)throw fail('V2_RPC_BODY_SHAPE');
     output=await coordinator.acquire({route,ttlMs:input.ttlMs});
    }else {
