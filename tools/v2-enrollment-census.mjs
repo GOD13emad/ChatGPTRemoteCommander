@@ -46,7 +46,7 @@ export async function censusV2EnrollmentScope({
     scanDirectory(profileDir), scanDirectory(credentialDir)
   ]);
   const canon = n => platform === 'win32' ? n.toLowerCase() : n;
-  const yaml = profiles.entries.filter(n => n.endsWith('.yaml'))
+  const yaml = profiles.entries.filter(n => platform === 'win32' ? n.toLowerCase().endsWith('.yaml') : n.endsWith('.yaml'))
     .map(n => n.slice(0, -5));
   const names = yaml.filter(n => FILENAME.test(n));
   const invalid = yaml.length - names.length;
@@ -102,6 +102,78 @@ export async function censusV2EnrollmentScope({
     credentialUsability: 'UNVERIFIED',
     chatIdentity: 'UNVERIFIED',
     safeForAutomaticMigration: false
+  });
+}
+
+/**
+ * Compare two NON-LIVE (staged/recovery) enrollment directories inside a
+ * single trusted owner process. IDs remain inside this process; results are
+ * anonymous counts/booleans only. It intentionally cannot approve a cutover.
+ * Never use this to compare folders belonging to different OS identities.
+ */
+export async function compareV2EnrollmentStructure({
+  before, after, platform = process.platform
+} = {}) {
+  if (!['win32', 'linux'].includes(platform)) fail('V2_CENSUS_PLATFORM_UNSUPPORTED');
+  if (!before || !after || typeof before !== 'object' || typeof after !== 'object')
+    fail('V2_CENSUS_PAIR_REQUIRED');
+  const fields = ['profileDir', 'credentialDir'];
+  for (const x of [before, after]) {
+    for (const field of fields) {
+      if (typeof x[field] !== 'string' || !path.isAbsolute(x[field]))
+        fail('V2_CENSUS_ABSOLUTE_ROOT_REQUIRED');
+    }
+  }
+  const canon = value => platform === 'win32' ? value.toLowerCase() : value;
+  const sameRoots = fields.some(k => canon(path.resolve(before[k])) === canon(path.resolve(after[k])));
+  if (sameRoots) return Object.freeze({
+    schema: 1, status: 'SAME_LOCATION_NOT_MIGRATION',
+    profileCountBefore: null, profileCountAfter: null,
+    credentialCountBefore: null, credentialCountAfter: null,
+    profileIdentitySetPreserved: false, credentialReferenceSetPreserved: false,
+    credentialUsability: 'UNVERIFIED', ownerIdentity: 'UNVERIFIED',
+    tunnelIdentity: 'UNVERIFIED', safeForAutomaticMigration: false
+  });
+  const get = async directories => {
+    const [p,c] = await Promise.all([
+      scanDirectory(directories.profileDir),
+      scanDirectory(directories.credentialDir)
+    ]);
+    const prof = p.entries.filter(n => platform === 'win32'
+      ? n.toLowerCase().endsWith('.yaml') : n.endsWith('.yaml'))
+      .map(n => canon(n.slice(0,-5)));
+    const cred = c.entries.filter(n => platform === 'win32'
+      ? n.toLowerCase().endsWith('.dpapi') : n.endsWith('.key')).map(canon);
+    const nameSet = new Set(prof), credSet = new Set(cred);
+    const expected = new Map();
+    let missing=0;
+    for (const name of prof) {
+      const suffixes = platform === 'win32'
+        ? [name + '.dpapi', name + '.machine.dpapi'] : [name + '.key'];
+      for (const x of suffixes) expected.set(x,(expected.get(x)||0)+1);
+      if (!suffixes.some(x => credSet.has(x))) missing++;
+    }
+    const bad = prof.some(n=>!FILENAME.test(n)) ||
+      nameSet.size !== prof.length || credSet.size !== cred.length ||
+      cred.some(n=>!expected.has(n) || expected.get(n)>1) ||
+      missing!==0 || p.unsafe!==0 || c.unsafe!==0;
+    return { valid:p.exists && c.exists && !bad, prof, cred };
+  };
+  const [a,b] = await Promise.all([get(before), get(after)]);
+  const equal=(u,v)=>u.length===v.length &&
+    [...u].sort().every((x,i)=>x===[...v].sort()[i]);
+  const profilesSame=equal(a.prof,b.prof);
+  const credentialsSame=equal(a.cred,b.cred);
+  const matched=a.valid && b.valid && profilesSame && credentialsSame;
+  return Object.freeze({
+    schema: 1,
+    status:matched?'STRUCTURAL_PRESERVATION_UNVERIFIED':'BLOCKED_RECONCILIATION',
+    profileCountBefore:a.prof.length,profileCountAfter:b.prof.length,
+    credentialCountBefore:a.cred.length,credentialCountAfter:b.cred.length,
+    profileIdentitySetPreserved:a.valid && b.valid && profilesSame,
+    credentialReferenceSetPreserved:a.valid && b.valid && credentialsSame,
+    credentialUsability:'UNVERIFIED',ownerIdentity:'UNVERIFIED',
+    tunnelIdentity:'UNVERIFIED',safeForAutomaticMigration:false
   });
 }
 

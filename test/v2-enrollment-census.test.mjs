@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, writeFile, symlink, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { censusV2EnrollmentScope } from '../tools/v2-enrollment-census.mjs';
+import { censusV2EnrollmentScope, compareV2EnrollmentStructure } from '../tools/v2-enrollment-census.mjs';
 
 async function fixture(fn) {
   const root = await mkdtemp(path.join(os.tmpdir(), 'v2-census-'));
@@ -93,4 +93,82 @@ test('relative roots and unsupported OS are rejected without reading data', asyn
     {code:'V2_CENSUS_ABSOLUTE_ROOT_REQUIRED'});
   await assert.rejects(censusV2EnrollmentScope({profileDir:'/tmp/a',credentialDir:'/tmp/b',platform:'plan9'}),
     {code:'V2_CENSUS_PLATFORM_UNSUPPORTED'});
+});
+
+test('paired migration with exact profile and credential references is structural-only, never authorized', async () => {
+  await fixture(async ({root,profileDir,credentialDir}) => {
+    const after={profileDir:path.join(root,'after-profiles'),credentialDir:path.join(root,'after-credentials')};
+    await mkdir(after.profileDir);await mkdir(after.credentialDir);
+    for(const name of ['first.yaml','second.yaml']){
+      await f(profileDir,name);await f(after.profileDir,name);
+    }
+    for(const name of ['first.dpapi','first.machine.dpapi','second.machine.dpapi']){
+      await f(credentialDir,name);await f(after.credentialDir,name);
+    }
+    const result=await compareV2EnrollmentStructure({
+      before:{profileDir,credentialDir},after,platform:'win32'
+    });
+    assert.equal(result.status,'STRUCTURAL_PRESERVATION_UNVERIFIED');
+    assert.equal(result.profileIdentitySetPreserved,true);
+    assert.equal(result.credentialReferenceSetPreserved,true);
+    assert.equal(result.safeForAutomaticMigration,false);
+    const output=JSON.stringify(result);
+    for(const word of ['first','second','after-profiles','opaque-credentials'])
+      assert.equal(output.includes(word),false);
+  });
+});
+test('same counts with changed profile names cannot be declared preserved', async () => {
+  await fixture(async ({root,profileDir,credentialDir}) => {
+    const after={profileDir:path.join(root,'after-profiles'),credentialDir:path.join(root,'after-credentials')};
+    await mkdir(after.profileDir);await mkdir(after.credentialDir);
+    await f(profileDir,'alice.yaml');await f(credentialDir,'alice.dpapi');
+    await f(after.profileDir,'bob.yaml');await f(after.credentialDir,'bob.dpapi');
+    const r=await compareV2EnrollmentStructure({before:{profileDir,credentialDir},after,platform:'win32'});
+    assert.equal(r.profileCountBefore,r.profileCountAfter);
+    assert.equal(r.credentialCountBefore,r.credentialCountAfter);
+    assert.equal(r.status,'BLOCKED_RECONCILIATION');
+    assert.equal(r.profileIdentitySetPreserved,false);
+  });
+});
+test('same profile but changed DPAPI scope must not be admitted', async () => {
+  await fixture(async ({root,profileDir,credentialDir}) => {
+    const after={profileDir:path.join(root,'after-profiles'),credentialDir:path.join(root,'after-credentials')};
+    await mkdir(after.profileDir);await mkdir(after.credentialDir);
+    await f(profileDir,'owner.yaml');await f(after.profileDir,'owner.yaml');
+    await f(credentialDir,'owner.dpapi');await f(after.credentialDir,'owner.machine.dpapi');
+    const r=await compareV2EnrollmentStructure({before:{profileDir,credentialDir},after,platform:'win32'});
+    assert.equal(r.profileIdentitySetPreserved,true);
+    assert.equal(r.credentialReferenceSetPreserved,false);
+    assert.equal(r.status,'BLOCKED_RECONCILIATION');
+  });
+});
+test('same live root and missing paired roots never qualify migration', async () => {
+  await fixture(async ({root,profileDir,credentialDir}) => {
+    const before={profileDir,credentialDir};
+    let r=await compareV2EnrollmentStructure({before,after:before,platform:'linux'});
+    assert.equal(r.status,'SAME_LOCATION_NOT_MIGRATION');
+    assert.equal(r.safeForAutomaticMigration,false);
+    const after={profileDir:path.join(root,'absent-p'),credentialDir:path.join(root,'absent-c')};
+    r=await compareV2EnrollmentStructure({before,after,platform:'linux'});
+    assert.equal(r.status,'BLOCKED_RECONCILIATION');
+    assert.equal(r.credentialUsability,'UNVERIFIED');
+  });
+});
+test('Linux case-sensitive profile identity changes are detected', async () => {
+  await fixture(async ({root,profileDir,credentialDir}) => {
+    const after={profileDir:path.join(root,'after-profiles'),credentialDir:path.join(root,'after-credentials')};
+    await mkdir(after.profileDir);await mkdir(after.credentialDir);
+    await f(profileDir,'Alice.yaml');await f(credentialDir,'Alice.key');
+    await f(after.profileDir,'alice.yaml');await f(after.credentialDir,'alice.key');
+    const r=await compareV2EnrollmentStructure({before:{profileDir,credentialDir},after,platform:'linux'});
+    assert.equal(r.status,'BLOCKED_RECONCILIATION');
+  });
+});
+test('Windows uppercase YAML extension is considered a valid enrollment', async () => {
+  await fixture(async ({profileDir,credentialDir}) => {
+    await f(profileDir,'owner.YAML');await f(credentialDir,'owner.dpapi');
+    const r=await censusV2EnrollmentScope({profileDir,credentialDir,platform:'win32'});
+    assert.equal(r.profileCount,1);
+    assert.equal(r.structuralStatus,'STRUCTURAL_MATCH');
+  });
 });
