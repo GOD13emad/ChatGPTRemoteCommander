@@ -36,6 +36,22 @@ function Get-CommanderBusy {
     $queued=[int]$s.concurrency.queued
     $leases=[int]$s.durableWorkflows.schedulerState.currentLeases
     if($active -lt 0 -or $queued -lt 0 -or $leases -lt 0){throw 'HANDOFF_BUSY_STATE_INVALID'}
+    foreach($tool in @('gui_status','browser_status')){
+      $probeBody=@{jsonrpc='2.0';id=2;method='tools/call';params=@{name=$tool;arguments=@{}}}|ConvertTo-Json -Depth 8 -Compress
+      $probe=Invoke-RestMethod -Uri 'http://127.0.0.1:47831/mcp' -Method Post -ContentType 'application/json' -Body $probeBody -TimeoutSec 3
+      $flags=$probe.result.structuredContent
+      if($probe.result.isError -or -not$flags){throw 'HANDOFF_RESOURCE_STATE_UNVERIFIED'}
+      if($tool -eq 'gui_status'){
+        if($null -eq$flags.leased -or $null -eq$flags.busy){throw 'HANDOFF_GUI_STATE_UNVERIFIED'}
+        if($flags.leased -or $flags.busy){$leases++}
+      } else {
+        if($null -eq$flags.active -or $null -eq$flags.busy -or
+           $null -eq$flags.leased -or $null -eq$flags.uncertain){
+          throw 'HANDOFF_BROWSER_STATE_UNVERIFIED'
+        }
+        if($flags.active -or $flags.busy -or $flags.leased -or $flags.uncertain){$leases++}
+      }
+    }
     return [pscustomobject]@{active=$active;queued=$queued;leases=$leases}
   } catch {
     # Losing status can never authorize terminating the running SYSTEM core.
