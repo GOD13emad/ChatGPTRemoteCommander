@@ -79,10 +79,13 @@ export function createWorkspaceTargetTools({gui,bindings=new Map()}){
  return {definitions:workspaceTargetDefinitions,execute:async(name,args={})=>{
   switch(name){
    case 'workspace_target_list':{
-    await status();const session=await gui('gui_session_begin',{mode:'observe',ttlSeconds:30});
+    const guiState=await status();const session=await gui('gui_session_begin',{mode:'observe',ttlSeconds:30});
     if(!session?.ok||!session.lease)reject('OBSERVE_LEASE_UNAVAILABLE');
     try{const rows=await enumerate(session.lease);
-      return {ok:true,backend:'owner-native-gui',application:args.application||'all',windows:normalizedWindows(rows).filter(w=>args.application!=='firefox'||safeApplication(w)).map(w=>({processId:w.processId,handle:w.handle,title:w.title,wmClass:w.wmClass,appName:w.appName,focused:w.focused,...(w.screenIndex===undefined?{}:{screenIndex:w.screenIndex}),...(w.bounds?{bounds:w.bounds}:{})})),privateProfileAccess:false};
+      return {ok:true,backend:'owner-native-gui',application:args.application||'all',windows:normalizedWindows(rows).filter(w=>args.application!=='firefox'||safeApplication(w)).map(w=>({processId:w.processId,handle:w.handle,title:w.title,wmClass:w.wmClass,appName:w.appName,focused:w.focused,...(w.screenIndex===undefined?{}:{screenIndex:w.screenIndex}),...(w.bounds?{bounds:w.bounds}:{}),
+       ...(process.platform==='linux'&&safeApplication(w)&&(guiState.screens?.length??0)>1&&
+          (w.screenIndex===undefined||!w.bounds)
+          ?{coordinateTargetVerified:false,recommendedNonCoordinateTool:'workspace_accessibility_open'}:{})})),privateProfileAccess:false};
     }finally{await gui('gui_session_end',{lease:session.lease});}
    }
    case 'workspace_target_open':{
