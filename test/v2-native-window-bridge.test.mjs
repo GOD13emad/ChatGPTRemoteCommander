@@ -156,3 +156,18 @@ test('native window replacement while reading accessibility is rejected',async()
    {code:'V2_WINDOW_REPLACED_DURING_OBSERVE'});
  assert.equal(f.effects.length,0);
 });
+
+test('owner window accessibility redacts secret-looking names and element identities',async()=>{
+ const f=fixture();f.grant('chat-a','workspace_window_observe');
+ f.services.nativeDriver.readAccessibility=async()=>({elements:[
+  {id:'field.api-key',role:'textbox',name:'API key for production',enabled:true},
+  {id:'field.private',role:'textbox',name:'Ordinary label',enabled:true},
+  {id:'field.message',role:'textbox',name:'Password reset token',enabled:true},
+  {id:'field.public',role:'textbox',name:'Search query',enabled:true}
+ ]});
+ const out=await doAction(f,{action:'observe',elementId:undefined});
+ assert.deepEqual(out.elements.map(x=>x.name),
+  ['[redacted]','[redacted]','[redacted]','Search query']);
+ assert.deepEqual(out.elements.map(x=>x.sensitive),[true,true,true,false]);
+ assert.equal(f.effects.length,0);
+});

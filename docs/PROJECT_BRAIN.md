@@ -1,5 +1,16 @@
 # Project Brain — ChatGPT Remote Commander
 
+## V2-R4-ACCESSIBILITY-LABEL-REDACTION-20261030 — bounded source security correction
+
+**Scope / decision:** V2 native owner-worker accessibility observation now marks an element as sensitive when its trusted role, element identity, or visible label signals password/secret/credential/token/private/hidden or API/access key. Its label is returned as `[redacted]`; ordinary textbox labels remain visible. This is a candidate code gate, not owner-session attachment, elevated input, OS consent or installed rollout.
+
+**Evidence:** At base `75766468a2ac938631a00fccbdc34aaa28c1d1a8`, the added targeted regression failed before the source change, then passed 14/14 after correction. Exact candidate Linux `node --test test/v2-*.test.mjs`: 211 PASS, 0 FAIL, 1 SKIP; `npm run audit`: SECURITY_AUDIT_PASS. The skipped gate is not promoted to PASS. Source and test are limited to `src/v2-native-window-bridge.mjs` and `test/v2-native-window-bridge.test.mjs`. No production install or running service changed.
+
+**Live R4 limitation (read-only checks, same date):** On `aliemad-Labtop`, GNOME Wayland GUI backend available with two screens and screenshot/window/mouse/keyboard capabilities; owner takeover still requires explicit consent. On `Emad-PC-Ultimate`, GUI observation is available but input is disabled under delegated observe mode. On `HPC-159-17` and `HPC-154-66`, native GUI status reported `available=false` and no screens for the current sessions. `MMZ-Labtop` transport remained unavailable. These are host runtime findings, not V2 acceptance. Preserve the source's existing Linux missing credential reference hold, and do not force browser/session takeover.
+
+**Open:** live two-chat OAuth/identity, real R4 native window act-and-verify, R0 profile reconciliation on all five devices, R8 lossless migration and R9 stable release. No V2 FINAL.
+
+
 ## V2_CHROMIUM_FIRST_20261030 — owner-directed browser engine unification (candidate, NOT installed)
 
 **Decision and authority:** The exact target architecture is documented in [COMMANDER_ARCHITECTURE.md](COMMANDER_ARCHITECTURE.md), section "Chromium-first unification decision". Use Chromium/CDP as the primary Commander-owned engine on Windows/Linux desktop and headless servers, preserve Firefox/WebDriver *only* for explicitly existing legacy profile compatibility while staging verified migration. No credential transfer/Firefox profile conversion or forced logout; reauthentication under a new Chromium owned profile remains `REAUTH_REQUIRED` unless actually proven. CEF product UI, native GUI driver, 2-chat OAuth and five-host release are independent OPEN gates.

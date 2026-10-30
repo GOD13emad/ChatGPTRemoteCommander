@@ -22,7 +22,7 @@ const windowFields=['targetId','hostId','principalId','seatId','pid','windowHand
 // Accessibility output is a bounded owner-consented *view*, not a browser
 // credential export, screenshot, raw provider object or a privileged action.
 const MAX_ELEMENTS=64, MAX_LABEL=160;
-const SENSITIVE=/password|secret|credential|token|private|hidden/i;
+const SENSITIVE=/password|secret|credential|token|private|hidden|api[\s_-]*key|access[\s_-]*key/i;
 function accessibilityView(raw){
  if(!raw||typeof raw!=='object'||Array.isArray(raw)||
     !Array.isArray(raw.elements)||raw.elements.length>MAX_ELEMENTS)
@@ -33,9 +33,12 @@ function accessibilityView(raw){
      !/^[A-Za-z][A-Za-z0-9_-]{0,39}$/.test(item.role)||
      typeof item.enabled!=='boolean')
     fail('V2_WINDOW_ACCESSIBILITY_SNAPSHOT_INVALID');
-  const sensitive=item.sensitive===true||SENSITIVE.test(item.role);
   if(item.name!==undefined&&typeof item.name!=='string')
     fail('V2_WINDOW_ACCESSIBILITY_SNAPSHOT_INVALID');
+  // The OS may expose a secret field as a generic textbox. Examine trusted
+  // element metadata as well as role; never return a sensitive label.
+  const sensitive=item.sensitive===true||SENSITIVE.test(item.role)||
+    SENSITIVE.test(item.id)||SENSITIVE.test(item.name??'');
   return Object.freeze({
     id:item.id,role:item.role,
     name:sensitive?'[redacted]':String(item.name??'').slice(0,MAX_LABEL),
