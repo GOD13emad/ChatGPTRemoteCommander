@@ -26,11 +26,19 @@ function Get-CommanderBusy {
     $body=@{jsonrpc='2.0';id=1;method='tools/call';params=@{name='system_status';arguments=@{}}}|ConvertTo-Json -Depth 8 -Compress
     $r=Invoke-RestMethod -Uri 'http://127.0.0.1:47831/mcp' -Method Post -ContentType 'application/json' -Body $body -TimeoutSec 3
     $s=$r.result.structuredContent
-    $active=if($s.concurrency){[int]$s.concurrency.activeOperations}else{0}
-    $leases=if($s.durableWorkflows -and $s.durableWorkflows.schedulerState){[int]$s.durableWorkflows.schedulerState.currentLeases}else{0}
+    if($r.result.isError -or -not$s -or -not$s.concurrency -or
+       $null -eq $s.concurrency.activeOperations -or -not$s.durableWorkflows -or
+       -not$s.durableWorkflows.schedulerState -or
+       $null -eq $s.durableWorkflows.schedulerState.currentLeases){
+      throw 'HANDOFF_BUSY_STATE_UNVERIFIED'
+    }
+    $active=[int]$s.concurrency.activeOperations
+    $leases=[int]$s.durableWorkflows.schedulerState.currentLeases
+    if($active -lt 0 -or $leases -lt 0){throw 'HANDOFF_BUSY_STATE_INVALID'}
     return [pscustomobject]@{active=$active;leases=$leases}
   } catch {
-    return [pscustomobject]@{active=0;leases=0}
+    # Losing status can never authorize terminating the running SYSTEM core.
+    return [pscustomobject]@{active=1;leases=1}
   }
 }
 function Stop-ExactProcess($Process,[string]$Label){
