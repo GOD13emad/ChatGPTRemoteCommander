@@ -4,7 +4,7 @@ const fixtureCommit='d890bd978b07aa738ceeef97bd6af2782538bac1';
 const fixtureFile='test/v2-mcp-http-ingress.test.mjs';
 const fixtureMarker='-----BEGIN ' + 'PRIVATE KEY-----';
 const prefix="privateKeyPem:'";
-const suffix='\\nfixture';
+const suffix='\\\\nfixture';
 
 export function isVerifiedSyntheticPrivatePem(type, matched, sample, offset, origin) {
   if (type!=='Private key block' || matched!==fixtureMarker ||
