@@ -109,3 +109,13 @@ test('owner proxy carries exact scoped type with outer receipt, no Session-0 fal
  assert.match(sent.requestId,/^owrk-[0-9a-f]{48}$/);
  assert.notEqual(sent.requestId,inp.requestId);
 });
+
+test('native spaced text-box role is a valid non-sensitive editable element',async()=>{
+ const m=setup({role:'text box',label:'Private isolated entry QA'});
+ const shot=await m.api.execute('workspace_window_observe',target);
+ assert.equal(shot.snapshotId,'s00000001');
+ const result=await m.api.execute('workspace_window_type',inp);
+ assert.equal(result.ok,true);
+ assert.equal(m.calls.filter(c=>c.name==='type_text').length,1);
+ assert.equal(await m.journal.pending('333:444'),null);
+});
