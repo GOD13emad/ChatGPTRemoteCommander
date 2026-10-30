@@ -6,7 +6,35 @@ $TaskName='ChatGPTRemoteCommander-ElevatedRuntime'
 $RunName='ChatGPTRemoteCommander'
 $RunKey='HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
 $StateRoot=Join-Path $env:LOCALAPPDATA 'ChatGPTRemoteCommander'
-$CoreRoot=Join-Path $StateRoot 'app'
+$RoutingPath=Join-Path $StateRoot 'routing\default.json'
+$ReleaseBase=Join-Path $StateRoot 'releases'
+if(-not(Test-Path -LiteralPath $RoutingPath -PathType Leaf) -or
+   ((Get-Item -LiteralPath $RoutingPath -Force).Attributes -band [IO.FileAttributes]::ReparsePoint)){
+  throw 'ADMIN_RUNTIME_ROUTE_UNTRUSTED'
+}
+$Route=Get-Content -LiteralPath $RoutingPath -Raw|ConvertFrom-Json
+if(-not $Route.active -or -not $Route.active.projectDir -or -not $Route.active.version){
+  throw 'ADMIN_RUNTIME_ACTIVE_ROUTE_MISSING'
+}
+$CoreRoot=[IO.Path]::GetFullPath([string]$Route.active.projectDir).TrimEnd('\')
+$ReleasePrefix=[IO.Path]::GetFullPath($ReleaseBase).TrimEnd('\')+'\'
+if(-not $CoreRoot.StartsWith($ReleasePrefix,[StringComparison]::OrdinalIgnoreCase) -or
+   -not(Test-Path -LiteralPath $CoreRoot -PathType Container) -or
+   ((Get-Item -LiteralPath $CoreRoot -Force).Attributes -band [IO.FileAttributes]::ReparsePoint)){
+  throw 'ADMIN_RUNTIME_ACTIVE_ROUTE_UNTRUSTED'
+}
+$Version=[string]$Route.active.version
+$Folder=Split-Path -Path $CoreRoot -Leaf
+if($Version -notmatch '^0\.11\.[0-9]+(?:-dev\.[0-9]+)?$' -or
+   -not $Folder.StartsWith('v'+$Version+'-', [StringComparison]::OrdinalIgnoreCase)){
+  throw 'ADMIN_RUNTIME_WRONG_RELEASE'
+}
+$PackageFile=Join-Path $CoreRoot 'package.json'
+if(-not(Test-Path -LiteralPath $PackageFile -PathType Leaf) -or
+   ((Get-Item -LiteralPath $PackageFile -Force).Attributes -band [IO.FileAttributes]::ReparsePoint) -or
+   (Get-Content -LiteralPath $PackageFile -Raw|ConvertFrom-Json).version -ne $Version){
+  throw 'ADMIN_RUNTIME_PACKAGE_ROUTE_MISMATCH'
+}
 $AdminDir=Join-Path $StateRoot 'admin-runtime'
 $StateFile=Join-Path $AdminDir 'state.json'
 $ProbeFile=Join-Path $AdminDir 'last-entry.json'
@@ -38,11 +66,17 @@ function Get-TaskState {
   $action=@($task.Actions|Select-Object -First 1)[0]
   $trigger=@($task.Triggers|Select-Object -First 1)[0]
   $info=$task|Get-ScheduledTaskInfo
+  $expectedArgs='-NoLogo -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File "'+$Entry+'"'
   $valid=(
+    @($task.Actions).Count -eq 1 -and
+    @($task.Triggers).Count -eq 1 -and
+    [string]$trigger.CimClass.CimClassName -match 'LogonTrigger$' -and
     [string]$task.Principal.RunLevel -eq 'Highest' -and
-    [string]$task.Principal.LogonType -match 'Interactive' -and
-    [string]$action.Execute -match 'pwsh\.exe$' -and
-    [string]$action.Arguments -like "*elevated-runtime-entry-windows.ps1*"
+    [string]$task.Principal.LogonType -eq 'Interactive' -and
+    [string]$action.Execute -eq (Get-PwshPath) -and
+    [string]$action.WorkingDirectory -eq $CoreRoot -and
+    [string]$action.Arguments -ceq $expectedArgs -and
+    [string]$task.Principal.UserId -eq [Security.Principal.WindowsIdentity]::GetCurrent().Name
   )
   return [pscustomobject]@{
     installed=$true;valid=[bool]$valid;taskName=$TaskName
@@ -60,6 +94,8 @@ function Get-Status {
     task=$task
     lastEntry=$probe
     legacyRun=$run
+    activeRelease=$CoreRoot
+    activeVersion=$Version
     stableEntryExists=(Test-Path -LiteralPath $Entry -PathType Leaf)
     managerElevated=(Test-Elevated)
     state=(Read-Json $StateFile)
