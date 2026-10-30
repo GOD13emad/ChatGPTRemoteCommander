@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
- createWorkspaceAccessibilityTools,workspaceAccessibilityDefinitions
+ createWorkspaceAccessibilityTools,workspaceAccessibilityDefinitions,atspiCommandPolicy
 } from '../src/workspace-accessibility-tools.mjs';
 
 const OWNER={processId:10369,handle:'4205340062'};
@@ -19,8 +19,8 @@ const make=()=>{
   if(name==='gui_session_end')return {ok:true};
   throw Error('COORDINATE_METHOD_FORBIDDEN_'+name);
  };
- const transport=async r=>{
-  calls.push({name:'atspi',args:r});
+ const transport=async (r,policy)=>{
+  calls.push({name:'atspi',args:r,policy});
   assert.equal(r.pid,10369);
   assert.equal(r.windowTitle,title);
   if(r.command==='snapshot')return {ok:true,nodesVisited:22,truncated:false,controls:[
@@ -123,4 +123,29 @@ test('authorization and capability assumptions enforced before lease',async()=>{
  await assert.rejects(m.api.execute('workspace_accessibility_open',{
   processId:0,handle:'invalid',mode:'observe'}),/IDENTITY_INVALID/);
  assert.equal(m.calls.filter(c=>c.name==='gui_session_begin').length,0);
+});
+
+
+test('Firefox read-only snapshot gets a longer bounded budget without extending mutations',async()=>{
+ assert.deepEqual(atspiCommandPolicy('snapshot'),{
+  timeoutMs:18000,timeoutCode:'ATSPI_SNAPSHOT_TIMEOUT_NO_EFFECT'
+ });
+ for(const cmd of ['type','invoke']){
+  assert.deepEqual(atspiCommandPolicy(cmd),{
+   timeoutMs:7000,timeoutCode:'ATSPI_OPERATION_TIMEOUT_EFFECT_UNKNOWN'
+  });
+ }
+ const m=make();
+ const lease=await m.api.execute('workspace_accessibility_open',{...OWNER,
+  mode:'takeover',explicitUserAuthorization:'Owner permits focused test Firefox semantic controls'});
+ const controls=(await m.api.execute('workspace_accessibility_snapshot',{...OWNER,lease:lease.lease})).controls;
+ await m.api.execute('workspace_accessibility_type',{...OWNER,lease:lease.lease,
+  elementId:controls[0].elementId,text:'budget-only-test'});
+ await m.api.execute('workspace_accessibility_invoke',{...OWNER,lease:lease.lease,
+  elementId:controls[1].elementId});
+ await m.api.execute('workspace_accessibility_end',{lease:lease.lease});
+ assert.deepEqual(m.calls.filter(x=>x.name==='atspi').map(x=>({
+  command:x.args.command,timeoutMs:x.policy.timeoutMs
+ })),[{command:'snapshot',timeoutMs:18000},{command:'type',timeoutMs:7000},
+  {command:'invoke',timeoutMs:7000}]);
 });
