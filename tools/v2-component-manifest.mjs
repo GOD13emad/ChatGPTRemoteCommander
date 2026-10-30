@@ -6,11 +6,31 @@ import {createHash} from 'node:crypto';
 import {fileURLToPath} from 'node:url';
 import {createPlan,validateCatalog} from './installer-product-plan.mjs';
 
-const CORE=['src/server-v0.3.mjs','src/v2-central-coordinator.mjs',
- 'src/v2-coordinator-rpc.mjs','src/v2-coordinator-rpc-client.mjs',
- 'src/v2-coordinated-workflow.mjs','src/v2-grant-registry.mjs',
- 'src/v2-fleet-readiness.mjs','src/v2-migration-ledger.mjs',
- 'tools/v2-migration-preflight.mjs'];
+const CORE=[
+ 'src/server-v0.3.mjs',
+ 'src/v2-routing-contract.mjs',
+ 'src/v2-authorized-operation.mjs',
+ 'src/v2-caller-assertion.mjs',
+ 'src/v2-grant-registry.mjs',
+ 'src/v2-mcp-oauth-contract.mjs',
+ 'src/v2-oauth-provider-preflight.mjs',
+ 'src/v2-oauth-caller.mjs',
+ 'src/v2-mcp-http-ingress.mjs',
+ 'src/v2-central-coordinator.mjs',
+ 'src/v2-coordinator-rpc.mjs',
+ 'src/v2-coordinator-rpc-client.mjs',
+ 'tools/v2-coordinator-host.mjs',
+ 'src/v2-workflow-gateway.mjs',
+ 'src/v2-coordinated-workflow.mjs',
+ 'src/v2-native-owner-session-bindings.mjs',
+ 'src/v2-native-window-bridge.mjs',
+ 'src/v2-fleet-readiness.mjs',
+ 'src/v2-install-identity-gate.mjs',
+ 'src/v2-migration-ledger.mjs',
+ 'tools/v2-migration-preflight.mjs',
+ 'tools/v2-enrollment-census.mjs',
+ 'tools/v2-component-manifest.mjs'
+];
 const PLATFORM={windows:['install.ps1','installer/RemoteCommander.iss',
  'desktop/install-windows.ps1','desktop/admin-runtime-windows.ps1'],
  linux:['install.sh','server-install-linux.sh',

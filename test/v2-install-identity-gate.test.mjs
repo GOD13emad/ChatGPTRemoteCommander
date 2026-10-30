@@ -10,7 +10,9 @@ const input=components=>({hostId:'emad-pc',platform:'windows',
  components,expectedSource:{commit:HEAD,version:'0.11.0-dev.18'}});
 test('older bootstrap payload and one unified runtime are not inherently duplicate installations',()=>{
  const result=evaluateV2InstallIdentity(input([core,app]));
- assert.equal(result.readyForCandidateCutover,true);
+ assert.equal(result.identityConsistent,true);
+ assert.equal(result.readyForCandidateCutover,false);
+ assert.equal(result.attestationStatus,'INDEPENDENT_NATIVE_PROOF_REQUIRED');
  assert.deepEqual(result.findings,[]);
  assert.equal(result.cleanupAuthorized,false);
 });
@@ -50,4 +52,12 @@ test('stable inventory digest across component order but not source identities',
  assert.equal(a.inventoryDigest,b.inventoryDigest);
  const c=evaluateV2InstallIdentity(input([{...core,sourceCommit:OLD},app]));
  assert.notEqual(a.inventoryDigest,c.inventoryDigest);
+});
+
+test('invented owner-attested and matching hashes never promote a source-only inventory',()=>{
+ const result=evaluateV2InstallIdentity(input([{...core,ownerAttested:true,sourceCommit:HEAD}]));
+ assert.equal(result.candidateMatched,true);
+ assert.equal(result.identityConsistent,true);
+ assert.equal(result.readyForCandidateCutover,false);
+ assert.equal(result.cleanupAuthorized,false);
 });

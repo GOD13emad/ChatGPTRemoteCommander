@@ -49,8 +49,13 @@ export function evaluateV2InstallIdentity({hostId,platform,components,expectedSo
  // Report candidate mismatch, never auto-delete or overwrite any layer.
  const candidateMatched=normalized.some(c=>c.active&&c.role==='core'&&
    c.sourceCommit===expectedSource.commit&&c.ownerAttested);
+ const identityConsistent=candidateMatched&&findings.length===0;
+ // This is an untrusted *reported* inventory. Booleans named ownerAttested
+ // and sourceCommit are assertions, not evidence from a trusted native
+ // producer. It is unsafe to grant installation/cutover from this function.
  return Object.freeze({schema:1,hostId,platform,
-  candidateMatched,readyForCandidateCutover:candidateMatched&&findings.length===0,
+  candidateMatched,identityConsistent,
+  readyForCandidateCutover:false,attestationStatus:'INDEPENDENT_NATIVE_PROOF_REQUIRED',
   changesApplied:false,cleanupAuthorized:false,findings:Object.freeze(findings),
   componentCount:normalized.length,
   inventoryDigest:createHash('sha256').update(JSON.stringify(
