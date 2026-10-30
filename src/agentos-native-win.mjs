@@ -41,9 +41,12 @@ export async function nativeWindowsUIACall(operation,input={},{
  }
  let response;
  try{response=JSON.parse(stdout.trim());}catch{throw fail('AGENTOS_NATIVE_RESPONSE_INVALID');}
+ const foregroundValid=(response?.foregroundStatus==='PRESERVED'&&response?.foregroundTouched===false)
+  ||(response?.foregroundStatus==='CHANGED'&&response?.foregroundTouched===true)
+  ||(response?.foregroundStatus==='UNOBSERVABLE'&&response?.foregroundTouched===null);
  if(response?.ok!==true||response?.pid!==input.pid||response?.windowHandle!==input.windowId
    ||response?.provider!=='windows-uia-native'||response?.physicalInputTouched!==false
-   ||response?.foregroundTouched!==false)throw fail('AGENTOS_NATIVE_RESPONSE_UNTRUSTED');
+   ||!foregroundValid)throw fail('AGENTOS_NATIVE_RESPONSE_UNTRUSTED');
  if(operation==='Observe'){
   if(response.mode!=='NATIVE_UIA_OBSERVE'||!Array.isArray(response.elements)
     ||response.elements.length>100

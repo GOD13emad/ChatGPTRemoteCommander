@@ -25,9 +25,19 @@ using System.Runtime.InteropServices;
 public static class RcAgentOSWindows {
  [DllImport("user32.dll", SetLastError=true)]
  public static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint pid);
+ [DllImport("user32.dll")]
+ public static extern IntPtr GetForegroundWindow();
 }
 '@
 }
+function Get-ForegroundEvidence([IntPtr]$before,[IntPtr]$after){
+ if($before -eq [IntPtr]::Zero -or $after -eq [IntPtr]::Zero){
+  return @{state='UNOBSERVABLE';touched=$null}
+ }
+ $changed=$before -ne $after
+ return @{state=$(if($changed){'CHANGED'}else{'PRESERVED'});touched=$changed}
+}
+$foregroundBefore=[RcAgentOSWindows]::GetForegroundWindow()
 $nativePid=[uint32]0
 $hwnd=[IntPtr]$WindowHandle
 [void][RcAgentOSWindows]::GetWindowThreadProcessId($hwnd,[ref]$nativePid)
@@ -72,7 +82,8 @@ for($i=0;$i -lt $children.Count;$i++){
  }catch [System.Windows.Automation.ElementNotAvailableException]{continue}
 }
 if($Operation -eq 'Observe'){
- [pscustomobject]@{ok=$true;mode='NATIVE_UIA_OBSERVE';provider='windows-uia-native';pid=$TargetPid;windowHandle=$WindowHandle;totalScanned=$children.Count;elements=$elements.ToArray();truncated=$elements.Count -ge $MaxElements;principal=$identity.Name;foregroundTouched=$false;physicalInputTouched=$false}|ConvertTo-Json -Depth 6 -Compress
+ $foregroundEvidence=Get-ForegroundEvidence $foregroundBefore ([RcAgentOSWindows]::GetForegroundWindow())
+ [pscustomobject]@{ok=$true;mode='NATIVE_UIA_OBSERVE';provider='windows-uia-native';pid=$TargetPid;windowHandle=$WindowHandle;totalScanned=$children.Count;elements=$elements.ToArray();truncated=$elements.Count -ge $MaxElements;principal=$identity.Name;foregroundStatus=$foregroundEvidence.state;foregroundTouched=$foregroundEvidence.touched;physicalInputTouched=$false}|ConvertTo-Json -Depth 6 -Compress
  exit 0
 }
 if($RequestId -cnotmatch '^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$' -or
@@ -81,6 +92,10 @@ if($RequestId -cnotmatch '^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$' -or
  Refuse 'AGENTOS_EXPLICIT_MUTATION_CONTRACT_REQUIRED'
 }
 if($matchedControls.Count -ne 1){Refuse 'AGENTOS_FRESH_EXACT_UIA_ELEMENT_REQUIRED'}
-# A native UIA invocation targets the provider's control pattern, not global physical input.
+# UIA InvokePattern can indirectly activate an application's window.
+# Measure visible foreground before and after rather than claim no focus impact.
+$foregroundImmediatelyBefore=[RcAgentOSWindows]::GetForegroundWindow()
 ([System.Windows.Automation.InvokePattern]$matchedControls[0].pattern).Invoke()
-[pscustomobject]@{ok=$true;mode='NATIVE_UIA_INVOKE';provider='windows-uia-native';pid=$TargetPid;windowHandle=$WindowHandle;requestId=$RequestId;controlName=$ControlName;invocationIssued=$true;userGoalVerified=$false;foregroundTouched=$false;physicalInputTouched=$false}|ConvertTo-Json -Compress
+Start-Sleep -Milliseconds 130
+$foregroundEvidence=Get-ForegroundEvidence $foregroundImmediatelyBefore ([RcAgentOSWindows]::GetForegroundWindow())
+[pscustomobject]@{ok=$true;mode='NATIVE_UIA_INVOKE';provider='windows-uia-native';pid=$TargetPid;windowHandle=$WindowHandle;requestId=$RequestId;controlName=$ControlName;invocationIssued=$true;userGoalVerified=$false;foregroundStatus=$foregroundEvidence.state;foregroundTouched=$foregroundEvidence.touched;physicalInputTouched=$false}|ConvertTo-Json -Compress

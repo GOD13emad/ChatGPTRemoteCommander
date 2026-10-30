@@ -6,14 +6,14 @@ const allow={powerMode:{enabled:true,guiControl:{enabled:true,allowMouse:true}}}
 const target={pid:3401,windowId:80302};
 const fp='0123456789abcdef01234567';
 const element={name:'No',fingerprint:fp,enabled:true,invokeAvailable:true};
-function mockController(history,{owner=true,failMutation=false}={}){
+function mockController(history,{owner=true,failMutation=false,focus='PRESERVED'}={}){
  return createWorkspaceController({platform:'win32',env:{SESSIONNAME:'RDP-Tcp#2'},
   now:()=>1000,ownerSession:async()=>owner,journal:createMemoryWorkspaceJournal(),
   nativeCall:async(op,args)=>{
    history.push({op,args});
-   if(op==='Observe')return {ok:true,pid:args.pid,windowHandle:args.windowId,elements:[element]};
+   if(op==='Observe')return {ok:true,pid:args.pid,windowHandle:args.windowId,elements:[element],foregroundStatus:'PRESERVED',foregroundTouched:false};
    if(failMutation)throw Error('transport-lost');
-   return {ok:true,invocationIssued:true,userGoalVerified:false};
+   return {ok:true,invocationIssued:true,userGoalVerified:false,foregroundStatus:focus,foregroundTouched:focus==='CHANGED'?true:focus==='PRESERVED'?false:null};
   }});
 }
 test('tools advertised in shared MCP catalog with read-only vs mutation annotations',()=>{
@@ -70,4 +70,27 @@ test('agent plan does not confer owner privileges and respects the OS',async()=>
  assert.equal(route.status,'BLOCKED');assert.equal(route.code,'OWNER_SESSION_REQUIRED');
  assert.equal(route.autoElevate,false);
  assert.equal(calls.length,0);
+});
+
+test('measured foreground change makes native action a non-PASS with acknowledged effect',async()=>{
+ const calls=[];const ctl=mockController(calls,{focus:'CHANGED'});
+ await ctl.execute('workspace_native_ui_observe',target);
+ const result=await ctl.execute('workspace_native_ui_invoke',{...target,fingerprint:fp,controlName:'No',
+ requestId:'rc011-focus-changed-native-01',explicitUserAuthorization:'Owner scoped No-button invoke only on a disposable test'});
+ assert.equal(result.ok,false);
+ assert.equal(result.invocationIssued,true);
+ assert.equal(result.focusChanged,true);
+ assert.equal(result.mode,'NATIVE_UIA_FOCUS_CHANGED');
+ assert.equal(result.decision.status,'FOREGROUND_CHANGED_OBSERVED');
+ assert.equal(result.decision.userGoalVerified,false);
+});
+test('unobservable foreground is never claimed as preserved',async()=>{
+ const calls=[];const ctl=mockController(calls,{focus:'UNOBSERVABLE'});
+ await ctl.execute('workspace_native_ui_observe',target);
+ const result=await ctl.execute('workspace_native_ui_invoke',{...target,fingerprint:fp,controlName:'No',
+ requestId:'rc011-focus-unknown-native-01',explicitUserAuthorization:'Owner scoped one diagnostic No invoke within owner test application'});
+ assert.equal(result.ok,false);
+ assert.equal(result.focusChanged,null);
+ assert.equal(result.focusStatus,'UNOBSERVABLE');
+ assert.equal(result.decision.status,'FOREGROUND_UNOBSERVABLE');
 });

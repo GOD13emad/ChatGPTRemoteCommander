@@ -194,7 +194,8 @@ export function createWorkspaceController({callDriver=defaultCuaCall,nativeCall=
     }
     nativeSnapshots.set(id,{at:now(),elements:indexed});
     return {ok:true,mode:'NATIVE_UIA_READ_ONLY',target:id,provider:'windows-uia-native',
-      physicalInputTouched:false,focusChanged:false,value};
+      physicalInputTouched:false,focusChanged:value.foregroundTouched??null,
+      focusStatus:value.foregroundStatus,value};
    }
    if(typeof input.requestId!=='string'||!REQUEST.test(input.requestId)||
       typeof input.fingerprint!=='string'||!/^[a-f0-9]{24}$/.test(input.fingerprint)||
@@ -215,11 +216,17 @@ export function createWorkspaceController({callDriver=defaultCuaCall,nativeCall=
     // InvokePattern acknowledged exactly one native action, NOT the application goal.
     // Consume the durable journal; any transport-uncertain path remains pending below.
     await journal.resolve('native:'+id,handle);
-    return {ok:true,mode:'NATIVE_UIA_INVOKE_ISSUED',target:id,
-      provider:'windows-uia-native',replayed:false,physicalInputTouched:false,
-      focusChanged:false,invocationIssued:result.invocationIssued===true,
-      decision:{status:'INVOKE_ACKNOWLEDGED',userGoalVerified:false,
-        next:'Verify the application-specific result before any new effect'}};
+    const focusSafe=result.foregroundStatus==='PRESERVED';
+    return {ok:focusSafe,mode:focusSafe?'NATIVE_UIA_INVOKE_ISSUED':
+      result.foregroundStatus==='CHANGED'?'NATIVE_UIA_FOCUS_CHANGED':'NATIVE_UIA_FOCUS_UNOBSERVABLE',
+      target:id,provider:'windows-uia-native',replayed:false,physicalInputTouched:false,
+      focusChanged:result.foregroundTouched??null,focusStatus:result.foregroundStatus,
+      invocationIssued:result.invocationIssued===true,
+      decision:{status:focusSafe?'INVOKE_ACKNOWLEDGED':
+        result.foregroundStatus==='CHANGED'?'FOREGROUND_CHANGED_OBSERVED':'FOREGROUND_UNOBSERVABLE',
+        userGoalVerified:false,
+        next:focusSafe?'Verify the application-specific result before any new effect':
+          'Do not claim background safety; use an isolated desktop or native application API'}};
    }catch(error){
     if(!handle)throw error;
     pending.set('native:'+id,{requestId:input.requestId,at:now()});

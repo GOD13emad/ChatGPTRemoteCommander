@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {nativeWindowsUIACall} from '../src/agentos-native-win.mjs';
 const req={pid:1234,windowId:9876};
 const goodObserve={ok:true,mode:'NATIVE_UIA_OBSERVE',provider:'windows-uia-native',...req,windowHandle:req.windowId,
- physicalInputTouched:false,foregroundTouched:false,
+ physicalInputTouched:false,foregroundTouched:false,foregroundStatus:'PRESERVED',
  elements:[{name:'No',fingerprint:'0123456789abcdef01234567',invokeAvailable:true}]};
 test('real Windows UIA subprocess argv is literal, bounded and shell-free',async()=>{
  let call=null;
@@ -29,7 +29,7 @@ test('native UIA response is not treated as user-goal completion',async()=>{
  const input={...req,fingerprint:'0123456789abcdef01234567',controlName:'No',
   requestId:'rc011-once-exact-01',explicitUserAuthorization:'Owner authorizes one No button'};
  const runner=async()=>({stdout:JSON.stringify({...input,ok:true,mode:'NATIVE_UIA_INVOKE',provider:'windows-uia-native',windowHandle:req.windowId,
-  physicalInputTouched:false,foregroundTouched:false,invocationIssued:true,userGoalVerified:false})});
+  physicalInputTouched:false,foregroundTouched:false,foregroundStatus:'PRESERVED',invocationIssued:true,userGoalVerified:false})});
  const r=await nativeWindowsUIACall('Invoke',input,{platform:'win32',runner});
  assert.equal(r.invocationIssued,true);assert.equal(r.userGoalVerified,false);
 });
@@ -41,4 +41,28 @@ test('refuse wrong process identity, platform and forged native output',async()=
 test('on process timeout native effect cannot be silently repeated',async()=>{
  const runner=async()=>{throw Object.assign(Error('lost transport'),{killed:true});};
  await assert.rejects(nativeWindowsUIACall('Observe',req,{platform:'win32',runner}),/AGENTOS_NATIVE_OUTCOME_UNCERTAIN/);
+});
+
+test('do not falsify measured foreground changes or unobservable focus',async()=>{
+ const input={...req,fingerprint:'0123456789abcdef01234567',controlName:'No',
+  requestId:'rc011-focus-measured-01',explicitUserAuthorization:'Owner allowed isolated native UIAutomation No test'};
+ for(const [status,touched] of [['CHANGED',true],['UNOBSERVABLE',null]]){
+  const runner=async()=>({stdout:JSON.stringify({
+   ok:true,mode:'NATIVE_UIA_INVOKE',provider:'windows-uia-native',
+   pid:req.pid,windowHandle:req.windowId,requestId:input.requestId,
+   foregroundStatus:status,foregroundTouched:touched,physicalInputTouched:false,
+   invocationIssued:true,userGoalVerified:false
+  })});
+  const result=await nativeWindowsUIACall('Invoke',input,{platform:'win32',runner});
+  assert.equal(result.foregroundStatus,status);assert.equal(result.foregroundTouched,touched);
+ }
+ for(const [status,touched] of [['CHANGED',false],['PRESERVED',true],['UNOBSERVABLE',false]]){
+  const runner=async()=>({stdout:JSON.stringify({
+   ok:true,mode:'NATIVE_UIA_INVOKE',provider:'windows-uia-native',
+   pid:req.pid,windowHandle:req.windowId,requestId:input.requestId,
+   foregroundStatus:status,foregroundTouched:touched,physicalInputTouched:false,
+   invocationIssued:true,userGoalVerified:false
+  })});
+  await assert.rejects(nativeWindowsUIACall('Invoke',input,{platform:'win32',runner}),/AGENTOS_NATIVE_RESPONSE_UNTRUSTED/);
+ }
 });
