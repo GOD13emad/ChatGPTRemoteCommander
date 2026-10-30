@@ -265,7 +265,10 @@ export function createWorkspaceController({callDriver=defaultCuaCall,previewDriv
     // enumerated by the SAME live independent native driver; no input replay.
     if(isBrowser||(!seat&&platform!=='win32')||input.determination!=='EFFECT_OBSERVED')
      throw fail('WORKSPACE_TARGET_GONE_PROOF_DENIED');
-    const native=await call('list_windows',{pid:input.pid});
+    // A vanished PID can no longer be resolved to an app by bounded CUA policy.
+    // Inspect only the separately authorized private seat's own window inventory;
+    // never widen physical-desktop or Windows enumeration on this recovery path.
+    const native=await call('list_windows',seat?{}:{pid:input.pid});
     if(!Array.isArray(native?.windows)||
        native.windows.some(w=>w?.pid===input.pid&&w?.window_id===input.windowId))
      throw fail('WORKSPACE_TARGET_GONE_NOT_PROVEN');
