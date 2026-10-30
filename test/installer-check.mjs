@@ -5,6 +5,25 @@ const windowsInstaller = readFileSync('install.ps1', 'utf8');
 const capabilityPolicy = readFileSync('src/capability-profile.mjs', 'utf8');
 const windowsServerInstaller = readFileSync('server-install-windows.ps1','utf8');
 const linuxServerInstaller = readFileSync('server-install-linux.sh','utf8');
+const adminRuntime = readFileSync('desktop/admin-runtime-windows.ps1','utf8');
+for (const required of [
+  "routing\\default.json",
+  'ADMIN_RUNTIME_ROUTE_UNTRUSTED',
+  'ADMIN_RUNTIME_ACTIVE_ROUTE_UNTRUSTED',
+  'ADMIN_RUNTIME_WRONG_RELEASE',
+  'ADMIN_RUNTIME_PACKAGE_ROUTE_MISMATCH',
+  'ADMIN_RUNTIME_TASK_READBACK_FAILED',
+  'Get-PwshPath',
+  '[string]$action.WorkingDirectory -eq $CoreRoot',
+  '[string]$action.Arguments -ceq $expectedArgs',
+]) {
+  if (!adminRuntime.includes(required)) {
+    throw new Error('admin runtime current-release contract missing: ' + required);
+  }
+}
+if (adminRuntime.includes("$CoreRoot=Join-Path $StateRoot 'app'")) {
+  throw new Error('admin runtime must bind to active routed release, not obsolete app/');
+}
 for (const required of ['[switch]$GuiControl','[switch]$DisableGuiControl','capability-migrate.mjs','Invoke-ExistingSafeUpdate','auto-update-windows.ps1']) {
   if (!windowsInstaller.includes(required)) throw new Error(`install.ps1 missing delegated capability/update behavior: ${required}`);
 }
@@ -217,7 +236,7 @@ if (process.platform === 'linux') {
   const files = [
     'install.ps1', 'connect-chatgpt-account.ps1', 'connect-chatgpt.ps1',
     'autostart-windows.ps1', 'supervisor-routing.ps1', 'auto-update-windows.ps1', 'enable-autostart.ps1', 'disable-autostart.ps1',
-    'install-work-plugin.ps1', 'tools/gui-control.ps1', 'server-install-windows.ps1'
+    'install-work-plugin.ps1', 'tools/gui-control.ps1', 'server-install-windows.ps1', 'desktop/admin-runtime-windows.ps1'
   ];
   for (const file of files) {
     const escaped = file.replaceAll("'", "''");
