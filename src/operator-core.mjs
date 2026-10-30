@@ -46,13 +46,14 @@ const ready = (reason, next=[])=>({state:'READY',reason,next});
  * existing native browser/GUI tools, and native OS/session authorization.
  */
 export function createOperatorCore({config={},platform=process.platform,toolNames=()=>[],
-  readWorkflow,readBrowser,readGui,advance}={}) {
+  readWorkflow,readBrowser,readGui,readProvenance,advance}={}) {
   const names=()=>new Set(toolNames());
   async function status() {
-    const [workflow,browser,gui]=await Promise.all([
+    const [workflow,browser,gui,provenance]=await Promise.all([
       boundedRead(readWorkflow,'WORKFLOW_DISABLED'),
       boundedRead(readBrowser,'BROWSER_DISABLED'),
-      boundedRead(readGui,'GUI_DISABLED')
+      boundedRead(readGui,'GUI_DISABLED'),
+      boundedRead(readProvenance,'SOURCE_PROVENANCE_NOT_EXPOSED')
     ]);
     const wf=workflow.ok?workflow.value:{},br=browser.ok?browser.value:{},g=gui.ok?gui.value:{};
     const browserPolicy=config.powerMode?.browserControl??{};
@@ -65,6 +66,13 @@ export function createOperatorCore({config={},platform=process.platform,toolName
       operator:'CHAT_OWNED',
       architecture:'SINGLE_EXISTING_COMMANDER_EXECUTOR',
       platform,
+      provenance:provenance.ok && typeof provenance.value?.entrypointSha256==='string' && /^[a-f0-9]{64}$/.test(provenance.value.entrypointSha256)
+        ? {available:true,kind:'ON_DISK_SOURCE_HASH_AT_STARTUP_NOT_LOADED_MODULE_ATTESTATION',
+          entrypointSha256:provenance.value.entrypointSha256,
+          nodeVersion:typeof provenance.value.nodeVersion==='string'?provenance.value.nodeVersion:'',
+          declaredVersion:typeof provenance.value.declaredVersion==='string'?provenance.value.declaredVersion:'',
+          configSha256:typeof provenance.value.configSha256==='string'&&/^[a-f0-9]{64}$/.test(provenance.value.configSha256)?provenance.value.configSha256:''}
+        : {available:false,reason:provenance.ok?'SOURCE_PROVENANCE_INVALID':provenance.reason},
       workflow:{
         available:workflow.ok && wf.enabled===true,
         runnerConfigured:workflow.ok && wf.runnerConfigured===true,
