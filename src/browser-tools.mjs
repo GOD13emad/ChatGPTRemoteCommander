@@ -1,6 +1,7 @@
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { existsSync } from 'node:fs';
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { performance } from 'node:perf_hooks';
 import { BROWSER_RULES, browserError, browserToolDefinitions, validateBrowserInput } from './browser-contract.mjs';
@@ -29,12 +30,22 @@ const defaultClose=()=>{defaultBrowserBackend=null;chromiumClient.close();firefo
 const sameToken=(a,b)=>typeof a==='string'&&typeof b==='string'&&Buffer.byteLength(a)===Buffer.byteLength(b)&&timingSafeEqual(Buffer.from(a),Buffer.from(b));
 const safeSegment=value=>typeof value==='string'&&/^[a-z][a-z0-9_-]{0,31}$/.test(value)?value:'default';
 const instanceSegment=value=>{const raw=typeof value==='string'&&value?value:'default';return raw==='default'?'default':'instance-'+Buffer.from(raw,'utf8').toString('hex');};
-function defaultProfileRoot(){
- if(process.platform==='win32')return path.join(process.env.LOCALAPPDATA||os.homedir(),'ChatGPTRemoteCommander','browser-profiles');
- return path.join(os.homedir(),'.local','state','chatgpt-remote-commander','browser-profiles');
+// A snap-packaged Firefox cannot read the host's generic state or /tmp
+// profile roots. Use only Commander-owned profiles under snap's shared home.
+// Explicit profileRoot always takes precedence, preserving administrator policy.
+export function browserDefaultProfileRoot({platform=process.platform,home=os.homedir(),
+ localAppData=process.env.LOCALAPPDATA,executable,snapFirefoxAvailable=false}={}){
+ if(platform==='win32')return path.join(localAppData||home,'ChatGPTRemoteCommander','browser-profiles');
+ if(platform==='linux'&&isFirefoxExecutable(executable)&&snapFirefoxAvailable)
+  return path.join(home,'snap','firefox','common','chatgpt-remote-commander','browser-profiles');
+ return path.join(home,'.local','state','chatgpt-remote-commander','browser-profiles');
+}
+function defaultProfileRoot(cfg){
+ return browserDefaultProfileRoot({executable:cfg.executable,
+  snapFirefoxAvailable:process.platform==='linux'&&existsSync('/snap/bin/firefox')});
 }
 function resolveProfileRoot(cfg){
- const raw=typeof cfg.profileRoot==='string'&&cfg.profileRoot.trim()?cfg.profileRoot.trim():defaultProfileRoot();
+ const raw=typeof cfg.profileRoot==='string'&&cfg.profileRoot.trim()?cfg.profileRoot.trim():defaultProfileRoot(cfg);
  return path.resolve(raw.replace(/%([^%]+)%/g,(_,k)=>process.env[k]??process.env[k.toUpperCase()]??''));
 }
 export function reapBrowserOrphans(ctx){

@@ -7,10 +7,10 @@ import {createHash} from 'node:crypto';
 import {readFile} from 'node:fs/promises';
 const ALLOWED=new Set([
  'workspace_plan','workspace_list_windows','workspace_window_observe','workspace_window_preview',
- 'workspace_window_click','workspace_browser_inspect','workspace_browser_attach',
+ 'workspace_window_click','workspace_window_type','workspace_word_render','workspace_browser_inspect','workspace_browser_attach',
  'workspace_browser_click','workspace_target_reconcile'
 ]);
-const MUTATIONS=new Set(['workspace_window_click','workspace_browser_attach',
+const MUTATIONS=new Set(['workspace_window_click','workspace_window_type','workspace_word_render','workspace_browser_attach',
  'workspace_browser_click','workspace_target_reconcile']);
 const AUTH=/^[a-f0-9]{64}$/;
 const REQ=/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
@@ -35,22 +35,34 @@ export function createOwnerWorkspaceProxy({config,fetchImpl=globalThis.fetch,rea
   if(!AUTH.test(raw))throw fail('WORKSPACE_OWNER_CREDENTIAL_INVALID');
   const hash=MUTATIONS.has(name)?
    createHash('sha256').update('workspace-v1:'+name+':'+context.requestId).digest('hex'):null;
-  const rekey=(name==='workspace_window_click'||name==='workspace_browser_click');
+  const rekey=(name==='workspace_window_click'||name==='workspace_window_type'||name==='workspace_word_render'||name==='workspace_browser_click');
   const payload={...args,...(hash&&rekey?{requestId:'owrk-'+hash.slice(0,48)}:{})};
   // No fallback from owner-agent rejection to SYSTEM/Session 0 injection.
   let response;
   try{response=await fetchImpl(endpoint,{method:'POST',redirect:'error',headers:{
    'content-type':'application/json','x-rc-owner-workspace-auth':raw
   },body:JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/call',
-     params:{name,arguments:payload}}),signal:AbortSignal.timeout(name==='workspace_browser_attach'?31000:name==='workspace_browser_inspect'?21000:name==='workspace_browser_click'?15000:6500)});}
+     params:{name,arguments:payload}}),signal:AbortSignal.timeout(name==='workspace_word_render'?120000:name==='workspace_browser_attach'?31000:name==='workspace_browser_inspect'?21000:name==='workspace_browser_click'?15000:6500)});}
   catch{throw fail('WORKSPACE_OWNER_AGENT_UNAVAILABLE');}
   if(response.status!==200)throw fail('WORKSPACE_OWNER_AGENT_DENIED');
   const txt=await response.text();
   if(txt.length>8_000_000)throw fail('WORKSPACE_OWNER_REPLY_LIMIT');
   let body;
   try{body=JSON.parse(txt);}catch{throw fail('WORKSPACE_OWNER_INVALID_RESPONSE');}
-  if(body.jsonrpc!=='2.0'||body.id!==1||!body.result||body.error||
-     body.result.isError===true)throw fail('WORKSPACE_OWNER_REJECTED');
+  if(body.jsonrpc!=='2.0'||body.id!==1)throw fail('WORKSPACE_OWNER_REJECTED');
+  // Authenticated owner broker returns a narrow machine code on a native failure.
+  // Preserve only known non-sensitive error classifications; never forward arbitrary
+  // broker text, credential material, or introduce a Session-0 fallback.
+  if(body.error){
+   const allow=new Set(['WORKSPACE_DRIVER_UNAVAILABLE',
+    'WORKSPACE_DRIVER_NOT_RUNNING','WORKSPACE_DRIVER_NOT_INSTALLED',
+    'WORKSPACE_OWNER_SESSION_REQUIRED','WORKSPACE_TARGET_INVALID',
+    'WORKSPACE_TARGET_RECONCILIATION_REQUIRED','WORKSPACE_WORD_EFFECT_UNKNOWN']);
+   const message=body.error?.message;
+   if(body.error?.code===-32012&&allow.has(message))throw fail(message);
+   throw fail('WORKSPACE_OWNER_REJECTED');
+  }
+  if(!body.result||body.result.isError===true)throw fail('WORKSPACE_OWNER_REJECTED');
   const result=body.result;
   if(!result.structuredContent||typeof result.structuredContent!=='object')
     throw fail('WORKSPACE_OWNER_STRUCTURED_RESULT_REQUIRED');

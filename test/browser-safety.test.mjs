@@ -1,7 +1,8 @@
 import './browser-script-literal-security.test.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createBrowserController } from '../src/browser-tools.mjs';
+import path from 'node:path';
+import { createBrowserController, browserDefaultProfileRoot } from '../src/browser-tools.mjs';
 
 const config=()=>({instance:{profile:'default'},powerMode:{enabled:true,browserControl:{
  enabled:true,allowNavigate:true,allowInput:true,allowScreenshot:true,allowForegroundFallback:true,
@@ -226,4 +227,24 @@ test('TTL expiry during an in-flight mutation closes the helper after that one e
   assert.equal(status.leased,false);
   assert.equal(status.active,false);
   await assert.rejects(ctl.execute(ctx,'browser_click',{lease:begun.lease,selector:'#submit'}),/BROWSER_LEASE_REQUIRED_OR_EXPIRED/);
+});
+
+
+test('Snap Firefox uses only Commander-owned accessible profiles, never personal Firefox profile',()=>{
+ const base='/home/example';
+ const snap=browserDefaultProfileRoot({platform:'linux',home:base,
+  executable:'/usr/bin/firefox',snapFirefoxAvailable:true});
+ assert.equal(snap,path.join(base,'snap','firefox','common','chatgpt-remote-commander','browser-profiles'));
+ assert.equal(browserDefaultProfileRoot({platform:'linux',home:base,
+  executable:'/usr/bin/firefox',snapFirefoxAvailable:false}),
+  path.join(base,'.local','state','chatgpt-remote-commander','browser-profiles'));
+ assert.equal(browserDefaultProfileRoot({platform:'linux',home:base,
+  executable:'/usr/bin/chromium',snapFirefoxAvailable:true}),
+  path.join(base,'.local','state','chatgpt-remote-commander','browser-profiles'));
+ assert.equal(browserDefaultProfileRoot({platform:'win32',home:'C:/Users/Test',
+  localAppData:'C:/Local',executable:'C:/Firefox/firefox.exe',snapFirefoxAvailable:true}),
+  path.join('C:/Local','ChatGPTRemoteCommander','browser-profiles'));
+ const pathResult=snap.toLowerCase();
+ assert.equal(pathResult.includes('/.mozilla/firefox'),false);
+ assert.equal(pathResult.includes('/.config/firefox'),false);
 });

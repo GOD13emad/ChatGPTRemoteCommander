@@ -14,20 +14,35 @@ const read={readOnlyHint:true,destructiveHint:false,openWorldHint:false};
 const change={readOnlyHint:false,destructiveHint:true,openWorldHint:true};
 const def=(name,description,inputSchema,annotations)=>({name,description,inputSchema,annotations});
 export const workspaceAccessibilityDefinitions=[
- def('workspace_accessibility_open','Open a bounded Accessibility-only lease for an existing exact Firefox owner window. No monitor coordinates or login/profile access.',obj({...target,mode:{type:'string',enum:['observe','takeover']},explicitUserAuthorization:token},['processId','handle','mode']),change),
- def('workspace_accessibility_snapshot','List labeled, non-password accessible controls for the exact Firefox owner window. No values, DOM, cookies or credentials.',obj(bounded,['processId','handle','lease']),read),
- def('workspace_accessibility_type','Set literal text of a single fresh, labeled accessible field in the exact focused owner Firefox window.',obj({...bounded,elementId:token,text:{type:'string',minLength:1,maxLength:1024}},['processId','handle','lease','elementId','text']),change),
+ def('workspace_accessibility_open','Open a bounded Accessibility-only lease for an existing exact same-user application window. No monitor coordinates or login/profile access.',obj({...target,mode:{type:'string',enum:['observe','takeover']},explicitUserAuthorization:token},['processId','handle','mode']),change),
+ def('workspace_accessibility_snapshot','List labeled, non-password accessible controls for the exact same-user application window. No values, DOM, cookies or credentials.',obj(bounded,['processId','handle','lease']),read),
+ def('workspace_accessibility_type','Set literal text of a single fresh, labeled accessible field in the exact focused owner application window.',obj({...bounded,elementId:token,text:{type:'string',minLength:1,maxLength:1024}},['processId','handle','lease','elementId','text']),change),
  def('workspace_accessibility_invoke','Invoke the single click/press action on a fresh labeled accessible button in the focused owner Firefox window.',obj({...bounded,elementId:token},['processId','handle','lease','elementId']),change),
- def('workspace_accessibility_end','Release the owner Accessibility lease without altering Firefox.',obj({lease:token},['lease']),read)
+ def('workspace_accessibility_end','Release the owner Accessibility lease without altering the application.',obj({lease:token},['lease']),read)
 ];
 function error(code){throw Object.assign(new Error('WORKSPACE_ACCESSIBILITY_'+code),{workspaceCode:code,rpcCode:-32602});}
 const pidValid=p=>Number.isSafeInteger(p)&&p>0&&p<=2147483647;
 const handleValid=h=>typeof h==='string'&&/^[1-9][0-9]{0,18}$/.test(h);
 const identity=a=>{if(!pidValid(a.processId)||!handleValid(a.handle))error('IDENTITY_INVALID');};
-const ownerFirefox=w=>/(^|[^a-z])firefox([._-]?(firefox|exe))?($|[^a-z])/i.test(String(w.wmClass??'')+' '+String(w.appName??''));
+// The OS owner-session GUI enumerator is authoritative for PID/HWND; app identity
+// is held with that lease and revalidated before every semantic action.
+export function ownerAppIdentity(w){
+ const app=String(w?.appName??w?.ProcessName??'').trim().toLowerCase();
+ const cls=String(w?.wmClass??w?.WmClass??'').trim().toLowerCase();
+ if(!app&&!cls)return null;
+ return app+'|'+cls;
+}
 const titleMatch=(a,b)=>a===b&&typeof a==='string'&&a.length>=4&&a.length<=300;
 
-export async function nativeAtspi(request,{timeoutMs=7000}={}){
+// Complex application AT-SPI traversal can exceed the 7s mutation deadline.
+// A read-only snapshot may use the longer bounded budget; type/invoke never do.
+export function atspiCommandPolicy(command){
+ const readOnly=command==='snapshot';
+ return {timeoutMs:readOnly?18000:7000,
+  timeoutCode:readOnly?'ATSPI_SNAPSHOT_TIMEOUT_NO_EFFECT':'ATSPI_OPERATION_TIMEOUT_EFFECT_UNKNOWN'};
+}
+
+export async function nativeAtspi(request,{timeoutMs=atspiCommandPolicy(request?.command).timeoutMs}={}){
  if(process.platform!=='linux')error('LINUX_ONLY');
  const file=fileURLToPath(new URL('../tools/owner-atspi-semantic.py',import.meta.url));
  return new Promise((resolve,reject)=>{
@@ -43,7 +58,7 @@ export async function nativeAtspi(request,{timeoutMs=7000}={}){
   child.on('error',e=>{if(!finished){finished=true;clearTimeout(timer);reject(e)}});
   child.on('close',code=>{
    clearTimeout(timer);if(finished)return;finished=true;
-   if(expired)return reject(new Error('ATSPI_OPERATION_TIMEOUT_EFFECT_UNKNOWN'));
+   if(expired)return reject(new Error(atspiCommandPolicy(request?.command).timeoutCode));
    let parsed;try{parsed=JSON.parse(out.trim())}catch{return reject(new Error('ATSPI_NATIVE_RESPONSE_UNVERIFIED'))}
    if(code!==0||parsed?.ok!==true)return reject(new Error(String(parsed?.error||'ATSPI_OPERATION_FAILED')));
    resolve(parsed);
@@ -73,11 +88,11 @@ export function createWorkspaceAccessibilityTools({gui,transport=nativeAtspi,ses
   const rows=await gui('gui_list_windows',{lease});
   const windows=rows?.windows||[];
   const found=windows.filter(w=>(w.processId??w.ProcessId)===s.pid&&String(w.handle??w.Handle)===s.handle);
-  if(found.length!==1||!ownerFirefox(found[0])||!titleMatch(s.title,found[0].title??found[0].Title))error('OWNER_FIREFOX_CHANGED');
+  if(found.length!==1||ownerAppIdentity(found[0])!==s.appIdentity||!titleMatch(s.title,found[0].title??found[0].Title))error('OWNER_APPLICATION_CHANGED');
   if(focused&&found[0].focused!==true&&found[0].Focused!==true)error('FOCUS_NOT_CONFIRMED');
   return found[0];
  };
- const through=async(s,args,command,extra={})=>transport({command,pid:s.pid,windowTitle:s.title,...extra});
+ const through=async(s,args,command,extra={})=>transport({command,pid:s.pid,windowTitle:s.title,...extra},{timeoutMs:atspiCommandPolicy(command).timeoutMs});
  return {definitions:workspaceAccessibilityDefinitions,execute:async(name,args={})=>{
   if(name==='workspace_accessibility_open'){
    identity(args);prune();if(sessions.size>=12)error('LEASE_CAPACITY');
@@ -89,11 +104,11 @@ export function createWorkspaceAccessibilityTools({gui,transport=nativeAtspi,ses
     const w={pid:args.processId,handle:args.handle,title:''};
     const rows=await gui('gui_list_windows',{lease:begin.lease});
     const matches=(rows?.windows||[]).filter(x=>(x.processId??x.ProcessId)===w.pid&&String(x.handle??x.Handle)===w.handle);
-    if(matches.length!==1||!ownerFirefox(matches[0]))error('OWNER_FIREFOX_UNVERIFIED');
+    if(matches.length!==1||!ownerAppIdentity(matches[0]))error('OWNER_APPLICATION_UNVERIFIED');
     w.title=matches[0].title??matches[0].Title;
     if(!titleMatch(w.title,w.title))error('WINDOW_TITLE_UNVERIFIED');
     if(args.mode==='takeover'&&matches[0].focused!==true&&matches[0].Focused!==true)error('FOCUS_NOT_CONFIRMED');
-    sessions.set(begin.lease,{...w,mode:args.mode,expiresAt:clock()+45000,elements:new Map()});
+    sessions.set(begin.lease,{...w,appIdentity:ownerAppIdentity(matches[0]),mode:args.mode,expiresAt:clock()+45000,elements:new Map()});
     return {ok:true,lease:begin.lease,mode:args.mode,processId:w.pid,handle:w.handle,semanticOnly:true,monitorCoordinatesUsed:false};
    }catch(e){await gui('gui_session_end',{lease:begin.lease});throw e}
   }

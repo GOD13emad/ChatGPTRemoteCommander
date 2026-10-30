@@ -12,7 +12,7 @@ const coordinate={readOnlyHint:false,destructiveHint:false,openWorldHint:false};
 const mutate={readOnlyHint:false,destructiveHint:true,openWorldHint:true};
 const def=(name,description,inputSchema,annotations)=>({name,description,inputSchema,annotations});
 export const workspaceTargetDefinitions=[
- def('workspace_target_list','List windows of an already running application on this same owner session. Does not launch browsers or access profiles.',obj({application:{type:'string',enum:['firefox','all']}}),read),
+ def('workspace_target_list','List windows of an already running application on this same owner session. Does not launch browsers or access profiles.',obj({application:{type:'string',minLength:1,maxLength:80,pattern:'^[A-Za-z0-9_. -]+$'}}),read),
  def('workspace_target_open','Bind a short-lived native GUI lease to an exact existing window (pid+handle). Takeover requires explicit current-user authorization.',obj({...target,mode:{type:'string',enum:['observe','takeover']},explicitUserAuthorization:text(500)},['processId','handle']),coordinate),
  def('workspace_target_snapshot','Check exact window identity and capture a fresh desktop frame for that native GUI lease.',obj({...target,lease:text()},['processId','handle','lease']),read),
  def('workspace_target_focus','Focus only the exact existing observed window with a fresh one-use frame; native GUI takeover policy still applies.',obj(bound,['processId','handle','lease','frame']),mutate),
@@ -51,7 +51,16 @@ function normalizedWindows(rows){
  return (Array.isArray(rows?.windows)?rows.windows:[]).map(normalizeWorkspaceWindow).filter(Boolean);
 }
 function findWindow(rows,args){assertIdentity(args);return normalizedWindows(rows).find(w=>w.processId===args.processId&&w.handle===args.handle);}
-function safeApplication(w){return /(^|[^a-z])firefox([._-]?(firefox|exe))?($|[^a-z])/i.test(w.wmClass+' '+w.appName);}
+export function matchesWorkspaceApplication(w,requested){
+ if(requested===undefined||requested==='all')return true;
+ if(typeof requested!=='string'||!/^[A-Za-z0-9_. -]{1,80}$/.test(requested))return false;
+ const q=requested.trim().toLowerCase();
+ if(!q)return false;
+ return [w?.wmClass,w?.appName].some(raw=>{
+  const value=String(raw??'').toLowerCase();
+  return value===q||value.split(/[._ -]+/).includes(q);
+ });
+}
 export function createWorkspaceTargetTools({gui,bindings=new Map()}){
  if(typeof gui!=='function')throw Error('WORKSPACE_GUI_BACKEND_REQUIRED');
  if(!(bindings instanceof Map))throw Error('WORKSPACE_TARGET_BINDINGS_INVALID');
@@ -79,10 +88,13 @@ export function createWorkspaceTargetTools({gui,bindings=new Map()}){
  return {definitions:workspaceTargetDefinitions,execute:async(name,args={})=>{
   switch(name){
    case 'workspace_target_list':{
-    await status();const session=await gui('gui_session_begin',{mode:'observe',ttlSeconds:30});
+    const guiState=await status();const session=await gui('gui_session_begin',{mode:'observe',ttlSeconds:30});
     if(!session?.ok||!session.lease)reject('OBSERVE_LEASE_UNAVAILABLE');
     try{const rows=await enumerate(session.lease);
-      return {ok:true,backend:'owner-native-gui',application:args.application||'all',windows:normalizedWindows(rows).filter(w=>args.application!=='firefox'||safeApplication(w)).map(w=>({processId:w.processId,handle:w.handle,title:w.title,wmClass:w.wmClass,appName:w.appName,focused:w.focused,...(w.screenIndex===undefined?{}:{screenIndex:w.screenIndex}),...(w.bounds?{bounds:w.bounds}:{})})),privateProfileAccess:false};
+      return {ok:true,backend:'owner-native-gui',application:args.application||'all',windows:normalizedWindows(rows).filter(w=>matchesWorkspaceApplication(w,args.application)).map(w=>({processId:w.processId,handle:w.handle,title:w.title,wmClass:w.wmClass,appName:w.appName,focused:w.focused,...(w.screenIndex===undefined?{}:{screenIndex:w.screenIndex}),...(w.bounds?{bounds:w.bounds}:{}),
+       ...(process.platform==='linux'&&(guiState.screens?.length??0)>1&&
+          (w.screenIndex===undefined||!w.bounds)
+          ?{coordinateTargetVerified:false,recommendedNonCoordinateTool:'workspace_accessibility_open'}:{})})),privateProfileAccess:false};
     }finally{await gui('gui_session_end',{lease:session.lease});}
    }
    case 'workspace_target_open':{

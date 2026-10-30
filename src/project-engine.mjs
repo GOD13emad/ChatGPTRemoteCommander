@@ -249,15 +249,25 @@ export function createProjectEngine({directory,planner,workerPlanner,execute,obs
       return publicState(save(run));
     });
   }
-  function claim(runId) {
+  function claim(runId, requestId) {
     return transaction(()=>{
       const runs=list();
+      const run=runId?load(runId):null;
+      // Reserve a stable Operator request in the same SQLite transaction as the
+      // engine's fenced run claim, before any planner/effect may be dispatched.
+      // A repeated request after a lost receipt can never advance another step.
+      if(run&&requestId&&run.operatorRequestIds?.includes(requestId))
+        return {duplicateRequest:true,runId:run.runId};
       // One planner/effect at a time in this private store. Do not steal a live process's claim.
       if(runs.some(r=>r.owner&&alive(r.owner)))return null;
-      const run=runId?load(runId):null;
       if(!run||TERMINAL.has(run.status))return null;
       if(run.policyHash!==policyHash){run.status='BLOCKED';run.lastCode='PROJECT_POLICY_CHANGED';run.owner=null;save(run);return null;}
       if(run.owner)run.lastCode='PROJECT_INTERRUPTED';
+      if(requestId){
+        run.operatorRequestIds??=[];
+        if(run.operatorRequestIds.length>=2048)error('PROJECT_OPERATOR_REQUEST_LIMIT');
+        run.operatorRequestIds.push(requestId);
+      }
       run.owner=owner;run.status='RUNNING';return save(run);
     });
   }
@@ -302,7 +312,9 @@ export function createProjectEngine({directory,planner,workerPlanner,execute,obs
     return settle(run.runId,'COMPLETED','PROJECT_ACCEPTANCE_VERIFIED',{
       finalRevision:final.state.revision,verification:verified.results,brainSync:final.brainSync});
   }
-  async function tick(runId) {
+  async function tick(runId,requestId) {
+    if(requestId!==undefined&&(typeof requestId!=='string'||!CORRELATION.test(requestId)))
+      error('PROJECT_OPERATOR_REQUEST_ID_INVALID');
     if(closing||closed)error('PROJECT_ENGINE_CLOSED');
     if(busy)return {skipped:true,reason:'PROJECT_ENGINE_BUSY'};
     busy=true;let run=null,abortTimer=null,controlTimer=null;
@@ -314,7 +326,9 @@ export function createProjectEngine({directory,planner,workerPlanner,execute,obs
           &&candidate.attempts<candidate.maxActions&&candidate.plannerCalls+callsPerPlan<=candidate.maxPlannerCalls&&fingerprint(s)===candidate.workflowFingerprint)continue;
         if(s.control?.intent!=='PAUSED'){selected=candidate.runId;break;}
       }
-      run=claim(selected);
+      run=claim(selected,requestId);
+      if(run?.duplicateRequest)
+        return {skipped:true,reason:'PROJECT_OPERATOR_REQUEST_ALREADY_ADMITTED',runId:run.runId};
       if(!run)return {skipped:true,reason:'PROJECT_NO_ADMISSIBLE_RUN'};
       let state=await getWorkflow(run.workflowId);
       if(run.pendingExtension) {
