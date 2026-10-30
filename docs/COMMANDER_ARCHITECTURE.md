@@ -185,14 +185,14 @@ This is the **single current Commander V2 product roadmap**. Historical PROJECT_
 
 | Gate | Deliverable / dependency | Definition of PASS | Verified status at decision |
 |---|---|---|---|
-| R0 | Reconcile 5 hosts, installed versions, OS users, ALL profiles, tunnel enrollment and protected key references; protect working routes | Exact read-only inventory, owner-scoped identities, evidence and offline list | PARTIAL; four reachable, MMZ unavailable, complete profile census OPEN |
+| R0 | Reconcile 5 hosts, installed versions, OS users, ALL profiles, tunnel enrollment and protected key references; protect working routes | Exact read-only inventory, owner-scoped identities, evidence and offline list | PARTIAL; 4 owner-shell structural censuses, Linux 1 missing key reference, MMZ unavailable, all-user census OPEN |
 | R1 | One core/component/installer manifest and capability matrix across Windows/Linux/Headless | Exact-source clean staged start; no rival installs or service loss | OPEN |
 | R2 | OAuth + trusted owner identity + multi-chat RBAC and scoped grant/revoke | Real provider/client and 2 real ChatGPT chats with isolation and revocation | PARTIAL source; operational G1/G2 OPEN |
 | R3 | Global Coordinator / fenced locks / durable recovery | Two chats/hosts sharing a real resource; lease expiry, lost ACK, restart and conflict safety | PARTIAL: trusted mapping, durable WorkflowStore + loopback RPC client/server candidate QA; enrolled multi-host transport and atomic actuator fencing OPEN |
 | R4 | Universal native GUI / owner-bound window Worker | 2 unrelated apps per interactive OS, real observe/act/verify, consent and safe fallback; headless policy tested | PARTIAL: private Linux GTK AX A/B and routed MCP targeted synthetic click PASS; general native act/outcome, consent, Windows and all-app E2E OPEN |
 | R5 | Browser UI/CEF, cross-engine automation and profile isolation | Qualified CEF build, Chromium/Firefox/WebKit compatibility, real multi-tab/download/session tests | OPEN |
 | R6 | CoS Workspace/Workers/Compact-Resume, optional Codex context | UI feature checklist, licensed modules, bounded worker/merges/recovery and correct provider routing | OPEN |
-| R7 | Unified Control Center fleet/user/project/permission management | Live reconciled dashboard; immediate grant/revoke and monitoring E2E | OPEN |
+| R7 | Unified Control Center fleet/user/project/permission management | Live reconciled dashboard; immediate grant/revoke and monitoring E2E | PARTIAL source: fleet status now requires independent native all-user enrollment and key usability attestation; live UI/revoke E2E OPEN |
 | R8 | Lossless V1/current-install → V2 migration | All existing profile, Tunnel ID, credential-reference, account, project and receipt mappings preserved and tested | PARTIAL source: strict nonsecret pinned migration preflight + Windows/Linux tests PASS; real five-host inventory, credential usability and live cutover OPEN |
 | R9 | Exact version qualified on all 5 hosts; Stable release | Independent Windows/Linux/Headless CI/security, installer, native GUI, 2-user/2-chat, canary and recovery/rollback receipts | NOT FINAL |
 

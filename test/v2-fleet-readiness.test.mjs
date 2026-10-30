@@ -51,9 +51,14 @@ test('full acceptance needs independent exact build, chat, GUI, and transport ev
    version:'2.0.0',chatIdentity:'AUTHENTICATED_CHAT',chatIdentityAttested:true,
    ownerSessionAttested:true,
    guiOwner:{configured:true,accepted:true,ownerSessionAttested:true,driverReady:true},
-   v2:{installed:true,exactBuildVerified:true,liveAcceptancePassed:true}})});
+   v2:{installed:true,exactBuildVerified:true,liveAcceptancePassed:true},
+   enrollment:{structuralStatus:'STRUCTURAL_MATCH',scope:'ALL_HOST_OS_USERS',
+    allNativeUsersEnumerated:true,allProfilesEnumerated:true,
+    credentialReferencesPreserved:true,credentialUsabilityAttested:true,
+    nativeOwnerAttested:true}})});
  const r=await f.snapshot();
  assert.equal(r.allHostsOperational,true);
+ assert.equal(r.nodes[0].enrollment,'VERIFIED');
  assert.equal(r.nodes[0].guiOwner,'READY');
  assert.equal(r.nodes[0].v2Installed,'VERIFIED');
 });
@@ -63,4 +68,46 @@ test('unknown and duplicate hosts, untrusted callbacks and bad clock fail closed
   {code:'V2_FLEET_INVENTORY_INVALID'});
  const f=createV2FleetReadiness({hosts:[hosts[0]],now:()=>NaN,observeHost:async()=>({})});
  await assert.rejects(f.snapshot(),{code:'V2_FLEET_CLOCK_INVALID'});
+});
+
+test('single owner-local census cannot promote whole-host R0/R9 even with other gates passing',async()=>{
+ const f=createV2FleetReadiness({hosts:[hosts[0]],now:()=>1000,
+  observeHost:async hostId=>({hostId,transport:'CONNECTED',observedAtMs:1000,
+   version:'2.0.0',chatIdentity:'AUTHENTICATED_CHAT',chatIdentityAttested:true,
+   ownerSessionAttested:true,
+   guiOwner:{configured:true,accepted:true,ownerSessionAttested:true,driverReady:true},
+   v2:{installed:true,exactBuildVerified:true,liveAcceptancePassed:true},
+   enrollment:{structuralStatus:'STRUCTURAL_MATCH',scope:'ONE_OS_USER_NOT_WHOLE_HOST',
+    allNativeUsersEnumerated:false,allProfilesEnumerated:true,
+    credentialReferencesPreserved:true,credentialUsabilityAttested:false,
+    nativeOwnerAttested:true}})});
+ const result=await f.snapshot();
+ assert.equal(result.nodes[0].enrollment,'NOT_VERIFIED');
+ assert.equal(result.nodes[0].chatIdentity,'VERIFIED');
+ assert.equal(result.nodes[0].guiOwner,'READY');
+ assert.equal(result.nodes[0].v2Installed,'VERIFIED');
+ assert.equal(result.allHostsOperational,false);
+});
+test('missing or revoked native credential evidence blocks promotion after structural match',async()=>{
+ const create=(enrollment)=>createV2FleetReadiness({hosts:[hosts[0]],now:()=>1000,
+  observeHost:async hostId=>({hostId,transport:'CONNECTED',observedAtMs:1000,
+   version:'2.0.0',chatIdentity:'AUTHENTICATED_CHAT',chatIdentityAttested:true,
+   ownerSessionAttested:true,
+   guiOwner:{configured:true,accepted:true,ownerSessionAttested:true,driverReady:true},
+   v2:{installed:true,exactBuildVerified:true,liveAcceptancePassed:true},
+   enrollment})});
+ const base={structuralStatus:'STRUCTURAL_MATCH',scope:'ALL_HOST_OS_USERS',
+  allNativeUsersEnumerated:true,allProfilesEnumerated:true,
+  credentialReferencesPreserved:true,credentialUsabilityAttested:true,
+  nativeOwnerAttested:true};
+ for(const bad of [
+  {...base,credentialUsabilityAttested:false},
+  {...base,structuralStatus:'BLOCKED_RECONCILIATION'},
+  {...base,allProfilesEnumerated:false},
+  {...base,nativeOwnerAttested:false},
+  {...base,scope:'ONE_OS_USER_NOT_WHOLE_HOST'}]){
+  const s=await create(bad).snapshot();
+  assert.equal(s.nodes[0].enrollment,'NOT_VERIFIED');
+  assert.equal(s.allHostsOperational,false);
+ }
 });

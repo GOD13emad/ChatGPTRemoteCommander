@@ -31,7 +31,7 @@ export function createV2FleetReadiness({hosts,observeHost,now=Date.now,staleAfte
     const unknown=(reason)=>Object.freeze({
       ...host,transport:'UNKNOWN',v1Version:null,
       chatIdentity:'NOT_VERIFIED',guiOwner:'NOT_VERIFIED',
-      v2Installed:'NOT_VERIFIED',reason
+      v2Installed:'NOT_VERIFIED',enrollment:'NOT_VERIFIED',reason
     });
     if(r.status==='rejected')return unknown('OBSERVATION_UNAVAILABLE');
     const d=r.value;
@@ -50,12 +50,26 @@ export function createV2FleetReadiness({hosts,observeHost,now=Date.now,staleAfte
       d.guiOwner?.ownerSessionAttested===true&&d.guiOwner?.driverReady===true;
     const installed=d.v2?.installed===true&&d.v2?.exactBuildVerified===true&&
       d.v2?.liveAcceptancePassed===true;
+    // A single OS-user YAML/.key structural census cannot attest the whole
+    // machine or prove that its credentials still authenticate. An owner-
+    // trusted inventory producer must independently enumerate EVERY relevant
+    // OS principal, profile, and enrollment, and verify native credential
+    // usability before R0/R8/R9 host promotion. No remote-supplied flag alone
+    // is an attestation unless observeHost is actually trusted.
+    const enrollment=d.enrollment?.structuralStatus==='STRUCTURAL_MATCH'&&
+      d.enrollment?.scope==='ALL_HOST_OS_USERS'&&
+      d.enrollment?.allNativeUsersEnumerated===true&&
+      d.enrollment?.allProfilesEnumerated===true&&
+      d.enrollment?.credentialReferencesPreserved===true&&
+      d.enrollment?.credentialUsabilityAttested===true&&
+      d.enrollment?.nativeOwnerAttested===true;
     return Object.freeze({
       ...host,transport:'CONNECTED',v1Version:ver,
       chatIdentity:authenticated?'VERIFIED':'NOT_VERIFIED',
       guiOwner:gui?'READY':'NOT_VERIFIED',
       v2Installed:installed?'VERIFIED':'NOT_VERIFIED',
-      reason:authenticated&&gui&&installed?'EVIDENCE_AVAILABLE':BOUNDARY
+      enrollment:enrollment?'VERIFIED':'NOT_VERIFIED',
+      reason:authenticated&&gui&&installed&&enrollment?'EVIDENCE_AVAILABLE':BOUNDARY
     });
    });
    return Object.freeze({
@@ -64,7 +78,8 @@ export function createV2FleetReadiness({hosts,observeHost,now=Date.now,staleAfte
      connected: nodes.filter(x=>x.transport==='CONNECTED').length,
      allHostsOperational:nodes.every(x=>
        x.transport==='CONNECTED'&&x.chatIdentity==='VERIFIED'&&
-       x.guiOwner==='READY'&&x.v2Installed==='VERIFIED')
+       x.guiOwner==='READY'&&x.v2Installed==='VERIFIED'&&
+       x.enrollment==='VERIFIED')
    });
   }
  });
