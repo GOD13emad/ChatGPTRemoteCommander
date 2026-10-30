@@ -6,6 +6,8 @@ import path from 'node:path';
 import { WorkflowStore } from '../src/workflow-store.mjs';
 import { V2GrantRegistry } from '../src/v2-grant-registry.mjs';
 import { executeV2WorkflowStep } from '../src/v2-workflow-gateway.mjs';
+import { V2CentralCoordinator } from '../src/v2-central-coordinator.mjs';
+import { executeV2CoordinatedWorkflowStep } from '../src/v2-coordinated-workflow.mjs';
 
 function setup() {
   const temp=fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(),'rc-v2-flow-')));
@@ -185,4 +187,37 @@ test('second Node process holds the same durable WorkflowStore root lease',async
    assert.equal(after.outcome,'RECORDED_NOT_VALIDATED');
    assert.equal(effects,1);
  }finally {if(child && child.exitCode===null)child.kill();f.close();}
+});
+
+test('native central coordinator and actual SQLite WorkflowStore preserve receipt and fencing boundaries',async()=>{
+ const f=setup();
+ const coordinator=new V2CentralCoordinator({
+   directory:path.join(f.temp,'central-fence'),
+   authorizeLease:async()=>true
+ });
+ let effects=0,observedFence=0;
+ try{
+   const r=f.route('flowa','alice','chat-real');
+   f.enable(r);
+   const result=await executeV2CoordinatedWorkflowStep({
+     coordinator,route:r,stepId:'write',expectedRevision:1,
+     tool:'write_text',arguments:{path:path.join(f.project,'actual.txt'),content:'approved'},
+     workflowStore:f.a,grantRegistry:f.grants,
+     observedCaller:async()=>({hostId:r.hostId,principalId:r.principalId,
+       profileId:r.profileId,conversationId:r.conversationId}),
+     authorizeTool:async()=>true,
+     commitWithFence:async({fence,resource,assertCurrent})=>{
+       await assertCurrent();
+       assert.equal(typeof resource,'string');
+       assert.equal(fence,1);
+       observedFence=fence;effects++;
+       return {ok:true};
+     }
+   });
+   assert.equal(result.outcome,'RECORDED_NOT_VALIDATED');
+   assert.equal(f.a.get('flowa').state.steps[0].status,'recorded');
+   assert.equal(f.a.schedulerStatus().currentLeases,0);
+   assert.equal(effects,1);
+   assert.equal(observedFence,1);
+ }finally{coordinator.close();f.close();}
 });
