@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {workspaceMutationEffectArgs} from '../src/workspace-tools.mjs';
+import {workspaceMutationEffectArgs,isOwnerBackgroundWorkspaceTool} from '../src/workspace-tools.mjs';
 import {createWorkspaceTargetTools,workspaceTargetDefinitions,workspaceOwnerRequestContext} from '../src/workspace-target-tools.mjs';
 
 function mock({windows=[{processId:333,handle:'444',title:'Science - Mozilla Firefox',wmClass:'firefox_firefox',focused:true}],allowInput=false}={}){
@@ -211,4 +211,14 @@ test('workspace effect journals receive the same outer idempotency requestId, ne
   /WORKSPACE_BINDING_INVALID/);
  assert.throws(()=>workspaceMutationEffectArgs('workspace_browser_click',input,'bad key'),
   /WORKSPACE_BINDING_INVALID/);
+});
+
+
+test('target-only reconciliation routes to its existing Workspace journal, not the GUI target adapter',()=>{
+ assert.equal(isOwnerBackgroundWorkspaceTool('workspace_target_reconcile'),true);
+ assert.equal(isOwnerBackgroundWorkspaceTool('workspace_window_click'),true);
+ assert.equal(isOwnerBackgroundWorkspaceTool('workspace_browser_click'),true);
+ assert.equal(isOwnerBackgroundWorkspaceTool('workspace_target_click'),false);
+ assert.equal(isOwnerBackgroundWorkspaceTool('workspace_target_list'),false);
+ assert.equal(isOwnerBackgroundWorkspaceTool('workflow_status'),false);
 });
