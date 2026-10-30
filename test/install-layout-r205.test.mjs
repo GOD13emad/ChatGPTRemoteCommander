@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import {execFileSync} from 'node:child_process';
-import {auditInstalledLayout} from '../tools/audit-install-layout-r205.mjs';
+import {auditInstalledLayout,classifyCoreReleaseUse,windowsCommanderProcessReferences} from '../tools/audit-install-layout-r205.mjs';
 function fixture(fn){const base=fs.mkdtempSync(path.join(os.tmpdir(),'r205-'));try{return fn(base);}finally{fs.rmSync(base,{recursive:true,force:true});}}
 function dir(p){fs.mkdirSync(p,{recursive:true});}
 function makeDirLink(target,link){
@@ -47,3 +47,34 @@ test('R205 unknown or malicious link outside root must fail closed',()=>fixture(
  assert.equal(a.products[0].current.status,'OUTSIDE_INSTALL_ROOT_PROTECTED');
  assert.equal(a.products[0].activeCount,0);
 }));
+
+test('R205 active legacy Node process blocks retirement even when routing points at newer version',()=>fixture(home=>{
+ const root=path.join(home,'releases'),legacy=path.join(root,'v0.11.0-dev.14'),current=path.join(root,'v0.11.0-dev.18');
+ dir(legacy);dir(current);
+ for(const p of [legacy,current])fs.writeFileSync(path.join(p,'package.json'),JSON.stringify({version:'0.11.0-dev.18'}));
+ const routes=[{slots:[{slot:'active',projectRoot:current}]}];
+ const cmd='node "'+path.join(legacy,'src','server-v0.3.mjs')+'"';
+ const rows=classifyCoreReleaseUse(root,routes,{verified:true,commands:[cmd]});
+ const found=rows.find(x=>x.name==='v0.11.0-dev.14');
+ assert.equal(found.classification,'ACTIVE_PROCESS_DEPENDENCY_KEEP');
+ assert.equal(found.activeNodeReferences,1);
+ assert.equal(rows.find(x=>x.name==='v0.11.0-dev.18').classification,'ACTIVE_OR_PREVIOUS_ROUTED_KEEP');
+ assert.equal(JSON.stringify(rows).includes('server-v0.3.mjs'),false);
+ const unknown=classifyCoreReleaseUse(root,routes,{verified:false,commands:[]});
+ assert.equal(unknown.find(x=>x.name==='v0.11.0-dev.14').classification,'PROCESS_USAGE_UNKNOWN_NO_DELETE');
+ const clean=classifyCoreReleaseUse(root,routes,{verified:true,commands:[]});
+ assert.equal(clean.find(x=>x.name==='v0.11.0-dev.14').classification,'REVIEW_IMMUTABLE_RELEASE_UNREFERENCED_NO_DELETE');
+ assert.equal(classifyCoreReleaseUse(root,routes,{verified:true,commands:[cmd.replace('v0.11.0-dev.14','v0.11.0-dev.14-other')]}).find(x=>x.name==='v0.11.0-dev.14').activeNodeReferences,0);
+}));
+test('R205 native Windows evidence inventory is bounded and never emits process arguments',{skip:process.platform!=='win32'},()=>{
+ const calls=[];
+ const r=windowsCommanderProcessReferences({exec:(file,args,opts)=>{
+  calls.push({file,args,opts});
+  return JSON.stringify(['node C:/root/release/src/server.mjs']);
+ }});
+ assert.equal(r.verified,true);
+ assert.equal(r.commands.length,1);
+ assert.equal(calls[0].opts.windowsHide,true);
+ assert.ok(calls[0].opts.timeout<=6000);
+ assert.equal(calls[0].file,'powershell.exe');
+});
