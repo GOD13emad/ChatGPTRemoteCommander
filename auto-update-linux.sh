@@ -28,6 +28,7 @@ LOG_DIR="$STATE_ROOT/update-logs"
 RESULT_FILE="$STATE_ROOT/last-update.json"
 RETAINED_FILE="$STATE_ROOT/retained-backends.json"
 PROFILE_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/tunnel-client"
+CRED_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/chatgpt-remote-commander/credentials"
 
 usage(){
   cat <<'USAGE'
@@ -722,6 +723,17 @@ IFS=$'\t' read -r COMMIT VERSION STAGE_DIR < <(stage_release "$REF")
 ACTIVE_CFG="$(active_config "$STAGE_DIR")"
 AUTO_ENABLED="$(json_field "$STAGE_DIR" "$ACTIVE_CFG" autoUpdate.enabled)"
 if [[ "$FORCE" != 1 && "$AUTO_ENABLED" != true ]]; then log 'AUTO_UPDATE_DISABLED'; exit 0; fi
+
+# V2 R0/R8: running tunnels can outlive their protected credential files.
+# Check restart-safety before maintenance/cutover, without reading secret bytes.
+# This structural check never authorizes a migration or authenticates a chat.
+if [[ "$NO_PROMOTE" != 1 && ( -d "$PROFILE_DIR" || -d "$CRED_DIR" ) ]]; then
+  if ! node "$STAGE_DIR/tools/v2-enrollment-census.mjs" \
+      --profile-dir "$PROFILE_DIR" --credential-dir "$CRED_DIR" >/dev/null; then
+    log 'AUTO_UPDATE_PROFILE_CREDENTIAL_PRESERVATION_BLOCK'
+    exit 3
+  fi
+fi
 
 ROUTE="$ROUTING_ROOT/default.json"
 if [[ "$FORCE" != 1 && -f "$ROUTE" ]]; then
