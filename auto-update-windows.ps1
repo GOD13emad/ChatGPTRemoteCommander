@@ -1265,6 +1265,20 @@ try{
     exit 0
   }
 
+  # R8: a live tunnel-client may still be running after its persistent
+  # owner-scoped DPAPI key disappears. Never replace a working route when one
+  # enrolled transport cannot restart. The staged metadata-only census does
+  # not read YAML/key bytes and cannot approve actual migration or auth.
+  # NoPromote exits above and is deliberately not held by a live-user key.
+  $credentialDir=Join-Path $StateRoot 'credentials'
+  if((Test-Path -LiteralPath $ProfileDir -PathType Container) -or
+     (Test-Path -LiteralPath $credentialDir -PathType Container)){
+    $censusSource=Join-Path $stage.Dir 'tools\v2-enrollment-census.mjs'
+    if(-not(Test-Path -LiteralPath $censusSource -PathType Leaf)){throw 'AUTO_UPDATE_PROFILE_CREDENTIAL_GUARD_UNAVAILABLE'}
+    & node.exe $censusSource --profile-dir $ProfileDir --credential-dir $credentialDir | Out-Null
+    if($LASTEXITCODE-ne 0){throw 'AUTO_UPDATE_PROFILE_CREDENTIAL_PRESERVATION_BLOCK'}
+  }
+
   $routerBootstrapDeferred=@()
   foreach($c in $candidates){
     $t=$c.Target
