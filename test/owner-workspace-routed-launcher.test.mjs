@@ -19,6 +19,7 @@ test('owner launch does not stop existing native GUI or bypass OS approvals',()=
  assert.match(script,/OWNER_CUA_INSTANCE_ALREADY_RUNNING_NO_RESTART/);
  assert.match(script,/OWNER_WORKSPACE_BROKER_ALREADY_RUNNING_NO_RESTART/);
  assert.match(script,/--permission-mode','standard'/);
+ assert.match(script,/--grant','existing-profile'/);
  assert.doesNotMatch(script,/--dangerously-bypass-approvals|unrestricted|bypassExecutionPolicy/i);
  assert.doesNotMatch(script,/Stop-Process -Id \$existing/);
  assert.match(script,/if\(\$driver -and -not \$driver\.HasExited\)/);
