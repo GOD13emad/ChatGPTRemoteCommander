@@ -56,11 +56,34 @@ function fixture(overrides={}){
 }
 async function withServer(ingress,cb){
  const server=ingress.createUnboundServer();
+ let selected=null;
  try{
   assert.equal(server.listening,false);
-  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
-  return await cb('http://127.0.0.1:'+server.address().port);
- }finally{server.closeAllConnections();await new Promise(resolve=>server.close(resolve));}
+  // Windows/CI dynamic ports can include ports on Fetch's blocked-port list.
+  // Use the actual Fetch implementation to verify an isolated listener before
+  // executing tests. Never weaken protocol/transport admission to work around
+  // a network-port fixture problem; no mutation or external socket is used.
+  for(let i=0;i<24;i++){
+   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+   const base='http://127.0.0.1:'+server.address().port;
+   try{
+    await fetch(base+'/__v2_fixture_port_probe',{signal:AbortSignal.timeout(2000)});
+    selected=base;
+    break;
+   }catch(error){
+    if(error?.cause?.message!=='bad port')throw error;
+    server.closeAllConnections();
+    await new Promise(resolve=>server.close(resolve));
+   }
+  }
+  if(!selected)throw Error('V2_HTTP_NO_FETCH_COMPATIBLE_LOOPBACK_PORT');
+  return await cb(selected);
+ }finally{
+  if(server.listening){
+   server.closeAllConnections();
+   await new Promise(resolve=>server.close(resolve));
+  }
+ }
 }
 async function rpc(base,message=msg(),headers={}){
  const response=await fetch(base+'/mcp-v2',{method:'POST',headers:{
