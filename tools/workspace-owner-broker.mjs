@@ -5,6 +5,7 @@ import http from 'node:http';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import {fileURLToPath} from 'node:url';
 import {timingSafeEqual} from 'node:crypto';
 import {execFileSync} from 'node:child_process';
 import {workspaceToolDefinitions,executeWorkspaceTool} from '../src/workspace-tools.mjs';
@@ -43,6 +44,29 @@ function driverDiagnostic(args){
  const err=String(stderr).toLowerCase();
  const flags=['access denied','permission denied','window','uia','ui automation','screenshot','capture','unsupported','invalid','timeout','not found','not running','no desktop','session','get_window_state','mcp'].filter(t=>err.includes(t));
  return {ok:exit===0&&!parsed?.isError,nativeExit:exit,elapsedMs:Date.now()-at,stdoutBytes:Buffer.byteLength(stdout),stderrBytes:Buffer.byteLength(stderr),exceptionCode,signal,nativeCode:code,flags,parsedKeys:parsed&&typeof parsed==='object'?Object.keys(parsed).filter(k=>['result','error','isError','content','structuredContent','status'].includes(k)):[],noInput:true};
+}
+function nativeWordRender(args){
+ const script=path.join(path.dirname(fileURLToPath(import.meta.url)),'native-word-render-owner.ps1');
+ let output;
+ try{
+  output=execFileSync('pwsh.exe',['-NoLogo','-NoProfile','-NonInteractive','-File',script,
+    '-SourcePath',args.sourcePath,'-OutputPdfPath',args.outputPdfPath,'-RequestId',args.requestId],
+   {encoding:'utf8',timeout:110000,maxBuffer:16384,windowsHide:true,env:process.env});
+ }catch{
+  // Do not retry on failure: Word may have completed the native export even
+  // if the response was interrupted. Inspect the exact destination first.
+  throw Object.assign(new Error('WORKSPACE_WORD_EFFECT_UNKNOWN'),
+   {code:'WORKSPACE_WORD_EFFECT_UNKNOWN'});
+ }
+ let result;
+ try{result=JSON.parse(output.trim());}catch{}
+ if(result?.ok!==true||result?.effect!=='RENDER_VERIFIED'||
+    !/^[0-9a-f]{64}$/.test(result?.sha256??'')||
+    !Number.isSafeInteger(result?.bytes)||result.bytes<1000){
+  throw Object.assign(new Error('WORKSPACE_WORD_EFFECT_UNKNOWN'),
+   {code:'WORKSPACE_WORD_EFFECT_UNKNOWN'});
+ }
+ return result;
 }
 const ctx={config:{powerMode:{enabled:true,
  guiControl:{enabled:true,allowMouse:true,allowKeyboard:true,allowWindowFocus:false},
@@ -83,7 +107,7 @@ const server=http.createServer(async(req,res)=>{
   if(violations.length)return respond(res,200,error(body.id,-32602,'WORKSPACE_ARGUMENTS_INVALID'));
   active++;
   let result;
-  try{result=name===diagName?driverDiagnostic(args):await executeWorkspaceTool(ctx,name,args);started++;}
+  try{result=name===diagName?driverDiagnostic(args):name==='workspace_word_render'?nativeWordRender(args):await executeWorkspaceTool(ctx,name,args);started++;}
   finally{active--;}
   if(result?.__mcpContent)return respond(res,200,{jsonrpc:'2.0',id:body.id,
    result:{content:result.__mcpContent,structuredContent:result.__structuredContent}});
