@@ -128,6 +128,10 @@ if (!handoff.includes("HANDOFF_BUSY_STATE_UNVERIFIED") ||
     !handoff.includes('return [pscustomobject]@{active=1;queued=1;leases=1}') ||
     !handoff.includes('$busy.queued -eq 0') ||
     !handoff.includes('$busy.queued -ne 0') ||
+    !handoff.includes("HANDOFF_RESOURCE_STATE_UNVERIFIED") ||
+    !handoff.includes("HANDOFF_GUI_STATE_UNVERIFIED") ||
+    !handoff.includes("HANDOFF_BROWSER_STATE_UNVERIFIED") ||
+    !handoff.includes("'gui_status','browser_status'") ||
     handoff.includes('return [pscustomobject]@{active=0;leases=0}')) {
   throw new Error('Owner handoff must fail closed when Commander status is missing or invalid');
 }
