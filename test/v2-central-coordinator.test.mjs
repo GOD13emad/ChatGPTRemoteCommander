@@ -143,3 +143,75 @@ test('expired work is never marked successfully fenced after the worker returns'
   }),{code:'V2_COORDINATOR_STALE_LEASE'});
  }finally{a.close();f.cleanup();}
 });
+
+test('trusted global inventory forces two different hosts onto the same durable fence',async()=>{
+ const f=fixture();
+ const options={directory:f.dir,now:()=>50000,authorizeLease:async()=>true,
+   requireGlobalResource:true,resolveGlobalResource:async r=>
+     r.target.kind==='workflow-root'?'company-shared-root-a':null};
+ const a=new V2CentralCoordinator(options),b=new V2CentralCoordinator(options);
+ try {
+  const original=await a.acquire({route:base});
+  assert.equal(original.resource,'["global-v1","workflow-root","company-shared-root-a"]');
+  assert.equal(original.fence,1);
+  await assert.rejects(b.acquire({route:otherHost}),{code:'V2_COORDINATOR_RESOURCE_BUSY'});
+  await a.release({route:base,lease:original});
+  const successor=await b.acquire({route:otherHost});
+  assert.equal(successor.fence,2);
+  assert.equal(successor.resource,original.resource);
+  await assert.rejects(a.assertCurrent({route:base,lease:original}),
+    {code:'V2_COORDINATOR_STALE_LEASE'});
+ }finally {a.close();b.close();f.cleanup();}
+});
+
+test('global mode refuses missing, invalid or caller-shaped global inventory',async()=>{
+ const f=fixture();
+ try {
+  assert.throws(()=>new V2CentralCoordinator({directory:f.dir,
+   authorizeLease:async()=>true,requireGlobalResource:true}),
+   {code:'V2_COORDINATOR_GLOBAL_RESOLVER_REQUIRED'});
+  const samples=[null,undefined,'','../root','outside/root',{identity:'shared'}];
+  for(const sample of samples){
+   const c=new V2CentralCoordinator({directory:f.dir,authorizeLease:async()=>true,
+     requireGlobalResource:true,resolveGlobalResource:async()=>sample});
+   try {
+    await assert.rejects(c.acquire({route:base}),{
+      code:sample===null?'V2_COORDINATOR_GLOBAL_RESOURCE_UNMAPPED':
+        'V2_COORDINATOR_GLOBAL_RESOURCE_INVALID'});
+   }finally{c.close();}
+  }
+ }finally{f.cleanup();}
+});
+
+test('trusted global mapping change invalidates previous lease and prevents false completion',async()=>{
+ const f=fixture();let identity='physical-volume-a';
+ const c=new V2CentralCoordinator({directory:f.dir,authorizeLease:async()=>true,
+   resolveGlobalResource:async()=>identity,requireGlobalResource:true});
+ try{
+  const lease=await c.acquire({route:base});
+  identity='physical-volume-b';
+  await assert.rejects(c.assertCurrent({route:base,lease}),
+    {code:'V2_COORDINATOR_STALE_LEASE'});
+  await assert.rejects(c.withFencedLease({route:base,run:async({resource})=>{
+   assert.equal(resource,'["global-v1","workflow-root","physical-volume-b"]');
+   identity='physical-volume-c';
+   return 'should never confirm';
+  }}),{code:'V2_COORDINATOR_STALE_LEASE'});
+ }finally{c.close();f.cleanup();}
+});
+
+test('global resource and immutable fence travel together to the trusted actuator callback',async()=>{
+ const f=fixture();
+ const c=new V2CentralCoordinator({directory:f.dir,authorizeLease:async()=>true,
+  resolveGlobalResource:async()=> 'global-coordinated-root',requireGlobalResource:true});
+ try {
+  const out=await c.withFencedLease({route:base,run:async({lease,resource,assertCurrent})=>{
+   assert.equal(resource,lease.resource);
+   assert.equal(resource,'["global-v1","workflow-root","global-coordinated-root"]');
+   assert.equal(lease.fence,1);
+   await assertCurrent();
+   return 'read-only-check';
+  }});
+  assert.equal(out,'read-only-check');
+ }finally{c.close();f.cleanup();}
+});

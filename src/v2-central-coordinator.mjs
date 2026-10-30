@@ -8,6 +8,10 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
 import { normalizeV2Route, v2ResourceLeaseKey, v2OperationKey } from './v2-routing-contract.mjs';
+// Trusted coordinator-side inventory identifies ONE shared physical resource.
+// Untrusted route arguments cannot supply a global resource identity.
+const GLOBAL_RESOURCE_ID=/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
+
 
 function fail(code) { throw Object.assign(new Error(code), { code }); }
 function privateDirectory(directory) {
@@ -36,11 +40,17 @@ function validLease(value) {
     fail('V2_COORDINATOR_LEASE_INVALID');
 }
 export class V2CentralCoordinator {
-  constructor({directory, now=Date.now, authorizeLease}={}) {
+  constructor({directory, now=Date.now, authorizeLease, resolveGlobalResource=null, requireGlobalResource=false}={}) {
     if (typeof now!=='function' || typeof authorizeLease!=='function')
       fail('V2_COORDINATOR_TRUSTED_BOOTSTRAP_REQUIRED');
+    if ((resolveGlobalResource!==null && typeof resolveGlobalResource!=='function') ||
+        typeof requireGlobalResource!=='boolean' ||
+        (requireGlobalResource && resolveGlobalResource===null))
+      fail('V2_COORDINATOR_GLOBAL_RESOLVER_REQUIRED');
     this.now=now;
     this.authorizeLease=authorizeLease; // natively attested principal/grant, NEVER RPC-provided flags
+    this.resolveGlobalResource=resolveGlobalResource; // trusted inventory, NEVER caller metadata
+    this.requireGlobalResource=requireGlobalResource;
     this.directory=privateDirectory(directory);
     const location=path.join(this.directory,'v2-central-leases.sqlite');
     for (const suffix of ['', '-journal', '-wal', '-shm']) {
@@ -72,7 +82,19 @@ export class V2CentralCoordinator {
   async scope(route) {
     const r=normalizeV2Route(route);
     if(await this.authorizeLease(r)!==true) fail('V2_COORDINATOR_AUTH_REQUIRED');
-    return {resource:v2ResourceLeaseKey(r),holder:v2OperationKey(r)};
+    let resource=v2ResourceLeaseKey(r);
+    if (this.resolveGlobalResource!==null) {
+      const identity=await this.resolveGlobalResource(r);
+      if (identity!==null) {
+        if (typeof identity!=='string'||!GLOBAL_RESOURCE_ID.test(identity)||
+            identity==='.'||identity==='..')
+          fail('V2_COORDINATOR_GLOBAL_RESOURCE_INVALID');
+        resource=JSON.stringify(['global-v1',r.target.kind,identity]);
+      } else if (this.requireGlobalResource) {
+        fail('V2_COORDINATOR_GLOBAL_RESOURCE_UNMAPPED');
+      }
+    }
+    return {resource,holder:v2OperationKey(r)};
   }
   transaction(work) {
     this.db.exec('BEGIN IMMEDIATE');
@@ -83,7 +105,8 @@ export class V2CentralCoordinator {
     return this.db.prepare('SELECT * FROM v2_global_lease WHERE resource=?').get(resource);
   }
   lease(row) {
-    return Object.freeze({id:row.lease_id,fence:row.fence,expiresAtMs:row.expires_at_ms});
+    return Object.freeze({id:row.lease_id,fence:row.fence,expiresAtMs:row.expires_at_ms,
+      resource:row.resource});
   }
   checkClock(row,ms) {
     if(row && ms<row.clock_floor_ms) fail('V2_COORDINATOR_CLOCK_ROLLBACK');
@@ -124,13 +147,16 @@ export class V2CentralCoordinator {
         fail('V2_COORDINATOR_STALE_LEASE');
       this.db.prepare(`UPDATE v2_global_lease SET expires_at_ms=?,clock_floor_ms=?
         WHERE resource=?`).run(ms+ttlMs,ms,resource);
-      return Object.freeze({id:lease.id,fence:lease.fence,expiresAtMs:ms+ttlMs});
+      return Object.freeze({id:lease.id,fence:lease.fence,expiresAtMs:ms+ttlMs,
+        resource});
     });
   }
   async assertCurrent({route,lease}) {
     validLease(lease);
     const {resource,holder}=await this.scope(route);
     const ms=this.clock();
+    if (lease.resource!==undefined&&lease.resource!==resource)
+      fail('V2_COORDINATOR_STALE_LEASE');
     const row=this.row(resource);this.checkClock(row,ms);
     if(!row||row.holder!==holder||row.lease_id!==lease.id||
       row.fence!==lease.fence||row.expires_at_ms<=ms)
@@ -156,7 +182,7 @@ export class V2CentralCoordinator {
     try {
       await this.assertCurrent({route,lease});
       // The protected actuator must independently reject stale fences on effect.
-      const result=await run(Object.freeze({lease,
+      const result=await run(Object.freeze({lease,resource:lease.resource,
         assertCurrent:()=>this.assertCurrent({route,lease})}));
       // Never confirm completion after an expired/revoked lease, even if the
       // caller neglected a final check. The actuator still needs atomic fence enforcement.

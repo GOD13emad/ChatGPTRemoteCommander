@@ -2,7 +2,7 @@
 // fenced lease. Candidate only: no public HTTP route or production deployment.
 // commitWithFence MUST be a trusted actuator that checks the fencing epoch
 // atomically with the protected mutation; a preflight check alone is not enough.
-import { normalizeV2Route, v2ResourceLeaseKey } from './v2-routing-contract.mjs';
+import { normalizeV2Route } from './v2-routing-contract.mjs';
 import { executeV2WorkflowStep } from './v2-workflow-gateway.mjs';
 
 function fail(code){throw Object.assign(new Error(code),{code});}
@@ -15,8 +15,9 @@ export async function executeV2CoordinatedWorkflowStep({
   if(!coordinator||typeof coordinator.withFencedLease!=='function'||
      typeof commitWithFence!=='function'||Object.hasOwn(params,'dispatch'))
     fail('V2_COORDINATED_TRUSTED_BACKEND_REQUIRED');
-  const resource=v2ResourceLeaseKey(r);
-  return coordinator.withFencedLease({route:r,ttlMs,run:async({lease,assertCurrent})=>{
+  return coordinator.withFencedLease({route:r,ttlMs,run:async({lease,resource,assertCurrent})=>{
+    if(typeof resource!=='string'||resource!==lease.resource)
+      fail('V2_COORDINATED_TRUSTED_RESOURCE_REQUIRED');
     await assertCurrent();
     return executeV2WorkflowStep({
       ...params,route:r,

@@ -93,3 +93,24 @@ test('untrusted dispatch replacement, non-workflow target and missing coordinato
   assert.equal(f.commits,0);
  }finally{f.close();}
 });
+
+test('WorkflowStore adapter passes coordinator global identity to trusted actuator, never host-local key',async()=>{
+ const f=setup();
+ const central=new V2CentralCoordinator({directory:f.first.directory,
+   authorizeLease:async()=>true,
+   resolveGlobalResource:async()=> 'trusted-global-workflow-resource',
+   requireGlobalResource:true});
+ try{
+  const output=await executeV2CoordinatedWorkflowStep(f.input(route('chat-one'),central,
+    async({resource,leaseId,fence,assertCurrent})=>{
+      assert.equal(resource,'["global-v1","workflow-root","trusted-global-workflow-resource"]');
+      assert.equal(typeof leaseId,'string');
+      assert.equal(fence,1);
+      await assertCurrent();
+      return {resource,fence};
+    }));
+  assert.equal(output.outcome,'RECORDED_NOT_VALIDATED');
+  assert.equal(output.out.resource,
+    '["global-v1","workflow-root","trusted-global-workflow-resource"]');
+ }finally{central.close();f.close();}
+});
