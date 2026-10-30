@@ -302,7 +302,8 @@ install_tunnel_client() {
       }
       echo "Reusing existing pinned tunnel-client while skip was requested: $dir/tunnel-client"
     else
-      echo "Skipping tunnel-client installation as requested; no pinned executable is present."
+      echo "TUNNEL_CLIENT_REQUIRED_MISSING: --skip-tunnel-client requires an existing verified pinned executable." >&2
+      return 1
     fi
     return 0
   fi

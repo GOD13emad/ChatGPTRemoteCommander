@@ -164,6 +164,41 @@ stop_owned_candidate(){
   [[ -n "$actual" && "$actual" == "$expected" ]] || { log "CANDIDATE_CLEANUP_OWNERSHIP_MISMATCH pid=$pid"; return 1; }
   stop_pid "$pid"
 }
+prepare_staged_tunnel_client(){
+  # Release checkouts exclude the pinned binary; provision before cutover.
+  local project="$1" helper="$1/tools/install-tunnel-client-linux.sh"
+  local pin="$1/tools/tunnel-client-pin.json" json="$1/tools/json-field.mjs"
+  local version upstream arch exe actual
+  [[ -f "$helper" && -f "$pin" && -f "$json" ]] || {
+    log 'TUNNEL_STAGE_BLOCK reason=installer-or-pin-missing'
+    return 1
+  }
+  log "TUNNEL_STAGE_PREFLIGHT project=$project"
+  if ! /bin/bash "$helper" --install-dir "$project"; then
+    log 'TUNNEL_STAGE_BLOCK reason=pinned-install-failed'
+    return 1
+  fi
+  version="$(node "$json" --file "$pin" --field version 2>/dev/null || true)"
+  upstream="$(node "$json" --file "$pin" --field upstreamCommit 2>/dev/null || true)"
+  [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ && "$upstream" =~ ^[0-9a-f]{40}$ ]] || {
+    log 'TUNNEL_STAGE_BLOCK reason=invalid-pin'
+    return 1
+  }
+  case "$(uname -m)" in
+    x86_64|amd64) arch=amd64 ;;
+    aarch64|arm64) arch=arm64 ;;
+    *) log 'TUNNEL_STAGE_BLOCK reason=unsupported-architecture'; return 1 ;;
+  esac
+  exe="$project/tools/tunnel-client-v${version}-linux-${arch}/tunnel-client"
+  [[ -x "$exe" ]] || { log 'TUNNEL_STAGE_BLOCK reason=missing-executable'; return 1; }
+  actual="$("$exe" --version 2>/dev/null || true)"
+  [[ "$actual" == "$version+$upstream"* ]] || {
+    log 'TUNNEL_STAGE_BLOCK reason=provenance-mismatch'
+    return 1
+  }
+  log "TUNNEL_STAGE_VERIFIED version=$version"
+}
+
 run_gate(){ local project="$1" name="$2"; shift 2; log "GATE_START $name"; (cd "$project"; "$@"); log "GATE_PASS $name"; }
 ensure_project_provider(){
   if [[ "$NO_PROMOTE" == 1 ]]; then
@@ -731,6 +766,9 @@ if [[ "$FORCE" != 1 && -f "$ROUTE" ]]; then
     exit 0
   fi
   if [[ "$ACTIVE_COMMIT" == "$COMMIT" ]]; then
+    # The active route may already match while its release-local client is missing.
+    # Fail closed before maintenance, drain or Supervisor recycling.
+    prepare_staged_tunnel_client "$STAGE_DIR"
     CONTROL="$(git -C "$INSTALL_DIR" rev-parse HEAD 2>/dev/null || true)"
     PREV_PORT="$(json_field "$STAGE_DIR" "$ROUTE" previous.port)"
     PREV_CFG="$(json_field "$STAGE_DIR" "$ROUTE" previous.configPath)"
@@ -776,6 +814,7 @@ run_gate "$STAGE_DIR" linux-gui-safety node tools/linux-gui-safety-audit.mjs
 run_gate "$STAGE_DIR" check npm run check:qualification
 run_gate "$STAGE_DIR" test npm run test:qualification
 run_gate "$STAGE_DIR" audit npm run audit
+prepare_staged_tunnel_client "$STAGE_DIR"
 
 PORT="$(node "$STAGE_DIR/tools/find-free-port.mjs" --start 48831 --end 51999)"
 STATE_DIR="$RUNTIME_ROOT/$COMMIT/default"
@@ -842,9 +881,13 @@ if [[ "$NO_PROMOTE" == 1 ]]; then stop_owned_candidate "$CANDIDATE_PID" "$STAGE_
 if [[ -f "$ROUTE" ]]; then
   SCHEMA_OLD_PORT="$(json_field "$STAGE_DIR" "$ROUTE" active.port)"
   if [[ -n "$SCHEMA_OLD_PORT" ]]; then
-    set +e
-    SCHEMA_PRE="$(node "$STAGE_DIR/tools/schema-continuity-gate.mjs" --old-url "http://127.0.0.1:$SCHEMA_OLD_PORT/mcp" --candidate-url "http://127.0.0.1:$PORT/mcp" --router-url "http://127.0.0.1:47831/router/status" 2>/dev/null)"
-    set -e
+    # Expected incompatible preflight can return 3; guard the assignment.
+    # set +e alone does not inhibit the active ERR trap (R170 regression).
+    if SCHEMA_PRE="$(node "$STAGE_DIR/tools/schema-continuity-gate.mjs" --old-url "http://127.0.0.1:$SCHEMA_OLD_PORT/mcp" --candidate-url "http://127.0.0.1:$PORT/mcp" --router-url "http://127.0.0.1:47831/router/status" 2>/dev/null)"; then
+      :
+    else
+      log 'SCHEMA_PRE_REJECTED_BEFORE_ROUTER_BOOTSTRAP'
+    fi
     SCHEMA_CHANGED="$(node -e 'try{const x=JSON.parse(process.argv[1]);process.stdout.write(x.changed===true?"true":"false")}catch{process.stdout.write("false")}' "$SCHEMA_PRE")"
     BOOTSTRAP="$(node "$STAGE_DIR/tools/router-source-bootstrap.mjs" --url http://127.0.0.1:47831/router/status --state "$ROUTE" --runtime "$ROUTING_ROOT/default.runtime.json" --candidate-source "$STAGE_DIR/src/stable-router.mjs" --log "$STATE_ROOT/router.log")"
     ROUTER_CHANGED="$(node -e 'const x=JSON.parse(process.argv[1]);process.stdout.write(x.changed===true?"true":"false")' "$BOOTSTRAP")"

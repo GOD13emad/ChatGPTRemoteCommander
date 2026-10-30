@@ -65,10 +65,13 @@ jobs:
           path: |
             ${{ runner.temp }}/remote-commander-rollback-r170/START_R170.txt
             ${{ runner.temp }}/remote-commander-rollback-r170/PROMOTE_R170.log
+            ${{ runner.temp }}/remote-commander-rollback-r170/REJECTED_INCOMPATIBLE_ROLLBACK.log
+            ${{ runner.temp }}/remote-commander-rollback-r170/ROUTE_AFTER_REJECTED_ROLLBACK.json
             ${{ runner.temp }}/remote-commander-rollback-r170/ROLLBACK_R170.log
             ${{ runner.temp }}/remote-commander-rollback-r170/ROUTE_AFTER_PROMOTE.json
             ${{ runner.temp }}/remote-commander-rollback-r170/ROUTE_AFTER_ROLLBACK.json
             ${{ runner.temp }}/remote-commander-rollback-r170/RETURN_R170.json
             ${{ runner.temp }}/remote-commander-rollback-r170/CLEANUP_R172.json
+            ${{ runner.temp }}/remote-commander-rollback-r170/SOURCE_STATUS_R170.txt
           if-no-files-found: warn
           retention-days: 7
