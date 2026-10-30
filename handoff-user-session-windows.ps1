@@ -27,18 +27,19 @@ function Get-CommanderBusy {
     $r=Invoke-RestMethod -Uri 'http://127.0.0.1:47831/mcp' -Method Post -ContentType 'application/json' -Body $body -TimeoutSec 3
     $s=$r.result.structuredContent
     if($r.result.isError -or -not$s -or -not$s.concurrency -or
-       $null -eq $s.concurrency.activeOperations -or -not$s.durableWorkflows -or
+       ($null -eq $s.concurrency.activeOperations) -or ($null -eq $s.concurrency.queued) -or -not$s.durableWorkflows -or
        -not$s.durableWorkflows.schedulerState -or
        $null -eq $s.durableWorkflows.schedulerState.currentLeases){
       throw 'HANDOFF_BUSY_STATE_UNVERIFIED'
     }
     $active=[int]$s.concurrency.activeOperations
+    $queued=[int]$s.concurrency.queued
     $leases=[int]$s.durableWorkflows.schedulerState.currentLeases
-    if($active -lt 0 -or $leases -lt 0){throw 'HANDOFF_BUSY_STATE_INVALID'}
-    return [pscustomobject]@{active=$active;leases=$leases}
+    if($active -lt 0 -or $queued -lt 0 -or $leases -lt 0){throw 'HANDOFF_BUSY_STATE_INVALID'}
+    return [pscustomobject]@{active=$active;queued=$queued;leases=$leases}
   } catch {
     # Losing status can never authorize terminating the running SYSTEM core.
-    return [pscustomobject]@{active=1;leases=1}
+    return [pscustomobject]@{active=1;queued=1;leases=1}
   }
 }
 function Stop-ExactProcess($Process,[string]$Label){
@@ -54,11 +55,11 @@ function Stop-ExactProcess($Process,[string]$Label){
 $deadline=(Get-Date).AddSeconds($WaitSeconds)
 do {
   $busy=Get-CommanderBusy
-  if($busy.active -eq 0 -and $busy.leases -eq 0){break}
+  if($busy.active -eq 0 -and $busy.queued -eq 0 -and $busy.leases -eq 0){break}
   Write-HandoffLog "WAIT_BUSY active=$($busy.active) leases=$($busy.leases)"
   Start-Sleep -Seconds 5
 } while((Get-Date)-lt$deadline)
-if($busy.active -ne 0 -or $busy.leases -ne 0){
+if($busy.active -ne 0 -or $busy.queued -ne 0 -or $busy.leases -ne 0){
   Write-HandoffLog "HANDOFF_DEFERRED_BUSY active=$($busy.active) leases=$($busy.leases)"
   exit 75
 }
