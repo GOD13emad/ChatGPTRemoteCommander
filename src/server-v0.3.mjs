@@ -14,7 +14,7 @@ import { createWorkspaceAccessibilityTools, workspaceAccessibilityDefinitions } 
 import { createOwnerGuiReadOnlyProxy } from './gui-owner-delegation.mjs';
 import { createOwnerWorkspaceReadOnlyProxy } from './owner-workspace-delegation.mjs';
 import { createOwnerWorkspaceProxy } from './owner-workspace-proxy.mjs';
-import { executeWorkspaceTool, assertWorkspaceToolPolicy, workspaceToolDefinitions, workspaceMutationEffectArgs } from './workspace-tools.mjs';
+import { executeWorkspaceTool, assertWorkspaceToolPolicy, workspaceToolDefinitions, workspaceMutationEffectArgs, isOwnerBackgroundWorkspaceTool } from './workspace-tools.mjs';
 import { exposedGuiTools, assertLegacyGuiPermitted } from './gui-target-only-policy.mjs';
 import { executeBrowserTool, browserToolDefinitions, reapBrowserOrphans } from './browser-tools.mjs';
 import { createOperatorCore } from './operator-core.mjs';
@@ -621,7 +621,7 @@ async function executeToolEffect(name, args, delegationContext = {}) {
           semanticOnly:true,powerMode:true});
         return result;
       }
-      if (name.startsWith('workspace_') && !name.startsWith('workspace_target_')) {
+      if (isOwnerBackgroundWorkspaceTool(name)) {
         assertWorkspaceToolPolicy(config,name,args);
         // Restore the already validated outer receipt only for native journaled effects.
         // The durable mutation guard intentionally strips it from effectArgs.
