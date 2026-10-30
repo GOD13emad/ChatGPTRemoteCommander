@@ -19,6 +19,7 @@ const CORE=[
  'src/v2-central-coordinator.mjs',
  'src/v2-coordinator-rpc.mjs',
  'src/v2-coordinator-rpc-client.mjs',
+ 'src/v2-guarded-artifact-actuator.mjs',
  'tools/v2-coordinator-host.mjs',
  'src/v2-workflow-gateway.mjs',
  'src/v2-coordinated-workflow.mjs',

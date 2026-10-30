@@ -7,6 +7,7 @@ import {fileURLToPath} from 'node:url';
 import {V2CentralCoordinator} from '../src/v2-central-coordinator.mjs';
 import {normalizeV2Route} from '../src/v2-routing-contract.mjs';
 import {createV2CoordinatorRpcServer,createV2RpcTokenLookup} from '../src/v2-coordinator-rpc.mjs';
+import {createV2GuardedArtifactActuator} from '../src/v2-guarded-artifact-actuator.mjs';
 
 function fail(code){throw Object.assign(new Error(code),{code});}
 function loadConfig(file){
@@ -64,7 +65,9 @@ export async function runV2CoordinatorHost(file,{onReady=()=>{}}={}){
   fail('V2_HOST_OWNER_LINUX_ONLY');
  const config=loadConfig(file);
  const coordinator=new V2CentralCoordinator({...config,requireGlobalResource:true});
- const server=createV2CoordinatorRpcServer({coordinator,lookupToken:config.lookupToken});
+ const artifactActuator=createV2GuardedArtifactActuator({coordinator});
+ const server=createV2CoordinatorRpcServer({
+  coordinator,lookupToken:config.lookupToken,artifactActuator});
  let closed=false;
  async function close(){
   if(closed)return;

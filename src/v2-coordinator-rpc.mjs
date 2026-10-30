@@ -49,7 +49,12 @@ function send(res,status,payload){
 }
 function errorStatus(code){
  if(code==='V2_RPC_BODY_SHAPE')return 400;
- if(code==='V2_COORDINATOR_RECEIPT_CONFLICT')return 409;
+ if(code==='V2_COORDINATOR_RECEIPT_CONFLICT'||
+    code==='V2_ARTIFACT_RECEIPT_CONFLICT'||
+    code==='V2_ARTIFACT_EXISTING_CONFLICT'||
+    code==='V2_ARTIFACT_RECEIPT_WITHOUT_FILE')return 409;
+ if(code==='V2_ARTIFACT_ARGUMENT_INVALID'||code==='V2_ARTIFACT_LEASE_INVALID')
+   return 422;
  if(code==='V2_COORDINATOR_RESOURCE_BUSY')return 409;
  if(code==='V2_COORDINATOR_AUTH_REQUIRED')return 403;
  if(code==='V2_COORDINATOR_STALE_LEASE'||code==='V2_COORDINATOR_CLOCK_ROLLBACK')return 409;
@@ -59,13 +64,20 @@ function errorStatus(code){
     code==='V2_COORDINATOR_RECEIPT_INPUT_INVALID')return 422;
  return 503; // Unknown exceptions must not expose internals or succeed.
 }
-export function createV2CoordinatorRpcServer({coordinator,lookupToken}={}){
+export function createV2CoordinatorRpcServer({coordinator,lookupToken,artifactActuator=null}={}){
  if(!coordinator||typeof lookupToken!=='function'||
   ['acquire','renew','assertCurrent','release','commitFencedReceipt','getFencedReceipt'].some(k=>typeof coordinator[k]!=='function'))
   fail('V2_RPC_TRUSTED_BOOTSTRAP_REQUIRED');
+ if(artifactActuator!==null&&
+   (typeof artifactActuator.create!=='function'||typeof artifactActuator.observe!=='function'))
+  fail('V2_RPC_TRUSTED_ARTIFACT_REQUIRED');
  const server=http.createServer(async(req,res)=>{
   const url=req.url;
-  if(req.method!=='POST'||typeof url!=='string'||!/^\/v2\/lease\/(acquire|renew|assert|release|commit-receipt|get-receipt)$/.test(url)){
+  if(req.method!=='POST'||typeof url!=='string'||!/^\/v2\/lease\/(acquire|renew|assert|release|commit-receipt|get-receipt|create-artifact|observe-artifact)$/.test(url)){
+   send(res,404,{error:'V2_RPC_NOT_FOUND'});return;
+  }
+  if((url.endsWith('/create-artifact')||url.endsWith('/observe-artifact'))&&
+      artifactActuator===null){
    send(res,404,{error:'V2_RPC_NOT_FOUND'});return;
   }
   if(req.headers.origin||req.headers.cookie||req.headers['transfer-encoding']||
@@ -99,14 +111,20 @@ export function createV2CoordinatorRpcServer({coordinator,lookupToken}={}){
   catch{send(res,400,{error:'V2_RPC_BODY_JSON'});return;}
   if(!input||typeof input!=='object'||Array.isArray(input)||
    !Object.hasOwn(input,'route')||
-   Object.keys(input).some(k=>!['route','lease','ttlMs','receiptId','digest'].includes(k))){
+   Object.keys(input).some(k=>!['route','lease','ttlMs','receiptId','digest','content'].includes(k))){
    send(res,400,{error:'V2_RPC_BODY_SHAPE'});return;
   }
   const action=url.split('/').at(-1);
   try{
    const route=assertV2CallerBinding(input.route,binding);
    const receiptAction=action==='commit-receipt'||action==='get-receipt';
-   if(!receiptAction&&(input.receiptId!==undefined||input.digest!==undefined))
+   const artifactAction=action==='create-artifact'||action==='observe-artifact';
+   if(!receiptAction&&!artifactAction&&
+      (input.receiptId!==undefined||input.digest!==undefined))
+     throw fail('V2_RPC_BODY_SHAPE');
+   if(input.content!==undefined&&action!=='create-artifact')
+     throw fail('V2_RPC_BODY_SHAPE');
+   if(artifactAction&&(input.ttlMs!==undefined||input.digest!==undefined))
      throw fail('V2_RPC_BODY_SHAPE');
    if(receiptAction&&input.ttlMs!==undefined)throw fail('V2_RPC_BODY_SHAPE');
    if(action==='get-receipt'&&(input.lease!==undefined||input.digest!==undefined))
@@ -114,7 +132,16 @@ export function createV2CoordinatorRpcServer({coordinator,lookupToken}={}){
    if(action==='commit-receipt'&&input.lease===undefined)
      throw fail('V2_RPC_BODY_SHAPE');
    let output;
-   if(action==='commit-receipt'){
+   if(action==='create-artifact'){
+    if(input.lease===undefined||input.receiptId===undefined||
+       typeof input.content!=='string')throw fail('V2_RPC_BODY_SHAPE');
+    output=await artifactActuator.create({
+     route,lease:input.lease,receiptId:input.receiptId,content:input.content});
+   }else if(action==='observe-artifact'){
+    if(input.lease!==undefined||input.content!==undefined||
+       input.receiptId===undefined)throw fail('V2_RPC_BODY_SHAPE');
+    output=await artifactActuator.observe({route,receiptId:input.receiptId});
+   }else if(action==='commit-receipt'){
     output=await coordinator.commitFencedReceipt({
      route,lease:input.lease,receiptId:input.receiptId,digest:input.digest});
    }else if(action==='get-receipt'){
@@ -131,7 +158,7 @@ export function createV2CoordinatorRpcServer({coordinator,lookupToken}={}){
    send(res,200,{ok:true,value:output});
   }catch(e){
    const code=typeof e?.code==='string'&&
-       /^(V2_COORDINATOR_|V2_ROUTE_|V2_RPC_BODY_SHAPE)/.test(e.code)
+       /^(V2_COORDINATOR_|V2_ROUTE_|V2_RPC_BODY_SHAPE|V2_ARTIFACT_)/.test(e.code)
        ?e.code:'V2_RPC_OPERATION_FAILED';
    send(res,errorStatus(code),{ok:false,error:code});
   }

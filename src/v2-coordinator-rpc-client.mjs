@@ -3,10 +3,11 @@
 // 127.0.0.1 forward. This adapter never creates or exposes a network tunnel.
 // A client-supplied principal/header is NEVER proof of ChatGPT identity.
 import {assertV2CallerBinding} from './v2-routing-contract.mjs';
+import {createHash} from 'node:crypto';
 
 const TRUSTED_LOOPBACK=/^http:\/\/127\.0\.0\.1:([1-9][0-9]{0,4})$/;
 const TOKEN=/^[A-Za-z0-9_-]{43,128}$/;
-const ERROR=/^(?:V2_COORDINATOR_|V2_ROUTE_|V2_RPC_)[A-Z0-9_]+$/;
+const ERROR=/^(?:V2_COORDINATOR_|V2_ROUTE_|V2_RPC_|V2_ARTIFACT_)[A-Z0-9_]+$/;
 const RECEIPT_ID=/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const RECEIPT_SHA=/^[a-f0-9]{64}$/;
 function validReceipt(receiptId,digest){
@@ -53,6 +54,7 @@ export function createV2CoordinatorRpcClient({
   const payload={route};
   if(input.receiptId!==undefined)payload.receiptId=input.receiptId;
   if(input.digest!==undefined)payload.digest=input.digest;
+  if(input.content!==undefined)payload.content=input.content;
   if(input.lease!==undefined)payload.lease=validateLease(input.lease);
   if(input.ttlMs!==undefined)payload.ttlMs=validatedTtl(input.ttlMs);
   let res;
@@ -85,6 +87,20 @@ export function createV2CoordinatorRpcClient({
   if(action==='assert'||action==='release'){
    if(typeof result.value!=='boolean')fail('V2_RPC_CLIENT_INVALID_RESPONSE');
    return result.value;
+  }
+  if(action==='create-artifact'||action==='observe-artifact'){
+   const value=result.value;
+   if(action==='observe-artifact'&&value?.committed===false)return Object.freeze({committed:false});
+   if(!value||typeof value!=='object'||value.committed!==true||
+      typeof value.receiptId!=='string'||value.receiptId!==input.receiptId||
+      typeof value.digest!=='string'||!RECEIPT_SHA.test(value.digest)||
+      !Number.isSafeInteger(value.fence)||value.fence<1||
+      (action==='create-artifact'&&(
+       value.digest!==createHash('sha256').update(input.content,'utf8').digest('hex')||
+       value.fence!==input.lease.fence||typeof value.replayed!=='boolean'||
+       typeof value.recovered!=='boolean')))
+      fail('V2_RPC_CLIENT_INVALID_RESPONSE');
+   return Object.freeze({...value});
   }
   if(action==='commit-receipt'||action==='get-receipt'){
    const value=result.value;
@@ -124,6 +140,19 @@ export function createV2CoordinatorRpcClient({
   getFencedReceipt:async({route,receiptId})=>{
    validReceipt(receiptId);
    return request('get-receipt',{route,receiptId});
+  },
+  // This only writes a fresh immutable artifact to the coordinator's
+  // owner-private staging store; never an arbitrary owner/user path.
+  createPrivateArtifact:async({route,lease,receiptId,content})=>{
+   if(typeof receiptId!=='string'||!RECEIPT_ID.test(receiptId)||
+      typeof content!=='string'||Buffer.byteLength(content,'utf8')>6144)
+     fail('V2_RPC_CLIENT_ARTIFACT_INVALID');
+   return request('create-artifact',{route,lease,receiptId,content});
+  },
+  observePrivateArtifact:async({route,receiptId})=>{
+   if(typeof receiptId!=='string'||!RECEIPT_ID.test(receiptId))
+     fail('V2_RPC_CLIENT_ARTIFACT_INVALID');
+   return request('observe-artifact',{route,receiptId});
   },
   withFencedLease:async({route,ttlMs=30000,run})=>{
    if(typeof run!=='function')fail('V2_RPC_CLIENT_RUN_REQUIRED');

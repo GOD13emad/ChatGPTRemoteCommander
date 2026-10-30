@@ -94,3 +94,23 @@ test('external Node owner host has distinct lifecycle and stops on SIGTERM',{ski
   f.cleanup();
  }
 });
+
+test('actual owner-private host exposes authenticated create-once private artifact RPC',{skip:!supported},async()=>{
+ const f=makeConfig();let server;
+ try{
+  server=await runV2CoordinatorHost(f.file);
+  const acquired=await request(server.addr,'acquire',f.tokenA,a);
+  assert.equal(acquired.status,200);
+  const url='http://127.0.0.1:'+server.addr.port;
+  const headers={authorization:'Bearer '+f.tokenA,'content-type':'application/json'};
+  const create=await fetch(url+'/v2/lease/create-artifact',{method:'POST',headers,
+    body:JSON.stringify({route:a,lease:acquired.body.value,
+      receiptId:'private-host-1',content:'only inside owner private store'})});
+  assert.equal(create.status,200);
+  const body=await create.json();assert.equal(body.value.committed,true);
+  const observe=await fetch(url+'/v2/lease/observe-artifact',{method:'POST',headers,
+    body:JSON.stringify({route:a,receiptId:'private-host-1'})});
+  assert.equal(observe.status,200);
+  assert.equal((await observe.json()).value.digest,body.value.digest);
+ }finally{await server?.close();f.cleanup();}
+});
