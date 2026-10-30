@@ -27,7 +27,15 @@ const identity=a=>{if(!pidValid(a.processId)||!handleValid(a.handle))error('IDEN
 const ownerFirefox=w=>/(^|[^a-z])firefox([._-]?(firefox|exe))?($|[^a-z])/i.test(String(w.wmClass??'')+' '+String(w.appName??''));
 const titleMatch=(a,b)=>a===b&&typeof a==='string'&&a.length>=4&&a.length<=300;
 
-export async function nativeAtspi(request,{timeoutMs=7000}={}){
+// Firefox AT-SPI traversal may require more than the 7s mutation deadline.
+// A read-only snapshot may use the longer bounded budget; type/invoke never do.
+export function atspiCommandPolicy(command){
+ const readOnly=command==='snapshot';
+ return {timeoutMs:readOnly?18000:7000,
+  timeoutCode:readOnly?'ATSPI_SNAPSHOT_TIMEOUT_NO_EFFECT':'ATSPI_OPERATION_TIMEOUT_EFFECT_UNKNOWN'};
+}
+
+export async function nativeAtspi(request,{timeoutMs=atspiCommandPolicy(request?.command).timeoutMs}={}){
  if(process.platform!=='linux')error('LINUX_ONLY');
  const file=fileURLToPath(new URL('../tools/owner-atspi-semantic.py',import.meta.url));
  return new Promise((resolve,reject)=>{
@@ -43,7 +51,7 @@ export async function nativeAtspi(request,{timeoutMs=7000}={}){
   child.on('error',e=>{if(!finished){finished=true;clearTimeout(timer);reject(e)}});
   child.on('close',code=>{
    clearTimeout(timer);if(finished)return;finished=true;
-   if(expired)return reject(new Error('ATSPI_OPERATION_TIMEOUT_EFFECT_UNKNOWN'));
+   if(expired)return reject(new Error(atspiCommandPolicy(request?.command).timeoutCode));
    let parsed;try{parsed=JSON.parse(out.trim())}catch{return reject(new Error('ATSPI_NATIVE_RESPONSE_UNVERIFIED'))}
    if(code!==0||parsed?.ok!==true)return reject(new Error(String(parsed?.error||'ATSPI_OPERATION_FAILED')));
    resolve(parsed);
@@ -77,7 +85,7 @@ export function createWorkspaceAccessibilityTools({gui,transport=nativeAtspi,ses
   if(focused&&found[0].focused!==true&&found[0].Focused!==true)error('FOCUS_NOT_CONFIRMED');
   return found[0];
  };
- const through=async(s,args,command,extra={})=>transport({command,pid:s.pid,windowTitle:s.title,...extra});
+ const through=async(s,args,command,extra={})=>transport({command,pid:s.pid,windowTitle:s.title,...extra},{timeoutMs:atspiCommandPolicy(command).timeoutMs});
  return {definitions:workspaceAccessibilityDefinitions,execute:async(name,args={})=>{
   if(name==='workspace_accessibility_open'){
    identity(args);prune();if(sessions.size>=12)error('LEASE_CAPACITY');
