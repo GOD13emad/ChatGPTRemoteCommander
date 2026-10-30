@@ -111,10 +111,24 @@ export function createWorkspaceAccessibilityTools({gui,transport=nativeAtspi,ses
    const result=await through(s,args,'snapshot');
    if(!Array.isArray(result.controls)||result.controls.length>80)error('SNAPSHOT_INVALID');
    const controls=result.controls.map(c=>{
-    if(!Array.isArray(c.path)||c.path.length>18||typeof c.name!=='string'||typeof c.role!=='string'||c.name.length<2)return null;
+    // Defense in depth: do not trust native AX selectors without rechecking
+    // their semantics. Refuse password-like names and unapproved roles.
+    if(!c||!Array.isArray(c.path)||c.path.length<1||c.path.length>18
+      ||!c.path.every(n=>Number.isInteger(n)&&n>=0&&n<60)
+      ||typeof c.name!=='string'||c.name.length<2||c.name.length>160
+      ||typeof c.role!=='string'
+      ||[...c.name].some(ch=>ch.charCodeAt(0)<32||ch.charCodeAt(0)===127)
+      ||/password|passcode|secret|token|api key|credit card/i.test(c.name))
+      return null;
+    const editable=['entry','text','combo box','search box'].includes(c.role)
+      &&c.editable===true;
+    const clickable=c.role==='check box'?c.action==='check':
+      ['button','push button'].includes(c.role)&&['click','press'].includes(c.action);
+    if(!editable&&!clickable)return null;
     const elementId=randomUUID();
-    s.elements.set(elementId,{...c,issuedAt:clock()});
-    return {elementId,name:c.name,role:c.role,editable:c.editable===true,clickable:c.action==='click'||c.action==='press'||(c.role==='check box'&&c.action==='check')};
+    s.elements.set(elementId,{path:Object.freeze([...c.path]),role:c.role,
+      name:c.name,editable,action:clickable?c.action:null,issuedAt:clock()});
+    return {elementId,name:c.name,role:c.role,editable,clickable};
    }).filter(Boolean);
    return {ok:true,controls,truncated:result.truncated,nodesVisited:result.nodesVisited,valuesRead:false,semanticOnly:true};
   }

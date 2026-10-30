@@ -5,7 +5,7 @@ import {
 } from '../src/workspace-accessibility-tools.mjs';
 
 const OWNER={processId:10369,handle:'4205340062'};
-const make=(withCheckbox=false)=>{
+const make=(withCheckbox=false,extraControls=[])=>{
  const calls=[];
  let title='RC bounded fixture — Mozilla Firefox';
  let focused=true;
@@ -29,7 +29,8 @@ const make=(withCheckbox=false)=>{
   if(r.command==='snapshot')return {ok:true,nodesVisited:22,truncated:false,controls:[
    {path:[0,2],role:'entry',name:'Search query',editable:true,action:null},
    {path:[0,4],role:'button',name:'Search',editable:false,action:'click'},
-   ...(withCheckbox?[{path:[0,7],role:'check box',name:'public item with no stars',editable:false,action:'check'}]:[])
+   ...(withCheckbox?[{path:[0,7],role:'check box',name:'public item with no stars',editable:false,action:'check'}]:[]),
+   ...extraControls
   ]};
   if(r.command==='type')return {ok:true,effect:'DISPATCHED'};
   if(r.command==='invoke')return {ok:true,effect:'DISPATCHED'};
@@ -184,5 +185,26 @@ test('an ambiguous native Firefox refresh revokes every earlier selector without
   ...OWNER,lease:lease.lease,elementId:item.elementId
  }),/ELEMENT_STALE_OR_UNBOUND/);
  assert.equal(m.calls.filter(c=>c.name==='atspi'&&c.args.command==='invoke').length,0);
+ await m.api.execute('workspace_accessibility_end',{lease:lease.lease});
+});
+
+test('native AX cannot inject protected fields, invalid roles or unsafe element paths',async()=>{
+ const bad=[
+  {path:[0,8],role:'password text',name:'Sign in',editable:true,action:null},
+  {path:[0,9],role:'entry',name:'API token',editable:true,action:null},
+  {path:[0,10],role:'button',name:'Reveal password',editable:false,action:'click'},
+  {path:[0,11],role:'button',name:'Show details',editable:true,action:'toggle'},
+  {path:[0,99],role:'entry',name:'Editable item',editable:true,action:null},
+  {path:[0,12],role:'entry',name:'Normal item',editable:true,action:null},
+  {path:[0,13],role:'entry',name:'Login',editable:false,action:null}
+ ];
+ const m=make(false,bad);
+ const lease=await m.api.execute('workspace_accessibility_open',{...OWNER,mode:'observe'});
+ const snapshot=await m.api.execute('workspace_accessibility_snapshot',{...OWNER,lease:lease.lease});
+ assert.deepEqual(snapshot.controls.map(c=>c.name),
+   ['Search query','Search','Normal item']);
+ assert.equal(snapshot.controls.filter(c=>c.editable).length,2);
+ assert.equal(m.sessions.get(lease.lease).elements.size,3);
+ assert.equal(m.calls.some(c=>c.name==='atspi'&&c.args.command!=='snapshot'),false);
  await m.api.execute('workspace_accessibility_end',{lease:lease.lease});
 });
