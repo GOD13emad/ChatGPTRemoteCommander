@@ -1242,3 +1242,32 @@ test('Linux staged dependency rejects missing helper, missing executable, and ba
     fs.rmSync(tmp,{recursive:true,force:true});
   }
 });
+
+test('preliminary schema probe nonzero must not invoke ERR trap before final continuity gate', {skip:process.platform!=='linux'},()=>{
+  const updater=read('auto-update-linux.sh');
+  const begin=updater.indexOf('if SCHEMA_PRE="$(node "$STAGE_DIR/tools/schema-continuity-gate.mjs"');
+  const finalGate=updater.indexOf('if ! node "$STAGE_DIR/tools/schema-continuity-gate.mjs"');
+  assert.ok(begin>0&&finalGate>begin,'guard preliminary probe and keep final blocking gate');
+  assert.ok(updater.includes('SCHEMA_PRE_REJECTED_BEFORE_ROUTER_BOOTSTRAP'),'diagnostic marker must remain');
+  assert.ok(!updater.includes('set +e\n    SCHEMA_PRE='),'unguarded command substitution still triggers ERR trap');
+  const script=[
+    'set -Eeuo pipefail',
+    "trap 'echo ERR_TRAP_FIRED; exit 99' ERR",
+    "if SCHEMA_PRE=\"$(bash -c 'exit 3')\"; then :; else echo EXPECTED_SCHEMA_REJECT; fi",
+    'echo FINAL_GATE_REACHED'
+  ].join('\n');
+  const result=offlineSpawn.spawnSync('bash',['-c',script],{encoding:'utf8'});
+  assert.equal(result.status,0,result.stderr);
+  assert.match(result.stdout,/EXPECTED_SCHEMA_REJECT/);
+  assert.match(result.stdout,/FINAL_GATE_REACHED/);
+  assert.doesNotMatch(result.stdout,/ERR_TRAP_FIRED/);
+});
+
+test('R170 isolated rollback retries only an explicit router-bootstrap receipt once',()=>{
+  const r170=read('test/release-rollback-linux-r170.sh');
+  assert.ok(r170.includes('R170_ROUTER_BOOTSTRAP_RETRY_ONCE'),'explicit bounded retry marker missing');
+  assert.ok(r170.includes("grep -q '^AUTO_UPDATE_ROUTER_BOOTSTRAPPED_RETRY_REQUIRED profile=default$'"),'only safe router bootstrap may retry');
+  assert.equal(r170.split('R170_ROUTER_BOOTSTRAP_RETRY_ONCE').length-1,1,'retry must be single-use');
+  assert.ok(r170.includes("grep -q 'AUTO_UPDATE_PASS version=0.10.20'"),'full rollback acceptance cannot be bypassed');
+  assert.ok(r170.includes('R170_LINUX_ROLLBACK_ROUTE_PASS'),'route readback must remain mandatory');
+});

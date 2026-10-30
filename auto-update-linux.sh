@@ -881,9 +881,13 @@ if [[ "$NO_PROMOTE" == 1 ]]; then stop_owned_candidate "$CANDIDATE_PID" "$STAGE_
 if [[ -f "$ROUTE" ]]; then
   SCHEMA_OLD_PORT="$(json_field "$STAGE_DIR" "$ROUTE" active.port)"
   if [[ -n "$SCHEMA_OLD_PORT" ]]; then
-    set +e
-    SCHEMA_PRE="$(node "$STAGE_DIR/tools/schema-continuity-gate.mjs" --old-url "http://127.0.0.1:$SCHEMA_OLD_PORT/mcp" --candidate-url "http://127.0.0.1:$PORT/mcp" --router-url "http://127.0.0.1:47831/router/status" 2>/dev/null)"
-    set -e
+    # Expected incompatible preflight can return 3; guard the assignment.
+    # set +e alone does not inhibit the active ERR trap (R170 regression).
+    if SCHEMA_PRE="$(node "$STAGE_DIR/tools/schema-continuity-gate.mjs" --old-url "http://127.0.0.1:$SCHEMA_OLD_PORT/mcp" --candidate-url "http://127.0.0.1:$PORT/mcp" --router-url "http://127.0.0.1:47831/router/status" 2>/dev/null)"; then
+      :
+    else
+      log 'SCHEMA_PRE_REJECTED_BEFORE_ROUTER_BOOTSTRAP'
+    fi
     SCHEMA_CHANGED="$(node -e 'try{const x=JSON.parse(process.argv[1]);process.stdout.write(x.changed===true?"true":"false")}catch{process.stdout.write("false")}' "$SCHEMA_PRE")"
     BOOTSTRAP="$(node "$STAGE_DIR/tools/router-source-bootstrap.mjs" --url http://127.0.0.1:47831/router/status --state "$ROUTE" --runtime "$ROUTING_ROOT/default.runtime.json" --candidate-source "$STAGE_DIR/src/stable-router.mjs" --log "$STATE_ROOT/router.log")"
     ROUTER_CHANGED="$(node -e 'const x=JSON.parse(process.argv[1]);process.stdout.write(x.changed===true?"true":"false")' "$BOOTSTRAP")"

@@ -106,6 +106,16 @@ timeout --signal=TERM --kill-after=10s 800s bash "$WORKSPACE/auto-update-linux.s
   > "$ROOT/ROLLBACK_R170.log" 2>&1
 ROLLBACK_CODE=$?
 set -e
+# The updater may request one router-source bootstrap before full rollback.
+# Retry only on its exact receipt, in the isolated CI host; keep final gates.
+if [[ "$ROLLBACK_CODE" == 0 ]] &&
+   grep -q '^AUTO_UPDATE_ROUTER_BOOTSTRAPPED_RETRY_REQUIRED profile=default$' "$ROOT/ROLLBACK_R170.log"; then
+  echo R170_ROUTER_BOOTSTRAP_RETRY_ONCE
+  set +e
+  timeout --signal=TERM --kill-after=10s 800s bash "$WORKSPACE/auto-update-linux.sh" --install-dir "$ROOT/install" --source-ref "$BASELINE" --expected-commit "$BASELINE" --force >> "$ROOT/ROLLBACK_R170.log" 2>&1
+  ROLLBACK_CODE=$?
+  set -e
+fi
 printf 'ROLLBACK_CODE=%s\n' "$ROLLBACK_CODE"
 if [[ "$ROLLBACK_CODE" != 0 ]]; then
   tail -70 "$ROOT/ROLLBACK_R170.log"
