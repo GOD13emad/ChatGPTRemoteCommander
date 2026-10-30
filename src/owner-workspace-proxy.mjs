@@ -49,8 +49,20 @@ export function createOwnerWorkspaceProxy({config,fetchImpl=globalThis.fetch,rea
   if(txt.length>8_000_000)throw fail('WORKSPACE_OWNER_REPLY_LIMIT');
   let body;
   try{body=JSON.parse(txt);}catch{throw fail('WORKSPACE_OWNER_INVALID_RESPONSE');}
-  if(body.jsonrpc!=='2.0'||body.id!==1||!body.result||body.error||
-     body.result.isError===true)throw fail('WORKSPACE_OWNER_REJECTED');
+  if(body.jsonrpc!=='2.0'||body.id!==1)throw fail('WORKSPACE_OWNER_REJECTED');
+  // Authenticated owner broker returns a narrow machine code on a native failure.
+  // Preserve only known non-sensitive error classifications; never forward arbitrary
+  // broker text, credential material, or introduce a Session-0 fallback.
+  if(body.error){
+   const allow=new Set(['WORKSPACE_DRIVER_UNAVAILABLE',
+    'WORKSPACE_DRIVER_NOT_RUNNING','WORKSPACE_DRIVER_NOT_INSTALLED',
+    'WORKSPACE_OWNER_SESSION_REQUIRED','WORKSPACE_TARGET_INVALID',
+    'WORKSPACE_TARGET_RECONCILIATION_REQUIRED']);
+   const message=body.error?.message;
+   if(Number.isInteger(body.error?.code)&&allow.has(message))throw fail(message);
+   throw fail('WORKSPACE_OWNER_REJECTED');
+  }
+  if(!body.result||body.result.isError===true)throw fail('WORKSPACE_OWNER_REJECTED');
   const result=body.result;
   if(!result.structuredContent||typeof result.structuredContent!=='object')
     throw fail('WORKSPACE_OWNER_STRUCTURED_RESULT_REQUIRED');
