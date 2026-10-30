@@ -25,6 +25,8 @@ const CORE=[
  'src/v2-coordinated-workflow.mjs',
  'src/v2-native-owner-session-bindings.mjs',
  'src/v2-native-window-bridge.mjs',
+ 'src/workspace-accessibility-tools.mjs',
+ 'tools/owner-atspi-semantic.py',
  'src/v2-fleet-readiness.mjs',
  'src/v2-install-identity-gate.mjs',
  'src/v2-migration-ledger.mjs',
