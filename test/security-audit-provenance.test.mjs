@@ -5,7 +5,7 @@ import {isVerifiedSyntheticPrivatePem} from '../tools/security-audit-history.mjs
 const commit='d890bd978b07aa738ceeef97bd6af2782538bac1';
 const file='test/v2-mcp-http-ingress.test.mjs';
 const marker='-----BEGIN ' + 'PRIVATE KEY-----';
-const known="  privateKeyPem:'"+marker+'\\nfixture';
+const known="  privateKeyPem:'"+marker+'\\\\nfixture';
 const matchAt=known.indexOf(marker);
 const good={commit,file};
 
