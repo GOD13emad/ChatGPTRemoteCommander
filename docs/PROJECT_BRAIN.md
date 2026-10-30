@@ -1,5 +1,16 @@
 # Project Brain — ChatGPT Remote Commander
 
+## V2-R3-CENTRAL-COORDINATOR-SOURCE-20261030 — durable fenced coordinator source (not fleet activated)
+
+**Accepted scope:** R3's missing non-per-chat/non-per-host coordinator authority is staged as `src/v2-central-coordinator.mjs` with an exact-route resource/operation contract. It owns one SQLite central lease table with atomic `BEGIN IMMEDIATE` acquisition, monotonic fencing epochs, bounded TTL, trusted-authorizer admission/recheck, lost-ack acquisition identity, renewal, release, expired-owner rejection, restart persistence, and clock-rollback rejection. Explicit `withFencedLease` exposes `lease.fence` and `assertCurrent`; actual protected resource drivers must reject stale fences *atomically with physical effect*. Local filesystem instances sharing the same central DB are NOT cross-host distributed fencing by themselves.
+
+**Evidence:** Native Linux isolated source at parent 39adfa2dcd36a21d04d4a9fd1b89b76caab8be3a: 9 new deterministic tests PASS (different chat same resource, different host, two SQLite connections, independent OS process, lost-ACK, expiry/restart, revocation, clock rollback, unsafe directory, rejected effects). Full `node --test test/v2-*.test.mjs` 220 PASS / 0 FAIL / 1 SKIP; `npm run audit` SECURITY_AUDIT_PASS. No operating Core service, tunnel, users, credential or live migration changed.
+
+**Independent native Windows QA:** The same 3 test/source files were transferred with exact SHA-256 verification to HPC-159-17 and HPC-154-66 under isolated temporary directories. Each Windows host independently passed 9/9 Node tests (0 FAIL/0 SKIP, exit 0). Temporary test directories were removed on both machines. This verifies cross-platform source behavior, not a cross-host lease over a real network or production enrollment.
+
+**Still OPEN for R3 operational acceptance:** authenticated single central service on a real trusted host; multi-host transport integration and failover/availability; fencing enforcement in each concrete actuator (GUI, Workflow, Browser, file effect); 2 actual authenticated chats across hosts; fault/reboot and stale-ack end-to-end tests. Do not promote R3, R2, R8, R9 or FINAL from source-only tests. The four previously online hosts remain on V1 0.11.0-dev.18; MMZ laptop unavailable, Linux secondary enrollment missing one owner key. Hosted exact-head and independent Windows acceptance are separate gates.
+
+
 ## V2-R4-ACCESSIBILITY-LABEL-REDACTION-20261030 — bounded source security correction
 
 **Scope / decision:** V2 native owner-worker accessibility observation now marks an element as sensitive when its trusted role, element identity, or visible label signals password/secret/credential/token/private/hidden or API/access key. Its label is returned as `[redacted]`; ordinary textbox labels remain visible. This is a candidate code gate, not owner-session attachment, elevated input, OS consent or installed rollout.
