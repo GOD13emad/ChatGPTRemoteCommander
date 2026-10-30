@@ -12,7 +12,7 @@ const coordinate={readOnlyHint:false,destructiveHint:false,openWorldHint:false};
 const mutate={readOnlyHint:false,destructiveHint:true,openWorldHint:true};
 const def=(name,description,inputSchema,annotations)=>({name,description,inputSchema,annotations});
 export const workspaceTargetDefinitions=[
- def('workspace_target_list','List windows of an already running application on this same owner session. Does not launch browsers or access profiles.',obj({application:{type:'string',minLength:1,maxLength:80,pattern:'^[A-Za-z0-9_. -]+}}),read),
+ def('workspace_target_list','List windows of an already running application on this same owner session. Does not launch browsers or access profiles.',obj({application:{type:'string',minLength:1,maxLength:80,pattern:'^[A-Za-z0-9_. -]+$'}}),read),
  def('workspace_target_open','Bind a short-lived native GUI lease to an exact existing window (pid+handle). Takeover requires explicit current-user authorization.',obj({...target,mode:{type:'string',enum:['observe','takeover']},explicitUserAuthorization:text(500)},['processId','handle']),coordinate),
  def('workspace_target_snapshot','Check exact window identity and capture a fresh desktop frame for that native GUI lease.',obj({...target,lease:text()},['processId','handle','lease']),read),
  def('workspace_target_focus','Focus only the exact existing observed window with a fresh one-use frame; native GUI takeover policy still applies.',obj(bound,['processId','handle','lease','frame']),mutate),
