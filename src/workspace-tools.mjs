@@ -18,6 +18,13 @@ const REQUEST=/^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$/;
 // The outer durable MCP idempotency guard owns requestId and excludes it from the
 // effect payload. The two native Workspace journals still need that SAME receipt ID.
 // Forward it only to those effects, never to unrelated/readonly operations.
+// The historical workspace_target_reconcile name belongs to the background
+// Workspace journal, not to the newer workspace_target_* GUI adapter.
+export function isOwnerBackgroundWorkspaceTool(name){
+ return name==='workspace_target_reconcile'||
+  (typeof name==='string'&&name.startsWith('workspace_')&&!name.startsWith('workspace_target_'));
+}
+
 export function workspaceMutationEffectArgs(name,args,requestId){
  if(name!=='workspace_window_click'&&name!=='workspace_browser_click')return args;
  if(typeof requestId!=='string'||!REQUEST.test(requestId))
