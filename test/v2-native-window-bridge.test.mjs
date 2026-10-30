@@ -19,7 +19,8 @@ function fixture(){
    return allowElement;},
   async apply(payload){calls.push('apply');effects.push(payload);
    if(failure)throw Error('possibly executed');},
-  async verify(){calls.push('verify');return verify;}
+  async verify(){calls.push('verify');return verify;},
+  async readAccessibility(){calls.push('read');return {elements:[{id:'button.refresh',role:'button',name:'Refresh',enabled:true}]};}
  };
  const services={
   sessions:{resolveNativeRoute:async()=>route(chat)},
@@ -118,4 +119,40 @@ test('accessible typing passes exact element and text only with type grant',asyn
  assert.equal(r.status,'VERIFIED');
  assert.equal(f.effects[0].text,'original owner text');
  assert.equal(f.effects.length,1);
+});
+
+test('observe returns a bounded accessible element view, never arbitrary values or secrets',async()=>{
+ const f=fixture();f.grant('chat-a','workspace_window_observe');
+ f.services.nativeDriver.readAccessibility=async()=>({elements:[
+  {id:'field.public',role:'textbox',name:'Query field',value:'never-return'},
+  {id:'field.secret',role:'password',name:'Sensitive label',sensitive:true,value:'secret-value',enabled:true}
+ ].map((x,i)=>({enabled:true,...x}))});
+ const out=await doAction(f,{action:'observe',elementId:undefined});
+ assert.equal(out.status,'OBSERVED');
+ assert.equal(out.elements.length,2);
+ assert.equal(out.elements[0].name,'Query field');
+ assert.equal(out.elements[1].name,'[redacted]');
+ assert.equal(JSON.stringify(out).includes('never-return'),false);
+ assert.equal(JSON.stringify(out).includes('secret-value'),false);
+ assert.equal(out.elements[1].sensitive,true);
+ assert.equal(f.effects.length,0);
+});
+test('absent accessibility driver and oversized trees fail closed without arbitrary native I/O',async()=>{
+ const f=fixture();f.grant('chat-a','workspace_window_observe');
+ f.services.nativeDriver.readAccessibility=undefined;
+ await assert.rejects(doAction(f,{action:'observe',elementId:undefined}),
+   {code:'V2_WINDOW_TRUSTED_BACKEND_REQUIRED'});
+ f.services.nativeDriver.readAccessibility=async()=>({elements:Array.from({length:65},(_,i)=>({
+   id:'item-'+i,role:'button',name:'button',enabled:true
+ }))});
+ await assert.rejects(doAction(f,{action:'observe',elementId:undefined}),
+   {code:'V2_WINDOW_ACCESSIBILITY_SNAPSHOT_INVALID'});
+ assert.equal(f.effects.length,0);
+});
+test('native window replacement while reading accessibility is rejected',async()=>{
+ const f=fixture();f.grant('chat-a','workspace_window_observe');
+ f.services.nativeDriver.readAccessibility=async()=>{f.start('new-process-start');return {elements:[]};};
+ await assert.rejects(doAction(f,{action:'observe',elementId:undefined}),
+   {code:'V2_WINDOW_REPLACED_DURING_OBSERVE'});
+ assert.equal(f.effects.length,0);
 });

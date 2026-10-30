@@ -19,6 +19,32 @@ function sameRoute(a,b){
    a.target.kind===b.target.kind && a.target.id===b.target.id;
 }
 const windowFields=['targetId','hostId','principalId','seatId','pid','windowHandle','processStartId'];
+// Accessibility output is a bounded owner-consented *view*, not a browser
+// credential export, screenshot, raw provider object or a privileged action.
+const MAX_ELEMENTS=64, MAX_LABEL=160;
+const SENSITIVE=/password|secret|credential|token|private|hidden/i;
+function accessibilityView(raw){
+ if(!raw||typeof raw!=='object'||Array.isArray(raw)||
+    !Array.isArray(raw.elements)||raw.elements.length>MAX_ELEMENTS)
+   fail('V2_WINDOW_ACCESSIBILITY_SNAPSHOT_INVALID');
+ const items=raw.elements.map(item=>{
+  if(!item||typeof item!=='object'||Array.isArray(item)||
+     !valid(item.id)||typeof item.role!=='string'||
+     !/^[A-Za-z][A-Za-z0-9_-]{0,39}$/.test(item.role)||
+     typeof item.enabled!=='boolean')
+    fail('V2_WINDOW_ACCESSIBILITY_SNAPSHOT_INVALID');
+  const sensitive=item.sensitive===true||SENSITIVE.test(item.role);
+  if(item.name!==undefined&&typeof item.name!=='string')
+    fail('V2_WINDOW_ACCESSIBILITY_SNAPSHOT_INVALID');
+  return Object.freeze({
+    id:item.id,role:item.role,
+    name:sensitive?'[redacted]':String(item.name??'').slice(0,MAX_LABEL),
+    enabled:item.enabled,sensitive
+  });
+ });
+ return Object.freeze({elements:Object.freeze(items),truncated:raw.truncated===true});
+}
+
 function windowIdentity(d){
  if(!d||typeof d!=='object'||Array.isArray(d)||
     !windowFields.every(k=>Object.hasOwn(d,k)) ||
@@ -97,7 +123,19 @@ export async function executeV2NativeWindowAction({
    const before=await descriptor();
    if(before.fingerprint!==first.fingerprint)
      fail('V2_WINDOW_REPLACED_BEFORE_EFFECT');
-   if(action==='observe')return Object.freeze({status:'OBSERVED',targetId:r.target.id});
+   if(action==='observe'){
+    requiredFunction(services.nativeDriver.readAccessibility);
+    // The native driver is a trusted owner-worker callback, not the model.
+    // Never return the provider's raw accessibility object, hidden values,
+    // passwords, offscreen tree, arbitrary attributes or screenshots.
+    const view=accessibilityView(await services.nativeDriver.readAccessibility({
+      descriptor:before.descriptor,maxElements:MAX_ELEMENTS,sessionHandle
+    }));
+    const after=await descriptor();
+    if(after.fingerprint!==first.fingerprint)
+      fail('V2_WINDOW_REPLACED_DURING_OBSERVE');
+    return Object.freeze({status:'OBSERVED',targetId:r.target.id,...view});
+   }
    if(await services.nativeDriver.authorizeElement({
      descriptor:before.descriptor,elementId,action
    })!==true)fail('V2_WINDOW_ACCESSIBLE_ELEMENT_DENIED');
