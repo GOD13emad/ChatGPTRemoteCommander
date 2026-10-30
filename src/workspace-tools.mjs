@@ -14,6 +14,17 @@ const targetId=(pid,windowId)=>pid+':'+windowId;
 const integer=(n)=>Number.isSafeInteger(n)&&n>0;
 const TOKEN=/^s[0-9a-f]{8}:[0-9]+$/;
 const REQUEST=/^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$/;
+
+// The outer durable MCP idempotency guard owns requestId and excludes it from the
+// effect payload. The two native Workspace journals still need that SAME receipt ID.
+// Forward it only to those effects, never to unrelated/readonly operations.
+export function workspaceMutationEffectArgs(name,args,requestId){
+ if(name!=='workspace_window_click'&&name!=='workspace_browser_click')return args;
+ if(typeof requestId!=='string'||!REQUEST.test(requestId))
+  throw fail('WORKSPACE_BINDING_INVALID');
+ return {...args,requestId};
+}
+
 const fail=(x)=>Object.assign(new Error(x),{code:x});
 function desktopType(platform=process.platform,env=process.env){
  if(platform==='win32')return 'windows';
