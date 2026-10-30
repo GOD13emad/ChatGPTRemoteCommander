@@ -6,6 +6,9 @@ The owner's 2026-10-30 decision is recorded in the canonical [COMMANDER_ARCHITEC
 
 Evidence basis: Draft PR #426 previous head a9632af09234b61bf639a42f55318e007b7a28f7 isolated Windows V2 171/171 PASS and hosted CI/NoPromote PASS. Four current live Commander host versions 0.11.0-dev.18, chat identity boundary still TRUSTED_PROFILE_NOT_AUTHENTICATED_CHAT; fifth MMZ laptop unavailable. The full tunnel/profile inventory, live OAuth and two-chat test, UI feature parity, complete GUI and V2 installed 5-host release have **not** passed. Current gate R0 inventory; advance R1/source/UI tests without service disruption, then R2 native identity and staged R8/R9. No FINAL claim from architecture documentation.
 
+**NOTION_SYNC_PENDING (2026-10-30, scoped):** Attempted evidence-linked portfolio append to existing Notion ChatGPTRemoteCommander record (page 400d5b4a-86f6-812d-b36c-d9f00711a063). Notion returned entitlement_required: workspace free block limit exhausted; side effects NONE. Do not retry until workspace block availability or plan changes; then add one concise link to commit 474cebd451eadb08c8c886e9c5ec5548183c6fed and R0–R9 design without altering organization Security Hold. GitHub source/Brain/release authority remains canonical and verified; this is NOT Notion-synced FINAL.
+
+
 ## HISTORICAL AUDIT — 2026-10-27: cross-product evidence and architecture
 
 ### RC011-WINDOWS-PARSER-20261027 — dev.8 fail-closed repair
