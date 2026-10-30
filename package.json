@@ -34,7 +34,7 @@
     "check:qualification": "node tools/run-bounded-test-script.mjs --script check --concurrency 2",
     "test:qualification": "node tools/run-bounded-test-script.mjs --script test --concurrency 2",
     "test:local-ai": "node --test test/local-ollama-planner.test.mjs",
-    "test:owner-workspace": "node --test test/windows-owner-workspace-worker.test.mjs test/workspace-target-tools.test.mjs test/gui-owner-delegation.test.mjs test/owner-workspace-delegation.test.mjs test/workspace-window-type.test.mjs test/owner-workspace-routed-launcher.test.mjs test/owner-workspace-proxy-errors.test.mjs",
+    "test:owner-workspace": "node --test test/windows-owner-workspace-worker.test.mjs test/workspace-target-tools.test.mjs test/gui-owner-delegation.test.mjs test/owner-workspace-delegation.test.mjs test/workspace-window-type.test.mjs test/owner-workspace-routed-launcher.test.mjs test/owner-workspace-proxy-errors.test.mjs test/owner-word-render.test.mjs",
     "test:isolated-qa-policy": "node --test test/isolated-qa-policy.test.mjs"
   },
   "repository": "https://github.com/GOD13emad/ChatGPTRemoteCommander",
