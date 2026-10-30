@@ -31,6 +31,8 @@ test('owner proxy does not expose arbitrary owner error text or allow Session-0 
  }
  const m=mock({jsonrpc:'2.0',id:1,error:{code:'-32012',message:'WORKSPACE_DRIVER_UNAVAILABLE'}});
  await assert.rejects(call(m),e=>e.code==='WORKSPACE_OWNER_REJECTED');
+ const wrongCode=mock({jsonrpc:'2.0',id:1,error:{code:-32602,message:'WORKSPACE_DRIVER_UNAVAILABLE'}});
+ await assert.rejects(call(wrongCode),e=>e.code==='WORKSPACE_OWNER_REJECTED');
 });
 test('owner proxy still requires exact successful structured reply and never invents effect',async()=>{
  const bad=mock({jsonrpc:'2.0',id:1,result:{isError:true,content:[{type:'text',text:'secret'}]}});
