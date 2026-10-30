@@ -200,7 +200,7 @@ export function createWorkspaceController({callDriver=defaultCuaCall,previewDriv
      const token=el?.element_token??el?.elementToken,role=String(el?.role??'');
      const label=String(el?.label??el?.name??'');
      if(typeof token==='string'&&TOKEN.test(token)&&token.startsWith(sid+':')&&
-        /edit|textbox|text field|text area|search|combo ?box/i.test(role)&&
+        /edit|text ?box|text field|text area|search|combo ?box/i.test(role)&&
         !/password|passcode|pin|secret|token|credential|otp|2fa/i.test(label)&&
         el?.is_password!==true&&el?.isPassword!==true&&el?.sensitive!==true)
       editable.add(token);
