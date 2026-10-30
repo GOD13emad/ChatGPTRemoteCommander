@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
+import {execFileSync} from 'node:child_process';
 
 const versionDir=/^v[0-9]+\.[0-9]+\.[0-9]+(?:[-.][A-Za-z0-9._-]+)?$/;
 const browserRuntime=/^runtime-v[0-9]+\.[0-9]+\.[0-9]+(?:[-.][A-Za-z0-9._-]+)?$/;
@@ -68,18 +69,41 @@ function routingRefs(dir){
  }
  return refs;
 }
-function releaseRoot(root,routes) {
+// Process evidence is strictly for protecting old releases, never authorizing
+// deletion. Only inspect Node processes, do not serialize their command lines.
+export function windowsCommanderProcessReferences({exec=execFileSync}={}){
+ if(process.platform!=='win32')return {verified:false,commands:[]};
+ try{
+  const script="$ErrorActionPreference='Stop';@(Get-CimInstance Win32_Process -Filter \"Name='node.exe'\" | Where-Object { $_.CommandLine -like '*ChatGPTRemoteCommander*releases*' } | Select-Object -ExpandProperty CommandLine) | ConvertTo-Json -Compress";
+  const raw=exec('powershell.exe',['-NoLogo','-NoProfile','-NonInteractive','-Command',script],
+   {encoding:'utf8',timeout:6000,maxBuffer:1024*1024,windowsHide:true});
+  const parsed=JSON.parse(String(raw).trim());
+  const commands=(Array.isArray(parsed)?parsed:[parsed]).filter(x=>typeof x==='string');
+  return {verified:true,commands};
+ }catch{return {verified:false,commands:[]};}
+}
+export function classifyCoreReleaseUse(root,routes,{commands=[],verified=false}={}){
  const claimed=new Set(routes.flatMap(r=>(r.slots||[]).map(x=>path.resolve(x.projectRoot).toLowerCase())));
- const entries=[];
- for(const x of shallow(root).filter(x=>x.name.startsWith('v'))){
-  const full=path.join(root,x.name);
+ return shallow(root).filter(x=>x.name.startsWith('v')).map(x=>{
+  const full=path.join(root,x.name),normalized=path.resolve(full).toLowerCase();
   const metadata=readKnownJson(path.join(full,'package.json'));
-  const selected=claimed.has(path.resolve(full).toLowerCase());
-  const cls=x.link||!x.dir?'PROTECT_REPARSE_OR_UNKNOWN':selected?'ACTIVE_OR_PREVIOUS_ROUTED_KEEP':
-    metadata&&versionDir.test(x.name)?'REVIEW_IMMUTABLE_RELEASE_UNREFERENCED_NO_DELETE':'PROTECT_UNVERIFIED_RELEASE';
-  entries.push({name:x.name,classification:cls,packageVersion:typeof metadata?.version==='string'?metadata.version:null});
- }
- return {root,routeCount:routes.length,entries};
+  const selected=claimed.has(normalized);
+  // Require a path separator after exact release directory to reject prefix aliases.
+  const activeRefs=commands.filter(t=>typeof t==='string'&&t.toLowerCase()
+   .replaceAll('/','\\').includes(normalized.replaceAll('/','\\')+'\\')).length;
+  const cls=x.link||!x.dir?'PROTECT_REPARSE_OR_UNKNOWN':
+   selected?'ACTIVE_OR_PREVIOUS_ROUTED_KEEP':
+   activeRefs>0?'ACTIVE_PROCESS_DEPENDENCY_KEEP':
+   !verified?'PROCESS_USAGE_UNKNOWN_NO_DELETE':
+   metadata&&versionDir.test(x.name)?'REVIEW_IMMUTABLE_RELEASE_UNREFERENCED_NO_DELETE':
+   'PROTECT_UNVERIFIED_RELEASE';
+  return {name:x.name,classification:cls,activeNodeReferences:verified?activeRefs:null,
+   packageVersion:typeof metadata?.version==='string'?metadata.version:null};
+ });
+}
+function releaseRoot(root,routes,processRefs) {
+ return {root,routeCount:routes.length,processEvidenceVerified:processRefs.verified,
+  entries:classifyCoreReleaseUse(root,routes,processRefs)};
 }
 function protectedData(p,reason){return {path:p,exists:!!stat(p),classification:'PROTECTED_USER_DATA_NEVER_AUTO_DELETE',reason};}
 function readLauncherHints(launcher){
@@ -104,9 +128,10 @@ function browserLinux(root,launcher){
  }
  return {root,launcher,hints,entries};
 }
-export function auditInstalledLayout({platform=process.platform,home=os.homedir(),localAppData,roamingAppData}={}){
+export function auditInstalledLayout({platform=process.platform,home=os.homedir(),localAppData,roamingAppData,processReferences}={}){
  if(!['win32','linux'].includes(platform))throw new Error('R205_UNSUPPORTED_PLATFORM');
  if(!path.isAbsolute(home))throw new Error('R205_HOME_MUST_BE_ABSOLUTE');
+ const procRefs=processReferences??(platform==='win32'?windowsCommanderProcessReferences():{verified:false,commands:[]});
  const report={schema:1,revision:'R205',platform,policy:'READ_ONLY_NEVER_DELETE',personalBrowserFilesRead:0,
    deletionAuthorized:false,oneActiveVersionInvariant:'CURRENT_POINTER_REQUIRED',recordedAt:new Date().toISOString(),protectedData:[]};
  if(platform==='win32'){
@@ -115,7 +140,7 @@ export function auditInstalledLayout({platform=process.platform,home=os.homedir(
   const commander=path.join(local,'ChatGPTRemoteCommander');
   const programs=path.join(local,'Programs');
   const routes=routingRefs(path.join(commander,'routing'));
-  report.core={root:commander,releases:releaseRoot(path.join(commander,'releases'),routes),routing:routes};
+  report.core={root:commander,releases:releaseRoot(path.join(commander,'releases'),routes,procRefs),routing:routes};
   report.products=[
     appRoot(path.join(programs,'Remote Commander'),'CONTROL_CENTER'),
     appRoot(path.join(programs,'Remote Commander Browser'),'BROWSER_STABLE'),
@@ -131,7 +156,7 @@ export function auditInstalledLayout({platform=process.platform,home=os.homedir(
   const share=path.join(home,'.local','share'),state=path.join(home,'.local','state','chatgpt-remote-commander');
   const routes=routingRefs(path.join(state,'routing'));
   report.core={root:path.join(share,'ChatGPTRemoteCommander'),stateRoot:state,
-    releases:releaseRoot(path.join(state,'releases'),routes),routing:routes};
+    releases:releaseRoot(path.join(state,'releases'),routes,procRefs),routing:routes};
   report.products=[{kind:'CONTROL_CENTER',root:path.join(share,'remote-commander-control-center'),present:isDir(path.join(share,'remote-commander-control-center')),classification:'ACTIVE_OR_UNKNOWN_NO_AUTODELETE'}];
   report.browser=browserLinux(path.join(share,'chatgpt-cef-v2'),path.join(home,'.local','bin','chatgpt-cef-v2'));
   report.protectedData.push(protectedData(path.join(home,'.config','chatgpt-cef-v2'),'CEF authenticated Chromium profile'));
