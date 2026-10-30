@@ -1,5 +1,11 @@
 # Project Brain — ChatGPT Remote Commander
 
+## V2-ARCH-PRESERVE-ROADMAP-20261030 — accepted target, runtime gates OPEN
+
+The owner's 2026-10-30 decision is recorded in the canonical [COMMANDER_ARCHITECTURE.md](COMMANDER_ARCHITECTURE.md), sections 9–10. This is the single **product-level** target and R0–R9 roadmap. One unified Commander per host, full cross-platform GUI with arbitrary application windows, Browser Commander/CEF, CoS-inspired Workspace/Workers/Compact-Resume, optional Codex-Web/context adapter, multi-account/chat/OS-seat RBAC and Control Center are acceptance targets; neither source UI is already completely copied. **Preserve current Tunnel ID, Runtime API Key references, per-account/profiles, OS credential ownership, supervisor, Browser-owned profiles, Brain/workflow/receipts and live routes from V1/current installation into V2.** Current one-tunnel-per-enrollment must remain working; shared multi-chat tunnel is optional after real identity and grants. No secrets are to be exported. New provider login is REAUTH_REQUIRED, not assumed preserved.
+
+Evidence basis: Draft PR #426 previous head a9632af09234b61bf639a42f55318e007b7a28f7 isolated Windows V2 171/171 PASS and hosted CI/NoPromote PASS. Four current live Commander host versions 0.11.0-dev.18, chat identity boundary still TRUSTED_PROFILE_NOT_AUTHENTICATED_CHAT; fifth MMZ laptop unavailable. The full tunnel/profile inventory, live OAuth and two-chat test, UI feature parity, complete GUI and V2 installed 5-host release have **not** passed. Current gate R0 inventory; advance R1/source/UI tests without service disruption, then R2 native identity and staged R8/R9. No FINAL claim from architecture documentation.
+
 ## HISTORICAL AUDIT — 2026-10-27: cross-product evidence and architecture
 
 ### RC011-WINDOWS-PARSER-20261027 — dev.8 fail-closed repair

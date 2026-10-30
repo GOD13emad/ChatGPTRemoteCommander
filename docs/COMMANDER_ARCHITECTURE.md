@@ -137,6 +137,57 @@ Use the **latest security-supported and compatible upstream release/commit**, pi
 
 **Acceptance:** production `FINAL` requires exact artifact/version, actual installation/capability checks on each supported profile, real multi-chat multi-user tests, provenance-linked evidence, zero unexpected Work tool invocation under the verified route, and release-authority admission. No documentation-only task can close a runtime gate.
 
+## 9. FINAL TARGET DESIGN: V2 architecture and non-destructive connectivity (accepted 2026-10-30)
+
+**Decision is final for planning; actual software and release are NOT FINAL.** One versioned Commander per host, one canonical Core/MCP router, Coordinator/RBAC/grant and cross-host fenced lease authority, Project Brain/WorkflowStore/runner, governed Browser/GUI/AI Workers, one Control Center and one release/updater manifest. Use platform-specific Windows Desktop, Linux Desktop and headless server adapters, not competing installations or duplicated schedulers. ChatGPT Chat is the reasoning/decision owner; Codex and other models are optional explicit adapters, with no implicit ChatGPT Work routing.
+
+### 9.1 One Tunnel + Runtime API Key: preserve compatibility
+
+- Every currently enrolled ChatGPT-to-host tunnel, Tunnel ID, Runtime API Key **reference**, account/workspace association, profile ID, existing endpoint and autostart policy is a must-preserve asset. Do not force consolidation, renaming, rotation, re-enrollment, key export or removal. Existing one-tunnel-per-chat-to-system is supported across V1/current installation → V2.
+- The **optimized target** is normally one persistent outbound tunnel per host **or separated trust domain**, shared by multiple chats/accounts only after independent real OAuth authorization, signed access token/JWKS issuer/audience/scopes, trusted platform/native owner-session binding, and per-conversation, per-user, per-tool grants and revocation are proven end-to-end. Multiple tunnels remain valid for separate organizations, isolation/security domains and account policy. Transport API Key and a string named openai/session do **not** authenticate an individual user, chat, or OS seat.
+- Prefer keeping the currently functioning outbound tunnel; isolated V2 HTTPS/mTLS is a candidate only. No mandatory inbound port, provider quota-bypass or unnecessary key rotation. Secrets, DPAPI blobs, OAuth tokens, private keys, cookies and user browser passwords stay in existing protected per-owner storage, not exported to GitHub/ChatGPT/Notion or transferred between OS users. OAuth re-login when required is recorded as REAUTH_REQUIRED with explicit user consent, not falsely counted as PRESERVED.
+
+### 9.2 Lossless migration contract
+
+Before a cutover, keep an owner-private **nonsecret** manifest mapping host ID, OS SID/UID and desktop seat, Commander profile ID, ChatGPT account/workspace, existing tunnel enrollment ID, credential-store reference/owner/scope, supervisor/endpoint, Browser-owned profile reference, project root, Brain/Workflow schema and durable receipts. A single default profile shown by system_status does not prove all enrollments were discovered.
+
+1. **Inventory:** on each reachable host, read-only enumerate all profiles, tunnel enrollments, service owners and OS users/permissions; record baseline IDs/counts, active health, capability matrix and dependencies. Offline host = PENDING, not PASS.
+2. **Protect:** preserve original protected credential/configuration scope and recoverability. Validate Windows DPAPI user-versus-machine ownership and Linux UID/ACL before any identity change; no key plaintext extraction or secret copying to new contexts.
+3. **Dry run:** stage exact-source V2 candidate isolated from the live route, run versioned/repeatable schema transforms on protected recovery copies, preserve profile/tunnel IDs and project/receipt/browser-owned profile state; verify pre/post identity mapping/counts and credential usability.
+4. **Live canary:** require genuine ChatGPT user OAuth/consent, actual native chat+seat authentication, 2 independent real chats, grant/revoke, exact window/tool access and workflow/root contention; separately prove one-tunnel-per-enrollment compatibility and optional shared-tunnel mode.
+5. **Cutover:** update supervised route atomically only after the **actual installed** candidate health, MCP tool discovery and authenticated tool operation pass for each existing enrollment. Keep last healthy route and private recovery state; never blindly retry an UNKNOWN/UNCERTAIN GUI/file effect.
+6. **Retire/recover:** stop duplicate old routes only after no dependent profile/tool remains. For a failure, preserve old connectivity, repair next dev build, and qualify full recovery/rollback for Stable. No blanket cleanup or forced replacement of protected profiles.
+
+**Per-host migration acceptance ledger:** exact pre/post profile and tunnel identities/counts; key usability without revealing secret; account/seat/supervisor permissions; authorization and revocation; installed version/hash; Browser-owned profile references; file/workflow/Brain/receipt integrity; GUI consent and noninterference; restart and recovery. A missing item is OPEN, not inferred from source tests.
+
+### 9.3 UI/GUI, upstream integrations and capability target
+
+- **Universal GUI:** select any supported existing application window by trusted OS session, PID and native handle, not a fixed list of browsers/programs. Prefer accessibility then bounded screenshot/pixel interaction with observe/act/verify, window-target lease, foreground safety, per-action authorization and stop control. Windows Session 0 cannot impersonate an interactive user. Wayland/X11 and headless virtual/private sessions require their own consent and compatibility tests; protected OS surfaces may be UNSUPPORTED.
+- **Browser Commander:** independently owned CEF/Chromium UI, and qualified Playwright/CDP/WebDriver adapters for Chromium, Firefox and WebKit; tabs, download, multi-profile/session isolation, background automation, approved foreground/native-profile attach; no extraction or cloning of browser passwords/cookies.
+- **chat-on-steroids (totec448-spec/chat-on-steroids):** target equivalent Workspace GUI, task/project boards, concurrent Workers, Goal/Loop, Compact & Resume and progress UX. Vetted reusable components/patterns only after license/compatibility tests; not a competing coordinator, Brain or Runner. Full UI copy/feature parity is NOT YET implemented.
+- **codex-chatgpt-web (miuuyy/codex-chatgpt-web):** opt-in Codex harness, context management and MCP bridge, with explicit provider/route and permission controls, not silent Work usage, copied credentials or assumed quota exemption.
+- **Control Center:** live device fleet, users/accounts/profiles/seat, permissions and revoke, GUI windows and Browser sessions, task queues/Worker status, project evidence, faults, versions, health and migrations. User-facing dashboard truth must match backend receipts.
+- **Multi-chat/multi-device:** one chat → many hosts, multiple authenticated chats → one host, multiple users → many hosts. Run independent read-only and isolated work in parallel; one authorized writer per canonical resource with distributed fenced leases and no overlapping physical GUI input.
+
+## 10. Active product-level V2 implementation roadmap (ordered gates)
+
+This is the **single current Commander V2 product roadmap**. Historical PROJECT_ENGINE_ROADMAP remains subsystem history. Technical acceptance and release status belong to PROJECT_BRAIN and RELEASE_AUTHORITY respectively; design approval never changes operational status.
+
+| Gate | Deliverable / dependency | Definition of PASS | Verified status at decision |
+|---|---|---|---|
+| R0 | Reconcile 5 hosts, installed versions, OS users, ALL profiles, tunnel enrollment and protected key references; protect working routes | Exact read-only inventory, owner-scoped identities, evidence and offline list | PARTIAL; four reachable, MMZ unavailable, complete profile census OPEN |
+| R1 | One core/component/installer manifest and capability matrix across Windows/Linux/Headless | Exact-source clean staged start; no rival installs or service loss | OPEN |
+| R2 | OAuth + trusted owner identity + multi-chat RBAC and scoped grant/revoke | Real provider/client and 2 real ChatGPT chats with isolation and revocation | PARTIAL source; operational G1/G2 OPEN |
+| R3 | Global Coordinator / fenced locks / durable recovery | Two chats/hosts sharing a real resource; lease expiry, lost ACK, restart and conflict safety | PARTIAL |
+| R4 | Universal native GUI / owner-bound window Worker | 2 unrelated apps per interactive OS, real observe/act/verify, consent and safe fallback; headless policy tested | PARTIAL app-window code; native all-app E2E OPEN |
+| R5 | Browser UI/CEF, cross-engine automation and profile isolation | Qualified CEF build, Chromium/Firefox/WebKit compatibility, real multi-tab/download/session tests | OPEN |
+| R6 | CoS Workspace/Workers/Compact-Resume, optional Codex context | UI feature checklist, licensed modules, bounded worker/merges/recovery and correct provider routing | OPEN |
+| R7 | Unified Control Center fleet/user/project/permission management | Live reconciled dashboard; immediate grant/revoke and monitoring E2E | OPEN |
+| R8 | Lossless V1/current-install → V2 migration | All existing profile, Tunnel ID, credential-reference, account, project and receipt mappings preserved and tested | OPEN |
+| R9 | Exact version qualified on all 5 hosts; Stable release | Independent Windows/Linux/Headless CI/security, installer, native GUI, 2-user/2-chat, canary and recovery/rollback receipts | NOT FINAL |
+
+**Critical dependency chain:** R0 → R1/R2 → independent R3–R6 where safe → R7 → R8 → R9. Work on independent code/UI tests while operator OAuth or a powered-off host blocks live acceptance; never treat those gates as PASS. Source PR #426 at prior head a9632af09234b61bf639a42f55318e007b7a28f7 passed 171/171 isolated Windows V2 tests and hosted CI/Windows NoPromote, **not** live V2 or V1→V2 profile migration. Four currently reachable Commander devices reported 0.11.0-dev.18 and TRUSTED_PROFILE_NOT_AUTHENTICATED_CHAT; MMZ laptop's tunnel was unavailable. V2 major release remains Draft and not Stable.
+
 ## 8. Current checked facts (scope-limited; not a fleet audit)
 
 - On 2026-10-28 the connected `aliemad-Labtop` reported Core version `0.10.26`, native workflow/durable operations and owned background browser tools.
