@@ -8,6 +8,8 @@ import path from 'node:path';
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
 import {chooseWorkspaceRoute,classifyWorkspaceOutcome} from './workspace-routing.mjs';
+import {chooseAgentOSProvider} from './agentos-provider-router.mjs';
+import {nativeWindowsUIACall} from './agentos-native-win.mjs';
 import {createWorkspaceTargetJournal} from './workspace-target-journal.mjs';
 const execFileAsync=promisify(execFile);
 const targetId=(pid,windowId)=>pid+':'+windowId;
@@ -96,6 +98,18 @@ export const workspaceToolDefinitions=[
    type:'object',properties:{target:{type:'string',enum:['existing-browser','new-browser','existing-app','new-app']},
      existingProfileGrant:{type:'boolean'},backgroundCapability:{type:'boolean'}},
    required:['target'],additionalProperties:false},annotations:readOnly},
+ {name:'workspace_agentos_plan',description:'Select the strongest locally available authorized AgentOS provider. Native API/semantic UI/DOM first; CUA only when no stronger route is available. Planning does not grant privileges.',inputSchema:{
+   type:'object',properties:{target:{type:'string',enum:['existing-browser','new-browser','existing-app','new-app','project']},
+     existingProfileGrant:{type:'boolean'},visualFallbackAuthorized:{type:'boolean'}},
+   required:['target'],additionalProperties:false},annotations:readOnly},
+ {name:'workspace_native_ui_observe',description:'Observe native Windows UIAutomation actionable control patterns on exactly one same-owner window. No CUA, screenshot, browser profiles or mouse.',inputSchema:{
+   type:'object',properties:{pid:{type:'integer',minimum:1},windowId:{type:'integer',minimum:1},maxElements:{type:'integer',minimum:1,maximum:100}},
+   required:['pid','windowId'],additionalProperties:false},annotations:readOnly},
+ {name:'workspace_native_ui_invoke',description:'Invoke one previously observed exact Windows UIAutomation control using native InvokePattern. Owner session, fresh fingerprint, requestId and explicit authorization required. No CUA or global input. Result is not user-goal verification.',inputSchema:{
+   type:'object',properties:{pid:{type:'integer',minimum:1},windowId:{type:'integer',minimum:1},
+     fingerprint:{type:'string',pattern:'^[a-f0-9]{24}$'},controlName:{type:'string',minLength:1,maxLength:150},
+     requestId:{type:'string',minLength:8,maxLength:128},explicitUserAuthorization:{type:'string',minLength:12,maxLength:512}},
+   required:['pid','windowId','fingerprint','controlName','requestId','explicitUserAuthorization'],additionalProperties:false},annotations:mutating},
  {name:'workspace_list_windows',description:'List existing same-user application windows through Cua Driver v0.38; no desktop takeover or global input.',inputSchema:{
    type:'object',properties:{pid:{type:'integer',minimum:1},workspaceSeat:{type:'string',enum:['a','b']}},additionalProperties:false},annotations:readOnly},
  {name:'workspace_window_observe',description:'Read accessibility snapshot of one exact existing window in the owning desktop; no click, focus or mouse movement.',inputSchema:{
@@ -132,9 +146,9 @@ export const workspaceToolDefinitions=[
      determination:{type:'string',enum:['EFFECT_OBSERVED','NO_EFFECT_OBSERVED']}},
    required:['pid','windowId','determination'],additionalProperties:false},annotations:mutating}
 ];
-export function createWorkspaceController({callDriver=defaultCuaCall,previewDriver=defaultCuaPreview,ownerSession=defaultOwnerSession,
+export function createWorkspaceController({callDriver=defaultCuaCall,nativeCall=nativeWindowsUIACall,previewDriver=defaultCuaPreview,ownerSession=defaultOwnerSession,
   platform=process.platform,env=process.env,now=Date.now,journal=createWorkspaceTargetJournal()}={}){
- const pending=new Map(),seen=new Set(),busy=new Set(),snapshots=new Map(),browserSnapshots=new Map();
+ const pending=new Map(),seen=new Set(),busy=new Set(),snapshots=new Map(),browserSnapshots=new Map(),nativeSnapshots=new Map();
  const needsOwner=async()=>{if(!await ownerSession({platform,env}))throw fail('WORKSPACE_OWNER_SESSION_REQUIRED');};
  async function execute(name,input={}){
   const seat=input.workspaceSeat??null;
@@ -145,6 +159,18 @@ export function createWorkspaceController({callDriver=defaultCuaCall,previewDriv
    const owner=await ownerSession({platform,env});
    return chooseWorkspaceRoute({...input,sameUserSession:owner,desktop:desktopType(platform,env)});
   }
+  if(name==='workspace_agentos_plan'){
+   const owner=await ownerSession({platform,env});
+   let nativeAvailable=false;
+   if(platform==='win32'){
+    try{await fs.access(new URL('../tools/native-windows-uia.ps1',import.meta.url));nativeAvailable=true;}catch{}
+   }
+   return chooseAgentOSProvider({target:input.target,platform,ownerSession:owner,
+    capabilities:{windowsUIA:nativeAvailable,linuxATSPI:platform==='linux'&&!!env.XDG_RUNTIME_DIR,
+      commanderOwnedBrowser:true,commanderWorkflow:true},
+    grants:{browserProfileAttach:input.existingProfileGrant===true,
+      visualFallback:input.visualFallbackAuthorized===true}});
+  }
   await needsOwner();
   if(name==='workspace_list_windows'){
    const request={};if(input.pid!==undefined){if(!integer(input.pid))throw fail('WORKSPACE_PID_INVALID');request.pid=input.pid;}
@@ -154,6 +180,50 @@ export function createWorkspaceController({callDriver=defaultCuaCall,previewDriv
   if(!exactWindow(input))throw fail('WORKSPACE_TARGET_INVALID');
   const id=(seat?seat+':':'')+targetId(input.pid,input.windowId);
   const session='rcws-'+(seat?seat+'-':'')+input.pid+'-'+input.windowId;
+  if(name==='workspace_native_ui_observe'||name==='workspace_native_ui_invoke'){
+   if(seat!==null||platform!=='win32')throw fail('AGENTOS_NATIVE_OWNER_WINDOWS_REQUIRED');
+   if(name==='workspace_native_ui_observe'){
+    const value=await nativeCall('Observe',input,{platform,env});
+    const indexed=new Map();
+    for(const e of value.elements??[]){
+     if(e.invokeAvailable===true&&e.enabled===true&&typeof e.fingerprint==='string')
+      indexed.set(e.fingerprint,e.name);
+    }
+    nativeSnapshots.set(id,{at:now(),elements:indexed});
+    return {ok:true,mode:'NATIVE_UIA_READ_ONLY',target:id,provider:'windows-uia-native',
+      physicalInputTouched:false,focusChanged:false,value};
+   }
+   if(typeof input.requestId!=='string'||!REQUEST.test(input.requestId)||
+      typeof input.fingerprint!=='string'||!/^[a-f0-9]{24}$/.test(input.fingerprint)||
+      typeof input.controlName!=='string'||input.controlName.length<1||
+      typeof input.explicitUserAuthorization!=='string'||input.explicitUserAuthorization.trim().length<12)
+     throw fail('AGENTOS_NATIVE_INVOKE_CONTRACT_INVALID');
+   if(seen.has(input.requestId))throw fail('WORKSPACE_DUPLICATE_REQUEST_NO_REPLAY');
+   if(busy.has(id)||pending.has(id)||await journal.pending('native:'+id))
+     throw fail('WORKSPACE_TARGET_RECONCILIATION_REQUIRED');
+   const snap=nativeSnapshots.get(id);
+   if(!snap||now()-snap.at>60000||snap.elements.get(input.fingerprint)!==input.controlName)
+     throw fail('AGENTOS_FRESH_EXACT_UIA_ELEMENT_REQUIRED');
+   seen.add(input.requestId);busy.add(id);nativeSnapshots.delete(id);
+   let handle=null;
+   try{
+    handle=await journal.begin('native:'+id,name,input.requestId);
+    const result=await nativeCall('Invoke',input,{platform,env});
+    // InvokePattern acknowledged exactly one native action, NOT the application goal.
+    // Consume the durable journal; any transport-uncertain path remains pending below.
+    await journal.resolve('native:'+id,handle);
+    return {ok:true,mode:'NATIVE_UIA_INVOKE_ISSUED',target:id,
+      provider:'windows-uia-native',replayed:false,physicalInputTouched:false,
+      focusChanged:false,invocationIssued:result.invocationIssued===true,
+      decision:{status:'INVOKE_ACKNOWLEDGED',userGoalVerified:false,
+        next:'Verify the application-specific result before any new effect'}};
+   }catch(error){
+    if(!handle)throw error;
+    pending.set('native:'+id,{requestId:input.requestId,at:now()});
+    return {ok:false,mode:'NATIVE_UIA_OUTCOME_UNCERTAIN',target:id,replayed:false,
+      code:error?.code??'AGENTOS_NATIVE_OUTCOME_UNCERTAIN'};
+   }finally{busy.delete(id);}
+  }
   if(name==='workspace_window_preview'){
    const image=await previewDriver({pid:input.pid,window_id:input.windowId,
      session:'rcws-view-'+(seat?seat+'-':'')+input.pid+'-'+input.windowId},{platform,env,workspaceSeat:seat});
@@ -319,7 +389,7 @@ const singleton=createWorkspaceController();
 export function assertWorkspaceToolPolicy(config,name,args={}){
  const power=config?.powerMode;
  if(power?.enabled!==true)throw fail('WORKSPACE_POWER_MODE_DISABLED');
- if(name==='workspace_plan')return;
+ if(name==='workspace_plan'||name==='workspace_agentos_plan')return;
  const browser=name.startsWith('workspace_browser_')||
   (name==='workspace_target_reconcile'&&args?.surface==='browser');
  if(browser){
@@ -330,7 +400,7 @@ export function assertWorkspaceToolPolicy(config,name,args={}){
   if(power.guiControl?.enabled!==true)throw fail('WORKSPACE_GUI_CONTROL_DISABLED');
   if(name==='workspace_window_preview'&&power.guiControl?.allowScreenshot!==true)
     throw fail('WORKSPACE_GUI_PREVIEW_POLICY_DENIED');
-  if(['workspace_window_click','workspace_target_reconcile'].includes(name)&&
+  if(['workspace_window_click','workspace_native_ui_invoke','workspace_target_reconcile'].includes(name)&&
     power.guiControl?.allowMouse!==true)throw fail('WORKSPACE_GUI_INPUT_POLICY_DENIED');
  }
 }
