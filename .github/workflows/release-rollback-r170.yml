@@ -65,6 +65,8 @@ jobs:
           path: |
             ${{ runner.temp }}/remote-commander-rollback-r170/START_R170.txt
             ${{ runner.temp }}/remote-commander-rollback-r170/PROMOTE_R170.log
+            ${{ runner.temp }}/remote-commander-rollback-r170/REJECTED_INCOMPATIBLE_ROLLBACK.log
+            ${{ runner.temp }}/remote-commander-rollback-r170/ROUTE_AFTER_REJECTED_ROLLBACK.json
             ${{ runner.temp }}/remote-commander-rollback-r170/ROLLBACK_R170.log
             ${{ runner.temp }}/remote-commander-rollback-r170/ROUTE_AFTER_PROMOTE.json
             ${{ runner.temp }}/remote-commander-rollback-r170/ROUTE_AFTER_ROLLBACK.json

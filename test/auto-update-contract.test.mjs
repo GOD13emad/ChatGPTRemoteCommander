@@ -1268,6 +1268,9 @@ test('R170 isolated rollback retries only an explicit router-bootstrap receipt o
   assert.ok(r170.includes('R170_ROUTER_BOOTSTRAP_RETRY_ONCE'),'explicit bounded retry marker missing');
   assert.ok(r170.includes("grep -q '^AUTO_UPDATE_ROUTER_BOOTSTRAPPED_RETRY_REQUIRED profile=default$'"),'only safe router bootstrap may retry');
   assert.equal(r170.split('R170_ROUTER_BOOTSTRAP_RETRY_ONCE').length-1,1,'retry must be single-use');
-  assert.ok(r170.includes("grep -q 'AUTO_UPDATE_PASS version=0.10.20'"),'full rollback acceptance cannot be bypassed');
+  assert.ok(r170.includes("grep -q \"AUTO_UPDATE_PASS version=$ROLLBACK_VERSION\""),'full compatible rollback acceptance cannot be bypassed');
+  assert.ok(r170.includes("grep -q '^SCHEMA_CONTINUITY_GATE_FAIL profile=default$'"),'legacy incompatible rollback must fail closed');
+  assert.ok(r170.includes('R170_LEGACY_INCOMPATIBLE_ROLLBACK_REJECTED_SAFELY'),'legacy refusal must retain promoted route');
+  assert.ok(r170.includes('ROLLBACK_BASELINE=\'af18cbdce3cc106842adebde912fea079094deb1\''),'compatible rollback commit must be exact and pinned');
   assert.ok(r170.includes('R170_LINUX_ROLLBACK_ROUTE_PASS'),'route readback must remain mandatory');
 });

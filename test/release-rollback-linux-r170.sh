@@ -13,6 +13,10 @@ TEMPBASE="$(realpath "$RUNNER_TEMP")"
 TARGET="$(git -C "$WORKSPACE" rev-parse HEAD)"
 EXPECTED="$1"
 BASELINE='362375c464948be3001b307650c13fc3353ed05b'
+# Preserve the legacy migration test; rollback must target a schema-compatible
+# accepted dev.18 predecessor, not the pre-Workspace immutable 0.10.20 tag.
+ROLLBACK_BASELINE='af18cbdce3cc106842adebde912fea079094deb1'
+ROLLBACK_VERSION='0.11.0-dev.18'
 [[ "$TARGET" == "$EXPECTED" && "$TARGET" =~ ^[a-f0-9]{40}$ ]] || { echo R170_SOURCE_SHA_MISMATCH >&2; exit 62; }
 SOURCE_VERSION="$(node -p "require('$WORKSPACE/package.json').version")"
 node "$WORKSPACE/tools/isolated-qa-policy.mjs" || { echo R170_SOURCE_VERSION_NOT_QUALIFIED >&2; exit 63; }
@@ -99,10 +103,34 @@ print('R170_LINUX_PROMOTION_ROUTE_PASS')
 PY
 curl -fsS --connect-timeout 2 --max-time 5 http://127.0.0.1:47831/health > "$ROOT/HEALTH_PROMOTED.json"
 
-# Verify the updater can safely return to the immutable old release without rewriting arbitrary state.
+# A real rollback to pre-Workspace v0.10.20 MUST fail closed rather than silently
+# removing nine supported MCP tools. Keep the promoted route and contract intact.
+# This is intentionally a negative security acceptance, not a rollback PASS.
 set +e
 timeout --signal=TERM --kill-after=10s 800s bash "$WORKSPACE/auto-update-linux.sh" \
   --install-dir "$ROOT/install" --source-ref "$BASELINE" --expected-commit "$BASELINE" --force \
+  > "$ROOT/REJECTED_INCOMPATIBLE_ROLLBACK.log" 2>&1
+INCOMPATIBLE_CODE=$?
+set -e
+if [[ "$INCOMPATIBLE_CODE" == 0 ]] ||
+   ! grep -q '^SCHEMA_CONTINUITY_GATE_FAIL profile=default$' "$ROOT/REJECTED_INCOMPATIBLE_ROLLBACK.log"; then
+  echo R170_EXPECTED_LEGACY_SCHEMA_REFUSAL_MISSING >&2
+  exit 74
+fi
+[[ "$(git -C "$ROOT/install" rev-parse HEAD)" == "$TARGET" ]] || { echo R170_INCOMPATIBLE_ATTEMPT_MUTATED_INSTALL >&2;exit 74; }
+node "$WORKSPACE/tools/router-state.mjs" --state "$ROUTE" > "$ROOT/ROUTE_AFTER_REJECTED_ROLLBACK.json"
+python3 - "$ROOT/ROUTE_AFTER_REJECTED_ROLLBACK.json" "$TARGET" <<'PY_CHECK'
+import json,sys
+s=json.load(open(sys.argv[1]))
+assert s['active']['commit']==sys.argv[2], 'legacy refusal altered promoted router'
+print('R170_LEGACY_INCOMPATIBLE_ROLLBACK_REJECTED_SAFELY')
+PY_CHECK
+
+# Verify an actual rollback to a previously qualified, schema-compatible dev.18
+# predecessor without disabling the schema continuity gate.
+set +e
+timeout --signal=TERM --kill-after=10s 800s bash "$WORKSPACE/auto-update-linux.sh" \
+  --install-dir "$ROOT/install" --source-ref "$ROLLBACK_BASELINE" --expected-commit "$ROLLBACK_BASELINE" --force \
   > "$ROOT/ROLLBACK_R170.log" 2>&1
 ROLLBACK_CODE=$?
 set -e
@@ -112,7 +140,7 @@ if [[ "$ROLLBACK_CODE" == 0 ]] &&
    grep -q '^AUTO_UPDATE_ROUTER_BOOTSTRAPPED_RETRY_REQUIRED profile=default$' "$ROOT/ROLLBACK_R170.log"; then
   echo R170_ROUTER_BOOTSTRAP_RETRY_ONCE
   set +e
-  timeout --signal=TERM --kill-after=10s 800s bash "$WORKSPACE/auto-update-linux.sh" --install-dir "$ROOT/install" --source-ref "$BASELINE" --expected-commit "$BASELINE" --force >> "$ROOT/ROLLBACK_R170.log" 2>&1
+  timeout --signal=TERM --kill-after=10s 800s bash "$WORKSPACE/auto-update-linux.sh" --install-dir "$ROOT/install" --source-ref "$ROLLBACK_BASELINE" --expected-commit "$ROLLBACK_BASELINE" --force >> "$ROOT/ROLLBACK_R170.log" 2>&1
   ROLLBACK_CODE=$?
   set -e
 fi
@@ -122,14 +150,14 @@ if [[ "$ROLLBACK_CODE" != 0 ]]; then
   echo R170_LINUX_ROLLBACK_FAILED >&2
   exit 74
 fi
-[[ "$(git -C "$ROOT/install" rev-parse HEAD)" == "$BASELINE" ]] || { echo R170_ROLLBACK_CONTROL_SHA_FAIL >&2; exit 75; }
-grep -q 'AUTO_UPDATE_PASS version=0.10.20' "$ROOT/ROLLBACK_R170.log" || { echo R170_ROLLBACK_NOT_ACCEPTED >&2; exit 76; }
+[[ "$(git -C "$ROOT/install" rev-parse HEAD)" == "$ROLLBACK_BASELINE" ]] || { echo R170_ROLLBACK_CONTROL_SHA_FAIL >&2; exit 75; }
+grep -q "AUTO_UPDATE_PASS version=$ROLLBACK_VERSION" "$ROOT/ROLLBACK_R170.log" || { echo R170_ROLLBACK_NOT_ACCEPTED >&2; exit 76; }
 node "$WORKSPACE/tools/router-state.mjs" --state "$ROUTE" > "$ROOT/ROUTE_AFTER_ROLLBACK.json"
-python3 - "$ROOT/ROUTE_AFTER_ROLLBACK.json" "$BASELINE" <<'PY'
+python3 - "$ROOT/ROUTE_AFTER_ROLLBACK.json" "$ROLLBACK_BASELINE" "$ROLLBACK_VERSION" <<'PY'
 import json,sys
 r=json.load(open(sys.argv[1]))
 assert r['active']['commit']==sys.argv[2]
-assert r['active']['version']=='0.10.20'
+assert r['active']['version']==sys.argv[3]
 print('R170_LINUX_ROLLBACK_ROUTE_PASS')
 PY
 curl -fsS --connect-timeout 2 --max-time 5 http://127.0.0.1:47831/health > "$ROOT/HEALTH_ROLLBACK.json"
@@ -141,13 +169,15 @@ r=json.load(open(sys.argv[1]))
 assert r["status"]=="PASS_ZERO_OWNED_NODE_AFTER_ROLLBACK" and not r["ownedAfter"]
 print("R172_ROLLBACK_ZERO_OWNED_NODE_ACCEPTED")
 PY
-python3 - "$ROOT" "$TARGET" "$BASELINE" "$START" <<'PY'
+python3 - "$ROOT" "$TARGET" "$ROLLBACK_BASELINE" "$START" "$BASELINE" <<'PY'
 import json,hashlib,pathlib,sys,datetime
 root=pathlib.Path(sys.argv[1])
 def h(p):return hashlib.sha256(p.read_bytes()).hexdigest()
 record={
 'schema':1,'revision':'R170','status':'PASS_LINUX_REAL_PROMOTION_AND_ROLLBACK_IN_ISOLATED_HOST',
 'candidateHead':sys.argv[2],'rollbackHead':sys.argv[3],'startedUtc':sys.argv[4],
+'legacyIncompatibleBaseline':sys.argv[5],'legacySchemaRefused':True,
+'legacyRefusalLogSha256':h(root/'REJECTED_INCOMPATIBLE_ROLLBACK.log'),
 'completedUtc':datetime.datetime.now(datetime.timezone.utc).isoformat(),
 'isolatedHost':True,'userHostMutation':False,
 'promoteLogSha256':h(root/'PROMOTE_R170.log'),
