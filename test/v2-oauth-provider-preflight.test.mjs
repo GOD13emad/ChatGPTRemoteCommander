@@ -96,3 +96,31 @@ test('multi-scope OAuth preflight rejects an IdP missing any required scope',()=
     {code:'V2_PROVIDER_SCOPE_INVALID'});
  }
 });
+
+test('ChatGPT stable OAuth callback metadata requires correctly typed RFC 9207 advertisement',()=>{
+  const unsupported=call({authorization_response_iss_parameter_supported:undefined},
+    {clientRegistration:'client-id-metadata'});
+  assert.equal(unsupported.issuerResponseIdentificationAdvertised,false);
+  assert.equal(unsupported.stableCallbackMetadataEligible,false);
+  assert.equal(unsupported.stableCimdClientIdMetadataEligible,false);
+  const denied=call({authorization_response_iss_parameter_supported:false},
+    {clientRegistration:'client-id-metadata'});
+  assert.equal(denied.stableCallbackMetadataEligible,false);
+  // Normal callback-ID-specific CIMD remains possible when issuer response
+  // identification is not advertised; no live OAuth success is inferred.
+  assert.equal(denied.claimOfAuthenticatedChat,false);
+  const eligible=call({authorization_response_iss_parameter_supported:true},
+    {clientRegistration:'client-id-metadata'});
+  assert.equal(eligible.issuerResponseIdentificationAdvertised,true);
+  assert.equal(eligible.stableCallbackMetadataEligible,true);
+  assert.equal(eligible.stableCimdClientIdMetadataEligible,true);
+  assert.equal(eligible.claimOfAuthenticatedChat,false);
+  const dcr=call({authorization_response_iss_parameter_supported:true},
+    {clientRegistration:'dynamic'});
+  assert.equal(dcr.stableCallbackMetadataEligible,true);
+  assert.equal(dcr.stableCimdClientIdMetadataEligible,false);
+  for(const invalid of [null,'true',1,[]]){
+    assert.throws(()=>call({authorization_response_iss_parameter_supported:invalid}),
+      {code:'V2_PROVIDER_RESPONSE_ISS_FLAG_INVALID'});
+  }
+});

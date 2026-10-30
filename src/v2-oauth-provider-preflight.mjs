@@ -67,10 +67,23 @@ export function validateV2OAuthProvider({
   if(clientRegistration==='dynamic'&&typeof metadata.registration_endpoint!=='string')
     fail('V2_PROVIDER_REGISTRATION_UNAVAILABLE');
   if(clientRegistration==='dynamic')https(metadata.registration_endpoint);
+  // RFC 9207 response issuer identification allows ChatGPT's stable OAuth
+  // callback and CIMD client ID when the authorization response actually
+  // echoes the pinned issuer (including error responses). Metadata alone
+  // cannot prove that runtime behavior or a completed user login.
+  if(metadata.authorization_response_iss_parameter_supported!==undefined
+    && typeof metadata.authorization_response_iss_parameter_supported!=='boolean')
+    fail('V2_PROVIDER_RESPONSE_ISS_FLAG_INVALID');
+  const issuerResponseIdentificationAdvertised=
+    metadata.authorization_response_iss_parameter_supported===true;
   return Object.freeze({
     issuer:trustedIssuer,audience,
     authorizationEndpoint,tokenEndpoint,jwksUri,
     scope:requestedScopes[0],scopes:Object.freeze([...requestedScopes]),clientRegistration,
+    issuerResponseIdentificationAdvertised,
+    stableCallbackMetadataEligible:issuerResponseIdentificationAdvertised,
+    stableCimdClientIdMetadataEligible:issuerResponseIdentificationAdvertised
+      &&clientRegistration==='client-id-metadata',
     tokenEndpointAuthMethods:Object.freeze([...new Set(tokenMethods.filter(m=>TOKEN_AUTH_METHODS.has(m)))]),
     // A positive preflight is not user authorization or authenticated chat identity.
     claimOfAuthenticatedChat:false
