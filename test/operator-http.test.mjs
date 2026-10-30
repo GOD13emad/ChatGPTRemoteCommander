@@ -78,6 +78,17 @@ test('MCP operator schema, route checks and default-deny on a fresh isolated dae
   const status=await f.call('operator_status');
   assert.equal(status.operator,'CHAT_OWNED');
   assert.equal(status.architecture,'SINGLE_EXISTING_COMMANDER_EXECUTOR');
+  const onDisk=fs.readFileSync(path.join(f.root,'app','src','server-v0.3.mjs'));
+  const onDiskSha=createHash('sha256').update(onDisk).digest('hex');
+  const configRaw=fs.readFileSync(path.join(f.root,'config.json'));
+  assert.deepEqual(status.provenance,{
+   available:true,kind:'ON_DISK_SOURCE_HASH_AT_STARTUP_NOT_LOADED_MODULE_ATTESTATION',
+   entrypointSha256:onDiskSha,nodeVersion:process.version,
+   declaredVersion:'0.11.0-dev.18',
+   configSha256:createHash('sha256').update(configRaw).digest('hex')
+  });
+  assert.equal(JSON.stringify(status.provenance).includes(f.root),false);
+
   assert.equal(status.workflow.runnerConfigured,false);
   assert.equal(status.routes.workflow,false);
   assert.equal((await f.call('operator_route',{kind:'file'})).state,'READY');
