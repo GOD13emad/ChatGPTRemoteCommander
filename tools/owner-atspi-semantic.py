@@ -1,6 +1,7 @@
 #!/usr/bin/python3
 """Bounded owner-session AT-SPI semantics. Never sends pointer/keyboard or reads values."""
 import json
+import os
 import sys
 import time
 
@@ -25,19 +26,27 @@ def owner_frame(pid, window_title):
         fail("PID_INVALID")
     if not isinstance(window_title, str) or len(window_title) > 300:
         fail("TITLE_INVALID")
+    # Never inspect an app owned by another Linux account, even if AT-SPI
+    # makes it visible on the session bus.
+    try:
+        if os.stat("/proc/" + str(pid)).st_uid != os.getuid():
+            fail("OWNER_PID_UID_MISMATCH")
+    except OSError:
+        fail("OWNER_PID_UNAVAILABLE")
     desktop = Atspi.get_desktop(0)
     apps = []
     for i in range(min(desktop.get_child_count(), 100)):
         app = desktop.get_child_at_index(i)
         if app.get_process_id() == pid:
             apps.append(app)
-    if len(apps) != 1 or (apps[0].get_name() or "").lower() != "firefox":
-        fail("OWNER_FIREFOX_PID_UNVERIFIED")
+    if len(apps) != 1 or not (apps[0].get_name() or "").strip():
+        fail("OWNER_APPLICATION_PID_UNVERIFIED")
     frames = []
     for i in range(min(apps[0].get_child_count(), 30)):
         node = apps[0].get_child_at_index(i)
         name = (node.get_name() or "").strip()
-        # Firefox AT-SPI frame labels omit the compositor's " — Mozilla Firefox".
+        # Toolkits may omit the compositor's application suffix. Requiring
+        # exactly one matching frame prevents ambiguous cross-window actions.
         if name and (name == window_title or window_title.startswith(name + " — ") or
                      window_title.startswith(name + " - ")):
             frames.append((i, node))
