@@ -766,6 +766,9 @@ if [[ "$FORCE" != 1 && -f "$ROUTE" ]]; then
     exit 0
   fi
   if [[ "$ACTIVE_COMMIT" == "$COMMIT" ]]; then
+    # The active route may already match while its release-local client is missing.
+    # Fail closed before maintenance, drain or Supervisor recycling.
+    prepare_staged_tunnel_client "$STAGE_DIR"
     CONTROL="$(git -C "$INSTALL_DIR" rev-parse HEAD 2>/dev/null || true)"
     PREV_PORT="$(json_field "$STAGE_DIR" "$ROUTE" previous.port)"
     PREV_CFG="$(json_field "$STAGE_DIR" "$ROUTE" previous.configPath)"

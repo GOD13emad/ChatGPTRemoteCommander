@@ -1154,12 +1154,16 @@ test('Linux tunnel-client is required before release promotion and profile enrol
   const updater=read('auto-update-linux.sh');
   const installer=read('install.sh');
   const enrollment=read('enable-autostart-linux.sh');
-  const stage=updater.indexOf('prepare_staged_tunnel_client "$STAGE_DIR"');
+  const sameCommit=updater.indexOf('if [[ "$ACTIVE_COMMIT" == "$COMMIT" ]]');
+  const maintenanceStage=updater.indexOf('prepare_staged_tunnel_client "$STAGE_DIR"',sameCommit);
+  const maintenanceControl=updater.indexOf('CONTROL="$(git -C "$INSTALL_DIR" rev-parse HEAD',sameCommit);
+  const stage=updater.lastIndexOf('prepare_staged_tunnel_client "$STAGE_DIR"');
   const audit=updater.indexOf('run_gate "$STAGE_DIR" audit npm run audit');
   const candidateStart=updater.indexOf('PORT="$(node "$STAGE_DIR/tools/find-free-port.mjs"');
   assert.ok(updater.includes('prepare_staged_tunnel_client(){'),'pinned stage preflight function must exist');
   assert.ok(updater.includes('TUNNEL_STAGE_VERIFIED'),'stage requires verified version and upstream commit');
-  assert.ok(audit>0 && stage>audit && candidateStart>stage,'stage dependency must run after source audit and before candidate/cutover');
+  assert.ok(sameCommit>0 && maintenanceStage>sameCommit && maintenanceControl>maintenanceStage,'existing-route maintenance must also block on unverified release-local tunnel');
+  assert.ok(audit>0 && stage>audit && candidateStart>stage,'new candidate dependency must run after source audit and before candidate/cutover');
   assert.ok(updater.includes('/bin/bash "$helper" --install-dir "$project"'),'pinned installer must provision each staged release');
   assert.ok(installer.includes('TUNNEL_CLIENT_REQUIRED_MISSING'),'--skip-tunnel-client must fail closed when binary is absent');
   assert.ok(enrollment.includes('/bin/bash "$ROOT/tools/install-tunnel-client-linux.sh" --install-dir "$ROOT"'),'profile enrollment must provision release dependency');
