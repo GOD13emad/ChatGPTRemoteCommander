@@ -21,6 +21,7 @@ const fixture=(overrides={})=>{
   readWorkflow:overrides.readWorkflow??(async()=>({enabled:true,runnerConfigured:true,automaticExecution:false})),
   readBrowser:overrides.readBrowser??(async()=>({available:true,backend:'chromium-cdp',policy:{requireExistingUserSession:true,allowOwnedIsolatedSession:false}})),
   readGui:overrides.readGui??(async()=>({available:true,backend:'cua-owner'})),
+  readProvenance:overrides.readProvenance,
   advance:overrides.advance===null?undefined:async (runId,requestId)=>{tickCalls++;return {runId,requestId,status:'QUEUED',tickCalls};}
  });
  return {operator,get tickCalls(){return tickCalls;}};
@@ -42,6 +43,29 @@ test('operator status reports actual engine and stable single-authority contract
  assert.equal(x.workflow.automaticExecution,false);
  assert.equal(x.guarantees.universalAdminOrRoot,false);
  assert.equal(x.guarantees.autonomousUnenrolledRuns,false);
+});
+test('startup provenance is strictly hash-only and never reflects arbitrary paths or secrets',async()=>{
+ const sha='a'.repeat(64),cfg='b'.repeat(64);
+ const f=fixture({readProvenance:async()=>({
+  entrypointSha256:sha,configSha256:cfg,nodeVersion:'v26.13.0',
+  declaredVersion:'0.11.0-dev.18',rawPath:'/home/private/secrets',secret:'opaque'
+ })}).operator;
+ const r=(await f.execute('operator_status')).provenance;
+ assert.deepEqual(r,{
+  available:true,kind:'ON_DISK_SOURCE_HASH_AT_STARTUP_NOT_LOADED_MODULE_ATTESTATION',
+  entrypointSha256:sha,nodeVersion:'v26.13.0',declaredVersion:'0.11.0-dev.18',
+  configSha256:cfg
+ });
+ assert.equal(JSON.stringify(r).includes('private'),false);
+});
+test('unavailable and malformed provenance are fail-closed and do not block route selection',async()=>{
+ const missing=(await fixture().operator.execute('operator_status')).provenance;
+ assert.deepEqual(missing,{available:false,reason:'SOURCE_PROVENANCE_NOT_EXPOSED'});
+ const bad=fixture({readProvenance:async()=>({entrypointSha256:'../../wrong'})}).operator;
+ assert.equal((await bad.execute('operator_status')).provenance.reason,'SOURCE_PROVENANCE_INVALID');
+ const failing=fixture({readProvenance:async()=>{throw Error('private path');}}).operator;
+ assert.equal((await failing.execute('operator_status')).provenance.reason,'STATUS_UNAVAILABLE');
+ assert.equal((await failing.execute('operator_route',{kind:'project'})).state,'GATED');
 });
 test('project plans use already-enrolled engine, not a new scheduler',async()=>{
  const v=await fixture().operator.execute('operator_route',{kind:'project'});
