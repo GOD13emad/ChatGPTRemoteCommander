@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {workspaceMutationEffectArgs,isOwnerBackgroundWorkspaceTool} from '../src/workspace-tools.mjs';
+import {workspaceMutationEffectArgs,isOwnerBackgroundWorkspaceTool,createWorkspaceController} from '../src/workspace-tools.mjs';
+import {createMemoryWorkspaceJournal} from '../src/workspace-target-journal.mjs';
 import {createWorkspaceTargetTools,workspaceTargetDefinitions,workspaceOwnerRequestContext} from '../src/workspace-target-tools.mjs';
 
 function mock({windows=[{processId:333,handle:'444',title:'Science - Mozilla Firefox',wmClass:'firefox_firefox',focused:true}],allowInput=false}={}){
@@ -221,4 +222,33 @@ test('target-only reconciliation routes to its existing Workspace journal, not t
  assert.equal(isOwnerBackgroundWorkspaceTool('workspace_target_click'),false);
  assert.equal(isOwnerBackgroundWorkspaceTool('workspace_target_list'),false);
  assert.equal(isOwnerBackgroundWorkspaceTool('workflow_status'),false);
+});
+
+test('private seat proves target disappearance from its own inventory; an existing window remains blocked',async()=>{
+ const target='a:333:444';
+ const make=async windows=>{
+  const journal=createMemoryWorkspaceJournal();
+  await journal.begin(target,'workspace_window_click','prior-effect-qa-01');
+  const calls=[];
+  const controller=createWorkspaceController({
+   platform:'linux',env:{XDG_RUNTIME_DIR:'/run/user/1000',DISPLAY:':1960'},
+   ownerSession:async()=>true,journal,
+   callDriver:async(tool,args,scope)=>{
+    calls.push({tool,args,seat:scope.workspaceSeat});
+    return {windows};
+   }
+  });
+  return {journal,calls,controller};
+ };
+ const input={pid:333,windowId:444,workspaceSeat:'a',
+  determination:'EFFECT_OBSERVED',targetGoneVerified:true};
+ const gone=await make([]);
+ const verified=await gone.controller.execute('workspace_target_reconcile',input);
+ assert.equal(verified.ok,true);
+ assert.deepEqual(gone.calls,[{tool:'list_windows',args:{},seat:'a'}]);
+ assert.equal(await gone.journal.pending(target),null);
+ const present=await make([{pid:333,window_id:444}]);
+ await assert.rejects(present.controller.execute('workspace_target_reconcile',input),
+  /WORKSPACE_TARGET_GONE_NOT_PROVEN/);
+ assert.ok(await present.journal.pending(target));
 });
