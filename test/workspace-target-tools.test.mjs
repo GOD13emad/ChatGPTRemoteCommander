@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
+import {workspaceMutationEffectArgs} from '../src/workspace-tools.mjs';
 import {createWorkspaceTargetTools,workspaceTargetDefinitions,workspaceOwnerRequestContext} from '../src/workspace-target-tools.mjs';
 
 function mock({windows=[{processId:333,handle:'444',title:'Science - Mozilla Firefox',wmClass:'firefox_firefox',focused:true}],allowInput=false}={}){
@@ -194,4 +195,20 @@ test('multi-monitor target with unverified window monitor fails closed before in
    /WORKSPACE_TARGET_TARGET_MONITOR_UNVERIFIED/);
  assert.equal(calls.at(-1),'gui_session_end');
  assert.equal(calls.includes('gui_screenshot'),false);
+});
+
+
+test('workspace effect journals receive the same outer idempotency requestId, never an untrusted replacement',()=>{
+ const input={pid:111,windowId:222,elementToken:'s00000001:2',requestId:'untrusted-inner-key'};
+ for(const tool of ['workspace_window_click','workspace_browser_click']){
+  const next=workspaceMutationEffectArgs(tool,input,'outer-receipt-20261030-r1');
+  assert.equal(next.requestId,'outer-receipt-20261030-r1');
+  assert.notStrictEqual(next,input);
+  assert.equal(input.requestId,'untrusted-inner-key');
+ }
+ assert.strictEqual(workspaceMutationEffectArgs('workspace_window_observe',input,undefined),input);
+ assert.throws(()=>workspaceMutationEffectArgs('workspace_window_click',input,undefined),
+  /WORKSPACE_BINDING_INVALID/);
+ assert.throws(()=>workspaceMutationEffectArgs('workspace_browser_click',input,'bad key'),
+  /WORKSPACE_BINDING_INVALID/);
 });
