@@ -167,7 +167,7 @@ for (const required of [
   '--max-time "$CURL_MAX_TIME"',
   'curl_fetch https://nodejs.org/dist/index.json',
   'curl -fsS --connect-timeout 1 --max-time 2 http://127.0.0.1:47831/health',
-  'Skipping tunnel-client installation as requested',
+  'TUNNEL_CLIENT_REQUIRED_MISSING',
   'Reusing existing pinned tunnel-client while skip was requested'
 ]) {
   if (!linuxInstaller.includes(required)) {

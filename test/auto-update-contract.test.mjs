@@ -1,4 +1,6 @@
 import test from 'node:test';
+import offlineOs from 'node:os';
+import * as offlineSpawn from 'node:child_process';
 import './release-discovery-url-security.test.mjs';
 import { assertPinnedReleaseDiscovery } from './release-discovery-contract.mjs';
 import assert from 'node:assert/strict';
@@ -1146,4 +1148,93 @@ test('R173 Windows rollback source qualification allows only explicitly reviewed
   assert.ok(qa.includes('R173_CANDIDATE_VERSION'),'native updater test must fail closed');
   assert.ok(workflow.includes('github.event.pull_request.head.sha || github.sha'),'exact SHA');
   assert.ok(!workflow.includes('gh release create'),'QA workflow is not release authority');
+});
+
+test('Linux tunnel-client is required before release promotion and profile enrollment',()=>{
+  const updater=read('auto-update-linux.sh');
+  const installer=read('install.sh');
+  const enrollment=read('enable-autostart-linux.sh');
+  const stage=updater.indexOf('prepare_staged_tunnel_client "$STAGE_DIR"');
+  const audit=updater.indexOf('run_gate "$STAGE_DIR" audit npm run audit');
+  const candidateStart=updater.indexOf('PORT="$(node "$STAGE_DIR/tools/find-free-port.mjs"');
+  assert.ok(updater.includes('prepare_staged_tunnel_client(){'),'pinned stage preflight function must exist');
+  assert.ok(updater.includes('TUNNEL_STAGE_VERIFIED'),'stage requires verified version and upstream commit');
+  assert.ok(audit>0 && stage>audit && candidateStart>stage,'stage dependency must run after source audit and before candidate/cutover');
+  assert.ok(updater.includes('/bin/bash "$helper" --install-dir "$project"'),'pinned installer must provision each staged release');
+  assert.ok(installer.includes('TUNNEL_CLIENT_REQUIRED_MISSING'),'--skip-tunnel-client must fail closed when binary is absent');
+  assert.ok(enrollment.includes('/bin/bash "$ROOT/tools/install-tunnel-client-linux.sh" --install-dir "$ROOT"'),'profile enrollment must provision release dependency');
+});
+
+test('Linux installer skip mode rejects missing/wrong tunnel binaries and accepts verified pin (offline fixture)', {skip:process.platform!=='linux'},()=>{
+  const os=offlineOs;
+  const cp=offlineSpawn;
+  const tmp=fs.mkdtempSync(path.join(os.tmpdir(),'rc-tunnel-guard-'));
+  try{
+    const toolsDir=path.join(tmp,'tools');
+    fs.mkdirSync(toolsDir);
+    for(const f of ['json-field.mjs','tunnel-client-pin.json','install-tunnel-client-linux.sh']){
+      fs.copyFileSync(path.join(root,'tools',f),path.join(toolsDir,f));
+    }
+    const source=read('install.sh');
+    const begin=source.indexOf('install_tunnel_client() {');
+    const end=source.indexOf('write_local_config() {',begin);
+    assert.ok(begin>0&&end>begin,'installer function must be extractable');
+    const fn=path.join(tmp,'function.sh');
+    fs.writeFileSync(fn,source.slice(begin,end));
+    const invoke=()=>cp.spawnSync('bash',['-c','INSTALL_DIR="$1"; SKIP_TUNNEL_CLIENT=1; . "$2"; install_tunnel_client','_',tmp,fn],{encoding:'utf8'});
+    const missing=invoke();
+    assert.notEqual(missing.status,0,'absent executable must not be accepted');
+    assert.match(missing.stderr,/TUNNEL_CLIENT_REQUIRED_MISSING/);
+    const pin=JSON.parse(fs.readFileSync(path.join(toolsDir,'tunnel-client-pin.json'),'utf8'));
+    const binDir=path.join(toolsDir,'tunnel-client-v'+pin.version+'-linux-'+(process.arch==='arm64'?'arm64':'amd64'));
+    fs.mkdirSync(binDir);
+    const exe=path.join(binDir,'tunnel-client');
+    fs.writeFileSync(exe,'#!/bin/sh\necho \"'+pin.version+'+'+pin.upstreamCommit+'\"\n');
+    fs.chmodSync(exe,0o755);
+    const verified=invoke();
+    assert.equal(verified.status,0,verified.stderr);
+    assert.match(verified.stdout,/Reusing existing pinned tunnel-client/);
+    fs.writeFileSync(exe,'#!/bin/sh\necho \"wrong-version\"\n');
+    const invalid=invoke();
+    assert.notEqual(invalid.status,0,'invalid provenance must be rejected');
+    assert.match(invalid.stderr,/provenance mismatch/);
+  } finally {
+    fs.rmSync(tmp,{recursive:true,force:true});
+  }
+});
+
+test('Linux staged dependency rejects missing helper, missing executable, and bad provenance before accepting pin', {skip:process.platform!=='linux'},()=>{
+  const tmp=fs.mkdtempSync(path.join(offlineOs.tmpdir(),'rc-staged-dependency-'));
+  try{
+    const toolsDir=path.join(tmp,'tools');
+    fs.mkdirSync(toolsDir);
+    for(const f of ['json-field.mjs','tunnel-client-pin.json']) {
+      fs.copyFileSync(path.join(root,'tools',f),path.join(toolsDir,f));
+    }
+    const updater=read('auto-update-linux.sh');
+    const begin=updater.indexOf('prepare_staged_tunnel_client(){');
+    const end=updater.indexOf('\nrun_gate(){',begin);
+    assert.ok(begin>0&&end>begin,'preflight must be extractable');
+    const func=path.join(tmp,'preflight.sh');
+    fs.writeFileSync(func,updater.slice(begin,end));
+    const invoke=()=>offlineSpawn.spawnSync('bash',['-c','log(){ :; }; . "$1"; prepare_staged_tunnel_client "$2"','_',func,tmp],{encoding:'utf8'});
+    assert.notEqual(invoke().status,0,'missing helper must fail closed');
+    const helper=path.join(toolsDir,'install-tunnel-client-linux.sh');
+    fs.writeFileSync(helper,'#!/bin/sh\nexit 0\n');
+    fs.chmodSync(helper,0o755);
+    assert.notEqual(invoke().status,0,'helper receipt without binary must fail closed');
+    const pin=JSON.parse(fs.readFileSync(path.join(toolsDir,'tunnel-client-pin.json'),'utf8'));
+    const arch=process.arch==='arm64'?'arm64':'amd64';
+    const dir=path.join(toolsDir,'tunnel-client-v'+pin.version+'-linux-'+arch);
+    fs.mkdirSync(dir);
+    const bin=path.join(dir,'tunnel-client');
+    fs.writeFileSync(bin,'#!/bin/sh\necho wrong-version\n');
+    fs.chmodSync(bin,0o755);
+    assert.notEqual(invoke().status,0,'wrong upstream commit must fail closed');
+    fs.writeFileSync(bin,'#!/bin/sh\necho "'+pin.version+'+'+pin.upstreamCommit+'"\n');
+    const accepted=invoke();
+    assert.equal(accepted.status,0,accepted.stderr);
+  } finally {
+    fs.rmSync(tmp,{recursive:true,force:true});
+  }
 });
