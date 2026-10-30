@@ -47,8 +47,10 @@ test('owner canonical runtime config is under a trusted profile root and remains
 test('Windows PowerShell parser accepts the entire routed owner launcher',
  {skip:process.platform!=='win32'},()=>{
  const launcher=path.join(import.meta.dirname,'..','tools','launch-owner-workspace-routed.ps1');
- const program="$t=$null;$e=$null;[void][System.Management.Automation.Language.Parser]::ParseFile($args[0],[ref]$t,[ref]$e);if($e.Count){Write-Output $e[0].Message;exit 4}";
+ const quoted=launcher.replaceAll("'", "''");
+ const program="$t=$null;$e=$null;[void][System.Management.Automation.Language.Parser]::ParseFile('"+
+  quoted+"',[ref]$t,[ref]$e);if($e.Count){Write-Output $e[0].Message;exit 4}";
  const r=spawnSync('powershell.exe',['-NoLogo','-NoProfile','-NonInteractive',
- '-Command',program,launcher],{encoding:'utf8',timeout:12000,windowsHide:true});
+ '-Command',program],{encoding:'utf8',timeout:12000,windowsHide:true});
  assert.equal(r.status,0,r.stdout||r.stderr);
 });
