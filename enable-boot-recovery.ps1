@@ -21,13 +21,24 @@ if ([IO.Path]::GetFullPath($env:USERPROFILE) -ne $OwnerUserProfile) {
 }
 $OwnerLocal = Join-Path $OwnerUserProfile 'AppData\Local'
 $OwnerRoaming = Join-Path $OwnerUserProfile 'AppData\Roaming'
-$StableRoot = Join-Path $OwnerLocal 'ChatGPTRemoteCommander\app'
-$stableSupervisor = Join-Path $StableRoot 'autostart-windows.ps1'
-$stableHandoff = Join-Path $StableRoot 'handoff-user-session-windows.ps1'
-$Root = if((Test-Path -LiteralPath $stableSupervisor -PathType Leaf) -and (Test-Path -LiteralPath $stableHandoff -PathType Leaf)){$StableRoot}else{$SourceRoot}
+# Use only the invoked release. A stale legacy app must never override
+# the source that matches routing/default.json on this owner profile.
+$Root = [IO.Path]::GetFullPath($SourceRoot)
+$RouteFile = Join-Path $OwnerLocal 'ChatGPTRemoteCommander\routing\default.json'
+if(-not(Test-Path -LiteralPath $RouteFile -PathType Leaf)){
+  throw 'BOOT_RECOVERY_ACTIVE_ROUTE_MISSING'
+}
+$route = Get-Content -LiteralPath $RouteFile -Raw | ConvertFrom-Json
+$activeProjectDir = [string]$route.active.projectDir
+if([string]::IsNullOrWhiteSpace($activeProjectDir) -or
+   [IO.Path]::GetFullPath($activeProjectDir) -ne [IO.Path]::GetFullPath($Root)){
+  throw 'BOOT_RECOVERY_ACTIVE_ROUTE_MISMATCH_STALE_ROOT'
+}
+
 $CredDir = Join-Path $OwnerLocal 'ChatGPTRemoteCommander\credentials'
 $ProfileDir = Join-Path $OwnerRoaming 'tunnel-client'
-$VarDir = Join-Path $Root 'var'
+# Probe and runtime receipts survive release replacement and live outside code.
+$VarDir = Join-Path $OwnerLocal 'ChatGPTRemoteCommander\var'
 New-Item -ItemType Directory -Force -Path $VarDir | Out-Null
 $Supervisor = Join-Path $Root 'autostart-windows.ps1'
 $Handoff = Join-Path $Root 'handoff-user-session-windows.ps1'
@@ -153,17 +164,9 @@ Register-ScheduledTask -TaskName $HandoffTaskName -Action $handoffAction -Trigge
 
 $runKey='HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
 New-Item -Path $runKey -Force | Out-Null
-$launcher=Join-Path $Root 'launch-supervisor-hidden.vbs'
-$pwshVbs=$pwsh.Replace('"','""')
-$supervisorVbs=$Supervisor.Replace('"','""')
-$vbs=@(
-  'Set sh = CreateObject("WScript.Shell")',
-  ('cmd = Chr(34) & "{0}" & Chr(34) & " -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File " & Chr(34) & "{1}" & Chr(34)' -f $pwshVbs,$supervisorVbs),
-  'Call sh.Run(cmd, 0, False)'
-)
-[IO.File]::WriteAllLines($launcher,$vbs,[Text.UTF8Encoding]::new($false))
-$wscript=Join-Path $env:WINDIR 'System32\wscript.exe'
-$logonCommand='"{0}" //B //NoLogo "{1}"' -f $wscript,$launcher
+# Keep the user startup entry tied to the routed executable; no generated
+# launcher lives in the immutable release directory.
+$logonCommand='"{0}" -NoLogo -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File "{1}"' -f $pwsh,$Supervisor
 New-ItemProperty -Path $runKey -Name 'ChatGPTRemoteCommander' -Value $logonCommand -PropertyType String -Force | Out-Null
 
 if(-not $NoStart){

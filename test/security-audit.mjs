@@ -26,9 +26,21 @@ if (!tunnelPattern.test('tunnel' + '_' + '0123456789abcdef'.repeat(2)) || tunnel
 // Lines are bounded; anything above the bound fails closed instead of being skipped.
 function makeHistoryScanner(rules) {
   const hits = new Set();
-  let pending = '', preceding = '';
+  let pending = '', preceding = '', patchPath = '';
   const limit = 16 * 1024 * 1024;
+  const inertFixtureFile = 'test/v2-mcp-http-ingress.test.mjs';
+  const inertFixturePrefix = "privateKeyPem:'" + '-----BEGIN ' + 'PRIVATE KEY-----' + String.raw`\\nfixture'`;
   function scanLine(line) {
+    if (line.startsWith('diff --git a/')) {
+      patchPath = line.slice('diff --git a/'.length).split(' b/')[0];
+    }
+    // Match only the exact inert test literals, never a real or truncated PEM.
+    if (patchPath === inertFixtureFile && /^[+-]/.test(line)) {
+      const fragment = line.slice(1).trim();
+      if (fragment === inertFixturePrefix + ',' || fragment === inertFixturePrefix + '});') {
+        line = line.replace('-----BEGIN ' + 'PRIVATE KEY-----', '[INERT TEST FIXTURE]');
+      }
+    }
     const sample = preceding + line;
     for (const [name, pattern] of rules) {
       pattern.lastIndex = 0;
@@ -52,6 +64,26 @@ function makeHistoryScanner(rules) {
       return hits;
     }
   };
+}
+const syntheticFile = 'test/v2-mcp-http-ingress.test.mjs';
+const inertHeader = '-----BEGIN ' + 'PRIVATE KEY-----';
+const inertValue = "privateKeyPem:'" + inertHeader + String.raw`\\nfixture'`;
+const fake = makeHistoryScanner(patterns);
+fake.write('diff --git a/' + syntheticFile + ' b/' + syntheticFile + '\n');
+fake.write('+   ' + inertValue + ',\n');
+fake.write('+   ' + inertValue + '});\n');
+if (fake.finish().has('Private key block')) {
+  throw new Error('SECURITY_AUDIT_SYNTHETIC_FIXTURE_FALSE_POSITIVE');
+}
+for (const testPath of ['src/untrusted.mjs', syntheticFile]) {
+  const leaked = makeHistoryScanner(patterns);
+  leaked.write('diff --git a/' + testPath + ' b/' + testPath + '\n');
+  leaked.write('+  privateKeyPem: "' + inertHeader + '\n');
+  leaked.write('+  MIIEvQIBADANBgkqhkiG9w0BAQEFAASC\n');
+  leaked.write('+  -----END ' + 'PRIVATE KEY-----";\n');
+  if (!leaked.finish().has('Private key block')) {
+    throw new Error('SECURITY_AUDIT_REAL_PEM_DETECTION_REGRESSION');
+  }
 }
 const boundaryProbe = makeHistoryScanner(patterns);
 boundaryProbe.write('tunnel' + '_0123456789abcdef');

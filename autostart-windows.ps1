@@ -8,7 +8,8 @@ param(
   [ValidateSet('CurrentUser','LocalMachine')][string]$CredentialScope = 'CurrentUser',
   [string]$NpmPath = '',
   [string]$NodePath = '',
-  [switch]$BootCore
+  [switch]$BootCore,
+  [switch]$FailIfRunning
 )
 $ErrorActionPreference = 'Stop'
 # Never inherit an isolated MCP config into the global supervisor. Primary startup
@@ -33,8 +34,10 @@ function Write-SupervisorLog([string]$Message) {
 $created = $false
 $mutex = $null
 if (-not $SelfTest) {
-  $mutex = [Threading.Mutex]::new($false, 'Local\ChatGPTRemoteCommanderSupervisor', [ref]$created)
-  if (-not $created) { exit 0 }
+  # Global namespace coordinates SYSTEM Session 0 and elevated owner sessions.
+  # This alone cannot detect a still-live legacy Local-namespace supervisor.
+  $mutex = [Threading.Mutex]::new($false, 'Global\ChatGPTRemoteCommanderSupervisor', [ref]$created)
+  if (-not $created) { if ($FailIfRunning) { throw 'ADMIN_RUNTIME_EXISTING_SUPERVISOR_REQUIRES_CONTROLLED_HANDOFF' }; exit 0 }
 }
 function Get-McpHealth([int]$Port) {
   try { return Invoke-RestMethod "http://127.0.0.1:$Port/health" -TimeoutSec 2 }
@@ -51,8 +54,7 @@ function Test-McpHealth([int]$Port,[string]$ExpectedConfigSha='',[string]$Expect
 $script:PrimaryHealthFailures = 0
 
 function Find-TunnelExe {
-  $stableAppRoot = Join-Path (Join-Path $OwnerUserProfile 'AppData\Local') 'ChatGPTRemoteCommander\app'
-  $stateFile = Join-Path $stableAppRoot 'var\tunnel-client.json'
+  $stateFile = Join-Path (Join-Path $OwnerUserProfile 'AppData\Local') 'ChatGPTRemoteCommander\var\tunnel-client.json'
   if (-not (Test-Path -LiteralPath $stateFile -PathType Leaf)) {
     throw 'Pinned tunnel-client state missing; run install.ps1.'
   }

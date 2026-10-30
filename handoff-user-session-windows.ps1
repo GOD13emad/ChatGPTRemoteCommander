@@ -26,11 +26,36 @@ function Get-CommanderBusy {
     $body=@{jsonrpc='2.0';id=1;method='tools/call';params=@{name='system_status';arguments=@{}}}|ConvertTo-Json -Depth 8 -Compress
     $r=Invoke-RestMethod -Uri 'http://127.0.0.1:47831/mcp' -Method Post -ContentType 'application/json' -Body $body -TimeoutSec 3
     $s=$r.result.structuredContent
-    $active=if($s.concurrency){[int]$s.concurrency.activeOperations}else{0}
-    $leases=if($s.durableWorkflows -and $s.durableWorkflows.schedulerState){[int]$s.durableWorkflows.schedulerState.currentLeases}else{0}
-    return [pscustomobject]@{active=$active;leases=$leases}
+    if($r.result.isError -or -not$s -or -not$s.concurrency -or
+       ($null -eq $s.concurrency.activeOperations) -or ($null -eq $s.concurrency.queued) -or -not$s.durableWorkflows -or
+       -not$s.durableWorkflows.schedulerState -or
+       $null -eq $s.durableWorkflows.schedulerState.currentLeases){
+      throw 'HANDOFF_BUSY_STATE_UNVERIFIED'
+    }
+    $active=[int]$s.concurrency.activeOperations
+    $queued=[int]$s.concurrency.queued
+    $leases=[int]$s.durableWorkflows.schedulerState.currentLeases
+    if($active -lt 0 -or $queued -lt 0 -or $leases -lt 0){throw 'HANDOFF_BUSY_STATE_INVALID'}
+    foreach($tool in @('gui_status','browser_status')){
+      $probeBody=@{jsonrpc='2.0';id=2;method='tools/call';params=@{name=$tool;arguments=@{}}}|ConvertTo-Json -Depth 8 -Compress
+      $probe=Invoke-RestMethod -Uri 'http://127.0.0.1:47831/mcp' -Method Post -ContentType 'application/json' -Body $probeBody -TimeoutSec 3
+      $flags=$probe.result.structuredContent
+      if($probe.result.isError -or -not$flags){throw 'HANDOFF_RESOURCE_STATE_UNVERIFIED'}
+      if($tool -eq 'gui_status'){
+        if($null -eq$flags.leased -or $null -eq$flags.busy){throw 'HANDOFF_GUI_STATE_UNVERIFIED'}
+        if($flags.leased -or $flags.busy){$leases++}
+      } else {
+        if($null -eq$flags.active -or $null -eq$flags.busy -or
+           $null -eq$flags.leased -or $null -eq$flags.uncertain){
+          throw 'HANDOFF_BROWSER_STATE_UNVERIFIED'
+        }
+        if($flags.active -or $flags.busy -or $flags.leased -or $flags.uncertain){$leases++}
+      }
+    }
+    return [pscustomobject]@{active=$active;queued=$queued;leases=$leases}
   } catch {
-    return [pscustomobject]@{active=0;leases=0}
+    # Losing status can never authorize terminating the running SYSTEM core.
+    return [pscustomobject]@{active=1;queued=1;leases=1}
   }
 }
 function Stop-ExactProcess($Process,[string]$Label){
@@ -46,11 +71,11 @@ function Stop-ExactProcess($Process,[string]$Label){
 $deadline=(Get-Date).AddSeconds($WaitSeconds)
 do {
   $busy=Get-CommanderBusy
-  if($busy.active -eq 0 -and $busy.leases -eq 0){break}
+  if($busy.active -eq 0 -and $busy.queued -eq 0 -and $busy.leases -eq 0){break}
   Write-HandoffLog "WAIT_BUSY active=$($busy.active) leases=$($busy.leases)"
   Start-Sleep -Seconds 5
 } while((Get-Date)-lt$deadline)
-if($busy.active -ne 0 -or $busy.leases -ne 0){
+if($busy.active -ne 0 -or $busy.queued -ne 0 -or $busy.leases -ne 0){
   Write-HandoffLog "HANDOFF_DEFERRED_BUSY active=$($busy.active) leases=$($busy.leases)"
   exit 75
 }

@@ -1,4 +1,5 @@
 import os from 'node:os';
+import { readEffectiveOsPrivilege } from './os-privilege.mjs';
 import { synchronousCommandInput } from './retry-guard.mjs';
 import { assertNoCodexCommand, assertNoCodexShellDelegation, codexLaunchAuthorized, commanderChildEnv } from './no-codex-policy.mjs';
 import path from 'node:path';
@@ -264,7 +265,9 @@ async function capture(command, cwd, timeoutMs, outputLimit, { allowCodex = fals
 
 export async function powerStatus(ctx) {
   const cfg = power(ctx);
+  const osPrivilege = readEffectiveOsPrivilege();
   return {
+    osPrivilege,
     enabled: true,
     platform: process.platform,
     shell: shellName(),

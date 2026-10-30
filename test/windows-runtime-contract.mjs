@@ -54,6 +54,12 @@ hasAll(enable, [
 ], 'enable-autostart.ps1');
 
 const supervisor = read('autostart-windows.ps1');
+if (!supervisor.includes(String.raw`ChatGPTRemoteCommander\var\tunnel-client.json`)) {
+  throw new Error('Supervisor must load the persistent tunnel pin outside the old app installation');
+}
+if (supervisor.includes(String.raw`ChatGPTRemoteCommander\app`)) {
+  throw new Error('Supervisor must not depend on the obsolete app directory');
+}
 hasAll(supervisor, [
   "tunnel-client.json",
   "PROFILE_SKIPPED_INVALID",
@@ -84,10 +90,21 @@ hasAll(bootEnable, [
   "New-ScheduledTaskTrigger -AtLogOn",
   "autoAdminLogonRequired=$false",
   "plaintextCredentialPersisted=$false",
-  "ChatGPTRemoteCommander\\app",
-  "$stableSupervisor",
-  "$stableHandoff"
+  '$Root = [IO.Path]::GetFullPath($SourceRoot)',
+  "BOOT_RECOVERY_ACTIVE_ROUTE_MISMATCH_STALE_ROOT",
+  String.raw`$VarDir = Join-Path $OwnerLocal 'ChatGPTRemoteCommander\var'`
 ], 'enable-boot-recovery.ps1');
+if (bootEnable.includes('$StableRoot') || bootEnable.includes(String.raw`$VarDir = Join-Path $Root 'var'`)) {
+  throw new Error('Boot recovery must not select legacy app code or create release-local runtime state');
+}
+hasAll(bootEnable, [
+  '$logonCommand=',
+  '-WindowStyle Hidden -ExecutionPolicy Bypass -File',
+  'New-ItemProperty -Path $runKey'
+], 'enable-boot-recovery.ps1 startup');
+if (bootEnable.includes('launch-supervisor-hidden.vbs') || bootEnable.includes('[IO.File]::WriteAllLines($launcher')) {
+  throw new Error('Boot recovery must not generate launchers inside the installed release');
+}
 for (const forbidden of ['AutoAdminLogon =', 'DefaultPassword', '-LogonType Password']) {
   if (bootEnable.includes(forbidden)) throw new Error('boot recovery unsafe marker: ' + forbidden);
 }
@@ -106,6 +123,18 @@ hasAll(handoff, [
   "system-mcp",
   "USER_SESSION_HANDOFF_PASS"
 ], 'handoff-user-session-windows.ps1');
+if (!handoff.includes("HANDOFF_BUSY_STATE_UNVERIFIED") ||
+    !handoff.includes("HANDOFF_BUSY_STATE_INVALID") ||
+    !handoff.includes('return [pscustomobject]@{active=1;queued=1;leases=1}') ||
+    !handoff.includes('$busy.queued -eq 0') ||
+    !handoff.includes('$busy.queued -ne 0') ||
+    !handoff.includes("HANDOFF_RESOURCE_STATE_UNVERIFIED") ||
+    !handoff.includes("HANDOFF_GUI_STATE_UNVERIFIED") ||
+    !handoff.includes("HANDOFF_BROWSER_STATE_UNVERIFIED") ||
+    !handoff.includes("'gui_status','browser_status'") ||
+    handoff.includes('return [pscustomobject]@{active=0;leases=0}')) {
+  throw new Error('Owner handoff must fail closed when Commander status is missing or invalid');
+}
 
 const bootDisable = read('disable-boot-recovery.ps1');
 hasAll(bootDisable, [

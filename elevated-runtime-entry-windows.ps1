@@ -35,5 +35,5 @@ if($ProbeOnly){exit 0}
 
 $supervisor=Join-Path $Root 'autostart-windows.ps1'
 if(-not(Test-Path -LiteralPath $supervisor -PathType Leaf)){throw 'ADMIN_RUNTIME_SUPERVISOR_MISSING'}
-& $supervisor
+& $supervisor -FailIfRunning
 exit $LASTEXITCODE

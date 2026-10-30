@@ -52,6 +52,12 @@ const migrated=migrateCapabilityConfig({
   disableCapabilities:a.disableCapabilities,enableCapabilities:a.enableCapabilities
 });
 let config=migrated.config;
+// A preserve-only migration must not silently enroll an existing profile in
+// automatic updates when its current operator policy explicitly disabled them.
+if(a.mode==='preserve' && existing?.autoUpdate && typeof existing.autoUpdate==='object' &&
+   !Array.isArray(existing.autoUpdate) && typeof existing.autoUpdate.enabled==='boolean'){
+  config.autoUpdate={...(config.autoUpdate??{}),...existing.autoUpdate};
+}
 if(a.allowedRoots.length)config.allowedRoots=[...a.allowedRoots];
 if(a.allowedPrograms.length)config.allowedPrograms=[...a.allowedPrograms];
 if(a.deviceName)config.deviceName=a.deviceName;

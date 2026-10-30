@@ -165,6 +165,10 @@ const delegationToolDefinitions = [
   }
 ];
 
+const workspaceBundle = config.ownerWorkspaceDelegation?.enabled === true
+  ? await import('./workspace-tools.mjs') : null;
+const ownerWorkspaceFactory = config.ownerWorkspaceDelegation?.enabled === true
+  ? await import('./owner-workspace-proxy.mjs') : null;
 const TOOLS = [
   {
     name: 'system_status',
@@ -239,8 +243,10 @@ const TOOLS = [
   ...notionMcpTools.definitions,
   ...powerToolDefinitions,
   ...(BROWSER_ENABLED ? browserToolDefinitions : []),
-  ...(GUI_ENABLED ? guiToolDefinitions : [])
+  ...(GUI_ENABLED ? guiToolDefinitions : []),
+  ...(workspaceBundle ? workspaceBundle.workspaceToolDefinitions : [])
 ];
+const ownerWorkspaceProxy = ownerWorkspaceFactory?.createOwnerWorkspaceProxy({ config }) ?? null;
 
 const AUTO_DEFERRED_MUTATIONS = new Set(['copy_path', 'move_path', 'delete_path']);
 const MUTATION_REQUEST_ID_SCHEMA = {
@@ -555,6 +561,16 @@ async function executeToolEffect(name, args, delegationContext = {}) {
     case 'run_project_command':
       return runProjectCommand(ctx, args);
     default: {
+      if (name.startsWith('workspace_')) {
+        if (!workspaceBundle || !ownerWorkspaceProxy) throw new Error('WORKSPACE_OWNER_PROXY_DISABLED');
+        workspaceBundle.assertWorkspaceToolPolicy(config, name, args);
+        const response = await ownerWorkspaceProxy.execute(name, args, delegationContext);
+        if (!response.handled) throw new Error('WORKSPACE_OWNER_TOOL_REJECTED');
+        const result = response.value;
+        await audit(ctx, { action:name, ok:result?.ok!==false,
+          workspace:true, delegatedOwnerWorkspace:true });
+        return result;
+      }
       if (name.startsWith('browser_')) {
         const result = await executeBrowserTool(ctx, name, args);
         await audit(ctx, { action: name, ok: true, powerMode: true, browserControl: true });

@@ -31,6 +31,15 @@ for (const marker of [
   'GUI_LOCAL_STOP',
   'this._service?.destroy()'
 ]) assert.ok(extension.includes(marker), 'extension missing '+marker);
+
+// GNOME_WINDOW_MONITOR_METADATA_CONTRACT: the secure multi-screen target
+// guard requires native, non-guessed monitor index and frame bounds.
+for (const marker of [
+  'w.get_monitor()', 'w.get_frame_rect()', 'screenIndex=n',
+  'bounds={left:rect.x,top:rect.y,width:rect.width,height:rect.height}',
+  'screenIndex===null?{}:{screenIndex}', 'rect.width>0&&rect.height>0'
+]) assert.ok(extension.includes(marker),'GNOME window geometry provenance missing: '+marker);
+
 for (const forbidden of ['create_virtual_device','notify_absolute_motion','notify_relative_motion','notify_button','notify_keyval','xdotool','XTEST'])
   assert.ok(!extension.includes(forbidden), 'extension must not contain direct input primitive '+forbidden);
 
