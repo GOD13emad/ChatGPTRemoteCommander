@@ -8,7 +8,7 @@ const target={pid:333,windowId:444};
 const token='s00000001:2';
 const auth='Owner authorizes exact disposable window input only';
 const requestId='rc-window-type-qa-20261030-01';
-function setup({label='QA plain text',role='edit',effect='verified',verified=true}={}){
+function setup({label='QA plain text',role='edit',effect='confirmed',verified=true}={}){
  const journal=createMemoryWorkspaceJournal(),calls=[];
  const api=createWorkspaceController({platform:'linux',
   env:{XDG_RUNTIME_DIR:'/run/user/1000',DISPLAY:':1960'},
