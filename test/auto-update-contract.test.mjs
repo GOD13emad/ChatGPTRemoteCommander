@@ -1273,4 +1273,6 @@ test('R170 isolated rollback retries only an explicit router-bootstrap receipt o
   assert.ok(r170.includes('R170_LEGACY_INCOMPATIBLE_ROLLBACK_REJECTED_SAFELY'),'legacy refusal must retain promoted route');
   assert.ok(r170.includes('ROLLBACK_BASELINE=\'af18cbdce3cc106842adebde912fea079094deb1\''),'compatible rollback commit must be exact and pinned');
   assert.ok(r170.includes('R170_LINUX_ROLLBACK_ROUTE_PASS'),'route readback must remain mandatory');
+  assert.ok(r170.includes('git -C "$WORKSPACE" diff --ignore-space-at-eol --quiet --'),'source only permits bounded EOL drift');
+  assert.ok(r170.includes('R170_SOURCE_CHANGED'),'any semantic source change must block');
 });

@@ -161,7 +161,27 @@ assert r['active']['version']==sys.argv[3]
 print('R170_LINUX_ROLLBACK_ROUTE_PASS')
 PY
 curl -fsS --connect-timeout 2 --max-time 5 http://127.0.0.1:47831/health > "$ROOT/HEALTH_ROLLBACK.json"
-[[ -z "$(git -C "$WORKSPACE" status --porcelain)" ]] || { echo R170_SOURCE_CHANGED >&2; exit 77; }
+# Do not let an unrelated source mutation masquerade as an isolated rollback PASS.
+# Keep a sanitized pathname receipt for triage. A host checkout's declared PS1
+# CRLF attribute may cause a worktree-only EOL status; tolerate that only if
+# there are no untracked/staged files and no semantic tracked diff.
+source_status="$(git -C "$WORKSPACE" status --porcelain=v1 --untracked-files=normal)"
+if [[ -n "$source_status" ]]; then
+  printf '%s\n' "$source_status" > "$ROOT/SOURCE_STATUS_R170.txt"
+  source_safe=true
+  git -C "$WORKSPACE" diff --cached --quiet -- || source_safe=false
+  git -C "$WORKSPACE" diff --ignore-space-at-eol --quiet -- || source_safe=false
+  while IFS= read -r line; do
+    [[ "$line" == ' M '* ]] || source_safe=false
+    file="$(printf '%s' "$line" | cut -c4-)"
+    [[ "$file" == *.ps1 ]] || source_safe=false
+    [[ "$(git -C "$WORKSPACE" check-attr eol -- "$file")" == *': eol: crlf' ]] || source_safe=false
+  done <<< "$source_status"
+  if [[ "$source_safe" != true ]]; then echo R170_SOURCE_CHANGED >&2; exit 77; fi
+  echo R170_SOURCE_DECLARED_PS1_EOL_ONLY_ACCEPTED
+else
+  echo R170_SOURCE_CLEAN_PASS
+fi
 python3 "$WORKSPACE/test/release-rollback-owned-cleanup-r172.py" --root "$ROOT"
 python3 - "$ROOT/CLEANUP_R172.json" <<'PY'
 import json,sys
