@@ -18,7 +18,7 @@ async function f(root, name, content = 'opaque-credentials-should-never-be-read'
   await writeFile(path.join(root, name), content);
 }
 test('Windows DPAPI dual scopes preserve three enrolled profiles and never emit identity/secrets', async () => {
-  await fixture(async ({ profileDir: p, credentialDir: c }) => {
+  await fixture(async ({ root, profileDir: p, credentialDir: c }) => {
     for (const n of ['primary', 'other', 'third']) await f(p, n + '.yaml');
     for (const n of ['primary.dpapi', 'primary.machine.dpapi',
       'other.machine.dpapi', 'third.dpapi']) await f(c, n);
@@ -72,7 +72,7 @@ test('ambiguous foo.machine credential scope is fail-closed instead of silently 
     assert.equal(out.structuralStatus,'BLOCKED_RECONCILIATION');
   });
 });
-test('Windows case collisions cannot become ambiguous profile identities', async () => {
+test('Windows case collisions cannot become ambiguous profile identities', {skip:process.platform==='win32'}, async () => {
   await fixture(async ({profileDir:p,credentialDir:c}) => {
     await f(p,'Alice.yaml');await f(p,'alice.yaml');await f(c,'Alice.dpapi');
     const out=await censusV2EnrollmentScope({profileDir:p,credentialDir:c,platform:'win32'});
