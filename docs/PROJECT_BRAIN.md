@@ -1,5 +1,12 @@
 # Project Brain — ChatGPT Remote Commander
 
+## V2-R1-SOURCE-ALIAS-HARDENING-20261030 — candidate manifest spoofing blocked
+
+**Finding:** The existing `tools/v2-component-manifest.mjs` rejected alias paths inside the component tree but previously resolved an aliased source root transparently; `package.json` was read without the same regular-file/symlink guard. Both could make a tree appear to be an exact source when it was reached through a different physical alias. Updated the source root to require exact canonical path identity and package metadata to be a regular, single-link, bounded-size JSON file, with structured failure on missing/invalid JSON or `null` package. Tests explicitly create temporary symlink and malformed-package fixtures and assert rejection. The native installed package and existing runtime are not edited.
+
+**V&V:** Source manifest now covers **26 Linux / 27 Windows** V2 files in the candidate worktree with independent source hashes. Focused manifest tests 7/7 PASS, Linux full V2 suite 278 PASS / 0 FAIL / 1 SKIP, `npm run audit` SECURITY_AUDIT_PASS; owner-private GUI Python regression 4 PASS. Still candidate only: no production signed binary, owner consent, cross-user verified installer, or five-host cutover.
+
+
 ## V2-R1-INTEGRATED-IDENTITY-FAIL-CLOSED-20261030 — source manifest reconciled, cutover not admitted
 
 **Security correction:** The owner/native component identity candidate formerly exposed `readyForCandidateCutover:true` if caller-provided `ownerAttested:true` and claimed `sourceCommit` matched. That is insufficient without independent native attestation. `evaluateV2InstallIdentity` now exposes `identityConsistent` as the purely structural diagnostic and **always** returns `readyForCandidateCutover:false`, `attestationStatus:INDEPENDENT_NATIVE_PROOF_REQUIRED`, `cleanupAuthorized:false`. New negative test ensures forged matching owner/source metadata cannot promote production. This avoids accidental privileged fleet cutover from unverified JSON.

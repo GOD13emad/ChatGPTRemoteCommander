@@ -53,3 +53,36 @@ test('invalid installed attestation and filesystem aliases fail closed',()=>{
   liveVersion:'x',exactBuildSha256:'not-hash',ownerSessionAttested:true,runtimeComponentsVerified:true
  }}),{code:'V2_R1_INSTALLED_EVIDENCE_INVALID'});
 });
+
+test('aliased source root and aliased package.json are never accepted as exact-source manifests',()=>{
+ const rootTmp=fs.mkdtempSync(path.join(os.tmpdir(),'rc-v2-r1-symlink-'));
+ try{
+  const alias=path.join(rootTmp,'alias');
+  fs.symlinkSync(root,alias,'dir');
+  assert.throws(()=>buildV2ComponentManifest({root:alias,platform:'linux'}),
+    {code:'V2_R1_ROOT_ALIAS_FORBIDDEN'});
+  const pkg=path.join(rootTmp,'package.json');
+  fs.symlinkSync(path.join(root,'package.json'),pkg);
+  assert.throws(()=>buildV2ComponentManifest({root:rootTmp,platform:'linux'}),
+    {code:'V2_R1_PACKAGE_INVALID'});
+ }finally{fs.rmSync(rootTmp,{recursive:true,force:true});}
+});
+test('invalid package source JSON blocks a manifest without throwing unstructured syntax',()=>{
+ const temp=fs.mkdtempSync(path.join(os.tmpdir(),'rc-v2-r1-package-'));
+ try{
+  fs.writeFileSync(path.join(temp,'package.json'),'{invalid');
+  assert.throws(()=>buildV2ComponentManifest({root:temp,platform:'linux'}),
+    {code:'V2_R1_PACKAGE_INVALID'});
+ }finally{fs.rmSync(temp,{recursive:true,force:true});}
+});
+
+test('absent or null package source metadata is rejected with structured denial',()=>{
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'rc-v2-r1-meta-'));
+ try{
+  assert.throws(()=>buildV2ComponentManifest({root:dir,platform:'linux'}),
+    {code:'V2_R1_PACKAGE_INVALID'});
+  fs.writeFileSync(path.join(dir,'package.json'),'null');
+  assert.throws(()=>buildV2ComponentManifest({root:dir,platform:'linux'}),
+    {code:'V2_R1_VERSION_INVALID'});
+ }finally{fs.rmSync(dir,{recursive:true,force:true});}
+});

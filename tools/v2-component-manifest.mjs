@@ -54,9 +54,27 @@ function read(root,file){
 export function buildV2ComponentManifest({root,platform,installedEvidence=null}={}){
  if(!['windows','linux'].includes(platform))fail('V2_R1_PLATFORM_INVALID');
  if(typeof root!=='string'||!path.isAbsolute(root))fail('V2_R1_ROOT_REQUIRED');
- const source=fs.realpathSync.native(root);
- const pkg=JSON.parse(fs.readFileSync(path.join(source,'package.json'),'utf8'));
- if(typeof pkg.version!=='string'||!/^[0-9]+\.[0-9]+\.[0-9]+(?:-[a-z0-9.-]+)?$/.test(pkg.version))
+ const requested=path.resolve(root);
+ let source;
+ try{source=fs.realpathSync.native(requested);}
+ catch{fail('V2_R1_ROOT_UNREADABLE');}
+ // Reject root aliases as well as in-tree symlinks: a manifest of an
+ // unexpected physical tree must never be treated as a signed source root.
+ const normalized=x=>process.platform==='win32'?path.normalize(x).toLowerCase():path.normalize(x);
+ if(normalized(source)!==normalized(requested))
+   fail('V2_R1_ROOT_ALIAS_FORBIDDEN');
+ const pkgPath=path.join(source,'package.json');
+ let pkgInfo;
+ try{pkgInfo=fs.lstatSync(pkgPath);}
+ catch{fail('V2_R1_PACKAGE_INVALID');}
+ if(!pkgInfo.isFile()||pkgInfo.isSymbolicLink()||pkgInfo.nlink!==1||
+    pkgInfo.size<2||pkgInfo.size>1024*1024)
+   fail('V2_R1_PACKAGE_INVALID');
+ let pkg;
+ try{pkg=JSON.parse(fs.readFileSync(pkgPath,'utf8'));}
+ catch{fail('V2_R1_PACKAGE_INVALID');}
+ if(!pkg||typeof pkg!=='object'||Array.isArray(pkg)||
+    typeof pkg.version!=='string'||!/^[0-9]+\.[0-9]+\.[0-9]+(?:-[a-z0-9.-]+)?$/.test(pkg.version))
   fail('V2_R1_VERSION_INVALID');
  validateCatalog();
  const all=[...CORE,...PLATFORM[platform]];
