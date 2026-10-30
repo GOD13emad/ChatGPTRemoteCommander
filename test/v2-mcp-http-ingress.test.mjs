@@ -56,34 +56,11 @@ function fixture(overrides={}){
 }
 async function withServer(ingress,cb){
  const server=ingress.createUnboundServer();
- let selected=null;
  try{
   assert.equal(server.listening,false);
-  // Windows/CI dynamic ports can include ports on Fetch's blocked-port list.
-  // Use the actual Fetch implementation to verify an isolated listener before
-  // executing tests. Never weaken protocol/transport admission to work around
-  // a network-port fixture problem; no mutation or external socket is used.
-  for(let i=0;i<24;i++){
-   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
-   const base='http://127.0.0.1:'+server.address().port;
-   try{
-    await fetch(base+'/__v2_fixture_port_probe',{signal:AbortSignal.timeout(2000)});
-    selected=base;
-    break;
-   }catch(error){
-    if(error?.cause?.message!=='bad port')throw error;
-    server.closeAllConnections();
-    await new Promise(resolve=>server.close(resolve));
-   }
-  }
-  if(!selected)throw Error('V2_HTTP_NO_FETCH_COMPATIBLE_LOOPBACK_PORT');
-  return await cb(selected);
- }finally{
-  if(server.listening){
-   server.closeAllConnections();
-   await new Promise(resolve=>server.close(resolve));
-  }
- }
+  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+  return await cb('http://127.0.0.1:'+server.address().port);
+ }finally{server.closeAllConnections();await new Promise(resolve=>server.close(resolve));}
 }
 async function rpc(base,message=msg(),headers={}){
  const response=await fetch(base+'/mcp-v2',{method:'POST',headers:{
@@ -352,4 +329,34 @@ test('direct HTTPS candidate composition requires pinned mTLS and owner TLS iden
  // A fabricated TLS identity cannot create a usable listener; the real key
  // and certificate must come from an owner-controlled secret store.
  assert.throws(()=>candidate.createUnboundTlsServer());
+});
+
+test('mTLS profile discovery without platform chat binding never authorizes a workflow',async()=>{
+ const seen=[];
+ const ingress=fixture({
+  attestTransport:async()=>({
+   authenticated:true,peerType:'openai-chatgpt-mtls',sessionSource:'openai/session'
+  }),
+  dispatcherFactory:async ctx=>{
+   seen.push(ctx.sessionHandle);
+   return factory(ctx);
+  }
+ });
+ await withServer(ingress,async base=>{
+  const profile=msg();
+  profile.params.name='v2_profile';profile.params.arguments={};
+  const first=await rpc(base,profile);
+  assert.equal(first.status,200);
+  assert.equal(seen[0],'mcp-profile-only');
+  assert.equal(first.body.result.isError,true);
+  const workflow=await rpc(base,msg());
+  assert.equal(workflow.status,403);
+  assert.equal(workflow.body.error,'platform_session_required');
+  const forged=msg();
+  forged.params.name='v2_profile';
+  forged.params.arguments={tool:'write_text'};
+  const other=await rpc(base,forged);
+  assert.equal(other.status,200);
+  assert.equal(sideEffects,0);
+ });
 });

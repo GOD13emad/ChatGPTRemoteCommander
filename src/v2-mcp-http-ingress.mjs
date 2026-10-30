@@ -111,10 +111,17 @@ export function createV2CandidateHttpIngress({
         // ChatGPT inserts openai/session into TOOL CALLS, not necessarily
         // initialize/list/discover. Discovery is never given execution rights.
         if(msg.method==='tools/call'){
-          if(typeof metaSession!=='string'||!SESSION.test(metaSession)){
-            json(res,403,{error:'platform_session_required'});return;
+          if(msg.params?.name==='v2_profile'&&metaSession===undefined){
+            // ChatGPT may read the authenticated connection profile before it
+            // has a conversation ID. Only the OAuth-verified read-only tool
+            // may use this discovery namespace. Never allow workflow effects.
+            sessionHandle='mcp-profile-only';
+          }else{
+            if(typeof metaSession!=='string'||!SESSION.test(metaSession)){
+              json(res,403,{error:'platform_session_required'});return;
+            }
+            sessionHandle=metaSession;
           }
-          sessionHandle=metaSession;
         }else{
           sessionHandle='mcp-discovery-only';
         }

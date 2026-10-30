@@ -409,3 +409,71 @@ test('scope downgrade after entry OAuth check never reaches WorkflowStore effect
   assert.equal(f.effects(),0);
  }finally{f.close();}
 });
+
+test('authenticated v2_profile tool returns stable persisted identity without owner action',async()=>{
+ const f=fixture();try{
+  let nativeLookups=0,profileReads=0;
+  const stored=new Map([
+   ['oauth-principal',{id:'prf_owner_a',name:'Account A'}],
+   ['oauth-other',{id:'prf_owner_b',name:'Account B'}]
+  ]);
+  const d=f.mk({
+   resolvePrincipal:async subject=>subject==='oauth-principal'?'user':
+     subject==='oauth-other'?'user-b':null,
+   resolveTrustedInvocation:async()=>{nativeLookups++;throw Error('no native lookup for profile');},
+   loadAuthenticatedProfile:async({subject,principalId})=>{
+     profileReads++;
+     assert.equal(principalId,subject==='oauth-principal'?'user':'user-b');
+     return stored.get(subject);
+   }
+  });
+  const listing=await d.handleRpc({message:{jsonrpc:'2.0',id:1,method:'tools/list'}});
+  assert.equal(listing.result.tools.length,2);
+  const metadata=listing.result.tools.find(v=>v.name==='v2_profile');
+  assert.equal(metadata._meta['openai/profile'],true);
+  assert.deepEqual(metadata.securitySchemes,[{type:'oauth2',scopes:[]}]);
+  assert.deepEqual(metadata.outputSchema.required,['id']);
+  const unauth=await d.call({toolName:'v2_profile',args:{}});
+  assert.equal(unauth.isError,true);
+  assert.ok(unauth._meta['mcp/www_authenticate']);
+  assert.equal(profileReads,0);
+  const a=await d.call({authorization:'Bearer '+jwt(),toolName:'v2_profile',args:{}});
+  assert.equal(a.structuredContent.id,'prf_owner_a');
+  const refreshed=await d.call({authorization:'Bearer '+jwt({exp:Math.floor((NOW+30000)/1000)}),
+     toolName:'v2_profile',args:{}});
+  assert.equal(refreshed.structuredContent.id,'prf_owner_a');
+  stored.set('oauth-principal',{id:'prf_owner_a',name:'Renamed'});
+  const renamed=await d.call({authorization:'Bearer '+jwt(),
+      toolName:'v2_profile',args:{}});
+  assert.equal(renamed.structuredContent.id,'prf_owner_a');
+  assert.equal(renamed.structuredContent.name,'Renamed');
+  const b=await d.call({authorization:'Bearer '+jwt({sub:'oauth-other'}),
+      toolName:'v2_profile',args:{}});
+  assert.equal(b.structuredContent.id,'prf_owner_b');
+  assert.notEqual(b.structuredContent.id,a.structuredContent.id);
+  const invalid=await d.call({authorization:'Bearer '+jwt({sub:'foreign'}),
+    toolName:'v2_profile',args:{}});
+  assert.equal(invalid.isError,true);
+  assert.equal(profileReads,4);
+  assert.equal(nativeLookups,0);
+  assert.equal(f.effects(),0);
+ }finally{f.close();}
+});
+test('v2_profile identity unavailable fails closed and cannot become a write action',async()=>{
+ const f=fixture();try{
+  const d=f.mk({loadAuthenticatedProfile:async()=>({
+    id:'user@example.com',name:'Do not expose untrusted profile'
+  })});
+  const invalid=await d.call({authorization:'Bearer '+jwt(),
+    toolName:'v2_profile',args:{}});
+  assert.equal(invalid.isError,true);
+  assert.match(invalid.content[0].text,/PROFILE_IDENTITY_UNAVAILABLE/);
+  const injected=await d.call({authorization:'Bearer '+jwt(),
+    toolName:'v2_profile',args:{tool:'write_text'}});
+  assert.equal(injected.isError,true);
+  assert.equal(f.effects(),0);
+  assert.equal(f.mk().profileDescriptor,null);
+  assert.throws(()=>f.mk({loadAuthenticatedProfile:true}),
+    {code:'V2_MCP_PROFILE_RESOLVER_REQUIRED'});
+ }finally{f.close();}
+});

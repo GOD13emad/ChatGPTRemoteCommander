@@ -11,6 +11,7 @@ import { executeV2WorkflowStep } from './v2-workflow-gateway.mjs';
 import { normalizeV2Route } from './v2-routing-contract.mjs';
 
 const STEP_TOOL='v2_workflow_step';
+const PROFILE_TOOL='v2_profile';
 const LEGACY_VERSIONS=Object.freeze(['2025-11-25','2025-06-18','2025-03-26']);
 const MODERN_VERSION='2026-07-28';
 const SERVER_IDENTITY=Object.freeze({name:'chatgpt-remote-commander-v2-candidate',version:'0.11.0-candidate'});
@@ -33,7 +34,7 @@ export function createV2CandidateMcpDispatcher({
   resource,authorizationServers,issuer,audience,scopes=['commander.workflow'],
   assertionTrust,verifyAccessToken,resolvePrincipal,observedNativeSession,
   resolveTrustedInvocation,workflowStore,grantRegistry,authorizeTool,dispatch,
-  now=Date.now
+  loadAuthenticatedProfile,now=Date.now
 }){
   for(const candidate of [
     verifyAccessToken,resolvePrincipal,observedNativeSession,
@@ -43,6 +44,8 @@ export function createV2CandidateMcpDispatcher({
   }
   if(!workflowStore||!grantRegistry||!assertionTrust)
     fail('V2_MCP_TRUSTED_BOOTSTRAP_REQUIRED');
+  if(loadAuthenticatedProfile!==undefined&&typeof loadAuthenticatedProfile!=='function')
+    fail('V2_MCP_PROFILE_RESOLVER_REQUIRED');
   const auth=createV2McpOAuthContract({
     resource,authorizationServers,scopes,allowedTools:[STEP_TOOL]
   });
@@ -53,6 +56,82 @@ export function createV2CandidateMcpDispatcher({
     annotations:{readOnlyHint:false,destructiveHint:false,openWorldHint:false}
   });
   const enforcedScopes=descriptor.securitySchemes[0].scopes;
+  // Optional and read-only: do NOT derive stable profile IDs from a JWT,
+  // OAuth subject, email, chat, OS session or grant. The trusted provider
+  // must load an already-persisted immutable opaque ID for these credentials.
+  const profileDescriptor=loadAuthenticatedProfile===undefined?null:Object.freeze({
+    name:PROFILE_TOOL,
+    description:'Read the stable profile identity of this verified OAuth connection; no host action.',
+    inputSchema:Object.freeze({type:'object',properties:{},additionalProperties:false}),
+    outputSchema:Object.freeze({type:'object',properties:Object.freeze({
+      id:{type:'string'},name:{type:'string'},email:{type:'string'},
+      nickname:{type:'string'}
+    }),required:Object.freeze(['id']),additionalProperties:false}),
+    securitySchemes:Object.freeze([Object.freeze({type:'oauth2',scopes:Object.freeze([])})]),
+    _meta:Object.freeze({'openai/profile':true}),
+    annotations:Object.freeze({readOnlyHint:true,destructiveHint:false,openWorldHint:false})
+  });
+  const PROFILE_ID=/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
+  function checkedProfile(value){
+    if(!record(value)||typeof value.id!=='string'
+      ||!PROFILE_ID.test(value.id)||value.id==='.'||value.id==='..'
+      ||Object.keys(value).some(k=>!['id','name','email','nickname'].includes(k)))
+      fail('V2_MCP_PROFILE_IDENTITY_UNAVAILABLE');
+    const result={id:value.id};
+    for(const key of ['name','email','nickname']){
+      if(value[key]!==undefined){
+        if(typeof value[key]!=='string'||value[key].length>160
+          ||[...value[key]].some(ch=>ch.charCodeAt(0)<32||ch.charCodeAt(0)===127))
+          fail('V2_MCP_PROFILE_IDENTITY_UNAVAILABLE');
+        result[key]=value[key];
+      }
+    }
+    return Object.freeze(result);
+  }
+  async function callProfile({authorization,args}){
+    if(args!==undefined&&(!record(args)||Object.keys(args).length>0))
+      return denied('V2_MCP_PROFILE_INPUT_INVALID');
+    if(typeof authorization!=='string'||authorization.length>8192
+       ||!authorization.startsWith('Bearer ')
+       ||!/^[A-Za-z0-9._~+=:-]+$/.test(authorization.slice(7).replaceAll('/','')))
+      return auth.toolAuthRequired();
+    try{
+      const bearer=authorization.slice(7);
+      const verify=async()=>{
+        const claims=await verifyAccessToken(bearer);
+        const current=now();
+        if(!record(claims)||claims.issuer!==issuer||claims.audience!==audience
+          ||typeof claims.subject!=='string'||!PROFILE_ID.test(claims.subject)
+          ||!Array.isArray(claims.scopes)
+          ||!Number.isSafeInteger(current)||!Number.isSafeInteger(claims.expiresAtMs)
+          ||!Number.isSafeInteger(claims.notBeforeMs)
+          ||claims.expiresAtMs<=current||claims.notBeforeMs>current)
+          fail('V2_OAUTH_VERIFICATION_REQUIRED');
+        const principalId=await resolvePrincipal(claims.subject);
+        if(typeof principalId!=='string'||!PROFILE_ID.test(principalId))
+          fail('V2_OAUTH_PRINCIPAL_MISMATCH');
+        return {subject:claims.subject,principalId};
+      };
+      const before=await verify();
+      const profile=checkedProfile(await loadAuthenticatedProfile(
+        Object.freeze({...before})
+      ));
+      const after=await verify();
+      if(before.subject!==after.subject||before.principalId!==after.principalId)
+        fail('V2_OAUTH_PRINCIPAL_MISMATCH');
+      return Object.freeze({
+        content:Object.freeze([Object.freeze({
+          type:'text',text:'Authenticated Commander V2 profile identified.'
+        })]),
+        structuredContent:profile
+      });
+    }catch(error){
+      const code=String(error?.code??'');
+      if(code.startsWith('V2_OAUTH_')||code.startsWith('V2_JWT_')
+        ||code.startsWith('V2_JWKS_'))return auth.toolAuthRequired();
+      return denied('V2_MCP_PROFILE_IDENTITY_UNAVAILABLE');
+    }
+  }
   const denied=(code='V2_MCP_OPERATION_DENIED')=>Object.freeze({
     isError:true,content:Object.freeze([Object.freeze({
       type:'text',text:'Commander V2 request denied: '+code
@@ -68,6 +147,8 @@ export function createV2CandidateMcpDispatcher({
     })
   });
   async function call({authorization,toolName,args}){
+    if(toolName===PROFILE_TOOL&&profileDescriptor)
+      return callProfile({authorization,args});
     if(toolName!==STEP_TOOL)return denied('V2_MCP_TOOL_UNKNOWN');
     if(!exact(args,EXPECTED)||!record(args.arguments)
       ||typeof args.stepId!=='string'||typeof args.tool!=='string'
@@ -182,7 +263,7 @@ export function createV2CandidateMcpDispatcher({
         ttlMs:30000,cacheScope:'private'});
     }
     if(message.method==='tools/list'){
-      return rpc({tools:[descriptor]});
+      return rpc({tools:profileDescriptor?[descriptor,profileDescriptor]:[descriptor]});
     }
     if(message.method==='tools/call'){
       const params=message.params;
@@ -194,7 +275,7 @@ export function createV2CandidateMcpDispatcher({
     return {jsonrpc:'2.0',id:message.id,error:{code:-32601,message:'Method not found'}};
   }
   return Object.freeze({
-    descriptor,
+    descriptor,profileDescriptor,
     protectedResource:auth.protectedResource,
     handleRpc,
     call
