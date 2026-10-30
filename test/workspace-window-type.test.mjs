@@ -1,5 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import path from 'node:path';
+import {createOwnerWorkspaceProxy} from '../src/owner-workspace-proxy.mjs';
 import {createWorkspaceController,workspaceMutationEffectArgs,assertWorkspaceToolPolicy,workspaceToolDefinitions}
  from '../src/workspace-tools.mjs';
 import {createMemoryWorkspaceJournal} from '../src/workspace-target-journal.mjs';
@@ -80,4 +82,30 @@ test('sensitive, non-editable and mismatched elements are refused before effect'
  await assert.rejects(m.api.execute('workspace_window_type',{...inp,elementToken:'s00000002:2'}),
    /WORKSPACE_FRESH_SNAPSHOT_REQUIRED/);
  assert.equal(m.calls.filter(x=>x.name==='type_text').length,0);
+});
+
+test('owner proxy carries exact scoped type with outer receipt, no Session-0 fallback',async()=>{
+ const requests=[];
+ const proxy=createOwnerWorkspaceProxy({config:{ownerWorkspaceDelegation:{
+  enabled:true,port:48838,authFile:path.join(process.cwd(),'owner-qa-key')}},
+  readFileImpl:async()=> 'a'.repeat(64),
+  fetchImpl:async(_url,init)=>{
+   requests.push(JSON.parse(init.body));
+   return {status:200,text:async()=>JSON.stringify({jsonrpc:'2.0',id:1,
+    result:{structuredContent:{ok:true,mode:'BACKGROUND_TEXT_TARGETED'}}})};
+  }});
+ await assert.rejects(proxy.execute('workspace_window_type',inp,{}),
+  /WORKSPACE_OWNER_REQUEST_ID_REQUIRED/);
+ const r=await proxy.execute('workspace_window_type',inp,
+  {requestId:'authenticated-outer-qa-20261030'});
+ assert.equal(r.handled,true);
+ assert.equal(r.value.mode,'BACKGROUND_TEXT_TARGETED');
+ assert.equal(requests.length,1);
+ const sent=requests[0].params.arguments;
+ assert.equal(sent.pid,333);
+ assert.equal(sent.windowId,444);
+ assert.equal(sent.elementToken,token);
+ assert.equal(sent.text,inp.text);
+ assert.match(sent.requestId,/^owrk-[0-9a-f]{48}$/);
+ assert.notEqual(sent.requestId,inp.requestId);
 });
