@@ -36,9 +36,9 @@ $destination=AssertLocalFile $OutputPdfPath $false
 if(@(Get-CimInstance Win32_Process -Filter "name='WINWORD.EXE'" -ErrorAction SilentlyContinue).Count){
  throw 'WORKSPACE_WORD_EXISTING_INSTANCE_KEEP'
 }
-$part=Join-Path ([IO.Path]::GetDirectoryName($destination)) ('.rc-word-'+
-  ([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($RequestId)) |
-    ForEach-Object ToString x2 |Join-String).Substring(0,24)+'.tmp.pdf')
+$key=[Convert]::ToHexString([Security.Cryptography.SHA256]::HashData(
+ [Text.Encoding]::UTF8.GetBytes($RequestId))).ToLowerInvariant().Substring(0,24)
+$part=Join-Path ([IO.Path]::GetDirectoryName($destination)) ('.rc-word-'+$key+'.tmp.pdf')
 if(Test-Path -LiteralPath $part){throw 'WORKSPACE_WORD_EFFECT_RECONCILIATION_REQUIRED'}
 $word=$null;$doc=$null;$started=Get-Date
 $primaryError=$null
