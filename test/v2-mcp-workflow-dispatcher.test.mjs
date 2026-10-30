@@ -9,6 +9,7 @@ import { V2GrantRegistry } from '../src/v2-grant-registry.mjs';
 import { v2ActionDigest } from '../src/v2-caller-assertion.mjs';
 import { createV2JwksTokenVerifier } from '../src/v2-oauth-jwks.mjs';
 import { createV2CandidateMcpDispatcher } from '../src/v2-mcp-workflow-dispatcher.mjs';
+import { createV2CandidateHttpIngress } from '../src/v2-mcp-http-ingress.mjs';
 
 const NOW=1780000000000;
 const issuer='https://idp.example.test';
@@ -476,4 +477,66 @@ test('v2_profile identity unavailable fails closed and cannot become a write act
   assert.throws(()=>f.mk({loadAuthenticatedProfile:true}),
     {code:'V2_MCP_PROFILE_RESOLVER_REQUIRED'});
  }finally{f.close();}
+});
+
+test('mTLS profile without chat metadata reaches real JWT verifier but cannot execute workflows',async()=>{
+ const f=fixture();
+ const sessions=[];
+ let profileLookups=0,nativeLookups=0;
+ const dispatcher=f.mk({
+  loadAuthenticatedProfile:async({subject,principalId})=>{
+    profileLookups++;
+    assert.equal(subject,'oauth-principal');
+    assert.equal(principalId,'user');
+    return {id:'prf_stable_user',name:'Owner profile'};
+  },
+  resolveTrustedInvocation:async()=>{nativeLookups++;throw Error('must not issue owner assertion');}
+ });
+ const ingress=createV2CandidateHttpIngress({
+  resource,authorizationServers:[issuer],
+  attestTransport:async()=>({
+    authenticated:true,peerType:'openai-chatgpt-mtls',
+    sessionSource:'openai/session'
+  }),
+  dispatcherFactory:async context=>{
+    sessions.push(context.sessionHandle);
+    return dispatcher;
+  }
+ });
+ const server=ingress.createUnboundServer();
+ try{
+  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+  const url='http://127.0.0.1:'+server.address().port+'/mcp-v2';
+  const request=async(name,auth)=>{
+    const res=await fetch(url,{method:'POST',
+      headers:{'content-type':'application/json',
+        ...(auth?{authorization:auth}:{})},
+      body:JSON.stringify({
+        jsonrpc:'2.0',id:91,method:'tools/call',
+        params:{name,arguments:name==='v2_profile'?{}:f.input}
+      })
+    });
+    return {status:res.status,data:await res.json()};
+  };
+  const missing=await request('v2_profile');
+  assert.equal(missing.status,200);
+  assert.equal(missing.data.result.isError,true);
+  assert.ok(missing.data.result._meta['mcp/www_authenticate']);
+  const linked=await request('v2_profile','Bearer '+jwt());
+  assert.equal(linked.status,200);
+  assert.equal(linked.data.result.structuredContent.id,'prf_stable_user');
+  const wrong=await request('v2_profile','Bearer '+jwt({sub:'foreign'}));
+  assert.equal(wrong.data.result.isError,true);
+  const operation=await request('v2_workflow_step','Bearer '+jwt());
+  assert.equal(operation.status,403);
+  assert.equal(operation.data.error,'platform_session_required');
+  assert.deepEqual(sessions,['mcp-profile-only','mcp-profile-only','mcp-profile-only']);
+  assert.equal(profileLookups,1);
+  assert.equal(nativeLookups,0);
+  assert.equal(f.effects(),0);
+ }finally{
+  server.closeAllConnections();
+  await new Promise(resolve=>server.close(resolve));
+  f.close();
+ }
 });
