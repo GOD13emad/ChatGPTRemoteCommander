@@ -13,8 +13,15 @@ function readInventory(file){
  if(!info.isFile()||info.isSymbolicLink()||info.nlink!==1||info.size>8*1024*1024||info.size<2)
   fail('V2_PREFLIGHT_FILE_INVALID');
  const data=fs.readFileSync(file,'utf8');
- try{return JSON.parse(data);}
+ let decoded;
+ try{decoded=JSON.parse(data);}
  catch{fail('V2_PREFLIGHT_JSON_INVALID');}
+ // The snapshot producer MUST write JSON.stringify output. Requiring that
+ // byte form makes duplicate JSON member names, ambiguous numeric forms and
+ // post-parse key overwrite an explicit rejection instead of a hidden merge.
+ if(data.trim()!==JSON.stringify(decoded))
+   fail('V2_PREFLIGHT_CANONICAL_JSON_REQUIRED');
+ return decoded;
 }
 export function executeV2MigrationPreflight(argv){
  if(!Array.isArray(argv)||argv.length!==6||

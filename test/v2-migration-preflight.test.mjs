@@ -69,3 +69,15 @@ test('CLI refuses aliasing, missing pin and inconsistent baseline',()=>{
   ]),{code:'V2_MIGRATION_BASELINE_MISMATCH'});
  }finally{f.cleanup();}
 });
+
+test('duplicate JSON keys cannot silently overwrite identity in owner inventory',()=>{
+ const f=fixture();
+ try{
+  const pinned=captureV2MigrationManifest(f.manifest).digest;
+  const text=fs.readFileSync(f.a,'utf8');
+  fs.writeFileSync(f.a,text.replace('{"schema":1,','{"schema":1,"schema":1,'));
+  assert.throws(()=>executeV2MigrationPreflight([
+    '--baseline',f.a,'--proposed',f.b,'--baseline-digest',pinned
+  ]),{code:'V2_PREFLIGHT_CANONICAL_JSON_REQUIRED'});
+ }finally{f.cleanup();}
+});
