@@ -192,3 +192,44 @@ test('different hosts do not share a lease identity', async () => {
   const { v2ResourceLeaseKey } = await import('../src/v2-routing-contract.mjs');
   assert.notEqual(v2ResourceLeaseKey(route()), v2ResourceLeaseKey(route({ hostId: 'mmz-linux' })));
 });
+
+test('any native application window uses the existing grant, resource lease and durable receipt', async () => {
+  const f = fixture();
+  try {
+    const win = route({ target: { kind: 'app-window', id: 'pid.123.handle.44' } });
+    let dispatchedArgs;
+    f.services.execute = async (_route, args) => { dispatchedArgs = args; return { ok: true }; };
+    const first = await executeV2BoundOperation(win, f.services, 'window_click', {elementId:'submit',button:'left'});
+    assert.deepEqual(first, { ok: true });
+    assert.deepEqual(dispatchedArgs, {elementId:'submit',button:'left'});
+    assert.equal(f.leases, 1);
+    await assert.rejects(executeV2BoundOperation(win, f.services, 'window_click', {elementId:'cancel',button:'left'}), /MUTATION_REQUEST_ID_CONFLICT/);
+    assert.equal(f.leases, 2);
+    assert.equal(f.services.receiptStore.status().states.SUCCEEDED, 1);
+  } finally { f.close(); }
+});
+
+test('a mutable GUI payload cannot change while native authorization waits', async () => {
+  const f = fixture();
+  try {
+    const win = route({ target: { kind: 'app-window', id: 'pid.123.handle.44' } });
+    const args = { text: 'approved-text' };
+    f.services.withLease = async (_key, work) => { args.text = 'unapproved-text'; return work(); };
+    await assert.rejects(executeV2BoundOperation(win, f.services, 'window_type', args), {code:'V2_ACTION_CHANGED_DURING_AUTHORIZATION'});
+    assert.equal(f.effects, 0);
+    assert.deepEqual(f.services.receiptStore.status().states, {});
+  } finally { f.close(); }
+});
+
+test('the same guarded admission works for app, browser, desktop and shell targets', async () => {
+  const f = fixture();
+  try {
+    const kinds = ['app-window','browser-target','desktop-seat','host-shell'];
+    for (const [i,kind] of kinds.entries()) {
+      const r = route({operationId:'cross-kind-'+i,target:{kind,id:'native-target-'+i}});
+      const effect = await executeV2BoundOperation(r, f.services, 'generic_action', {kind});
+      assert.equal(effect.success, true);
+    }
+    assert.equal(f.effects, kinds.length);
+  } finally { f.close(); }
+});

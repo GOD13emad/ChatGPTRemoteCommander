@@ -71,3 +71,15 @@ test('tuple encoding resists separator collisions in IDs', () => {
   const b = route({ hostId: 'a', principalId: 'b:c' });
   assert.notEqual(v2OperationKey(a), v2OperationKey(b));
 });
+
+test('arbitrary native application windows are first-class scoped resources', () => {
+  const a = route({ target: { kind: 'app-window', id: 'win.8125.407' } });
+  const b = route({ conversationId: 'chat-b', target: { kind: 'app-window', id: 'win.8125.407' } });
+  const c = route({ target: { kind: 'app-window', id: 'win.8125.408' } });
+  assert.equal(normalizeV2Route(a).target.kind, 'app-window');
+  assert.equal(v2ResourceLeaseKey(a), v2ResourceLeaseKey(b));
+  assert.notEqual(v2OperationKey(a), v2OperationKey(b));
+  assert.notEqual(v2ResourceLeaseKey(a), v2ResourceLeaseKey(c));
+  assert.notEqual(v2ResourceLeaseKey(a), v2ResourceLeaseKey(route({target:{kind:'browser-target',id:'win.8125.407'}})));
+  assert.throws(() => normalizeV2Route(route({target:{kind:'any-system',id:'all'}})), {code:'V2_ROUTE_INVALID_TARGET'});
+});

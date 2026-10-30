@@ -5,7 +5,9 @@ export const V2_ROUTE_CONTRACT_VERSION = 1;
 
 const ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const FIELDS = Object.freeze(['hostId', 'principalId', 'profileId', 'conversationId', 'operationId']);
-const KINDS = new Set(['host-shell', 'workflow-root', 'desktop-seat', 'browser-target']);
+// App windows are opaque, owner-observed targets (pid/handle/session resolved by
+// the native worker); never infer an identity from an application name or URL.
+const KINDS = new Set(['host-shell', 'workflow-root', 'desktop-seat', 'browser-target', 'app-window']);
 
 function fail(code) {
   throw Object.assign(new Error(code), { code });
