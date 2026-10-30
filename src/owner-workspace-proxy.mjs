@@ -59,7 +59,7 @@ export function createOwnerWorkspaceProxy({config,fetchImpl=globalThis.fetch,rea
     'WORKSPACE_OWNER_SESSION_REQUIRED','WORKSPACE_TARGET_INVALID',
     'WORKSPACE_TARGET_RECONCILIATION_REQUIRED']);
    const message=body.error?.message;
-   if(Number.isInteger(body.error?.code)&&allow.has(message))throw fail(message);
+   if(body.error?.code===-32012&&allow.has(message))throw fail(message);
    throw fail('WORKSPACE_OWNER_REJECTED');
   }
   if(!body.result||body.result.isError===true)throw fail('WORKSPACE_OWNER_REJECTED');
