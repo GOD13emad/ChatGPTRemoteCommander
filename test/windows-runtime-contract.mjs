@@ -123,6 +123,12 @@ hasAll(handoff, [
   "system-mcp",
   "USER_SESSION_HANDOFF_PASS"
 ], 'handoff-user-session-windows.ps1');
+if (!handoff.includes("HANDOFF_BUSY_STATE_UNVERIFIED") ||
+    !handoff.includes("HANDOFF_BUSY_STATE_INVALID") ||
+    !handoff.includes('return [pscustomobject]@{active=1;leases=1}') ||
+    handoff.includes('return [pscustomobject]@{active=0;leases=0}')) {
+  throw new Error('Owner handoff must fail closed when Commander status is missing or invalid');
+}
 
 const bootDisable = read('disable-boot-recovery.ps1');
 hasAll(bootDisable, [
