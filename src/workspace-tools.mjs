@@ -26,7 +26,7 @@ export function isOwnerBackgroundWorkspaceTool(name){
 }
 
 export function workspaceMutationEffectArgs(name,args,requestId){
- if(name!=='workspace_window_click'&&name!=='workspace_browser_click')return args;
+ if(!['workspace_window_click','workspace_window_type','workspace_browser_click'].includes(name))return args;
  if(typeof requestId!=='string'||!REQUEST.test(requestId))
   throw fail('WORKSPACE_BINDING_INVALID');
  return {...args,requestId};
@@ -128,6 +128,12 @@ export const workspaceToolDefinitions=[
      workspaceSeat:{type:'string',enum:['a','b']},elementToken:{type:'string',pattern:'^s[0-9a-f]{8}:[0-9]+$'},
      requestId:{type:'string',minLength:8,maxLength:128},explicitUserAuthorization:{type:'string',minLength:12,maxLength:512}},
    required:['pid','windowId','elementToken','requestId','explicitUserAuthorization'],additionalProperties:false},annotations:mutating},
+ {name:'workspace_window_type',description:'Type supplied non-sensitive text into one verified editable element of an exact owner window, background only. Unknown effect is journaled; never replay automatically.',inputSchema:{
+   type:'object',properties:{pid:{type:'integer',minimum:1},windowId:{type:'integer',minimum:1},
+     workspaceSeat:{type:'string',enum:['a','b']},elementToken:{type:'string',pattern:'^s[0-9a-f]{8}:[0-9]+$'},
+     text:{type:'string',minLength:1,maxLength:2048},requestId:{type:'string',minLength:8,maxLength:128},
+     explicitUserAuthorization:{type:'string',minLength:12,maxLength:512}},
+   required:['pid','windowId','elementToken','text','requestId','explicitUserAuthorization'],additionalProperties:false},annotations:mutating},
  {name:'workspace_browser_inspect',description:'Inspect one exactly-identified, already logged-in Chromium browser window using the owning user Cua Driver. Does not export cookies or passwords.',inputSchema:{
    type:'object',properties:{pid:{type:'integer',minimum:1},windowId:{type:'integer',minimum:1}},
    required:['pid','windowId'],additionalProperties:false},annotations:readOnly},
@@ -186,7 +192,21 @@ export function createWorkspaceController({callDriver=defaultCuaCall,previewDriv
      include_screenshot:false,tree_format:'elements',max_elements:Math.min(input.maxElements??50,150),timeout_ms:4000,
      session});
    const sid=v?.snapshot_id??v?.snapshotId;
-   if(typeof sid==='string'&&/^s[0-9a-f]{8}$/.test(sid))snapshots.set(id,{id:sid,at:now()});
+   if(typeof sid==='string'&&/^s[0-9a-f]{8}$/.test(sid)){
+    // Cache only the short-lived IDs of safely identified editable elements.
+    // Never retain their values or raw text in the journal or snapshot cache.
+    const editable=new Set();
+    for(const el of Array.isArray(v?.elements)?v.elements:[]){
+     const token=el?.element_token??el?.elementToken,role=String(el?.role??'');
+     const label=String(el?.label??el?.name??'');
+     if(typeof token==='string'&&TOKEN.test(token)&&token.startsWith(sid+':')&&
+        /edit|textbox|text field|text area|search|combo ?box/i.test(role)&&
+        !/password|passcode|pin|secret|token|credential|otp|2fa/i.test(label)&&
+        el?.is_password!==true&&el?.isPassword!==true&&el?.sensitive!==true)
+      editable.add(token);
+    }
+    snapshots.set(id,{id:sid,at:now(),editable});
+   }
    return {ok:true,mode:'READ_ONLY',focusChanged:false,targetUncertain:pending.has(id)||!!await journal.pending(id),
      snapshotId:sid??null,value:v};
   }
@@ -279,30 +299,38 @@ export function createWorkspaceController({callDriver=defaultCuaCall,previewDriv
    pending.delete(key);return {ok:true,target:key,determination:input.determination,replayed:false,
      noGlobalInputLock:true,otherTargetsUnaffected:true};
   }
-  if(name!=='workspace_window_click')throw fail('WORKSPACE_TOOL_UNKNOWN');
+  if(name!=='workspace_window_click'&&name!=='workspace_window_type')throw fail('WORKSPACE_TOOL_UNKNOWN');
   if(typeof input.explicitUserAuthorization!=='string'||input.explicitUserAuthorization.trim().length<12)
     throw fail('WORKSPACE_EXPLICIT_AUTHORIZATION_REQUIRED');
   if(!TOKEN.test(input.elementToken)||!REQUEST.test(input.requestId))throw fail('WORKSPACE_BINDING_INVALID');
+  if(name==='workspace_window_type'&&
+   (typeof input.text!=='string'||input.text.length<1||input.text.length>2048||
+    input.text.includes('\0')))throw fail('WORKSPACE_TEXT_INVALID');
   if(seen.has(input.requestId))throw fail('WORKSPACE_DUPLICATE_REQUEST_NO_REPLAY');
   if(pending.has(id)||await journal.pending(id))throw fail('WORKSPACE_TARGET_RECONCILIATION_REQUIRED');
   if(busy.has(id))throw fail('WORKSPACE_TARGET_BUSY');
   const shot=snapshots.get(id);
   if(!shot||now()-shot.at>60000||!input.elementToken.startsWith(shot.id+':'))
     throw fail('WORKSPACE_FRESH_SNAPSHOT_REQUIRED');
+  if(name==='workspace_window_type'&&!shot.editable?.has(input.elementToken))
+    throw fail('WORKSPACE_TEXT_TARGET_UNVERIFIED');
   seen.add(input.requestId);busy.add(id);snapshots.delete(id);
   let handle=null;
   try{
-   handle=await journal.begin(id,'workspace_window_click',input.requestId);
-   const effect=await call('click',{target:{kind:'window',pid:input.pid,window_id:input.windowId},
-     element_token:input.elementToken,delivery_mode:'background',
-     session:'rcws-'+input.pid+'-'+input.windowId});
+   handle=await journal.begin(id,name,input.requestId);
+   const target={kind:'window',pid:input.pid,window_id:input.windowId};
+   const effect=name==='workspace_window_type'?
+    await call('type_text',{target,element_token:input.elementToken,text:input.text,
+     delivery_mode:'background',session}):
+    await call('click',{target,element_token:input.elementToken,
+     delivery_mode:'background',session});
    const refused=effect?.status==='refused'&&typeof effect?.refusal?.code==='string';
-   if(refused){await journal.resolve(id,handle);return {ok:false,mode:'BACKGROUND_TARGETED',status:'REFUSED_NO_EFFECT',
+   if(refused){await journal.resolve(id,handle);return {ok:false,mode:name==='workspace_window_type'?'BACKGROUND_TEXT_TARGETED':'BACKGROUND_TARGETED',status:'REFUSED_NO_EFFECT',
      code:effect.refusal.code,scope:'TARGET_ONLY',replayed:false,
      next:effect.refusal.code==='stale_element_token'?'REFRESH_SNAPSHOT':'SELECT_NONFOREGROUND_ALTERNATIVE'};}
    const decision=classifyWorkspaceOutcome({effect:effect?.effect,
       refusedCode:effect?.code??effect?.error,hasFreshObservation:effect?.verified===true});
-   if(decision.status==='RECONCILE_TARGET'&&effect?.effect==='unverifiable'){
+   if(name==='workspace_window_click'&&decision.status==='RECONCILE_TARGET'&&effect?.effect==='unverifiable'){
     // Independent exact-window read. Confirms target disappearance only,
     // not the higher-level user goal; never repeats the uncertain action.
     try{
@@ -320,7 +348,7 @@ export function createWorkspaceController({callDriver=defaultCuaCall,previewDriv
    }
    if(decision.status==='RECONCILE_TARGET')pending.set(id,{requestId:input.requestId,at:now()});
    else await journal.resolve(id,handle);
-   return {ok:true,mode:'BACKGROUND_TARGETED',physicalInputTouched:false,focusChanged:false,
+   return {ok:true,mode:name==='workspace_window_type'?'BACKGROUND_TEXT_TARGETED':'BACKGROUND_TARGETED',physicalInputTouched:false,focusChanged:false,
      target:id,decision,driverEffect:effect?.effect??'unknown',verified:effect?.verified===true};
   }catch(error){
    if(!handle)throw error;
@@ -346,8 +374,13 @@ export function assertWorkspaceToolPolicy(config,name,args={}){
   if(power.guiControl?.enabled!==true)throw fail('WORKSPACE_GUI_CONTROL_DISABLED');
   if(name==='workspace_window_preview'&&power.guiControl?.allowScreenshot!==true)
     throw fail('WORKSPACE_GUI_PREVIEW_POLICY_DENIED');
-  if(['workspace_window_click','workspace_target_reconcile'].includes(name)&&
-    power.guiControl?.allowMouse!==true)throw fail('WORKSPACE_GUI_INPUT_POLICY_DENIED');
+  if(name==='workspace_window_click'&&power.guiControl?.allowMouse!==true)
+    throw fail('WORKSPACE_GUI_INPUT_POLICY_DENIED');
+  if(name==='workspace_window_type'&&power.guiControl?.allowKeyboard!==true)
+    throw fail('WORKSPACE_GUI_KEYBOARD_POLICY_DENIED');
+  if(name==='workspace_target_reconcile'&&
+      power.guiControl?.allowMouse!==true&&power.guiControl?.allowKeyboard!==true)
+    throw fail('WORKSPACE_GUI_INPUT_POLICY_DENIED');
  }
 }
 export async function executeWorkspaceTool(ctx,name,args){
