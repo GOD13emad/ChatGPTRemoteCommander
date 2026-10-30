@@ -7,6 +7,7 @@ import path from 'node:path';
 import {WorkflowStore} from '../src/workflow-store.mjs';
 import {V2GrantRegistry} from '../src/v2-grant-registry.mjs';
 import {createV2NativeOwnerAssertionIssuer} from '../src/v2-caller-assertion.mjs';
+import {createV2NativeOwnerSessionBindings} from '../src/v2-native-owner-session-bindings.mjs';
 import {createV2JwksTokenVerifier} from '../src/v2-oauth-jwks.mjs';
 import {createV2CandidateMcpDispatcher} from '../src/v2-mcp-workflow-dispatcher.mjs';
 import {createV2CandidateHttpIngress} from '../src/v2-mcp-http-ingress.mjs';
@@ -66,11 +67,25 @@ test('full isolated HTTP → JWT/JWKS → owner-issued attestation → SQLite gr
   request:async()=>new Response(JSON.stringify({keys:[jwk]}),{status:200})
  });
  let currentSession='chat-a',authenticated=true,effects=0;
+ // Only the native owner accepts a platform-authenticated session proof;
+ // ordinary RPC metadata cannot add, rebind or revoke these entries.
+ const bindings=createV2NativeOwnerSessionBindings({
+  attestPlatformSession:async proof=>
+    proof?.verifiedByTransport===true?proof.sessionHandle:null,
+  resolveOwnerRoute:async handle=>entries.get(handle)?.route,
+  observedNativeSession:async()=> 'owner-seat',
+  authorizeBinding:async({sessionHandle,route:r})=>
+    sessionHandle===r.conversationId,
+  authorizeRevocation:async({adminProof})=>adminProof==='native-admin',
+  now:()=>NOW,ttlMs:60000
+ });
+ for(const chat of entries.keys())
+  await bindings.bindTrusted({verifiedByTransport:true,sessionHandle:chat});
  let ownerIssueCount=0;
  const ownerIssue=createV2NativeOwnerAssertionIssuer({
   issuer:'owner-issuer',audience:'commander-v2',keyId:'owner',
   privateKey:native.privateKey,
-  resolveNativeRoute:async(handle)=>entries.get(handle)?.route,
+  resolveNativeRoute:async(handle)=>bindings.resolveNativeRoute(handle),
   observedNativeSession:async()=> 'owner-seat',
   authorizeIssue:async({route:r,tool})=>{
    ownerIssueCount++;
@@ -170,6 +185,12 @@ test('full isolated HTTP → JWT/JWKS → owner-issued attestation → SQLite gr
   const revoked=await send(toolArgs(entries.get('chat-b').args));
   assert.equal(revoked.body.result.isError,true);
   assert.equal(effects,2);
+  assert.equal(await bindings.revokeTrusted({
+   sessionHandle:'chat-b',adminProof:'native-admin'
+  }),true);
+  const unbound=await send(toolArgs(entries.get('chat-b').args));
+  assert.equal(unbound.body.result.isError,true);
+  assert.equal(effects,2);
 
   currentSession='chat-a';
   const stillA=await send(toolArgs(entries.get('chat-a').args));
@@ -183,6 +204,6 @@ test('full isolated HTTP → JWT/JWKS → owner-issued attestation → SQLite gr
  }finally{
   server.closeAllConnections();
   await new Promise(resolve=>server.close(resolve));
-  grants.close();store.close();fs.rmSync(dir,{recursive:true,force:true});
+  bindings.close();grants.close();store.close();fs.rmSync(dir,{recursive:true,force:true});
  }
 });
