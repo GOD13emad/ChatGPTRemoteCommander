@@ -8,8 +8,10 @@ import path from 'node:path';
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
 import {chooseWorkspaceRoute,classifyWorkspaceOutcome} from './workspace-routing.mjs';
-import {chooseAgentOSProvider} from './agentos-provider-router.mjs';
-import {nativeWindowsUIACall} from './agentos-native-win.mjs';
+const defaultNativeUIACall=async (...args)=>{
+ const {nativeWindowsUIACall}=await import('./agentos-native-win.mjs');
+ return nativeWindowsUIACall(...args);
+};
 import {createWorkspaceTargetJournal} from './workspace-target-journal.mjs';
 const execFileAsync=promisify(execFile);
 const targetId=(pid,windowId)=>pid+':'+windowId;
@@ -146,7 +148,7 @@ export const workspaceToolDefinitions=[
      determination:{type:'string',enum:['EFFECT_OBSERVED','NO_EFFECT_OBSERVED']}},
    required:['pid','windowId','determination'],additionalProperties:false},annotations:mutating}
 ];
-export function createWorkspaceController({callDriver=defaultCuaCall,nativeCall=nativeWindowsUIACall,previewDriver=defaultCuaPreview,ownerSession=defaultOwnerSession,
+export function createWorkspaceController({callDriver=defaultCuaCall,nativeCall=defaultNativeUIACall,previewDriver=defaultCuaPreview,ownerSession=defaultOwnerSession,
   platform=process.platform,env=process.env,now=Date.now,journal=createWorkspaceTargetJournal()}={}){
  const pending=new Map(),seen=new Set(),busy=new Set(),snapshots=new Map(),browserSnapshots=new Map(),nativeSnapshots=new Map();
  const needsOwner=async()=>{if(!await ownerSession({platform,env}))throw fail('WORKSPACE_OWNER_SESSION_REQUIRED');};
@@ -165,6 +167,7 @@ export function createWorkspaceController({callDriver=defaultCuaCall,nativeCall=
    if(platform==='win32'){
     try{await fs.access(new URL('../tools/native-windows-uia.ps1',import.meta.url));nativeAvailable=true;}catch{}
    }
+   const {chooseAgentOSProvider}=await import('./agentos-provider-router.mjs');
    return chooseAgentOSProvider({target:input.target,platform,ownerSession:owner,
     capabilities:{windowsUIA:nativeAvailable,linuxATSPI:platform==='linux'&&!!env.XDG_RUNTIME_DIR,
       commanderOwnedBrowser:true,commanderWorkflow:true},
