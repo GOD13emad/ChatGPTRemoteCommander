@@ -173,8 +173,11 @@ export function createWorkspaceController({callDriver=defaultCuaCall,previewDriv
      snapshotId:sid??null,value:v};
   }
   if(name==='workspace_browser_inspect'){
+   const session='rcws-'+input.pid+'-'+input.windowId;
+   // A previously ended CUA lifecycle name cannot be silently reused.
+   await call('start_session',{session});
    const v=await call('get_browser_state',{pid:input.pid,window_id:input.windowId,
-     session:'rcws-'+input.pid+'-'+input.windowId});
+     session});
    if(v?.status==='refused'||v?.refusal?.code)
     return {ok:false,mode:'BACKGROUND_READ_ONLY',scope:'TARGET_ONLY',
       code:v?.refusal?.code??'BROWSER_SETUP_REQUIRED',focusChanged:false,
@@ -188,9 +191,11 @@ export function createWorkspaceController({callDriver=defaultCuaCall,previewDriv
    if(typeof input.explicitUserAuthorization!=='string'||input.explicitUserAuthorization.trim().length<12)
      throw fail('WORKSPACE_EXPLICIT_AUTHORIZATION_REQUIRED');
    try{
+     const session='rcws-'+input.pid+'-'+input.windowId;
+     await call('start_session',{session});
      const v=await call('browser_prepare',{pid:input.pid,window_id:input.windowId,
        strategy:{kind:'existing_profile'},delivery_mode:'background',
-       session:'rcws-'+input.pid+'-'+input.windowId});
+       session});
      if(v?.status==='refused'||v?.refusal?.code)
       return {ok:false,status:'PROFILE_ATTACH_NOT_READY',scope:'TARGET_ONLY',
        errorCode:v?.refusal?.code??'WORKSPACE_BROWSER_ATTACH_REFUSED',focusChanged:false};
@@ -205,7 +210,7 @@ export function createWorkspaceController({callDriver=defaultCuaCall,previewDriv
   if(name==='workspace_browser_click'){
    if(typeof input.explicitUserAuthorization!=='string'||input.explicitUserAuthorization.trim().length<12)
      throw fail('WORKSPACE_EXPLICIT_AUTHORIZATION_REQUIRED');
-   if(!REQUEST.test(input.requestId)||typeof input.ref!=='string'||!/^p[A-Za-z0-9:_-]{2,127}$/.test(input.ref))
+   if(typeof input.requestId!=='string'||!REQUEST.test(input.requestId)||typeof input.ref!=='string'||!/^p[A-Za-z0-9:_-]{2,127}$/.test(input.ref))
      throw fail('WORKSPACE_BINDING_INVALID');
    const key='browser:'+id;
    if(seen.has(input.requestId))throw fail('WORKSPACE_DUPLICATE_REQUEST_NO_REPLAY');
@@ -261,7 +266,7 @@ export function createWorkspaceController({callDriver=defaultCuaCall,previewDriv
   if(name!=='workspace_window_click')throw fail('WORKSPACE_TOOL_UNKNOWN');
   if(typeof input.explicitUserAuthorization!=='string'||input.explicitUserAuthorization.trim().length<12)
     throw fail('WORKSPACE_EXPLICIT_AUTHORIZATION_REQUIRED');
-  if(!TOKEN.test(input.elementToken)||!REQUEST.test(input.requestId))throw fail('WORKSPACE_BINDING_INVALID');
+  if(!TOKEN.test(input.elementToken)||typeof input.requestId!=='string'||!REQUEST.test(input.requestId))throw fail('WORKSPACE_BINDING_INVALID');
   if(seen.has(input.requestId))throw fail('WORKSPACE_DUPLICATE_REQUEST_NO_REPLAY');
   if(pending.has(id)||await journal.pending(id))throw fail('WORKSPACE_TARGET_RECONCILIATION_REQUIRED');
   if(busy.has(id))throw fail('WORKSPACE_TARGET_BUSY');
