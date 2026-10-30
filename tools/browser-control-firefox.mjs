@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 import fs from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
+import { createHash } from 'node:crypto';
 import net from 'node:net';
 import { spawn } from 'node:child_process';
 import { createInterface } from 'node:readline';
@@ -40,9 +42,24 @@ function detectFirefox(explicit){
  for(const p of [which('firefox'),'/usr/bin/firefox','/snap/bin/firefox'])if(p&&exists(p))return path.resolve(p);
  return null;
 }
+// User-local portable adapter is installer-verified and pinned here as a
+// fallback only; never run an arbitrary executable from a writable directory.
+const PINNED_GECKODRIVER_SHA256='f831b7e61454804e8a307edd951bf8a5f373efe3f718e75454a6485a51f6e39f';
+function verifiedPortableGecko(){
+ if(process.platform!=='linux')return null;
+ const candidate=path.join(os.homedir(),'.local','share','chatgpt-remote-commander',
+  'adapters','geckodriver','geckodriver');
+ try{
+  const stat=fs.lstatSync(candidate);
+  if(!stat.isFile()||stat.isSymbolicLink()||(stat.mode&0o077)!==0||
+     (typeof process.getuid==='function'&&stat.uid!==process.getuid()))return null;
+  const digest=createHash('sha256').update(fs.readFileSync(candidate)).digest('hex');
+  return digest===PINNED_GECKODRIVER_SHA256?candidate:null;
+ }catch{return null;}
+}
 function detectGecko(){
  for(const p of [which('geckodriver'),'/snap/bin/geckodriver','/usr/bin/geckodriver'])if(p&&exists(p))return path.resolve(p);
- return null;
+ return verifiedPortableGecko();
 }
 async function freePort(){
  const s=net.createServer();
