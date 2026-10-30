@@ -1,5 +1,20 @@
 # Project Brain — ChatGPT Remote Commander
 
+## V2-R0-CENSUS-20261030 — observed host metadata, no credential reads
+
+**Source:** V2 candidate a192e9cd9bc35dc6497cd79d15a6b91eeafe6238 adds tools/v2-enrollment-census.mjs and negative fixtures. Exact-source disposable Windows worktree operation c36623b3-b5e7-4a7f-b3c5-2b121d6d88d7 passed V2 **176 PASS / 2 SKIP / 0 FAIL** and security-audit PASS. Live metadata-only R0 tool on Emad PC: 3 YAML profiles, 4 DPAPI files, CurrentUser matches 2, LocalMachine matches 2, one dual-scope, no missing/orphan/ambiguous credential reference. Structural match is not proof of key usability or authentic ChatGPT identity.
+
+**Independent Windows R0 read-only live census, 2026-10-30:** Only enumerated filenames under each actual native user's AppData/Roaming/tunnel-client/*.yaml and AppData/Local/ChatGPTRemoteCommander/credentials/*.dpapi, correlated in host process without printing filenames or reading credentials or YAML:
+- Emad-PC-Ultimate: 3 profiles, 4 DPAPI files (CurrentUser 2, LocalMachine 2, one dual-scope), 3 tunnel-client processes; none lacking both credential scopes.
+- HPC-159-17: 2 profiles, 4 DPAPI files (CurrentUser 2, LocalMachine 2, both dual-scope), 2 tunnel-client processes; none lacking credentials.
+- HPC-154-66: 2 profiles, 2 DPAPI files (CurrentUser 2, LocalMachine 0), 2 tunnel-client processes; none lacking credentials.
+- Total for three reachable Windows hosts: **7 YAML profiles / 10 encrypted DPAPI files / 7 observed tunnel-client processes**. Extra DPAPI files are separate CurrentUser/LocalMachine scopes, not proof of an obsolete copy; preserve all. Counts do not establish ability to decrypt keys, correct tunnel ID, owner authorization or process mapping after restart.
+- aliemad-Labtop Linux and MMZ-Labtop Linux: both transport routes unavailable during this census. MMZ was reported powered off. Linux per-host results PENDING, not PASS.
+
+**Decision:** Preserve all observed profiles and encrypted credential references under their original owner/OS permission boundary; no key export, rotation, consolidation, deletion or service restart. The census helper explicitly reports credentialUsability=UNVERIFIED, chatIdentity=UNVERIFIED and safeForAutomaticMigration=false regardless of structural match. SYSTEM is not implicitly authorized to decrypt the owner's CurrentUser scope.
+
+**Next:** Finish Linux inventory when reachable, map all per-profile stable IDs locally without publishing secrets, verify DPAPI usability under rightful owner, stage R1 manifest and real R2 OAuth/two-chat proof, then R8 migration and R9 per-host canary. Keep PR Draft and V1/current installs unchanged. Notion remains NOTION_SYNC_PENDING due workspace free block limit.
+
 ## V2-ARCH-PRESERVE-ROADMAP-20261030 — accepted target, runtime gates OPEN
 
 The owner's 2026-10-30 decision is recorded in the canonical [COMMANDER_ARCHITECTURE.md](COMMANDER_ARCHITECTURE.md), sections 9–10. This is the single **product-level** target and R0–R9 roadmap. One unified Commander per host, full cross-platform GUI with arbitrary application windows, Browser Commander/CEF, CoS-inspired Workspace/Workers/Compact-Resume, optional Codex-Web/context adapter, multi-account/chat/OS-seat RBAC and Control Center are acceptance targets; neither source UI is already completely copied. **Preserve current Tunnel ID, Runtime API Key references, per-account/profiles, OS credential ownership, supervisor, Browser-owned profiles, Brain/workflow/receipts and live routes from V1/current installation into V2.** Current one-tunnel-per-enrollment must remain working; shared multi-chat tunnel is optional after real identity and grants. No secrets are to be exported. New provider login is REAUTH_REQUIRED, not assumed preserved.
