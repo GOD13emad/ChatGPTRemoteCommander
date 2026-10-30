@@ -56,6 +56,11 @@ if (!process.env.REMOTE_COMMANDER_CONFIG) {
 }
 const configRaw = await readFile(configPath, 'utf8');
 const configSha256 = createHash('sha256').update(configRaw).digest('hex');
+// Hash the actual server source file read via this module's import.meta.url at
+// startup. This is file-on-disk provenance, NOT proof that every loaded module
+// or a signed release matches the same hash.
+const serverEntrypointSha256 = createHash('sha256')
+  .update(await readFile(fileURLToPath(import.meta.url))).digest('hex');
 const config = JSON.parse(configRaw);
 assertLocalTransport(config);
 // Optional privacy-safe local display; no new permissions or runtime authority.
@@ -320,6 +325,10 @@ if (config.durableWorkflows?.enabled === true) {
 const operatorTools = createOperatorCore({
   config, platform:process.platform, toolNames:()=>TOOLS.map(item=>item.name),
   readWorkflow:async()=>workflowTools?workflowTools.execute('workflow_status',{}):{enabled:false,runnerConfigured:false},
+  readProvenance:async()=>({
+    entrypointSha256:serverEntrypointSha256,configSha256,
+    declaredVersion:VERSION,nodeVersion:process.version
+  }),
   readBrowser:BROWSER_ENABLED?()=>executeBrowserTool(ctx,'browser_status',{}):undefined,
   readGui:GUI_ENABLED?()=>executeGuiTool(ctx,'gui_status',{}):undefined,
   advance:workflowTools?(runId,requestId)=>workflowTools.execute('workflow_run_tick',{runId,requestId}):undefined
