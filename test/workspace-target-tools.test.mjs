@@ -5,12 +5,12 @@ import {workspaceMutationEffectArgs,isOwnerBackgroundWorkspaceTool,createWorkspa
 import {createMemoryWorkspaceJournal} from '../src/workspace-target-journal.mjs';
 import {createWorkspaceTargetTools,workspaceTargetDefinitions,workspaceOwnerRequestContext} from '../src/workspace-target-tools.mjs';
 
-function mock({windows=[{processId:333,handle:'444',title:'Science - Mozilla Firefox',wmClass:'firefox_firefox',focused:true}],allowInput=false}={}){
+function mock({windows=[{processId:333,handle:'444',title:'Science - Mozilla Firefox',wmClass:'firefox_firefox',focused:true}],allowInput=false,screens=[]}={}){
  const calls=[];
  const gui=async(name,args)=>{
   calls.push({name,args});
   switch(name){
-   case 'gui_status':return {ok:true,available:true};
+   case 'gui_status':return {ok:true,available:true,screens};
    case 'gui_session_begin':return {ok:true,lease:'private-lease',mode:args.mode};
    case 'gui_list_windows':return {ok:true,windows};
    case 'gui_session_end':return {ok:true};
@@ -251,4 +251,19 @@ test('private seat proves target disappearance from its own inventory; an existi
  await assert.rejects(present.controller.execute('workspace_target_reconcile',input),
   /WORKSPACE_TARGET_GONE_NOT_PROVEN/);
  assert.ok(await present.journal.pending(target));
+});
+
+
+test('multi-monitor Wayland Firefox advertises semantic alternative without weakening coordinate guard',async()=>{
+ const m=mock({screens:[{index:0},{index:1}]});
+ const v=await m.api.execute('workspace_target_list',{application:'firefox'});
+ assert.equal(v.windows.length,1);
+ if(process.platform==='linux'){
+  assert.equal(v.windows[0].coordinateTargetVerified,false);
+  assert.equal(v.windows[0].recommendedNonCoordinateTool,'workspace_accessibility_open');
+ }
+ await assert.rejects(m.api.execute('workspace_target_open',{processId:333,handle:'444',
+  mode:'takeover',explicitUserAuthorization:'Owner authorizes test window only'}),
+ /TARGET_MONITOR_UNVERIFIED/);
+ assert.equal(m.calls.some(x=>x.name==='gui_mouse_click'||x.name==='gui_type_text'),false);
 });
