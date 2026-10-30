@@ -26,7 +26,7 @@ export function isOwnerBackgroundWorkspaceTool(name){
 }
 
 export function workspaceMutationEffectArgs(name,args,requestId){
- if(!['workspace_window_click','workspace_window_type','workspace_browser_click'].includes(name))return args;
+ if(!['workspace_window_click','workspace_window_type','workspace_word_render','workspace_browser_click'].includes(name))return args;
  if(typeof requestId!=='string'||!REQUEST.test(requestId))
   throw fail('WORKSPACE_BINDING_INVALID');
  return {...args,requestId};
@@ -134,6 +134,10 @@ export const workspaceToolDefinitions=[
      text:{type:'string',minLength:1,maxLength:2048},requestId:{type:'string',minLength:8,maxLength:128},
      explicitUserAuthorization:{type:'string',minLength:12,maxLength:512}},
    required:['pid','windowId','elementToken','text','requestId','explicitUserAuthorization'],additionalProperties:false},annotations:mutating},
+ {name:'workspace_word_render',description:'Render a local DOCX to a new PDF using Microsoft Word in the authenticated interactive owner session. No SYSTEM/Session 0 fallback, macros or overwrite.',inputSchema:{
+    type:'object',properties:{sourcePath:{type:'string',minLength:6,maxLength:2048},outputPdfPath:{type:'string',minLength:6,maxLength:2048},
+      requestId:{type:'string',minLength:8,maxLength:128},explicitUserAuthorization:{type:'string',minLength:12,maxLength:512}},
+    required:['sourcePath','outputPdfPath','requestId','explicitUserAuthorization'],additionalProperties:false},annotations:mutating},
  {name:'workspace_browser_inspect',description:'Inspect one exactly-identified, already logged-in Chromium browser window using the owning user Cua Driver. Does not export cookies or passwords.',inputSchema:{
    type:'object',properties:{pid:{type:'integer',minimum:1},windowId:{type:'integer',minimum:1}},
    required:['pid','windowId'],additionalProperties:false},annotations:readOnly},
@@ -385,5 +389,6 @@ export function assertWorkspaceToolPolicy(config,name,args={}){
 }
 export async function executeWorkspaceTool(ctx,name,args){
  assertWorkspaceToolPolicy(ctx?.config,name,args);
+ if(name==='workspace_word_render')throw fail('WORKSPACE_OWNER_SESSION_REQUIRED');
  return singleton.execute(name,args);
 }
