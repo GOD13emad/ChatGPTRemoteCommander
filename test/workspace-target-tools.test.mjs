@@ -267,3 +267,24 @@ test('multi-monitor Wayland Firefox advertises semantic alternative without weak
  /TARGET_MONITOR_UNVERIFIED/);
  assert.equal(m.calls.some(x=>x.name==='gui_mouse_click'||x.name==='gui_type_text'),false);
 });
+
+
+test('application-neutral discovery filters multiple owner windows, without browser-specific restrictions',async()=>{
+ const windows=[
+  {processId:10,handle:'100',title:'RC_QA_ZENITY',wmClass:'zenity',appName:'zenity',focused:true},
+  {processId:11,handle:'101',title:'RC_QA_XMESSAGE',wmClass:'xmessage',appName:'xmessage',focused:false},
+  {processId:12,handle:'102',title:'RC_QA_FIREFOX',wmClass:'firefox_firefox',appName:'firefox',focused:false}
+ ];
+ const m=mock({windows,screens:[{index:0},{index:1}]});
+ const all=await m.api.execute('workspace_target_list',{application:'all'});
+ assert.deepEqual(all.windows.map(w=>w.processId),[10,11,12]);
+ for(const [application,pid] of [['zenity',10],['xmessage',11],['firefox',12]]){
+  const r=await m.api.execute('workspace_target_list',{application});
+  assert.deepEqual(r.windows.map(w=>w.processId),[pid]);
+  if(process.platform==='linux'){
+   assert.equal(r.windows[0].coordinateTargetVerified,false);
+   assert.equal(r.windows[0].recommendedNonCoordinateTool,'workspace_accessibility_open');
+  }
+ }
+ assert.equal(m.calls.some(x=>/gui_mouse|gui_type|gui_focus/.test(x.name)),false);
+});
