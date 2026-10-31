@@ -57,3 +57,50 @@ test('mutation idempotency conflicts changed input and fails closed after uncert
     store.close();
   } finally { await fs.rm(root, { recursive: true, force: true }); }
 });
+
+test('native observed effect reconciliation persists across restart and never replays',async()=>{
+ const root=await fs.mkdtemp(path.join(os.tmpdir(),'rc-native-evidence-'));
+ const request={requestId:'effect-1',tool:'workspace_window_invoke',
+   input:{route:'bound',argumentsHash:'opaque'}};
+ const id='a'.repeat(64);
+ let executions=0,store;
+ try{
+  store=new MutationIdempotencyStore({directory:root,scope:'owner-chat'});
+  const original=await store.execute(request,async()=>{
+   executions++;return {status:'UNCERTAIN',targetId:'exact-window',identityDigest:id};
+  });
+  assert.equal(original.status,'UNCERTAIN');
+  await assert.rejects(store.reconcileVerifiedObservation({
+   ...request,expectedIdentityDigest:id,verify:async()=>false
+  }),{mutationIdempotencyCode:'MUTATION_RECONCILIATION_PROOF_REQUIRED'});
+  assert.equal((await store.execute(request,async()=>{executions++;})).status,'UNCERTAIN');
+  await assert.rejects(store.reconcileVerifiedObservation({
+   ...request,expectedIdentityDigest:'b'.repeat(64),verify:async()=>true
+  }),{mutationIdempotencyCode:'MUTATION_RECONCILIATION_STATE_INVALID'});
+  const evidence=await store.reconcileVerifiedObservation({
+   ...request,expectedIdentityDigest:id,verify:async()=>true
+  });
+  assert.equal(evidence.status,'EFFECT_OBSERVED');
+  assert.equal(evidence.userGoalVerified,false);
+  assert.equal(executions,1);
+  store.close();store=null;
+  store=new MutationIdempotencyStore({directory:root,scope:'owner-chat'});
+  assert.deepEqual(await store.execute(request,async()=>{executions++;}),evidence);
+  assert.equal(executions,1);
+  await assert.rejects(store.reconcileVerifiedObservation({
+   ...request,expectedIdentityDigest:id,verify:async()=>true
+  }),{mutationIdempotencyCode:'MUTATION_RECONCILIATION_STATE_INVALID'});
+ }finally{store?.close();await fs.rm(root,{recursive:true,force:true});}
+});
+test('generic lost transport acknowledgement is not upgraded by observation',async()=>{
+ const root=await fs.mkdtemp(path.join(os.tmpdir(),'rc-native-evidence-'));
+ const store=new MutationIdempotencyStore({directory:root,scope:'owner-chat'});
+ const request={requestId:'effect-2',tool:'workspace_window_invoke',input:{x:1}};
+ try{
+  await assert.rejects(store.execute(request,async()=>{throw Error('disconnected');}),/disconnected/);
+  await assert.rejects(store.reconcileVerifiedObservation({
+   ...request,expectedIdentityDigest:'a'.repeat(64),verify:async()=>true
+  }),{mutationIdempotencyCode:'MUTATION_RECONCILIATION_STATE_INVALID'});
+  assert.equal(store.status().states.UNCERTAIN,1);
+ }finally{store.close();await fs.rm(root,{recursive:true,force:true});}
+});

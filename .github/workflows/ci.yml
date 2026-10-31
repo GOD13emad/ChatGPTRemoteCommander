@@ -40,6 +40,22 @@ jobs:
           sudo apt-get install --yes python3-gi gir1.2-gdkpixbuf-2.0 gnome-shell-common
       - name: Validate isolated 0.11 QA manifest and negative version cases
         run: node --test test/isolated-qa-policy.test.mjs
+      - name: Validate independent V2 OAuth and owner-trust bootstrap
+        run: node --test test/v2-authenticated-owner-gateway.test.mjs test/v2-idp-discovery-preflight.test.mjs test/v2-oauth-provider-preflight.test.mjs test/v2-ci-watch.test.mjs
+
+      - name: Verify bounded V2 fleet evidence with offline hosts
+        run: node --test test/v2-fleet-readiness.test.mjs
+      - name: Verify existing owner browser and application session reuse boundaries
+        run: node --test test/v2-owner-session-reuse.test.mjs test/v2-native-window-bridge.test.mjs test/v2-native-owner-session-bindings.test.mjs
+      - name: Verify all native saved-login routes before password fallback
+        run: node --test test/v2-owner-login.test.mjs test/v2-owner-session-reuse.test.mjs
+      - name: Verify safe user-session V2 owner worker heartbeat and isolation
+        run: node --test test/v2-owner-seat-agent.test.mjs
+      - name: Verify native owner-only browser UIA chrome adapter has no credential or action access
+        run: node --test test/v2-owner-uia-chrome.test.mjs
+      - name: Verify native effect reconciliation and durable at-most-once receipts
+        run: node --test test/v2-native-window-bridge.test.mjs test/mutation-idempotency.test.mjs
+
       - name: Check prerelease SemVer and updater fail-closed rules
         run: node --test test/semver-release.test.mjs
       - name: Run qualification check with bounded Windows file concurrency

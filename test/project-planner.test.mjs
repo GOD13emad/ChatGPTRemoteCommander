@@ -20,6 +20,8 @@ if (mode === 'delegate' || mode === 'delegate-tool') console.log(JSON.stringify(
 if (mode === 'bad') console.log('PRIVATE_CONTEXT not JSON');
 if (mode === 'schema') console.log(JSON.stringify({...proposal, authority:true}));
 if (mode === 'array') console.log(JSON.stringify({...proposal,argumentsJson:'[]'}));
+if (mode === 'dup-args') console.log(JSON.stringify({...proposal,argumentsJson:'{"path":"one","path":"two"}'}));
+if (mode === 'dup-proposal') console.log(JSON.stringify(proposal).replace('"summary":','"action":"block","summary":'));
 if (mode === 'exit') { console.error('PRIVATE_CREDENTIAL'); process.exitCode=7; }
 if (mode === 'stderr') { console.error('x'.repeat(10000)); setInterval(()=>{},1000); }
 if (mode === 'flood') { console.log('x'.repeat(10000)); setInterval(()=>{},1000); }
@@ -79,7 +81,7 @@ test('delegate proposal cannot smuggle an executable tool', async t => {
   await assert.rejects(planner.plan({worker:{enabled:true}}),{code:'PLANNER_INVALID_PROPOSAL'});
 });
 
-for (const [mode, code] of [['bad','PLANNER_INVALID_JSON'],['schema','PLANNER_INVALID_PROPOSAL'],['array','PLANNER_INVALID_PROPOSAL'],['exit','PLANNER_EXIT_FAILED'],['flood','PLANNER_OUTPUT_LIMIT'],['stderr','PLANNER_OUTPUT_LIMIT']]) {
+for (const [mode, code] of [['bad','PLANNER_INVALID_JSON'],['schema','PLANNER_INVALID_PROPOSAL'],['array','PLANNER_INVALID_PROPOSAL'],['dup-args','PLANNER_INVALID_PROPOSAL'],['dup-proposal','PLANNER_INVALID_JSON'],['exit','PLANNER_EXIT_FAILED'],['flood','PLANNER_OUTPUT_LIMIT'],['stderr','PLANNER_OUTPUT_LIMIT']]) {
   test('fail closed and redact provider diagnostics: ' + mode, async t => {
     const { planner } = fixture(t, mode, { maxOutputBytes: 4096 });
     await assert.rejects(planner.plan({}), error => error.code === code && !String(error).includes('PRIVATE'));

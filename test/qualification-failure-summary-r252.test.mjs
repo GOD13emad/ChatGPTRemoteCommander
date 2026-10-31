@@ -36,6 +36,17 @@ test('non TAP failure retains recent safe subtest, without exposing raw secrets'
  assert.match(result.stdout,/R252_LAST_SUBTEST=\[REDACTED\]/);
  assert.doesNotMatch(result.stdout,/abc123|api-key-is-sensitive/);
 });
+test('SHA-attested R173 CHECK diagnostic is redacted and typed',t=>{
+ const f=fixture(t,'RC_QUAL_PHASE_START_00\nWINDOWS_CHECK_BLOCKED debug=private-data\n');
+ const check=f.file.replace('qualification-test-','qualification-check-');
+ fs.renameSync(f.file,check);
+ const result=spawnSync(process.execPath,[helper,check,f.digest],{
+  encoding:'utf8',timeout:2000});
+ assert.equal(result.status,0,result.stderr);
+ assert.match(result.stdout,/R252_FAILURE_TOKEN=WINDOWS_CHECK_BLOCKED/);
+ assert.match(result.stdout,/R252_UNFINISHED_PHASE=00/);
+ assert.doesNotMatch(result.stdout,/private-data|debug=/);
+});
 test('changed bytes, untrusted path, symlink and empty output fail closed',t=>{
  const f=fixture(t,'# pass 4\n');
  assert.equal(f.exec('0'.repeat(64)).status,3);
@@ -57,4 +68,13 @@ test('Windows isolated rollback invokes the redacted diagnostic after verified l
  const helper=source.indexOf("qualification-failure-summary-r252.mjs");
  assert.ok(hash>=0&&helper>hash);
  assert.ok(source.includes('R252_SUMMARY_FAILED_FAIL_CLOSED'));
+});
+test('R173 uses the SHA-verified summary for CHECK and TEST failures, not raw log echo',()=>{
+ const src=fs.readFileSync(path.join(root,'test/release-rollback-windows-r173.ps1'),'utf8');
+ assert.match(src,/qualification-\(\?:check\|test\)-/);
+ const h=src.indexOf('Get-FileHash -LiteralPath $inner -Algorithm SHA256');
+ const s=src.indexOf('qualification-failure-summary-r252.mjs');
+ assert.ok(h>=0&&s>h);
+ assert.match(src,/R252_SUMMARY_FAILED_FAIL_CLOSED/);
+ assert.doesNotMatch(src,/R252_QUAL_TEST_RESULT_/);
 });

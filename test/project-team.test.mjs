@@ -149,6 +149,8 @@ for (const [name, output] of [
   ['missing', { action: 'block' }], ['extra', { ...choice(), authority: true }],
   ['bad action', { ...choice(), action: 'execute' }], ['bad tool', { ...choice(), tool: '../run' }],
   ['array arguments', { ...choice(), argumentsJson: '[]' }], ['invalid arguments', { ...choice(), argumentsJson: 'no' }],
+  ['duplicate arguments', { ...choice(), argumentsJson: '{"path":"first","path":"second"}' }],
+  ['nested duplicate arguments', { ...choice(), argumentsJson: '{"metadata":{"x":1,"x":2}}' }],
   ['non-string summary', { ...choice(), summary: 42 }]
 ]) test('malformed worker proposal blocks coordinator: ' + name, async () => {
   let calls = 0;
