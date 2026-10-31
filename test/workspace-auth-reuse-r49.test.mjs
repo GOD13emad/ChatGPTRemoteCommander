@@ -40,6 +40,28 @@ test('cross-user and detached sessions fail closed instead of using stored crede
   }
 });
 
+test('signed-in Brave and Firefox prefer native owner AX candidate over unsupported CDP',()=>{
+  for(const browserEngine of ['brave','firefox']){
+    const r=chooseWorkspaceRoute({target:'existing-browser',desktop:'windows',
+      sameUserSession:true,requireExistingAuthentication:true,browserEngine,
+      existingProfileGrant:true});
+    assert.equal(r.route,'OWNER_BROWSER_ACCESSIBILITY_CANDIDATE');
+    assert.equal(r.inspectionStatus,'NOT_EXECUTED');
+    assert.equal(r.inputStatus,'NATIVE_APPROVAL_REQUIRED');
+    assert.equal(r.backgroundControl,'CAPABILITY_UNVERIFIED');
+    assert.equal(r.credentials,'NEVER_EXPORT_OR_CLONE');
+  }
+});
+
+test('signed-in Chrome retains qualified CDP path only when native profile grant exists',()=>{
+  const ungranted=chooseWorkspaceRoute({target:'existing-browser',desktop:'windows',
+    sameUserSession:true,browserEngine:'chrome',existingProfileGrant:false});
+  assert.equal(ungranted.route,'PROFILE_ATTACH_AUTHORIZATION_REQUIRED');
+  const granted=chooseWorkspaceRoute({target:'existing-browser',desktop:'windows',
+    sameUserSession:true,browserEngine:'chrome',existingProfileGrant:true});
+  assert.equal(granted.route,'CUA_EXISTING_BROWSER_CDP');
+});
+
 test('legacy explicit fresh isolated browser remains available when reuse is not required',()=>{
   const r=chooseWorkspaceRoute({target:'new-browser',desktop:'windows',sameUserSession:true});
   assert.equal(r.route,'COMMANDER_OWNED_PERSISTENT_PROFILE');
@@ -48,5 +70,6 @@ test('legacy explicit fresh isolated browser remains available when reuse is not
 test('read-only workspace planner accepts owner existing authentication requirement',()=>{
   const source=readFileSync(new URL('../src/workspace-tools.mjs',import.meta.url),'utf8');
   assert.match(source,/requireExistingAuthentication:\{type:'boolean'\}/);
+  assert.match(source,/browserEngine:\{type:'string'/);
   assert.match(source,/name:'workspace_plan'/);
 });
