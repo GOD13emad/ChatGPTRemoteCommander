@@ -9,10 +9,19 @@ export function chooseWorkspaceRoute(input){
   if(!DESKTOPS.has(desktop))throw Error('WORKSPACE_DESKTOP_INVALID');
   const owner=input.sameUserSession===true;
   const isolated=input.target.startsWith('new-');
+  // Existing authentication is the default; a new isolated login must be
+  // explicitly requested, never inferred from "open the app/browser".
+  const reuseAuthentication=input.requireExistingAuthentication!==false;
   const result={schema:1,target:input.target,desktop,physicalMouse:'UNCHANGED',
     physicalKeyboard:'UNCHANGED',foreground:'PRESERVE',globalInputLock:false,
     independentTargetsRemainUsable:true,viewer:'READ_ONLY_NONINTERACTIVE',
-    credentials:'NEVER_EXPORT_OR_CLONE',attemptedInput:false};
+    credentials:'NEVER_EXPORT_OR_CLONE',attemptedInput:false,
+    reuseAuthenticationByDefault:reuseAuthentication,
+    credentialFallbackOrder:['EXISTING_OWNER_SESSION','NORMAL_OWNER_APP_PROFILE',
+      'BROWSER_NATIVE_CONSENTED_ATTACH','NATIVE_ACCESSIBILITY',
+      'BROWSER_MANAGED_AUTOFILL','OS_NATIVE_CREDENTIAL_UI','USER_SIGN_IN_LAST_RESORT'],
+    passwordPromptPolicy:'ONLY_AFTER_SAVED_LOGIN_AND_CREDENTIAL_OPTIONS_VERIFIED_ABSENT',
+    credentialStoreProbe:'NO_SECRET_READS',nativeConsent:'PRESERVE'};
   if(input.target==='existing-browser'){
     if(!owner)return {...result,route:'OWNER_SESSION_BRIDGE_REQUIRED',
       next:'Connect authorized same-user desktop agent, not SYSTEM/Session 0'};
@@ -33,7 +42,7 @@ export function chooseWorkspaceRoute(input){
   // The owner may request opening an application WITHOUT signing into an
   // unrelated automation profile. This is a plan, not an authorization to start
   // a process or a claim that the existing site's login has been verified.
-  if(input.requireExistingAuthentication===true&&isolated){
+  if(reuseAuthentication&&isolated){
     if(!owner)return {...result,route:'OWNER_SESSION_BRIDGE_REQUIRED',
       authenticationPolicy:'SAME_OWNER_SESSION_REQUIRED',
       next:'Connect authorized original-user session; do not use another account or copied credentials'};
