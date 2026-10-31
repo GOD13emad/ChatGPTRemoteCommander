@@ -3,6 +3,40 @@
 const OPTIONS=new Set(['existing-browser','new-browser','existing-app','new-app']);
 const DESKTOPS=new Set(['windows','x11','wayland','headless']);
 const no=(code,detail)=>({code,detail});
+// Never infer that a user must re-enter a password from an unavailable
+// browser automation route. These are non-secret, owner-native observation
+// outcomes; neither this classifier nor the planner accesses password stores.
+const SAVED=new Set(['unknown','available','locked','absent-verified']);
+export function classifySavedLoginFallback({
+  authenticatedSession='unknown',
+  applicationLogin='unknown',
+  browserAutofill='unknown',
+  osCredential='unknown',
+  signInRequired=false
+}={}){
+  if(!['unknown','authenticated','absent-verified'].includes(authenticatedSession)||
+     ![applicationLogin,browserAutofill,osCredential].every(x=>SAVED.has(x))||
+     typeof signInRequired!=='boolean')throw Error('WORKSPACE_LOGIN_EVIDENCE_INVALID');
+  const sources=[applicationLogin,browserAutofill,osCredential];
+  const common={passwordRequested:false,askPasswordInChat:false,
+    secretsRead:false,credentialsExported:false};
+  if(signInRequired===false)return {...common,route:'NO_LOGIN_ACTION_REQUIRED'};
+  if(authenticatedSession==='authenticated')return {...common,route:'REUSE_AUTHENTICATED_OWNER_SESSION'};
+  if(sources.includes('available'))return {...common,route:'USE_OWNER_NATIVE_SAVED_LOGIN',
+    next:'Use saved login through the original app/browser/OS supported UI, subject to native approval'};
+  if(sources.includes('locked'))return {...common,route:'OWNER_NATIVE_UNLOCK_REQUIRED',
+    next:'Use the original native unlock/biometric/UI; never ask for stored secrets in chat'};
+  if(authenticatedSession==='unknown'||sources.includes('unknown'))
+    return {...common,route:'INSPECT_OWNER_NATIVE_LOGIN_OPTIONS',
+      next:'Verify same-account session and supported non-secret credential availability without reading passwords'};
+  // Every source must report independently verified absence before offering
+  // an interactive login. A failed automation/consent route is NOT absence.
+  if(authenticatedSession!=='absent-verified'||!sources.every(x=>x==='absent-verified'))
+    return {...common,route:'INSPECT_OWNER_NATIVE_LOGIN_OPTIONS'};
+  return {...common,route:'OWNER_NATIVE_SIGN_IN_LAST_RESORT',
+    passwordRequested:false,nativeLoginPromptEligible:true,
+    next:'Only now may the owner sign in through the normal application UI; do not request passwords in ChatGPT'};
+}
 export function chooseWorkspaceRoute(input){
   if(!input||!OPTIONS.has(input.target))throw Error('WORKSPACE_TARGET_INVALID');
   const desktop=input.desktop??'headless';
