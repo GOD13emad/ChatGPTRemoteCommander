@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {createWorkspaceController,workspaceToolDefinitions,isOwnerBackgroundWorkspaceTool} from '../src/workspace-tools.mjs';
+import {createMemoryWorkspaceJournal} from '../src/workspace-target-journal.mjs';
 import {createOwnerWorkspaceProxy} from '../src/owner-workspace-proxy.mjs';
 import {chooseWorkspaceRoute,classifySavedLoginFallback,probeOwnerLoginRoutes} from '../src/workspace-routing.mjs';
 
@@ -335,4 +336,149 @@ test('owner proxy permits read-only login readiness without a fake input grant',
   assert.equal(out.value.authentication,'UNVERIFIED');
   assert.equal(calls[0].params.name,'workspace_login_readiness');
   assert.equal(calls[0].params.arguments.explicitUserAuthorization,undefined);
+});
+
+test('app catalog returns installed identities but never executable command lines',async()=>{
+  const c=createWorkspaceController({platform:'win32',ownerSession:async()=>true,
+    callDriver:async name=>{
+      assert.equal(name,'list_apps');
+      return {apps:[{name:'Notepad',kind:'desktop',running:false,pid:0,
+        launch_path:'C:\\Sensitive\\notepad.exe --private-secret-should-not-echo'}]};
+    }});
+  const r=await c.execute('workspace_app_catalog',{query:'note'});
+  assert.equal(r.apps.length,1);
+  assert.deepEqual(r.apps[0],{name:'Notepad',kind:'desktop',running:false,pid:0});
+  assert.equal(r.credentials,'NOT_READ');
+  assert.ok(!JSON.stringify(r).includes('Sensitive'));
+});
+
+test('same-owner installed app opens minimized with no caller-supplied profile or arguments',async()=>{
+  const calls=[];
+  let launched=false;
+  const c=createWorkspaceController({platform:'win32',ownerSession:async()=>true,
+    journal:createMemoryWorkspaceJournal(),
+    callDriver:async(name,args)=>{
+      calls.push({name,args});
+      if(name==='list_apps')return {apps:[{name:'Notepad',kind:'desktop',
+        running:launched,pid:launched?1234:0,launch_path:'C:\\Windows\\notepad.exe'}]};
+      if(name==='launch_app'){launched=true;return {pid:1234};}
+      throw Error('UNEXPECTED_DRIVER_CALL');
+    }});
+  const r=await c.execute('workspace_app_open',{name:'Notepad',
+    requestId:'test-open-notepad-001',
+    explicitUserAuthorization:'Launch the installed Notepad under this owner session'});
+  assert.equal(r.status,'LAUNCHED_OWNER_PROFILE');
+  assert.equal(r.pid,1234);
+  assert.equal(r.authentication,'UNVERIFIED');
+  assert.equal(r.foreground,'PRESERVE_REQUESTED_NOT_VERIFIED');
+  assert.deepEqual(calls.map(x=>x.name),['list_apps','launch_app','list_apps']);
+  assert.deepEqual(calls[1].args,{launch_path:'C:\\Windows\\notepad.exe',start_minimized:true});
+  assert.ok(!JSON.stringify(calls).includes('--user-data-dir'));
+  assert.equal(r.passwordRequested,false);
+});
+
+test('already-running owner app is reused without second launch',async()=>{
+  let launches=0;
+  const c=createWorkspaceController({platform:'win32',ownerSession:async()=>true,
+    journal:createMemoryWorkspaceJournal(),
+    callDriver:async name=>{
+      if(name==='list_apps')return {apps:[{name:'Brave',kind:'desktop',
+        running:true,pid:445,launch_path:'C:\\Program Files\\Brave\\brave.exe'}]};
+      launches++;return {pid:999};
+    }});
+  const r=await c.execute('workspace_app_open',{name:'Brave',requestId:'reuse-brave-001',
+    explicitUserAuthorization:'Reuse the existing Brave session in this desktop'});
+  assert.equal(r.status,'ALREADY_RUNNING');
+  assert.equal(r.pid,445);
+  assert.equal(r.launchAttempted,false);
+  assert.equal(launches,0);
+});
+
+test('unknown app launch is never automatically replayed and requires reconciliation',async()=>{
+  let running=false,launches=0;
+  const c=createWorkspaceController({platform:'win32',ownerSession:async()=>true,
+    journal:createMemoryWorkspaceJournal(),
+    callDriver:async name=>{
+      if(name==='list_apps')return {apps:[{name:'Notepad',kind:'desktop',
+        running,pid:running?77:0,launch_path:'C:\\Windows\\notepad.exe'}]};
+      if(name==='launch_app'){launches++;if(launches===1)throw Error('TRANSPORT_LOST');running=true;return {pid:77};}
+    }});
+  const auth='Open the installed Notepad in the same desktop without focus';
+  const first=await c.execute('workspace_app_open',{name:'Notepad',
+    requestId:'try-notepad-001',explicitUserAuthorization:auth});
+  assert.equal(first.status,'RECONCILE_TARGET');
+  await assert.rejects(()=>c.execute('workspace_app_open',{name:'Notepad',
+    requestId:'try-notepad-002',explicitUserAuthorization:auth}),/WORKSPACE_TARGET_RECONCILIATION_REQUIRED/);
+  assert.equal(launches,1);
+  const resolved=await c.execute('workspace_app_reconcile',{
+    name:'Notepad',determination:'NOT_RUNNING_VERIFIED',
+    requestId:'reconcile-notepad-001',explicitUserAuthorization:auth});
+  assert.equal(resolved.replayed,false);
+  const last=await c.execute('workspace_app_open',{name:'Notepad',
+    requestId:'try-notepad-003',explicitUserAuthorization:auth});
+  assert.equal(last.status,'LAUNCHED_OWNER_PROFILE');
+  assert.equal(launches,2);
+});
+
+test('unknown app launch cannot be reconciled with contradictory observations',async()=>{
+  let launched=false;
+  const c=createWorkspaceController({platform:'win32',ownerSession:async()=>true,
+    journal:createMemoryWorkspaceJournal(),
+    callDriver:async name=>{
+      if(name==='list_apps')return {apps:[{name:'Notepad',kind:'desktop',
+        running:launched,pid:launched?91:0,launch_path:'C:\\Windows\\notepad.exe'}]};
+      if(name==='launch_app'){launched=true;throw Error('UNKNOWN_AFTER_START');}
+    }});
+  const auth='Approve this exact installed Notepad launch for testing';
+  await c.execute('workspace_app_open',{name:'Notepad',requestId:'probe-app-001',
+    explicitUserAuthorization:auth});
+  await assert.rejects(()=>c.execute('workspace_app_reconcile',{
+    name:'Notepad',determination:'NOT_RUNNING_VERIFIED',
+    requestId:'reconcile-app-002',explicitUserAuthorization:auth}),/WORKSPACE_APP_DETERMINATION_NOT_PROVEN/);
+  const ok=await c.execute('workspace_app_reconcile',{
+    name:'Notepad',determination:'RUNNING_VERIFIED',
+    requestId:'reconcile-app-003',explicitUserAuthorization:auth});
+  assert.equal(ok.determination,'RUNNING_VERIFIED');
+});
+
+test('app launch cannot accept caller-controlled executable paths, flags, URLs or system context',async()=>{
+  let called=0;
+  const c=createWorkspaceController({platform:'win32',ownerSession:async()=>true,
+    journal:createMemoryWorkspaceJournal(),
+    callDriver:async()=>{called++;return {apps:[]}}});
+  await assert.rejects(()=>c.execute('workspace_app_open',{
+    name:'powershell.exe -enc boom',requestId:'reject-exe-001',
+    explicitUserAuthorization:'A valid signed-in owner authorizes app launch'}),/WORKSPACE_APP_IDENTITY_INVALID/);
+  assert.equal(called,1); // only installed-app catalog read, never a launch
+  const other=createWorkspaceController({platform:'win32',ownerSession:async()=>false,
+    callDriver:async()=>{throw Error('DRIVER_MUST_NOT_BE_CALLED')}});
+  await assert.rejects(()=>other.execute('workspace_app_open',{
+    name:'Notepad',requestId:'deny-cross-owner-001',
+    explicitUserAuthorization:'Launch Notepad as an unrelated owner'}),/WORKSPACE_OWNER_SESSION_REQUIRED/);
+  const linux=createWorkspaceController({platform:'linux',ownerSession:async()=>true,
+    callDriver:async()=>{throw Error('NO_LINUX_LAUNCH')}});
+  await assert.rejects(()=>linux.execute('workspace_app_open',{
+    name:'Notepad',requestId:'deny-linux-open-001',
+    explicitUserAuthorization:'Only a native Windows launch is supported'}),/WORKSPACE_APP_LAUNCH_PLATFORM_UNAVAILABLE/);
+});
+
+test('owner proxy only forwards exact app names and hashed mutation identities',async()=>{
+  const messages=[];
+  const proxy=createOwnerWorkspaceProxy({
+    config:{ownerWorkspaceDelegation:{enabled:true,port:48838,authFile:'C:\\owner.key'}},
+    readFileImpl:async()=>('c'.repeat(64)),
+    fetchImpl:async(_url,options)=>{
+      messages.push(JSON.parse(options.body));
+      return {status:200,text:async()=>JSON.stringify({jsonrpc:'2.0',id:1,
+        result:{structuredContent:{ok:true,status:'ALREADY_RUNNING',pid:99}}})};
+    }
+  });
+  const auth='Open the existing Notepad with owner native approval';
+  const r=await proxy.execute('workspace_app_open',{name:'Notepad',requestId:'raw-private-request',explicitUserAuthorization:auth},{requestId:'outer-id-0001'});
+  assert.equal(r.value.pid,99);
+  assert.equal(messages.length,1);
+  assert.equal(messages[0].params.name,'workspace_app_open');
+  assert.match(messages[0].params.arguments.requestId,/^owrk-[a-f0-9]{48}$/);
+  assert.notEqual(messages[0].params.arguments.requestId,'raw-private-request');
+  assert.equal(messages[0].params.arguments.launch_path,undefined);
 });
