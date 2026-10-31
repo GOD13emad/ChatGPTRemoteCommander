@@ -111,7 +111,13 @@ function Install-ElevatedRuntime {
   # Existing tasks are owner state; do not overwrite or delete them by -Force.
   $existing=Get-TaskState
   if($existing.installed){
-    if($existing.valid){Write-Output 'ADMIN_RUNTIME_ALREADY_INSTALLED';return}
+    if($existing.valid){
+      # Crash between task registration and old HKCU Run retirement must not
+      # be mistaken for a converged one-runtime installation.
+      if((Get-RunState).present){throw 'ADMIN_RUNTIME_DUAL_AUTOSTART_CONFLICT'}
+      Write-Output 'ADMIN_RUNTIME_ALREADY_INSTALLED'
+      return
+    }
     throw 'ADMIN_RUNTIME_TASK_CONFLICT'
   }
   New-Item -ItemType Directory -Force -Path $AdminDir | Out-Null
