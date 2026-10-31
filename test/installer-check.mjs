@@ -34,6 +34,7 @@ if (installAdminStart < 0 || installAdminEnd <= installAdminStart) {
 const installAdmin = adminRuntime.slice(installAdminStart, installAdminEnd);
 for (const required of [
   'ADMIN_RUNTIME_TASK_CONFLICT',
+  'ADMIN_RUNTIME_DUAL_AUTOSTART_CONFLICT',
   'ADMIN_RUNTIME_ALREADY_INSTALLED',
   "Register-ScheduledTask -TaskName $probeTaskName",
   "Start-ScheduledTask -TaskName $probeTaskName",
