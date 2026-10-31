@@ -63,7 +63,7 @@ function Update([string]$Name,[string]$Sha){
     try{
       $lines=Get-Content -LiteralPath $stdout -ErrorAction Stop
       $diagnosticCommit=if($Name -eq 'PROMOTE'){$ExpectedCommit}else{$Baseline}
-      $rx='^GATE_OUTPUT_FILES runId=(qualification-test-'+$diagnosticCommit.Substring(0,12)+'-[0-9a-f]{32}) stdout=([^\r\n]+?) stderr='
+      $rx='^GATE_OUTPUT_FILES runId=(qualification-(?:check|test)-'+$diagnosticCommit.Substring(0,12)+'-[0-9a-f]{32}) stdout=([^\r\n]+?) stderr='
       $matches=@($lines|Where-Object {$_ -match $rx})
       if($matches.Count -ne 1){throw 'NO_UNIQUE_TEST_OUTPUT'}
       $null=$matches[0] -match $rx
@@ -76,22 +76,12 @@ function Update([string]$Name,[string]$Sha){
       if(-not($lines|Where-Object {$_ -match ('^GATE_OUTPUT_HASH runId='+[regex]::Escape($id)+' stdoutSha256='+$sha+' ')})){
         throw 'LOG_HASH_UNATTESTED'
       }
-      $found=0
-      $sawFailure=$false
-      foreach($line in [IO.File]::ReadLines($inner)){
-        if($line -match '^\s*(?:not ok \d+ -|#\s*(?:fail|pass|tests)\s+\d+|.*\b(?:AssertionError|ERR_TEST_FAILURE)\b)'){
-          $sawFailure=$true
-          $safe=($line -replace '[^A-Za-z0-9 ._:(),/\[\]-]','?')
-          if($safe.Length -gt 160){$safe=$safe.Substring(0,160)}
-          Write-Output ('R252_QUAL_TEST_RESULT_'+$found+'='+$safe)
-          $found++;if($found -ge 24){break}
-        }elseif($sawFailure -and $line -match '[/\\](?<area>test|tools)[/\\](?<file>[A-Za-z0-9._-]+\.(?:mjs|js|ps1)):(?<row>\d+)'){
-          $relative=$Matches['area']+'/'+$Matches['file']+':'+$Matches['row']
-          Write-Output ('R252_QUAL_FAILURE_SOURCE_'+$found+'='+$relative)
-          $found++;if($found -ge 24){break}
-        }
-      }
-      Write-Output ('R252_QUAL_LOG_SHA_PASS='+$sha+' markers='+$found)
+      # SHA-attested bounded redaction; never echo raw qualification output.
+      $helper=Join-Path $Source 'tools/qualification-failure-summary-r252.mjs'
+      if(-not(Test-Path -LiteralPath $helper -PathType Leaf)){throw 'R252_HELPER_MISSING'}
+      & node.exe $helper $inner $sha
+      if($LASTEXITCODE -ne 0){throw 'R252_SUMMARY_FAILED_FAIL_CLOSED'}
+      Write-Output ('R252_QUAL_LOG_SHA_PASS='+$sha+' stage='+($id -split '-')[1])
     }catch{Write-Output 'R252_QUAL_DIAG_UNAVAILABLE_FAIL_CLOSED'}
   }
   if($exitCode -ne 0 -or $status -ne 'PROMOTED'){throw ('R185_'+$Name+'_NOT_ACCEPTED')}
