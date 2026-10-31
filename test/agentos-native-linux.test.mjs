@@ -1,5 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {statSync} from 'node:fs';
+import {execFile} from 'node:child_process';
+import {promisify} from 'node:util';
+const exec=promisify(execFile);
 import {probeLinuxATSPI,observeLinuxATSPI} from '../src/agentos-native-linux.mjs';
 import {createWorkspaceController,workspaceToolDefinitions} from '../src/workspace-tools.mjs';
 const env={XDG_RUNTIME_DIR:'/run/user/1000',DBUS_SESSION_BUS_ADDRESS:'unix:path=/run/user/1000/bus'};
@@ -65,4 +69,20 @@ test('SYSTEM session and status transport failure cannot claim an owned browser'
  const fail=createWorkspaceController({platform:'linux',ownerSession:async()=>true,
   browserProbe:async()=>{throw Error('transport')},linuxProbe:async()=>({ready:false})});
  assert.equal((await fail.execute('workspace_agentos_plan',{target:'new-browser'})).code,'OWNED_BROWSER_UNAVAILABLE');
+});
+
+test('real Linux AT-SPI helper must reject foreign OS uid before accessibility traversal',async t=>{
+ if(process.platform!=='linux'||typeof process.getuid!=='function'||process.getuid()===0){
+  t.skip('Requires unprivileged Linux');
+  return;
+ }
+ let owner;
+ try{owner=statSync('/proc/1').uid;}catch{t.skip('No procfs');return;}
+ if(owner===process.getuid()){t.skip('PID1 not foreign owned');return;}
+ let data;
+ try{await exec('python3',['tools/native-linux-atspi.py','observe','1','2'],{
+  cwd:new URL('..',import.meta.url),timeout:4000,encoding:'utf8'
+ }); assert.fail('Foreign UID must not be read');}
+ catch(error){data=JSON.parse(String(error.stdout).trim());assert.equal(error.code,4);}
+ assert.equal(data.code,'ATSPI_TARGET_OWNER_MISMATCH');
 });

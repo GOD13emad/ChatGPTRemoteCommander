@@ -1,8 +1,23 @@
 #!/usr/bin/env python3
 """Bounded read-only AT-SPI inspection. No input APIs or password-store access."""
 import json
+import os
 import sys
 from collections import deque
+
+def owner_matches(pid):
+    # Native accessibility is scoped to the same unprivileged OS principal.
+    if os.getuid() == 0:
+        return False
+    try:
+        with open(f"/proc/{pid}/status", encoding="ascii") as status:
+            for line in status:
+                if line.startswith("Uid:"):
+                    return int(line.split()[1]) == os.getuid()
+    except (OSError, ValueError, IndexError):
+        pass
+    return False
+
 def emit(v):
     print(json.dumps(v, ensure_ascii=True, separators=(",", ":")))
 def main():
@@ -17,6 +32,8 @@ def main():
         pid,limit=int(sys.argv[2]),int(sys.argv[3])
         if not 1<=pid<=2147483647 or not 1<=limit<=100:
             emit({"ok":False,"code":"ATSPI_ARGUMENTS_INVALID"}); return 2
+    if mode == "observe" and not owner_matches(pid):
+        emit({"ok":False,"code":"ATSPI_TARGET_OWNER_MISMATCH"}); return 4
     try:
         import gi
         gi.require_version("Atspi","2.0")
@@ -50,6 +67,8 @@ def main():
                     child=obj.get_child_at_index(j)
                     if child is not None: queue.append((child,depth+1))
         except Exception: pass
+    if not owner_matches(pid):
+        emit({"ok":False,"code":"ATSPI_TARGET_OWNER_MISMATCH"}); return 4
     emit({"ok":True,"provider":"linux-atspi-native","mode":"AT_SPI_OBSERVE","pid":pid,"elements":elements})
     return 0
 if __name__=="__main__": sys.exit(main())

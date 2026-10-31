@@ -177,3 +177,8 @@ Use the **latest security-supported and compatible upstream release/commit**, pi
 ### Honest live browser readiness — 2026-10-31 (PR #438)
 
 `workspace_agentos_plan(new-browser)` must probe the actual browser backend and policy of the same owning session through `browser_status`; it cannot return READY merely because a Commander source file exists. A Windows SYSTEM/Session 0 token, missing browser binary, disabled policy, existing lease/busy state or uncertain session fails closed. Existing user profiles still require platform-mediated owner authorization; no saved-cookie/profile copy. This is a read-only planning correction, not a runtime cutover or browser owner approval. The regression suite covers actual positive/negative status and service-context guards.
+
+
+### Linux PID owner boundary — 2026-10-31
+
+Before traversing the AT-SPI tree for a requested PID, the helper verifies Linux `/proc/<pid>/status` real UID matches its unprivileged owning user. It checks again before returning observed element metadata, refusing cross-user/missing/reassigned targets. Root-executed observation is refused. This enforces the one-principal desktop bridge even in shared X11 sessions; it does not grant cross-user access or bypass the target application. The private test fixture only checks the negative path against a foreign-owned PID. **SOURCE ONLY / NO PROMOTE** until live owner-session and review acceptance.
