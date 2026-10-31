@@ -24,9 +24,10 @@ $script:Tasks=@{}
 $script:Events=[System.Collections.Generic.List[string]]::new()
 $script:ProbeBehavior='success'
 $script:Foreign=$false
+$script:LegacyRun=$false
 function Test-Elevated {return $true}
 function Get-PwshPath {return 'C:\Program Files\PowerShell\7\pwsh.exe'}
-function Get-RunState {return [pscustomobject]@{present=$false;value=$null}}
+function Get-RunState {return [pscustomobject]@{present=[bool]$script:LegacyRun;value=if($script:LegacyRun){'legacy-test'}else{$null}}}
 function Get-TaskState {
  if($script:Foreign){return [pscustomobject]@{installed=$true;valid=$false;taskName=$script:TaskName}}
  if($script:Tasks.ContainsKey($script:TaskName)){return [pscustomobject]@{installed=$true;valid=$true;taskName=$script:TaskName}}
@@ -89,6 +90,13 @@ $before=$script:Events.Count
 $null=Install-ElevatedRuntime
 if($script:Events.Count -ne $before){throw 'CASE2_DUPLICATE_EFFECT'}
 'CASE2_PASS: IDEMPOTENT_ALREADY_INSTALLED'
+$script:LegacyRun=$true
+$before=$script:Events.Count
+$blocked=$false
+try{$null=Install-ElevatedRuntime}catch{if($_.Exception.Message -eq 'ADMIN_RUNTIME_DUAL_AUTOSTART_CONFLICT'){$blocked=$true}else{throw}}
+if(-not $blocked -or $script:Events.Count -ne $before){throw 'CASE2B_DUAL_STARTUP_NOT_BLOCKED'}
+$script:LegacyRun=$false
+'CASE2B_PASS: VALID_TASK_WITH_LEGACY_STARTUP_FAILS_CLOSED'
 [void]$script:Tasks.Remove($script:TaskName)
 $script:Foreign=$true;$before=$script:Events.Count
 $denied=$false
@@ -102,7 +110,7 @@ if(-not $failed){throw 'CASE4_PROBE_DENIAL_NOT_REJECTED'}
 if($script:Tasks.Count -ne 0){throw 'CASE4_TASK_LEAK'}
 if(@($script:Events|Where-Object{$_ -eq 'START:'+$script:TaskName}).Count -gt 0){throw 'CASE4_PRODUCTION_START'}
 'CASE4_PASS: DENIED_PROBE_NO_PRODUCTION_CLEANUP'
-"QA_PASS four cases; SHA256=$hash"
+"QA_PASS five cases; SHA256=$hash"
 }finally{
   $canonical=[IO.Path]::GetFullPath($qa)
   $temp=[IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd('\')+'\'
