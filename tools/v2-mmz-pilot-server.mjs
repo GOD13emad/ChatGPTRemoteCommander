@@ -10,6 +10,7 @@ import {pathToFileURL} from 'node:url';
 import {READ_ONLY_TOOLS,executeReadOnlyTool} from './v2-readonly-tools.mjs';
 import {createV2OwnerApprovalQueue} from './src/v2-owner-approval-queue.mjs';
 import {OWNER_PROPOSAL_TOOL,createV2OwnerProposalHandler} from './src/v2-owner-proposal-tool.mjs';
+import {V2_V1_BRIDGE_TOOLS,createV2V1ToolBridge} from './src/v2-v1-tool-bridge.mjs';
 import {createV2SecureTunnelServerTlsOptions,
         createV2SecureTunnelClientMtlsAttestor} from './v2-secure-tunnel-mtls.mjs';
 
@@ -39,8 +40,26 @@ function send(res,code,data){
   res.end(bytes);
 }
 function rpcError(id,code,message){return {jsonrpc:'2.0',id,error:{code,message}};}
+async function localV1ToolCatalog(){
+ const controller=new AbortController();
+ const cancel=setTimeout(()=>controller.abort(),3000);
+ try{
+  const response=await fetch('http://127.0.0.1:47831/mcp',{
+   method:'POST',headers:{'content-type':'application/json'},
+   body:JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/list'}),
+   signal:controller.signal
+  });
+  if(response.status!==200)throw Error('V1_NOT_READY');
+  const data=await response.json();
+  const items=data?.result?.tools;
+  if(!Array.isArray(items)||items.length>256||items.length<1)
+   throw Error('V1_CATALOG_INVALID');
+  return items.map(x=>x?.name);
+ }finally{clearTimeout(cancel)}
+}
+
 function reply(id,result){return {jsonrpc:'2.0',id,result};}
-async function handleMessage(msg,ownerProposalHandler){
+async function handleMessage(msg,ownerProposalHandler,bridge){
   const id=msg.id??null;
   if(msg.jsonrpc!=='2.0'||typeof msg.method!=='string')return rpcError(id,-32600,'Invalid Request');
   if(msg.method==='initialize'){
@@ -51,10 +70,33 @@ async function handleMessage(msg,ownerProposalHandler){
       instructions:'Diagnostics are read-only. Note proposals only enqueue; they require separate local owner review and do not grant system control or attest a ChatGPT principal.'});
   }
   if(msg.method==='ping')return reply(id,{});
-  if(msg.method==='tools/list')return reply(id,{tools:[...READ_ONLY_TOOLS,OWNER_PROPOSAL_TOOL]});
+  if(msg.method==='tools/list')return reply(id,{tools:[...READ_ONLY_TOOLS,OWNER_PROPOSAL_TOOL,...V2_V1_BRIDGE_TOOLS]});
   if(msg.method==='tools/call'){
     const name=msg.params?.name;
     if(name===OWNER_PROPOSAL_TOOL.name)return reply(id,ownerProposalHandler({name,args:msg.params?.arguments}));
+    if(name==='v2_v1_tool_catalog'){
+      const a=msg.params?.arguments;
+      if(a!==undefined&&(!a||typeof a!=='object'||Array.isArray(a)||Object.keys(a).length))
+       return rpcError(id,-32602,'No arguments accepted');
+      try{
+       const names=await bridge.catalog();
+       return reply(id,{content:[{type:'text',text:'V1 tool names only; no execution.'}],
+        structuredContent:{toolCount:names.length,toolNames:names,
+         bridgeStatus:'OWNER_REVIEW_REQUIRED',fullControl:false}});
+      }catch{return reply(id,{isError:true,content:[{type:'text',text:'V1 catalog unavailable'}]})}
+    }
+    if(name==='v2_request_owner_tool'){
+      const a=msg.params?.arguments;
+      if(!a||typeof a!=='object'||Array.isArray(a)||
+         Object.keys(a).length!==2||!Object.hasOwn(a,'tool')||!Object.hasOwn(a,'arguments'))
+        return rpcError(id,-32602,'Invalid action shape');
+      try{
+       const queued=await bridge.request(a);
+       return reply(id,{content:[{type:'text',text:'V1-equivalent request queued, not executed. Native owner review required.'}],
+         structuredContent:queued});
+      }catch{return reply(id,{isError:true,content:[{type:'text',text:'V2_BRIDGE_REQUEST_DENIED'}]})}
+    }
+
     if(!READ_ONLY_TOOLS.some(t=>t.name===name))return rpcError(id,-32602,'Unknown tool');
     const args=msg.params?.arguments;
     if(args!==undefined && (args===null || typeof args!=='object' ||
@@ -66,11 +108,12 @@ async function handleMessage(msg,ownerProposalHandler){
   }
   return rpcError(id,-32601,'Method not found');
 }
-export async function start({port=PORT,approvalRoot}={}){
+export async function start({port=PORT,approvalRoot,bridgeRoot}={}){
  if(!Number.isSafeInteger(port)||port<1024||port>65535)throw new Error('PORT_INVALID');
  const {options,attest}=tlsSettings();
  const ownerQueue=createV2OwnerApprovalQueue(approvalRoot===undefined?{}:{root:approvalRoot});
  const ownerProposalHandler=createV2OwnerProposalHandler({queue:ownerQueue});
+ const bridge=createV2V1ToolBridge({...(bridgeRoot?{root:bridgeRoot}:{}),loadCatalog:localV1ToolCatalog});
  const server=https.createServer(options,async(req,res)=>{
   res.setHeader('x-content-type-options','nosniff');
   try{
@@ -102,7 +145,7 @@ export async function start({port=PORT,approvalRoot}={}){
    if(parsed.jsonrpc==='2.0'&&parsed.method==='notifications/initialized'&&parsed.id===undefined){
     res.writeHead(202,{'cache-control':'no-store'});res.end();return;
    }
-   send(res,200,await handleMessage(parsed,ownerProposalHandler));
+   send(res,200,await handleMessage(parsed,ownerProposalHandler,bridge));
   }catch{if(!res.headersSent)send(res,400,{error:'bad_request'});else res.end();}
  });
  server.maxConnections=24;

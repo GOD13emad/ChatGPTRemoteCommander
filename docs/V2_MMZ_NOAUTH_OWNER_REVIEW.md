@@ -73,3 +73,58 @@ arbitrary operations from the noauth proposal lane.
 Official platform references:
 - https://developers.openai.com/plugins/build/auth
 - https://developers.openai.com/plugins/build/mcp-server
+
+## V1 capability parity bridge — MMZ local pilot (2026-11-01)
+
+The independent V2 MCP now advertises two further tools:
+`v2_v1_tool_catalog` reads only V1 local MCP tool names (125 on the
+verified MMZ V1 runtime); `v2_request_owner_tool` queues an EXACT
+named V1 tool call with bounded JSON arguments. These are **not 125
+directly executable tools on V2**. The first is diagnostic, the second
+creates a private pending request without executing the tool, reading
+host results, or transferring credentials. The connection is still
+`No authentication` and not an attested ChatGPT account identity.
+
+The bounded queue resides in
+`~/.local/state/CommanderV2/v1-tool-review`; exact requests are
+mode 0600, directories are mode 0700. Admission checks current V1
+local tool inventory and limits pending counts, argument size and expiry.
+Arbitrary direct requests such as `run_shell` on the V2 MCP remain
+denied. Owner-side CLI reads the exact tool and arguments and requires
+an interactive, exact one-time confirmation before forwarding the
+action to the existing owner-user V1 MCP. V1's **own** effective OS
+token, GUI/session guards, allowlists and tool-specific permissions
+continue to apply; this is not a privilege escalation or bypass.
+
+```bash
+node "$HOME/.local/share/CommanderV2/ReadOnlyMcp/tools/v2-v1-owner-cli.mjs" list
+node "$HOME/.local/share/CommanderV2/ReadOnlyMcp/tools/v2-v1-owner-cli.mjs" approve REQUEST_ID
+node "$HOME/.local/share/CommanderV2/ReadOnlyMcp/tools/v2-v1-owner-cli.mjs" status REQUEST_ID
+```
+
+The runner persists a non-retriable dispatch-attempt marker BEFORE
+calling V1. A transport interruption yields UNCERTAIN instead of
+blind replay; successful V1 RPC acknowledgement is NOT evidence that
+a long-running action itself has finished. V1 results are never
+returned or copied into the noauth V2 client response, as they could
+contain private data. A terminal in the same Unix owner account is
+an operational consent mechanism, not a strong physical-person or
+ChatGPT per-conversation authenticator.
+
+**Observed verification:** V2 focused integration and regressions:
+311 PASS, 0 FAIL, 1 SKIP (312 total). Deployed server
+SHA256 `041f7e041b35ac77966606f463ec71389ee5cf7a4d47bfc3ed2d3758269776bf`.
+On the installed mTLS local listener, `tools/list` returned six
+tools, the `v2_v1_tool_catalog` call resolved all 125 V1 tools,
+direct `run_shell` was rejected, malformed queued action was rejected
+and V2 Tunnel `/readyz` returned 200. Services for V1, V2 coordinator
+and V2 tunnel remained active. No actual owner-approved V1 tool call
+through this bridge was exercised in production.
+
+**Still open:** ChatGPT client Refresh Tools, native owner approval
+of a real non-sensitive request, positive result reconciliation, and
+independently authenticated/matched session grants for private
+workflow, shell, filesystem or GUI auto-execution. Do not treat the
+catalog count as V2 capability-parity acceptance. For actual
+unattended full-control production, a proper user authentication and
+authorization broker is required; transport-only noauth is insufficient.
