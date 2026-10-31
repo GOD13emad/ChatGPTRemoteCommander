@@ -107,6 +107,13 @@ function Get-PwshPath {
 function Install-ElevatedRuntime {
   if(-not(Test-Elevated)){throw 'ADMIN_RUNTIME_ELEVATION_REQUIRED'}
   if(-not(Test-Path -LiteralPath $Entry -PathType Leaf)){throw "ADMIN_RUNTIME_ENTRY_MISSING $Entry"}
+  # Installation must never start a second production supervisor.
+  # Existing tasks are owner state; do not overwrite or delete them by -Force.
+  $existing=Get-TaskState
+  if($existing.installed){
+    if($existing.valid){Write-Output 'ADMIN_RUNTIME_ALREADY_INSTALLED';return}
+    throw 'ADMIN_RUNTIME_TASK_CONFLICT'
+  }
   New-Item -ItemType Directory -Force -Path $AdminDir | Out-Null
 
   $identity=[Security.Principal.WindowsIdentity]::GetCurrent().Name
@@ -118,13 +125,6 @@ function Install-ElevatedRuntime {
   }
   Write-JsonAtomic (Join-Path $AdminDir 'prestate.json') $pre
 
-  # Installation must never start a second production supervisor.
-  # Existing tasks are owner state; do not overwrite or delete them by -Force.
-  $existing=Get-TaskState
-  if($existing.installed){
-    if($existing.valid){Write-Output 'ADMIN_RUNTIME_ALREADY_INSTALLED';return}
-    throw 'ADMIN_RUNTIME_TASK_CONFLICT'
-  }
   $pwsh=Get-PwshPath
   $args='-NoLogo -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File "'+$Entry+'"'
   $action=New-ScheduledTaskAction -Execute $pwsh -Argument $args -WorkingDirectory $CoreRoot
