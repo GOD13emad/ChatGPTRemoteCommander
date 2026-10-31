@@ -37,7 +37,7 @@ test('owner review queues exact V1 tool but NEVER executes on remote request',()
  assert.equal(effects,1);
  assert.equal(executor.status(request.requestId).status,'V1_CALL_RETURNED');
  assert.deepEqual(Object.keys(queue.progress(request.requestId)).sort(),
-  ['requestId','status','expired','v1CallReturned','verifiedEffect'].sort());
+  ['requestId','status','expired','v1CallReturned','shellCompletion','verifiedEffect'].sort());
  assert.equal(queue.progress(request.requestId).status,'V1_CALL_RETURNED');
  assert.equal(queue.progress(request.requestId).verifiedEffect,false);
  assert.equal(queue.list().find(x=>x.id===request.requestId)?.status,
@@ -105,7 +105,7 @@ test('a crash after durable predispatch marker reports unknown result; it is nev
  const state=q.progress(req.requestId);
  assert.deepEqual(state,{
   requestId:req.requestId,status:'DISPATCH_STARTED_OUTCOME_UNKNOWN',
-  expired:false,v1CallReturned:false,verifiedEffect:false
+  expired:false,v1CallReturned:false,shellCompletion:null,verifiedEffect:false
  });
  const executor=createV2NativeOwnerExecutor({root,now:()=>time,
   loadCatalog:async()=>['system_status'],requireOwnerConfirmation:async()=>true,

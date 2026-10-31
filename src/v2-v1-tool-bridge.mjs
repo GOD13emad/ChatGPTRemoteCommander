@@ -6,6 +6,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import {randomUUID,createHash} from 'node:crypto';
+import {validateV2ShellReceiptValue} from './v2-v1-result-classifier.mjs';
 
 const RX=/^[a-z][a-z0-9_]{0,79}$/;
 const UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
@@ -152,17 +153,22 @@ export function createV2V1ToolBridge({
   const r=inspect(id);
   const p=paths(id);
   const final=path.join(root,'final',id+'.json');
+  let finalReceipt=null;
   let state=r.status==='PENDING'?(r.expired?'EXPIRED':'WAITING_FOR_NATIVE_OWNER_REVIEW'):
     'DISPATCH_STARTED_OUTCOME_UNKNOWN';
   if(fs.existsSync(final)){
-   const value=read(final);
-   if(value.schema!==1||value.requestId!==id||
-      !['V1_TOOL_REPORTED_ERROR','V1_CALL_RETURNED','DISPATCH_OUTCOME_UNCERTAIN'].includes(value.status))
+   finalReceipt=read(final);
+   if(finalReceipt.schema!==1||finalReceipt.requestId!==id||
+      !['V1_TOOL_REPORTED_ERROR','V1_CALL_RETURNED','DISPATCH_OUTCOME_UNCERTAIN'].includes(finalReceipt.status))
      fail('V2_BRIDGE_FINAL_RECORD_INVALID');
-   state=value.status;
+   state=finalReceipt.status;
   }
+  const shellCompletion=r.tool==='run_shell'?
+    validateV2ShellReceiptValue(finalReceipt?.shellCompletion):null;
   return Object.freeze({requestId:id,status:state,expired:r.expired,
     v1CallReturned:state==='V1_CALL_RETURNED'||state==='V1_TOOL_REPORTED_ERROR',
+    shellCompletion:state==='V1_CALL_RETURNED'?shellCompletion:
+      (state==='V1_TOOL_REPORTED_ERROR'?'TOOL_ERROR':null),
     verifiedEffect:false});
  }
  function list(){

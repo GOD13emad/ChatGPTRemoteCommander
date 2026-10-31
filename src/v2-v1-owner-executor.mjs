@@ -6,6 +6,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import {createV2V1ToolBridge} from './v2-v1-tool-bridge.mjs';
+import {validateV2ShellReceiptValue} from './v2-v1-result-classifier.mjs';
 
 const error=code=>Object.assign(new Error(code),{code});
 function exclusive(file,data){
@@ -64,7 +65,8 @@ export function createV2NativeOwnerExecutor({root,now=Date.now,loadCatalog,invok
      // Do not store tool return values; could contain secrets or private files.
      outcome={schema:1,requestId:id,
        status:result?.isError===true?'V1_TOOL_REPORTED_ERROR':'V1_CALL_RETURNED',
-       resultReturned:true};
+       resultReturned:true,
+       ...(r.tool==='run_shell'?{shellCompletion:validateV2ShellReceiptValue(result?.shellCompletion)}:{})};
    } catch {
      outcome={schema:1,requestId:id,status:'DISPATCH_OUTCOME_UNCERTAIN',resultReturned:false};
    }
