@@ -4,7 +4,8 @@ import {mkdtemp,readFile,rm,symlink} from 'node:fs/promises';
 import {join} from 'node:path';
 import {tmpdir} from 'node:os';
 import {makeOwnerSeatHeartbeat,writeOwnerSeatHeartbeat,startOwnerSeatWorker,
- normalizeOwnerBrowserCensus,readOwnerBrowserCensus}
+ normalizeOwnerBrowserCensus,readOwnerBrowserCensus,
+ normalizeOwnerWindowInventory,readOwnerWindowInventory}
  from '../tools/v2-owner-seat-agent.mjs';
 
 test('owner heartbeat has no login, token, or tool authority',()=>{
@@ -105,4 +106,52 @@ test('background worker records census and preserves no-tool, no-login boundary'
   assert.equal(h.canExecuteUserActions,false);
   assert.equal(h.savedLoginVerified,false);
  }finally{ac.abort();await rm(dir,{recursive:true,force:true});}
+});
+
+test('owner native window inventory contains only app, pid and reuse-safe generation',async()=>{
+ const actual=await readOwnerWindowInventory({seat:1,probe:async()=>({
+  status:'OBSERVED',windows:[{app:'brave',pid:88,windowId:'44110614',
+   processStartTicks:'638975349837503814',title:'private tab',password:'private'}],
+  ownerToken:'private'
+ })});
+ assert.equal(actual.status,'OBSERVED');
+ assert.deepEqual(Object.keys(actual.windows[0]).sort(),
+  ['app','pid','windowId','processStartTicks'].sort());
+ assert.equal(JSON.stringify(actual).includes('private'),false);
+ assert.equal(Object.isFrozen(actual.windows[0]),true);
+ const heartbeat=makeOwnerSeatHeartbeat({user:'owner',seat:1,pid:5,windowInventory:actual});
+ assert.equal(heartbeat.canExecuteUserActions,false);
+ assert.equal(heartbeat.savedLoginVerified,false);
+ assert.equal(heartbeat.windowInventory.windows[0].app,'brave');
+});
+test('cross-seat/unknown-app/duplicate window inventory is fail closed',async()=>{
+ await assert.rejects(readOwnerWindowInventory({seat:0,probe:async()=>({status:'OBSERVED',windows:[]})}),
+  {code:'V2_OWNER_NATIVE_SEAT_REQUIRED'});
+ for(const bad of [
+  {status:'OBSERVED',windows:[{app:'powershell',pid:2,windowId:'1',processStartTicks:'1'}]},
+  {status:'OBSERVED',windows:[{app:'brave',pid:2,windowId:'1',processStartTicks:'1'},
+   {app:'brave',pid:2,windowId:'1',processStartTicks:'1'}]},
+  {status:'OBSERVED',windows:[{app:'brave',pid:2,windowId:'0',processStartTicks:'1'}]}
+ ])assert.deepEqual(await readOwnerWindowInventory({seat:1,probe:async()=>bad}),
+   {status:'UNAVAILABLE',windows:[]});
+});
+test('owner worker publishes native-window inventory with no action authority',async()=>{
+ const dir=await mkdtemp(join(tmpdir(),'v2-owner-win-'));
+ const controller=new AbortController();
+ try{
+  const job=startOwnerSeatWorker({dir,user:'owner',seat:1,pid:50,periodMs:1000,
+   signal:controller.signal,observeBrowsers:async()=>({status:'UNAVAILABLE'}),
+   observeWindows:async()=>({status:'OBSERVED',windows:[
+    {app:'msedge',pid:55,windowId:'1234',processStartTicks:'638975349837503814'}]})});
+  for(let i=0;i<50;i++){
+   try{const h=JSON.parse(await readFile(join(dir,'latest.json'),'utf8'));
+    if(h.windowInventory?.windows?.length===1)break;}catch{}
+   await new Promise(r=>setTimeout(r,20));
+  }
+  controller.abort();await job;
+  const state=JSON.parse(await readFile(join(dir,'latest.json'),'utf8'));
+  assert.equal(state.windowInventory.windows[0].pid,55);
+  assert.equal(state.savedLoginVerified,false);
+  assert.equal(state.canExecuteUserActions,false);
+ }finally{controller.abort();await rm(dir,{recursive:true,force:true});}
 });

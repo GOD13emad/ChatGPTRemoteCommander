@@ -50,9 +50,63 @@ export async function readOwnerBrowserCensus({seat,probe}={}){
  }catch{return normalizeOwnerBrowserCensus({status:'UNAVAILABLE'});}
 }
 
+// An owner-token read-only inventory of ordinary browser *top-level* windows.
+// Window metadata is never permission to perform any action, or proof of login.
+const SAFE_WINDOW_APPS=new Set(['brave','firefox','chrome','msedge']);
+export function normalizeOwnerWindowInventory(raw){
+ if(raw?.status==='UNAVAILABLE')
+  return Object.freeze({status:'UNAVAILABLE',windows:Object.freeze([])});
+ if(raw?.status!=='OBSERVED'||!Array.isArray(raw.windows)||raw.windows.length>32)
+  fail('V2_OWNER_WINDOW_INVENTORY_INVALID');
+ const seen=new Set(),windows=[];
+ for(const w of raw.windows){
+  if(!w||typeof w!=='object'||Array.isArray(w)||
+     !SAFE_WINDOW_APPS.has(w.app)||
+     !Number.isSafeInteger(w.pid)||w.pid<1||
+     typeof w.windowId!=='string'||!/^[1-9][0-9]{0,19}$/.test(w.windowId)||
+     typeof w.processStartTicks!=='string'||!/^[1-9][0-9]{0,19}$/.test(w.processStartTicks))
+    fail('V2_OWNER_WINDOW_INVENTORY_INVALID');
+  const k=w.app+':'+w.pid+':'+w.windowId+':'+w.processStartTicks;
+  if(seen.has(k))fail('V2_OWNER_WINDOW_INVENTORY_DUPLICATE');
+  seen.add(k);
+  windows.push(Object.freeze({app:w.app,pid:w.pid,
+    windowId:w.windowId,processStartTicks:w.processStartTicks}));
+ }
+ return Object.freeze({status:'OBSERVED',windows:Object.freeze(windows)});
+}
+export async function readOwnerWindowInventory({seat,probe}={}){
+ if(!Number.isSafeInteger(seat)||seat<1||seat>128)
+  fail('V2_OWNER_NATIVE_SEAT_REQUIRED');
+ if(!probe&&process.platform!=='win32')return normalizeOwnerWindowInventory({status:'UNAVAILABLE'});
+ try{
+  if(probe)return normalizeOwnerWindowInventory(await probe(seat));
+  const script=[
+    "$ErrorActionPreference='Stop'",
+    "$seat=[int]$env:RC_V2_OWNER_EXPECTED_SEAT",
+    "$names=@('brave','firefox','chrome','msedge')",
+    "$windows=New-Object 'System.Collections.Generic.List[object]'",
+    "$items=@(Get-Process -Name $names -ErrorAction SilentlyContinue)",
+    "foreach($p in $items){",
+    " if($p.SessionId -ne $seat -or [long]$p.MainWindowHandle -le 0){continue}",
+    " try{$start=([long]$p.StartTime.ToUniversalTime().Ticks).ToString()}catch{continue}",
+    " $windows.Add([pscustomobject]@{app=$p.ProcessName.ToLowerInvariant();pid=[int]$p.Id;windowId=([long]$p.MainWindowHandle).ToString();processStartTicks=$start})",
+    " if($windows.Count -ge 32){break}",
+    "}",
+    "[pscustomobject]@{status='OBSERVED';windows=@($windows.ToArray())}|ConvertTo-Json -Depth 4 -Compress"
+  ].join('\n');
+  const ps=join(process.env.SystemRoot||'C:\\Windows','System32','WindowsPowerShell','v1.0','powershell.exe');
+  const out=await runNative(ps,['-NoProfile','-NonInteractive','-EncodedCommand',
+   Buffer.from(script,'utf16le').toString('base64')],{
+   windowsHide:true,timeout:5000,maxBuffer:12288,
+   env:{...process.env,RC_V2_OWNER_EXPECTED_SEAT:String(seat)}
+  });
+  return normalizeOwnerWindowInventory(JSON.parse(out.stdout.trim()));
+ }catch{return normalizeOwnerWindowInventory({status:'UNAVAILABLE'});}
+}
+
 function fail(code){throw Object.assign(new Error(code),{code});}
 export function makeOwnerSeatHeartbeat({
-  user,seat,pid,now=new Date().toISOString(),browserCensus={status:'UNAVAILABLE'}
+  user,seat,pid,now=new Date().toISOString(),browserCensus={status:'UNAVAILABLE'},windowInventory={status:'UNAVAILABLE'}
 }={}){
  if(typeof user!=='string'||!ID.test(user)||user==='.'||user==='..'||
   !Number.isSafeInteger(seat)||seat<1||seat>128||
@@ -67,7 +121,8 @@ export function makeOwnerSeatHeartbeat({
   browserAttached:false,savedLoginVerified:false,
   chatSessionAttested:false,canExecuteUserActions:false,
   credentialsRead:false,profileCopied:false,
-  browserCensus:normalizeOwnerBrowserCensus(browserCensus)});
+  browserCensus:normalizeOwnerBrowserCensus(browserCensus),
+  windowInventory:normalizeOwnerWindowInventory(windowInventory)});
 }
 export async function writeOwnerSeatHeartbeat({dir,heartbeat}={}){
  if(typeof dir!=='string'||!isAbsolute(dir)||!heartbeat||
@@ -90,15 +145,17 @@ export async function writeOwnerSeatHeartbeat({dir,heartbeat}={}){
 }
 export async function startOwnerSeatWorker({
   dir,user,seat,pid=process.pid,periodMs=30000,signal,
-  observeBrowsers=readOwnerBrowserCensus
+  observeBrowsers=readOwnerBrowserCensus,observeWindows=readOwnerWindowInventory
 }={}){
- if(typeof observeBrowsers!=='function'||!Number.isSafeInteger(periodMs)||periodMs<1000||periodMs>60000)
+ if(typeof observeBrowsers!=='function'||typeof observeWindows!=='function'||!Number.isSafeInteger(periodMs)||periodMs<1000||periodMs>60000)
   fail('V2_OWNER_SEAT_PERIOD_INVALID');
  if(signal?.aborted) return;
  do{
   let browserCensus;
   try{browserCensus=await observeBrowsers({seat});}catch{browserCensus={status:'UNAVAILABLE'};}
-  await writeOwnerSeatHeartbeat({dir,heartbeat:makeOwnerSeatHeartbeat({user,seat,pid,browserCensus})});
+  let windowInventory;
+  try{windowInventory=await observeWindows({seat});}catch{windowInventory={status:'UNAVAILABLE'};}
+  await writeOwnerSeatHeartbeat({dir,heartbeat:makeOwnerSeatHeartbeat({user,seat,pid,browserCensus,windowInventory})});
   if(signal?.aborted)break;
   await new Promise(resolve=>{
    const timer=setTimeout(()=>{signal?.removeEventListener('abort',done);resolve();},periodMs);
