@@ -182,3 +182,8 @@ Use the **latest security-supported and compatible upstream release/commit**, pi
 ### Linux PID owner boundary — 2026-10-31
 
 Before traversing the AT-SPI tree for a requested PID, the helper verifies Linux `/proc/<pid>/status` real UID matches its unprivileged owning user. It checks again before returning observed element metadata, refusing cross-user/missing/reassigned targets. Root-executed observation is refused. This enforces the one-principal desktop bridge even in shared X11 sessions; it does not grant cross-user access or bypass the target application. The private test fixture only checks the negative path against a foreign-owned PID. **SOURCE ONLY / NO PROMOTE** until live owner-session and review acceptance.
+
+
+### Linux RemoteDesktop Portal v2 detection — 2026-10-31
+
+`workspace_linux_portal_status` queries the owning session's D-Bus RemoteDesktop interface version without creating a session, requesting consent or controlling input. `available=true` means interface v2 support, not user authorization: `interactionAvailable=false`, `consentGranted=false`. After explicit portal Start approval, a future separate libei device agent may call ConnectToEIS. On aliemad-Labtop the read-only D-Bus call reported version 2. Current stage remains SOURCE ONLY / NO PROMOTE. Primary docs: https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.RemoteDesktop.html ; https://libinput.pages.freedesktop.org/libei/ .

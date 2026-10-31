@@ -86,3 +86,30 @@ test('real Linux AT-SPI helper must reject foreign OS uid before accessibility t
  catch(error){data=JSON.parse(String(error.stdout).trim());assert.equal(error.code,4);}
  assert.equal(data.code,'ATSPI_TARGET_OWNER_MISMATCH');
 });
+
+test('Linux Portal v2 is detected read-only and never treated as consent',async()=>{
+ const {probeLinuxRemoteDesktopPortal}=await import('../src/agentos-linux-portal.mjs');
+ const calls=[];
+ const result=await probeLinuxRemoteDesktopPortal({platform:'linux',env},{
+  uid:1000,runner:async(exe,args)=>{calls.push({exe,args});return {stdout:'(<uint32 2>,)\n'};}
+ });
+ assert.equal(result.available,true);assert.equal(result.consentGranted,false);
+ assert.equal(result.interactionAvailable,false);assert.equal(calls.length,1);
+ assert.ok(calls[0].args.includes('org.freedesktop.portal.RemoteDesktop'));
+ assert.equal(calls[0].args.includes('Start'),false);
+ const controller=createWorkspaceController({platform:'linux',env,ownerSession:async()=>true,
+  portalProbe:async()=>result});
+ assert.equal((await controller.execute('workspace_linux_portal_status')).available,true);
+ assert.equal(workspaceToolDefinitions.find(x=>x.name==='workspace_linux_portal_status').annotations.readOnlyHint,true);
+});
+test('Linux Portal fails closed on absence of owner, v1, error and forged output',async()=>{
+ const {probeLinuxRemoteDesktopPortal}=await import('../src/agentos-linux-portal.mjs');
+ const good={platform:'linux',env};
+ const runner=async(_program,_args)=>({stdout:'(<uint32 1>,)'});
+ assert.equal((await probeLinuxRemoteDesktopPortal(good,{uid:1000,runner})).available,false);
+ assert.equal((await probeLinuxRemoteDesktopPortal(good,{uid:1001,runner})).code,'PORTAL_OWNER_SESSION_REQUIRED');
+ assert.equal((await probeLinuxRemoteDesktopPortal(good,{uid:1000,runner:async()=>({stdout:'garbage'})})).code,'PORTAL_INVALID_RESPONSE');
+ assert.equal((await probeLinuxRemoteDesktopPortal(good,{uid:1000,runner:async()=>{throw Error('not present')}})).code,'PORTAL_DBUS_UNAVAILABLE');
+ const c=createWorkspaceController({platform:'linux',env,ownerSession:async()=>false,portalProbe:async()=>{throw Error('must not call')}});
+ assert.equal((await c.execute('workspace_linux_portal_status')).code,'PORTAL_OWNER_SESSION_REQUIRED');
+});

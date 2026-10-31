@@ -20,6 +20,10 @@ const defaultLinuxObserve=async (...args)=>{
  const {observeLinuxATSPI}=await import('./agentos-native-linux.mjs');
  return observeLinuxATSPI(...args);
 };
+const defaultPortalProbe=async (...args)=>{
+ const {probeLinuxRemoteDesktopPortal}=await import('./agentos-linux-portal.mjs');
+ return probeLinuxRemoteDesktopPortal(...args);
+};
 const defaultBrowserProbe=async ({ctx}={})=>{
  // Planning must not convert an absent/disabled helper into a READY provider.
  if(ctx?.config?.powerMode?.enabled!==true||ctx?.config?.powerMode?.browserControl?.enabled!==true)
@@ -119,6 +123,8 @@ export const workspaceToolDefinitions=[
    type:'object',properties:{target:{type:'string',enum:['existing-browser','new-browser','existing-app','new-app','project']},
      existingProfileGrant:{type:'boolean'},visualFallbackAuthorized:{type:'boolean'}},
    required:['target'],additionalProperties:false},annotations:readOnly},
+ {name:'workspace_linux_portal_status',description:'Check the owning Linux user session for XDG RemoteDesktop Portal v2 / libei support without requesting consent or controlling input.',inputSchema:{
+   type:'object',properties:{},additionalProperties:false},annotations:readOnly},
  {name:'workspace_native_atspi_observe',description:'Read-only AT-SPI controls for one exact process in the verified owning Linux session. No keyboard, mouse or focus.',inputSchema:{
    type:'object',properties:{pid:{type:'integer',minimum:1},maxElements:{type:'integer',minimum:1,maximum:100}},
    required:['pid'],additionalProperties:false},annotations:readOnly},
@@ -166,7 +172,7 @@ export const workspaceToolDefinitions=[
      determination:{type:'string',enum:['EFFECT_OBSERVED','NO_EFFECT_OBSERVED']}},
    required:['pid','windowId','determination'],additionalProperties:false},annotations:mutating}
 ];
-export function createWorkspaceController({callDriver=defaultCuaCall,nativeCall=defaultNativeUIACall,linuxProbe=defaultLinuxProbe,linuxObserve=defaultLinuxObserve,browserProbe=defaultBrowserProbe,previewDriver=defaultCuaPreview,ownerSession=defaultOwnerSession,
+export function createWorkspaceController({callDriver=defaultCuaCall,nativeCall=defaultNativeUIACall,linuxProbe=defaultLinuxProbe,linuxObserve=defaultLinuxObserve,portalProbe=defaultPortalProbe,browserProbe=defaultBrowserProbe,previewDriver=defaultCuaPreview,ownerSession=defaultOwnerSession,
   platform=process.platform,env=process.env,now=Date.now,journal=createWorkspaceTargetJournal()}={}){
  const pending=new Map(),seen=new Set(),busy=new Set(),snapshots=new Map(),browserSnapshots=new Map(),nativeSnapshots=new Map();
  const needsOwner=async()=>{if(!await ownerSession({platform,env}))throw fail('WORKSPACE_OWNER_SESSION_REQUIRED');};
@@ -175,6 +181,12 @@ export function createWorkspaceController({callDriver=defaultCuaCall,nativeCall=
   if(seat!==null&&(platform!=='linux'||!['a','b'].includes(seat)))throw fail('WORKSPACE_SEAT_INVALID');
   const call=(tool,args)=>callDriver(tool,args,{platform,env,workspaceSeat:seat});
   if(seat!==null&&name.startsWith('workspace_browser_'))throw fail('WORKSPACE_BROWSER_PRIVATE_SEAT_UNSUPPORTED');
+  if(name==='workspace_linux_portal_status'){
+   if(platform!=='linux')return {ok:true,available:false,code:'PORTAL_LINUX_ONLY',interactionAvailable:false};
+   if(!await ownerSession({platform,env}))
+    return {ok:true,available:false,code:'PORTAL_OWNER_SESSION_REQUIRED',interactionAvailable:false};
+   return portalProbe({platform,env});
+  }
   if(name==='workspace_plan'){
    const owner=await ownerSession({platform,env});
    return chooseWorkspaceRoute({...input,sameUserSession:owner,desktop:desktopType(platform,env)});
@@ -440,7 +452,7 @@ const singleton=createWorkspaceController();
 export function assertWorkspaceToolPolicy(config,name,args={}){
  const power=config?.powerMode;
  if(power?.enabled!==true)throw fail('WORKSPACE_POWER_MODE_DISABLED');
- if(name==='workspace_plan'||name==='workspace_agentos_plan')return;
+ if(name==='workspace_plan'||name==='workspace_agentos_plan'||name==='workspace_linux_portal_status')return;
  const browser=name.startsWith('workspace_browser_')||
   (name==='workspace_target_reconcile'&&args?.surface==='browser');
  if(browser){
