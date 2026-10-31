@@ -5,6 +5,7 @@ import {createV2NativeOwnerExecutor} from '../src/v2-v1-owner-executor.mjs';
 import {confirmLowRiskV2OwnerDialog} from '../src/v2-native-owner-dialog.mjs';
 import {eligibleV2PendingReviews,pickV2PendingReview,eligibleV2AdvancedReviews,pickV2AdvancedReview,displayV2NativeReviewOutcome} from '../src/v2-native-review-picker.mjs';
 import {confirmV2AdvancedOwnerDialog} from '../src/v2-native-advanced-review.mjs';
+import {bindV2V1MutationId} from '../src/v2-v1-idempotency-bindings.mjs';
 const url='http://127.0.0.1:47831/mcp';
 async function rpc(method,params={}){
  const c=new AbortController(),timer=setTimeout(()=>c.abort(),15000);
@@ -26,6 +27,13 @@ const advancedMode=action==='review-all-gui';
 const guiMode=action==='approve-gui'||action==='review-gui';
 const executor=createV2NativeOwnerExecutor({
  loadCatalog:catalog,
+ prepareInvocation:async(tool,args,{requestId})=>{
+  // V1 supplies the authoritative tool input schema.
+  const result=await rpc('tools/list');
+  return bindV2V1MutationId({
+   tool,args,requestId,toolDefinitions:result.tools
+  });
+ },
  invokeTool:async(tool,args)=>{
   const result=await rpc('tools/call',{name:tool,arguments:args});
   return {isError:result?.isError===true};

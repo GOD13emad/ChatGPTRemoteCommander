@@ -17,8 +17,9 @@ function exclusive(file,data){
  try{fs.fsyncSync(dir)}finally{fs.closeSync(dir)}
 }
 export function createV2NativeOwnerExecutor({root,now=Date.now,loadCatalog,invokeTool,
-  requireOwnerConfirmation}={}){
- if(typeof invokeTool!=='function'||typeof requireOwnerConfirmation!=='function')
+  requireOwnerConfirmation,prepareInvocation=async (_tool,args)=>args}={}){
+ if(typeof invokeTool!=='function'||typeof requireOwnerConfirmation!=='function'||
+    typeof prepareInvocation!=='function')
   throw error('V2_OWNER_EXECUTOR_TRUSTED_CALLBACKS_REQUIRED');
  if(typeof process.getuid!=='function'||process.getuid()===0)
   throw error('V2_OWNER_EXECUTOR_USER_REQUIRED');
@@ -35,8 +36,13 @@ export function createV2NativeOwnerExecutor({root,now=Date.now,loadCatalog,invok
    if(r.expired||r.status!=='PENDING')throw error('V2_OWNER_NOT_PENDING');
    const list=await queue.catalog();
    if(!list.includes(r.tool))throw error('V2_OWNER_TOOL_REMOVED');
+   // Bind mutation idempotency metadata BEFORE owner review, so the preview
+   // shows exactly the arguments forwarded after approval.
+   const prepared=await prepareInvocation(r.tool,structuredClone(r.arguments),{requestId:id});
+   if(!prepared||typeof prepared!=='object'||Array.isArray(prepared))
+     throw error('V2_OWNER_PREPARED_ARGS_INVALID');
    const approved=await requireOwnerConfirmation(Object.freeze({
-     requestId:id,tool:r.tool,arguments:structuredClone(r.arguments),
+     requestId:id,tool:r.tool,arguments:structuredClone(prepared),
      createdAtMs:r.createdAtMs
    }));
    if(approved!==true)throw error('V2_OWNER_DENIED');
@@ -45,12 +51,16 @@ export function createV2NativeOwnerExecutor({root,now=Date.now,loadCatalog,invok
    if(current.expired||current.status!=='PENDING'||current.digest!==r.digest)
      throw error('V2_OWNER_REQUEST_CHANGED');
    if(!(await queue.catalog()).includes(current.tool))throw error('V2_OWNER_TOOL_REMOVED');
+   const preparedAgain=await prepareInvocation(current.tool,
+     structuredClone(current.arguments),{requestId:id});
+   if(JSON.stringify(preparedAgain)!==JSON.stringify(prepared))
+     throw error('V2_OWNER_EFFECTIVE_ARGS_CHANGED');
    const begin=queue.receiptPath(id);
    // Exists -> previous attempt is uncertain/completed, do not dispatch again.
    exclusive(begin,{schema:1,requestId:id,status:'DISPATCHING_UNCERTAIN',tool:r.tool});
    let outcome;
    try {
-     const result=await invokeTool(r.tool,structuredClone(r.arguments));
+     const result=await invokeTool(r.tool,structuredClone(prepared));
      // Do not store tool return values; could contain secrets or private files.
      outcome={schema:1,requestId:id,
        status:result?.isError===true?'V1_TOOL_REPORTED_ERROR':'V1_CALL_RETURNED',

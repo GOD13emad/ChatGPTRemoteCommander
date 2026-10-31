@@ -383,3 +383,11 @@ verified result and final receipt; trusted per-ChatGPT-caller
 authentication and scoped grants for unattended private tool calls;
 native GUI consent for the actual owner desktop when needed. NoAuth
 tunnel identity is not equivalent to ChatGPT-user identity.
+
+## MMZ V2-to-V1 Shell request identity repair (2026-11-01)
+
+The owner-reviewed V2 `run_shell` request `65da89bc-ea41-469d-ab31-374c202a56f5` has a durable final status `V1_TOOL_REPORTED_ERROR`; it was not replayed. A separate bounded V1 diagnostic confirmed `MUTATION_REQUEST_ID_REQUIRED` for a command without `requestId`, and success for a benign one-time command with a valid request ID. The historical V2 final receipt did not preserve V1's textual error code; its exact cause is therefore inferred from the independent diagnostic rather than proven by that receipt alone.
+
+The native owner executor now binds a deterministic `v2-<request UUID>` to tools whose live V1 input schema declares a string `requestId`. This bound value appears in the exact local owner review before approval. After approval, the same effective arguments and source request are revalidated; drift denies execution. Caller-supplied mutation IDs are refused. This does not change the V1 service or enable unapproved calls. The previous failed operation is immutable and must not be retried.
+
+Code: `src/v2-v1-idempotency-bindings.mjs`, `src/v2-v1-owner-executor.mjs`, and `tools/v2-v1-owner-cli.mjs`. Targeted regression: 22 PASS, zero failures. V2-only installed files were verified against source hashes with prior copies retained. New live `run_shell` success remains unverified until a different, explicitly approved request returns and its effect can be checked.
