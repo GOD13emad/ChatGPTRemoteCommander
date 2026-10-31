@@ -170,7 +170,7 @@ export function createGuiController({ platform = process.platform, now = () => p
         const status = await invokeNative({ action: 'status', stopFile });
         if (status?.ok !== true) throw guiError(status?.error || 'GUI_NATIVE_FAILED');
         return { ...status, enabled, busy: false, leased: !!current(), backend: status.backend ?? (platform === 'win32' ? 'windows-user32-gdi' : 'gnome-shell-wayland'), policy: {
-          allowScreenshot: cfg.allowScreenshot === true, allowWindowEnumeration: cfg.allowWindowEnumeration === true || cfg.allowWindowFocus === true, allowMouse: cfg.allowMouse === true,
+          allowScreenshot: cfg.allowScreenshot === true, allowCursorObservation: cfg.allowMouse === true || cfg.allowScreenshot === true || cfg.allowWindowEnumeration === true || cfg.allowWindowFocus === true, allowWindowEnumeration: cfg.allowWindowEnumeration === true || cfg.allowWindowFocus === true, allowMouse: cfg.allowMouse === true,
           allowKeyboard: cfg.allowKeyboard === true, allowWindowFocus: cfg.allowWindowFocus === true,
           defaultSessionMode: 'observe', explicitTakeoverRequired: true,
           interactionPolicy: 'explicit-current-request-only', backgroundPreferred: true,
@@ -187,9 +187,12 @@ export function createGuiController({ platform = process.platform, now = () => p
       if (name === 'gui_session_end') { session = null; frame = null; closeInvoke(); return { ok: true }; }
       // Listing windows is observational and does not require permission to shift focus.
       // Preserve legacy allowWindowFocus=true configurations during migration.
-      const allowed = rule.capability === 'allowWindowEnumeration'
-        ? (cfg.allowWindowEnumeration === true || cfg.allowWindowFocus === true)
-        : cfg[rule.capability] === true;
+      const allowed = rule.capability === 'allowCursorObservation'
+        ? (cfg.allowScreenshot === true || cfg.allowWindowEnumeration === true ||
+           cfg.allowWindowFocus === true || cfg.allowMouse === true)
+        : rule.capability === 'allowWindowEnumeration'
+          ? (cfg.allowWindowEnumeration === true || cfg.allowWindowFocus === true)
+          : cfg[rule.capability] === true;
       if (!allowed) throw guiError('GUI_CAPABILITY_DISABLED');
       const isInput = rule.annotations.destructiveHint === true;
       if (isInput && session.mode !== 'takeover') throw guiError('GUI_TAKEOVER_NOT_AUTHORIZED');

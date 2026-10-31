@@ -533,3 +533,29 @@ test('KDE native helper is bundled and dispatch stays bound to KDE session and e
   assert.ok(source.includes('request.nativeOperationId=pendingHandle.id'));
   assert.ok(source.includes('error?.guiKdePreDispatch === true'));
 });
+
+test('read-only cursor observation is independent of mouse injection permission',async()=>{
+ const s=setup();const gui=s.ctx.config.powerMode.guiControl;
+ gui.allowMouse=false;gui.allowScreenshot=true;gui.allowWindowFocus=false;gui.allowWindowEnumeration=false;
+ const policy=await s.run('gui_status');
+ assert.equal(policy.policy.allowCursorObservation,true);
+ assert.equal(policy.policy.allowMouse,false);
+ const {lease}=await s.run('gui_session_begin',{mode:'observe'});
+ const cursor=await s.run('gui_cursor_position',{lease});
+ assert.equal(cursor.ok,true);
+ assert.deepEqual(s.calls.map(x=>x.action),['status','status','cursor']);
+ await assert.rejects(s.run('gui_mouse_move',{lease,frame:'invalid',x:0,y:0}),/GUI_CAPABILITY_DISABLED/);
+ await assert.rejects(s.run('gui_mouse_click',{lease,frame:'invalid',x:0,y:0}),/GUI_CAPABILITY_DISABLED/);
+ assert.deepEqual(s.calls.map(x=>x.action),['status','status','cursor']);
+ await s.run('gui_session_end',{lease});
+});
+test('cursor observation fails closed when no read-only GUI capability exists',async()=>{
+ const s=setup();const gui=s.ctx.config.powerMode.guiControl;
+ gui.allowMouse=false;gui.allowScreenshot=false;gui.allowWindowFocus=false;gui.allowWindowEnumeration=false;
+ const status=await s.run('gui_status');
+ assert.equal(status.policy.allowCursorObservation,false);
+ const {lease}=await s.run('gui_session_begin',{mode:'observe'});
+ await assert.rejects(s.run('gui_cursor_position',{lease}),/GUI_CAPABILITY_DISABLED/);
+ assert.deepEqual(s.calls.map(x=>x.action),['status','status']);
+ await s.run('gui_session_end',{lease});
+});
