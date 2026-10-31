@@ -84,6 +84,15 @@ export const V2_V1_BRIDGE_TOOLS=Object.freeze([
   },required:['tool','arguments'],additionalProperties:false},
   annotations:{readOnlyHint:false,destructiveHint:false,openWorldHint:false},
   securitySchemes:[{type:'noauth'}]
+ }),
+ Object.freeze({
+  name:'v2_v1_request_status',title:'V2 Owner-Reviewed Tool Request Status',
+  description:'Read only the state of a previously queued opaque request ID; no arguments, raw output, credentials or private V1 results are returned.',
+  inputSchema:{type:'object',properties:{
+   requestId:{type:'string',minLength:36,maxLength:36}
+  },required:['requestId'],additionalProperties:false},
+  annotations:{readOnlyHint:true,destructiveHint:false,openWorldHint:false},
+  securitySchemes:[{type:'noauth'}]
  })
 ]);
 export function createV2V1ToolBridge({
@@ -139,7 +148,24 @@ export function createV2V1ToolBridge({
   return Object.freeze({requestId:id,status:'WAITING_FOR_NATIVE_OWNER_REVIEW',
    expiresAtMs:time+TTL,executed:false});
  }
- return Object.freeze({catalog,request,inspect,
+ function progress(id){
+  const r=inspect(id);
+  const p=paths(id);
+  const final=path.join(root,'final',id+'.json');
+  let state=r.status==='PENDING'?(r.expired?'EXPIRED':'WAITING_FOR_NATIVE_OWNER_REVIEW'):
+    'DISPATCH_STARTED_OUTCOME_UNKNOWN';
+  if(fs.existsSync(final)){
+   const value=read(final);
+   if(value.schema!==1||value.requestId!==id||
+      !['V1_TOOL_REPORTED_ERROR','V1_CALL_RETURNED','DISPATCH_OUTCOME_UNCERTAIN'].includes(value.status))
+     fail('V2_BRIDGE_FINAL_RECORD_INVALID');
+   state=value.status;
+  }
+  return Object.freeze({requestId:id,status:state,expired:r.expired,
+    v1CallReturned:state==='V1_CALL_RETURNED'||state==='V1_TOOL_REPORTED_ERROR',
+    verifiedEffect:false});
+ }
+ return Object.freeze({catalog,request,inspect,progress,
    list:()=>scan().map(x=>inspect(x.slice(0,-5))),
    // Native-only receipt write is intentionally not exposed on this interface.
    receiptPath:id=>paths(id).receipt});

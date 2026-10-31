@@ -13,7 +13,7 @@ const withRoot=async f=>{
  try{await f(root)}finally{fs.rmSync(parent,{recursive:true,force:true})}
 };
 test('noauth tool list includes only metadata and proposal surfaces',()=>{
- assert.deepEqual(V2_V1_BRIDGE_TOOLS.map(t=>t.name),['v2_v1_tool_catalog','v2_request_owner_tool']);
+ assert.deepEqual(V2_V1_BRIDGE_TOOLS.map(t=>t.name),['v2_v1_tool_catalog','v2_request_owner_tool','v2_v1_request_status']);
  assert.ok(V2_V1_BRIDGE_TOOLS.every(t=>t.securitySchemes[0].type==='noauth'));
 });
 test('owner review queues exact V1 tool but NEVER executes on remote request',()=>withRoot(async root=>{
@@ -25,6 +25,7 @@ test('owner review queues exact V1 tool but NEVER executes on remote request',()
  assert.equal(request.executed,false);
  assert.equal(effects,0);
  assert.equal(queue.inspect(request.requestId).tool,'run_shell');
+ assert.equal(queue.progress(request.requestId).status,'WAITING_FOR_NATIVE_OWNER_REVIEW');
  assert.equal(fs.lstatSync(root).mode&0o077,0);
  assert.equal(fs.lstatSync(path.join(root,'requests',request.requestId+'.json')).mode&0o077,0);
  assert.equal(fs.readdirSync(path.join(root,'receipts')).length,0);
@@ -35,6 +36,10 @@ test('owner review queues exact V1 tool but NEVER executes on remote request',()
  assert.equal(result.status,'V1_CALL_RETURNED');
  assert.equal(effects,1);
  assert.equal(executor.status(request.requestId).status,'V1_CALL_RETURNED');
+ assert.deepEqual(Object.keys(queue.progress(request.requestId)).sort(),
+  ['requestId','status','expired','v1CallReturned','verifiedEffect'].sort());
+ assert.equal(queue.progress(request.requestId).status,'V1_CALL_RETURNED');
+ assert.equal(queue.progress(request.requestId).verifiedEffect,false);
  await assert.rejects(()=>executor.approve(request.requestId),{code:'V2_OWNER_NOT_PENDING'});
  assert.equal(effects,1);
 }));
@@ -71,6 +76,7 @@ test('transport failure after bounded owner approval is recorded UNCERTAIN, not 
   invokeTool:async()=>{n++;throw new Error('transport dropped')}});
  const result=await executor.approve(r.requestId);
  assert.equal(result.status,'DISPATCH_OUTCOME_UNCERTAIN');
+ assert.equal(q.progress(r.requestId).status,'DISPATCH_OUTCOME_UNCERTAIN');
  await assert.rejects(()=>executor.approve(r.requestId),{code:'V2_OWNER_NOT_PENDING'});
  assert.equal(n,1);
 }));
@@ -81,3 +87,22 @@ test('native interactive CLI rejects headless approval',()=>{
  assert.notEqual(s.status,0);
  assert.match(s.stderr,/V2_OWNER_INTERACTIVE_TTY_REQUIRED/);
 });
+test('a crash after durable predispatch marker reports unknown result; it is never success',()=>withRoot(async root=>{
+ let time=200000;
+ const q=createV2V1ToolBridge({root,now:()=>time,
+  loadCatalog:async()=>['system_status']});
+ const req=await q.request({tool:'system_status',arguments:{}});
+ const pathToReceipt=path.join(root,'receipts',req.requestId+'.json');
+ fs.writeFileSync(pathToReceipt,JSON.stringify({
+  schema:1,requestId:req.requestId,status:'DISPATCHING_UNCERTAIN',tool:'system_status'
+ })+'\n',{mode:0o600,flag:'wx'});
+ const state=q.progress(req.requestId);
+ assert.deepEqual(state,{
+  requestId:req.requestId,status:'DISPATCH_STARTED_OUTCOME_UNKNOWN',
+  expired:false,v1CallReturned:false,verifiedEffect:false
+ });
+ const executor=createV2NativeOwnerExecutor({root,now:()=>time,
+  loadCatalog:async()=>['system_status'],requireOwnerConfirmation:async()=>true,
+  invokeTool:async()=>{throw Error('SHOULD_NEVER_RUN')}});
+ await assert.rejects(()=>executor.approve(req.requestId),{code:'V2_OWNER_NOT_PENDING'});
+}));

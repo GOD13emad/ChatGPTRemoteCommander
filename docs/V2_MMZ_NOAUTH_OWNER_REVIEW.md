@@ -128,3 +128,57 @@ workflow, shell, filesystem or GUI auto-execution. Do not treat the
 catalog count as V2 capability-parity acceptance. For actual
 unattended full-control production, a proper user authentication and
 authorization broker is required; transport-only noauth is insufficient.
+
+## Live V1 runtime readiness and request outcome (same MMZ-only bridge)
+
+Two additional V2 tools were deployed through the independent V2 mTLS
+listener after a hash-guarded install with private rollback artifacts:
+
+- `v2_v1_live_readiness` accepts only `component=gui|browser|workflow|power`.
+  The implementation calls exactly the corresponding current-user V1
+  *read-only* status tool and returns only strictly validated booleans
+  and the permitted SQLite integrity enumeration. No raw V1 response,
+  private profiles, browser tabs, workflow goals, file data, process
+  lists or credentials cross into the unauthenticated V2 response.
+- `v2_v1_request_status` accepts only an opaque UUID returned by
+  `v2_request_owner_tool` and reports pending/expired/uncertain/returned
+  state, never the original tool parameters or results. A returned V1
+  RPC does not certify that a long-running effect completed.
+
+The native owner-executor now fsyncs the containing receipt directory
+after an exclusive pre-dispatch receipt write, BEFORE calling V1.
+Recovery tests refuse replay when only that pre-dispatch marker exists.
+The request-status tool reports `DISPATCH_STARTED_OUTCOME_UNKNOWN`
+rather than falsely inferring success. The owner CLI remains the only
+real invocation path for queued sensitive tools and requires the same
+independent native confirmation as before.
+
+**Verified native live endpoint:** 8 MCP tools present. All four
+`v2_v1_live_readiness` components succeeded against the real MMZ V1,
+without leaking raw private fields. Unsupported `run_shell`
+component and unknown status UUID both fail closed. Direct V2
+`run_shell` still denied. V2 tunnel /readyz returned HTTP 200;
+V1 Core and V2 Coordinator remained active after deploy.
+
+**Isolated positive QA:** A second local V2 mTLS listener on port
+55593 with separate owner-private QA queue received a test proposal
+for the real V1 `system_status` tool. A TEST HARNESS substituted
+`requireOwnerConfirmation:true` for this NON-SENSITIVE QA call
+only (not a real owner login/approval), forwarded to the actual
+V1 local MCP, observed the returned receipt via V2, and verified
+exactly one invocation and that replay was denied. QA success is
+**not** real user approval, authenticated per-chat V2 execution or
+proof of effect completion for arbitrary tools.
+
+The V2 source pilot server `tools/v2-mmz-pilot-server.mjs` is an
+installation-layout entry template: it is copied to the installed
+V2 ReadOnlyMcp directory, where its local `./src` and
+`./v2-readonly-tools.mjs` imports resolve. It is not directly runnable
+from `tools/` in the source checkout without staging those sibling
+dependencies. Regression test imports the portable pure modules;
+live QA imports the exact installed server.
+
+The next open gate remains trusted owner-session-to-tool authorization
+for unattended private read/write/Shell/GUI/Workflow. Both OS privileges
+and V1's native session consent still apply; NoAuth tunnel/mTLS transport
+does not prove a ChatGPT user or desktop owner.

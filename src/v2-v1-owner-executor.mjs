@@ -13,6 +13,8 @@ function exclusive(file,data){
    fs.constants.O_EXCL|fs.constants.O_NOFOLLOW,0o600);
  try{fs.writeFileSync(fd,JSON.stringify(data)+'\n');fs.fsyncSync(fd)}
  finally{fs.closeSync(fd)}
+ const dir=fs.openSync(path.dirname(file),fs.constants.O_RDONLY|fs.constants.O_DIRECTORY);
+ try{fs.fsyncSync(dir)}finally{fs.closeSync(dir)}
 }
 export function createV2NativeOwnerExecutor({root,now=Date.now,loadCatalog,invokeTool,
   requireOwnerConfirmation}={}){
