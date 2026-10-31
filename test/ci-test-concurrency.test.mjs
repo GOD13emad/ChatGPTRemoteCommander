@@ -5,7 +5,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { boundNodeTestConcurrency, parseQualificationArgs, prioritizeSensitiveQualificationCommands, isolateWindowsLeaseRegression, isolateWindowsTimingSensitiveRegressions, isolateWindowsProcessTreeRegression, isolateWindowsAgentHttpRegression, isolateWindowsTransferMeshHttpRegression, isolateWindowsWorkflowPlanRegression, isolateWindowsAsyncHttpRegression, isolateWindowsMcpConformanceRegression, isolateWindowsAutotickRegression, isolateWindowsStartupReadinessRegressions, prioritizeWindowsAdaptiveCold, markIsolatedQualificationPhases, splitWindowsQualificationCommands } from '../tools/run-bounded-test-script.mjs';
+import { boundNodeTestConcurrency, parseQualificationArgs, prioritizeSensitiveQualificationCommands, isolateWindowsLeaseRegression, isolateWindowsTimingSensitiveRegressions, isolateWindowsProcessTreeRegression, isolateWindowsAgentHttpRegression, isolateWindowsTransferMeshHttpRegression, isolateWindowsWorkflowPlanRegression, isolateWindowsAsyncHttpRegression, isolateWindowsMcpConformanceRegression, isolateWindowsAutotickRegression, isolateWindowsStartupReadinessRegressions, prioritizeWindowsAdaptiveCold, prioritizeWindowsEngineIntegrationCold, markIsolatedQualificationPhases, splitWindowsQualificationCommands } from '../tools/run-bounded-test-script.mjs';
 
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const read=rel=>fs.readFileSync(path.join(root,rel),'utf8');
@@ -624,4 +624,38 @@ test('Windows startup-sensitive HTTP fixtures stay exact, early, and individuall
     'host regression preserves the original 30-second readiness deadline');
   assert.ok(read('tools/run-bounded-test-script.mjs').includes(
     'command=isolateWindowsStartupReadinessRegressions(command);'));
+});
+
+test('R173 hosted phase 11 engine integration runs cold exactly once with unchanged assertions',()=>{
+ const pkg=JSON.parse(read('package.json'));
+ let c=prioritizeSensitiveQualificationCommands(boundNodeTestConcurrency(pkg.scripts.test,1).command);
+ for(const fn of [
+  isolateWindowsAgentHttpRegression,isolateWindowsProcessTreeRegression,
+  isolateWindowsTransferMeshHttpRegression,isolateWindowsLeaseRegression,
+  isolateWindowsAsyncHttpRegression,isolateWindowsTimingSensitiveRegressions,
+  isolateWindowsWorkflowPlanRegression,isolateWindowsMcpConformanceRegression,
+  isolateWindowsStartupReadinessRegressions,prioritizeWindowsAdaptiveCold,
+  isolateWindowsAutotickRegression
+ ])c=fn(c);
+ const before=splitWindowsQualificationCommands(c);
+ const exact='node --test --test-concurrency=1 test/project-engine-integration.test.mjs';
+ assert.equal(before[11],exact,'recorded R173 phase 11 maps to the original test');
+ const after=splitWindowsQualificationCommands(prioritizeWindowsEngineIntegrationCold(c));
+ assert.equal(after[0],exact);
+ assert.deepEqual(after.slice(1),before.filter(x=>x!==exact),
+  'the same exact commands execute once with only one cold ordering change');
+ assert.equal(after.length,before.length);
+ assert.equal(after.join(' && ').split('test/project-engine-integration.test.mjs').length-1,1);
+ assert.throws(()=>prioritizeWindowsEngineIntegrationCold('node --test --test-concurrency=1 test/a.test.mjs'),
+  /R173_ENGINE_INTEGRATION_CARDINALITY/);
+ assert.throws(()=>prioritizeWindowsEngineIntegrationCold(exact+' && '+exact),
+  /R173_ENGINE_INTEGRATION_CARDINALITY/);
+ assert.throws(()=>prioritizeWindowsEngineIntegrationCold(
+   'node --test --test-concurrency=1 test/a.test.mjs test/project-engine-integration.test.mjs'),
+  /R173_ENGINE_INTEGRATION_NOT_ISOLATED/);
+ const source=read('tools/run-bounded-test-script.mjs');
+ assert.ok(source.includes("if(args.script==='test'&&process.platform==='win32')"));
+ assert.ok(source.includes("command=prioritizeWindowsEngineIntegrationCold(command);"));
+ assert.ok(source.indexOf('command=prioritizeWindowsEngineIntegrationCold(command);')>
+   source.indexOf('command=isolateWindowsAutotickRegression(command);'));
 });

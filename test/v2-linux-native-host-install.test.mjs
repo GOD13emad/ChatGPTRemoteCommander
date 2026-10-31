@@ -117,3 +117,38 @@ test('owner-local installation in a disposable HOME registers manifest and block
  assert.notEqual(again.status,0);
  assert.match(again.stderr,/V2_LINUX_NATIVE_INSTALL_DENIED/);
 });
+
+test('rejects a forged installer plan with substituted script, manifest or destination before writing',
+ {skip:!isLinux},t=>{
+ const home=fixture(t);
+ const installer=fileURLToPath(new URL('../tools/v2-linux-native-host-install.mjs',
+  import.meta.url));
+ // Execute in a fresh process with HOME set to the temporary owner-only directory.
+ const child=String.raw`
+import {planV2LinuxNativeHost,installV2LinuxNativeHost} from ${JSON.stringify(installer)};
+const p=planV2LinuxNativeHost({browser:'brave',extensionId:'a'.repeat(32)});
+const overrides=[
+ {script:'#!/bin/sh\\\\necho unexpected >&2\\\\n'},
+ {manifestContent:JSON.stringify({name:'attacker.native',path:'/tmp/injected'})},
+ {manifest:p.manifest+'-forged'},
+ {launcher:p.launcher+'-forged'},
+ {origin:'chrome-extension://'+'b'.repeat(32)+'/'}
+];
+for (const override of overrides){
+ try{
+  installV2LinuxNativeHost({...p,...override},{
+   expectedNodeSha256:p.nodeSha256,expectedHostSha256:p.hostSha256});
+  process.exit(17);
+ }catch(e){
+  if(e.code!=='V2_LINUX_NATIVE_PINNED_OWNER_PLAN_REQUIRED')process.exit(18);
+ }
+}
+console.log('FORGED_PLAN_DENIED');
+`;
+ const result=spawnSync(process.execPath,['--input-type=module','-e',child],{
+  env:{...process.env,HOME:home},encoding:'utf8',timeout:10000
+ });
+ assert.equal(result.status,0,result.stderr);
+ assert.match(result.stdout,/FORGED_PLAN_DENIED/);
+ assert.equal(fs.readdirSync(home).length,0);
+});

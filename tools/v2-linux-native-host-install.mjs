@@ -79,6 +79,18 @@ export function installV2LinuxNativeHost(plan,{
     !/^[a-f0-9]{64}$/.test(expectedHostSha256??'')||
     expectedNodeSha256!==plan.nodeSha256||expectedHostSha256!==plan.hostSha256)
    fail('V2_LINUX_NATIVE_PINNED_OWNER_PLAN_REQUIRED');
+ // Never treat an arbitrary caller-supplied plan object as an installer authority.
+ // Recompute the canonical content and destinations from current owned inputs.
+ const pinned=planV2LinuxNativeHost({home,browser:plan.browser,
+  extensionId:typeof plan.origin==='string' &&
+    /^chrome-extension:\/\/[a-p]{32}\/$/.test(plan.origin)?
+    plan.origin.slice('chrome-extension://'.length,-1):undefined,
+  nodePath:plan.nodePath,hostScriptPath:plan.hostScriptPath});
+ for(const field of ['origin','launcher','manifest','script','manifestContent',
+   'nodePath','hostScriptPath','nodeSha256','hostSha256']){
+  if(plan[field]!==pinned[field])
+   fail('V2_LINUX_NATIVE_PINNED_OWNER_PLAN_REQUIRED');
+ }
  if(sha(safeFile(plan.nodePath,'node'))!==plan.nodeSha256||
     sha(safeFile(plan.hostScriptPath,'.mjs'))!==plan.hostSha256)
    fail('V2_LINUX_NATIVE_PINNED_ARTIFACT_CHANGED');
