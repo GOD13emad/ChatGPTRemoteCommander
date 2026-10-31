@@ -53,7 +53,10 @@ const PLATFORM={windows:['install.ps1','installer/RemoteCommander.iss',
  'desktop/install-windows.ps1','desktop/admin-runtime-windows.ps1',
  'tools/v2-owner-seat-agent.mjs','tools/v2-owner-seat-install.ps1',
  'tools/v2-owner-seat-launch.ps1','tools/v2-owner-uia-chrome.mjs',
- 'tools/v2-ci-watch.mjs'],
+ 'tools/v2-ci-watch.mjs',
+ 'desktop/v2-native-host-launcher/RCV2.NativeHost.csproj',
+ 'desktop/v2-native-host-launcher/Program.cs',
+ 'tools/v2-native-host-owner-install.ps1'],
  linux:['install.sh','server-install-linux.sh',
  'tools/rc-private-gui.py','tools/v2-linux-credential-provider-census.mjs']};
 const SHA=/^[a-f0-9]{64}$/;
