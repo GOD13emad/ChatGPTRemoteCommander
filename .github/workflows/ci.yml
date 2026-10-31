@@ -41,7 +41,7 @@ jobs:
       - name: Validate isolated 0.11 QA manifest and negative version cases
         run: node --test test/isolated-qa-policy.test.mjs
       - name: Validate independent V2 OAuth and owner-trust bootstrap
-        run: node --test test/v2-authenticated-owner-gateway.test.mjs test/v2-idp-discovery-preflight.test.mjs test/v2-oauth-provider-preflight.test.mjs
+        run: node --test test/v2-authenticated-owner-gateway.test.mjs test/v2-idp-discovery-preflight.test.mjs test/v2-oauth-provider-preflight.test.mjs test/v2-ci-watch.test.mjs
 
       - name: Check prerelease SemVer and updater fail-closed rules
         run: node --test test/semver-release.test.mjs
