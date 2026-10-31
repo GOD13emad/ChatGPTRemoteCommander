@@ -26,6 +26,9 @@ test('Windows fixture demonstrates unsafe user-owned action and empty task disco
   const data=JSON.parse(a.stdout.trim());
   assert.equal(data.readOnly,true);assert.equal(data.checks,1);
   assert.equal(data.accepted,false);assert.equal(data.unsafe,1);
+  assert.equal(data.migrationReady,false);
+  assert.ok(data.migrationBlockers.includes('DEPENDENCY_CLOSURE_UNVERIFIED'));
+  assert.deepEqual(data.definitions,[]);
   const protectedExe=path.join(process.env.SystemRoot||'C:\Windows','System32','WindowsPowerShell','v1.0','powershell.exe');
   const secure=run(['-InspectPath',protectedExe]);
   assert.equal(secure.status,0,secure.stderr);
