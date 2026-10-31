@@ -3,6 +3,7 @@ import process from 'node:process';
 import {createInterface} from 'node:readline/promises';
 import {createV2NativeOwnerExecutor} from '../src/v2-v1-owner-executor.mjs';
 import {confirmLowRiskV2OwnerDialog} from '../src/v2-native-owner-dialog.mjs';
+import {pickV2PendingReview} from '../src/v2-native-review-picker.mjs';
 const url='http://127.0.0.1:47831/mcp';
 async function rpc(method,params={}){
  const c=new AbortController(),timer=setTimeout(()=>c.abort(),15000);
@@ -20,7 +21,7 @@ async function catalog(){
  return r.tools.map(t=>t.name);
 }
 const [action,id]=process.argv.slice(2);
-const guiMode=action==='approve-gui';
+const guiMode=action==='approve-gui'||action==='review-gui';
 const executor=createV2NativeOwnerExecutor({
  loadCatalog:catalog,
  invokeTool:async(tool,args)=>{
@@ -48,6 +49,14 @@ if(action==='list'&&!id){
 }else if(action==='approve'&&id){
  if(!process.stdin.isTTY||!process.stdout.isTTY)throw new Error('V2_OWNER_INTERACTIVE_TTY_REQUIRED');
  process.stdout.write(JSON.stringify(await executor.approve(id))+'\n');
+}else if(action==='review-gui'&&!id){
+ // User-launched native chooser; no remote-exposed auto-approve path.
+ const {createV2V1ToolBridge}=await import('../src/v2-v1-tool-bridge.mjs');
+ const queue=createV2V1ToolBridge({loadCatalog:catalog});
+ const selected=await pickV2PendingReview(queue.list());
+ if(selected){
+  process.stdout.write(JSON.stringify(await executor.approve(selected))+'\n');
+ }else process.stdout.write('NO_ELIGIBLE_REQUEST_SELECTED_OR_USER_CANCELLED\n');
 }else if(action==='approve-gui'&&id){
  // Interactive on-device GUI will ask the actual logged-in owner to accept.
  // This is explicitly for fixed read-only status methods, never arbitrary calls.
@@ -56,6 +65,6 @@ if(action==='list'&&!id){
 }else if(action==='status'&&id){
  process.stdout.write(JSON.stringify(executor.status(id))+'\n');
 }else{
- process.stderr.write('Usage: node v2-v1-owner-cli.mjs list | status <requestId> | approve <requestId> | approve-gui <requestId>\n');
+ process.stderr.write('Usage: node v2-v1-owner-cli.mjs list | status <requestId> | approve <requestId> | approve-gui <requestId> | review-gui\n');
  process.exitCode=2;
 }

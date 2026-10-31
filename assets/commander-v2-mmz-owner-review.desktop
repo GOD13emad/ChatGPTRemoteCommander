@@ -1,0 +1,10 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Commander V2 - Owner Review
+Comment=Review a pending Commander V2 diagnostic request locally before any V1 call
+Exec=/usr/bin/node /home/mmz/.local/share/CommanderV2/ReadOnlyMcp/tools/v2-v1-owner-cli.mjs review-gui
+Icon=dialog-password
+Terminal=false
+StartupNotify=false
+Categories=Utility;

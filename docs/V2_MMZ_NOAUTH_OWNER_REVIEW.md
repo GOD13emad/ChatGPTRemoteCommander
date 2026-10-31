@@ -214,3 +214,39 @@ Test source: `test/v2-native-owner-dialog.test.mjs`, including
 blank/incorrect code, denied tools, arguments, invalid UUID, and
 native callback failures. Never use simulated confirmation from QA
 as evidence of a real user's approval.
+
+## KDE on-demand owner review launcher — MMZ Linux
+
+The manually launched desktop application **Commander V2 - Owner Review**
+opens the owner-native pending-request selector; it does not start a
+background poller or automatically approve requests. Its installed desktop
+entry is `~/.local/share/applications/commander-v2-mmz-owner-review.desktop`
+and its controlled entry point is
+`~/.local/share/CommanderV2/ReadOnlyMcp/tools/v2-v1-owner-cli.mjs review-gui`.
+This route uses the already-installed owner-private queue; it does not
+reconfigure or restart the existing V1 and V2 MCP servers.
+
+Only live queued requests for fixed no-argument diagnostics
+(system_status, gui_status, browser_status, workflow_health, power_status)
+are displayed. The selector validates the opaque UUID, then independently
+requires the typed `APPROVE <UUID-prefix>` phrase in the existing KDE
+per-action dialog. Selection alone never dispatches the V1 tool. NoAuth
+remote requests cannot invoke the native desktop chooser, confirm it,
+or obtain the raw V1 result. Expired requests are not eligible.
+
+The user may open the KDE launcher while physically using the MMZ
+desktop; remote ChatGPT timeouts need not keep a kdialog alive. However
+queued requests expire after ten minutes and must be resubmitted when
+expired. The launcher is not an unattended privilege bridge and
+does not assert owner identity for other ChatGPT conversations.
+
+Source and verification:
+`src/v2-native-review-picker.mjs`,
+`test/v2-native-review-picker.test.mjs`,
+`assets/commander-v2-mmz-owner-review.desktop`, and the existing
+`tools/v2-v1-owner-cli.mjs`. Test suite scope: 322 tests,
+321 PASS / 0 FAIL / 1 SKIP, source runtime Node v24.22.2.
+Native desktop launcher validation and module checks succeeded.
+Production owner confirmation and actual V2-to-V1 local action
+remain unverified until the owner responds in the GUI and a
+final dispatch receipt is observed.
