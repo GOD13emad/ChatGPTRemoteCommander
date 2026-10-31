@@ -52,8 +52,8 @@ test('Browser default selects original session without CDP/debug-profile bypass 
     assert.equal(p.guarantees.passwordExport,false);
     assert.equal(p.guarantees.cookieExport,false);
     assert.equal(p.guarantees.profileCloning,false);
-    assert.equal(p.selection.id,'window-scoped-observe');
-    assert.equal(p.selection.mode,'DISCOVERY_ONLY');
+    assert.equal(p.selection.id,null);
+    assert.equal(p.selection.mode,'NO_AUTHORIZED_EFFECT_ROUTE');
   }
 });
 test('Firefox route never inserts Playwright Chrome extension before Firefox owner extension',async()=>{
@@ -139,8 +139,8 @@ test('new app still requires same-owner session proof and lists next native tool
   const p=await c.execute('hybrid_control_plan',{target:'new-app',activity:'launch'});
   assert.equal(p.routeOrder[0].id,'owner-app-catalog');
   assert.equal(p.routeOrder[0].status,'GATED');
-  assert.equal(p.selection.mode,'DISCOVERY_ONLY');
-  assert.equal(p.selection.id,'window-scoped-observe');
+  assert.equal(p.selection.mode,'NO_AUTHORIZED_EFFECT_ROUTE');
+  assert.equal(p.selection.id,null);
   assert.equal(p.effectPerformed,false);
 });
 test('no client-provided passwords/credentials appear in status and plan outputs',async()=>{
@@ -149,7 +149,7 @@ test('no client-provided passwords/credentials appear in status and plan outputs
   const p=await c.execute('hybrid_control_plan',{target:'existing-browser',browserEngine:'firefox'});
   assert.equal(s.guarantees.tokenExport,false);
   assert.equal(p.guarantees.passwordExport,false);
-  assert.equal(p.note.includes('No existing user login was inspected'),false); // read-only route can be discovered
+  assert.equal(p.note.includes('No existing user login was inspected'),true); // no native owner consent
 });
 
 test('native UIA observation is not authority for semantic input or user desktop takeover',async()=>{
@@ -165,4 +165,26 @@ test('native UIA observation is not authority for semantic input or user desktop
   assert.equal(candidate.reason,'UIA_MUTATION_AND_READBACK_NOT_YET_QUALIFIED');
   assert.notEqual(effect.selection.id,'windows-uia-winapp');
   assert.equal(effect.effectPerformed,false);
+});
+
+test('workflow tool discovery alone never asserts an enrolled project runner',async()=>{
+  const c=controller();
+  const s=await c.execute('hybrid_control_status');
+  assert.equal(s.backends.project.status,'GATED');
+  const p=await c.execute('hybrid_control_plan',{target:'project'});
+  assert.equal(p.routeOrder[0].status,'GATED');
+  assert.equal(p.selection.id,'commander-terminal');
+});
+test('live workflow status and owner-native verified snapshot can qualify independent routes',async()=>{
+  const c=controller('win32',{
+    ownerStatus:async()=>({sameUserSessionVerified:true,nativeBrokerAccepted:true}),
+    providerEvidence:async()=>({project:{enabled:true,runnerConfigured:true}})
+  });
+  const s=await c.execute('hybrid_control_status');
+  assert.equal(s.backends.project.status,'AVAILABLE');
+  assert.equal(s.backends.windowObserve.status,'AVAILABLE');
+  const p=await c.execute('hybrid_control_plan',{target:'existing-browser',browserEngine:'brave'});
+  assert.equal(p.selection.id,'window-scoped-observe');
+  assert.equal(p.guiActionAuthorized,false);
+  assert.equal(p.savedCredentialsInspected,false);
 });
