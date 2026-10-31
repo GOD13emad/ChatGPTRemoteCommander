@@ -143,7 +143,7 @@ export const workspaceToolDefinitions=[
  {name:'workspace_target_reconcile',description:'Acknowledge only one uncertain target after a fresh observation. No action is replayed and no other app is affected.',inputSchema:{
    type:'object',properties:{pid:{type:'integer',minimum:1},windowId:{type:'integer',minimum:1},
      snapshotId:{type:'string',pattern:'^[sb][0-9a-f]{8}$'},
-     surface:{type:'string',enum:['window','browser']},workspaceSeat:{type:'string',enum:['a','b']},
+     surface:{type:'string',enum:['window','browser','native']},workspaceSeat:{type:'string',enum:['a','b']},
      targetGoneVerified:{type:'boolean'},
      determination:{type:'string',enum:['EFFECT_OBSERVED','NO_EFFECT_OBSERVED']}},
    required:['pid','windowId','determination'],additionalProperties:false},annotations:mutating}
@@ -192,8 +192,10 @@ export function createWorkspaceController({callDriver=defaultCuaCall,nativeCall=
      if(e.invokeAvailable===true&&e.enabled===true&&typeof e.fingerprint==='string')
       indexed.set(e.fingerprint,e.name);
     }
-    nativeSnapshots.set(id,{at:now(),elements:indexed});
+    const snapshotId='n'+randomBytes(4).toString('hex');
+    nativeSnapshots.set(id,{at:now(),elements:indexed,snapshotId});
     return {ok:true,mode:'NATIVE_UIA_READ_ONLY',target:id,provider:'windows-uia-native',
+      snapshotId,targetUncertain:pending.has('native:'+id)||!!await journal.pending('native:'+id),
       physicalInputTouched:false,focusChanged:value.foregroundTouched??null,
       focusStatus:value.foregroundStatus,value};
    }
@@ -215,8 +217,9 @@ export function createWorkspaceController({callDriver=defaultCuaCall,nativeCall=
     const result=await nativeCall('Invoke',input,{platform,env});
     // InvokePattern acknowledged exactly one native action, NOT the application goal.
     // Consume the durable journal; any transport-uncertain path remains pending below.
-    await journal.resolve('native:'+id,handle);
     const focusSafe=result.foregroundStatus==='PRESERVED';
+    if(focusSafe) await journal.resolve('native:'+id,handle);
+    else pending.set('native:'+id,{requestId:input.requestId,at:now()});
     return {ok:focusSafe,mode:focusSafe?'NATIVE_UIA_INVOKE_ISSUED':
       result.foregroundStatus==='CHANGED'?'NATIVE_UIA_FOCUS_CHANGED':'NATIVE_UIA_FOCUS_UNOBSERVABLE',
       target:id,provider:'windows-uia-native',replayed:false,physicalInputTouched:false,
@@ -323,24 +326,25 @@ export function createWorkspaceController({callDriver=defaultCuaCall,nativeCall=
    }finally{busy.delete(key);}
   }
   if(name==='workspace_target_reconcile'){
-   const isBrowser=input.surface==='browser',key=isBrowser?'browser:'+id:id;
-   const p=await journal.pending(key),shot=isBrowser?browserSnapshots.get(id):snapshots.get(id);
+   const isBrowser=input.surface==='browser',isNative=input.surface==='native',key=isBrowser?'browser:'+id:isNative?'native:'+id:id;
+   const p=await journal.pending(key),shot=isBrowser?browserSnapshots.get(id):isNative?nativeSnapshots.get(id):snapshots.get(id);
    if(!p)throw fail('WORKSPACE_NO_TARGET_INCIDENT');
    if(!['EFFECT_OBSERVED','NO_EFFECT_OBSERVED'].includes(input.determination))throw fail('WORKSPACE_DETERMINATION_INVALID');
    if(input.targetGoneVerified===true){
     // Only owner-private X11 seat: prove the former exact window is no longer
     // enumerated by the SAME live independent native driver; no input replay.
-    if(isBrowser||(!seat&&platform!=='win32')||input.determination!=='EFFECT_OBSERVED')
+    if(isBrowser||isNative||(!seat&&platform!=='win32')||input.determination!=='EFFECT_OBSERVED')
      throw fail('WORKSPACE_TARGET_GONE_PROOF_DENIED');
     const native=await call('list_windows',{pid:input.pid});
     if(!Array.isArray(native?.windows)||
        native.windows.some(w=>w?.pid===input.pid&&w?.window_id===input.windowId))
      throw fail('WORKSPACE_TARGET_GONE_NOT_PROVEN');
-   }else if(!shot||(isBrowser?shot.snapshotId:shot.id)!==input.snapshotId||
+   }else if(!shot||(isBrowser||isNative?shot.snapshotId:shot.id)!==input.snapshotId||
              now()-shot.at>60000)
     throw fail('WORKSPACE_FRESH_SNAPSHOT_REQUIRED');
    await journal.resolve(key,p);
-   pending.delete(key);return {ok:true,target:key,determination:input.determination,replayed:false,
+   pending.delete(key);if(isNative)nativeSnapshots.delete(id);
+    return {ok:true,target:key,determination:input.determination,replayed:false,
      noGlobalInputLock:true,otherTargetsUnaffected:true};
   }
   if(name!=='workspace_window_click')throw fail('WORKSPACE_TOOL_UNKNOWN');

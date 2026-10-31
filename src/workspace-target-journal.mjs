@@ -5,8 +5,8 @@ import path from 'node:path';
 import fs from 'node:fs/promises';
 import {createHash,randomUUID} from 'node:crypto';
 const SCHEMA='rc-workspace-target-effect-v1';
-const EFFECTS=new Set(['workspace_window_click','workspace_browser_click']);
-const safeTarget=(v)=>typeof v==='string'&&/^(?:browser:)?(?:[ab]:)?[0-9]{1,12}:[0-9]{1,12}$/.test(v);
+const EFFECTS=new Set(['workspace_window_click','workspace_browser_click','workspace_native_ui_invoke']);
+const safeTarget=(v)=>typeof v==='string'&&/^(?:(?:browser:)?(?:[ab]:)?|native:)[0-9]{1,12}:[0-9]{1,12}$/.test(v);
 const err=(name)=>Object.assign(new Error(name),{code:name});
 const key=(str)=>createHash('sha256').update(str,'utf8').digest('hex');
 const defaultDir=()=>path.join(process.platform==='win32'
