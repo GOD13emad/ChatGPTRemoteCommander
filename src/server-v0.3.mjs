@@ -338,7 +338,18 @@ TOOLS.push(...operatorTools.definitions);
 // A single evidence-aware selector; actual effects stay in the existing Commander tools.
 const hybridControl = createHybridControl({
   platform:process.platform,config,toolNames:()=>TOOLS.map(tool=>tool.name),
-  ownerStatus:async()=>({sameUserSessionVerified:false,nativeBrokerAccepted:false})
+  ownerStatus:async()=>{
+    // Only a successful authenticated same-owner broker RPC proves this
+    // session exists. A configured port, native process or window alone
+    // never grants control or third-party browser consent.
+    if(!legacyWorkspaceProxy)return {sameUserSessionVerified:false,nativeBrokerAccepted:false};
+    try{
+      const native=await legacyWorkspaceProxy.execute('workspace_list_windows',{});
+      const value=native?.value;
+      const verified=native?.handled===true&&value?.ok!==false&&Array.isArray(value?.windows);
+      return {sameUserSessionVerified:verified,nativeBrokerAccepted:verified};
+    }catch{return {sameUserSessionVerified:false,nativeBrokerAccepted:false};}
+  }
 });
 TOOLS.push(...hybridControl.definitions);
 function serverMeta() {
