@@ -116,6 +116,11 @@ export const workspaceToolDefinitions=[
      requireExistingAuthentication:{type:'boolean'},
      browserEngine:{type:'string',enum:['chrome','edge','brave','firefox','unknown']}},
    required:['target'],additionalProperties:false},annotations:readOnly},
+ {name:'workspace_login_readiness',description:'Read-only same-owner app/browser window readiness for saved-login reuse. NEVER reads password stores, autofill values, cookies, tokens or login status; non-observation is not proof credentials are missing.',inputSchema:{
+   type:'object',properties:{target:{type:'string',enum:['existing-browser','new-browser','existing-app','new-app']},
+     pid:{type:'integer',minimum:1},windowId:{type:'integer',minimum:1},
+     browserEngine:{type:'string',enum:['chrome','edge','brave','firefox','unknown']}},
+   required:['target'],additionalProperties:false},annotations:readOnly},
  {name:'workspace_list_windows',description:'List existing same-user application windows through Cua Driver v0.38; no desktop takeover or global input.',inputSchema:{
    type:'object',properties:{pid:{type:'integer',minimum:1},workspaceSeat:{type:'string',enum:['a','b']}},additionalProperties:false},annotations:readOnly},
  {name:'workspace_window_observe',description:'Read accessibility snapshot of one exact existing window in the owning desktop; no click, focus or mouse movement.',inputSchema:{
@@ -176,6 +181,36 @@ export function createWorkspaceController({callDriver=defaultCuaCall,previewDriv
    return chooseWorkspaceRoute({...input,sameUserSession:owner,desktop:desktopType(platform,env)});
   }
   await needsOwner();
+  if(name==='workspace_login_readiness'){
+   const target=input.target;
+   if(!['existing-browser','new-browser','existing-app','new-app'].includes(target))
+     throw fail('WORKSPACE_TARGET_INVALID');
+   if((input.pid===undefined)!==(input.windowId===undefined))
+     throw fail('WORKSPACE_EXACT_WINDOW_ID_REQUIRED');
+   if(input.pid!==undefined&&!exactWindow(input))
+     throw fail('WORKSPACE_TARGET_INVALID');
+   // A native owner process and window can be detected without reading any
+   // credential store. No mere window listing proves website sign-in.
+   const raw=await call('list_windows',input.pid?{pid:input.pid}:{});
+   const windows=Array.isArray(raw?.windows)?raw.windows:null;
+   const exact=windows&&input.pid!==undefined?
+     windows.some(w=>w?.pid===input.pid&&
+       (w?.window_id===input.windowId||w?.windowId===input.windowId)):false;
+   const observation=windows===null?'UNVERIFIED':
+     input.pid===undefined?'NO_EXACT_WINDOW_SELECTED':
+     exact?'EXACT_WINDOW_PRESENT':'EXACT_WINDOW_NOT_OBSERVED';
+   return {ok:true,mode:'READ_ONLY_SAME_OWNER',target,observation,
+     authentication:'UNVERIFIED',savedCredentials:'NOT_INSPECTED',
+     loginAbsenceVerified:false,passwordRequested:false,
+     nativeApprovalRequired:true,credentialContentsRead:false,
+     browserProfileCloned:false,focusChanged:false,physicalInputTouched:false,
+     plan:chooseWorkspaceRoute({target,
+       desktop:desktopType(platform,env),sameUserSession:true,
+       requireExistingAuthentication:true,browserEngine:input.browserEngine}),
+     next:observation==='EXACT_WINDOW_PRESENT'?
+       'Verify app-specific login state through the authorized owner UI; do not access credentials':
+       'Select an exact same-user window or use a supported native owner launcher; never infer missing passwords'};
+  }
   if(name==='workspace_list_windows'){
    const request={};if(input.pid!==undefined){if(!integer(input.pid))throw fail('WORKSPACE_PID_INVALID');request.pid=input.pid;}
    const value=await call('list_windows',request);
