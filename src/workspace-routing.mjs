@@ -134,13 +134,13 @@ export function chooseWorkspaceRoute(input){
       inputMode:'NATIVE_SAME_USER_LAUNCH_THEN_TARGET_VERIFICATION',
       backgroundControl:'REQUIRES_EXACT_WINDOW_AND_NATIVE_CONSENT',
       profilePolicy:'NO_PROFILE_COPY_NO_DEBUG_FLAGS_NO_PASSWORD_EXPORT',
-      nativeAppLauncher:desktop==='windows'?{
+      nativeAppLauncher:['windows','x11','wayland'].includes(desktop)?{
         status:'NATIVE_OWNER_AGENT_REQUIRED',catalog:'workspace_app_catalog',
         open:'workspace_app_open',reconcile:'workspace_app_reconcile',
-        minimizing:'REQUESTED_NOT_FOREGROUND_VERIFIED'}:
+        minimizing:desktop==='windows'?'REQUESTED_NOT_FOREGROUND_VERIFIED':'LINUX_BACKGROUND_CAPABILITY_NOT_VERIFIED'}:
         {status:'PLATFORM_NOT_YET_SUPPORTED'},
-      next:desktop==='windows'?
-        'Use authenticated owner app catalog and minimized open; reuse a running app, then verify exact window and login without exposing credentials':
+      next:['windows','x11','wayland'].includes(desktop)?
+        'Use the authenticated same-owner native app catalog/launcher, reuse a running app, then verify exact window, background capability and login without exposing credentials':
         'Use a supported same-user desktop launcher when available; never infer login loss or clone the original profile'};
   }
   if(input.target==='new-browser')
