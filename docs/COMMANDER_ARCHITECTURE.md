@@ -167,3 +167,8 @@ Use the **latest security-supported and compatible upstream release/commit**, pi
 - Earlier source candidates, browser/UI draft work, unsigned previews and historic QA receipts remain separate. No unified multi-device installation, per-chat authentication, source integration or new release is claimed.
 
 **Next execution path:** implement A+B (schema/Coordinator identity and fenced locks) in isolated worktrees; implement C/D/E independently behind capability-verified adapters; finish F/G with exact-head native verification. Continue from the existing project Brain and release gates; do not restart the project or treat this architecture agreement as release acceptance.
+
+
+## Linux AT-SPI native read-only gate — 2026-10-31
+
+**SOURCE ONLY / NO PROMOTE.** Linux AgentOS routing no longer equates `XDG_RUNTIME_DIR` with a functioning AT-SPI bus: a real owning-user introspection probe is required. The new `workspace_native_atspi_observe` handles only an exact PID, caps traversal/results and provides no input, focus, credential, profile attachment or elevation capability. Python GObject Introspection + AT-SPI2 are optional, and unavailable dependencies fail closed; this is not proof of on-device E2E or cross-host deployment. References: [GNOME AT-SPI](https://gnome.pages.gitlab.gnome.org/at-spi2-core/libatspi/) and [XDG RemoteDesktop](https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.RemoteDesktop.html).

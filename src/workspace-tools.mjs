@@ -12,6 +12,14 @@ const defaultNativeUIACall=async (...args)=>{
  const {nativeWindowsUIACall}=await import('./agentos-native-win.mjs');
  return nativeWindowsUIACall(...args);
 };
+const defaultLinuxProbe=async (...args)=>{
+ const {probeLinuxATSPI}=await import('./agentos-native-linux.mjs');
+ return probeLinuxATSPI(...args);
+};
+const defaultLinuxObserve=async (...args)=>{
+ const {observeLinuxATSPI}=await import('./agentos-native-linux.mjs');
+ return observeLinuxATSPI(...args);
+};
 import {createWorkspaceTargetJournal} from './workspace-target-journal.mjs';
 const execFileAsync=promisify(execFile);
 const targetId=(pid,windowId)=>pid+':'+windowId;
@@ -104,6 +112,9 @@ export const workspaceToolDefinitions=[
    type:'object',properties:{target:{type:'string',enum:['existing-browser','new-browser','existing-app','new-app','project']},
      existingProfileGrant:{type:'boolean'},visualFallbackAuthorized:{type:'boolean'}},
    required:['target'],additionalProperties:false},annotations:readOnly},
+ {name:'workspace_native_atspi_observe',description:'Read-only AT-SPI controls for one exact process in the verified owning Linux session. No keyboard, mouse or focus.',inputSchema:{
+   type:'object',properties:{pid:{type:'integer',minimum:1},maxElements:{type:'integer',minimum:1,maximum:100}},
+   required:['pid'],additionalProperties:false},annotations:readOnly},
  {name:'workspace_native_ui_observe',description:'Observe native Windows UIAutomation actionable control patterns on exactly one same-owner window. No CUA, screenshot, browser profiles or mouse.',inputSchema:{
    type:'object',properties:{pid:{type:'integer',minimum:1},windowId:{type:'integer',minimum:1},maxElements:{type:'integer',minimum:1,maximum:100}},
    required:['pid','windowId'],additionalProperties:false},annotations:readOnly},
@@ -148,7 +159,7 @@ export const workspaceToolDefinitions=[
      determination:{type:'string',enum:['EFFECT_OBSERVED','NO_EFFECT_OBSERVED']}},
    required:['pid','windowId','determination'],additionalProperties:false},annotations:mutating}
 ];
-export function createWorkspaceController({callDriver=defaultCuaCall,nativeCall=defaultNativeUIACall,previewDriver=defaultCuaPreview,ownerSession=defaultOwnerSession,
+export function createWorkspaceController({callDriver=defaultCuaCall,nativeCall=defaultNativeUIACall,linuxProbe=defaultLinuxProbe,linuxObserve=defaultLinuxObserve,previewDriver=defaultCuaPreview,ownerSession=defaultOwnerSession,
   platform=process.platform,env=process.env,now=Date.now,journal=createWorkspaceTargetJournal()}={}){
  const pending=new Map(),seen=new Set(),busy=new Set(),snapshots=new Map(),browserSnapshots=new Map(),nativeSnapshots=new Map();
  const needsOwner=async()=>{if(!await ownerSession({platform,env}))throw fail('WORKSPACE_OWNER_SESSION_REQUIRED');};
@@ -163,18 +174,28 @@ export function createWorkspaceController({callDriver=defaultCuaCall,nativeCall=
   }
   if(name==='workspace_agentos_plan'){
    const owner=await ownerSession({platform,env});
-   let nativeAvailable=false;
+   let nativeAvailable=false,linuxAvailable=false;
    if(platform==='win32'){
     try{await fs.access(new URL('../tools/native-windows-uia.ps1',import.meta.url));nativeAvailable=true;}catch{}
+   }else if(platform==='linux'&&owner){
+    // A runtime directory is not evidence that the session accessibility bus works.
+    try{linuxAvailable=(await linuxProbe({platform,env})).ready===true;}catch{}
    }
    const {chooseAgentOSProvider}=await import('./agentos-provider-router.mjs');
    return chooseAgentOSProvider({target:input.target,platform,ownerSession:owner,
-    capabilities:{windowsUIA:nativeAvailable,linuxATSPI:platform==='linux'&&!!env.XDG_RUNTIME_DIR,
+    capabilities:{windowsUIA:nativeAvailable,linuxATSPI:linuxAvailable,
       commanderOwnedBrowser:true,commanderWorkflow:true},
     grants:{browserProfileAttach:input.existingProfileGrant===true,
       visualFallback:input.visualFallbackAuthorized===true}});
   }
   await needsOwner();
+  if(name==='workspace_native_atspi_observe'){
+   if(platform!=='linux'||seat!==null||!integer(input.pid))throw fail('ATSPI_EXACT_LINUX_TARGET_REQUIRED');
+   if((await linuxProbe({platform,env}))?.ready!==true)throw fail('ATSPI_NATIVE_NOT_READY');
+   const value=await linuxObserve(input,{platform,env});
+   return {ok:true,mode:'NATIVE_ATSPI_READ_ONLY',provider:'linux-atspi-native',
+     targetPid:input.pid,physicalInputTouched:false,focusChanged:false,value};
+  }
   if(name==='workspace_list_windows'){
    const request={};if(input.pid!==undefined){if(!integer(input.pid))throw fail('WORKSPACE_PID_INVALID');request.pid=input.pid;}
    const value=await call('list_windows',request);
