@@ -244,12 +244,21 @@ export function createWorkspaceController({callDriver=defaultCuaCall,previewDriv
        launchAttempted:false,credentials:'OWNER_PROFILE_UNCHANGED',focusChanged:false};
    // Only trusted installed-app catalog entries are launchable; caller may
    // never supply path, arguments, URL, browser flags or credentials.
+   // The native Windows catalog may omit launch_path for an installed
+   // packaged app or a valid desktop app. The driver's documented name
+   // fallback is permitted ONLY after exactly one owner-catalog name match.
+   // Never accept a caller-provided executable path, flags or profile.
+   const verifiedWindowsPath=platform==='win32'&&typeof app.launch_path==='string'&&
+     app.launch_path.length<2048&&path.win32.isAbsolute(app.launch_path);
    const launchArgs=platform==='linux'&&app.kind==='desktop'?
      {name:app.name}:
-     platform==='win32'&&app.kind==='uwp'&&typeof app.aumid==='string'&&app.aumid.includes('!')?
+     platform==='win32'&&app.kind==='uwp'&&typeof app.aumid==='string'&&
+       /^[^\\/!\s]+![^\\/!\s]+$/.test(app.aumid)?
      {aumid:app.aumid,start_minimized:true}:
-     platform==='win32'&&typeof app.launch_path==='string'&&app.launch_path.length<2048?
-     {launch_path:app.launch_path,start_minimized:true}:null;
+     verifiedWindowsPath?
+     {launch_path:app.launch_path,start_minimized:true}:
+     platform==='win32'&&['desktop','uwp'].includes(app.kind)?
+     {name:app.name,start_minimized:true}:null;
    if(!launchArgs)throw fail('WORKSPACE_APP_LAUNCH_PATH_UNVERIFIED');
    seen.add(input.requestId);busy.add(key);
    let handle=null;
