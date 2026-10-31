@@ -83,14 +83,19 @@ export async function openV2OwnerApplication({
  if(matches.length===0){
   if(windowId!==undefined||!openIfMissing)fail('V2_OWNER_APP_NOT_RUNNING');
   needs(services.authorizeLaunch,services.launchRegisteredApp);
+  if(mode==='background')needs(services.canLaunchWithoutFocus);
   // Opening any installed app is a separate owner-granted action, not a
   // privilege inferred from a prior chat or the ability to inspect windows.
   const intent=Object.freeze({appId,route:r,sessionHandle,seatId:inventory.seatId,mode});
+  if(mode==='background'&&await services.canLaunchWithoutFocus(intent)!==true)
+    fail('V2_OWNER_APP_BACKGROUND_LAUNCH_UNAVAILABLE');
   if(await services.authorizeLaunch(intent)!==true)fail('V2_OWNER_APP_LAUNCH_CONSENT_REQUIRED');
   // Avoid a launch when another chat/window opened the app during approval.
   const before=await windows({route:r,sessionHandle,appId,services});
   if(before.seatId!==inventory.seatId)fail('V2_OWNER_APP_SEAT_CHANGED');
   if(before.windows.length)fail('V2_OWNER_APP_LAUNCH_RACE_RESELECT');
+  if(mode==='background'&&await services.canLaunchWithoutFocus(intent)!==true)
+    fail('V2_OWNER_APP_BACKGROUND_LAUNCH_UNAVAILABLE');
   const result=await services.launchRegisteredApp(intent);
   if(result?.ok!==true||!valid(result.windowId)||!Number.isSafeInteger(result.pid)||result.pid<=0
     ||(mode==='background'&&result.backgroundSafe!==true))

@@ -20,6 +20,7 @@ function fixture(){
   authorizeAttach:async()=>{calls.push('consentAttach');return attachConsent;},
   attachExisting:async()=>{calls.push('attach');attachEffect=true;return {ok:true,attachmentId:'native-1',foregroundChanged:false,cookie:'DO_NOT_EXPORT'};},
   verifyAttachment:async()=>verify,
+  canLaunchWithoutFocus:async()=>true,
   authorizeLaunch:async()=>{calls.push('consentLaunch');return consent;},
   launchRegisteredApp:async()=>{calls.push('launch');rows.push(w);return {ok:true,windowId:w.windowId,pid:w.pid,backgroundSafe:true};}
  };
@@ -96,4 +97,20 @@ test('reject arbitrary executable path, invalid target, unknown mode and service
   await assert.rejects(f.open(opts),{code:'V2_OWNER_APP_SELECTION_INVALID'});
  await assert.rejects(f.open({services:{}}),{code:'V2_OWNER_APP_TRUSTED_BROKER_REQUIRED'});
  assert.equal(f.attached(),false);
+});
+
+test('background launch never calls OS launcher unless foreground safety is attested',async()=>{
+ const f=fixture();f.clear();
+ f.services.canLaunchWithoutFocus=async()=>false;
+ await assert.rejects(f.open({openIfMissing:true}),
+   {code:'V2_OWNER_APP_BACKGROUND_LAUNCH_UNAVAILABLE'});
+ assert.deepEqual(f.calls,[]);
+});
+test('foreground safety change after owner consent blocks launch without side effect',async()=>{
+ const f=fixture();f.clear();
+ let checks=0;
+ f.services.canLaunchWithoutFocus=async()=>++checks===1;
+ await assert.rejects(f.open({openIfMissing:true}),
+   {code:'V2_OWNER_APP_BACKGROUND_LAUNCH_UNAVAILABLE'});
+ assert.deepEqual(f.calls,['consentLaunch']);
 });
