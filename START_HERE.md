@@ -376,3 +376,15 @@ or during enrollment:
 The isolated secondary profile gets a distinct loopback MCP port, runtime marker, audit log and workflow database. It defaults to Standard Mode with shell/process/GUI/full-filesystem access off. This is an application/configuration boundary, not an OS sandbox; use separate Windows users/VMs for principals with materially different OS-level trust.
 
 Durable workflow state records project goal, acceptance criteria, steps, typed notes, checkpoint evidence hashes and an exact next action. It never automatically replays an uncertain external effect after interruption. Use `workflow_resume` and reconcile evidence deliberately.
+
+
+## Hybrid Quickstart (local control center)
+
+For an **existing** Commander installation, this is an add-on view, not a second Commander service or a production Hatchet install. Requirements: Node.js 22+ and the existing Core running locally.
+
+- Windows: `tools\hybrid-start.cmd` (from the package root, or run `node tools/hybrid-quickstart.mjs --serve`).
+- Linux: `sh tools/hybrid-start.sh`.
+- Browser on that device: `http://127.0.0.1:48773`.
+- Noninteractive readiness summary: `node tools/hybrid-quickstart.mjs --status`.
+
+It shows real Core/Runtime/Owner Broker health, while leaving all existing processes, browser profiles and privilege policies unchanged. It does not enable unattended GUI, auto-install an AI model, activate a Fleet Coordinator or guarantee service autostart. The optional fleet scheduling adapter is a separate Candidate with local durable journal and verified consent requirements.

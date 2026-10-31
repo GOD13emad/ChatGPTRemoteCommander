@@ -13,6 +13,8 @@
   },
   "scripts": {
     "test:release-train": "node --test test/release-train-0.11.test.mjs",
+    "hybrid:start": "node tools/hybrid-quickstart.mjs --serve",
+    "hybrid:status": "node tools/hybrid-quickstart.mjs --status",
     "start": "node src/server-v0.3.mjs",
     "start:v0.2": "node src/server-v0.2.1.mjs",
     "start:legacy": "node src/server.mjs",

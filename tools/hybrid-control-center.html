@@ -1,0 +1,31 @@
+<!DOCTYPE html><html lang="fa" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Commander Hybrid Local</title>
+<style>body{font:16px Tahoma,system-ui,sans-serif;background:#0e1727;color:#eff5ff;margin:0}main{margin:32px auto;padding:0 20px;max-width:990px}h1{font-size:28px;margin-bottom:6px}h2{font-size:19px;margin-top:32px}p,small{color:#aebfd2;line-height:1.8}.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(205px,1fr));gap:12px}.card{background:#1b293d;border:1px solid #334760;border-radius:13px;padding:17px;min-height:80px}.value{font-size:20px;font-weight:bold;margin:10px 0}.good{color:#73deb4}.warn{color:#f0bd85}.details{font-size:12px;color:#abc0d7}button{background:#3a6baf;color:#fff;border:none;border-radius:9px;padding:11px 15px;cursor:pointer}code{color:#a1d7f9}footer{padding:25px 0;font-size:13px;color:#8799ad}a{color:#99c8ff}@media(prefers-color-scheme:light){body{background:#f6f8fc;color:#1c314d}.card{background:#fff;border-color:#dce4ed}p,small,.details{color:#516078}}</style></head>
+<body><main><h1>Commander Hybrid AgentOS</h1><p>کنترل محلی قابل‌اجرا، متصل به سرویس‌های موجود — بدون نصب دوم یا تغییر مجوزهای سیستم.</p>
+<h2>سرویس‌های فعال</h2><div class="cards" id="serviceCards"><div class="card">در حال بررسی…</div></div>
+<h2>قابلیت‌ها</h2><div class="cards">
+<div class="card"><b>Commander Core</b><p>Shell، فایل، عملیات پایدار و پروفایل‌های موجود</p></div>
+<div class="card"><b>Hybrid Workflow</b><p>انتخاب موتور و Fleet Bridge؛ برای اجرای بین دستگاهی هنوز Coordinator واقعی لازم است.</p></div>
+<div class="card"><b>GUI / Browser</b><p>کنترل از طریق Worker نشست مالک و مجوز همان برنامه یا مرورگر.</p></div>
+<div class="card"><b>Local AI</b><p>Colibri، llama.cpp، Ollama و vLLM در صورت نصب و پیکربندی.</p></div></div>
+<h2>کنترل و اطلاعات</h2><button id="reload" type="button">بازخوانی وضعیت</button><p id="last"></p>
+<small>این ابزار وضعیت را نمایش می‌دهد؛ اجرای فرمان‌های اصلی از اتصال Commander در ChatGPT انجام می‌شود.</small>
+<footer>Local-only (127.0.0.1) · No shell endpoint · No credentials or cookies · No native permission bypass</footer></main>
+<script>
+var labels={core:'Commander Core',runtime:'Runtime',ownerBroker:'Owner Session Broker'};
+var esc=function(v){return String(v==null?'نامشخص':v).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})};
+async function refresh(){
+ var c=document.getElementById('serviceCards');
+ try{
+  var r=await fetch('/api/status',{cache:'no-store'});if(!r.ok)throw Error('HTTP');
+  var d=await r.json();
+  c.innerHTML=d.services.map(function(s){
+   var status=s.reachable?'در دسترس':'بدون پاسخ';
+   var detail=s.version?'Version '+esc(s.version):'';
+   if(s.id==='ownerBroker'){detail+=' | نشست مالک: '+(s.ownerSession?'تأییدشده':'تأییدنشده')}
+   return '<div class="card"><b>'+esc(labels[s.id]||s.id)+'</b><div class="value '+(s.reachable?'good':'warn')+'">'+status+'</div><div class="details">'+detail+'</div></div>';
+  }).join('');
+  document.getElementById('last').textContent='آخرین بررسی: '+new Date(d.checkedAt).toLocaleString('fa-IR');
+ }catch(e){c.textContent='دریافت وضعیت ناموفق بود.'}
+}
+document.getElementById('reload').addEventListener('click',refresh);refresh();setInterval(refresh,15000);
+</script></body></html>
