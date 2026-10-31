@@ -60,6 +60,32 @@ function Get-RunState {
   $present=$null-ne$item -and $item.PSObject.Properties.Name -contains $RunName
   return [pscustomobject]@{present=$present;value=if($present){[string]$item.$RunName}else{$null}}
 }
+function Test-TaskOwnerSID([string]$TaskUserId) {
+  if([string]::IsNullOrWhiteSpace($TaskUserId)){return $false}
+  try{
+    $ownerSid=if($TaskUserId -match '^S-1-[0-9-]+$'){
+      [Security.Principal.SecurityIdentifier]::new($TaskUserId)
+    }else{
+      [Security.Principal.NTAccount]::new($TaskUserId).Translate([Security.Principal.SecurityIdentifier])
+    }
+    return [string]$ownerSid.Value -ceq [string][Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+  }catch{return $false}
+}
+function Test-ProbeFreshness([object]$Value,[DateTimeOffset]$Started) {
+  if($null -eq $Value){return $false}
+  try{
+    if($Value -is [DateTimeOffset]){
+      $observed=$Value.ToUniversalTime()
+    }elseif($Value -is [DateTime]){
+      if($Value.Kind -eq [DateTimeKind]::Unspecified){return $false}
+      $observed=[DateTimeOffset]::new($Value.ToUniversalTime(),[TimeSpan]::Zero)
+    }elseif($Value -is [string]){
+      if($Value -notmatch '(?:Z|[+-][0-9]{2}:[0-9]{2})$'){return $false}
+      $observed=[DateTimeOffset]::Parse($Value,[Globalization.CultureInfo]::InvariantCulture,[Globalization.DateTimeStyles]::RoundtripKind).ToUniversalTime()
+    }else{return $false}
+    return $observed -ge $Started.ToUniversalTime()
+  }catch{return $false}
+}
 function Get-TaskState {
   $task=Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
   if(-not $task){return [pscustomobject]@{installed=$false;valid=$false;taskName=$TaskName}}
@@ -76,7 +102,7 @@ function Get-TaskState {
     [string]$action.Execute -eq (Get-PwshPath) -and
     [string]$action.WorkingDirectory -eq $CoreRoot -and
     [string]$action.Arguments -ceq $expectedArgs -and
-    [string]$task.Principal.UserId -eq [Security.Principal.WindowsIdentity]::GetCurrent().Name
+    (Test-TaskOwnerSID ([string]$task.Principal.UserId))
   )
   return [pscustomobject]@{
     installed=$true;valid=[bool]$valid;taskName=$TaskName
@@ -107,6 +133,19 @@ function Get-PwshPath {
 function Install-ElevatedRuntime {
   if(-not(Test-Elevated)){throw 'ADMIN_RUNTIME_ELEVATION_REQUIRED'}
   if(-not(Test-Path -LiteralPath $Entry -PathType Leaf)){throw "ADMIN_RUNTIME_ENTRY_MISSING $Entry"}
+  # Installation must never start a second production supervisor.
+  # Existing tasks are owner state; do not overwrite or delete them by -Force.
+  $existing=Get-TaskState
+  if($existing.installed){
+    if($existing.valid){
+      # Crash between task registration and old HKCU Run retirement must not
+      # be mistaken for a converged one-runtime installation.
+      if((Get-RunState).present){throw 'ADMIN_RUNTIME_DUAL_AUTOSTART_CONFLICT'}
+      Write-Output 'ADMIN_RUNTIME_ALREADY_INSTALLED'
+      return
+    }
+    throw 'ADMIN_RUNTIME_TASK_CONFLICT'
+  }
   New-Item -ItemType Directory -Force -Path $AdminDir | Out-Null
 
   $identity=[Security.Principal.WindowsIdentity]::GetCurrent().Name
@@ -121,25 +160,59 @@ function Install-ElevatedRuntime {
   $pwsh=Get-PwshPath
   $args='-NoLogo -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File "'+$Entry+'"'
   $action=New-ScheduledTaskAction -Execute $pwsh -Argument $args -WorkingDirectory $CoreRoot
+  $probeArgs=$args+' -ProbeOnly'
+  $probeAction=New-ScheduledTaskAction -Execute $pwsh -Argument $probeArgs -WorkingDirectory $CoreRoot
+  $probeTaskName=$TaskName+'-Probe-'+([guid]::NewGuid().ToString('N').Substring(0,12))
+  $probeRegistered=$false
+  $productionRegistered=$false
   $trigger=New-ScheduledTaskTrigger -AtLogOn -User $identity
   $principal=New-ScheduledTaskPrincipal -UserId $identity -LogonType Interactive -RunLevel Highest
   $settings=New-ScheduledTaskSettingsSet -StartWhenAvailable -MultipleInstances IgnoreNew -ExecutionTimeLimit ([TimeSpan]::Zero)
 
   try{
-    Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Force | Out-Null
-    $readback=Get-TaskState
-    if(-not $readback.valid){throw 'ADMIN_RUNTIME_TASK_READBACK_FAILED'}
-
-    $started=Get-Date
+    # Verify native elevation with an on-demand one-shot task that exits before the
+    # real production AtLogOn task is registered. No live Core restart is implied.
+    Register-ScheduledTask -TaskName $probeTaskName -Action $probeAction -Principal $principal -Settings $settings | Out-Null
+    $probeRegistered=$true
+    $taskProbe=Get-ScheduledTask -TaskName $probeTaskName -ErrorAction Stop
+    $probeReadback=@($taskProbe.Actions|Select-Object -First 1)[0]
+    if(@($taskProbe.Actions).Count -ne 1 -or
+       -not (Test-TaskOwnerSID ([string]$taskProbe.Principal.UserId)) -or
+       [string]$taskProbe.Principal.RunLevel -ne 'Highest' -or
+       [string]$taskProbe.Principal.LogonType -ne 'Interactive' -or
+       [string]$probeReadback.Execute -ne $pwsh -or
+       [string]$probeReadback.Arguments -cne $probeArgs -or
+       [string]$probeReadback.WorkingDirectory -ne $CoreRoot){
+      throw 'ADMIN_RUNTIME_PROBE_TASK_READBACK_FAILED'
+    }
+    $started=[DateTimeOffset]::UtcNow
     Remove-Item -LiteralPath $ProbeFile -Force -ErrorAction SilentlyContinue
-    Start-ScheduledTask -TaskName $TaskName
+    Start-ScheduledTask -TaskName $probeTaskName
     $probe=$null
     foreach($i in 1..40){
       Start-Sleep -Milliseconds 250
       $probe=Read-Json $ProbeFile
-      if($probe -and $probe.elevated -eq $true -and [DateTimeOffset]::Parse([string]$probe.at) -ge [DateTimeOffset]$started.ToUniversalTime()){break}
+      if($probe -and $probe.elevated -eq $true -and
+         $probe.probeOnly -eq $true -and
+         [string]$probe.user -eq $identity -and
+         [string]$probe.appRoot -eq $CoreRoot -and
+         (Test-ProbeFreshness $probe.at $started)){break}
     }
-    if(-not $probe -or $probe.elevated -ne $true){throw 'ADMIN_RUNTIME_ELEVATED_PROBE_FAILED'}
+    if(-not $probe -or $probe.elevated -ne $true -or
+       $probe.probeOnly -ne $true -or [string]$probe.appRoot -ne $CoreRoot -or
+       [string]$probe.user -ne $identity -or -not (Test-ProbeFreshness $probe.at $started)){
+      throw 'ADMIN_RUNTIME_ELEVATED_PROBE_FAILED'
+    }
+    # The one-shot task must be gone before scheduling production at the next login.
+    Unregister-ScheduledTask -TaskName $probeTaskName -Confirm:$false -ErrorAction Stop
+    if(Get-ScheduledTask -TaskName $probeTaskName -ErrorAction SilentlyContinue){
+      throw 'ADMIN_RUNTIME_PROBE_RETIRE_FAILED'
+    }
+    $probeRegistered=$false
+    Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger -Principal $principal -Settings $settings | Out-Null
+    $productionRegistered=$true
+    $readback=Get-TaskState
+    if(-not $readback.valid){throw 'ADMIN_RUNTIME_TASK_READBACK_FAILED'}
 
     if($before.present){Remove-ItemProperty -Path $RunKey -Name $RunName -ErrorAction Stop}
     $after=Get-RunState
@@ -154,12 +227,18 @@ function Install-ElevatedRuntime {
     Write-JsonAtomic $StateFile $state
     Write-Output "ADMIN_RUNTIME_INSTALL_PASS task=$TaskName user=$identity runLevel=Highest logon=Interactive"
   }catch{
-    Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false -ErrorAction SilentlyContinue
+    if($productionRegistered){
+      Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false -ErrorAction SilentlyContinue
+    }
     if($before.present){
       New-Item -Path $RunKey -Force | Out-Null
       New-ItemProperty -Path $RunKey -Name $RunName -Value $before.value -PropertyType String -Force | Out-Null
     }
     throw
+  }finally{
+    if($probeRegistered){
+      Unregister-ScheduledTask -TaskName $probeTaskName -Confirm:$false -ErrorAction SilentlyContinue
+    }
   }
 }
 function Remove-ElevatedRuntime {
@@ -199,9 +278,9 @@ function Activate-ElevatedRuntime {
     foreach($i in 1..40){
       Start-Sleep -Milliseconds 250
       $probe=Read-Json $ProbeFile
-      if($probe -and $probe.elevated -eq $true -and [DateTimeOffset]::Parse([string]$probe.at) -ge $started){break}
+      if($probe -and $probe.elevated -eq $true -and (Test-ProbeFreshness $probe.at $started)){break}
     }
-    if(-not $probe -or $probe.elevated -ne $true){throw 'ADMIN_RUNTIME_ACTIVATION_PROBE_FAILED'}
+    if(-not $probe -or $probe.elevated -ne $true -or -not (Test-ProbeFreshness $probe.at $started)){throw 'ADMIN_RUNTIME_ACTIVATION_PROBE_FAILED'}
     Write-Output "ADMIN_RUNTIME_ACTIVATE_PASS pid=$($probe.processId)"
   }catch{
     Start-NonElevatedFallback

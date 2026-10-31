@@ -24,6 +24,50 @@ for (const required of [
 if (adminRuntime.includes("$CoreRoot=Join-Path $StateRoot 'app'")) {
   throw new Error('admin runtime must bind to active routed release, not obsolete app/');
 }
+// Installing a privileged task must prove elevation without ever launching the
+// production supervisor beside an already-running owner runtime.
+for (const required of [
+  'function Test-ProbeFreshness',
+  'function Test-TaskOwnerSID',
+  'Test-TaskOwnerSID ([string]$task.Principal.UserId)',
+]) {
+  if (!adminRuntime.includes(required)) {
+    throw new Error('admin runtime top-level validation missing: ' + required);
+  }
+}
+const installAdminStart = adminRuntime.indexOf('function Install-ElevatedRuntime {');
+const installAdminEnd = adminRuntime.indexOf('function Remove-ElevatedRuntime {');
+if (installAdminStart < 0 || installAdminEnd <= installAdminStart) {
+  throw new Error('admin runtime install scope is missing');
+}
+const installAdmin = adminRuntime.slice(installAdminStart, installAdminEnd);
+for (const required of [
+  'ADMIN_RUNTIME_TASK_CONFLICT',
+  'ADMIN_RUNTIME_DUAL_AUTOSTART_CONFLICT',
+  '(Test-ProbeFreshness $probe.at $started)',
+  'Test-TaskOwnerSID ([string]$taskProbe.Principal.UserId)',
+  'ADMIN_RUNTIME_ALREADY_INSTALLED',
+  "Register-ScheduledTask -TaskName $probeTaskName",
+  "Start-ScheduledTask -TaskName $probeTaskName",
+  "' -ProbeOnly'",
+  '$probe.probeOnly -eq $true',
+  '[string]$probe.user -eq $identity',
+  '[string]$probe.appRoot -eq $CoreRoot',
+  'Unregister-ScheduledTask -TaskName $probeTaskName',
+  'Register-ScheduledTask -TaskName $TaskName',
+  'if($productionRegistered)',
+]) {
+  if (!installAdmin.includes(required)) {
+    throw new Error('admin runtime one-shot elevation contract missing: ' + required);
+  }
+}
+if (installAdmin.includes('Start-ScheduledTask -TaskName $TaskName')) {
+  throw new Error('admin runtime install may not start the production supervisor');
+}
+if (installAdmin.indexOf('Unregister-ScheduledTask -TaskName $probeTaskName') >
+    installAdmin.indexOf('Register-ScheduledTask -TaskName $TaskName')) {
+  throw new Error('admin runtime must retire one-shot probe before production registration');
+}
 for (const required of ['[switch]$GuiControl','[switch]$DisableGuiControl','capability-migrate.mjs','Invoke-ExistingSafeUpdate','auto-update-windows.ps1']) {
   if (!windowsInstaller.includes(required)) throw new Error(`install.ps1 missing delegated capability/update behavior: ${required}`);
 }
@@ -244,6 +288,8 @@ if (process.platform === 'linux') {
     const outcome = run('pwsh.exe', ['-NoProfile', '-Command', command]);
     if (outcome.skipped) throw new Error('PowerShell 7 parser is required on Windows');
   }
+  const mock = run('pwsh.exe', ['-NoLogo','-NoProfile','-NonInteractive','-File','test/admin-runtime-task-mock-windows.ps1']);
+  if (mock.skipped) throw new Error('PowerShell 7 native Scheduled Tasks mock is required on Windows');
   console.log('INSTALLER_CHECK_PASS platform=win32 powershell=true');
 } else {
   console.log(`INSTALLER_CHECK_SKIP platform=${process.platform}`);
