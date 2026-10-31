@@ -37,3 +37,28 @@ export async function pickV2PendingReview(list,{dialog=execFile,timeoutMs=120000
   }catch{resolve(null)}
  });
 }
+
+// The launcher uses Terminal=false, so stdout alone is invisible. Show
+// only a bounded fixed native message; never echo request arguments or
+// raw results. A returned V1 RPC is not verified effect completion.
+export async function displayV2NativeReviewOutcome(kind,{
+ dialog=execFile,timeoutMs=120000
+}={}){
+ const messages={
+  empty:'No eligible V2 diagnostic requests are pending. Requests expire after 10 minutes. Submit a new request from ChatGPT, then open this app.',
+  cancelled:'No V2 operation was selected. No new action has been dispatched.',
+  returned:'The approved V1 call returned. This confirms an RPC result, not completion of any long-running effect. Check the V2 request status.',
+  error:'V2 owner review was unsuccessful or an outcome is uncertain. Check the exact request status before attempting anything else.'
+ };
+ if(!Object.hasOwn(messages,kind))throw new Error('V2_REVIEW_RESULT_KIND_INVALID');
+ if(typeof dialog!=='function'||!Number.isSafeInteger(timeoutMs)||
+    timeoutMs<1000||timeoutMs>120000)throw new Error('V2_REVIEW_RESULT_CALLBACK_INVALID');
+ return await new Promise(resolve=>{
+  try{
+   dialog('/usr/bin/kdialog',[
+    '--title','Commander V2 — Owner Review',
+    '--msgbox',messages[kind]
+   ],{timeout:timeoutMs,maxBuffer:2048},error=>resolve(!error));
+  }catch{resolve(false)}
+ });
+}

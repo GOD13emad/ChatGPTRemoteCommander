@@ -250,3 +250,40 @@ Native desktop launcher validation and module checks succeeded.
 Production owner confirmation and actual V2-to-V1 local action
 remain unverified until the owner responds in the GUI and a
 final dispatch receipt is observed.
+
+## V2 transient tunnel recovery and visible KDE review outcome (2026-11-01)
+
+The existing V2 ChatGPT MCP tools temporarily failed with `Session terminated`
+even though the local V2 listener passed HTTP 200 and its authenticated mTLS
+`tools/list` returned 8 tools. The V2 tunnel service journal showed multiple
+upstream Control Plane poll timeouts (10 in the observed short interval).
+V1's three tunnel readiness endpoints all remained HTTP 200.
+
+After confirming the dedicated V2 tunnel's persisted `LoadCredential`
+configuration, **one** owner-user `systemctl --user restart
+commander-v2-mmz-tunnel.service` restored the ChatGPT V2 tool invocation.
+The remote `v2_readonly_status` and `v2_v1_request_status` both returned
+success after the restart. No V1 service or credential was restarted,
+extracted or changed. This is a confirmed transport recovery, not proof
+that the external Control Plane's underlying timeout cause is eliminated.
+Do not loop restarts for future unrelated errors without rechecking logs
+and local vs remote health.
+
+The existing `Commander V2 - Owner Review` application now provides
+fixed, owner-local KDE message boxes when no eligible diagnostic review
+exists, after a V1 RPC returns, or when outcome remains failed/uncertain.
+This prevents a `Terminal=false` desktop launcher from hiding the only
+human feedback in stdout. The error message explicitly avoids claiming
+that an uncertain dispatch had no effect. No private command arguments,
+response bodies or credentials are shown in these generic status boxes.
+The selector and typed exact-UUID approval remain separate; there is no
+automatic or background approval. The change touched only the user-local
+CLI and selection UI module, not the live MCP server or V1.
+
+Regression suite on MMZ Linux: 323 tests, 322 PASS / 0 FAIL / 1 SKIP,
+operation `e93edf87-4fea-4d92-869a-7dce0edc1e0c`, exit 0.
+Installed owner-local CLI and review-picker module are byte-identical to
+the source after a hash-preconditioned atomic install, with prior copies
+retained in the existing owner-private QA location. Production review
+and V2-to-V1 invocation still require an explicit native owner action:
+expired proposals are not retroactively approved.

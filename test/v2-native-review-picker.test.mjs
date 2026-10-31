@@ -36,3 +36,20 @@ test('invalid or duplicate requests are rejected and empty queue displays nothin
  assert.throws(()=>eligibleV2PendingReviews([item,item]),/DUPLICATE/);
  assert.throws(()=>eligibleV2PendingReviews([{...item,id:'invalid'}]),/INVALID/);
 });
+test('launcher outcome messages are fixed, bounded and do not leak operation details',async()=>{
+ const {displayV2NativeReviewOutcome}=await import('../src/v2-native-review-picker.mjs');
+ let calls=[];
+ const fake=(bin,args,options,callback)=>{
+  calls.push({bin,args,options});callback(null,'');
+ };
+ for(const kind of ['empty','cancelled','returned','error'])
+  assert.equal(await displayV2NativeReviewOutcome(kind,{dialog:fake}),true);
+ assert.equal(calls.length,4);
+ assert.ok(calls.every(c=>c.bin==='/usr/bin/kdialog'&&
+  c.args.includes('--msgbox')&&c.args.every(s=>s.length<260)));
+ assert.match(calls[2].args.at(-1),/not completion/);
+ assert.match(calls[3].args.at(-1),/outcome is uncertain/);
+ await assert.rejects(()=>displayV2NativeReviewOutcome('EXECUTE',{dialog:fake}),
+  /V2_REVIEW_RESULT_KIND_INVALID/);
+ assert.equal(calls.length,4);
+});
