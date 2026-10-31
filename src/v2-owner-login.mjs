@@ -5,7 +5,7 @@
 import {normalizeV2Route} from './v2-routing-contract.mjs';
 import {openV2OwnerApplication} from './v2-owner-session-reuse.mjs';
 const METHODS=Object.freeze([
- 'os-sso-cache','browser-sso','passkey','browser-autofill','native-password-manager'
+ 'os-sso-cache','browser-sso','browser-autofill','native-password-manager','passkey'
 ]);
 const ID=/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const AUTH=new Set(['SIGNED_IN','SIGNED_OUT','MFA_REQUIRED','CONSENT_REQUIRED','UNKNOWN']);
@@ -36,6 +36,8 @@ function pinned(v,first){
  *
  * Status requires independent, same-user native evidence. Availability is a
  * categorical capability result, not a credential count or exported secret.
+ * Attempt silent SSO and same-user saved-password autofill BEFORE passkeys
+ * that could require physical presence or a biometric prompt.
  * A broker may initiate browser-managed autofill or native passkeys; a passkey
  * user-presence prompt and IdP MFA/consent remain permitted and cannot be
  * silently bypassed. All methods are enabled by default, subject to native

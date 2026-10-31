@@ -62,7 +62,7 @@ test('silent native SSO completes without requesting stored password',async()=>{
  assert.equal(v.status,'AUTHENTICATED');assert.equal(v.method,'os-sso-cache');
  assert.equal(f.events.includes('use:browser-autofill'),false);
 });
-test('browser-managed saved password autofill is used after absent SSO and passkey',async()=>{
+test('browser-managed saved password autofill is used after absent silent SSO',async()=>{
  const f=fixture();f.auth('SIGNED_OUT');
  f.methods.set('browser-autofill',{availability:'READY',effect:'SUBMITTED',nextAuth:'SIGNED_IN'});
  const v=await f.open();
@@ -159,5 +159,24 @@ test('post-sign-in observation failure remains uncertain and never retries an au
  f.services.inspectNativeAuthentication=async()=>{if(++reads===1)return {status:'SIGNED_OUT'};throw Error('transport secret');};
  const v=await f.open();
  assert.equal(v.status,'AUTH_EFFECT_UNCERTAIN');
+ assert.equal(v.passwordRequested,false);
+});
+
+test('saved-password autofill wins over interactive passkey when both are available',async()=>{
+ const f=fixture();f.auth('SIGNED_OUT');
+ f.methods.set('passkey',{availability:'READY',effect:'OWNER_ACTION_REQUIRED'});
+ f.methods.set('browser-autofill',{availability:'READY',effect:'SUBMITTED',nextAuth:'SIGNED_IN'});
+ const v=await f.open();
+ assert.equal(v.status,'AUTHENTICATED');
+ assert.equal(v.method,'browser-autofill');
+ assert.equal(f.events.includes('use:passkey'),false);
+ assert.equal(v.passwordRequested,false);
+});
+test('only owner-native presence path is proposed when no silent saved-login worked',async()=>{
+ const f=fixture();f.auth('SIGNED_OUT');
+ f.methods.set('passkey',{availability:'READY',effect:'OWNER_ACTION_REQUIRED'});
+ const v=await f.open();
+ assert.equal(v.status,'OWNER_NATIVE_ACTION_REQUIRED');
+ assert.equal(v.method,'passkey');
  assert.equal(v.passwordRequested,false);
 });
