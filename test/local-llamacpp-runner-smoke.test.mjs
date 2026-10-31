@@ -8,7 +8,7 @@ const mock=value=>({
 });
 test('three-worker Team Planner and actual SQLite ProjectEngine complete bounded read-only workflow',async()=>{
  const r=await runLocalPlannerE2e({basePlanner:mock(valid)});
- assert.equal(r.status,'PASS');
+ assert.equal(r.status,'PASS',JSON.stringify(r));
  assert.equal(r.firstCode,'PROJECT_STEP_RECORDED');
  assert.equal(r.finalCode,'PROJECT_ACCEPTANCE_VERIFIED');
  assert.equal(r.realReadOnlyToolExecutions,1);
