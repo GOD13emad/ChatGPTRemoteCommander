@@ -122,15 +122,41 @@ export async function openV2OwnerApplication({
  if(again.seatId!==inventory.seatId||!fresh||!sameWindow(fresh,selected)
    ||fresh.ownerSessionReady!==true||(mode==='background'&&fresh.backgroundReady!==true))
    fail('V2_OWNER_APP_CHANGED_DURING_CONSENT');
- let attachment;
+ let attachment,controlSurface='browser-native';
  try {
   attachment=await services.attachExisting(Object.freeze({...intent,window:selected}));
  }catch {fail('V2_OWNER_APP_ATTACH_UNCERTAIN');}
+ // Native browser CDP may be unsupported for a normal signed-in profile.
+ // Switch to same-owner accessibility only on an explicit *no-effect*
+ // receipt from the browser driver, and an independent owner grant.
+ // Unknown browser_prepare effects, cookie/profile transfer, or a native
+ // browser consent denial never become permission for an AX fallback.
+ if(attachment?.ok===false&&attachment.status==='REFUSED_NO_EFFECT'&&
+    attachment.noEffectAttested===true&&
+    attachment.code==='BROWSER_ROUTE_UNAVAILABLE'){
+  needs(services.authorizeAccessibilityAttach,services.attachAccessibility,
+    services.verifyAccessibilityAttachment);
+  if(await services.authorizeAccessibilityAttach(intent)!==true)
+    fail('V2_OWNER_APP_ACCESSIBILITY_CONSENT_REQUIRED');
+  const latest=await windows({route:r,sessionHandle,appId,services})
+    .catch(()=>fail('V2_OWNER_APP_CHANGED_DURING_CONSENT'));
+  const bound=latest.windows.find(w=>w.windowId===selected.windowId);
+  if(latest.seatId!==inventory.seatId||!bound||!sameWindow(bound,selected)||
+     bound.ownerSessionReady!==true||
+     (mode==='background'&&bound.backgroundReady!==true))
+    fail('V2_OWNER_APP_CHANGED_DURING_CONSENT');
+  try {
+   attachment=await services.attachAccessibility(Object.freeze({...intent,window:bound}));
+  }catch {fail('V2_OWNER_APP_ATTACH_UNCERTAIN');}
+  controlSurface='native-accessibility';
+ }
  if(attachment?.ok!==true||!valid(attachment.attachmentId)
    ||(mode==='background'&&attachment.foregroundChanged!==false))
    fail('V2_OWNER_APP_ATTACH_UNCERTAIN');
  // Never return the native driver's raw object (which may contain secrets).
- const verified=await services.verifyAttachment(Object.freeze({
+ const verifier=controlSurface==='native-accessibility'?
+   services.verifyAccessibilityAttachment:services.verifyAttachment;
+ const verified=await verifier(Object.freeze({
    ...intent,window:selected,attachmentId:attachment.attachmentId
  })).catch(()=>false);
  if(verified!==true)fail('V2_OWNER_APP_ATTACH_UNCERTAIN');
@@ -139,7 +165,7 @@ export async function openV2OwnerApplication({
  if(!final||final.seatId!==inventory.seatId||!after||!sameWindow(after,selected))
    fail('V2_OWNER_APP_ATTACH_UNCERTAIN');
  return Object.freeze({
-  status:'NATIVE_SESSION_BOUND',appId,windowId:selected.windowId,
+  status:'NATIVE_SESSION_BOUND',controlSurface,appId,windowId:selected.windowId,
   pid:selected.pid,mode,launched,existingSessionReused:!launched,
   credentialExported:false,passwordStoreAccessed:false,
   // No assertion that a website accepted its previous login until page

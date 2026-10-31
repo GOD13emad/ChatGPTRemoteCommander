@@ -47,6 +47,8 @@ jobs:
         run: node --test test/v2-fleet-readiness.test.mjs
       - name: Verify existing owner browser and application session reuse boundaries
         run: node --test test/v2-owner-session-reuse.test.mjs test/v2-native-window-bridge.test.mjs test/v2-native-owner-session-bindings.test.mjs
+      - name: Verify all native saved-login routes before password fallback
+        run: node --test test/v2-owner-login.test.mjs test/v2-owner-session-reuse.test.mjs
       - name: Verify native effect reconciliation and durable at-most-once receipts
         run: node --test test/v2-native-window-bridge.test.mjs test/mutation-idempotency.test.mjs
 

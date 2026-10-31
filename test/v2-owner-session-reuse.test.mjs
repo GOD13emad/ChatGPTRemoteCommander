@@ -114,3 +114,56 @@ test('foreground safety change after owner consent blocks launch without side ef
    {code:'V2_OWNER_APP_BACKGROUND_LAUNCH_UNAVAILABLE'});
  assert.deepEqual(f.calls,['consentLaunch']);
 });
+
+test('native existing-profile refusal with verified no-effect falls back to owner accessibility',async()=>{
+ const f=fixture();
+ f.services.attachExisting=async()=>({ok:false,status:'REFUSED_NO_EFFECT',
+   noEffectAttested:true,code:'BROWSER_ROUTE_UNAVAILABLE'});
+ f.services.authorizeAccessibilityAttach=async()=>{f.calls.push('axConsent');return true;};
+ f.services.attachAccessibility=async()=>{f.calls.push('axAttach');
+   return {ok:true,attachmentId:'ax-1',foregroundChanged:false};};
+ f.services.verifyAccessibilityAttachment=async()=>true;
+ const v=await f.open();
+ assert.equal(v.controlSurface,'native-accessibility');
+ assert.equal(v.existingSessionReused,true);
+ assert.equal(v.passwordStoreAccessed,false);
+ assert.deepEqual(f.calls,['consentAttach','axConsent','axAttach']);
+});
+test('browser consent refusal or uncertain attach never allows AX fallback',async()=>{
+ for(const refusal of [
+  {ok:false,status:'PROFILE_ATTACH_NOT_READY',code:'BROWSER_ROUTE_UNAVAILABLE'},
+  {ok:false,status:'REFUSED_NO_EFFECT',noEffectAttested:false,code:'BROWSER_ROUTE_UNAVAILABLE'},
+  {ok:false,status:'REFUSED_NO_EFFECT',noEffectAttested:true,code:'CONSENT_DENIED'}
+ ]){
+  const f=fixture();
+  f.services.attachExisting=async()=>refusal;
+  f.services.attachAccessibility=async()=>{throw Error('must not run');};
+  f.services.authorizeAccessibilityAttach=async()=>true;
+  f.services.verifyAccessibilityAttachment=async()=>true;
+  await assert.rejects(f.open(),{code:'V2_OWNER_APP_ATTACH_UNCERTAIN'});
+ }
+});
+test('AX fallback needs distinct owner grant and fresh native window identity',async()=>{
+ const a=fixture();
+ a.services.attachExisting=async()=>({ok:false,status:'REFUSED_NO_EFFECT',noEffectAttested:true,code:'BROWSER_ROUTE_UNAVAILABLE'});
+ a.services.authorizeAccessibilityAttach=async()=>false;
+ a.services.attachAccessibility=async()=>{throw Error('must not run');};
+ a.services.verifyAccessibilityAttachment=async()=>true;
+ await assert.rejects(a.open(),{code:'V2_OWNER_APP_ACCESSIBILITY_CONSENT_REQUIRED'});
+ const b=fixture();
+ b.services.attachExisting=async()=>({ok:false,status:'REFUSED_NO_EFFECT',noEffectAttested:true,code:'BROWSER_ROUTE_UNAVAILABLE'});
+ b.services.authorizeAccessibilityAttach=async()=>{b.windowChanged(true);return true;};
+ b.services.attachAccessibility=async()=>{throw Error('must not run');};
+ b.services.verifyAccessibilityAttachment=async()=>true;
+ await assert.rejects(b.open(),{code:'V2_OWNER_APP_CHANGED_DURING_CONSENT'});
+});
+test('accessibility cannot claim background if focus changes or verification fails',async()=>{
+ for(const [foregroundChanged,verified] of [[true,true],[false,false]]){
+  const f=fixture();
+  f.services.attachExisting=async()=>({ok:false,status:'REFUSED_NO_EFFECT',noEffectAttested:true,code:'BROWSER_ROUTE_UNAVAILABLE'});
+  f.services.authorizeAccessibilityAttach=async()=>true;
+  f.services.attachAccessibility=async()=>({ok:true,attachmentId:'ax-1',foregroundChanged});
+  f.services.verifyAccessibilityAttachment=async()=>verified;
+  await assert.rejects(f.open(),{code:'V2_OWNER_APP_ATTACH_UNCERTAIN'});
+ }
+});
