@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import {mkdtemp,readFile,rm,symlink} from 'node:fs/promises';
 import {join} from 'node:path';
 import {tmpdir} from 'node:os';
-import {makeOwnerSeatHeartbeat,writeOwnerSeatHeartbeat,startOwnerSeatWorker}
+import {makeOwnerSeatHeartbeat,writeOwnerSeatHeartbeat,startOwnerSeatWorker,
+ normalizeOwnerBrowserCensus,readOwnerBrowserCensus}
  from '../tools/v2-owner-seat-agent.mjs';
 
 test('owner heartbeat has no login, token, or tool authority',()=>{
@@ -56,4 +57,52 @@ test('background worker ends on abort without network or GUI actions',async()=>{
   ac.abort();await work;
   assert.equal(JSON.parse(await readFile(join(root,'latest.json'),'utf8')).browserAttached,false);
  }finally{ac.abort();await rm(root,{recursive:true,force:true});}
+});
+
+test('read-only same-seat browser process census contains no window titles or secrets',async()=>{
+ const data=await readOwnerBrowserCensus({seat:1,probe:async seat=>{
+  assert.equal(seat,1);
+  return {status:'OBSERVED',brave:36,firefox:0,chrome:9,msedge:12,
+   password:'not-returned',windowTitle:'not-returned',userDataDir:'not-returned'};
+ }});
+ assert.deepEqual(Object.keys(data).sort(),['status','brave','firefox','chrome','msedge'].sort());
+ assert.equal(JSON.stringify(data).includes('not-returned'),false);
+ assert.equal(Object.isFrozen(data),true);
+ const heartbeat=makeOwnerSeatHeartbeat({user:'owner',seat:1,pid:3,browserCensus:data});
+ assert.equal(heartbeat.browserCensus.brave,36);
+ assert.equal(heartbeat.savedLoginVerified,false);
+ assert.equal(heartbeat.canExecuteUserActions,false);
+});
+test('malformed/failed census cannot grant owner authority or invent a browser login',async()=>{
+ for(const bad of [{status:'OBSERVED',brave:-1,firefox:0,chrome:0,msedge:0},
+  {status:'OBSERVED',brave:1,firefox:0,chrome:0,msedge:'2'}]){
+  await assert.deepEqual(
+   await readOwnerBrowserCensus({seat:1,probe:async()=>bad}),{status:'UNAVAILABLE'});
+ }
+ await assert.deepEqual(
+  await readOwnerBrowserCensus({seat:1,probe:async()=>{throw Error('unavailable');}}),
+  {status:'UNAVAILABLE'});
+ await assert.rejects(readOwnerBrowserCensus({seat:0,probe:async()=>({status:'OBSERVED'})}),
+  {code:'V2_OWNER_NATIVE_SEAT_REQUIRED'});
+});
+test('background worker records census and preserves no-tool, no-login boundary',async()=>{
+ const dir=await mkdtemp(join(tmpdir(),'v2-owner-census-'));
+ const ac=new AbortController();
+ try{
+  const run=startOwnerSeatWorker({dir,user:'owner',seat:1,pid:4,periodMs:1000,
+   signal:ac.signal,observeBrowsers:async({seat})=>{
+    assert.equal(seat,1);
+    return {status:'OBSERVED',brave:2,firefox:0,chrome:0,msedge:0};
+   }});
+  for(let i=0;i<50;i++){
+   try{const h=JSON.parse(await readFile(join(dir,'latest.json'),'utf8'));
+    if(h.browserCensus?.status==='OBSERVED')break;}
+   catch{}await new Promise(r=>setTimeout(r,20));
+  }
+  ac.abort();await run;
+  const h=JSON.parse(await readFile(join(dir,'latest.json'),'utf8'));
+  assert.equal(h.browserCensus.brave,2);
+  assert.equal(h.canExecuteUserActions,false);
+  assert.equal(h.savedLoginVerified,false);
+ }finally{ac.abort();await rm(dir,{recursive:true,force:true});}
 });

@@ -7,11 +7,52 @@ import {mkdir,readFile,lstat,writeFile,rename,unlink} from 'node:fs/promises';
 import {join,resolve,isAbsolute} from 'node:path';
 import {homedir,userInfo} from 'node:os';
 import {fileURLToPath} from 'node:url';
+import {execFile} from 'node:child_process';
+import {promisify} from 'node:util';
 
 const ID=/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
+const runNative=promisify(execFile);
+const CENSUS_NAMES=['brave','firefox','chrome','msedge'];
+export function normalizeOwnerBrowserCensus(input){
+ if(input?.status==='UNAVAILABLE')
+  return Object.freeze({status:'UNAVAILABLE'});
+ if(input?.status!=='OBSERVED'||typeof input!=='object'||Array.isArray(input)||
+  CENSUS_NAMES.some(k=>!Number.isSafeInteger(input[k])||input[k]<0||input[k]>1000))
+  throw Object.assign(new Error('V2_OWNER_BROWSER_CENSUS_INVALID'),{code:'V2_OWNER_BROWSER_CENSUS_INVALID'});
+ return Object.freeze({status:'OBSERVED',brave:input.brave,firefox:input.firefox,
+  chrome:input.chrome,msedge:input.msedge});
+}
+// Child process inherits this owner's native security token and interactive
+// session. Only program names/counts, never browser title/URL/profile/secret.
+export async function readOwnerBrowserCensus({seat,probe}={}){
+ if(!Number.isSafeInteger(seat)||seat<1||seat>128)
+  throw Object.assign(new Error('V2_OWNER_NATIVE_SEAT_REQUIRED'),{code:'V2_OWNER_NATIVE_SEAT_REQUIRED'});
+ if(process.platform!=='win32'&&!probe)return normalizeOwnerBrowserCensus({status:'UNAVAILABLE'});
+ try{
+  if(probe)return normalizeOwnerBrowserCensus(await probe(seat));
+  const script=[
+    "$ErrorActionPreference='Stop'",
+    "$expected=[int]$env:RC_V2_OWNER_EXPECTED_SEAT",
+    "if($expected -lt 1 -or $expected -gt 128){throw 'SEAT_INVALID'}",
+    "$result=@{status='OBSERVED';brave=0;firefox=0;chrome=0;msedge=0}",
+    "$names=@('brave','firefox','chrome','msedge')",
+    "$processes=@(Get-Process -Name $names -ErrorAction SilentlyContinue | Where-Object {$_.SessionId -eq $expected})",
+    "foreach($p in $processes){$k=$p.ProcessName.ToLowerInvariant();if($result.ContainsKey($k)){$result[$k]++}}",
+    "$result|ConvertTo-Json -Compress"
+  ].join('\n');
+  const ps=join(process.env.SystemRoot||'C:\\Windows','System32','WindowsPowerShell','v1.0','powershell.exe');
+  const output=await runNative(ps,['-NoProfile','-NonInteractive','-EncodedCommand',
+    Buffer.from(script,'utf16le').toString('base64')],{
+    windowsHide:true,timeout:5000,maxBuffer:2048,
+    env:{...process.env,RC_V2_OWNER_EXPECTED_SEAT:String(seat)}
+  });
+  return normalizeOwnerBrowserCensus(JSON.parse(output.stdout.trim()));
+ }catch{return normalizeOwnerBrowserCensus({status:'UNAVAILABLE'});}
+}
+
 function fail(code){throw Object.assign(new Error(code),{code});}
 export function makeOwnerSeatHeartbeat({
-  user,seat,pid,now=new Date().toISOString()
+  user,seat,pid,now=new Date().toISOString(),browserCensus={status:'UNAVAILABLE'}
 }={}){
  if(typeof user!=='string'||!ID.test(user)||user==='.'||user==='..'||
   !Number.isSafeInteger(seat)||seat<1||seat>128||
@@ -25,7 +66,8 @@ export function makeOwnerSeatHeartbeat({
   authority:'MONITOR_ONLY_NATIVE_TOKEN_RECHECK_REQUIRED',
   browserAttached:false,savedLoginVerified:false,
   chatSessionAttested:false,canExecuteUserActions:false,
-  credentialsRead:false,profileCopied:false});
+  credentialsRead:false,profileCopied:false,
+  browserCensus:normalizeOwnerBrowserCensus(browserCensus)});
 }
 export async function writeOwnerSeatHeartbeat({dir,heartbeat}={}){
  if(typeof dir!=='string'||!isAbsolute(dir)||!heartbeat||
@@ -47,13 +89,16 @@ export async function writeOwnerSeatHeartbeat({dir,heartbeat}={}){
  return {path:f,bytes:Buffer.byteLength(text)};
 }
 export async function startOwnerSeatWorker({
-  dir,user,seat,pid=process.pid,periodMs=30000,signal
+  dir,user,seat,pid=process.pid,periodMs=30000,signal,
+  observeBrowsers=readOwnerBrowserCensus
 }={}){
- if(!Number.isSafeInteger(periodMs)||periodMs<1000||periodMs>60000)
+ if(typeof observeBrowsers!=='function'||!Number.isSafeInteger(periodMs)||periodMs<1000||periodMs>60000)
   fail('V2_OWNER_SEAT_PERIOD_INVALID');
  if(signal?.aborted) return;
  do{
-  await writeOwnerSeatHeartbeat({dir,heartbeat:makeOwnerSeatHeartbeat({user,seat,pid})});
+  let browserCensus;
+  try{browserCensus=await observeBrowsers({seat});}catch{browserCensus={status:'UNAVAILABLE'};}
+  await writeOwnerSeatHeartbeat({dir,heartbeat:makeOwnerSeatHeartbeat({user,seat,pid,browserCensus})});
   if(signal?.aborted)break;
   await new Promise(resolve=>{
    const timer=setTimeout(()=>{signal?.removeEventListener('abort',done);resolve();},periodMs);
