@@ -172,3 +172,8 @@ Use the **latest security-supported and compatible upstream release/commit**, pi
 ## Linux AT-SPI native read-only gate — 2026-10-31
 
 **SOURCE ONLY / NO PROMOTE.** Linux AgentOS routing no longer equates `XDG_RUNTIME_DIR` with a functioning AT-SPI bus: a real owning-user introspection probe is required. The new `workspace_native_atspi_observe` handles only an exact PID, caps traversal/results and provides no input, focus, credential, profile attachment or elevation capability. Python GObject Introspection + AT-SPI2 are optional, and unavailable dependencies fail closed; this is not proof of on-device E2E or cross-host deployment. References: [GNOME AT-SPI](https://gnome.pages.gitlab.gnome.org/at-spi2-core/libatspi/) and [XDG RemoteDesktop](https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.RemoteDesktop.html).
+
+
+### Honest live browser readiness — 2026-10-31 (PR #438)
+
+`workspace_agentos_plan(new-browser)` must probe the actual browser backend and policy of the same owning session through `browser_status`; it cannot return READY merely because a Commander source file exists. A Windows SYSTEM/Session 0 token, missing browser binary, disabled policy, existing lease/busy state or uncertain session fails closed. Existing user profiles still require platform-mediated owner authorization; no saved-cookie/profile copy. This is a read-only planning correction, not a runtime cutover or browser owner approval. The regression suite covers actual positive/negative status and service-context guards.

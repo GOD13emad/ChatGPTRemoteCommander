@@ -37,3 +37,32 @@ test('missing owner session blocks even read-only AT-SPI observation',async()=>{
  await assert.rejects(ctl.execute('workspace_native_atspi_observe',{pid:44}),/WORKSPACE_OWNER_SESSION_REQUIRED/);
  assert.equal(calls,0);
 });
+
+test('new-browser provider must have a real ready policy-enabled browser status',async()=>{
+ const make=(browserProbe,ownerSession=async()=>true)=>createWorkspaceController({
+  platform:'win32',env:{SESSIONNAME:'Console'},ownerSession,browserProbe
+ });
+ const ready={ok:true,available:true,enabled:true,busy:false,leased:false,uncertain:false,sessionResetRequired:false};
+ const good=make(async()=>ready);
+ assert.equal((await good.execute('workspace_agentos_plan',{target:'new-browser'})).provider,'commander-owned-browser');
+ const cases=[
+  {...ready,enabled:false},{...ready,available:false},{...ready,busy:true},
+  {...ready,leased:true},{...ready,uncertain:true},{...ready,sessionResetRequired:true},
+  {...ready,ok:false}
+ ];
+ for(const bad of cases){
+  const result=await make(async()=>bad).execute('workspace_agentos_plan',{target:'new-browser'});
+  assert.equal(result.status,'BLOCKED');
+  assert.equal(result.code,'OWNED_BROWSER_UNAVAILABLE');
+ }
+});
+test('SYSTEM session and status transport failure cannot claim an owned browser',async()=>{
+ let probeCalls=0;
+ const noOwner=createWorkspaceController({platform:'win32',ownerSession:async()=>false,
+  browserProbe:async()=>{probeCalls++;return {ok:true,available:true,enabled:true}}});
+ const result=await noOwner.execute('workspace_agentos_plan',{target:'new-browser'});
+ assert.equal(result.code,'OWNED_BROWSER_UNAVAILABLE');assert.equal(probeCalls,0);
+ const fail=createWorkspaceController({platform:'linux',ownerSession:async()=>true,
+  browserProbe:async()=>{throw Error('transport')},linuxProbe:async()=>({ready:false})});
+ assert.equal((await fail.execute('workspace_agentos_plan',{target:'new-browser'})).code,'OWNED_BROWSER_UNAVAILABLE');
+});
