@@ -216,3 +216,40 @@ Existing read-only trust auditor now hashes in-memory `Export-ScheduledTask` XML
 ### Runtime-only tunnel process identity and exact profile matching — 2026-10-31
 
 The optional runtime-only `openai/tunnel-client v0.0.18` executable has a different filename, `tunnel-client-runtime.exe`, than the currently installed full `v0.0.15` binary `tunnel-client.exe`. The previous supervisor `Get-TunnelProcess` hard-coded the full-client basename and could not observe a runtime-only owned process, risking duplicate starts and bad ownership decisions if switched untested. The source supervisor now restricts supported process basenames to these two exact Windows names and derives the CIM process filter from the already-resolved expected executable path; it retains exact executable-path and named-profile matching. An isolated PowerShell AST/mocked CIM fixture tests both flavors, wrong profile/path rejection and unknown basename refusal without launching, stopping or authenticating tunnels. **No live task or Runtime cutover.** Actual tunnel v0.0.18 interoperability, credential handling, owner-session GUI E2E and independent security review remain open. Official [OpenAI runtime documentation](https://github.com/openai/tunnel-client).
+
+
+## HYBRID_ENGINE_PROVIDER_SURVEY_20261031 — external infrastructure evaluation and candidate implementation
+
+**State:** CANDIDATE ONLY; no production cutover, external service installation, user credential collection, operating-system escalation or stable release. This is an amendment to the existing architectural authority, not a second roadmap. Official upstream sources surveyed 2026-10-31; no claim of enumerating the entire Internet. Pricing, license and version details must be verified again before deployment.
+
+| Commander layer | Alternatives surveyed | Recommended responsibility / acceptance |
+| --- | --- | --- |
+| Durable local workflow | Commander durable-workflows-r2, DBOS, Restate, Temporal, Inngest | **Keep Commander local journal** as the single authority for native action intent/receipt and reconciliation. DBOS needs PostgreSQL; double-journaling effects would create replay ambiguity. |
+| Fleet DAG/queue | Hatchet, Temporal, Restate, Inngest, Windmill, DBOS, n8n | Hatchet = first **PoC candidate** for distributed scheduling/dashboard; Temporal = strong long-lived replay alternative; Restate = durable service RPC alternative. None is an approved/install-ready drop-in replacement. |
+| Event bus | existing routed MCP transport, NATS JetStream | Preserve existing transport. JetStream optional for durable at-least-once interdevice messages, never exactly-once physical/GUI effects. |
+| Identity/authorization | Commander owner-session SID/UID and grants, Cedar, OpenFGA, OPA, Tailscale Grants | Existing native OS boundary and Commander deny-by-default must always prevail. An external PDP may add denials, not grant OS/session rights. |
+| Windows GUI | application-native APIs/UFO2, UIA patterns, CUA | Native API if owner-approved; then exact UIA; CUA for exact approved target only. SYSTEM session cannot silently impersonate user. |
+| Linux GUI | AT-SPI, XDG RemoteDesktop Portal v2, CUA | Verified owner AT-SPI first; Portal Start presents actual consent; visual last resort. No global input/focus stealing. |
+| Existing browser | Playwright, CDP, Commander Browser lease | Prefer owner-authorized DOM, not default-profile debug switch or cookie extraction; Chromium 136 limits default-profile remote debugging. CDP attachment has lower fidelity than Playwright protocol. |
+| Isolated browser | Playwright, CDP, Commander owned Browser | Owned, isolated, background profile; no credential cloning. |
+| Model runtime | Colibri, llama.cpp, Ollama, vLLM | **Colibri is a local MoE inference runtime, not workflow orchestration.** llama.cpp broad CPU/GPU choice; Ollama simpler local setup; vLLM GPU serving. Optional, only if healthy, installed, licensed and explicitly authorized. |
+| Agent/plan | Commander Project Engine, Pydantic AI, LangGraph, Codex app-server | Commander remains the one executor/journal; external planners propose work, never grant host access. Do not attach two durable engines to the same effects. |
+| Control Center | existing UI, Tauri v2, Electron, Windmill UI | Continue existing UI. Evaluate Tauri v2 per-window capabilities before native packaging; no second privileged UI broker without security review. |
+| Telemetry | Commander receipts, OpenTelemetry, Prometheus | Local receipts remain authoritative. Optional export requires explicit opt-in, redaction and trusted endpoint; never propagate secrets through trace baggage. |
+| Installer and host lifecycle | Commander managed supervisor, Windows service/Task, Linux systemd | One effective installation per physical host; trusted executable/config and complete SYSTEM/root dependency chain with rollback and native UAC/sudo authorization. |
+
+**Implemented candidate integration.** The new src/hybrid-capability-engine.mjs is a pure, bounded, deterministic control-plane arbitration module. The existing src/agentos-provider-router.mjs invokes it only when a project-planning caller explicitly supplies hybridPlanRequested. Its result is a **plan**, not a live executor, and existing routing remains unchanged unless that flag is supplied. It cannot run a command, install an external engine, obtain privileges, attach a browser, export credentials or override Commander local execution policy.
+
+The workflow plan requires a verified local journal and, for Fleet, an authenticated chat, the single-writer root lease, explicit fleet grant, healthy configured coordinator and verified policy. UNKNOWN/PENDING_UNKNOWN external effects require local reconciliation and may not replay. Interactive GUI/browser profile mutation cannot be dispatched through remote Fleet retries. Local model runtime requires explicit permission, installed/healthy backend and model-license approval. Optional policy engines can only add checks. Telemetry export requires redaction approval; GUI remains under native owner-session policies.
+
+**PoC acceptance before any installation or promotion:** 2-host Windows/Linux DAG with authenticated chat isolation; one writer for one project root; deterministic duplicate-delivery/lost-ACK behavior; crash, restart and offline rejoin; no GUI replay for uncertain actions; revocation, pause/cancel, observability, resource/latency budget; roll back to Commander local-only mode; independent security review; pinned signed package and five-host acceptance. Machine SYSTEM Task trust and native owner GUI remain independent open release gates.
+
+**Official sources**
+- Hatchet https://docs.hatchet.run/self-hosting ; Temporal https://docs.temporal.io/tasks ; Restate https://restate.dev/
+- DBOS https://docs.dbos.dev/architecture ; Inngest https://www.inngest.com/docs/self-hosting ; Windmill https://www.windmill.dev/docs/advanced/self_host
+- NATS https://docs.nats.io/concepts/jetstream ; Tauri https://tauri.app/security/capabilities/
+- Playwright https://playwright.dev/docs/api/class-browsertype ; Chrome https://developer.chrome.com/blog/remote-debugging-port
+- Linux Portal https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.RemoteDesktop.html
+- Windows UI security https://learn.microsoft.com/en-us/power-automate/desktop-flows/how-to/enable-ui-access
+- OpenTelemetry https://opentelemetry.io/docs/languages/js/ ; baggage https://opentelemetry.io/docs/concepts/signals/baggage/
+- Colibri https://github.com/JustVugg/colibri ; llama.cpp https://github.com/ggml-org/llama.cpp ; vLLM https://docs.vllm.ai/en/latest/serving/openai_compatible_server.html

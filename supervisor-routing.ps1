@@ -1,6 +1,16 @@
-$RoutingRoot = Join-Path $env:LOCALAPPDATA 'ChatGPTRemoteCommander\routing'
+# Machine SYSTEM routing is fixed to the protected machine store. Never
+# inherit an owner-profile LOCALAPPDATA route into privileged code loading.
+if($script:RcSystemNativeContext -and -not $SelfTest){
+  if(-not $script:RcSystemTrustedRouteGuard){throw 'SYSTEM_ROUTE_GUARD_MISSING'}
+  $RoutingRoot='C:\ProgramData\ChatGPTRemoteCommander\machine-runtime\routing'
+  if(-not(Test-Path -LiteralPath $RoutingRoot -PathType Container)){
+    throw 'SYSTEM_MACHINE_ROUTING_ROOT_MISSING'
+  }
+}else{
+  $RoutingRoot = Join-Path $env:LOCALAPPDATA 'ChatGPTRemoteCommander\routing'
+  New-Item -ItemType Directory -Force -Path $RoutingRoot | Out-Null
+}
 $UpdateStateRoot = Join-Path $env:LOCALAPPDATA 'ChatGPTRemoteCommander'
-New-Item -ItemType Directory -Force -Path $RoutingRoot | Out-Null
 $script:NextAutoUpdateCheck = Get-Date
 $script:RoutedBackendHealthMisses = @{}
 $script:RoutingNotices = @{}
