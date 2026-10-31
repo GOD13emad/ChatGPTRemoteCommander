@@ -57,7 +57,7 @@ function safeApplication(w){return /(^|[^a-z])firefox([._-]?(firefox|exe))?($|[^
 // Click/type/focus are intentionally NOT retried: their native effect may be unknown.
 const LEASE_BUSY_RETRY_DELAYS_MS=Object.freeze([120,240,400,600,900]);
 const isNativeLeaseBusy=error=>error?.guiCode==='GUI_LEASE_BUSY'||
-  typeof error?.message==='string'&&/(?:^|[\\s:[(])GUI_LEASE_BUSY(?=$|[\\s\\]),])/.test(error.message);
+  typeof error?.message==='string'&&/(?:^|[^A-Z0-9_])GUI_LEASE_BUSY(?:$|[^A-Z0-9_])/.test(error.message);
 export function createWorkspaceTargetTools({gui,bindings=new Map(),wait=ms=>new Promise(resolve=>setTimeout(resolve,ms))}){
  if(typeof gui!=='function')throw Error('WORKSPACE_GUI_BACKEND_REQUIRED');
  if(!(bindings instanceof Map))throw Error('WORKSPACE_TARGET_BINDINGS_INVALID');
