@@ -1,3 +1,4 @@
+import {listenOnFetchSafePort} from './v2-fetch-safe-loopback.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
@@ -42,7 +43,7 @@ test('isolated 401 challenge advertises metadata endpoint; protected tool not ex
    res.writeHead(401,{'WWW-Authenticate':m.challenge}).end(); // intentionally no access token support in fixture
  });
  try{
-   await new Promise(ok=>server.listen(0,'127.0.0.1',ok));
+   await listenOnFetchSafePort(server);
    const port=server.address().port;
    const response=await fetch('http://127.0.0.1:'+port+'/mcp',{method:'POST'});
    assert.equal(response.status,401);

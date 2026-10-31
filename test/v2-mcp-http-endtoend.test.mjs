@@ -1,3 +1,4 @@
+import {listenOnFetchSafePort} from './v2-fetch-safe-loopback.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {generateKeyPairSync,sign} from 'node:crypto';
@@ -128,7 +129,7 @@ test('full isolated HTTP → JWT/JWKS → owner-issued attestation → SQLite gr
  });
  const server=ingress.createUnboundServer();
  try {
-  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+  await listenOnFetchSafePort(server);
   const base='http://127.0.0.1:'+server.address().port;
   const send=async(a,auth='Bearer '+token(),session=currentSession)=>{
    const response=await fetch(base+'/mcp-v2',{

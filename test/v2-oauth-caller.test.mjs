@@ -1,3 +1,4 @@
+import {listenOnFetchSafePort} from './v2-fetch-safe-loopback.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { generateKeyPairSync, sign, verify } from 'node:crypto';
@@ -161,7 +162,7 @@ test('isolated HTTP bearer request requires independently prebound chat assertio
   }
  });
  try{
-   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+   await listenOnFetchSafePort(server);
    const port=server.address().port;
    async function call(tok,change={}){
     const response=await fetch('http://127.0.0.1:'+port+'/test',{
@@ -239,7 +240,7 @@ test('isolated OAuth HTTP WorkflowStore: two chats, same-root lease, revoked gra
    }
  });
  try{
-   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+   await listenOnFetchSafePort(server);
    const port=server.address().port,token='Bearer '+compactJwt();
    async function call(id,opts={}){
      const target=entries.get(id);

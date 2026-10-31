@@ -1,3 +1,4 @@
+import {listenOnFetchSafePort} from './v2-fetch-safe-loopback.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { generateKeyPairSync, sign } from 'node:crypto';
@@ -505,7 +506,7 @@ test('mTLS profile without chat metadata reaches real JWT verifier but cannot ex
  });
  const server=ingress.createUnboundServer();
  try{
-  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+  await listenOnFetchSafePort(server);
   const url='http://127.0.0.1:'+server.address().port+'/mcp-v2';
   const request=async(name,auth)=>{
     const res=await fetch(url,{method:'POST',

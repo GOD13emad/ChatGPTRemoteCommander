@@ -1,6 +1,7 @@
 // V2 native owner's read-only browser-chrome accessibility adapter.
-// This is NOT an action broker, not authentication, and does not read page
-// contents, URLs, passwords, cookies, profiles, DOM, or the clipboard.
+// This is NOT an action broker or authentication. The upper-window geometry
+// and Document-ancestor filters are privacy guards, not proof of chrome origin.
+// Never read page content, URLs, passwords, cookies, profiles, DOM or clipboard.
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
 import {join,resolve} from 'node:path';
@@ -14,6 +15,18 @@ const ALLOWED=Object.freeze(['Back','Forward','Reload','Search','New Tab','Home'
 const SET=new Set(ALLOWED);
 const DEC=/^[1-9][0-9]{0,19}$/;
 function positive(x){return typeof x==='string'&&DEC.test(x);}
+// Bounding rectangles are untrusted location hints, never action authority.
+// Filtering them before reading a UIA label reduces webpage-label exposure.
+export function isOwnerUiaTopBandBounds({window,control}={}){
+ const rect=r=>r&&typeof r==='object'&&['x','y','width','height'].every(k=>
+  typeof r[k]==='number'&&Number.isFinite(r[k]))&&r.width>0&&r.height>0;
+ if(!rect(window)||!rect(control))return false;
+ const band=Math.min(150,Math.max(80,window.height*0.12));
+ return control.width<=96&&control.height<=64&&
+  control.x>=window.x&&control.y>=window.y&&
+  control.x+control.width<=window.x+window.width&&
+  control.y+control.height<=window.y+band;
+}
 export function normalizeOwnerUiaChrome(x){
  if(x?.status==='UNAVAILABLE')return Object.freeze({status:'UNAVAILABLE',controls:Object.freeze([])});
  if(x?.status!=='OBSERVED'||!Array.isArray(x.controls)||x.controls.length>16)
@@ -48,10 +61,26 @@ export async function inspectOwnerUiaChrome({
     "$button=[Windows.Automation.ControlType]::Button",
     "$condition=New-Object Windows.Automation.PropertyCondition([Windows.Automation.AutomationElement]::ControlTypeProperty,$button)",
     "$items=$root.FindAll([Windows.Automation.TreeScope]::Descendants,$condition)",
+    "$box=$root.Current.BoundingRectangle",
+    "if($box.IsEmpty -or $box.Width -le 0 -or $box.Height -le 0){throw 'WINDOW_BOUNDS_UNAVAILABLE'}",
+    "$band=[Math]::Min(150,[Math]::Max(80,$box.Height*0.12))",
+    "$walker=[Windows.Automation.TreeWalker]::ControlViewWalker",
+    "$document=[Windows.Automation.ControlType]::Document",
     "$allow=@('Back','Forward','Reload','Search','New Tab','Home','Downloads','Bookmark this tab')",
     "$found=New-Object 'System.Collections.Generic.List[string]'",
     "for($i=0;$i -lt $items.Count -and $found.Count -lt 16;$i++){",
-    " try{$v=$items.Item($i).Current.Name",
+    " try{$candidate=$items.Item($i)",
+    " $b=$candidate.Current.BoundingRectangle",
+    " if($candidate.Current.IsOffscreen -or $b.IsEmpty -or $b.Width -le 0 -or $b.Height -le 0 -or $b.Width -gt 96 -or $b.Height -gt 64){continue}",
+    " if($b.X -lt $box.X -or $b.Y -lt $box.Y -or $b.Right -gt $box.Right -or $b.Bottom -gt ($box.Top+$band)){continue}",
+    " $ancestor=$walker.GetParent($candidate);$atRoot=$false;$inDocument=$false",
+    " for($depth=0;$depth -lt 32 -and $ancestor;$depth++){",
+    "  if($ancestor.Equals($root)){$atRoot=$true;break}",
+    "  if($ancestor.Current.ControlType -eq $document){$inDocument=$true;break}",
+    "  $ancestor=$walker.GetParent($ancestor)",
+    " }",
+    " if(!$atRoot -or $inDocument){continue}",
+    " $v=$candidate.Current.Name",
     " if($v -in $allow -and !$found.Contains($v)){$found.Add($v)}}catch{}",
     "}",
     "$again=Get-Process -Id ([int]$env:RC_V2_OWNER_PID) -ErrorAction Stop",
