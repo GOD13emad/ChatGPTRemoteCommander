@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { spawn, spawnSync } from 'node:child_process';
 import { StringDecoder } from 'node:string_decoder';
+import {isVerifiedSyntheticPrivatePem} from '../tools/security-audit-history.mjs';
 
 function git(args, options = {}) {
   const result = spawnSync('git', args, {
@@ -26,13 +27,27 @@ if (!tunnelPattern.test('tunnel' + '_' + '0123456789abcdef'.repeat(2)) || tunnel
 // Lines are bounded; anything above the bound fails closed instead of being skipped.
 function makeHistoryScanner(rules) {
   const hits = new Set();
-  let pending = '', preceding = '';
+  let pending = '', preceding = '', currentCommit = null, currentFile = null;
   const limit = 16 * 1024 * 1024;
   function scanLine(line) {
+    const commit = /^commit ([0-9a-f]{40})(?:\r?\n|$)/.exec(line);
+    if (commit) { currentCommit = commit[1]; currentFile = '(commit metadata)'; }
+    const diff = /^diff --git a\/(.+?) b\/(.+?)\r?\n?$/.exec(line);
+    if (diff) {
+      const path = diff[2];
+      currentFile = /^[a-zA-Z0-9._/-]{1,128}$/.test(path) ? path : '(nonstandard path)';
+    }
     const sample = preceding + line;
     for (const [name, pattern] of rules) {
-      pattern.lastIndex = 0;
-      if (pattern.test(sample)) hits.add(name);
+      const flags = pattern.flags.includes('g') ? pattern.flags : pattern.flags + 'g';
+      for (const match of sample.matchAll(new RegExp(pattern.source, flags))) {
+        // The previous 512-byte tail has already been scanned. Re-check only
+        // matches that extend into this new line; preserve boundary-spanning hits.
+        if (match.index + match[0].length <= preceding.length) continue;
+        if (isVerifiedSyntheticPrivatePem(name, match[0], sample, match.index,
+              {commit:currentCommit, file:currentFile})) continue;
+        hits.add(name);
+      }
     }
     preceding = sample.slice(-512);
   }
