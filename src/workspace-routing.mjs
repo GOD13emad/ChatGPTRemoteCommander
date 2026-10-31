@@ -135,7 +135,7 @@ export function chooseWorkspaceRoute(input){
       backgroundControl:'REQUIRES_EXACT_WINDOW_AND_NATIVE_CONSENT',
       profilePolicy:'NO_PROFILE_COPY_NO_DEBUG_FLAGS_NO_PASSWORD_EXPORT',
       nativeAppLauncher:desktop==='windows'?{
-        status:'SOURCE_AVAILABLE_NOT_DEPLOYED',catalog:'workspace_app_catalog',
+        status:'NATIVE_OWNER_AGENT_REQUIRED',catalog:'workspace_app_catalog',
         open:'workspace_app_open',reconcile:'workspace_app_reconcile',
         minimizing:'REQUESTED_NOT_FOREGROUND_VERIFIED'}:
         {status:'PLATFORM_NOT_YET_SUPPORTED'},
