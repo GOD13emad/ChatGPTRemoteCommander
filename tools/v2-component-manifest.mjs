@@ -17,6 +17,7 @@ const CORE=[
  'src/v2-owner-login.mjs',
  'src/v2-owner-session-reuse.mjs',
  'src/v2-control-method-plan.mjs',
+ 'src/workspace-routing.mjs',
  'tools/v2-idp-discovery-preflight.mjs',
  'src/v2-routing-contract.mjs',
  'src/v2-authorized-operation.mjs',

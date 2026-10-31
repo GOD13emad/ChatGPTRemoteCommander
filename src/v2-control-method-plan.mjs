@@ -1,3 +1,4 @@
+import {classifyWorkspaceOutcome} from './workspace-routing.mjs';
 // V2 R4/R5 owner-local method selection. This is an inert preflight;
 // it NEVER attaches, launches, debugs, clicks, reads browser state or grants
 // tool execution. Inputs must be observed by trusted native owner workers.
@@ -18,6 +19,21 @@ const KEYS=new Set(['platform','target','browser','browserMajor','ownerSeatAttes
  'browserDebuggingEnabled','browserConsentVerified','uiaAvailable',
  'winappCliAvailable','atSpiAvailable','portalAvailable','portalConsentVerified']);
 function fail(code){throw Object.assign(new Error(code),{code});}
+/** Read-only V1 behavior reused without importing its journal or desktop broker.
+ * A failure applies to the exact target, never a global input lock or replay.
+ */
+export function classifyV2WorkspaceControlOutcome({effect,refusedCode,hasFreshObservation}={}){
+ if(effect!==undefined&&!['confirmed','uncertain','unknown'].includes(effect))
+  throw Object.assign(new Error('V2_WORKSPACE_OUTCOME_INVALID'),{code:'V2_WORKSPACE_OUTCOME_INVALID'});
+ if(refusedCode!==undefined&&!['background_unavailable','browser_input_trust_unavailable',
+   'other'].includes(refusedCode))
+  throw Object.assign(new Error('V2_WORKSPACE_OUTCOME_INVALID'),{code:'V2_WORKSPACE_OUTCOME_INVALID'});
+ if(hasFreshObservation!==undefined&&typeof hasFreshObservation!=='boolean')
+  throw Object.assign(new Error('V2_WORKSPACE_OUTCOME_INVALID'),{code:'V2_WORKSPACE_OUTCOME_INVALID'});
+ return Object.freeze({...classifyWorkspaceOutcome({effect,refusedCode,hasFreshObservation}),
+  globalInputLock:false,toolExecutionAuthorized:false});
+}
+
 function isPlain(x){return x!==null&&typeof x==='object'&&!Array.isArray(x)
  &&Object.getPrototypeOf(x)===Object.prototype;}
 function candidate(method,state,reason){
@@ -40,10 +56,11 @@ export function planV2OwnerControlMethods(input={}){
     k==='webExtensionInstalled'||k==='nativeHostVerified'||k==='browserDebuggingEnabled'||
     k==='browserConsentVerified'?typeof v!=='boolean':false))
    fail('V2_CONTROL_PLAN_INPUT_INVALID');
+ const onUncertainEffect=classifyV2WorkspaceControlOutcome({effect:'uncertain'});
  const methods=[];
  if(input.ownerSeatAttested!==true||input.exactWindowAttested!==true)
   return Object.freeze({status:'NATIVE_OWNER_EVIDENCE_REQUIRED',methods:Object.freeze(methods),
-   selected:null,toolExecutionAuthorized:false,credentialAccessed:false});
+   selected:null,toolExecutionAuthorized:false,credentialAccessed:false,onUncertainEffect});
  if(target==='browser'){
   if(input.webExtensionInstalled===true)
    methods.push(candidate(METHODS.EXTENSION,
@@ -73,7 +90,7 @@ export function planV2OwnerControlMethods(input={}){
    ??methods.find(m=>m.state==='READ_ONLY_CANDIDATE')??methods[0]??null;
  return Object.freeze({
   status:methods.length?'PLANNED_NOT_ATTACHED':'NO_VERIFIED_CONTROL_SURFACE',
-  selected,methods:Object.freeze(methods),toolExecutionAuthorized:false,
+  selected,methods:Object.freeze(methods),onUncertainEffect,toolExecutionAuthorized:false,
   credentialAccessed:false,liveChatIdentityVerified:false,
   nextGate:selected?.state??'OWNER_BACKEND_DISCOVERY_REQUIRED'
  });

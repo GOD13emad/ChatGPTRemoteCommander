@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {planV2OwnerControlMethods} from '../src/v2-control-method-plan.mjs';
+import {planV2OwnerControlMethods,classifyV2WorkspaceControlOutcome} from '../src/v2-control-method-plan.mjs';
 import {planV2OwnerControlMethods as exported} from '../src/v2-owner-session-reuse.mjs';
 
 const base={platform:'windows',target:'browser',browser:'chrome',browserMajor:156,
@@ -84,4 +84,28 @@ test('nothing detected yields a non-authorized empty plan',()=>{
  assert.equal(x.status,'NO_VERIFIED_CONTROL_SURFACE');
  assert.equal(x.methods.length,0);
  assert.equal(x.nextGate,'OWNER_BACKEND_DISCOVERY_REQUIRED');
+});
+
+test('V1 target-only uncertain effect policy is reused without global GUI lock',()=>{
+ const p=planV2OwnerControlMethods({platform:'windows',target:'browser',browser:'brave',
+   ownerSeatAttested:true,exactWindowAttested:true,uiaAvailable:true});
+ assert.deepEqual(p.onUncertainEffect,{
+   status:'RECONCILE_TARGET',scope:'TARGET_ONLY',retry:'OBSERVE_AND_DECIDE_NO_BLIND_REPLAY',
+   globalInputLock:false,toolExecutionAuthorized:false
+ });
+ assert.equal(Object.isFrozen(p.onUncertainEffect),true);
+ const blocked=classifyV2WorkspaceControlOutcome({refusedCode:'background_unavailable'});
+ assert.equal(blocked.status,'ROUTE_ALTERNATIVE_REQUIRED');
+ assert.equal(blocked.scope,'TARGET_ONLY');
+ assert.equal(blocked.retry,'DO_NOT_ESCALATE_TO_FOREGROUND_AUTOMATICALLY');
+ assert.equal(blocked.globalInputLock,false);
+});
+test('V1 confirmed behavior does not imply new V2 chat authorization',()=>{
+ const settled=classifyV2WorkspaceControlOutcome({effect:'confirmed',hasFreshObservation:true});
+ assert.equal(settled.status,'CONFIRMED');
+ assert.equal(settled.toolExecutionAuthorized,false);
+ const stale=classifyV2WorkspaceControlOutcome({effect:'confirmed',hasFreshObservation:false});
+ assert.equal(stale.status,'RECONCILE_TARGET');
+ for(const value of [{effect:'silently_replay'},{hasFreshObservation:'true'},{refusedCode:'allow_global_input'}])
+  assert.throws(()=>classifyV2WorkspaceControlOutcome(value),{code:'V2_WORKSPACE_OUTCOME_INVALID'});
 });
