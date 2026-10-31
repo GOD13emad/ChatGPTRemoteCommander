@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
+import {createWorkspaceController,workspaceToolDefinitions,isOwnerBackgroundWorkspaceTool} from '../src/workspace-tools.mjs';
+import {createOwnerWorkspaceProxy} from '../src/owner-workspace-proxy.mjs';
 import {chooseWorkspaceRoute,classifySavedLoginFallback,probeOwnerLoginRoutes} from '../src/workspace-routing.mjs';
 
 test('already signed-in browser never silently chooses a fresh automation profile',()=>{
@@ -238,4 +240,99 @@ test('unrecognized provider status fails closed',async()=>{
   }});
   assert.equal(r.decision,'OWNER_ROUTE_OBSERVATION_UNCERTAIN');
   assert.equal(r.askPasswordInChat,false);
+});
+
+test('readiness uses only same-owner driver window enumeration and never accesses passwords',async()=>{
+  const called=[];
+  const driver=async(name,args)=>{
+    called.push({name,args});
+    return {windows:[{pid:71,window_id:920,title:'do-not-echo-any-window-title'}]};
+  };
+  const controller=createWorkspaceController({platform:'win32',env:{},
+    callDriver:driver,ownerSession:async()=>true});
+  const result=await controller.execute('workspace_login_readiness',{
+    target:'existing-browser',pid:71,windowId:920,browserEngine:'brave'});
+  assert.equal(result.observation,'EXACT_WINDOW_PRESENT');
+  assert.equal(result.authentication,'UNVERIFIED');
+  assert.equal(result.savedCredentials,'NOT_INSPECTED');
+  assert.equal(result.loginAbsenceVerified,false);
+  assert.equal(result.plan.route,'OWNER_BROWSER_ACCESSIBILITY_CANDIDATE');
+  assert.equal(result.credentialContentsRead,false);
+  assert.equal(result.passwordRequested,false);
+  assert.equal(result.focusChanged,false);
+  assert.deepEqual(called.map(x=>x.name),['list_windows']);
+  assert.deepEqual(called[0].args,{pid:71});
+  assert.ok(!JSON.stringify(result).includes('do-not-echo-any-window-title'));
+});
+
+test('missing exact owner window is not proof of absent saved login',async()=>{
+  const controller=createWorkspaceController({platform:'win32',
+    callDriver:async()=>({windows:[{pid:71,window_id:921}]}),
+    ownerSession:async()=>true});
+  const result=await controller.execute('workspace_login_readiness',{
+    target:'existing-browser',pid:71,windowId:920,browserEngine:'brave'});
+  assert.equal(result.observation,'EXACT_WINDOW_NOT_OBSERVED');
+  assert.equal(result.authentication,'UNVERIFIED');
+  assert.equal(result.loginAbsenceVerified,false);
+  assert.equal(result.passwordRequested,false);
+});
+
+test('unavailable native list is not an absence confirmation',async()=>{
+  const controller=createWorkspaceController({platform:'win32',
+    callDriver:async()=>({status:'refused',refusal:{code:'owner_native_consent_required'}}),
+    ownerSession:async()=>true});
+  const result=await controller.execute('workspace_login_readiness',{
+    target:'new-app'});
+  assert.equal(result.observation,'UNVERIFIED');
+  assert.equal(result.loginAbsenceVerified,false);
+});
+
+test('cross-user readiness is denied before native driver access',async()=>{
+  let nativeCalls=0;
+  const controller=createWorkspaceController({platform:'win32',
+    callDriver:async()=>{nativeCalls++;return {windows:[]}},
+    ownerSession:async()=>false});
+  await assert.rejects(()=>controller.execute('workspace_login_readiness',{
+    target:'existing-app',pid:71,windowId:920}),/WORKSPACE_OWNER_SESSION_REQUIRED/);
+  assert.equal(nativeCalls,0);
+});
+
+test('ambiguous one-sided native target identifiers are rejected without enumeration',async()=>{
+  let called=0;
+  const controller=createWorkspaceController({platform:'win32',
+    callDriver:async()=>{called++;return {windows:[]}},
+    ownerSession:async()=>true});
+  await assert.rejects(()=>controller.execute('workspace_login_readiness',{
+    target:'existing-app',pid:71}),/WORKSPACE_EXACT_WINDOW_ID_REQUIRED/);
+  assert.equal(called,0);
+});
+
+test('readiness is explicitly exposed as a read-only owner-bound tool',()=>{
+  const def=workspaceToolDefinitions.find(x=>x.name==='workspace_login_readiness');
+  assert.ok(def);
+  assert.equal(def.annotations.readOnlyHint,true);
+  assert.equal(isOwnerBackgroundWorkspaceTool(def.name),true);
+  assert.equal(def.inputSchema.additionalProperties,false);
+});
+
+test('owner proxy permits read-only login readiness without a fake input grant',async()=>{
+  const calls=[];
+  const proxy=createOwnerWorkspaceProxy({
+    config:{ownerWorkspaceDelegation:{enabled:true,port:48838,authFile:'C:\\\\test\\\\owner.key'}},
+    readFileImpl:async()=>('b'.repeat(64)),
+    fetchImpl:async(_url,options)=>{
+      const payload=JSON.parse(options.body);
+      calls.push(payload);
+      return {status:200,text:async()=>JSON.stringify({
+        jsonrpc:'2.0',id:1,result:{structuredContent:{
+          ok:true,authentication:'UNVERIFIED',savedCredentials:'NOT_INSPECTED'
+        }}
+      })};
+    }
+  });
+  const out=await proxy.execute('workspace_login_readiness',{target:'existing-app'});
+  assert.equal(out.handled,true);
+  assert.equal(out.value.authentication,'UNVERIFIED');
+  assert.equal(calls[0].params.name,'workspace_login_readiness');
+  assert.equal(calls[0].params.arguments.explicitUserAuthorization,undefined);
 });
