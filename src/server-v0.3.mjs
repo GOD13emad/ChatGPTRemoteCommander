@@ -18,6 +18,7 @@ import { executeWorkspaceTool, assertWorkspaceToolPolicy, workspaceToolDefinitio
 import { exposedGuiTools, assertLegacyGuiPermitted } from './gui-target-only-policy.mjs';
 import { executeBrowserTool, browserToolDefinitions, reapBrowserOrphans } from './browser-tools.mjs';
 import { createOperatorCore } from './operator-core.mjs';
+import { createHybridControl } from './hybrid-control.mjs';
 import { lockStats } from './locks.mjs';
 import { expandPathValue, shellName } from './platform.mjs';
 import { formatToolInputErrors, validateJsonSchema } from './schema-validator.mjs';
@@ -334,6 +335,12 @@ const operatorTools = createOperatorCore({
   advance:workflowTools?(runId,requestId)=>workflowTools.execute('workflow_run_tick',{runId,requestId}):undefined
 });
 TOOLS.push(...operatorTools.definitions);
+// A single evidence-aware selector; actual effects stay in the existing Commander tools.
+const hybridControl = createHybridControl({
+  platform:process.platform,config,toolNames:()=>TOOLS.map(tool=>tool.name),
+  ownerStatus:async()=>({sameUserSessionVerified:false,nativeBrokerAccepted:false})
+});
+TOOLS.push(...hybridControl.definitions);
 function serverMeta() {
   return { 'io.modelcontextprotocol/serverInfo': { name: 'chatgpt-remote-commander', version: VERSION } };
 }
@@ -513,6 +520,7 @@ async function executeToolEffect(name, args, delegationContext = {}) {
   if (name.startsWith('transfer_mesh_')) return transferMesh.execute(name, args);
   if (name.startsWith('workflow_')) return workflowTools.execute(name, args);
   if (name.startsWith('operator_')) return operatorTools.execute(name, args);
+  if (name.startsWith('hybrid_control_')) return hybridControl.execute(name, args);
   if (name.startsWith('notion_mcp_')) return notionMcpTools.execute(name, args);
   if (name.startsWith('notion_')) return notionTools.execute(name, args);
   switch (name) {
