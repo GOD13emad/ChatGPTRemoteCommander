@@ -196,7 +196,7 @@ export function createWorkspaceController({callDriver=defaultCuaCall,previewDriv
   }
   await needsOwner();
   if(name==='workspace_app_catalog'||name==='workspace_app_open'||name==='workspace_app_reconcile'){
-   if(platform!=='win32'||seat!==null)throw fail('WORKSPACE_APP_LAUNCH_PLATFORM_UNAVAILABLE');
+   if(!['win32','linux'].includes(platform)||seat!==null)throw fail('WORKSPACE_APP_LAUNCH_PLATFORM_UNAVAILABLE');
    const listed=await call('list_apps',{});
    const catalog=Array.isArray(listed)?listed:Array.isArray(listed?.apps)?listed.apps:
      Array.isArray(listed?.applications)?listed.applications:null;
@@ -244,9 +244,11 @@ export function createWorkspaceController({callDriver=defaultCuaCall,previewDriv
        launchAttempted:false,credentials:'OWNER_PROFILE_UNCHANGED',focusChanged:false};
    // Only trusted installed-app catalog entries are launchable; caller may
    // never supply path, arguments, URL, browser flags or credentials.
-   const launchArgs=app.kind==='uwp'&&typeof app.aumid==='string'&&app.aumid.includes('!')?
+   const launchArgs=platform==='linux'&&app.kind==='desktop'?
+     {name:app.name}:
+     platform==='win32'&&app.kind==='uwp'&&typeof app.aumid==='string'&&app.aumid.includes('!')?
      {aumid:app.aumid,start_minimized:true}:
-     typeof app.launch_path==='string'&&app.launch_path.length<2048?
+     platform==='win32'&&typeof app.launch_path==='string'&&app.launch_path.length<2048?
      {launch_path:app.launch_path,start_minimized:true}:null;
    if(!launchArgs)throw fail('WORKSPACE_APP_LAUNCH_PATH_UNVERIFIED');
    seen.add(input.requestId);busy.add(key);
