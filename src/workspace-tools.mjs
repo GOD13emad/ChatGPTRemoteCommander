@@ -3,7 +3,7 @@
 // capability result, not a reason to bypass named-pipe ACL or alter GUI policy.
 import os from 'node:os';
 import fs from 'node:fs/promises';
-import {randomBytes} from 'node:crypto';
+import {randomBytes,createHash} from 'node:crypto';
 import path from 'node:path';
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
@@ -26,7 +26,7 @@ export function isOwnerBackgroundWorkspaceTool(name){
 }
 
 export function workspaceMutationEffectArgs(name,args,requestId){
- if(!['workspace_window_click','workspace_window_type','workspace_word_render','workspace_browser_click'].includes(name))return args;
+ if(!['workspace_window_click','workspace_window_type','workspace_word_render','workspace_browser_click','workspace_app_open','workspace_app_reconcile'].includes(name))return args;
  if(typeof requestId!=='string'||!REQUEST.test(requestId))
   throw fail('WORKSPACE_BINDING_INVALID');
  return {...args,requestId};
@@ -121,6 +121,20 @@ export const workspaceToolDefinitions=[
      pid:{type:'integer',minimum:1},windowId:{type:'integer',minimum:1},
      browserEngine:{type:'string',enum:['chrome','edge','brave','firefox','unknown']}},
    required:['target'],additionalProperties:false},annotations:readOnly},
+ {name:'workspace_app_catalog',description:'Read-only list of owner-installed applications and running status, without launcher command lines or authentication contents.',inputSchema:{
+    type:'object',properties:{query:{type:'string',minLength:1,maxLength:100}},
+    additionalProperties:false},annotations:readOnly},
+ {name:'workspace_app_open',description:'Open an exact installed app from the native owner app catalog, minimized and without bringing it forward. Reuse running app; never copy a browser profile. Uncertain launch needs explicit reconciliation.',inputSchema:{
+    type:'object',properties:{name:{type:'string',minLength:1,maxLength:128},
+      requestId:{type:'string',minLength:8,maxLength:128},
+      explicitUserAuthorization:{type:'string',minLength:12,maxLength:512}},
+    required:['name','requestId','explicitUserAuthorization'],additionalProperties:false},annotations:mutating},
+ {name:'workspace_app_reconcile',description:'Reconcile one uncertain owner-app launch from the native app catalog without replaying its launch.',inputSchema:{
+    type:'object',properties:{name:{type:'string',minLength:1,maxLength:128},
+      determination:{type:'string',enum:['RUNNING_VERIFIED','NOT_RUNNING_VERIFIED']},
+      requestId:{type:'string',minLength:8,maxLength:128},
+      explicitUserAuthorization:{type:'string',minLength:12,maxLength:512}},
+    required:['name','determination','requestId','explicitUserAuthorization'],additionalProperties:false},annotations:mutating},
  {name:'workspace_list_windows',description:'List existing same-user application windows through Cua Driver v0.38; no desktop takeover or global input.',inputSchema:{
    type:'object',properties:{pid:{type:'integer',minimum:1},workspaceSeat:{type:'string',enum:['a','b']}},additionalProperties:false},annotations:readOnly},
  {name:'workspace_window_observe',description:'Read accessibility snapshot of one exact existing window in the owning desktop; no click, focus or mouse movement.',inputSchema:{
@@ -181,6 +195,88 @@ export function createWorkspaceController({callDriver=defaultCuaCall,previewDriv
    return chooseWorkspaceRoute({...input,sameUserSession:owner,desktop:desktopType(platform,env)});
   }
   await needsOwner();
+  if(name==='workspace_app_catalog'||name==='workspace_app_open'||name==='workspace_app_reconcile'){
+   if(platform!=='win32'||seat!==null)throw fail('WORKSPACE_APP_LAUNCH_PLATFORM_UNAVAILABLE');
+   const listed=await call('list_apps',{});
+   const catalog=Array.isArray(listed)?listed:Array.isArray(listed?.apps)?listed.apps:
+     Array.isArray(listed?.applications)?listed.applications:null;
+   if(!catalog)throw fail('WORKSPACE_APP_CATALOG_UNAVAILABLE');
+   const entries=catalog.filter(a=>a&&typeof a.name==='string'&&
+     a.name.length>0&&a.name.length<=128&&['desktop','uwp'].includes(a.kind));
+   if(name==='workspace_app_catalog'){
+     const query=typeof input.query==='string'?input.query.toLocaleLowerCase().trim():'';
+     return {ok:true,mode:'READ_ONLY_SAME_OWNER',
+       apps:entries.filter(a=>!query||a.name.toLocaleLowerCase().includes(query))
+         .slice(0,100).map(a=>({name:a.name,kind:a.kind,running:a.running===true,
+           pid:integer(a.pid)?a.pid:0})),hasMore:entries.length>100,
+       credentials:'NOT_READ',focusChanged:false};
+   }
+   if(typeof input.explicitUserAuthorization!=='string'||
+      input.explicitUserAuthorization.trim().length<12)
+      throw fail('WORKSPACE_EXPLICIT_AUTHORIZATION_REQUIRED');
+   if(!REQUEST.test(input.requestId)||typeof input.name!=='string'||input.name.trim()!==input.name||
+      input.name.length>128||!(/^[\p{L}\p{N}][\p{L}\p{N} ._()+\-!]{0,127}$/u).test(input.name))
+      throw fail('WORKSPACE_APP_IDENTITY_INVALID');
+   const matches=entries.filter(a=>a.name.toLocaleLowerCase()===input.name.toLocaleLowerCase());
+   if(matches.length!==1)throw fail(matches.length===0?'WORKSPACE_APP_NOT_IN_OWNER_CATALOG':'WORKSPACE_APP_NAME_AMBIGUOUS');
+   const app=matches[0],key='app:'+createHash('sha256').update(app.name.toLocaleLowerCase(),'utf8').digest('hex');
+   if(name==='workspace_app_reconcile'){
+     const pendingApp=await journal.pending(key);
+     if(!pendingApp||pendingApp.action!=='workspace_app_open')
+       throw fail('WORKSPACE_NO_TARGET_INCIDENT');
+     const observed=app.running===true&&integer(app.pid);
+     if(input.determination==='RUNNING_VERIFIED'&&!observed||
+        input.determination==='NOT_RUNNING_VERIFIED'&&app.running!==false)
+       throw fail('WORKSPACE_APP_DETERMINATION_NOT_PROVEN');
+     await journal.resolve(key,pendingApp);
+     return {ok:true,mode:'OWNER_NATIVE_APP_RECONCILE',name:app.name,
+       determination:input.determination,replayed:false,
+       focusChanged:'NOT_ASSESSED',passwordRequested:false};
+   }
+   if(seen.has(input.requestId))throw fail('WORKSPACE_DUPLICATE_REQUEST_NO_REPLAY');
+   if(await journal.pending(key))throw fail('WORKSPACE_TARGET_RECONCILIATION_REQUIRED');
+   if(busy.has(key))throw fail('WORKSPACE_TARGET_BUSY');
+   if(app.running===true&&integer(app.pid))
+     return {ok:true,status:'ALREADY_RUNNING',name:app.name,pid:app.pid,
+       launchAttempted:false,credentials:'OWNER_PROFILE_UNCHANGED',focusChanged:false};
+   // Only trusted installed-app catalog entries are launchable; caller may
+   // never supply path, arguments, URL, browser flags or credentials.
+   const launchArgs=app.kind==='uwp'&&typeof app.aumid==='string'&&app.aumid.includes('!')?
+     {aumid:app.aumid,start_minimized:true}:
+     typeof app.launch_path==='string'&&app.launch_path.length<2048?
+     {launch_path:app.launch_path,start_minimized:true}:null;
+   if(!launchArgs)throw fail('WORKSPACE_APP_LAUNCH_PATH_UNVERIFIED');
+   seen.add(input.requestId);busy.add(key);
+   let handle=null;
+   try{
+     handle=await journal.begin(key,'workspace_app_open',input.requestId);
+     const started=await call('launch_app',launchArgs);
+     if(started?.status==='refused'&&typeof started?.refusal?.code==='string'){
+       await journal.resolve(key,handle);
+       return {ok:false,status:'REFUSED_NO_EFFECT',code:started.refusal.code,replayed:false};
+     }
+     // A process returning from ShellExecute is not evidence of signed-in state.
+     const check=await call('list_apps',{});
+     const list=Array.isArray(check)?check:Array.isArray(check?.apps)?check.apps:
+       Array.isArray(check?.applications)?check.applications:null;
+     const matches2=Array.isArray(list)?list.filter(a=>a&&typeof a.name==='string'&&
+       a.name.toLocaleLowerCase()===app.name.toLocaleLowerCase()):[];
+     const after=matches2.length===1?matches2[0]:null;
+     if(after?.running!==true||!integer(after?.pid)||
+       integer(started?.pid)&&started.pid!==after.pid)
+       return {ok:false,status:'RECONCILE_TARGET',name:app.name,replayed:false,
+         reason:'OWNER_APP_LAUNCH_NOT_INDEPENDENTLY_VERIFIED'};
+     await journal.resolve(key,handle);
+     return {ok:true,status:'LAUNCHED_OWNER_PROFILE',name:app.name,pid:after.pid,
+       launchAttempted:true,credentials:'OWNER_PROFILE_UNCHANGED',
+       authentication:'UNVERIFIED',passwordRequested:false,
+       foreground:'PRESERVE_REQUESTED_NOT_VERIFIED',replayed:false};
+   }catch(error){
+     if(!handle)throw error;
+     return {ok:false,status:'RECONCILE_TARGET',name:app.name,replayed:false,
+       errorCode:error?.code??'WORKSPACE_APP_LAUNCH_UNKNOWN'};
+   }finally{busy.delete(key);}
+  }
   if(name==='workspace_login_readiness'){
    const target=input.target;
    if(!['existing-browser','new-browser','existing-app','new-app'].includes(target))
