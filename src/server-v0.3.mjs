@@ -421,7 +421,7 @@ async function executeTool(name, args, executionContext = {}) {
     if (name === 'run_project_command') await prepareProjectCommand(ctx, synchronousCommandInput(effectArgs));
     if (name === 'run_shell') await prepareShellCommand(ctx, synchronousCommandInput(effectArgs));
     // Preserve the same idempotency key in the per-target journal.
-    const forwarded = name==='workspace_window_click'||name==='workspace_browser_click'
+    const forwarded = name==='workspace_window_click'||name==='workspace_browser_click'||name==='workspace_native_ui_invoke'
       ? {...effectArgs,requestId} : effectArgs;
     return mutationIdempotency.execute({ requestId, tool: name, input: effectArgs }, () => executeToolEffect(name, forwarded, { requestId }));
   }

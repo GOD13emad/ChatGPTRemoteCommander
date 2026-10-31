@@ -84,6 +84,28 @@ The bridge/extension projects automate unofficial ChatGPT browser interactions i
 
 **GUI:** native interactive GUI must not be treated as universally available: Windows Session 0 cannot act as a substitute for the logged-in owner desktop; Linux Wayland/X11 and services differ; headless GUI needs a separately authorized private desktop, display or VM. Read-only observation and input are different permissions.
 
+### Hybrid AgentOS provider priorities — scoped PR #434 candidate, 2026-10-30
+
+Commander remains the one MCP gateway, identity/authorization authority, profile manager, operation journal, project/workflow coordinator and fleet updater. Native OS integrations are optional backends within this product, **not** a second launcher, bypass for admin rights, or a separate coordination engine.
+
+| Target | Preferred backend | Verified scope |
+|---|---|---|
+| Application-specific Windows action | Microsoft UFO² AppAgent / WinCOM / native application API, when separately installed and granted | Future approved upstream integration; **UFO² is not deployed** by this PR |
+| General Windows desktop app | Native Windows UIAutomation InvokePattern with exact PID/HWND and owner session | Direct non-CUA No-button real-app E2E on HPC-154; PR code still in review |
+| Linux desktop app | Owner AT-SPI semantic controls on X11/Wayland | Existing private-seat E2E, no new AgentOS Linux package |
+| New, isolated browser | Commander-owned browser; optionally Playwright/Chrome DevTools MCP | Commander-owned E2E accepted; external MCP drivers not installed by this PR |
+| Already authenticated browser | Supported native browser-consent/CDP/Playwright route | Not solved by UIA alone; never copy browser passwords/cookies |
+| Unsupported nonsemantic control | Existing target-bound CUA visual fallback | Consent-bound last resort; no automatic foreground control |
+| Reasoning, planning and resume | Current Chat-owned Commander Workflow; optional authenticated Codex app-server worker | Existing Workflow stays authority; Codex agent-server NOT newly installed |
+
+Chat request → existing Commander device/user/task binding → capability and policy check → choose strongest available provider (`workspace_agentos_plan`) → exact observe (`workspace_native_ui_observe`) → authorized native action (`workspace_native_ui_invoke`) → independent application-result verification → durable receipt. An InvokePattern acknowledgment is not proof of user-goal completion. Lost acknowledgments fail closed without blind replay.
+
+**Focus-effect qualification (2026-10-30):** Real native UIA on HPC-159 and HPC-154 verified isolated test-button action independently, but disconnected-RDP foreground observation may be unavailable. A separate active owner-console test on Emad-PC reached the No-button result and then detected a changed foreground window; it **failed** the strict noninterference acceptance gate. Earlier native output unconditionally reported `foregroundTouched=false`; this is superseded. The revised executor measures Win32 `GetForegroundWindow` before/after every semantic action and returns `PRESERVED`, `CHANGED` or `UNOBSERVABLE`. Only measured `PRESERVED` may qualify as focus-safe; `CHANGED` and `UNOBSERVABLE` retain an acknowledged action but report `ok=false` for noninterference, with no automatic re-execution. This is observation, not proof of causation when a human independently changes the foreground. For strict no-interference use a qualified isolated desktop or application-native/background API. No synthetic active-console retest is authorized until that isolation exists.
+
+Primary sources: [Microsoft UFO² overview](https://github.com/microsoft/UFO/blob/main/documents/docs/ufo2/overview.md), [Microsoft AppAgent hybrid execution](https://github.com/microsoft/UFO/blob/main/documents/docs/ufo2/app_agent/overview.md), [OpenAI Codex app-server](https://learn.chatgpt.com/docs/app-server), [Microsoft Playwright MCP](https://github.com/microsoft/playwright-mcp), [Chrome DevTools MCP](https://github.com/ChromeDevTools/chrome-devtools-mcp).
+
+**PR #434 acceptance scope:** one Windows-native UIAutomation executor, an optional-capability router, three owner-aware MCP entrypoints and a qualified test contract. No production promotion or 5-host V1 acceptance. Remaining gates: hosted exact-commit CI, independent reviewer, safe managed installation/rollback, real owner-session target acceptance across Windows devices, app-native provider integration and official browser/OS approvals.
+
 ## 4. Multi-user, multi-chat, parallel projects
 
 Actors have authenticated identities and roles (Owner, Admin, Developer, Operator, Viewer) with explicit per-device, per-project, per-tool and per-action grants. OS logon profiles, Commander identities, ChatGPT accounts and browser profiles are distinct mapped entities. Enrollment/revocation/audit must work on each supported install; the existence of a tunnel alone is not proof of chat identity.
