@@ -4,7 +4,7 @@ import {createHybridControl,hybridControlToolDefinitions} from '../src/hybrid-co
 
 const tools=['read_text','write_text','list_directory','start_terminal','read_terminal',
   'workspace_target_list','workspace_target_open','workspace_target_snapshot',
-  'workspace_window_observe','workspace_app_catalog','workspace_app_open','workspace_app_reconcile',
+  'workspace_window_observe','workspace_winapp_probe','workspace_app_catalog','workspace_app_open','workspace_app_reconcile',
   'workspace_accessibility_open','workflow_run_tick'];
 function controller(platform='win32',extra={}){
   return createHybridControl({
@@ -150,4 +150,19 @@ test('no client-provided passwords/credentials appear in status and plan outputs
   assert.equal(s.guarantees.tokenExport,false);
   assert.equal(p.guarantees.passwordExport,false);
   assert.equal(p.note.includes('No existing user login was inspected'),false); // read-only route can be discovered
+});
+
+test('native UIA observation is not authority for semantic input or user desktop takeover',async()=>{
+  const c=controller('win32',{ownerStatus:async()=>({
+    sameUserSessionVerified:true,nativeBrokerAccepted:true
+  }),providerEvidence:async()=>({windowsUia:{sessionVerified:true,consentAccepted:true}})});
+  const observation=await c.execute('hybrid_control_plan',{target:'existing-app',activity:'observe'});
+  assert.equal(observation.selection.id,'windows-uia-winapp');
+  assert.equal(observation.selection.nextTool,'workspace_winapp_probe');
+  const effect=await c.execute('hybrid_control_plan',{target:'existing-app',activity:'interact'});
+  const candidate=effect.routeOrder.find(x=>x.id==='windows-uia-winapp');
+  assert.equal(candidate.status,'GATED');
+  assert.equal(candidate.reason,'UIA_MUTATION_AND_READBACK_NOT_YET_QUALIFIED');
+  assert.notEqual(effect.selection.id,'windows-uia-winapp');
+  assert.equal(effect.effectPerformed,false);
 });
