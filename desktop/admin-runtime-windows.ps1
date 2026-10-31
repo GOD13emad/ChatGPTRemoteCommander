@@ -71,6 +71,21 @@ function Test-TaskOwnerSID([string]$TaskUserId) {
     return [string]$ownerSid.Value -ceq [string][Security.Principal.WindowsIdentity]::GetCurrent().User.Value
   }catch{return $false}
 }
+function Test-ProbeFreshness([object]$Value,[DateTimeOffset]$Started) {
+  if($null -eq $Value){return $false}
+  try{
+    if($Value -is [DateTimeOffset]){
+      $observed=$Value.ToUniversalTime()
+    }elseif($Value -is [DateTime]){
+      if($Value.Kind -eq [DateTimeKind]::Unspecified){return $false}
+      $observed=[DateTimeOffset]::new($Value.ToUniversalTime(),[TimeSpan]::Zero)
+    }elseif($Value -is [string]){
+      if($Value -notmatch '(?:Z|[+-][0-9]{2}:[0-9]{2})$'){return $false}
+      $observed=[DateTimeOffset]::Parse($Value,[Globalization.CultureInfo]::InvariantCulture,[Globalization.DateTimeStyles]::RoundtripKind).ToUniversalTime()
+    }else{return $false}
+    return $observed -ge $Started.ToUniversalTime()
+  }catch{return $false}
+}
 function Get-TaskState {
   $task=Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
   if(-not $task){return [pscustomobject]@{installed=$false;valid=$false;taskName=$TaskName}}
@@ -181,11 +196,11 @@ function Install-ElevatedRuntime {
          $probe.probeOnly -eq $true -and
          [string]$probe.user -eq $identity -and
          [string]$probe.appRoot -eq $CoreRoot -and
-         [DateTimeOffset]::Parse([string]$probe.at) -ge $started){break}
+         (Test-ProbeFreshness $probe.at $started)){break}
     }
     if(-not $probe -or $probe.elevated -ne $true -or
        $probe.probeOnly -ne $true -or [string]$probe.appRoot -ne $CoreRoot -or
-       [string]$probe.user -ne $identity){
+       [string]$probe.user -ne $identity -or -not (Test-ProbeFreshness $probe.at $started)){
       throw 'ADMIN_RUNTIME_ELEVATED_PROBE_FAILED'
     }
     # The one-shot task must be gone before scheduling production at the next login.
@@ -263,9 +278,9 @@ function Activate-ElevatedRuntime {
     foreach($i in 1..40){
       Start-Sleep -Milliseconds 250
       $probe=Read-Json $ProbeFile
-      if($probe -and $probe.elevated -eq $true -and [DateTimeOffset]::Parse([string]$probe.at) -ge $started){break}
+      if($probe -and $probe.elevated -eq $true -and (Test-ProbeFreshness $probe.at $started)){break}
     }
-    if(-not $probe -or $probe.elevated -ne $true){throw 'ADMIN_RUNTIME_ACTIVATION_PROBE_FAILED'}
+    if(-not $probe -or $probe.elevated -ne $true -or -not (Test-ProbeFreshness $probe.at $started)){throw 'ADMIN_RUNTIME_ACTIVATION_PROBE_FAILED'}
     Write-Output "ADMIN_RUNTIME_ACTIVATE_PASS pid=$($probe.processId)"
   }catch{
     Start-NonElevatedFallback
