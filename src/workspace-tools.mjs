@@ -201,13 +201,17 @@ export function createWorkspaceController({callDriver=defaultCuaCall,previewDriv
    const catalog=Array.isArray(listed)?listed:Array.isArray(listed?.apps)?listed.apps:
      Array.isArray(listed?.applications)?listed.applications:null;
    if(!catalog)throw fail('WORKSPACE_APP_CATALOG_UNAVAILABLE');
+   // Driver versions may omit optional kind on an already-running app.
+   // Reuse its verified native pid, but NEVER cold-launch a kindless entry.
    const entries=catalog.filter(a=>a&&typeof a.name==='string'&&
-     a.name.length>0&&a.name.length<=128&&['desktop','uwp'].includes(a.kind));
+     a.name.length>0&&a.name.length<=128&&
+     (['desktop','uwp'].includes(a.kind)||
+       (a.kind===undefined&&a.running===true&&integer(a.pid))));
    if(name==='workspace_app_catalog'){
      const query=typeof input.query==='string'?input.query.toLocaleLowerCase().trim():'';
      return {ok:true,mode:'READ_ONLY_SAME_OWNER',
        apps:entries.filter(a=>!query||a.name.toLocaleLowerCase().includes(query))
-         .slice(0,100).map(a=>({name:a.name,kind:a.kind,running:a.running===true,
+         .slice(0,100).map(a=>({name:a.name,kind:a.kind??'unknown',running:a.running===true,
            pid:integer(a.pid)?a.pid:0})),hasMore:entries.length>100,
        credentials:'NOT_READ',focusChanged:false};
    }
