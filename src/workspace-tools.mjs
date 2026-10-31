@@ -106,6 +106,27 @@ export async function defaultCuaPreview(args,scope={}){
   return {meta,imageBytes:png};
  }finally{await fs.rm(dir,{recursive:true,force:true});}
 }
+// Pinned native CLI runs inside the original owner process only. This probe
+// emits capability evidence, never UI trees, sensitive values or screenshots.
+export async function defaultWinappProbe({windowId},{platform=process.platform,env=process.env}={}){
+ if(platform!=='win32'||!integer(windowId))return {ok:false,status:'WINAPP_PLATFORM_OR_TARGET_INVALID'};
+ const bin=env.RC_WINAPP_UIA_BIN;
+ if(typeof bin!=='string'||!path.win32.isAbsolute(bin))
+   return {ok:false,status:'WINAPP_BINARY_NOT_CONFIGURED'};
+ try{const st=await fs.lstat(bin);if(!st.isFile()||st.isSymbolicLink()||st.nlink!==1)
+   return {ok:false,status:'WINAPP_BINARY_NOT_TRUSTED'};}
+ catch{return {ok:false,status:'WINAPP_BINARY_NOT_INSTALLED'};}
+ try{
+  const {stdout}=await execFileAsync(bin,['ui','inspect','-w',String(windowId),'--json'],{
+   encoding:'utf8',timeout:6500,maxBuffer:512*1024,windowsHide:true,env
+  });
+  const json=JSON.parse(stdout);
+  if(!json||typeof json!=='object'||json.error)return {ok:false,status:'WINAPP_NATIVE_RESULT_INVALID'};
+  return {ok:true,status:'WINAPP_UIA_TREE_OBSERVED',jsonVerified:true,
+   contentReturned:false,passwordValuesReturned:false,foregroundChanged:'NOT_VERIFIED'};
+ }catch{return {ok:false,status:'WINAPP_READ_ONLY_PROBE_UNAVAILABLE'};}
+}
+
 const exactWindow=(a)=>integer(a?.pid)&&integer(a?.windowId);
 const readOnly={readOnlyHint:true,openWorldHint:false};
 const mutating={readOnlyHint:false,destructiveHint:true,openWorldHint:false,idempotentHint:false};
@@ -135,6 +156,9 @@ export const workspaceToolDefinitions=[
       requestId:{type:'string',minLength:8,maxLength:128},
       explicitUserAuthorization:{type:'string',minLength:12,maxLength:512}},
     required:['name','determination','requestId','explicitUserAuthorization'],additionalProperties:false},annotations:mutating},
+ {name:'workspace_winapp_probe',description:'Read-only exact owner-window Windows UIA winapp probe; returns no UI text, element values or passwords.',inputSchema:{
+   type:'object',properties:{pid:{type:'integer',minimum:1},windowId:{type:'integer',minimum:1}},
+   required:['pid','windowId'],additionalProperties:false},annotations:readOnly},
  {name:'workspace_list_windows',description:'List existing same-user application windows through Cua Driver v0.38; no desktop takeover or global input.',inputSchema:{
    type:'object',properties:{pid:{type:'integer',minimum:1},workspaceSeat:{type:'string',enum:['a','b']}},additionalProperties:false},annotations:readOnly},
  {name:'workspace_window_observe',description:'Read accessibility snapshot of one exact existing window in the owning desktop; no click, focus or mouse movement.',inputSchema:{
@@ -181,7 +205,7 @@ export const workspaceToolDefinitions=[
      determination:{type:'string',enum:['EFFECT_OBSERVED','NO_EFFECT_OBSERVED']}},
    required:['pid','windowId','determination'],additionalProperties:false},annotations:mutating}
 ];
-export function createWorkspaceController({callDriver=defaultCuaCall,previewDriver=defaultCuaPreview,ownerSession=defaultOwnerSession,
+export function createWorkspaceController({callDriver=defaultCuaCall,previewDriver=defaultCuaPreview,ownerSession=defaultOwnerSession,winappProbe=defaultWinappProbe,
   platform=process.platform,env=process.env,now=Date.now,journal=createWorkspaceTargetJournal()}={}){
  const pending=new Map(),seen=new Set(),busy=new Set(),snapshots=new Map(),browserSnapshots=new Map();
  const needsOwner=async()=>{if(!await ownerSession({platform,env}))throw fail('WORKSPACE_OWNER_SESSION_REQUIRED');};
@@ -195,6 +219,22 @@ export function createWorkspaceController({callDriver=defaultCuaCall,previewDriv
    return chooseWorkspaceRoute({...input,sameUserSession:owner,desktop:desktopType(platform,env)});
   }
   await needsOwner();
+  if(name==='workspace_winapp_probe'){
+   if(platform!=='win32'||seat!==null||!exactWindow(input))throw fail('WORKSPACE_UIA_TARGET_INVALID');
+   const found=await call('list_windows',{pid:input.pid});
+   const windows=Array.isArray(found?.windows)?found.windows:Array.isArray(found)?found:null;
+   if(!windows)throw fail('WORKSPACE_UIA_WINDOW_ENUMERATION_UNVERIFIED');
+   if(!windows.some(w=>w?.pid===input.pid&&
+      (w?.window_id===input.windowId||w?.windowId===input.windowId)))
+     return {ok:false,status:'WORKSPACE_EXACT_WINDOW_NOT_OBSERVED',
+       authentication:'UNVERIFIED',foregroundChanged:false};
+   const result=await winappProbe({windowId:input.windowId},{platform,env});
+   return {ok:result?.ok===true,status:result?.status??'WINAPP_PROBE_UNKNOWN',
+      backend:'WINDOWS_UIA',windowVerified:true,
+      treeAvailable:result?.ok===true&&result?.jsonVerified===true,
+      uiContentReturned:false,passwordValuesReturned:false,
+      authentication:'UNVERIFIED',foregroundChanged:'NOT_VERIFIED'};
+  }
   if(name==='workspace_app_catalog'||name==='workspace_app_open'||name==='workspace_app_reconcile'){
    if(!['win32','linux'].includes(platform)||seat!==null)throw fail('WORKSPACE_APP_LAUNCH_PLATFORM_UNAVAILABLE');
    const listed=await call('list_apps',{});
