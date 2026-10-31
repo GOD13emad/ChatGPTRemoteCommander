@@ -26,8 +26,14 @@ if (adminRuntime.includes("$CoreRoot=Join-Path $StateRoot 'app'")) {
 }
 // Installing a privileged task must prove elevation without ever launching the
 // production supervisor beside an already-running owner runtime.
-if (!adminRuntime.includes('function Test-ProbeFreshness')) {
-  throw new Error('admin runtime UTC freshness helper is missing');
+for (const required of [
+  'function Test-ProbeFreshness',
+  'function Test-TaskOwnerSID',
+  'Test-TaskOwnerSID ([string]$task.Principal.UserId)',
+]) {
+  if (!adminRuntime.includes(required)) {
+    throw new Error('admin runtime top-level validation missing: ' + required);
+  }
 }
 const installAdminStart = adminRuntime.indexOf('function Install-ElevatedRuntime {');
 const installAdminEnd = adminRuntime.indexOf('function Remove-ElevatedRuntime {');
@@ -39,8 +45,6 @@ for (const required of [
   'ADMIN_RUNTIME_TASK_CONFLICT',
   'ADMIN_RUNTIME_DUAL_AUTOSTART_CONFLICT',
   '(Test-ProbeFreshness $probe.at $started)',
-  'function Test-TaskOwnerSID',
-  'Test-TaskOwnerSID ([string]$task.Principal.UserId)',
   'Test-TaskOwnerSID ([string]$taskProbe.Principal.UserId)',
   'ADMIN_RUNTIME_ALREADY_INSTALLED',
   "Register-ScheduledTask -TaskName $probeTaskName",
