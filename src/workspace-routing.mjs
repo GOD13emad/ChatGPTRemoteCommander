@@ -16,6 +16,15 @@ export function chooseWorkspaceRoute(input){
   if(input.target==='existing-browser'){
     if(!owner)return {...result,route:'OWNER_SESSION_BRIDGE_REQUIRED',
       next:'Connect authorized same-user desktop agent, not SYSTEM/Session 0'};
+    // CUA native CDP attachment is not release-accepted for Brave/Firefox.
+    // An exact owner AX window may be usable without copying the login profile;
+    // neither inspection nor a plan grants permission for background input.
+    if(['brave','firefox'].includes(input.browserEngine))
+      return {...result,route:'OWNER_BROWSER_ACCESSIBILITY_CANDIDATE',
+        authenticationPolicy:'REUSE_OWNER_EXISTING_SESSION_ONLY',
+        inspectionStatus:'NOT_EXECUTED',inputStatus:'NATIVE_APPROVAL_REQUIRED',
+        backgroundControl:'CAPABILITY_UNVERIFIED',
+        next:'Observe exact owner window via native AX; use targeted background semantic actions only if driver permits and explicitly authorized; never clone profile or force debugging'};
     if(input.existingProfileGrant!==true)return {...result,route:'PROFILE_ATTACH_AUTHORIZATION_REQUIRED',
       next:'Use browser-native consent and driver existing-profile grant; no cookie/profile copy'};
     return {...result,route:'CUA_EXISTING_BROWSER_CDP',inputMode:'BACKGROUND_TARGETED',
