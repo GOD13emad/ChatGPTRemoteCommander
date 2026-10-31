@@ -21,6 +21,22 @@ export function chooseWorkspaceRoute(input){
     return {...result,route:'CUA_EXISTING_BROWSER_CDP',inputMode:'BACKGROUND_TARGETED',
       note:'Browser must support the requested profile attachment; browser_prepare may refuse'};
   }
+  // The owner may request opening an application WITHOUT signing into an
+  // unrelated automation profile. This is a plan, not an authorization to start
+  // a process or a claim that the existing site's login has been verified.
+  if(input.requireExistingAuthentication===true&&isolated){
+    if(!owner)return {...result,route:'OWNER_SESSION_BRIDGE_REQUIRED',
+      authenticationPolicy:'SAME_OWNER_SESSION_REQUIRED',
+      next:'Connect authorized original-user session; do not use another account or copied credentials'};
+    return {...result,route:input.target==='new-browser'?
+        'OWNER_NATIVE_BROWSER_LAUNCH_REQUIRED':'OWNER_NATIVE_APP_LAUNCH_REQUIRED',
+      authenticationPolicy:'REUSE_OWNER_EXISTING_SESSION_ONLY',
+      launchStatus:'NOT_EXECUTED',foreground:'UNVERIFIED_UNTIL_LAUNCH',
+      inputMode:'NATIVE_SAME_USER_LAUNCH_THEN_TARGET_VERIFICATION',
+      backgroundControl:'REQUIRES_EXACT_WINDOW_AND_NATIVE_CONSENT',
+      profilePolicy:'NO_PROFILE_COPY_NO_DEBUG_FLAGS_NO_PASSWORD_EXPORT',
+      next:'Request a supported owner-session launcher, open the normally installed app under the same user, verify exact window and authentication; never start a fresh automation profile'};
+  }
   if(input.target==='new-browser')
     return {...result,route:'COMMANDER_OWNED_PERSISTENT_PROFILE',inputMode:'BACKGROUND_CDP',
       note:'Login once in this distinct owner profile if needed; reuse only that profile'};
