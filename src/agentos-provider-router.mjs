@@ -1,5 +1,6 @@
 // AgentOS capability router. No model/driver can confer OS privileges.
 import {chooseHybridCapability} from './hybrid-capability-engine.mjs';
+export {createHybridFleetBridge} from './hybrid-fleet-bridge.mjs';
 // Execution stays under Commander policy; this module only chooses a provider.
 const TARGETS=new Set(['existing-browser','new-browser','existing-app','new-app','project']);
 const OS=new Set(['win32','linux']);

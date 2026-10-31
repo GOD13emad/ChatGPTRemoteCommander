@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {agentosProviders,chooseAgentOSProvider} from '../src/agentos-provider-router.mjs';
+import {agentosProviders,chooseAgentOSProvider,createHybridFleetBridge} from '../src/agentos-provider-router.mjs';
 const base={platform:'win32',ownerSession:true,target:'existing-app',capabilities:{windowsUIA:true}};
 test('native UIA chosen ahead of CUA for exact owner Windows application',()=>{
  const r=chooseAgentOSProvider({...base,capabilities:{windowsUIA:true,cuaVerifiedOwnerTarget:true},grants:{visualFallback:true}});
@@ -80,4 +80,9 @@ test('hybrid Fleet plan is attached only to explicit project planning and never 
  assert.equal(fleetPlan.provider,'commander-workflow');
  assert.equal(fleetPlan.hybridPlan.provider,'hatchet');
  assert.equal(fleetPlan.hybridPlan.remoteEffectReplay,false);
+});
+
+test('Fleet transport contract is exported from AgentOS router but requires durable injection',()=>{
+ assert.equal(typeof createHybridFleetBridge,'function');
+ assert.throws(()=>createHybridFleetBridge(),/FLEET_BRIDGE_DEPENDENCY_MISSING/);
 });

@@ -253,3 +253,15 @@ The workflow plan requires a verified local journal and, for Fleet, an authentic
 - Windows UI security https://learn.microsoft.com/en-us/power-automate/desktop-flows/how-to/enable-ui-access
 - OpenTelemetry https://opentelemetry.io/docs/languages/js/ ; baggage https://opentelemetry.io/docs/concepts/signals/baggage/
 - Colibri https://github.com/JustVugg/colibri ; llama.cpp https://github.com/ggml-org/llama.cpp ; vLLM https://docs.vllm.ai/en/latest/serving/openai_compatible_server.html
+
+### Fleet bridge effect-intent protocol — 2026-10-31
+
+**Candidate interface only (NoPromote).** The new src/hybrid-fleet-bridge.mjs is exported from the existing AgentOS provider router and its regression is included in npm run check. It is NOT connected to a live external Hatchet/Temporal/Restate instance. No second executor or effect ledger was installed.
+
+The bridge accepts a bounded metadata-only scheduling intent (workflowId, stepId, requestId, targetDevice, provider, effectClass, epoch, deadlineMs). An injected host-trusted authorizer must verify the authenticated chat, owner-session authorization, root lease, fencing epoch, journal and provider health. Input booleans cannot establish those permissions. Only READ_ONLY and COORDINATION effects can cross this boundary; raw commands, credentials, GUI actions and browser profile mutations cannot.
+
+The existing Commander journal must supply a durable and atomic reservation **before** any network send; only a fresh NEW reservation is sent. Duplicate requests, lost ACK, invalid ACK, failed receipt persistence or UNKNOWN outcome cannot trigger automatic replay. An accepted schedule is *not* a completed remote action. The envelope inspection validates metadata and hashes it, but does not cryptographically authenticate a remote principal or authorize execution.
+
+Regressions cover concurrent reservations, duplicate attempts, lost ACK, malformed ACK, owner authorization/epoch, expiry and actual SQLite close/reopen preserving an UNKNOWN reservation. This is a protocol and fixture-level acceptance, not an authenticated two-host execution or full crash-injection proof. Integration of the injected journal with existing workflow-store, a real provider SDK, transport authentication, distributed root-lease fencing, independent security review and fleet E2E remain open.
+
+Primary references: https://docs.hatchet.run/v1 ; https://docs.temporal.io/tasks ; https://docs.nats.io/concepts/jetstream ; https://docs.nats.io/learn/jetstream/delivery-and-acknowledgment .
