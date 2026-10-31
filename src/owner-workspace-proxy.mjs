@@ -6,12 +6,12 @@ import path from 'node:path';
 import {createHash} from 'node:crypto';
 import {readFile} from 'node:fs/promises';
 const ALLOWED=new Set([
- 'workspace_plan','workspace_list_windows','workspace_window_observe','workspace_window_preview',
+ 'workspace_plan','workspace_login_readiness','workspace_app_catalog','workspace_app_open','workspace_app_reconcile','workspace_winapp_probe','workspace_list_windows','workspace_window_observe','workspace_window_preview',
  'workspace_window_click','workspace_window_type','workspace_word_render','workspace_browser_inspect','workspace_browser_attach',
  'workspace_browser_click','workspace_target_reconcile'
 ]);
 const MUTATIONS=new Set(['workspace_window_click','workspace_window_type','workspace_word_render','workspace_browser_attach',
- 'workspace_browser_click','workspace_target_reconcile']);
+ 'workspace_browser_click','workspace_target_reconcile','workspace_app_open','workspace_app_reconcile']);
 const AUTH=/^[a-f0-9]{64}$/;
 const REQ=/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const fail=(c)=>Object.assign(new Error(c),{code:c});
@@ -35,7 +35,7 @@ export function createOwnerWorkspaceProxy({config,fetchImpl=globalThis.fetch,rea
   if(!AUTH.test(raw))throw fail('WORKSPACE_OWNER_CREDENTIAL_INVALID');
   const hash=MUTATIONS.has(name)?
    createHash('sha256').update('workspace-v1:'+name+':'+context.requestId).digest('hex'):null;
-  const rekey=(name==='workspace_window_click'||name==='workspace_window_type'||name==='workspace_word_render'||name==='workspace_browser_click');
+  const rekey=(name==='workspace_window_click'||name==='workspace_window_type'||name==='workspace_word_render'||name==='workspace_browser_click'||name==='workspace_app_open'||name==='workspace_app_reconcile');
   const payload={...args,...(hash&&rekey?{requestId:'owrk-'+hash.slice(0,48)}:{})};
   // No fallback from owner-agent rejection to SYSTEM/Session 0 injection.
   let response;

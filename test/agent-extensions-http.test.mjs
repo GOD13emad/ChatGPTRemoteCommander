@@ -17,7 +17,7 @@ test('agent extension tools are exposed read-only and return validated manifests
   let child;
   try {
     await fs.mkdir(path.join(root,'src'),{recursive:true});
-    for(const f of ['server-v0.3.mjs','operator-core.mjs','transport-guard.mjs','gui-tools-windows.mjs','gui-owner-delegation.mjs','owner-workspace-delegation.mjs','workspace-target-tools.mjs','workspace-accessibility-tools.mjs','owner-workspace-proxy.mjs','workspace-tools.mjs','workspace-routing.mjs','workspace-target-journal.mjs','gui-target-only-policy.mjs','gui-incident-store.mjs','gui-contract.mjs','gui-process.mjs','browser-tools.mjs','browser-contract.mjs','browser-process.mjs','browser-owned-processes.mjs','browser-lease-store.mjs','browser-companion-monitor.mjs','schema-validator.mjs','async-operations.mjs','retry-guard.mjs','agent-extensions.mjs','coucou-bridge.mjs','no-codex-policy.mjs','conversation-store.mjs','conversation-continuation.mjs']) {
+    for(const f of ['server-v0.3.mjs','operator-core.mjs','hybrid-control.mjs','transport-guard.mjs','gui-tools-windows.mjs','gui-owner-delegation.mjs','owner-workspace-delegation.mjs','workspace-target-tools.mjs','workspace-accessibility-tools.mjs','owner-workspace-proxy.mjs','workspace-tools.mjs','workspace-routing.mjs','workspace-target-journal.mjs','gui-target-only-policy.mjs','gui-incident-store.mjs','gui-contract.mjs','gui-process.mjs','browser-tools.mjs','browser-contract.mjs','browser-process.mjs','browser-owned-processes.mjs','browser-lease-store.mjs','browser-companion-monitor.mjs','schema-validator.mjs','async-operations.mjs','retry-guard.mjs','agent-extensions.mjs','coucou-bridge.mjs','no-codex-policy.mjs','conversation-store.mjs','conversation-continuation.mjs']) {
       await fs.copyFile(new URL('../src/'+f,import.meta.url),path.join(root,'src',f));
     }
     await fs.writeFile(path.join(root,'src','security-v0.3.mjs'),'export const canonicalizeRoots = async x=>x;');
@@ -67,6 +67,20 @@ test('agent extension tools are exposed read-only and return validated manifests
       assert.ok(def,name+' missing');
       assert.equal(def.annotations.readOnlyHint,true);
     }
+    for(const name of ['hybrid_control_status','hybrid_control_plan']) {
+      const def=listed.result.tools.find(x=>x.name===name);
+      assert.ok(def,name+' missing');
+      assert.equal(def.annotations.readOnlyHint,true);
+    }
+    const hybrid=(await call('hybrid_control_status')).result.structuredContent;
+    assert.equal(hybrid.schema,1);
+    assert.equal(hybrid.effectPerformed,false);
+    assert.equal(hybrid.owner.sameUserSessionVerified,false);
+    const hybridRoute=(await call('hybrid_control_plan',{
+      target:'existing-browser',browserEngine:'firefox',activity:'observe'
+    })).result.structuredContent;
+    assert.equal(hybridRoute.guiActionAuthorized,false);
+    assert.equal(hybridRoute.existingAuthentication,'REUSE_ORIGINAL_OWNER_SESSION_ONLY');
     const status=(await call('system_status')).result.structuredContent;
     assert.equal(status.configSchema.agentExtensions,1);
     assert.equal(status.agentExtensions.count,1);

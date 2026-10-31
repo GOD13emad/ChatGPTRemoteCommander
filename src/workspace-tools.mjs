@@ -3,7 +3,7 @@
 // capability result, not a reason to bypass named-pipe ACL or alter GUI policy.
 import os from 'node:os';
 import fs from 'node:fs/promises';
-import {randomBytes} from 'node:crypto';
+import {randomBytes,createHash} from 'node:crypto';
 import path from 'node:path';
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
@@ -26,7 +26,7 @@ export function isOwnerBackgroundWorkspaceTool(name){
 }
 
 export function workspaceMutationEffectArgs(name,args,requestId){
- if(!['workspace_window_click','workspace_window_type','workspace_word_render','workspace_browser_click'].includes(name))return args;
+ if(!['workspace_window_click','workspace_window_type','workspace_word_render','workspace_browser_click','workspace_app_open','workspace_app_reconcile'].includes(name))return args;
  if(typeof requestId!=='string'||!REQUEST.test(requestId))
   throw fail('WORKSPACE_BINDING_INVALID');
  return {...args,requestId};
@@ -106,14 +106,59 @@ export async function defaultCuaPreview(args,scope={}){
   return {meta,imageBytes:png};
  }finally{await fs.rm(dir,{recursive:true,force:true});}
 }
+// Pinned native CLI runs inside the original owner process only. This probe
+// emits capability evidence, never UI trees, sensitive values or screenshots.
+export async function defaultWinappProbe({windowId},{platform=process.platform,env=process.env}={}){
+ if(platform!=='win32'||!integer(windowId))return {ok:false,status:'WINAPP_PLATFORM_OR_TARGET_INVALID'};
+ const bin=env.RC_WINAPP_UIA_BIN;
+ if(typeof bin!=='string'||!path.win32.isAbsolute(bin))
+   return {ok:false,status:'WINAPP_BINARY_NOT_CONFIGURED'};
+ try{const st=await fs.lstat(bin);if(!st.isFile()||st.isSymbolicLink()||st.nlink!==1)
+   return {ok:false,status:'WINAPP_BINARY_NOT_TRUSTED'};}
+ catch{return {ok:false,status:'WINAPP_BINARY_NOT_INSTALLED'};}
+ try{
+  const {stdout}=await execFileAsync(bin,['ui','inspect','-w',String(windowId),'--json'],{
+   encoding:'utf8',timeout:6500,maxBuffer:512*1024,windowsHide:true,env
+  });
+  const json=JSON.parse(stdout);
+  if(!json||typeof json!=='object'||json.error)return {ok:false,status:'WINAPP_NATIVE_RESULT_INVALID'};
+  return {ok:true,status:'WINAPP_UIA_TREE_OBSERVED',jsonVerified:true,
+   contentReturned:false,passwordValuesReturned:false,foregroundChanged:'NOT_VERIFIED'};
+ }catch{return {ok:false,status:'WINAPP_READ_ONLY_PROBE_UNAVAILABLE'};}
+}
+
 const exactWindow=(a)=>integer(a?.pid)&&integer(a?.windowId);
 const readOnly={readOnlyHint:true,openWorldHint:false};
 const mutating={readOnlyHint:false,destructiveHint:true,openWorldHint:false,idempotentHint:false};
 export const workspaceToolDefinitions=[
  {name:'workspace_plan',description:'Select independent background/isolated control for an existing logged-in application or browser. This read-only plan never steals focus or copies credentials.',inputSchema:{
    type:'object',properties:{target:{type:'string',enum:['existing-browser','new-browser','existing-app','new-app']},
-     existingProfileGrant:{type:'boolean'},backgroundCapability:{type:'boolean'}},
+     existingProfileGrant:{type:'boolean'},backgroundCapability:{type:'boolean'},
+     requireExistingAuthentication:{type:'boolean'},
+     browserEngine:{type:'string',enum:['chrome','edge','brave','firefox','unknown']}},
    required:['target'],additionalProperties:false},annotations:readOnly},
+ {name:'workspace_login_readiness',description:'Read-only same-owner app/browser window readiness for saved-login reuse. NEVER reads password stores, autofill values, cookies, tokens or login status; non-observation is not proof credentials are missing.',inputSchema:{
+   type:'object',properties:{target:{type:'string',enum:['existing-browser','new-browser','existing-app','new-app']},
+     pid:{type:'integer',minimum:1},windowId:{type:'integer',minimum:1},
+     browserEngine:{type:'string',enum:['chrome','edge','brave','firefox','unknown']}},
+   required:['target'],additionalProperties:false},annotations:readOnly},
+ {name:'workspace_app_catalog',description:'Read-only list of owner-installed applications and running status, without launcher command lines or authentication contents.',inputSchema:{
+    type:'object',properties:{query:{type:'string',minLength:1,maxLength:100}},
+    additionalProperties:false},annotations:readOnly},
+ {name:'workspace_app_open',description:'Open an exact installed app from the native owner app catalog, minimized and without bringing it forward. Reuse running app; never copy a browser profile. Uncertain launch needs explicit reconciliation.',inputSchema:{
+    type:'object',properties:{name:{type:'string',minLength:1,maxLength:128},
+      requestId:{type:'string',minLength:8,maxLength:128},
+      explicitUserAuthorization:{type:'string',minLength:12,maxLength:512}},
+    required:['name','requestId','explicitUserAuthorization'],additionalProperties:false},annotations:mutating},
+ {name:'workspace_app_reconcile',description:'Reconcile one uncertain owner-app launch from the native app catalog without replaying its launch.',inputSchema:{
+    type:'object',properties:{name:{type:'string',minLength:1,maxLength:128},
+      determination:{type:'string',enum:['RUNNING_VERIFIED','NOT_RUNNING_VERIFIED']},
+      requestId:{type:'string',minLength:8,maxLength:128},
+      explicitUserAuthorization:{type:'string',minLength:12,maxLength:512}},
+    required:['name','determination','requestId','explicitUserAuthorization'],additionalProperties:false},annotations:mutating},
+ {name:'workspace_winapp_probe',description:'Read-only exact owner-window Windows UIA winapp probe; returns no UI text, element values or passwords.',inputSchema:{
+   type:'object',properties:{pid:{type:'integer',minimum:1},windowId:{type:'integer',minimum:1}},
+   required:['pid','windowId'],additionalProperties:false},annotations:readOnly},
  {name:'workspace_list_windows',description:'List existing same-user application windows through Cua Driver v0.38; no desktop takeover or global input.',inputSchema:{
    type:'object',properties:{pid:{type:'integer',minimum:1},workspaceSeat:{type:'string',enum:['a','b']}},additionalProperties:false},annotations:readOnly},
  {name:'workspace_window_observe',description:'Read accessibility snapshot of one exact existing window in the owning desktop; no click, focus or mouse movement.',inputSchema:{
@@ -160,7 +205,7 @@ export const workspaceToolDefinitions=[
      determination:{type:'string',enum:['EFFECT_OBSERVED','NO_EFFECT_OBSERVED']}},
    required:['pid','windowId','determination'],additionalProperties:false},annotations:mutating}
 ];
-export function createWorkspaceController({callDriver=defaultCuaCall,previewDriver=defaultCuaPreview,ownerSession=defaultOwnerSession,
+export function createWorkspaceController({callDriver=defaultCuaCall,previewDriver=defaultCuaPreview,ownerSession=defaultOwnerSession,winappProbe=defaultWinappProbe,
   platform=process.platform,env=process.env,now=Date.now,journal=createWorkspaceTargetJournal()}={}){
  const pending=new Map(),seen=new Set(),busy=new Set(),snapshots=new Map(),browserSnapshots=new Map();
  const needsOwner=async()=>{if(!await ownerSession({platform,env}))throw fail('WORKSPACE_OWNER_SESSION_REQUIRED');};
@@ -174,6 +219,152 @@ export function createWorkspaceController({callDriver=defaultCuaCall,previewDriv
    return chooseWorkspaceRoute({...input,sameUserSession:owner,desktop:desktopType(platform,env)});
   }
   await needsOwner();
+  if(name==='workspace_winapp_probe'){
+   if(platform!=='win32'||seat!==null||!exactWindow(input))throw fail('WORKSPACE_UIA_TARGET_INVALID');
+   const found=await call('list_windows',{pid:input.pid});
+   const windows=Array.isArray(found?.windows)?found.windows:Array.isArray(found)?found:null;
+   if(!windows)throw fail('WORKSPACE_UIA_WINDOW_ENUMERATION_UNVERIFIED');
+   if(!windows.some(w=>w?.pid===input.pid&&
+      (w?.window_id===input.windowId||w?.windowId===input.windowId)))
+     return {ok:false,status:'WORKSPACE_EXACT_WINDOW_NOT_OBSERVED',
+       authentication:'UNVERIFIED',foregroundChanged:false};
+   const result=await winappProbe({windowId:input.windowId},{platform,env});
+   return {ok:result?.ok===true,status:result?.status??'WINAPP_PROBE_UNKNOWN',
+      backend:'WINDOWS_UIA',windowVerified:true,
+      treeAvailable:result?.ok===true&&result?.jsonVerified===true,
+      uiContentReturned:false,passwordValuesReturned:false,
+      authentication:'UNVERIFIED',foregroundChanged:'NOT_VERIFIED'};
+  }
+  if(name==='workspace_app_catalog'||name==='workspace_app_open'||name==='workspace_app_reconcile'){
+   if(!['win32','linux'].includes(platform)||seat!==null)throw fail('WORKSPACE_APP_LAUNCH_PLATFORM_UNAVAILABLE');
+   const listed=await call('list_apps',{});
+   const catalog=Array.isArray(listed)?listed:Array.isArray(listed?.apps)?listed.apps:
+     Array.isArray(listed?.applications)?listed.applications:null;
+   if(!catalog)throw fail('WORKSPACE_APP_CATALOG_UNAVAILABLE');
+   // Driver versions may omit optional kind on an already-running app.
+   // Reuse its verified native pid, but NEVER cold-launch a kindless entry.
+   const entries=catalog.filter(a=>a&&typeof a.name==='string'&&
+     a.name.length>0&&a.name.length<=128&&
+     (['desktop','uwp'].includes(a.kind)||
+       (a.kind===undefined&&a.running===true&&integer(a.pid))));
+   if(name==='workspace_app_catalog'){
+     const query=typeof input.query==='string'?input.query.toLocaleLowerCase().trim():'';
+     return {ok:true,mode:'READ_ONLY_SAME_OWNER',
+       apps:entries.filter(a=>!query||a.name.toLocaleLowerCase().includes(query))
+         .slice(0,100).map(a=>({name:a.name,kind:a.kind??'unknown',running:a.running===true,
+           pid:integer(a.pid)?a.pid:0})),hasMore:entries.length>100,
+       credentials:'NOT_READ',focusChanged:false};
+   }
+   if(typeof input.explicitUserAuthorization!=='string'||
+      input.explicitUserAuthorization.trim().length<12)
+      throw fail('WORKSPACE_EXPLICIT_AUTHORIZATION_REQUIRED');
+   if(!REQUEST.test(input.requestId)||typeof input.name!=='string'||input.name.trim()!==input.name||
+      input.name.length>128||!(/^[\p{L}\p{N}][\p{L}\p{N} ._()+\-!]{0,127}$/u).test(input.name))
+      throw fail('WORKSPACE_APP_IDENTITY_INVALID');
+   const matches=entries.filter(a=>a.name.toLocaleLowerCase()===input.name.toLocaleLowerCase());
+   if(matches.length!==1)throw fail(matches.length===0?'WORKSPACE_APP_NOT_IN_OWNER_CATALOG':'WORKSPACE_APP_NAME_AMBIGUOUS');
+   const app=matches[0],key='app:'+createHash('sha256').update(app.name.toLocaleLowerCase(),'utf8').digest('hex');
+   if(name==='workspace_app_reconcile'){
+     if(!['RUNNING_VERIFIED','NOT_RUNNING_VERIFIED'].includes(input.determination))
+       throw fail('WORKSPACE_APP_DETERMINATION_INVALID');
+     const pendingApp=await journal.pending(key);
+     if(!pendingApp||pendingApp.action!=='workspace_app_open')
+       throw fail('WORKSPACE_NO_TARGET_INCIDENT');
+     const observed=app.running===true&&integer(app.pid);
+     if(input.determination==='RUNNING_VERIFIED'&&!observed||
+        input.determination==='NOT_RUNNING_VERIFIED'&&app.running!==false)
+       throw fail('WORKSPACE_APP_DETERMINATION_NOT_PROVEN');
+     await journal.resolve(key,pendingApp);
+     return {ok:true,mode:'OWNER_NATIVE_APP_RECONCILE',name:app.name,
+       determination:input.determination,replayed:false,
+       focusChanged:'NOT_ASSESSED',passwordRequested:false};
+   }
+   if(seen.has(input.requestId))throw fail('WORKSPACE_DUPLICATE_REQUEST_NO_REPLAY');
+   if(await journal.pending(key))throw fail('WORKSPACE_TARGET_RECONCILIATION_REQUIRED');
+   if(busy.has(key))throw fail('WORKSPACE_TARGET_BUSY');
+   if(app.running===true&&!integer(app.pid))throw fail('WORKSPACE_APP_RUNNING_UNVERIFIED');
+   if(app.running===true&&integer(app.pid))
+     return {ok:true,status:'ALREADY_RUNNING',name:app.name,pid:app.pid,
+       launchAttempted:false,credentials:'OWNER_PROFILE_UNCHANGED',focusChanged:false};
+   // Only trusted installed-app catalog entries are launchable; caller may
+   // never supply path, arguments, URL, browser flags or credentials.
+   // The native Windows catalog may omit launch_path for an installed
+   // packaged app or a valid desktop app. The driver's documented name
+   // fallback is permitted ONLY after exactly one owner-catalog name match.
+   // Never accept a caller-provided executable path, flags or profile.
+   const verifiedWindowsPath=platform==='win32'&&typeof app.launch_path==='string'&&
+     app.launch_path.length<2048&&path.win32.isAbsolute(app.launch_path);
+   const launchArgs=platform==='linux'&&app.kind==='desktop'?
+     {name:app.name}:
+     platform==='win32'&&app.kind==='uwp'&&typeof app.aumid==='string'&&
+       /^[^\\/!\s]+![^\\/!\s]+$/.test(app.aumid)?
+     {aumid:app.aumid,start_minimized:true}:
+     verifiedWindowsPath?
+     {launch_path:app.launch_path,start_minimized:true}:
+     platform==='win32'&&['desktop','uwp'].includes(app.kind)?
+     {name:app.name,start_minimized:true}:null;
+   if(!launchArgs)throw fail('WORKSPACE_APP_LAUNCH_PATH_UNVERIFIED');
+   seen.add(input.requestId);busy.add(key);
+   let handle=null;
+   try{
+     handle=await journal.begin(key,'workspace_app_open',input.requestId);
+     const started=await call('launch_app',launchArgs);
+     if(started?.status==='refused'&&typeof started?.refusal?.code==='string'){
+       await journal.resolve(key,handle);
+       return {ok:false,status:'REFUSED_NO_EFFECT',code:started.refusal.code,replayed:false};
+     }
+     // A process returning from ShellExecute is not evidence of signed-in state.
+     const check=await call('list_apps',{});
+     const list=Array.isArray(check)?check:Array.isArray(check?.apps)?check.apps:
+       Array.isArray(check?.applications)?check.applications:null;
+     const matches2=Array.isArray(list)?list.filter(a=>a&&typeof a.name==='string'&&
+       a.name.toLocaleLowerCase()===app.name.toLocaleLowerCase()):[];
+     const after=matches2.length===1?matches2[0]:null;
+     if(after?.running!==true||!integer(after?.pid)||
+       integer(started?.pid)&&started.pid!==after.pid)
+       return {ok:false,status:'RECONCILE_TARGET',name:app.name,replayed:false,
+         reason:'OWNER_APP_LAUNCH_NOT_INDEPENDENTLY_VERIFIED'};
+     await journal.resolve(key,handle);
+     return {ok:true,status:'LAUNCHED_OWNER_PROFILE',name:app.name,pid:after.pid,
+       launchAttempted:true,credentials:'OWNER_PROFILE_UNCHANGED',
+       authentication:'UNVERIFIED',passwordRequested:false,
+       foreground:'PRESERVE_REQUESTED_NOT_VERIFIED',replayed:false};
+   }catch(error){
+     if(!handle)throw error;
+     return {ok:false,status:'RECONCILE_TARGET',name:app.name,replayed:false,
+       errorCode:error?.code??'WORKSPACE_APP_LAUNCH_UNKNOWN'};
+   }finally{busy.delete(key);}
+  }
+  if(name==='workspace_login_readiness'){
+   const target=input.target;
+   if(!['existing-browser','new-browser','existing-app','new-app'].includes(target))
+     throw fail('WORKSPACE_TARGET_INVALID');
+   if((input.pid===undefined)!==(input.windowId===undefined))
+     throw fail('WORKSPACE_EXACT_WINDOW_ID_REQUIRED');
+   if(input.pid!==undefined&&!exactWindow(input))
+     throw fail('WORKSPACE_TARGET_INVALID');
+   // A native owner process and window can be detected without reading any
+   // credential store. No mere window listing proves website sign-in.
+   const raw=await call('list_windows',input.pid?{pid:input.pid}:{});
+   const windows=Array.isArray(raw?.windows)?raw.windows:null;
+   const exact=windows&&input.pid!==undefined?
+     windows.some(w=>w?.pid===input.pid&&
+       (w?.window_id===input.windowId||w?.windowId===input.windowId)):false;
+   const observation=windows===null?'UNVERIFIED':
+     input.pid===undefined?'NO_EXACT_WINDOW_SELECTED':
+     exact?'EXACT_WINDOW_PRESENT':'EXACT_WINDOW_NOT_OBSERVED';
+   return {ok:true,mode:'READ_ONLY_SAME_OWNER',target,observation,
+     authentication:'UNVERIFIED',savedCredentials:'NOT_INSPECTED',
+     loginAbsenceVerified:false,passwordRequested:false,
+     nativeApprovalRequired:true,credentialContentsRead:false,
+     browserProfileCloned:false,focusChanged:false,physicalInputTouched:false,
+     plan:chooseWorkspaceRoute({target,
+       desktop:desktopType(platform,env),sameUserSession:true,
+       requireExistingAuthentication:true,browserEngine:input.browserEngine}),
+     next:observation==='EXACT_WINDOW_PRESENT'?
+       'Verify app-specific login state through the authorized owner UI; do not access credentials':
+       'Select an exact same-user window or use a supported native owner launcher; never infer missing passwords'};
+  }
   if(name==='workspace_list_windows'){
    const request={};if(input.pid!==undefined){if(!integer(input.pid))throw fail('WORKSPACE_PID_INVALID');request.pid=input.pid;}
    const value=await call('list_windows',request);
