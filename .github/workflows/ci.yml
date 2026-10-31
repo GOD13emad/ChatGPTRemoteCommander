@@ -45,6 +45,8 @@ jobs:
 
       - name: Verify bounded V2 fleet evidence with offline hosts
         run: node --test test/v2-fleet-readiness.test.mjs
+      - name: Verify existing owner browser and application session reuse boundaries
+        run: node --test test/v2-owner-session-reuse.test.mjs test/v2-native-window-bridge.test.mjs test/v2-native-owner-session-bindings.test.mjs
 
       - name: Check prerelease SemVer and updater fail-closed rules
         run: node --test test/semver-release.test.mjs
