@@ -15,7 +15,7 @@ $ErrorActionPreference = 'Stop'
 # uses the app's normal config selection; isolated instances set their config explicitly.
 Remove-Item Env:REMOTE_COMMANDER_CONFIG -ErrorAction SilentlyContinue
 
-$Root = Split-Path -Parent $MyInvocation.MyCommand.Path
+$Root = Split-Path -Parent $MyInvocation.MyCommand.Path; . (Join-Path $Root 'tools\windows-system-trust-admission.ps1')
 . (Join-Path $Root 'windows-supervisor-runtime.ps1')
 $runtime = Initialize-WindowsSupervisorRuntime $Root $OwnerUserProfile ([bool]$BootCore)
 $OwnerUserProfile = $runtime.OwnerUserProfile
@@ -295,12 +295,12 @@ try {
   while ($true) {
     try {
       $primaryReady=$true
-      if (-not (Ensure-RoutedProfile 'default' 47831)) { $primaryReady=[bool](Start-PrimaryMcp) }
+      if (-not (Ensure-RoutedProfile 'default' 47831)) { if($script:RcSystemNativeContext){throw 'SYSTEM_PRIMARY_USER_ROUTE_FALLBACK_FORBIDDEN'}; $primaryReady=[bool](Start-PrimaryMcp) }
       $exe = Find-TunnelExe
       foreach ($item in Get-ManagedProfiles) {
         try {
           if ($item.Instance) {
-            if (-not (Ensure-RoutedProfile $item.Profile $item.McpPort)) { Start-McpInstance $item.Instance }
+            if (-not (Ensure-RoutedProfile $item.Profile $item.McpPort)) { if($script:RcSystemNativeContext){throw 'SYSTEM_INSTANCE_USER_ROUTE_FALLBACK_FORBIDDEN'}; Start-McpInstance $item.Instance }
           } elseif (-not $primaryReady) {
             Write-RoutingNotice ("profile-mcp|"+$item.Profile) "PROFILE_MCP_UNAVAILABLE profile=$($item.Profile) port=47831"
             continue

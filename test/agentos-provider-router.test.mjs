@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {agentosProviders,chooseAgentOSProvider} from '../src/agentos-provider-router.mjs';
+import {agentosProviders,chooseAgentOSProvider,createHybridFleetBridge} from '../src/agentos-provider-router.mjs';
 const base={platform:'win32',ownerSession:true,target:'existing-app',capabilities:{windowsUIA:true}};
 test('native UIA chosen ahead of CUA for exact owner Windows application',()=>{
  const r=chooseAgentOSProvider({...base,capabilities:{windowsUIA:true,cuaVerifiedOwnerTarget:true},grants:{visualFallback:true}});
@@ -60,4 +60,29 @@ test('fail closed for invalid or malformed request',()=>{
  for(const x of [{target:'x',platform:'win32'},{target:'new-app',platform:'darwin'},{target:'new-app',platform:'linux',capabilities:[]}]){
   assert.throws(()=>chooseAgentOSProvider(x),/AGENTOS_INPUT_INVALID/);
  }
+});
+
+test('hybrid Fleet plan is attached only to explicit project planning and never authorizes execution',()=>{
+ const basic=chooseAgentOSProvider({...base,target:'project',capabilities:{commanderWorkflow:true}});
+ assert.equal(basic.hybridPlan,undefined);
+ const guarded=chooseAgentOSProvider({...base,target:'project',capabilities:{
+  commanderWorkflow:true,hybridPlanRequested:true,workflowJournalHealthy:true,
+  requiresFleet:true,fleetProvider:'hatchet'
+ },grants:{}});
+ assert.equal(guarded.provider,'commander-workflow');
+ assert.equal(guarded.hybridPlan.status,'BLOCKED');
+ assert.equal(guarded.hybridPlan.authorizesExecution,false);
+ const fleetPlan=chooseAgentOSProvider({...base,target:'project',capabilities:{
+  commanderWorkflow:true,hybridPlanRequested:true,workflowJournalHealthy:true,
+  requiresFleet:true,fleetProvider:'hatchet',coordinatorReachable:true,fleetPolicyVerified:true,
+  rootLeaseVerified:true,fleetProviders:{hatchet:{healthy:true,configured:true}}
+ },grants:{chatAuthenticated:true,fleetDispatch:true}});
+ assert.equal(fleetPlan.provider,'commander-workflow');
+ assert.equal(fleetPlan.hybridPlan.provider,'hatchet');
+ assert.equal(fleetPlan.hybridPlan.remoteEffectReplay,false);
+});
+
+test('Fleet transport contract is exported from AgentOS router but requires durable injection',()=>{
+ assert.equal(typeof createHybridFleetBridge,'function');
+ assert.throws(()=>createHybridFleetBridge(),/FLEET_BRIDGE_DEPENDENCY_MISSING/);
 });

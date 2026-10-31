@@ -1,4 +1,6 @@
 // AgentOS capability router. No model/driver can confer OS privileges.
+import {chooseHybridCapability} from './hybrid-capability-engine.mjs';
+export {createHybridFleetBridge} from './hybrid-fleet-bridge.mjs';
 // Execution stays under Commander policy; this module only chooses a provider.
 const TARGETS=new Set(['existing-browser','new-browser','existing-app','new-app','project']);
 const OS=new Set(['win32','linux']);
@@ -27,9 +29,24 @@ export function chooseAgentOSProvider(input={}){
    ? 'codex-app-server' : 'commander-workflow';
  const withPlanner=route=>Object.freeze({...route,planner,
    fallbackAllowed:route.status==='READY'&&route.provider!=='cua-last-resort'});
- if(target==='project')return withPlanner(b(capabilities.commanderWorkflow)
+ if(target==='project'){
+  const route=withPlanner(b(capabilities.commanderWorkflow)
    ?selected('commander-workflow','STRUCTURED_TASKS','Use the existing project engine and approved host tools')
    :denied('PROJECT_ENGINE_UNAVAILABLE','Restore Commander workflow engine; no new competing orchestrator'));
+  if(!b(capabilities.hybridPlanRequested))return route;
+  const hybridPlan=chooseHybridCapability({
+   domain:'workflow',preference:capabilities.fleetProvider,
+   capabilities:{commanderWorkflowReady:b(capabilities.commanderWorkflow),
+    coordinatorReachable:b(capabilities.coordinatorReachable),
+    fleetPolicyVerified:b(capabilities.fleetPolicyVerified),
+    fleetProviders:capabilities.fleetProviders??{}},
+   grants:{fleetDispatch:b(grants.fleetDispatch)},
+   context:{localJournalHealthy:b(capabilities.workflowJournalHealthy),
+    requiresFleet:b(capabilities.requiresFleet),chatAuthenticated:b(grants.chatAuthenticated),
+    rootLeaseVerified:b(capabilities.rootLeaseVerified),effectClass:capabilities.effectClass}
+  });
+  return Object.freeze({...route,hybridPlan});
+ }
  if(target.startsWith('existing-')&&!b(ownerSession))return withPlanner(denied(
    'OWNER_SESSION_REQUIRED','Run native provider under verified owning OS principal and login session'));
  const browser=target.endsWith('browser');

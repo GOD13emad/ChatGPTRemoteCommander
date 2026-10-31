@@ -216,3 +216,78 @@ Existing read-only trust auditor now hashes in-memory `Export-ScheduledTask` XML
 ### Runtime-only tunnel process identity and exact profile matching — 2026-10-31
 
 The optional runtime-only `openai/tunnel-client v0.0.18` executable has a different filename, `tunnel-client-runtime.exe`, than the currently installed full `v0.0.15` binary `tunnel-client.exe`. The previous supervisor `Get-TunnelProcess` hard-coded the full-client basename and could not observe a runtime-only owned process, risking duplicate starts and bad ownership decisions if switched untested. The source supervisor now restricts supported process basenames to these two exact Windows names and derives the CIM process filter from the already-resolved expected executable path; it retains exact executable-path and named-profile matching. An isolated PowerShell AST/mocked CIM fixture tests both flavors, wrong profile/path rejection and unknown basename refusal without launching, stopping or authenticating tunnels. **No live task or Runtime cutover.** Actual tunnel v0.0.18 interoperability, credential handling, owner-session GUI E2E and independent security review remain open. Official [OpenAI runtime documentation](https://github.com/openai/tunnel-client).
+
+
+## HYBRID_ENGINE_PROVIDER_SURVEY_20261031 — external infrastructure evaluation and candidate implementation
+
+**State:** CANDIDATE ONLY; no production cutover, external service installation, user credential collection, operating-system escalation or stable release. This is an amendment to the existing architectural authority, not a second roadmap. Official upstream sources surveyed 2026-10-31; no claim of enumerating the entire Internet. Pricing, license and version details must be verified again before deployment.
+
+| Commander layer | Alternatives surveyed | Recommended responsibility / acceptance |
+| --- | --- | --- |
+| Durable local workflow | Commander durable-workflows-r2, DBOS, Restate, Temporal, Inngest | **Keep Commander local journal** as the single authority for native action intent/receipt and reconciliation. DBOS needs PostgreSQL; double-journaling effects would create replay ambiguity. |
+| Fleet DAG/queue | Hatchet, Temporal, Restate, Inngest, Windmill, DBOS, n8n | Hatchet = first **PoC candidate** for distributed scheduling/dashboard; Temporal = strong long-lived replay alternative; Restate = durable service RPC alternative. None is an approved/install-ready drop-in replacement. |
+| Event bus | existing routed MCP transport, NATS JetStream | Preserve existing transport. JetStream optional for durable at-least-once interdevice messages, never exactly-once physical/GUI effects. |
+| Identity/authorization | Commander owner-session SID/UID and grants, Cedar, OpenFGA, OPA, Tailscale Grants | Existing native OS boundary and Commander deny-by-default must always prevail. An external PDP may add denials, not grant OS/session rights. |
+| Windows GUI | application-native APIs/UFO2, UIA patterns, CUA | Native API if owner-approved; then exact UIA; CUA for exact approved target only. SYSTEM session cannot silently impersonate user. |
+| Linux GUI | AT-SPI, XDG RemoteDesktop Portal v2, CUA | Verified owner AT-SPI first; Portal Start presents actual consent; visual last resort. No global input/focus stealing. |
+| Existing browser | Playwright, CDP, Commander Browser lease | Prefer owner-authorized DOM, not default-profile debug switch or cookie extraction; Chromium 136 limits default-profile remote debugging. CDP attachment has lower fidelity than Playwright protocol. |
+| Isolated browser | Playwright, CDP, Commander owned Browser | Owned, isolated, background profile; no credential cloning. |
+| Model runtime | Colibri, llama.cpp, Ollama, vLLM | **Colibri is a local MoE inference runtime, not workflow orchestration.** llama.cpp broad CPU/GPU choice; Ollama simpler local setup; vLLM GPU serving. Optional, only if healthy, installed, licensed and explicitly authorized. |
+| Agent/plan | Commander Project Engine, Pydantic AI, LangGraph, Codex app-server | Commander remains the one executor/journal; external planners propose work, never grant host access. Do not attach two durable engines to the same effects. |
+| Control Center | existing UI, Tauri v2, Electron, Windmill UI | Continue existing UI. Evaluate Tauri v2 per-window capabilities before native packaging; no second privileged UI broker without security review. |
+| Telemetry | Commander receipts, OpenTelemetry, Prometheus | Local receipts remain authoritative. Optional export requires explicit opt-in, redaction and trusted endpoint; never propagate secrets through trace baggage. |
+| Installer and host lifecycle | Commander managed supervisor, Windows service/Task, Linux systemd | One effective installation per physical host; trusted executable/config and complete SYSTEM/root dependency chain with rollback and native UAC/sudo authorization. |
+
+**Implemented candidate integration.** The new src/hybrid-capability-engine.mjs is a pure, bounded, deterministic control-plane arbitration module. The existing src/agentos-provider-router.mjs invokes it only when a project-planning caller explicitly supplies hybridPlanRequested. Its result is a **plan**, not a live executor, and existing routing remains unchanged unless that flag is supplied. It cannot run a command, install an external engine, obtain privileges, attach a browser, export credentials or override Commander local execution policy.
+
+The workflow plan requires a verified local journal and, for Fleet, an authenticated chat, the single-writer root lease, explicit fleet grant, healthy configured coordinator and verified policy. UNKNOWN/PENDING_UNKNOWN external effects require local reconciliation and may not replay. Interactive GUI/browser profile mutation cannot be dispatched through remote Fleet retries. Local model runtime requires explicit permission, installed/healthy backend and model-license approval. Optional policy engines can only add checks. Telemetry export requires redaction approval; GUI remains under native owner-session policies.
+
+**PoC acceptance before any installation or promotion:** 2-host Windows/Linux DAG with authenticated chat isolation; one writer for one project root; deterministic duplicate-delivery/lost-ACK behavior; crash, restart and offline rejoin; no GUI replay for uncertain actions; revocation, pause/cancel, observability, resource/latency budget; roll back to Commander local-only mode; independent security review; pinned signed package and five-host acceptance. Machine SYSTEM Task trust and native owner GUI remain independent open release gates.
+
+**Official sources**
+- Hatchet https://docs.hatchet.run/self-hosting ; Temporal https://docs.temporal.io/tasks ; Restate https://restate.dev/
+- DBOS https://docs.dbos.dev/architecture ; Inngest https://www.inngest.com/docs/self-hosting ; Windmill https://www.windmill.dev/docs/advanced/self_host
+- NATS https://docs.nats.io/concepts/jetstream ; Tauri https://tauri.app/security/capabilities/
+- Playwright https://playwright.dev/docs/api/class-browsertype ; Chrome https://developer.chrome.com/blog/remote-debugging-port
+- Linux Portal https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.RemoteDesktop.html
+- Windows UI security https://learn.microsoft.com/en-us/power-automate/desktop-flows/how-to/enable-ui-access
+- OpenTelemetry https://opentelemetry.io/docs/languages/js/ ; baggage https://opentelemetry.io/docs/concepts/signals/baggage/
+- Colibri https://github.com/JustVugg/colibri ; llama.cpp https://github.com/ggml-org/llama.cpp ; vLLM https://docs.vllm.ai/en/latest/serving/openai_compatible_server.html
+
+### Fleet bridge effect-intent protocol — 2026-10-31
+
+**Candidate interface only (NoPromote).** The new src/hybrid-fleet-bridge.mjs is exported from the existing AgentOS provider router and its regression is included in npm run check. It is NOT connected to a live external Hatchet/Temporal/Restate instance. No second executor or effect ledger was installed.
+
+The bridge accepts a bounded metadata-only scheduling intent (workflowId, stepId, requestId, targetDevice, provider, effectClass, epoch, deadlineMs). An injected host-trusted authorizer must verify the authenticated chat, owner-session authorization, root lease, fencing epoch, journal and provider health. Input booleans cannot establish those permissions. Only READ_ONLY and COORDINATION effects can cross this boundary; raw commands, credentials, GUI actions and browser profile mutations cannot.
+
+The existing Commander journal must supply a durable and atomic reservation **before** any network send; only a fresh NEW reservation is sent. Duplicate requests, lost ACK, invalid ACK, failed receipt persistence or UNKNOWN outcome cannot trigger automatic replay. An accepted schedule is *not* a completed remote action. The envelope inspection validates metadata and hashes it, but does not cryptographically authenticate a remote principal or authorize execution.
+
+Regressions cover concurrent reservations, duplicate attempts, lost ACK, malformed ACK, owner authorization/epoch, expiry and actual SQLite close/reopen preserving an UNKNOWN reservation. This is a protocol and fixture-level acceptance, not an authenticated two-host execution or full crash-injection proof. Integration of the injected journal with existing workflow-store, a real provider SDK, transport authentication, distributed root-lease fencing, independent security review and fleet E2E remain open.
+
+Primary references: https://docs.hatchet.run/v1 ; https://docs.temporal.io/tasks ; https://docs.nats.io/concepts/jetstream ; https://docs.nats.io/learn/jetstream/delivery-and-acknowledgment .
+
+### MMZ_SCHEMA_CONSTRAINED_LOCAL_LLAMACPP_20261031 — runnable local Planner provider (candidate)
+
+**Status:** Candidate adapter only; no active Runner configuration changes or model execution rights granted. `tools/local-llamacpp-planner.mjs` is an opt-in **proposal-only** command provider for the existing `createCommandPlanner` interface, using a pinned loopback llama.cpp endpoint at `127.0.0.1:18080`, the already installed Qwen3-4B model alias, the owner's user-local 0600 key file, a strict four-field JSON Schema and `enable_thinking=false`. Context, output, timeout and credentials are bounded; keys and diagnostics are not logged or forwarded. It does not execute any proposed tool.
+
+**Proof and limitation:** On MMZ Linux, a synthetic model request without strict schema returned an invalid `action=read_text`; the same model with schema responded correctly with `action=call, tool=read_text`. The new adapter passed six isolated tests in Windows Candidate and a live end-to-end invocation through Commander's actual `createCommandPlanner({kind:'command'})` on MMZ, proposing `read_text` of exactly `PROJECT_BRAIN.md` without execution. These tests do **not** prove Team Planner automatic Worker acceptance. Existing historical runs remain expired/blocked and were not replayed. To activate in a live enrolled workflow, the owner must apply the authorized runner provider configuration through the existing config lifecycle, preserving the one-writer, tool grants and rollback boundaries.
+
+The adapter is not Colibri/Hatchet and does not confer GUI, root, or network privileges. Running a Planner is distinct from accepting its proposed side effects. Local machine model health, ModelProvider schema acceptance, project runner acceptance, protected SYSTEM route and 5-host Stable release are separate gates.
+
+
+### RC011_QWEN_DURABLE_TEAM_E2E_20261031
+
+The existing Commander `createCommandPlanner` + `createTeamPlanner` (2 workers, one coordinator, serial worker invocation) + `createProjectEngine` was executed with the owner-local Qwen3-4B llama.cpp endpoint on the MMZ Linux laptop, using a strictly isolated disposable synthetic file and actual SQLite durable journal. The verified CLI is `node tools/local-llamacpp-runner-smoke.mjs`, also exposed as `npm run hybrid:planner-smoke` from the repo root. It never starts an existing workflow, alters the live runner configuration, touches the canonical PROJECT_BRAIN.md or exports model credentials. Only the file created by this invocation is read. All temporary artifacts are removed after closing the journal.
+
+**Measured live result:** CLI exit 0; phase 1 `QUEUED/PROJECT_STEP_RECORDED`, phase 2 `COMPLETED/PROJECT_ACCEPTANCE_VERIFIED`, 3 model provider calls, exactly 1 synthetic read-only tool execution, independently checked fixture unchanged, user project touched = false. This proves a real model-driven team-plan-to-durable-local-acceptance integration for one bounded read-only task. It does **not** prove the active MMZ Team Runner configuration is updated, historical expired workflow runs are recovered, a remote Hatchet coordinator is installed, or multi-chat/five-host Stable acceptance.
+
+The permanent `test/local-llamacpp-runner-smoke.test.mjs` covers the real SQLite ProjectEngine/TeamPlanner chain with an injected deterministic proposal and rejects unapproved tools; the live CLI requires a working owner-local llama.cpp Qwen provider and stays optional rather than a default CI dependency. This separates the fast offline contract test from explicit real-device readiness. Do not enable automatic scheduling or silently replay an unknown prior action based on this result.
+
+
+### RCV1_OWNER_GUI_INPUT_DELEGATION_20261031 — opt-in native owner-session input candidate
+
+Source `src/gui-owner-delegation.mjs` now includes an **off-by-default**, explicitly owner-authorized input relay from SYSTEM Core to the **same Windows owner user's GUI worker** at loopback. The input relay only activates when *both* machine `powerMode.guiControl.ownerAuthorizedTakeover=true` and an owner-authored validated `ownerGuiDelegation.allowTakeover=true` are accepted. Session0 input is not used as a fallback. Native takeover also requires a current explicit user authorization, a valid request correlation, an active owner-session worker reporting `session>0` and `allowMouse/allowKeyboard/explicitTakeoverRequired`, and a bound short-lived lease plus fresh frame; input calls carry a stable derived idempotency key. Current default read-only behavior is unchanged when the double opt-in is absent.
+
+**Current live limitation (not activated):** PC Emad's owner GUI worker `owner-gui-v1` on port 48837 has `allowMouse=false`, `allowKeyboard=false`, and its user-session launcher explicitly rejects changing those permissions. The protected SYSTEM machine routing path is still missing. Therefore this commit is **candidate code only** and cannot be promoted into live GUI by editing one flag. A reviewed owner-session launch/config change, protected machine route, and one harmless owner-window click/type test are separate acceptance gates. No live GUI installation, task restart, or config mutation was performed by this change.
+
+Tests: `test/gui-owner-input-delegation.test.mjs` (double opt-in, owner status proof, exact lease/frame admission, current-request idempotency, disabled policy/incident rejection) combined with existing `test/gui-owner-delegation.test.mjs` and `test/owner-gui-policy-overlay.test.mjs`. Do not conflate candidate test PASS with Windows native input PASS. The native GNOME test with own QA window has independently passed. KDE 6.6.6 reports XDG Portal capability but requires owner consent; a Portal timeout is a blocked gate, not a successful input action.
