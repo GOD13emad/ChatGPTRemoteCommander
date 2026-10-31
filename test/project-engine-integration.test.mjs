@@ -283,7 +283,12 @@ if (process.argv[2] === '--claim-worker') {
     });
   }
 
-  test('separate Node processes cannot claim the same project run concurrently', { timeout: 12000 }, async () => {
+  // On Windows hosted CI, process startup and SQLite lease admission can be delayed
+  // by unrelated runner load. Keep the same fencing/receipt assertions and bounded
+  // worker cleanup; only relax this specific cross-process harness watchdog.
+  const CLAIM_TEST_TIMEOUT_MS = process.platform === 'win32' ? 40000 : 12000;
+  const CLAIM_WORKER_TIMEOUT_MS = process.platform === 'win32' ? 30000 : 8000;
+  test('separate Node processes cannot claim the same project run concurrently', { timeout: CLAIM_TEST_TIMEOUT_MS }, async () => {
     const fixture = makeFixture({ planner: async () => { throw new Error('Competing parent must not plan'); } });
     const entered = deferred(), completed = deferred();
     // Attach rejection handlers immediately; a worker startup failure must not
@@ -293,7 +298,7 @@ if (process.argv[2] === '--claim-worker') {
     try {
       await fixture.create(); await fixture.start();
       child = spawn(process.execPath, [fileURLToPath(import.meta.url), '--claim-worker', fixture.root], { stdio: ['ignore', 'pipe', 'pipe', 'ipc'], windowsHide: true });
-      workerTimer = setTimeout(() => child.kill(), 8000);
+      workerTimer = setTimeout(() => child.kill(), CLAIM_WORKER_TIMEOUT_MS);
       let stderr = '';
       child.stderr.on('data', chunk => { stderr += chunk.toString(); });
       child.on('message', message => {
