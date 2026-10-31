@@ -37,6 +37,53 @@ export function classifySavedLoginFallback({
     passwordRequested:false,nativeLoginPromptEligible:true,
     next:'Only now may the owner sign in through the normal application UI; do not request passwords in ChatGPT'};
 }
+// Probes only availability/consent in the owner desktop; no caller needs the
+// secret values. A denied attach or unavailable OS probe is UNKNOWN, not absence.
+const OWNER_AUTH_PROBES=Object.freeze([
+  'EXISTING_OWNER_SESSION','NORMAL_OWNER_APP_PROFILE',
+  'BROWSER_NATIVE_CONSENTED_ATTACH','NATIVE_ACCESSIBILITY',
+  'BROWSER_MANAGED_AUTOFILL','OS_NATIVE_CREDENTIAL_UI'
+]);
+export async function probeOwnerLoginRoutes({
+  sameUserSession=false,signInRequired=true,probes={}
+}={}){
+  const safety={passwordRequested:false,askPasswordInChat:false,
+    credentialsExported:false,secretsRead:false};
+  if(!sameUserSession)return {...safety,decision:'OWNER_SESSION_REQUIRED',observations:[]};
+  if(!signInRequired)return {...safety,decision:'NO_LOGIN_ACTION_REQUIRED',observations:[]};
+  if(!probes||typeof probes!=='object'||Array.isArray(probes))
+    throw Error('WORKSPACE_AUTH_PROBES_INVALID');
+  const observations=[];
+  let missing=false;
+  for(const method of OWNER_AUTH_PROBES){
+    const inspect=probes[method];
+    if(typeof inspect!=='function'){
+      missing=true;observations.push({method,status:'NOT_CHECKED'});continue;
+    }
+    let status;
+    try{
+      const value=await inspect({readOnly:true,secretOutput:false});
+      status=value?.status;
+    }catch{
+      return {...safety,decision:'OWNER_ROUTE_OBSERVATION_UNCERTAIN',observations,
+        next:'Reconcile the native observation without replaying it'};
+    }
+    if(!['AUTHENTICATED','SAVED_LOGIN_AVAILABLE','NATIVE_CONSENT_REQUIRED',
+      'ABSENT_VERIFIED','NOT_CHECKED'].includes(status))
+      return {...safety,decision:'OWNER_ROUTE_OBSERVATION_UNCERTAIN',observations};
+    observations.push({method,status});
+    if(status==='AUTHENTICATED')return {...safety,decision:'REUSE_OWNER_AUTHENTICATED_SESSION',observations};
+    if(status==='SAVED_LOGIN_AVAILABLE')return {...safety,decision:'USE_NATIVE_SAVED_LOGIN',method,
+      observations,next:'Owner app/browser/OS uses its own stored credentials or passkey; no secret export'};
+    if(status==='NATIVE_CONSENT_REQUIRED')return {...safety,decision:'NATIVE_CONSENT_REQUIRED',method,
+      observations,next:'Approve only in the owning browser or operating-system UI'};
+    if(status==='NOT_CHECKED')missing=true;
+  }
+  if(missing)return {...safety,decision:'SAVED_LOGIN_CHECKS_INCOMPLETE',observations};
+  return {...safety,decision:'OWNER_NATIVE_SIGN_IN_LAST_RESORT',observations,
+    nativeLoginPromptEligible:true,
+    next:'Verified every supported owner login route absent; sign in only through the original application UI'};
+}
 export function chooseWorkspaceRoute(input){
   if(!input||!OPTIONS.has(input.target))throw Error('WORKSPACE_TARGET_INVALID');
   const desktop=input.desktop??'headless';
