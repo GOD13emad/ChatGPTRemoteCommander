@@ -448,7 +448,7 @@ test('app launch cannot accept caller-controlled executable paths, flags, URLs o
     callDriver:async()=>{called++;return {apps:[]}}});
   await assert.rejects(()=>c.execute('workspace_app_open',{
     name:'powershell.exe -enc boom',requestId:'reject-exe-001',
-    explicitUserAuthorization:'A valid signed-in owner authorizes app launch'}),/WORKSPACE_APP_IDENTITY_INVALID/);
+    explicitUserAuthorization:'A valid signed-in owner authorizes app launch'}),/WORKSPACE_APP_NOT_IN_OWNER_CATALOG/);
   assert.equal(called,1); // only installed-app catalog read, never a launch
   const other=createWorkspaceController({platform:'win32',ownerSession:async()=>false,
     callDriver:async()=>{throw Error('DRIVER_MUST_NOT_BE_CALLED')}});
@@ -481,4 +481,38 @@ test('owner proxy only forwards exact app names and hashed mutation identities',
   assert.match(messages[0].params.arguments.requestId,/^owrk-[a-f0-9]{48}$/);
   assert.notEqual(messages[0].params.arguments.requestId,'raw-private-request');
   assert.equal(messages[0].params.arguments.launch_path,undefined);
+});
+
+test('unverified running flag never causes duplicate launch and cannot claim reuse',async()=>{
+  const calls=[];
+  const c=createWorkspaceController({platform:'win32',ownerSession:async()=>true,
+    journal:createMemoryWorkspaceJournal(),
+    callDriver:async(name)=>{calls.push(name);return {apps:[{name:'Brave',
+      kind:'desktop',running:true,pid:0,launch_path:'C:\\Brave\\brave.exe'}]};}});
+  await assert.rejects(()=>c.execute('workspace_app_open',{name:'Brave',
+    requestId:'bad-running-001',
+    explicitUserAuthorization:'Open the same Brave app under the owner account'}),/WORKSPACE_APP_RUNNING_UNVERIFIED/);
+  assert.deepEqual(calls,['list_apps']);
+});
+
+test('unknown incident determination cannot clear a durable pending launch',async()=>{
+  let attempts=0;
+  const c=createWorkspaceController({platform:'win32',ownerSession:async()=>true,
+    journal:createMemoryWorkspaceJournal(),
+    callDriver:async name=>{
+      if(name==='list_apps')return {apps:[{name:'Notepad',kind:'desktop',running:false,pid:0,
+        launch_path:'C:\\Windows\\notepad.exe'}]};
+      attempts++;throw Error('UNKNOWN_NATIVE_LAUNCH');
+    }});
+  const a='Authorize exact installed Notepad while preserving desktop focus';
+  const first=await c.execute('workspace_app_open',{name:'Notepad',requestId:'unknown-state-001',
+    explicitUserAuthorization:a});
+  assert.equal(first.status,'RECONCILE_TARGET');
+  await assert.rejects(()=>c.execute('workspace_app_reconcile',{
+    name:'Notepad',determination:'MAYBE_WORKED',
+    requestId:'unknown-reconcile-001',explicitUserAuthorization:a}),/WORKSPACE_APP_DETERMINATION_INVALID/);
+  await assert.rejects(()=>c.execute('workspace_app_open',{
+    name:'Notepad',requestId:'unknown-state-002',
+    explicitUserAuthorization:a}),/WORKSPACE_TARGET_RECONCILIATION_REQUIRED/);
+  assert.equal(attempts,1);
 });
