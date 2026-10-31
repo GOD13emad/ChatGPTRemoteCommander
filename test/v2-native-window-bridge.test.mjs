@@ -1,6 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { executeV2NativeWindowAction } from '../src/v2-native-window-bridge.mjs';
+import { executeV2NativeWindowAction, reconcileV2NativeWindowAction } from '../src/v2-native-window-bridge.mjs';
+import {MutationIdempotencyStore} from '../src/mutation-idempotency.mjs';
+import {mkdtempSync,rmSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
 
 const route=(chat='chat-a',id='window-one')=>({
  hostId:'host',principalId:'owner',profileId:'profile',conversationId:chat,
@@ -170,4 +174,67 @@ test('owner window accessibility redacts secret-looking names and element identi
   ['[redacted]','[redacted]','[redacted]','Search query']);
  assert.deepEqual(out.elements.map(x=>x.sensitive),[true,true,true,false]);
  assert.equal(f.effects.length,0);
+});
+
+test('native re-observation reconciles an UNCERTAIN effect without another OS action',async()=>{
+ const dir=mkdtempSync(join(tmpdir(),'v2-native-reconcile-'));
+ const store=new MutationIdempotencyStore({directory:dir,scope:'owner-chat'});
+ try {
+  const f=fixture();f.services.receiptStore=store;f.grant();
+  f.failure(true);const first=await doAction(f);
+  assert.equal(first.status,'UNCERTAIN');
+  assert.match(first.identityDigest,/^[a-f0-9]{64}$/);
+  assert.equal(f.effects.length,1);
+  f.failure(false);
+  const verified=await reconcileV2NativeWindowAction({
+   route:route(),sessionHandle:'trusted-chat-handle',
+   action:'invoke',elementId:'button.refresh',services:f.services
+  });
+  assert.equal(verified.status,'EFFECT_OBSERVED');
+  assert.equal(verified.userGoalVerified,false);
+  assert.equal(verified.replayed,false);
+  assert.equal(verified.identityDigest,first.identityDigest);
+  assert.equal(f.effects.length,1);
+  assert.deepEqual(await doAction(f),verified);
+  assert.equal(f.effects.length,1);
+ } finally {store.close();rmSync(dir,{recursive:true,force:true});}
+});
+test('changed process generation and absent native effect proof do not reconcile',async()=>{
+ const dir=mkdtempSync(join(tmpdir(),'v2-native-reconcile-'));
+ const store=new MutationIdempotencyStore({directory:dir,scope:'owner-chat'});
+ try{
+  const f=fixture();f.services.receiptStore=store;f.grant();f.failure(true);
+  const first=await doAction(f);
+  f.start('different-process');
+  await assert.rejects(reconcileV2NativeWindowAction({
+   route:route(),sessionHandle:'trusted-chat-handle',
+   action:'invoke',elementId:'button.refresh',services:f.services
+  }),{mutationIdempotencyCode:'MUTATION_RECONCILIATION_STATE_INVALID'});
+  f.start('proc-start-1');f.verify(false);
+  await assert.rejects(reconcileV2NativeWindowAction({
+   route:route(),sessionHandle:'trusted-chat-handle',
+   action:'invoke',elementId:'button.refresh',services:f.services
+  }),{mutationIdempotencyCode:'MUTATION_RECONCILIATION_PROOF_REQUIRED'});
+  f.verify(true);f.granted.clear();
+  await assert.rejects(reconcileV2NativeWindowAction({
+   route:route(),sessionHandle:'trusted-chat-handle',
+   action:'invoke',elementId:'button.refresh',services:f.services
+  }),{code:'V2_GRANT_REQUIRED'});
+  assert.equal(f.effects.length,1);
+  f.grant();
+  assert.deepEqual((await doAction(f)).identityDigest,first.identityDigest);
+ }finally{store.close();rmSync(dir,{recursive:true,force:true});}
+});
+test('changed original element/payload cannot borrow a reconciled receipt',async()=>{
+ const dir=mkdtempSync(join(tmpdir(),'v2-native-reconcile-'));
+ const store=new MutationIdempotencyStore({directory:dir,scope:'owner-chat'});
+ try{
+  const f=fixture();f.services.receiptStore=store;f.grant();f.failure(true);
+  await doAction(f);
+  await assert.rejects(reconcileV2NativeWindowAction({
+   route:route(),sessionHandle:'trusted-chat-handle',
+   action:'invoke',elementId:'button.other',services:f.services
+  }),{mutationIdempotencyCode:'MUTATION_RECONCILIATION_BINDING_INVALID'});
+  assert.equal(f.effects.length,1);
+ }finally{store.close();rmSync(dir,{recursive:true,force:true});}
 });

@@ -1,7 +1,9 @@
 // V2 R4: owner-worker native-window bridge, candidate only; no public MCP
 // endpoint and no second GUI/receipt/lease engine. Input IDs are selections,
 // NOT identity proof; trusted owner session and OS window resolver supply it.
-import { normalizeV2Route } from './v2-routing-contract.mjs';
+import { normalizeV2Route, v2ResourceLeaseKey, v2OperationKey } from './v2-routing-contract.mjs';
+import {v2ActionDigest} from './v2-caller-assertion.mjs';
+import {createHash} from 'node:crypto';
 import { executeV2BoundOperation } from './v2-authorized-operation.mjs';
 
 const ID=/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
@@ -114,6 +116,7 @@ export async function executeV2NativeWindowAction({
  };
  // Do not reserve a receipt/lease if native session, owner or target is stale.
  const first=await descriptor();
+ const identityDigest=createHash('sha256').update(first.fingerprint).digest('hex');
  const tool=ACTION_TO_TOOL[action];
  const args=action==='observe'?{action}:action==='invoke'
    ?{action,elementId}:{action,elementId,text};
@@ -155,21 +158,85 @@ export async function executeV2NativeWindowAction({
      sessionHandle
     });
    }catch{
-    return Object.freeze({status:'UNCERTAIN',targetId:r.target.id});
+    return Object.freeze({status:'UNCERTAIN',targetId:r.target.id,identityDigest});
    }
    try{
     const after=await descriptor();
     if(after.fingerprint!==first.fingerprint)
-     return Object.freeze({status:'UNCERTAIN',targetId:r.target.id});
+     return Object.freeze({status:'UNCERTAIN',targetId:r.target.id,identityDigest});
     if(typeof services.nativeDriver.verify!=='function' ||
        await services.nativeDriver.verify({
         descriptor:after.descriptor,action,elementId
        })!==true)
-     return Object.freeze({status:'UNCERTAIN',targetId:r.target.id});
+     return Object.freeze({status:'UNCERTAIN',targetId:r.target.id,identityDigest});
    }catch{
-    return Object.freeze({status:'UNCERTAIN',targetId:r.target.id});
+    return Object.freeze({status:'UNCERTAIN',targetId:r.target.id,identityDigest});
    }
    return Object.freeze({status:'VERIFIED',targetId:r.target.id});
   }
  },tool,args);
+}
+
+
+/**
+ * Owner-worker-only positive reconciliation of a previously uncertain native
+ * UI effect. Never re-dispatches input. The native verifier must observe the
+ * exact current owner window and independent post-action state. Reconciliation
+ * is scoped through the SAME machine-global lease and durable receipt.
+ */
+export async function reconcileV2NativeWindowAction({
+ route,sessionHandle,action,elementId,text,services
+}={}){
+ const r=normalizeV2Route(route);
+ if(r.target.kind!=='app-window'||!valid(sessionHandle)||
+    !['invoke','type'].includes(action)||!valid(elementId)||
+    (action==='type'&&(typeof text!=='string'||!text.length||text.length>4096))||
+    (action==='invoke'&&text!==undefined))
+  fail('V2_WINDOW_RECONCILIATION_SELECTION_INVALID');
+ if(!services?.sessions||!services.nativeDriver||!services.grants||
+   !services.receiptStore)
+  fail('V2_WINDOW_TRUSTED_BACKEND_REQUIRED');
+ for(const fn of [services.sessions.resolveNativeRoute,services.ownerSeat,
+   services.authorizeWindow,services.nativeDriver.observe,
+   services.nativeDriver.verify,services.grants.isAllowed,services.withLease,
+   services.receiptStore.reconcileVerifiedObservation])
+  requiredFunction(fn);
+ const tool=ACTION_TO_TOOL[action],args=action==='invoke'?{action,elementId}:{action,elementId,text};
+ const key=createHash('sha256').update(v2OperationKey(r)).digest('hex');
+ const input={route:r,argumentsHash:v2ActionDigest(tool,args)};
+ const verifyBinding=async()=>{
+  const observed=normalizeV2Route(await services.sessions.resolveNativeRoute(sessionHandle));
+  if(!sameRoute(r,observed))fail('V2_WINDOW_SESSION_ROUTE_CHANGED');
+  if(await services.grants.isAllowed(r,tool)!==true)fail('V2_GRANT_REQUIRED');
+  const descriptor=await services.nativeDriver.observe(r.target.id);
+  const fingerprint=windowIdentity(descriptor);
+  const seat=await services.ownerSeat(sessionHandle);
+  if(!valid(seat)||seat!==descriptor.seatId||
+    r.target.id!==descriptor.targetId||r.hostId!==descriptor.hostId||
+    r.principalId!==descriptor.principalId)
+   fail('V2_WINDOW_NATIVE_OWNER_MISMATCH');
+  if(await services.authorizeWindow({route:r,descriptor,sessionHandle})!==true)
+   fail('V2_WINDOW_OWNER_CONSENT_REQUIRED');
+  return {descriptor,digest:createHash('sha256').update(fingerprint).digest('hex')};
+ };
+ const first=await verifyBinding();
+ return services.withLease(v2ResourceLeaseKey(r),async()=>{
+  const second=await verifyBinding();
+  if(second.digest!==first.digest)fail('V2_WINDOW_RECONCILIATION_IDENTITY_CHANGED');
+  return services.receiptStore.reconcileVerifiedObservation({
+   requestId:key,tool,input,expectedIdentityDigest:first.digest,
+   verify:async()=>{
+    const before=await verifyBinding();
+    if(before.digest!==first.digest)return false;
+    // The verifier is a trusted injected OS Accessibility callback, not
+    // a model-provided boolean or a screenshot in the request body.
+    const positive=await services.nativeDriver.verify({
+      descriptor:before.descriptor,action,elementId,sessionHandle
+    });
+    if(positive!==true)return false;
+    const after=await verifyBinding();
+    return after.digest===first.digest;
+   }
+  });
+ });
 }
