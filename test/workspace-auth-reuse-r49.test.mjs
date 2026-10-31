@@ -459,11 +459,11 @@ test('app launch cannot accept caller-controlled executable paths, flags, URLs o
   await assert.rejects(()=>other.execute('workspace_app_open',{
     name:'Notepad',requestId:'deny-cross-owner-001',
     explicitUserAuthorization:'Launch Notepad as an unrelated owner'}),/WORKSPACE_OWNER_SESSION_REQUIRED/);
-  const linux=createWorkspaceController({platform:'linux',ownerSession:async()=>true,
-    callDriver:async()=>{throw Error('NO_LINUX_LAUNCH')}});
+  const linux=createWorkspaceController({platform:'linux',ownerSession:async()=>false,
+    callDriver:async()=>{throw Error('NO_CROSS_OWNER_LAUNCH')}});
   await assert.rejects(()=>linux.execute('workspace_app_open',{
     name:'Notepad',requestId:'deny-linux-open-001',
-    explicitUserAuthorization:'Only a native Windows launch is supported'}),/WORKSPACE_APP_LAUNCH_PLATFORM_UNAVAILABLE/);
+    explicitUserAuthorization:'Require the original Linux user session'}),/WORKSPACE_OWNER_SESSION_REQUIRED/);
 });
 
 test('owner proxy only forwards exact app names and hashed mutation identities',async()=>{
@@ -552,9 +552,64 @@ test('default Windows signed-in app launch route exposes native catalog/open/rec
   assert.equal(r.launchStatus,'NOT_EXECUTED');
 });
 
-test('Linux owner login reuse is not falsely claimed to have Windows launch support',()=>{
-  const r=chooseWorkspaceRoute({target:'new-browser',desktop:'wayland',sameUserSession:true});
-  assert.equal(r.route,'OWNER_NATIVE_BROWSER_LAUNCH_REQUIRED');
-  assert.equal(r.nativeAppLauncher.status,'PLATFORM_NOT_YET_SUPPORTED');
-  assert.equal(r.credentials,'NEVER_EXPORT_OR_CLONE');
+test('Linux owner app launch advertises native agent but not Wayland background acceptance',()=>{
+  for(const desktop of ['x11','wayland']){
+    const r=chooseWorkspaceRoute({target:'new-browser',desktop,sameUserSession:true});
+    assert.equal(r.route,'OWNER_NATIVE_BROWSER_LAUNCH_REQUIRED');
+    assert.deepEqual(r.nativeAppLauncher,{
+      status:'NATIVE_OWNER_AGENT_REQUIRED',catalog:'workspace_app_catalog',
+      open:'workspace_app_open',reconcile:'workspace_app_reconcile',
+      minimizing:'LINUX_BACKGROUND_CAPABILITY_NOT_VERIFIED'
+    });
+    assert.equal(r.credentials,'NEVER_EXPORT_OR_CLONE');
+  }
+});
+
+test('Linux same-owner native desktop launch is name-scoped, no Windows flags or credentials',async()=>{
+  for(const sessionType of ['wayland','x11']){
+    let running=false;
+    const calls=[];
+    const c=createWorkspaceController({platform:'linux',env:{
+      XDG_RUNTIME_DIR:'/run/user/1000',XDG_SESSION_TYPE:sessionType},
+      ownerSession:async()=>true,journal:createMemoryWorkspaceJournal(),
+      callDriver:async(name,args)=>{
+        calls.push({name,args});
+        if(name==='list_apps')return {apps:[{name:'Mousepad',kind:'desktop',
+          running,pid:running?4131:0,launch_path:'/usr/bin/mousepad --session-owner'}]};
+        if(name==='launch_app'){running=true;return {pid:4131};}
+      }
+    });
+    const out=await c.execute('workspace_app_open',{
+      name:'Mousepad',requestId:'linux-'+sessionType+'-owner-open-01',
+      explicitUserAuthorization:'Launch original owner-installed Mousepad without focus steal'});
+    assert.equal(out.status,'LAUNCHED_OWNER_PROFILE');
+    assert.equal(out.authentication,'UNVERIFIED');
+    assert.equal(out.foreground,'PRESERVE_REQUESTED_NOT_VERIFIED');
+    assert.deepEqual(calls.map(x=>x.name),['list_apps','launch_app','list_apps']);
+    assert.deepEqual(calls[1].args,{name:'Mousepad'});
+    const again=await c.execute('workspace_app_open',{
+      name:'Mousepad',requestId:'linux-'+sessionType+'-owner-open-02',
+      explicitUserAuthorization:'Reuse installed Mousepad in this same Linux session'});
+    assert.equal(again.status,'ALREADY_RUNNING');
+    assert.equal(calls.filter(x=>x.name==='launch_app').length,1);
+  }
+});
+
+test('Linux native refused background launch does not retry a second process',async()=>{
+  let launched=0;
+  const c=createWorkspaceController({platform:'linux',ownerSession:async()=>true,
+    journal:createMemoryWorkspaceJournal(),
+    callDriver:async(name)=>{
+      if(name==='list_apps')return {apps:[{name:'Mousepad',kind:'desktop',running:false,pid:0}]};
+      launched++;
+      return {status:'refused',refusal:{code:'background_unavailable'}};
+    }});
+  const auth='Authorize an original Linux owner app launch without any foreground step';
+  const r=await c.execute('workspace_app_open',{name:'Mousepad',requestId:'linux-refused-001',
+    explicitUserAuthorization:auth});
+  assert.equal(r.status,'REFUSED_NO_EFFECT');
+  const r2=await c.execute('workspace_app_open',{name:'Mousepad',requestId:'linux-refused-002',
+    explicitUserAuthorization:auth});
+  assert.equal(r2.status,'REFUSED_NO_EFFECT');
+  assert.equal(launched,2); // two independent user requests, no replay of one uncertain effect
 });
