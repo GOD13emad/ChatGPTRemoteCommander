@@ -276,6 +276,8 @@ if (process.platform === 'linux') {
     const outcome = run('pwsh.exe', ['-NoProfile', '-Command', command]);
     if (outcome.skipped) throw new Error('PowerShell 7 parser is required on Windows');
   }
+  const mock = run('pwsh.exe', ['-NoLogo','-NoProfile','-NonInteractive','-File','test/admin-runtime-task-mock-windows.ps1']);
+  if (mock.skipped) throw new Error('PowerShell 7 native Scheduled Tasks mock is required on Windows');
   console.log('INSTALLER_CHECK_PASS platform=win32 powershell=true');
 } else {
   console.log(`INSTALLER_CHECK_SKIP platform=${process.platform}`);
