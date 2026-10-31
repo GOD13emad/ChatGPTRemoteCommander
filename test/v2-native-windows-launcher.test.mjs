@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import os from 'node:os';
 import fs from 'node:fs';
+import {createHash} from 'node:crypto';
 import path from 'node:path';
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
@@ -17,6 +18,8 @@ test('Windows native binary launcher is a V2-only source project, not browser re
  assert.match(source,/RedirectStandardOutput = true/);
  assert.match(source,/CopyToAsync/);
  assert.match(source,/RCV2_NATIVE_MESSAGING_ALLOWED_ORIGIN/);
+ assert.match(source,/SHA256.HashData/);
+ assert.match(source,/PinnedFile\(nodePath, nodeSha\)/);
  assert.doesNotMatch(source,/RegistryKey|OpenSubKey|SetValue\(/);
 });
 const available=process.platform==='win32'&&typeof process.env.RCV2_NATIVE_LAUNCHER_DIR==='string'
@@ -29,9 +32,13 @@ test('compiled Windows native host transports real binary frames with pinned ext
    'RCV2.NativeHost.deps.json','RCV2.NativeHost.runtimeconfig.json']){
   if(fs.existsSync(path.join(from,f)))fs.copyFileSync(path.join(from,f),path.join(tmp,f));
  }
- fs.writeFileSync(path.join(tmp,'native-host-config.json'),
-  JSON.stringify({schema:1,origin,nodePath:process.execPath,
-   hostScriptPath:path.join(root,'tools/v2-native-messaging-host.mjs')}));
+ const hostScriptPath=path.join(root,'tools/v2-native-messaging-host.mjs');
+ const hash=p=>createHash('sha256').update(fs.readFileSync(p)).digest('hex');
+ const config={schema:2,origin,nodePath:process.execPath,hostScriptPath,
+   nodeSha256:hash(process.execPath),hostScriptSha256:hash(hostScriptPath)};
+ const configPath=path.join(tmp,'native-host-config.json');
+ const writeConfig=v=>fs.writeFileSync(configPath,JSON.stringify(v));
+ writeConfig(config);
  const payload=encodeV2NativeMessage({schema:1,type:'owner_preflight',requestId:'native-123'});
  const run=(args,input=payload)=>spawnSync(path.join(tmp,'RCV2.NativeHost.exe'),args,
    {input,timeout:12000,env:{...process.env,
@@ -45,6 +52,17 @@ test('compiled Windows native host transports real binary frames with pinned ext
  assert.equal(messages[0].toolsAuthorized,false);
  assert.equal(messages[0].chatAuthorized,false);
  assert.equal(messages[0].canReadCookies,false);
+ for(const field of ['nodeSha256','hostScriptSha256']){
+  writeConfig({...config,[field]:'0'.repeat(64)});
+  const invalid=run([origin]);
+  assert.notEqual(invalid.status,0,field+' must fail closed');
+  assert.equal(invalid.stdout?.length,0);
+ }
+ writeConfig({...config,schema:1});
+ const legacy=run([origin]);
+ assert.notEqual(legacy.status,0);
+ assert.equal(legacy.stdout?.length,0);
+ writeConfig(config);
  const wrong=run(['chrome-extension://'+'b'.repeat(32)+'/']);
  assert.notEqual(wrong.status,0);
  assert.equal(wrong.stdout?.length,0);

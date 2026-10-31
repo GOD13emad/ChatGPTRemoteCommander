@@ -21,6 +21,9 @@ test('owner installer supports exact pinned ID and never provisions from a model
  assert.match(body,/V2_NATIVE_EXACT_EXTENSION_ID_REQUIRED/);
  assert.match(body,/V2_NATIVE_OWNER_CONTEXT_REQUIRED/);
  assert.match(body,/V2_NATIVE_PINNED_ARTIFACT_HASH_REQUIRED/);
+ assert.match(body,/ExpectedNodeSha256/);
+ assert.match(body,/V2_NATIVE_INSTALL_STAGE_HASH_MISMATCH/);
+ assert.match(body,/nodeSha256=\$nodeSha\.ToLowerInvariant\(\)/);
  assert.match(body,/V2_NATIVE_CANONICAL_HOST_REQUIRED/);
  assert.match(body,/NativeMessaging\.stage-/);
  assert.match(body,/HKCU:/);

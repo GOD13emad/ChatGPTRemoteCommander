@@ -8,7 +8,8 @@ param(
  [string]$NodePath='',
  [string]$HostScriptPath='',
  [string]$ExpectedLauncherSha256='',
- [string]$ExpectedHostScriptSha256=''
+ [string]$ExpectedHostScriptSha256='',
+ [string]$ExpectedNodeSha256=''
 )
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
@@ -51,20 +52,24 @@ $node=BoundedPath $NodePath '.exe'
 $hostScript=BoundedPath $HostScriptPath '.mjs'
 $canonicalHost=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot 'v2-native-messaging-host.mjs'))
 if($hostScript -cne $canonicalHost){throw 'V2_NATIVE_CANONICAL_HOST_REQUIRED'}
+$nodeSha=(Get-FileHash -LiteralPath $node -Algorithm SHA256).Hash
+$hostSha=(Get-FileHash -LiteralPath $hostScript -Algorithm SHA256).Hash
 if($Mode -eq 'Install'){
  if($ExpectedLauncherSha256 -cnotmatch '^[A-Fa-f0-9]{64}$' -or
-    $ExpectedHostScriptSha256 -cnotmatch '^[A-Fa-f0-9]{64}$'){
+    $ExpectedHostScriptSha256 -cnotmatch '^[A-Fa-f0-9]{64}$' -or
+    $ExpectedNodeSha256 -cnotmatch '^[A-Fa-f0-9]{64}$'){
   throw 'V2_NATIVE_PINNED_ARTIFACT_HASH_REQUIRED'
  }
  $exeSha=(Get-FileHash -LiteralPath (Join-Path $sourceDir 'RCV2.NativeHost.exe') -Algorithm SHA256).Hash
- $hostSha=(Get-FileHash -LiteralPath $hostScript -Algorithm SHA256).Hash
  if($exeSha -cne $ExpectedLauncherSha256.ToUpperInvariant() -or
-    $hostSha -cne $ExpectedHostScriptSha256.ToUpperInvariant()){
+    $hostSha -cne $ExpectedHostScriptSha256.ToUpperInvariant() -or
+    $nodeSha -cne $ExpectedNodeSha256.ToUpperInvariant()){
   throw 'V2_NATIVE_INSTALL_ARTIFACT_HASH_MISMATCH'
  }
 }
 $layout=@{
- schema=1;origin=$origin;nodePath=$node;hostScriptPath=$hostScript
+ schema=2;origin=$origin;nodePath=$node;hostScriptPath=$hostScript;
+ nodeSha256=$nodeSha.ToLowerInvariant();hostScriptSha256=$hostSha.ToLowerInvariant()
 }
 $manifest=@{
  name=$hostName;description='Commander V2 owner preflight';
@@ -102,6 +107,12 @@ New-Item -ItemType Directory -Path $stage -ErrorAction Stop|Out-Null
 try{
  foreach($file in $files){
   Copy-Item -LiteralPath (Join-Path $sourceDir $file) -Destination (Join-Path $stage $file) -ErrorAction Stop
+ }
+ $stagedSha=(Get-FileHash -LiteralPath (Join-Path $stage 'RCV2.NativeHost.exe') -Algorithm SHA256).Hash
+ if($stagedSha -cne $ExpectedLauncherSha256.ToUpperInvariant() -or
+    (Get-FileHash -LiteralPath $node -Algorithm SHA256).Hash -cne $ExpectedNodeSha256.ToUpperInvariant() -or
+    (Get-FileHash -LiteralPath $hostScript -Algorithm SHA256).Hash -cne $ExpectedHostScriptSha256.ToUpperInvariant()){
+  throw 'V2_NATIVE_INSTALL_STAGE_HASH_MISMATCH'
  }
  [IO.File]::WriteAllText((Join-Path $stage 'native-host-config.json'),
   (ConvertTo-Json $layout -Depth 4 -Compress)+'\n',[Text.UTF8Encoding]::new($false))

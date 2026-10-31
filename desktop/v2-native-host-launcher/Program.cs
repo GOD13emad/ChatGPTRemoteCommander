@@ -2,6 +2,7 @@
 // No GUI, registry writes, profile access, credentials or tool dispatch.
 // A browser must register an explicit user-local host + extension origin first.
 using System.Diagnostics;
+using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 
@@ -11,7 +12,9 @@ internal static class Program
         @"^chrome-extension://[a-p]{32}/$",
         RegexOptions.CultureInvariant | RegexOptions.NonBacktracking);
     private static readonly HashSet<string> Required = new(StringComparer.Ordinal)
-        { "schema", "origin", "nodePath", "hostScriptPath" };
+        { "schema", "origin", "nodePath", "hostScriptPath", "nodeSha256", "hostScriptSha256" };
+    private static readonly Regex Digest = new(
+        @"^[a-f0-9]{64}$", RegexOptions.CultureInvariant | RegexOptions.NonBacktracking);
 
     private static int Deny()
     {
@@ -37,12 +40,14 @@ internal static class Program
             if (data.ValueKind != JsonValueKind.Object ||
                 data.EnumerateObject().Count() != Required.Count ||
                 data.EnumerateObject().Any(x => !Required.Contains(x.Name)) ||
-                data.GetProperty("schema").GetInt32() != 1)
+                data.GetProperty("schema").GetInt32() != 2)
                 return Deny();
 
             string origin = data.GetProperty("origin").GetString() ?? "";
             string nodePath = data.GetProperty("nodePath").GetString() ?? "";
             string hostScript = data.GetProperty("hostScriptPath").GetString() ?? "";
+            string nodeSha = data.GetProperty("nodeSha256").GetString() ?? "";
+            string hostSha = data.GetProperty("hostScriptSha256").GetString() ?? "";
             if (!Origin.IsMatch(origin) || !string.Equals(origin, args[0], StringComparison.Ordinal) ||
                 nodePath.Length > 2048 || hostScript.Length > 2048 ||
                 !Path.IsPathFullyQualified(nodePath) || !Path.IsPathFullyQualified(hostScript) ||
@@ -50,7 +55,8 @@ internal static class Program
                 !hostScript.EndsWith(".mjs", StringComparison.OrdinalIgnoreCase) ||
                 !File.Exists(nodePath) || !File.Exists(hostScript) ||
                 (File.GetAttributes(nodePath) & FileAttributes.ReparsePoint) != 0 ||
-                (File.GetAttributes(hostScript) & FileAttributes.ReparsePoint) != 0)
+                (File.GetAttributes(hostScript) & FileAttributes.ReparsePoint) != 0 ||
+                !PinnedFile(nodePath, nodeSha) || !PinnedFile(hostScript, hostSha))
                 return Deny();
 
             var start = new ProcessStartInfo(nodePath)
@@ -79,6 +85,15 @@ internal static class Program
         {
             return Deny();
         }
+    }
+
+    // Per-launch integrity guard; not a sandbox against a malicious same-user writer.
+    private static bool PinnedFile(string file, string expected)
+    {
+        if (!Digest.IsMatch(expected)) return false;
+        using var input = File.OpenRead(file);
+        string actual = Convert.ToHexString(SHA256.HashData(input)).ToLowerInvariant();
+        return string.Equals(actual, expected, StringComparison.Ordinal);
     }
 
     private static async Task CopyAndClose(Stream source, Stream destination)
