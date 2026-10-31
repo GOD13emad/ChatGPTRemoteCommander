@@ -111,3 +111,50 @@ test('missing or revoked native credential evidence blocks promotion after struc
   assert.equal(s.allHostsOperational,false);
  }
 });
+
+test('offline nonsettling host cannot block independent healthy host; abort is scoped',async()=>{
+ let aborted=false;
+ const f=createV2FleetReadiness({
+  hosts:[hosts[0],hosts[3]],now:()=>200000,
+  observationTimeoutMs:120,
+  observeHost:async(hostId,{signal})=>{
+   if(hostId==='offline')return new Promise(()=>{signal.addEventListener('abort',()=>{aborted=true;},{once:true});});
+   return {hostId,observedAtMs:199990,transport:'CONNECTED',version:'0.11.0-dev.18'};
+  }
+ });
+ const result=await f.snapshot();
+ assert.equal(aborted,true);
+ assert.equal(result.connected,1);
+ assert.equal(result.nodes[0].transport,'CONNECTED');
+ assert.equal(result.nodes[1].transport,'UNKNOWN');
+ assert.equal(result.nodes[1].reason,'OBSERVATION_TIMEOUT');
+ assert.equal(result.allHostsOperational,false);
+});
+test('unexpected attestor rejection and malformed negative timestamp remain fail-closed',async()=>{
+ const f=createV2FleetReadiness({
+  hosts:[hosts[0],hosts[1]],now:()=>2000,
+  observeHost:async id=>{
+   if(id==='win-owner')throw Error('owner-private-secret');
+   return {hostId:id,observedAtMs:-1,transport:'CONNECTED',version:'2.0.0',
+    chatIdentity:'AUTHENTICATED_CHAT',chatIdentityAttested:true,ownerSessionAttested:true,
+    guiOwner:{configured:true,accepted:true,ownerSessionAttested:true,driverReady:true},
+    v2:{installed:true,exactBuildVerified:true,liveAcceptancePassed:true},
+    enrollment:{structuralStatus:'STRUCTURAL_MATCH',scope:'ALL_HOST_OS_USERS',
+     allNativeUsersEnumerated:true,allProfilesEnumerated:true,
+     credentialReferencesPreserved:true,credentialUsabilityAttested:true,nativeOwnerAttested:true}
+   };
+  }
+ });
+ const out=await f.snapshot();
+ assert.equal(out.connected,0);
+ assert.equal(out.nodes[0].reason,'OBSERVATION_UNAVAILABLE');
+ assert.equal(out.nodes[1].reason,'EVIDENCE_STALE_OR_UNBOUND');
+ assert.equal(JSON.stringify(out).includes('owner-private-secret'),false);
+ assert.equal(out.allHostsOperational,false);
+});
+test('reject invalid observation deadlines at bootstrap',()=>{
+ for(const observationTimeoutMs of [-1,0,99,30001,1.5,NaN])
+  assert.throws(()=>createV2FleetReadiness({
+   hosts:[hosts[0]],observeHost:async()=>({}),observationTimeoutMs
+  }),{code:'V2_FLEET_TRUSTED_BOOTSTRAP_REQUIRED'});
+});

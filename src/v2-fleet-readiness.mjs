@@ -5,11 +5,14 @@ const VERSION=/^\d+\.\d+\.\d+(?:-[A-Za-z0-9][A-Za-z0-9._-]{0,80})?$/;
 const PLATFORMS=new Set(['win32','linux']);
 const BOUNDARY='TRUSTED_PROFILE_NOT_AUTHENTICATED_CHAT';
 function fail(code){throw Object.assign(new Error(code),{code});}
+function failTimeout(){return Object.assign(new Error('V2_FLEET_OBSERVATION_TIMEOUT'),
+ {code:'V2_FLEET_OBSERVATION_TIMEOUT'});}
 /** observeHost(hostId) must be owner-trusted runtime attestation, NOT RPC input. */
-export function createV2FleetReadiness({hosts,observeHost,now=Date.now,staleAfterMs=60000}={}){
+export function createV2FleetReadiness({hosts,observeHost,now=Date.now,staleAfterMs=60000,observationTimeoutMs=5000}={}){
  if(!Array.isArray(hosts)||hosts.length<1||hosts.length>25||
     typeof observeHost!=='function'||typeof now!=='function'||
-    !Number.isSafeInteger(staleAfterMs)||staleAfterMs<1000||staleAfterMs>3600000)
+    !Number.isSafeInteger(staleAfterMs)||staleAfterMs<1000||staleAfterMs>3600000||
+    !Number.isSafeInteger(observationTimeoutMs)||observationTimeoutMs<100||observationTimeoutMs>30000)
    fail('V2_FLEET_TRUSTED_BOOTSTRAP_REQUIRED');
  const seen=new Set();
  const inventory=hosts.map(x=>{
@@ -25,7 +28,20 @@ export function createV2FleetReadiness({hosts,observeHost,now=Date.now,staleAfte
   async snapshot(){
    const at=now();
    if(!Number.isSafeInteger(at)||at<0)fail('V2_FLEET_CLOCK_INVALID');
-   const fetched=await Promise.allSettled(inventory.map(x=>observeHost(x.hostId)));
+   // A never-settling remote host must not freeze the whole fleet census.
+   // Each attestor gets an independent, bounded deadline and abort signal.
+   const fetched=await Promise.allSettled(inventory.map(async x=>{
+     const controller=new AbortController();let timer;
+     const timeout=new Promise((_,reject)=>{
+       timer=setTimeout(()=>{
+         controller.abort();reject(failTimeout());
+       },observationTimeoutMs);
+     });
+     try{return await Promise.race([
+       Promise.resolve().then(()=>observeHost(x.hostId,Object.freeze({signal:controller.signal}))),
+       timeout
+     ]);}finally{clearTimeout(timer);}
+   }));
    const nodes=fetched.map((r,i)=>{
     const host=inventory[i];
     const unknown=(reason)=>Object.freeze({
@@ -33,10 +49,12 @@ export function createV2FleetReadiness({hosts,observeHost,now=Date.now,staleAfte
       chatIdentity:'NOT_VERIFIED',guiOwner:'NOT_VERIFIED',
       v2Installed:'NOT_VERIFIED',enrollment:'NOT_VERIFIED',reason
     });
-    if(r.status==='rejected')return unknown('OBSERVATION_UNAVAILABLE');
+    if(r.status==='rejected')return unknown(r.reason?.code==='V2_FLEET_OBSERVATION_TIMEOUT'
+      ?'OBSERVATION_TIMEOUT':'OBSERVATION_UNAVAILABLE');
     const d=r.value;
     if(!d||typeof d!=='object'||d.hostId!==host.hostId||
        typeof d.observedAtMs!=='number'||!Number.isSafeInteger(d.observedAtMs)||
+       d.observedAtMs<0||
        d.observedAtMs>at||at-d.observedAtMs>staleAfterMs)
       return unknown('EVIDENCE_STALE_OR_UNBOUND');
     if(d.transport!=='CONNECTED')
