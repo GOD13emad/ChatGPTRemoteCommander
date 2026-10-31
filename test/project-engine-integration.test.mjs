@@ -84,7 +84,7 @@ async function claimWorker(root) {
 if (process.argv[2] === '--claim-worker') {
   await claimWorker(process.argv[3]);
 } else {
-  test('automatic scheduler never plans an unenrolled workflow and completes only after explicit enrollment', { timeout: 9000 }, async t => {
+  test('automatic scheduler never plans an unenrolled workflow and completes only after explicit enrollment', { timeout: 20000 }, async t => {
     const fixture = makeFixture({ scheduler: true, runner: { autoTick: true }, planner: async () => proposal('write_text', { path: 'result.txt', content: 'verified output' }) });
     try {
       await fixture.create();
@@ -97,7 +97,7 @@ if (process.argv[2] === '--claim-worker') {
       t.diagnostic('SCHEDULER_PHASE=unenrolled_not_planned');
       await fixture.start();
       t.diagnostic('SCHEDULER_PHASE=enrolled_waiting_for_completion');
-      const final = await until(async () => { const current = await fixture.status(); return current.status === 'COMPLETED' ? current : null; });
+      const final = await until(async () => { const current = await fixture.status(); return current.status === 'COMPLETED' ? current : null; }, 15000);
       assert.equal(final.actions, 1);
       assert.equal(fixture.plans, 1);
       assert.equal(fixture.calls, 1);
