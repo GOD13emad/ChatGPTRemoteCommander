@@ -63,11 +63,24 @@ function Update([string]$Name,[string]$Sha){
     try{
       $lines=Get-Content -LiteralPath $stdout -ErrorAction Stop
       $diagnosticCommit=if($Name -eq 'PROMOTE'){$ExpectedCommit}else{$Baseline}
-      $rx='^GATE_OUTPUT_FILES runId=(qualification-(?:check|test)-'+$diagnosticCommit.Substring(0,12)+'-[0-9a-f]{32}) stdout=([^\r\n]+?) stderr='
-      $matches=@($lines|Where-Object {$_ -match $rx})
-      if($matches.Count -ne 1){throw 'NO_UNIQUE_TEST_OUTPUT'}
-      $null=$matches[0] -match $rx
-      $id=$Matches[1];$given=[IO.Path]::GetFullPath($Matches[2])
+      # The updater may emit CHECK and TEST log pairs in the same stdout.
+      # Select only the SHA-scoped stage that actually failed, never the first log.
+      $selector=Join-Path $Source 'tools/qualification-failed-stage-r173.mjs'
+      if(-not(Test-Path -LiteralPath $selector -PathType Leaf)){throw 'R173_SELECTOR_MISSING'}
+      $selected=@(& node.exe $selector $stdout $diagnosticCommit)
+      if($LASTEXITCODE -ne 0 -or $selected.Count -ne 1){
+        throw 'R173_STAGE_SELECTION_FAIL_CLOSED'
+      }
+      $selectedRx='^R173_FAILED_STAGE_ID=(qualification-(?:check|test)-'+$diagnosticCommit.Substring(0,12)+'-[0-9a-f]{32})$'
+      $selection=[regex]::Match([string]$selected[0],$selectedRx)
+      if(-not $selection.Success){throw 'R173_STAGE_SELECTION_FAIL_CLOSED'}
+      $id=$selection.Groups[1].Value
+      $rx='^GATE_OUTPUT_FILES runId='+[regex]::Escape($id)+' stdout=([^\r\n]+?) stderr='
+      $records=@($lines|Where-Object {$_ -match $rx})
+      if($records.Count -ne 1){throw 'R173_STAGE_FILE_AMBIGUOUS'}
+      $fileRecord=[regex]::Match([string]$records[0],$rx)
+      if(-not $fileRecord.Success){throw 'R173_STAGE_FILE_INVALID'}
+      $given=[IO.Path]::GetFullPath($fileRecord.Groups[1].Value)
       $inner=Join-Path $Root ('STATE\ChatGPTRemoteCommander\update-logs\qualification-output-'+$id+'.stdout.log')
       if($given -cne [IO.Path]::GetFullPath($inner)){throw 'WRONG_LOG_PATH'}
       $size=(Get-Item -LiteralPath $inner -ErrorAction Stop).Length
