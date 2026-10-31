@@ -52,7 +52,13 @@ function normalizedWindows(rows){
 }
 function findWindow(rows,args){assertIdentity(args);return normalizedWindows(rows).find(w=>w.processId===args.processId&&w.handle===args.handle);}
 function safeApplication(w){return /(^|[^a-z])firefox([._-]?(firefox|exe))?($|[^a-z])/i.test(w.wmClass+' '+w.appName);}
-export function createWorkspaceTargetTools({gui,bindings=new Map()}){
+// Native GUI_LEASE_BUSY is raised by gui_session_begin before a lease is granted.
+// Wait for its legitimate owner to release the lease; never end or steal that lease.
+// Click/type/focus are intentionally NOT retried: their native effect may be unknown.
+const LEASE_BUSY_RETRY_DELAYS_MS=Object.freeze([120,240,400,600,900]);
+const isNativeLeaseBusy=error=>error?.guiCode==='GUI_LEASE_BUSY'||
+  typeof error?.message==='string'&&/(?:^|[^A-Z0-9_])GUI_LEASE_BUSY(?:$|[^A-Z0-9_])/.test(error.message);
+export function createWorkspaceTargetTools({gui,bindings=new Map(),wait=ms=>new Promise(resolve=>setTimeout(resolve,ms))}){
  if(typeof gui!=='function')throw Error('WORKSPACE_GUI_BACKEND_REQUIRED');
  if(!(bindings instanceof Map))throw Error('WORKSPACE_TARGET_BINDINGS_INVALID');
  const prune=()=>{
@@ -67,6 +73,18 @@ export function createWorkspaceTargetTools({gui,bindings=new Map()}){
   return record;
  };
  const status=async()=>{const s=await gui('gui_status',{});if(s?.ok!==true||s.available!==true)reject('GUI_UNAVAILABLE');return s;};
+ // Retry only pre-acquisition contention. Re-admit through current safety/status
+ // on every attempt; the native controller enforces current policy and consent.
+ const beginWithRetry=async input=>{
+  for(let attempt=0;;attempt++){
+   try{return await gui('gui_session_begin',input);}
+   catch(error){
+    if(!isNativeLeaseBusy(error)||attempt>=LEASE_BUSY_RETRY_DELAYS_MS.length)throw error;
+    await wait(LEASE_BUSY_RETRY_DELAYS_MS[attempt]);
+    await status();
+   }
+  }
+ };
  const enumerate=lease=>gui('gui_list_windows',{lease});
  const exact=async args=>{
   const binding=validateLease(args);
@@ -79,7 +97,7 @@ export function createWorkspaceTargetTools({gui,bindings=new Map()}){
  return {definitions:workspaceTargetDefinitions,execute:async(name,args={})=>{
   switch(name){
    case 'workspace_target_list':{
-    await status();const session=await gui('gui_session_begin',{mode:'observe',ttlSeconds:30});
+    await status();const session=await beginWithRetry({mode:'observe',ttlSeconds:30});
     if(!session?.ok||!session.lease)reject('OBSERVE_LEASE_UNAVAILABLE');
     try{const rows=await enumerate(session.lease);
       return {ok:true,backend:'owner-native-gui',application:args.application||'all',windows:normalizedWindows(rows).filter(w=>args.application!=='firefox'||safeApplication(w)).map(w=>({processId:w.processId,handle:w.handle,title:w.title,wmClass:w.wmClass,appName:w.appName,focused:w.focused,...(w.screenIndex===undefined?{}:{screenIndex:w.screenIndex}),...(w.bounds?{bounds:w.bounds}:{})})),privateProfileAccess:false};
@@ -89,7 +107,7 @@ export function createWorkspaceTargetTools({gui,bindings=new Map()}){
     const guiState=await status();assertIdentity(args);prune();if(bindings.size>=32)reject('LEASE_CAPACITY');
     if(args.mode==='takeover'&&(!args.explicitUserAuthorization||args.explicitUserAuthorization.length<5))reject('AUTHORIZATION_REQUIRED');
     const input={mode:args.mode||'observe',ttlSeconds:60,...(args.mode==='takeover'?{explicitUserAuthorization:args.explicitUserAuthorization}:{})};
-    const session=await gui('gui_session_begin',input);
+    const session=await beginWithRetry(input);
     if(!session?.ok||!session.lease)reject('LEASE_UNAVAILABLE');
     if(session.mode!==input.mode){
      await gui('gui_session_end',{lease:session.lease});
