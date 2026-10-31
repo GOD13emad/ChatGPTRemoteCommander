@@ -338,6 +338,13 @@ TOOLS.push(...operatorTools.definitions);
 // A single evidence-aware selector; actual effects stay in the existing Commander tools.
 const hybridControl = createHybridControl({
   platform:process.platform,config,toolNames:()=>TOOLS.map(tool=>tool.name),
+  providerEvidence:async()=>{
+    try {
+      const workflow=workflowTools?await workflowTools.execute('workflow_status',{}):{};
+      return {project:{enabled:workflow?.enabled===true,
+        runnerConfigured:workflow?.runnerConfigured===true}};
+    }catch{return {project:{enabled:false,runnerConfigured:false}};}
+  },
   ownerStatus:async()=>{
     // Only a successful authenticated same-owner broker RPC proves this
     // session exists. A configured port, native process or window alone
