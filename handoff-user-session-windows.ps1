@@ -26,11 +26,21 @@ function Get-CommanderBusy {
     $body=@{jsonrpc='2.0';id=1;method='tools/call';params=@{name='system_status';arguments=@{}}}|ConvertTo-Json -Depth 8 -Compress
     $r=Invoke-RestMethod -Uri 'http://127.0.0.1:47831/mcp' -Method Post -ContentType 'application/json' -Body $body -TimeoutSec 3
     $s=$r.result.structuredContent
-    $active=if($s.concurrency){[int]$s.concurrency.activeOperations}else{0}
-    $leases=if($s.durableWorkflows -and $s.durableWorkflows.schedulerState){[int]$s.durableWorkflows.schedulerState.currentLeases}else{0}
-    return [pscustomobject]@{active=$active;leases=$leases}
+    if($null -eq $s -or $null -eq $s.concurrency -or
+       $null -eq $s.durableWorkflows -or $null -eq $s.durableWorkflows.schedulerState){
+      throw 'HANDOFF_BUSY_STATUS_MISSING'
+    }
+    if($null -eq $s.concurrency.activeOperations -or
+       $null -eq $s.durableWorkflows.schedulerState.currentLeases){
+      throw 'HANDOFF_BUSY_COUNTER_MISSING'
+    }
+    $active=[int]$s.concurrency.activeOperations
+    $leases=[int]$s.durableWorkflows.schedulerState.currentLeases
+    if($active -lt 0 -or $leases -lt 0){throw 'HANDOFF_BUSY_COUNTER_NEGATIVE'}
+    return [pscustomobject]@{known=$true;active=$active;leases=$leases}
   } catch {
-    return [pscustomobject]@{active=0;leases=0}
+    # Never translate missing/invalid status into "idle" before stopping SYSTEM processes.
+    return [pscustomobject]@{known=$false;active=-1;leases=-1}
   }
 }
 function Stop-ExactProcess($Process,[string]$Label){
@@ -46,12 +56,12 @@ function Stop-ExactProcess($Process,[string]$Label){
 $deadline=(Get-Date).AddSeconds($WaitSeconds)
 do {
   $busy=Get-CommanderBusy
-  if($busy.active -eq 0 -and $busy.leases -eq 0){break}
-  Write-HandoffLog "WAIT_BUSY active=$($busy.active) leases=$($busy.leases)"
+  if($busy.known -and $busy.active -eq 0 -and $busy.leases -eq 0){break}
+  Write-HandoffLog "WAIT_BUSY known=$($busy.known) active=$($busy.active) leases=$($busy.leases)"
   Start-Sleep -Seconds 5
 } while((Get-Date)-lt$deadline)
-if($busy.active -ne 0 -or $busy.leases -ne 0){
-  Write-HandoffLog "HANDOFF_DEFERRED_BUSY active=$($busy.active) leases=$($busy.leases)"
+if(-not $busy.known -or $busy.active -ne 0 -or $busy.leases -ne 0){
+  Write-HandoffLog "HANDOFF_DEFERRED_BUSY known=$($busy.known) active=$($busy.active) leases=$($busy.leases)"
   exit 75
 }
 

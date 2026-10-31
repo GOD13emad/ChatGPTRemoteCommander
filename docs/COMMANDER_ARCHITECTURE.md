@@ -187,3 +187,8 @@ Before traversing the AT-SPI tree for a requested PID, the helper verifies Linux
 ### Linux RemoteDesktop Portal v2 detection — 2026-10-31
 
 `workspace_linux_portal_status` queries the owning session's D-Bus RemoteDesktop interface version without creating a session, requesting consent or controlling input. `available=true` means interface v2 support, not user authorization: `interactionAvailable=false`, `consentGranted=false`. After explicit portal Start approval, a future separate libei device agent may call ConnectToEIS. On aliemad-Labtop the read-only D-Bus call reported version 2. Current stage remains SOURCE ONLY / NO PROMOTE. Primary docs: https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.RemoteDesktop.html ; https://libinput.pages.freedesktop.org/libei/ .
+
+
+### Windows SYSTEM handoff: unknown status must not become idle — 2026-10-31
+
+The pre-existing scheduled `ChatGPTRemoteCommander-UserSessionHandoff` task runs as SYSTEM. The source handoff script previously treated failed localhost status RPC as active=0 and leases=0, permitting stop of SYSTEM-owned processes without confirmed idleness. Source now requires verified nonnegative active+lease counters; unknown, missing or negative status returns known=false and defers before shutdown. Pester-free Windows AST/function tests verify mock cases without invoking the full script. **SOURCE ONLY / NO PROMOTE.** Live PC scheduled tasks still reference an executable and script ACL-writable by the owner account and another user SID; this update does not alter task ACLs or runtime services.
