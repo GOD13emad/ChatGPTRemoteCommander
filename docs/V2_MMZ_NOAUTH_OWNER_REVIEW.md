@@ -328,3 +328,58 @@ and Workflow invocation from an arbitrary ChatGPT NoAuth session.
 This still requires a real trusted per-caller identity and scoped
 owner grant, or independently reviewed native per-action execution
 under the V1 effective OS and desktop permissions.
+
+## Advanced on-device V1 tool review — MMZ Linux (2026-11-01)
+
+The user-local KDE application **Commander V2 - Advanced Owner Review**
+was installed as a separate opt-in path for the full V1 tool catalog.
+The existing diagnostic-only **Commander V2 - Owner Review** launcher
+remains unchanged. This provides an owner-facing request-and-review
+workflow for arbitrary V1 tool names already visible in the local V1
+catalog, without claiming that the eight noauth V2 MCP tools gained
+unattended Shell/filesystem/browser/GUI privileges.
+
+From ChatGPT V2, `v2_request_owner_tool` may queue a named, bounded
+JSON request, without dispatching it. On the MMZ KDE desktop the
+advanced launcher:
+1. Lists only pending, unexpired, valid UUID requests.
+2. Shows the **complete exact tool and arguments** in a scrollable native
+   `kdialog --textbox` preview backed by a mode-0600 owner-private
+   temporary file in the Linux owner runtime directory (fallback to
+   V2 owner-private state).
+3. Requires the owner to type `EXECUTE <first-8-UUID-chars>` in a
+   **separate** native input dialog. Selection, closing the preview,
+   pressing OK with a blank/wrong phrase, or absence of the GUI refuses
+   the call.
+4. Revalidates the request, current local V1 catalog and expiration
+   immediately before the original one-shot native V1 dispatcher,
+   retaining V1 OS capability checks and native GUI session consent.
+
+The reviewed exact parameters are never included in the noauth
+`v2_v1_request_status` response. The temporary preview file is
+unlinked after ordinary review completion/denial; a forced process
+kill may leave a user-private temp file until owner runtime cleanup,
+so the default location is an ephemeral user runtime directory when
+available. The owner should not place credentials in queued arguments.
+The pre-dispatch receipt prevents automatic replay of unknown
+operations, and a returned V1 RPC is still **not** verified completion
+of a potentially long-running effect.
+
+Source:
+`src/v2-native-advanced-review.mjs`,
+`test/v2-native-advanced-review.test.mjs`,
+`assets/commander-v2-mmz-advanced-review.desktop`, plus scoped
+updates to the existing local CLI and picker. Validation included
+four targeted advanced review tests and the complete V2 suite:
+327 tests, 326 PASS / 0 FAIL / 1 SKIP.
+The launcher and modules were installed with exact hash preconditions
+and private rollback copies; V1 and the V2 MCP/tunnel services remain
+active, V2 tunnel /readyz returned HTTP 200. **No real shell, file,
+process, workflow or GUI operation was approved or executed during
+this installation.**
+
+Open DoD: a real owner-approved *sensitive* action with independently
+verified result and final receipt; trusted per-ChatGPT-caller
+authentication and scoped grants for unattended private tool calls;
+native GUI consent for the actual owner desktop when needed. NoAuth
+tunnel identity is not equivalent to ChatGPT-user identity.

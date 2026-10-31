@@ -1,0 +1,10 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Commander V2 - Advanced Owner Review
+Comment=Review exact V2 requests for any V1 tool with full parameter preview and explicit local approval
+Exec=/usr/bin/node /home/mmz/.local/share/CommanderV2/ReadOnlyMcp/tools/v2-v1-owner-cli.mjs review-all-gui
+Icon=dialog-warning
+Terminal=false
+StartupNotify=false
+Categories=Utility;

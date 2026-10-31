@@ -46,6 +46,7 @@ export async function displayV2NativeReviewOutcome(kind,{
 }={}){
  const messages={
   empty:'No eligible V2 diagnostic requests are pending. Requests expire after 10 minutes. Submit a new request from ChatGPT, then open this app.',
+  'advanced-empty':'No pending V2 tool requests are eligible. Submit a new exact request in ChatGPT V2 and open this app before the ten-minute expiry.',
   cancelled:'No V2 operation was selected. No new action has been dispatched.',
   returned:'The approved V1 call returned. This confirms an RPC result, not completion of any long-running effect. Check the V2 request status.',
   error:'V2 owner review was unsuccessful or an outcome is uncertain. Check the exact request status before attempting anything else.'
@@ -60,5 +61,41 @@ export async function displayV2NativeReviewOutcome(kind,{
     '--msgbox',messages[kind]
    ],{timeout:timeoutMs,maxBuffer:2048},error=>resolve(!error));
   }catch{resolve(false)}
+ });
+}
+
+// A separate advanced launcher may list any exact V1 tool, but selection
+// is still NOT execution: a full local parameter preview + typed approval
+// is mandatory. Never use this advanced list from the noauth MCP process.
+export function eligibleV2AdvancedReviews(list){
+ if(!Array.isArray(list)||list.length>64)throw new Error('V2_ADVANCED_PICKER_QUEUE_INVALID');
+ const seen=new Set();
+ return list.filter(r=>{
+  if(!r||typeof r!=='object'||typeof r.id!=='string'||!IDS.test(r.id)||
+     typeof r.tool!=='string'||!/^[a-z][a-z0-9_]{0,79}$/.test(r.tool))
+   throw new Error('V2_ADVANCED_PICKER_RECORD_INVALID');
+  if(seen.has(r.id))throw new Error('V2_ADVANCED_PICKER_DUPLICATE');
+  seen.add(r.id);
+  return r.status==='PENDING'&&!r.expired&&r.arguments!==null&&
+    typeof r.arguments==='object'&&!Array.isArray(r.arguments);
+ }).sort((a,b)=>a.id.localeCompare(b.id));
+}
+export async function pickV2AdvancedReview(list,{dialog=execFile,timeoutMs=120000}={}){
+ const entries=eligibleV2AdvancedReviews(list);
+ if(!entries.length)return null;
+ if(typeof dialog!=='function'||!Number.isSafeInteger(timeoutMs)||
+    timeoutMs<1000||timeoutMs>120000)throw new Error('V2_ADVANCED_PICKER_CALLBACK_INVALID');
+ const args=['--title','Commander V2 — Advanced Review',
+  '--menu','Choose one exact V1 tool request. This ONLY selects it; review and explicit authorization follow.'];
+ for(const r of entries)args.push(r.id,r.tool+' — '+r.id.slice(0,8));
+ return await new Promise(resolve=>{
+  try{
+   dialog('/usr/bin/kdialog',args,{timeout:timeoutMs,maxBuffer:4096},
+    (err,stdout)=>{
+     if(err||typeof stdout!=='string')return resolve(null);
+     const id=stdout.trim();
+     resolve(entries.some(x=>x.id===id)?id:null);
+    });
+  }catch{resolve(null)}
  });
 }

@@ -3,7 +3,8 @@ import process from 'node:process';
 import {createInterface} from 'node:readline/promises';
 import {createV2NativeOwnerExecutor} from '../src/v2-v1-owner-executor.mjs';
 import {confirmLowRiskV2OwnerDialog} from '../src/v2-native-owner-dialog.mjs';
-import {eligibleV2PendingReviews,pickV2PendingReview,displayV2NativeReviewOutcome} from '../src/v2-native-review-picker.mjs';
+import {eligibleV2PendingReviews,pickV2PendingReview,eligibleV2AdvancedReviews,pickV2AdvancedReview,displayV2NativeReviewOutcome} from '../src/v2-native-review-picker.mjs';
+import {confirmV2AdvancedOwnerDialog} from '../src/v2-native-advanced-review.mjs';
 const url='http://127.0.0.1:47831/mcp';
 async function rpc(method,params={}){
  const c=new AbortController(),timer=setTimeout(()=>c.abort(),15000);
@@ -21,6 +22,7 @@ async function catalog(){
  return r.tools.map(t=>t.name);
 }
 const [action,id]=process.argv.slice(2);
+const advancedMode=action==='review-all-gui';
 const guiMode=action==='approve-gui'||action==='review-gui';
 const executor=createV2NativeOwnerExecutor({
  loadCatalog:catalog,
@@ -29,6 +31,7 @@ const executor=createV2NativeOwnerExecutor({
   return {isError:result?.isError===true};
  },
  requireOwnerConfirmation:async({requestId,tool,arguments:args})=>{
+  if(advancedMode)return confirmV2AdvancedOwnerDialog({requestId,tool,arguments:args});
   if(guiMode)return confirmLowRiskV2OwnerDialog({requestId,tool,arguments:args});
   if(!process.stdin.isTTY||!process.stdout.isTTY)
     throw new Error('V2_OWNER_INTERACTIVE_TTY_REQUIRED');
@@ -49,6 +52,28 @@ if(action==='list'&&!id){
 }else if(action==='approve'&&id){
  if(!process.stdin.isTTY||!process.stdout.isTTY)throw new Error('V2_OWNER_INTERACTIVE_TTY_REQUIRED');
  process.stdout.write(JSON.stringify(await executor.approve(id))+'\n');
+}else if(action==='review-all-gui'&&!id){
+ // Only a locally launched owner desktop menu can invoke this workflow.
+ // Selection shows the ENTIRE operation and then asks for typed confirmation.
+ const {createV2V1ToolBridge}=await import('../src/v2-v1-tool-bridge.mjs');
+ const q=createV2V1ToolBridge({loadCatalog:catalog});
+ const pending=q.list();
+ if(eligibleV2AdvancedReviews(pending).length===0){
+  await displayV2NativeReviewOutcome('advanced-empty');
+  process.stdout.write('NO_ELIGIBLE_REQUESTS\n');
+ }else{
+  const selected=await pickV2AdvancedReview(pending);
+  if(selected){
+   try{
+    const result=await executor.approve(selected);
+    process.stdout.write(JSON.stringify(result)+'\n');
+    await displayV2NativeReviewOutcome(result.status==='V1_CALL_RETURNED'?'returned':'error');
+   }catch(err){
+    await displayV2NativeReviewOutcome('error');
+    throw err;
+   }
+  }else process.stdout.write('NO_REQUEST_SELECTED_OR_USER_CANCELLED\n');
+ }
 }else if(action==='review-gui'&&!id){
  // User-launched native chooser; no remote-exposed auto-approve path.
  const {createV2V1ToolBridge}=await import('../src/v2-v1-tool-bridge.mjs');
@@ -80,6 +105,6 @@ if(action==='list'&&!id){
 }else if(action==='status'&&id){
  process.stdout.write(JSON.stringify(executor.status(id))+'\n');
 }else{
- process.stderr.write('Usage: node v2-v1-owner-cli.mjs list | status <requestId> | approve <requestId> | approve-gui <requestId> | review-gui\n');
+ process.stderr.write('Usage: node v2-v1-owner-cli.mjs list | status <requestId> | approve <requestId> | approve-gui <requestId> | review-gui | review-all-gui\n');
  process.exitCode=2;
 }
