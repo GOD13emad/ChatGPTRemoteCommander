@@ -12,6 +12,25 @@ const defaultNativeUIACall=async (...args)=>{
  const {nativeWindowsUIACall}=await import('./agentos-native-win.mjs');
  return nativeWindowsUIACall(...args);
 };
+const defaultLinuxProbe=async (...args)=>{
+ const {probeLinuxATSPI}=await import('./agentos-native-linux.mjs');
+ return probeLinuxATSPI(...args);
+};
+const defaultLinuxObserve=async (...args)=>{
+ const {observeLinuxATSPI}=await import('./agentos-native-linux.mjs');
+ return observeLinuxATSPI(...args);
+};
+const defaultPortalProbe=async (...args)=>{
+ const {probeLinuxRemoteDesktopPortal}=await import('./agentos-linux-portal.mjs');
+ return probeLinuxRemoteDesktopPortal(...args);
+};
+const defaultBrowserProbe=async ({ctx}={})=>{
+ // Planning must not convert an absent/disabled helper into a READY provider.
+ if(ctx?.config?.powerMode?.enabled!==true||ctx?.config?.powerMode?.browserControl?.enabled!==true)
+  return {available:false,enabled:false};
+ const {executeBrowserTool}=await import('./browser-tools.mjs');
+ return executeBrowserTool(ctx,'browser_status',{});
+};
 import {createWorkspaceTargetJournal} from './workspace-target-journal.mjs';
 const execFileAsync=promisify(execFile);
 const targetId=(pid,windowId)=>pid+':'+windowId;
@@ -104,6 +123,11 @@ export const workspaceToolDefinitions=[
    type:'object',properties:{target:{type:'string',enum:['existing-browser','new-browser','existing-app','new-app','project']},
      existingProfileGrant:{type:'boolean'},visualFallbackAuthorized:{type:'boolean'}},
    required:['target'],additionalProperties:false},annotations:readOnly},
+ {name:'workspace_linux_portal_status',description:'Check the owning Linux user session for XDG RemoteDesktop Portal v2 / libei support without requesting consent or controlling input.',inputSchema:{
+   type:'object',properties:{},additionalProperties:false},annotations:readOnly},
+ {name:'workspace_native_atspi_observe',description:'Read-only AT-SPI controls for one exact process in the verified owning Linux session. No keyboard, mouse or focus.',inputSchema:{
+   type:'object',properties:{pid:{type:'integer',minimum:1},maxElements:{type:'integer',minimum:1,maximum:100}},
+   required:['pid'],additionalProperties:false},annotations:readOnly},
  {name:'workspace_native_ui_observe',description:'Observe native Windows UIAutomation actionable control patterns on exactly one same-owner window. No CUA, screenshot, browser profiles or mouse.',inputSchema:{
    type:'object',properties:{pid:{type:'integer',minimum:1},windowId:{type:'integer',minimum:1},maxElements:{type:'integer',minimum:1,maximum:100}},
    required:['pid','windowId'],additionalProperties:false},annotations:readOnly},
@@ -148,33 +172,58 @@ export const workspaceToolDefinitions=[
      determination:{type:'string',enum:['EFFECT_OBSERVED','NO_EFFECT_OBSERVED']}},
    required:['pid','windowId','determination'],additionalProperties:false},annotations:mutating}
 ];
-export function createWorkspaceController({callDriver=defaultCuaCall,nativeCall=defaultNativeUIACall,previewDriver=defaultCuaPreview,ownerSession=defaultOwnerSession,
+export function createWorkspaceController({callDriver=defaultCuaCall,nativeCall=defaultNativeUIACall,linuxProbe=defaultLinuxProbe,linuxObserve=defaultLinuxObserve,portalProbe=defaultPortalProbe,browserProbe=defaultBrowserProbe,previewDriver=defaultCuaPreview,ownerSession=defaultOwnerSession,
   platform=process.platform,env=process.env,now=Date.now,journal=createWorkspaceTargetJournal()}={}){
  const pending=new Map(),seen=new Set(),busy=new Set(),snapshots=new Map(),browserSnapshots=new Map(),nativeSnapshots=new Map();
  const needsOwner=async()=>{if(!await ownerSession({platform,env}))throw fail('WORKSPACE_OWNER_SESSION_REQUIRED');};
- async function execute(name,input={}){
+ async function execute(name,input={},runtime={}){
   const seat=input.workspaceSeat??null;
   if(seat!==null&&(platform!=='linux'||!['a','b'].includes(seat)))throw fail('WORKSPACE_SEAT_INVALID');
   const call=(tool,args)=>callDriver(tool,args,{platform,env,workspaceSeat:seat});
   if(seat!==null&&name.startsWith('workspace_browser_'))throw fail('WORKSPACE_BROWSER_PRIVATE_SEAT_UNSUPPORTED');
+  if(name==='workspace_linux_portal_status'){
+   if(platform!=='linux')return {ok:true,available:false,code:'PORTAL_LINUX_ONLY',interactionAvailable:false};
+   if(!await ownerSession({platform,env}))
+    return {ok:true,available:false,code:'PORTAL_OWNER_SESSION_REQUIRED',interactionAvailable:false};
+   return portalProbe({platform,env});
+  }
   if(name==='workspace_plan'){
    const owner=await ownerSession({platform,env});
    return chooseWorkspaceRoute({...input,sameUserSession:owner,desktop:desktopType(platform,env)});
   }
   if(name==='workspace_agentos_plan'){
    const owner=await ownerSession({platform,env});
-   let nativeAvailable=false;
+   let nativeAvailable=false,linuxAvailable=false;
    if(platform==='win32'){
     try{await fs.access(new URL('../tools/native-windows-uia.ps1',import.meta.url));nativeAvailable=true;}catch{}
+   }else if(platform==='linux'&&owner){
+    // A runtime directory is not evidence that the session accessibility bus works.
+    try{linuxAvailable=(await linuxProbe({platform,env})).ready===true;}catch{}
+   }
+   let ownedBrowserAvailable=false;
+   if(owner&&input.target==='new-browser'){
+    try{
+     const status=await browserProbe({ctx:runtime.ctx,platform,env});
+     ownedBrowserAvailable=status?.ok===true&&status?.enabled===true&&
+       status?.available===true&&status?.busy!==true&&status?.leased!==true&&
+       status?.uncertain!==true&&status?.sessionResetRequired!==true;
+    }catch{}
    }
    const {chooseAgentOSProvider}=await import('./agentos-provider-router.mjs');
    return chooseAgentOSProvider({target:input.target,platform,ownerSession:owner,
-    capabilities:{windowsUIA:nativeAvailable,linuxATSPI:platform==='linux'&&!!env.XDG_RUNTIME_DIR,
-      commanderOwnedBrowser:true,commanderWorkflow:true},
+    capabilities:{windowsUIA:nativeAvailable,linuxATSPI:linuxAvailable,
+      commanderOwnedBrowser:ownedBrowserAvailable,commanderWorkflow:true},
     grants:{browserProfileAttach:input.existingProfileGrant===true,
       visualFallback:input.visualFallbackAuthorized===true}});
   }
   await needsOwner();
+  if(name==='workspace_native_atspi_observe'){
+   if(platform!=='linux'||seat!==null||!integer(input.pid))throw fail('ATSPI_EXACT_LINUX_TARGET_REQUIRED');
+   if((await linuxProbe({platform,env}))?.ready!==true)throw fail('ATSPI_NATIVE_NOT_READY');
+   const value=await linuxObserve(input,{platform,env});
+   return {ok:true,mode:'NATIVE_ATSPI_READ_ONLY',provider:'linux-atspi-native',
+     targetPid:input.pid,physicalInputTouched:false,focusChanged:false,value};
+  }
   if(name==='workspace_list_windows'){
    const request={};if(input.pid!==undefined){if(!integer(input.pid))throw fail('WORKSPACE_PID_INVALID');request.pid=input.pid;}
    const value=await call('list_windows',request);
@@ -403,7 +452,7 @@ const singleton=createWorkspaceController();
 export function assertWorkspaceToolPolicy(config,name,args={}){
  const power=config?.powerMode;
  if(power?.enabled!==true)throw fail('WORKSPACE_POWER_MODE_DISABLED');
- if(name==='workspace_plan'||name==='workspace_agentos_plan')return;
+ if(name==='workspace_plan'||name==='workspace_agentos_plan'||name==='workspace_linux_portal_status')return;
  const browser=name.startsWith('workspace_browser_')||
   (name==='workspace_target_reconcile'&&args?.surface==='browser');
  if(browser){
@@ -420,5 +469,5 @@ export function assertWorkspaceToolPolicy(config,name,args={}){
 }
 export async function executeWorkspaceTool(ctx,name,args){
  assertWorkspaceToolPolicy(ctx?.config,name,args);
- return singleton.execute(name,args);
+ return singleton.execute(name,args,{ctx});
 }

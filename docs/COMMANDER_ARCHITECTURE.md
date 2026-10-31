@@ -167,3 +167,52 @@ Use the **latest security-supported and compatible upstream release/commit**, pi
 - Earlier source candidates, browser/UI draft work, unsigned previews and historic QA receipts remain separate. No unified multi-device installation, per-chat authentication, source integration or new release is claimed.
 
 **Next execution path:** implement A+B (schema/Coordinator identity and fenced locks) in isolated worktrees; implement C/D/E independently behind capability-verified adapters; finish F/G with exact-head native verification. Continue from the existing project Brain and release gates; do not restart the project or treat this architecture agreement as release acceptance.
+
+
+## Linux AT-SPI native read-only gate — 2026-10-31
+
+**SOURCE ONLY / NO PROMOTE.** Linux AgentOS routing no longer equates `XDG_RUNTIME_DIR` with a functioning AT-SPI bus: a real owning-user introspection probe is required. The new `workspace_native_atspi_observe` handles only an exact PID, caps traversal/results and provides no input, focus, credential, profile attachment or elevation capability. Python GObject Introspection + AT-SPI2 are optional, and unavailable dependencies fail closed; this is not proof of on-device E2E or cross-host deployment. References: [GNOME AT-SPI](https://gnome.pages.gitlab.gnome.org/at-spi2-core/libatspi/) and [XDG RemoteDesktop](https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.RemoteDesktop.html).
+
+
+### Honest live browser readiness — 2026-10-31 (PR #438)
+
+`workspace_agentos_plan(new-browser)` must probe the actual browser backend and policy of the same owning session through `browser_status`; it cannot return READY merely because a Commander source file exists. A Windows SYSTEM/Session 0 token, missing browser binary, disabled policy, existing lease/busy state or uncertain session fails closed. Existing user profiles still require platform-mediated owner authorization; no saved-cookie/profile copy. This is a read-only planning correction, not a runtime cutover or browser owner approval. The regression suite covers actual positive/negative status and service-context guards.
+
+
+### Linux PID owner boundary — 2026-10-31
+
+Before traversing the AT-SPI tree for a requested PID, the helper verifies Linux `/proc/<pid>/status` real UID matches its unprivileged owning user. It checks again before returning observed element metadata, refusing cross-user/missing/reassigned targets. Root-executed observation is refused. This enforces the one-principal desktop bridge even in shared X11 sessions; it does not grant cross-user access or bypass the target application. The private test fixture only checks the negative path against a foreign-owned PID. **SOURCE ONLY / NO PROMOTE** until live owner-session and review acceptance.
+
+
+### Linux RemoteDesktop Portal v2 detection — 2026-10-31
+
+`workspace_linux_portal_status` queries the owning session's D-Bus RemoteDesktop interface version without creating a session, requesting consent or controlling input. `available=true` means interface v2 support, not user authorization: `interactionAvailable=false`, `consentGranted=false`. After explicit portal Start approval, a future separate libei device agent may call ConnectToEIS. On aliemad-Labtop the read-only D-Bus call reported version 2. Current stage remains SOURCE ONLY / NO PROMOTE. Primary docs: https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.RemoteDesktop.html ; https://libinput.pages.freedesktop.org/libei/ .
+
+
+### Windows SYSTEM handoff: unknown status must not become idle — 2026-10-31
+
+The pre-existing scheduled `ChatGPTRemoteCommander-UserSessionHandoff` task runs as SYSTEM. The source handoff script previously treated failed localhost status RPC as active=0 and leases=0, permitting stop of SYSTEM-owned processes without confirmed idleness. Source now requires verified nonnegative active+lease counters; unknown, missing or negative status returns known=false and defers before shutdown. Pester-free Windows AST/function tests verify mock cases without invoking the full script. **SOURCE ONLY / NO PROMOTE.** Live PC scheduled tasks still reference an executable and script ACL-writable by the owner account and another user SID; this update does not alter task ACLs or runtime services.
+
+
+### Cursor observation independent of synthetic mouse input — 2026-10-31
+
+Owner GUI delegation on Emad PC was confirmed: observe lease and read-only status succeeded, but `gui_cursor_position` returned `OWNER_GUI_RPC_REJECTED`. Authenticated local diagnosis recovered only the safe backend error code `GUI_CAPABILITY_DISABLED`; `allowMouse` is intentionally disabled in the owner observer policy. The cursor read contract previously depended on the same `allowMouse` capability as synthetic input. It now uses a derived read-only `allowCursorObservation` capability (existing screenshot/window-enumeration permissions or mouse permission), keeping mouse move/click/drag gated exclusively on `allowMouse`. The feature makes no input/focus changes. Isolated Windows controller and delegation suites **96/96 + 25/25 PASS**. **SOURCE ONLY / NO PROMOTE** until deployed owner-seat E2E and independent security review. Microsoft [UIA patterns](https://learn.microsoft.com/en-us/windows/win32/winauto/uiauto-clientsoverview) inform semantic over synthetic input control.
+
+
+### SYSTEM task action ACL trust-chain read-only preflight — 2026-10-31
+
+This source-only `tools/windows-system-task-trust-audit.ps1` audits SYSTEM Commander Scheduled Task executable and `-File` script paths, regular files, ancestors, reparse points, owners, and effective Allow ACEs. The scanner reports risk but performs no task, ACL or service mutation. A Windows fixture tests a user-writable path (must fail), a protected Windows executable (must pass), and empty task discovery; the test is wired into `npm run check`. Historical CI is not inherited by this change.
+
+Live read-only evidence: Emad-PC-Ultimate: 4 of 4 action paths unsafe (two SYSTEM tasks, both executable and script under user-writable profile ancestry); HPC-159-17: 3 of 6 unsafe (three SYSTEM tasks, executable under protected Program Files is safe, scripts under writable profile paths unsafe, including one disabled task). HPC-154-66: no Commander SYSTEM tasks matching this name convention; not a comprehensive audit of every scheduled task. The implementation explicitly excludes an InheritOnly ACE on its parent, and treats TrustedInstaller as a trusted owner, avoiding a false alarm for Program Files. The user's access to administrative tools is not evidence that these ACL defects are fixed.
+
+Mandatory before live cutover: immutably pin and stage code/dependencies under an admin/SYSTEM-protected installation root; verify each parent chain and signature; export exact task XML, preserve prior operational health and rollback; switch action paths only after isolated owner-seat and SYSTEM functional preflight. No destructive task re-registration or privilege change has occurred. Sources: Microsoft [Security Contexts for Tasks](https://learn.microsoft.com/en-us/windows/win32/taskschd/security-contexts-for-running-tasks) and [icacls](https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/icacls). Status SOURCE-ONLY / SECURITY HOLD / NO PROMOTE.
+
+
+### Definition digests and fail-closed migration readiness — 2026-10-31
+
+Existing read-only trust auditor now hashes in-memory `Export-ScheduledTask` XML and each PowerShell script with SHA-256; only digest and parser/closure flags are emitted (no raw XML or credentials). `accepted` remains ACL-only, and `migrationReady=false` is explicit until full dependency closure, owner E2E and independent security review. This is necessary because current BootRecovery launches other source files and configured executables; copying one script does not close the trust boundary. Microsoft [Export-ScheduledTask](https://learn.microsoft.com/en-us/powershell/module/scheduledtasks/export-scheduledtask) covers definitions, not external dependencies. No installed task or ACL was altered.
+
+
+### Runtime-only tunnel process identity and exact profile matching — 2026-10-31
+
+The optional runtime-only `openai/tunnel-client v0.0.18` executable has a different filename, `tunnel-client-runtime.exe`, than the currently installed full `v0.0.15` binary `tunnel-client.exe`. The previous supervisor `Get-TunnelProcess` hard-coded the full-client basename and could not observe a runtime-only owned process, risking duplicate starts and bad ownership decisions if switched untested. The source supervisor now restricts supported process basenames to these two exact Windows names and derives the CIM process filter from the already-resolved expected executable path; it retains exact executable-path and named-profile matching. An isolated PowerShell AST/mocked CIM fixture tests both flavors, wrong profile/path rejection and unknown basename refusal without launching, stopping or authenticating tunnels. **No live task or Runtime cutover.** Actual tunnel v0.0.18 interoperability, credential handling, owner-session GUI E2E and independent security review remain open. Official [OpenAI runtime documentation](https://github.com/openai/tunnel-client).

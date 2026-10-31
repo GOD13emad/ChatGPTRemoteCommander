@@ -23,7 +23,7 @@ const defs = [
   ['gui_session_renew', 'Renew a live desktop lease; does not revive an expired one.', object({ ...lease, ttlSeconds: integer(10, 120) }, ['lease']), null, null, coordination],
   ['gui_session_end', 'End your desktop lease without stopping other services.', object(lease, ['lease']), null, null, coordination],
   ['gui_screenshot', 'Capture one monitor as an MCP image. Returns native pixel bounds and a short-lived, single-use frame token for the next action.', object({ ...lease, screenIndex: integer(0, 31), format: choice('jpeg', 'png'), quality: integer(25, 90), maxWidth: integer(320, 1920) }, ['lease']), 'screenshot', 'allowScreenshot', ro],
-  ['gui_cursor_position', 'Read cursor position for this lease.', object(lease, ['lease']), 'cursor', 'allowMouse', ro],
+  ['gui_cursor_position', 'Read cursor position for this lease.', object(lease, ['lease']), 'cursor', 'allowCursorObservation', ro],
   ['gui_list_windows', 'List visible window handles, titles, and process IDs. Window titles may contain private data.', object(lease, ['lease']), 'listWindows', 'allowWindowEnumeration', ro],
   ['gui_mouse_move', 'Move within the monitor shown in a fresh frame.', object({ ...guarded, ...point }, ['lease', 'frame', 'x', 'y']), 'move', 'allowMouse', mutation],
   ['gui_mouse_delta', 'Apply a bounded relative mouse movement; not a low-latency game controller.', object({ ...guarded, dx: integer(-1000, 1000), dy: integer(-1000, 1000) }, ['lease', 'frame', 'dx', 'dy']), 'moveRelative', 'allowMouse', mutation],

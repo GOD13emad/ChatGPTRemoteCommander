@@ -187,10 +187,12 @@ function Observe-TunnelControlPlane([string]$Profile,[int]$Port) {
 }
 function Get-TunnelProcess([string]$Profile, [string]$Exe) {
   $expected = [IO.Path]::GetFullPath($Exe)
+  $processName = [IO.Path]::GetFileName($expected)
+  if ($processName -notin @('tunnel-client.exe', 'tunnel-client-runtime.exe')) { throw 'Unsupported tunnel executable name.' }
   $escaped = [regex]::Escape($Profile)
   $profileRegex = '--profile(?:=|\s+)["'']?' + $escaped + '["'']?(?:\s|$)'
 
-  return Get-CimInstance Win32_Process -Filter "Name='tunnel-client.exe'" -ErrorAction SilentlyContinue |
+  return Get-CimInstance Win32_Process -Filter ("Name='{0}'" -f $processName) -ErrorAction SilentlyContinue |
     Where-Object {
       $_.ExecutablePath -and
       [IO.Path]::GetFullPath([string]$_.ExecutablePath) -eq $expected -and
