@@ -1,20 +1,20 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {openV2OwnerApplication} from '../src/v2-owner-session-reuse.mjs';
-const route=(chat='chat-a')=>({
+const route=(chat='chat-a',appId='brave')=>({
  hostId:'host',principalId:'owner',profileId:'personal',
  conversationId:chat,operationId:'open-a',
- target:{kind:'browser-target',id:'brave'}
+ target:{kind:'browser-target',id:appId}
 });
-function fixture(){
- const calls=[],rows=[],w={appId:'brave',hostId:'host',principalId:'owner',seatId:'seat-1',
+function fixture(appId='brave'){
+ const calls=[],rows=[],w={appId,hostId:'host',principalId:'owner',seatId:'seat-1',
   windowId:'win-1',processStartId:'start-1',pid:44,present:true,
   backgroundReady:true,ownerSessionReady:true};
  let nativeSeat='seat-1',consent=true,attachConsent=true,verify=true,
   windowChanged=false,attachEffect=false;
  rows.push(w);
  const services={
-  sessions:{resolveNativeRoute:async()=>route()},
+  sessions:{resolveNativeRoute:async()=>route('chat-a',appId)},
   observedNativeSeat:async()=>nativeSeat,
   listOwnerWindows:async()=>rows.map(x=>({...x,processStartId:windowChanged?'changed':x.processStartId})),
   authorizeAttach:async()=>{calls.push('consentAttach');return attachConsent;},
@@ -24,7 +24,7 @@ function fixture(){
   authorizeLaunch:async()=>{calls.push('consentLaunch');return consent;},
   launchRegisteredApp:async()=>{calls.push('launch');rows.push(w);return {ok:true,windowId:w.windowId,pid:w.pid,backgroundSafe:true};}
  };
- const open=opts=>openV2OwnerApplication({route:route(),sessionHandle:'chat-a',appId:'brave',services,...opts});
+ const open=opts=>openV2OwnerApplication({route:route('chat-a',appId),sessionHandle:'chat-a',appId,services,...opts});
  return {services,calls,rows,w,open,
   clear:()=>{rows.length=0;},seat:x=>{nativeSeat=x;},consent:x=>{consent=x;},
   attachConsent:x=>{attachConsent=x;},windowChanged:x=>{windowChanged=x;},
@@ -166,4 +166,54 @@ test('accessibility cannot claim background if focus changes or verification fai
   f.services.verifyAccessibilityAttachment=async()=>verified;
   await assert.rejects(f.open(),{code:'V2_OWNER_APP_ATTACH_UNCERTAIN'});
  }
+});
+
+function nativeChrome(f,{debuggingEnabled=true,promptApproved=true,approved=true,majorVersion=156}={}){
+ f.services.attachExisting=async()=>({ok:false,status:'REFUSED_NO_EFFECT',
+  noEffectAttested:true,code:'BROWSER_ROUTE_UNAVAILABLE'});
+ f.services.probeChromeAutoConnect=async()=>({browser:'chrome',majorVersion,
+  seatId:'seat-1',windowId:'win-1',processStartId:'start-1',debuggingEnabled});
+ f.services.authorizeChromeAutoConnect=async()=>{f.calls.push('chromeGrant');return approved;};
+ f.services.attachChromeAutoConnect=async(intent)=>{
+  f.calls.push('chromePromptAttach');
+  assert.equal(intent.profileCopy,false);
+  assert.equal(intent.browserPromptRequired,true);
+  return {ok:true,attachmentId:'chrome-1',foregroundChanged:false,
+   browserPromptApproved:promptApproved,protocol:'CHROME_DEVTOOLS_MCP_AUTOCONNECT',
+   cookie:'NEVER_EXPORT'};
+ };
+ f.services.verifyChromeAutoConnect=async()=>{f.calls.push('chromeVerify');return true;};
+}
+test('native Chrome 144+ broker is separately consented and verified after no-effect refusal',async()=>{
+ const f=fixture('chrome');nativeChrome(f);
+ const v=await f.open();
+ assert.equal(v.controlSurface,'chrome-devtools-autoconnect');
+ assert.equal(v.toolExecutionAuthorized,false);
+ assert.equal(v.authenticatedLoginVerified,false);
+ assert.equal(JSON.stringify(v).includes('cookie'),false);
+ assert.deepEqual(f.calls,['consentAttach','chromeGrant','chromePromptAttach','chromeVerify']);
+});
+test('Chrome native refusal cannot downgrade to accessibility or claim existing login',async()=>{
+ const f=fixture('chrome');nativeChrome(f,{promptApproved:false});
+ f.services.attachAccessibility=async()=>{throw Error('must not fallback');};
+ await assert.rejects(f.open(),{code:'V2_OWNER_APP_CHROME_NATIVE_PROMPT_REQUIRED'});
+ assert.deepEqual(f.calls,['consentAttach','chromeGrant','chromePromptAttach']);
+ const g=fixture('chrome');nativeChrome(g,{approved:false});
+ await assert.rejects(g.open(),{code:'V2_OWNER_APP_CHROME_OWNER_CONSENT_REQUIRED'});
+ assert.deepEqual(g.calls,['consentAttach','chromeGrant']);
+});
+test('Chrome alternate route rechecks exact window and native user seat during consent',async()=>{
+ const f=fixture('chrome');nativeChrome(f);
+ f.services.authorizeChromeAutoConnect=async()=>{f.windowChanged(true);return true;};
+ await assert.rejects(f.open(),{code:'V2_OWNER_APP_CHANGED_DURING_CONSENT'});
+ assert.deepEqual(f.calls,['consentAttach']);
+});
+test('malformed Chrome native probe and unknown attach effects stop without accessibility fallback',async()=>{
+ const f=fixture('chrome');nativeChrome(f);
+ f.services.probeChromeAutoConnect=async()=>({browser:'chrome',majorVersion:156,
+  windowId:'wrong',seatId:'seat-1',processStartId:'start-1',debuggingEnabled:true});
+ await assert.rejects(f.open(),{code:'V2_OWNER_APP_CHROME_PROBE_UNVERIFIED'});
+ const g=fixture('chrome');nativeChrome(g);
+ g.services.attachChromeAutoConnect=async()=>{throw Error('driver connection uncertain');};
+ await assert.rejects(g.open(),{code:'V2_OWNER_APP_ATTACH_UNCERTAIN'});
 });

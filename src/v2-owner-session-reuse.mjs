@@ -1,3 +1,4 @@
+export {planV2OwnerControlMethods} from './v2-control-method-plan.mjs';
 // V2 owner-local application selection. Uses a native OS/browser broker only.
 // Never reads, copies, decrypts or replays saved passwords, cookies, profile
 // directories, session tokens or origin storage. This module does not launch a
@@ -126,13 +127,53 @@ export async function openV2OwnerApplication({
  try {
   attachment=await services.attachExisting(Object.freeze({...intent,window:selected}));
  }catch {fail('V2_OWNER_APP_ATTACH_UNCERTAIN');}
+ // Optional Chrome 144+ route only after a verified NO-EFFECT legacy refusal.
+ // These trusted owner-worker callbacks must NOT enable debugging, copy a
+ // profile, or bypass a browser-native Allow/Reject prompt.
+ const noEffect=attachment?.ok===false&&attachment.status==='REFUSED_NO_EFFECT'&&
+   attachment.noEffectAttested===true&&attachment.code==='BROWSER_ROUTE_UNAVAILABLE';
+ if(noEffect&&r.target.kind==='browser-target'&&appId==='chrome'&&
+    typeof services.probeChromeAutoConnect==='function'){
+  needs(services.authorizeChromeAutoConnect,services.attachChromeAutoConnect,
+    services.verifyChromeAutoConnect);
+  let probe;
+  try{probe=await services.probeChromeAutoConnect(Object.freeze({...intent,window:selected}));}
+  catch{fail('V2_OWNER_APP_CHROME_PROBE_UNVERIFIED');}
+  if(!probe||probe.browser!=='chrome'||!Number.isInteger(probe.majorVersion)||
+    probe.majorVersion<1||probe.majorVersion>500||
+    probe.seatId!==inventory.seatId||probe.windowId!==selected.windowId||
+    probe.processStartId!==selected.processStartId||
+    typeof probe.debuggingEnabled!=='boolean')
+    fail('V2_OWNER_APP_CHROME_PROBE_UNVERIFIED');
+  if(probe.majorVersion>=144&&probe.debuggingEnabled===true){
+   if(await services.authorizeChromeAutoConnect(intent)!==true)
+    fail('V2_OWNER_APP_CHROME_OWNER_CONSENT_REQUIRED');
+   const latest=await windows({route:r,sessionHandle,appId,services})
+     .catch(()=>fail('V2_OWNER_APP_CHANGED_DURING_CONSENT'));
+   const bound=latest.windows.find(w=>w.windowId===selected.windowId);
+   if(latest.seatId!==inventory.seatId||!bound||!sameWindow(bound,selected)||
+      bound.ownerSessionReady!==true||
+      (mode==='background'&&bound.backgroundReady!==true))
+    fail('V2_OWNER_APP_CHANGED_DURING_CONSENT');
+   try{
+    attachment=await services.attachChromeAutoConnect(Object.freeze({
+     ...intent,window:bound,mode,profileCopy:false,
+     browserPromptRequired:true
+    }));
+   }catch{fail('V2_OWNER_APP_ATTACH_UNCERTAIN');}
+   controlSurface='chrome-devtools-autoconnect';
+   if(attachment?.ok!==true||attachment.browserPromptApproved!==true||
+      attachment.protocol!=='CHROME_DEVTOOLS_MCP_AUTOCONNECT')
+    fail('V2_OWNER_APP_CHROME_NATIVE_PROMPT_REQUIRED');
+  }
+ }
  // Native browser CDP may be unsupported for a normal signed-in profile.
  // Switch to same-owner accessibility only on an explicit *no-effect*
  // receipt from the browser driver, and an independent owner grant.
  // Unknown browser_prepare effects, cookie/profile transfer, or a native
  // browser consent denial never become permission for an AX fallback.
- if(attachment?.ok===false&&attachment.status==='REFUSED_NO_EFFECT'&&
-    attachment.noEffectAttested===true&&
+ if(controlSurface==='browser-native'&&attachment?.ok===false&&
+    attachment.status==='REFUSED_NO_EFFECT'&&attachment.noEffectAttested===true&&
     attachment.code==='BROWSER_ROUTE_UNAVAILABLE'){
   needs(services.authorizeAccessibilityAttach,services.attachAccessibility,
     services.verifyAccessibilityAttachment);
@@ -155,7 +196,9 @@ export async function openV2OwnerApplication({
    fail('V2_OWNER_APP_ATTACH_UNCERTAIN');
  // Never return the native driver's raw object (which may contain secrets).
  const verifier=controlSurface==='native-accessibility'?
-   services.verifyAccessibilityAttachment:services.verifyAttachment;
+   services.verifyAccessibilityAttachment:
+   controlSurface==='chrome-devtools-autoconnect'?
+   services.verifyChromeAutoConnect:services.verifyAttachment;
  const verified=await verifier(Object.freeze({
    ...intent,window:selected,attachmentId:attachment.attachmentId
  })).catch(()=>false);
