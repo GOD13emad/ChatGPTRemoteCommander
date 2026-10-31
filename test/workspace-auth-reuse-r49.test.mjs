@@ -657,3 +657,39 @@ test('duplicate owner native catalog names cannot silently choose one executable
     explicitUserAuthorization:'Open the original Brave app in this user account'}),/WORKSPACE_APP_NAME_AMBIGUOUS/);
   assert.equal(launches,0);
 });
+
+test('kindless but verified running owner app can be reused without cold launch',async()=>{
+  let launches=0;
+  const c=createWorkspaceController({platform:'win32',ownerSession:async()=>true,
+    journal:createMemoryWorkspaceJournal(),
+    callDriver:async name=>{
+      if(name==='list_apps')return {apps:[{name:'Brave',running:true,pid:4445}]};
+      launches++;throw Error('UNSAFE_COLD_START');
+    }});
+  const catalog=await c.execute('workspace_app_catalog',{query:'Brave'});
+  assert.equal(catalog.apps.length,1);
+  assert.deepEqual(catalog.apps[0],{name:'Brave',kind:'unknown',running:true,pid:4445});
+  const out=await c.execute('workspace_app_open',{name:'Brave',
+    requestId:'kindless-running-001',
+    explicitUserAuthorization:'Reuse the existing running original owner browser'});
+  assert.equal(out.status,'ALREADY_RUNNING');
+  assert.equal(out.pid,4445);
+  assert.equal(launches,0);
+});
+
+test('kindless stopped/ambiguous app cannot be launched using only its name',async()=>{
+  let calls=0;
+  const c=createWorkspaceController({platform:'win32',ownerSession:async()=>true,
+    journal:createMemoryWorkspaceJournal(),
+    callDriver:async name=>{
+      calls++;
+      if(name==='list_apps')return {apps:[{name:'UnknownApp',running:false,pid:0}]};
+      throw Error('UNSAFE_LAUNCH');
+    }});
+  const out=await c.execute('workspace_app_catalog',{});
+  assert.equal(out.apps.length,0);
+  await assert.rejects(()=>c.execute('workspace_app_open',{name:'UnknownApp',
+    requestId:'kindless-stopped-001',
+    explicitUserAuthorization:'Only open safely verified installed apps for this owner'}),/WORKSPACE_APP_NOT_IN_OWNER_CATALOG/);
+  assert.equal(calls,2);
+});
