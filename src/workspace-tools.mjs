@@ -113,7 +113,8 @@ export const workspaceToolDefinitions=[
  {name:'workspace_plan',description:'Select independent background/isolated control for an existing logged-in application or browser. This read-only plan never steals focus or copies credentials.',inputSchema:{
    type:'object',properties:{target:{type:'string',enum:['existing-browser','new-browser','existing-app','new-app']},
      existingProfileGrant:{type:'boolean'},backgroundCapability:{type:'boolean'},
-     requireExistingAuthentication:{type:'boolean'}},
+     requireExistingAuthentication:{type:'boolean'},
+     browserEngine:{type:'string',enum:['chrome','edge','brave','firefox','unknown']}},
    required:['target'],additionalProperties:false},annotations:readOnly},
  {name:'workspace_list_windows',description:'List existing same-user application windows through Cua Driver v0.38; no desktop takeover or global input.',inputSchema:{
    type:'object',properties:{pid:{type:'integer',minimum:1},workspaceSeat:{type:'string',enum:['a','b']}},additionalProperties:false},annotations:readOnly},
