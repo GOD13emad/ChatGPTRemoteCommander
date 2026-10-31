@@ -693,3 +693,72 @@ test('kindless stopped/ambiguous app cannot be launched using only its name',asy
     explicitUserAuthorization:'Only open safely verified installed apps for this owner'}),/WORKSPACE_APP_NOT_IN_OWNER_CATALOG/);
   assert.equal(calls,2);
 });
+
+test('native Windows UIA probe is owner-bound, exact-HWND and content-free',async()=>{
+  const calls=[];
+  const c=createWorkspaceController({platform:'win32',ownerSession:async()=>true,
+    callDriver:async(name,args)=>{
+      calls.push({name,args});
+      assert.equal(name,'list_windows');
+      return {windows:[{pid:801,window_id:991}]};
+    },
+    winappProbe:async(target)=>{
+      calls.push({name:'winappProbe',target});
+      return {ok:true,status:'WINAPP_UIA_TREE_OBSERVED',jsonVerified:true,
+        secret:'DO_NOT_LEAK',passwordValuesReturned:true};
+    }});
+  const v=await c.execute('workspace_winapp_probe',{pid:801,windowId:991});
+  assert.equal(v.ok,true);
+  assert.equal(v.treeAvailable,true);
+  assert.equal(v.uiContentReturned,false);
+  assert.equal(v.passwordValuesReturned,false);
+  assert.equal(v.authentication,'UNVERIFIED');
+  assert.equal(v.foregroundChanged,'NOT_VERIFIED');
+  assert.ok(!JSON.stringify(v).includes('DO_NOT_LEAK'));
+  assert.deepEqual(calls.map(x=>x.name),['list_windows','winappProbe']);
+});
+test('Windows UIA never inspects an unobserved or ambiguous target',async()=>{
+  let calls=0;
+  const c=createWorkspaceController({platform:'win32',ownerSession:async()=>true,
+    callDriver:async()=>({windows:[{pid:801,window_id:992}]}),
+    winappProbe:async()=>{calls++;throw Error('MUST_NOT_RUN')}});
+  const v=await c.execute('workspace_winapp_probe',{pid:801,windowId:991});
+  assert.equal(v.status,'WORKSPACE_EXACT_WINDOW_NOT_OBSERVED');
+  assert.equal(calls,0);
+});
+test('Windows UIA refuses cross-owner and unsupported Linux without touching driver',async()=>{
+  for(const [platform,session] of [['win32',false],['linux',true]]){
+    let calls=0;
+    const c=createWorkspaceController({platform,ownerSession:async()=>session,
+      callDriver:async()=>{calls++;throw Error('NOT_ALLOWED')},
+      winappProbe:async()=>{calls++;throw Error('NOT_ALLOWED')}});
+    await assert.rejects(()=>c.execute('workspace_winapp_probe',{pid:801,windowId:991}),
+      /WORKSPACE_OWNER_SESSION_REQUIRED|WORKSPACE_UIA_TARGET_INVALID/);
+    assert.equal(calls,0);
+  }
+});
+test('Windows UIA probe degrades safely when winapp binary is not configured',async()=>{
+  const {defaultWinappProbe}=await import('../src/workspace-tools.mjs');
+  const r=await defaultWinappProbe({windowId:991},{platform:'win32',env:{}});
+  assert.equal(r.ok,false);
+  assert.equal(r.status,'WINAPP_BINARY_NOT_CONFIGURED');
+});
+test('owner proxy allowlist forwards only bounded read-only UIA probe, no consent token',async()=>{
+  const requests=[];
+  const proxy=createOwnerWorkspaceProxy({
+    config:{ownerWorkspaceDelegation:{enabled:true,port:48838,authFile:'C:\\owner.key'}},
+    readFileImpl:async()=>('d'.repeat(64)),
+    fetchImpl:async(_url,opts)=>{
+      requests.push(JSON.parse(opts.body));
+      return {status:200,text:async()=>JSON.stringify({jsonrpc:'2.0',id:1,
+        result:{structuredContent:{ok:false,status:'WINAPP_BINARY_NOT_CONFIGURED'}}})};
+    }
+  });
+  const response=await proxy.execute('workspace_winapp_probe',{pid:801,windowId:991});
+  assert.equal(response.handled,true);
+  assert.equal(response.value.status,'WINAPP_BINARY_NOT_CONFIGURED');
+  assert.equal(requests.length,1);
+  assert.equal(requests[0].params.name,'workspace_winapp_probe');
+  assert.equal(requests[0].params.arguments.explicitUserAuthorization,undefined);
+  assert.equal(requests[0].params.arguments.binary,undefined);
+});
