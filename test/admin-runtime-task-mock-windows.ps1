@@ -85,6 +85,21 @@ if(-not(Test-TaskOwnerSID $current.Name) -or -not(Test-TaskOwnerSID $short) -or
    -not(Test-TaskOwnerSID $current.User.Value) -or
    (Test-TaskOwnerSID 'NT AUTHORITY\LOCAL SERVICE')){throw 'SID_HELPER_ALIAS_TEST_FAILED'}
 'CASE0_PASS: SID_NORMALIZATION_FULL_SHORT_SID_NEGATIVE'
+$timestampFn=[regex]::Match($source,'(?s)function Test-ProbeFreshness\(.*?(?=\r?\nfunction Get-TaskState \{)')
+if(-not $timestampFn.Success){throw 'TIMESTAMP_HELPER_MISSING'}
+Invoke-Expression $timestampFn.Value
+$record='{"at":"2026-10-31T00:59:14.1234567Z"}' | ConvertFrom-Json
+$before=[DateTimeOffset]::Parse('2026-10-31T00:59:13.0000000Z')
+$after=[DateTimeOffset]::Parse('2026-10-31T00:59:16.0000000Z')
+if($record.at -isnot [DateTime] -or
+   -not(Test-ProbeFreshness $record.at $before) -or
+   (Test-ProbeFreshness $record.at $after) -or
+   (Test-ProbeFreshness '10/31/2026 00:59:14' $before) -or
+   (Test-ProbeFreshness $null $before) -or
+   (Test-ProbeFreshness ([DateTime]::SpecifyKind([datetime]$record.at,[DateTimeKind]::Unspecified)) $before)){
+  throw 'UTC_TIMESTAMP_FRESHNESS_TEST_FAILED'
+}
+'CASE0B_PASS: UTC_TYPED_RECEIPT_AND_STALE_REJECTION'
 Invoke-Expression $match.Value
 $null=Install-ElevatedRuntime
 if(-not $script:Tasks.ContainsKey($script:TaskName)){throw 'CASE1_NO_PRODUCTION_REGISTER'}
@@ -119,7 +134,7 @@ if(-not $failed){throw 'CASE4_PROBE_DENIAL_NOT_REJECTED'}
 if($script:Tasks.Count -ne 0){throw 'CASE4_TASK_LEAK'}
 if(@($script:Events|Where-Object{$_ -eq 'START:'+$script:TaskName}).Count -gt 0){throw 'CASE4_PRODUCTION_START'}
 'CASE4_PASS: DENIED_PROBE_NO_PRODUCTION_CLEANUP'
-"QA_PASS six cases; SHA256=$hash"
+"QA_PASS seven cases; SHA256=$hash"
 }finally{
   $canonical=[IO.Path]::GetFullPath($qa)
   $temp=[IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd('\')+'\'
