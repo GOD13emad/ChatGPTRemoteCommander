@@ -59,7 +59,8 @@ const PLATFORM={windows:['install.ps1','installer/RemoteCommander.iss',
  'tools/v2-native-host-owner-install.ps1',
  'tools/qualification-failed-stage-r173.mjs'],
  linux:['install.sh','server-install-linux.sh',
- 'tools/rc-private-gui.py','tools/v2-linux-credential-provider-census.mjs']};
+ 'tools/rc-private-gui.py','tools/v2-linux-credential-provider-census.mjs',
+ 'tools/v2-linux-native-host-install.mjs']};
 const SHA=/^[a-f0-9]{64}$/;
 function fail(code){throw Object.assign(new Error(code),{code});}
 function read(root,file){
