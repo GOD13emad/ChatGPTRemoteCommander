@@ -118,28 +118,69 @@ function Install-ElevatedRuntime {
   }
   Write-JsonAtomic (Join-Path $AdminDir 'prestate.json') $pre
 
+  # Installation must never start a second production supervisor.
+  # Existing tasks are owner state; do not overwrite or delete them by -Force.
+  $existing=Get-TaskState
+  if($existing.installed){
+    if($existing.valid){Write-Output 'ADMIN_RUNTIME_ALREADY_INSTALLED';return}
+    throw 'ADMIN_RUNTIME_TASK_CONFLICT'
+  }
   $pwsh=Get-PwshPath
   $args='-NoLogo -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File "'+$Entry+'"'
   $action=New-ScheduledTaskAction -Execute $pwsh -Argument $args -WorkingDirectory $CoreRoot
+  $probeArgs=$args+' -ProbeOnly'
+  $probeAction=New-ScheduledTaskAction -Execute $pwsh -Argument $probeArgs -WorkingDirectory $CoreRoot
+  $probeTaskName=$TaskName+'-Probe-'+([guid]::NewGuid().ToString('N').Substring(0,12))
+  $probeRegistered=$false
+  $productionRegistered=$false
   $trigger=New-ScheduledTaskTrigger -AtLogOn -User $identity
   $principal=New-ScheduledTaskPrincipal -UserId $identity -LogonType Interactive -RunLevel Highest
   $settings=New-ScheduledTaskSettingsSet -StartWhenAvailable -MultipleInstances IgnoreNew -ExecutionTimeLimit ([TimeSpan]::Zero)
 
   try{
-    Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Force | Out-Null
-    $readback=Get-TaskState
-    if(-not $readback.valid){throw 'ADMIN_RUNTIME_TASK_READBACK_FAILED'}
-
-    $started=Get-Date
+    # Verify native elevation with an on-demand one-shot task that exits before the
+    # real production AtLogOn task is registered. No live Core restart is implied.
+    Register-ScheduledTask -TaskName $probeTaskName -Action $probeAction -Principal $principal -Settings $settings | Out-Null
+    $probeRegistered=$true
+    $taskProbe=Get-ScheduledTask -TaskName $probeTaskName -ErrorAction Stop
+    $probeReadback=@($taskProbe.Actions|Select-Object -First 1)[0]
+    if(@($taskProbe.Actions).Count -ne 1 -or
+       [string]$taskProbe.Principal.UserId -ne $identity -or
+       [string]$taskProbe.Principal.RunLevel -ne 'Highest' -or
+       [string]$taskProbe.Principal.LogonType -ne 'Interactive' -or
+       [string]$probeReadback.Execute -ne $pwsh -or
+       [string]$probeReadback.Arguments -cne $probeArgs -or
+       [string]$probeReadback.WorkingDirectory -ne $CoreRoot){
+      throw 'ADMIN_RUNTIME_PROBE_TASK_READBACK_FAILED'
+    }
+    $started=[DateTimeOffset]::UtcNow
     Remove-Item -LiteralPath $ProbeFile -Force -ErrorAction SilentlyContinue
-    Start-ScheduledTask -TaskName $TaskName
+    Start-ScheduledTask -TaskName $probeTaskName
     $probe=$null
     foreach($i in 1..40){
       Start-Sleep -Milliseconds 250
       $probe=Read-Json $ProbeFile
-      if($probe -and $probe.elevated -eq $true -and [DateTimeOffset]::Parse([string]$probe.at) -ge [DateTimeOffset]$started.ToUniversalTime()){break}
+      if($probe -and $probe.elevated -eq $true -and
+         $probe.probeOnly -eq $true -and
+         [string]$probe.user -eq $identity -and
+         [string]$probe.appRoot -eq $CoreRoot -and
+         [DateTimeOffset]::Parse([string]$probe.at) -ge $started){break}
     }
-    if(-not $probe -or $probe.elevated -ne $true){throw 'ADMIN_RUNTIME_ELEVATED_PROBE_FAILED'}
+    if(-not $probe -or $probe.elevated -ne $true -or
+       $probe.probeOnly -ne $true -or [string]$probe.appRoot -ne $CoreRoot -or
+       [string]$probe.user -ne $identity){
+      throw 'ADMIN_RUNTIME_ELEVATED_PROBE_FAILED'
+    }
+    # The one-shot task must be gone before scheduling production at the next login.
+    Unregister-ScheduledTask -TaskName $probeTaskName -Confirm:$false -ErrorAction Stop
+    if(Get-ScheduledTask -TaskName $probeTaskName -ErrorAction SilentlyContinue){
+      throw 'ADMIN_RUNTIME_PROBE_RETIRE_FAILED'
+    }
+    $probeRegistered=$false
+    Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger -Principal $principal -Settings $settings | Out-Null
+    $productionRegistered=$true
+    $readback=Get-TaskState
+    if(-not $readback.valid){throw 'ADMIN_RUNTIME_TASK_READBACK_FAILED'}
 
     if($before.present){Remove-ItemProperty -Path $RunKey -Name $RunName -ErrorAction Stop}
     $after=Get-RunState
@@ -154,12 +195,18 @@ function Install-ElevatedRuntime {
     Write-JsonAtomic $StateFile $state
     Write-Output "ADMIN_RUNTIME_INSTALL_PASS task=$TaskName user=$identity runLevel=Highest logon=Interactive"
   }catch{
-    Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false -ErrorAction SilentlyContinue
+    if($productionRegistered){
+      Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false -ErrorAction SilentlyContinue
+    }
     if($before.present){
       New-Item -Path $RunKey -Force | Out-Null
       New-ItemProperty -Path $RunKey -Name $RunName -Value $before.value -PropertyType String -Force | Out-Null
     }
     throw
+  }finally{
+    if($probeRegistered){
+      Unregister-ScheduledTask -TaskName $probeTaskName -Confirm:$false -ErrorAction SilentlyContinue
+    }
   }
 }
 function Remove-ElevatedRuntime {
