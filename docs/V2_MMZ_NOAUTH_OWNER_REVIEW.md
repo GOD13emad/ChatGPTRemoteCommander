@@ -182,3 +182,35 @@ The next open gate remains trusted owner-session-to-tool authorization
 for unattended private read/write/Shell/GUI/Workflow. Both OS privileges
 and V1's native session consent still apply; NoAuth tunnel/mTLS transport
 does not prove a ChatGPT user or desktop owner.
+
+## Owner-native KDE confirmation for low-risk V2-to-V1 diagnostics
+
+A separate optional owner-local GUI command provides a practical consent
+surface on the MMZ Linux KDE desktop without requiring an open terminal:
+```bash
+node "$HOME/.local/share/CommanderV2/ReadOnlyMcp/tools/v2-v1-owner-cli.mjs" approve-gui REQUEST_ID
+```
+
+The local CLI reviews the actual queued request and only permits one of
+`system_status`, `gui_status`, `browser_status`,
+`workflow_health` or `power_status`, each with EXACTLY `{}`
+arguments. The KDE `kdialog --inputbox` shows the requested tool and
+full UUID. It accepts only deliberately typed
+`APPROVE <first-eight-UUID-characters>`; clicking OK without the
+phrase, cancelling, a missing GUI session, or any non-zero process
+result denies the request. The command uses `execFile`, never a shell.
+
+All other tools (including unrestricted shell, file writes, process
+control, GUI input, browser input and workflow execution) remain
+excluded from this single-step GUI review and must use the existing
+full exact-argument native terminal review or a future separately
+verified owner-grant flow. A KDE dialog is same-UID user interaction,
+not a cryptographic physical presence or per-ChatGPT-conversation
+identity proof. V1 host permission and same-session consent remain
+independent. No remote V2 MCP endpoint can invoke or auto-accept the
+dialog; there is no popup triggered merely by anonymous requests.
+
+Test source: `test/v2-native-owner-dialog.test.mjs`, including
+blank/incorrect code, denied tools, arguments, invalid UUID, and
+native callback failures. Never use simulated confirmation from QA
+as evidence of a real user's approval.

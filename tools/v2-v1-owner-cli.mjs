@@ -2,6 +2,7 @@
 import process from 'node:process';
 import {createInterface} from 'node:readline/promises';
 import {createV2NativeOwnerExecutor} from '../src/v2-v1-owner-executor.mjs';
+import {confirmLowRiskV2OwnerDialog} from '../src/v2-native-owner-dialog.mjs';
 const url='http://127.0.0.1:47831/mcp';
 async function rpc(method,params={}){
  const c=new AbortController(),timer=setTimeout(()=>c.abort(),15000);
@@ -19,6 +20,7 @@ async function catalog(){
  return r.tools.map(t=>t.name);
 }
 const [action,id]=process.argv.slice(2);
+const guiMode=action==='approve-gui';
 const executor=createV2NativeOwnerExecutor({
  loadCatalog:catalog,
  invokeTool:async(tool,args)=>{
@@ -26,6 +28,7 @@ const executor=createV2NativeOwnerExecutor({
   return {isError:result?.isError===true};
  },
  requireOwnerConfirmation:async({requestId,tool,arguments:args})=>{
+  if(guiMode)return confirmLowRiskV2OwnerDialog({requestId,tool,arguments:args});
   if(!process.stdin.isTTY||!process.stdout.isTTY)
     throw new Error('V2_OWNER_INTERACTIVE_TTY_REQUIRED');
   process.stdout.write('EXACT V2 request to execute using already installed V1 current-user permissions:\n');
@@ -45,9 +48,14 @@ if(action==='list'&&!id){
 }else if(action==='approve'&&id){
  if(!process.stdin.isTTY||!process.stdout.isTTY)throw new Error('V2_OWNER_INTERACTIVE_TTY_REQUIRED');
  process.stdout.write(JSON.stringify(await executor.approve(id))+'\n');
+}else if(action==='approve-gui'&&id){
+ // Interactive on-device GUI will ask the actual logged-in owner to accept.
+ // This is explicitly for fixed read-only status methods, never arbitrary calls.
+ const result=await executor.approve(id);
+ process.stdout.write(JSON.stringify(result)+'\n');
 }else if(action==='status'&&id){
  process.stdout.write(JSON.stringify(executor.status(id))+'\n');
 }else{
- process.stderr.write('Usage: node v2-v1-owner-cli.mjs list | status <requestId> | approve <requestId>\n');
+ process.stderr.write('Usage: node v2-v1-owner-cli.mjs list | status <requestId> | approve <requestId> | approve-gui <requestId>\n');
  process.exitCode=2;
 }
