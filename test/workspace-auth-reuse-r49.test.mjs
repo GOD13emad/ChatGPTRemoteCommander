@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {chooseWorkspaceRoute} from '../src/workspace-routing.mjs';
+import {chooseWorkspaceRoute,classifySavedLoginFallback} from '../src/workspace-routing.mjs';
 
 test('already signed-in browser never silently chooses a fresh automation profile',()=>{
   const r=chooseWorkspaceRoute({target:'existing-browser',desktop:'windows',sameUserSession:true,existingProfileGrant:false,requireExistingAuthentication:true});
@@ -95,4 +95,63 @@ test('read-only workspace planner accepts owner existing authentication requirem
   assert.match(source,/requireExistingAuthentication:\{type:'boolean'\}/);
   assert.match(source,/browserEngine:\{type:'string'/);
   assert.match(source,/name:'workspace_plan'/);
+});
+
+test('unknown or unexamined password stores NEVER trigger a password request',()=>{
+  const r=classifySavedLoginFallback({signInRequired:true,authenticatedSession:'absent-verified',
+    applicationLogin:'absent-verified',browserAutofill:'unknown',osCredential:'absent-verified'});
+  assert.equal(r.route,'INSPECT_OWNER_NATIVE_LOGIN_OPTIONS');
+  assert.equal(r.passwordRequested,false);
+  assert.equal(r.askPasswordInChat,false);
+});
+
+test('an authenticated owner session requires no saved password access',()=>{
+  const r=classifySavedLoginFallback({signInRequired:true,authenticatedSession:'authenticated'});
+  assert.equal(r.route,'REUSE_AUTHENTICATED_OWNER_SESSION');
+  assert.equal(r.secretsRead,false);
+});
+
+test('any existing native saved login is used before asking the user to sign in',()=>{
+  for (const slot of ['applicationLogin','browserAutofill','osCredential']){
+    const input={authenticatedSession:'absent-verified',applicationLogin:'absent-verified',
+      browserAutofill:'absent-verified',osCredential:'absent-verified',signInRequired:true};
+    input[slot]='available';
+    const r=classifySavedLoginFallback(input);
+    assert.equal(r.route,'USE_OWNER_NATIVE_SAVED_LOGIN');
+    assert.equal(r.passwordRequested,false);
+    assert.equal(r.credentialsExported,false);
+  }
+});
+
+test('locked password manager requires native unlock, not chat password',()=>{
+  const r=classifySavedLoginFallback({signInRequired:true,authenticatedSession:'absent-verified',
+    applicationLogin:'absent-verified',browserAutofill:'locked',osCredential:'absent-verified'});
+  assert.equal(r.route,'OWNER_NATIVE_UNLOCK_REQUIRED');
+  assert.equal(r.askPasswordInChat,false);
+});
+
+test('normal native sign-in is eligible only after ALL options confirmed absent',()=>{
+  const evidence={signInRequired:true,authenticatedSession:'absent-verified',
+    applicationLogin:'absent-verified',browserAutofill:'absent-verified',
+    osCredential:'absent-verified'};
+  const r=classifySavedLoginFallback(evidence);
+  assert.equal(r.route,'OWNER_NATIVE_SIGN_IN_LAST_RESORT');
+  assert.equal(r.nativeLoginPromptEligible,true);
+  assert.equal(r.passwordRequested,false);
+  assert.equal(r.askPasswordInChat,false);
+  for (const key of ['authenticatedSession','applicationLogin','browserAutofill','osCredential']){
+    const shifted={...evidence,[key]:'unknown'};
+    assert.notEqual(classifySavedLoginFallback(shifted).route,'OWNER_NATIVE_SIGN_IN_LAST_RESORT');
+  }
+});
+
+test('unnecessary login never triggers native login prompt',()=>{
+  const r=classifySavedLoginFallback({signInRequired:false,authenticatedSession:'absent-verified',
+    applicationLogin:'absent-verified',browserAutofill:'absent-verified',
+    osCredential:'absent-verified'});
+  assert.equal(r.route,'NO_LOGIN_ACTION_REQUIRED');
+});
+
+test('invalid login evidence cannot masquerade as verified absence',()=>{
+  assert.throws(()=>classifySavedLoginFallback({signInRequired:true,browserAutofill:'not-found'}),/WORKSPACE_LOGIN_EVIDENCE_INVALID/);
 });
