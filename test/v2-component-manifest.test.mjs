@@ -19,13 +19,28 @@ test('current exact source has a complete, deterministic R1 plan for each suppor
   assert.ok(a.components.every(x=>/^[a-f0-9]{64}$/.test(x.sha256)));
   for(const file of ['src/v2-routing-contract.mjs',
     'src/v2-install-identity-gate.mjs','tools/v2-coordinator-host.mjs',
-    'src/v2-mcp-oauth-contract.mjs','src/v2-native-window-bridge.mjs']){
+    'src/v2-mcp-oauth-contract.mjs','src/v2-native-window-bridge.mjs',
+    'src/v2-authenticated-owner-gateway.mjs','src/v2-oauth-jwks.mjs',
+    'src/v2-owner-session-reuse.mjs','tools/v2-idp-discovery-preflight.mjs']){
     assert.ok(a.components.some(c=>c.path===file&&c.sha256!==null),file);
   }
   assert.equal(a.installNow.includes('core'),true);
   assert.equal(a.pendingActivation.includes('work-plugin'),true);
   assert.equal(a.installNow.includes('work-plugin'),false);
   assert.equal(a.installNow.includes('browser'),false);
+  const names=new Set(a.components.map(c=>c.path));
+  // New V2 runtime modules cannot silently escape the source integrity manifest.
+  for(const name of fs.readdirSync(path.join(root,'src')).filter(x=>/^v2-[a-z0-9-]+\.mjs$/.test(x))){
+    const rel='src/'+name;
+    assert.equal(names.has(rel),true,rel+' must be tracked by R1 manifest');
+  }
+  const win=['tools/v2-owner-seat-agent.mjs','tools/v2-owner-seat-install.ps1',
+    'tools/v2-owner-seat-launch.ps1','tools/v2-owner-uia-chrome.mjs',
+    'tools/v2-ci-watch.mjs'];
+  for(const f of win)assert.equal(names.has(f),platform==='windows',f);
+  assert.equal(names.has('tools/v2-linux-credential-provider-census.mjs'),
+    platform==='linux');
+  assert.equal(names.size,a.components.length,'manifest must not duplicate entries');
  }
 });
 test('source package version and owner runtime evidence cannot be conflated',()=>{

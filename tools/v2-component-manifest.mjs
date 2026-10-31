@@ -8,6 +8,15 @@ import {createPlan,validateCatalog} from './installer-product-plan.mjs';
 
 const CORE=[
  'src/server-v0.3.mjs',
+ 'src/v2-authenticated-owner-gateway.mjs',
+ 'src/v2-direct-mtls-attestor.mjs',
+ 'src/v2-mcp-workflow-dispatcher.mjs',
+ 'src/v2-oauth-jwks.mjs',
+ 'src/v2-oauth-resource-metadata.mjs',
+ 'src/v2-openai-mtls-trust.mjs',
+ 'src/v2-owner-login.mjs',
+ 'src/v2-owner-session-reuse.mjs',
+ 'tools/v2-idp-discovery-preflight.mjs',
  'src/v2-routing-contract.mjs',
  'src/v2-authorized-operation.mjs',
  'src/v2-caller-assertion.mjs',
@@ -35,9 +44,12 @@ const CORE=[
  'tools/v2-component-manifest.mjs'
 ];
 const PLATFORM={windows:['install.ps1','installer/RemoteCommander.iss',
- 'desktop/install-windows.ps1','desktop/admin-runtime-windows.ps1'],
+ 'desktop/install-windows.ps1','desktop/admin-runtime-windows.ps1',
+ 'tools/v2-owner-seat-agent.mjs','tools/v2-owner-seat-install.ps1',
+ 'tools/v2-owner-seat-launch.ps1','tools/v2-owner-uia-chrome.mjs',
+ 'tools/v2-ci-watch.mjs'],
  linux:['install.sh','server-install-linux.sh',
- 'tools/rc-private-gui.py']};
+ 'tools/rc-private-gui.py','tools/v2-linux-credential-provider-census.mjs']};
 const SHA=/^[a-f0-9]{64}$/;
 function fail(code){throw Object.assign(new Error(code),{code});}
 function read(root,file){
