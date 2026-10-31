@@ -26,6 +26,9 @@ if (adminRuntime.includes("$CoreRoot=Join-Path $StateRoot 'app'")) {
 }
 // Installing a privileged task must prove elevation without ever launching the
 // production supervisor beside an already-running owner runtime.
+if (!adminRuntime.includes('function Test-ProbeFreshness')) {
+  throw new Error('admin runtime UTC freshness helper is missing');
+}
 const installAdminStart = adminRuntime.indexOf('function Install-ElevatedRuntime {');
 const installAdminEnd = adminRuntime.indexOf('function Remove-ElevatedRuntime {');
 if (installAdminStart < 0 || installAdminEnd <= installAdminStart) {
@@ -35,7 +38,6 @@ const installAdmin = adminRuntime.slice(installAdminStart, installAdminEnd);
 for (const required of [
   'ADMIN_RUNTIME_TASK_CONFLICT',
   'ADMIN_RUNTIME_DUAL_AUTOSTART_CONFLICT',
-  'function Test-ProbeFreshness',
   '(Test-ProbeFreshness $probe.at $started)',
   'function Test-TaskOwnerSID',
   'Test-TaskOwnerSID ([string]$task.Principal.UserId)',
