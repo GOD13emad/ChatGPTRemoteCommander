@@ -613,3 +613,47 @@ test('Linux native refused background launch does not retry a second process',as
   assert.equal(r2.status,'REFUSED_NO_EFFECT');
   assert.equal(launched,2); // two independent user requests, no replay of one uncertain effect
 });
+
+test('Windows app in owner catalog without launch_path uses ONLY exact native name',async()=>{
+  for(const entry of [
+    {name:'Calculator',kind:'uwp',running:false,pid:0},
+    {name:'Notepad',kind:'desktop',running:false,pid:0,launch_path:null},
+    {name:'Notepad',kind:'desktop',running:false,pid:0,launch_path:'relative\\notepad.exe'}
+  ]){
+    let running=false;
+    const calls=[];
+    const controller=createWorkspaceController({platform:'win32',
+      ownerSession:async()=>true,journal:createMemoryWorkspaceJournal(),
+      callDriver:async(tool,args)=>{
+        calls.push({tool,args});
+        if(tool==='list_apps')return {apps:[{...entry,running,pid:running?822:0}]};
+        if(tool==='launch_app'){running=true;return {pid:822};}
+        throw Error('UNEXPECTED_TOOL');
+      }});
+    const result=await controller.execute('workspace_app_open',{
+      name:entry.name,requestId:'native-fallback-'+entry.kind+'-'+calls.length+'-'+entry.name,
+      explicitUserAuthorization:'Launch this uniquely installed Windows app as its current owner'});
+    assert.equal(result.status,'LAUNCHED_OWNER_PROFILE');
+    assert.deepEqual(calls.map(x=>x.tool),['list_apps','launch_app','list_apps']);
+    assert.deepEqual(calls[1].args,{name:entry.name,start_minimized:true});
+    assert.equal(result.authentication,'UNVERIFIED');
+    assert.equal(result.passwordRequested,false);
+  }
+});
+
+test('duplicate owner native catalog names cannot silently choose one executable',async()=>{
+  let launches=0;
+  const c=createWorkspaceController({platform:'win32',ownerSession:async()=>true,
+    journal:createMemoryWorkspaceJournal(),
+    callDriver:async name=>{
+      if(name==='list_apps')return {apps:[
+        {name:'Brave',kind:'desktop',running:false,pid:0,launch_path:'C:\\One\\brave.exe'},
+        {name:'brave',kind:'desktop',running:false,pid:0,launch_path:'C:\\Two\\brave.exe'}
+      ]};
+      launches++;
+    }});
+  await assert.rejects(()=>c.execute('workspace_app_open',{
+    name:'Brave',requestId:'ambiguous-brave-001',
+    explicitUserAuthorization:'Open the original Brave app in this user account'}),/WORKSPACE_APP_NAME_AMBIGUOUS/);
+  assert.equal(launches,0);
+});
