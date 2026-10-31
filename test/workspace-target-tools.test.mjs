@@ -195,3 +195,100 @@ test('multi-monitor target with unverified window monitor fails closed before in
  assert.equal(calls.at(-1),'gui_session_end');
  assert.equal(calls.includes('gui_screenshot'),false);
 });
+
+
+test('GUI_LEASE_BUSY: observe enumeration waits and retries before lease acquisition',async()=>{
+ const events=[],delays=[],window={processId:333,handle:'444',wmClass:'firefox_firefox',focused:true};
+ let attempts=0;
+ const gui=async(name,args)=>{
+  events.push(name);
+  if(name==='gui_status')return {ok:true,available:true};
+  if(name==='gui_session_begin'){
+   attempts++;
+   if(attempts<=2)throw Error('GUI_LEASE_BUSY');
+   return {ok:true,lease:'owner-observe-lease',mode:args.mode};
+  }
+  if(name==='gui_list_windows')return {windows:[window]};
+  if(name==='gui_session_end')return {ok:true};
+  throw Error('UNEXPECTED_'+name);
+ };
+ const api=createWorkspaceTargetTools({gui,wait:async ms=>{delays.push(ms);}});
+ const out=await api.execute('workspace_target_list',{application:'firefox'});
+ assert.equal(out.ok,true);assert.equal(out.windows.length,1);
+ assert.deepEqual(delays,[120,240]);
+ assert.equal(attempts,3);
+ assert.deepEqual(events.filter(x=>x==='gui_session_end'),['gui_session_end']);
+ assert.equal(events.filter(x=>x==='gui_status').length,3,'recheck safety before every retry');
+});
+
+test('GUI_LEASE_BUSY: explicit takeover admission retries without changing requested mode or authority',async()=>{
+ let attempts=0;const waited=[];const modes=[];
+ const gui=async(name,args)=>{
+  if(name==='gui_status')return {ok:true,available:true};
+  if(name==='gui_session_begin'){
+   attempts++;modes.push(args.mode);
+   if(attempts<=3)throw Object.assign(Error('native reported GUI_LEASE_BUSY'),{guiCode:'GUI_LEASE_BUSY'});
+   return {ok:true,lease:'authorized-session',mode:args.mode};
+  }
+  if(name==='gui_list_windows')return {windows:[{processId:8,handle:'92',focused:true}]};
+  if(name==='gui_session_end')return {ok:true};
+  throw Error('UNEXPECTED_'+name);
+ };
+ const api=createWorkspaceTargetTools({gui,wait:async ms=>waited.push(ms)});
+ const lease=await api.execute('workspace_target_open',{processId:8,handle:'92',mode:'takeover',explicitUserAuthorization:'Owner authorizes one temporary QA window'});
+ assert.equal(lease.mode,'takeover');
+ assert.deepEqual(modes,['takeover','takeover','takeover','takeover']);
+ assert.deepEqual(waited,[120,240,400]);
+ assert.equal((await api.execute('workspace_target_end',{lease:lease.lease})).ok,true);
+});
+
+test('GUI_LEASE_BUSY: bounded exhaustion fails without taking over or ending another lease',async()=>{
+ let attempts=0,ends=0;const delays=[];
+ const gui=async name=>{
+  if(name==='gui_status')return {ok:true,available:true};
+  if(name==='gui_session_begin'){attempts++;throw Error('GUI_LEASE_BUSY');}
+  if(name==='gui_session_end'){ends++;return {ok:true};}
+  throw Error('UNEXPECTED_'+name);
+ };
+ const api=createWorkspaceTargetTools({gui,wait:async ms=>delays.push(ms)});
+ await assert.rejects(api.execute('workspace_target_list',{application:'all'}),/GUI_LEASE_BUSY/);
+ assert.equal(attempts,6);
+ assert.deepEqual(delays,[120,240,400,600,900]);
+ assert.equal(ends,0,'never release or steal someone else lease');
+});
+
+test('other errors and safety stop are never masked by GUI_LEASE_BUSY retries',async()=>{
+ let attempts=0,waits=0,statusCalls=0;
+ const gui=async name=>{
+  if(name==='gui_status'){statusCalls++;return {ok:true,available:statusCalls===1};}
+  if(name==='gui_session_begin'){attempts++;throw Error('GUI_LEASE_BUSY');}
+  throw Error('UNEXPECTED_'+name);
+ };
+ const api=createWorkspaceTargetTools({gui,wait:async()=>{waits++;}});
+ await assert.rejects(api.execute('workspace_target_list',{application:'all'}),/WORKSPACE_TARGET_GUI_UNAVAILABLE/);
+ assert.equal(attempts,1);
+ assert.equal(waits,1);
+ const noRetry=createWorkspaceTargetTools({gui:async name=>{
+  if(name==='gui_status')return {ok:true,available:true};
+  if(name==='gui_session_begin')throw Error('GUI_TAKEOVER_NOT_AUTHORIZED');
+ },wait:async()=>{throw Error('WAIT_MUST_NOT_HAPPEN');}});
+ await assert.rejects(noRetry.execute('workspace_target_list',{}),/GUI_TAKEOVER_NOT_AUTHORIZED/);
+});
+
+test('GUI_LEASE_BUSY from a mutating native call is not retried',async()=>{
+ let nativeTypes=0,waits=0;
+ const gui=async(name,args)=>{
+  if(name==='gui_status')return {ok:true,available:true};
+  if(name==='gui_session_begin')return {ok:true,lease:'one-lease',mode:args.mode};
+  if(name==='gui_list_windows')return {windows:[{processId:333,handle:'444',focused:true}]};
+  if(name==='gui_type_text'){nativeTypes++;throw Error('GUI_LEASE_BUSY');}
+  if(name==='gui_session_end')return {ok:true};
+  throw Error('UNEXPECTED_'+name);
+ };
+ const api=createWorkspaceTargetTools({gui,wait:async()=>{waits++;}});
+ const l=await api.execute('workspace_target_open',{processId:333,handle:'444',mode:'takeover',explicitUserAuthorization:'Owner permits only QA'});
+ await assert.rejects(api.execute('workspace_target_type',{processId:333,handle:'444',lease:l.lease,frame:'valid',text:'SINGLE'}),/GUI_LEASE_BUSY/);
+ assert.equal(nativeTypes,1,'unknown effect MUST NOT replay');
+ assert.equal(waits,0);
+ await api.execute('workspace_target_end',{lease:l.lease});
+});
