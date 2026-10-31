@@ -62,9 +62,32 @@ test('signed-in Chrome retains qualified CDP path only when native profile grant
   assert.equal(granted.route,'CUA_EXISTING_BROWSER_CDP');
 });
 
-test('legacy explicit fresh isolated browser remains available when reuse is not required',()=>{
-  const r=chooseWorkspaceRoute({target:'new-browser',desktop:'windows',sameUserSession:true});
+test('default launch uses the existing signed-in owner profile without new password prompts',()=>{
+  for (const target of ['new-browser','new-app']){
+    const route=chooseWorkspaceRoute({target,desktop:'windows',sameUserSession:true});
+    assert.equal(route.route,target==='new-browser'?'OWNER_NATIVE_BROWSER_LAUNCH_REQUIRED':'OWNER_NATIVE_APP_LAUNCH_REQUIRED');
+    assert.equal(route.reuseAuthenticationByDefault,true);
+    assert.equal(route.passwordPromptPolicy,'ONLY_AFTER_SAVED_LOGIN_AND_CREDENTIAL_OPTIONS_VERIFIED_ABSENT');
+    assert.deepEqual(route.credentialFallbackOrder,[
+      'EXISTING_OWNER_SESSION','NORMAL_OWNER_APP_PROFILE',
+      'BROWSER_NATIVE_CONSENTED_ATTACH','NATIVE_ACCESSIBILITY',
+      'BROWSER_MANAGED_AUTOFILL','OS_NATIVE_CREDENTIAL_UI','USER_SIGN_IN_LAST_RESORT']);
+    assert.equal(route.credentialStoreProbe,'NO_SECRET_READS');
+    assert.equal(route.launchStatus,'NOT_EXECUTED');
+  }
+});
+
+test('new isolated browser remains available only when explicitly requested',()=>{
+  const r=chooseWorkspaceRoute({target:'new-browser',desktop:'windows',sameUserSession:true,requireExistingAuthentication:false});
   assert.equal(r.route,'COMMANDER_OWNED_PERSISTENT_PROFILE');
+  assert.equal(r.reuseAuthenticationByDefault,false);
+  assert.equal(r.passwordPromptPolicy,'ONLY_AFTER_SAVED_LOGIN_AND_CREDENTIAL_OPTIONS_VERIFIED_ABSENT');
+});
+
+test('default cannot launch a separate profile from Session0',()=>{
+  const r=chooseWorkspaceRoute({target:'new-browser',desktop:'windows',sameUserSession:false});
+  assert.equal(r.route,'OWNER_SESSION_BRIDGE_REQUIRED');
+  assert.equal(r.reuseAuthenticationByDefault,true);
 });
 
 test('read-only workspace planner accepts owner existing authentication requirement',()=>{
