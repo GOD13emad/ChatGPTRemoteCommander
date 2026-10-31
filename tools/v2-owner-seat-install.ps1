@@ -21,6 +21,21 @@ $profile=Get-CimInstance Win32_UserProfile -Filter "SID='$sid'"
 if(!$profile -or !$profile.LocalPath){throw 'V2_OWNER_PROFILE_NOT_FOUND'}
 $heartbeatFile=Join-Path $profile.LocalPath 'AppData\Local\ChatGPTRemoteCommander\V2OwnerSeat\latest.json'
 $task=Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
+# A fresh monitor file alone never proves that the scheduled native owner
+# worker is executing under the expected interactive owner token.
+function Test-V2OwnerHandshakeReady {
+ param(
+  [string]$TaskState,[string]$TaskPrincipalSid,[string]$OwnerSid,
+  [string]$LogonType,[string]$RunLevel,[bool]$Fresh,
+  [bool]$AgentMatch,[bool]$LauncherMatch,$OwnerSessionId
+ )
+ $seat=if($null -ne $OwnerSessionId){[string]$OwnerSessionId}else{''}
+ return ($TaskState -ceq 'Running' -and
+  $TaskPrincipalSid -ceq $OwnerSid -and $OwnerSid -match '^S-1-5-21-(?:[0-9]+-){3}[0-9]+$' -and
+  $LogonType -ceq 'Interactive' -and $RunLevel -ceq 'Limited' -and
+  $Fresh -and $AgentMatch -and $LauncherMatch -and
+  $seat -match '^[1-9][0-9]{0,2}$')
+}
 function report {
  $snap=if(Test-Path -LiteralPath $heartbeatFile){
   try{Get-Content -LiteralPath $heartbeatFile -Raw|ConvertFrom-Json}catch{$null}
@@ -39,6 +54,23 @@ function report {
   (Test-Path $sourceLauncher -PathType Leaf) -and
   ((Get-FileHash $dstLauncher -Algorithm SHA256).Hash -eq
    (Get-FileHash $sourceLauncher -Algorithm SHA256).Hash)
+ # Translate the Task principal to its native SID; an arbitrary username,
+ # stale task, foreign account or lookup error cannot authorize readiness.
+ $taskSid=$null
+ if($task){
+  try{
+   $rawId=[string]$task.Principal.UserId
+   if($rawId -match '^S-1-5-21-(?:[0-9]+-){3}[0-9]+$'){$taskSid=$rawId}
+   else{$taskSid=([Security.Principal.NTAccount]::new($rawId)).Translate(
+      [Security.Principal.SecurityIdentifier]).Value}
+  }catch{$taskSid=$null}
+ }
+ $ready=Test-V2OwnerHandshakeReady -TaskState $(if($task){$task.State.ToString()}else{''}) `
+  -TaskPrincipalSid $taskSid -OwnerSid $sid `
+  -LogonType $(if($task){$task.Principal.LogonType.ToString()}else{''}) `
+  -RunLevel $(if($task){$task.Principal.RunLevel.ToString()}else{''}) `
+  -Fresh $fresh -AgentMatch $codeMatch -LauncherMatch $launcherMatch `
+  -OwnerSessionId $(if($snap){$snap.sessionId}else{$null})
  [pscustomobject]@{
   schema=1;taskPresent=[bool]$task;
   taskState=if($task){$task.State.ToString()}else{'NOT_INSTALLED'};
@@ -50,7 +82,7 @@ function report {
   ownerHeartbeatFresh=$fresh;
   ownerSessionId=if($snap){$snap.sessionId}else{$null};
   loginVerified=$false;chatAuthorized=$false;
-  readyForNativeOwnerHandshake=($task -and $fresh -and $codeMatch -and $launcherMatch);
+  readyForNativeOwnerHandshake=[bool]$ready;
   readyForBrowserAutomation=$false
  }|ConvertTo-Json -Compress
 }

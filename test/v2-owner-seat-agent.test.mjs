@@ -1,6 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtemp,readFile,rm,symlink} from 'node:fs/promises';
+import {readFileSync} from 'node:fs';
+import {spawnSync} from 'node:child_process';
+import {fileURLToPath} from 'node:url';
 import {join} from 'node:path';
 import {tmpdir} from 'node:os';
 import {makeOwnerSeatHeartbeat,writeOwnerSeatHeartbeat,startOwnerSeatWorker,
@@ -154,4 +157,51 @@ test('owner worker publishes native-window inventory with no action authority',a
   assert.equal(state.savedLoginVerified,false);
   assert.equal(state.canExecuteUserActions,false);
  }finally{controller.abort();await rm(dir,{recursive:true,force:true});}
+});
+
+test('native OwnerSeat handshake readiness refuses stale or foreign task state', {
+ skip:process.platform!=='win32'
+},()=>{
+ const installer=fileURLToPath(new URL('../tools/v2-owner-seat-install.ps1',import.meta.url));
+ const source=readFileSync(installer,'utf8');
+ assert.match(source,/readyForNativeOwnerHandshake=\[bool\]\$ready/);
+ assert.match(source,/function Test-V2OwnerHandshakeReady/);
+ const ps=String.raw`
+$ErrorActionPreference='Stop'
+$tokens=$null;$errors=$null
+$ast=[System.Management.Automation.Language.Parser]::ParseFile($args[0],[ref]$tokens,[ref]$errors)
+if($errors.Count -ne 0){throw 'V2_OWNER_POWERSHELL_PARSE_FAILED'}
+$functions=@($ast.FindAll({param($node)
+ $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
+ $node.Name -eq 'Test-V2OwnerHandshakeReady'
+},$true))
+if($functions.Count -ne 1){throw 'V2_OWNER_PURE_PREDICATE_MISSING'}
+. ([ScriptBlock]::Create($functions[0].Extent.Text))
+$sid='S-1-5-21-1-2-3-1001'
+$base=@{
+ TaskState='Running';TaskPrincipalSid=$sid;OwnerSid=$sid;
+ LogonType='Interactive';RunLevel='Limited';
+ Fresh=$true;AgentMatch=$true;LauncherMatch=$true;OwnerSessionId=1
+}
+if(-not (Test-V2OwnerHandshakeReady @base)){throw 'V2_OWNER_HEALTHY_REJECTED'}
+$cases=@(
+ @('TaskState','Ready'),@('TaskPrincipalSid','S-1-5-21-1-2-3-9999'),
+ @('OwnerSid','S-1-5-18'),@('LogonType','S4U'),
+ @('RunLevel','Highest'),@('Fresh',$false),
+ @('AgentMatch',$false),@('LauncherMatch',$false),
+ @('OwnerSessionId',0),@('OwnerSessionId','1x')
+)
+foreach($entry in $cases){
+ $copy=@{};foreach($key in $base.Keys){$copy[$key]=$base[$key]}
+ $copy[$entry[0]]=$entry[1]
+ if(Test-V2OwnerHandshakeReady @copy){throw ('V2_OWNER_UNSAFE_ACCEPTED_'+$entry[0])}
+}
+'V2_OWNER_NATIVE_READY_NEGATIVE_10_PASS'
+`;
+ const script=ps.replace('$args[0]',"'"+installer.replaceAll("'","''")+"'");
+ const result=spawnSync('pwsh',['-NoLogo','-NoProfile','-NonInteractive','-Command',script],{
+  encoding:'utf8',timeout:10000,maxBuffer:65536
+ });
+ assert.equal(result.status,0,result.stderr||result.stdout);
+ assert.match(result.stdout,/V2_OWNER_NATIVE_READY_NEGATIVE_10_PASS/);
 });
