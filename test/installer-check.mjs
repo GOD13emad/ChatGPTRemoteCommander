@@ -35,6 +35,8 @@ const installAdmin = adminRuntime.slice(installAdminStart, installAdminEnd);
 for (const required of [
   'ADMIN_RUNTIME_TASK_CONFLICT',
   'ADMIN_RUNTIME_DUAL_AUTOSTART_CONFLICT',
+  'function Test-ProbeFreshness',
+  '(Test-ProbeFreshness $probe.at $started)',
   'function Test-TaskOwnerSID',
   'Test-TaskOwnerSID ([string]$task.Principal.UserId)',
   'Test-TaskOwnerSID ([string]$taskProbe.Principal.UserId)',
