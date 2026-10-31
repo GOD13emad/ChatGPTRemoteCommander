@@ -89,7 +89,7 @@ test('Linux semantic route is AT-SPI then portal; Windows UIA unsupported',async
   assert.equal(s.backends.waylandPortal.status,'GATED');
   const p=await controller('linux').execute('hybrid_control_plan',{target:'existing-app',activity:'interact'});
   assert.deepEqual(p.routeOrder.slice(0,3).map(x=>x.id),
-    ['owner-app-catalog','linux-atspi','wayland-portal']);
+    ['linux-atspi','wayland-portal-libei','owner-app-catalog']);
 });
 test('headless shell and filesystem remain independent of a blocked GUI consent route',async()=>{
   const c=controller('linux',{toolNames:()=>tools.filter(n=>!n.startsWith('workspace_'))});
