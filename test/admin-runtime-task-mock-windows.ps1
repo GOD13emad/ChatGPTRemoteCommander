@@ -47,7 +47,7 @@ function New-ScheduledTaskAction {
 }
 function New-ScheduledTaskTrigger {param([switch]$AtLogOn,[string]$User);return [pscustomobject]@{AtLogOn=$AtLogOn;User=$User}}
 function New-ScheduledTaskPrincipal {param([string]$UserId,[string]$LogonType,[string]$RunLevel)
- return [pscustomobject]@{UserId=$UserId;LogonType=$LogonType;RunLevel=$RunLevel}
+ return [pscustomobject]@{UserId=(($UserId -split '\\')[-1]);LogonType=$LogonType;RunLevel=$RunLevel}
 }
 function New-ScheduledTaskSettingsSet {param([switch]$StartWhenAvailable,[string]$MultipleInstances,[timespan]$ExecutionTimeLimit)
  return [pscustomobject]@{StartWhenAvailable=$StartWhenAvailable;MultipleInstances=$MultipleInstances}
@@ -76,6 +76,15 @@ function Start-ScheduledTask {param([string]$TaskName)
 }
 function Start-Sleep {param([int]$Milliseconds);return}
 try{
+$owner=[regex]::Match($source,'(?s)function Test-TaskOwnerSID\(.*?(?=\r?\nfunction Get-TaskState \{)')
+if(-not $owner.Success){throw 'SID_HELPER_MISSING'}
+Invoke-Expression $owner.Value
+$current=[Security.Principal.WindowsIdentity]::GetCurrent()
+$short=($current.Name -split '\\')[-1]
+if(-not(Test-TaskOwnerSID $current.Name) -or -not(Test-TaskOwnerSID $short) -or
+   -not(Test-TaskOwnerSID $current.User.Value) -or
+   (Test-TaskOwnerSID 'NT AUTHORITY\LOCAL SERVICE')){throw 'SID_HELPER_ALIAS_TEST_FAILED'}
+'CASE0_PASS: SID_NORMALIZATION_FULL_SHORT_SID_NEGATIVE'
 Invoke-Expression $match.Value
 $null=Install-ElevatedRuntime
 if(-not $script:Tasks.ContainsKey($script:TaskName)){throw 'CASE1_NO_PRODUCTION_REGISTER'}
@@ -110,7 +119,7 @@ if(-not $failed){throw 'CASE4_PROBE_DENIAL_NOT_REJECTED'}
 if($script:Tasks.Count -ne 0){throw 'CASE4_TASK_LEAK'}
 if(@($script:Events|Where-Object{$_ -eq 'START:'+$script:TaskName}).Count -gt 0){throw 'CASE4_PRODUCTION_START'}
 'CASE4_PASS: DENIED_PROBE_NO_PRODUCTION_CLEANUP'
-"QA_PASS five cases; SHA256=$hash"
+"QA_PASS six cases; SHA256=$hash"
 }finally{
   $canonical=[IO.Path]::GetFullPath($qa)
   $temp=[IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd('\')+'\'
