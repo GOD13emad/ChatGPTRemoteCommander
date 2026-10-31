@@ -221,6 +221,8 @@ export function createWorkspaceController({callDriver=defaultCuaCall,previewDriv
    if(matches.length!==1)throw fail(matches.length===0?'WORKSPACE_APP_NOT_IN_OWNER_CATALOG':'WORKSPACE_APP_NAME_AMBIGUOUS');
    const app=matches[0],key='app:'+createHash('sha256').update(app.name.toLocaleLowerCase(),'utf8').digest('hex');
    if(name==='workspace_app_reconcile'){
+     if(!['RUNNING_VERIFIED','NOT_RUNNING_VERIFIED'].includes(input.determination))
+       throw fail('WORKSPACE_APP_DETERMINATION_INVALID');
      const pendingApp=await journal.pending(key);
      if(!pendingApp||pendingApp.action!=='workspace_app_open')
        throw fail('WORKSPACE_NO_TARGET_INCIDENT');
@@ -236,6 +238,7 @@ export function createWorkspaceController({callDriver=defaultCuaCall,previewDriv
    if(seen.has(input.requestId))throw fail('WORKSPACE_DUPLICATE_REQUEST_NO_REPLAY');
    if(await journal.pending(key))throw fail('WORKSPACE_TARGET_RECONCILIATION_REQUIRED');
    if(busy.has(key))throw fail('WORKSPACE_TARGET_BUSY');
+   if(app.running===true&&!integer(app.pid))throw fail('WORKSPACE_APP_RUNNING_UNVERIFIED');
    if(app.running===true&&integer(app.pid))
      return {ok:true,status:'ALREADY_RUNNING',name:app.name,pid:app.pid,
        launchAttempted:false,credentials:'OWNER_PROFILE_UNCHANGED',focusChanged:false};
