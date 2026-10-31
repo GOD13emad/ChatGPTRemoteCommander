@@ -6,7 +6,7 @@ import path from 'node:path';
 import {createHash} from 'node:crypto';
 import {readFile} from 'node:fs/promises';
 const ALLOWED=new Set([
- 'workspace_plan','workspace_login_readiness','workspace_app_catalog','workspace_app_open','workspace_app_reconcile','workspace_list_windows','workspace_window_observe','workspace_window_preview',
+ 'workspace_plan','workspace_login_readiness','workspace_app_catalog','workspace_app_open','workspace_app_reconcile','workspace_winapp_probe','workspace_list_windows','workspace_window_observe','workspace_window_preview',
  'workspace_window_click','workspace_window_type','workspace_word_render','workspace_browser_inspect','workspace_browser_attach',
  'workspace_browser_click','workspace_target_reconcile'
 ]);
