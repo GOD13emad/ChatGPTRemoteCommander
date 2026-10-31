@@ -188,11 +188,7 @@ function Observe-TunnelControlPlane([string]$Profile,[int]$Port) {
 function Get-TunnelProcess([string]$Profile, [string]$Exe) {
   $expected = [IO.Path]::GetFullPath($Exe)
   $processName = [IO.Path]::GetFileName($expected)
-  # Only the two vetted Windows tunnel runtime flavors are executable owners.
-  # Preserve exact path and profile checks below to avoid cross-process attachment.
-  if ($processName -notin @('tunnel-client.exe', 'tunnel-client-runtime.exe')) {
-    throw 'Unsupported tunnel executable name.'
-  }
+  if ($processName -notin @('tunnel-client.exe', 'tunnel-client-runtime.exe')) { throw 'Unsupported tunnel executable name.' }
   $escaped = [regex]::Escape($Profile)
   $profileRegex = '--profile(?:=|\s+)["'']?' + $escaped + '["'']?(?:\s|$)'
 
