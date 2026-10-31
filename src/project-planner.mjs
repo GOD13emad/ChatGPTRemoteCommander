@@ -1,3 +1,4 @@
+import {parseProjectJsonStrict} from './project-json-strict.mjs';
 import { spawn } from 'node:child_process';
 import { mkdtemp, writeFile, open, lstat, rm, realpath } from 'node:fs/promises';
 import os from 'node:os';
@@ -35,7 +36,7 @@ function boundedInteger(value, fallback, minimum, maximum) {
 
 function parseProposal(text) {
   let value;
-  try { value = JSON.parse(text); } catch { throw fail('PLANNER_INVALID_JSON'); }
+  try { value = parseProjectJsonStrict(text, 512 * 1024); } catch { throw fail('PLANNER_INVALID_JSON'); }
   if (!value || typeof value !== 'object' || Array.isArray(value)
       || Object.keys(value).length !== FIELDS.length
       || FIELDS.some(key => !Object.hasOwn(value, key) || typeof value[key] !== 'string')
@@ -47,7 +48,7 @@ function parseProposal(text) {
     throw fail('PLANNER_INVALID_PROPOSAL');
   }
   let args;
-  try { args = JSON.parse(value.argumentsJson); } catch { throw fail('PLANNER_INVALID_PROPOSAL'); }
+  try { args = parseProjectJsonStrict(value.argumentsJson, 256 * 1024); } catch { throw fail('PLANNER_INVALID_PROPOSAL'); }
   if (!args || typeof args !== 'object' || Array.isArray(args)) throw fail('PLANNER_INVALID_PROPOSAL');
   return Object.fromEntries(FIELDS.map(key => [key, value[key]]));
 }
