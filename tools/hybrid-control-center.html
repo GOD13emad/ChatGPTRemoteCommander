@@ -6,7 +6,7 @@
 <div class="card"><b>Commander Core</b><p>Shell، فایل، عملیات پایدار و پروفایل‌های موجود</p></div>
 <div class="card"><b>Hybrid Workflow</b><p>انتخاب موتور و Fleet Bridge؛ برای اجرای بین دستگاهی هنوز Coordinator واقعی لازم است.</p></div>
 <div class="card"><b>GUI / Browser</b><p>کنترل از طریق Worker نشست مالک و مجوز همان برنامه یا مرورگر.</p></div>
-<div class="card"><b>Local AI</b><p>Colibri، llama.cpp، Ollama و vLLM در صورت نصب و پیکربندی.</p></div></div>
+<div class="card"><b>Local AI</b><p id="localModelStatus">در حال بررسی سرویس مدل محلی…</p></div></div>
 <h2>کنترل و اطلاعات</h2><button id="reload" type="button">بازخوانی وضعیت</button><p id="last"></p>
 <small>این ابزار وضعیت را نمایش می‌دهد؛ اجرای فرمان‌های اصلی از اتصال Commander در ChatGPT انجام می‌شود.</small>
 <footer>Local-only (127.0.0.1) · No shell endpoint · No credentials or cookies · No native permission bypass</footer></main>
@@ -24,6 +24,8 @@ async function refresh(){
    if(s.id==='ownerBroker'){detail+=' | نشست مالک: '+(s.ownerSession?'تأییدشده':'تأییدنشده')}
    return '<div class="card"><b>'+esc(labels[s.id]||s.id)+'</b><div class="value '+(s.reachable?'good':'warn')+'">'+status+'</div><div class="details">'+detail+'</div></div>';
   }).join('');
+  var models=(d.modelServices||[]).filter(function(x){return x.healthy===true});
+  document.getElementById('localModelStatus').textContent=models.length ? ('سرویس در دسترس: '+models.map(function(x){return x.id==='llamaCpp'?'llama.cpp':x.id}).join('، ')+' — سلامت سرویس؛ نه تأیید Planner') : 'سرویس مدل محلی از طریق پورت‌های استاندارد شناسایی نشد؛ Colibri، llama.cpp، Ollama یا vLLM اختیاری‌اند.';
   document.getElementById('last').textContent='آخرین بررسی: '+new Date(d.checkedAt).toLocaleString('fa-IR');
  }catch(e){c.textContent='دریافت وضعیت ناموفق بود.'}
 }

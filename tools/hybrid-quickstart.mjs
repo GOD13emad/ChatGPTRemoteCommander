@@ -16,6 +16,11 @@ const SERVICES=[
  {id:'runtime',port:47832,path:'/health'},
  {id:'ownerBroker',port:48838,path:'/health'}
 ];
+// Optional, read-only loopback discovery. Service health is not model/Planner acceptance.
+const MODEL_SERVICES=[
+ {id:'llamaCpp',port:18080,path:'/health'},
+ {id:'ollama',port:11434,path:'/api/version'}
+];
 function checkPort(arg){const n=Number(arg);if(!Number.isInteger(n)||n<1024||n>65535)throw Error('INVALID_LOCAL_PORT');return n;}
 async function probe(s){
  try{
@@ -28,14 +33,19 @@ async function probe(s){
    v.healthy=x.ok===true;v.ownerSession=x.ownerSession===true;
    v.active=x.active===true;v.sharedDesktopInput=x.sharedDesktopInput===true;
   }
+  if(s.id==='llamaCpp')v.healthy=x.status==='ok';
+  if(s.id==='ollama')v.healthy=typeof x.version==='string';
   return v;
  }catch{return {id:s.id,reachable:false};}
 }
 async function snapshot(){
- const services=await Promise.all(SERVICES.map(probe));
+ const [services,modelServices]=await Promise.all([
+  Promise.all(SERVICES.map(probe)),Promise.all(MODEL_SERVICES.map(probe))
+ ]);
  return {schema:1,name:'Commander Hybrid Quickstart',mode:'LOCAL_CONTROL_CENTER',
   platform:process.platform,arch:process.arch,host:os.hostname(),
-  checkedAt:new Date().toISOString(),services,
+  checkedAt:new Date().toISOString(),services,modelServices,
+  localModelRuntimeDetected:modelServices.some(s=>s.healthy===true),
   availableDomains:Object.keys(hybridCandidates),
   localCodeAvailable:true,
   fleetCoordinatorConfigured:false,localModelConfigured:false,
