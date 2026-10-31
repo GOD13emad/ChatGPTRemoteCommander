@@ -31,7 +31,7 @@ const knownSyntheticTlsFixture = Object.freeze({
   path: 'test/v2-mcp-http-ingress.test.mjs'
 });
 const syntheticPemHeader = '-----BEGIN ' + 'PRIVATE KEY-----';
-const syntheticFixturePrefix = "+  privateKeyPem:'" + syntheticPemHeader + String.raw`\\nfixture`';
+const syntheticFixturePrefix = "+  privateKeyPem:'" + syntheticPemHeader + String.raw`\\nfixture` + "'";
 const knownSyntheticFixtureLines = new Set([
   syntheticFixturePrefix + ',',
   syntheticFixturePrefix + '});'
