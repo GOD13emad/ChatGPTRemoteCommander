@@ -74,8 +74,8 @@ export function createHybridControl({platform=process.platform,config={},
         chromeDevtools:route('chrome-devtools-native',providersVerified('chromeDevtools'),'CHROME_NATIVE_DEBUG_CONSENT_REQUIRED',['workspace_browser_inspect']),
         firefoxExtension:route('firefox-native-messaging',providersVerified('firefoxExtension'),'FIREFOX_EXTENSION_AND_NATIVE_HOST_CONSENT_REQUIRED',['workspace_browser_inspect']),
         windowsUia:entry('windows-uia-winapp',
-          platform!=='win32'?'UNSUPPORTED':providersVerified('windowsUia')?'AVAILABLE':'GATED',
-          ['workspace_target_list'],'WINDOWS_OWNER_WINAPP_INSTALL_AND_UIA_INSPECTION_REQUIRED'),
+          platform!=='win32'?'UNSUPPORTED':providersVerified('windowsUia')&&names.has('workspace_winapp_probe')?'AVAILABLE':'GATED',
+          ['workspace_winapp_probe','workspace_target_list'],'WINDOWS_OWNER_WINAPP_INSTALL_AND_UIA_INSPECTION_REQUIRED'),
         linuxAtspi:entry('linux-atspi',
           platform!=='linux'?'UNSUPPORTED':ownerProven&&names.has('workspace_accessibility_open')?'AVAILABLE':'GATED',
           ['workspace_accessibility_open'],'OWNER_DBUS_SESSION_AND_ACCESSIBILITY_REQUIRED'),
@@ -119,12 +119,17 @@ export function createHybridControl({platform=process.platform,config={},
       if(kind==='existing-app')push('appCatalog');
       push('windowObserve');push('cua');
     }
-    const selected=choose(chain);
+    // Capability to observe a UIA tree does not itself authorize invoke/set-value.
+    // Both require a separate owner-native effect tool and proven readback.
+    const qualified=activity==='observe'?chain:chain.map(item=>
+      item.id==='windows-uia-winapp'&&item.status==='AVAILABLE'?
+        {...item,status:'GATED',reason:'UIA_MUTATION_AND_READBACK_NOT_YET_QUALIFIED'}:item);
+    const selected=choose(qualified);
     const requiresOwner=kind.includes('browser')||kind.includes('app');
     const originalLogin=args.preserveExistingLogin!==false;
     return {schema:1,target:kind,activity,platform,
       browserEngine:kind.includes('browser')?args.browserEngine??'other':null,
-      routeOrder:chain,selection:selected,
+      routeOrder:qualified,selection:selected,
       authorization:requiresOwner?(s.owner.sameUserSessionVerified?'SAME_OWNER_VERIFIED':'SAME_OWNER_SESSION_PROOF_REQUIRED'):
         'COMMANDER_TOOL_POLICY_AND_OS_ACL_REQUIRED',
       existingAuthentication:originalLogin?'REUSE_ORIGINAL_OWNER_SESSION_ONLY':'NO_IMPLICIT_PROFILE_CLONE',
