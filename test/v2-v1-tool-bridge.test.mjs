@@ -40,6 +40,10 @@ test('owner review queues exact V1 tool but NEVER executes on remote request',()
   ['requestId','status','expired','v1CallReturned','verifiedEffect'].sort());
  assert.equal(queue.progress(request.requestId).status,'V1_CALL_RETURNED');
  assert.equal(queue.progress(request.requestId).verifiedEffect,false);
+ assert.equal(queue.list().find(x=>x.id===request.requestId)?.status,
+   'V1_CALL_RETURNED');
+ // The immutable pre-dispatch receipt remains UNCERTAIN by design.
+ assert.equal(queue.inspect(request.requestId).status,'DISPATCHING_UNCERTAIN');
  await assert.rejects(()=>executor.approve(request.requestId),{code:'V2_OWNER_NOT_PENDING'});
  assert.equal(effects,1);
 }));
@@ -77,6 +81,8 @@ test('transport failure after bounded owner approval is recorded UNCERTAIN, not 
  const result=await executor.approve(r.requestId);
  assert.equal(result.status,'DISPATCH_OUTCOME_UNCERTAIN');
  assert.equal(q.progress(r.requestId).status,'DISPATCH_OUTCOME_UNCERTAIN');
+ assert.equal(q.list().find(x=>x.id===r.requestId)?.status,
+   'DISPATCH_OUTCOME_UNCERTAIN');
  await assert.rejects(()=>executor.approve(r.requestId),{code:'V2_OWNER_NOT_PENDING'});
  assert.equal(n,1);
 }));

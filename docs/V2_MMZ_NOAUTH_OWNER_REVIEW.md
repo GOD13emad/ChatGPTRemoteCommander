@@ -287,3 +287,44 @@ the source after a hash-preconditioned atomic install, with prior copies
 retained in the existing owner-private QA location. Production review
 and V2-to-V1 invocation still require an explicit native owner action:
 expired proposals are not retroactively approved.
+
+## First observed production owner-reviewed diagnostic V2 → V1 (2026-11-01)
+
+ChatGPT V2 submitted the exact request
+`d394406e-d1b0-4c49-9302-2a49a41a8425` for the
+non-mutating V1 `system_status` with empty arguments. A separate
+owner-local native review execution subsequently produced all three
+private, mode-0600, same-owner records under the existing V2
+`v1-tool-review` root:
+
+- `requests/<id>.json`: named tool `system_status`, empty args
+- `receipts/<id>.json`: pre-dispatch marker `DISPATCHING_UNCERTAIN`
+- `final/<id>.json`: durable `V1_CALL_RETURNED` receipt
+
+The active V2 ChatGPT tool `v2_v1_request_status` reported
+`V1_CALL_RETURNED`, `v1CallReturned=true` and
+`verifiedEffect=false`. The V1 call-returned state was still readable
+after the V2 MCP server restart; the prior request was NEVER replayed.
+This closes the **single non-sensitive owner-reviewed V2-to-V1 RPC
+return gate**. The records show the native owner approval path
+completed; they are not cryptographic evidence of physical presence
+nor proof that any general long-running effect completed.
+
+A user-visible inconsistency was corrected: the native queue
+`list()` previously showed the immutable pre-dispatch marker as
+`DISPATCHING_UNCERTAIN` even when the final receipt existed. It now
+uses the validated final receipt for completed or uncertain entries,
+while leaving pending requests untouched for KDE review. The
+`inspect()` pre-dispatch marker remains immutable for forensic
+recovery. The source and deployed V2 bridge both now match SHA256
+`3df548e094c2f197f1a625ad9fe5f2ee1583650d802b023851f543ac3224ac80`.
+Regression tests include successful and uncertain final receipt
+reconciliation, non-replay, and no direct noauth dispatch. V1 remains
+untouched; V2 coordinator, MCP and tunnel remained healthy after this
+scoped deploy.
+
+DoD **not** closed: V2's unattended, privileged Shell/file/GUI/browser
+and Workflow invocation from an arbitrary ChatGPT NoAuth session.
+This still requires a real trusted per-caller identity and scoped
+owner grant, or independently reviewed native per-action execution
+under the V1 effective OS and desktop permissions.

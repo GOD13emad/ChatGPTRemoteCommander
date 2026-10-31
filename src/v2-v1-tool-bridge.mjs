@@ -165,8 +165,19 @@ export function createV2V1ToolBridge({
     v1CallReturned:state==='V1_CALL_RETURNED'||state==='V1_TOOL_REPORTED_ERROR',
     verifiedEffect:false});
  }
- return Object.freeze({catalog,request,inspect,progress,
-   list:()=>scan().map(x=>inspect(x.slice(0,-5))),
+ function list(){
+   // Pending entries retain their original status for the native picker.
+   // Completed/uncertain entries reflect the durable FINAL receipt rather
+   // than the pre-dispatch marker, so user-facing review does not falsely
+   // claim an already returned call remains in progress.
+   return scan().map(file=>{
+     const id=file.slice(0,-5),r=inspect(id);
+     if(r.status==='PENDING')return r;
+     const reconciled=progress(id);
+     return Object.freeze({...r,status:reconciled.status});
+   });
+ }
+ return Object.freeze({catalog,request,inspect,progress,list,
    // Native-only receipt write is intentionally not exposed on this interface.
    receiptPath:id=>paths(id).receipt});
 }
