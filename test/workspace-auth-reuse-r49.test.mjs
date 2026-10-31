@@ -2,7 +2,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {createWorkspaceController,workspaceToolDefinitions,isOwnerBackgroundWorkspaceTool} from '../src/workspace-tools.mjs';
-import {createMemoryWorkspaceJournal} from '../src/workspace-target-journal.mjs';
+import {createMemoryWorkspaceJournal,createWorkspaceTargetJournal} from '../src/workspace-target-journal.mjs';
+import {mkdtemp,rm} from 'node:fs/promises';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
+import {createHash} from 'node:crypto';
 import {createOwnerWorkspaceProxy} from '../src/owner-workspace-proxy.mjs';
 import {chooseWorkspaceRoute,classifySavedLoginFallback,probeOwnerLoginRoutes} from '../src/workspace-routing.mjs';
 
@@ -515,4 +519,24 @@ test('unknown incident determination cannot clear a durable pending launch',asyn
     name:'Notepad',requestId:'unknown-state-002',
     explicitUserAuthorization:a}),/WORKSPACE_TARGET_RECONCILIATION_REQUIRED/);
   assert.equal(attempts,1);
+});
+
+test('durable journal blocks concurrent owner-app restarts and clears only proven event',async()=>{
+  const dir=await mkdtemp(join(tmpdir(),'rc-owner-launch-journal-'));
+  const target='app:'+createHash('sha256').update('notepad','utf8').digest('hex');
+  try{
+    const first=createWorkspaceTargetJournal({dir});
+    const second=createWorkspaceTargetJournal({dir});
+    const receipt=await first.begin(target,'workspace_app_open','unique-run-0001');
+    assert.equal((await second.pending(target)).action,'workspace_app_open');
+    await assert.rejects(()=>second.begin(target,'workspace_app_open','unique-run-0002'),
+      /WORKSPACE_TARGET_RECONCILIATION_REQUIRED/);
+    await assert.rejects(()=>second.resolve(target,{...receipt,id:'not-the-same'}),
+      /WORKSPACE_JOURNAL_RESOLUTION_MISMATCH/);
+    assert.ok(await first.pending(target));
+    await second.resolve(target,receipt);
+    assert.equal(await first.pending(target),null);
+    await assert.rejects(()=>first.begin('app:../../escape','workspace_app_open','unique-run-0003'),
+      /WORKSPACE_JOURNAL_TARGET_INVALID/);
+  }finally{await rm(dir,{recursive:true,force:true});}
 });
