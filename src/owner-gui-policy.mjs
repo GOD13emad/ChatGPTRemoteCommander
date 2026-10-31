@@ -14,7 +14,7 @@ export function mergeExplicitOwnerGuiPolicy(active, local) {
   if (!requested || typeof requested !== 'object' || Array.isArray(requested))
     fail('INVALID');
   const fields = Object.keys(requested);
-  if (fields.some(k => !['enabled', 'port', 'authFile'].includes(k)) ||
+  if (fields.some(k => !['enabled', 'port', 'authFile', 'allowTakeover'].includes(k)) ||
       typeof requested.enabled !== 'boolean')
     fail('UNRECOGNIZED_SETTING');
   if (requested.enabled === false) {
@@ -22,6 +22,10 @@ export function mergeExplicitOwnerGuiPolicy(active, local) {
     return {config: {...active, ownerGuiDelegation: {enabled: false}}, merged: true};
   }
   if (active.powerMode?.guiControl?.enabled !== true) fail('CORE_GUI_DISABLED');
+  if (Object.hasOwn(requested,'allowTakeover') && typeof requested.allowTakeover !== 'boolean')
+    fail('TAKEOVER_TYPE_INVALID');
+  if (requested.allowTakeover === true && active.powerMode?.guiControl?.ownerAuthorizedTakeover !== true)
+    fail('CORE_OWNER_TAKEOVER_NOT_AUTHORIZED');
   if (!Number.isSafeInteger(requested.port) || requested.port < 1024 || requested.port > 65535)
     fail('INVALID_PORT');
   const file = requested.authFile;
@@ -31,7 +35,9 @@ export function mergeExplicitOwnerGuiPolicy(active, local) {
   try {st = fs.lstatSync(file);} catch {fail('AUTH_NOT_PRESENT');}
   if (!st.isFile() || st.isSymbolicLink() || st.nlink !== 1) fail('AUTH_NOT_REGULAR');
   return {
-    config: {...active, ownerGuiDelegation: {enabled: true, port: requested.port, authFile: path.resolve(file)}},
+    config: {...active, ownerGuiDelegation: {enabled: true, port: requested.port,
+      authFile: path.resolve(file),
+      ...(requested.allowTakeover === true ? {allowTakeover: true} : {})}},
     merged: true
   };
 }
