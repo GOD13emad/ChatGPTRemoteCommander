@@ -540,3 +540,21 @@ test('durable journal blocks concurrent owner-app restarts and clears only prove
       /WORKSPACE_JOURNAL_TARGET_INVALID/);
   }finally{await rm(dir,{recursive:true,force:true});}
 });
+
+test('default Windows signed-in app launch route exposes native catalog/open/reconcile tools',()=>{
+  const r=chooseWorkspaceRoute({target:'new-browser',desktop:'windows',sameUserSession:true});
+  assert.equal(r.route,'OWNER_NATIVE_BROWSER_LAUNCH_REQUIRED');
+  assert.deepEqual(r.nativeAppLauncher,{
+    status:'NATIVE_OWNER_AGENT_REQUIRED',catalog:'workspace_app_catalog',
+    open:'workspace_app_open',reconcile:'workspace_app_reconcile',
+    minimizing:'REQUESTED_NOT_FOREGROUND_VERIFIED'
+  });
+  assert.equal(r.launchStatus,'NOT_EXECUTED');
+});
+
+test('Linux owner login reuse is not falsely claimed to have Windows launch support',()=>{
+  const r=chooseWorkspaceRoute({target:'new-browser',desktop:'wayland',sameUserSession:true});
+  assert.equal(r.route,'OWNER_NATIVE_BROWSER_LAUNCH_REQUIRED');
+  assert.equal(r.nativeAppLauncher.status,'PLATFORM_NOT_YET_SUPPORTED');
+  assert.equal(r.credentials,'NEVER_EXPORT_OR_CLONE');
+});
