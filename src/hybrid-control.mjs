@@ -111,9 +111,12 @@ export function createHybridControl({platform=process.platform,config={},
       if(platform==='linux'){push('linuxAtspi');push('waylandPortal');}
       push('windowObserve');push('cua');
     } else if(kind.endsWith('app')){
-      push('appCatalog');
+      // Existing windows use semantic inspection before any launcher.
+      // A new app uses the verified installed owner catalog to start or reuse.
+      if(kind==='new-app')push('appCatalog');
       if(platform==='win32')push('windowsUia');
       if(platform==='linux'){push('linuxAtspi');push('waylandPortal');}
+      if(kind==='existing-app')push('appCatalog');
       push('windowObserve');push('cua');
     }
     const selected=choose(chain);
