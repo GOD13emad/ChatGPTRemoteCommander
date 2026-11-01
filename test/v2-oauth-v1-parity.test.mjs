@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {generateKeyPairSync} from 'node:crypto';
+import {generateKeyPairSync,sign as signJwt} from 'node:crypto';
+import {createV2JwksTokenVerifier} from '../src/v2-oauth-jwks.mjs';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -17,6 +18,26 @@ const args={command:'true'};
 async function fixture(){
  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'v2-oauth-native-'));
  const native=generateKeyPairSync('ed25519');
+ const oauthKey=generateKeyPairSync('ed25519');
+ const accessHeader=Buffer.from(JSON.stringify({
+  alg:'EdDSA',typ:'at+jwt',kid:'mmz-qa-kid'
+ })).toString('base64url');
+ const accessClaims=Buffer.from(JSON.stringify({
+  iss:issuer,aud:audience,sub:'owner-sub',scope:'commander.full',
+  exp:Math.floor((now+60000)/1000),nbf:Math.floor((now-1000)/1000)
+ })).toString('base64url');
+ const message=accessHeader+'.'+accessClaims;
+ const signedAccessToken=message+'.'+signJwt(null,Buffer.from(message),
+  oauthKey.privateKey).toString('base64url');
+ const publicJwk={...oauthKey.publicKey.export({format:'jwk'}),
+  kid:'mmz-qa-kid',use:'sig',alg:'EdDSA'};
+ const verifyAccessToken=createV2JwksTokenVerifier({
+  issuer,audience,jwksUri:'https://login.example.test/jwks',
+  now:()=>now,
+  request:async()=>new Response(JSON.stringify({keys:[publicJwk]}),
+   {status:200})
+ });
+
  const grants=new V2GrantRegistry({directory:path.join(dir,'grants'),
   authorizeAdministration:({actor})=>actor==='admin'});
  const receiptStore=new MutationIdempotencyStore({directory:path.join(dir,'receipts'),scope:'mmz'});
@@ -26,11 +47,7 @@ async function fixture(){
   authorizeIssue:async()=>true,now:()=>now,nonce:()=> 'random-test-nonce'});
  const invocation=await sign({sessionHandle:'trusted-handle',tool:'run_shell',args});
  let count=0,lookups=0,seat='seat-one';
- const claims={issuer,audience,subject:'owner-sub',scopes:['commander.full'],
-  notBeforeMs:now-1000,expiresAtMs:now+60000};
- const config={issuer,audience,verifyAccessToken:async token=>{
-   if(token!=='signed-test-token')throw Error('INVALID_TOKEN');return claims;
-  },
+ const config={issuer,audience,verifyAccessToken,
   resolvePrincipal:async sub=>sub==='owner-sub'?'owner':null,
   resolveTrustedInvocation:async action=>{lookups++;assert.equal(action.authorization,undefined);
    assert.deepEqual(Object.keys(action).sort(),['arguments','tool']);return invocation;},
@@ -42,7 +59,7 @@ async function fixture(){
    assert.equal(x.args.command,'true');
    return {result:{isError:false,structuredContent:{exitCode:0,stdout:'V2_PRIVATE_QA_MARKER_NO_PERSIST'}}};}},
   now:()=>now};
- return {config,grants,receiptStore,get count(){return count},
+ return {config,signedAccessToken,grants,receiptStore,get count(){return count},
   get lookups(){return lookups},setSeat:v=>seat=v,
   permit:()=>grants.change({route,tool:'run_shell',status:'ENABLED',expectedRevision:0,
    actor:'admin',reason:'synthetic test grant only'}),
@@ -60,7 +77,7 @@ test('no valid OAuth bearer means no native lookup and no V1 effect',async()=>{
 });
 test('signed native assertion and granted OAuth caller executes once and caches',async()=>{
  const f=await fixture();try{f.permit();
-  const g=createV2OAuthV1Parity(f.config),call={authorization:'Bearer signed-test-token',
+  const g=createV2OAuthV1Parity(f.config),call={authorization:'Bearer '+f.signedAccessToken,
    tool:'run_shell',args};
   const first=await g.call(call);const second=await g.call(call);
   assert.equal(first.structuredContent.exitCode,0);
@@ -80,10 +97,10 @@ test('native seat changes and tampered action cannot dispatch',async()=>{
  const f=await fixture();try{f.permit();
   const g=createV2OAuthV1Parity(f.config);
   f.setSeat('untrusted-seat');
-  await assert.rejects(()=>g.call({authorization:'Bearer signed-test-token',
+  await assert.rejects(()=>g.call({authorization:'Bearer '+f.signedAccessToken,
    tool:'run_shell',args}),{code:'V2_ASSERTION_NATIVE_SESSION_MISMATCH'});
   f.setSeat('seat-one');
-  await assert.rejects(()=>g.call({authorization:'Bearer signed-test-token',
+  await assert.rejects(()=>g.call({authorization:'Bearer '+f.signedAccessToken,
    tool:'run_shell',args:{command:'wrong'}}),{code:'V2_ASSERTION_ACTION_MISMATCH'});
   assert.equal(f.count,0);
  }finally{f.close()}
