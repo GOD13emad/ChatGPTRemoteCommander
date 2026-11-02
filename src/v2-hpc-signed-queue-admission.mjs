@@ -60,6 +60,52 @@ export function createV2HpcSignedAutoAdmission({root,host,publicKey,
  const jobs=safeDir(root,'compute-inbox',true);
  const witnesses=safeDir(root,'signed-qa-admissions',true);
  return Object.freeze({
+  // Only pending effects may be computed. The exact signed source and immutable
+  // admission witness must both agree with the canonical local queue bytes.
+  // An expired signature cannot authorize a NEW effect, even if it was admitted.
+  verifyForExecution(id,jobSha256){
+   if(typeof id!=='string'||!ID.test(id)||typeof jobSha256!=='string'||
+    !/^[a-f0-9]{64}$/.test(jobSha256))
+    fail('V2_SIGNED_AUTO_EXECUTION_ARGUMENT_INVALID');
+   const envelopeFile=path.join(signed,id+'.json');
+   const jobFile=path.join(jobs,id+'.json');
+   const witnessFile=path.join(witnesses,id+'.json');
+   if(!fs.existsSync(envelopeFile)||!fs.existsSync(witnessFile))
+    return false;
+   const signedRaw=readRegular(envelopeFile,50,1800);
+   const jobRaw=readRegular(jobFile,20,512);
+   const witnessRaw=readRegular(witnessFile,100,2000);
+   let envelope,witness;
+   try{
+    envelope=JSON.parse(signedRaw.toString('utf8'));
+    witness=JSON.parse(witnessRaw.toString('utf8'));
+   }catch{fail('V2_SIGNED_AUTO_EXECUTION_CORRUPT')}
+   if(witness===null||typeof witness!=='object'||
+    Array.isArray(witness)||Object.keys(witness).length!==8||
+    witness.schema!==1||
+    witness.scope!=='V1_OWNER_SIGNED_QA_NOT_PRODUCTION'||
+    witness.host!==host||witness.operationId!==id||
+    witness.keyId!==keyId||
+    witness.signedEnvelopeSha256!==hash(signedRaw)||
+    witness.jobSha256!==hash(jobRaw)||
+    witness.jobSha256!==jobSha256)
+    fail('V2_SIGNED_AUTO_EXECUTION_WITNESS_CONFLICT');
+   let verified;
+   try{
+    verified=verifyV2HpcBoundedJob({
+     envelope,expectedHostId:host,expectedKeyId:keyId,
+     publicKey,now:now()
+    });
+   }catch(e){
+    if(e.code==='V2_SIGNED_JOB_OUTSIDE_TIME_WINDOW')return false;
+    throw e;
+   }
+   const body=Buffer.from(JSON.stringify(verified.boundedJob)+'\n');
+   if(verified.operationId!==id||!body.equals(jobRaw)||
+    verified.signedPayloadSha256!==witness.signedPayloadSha256)
+    fail('V2_SIGNED_AUTO_EXECUTION_BINDING_CONFLICT');
+   return true;
+  },
   run(){
    let admitted=0,invalid=0,reconciled=0,preexisting=0;
    const files=fs.readdirSync(signed).filter(n=>n.endsWith('.json')).sort();

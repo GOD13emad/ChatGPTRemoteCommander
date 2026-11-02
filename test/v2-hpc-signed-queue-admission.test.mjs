@@ -6,6 +6,7 @@ import path from 'node:path';
 import {createHash,generateKeyPairSync} from 'node:crypto';
 import {createV2HpcSignedAutoAdmission} from '../src/v2-hpc-signed-queue-admission.mjs';
 import {signV2HpcBoundedJob} from '../src/v2-hpc-signed-job.mjs';
+import {createV2HpcLocalQueue} from '../src/v2-hpc-queue-worker.mjs';
 const sha=b=>createHash('sha256').update(b).digest('hex');
 const start=1762120000000;
 function fixture(host='HPC-159-17'){
@@ -91,5 +92,67 @@ test('scan is bounded and pending-first, avoiding stale witness starvation',()=>
   assert.equal(f.worker.run().admitted,32);
   const second=f.worker.run();assert.equal(second.admitted,3);
   assert.equal(fs.readdirSync(path.join(f.root,'compute-inbox')).length,35);
+ }finally{f.close();}
+});
+
+
+test('scheduled signed-only queue refuses new unsigned job but executes signed one',()=>{
+ const f=fixture();try{
+  const queue=createV2HpcLocalQueue({root:f.root,host:'HPC-159-17'});
+  fs.writeFileSync(f.file('compute-inbox','unsigned'),
+   JSON.stringify({schema:1,operationId:'unsigned',kind:'prime-statistics',limit:1000})+'\n');
+  let r=queue.run({authorizePendingJob:(id,sha)=>f.worker.verifyForExecution(id,sha)});
+  assert.equal(r.committed,0);assert.equal(r.unsignedRejected,1);
+  assert.equal(fs.existsSync(f.file('compute-outbox','unsigned')),false);
+  f.sign('signed');assert.equal(f.worker.run().admitted,1);
+  r=queue.run({authorizePendingJob:(id,sha)=>f.worker.verifyForExecution(id,sha)});
+  assert.equal(r.committed,1);assert.equal(r.unsignedRejected,1);
+  assert.equal(queue.verify('signed').count,168);
+  assert.equal(fs.existsSync(f.file('compute-outbox','unsigned')),false);
+ }finally{f.close();}
+});
+test('signed-only worker reconciles historical unsigned receipts without new unsigned effects',()=>{
+ const f=fixture();try{
+  const queue=createV2HpcLocalQueue({root:f.root,host:'HPC-159-17'});
+  fs.writeFileSync(f.file('compute-inbox','historical'),
+   JSON.stringify({schema:1,operationId:'historical',kind:'prime-statistics',limit:1000})+'\n');
+  assert.equal(queue.run().committed,1);
+  fs.writeFileSync(f.file('compute-inbox','newUnsigned'),
+   JSON.stringify({schema:1,operationId:'newUnsigned',kind:'prime-statistics',limit:1000})+'\n');
+  const r=queue.run({authorizePendingJob:(id,sha)=>f.worker.verifyForExecution(id,sha)});
+  assert.equal(r.committed,0);assert.equal(r.reconciled,1);
+  assert.equal(r.unsignedRejected,1);
+  assert.equal(fs.existsSync(f.file('compute-outbox','newUnsigned')),false);
+ }finally{f.close();}
+});
+test('expired admitted signature cannot cause a NEW signed-only compute effect',()=>{
+ const f=fixture();try{
+  f.sign('stale');assert.equal(f.worker.run().admitted,1);
+  const expired=createV2HpcSignedAutoAdmission({root:f.root,host:'HPC-159-17',
+   publicKey:f.publicKey,expectedPublicKeySha256:sha(f.publicKey),
+   now:()=>start+200000});
+  const q=createV2HpcLocalQueue({root:f.root,host:'HPC-159-17'});
+  const r=q.run({authorizePendingJob:(id,h)=>expired.verifyForExecution(id,h)});
+  assert.equal(r.committed,0);assert.equal(r.unsignedRejected,1);
+  assert.equal(fs.existsSync(f.file('compute-outbox','stale')),false);
+ }finally{f.close();}
+});
+test('signed-only queue denies altered committed witness or input',()=>{
+ const f=fixture();try{
+  f.sign('signed');f.worker.run();
+  const file=f.file('compute-inbox','signed');
+  const old=fs.readFileSync(file);
+  fs.writeFileSync(file,JSON.stringify({schema:1,operationId:'signed',kind:'prime-statistics',limit:999})+'\n');
+  const queue=createV2HpcLocalQueue({root:f.root,host:'HPC-159-17'});
+  assert.throws(()=>queue.run({authorizePendingJob:(id,h)=>f.worker.verifyForExecution(id,h)}),
+   {code:'V2_SIGNED_AUTO_EXECUTION_WITNESS_CONFLICT'});
+  fs.writeFileSync(file,old);
+  const witness=f.file('signed-qa-admissions','signed');
+  const w=JSON.parse(fs.readFileSync(witness,'utf8'));
+  w.signedPayloadSha256='0'.repeat(64);
+  fs.writeFileSync(witness,JSON.stringify(w)+'\n');
+  assert.throws(()=>queue.run({authorizePendingJob:(id,h)=>f.worker.verifyForExecution(id,h)}),
+   {code:'V2_SIGNED_AUTO_EXECUTION_BINDING_CONFLICT'});
+  assert.equal(fs.existsSync(f.file('compute-outbox','signed')),false);
  }finally{f.close();}
 });

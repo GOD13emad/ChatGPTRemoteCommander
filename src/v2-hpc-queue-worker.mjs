@@ -116,19 +116,46 @@ export function createV2HpcLocalQueue({root,host}={}){
  const inbox=safeDirectory(path.join(parent,'compute-inbox'),true);
  const outbox=safeDirectory(path.join(parent,'compute-outbox'),true);
  return Object.freeze({
-  run(){
-   let committed=0,reconciled=0,invalid=0;
+  run({authorizePendingJob}={}){
+   if(authorizePendingJob!==undefined &&
+      typeof authorizePendingJob!=='function')
+    fail('V2_HPC_QUEUE_SIGNED_AUTHORIZER_INVALID');
+   let committed=0,reconciled=0,invalid=0,unsignedRejected=0;
    const listed=fs.readdirSync(inbox).filter(name=>name.endsWith('.json')).sort();
    // Pending first: existing receipts must not permanently starve later jobs
    // once 32 committed entries have accumulated.
    const pending=listed.filter(name=>!fs.existsSync(path.join(outbox,name)));
    const known=listed.filter(name=>fs.existsSync(path.join(outbox,name)));
-   const jobs=[...pending,...known].slice(0,32);
+   const eligible=[];
+   const authorizedHashes=new Map();
+   // Filter BEFORE slicing; unsigned stale inputs must never starve signed
+   // jobs placed later in lexicographic order.
+   for(const name of pending){
+    const id=name.slice(0,-5);
+    if(!ID.test(id)){invalid++;continue;}
+    if(authorizePendingJob){
+     let record;
+     try{record=readJob(path.join(inbox,name),id)}
+     catch(e){
+      if(['V2_HPC_QUEUE_JOB_FILE_INVALID','V2_HPC_QUEUE_JOB_INVALID',
+       'V2_HPC_QUEUE_JOB_NOT_ALLOWLISTED'].includes(e.code)){invalid++;continue;}
+      throw e;
+     }
+     if(!authorizePendingJob(id,record.inputSha256)){
+      unsignedRejected++;continue;
+     }
+     authorizedHashes.set(id,record.inputSha256);
+    }
+    eligible.push(name);
+   }
+   const jobs=[...eligible,...known].slice(0,32);
    for(const file of jobs){
     const id=file.slice(0,-5);
     if(!ID.test(id)){invalid++;continue;}
     try{
      const {job,inputSha256}=readJob(path.join(inbox,file),id);
+     if(authorizedHashes.has(id)&&authorizedHashes.get(id)!==inputSha256)
+      fail('V2_HPC_QUEUE_SIGNED_INPUT_CHANGED');
      const target=path.join(outbox,id+'.json');
      if(readReceipt(target,host,job,inputSha256)){reconciled++;continue;}
      const result={schema:1,operationId:id,kind:job.kind,
@@ -148,6 +175,7 @@ export function createV2HpcLocalQueue({root,host}={}){
     }
    }
    return Object.freeze({host,processed:jobs.length,committed,reconciled,invalid,
+    unsignedRejected,signedPendingEnforced:Boolean(authorizePendingJob),
     productionV2:false});
   },
   verify(operationId){
