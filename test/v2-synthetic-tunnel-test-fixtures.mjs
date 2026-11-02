@@ -8,13 +8,18 @@ import {execFileSync} from 'node:child_process';
 export function createV2SyntheticTunnelFixture(){
  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'v2-synthetic-tunnel-'));
  fs.chmodSync(dir,0o700);
+ const configFile=path.join(dir,'openssl.cnf');
  const run=(...args)=>execFileSync('openssl',args,{
-  cwd:dir,stdio:'ignore',timeout:15000
+  cwd:dir,stdio:'ignore',timeout:15000,
+  // Some portable Windows OpenSSL builds lack their compiled-in config path.
+  // Set a fixture-only config without modifying any machine-wide settings.
+  env:{...process.env,OPENSSL_CONF:configFile}
  });
  const put=(name,value)=>fs.writeFileSync(path.join(dir,name),value,{
   encoding:'utf8',flag:'wx',mode:0o600
  });
  try{
+  put('openssl.cnf','[req]\ndistinguished_name = req_distinguished_name\nprompt = no\n[req_distinguished_name]\nCN = v2-qa-only\n');
   run('req','-x509','-newkey','rsa:2048','-nodes','-sha256',
    '-days','1800','-keyout','ca-key.pem','-out','ca.pem',
    '-subj','/CN=V2 synthetic QA CA',
