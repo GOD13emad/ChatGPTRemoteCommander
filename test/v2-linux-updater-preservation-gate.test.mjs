@@ -49,3 +49,37 @@ test('matching Linux owner key passes structure but does NOT approve cutover',as
     assert.equal(out.chatIdentity,'UNVERIFIED');
   });
 });
+
+test('Linux V1-native upgrade reuses owner tunnel profiles, credentials, active config and stable route',async()=>{
+ const s=await readFile(upgrader,'utf8');
+ assert.ok(s.includes('PROFILE_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/tunnel-client"'));
+ assert.ok(s.includes('CRED_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/chatgpt-remote-commander/credentials"'));
+ assert.ok(s.includes('active_config(){'));
+ assert.ok(s.includes('route_tsv "$helper" "$route"'));
+ assert.ok(s.includes('build_cfg(){'));
+ assert.ok(s.includes('--existing "$ACTIVE_CFG"'));
+ assert.ok(s.includes('--mode "$MODE"'));
+ assert.ok(s.includes('build_cfg "$FINAL_CFG" "$LIVE_WF" preserve'));
+ assert.ok(s.includes('find "$PROFILE_DIR" -maxdepth 1 -type f -name \'*.yaml\''));
+ assert.ok(s.includes('tunnels_ready(){'));
+ assert.ok(s.includes('router-switch.mjs'));
+ assert.ok(s.includes('CUTOVER_COMMIT version=$VERSION'));
+ // The current owner tunnel remains the transport; standard upgrade adds no
+ // new tunnel, runtime key or OAuth registration command.
+ assert.ok(!/tunnels create|tunnel create|CONTROL_PLANE_API_KEY\s*=|oauth client register/i.test(s));
+});
+
+test('Linux V1-native upgrade preserves one canonical router used by every existing tunnel profile',async()=>{
+ const s=await readFile(upgrader,'utf8');
+ assert.ok(s.includes('ROUTE="$ROUTING_ROOT/default.json"'));
+ assert.ok(s.includes('http://127.0.0.1:47831/mcp'));
+ assert.ok(s.includes('tunnels_ready(){'));
+ assert.ok(s.includes('find "$PROFILE_DIR" -maxdepth 1 -type f -name \'*.yaml\' -print0'));
+ assert.ok(s.includes('tunnel_profile_ready "$file"'));
+ assert.ok(s.includes('tunnels_ready || { echo \'tunnel readiness failed\''));
+ assert.ok(s.includes('node "$STAGE_DIR/tools/router-switch.mjs"'));
+ assert.ok(s.includes('CUTOVER_COMMIT version=$VERSION'));
+ // All existing per-chat/owner tunnel profiles stay on their existing local
+ // MCP main-channel URL; V2 changes only the backend behind that route.
+ assert.ok(!/tunnels create|tunnel create|CONTROL_PLANE_API_KEY\s*=|oauth client register/i.test(s));
+});

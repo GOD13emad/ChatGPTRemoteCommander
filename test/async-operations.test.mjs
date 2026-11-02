@@ -663,3 +663,59 @@ test('transport-retry-only operations remain durable without becoming actionable
     await rm(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 });
   }
 });
+
+
+test('headless compute async profile exposes only project commands and rejects shell work before preparation',async()=>{
+  const root=await mkdtemp(path.join(os.tmpdir(),'rc-headless-tools-'));
+  const stateRoot=path.join(root,'state');
+  let prepareCalls=0;
+  const manager=createAsyncOperationTools({
+    config:{instance:{profile:'server-headless'},asyncOperations:{enabled:true,stateDir:stateRoot,allowedTools:['run_project_command'],maxConcurrentOperations:2,maxOutputBytes:4*1024*1024}},
+    workerPath:worker,
+    prepare:async(_tool,args)=>{prepareCalls++;return {file:process.execPath,args:[fixture,...args.argv],cwd:root,timeoutMs:5000,outputLimit:65536};}
+  });
+  try{
+    const start=manager.definitions.find(x=>x.name==='operation_start');
+    assert.deepEqual(start.inputSchema.properties.tool.enum,['run_project_command']);
+    await assert.rejects(manager.execute('operation_start',{requestId:'headless-shell-denied',tool:'run_shell',arguments:{argv:['done']}}),/ASYNC_OPERATION_TOOL_NOT_ALLOWED/);
+    assert.equal(prepareCalls,0);
+    assert.deepEqual(manager.status().allowedTools,['run_project_command']);
+    assert.equal(manager.status().maxConcurrentOperations,2);
+  }finally{await manager.close?.();await rm(root,{recursive:true,force:true,maxRetries:20,retryDelay:50});}
+});
+
+test('headless compute admission lock enforces a shared concurrent operation ceiling and frees capacity after cancel',async()=>{
+  const root=await mkdtemp(path.join(os.tmpdir(),'rc-headless-capacity-'));
+  const stateRoot=path.join(root,'state');
+  const config={instance:{profile:'server-headless'},asyncOperations:{enabled:true,stateDir:stateRoot,allowedTools:['run_project_command'],maxConcurrentOperations:1,maxOutputBytes:4*1024*1024}};
+  const prepare=async(_tool,args)=>({file:process.execPath,args:[fixture,...args.argv],cwd:root,timeoutMs:args.timeoutMs??90000,outputLimit:65536});
+  const firstManager=createAsyncOperationTools({config,prepare,workerPath:worker});
+  const secondManager=createAsyncOperationTools({config,prepare,workerPath:worker});
+  try{
+    const results=await Promise.allSettled([
+      firstManager.execute('operation_start',{requestId:'headless-capacity-a',tool:'run_project_command',arguments:{argv:['sleep','5000','capacity-a'],timeoutMs:90000}}),
+      secondManager.execute('operation_start',{requestId:'headless-capacity-b',tool:'run_project_command',arguments:{argv:['sleep','5000','capacity-b'],timeoutMs:90000}})
+    ]);
+    const admitted=results.filter(x=>x.status==='fulfilled');
+    const denied=results.filter(x=>x.status==='rejected');
+    assert.equal(admitted.length,1);
+    assert.equal(denied.length,1);
+    assert.match(denied[0].reason.message,/ASYNC_OPERATION_CAPACITY_EXHAUSTED/);
+    const operation=admitted[0].value;
+    const retryManager=results[0].status==='fulfilled'?firstManager:secondManager;
+    const retry=await retryManager.execute('operation_start',{
+      requestId:results[0].status==='fulfilled'?'headless-capacity-a':'headless-capacity-b',
+      tool:'run_project_command',arguments:{argv:['sleep','5000',results[0].status==='fulfilled'?'capacity-a':'capacity-b'],timeoutMs:90000}
+    });
+    assert.equal(retry.operationId,operation.operationId);
+    assert.equal(retry.duplicate,true);
+    await retryManager.execute('operation_cancel',{operationId:operation.operationId});
+    const terminal=await waitFor(retryManager,operation.operationId);
+    assert.equal(terminal.status,'CANCELLED');
+    const next=await retryManager.execute('operation_start',{requestId:'headless-capacity-next',tool:'run_project_command',arguments:{argv:['sleep','10','done']}});
+    assert.equal((await waitFor(retryManager,next.operationId)).status,'SUCCEEDED');
+  }finally{
+    await firstManager.close?.();await secondManager.close?.();
+    await rm(root,{recursive:true,force:true,maxRetries:20,retryDelay:50});
+  }
+});

@@ -9,9 +9,11 @@ import { createV2McpOAuthContract } from './v2-mcp-oauth-contract.mjs';
 import { createV2OAuthObservedCaller } from './v2-oauth-caller.mjs';
 import { executeV2WorkflowStep } from './v2-workflow-gateway.mjs';
 import { normalizeV2Route } from './v2-routing-contract.mjs';
+import { LIFECYCLE } from './workflow-autonomy.mjs';
 
 const STEP_TOOL='v2_workflow_step';
 const PROFILE_TOOL='v2_profile';
+const STATUS_TOOL='v2_workflow_status';
 const LEGACY_VERSIONS=Object.freeze(['2025-11-25','2025-06-18','2025-03-26']);
 const MODERN_VERSION='2026-07-28';
 const SERVER_IDENTITY=Object.freeze({name:'chatgpt-remote-commander-v2-candidate',version:'0.11.0-candidate'});
@@ -34,7 +36,7 @@ export function createV2CandidateMcpDispatcher({
   resource,authorizationServers,issuer,audience,scopes=['commander.workflow'],
   assertionTrust,verifyAccessToken,resolvePrincipal,observedNativeSession,
   resolveTrustedInvocation,workflowStore,grantRegistry,authorizeTool,dispatch,
-  loadAuthenticatedProfile,now=Date.now
+  loadAuthenticatedProfile,readTrustedWorkflowSummary,now=Date.now
 }){
   for(const candidate of [
     verifyAccessToken,resolvePrincipal,observedNativeSession,
@@ -46,6 +48,8 @@ export function createV2CandidateMcpDispatcher({
     fail('V2_MCP_TRUSTED_BOOTSTRAP_REQUIRED');
   if(loadAuthenticatedProfile!==undefined&&typeof loadAuthenticatedProfile!=='function')
     fail('V2_MCP_PROFILE_RESOLVER_REQUIRED');
+  if(readTrustedWorkflowSummary!==undefined&&typeof readTrustedWorkflowSummary!=='function')
+    fail('V2_MCP_STATUS_RESOLVER_REQUIRED');
   const auth=createV2McpOAuthContract({
     resource,authorizationServers,scopes,allowedTools:[STEP_TOOL]
   });
@@ -56,6 +60,13 @@ export function createV2CandidateMcpDispatcher({
     annotations:{readOnlyHint:false,destructiveHint:false,openWorldHint:false}
   });
   const enforcedScopes=descriptor.securitySchemes[0].scopes;
+  const statusDescriptor=readTrustedWorkflowSummary===undefined?null:Object.freeze({
+    name:STATUS_TOOL,
+    description:'Read bounded status for one independently owner-attested, approved WorkflowStore project.',
+    inputSchema:Object.freeze({type:'object',properties:{},additionalProperties:false}),
+    securitySchemes:descriptor.securitySchemes,
+    annotations:Object.freeze({readOnlyHint:true,destructiveHint:false,openWorldHint:false})
+  });
   // Optional and read-only: do NOT derive stable profile IDs from a JWT,
   // OAuth subject, email, chat, OS session or grant. The trusted provider
   // must load an already-persisted immutable opaque ID for these credentials.
@@ -146,7 +157,87 @@ export function createV2CandidateMcpDispatcher({
       cachedReceipt:result.cachedReceipt===true
     })
   });
+
+  // The status reader is optional and MUST be installed only by a trusted
+  // native-owner composition with an independently attested chat route.
+  // No target/chat/host IDs may arrive from model-controlled arguments.
+  async function callStatus({authorization,args}){
+    if(!exact(args,[]) || typeof authorization!=='string'
+      ||!authorization.startsWith('Bearer ')){
+      if(exact(args,[])&&(!authorization||!authorization.startsWith('Bearer ')))
+        return auth.toolAuthRequired();
+      return denied('V2_MCP_STATUS_INPUT_INVALID');
+    }
+    const bearer=authorization.slice(7);
+    const validated=async()=>{
+      const claims=await verifyAccessToken(bearer);
+      const current=now();
+      if(!record(claims)||claims.issuer!==issuer||claims.audience!==audience
+        ||typeof claims.subject!=='string'||!PROFILE_ID.test(claims.subject)
+        ||!Number.isSafeInteger(current)||!Number.isSafeInteger(claims.notBeforeMs)
+        ||!Number.isSafeInteger(claims.expiresAtMs)||claims.notBeforeMs>current
+        ||claims.expiresAtMs<=current||!Array.isArray(claims.scopes))
+         fail('V2_OAUTH_VERIFICATION_REQUIRED');
+      if(!enforcedScopes.every(scope=>claims.scopes.includes(scope)))
+        fail('V2_OAUTH_SCOPE_OR_SUBJECT_REQUIRED');
+      const principalId=await resolvePrincipal(claims.subject);
+      if(typeof principalId!=='string'||!PROFILE_ID.test(principalId))
+        fail('V2_OAUTH_PRINCIPAL_MISMATCH');
+      return Object.freeze({subject:claims.subject,principalId});
+    };
+    try{
+      const first=await validated();
+      const status=await readTrustedWorkflowSummary(Object.freeze({
+        principalId:first.principalId
+      }));
+      // No arbitrary native callback object can become a JSON-RPC response.
+      const expected=['schema','source','authority','hostId','workflowId',
+        'revision','headSha256','lifecycle','acceptanceStatus',
+        'schedulerEnabled','steps','isExecutionReceipt'];
+      if(!exact(status,expected)||status.schema!==1
+        ||status.source!=='EXISTING_WORKFLOW_STORE'
+        ||status.authority!=='OWNER_SESSION_AND_GRANT_VERIFIED'
+        ||status.isExecutionReceipt!==false
+        ||typeof status.hostId!=='string'||!PROFILE_ID.test(status.hostId)
+        ||typeof status.workflowId!=='string'||!PROFILE_ID.test(status.workflowId)
+        ||!Number.isSafeInteger(status.revision)||status.revision<0
+        ||typeof status.headSha256!=='string'||!/^[a-f0-9]{64}$/.test(status.headSha256)
+        ||typeof status.lifecycle!=='string'||!LIFECYCLE.includes(status.lifecycle)
+        ||!['UNVALIDATED','VALIDATING','FAILED','PASS'].includes(status.acceptanceStatus)
+        ||typeof status.schedulerEnabled!=='boolean'
+        ||!Array.isArray(status.steps)||status.steps.length>1000
+        ||status.steps.some(x=>!exact(x,['id','status'])
+          ||typeof x.id!=='string'||!PROFILE_ID.test(x.id)
+          ||!['pending','running','verified','recorded','uncertain','failed','skipped'].includes(x.status)))
+         fail('V2_MCP_STATUS_INVALID_RESULT');
+      const after=await validated();
+      if(first.subject!==after.subject||first.principalId!==after.principalId)
+        fail('V2_OAUTH_PRINCIPAL_MISMATCH');
+      return Object.freeze({
+        content:Object.freeze([{type:'text',text:'Owner-authorized WorkflowStore status observed; not an execution receipt.'}]),
+        structuredContent:Object.freeze({
+          schema:1,workflowId:status.workflowId,revision:status.revision,
+          lifecycle:status.lifecycle,acceptanceStatus:status.acceptanceStatus,
+          schedulerEnabled:status.schedulerEnabled,
+          steps:Object.freeze(status.steps.map(step=>Object.freeze({
+            id:step.id,status:step.status
+          }))),headSha256:status.headSha256,
+          source:'EXISTING_WORKFLOW_STORE',isExecutionReceipt:false
+        })
+      });
+    }catch(error){
+      const code=String(error?.code??'');
+      if(code.startsWith('V2_OAUTH_')||code.startsWith('V2_JWT_')
+        ||code.startsWith('V2_JWKS_'))return auth.toolAuthRequired({
+          error:code==='V2_OAUTH_SCOPE_OR_SUBJECT_REQUIRED'?'insufficient_scope':'invalid_token'
+        });
+      return denied('V2_MCP_STATUS_NOT_AUTHORIZED');
+    }
+  }
+
   async function call({authorization,toolName,args}){
+    if(toolName===STATUS_TOOL&&statusDescriptor)
+      return callStatus({authorization,args});
     if(toolName===PROFILE_TOOL&&profileDescriptor)
       return callProfile({authorization,args});
     if(toolName!==STEP_TOOL)return denied('V2_MCP_TOOL_UNKNOWN');
@@ -263,7 +354,7 @@ export function createV2CandidateMcpDispatcher({
         ttlMs:30000,cacheScope:'private'});
     }
     if(message.method==='tools/list'){
-      return rpc({tools:profileDescriptor?[descriptor,profileDescriptor]:[descriptor]});
+      return rpc({tools:[descriptor,...(statusDescriptor?[statusDescriptor]:[]),...(profileDescriptor?[profileDescriptor]:[])]});
     }
     if(message.method==='tools/call'){
       const params=message.params;
@@ -275,7 +366,7 @@ export function createV2CandidateMcpDispatcher({
     return {jsonrpc:'2.0',id:message.id,error:{code:-32601,message:'Method not found'}};
   }
   return Object.freeze({
-    descriptor,profileDescriptor,
+    descriptor,profileDescriptor,statusDescriptor,
     protectedResource:auth.protectedResource,
     handleRpc,
     call

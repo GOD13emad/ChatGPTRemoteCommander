@@ -1,0 +1,15 @@
+{
+  "manifest_version": 3,
+  "name": "Commander V2 Owner Connector (Candidate)",
+  "version": "0.1.0",
+  "description": "User-initiated native owner pairing probe; never reads tabs or credentials",
+  "permissions": [
+    "nativeMessaging"
+  ],
+  "action": {
+    "default_title": "Check Commander V2 owner connection"
+  },
+  "background": {
+    "service_worker": "service-worker.js"
+  }
+}

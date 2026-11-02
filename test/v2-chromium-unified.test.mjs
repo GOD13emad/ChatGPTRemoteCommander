@@ -17,6 +17,18 @@ test('Linux Chromium discovery covers Chrome, Chromium and Brave without a Firef
  assert.match(helperSource,/chromium-browser/);
  assert.doesNotMatch(helperSource.slice(helperSource.indexOf('function detectBrowser'),helperSource.indexOf('class Cdp')),/firefox/);
 });
+test('existing-user browser requirement is default and refuses isolated browser start',async()=>{
+ const calls=[];
+ const ctl=createBrowserController({invoke:async req=>{calls.push(req);return {ok:true,backend:'chromium-cdp',available:true};},closeInvoke:()=>{}});
+ try{
+  const ctx={config:{instance:{profile:'qa-default-deny'},powerMode:{
+   enabled:true,browserControl:{enabled:true,allowNavigate:true,userBrowserProfileReuse:false}
+  }}};
+  await assert.rejects(()=>ctl.execute(ctx,'browser_session_begin',{mode:'isolated'}),
+   err=>err?.browserCode==='BROWSER_EXISTING_USER_SESSION_REQUIRED_USE_WORKSPACE');
+  assert.equal(calls.some(x=>x.action==='start'),false);
+ }finally{ctl.close();}
+});
 test('Chromium CDP browser core uses isolated Commander-owned profiles, never existing Firefox login',async()=>{
  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'rc-chromium-contract-'));
  const calls=[];
@@ -29,7 +41,7 @@ test('Chromium CDP browser core uses isolated Commander-owned profiles, never ex
  },closeInvoke:()=>{}});
  const ctx={config:{instance:{profile:'chromium-qa'},powerMode:{
   enabled:true,browserControl:{enabled:true,profileRoot:dir,allowNavigate:true,
-   allowInput:false,allowScreenshot:false,userBrowserProfileReuse:false}
+   allowInput:false,allowScreenshot:false,userBrowserProfileReuse:false,requireExistingUserSession:false}
  }}};
  let lease;
  try{
@@ -59,7 +71,7 @@ test('Linux real Chromium CDP: clean isolated start, snapshot, close without Fir
  const ctx={config:{instance:{profile:'chromium-native-qa'},powerMode:{
    enabled:true,browserControl:{enabled:true,profileRoot:dir,allowNavigate:false,
      allowInput:false,allowScreenshot:true,backgroundFirst:true,
-     userBrowserProfileReuse:false,savedPasswordExtraction:false}
+     userBrowserProfileReuse:false,savedPasswordExtraction:false,requireExistingUserSession:false}
  }}};
  let lease;
  try{

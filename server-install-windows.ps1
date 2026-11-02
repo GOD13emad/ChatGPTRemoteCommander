@@ -254,6 +254,7 @@ if (-not (Test-Administrator)) { throw 'Run this server installer from an elevat
 if ($SourceRef -notmatch '^[A-Za-z0-9._/-]{1,128}$') { throw 'Invalid SourceRef.' }
 if ($ExpectedCommit -and $ExpectedCommit -notmatch '^[0-9a-fA-F]{40}$') { throw 'ExpectedCommit must be a 40-hex SHA.' }
 if ($AccessMode -eq 'Standard' -and $GuiControl -eq 'On') { throw 'GuiControl On requires AccessMode Power.' }
+  if ($GuiControl -eq 'On') { throw 'Headless compute servers cannot enable physical GUI control.' }
 
 New-Item -ItemType Directory -Force -Path $Downloads | Out-Null
 $server = Get-ServerCoreState
@@ -319,6 +320,7 @@ try {
   if (-not (Test-Path -LiteralPath $installer -PathType Leaf)) { throw 'Staged install.ps1 is missing.' }
   $args = @('-NoLogo','-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',$installer,'-SourceRef',$SourceRef,'-ExpectedCommit',$resolved)
   if ($AccessMode -eq 'Power') { $args += '-PowerMode' } else { $args += '-StandardMode' }
+  $args += '-HeadlessCompute'
   if ($InstallDir) { $args += @('-InstallDir',$InstallDir) }
   if (-not $NoStartServer) { $args += '-StartServer' }
   if ($guiEnabled -and $AccessMode -eq 'Power') { $args += '-GuiControl' } else { $args += '-DisableGuiControl' }

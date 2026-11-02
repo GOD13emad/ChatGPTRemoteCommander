@@ -1,3 +1,4 @@
+import {parseProjectJsonStrict} from './project-json-strict.mjs';
 // All participants share one trusted, proposal-only provider. Only the engine
 // can authorize and execute the coordinator's resulting proposal.
 const CONTEXT_LIMIT = 384 * 1024;
@@ -70,7 +71,7 @@ function proposal(value, adaptive, workerEnabled) {
     throw error('PLANNER_TEAM_INVALID_PROPOSAL');
   }
   let args;
-  try { args = JSON.parse(result.argumentsJson); } catch { throw error('PLANNER_TEAM_INVALID_PROPOSAL'); }
+  try { args = parseProjectJsonStrict(result.argumentsJson, 512 * 1024); } catch { throw error('PLANNER_TEAM_INVALID_PROPOSAL'); }
   if (!record(args)) throw error('PLANNER_TEAM_INVALID_PROPOSAL');
   return result;
 }

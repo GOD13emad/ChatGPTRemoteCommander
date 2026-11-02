@@ -6,7 +6,7 @@ import { createBrowserController } from '../src/browser-tools.mjs';
 const config=()=>({instance:{profile:'default'},powerMode:{enabled:true,browserControl:{
  enabled:true,allowNavigate:true,allowInput:true,allowScreenshot:true,allowForegroundFallback:true,
  backgroundFirst:true,foregroundFallback:'explicit-current-request-only',workflowBrowserAllowed:false,
- userBrowserProfileReuse:false,savedPasswordExtraction:false
+ userBrowserProfileReuse:false,savedPasswordExtraction:false,requireExistingUserSession:false
 }}});
 function fixture(overrides={}){
  let t=0,calls=[],closed=0,failClick=false;

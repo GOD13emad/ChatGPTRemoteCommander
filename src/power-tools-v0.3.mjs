@@ -14,6 +14,7 @@ import { guardFileWrite } from './file-write-guard.mjs';
 import { IS_WINDOWS, defaultBackupRoot, expandPathValue, shellName, shellSpec, spawnShell, terminateProcessTree } from './platform.mjs';
 import { assertEnumerationScope, boundedSearchVisitLimit } from './filesystem-enumeration-guard.mjs';
 import { refreshCodexPluginCache } from './codex-maintenance.mjs';
+import { observeOperationChild } from './operation-child-lifecycle.mjs';
 
 const terminals = new Map();
 let terminalCounter = 1;
@@ -246,18 +247,22 @@ async function capture(command, cwd, timeoutMs, outputLimit, { allowCodex = fals
   const child = spawnShell(command, { cwd, stdio: ['ignore', 'pipe', 'pipe'], env: commanderChildEnv(cwd, process.env, { allowCodex }) });
   let stdout = '';
   let stderr = '';
-  let timedOut = false;
-  child.stdout.on('data', (chunk) => { if (stdout.length < outputLimit) stdout += chunk.toString('utf8'); });
-  child.stderr.on('data', (chunk) => { if (stderr.length < outputLimit) stderr += chunk.toString('utf8'); });
-  const timer = setTimeout(() => { timedOut = true; terminateProcessTree(child.pid, { signal: 'SIGKILL' }); }, timeoutMs);
-  const outcome = await new Promise((resolve, reject) => {
-    child.once('error', reject);
-    child.once('close', (code, signal) => resolve({ code, signal }));
+  // The owned shell can exit while a detached descendant keeps stdout/stderr
+  // open. Bound that drain independently; never kill a descendant after the
+  // owned shell has exited merely because an inherited pipe remains open.
+  const observer = observeOperationChild(child, {
+    stdout: { push: chunk => { if (stdout.length < outputLimit) stdout += chunk.toString('utf8').slice(0, outputLimit - stdout.length); } },
+    stderr: { push: chunk => { if (stderr.length < outputLimit) stderr += chunk.toString('utf8').slice(0, outputLimit - stderr.length); } },
+    timeoutMs,
+    cancellationRequested: () => false,
+    killOwnedChild: pid => terminateProcessTree(pid, { signal: 'SIGKILL' }),
+    drainMs: 2000
   });
-  clearTimeout(timer);
+  const outcome = await observer.outcome;
+  if (outcome.error) throw outcome.error;
   return {
-    exitCode: outcome.code, signal: outcome.signal, timedOut,
-    stdout, stderr,
+    exitCode: outcome.code ?? null, signal: outcome.signal ?? null, timedOut: outcome.timedOut,
+    stdout, stderr, stdioComplete: outcome.stdioComplete !== false,
     truncated: stdout.length >= outputLimit || stderr.length >= outputLimit
   };
 }

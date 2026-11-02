@@ -578,6 +578,30 @@ test('Windows updater shell qualification satisfies mutation request identity',(
   assert.ok(s.includes('requestId=("autoupdate-shell-{0}-{1}" -f $t.Profile,$port)'),'Windows candidate run_shell canary must use a stable per-candidate requestId');
 });
 
+test('diagnostic candidate isolates async-operation journals while final promotion preserves V1 store identity',()=>{
+  const builder=read('tools/build-candidate-config.mjs');
+  const win=read('auto-update-windows.ps1');
+  const lin=read('auto-update-linux.sh');
+  assert.ok(builder.includes("else if(a==='--async-operations-dir')o.asyncOperationsDirectory=v;"));
+  assert.ok(builder.includes('config.asyncOperations.stateDir=path.resolve(a.asyncOperationsDirectory);'));
+  const winDiagStart=win.indexOf("$shadowWorkflowDir=Join-Path $backupDir 'workflow-shadow'");
+  const winDiagEnd=win.indexOf('$expected=Read-Json $cfg');
+  assert.ok(winDiagStart>=0 && winDiagEnd>winDiagStart,'diagnostic shadow configuration must precede candidate validation');
+  const winDiag=win.slice(winDiagStart,winDiagEnd);
+  const winFinal=win.slice(win.indexOf("$finalCfg=Join-Path $stateDir 'config.json'"),win.indexOf('$finalSha='));
+  assert.ok(winDiag.includes("$shadowAsyncOperationsDir=Join-Path $backupDir 'async-operations-shadow'"));
+  assert.ok(winDiag.includes("'--async-operations-dir',$shadowAsyncOperationsDir"));
+  assert.ok(!winFinal.includes('--async-operations-dir'),'Windows final candidate must preserve the active V1 async-operation path');
+  const linBuilder=lin.slice(lin.indexOf('build_cfg(){'),lin.indexOf('DIAG_CFG='));
+  assert.ok(linBuilder.includes('--async-operations-dir'));
+  assert.ok(linBuilder.includes('async-operations-shadow-$PORT'));
+  const linFinalStart=lin.indexOf('FINAL_CFG=');
+  const linFinalEnd=lin.indexOf('finalize-workflow-schema.mjs',linFinalStart);
+  assert.ok(linFinalStart>=0 && linFinalEnd>linFinalStart,'final candidate must precede workflow finalization');
+  const linFinal=lin.slice(linFinalStart,linFinalEnd);
+  assert.ok(linFinal.includes('build_cfg "$FINAL_CFG" "$LIVE_WF" preserve'));
+  assert.ok(!linFinal.includes('--async-operations-dir'),'Linux final candidate must preserve the active V1 async-operation path');
+});
 test('hardware selftest supplies stable requestIds to direct mutations',()=>{
   const s=read('tools/hardware-selftest.mjs');
   assert.ok(s.includes("requestId:selftestRequestId('run-shell')"),'run_shell selftest must satisfy mutation idempotency contract');
@@ -779,9 +803,19 @@ const listenerOwnership=port=>{
   const result=spawnSync('pwsh.exe',['-NoLogo','-NoProfile','-NonInteractive','-Command',script],{encoding:'utf8',timeout:10000});
   assert.equal(result.status,0,'listener ownership probe failed: '+(result.stderr||result.stdout));
   const raw=result.stdout.trim();
-  if(!raw)return [];
-  const parsed=JSON.parse(raw);
-  return Array.isArray(parsed)?parsed:[parsed];
+  const parsed=raw?JSON.parse(raw):[];
+  const rows=Array.isArray(parsed)?parsed:[parsed];
+  // Win NetTCPIP/CIM sometimes omits short-lived loopback listener owners.
+  // This read-only native API returns actual bound socket PIDs, rather than
+  // dropping the ownership assertion or treating a missing row as success.
+  if(rows.some(row=>Number.isSafeInteger(Number(row.pid))&&Number(row.pid)>0))return rows;
+  const native=spawnSync('pwsh.exe',['-NoLogo','-NoProfile','-NonInteractive',
+    '-File',path.join(root,'test','windows-tcp-owner-native.ps1'),
+    '-Port',String(port)],{encoding:'utf8',timeout:10000});
+  assert.equal(native.status,0,'native Windows TCP owner attribution failed: '+(native.stderr||native.stdout||native.error?.message));
+  const evidence=JSON.parse(native.stdout.trim());
+  assert.ok(Array.isArray(evidence),'native Windows listener evidence must be array');
+  return evidence;
 };
 const assertNoOwnedListener=(port,serverPid,serverScript)=>{
   const evidence=listenerOwnership(port);

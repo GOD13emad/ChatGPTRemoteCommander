@@ -6,13 +6,14 @@ import { migrateCapabilityConfig, compareCapabilityState, normalizeCapabilityPro
 import { applyProjectRunnerConfig } from '../src/project-runner-config.mjs';
 
 function parse(argv) {
-  const out = { requestPower: false, requestStandard: false, requestGui: undefined, disableCapabilities: [], enableCapabilities: [] };
+  const out = { requestPower: false, requestStandard: false, requestGui: undefined, disableCapabilities: [], enableCapabilities: [], deploymentRole: null };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--request-power') { out.requestPower = true; continue; }
     if (a === '--request-standard') { out.requestStandard = true; continue; }
     if (a === '--gui-on') { out.requestGui = true; continue; }
     if (a === '--gui-off') { out.requestGui = false; continue; }
+    if (a === '--headless-compute') { out.deploymentRole = 'headless-compute'; continue; }
     const v = argv[++i];
     if (v === undefined) throw new Error('CAPABILITY_MIGRATION_ARGUMENT');
     if (a === '--default') out.defaultPath = v;
@@ -69,7 +70,8 @@ let result = migrateCapabilityConfig({
   requestGui: args.requestGui,
   workflowDirectory: args.workflowDirectory,
   disableCapabilities: args.disableCapabilities,
-  enableCapabilities: args.enableCapabilities
+  enableCapabilities: args.enableCapabilities,
+  deploymentRole: args.deploymentRole
 });
 const runner = applyProjectRunnerConfig(result.config);
 runner.config.capabilityProfile = normalizeCapabilityProfile(runner.config.capabilityProfile, runner.config, { id: args.profileId, legacyExplicit: !!existingConfig });

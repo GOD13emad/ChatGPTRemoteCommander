@@ -1,5 +1,11 @@
 import { createHash } from 'node:crypto';
 
+export const HEADLESS_COMPUTE_EXECUTION_TOOLS = Object.freeze([
+  'system_status','list_directory','read_text','file_info','search_files','read_file',
+  'write_text','write_file','create_directory','run_project_command',
+  'operation_start','operation_status','operation_result','operation_cancel'
+]);
+
 export const CAPABILITY_SCHEMA_VERSION = 4;
 export const CAPABILITY_PROFILE_REVISION = 'capability-profile-r4';
 
@@ -141,7 +147,8 @@ export function migrateCapabilityConfig({
   continuationDefaults = true,
   workflowDirectory = null,
   disableCapabilities = [],
-  enableCapabilities = []
+  enableCapabilities = [],
+  deploymentRole = null
 }) {
   if (!defaultConfig || typeof defaultConfig !== 'object' || Array.isArray(defaultConfig)) throw new Error('CAPABILITY_DEFAULT_CONFIG_REQUIRED');
   if (requestPower && requestStandard) throw new Error('CAPABILITY_MODE_CONFLICT');
@@ -158,6 +165,11 @@ export function migrateCapabilityConfig({
   const preserveStandard = hadExisting && existing.capabilityProfile?.tier === 'STANDARD' && !inferredPartial;
   const next = mergeConfigDefaults(defaultConfig, existing);
   const disabled = new Set(prior.disabledCapabilities ?? []);
+  // In preserve mode, an explicit legacy autoUpdate.enabled=false is stronger
+  // than a stale capabilityProfile grant. A deliberate Power request or a
+  // later enableCapabilities override may re-enable it explicitly.
+  if (hadExisting && existing.autoUpdate?.enabled === false && !requestPower)
+    disabled.add('lifecycle.auto_update');
   const guiCapabilities=['gui.screenshot','gui.mouse','gui.keyboard','gui.window_focus'];
   if (requestGui === false) for (const cap of guiCapabilities) disabled.add(cap);
   if (requestGui === true) for (const cap of guiCapabilities) disabled.delete(cap);
@@ -170,6 +182,21 @@ export function migrateCapabilityConfig({
   for (const cap of enableCapabilities ?? []) {
     if (!CAPABILITIES.includes(cap)) throw new Error('CAPABILITY_UNKNOWN_ENABLE');
     disabled.delete(cap);
+  }
+  const enableFull = requestPower || preserveExplicit;
+  const currentRole = existing.deployment?.role ?? null;
+  if (deploymentRole !== null && deploymentRole !== 'headless-compute') throw new Error('CAPABILITY_DEPLOYMENT_ROLE_INVALID');
+  const headlessCompute = deploymentRole === 'headless-compute' || currentRole === 'headless-compute';
+  const headlessOnly = ['gui.screenshot','gui.mouse','gui.keyboard','gui.window_focus',
+    'browser.background','browser.navigate','browser.input','browser.screenshot'];
+  const headlessComputeDenied = [...headlessOnly,'filesystem.full','shell.execute','shell.unrestricted',
+    'terminal.persistent','process.control','process.terminate','filesystem.permanent_delete',
+    'lifecycle.auto_update','lifecycle.zero_downtime_update'];
+  if (headlessCompute) {
+    if ((enableCapabilities ?? []).some(cap => headlessComputeDenied.includes(cap)) || requestGui === true)
+      throw new Error('CAPABILITY_HEADLESS_COMPUTE_FORBIDDEN_CAPABILITY_ENABLE');
+    if (!enableFull) throw new Error('CAPABILITY_HEADLESS_COMPUTE_REQUIRES_EXPLICIT_POWER_AUTHORITY');
+    for (const cap of headlessComputeDenied) disabled.add(cap);
   }
 
   next.powerMode ??= {};
@@ -187,6 +214,9 @@ export function migrateCapabilityConfig({
   next.powerMode.browserControl.foregroundFallback = 'explicit-current-request-only';
   next.powerMode.browserControl.workflowBrowserAllowed = false;
   next.powerMode.browserControl.userBrowserProfileReuse = false;
+  // Real user work defaults to the currently authenticated owner profile.
+  // Explicit false is reserved for isolated acceptance fixtures.
+  next.powerMode.browserControl.requireExistingUserSession = existing.powerMode?.browserControl?.requireExistingUserSession !== false;
   next.powerMode.browserControl.savedPasswordExtraction = false;
   next.durableWorkflows ??= {};
   next.durableWorkflows.continuation ??= {};
@@ -194,7 +224,6 @@ export function migrateCapabilityConfig({
   next.durableWorkflows.projectBrain ??= {};
   next.durableWorkflows.executionProfile ??= {};
 
-  const enableFull = requestPower || preserveExplicit;
   if (enableFull) {
     const on = cap => !disabled.has(cap);
     next.powerMode.enabled = true;
@@ -230,6 +259,38 @@ export function migrateCapabilityConfig({
     next.powerMode.browserControl.allowNavigate = false;
     next.powerMode.browserControl.allowInput = false;
     next.powerMode.browserControl.allowScreenshot = false;
+  }
+  if (headlessCompute) {
+    next.deployment = { ...(next.deployment ?? {}), role: 'headless-compute' };
+    next.asyncOperations = {
+      ...(next.asyncOperations ?? {}),
+      enabled: true,
+      maxOutputBytes: Math.min(Number.isSafeInteger(next.asyncOperations?.maxOutputBytes)
+        ? next.asyncOperations.maxOutputBytes : 16 * 1024 * 1024, 4 * 1024 * 1024),
+      maxConcurrentOperations: Math.min(Number.isSafeInteger(next.asyncOperations?.maxConcurrentOperations)
+        ? next.asyncOperations.maxConcurrentOperations : 2, 2),
+      allowedTools: ['run_project_command']
+    };
+    next.maxCommandMs = Math.min(Number.isSafeInteger(next.maxCommandMs) ? next.maxCommandMs : 120_000, 300_000);
+    next.durableWorkflows.executionTools = [...HEADLESS_COMPUTE_EXECUTION_TOOLS];
+    next.durableWorkflows.scheduler = {
+      ...(next.durableWorkflows.scheduler ?? {}),
+      maxConcurrentProjects: 1,
+      oneWriterPerRoot: true
+    };
+    next.powerMode.guiControl.enabled = false;
+    next.powerMode.guiControl.allowScreenshot = false;
+    next.powerMode.guiControl.allowMouse = false;
+    next.powerMode.guiControl.allowKeyboard = false;
+    next.powerMode.guiControl.allowWindowFocus = false;
+    next.powerMode.guiControl.ownerAuthorizedTakeover = false;
+    next.powerMode.browserControl.enabled = false;
+    next.powerMode.browserControl.allowNavigate = false;
+    next.powerMode.browserControl.allowInput = false;
+    next.powerMode.browserControl.allowScreenshot = false;
+    next.powerMode.browserControl.allowForegroundFallback = false;
+    next.powerMode.browserControl.foregroundFallback = 'disabled';
+    next.powerMode.browserControl.requireExistingUserSession = true;
   }
   // Full Power automatically enables every known workflow capability unless explicitly opted out.
   if (enableFull && next.durableWorkflows.enabled === true) {
@@ -284,6 +345,14 @@ export function migrateCapabilityConfig({
     }
   }
 
+  if (headlessCompute) {
+    next.durableWorkflows.executionTools = [...HEADLESS_COMPUTE_EXECUTION_TOOLS];
+    next.durableWorkflows.scheduler.maxConcurrentProjects = 1;
+    next.asyncOperations.allowedTools = ['run_project_command'];
+    next.asyncOperations.maxConcurrentOperations = 2;
+    next.asyncOperations.maxOutputBytes = Math.min(Number(next.asyncOperations.maxOutputBytes) || 4 * 1024 * 1024, 4 * 1024 * 1024);
+    next.maxCommandMs = Math.min(Number(next.maxCommandMs) || 300000, 300000);
+  }
   const explicit = requestPower || requestStandard ? true : prior.explicitlyAuthorized;
   next.capabilityProfile = normalizeCapabilityProfile({
     ...prior,

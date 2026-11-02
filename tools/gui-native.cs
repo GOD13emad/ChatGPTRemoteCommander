@@ -22,7 +22,7 @@ public static class RcGuiNative {
     [FieldOffset(0)] public HARDWAREINPUT hi;
   }
   [StructLayout(LayoutKind.Sequential)] public struct INPUT { public uint type; public InputUnion U; }
-  public sealed class WindowInfo { public string Handle; public string Title; public uint ProcessId; }
+  public sealed class WindowInfo { public string Handle; public string Title; public uint ProcessId; public string ProcessName; }
   public delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
   [DllImport("user32.dll", SetLastError=true)] static extern uint SendInput(uint count, INPUT[] inputs, int size);
   [DllImport("user32.dll", SetLastError=true)] public static extern bool GetCursorPos(out POINT p);
@@ -180,7 +180,10 @@ public static class RcGuiNative {
       var title=new StringBuilder(256); GetWindowText(handle,title,title.Capacity);
       if(title.Length==0) return true;
       uint pid; GetWindowThreadProcessId(handle,out pid);
-      result.Add(new WindowInfo {Handle=handle.ToInt64().ToString(),Title=title.ToString(),ProcessId=pid}); return true;
+      string processName = "";
+      try { using (var owner=Process.GetProcessById((int)pid)) { processName=owner.ProcessName; } }
+      catch { /* Protected or exiting process: identity remains PID/HWND only. */ }
+      result.Add(new WindowInfo {Handle=handle.ToInt64().ToString(),Title=title.ToString(),ProcessId=pid,ProcessName=processName}); return true;
     },IntPtr.Zero); return result;
   }
   public static void Focus(string handle,string stop) {

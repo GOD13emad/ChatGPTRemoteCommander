@@ -1,3 +1,4 @@
+import {listenOnFetchSafePort} from './v2-fetch-safe-loopback.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { generateKeyPairSync, sign } from 'node:crypto';
@@ -9,6 +10,7 @@ import { V2GrantRegistry } from '../src/v2-grant-registry.mjs';
 import { v2ActionDigest } from '../src/v2-caller-assertion.mjs';
 import { createV2JwksTokenVerifier } from '../src/v2-oauth-jwks.mjs';
 import { createV2CandidateMcpDispatcher } from '../src/v2-mcp-workflow-dispatcher.mjs';
+import { readV2OwnerWorkflowSummary } from '../src/v2-owner-workflow-inventory.mjs';
 import { createV2CandidateHttpIngress } from '../src/v2-mcp-http-ingress.mjs';
 
 const NOW=1780000000000;
@@ -505,7 +507,7 @@ test('mTLS profile without chat metadata reaches real JWT verifier but cannot ex
  });
  const server=ingress.createUnboundServer();
  try{
-  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+  await listenOnFetchSafePort(server);
   const url='http://127.0.0.1:'+server.address().port+'/mcp-v2';
   const request=async(name,auth)=>{
     const res=await fetch(url,{method:'POST',
@@ -539,4 +541,100 @@ test('mTLS profile without chat metadata reaches real JWT verifier but cannot ex
   await new Promise(resolve=>server.close(resolve));
   f.close();
  }
+});
+
+
+test('v2_workflow_status is hidden unless native owner reader is provisioned',()=>{
+ const f=fixture();try{
+  const d=f.mk();
+  assert.equal(d.statusDescriptor,null);
+  assert.throws(()=>f.mk({readTrustedWorkflowSummary:true}),
+   {code:'V2_MCP_STATUS_RESOLVER_REQUIRED'});
+ }finally{f.close();}
+});
+test('OAuth + independently attested owner session + workflow_read grant returns a real Store snapshot',async()=>{
+ const f=fixture();try{
+  f.grants.change({route:f.route,tool:'workflow_read',status:'ENABLED',
+   expectedRevision:0,actor:'admin',reason:'owner permits this exact read'});
+  let consent=0,lookups=0;
+  const d=f.mk({readTrustedWorkflowSummary:async({principalId})=>{
+    lookups++;
+    assert.equal(principalId,'user');
+    return readV2OwnerWorkflowSummary({
+      expectedPrincipalId:principalId,sessionHandle:'native-confirmed-chat',
+      sessions:{resolveNativeRoute:async()=>f.route},
+      observedCaller:async()=>({hostId:'host',principalId:'user',
+        profileId:'alice',conversationId:'chat-a'}),
+      grants:f.grants,workflowStore:f.store,
+      authorizeRead:async()=>{consent++;return true;}
+    });
+  }});
+  assert.equal(d.statusDescriptor.name,'v2_workflow_status');
+  assert.equal(d.statusDescriptor.annotations.readOnlyHint,true);
+  assert.deepEqual(d.statusDescriptor.securitySchemes,[{type:'oauth2',scopes:['commander.workflow']}]);
+  const listed=await d.handleRpc({message:{jsonrpc:'2.0',id:27,method:'tools/list'}});
+  assert.deepEqual(listed.result.tools.map(x=>x.name),
+    ['v2_workflow_step','v2_workflow_status']);
+  const before=f.store.get('flow-a');
+  const result=await d.call({authorization:'Bearer '+jwt(),
+    toolName:'v2_workflow_status',args:{}});
+  assert.equal(result.isError,undefined);
+  assert.equal(result.structuredContent.workflowId,'flow-a');
+  assert.equal(result.structuredContent.revision,before.state.revision);
+  assert.equal(result.structuredContent.headSha256,before.headSha256);
+  assert.deepEqual(result.structuredContent.steps,[{id:'write',status:'pending'}]);
+  assert.equal(result.structuredContent.isExecutionReceipt,false);
+  assert.equal(f.store.get('flow-a').headSha256,before.headSha256);
+  assert.equal(f.effects(),0);assert.equal(lookups,1);assert.ok(consent>=3);
+  assert.ok(!JSON.stringify(result).includes(f.args.path));
+  assert.ok(!JSON.stringify(result).includes('bounded operation'));
+  // Actual scope and grant are rechecked: revoked grant cannot reuse status.
+  f.grants.change({route:f.route,tool:'workflow_read',status:'REVOKED',
+    expectedRevision:1,actor:'admin',reason:'owner revoked reading'});
+  const denied=await d.call({authorization:'Bearer '+jwt(),
+    toolName:'v2_workflow_status',args:{}});
+  assert.equal(denied.isError,true);assert.match(denied.content[0].text,/NOT_AUTHORIZED/);
+  assert.equal(f.effects(),0);
+ }finally{f.close();}
+});
+test('status tool rejects unauthenticated or model-supplied route without touching native owner',async()=>{
+ const f=fixture();try{
+  let lookups=0;
+  const d=f.mk({readTrustedWorkflowSummary:async()=>{
+    lookups++;throw Error('UNEXPECTED_NATIVE_LOOKUP');
+  }});
+  const missing=await d.call({toolName:'v2_workflow_status',args:{}});
+  assert.equal(missing.isError,true);assert.ok(missing._meta['mcp/www_authenticate']);
+  const bad=await d.call({authorization:'Bearer '+jwt(),
+    toolName:'v2_workflow_status',args:{conversationId:'chat-a'}});
+  assert.equal(bad.isError,true);assert.match(bad.content[0].text,/INPUT_INVALID/);
+  const foreign=await d.call({authorization:'Bearer '+jwt({aud:'https://wrong.example.net'}),
+    toolName:'v2_workflow_status',args:{}});
+  assert.equal(foreign.isError,true);assert.ok(foreign._meta['mcp/www_authenticate']);
+  assert.equal(lookups,0);
+  assert.equal(f.effects(),0);
+ }finally{f.close();}
+});
+test('status tool rejects callback data injection and OAuth scope downgrade',async()=>{
+ const f=fixture();try{
+  let checks=0;
+  const d=f.mk({readTrustedWorkflowSummary:async()=>({
+    schema:1,source:'EXISTING_WORKFLOW_STORE',authority:'OWNER_SESSION_AND_GRANT_VERIFIED',
+    hostId:'host',workflowId:'flow-a',revision:1,headSha256:'a'.repeat(64),
+    lifecycle:'CREATED',acceptanceStatus:'UNVALIDATED',schedulerEnabled:false,
+    steps:[],isExecutionReceipt:false,evilCredential:'should-never-appear'
+  })});
+  const invalid=await d.call({authorization:'Bearer '+jwt(),toolName:'v2_workflow_status',args:{}});
+  assert.equal(invalid.isError,true);
+  assert.doesNotMatch(JSON.stringify(invalid),/evilCredential|should-never-appear/);
+  const scoped=f.mk({
+    scopes:['commander.workflow','commander.seat'],
+    readTrustedWorkflowSummary:async()=>{checks++;throw Error('unreachable');}
+  });
+  const missingScope=await scoped.call({authorization:'Bearer '+jwt(),
+    toolName:'v2_workflow_status',args:{}});
+  assert.equal(missingScope.isError,true);
+  assert.match(missingScope._meta['mcp/www_authenticate'][0],/insufficient_scope/);
+  assert.equal(checks,0);
+ }finally{f.close();}
 });

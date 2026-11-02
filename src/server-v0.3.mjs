@@ -10,6 +10,12 @@ import { audit, listDirectory, prepareProjectCommand, readText, runProjectComman
 import { executePowerTool, powerToolDefinitions, prepareDeferredPowerMutation, prepareShellCommand } from './power-tools-v0.3.mjs';
 import { executeGuiTool, guiToolDefinitions } from './gui-tools-windows.mjs';
 import { createOwnerGuiReadOnlyProxy } from './gui-owner-delegation.mjs';
+import { createWorkspaceTargetTools, workspaceTargetDefinitions, workspaceOwnerRequestContext } from './workspace-target-tools.mjs';
+import { createWorkspaceAccessibilityTools, workspaceAccessibilityDefinitions } from './workspace-accessibility-v1.mjs';
+import { createOwnerWorkspaceReadOnlyProxy } from './owner-workspace-delegation.mjs';
+import { createOwnerWorkspaceProxy } from './owner-workspace-proxy.mjs';
+import { executeWorkspaceTool, assertWorkspaceToolPolicy, workspaceToolDefinitions, isWorkspaceControllerTool } from './workspace-tools.mjs';
+import { exposedGuiTools, assertLegacyGuiPermitted } from './gui-target-only-policy.mjs';
 import { executeBrowserTool, browserToolDefinitions, reapBrowserOrphans } from './browser-tools.mjs';
 import { lockStats } from './locks.mjs';
 import { expandPathValue, shellName } from './platform.mjs';
@@ -23,13 +29,14 @@ import { MutationIdempotencyStore } from './mutation-idempotency.mjs';
 import { createAgentExtensionRegistry } from './agent-extensions.mjs';
 import { createCoucouBridge } from './coucou-bridge.mjs';
 import { startBrowserCompanionMonitor } from './browser-companion-monitor.mjs';
+import { assessFullPowerReadiness } from './full-power-readiness.mjs';
 import {
   NO_CODEX_POLICY, codexLaunchAuthorized, delegationRequirement, delegationStatus
 } from './no-codex-policy.mjs';
 
 let workflowTools = null;
 let browserCompanionMonitor = null;
-const VERSION = '0.11.0-dev.15';
+const VERSION = '0.11.0-dev.19';
 const MODERN_VERSION = '2026-07-28';
 const LEGACY_VERSIONS = ['2025-11-25', '2025-06-18', '2025-03-26'];
 const TASKS_EXTENSION = 'io.modelcontextprotocol/tasks';
@@ -51,6 +58,10 @@ const configRaw = await readFile(configPath, 'utf8');
 const configSha256 = createHash('sha256').update(configRaw).digest('hex');
 const config = JSON.parse(configRaw);
 assertLocalTransport(config);
+// V1-compatible optional MCP Events: disabled unless a trusted owner config explicitly enables it.
+const eventsEndpoint = config.mcpEvents?.enabled===true
+  ? (await import('./mcp-events-endpoint.mjs')).createConfiguredEventsEndpoint(config)
+  : null;
 // Optional privacy-safe local display; no new permissions or runtime authority.
 const coucouBridge = createCoucouBridge(config.coucouBridge);
 function expandEnvironment(value) { return expandPathValue(value); }
@@ -67,6 +78,11 @@ const ctx = {
 };
 let ownerGuiProxy = null;
 let ownerGuiProxyConfigError = null;
+const workspaceTargetBindings = new Map();
+const workspaceAccessibilitySessions = new Map();
+const legacyWorkspaceProxy = createOwnerWorkspaceProxy({config});
+let ownerWorkspaceReadOnlyProxy = null;
+let ownerWorkspaceProxyConfigError = null;
 try {
   ownerGuiProxy = createOwnerGuiReadOnlyProxy({
     config, primaryStatus: () => executeGuiTool(ctx, 'gui_status', {})
@@ -74,6 +90,13 @@ try {
 } catch (error) {
   // Optional GUI routing must not prevent the primary Core from starting.
   ownerGuiProxyConfigError = String(error?.message ?? error);
+}
+try {
+  ownerWorkspaceReadOnlyProxy = createOwnerWorkspaceReadOnlyProxy({
+    config, primaryStatus: () => executeGuiTool(ctx,'gui_status',{})
+  });
+} catch(error) {
+  ownerWorkspaceProxyConfigError = String(error?.message ?? error);
 }
 const configuredAgentExtensionDirectories = config.agentExtensions?.enabled === false
   ? []
@@ -113,6 +136,7 @@ if (BROWSER_ENABLED) {
   }
 }
 const LEGACY_FULL_FILESYSTEM = config.powerMode?.enabled === true && config.powerMode?.fullFilesystem === true;
+const {createOperationEventPublisher} = await import('./mcp-delivery-event-bridge.mjs');
 const deliveryStore = new DeliveryStore(deliveryLocation(config, configPath));
 const deliveryTools = createDeliveryTools(deliveryStore);
 const mutationIdempotency = new MutationIdempotencyStore({ directory: deliveryStore.directory, scope: deliveryStore.scope });
@@ -124,6 +148,7 @@ const conversationController = createConversationController({
 const asyncOperationTools = createAsyncOperationTools({
   config,
   deliveryStore,
+  onDeliveryEvent: createOperationEventPublisher(eventsEndpoint),
   onTerminal: state => conversationController.signalOperation(state),
   validateContinuation: continuation => conversationController.validateContinuation(continuation),
   prepare: async (name, args) => {
@@ -239,7 +264,10 @@ const TOOLS = [
   ...notionMcpTools.definitions,
   ...powerToolDefinitions,
   ...(BROWSER_ENABLED ? browserToolDefinitions : []),
-  ...(GUI_ENABLED ? guiToolDefinitions : [])
+  ...(GUI_ENABLED ? exposedGuiTools(config,guiToolDefinitions) : []),
+  ...workspaceToolDefinitions,
+  ...(GUI_ENABLED ? workspaceTargetDefinitions : []),
+  ...(GUI_ENABLED && process.platform==='linux' ? workspaceAccessibilityDefinitions : [])
 ];
 
 const AUTO_DEFERRED_MUTATIONS = new Set(['copy_path', 'move_path', 'delete_path']);
@@ -398,7 +426,10 @@ async function executeTool(name, args, executionContext = {}) {
     // execution remains hard-bounded to 15 seconds at runtime.
     if (name === 'run_project_command') await prepareProjectCommand(ctx, synchronousCommandInput(effectArgs));
     if (name === 'run_shell') await prepareShellCommand(ctx, synchronousCommandInput(effectArgs));
-    return mutationIdempotency.execute({ requestId, tool: name, input: effectArgs }, () => executeToolEffect(name, effectArgs, { requestId }));
+    // Preserve the exact stable identity for target-scoped workspace effects.
+    const forwarded = name==='workspace_window_click'||name==='workspace_browser_click'
+      ? { ...effectArgs, requestId } : effectArgs;
+    return mutationIdempotency.execute({ requestId, tool: name, input: effectArgs }, () => executeToolEffect(name, forwarded, { requestId }));
   }
   return executeToolEffect(name, args);
 }
@@ -472,6 +503,53 @@ async function executeToolEffect(name, args, delegationContext = {}) {
   if (name.startsWith('workflow_')) return workflowTools.execute(name, args);
   if (name.startsWith('notion_mcp_')) return notionMcpTools.execute(name, args);
   if (name.startsWith('notion_')) return notionTools.execute(name, args);
+  if (name.startsWith('workspace_accessibility_')) {
+    if(process.platform!=='linux')throw Error('WORKSPACE_ACCESSIBILITY_LINUX_ONLY');
+    const ownerRequestContext=workspaceOwnerRequestContext(delegationContext,args);
+    const adapter=createWorkspaceAccessibilityTools({
+      sessions:workspaceAccessibilitySessions,
+      gui:async(tool,input)=>{
+        const proxy=ownerGuiProxy ? await ownerGuiProxy.execute(tool,input,ownerRequestContext) : {handled:false};
+        return proxy.handled ? proxy.value : executeGuiTool(ctx,tool,input);
+      }
+    });
+    const result=await adapter.execute(name,args);
+    await audit(ctx,{action:name,ok:result?.ok===true,workspaceAccessibility:true,
+      semanticOnly:true,powerMode:true});
+    return result;
+  }
+  if (isWorkspaceControllerTool(name)) {
+    assertWorkspaceToolPolicy(config,name,args);
+    const delegated=legacyWorkspaceProxy
+      ? await legacyWorkspaceProxy.execute(name,args,delegationContext)
+      : {handled:false};
+    const result=delegated.handled
+      ? delegated.value
+      : await executeWorkspaceTool(ctx,name,args);
+    await audit(ctx,{action:name,ok:result?.ok!==false,workspace:true,
+      delegatedOwnerWorkspace:delegated.handled});
+    return result;
+  }
+  if (name.startsWith('workspace_target_')) {
+    if(name==='workspace_target_list' && ownerWorkspaceReadOnlyProxy){
+      const delegated=await ownerWorkspaceReadOnlyProxy.execute(name,args);
+      if(delegated.handled){
+        await audit(ctx,{action:name,ok:true,workspaceTarget:true,delegatedOwnerWorkspace:true});
+        return delegated.value;
+      }
+    }
+    const ownerRequestContext=workspaceOwnerRequestContext(delegationContext,args);
+    const adapter=createWorkspaceTargetTools({
+      bindings:workspaceTargetBindings,
+      gui:async(tool,input)=>{
+        const proxy=ownerGuiProxy ? await ownerGuiProxy.execute(tool,input,ownerRequestContext) : {handled:false};
+        return proxy.handled ? proxy.value : executeGuiTool(ctx,tool,input);
+      }
+    });
+    const result=await adapter.execute(name,args);
+    await audit(ctx,{action:name,ok:true,workspaceTarget:true,powerMode:true});
+    return result;
+  }
   switch (name) {
     case 'system_status': {
       await audit(ctx, { action: 'system_status', ok: true });
@@ -510,6 +588,7 @@ async function executeToolEffect(name, args, delegationContext = {}) {
           agentExtensions: 1,
           browserCompanionMonitor: 1
         },
+        fullPowerReadiness: assessFullPowerReadiness({ config, workflowStatus }),
         capabilityProfile: config.capabilityProfile ?? {
           id: config.instance?.profile ?? 'default',
           tier: config.powerMode?.enabled && config.powerMode?.fullFilesystem ? 'FULL_POWER' : 'STANDARD',
@@ -538,8 +617,11 @@ async function executeToolEffect(name, args, delegationContext = {}) {
           startupReap: browserStartupReap,
           policy: { ...(config.powerMode?.browserControl ?? { enabled:false }), backgroundFirst:true,
             foregroundFallback:'explicit-current-request-only', workflowBrowserAllowed:false,
-            userBrowserProfileReuse:false, savedPasswordExtraction:false, foregroundInterferenceByDefault:false } },
+            userBrowserProfileReuse:false, savedPasswordExtraction:false, requireExistingUserSession:config.powerMode?.browserControl?.requireExistingUserSession!==false, foregroundInterferenceByDefault:false } },
         guiControl: { backendSupported: GUI_BACKEND_SUPPORTED, availability: 'CHECK_gui_status', enabled: GUI_ENABLED,
+          ownerWorkspaceDelegation: { configured:config.ownerWorkspaceDelegation?.enabled === true,
+            accepted:!!ownerWorkspaceReadOnlyProxy,mode:'read-only-list',
+            ...(ownerWorkspaceProxyConfigError?{error:ownerWorkspaceProxyConfigError}:{}) },
           ownerDelegation: { configured:config.ownerGuiDelegation?.enabled === true,
             accepted:!!ownerGuiProxy, mode:'observe-only', ...(ownerGuiProxyConfigError ? { error:ownerGuiProxyConfigError } : {}) },
           policy: { ...(config.powerMode?.guiControl ?? { enabled:false }), interactionPolicy:'explicit-current-request-only',
@@ -561,6 +643,7 @@ async function executeToolEffect(name, args, delegationContext = {}) {
         return result;
       }
       if (name.startsWith('gui_')) {
+        assertLegacyGuiPermitted(config,name,args);
         const proxy = ownerGuiProxy ? await ownerGuiProxy.execute(name, args, delegationContext) : { handled: false };
         const result = proxy.handled ? proxy.value : await executeGuiTool(ctx, name, args);
         await audit(ctx, { action: name, ok: true, powerMode: true, guiControl: true,
@@ -698,10 +781,24 @@ async function handleMessage(req, message) {
     if (modern && message.method === 'server/discover') {
       return { status: 200, body: rpcResult(message.id, {
         supportedVersions: [MODERN_VERSION],
-        capabilities: { tools: {}, extensions: { [TASKS_EXTENSION]: {} } },
+        capabilities: { tools: {}, extensions: { [TASKS_EXTENSION]: {} },
+          ...(eventsEndpoint ? eventsEndpoint.capabilities : {}) },
         instructions: operatingInstructions(),
         ...MODERN_CACHE_HINT
       }, true) };
+    }
+    if (modern && ['events/list','events/subscribe','events/unsubscribe'].includes(message.method)) {
+      if(!eventsEndpoint)return {status:200,body:rpcError(message.id,-32601,'Method not found')};
+      try {
+        const result=await eventsEndpoint.dispatch(message.method,message.params ?? {},
+          header(req,'authorization'));
+        await audit(ctx,{action:'mcp_event',method:message.method,ok:true});
+        return {status:200,body:rpcResult(message.id,result,true)};
+      } catch(error) {
+        await audit(ctx,{action:'mcp_event',method:message.method,ok:false,
+          errorCode:String(error.message).slice(0,90)});
+        return {status:200,body:rpcError(message.id,-32001,'MCP Events authorization or delivery rejected')};
+      }
     }
     if (message.method === 'tools/list') {
       const payload = modern ? { tools: TOOLS, ...MODERN_CACHE_HINT } : { tools: TOOLS };

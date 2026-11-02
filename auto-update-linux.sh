@@ -9,6 +9,7 @@ EXPECTED_COMMIT=""
 FORCE=0
 POWER_MODE=0
 STANDARD_MODE=0
+HEADLESS_COMPUTE=0
 NO_PROMOTE=0
 SELF_TEST=0
 DRAIN_TIMEOUT=60
@@ -38,6 +39,7 @@ Usage: auto-update-linux.sh [options]
   --expected-commit SHA
   --force
   --power-mode | --standard-mode
+  --headless-compute
   --disable-capability CAP   Repeatable explicit opt-out
   --enable-capability CAP    Repeatable explicit opt-in
   --no-promote
@@ -53,6 +55,7 @@ while [[ $# -gt 0 ]]; do
     --force) FORCE=1; shift;;
     --power-mode) POWER_MODE=1; shift;;
     --standard-mode) STANDARD_MODE=1; shift;;
+    --headless-compute) HEADLESS_COMPUTE=1; shift;;
     --disable-capability) DISABLE_CAPS+=("$2"); shift 2;;
     --enable-capability) ENABLE_CAPS+=("$2"); shift 2;;
     --no-promote) NO_PROMOTE=1; shift;;
@@ -488,7 +491,7 @@ install_linux_gui_backend(){
   local project="$1" cfg="$2" enabled
   enabled="$(json_field "$project" "$cfg" powerMode.guiControl.enabled)"
   [[ "$enabled" == true ]] || return 0
-  chmod +x "$project/tools/gui-control-linux.py" "$project/tools/install-gnome-gui-extension.sh"
+  chmod +x "$project/tools/gui-control-linux.py" "$project/tools/gui-control-kde-portal.py" "$project/tools/install-gnome-gui-extension.sh"
   "$project/tools/install-gnome-gui-extension.sh"
   log "LINUX_GUI_BACKEND_SYNCED project=$project"
 }
@@ -720,6 +723,18 @@ NODE
   fi
 fi
 IFS=$'\t' read -r COMMIT VERSION STAGE_DIR < <(stage_release "$REF")
+# Git excludes the platform-specific Tunnel Client binary: fail-closed
+# staging only after validating the locally installed signed-release receipt.
+# A legacy owner checkout can predate the pinned Tunnel staging helper.
+# Prefer its existing helper; otherwise bootstrap only from the exact
+# ExpectedCommit-verified candidate just fetched by stage_release.
+STAGE_PIN_HELPER="$INSTALL_DIR/tools/stage-pinned-tunnel.mjs"
+if [[ ! -f "$STAGE_PIN_HELPER" ]]; then
+  STAGE_PIN_HELPER="$STAGE_DIR/tools/stage-pinned-tunnel.mjs"
+  [[ -f "$STAGE_PIN_HELPER" && ! -L "$STAGE_PIN_HELPER" ]] || { log 'PINNED_TUNNEL_HELPER_MISSING'; exit 1; }
+  log 'PINNED_TUNNEL_HELPER_BOOTSTRAP_FROM_VERIFIED_CANDIDATE'
+fi
+node "$STAGE_PIN_HELPER" --install-root "$INSTALL_DIR" --stage-root "$STAGE_DIR"
 ACTIVE_CFG="$(active_config "$STAGE_DIR")"
 AUTO_ENABLED="$(json_field "$STAGE_DIR" "$ACTIVE_CFG" autoUpdate.enabled)"
 if [[ "$FORCE" != 1 && "$AUTO_ENABLED" != true ]]; then log 'AUTO_UPDATE_DISABLED'; exit 0; fi
@@ -808,10 +823,13 @@ build_cfg(){
   local output="$1" wf="$2" delivery_mode="${3:-preserve}"
   local args=("$STAGE_DIR/tools/build-candidate-config.mjs" --default "$STAGE_DIR/config.json" --existing "$ACTIVE_CFG" --output "$output" --profile-id default --port "$PORT" --state-dir "$STATE_DIR" --workflow-dir "$wf" --mode "$MODE" --provider-root "$STATE_ROOT")
   if [[ "$delivery_mode" == shadow ]]; then
+    args+=(--async-operations-dir "$BACKUP_ROOT/$COMMIT/default/async-operations-shadow-$PORT")
+    mkdir -p "$BACKUP_ROOT/$COMMIT/default/async-operations-shadow-$PORT"
     args+=(--delivery-directory "$BACKUP_ROOT/$COMMIT/default/delivery-shadow-$PORT" --delivery-scope "diagnostic-${COMMIT:0:32}-$PORT")
   fi
   [[ -z "$BROWSER_EXECUTABLE" ]] || args+=(--browser-executable "$BROWSER_EXECUTABLE")
   [[ -z "$BROWSER_PROFILE_ROOT" ]] || args+=(--browser-profile-root "$BROWSER_PROFILE_ROOT")
+  [[ "$HEADLESS_COMPUTE" == 1 ]] && args+=(--headless-compute)
   local c
   for c in "${DISABLE_CAPS[@]}"; do args+=(--disable-capability "$c"); done
   for c in "${ENABLE_CAPS[@]}"; do args+=(--enable-capability "$c"); done

@@ -172,3 +172,51 @@ test('Windows uppercase YAML extension is considered a valid enrollment', async 
     assert.equal(r.structuralStatus,'STRUCTURAL_MATCH');
   });
 });
+
+
+test('Linux owner-private .env credential references are recognized alongside .key without reading values', async () => {
+  await fixture(async ({profileDir:p,credentialDir:c}) => {
+    await f(p, 'chatgpt-remote-commander.yaml');
+    await f(p, 'saeed-emad-laptop.yaml');
+    await f(c, 'chatgpt-remote-commander.key');
+    await f(c, 'saeed-emad-laptop.env', 'CONTROL_PLANE_API_KEY=do-not-read-this-value');
+    const out = await censusV2EnrollmentScope({profileDir:p,credentialDir:c,platform:'linux'});
+    assert.equal(out.profileCount, 2);
+    assert.equal(out.credentialFileCount, 2);
+    assert.equal(out.credentialMatches.linuxOwner, 2);
+    assert.equal(out.credentialMatches.linuxKey, 1);
+    assert.equal(out.credentialMatches.linuxEnv, 1);
+    assert.equal(out.credentialMatches.missing, 0);
+    assert.equal(out.structuralStatus, 'STRUCTURAL_MATCH');
+    assert.equal(out.credentialUsability, 'UNVERIFIED');
+    assert.equal(out.safeForAutomaticMigration, false);
+    const printed = JSON.stringify(out);
+    for (const secret of ['chatgpt-remote-commander','saeed-emad-laptop',
+      'do-not-read-this-value','CONTROL_PLANE_API_KEY',p,c]) {
+      if (secret !== p && secret !== c) assert.equal(printed.includes(secret), false);
+    }
+  });
+});
+
+test('Linux paired census preserves the exact owner .env reference and cannot promote it to key usability', async () => {
+  await fixture(async ({root,profileDir,credentialDir}) => {
+    const after={profileDir:path.join(root,'after-profiles'),credentialDir:path.join(root,'after-credentials')};
+    await mkdir(after.profileDir); await mkdir(after.credentialDir);
+    await f(profileDir,'owner.yaml'); await f(credentialDir,'owner.env');
+    await f(after.profileDir,'owner.yaml'); await f(after.credentialDir,'owner.env');
+    const same=await compareV2EnrollmentStructure({
+      before:{profileDir,credentialDir},after,platform:'linux'
+    });
+    assert.equal(same.status,'STRUCTURAL_PRESERVATION_UNVERIFIED');
+    assert.equal(same.credentialReferenceSetPreserved,true);
+    assert.equal(same.credentialUsability,'UNVERIFIED');
+    assert.equal(same.safeForAutomaticMigration,false);
+    await rm(path.join(after.credentialDir,'owner.env'));
+    await f(after.credentialDir,'owner.key');
+    const changed=await compareV2EnrollmentStructure({
+      before:{profileDir,credentialDir},after,platform:'linux'
+    });
+    assert.equal(changed.status,'BLOCKED_RECONCILIATION');
+    assert.equal(changed.credentialReferenceSetPreserved,false);
+  });
+});

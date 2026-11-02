@@ -54,12 +54,13 @@ export async function censusV2EnrollmentScope({
   const expected = new Map();
   const matches = {
     currentUser: 0, localMachine: 0, linuxOwner: 0,
+    linuxKey: 0, linuxEnv: 0,
     bothWindowsScopes: 0, missing: 0
   };
   for (const name of names) {
     const suffixes = platform === 'win32'
       ? [['currentUser', name + '.dpapi'], ['localMachine', name + '.machine.dpapi']]
-      : [['linuxOwner', name + '.key']];
+      : [['linuxKey', name + '.key'], ['linuxEnv', name + '.env']];
     const present = [];
     for (const [scope, filename] of suffixes) {
       const token = canon(filename);
@@ -71,11 +72,12 @@ export async function censusV2EnrollmentScope({
         present.push(scope);
       }
     }
+    if (platform === 'linux' && present.length > 0) matches.linuxOwner++;
     if (present.length === 0) matches.missing++;
     if (platform === 'win32' && present.length === 2)
       matches.bothWindowsScopes++;
   }
-  const credentialPattern = platform === 'win32' ? /\.dpapi$/i : /\.key$/;
+  const credentialPattern = platform === 'win32' ? /\.dpapi$/i : /\.(?:key|env)$/;
   const relevant = credentials.entries.filter(n => credentialPattern.test(n));
   const discovered = relevant.map(canon);
   const duplicates = discovered.length - new Set(discovered).size;
@@ -143,13 +145,14 @@ export async function compareV2EnrollmentStructure({
       ? n.toLowerCase().endsWith('.yaml') : n.endsWith('.yaml'))
       .map(n => canon(n.slice(0,-5)));
     const cred = c.entries.filter(n => platform === 'win32'
-      ? n.toLowerCase().endsWith('.dpapi') : n.endsWith('.key')).map(canon);
+      ? n.toLowerCase().endsWith('.dpapi')
+      : n.endsWith('.key') || n.endsWith('.env')).map(canon);
     const nameSet = new Set(prof), credSet = new Set(cred);
     const expected = new Map();
     let missing=0;
     for (const name of prof) {
       const suffixes = platform === 'win32'
-        ? [name + '.dpapi', name + '.machine.dpapi'] : [name + '.key'];
+        ? [name + '.dpapi', name + '.machine.dpapi'] : [name + '.key', name + '.env'];
       for (const x of suffixes) expected.set(x,(expected.get(x)||0)+1);
       if (!suffixes.some(x => credSet.has(x))) missing++;
     }

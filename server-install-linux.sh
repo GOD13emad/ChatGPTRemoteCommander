@@ -5,6 +5,7 @@ SOURCE_REF="${REMOTE_COMMANDER_SOURCE_REF:-v0.10.24}"
 EXPECTED_COMMIT="${REMOTE_COMMANDER_EXPECTED_COMMIT:-}"
 INSTALL_DIR=""
 ENABLE_GUI=0
+HEADLESS_COMPUTE=1
 START_SERVER=1
 REPO_URL="${REMOTE_COMMANDER_REPO_URL:-https://github.com/GOD13emad/ChatGPTRemoteCommander.git}"
 
@@ -35,6 +36,7 @@ done
 [[ "$SOURCE_REF" =~ ^[A-Za-z0-9._/-]{1,128}$ ]] || { echo 'Invalid --source-ref' >&2; exit 2; }
 [[ -z "$EXPECTED_COMMIT" || "$EXPECTED_COMMIT" =~ ^[0-9a-fA-F]{40}$ ]] || { echo 'Invalid --expected-commit' >&2; exit 2; }
 
+[[ "$ENABLE_GUI" == 0 ]] || { echo 'Headless compute servers cannot enable physical GUI control.' >&2; exit 2; }
 need() { command -v "$1" >/dev/null 2>&1; }
 
 as_root() {
@@ -121,7 +123,7 @@ installer="$stage/install.sh"
 [[ -f "$installer" ]] || { echo 'Staged install.sh is missing.' >&2; exit 1; }
 chmod +x "$installer"
 
-args=(--install-prerequisites --power-mode --source-ref "$SOURCE_REF" --expected-commit "$resolved")
+args=(--install-prerequisites --power-mode --headless-compute --source-ref "$SOURCE_REF" --expected-commit "$resolved")
 [[ -z "$INSTALL_DIR" ]] || args+=(--install-dir "$INSTALL_DIR")
 [[ "$START_SERVER" == 1 ]] && args+=(--start-server)
 if [[ "$ENABLE_GUI" != 1 ]]; then

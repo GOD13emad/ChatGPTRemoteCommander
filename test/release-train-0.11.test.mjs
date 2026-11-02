@@ -6,7 +6,11 @@ const root=new URL('../',import.meta.url);
 const read=p=>readFileSync(new URL(p,root),'utf8');
 test('0.11 development train never masquerades as Stable or approved promotion',()=>{
  const a=JSON.parse(read('docs/release-train-0.11.json'));
- assert.equal(a.train,'0.11');assert.equal(a.sourceVersion,'0.11.0-dev.15');
+ const version=JSON.parse(read('package.json')).version;
+ const dev=version.match(/^0\.11\.0-dev\.(\d+)$/);
+ assert.ok(dev,'source must remain on the 0.11 development train');
+ assert.ok(Number(dev[1])>18,'V2 upgrade candidate must be newer than installed V1 dev18');
+ assert.equal(a.train,'0.11');assert.equal(a.sourceVersion,version);
  assert.equal(a.targetPrerelease,'0.11.0');assert.equal(a.firstStable,'1.0.0');
  assert.equal(a.isStable,false);assert.equal(a.publishApproved,false);
  assert.equal(a.autoupdateApproved,false);assert.equal(a.installedPromotionApproved,false);
@@ -17,15 +21,17 @@ test('0.11 development train never masquerades as Stable or approved promotion',
  assert.equal(a.fleet.length,5);
 });
 test('server, plugin, npm package and Windows Control Center development identity agree',()=>{
- const ver='0.11.0-dev.15';
- assert.equal(JSON.parse(read('package.json')).version,ver);
+ const ver=JSON.parse(read('package.json')).version;
+ assert.ok(/^0\.11\.0-dev\.\d+$/.test(ver));
+ assert.equal(JSON.parse(read('docs/release-train-0.11.json')).sourceVersion,ver);
  assert.equal(JSON.parse(read('plugin-template/plugin.json')).version,ver);
  assert.equal(JSON.parse(read('plugin-template/.codex-plugin/plugin.json')).version,ver);
  assert.ok(read('src/server-v0.3.mjs').includes("const VERSION = '"+ver+"';"));
  const cs=read('desktop/RemoteCommanderDashboard/RemoteCommanderDashboard.csproj');
  assert.ok(cs.includes('<Version>'+ver+'</Version>'));
- assert.ok(cs.includes('<FileVersion>0.11.0.15</FileVersion>'));
- assert.ok(cs.includes('<AssemblyVersion>0.11.0.15</AssemblyVersion>'));
+ const revision=ver.split('.').at(-1);
+ assert.ok(cs.includes('<FileVersion>0.11.0.'+revision+'</FileVersion>'));
+ assert.ok(cs.includes('<AssemblyVersion>0.11.0.'+revision+'</AssemblyVersion>'));
 });
 test('historical releases are not silently deleted or accepted as product stable',()=>{
  const a=JSON.parse(read('docs/release-train-0.11.json'));

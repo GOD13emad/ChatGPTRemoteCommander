@@ -54,3 +54,11 @@ test('TLS options require OpenAI CA roots, certificate request and native valida
  assert.equal(v.minVersion,'TLSv1.2');
  assert.equal(v.ca.length,2);
 });
+
+test('public mTLS trust anchors retain exact LF bytes on Windows and Linux checkout',()=>{
+ const attributes=readFileSync(new URL('../.gitattributes',import.meta.url),'utf8');
+ for(const name of ['root-ca.pem','connectors-mtls-intermediate-ca.pem']){
+  assert.equal(attributes.split(/\r?\n/).includes('assets/trust/openai/'+name+' text eol=lf'),true);
+ }
+ for(const pem of [rootPem,interPem])assert.equal(pem.includes(Buffer.from('\r\n')),false);
+});

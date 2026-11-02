@@ -9,6 +9,7 @@ param(
   [switch]$DisableGuiControl,
   [string[]]$DisableCapability = @(),
   [string[]]$EnableCapability = @(),
+  [switch]$HeadlessCompute,
   [string[]]$TargetProfile = @(),
   [switch]$SelfTest,
   [switch]$NoPromote,
@@ -19,6 +20,7 @@ $ErrorActionPreference='Stop'
 if($PowerMode -and $StandardMode){throw 'PowerMode and StandardMode are mutually exclusive.'}
 if($GuiControl -and $DisableGuiControl){throw 'GuiControl and DisableGuiControl are mutually exclusive.'}
 if($GuiControl -and $StandardMode){throw 'GuiControl cannot be combined with StandardMode.'}
+if($HeadlessCompute -and $GuiControl){throw 'Headless compute cannot enable GUI control.'}
 foreach($requestedProfile in $TargetProfile){
   if($requestedProfile -notmatch '^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$' -or $requestedProfile -match '\.\.' -or $requestedProfile -in @('.','..')){throw "Invalid TargetProfile: $requestedProfile"}
 }
@@ -1162,7 +1164,7 @@ try{
     }
   }
   $device=if($currentStatus){[string]$currentStatus.deviceName}else{$env:COMPUTERNAME}
-  $explicitProfileMutation=[bool]($Force -or $PowerMode -or $StandardMode -or $GuiControl -or $DisableGuiControl -or @($DisableCapability).Count-gt0 -or @($EnableCapability).Count-gt0)
+  $explicitProfileMutation=[bool]($Force -or $PowerMode -or $StandardMode -or $GuiControl -or $DisableGuiControl -or @($DisableCapability).Count-gt0 -or @($EnableCapability).Count-gt0 -or $HeadlessCompute)
   foreach($t in $targets){
     if(-not $explicitProfileMutation -and (Test-Path -LiteralPath $t.RoutePath -PathType Leaf)){
       try{
@@ -1181,7 +1183,8 @@ try{
     $liveWorkflowDir=[string]$existingPolicy.durableWorkflows.directory
     $backupDir=Join-Path $StateRoot (Join-Path 'update-backups' (Join-Path $stage.Commit (Join-Path $t.Profile $runtimeLeaf)))
     $shadowWorkflowDir=Join-Path $backupDir 'workflow-shadow'
-    New-Item -ItemType Directory -Force -Path $backupDir|Out-Null
+    $shadowAsyncOperationsDir=Join-Path $backupDir 'async-operations-shadow'
+    New-Item -ItemType Directory -Force -Path $backupDir,$shadowAsyncOperationsDir|Out-Null
     Copy-Item -LiteralPath $t.ExistingConfig -Destination (Join-Path $backupDir 'config.before.json') -Force
     if($liveWorkflowDir){
       & node.exe (Join-Path $stage.Dir 'tools\copy-workflow-store.mjs') --source-dir $liveWorkflowDir --dest-dir $shadowWorkflowDir
@@ -1190,8 +1193,10 @@ try{
 
     $cfg=Join-Path $stateDir 'diagnostic-config.json'
     $buildArgs=@((Join-Path $stage.Dir 'tools\build-candidate-config.mjs'),'--default',(Join-Path $stage.Dir 'config.json'),'--existing',$t.ExistingConfig,'--output',$cfg,'--profile-id',$t.Profile,'--port',[string]$port,'--state-dir',$stateDir,'--workflow-dir',$shadowWorkflowDir,'--provider-root',$StateRoot)
+    $buildArgs+=@('--async-operations-dir',$shadowAsyncOperationsDir)
     if($PowerMode){$buildArgs+=@('--mode','full')}elseif($StandardMode){$buildArgs+=@('--mode','standard')}else{$buildArgs+=@('--mode','preserve')}
     if($GuiControl){$buildArgs+=@('--gui','on')}elseif($DisableGuiControl){$buildArgs+=@('--gui','off')}
+    if($HeadlessCompute){$buildArgs+='--headless-compute'}
     foreach($cap in $DisableCapability){$buildArgs+=@('--disable-capability',$cap)}
     foreach($cap in $EnableCapability){$buildArgs+=@('--enable-capability',$cap)}
     & node.exe @buildArgs
@@ -1237,6 +1242,7 @@ try{
     if($liveWorkflowDir){$finalArgs+=@('--workflow-dir',$liveWorkflowDir)}
     if($PowerMode){$finalArgs+=@('--mode','full')}elseif($StandardMode){$finalArgs+=@('--mode','standard')}else{$finalArgs+=@('--mode','preserve')}
     if($GuiControl){$finalArgs+=@('--gui','on')}elseif($DisableGuiControl){$finalArgs+=@('--gui','off')}
+    if($HeadlessCompute){$finalArgs+='--headless-compute'}
     foreach($cap in $DisableCapability){$finalArgs+=@('--disable-capability',$cap)}
     foreach($cap in $EnableCapability){$finalArgs+=@('--enable-capability',$cap)}
     & node.exe @finalArgs

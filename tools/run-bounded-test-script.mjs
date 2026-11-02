@@ -246,6 +246,28 @@ export function isolateWindowsAutotickRegression(command) {
   return 'node --test --test-concurrency=1 '+file+' && '+parts.join(' && ');
 }
 
+/**
+ * R173 observed CHECK PASS then TEST phase 11 started without any test
+ * reporter line in a loaded hosted Windows qualification (182741e).
+ * That exact file passed unchanged when run standalone on the owner host.
+ * Move the already-isolated file to the front before other test processes,
+ * preserving all original tests, deadlines and cardinality. This is a
+ * scheduling mitigation, NOT evidence that hosted R173 is accepted.
+ */
+export function prioritizeWindowsEngineIntegrationCold(command){
+ if(typeof command!=='string'||!command)
+  throw Error('R173_ENGINE_INTEGRATION_COMMAND_INVALID');
+ const file='test/project-engine-integration.test.mjs';
+ if(command.split(file).length-1!==1)
+  throw Error('R173_ENGINE_INTEGRATION_CARDINALITY');
+ const parts=command.split(' && ');
+ const exact='node --test --test-concurrency=1 '+file;
+ const index=parts.indexOf(exact);
+ if(index<0)throw Error('R173_ENGINE_INTEGRATION_NOT_ISOLATED');
+ parts.splice(index,1);
+ return [exact,...parts].join(' && ');
+}
+
 export function isolateWindowsWorkflowPlanRegression(command) {
   if(typeof command!=='string'||!command)throw new Error('CI_WORKFLOW_PLAN_COMMAND_INVALID');
   const file='test/workflow-plan.test.mjs';
@@ -359,6 +381,7 @@ function run(){
     command=isolateWindowsStartupReadinessRegressions(command);
     command=prioritizeWindowsAdaptiveCold(command);
     command=isolateWindowsAutotickRegression(command);
+    command=prioritizeWindowsEngineIntegrationCold(command);
   }
   const phases=process.platform==='win32'&&args.script==='test'&&process.env.RC_QUALIFICATION_RUN_ID
     ?splitWindowsQualificationCommands(command):null;

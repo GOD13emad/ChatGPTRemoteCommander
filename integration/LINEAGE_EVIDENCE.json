@@ -1,0 +1,77 @@
+{
+  "doesNotReplaceV1OrEmadWorktree": true,
+  "emadCommittedHead": "843309c2a4fb5e3370604d02ca1d96bdc23d5ca1",
+  "emadCommittedHeadArchiveSha256": "9be6db492ac3bd5ff40e4c2f99e0ad53b1f41df185e4021cab503864d8b7f87a",
+  "emadDirtyTrackedSourcePatched": 49,
+  "emadTrackedDirtySourcePatchSha256": "77f2ee34f35a59e20024257454c25a6b32665bf9d98bbb3d9476c3294c165996",
+  "emadUntrackedCodeArchiveSha256": "e8b60ce3bb19c205ac241d90f025c46a59d9d87f29f9b8ddda4a8177facf5ea3",
+  "emadUntrackedCodeIncluded": 80,
+  "integratedV1Contracts": [
+    "transfer-mesh-config-optin",
+    "bounded-runner-planner-budget",
+    "verified-pinned-tunnel-stage-before-active-config",
+    "Linux-executable-source-integrity"
+  ],
+  "nonOverlappingModulesAndTestsFromV1": 12,
+  "nonOverlappingModulesFromMMZ": 55,
+  "preservedEmadContracts": [
+    "headless-compute-deployment-role",
+    "async-operation-state-isolation",
+    "R17-owner-workspace-src"
+  ],
+  "primaryBase": "410839c85d75336be748bc9530d024f10b002c51",
+  "release": {
+    "autoupdateApproved": false,
+    "installedPromotionApproved": false,
+    "ownerChatGPTOAuthAttested": false,
+    "productionHpcTransportAttested": false,
+    "publishApproved": false,
+    "sourceParityFull": false
+  },
+  "schema": 1,
+  "scope": "THREE_LINEAGE_INTEGRATION_CANDIDATE_NOT_RELEASE",
+  "sourceVersion": "0.11.0-dev.19",
+  "testEvidence": {
+    "checkQualification": "PASS",
+    "currentTrackedBearerLiteralDetections": 0,
+    "historicSyntheticTestCommitPrefix": "27c84a7db84e",
+    "nativeWindowsEffects": "NOT_RUN_IN_THIS_INTEGRATION_BRANCH",
+    "strictAudit": "FAIL_INHERITED_SYNTHETIC_BEARER_LITERAL_IN_PARENT_COMMIT",
+    "v1New": {
+      "fail": 0,
+      "pass": 41,
+      "skip": 1,
+      "total": 42
+    },
+    "v2": {
+      "fail": 0,
+      "pass": 579,
+      "skip": 5,
+      "total": 584
+    }
+  },
+  "threeWayOverlappingFilesUnresolved": 20,
+  "threeWayOverlappingPaths": [
+    "auto-update-linux.sh",
+    "auto-update-windows.ps1",
+    "desktop/RemoteCommanderDashboard/RemoteCommanderDashboard.csproj",
+    "install.sh",
+    "package.json",
+    "src/async-operations.mjs",
+    "src/browser-tools.mjs",
+    "src/capability-profile.mjs",
+    "src/server-v0.3.mjs",
+    "test/agent-extensions-http.test.mjs",
+    "test/auto-update-contract.test.mjs",
+    "test/browser-safety.test.mjs",
+    "test/ci-test-concurrency.test.mjs",
+    "test/http-admission.test.mjs",
+    "test/installer-check.mjs",
+    "test/release-train-0.11.test.mjs",
+    "test/security-audit.mjs",
+    "tools/build-candidate-config.mjs",
+    "tools/gui-control-linux.py",
+    "tools/run-bounded-test-script.mjs"
+  ],
+  "v1OwnerHead": "04597bdf5cbb036fd2af525593e01ff6f93fa596"
+}

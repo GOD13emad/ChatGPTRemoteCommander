@@ -76,8 +76,20 @@ if (!windowsServerInstaller.includes("[string]$SourceRef = 'v0.10.24'")) throw n
 if (!windowsServerInstaller.includes('ChatGPTRemoteCommander-ServerInstaller/0.10.24')) throw new Error('server-install-windows.ps1 User-Agent must match current release');
 for (const required of [
   "[string]$GuiControl = 'Off'",
-  "$guiEnabled = $false # Server installer defaults headless regardless of Windows SKU or RDP."
-]) if (!windowsServerInstaller.includes(required)) throw new Error('Server install must select headless by default even on Client-SKU hosts: '+required);
+  "$guiEnabled = $false # Server installer defaults headless regardless of Windows SKU or RDP.",
+  "Headless compute servers cannot enable physical GUI control.",
+  "'-HeadlessCompute'"
+]) if (!windowsServerInstaller.includes(required)) throw new Error('Server install must select headless compute by default and reject physical GUI: '+required);
+for (const [label,source,required] of [
+  ['Windows desktop installer',windowsInstaller,'[switch]$HeadlessCompute'],
+  ['Windows updater',readFileSync('auto-update-windows.ps1','utf8'),"[switch]$HeadlessCompute"],
+  ['Linux desktop installer',readFileSync('install.sh','utf8'),"--headless-compute"],
+  ['Linux updater',readFileSync('auto-update-linux.sh','utf8'),"--headless-compute"],
+  ['Linux headless server installer',linuxServerInstaller,"--headless-compute"]
+]) if (!source.includes(required)) throw new Error(label+' does not preserve the headless-compute deployment role: '+required);
+if (!linuxServerInstaller.includes("Headless compute servers cannot enable physical GUI control.")) throw new Error('Linux compute server installer must reject an explicit GUI request.');
+if (!readFileSync('tools/build-candidate-config.mjs','utf8').includes("o.deploymentRole='headless-compute'")) throw new Error('candidate config builder does not forward headless-compute role.');
+if (!readFileSync('src/capability-profile.mjs','utf8').includes('HEADLESS_COMPUTE_EXECUTION_TOOLS')) throw new Error('headless compute execution allowlist is missing.');
 const serverCanaryWorkflow = readFileSync('.github/workflows/server-install-canary.yml','utf8');
 for (const required of [
   "$script:BootstrapGitHubToken = [Environment]::GetEnvironmentVariable('RC_GITHUB_API_TOKEN','Process')",

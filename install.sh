@@ -5,6 +5,7 @@ REPO_URL="${REMOTE_COMMANDER_REPO_URL:-https://github.com/GOD13emad/ChatGPTRemot
 INSTALL_DIR="${HOME}/.local/share/ChatGPTRemoteCommander"
 POWER_MODE=0
 STANDARD_MODE=0
+HEADLESS_COMPUTE=0
 DISABLE_CAPS=()
 ENABLE_CAPS=()
 BROWSER_EXECUTABLE=""
@@ -24,6 +25,7 @@ Usage: install.sh [options]
   --install-prerequisites   Install basic OS packages and portable Node 22+ if needed
   --power-mode              Enable Full Power: all current/future capabilities unless explicitly disabled
   --standard-mode           Explicitly select Standard mode
+  --headless-compute         Configure a bounded compute-only worker profile
   --disable-capability CAP  Explicit capability opt-out (repeatable)
   --enable-capability CAP   Explicit capability opt-in (repeatable)
   --start-server            Start MCP server with nohup after validation
@@ -40,6 +42,7 @@ while [[ $# -gt 0 ]]; do
     --install-prerequisites) INSTALL_PREREQS=1; shift ;;
     --power-mode) POWER_MODE=1; shift ;;
     --standard-mode) STANDARD_MODE=1; shift ;;
+    --headless-compute) HEADLESS_COMPUTE=1; shift ;;
     --disable-capability) DISABLE_CAPS+=("$2"); shift 2 ;;
     --enable-capability) ENABLE_CAPS+=("$2"); shift 2 ;;
     --start-server) START_SERVER=1; shift ;;
@@ -107,6 +110,7 @@ invoke_existing_safe_update() {
   local args=(--install-dir "$INSTALL_DIR" --source-ref "$SOURCE_REF" --expected-commit "$resolved" --force)
   [[ "$POWER_MODE" == 1 ]] && args+=(--power-mode)
   [[ "$STANDARD_MODE" == 1 ]] && args+=(--standard-mode)
+  [[ "$HEADLESS_COMPUTE" == 1 ]] && args+=(--headless-compute)
   local cap
   for cap in "${DISABLE_CAPS[@]}"; do args+=(--disable-capability "$cap"); done
   for cap in "${ENABLE_CAPS[@]}"; do args+=(--enable-capability "$cap"); done
@@ -347,6 +351,7 @@ write_local_config() {
       --existing "$cfg" --output "$cfg" --profile-id "$profile_id" --workflow-dir "$workflow_dir")
     [[ "$POWER_MODE" == 1 ]] && args+=(--request-power)
     [[ "$STANDARD_MODE" == 1 ]] && args+=(--request-standard)
+    [[ "$HEADLESS_COMPUTE" == 1 ]] && args+=(--headless-compute)
   else
     args=("$INSTALL_DIR/tools/build-candidate-config.mjs" --default "$INSTALL_DIR/config.json"
       --output "$cfg" --profile-id default --port 47831 --state-dir "$state_dir"
@@ -355,6 +360,7 @@ write_local_config() {
       --allowed-program git --allowed-program node --allowed-program npm
       --allowed-program npx --allowed-program python3 --allowed-program python
       --allowed-program dotnet --allowed-program cmake --allowed-program ninja)
+    [[ "$HEADLESS_COMPUTE" == 1 ]] && args+=(--headless-compute)
   fi
   local cap
   [[ "$CUSTOM_NO_START" == 1 ]] || args+=(--provider-root "$state_root")
@@ -500,11 +506,16 @@ else
   ensure_project_provider
   ensure_browser_backend
   write_local_config
-  chmod +x "$INSTALL_DIR/install.sh" "$INSTALL_DIR/connect-chatgpt-account.sh" "$INSTALL_DIR/run-server.sh" \
-    "$INSTALL_DIR/autostart-linux.sh" "$INSTALL_DIR/supervisor-routing-linux.sh" "$INSTALL_DIR/auto-update-linux.sh" \
-    "$INSTALL_DIR/tools/install-tunnel-client-linux.sh" \
-    "$INSTALL_DIR/enable-autostart-linux.sh" "$INSTALL_DIR/disable-autostart-linux.sh" \
+  executable_files=(
+    "$INSTALL_DIR/install.sh" "$INSTALL_DIR/connect-chatgpt-account.sh" "$INSTALL_DIR/run-server.sh"
+    "$INSTALL_DIR/autostart-linux.sh" "$INSTALL_DIR/supervisor-routing-linux.sh" "$INSTALL_DIR/auto-update-linux.sh"
+    "$INSTALL_DIR/tools/install-tunnel-client-linux.sh"
+    "$INSTALL_DIR/enable-autostart-linux.sh" "$INSTALL_DIR/disable-autostart-linux.sh"
     "$INSTALL_DIR/tools/gui-control-linux.py" "$INSTALL_DIR/tools/install-gnome-gui-extension.sh"
+  )
+  # KDE portal support is additive; older compatible releases may not ship its helper.
+  [[ ! -f "$INSTALL_DIR/tools/gui-control-kde-portal.py" ]] || executable_files+=("$INSTALL_DIR/tools/gui-control-kde-portal.py")
+  chmod +x "${executable_files[@]}"
   install_linux_gui_backend "$INSTALL_DIR" "$INSTALL_DIR/config.local.json"
   validate_installation
   # Beyond this point a new runtime may be activated. Never relocate an

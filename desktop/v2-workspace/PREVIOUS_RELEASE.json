@@ -1,0 +1,17 @@
+{
+  "kind": "COMMANDER_V2_WORKSPACE_PREVIOUS_RELEASE",
+  "schema": 1,
+  "previousArchiveSha256": "cdea95fed64a736ba3a6dbd4f0b48a460709001a59ba06b82af174a5c583dbeb",
+  "files": {
+    "transport-evidence.mjs": "cfe8e1ebd0446123894733e5bf112a5ff492a865a130ff7458acf563015a59f0",
+    "app.js": "d77e40b81fe43c2cc242e64a60ccd928eab757b7ea21173f99c66c35c205252b",
+    "app.css": "8cbf599b5cc33a6e7784df7c0e105f7d98197550de6a1b9d60eae34ab94e76a9",
+    "server.mjs": "f7cefd19f05e5ea5b8414ca9a99d047601aec82d5607857911f245379e7f6990",
+    "owner-seat-evidence.mjs": "b36807a7f768cd728188cf623935460b59ddd332c4fa09c8e0bdcf04371daa04",
+    "workflow-view.mjs": "75820dfff9e1d72c0e99d6c2df4fa9e564a0e8383e0675999ad4ab8746bccc32",
+    "index.html": "fa334fe9af02ff3ce72642db509458055f5eebfde310fa252f3f2f5172f75533",
+    "local-evidence.mjs": "3e886c45696210cad9b3273ffcd7b06d3b1c108c73fa835a1af2215cbae005e4",
+    "desktop-app.mjs": "a31b56a90f8e25b37e42af46a4f4391a3e7ad91840cffa7a123329d4e0ef813c",
+    "README.md": "5cea1639c179de73ef4a3dda52c4961ce9cb40944f5a81df75486ba91b62864c"
+  }
+}

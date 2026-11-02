@@ -170,6 +170,6 @@ test('HTTP async operation returns immediately, retry is idempotent, and output 
       child.kill();
       await Promise.race([once(child, 'exit'), wait(2000)]);
     }
-    await fs.rm(root, { recursive: true, force: true });
+    await fs.rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   }
 });

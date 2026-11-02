@@ -1,3 +1,4 @@
+import {listenOnFetchSafePort} from './v2-fetch-safe-loopback.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
@@ -58,7 +59,7 @@ async function withServer(ingress,cb){
  const server=ingress.createUnboundServer();
  try{
   assert.equal(server.listening,false);
-  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+  await listenOnFetchSafePort(server);
   return await cb('http://127.0.0.1:'+server.address().port);
  }finally{server.closeAllConnections();await new Promise(resolve=>server.close(resolve));}
 }

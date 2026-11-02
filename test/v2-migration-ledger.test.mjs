@@ -2,12 +2,24 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {captureV2MigrationManifest,verifyV2MigrationPreservation} from '../src/v2-migration-ledger.mjs';
 const H='a'.repeat(64);
+const kinds=['commander-config','capability-profile','tool-and-plugin-registry',
+ 'integration-registry','workflow-store','operation-journal','delivery-and-outbox',
+ 'browser-state','desktop-gui-state','service-and-scheduler-state',
+ 'native-credential-index','app-registration-state'];
+const assets=prefix=>kinds.map((kind,i)=>({assetId:prefix+'-asset-'+i,kind,present:true,
+ referenceRef:'ownerref:'+prefix+'-asset-ref-'+i,sha256:String(i+1).padStart(64,'0'),schemaVersion:1}));
 function sample(){
- return {schema:1,hostId:'emad-win',platform:'win32',osPrincipalId:'sid-owner-a',
-   sourceBuild:'0.11.0-dev.18',observedAtMs:1000,profiles:[
+ return {schema:2,hostId:'emad-win',platform:'win32',osPrincipalId:'sid-owner-a',
+   sourceBuild:'0.11.0-dev.18',installRef:'ownerref:commander-install',
+   canonicalRouteRef:'managedref:listener-47831',observedAtMs:1000,profiles:[
     {profileId:'owner',ownerOsPrincipalId:'sid-owner-a',desktopSeatId:'session-1',
      accountRef:'managedref:chat-account-one',workspaceRef:'managedref:workspace-one',
      browserProfileRef:'ownerref:browserprofile-owner',
+     bindings:[{bindingId:'binding-owner-chat',ownerOsPrincipalId:'sid-owner-a',
+      accountRef:'managedref:chat-account-one',workspaceRef:'managedref:workspace-one',
+      tunnelEnrollmentId:'tunnel-1',chatRef:'managedref:chat-one',
+      grantRef:'managedref:grant-one',active:true}],
+     preservedAssets:assets('owner'),
      tunnels:[
       {enrollmentId:'tunnel-1',credentialRef:'wincred:owner-tunnel-one',
        endpointRef:'managedref:listener-47831',supervisorRef:'managedref:supervisor-a',autostart:true},
@@ -20,6 +32,11 @@ function sample(){
     {profileId:'secondary',ownerOsPrincipalId:'sid-owner-b',desktopSeatId:'session-2',
      accountRef:'managedref:chat-account-two',workspaceRef:'managedref:workspace-two',
      browserProfileRef:'ownerref:browserprofile-secondary',
+     bindings:[{bindingId:'binding-secondary-chat',ownerOsPrincipalId:'sid-owner-b',
+      accountRef:'managedref:chat-account-two',workspaceRef:'managedref:workspace-two',
+      tunnelEnrollmentId:'tunnel-3',chatRef:'managedref:chat-two',
+      grantRef:'managedref:grant-two',active:true}],
+     preservedAssets:assets('secondary'),
      tunnels:[{enrollmentId:'tunnel-3',credentialRef:'wincred:secondary-tunnel',
        endpointRef:'managedref:listener-47834',supervisorRef:'managedref:supervisor-c',autostart:true}],
      projects:[]}
@@ -35,7 +52,7 @@ test('nonsecret snapshot creates stable identity and complete preservation count
  const y=clone(x);y.profiles.reverse();y.profiles[1].tunnels.reverse();
  const b=captureV2MigrationManifest(y);
  assert.equal(a.digest,b.digest);
- assert.deepEqual(a.counts,{profiles:2,tunnels:3,projects:1,receipts:2});
+ assert.deepEqual(a.counts,{profiles:2,tunnels:3,bindings:2,assets:24,presentAssets:24,projects:1,receipts:2});
  const result=compare(x,y);
  assert.equal(result.preservationReady,true);
  assert.equal(result.cutoverAccepted,false);
@@ -49,9 +66,10 @@ test('new V2 profile/tunnel is allowed but cannot hide a removed old enrollment'
   endpointRef:'managedref:new-endpoint',supervisorRef:'managedref:new-supervisor',autostart:false});
  assert.equal(compare(original,proposed).preservationReady,true);
  proposed.profiles[0].tunnels.splice(0,1);
+ proposed.profiles[0].bindings=[];
  const broken=compare(original,proposed);
  assert.equal(broken.preservationReady,false);
- assert.deepEqual(broken.differences,[{kind:'tunnel',parent:'owner',id:'tunnel-1',status:'MISSING'}]);
+ assert.deepEqual(broken.differences,[{kind:'tunnel',parent:'owner',id:'tunnel-1',status:'MISSING'},{kind:'binding',parent:'owner',id:'binding-owner-chat',status:'MISSING'}]);
 });
 test('credential and supervisor reference changes cannot be silently called lossless',()=>{
  for(const [key,value] of [['credentialRef','wincred:new-ref'],
@@ -68,7 +86,7 @@ test('credential and supervisor reference changes cannot be silently called loss
 test('SID, account, browser profile, project root and receipt digest must survive exactly',()=>{
  const edits=[
   x=>x.osPrincipalId='sid-different',
-  x=>x.profiles[0].ownerOsPrincipalId='sid-different',
+  x=>{x.profiles[0].ownerOsPrincipalId='sid-different';x.profiles[0].bindings[0].ownerOsPrincipalId='sid-different';},
   x=>x.profiles[0].accountRef='managedref:new-account',
   x=>x.profiles[1].browserProfileRef='ownerref:other-profile',
   x=>x.profiles[0].projects[0].rootRef='ownerref:other-root',
@@ -118,4 +136,39 @@ test('missing profile, project or receipt is identified without reading secrets'
   assert.equal(result.differences[0].kind,expectedKind);
   assert.equal(JSON.stringify(result).includes('wincred:'),false);
  }
+});
+
+
+test('V1 config, capabilities, integrations, workflow, operations, delivery, browser, desktop and service state are all mandatory inventory categories',()=>{
+ const original=sample();
+ const incomplete=clone(original);
+ incomplete.profiles[0].preservedAssets.pop();
+ assert.throws(()=>captureV2MigrationManifest(incomplete),{code:'V2_MIGRATION_ASSET_INVENTORY_INCOMPLETE'});
+ const changed=clone(original);
+ changed.profiles[0].preservedAssets.find(x=>x.kind==='capability-profile').sha256='f'.repeat(64);
+ const result=compare(original,changed);
+ assert.equal(result.preservationReady,false);
+ assert.ok(result.differences.some(x=>x.kind==='asset'&&x.id==='capability-profile'));
+});
+
+test('V1 account/chat/tunnel/grant bindings survive without requiring a new OAuth or tunnel enrollment',()=>{
+ const original=sample(),proposed=clone(original);
+ proposed.observedAtMs=2000;
+ assert.equal(compare(original,proposed).preservationReady,true);
+ proposed.profiles[0].bindings[0].tunnelEnrollmentId='tunnel-2';
+ const result=compare(original,proposed);
+ assert.equal(result.preservationReady,false);
+ assert.ok(result.differences.some(x=>x.kind==='binding'&&x.id==='binding-owner-chat'));
+});
+
+test('absent V1 state is explicitly represented and additive V2-only state does not block preservation',()=>{
+ const original=sample(),proposed=clone(original);
+ const asset=original.profiles[0].preservedAssets.find(x=>x.kind==='desktop-gui-state');
+ asset.present=false;asset.referenceRef=null;asset.sha256=null;asset.schemaVersion=null;
+ proposed.profiles[0].preservedAssets=clone(original.profiles[0].preservedAssets);
+ proposed.profiles[0].preservedAssets.push({assetId:'v2-new-desktop-state',
+  kind:'desktop-gui-state',present:true,referenceRef:'ownerref:v2-new-desktop',
+  sha256:'f'.repeat(64),schemaVersion:1});
+ const result=compare(original,proposed);
+ assert.equal(result.preservationReady,true);
 });

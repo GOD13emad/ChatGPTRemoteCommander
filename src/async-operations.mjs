@@ -4,10 +4,11 @@ import { createHash, randomUUID } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { watch as fsWatch } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { mkdir, open, readFile, readdir, realpath, rename, stat, writeFile } from 'node:fs/promises';
+import { mkdir, open, readFile, readdir, realpath, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { expandPathValue } from './platform.mjs';
 
 const TERMINAL = new Set(['SUCCEEDED', 'FAILED', 'TIMED_OUT', 'CANCELLED', 'UNCERTAIN']);
+const CAPACITY_TERMINAL = new Set(['SUCCEEDED', 'FAILED', 'TIMED_OUT', 'CANCELLED']);
 const WORKER_FINALIZATION_GRACE_MS = 10000;
 const WORKER_MISSING_RECEIPT_GRACE_MS = 2000;
 const WORKER_SCHEDULING_HARD_GRACE_MS = 60000;
@@ -147,19 +148,99 @@ export const asyncOperationDefinitions = [
   }
 ];
 
-export function createAsyncOperationTools({ config, prepare, workerPath, deliveryStore = null, onTerminal = null, validateContinuation = null }) {
+export function createAsyncOperationTools({ config, prepare, workerPath, deliveryStore = null, onTerminal = null, onDeliveryEvent = null, validateContinuation = null }) {
   const policy = config.asyncOperations ?? {};
   const enabled = policy.enabled !== false;
   const root = policy.stateDir
     ? path.resolve(expandPathValue(policy.stateDir))
     : path.join(os.homedir(), '.chatgpt-remote-commander', 'operations', profileKey(config));
   const maxOutputBytes = boundedInt(policy.maxOutputBytes, 16 * 1024 * 1024, 64 * 1024, 64 * 1024 * 1024);
+  const allowedTools = Array.isArray(policy.allowedTools)
+    ? [...new Set(policy.allowedTools.filter(name => ['run_project_command','run_shell','copy_path','move_path','delete_path'].includes(name)))]
+    : ['run_project_command','run_shell','copy_path','move_path','delete_path'];
+  const maxConcurrentOperations = policy.maxConcurrentOperations == null
+    ? null : boundedInt(policy.maxConcurrentOperations, 2, 1, 32);
+  const definitions = asyncOperationDefinitions.map(definition => {
+    if (definition.name !== 'operation_start' || allowedTools.length === 5) return definition;
+    return {
+      ...definition,
+      inputSchema: {
+        ...definition.inputSchema,
+        properties: {
+          ...definition.inputSchema.properties,
+          tool: { ...definition.inputSchema.properties.tool, enum: allowedTools }
+        }
+      }
+    };
+  });
   const resolvedWorker = workerPath ?? fileURLToPath(new URL('../tools/operation-worker.mjs', import.meta.url));
   const operationsDir = path.join(root, 'operations');
   const requestsDir = path.join(root, 'requests');
+  const admissionLock = path.join(root, 'admission.lock');
+
+  async function withAdmissionLock(action) {
+    await mkdir(root, { recursive: true, mode: 0o700 });
+    let owner;
+    for (let attempt = 0; attempt < 1000; attempt += 1) {
+      let handle;
+      try {
+        handle = await open(admissionLock, 'wx', 0o600);
+        owner = { pid: process.pid, acquiredAt: Date.now(), nonce: randomUUID() };
+        try { await handle.writeFile(JSON.stringify(owner) + '\n'); }
+        finally { await handle.close(); }
+        break;
+      } catch (error) {
+        try { await handle?.close(); } catch {}
+        if (error?.code !== 'EEXIST') {
+          if (owner) await rm(admissionLock, { force: true }).catch(() => {});
+          throw error;
+        }
+        try {
+          const current = await readJson(admissionLock);
+          if (Date.now() - Number(current.acquiredAt) > 30000 && !alive(Number(current.pid))) {
+            await rm(admissionLock, { force: true });
+            continue;
+          }
+        } catch (readError) {
+          if (readError?.code === 'ENOENT') continue;
+          try {
+            const info = await stat(admissionLock);
+            if (Date.now() - info.mtimeMs > 30000) await rm(admissionLock, { force: true });
+          } catch {}
+        }
+        await new Promise(resolve => setTimeout(resolve, 20));
+      }
+    }
+    if (!owner) throw new Error('ASYNC_OPERATION_ADMISSION_LOCK_BUSY');
+    try { return await action(); }
+    finally {
+      try {
+        const current = await readJson(admissionLock);
+        if (current.pid === owner.pid && current.nonce === owner.nonce) await rm(admissionLock, { force: true });
+      } catch {}
+    }
+  }
+
+  async function countActiveOperations() {
+    let entries = [];
+    try { entries = await readdir(operationsDir, { withFileTypes: true }); }
+    catch (error) { if (error?.code === 'ENOENT') return 0; throw error; }
+    let active = 0;
+    for (const entry of entries) {
+      if (!entry.isDirectory() || !OP_RE.test(entry.name)) continue;
+      try {
+        const state = await readStateProjection(opPaths(entry.name));
+        if (!state || !CAPACITY_TERMINAL.has(state.status)) active += 1;
+      } catch { active += 1; }
+    }
+    return active;
+  }
+
   const deliveryIntervalMs = boundedInt(policy.deliveryReconcileMs, 5000, 1000, 60000);
   const deliveryBatchSize = boundedInt(policy.deliveryReconcileBatch, 100, 1, 500);
   const deliveryTracked = new Set();
+  // An in-flight guard only: retries use a stable event ID at the receiver.
+  const notifyingDeliveries = new Set();
   let deliveryDiscovered = false;
   let deliveryTimer = null;
   let deliveryClosed = false;
@@ -422,6 +503,18 @@ export function createAsyncOperationTools({ config, prepare, workerPath, deliver
       artifact
     });
     deliveryTracked.delete(state.operationId);
+    // Publishing events is best-effort and must not change durable completion
+    // state or manufacture chat-delivery acknowledgements. Never block status.
+    if (event?.deliveryId && typeof onDeliveryEvent === 'function' &&
+        !notifyingDeliveries.has(event.deliveryId)) {
+      notifyingDeliveries.add(event.deliveryId);
+      queueMicrotask(() => {
+        Promise.resolve().then(() => onDeliveryEvent(event, state))
+          .catch(error => console.error('MCP_EVENT_NOTIFY_FAILED ' +
+            String(error?.code ?? error?.message ?? error).slice(0,120)))
+          .finally(() => notifyingDeliveries.delete(event.deliveryId));
+      });
+    }
     return event;
   }
   async function attachDelivery(state) {
@@ -629,7 +722,13 @@ export function createAsyncOperationTools({ config, prepare, workerPath, deliver
   }
 
   async function start(input) {
+    if (maxConcurrentOperations === null) return startAdmitted(input);
+    return withAdmissionLock(() => startAdmitted(input));
+  }
+
+  async function startAdmitted(input) {
     if (!enabled) throw new Error('async operations are disabled');
+    if (!allowedTools.includes(input.tool)) throw new Error('ASYNC_OPERATION_TOOL_NOT_ALLOWED');
     if (!REQUEST_RE.test(input.requestId)) throw new Error('invalid requestId');
     const correlationId = input.correlationId ?? input.requestId;
     if (!REQUEST_RE.test(correlationId)) throw new Error('invalid correlationId');
@@ -658,6 +757,10 @@ export function createAsyncOperationTools({ config, prepare, workerPath, deliver
       return { operationId: prior.operationId, requestId: input.requestId, correlationId, duplicate: true, status: priorState.status, deliveryId: priorState.deliveryId ?? null };
     } catch (error) {
       if (error?.code !== 'ENOENT') throw error;
+    }
+    if (maxConcurrentOperations !== null) {
+      const active = await countActiveOperations();
+      if (active >= maxConcurrentOperations) throw new Error('ASYNC_OPERATION_CAPACITY_EXHAUSTED');
     }
     const prepared = await prepare(input.tool, input.arguments);
     const processPlan = prepared && (prepared.kind === undefined || prepared.kind === 'process')
@@ -843,7 +946,7 @@ export function createAsyncOperationTools({ config, prepare, workerPath, deliver
   }
 
   return {
-    definitions: asyncOperationDefinitions,
+    definitions,
     status: () => ({
       enabled,
       backgroundFirst: policy.backgroundFirst !== false,
@@ -851,6 +954,8 @@ export function createAsyncOperationTools({ config, prepare, workerPath, deliver
       requestIdempotency: true,
       rawArgumentsStored: false,
       maxOutputBytes,
+      allowedTools: [...allowedTools],
+      maxConcurrentOperations,
       stateRoot: root,
       deliveryIntegration: deliveryStore ? {
         enabled: true,

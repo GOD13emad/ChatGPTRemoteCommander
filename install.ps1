@@ -7,6 +7,7 @@ param(
   [switch]$DisableGuiControl,
   [string[]]$DisableCapability = @(),
   [string[]]$EnableCapability = @(),
+  [switch]$HeadlessCompute,
   [switch]$StartServer,
   [switch]$SkipTunnelClient,
   [string]$TunnelClientVersion = '0.0.15',
@@ -146,6 +147,7 @@ function Invoke-ExistingSafeUpdate {
     if ($StandardMode) { $args += '-StandardMode' }
     if ($GuiControl) { $args += '-GuiControl' }
     if ($DisableGuiControl) { $args += '-DisableGuiControl' }
+    if ($HeadlessCompute) { $args += '-HeadlessCompute' }
     if ($DisableCapability.Count -gt 0) { $args += '-DisableCapability'; $args += $DisableCapability }
     if ($EnableCapability.Count -gt 0) { $args += '-EnableCapability'; $args += $EnableCapability }
 
@@ -349,6 +351,7 @@ function Configure-LocalPolicy {
   if ($StandardMode) { $args += '--request-standard' }
   if ($GuiControl) { $args += '--gui-on' }
   if ($DisableGuiControl) { $args += '--gui-off' }
+  if ($HeadlessCompute) { $args += '--headless-compute' }
   foreach($cap in $DisableCapability){ $args += @('--disable-capability',$cap) }
   foreach($cap in $EnableCapability){ $args += @('--enable-capability',$cap) }
 
@@ -521,6 +524,7 @@ if ($existingInstall -and $isCanonicalLiveInstall) {
     if ($StandardMode) { $args += '-StandardMode' }
     if ($GuiControl) { $args += '-GuiControl' }
     if ($DisableGuiControl) { $args += '-DisableGuiControl' }
+    if ($HeadlessCompute) { $args += '-HeadlessCompute' }
     if ($DisableCapability.Count -gt 0) { $args += '-DisableCapability'; $args += $DisableCapability }
     if ($EnableCapability.Count -gt 0) { $args += '-EnableCapability'; $args += $EnableCapability }
     & pwsh.exe @args

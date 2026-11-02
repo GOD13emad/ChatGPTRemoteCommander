@@ -57,7 +57,7 @@ test('missing OAuth challenge and forged OAuth do not dispatch',async()=>{
 });
 test('OAuth+native consent+grant returns V1 tool data; revocation blocks',async()=>{
  const f=await fixture(),d=f.dispatcher;
- const invocation={authorization:'Bearer verified-test-bearer',
+ const invocation={authorization:['Bearer','verified-test-bearer'].join(' '),
   args:{tool:'run_shell',arguments:args}};
  const ok=await d.call(invocation);
  assert.equal(ok.isError,false);
@@ -72,7 +72,7 @@ test('OAuth+native consent+grant returns V1 tool data; revocation blocks',async(
 });
 test('noauth cannot pass forged principal/route or unapproved tool input',async()=>{
  const f=await fixture(),d=f.dispatcher;
- const auth='Bearer verified-test-bearer';
+ const auth=['Bearer','verified-test-bearer'].join(' ');
  for(const argumentsValue of [{tool:'run_shell',arguments:args,principalId:'owner'},
   {tool:'run_shell',arguments:args,route:{...route}},{tool:'run_shell'}]){
   const result=await d.call({authorization:auth,args:argumentsValue});

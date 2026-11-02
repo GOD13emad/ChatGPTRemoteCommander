@@ -20,14 +20,27 @@ test('current exact source has a complete, deterministic R1 plan for each suppor
   for(const file of ['src/v2-routing-contract.mjs',
     'src/v2-install-identity-gate.mjs','tools/v2-coordinator-host.mjs',
     'src/v2-mcp-oauth-contract.mjs','src/v2-native-window-bridge.mjs',
-    'src/v2-secure-tunnel-mtls.mjs','src/v2-authenticated-owner-gateway.mjs',
-    'src/v2-owner-workflow-inventory.mjs','src/v2-oauth-jwks.mjs']){
+    'src/v2-authenticated-owner-gateway.mjs','src/v2-oauth-jwks.mjs',
+    'src/v2-owner-session-reuse.mjs','tools/v2-idp-discovery-preflight.mjs']){
     assert.ok(a.components.some(c=>c.path===file&&c.sha256!==null),file);
   }
   assert.equal(a.installNow.includes('core'),true);
   assert.equal(a.pendingActivation.includes('work-plugin'),true);
   assert.equal(a.installNow.includes('work-plugin'),false);
   assert.equal(a.installNow.includes('browser'),false);
+  const names=new Set(a.components.map(c=>c.path));
+  // New V2 runtime modules cannot silently escape the source integrity manifest.
+  for(const name of fs.readdirSync(path.join(root,'src')).filter(x=>/^v2-[a-z0-9-]+\.mjs$/.test(x))){
+    const rel='src/'+name;
+    assert.equal(names.has(rel),true,rel+' must be tracked by R1 manifest');
+  }
+  const win=['tools/v2-owner-seat-agent.mjs','tools/v2-owner-seat-install.ps1',
+    'tools/v2-owner-seat-launch.ps1','tools/v2-owner-uia-chrome.mjs',
+    'tools/v2-ci-watch.mjs'];
+  for(const f of win)assert.equal(names.has(f),platform==='windows',f);
+  assert.equal(names.has('tools/v2-linux-credential-provider-census.mjs'),
+    platform==='linux');
+  assert.equal(names.size,a.components.length,'manifest must not duplicate entries');
  }
 });
 test('source package version and owner runtime evidence cannot be conflated',()=>{
@@ -60,11 +73,27 @@ test('aliased source root and aliased package.json are never accepted as exact-s
  const rootTmp=fs.mkdtempSync(path.join(os.tmpdir(),'rc-v2-r1-symlink-'));
  try{
   const alias=path.join(rootTmp,'alias');
-  fs.symlinkSync(root,alias,'dir');
+  try{
+   fs.symlinkSync(root,alias,'dir');
+  }catch(e){
+   // Windows without SeCreateSymbolicLinkPrivilege can still construct a
+   // directory junction, which must be rejected as the same root alias.
+   if(process.platform!=='win32'||e.code!=='EPERM')throw e;
+   fs.symlinkSync(root,alias,'junction');
+  }
   assert.throws(()=>buildV2ComponentManifest({root:alias,platform:'linux'}),
     {code:'V2_R1_ROOT_ALIAS_FORBIDDEN'});
   const pkg=path.join(rootTmp,'package.json');
-  fs.symlinkSync(path.join(root,'package.json'),pkg);
+  if(process.platform==='win32'){
+   // A hard link has nlink > 1 and exercises the package-alias guard
+   // without changing the canonical source file's link count.
+   const local=path.join(rootTmp,'source-package.json');
+   fs.copyFileSync(path.join(root,'package.json'),local);
+   fs.linkSync(local,pkg);
+   assert.ok(fs.lstatSync(pkg).nlink>1);
+  }else{
+   fs.symlinkSync(path.join(root,'package.json'),pkg);
+  }
   assert.throws(()=>buildV2ComponentManifest({root:rootTmp,platform:'linux'}),
     {code:'V2_R1_PACKAGE_INVALID'});
  }finally{fs.rmSync(rootTmp,{recursive:true,force:true});}

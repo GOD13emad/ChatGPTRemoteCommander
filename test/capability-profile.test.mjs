@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { migrateCapabilityConfig, compareCapabilityState, deriveCapabilitySet } from '../src/capability-profile.mjs';
+import { migrateCapabilityConfig, compareCapabilityState, deriveCapabilitySet, HEADLESS_COMPUTE_EXECUTION_TOOLS } from '../src/capability-profile.mjs';
 
 const defaults = () => ({
   host:'127.0.0.1',port:47831,allowedRoots:['X'],allowedPrograms:['git'],
@@ -220,4 +220,70 @@ test('background browser safety invariant survives Full Power migration',()=>{
   assert.equal(b.workflowBrowserAllowed,false);
   assert.equal(b.userBrowserProfileReuse,false);
   assert.equal(b.savedPasswordExtraction,false);
+});
+
+
+test('headless compute explicitly enables bounded project jobs while denying interactive and machine-admin capabilities',()=>{
+  const r=migrateCapabilityConfig({
+    defaultConfig:defaults(),existingConfig:null,requestPower:true,
+    deploymentRole:'headless-compute',workflowDirectory:'C:\\state\\compute-wf'
+  });
+  const c=r.config,p=c.powerMode;
+  assert.equal(c.deployment.role,'headless-compute');
+  assert.equal(r.profile.tier,'FULL_POWER');assert.equal(r.profile.explicitlyAuthorized,true);
+  assert.equal(p.enabled,true);assert.equal(p.fullFilesystem,false);assert.equal(p.allowShell,false);
+  assert.equal(p.allowProcessControl,false);assert.equal(p.allowPermanentDelete,false);
+  assert.equal(p.guiControl.enabled,false);
+  for(const key of ['allowScreenshot','allowMouse','allowKeyboard','allowWindowFocus','ownerAuthorizedTakeover'])assert.equal(p.guiControl[key],false,key);
+  assert.equal(p.browserControl.enabled,false);
+  for(const key of ['allowNavigate','allowInput','allowScreenshot','allowForegroundFallback'])assert.equal(p.browserControl[key],false,key);
+  assert.equal(p.browserControl.foregroundFallback,'disabled');
+  for(const cap of ['filesystem.full','shell.execute','shell.unrestricted','terminal.persistent','process.control','process.terminate','filesystem.permanent_delete','gui.screenshot','gui.mouse','gui.keyboard','gui.window_focus','browser.background','browser.navigate','browser.input','browser.screenshot','lifecycle.auto_update','lifecycle.zero_downtime_update'])
+    assert.ok(r.profile.disabledCapabilities.includes(cap),cap);
+  assert.deepEqual(c.asyncOperations.allowedTools,['run_project_command']);
+  assert.equal(c.asyncOperations.enabled,true);
+  assert.equal(c.asyncOperations.maxConcurrentOperations,2);
+  assert.ok(c.asyncOperations.maxOutputBytes<=4*1024*1024);
+  assert.ok(c.maxCommandMs<=300000);
+  assert.deepEqual(c.durableWorkflows.executionTools,HEADLESS_COMPUTE_EXECUTION_TOOLS);
+  assert.equal(c.durableWorkflows.scheduler.maxConcurrentProjects,1);
+  assert.equal(c.durableWorkflows.scheduler.oneWriterPerRoot,true);
+});
+
+test('headless compute role requires explicit Full Power authority and rejects interactive re-enablement',()=>{
+  assert.throws(()=>migrateCapabilityConfig({defaultConfig:defaults(),existingConfig:null,deploymentRole:'headless-compute'}),/CAPABILITY_HEADLESS_COMPUTE_REQUIRES_EXPLICIT_POWER_AUTHORITY/);
+  for(const enable of ['gui.mouse','browser.navigate','filesystem.full','shell.execute','process.control','filesystem.permanent_delete']){
+    assert.throws(()=>migrateCapabilityConfig({defaultConfig:defaults(),existingConfig:null,requestPower:true,deploymentRole:'headless-compute',enableCapabilities:[enable]}),/CAPABILITY_HEADLESS_COMPUTE_FORBIDDEN_CAPABILITY_ENABLE/);
+  }
+  assert.throws(()=>migrateCapabilityConfig({defaultConfig:defaults(),existingConfig:null,requestPower:true,deploymentRole:'headless-compute',requestGui:true}),/CAPABILITY_HEADLESS_COMPUTE_FORBIDDEN_CAPABILITY_ENABLE/);
+});
+
+test('headless compute deployment role survives preserve migration and remains restrictive',()=>{
+  const first=migrateCapabilityConfig({defaultConfig:defaults(),existingConfig:null,requestPower:true,deploymentRole:'headless-compute'});
+  const second=migrateCapabilityConfig({defaultConfig:defaults(),existingConfig:first.config});
+  assert.equal(second.config.deployment.role,'headless-compute');
+  assert.equal(second.config.powerMode.guiControl.enabled,false);
+  assert.equal(second.config.powerMode.browserControl.enabled,false);
+  assert.deepEqual(second.config.asyncOperations.allowedTools,['run_project_command']);
+  assert.equal(second.config.asyncOperations.maxConcurrentOperations,2);
+});
+
+test('preserve migration honors an explicit legacy auto-update disable despite a stale capability grant',()=>{
+  const existing=full();
+  existing.autoUpdate={enabled:false,zeroDowntime:true,channel:'stable',intervalMinutes:15};
+  existing.capabilityProfile={schemaVersion:4,revision:'capability-profile-r4',id:'default',tier:'FULL_POWER',
+    explicitlyAuthorized:true,persistAcrossUpdates:true,autoEnableNewCapabilities:true,
+    disabledCapabilities:[],grantedCapabilities:['lifecycle.auto_update'],source:'explicit-user-authorization'};
+  const first=migrateCapabilityConfig({defaultConfig:defaults(),existingConfig:existing});
+  assert.equal(first.config.autoUpdate.enabled,false);
+  assert.equal(first.config.autoUpdate.zeroDowntime,true);
+  assert.ok(first.profile.disabledCapabilities.includes('lifecycle.auto_update'));
+  assert.equal(first.profile.grantedCapabilities.includes('lifecycle.auto_update'),false);
+  const second=migrateCapabilityConfig({defaultConfig:defaults(),existingConfig:first.config});
+  assert.equal(second.config.autoUpdate.enabled,false);
+  assert.ok(second.profile.disabledCapabilities.includes('lifecycle.auto_update'));
+  assert.equal(second.profile.grantedCapabilities.includes('lifecycle.auto_update'),false);
+  const explicitPower=migrateCapabilityConfig({defaultConfig:defaults(),existingConfig:existing,requestPower:true});
+  assert.equal(explicitPower.config.autoUpdate.enabled,true);
+  assert.equal(explicitPower.profile.disabledCapabilities.includes('lifecycle.auto_update'),false);
 });

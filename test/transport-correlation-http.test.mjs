@@ -83,7 +83,9 @@ test('accepted tool audit maps forwarded transport request ID to durable correla
     assert.equal(encoded.includes(authMarker),false,'tool_accept leaked Authorization');
   }finally{
     if(running)await stop(running.child);
-    await fs.rm(root,{recursive:true,force:true});
+    // Windows can transiently retain a file handle after the child exit signal.
+    // Keep test assertions and timeouts unchanged; retry only EBUSY-style cleanup.
+    await fs.rm(root,{recursive:true,force:true,maxRetries:20,retryDelay:50});
   }
 });
 

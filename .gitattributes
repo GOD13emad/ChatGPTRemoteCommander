@@ -3,3 +3,5 @@
 *.mjs text eol=lf
 *.json text eol=lf
 *.md text eol=lf
+assets/trust/openai/root-ca.pem text eol=lf
+assets/trust/openai/connectors-mtls-intermediate-ca.pem text eol=lf

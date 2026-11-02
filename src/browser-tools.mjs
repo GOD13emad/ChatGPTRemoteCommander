@@ -75,6 +75,7 @@ export function createBrowserController({invoke=defaultInvoke,closeInvoke=defaul
   const input=validateBrowserInput(name,raw);
   const cfg=ctx.config?.powerMode?.browserControl??{};
   const enabled=ctx.config?.powerMode?.enabled===true&&cfg.enabled===true;
+  const requireExistingUserSession=cfg.requireExistingUserSession!==false;
   if(name==='browser_status'){
    let native={ok:true,available:false,backend:null,active:false};
    try{native=await invoke({action:'status',executable:cfg.executable});}catch(error){native={ok:false,available:false,backend:null,active:false,reason:error.browserCode??'BROWSER_HELPER_UNAVAILABLE'};}
@@ -82,12 +83,15 @@ export function createBrowserController({invoke=defaultInvoke,closeInvoke=defaul
    return {...native,enabled,busy,leased:!!session,uncertain,sessionResetRequired:chatMutationUncertain,policy:{
     backgroundFirst:true,headlessOwnedProfileOnly:true,userDesktopTouchedByDefault:false,
     savedPasswordExtraction:false,userBrowserProfileReuse:false,
+    requireExistingUserSession,ownerSessionRoute:requireExistingUserSession?'workspace_target_or_accessibility':'optional',
     foregroundFallback:'explicit-current-request-only',workflowBrowserAllowed:false,
     allowForegroundFallback:cfg.allowForegroundFallback===true,
     allowNavigate:cfg.allowNavigate===true,allowInput:cfg.allowInput===true,allowScreenshot:cfg.allowScreenshot===true
    }};
   }
   if(!enabled)throw browserError('BROWSER_DISABLED');
+  // Preserve V1's owner-session-only browser contract. Only allow closing a lease on this route.
+  if(requireExistingUserSession && name!=='browser_session_end')throw browserError('BROWSER_EXISTING_USER_SESSION_REQUIRED_USE_WORKSPACE');
   if(busy)throw browserError('BROWSER_BUSY');
   busy=true;
   try{
