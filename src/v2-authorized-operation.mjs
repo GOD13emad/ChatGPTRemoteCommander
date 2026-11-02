@@ -49,18 +49,40 @@ export async function executeV2BoundOperation(route, services, tool, args = {}) 
   await check();  // No queue/receipt reservation on wrong principal or denied grant.
   const resource = v2ResourceLeaseKey(r);
   const requestId = createHash('sha256').update(v2OperationKey(r)).digest('hex');
-  // The caller's shared lease implementation must be machine-global and canonical,
-  // NOT an in-process Map or a per-chat lock. The existing WorkflowStore owns roots.
-  return services.withLease(resource, async () => {
-    await check(); // Protect the gap between admission and lease acquisition.
-    return services.receiptStore.execute(
-      { requestId, tool, input: { route: r, argumentsHash } },
-      async () => {
-        await check(); // Protect the gap between receipt reservation and effect.
-        // Pass a detached snapshot; a later caller mutation must not change
-        // the exact action admitted under this grant and durable receipt.
-        return services.execute(r, structuredClone(args));
-      }
-    );
-  });
+  // Only a trusted host composition (never RPC/model arguments) can opt in
+  // to bounded retry for a BUSY lease which refused admission BEFORE callback.
+  // If the callback ran at all, the receipt/effect might already be underway:
+  // no retry, even if a nested driver also throws GUI_LEASE_BUSY.
+  const retry=services.leaseBusyRetry;
+  if(retry!==undefined &&
+    (!retry||typeof retry!=='object'||Array.isArray(retry)||
+      Object.keys(retry).sort().join(',')!=='baseDelayMs,maxAttempts'||
+      !Number.isSafeInteger(retry.maxAttempts)||retry.maxAttempts<1||retry.maxAttempts>5||
+      !Number.isSafeInteger(retry.baseDelayMs)||retry.baseDelayMs<10||retry.baseDelayMs>500))
+    fail('V2_LEASE_RETRY_TRUSTED_POLICY_INVALID');
+  const attempts=retry?.maxAttempts??1,baseDelayMs=retry?.baseDelayMs??0;
+  // The shared lease is machine-global, not an in-process Map or a per-chat
+  // lock; the existing WorkflowStore still owns workflow-root leases.
+  for(let attempt=1;attempt<=attempts;attempt++){
+    let entered=false;
+    await check(); // Re-attest principal, route, grant and action before every attempt.
+    try{
+      return await services.withLease(resource,async()=>{
+        entered=true; // Must be set before any awaited operation or receipt.
+        await check(); // Protect gap between admission and lease acquisition.
+        return services.receiptStore.execute(
+          {requestId,tool,input:{route:r,argumentsHash}},
+          async()=>{
+            await check(); // Protect gap between receipt and physical effect.
+            return services.execute(r,structuredClone(args));
+          }
+        );
+      });
+    }catch(error){
+      if(error?.code!=='GUI_LEASE_BUSY'||entered||attempt===attempts)
+        throw error;
+      // Fixed bounded backoff, not a background task or blind effect replay.
+      await new Promise(resolve=>setTimeout(resolve,baseDelayMs*attempt));
+    }
+  }
 }

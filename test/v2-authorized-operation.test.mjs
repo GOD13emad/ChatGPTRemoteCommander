@@ -233,3 +233,73 @@ test('the same guarded admission works for app, browser, desktop and shell targe
     assert.equal(f.effects, kinds.length);
   } finally { f.close(); }
 });
+
+
+const leaseBusy=()=>Object.assign(new Error('GUI_LEASE_BUSY'),{code:'GUI_LEASE_BUSY'});
+test('trusted bounded busy lease retries before any callback and effects execute exactly once',async()=>{
+ const f=fixture();try{
+  const base=f.services.withLease;let polls=0;
+  f.services.leaseBusyRetry={maxAttempts:4,baseDelayMs:10};
+  f.services.withLease=async(key,work)=>{
+   polls++;if(polls<=2)throw leaseBusy();
+   return base(key,work);
+  };
+  const result=await executeV2BoundOperation(route(),f.services,'workflow_call');
+  assert.equal(result.success,true);
+  assert.equal(polls,3);
+  assert.equal(f.effects,1);
+  assert.equal(f.services.receiptStore.status().states.SUCCEEDED,1);
+ }finally{f.close();}
+});
+test('revoked owner grant during busy queue cannot reach a receipt or effect',async()=>{
+ const f=fixture();try{
+  let polls=0;
+  f.services.leaseBusyRetry={maxAttempts:4,baseDelayMs:10};
+  f.services.withLease=async()=>{
+   polls++;f.revoke();throw leaseBusy();
+  };
+  await assert.rejects(executeV2BoundOperation(route(),f.services,'workflow_call'),{code:'V2_GRANT_REQUIRED'});
+  assert.equal(polls,1);
+  assert.equal(f.effects,0);
+  assert.deepEqual(f.services.receiptStore.status().states,{});
+ }finally{f.close();}
+});
+test('busy after callback begins is never retried even if callback already executed effect',async()=>{
+ const f=fixture();try{
+  let attempts=0;
+  f.services.leaseBusyRetry={maxAttempts:4,baseDelayMs:10};
+  f.services.withLease=async(_key,work)=>{
+   attempts++;await work();throw leaseBusy();
+  };
+  await assert.rejects(executeV2BoundOperation(route(),f.services,'workflow_call'),{code:'GUI_LEASE_BUSY'});
+  assert.equal(attempts,1);
+  assert.equal(f.effects,1);
+  assert.equal(f.services.receiptStore.status().states.SUCCEEDED,1);
+ }finally{f.close();}
+});
+test('bounded busy exhaustion never inserts a receipt or executes an effect',async()=>{
+ const f=fixture();try{
+  let attempts=0;
+  f.services.leaseBusyRetry={maxAttempts:4,baseDelayMs:10};
+  f.services.withLease=async()=>{attempts++;throw leaseBusy();};
+  await assert.rejects(executeV2BoundOperation(route(),f.services,'workflow_call'),{code:'GUI_LEASE_BUSY'});
+  assert.equal(attempts,4);
+  assert.equal(f.effects,0);
+  assert.deepEqual(f.services.receiptStore.status().states,{});
+ }finally{f.close();}
+});
+test('other lease errors and invalid untrusted retry policies never cause blind replay',async()=>{
+ const f=fixture();try{
+  let attempts=0;
+  f.services.leaseBusyRetry={maxAttempts:4,baseDelayMs:10};
+  f.services.withLease=async()=>{attempts++;throw Object.assign(Error('driver unavailable'),{code:'GUI_DRIVER_DOWN'});};
+  await assert.rejects(executeV2BoundOperation(route(),f.services,'workflow_call'),{code:'GUI_DRIVER_DOWN'});
+  assert.equal(attempts,1);assert.equal(f.effects,0);
+  for(const leaseBusyRetry of [{maxAttempts:1000,baseDelayMs:10},{maxAttempts:4,baseDelayMs:-1},
+    {maxAttempts:4,baseDelayMs:10,allowReexecute:true}]){
+   f.services.leaseBusyRetry=leaseBusyRetry;
+   await assert.rejects(executeV2BoundOperation(route(),f.services,'workflow_call'),{code:'V2_LEASE_RETRY_TRUSTED_POLICY_INVALID'});
+  }
+  assert.equal(attempts,1);
+ }finally{f.close();}
+});
