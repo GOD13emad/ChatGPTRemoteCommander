@@ -9,6 +9,7 @@ import https from 'node:https';
 import { createV2ProtectedResourceMetadata } from './v2-oauth-resource-metadata.mjs';
 import { createV2DirectMtlsTransportAttestor } from './v2-direct-mtls-attestor.mjs';
 import { createV2OpenAiClientTlsOptions, V2_OPENAI_CONNECTORS_CA_PIN } from './v2-openai-mtls-trust.mjs';
+import { createV2SecureTunnelServerTlsOptions, createV2SecureTunnelClientMtlsAttestor } from './v2-secure-tunnel-mtls.mjs';
 
 const ERROR_HEADERS=Object.freeze({
   'cache-control':'no-store','content-type':'application/json; charset=utf-8'
@@ -98,7 +99,7 @@ export function createV2CandidateHttpIngress({
         &&typeof attested.sessionHandle==='string'
         &&SESSION.test(attested.sessionHandle);
       const trustedMeta=record(attested)&&attested.authenticated===true
-        &&attested.peerType==='openai-chatgpt-mtls'
+        &&['openai-chatgpt-mtls','openai-secure-mcp-tunnel'].includes(attested.peerType)
         &&attested.sessionSource==='openai/session';
       if(!known&&!trustedMeta){
         json(res,403,{error:'trusted_transport_required'});return;
@@ -106,21 +107,39 @@ export function createV2CandidateHttpIngress({
       const authorization=headerValues(req,'authorization');
       const msg=await boundedJson(req,maxBodyBytes);
       const metaSession=msg.params?._meta?.['openai/session'];
+      const metaSubject=msg.params?._meta?.['openai/subject'];
       let sessionHandle;
       if(trustedMeta){
+        // Secure MCP Tunnel transports ChatGPT's standard tool-call identity
+        // both in MCP _meta (where present) and as X-Openai-* HTTP headers.
+        // Accept the header representation ONLY over the pinned tunnel-client
+        // mTLS hop; direct OpenAI mTLS still requires body _meta.
+        const secureTunnel=attested.peerType==='openai-secure-mcp-tunnel';
+        const headerSession=secureTunnel?headerValues(req,'x-openai-session'):null;
+        const headerSubject=secureTunnel?headerValues(req,'x-openai-subject'):null;
+        if(headerSession!==null&&(!SESSION.test(headerSession)
+          ||(metaSession!==undefined&&metaSession!==headerSession))){
+          json(res,403,{error:'platform_session_mismatch'});return;
+        }
+        if(headerSubject!==null&&(typeof headerSubject!=='string'||headerSubject.length>128
+          ||/[\x00-\x20\x7f]/.test(headerSubject)
+          ||(metaSubject!==undefined&&metaSubject!==headerSubject))){
+          json(res,403,{error:'platform_subject_mismatch'});return;
+        }
+        const trustedSession=metaSession??headerSession;
         // ChatGPT inserts openai/session into TOOL CALLS, not necessarily
         // initialize/list/discover. Discovery is never given execution rights.
         if(msg.method==='tools/call'){
-          if(msg.params?.name==='v2_profile'&&metaSession===undefined){
+          if(msg.params?.name==='v2_profile'&&trustedSession==null){
             // ChatGPT may read the authenticated connection profile before it
             // has a conversation ID. Only the OAuth-verified read-only tool
             // may use this discovery namespace. Never allow workflow effects.
             sessionHandle='mcp-profile-only';
           }else{
-            if(typeof metaSession!=='string'||!SESSION.test(metaSession)){
+            if(typeof trustedSession!=='string'||!SESSION.test(trustedSession)){
               json(res,403,{error:'platform_session_required'});return;
             }
-            sessionHandle=metaSession;
+            sessionHandle=trustedSession;
           }
         }else{
           sessionHandle='mcp-discovery-only';
@@ -212,6 +231,41 @@ export function createV2CandidateDirectHttpsGateway({
     requiredTransport:'direct-openai-mtls',
     // The returned server is not listening: binding or deployment is a
     // separate, explicitly authorized operation after live OAuth acceptance.
+    createUnboundTlsServer:()=>https.createServer(tlsOptions,ingress.handle)
+  });
+}
+
+
+/**
+ * Private OpenAI Secure MCP Tunnel composition. The mTLS hop here is from
+ * the locally running, owner-configured tunnel-client to this private MCP
+ * service, NOT a direct ChatGPT client certificate. Only the exact pinned
+ * tunnel-client leaf certificate is admitted. The OpenAI tunnel's OAuth
+ * bearer and platform-emitted openai/session metadata remain separate inputs.
+ * The returned HTTPS server is unbound until the owner approves deployment.
+ */
+export function createV2CandidateSecureTunnelHttpsGateway({
+  resource,authorizationServers,scopes=['commander.workflow'],
+  serverCertificatePem,serverPrivateKeyPem,clientCaPem,clientCaDerSha256,
+  clientCertificateSha256,expectedServerDns='localhost',
+  expectedClientDns='commander-v2-tunnel-client',
+  dispatcherFactory,now=Date.now,maxBodyBytes=65536
+}={}){
+  if(typeof now!=='function')fail('V2_HTTPS_TRUSTED_CLOCK_REQUIRED');
+  const tlsOptions=createV2SecureTunnelServerTlsOptions({
+    serverCertificatePem,serverPrivateKeyPem,clientCaPem,
+    clientCaDerSha256,expectedServerDns,now:now()
+  });
+  const attestTransport=createV2SecureTunnelClientMtlsAttestor({
+    clientCaDerSha256,clientCertificateSha256,expectedClientDns,now
+  });
+  const ingress=createV2CandidateHttpIngress({
+    resource,authorizationServers,scopes,attestTransport,
+    dispatcherFactory,maxBodyBytes
+  });
+  return Object.freeze({
+    protectedResource:ingress.protectedResource,
+    requiredTransport:'openai-secure-mcp-tunnel-client-mtls',
     createUnboundTlsServer:()=>https.createServer(tlsOptions,ingress.handle)
   });
 }
