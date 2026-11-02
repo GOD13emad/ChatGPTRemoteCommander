@@ -21,5 +21,20 @@ if(sha(fs.readFileSync(source))!==expectedSourceSha256)
  fail('V2_HPC_QUEUE_SOURCE_HASH_MISMATCH');
 const {createV2HpcLocalQueue}=await import(pathToFileURL(source).href);
 const worker=createV2HpcLocalQueue({root,host:os.hostname()});
+let signedAutoAdmission;
+if(command==='run'){
+ const signedSource=path.join(root,'src','v2-hpc-signed-queue-admission.mjs');
+ const signedVerifier=path.join(root,'src','v2-hpc-signed-job.mjs');
+ const publicFile=path.join(root,'signed-qa-trust','signing-public.pem');
+ if(sha(fs.readFileSync(signedSource))!=='3113338e810e05b3fd6ced24ab53d46bc70d56694db724c11464c83882add667'||
+  sha(fs.readFileSync(signedVerifier))!=='95102c0b1b97053dd0a179d3f1f36adc2f1bcd7af1a18b87d3734a878a94a7b7')
+  fail('V2_HPC_QUEUE_SIGNED_INTAKE_HASH_MISMATCH');
+ const publicKey=fs.readFileSync(publicFile);
+ const {createV2HpcSignedAutoAdmission}=await import(pathToFileURL(signedSource).href);
+ signedAutoAdmission=createV2HpcSignedAutoAdmission({
+  root,host:os.hostname(),publicKey,
+  expectedPublicKeySha256:'daa7cbdbdbb26007254f56846ce0076d024f2cbe63cc59376ccdcf4456b0f40e'
+ }).run();
+}
 const outcome=command==='run'?worker.run():worker.verify(id);
-process.stdout.write(JSON.stringify(outcome)+'\n');
+process.stdout.write(JSON.stringify(command==='run'?{...outcome,signedAutoAdmission}:outcome)+'\n');
