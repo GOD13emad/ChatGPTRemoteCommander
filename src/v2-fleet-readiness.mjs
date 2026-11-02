@@ -3,40 +3,60 @@
 const HOST=/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const VERSION=/^\d+\.\d+\.\d+(?:-[A-Za-z0-9][A-Za-z0-9._-]{0,80})?$/;
 const PLATFORMS=new Set(['win32','linux']);
+const ROLES=new Set(['interactive','compute-only']);
 const BOUNDARY='TRUSTED_PROFILE_NOT_AUTHENTICATED_CHAT';
 function fail(code){throw Object.assign(new Error(code),{code});}
+function failTimeout(){return Object.assign(new Error('V2_FLEET_OBSERVATION_TIMEOUT'),
+ {code:'V2_FLEET_OBSERVATION_TIMEOUT'});}
 /** observeHost(hostId) must be owner-trusted runtime attestation, NOT RPC input. */
-export function createV2FleetReadiness({hosts,observeHost,now=Date.now,staleAfterMs=60000}={}){
+export function createV2FleetReadiness({hosts,observeHost,now=Date.now,staleAfterMs=60000,observationTimeoutMs=5000}={}){
  if(!Array.isArray(hosts)||hosts.length<1||hosts.length>25||
     typeof observeHost!=='function'||typeof now!=='function'||
-    !Number.isSafeInteger(staleAfterMs)||staleAfterMs<1000||staleAfterMs>3600000)
+    !Number.isSafeInteger(staleAfterMs)||staleAfterMs<1000||staleAfterMs>3600000||
+    !Number.isSafeInteger(observationTimeoutMs)||observationTimeoutMs<100||observationTimeoutMs>30000)
    fail('V2_FLEET_TRUSTED_BOOTSTRAP_REQUIRED');
  const seen=new Set();
  const inventory=hosts.map(x=>{
   if(!x||typeof x!=='object'||Array.isArray(x)||
      typeof x.hostId!=='string'||!HOST.test(x.hostId)||
-     !PLATFORMS.has(x.platform)||seen.has(x.hostId))
+     !PLATFORMS.has(x.platform)||!ROLES.has(x.role??'interactive')||seen.has(x.hostId))
     fail('V2_FLEET_INVENTORY_INVALID');
   seen.add(x.hostId);
-  return Object.freeze({hostId:x.hostId,platform:x.platform});
+  return Object.freeze({hostId:x.hostId,platform:x.platform,role:x.role??'interactive'});
  });
  Object.freeze(inventory);
  return Object.freeze({
   async snapshot(){
    const at=now();
    if(!Number.isSafeInteger(at)||at<0)fail('V2_FLEET_CLOCK_INVALID');
-   const fetched=await Promise.allSettled(inventory.map(x=>observeHost(x.hostId)));
+   // A never-settling remote host must not freeze the whole fleet census.
+   // Each attestor gets an independent, bounded deadline and abort signal.
+   const fetched=await Promise.allSettled(inventory.map(async x=>{
+     const controller=new AbortController();let timer;
+     const timeout=new Promise((_,reject)=>{
+       timer=setTimeout(()=>{
+         controller.abort();reject(failTimeout());
+       },observationTimeoutMs);
+     });
+     try{return await Promise.race([
+       Promise.resolve().then(()=>observeHost(x.hostId,Object.freeze({signal:controller.signal}))),
+       timeout
+     ]);}finally{clearTimeout(timer);}
+   }));
    const nodes=fetched.map((r,i)=>{
     const host=inventory[i];
     const unknown=(reason)=>Object.freeze({
       ...host,transport:'UNKNOWN',v1Version:null,
       chatIdentity:'NOT_VERIFIED',guiOwner:'NOT_VERIFIED',
-      v2Installed:'NOT_VERIFIED',enrollment:'NOT_VERIFIED',reason
+      v2Installed:'NOT_VERIFIED',enrollment:'NOT_VERIFIED',
+      computeWorker:'NOT_VERIFIED',reason
     });
-    if(r.status==='rejected')return unknown('OBSERVATION_UNAVAILABLE');
+    if(r.status==='rejected')return unknown(r.reason?.code==='V2_FLEET_OBSERVATION_TIMEOUT'
+      ?'OBSERVATION_TIMEOUT':'OBSERVATION_UNAVAILABLE');
     const d=r.value;
     if(!d||typeof d!=='object'||d.hostId!==host.hostId||
        typeof d.observedAtMs!=='number'||!Number.isSafeInteger(d.observedAtMs)||
+       d.observedAtMs<0||
        d.observedAtMs>at||at-d.observedAtMs>staleAfterMs)
       return unknown('EVIDENCE_STALE_OR_UNBOUND');
     if(d.transport!=='CONNECTED')
@@ -63,13 +83,30 @@ export function createV2FleetReadiness({hosts,observeHost,now=Date.now,staleAfte
       d.enrollment?.credentialReferencesPreserved===true&&
       d.enrollment?.credentialUsabilityAttested===true&&
       d.enrollment?.nativeOwnerAttested===true;
+    // Compute-only servers are not interactive ChatGPT seats. Their admission
+    // is V1-Coordinator-owned and must include a independently verified effect
+    // receipt and proof that no GUI/browser actuator is enabled. A reachable
+    // server alone cannot be promoted to a healthy worker.
+    const computeReady=host.role==='compute-only' &&
+      d.compute?.mode==='COMPUTE_ONLY' &&
+      d.compute?.admittedByV1Coordinator===true &&
+      d.compute?.ownerSessionAttested===true &&
+      d.compute?.verifiedComputeReceipt===true &&
+      d.compute?.guiActuationDisabled===true &&
+      d.compute?.browserActuationDisabled===true;
+    const operational=installed&&enrollment&&
+      (host.role==='compute-only'?computeReady:authenticated&&gui);
     return Object.freeze({
       ...host,transport:'CONNECTED',v1Version:ver,
-      chatIdentity:authenticated?'VERIFIED':'NOT_VERIFIED',
-      guiOwner:gui?'READY':'NOT_VERIFIED',
+      chatIdentity:host.role==='compute-only'?'NOT_APPLICABLE':
+        authenticated?'VERIFIED':'NOT_VERIFIED',
+      guiOwner:host.role==='compute-only'?'NOT_APPLICABLE':
+        gui?'READY':'NOT_VERIFIED',
+      computeWorker:host.role==='compute-only'?
+        computeReady?'READY':'NOT_VERIFIED':'NOT_APPLICABLE',
       v2Installed:installed?'VERIFIED':'NOT_VERIFIED',
       enrollment:enrollment?'VERIFIED':'NOT_VERIFIED',
-      reason:authenticated&&gui&&installed&&enrollment?'EVIDENCE_AVAILABLE':BOUNDARY
+      reason:operational?'EVIDENCE_AVAILABLE':BOUNDARY
     });
    });
    return Object.freeze({
@@ -77,9 +114,11 @@ export function createV2FleetReadiness({hosts,observeHost,now=Date.now,staleAfte
      nodes:Object.freeze(nodes),
      connected: nodes.filter(x=>x.transport==='CONNECTED').length,
      allHostsOperational:nodes.every(x=>
-       x.transport==='CONNECTED'&&x.chatIdentity==='VERIFIED'&&
-       x.guiOwner==='READY'&&x.v2Installed==='VERIFIED'&&
-       x.enrollment==='VERIFIED')
+       x.transport==='CONNECTED'&&x.v2Installed==='VERIFIED'&&
+       x.enrollment==='VERIFIED'&&
+       (x.role==='compute-only'?x.computeWorker==='READY'&&
+         x.guiOwner==='NOT_APPLICABLE'&&x.chatIdentity==='NOT_APPLICABLE':
+         x.chatIdentity==='VERIFIED'&&x.guiOwner==='READY'))
    });
   }
  });

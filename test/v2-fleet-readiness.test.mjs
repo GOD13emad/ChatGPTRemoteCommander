@@ -111,3 +111,135 @@ test('missing or revoked native credential evidence blocks promotion after struc
   assert.equal(s.allHostsOperational,false);
  }
 });
+
+test('offline nonsettling host cannot block independent healthy host; abort is scoped',async()=>{
+ let aborted=false;
+ const f=createV2FleetReadiness({
+  hosts:[hosts[0],hosts[3]],now:()=>200000,
+  observationTimeoutMs:120,
+  observeHost:async(hostId,{signal})=>{
+   if(hostId==='offline')return new Promise(()=>{signal.addEventListener('abort',()=>{aborted=true;},{once:true});});
+   return {hostId,observedAtMs:199990,transport:'CONNECTED',version:'0.11.0-dev.18'};
+  }
+ });
+ const result=await f.snapshot();
+ assert.equal(aborted,true);
+ assert.equal(result.connected,1);
+ assert.equal(result.nodes[0].transport,'CONNECTED');
+ assert.equal(result.nodes[1].transport,'UNKNOWN');
+ assert.equal(result.nodes[1].reason,'OBSERVATION_TIMEOUT');
+ assert.equal(result.allHostsOperational,false);
+});
+test('unexpected attestor rejection and malformed negative timestamp remain fail-closed',async()=>{
+ const f=createV2FleetReadiness({
+  hosts:[hosts[0],hosts[1]],now:()=>2000,
+  observeHost:async id=>{
+   if(id==='win-owner')throw Error('owner-private-secret');
+   return {hostId:id,observedAtMs:-1,transport:'CONNECTED',version:'2.0.0',
+    chatIdentity:'AUTHENTICATED_CHAT',chatIdentityAttested:true,ownerSessionAttested:true,
+    guiOwner:{configured:true,accepted:true,ownerSessionAttested:true,driverReady:true},
+    v2:{installed:true,exactBuildVerified:true,liveAcceptancePassed:true},
+    enrollment:{structuralStatus:'STRUCTURAL_MATCH',scope:'ALL_HOST_OS_USERS',
+     allNativeUsersEnumerated:true,allProfilesEnumerated:true,
+     credentialReferencesPreserved:true,credentialUsabilityAttested:true,nativeOwnerAttested:true}
+   };
+  }
+ });
+ const out=await f.snapshot();
+ assert.equal(out.connected,0);
+ assert.equal(out.nodes[0].reason,'OBSERVATION_UNAVAILABLE');
+ assert.equal(out.nodes[1].reason,'EVIDENCE_STALE_OR_UNBOUND');
+ assert.equal(JSON.stringify(out).includes('owner-private-secret'),false);
+ assert.equal(out.allHostsOperational,false);
+});
+test('reject invalid observation deadlines at bootstrap',()=>{
+ for(const observationTimeoutMs of [-1,0,99,30001,1.5,NaN])
+  assert.throws(()=>createV2FleetReadiness({
+   hosts:[hosts[0]],observeHost:async()=>({}),observationTimeoutMs
+  }),{code:'V2_FLEET_TRUSTED_BOOTSTRAP_REQUIRED'});
+});
+
+test('five-host roles require interactive GUI only on desktops and V1-admitted compute receipts on HPC',async()=>{
+ const items=[
+  {hostId:'emad-win',platform:'win32',role:'interactive'},
+  {hostId:'mmz-linux',platform:'linux',role:'interactive'},
+  {hostId:'ali-linux',platform:'linux',role:'interactive'},
+  {hostId:'hpc-159-17',platform:'linux',role:'compute-only'},
+  {hostId:'hpc-154-66',platform:'linux',role:'compute-only'}
+ ];
+ const shared={transport:'CONNECTED',observedAtMs:7000,version:'2.0.0',
+  v2:{installed:true,exactBuildVerified:true,liveAcceptancePassed:true},
+  enrollment:{structuralStatus:'STRUCTURAL_MATCH',scope:'ALL_HOST_OS_USERS',
+   allNativeUsersEnumerated:true,allProfilesEnumerated:true,
+   credentialReferencesPreserved:true,credentialUsabilityAttested:true,
+   nativeOwnerAttested:true}};
+ const snapshot=await createV2FleetReadiness({hosts:items,now:()=>7000,
+  observeHost:async hostId=>{
+   const compute=hostId.startsWith('hpc-');
+   return {hostId,...shared,
+    ...(compute?{
+     chatIdentity:'NOT_VERIFIED',guiOwner:{configured:false,accepted:false},
+     compute:{mode:'COMPUTE_ONLY',admittedByV1Coordinator:true,
+      ownerSessionAttested:true,verifiedComputeReceipt:true,
+      guiActuationDisabled:true,browserActuationDisabled:true}
+    }:{
+     chatIdentity:'AUTHENTICATED_CHAT',chatIdentityAttested:true,
+     ownerSessionAttested:true,
+     guiOwner:{configured:true,accepted:true,ownerSessionAttested:true,driverReady:true}
+    })};
+  }
+ }).snapshot();
+ assert.equal(snapshot.connected,5);
+ assert.equal(snapshot.allHostsOperational,true);
+ assert.deepEqual(snapshot.nodes.map(n=>n.role),
+  ['interactive','interactive','interactive','compute-only','compute-only']);
+ for(const node of snapshot.nodes.slice(3)){
+  assert.equal(node.guiOwner,'NOT_APPLICABLE');
+  assert.equal(node.chatIdentity,'NOT_APPLICABLE');
+  assert.equal(node.computeWorker,'READY');
+ }
+ for(const node of snapshot.nodes.slice(0,3)){
+  assert.equal(node.guiOwner,'READY');
+  assert.equal(node.chatIdentity,'VERIFIED');
+  assert.equal(node.computeWorker,'NOT_APPLICABLE');
+ }
+});
+test('headless host cannot pass with network, installed software and GUI alone',async()=>{
+ const one=[{hostId:'hpc-159-17',platform:'linux',role:'compute-only'}];
+ const base={hostId:'hpc-159-17',observedAtMs:1000,transport:'CONNECTED',
+  version:'2.0.0',v2:{installed:true,exactBuildVerified:true,liveAcceptancePassed:true},
+  chatIdentity:'AUTHENTICATED_CHAT',chatIdentityAttested:true,ownerSessionAttested:true,
+  guiOwner:{configured:true,accepted:true,ownerSessionAttested:true,driverReady:true},
+  enrollment:{structuralStatus:'STRUCTURAL_MATCH',scope:'ALL_HOST_OS_USERS',
+    allNativeUsersEnumerated:true,allProfilesEnumerated:true,
+    credentialReferencesPreserved:true,credentialUsabilityAttested:true,nativeOwnerAttested:true}};
+ const good={mode:'COMPUTE_ONLY',admittedByV1Coordinator:true,ownerSessionAttested:true,
+  verifiedComputeReceipt:true,guiActuationDisabled:true,browserActuationDisabled:true};
+ const candidates=[undefined,{...good,mode:'UNRESTRICTED'},
+  {...good,admittedByV1Coordinator:false},
+  {...good,ownerSessionAttested:false},
+  {...good,verifiedComputeReceipt:false},
+  {...good,guiActuationDisabled:false},
+  {...good,browserActuationDisabled:false}];
+ for(const compute of candidates){
+  const r=await createV2FleetReadiness({hosts:one,now:()=>1000,
+   observeHost:async()=>({...base,compute})}).snapshot();
+  assert.equal(r.connected,1);
+  assert.equal(r.nodes[0].computeWorker,'NOT_VERIFIED');
+  assert.equal(r.allHostsOperational,false);
+ }
+});
+test('headless role is pinned by trusted host inventory, never accepted from an observation',async()=>{
+ const f=createV2FleetReadiness({hosts:[{hostId:'hpc',platform:'linux',role:'compute-only'}],
+  now:()=>1000,observeHost:async()=>({
+   hostId:'hpc',role:'interactive',observedAtMs:1000,transport:'CONNECTED',
+   chatIdentity:'AUTHENTICATED_CHAT',chatIdentityAttested:true,ownerSessionAttested:true,
+   guiOwner:{configured:true,accepted:true,ownerSessionAttested:true,driverReady:true},
+   v2:{installed:true,exactBuildVerified:true,liveAcceptancePassed:true}})});
+ const r=await f.snapshot();
+ assert.equal(r.nodes[0].role,'compute-only');
+ assert.equal(r.nodes[0].computeWorker,'NOT_VERIFIED');
+ assert.equal(r.allHostsOperational,false);
+ assert.throws(()=>createV2FleetReadiness({hosts:[{hostId:'hpc',platform:'linux',role:'admin'}],
+   observeHost:async()=>({})}),{code:'V2_FLEET_INVENTORY_INVALID'});
+});
