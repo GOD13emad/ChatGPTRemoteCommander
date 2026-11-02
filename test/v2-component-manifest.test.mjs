@@ -19,7 +19,9 @@ test('current exact source has a complete, deterministic R1 plan for each suppor
   assert.ok(a.components.every(x=>/^[a-f0-9]{64}$/.test(x.sha256)));
   for(const file of ['src/v2-routing-contract.mjs',
     'src/v2-install-identity-gate.mjs','tools/v2-coordinator-host.mjs',
-    'src/v2-mcp-oauth-contract.mjs','src/v2-native-window-bridge.mjs']){
+    'src/v2-mcp-oauth-contract.mjs','src/v2-native-window-bridge.mjs',
+    'src/v2-secure-tunnel-mtls.mjs','src/v2-authenticated-owner-gateway.mjs',
+    'src/v2-owner-workflow-inventory.mjs','src/v2-oauth-jwks.mjs']){
     assert.ok(a.components.some(c=>c.path===file&&c.sha256!==null),file);
   }
   assert.equal(a.installNow.includes('core'),true);
