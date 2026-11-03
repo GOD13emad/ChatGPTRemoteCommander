@@ -109,7 +109,11 @@ def main():
                 encoding="utf-8",capture_output=True,timeout=15)
             if result.returncode!=0:
                 raise RuntimeError("BRIDGE_E2E_FAILED: "+(result.stderr or result.stdout)[-1800:])
-            expected_marker=("V2_LINUX_OWNER_SESSION_WORKER_E2E_PASS"
+            expected_marker=(
+                "V2_LINUX_OWNER_SESSION_CENTRAL_FENCE_E2E_PASS"
+                if os.environ.get("V2_QA_WORKER_MODE")=="owner-worker"
+                   and os.environ.get("V2_QA_COORDINATOR_MODE")=="central"
+                else "V2_LINUX_OWNER_SESSION_WORKER_E2E_PASS"
                 if os.environ.get("V2_QA_WORKER_MODE")=="owner-worker"
                 else "V2_LINUX_ATSPI_NATIVE_BRIDGE_E2E_PASS")
             if expected_marker not in result.stdout:

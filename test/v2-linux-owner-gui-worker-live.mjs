@@ -9,6 +9,8 @@ import {createV2NativeOwnerSessionBindings} from '../src/v2-native-owner-session
 import {createV2AtspiTransport,createV2LinuxAtspiProvider} from '../src/v2-linux-atspi-provider.mjs';
 import {V2GrantRegistry} from '../src/v2-grant-registry.mjs';
 import {MutationIdempotencyStore} from '../src/mutation-idempotency.mjs';
+import {V2CentralCoordinator} from '../src/v2-central-coordinator.mjs';
+import {createV2GuiCoordinatorLeaseBindings} from '../src/v2-gui-coordinator-lease-bindings.mjs';
 const [pidRaw,appName,startTicks,hwnd,proofPath]=process.argv.slice(2);
 const pid=Number(pidRaw),display=process.env.DISPLAY;
 if(process.platform!=='linux'||!Number.isSafeInteger(pid)||pid<=0||
@@ -53,15 +55,31 @@ const provider=createV2LinuxAtspiProvider({
  catch{return false}}
 });
 let leaseCount=0;
+const centralized=process.env.V2_QA_COORDINATOR_MODE==='central';
+const trustedInvocation=async()=>({sessionHandle:activeHandle,route:routes.get(activeHandle)});
+const rawOwnerProviders=async()=>({platform:'linux',providers:{atspi:provider}});
+const coordinator=centralized?new V2CentralCoordinator({
+ directory:path.join(dir,'central'),ttlMs:30000,
+ authorizeLease:async r=>r.hostId===target.hostId&&r.principalId===target.principalId,
+ resolveGlobalResource:async r=>r.target.kind==='app-window'?'qa-private-xvfb-seat':null,
+ requireGlobalResource:true
+}):null;
+const central=centralized?createV2GuiCoordinatorLeaseBindings({
+ coordinator,resolveTrustedInvocation:trustedInvocation,sessions,
+ ownerProviders:rawOwnerProviders,ttlMs:30000
+}):null;
 const worker=createV2NativeGuiOwnerWorker({
- resolveTrustedInvocation:async()=>({sessionHandle:activeHandle,route:routes.get(activeHandle)}),
+ resolveTrustedInvocation:trustedInvocation,
  sessions,grants,receiptStore:receipts,
- withLease:async(_resource,run)=>{leaseCount++;return run()}, // isolated fixture only
+ withLease:async(resource,run)=>{
+  leaseCount++;
+  return centralized?central.withLease(resource,run):run();
+ },
  ownerSeat:async()=>target.seatId,
  authorizeNativeSession:async({seatId,route:r})=>
   seatId===target.seatId&&r.target.id===target.targetId,
  authorizeWindow:async({descriptor})=>descriptor.pid===target.pid,
- ownerProviders:async()=>({platform:'linux',providers:{atspi:provider}})
+ ownerProviders:centralized?central.ownerProviders:rawOwnerProviders
 });
 function grant(handle,tool,status='ENABLED'){
  const r=routes.get(handle),existing=grants.read(r,tool);
@@ -86,10 +104,10 @@ try{
  grant('qa-invoke','workspace_window_invoke','REVOKED');
  await assert.rejects(worker.execute(input),{code:'V2_GRANT_REQUIRED'});
  assert.ok(leaseCount>=3);
- console.log('V2_LINUX_OWNER_SESSION_WORKER_E2E_PASS');
+ console.log(centralized?'V2_LINUX_OWNER_SESSION_CENTRAL_FENCE_E2E_PASS':'V2_LINUX_OWNER_SESSION_WORKER_E2E_PASS');
  console.log('native=AT-SPI; outcome=VERIFIED; independentProof=APPLY_CLICKED; duplicateEffect=false; revokedGrantBlocks=true');
- console.log('identity=synthetic-fixture-only; lease=single-QA-writer; publicMCP=false');
+ console.log('identity=synthetic-fixture-only; lease='+(centralized?'durable-central-sqlite-global-qa-fence':'single-QA-writer')+'; publicMCP=false');
 }finally{
- sessions.close();grants.close();receipts.close();
+ sessions.close();grants.close();receipts.close();coordinator?.close();
  fs.rmSync(dir,{recursive:true,force:true});
 }
