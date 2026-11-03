@@ -6,7 +6,7 @@ $major = [int](& $node -p 'process.versions.node.split(".")[0]')
 if ($major -lt 22) { throw 'NODE_22_REQUIRED' }
 $manifest = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'MANIFEST.json') -Raw | ConvertFrom-Json
 if ($manifest.mode -ne 'LOCAL_GUI_PREVIEW_NO_PROMOTION') { throw 'PACKAGE_MODE_INVALID' }
-$files = @('server.mjs','desktop-app.mjs','local-evidence.mjs','owner-seat-evidence.mjs','workflow-view.mjs','transport-evidence.mjs','owner-diagnostic-reader.mjs','app.js','app.css','index.html','README.md')
+$files = @('server.mjs','desktop-app.mjs','local-evidence.mjs','owner-seat-evidence.mjs','workflow-view.mjs','transport-evidence.mjs','owner-diagnostic-reader.mjs','v1-runtime-bridge.mjs','continuation-handoff.mjs','app.js','app.css','index.html','README.md')
 $pins = @{}
 foreach ($item in $manifest.files) {
   if ($item.path -notmatch '^[A-Za-z0-9][A-Za-z0-9._-]{0,100}$' -or $pins.ContainsKey($item.path)) {

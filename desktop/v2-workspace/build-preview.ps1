@@ -1,15 +1,13 @@
 param(
-    [string]$OutputPath = (Join-Path (Resolve-Path (Join-Path $PSScriptRoot '..\..\var')).Path 'CommanderV2-Workspace-MMZ-20261031.zip')
+    [string]$OutputPath = (Join-Path (Resolve-Path (Join-Path $PSScriptRoot '..\..\var')).Path 'CommanderV2-Workspace-Preview.zip')
 )
 $ErrorActionPreference = 'Stop'
 $names = @(
-    'index.html','app.css','app.js','server.mjs','workflow-view.mjs','workflow-view.test.mjs','local-evidence.mjs',
-    'server.test.mjs','transport-evidence.mjs','transport-evidence.test.mjs','owner-diagnostic-reader.mjs','owner-diagnostic-reader.test.mjs','local-evidence.test.mjs','visual-qa.mjs',
-    'desktop-app.mjs','desktop-app.test.mjs',
-    'owner-seat-evidence.mjs','owner-seat-evidence.test.mjs',
-    'upgrade-user.mjs','upgrade-user.test.mjs','PREVIOUS_RELEASE.json',
-    'start-windows.cmd','start-linux.sh',
-    'start-desktop-windows.cmd','start-desktop-linux.sh',
+    'index.html','app.css','app.js',
+    'server.mjs','v1-runtime-bridge.mjs','continuation-handoff.mjs','workflow-view.mjs',
+    'local-evidence.mjs','transport-evidence.mjs','owner-diagnostic-reader.mjs',
+    'owner-seat-evidence.mjs','desktop-app.mjs',
+    'start-windows.cmd','start-linux.sh','start-desktop-windows.cmd','start-desktop-linux.sh',
     'install-user-windows.ps1','install-user-linux.sh','README.md'
 )
 if(Test-Path -LiteralPath $OutputPath){throw "Archive exists. Refuse overwrite: $OutputPath"}
@@ -31,7 +29,7 @@ $manifest = @{
   design='Owner approved dark layout'
   mmzSource='RC_CONTROL_CENTER_PRODUCT_R1 / RC_UI_MONITOR_R1 read-only contracts'
   schema=1
-  date='2026-10-31'
+  date='2026-11-03'
   files=$items
 } | ConvertTo-Json -Depth 10
 Add-Type -AssemblyName System.IO.Compression
