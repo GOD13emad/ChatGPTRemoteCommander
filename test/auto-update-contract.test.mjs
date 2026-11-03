@@ -1348,3 +1348,26 @@ test('R761 persisted routed ports are reserved even with no TCP listener; malfor
   assert.notEqual(rejected.status,0,'bad persisted port must fail before candidate selection');
   assert.match(rejected.stderr,/ROUTE_PORT_RESERVATION_INVALID/);
 });
+
+
+test('R762 Windows candidate cleanup is owner-attested when TCP CIM hides the loopback listener', () => {
+  const win = read('auto-update-windows.ps1');
+  const start = win.indexOf('function Stop-OwnedCandidate(');
+  const end = win.indexOf('function Get-Targets {', start);
+  assert.ok(start >= 0 && end > start);
+  const guard = win.slice(start, end);
+  const attest = guard.indexOf('if(-not $owned -and $marker -and $Candidate.ProjectDir)');
+  const terminate = guard.indexOf('Stop-Process -Id $proc.Id -Force');
+  assert.ok(attest >= 0 && terminate > attest, 'native owner attestation must precede candidate termination');
+  for (const fragment of [
+    'Get-CimInstance Win32_Process', 'ProcessId=$($proc.Id)',
+    'src\\server-v0.3.mjs', 'TrimEnd', 'EndsWith',
+    'Get-FileHash -LiteralPath $Candidate.ConfigPath', 'configSha256-eq $cfgSha',
+    'marker.pid-eq[int]$proc.Id', 'marker.port-eq[int]$Candidate.Port',
+    'marker.instance.profile-eq[string]$Candidate.Profile',
+    'h.instance.profile-eq[string]$Candidate.Profile',
+    'CANDIDATE_CLEANUP_OWNERSHIP_MISMATCH'
+  ]) assert.ok(guard.includes(fragment), 'missing strict native fallback: '+fragment);
+  assert.ok(win.includes('ConfigPath=$cfg;ProjectDir=$stage.Dir'), 'diagnostic candidate must bind exact source');
+  assert.ok(win.includes('ConfigPath=$finalCfg;ProjectDir=$stage.Dir'), 'final candidate must bind exact source');
+});
