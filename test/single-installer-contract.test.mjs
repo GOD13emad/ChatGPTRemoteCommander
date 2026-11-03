@@ -104,6 +104,18 @@ test('browser component is compile-time optional until a standalone Browser inst
   assert.ok(iss.includes('Filename: "{tmp}\\{#BrowserSetupName}"'));
 });
 
+test('bundled Browser preserves an existing owner-installed Browser, including a newer preview',()=>{
+  const iss=read('installer/RemoteCommander.iss');
+  const run=iss.split('[Run]')[1]?.split('[Code]')[0];
+  assert.ok(run);
+  assert.match(run,/Components: browser;.*Check: ShouldInstallBundledBrowser/);
+  const guard=iss.split('function ShouldInstallBundledBrowser(): Boolean;')[1]?.split('function JsonBool')[0];
+  assert.ok(guard);
+  assert.match(guard,/RegQueryStringValue\(HKCU,/);
+  assert.match(guard,/RemoteCommanderBrowser/);
+  assert.match(guard,/product-install\.json/);
+  assert.match(guard,/Result := not RegQueryStringValue/);
+});
 test('product icon is a standards-compliant multi-image ICO asset',()=>{
   const p=path.join(root,'desktop','RemoteCommanderDashboard','remote-commander.ico');
   const b=fs.readFileSync(p);

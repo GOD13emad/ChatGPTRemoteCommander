@@ -79,7 +79,7 @@ Type: files; Name: "{group}\Remote Commander Admin Runtime.lnk"
 
 [Run]
 #ifdef BrowserSetup
-Filename: "{tmp}\{#BrowserSetupName}"; Parameters: "/VERYSILENT /NORESTART"; Components: browser; StatusMsg: "Installing Remote Commander Browser..."; Flags: waituntilterminated
+Filename: "{tmp}\{#BrowserSetupName}"; Parameters: "/VERYSILENT /NORESTART"; Components: browser; StatusMsg: "Installing Remote Commander Browser..."; Flags: waituntilterminated; Check: ShouldInstallBundledBrowser
 #endif
 Filename: "{app}\RemoteCommander.exe"; Description: "Open Remote Commander"; Flags: nowait postinstall skipifsilent
 
@@ -88,6 +88,18 @@ var
   ProfilePage: TInputQueryWizardPage;
   PwshPath: String;
 
+#ifdef BrowserSetup
+function ShouldInstallBundledBrowser(): Boolean;
+var
+  InstalledVersion: String;
+begin
+  { Never silently replace any existing owner Browser with the bundled version. }
+  Result := not RegQueryStringValue(HKCU,
+    'Software\Microsoft\Windows\CurrentVersion\Uninstall\RemoteCommanderBrowser',
+    'DisplayVersion', InstalledVersion) and
+    not FileExists(ExpandConstant('{localappdata}\Programs\Remote Commander Browser\current\product-install.json'));
+end;
+#endif
 function JsonBool(Value: Boolean): String;
 begin
   if Value then Result := 'true'
