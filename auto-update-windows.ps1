@@ -259,6 +259,34 @@ function Get-FreePort([System.Collections.Generic.HashSet[int]]$Used){
   }
   throw 'NO_PRIVATE_BACKEND_PORT'
 }
+function Reserve-RoutedBackendPorts([System.Collections.Generic.HashSet[int]]$Used){
+  # A live backend is a durable reservation even during a restart when no
+  # TCP LISTEN socket exists. Never select an active/previous/retained port.
+  foreach($routeFile in Get-ChildItem -LiteralPath $RoutingRoot -Filter '*.json' -File -ErrorAction SilentlyContinue){
+    if($routeFile.Name -like '*.runtime.json'){continue}
+    $route=Get-Content -LiteralPath $routeFile.FullName -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
+    if($route.schema -ne 1){throw "ROUTE_PORT_RESERVATION_SCHEMA_INVALID file=$($routeFile.Name)"}
+    foreach($slot in @($route.active,$route.previous)){
+      if($null -eq $slot){continue}
+      $reservedPort=0
+      if(-not [int]::TryParse([string]$slot.port,[ref]$reservedPort) -or $reservedPort -lt 1 -or $reservedPort -gt 65535){
+        throw "ROUTE_PORT_RESERVATION_INVALID file=$($routeFile.Name)"
+      }
+      [void]$Used.Add($reservedPort)
+    }
+  }
+  if(Test-Path -LiteralPath $RetainedFile -PathType Leaf){
+    $retained=Get-Content -LiteralPath $RetainedFile -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
+    if($retained.schema -ne 1){throw 'RETAINED_PORT_RESERVATION_SCHEMA_INVALID'}
+    foreach($item in @($retained.items)){
+      $reservedPort=0
+      if(-not [int]::TryParse([string]$item.port,[ref]$reservedPort) -or $reservedPort -lt 1 -or $reservedPort -gt 65535){
+        throw 'RETAINED_PORT_RESERVATION_INVALID'
+      }
+      [void]$Used.Add($reservedPort)
+    }
+  }
+}
 function Test-VersionGreater([string]$Left,[string]$Right){
   $helper=Join-Path $PSScriptRoot 'tools\semver-release.mjs'
   if(-not(Test-Path -LiteralPath $helper -PathType Leaf)){throw 'AUTO_UPDATE_VERSION_COMPARE_HELPER_MISSING'}
@@ -1165,6 +1193,7 @@ try{
   $targets=Get-Targets
   $used=[System.Collections.Generic.HashSet[int]]::new()
   foreach($t in $targets){[void]$used.Add([int]$t.CanonicalPort)}
+  Reserve-RoutedBackendPorts $used
   if(Test-Path $ProfileDir){
     foreach($f in Get-ChildItem $ProfileDir -Filter '*.yaml' -File -ErrorAction SilentlyContinue){
       $raw=Get-Content $f.FullName -Raw

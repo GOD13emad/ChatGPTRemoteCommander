@@ -1297,3 +1297,54 @@ test('R170 isolated rollback retries only an explicit router-bootstrap receipt o
   assert.ok(r170.includes('git -C "$WORKSPACE" diff --ignore-space-at-eol --quiet --'),'source only permits bounded EOL drift');
   assert.ok(r170.includes('R170_SOURCE_CHANGED'),'any semantic source change must block');
 });
+
+
+test('R761 persisted routed ports are reserved even with no TCP listener; malformed routes fail closed', t => {
+  const win = read('auto-update-windows.ps1');
+  assert.ok(win.includes('Reserve-RoutedBackendPorts $used'), 'reservation must precede Get-FreePort');
+  const start = win.indexOf('function Get-FreePort(');
+  const end = win.indexOf('function Test-VersionGreater(', start);
+  assert.ok(start >= 0 && end > start, 'port reservation function must be extractable');
+  if (process.platform !== 'win32') return;
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'rc-port-reservations-'));
+  t.after(() => fs.rmSync(tmp, {recursive:true, force:true}));
+  const routes = path.join(tmp, 'routing');
+  fs.mkdirSync(routes, {recursive:true});
+  fs.writeFileSync(path.join(routes, 'default.json'), JSON.stringify({
+    schema:1, profile:'default', active:{port:48831}, previous:{port:48845}
+  }));
+  fs.writeFileSync(path.join(routes, 'other.json'), JSON.stringify({
+    schema:1, profile:'other', active:{port:48832}, previous:null
+  }));
+  fs.writeFileSync(path.join(routes, 'other.runtime.json'), JSON.stringify({
+    schema:2, runtime:true
+  }));
+  const retained = path.join(tmp, 'retained-backends.json');
+  fs.writeFileSync(retained, JSON.stringify({schema:1,items:[{port:48863}]}));
+  const esc = s => s.replace(/'/g, "''");
+  function run() {
+    const command = [
+      "$ErrorActionPreference='Stop'",
+      "$RoutingRoot='"+esc(routes)+"'",
+      "$RetainedFile='"+esc(retained)+"'",
+      'function Get-NetTCPConnection { param($State,$LocalPort,$ErrorAction) return $null }',
+      win.slice(start,end),
+      "$used=[System.Collections.Generic.HashSet[int]]::new()",
+      'Reserve-RoutedBackendPorts $used',
+      "'RESERVED=' + ((@($used) | Sort-Object) -join ',') + ';PICKED=' + (Get-FreePort $used)"
+    ].join('\r\n');
+    return spawnSync('pwsh.exe',
+      ['-NoLogo','-NoProfile','-NonInteractive','-EncodedCommand',
+       Buffer.from(command,'utf16le').toString('base64')],
+      {encoding:'utf8',timeout:15000});
+  }
+  const accepted = run();
+  assert.equal(accepted.status,0,accepted.stderr);
+  assert.match(accepted.stdout,/RESERVED=48831,48832,48845,48863;PICKED=48833/);
+  fs.writeFileSync(path.join(routes,'default.json'), JSON.stringify({
+    schema:1,profile:'default',active:{port:'not-a-port'}
+  }));
+  const rejected = run();
+  assert.notEqual(rejected.status,0,'bad persisted port must fail before candidate selection');
+  assert.match(rejected.stderr,/ROUTE_PORT_RESERVATION_INVALID/);
+});
