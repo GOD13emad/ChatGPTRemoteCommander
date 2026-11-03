@@ -21,7 +21,8 @@ test('current exact source has a complete, deterministic R1 plan for each suppor
     'src/v2-install-identity-gate.mjs','tools/v2-coordinator-host.mjs',
     'src/v2-mcp-oauth-contract.mjs','src/v2-native-window-bridge.mjs',
     'src/v2-authenticated-owner-gateway.mjs','src/v2-oauth-jwks.mjs',
-    'src/v2-owner-session-reuse.mjs','tools/v2-idp-discovery-preflight.mjs']){
+    'src/v2-owner-session-reuse.mjs','tools/v2-idp-discovery-preflight.mjs',
+    'src/agentos-provider-router.mjs','src/agentos-native-win.mjs']){
     assert.ok(a.components.some(c=>c.path===file&&c.sha256!==null),file);
   }
   assert.equal(a.installNow.includes('core'),true);
@@ -37,6 +38,7 @@ test('current exact source has a complete, deterministic R1 plan for each suppor
   const win=['tools/v2-owner-seat-agent.mjs','tools/v2-owner-seat-install.ps1',
     'tools/v2-owner-seat-launch.ps1','tools/v2-owner-uia-chrome.mjs',
     'tools/v2-ci-watch.mjs'];
+  win.push('tools/native-windows-uia.ps1');
   for(const f of win)assert.equal(names.has(f),platform==='windows',f);
   assert.equal(names.has('tools/v2-linux-credential-provider-census.mjs'),
     platform==='linux');
