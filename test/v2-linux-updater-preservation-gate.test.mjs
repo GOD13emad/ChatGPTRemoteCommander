@@ -59,7 +59,10 @@ test('Linux V1-native upgrade reuses owner tunnel profiles, credentials, active 
  assert.ok(s.includes('build_cfg(){'));
  assert.ok(s.includes('--existing "$ACTIVE_CFG"'));
  assert.ok(s.includes('--mode "$MODE"'));
- assert.ok(s.includes('build_cfg "$FINAL_CFG" "$LIVE_WF" preserve'));
+  assert.ok(s.includes('FINAL_WF="$LIVE_WF"'));
+  assert.ok(s.includes('FINAL_DELIVERY_MODE=preserve'));
+  assert.ok(s.includes('FINAL_WF="$SHADOW_WF"; FINAL_DELIVERY_MODE=shadow'));
+  assert.ok(s.includes('build_cfg "$FINAL_CFG" "$FINAL_WF" "$FINAL_DELIVERY_MODE"'));
  assert.ok(s.includes('find "$PROFILE_DIR" -maxdepth 1 -type f -name \'*.yaml\''));
  assert.ok(s.includes('tunnels_ready(){'));
  assert.ok(s.includes('router-switch.mjs'));

@@ -1184,6 +1184,10 @@ try{
     $backupDir=Join-Path $StateRoot (Join-Path 'update-backups' (Join-Path $stage.Commit (Join-Path $t.Profile $runtimeLeaf)))
     $shadowWorkflowDir=Join-Path $backupDir 'workflow-shadow'
     $shadowAsyncOperationsDir=Join-Path $backupDir 'async-operations-shadow'
+    $shadowProviderRoot=Join-Path $backupDir 'provider-shadow'
+    $shadowDeliveryRoot=Join-Path $backupDir 'delivery-shadow'
+    $shadowBackupRoot=Join-Path $backupDir 'power-backups-shadow'
+    $shadowBrowserRoot=Join-Path $backupDir 'browser-profile-shadow'
     New-Item -ItemType Directory -Force -Path $backupDir,$shadowAsyncOperationsDir|Out-Null
     Copy-Item -LiteralPath $t.ExistingConfig -Destination (Join-Path $backupDir 'config.before.json') -Force
     if($liveWorkflowDir){
@@ -1192,8 +1196,10 @@ try{
     }
 
     $cfg=Join-Path $stateDir 'diagnostic-config.json'
-    $buildArgs=@((Join-Path $stage.Dir 'tools\build-candidate-config.mjs'),'--default',(Join-Path $stage.Dir 'config.json'),'--existing',$t.ExistingConfig,'--output',$cfg,'--profile-id',$t.Profile,'--port',[string]$port,'--state-dir',$stateDir,'--workflow-dir',$shadowWorkflowDir,'--provider-root',$StateRoot)
+    $buildArgs=@((Join-Path $stage.Dir 'tools\build-candidate-config.mjs'),'--default',(Join-Path $stage.Dir 'config.json'),'--existing',$t.ExistingConfig,'--output',$cfg,'--profile-id',$t.Profile,'--port',[string]$port,'--state-dir',$stateDir,'--workflow-dir',$shadowWorkflowDir,'--provider-root',$shadowProviderRoot)
     $buildArgs+=@('--async-operations-dir',$shadowAsyncOperationsDir)
+    $buildArgs+=@('--delivery-directory',$shadowDeliveryRoot,'--delivery-scope',("diagnostic-{0}-{1}" -f $stage.Commit.Substring(0,32),$port))
+    $buildArgs+=@('--backup-root',$shadowBackupRoot,'--browser-profile-root',$shadowBrowserRoot)
     if($PowerMode){$buildArgs+=@('--mode','full')}elseif($StandardMode){$buildArgs+=@('--mode','standard')}else{$buildArgs+=@('--mode','preserve')}
     if($GuiControl){$buildArgs+=@('--gui','on')}elseif($DisableGuiControl){$buildArgs+=@('--gui','off')}
     if($HeadlessCompute){$buildArgs+='--headless-compute'}
@@ -1238,8 +1244,15 @@ try{
     $currentCandidate=$null
     foreach($i in 1..40){Start-Sleep -Milliseconds 100;if(-not(Get-NetTCPConnection -State Listen -LocalPort $port -ErrorAction SilentlyContinue)){break}}
     $finalCfg=Join-Path $stateDir 'config.json'
-    $finalArgs=@((Join-Path $stage.Dir 'tools\build-candidate-config.mjs'),'--default',(Join-Path $stage.Dir 'config.json'),'--existing',$t.ExistingConfig,'--output',$finalCfg,'--profile-id',$t.Profile,'--port',[string]$port,'--state-dir',$stateDir,'--provider-root',$StateRoot)
-    if($liveWorkflowDir){$finalArgs+=@('--workflow-dir',$liveWorkflowDir)}
+    $finalWorkflowDir=$liveWorkflowDir
+    $finalProviderRoot=$StateRoot
+    if($NoPromote){$finalWorkflowDir=$shadowWorkflowDir;$finalProviderRoot=$shadowProviderRoot}
+    $finalArgs=@((Join-Path $stage.Dir 'tools\build-candidate-config.mjs'),'--default',(Join-Path $stage.Dir 'config.json'),'--existing',$t.ExistingConfig,'--output',$finalCfg,'--profile-id',$t.Profile,'--port',[string]$port,'--state-dir',$stateDir,'--provider-root',$finalProviderRoot)
+    if($finalWorkflowDir){$finalArgs+=@('--workflow-dir',$finalWorkflowDir)}
+    if($NoPromote){
+      $finalArgs+=@('--async-operations-dir',$shadowAsyncOperationsDir,'--delivery-directory',$shadowDeliveryRoot,'--delivery-scope',("diagnostic-{0}-{1}" -f $stage.Commit.Substring(0,32),$port))
+      $finalArgs+=@('--backup-root',$shadowBackupRoot,'--browser-profile-root',$shadowBrowserRoot)
+    }
     if($PowerMode){$finalArgs+=@('--mode','full')}elseif($StandardMode){$finalArgs+=@('--mode','standard')}else{$finalArgs+=@('--mode','preserve')}
     if($GuiControl){$finalArgs+=@('--gui','on')}elseif($DisableGuiControl){$finalArgs+=@('--gui','off')}
     if($HeadlessCompute){$finalArgs+='--headless-compute'}
@@ -1260,7 +1273,9 @@ try{
     $c=[pscustomobject]@{Profile=$t.Profile;CanonicalPort=$t.CanonicalPort;Port=$port;Version=$stage.Version;Commit=$stage.Commit;ConfigSha=$finalSha;ConfigPath=$finalCfg;ProjectDir=$stage.Dir;Process=$p;Target=$t;WorkflowDir=$liveWorkflowDir;BackupDir=$backupDir}
     $candidates+=$c
     $currentCandidate=$null
-    $report.profiles+=@{profile=$t.Profile;candidatePort=$port;configSha256=$finalSha;doctor='PASS';hardware='PASS';shadowStore='PASS';liveStoreCompatibility='PASS'}
+    $liveStoreCompatibility='PASS'
+    if($NoPromote){$liveStoreCompatibility='NOT_TESTED_SHADOW_ONLY'}
+    $report.profiles+=@{profile=$t.Profile;candidatePort=$port;configSha256=$finalSha;doctor='PASS';hardware='PASS';shadowStore='PASS';liveStoreCompatibility=$liveStoreCompatibility}
   }
 
   if($NoPromote){

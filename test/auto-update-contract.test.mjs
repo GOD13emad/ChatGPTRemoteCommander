@@ -591,7 +591,9 @@ test('diagnostic candidate isolates async-operation journals while final promoti
   const winFinal=win.slice(win.indexOf("$finalCfg=Join-Path $stateDir 'config.json'"),win.indexOf('$finalSha='));
   assert.ok(winDiag.includes("$shadowAsyncOperationsDir=Join-Path $backupDir 'async-operations-shadow'"));
   assert.ok(winDiag.includes("'--async-operations-dir',$shadowAsyncOperationsDir"));
-  assert.ok(!winFinal.includes('--async-operations-dir'),'Windows final candidate must preserve the active V1 async-operation path');
+  assert.ok(winFinal.includes('if($NoPromote){'),'Windows no-promote final must use a shadow runtime');
+  assert.ok(winFinal.includes("'--async-operations-dir',$shadowAsyncOperationsDir"),'Windows no-promote must use shadow async state');
+  assert.ok(winFinal.includes("'--workflow-dir',$finalWorkflowDir"),'Windows workflow source must be selected by promotion mode');
   const linBuilder=lin.slice(lin.indexOf('build_cfg(){'),lin.indexOf('DIAG_CFG='));
   assert.ok(linBuilder.includes('--async-operations-dir'));
   assert.ok(linBuilder.includes('async-operations-shadow-$PORT'));
@@ -599,7 +601,10 @@ test('diagnostic candidate isolates async-operation journals while final promoti
   const linFinalEnd=lin.indexOf('finalize-workflow-schema.mjs',linFinalStart);
   assert.ok(linFinalStart>=0 && linFinalEnd>linFinalStart,'final candidate must precede workflow finalization');
   const linFinal=lin.slice(linFinalStart,linFinalEnd);
-  assert.ok(linFinal.includes('build_cfg "$FINAL_CFG" "$LIVE_WF" preserve'));
+  assert.ok(linFinal.includes('FINAL_WF="$LIVE_WF"'),'Linux promotion preserves V1 workflow identity');
+  assert.ok(linFinal.includes('FINAL_DELIVERY_MODE=preserve'),'Linux promotion preserves delivery identity');
+  assert.ok(linFinal.includes('FINAL_WF="$SHADOW_WF"; FINAL_DELIVERY_MODE=shadow'),'Linux no-promote stays on shadow state');
+  assert.ok(linFinal.includes('build_cfg "$FINAL_CFG" "$FINAL_WF" "$FINAL_DELIVERY_MODE"'));
   assert.ok(!linFinal.includes('--async-operations-dir'),'Linux final candidate must preserve the active V1 async-operation path');
 });
 test('hardware selftest supplies stable requestIds to direct mutations',()=>{
@@ -669,7 +674,9 @@ test('Linux updater is candidate-first, hardware-gated, routed and rollback-awar
   ]) assert.ok(s.includes(marker),marker);
   assertPinnedReleaseDiscovery(s,'linux');
   assert.ok(s.includes('build_cfg "$DIAG_CFG" "$SHADOW_WF" shadow'),'Linux diagnostic candidate must use an isolated delivery shadow');
-  assert.ok(s.includes('build_cfg "$FINAL_CFG" "$LIVE_WF" preserve'),'Linux final candidate must preserve active delivery identity');
+  assert.ok(s.includes('FINAL_DELIVERY_MODE=preserve'),'Linux promotion preserves delivery identity');
+  assert.ok(s.includes('FINAL_WF="$LIVE_WF"'),'Linux promotion preserves workflow identity');
+  assert.ok(s.includes('FINAL_DELIVERY_MODE=shadow'),'Linux no-promote uses shadow delivery');
   assert.ok(s.includes('--delivery-directory "$BACKUP_ROOT/$COMMIT/default/delivery-shadow-$PORT"'),'Linux diagnostic delivery directory must stay inside candidate backup state');
   assert.ok(s.includes('--delivery-scope "diagnostic-${COMMIT:0:32}-$PORT"'),'Linux diagnostic delivery scope must be explicit and per-candidate');
   assert.ok(s.indexOf('driver="$(command -v geckodriver') < s.indexOf('/snap/bin/geckodriver'),'Linux updater must prefer PATH geckodriver before explicit safe fallbacks');

@@ -758,6 +758,7 @@ if [[ "$FORCE" != 1 && -f "$ROUTE" ]]; then
     exit 0
   fi
   if [[ "$ACTIVE_COMMIT" == "$COMMIT" ]]; then
+    if [[ "$NO_PROMOTE" == 1 ]]; then log "AUTO_UPDATE_NO_PROMOTE_ALREADY_ROUTED_NO_CHANGE"; exit 0; fi
     CONTROL="$(git -C "$INSTALL_DIR" rev-parse HEAD 2>/dev/null || true)"
     PREV_PORT="$(json_field "$STAGE_DIR" "$ROUTE" previous.port)"
     PREV_CFG="$(json_field "$STAGE_DIR" "$ROUTE" previous.configPath)"
@@ -821,14 +822,18 @@ MODE=preserve
 [[ "$STANDARD_MODE" == 1 ]] && MODE=standard
 build_cfg(){
   local output="$1" wf="$2" delivery_mode="${3:-preserve}"
-  local args=("$STAGE_DIR/tools/build-candidate-config.mjs" --default "$STAGE_DIR/config.json" --existing "$ACTIVE_CFG" --output "$output" --profile-id default --port "$PORT" --state-dir "$STATE_DIR" --workflow-dir "$wf" --mode "$MODE" --provider-root "$STATE_ROOT")
+  local provider_root="$STATE_ROOT"
+  [[ "$delivery_mode" == shadow ]] && provider_root="$BACKUP_ROOT/$COMMIT/default/provider-shadow"
+  local args=("$STAGE_DIR/tools/build-candidate-config.mjs" --default "$STAGE_DIR/config.json" --existing "$ACTIVE_CFG" --output "$output" --profile-id default --port "$PORT" --state-dir "$STATE_DIR" --workflow-dir "$wf" --mode "$MODE" --provider-root "$provider_root")
   if [[ "$delivery_mode" == shadow ]]; then
     args+=(--async-operations-dir "$BACKUP_ROOT/$COMMIT/default/async-operations-shadow-$PORT")
     mkdir -p "$BACKUP_ROOT/$COMMIT/default/async-operations-shadow-$PORT"
     args+=(--delivery-directory "$BACKUP_ROOT/$COMMIT/default/delivery-shadow-$PORT" --delivery-scope "diagnostic-${COMMIT:0:32}-$PORT")
+    args+=(--backup-root "$BACKUP_ROOT/$COMMIT/default/power-backups-shadow")
+    args+=(--browser-profile-root "$BACKUP_ROOT/$COMMIT/default/browser-profile-shadow")
   fi
   [[ -z "$BROWSER_EXECUTABLE" ]] || args+=(--browser-executable "$BROWSER_EXECUTABLE")
-  [[ -z "$BROWSER_PROFILE_ROOT" ]] || args+=(--browser-profile-root "$BROWSER_PROFILE_ROOT")
+  [[ -z "$BROWSER_PROFILE_ROOT" || "$delivery_mode" == shadow ]] || args+=(--browser-profile-root "$BROWSER_PROFILE_ROOT")
   [[ "$HEADLESS_COMPUTE" == 1 ]] && args+=(--headless-compute)
   local c
   for c in "${DISABLE_CAPS[@]}"; do args+=(--disable-capability "$c"); done
@@ -856,7 +861,10 @@ stop_owned_candidate "$CANDIDATE_PID" "$STAGE_DIR"
 CANDIDATE_PID=""
 
 FINAL_CFG="$STATE_DIR/config.json"
-build_cfg "$FINAL_CFG" "$LIVE_WF" preserve >/dev/null
+FINAL_WF="$LIVE_WF"
+FINAL_DELIVERY_MODE=preserve
+if [[ "$NO_PROMOTE" == 1 ]]; then FINAL_WF="$SHADOW_WF"; FINAL_DELIVERY_MODE=shadow; fi
+build_cfg "$FINAL_CFG" "$FINAL_WF" "$FINAL_DELIVERY_MODE" >/dev/null
 if ! node "$RUNNER_POLICY_GUARD" "$ACTIVE_CFG" "$FINAL_CFG"; then
   log 'AUTO_UPDATE_RUNNER_POLICY_CHANGE_BLOCKED'
   exit 3
