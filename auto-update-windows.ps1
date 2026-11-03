@@ -241,10 +241,24 @@ function Wait-Health([int]$Port,[string]$Version,[string]$ConfigSha,[string]$Pro
   throw "CANDIDATE_HEALTH_TIMEOUT profile=$Profile port=$Port"
 }
 function Get-FreePort([System.Collections.Generic.HashSet[int]]$Used){
+  # CIM listener enumeration can be empty for an owner while V1 is live.
+  # A real exclusive loopback bind is the authority for candidate selection.
   foreach($p in 48831..51999){
-    if($Used.Contains($p)){ continue }
-    if(-not(Get-NetTCPConnection -State Listen -LocalPort $p -ErrorAction SilentlyContinue)){
-      [void]$Used.Add($p);return $p
+    if($Used.Contains($p)){continue}
+    $socket=$null
+    try{
+      $socket=[Net.Sockets.Socket]::new(
+        [Net.Sockets.AddressFamily]::InterNetwork,
+        [Net.Sockets.SocketType]::Stream,
+        [Net.Sockets.ProtocolType]::Tcp)
+      $socket.ExclusiveAddressUse=$true
+      $socket.Bind([Net.IPEndPoint]::new([Net.IPAddress]::Loopback,$p))
+      [void]$Used.Add($p)
+      return $p
+    }catch [Net.Sockets.SocketException]{
+      # Occupied, reserved or denied ports are unavailable.
+    }finally{
+      if($socket){$socket.Dispose()}
     }
   }
   throw 'NO_PRIVATE_BACKEND_PORT'
@@ -365,16 +379,41 @@ function Start-Backend([string]$ProjectDir,[string]$ConfigPath,[string]$StateDir
 function Stop-OwnedCandidate([object]$Candidate,[switch]$Strict){
   if(-not $Candidate){return}
   $proc=$Candidate.Process
-  if(-not $proc -or $proc.HasExited){return}
-  $listener=Get-NetTCPConnection -State Listen -LocalPort ([int]$Candidate.Port) -ErrorAction SilentlyContinue|Select-Object -First 1
+  if(-not $proc){return}
+  $proc.Refresh()
+  if($proc.HasExited){return}
   $cfg=Read-Json $Candidate.ConfigPath
   $markerFile=[string]$cfg.runtimeState
   $marker=if($markerFile -and (Test-Path -LiteralPath $markerFile -PathType Leaf)){Read-Json $markerFile}else{$null}
-  $owned=$listener -and $marker -and
-    [int]$listener.OwningProcess-eq [int]$proc.Id -and
-    [int]$marker.pid-eq [int]$proc.Id -and
-    [int]$marker.port-eq [int]$Candidate.Port -and
-    [string]$marker.instance.profile-eq [string]$Candidate.Profile
+  # CIM owner-PID enumeration can be empty in an owner-local session. Retain
+  # a matching listener as additional evidence when Windows exposes one.
+  $listener=Get-NetTCPConnection -State Listen -LocalPort ([int]$Candidate.Port) -ErrorAction SilentlyContinue | Select-Object -First 1
+  $health=$null
+  try{$health=Invoke-RestMethod "http://127.0.0.1:$($Candidate.Port)/health" -TimeoutSec 2}catch{}
+  $expectedSha=(Get-FileHash -LiteralPath $Candidate.ConfigPath -Algorithm SHA256).Hash.ToLowerInvariant()
+  $timeValid=$false
+  try{
+    $markerTime=[DateTime]::Parse([string]$marker.startedAt).ToUniversalTime()
+    $timeValid=([Math]::Abs(($markerTime-$proc.StartTime.ToUniversalTime()).TotalSeconds) -le 30)
+  }catch{}
+  $validPath=$false
+  try{
+    $validPath=[string]::Equals(
+      [IO.Path]::GetFullPath([string]$marker.projectDir),
+      [IO.Path]::GetFullPath([string]$Candidate.ProjectDir),
+      [StringComparison]::OrdinalIgnoreCase)
+  }catch{}
+  $actual=Get-Process -Id $proc.Id -ErrorAction SilentlyContinue
+  $owned=($actual -and $actual.ProcessName -eq 'node' -and
+    $marker -and $health -and $health.ok -eq $true -and
+    [int]$marker.pid -eq [int]$proc.Id -and
+    [int]$marker.port -eq [int]$Candidate.Port -and
+    [string]$marker.instance.profile -eq [string]$Candidate.Profile -and
+    [string]$marker.configSha256 -eq $expectedSha -and
+    [string]$health.configSha256 -eq $expectedSha -and
+    [string]$health.instance.profile -eq [string]$Candidate.Profile -and
+    $validPath -and $timeValid -and
+    (-not $listener -or [int]$listener.OwningProcess -eq [int]$proc.Id))
   if(-not $owned){
     $msg="CANDIDATE_CLEANUP_OWNERSHIP_MISMATCH profile=$($Candidate.Profile) port=$($Candidate.Port) pid=$($proc.Id)"
     if($Strict){throw $msg}
@@ -1209,7 +1248,7 @@ try{
     if($LASTEXITCODE-ne 0){throw "CANDIDATE_CONFIG_FAIL profile=$($t.Profile)"}
     $sha=(Get-FileHash -LiteralPath $cfg -Algorithm SHA256).Hash.ToLowerInvariant()
     $p=Start-Backend $stage.Dir $cfg $stateDir
-    $currentCandidate=[pscustomobject]@{Profile=$t.Profile;Port=$port;Process=$p;ConfigPath=$cfg}
+    $currentCandidate=[pscustomobject]@{Profile=$t.Profile;Port=$port;Process=$p;ConfigPath=$cfg;ProjectDir=$stage.Dir}
     $h=Wait-Health $port $stage.Version $sha $t.Profile
     & node.exe (Join-Path $stage.Dir 'tools\doctor.mjs') --url "http://127.0.0.1:$port/mcp" --expected-device $device --expected-version $stage.Version --config $cfg --timeout-ms 15000 --json
     if($LASTEXITCODE-ne 0){throw "CANDIDATE_DOCTOR_FAIL profile=$($t.Profile)"}
@@ -1262,7 +1301,7 @@ try{
     if($LASTEXITCODE-ne 0){throw "FINAL_CONFIG_FAIL profile=$($t.Profile)"}
     $finalSha=(Get-FileHash -LiteralPath $finalCfg -Algorithm SHA256).Hash.ToLowerInvariant()
     $p=Start-Backend $stage.Dir $finalCfg $stateDir
-    $currentCandidate=[pscustomobject]@{Profile=$t.Profile;Port=$port;Process=$p;ConfigPath=$finalCfg}
+    $currentCandidate=[pscustomobject]@{Profile=$t.Profile;Port=$port;Process=$p;ConfigPath=$finalCfg;ProjectDir=$stage.Dir}
     [void](Wait-Health $port $stage.Version $finalSha $t.Profile)
     & node.exe (Join-Path $stage.Dir 'tools\doctor.mjs') --url "http://127.0.0.1:$port/mcp" --expected-device $device --expected-version $stage.Version --config $finalCfg --timeout-ms 15000 --json
     if($LASTEXITCODE-ne 0){throw "FINAL_CANDIDATE_DOCTOR_FAIL profile=$($t.Profile)"}
