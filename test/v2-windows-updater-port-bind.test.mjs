@@ -24,6 +24,8 @@ test('candidate cleanup requires the spawned process, exact runtime marker and m
   assert.match(section,/\$Candidate\.ProjectDir/);
   assert.match(section,/\$marker\.pid/);
   assert.match(section,/\$timeValid/);
+  assert.match(section,/\$markerTime\.Kind -eq \[DateTimeKind\]::Unspecified/);
+  assert.match(section,/\[DateTime\]::SpecifyKind\(\$markerTime,\[DateTimeKind\]::Utc\)/);
   assert.match(source,/ProjectDir=\$stage\.Dir/g);
 });
 test('Windows native Get-FreePort skips a real occupied socket and selects bindable port',
@@ -33,4 +35,5 @@ test('Windows native Get-FreePort skips a real occupied socket and selects binda
     {cwd:root,encoding:'utf8',timeout:15000});
   assert.equal(r.status,0,r.stderr||r.stdout||r.error?.message);
   assert.match(r.stdout,/V2_PORT_BIND_QA_PASS/);
+  assert.match(r.stdout,/V2_UTC_MARKER_QA_PASS/);
 });

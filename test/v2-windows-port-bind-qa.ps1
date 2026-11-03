@@ -33,3 +33,15 @@ try{
   }finally{$verify.Dispose()}
   "V2_PORT_BIND_QA_PASS blocked=$blocked selected=$selected"
 }finally{$held.Dispose()}
+
+# Regression: ConvertFrom-Json may coerce ISO UTC to Kind=Unspecified in Windows
+# PowerShell. The native updater must not interpret that value as local time.
+$marker=('{ "startedAt": "2026-11-03T03:50:54Z" }' | ConvertFrom-Json)
+$markerTime=[DateTime]$marker.startedAt
+if($markerTime.Kind -eq [DateTimeKind]::Unspecified){
+  $markerTime=[DateTime]::SpecifyKind($markerTime,[DateTimeKind]::Utc)
+}
+$start=[DateTimeOffset]::Parse('2026-11-03T07:20:54.5+03:30').UtcDateTime
+$delta=[Math]::Abs(($markerTime.ToUniversalTime()-$start).TotalSeconds)
+if($delta -gt 1 -or $delta -lt 0){throw "V2_UTC_MARKER_OFFSET_ERROR seconds=$delta"}
+"V2_UTC_MARKER_QA_PASS delta=$delta"

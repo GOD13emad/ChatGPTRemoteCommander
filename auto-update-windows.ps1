@@ -393,8 +393,14 @@ function Stop-OwnedCandidate([object]$Candidate,[switch]$Strict){
   $expectedSha=(Get-FileHash -LiteralPath $Candidate.ConfigPath -Algorithm SHA256).Hash.ToLowerInvariant()
   $timeValid=$false
   try{
-    $markerTime=[DateTime]::Parse([string]$marker.startedAt).ToUniversalTime()
-    $timeValid=([Math]::Abs(($markerTime-$proc.StartTime.ToUniversalTime()).TotalSeconds) -le 30)
+    # Node writes runtime startedAt as an ISO-8601 UTC timestamp. On Windows,
+    # ConvertFrom-Json can return a DateTime with Kind=Unspecified and display
+    # it without the original Z. Treat that kind as UTC rather than local time.
+    $markerTime=[DateTime]$marker.startedAt
+    if($markerTime.Kind -eq [DateTimeKind]::Unspecified){
+      $markerTime=[DateTime]::SpecifyKind($markerTime,[DateTimeKind]::Utc)
+    }
+    $timeValid=([Math]::Abs(($markerTime.ToUniversalTime()-$proc.StartTime.ToUniversalTime()).TotalSeconds) -le 30)
   }catch{}
   $validPath=$false
   try{
