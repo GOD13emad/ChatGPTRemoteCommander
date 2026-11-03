@@ -7,6 +7,9 @@ import {spawnSync} from 'node:child_process';
 import {createV2V1ToolBridge,V2_V1_BRIDGE_TOOLS} from '../src/v2-v1-tool-bridge.mjs';
 import {createV2NativeOwnerExecutor} from '../src/v2-v1-owner-executor.mjs';
 
+// POSIX owner/UID, local HOME and native review fixtures are Linux-specific.
+// Windows must exercise its separate owner/Win32 adapters, not emulate POSIX authorization.
+const posixTest = process.platform === 'win32' ? test.skip : test;
 const withRoot=async f=>{
  const parent=fs.mkdtempSync(path.join(os.tmpdir(),'v2-v1-owner-'));
  const root=path.join(parent,'review');
@@ -16,7 +19,7 @@ test('noauth tool list includes only metadata and proposal surfaces',()=>{
  assert.deepEqual(V2_V1_BRIDGE_TOOLS.map(t=>t.name),['v2_v1_tool_catalog','v2_request_owner_tool','v2_v1_request_status']);
  assert.ok(V2_V1_BRIDGE_TOOLS.every(t=>t.securitySchemes[0].type==='noauth'));
 });
-test('owner review queues exact V1 tool but NEVER executes on remote request',()=>withRoot(async root=>{
+posixTest('owner review queues exact V1 tool but NEVER executes on remote request',()=>withRoot(async root=>{
  let effects=0,time=100000;
  const cat=['system_status','write_text','run_shell','gui_status','workflow_run_start'];
  const queue=createV2V1ToolBridge({root,loadCatalog:async()=>cat,now:()=>time});
@@ -47,7 +50,7 @@ test('owner review queues exact V1 tool but NEVER executes on remote request',()
  await assert.rejects(()=>executor.approve(request.requestId),{code:'V2_OWNER_NOT_PENDING'});
  assert.equal(effects,1);
 }));
-test('denied owner, stale tool, expired requests never execute',()=>withRoot(async root=>{
+posixTest('denied owner, stale tool, expired requests never execute',()=>withRoot(async root=>{
  let now=100000,actions=0,approval=false,cat=['system_status'];
  const queue=createV2V1ToolBridge({root,loadCatalog:async()=>cat,now:()=>now});
  const r=await queue.request({tool:'system_status',arguments:{}});
@@ -61,7 +64,7 @@ test('denied owner, stale tool, expired requests never execute',()=>withRoot(asy
  await assert.rejects(()=>executor.approve(r.requestId),{code:'V2_OWNER_NOT_PENDING'});
  assert.equal(actions,0);
 }));
-test('untrusted argument shapes, tool IDs, catalog names and oversized values denied',()=>withRoot(async root=>{
+posixTest('untrusted argument shapes, tool IDs, catalog names and oversized values denied',()=>withRoot(async root=>{
  const q=createV2V1ToolBridge({root,loadCatalog:async()=>['system_status','run_shell']});
  await assert.rejects(()=>q.request({tool:'evil|bash',arguments:{}}));
  await assert.rejects(()=>q.request({tool:'unknown',arguments:{}}));
@@ -70,7 +73,7 @@ test('untrusted argument shapes, tool IDs, catalog names and oversized values de
  await assert.rejects(()=>q.request({tool:'run_shell',arguments:{constructor:'x'}}));
  assert.equal(fs.readdirSync(path.join(root,'requests')).length,0);
 }));
-test('transport failure after bounded owner approval is recorded UNCERTAIN, not retried',()=>withRoot(async root=>{
+posixTest('transport failure after bounded owner approval is recorded UNCERTAIN, not retried',()=>withRoot(async root=>{
  let n=0;
  const opts={root,loadCatalog:async()=>['read_text'],now:()=>120000};
  const q=createV2V1ToolBridge(opts);
@@ -86,14 +89,14 @@ test('transport failure after bounded owner approval is recorded UNCERTAIN, not 
  await assert.rejects(()=>executor.approve(r.requestId),{code:'V2_OWNER_NOT_PENDING'});
  assert.equal(n,1);
 }));
-test('native interactive CLI rejects headless approval',()=>{
+posixTest('native interactive CLI rejects headless approval',()=>{
  const s=spawnSync(process.execPath,['tools/v2-v1-owner-cli.mjs','approve',
   '00000000-0000-4000-8000-000000000000'],{cwd:process.cwd(),
   encoding:'utf8',timeout:4000});
  assert.notEqual(s.status,0);
  assert.match(s.stderr,/V2_OWNER_INTERACTIVE_TTY_REQUIRED/);
 });
-test('a crash after durable predispatch marker reports unknown result; it is never success',()=>withRoot(async root=>{
+posixTest('a crash after durable predispatch marker reports unknown result; it is never success',()=>withRoot(async root=>{
  let time=200000;
  const q=createV2V1ToolBridge({root,now:()=>time,
   loadCatalog:async()=>['system_status']});

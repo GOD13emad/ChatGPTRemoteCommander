@@ -6,6 +6,9 @@ import path from 'node:path';
 import {classifyV2V1ShellResult,validateV2ShellReceiptValue} from '../src/v2-v1-result-classifier.mjs';
 import {createV2V1ToolBridge} from '../src/v2-v1-tool-bridge.mjs';
 import {createV2NativeOwnerExecutor} from '../src/v2-v1-owner-executor.mjs';
+// POSIX owner/UID, local HOME and native review fixtures are Linux-specific.
+// Windows must exercise its separate owner/Win32 adapters, not emulate POSIX authorization.
+const posixTest = process.platform === 'win32' ? test.skip : test;
 const valid={isError:false,structuredContent:{exitCode:0,timedOut:false,signal:null,stdout:'PRIVATE',stderr:'SECRET'}};
 
 test('classify bounded V1 Shell completion without exposing any private output',()=>{
@@ -21,7 +24,7 @@ test('classify bounded V1 Shell completion without exposing any private output',
  assert.throws(()=>validateV2ShellReceiptValue('PRIVATE OUTPUT'),/V2_SHELL_RECEIPT_UNTRUSTED/);
 });
 
-test('one owner-approved Shell callback persists only completion category; no replay',async()=>{
+posixTest('one owner-approved Shell callback persists only completion category; no replay',async()=>{
  const base=fs.mkdtempSync(path.join(os.tmpdir(),'v2-shell-output-classifier-'));
  const root=path.join(base,'review');
  try{
@@ -45,7 +48,7 @@ test('one owner-approved Shell callback persists only completion category; no re
  }finally{fs.rmSync(base,{recursive:true,force:true})}
 });
 
-test('legacy returned Shell receipts remain UNKNOWN; missing receipt is not a proven exit',async()=>{
+posixTest('legacy returned Shell receipts remain UNKNOWN; missing receipt is not a proven exit',async()=>{
  const base=fs.mkdtempSync(path.join(os.tmpdir(),'v2-shell-legacy-result-'));
  const root=path.join(base,'review');
  try{

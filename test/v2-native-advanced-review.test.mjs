@@ -6,6 +6,9 @@ import path from 'node:path';
 import {confirmV2AdvancedOwnerDialog} from '../src/v2-native-advanced-review.mjs';
 import {eligibleV2AdvancedReviews,pickV2AdvancedReview} from '../src/v2-native-review-picker.mjs';
 
+// POSIX owner/UID, local HOME and native review fixtures are Linux-specific.
+// Windows must exercise its separate owner/Win32 adapters, not emulate POSIX authorization.
+const posixTest = process.platform === 'win32' ? test.skip : test;
 const id='dc44a10b-9d25-47cc-81e2-2bdc0fdaab05';
 const request={requestId:id,tool:'run_shell',
  arguments:{command:'printf "%s\\n" "this is preview only"'}};
@@ -14,7 +17,7 @@ const fixture=async cb=>{
  const root=path.join(base,'owner');
  try{await cb(root)}finally{fs.rmSync(base,{recursive:true,force:true})}
 };
-test('advanced native two-step preview displays exact arguments, requires typed code and destroys private preview',()=>fixture(async root=>{
+posixTest('advanced native two-step preview displays exact arguments, requires typed code and destroys private preview',()=>fixture(async root=>{
  let stages=[],seen=null;
  const fake=(exe,args,options,cb)=>{
   stages.push(args);
@@ -38,7 +41,7 @@ test('advanced native two-step preview displays exact arguments, requires typed 
  assert.deepEqual(fs.readdirSync(root),[]);
  assert.match(seen.content,/requestId/);
 }));
-test('advanced owner GUI rejects wrong phrase, cancellation and failure in preview',()=>fixture(async root=>{
+posixTest('advanced owner GUI rejects wrong phrase, cancellation and failure in preview',()=>fixture(async root=>{
  for(const scenario of ['wrong','cancel','viewer-error']){
   let count=0;
   const fake=(exe,args,opts,cb)=>{
@@ -52,7 +55,7 @@ test('advanced owner GUI rejects wrong phrase, cancellation and failure in previ
   assert.deepEqual(fs.readdirSync(root),[]);
  }
 }));
-test('untrusted argument types, oversized fields, bidi and invalid requests are denied before GUI',()=>fixture(async root=>{
+posixTest('untrusted argument types, oversized fields, bidi and invalid requests are denied before GUI',()=>fixture(async root=>{
  let calls=0;
  const dialog=(a,b,c,cb)=>{calls++;cb(null,'EXECUTE dc44a10b')};
  for(const bad of [

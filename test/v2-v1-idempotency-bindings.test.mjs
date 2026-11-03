@@ -6,6 +6,9 @@ import path from 'node:path';
 import {bindV2V1MutationId} from '../src/v2-v1-idempotency-bindings.mjs';
 import {createV2V1ToolBridge} from '../src/v2-v1-tool-bridge.mjs';
 import {createV2NativeOwnerExecutor} from '../src/v2-v1-owner-executor.mjs';
+// POSIX owner/UID, local HOME and native review fixtures are Linux-specific.
+// Windows must exercise its separate owner/Win32 adapters, not emulate POSIX authorization.
+const posixTest = process.platform === 'win32' ? test.skip : test;
 const requestId='ee4da4e2-5d7f-40fb-9a4d-a32f285964c4';
 const tools=[
  {name:'run_shell',inputSchema:{type:'object',properties:{command:{type:'string'},requestId:{type:'string'}}}},
@@ -32,7 +35,7 @@ test('refuses user-controlled IDs, changed schemas and unknown tools before exec
   }),/V2_V1_IDEMPOTENCY_/);
  }
 });
-test('owner sees the exact V1-bound args; dispatch exactly once after approval, with crash-safe receipt',async()=>{
+posixTest('owner sees the exact V1-bound args; dispatch exactly once after approval, with crash-safe receipt',async()=>{
  const base=fs.mkdtempSync(path.join(os.tmpdir(),'mmz-v2-bound-id-')),root=path.join(base,'queue');
  try{
   const queue=createV2V1ToolBridge({root,now:()=>1000,loadCatalog:async()=>['run_shell']});
@@ -58,7 +61,7 @@ test('owner sees the exact V1-bound args; dispatch exactly once after approval, 
   assert.equal(n,1);
  }finally{fs.rmSync(base,{recursive:true,force:true})}
 });
-test('schema changes between owner preview and dispatch fail closed, with no receipt/effect',async()=>{
+posixTest('schema changes between owner preview and dispatch fail closed, with no receipt/effect',async()=>{
  const base=fs.mkdtempSync(path.join(os.tmpdir(),'mmz-v2-bound-drift-')),root=path.join(base,'queue');
  try{
   const q=createV2V1ToolBridge({root,now:()=>1000,loadCatalog:async()=>['run_shell']});

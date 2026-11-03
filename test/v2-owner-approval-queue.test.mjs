@@ -6,9 +6,12 @@ import path from 'node:path';
 import {spawnSync} from 'node:child_process';
 import {createV2OwnerApprovalQueue} from '../src/v2-owner-approval-queue.mjs';
 import {createV2OwnerProposalHandler} from '../src/v2-owner-proposal-tool.mjs';
+// POSIX owner/UID, local HOME and native review fixtures are Linux-specific.
+// Windows must exercise its separate owner/Win32 adapters, not emulate POSIX authorization.
+const posixTest = process.platform === 'win32' ? test.skip : test;
 const tmp=()=>fs.mkdtempSync(path.join(os.tmpdir(),'v2-owner-queue-'));
 const withRoot=fn=>{const root=tmp();try{fn(root);}finally{fs.rmSync(root,{recursive:true,force:true});}};
-test('a no-OAuth proposal queues only and owner approval creates exactly one isolated note',()=>withRoot(root=>{
+posixTest('a no-OAuth proposal queues only and owner approval creates exactly one isolated note',()=>withRoot(root=>{
  let time=1000000;
  const q=createV2OwnerApprovalQueue({root,now:()=>time});
  const p=q.proposeNote({title:'MMZ approval proof',text:'Local owner note only'});
@@ -28,7 +31,7 @@ test('a no-OAuth proposal queues only and owner approval creates exactly one iso
  assert.equal(fs.statSync(path.join(root,'pending')).mode&0o077,0);
  assert.equal(fs.statSync(path.join(dir,notes[0])).mode&0o077,0);
 }));
-test('unapproved, expired and malformed proposals never produce notes',()=>withRoot(root=>{
+posixTest('unapproved, expired and malformed proposals never produce notes',()=>withRoot(root=>{
  let time=1000000;
  const q=createV2OwnerApprovalQueue({root,now:()=>time});
  for(const title of ['\u0000bad','', 'a'.repeat(65)])
@@ -40,7 +43,7 @@ test('unapproved, expired and malformed proposals never produce notes',()=>withR
  assert.throws(()=>q.approve(p.requestId),{code:'V2_APPROVAL_EXPIRED'});
  assert.deepEqual(fs.readdirSync(path.join(root,'notes')),[]);
 }));
-test('bounded pending requests, symlink and tampering refused',()=>withRoot(root=>{
+posixTest('bounded pending requests, symlink and tampering refused',()=>withRoot(root=>{
  let time=1000000;
  const q=createV2OwnerApprovalQueue({root,now:()=>time});
  const first=q.proposeNote({title:'valid',text:'a'});
@@ -53,7 +56,7 @@ test('bounded pending requests, symlink and tampering refused',()=>withRoot(root
  assert.throws(()=>q.approve(first.requestId),{code:'V2_APPROVAL_RECORD_CHANGED'});
  assert.deepEqual(fs.readdirSync(path.join(root,'notes')),[]);
 }));
-test('approval CLI refuses background/non-TTY, preserving request unchanged',()=>withRoot(root=>{
+posixTest('approval CLI refuses background/non-TTY, preserving request unchanged',()=>withRoot(root=>{
  // CLI points only at production owner path: invoke with no existing request id.
  const c=spawnSync(process.execPath,['tools/v2-owner-approval-cli.mjs','approve','00000000-0000-4000-8000-000000000000'],{
   cwd:process.cwd(),encoding:'utf8',timeout:5000
@@ -61,7 +64,7 @@ test('approval CLI refuses background/non-TTY, preserving request unchanged',()=
  assert.notEqual(c.status,0);
  assert.match(c.stderr,/NATIVE_INTERACTIVE_CONSOLE_REQUIRED|V2_APPROVAL_/);
 }));
-test('MCP noauth proposal interface cannot approve or access arbitrary paths',()=>withRoot(root=>{
+posixTest('MCP noauth proposal interface cannot approve or access arbitrary paths',()=>withRoot(root=>{
  const q=createV2OwnerApprovalQueue({root,now:()=>1000});
  const handler=createV2OwnerProposalHandler({queue:q});
  assert.equal(handler({name:'v2_owner_approve',args:{}}),null);

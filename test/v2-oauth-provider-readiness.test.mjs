@@ -4,6 +4,9 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {inspectV2OAuthProvider} from '../src/v2-oauth-provider-readiness.mjs';
+// POSIX owner/UID, local HOME and native review fixtures are Linux-specific.
+// Windows must exercise its separate owner/Win32 adapters, not emulate POSIX authorization.
+const posixTest = process.platform === 'win32' ? test.skip : test;
 const issuer='https://id.example.test',resource='https://mmz.example.test/mcp-v2';
 const cfg={issuer,resource,metadataUrl:issuer+'/.well-known/oauth-authorization-server',
  scopes:['commander.full'],clientRegistration:'client-id-metadata'};
@@ -19,7 +22,7 @@ const dir=()=>fs.mkdtempSync(path.join(os.tmpdir(),'v2-provider-readiness-'));
 const put=(f,data,mode=0o600)=>{fs.writeFileSync(f,JSON.stringify(data));fs.chmodSync(f,mode)};
 const fake=async url=>new Response(JSON.stringify(url.endsWith('/keys')
  ?{keys:[{kid:'test-public'}]}:metadata),{status:200});
-test('absent config means BLOCKED and does not trigger network, login or private tools',async()=>{
+posixTest('absent config means BLOCKED and does not trigger network, login or private tools',async()=>{
  const root=dir();try{
   let network=0;
   const s=await inspectV2OAuthProvider({file:path.join(root,'missing.json'),
@@ -29,7 +32,7 @@ test('absent config means BLOCKED and does not trigger network, login or private
   assert.equal(network,0);
  }finally{fs.rmSync(root,{recursive:true,force:true})}
 });
-test('pinned metadata and public JWKS discovery pass without claiming owner login',async()=>{
+posixTest('pinned metadata and public JWKS discovery pass without claiming owner login',async()=>{
  const root=dir(),file=path.join(root,'provider.json');
  try{
   put(file,cfg);
@@ -45,7 +48,7 @@ test('pinned metadata and public JWKS discovery pass without claiming owner logi
   assert.deepEqual(urls,[cfg.metadataUrl,issuer+'/keys']);
  }finally{fs.rmSync(root,{recursive:true,force:true})}
 });
-test('world-readable or alias config is rejected before metadata fetch',async()=>{
+posixTest('world-readable or alias config is rejected before metadata fetch',async()=>{
  const root=dir(),file=path.join(root,'provider.json'),link=path.join(root,'alias.json');
  try{
   put(file,cfg,0o644);
@@ -58,7 +61,7 @@ test('world-readable or alias config is rejected before metadata fetch',async()=
   assert.equal(count,0);
  }finally{fs.rmSync(root,{recursive:true,force:true})}
 });
-test('discovery cannot override pinned issuer or evade PKCE S256',async()=>{
+posixTest('discovery cannot override pinned issuer or evade PKCE S256',async()=>{
  const root=dir(),file=path.join(root,'provider.json');
  try{
   put(file,cfg);
@@ -73,7 +76,7 @@ test('discovery cannot override pinned issuer or evade PKCE S256',async()=>{
  }finally{fs.rmSync(root,{recursive:true,force:true})}
 });
 
-test('missing symlink target and symlinked parent never masquerade as absent provider',async()=>{
+posixTest('missing symlink target and symlinked parent never masquerade as absent provider',async()=>{
  const root=dir(),real=path.join(root,'real'),alias=path.join(root,'alias');
  try{
   fs.mkdirSync(real);

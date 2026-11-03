@@ -7,6 +7,9 @@ import {spawnSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
 import {fileURLToPath} from 'node:url';
 
+// POSIX owner/UID, local HOME and native review fixtures are Linux-specific.
+// Windows must exercise its separate owner/Win32 adapters, not emulate POSIX authorization.
+const posixTest = process.platform === 'win32' ? test.skip : test;
 const file=fileURLToPath(new URL('../tools/v2-hpc-central-witness-qa.mjs',import.meta.url));
 const sha=x=>createHash('sha256').update(x).digest('hex');
 const host='HPC-159-17',id='centralqa30000_20261102';
@@ -37,7 +40,7 @@ test('disallows unregistered host and actions without local state changes',()=>{
   assert.equal(fs.existsSync(f.root),false);
  }finally{f.close();}
 });
-test('unobserved or altered remote evidence fails closed',()=>{
+posixTest('unobserved or altered remote evidence fails closed',()=>{
  const f=setup();try{
   assert.equal(f.run('prepare').rc,0);
   assert.notEqual(f.run('seal').rc,0);
@@ -47,7 +50,7 @@ test('unobserved or altered remote evidence fails closed',()=>{
   assert.notEqual(f.run('verify').rc,0);
  }finally{f.close();}
 });
-test('central SQLite fenced artifact seals genuine bounded HPC evidence and independently verifies',()=>{
+posixTest('central SQLite fenced artifact seals genuine bounded HPC evidence and independently verifies',()=>{
  const f=setup();try{
   assert.equal(f.run('prepare').rc,0);f.witness();
   const first=f.run('seal');assert.equal(first.rc,0,first.stderr);
@@ -59,7 +62,7 @@ test('central SQLite fenced artifact seals genuine bounded HPC evidence and inde
   assert.equal(JSON.parse(replay.stdout).status,'SEALED_RECONCILED');
  }finally{f.close();}
 });
-test('post-commit receipt mutation cannot replace immutable central evidence',()=>{
+posixTest('post-commit receipt mutation cannot replace immutable central evidence',()=>{
  const f=setup();try{
   assert.equal(f.run('prepare').rc,0);f.witness();
   assert.equal(f.run('seal').rc,0);
