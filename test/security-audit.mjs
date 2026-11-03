@@ -26,13 +26,26 @@ const patterns = [
 // never suppress a separate PEM marker anywhere in the same file or commit.
 const mockPemHeader = '-----BEGIN ' + 'PRIVATE KEY-----';
 const mockPemLiteral = mockPemHeader + String.raw`\\nfixture`;
+// This fixed human-readable mock is present in an immutable V2 test commit.
+// Never allowlist variable tokens, suffixes or other Bearer values.
+const mockBearerLiteral = 'Bearer ' + 'verified-' + 'test-bearer';
 function secretPatternMatches(type,pattern,text) {
-  const sample=type==='Private key block'
-    ? text.replaceAll(mockPemLiteral,'[MOCK_V2_TLS_KEY_PLACEHOLDER]')
-    : text;
+  let sample=text;
+  if(type==='Private key block')
+    sample=sample.replaceAll(mockPemLiteral,'[MOCK_V2_TLS_KEY_PLACEHOLDER]');
+  if(type==='Bearer token literal')
+    sample=sample.replaceAll(
+      new RegExp(mockBearerLiteral+'(?![A-Za-z0-9._-])','g'),
+      '[MOCK_V2_BEARER_FIXTURE]');
   pattern.lastIndex=0;
   return pattern.test(sample);
 }
+const bearerPattern=patterns.find(([type])=>type==='Bearer token literal')[1];
+if(secretPatternMatches('Bearer token literal',bearerPattern,mockBearerLiteral)||
+   !secretPatternMatches('Bearer token literal',bearerPattern,mockBearerLiteral+'-different')||
+   !secretPatternMatches('Bearer token literal',bearerPattern,'Bearer '+'Z'.repeat(25))||
+   !secretPatternMatches('Bearer token literal',bearerPattern,mockBearerLiteral+' '+'Bearer '+'Z'.repeat(25)))
+  throw new Error('Mock bearer token exception regression');
 const pemHeaderPattern=patterns.find(([type])=>type==='Private key block')[1];
 if(secretPatternMatches('Private key block',pemHeaderPattern,mockPemLiteral)
   ||!secretPatternMatches('Private key block',pemHeaderPattern,mockPemHeader+'\\nACTUAL-KEY')
