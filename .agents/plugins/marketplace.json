@@ -1,0 +1,20 @@
+{
+  "name": "chatgpt-remote-commander",
+  "interface": {
+    "displayName": "ChatGPT Remote Commander"
+  },
+  "plugins": [
+    {
+      "name": "chatgpt-remote-commander",
+      "source": {
+        "source": "local",
+        "path": "./plugin-template"
+      },
+      "policy": {
+        "installation": "INSTALLED_BY_DEFAULT",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}

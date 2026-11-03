@@ -1,0 +1,385 @@
+REVIEW ONLY — REDACTED, NOT EXECUTABLE, NOT AN INSTALLER, NOT RUNTIME-ACCEPTED.
+param(
+  [string]$CandidateRoot = (Split-Path -Parent $PSScriptRoot),
+  [switch]$PreflightOnly,
+  [switch]$LibraryOnly
+)
+$ErrorActionPreference = 'Stop'
+$ProgressPreference = 'SilentlyContinue'
+
+# This installer never invokes a planner, task, updater, shell payload or network.
+# The independently accepted companion is a separate versioned product. It does
+# not upgrade the currently running Commander core or repair ChatGPT streaming.
+if (-not ('CommanderCompanionInstallV1.Native' -as [type])) {
+  Add-Type -TypeDefinition @'
+using System;
+using System.ComponentModel;
+using System.IO;
+using System.Runtime.InteropServices;
+using Microsoft.Win32.SafeHandles;
+namespace CommanderCompanionInstallV1 {
+  public static class Native {
+    [StructLayout(LayoutKind.Sequential)] struct INFO {
+      public uint Attributes; public System.Runtime.InteropServices.ComTypes.FILETIME Creation;
+      public System.Runtime.InteropServices.ComTypes.FILETIME Access;
+      public System.Runtime.InteropServices.ComTypes.FILETIME Write;
+      public uint Volume, HighSize, LowSize, Links, HighIndex, LowIndex;
+    }
+    [StructLayout(LayoutKind.Sequential)] struct SA {
+      public uint Length; public IntPtr Descriptor; [MarshalAs(UnmanagedType.Bool)] public bool Inherit;
+    }
+    [DllImport("kernel32.dll", CharSet=CharSet.Unicode, SetLastError=true)]
+    static extern SafeFileHandle CreateFileW(string path, uint access, uint share, IntPtr security,
+      uint creation, uint flags, IntPtr template);
+    [DllImport("kernel32.dll", SetLastError=true)]
+    static extern bool GetFileInformationByHandle(SafeFileHandle handle, out INFO info);
+    [DllImport("kernel32.dll", CharSet=CharSet.Unicode, SetLastError=true)]
+    static extern bool CreateDirectoryW(string path, ref SA security);
+    public static SafeFileHandle HoldDirectory(string path) {
+      var h=CreateFileW(path,0,3,IntPtr.Zero,3,0x02200000,IntPtr.Zero);
+      if(h.IsInvalid){int e=Marshal.GetLastWin32Error();h.Dispose();throw new Win32Exception(e,"DIRECTORY_HOLD_FAILED");}
+      try{INFO i;if(!GetFileInformationByHandle(h,out i))throw new Win32Exception(Marshal.GetLastWin32Error(),"DIRECTORY_INFO_FAILED");
+        if((i.Attributes&0x10)==0 || (i.Attributes&0x400)!=0)throw new IOException("DIRECTORY_REPARSE_OR_TYPE");return h;
+      }catch{h.Dispose();throw;}
+    }
+    public static void VerifyRegular(SafeFileHandle h) {
+      INFO i;if(!GetFileInformationByHandle(h,out i))throw new Win32Exception(Marshal.GetLastWin32Error(),"FILE_INFO_FAILED");
+      if((i.Attributes&(0x10|0x400))!=0 || i.Links!=1)throw new IOException("FILE_REPARSE_TYPE_OR_LINK_COUNT");
+    }
+    public static FileStream OpenRegularRead(string path) {
+      if(path.IndexOf(':',2)>=0)throw new IOException("FILE_ADS_PATH");
+      var h=CreateFileW(path,0x80000000,1,IntPtr.Zero,3,0x00200000,IntPtr.Zero);
+      if(h.IsInvalid){int e=Marshal.GetLastWin32Error();h.Dispose();throw new Win32Exception(e,"REGULAR_FILE_OPEN_FAILED");}
+      try { VerifyRegular(h); return new FileStream(h,FileAccess.Read); } catch { h.Dispose(); throw; }
+    }
+    public static void CreatePrivate(string path, byte[] descriptor) {
+      var p=Marshal.AllocHGlobal(descriptor.Length);
+      try{Marshal.Copy(descriptor,0,p,descriptor.Length);var s=new SA{Length=(uint)Marshal.SizeOf<SA>(),Descriptor=p,Inherit=false};
+        if(!CreateDirectoryW(path,ref s))throw new Win32Exception(Marshal.GetLastWin32Error(),"PRIVATE_DIRECTORY_CREATE_FAILED_NO_RETRY");
+      }finally{Marshal.FreeHGlobal(p);}
+    }
+  }
+}
+'@
+}
+
+$script:CompanionOwnerSid = '<OWNER_SID>'
+$script:CompanionInstallBase = '<OWNER_HOME>\AppData\Local\ChatGPTRemoteCommander'
+$script:CompanionCoreRoot = Join-Path $script:CompanionInstallBase 'releases\v0.10.6-3546256e8e7c'
+$script:CompanionConfigPath = Join-Path $script:CompanionInstallBase 'runtimes\3546256e8e7c494d140bc9c33259ddbf345639d3\default\port-48831\config.json'
+$script:CompanionRoutePath = Join-Path $script:CompanionInstallBase 'routing\default.json'
+$script:CompanionConfigSha = '<PRIVATE_CONFIG_SHA256>'
+$script:CompanionCorePins = @{
+  'src\server.mjs' = 'b2563ddfa69a5858b9ba6a3076da10b4ebe0760790cfad66a1f88694fc55105e'
+  'src\stable-router.mjs' = '1e127789578ad0e2dce8ab19bdec8264d1a8c61b8cd9c5ec866a9c8306c34ecd'
+  'package.json' = '959488584595a0d3defbe8a3b4f2079f77230b9170bb94b45ad47b818c0a8b5c'
+}
+
+function Assert-CompanionIdentity {
+  if ($PSVersionTable.PSVersion.Major -lt 7) { throw 'POWERSHELL_7_REQUIRED' }
+  $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+  if ($identity.User.Value -ne $script:CompanionOwnerSid -or $env:COMPUTERNAME.ToLowerInvariant() -ne 'saeid') { throw 'SAEED_IDENTITY_REQUIRED' }
+  if ($identity.IsSystem) { throw 'INTERACTIVE_OWNER_REQUIRED' }
+  return $identity
+}
+function Get-CompanionSha([string]$Path) { return (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant() }
+function Assert-CompanionSha([object]$Value) {
+  if ($Value -isnot [string] -or $Value -cnotmatch '^[0-9a-f]{64}$') { throw 'SHA256_FORMAT' }
+}
+function Convert-CompanionRelative([object]$Value) {
+  if ($Value -isnot [string] -or $Value.Length -lt 1 -or $Value.Length -gt 220 -or $Value -match '[\x00-\x1f\x7f:<>"|?*]' -or [IO.Path]::IsPathRooted($Value)) { throw 'PAYLOAD_RELATIVE_PATH' }
+  $normal = $Value.Replace('/', '\')
+  foreach ($part in $normal.Split('\')) {
+    if ($part -in @('', '.', '..') -or $part.EndsWith(' ') -or $part.EndsWith('.') -or $part -match '^(?i:CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\..*)?$') { throw 'PAYLOAD_PATH_SEGMENT' }
+  }
+  if ($normal -match '^(?i:INSTALL_(?:INTENT|RECEIPT|FAILURE)\.json|DISABLE_(?:INTENT|RECEIPT|FAILURE)\.json|RELEASE_MANIFEST\.json)$') { throw 'RESERVED_INSTALL_METADATA' }
+  return $normal
+}
+function Assert-CompanionPayloadDeclarations([hashtable]$Manifest) {
+  if ($Manifest.schema -ne 1 -or $Manifest.version -cne '1.0.0' -or $Manifest.files -isnot [array] -or $Manifest.files.Count -lt 1 -or $Manifest.files.Count -gt 512 -or $Manifest.core -isnot [hashtable]) { throw 'RELEASE_MANIFEST_SCHEMA' }
+  if ($Manifest.nativeAcceptance -isnot [hashtable] -or $Manifest.nativeAcceptance.status -cne 'PASS') { throw 'NATIVE_ACCEPTANCE_REQUIRED_NOT_WHOLE_FINAL' }
+  Assert-CompanionSha $Manifest.nativeAcceptance.receiptSha256
+  $acceptance = Convert-CompanionRelative $Manifest.nativeAcceptance.receiptPath
+  $seen = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+  $total = 0L; $acceptanceListed = $false
+  foreach ($entry in $Manifest.files) {
+    if ($entry -isnot [hashtable]) { throw 'PAYLOAD_ENTRY_SCHEMA' }
+    $relative = Convert-CompanionRelative $entry.path
+    if (-not $seen.Add($relative)) { throw 'PAYLOAD_DUPLICATE_OR_CASE_ALIAS' }
+    Assert-CompanionSha $entry.sha256
+    if (($entry.bytes -isnot [long] -and $entry.bytes -isnot [int]) -or $entry.bytes -lt 0 -or $entry.bytes -gt 16777216) { throw 'PAYLOAD_BYTE_LIMIT' }
+    $total += $entry.bytes
+    if ($total -gt 134217728) { throw 'RELEASE_TOTAL_BYTE_LIMIT' }
+    if ($relative -ceq $acceptance) {
+      if ($entry.sha256 -cne $Manifest.nativeAcceptance.receiptSha256) { throw 'ACCEPTANCE_MANIFEST_PIN' }
+      $acceptanceListed = $true
+    }
+  }
+  foreach ($relative in $seen) {
+    $prefix = [IO.Path]::GetDirectoryName($relative)
+    while ($prefix) {
+      if ($seen.Contains($prefix)) { throw 'PAYLOAD_FILE_DIRECTORY_PREFIX_COLLISION' }
+      $prefix = [IO.Path]::GetDirectoryName($prefix)
+    }
+  }
+  if (-not $acceptanceListed) { throw 'ACCEPTANCE_RECEIPT_MUST_BE_MANIFEST_MEMBER' }
+  return @{files=$seen.Count;bytes=$total;acceptanceRelative=$acceptance}
+}
+function Assert-CompanionJsonElement([System.Text.Json.JsonElement]$Element) {
+  if ($Element.ValueKind -eq [System.Text.Json.JsonValueKind]::Object) {
+    $seen = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+    foreach ($prop in $Element.EnumerateObject()) {
+      if (-not $seen.Add($prop.Name)) { throw 'JSON_DUPLICATE_OR_CASE_ALIAS' }
+      Assert-CompanionJsonElement $prop.Value
+    }
+  } elseif ($Element.ValueKind -eq [System.Text.Json.JsonValueKind]::Array) {
+    foreach ($value in $Element.EnumerateArray()) { Assert-CompanionJsonElement $value }
+  }
+}
+function Read-CompanionJson([string]$Path, [int]$MaxBytes = 1048576) {
+  $stream = [CommanderCompanionInstallV1.Native]::OpenRegularRead($Path)
+  try {
+    [CommanderCompanionInstallV1.Native]::VerifyRegular($stream.SafeFileHandle)
+    if ($stream.Length -gt $MaxBytes) { throw 'JSON_BYTE_LIMIT' }
+    $reader = [IO.StreamReader]::new($stream,[Text.UTF8Encoding]::new($false,$true),$true,4096,$true)
+    try { $json = $reader.ReadToEnd() } finally { $reader.Dispose() }
+    $document = [System.Text.Json.JsonDocument]::Parse($json)
+    try { Assert-CompanionJsonElement $document.RootElement } finally { $document.Dispose() }
+    return ConvertFrom-Json -InputObject $json -AsHashtable -Depth 30
+  } finally { $stream.Dispose() }
+}
+function Hold-CompanionAncestors([string]$Path, $Handles) {
+  $full = [IO.Path]::GetFullPath($Path)
+  $ancestors = [Collections.Generic.List[string]]::new()
+  $dir = [IO.DirectoryInfo]::new($full)
+  while ($null -ne $dir) { $ancestors.Insert(0,$dir.FullName); $dir = $dir.Parent }
+  foreach ($ancestor in $ancestors) {
+    if ([IO.Directory]::Exists($ancestor)) { $Handles.Add([CommanderCompanionInstallV1.Native]::HoldDirectory($ancestor)) }
+    elseif ([IO.File]::Exists($ancestor)) { throw 'ANCESTOR_NOT_DIRECTORY' }
+  }
+}
+function Assert-CompanionOwnerAcl([string]$Path) {
+  $acl = Get-Acl -LiteralPath $Path
+  if ($acl.GetOwner([Security.Principal.SecurityIdentifier]).Value -ne $script:CompanionOwnerSid) { throw 'PRIVATE_OWNER_MISMATCH' }
+  $rules = @($acl.GetAccessRules($true,$true,[Security.Principal.SecurityIdentifier]))
+  if ($rules.Count -lt 1) { throw 'PRIVATE_ACL_EMPTY' }
+  foreach ($rule in $rules) {
+    if ($rule.IdentityReference.Value -ne $script:CompanionOwnerSid -or $rule.AccessControlType -ne [Security.AccessControl.AccessControlType]::Allow) { throw 'PRIVATE_ACL_OTHER_PRINCIPAL_OR_DENY' }
+  }
+}
+function New-CompanionPrivateDirectory([string]$Path, $Handles) {
+  $sid = [Security.Principal.SecurityIdentifier]::new($script:CompanionOwnerSid)
+  $acl = [Security.AccessControl.DirectorySecurity]::new()
+  $acl.SetOwner($sid); $acl.SetAccessRuleProtection($true,$false)
+  $rule = [Security.AccessControl.FileSystemAccessRule]::new($sid,[Security.AccessControl.FileSystemRights]::FullControl,[Security.AccessControl.InheritanceFlags]'ContainerInherit,ObjectInherit',[Security.AccessControl.PropagationFlags]::None,[Security.AccessControl.AccessControlType]::Allow)
+  $acl.AddAccessRule($rule)
+  [CommanderCompanionInstallV1.Native]::CreatePrivate($Path,$acl.GetSecurityDescriptorBinaryForm())
+  $Handles.Add([CommanderCompanionInstallV1.Native]::HoldDirectory($Path))
+  Assert-CompanionOwnerAcl $Path
+}
+function Protect-CompanionPayloadFile([string]$Path) {
+  $sid = [Security.Principal.SecurityIdentifier]::new($script:CompanionOwnerSid)
+  $acl = [Security.AccessControl.FileSecurity]::new()
+  $acl.SetOwner($sid); $acl.SetAccessRuleProtection($true,$false)
+  $acl.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new($sid,[Security.AccessControl.FileSystemRights]'ReadAndExecute,Synchronize',[Security.AccessControl.AccessControlType]::Allow))
+  # FILE_WRITE_ATTRIBUTES must be used before reducing the owner ACL to read.
+  # Reversing these two steps fails on the actual private NTFS fixture.
+  [IO.File]::SetAttributes($Path,([IO.File]::GetAttributes($Path) -bor [IO.FileAttributes]::ReadOnly))
+  Set-Acl -LiteralPath $Path -AclObject $acl
+  Assert-CompanionOwnerAcl $Path
+}
+function Write-CompanionNewJson([string]$Path, [object]$Value) {
+  $bytes = [Text.UTF8Encoding]::new($false).GetBytes(($Value | ConvertTo-Json -Depth 25)+"`n")
+  $stream = [IO.File]::Open($Path,[IO.FileMode]::CreateNew,[IO.FileAccess]::ReadWrite,[IO.FileShare]::None)
+  try { $stream.Write($bytes); $stream.Flush($true); [CommanderCompanionInstallV1.Native]::VerifyRegular($stream.SafeFileHandle) } finally { $stream.Dispose() }
+  Protect-CompanionPayloadFile $Path
+}
+function Get-CompanionCoreSnapshot([hashtable]$Core) {
+  if ($Core.version -cne '0.10.6' -or [IO.Path]::GetFullPath([string]$Core.path) -cne $script:CompanionCoreRoot -or [IO.Path]::GetFullPath([string]$Core.configPath) -cne $script:CompanionConfigPath -or [IO.Path]::GetFullPath([string]$Core.routePath) -cne $script:CompanionRoutePath -or $Core.configSha256 -cne $script:CompanionConfigSha) { throw 'CORE_BASELINE_DESCRIPTOR' }
+  Assert-CompanionSha $Core.routeSha256
+  if ((Get-CompanionSha $script:CompanionConfigPath) -cne $Core.configSha256 -or (Get-CompanionSha $script:CompanionRoutePath) -cne $Core.routeSha256) { throw 'CORE_CONFIG_OR_ROUTE_DRIFT' }
+  $sourcePins = [ordered]@{}
+  foreach ($relative in $script:CompanionCorePins.Keys) {
+    $sha = Get-CompanionSha (Join-Path $script:CompanionCoreRoot $relative)
+    if ($sha -cne $script:CompanionCorePins[$relative]) { throw 'CORE_SOURCE_DRIFT' }
+    $sourcePins[$relative] = $sha
+  }
+  if (Test-Path -LiteralPath (Join-Path $script:CompanionInstallBase 'app\auto-update-windows.ps1')) { throw 'PAUSED_UPDATER_STATE_DRIFT' }
+  $scheduler = New-Object -ComObject 'Schedule.Service'; $scheduler.Connect()
+  $xml = [string]$scheduler.GetFolder('\').GetTask('RemoteCommander-Saeed-Supervisor').Xml
+  $taskSha = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($xml))).ToLowerInvariant()
+  $listeners = @()
+  foreach ($port in 47831,48831) {
+    $ports = @(Get-NetTCPConnection -State Listen -LocalPort $port -ErrorAction SilentlyContinue)
+    $pids = @($ports.OwningProcess | Select-Object -Unique)
+    if ($pids.Count -ne 1) { throw 'CORE_LISTENER_IDENTITY' }
+    $proc = Get-CimInstance Win32_Process -Filter "ProcessId=$($pids[0])"
+    if ($proc.Name -cne 'node.exe' -or $proc.ExecutablePath -cne 'C:\Program Files\nodejs\node.exe') { throw 'CORE_IMAGE_IDENTITY' }
+    $listeners += @{port=$port;pid=[int]$proc.ProcessId;created=[string]$proc.CreationDate;image=[string]$proc.ExecutablePath}
+  }
+  return [ordered]@{version='0.10.6';configSha256=$Core.configSha256;routeSha256=$Core.routeSha256;sourcePins=$sourcePins;protectedTaskXmlSha256=$taskSha;listeners=$listeners;pausedUpdaterAbsent=$true}
+}
+function Assert-CompanionCoreUnchanged([object]$Before, [hashtable]$Core) {
+  $after = Get-CompanionCoreSnapshot $Core
+  if (($Before | ConvertTo-Json -Depth 8 -Compress) -cne ($after | ConvertTo-Json -Depth 8 -Compress)) { throw 'CORE_OR_SUPERVISOR_CHANGED_NO_PROMOTION' }
+  return $after
+}
+function Assert-CompanionInstalledPayload([string]$ReleaseRoot, [hashtable]$Manifest) {
+  Assert-CompanionOwnerAcl $ReleaseRoot
+  $allowed = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+  foreach ($entry in $Manifest.files) {
+    $relative = Convert-CompanionRelative $entry.path
+    [void]$allowed.Add($relative)
+    $path = Join-Path $ReleaseRoot $relative
+    $stream = [CommanderCompanionInstallV1.Native]::OpenRegularRead($path)
+    try {
+      [CommanderCompanionInstallV1.Native]::VerifyRegular($stream.SafeFileHandle)
+      $sha = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($stream)).ToLowerInvariant()
+      if ($stream.Length -ne $entry.bytes -or $sha -cne $entry.sha256) { throw 'INSTALLED_PAYLOAD_DRIFT' }
+    } finally { $stream.Dispose() }
+    Assert-CompanionOwnerAcl $path
+  }
+  foreach ($name in 'RELEASE_MANIFEST.json','INSTALL_INTENT.json','INSTALL_RECEIPT.json','INSTALL_FAILURE.json','DISABLE_INTENT.json','DISABLE_RECEIPT.json','DISABLE_FAILURE.json') { [void]$allowed.Add($name) }
+  foreach ($item in Get-ChildItem -LiteralPath $ReleaseRoot -Recurse -Force) {
+    if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { throw 'INSTALLED_TREE_REPARSE' }
+    if (-not $item.PSIsContainer) {
+      $relative = [IO.Path]::GetRelativePath($ReleaseRoot,$item.FullName)
+      if (-not $allowed.Contains($relative)) { throw 'INSTALLED_UNEXPECTED_MEMBER' }
+      $stream = [CommanderCompanionInstallV1.Native]::OpenRegularRead($item.FullName)
+      try { [CommanderCompanionInstallV1.Native]::VerifyRegular($stream.SafeFileHandle) } finally { $stream.Dispose() }
+    }
+    Assert-CompanionOwnerAcl $item.FullName
+  }
+}
+if ($LibraryOnly) { return }
+
+$result = [ordered]@{schema=1;operation='INSTALL_VERSIONED_SAEED_COMPANION';phase='PREFLIGHT';installed=$false;coreUpgraded=$false;version='1.0.0';coreVersion='0.10.6';coreChanged=$false;taskCreated=$false;taskRun=$false;modelCalls=0;network=$false;automaticRetry=$false;whole='NOT_FINAL'}
+$handles = [Collections.Generic.List[IDisposable]]::new()
+$sources = [Collections.Generic.List[object]]::new()
+$createdRelease = $false; $releaseRoot = $null; $heldManifest = $null
+try {
+  [void](Assert-CompanionIdentity)
+  $CandidateRoot = [IO.Path]::GetFullPath($CandidateRoot)
+  Hold-CompanionAncestors $CandidateRoot $handles
+  $manifestPath = Join-Path $CandidateRoot 'RELEASE_MANIFEST.json'
+  # Keep the exact manifest identity non-write-share locked through completion.
+  $heldManifest = [CommanderCompanionInstallV1.Native]::OpenRegularRead($manifestPath)
+  [CommanderCompanionInstallV1.Native]::VerifyRegular($heldManifest.SafeFileHandle)
+  $manifest = Read-CompanionJson $manifestPath
+  [void](Assert-CompanionPayloadDeclarations $manifest)
+  if ($manifest.schema -ne 1 -or $manifest.version -cne '1.0.0' -or $manifest.files -isnot [array] -or $manifest.files.Count -lt 1 -or $manifest.files.Count -gt 512 -or $manifest.core -isnot [hashtable]) { throw 'RELEASE_MANIFEST_SCHEMA' }
+  if ($manifest.nativeAcceptance.status -cne 'PASS') { throw 'NATIVE_ACCEPTANCE_REQUIRED_NOT_WHOLE_FINAL' }
+  Assert-CompanionSha $manifest.nativeAcceptance.receiptSha256
+  $acceptanceRelative = Convert-CompanionRelative $manifest.nativeAcceptance.receiptPath
+  $seen = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+  $total = 0L; $acceptanceListed = $false
+  foreach ($entry in $manifest.files) {
+    $relative = Convert-CompanionRelative $entry.path
+    if (-not $seen.Add($relative)) { throw 'PAYLOAD_DUPLICATE_OR_CASE_ALIAS' }
+    Assert-CompanionSha $entry.sha256
+    if (($entry.bytes -isnot [long] -and $entry.bytes -isnot [int]) -or $entry.bytes -lt 0 -or $entry.bytes -gt 16777216) { throw 'PAYLOAD_BYTE_LIMIT' }
+    $total += $entry.bytes
+    if ($total -gt 134217728) { throw 'RELEASE_TOTAL_BYTE_LIMIT' }
+    $sourcePath = Join-Path $CandidateRoot $relative
+    Hold-CompanionAncestors (Split-Path -Parent $sourcePath) $handles
+    $stream = [CommanderCompanionInstallV1.Native]::OpenRegularRead($sourcePath)
+    $sources.Add(@{path=$relative;stream=$stream;bytes=$entry.bytes;sha256=$entry.sha256})
+    [CommanderCompanionInstallV1.Native]::VerifyRegular($stream.SafeFileHandle)
+    $sha = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($stream)).ToLowerInvariant(); $stream.Position = 0
+    [CommanderCompanionInstallV1.Native]::VerifyRegular($stream.SafeFileHandle)
+    if ($stream.Length -ne $entry.bytes -or $sha -cne $entry.sha256) { throw 'SOURCE_PIN_DRIFT' }
+    if ($relative -ceq $acceptanceRelative) {
+      if ($entry.sha256 -cne $manifest.nativeAcceptance.receiptSha256) { throw 'ACCEPTANCE_MANIFEST_PIN' }
+      $acceptanceListed = $true
+    }
+  }
+  foreach ($relative in $seen) {
+    $prefix = [IO.Path]::GetDirectoryName($relative)
+    while ($prefix) {
+      if ($seen.Contains($prefix)) { throw 'PAYLOAD_FILE_DIRECTORY_PREFIX_COLLISION' }
+      $prefix = [IO.Path]::GetDirectoryName($prefix)
+    }
+  }
+  if (-not $acceptanceListed) { throw 'ACCEPTANCE_RECEIPT_MUST_BE_MANIFEST_MEMBER' }
+  $acceptance = Read-CompanionJson (Join-Path $CandidateRoot $acceptanceRelative)
+  if ($acceptance.status -isnot [string] -or $acceptance.status -cnotmatch '^PASS(?:_|$)') { throw 'NATIVE_RECEIPT_NOT_ACCEPTED' }
+  $heldManifest.Position = 0
+  $manifestSha = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($heldManifest)).ToLowerInvariant()
+  $heldManifest.Position = 0
+  $result.manifestSha256 = $manifestSha; $result.nativeAcceptanceSha256 = $manifest.nativeAcceptance.receiptSha256
+  $releaseRoot = Join-Path (Join-Path $script:CompanionInstallBase 'companions') ('v1.0.0-'+$manifestSha.Substring(0,12))
+  $result.releaseRoot = $releaseRoot
+  $result.expectedTaskName = 'Commander-Saeed-Companion-'+$manifestSha.Substring(0,12)
+  Hold-CompanionAncestors $script:CompanionCoreRoot $handles
+  Hold-CompanionAncestors (Split-Path -Parent $script:CompanionConfigPath) $handles
+  Hold-CompanionAncestors (Split-Path -Parent $script:CompanionRoutePath) $handles
+  Hold-CompanionAncestors (Split-Path -Parent $releaseRoot) $handles
+  $before = Get-CompanionCoreSnapshot $manifest.core; $result.coreBefore = $before
+  if (Test-Path -LiteralPath $releaseRoot) {
+    $handles.Add([CommanderCompanionInstallV1.Native]::HoldDirectory($releaseRoot))
+    $receiptPath = Join-Path $releaseRoot 'INSTALL_RECEIPT.json'
+    if (-not (Test-Path -LiteralPath $receiptPath -PathType Leaf)) { throw 'EXISTING_RELEASE_UNCERTAIN_RECONCILE_ONLY_NO_OVERWRITE' }
+    $old = Read-CompanionJson $receiptPath
+    if ($old.status -cne 'PASS_INSTALLED_VERSIONED_COMPANION_NOT_CORE_UPGRADE' -or $old.manifestSha256 -cne $manifestSha -or $old.releaseRoot -cne $releaseRoot -or (Get-CompanionSha (Join-Path $releaseRoot 'RELEASE_MANIFEST.json')) -cne $manifestSha) { throw 'EXISTING_RECEIPT_UNCERTAIN_RECONCILE_ONLY' }
+    Assert-CompanionInstalledPayload $releaseRoot $manifest
+    $result.coreAfter = Assert-CompanionCoreUnchanged $before $manifest.core
+    $result.status = 'PASS_EXISTING_EXACT_RELEASE_RECONCILED_NO_WRITE'; $result.installed = $true
+  } elseif ($PreflightOnly) {
+    $result.coreAfter = Assert-CompanionCoreUnchanged $before $manifest.core
+    $result.status = 'PASS_PREFLIGHT_ONLY_NO_INSTALL'; $result.payloadFiles = $manifest.files.Count; $result.payloadBytes = $total
+  } else {
+    $parent = Split-Path -Parent $releaseRoot
+    if (-not (Test-Path -LiteralPath $parent)) { New-CompanionPrivateDirectory $parent $handles }
+    else { Assert-CompanionOwnerAcl $parent }
+    New-CompanionPrivateDirectory $releaseRoot $handles; $createdRelease = $true
+    $result.phase = 'INSTALL_INTENT'
+    Write-CompanionNewJson (Join-Path $releaseRoot 'INSTALL_INTENT.json') $result
+    foreach ($source in $sources) {
+      $targetPath = Join-Path $releaseRoot $source.path
+      $relativeDir = [IO.Path]::GetDirectoryName($source.path)
+      if ($relativeDir) {
+        $runningDir = $releaseRoot
+        foreach ($part in $relativeDir.Split('\')) {
+          $runningDir = Join-Path $runningDir $part
+          if (-not (Test-Path -LiteralPath $runningDir)) { New-CompanionPrivateDirectory $runningDir $handles }
+          else { Assert-CompanionOwnerAcl $runningDir }
+        }
+      }
+      $target = [IO.File]::Open($targetPath,[IO.FileMode]::CreateNew,[IO.FileAccess]::ReadWrite,[IO.FileShare]::None)
+      try {
+        $source.stream.Position = 0; $source.stream.CopyTo($target); $target.Flush($true)
+        [CommanderCompanionInstallV1.Native]::VerifyRegular($target.SafeFileHandle)
+        $target.Position = 0
+        $sha = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($target)).ToLowerInvariant()
+        if ($target.Length -ne $source.bytes -or $sha -cne $source.sha256) { throw 'DESTINATION_COPY_HASH' }
+        [CommanderCompanionInstallV1.Native]::VerifyRegular($source.stream.SafeFileHandle)
+      } finally { $target.Dispose() }
+      Protect-CompanionPayloadFile $targetPath
+    }
+    $target = [IO.File]::Open((Join-Path $releaseRoot 'RELEASE_MANIFEST.json'),[IO.FileMode]::CreateNew,[IO.FileAccess]::ReadWrite,[IO.FileShare]::None)
+    try { $heldManifest.Position = 0; $heldManifest.CopyTo($target); $target.Flush($true); [CommanderCompanionInstallV1.Native]::VerifyRegular($target.SafeFileHandle) } finally { $target.Dispose() }
+    Protect-CompanionPayloadFile (Join-Path $releaseRoot 'RELEASE_MANIFEST.json')
+    if ((Get-CompanionSha (Join-Path $releaseRoot 'RELEASE_MANIFEST.json')) -cne $manifestSha) { throw 'INSTALLED_MANIFEST_PIN' }
+    $result.phase = 'POST_VALIDATION'
+    Assert-CompanionInstalledPayload $releaseRoot $manifest
+    $result.coreAfter = Assert-CompanionCoreUnchanged $before $manifest.core
+    $result.status = 'PASS_INSTALLED_VERSIONED_COMPANION_NOT_CORE_UPGRADE'; $result.installed = $true
+    $result.payloadFiles = $manifest.files.Count; $result.payloadBytes = $total; $result.taskEnrollment = 'NOT_REQUESTED_OR_PERFORMED'
+    $result.phase = 'COMPLETE'; $result.completedAtUtc = [DateTime]::UtcNow.ToString('o')
+    Write-CompanionNewJson (Join-Path $releaseRoot 'INSTALL_RECEIPT.json') $result
+  }
+} catch {
+  $result.status = 'FAIL_INSTALL_PRESERVED_NO_DELETE_NO_RETRY'
+  $result.primaryError = @{class=$_.Exception.GetType().FullName;message=$_.Exception.Message;phase=$result.phase}
+  $result.reconcileRequired = $createdRelease
+  if ($createdRelease) {
+    try { Write-CompanionNewJson (Join-Path $releaseRoot 'INSTALL_FAILURE.json') $result }
+    catch { $result.secondaryCollectorError = $_.Exception.Message }
+  }
+} finally {
+  foreach ($source in $sources) { $source.stream.Dispose() }
+  if ($null -ne $heldManifest) { $heldManifest.Dispose() }
+  for ($i=$handles.Count-1; $i -ge 0; $i--) { $handles[$i].Dispose() }
+}
+$result | ConvertTo-Json -Depth 25 -Compress
+if ($result.status -notlike 'PASS_*') { exit 1 }

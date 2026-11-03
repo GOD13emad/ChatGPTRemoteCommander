@@ -1,0 +1,63 @@
+{
+  "schema": 1,
+  "revision": "SAEED-OWNED-BROWSER-R3",
+  "status": "ACCEPTED_COMPONENT_NOT_PRODUCTION_WIRED",
+  "capturedFrom": "Saeid local evidence workspace",
+  "acceptance": {
+    "guardTests": {
+      "pass": 10,
+      "fail": 0
+    },
+    "windowsModuleUrl": {
+      "pass": 1,
+      "fail": 0
+    },
+    "realSnapshots": 7,
+    "realPageSeconds": 60,
+    "helperExitCode": 0,
+    "forcedTermination": false,
+    "postScopedProcessCount": 0
+  },
+  "files": [
+    {
+      "path": "src/graceful-browser-client.mjs",
+      "sha256": "eeb8e6ba85a045a02f66450c51beb9bdefc48d482abc9568ec2c01773b224fe1",
+      "bytes": 3822
+    },
+    {
+      "path": "src/graceful-browser-close.mjs",
+      "sha256": "a7d8657dad4e57501bfbe240ffb0ed462cd3d208172352d619d40e98fa84c5ac",
+      "bytes": 1339
+    },
+    {
+      "path": "test/graceful-browser.test.mjs",
+      "sha256": "6206296c0759e7081c518e999e4b029e74b6c93c0dd23e2614bd98647803b3e6",
+      "bytes": 4585
+    },
+    {
+      "path": "test/windows-module-url.test.mjs",
+      "sha256": "bb0db9107f0efb0c50cf5fbe191a06335b9bc83b38378c9a52a5f42fb2a25d60",
+      "bytes": 575
+    },
+    {
+      "path": "tools/browser-control.mjs",
+      "sha256": "3b431b562056f417e82257df1d65a9218c5272a9f747373d46f1063a56b86fb8",
+      "bytes": 19321
+    }
+  ],
+  "productionWiring": false,
+  "wholeProductFinal": false,
+  "dependencies": [
+    {
+      "path": "deps/strict-status-json.mjs",
+      "sha256": "b0a5404d03c1386430dfef9d08d88b9c0f5ae719d715faedad5907efd654611a",
+      "bytes": 1276,
+      "reason": "packaging-only import rebind; focused Browser R3 tests requalified 11/11 PASS"
+    }
+  ],
+  "packagingDelta": {
+    "importRebound": true,
+    "productionWiring": false,
+    "requalification": "11/11 PASS"
+  }
+}

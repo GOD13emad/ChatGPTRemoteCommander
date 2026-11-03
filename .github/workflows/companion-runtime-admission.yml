@@ -1,0 +1,38 @@
+name: Companion runtime admission
+
+on:
+  push:
+    paths:
+      - 'experimental/project-companion-v1.1.2/**'
+      - '.github/workflows/companion-runtime-admission.yml'
+  pull_request:
+    paths:
+      - 'experimental/project-companion-v1.1.2/**'
+      - '.github/workflows/companion-runtime-admission.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+        node: ['22', '24']
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ matrix.node }}
+      - name: Parse portable admission
+        run: node --check experimental/project-companion-v1.1.2/src/runtime-admission.mjs
+      - name: Test portable admission without any native execution
+        run: node --test --test-reporter=tap --test-concurrency=1 experimental/project-companion-v1.1.2/test/runtime-admission.test.mjs
+      - name: Verify unchanged finite runner on its supported Node version
+        if: matrix.node == '24'
+        working-directory: experimental/project-companion-v1.1.2
+        run: node ci-source.mjs

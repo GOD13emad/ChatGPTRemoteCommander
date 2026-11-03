@@ -1,0 +1,54 @@
+{
+  "schema": 1,
+  "component": "Commander finite companion",
+  "componentVersion": "1.0.0",
+  "publicationKind": "PUBLIC_SOURCE_REVIEW_SNAPSHOT_NOT_INSTALLER",
+  "installedCoreVersion": "0.10.6",
+  "coreFixtureCommit": "3546256e8e7c494d140bc9c33259ddbf345639d3",
+  "repositoryCoreVersion": "0.10.8",
+  "historicalInstalledAcceptance": {
+    "modelCalls": 2,
+    "actions": 2,
+    "elapsedMs": 16084,
+    "workflowEvents": 7,
+    "sqliteIntegrityDatabases": 3,
+    "uniqueRegressionTests": 226,
+    "beforeInstall": {
+      "passed": 226,
+      "failed": 0,
+      "skipped": 0
+    },
+    "afterInstall": {
+      "passed": 226,
+      "failed": 0,
+      "skipped": 0
+    },
+    "realWindowsNativeTests": 10,
+    "rollback": "SUPERSEDED_RELEASE_DISABLED_BEFORE_MODEL_HOST_OR_FILE_EFFECT",
+    "qualificationTaskFutureDispatch": "DISABLED"
+  },
+  "privateReceiptSha256": {
+    "INDEPENDENT_INSTALLED.json": "f8ef6ffd7774876a6cce73e1924e57e7f8ff9adeb7d51363b7323298d2548219",
+    "regression-after-install/RETURN.json": "e25dbe3c1bdb66ee6ab1d84b757c36e0d0abb4d8eabe2fff6c06e3a60fe5c984",
+    "native-r3/NATIVE_ACCEPTANCE.json": "afbca9ab0ba5250f6aaab0711829cf4c33aca55fdb350feaa9a70d26a2e020c4",
+    "ROLLBACK_CANARY.json": "681dbfe37468f21f14cb5052bfe457ec47d8aa31f39d38e01eaad313a90d3caf",
+    "FINAL_TASK_RECEIPT.json": "598c9270e45c621f28fa4ae58a332ea90d542c32107e68b0ee519f0b53b5b9f1"
+  },
+  "notAccepted": [
+    "generic project autonomy",
+    "multi-hour unattended execution",
+    "reboot resume",
+    "same-chat stream retry recovery",
+    "all transient window absence",
+    "compatibility with core 0.10.8"
+  ],
+  "scope": {
+    "games": "USER_PAUSED",
+    "video": "USER_PAUSED",
+    "otherHosts": "EXCLUDED",
+    "heartbeat": "CANCELLED_DO_NOT_REACTIVATE"
+  },
+  "whole": "NOT_FINAL",
+  "rawPrivateEvidencePublished": false,
+  "publicTestCopiesRequireFreshAcceptance": true
+}

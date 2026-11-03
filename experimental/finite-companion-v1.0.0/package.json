@@ -1,0 +1,12 @@
+{
+  "name": "commander-finite-companion-source-review",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "description": "Self-contained finite companion source review; not a portable installer or general agent",
+  "engines": {"node": ">=24"},
+  "scripts": {
+    "test": "node --test --test-concurrency=1 test/bounded-planner.test.mjs test/companion-policy.test.mjs test/core-engine-adapter.test.mjs test/model-contract.test.mjs test/native-process.test.mjs test/planner-admission.test.mjs test/status-transport.test.mjs"
+  }
+}

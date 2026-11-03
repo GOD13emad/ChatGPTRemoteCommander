@@ -1,0 +1,72 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import crypto from 'node:crypto';
+import {execFileSync} from 'node:child_process';
+import {fileURLToPath} from 'node:url';
+const cli=fileURLToPath(new URL('./durable-send.mjs',import.meta.url));
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+function call(root,...args){const raw=execFileSync(process.execPath,[cli,...args],{encoding:'utf8',timeout:10000,env:{...process.env,COMMANDER_TRANSFER_HOME:root}}).trim();return JSON.parse(raw);}
+async function done(root,peer,id){
+ for(let i=0;i<200;i++){
+  const r=call(root,'job-status','--peer',peer,'--id',id);
+  if(r.status==='PUBLISHED')return r;
+  if(r.status==='FAILED'||r.status==='CANCELLED')throw Error(JSON.stringify(r));
+  await sleep(60);
+ }
+ throw Error('JOB_TIMEOUT');
+}
+test('durable job stages multi-MiB file without synchronous RPC timeout and publishes verified manifest',async()=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'ctmesh-durable-'));
+ try{
+  const allowed=path.join(root,'source');fs.mkdirSync(allowed);
+  fs.writeFileSync(path.join(root,'node.json'),JSON.stringify({alias:'PC'}));
+  const file=path.join(allowed,'durable-test.bin');
+  const payload=crypto.randomBytes(24*1024*1024);
+  fs.writeFileSync(file,payload);
+  const start=Date.now();
+  const enqueue=call(root,'enqueue','--peer','Linux','--path',file,'--source-root',allowed,'--id','durable-001');
+  assert.equal(enqueue.status,'QUEUED');
+  assert.ok(Date.now()-start<7000);
+  const result=await done(root,'Linux','durable-001');
+  assert.equal(result.bytes,payload.length);
+  assert.equal(result.sha256,crypto.createHash('sha256').update(payload).digest('hex'));
+  const destination=path.join(root,'pairs','Linux','transfers','durable-001');
+  assert.deepEqual(fs.readFileSync(path.join(destination,'payload.bin')),payload);
+  const manifest=JSON.parse(fs.readFileSync(path.join(destination,'manifest.json'),'utf8'));
+  assert.equal(manifest.sha256,result.sha256);
+  assert.throws(()=>call(root,'enqueue','--peer','Linux','--path',file,'--source-root',allowed,'--id','durable-001'));
+  // Deterministic simulated crash: partial exists, journal is interrupted.
+  const jobDir=path.join(root,'jobs','Linux');
+  const original=JSON.parse(fs.readFileSync(path.join(jobDir,'durable-001.json'),'utf8'));
+  const resume={...original,id:'durable-resume-002',sha256:null,status:'INTERRUPTED',copiedBytes:1024*1024,pid:null};
+  fs.writeFileSync(path.join(jobDir,'durable-resume-002.json'),JSON.stringify(resume));
+  const staging=path.join(root,'staging','Linux','durable-resume-002.part');
+  fs.writeFileSync(staging,payload.subarray(0,1024*1024));
+  const restarted=call(root,'resume','--peer','Linux','--id','durable-resume-002');
+  assert.equal(restarted.status,'QUEUED');
+  const finished=await done(root,'Linux','durable-resume-002');
+  assert.equal(finished.sha256,result.sha256);
+  // Crash at publish boundary: payload exists, journal incomplete, manifest absent.
+  const recover={...original,id:'durable-boundary-003',sha256:null,status:'INTERRUPTED',copiedBytes:payload.length,pid:null};
+  fs.writeFileSync(path.join(jobDir,'durable-boundary-003.json'),JSON.stringify(recover));
+  const partialDest=path.join(root,'pairs','Linux','transfers','durable-boundary-003');fs.mkdirSync(partialDest);
+  fs.copyFileSync(file,path.join(partialDest,'payload.bin'));
+  call(root,'resume','--peer','Linux','--id','durable-boundary-003');
+  const repaired=await done(root,'Linux','durable-boundary-003');
+  assert.equal(repaired.sha256,result.sha256);
+  assert.equal(JSON.parse(fs.readFileSync(path.join(partialDest,'manifest.json'),'utf8')).sha256,result.sha256);
+ }finally{fs.rmSync(root,{recursive:true,force:true});}
+});
+test('durable enqueue refuses source outside allowlisted root',()=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'ctmesh-durable-deny-'));
+ try{
+  const allow=path.join(root,'allowed');fs.mkdirSync(allow);
+  fs.writeFileSync(path.join(root,'node.json'),JSON.stringify({alias:'PC'}));
+  const outside=path.join(root,'outside.txt');fs.writeFileSync(outside,'secret');
+  assert.throws(()=>call(root,'enqueue','--peer','Linux','--path',outside,'--source-root',allow,'--id','durable-unsafe-001'));
+  assert.equal(fs.existsSync(path.join(root,'jobs','Linux','durable-unsafe-001.json')),false);
+ }finally{fs.rmSync(root,{recursive:true,force:true});}
+});

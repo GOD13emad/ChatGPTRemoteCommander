@@ -1,0 +1,65 @@
+{
+  "host": "127.0.0.1",
+  "port": 47831,
+  "allowedRoots": [
+    "%USERPROFILE%\\source\\repos"
+  ],
+  "allowedPrograms": [
+    "git",
+    "node",
+    "npm",
+    "npx",
+    "python",
+    "py",
+    "dotnet",
+    "cmake",
+    "ninja"
+  ],
+  "maxReadBytes": 524288,
+  "maxWriteBytes": 524288,
+  "maxCommandMs": 120000,
+  "asyncOperations": {
+    "enabled": true,
+    "backgroundFirst": true,
+    "maxOutputBytes": 16777216
+  },
+  "auditLog": "var/audit.jsonl",
+  "powerMode": {
+    "enabled": false,
+    "fullFilesystem": false,
+    "allowShell": false,
+    "allowProcessControl": false,
+    "allowPermanentDelete": false,
+    "guiControl": {
+      "enabled": false,
+      "allowScreenshot": true,
+      "allowMouse": true,
+      "allowKeyboard": true,
+      "allowWindowFocus": true,
+      "interactionPolicy": "explicit-current-request-only",
+      "defaultSessionMode": "observe",
+      "backgroundPreferred": true,
+      "workflowTakeoverAllowed": false
+    },
+    "browserControl": {
+      "enabled": false,
+      "allowNavigate": true,
+      "allowInput": true,
+      "allowScreenshot": true,
+      "backgroundFirst": true,
+      "foregroundFallback": "explicit-current-request-only",
+      "workflowBrowserAllowed": false,
+      "userBrowserProfileReuse": false,
+      "savedPasswordExtraction": false,
+      "allowForegroundFallback": true
+    }
+  },
+  "auditMaxBytes": 8388608,
+  "auditKeepFiles": 3,
+  "autoUpdate": {
+    "enabled": true,
+    "zeroDowntime": true,
+    "channel": "stable",
+    "intervalMinutes": 15
+  }
+}

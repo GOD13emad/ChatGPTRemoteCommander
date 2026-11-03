@@ -1,0 +1,4 @@
+import net from 'node:net';
+function parse(argv){const o={start:48831,end:51999};for(let i=0;i<argv.length;i++){const a=argv[i],v=argv[++i];if(v===undefined)throw new Error('PORT_ARGUMENT');if(a==='--start')o.start=Number(v);else if(a==='--end')o.end=Number(v);else throw new Error('PORT_ARGUMENT');}if(!Number.isSafeInteger(o.start)||!Number.isSafeInteger(o.end)||o.start<1024||o.end>65535||o.start>o.end)throw new Error('PORT_RANGE');return o;}
+function available(port){return new Promise(resolve=>{const s=net.createServer();s.unref();s.once('error',()=>resolve(false));s.listen({host:'127.0.0.1',port,exclusive:true},()=>s.close(()=>resolve(true)));});}
+const o=parse(process.argv.slice(2));let found=0;for(let p=o.start;p<=o.end;p++){if(await available(p)){found=p;break;}}if(!found)throw new Error('NO_FREE_PORT');console.log(found);

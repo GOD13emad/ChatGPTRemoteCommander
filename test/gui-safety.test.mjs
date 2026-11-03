@@ -1,0 +1,632 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import { guiToolDefinitions, validateGuiInput } from '../src/gui-contract.mjs';
+import { createGuiController } from '../src/gui-tools-windows.mjs';
+import { createGuiProcessClient, runGuiProcess } from '../src/gui-process.mjs';
+import { validateTransport } from '../src/transport-guard.mjs';
+
+const config = () => ({ config: { powerMode: { enabled: true, guiControl: { enabled: true, allowScreenshot: true, allowMouse: true, allowKeyboard: true, allowWindowFocus: true } } } });
+// Deliberately a protocol fixture, NOT proof of real screen capture.
+const image = () => ({ ok: true, data: Buffer.from('89504e470d0a1a0a00000000', 'hex').toString('base64'), mimeType: 'image/png', width: 800, height: 600, snapshot: { screenIndex: 0, bounds: { left: -800, top: 0, width: 800, height: 600 }, foreground: '123', processId: 10 } });
+function memoryIncidentStore() {
+  let active = null, sequence = 0;
+  return {
+    pending: async () => active,
+    begin: async tool => {
+      if (active) throw new Error('GUI_INCIDENT_UNRESOLVED');
+      active = { id: 'fixture-'+(++sequence), tool };
+      return active;
+    },
+    resolve: async handle => {
+      if (!active || active.id !== handle?.id || active.tool !== handle?.tool)
+        throw new Error('GUI_INCIDENT_RESOLUTION_MISMATCH');
+      active = null;
+    }
+  };
+}
+function fixtureTakeoverProvider(platform='win32') {
+  const providerId='fixture-native-'+platform;
+  const session={ownerPrincipal:'fixture-owner',sessionId:'fixture-session',seatId:'fixture-seat',displayId:'fixture-display',interactive:true,ownerAuthenticated:true};
+  const grant=async ({ttlSeconds=60}={})=>{
+    const nowMs=Date.now();
+    return {
+      ok:true,
+      takeoverEvidence:{
+        provider:{providerId,platform,transport:'synthetic-test-provider',session,
+          activityEvidenceSource:'physical',activityEvidenceIncludesSynthetic:false,isolationAuthority:null,
+          capabilities:{observe:true,screenshot:true,activityDetection:true,physicalInputProtection:true,
+            emergencyRelease:true,pointer:true,keyboard:true,semanticInvoke:true,isolatedDesktop:false}},
+        expectedSession:session,
+        activityEvidence:{source:'physical',reliable:true,excludesSyntheticInput:true,observedAtMs:nowMs,idleMs:60000},
+        explicitOwnerApproval:false
+      },
+      inputProtectionReceipt:{active:true,kind:'NATIVE_PHYSICAL_INPUT_PROTECTION',providerId,
+        sessionId:session.sessionId,leaseId:'fixture-native-protection-lease',
+        releaseOnAgentExit:true,releaseOnEmergency:true,expiresAtMs:nowMs+ttlSeconds*1000}
+    };
+  };
+  grant.release=async()=>({ok:true,released:true});
+  return grant;
+}
+function setup(custom = {}) {
+  let time = 1000, counter = 0, stop = false;
+  const calls = [];
+  const c = createGuiController({ platform: 'win32', now: () => time, token: () => (++counter).toString(16).padStart(48, '0'), isStopped: async () => stop,
+    invoke: async r => { calls.push(r); return r.action === 'screenshot' ? image() : { ok: true, available: true }; },
+    incidentStore: memoryIncidentStore(), takeoverProvider:fixtureTakeoverProvider(custom.platform??'win32'), ...custom });
+  const ctx = config();
+  const run = (name, args = {}) => c.execute(ctx, name, args);
+  return { ctx, run, calls, time: n => { time += n; }, stop: () => { stop = true; } };
+}
+async function prepared(s) {
+  const { lease } = await s.run('gui_session_begin', { mode:'takeover', explicitUserAuthorization:'Explicit test authorization for disposable fixture' });
+  const shot = await s.run('gui_screenshot', { lease });
+  return { lease, frame: shot.__structuredContent.frame };
+}
+
+test('15 unique, closed-schema GUI tools; mutating input is marked destructive', () => {
+  assert.equal(guiToolDefinitions.length, 15);
+  assert.equal(new Set(guiToolDefinitions.map(d => d.name)).size, 15);
+  for (const d of guiToolDefinitions) assert.equal(d.inputSchema.additionalProperties, false);
+  for (const name of ['gui_mouse_click','gui_mouse_drag','gui_key_press','gui_type_text','gui_focus_window']) assert.equal(guiToolDefinitions.find(d => d.name === name).annotations.destructiveHint, true);
+});
+const invalid = [
+  ['gui_screenshot', { lease:'x', action:'typeText', text:'NOT_SENT' }],
+  ['gui_mouse_move', { lease:'x', frame:'y', action:'screenshot', x:0,y:0 }],
+  ['gui_mouse_move', { lease:'x', frame:'y', x:NaN,y:0 }],
+  ['gui_mouse_move', { lease:'x', frame:'y', x:Infinity,y:0 }],
+  ['gui_mouse_move', { lease:'x', frame:'y', x:'10',y:0 }],
+  ['gui_mouse_move', { lease:'x', frame:'y', x:0.5,y:0 }],
+  ['gui_mouse_move', { lease:'x', frame:'y', x:1.01,y:0,coordinateMode:'relative' }],
+  ['gui_mouse_click', { lease:'x', frame:'y', x:0,y:0,clicks:5000 }],
+  ['gui_mouse_click', { lease:'x', frame:'y', x:0,y:0,button:'other' }],
+  ['gui_mouse_drag', { lease:'x', frame:'y', from:{}, to:{} }],
+  ['gui_mouse_drag', { lease:'x', frame:'y', from:{x:0,y:0,action:'typeText'}, to:{x:0,y:0} }],
+  ['gui_mouse_drag', { lease:'x', frame:'y', from:{x:0,y:0},to:{x:1,y:1},durationMs:100000 }],
+  ['gui_mouse_delta', { lease:'x', frame:'y', dx:1001,dy:0 }],
+  ['gui_mouse_scroll', { lease:'x', frame:'y', delta:100000 }],
+  ['gui_key_press', { lease:'x', frame:'y', keys:['CTRL','BOGUS'] }],
+  ['gui_key_press', { lease:'x', frame:'y', keys:['CTRL','CONTROL'] }],
+  ['gui_key_press', { lease:'x', frame:'y', keys:['ESC'] }],
+  ['gui_key_press', { lease:'x', frame:'y', keys:['A'],holdMs:Infinity }],
+  ['gui_type_text', { lease:'x', frame:'y', text:'A'.repeat(1025) }],
+  ['gui_type_text', { lease:'x', frame:'y', text:'A'.repeat(50),intervalMs:100 }],
+  ['gui_type_text', { lease:'x', frame:'y', text:'\u0000' }],
+  ['gui_type_text', { lease:'x', frame:'y', text:'\ud800' }],
+  ['gui_focus_window', { lease:'x', frame:'y' }],
+  ['gui_focus_window', { lease:'x', frame:'y',handle:'5',titleContains:'Any' }],
+  ['gui_focus_window', { lease:'x', frame:'y',handle:'0' }],
+  ['gui_screenshot', { lease:'x',screenIndex:-1 }],
+  ['gui_screenshot', { lease:'x',maxWidth:100000 }],
+  ['gui_status', { __mcpContent:[] }],
+  ['gui_status', JSON.parse('{"__proto__":{"x":1}}')],
+  ['gui_status', null],
+  ['gui_session_begin', { ttlSeconds:999999 }],
+  ['gui_session_begin', { mode:'takeover' }],
+  ['gui_session_begin', { mode:'observe', explicitUserAuthorization:'not allowed here' }],
+  ['gui_no_such_tool', {}]
+];
+for (const [i,[name,args]] of invalid.entries()) test(`reject invalid request ${i+1}: ${name}`, async () => {
+  const s = setup(); await assert.rejects(s.run(name,args), /GUI_/); assert.equal(s.calls.length,0);
+});
+test('literal multilingual Unicode + punctuation accepted, no shell interpretation', () => {
+  const text = 'سلام +{}[] test 日本語 😀\n';
+  assert.equal(validateGuiInput('gui_type_text', {lease:'l',frame:'f',text}).text,text);
+});
+test('key aliases are validated and normalized before any injection', () => {
+  assert.deepEqual(validateGuiInput('gui_key_press',{lease:'l',frame:'f',keys:['Control','a']}).keys,['CTRL','A']);
+});
+test('zero-interference desktop policy is machine-readable and fail-closed', async () => {
+  const s=setup();
+  const status=await s.run('gui_status');
+  assert.equal(status.policy.interactionPolicy,'explicit-current-request-only');
+  assert.equal(status.policy.defaultSessionMode,'observe');
+  assert.equal(status.policy.backgroundPreferred,true);
+  assert.equal(status.policy.workflowTakeoverAllowed,false);
+  assert.equal(status.policy.foregroundInterferenceByDefault,false);
+});
+
+test('GUI not enabled is fail closed even if Power Mode enabled', async () => {
+  const s=setup(); s.ctx.config.powerMode.guiControl.enabled=false;
+  assert.equal((await s.run('gui_status')).available,false);
+  await assert.rejects(s.run('gui_session_begin'),/GUI_DISABLED/); assert.equal(s.calls.length,0);
+});
+test('unsupported platforms do not claim native GUI support', async () => {
+  const s=setup({platform:'darwin'}); assert.equal((await s.run('gui_status')).reason,'PLATFORM_BACKEND_UNSUPPORTED');
+});
+test('Linux controller exposes the GNOME backend when the native helper is ready', async () => {
+  const s=setup({platform:'linux',invoke:async r=>r.action==='status'?{ok:true,available:true,backend:'gnome-shell-wayland',screens:[{index:0,left:0,top:0,width:1920,height:1080,primary:true}]}:image()});
+  const status=await s.run('gui_status');
+  assert.equal(status.available,true);assert.equal(status.backend,'gnome-shell-wayland');assert.equal(status.enabled,true);
+});
+test('disabled screenshot capability is enforced before invoking helper', async () => {
+  const s=setup(); const {lease}=await s.run('gui_session_begin'); s.ctx.config.powerMode.guiControl.allowScreenshot=false;
+  await assert.rejects(s.run('gui_screenshot',{lease}),/GUI_CAPABILITY_DISABLED/); assert.equal(s.calls.length,1);
+});
+test('read-only window enumeration is independent of focus and input permissions',async()=>{
+  const s=setup();
+  const gui=s.ctx.config.powerMode.guiControl;
+  gui.allowWindowEnumeration=true;
+  gui.allowWindowFocus=false;
+  gui.allowMouse=false;
+  gui.allowKeyboard=false;
+  const policy=await s.run('gui_status');
+  assert.equal(policy.policy.allowWindowEnumeration,true);
+  assert.equal(policy.policy.allowWindowFocus,false);
+  const {lease}=await s.run('gui_session_begin',{mode:'observe'});
+  const windows=await s.run('gui_list_windows',{lease});
+  assert.equal(windows.ok,true);
+  assert.deepEqual(s.calls.map(c=>c.action),['status','status','listWindows']);
+  await assert.rejects(s.run('gui_focus_window',{lease,frame:'unused',handle:'1'}),/GUI_CAPABILITY_DISABLED/);
+  await assert.rejects(s.run('gui_mouse_click',{lease,frame:'unused',x:1,y:1}),/GUI_CAPABILITY_DISABLED/);
+  assert.deepEqual(s.calls.map(c=>c.action),['status','status','listWindows']);
+  await s.run('gui_session_end',{lease});
+});
+test('window enumeration must be explicitly permitted without legacy focus grant',async()=>{
+  const s=setup();
+  const gui=s.ctx.config.powerMode.guiControl;
+  gui.allowWindowEnumeration=false;
+  gui.allowWindowFocus=false;
+  const {lease}=await s.run('gui_session_begin',{mode:'observe'});
+  await assert.rejects(s.run('gui_list_windows',{lease}),/GUI_CAPABILITY_DISABLED/);
+  assert.deepEqual(s.calls.map(c=>c.action),['status']);
+  await s.run('gui_session_end',{lease});
+});
+test('legacy allowWindowFocus true preserves read-only window listing while migration is pending',async()=>{
+  const s=setup();
+  delete s.ctx.config.powerMode.guiControl.allowWindowEnumeration;
+  const {lease}=await s.run('gui_session_begin',{mode:'observe'});
+  assert.equal((await s.run('gui_list_windows',{lease})).ok,true);
+  assert.equal((await s.run('gui_status')).policy.allowWindowEnumeration,true);
+  await s.run('gui_session_end',{lease});
+});
+test('mouse permission cannot be escalated to keyboard via extra action', async () => {
+  const s=setup(); const a=await prepared(s); s.ctx.config.powerMode.guiControl.allowKeyboard=false;
+  await assert.rejects(s.run('gui_mouse_move',{...a,x:0,y:0,action:'typeText',text:'NO'}),/GUI_INVALID/);
+  await assert.rejects(s.run('gui_key_press',{...a,keys:['A']}),/GUI_CAPABILITY_DISABLED/);
+  assert.equal(s.calls.length,2);
+});
+test('legacy Full-Power persistent GUI flag does not replace current per-task owner admission', async () => {
+  const s=setup();
+  s.ctx.config.capabilityProfile={tier:'FULL_POWER',explicitlyAuthorized:true};
+  s.ctx.config.powerMode.guiControl.ownerAuthorizedTakeover=true;
+  const begun=await s.run('gui_session_begin');
+  assert.equal(begun.mode,'observe');
+  assert.equal(begun.authorization,'observe-default');
+});
+
+test('owner fallback is denied without explicit Full-Power profile authorization', async () => {
+  const s=setup();
+  s.ctx.config.powerMode.guiControl.ownerAuthorizedTakeover=true;
+  s.ctx.config.capabilityProfile={tier:'STANDARD',explicitlyAuthorized:false};
+  const begun=await s.run('gui_session_begin');
+  assert.equal(begun.mode,'observe');
+});
+
+test('observe-only is the default and blocks desktop mutation before native input', async () => {
+  const s=setup(); const {lease,mode}=await s.run('gui_session_begin'); assert.equal(mode,'observe');
+  const shot=await s.run('gui_screenshot',{lease});
+  await assert.rejects(s.run('gui_mouse_click',{lease,frame:shot.__structuredContent.frame,x:1,y:1}),/GUI_TAKEOVER_NOT_AUTHORIZED/);
+  assert.equal(s.calls.length,2); assert.equal(s.calls[0].action,'status'); assert.equal(s.calls[1].action,'screenshot');
+});
+test('takeover mode requires explicit authorization and permits guarded mutation', async () => {
+  const s=setup(); const a=await prepared(s); const r=await s.run('gui_mouse_click',{...a,x:1,y:1});
+  assert.equal(r.submitted,true); assert.equal(s.calls.at(-1).action,'click');
+});
+test('single desktop lease prevents second chat from taking control', async () => {
+  const s=setup(); await s.run('gui_session_begin'); await assert.rejects(s.run('gui_session_begin'),/GUI_LEASE_BUSY/);
+});
+test('session end and lease expiry close the persistent helper lifecycle', async () => {
+  let closed=0;
+  const s=setup({closeInvoke:()=>{closed++;}});
+  const {lease}=await s.run('gui_session_begin',{ttlSeconds:10});
+  await s.run('gui_session_end',{lease});
+  assert.equal(closed,1);
+  const b=await s.run('gui_session_begin',{ttlSeconds:10});
+  s.time(10001);
+  await assert.rejects(s.run('gui_session_renew',{lease:b.lease}),/GUI_LEASE_REQUIRED/);
+  assert.equal(closed,2);
+});
+test('wrong lease cannot end or renew another session', async () => {
+  const s=setup(); await s.run('gui_session_begin');
+  for (const n of ['gui_session_end','gui_session_renew','gui_screenshot']) await assert.rejects(s.run(n,{lease:'not-yours'}),/GUI_LEASE_REQUIRED/);
+});
+test('Unicode token lookalike never reaches timingSafeEqual with unequal buffers', async () => {
+  const s=setup(); await s.run('gui_session_begin'); await assert.rejects(s.run('gui_screenshot',{lease:'é'.repeat(48)}),/GUI_LEASE_REQUIRED/);
+});
+test('expired lease cannot be renewed, a new session gets a new token', async () => {
+  const s=setup(); const a=await s.run('gui_session_begin',{ttlSeconds:10}); s.time(10001);
+  await assert.rejects(s.run('gui_session_renew',{lease:a.lease}),/GUI_LEASE_REQUIRED/);
+  const b=await s.run('gui_session_begin'); assert.notEqual(a.lease,b.lease);
+});
+test('input without fresh frame refused', async () => {
+  const s=setup(); const {lease}=await s.run('gui_session_begin',{mode:'takeover',explicitUserAuthorization:'Explicit test authorization for fixture'});
+  await assert.rejects(s.run('gui_key_press',{lease,frame:'invented',keys:['A']}),/GUI_FRESH_FRAME/);
+});
+test('single-use frame permits exactly one input, screenshot remains in MCP image content', async () => {
+  const s=setup(); const a=await prepared(s);
+  const r=await s.run('gui_mouse_click',{...a,x:-500,y:20});
+  assert.equal(r.submitted,true); assert.equal(r.visualVerificationRequired,true);
+  assert.equal(s.calls.at(-1).action,'click'); assert.equal(s.calls.at(-1).expected.foreground,'123');
+  assert.equal(s.calls.at(-1).lease,undefined); assert.equal(s.calls.at(-1).frame,undefined);
+  await assert.rejects(s.run('gui_mouse_click',{...a,x:-500,y:20}),/GUI_FRESH_FRAME/);
+});
+test('stale screenshot rejected after 15 seconds', async () => {
+  const s=setup(); const a=await prepared(s); s.time(15001);
+  await assert.rejects(s.run('gui_key_press',{...a,keys:['A']}),/GUI_FRESH_FRAME/);
+});
+test('new screenshot invalidates the prior frame', async () => {
+  const s=setup(); const a=await prepared(s); await s.run('gui_screenshot',{lease:a.lease});
+  await assert.rejects(s.run('gui_key_press',{...a,keys:['A']}),/GUI_FRESH_FRAME/);
+});
+test('local emergency stop rejects capture and input without killing services', async () => {
+  const s=setup(); const a=await prepared(s); s.stop();
+  assert.equal((await s.run('gui_status')).blocked,true);
+  await assert.rejects(s.run('gui_key_press',{...a,keys:['A']}),/GUI_LOCAL_STOP/);
+  assert.equal(s.calls.length,2);
+});
+test('uncertain native outcome blocks all further input; only a fresh observe lease is allowed', async () => {
+  let count=0;
+  const s=setup({invoke:async r=>{count++;if(r.action==='status')return{ok:true,available:true};if(r.action==='screenshot')return image();throw new Error('GUI_SENDINPUT_FAILED');}});
+  const a=await prepared(s); await assert.rejects(s.run('gui_key_press',{...a,keys:['A']}),/GUI_SENDINPUT_FAILED/);
+  await assert.rejects(s.run('gui_screenshot',{lease:a.lease}),/GUI_LEASE_REQUIRED_OR_EXPIRED/);
+  const status=await s.run('gui_status');
+  assert.equal(status.uncertain,true);
+  assert.equal(status.inputAvailable,false);
+  assert.equal(status.readOnlyAvailable,true);
+  await assert.rejects(s.run('gui_session_begin',{mode:'takeover',explicitUserAuthorization:'Synthetic consent'}),/GUI_INCIDENT_REVIEW_REQUIRED/);
+  const next=await s.run('gui_session_begin',{mode:'observe'});
+  assert.equal(next.mode,'observe');
+  const shot=await s.run('gui_screenshot',{lease:next.lease});
+  await assert.rejects(s.run('gui_key_press',{lease:next.lease,frame:shot.__structuredContent.frame,keys:['A']}),/GUI_INCIDENT_REVIEW_REQUIRED/);
+  await s.run('gui_session_end',{lease:next.lease});
+  assert.equal(count,6);
+});
+
+test('Linux attested pre-dispatch click rejection preserves no-effect without replaying input',async()=>{
+  let clicks=0;
+  const s=setup({platform:'linux',invoke:async r=>{
+    if(r.action==='status')return {ok:true,available:true};
+    if(r.action==='screenshot')return image();
+    if(r.action==='click'){clicks++;throw Object.assign(new Error('GUI_FOREGROUND_OR_GEOMETRY_CHANGED'),{guiCode:'GUI_FOREGROUND_OR_GEOMETRY_CHANGED',guiNotApplied:true});}
+    return {ok:true};
+  }});
+  const a=await prepared(s);
+  await assert.rejects(s.run('gui_mouse_click',{...a,x:-720,y:10}),/GUI_FOREGROUND_OR_GEOMETRY_CHANGED/);
+  assert.notEqual((await s.run('gui_status')).uncertain,true);
+  await assert.rejects(s.run('gui_screenshot',{lease:a.lease}),/GUI_LEASE_REQUIRED_OR_EXPIRED/);
+  const next=await s.run('gui_session_begin',{mode:'observe'});
+  const fresh=await s.run('gui_screenshot',{lease:next.lease});
+  assert.ok(fresh.__structuredContent.frame);
+  assert.equal(clicks,1);
+  await s.run('gui_session_end',{lease:next.lease});
+});
+
+for(const [platform,tool,code,attested] of [
+  ['win32','gui_focus_window','GUI_FOCUS_NOT_CONFIRMED',true],
+  ['linux','gui_mouse_click','GUI_FOREGROUND_OR_GEOMETRY_CHANGED',false],
+  ['linux','gui_mouse_click','GUI_POINT_OUTSIDE_MONITOR',false],
+  ['linux','gui_key_press','GUI_FOREGROUND_OR_GEOMETRY_CHANGED',true],
+  ['linux','gui_mouse_click','GUI_SENDINPUT_FAILED',true]
+])test('unknown input is still fail-closed on '+platform+'/'+tool+'/'+code+'/'+attested,async()=>{
+  const s=setup({platform,invoke:async r=>{
+    if(r.action==='status')return {ok:true,available:true};
+    if(r.action==='screenshot')return image();
+    throw Object.assign(new Error(code),{guiCode:code,guiNotApplied:attested});
+  }});
+  const a=await prepared(s);
+  const args=tool==='gui_focus_window'?{...a,handle:'123'}:tool==='gui_key_press'?{...a,keys:['A']}:{...a,x:-750,y:5};
+  await assert.rejects(s.run(tool,args),/GUI_/);
+  const status=await s.run('gui_status');
+  assert.equal(status.uncertain,true);
+  assert.equal(status.inputAvailable,false);
+  const readOnly=await s.run('gui_session_begin',{mode:'observe'});
+  assert.equal(readOnly.mode,'observe');
+  const shot=await s.run('gui_screenshot',{lease:readOnly.lease});
+  await assert.rejects(s.run(tool,{...args,lease:readOnly.lease,frame:shot.__structuredContent.frame}),/GUI_INCIDENT_REVIEW_REQUIRED/);
+  await s.run('gui_session_end',{lease:readOnly.lease});
+});
+
+test('exact GNOME off-monitor native click preflight clears its own incident without input replay',async()=>{
+  let nativeCalls=0;
+  const s=setup({platform:'linux',invoke:async r=>{
+    if(r.action==='status')return {ok:true,available:true};
+    if(r.action==='screenshot')return image();
+    if(r.action==='click'){nativeCalls++;throw Object.assign(
+      new Error('GUI_POINT_OUTSIDE_MONITOR'),
+      {guiCode:'GUI_POINT_OUTSIDE_MONITOR',guiNotApplied:true}
+    );}
+    throw Error('UNEXPECTED_NATIVE_REQUEST');
+  }});
+  const a=await prepared(s);
+  await assert.rejects(s.run('gui_mouse_click',{...a,x:65000,y:65000}),/GUI_POINT_OUTSIDE_MONITOR/);
+  assert.equal(nativeCalls,1);
+  assert.notEqual((await s.run('gui_status')).uncertain,true);
+  const next=await s.run('gui_session_begin',{mode:'observe'});
+  assert.equal(next.mode,'observe');
+  await s.run('gui_session_end',{lease:next.lease});
+});
+
+test('Linux native no-effect attestation occurs before MutterInput dispatch',async()=>{
+  const source=await fs.readFile(new URL('../tools/gui-control-linux.py',import.meta.url),'utf8');
+  const begin=source.indexOf('def handle_input(req):');
+  const end=source.indexOf('\ndef ',begin+1);
+  assert.ok(begin>=0&&end>begin);
+  const body=source.slice(begin,end);
+  assert.ok(body.includes("if action=='click' and e.code=='GUI_FOREGROUND_OR_GEOMETRY_CHANGED'"));
+  assert.ok(body.includes("'effect':'NOT_APPLIED','phase':'PRE_DISPATCH_GUARD'"));
+  assert.ok(body.indexOf('observed=guard(req,deadline)')<body.indexOf('with MutterInput(req,deadline)'));
+  assert.ok(body.indexOf('guarded_click_point=point(req,observed)')<
+            body.indexOf('with MutterInput(req,deadline)'));
+  assert.ok(body.includes("if e.code=='GUI_POINT_OUTSIDE_MONITOR'"));
+
+});
+
+test('persistent helper propagates exact pre-dispatch no-effect receipt without auto retry',async()=>{
+  const folder=await fs.mkdtemp(path.join(os.tmpdir(),'rc-gui-noeffect-'));
+  let client;
+  try{
+    const helper=path.join(folder,'helper.cjs');
+    const source=[
+      "process.stdout.write(JSON.stringify({ok:true,ready:true,protocol:1})+'\\n');",
+      "let buf='';let count=0;process.stdin.setEncoding('utf8');",
+      "process.stdin.on('data',part=>{buf+=part;while(buf.includes('\\n')){const p=buf.indexOf('\\n');const line=buf.slice(0,p);buf=buf.slice(p+1);const req=JSON.parse(line);count++;const value=req.mode==='guard'?{ok:false,error:'GUI_FOREGROUND_OR_GEOMETRY_CHANGED',effect:'NOT_APPLIED',phase:'PRE_DISPATCH_GUARD'}:{ok:true,count};process.stdout.write(JSON.stringify(value)+'\\n');}});"
+    ].join('');
+    await fs.writeFile(helper,source);
+    client=createGuiProcessClient({file:process.execPath,args:[helper],startupTimeoutMs:2500,timeoutMs:2500});
+    await assert.rejects(client.invoke({mode:'guard'}),e=>e.guiCode==='GUI_FOREGROUND_OR_GEOMETRY_CHANGED'&&e.guiNotApplied===true);
+    const state=await client.invoke({mode:'status'});
+    assert.equal(state.ok,true);assert.equal(state.count,2);
+  }finally{client?.close();await fs.rm(folder,{recursive:true,force:true});}
+});
+
+test('one read-only observation waits; concurrent input and extra readers fail without injection', async () => {
+  let unblock, captures=0;
+  const s=setup({invoke:r => {
+    if(r.action==='status')return Promise.resolve({ok:true,available:true});
+    if(r.action==='screenshot') {
+      captures++;
+      if(captures===1)return new Promise(resolve=>{unblock=()=>resolve(image());});
+      return Promise.resolve(image());
+    }
+    throw Error('UNEXPECTED_NATIVE_INPUT');
+  }});
+  const {lease}=await s.run('gui_session_begin');
+  const first=s.run('gui_screenshot',{lease});
+  await new Promise(resolve=>setImmediate(resolve));
+  const second=s.run('gui_screenshot',{lease});
+  await new Promise(resolve=>setImmediate(resolve));
+  await assert.rejects(s.run('gui_key_press',{lease,frame:'invalid',keys:['A']}),/GUI_BUSY/);
+  await assert.rejects(s.run('gui_screenshot',{lease}),/GUI_BUSY/);
+  assert.equal(captures,1);
+  unblock();
+  const [a,b]=await Promise.all([first,second]);
+  assert.ok(a.__structuredContent.frame);
+  assert.ok(b.__structuredContent.frame);
+  assert.notEqual(a.__structuredContent.frame,b.__structuredContent.frame);
+  assert.equal(captures,2);
+  await s.run('gui_session_end',{lease});
+});
+test('read-only queue rechecks lease after first operation and never revives expiry',async()=>{
+  let unblock, advance;
+  const s=setup({invoke:r=>r.action==='status'?Promise.resolve({ok:true,available:true}):new Promise(resolve=>{unblock=()=>resolve(image());})});
+  const {lease}=await s.run('gui_session_begin',{ttlSeconds:10});
+  const pending=s.run('gui_screenshot',{lease});
+  await new Promise(resolve=>setImmediate(resolve));
+  const waiting=s.run('gui_list_windows',{lease});
+  await new Promise(resolve=>setImmediate(resolve));
+  s.time(10001);
+  unblock();
+  await assert.rejects(pending,/GUI_LEASE_REQUIRED/);
+  await assert.rejects(waiting,/GUI_LEASE_REQUIRED/);
+});
+test('queued lease end completes only after an in-flight screenshot',async()=>{
+  let unblock,closed=0,active=true;
+  const s=setup({invoke:r=>r.action==='status'?Promise.resolve({ok:true,available:true}):
+    new Promise(resolve=>{unblock=()=>resolve(image());}),closeInvoke:()=>{closed++;active=false;}});
+  const {lease}=await s.run('gui_session_begin');
+  const first=s.run('gui_screenshot',{lease});
+  await new Promise(resolve=>setImmediate(resolve));
+  const end=s.run('gui_session_end',{lease});
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(closed,0);
+  unblock();
+  await first;
+  assert.deepEqual(await end,{ok:true});
+  assert.equal(closed,1);
+  await assert.rejects(s.run('gui_screenshot',{lease}),/GUI_LEASE_REQUIRED/);
+});
+test('queued read-only operation reevaluates emergency STOP before native dispatch',async()=>{
+  let unblock,captures=0;
+  const s=setup({invoke:r=>{
+    if(r.action==='status')return Promise.resolve({ok:true,available:true});
+    if(r.action==='screenshot'){captures++;return new Promise(resolve=>{unblock=()=>resolve(image());});}
+    throw Error('UNEXPECTED_NATIVE_ACTION');
+  }});
+  const {lease}=await s.run('gui_session_begin');
+  const first=s.run('gui_screenshot',{lease});
+  await new Promise(resolve=>setImmediate(resolve));
+  const second=s.run('gui_screenshot',{lease});
+  await new Promise(resolve=>setImmediate(resolve));
+  s.stop();
+  unblock();
+  await first;
+  await assert.rejects(second,/GUI_LOCAL_STOP/);
+  assert.equal(captures,1);
+});
+test('bounded observation wait times out without invoking another native action',async()=>{
+  let release,captures=0;
+  const s=setup({invoke:r=>{
+    if(r.action==='status')return Promise.resolve({ok:true,available:true});
+    if(r.action==='screenshot'){captures++;return new Promise(resolve=>{release=()=>resolve(image());});}
+    throw Error('UNEXPECTED_NATIVE_DISPATCH');
+  }});
+  const {lease}=await s.run('gui_session_begin');
+  const first=s.run('gui_screenshot',{lease});
+  await new Promise(resolve=>setImmediate(resolve));
+  const queued=s.run('gui_screenshot',{lease});
+  await assert.rejects(queued,/GUI_BUSY/);
+  assert.equal(captures,1);
+  release();
+  await first;
+  assert.equal(captures,1);
+  await s.run('gui_session_end',{lease});
+});
+test('expired lease during slow capture does not acquire a new frame', async () => {
+  let advance;
+  const s=setup({invoke:async r=>{if(r.action==='status')return{ok:true,available:true};advance();return image();}});
+  advance=()=>s.time(10001);const {lease}=await s.run('gui_session_begin',{ttlSeconds:10});
+  await assert.rejects(s.run('gui_screenshot',{lease}),/GUI_LEASE_REQUIRED/);
+});
+for(const mutation of [r=>({...r,data:'garbage'}),r=>({...r,mimeType:'text/html'}),r=>({...r,snapshot:null}),r=>({...r,width:100000}),r=>({...r,data:'AAAA'})]) test('invalid native image rejected',async()=>{
+  const s=setup({invoke:async r=>r.action==='status'?{ok:true,available:true}:mutation(image())});
+  const {lease}=await s.run('gui_session_begin');await assert.rejects(s.run('gui_screenshot',{lease}),/GUI_INVALID_IMAGE/);
+});
+for(const [headers,code] of [[{host:'attacker.invalid:47831'},403],[{host:'127.0.0.1:47831.evil'},403],[{host:'127.0.0.1:47831',origin:'https://evil.invalid'},403],[{host:'127.0.0.1:47831',origin:'null'},403],[{host:'127.0.0.1:47831','sec-fetch-site':'cross-site'},403],[{host:'127.0.0.1:47831','content-type':'text/plain'},415]]) test(`HTTP admission refuses ${JSON.stringify(headers)}`,()=>{
+  assert.throws(()=>validateTransport({method:'POST',headers},{port:47831}),e=>e.httpStatus===code);
+});
+for(const host of ['127.0.0.1:47831','localhost:47831','[::1]:47831']) test('nonbrowser JSON request retains '+host,()=>{
+  validateTransport({method:'POST',headers:{host,'content-type':'application/json; charset=utf-8'}},{port:47831});
+});
+test('persistent helper reuses one process, bounds output, and restarts after timeout',async()=>{
+  const root=await fs.mkdtemp(path.join(os.tmpdir(),'rc-gui-persistent-'));
+  let client;
+  try {
+    const helper=path.join(root,'helper.cjs');
+    await fs.writeFile(helper,`process.stdout.write(JSON.stringify({ok:true,ready:true,protocol:1})+'\\n');let b='';process.stdin.setEncoding('utf8');process.stdin.on('data',c=>{b+=c;for(;;){const i=b.indexOf('\\n');if(i<0)break;const line=b.slice(0,i);b=b.slice(i+1);const r=JSON.parse(line);if(r.mode==='valid')process.stdout.write(JSON.stringify({ok:true,pid:process.pid})+'\\n');else if(r.mode==='failure')process.stdout.write(JSON.stringify({ok:false,error:'GUI_LOCAL_STOP'})+'\\n');else if(r.mode==='large')process.stdout.write('x'.repeat(10000)+'\\n');else if(r.mode==='bad')process.stdout.write('not JSON\\n');else if(r.mode==='hang'){}else process.stdout.write(JSON.stringify({ok:true})+'\\n');}});`);
+    client=createGuiProcessClient({file:process.execPath,args:[helper],timeoutMs:300,maxBytes:4096,startupTimeoutMs:2000});
+    const a=await client.invoke({mode:'valid'}),b=await client.invoke({mode:'valid'});
+    assert.equal(a.pid,b.pid);
+    await assert.rejects(client.invoke({mode:'failure'}),/GUI_LOCAL_STOP/);
+    client.close();client=createGuiProcessClient({file:process.execPath,args:[helper],timeoutMs:300,maxBytes:4096,startupTimeoutMs:2000});
+    await assert.rejects(client.invoke({mode:'large'}),/GUI_HELPER_OUTPUT_LIMIT/);
+    client.close();client=createGuiProcessClient({file:process.execPath,args:[helper],timeoutMs:300,maxBytes:4096,startupTimeoutMs:2000});
+    await assert.rejects(client.invoke({mode:'bad'}),/GUI_HELPER_BAD_JSON/);
+    client.close();client=createGuiProcessClient({file:process.execPath,args:[helper],timeoutMs:150,maxBytes:4096,startupTimeoutMs:2000});
+    await assert.rejects(client.invoke({mode:'hang'}),/GUI_HELPER_TIMEOUT/);
+    const restarted=await client.invoke({mode:'valid'});assert.equal(restarted.ok,true);
+  } finally { client?.close();await fs.rm(root,{recursive:true,force:true}); }
+});
+
+test('helper process JSON lifecycle, malformed JSON and output bounds',async()=>{
+  const root=await fs.mkdtemp(path.join(os.tmpdir(),'rc-gui-test-'));
+  try {
+    const helper=path.join(root,'helper.cjs');
+    await fs.writeFile(helper,"let s='';process.stdin.on('data',c=>s+=c);process.stdin.on('end',()=>{const r=JSON.parse(s);if(r.mode==='valid')process.stdout.write(JSON.stringify({ok:true}));else if(r.mode==='large')process.stdout.write('x'.repeat(10000));else if(r.mode==='bad')process.stdout.write('not JSON');else if(r.mode==='failure')process.stdout.write(JSON.stringify({ok:false,error:'GUI_LOCAL_STOP'}));else if(r.mode==='hang')setInterval(()=>{},1000);});");
+    const options={file:process.execPath,args:[helper],timeoutMs:3000,maxBytes:4096};
+    assert.equal((await runGuiProcess({mode:'valid'},options)).ok,true);
+    await assert.rejects(runGuiProcess({mode:'large'},options),/GUI_HELPER_OUTPUT_LIMIT/);
+    await assert.rejects(runGuiProcess({mode:'bad'},options),/GUI_HELPER_BAD_JSON/);
+    await assert.rejects(runGuiProcess({mode:'failure'},options),/GUI_LOCAL_STOP/);
+    await assert.rejects(runGuiProcess({mode:'hang'},{...options,timeoutMs:200}),/GUI_HELPER_TIMEOUT/);
+    await assert.rejects(runGuiProcess({}, {file:path.join(root,'not-an-executable'),args:[],timeoutMs:200}),/GUI_HELPER_START_FAILED/);
+  } finally { await fs.rm(root,{recursive:true,force:true}); }
+});
+
+
+test('KDE portal exact pre-dispatch attestation is accepted but extra fields are not',async()=>{
+  const folder=await fs.mkdtemp(path.join(os.tmpdir(),'rc-gui-kde-noeffect-'));
+  let client;
+  try {
+    const helper=path.join(folder,'helper.cjs');
+    const source=[
+      "process.stdout.write(JSON.stringify({ok:true,ready:true,protocol:1})+'\\n');",
+      "let buf='';let count=0;process.stdin.setEncoding('utf8');",
+      "process.stdin.on('data',part=>{buf+=part;while(buf.includes('\\n')){const p=buf.indexOf('\\n');const line=buf.slice(0,p);buf=buf.slice(p+1);const req=JSON.parse(line);count++;const receipt={ok:false,error:'GUI_KDE_PRECHECK_FAILED',effect:'NOT_APPLIED',phase:'PRE_DISPATCH_GUARD',backend:'kde-wayland-xdg-portal'};if(req.extra)receipt.arbitraryField=true;process.stdout.write(JSON.stringify(receipt)+'\\n');}});"
+    ].join('');
+    await fs.writeFile(helper,source);
+    client=createGuiProcessClient({file:process.execPath,args:[helper],startupTimeoutMs:2500,timeoutMs:2500});
+    await assert.rejects(client.invoke({extra:false}),e=>e.guiKdePreDispatch===true&&e.guiNotApplied===true&&e.guiCode==='GUI_KDE_PRECHECK_FAILED');
+    await assert.rejects(client.invoke({extra:true}),e=>e.guiKdePreDispatch!==true&&e.guiCode==='GUI_KDE_PRECHECK_FAILED');
+  }finally{client?.close();await fs.rm(folder,{recursive:true,force:true});}
+});
+test('KDE native helper is bundled and dispatch stays bound to KDE session and explicit runtime flag',async()=>{
+  for(const file of ['gui-control-kde-portal.py','kde_portal_runtime.py','kde_workspace_observer.py','kde_emergency_stop.py']){
+    assert.ok((await fs.stat(new URL('../tools/'+file,import.meta.url))).isFile());
+  }
+  const source=await fs.readFile(new URL('../src/gui-tools-windows.mjs',import.meta.url),'utf8');
+  assert.ok(source.includes("execFileSync('/usr/bin/loginctl'"));
+  assert.ok(source.includes("'gui-control-kde-portal.py' : 'gui-control-linux.py'"));
+  assert.ok(source.includes("cfg.kdePortalRuntime===true"));
+  assert.ok(source.includes('request.nativeOperationId=pendingHandle.id'));
+  assert.ok(source.includes('error?.guiKdePreDispatch === true'));
+});
+
+test('real takeover fails closed when the selected OS backend has no active protection provider',async()=>{
+  const calls=[];
+  const c=createGuiController({platform:'win32',isStopped:async()=>false,incidentStore:memoryIncidentStore(),
+    takeoverProvider:null,
+    invoke:async request=>{calls.push(request);return {ok:true,available:true};},closeInvoke:()=>{}});
+  await assert.rejects(c.execute(config(),'gui_session_begin',{
+    mode:'takeover',explicitUserAuthorization:'Current task explicitly requires GUI takeover'
+  }),/GUI_TAKEOVER_EVIDENCE_UNAVAILABLE/);
+  assert.deepEqual(calls.map(x=>x.action),['status','beginTakeover']);
+});
+
+test('takeover lease releases native input protection on explicit end',async()=>{
+  let released=0;
+  const provider=fixtureTakeoverProvider();
+  provider.release=async()=>{released++;return {ok:true};};
+  const s=setup({takeoverProvider:provider});
+  const a=await prepared(s);
+  await s.run('gui_session_end',{lease:a.lease});
+  assert.equal(released,1);
+});
+
+test('takeover lease cannot be extended by renewing only the Commander lease',async()=>{
+  let released=0;
+  const provider=fixtureTakeoverProvider();
+  provider.release=async()=>{released++;return {ok:true};};
+  const s=setup({takeoverProvider:provider});
+  const a=await prepared(s);
+  await assert.rejects(s.run('gui_session_renew',{lease:a.lease,ttlSeconds:120}),
+    /GUI_TAKEOVER_RENEWAL_REQUIRES_NEW_ADMISSION/);
+  assert.equal(released,1);
+  await assert.rejects(s.run('gui_mouse_click',{...a,x:10,y:10}),/GUI_TAKEOVER_NOT_AUTHORIZED/);
+});
+
+test('native protection release failure latches uncertainty and blocks future takeover',async()=>{
+  const provider=fixtureTakeoverProvider();
+  provider.release=async()=>({ok:false,error:'NATIVE_RELEASE_UNCONFIRMED'});
+  const s=setup({takeoverProvider:provider});
+  const a=await prepared(s);
+  await assert.rejects(s.run('gui_session_end',{lease:a.lease}),/GUI_INPUT_PROTECTION_RELEASE_UNCONFIRMED/);
+  const status=await s.run('gui_status');
+  assert.equal(status.uncertain,true);
+  await assert.rejects(s.run('gui_session_begin',{mode:'takeover',explicitUserAuthorization:'New task'}),
+    /GUI_INCIDENT_REVIEW_REQUIRED/);
+});
+
+test('native secure-attention/session events asynchronously revoke the owner GUI lease',async()=>{
+  const provider=fixtureTakeoverProvider();
+  let notifyEmergency,released=0;
+  provider.subscribeEmergency=callback=>{notifyEmergency=callback;return ()=>{};};
+  provider.release=async()=>{released++;return {ok:true};};
+  const s=setup({takeoverProvider:provider});
+  const a=await prepared(s);
+  notifyEmergency('SESSION_LOCKED');
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(released,1);
+  await assert.rejects(s.run('gui_screenshot',{lease:a.lease}),/GUI_LEASE_REQUIRED_OR_EXPIRED/);
+});
+
+test('emergency during native admission releases provisional protection before a GUI lease is created',async()=>{
+  const provider=fixtureTakeoverProvider();
+  let notifyEmergency,released=0;
+  const base=provider;
+  const grant=async args=>{
+    const result=await base(args);
+    notifyEmergency('OS_SECURE_ATTENTION');
+    return result;
+  };
+  grant.subscribeEmergency=callback=>{notifyEmergency=callback;return ()=>{};};
+  grant.release=async()=>{released++;return {ok:true};};
+  const s=setup({takeoverProvider:grant});
+  await assert.rejects(s.run('gui_session_begin',{mode:'takeover',
+    explicitUserAuthorization:'Current task explicit takeover request'
+  }),/GUI_EMERGENCY_RELEASE_DURING_ADMISSION/);
+  assert.equal(released,1);
+});
