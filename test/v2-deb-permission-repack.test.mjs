@@ -1,0 +1,47 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import {createHash} from 'node:crypto';
+import {spawnSync} from 'node:child_process';
+
+const run = (command, args) => spawnSync(command, args, {encoding:'utf8', timeout:15000});
+const sha = file => createHash('sha256').update(fs.readFileSync(file)).digest('hex');
+const available = process.platform === 'linux' && run('dpkg-deb', ['--version']).status === 0;
+test('pinned CoS 2.1.49 DEB mode repair preserves binary data, does not install, and rejects invalid hash', {skip:!available}, t => {
+  const root=fs.mkdtempSync(path.join(os.tmpdir(),'v2-perm-qa-'));
+  t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
+  const pkg=path.join(root,'pkg');
+  const app=path.join(pkg,'opt','Commander V2 Workspace Preview');
+  fs.mkdirSync(path.join(pkg,'DEBIAN'),{recursive:true});
+  fs.chmodSync(path.join(pkg,'DEBIAN'),0o755);
+  fs.mkdirSync(path.join(app,'resources'),{recursive:true});
+  fs.writeFileSync(path.join(pkg,'DEBIAN','control'),'Package: commander-v2-workspace-preview\nVersion: 2.1.49\nArchitecture: amd64\nMaintainer: QA fixture\nDescription: fixture\n');
+  fs.writeFileSync(path.join(app,'resources','app.asar'),'binary-app-data');
+  fs.writeFileSync(path.join(app,'commander-v2-workspace-preview'),'binary-electron-exe');
+  fs.writeFileSync(path.join(app,'chrome-sandbox'),'sandbox-executable');
+  fs.chmodSync(app,0o700);
+  fs.chmodSync(path.join(app,'resources'),0o700);
+  fs.chmodSync(path.join(app,'resources','app.asar'),0o600);
+  fs.chmodSync(path.join(app,'commander-v2-workspace-preview'),0o700);
+  fs.chmodSync(path.join(app,'chrome-sandbox'),0o700);
+  const original=path.join(root,'orig.deb'), repaired=path.join(root,'fixed.deb');
+  const build=run('dpkg-deb',['--build','--root-owner-group',pkg,original]);
+  assert.equal(build.status,0,build.stderr);
+  const script=path.resolve('tools/v2-qa-repair-deb-modes.sh');
+  const failed=run('bash',[script,original,'0'.repeat(64),repaired]);
+  assert.equal(failed.status,2);
+  assert.equal(fs.existsSync(repaired),false);
+  const result=run('bash',[script,original,sha(original),repaired]);
+  assert.equal(result.status,0,result.stdout+'\n'+result.stderr);
+  assert.equal(run('dpkg-deb',['--field',repaired,'Version']).stdout.trim(),'2.1.49+commander.1');
+  const target=path.join(root,'rebuilt');
+  assert.equal(run('dpkg-deb',['--raw-extract',repaired,target]).status,0);
+  const expected=path.join(target,'opt','Commander V2 Workspace Preview');
+  assert.equal(fs.statSync(expected).mode & 0o777,0o755);
+  assert.equal(fs.statSync(path.join(expected,'resources','app.asar')).mode & 0o777,0o644);
+  assert.equal(fs.statSync(path.join(expected,'commander-v2-workspace-preview')).mode & 0o777,0o755);
+  for(const name of ['resources/app.asar','commander-v2-workspace-preview','chrome-sandbox'])
+    assert.equal(sha(path.join(app,name)),sha(path.join(expected,name)));
+});
