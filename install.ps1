@@ -11,7 +11,9 @@ param(
   [switch]$SkipTunnelClient,
   [string]$TunnelClientVersion = '0.0.15',
   [string]$SourceRef = 'v0.10.24',
-  [string]$ExpectedCommit = ''
+  [string]$ExpectedCommit = '',
+  [string]$SourceBundle = '',
+  [string]$SourceBundleSha256 = ''
 )
 $ErrorActionPreference = 'Stop'
 
@@ -32,6 +34,20 @@ if ($SourceRef -notmatch '^[A-Za-z0-9._/-]{1,128}$') {
 if ($ExpectedCommit -and $ExpectedCommit -notmatch '^[0-9a-fA-F]{40}$') {
   throw 'Invalid -ExpectedCommit SHA.'
 }
+
+# An embedded exact-commit Git bundle is an alternate local source, never a credential.
+# Reject mismatched or indirect bundles before prerequisites or any installation mutation.
+if($SourceBundle){
+  if($SourceBundleSha256 -notmatch '^[0-9a-fA-F]{64}$'){throw 'Source bundle SHA-256 is required.'}
+  if(-not [IO.Path]::IsPathFullyQualified($SourceBundle)){throw 'Source bundle path must be absolute.'}
+  $file=Get-Item -LiteralPath $SourceBundle -ErrorAction Stop
+  if(-not $file.PSIsContainer -and ($file.Attributes -band [IO.FileAttributes]::ReparsePoint) -eq 0 -and
+      [IO.Path]::GetExtension($file.FullName) -eq '.bundle'){
+    $digest=(Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+    if($digest -ne $SourceBundleSha256.ToLowerInvariant()){throw 'SOURCE_BUNDLE_SHA256_MISMATCH'}
+    $Repo=$file.FullName
+  }else{throw 'SOURCE_BUNDLE_PATH_UNTRUSTED'}
+}elseif($SourceBundleSha256){throw 'SOURCE_BUNDLE_SHA_WITHOUT_FILE'}
 
 function Refresh-Path {
   $machine = [Environment]::GetEnvironmentVariable('Path','Machine')
@@ -142,6 +158,7 @@ function Invoke-ExistingSafeUpdate {
     $updater = Join-Path $temp 'auto-update-windows.ps1'
     if (-not (Test-Path -LiteralPath $updater -PathType Leaf)) { throw 'candidate auto-update-windows.ps1 missing' }
     $args = @('-NoLogo','-NoProfile','-ExecutionPolicy','Bypass','-File',$updater,'-InstallDir',$InstallDir,'-SourceRef',$SourceRef,'-ExpectedCommit',$commit,'-Force')
+    if ($SourceBundle) { $args += @('-SourceBundle',$Repo,'-SourceBundleSha256',$SourceBundleSha256) }
     if ($PowerMode) { $args += '-PowerMode' }
     if ($StandardMode) { $args += '-StandardMode' }
     if ($GuiControl) { $args += '-GuiControl' }
@@ -517,6 +534,7 @@ if ($existingInstall -and $isCanonicalLiveInstall) {
     $head = (& git.exe -C $InstallDir rev-parse HEAD).Trim().ToLowerInvariant()
     $updater = Join-Path $InstallDir 'auto-update-windows.ps1'
     $args = @('-NoLogo','-NoProfile','-ExecutionPolicy','Bypass','-File',$updater,'-InstallDir',$InstallDir,'-SourceRef',$SourceRef,'-ExpectedCommit',$head,'-Force')
+    if ($SourceBundle) { $args += @('-SourceBundle',$Repo,'-SourceBundleSha256',$SourceBundleSha256) }
     if ($PowerMode) { $args += '-PowerMode' }
     if ($StandardMode) { $args += '-StandardMode' }
     if ($GuiControl) { $args += '-GuiControl' }

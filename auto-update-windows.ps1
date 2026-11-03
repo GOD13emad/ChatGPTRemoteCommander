@@ -12,6 +12,8 @@ param(
   [string[]]$TargetProfile = @(),
   [switch]$SelfTest,
   [switch]$NoPromote,
+  [string]$SourceBundle = '',
+  [string]$SourceBundleSha256 = '',
   [ValidateRange(5,300)][int]$DrainTimeoutSeconds = 60
 )
 $ErrorActionPreference='Stop'
@@ -25,6 +27,16 @@ foreach($requestedProfile in $TargetProfile){
 $TargetProfile=@($TargetProfile|Select-Object -Unique)
 
 $Repo='https://github.com/GOD13emad/ChatGPTRemoteCommander.git'
+if($SourceBundle){
+  if($SourceBundleSha256 -notmatch '^[0-9a-fA-F]{64}$'){throw 'Source bundle SHA-256 is required.'}
+  if(-not [IO.Path]::IsPathFullyQualified($SourceBundle)){throw 'Source bundle path must be absolute.'}
+  $file=Get-Item -LiteralPath $SourceBundle -ErrorAction Stop
+  if($file.PSIsContainer -or ($file.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0 -or
+      [IO.Path]::GetExtension($file.FullName) -ne '.bundle'){throw 'SOURCE_BUNDLE_PATH_UNTRUSTED'}
+  $digest=(Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+  if($digest -ne $SourceBundleSha256.ToLowerInvariant()){throw 'SOURCE_BUNDLE_SHA256_MISMATCH'}
+  $Repo=$file.FullName
+}elseif($SourceBundleSha256){throw 'SOURCE_BUNDLE_SHA_WITHOUT_FILE'}
 $StateRoot=Join-Path $env:LOCALAPPDATA 'ChatGPTRemoteCommander'
 $PauseFile=Join-Path $StateRoot 'maintenance\auto-update-paused.json'
 if(-not $Force -and (Test-Path -LiteralPath $PauseFile -PathType Leaf)){

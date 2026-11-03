@@ -57,6 +57,10 @@ Name: "browser"; Description: "Remote Commander Browser"; Types: complete
 Name: "desktopicon"; Description: "Create a desktop shortcut"; Flags: unchecked
 
 [Files]
+#ifdef CoreSourceBundle
+  #define CoreBundleName ExtractFileName(CoreSourceBundle)
+Source: "{#CoreSourceBundle}"; DestName: "{#CoreBundleName}"; Flags: dontcopy noencryption notimestamp
+#endif
 Source: "{#DesktopPayload}\RemoteCommander.exe"; DestDir: "{app}"; Components: core; Flags: ignoreversion notimestamp
 Source: "{#DesktopPayload}\profile-manager-windows.ps1"; DestDir: "{app}"; Components: core; Flags: ignoreversion notimestamp
 Source: "{#DesktopPayload}\profile-enrollment-windows.ps1"; DestDir: "{app}"; Components: core; Flags: ignoreversion notimestamp
@@ -229,7 +233,7 @@ end;
 
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 var
-  PrereqScript, CoreScript, Params, ExistingCoreGit: String;
+  PrereqScript, CoreScript, Params, ExistingCoreGit, CoreBundle: String;
   ExistingCore: Boolean;
   ResultCode: Integer;
 begin
@@ -253,11 +257,18 @@ begin
     if ResultCode <> 0 then
       RaiseException('Remote Commander prerequisite installer failed with exit code ' + IntToStr(ResultCode) + '.');
 
+#ifdef CoreSourceBundle
+    ExtractTemporaryFile('{#CoreBundleName}');
+    CoreBundle := ExpandConstant('{tmp}\{#CoreBundleName}');
+#endif
     ExtractTemporaryFile('install.ps1');
     CoreScript := ExpandConstant('{tmp}\install.ps1');
     Params :=
       '-NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "' + CoreScript + '"' +
       ' -StartServer -SourceRef "{#MySourceRef}" -ExpectedCommit "{#MyCommit}"';
+#ifdef CoreSourceBundle
+    Params := Params + ' -SourceBundle "' + CoreBundle + '" -SourceBundleSha256 "{#CoreSourceBundleSHA256}"';
+#endif
     if not ExistingCore then Params := Params + ' -StandardMode';
     WizardForm.StatusLabel.Caption := 'Installing and verifying Remote Commander core for this user...';
     if not Exec(PwshPath, Params, '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then

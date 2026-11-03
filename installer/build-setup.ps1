@@ -3,6 +3,7 @@ param(
   [string]$SourceRef = '',
   [string]$ExpectedCommit = '',
   [string]$BrowserInstaller = '',
+  [string]$SourceBundle = '',
   [switch]$AllowDirty
 )
 $ErrorActionPreference='Stop'
@@ -77,6 +78,23 @@ if($BrowserInstaller){
   $BrowserSha=(Get-FileHash -LiteralPath $BrowserInstaller -Algorithm SHA256).Hash.ToLowerInvariant()
   $args+=('/DBrowserSetup='+$BrowserInstaller)
 }
+$BundleSha=$null
+if($SourceBundle){
+  $SourceBundle=[IO.Path]::GetFullPath($SourceBundle)
+  if(-not(Test-Path -LiteralPath $SourceBundle -PathType Leaf)){throw 'Core source bundle missing.'}
+  if([IO.Path]::GetExtension($SourceBundle) -ne '.bundle'){throw 'Core source must be a Git .bundle file.'}
+  $file=Get-Item -LiteralPath $SourceBundle
+  if(($file.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0){throw 'Core bundle cannot be a reparse point.'}
+  & git.exe -C $Root bundle verify $SourceBundle | Out-Null
+  if($LASTEXITCODE -ne 0){throw 'Core source Git bundle validation failed.'}
+  $heads=@(& git.exe bundle list-heads $SourceBundle)
+  if($LASTEXITCODE -ne 0 -or -not($heads | Where-Object {$_ -match ('^'+[regex]::Escape($ExpectedCommit)+'\s+refs/heads/')})){
+    throw 'Core source bundle does not contain the exact source commit as a branch.'
+  }
+  $BundleSha=(Get-FileHash -LiteralPath $SourceBundle -Algorithm SHA256).Hash.ToLowerInvariant()
+  $args+=('/DCoreSourceBundle='+$SourceBundle)
+  $args+=('/DCoreSourceBundleSHA256='+$BundleSha)
+}
 $args+=(Join-Path $PSScriptRoot 'RemoteCommander.iss')
 
 & $Iscc @args
@@ -96,5 +114,7 @@ $result=[ordered]@{
   signatureStatus=[string]$Signature.Status
   browserBundled=[bool]$BrowserInstaller
   browserSha256=$BrowserSha
+  coreBundled=[bool]$SourceBundle
+  coreSourceBundleSha256=$BundleSha
 }
 $result|ConvertTo-Json -Depth 5

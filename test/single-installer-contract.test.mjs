@@ -116,6 +116,24 @@ test('bundled Browser preserves an existing owner-installed Browser, including a
   assert.match(guard,/product-install\.json/);
   assert.match(guard,/Result := not RegQueryStringValue/);
 });
+test('private exact Core source Git bundle is pinned through native Inno, fresh install and update',()=>{
+  const iss=read('installer/RemoteCommander.iss');
+  const builder=read('installer/build-setup.ps1');
+  const install=read('install.ps1');
+  const updater=read('auto-update-windows.ps1');
+  assert.match(iss,/#ifdef CoreSourceBundle/);
+  assert.match(iss,/Source: "{#CoreSourceBundle}"/);
+  assert.match(iss,/ExtractTemporaryFile\('\{#CoreBundleName\}'\)/);
+  assert.match(iss,/SourceBundleSha256/);
+  assert.match(builder,/bundle verify \$SourceBundle/);
+  assert.match(builder,/bundle list-heads \$SourceBundle/);
+  assert.match(builder,/DCoreSourceBundleSHA256/);
+  assert.match(install,/SOURCE_BUNDLE_SHA256_MISMATCH/);
+  assert.match(install,/if \(\$SourceBundle\) \{ \$args \+= @\('-SourceBundle',\$Repo,'-SourceBundleSha256'/);
+  assert.match(updater,/SOURCE_BUNDLE_SHA256_MISMATCH/);
+  assert.match(updater,/\$Repo=\$file.FullName/);
+});
+
 test('product icon is a standards-compliant multi-image ICO asset',()=>{
   const p=path.join(root,'desktop','RemoteCommanderDashboard','remote-commander.ico');
   const b=fs.readFileSync(p);
@@ -147,7 +165,7 @@ test('Windows Inno archive source files omit build-host file timestamps',()=>{
   const section=read('installer/RemoteCommander.iss').split('[Files]')[1]?.split('[Icons]')[0];
   assert.ok(section,'Inno [Files] section required');
   const entries=section.split(/\r?\n/).map(x=>x.trim()).filter(x=>x.startsWith('Source:'));
-  assert.equal(entries.length,8,'validate exact pinned installer file inventory');
+  assert.equal(entries.length,9,'validate Core bundle plus exact pinned installer file inventory');
   for(const entry of entries){
     assert.match(entry,/\bnotimestamp\b/,'each packaged file must omit source filesystem timestamps');
   }
