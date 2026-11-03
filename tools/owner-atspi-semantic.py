@@ -1,6 +1,7 @@
 #!/usr/bin/python3
 """Bounded owner-session AT-SPI semantics. Never sends pointer/keyboard or reads values."""
 import json
+import os
 import sys
 import time
 from collections import deque
@@ -24,11 +25,46 @@ def fail(code):
     raise ValueError("ATSPI_" + code)
 
 
-def owner_frame(pid, window_title, deadline=None):
+def owner_start_ticks(pid):
+    """Kernel process generation (field 22 of /proc/PID/stat), not a PID guess."""
+    try:
+        with open("/proc/%d/stat" % pid, encoding="ascii") as source:
+            stat = source.read()
+        end = stat.rfind(")")
+        fields = stat[end + 1:].split()
+        if end < 0 or len(fields) <= 19 or not fields[19].isdigit():
+            fail("PROCESS_GENERATION_UNAVAILABLE")
+        return fields[19]
+    except (OSError, UnicodeError):
+        fail("PROCESS_GENERATION_UNAVAILABLE")
+
+
+def exact_generic_owner(pid, application, start_ticks):
+    if not isinstance(application, str) or not 1 <= len(application) <= 128 or (
+        any(ord(ch) < 32 or ord(ch) == 127 for ch in application)
+    ):
+        fail("APPLICATION_IDENTITY_INVALID")
+    if not isinstance(start_ticks, str) or not 1 <= len(start_ticks) <= 24 or (
+        not start_ticks.isascii() or not start_ticks.isdecimal()
+    ):
+        fail("PROCESS_GENERATION_INVALID")
+    try:
+        if os.stat("/proc/%d" % pid).st_uid != os.getuid():
+            fail("PROCESS_OWNER_MISMATCH")
+    except OSError:
+        fail("PROCESS_OWNER_UNVERIFIED")
+    if owner_start_ticks(pid) != start_ticks:
+        fail("PROCESS_REPLACED")
+
+
+def owner_frame(pid, window_title, deadline=None, expected_app=None, expected_start_ticks=None):
     if not isinstance(pid, int) or not 1 <= pid <= 2147483647:
         fail("PID_INVALID")
     if not isinstance(window_title, str) or len(window_title) > 300:
         fail("TITLE_INVALID")
+    generic = expected_app is not None or expected_start_ticks is not None
+    if generic:
+        exact_generic_owner(pid, expected_app, expected_start_ticks)
     desktop = Atspi.get_desktop(0)
     apps = []
     for i in range(min(desktop.get_child_count(), 100)):
@@ -37,7 +73,13 @@ def owner_frame(pid, window_title, deadline=None):
         app = desktop.get_child_at_index(i)
         if app.get_process_id() == pid:
             apps.append(app)
-    if len(apps) != 1 or (apps[0].get_name() or "").lower() != "firefox":
+    if len(apps) != 1:
+        fail("OWNER_APP_PID_UNVERIFIED" if generic else "OWNER_FIREFOX_PID_UNVERIFIED")
+    app_name = (apps[0].get_name() or "").strip()
+    if generic:
+        if app_name != expected_app:
+            fail("OWNER_APP_NAME_CHANGED")
+    elif app_name.lower() != "firefox":
         fail("OWNER_FIREFOX_PID_UNVERIFIED")
     frames = []
     for i in range(min(apps[0].get_child_count(), 30)):
@@ -46,8 +88,9 @@ def owner_frame(pid, window_title, deadline=None):
         node = apps[0].get_child_at_index(i)
         name = (node.get_name() or "").strip()
         # Firefox AT-SPI frame labels omit the compositor's " — Mozilla Firefox".
-        if name and (name == window_title or window_title.startswith(name + " — ") or
-                     window_title.startswith(name + " - ")):
+        if name and (name == window_title or (not generic and (
+            window_title.startswith(name + " — ") or
+            window_title.startswith(name + " - ")))):
             frames.append((i, node))
     if len(frames) != 1:
         fail("OWNER_WINDOW_AMBIGUOUS_OR_CHANGED")
@@ -123,6 +166,8 @@ def execute(request):
     pid = request.get("pid")
     title = request.get("windowTitle")
     command = request.get("command")
+    expected_app = request.get("expectedApp")
+    expected_start_ticks = request.get("expectedStartTicks")
     if command == "snapshot":
         # Native AT-SPI D-Bus limits are per-call, not whole-tree budgets.
         # Use the documented libatspi timeout AND monotonic scan budget.
@@ -130,9 +175,9 @@ def execute(request):
         Atspi.set_timeout(SNAPSHOT_DBUS_TIMEOUT_MS,
                           SNAPSHOT_STARTUP_TIMEOUT_MS)
         deadline = time.monotonic() + SNAPSHOT_BUDGET_SECONDS
-        _, frame = owner_frame(pid, title, deadline)
+        _, frame = owner_frame(pid, title, deadline, expected_app, expected_start_ticks)
         return snapshot(frame, deadline)
-    _, frame = owner_frame(pid, title)
+    _, frame = owner_frame(pid, title, None, expected_app, expected_start_ticks)
     path = request.get("path")
     node = by_path(frame, path)
     role, name = assert_control(node, request.get("expectedRole"), request.get("expectedName"))
