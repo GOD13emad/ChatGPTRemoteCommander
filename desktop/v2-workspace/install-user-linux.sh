@@ -31,7 +31,7 @@ for d in "$HOME/.local" "$HOME/.local/share" "$parent" "$apps" "$dest"; do
 done
 mkdir -p -- "$parent" "$apps"
 if test -d "$dest"; then
- for name in server.mjs desktop-app.mjs local-evidence.mjs owner-seat-evidence.mjs workflow-view.mjs transport-evidence.mjs owner-diagnostic-reader.mjs v1-runtime-bridge.mjs continuation-handoff.mjs app.js app.css index.html README.md; do
+ for name in server.mjs desktop-app.mjs local-evidence.mjs owner-seat-evidence.mjs workflow-view.mjs transport-evidence.mjs owner-diagnostic-reader.mjs local-model-evidence.mjs v1-runtime-bridge.mjs continuation-handoff.mjs app.js app.css index.html README.md; do
   test -f "$dest/$name" && test ! -L "$dest/$name" &&
   test "$(sha256sum "$dest/$name" | cut -d' ' -f1)" = "$(sha256sum "$src/$name" | cut -d' ' -f1)" ||
   { echo "EXISTING_INSTALL_DIFFERS $name" >&2; exit 3; }
@@ -39,7 +39,7 @@ if test -d "$dest"; then
 else
  stage="$dest.install-$$"
  (umask 077; mkdir "$stage")
- for name in server.mjs desktop-app.mjs local-evidence.mjs owner-seat-evidence.mjs workflow-view.mjs transport-evidence.mjs owner-diagnostic-reader.mjs v1-runtime-bridge.mjs continuation-handoff.mjs app.js app.css index.html README.md; do
+ for name in server.mjs desktop-app.mjs local-evidence.mjs owner-seat-evidence.mjs workflow-view.mjs transport-evidence.mjs owner-diagnostic-reader.mjs local-model-evidence.mjs v1-runtime-bridge.mjs continuation-handoff.mjs app.js app.css index.html README.md; do
   install -m 600 -- "$src/$name" "$stage/$name"
  done
  mv -- "$stage" "$dest"

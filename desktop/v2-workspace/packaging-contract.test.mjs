@@ -13,7 +13,7 @@ const sha=name=>createHash('sha256').update(fs.readFileSync(name)).digest('hex')
 const entries=[
  'server.mjs','desktop-app.mjs','local-evidence.mjs','owner-seat-evidence.mjs',
  'workflow-view.mjs','transport-evidence.mjs','owner-diagnostic-reader.mjs',
- 'v1-runtime-bridge.mjs','continuation-handoff.mjs',
+ 'v1-runtime-bridge.mjs','continuation-handoff.mjs','local-model-evidence.mjs',
  'app.js','app.css','index.html','README.md'
 ];
 test('both OS installers and bundle carry complete local runtime module imports',()=>{
@@ -33,7 +33,8 @@ test('both OS installers and bundle carry complete local runtime module imports'
   assert.ok(windows.includes("'"+name+"'"),'Windows installer missing '+name);
   assert.ok(linux.includes(name),'Linux installer missing '+name);
  }
- assert.ok(!builder.includes("'upgrade-user.mjs'"),'old nonexistent upgrader in bundle');
+ assert.ok(builder.includes("'upgrade-r18.mjs'"),'R18 reversible upgrade missing from bundle');
+ assert.ok(!builder.includes("'upgrade-user.mjs'"),'old historical upgrader in active bundle');
 });
 test('Linux package install, idempotent re-install and live imported server are owner-local',async t=>{
  if(process.platform!=='linux')return t.skip('Linux-specific');

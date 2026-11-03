@@ -447,6 +447,27 @@ async function refreshV1(){
   }
   showOwnerEvidence();
 }
+async function refreshLocalAI(){
+  const token=location.hash.replace(/^#/,'');
+  if(!/^[0-9a-f]{48}$/.test(token)){
+    text('local-ai-summary','Local AI: Unverified · Worker: NOT CONNECTED');return;
+  }
+  try{
+    const response=await fetch('/api/local-ai',{cache:'no-store',
+      headers:{'X-Commander-Workspace-Token':token}});
+    const value=await response.json();
+    if(!response.ok||value?.schema!==1||value?.source!=='LOCAL_OLLAMA_CATALOG'||
+       !['LOCAL_API_UNAVAILABLE','CATALOG_UNVERIFIED','MODEL_CATALOG_OBSERVED'].includes(value.state)||
+       value.canExecute!==false||value.workerEffectVerified!==false||value.chatAuthenticated!==false)
+      throw Error('Local model catalog invalid');
+    const observed=value.state==='MODEL_CATALOG_OBSERVED'&&Number.isSafeInteger(value.modelCount)&&value.modelCount>=0&&value.modelCount<=1000;
+    text('local-ai-summary',observed?
+      'Local AI: Ollama catalog observed · '+value.modelCount+' model(s) · Worker: NOT CONNECTED':
+      'Local AI: '+value.state+' · Worker: NOT CONNECTED');
+  }catch{
+    text('local-ai-summary','Local AI: Unverified · Worker: NOT CONNECTED');
+  }
+}
 async function refreshWorkflow(){
   const token=location.hash.replace(/^#/,'');
   if(!/^[0-9a-f]{48}$/.test(token))return;
@@ -559,7 +580,7 @@ document.addEventListener('DOMContentLoaded',()=>{
   $('plus-task').addEventListener('click',()=>{switchRoute('Chat');$('prompt').focus();});
   $('save-draft').addEventListener('click',addDraft);
   $('prompt').addEventListener('keydown',e=>{if((e.ctrlKey||e.metaKey)&&e.key==='Enter')addDraft();});
-  $('refresh-status').addEventListener('click',()=>{refreshStatus();refreshV1();});
-  refreshStatus();refreshV1();refreshWorkflow();refreshReceipt();refreshArtifactProof();
-  setInterval(()=>{if(!document.hidden){refreshStatus();refreshV1();refreshWorkflow();refreshReceipt();refreshArtifactProof();}},20000);
+  $('refresh-status').addEventListener('click',()=>{refreshStatus();refreshV1();refreshLocalAI();});
+  refreshStatus();refreshV1();refreshLocalAI();refreshWorkflow();refreshReceipt();refreshArtifactProof();
+  setInterval(()=>{if(!document.hidden){refreshStatus();refreshV1();refreshLocalAI();refreshWorkflow();refreshReceipt();refreshArtifactProof();}},20000);
 });

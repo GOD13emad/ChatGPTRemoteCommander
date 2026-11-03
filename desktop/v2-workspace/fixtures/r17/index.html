@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="fa" dir="ltr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="dark">
+<meta name="referrer" content="no-referrer">
+<title>Commander V2 — Hybrid AgentOS Workspace</title>
+<link rel="stylesheet" href="./app.css">
+<script src="./app.js" defer></script>
+</head>
+<body>
+<div class="shell">
+  <header class="topbar">
+    <div class="brand"><span class="brand-logo">C</span><span><strong>Commander V2</strong><small>Hybrid AgentOS</small></span></div>
+    <nav class="topnav" aria-label="Primary views">
+      <button class="active" data-route="Chat">Chat</button><button data-route="Projects">Projects</button>
+      <button data-route="Agents">Agents</button><button data-route="Systems">Systems</button>
+      <button data-route="Browser">Browser</button><button data-route="Files">Files</button>
+      <button data-route="Tools">Tools</button><button data-route="Workflow">Workflow</button>
+    </nav>
+    <div class="headstatus"><span class="counter" id="top-system">◆ Device unknown</span><span class="pill muted" id="top-agent">● No worker receipt</span><span class="mode">◈ Preview mode</span></div>
+  </header>
+
+  <aside class="sidebar" aria-label="Workspace navigation">
+    <button id="new-task" class="primary newtask"><span>＋</span> New Task</button>
+    <nav class="sidenav">
+      <button class="active" data-route="Chat"><span class="nav-ic">▢</span> Chat</button>
+      <button data-route="Projects"><span class="nav-ic">▣</span> Projects</button>
+      <button data-route="Tasks"><span class="nav-ic">☷</span> Tasks <b id="task-count"></b></button>
+      <button data-route="Agents"><span class="nav-ic">♧</span> Agents</button>
+      <button data-route="Systems"><span class="nav-ic">▤</span> Systems</button>
+      <button data-route="Browser"><span class="nav-ic">◎</span> Browser</button>
+      <button data-route="Files"><span class="nav-ic">▰</span> Files</button>
+      <button data-route="Terminal"><span class="nav-ic">⌘</span> Terminal</button>
+      <button data-route="Apps"><span class="nav-ic">▦</span> Apps</button>
+      <button data-route="Workflow"><span class="nav-ic">◇</span> Workflow</button>
+      <button data-route="History"><span class="nav-ic">◷</span> History</button>
+      <button data-route="Settings"><span class="nav-ic">⚙</span> Settings</button>
+    </nav>
+    <div class="sidebottom">
+      <div class="sidelabel">LOCAL DEVICE</div>
+      <div class="connected">
+        <div class="device-icon">▣</div><div><strong id="side-device">Inspecting…</strong><small id="side-health">Connection unverified</small></div>
+      </div>
+      <div class="build"><span class="brand-logo mini">C</span><div><strong>Commander V2</strong><small>Local workspace • Developer preview</small></div></div>
+    </div>
+  </aside>
+
+  <main class="workspace">
+    <section class="conversation panel" aria-label="Task conversation and drafts">
+      <div class="panelbar"><div class="tab active">▣ &nbsp;<span id="current-view">Chat</span> <span class="close-dot">×</span></div><button class="plus" id="plus-task" title="New task">＋</button></div>
+      <div class="chatcontent" id="chat-content">
+        <div class="welcome">
+          <div class="eyebrow">COMMANDER WORKSPACE</div>
+          <h1>From conversation<br>to verified action.</h1>
+          <p lang="fa" dir="rtl">در این محیط وظیفه را مشخص کنید، وضعیت واقعی اتصال را ببینید و نتیجه را از شواهد اجرا دنبال کنید.</p>
+          <div class="notice">This build creates local drafts. It does not silently send ChatGPT messages or control your desktop.</div>
+        </div>
+        <div id="draft-stream" class="draft-stream" aria-live="polite"></div>
+      </div>
+      <div class="compose">
+        <label for="prompt" class="sr-only">New task prompt</label>
+        <textarea id="prompt" rows="3" dir="auto" placeholder="Ask Commander anything… / دستور خود را بنویسید"></textarea>
+        <div class="composebottom"><span class="chips"><span>◈ Deep Work</span><span>◎ Browse</span><span>▤ Files</span><span>⌘ Terminal</span></span>
+        <button class="send" id="save-draft" title="Save a local draft">➤ <span class="sr-only">Save local draft</span></button></div>
+        <p class="compose-hint">Save draft only • Execution requires authenticated V2 enrollment</p>
+      </div>
+    </section>
+
+    <section class="live-area" aria-label="Live desktop previews">
+      <div class="livewindow panel">
+        <div class="windowbar"><strong>▣ &nbsp; Live View — <span id="desktop-name">Local machine</span></strong><span class="status-chip" id="desktop-badge">● Not attached</span></div>
+        <div class="screen">
+          <div class="screen-decoration"><div class="screen-circle"></div><div class="window-preview">
+            <span class="fakebar"><i></i><i></i><i></i></span>
+            <div class="fakewindow"><span class="fake-line wide"></span><span class="fake-line"></span><span class="fake-line medium"></span><span class="fake-line"></span></div>
+          </div></div>
+          <div class="no-signal"><span class="no-signal-icon">▧</span><strong>No authorized desktop stream</strong>
+            <small>Real GUI snapshots appear after owner-session pairing and consent.</small></div>
+        </div>
+        <div class="livecontrols">
+          <button data-need="desktop">▣ Screenshot</button><button data-need="desktop">♧ Control</button>
+          <button data-need="desktop">⌨ Type</button><button data-need="desktop">◉ Click</button>
+          <button data-route="Apps">▦ Apps</button>
+        </div>
+      </div>
+      <div class="livewindow panel">
+        <div class="windowbar"><strong>◎ &nbsp; Browser Workspace</strong><span class="status-chip">● Not attached</span></div>
+        <div class="screen browser-screen">
+          <div class="screen-decoration browser-preview"><div class="window-preview"><span class="fakebar"><i></i><i></i><i></i></span><div class="fakewindow"><span class="fake-line wide"></span><span class="fake-line"></span><span class="fake-line medium"></span></div></div></div>
+          <div class="no-signal"><span class="no-signal-icon">◎</span><strong>Browser session not connected</strong><small>Only independently authorized and verified browser sessions can be displayed.</small></div>
+        </div>
+        <div class="livecontrols"><button data-need="browser">▣ Screenshot</button><button data-need="browser">♧ Control</button><button data-need="browser">⌨ Type</button><button data-need="browser">◉ Click</button><button data-route="Browser">◎ Sessions</button></div>
+      </div>
+    </section>
+
+    <aside class="inspector" aria-label="Task progress and system information">
+      <section class="panel insight progress-panel">
+        <div class="sectiontitle">Task Progress <span>⋯</span></div>
+        <div class="ringwrap"><div class="ring"><span id="ring-number">0</span><small>drafts</small></div>
+          <div class="ringtext"><strong id="ring-label">No running tasks</strong><small>Receipts not connected</small></div></div>
+        <div class="steps"><p><span class="dot done">✓</span> Workspace loaded</p><p><span class="dot pending">○</span> V2 authenticated session</p><p><span class="dot pending">○</span> Native desktop pairing</p><p><span class="dot pending">○</span> Verified worker progress</p></div>
+      </section>
+      <section class="panel insight sys-panel">
+        <div class="sectiontitle">System Status <button class="refresh" id="refresh-status">↻</button></div>
+        <div class="syshead"><span class="device-icon">▣</span><div><strong id="machine-name">Unverified machine</strong><small id="machine-platform">Checking local host</small></div><span class="status-chip" id="machine-state">● Unknown</span></div>
+        <div class="mini-metrics"><span>Core <strong id="core-state">—</strong></span><span>GUI <strong>—</strong></span><span>Browser <strong>—</strong></span></div>
+        <div class="tinybar"><i id="core-bar"></i></div>
+        <p class="insightfoot" id="core-version">Core version not verified</p>
+        <div class="evidence-mini" id="v1-core-live" aria-live="polite">V1 Core: waiting for verified local status</div>
+        <div class="evidence-mini" id="v1-gui-live" aria-live="polite">V1 GUI: Not verified</div>
+        <div class="evidence-mini" id="v1-browser-live" aria-live="polite">V1 Browser: Not verified</div>
+        <div class="evidence-mini" id="v1-workflow-live" aria-live="polite">V1 Workflow: Not verified</div>
+        <div class="evidence-mini" id="v1-upper-live" aria-live="polite">Project/Worker routes: waiting for V1</div>
+        <div class="evidence-mini" id="evidence-summary" aria-live="polite">MMZ owner-private monitor: not yet verified</div>
+        <div class="evidence-mini" id="seat-summary" aria-live="polite">Owner seat: not yet observed; not authenticated</div>
+        <div class="evidence-mini" id="transport-summary" aria-live="polite">V2 local transport: NOT VERIFIED · Chat authenticated: NO</div>
+        <div class="evidence-mini" id="workflow-view-state" aria-live="polite">Workflow: NOT_CONNECTED</div>
+        <div class="evidence-mini" id="receipt-view-state" aria-live="polite">Coordinator: NOT_CONNECTED • Worker effect: NOT VERIFIED</div>
+        <div class="evidence-mini" id="artifact-proof-state" aria-live="polite">Private artifact: NOT_CONNECTED • Worker effect: NOT VERIFIED</div>
+      </section>
+      <section class="panel insight agents-panel">
+        <div class="sectiontitle">Running Agents <span>⋯</span></div>
+        <div class="agent"><span class="agent-ico">◎</span><span><strong>Browser Agent</strong><small>Not connected</small></span></div>
+        <div class="agent"><span class="agent-ico">▤</span><span><strong>File Agent</strong><small>No execution receipt</small></span></div>
+        <div class="agent"><span class="agent-ico">⌘</span><span><strong>System Agent</strong><small>No execution receipt</small></span></div>
+      </section>
+    </aside>
+
+    <section class="bottom panel" aria-label="Drafts and evidence">
+      <div class="bottom-left">
+        <div class="bottom-tabs"><button class="active" data-bottom="Tasks">▣ Tasks (<span id="bottom-task-count">0</span>)</button><button data-bottom="Files">▰ Files</button><button data-bottom="Browser">◎ Browser</button><button data-bottom="Terminal">⌘ Terminal</button><button data-bottom="Logs">☷ Logs</button></div>
+        <div class="table-wrap"><table><thead><tr><th>#</th><th>Task</th><th>System</th><th>Status</th><th>Progress</th><th>Created</th><th>Actions</th></tr></thead>
+          <tbody id="draft-table"><tr><td colspan="7" class="empty-table">No tasks yet. Use New Task to create a local draft.</td></tr></tbody></table></div>
+        <div class="bottom-placeholder hidden" id="bottom-placeholder"></div>
+      </div>
+      <div class="recent">
+        <div class="sectiontitle">Recent Files <span>View requires file grant</span></div>
+        <div class="fileempty"><span>▤</span><strong>No authorized file inventory</strong><small>This view does not scan your profile.</small></div>
+      </div>
+    </section>
+    <div class="toast hidden" role="status" id="toast"></div>
+  </main>
+</div>
+</body>
+</html>

@@ -4,11 +4,11 @@ param(
 $ErrorActionPreference = 'Stop'
 $names = @(
     'index.html','app.css','app.js',
-    'server.mjs','v1-runtime-bridge.mjs','continuation-handoff.mjs','workflow-view.mjs',
+    'server.mjs','v1-runtime-bridge.mjs','continuation-handoff.mjs','local-model-evidence.mjs','workflow-view.mjs',
     'local-evidence.mjs','transport-evidence.mjs','owner-diagnostic-reader.mjs',
     'owner-seat-evidence.mjs','desktop-app.mjs',
     'start-windows.cmd','start-linux.sh','start-desktop-windows.cmd','start-desktop-linux.sh',
-    'install-user-windows.ps1','install-user-linux.sh','README.md'
+    'install-user-windows.ps1','install-user-linux.sh','upgrade-r18.mjs','README.md'
 )
 if(Test-Path -LiteralPath $OutputPath){throw "Archive exists. Refuse overwrite: $OutputPath"}
 $destDir=Split-Path $OutputPath -Parent

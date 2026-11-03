@@ -12,6 +12,7 @@ import { readLocalV1Runtime,readLocalV1Project } from './v1-runtime-bridge.mjs';
 import {compactV1ProjectForContinuation} from './continuation-handoff.mjs';
 import { readOwnerSeatHeartbeat } from './owner-seat-evidence.mjs';
 import { readV2LocalTransport } from './transport-evidence.mjs';
+import { readLocalModelCatalog } from './local-model-evidence.mjs';
 import { normalizeOwnerWorkflowView,normalizeCoordinatorReceiptView,normalizePrivateArtifactProof } from './workflow-view.mjs';
 
 const directory = dirname(fileURLToPath(import.meta.url));
@@ -63,6 +64,8 @@ export async function createWorkspace(options = {}) {
     throw Error('V2_WORKSPACE_PROJECT_READER_REQUIRED');
   if(options.v1RuntimeReader!==undefined&&typeof options.v1RuntimeReader!=='function')
     throw Error('V2_WORKSPACE_V1_READER_REQUIRED');
+  if(options.localModelReader!==undefined&&typeof options.localModelReader!=='function')
+    throw Error('V2_WORKSPACE_LOCAL_MODEL_READER_REQUIRED');
   if(options.trustedWorkflowReader!==undefined&&typeof options.trustedWorkflowReader!=='function')
     throw Error('V2_WORKSPACE_TRUSTED_READER_REQUIRED');
   if(options.trustedReceiptReader!==undefined&&typeof options.trustedReceiptReader!=='function')
@@ -129,6 +132,25 @@ export async function createWorkspace(options = {}) {
         return respond(503,JSON.stringify({state:'UNVERIFIED',source:'V1_LOCAL_CORE',canExecute:false}),
           'application/json; charset=utf-8');
       }
+    }
+    if (req.url === '/api/local-ai') {
+      if (!authorized(req,token)) return respond(403,'Forbidden');
+      try{
+        const data=await (options.localModelReader||readLocalModelCatalog)();
+        if(!data||data.schema!==1||data.source!=='LOCAL_OLLAMA_CATALOG'||
+          !['LOCAL_API_UNAVAILABLE','CATALOG_UNVERIFIED','MODEL_CATALOG_OBSERVED'].includes(data.state)||
+          data.canExecute!==false||data.workerEffectVerified!==false||data.chatAuthenticated!==false||
+          !Array.isArray(data.models)||data.models.length>8||
+          data.models.some(n=>typeof n!=='string'||!/^[A-Za-z0-9][A-Za-z0-9_.:/-]{0,127}$/.test(n))||
+          (data.modelCount!==null&&(!Number.isSafeInteger(data.modelCount)||data.modelCount<0||data.modelCount>1000)))
+          throw Error('MODEL_CATALOG_UNVERIFIED');
+        return respond(200,JSON.stringify({schema:1,source:'LOCAL_OLLAMA_CATALOG',
+          state:data.state,modelCount:data.modelCount,models:data.models,
+          workerEffectVerified:false,canExecute:false,chatAuthenticated:false}),
+          'application/json; charset=utf-8');
+      }catch{return respond(503,JSON.stringify({schema:1,source:'LOCAL_OLLAMA_CATALOG',state:'CATALOG_UNVERIFIED',
+        modelCount:null,models:[],workerEffectVerified:false,canExecute:false,chatAuthenticated:false}),
+        'application/json; charset=utf-8');}
     }
     if (req.url === '/api/status') {
       if (!authorized(req,token)) return respond(403,'Forbidden');
