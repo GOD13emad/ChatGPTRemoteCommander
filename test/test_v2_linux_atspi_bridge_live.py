@@ -102,13 +102,19 @@ def main():
             if preflight.returncode!=0:
                 raise RuntimeError("DIRECT_NATIVE_PREFLIGHT_FAILED: %s; app=%r" %
                     (preflight.stdout.strip(),name))
-            result=subprocess.run(["node",str(ROOT/"test/v2-linux-atspi-bridge-live.mjs"),
+            result=subprocess.run(["node",str(ROOT/("test/v2-linux-owner-gui-worker-live.mjs" if
+                os.environ.get("V2_QA_WORKER_MODE")=="owner-worker" else
+                "test/v2-linux-atspi-bridge-live.mjs")),
                 str(app.pid),name,ticks,handles[0],proof],env=env,
                 encoding="utf-8",capture_output=True,timeout=15)
             if result.returncode!=0:
                 raise RuntimeError("BRIDGE_E2E_FAILED: "+(result.stderr or result.stdout)[-1800:])
-            if "V2_LINUX_ATSPI_NATIVE_BRIDGE_E2E_PASS" not in result.stdout:
-                raise RuntimeError("BRIDGE_E2E_RECEIPT_MISSING")
+            expected_marker=("V2_LINUX_OWNER_SESSION_WORKER_E2E_PASS"
+                if os.environ.get("V2_QA_WORKER_MODE")=="owner-worker"
+                else "V2_LINUX_ATSPI_NATIVE_BRIDGE_E2E_PASS")
+            if expected_marker not in result.stdout:
+                raise RuntimeError("BRIDGE_E2E_RECEIPT_MISSING: %s" %
+                    result.stdout[-1000:])
             if pathlib.Path(proof).read_text(encoding="utf-8")!="APPLY_CLICKED":
                 raise RuntimeError("INDEPENDENT_PROOF_INVALID")
             if app.poll() is not None:

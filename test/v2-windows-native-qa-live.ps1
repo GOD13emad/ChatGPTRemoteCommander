@@ -1,6 +1,6 @@
 # Disposable owner WinForms QA. Does not modify any running Commander service.
 [CmdletBinding()]
-param([Parameter(Mandatory=$true)][string]$Worker,[switch]$ForcePane,[switch]$ForceWin32,[switch]$ViaBridge,[switch]$SimulateUiaUnsupported)
+param([Parameter(Mandatory=$true)][string]$Worker,[switch]$ForcePane,[switch]$ForceWin32,[switch]$ViaBridge,[switch]$SimulateUiaUnsupported,[switch]$ViaOwnerWorker)
 $ErrorActionPreference='Stop'
 $root=Split-Path -Parent $Worker
 if(-not (Test-Path -LiteralPath $Worker -PathType Leaf)){throw 'QA_WORKER_MISSING'}
@@ -30,8 +30,8 @@ try {
  $probe=$probeRaw|ConvertFrom-Json
  if(-not $probe.ok -or -not $probe.win32Bound -or $probe.name -cne 'Apply' -or
    [string]$probe.elementHandle -notmatch '^[1-9][0-9]+$'){throw 'QA_PROBE_BAD_RESULT'}
- if($ViaBridge) {
-  $script=Join-Path (Join-Path $root 'test') 'v2-windows-native-bridge-live.mjs'
+ if($ViaBridge -or $ViaOwnerWorker) {
+  $script=Join-Path (Join-Path $root 'test') $(if($ViaOwnerWorker){'v2-windows-owner-gui-worker-live.mjs'}else{'v2-windows-native-bridge-live.mjs'})
   $bridgeArgs=@($script,[string]$identity.pid,[string]$identity.hwnd,
     [string]$identity.startTicks,[string]$identity.title,$proof,$Worker)
   if($SimulateUiaUnsupported){$bridgeArgs+='simulate-uia-unsupported'}
