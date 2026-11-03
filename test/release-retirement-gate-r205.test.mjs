@@ -37,7 +37,20 @@ function fixture(){
     ownerUser:os.userInfo().username,rollbackVerified:true,browserLoginPreserved:true,soakAccepted:true,
     explicitRetirementAccepted:true,acceptedUtc:'2026-10-12T11:00:00Z',expiresUtc:'2026-10-12T14:00:00Z'
   };
-  const read=(o={})=>inspectRetirement({stateRoot,releaseRoot,candidate,installDir,now:time,...o});
+  // Git URL rewriting used by a bounded offline source preflight is not part
+  // of this self-created canonical-origin fixture. Keep production inspectRetirement
+  // unchanged, and remove only the process-local -c overlay while it reads
+  // this fixture. Restoring the exact value avoids side effects on other tests.
+  const read=(o={})=>{
+    const saved=process.env.GIT_CONFIG_COUNT;
+    try{
+      delete process.env.GIT_CONFIG_COUNT;
+      return inspectRetirement({stateRoot,releaseRoot,candidate,installDir,now:time,...o});
+    }finally{
+      if(saved===undefined)delete process.env.GIT_CONFIG_COUNT;
+      else process.env.GIT_CONFIG_COUNT=saved;
+    }
+  };
   const cleanup=()=>{const prefix=path.join(os.tmpdir(),'rc-r205-retire-');assert.ok(stateRoot.startsWith(prefix));fs.rmSync(stateRoot,{recursive:true,force:true});};
   return {stateRoot,releaseRoot,candidate,installDir,activeHead,candidateHead,routePath,route,approve,approvalPath,read,cleanup};
 }
