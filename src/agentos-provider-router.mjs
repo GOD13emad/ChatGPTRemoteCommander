@@ -14,6 +14,8 @@ export const agentosProviders=Object.freeze({
  'linux-atspi-native':{platform:'linux',transport:'AT-SPI (owning session)',kind:'SEMANTIC_UI'},
  'playwright-mcp':{platform:'cross',transport:'Playwright DOM accessibility',kind:'BROWSER'},
  'chrome-devtools-mcp':{platform:'cross',transport:'Chrome DevTools protocol',kind:'BROWSER'},
+ 'browser-extension-owner':{platform:'cross',transport:'verified same-owner browser extension/native messaging',kind:'BROWSER'},
+ 'webdriver-bidi-native':{platform:'cross',transport:'verified owner-browser WebDriver BiDi',kind:'BROWSER'},
  'commander-owned-browser':{platform:'cross',transport:'existing Browser Commander lease',kind:'BROWSER'},
  'cua-last-resort':{platform:'cross',transport:'verified owner-target visual fallback',kind:'VISUAL'},
  'codex-app-server':{platform:'cross',transport:'app-server JSON-RPC',kind:'AGENT_PLANNER'}
@@ -25,8 +27,44 @@ export function chooseAgentOSProvider(input={}){
     ||typeof grants!=='object'||!grants||Array.isArray(grants))throw Error('AGENTOS_INPUT_INVALID');
  const planner=b(capabilities.codexAuthenticated)&&b(capabilities.codexAppServer)
    ? 'codex-app-server' : 'commander-workflow';
- const withPlanner=route=>Object.freeze({...route,planner,
-   fallbackAllowed:route.status==='READY'&&route.provider!=='cua-last-resort'});
+ const family=application.browserFamily??'unknown';
+ if(!['unknown','firefox','brave','chrome','edge','chromium','vivaldi','opera','safari','other'].includes(family))
+  throw Error('AGENTOS_BROWSER_FAMILY_INVALID');
+ const dedicatedChatGPT=application.purpose==='chatgpt-connection';
+ const chromiumFamily=['chrome','edge','brave','chromium','vivaldi','opera'].includes(family);
+ const nativeBrowser=()=>b(ownerSession)&&b(grants.nativeBrowserUI)
+  ?(platform==='win32'&&b(capabilities.windowsUIA)?'windows-uia-native'
+   :platform==='linux'&&b(capabilities.linuxATSPI)?'linux-atspi-native':null):null;
+ const directCdp=chromiumFamily&&application.profileKind!=='default'
+  &&b(grants.browserProfileAttach)&&b(capabilities.chromeDevtoolsExistingAuthorized);
+ // Alternative provider names are planning candidates, never authorization to replay an effect.
+ // Every transition requires a fresh observation and normal Commander policy re-admission.
+ const fallbackFor=route=>{
+  if(route.status!=='READY')return Object.freeze([]);
+  const candidates=[];
+  const add=(provider,valid)=>{if(valid&&provider&&provider!==route.provider)candidates.push(provider);};
+  if(target==='existing-browser'){
+   add('browser-extension-owner',b(grants.browserExtensionAttach)&&b(capabilities.browserExtensionExistingAuthorized));
+   add('webdriver-bidi-native',b(grants.browserProfileAttach)&&b(capabilities.webdriverBiDiExistingAuthorized));
+   add('playwright-mcp',b(grants.browserProfileAttach)&&b(capabilities.playwrightExistingAuthorized));
+   add('chrome-devtools-mcp',directCdp);
+   add(nativeBrowser(),!!nativeBrowser());
+   add('cua-last-resort',b(grants.visualFallback)&&b(capabilities.cuaVerifiedOwnerTarget));
+  }else if(target==='new-browser'){
+   add('chrome-devtools-mcp',b(capabilities.chromeDevtoolsOwned));
+   add('commander-owned-browser',dedicatedChatGPT&&b(capabilities.commanderOwnedBrowser));
+  }else if(target==='new-app'||target==='existing-app'){
+   if(platform==='win32')add('windows-uia-native',b(capabilities.windowsUIA)&&b(ownerSession));
+   add('cua-last-resort',b(capabilities.cuaVerifiedOwnerTarget)&&b(grants.visualFallback));
+  }
+  return Object.freeze([...new Set(candidates)]);
+ };
+ const withPlanner=route=>{
+   const fallbackProviders=fallbackFor(route);
+   return Object.freeze({...route,planner,fallbackAllowed:fallbackProviders.length>0,
+     fallbackProviders,fallbackMode:'REPLAN_ONLY_AFTER_FRESH_OBSERVATION',
+     uncertainEffectsNeverAutoRetried:true});
+ };
  if(target==='project')return withPlanner(b(capabilities.commanderWorkflow)
    ?selected('commander-workflow','STRUCTURED_TASKS','Use the existing project engine and approved host tools')
    :denied('PROJECT_ENGINE_UNAVAILABLE','Restore Commander workflow engine; no new competing orchestrator'));
@@ -35,17 +73,28 @@ export function chooseAgentOSProvider(input={}){
  const browser=target.endsWith('browser');
  if(browser){
   if(target==='existing-browser'){
-   if(!b(grants.browserProfileAttach))return withPlanner(denied('BROWSER_OWNER_CONSENT_REQUIRED',
-     'Ask browser-native owner consent; cannot attach by copying cookies/profiles'));
-   if(b(capabilities.playwrightExistingAuthorized))return withPlanner(selected('playwright-mcp','DOM', 'Existing browser with supported authorized CDP/Playwright route'));
-   if(b(capabilities.chromeDevtoolsExistingAuthorized))return withPlanner(selected('chrome-devtools-mcp','CDP','Existing browser with authorized DevTools route'));
+   // No global browser default: route the exact verified owner browser, not a guessed Chrome.
+   if(b(grants.browserExtensionAttach)&&b(capabilities.browserExtensionExistingAuthorized))
+    return withPlanner(selected('browser-extension-owner','OWNER_EXTENSION','Verified owner extension/native bridge'));
+   if(b(grants.browserProfileAttach)&&b(capabilities.webdriverBiDiExistingAuthorized))
+    return withPlanner(selected('webdriver-bidi-native','BIDI','Verified same-owner BiDi endpoint'));
+   if(b(grants.browserProfileAttach)&&b(capabilities.playwrightExistingAuthorized))
+    return withPlanner(selected('playwright-mcp','DOM','Verified owner Playwright browser transport'));
+   if(directCdp)return withPlanner(selected('chrome-devtools-mcp','CDP','Verified non-default Chromium endpoint'));
+   const native=nativeBrowser();
+   if(native)return withPlanner(selected(native,'SEMANTIC_UI','Exact same-owner browser accessibility UI'));
+   if(b(grants.visualFallback)&&b(capabilities.cuaVerifiedOwnerTarget))
+    return withPlanner(selected('cua-last-resort','EXACT_TARGET_VISUAL','Verified visual target only'));
+   if(!b(grants.browserProfileAttach)&&!b(grants.browserExtensionAttach)&&!b(grants.nativeBrowserUI)&&!b(grants.visualFallback))
+    return withPlanner(denied('BROWSER_OWNER_CONSENT_REQUIRED','Owner native permission for the exact browser required'));
    return withPlanner(denied('BROWSER_EXISTING_PROFILE_ROUTE_UNAVAILABLE',
-     'Use owner-authorized browser-native route or Commander-owned isolated profile, not an unsafe attach'));
+    'No verified route: never copy cookies, profile or credentials, and do not pretend browser consent'));
   }
-  if(b(capabilities.playwrightOwned))return withPlanner(selected('playwright-mcp','OWNED_ISOLATED_DOM','Owned isolated browser DOM/API'));
-  if(b(capabilities.chromeDevtoolsOwned))return withPlanner(selected('chrome-devtools-mcp','OWNED_ISOLATED_CDP','Owned isolated Chromium DevTools'));
-  if(b(capabilities.commanderOwnedBrowser))return withPlanner(selected('commander-owned-browser','OWNED_ISOLATED','Existing Commander-owned managed browser'));
-  return withPlanner(denied('OWNED_BROWSER_UNAVAILABLE','Install or configure an isolated owned browser in the existing managed Commander runtime'));
+  if(b(capabilities.playwrightOwned))return withPlanner(selected('playwright-mcp','OWNED_ISOLATED_DOM','Isolated browser DOM'));
+  if(b(capabilities.chromeDevtoolsOwned))return withPlanner(selected('chrome-devtools-mcp','OWNED_ISOLATED_CDP','Isolated Chromium CDP'));
+  if(dedicatedChatGPT&&b(capabilities.commanderOwnedBrowser))
+   return withPlanner(selected('commander-owned-browser','CHATGPT_CONNECTION_ONLY','Dedicated ChatGPT-only Commander browser'));
+  return withPlanner(denied('OWNED_BROWSER_UNAVAILABLE','Use a verified isolated route; Commander browser only for ChatGPT connection'));
  }
  if(platform==='win32'){
   if(b(application.nativeAPI)&&b(capabilities.ufo2AppAgent)&&b(grants.nativeApplication))

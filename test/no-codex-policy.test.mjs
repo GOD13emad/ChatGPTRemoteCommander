@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { spawnSync } from 'node:child_process';
 import {
   assertNoCodexCommand,
   assertNoCodexDelegatingScript,
@@ -137,4 +138,25 @@ test('all Commander child environments strip OpenAI/Codex credentials', () => {
     assert.equal(env.REMOTE_COMMANDER_NO_CODEX,'1');
     assert.ok(env.CODEX_HOME.includes('chatgpt-remote-commander-no-codex'));
   }
+});
+
+
+test('Commander child PATH retains its own portable Linux Node runtime, without inheriting model credentials', () => {
+  const source = { PATH: '/nonexistent/commander-test-bin', OPENAI_API_KEY: 'test-secret' };
+  const env = commanderChildEnv(source);
+  assert.equal(source.PATH, '/nonexistent/commander-test-bin');
+  assert.equal(env.OPENAI_API_KEY, undefined);
+  if (process.platform !== 'linux' || path.basename(process.execPath) !== 'node') {
+    assert.equal(env.PATH, source.PATH);
+    return;
+  }
+  const runtimeDir = path.dirname(process.execPath);
+  assert.equal(env.PATH.split(path.delimiter)[0], runtimeDir);
+  const child = spawnSync('node', ['-p', 'process.execPath'], {
+    env, encoding: 'utf8', timeout: 8000, windowsHide: true
+  });
+  assert.equal(child.status, 0, child.error?.message || child.stderr);
+  assert.equal(fs.realpathSync(child.stdout.trim()), fs.realpathSync(process.execPath));
+  const repeated = commanderChildEnv({ PATH: env.PATH });
+  assert.equal(repeated.PATH, env.PATH);
 });

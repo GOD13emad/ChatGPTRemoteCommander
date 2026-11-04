@@ -102,7 +102,13 @@ export const workspaceToolDefinitions=[
    required:['target'],additionalProperties:false},annotations:readOnly},
  {name:'workspace_agentos_plan',description:'Select the strongest locally available authorized AgentOS provider. Native API/semantic UI/DOM first; CUA only when no stronger route is available. Planning does not grant privileges.',inputSchema:{
    type:'object',properties:{target:{type:'string',enum:['existing-browser','new-browser','existing-app','new-app','project']},
-     existingProfileGrant:{type:'boolean'},visualFallbackAuthorized:{type:'boolean'}},
+     existingProfileGrant:{type:'boolean'},visualFallbackAuthorized:{type:'boolean'},
+     nativeBrowserUIAuthorized:{type:'boolean'},browserExtensionAuthorized:{type:'boolean'},
+     browserFamily:{type:'string',enum:['firefox','brave','chrome','edge','chromium','vivaldi','opera','safari','other']},
+     purpose:{type:'string',enum:['chatgpt-connection','general-browser','project']},
+     profileKind:{type:'string',enum:['default','custom','temporary','unknown']},
+     pid:{type:'integer',minimum:1},windowId:{type:'integer',minimum:1},
+     tabRef:{type:'string',pattern:'^[-_a-zA-Z0-9]{8,128}$'}},
    required:['target'],additionalProperties:false},annotations:readOnly},
  {name:'workspace_native_ui_observe',description:'Observe actionable native UIAutomation controls in one exact same-owner Brave/Chromium window. Reports only accessible labels, capabilities and fingerprints; never field values, messages, cookies or credentials.',inputSchema:{
    type:'object',properties:{pid:{type:'integer',minimum:1},windowId:{type:'integer',minimum:1},
@@ -159,10 +165,10 @@ export const workspaceToolDefinitions=[
    required:['pid','windowId','determination'],additionalProperties:false},annotations:mutating}
 ];
 export function createWorkspaceController({callDriver=defaultCuaCall,nativeCall=defaultNativeUIACall,previewDriver=defaultCuaPreview,ownerSession=defaultOwnerSession,
-  platform=process.platform,env=process.env,now=Date.now,journal=createWorkspaceTargetJournal()}={}){
+  platform=process.platform,env=process.env,now=Date.now,journal=createWorkspaceTargetJournal(),hybridProbe=null}={}){
  const pending=new Map(),seen=new Set(),busy=new Set(),snapshots=new Map(),browserSnapshots=new Map(),nativeSnapshots=new Map();
  const needsOwner=async()=>{if(!await ownerSession({platform,env}))throw fail('WORKSPACE_OWNER_SESSION_REQUIRED');};
- async function execute(name,input={}){
+ async function execute(name,input={},runtimeContext=null){
   const seat=input.workspaceSeat??null;
   if(seat!==null&&(platform!=='linux'||!['a','b'].includes(seat)))throw fail('WORKSPACE_SEAT_INVALID');
   const call=(tool,args)=>callDriver(tool,args,{platform,env,workspaceSeat:seat});
@@ -178,11 +184,88 @@ export function createWorkspaceController({callDriver=defaultCuaCall,nativeCall=
     try{await fs.access(new URL('../tools/native-windows-uia.ps1',import.meta.url));nativeAvailable=true;}catch{}
    }
    const {chooseAgentOSProvider}=await import('./agentos-provider-router.mjs');
-   return chooseAgentOSProvider({target:input.target,platform,ownerSession:owner,
-    capabilities:{windowsUIA:nativeAvailable,linuxATSPI:platform==='linux'&&!!env.XDG_RUNTIME_DIR,
-      commanderOwnedBrowser:true,commanderWorkflow:true},
-    grants:{browserProfileAttach:input.existingProfileGrant===true,
-      visualFallback:input.visualFallbackAuthorized===true}});
+   const probe=hybridProbe??(async()=> {
+     const {discoverHybridCapabilities,probeLinuxAtspiSession,classifyOwnedBrowserStatus}
+       =await import('./hybrid-capability-discovery.mjs');
+     const exists=async(path)=>{try{await fs.access(new URL(path,import.meta.url));return true;}catch{return false;}};
+     const [linuxHelper,browserHelper]=await Promise.all([
+       platform==='linux'?exists('../tools/owner-atspi-semantic.py'):false,
+       exists('../tools/browser-control.mjs')
+     ]);
+     let browser=null;
+     let nativeReceipt=null;
+     if(platform==='linux'&&owner===true&&input.target==='existing-browser'&&
+        input.nativeBrowserUIAuthorized===true&&linuxHelper&&integer(input.pid)&&integer(input.windowId)){
+       const {probeLinuxX11OwnerBrowser}=await import('./browser-owner-x11-attestation.mjs');
+       const verified=await probeLinuxX11OwnerBrowser({
+         platform,env,ownerSession:owner,pid:input.pid,windowId:input.windowId,
+         browserFamily:input.browserFamily,nowMs:now()});
+       if(verified.ready===true)nativeReceipt=verified;
+     }
+     if(platform==='win32'&&owner===true&&input.target==='existing-app'&&
+        integer(input.pid)&&integer(input.windowId)){
+       const snap=nativeSnapshots.get(targetId(input.pid,input.windowId));
+       if(snap&&snap.ownerVerified===true&&snap.pid===input.pid&&
+          snap.windowId===input.windowId&&Number.isSafeInteger(snap.at)&&
+          now()>=snap.at&&now()-snap.at<=15000&&
+          typeof snap.ownerSid==='string'&&/^S-1-[0-9]+(?:-[0-9]+){2,15}$/.test(snap.ownerSid)){
+         nativeReceipt=Object.freeze({source:'INTERNAL_OWNER_TARGET_OBSERVER',
+           providerId:'windows-uia-native',target:'existing-app',scope:'CURRENT_HOST',
+           ownerSession:true,ready:true,ownerPrincipal:'sid:'+snap.ownerSid,
+           pid:input.pid,windowId:input.windowId,observedAtMs:snap.at,
+           expiresAtMs:snap.at+15000,effectUncertain:false,targetIdentityVerified:true});
+       }
+     }
+     if(browserHelper&&input.target.endsWith('browser')&&runtimeContext?.config?.powerMode?.browserControl?.enabled===true){
+       try{
+         const {getBrowserReadinessSnapshot}=await import('./browser-tools.mjs');
+         browser=classifyOwnedBrowserStatus(getBrowserReadinessSnapshot(runtimeContext));
+       }catch{browser=classifyOwnedBrowserStatus(null);}
+     }
+     const discovered=await discoverHybridCapabilities({platform,ownerSession:owner,installed:{
+       nativeWindowsUIA:nativeAvailable,
+       linuxATSPI:linuxHelper&&!!env.XDG_RUNTIME_DIR&&!!env.DBUS_SESSION_BUS_ADDRESS,
+       ownedBrowser:browserHelper,visualFallback:false
+     },verify:async providerId=>{
+       if(providerId==='windows-uia-native')return nativeReceipt;
+       if(providerId==='linux-atspi-native')
+         return nativeReceipt?.providerId==='linux-atspi-native'
+           ?nativeReceipt:probeLinuxAtspiSession({platform,ownerSession:owner,env});
+       if(providerId==='commander-owned-browser')return browser;
+       return null;
+     },nowMs:now()});
+     return {...discovered,targetReceipt:nativeReceipt};
+   });
+   const hybrid=await probe({platform,ownerSession:owner});
+   const route=chooseAgentOSProvider({target:input.target,platform,ownerSession:owner,
+     capabilities:hybrid.capabilities,
+     grants:{browserProfileAttach:input.existingProfileGrant===true,
+       nativeBrowserUI:input.nativeBrowserUIAuthorized===true,
+       browserExtensionAttach:input.browserExtensionAuthorized===true,
+       visualFallback:input.visualFallbackAuthorized===true},
+     application:{browserFamily:input.browserFamily,purpose:input.purpose,profileKind:input.profileKind}});
+   if(route.status==='READY'&&(input.target==='existing-app'||input.target==='existing-browser')){
+     const {verifyBoundOwnerTargetReceipt}=await import('./hybrid-capability-discovery.mjs');
+     // Linux current UID is local OS metadata. Windows SID comes exclusively from the
+     // owner-session native UIA observer which has already checked the process token SID.
+     // The MCP caller never supplies a principal or an observer receipt.
+     const principal=platform==='linux'&&typeof process.getuid==='function'
+       ?'uid:'+process.getuid()
+       :platform==='win32'&&hybrid.targetReceipt?.providerId==='windows-uia-native'
+         ?hybrid.targetReceipt.ownerPrincipal:null;
+     const proof=verifyBoundOwnerTargetReceipt({
+       receipt:hybrid.targetReceipt,providerId:route.provider,target:input.target,
+       selector:input,ownerPrincipal:principal,nowMs:now()});
+     if(!proof.valid)return Object.freeze({...route,status:'BLOCKED',
+       code:'EXACT_OWNER_TARGET_ATTESTATION_REQUIRED',providerCandidate:route.provider,
+       provider:null,fallbackAllowed:false,fallbackProviders:Object.freeze([]),
+       evidence:hybrid.evidence,readinessScope:'EXACT_OWNER_TARGET_UNVERIFIED',
+       attestationReason:proof.reason,readOnlyPlan:true});
+     return Object.freeze({...route,evidence:hybrid.evidence,
+       readinessScope:'EXACT_OWNER_TARGET_OBSERVER_MATCH',targetBound:true,readOnlyPlan:true});
+   }
+   return Object.freeze({...route,evidence:hybrid.evidence,
+     readinessScope:'VERIFIED_BACKEND_ONLY',readOnlyPlan:true});
   }
   await needsOwner();
   if(name==='workspace_list_windows'){
@@ -209,7 +292,13 @@ export function createWorkspaceController({callDriver=defaultCuaCall,nativeCall=
      }
     }
     const snapshotId='n'+randomBytes(4).toString('hex');
-    nativeSnapshots.set(id,{at:now(),elements:indexed,snapshotId,application:input.application});
+    const ownerVerified=value.ok===true&&value.pid===input.pid&&
+      value.windowHandle===input.windowId&&value.provider==='windows-uia-native'&&
+      value.physicalInputTouched===false&&value.foregroundTouched===false&&
+      typeof value.principalSid==='string'&&/^S-1-[0-9]+(?:-[0-9]+){2,15}$/.test(value.principalSid);
+    nativeSnapshots.set(id,{at:now(),elements:indexed,snapshotId,application:input.application,
+      ownerVerified,pid:input.pid,windowId:input.windowId,
+      ownerSid:ownerVerified?value.principalSid:null});
     return {ok:true,mode:'NATIVE_UIA_READ_ONLY',target:id,application:input.application,
       provider:'windows-uia-native',snapshotId,
       targetUncertain:pending.has('native:'+id)||!!await journal.pending('native:'+id),

@@ -198,9 +198,21 @@ export function createBrowserController({invoke=defaultInvoke,closeInvoke=defaul
    if(expiryRequested)await cleanupExpired();
   }
  };
+ // Pure in-memory metadata: do not spawn the browser helper, expire a lease, or touch profiles.
+ const readinessSnapshot=(ctx)=>{
+   const cfg=ctx?.config?.powerMode?.browserControl??{};
+   const enabled=ctx?.config?.powerMode?.enabled===true&&cfg.enabled===true;
+   const leased=!!session&&session.expires>now()&&!expiryRequested;
+   return Object.freeze({ok:true,source:'CONTROLLER_MEMORY',enabled,
+     available:enabled&&leased,active:leased,leased,
+     backgroundOnly:!leased||session.foreground!==true,
+     userDesktopTouched:leased&&session.foreground===true,
+     uncertain,sessionResetRequired:chatMutationUncertain});
+ };
  const close=()=>{clearTimer();session=null;uncertain=false;chatMutationUncertain=false;expiryRequested=false;closeInvoke();};
- return {execute,close};
+ return {execute,close,readinessSnapshot};
 }
 const controller=createBrowserController();
 export async function executeBrowserTool(ctx,name,input){return controller.execute(ctx,name,input);}
+export function getBrowserReadinessSnapshot(ctx){return controller.readinessSnapshot(ctx);}
 export function closeBrowserController(){controller.close();}
