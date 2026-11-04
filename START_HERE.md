@@ -13,6 +13,7 @@ Repository: https://github.com/GOD13emad/ChatGPTRemoteCommander
 5. Do not claim FINAL PASS until local MCP health, tunnel readiness, ChatGPT app tool discovery, and at least one real tool call have all passed.
 6. Prefer Standard Mode for general use. Offer Full/Power Mode only for a trusted personal or managed computer and explain its scope before enabling it.
 7. OpenAI product availability changes. For plan, Developer Mode, Apps, Plugins, and Secure MCP Tunnel UI details, verify current official OpenAI documentation if the UI differs from this guide.
+8. For any **missing Commander capability or native access**, record one sanitized, stable issue using `capability_gap_report` when the installed tool catalog actually exposes it. Consult `capability_gap_list`/`capability_gap_get` before duplication; otherwise use the source fallback CLI with the authenticated owner's active profile config. Details and limitations: [Commander Capability Gap Intake](docs/CAPABILITY_GAP_INTAKE.md). This source feature is **not yet proof of fleet deployment**, and a registered issue never grants Administrator/Root/browser authorization.
 
 ## 0. Preflight
 
