@@ -1,20 +1,46 @@
-# Commander Capability Gap Intake
+# Commander Capability Gap Intake — verified owner-profile workflow
 
-Use for an **observed** missing Commander tool, native permission, browser connector, unsupported driver or blocked automation in the current project. Keep the established Project Brain as the only project authority.
+Use for **observed** missing Commander tools, native GUI/Portal permissions, unsupported browser attachment, missing provider configuration and blocked automation. Keep the existing project Brain as the single authority; a gap is one traceable issue, not a permission grant or a separate project.
 
-First inspect `system_status` and the actual MCP catalog. If installed, use `capability_gap_list` / `capability_gap_get` before reporting. Record distinct actual evidence with `capability_gap_report` and update proposals through `capability_gap_triage`. Duplicate observations must be NO-OP; never treat tracked state as PASS.
+## 1. Check live capability first
 
-When the four tools are not yet installed, and an authorized owner-local shell is genuinely available, use the V2 source fallback **only with the verified active owner profile config**:
+Read `system_status`, inspect the actual `tools/list` on the intended connected owner profile and use a supported alternative if available. When the four **native** `capability_gap_report`, `capability_gap_list`, `capability_gap_get`, `capability_gap_triage` MCP tools are genuinely present, use those. Check existing keys before a new report. Do not claim these tools are installed merely because this Agent Extension is visible.
+
+## 2. Portable fallback (actually installed on the fleet)
+
+A self-contained, user-local pair of files is installed beside each other:
+
+- Linux: `$HOME/.local/state/chatgpt-remote-commander/gap-client/portable-capability-gap-cli.mjs`
+- Windows: `$env:LOCALAPPDATA\ChatGPTRemoteCommander\gap-client\portable-capability-gap-cli.mjs`
+
+It uses `capability-gap-registry.mjs` in the same folder and imports `deliveryLocation` from the **exact active V1 dev23** `src/delivery-store.mjs`, with SHA256 pin `a4b1dff7e8293136215b12ade45062dc0f3a034f677f92e4a656679b513c5c47`. It does not need the V2 source repository on the target host.
+
+Both `--config` and `--delivery-module` must be absolute verified paths belonging to **the current owner profile**. Obtain `--expected-profile` and `--expected-config-sha` from that profile's current `system_status.instance.profile` and `system_status.configSha256`. Do not derive the expected hash from an unverified candidate config alone. An incorrect profile, modified config or unpinned V1 delivery module is rejected.
+
+Linux example (fill in actual verified values, do not use another owner's paths):
 
 ```bash
-cd "$HOME/source/repos/RemoteCommanderV2"
-node tools/capability-gap-cli.mjs list --config "/EXACT/OWNER/CONFIG/config.json"
-node tools/capability-gap-cli.mjs report --config "/EXACT/OWNER/CONFIG/config.json" --input "/PRIVATE/ISSUE.json"
-node tools/capability-gap-cli.mjs get --config "/EXACT/OWNER/CONFIG/config.json" --input "/PRIVATE/KEY.json"
+node "$HOME/.local/state/chatgpt-remote-commander/gap-client/portable-capability-gap-cli.mjs" list \
+ --config "/VERIFIED/OWNER/CONFIG/config.json" \
+ --delivery-module "/PINNED/ACTIVE/V1/src/delivery-store.mjs" \
+ --expected-profile "VERIFIED_PROFILE" --expected-config-sha "VERIFIED_64_HEX_SHA256"
 ```
 
-On MMZ, `emad-mmz` specifically uses `/home/mmz/.local/state/chatgpt-remote-commander/profiles/emad-mmz/config.json`; never assume that path represents any other user/profile. Verify every other profile independently. Put no credentials, cookies, private keys, session material, raw chat logs, or unrelated personal data into issue input or reports. Use private temporary files.
+Windows PowerShell example:
 
-A report identifies a stable functional `capabilityKey`, `projectKey`, category, exact native `consentGate`, required behavior, observed error, candidate repair and reproducible acceptance test. Prefer safe user-local alternatives; native UAC/sudo, KDE Portal, OAuth or browser-owner authorization remains mandatory where required. `FULL_POWER` is not unrestricted Administrator/Root. Continue independent work.
+```powershell
+$cli = Join-Path $env:LOCALAPPDATA 'ChatGPTRemoteCommander\gap-client\portable-capability-gap-cli.mjs'
+node $cli list --config 'C:\VERIFIED\OWNER\config.json' `
+ --delivery-module 'C:\PINNED\V1\src\delivery-store.mjs' `
+ --expected-profile 'VERIFIED_PROFILE' --expected-config-sha 'VERIFIED_64_HEX_SHA256'
+```
 
-The profile ledger is durable but **not fleet-synchronized**. This extension is only discoverable instructions; it does **not** install four MCP methods, execute any shell command itself, grant OS privileges, modify browser sessions, or certify deployment. Actual connected `tools/list` and scoped live tests are required before declaring release PASS. See canonical `docs/CAPABILITY_GAP_INTAKE.md` in the V2 source.
+To report: replace `list` with `report` and append `--input "/PRIVATE/issue.json"`. To read evidence: use `get --input "/PRIVATE/key.json"`; key JSON contains `{"capabilityKey":"browser.owner-session.native-attach"}`. For status, use `status`. The input file must be private (Linux mode 0600); never put tokens, passwords, cookies, sessions, personal data or raw chat transcripts in it. Stable functional keys deduplicate repeated evidence; distinct hosts maintain separate private ledgers.
+
+## 3. Repair and consent
+
+Each report contains real `projectKey`, category, native `consentGate`, title, `requiredBehavior`, `observedLimitation`, exact `errorCode`, `candidateSolution` and reproducible `acceptanceTest`. Use `TRIAGED` or `BLOCKED` until a real host-scoped test proves the required effect; these tracking states are not PASS.
+
+A broad `FULL_POWER` label does not grant OS Administrator/Root, another owner's browser profile, OAuth tokens or native Portal approval. Prefer supported user-local routes; obtain only the minimum necessary native UAC/sudo/Portal/browser-owner approval when actually required. Continue independent authorized work.
+
+This Agent Extension provides **discovery instructions only**. It neither executes Shell nor adds MCP methods, nor synchronizes data between owners or hosts. The portable fallback is a separately installed local CLI. Actual connected `tools/list`, owner permissions, installation/rollback and verified tool effects remain independent gates. Canonical technical documentation: `docs/CAPABILITY_GAP_INTAKE.md` in the verified V2 repository.

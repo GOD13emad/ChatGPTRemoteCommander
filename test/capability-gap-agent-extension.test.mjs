@@ -31,7 +31,7 @@ test('declarative capability gap extension is installable without MCP backend re
   assert.equal(route.items[0].id,'commander-capability-gaps');
   const skill=registry.execute('agent_extension_skill',{id:'commander-capability-gaps'});
   assert.match(skill.skill,/capability_gap_report/);
-  assert.match(skill.skill,/not.*fleet-synchronized/i);
+  assert.match(skill.skill,/nor synchronizes data between owners or hosts/i);
   result=exec(home,'--install');assert.equal(result.status,0,result.stderr);
   assert.equal(JSON.parse(result.stdout).changed,false);
   assert.equal(fs.readdirSync(root).filter(x=>x==='commander-capability-gaps').length,1);
@@ -50,4 +50,36 @@ test('installer denies symlink extension roots rather than following external wr
   assert.match(result.stderr,/COMMANDER_GAP_EXTENSION_SYMLINK_PATH_DENIED/);
   assert.deepEqual(fs.readdirSync(outside),[]);
  }finally{fs.rmSync(home,{recursive:true,force:true});fs.rmSync(outside,{recursive:true,force:true});}
+});
+
+
+test('pinned v0.1.0 metadata upgrades to v0.2.0 with an exact recoverable old copy and stable discovery',{skip:!running},t=>{
+ const repo=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
+ const commit='7f58d868580aab8269299c92c1b94dc87c1cc086';
+ const old={};
+ for(const n of ['agent.json','SKILL.md']){
+  const result=spawnSync('git',['-C',repo,'show',commit+':extensions/commander-capability-gaps/'+n],{encoding:'utf8',timeout:5000});
+  if(result.status!==0)return t.skip('Pinned historical extension source not available in this checkout');
+  old[n]=result.stdout;
+ }
+ const home=tempHome(),root=path.join(home,'.agents','extensions'),dest=path.join(root,'commander-capability-gaps');
+ try{
+  fs.mkdirSync(dest,{recursive:true,mode:0o700});
+  for(const n of Object.keys(old))fs.writeFileSync(path.join(dest,n),old[n],{mode:0o600});
+  let res=exec(home,'--status');
+  assert.equal(res.status,0,res.stderr);assert.equal(JSON.parse(res.stdout).status,'UPGRADE_AVAILABLE');
+  res=exec(home,'--install');
+  assert.equal(res.status,2);assert.match(res.stderr,/EXPLICIT_UPGRADE_REQUIRED/);
+  assert.equal(fs.readFileSync(path.join(dest,'agent.json'),'utf8'),old['agent.json']);
+  res=exec(home,'--upgrade');
+  assert.equal(res.status,0,res.stderr);assert.equal(JSON.parse(res.stdout).status,'DECLARATIVE_EXTENSION_UPGRADED');
+  const rollback=path.join(home,'.agents','capgap-recovery','commander-capability-gaps-v0.1.0');
+  assert.equal(fs.readFileSync(path.join(rollback,'SKILL.md'),'utf8'),old['SKILL.md']);
+  assert.equal(JSON.parse(fs.readFileSync(path.join(dest,'agent.json'),'utf8')).version,'0.2.0');
+  res=exec(home,'--upgrade');assert.equal(res.status,0,res.stderr);
+  assert.equal(JSON.parse(res.stdout).changed,false);
+  const reg=createAgentExtensionRegistry({directories:[root]});
+  assert.equal(reg.execute('agent_extension_list',{}).items.length,1);
+  assert.equal(reg.execute('agent_extension_get',{id:'commander-capability-gaps'}).version,'0.2.0');
+ }finally{fs.rmSync(home,{recursive:true,force:true});}
 });

@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
   "id": "commander-capability-gaps",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "displayName": "Commander Capability Gap Intake",
-  "description": "Discover and report missing Remote Commander capabilities and native permission blockers using the existing profile-private capability-gap registry; no elevation, browser credential access or automatic fleet sync.",
+  "description": "Discover and report missing Remote Commander capabilities and native permission blockers through the verified owner-scoped portable CLI; does not grant elevated access, install MCP methods or synchronize profiles.",
   "capabilities": [
     "commander.capability-gap.report",
     "commander.capability-gap.triage",
@@ -39,6 +39,10 @@
       "capability_gap_list",
       "capability_gap_get",
       "capability_gap_triage"
-    ]
+    ],
+    "portableCli": "owner-local gap-client/portable-capability-gap-cli.mjs",
+    "portableClientVersion": "0.1.0",
+    "portableClientSha256": "8b047e5f7505b555346da562d1d7312c533f6bd43c0ce3062566bc4261e69bfe",
+    "registrySha256": "23f0f7a18133b506fe7273920d91841b8fcbae7317e4b19e0684240b48a33683"
   }
 }

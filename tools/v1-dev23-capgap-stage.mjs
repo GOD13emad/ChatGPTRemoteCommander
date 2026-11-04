@@ -6,7 +6,11 @@ import path from 'node:path';
 import os from 'node:os';
 import {createHash} from 'node:crypto';
 import {fileURLToPath} from 'node:url';
-const SOURCE_SHA='c1c13efa74c75d00ca3b6e778a7af6b63f4053ac346caec12308d76117565933';
+const PINNED_V1_DEV23_SERVER_SHAS=Object.freeze(process.platform==='win32'
+ ? ['fafd2151117456b7146fe3dafbe57f5f0507e2ebf8778964ab43562c569387e6']
+ : ['c1c13efa74c75d00ca3b6e778a7af6b63f4053ac346caec12308d76117565933',
+    'fafd2151117456b7146fe3dafbe57f5f0507e2ebf8778964ab43562c569387e6']);
+const GAP_SHA='23f0f7a18133b506fe7273920d91841b8fcbae7317e4b19e0684240b48a33683';
 const PKG_SHA='d40ea4c3d960146933907ed805e2ad2b135df9a20ba872499ebb9ccfa95b129b';
 const DELIVERY_SHA='a4b1dff7e8293136215b12ade45062dc0f3a034f677f92e4a656679b513c5c47';
 const MUTATION_SHA='1e47fb07934d7b34091cee4000ec1a1a63528e3a24d87a2a96cf3c883b3a69c9';
@@ -33,22 +37,28 @@ function noLinksBelow(dir){
 export function stageV1Dev23GapBridge(source,dest){
  if(typeof source!=='string'||typeof dest!=='string'||!path.isAbsolute(source)||!path.isAbsolute(dest))fail('ABSOLUTE_PATH_REQUIRED');
  const src=path.resolve(source),target=path.resolve(dest);
- const approvedBase=path.join(os.homedir(),'.local','state','CommanderV2','QA');
+ const approvedBase=process.platform==='win32'
+  ? path.join(process.env.LOCALAPPDATA||path.join(os.homedir(),'AppData','Local'),'ChatGPTRemoteCommander','qa')
+  : path.join(os.homedir(),'.local','state','CommanderV2','QA');
  if(path.dirname(target)!==approvedBase||path.basename(target)!=='v1-dev23-capgap-bridge')fail('QA_DESTINATION_REQUIRED');
  ancestryNoLinks(src);ancestryNoLinks(approvedBase);ancestryNoLinks(target);
  if(fs.existsSync(target))fail('QA_ALREADY_EXISTS');
  if(!fs.statSync(src).isDirectory())fail('SOURCE_NOT_DIRECTORY');
+ const sourceServerSha=sha(fs.readFileSync(path.join(src,'src/server-v0.3.mjs')));
+ if(!PINNED_V1_DEV23_SERVER_SHAS.includes(sourceServerSha))fail('UNPINNED_V1_SERVER_SHA');
  for(const [p,expected] of [
-  ['src/server-v0.3.mjs',SOURCE_SHA],['package.json',PKG_SHA],
+  ['src/server-v0.3.mjs',sourceServerSha],['package.json',PKG_SHA],
   ['src/delivery-store.mjs',DELIVERY_SHA],['src/mutation-idempotency.mjs',MUTATION_SHA]]){
   const f=path.join(src,p),st=fs.lstatSync(f);
   if(!st.isFile()||st.isSymbolicLink()||sha(fs.readFileSync(f))!==expected)fail('PINNED_SOURCE_CHANGED');
  }
  const pkg=JSON.parse(fs.readFileSync(path.join(src,'package.json'),'utf8'));
  if(pkg.name!=='chatgpt-remote-commander'||pkg.version!=='0.11.0-dev.23')fail('PACKAGE_VERSION_CHANGED');
- const overlay=path.join(path.dirname(fileURLToPath(import.meta.url)),'..','src','capability-gap-registry.mjs');
+ const scriptDir=path.dirname(fileURLToPath(import.meta.url));
+ const bundled=path.join(scriptDir,'capability-gap-registry.mjs');
+ const overlay=fs.existsSync(bundled)?bundled:path.join(scriptDir,'..','src','capability-gap-registry.mjs');
  const gap=fs.readFileSync(overlay);
- if(!gap.includes(Buffer.from('capability_gap_report')))fail('GAP_MODULE_MISSING');
+ if(sha(gap)!==GAP_SHA||!gap.includes(Buffer.from('capability_gap_report')))fail('GAP_MODULE_PIN_MISMATCH');
  noLinksBelow(path.join(src,'src'));
  let server=fs.readFileSync(path.join(src,'src/server-v0.3.mjs'),'utf8');
  server=once(server,"import { MutationIdempotencyStore } from './mutation-idempotency.mjs';",
@@ -81,7 +91,7 @@ export function stageV1Dev23GapBridge(source,dest){
  try{
   fs.cpSync(path.join(src,'src'),path.join(target,'src'),{recursive:true,force:false,errorOnExist:true});
   fs.copyFileSync(path.join(src,'package.json'),path.join(target,'package.json'),fs.constants.COPYFILE_EXCL);
-  for(const [p,expected] of [['src/server-v0.3.mjs',SOURCE_SHA],['package.json',PKG_SHA],['src/delivery-store.mjs',DELIVERY_SHA],['src/mutation-idempotency.mjs',MUTATION_SHA]]){
+  for(const [p,expected] of [['src/server-v0.3.mjs',sourceServerSha],['package.json',PKG_SHA],['src/delivery-store.mjs',DELIVERY_SHA],['src/mutation-idempotency.mjs',MUTATION_SHA]]){
    if(sha(fs.readFileSync(path.join(target,p)))!==expected)fail('COPIED_BASELINE_CHANGED');
   }
   fs.writeFileSync(path.join(target,'src','server-v0.3.mjs'),server,{mode:0o600});
@@ -89,7 +99,7 @@ export function stageV1Dev23GapBridge(source,dest){
   fs.writeFileSync(path.join(target,'.v1-dev23-capgap-disposable-qa'),'DISPOSABLE_SOURCE_QA_ONLY\n',{flag:'wx',mode:0o600});
   const got=sha(fs.readFileSync(path.join(target,'src','server-v0.3.mjs')));
   if(got!==sha(Buffer.from(server)))fail('STAGE_READBACK_CHANGED');
-  return {status:'V1_DEV23_CAPABILITY_GAP_BRIDGE_STAGED_QA_ONLY',baseline:SOURCE_SHA,
+  return {status:'V1_DEV23_CAPABILITY_GAP_BRIDGE_STAGED_QA_ONLY',baseline:sourceServerSha,
     patchedServer:got,gapModule:sha(gap),version:'0.11.0-dev.23-capgap-qa',
     installedRuntimeModified:false,qaPath:target};
  }catch(e){
