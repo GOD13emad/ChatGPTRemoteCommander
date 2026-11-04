@@ -1188,3 +1188,106 @@ test('R173 Windows rollback source qualification allows only explicitly reviewed
   assert.ok(workflow.includes('github.event.pull_request.head.sha || github.sha'),'exact SHA');
   assert.ok(!workflow.includes('gh release create'),'QA workflow is not release authority');
 });
+
+test('R761 persisted routed ports are reserved even without a listener, and malformed routes fail closed', t=>{
+  const win=read('auto-update-windows.ps1');
+  assert.ok(win.includes('Reserve-RoutedBackendPorts $used'));
+  const start=win.indexOf('function Get-FreePort(');
+  const end=win.indexOf('function Test-VersionGreater(',start);
+  assert.ok(start>=0&&end>start);
+  assert.ok(win.includes('$socket.Bind('),'retain MMZ exclusive socket port probe');
+  if(process.platform!=='win32'){t.skip('native Windows route fixtures');return;}
+  const temp=fs.mkdtempSync(path.join(os.tmpdir(),'rc-routed-port-'))
+  t.after(()=>fs.rmSync(temp,{recursive:true,force:true}));
+  const routes=path.join(temp,'routing');fs.mkdirSync(routes,{recursive:true});
+  fs.writeFileSync(path.join(routes,'default.json'),JSON.stringify({schema:1,active:{port:48831},previous:{port:48845}}));
+  fs.writeFileSync(path.join(routes,'another.json'),JSON.stringify({schema:1,active:{port:48832},previous:null}));
+  fs.writeFileSync(path.join(routes,'ignored.runtime.json'),JSON.stringify({schema:2}));
+  const retained=path.join(temp,'retained-backends.json');
+  fs.writeFileSync(retained,JSON.stringify({schema:1,items:[{port:48863}]}));
+  const escape=s=>s.replace(/'/g,"''");
+  const run=()=>{
+    const code=[
+      "$ErrorActionPreference='Stop'",
+      "$RoutingRoot='"+escape(routes)+"'",
+      "$RetainedFile='"+escape(retained)+"'",
+      'function Get-NetTCPConnection { param($State,$LocalPort,$ErrorAction) return $null }',
+      win.slice(start,end),
+      '$used=[System.Collections.Generic.HashSet[int]]::new()',
+      'Reserve-RoutedBackendPorts $used',
+      "'RESERVED=' + ((@($used) | Sort-Object) -join ',') + ';PICKED=' + (Get-FreePort $used)"
+    ].join('\r\n');
+    return spawnSync('pwsh.exe',['-NoLogo','-NoProfile','-NonInteractive','-EncodedCommand',Buffer.from(code,'utf16le').toString('base64')],{encoding:'utf8',timeout:15000});
+  };
+  const good=run();
+  assert.equal(good.status,0,good.stderr);
+  const picked=good.stdout.match(/RESERVED=48831,48832,48845,48863;PICKED=(\d+)/);
+  assert.ok(picked,'route reservations must remain before socket allocation: '+good.stdout);
+  assert.ok(![48831,48832,48845,48863].includes(Number(picked[1])));
+  fs.writeFileSync(path.join(routes,'default.json'),JSON.stringify({schema:1,active:{port:'not-a-port'}}));
+  const bad=run();
+  assert.notEqual(bad.status,0);
+  assert.match(bad.stderr,/ROUTE_PORT_RESERVATION_INVALID/);
+});
+
+
+test('R762 strict candidate cleanup preserves marker guards and requires native fallback ownership',t=>{
+  const win=read('auto-update-windows.ps1');
+  const a=win.indexOf('function Stop-OwnedCandidate('), b=win.indexOf('function Get-Targets {',a);
+  assert.ok(a>=0&&b>a);
+  const guard=win.slice(a,b);
+  for(const marker of [
+    'Get-CimInstance Win32_Process', 'CANDIDATE_NATIVE_OWNER_ATTESTATION_UNAVAILABLE',
+    'src\\server-v0.3.mjs', '$nativeOwner', '$listenerOwnerMatch',
+    '$validPath -and $timeValid', '$marker.configSha256', '$health.configSha256',
+    '$health.version -eq [string]$Candidate.Version',
+    '($listenerOwnerMatch -or $nativeOwner)',
+  ])assert.ok(guard.includes(marker),'missing fail-closed guard: '+marker);
+  assert.ok(win.includes('ConfigPath=$cfg;ProjectDir=$stage.Dir;Version=$stage.Version'));
+  assert.ok(win.includes('ConfigPath=$finalCfg;ProjectDir=$stage.Dir;Version=$stage.Version'));
+  if(process.platform!=='win32'){t.skip('native Windows synthetic candidate cleanup');return;}
+  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'rc-strict-candidate-'));
+  t.after(()=>fs.rmSync(dir,{recursive:true,force:true}));
+  const project=path.join(dir,'stage');fs.mkdirSync(path.join(project,'src'),{recursive:true});
+  fs.writeFileSync(path.join(project,'src','server-v0.3.mjs'),'// inert fixture');
+  const cfg=path.join(dir,'cfg.json'), markerPath=path.join(dir,'marker.json');
+  fs.writeFileSync(cfg,JSON.stringify({runtimeState:markerPath}));
+  const escape=s=>s.replace(/'/g,"''");
+  const run=scenario=>{
+    const code=[
+      "$ErrorActionPreference='Stop'",
+      "$script:project='"+escape(project)+"'",
+      "$script:config='"+escape(cfg)+"'",
+      "$script:marker='"+escape(markerPath)+"'",
+      "$script:now=[DateTime]::UtcNow",
+      "$script:sha=(Get-FileHash -LiteralPath $script:config -Algorithm SHA256).Hash.ToLowerInvariant()",
+      "$script:server=[IO.Path]::GetFullPath((Join-Path $script:project 'src\\server-v0.3.mjs'))",
+      "$script:scenario='"+scenario+"'",
+      "$script:mockCommandLine=if($script:scenario -eq 'wrong-path'){'node.exe C:\\untrusted\\server.mjs'}else{('node.exe \"'+$script:server+'\"')}",
+      "$script:stops=0",
+      "$start=if($script:scenario -eq 'stale'){$script:now.AddMinutes(-5)}else{$script:now}",
+      "$markerData=@{pid=31415921;port=49691;instance=@{profile='qa'};projectDir=$script:project;startedAt=$start.ToString('o');configSha256=$script:sha}",
+      "[IO.File]::WriteAllText($script:marker,($markerData|ConvertTo-Json -Depth 5 -Compress))",
+      "function Read-Json {param($File) Get-Content -LiteralPath $File -Raw|ConvertFrom-Json}",
+      "function Get-NetTCPConnection {param($State,$LocalPort,$ErrorAction) return $null}",
+      "function Get-CimInstance {param($ClassName,$Filter,$ErrorAction) return [pscustomobject]@{Name='node.exe';ProcessId=31415921;CommandLine=$script:mockCommandLine}}",
+      "function Invoke-RestMethod {param($Uri,$TimeoutSec,$ErrorAction) return [pscustomobject]@{ok=$true;version= $(if($script:scenario -eq 'version-mismatch'){'0.11.0-dev.18'}else{'0.11.0-dev.19'});configSha256=$script:sha;instance=[pscustomobject]@{profile='qa'}}}",
+      "function Get-Process {param($Id,$ErrorAction) if($script:stops){return $null};return [pscustomobject]@{Id=31415921;ProcessName='node'}}",
+      "function Stop-Process {param($Id,[switch]$Force,$ErrorAction) $script:stops++}",
+      "function Log {param($Message)}",
+      guard,
+      "$proc=[pscustomobject]@{Id=31415921;HasExited=$false;StartTime=$script:now}",
+      "$proc|Add-Member -MemberType ScriptMethod -Name Refresh -Value { }",
+      "$candidate=[pscustomobject]@{Profile='qa';Port=49691;Process=$proc;ConfigPath=$script:config;ProjectDir=$script:project;Version='0.11.0-dev.19'}",
+      "Stop-OwnedCandidate $candidate",
+      "'STOPS='+$script:stops"
+    ].join('\r\n');
+    return spawnSync('pwsh.exe',['-NoLogo','-NoProfile','-NonInteractive','-EncodedCommand',
+      Buffer.from(code,'utf16le').toString('base64')],{encoding:'utf8',timeout:15000});
+  };
+  for(const [scenario,count] of [['valid',1],['wrong-path',0],['version-mismatch',0],['stale',0]]){
+    const got=run(scenario);
+    assert.equal(got.status,0,scenario+': '+got.stderr);
+    assert.match(got.stdout,new RegExp('STOPS='+count+'\\b'),scenario+' must stop exactly '+count);
+  }
+});

@@ -263,6 +263,33 @@ function Get-FreePort([System.Collections.Generic.HashSet[int]]$Used){
   }
   throw 'NO_PRIVATE_BACKEND_PORT'
 }
+function Reserve-RoutedBackendPorts([System.Collections.Generic.HashSet[int]]$Used){
+  # Existing routes reserve their active/previous ports even without TCP LISTEN.
+  foreach($routeFile in Get-ChildItem -LiteralPath $RoutingRoot -Filter '*.json' -File -ErrorAction SilentlyContinue){
+    if($routeFile.Name -like '*.runtime.json'){continue}
+    $route=Get-Content -LiteralPath $routeFile.FullName -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
+    if($route.schema -ne 1){throw "ROUTE_PORT_RESERVATION_SCHEMA_INVALID file=$($routeFile.Name)"}
+    foreach($slot in @($route.active,$route.previous)){
+      if($null -eq $slot){continue}
+      $reservedPort=0
+      if(-not [int]::TryParse([string]$slot.port,[ref]$reservedPort) -or $reservedPort -lt 1 -or $reservedPort -gt 65535){
+        throw "ROUTE_PORT_RESERVATION_INVALID file=$($routeFile.Name)"
+      }
+      [void]$Used.Add($reservedPort)
+    }
+  }
+  if(Test-Path -LiteralPath $RetainedFile -PathType Leaf){
+    $retained=Get-Content -LiteralPath $RetainedFile -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
+    if($retained.schema -ne 1){throw 'RETAINED_PORT_RESERVATION_SCHEMA_INVALID'}
+    foreach($item in @($retained.items)){
+      $reservedPort=0
+      if(-not [int]::TryParse([string]$item.port,[ref]$reservedPort) -or $reservedPort -lt 1 -or $reservedPort -gt 65535){
+        throw 'RETAINED_PORT_RESERVATION_INVALID'
+      }
+      [void]$Used.Add($reservedPort)
+    }
+  }
+}
 function Test-VersionGreater([string]$Left,[string]$Right){
   $helper=Join-Path $PSScriptRoot 'tools\semver-release.mjs'
   if(-not(Test-Path -LiteralPath $helper -PathType Leaf)){throw 'AUTO_UPDATE_VERSION_COMPARE_HELPER_MISSING'}
@@ -410,6 +437,24 @@ function Stop-OwnedCandidate([object]$Candidate,[switch]$Strict){
       [StringComparison]::OrdinalIgnoreCase)
   }catch{}
   $actual=Get-Process -Id $proc.Id -ErrorAction SilentlyContinue
+  # If Windows omits a listener owner, require separate native process identity
+  # evidence. The existing marker, timestamp, path, and config SHA guards below
+  # remain mandatory; native attestation must never override a conflicting PID.
+  $nativeOwner=$false
+  if(-not $listener -and $marker -and $Candidate.ProjectDir -and $Candidate.Version){
+    try{
+      $native=Get-CimInstance Win32_Process -Filter "ProcessId=$($proc.Id)" -ErrorAction Stop
+      $expectedServer=[IO.Path]::GetFullPath((Join-Path ([string]$Candidate.ProjectDir) 'src\server-v0.3.mjs'))
+      $actualCmd=[string]$native.CommandLine
+      $nativeOwner=($native -and [int]$native.ProcessId -eq [int]$proc.Id -and
+        [string]$native.Name -ieq 'node.exe' -and
+        $actualCmd.TrimEnd('"').EndsWith($expectedServer,[StringComparison]::OrdinalIgnoreCase))
+    }catch{
+      $nativeOwner=$false
+      Log "CANDIDATE_NATIVE_OWNER_ATTESTATION_UNAVAILABLE profile=$($Candidate.Profile) port=$($Candidate.Port)"
+    }
+  }
+  $listenerOwnerMatch=($listener -and [int]$listener.OwningProcess -eq [int]$proc.Id)
   $owned=($actual -and $actual.ProcessName -eq 'node' -and
     $marker -and $health -and $health.ok -eq $true -and
     [int]$marker.pid -eq [int]$proc.Id -and
@@ -418,8 +463,9 @@ function Stop-OwnedCandidate([object]$Candidate,[switch]$Strict){
     [string]$marker.configSha256 -eq $expectedSha -and
     [string]$health.configSha256 -eq $expectedSha -and
     [string]$health.instance.profile -eq [string]$Candidate.Profile -and
+    [string]$health.version -eq [string]$Candidate.Version -and
     $validPath -and $timeValid -and
-    (-not $listener -or [int]$listener.OwningProcess -eq [int]$proc.Id))
+    ($listenerOwnerMatch -or $nativeOwner))
   if(-not $owned){
     $msg="CANDIDATE_CLEANUP_OWNERSHIP_MISMATCH profile=$($Candidate.Profile) port=$($Candidate.Port) pid=$($proc.Id)"
     if($Strict){throw $msg}
@@ -1200,6 +1246,7 @@ try{
   $targets=Get-Targets
   $used=[System.Collections.Generic.HashSet[int]]::new()
   foreach($t in $targets){[void]$used.Add([int]$t.CanonicalPort)}
+  Reserve-RoutedBackendPorts $used
   if(Test-Path $ProfileDir){
     foreach($f in Get-ChildItem $ProfileDir -Filter '*.yaml' -File -ErrorAction SilentlyContinue){
       $raw=Get-Content $f.FullName -Raw
@@ -1254,7 +1301,7 @@ try{
     if($LASTEXITCODE-ne 0){throw "CANDIDATE_CONFIG_FAIL profile=$($t.Profile)"}
     $sha=(Get-FileHash -LiteralPath $cfg -Algorithm SHA256).Hash.ToLowerInvariant()
     $p=Start-Backend $stage.Dir $cfg $stateDir
-    $currentCandidate=[pscustomobject]@{Profile=$t.Profile;Port=$port;Process=$p;ConfigPath=$cfg;ProjectDir=$stage.Dir}
+    $currentCandidate=[pscustomobject]@{Profile=$t.Profile;Port=$port;Process=$p;ConfigPath=$cfg;ProjectDir=$stage.Dir;Version=$stage.Version}
     $h=Wait-Health $port $stage.Version $sha $t.Profile
     & node.exe (Join-Path $stage.Dir 'tools\doctor.mjs') --url "http://127.0.0.1:$port/mcp" --expected-device $device --expected-version $stage.Version --config $cfg --timeout-ms 15000 --json
     if($LASTEXITCODE-ne 0){throw "CANDIDATE_DOCTOR_FAIL profile=$($t.Profile)"}
@@ -1307,7 +1354,7 @@ try{
     if($LASTEXITCODE-ne 0){throw "FINAL_CONFIG_FAIL profile=$($t.Profile)"}
     $finalSha=(Get-FileHash -LiteralPath $finalCfg -Algorithm SHA256).Hash.ToLowerInvariant()
     $p=Start-Backend $stage.Dir $finalCfg $stateDir
-    $currentCandidate=[pscustomobject]@{Profile=$t.Profile;Port=$port;Process=$p;ConfigPath=$finalCfg;ProjectDir=$stage.Dir}
+    $currentCandidate=[pscustomobject]@{Profile=$t.Profile;Port=$port;Process=$p;ConfigPath=$finalCfg;ProjectDir=$stage.Dir;Version=$stage.Version}
     [void](Wait-Health $port $stage.Version $finalSha $t.Profile)
     & node.exe (Join-Path $stage.Dir 'tools\doctor.mjs') --url "http://127.0.0.1:$port/mcp" --expected-device $device --expected-version $stage.Version --config $finalCfg --timeout-ms 15000 --json
     if($LASTEXITCODE-ne 0){throw "FINAL_CANDIDATE_DOCTOR_FAIL profile=$($t.Profile)"}
