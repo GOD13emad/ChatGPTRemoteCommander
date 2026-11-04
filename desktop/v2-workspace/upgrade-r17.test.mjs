@@ -16,7 +16,7 @@ async function fixture(t){
  await mkdir(source);await mkdir(destination);
  t.after(()=>rm(root,{recursive:true,force:true,maxRetries:4,retryDelay:50}));
  for(const [name,digest] of Object.entries(NEW_R17)){
-  const data=await readFile(join(local,name));
+  const data=await readFile(name==='app.js'?join(local,'fixtures','r17',name):join(local,name));
   assert.equal(sha(data),digest);
   await writeFile(join(source,name),data);
  }

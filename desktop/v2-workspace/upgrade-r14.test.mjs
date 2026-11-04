@@ -14,7 +14,7 @@ async function setup(t){
  const source=join(home,'source'),destination=join(home,'owner'),lockPath=join(home,'lock');
  await mkdir(source);await mkdir(destination);
  for(const [n,h] of Object.entries(NEW_R14)){
-  const b=await readFile(['app.js'].includes(n)?join(root,'fixtures','r14',n):join(root,n));assert.equal(sha(b),h);
+  const b=await readFile(['app.js','server.mjs'].includes(n)?join(root,'fixtures','r14',n):join(root,n));assert.equal(sha(b),h);
   await writeFile(join(source,n),b);
  }
  for(const [n,h] of Object.entries(OLD_R13)){
