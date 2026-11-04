@@ -22,12 +22,29 @@ const image=()=>({
 const config={config:{powerMode:{enabled:true,guiControl:{
  enabled:true,allowScreenshot:true,allowMouse:true,allowKeyboard:true,allowWindowFocus:true
 }}}};
+function fixtureTakeoverProvider(platform='win32'){
+ const providerId='fixture-native-'+platform;
+ const session={ownerPrincipal:'fixture-owner',sessionId:'fixture-session',seatId:'fixture-seat',displayId:'fixture-display',interactive:true,ownerAuthenticated:true};
+ const grant=async({ttlSeconds=60}={})=>{
+  const nowMs=Date.now();
+  return {ok:true,takeoverEvidence:{
+   provider:{providerId,platform,transport:'synthetic-test-provider',session,
+    activityEvidenceSource:'physical',activityEvidenceIncludesSynthetic:false,isolationAuthority:null,
+    capabilities:{observe:true,screenshot:true,activityDetection:true,physicalInputProtection:true,emergencyRelease:true,pointer:true,keyboard:true,semanticInvoke:true,isolatedDesktop:false}},
+   expectedSession:session,activityEvidence:{source:'physical',reliable:true,excludesSyntheticInput:true,observedAtMs:nowMs,idleMs:60000},
+   explicitOwnerApproval:false
+  },inputProtectionReceipt:{active:true,kind:'NATIVE_PHYSICAL_INPUT_PROTECTION',providerId,sessionId:session.sessionId,leaseId:'fixture-protection-lease',
+   releaseOnAgentExit:true,releaseOnEmergency:true,expiresAtMs:nowMs+ttlSeconds*1000}};
+ };
+ grant.release=async()=>({ok:true,released:true});
+ return grant;
+}
 function controller(incidentStore,{invoke=async(req)=>(req.action==='screenshot'?image():{ok:true,available:true}),platform='win32'}={}){
  let calls=0;
  const c=createGuiController({
   platform,incidentStore,token:()=>('a'.repeat(48)),isStopped:async()=>false,
   invoke:async req=>{calls++;return invoke(req);},closeInvoke:()=>{},
-  now:()=>1000
+  takeoverProvider:fixtureTakeoverProvider(platform),now:()=>1000
  });
  return {run:(name,args={})=>c.execute(config,name,args),get calls(){return calls}};
 }

@@ -7,6 +7,10 @@ import { performance } from 'node:perf_hooks';
 import { GUI_RULES, guiError, guiToolDefinitions, validateGuiInput } from './gui-contract.mjs';
 import { createGuiProcessClient, runGuiProcess } from './gui-process.mjs';
 import { createGuiInputIncidentStore } from './gui-incident-store.mjs';
+import { evaluateGuiTakeover, mustReleaseGuiLease } from './gui-universal-policy.mjs';
+import { createGuiNativeSessionProvider } from './gui-native-session-provider.mjs';
+import { createWindowsGuiNativeAdapter } from './gui-windows-native-provider.mjs';
+import { createLinuxGuiInputCaptureAdapter } from './gui-linux-input-capture-provider.mjs';
 export { guiToolDefinitions };
 
 const project = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -65,15 +69,38 @@ const bound = (v, low, high, defaultValue) => Number.isSafeInteger(v) ? Math.max
  * application coordination; distinct trust levels require separate OS sessions.
  */
 export function createGuiController({ platform = process.platform, now = () => performance.now(), token = () => randomBytes(24).toString('hex'), isStopped = stopped,
-  invoke = invokeDefault, closeInvoke = closeInvokeDefault, incidentStore = createGuiInputIncidentStore() } = {}) {
+  invoke = invokeDefault, closeInvoke = closeInvokeDefault, incidentStore = createGuiInputIncidentStore(), takeoverProvider = undefined } = {}) {
+  const nativeTakeoverProvider = takeoverProvider !== undefined ? takeoverProvider :
+    platform === 'win32' && process.platform === 'win32'
+      ? createGuiNativeSessionProvider(createWindowsGuiNativeAdapter({projectRoot:project}))
+      : platform === 'linux' && process.platform === 'linux'
+        ? createGuiNativeSessionProvider(createLinuxGuiInputCaptureAdapter({projectRoot:project}))
+        : null;
   let session = null;
   let frame = null;
   let busy = false;
   let queuedObservation = null;
   let uncertain = false;
-  function current() {
-    if (session && session.expires <= now()) { session = null; frame = null; closeInvoke(); }
-    return session;
+  let emergencyRevision = 0;
+  let lastEmergencyEvent = null;
+  let emergencyRelease = Promise.resolve();
+  function current() { return session; }
+  if (typeof nativeTakeoverProvider?.subscribeEmergency === 'function') {
+    nativeTakeoverProvider.subscribeEmergency(event => {
+      if (!mustReleaseGuiLease(event)) return;
+      emergencyRevision++;
+      lastEmergencyEvent = event;
+      const revoked = session;
+      session = null;
+      frame = null;
+      if (revoked?.nativeLeaseId && typeof nativeTakeoverProvider.release === 'function') {
+        emergencyRelease = Promise.resolve()
+          .then(() => nativeTakeoverProvider.release({platform,leaseId:revoked.nativeLeaseId,reason:event}))
+          .then(result => { if (result?.ok !== true) uncertain = true; })
+          .catch(() => { uncertain = true; })
+          .finally(() => { try { closeInvoke(); } catch { uncertain = true; } });
+      }
+    });
   }
   function owns(value) {
     if (!current() || !sameToken(value, session.id)) throw guiError('GUI_LEASE_REQUIRED_OR_EXPIRED');
@@ -83,7 +110,37 @@ export function createGuiController({ platform = process.platform, now = () => p
     const rule = GUI_RULES.get(name);
     const power = ctx.config?.powerMode;
     const cfg = power?.guiControl ?? {};
-    const invokeNative = request => invoke(platform==='linux' && kdeDesktop && cfg.kdePortalRuntime===true ? {...request,kdePortalRuntime:true} : request);
+    const windowsInputActions = new Set(['move','moveRelative','scroll','click','drag','typeText','keyPress','focusWindow']);
+    const invokeNative = request => {
+      if (request.action==='releaseTakeover' && typeof nativeTakeoverProvider?.release==='function')
+        return nativeTakeoverProvider.release({platform,ctx,...request});
+      if (platform==='win32' && session?.mode==='takeover' &&
+          windowsInputActions.has(request.action) &&
+          typeof nativeTakeoverProvider?.invokeInput==='function')
+        return nativeTakeoverProvider.invokeInput(request);
+      return invoke(platform==='linux' && kdeDesktop && cfg.kdePortalRuntime===true
+        ? {...request,kdePortalRuntime:true} : request);
+    };
+    await emergencyRelease;
+    async function releaseProtection(target, reason) {
+      if (!target?.nativeLeaseId) { await closeInvoke(); return; }
+      let released = null;
+      try { released = await invokeNative({ action:'releaseTakeover', leaseId:target.nativeLeaseId, reason, stopFile }); }
+      catch { /* Process/agent disconnect is the OS adapter's secondary release mechanism. */ }
+      await closeInvoke();
+      if (released?.ok !== true) {
+        uncertain = true;
+        throw guiError('GUI_INPUT_PROTECTION_RELEASE_UNCONFIRMED');
+      }
+    }
+    async function expireSession() {
+      if (session && session.expires <= now()) {
+        const expired = session;
+        session = null; frame = null;
+        await releaseProtection(expired, 'LEASE_EXPIRED');
+      }
+    }
+    await expireSession();
     const supported = platform === 'win32' || platform === 'linux';
     const enabled = supported && power?.enabled === true && cfg.enabled === true;
     const blocked = await isStopped();
@@ -96,10 +153,11 @@ export function createGuiController({ platform = process.platform, now = () => p
     // underlying condition never silently restores prior desktop input rights.
     if ((!enabled || blocked || incidentStoreUnavailable || uncertainNow) &&
         current()?.mode === 'takeover') {
+      const revoked = session;
       session.mode = 'observe';
-      session.authorization = uncertainNow ?
-        'incident-observe-only' : 'safety-stop-revoked';
+      session.authorization = uncertainNow ? 'incident-observe-only' : 'safety-stop-revoked';
       frame = null;
+      await releaseProtection(revoked, uncertainNow ? 'INCIDENT_REVIEW_REQUIRED' : blocked ? 'LOCAL_STOP' : 'POLICY_REVOKED');
     }
     if (name === 'gui_status' && (!enabled || blocked || incidentStoreUnavailable)) return {
       enabled, available: false, inputAvailable: false, blocked, uncertain: uncertainNow,
@@ -160,11 +218,65 @@ export function createGuiController({ platform = process.platform, now = () => p
         const status = await invokeNative({ action: 'status', stopFile });
         if (status?.ok !== true) throw guiError(status?.error || 'GUI_NATIVE_FAILED');
         if (status.available !== true) throw guiError('GUI_DESKTOP_UNAVAILABLE');
-        const ownerAuthorizedFallback = cfg.ownerAuthorizedTakeover === true && ctx.config?.capabilityProfile?.tier === 'FULL_POWER' && ctx.config?.capabilityProfile?.explicitlyAuthorized === true;
-        const mode = observeOnly ? 'observe' : input.mode ?? (ownerAuthorizedFallback ? 'takeover' : 'observe');
-        session = { id: token(), expires: now() + (input.ttlSeconds ?? 60) * 1000, mode, authorization: observeOnly ? 'incident-observe-only' : input.mode === 'takeover' ? 'per-call' : ownerAuthorizedFallback ? 'owner-persisted' : 'observe-default' };
+        // Full Power and historical persistent grants do not replace per-task native owner consent.
+        const mode = observeOnly ? 'observe' : input.mode ?? 'observe';
+        const ttlSeconds = input.ttlSeconds ?? 60;
+        let policy = null;
+        if (mode === 'takeover') {
+          const admissionEmergencyRevision = emergencyRevision;
+          const requestedInput = { pointer:cfg.allowMouse === true, keyboard:cfg.allowKeyboard === true };
+          const grant = nativeTakeoverProvider
+            ? await nativeTakeoverProvider({ platform, ctx, requestedInput, ttlSeconds, stopFile })
+            : await invokeNative({ action:'beginTakeover', requestedInput, ttlSeconds, currentTaskExplicit:true, stopFile });
+          if (emergencyRevision !== admissionEmergencyRevision) {
+            if (grant?.inputProtectionReceipt?.leaseId) {
+              try { await invokeNative({action:'releaseTakeover',leaseId:grant.inputProtectionReceipt.leaseId,reason:lastEmergencyEvent??'EMERGENCY_DURING_ADMISSION',stopFile}); }
+              catch { await closeInvoke(); }
+            }
+            throw guiError('GUI_EMERGENCY_RELEASE_DURING_ADMISSION');
+          }
+          if (grant?.ok !== true || !grant.takeoverEvidence || !grant.inputProtectionReceipt) {
+            if (grant?.inputProtectionReceipt?.leaseId) {
+              try { await invokeNative({action:'releaseTakeover',leaseId:grant.inputProtectionReceipt.leaseId,reason:'INVALID_GRANT',stopFile}); }
+              catch { await closeInvoke(); }
+            }
+            throw guiError(grant?.error || 'GUI_TAKEOVER_EVIDENCE_UNAVAILABLE');
+          }
+          policy = evaluateGuiTakeover({
+            ...grant.takeoverEvidence,
+            nowMs:Date.now(),
+            currentTaskExplicit:true,
+            incidentPending:false,
+            localStopActive:false,
+            requestedInput,
+            leaseTtlSeconds:ttlSeconds,
+            inputProtectionReceipt:grant.inputProtectionReceipt
+          });
+          if (policy.status !== 'GRANTED') {
+            try { await invokeNative({action:'releaseTakeover',leaseId:grant.inputProtectionReceipt.leaseId,reason:policy.code,stopFile}); }
+            catch { await closeInvoke(); }
+            throw guiError(policy.code);
+          }
+        }
+        session = {
+          id:token(),
+          expires:policy ? now() + Math.max(0,policy.expiresAtMs-Date.now()) : now() + ttlSeconds * 1000,
+          mode,
+          authorization:observeOnly ? 'incident-observe-only' : mode==='takeover' ? 'universal-'+policy.approvalMode.toLowerCase() : 'observe-default',
+          nativeLeaseId:policy?.inputProtectionLeaseId??null,
+          nativeProtectionExpiresAtMs:policy?.inputProtectionExpiresAtMs??null,
+          takeoverPolicy:policy
+        };
+        if (session.expires <= now()) {
+          const expired = session; session = null;
+          await releaseProtection(expired,'LEASE_EXPIRED_DURING_ADMISSION');
+          throw guiError('GUI_INPUT_PROTECTION_LEASE_EXPIRED');
+        }
         frame = null;
-        return { ok: true, lease: session.id, ttlSeconds: input.ttlSeconds ?? 60, mode, authorization: session.authorization, coordinationOnly: true, interactiveTakeover: mode === 'takeover' };
+        return { ok:true,lease:session.id,ttlSeconds,mode,authorization:session.authorization,
+          coordinationOnly:mode!=='takeover',interactiveTakeover:mode==='takeover',
+          takeoverApproval:policy?.approvalMode??null,
+          inputProtection:policy?.inputProtection??null };
       }
       if (name === 'gui_status') {
         const status = await invokeNative({ action: 'status', stopFile });
@@ -181,10 +293,22 @@ export function createGuiController({ platform = process.platform, now = () => p
       }
       owns(input.lease);
       if (name === 'gui_session_renew') {
+        if (session.mode === 'takeover') {
+          // No renewal may extend the Core lease beyond the native input-protection lease.
+          // A new takeover requires fresh provider evidence and a new protection receipt.
+          session.mode='observe';session.authorization='takeover-renewal-requires-readmission';frame=null;
+          await releaseProtection(session,'RENEWAL_REQUIRES_READMISSION');
+          throw guiError('GUI_TAKEOVER_RENEWAL_REQUIRES_NEW_ADMISSION');
+        }
         session.expires = now() + (input.ttlSeconds ?? 60) * 1000;
-        return { ok: true, ttlSeconds: input.ttlSeconds ?? 60 };
+        return { ok:true,ttlSeconds:input.ttlSeconds??60 };
       }
-      if (name === 'gui_session_end') { session = null; frame = null; closeInvoke(); return { ok: true }; }
+      if (name === 'gui_session_end') {
+        const ended = session;
+        session = null; frame = null;
+        await releaseProtection(ended, 'OWNER_RELEASE');
+        return {ok:true};
+      }
       // Listing windows is observational and does not require permission to shift focus.
       // Preserve legacy allowWindowFocus=true configurations during migration.
       const allowed = rule.capability === 'allowWindowEnumeration'
@@ -212,7 +336,8 @@ export function createGuiController({ platform = process.platform, now = () => p
       if (isInput) {
         try { pendingHandle = await incidentStore.begin(name); if(platform==='linux' && kdeDesktop) request.nativeOperationId=pendingHandle.id; }
         catch {
-          session = null; frame = null; closeInvoke();
+          const revoked = session; session = null; frame = null;
+          await releaseProtection(revoked, 'INCIDENT_STORAGE_UNAVAILABLE');
           throw guiError('GUI_INCIDENT_STORAGE_UNAVAILABLE');
         }
       }
@@ -238,18 +363,23 @@ export function createGuiController({ platform = process.platform, now = () => p
             catch { uncertain = true; session = null; frame = null; closeInvoke(); throw guiError('GUI_INCIDENT_STORAGE_UNAVAILABLE'); }
           }
           uncertain = !provenNoEffect;
-          session = null; frame = null; closeInvoke();
+          const revoked = session; session = null; frame = null;
+          await releaseProtection(revoked, provenNoEffect ? 'NATIVE_PRE_DISPATCH_REJECTED' : 'NATIVE_OUTCOME_UNCERTAIN');
         }
         throw error;
       }
       if (result?.ok !== true) {
-        if (isInput) { uncertain = true; session = null; frame = null; closeInvoke(); }
+        if (isInput) {
+          uncertain = true; const revoked = session; session = null; frame = null;
+          await releaseProtection(revoked, 'NATIVE_OUTCOME_UNCERTAIN');
+        }
         throw guiError(result?.error || 'GUI_NATIVE_FAILED');
       }
       if (isInput) {
         try { await incidentStore.resolve(pendingHandle); }
         catch {
-          uncertain = true; session = null; frame = null; closeInvoke();
+          uncertain = true; const revoked = session; session = null; frame = null;
+          await releaseProtection(revoked, 'INCIDENT_RESOLUTION_UNCONFIRMED');
           throw guiError('GUI_INCIDENT_STORAGE_UNAVAILABLE');
         }
       }
@@ -261,7 +391,12 @@ export function createGuiController({ platform = process.platform, now = () => p
         const snap = meta.snapshot;
         if (bytes.length > request.maxBytes || !signature || !snap || typeof snap.foreground !== 'string' || !Number.isInteger(snap.processId) || !snap.bounds || ['left','top','width','height'].some(k => !Number.isSafeInteger(snap.bounds[k])) || !Number.isSafeInteger(snap.screenIndex)) throw guiError('GUI_INVALID_IMAGE_METADATA');
         if (!Number.isSafeInteger(meta.width) || !Number.isSafeInteger(meta.height) || meta.width < 1 || meta.height < 1 || meta.width > request.maxWidth || meta.height > 16384 || snap.bounds.width < 1 || snap.bounds.height < 1) throw guiError('GUI_INVALID_IMAGE_DIMENSIONS');
-        owns(input.lease); // Helper execution must not revive a lease that expired meanwhile.
+        if (!session || !sameToken(input.lease,session.id)) throw guiError('GUI_LEASE_REQUIRED_OR_EXPIRED');
+        if (session.expires <= now()) {
+          const expired=session;session=null;frame=null;
+          await releaseProtection(expired,'LEASE_EXPIRED_DURING_OPERATION');
+          throw guiError('GUI_LEASE_REQUIRED_OR_EXPIRED');
+        }
         frame = { id: token(), at: now(), snapshot: snap };
         const structured = { ...meta, frame: frame.id, frameMaxAgeMs: 15000, bytes: bytes.length, mimeType };
         return { __mcpContent: [{ type: 'image', mimeType, data }, { type: 'text', text: JSON.stringify(structured) }], __structuredContent: structured };

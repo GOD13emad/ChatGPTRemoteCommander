@@ -12,6 +12,21 @@ const image=()=>({ok:true,
   snapshot:{screenIndex:0,bounds:{left:0,top:0,width:800,height:600},
     foreground:'test-window',processId:123}
 });
+function fixtureTakeoverProvider(platform='win32'){
+ const providerId='fixture-native-'+platform;
+ const session={ownerPrincipal:'fixture-owner',sessionId:'fixture-session',seatId:'fixture-seat',displayId:'fixture-display',interactive:true,ownerAuthenticated:true};
+ const grant=async({ttlSeconds=60}={})=>{
+  const nowMs=Date.now();
+  return {ok:true,takeoverEvidence:{provider:{providerId,platform,transport:'synthetic-test-provider',session,
+   activityEvidenceSource:'physical',activityEvidenceIncludesSynthetic:false,isolationAuthority:null,
+   capabilities:{observe:true,screenshot:true,activityDetection:true,physicalInputProtection:true,emergencyRelease:true,pointer:true,keyboard:true,semanticInvoke:true,isolatedDesktop:false}},
+   expectedSession:session,activityEvidence:{source:'physical',reliable:true,excludesSyntheticInput:true,observedAtMs:nowMs,idleMs:60000},explicitOwnerApproval:false},
+   inputProtectionReceipt:{active:true,kind:'NATIVE_PHYSICAL_INPUT_PROTECTION',providerId,sessionId:session.sessionId,
+    leaseId:'fixture-protection-lease',releaseOnAgentExit:true,releaseOnEmergency:true,expiresAtMs:nowMs+ttlSeconds*1000}};
+ };
+ grant.release=async()=>({ok:true,released:true});
+ return grant;
+}
 function fixture({platform='win32',pending=true,unreadable=false,stop=false,nativeAvailable=true}={}){
   const calls=[];let resolved=0,beginCalled=0,activePending=pending,activeUnreadable=unreadable,activeStop=stop;
   const incident={id:'disposable-e27-incident-00001',
@@ -31,7 +46,7 @@ function fixture({platform='win32',pending=true,unreadable=false,stop=false,nati
   };
   const controller=createGuiController({
     platform,isStopped:async()=>activeStop,incidentStore:store,invoke,
-    closeInvoke:()=>{},now:()=>1000,token:()=>('d'.repeat(48))
+    takeoverProvider:fixtureTakeoverProvider(platform),closeInvoke:()=>{},now:()=>1000,token:()=>('d'.repeat(48))
   });
   const run=(name,params={})=>controller.execute(config(),name,params);
   return{run,calls,incident,setPending:value=>{activePending=value;},setUnreadable:value=>{activeUnreadable=value;},setStop:value=>{activeStop=value;},
@@ -78,7 +93,7 @@ for(const platform of ['win32','linux']){
     const status=await f.run('gui_status');
     assert.equal(status.incidentPending,true);
     assert.equal(status.inputAvailable,false);
-    await f.run('gui_session_renew',{lease:auth.lease});
+    await f.run('gui_session_renew',{lease:auth.lease}); // Status demoted this lease to observe-only before renewal.
     const observed=await f.run('gui_screenshot',{lease:auth.lease});
     f.setPending(false);
     await assert.rejects(f.run('gui_mouse_click',{
