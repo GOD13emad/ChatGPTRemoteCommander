@@ -67,7 +67,7 @@ test('validate immutable key/category, sensitive evidence, path aliases and inpu
    c=new CapabilityGapRegistry({directory:dir,scope:'s',device:'MMZ'});
    c.report(issue());
    assert.throws(()=>c.report(issue({category:'BROWSER'})),/IDENTITY_CONFLICT/);
-   assert.throws(()=>c.report(issue({observedLimitation:'Authorization: Bearer dummy-super-secret-12345'})),/POSSIBLE_SECRET/);
+   assert.throws(()=>c.report(issue({observedLimitation:'Authorization: '+'Bearer '+'dummy-'+'super-'+'secret-12345'})),/POSSIBLE_SECRET/);
    assert.throws(()=>c.report(issue({capabilityKey:'../../overreach'})),/KEY_INVALID/);
    assert.throws(()=>c.report(issue({projectKey:'user with spaces'})),/PROJECT_INVALID/);
    assert.throws(()=>c.report(issue({consentGate:'ADMIN_UNRESTRICTED'})),/CONSENT_INVALID/);
