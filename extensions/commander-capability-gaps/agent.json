@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 1,
+  "id": "commander-capability-gaps",
+  "version": "0.1.0",
+  "displayName": "Commander Capability Gap Intake",
+  "description": "Discover and report missing Remote Commander capabilities and native permission blockers using the existing profile-private capability-gap registry; no elevation, browser credential access or automatic fleet sync.",
+  "capabilities": [
+    "commander.capability-gap.report",
+    "commander.capability-gap.triage",
+    "commander.missing-tool-discovery"
+  ],
+  "triggers": [
+    "capability gap",
+    "missing commander capability",
+    "missing remote commander tool",
+    "Commander missing permission",
+    "Remote Commander limitation",
+    "کمبود قابلیت کامندر",
+    "محدودیت ریموت کامندر",
+    "ابزار کامندر موجود نیست",
+    "مشکل دسترسی کامندر",
+    "مجوز ادمین کامندر",
+    "ثبت مشکل کامندر"
+  ],
+  "skill": "SKILL.md",
+  "safetyGates": [
+    "owner-profile-only",
+    "no-os-elevation",
+    "no-credential-storage",
+    "no-cross-owner-access",
+    "evidence-required",
+    "release-not-implied"
+  ],
+  "metadata": {
+    "kind": "declarative-readonly-discovery",
+    "source": "Commander V2 canonical gap registry",
+    "mcpToolsWhenInstalled": [
+      "capability_gap_report",
+      "capability_gap_list",
+      "capability_gap_get",
+      "capability_gap_triage"
+    ]
+  }
+}
