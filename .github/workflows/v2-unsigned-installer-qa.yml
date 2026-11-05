@@ -1,0 +1,39 @@
+name: Commander V2 unsigned QA actual installer isolation
+on:
+  push:
+    branches: [mmz/v2-unified-candidate-20261103]
+    paths:
+      - '.github/workflows/v2-unsigned-installer-qa.yml'
+      - 'tools/v2-unsigned-installer-hosted-linux.sh'
+      - 'tools/v2-unsigned-installer-hosted-windows.ps1'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: commander-v2-unsigned-installer-real-qa
+  cancel-in-progress: false
+jobs:
+  native-linux:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Actual unsigned DEB install, payload check and purge on disposable hosted Linux
+        shell: bash
+        timeout-minutes: 22
+        run: bash tools/v2-unsigned-installer-hosted-linux.sh
+  native-windows:
+    runs-on: windows-2022
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Actual unsigned NSIS silent install and uninstall on disposable hosted Windows
+        shell: pwsh
+        timeout-minutes: 22
+        run: ./tools/v2-unsigned-installer-hosted-windows.ps1
