@@ -1,0 +1,70 @@
+{
+  "schema": 1,
+  "revision": "R77",
+  "status": "PASS_SCOPED_DURABLE_HOST_EVIDENCE_NOT_AUTHORITY_RESTORATION",
+  "whole": "NOT_FINAL",
+  "installed": false,
+  "productionWired": false,
+  "uniqueUnitTests": 21,
+  "unitPass": 21,
+  "unitFail": 0,
+  "unitSkipped": 0,
+  "publicExactSourceQualification": {
+    "tests": 21,
+    "passCount": 21,
+    "repeatOfSameUniqueCases": true,
+    "logSHA256": "cdd33bc0be639cb5b43f4dcb45b482c81e5a020e191b55d61befa6d80691adba"
+  },
+  "independentProductQualification": {
+    "unitPass": 12,
+    "scope": "Independent serialized fault cases; unit mocks are not native authority",
+    "receiptSHA256": "53b4b709d17a941216b8e4d0c44cd840713c292c28be07ecc4985a00237c329b"
+  },
+  "sourceSecurityReview": {
+    "status": "PASS_SCOPED_DURABLE_EVIDENCE_SOURCE",
+    "receiptSHA256": "c91aae633afb597f7755c242f2f2d41797253b0c62eda689dea91d4795be52b4",
+    "scope": "Source review and real cold evidence; public21-case run is recorded separately"
+  },
+  "nativeColdEvidence": {
+    "status": "PASS_ACTUAL_WINDOWS_NATIVE_COLD_EVIDENCE_ONLY",
+    "nativeHelperCleanupConfirmed": true,
+    "nativeJobActiveProcesses": 0,
+    "producerNativeCalls": 1,
+    "coldNativeCalls": 0,
+    "effectCount": 1,
+    "recordSha256": "dc726b4931e448c950498ccdb76539a80237ffb8c8a9ece3a22d5307ca0a7891",
+    "leaseRetained": true,
+    "coldReleaseAuthorityRestored": false,
+    "powerLossDurability": "UNPROVEN",
+    "productionExecutorWired": false,
+    "installedChanged": false,
+    "guiInputs": 0,
+    "existingJobCommands": 0
+  },
+  "nativeEvidenceReceiptSHA256": "3aea37a432e5ddafd5dd0c6aeaa1a8005845ae263393ee040f1e1f57ac14d1e2",
+  "privateNativeHarnessSHA256": "fb617bda090f102d5272a7b46604c64196f4a0a53b1b5dbf8d0553732f60a7b0",
+  "privateHarnessExported": false,
+  "currentSourcePins": {
+    "src/owned-witness-journal.mjs": "8e3ed496e76170a6d4f179866b20eb9470cc68a4bbfb11aa4b96e6bca6f97b3d",
+    "src/owned-native-cessation.mjs": "837330e8f32277f1dbdfd12e9cd5761ad1a03fca3f59377db84d4e6e0a0d906c",
+    "test/windows-private-storage.mjs": "5d1e167db0774272daaffad17a2bca88904684a01a627bac3f9f0a98c3075923",
+    "src/workflow-store.mjs": "ac0d844cdf17a0afcbfccfc2b56376195321885fb24f3c99473d02fbb9838a13",
+    "src/workflow-autonomy.mjs": "81bb99a61932dc23f1cb2f8fbd6af99ebc37beeac87e2e911a4e9a729cedea28"
+  },
+  "r76DependencyReference": {
+    "commit": "760e4f6460627d3bbbd6cbce23132890d40a8915",
+    "url": "https://github.com/GOD13emad/ChatGPTRemoteCommander/tree/saeid/r76-native-cessation-handoff-20261105/docs/handoffs/r76/native-cessation"
+  },
+  "failuresPreserved": [
+    "Native A: typed SID/account-name overload, PRE_NATIVE",
+    "Native B and separate ACL-only C: inherited PS7 module path prevents WinPS5 Security module load, PRE_NATIVE",
+    "New ACL-only D passed before new native C; no consumed intent replay"
+  ],
+  "explicitLimits": [
+    "Same-user hashchain and ACL are not public caller or native-producer authentication",
+    "No cold-restored release authority or old orphan adoption",
+    "No external anchor for cold complete-prefix rollback",
+    "No OS crash or power-loss acceptance",
+    "No production executor, grant, installation or paid service"
+  ]
+}

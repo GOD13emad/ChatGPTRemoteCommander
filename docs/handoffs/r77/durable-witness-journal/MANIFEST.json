@@ -1,0 +1,65 @@
+{
+  "schema": 1,
+  "revision": "R77",
+  "status": "PASS_SCOPED_DURABLE_HOST_EVIDENCE_NOT_AUTHORITY_RESTORATION",
+  "codeAcceptance": "EXACT_SOURCE_21_UNIT_AND_REAL_NATIVE_COLD_EVIDENCE_ONLY",
+  "whole": "NOT_FINAL",
+  "files": [
+    {
+      "path": "QUALIFICATION.json",
+      "bytes": 3273,
+      "sha256": "0788dc12ab33ff692ced5b062a103b2f531cdbfc2d082c94b3504ea43e327f15",
+      "gitBlobSha1": "a29aa13a1db5e459a144fc8519838f9d7b24d38f"
+    },
+    {
+      "path": "README.md",
+      "bytes": 7633,
+      "sha256": "cc5c71377a38a0ace313f8c1bd7d154358cdd4c221201a7e161c3cee5f8dc1d9",
+      "gitBlobSha1": "2a0b37c4272b6fa9fa5a5311d4f3cb31a0ec2055"
+    },
+    {
+      "path": "src/owned-native-cessation.mjs",
+      "bytes": 7468,
+      "sha256": "837330e8f32277f1dbdfd12e9cd5761ad1a03fca3f59377db84d4e6e0a0d906c",
+      "gitBlobSha1": "da1c9c0a2635ebca5001b4c5a79808a330886379"
+    },
+    {
+      "path": "src/owned-witness-journal.mjs",
+      "bytes": 10734,
+      "sha256": "8e3ed496e76170a6d4f179866b20eb9470cc68a4bbfb11aa4b96e6bca6f97b3d",
+      "gitBlobSha1": "82d1a996173e2a787b08ae6c20fc3447c2b25ec0"
+    },
+    {
+      "path": "test/independent/independent-journal.test.mjs",
+      "bytes": 8676,
+      "sha256": "5b27b64c8ba469ab2d53be6403d69e760d24c661543413f123ab279b44df5643",
+      "gitBlobSha1": "2f0fbb7d0ab1dccf9d08abb831651c880daad339"
+    },
+    {
+      "path": "test/journal-capacity.test.mjs",
+      "bytes": 4970,
+      "sha256": "2c036242a7bf546470ea74988b51176fca327f7a1395df37da7791c26adc985b",
+      "gitBlobSha1": "40cd40a5990526a08b1087af09c138faff01064d"
+    },
+    {
+      "path": "test/oracle-durable-boundary.test.mjs",
+      "bytes": 6829,
+      "sha256": "ce1f0a6acb6e39e7d1a717dca2b93fe3112b74ddd66742e3e0e55055a87b2c90",
+      "gitBlobSha1": "bd5fa22226765de3dff2aba73310eb7ea29eeb77"
+    },
+    {
+      "path": "test/windows-private-storage.mjs",
+      "bytes": 4615,
+      "sha256": "5d1e167db0774272daaffad17a2bca88904684a01a627bac3f9f0a98c3075923",
+      "gitBlobSha1": "8c0c8db1724549cd4b023954bc518b06cfc85524"
+    }
+  ],
+  "unchangedR76Dependencies": {
+    "workflow-store.mjs": "ac0d844cdf17a0afcbfccfc2b56376195321885fb24f3c99473d02fbb9838a13",
+    "workflow-autonomy.mjs": "81bb99a61932dc23f1cb2f8fbd6af99ebc37beeac87e2e911a4e9a729cedea28"
+  },
+  "nativeBinariesIncluded": false,
+  "privateFixturesIncluded": false,
+  "rawLogsIncluded": false,
+  "authorityRestored": false
+}
