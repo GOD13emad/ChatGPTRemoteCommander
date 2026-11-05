@@ -8,6 +8,7 @@ import {executeV2BoundOperation} from './v2-authorized-operation.mjs';
 import {normalizeV2Route,v2OperationKey} from './v2-routing-contract.mjs';
 import {v2ActionDigest} from './v2-caller-assertion.mjs';
 import {classifyV2V1ShellResult} from './v2-v1-result-classifier.mjs';
+import {createV2V1LocalOwnerGateway} from './v2-v1-local-owner-gateway.mjs';
 
 const fail=code=>{throw Object.assign(new Error(code),{code})};
 const ID=/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
@@ -126,5 +127,26 @@ export function createV2OAuthV1Parity({
     }
    },tool,args);
   }
+ });
+}
+
+
+// Trusted native V2 owner worker composition. Unlike arbitrary injection of
+// localGateway, this factory always enforces a fresh positive asynchronous
+// native-owner proof before V1 catalog lookup and physical tools/call.
+//
+// rpc and attestLocalOwner are supplied ONLY by the local owner process; never
+// pass them through an MCP/HTTP request or model-provided action. Neither OAuth
+// verification nor native user consent can be replaced by this gate alone.
+export function createV2OAuthV1NativeParity({
+ rpc,attestLocalOwner,...authenticatedOptions
+}={}){
+ if(typeof rpc!=='function'||typeof attestLocalOwner!=='function'||
+    Object.hasOwn(authenticatedOptions,'localGateway')||
+    Object.hasOwn(authenticatedOptions,'newId'))
+   fail('V2_AUTH_PARITY_NATIVE_BOOTSTRAP_REQUIRED');
+ return createV2OAuthV1Parity({
+  ...authenticatedOptions,
+  localGateway:createV2V1LocalOwnerGateway({rpc,attestLocalOwner})
  });
 }

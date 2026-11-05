@@ -2,7 +2,7 @@
 // MMZ pilot or a network listener. The protected ingress supplies a trusted
 // Authorization header; model arguments can never nominate a host/chat/grant.
 import {createV2McpOAuthContract} from './v2-mcp-oauth-contract.mjs';
-import {createV2OAuthV1Parity} from './v2-oauth-v1-parity.mjs';
+import {createV2OAuthV1Parity,createV2OAuthV1NativeParity} from './v2-oauth-v1-parity.mjs';
 const NAME='v2_v1_protected_call';
 const fail=code=>{throw Object.assign(new Error(code),{code});};
 const record=v=>v!==null&&typeof v==='object'&&!Array.isArray(v)&&
@@ -16,10 +16,27 @@ export function createV2OAuthV1McpDispatcher({
  const auth=createV2McpOAuthContract({
   resource,authorizationServers,scopes,allowedTools:[NAME]
  });
- const parity=createV2OAuthV1Parity({
-  ...privateServices,issuer:privateServices.issuer,
-  audience:privateServices.audience,requiredScopes:scopes
- });
+ // Trusted owner-worker bootstrap may supply its native V1 loopback RPC
+ // and OS peer attestor; never accept either from MCP input/headers. When
+ // enabled, there is no prebuilt gateway injection path around native checks.
+ const {nativeOwnerTransport,...trustedServices}=privateServices;
+ let parity;
+ if(nativeOwnerTransport===undefined){
+  parity=createV2OAuthV1Parity({
+   ...trustedServices,issuer:trustedServices.issuer,
+   audience:trustedServices.audience,requiredScopes:scopes
+  });
+ }else{
+  if(!record(nativeOwnerTransport)||
+     Object.keys(nativeOwnerTransport).sort().join(',')!=='attestLocalOwner,rpc')
+   fail('V2_PROTECTED_NATIVE_TRANSPORT_INVALID');
+  parity=createV2OAuthV1NativeParity({
+   ...trustedServices,rpc:nativeOwnerTransport.rpc,
+   attestLocalOwner:nativeOwnerTransport.attestLocalOwner,
+   issuer:trustedServices.issuer,audience:trustedServices.audience,
+   requiredScopes:scopes
+  });
+ }
  const descriptor=auth.toolDescriptor({
   name:NAME,title:'V2 Authenticated V1-Equivalent Tool',
   description:'Run a currently-granted V1 action under the authenticated MMZ Linux owner, preserving V1 OS policies and native GUI consent.',

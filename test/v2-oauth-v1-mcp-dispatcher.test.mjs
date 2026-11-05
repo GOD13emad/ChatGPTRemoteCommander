@@ -35,7 +35,7 @@ async function fixture(){
   localGateway:{call:async()=>{calls++;return {result:{
    isError:false,structuredContent:{exitCode:0,stdout:'private'}}};}},
   now:()=>NOW};
- return {dispatcher:createV2OAuthV1McpDispatcher(config),get calls(){return calls},
+ return {dispatcher:createV2OAuthV1McpDispatcher(config),config,get calls(){return calls},
   revoke:()=>granted=false};
 }
 test('protected tool lists OAuth scope and never appears as NoAuth',async()=>{
@@ -79,4 +79,75 @@ test('noauth cannot pass forged principal/route or unapproved tool input',async(
   assert.equal(result.isError,true);
  }
  assert.equal(f.calls,0);
+});
+
+
+test('protected MCP dispatcher takes native owner transport and rejects unauthenticated and revoked calls',async()=>{
+ const f=await fixture();
+ const {localGateway:_untrusted,...trusted}=f.config;
+ let identity=true;
+ const calls=[];
+ const dispatcher=createV2OAuthV1McpDispatcher({
+  ...trusted,
+  nativeOwnerTransport:{
+   attestLocalOwner:async()=>identity,
+   rpc:async(method,params)=>{
+    calls.push({method,params});
+    if(method==='tools/list')return {tools:[{name:'run_shell',inputSchema:{
+     type:'object',properties:{command:{type:'string'},requestId:{type:'string'}}
+    }}]};
+    if(method==='tools/call')return {isError:false,structuredContent:{exitCode:0,stdout:'live-native-tool-qa'}};
+    throw Error('UNEXPECTED_NATIVE_RPC');
+   }
+  }
+ });
+ const act={tool:'run_shell',arguments:args};
+ const noBearer=await dispatcher.call({args:act});
+ assert.equal(noBearer.isError,true);
+ assert.equal(calls.length,0);
+ const approved=await dispatcher.call({authorization:'Bearer verified-test-bearer',args:act});
+ assert.equal(approved.isError,false);
+ assert.equal(approved.structuredContent.stdout,'live-native-tool-qa');
+ assert.equal(calls.filter(x=>x.method==='tools/call').length,1);
+ assert.ok(calls.find(x=>x.method==='tools/call').params.arguments.requestId.startsWith('v2-'));
+ f.revoke();
+ identity=false;
+ const revoked=await dispatcher.call({authorization:'Bearer verified-test-bearer',args:act});
+ assert.equal(revoked.isError,true);
+ assert.equal(calls.filter(x=>x.method==='tools/call').length,1);
+});
+test('protected dispatcher denies native peer revocation before physical tool invocation',async()=>{
+ const f=await fixture();
+ const {localGateway:_unused,...trusted}=f.config;
+ let allow=true,physical=0;
+ const d=createV2OAuthV1McpDispatcher({
+  ...trusted,
+  nativeOwnerTransport:{
+   attestLocalOwner:async()=>allow,
+   rpc:async method=>{
+    if(method==='tools/list'){
+     allow=false;return {tools:[{name:'run_shell',inputSchema:{
+      type:'object',properties:{command:{type:'string'},requestId:{type:'string'}}
+     }}]};
+    }
+    physical++;throw Error('NATIVE_PEER_REVOKED');
+   }
+  }
+ });
+ const r=await d.call({authorization:'Bearer verified-test-bearer',args:{
+  tool:'run_shell',arguments:args
+ }});
+ assert.equal(r.isError,true);
+ assert.equal(physical,0);
+ assert.equal(r.content[0].text,'V2_PROTECTED_ACTION_DENIED');
+});
+test('native owner transport cannot be mixed with a prebuilt gateway or untrusted extra keys',async()=>{
+ const f=await fixture();
+ assert.throws(()=>createV2OAuthV1McpDispatcher({
+  ...f.config,nativeOwnerTransport:{rpc:async()=>({}),attestLocalOwner:async()=>true}
+ }),{code:'V2_AUTH_PARITY_NATIVE_BOOTSTRAP_REQUIRED'});
+ const {localGateway:_unused,...trusted}=f.config;
+ assert.throws(()=>createV2OAuthV1McpDispatcher({
+  ...trusted,nativeOwnerTransport:{rpc:async()=>({}),attestLocalOwner:async()=>true,overrides:true}
+ }),{code:'V2_PROTECTED_NATIVE_TRANSPORT_INVALID'});
 });
