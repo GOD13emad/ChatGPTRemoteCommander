@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import os from 'node:os';
 import path from 'node:path';
-import {isPrivateQaSymlinkTarget} from '../tools/v2-public-appimage-core-smoke.mjs';
+import {isPrivateQaSymlinkTarget,smoke} from '../tools/v2-public-appimage-core-smoke.mjs';
 
 const root=path.join(os.tmpdir(),'commander-v2-unique-private-qa-root');
 const parent=path.join(root,'config','Commander V2');
@@ -38,4 +38,7 @@ test('sibling with matching path prefix is not inside the QA scratch',()=>{
 
 test('exact private root remains inside the deletion scope',()=>{
  assert.equal(isPrivateQaSymlinkTarget(root,parent,root),true);
+});
+test('rejects arbitrary candidate-mode injection before any native launch',async()=>{
+ await assert.rejects(smoke({candidate:'../../other'}),{code:'INVALID_MODE'});
 });

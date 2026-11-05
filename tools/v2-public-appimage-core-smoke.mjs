@@ -10,6 +10,7 @@ import {createHash} from 'node:crypto';
 import {fileURLToPath} from 'node:url';
 
 const SHA='12f846b2df01b78ca6eb2f87835a988b5dbec77f88bdaed54f8211228e8cb1ef';
+const CANDIDATE_SHA='f2c6a862e160a1d873d46a91100306e3618a3b0d760598f8120ce4845d0c5b3c';
 const QA_NAME='cmdv2-public-core-smoke-';
 const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 const fail=code=>{throw Object.assign(new Error('V2_PUBLIC_CORE_'+code),{code});};
@@ -88,13 +89,19 @@ async function probe(port){
    unauthenticatedMcpStatus:401});
  }catch(e){if(e?.code?.startsWith('V2_PUBLIC_CORE_'))throw e;return null;}
 }
-export async function smoke(){
+export async function smoke({candidate=false}={}){
+ if(typeof candidate!=='boolean')fail('INVALID_MODE');
  if(process.platform!=='linux'||typeof process.getuid!=='function'||process.getuid()===0)
   fail('NONROOT_LINUX_REQUIRED');
- const app=path.join(os.homedir(),'Downloads','CommanderV2-Branded-QA-20261105',
-   'Commander-V2-Linux-x64.AppImage');
+ const base=path.join(os.homedir(),'.local','state','CommanderV2','QA','cos2150-unified-rebuild-20261104');
+ const app=candidate
+  ?path.join(base,'release','commander-v2-readonlyfix-qa','Commander-V2-Linux-x64.AppImage')
+  :path.join(os.homedir(),'Downloads','CommanderV2-Branded-QA-20261105','Commander-V2-Linux-x64.AppImage');
+ if(candidate&&fs.readFileSync(path.join(base,'.commander-v2-isolated-qa'),'utf8')!=='V2_COS_DISPOSABLE_SOURCE_QA_ONLY\n')
+  fail('NOT_ISOLATED_VENDOR_QA');
  ownerFile(app);
- if(await digest(app)!==SHA)fail('APPIMAGE_SHA_MISMATCH');
+ const pinned=candidate?CANDIDATE_SHA:SHA;
+ if(await digest(app)!==pinned)fail('APPIMAGE_SHA_MISMATCH');
  const root=fs.mkdtempSync(path.join(os.tmpdir(),QA_NAME));
  fs.chmodSync(root,0o700);
  const config=path.join(root,'config','Commander V2','v1-core-isolated-qa','config.json');
@@ -164,13 +171,14 @@ export async function smoke(){
   }
  }
  if(!cleanup)fail('QA_CLEANUP_UNCERTAIN');
- return Object.freeze({gate:'PUBLISHED_APPIMAGE_ISOLATED_CORE_QA_PASS',
-  appimageSha256:SHA,...passed,privateProfile:true,installed:false,
+ return Object.freeze({gate:candidate?'CANDIDATE_APPIMAGE_ISOLATED_CORE_QA_PASS':'PUBLISHED_APPIMAGE_ISOLATED_CORE_QA_PASS',
+  appimageSha256:pinned,...passed,privateProfile:true,installed:false,
   administratorGranted:false,chatAccountAuthenticated:false,
   v1ServiceModified:false,cleanupVerified:true});
 }
 if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url)){
- if(process.argv.length!==2){process.stderr.write('V2_PUBLIC_CORE_QA_NO_ARGUMENTS\n');process.exitCode=2;}
- else smoke().then(r=>process.stdout.write(JSON.stringify(r)+'\n'))
+ if(process.argv.length>3||(process.argv.length===3&&process.argv[2]!=='--candidate')){
+  process.stderr.write('V2_PUBLIC_CORE_QA_INVALID_ARGUMENTS\n');process.exitCode=2;
+ }else smoke({candidate:process.argv.length===3}).then(r=>process.stdout.write(JSON.stringify(r)+'\n'))
   .catch(e=>{process.stderr.write(String(e?.message||'V2_PUBLIC_CORE_QA_FAILED')+'\n');process.exitCode=2;});
 }
