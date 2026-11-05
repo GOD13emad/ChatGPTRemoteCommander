@@ -78,6 +78,8 @@ const CORE=[
  '.github/workflows/v2-unsigned-installer-qa.yml',
  'tools/v2-unsigned-installer-hosted-linux.sh',
  'tools/v2-unsigned-installer-hosted-windows.ps1',
+ 'tools/v2-unsigned-installer-inplace-linux.sh',
+ 'tools/v2-unsigned-installer-inplace-windows.ps1',
  'tools/v2-packaged-workspace-live-smoke.mjs',
  'tools/stage-v2-workspace-readonlyfix.mjs',
  'tools/v2-enrollment-census.mjs',

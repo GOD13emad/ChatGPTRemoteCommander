@@ -6,6 +6,8 @@ on:
       - '.github/workflows/v2-unsigned-installer-qa.yml'
       - 'tools/v2-unsigned-installer-hosted-linux.sh'
       - 'tools/v2-unsigned-installer-hosted-windows.ps1'
+      - 'tools/v2-unsigned-installer-inplace-linux.sh'
+      - 'tools/v2-unsigned-installer-inplace-windows.ps1'
   workflow_dispatch:
 permissions:
   contents: read
@@ -37,3 +39,27 @@ jobs:
         shell: pwsh
         timeout-minutes: 22
         run: ./tools/v2-unsigned-installer-hosted-windows.ps1
+  qa-inplace-linux:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Old unsigned QA to ReadonlyFix and back, exact package digests
+        shell: bash
+        timeout-minutes: 28
+        run: bash tools/v2-unsigned-installer-inplace-linux.sh
+  qa-inplace-windows:
+    runs-on: windows-2022
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Old unsigned QA to ReadonlyFix and back, exact NSIS installer digests
+        shell: pwsh
+        timeout-minutes: 28
+        run: ./tools/v2-unsigned-installer-inplace-windows.ps1
