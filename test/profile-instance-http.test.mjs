@@ -18,23 +18,57 @@ function shaIf(file){try{return createHash('sha256').update(fs.readFileSync(file
 test('isolated profile server owns separate marker, private memory and conservative catalog',async()=>{
  const temp=fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(),'rc-profile-http-')));
  const project=path.join(temp,'project'),state=path.join(temp,'private-state');fs.mkdirSync(project);fs.mkdirSync(state);
- const p=await freePort();
+ let p,built;
  const base={host:'127.0.0.1',port:47831,allowedRoots:[project],allowedPrograms:['node','git'],maxReadBytes:524288,maxWriteBytes:524288,maxCommandMs:10000,auditLog:'var/audit.jsonl',powerMode:{enabled:true,fullFilesystem:true,allowShell:true,allowProcessControl:true,allowPermanentDelete:false,guiControl:{enabled:true}}};
- const built=buildProfileInstance({baseConfig:base,profile:'fixture-account',port:p,stateDirectory:state});
- const cfg=path.join(state,'config.json');fs.writeFileSync(cfg,built.json);
+
+ const cfg=path.join(state,'config.json');
  const liveMarker=path.join(repo,'var','mcp-runtime.json'),before=shaIf(liveMarker);
  let child,output='';
  try{
-  child=spawn(process.execPath,[path.join(repo,'src','server-v0.3.mjs')],{cwd:repo,env:{...process.env,REMOTE_COMMANDER_CONFIG:cfg},stdio:['ignore','pipe','pipe']});
-  child.stdout.on('data',d=>output=(output+d).slice(-12000));child.stderr.on('data',d=>output=(output+d).slice(-12000));
-  let health;
-  const startupDeadline=Date.now()+30000;
-  while(Date.now()<startupDeadline){
-   if(child.exitCode!==null)throw new Error(`isolated server exited before healthy: exitCode=${child.exitCode}; output=${output}`);
-   try{const r=await fetch('http://127.0.0.1:'+p+'/health',{signal:AbortSignal.timeout(300)});if(r.ok){health=await r.json();break;}}catch{}
-   await pause(50);
+  // Node's freePort() releases the listener before child startup. Concurrent
+  // suites can claim that port: only the exact expected private config hash,
+  // profile and isolated status can establish ownership of the health reply.
+  let health=null;
+  for(let attempt=0;attempt<4&&!health;attempt++){
+   p=await freePort();
+   built=buildProfileInstance({baseConfig:base,profile:'fixture-account',port:p,stateDirectory:state});
+   fs.writeFileSync(cfg,built.json);
+   output='';
+   child=spawn(process.execPath,[path.join(repo,'src','server-v0.3.mjs')],{
+    cwd:repo,env:{...process.env,REMOTE_COMMANDER_CONFIG:cfg},stdio:['ignore','pipe','pipe']});
+   child.stdout.on('data',d=>output=(output+d).slice(-12000));
+   child.stderr.on('data',d=>output=(output+d).slice(-12000));
+   const deadline=Date.now()+8000;
+   while(Date.now()<deadline){
+    if(child.exitCode!==null)break;
+    try{
+     const r=await fetch('http://127.0.0.1:'+p+'/health',{
+      signal:AbortSignal.timeout(300)});
+     if(r.ok){
+      const observed=await r.json();
+      if(observed.instance?.profile==='fixture-account'&&
+         observed.instance?.isolated===true&&
+         observed.configSha256===built.configSha256){
+       health=observed;break;
+      }
+      // Do not accept a foreign process and do not terminate it.
+      break;
+     }
+    }catch{}
+    await pause(50);
+   }
+   if(!health){
+    if(child.exitCode===null){
+     const closed=once(child,'close');
+     child.kill('SIGTERM');
+     await closed;
+    }
+    child=null;
+    await pause(60);
+   }
   }
-  assert.ok(health,`isolated server did not become healthy within 30000ms; output=${output}`);assert.equal(health.instance.profile,'fixture-account');assert.equal(health.instance.isolated,true);
+  assert.ok(health,'isolated fixture could not bind 4 owner-private ports; '+output);
+  assert.equal(health.instance.profile,'fixture-account');assert.equal(health.instance.isolated,true);
   assert.equal(health.configSha256,built.configSha256,'candidate must bind exactly this private config');
   assert.equal(health.version,JSON.parse(fs.readFileSync(path.join(repo,'package.json'),'utf8')).version,'candidate must identify exact source package train');
   const rpc=async(name,args={})=>{const r=await fetch('http://127.0.0.1:'+p+'/mcp',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/call',params:{name,arguments:args}})});return r.json();};

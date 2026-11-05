@@ -89,18 +89,20 @@ async function probe(port){
    unauthenticatedMcpStatus:401});
  }catch(e){if(e?.code?.startsWith('V2_PUBLIC_CORE_'))throw e;return null;}
 }
-export async function smoke({candidate=false}={}){
- if(typeof candidate!=='boolean')fail('INVALID_MODE');
+export async function smoke({candidate=false,release=false}={}){
+ if(typeof candidate!=='boolean'||typeof release!=='boolean'||(candidate&&release))fail('INVALID_MODE');
  if(process.platform!=='linux'||typeof process.getuid!=='function'||process.getuid()===0)
   fail('NONROOT_LINUX_REQUIRED');
  const base=path.join(os.homedir(),'.local','state','CommanderV2','QA','cos2150-unified-rebuild-20261104');
  const app=candidate
   ?path.join(base,'release','commander-v2-readonlyfix-qa','Commander-V2-Linux-x64.AppImage')
+  :release
+  ?path.join(os.homedir(),'Downloads','CommanderV2-Unsigned-QA-20261105-ReadonlyFix','Commander-V2-Linux-x64.AppImage')
   :path.join(os.homedir(),'Downloads','CommanderV2-Branded-QA-20261105','Commander-V2-Linux-x64.AppImage');
  if(candidate&&fs.readFileSync(path.join(base,'.commander-v2-isolated-qa'),'utf8')!=='V2_COS_DISPOSABLE_SOURCE_QA_ONLY\n')
   fail('NOT_ISOLATED_VENDOR_QA');
  ownerFile(app);
- const pinned=candidate?CANDIDATE_SHA:SHA;
+ const pinned=candidate||release?CANDIDATE_SHA:SHA;
  if(await digest(app)!==pinned)fail('APPIMAGE_SHA_MISMATCH');
  const root=fs.mkdtempSync(path.join(os.tmpdir(),QA_NAME));
  fs.chmodSync(root,0o700);
@@ -171,14 +173,14 @@ export async function smoke({candidate=false}={}){
   }
  }
  if(!cleanup)fail('QA_CLEANUP_UNCERTAIN');
- return Object.freeze({gate:candidate?'CANDIDATE_APPIMAGE_ISOLATED_CORE_QA_PASS':'PUBLISHED_APPIMAGE_ISOLATED_CORE_QA_PASS',
+ return Object.freeze({gate:candidate?'CANDIDATE_APPIMAGE_ISOLATED_CORE_QA_PASS':release?'RELEASE_APPIMAGE_ISOLATED_CORE_QA_PASS':'PUBLISHED_APPIMAGE_ISOLATED_CORE_QA_PASS',
   appimageSha256:pinned,...passed,privateProfile:true,installed:false,
   administratorGranted:false,chatAccountAuthenticated:false,
   v1ServiceModified:false,cleanupVerified:true});
 }
 if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url)){
- if(process.argv.length>3||(process.argv.length===3&&process.argv[2]!=='--candidate')){
+ if(process.argv.length>3||(process.argv.length===3&&!['--candidate','--release'].includes(process.argv[2]))){
   process.stderr.write('V2_PUBLIC_CORE_QA_INVALID_ARGUMENTS\n');process.exitCode=2;
- }else smoke({candidate:process.argv.length===3}).then(r=>process.stdout.write(JSON.stringify(r)+'\n'))
+ }else smoke({candidate:process.argv[2]==='--candidate',release:process.argv[2]==='--release'}).then(r=>process.stdout.write(JSON.stringify(r)+'\n'))
   .catch(e=>{process.stderr.write(String(e?.message||'V2_PUBLIC_CORE_QA_FAILED')+'\n');process.exitCode=2;});
 }

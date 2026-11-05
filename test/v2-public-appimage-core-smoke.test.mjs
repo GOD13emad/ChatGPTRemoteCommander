@@ -42,3 +42,8 @@ test('exact private root remains inside the deletion scope',()=>{
 test('rejects arbitrary candidate-mode injection before any native launch',async()=>{
  await assert.rejects(smoke({candidate:'../../other'}),{code:'INVALID_MODE'});
 });
+
+test('rejects multiple artifact modes and untrusted release selector',async()=>{
+ await assert.rejects(smoke({candidate:true,release:true}),{code:'INVALID_MODE'});
+ await assert.rejects(smoke({release:'../../custom-path'}),{code:'INVALID_MODE'});
+});
