@@ -64,7 +64,13 @@ for (const action of ['pause','cancel']) for (const success of [true,false]) {
       assert.equal(f.store.list().find(x=>x.id==='sample').lifecycle,state.lifecycleState);
       assert.equal(f.store.resume('sample').readyForNextStep,false);
       await assert.rejects(f.call('sample','second'),action==='pause'?/WORKFLOW_PAUSED/:/WORKFLOW_CANCELLED/);
-      assert.equal(f.store.schedulerStatus().currentLeases,0);
+      assert.equal(f.store.schedulerStatus().currentLeases,success?0:1);
+      if(!success){
+        assert.equal(f.store.schedulerStatus().rootLeasesBlocking,1);
+        let lateEffects=0;
+        await assert.rejects(other.call({id:'other',stepId:'first',expectedRevision:1,tool:'read_text',arguments:{}},{validate:async()=>{},dispatch:async()=>{lateEffects++;return{ok:true};}}),/WORKFLOW_ROOT_LEASED/);
+        assert.equal(lateEffects,0);
+      }
     } finally { finish.resolve();await pending;other.close(); }
   });
 }

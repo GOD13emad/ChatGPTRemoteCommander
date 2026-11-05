@@ -289,8 +289,10 @@ export class WorkflowStore {
     const pending = this.#db.prepare("SELECT COUNT(*) AS n FROM scheduler_jobs WHERE enabled=1 AND lifecycle NOT IN ('COMPLETED','FAILED','CANCELLED')").get().n;
     const interrupted = this.#db.prepare("SELECT COUNT(*) AS n FROM scheduler_jobs WHERE lifecycle='INTERRUPTED'").get().n;
     const leaseNow = new Date().toISOString();
-    this.#leaseDb.prepare('DELETE FROM root_leases WHERE expires_at <= ?').run(leaseNow);
+    // Expiry is not proof that the previous executor ceased its external effect.
     const leases = this.#leaseDb.prepare('SELECT COUNT(*) AS n FROM root_leases WHERE expires_at > ?').get(leaseNow).n;
+    const rootLeasesBlocking = this.#leaseDb.prepare('SELECT COUNT(*) AS n FROM root_leases').get().n;
+    const expiredLeases = this.#leaseDb.prepare('SELECT COUNT(*) AS n FROM root_leases WHERE expires_at <= ?').get(leaseNow).n;
     const reconciliationRequired = this.#db.prepare("SELECT COUNT(*) AS n FROM operations WHERE status='UNCERTAIN'").get().n;
     return {
       enabled: this.#schedulerPolicy.enabled,
@@ -305,6 +307,8 @@ export class WorkflowStore {
       reconciliationRequired: Number(reconciliationRequired),
       currentLeases: Number(leases),
       hasActiveLease: Number(leases) > 0,
+      rootLeasesBlocking: Number(rootLeasesBlocking),
+      expiredLeasesRequiringReconciliation: Number(expiredLeases),
       lifecycleCounts: counts,
       workerId: this.#workerId,
       startupRecovery: clone(this.#startupRecovery),
@@ -394,22 +398,27 @@ export class WorkflowStore {
     if (this.#schedulerPolicy.oneWriterPerRoot === false) return;
     const key=leaseRootKey(root), now=new Date().toISOString();
     this.#leaseTransaction(() => {
-      this.#leaseDb.prepare('DELETE FROM root_leases WHERE expires_at <= ?').run(now);
-      const lease=this.#leaseDb.prepare('SELECT profile,workflow,owner FROM root_leases WHERE root=?').get(key);
-      if (lease) fail('WORKFLOW_ROOT_LEASED');
+      const lease=this.#leaseDb.prepare('SELECT profile,workflow,owner,expires_at FROM root_leases WHERE root=?').get(key);
+      if (lease) fail(lease.expires_at <= now ? 'WORKFLOW_ROOT_LEASE_EXPIRED_RECONCILIATION_REQUIRED' : 'WORKFLOW_ROOT_LEASED');
       this.#leaseDb.prepare('INSERT INTO root_leases(root,profile,workflow,owner,expires_at,revision) VALUES(?,?,?,?,?,?)')
         .run(key,this.#profileId,workflow,owner,expiresAt,revisionValue);
     });
   }
   #renewRootLease(root, workflow, owner, expiresAt) {
     if (this.#schedulerPolicy.oneWriterPerRoot === false) return;
-    this.#leaseDb.prepare('UPDATE root_leases SET expires_at=? WHERE root=? AND profile=? AND workflow=? AND owner=?')
+    const updated=this.#leaseDb.prepare('UPDATE root_leases SET expires_at=? WHERE root=? AND profile=? AND workflow=? AND owner=?')
       .run(expiresAt,leaseRootKey(root),this.#profileId,workflow,owner);
+    if(updated.changes!==1)fail('WORKFLOW_ROOT_LEASE_LOST');
   }
   #releaseRootLease(root, workflow, owner) {
-    if (this.#schedulerPolicy.oneWriterPerRoot === false) return;
-    this.#leaseDb.prepare('DELETE FROM root_leases WHERE root=? AND profile=? AND workflow=? AND owner=?')
-      .run(leaseRootKey(root),this.#profileId,workflow,owner);
+    if (this.#schedulerPolicy.oneWriterPerRoot === false) return 1;
+    return this.#leaseDb.prepare('DELETE FROM root_leases WHERE root=? AND profile=? AND workflow=? AND owner=?')
+      .run(leaseRootKey(root),this.#profileId,workflow,owner).changes;
+  }
+  #assertNoRootLease(root) {
+    if(this.#schedulerPolicy.oneWriterPerRoot===false)return;
+    const lease=this.#leaseDb.prepare('SELECT expires_at FROM root_leases WHERE root=?').get(leaseRootKey(root));
+    if(lease)fail(lease.expires_at<=new Date().toISOString()?'WORKFLOW_ROOT_LEASE_EXPIRED_RECONCILIATION_REQUIRED':'WORKFLOW_ROOT_LEASED');
   }
   #load(id) {
     identifier(id);
@@ -646,6 +655,7 @@ export class WorkflowStore {
   resume(id) {
     const view = this.get(id), { state } = view;
     const blockers = [];
+    try{this.#assertNoRootLease(state.root);}catch(error){blockers.push(error.workflowCode??'WORKFLOW_ROOT_LEASE_STATUS_UNAVAILABLE');}
     const controlFailure = controlBlocker(state);
     if (controlFailure && controlFailure !== 'WORKFLOW_ALREADY_COMPLETED') blockers.push(controlFailure);
     try { this.#identity(state); } catch (e) { blockers.push(e.workflowCode ?? 'WORKFLOW_ROOT_UNAVAILABLE'); }
@@ -696,7 +706,10 @@ export class WorkflowStore {
     }
     if (prior.status !== 'pending') fail('WORKFLOW_OUTCOME_REQUIRES_RECONCILIATION');
     const gate = this.resume(id);
-    if (gate.blockers.length) fail('WORKFLOW_RESUME_BLOCKED');
+    if (gate.blockers.length) {
+      const leaseCode=gate.blockers.find(code=>code==='WORKFLOW_ROOT_LEASED'||code==='WORKFLOW_ROOT_LEASE_EXPIRED_RECONCILIATION_REQUIRED');
+      fail(leaseCode??'WORKFLOW_RESUME_BLOCKED');
+    }
     await validate(tool, args, clone(state));
 
     const classification = classifyTool(tool,args);
@@ -740,13 +753,14 @@ export class WorkflowStore {
     this.#db.prepare("UPDATE scheduler_jobs SET lifecycle='RUNNING',lease_owner=?,lease_until=?,updated_at=? WHERE workflow=?")
       .run(owner,expires,new Date().toISOString(),id);
 
+    let leaseRenewalLost=false;
     let renew = setInterval(() => {
       try {
         const until = new Date(Date.now()+Math.max(this.#schedulerPolicy.leaseMs,30000)).toISOString();
         this.#renewRootLease(state.root,id,owner,until);
         this.#db.prepare('UPDATE scheduler_jobs SET lease_until=?,updated_at=? WHERE workflow=? AND lease_owner=?')
           .run(until,new Date().toISOString(),id,owner);
-      } catch { /* recovery will reconcile if persistence becomes unavailable */ }
+      } catch { leaseRenewalLost=true; /* effect outcome still requires reconciliation */ }
     }, Math.max(2000,Math.floor(Math.max(this.#schedulerPolicy.leaseMs,30000)/3)));
     renew.unref?.();
 
@@ -757,6 +771,9 @@ export class WorkflowStore {
         failure = true;
         receipt = { exception:true, errorCode:/^[A-Z][A-Z0-9_]{1,79}$/.test(e.workflowCode ?? '') ? e.workflowCode : 'TOOL_EXCEPTION', outputStored:false };
       }
+      const recordReceipt=()=>{
+      const ownerStillHoldsLease=this.#schedulerPolicy.oneWriterPerRoot===false||!!this.#leaseDb.prepare('SELECT 1 FROM root_leases WHERE root=? AND profile=? AND workflow=? AND owner=?').get(leaseRootKey(state.root),this.#profileId,id,owner);
+      if(leaseRenewalLost||!ownerStillHoldsLease){failure=true;result=undefined;receipt={exception:true,errorCode:'WORKFLOW_ROOT_LEASE_LOST',outputStored:false};}
       receipt = { ...receipt, operationId, attemptId, idempotencyKey, classification, inputHash, preStateHash:view.headSha256, postStateHash:null };
       finished = this.#transaction(() => {
         const { state:s, head } = this.#load(id), step = s.steps.find(x => x.id === stepId);
@@ -786,11 +803,14 @@ export class WorkflowStore {
           .run(s.lifecycleState,s.scheduler.enabled?1:0,Number(s.scheduler.repeatedFailureCount??0),s.scheduler.lastFailureCode,new Date().toISOString(),id);
         return committed;
       });
+      // Only a definitive successful completion may release this exact claim.
+      // Ambiguous effects retain exclusion even after TTL expiry or restart.
+      if(!failure)this.#releaseRootLease(state.root,id,owner);
+      };
+      if(this.#schedulerPolicy.oneWriterPerRoot===false)recordReceipt();
+      else this.#leaseTransaction(recordReceipt);
     } finally {
       clearInterval(renew);
-      if (finished) {
-        try { this.#releaseRootLease(state.root,id,owner); } catch { /* lease expiry remains the safe fallback */ }
-      }
     }
     return { replayed:false,cachedReceipt:false,outcome:failure?'UNCERTAIN':'RECORDED_NOT_VALIDATED',
       revision:finished.state.revision,receipt,result:result??null,acceptanceStatus:'UNVALIDATED',
@@ -889,10 +909,13 @@ export class WorkflowStore {
   }
 
   finalize({ id, expectedRevision, acceptanceResults, files, summary, expectedEvidence = undefined }) {
+    // Serialize final acceptance with any competing root-lease acquisition.
+    return this.#leaseTransaction(()=>{
     revision(expectedRevision);
     safeText(summary,4000);
     const initial=this.get(id), state=initial.state; this.#identity(state);
     requireActive(state);
+    this.#assertNoRootLease(state.root);
     if (state.revision !== expectedRevision) fail('WORKFLOW_REVISION_CONFLICT');
     if (!Array.isArray(acceptanceResults) || acceptanceResults.length !== state.acceptance.length || acceptanceResults.some(x=>x!==true)) {
       fail('WORKFLOW_ACCEPTANCE_UNPROVEN');
@@ -934,6 +957,7 @@ export class WorkflowStore {
       return {acceptanceStatus:'PASS',evidence,brainSync};
     });
     return {...done,brainSync,acceptanceStatus:'PASS'};
+    });
   }
 
   health() {

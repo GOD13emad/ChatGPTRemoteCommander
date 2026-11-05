@@ -22,19 +22,111 @@ const tunnelPattern = patterns.find(([type]) => type === 'Tunnel identifier')[1]
 if (!tunnelPattern.test('tunnel' + '_' + '0123456789abcdef'.repeat(2)) || tunnelPattern.test('tunnel_control_plane_fresh') || tunnelPattern.test('TUNNEL_HEALTH_UNKNOWN_LISTENER')) {
   throw new Error('Tunnel identifier audit pattern regression');
 }
+// A separate V2 test branch contains two known *invalid* PEM header strings
+// with no matching key footer or encoded key. Their exact immutable source
+// lines were inspected without printing any potential credentials.
+// Only these 2 exact added diff lines at this exact Git commit/path are exempt;
+// all other key headers, including other lines in the same file, remain findings.
+const KNOWN_INVALID_PEM_FIXTURE = Object.freeze({
+  commit: 'd890bd978b07aa738ceeef97bd6af2782538bac1',
+  path: 'test/v2-mcp-http-ingress.test.mjs',
+  fingerprints: new Set(['c5a00fec5ba8ec5e','642666ec0adf94ef'])
+});
+function lineFingerprint(line) {
+  let hash = 0xcbf29ce484222325n;
+  for (const byte of Buffer.from(line, 'utf8')) {
+    hash = BigInt.asUintN(64, (hash ^ BigInt(byte)) * 0x100000001b3n);
+  }
+  return hash.toString(16).padStart(16,'0');
+}
+function knownInvalidPemFixture(type, line, commit, file) {
+  return type === 'Private key block' &&
+    commit === KNOWN_INVALID_PEM_FIXTURE.commit &&
+    file === KNOWN_INVALID_PEM_FIXTURE.path &&
+    line.startsWith('+  privateKeyPem:') &&
+    KNOWN_INVALID_PEM_FIXTURE.fingerprints.has(lineFingerprint(line));
+}
+
+// Immutable negative-test literals reviewed in public all-ref history.
+// These exact lines are fixed fake verifier inputs or assert.throws secret
+// rejection fixtures. No current-file, type-wide or path-wide exemption.
+const KNOWN_INVALID_BEARER_FIXTURES = Object.freeze([
+  {
+    "commit": "456e37e2553b4268b3ee0b22cd193be00911ef87",
+    "path": "test/v2-oauth-v1-mcp-dispatcher.test.mjs",
+    "fingerprint": "8272109f95e18312"
+  },
+  {
+    "commit": "456e37e2553b4268b3ee0b22cd193be00911ef87",
+    "path": "test/v2-oauth-v1-mcp-dispatcher.test.mjs",
+    "fingerprint": "b1bc25c1f8b8e215"
+  },
+  {
+    "commit": "456e37e2553b4268b3ee0b22cd193be00911ef87",
+    "path": "test/v2-oauth-v1-mcp-dispatcher.test.mjs",
+    "fingerprint": "2545a1ac17808792"
+  },
+  {
+    "commit": "fab67310c53f0a2e50b1568d062c0a0bc65ad02d",
+    "path": "test/v2-capability-gap-registry.test.mjs",
+    "fingerprint": "92be4c62c850f4c4"
+  },
+  {
+    "commit": "5b713ab4f34883f5b916b0009caabafde63a255d",
+    "path": "test/v2-capability-gap-registry.test.mjs",
+    "fingerprint": "24cacbe3a36df2a2"
+  },
+  {
+    "commit": "e9f1681a9ad85c4d4a34c31425df96bf24b15567",
+    "path": "test/v2-oauth-v1-mcp-dispatcher.test.mjs",
+    "fingerprint": "be67c7c80a073d0c"
+  },
+  {
+    "commit": "e9f1681a9ad85c4d4a34c31425df96bf24b15567",
+    "path": "test/v2-oauth-v1-mcp-dispatcher.test.mjs",
+    "fingerprint": "75ee5eb8ec5b34c3"
+  },
+  {
+    "commit": "27c84a7db84efb863348f39384221b7c378a7871",
+    "path": "test/v2-oauth-v1-mcp-dispatcher.test.mjs",
+    "fingerprint": "507b380675074a7e"
+  },
+  {
+    "commit": "27c84a7db84efb863348f39384221b7c378a7871",
+    "path": "test/v2-oauth-v1-mcp-dispatcher.test.mjs",
+    "fingerprint": "f4603e811c4aa531"
+  }
+]);
+function knownInvalidBearerFixture(type,line,commit,file){
+  return type === 'Bearer token literal' && KNOWN_INVALID_BEARER_FIXTURES.some(
+    x=>x.commit===commit && x.path===file && x.fingerprint===lineFingerprint(line));
+}
+
 // Scan complete Git history without buffering the entire potentially multi-GB patch.
 // Lines are bounded; anything above the bound fails closed instead of being skipped.
 function makeHistoryScanner(rules) {
   const hits = new Set();
-  let pending = '', preceding = '';
+  let pending = '', preceding = '', bearerPreceding = '', currentCommit = '', currentFile = '';
   const limit = 16 * 1024 * 1024;
   function scanLine(line) {
+    if (/^commit [a-f0-9]{40}(?=\s|$)/.test(line)) {
+      currentCommit = line.slice(7,47);
+      currentFile = '';
+    } else if (line.startsWith('diff --git a/')) {
+      const marker = line.indexOf(' b/');
+      currentFile = marker >= 0 ? line.slice(marker+3).trim() : '';
+    }
     const sample = preceding + line;
+    const bearerSample = bearerPreceding + (knownInvalidBearerFixture('Bearer token literal',line,currentCommit,currentFile) ? '\n' : line);
     for (const [name, pattern] of rules) {
       pattern.lastIndex = 0;
-      if (pattern.test(sample)) hits.add(name);
+      // PEM headers occupy one logical line. Reusing preceding context here
+      // would rediscover an exempt test header on every subsequent line.
+      const candidate = name === 'Private key block' ? line : name === 'Bearer token literal' ? bearerSample : sample;
+      if (pattern.test(candidate) && !knownInvalidPemFixture(name, line, currentCommit, currentFile)) hits.add(name);
     }
     preceding = sample.slice(-512);
+    bearerPreceding = bearerSample.slice(-512);
   }
   return {
     write(text) {
@@ -53,6 +145,34 @@ function makeHistoryScanner(rules) {
     }
   };
 }
+// In-memory negative controls: arbitrary key headers are still rejected.
+const privateKeyMarker = '-----BEGIN ' + 'PRIVATE KEY-----';
+const fakeLine = "+  privateKeyPem:'" + privateKeyMarker + "'\n";
+const negativeScanner = makeHistoryScanner(patterns);
+negativeScanner.write('commit ' + 'f'.repeat(40) + '\n');
+negativeScanner.write('diff --git a/test/other.test.mjs b/test/other.test.mjs\n');
+negativeScanner.write(fakeLine);
+if (!negativeScanner.finish().has('Private key block')) {
+  throw new Error('SECURITY_AUDIT_PRIVATE_KEY_NEGATIVE_CONTROL_FAILED');
+}
+if (knownInvalidPemFixture('Private key block', fakeLine,
+    KNOWN_INVALID_PEM_FIXTURE.commit, KNOWN_INVALID_PEM_FIXTURE.path)) {
+  throw new Error('SECURITY_AUDIT_FIXTURE_EXEMPTION_TOO_BROAD');
+}
+
+// Git log may decorate refs after the commit hash. Preserve source provenance
+// for both decorated and undecorated headers without skipping other key markers.
+for (const decorated of [false,true]) {
+  const probe = makeHistoryScanner(patterns);
+  probe.write('commit ' + 'f'.repeat(40) +
+    (decorated ? ' (HEAD -> a-feature)\n' : '\n'));
+  probe.write('diff --git a/test/other.test.mjs b/test/other.test.mjs\n');
+  probe.write(fakeLine);
+  if (!probe.finish().has('Private key block')) {
+    throw new Error('SECURITY_AUDIT_DECORATED_COMMIT_NEGATIVE_CONTROL_FAILED');
+  }
+}
+
 const boundaryProbe = makeHistoryScanner(patterns);
 boundaryProbe.write('tunnel' + '_0123456789abcdef');
 boundaryProbe.write('0123456789abcdef\nBearer \n');
