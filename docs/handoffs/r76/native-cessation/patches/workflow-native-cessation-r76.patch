@@ -1,0 +1,252 @@
+diff --git a/src/workflow-store.mjs b/src/workflow-store.mjs
+index 015fd4a..a816ce1 100644
+--- a/src/workflow-store.mjs
++++ b/src/workflow-store.mjs
+@@ -162,7 +162,8 @@ export class WorkflowStore {
+   #schedulerPolicy;
+   #workerId = randomUUID();
+   #startupRecovery = { scanned:0, recovered:0, truncated:false, limit:2000 };
+-  constructor({ directory, rootLeaseDirectory = directory, allowedRoots, device = os.hostname(), configSha256 = ZERO, authority = {}, executionProfile = {}, schedulerPolicy = {} }) {
++  #verifyNativeCessation = null;
++  constructor({ directory, rootLeaseDirectory = directory, allowedRoots, device = os.hostname(), configSha256 = ZERO, authority = {}, executionProfile = {}, schedulerPolicy = {}, verifyNativeCessation = null }) {
+     if (!Array.isArray(allowedRoots) || !allowedRoots.length) fail('WORKFLOW_ROOTS_REQUIRED');
+     this.#roots = allowedRoots.map(r => { noLinks(r); return fs.realpathSync.native(r); });
+     if (typeof directory !== 'string' || !path.isAbsolute(directory) || /^(?:\\\\|\/\/)/.test(directory)) fail('WORKFLOW_LOCAL_STORE_REQUIRED');
+@@ -191,6 +192,8 @@ export class WorkflowStore {
+     this.#profileId = safeText(this.#authority.profileId ?? 'default', 128);
+     this.#executionProfile = normalizeExecutionProfile(executionProfile);
+     this.#schedulerPolicy = normalizeSchedulerPolicy(schedulerPolicy);
++    if(verifyNativeCessation!==null&&typeof verifyNativeCessation!=='function')fail('WORKFLOW_NATIVE_CESSATION_VERIFIER_INVALID');
++    this.#verifyNativeCessation=verifyNativeCessation;
+ 
+     if (typeof rootLeaseDirectory !== 'string' || !path.isAbsolute(rootLeaseDirectory) || /^(?:\\|\/\/)/.test(rootLeaseDirectory)) fail('WORKFLOW_ROOT_LEASE_STORE_REQUIRED');
+     noLinks(rootLeaseDirectory, false);
+@@ -215,7 +218,17 @@ export class WorkflowStore {
+       CREATE TABLE IF NOT EXISTS root_leases(
+         root TEXT PRIMARY KEY, profile TEXT NOT NULL, workflow TEXT NOT NULL,
+         owner TEXT NOT NULL, expires_at TEXT NOT NULL, revision INTEGER NOT NULL
+-      );`);
++      );
++      CREATE TABLE IF NOT EXISTS root_lease_release_evidence(
++        root TEXT NOT NULL, lease_fingerprint TEXT NOT NULL,
++        profile TEXT NOT NULL, workflow TEXT NOT NULL, operation_id TEXT NOT NULL,
++        attestation_digest TEXT NOT NULL, verified_at TEXT NOT NULL, released_at TEXT NOT NULL,
++        PRIMARY KEY(root, lease_fingerprint)
++      );
++      CREATE TRIGGER IF NOT EXISTS lease_release_evidence_no_update
++        BEFORE UPDATE ON root_lease_release_evidence BEGIN SELECT RAISE(ABORT,'APPEND_ONLY'); END;
++      CREATE TRIGGER IF NOT EXISTS lease_release_evidence_no_delete
++        BEFORE DELETE ON root_lease_release_evidence BEGIN SELECT RAISE(ABORT,'APPEND_ONLY'); END;`);
+ 
+     this.#db = new DatabaseSync(this.#dbPath, { allowExtension: false });
+     try {
+@@ -283,6 +296,209 @@ export class WorkflowStore {
+   close() { if (!this.#closed) { this.#db.close(); this.#leaseDb.close(); this.#closed = true; } }
+   get location() { return this.#dbPath; }
+ 
++  // Same-host comparison only: identical fingerprints indicate the same
++  // canonical lease DB path, not authority, liveness or cross-host fencing.
++  leaseStoreFingerprint() {
++    const name = process.platform === 'win32' ? this.#leaseDbPath.toLowerCase() : this.#leaseDbPath;
++    return hash(canonical({ host:os.hostname(), path:name }));
++  }
++  // Observability is deliberately separate from lease reclamation: a TTL can
++  // expire while its original external effect is still executing.
++  rootLeaseStatus(root) {
++    const actual = rootWithin(root, this.#roots);
++    if (this.#schedulerPolicy.oneWriterPerRoot === false) {
++      return { enabled:false, blocking:false, expired:false, reconciliationRequired:false,
++        leaseFingerprint:null, leaseStoreFingerprint:this.leaseStoreFingerprint(), comparisonScope:'SAME_HOST_ONLY' };
++    }
++    const key = leaseRootKey(actual);
++    const lease = this.#leaseDb.prepare(
++      'SELECT profile,workflow,owner,expires_at,revision FROM root_leases WHERE root=?').get(key);
++    if (!lease) {
++      return { enabled:true, blocking:false, expired:false, reconciliationRequired:false,
++        leaseFingerprint:null, leaseStoreFingerprint:this.leaseStoreFingerprint(), comparisonScope:'SAME_HOST_ONLY' };
++    }
++    const expired = lease.expires_at <= new Date().toISOString();
++    // Never expose another profile's owner/credential-like journal identity.
++    return { enabled:true, blocking:true, expired, reconciliationRequired:expired,
++      leaseFingerprint:jsonHash({ root:key, ...lease }),
++      leaseStoreFingerprint:this.leaseStoreFingerprint(), comparisonScope:'SAME_HOST_ONLY',
++      releasePolicy:'EXPLICIT_EXTERNAL_RECONCILIATION_REQUIRED' };
++  }
++
++  // Read-only handoff for V1-02 native cessation evidence. This is not a
++  // release capability: neither caller attestations nor post-state checks
++  // may delete an orphaned lease without an independently trusted fence.
++  reconciliationPreflight(id) {
++    const { state } = this.get(id);
++    this.#identity(state);
++    const key=leaseRootKey(state.root);
++    const lease=this.#leaseTransaction(() => this.#leaseDb.prepare(
++      'SELECT profile,workflow,owner,expires_at,revision FROM root_leases WHERE root=?').get(key));
++    const heldByThisWorkflow=!!lease && lease.profile===this.#profileId && lease.workflow===id;
++    // A lease belongs to one exact operation attempt, not to every operation
++    // previously recorded by this workflow. After restart the worker UUID is
++    // unavailable, so verify its persisted owner token against the operation
++    // UUID and the private journal; owner text never enters the public result.
++    const ownerMatch=heldByThisWorkflow && typeof lease.owner==='string'
++      ? lease.owner.match(/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}:([0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12})$/i)
++      : null;
++    const leaseOperationId=ownerMatch?.[1] ?? null;
++    const operations=leaseOperationId
++      ? state.steps.filter(s => s.operationId === leaseOperationId
++          && ['running','uncertain','reconciled_applied','reconciled_not_applied'].includes(s.status)
++          && !!this.#db.prepare('SELECT 1 FROM operations WHERE operation_id=? AND workflow=? AND step_id=?')
++            .get(leaseOperationId,id,s.id))
++          .map(s => ({stepId:s.id,operationId:s.operationId,outcomeState:s.status}))
++      : [];
++    // A terminal receipt can be durable even when the subsequent best-effort
++    // lease DELETE failed or the process crashed. Expose this as a distinct
++    // read-only blocker, never as automatic permission to reclaim a lease.
++    // A previous terminal step must not mask a newer running/uncertain step.
++    const terminalOrphan=!!leaseOperationId
++      && !state.steps.some(s => ['running','uncertain'].includes(s.status))
++      && state.steps.some(s => s.operationId === leaseOperationId
++        && ['recorded','verified'].includes(s.status)
++        && !!this.#db.prepare("SELECT 1 FROM operations WHERE operation_id=? AND workflow=? AND step_id=? AND status IN ('EXECUTED','VERIFIED')")
++          .get(leaseOperationId,id,s.id));
++    const status=this.#schedulerPolicy.oneWriterPerRoot === false ? 'ENFORCEMENT_DISABLED'
++      : !lease ? 'NO_BLOCKING_LEASE'
++      : !heldByThisWorkflow ? 'FOREIGN_LEASE_BLOCKING'
++      : operations.length ? 'CESSATION_EVIDENCE_REQUIRED'
++      : terminalOrphan ? 'TERMINAL_RECEIPT_ORPHAN_LEASE' : 'UNATTRIBUTED_LEASE_BLOCKING';
++    return {
++      schema:'V1-05_RECONCILIATION_PREFLIGHT_V1',
++      workflowId:id,revision:state.revision,rootFingerprint:hash(key),controlActive:state.control?.intent==='ACTIVE',
++      lease:{
++        blocking:!!lease,expired:!!lease && lease.expires_at<=new Date().toISOString(),
++        fingerprint:lease ? jsonHash({root:key,...lease}) : null,
++        storeFingerprint:this.leaseStoreFingerprint()
++      },
++      status,operations,enforcementEnabled:this.#schedulerPolicy.oneWriterPerRoot !== false,
++      releaseEligible:false,
++      outcomeVerificationIsCessationProof:false,
++      evidenceProvider:'V1-02_TRUSTED_NATIVE_EXECUTOR',
++      requiredEvidence:[
++        'trusted_native_executor_identity','operation_id','root_fingerprint',
++        'lease_store_fingerprint','lease_fingerprint','verified_process_tree_cessation',
++        'trusted_attestation'
++      ],
++      releaseAction:'NOT_AVAILABLE_WITHOUT_EXTERNAL_PROOF_AND_CAS'
++    };
++  }
++
++
++  // Only a constructor-injected, trusted native V1-02 verifier can authorize
++  // this host-side method. It is deliberately absent from all MCP tools.
++  async reconcileOrphanLease({
++    id, expectedRevision, expectedLeaseFingerprint,
++    expectedRootFingerprint, expectedLeaseStoreFingerprint
++  } = {}) {
++    if (!this.#verifyNativeCessation) fail('WORKFLOW_NATIVE_CESSATION_VERIFIER_UNAVAILABLE');
++    if (!Number.isSafeInteger(expectedRevision) || expectedRevision < 1
++      || ![expectedLeaseFingerprint, expectedRootFingerprint, expectedLeaseStoreFingerprint]
++        .every(s => typeof s === 'string' && /^[a-f0-9]{64}$/.test(s))) {
++      fail('WORKFLOW_ROOT_LEASE_CAS_INPUT_INVALID');
++    }
++    const preview=this.reconciliationPreflight(id);
++    if (!preview.lease.blocking) fail('WORKFLOW_ROOT_LEASE_NOT_PRESENT');
++    if (preview.revision !== expectedRevision
++      || preview.rootFingerprint !== expectedRootFingerprint
++      || preview.lease.storeFingerprint !== expectedLeaseStoreFingerprint
++      || preview.lease.fingerprint !== expectedLeaseFingerprint) {
++      fail('WORKFLOW_ROOT_LEASE_CAS_MISMATCH');
++    }
++    // Terminal receipt orphans arise when the successful effect was journaled
++    // but best-effort lease cleanup failed. A completed journal receipt alone
++    // is not cessation proof. Bind the *current* lease owner to that exact
++    // terminal operation before requesting a trusted host attestation.
++    let releaseOperation=preview.operations[0] ?? null;
++    if (preview.status === 'TERMINAL_RECEIPT_ORPHAN_LEASE') {
++      const {state}=this.get(id);
++      const lease=this.#leaseDb.prepare(
++        'SELECT profile,workflow,owner,expires_at,revision FROM root_leases WHERE root=?'
++      ).get(leaseRootKey(state.root));
++      const token=typeof lease?.owner==='string'
++        ? lease.owner.match(/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}:([0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12})$/i) : null;
++      const operationId=token?.[1];
++      const step=state.steps.find(s=>s.operationId===operationId
++        && ['recorded','verified'].includes(s.status));
++      if (step && lease.profile===this.#profileId && lease.workflow===id
++        && !state.steps.some(s=>['running','uncertain'].includes(s.status))
++        && this.#db.prepare(
++          "SELECT 1 FROM operations WHERE operation_id=? AND workflow=? AND step_id=? AND status IN ('EXECUTED','VERIFIED')"
++        ).get(operationId,id,step.id)) {
++        releaseOperation={stepId:step.id,operationId,outcomeState:step.status};
++      }
++    }
++    if (!preview.enforcementEnabled
++      || !['CESSATION_EVIDENCE_REQUIRED','TERMINAL_RECEIPT_ORPHAN_LEASE'].includes(preview.status)
++      || !releaseOperation
++      || !['uncertain','reconciled_applied','reconciled_not_applied','recorded','verified']
++        .includes(releaseOperation.outcomeState)) {
++      fail('WORKFLOW_CESSATION_NOT_VERIFIED');
++    }
++    let attestation;
++    try {
++      attestation=await this.#verifyNativeCessation({
++        ...clone(preview),operations:[releaseOperation]
++      });
++    } catch { fail('WORKFLOW_CESSATION_NOT_VERIFIED'); }
++    const operationId=releaseOperation.operationId;
++    const verifiedAt=typeof attestation?.verifiedAt === 'string'
++      && /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/.test(attestation.verifiedAt)
++      ? Date.parse(attestation.verifiedAt) : NaN;
++    const age=Date.now()-verifiedAt;
++    if (attestation?.verified !== true || attestation.externalEffectsFenced !== true || attestation.processTreeStopped !== true
++      || attestation.allDescendantsStopped !== true
++      || attestation.operationId !== operationId
++      || attestation.rootFingerprint !== expectedRootFingerprint
++      || attestation.leaseStoreFingerprint !== expectedLeaseStoreFingerprint
++      || attestation.leaseFingerprint !== expectedLeaseFingerprint
++      || typeof attestation.witness !== 'string'
++      || !attestation.witness.startsWith('V1-02_') || attestation.witness.length > 128
++      || typeof attestation.attestationId !== 'string'
++      || attestation.attestationId.length < 8 || attestation.attestationId.length > 128
++      || !Number.isFinite(age) || age < -5000 || age > 30000) {
++      fail('WORKFLOW_CESSATION_NOT_VERIFIED');
++    }
++    const serialized=canonical(attestation);
++    if (Buffer.byteLength(serialized) > 16384) fail('WORKFLOW_CESSATION_NOT_VERIFIED');
++    const attestationDigest=hash(serialized);
++    return this.#leaseTransaction(() => {
++      const {state}=this.get(id);
++      this.#identity(state);
++      if (state.revision !== expectedRevision
++        || hash(leaseRootKey(state.root)) !== expectedRootFingerprint) {
++        fail('WORKFLOW_ROOT_LEASE_CAS_MISMATCH');
++      }
++      const boundStep=state.steps.find(s => s.operationId === operationId
++        && s.status === releaseOperation.outcomeState);
++      if (!boundStep || (['recorded','verified'].includes(boundStep.status)
++        && state.steps.some(s=>['running','uncertain'].includes(s.status)))
++        || !this.#db.prepare(
++          "SELECT 1 FROM operations WHERE operation_id=? AND workflow=? AND step_id=? AND status IN ('EXECUTED','VERIFIED','UNCERTAIN')"
++        ).get(operationId,id,boundStep.id)) fail('WORKFLOW_ROOT_LEASE_CAS_MISMATCH');
++      const key=leaseRootKey(state.root);
++      const lease=this.#leaseDb.prepare(
++        'SELECT profile,workflow,owner,expires_at,revision FROM root_leases WHERE root=?'
++      ).get(key);
++      if (!lease) fail('WORKFLOW_ROOT_LEASE_NOT_PRESENT');
++      if (lease.profile !== this.#profileId || lease.workflow !== id
++        || jsonHash({root:key,...lease}) !== expectedLeaseFingerprint
++        || !lease.owner.endsWith(':'+operationId)) fail('WORKFLOW_ROOT_LEASE_CAS_MISMATCH');
++      const deleted=this.#leaseDb.prepare(
++        'DELETE FROM root_leases WHERE root=? AND profile=? AND workflow=? AND owner=? AND expires_at=? AND revision=?'
++      ).run(key,lease.profile,lease.workflow,lease.owner,lease.expires_at,lease.revision);
++      if (deleted.changes !== 1) fail('WORKFLOW_ROOT_LEASE_CAS_MISMATCH');
++      this.#leaseDb.prepare(
++        'INSERT INTO root_lease_release_evidence(root,lease_fingerprint,profile,workflow,operation_id,attestation_digest,verified_at,released_at) VALUES(?,?,?,?,?,?,?,?)'
++      ).run(key,expectedLeaseFingerprint,this.#profileId,id,operationId,
++        attestationDigest,attestation.verifiedAt,new Date().toISOString());
++      return {released:true,operationId,leaseFingerprint:expectedLeaseFingerprint,
++        attestationDigest,proofProvider:'TRUSTED_NATIVE_VERIFIER'};
++    });
++  }
++
+   schedulerStatus() {
+     const counts = {};
+     for (const row of this.#db.prepare('SELECT lifecycle,COUNT(*) AS n FROM scheduler_jobs GROUP BY lifecycle').all()) counts[row.lifecycle] = Number(row.n);

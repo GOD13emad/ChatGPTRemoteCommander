@@ -1,0 +1,56 @@
+{
+  "schema": 1,
+  "revision": "R76-host-only-native-cessation-source",
+  "status": "SCOPED_SOURCE_HANDOFF_NOT_INSTALLED",
+  "baseWorkflowStoreSha256": "974f8f82491b5f871c24668074261c48ddae3604d8d13dd20116a7668d2321cf",
+  "resultWorkflowStoreSha256": "ac0d844cdf17a0afcbfccfc2b56376195321885fb24f3c99473d02fbb9838a13",
+  "patchApplyCheckAndExactLfResultShaVerified": true,
+  "qualification": {
+    "platform": "Windows x64",
+    "node": "24.19.0",
+    "tests": 21,
+    "pass": 21,
+    "fail": 0,
+    "skipped": 0,
+    "receiptSha256": "b038b312916687e8aa105de7ab02d14f4245aad091b32a808632160469e3ccda",
+    "logSha256": "967bb70e1578daee02f573ac1b70018bf9dc0b1743ef523927be375fe0871d8d"
+  },
+  "independentSourceReviewSha256": "c48462bf83eceb4d58353441ee37d74ca58adf9f0ea8ac53bdca1131cc492524",
+  "publicMcpToolsAdded": 0,
+  "liveWiring": false,
+  "historicalOrphansReleased": 0,
+  "productionProcessesChanged": 0,
+  "privatePathsOrRawOutputsIncluded": false,
+  "files": [
+    {
+      "path": "README.md",
+      "bytes": 5605,
+      "sha256": "a24a449445678d0342c405c1c5b47d1ae24e8bc87fc9286c0246cac8474bfb5c"
+    },
+    {
+      "path": "patches/workflow-native-cessation-r76.patch",
+      "bytes": 15364,
+      "sha256": "a66064df3eafb94f71edf85fd88afc4214b5aac8424ac8a5027cf2fbc19a20aa"
+    },
+    {
+      "path": "src/owned-native-cessation.mjs",
+      "bytes": 6442,
+      "sha256": "d6b2660947d0a1845440d2ab739e8f547207479eee5a430dfae339f0a76c39b5"
+    },
+    {
+      "path": "test/trusted-native-cessation-r76.test.mjs",
+      "bytes": 14939,
+      "sha256": "30e4258c2fc63b27274136e1d81fc3ca57700fa453761b971b16355566a99d8d"
+    },
+    {
+      "path": "test/workflow-root-lease-minimal-r76.test.mjs",
+      "bytes": 7293,
+      "sha256": "498f8e2e023dd6511e362fc97f4cf9e9785efb7665567e0dbe093ebad9130ddd"
+    },
+    {
+      "path": "test/workflow-budget-accounting-only-r76.test.mjs",
+      "bytes": 2752,
+      "sha256": "c5b4430b0e2e96064911e577aeb0d0913d30a6962840004355797712b276e08e"
+    }
+  ]
+}
