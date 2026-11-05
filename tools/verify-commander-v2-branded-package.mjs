@@ -5,7 +5,7 @@ const sha=b=>createHash('sha256').update(b).digest('hex');
 const fail=k=>{throw Error('COMMANDER_V2_IDENTITY_QA_'+k)};
 const ASAR={linux:'5d6b282b223544a660e690f6f87a4b5d3fff1712fffa94bdc92ef982f4ebd7ec',win32:'cc67f90c7780d46bc902c4f32a10f909ef2d77d5391b8af0eade474ac2d75ded'};
 const MANIFEST={linux:'c6c64886301c427bae8b8934304eaf82ee6382fefc01aee8e013e0745c4f1306',win32:'aff379a6ffccbf6e0837d2dcf01415283b0a44205ce4aece6b19cfe914a4c923'};
-const BUILDER={linux:'4fe769085de49247ae62ad8c8cc83b9b97a697aea689bb07ba481cf7289e5a62',win32:'70b7de6ca385091c1493b7ae0cb84bf308b188d8b88eda8acb0c8dfa516833c4'};
+const BUILDER={linux:'33098915e57cdb9e206444cbae611b647b6a5e912cd2706e9a5a466cffec34b6',win32:'47d6693cb1f99bc946b63bf7f7b8a4bef041d6145cbc6cf3dcf23f60f698379f'};
 function read(f){const st=fs.lstatSync(f);if(!st.isFile()||st.isSymbolicLink()||st.nlink!==1)fail('NONREGULAR_FILE');return fs.readFileSync(f)}
 export function verify(target){
  if(typeof target!=='string'||!path.isAbsolute(target)||!Object.hasOwn(ASAR,process.platform))fail('PLATFORM');
@@ -15,6 +15,10 @@ export function verify(target){
  if(path.basename(root)!==(process.platform==='win32'?'official-cos-tag2150-sparse-20261104':'cos2150-unified-rebuild-20261104'))fail('VENDOR_QA_ROOT');
  if(read(path.join(root,'.commander-v2-isolated-qa')).toString()!=='V2_COS_DISPOSABLE_SOURCE_QA_ONLY\n')fail('NOT_QA');
  if(sha(read(path.join(root,'electron-builder.yml')))!==BUILDER[process.platform])fail('BUILDER_IDENTITY_CHANGED');
+ const yml=read(path.join(root,'electron-builder.yml')).toString('utf8');
+ const acl=read(path.join(root,'scripts','windows-installer-acl.nsh')).toString('utf8');
+ if(!yml.includes('  shortcutName: Commander V2')||!yml.includes('  uninstallDisplayName: Commander V2')||
+    acl.includes('Chat On Steroids')||!acl.includes('Commander V2'))fail('NSIS_UI_IDENTITY_CHANGED');
  const archive=path.join(unpacked,'resources','app.asar');
  const asarBytes=read(archive);
  if(sha(asarBytes)!==ASAR[process.platform])fail('ASAR_CHANGED');

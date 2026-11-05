@@ -6,6 +6,7 @@ const name='Commander V2', appId='io.github.god13emad.commanderv2';
 const pins={
 'electron-builder.yml':['b0364b170eae5536a4e2d34f3ebd632e685e9a4d5fa5c4ecdf8be454abafb8df','017409cdce2f771700ea8c8819682f1a1d793b07acc6e50b868e9d44ac0fdcb8'],
 'package.json':'589305b6576f9c09e46b0c10d4296d6ed596e04efc8eba1013e61c9fb254dd5a',
+'scripts/windows-installer-acl.nsh':'c61c5fc9c9f1ea85851173f127fb58641b3c86cc0ebe5eb72368efd2110a72a9',
 'src/main/index.ts':'000f74de6c9e5588621f99d3340ef752dfb469e6a4da40c0e90d17136f200374',
 'src/renderer/index.html':'4da4eb7b0cfa8ee55cc68448051dfc5b421d1286b7c2f4c29d8aefcd58acaf20',
 'src/renderer/cos-browser.html':'6d8a96173e5b60dec3c078de0ed1e69c1792fde5a329c09122f5b2ec5dfc2856',
@@ -43,9 +44,16 @@ function patch(rel,raw,root){
    ['Chat-On-Steroids-Linux-','Commander-V2-Linux-'],
    ['Chat-On-Steroids-macOS-','Commander-V2-macOS-'],
    ['  executableName: chat-on-steroids','  executableName: commander-v2'],
+   ['  shortcutName: Chat On Steroids','  shortcutName: Commander V2'],
+   ['  uninstallDisplayName: Chat On Steroids','  uninstallDisplayName: Commander V2'],
    ['deb:\n','deb:\n  packageName: commander-v2\n']
   ])s=once(s,a,b);
   return Buffer.from(raw.includes(Buffer.from('\r\n'))?s.replace(/\n/g,'\r\n'):s);
+ }
+ if(rel==='scripts/windows-installer-acl.nsh'){
+  const text=raw.toString('utf8');
+  if(text.split('Chat On Steroids').length!==5)fail('NSIS_VENDOR_SOURCE_DRIFT');
+  return Buffer.from(text.replaceAll('Chat On Steroids','Commander V2'));
  }
  if(rel==='package.json'){
   const p=JSON.parse(raw);
