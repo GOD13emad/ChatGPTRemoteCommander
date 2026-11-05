@@ -23,6 +23,10 @@ printf '%s  %s\n' e16d14114b877c7389b05f97215b95077aafd854803292fcb689c0f04c98df
 dpkg-deb -R "$work/published.deb" "$work/unpacked"
 test ! -e "$work/unpacked/DEBIAN/prerm"
 install -m 0755 "$source" "$work/unpacked/DEBIAN/prerm"
+# dpkg-deb --raw-extract may create private DEBIAN 0700; the control
+# directory must be 0755..0775 for building a Debian package.
+chmod 0755 "$work/unpacked/DEBIAN"
+test "$(stat -c '%a' "$work/unpacked/DEBIAN")" = 755
 dpkg-deb --build --root-owner-group "$work/unpacked" "$work/candidate.deb"
 test "$(dpkg-deb --field "$work/candidate.deb" Package)" = commander-v2
 test "$(dpkg-deb --field "$work/candidate.deb" Version)" = 2.1.50

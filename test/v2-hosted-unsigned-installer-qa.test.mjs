@@ -109,6 +109,7 @@ test('candidate DEB pre-remove hook is opt-in, package-scoped, idempotent and te
  }
  assert.match(qa,/sha256sum -c --status/);
  assert.match(qa,/dpkg-deb --build --root-owner-group/);
+ assert.match(qa,/chmod 0755.*unpacked\/DEBIAN/);
  assert.match(qa,/V2_PRERM_DISPOSABLE_INSTALL_PURGE_NO_ALTERNATIVES_WARNING_PASS/);
  assert.match(qa,/e16d14114b877c7389b05f97215b95077aafd854803292fcb689c0f04c98df12/);
 });
