@@ -77,4 +77,6 @@ test('old to patched same-semver upgrade/rollback is pinned, observable and host
  assert.match(windows,/RunOwned \$new '\/S'/);
  assert.match(windows,/RunOwned \$reverted.uninstaller '\/S'/);
  assert.match(windows,/REGISTRATION_COUNT/);
+ assert.match(windows,/\(Test-Path -LiteralPath \$old\) -or \(Test-Path -LiteralPath \$new\)/);
+ assert.doesNotMatch(windows,/Test-Path \$old -or Test-Path/);
 });

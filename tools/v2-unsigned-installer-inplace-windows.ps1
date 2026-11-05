@@ -56,7 +56,7 @@ function VerifyOne {
  return @{manifest=$manifest;uninstaller=$binary}
 }
 if(@(Entries).Count -ne 0){throw 'V2_WINDOWS_REPLACE_DIRTY_RUNNER_DENY'}
-if(Test-Path $old -or Test-Path $new){throw 'V2_WINDOWS_REPLACE_DOWNLOAD_PATH_COLLISION'}
+if((Test-Path -LiteralPath $old) -or (Test-Path -LiteralPath $new)){throw 'V2_WINDOWS_REPLACE_DOWNLOAD_PATH_COLLISION'}
 Invoke-WebRequest -Uri $oldurl -OutFile $old -MaximumRedirection 8 -TimeoutSec 300
 Invoke-WebRequest -Uri $newurl -OutFile $new -MaximumRedirection 8 -TimeoutSec 300
 if((Get-FileHash $old -Algorithm SHA256).Hash.ToLowerInvariant() -ne $oldsha -or
