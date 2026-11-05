@@ -6,7 +6,7 @@ import {pathToFileURL} from 'node:url';
 import {createEmbeddedCoreSupervisor} from '../src/main/commander-v1-core-supervisor.js';
 import {createCommanderV2Center} from '../src/main/commander-v2-center.js';
 
-const unpacked=path.join(process.cwd(),'release','commander-v2-supervised-qa',
+const unpacked=path.join(process.cwd(),'release','commander-v2-authqa',
  process.platform==='win32'?'win-unpacked':'linux-unpacked');
 const resources=path.join(unpacked,'resources');
 const exe=path.join(unpacked,process.platform==='win32'?'Commander V2.exe':'commander-v2');

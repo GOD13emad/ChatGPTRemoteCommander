@@ -10,7 +10,7 @@ const bad=s=>{throw Error('COMMANDER_V2_QA_SUPERVISOR_'+s)};
 const PIN={
  main:'a226790d4f5d5107f276eda09701a8c52c22c7b3489e15227da415a85239d529',
  center:'c2946f887b61d3cd96010b162d7a43dbe47268a285eaf51da43b55ae66aa5dad',
- controller:'a6293db54028a9bbe64caf0c10fe6e2b588bd375e2239a33c1bcd750ad5f828d'
+ controller:'11fb6479f4f81ccf053a0699e600d238b76da24825de1aecf5c82cfd72884cac'
 };
 function read(f){
  const st=fs.lstatSync(f);
@@ -41,7 +41,9 @@ function preflight(root){
  const manifest=path.join(p,'resources','commander-v1-core','MANIFEST.json');
  const m=sha(read(manifest));
  if(!['c6c64886301c427bae8b8934304eaf82ee6382fefc01aee8e013e0745c4f1306',
-  'aff379a6ffccbf6e0837d2dcf01415283b0a44205ce4aece6b19cfe914a4c923'].includes(m))
+  'aff379a6ffccbf6e0837d2dcf01415283b0a44205ce4aece6b19cfe914a4c923',
+  '45f141302e19728d7ee2eb4898c5fa35d1b99889ef6707760fd079dda7771842',
+  'f91097d773bb754cba34900d8f44609555b1936a510e55af9ee933cd4f7d239a'].includes(m))
   bad('INTERNAL_CORE_NOT_PINNED');
  return p;
 }
@@ -111,6 +113,42 @@ export function run(action,root){
   }
   return {gate:'COMMANDER_V2_EMBEDDED_CORE_SUPERVISOR_SOURCE_QA_PASS',files:3,
    autoEnabled:false,productionInstalled:false,activeV1Touched:false};
+ }
+ if(action==='refresh-auth-controller'){
+  // Advance the same existing three-file QA controller record; do not create a second active source.
+  const controller=path.join(p,'src','main','commander-v1-core-supervisor.ts');
+  const manifestPath=path.join(backup,'MANIFEST.json');
+  const authManifest=path.join(p,'resources','commander-v1-core','MANIFEST.json');
+  const authSha=process.platform==='win32'
+   ?'f91097d773bb754cba34900d8f44609555b1936a510e55af9ee933cd4f7d239a'
+   :'45f141302e19728d7ee2eb4898c5fa35d1b99889ef6707760fd079dda7771842';
+  if(sha(read(authManifest))!==authSha)bad('AUTH_GATED_CORE_NOT_STAGED');
+  const original=read(controller),prior=read(manifestPath);
+  if(sha(original)!=='a6293db54028a9bbe64caf0c10fe6e2b588bd375e2239a33c1bcd750ad5f828d'||
+   sha(prior)!=='169d1cb357b9939f1e4b97cb99c41b43d7e1f7650e6df58edea47d53214e280b')
+   bad('AUTH_CONTROLLER_BEFORE_CHANGED');
+  const updated=read(path.resolve(path.dirname(fileURLToPath(import.meta.url)),'commander-v1-core-supervisor.qa.ts'));
+  if(sha(updated)!==PIN.controller)bad('AUTH_CONTROLLER_EXPECTED_SOURCE');
+  const m=JSON.parse(prior.toString());
+  const row=m.files?.find(x=>x.file==='src/main/commander-v1-core-supervisor.ts');
+  if(row?.sha256!==sha(original))bad('AUTH_CONTROLLER_MANIFEST_ROW');
+  row.sha256=sha(updated);
+  const after=Buffer.from(JSON.stringify(m,null,2)+'\n');
+  const restore=path.join(backup,'controller-before-mcp-auth.qa.ts');
+  if(fs.existsSync(restore))bad('AUTH_CONTROLLER_BACKUP_EXISTS');
+  fs.writeFileSync(restore,original,{flag:'wx',mode:0o600});
+  try{
+   if(sha(read(controller))!==sha(original)||sha(read(manifestPath))!==sha(prior))bad('CONCURRENT_AUTH_CONTROLLER');
+   const temp=controller+'.mcpauth-qa-'+process.pid;
+   try{fs.writeFileSync(temp,updated,{flag:'wx',mode:0o600});fs.renameSync(temp,controller)}
+   finally{if(fs.existsSync(temp))fs.rmSync(temp)}
+   fs.writeFileSync(manifestPath,after);
+   return {...run('verify',p),status:'AUTH_CONTROLLER_STAGED_WITH_RECOVERY',manifestSha:sha(after)};
+  }catch(e){
+   if(sha(read(controller))===sha(updated))fs.writeFileSync(controller,original);
+   if(sha(read(manifestPath))===sha(after))fs.writeFileSync(manifestPath,prior);
+   throw e;
+  }
  }
  if(action==='refresh-controller'){
   const component=path.join(p,'src','main','commander-v1-core-supervisor.ts');

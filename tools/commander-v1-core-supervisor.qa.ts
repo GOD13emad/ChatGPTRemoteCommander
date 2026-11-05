@@ -3,7 +3,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import net from 'node:net';
-import {createHash} from 'node:crypto';
+import {createHash, randomBytes} from 'node:crypto';
 import {spawn, type ChildProcess} from 'node:child_process';
 
 export type CoreStatus={
@@ -16,8 +16,8 @@ export type CoreOptions={
  qaAllowed:boolean; onStatus?:(status:CoreStatus)=>void;
 };
 const accepted:Record<string,string>={
- linux:'c6c64886301c427bae8b8934304eaf82ee6382fefc01aee8e013e0745c4f1306',
- win32:'aff379a6ffccbf6e0837d2dcf01415283b0a44205ce4aece6b19cfe914a4c923'
+ linux:'45f141302e19728d7ee2eb4898c5fa35d1b99889ef6707760fd079dda7771842',
+ win32:'f91097d773bb754cba34900d8f44609555b1936a510e55af9ee933cd4f7d239a'
 };
 const hash=(v:Buffer)=>createHash('sha256').update(v).digest('hex');
 const sleep=(n:number)=>new Promise<void>(r=>setTimeout(r,n));
@@ -47,7 +47,8 @@ function pinnedServer(resources:string):string{
   files:Array<{file:string;bytes:number;sha256:string}>;
  };
  if(meta.mode!=='QA_INTERNAL_NOT_ACTIVATED'||meta.sourceVersion!=='0.11.0-dev.23-capgap-qa'||
-  !Array.isArray(meta.files)||meta.files.length!==75)throw Error('V1_SUPERVISOR_MANIFEST_INVALID');
+  !Array.isArray(meta.files)||meta.files.length!==75||
+  (meta as typeof meta & {qaTransportAuth?:string}).qaTransportAuth!=='QA_EPHEMERAL_PROCESS_BEARER_NOT_OWNER_LOGIN')throw Error('V1_SUPERVISOR_MANIFEST_INVALID');
  const seen=new Set<string>();
  for(const f of meta.files){
   if(typeof f.file!=='string'||!(/^(?:package\.json|src\/[A-Za-z][A-Za-z0-9_.-]{1,95}\.mjs|src\/gui-libei-receiver\.c)$/.test(f.file))||
@@ -81,6 +82,7 @@ export function createEmbeddedCoreSupervisor(opts:CoreOptions){
  let child:ChildProcess|null=null;
  let currentPort:number|null=null;
  let version:string|null=null;
+ let localBearer:string|null=null;
  let begin:Promise<CoreStatus>|null=null;
  let stopping:Promise<void>|null=null;
  let permanentlyStopped=false;
@@ -88,6 +90,20 @@ export function createEmbeddedCoreSupervisor(opts:CoreOptions){
   mode:'EXPLICIT_ISOLATED_QA',installed:false,power:false,authenticated:false});
  const notify=()=>opts.onStatus?.(status());
  const coreUrl=()=>state==='READY'&&currentPort!==null?'http://127.0.0.1:'+currentPort+'/':null;
+ const toolsCatalog=async():Promise<{count:number;gapMethods:number}|null>=>{
+  if(state!=='READY'||currentPort===null||!localBearer)return null;
+  const reply=await fetch('http://127.0.0.1:'+currentPort+'/mcp',{
+   method:'POST',redirect:'error',
+   headers:{'content-type':'application/json',authorization:'Bearer '+localBearer},
+   body:JSON.stringify({jsonrpc:'2.0',id:'internal-readonly-catalog',method:'tools/list',params:{}}),
+   signal:AbortSignal.timeout(2000)
+  });
+  if(!reply.ok)return null;
+  const body=await reply.json() as {result?:{tools?:Array<{name:string}>}};
+  const methods=body.result?.tools;
+  if(!Array.isArray(methods)||methods.some(t=>typeof t.name!=='string'))return null;
+  return {count:methods.length,gapMethods:methods.filter(t=>t.name.startsWith('capability_gap_')).length};
+ };
  async function start():Promise<CoreStatus>{
   if(!opts.qaAllowed||permanentlyStopped||state==='DISABLED')return status();
   if(state==='READY')return status();
@@ -105,6 +121,7 @@ export function createEmbeddedCoreSupervisor(opts:CoreOptions){
     directory(dataRoot);
     for(const name of ['home','data','tmp'])directory(path.join(dataRoot,name));
     const assigned=await port();
+    const startBearer=randomBytes(32).toString('hex');
     if(permanentlyStopped)throw Error('V1_SUPERVISOR_STOP_REQUESTED');
     const privateHome=path.join(dataRoot,'home');
     const config={
@@ -129,15 +146,15 @@ export function createEmbeddedCoreSupervisor(opts:CoreOptions){
      TMP:path.join(dataRoot,'tmp'),SystemRoot:process.env.SystemRoot||'',
      windir:process.env.windir||'',ComSpec:process.env.ComSpec||'',
      PATHEXT:process.env.PATHEXT||'',ELECTRON_RUN_AS_NODE:'1',
-     REMOTE_COMMANDER_CONFIG:cfg
+     REMOTE_COMMANDER_CONFIG:cfg,COMMANDER_V2_QA_MCP_SECRET:startBearer
     };
     let spawnFailed=false;
     own=spawn(opts.executablePath,[server],{
      cwd:path.dirname(server),env,stdio:'ignore',windowsHide:true
     });
     own.once('error',()=>{spawnFailed=true;});
-    child=own;currentPort=assigned;
-    own.once('exit',()=>{if(state==='READY'){state='FAILED';child=null;currentPort=null;version=null;notify();}});
+    child=own;currentPort=assigned;localBearer=startBearer;
+    own.once('exit',()=>{if(state==='READY'){state='FAILED';child=null;currentPort=null;version=null;localBearer=null;notify();}});
     let ready=false;
     for(let i=0;i<85&&!permanentlyStopped;i++){
      if(spawnFailed||own.exitCode!==null||own.signalCode!==null)break;
@@ -157,7 +174,7 @@ export function createEmbeddedCoreSupervisor(opts:CoreOptions){
     state='READY';notify();return status();
    }catch{
     if(own)await terminate(own);
-    child=null;currentPort=null;version=null;
+    child=null;currentPort=null;version=null;localBearer=null;
     state=permanentlyStopped?'STOPPED':'FAILED';notify();return status();
    }finally{begin=null;}
   })();
@@ -172,9 +189,9 @@ export function createEmbeddedCoreSupervisor(opts:CoreOptions){
    if(child)await terminate(child);
    if(begin)await Promise.race([begin,sleep(2800)]);
    if(child)await terminate(child);
-   child=null;currentPort=null;version=null;state='STOPPED';notify();
+   child=null;currentPort=null;version=null;localBearer=null;state='STOPPED';notify();
   })();
   try{await stopping;}finally{stopping=null;}
  }
- return {start,stop,status,coreUrl};
+ return {start,stop,status,coreUrl,toolsCatalog};
 }

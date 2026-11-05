@@ -10,7 +10,7 @@ function nativeQa(){
  const base=windows
   ? path.join(process.env.LOCALAPPDATA||path.join(os.homedir(),'AppData','Local'),'CommanderV2','QA','official-cos-tag2150-sparse-20261104')
   : path.join(os.homedir(),'.local','state','CommanderV2','QA','cos2150-unified-rebuild-20261104');
- return {base,unpacked:path.join(base,'release','commander-v2-supervised-qa',windows?'win-unpacked':'linux-unpacked')};
+ return {base,unpacked:path.join(base,'release','commander-v2-authqa',windows?'win-unpacked':'linux-unpacked')};
 }
 test('supervisor QA rejects unrelated roots and never creates state for them',()=>{
  assert.throws(()=>run('verify',path.join(os.tmpdir(),'not-commander-v2-qa')),
@@ -38,6 +38,8 @@ test('actual unpacked native Commander V2 package has exact dormant supervisor, 
  assert.equal(proof.gate,'COMMANDER_V2_BRANDED_NATIVE_QA_PASS');
  assert.equal(proof.supervisorCompiled,true);
  assert.equal(proof.supervisorAutoEnabled,false);
+ assert.equal(proof.coreMcpProcessCapabilityAuth,true);
+ assert.equal(proof.ownerAccountAuthVerified,false);
  assert.equal(proof.v1Files,75);
  for(const key of ['installed','v1RuntimeActivated','accountAuthenticated','workerEffectsVerified','signedRelease'])
   assert.equal(proof[key],false,key);

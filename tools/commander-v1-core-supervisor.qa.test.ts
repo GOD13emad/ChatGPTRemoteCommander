@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import {createEmbeddedCoreSupervisor} from '../src/main/commander-v1-core-supervisor.js';
 
-const root=path.join(process.cwd(),'release','commander-v2-supervised-qa',
+const root=path.join(process.cwd(),'release','commander-v2-authqa',
  process.platform==='win32'?'win-unpacked':'linux-unpacked');
 const resource=path.join(root,'resources');
 const executable=path.join(root,process.platform==='win32'?'Commander V2.exe':'commander-v2');
@@ -75,17 +75,21 @@ describe('Commander V2 bundled V1 Core QA supervisor',()=>{
    oldUrl=url;
    const response=await fetch(url+'health',{signal:AbortSignal.timeout(1800)});
    expect((await response.json()).version).toBe('0.11.0-dev.23-capgap-qa');
+   // No renderer or unrelated same-host process may call MCP without the main-process capability.
    const mcp=await fetch(url+'mcp',{
     method:'POST',headers:{'content-type':'application/json'},
     body:JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/list',params:{}}),
     signal:AbortSignal.timeout(2000)
    });
-   const data=await mcp.json();
-   expect(data.result?.tools).toHaveLength(64);
-   expect(data.result.tools.some((t:{name:string})=>t.name==='capability_gap_report')).toBe(true);
+   expect(mcp.status).toBe(401);
+   const secureCatalog=await core.toolsCatalog();
+   expect(secureCatalog).toEqual({count:64,gapMethods:4});
+   expect(core.status().authenticated).toBe(false);
+   expect(JSON.stringify(core.status())).not.toMatch(/bearer|secret|token/i);
    await core.stop();
    expect(core.status().state).toBe('STOPPED');
    expect(core.coreUrl()).toBeNull();
+   expect(await core.toolsCatalog()).toBeNull();
    expect(states).toContain('READY');
    expect(states).toContain('STOPPING');
    await core.start();

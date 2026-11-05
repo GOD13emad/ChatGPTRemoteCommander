@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import {fileURLToPath} from 'node:url';
+import {execute as verifyQaBearer} from './stage-commander-v2-mcp-auth-qa.mjs';
 const sha=b=>crypto.createHash('sha256').update(b).digest('hex');
 const fail=s=>{throw Error('COS_V1_BUNDLE_'+s)};
 const B=Object.freeze({
@@ -67,7 +68,14 @@ function verifyBundle(cos,source){
  if(!fs.existsSync(target))fail('BUNDLE_NOT_PRESENT');
  ensureDir(target);
  const b=JSON.parse(ensureFile(path.join(target,'MANIFEST.json')).toString('utf8'));
- if(b.schema!==1||b.mode!=='QA_INTERNAL_NOT_ACTIVATED'||b.serverSha!==serverSha||!Array.isArray(b.files)||b.files.length<66||b.files.length>121)fail('BUNDLE_MANIFEST_INVALID');
+ if(b.schema!==1||b.mode!=='QA_INTERNAL_NOT_ACTIVATED'||!Array.isArray(b.files)||b.files.length<66||b.files.length>121)fail('BUNDLE_MANIFEST_INVALID');
+ const guarded=b.qaTransportAuth==='QA_EPHEMERAL_PROCESS_BEARER_NOT_OWNER_LOGIN';
+ if(guarded){
+  // The new QA-only server is proven against exact original CoS/V1 bytes and its recoverable predecessor.
+  const auth=verifyQaBearer('verify',cos);
+  if(auth.serverSha!==b.serverSha||auth.manifestSha!==sha(ensureFile(path.join(target,'MANIFEST.json'))))
+   fail('BUNDLE_QA_AUTH_PROVENANCE_INVALID');
+ }else if(b.serverSha!==serverSha||b.qaTransportAuth!==undefined)fail('BUNDLE_MANIFEST_INVALID');
  let total=0;
  for(const f of b.files){
   if(typeof f.file!=='string'||!(/^(?:package\.json|src\/[A-Za-z][A-Za-z0-9_.-]{1,95}\.mjs|src\/gui-libei-receiver\.c)$/.test(f.file))||!Number.isSafeInteger(f.bytes)||f.bytes<0||!/^[a-f0-9]{64}$/.test(f.sha256))fail('BUNDLE_ENTRY_INVALID');
@@ -78,7 +86,7 @@ function verifyBundle(cos,source){
  if(total>3700000)fail('BUNDLE_SIZE_EXCEEDED');
  const normalized=ensureFile(yaml).toString('utf8').replace(/\r\n/g,'\n');
  if(normalized.split(EXTRA).length!==2)fail('BUILDER_RESOURCE_NOT_BUNDLED');
- return {status:'COS_V1_INTERNAL_RESOURCE_VERIFIED',fileCount:b.files.length,serverSha,manifestSha:sha(ensureFile(path.join(target,'MANIFEST.json'))),activeV1Modified:false,serviceStarted:false,productInstalled:false};
+ return {status:'COS_V1_INTERNAL_RESOURCE_VERIFIED',fileCount:b.files.length,serverSha:b.serverSha,sourceBaselineSha:serverSha,qaAuthGated:guarded,manifestSha:sha(ensureFile(path.join(target,'MANIFEST.json'))),activeV1Modified:false,serviceStarted:false,productInstalled:false};
 }
 export function run(action,cos,source){
  const p=paths(cos,source);
