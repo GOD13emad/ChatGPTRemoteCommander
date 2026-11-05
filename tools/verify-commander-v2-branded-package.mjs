@@ -14,6 +14,10 @@ const MANIFEST={
   'commander-v2-authqa':{linux:'45f141302e19728d7ee2eb4898c5fa35d1b99889ef6707760fd079dda7771842',win32:'f91097d773bb754cba34900d8f44609555b1936a510e55af9ee933cd4f7d239a'}
 };
 const BUILDER={linux:'33098915e57cdb9e206444cbae611b647b6a5e912cd2706e9a5a466cffec34b6',win32:'47d6693cb1f99bc946b63bf7f7b8a4bef041d6145cbc6cf3dcf23f60f698379f'};
+const NATIVE_DEB_PRERM=Object.freeze({
+ builder:'9abdbeaf5d1c8c9c263142311d5ee36ca79c93e09d6575e0429186a6af62e365',
+ hook:'a2fb497525e7383e82b2040c455caf04fe15adfcd13bdb86502a82332a7e3b82'
+});
 function read(f){const st=fs.lstatSync(f);if(!st.isFile()||st.isSymbolicLink()||st.nlink!==1)fail('NONREGULAR_FILE');return fs.readFileSync(f)}
 export function verify(target){
  if(typeof target!=='string'||!path.isAbsolute(target)||!['linux','win32'].includes(process.platform))fail('PLATFORM');
@@ -26,8 +30,20 @@ export function verify(target){
  const root=path.dirname(path.dirname(path.dirname(unpacked)));
  if(path.basename(root)!==(process.platform==='win32'?'official-cos-tag2150-sparse-20261104':'cos2150-unified-rebuild-20261104'))fail('VENDOR_QA_ROOT');
  if(read(path.join(root,'.commander-v2-isolated-qa')).toString()!=='V2_COS_DISPOSABLE_SOURCE_QA_ONLY\n')fail('NOT_QA');
- if(sha(read(path.join(root,'electron-builder.yml')))!==BUILDER[process.platform])fail('BUILDER_IDENTITY_CHANGED');
- const yml=read(path.join(root,'electron-builder.yml')).toString('utf8');
+ // Existing published QA native payloads remain pinned to their original
+ // ASAR/manifest hashes; a newer, separately staged DEB build configuration is
+ // accepted only if BOTH the precise builder SHA and exact maintainer hook match.
+ const builderBytes=read(path.join(root,'electron-builder.yml'));
+ const builderHash=sha(builderBytes);
+ const nativeDebPrermStaged=process.platform==='linux'&&builderHash===NATIVE_DEB_PRERM.builder;
+ if(builderHash!==BUILDER[process.platform]&&!nativeDebPrermStaged)fail('BUILDER_IDENTITY_CHANGED');
+ if(nativeDebPrermStaged&&
+    sha(read(path.join(root,'build','v2-deb-alternatives-prerm.sh')))!==NATIVE_DEB_PRERM.hook)
+  fail('DEB_PRERM_HOOK_CHANGED');
+ const yml=builderBytes.toString('utf8');
+ if(nativeDebPrermStaged&&
+    !yml.includes('--before-remove=build/v2-deb-alternatives-prerm.sh'))
+  fail('DEB_PRERM_FPM_FLAG_MISSING');
  const acl=read(path.join(root,'scripts','windows-installer-acl.nsh')).toString('utf8');
  if(!yml.includes('  shortcutName: Commander V2')||!yml.includes('  uninstallDisplayName: Commander V2')||
     acl.includes('Chat On Steroids')||!acl.includes('Commander V2'))fail('NSIS_UI_IDENTITY_CHANGED');
@@ -73,7 +89,8 @@ export function verify(target){
  return {gate:'COMMANDER_V2_BRANDED_NATIVE_QA_PASS',platform:process.platform,displayName:'Commander V2',originalFrameworkVersion:pkg.version,
    asarSHA256:expectedAsar,v1Files:seen.size,supervisorCompiled:supervised,supervisorAutoEnabled:false,
    coreMcpProcessCapabilityAuth:authGated,ownerAccountAuthVerified:false,upstreamCoSProvenancePreserved:true,installed:false,
-   v1RuntimeActivated:false,accountAuthenticated:false,workerEffectsVerified:false,signedRelease:false};
+   v1RuntimeActivated:false,accountAuthenticated:false,workerEffectsVerified:false,signedRelease:false,
+   nativeDebPrermStaged};
 }
 if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url)){
  try{console.log(JSON.stringify(verify(process.argv[2])));}

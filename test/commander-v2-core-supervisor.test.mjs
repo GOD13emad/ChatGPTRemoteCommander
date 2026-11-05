@@ -39,6 +39,9 @@ test('actual unpacked native Commander V2 package has exact dormant supervisor, 
  assert.equal(proof.supervisorCompiled,true);
  assert.equal(proof.supervisorAutoEnabled,false);
  assert.equal(proof.coreMcpProcessCapabilityAuth,true);
+ if(process.platform==='linux'&&
+    fs.existsSync(path.join(q.base,'build','v2-deb-alternatives-prerm.sh')))
+  assert.equal(proof.nativeDebPrermStaged,true);
  assert.equal(proof.ownerAccountAuthVerified,false);
  assert.equal(proof.v1Files,75);
  for(const key of ['installed','v1RuntimeActivated','accountAuthenticated','workerEffectsVerified','signedRelease'])

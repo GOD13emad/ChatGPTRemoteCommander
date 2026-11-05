@@ -5,6 +5,8 @@ import os from 'node:os';
 import path from 'node:path';
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
+import {createHash} from 'node:crypto';
+import {patchDebAnchor,patchYaml,PINS as NATIVE_STAGE_PINS} from '../tools/v2-deb-native-packager-stage.mjs';
 const root=fileURLToPath(new URL('../',import.meta.url));
 const load=name=>fs.readFileSync(new URL(name,new URL('../',import.meta.url)),'utf8');
 
@@ -148,4 +150,20 @@ test('DEB pre-remove hook refuses a foreign alternative and only removes its own
   assert.equal(run('remove',own),'commander-v2:/opt/Commander V2/commander-v2');
   assert.equal(run('upgrade',own),'commander-v2:/opt/Commander V2/commander-v2');
  }finally{fs.rmSync(dir,{recursive:true,force:true})}
+});
+
+
+test('native FPM packaging stage is anchored to exact vendor QA and verified hook source',()=>{
+ const hash=createHash('sha256').update(load('tools/v2-deb-alternatives-prerm.sh')).digest('hex');
+ assert.equal(hash,NATIVE_STAGE_PINS.hook);
+ const source='deb:\n  packageName: commander-v2\n  depends:\n    - libnss3\n';
+ const modified=patchDebAnchor(source);
+ assert.match(modified,/deb:\n  packageName: commander-v2\n  fpm:\n    - "--before-remove=build\/v2-deb-alternatives-prerm.sh"\n  depends:/);
+ assert.throws(()=>patchDebAnchor(modified),/ANCHOR_CHANGED/);
+ assert.throws(()=>patchYaml(source),/BASELINE_CHANGED/);
+ const integration=load('tools/v2-deb-native-packager-stage.mjs');
+ assert.match(integration,/V2_COS_DISPOSABLE_SOURCE_QA_ONLY/);
+ assert.match(integration,/v2-prerm-stage.lock/);
+ assert.match(integration,/nativePackageBuilt:false/);
+ assert.doesNotMatch(integration,/sudo|rm -rf|PUBLIC_RELEASE_CREATED/);
 });
