@@ -1,6 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 const root=fileURLToPath(new URL('../',import.meta.url));
 const load=name=>fs.readFileSync(new URL(name,new URL('../',import.meta.url)),'utf8');
@@ -87,4 +90,61 @@ test('old to patched same-semver upgrade/rollback is pinned, observable and host
  assert.match(windows,/V2_HOSTED_SYNTHETIC_STATE_PRESERVE/);
  assert.match(windows,/\(Test-Path -LiteralPath \$old\) -or \(Test-Path -LiteralPath \$new\)/);
  assert.doesNotMatch(windows,/Test-Path \$old -or Test-Path/);
+});
+
+
+test('candidate DEB pre-remove hook is opt-in, package-scoped, idempotent and tested only in hosted Ubuntu',()=>{
+ const wf=load('.github/workflows/v2-unsigned-installer-qa.yml');
+ assert.match(wf,/qa-deb-prerm:/);
+ assert.match(wf,/run: bash tools\/v2-deb-prerm-hosted-qa.sh/);
+ const hook=load('tools/v2-deb-alternatives-prerm.sh');
+ const qa=load('tools/v2-deb-prerm-hosted-qa.sh');
+ assert.match(hook,/case "\$1" in remove\|upgrade/);
+ assert.match(hook,/update-alternatives --query commander-v2/);
+ assert.match(hook,/Alternative: \/opt\/Commander V2\/commander-v2/);
+ assert.match(hook,/update-alternatives --remove commander-v2/);
+ assert.doesNotMatch(hook,/rm -rf|\.\*\/|chmod 4/);
+ for(const guard of ['GITHUB_ACTIONS','RUNNER_ENVIRONMENT','GITHUB_REPOSITORY','RUNNER_OS','HOSTED_ONLY_DENY']){
+  assert.ok(qa.includes(guard));
+ }
+ assert.match(qa,/sha256sum -c --status/);
+ assert.match(qa,/dpkg-deb --build --root-owner-group/);
+ assert.match(qa,/V2_PRERM_DISPOSABLE_INSTALL_PURGE_NO_ALTERNATIVES_WARNING_PASS/);
+ assert.match(qa,/e16d14114b877c7389b05f97215b95077aafd854803292fcb689c0f04c98df12/);
+});
+
+
+test('DEB pre-remove hook refuses a foreign alternative and only removes its own',()=>{
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'cmdv2-prerm-mock-'));
+ const hook=fileURLToPath(new URL('../tools/v2-deb-alternatives-prerm.sh',import.meta.url));
+ try{
+  const output=path.join(dir,'events');
+  const mock=path.join(dir,'update-alternatives');
+  fs.writeFileSync(mock,[
+   '#!/bin/sh',
+   'if [ "$1" = "--query" ];then',
+   ' if [ "$MOCK_ABSENT" = yes ];then exit 2;fi',
+   ' printf "%s\\n" "$MOCK_RESULT"',
+   'elif [ "$1" = "--remove" ];then',
+   ' printf "%s\\n" "$2:$3" >> "$MOCK_EVENTS"',
+   'else exit 72;fi',
+   ''
+  ].join('\n'),{mode:0o700});
+  const run=(action,result,absent=false)=>{
+   fs.rmSync(output,{force:true});
+   const r=spawnSync('/bin/sh',[hook,action],{
+    env:{...process.env,PATH:dir+':'+process.env.PATH,
+      MOCK_EVENTS:output,MOCK_RESULT:result,MOCK_ABSENT:absent?'yes':'no'},
+    encoding:'utf8',timeout:2500
+   });
+   assert.equal(r.status,0,r.stderr);
+   return fs.existsSync(output)?fs.readFileSync(output,'utf8').trim():'';
+  };
+  const own='Alternative: /opt/Commander V2/commander-v2';
+  assert.equal(run('configure',own),'');
+  assert.equal(run('remove','Alternative: /usr/bin/foreign'),'');
+  assert.equal(run('remove',own,true),'');
+  assert.equal(run('remove',own),'commander-v2:/opt/Commander V2/commander-v2');
+  assert.equal(run('upgrade',own),'commander-v2:/opt/Commander V2/commander-v2');
+ }finally{fs.rmSync(dir,{recursive:true,force:true})}
 });

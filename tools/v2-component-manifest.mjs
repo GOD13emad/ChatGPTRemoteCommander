@@ -80,6 +80,8 @@ const CORE=[
  'tools/v2-unsigned-installer-hosted-windows.ps1',
  'tools/v2-unsigned-installer-inplace-linux.sh',
  'tools/v2-unsigned-installer-inplace-windows.ps1',
+ 'tools/v2-deb-alternatives-prerm.sh',
+ 'tools/v2-deb-prerm-hosted-qa.sh',
  'tools/v2-packaged-workspace-live-smoke.mjs',
  'tools/stage-v2-workspace-readonlyfix.mjs',
  'tools/v2-enrollment-census.mjs',
