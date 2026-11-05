@@ -1,0 +1,3 @@
+58f6ae3e10e56f1effb030ef929ab78c2de0623204e370efce8b80c4779caa65  Commander-V2-Windows-x64.exe
+93d3e3632b13d4bda26f02d76a2108a514829900335a3e27ac135b021fc09995  Commander-V2-Linux-x64.deb
+12f846b2df01b78ca6eb2f87835a988b5dbec77f88bdaed54f8211228e8cb1ef  Commander-V2-Linux-x64.AppImage
