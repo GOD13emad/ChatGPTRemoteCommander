@@ -35,6 +35,13 @@ function processesInGroup(pgid){
   }]:[];
  });
 }
+// Pure boundary helper: electron may use an absolute SingletonSocket path
+// inside HOME/TMPDIR, while extracted AppImage libraries use relative links.
+// Never authorize any path that resolves outside the exact private QA root.
+export function isPrivateQaSymlinkTarget(root,dir,reference){
+ const target=path.resolve(dir,reference);
+ return target===root||target.startsWith(root+path.sep);
+}
 async function stopOwnedGroup(pgid){
  if(!Number.isSafeInteger(pgid)||pgid<2)return;
  for(const signal of ['SIGTERM','SIGKILL']){
@@ -131,9 +138,10 @@ export async function smoke(){
    const st=fs.lstatSync(root);
    if(!st.isDirectory()||st.isSymbolicLink()||st.uid!==process.getuid()||
       (st.mode&0o077)!==0)fail('QA_ROOT_UNTRUSTED');
-   // AppImage extraction legitimately creates internal library symlinks.
-   // Never follow them; allow only relative references resolving inside our
-   // uniquely created private QA root, and reject escape/absolute aliases.
+   // AppImage libraries and Electron SingletonSocket create internal symlinks,
+   // sometimes absolute but still entirely confined to our disposable root.
+   // Never follow links during deletion; reject *any* resolved target outside
+   // the uniquely created private QA root, regardless of reference form.
    const stack=[root];
    while(stack.length){
     const dir=stack.pop();
@@ -141,9 +149,7 @@ export async function smoke(){
      const item=path.join(dir,name),st=fs.lstatSync(item);
      if(st.isSymbolicLink()){
       const reference=fs.readlinkSync(item);
-      const resolved=path.resolve(dir,reference);
-      if(path.isAbsolute(reference)||!
-        (resolved===root||resolved.startsWith(root+path.sep)))
+      if(!isPrivateQaSymlinkTarget(root,dir,reference))
         fail('QA_SYMLINK_ESCAPE_REFUSED');
       continue;
      }
