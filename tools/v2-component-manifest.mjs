@@ -76,6 +76,7 @@ const CORE=[
  'tools/v2-migration-preflight.mjs',
  'tools/v2-public-appimage-core-smoke.mjs',
  'tools/v2-packaged-workspace-live-smoke.mjs',
+ 'tools/stage-v2-workspace-readonlyfix.mjs',
  'tools/v2-enrollment-census.mjs',
  'tools/v2-component-manifest.mjs',
  'src/v2-compute-only-owner-gateway.mjs',
