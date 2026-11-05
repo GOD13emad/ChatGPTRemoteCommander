@@ -1,0 +1,177 @@
+{
+  "schema": 1,
+  "status": "PASS_SCOPED_WINDOWS_ONEFILE_PACKAGE_NOT_INSTALLED_WHOLE_NOT_FINAL",
+  "train": "0.11.0-dev.23",
+  "candidate": "unsigned-qa13",
+  "sourceBaseCommit": "b824a4f1c389eb25a8d9be1869c686a6acf8e2ff",
+  "sourceBaseTree": "cba75bcd761770263f5bf387dfc5994f4ce97881",
+  "pr444": {
+    "url": "https://github.com/GOD13emad/ChatGPTRemoteCommander/pull/444",
+    "hostedChecks": 5,
+    "checksStatus": "PASS_AT_PINNED_BASE_ONLY"
+  },
+  "builderF": {
+    "status": "FAIL_WINFORMS_STANDARD_160_SECOND_TIMEOUT",
+    "rootCause": "FRESH_REPRO_HARNESS_RAW_CLI_VS_SAFE_UI_RECEIPT_DIALECT_MISMATCH",
+    "packageAcceptance": "UNPROVEN",
+    "replay": "DO_NOT_RUN",
+    "captureLimitation": "Nested timeout and inherited PIPE capture could hide child primary output; exact original F trace remains incomplete.",
+    "preservedOutcome": "FAILED_NOT_RELABELED_OR_REPLAYED"
+  },
+  "qaCleanup": {
+    "pythonMockPass": 12,
+    "csharpCompile": "PASS",
+    "noEffectLatchSelftest": "PASS",
+    "nativePackageAcceptance": "PASS_SCOPED_H_STANDARD_AND_FULL"
+  },
+  "nativeCessation": {
+    "commit": "760e4f6460627d3bbbd6cbce23132890d40a8915",
+    "tests": 21,
+    "passes": 21,
+    "productionWiring": false
+  },
+  "installedChanged": false,
+  "actualJobsChanged": false,
+  "openGates": [
+    "real-caller-authentication",
+    "intended-chat-ACK",
+    "production-executor-wiring",
+    "durable-cessation-proof",
+    "migration",
+    "real-OS-login-reboot",
+    "Linux-native-host",
+    "publisher-signing",
+    "whole-product-acceptance"
+  ],
+  "builderG": {
+    "status": "FAILED_AFTER_FUNCTIONAL_UNICODE_PASS_DURING_CLEANUP",
+    "packageAcceptance": "FAILED_GATE_NOT_RELABELED",
+    "helperOverrideHashes": {
+      "ManagedProfileUiOffscreenQA.cs": "d4f5f6b88efadf2aecac9679a2f4b8ef4105c101a8b425eb944d834bb1ba3231",
+      "smoke-winforms-ui.py": "fb81a93f4882ce7229dafdb575c7a14c2c211bf357e6ac9bb67e08084f18214e"
+    },
+    "freshScopedStandard": {
+      "status": "PASS_ACTUAL_FILE_BACKED_WRAPPER_AND_REAL_UI_GATE",
+      "elapsedSeconds": 7.437,
+      "scope": "Private fixture only; not whole G gate",
+      "receiptSHA256": "be0eba490e08775723d786939cf3e9a6994bd7fec7b9aee84bafca86a393944f",
+      "intentSHA256": "c2dc3d77a2e0209ee50f027dbb603e55b975545d2e54793bfd67de4ece8ed621"
+    },
+    "guards": "Stop consumption and production UI unchanged; no old fixture replay",
+    "rootCause": "READ_ONLY_EXACT261_UTF16_LEAF_PLAIN_WINERROR3_EXTENDED_ACCESS_SUCCEEDS",
+    "preservedOutcome": "No replay or cleanup of old G fixture; new H gate uses corrected cleanup helper"
+  },
+  "builderH": {
+    "status": "PASS_SCOPED_CURRENT_WINDOWS_ONEFILE_PACKAGE",
+    "completedPhases": 22,
+    "totalPhases": 22,
+    "artifact": {
+      "fileName": "CommanderOne-Setup-Windows-x64-UI-preview.exe",
+      "bytes": 149933384,
+      "sha256": "2ec6aa8d9fc4747ed47539dd960add22534df7115e7d4abe0ed23c6fe3a3b123",
+      "signed": false
+    },
+    "sourceFiles": 216,
+    "sourceArchiveSha256": "9287d4eb2fabfa8d2d4c6a543c0b2f83447c04ec8ffaa9ec6e907b8739ac219c",
+    "nativeUi": {
+      "entry": "app/desktop/RemoteCommander.exe",
+      "kind": "winforms-readonly",
+      "managedProfiles": true,
+      "sha256": "14731effd61581ce07be5bed18b693f7b60143e9d9ef1958763fd3895acecf97"
+    },
+    "smokes": {
+      "standard": {
+        "tools": 64,
+        "schema": "0c5712c116519a9d95842c99931b533f40c41cd6dd996c4dd57fe6fe170ebd2d",
+        "baseTools": 64,
+        "added": [],
+        "baselineSchemaParity": true,
+        "realLifecyclePass": true,
+        "upgradeRollbackPass": true,
+        "reversibleUninstallPass": true,
+        "autostartPackagedCliPass": true,
+        "nativeStartupHandoffPass": true,
+        "winformsStopConfirmPass": true,
+        "runtimeDeadControlReconcilePass": true,
+        "privilegedLegacyHttpQuarantinePass": true
+      },
+      "full": {
+        "tools": 128,
+        "schema": "12aee3d7e57a7c487470117a50edce3f582d29e938c5867a2ec7a6dbba4a9bac",
+        "baseTools": 128,
+        "added": [],
+        "baselineSchemaParity": true,
+        "realLifecyclePass": true,
+        "upgradeRollbackPass": true,
+        "reversibleUninstallPass": true,
+        "autostartPackagedCliPass": true,
+        "nativeStartupHandoffPass": true,
+        "winformsStopConfirmPass": true,
+        "runtimeDeadControlReconcilePass": true,
+        "privilegedLegacyHttpQuarantinePass": true
+      }
+    },
+    "unicode": {
+      "status": "PASS",
+      "source": "actual-windows-special-path-install",
+      "installerSha256": "2ec6aa8d9fc4747ed47539dd960add22534df7115e7d4abe0ed23c6fe3a3b123",
+      "modes": [
+        "standard",
+        "full"
+      ],
+      "nativeUiHashVerified": true,
+      "productionTouched": false,
+      "osRestartTested": false
+    },
+    "unicodeUpgrade": {
+      "status": "PASS",
+      "modes": [
+        "standard",
+        "full"
+      ],
+      "previousSha256": "5d28a165e85e818e6aae7c575f2cbf72cc1fb0bf4123c325a37ddd46352ada05",
+      "installerSha256": "2ec6aa8d9fc4747ed47539dd960add22534df7115e7d4abe0ed23c6fe3a3b123",
+      "productionTouched": false,
+      "unicodeAutoStartEnableRejected": true,
+      "bootOrLoginTested": false
+    },
+    "independentReadOnlyVerify": {
+      "ok": true,
+      "files": 216,
+      "archiveSha256": "9287d4eb2fabfa8d2d4c6a543c0b2f83447c04ec8ffaa9ec6e907b8739ac219c",
+      "build": "dev23-scoped-v1-one-install-preview",
+      "platform": "win32",
+      "nativeUi": {
+        "entry": "app/desktop/RemoteCommander.exe",
+        "kind": "winforms-readonly",
+        "managedProfiles": true,
+        "sha256": "14731effd61581ce07be5bed18b693f7b60143e9d9ef1958763fd3895acecf97"
+      },
+      "installed": false
+    },
+    "sourceHelperHashes": {
+      "ManagedProfileUiOffscreenQA.cs": "d4f5f6b88efadf2aecac9679a2f4b8ef4105c101a8b425eb944d834bb1ba3231",
+      "smoke-winforms-ui.py": "fb81a93f4882ce7229dafdb575c7a14c2c211bf357e6ac9bb67e08084f18214e",
+      "smoke-unicode-upgrade.py": "1326bbbe10f8e45609c627885842a40eba9f5846a7e9522f3a4bdcc58dd01c8e"
+    },
+    "acceptanceReceiptSHA256": "12f5eccf02321c93210b58202e7d1903da42cd3db20859c215fbdf2c2222e516",
+    "productionInstalled": false,
+    "whole": "NOT_FINAL",
+    "failedFGatesPreserved": true,
+    "identicalArtifactBytesDoNotRelabelFailedG": true
+  },
+  "reconstructionInputs": {
+    "builderSha256": "4771a85f1372aa4000d04a1b5ecfa003b86d98348224edca3af228fbaba23c52",
+    "installerCoreSha256": "641bff747931e4e97afd143f78e58cd8beddd756ab073f084340dd774787e10f",
+    "nodeVersion": "26.7.0-win-x64",
+    "nodeSha256": "e921fe5307e29bf6fd00000dd594356affd3a7b044e52720c7f10decbdc305b9",
+    "nativeUiSha256": "14731effd61581ce07be5bed18b693f7b60143e9d9ef1958763fd3895acecf97",
+    "previousQualifiedInstallerSha256": "5d28a165e85e818e6aae7c575f2cbf72cc1fb0bf4123c325a37ddd46352ada05",
+    "buildInputsNotIncluded": [
+      "trusted Node runtime",
+      "compiled native UI",
+      "qualified previous installer",
+      "Python and .NET SDK/runtime caches"
+    ]
+  }
+}
