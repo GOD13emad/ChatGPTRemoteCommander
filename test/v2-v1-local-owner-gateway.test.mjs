@@ -75,3 +75,59 @@ test('gateway fails closed on forged/malformed schemas and invalid user input',a
  await assert.rejects(()=>malformed.call({tool:'run_shell;',args:{command:'true'}}),
   /V2_LOCAL_TOOL_INVALID/);
 });
+
+test('asynchronous native owner denial or absence never allows a V1 catalog or tool call',async()=>{
+ for(const verdict of [false,undefined,null,0]){
+  let rpcCalls=0;
+  const g=createV2V1LocalOwnerGateway({
+   attestLocalOwner:async()=>verdict,newId:()=>uuid,
+   rpc:async()=>{rpcCalls++;return {tools:names};}
+  });
+  await assert.rejects(g.list(),{code:'V2_LOCAL_OWNER_ATTESTATION_REQUIRED'});
+  await assert.rejects(g.call({tool:'run_shell',args:{command:'true'}}),
+   {code:'V2_LOCAL_OWNER_ATTESTATION_REQUIRED'});
+  assert.equal(rpcCalls,0,'denied attestation must never reach V1');
+ }
+});
+test('pending async identity assertion blocks all catalog and mutation effects',async()=>{
+ let resolveAttestation;
+ let calls=0;
+ const hold=new Promise(resolve=>{resolveAttestation=resolve});
+ const g=createV2V1LocalOwnerGateway({
+  attestLocalOwner:()=>hold,newId:()=>uuid,
+  rpc:async()=>{calls++;return {tools:names};}
+ });
+ const pending=g.call({tool:'run_shell',args:{command:'true'}});
+ await Promise.resolve();await Promise.resolve();
+ assert.equal(calls,0,'do not dispatch during unresolved native identity check');
+ resolveAttestation(false);
+ await assert.rejects(pending,{code:'V2_LOCAL_OWNER_ATTESTATION_REQUIRED'});
+ assert.equal(calls,0);
+});
+test('owner attestation is rechecked after asynchronous catalog lookup before V1 dispatch',async()=>{
+ let allowed=true,rpcCalls=0,mutationCalls=0;
+ const g=createV2V1LocalOwnerGateway({
+  attestLocalOwner:async()=>allowed,newId:()=>uuid,
+  rpc:async method=>{
+   rpcCalls++;
+   if(method==='tools/list'){
+    allowed=false;
+    return {tools:names};
+   }
+   mutationCalls++;return {isError:false};
+  }
+ });
+ await assert.rejects(g.call({tool:'run_shell',args:{command:'true'}}),
+  {code:'V2_LOCAL_OWNER_ATTESTATION_REQUIRED'});
+ assert.equal(rpcCalls,1);
+ assert.equal(mutationCalls,0);
+});
+test('asynchronous native peer probe failure rejects without leaking to any V1 RPC',async()=>{
+ let calls=0;
+ const g=createV2V1LocalOwnerGateway({
+  attestLocalOwner:async()=>{throw Object.assign(Error('peer invalid'),{code:'OS_PEER_DENIED'})},
+  newId:()=>uuid,rpc:async()=>{calls++;return {tools:names}}
+ });
+ await assert.rejects(g.call({tool:'gui_status'}),{code:'OS_PEER_DENIED'});
+ assert.equal(calls,0);
+});

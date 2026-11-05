@@ -15,6 +15,7 @@ function assertNativeOwner(){
  if(process.platform!=='linux'||typeof process.getuid!=='function'||
     process.getuid()===0||process.getuid()!==userInfo().uid)
   fail('V2_LOCAL_OWNER_UID_REQUIRED');
+ return true;
 }
 function checkPayload(obj){
  if(!plain(obj))fail('V2_LOCAL_ARGS_INVALID');
@@ -28,8 +29,14 @@ export function createV2V1LocalOwnerGateway({
 }={}){
  if(typeof rpc!=='function'||typeof attestLocalOwner!=='function'||
     typeof newId!=='function')fail('V2_LOCAL_TRUSTED_DEPENDENCIES_REQUIRED');
+ // Native identity probes may be asynchronous (SO_PEERCRED/Windows SID).
+ // Never start catalog I/O or any V1 RPC before a positive attestation.
+ async function requireNativeOwner(){
+  if(await attestLocalOwner()!==true)
+    fail('V2_LOCAL_OWNER_ATTESTATION_REQUIRED');
+ }
  async function catalog(){
-  attestLocalOwner();
+  await requireNativeOwner();
   const result=await rpc('tools/list');
   const tools=result?.tools;
   if(!Array.isArray(tools)||tools.length<1||tools.length>256||
@@ -42,14 +49,14 @@ export function createV2V1LocalOwnerGateway({
    return Object.freeze((await catalog()).map(t=>t.name));
   },
   async call({tool,args={},requestId}={}){
-   attestLocalOwner();
+   await requireNativeOwner();
    if(!TOOL.test(tool??''))fail('V2_LOCAL_TOOL_INVALID');
    const payload=checkPayload(args);
    const id=requestId??newId();
    if(!UUID.test(id))fail('V2_LOCAL_ID_INVALID');
    const definitions=await catalog();
    const bound=bindV2V1MutationId({tool,args:payload,requestId:id,toolDefinitions:definitions});
-   attestLocalOwner();
+   await requireNativeOwner();
    // Only the already-installed V1's native policy runs this tool.
    const result=await rpc('tools/call',{name:tool,arguments:bound});
    if(!plain(result))fail('V2_LOCAL_V1_RESULT_INVALID');
