@@ -68,6 +68,21 @@ RunOwned $old '/S' 240000
 $prior=VerifyOne
 $originalManifest=(Get-FileHash $prior.manifest -Algorithm SHA256).Hash.ToLowerInvariant()
 Write-Output 'V2_REPLACE_WINDOWS_OLD_PACKAGE_INSTALLED'
+# Artificial, noncredential fixture in the packaged application's Electron
+# product-name userData location. Not actual signed-in profile migration.
+$stateDir=Join-Path $env:APPDATA 'Commander V2'
+if(Test-Path -LiteralPath $stateDir){throw 'V2_WINDOWS_REPLACE_PREEXISTING_OWNER_STATE'}
+New-Item -Path $stateDir -ItemType Directory -ErrorAction Stop | Out-Null
+$marker=Join-Path $stateDir 'qa-hosted-synthetic-state.txt'
+[IO.File]::WriteAllText($marker,'V2_HOSTED_SYNTHETIC_STATE_PRESERVE',[Text.UTF8Encoding]::new($false))
+$markerHash=(Get-FileHash -LiteralPath $marker -Algorithm SHA256).Hash.ToLowerInvariant()
+function VerifyState {
+ if(!(Test-Path -LiteralPath $marker -PathType Leaf) -or
+   (Get-FileHash -LiteralPath $marker -Algorithm SHA256).Hash.ToLowerInvariant() -ne $markerHash){
+  throw 'V2_WINDOWS_REPLACE_SYNTHETIC_USER_STATE_CHANGED'
+ }
+}
+
 RunOwned $new '/S' 240000
 $updated=VerifyOne
 $expectedManifest='1202e46e59162946452a255b03db98de77bd7bf81b978e3a1c867d2490937c64'
@@ -75,12 +90,14 @@ $updatedManifest=(Get-FileHash $updated.manifest -Algorithm SHA256).Hash.ToLower
 if($updatedManifest -ne $expectedManifest -or $originalManifest -eq $updatedManifest){
  throw 'V2_WINDOWS_REPLACE_READONLYFIX_NOT_APPLIED'
 }
+VerifyState
 Write-Output 'V2_REPLACE_WINDOWS_INPLACE_READONLYFIX_PASS'
 RunOwned $old '/S' 240000
 $reverted=VerifyOne
 if((Get-FileHash $reverted.manifest -Algorithm SHA256).Hash.ToLowerInvariant() -ne $originalManifest){
  throw 'V2_WINDOWS_REPLACE_ROLLBACK_MANIFEST_MISMATCH'
 }
+VerifyState
 Write-Output 'V2_REPLACE_WINDOWS_DISPOSABLE_ROLLBACK_PASS'
 RunOwned $reverted.uninstaller '/S' 180000
 for($i=0;$i -lt 40;$i++){
@@ -89,4 +106,6 @@ for($i=0;$i -lt 40;$i++){
 }
 if(@(Entries).Count -ne 0){throw 'V2_WINDOWS_REPLACE_FINAL_REGISTRATION_REMAINS'}
 if(Test-Path -LiteralPath $reverted.uninstaller){throw 'V2_WINDOWS_REPLACE_FINAL_BINARY_REMAINS'}
+VerifyState
+Write-Output 'V2_REPLACE_WINDOWS_SYNTHETIC_OWNER_STATE_PRESERVED_PASS'
 Write-Output 'V2_REPLACE_WINDOWS_FINAL_UNINSTALL_PASS'

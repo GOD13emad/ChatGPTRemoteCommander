@@ -77,6 +77,14 @@ test('old to patched same-semver upgrade/rollback is pinned, observable and host
  assert.match(windows,/RunOwned \$new '\/S'/);
  assert.match(windows,/RunOwned \$reverted.uninstaller '\/S'/);
  assert.match(windows,/REGISTRATION_COUNT/);
+ // A disposable userData marker must survive patch/revert/uninstall; no
+ // secret or active owner profile is copied onto the hosted machine.
+ assert.match(linux,/V2_REPLACE_LINUX_SYNTHETIC_OWNER_STATE_PRESERVED_PASS/);
+ assert.match(windows,/V2_REPLACE_WINDOWS_SYNTHETIC_OWNER_STATE_PRESERVED_PASS/);
+ assert.match(linux,/checkstate\(\)/);
+ assert.match(windows,/function VerifyState/);
+ assert.match(linux,/V2_HOSTED_SYNTHETIC_STATE_PRESERVE/);
+ assert.match(windows,/V2_HOSTED_SYNTHETIC_STATE_PRESERVE/);
  assert.match(windows,/\(Test-Path -LiteralPath \$old\) -or \(Test-Path -LiteralPath \$new\)/);
  assert.doesNotMatch(windows,/Test-Path \$old -or Test-Path/);
 });

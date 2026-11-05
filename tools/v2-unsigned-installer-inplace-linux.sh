@@ -38,19 +38,33 @@ sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y "$work/old.deb"
 checkinstalled
 oldmanifest="$(sha256sum "$manifest"|cut -d' ' -f1)"
 echo V2_REPLACE_LINUX_OLD_PACKAGE_INSTALLED
+# Only an artificial nonsecret fixture. No actual owner profile is inspected.
+state="$HOME/.config/Commander V2"
+test ! -e "$state" || { echo V2_REPLACE_LINUX_STATE_ALREADY_EXISTS >&2;exit 45; }
+install -d -m 700 "$state"
+marker="$state/qa-hosted-synthetic-state.txt"
+printf '%s\n' 'V2_HOSTED_SYNTHETIC_STATE_PRESERVE' > "$marker"
+markerSha="$(sha256sum "$marker"|cut -d' ' -f1)"
+checkstate(){
+ test "$(sha256sum "$marker"|cut -d' ' -f1)" = "$markerSha"
+}
 sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y --reinstall "$work/new.deb"
 checkinstalled
 newmanifest="$(sha256sum "$manifest"|cut -d' ' -f1)"
 test "$newmanifest" = 1202e46e59162946452a255b03db98de77bd7bf81b978e3a1c867d2490937c64
 test "$oldmanifest" != "$newmanifest"
+checkstate
 echo V2_REPLACE_LINUX_INPLACE_READONLYFIX_PASS
 sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y --reinstall "$work/old.deb"
 checkinstalled
 test "$(sha256sum "$manifest"|cut -d' ' -f1)" = "$oldmanifest"
+checkstate
 echo V2_REPLACE_LINUX_DISPOSABLE_ROLLBACK_PASS
 sudo env DEBIAN_FRONTEND=noninteractive apt-get purge -y commander-v2
 if dpkg-query -W commander-v2 >/dev/null 2>&1; then
  echo V2_REPLACE_LINUX_PURGE_REGISTRATION_REMAINS >&2;exit 44
 fi
 test ! -e '/opt/Commander V2/commander-v2'
+checkstate
+echo V2_REPLACE_LINUX_SYNTHETIC_OWNER_STATE_PRESERVED_PASS
 echo V2_REPLACE_LINUX_FINAL_PURGE_PASS
