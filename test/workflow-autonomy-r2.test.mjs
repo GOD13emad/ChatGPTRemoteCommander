@@ -266,9 +266,11 @@ test('user revision override revises goal/acceptance and stale worker is rejecte
   }finally{fs.rmSync(root,{recursive:true,force:true});}
 });
 
-test('same root-cause failures exceed retry budget and require reassessment',async()=>{
+test('retry-budget accounting unit with root leasing disabled in fixture requires reassessment; production lease guard has separate default-on regressions',async()=>{
   const root=temp();try{
-    const s=new WorkflowStore(options(root));try{
+    // This tests accounting only, not permission to retry an unresolved effect.
+    // The default-on root-lease regression suite rejects that dispatch.
+    const s=new WorkflowStore(options(root,{schedulerPolicy:{...options(root).schedulerPolicy,oneWriterPerRoot:false}}));try{
       s.create({id:'retry',root,goal:'budget',acceptance:['proof'],retryBudget:1,steps:[
         {id:'a',title:'A',dependsOn:[]},{id:'b',title:'B',dependsOn:[]}
       ]});

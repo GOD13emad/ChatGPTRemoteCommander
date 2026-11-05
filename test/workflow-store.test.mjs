@@ -144,7 +144,10 @@ test('process crash after external effect preserves uncertain intent and never r
  assert.ok(f.s.resume('sample').blockers.includes('WORKFLOW_OUTCOME_UNCERTAIN'));
  await assert.rejects(call(f),/REQUIRES_RECONCILIATION/);
  const proof=f.s.reconcile({id:'sample',stepId:'first',expectedRevision:2,outcome:'applied',files:['effect.txt'],explanation:'One marker was independently observed after child exit'});
- assert.equal(proof.state.steps[0].status,'reconciled_applied');assert.equal(f.s.resume('sample').nextStep,'second');
+ assert.equal(proof.state.steps[0].status,'reconciled_applied');
+ const ready=f.s.resume('sample');assert.equal(ready.nextStep,null);assert.ok(ready.blockers.includes('WORKFLOW_ROOT_LEASED'));
+ let laterEffects=0;await assert.rejects(f.s.call({id:'sample',stepId:'second',expectedRevision:proof.state.revision,tool:'read_text',arguments:{}},host(async()=>{laterEffects++;return{ok:true};})),/WORKFLOW_ROOT_LEASED/);
+ assert.equal(laterEffects,0);assert.equal(fs.readFileSync(path.join(f.root,'effect.txt'),'utf8'),'once');
 }finally{f.dispose();}});
 test('two processes contend for same revision: exactly one records intent/action',async()=>{const f=fixture();try{
  f.create();const r=await Promise.all([runWorker(['race',f.root]),runWorker(['race',f.root])]);

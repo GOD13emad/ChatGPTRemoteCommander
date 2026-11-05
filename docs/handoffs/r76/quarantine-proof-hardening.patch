@@ -1,0 +1,21 @@
+diff --git a/src/full-access-http-quarantine.mjs b/src/full-access-http-quarantine.mjs
+--- a/src/full-access-http-quarantine.mjs
++++ b/src/full-access-http-quarantine.mjs
+@@ -19,11 +19,12 @@ export function legacyPrivilegedMcpQuarantine({
+     tokenUncertain = !Number.isSafeInteger(effectiveUid) || effectiveUid < 0;
+   } else if (platform === 'win32') {
+     const proof = windowsAdminToken;
+-    privilegedProcess = proof?.ok === true && proof?.isAdmin === true &&
+-      proof?.elevation === 'high' && proof?.source === 'local-process-token';
+-    // A failed admin-token probe is NOT proof of a filtered token.
+-    tokenUncertain = proof?.ok !== true ||
+-      (proof?.isAdmin === true && !privilegedProcess);
++    const trustedProof = proof?.ok === true && proof?.source === 'local-process-token';
++    privilegedProcess = trustedProof && proof?.isAdmin === true && proof?.elevation === 'high';
++    const verifiedFiltered = trustedProof && proof?.isAdmin === false && proof?.elevation === 'filtered';
++    // Only the probe's two complete typed tuples are evidence. A failed,
++    // partial, differently sourced or inconsistent answer is never filtered.
++    tokenUncertain = !privilegedProcess && !verifiedFiltered;
+   } else {
+     tokenUncertain = true;
+   }

@@ -1,0 +1,15 @@
+# G1 feasibility — official protocol boundary, 2026-11-05
+
+**Conclusion:** a separate cryptographically signed ChatGPT conversation assertion automatically mapped to the local OS owner is **not established by the reviewed documentation**. Treating it as mandatory may create an unsupported prerequisite. This review does not change the product contract or prove such an extension impossible.
+
+The [official OpenAI authentication guide](https://developers.openai.com/plugins/build/auth) separates ChatGPT client mTLS, end-user OAuth authorization, and token validation. Its CIMD `private_key_jwt` is token-endpoint client authentication, not a signed conversation assertion. The [official plugin reference](https://developers.openai.com/plugins/reference) documents `openai/session` as anonymized conversation correlation, plus `openai/subject` and `openai/organization`. No conversation-URL identity or native-owner binding is promised.
+
+The [MCP authorization specification](https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization) puts resource-specific token validation on every request. Current [Streamable HTTP](https://modelcontextprotocol.io/specification/2026-07-28/basic/transports/streamable-http) has no protocol session: `Mcp-Session-Id` is legacy and ignored by the modern revision. [MCP security guidance](https://modelcontextprotocol.io/docs/2026-07-28/tutorials/security/security_best_practices) instead requires application-state handles to remain bound to the verified user; knowing a handle never authenticates its holder.
+
+**Architecture proposal, requiring owner acceptance if it changes DoD:** validated OAuth principal/profile → deliberate native-owner enrollment → exact action/resource-bound grant → expiring server-issued application workflow handle → shared root lease and durable no-replay receipt. Optional `openai/session` can correlate an authenticated client's calls; it must not independently grant authority. Do not call an app handle a verified ChatGPT conversation. Keep user tokens and native broker grants separate.
+
+The [Secure MCP Tunnel guide](https://developers.openai.com/api/docs/guides/secure-mcp-tunnels) describes forwarding to the private server, so direct public-edge mTLS evidence cannot simply be assumed at the local HTTP listener. Actual topology remains a live acceptance question.
+
+**Smallest discriminator:** clarify the existing G1 requirement and topology; then, on a separately admitted read-only test endpoint, verify a real owner-authorized OAuth connection and return only boolean verification verdicts/protocol plus presence/equality hashes of correlation metadata. No token values, private chat reads, new account/provider creation or effects. Such a probe was not run here. Real issuer verification, native consent/grant revocation and cross-principal denial remain genuine gates.
+
+Local source review: `v2-mcp-http-ingress.mjs` already supports trusted-mTLS metadata correlation; the R65 protected-Router tests explicitly use ephemeral fixture identity. Neither constitutes production authentication acceptance.
