@@ -1,0 +1,76 @@
+{
+  "schema": "r80-k-c-unicode-native-rebuild-qualification-v1",
+  "utc": "2026-11-06T09:29:30.746109+00:00",
+  "status": "PASS_K_C_LITERAL_ONLY_NATIVE_REBUILD_INHERITS_B_FUNCTIONAL_EVIDENCE",
+  "failure": null,
+  "phases": [
+    {
+      "phase": "native-c-restore-offline",
+      "exitCode": 0
+    },
+    {
+      "phase": "native-c-publish",
+      "exitCode": 0
+    },
+    {
+      "phase": "native-c-manifest",
+      "exitCode": 0
+    }
+  ],
+  "facts": {
+    "unicodeLiteralPresentInNativeUtf16": true,
+    "native": {
+      "path": "G:\\CodexWork\\RC1R80FinalizeK\\native-c\\CommanderOwnerFinalizeK.exe",
+      "sha256": "92a52bc9f224ace9969ae608546ee81785e44f13fa2150d0c0687cb355c2d780",
+      "bytes": 4128256,
+      "clrDirectoryZero": true,
+      "dependentLoadFlags": 2048
+    },
+    "asInvoker": true,
+    "inheritedFunctionalEvidence": {
+      "receiptSha256": "6cca555ce0a8393d6df1e686e893985da154e97b10f5c9920c82d6236e0df196",
+      "nativeCases": 24,
+      "memoryCOMCases": 20,
+      "nonMessageCallBytesUnchanged": true,
+      "allOtherSourceBytesUnchanged": true,
+      "testsReplayed": false
+    }
+  },
+  "changeReceiptSha256": "82180ec521786b5ddbc685db89fe02377c20e65fe3a6a644be7cd6b19af9d3fb",
+  "sourceFiles": [
+    {
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-owner-enrollment-r80\\staged-finalization-k\\src\\IStage.cs",
+      "sha256": "d7b3a9a092b9b8cce230040f74d0b32ca646decfe5a755b42e0573fa81a0b9c7"
+    },
+    {
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-owner-enrollment-r80\\staged-finalization-k\\src\\KContracts.cs",
+      "sha256": "6b94057954b8170719e428b0de2585203cfca8e020fc00a4ae5f60e16e0a5786"
+    },
+    {
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-owner-enrollment-r80\\staged-finalization-k\\src\\KIO.cs",
+      "sha256": "4d6200fdbc70cdc14c5c0c618ada311b74b11a2b268bcba82431a10d6fd8863f"
+    },
+    {
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-owner-enrollment-r80\\staged-finalization-k\\src\\KQA.cs",
+      "sha256": "111c292f60a78ac97cdad1f684333b48e50a3c1b79f6aa820fe2a453ee54bb45"
+    },
+    {
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-owner-enrollment-r80\\staged-finalization-k\\src\\OwnerFinalizeK.csproj",
+      "sha256": "218a036cd746a104f7690e539586e937a15802768fb3f25d7cc9d6569e220bb0"
+    },
+    {
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-owner-enrollment-r80\\staged-finalization-k\\src\\Program.cs",
+      "sha256": "504f0118db25423b3db7e536cee385038634630d16e88fa5abcc5e0c0ee779b3"
+    },
+    {
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-owner-enrollment-r80\\staged-finalization-k\\src\\TaskFinalizerK.ps1",
+      "sha256": "a9ad8b9ef8d2d3e70bd60e1cfb077a4391da34df3b54ff6b50722b1a8969fa13"
+    }
+  ],
+  "nativeFinalizerExecuted": false,
+  "uacOpened": false,
+  "protectedStageOpened": false,
+  "privateKeysOpened": false,
+  "taskApiCalled": false,
+  "installedCommanderChanged": false
+}

@@ -1,0 +1,71 @@
+{
+  "schema": "r80-j-knownfolder-causality-receipt-v1",
+  "utc": "2026-11-06T08:55:10.434515+00:00",
+  "status": "READONLY_DIAGNOSTIC_COMPLETE",
+  "failure": null,
+  "rows": [
+    {
+      "name": "exact-j-production",
+      "status": "OBSERVED",
+      "result": {
+        "schema": "r80-knownfolders-observed-v1",
+        "processBitness": 64,
+        "psVersion": "5.1.26100.9711",
+        "runtime": "4.0.30319.42000",
+        "programFiles": "C:\\Program Files",
+        "commonApplicationData": "",
+        "windows": "C:\\WINDOWS",
+        "system": "C:\\WINDOWS\\system32",
+        "envProgramData": null,
+        "envAllUsersProfile": null,
+        "envProgramFiles": null,
+        "envSystemRoot": "C:\\Windows"
+      },
+      "outputSha256": "e6c657dc8e569378cca34b673d8d3f5b930ab8dfcbd52b1d54a9d2c379a81e89"
+    },
+    {
+      "name": "ordinary-full-control",
+      "status": "OBSERVED",
+      "result": {
+        "schema": "r80-knownfolders-observed-v1",
+        "processBitness": 64,
+        "psVersion": "5.1.26100.9711",
+        "runtime": "4.0.30319.42000",
+        "programFiles": "C:\\Program Files",
+        "commonApplicationData": "C:\\ProgramData",
+        "windows": "C:\\WINDOWS",
+        "system": "C:\\WINDOWS\\system32",
+        "envProgramData": "C:\\ProgramData",
+        "envAllUsersProfile": "C:\\ProgramData",
+        "envProgramFiles": "C:\\Program Files",
+        "envSystemRoot": "C:\\WINDOWS"
+      },
+      "outputSha256": "b2820838be62e7948f39dd39565f4c0a76f21162f8a4167a38c5a51aebaae241"
+    },
+    {
+      "name": "diagnostic-knownfolder-only-completion",
+      "status": "OBSERVED",
+      "result": {
+        "schema": "r80-knownfolders-observed-v1",
+        "processBitness": 64,
+        "psVersion": "5.1.26100.9711",
+        "runtime": "4.0.30319.42000",
+        "programFiles": "C:\\Program Files",
+        "commonApplicationData": "",
+        "windows": "C:\\WINDOWS",
+        "system": "C:\\WINDOWS\\system32",
+        "envProgramData": "C:\\ProgramData",
+        "envAllUsersProfile": "C:\\ProgramData",
+        "envProgramFiles": "C:\\Program Files",
+        "envSystemRoot": "C:\\Windows"
+      },
+      "outputSha256": "e5f729ad16c9076a901647591e4a72033567f4e2d39952a5070d6ab3e51e00a1"
+    }
+  ],
+  "productionPatch": false,
+  "taskApis": false,
+  "protectedFilesOpened": false,
+  "privateKeysOpened": false,
+  "uacOpened": false,
+  "oldActionReplayed": false
+}

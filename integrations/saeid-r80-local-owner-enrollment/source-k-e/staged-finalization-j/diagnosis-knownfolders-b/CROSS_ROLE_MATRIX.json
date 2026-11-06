@@ -1,0 +1,190 @@
+{
+  "schema": "r80-actual-clean-environment-history-research-matrix-v1",
+  "utc": "2026-11-06T09:02:49.099280+00:00",
+  "status": "RESEARCH_COMPLETE_PROPOSAL_ONLY",
+  "productionSourcePatched": false,
+  "actualInstallerReplayed": false,
+  "protectedKeysOrIOrJRecordsChanged": false,
+  "sourcePins": [
+    {
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-owner-enrollment-r80\\bootstrap\\src\\ProtectedInstall.cs",
+      "sha256": "75ba33808e66c5450041b121af5b440c8a5f386b12ba23d3f64f74ed99cce61b",
+      "anchors": [
+        {
+          "line": 21,
+          "match": "internal static string ProgramRoot=>Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),\"ChatGPTRemoteCommander\",\"owner-auth\");"
+        },
+        {
+          "line": 22,
+          "match": "internal static string StateRoot=>Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),\"ChatGPTRemoteCommander\",\"owner-auth\");"
+        },
+        {
+          "line": 24,
+          "match": "private static ProcessStartInfo ShellStart(string exe)"
+        },
+        {
+          "line": 26,
+          "match": "var start=new ProcessStartInfo(exe){UseShellExecute=false,WorkingDirectory=Environment.SystemDirectory,CreateNoWindow=true,RedirectStandardOutput=true,RedirectStandardError=true};"
+        },
+        {
+          "line": 27,
+          "match": "start.Environment.Clear();foreach(var pair in new[]{(\"SystemRoot\",Environment.GetFolderPath(Environment.SpecialFolder.Windows)),(\"windir\",Environment.GetFolderPath(Environment.SpecialFolder.Windows)),(\"PATH\",Environment.SystemDirectory),(\"PSModulePath\",Path.Combine(Environment.SystemDirectory,\"WindowsPowerShell\",\"v1.0\",\"Modules\"))})start.Environment[pair.Item1]=pair.Item2;"
+        },
+        {
+          "line": 95,
+          "match": "private static (int ExitCode,string Output,string Error) RunOwned(ProcessStartInfo start,int milliseconds)"
+        }
+      ]
+    },
+    {
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-owner-enrollment-r80\\bootstrap\\src\\TaskOwner.ps1",
+      "sha256": "b708a8824fedc2983ededa04eee5e84471c09d106ad808c6db2ac12ab0d5dd07",
+      "anchors": [
+        {
+          "line": 5,
+          "match": "$program=[Environment]::GetFolderPath('ProgramFiles')+'\\ChatGPTRemoteCommander\\owner-auth'"
+        },
+        {
+          "line": 6,
+          "match": "$state=[Environment]::GetFolderPath('CommonApplicationData')+'\\ChatGPTRemoteCommander\\owner-auth'"
+        }
+      ]
+    },
+    {
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-owner-enrollment-r80\\staged-finalization-j\\src\\JIO.cs",
+      "sha256": "cf6cd0fbf8d3b1f956c304640df456d8d306e3e36fc1524384b76c778d8d2eae",
+      "anchors": [
+        {
+          "line": 25,
+          "match": "ConsentCore.Need(operation is \"inspect\" or \"finalize\" or \"rollback\",\"J_FIXED_OPERATION\");using var tool=SystemTool();var start=new ProcessStartInfo(tool.Name){UseShellExecute=false,CreateNoWindow=true,WorkingDirectory=Environment.SystemDirectory,RedirectStandardOutput=true,RedirectStandardError=true};start.Environment.Clear();var win=Environment.GetFolderPath(Environment.SpecialFolder.Windows);for"
+        },
+        {
+          "line": 30,
+          "match": "internal static byte[] RunOwned(ProcessStartInfo start,int milliseconds)"
+        }
+      ]
+    },
+    {
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-owner-enrollment-r80\\staged-finalization-j\\src\\TaskFinalizerJ.ps1",
+      "sha256": "0e4efc817237afd4d38fd54cfb839161e1da1b3483838fa7f61b7d2dea9051b0",
+      "anchors": [
+        {
+          "line": 33,
+          "match": "$program=[Environment]::GetFolderPath('ProgramFiles')+'\\ChatGPTRemoteCommander\\owner-auth';$state=[Environment]::GetFolderPath('CommonApplicationData')+'\\ChatGPTRemoteCommander\\owner-auth';$taskName='ChatGPTRemoteCommanderOwnerIssuerV1'"
+        }
+      ]
+    },
+    {
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-owner-enrollment-r80\\client\\src\\ClientTransport.cs",
+      "sha256": "b4770346955232425f60f9f59424dfb9491bffd1dc75103be5ebbd45598dcbf3",
+      "anchors": [
+        {
+          "line": 19,
+          "match": "policy.Revalidate(admin);ConsentCore.Need(!TaskLaunchAttempted,\"CLIENT_TASK_ONCE_ONLY\");var tool=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System),\"schtasks.exe\");ProtectSystemTool(tool);using var held=new FileStream(tool,FileMode.Open,FileAccess.Read,FileShare.Read);ProtectSystemTool(tool);"
+        },
+        {
+          "line": 20,
+          "match": "var info=new ProcessStartInfo(tool){UseShellExecute=false,CreateNoWindow=true,WorkingDirectory=Environment.GetFolderPath(Environment.SpecialFolder.System),RedirectStandardOutput=true,RedirectStandardError=true};foreach(var x in new[]{\"/run\",\"/TN\",ClientPolicy.TaskName})info.ArgumentList.Add(x);info.Environment.Clear();info.Environment[\"SystemRoot\"]=Environment.GetFolderPath(Environment.SpecialFold"
+        }
+      ]
+    },
+    {
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-owner-enrollment-r80\\client\\src\\ClientPolicy.cs",
+      "sha256": "a623a0068f1bc717b04a903070488d772db7b090cff3366c2cddad0757bd2d72",
+      "anchors": [
+        {
+          "line": 8,
+          "match": "internal string ProgramRoot=>Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),\"ChatGPTRemoteCommander\",\"owner-auth\");"
+        },
+        {
+          "line": 9,
+          "match": "internal string StateRoot=>Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),\"ChatGPTRemoteCommander\",\"owner-auth\");"
+        },
+        {
+          "line": 23,
+          "match": "var root=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),\"ChatGPTRemoteCommander\",\"owner-auth\");WindowsGuard.Protected(root,true);var f=WindowsGuard.OpenProtected(Path.Combine(root,\"client-policy.json\"),32768);ClientPolicy? p=null;"
+        }
+      ]
+    },
+    {
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-owner-enrollment-r80\\client\\src-c\\CommanderOwnerProxyC.csproj",
+      "sha256": "c3389aee19ac8f49b2a502a60cff3ca2d68ff8ee9f5bb43d3cf821d7017de444",
+      "anchors": []
+    },
+    {
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-owner-enrollment-r80\\acceptance-probe\\src\\ProbeIO.cs",
+      "sha256": "6b41f4548412fe73b0fc287a67c89876a065b44233b5f0dcd60b451eaefbce39",
+      "anchors": [
+        {
+          "line": 38,
+          "match": "var info=new ProcessStartInfo(image){UseShellExecute=false,CreateNoWindow=true,WorkingDirectory=Environment.SystemDirectory,RedirectStandardInput=true,RedirectStandardOutput=true,RedirectStandardError=true};foreach(var arg in args)info.ArgumentList.Add(arg);info.Environment.Clear();info.Environment[\"SystemRoot\"]=Environment.GetFolderPath(Environment.SpecialFolder.Windows);info.Environment[\"WINDIR\""
+        }
+      ]
+    },
+    {
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-owner-enrollment-r80\\acceptance-probe\\src-c\\ProbeAuthority.cs",
+      "sha256": "b608c6c6ef2961e46edfe09cc4b8789d9223e943183b8873fc1a2b3a2b090d86",
+      "anchors": [
+        {
+          "line": 5,
+          "match": "internal const string Issuer=\"https://commander.invalid/owner\",Endpoint=\"https://commander.invalid/owner/token\",Resource=\"https://commander.invalid/selftest\",Client=\"commander-owner-selftest\",Redirect=\"https://commander.invalid/local-callback\",ConsentPin=\"b5ff1b8fdc5aea05e338b2a2ff4ec71146136c22b66728e5bf25b108016c4020\";"
+        }
+      ]
+    },
+    {
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-owner-enrollment-r80\\acceptance-probe\\src-c\\CommanderOwnerAcceptanceC.csproj",
+      "sha256": "67535fab608dc6c6299794b9c395fb547f4c941ec9eaf0e9cb5b8f557cb8c1f4",
+      "anchors": []
+    },
+    {
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-owner-enrollment-r80\\auth\\src\\NativeAotOwnerConsent.cs",
+      "sha256": "c602c2c13f76a235399a7f65a80bc4c2b582a51e7657ae7c8e944350e6bb096d",
+      "anchors": [
+        {
+          "line": 30,
+          "match": "var programRoot=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),\"ChatGPTRemoteCommander\",\"owner-auth\");"
+        },
+        {
+          "line": 31,
+          "match": "var stateRoot=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),\"ChatGPTRemoteCommander\",\"owner-auth\");"
+        }
+      ]
+    }
+  ],
+  "diagnosticReceipts": [
+    {
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-owner-enrollment-r80\\staged-finalization-j\\diagnosis-knownfolders-b\\RECEIPT.json",
+      "sha256": "fa63388648c87594f66e9dc89e4d9a8ae0b452e4152c786574c5ce51c15ff80c"
+    },
+    {
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-owner-enrollment-r80\\staged-finalization-j\\diagnosis-knownfolders-b\\SYSTEMDRIVE_CAUSAL_RECEIPT.json",
+      "sha256": "77e70e75365f4932593b65659f59eb8ed0226307ff06efff18c396186bfc9376"
+    },
+    {
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-owner-enrollment-r80\\staged-finalization-j\\diagnosis-knownfolders-b\\SCHTASKS_QUERY_CONTEXT_RECEIPT.json",
+      "sha256": "a06f12e1f398791cf24f9a961d566c7720b7f04d27dc0a41fcd5e05a9926a1f0"
+    }
+  ],
+  "compilerDiagnosticFailure": {
+    "phase": "restore-before-compile",
+    "code": "NU1101_OFFLINE_TRANSITIVE_FRAMEWORK_PACKAGES",
+    "suppressionOmission": "DOTNET_GENERATE_ASPNET_CERTIFICATE=false omitted in optional diagnostic environment",
+    "sdkReportedUserCertificateGeneration": true,
+    "exactCertificateIdentity": "UNOBSERVED_NO_DELETE",
+    "logs": [
+      {
+        "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-owner-enrollment-r80\\staged-finalization-j\\diagnosis-knownfolders-b\\native-restore.stdout.log",
+        "sha256": "2f8451356411ebe0b3e56a5d6c1538d50dfdfc8b8ee8b9cecfb1e6e5018d444b"
+      },
+      {
+        "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-owner-enrollment-r80\\staged-finalization-j\\diagnosis-knownfolders-b\\native-restore.stderr.log",
+        "sha256": "d8041803f1c3cf788e1a350bfbedb92dd56d1e16b698b43504d430f263ee9f35"
+      }
+    ]
+  },
+  "proposalDocument": {
+    "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-owner-enrollment-r80\\staged-finalization-j\\diagnosis-knownfolders-b\\RESEARCH_AND_K_D_PROPOSAL.md",
+    "sha256": "71e42f0b269419c48ccd69d554ba5f387c87582a8e58db58b5898fb1f5131b8c"
+  },
+  "nextAction": "Parent review and exact staged K/D source admission; no new real action"
+}

@@ -1,0 +1,145 @@
+{
+  "schema": "r80-k-b-frozen-source-and-evidence-v1",
+  "status": "SOURCE_NATIVE_QA_ONLY_ACTUAL_FINALIZATION_UNPROVEN",
+  "files": [
+    {
+      "role": "current-K-B-source",
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-owner-enrollment-r80\\staged-finalization-k\\src\\IStage.cs",
+      "sha256": "d7b3a9a092b9b8cce230040f74d0b32ca646decfe5a755b42e0573fa81a0b9c7",
+      "bytes": 10878
+    },
+    {
+      "role": "current-K-B-source",
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-owner-enrollment-r80\\staged-finalization-k\\src\\KContracts.cs",
+      "sha256": "6b94057954b8170719e428b0de2585203cfca8e020fc00a4ae5f60e16e0a5786",
+      "bytes": 6413
+    },
+    {
+      "role": "current-K-B-source",
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-owner-enrollment-r80\\staged-finalization-k\\src\\KIO.cs",
+      "sha256": "4d6200fdbc70cdc14c5c0c618ada311b74b11a2b268bcba82431a10d6fd8863f",
+      "bytes": 8883
+    },
+    {
+      "role": "current-K-B-source",
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-owner-enrollment-r80\\staged-finalization-k\\src\\KQA.cs",
+      "sha256": "111c292f60a78ac97cdad1f684333b48e50a3c1b79f6aa820fe2a453ee54bb45",
+      "bytes": 9499
+    },
+    {
+      "role": "current-K-B-source",
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-owner-enrollment-r80\\staged-finalization-k\\src\\OwnerFinalizeK.csproj",
+      "sha256": "218a036cd746a104f7690e539586e937a15802768fb3f25d7cc9d6569e220bb0",
+      "bytes": 3121
+    },
+    {
+      "role": "current-K-B-source",
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-owner-enrollment-r80\\staged-finalization-k\\src\\Program.cs",
+      "sha256": "8ea7d01db7b7c3cacfbc5143bbc169265543343d852cb144dd41495c88c2f046",
+      "bytes": 10515
+    },
+    {
+      "role": "current-K-B-source",
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-owner-enrollment-r80\\staged-finalization-k\\src\\TaskFinalizerK.ps1",
+      "sha256": "a9ad8b9ef8d2d3e70bd60e1cfb077a4391da34df3b54ff6b50722b1a8969fa13",
+      "bytes": 10318
+    },
+    {
+      "role": "frozen-shared-dependency",
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-integration-r78\\reviews\\durable\\local-owner-auth\\native-consent-aot-j\\OwnerConsentCore.cs",
+      "sha256": "684dd5d8efdc9a90c6d00e1ee6adb7a04bdf3563d716fa9e2dc76c8fab28d663",
+      "bytes": 8372
+    },
+    {
+      "role": "frozen-shared-dependency",
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-integration-r78\\reviews\\durable\\local-owner-auth\\native-consent-aot-j\\SystemDllPolicy.cs",
+      "sha256": "916e611fd3dfbd23614e774b134f0a5f90fcbecbdc385e53b15d03e32a6d2347",
+      "bytes": 255
+    },
+    {
+      "role": "frozen-shared-dependency",
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-owner-enrollment-r80\\auth\\src\\WindowsGuard.cs",
+      "sha256": "6ffd5e017ac734572d564ddf4268d02abbee9adecc4e0527081b0b5d0cc331e9",
+      "bytes": 6944
+    },
+    {
+      "role": "frozen-shared-dependency",
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-native-issuer-r79\\src\\HostPolicy.cs",
+      "sha256": "facd7e6d66b8fc280806d997b1063eac312c74861162564a2f9be132bd418302",
+      "bytes": 6767
+    },
+    {
+      "role": "frozen-shared-dependency",
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-owner-enrollment-r80\\bootstrap\\src\\OwnedHelper.cs",
+      "sha256": "98810854525cc82b5a0101639290d4cc5177559fd6e6707ea56c510c43553c03",
+      "bytes": 2187
+    },
+    {
+      "role": "frozen-shared-dependency",
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-owner-enrollment-r80\\bootstrap\\src\\TaskPlan.cs",
+      "sha256": "6af3867efee188d001668c3d8e4cd12ea383885f27520c61498ea9691a53063d",
+      "bytes": 2278
+    },
+    {
+      "role": "handoff-or-source-QA",
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-owner-enrollment-r80\\staged-finalization-k\\HANDOFF.md",
+      "sha256": "32e4530fb3c374365346b8bb05f5023371a9826765b5f3ceb518da4981990d10",
+      "bytes": 8263
+    },
+    {
+      "role": "handoff-or-source-QA",
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-owner-enrollment-r80\\staged-finalization-k\\ADMISSION.json",
+      "sha256": "fd386031e59a25fbb6b00e04badbb16d51fe87a8022235804fd2a17f74499cbd",
+      "bytes": 563
+    },
+    {
+      "role": "handoff-or-source-QA",
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-owner-enrollment-r80\\staged-finalization-k\\CERTIFICATE_EVIDENCE_CORRECTION.json",
+      "sha256": "db118c39b24701c80f35aff0bb8049524a9585ce4b7fa1c58490e178f2307524",
+      "bytes": 587
+    },
+    {
+      "role": "handoff-or-source-QA",
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-owner-enrollment-r80\\staged-finalization-k\\QUALIFY_K_B_ONCE.py",
+      "sha256": "95f7679275bcd4d2afcebac5aae22e31465be47904ececb88a1cb1e0480312f5",
+      "bytes": 6801
+    },
+    {
+      "role": "handoff-or-source-QA",
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-owner-enrollment-r80\\staged-finalization-k\\QUALIFY_K_B_COMPLEMENT_ONCE.py",
+      "sha256": "66947f017b7876194a13e4bbac8e6ddfccf9e16a69d7fc7362a1dd79851ea133",
+      "bytes": 3704
+    },
+    {
+      "role": "handoff-or-source-QA",
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-owner-enrollment-r80\\staged-finalization-k\\QA_MEMORY_ONLY.ps1",
+      "sha256": "6a3bdf2531d5945c305d997c257c1798267c835e8c3df9f3332e8cfffa1ac831",
+      "bytes": 4474
+    },
+    {
+      "role": "handoff-or-source-QA",
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-owner-enrollment-r80\\staged-finalization-k\\qa-b\\RECEIPT.json",
+      "sha256": "538b041402d56d43dd8b0390c3ef43a0216909faf39010a0807e72b7de15a0c6",
+      "bytes": 4487
+    },
+    {
+      "role": "handoff-or-source-QA",
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-owner-enrollment-r80\\staged-finalization-k\\qa-b-complement\\RECEIPT.json",
+      "sha256": "6cca555ce0a8393d6df1e686e893985da154e97b10f5c9920c82d6236e0df196",
+      "bytes": 4480
+    },
+    {
+      "role": "handoff-or-source-QA",
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-owner-enrollment-r80\\staged-finalization-k\\qa-b-complement\\native.manifest",
+      "sha256": "def1d462ae6ad3b894f6b477823bba3c604183b919df28716953d30ca34e7708",
+      "bytes": 458
+    }
+  ],
+  "artifact": {
+    "path": "G:\\CodexWork\\RC1R80FinalizeK\\native-b\\CommanderOwnerFinalizeK.exe",
+    "sha256": "678442193a7130a38425b38e5e68a7d1453d91658fe6e02544a71d14961cbf59",
+    "bytes": 4128256,
+    "clrDirectoryZero": true,
+    "dependentLoadFlags": 2048
+  }
+}

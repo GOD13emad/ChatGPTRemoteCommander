@@ -1,0 +1,10 @@
+{
+  "baseline": "UNCHANGED",
+  "watcherSha256": "1f8c3389564ce672a696d8a178e87d177a84d89fc6eecf40bbcd6cb8dc05844f",
+  "planSha256": "e2cfb9e5a325923f0693bc5625e1c4a91f15bb8cf3fb8ae0ae799b5ac5e35a2f",
+  "taskStarted": false,
+  "nativeExecuted": false,
+  "status": "PASS_PARSER_BUTTON_GATE_NAMESPACE_PRIMARY_EXCEPTION_SOURCE",
+  "schema": "r80-k-ready-operator-qa-v1",
+  "uacOpened": false
+}

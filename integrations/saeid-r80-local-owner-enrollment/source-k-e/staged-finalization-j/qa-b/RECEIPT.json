@@ -1,0 +1,151 @@
+{
+  "schema": "r80-j-b-canceled-streams-native-qualification-v1",
+  "utc": "2026-11-06T08:40:24.373937+00:00",
+  "status": "PASS_SCOPED_SOURCE_NATIVE_AND_MEMORY_COM_ONLY",
+  "failure": null,
+  "facts": {
+    "verifiedSharedPackageFiles": 687,
+    "native": {
+      "path": "G:\\CodexWork\\RC1R80FinalizeJ\\native-b\\CommanderOwnerFinalizeJ.exe",
+      "sha256": "17adf7dad322a21d315bca6941c034b257cacae94205a3e843cc749d1bace574",
+      "bytes": 4116992,
+      "clrDirectoryZero": true,
+      "dependentLoadFlags": 2048
+    },
+    "diagnostic": {
+      "status": "ORDINARY_DIAGNOSTIC_NO_AUTHORITY_IO",
+      "elevated": false,
+      "administrator": false,
+      "session": 1,
+      "integrityRid": 8192,
+      "protectedPathsOpened": false
+    },
+    "nativeQA": {
+      "pass": 19,
+      "fail": 0,
+      "errors": [],
+      "ownedHelperFixtures": [
+        {
+          "pid": 19448,
+          "creationFileTime": 134384280223101762,
+          "heldIdentityCaptured": true,
+          "originalReaped": true,
+          "readersCompleted": true,
+          "elapsedMs": 1213
+        },
+        {
+          "pid": 24996,
+          "creationFileTime": 134384280235246659,
+          "heldIdentityCaptured": true,
+          "originalReaped": true,
+          "readersCompleted": true,
+          "elapsedMs": 184
+        }
+      ],
+      "protectedStageOpened": false,
+      "privateKeysOpened": false,
+      "tasksRegisteredStarted": false
+    },
+    "memoryCOM": {
+      "taskEnumerated": false,
+      "taskRegistered": false,
+      "pass": 20,
+      "invalidLegacyHResult": -2147216616,
+      "errors": [],
+      "fail": 0,
+      "installedStageOpened": false,
+      "schema": "r80-j-actual-memory-com-and-partial-rollback-qa-v1",
+      "taskStarted": false
+    },
+    "asInvoker": true
+  },
+  "phases": [
+    {
+      "phase": "native-b-restore",
+      "exitCode": 0,
+      "expected": 0
+    },
+    {
+      "phase": "native-b-publish",
+      "exitCode": 0,
+      "expected": 0
+    },
+    {
+      "phase": "ordinary-diagnose",
+      "exitCode": 0,
+      "expected": 0
+    },
+    {
+      "phase": "ordinary-finalize-staged",
+      "exitCode": 2,
+      "expected": 2
+    },
+    {
+      "phase": "ordinary-rollback-finalized",
+      "exitCode": 2,
+      "expected": 2
+    },
+    {
+      "phase": "native-qa-b-restore",
+      "exitCode": 0,
+      "expected": 0
+    },
+    {
+      "phase": "native-qa-b-publish",
+      "exitCode": 0,
+      "expected": 0
+    },
+    {
+      "phase": "native-pure-guard-qa",
+      "exitCode": 0,
+      "expected": 0
+    },
+    {
+      "phase": "actual-memory-com-qa",
+      "exitCode": 0,
+      "expected": 0
+    },
+    {
+      "phase": "native-manifest",
+      "exitCode": 0,
+      "expected": 0
+    }
+  ],
+  "sourceFiles": [
+    {
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-owner-enrollment-r80\\staged-finalization-j\\src\\IStage.cs",
+      "sha256": "d062e12ee8735d7eb61bec63bead344e683be3ffc4e47636bf88f929f8304ce2"
+    },
+    {
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-owner-enrollment-r80\\staged-finalization-j\\src\\JContracts.cs",
+      "sha256": "631593892c5c2286a162f339ef18f6ca57616cb1e36b18de0aa4fa49a50fc725"
+    },
+    {
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-owner-enrollment-r80\\staged-finalization-j\\src\\JIO.cs",
+      "sha256": "cf6cd0fbf8d3b1f956c304640df456d8d306e3e36fc1524384b76c778d8d2eae"
+    },
+    {
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-owner-enrollment-r80\\staged-finalization-j\\src\\JQA.cs",
+      "sha256": "4e65658ce1cfefa28115d2e9fad4f2e02e2e020339a68feba7469f6a092d90a8"
+    },
+    {
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-owner-enrollment-r80\\staged-finalization-j\\src\\OwnerFinalizeJ.csproj",
+      "sha256": "b7f4fe52d4834c2841ea5e127a272ab639b4cda1555ab07ed6fd132c9a0e6a0d"
+    },
+    {
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-owner-enrollment-r80\\staged-finalization-j\\src\\Program.cs",
+      "sha256": "af8ecff4200c8e8843028654ccc49dcbb1f2dda1e53e463e2405f4fa80555480"
+    },
+    {
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-owner-enrollment-r80\\staged-finalization-j\\src\\TaskFinalizerJ.ps1",
+      "sha256": "0e4efc817237afd4d38fd54cfb839161e1da1b3483838fa7f61b7d2dea9051b0"
+    }
+  ],
+  "uacOpened": false,
+  "protectedStageRead": false,
+  "taskRegisteredStarted": false,
+  "privateKeysOpened": false,
+  "installedCommanderChanged": false,
+  "jobsStoppedOrReplayed": false,
+  "actualFinalization": "UNPROVEN_PARENT_REVIEW_AND_OWNER_UAC_REQUIRED"
+}

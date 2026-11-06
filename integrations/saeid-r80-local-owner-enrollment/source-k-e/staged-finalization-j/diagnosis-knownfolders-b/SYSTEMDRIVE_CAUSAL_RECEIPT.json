@@ -1,0 +1,25 @@
+{
+  "schema": "r80-systemdrive-knownfolder-causality-v1",
+  "utc": "2026-11-06T08:56:52.398668+00:00",
+  "primaryHypothesisSource": "Microsoft KNOWNFOLDERID FOLDERID_ProgramData default references %SystemDrive%",
+  "sameExactJEnvironmentExceptSystemDrive": true,
+  "exitCode": 0,
+  "result": {
+    "schema": "r80-systemdrive-knownfolder-proof-v1",
+    "commonApplicationData": "C:\\ProgramData",
+    "programFiles": "C:\\Program Files",
+    "envSystemDrive": "C:",
+    "expandedDefault": "C:\\ProgramData"
+  },
+  "knownPublicFolderRegistryMetadata": {
+    "RelativePath": {
+      "absent": true
+    },
+    "ParentFolder": {
+      "absent": true
+    }
+  },
+  "protectedFilesTasksPrivateKeysOpened": false,
+  "productionPatch": false,
+  "originalActionReplayed": false
+}

@@ -1,0 +1,100 @@
+{
+  "schema": "r80-probe-e-source-input-v1",
+  "change": "only finite concurrent child stdin/stdout/stderr/exit orchestration; preserve primary and bounded original-child cleanup; same D factory and I/C peers",
+  "newSources": [
+    {
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-owner-enrollment-r80\\acceptance-probe\\src-e\\CommanderOwnerAcceptanceE.csproj",
+      "sha256": "8c8b91b055abdae1a09649fdd33848d3468060bcb4a3b789098db976fa9fd1b9"
+    },
+    {
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-owner-enrollment-r80\\acceptance-probe\\src-e\\ProbeEChildQA.cs",
+      "sha256": "b67489838f48bc9e6515c4c80cecb0449c34aed620cd5998f0edaf51d8233150"
+    },
+    {
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-owner-enrollment-r80\\acceptance-probe\\src-e\\ProbeIO.cs",
+      "sha256": "d8659f9e7e2d78c7d71207c17b6df4bcc93303df2e74a4f83876bf854a3db7f8"
+    }
+  ],
+  "frozenCManifestSha256": "ae464ab1fb922847c9a2833f0c65ca9880eda783e5f5a0e133ec1bd3010db94c",
+  "frozenCInputs": [
+    {
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-owner-enrollment-r80\\acceptance-probe\\src\\CommanderOwnerAcceptance.csproj",
+      "bytes": 2913,
+      "sha256": "af71511b7e21824c6896e272ae4c564f42ecdd1beb2b00e4c2441c2a89772b87"
+    },
+    {
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-owner-enrollment-r80\\acceptance-probe\\src\\probe.manifest",
+      "bytes": 398,
+      "sha256": "3e1ae4469c80a7ffb5c1ff83fb3dde220c63502a3537abdd7c72234b12276485"
+    },
+    {
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-owner-enrollment-r80\\acceptance-probe\\src\\ProbeAuthority.cs",
+      "bytes": 7360,
+      "sha256": "23486a56e9995d7961df3c837617a62d55815245af9bfac5f77f1f96ce6fa4d0"
+    },
+    {
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-owner-enrollment-r80\\acceptance-probe\\src\\ProbeCrypto.cs",
+      "bytes": 5763,
+      "sha256": "d45e50cefebf2327f3b637c293f8da1f0a182d7221e0a8103499f6de551bd8b7"
+    },
+    {
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-owner-enrollment-r80\\acceptance-probe\\src\\ProbeIO.cs",
+      "bytes": 10635,
+      "sha256": "6b41f4548412fe73b0fc287a67c89876a065b44233b5f0dcd60b451eaefbce39"
+    },
+    {
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-owner-enrollment-r80\\acceptance-probe\\src\\ProbeQA.cs",
+      "bytes": 6087,
+      "sha256": "03b04e4a83e729685a9faa7a26b1c9d2bb7ce13d7fea4941235446fad4c160c8"
+    },
+    {
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-owner-enrollment-r80\\acceptance-probe\\src\\Program.cs",
+      "bytes": 16955,
+      "sha256": "9ecbddefeb6b5b8f0700445723fa7d2930e2fe88a3276181af470e28b6b2f54a"
+    },
+    {
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-native-issuer-r79\\src\\IssuerProtocol.cs",
+      "sha256": "3e89674ed8590a54fd08b570d897ac0ceca17ceb4e2ed355fb5e5e436d37cb3f"
+    },
+    {
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-native-issuer-r79\\src\\HostPolicy.cs",
+      "sha256": "facd7e6d66b8fc280806d997b1063eac312c74861162564a2f9be132bd418302"
+    },
+    {
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-integration-r78\\reviews\\durable\\local-owner-auth\\native-consent-aot-j\\OwnerConsentCore.cs",
+      "sha256": "684dd5d8efdc9a90c6d00e1ee6adb7a04bdf3563d716fa9e2dc76c8fab28d663"
+    },
+    {
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-integration-r78\\reviews\\durable\\local-owner-auth\\native-consent-aot-j\\WindowsGuard.cs",
+      "sha256": "30d773de2fde0a50f5519961f0d19ebbeb59bf6f6346f7d3bc9301f4f79ec0b5"
+    },
+    {
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-integration-r78\\reviews\\durable\\local-owner-auth\\native-consent-aot-j\\SystemDllPolicy.cs",
+      "sha256": "916e611fd3dfbd23614e774b134f0a5f90fcbecbdc385e53b15d03e32a6d2347"
+    },
+    {
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-owner-enrollment-r80\\client\\src\\ClientPolicy.cs",
+      "sha256": "a623a0068f1bc717b04a903070488d772db7b090cff3366c2cddad0757bd2d72"
+    },
+    {
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-owner-enrollment-r80\\acceptance-probe\\src-c\\CommanderOwnerAcceptanceC.csproj",
+      "sha256": "67535fab608dc6c6299794b9c395fb547f4c941ec9eaf0e9cb5b8f557cb8c1f4"
+    },
+    {
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-owner-enrollment-r80\\auth\\src\\WindowsGuard.cs",
+      "sha256": "6ffd5e017ac734572d564ddf4268d02abbee9adecc4e0527081b0b5d0cc331e9"
+    },
+    {
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-owner-enrollment-r80\\acceptance-probe\\src-c\\ProbeAuthority.cs",
+      "sha256": "b608c6c6ef2961e46edfe09cc4b8789d9223e943183b8873fc1a2b3a2b090d86"
+    },
+    {
+      "path": "G:\\CodexWork\\RC1R80Bootstrap\\consent-i\\CommanderOwnerConsent.exe",
+      "sha256": "b5ff1b8fdc5aea05e338b2a2ff4ec71146136c22b66728e5bf25b108016c4020"
+    },
+    {
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-owner-enrollment-r80\\client\\src-c\\AncestorGuardQA.cs",
+      "sha256": "655b687e20a77e47623586aeb307edac56bf346243786bf1e9b779970b206e60"
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "schema": "r80-independent-parent-probe-e-review-v1",
+  "utc": "2026-11-06T09:40:36.663585+00:00",
+  "status": "PASS_SCOPED_NATIVE_PROBE_SOURCE_FOR_ONE_NO_PROJECT_OWNER_TEST_AFTER_K",
+  "manifestSha256": "1f42c34bd37543f49f5ce32a359570f5061126687390574240a41460d8ff6232",
+  "qualificationSha256": "dcc4069d9155bf588bf81a919bedd716d79f81eb808e030da9f56f537b84dbc7",
+  "sourceRowsVerified": 8,
+  "imageSha256": "8ad5986453bc5fda30a7aeaac96be06a87b11ff623c666dfafa3f780135baa92",
+  "unchangedRestrictedContextFactory": true,
+  "unchangedAclRpcPolicyBeforeChildSection": true,
+  "unchangedOriginalChildIdentityGuard": true,
+  "firstErrorStdinStreamsAndFiniteDrainReviewed": true,
+  "pureCases": 23,
+  "actualOwnChildLifecycleCases": 3,
+  "installedConsentAndProxyPinsMatch": true,
+  "actualOwnerE2E": "UNPROVEN",
+  "nativeModesExecutedByParent": false,
+  "privateKeysReadByParent": false
+}

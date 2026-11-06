@@ -1,0 +1,11 @@
+{
+  "schema": "r80-k-new-source-admission-v1",
+  "scope": "ONE confirmed clean launch context root cause; old J B consumed, no replay",
+  "baseBManifestSha256": "184dfebc6b2db80cccd86947fda1a8cc0c646a1c2ba2ca56be0e29f367fc030b",
+  "parentSuppliedJPublicPins": {
+    "outcome": "804f7a69155ffb5d244fc47877b5667a48afdb012a3db981d0766a741d300e23",
+    "intent": "00b80f002fc8837e8551502900f86af593bc5696350bcb936b45d0c860fce133",
+    "script": "0e4efc817237afd4d38fd54cfb839161e1da1b3483838fa7f61b7d2dea9051b0"
+  },
+  "actualActionAllowedForChild": false
+}

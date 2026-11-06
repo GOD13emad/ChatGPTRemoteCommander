@@ -1,0 +1,138 @@
+{
+  "schema": "r80-probe-e-child-lifecycle-qualification-v1",
+  "utc": "2026-11-06T09:34:47.321624+00:00",
+  "status": "PASS_PROBE_E_NATIVE_FIRST_ERROR_LIFECYCLE_PURE_PRIVACY_ONLY",
+  "failure": null,
+  "phases": [
+    {
+      "phase": "native-restore",
+      "exitCode": 0,
+      "expected": 0
+    },
+    {
+      "phase": "native-publish",
+      "exitCode": 0,
+      "expected": 0
+    },
+    {
+      "phase": "pure-crypto-privacy-regression",
+      "exitCode": 0,
+      "expected": 0
+    },
+    {
+      "phase": "ordinary-diagnose",
+      "exitCode": 0,
+      "expected": 0
+    },
+    {
+      "phase": "ordinary-uac-denial",
+      "exitCode": 2,
+      "expected": 2
+    },
+    {
+      "phase": "factory-qa-restore",
+      "exitCode": 0,
+      "expected": 0
+    },
+    {
+      "phase": "factory-qa-publish",
+      "exitCode": 0,
+      "expected": 0
+    },
+    {
+      "phase": "actual-native-original-child-lifecycle",
+      "exitCode": 0,
+      "expected": 0
+    },
+    {
+      "phase": "native-manifest",
+      "exitCode": 0,
+      "expected": 0
+    }
+  ],
+  "facts": {
+    "native": {
+      "path": "G:\\CodexWork\\RC1R80FinalizeK\\probe-e\\native\\CommanderOwnerAcceptance.exe",
+      "sha256": "8ad5986453bc5fda30a7aeaac96be06a87b11ff623c666dfafa3f780135baa92",
+      "bytes": 4179968,
+      "clrDirectoryZero": true,
+      "dependentLoadFlags": 2048
+    },
+    "pureRegression": {
+      "schema": "RC_OWNER_ACCEPTANCE_PURE_QA_V1",
+      "pass": 23,
+      "fail": 0,
+      "failedCases": [],
+      "syntheticKeysInMemoryOnly": true,
+      "realPrivateKeyOpened": false,
+      "actualProxyOrConsentStarted": false,
+      "runtimeGDirectoryCreated": false,
+      "actualOwnerAcceptanceProven": false
+    },
+    "diagnostic": {
+      "status": "DIAGNOSTIC_ONLY",
+      "elevated": false,
+      "interactiveOwnerSession": true,
+      "authorityOpened": false,
+      "privateKeyOpened": false,
+      "taskOrConsentStarted": false,
+      "automaticRetryAllowed": false
+    },
+    "ordinaryNegative": {
+      "status": "STOP_RECONCILE_NO_RETRY",
+      "code": "PROBE_REAL_OWNER_UAC_REQUIRED",
+      "phase": "preflight",
+      "externalEffectMayHaveOccurred": false,
+      "privateKeyOpened": false,
+      "ownedChildCleanupUncertain": false,
+      "automaticRetryAllowed": false
+    },
+    "factoryQA": {
+      "schema": "RC_PROBE_E_CHILD_LIFECYCLE_QA_V1",
+      "pass": 3,
+      "fail": 0,
+      "errors": [],
+      "ownChildCases": [
+        {
+          "name": "timeout-original-child-bounded",
+          "primaryCode": "PROBE_OWN_CHILD_TIMEOUT_OUTCOME_UNKNOWN_NO_RETRY",
+          "pid": 31024,
+          "creationFileTime": 134384312860208446,
+          "heldIdentityCaptured": true,
+          "originalReaped": true,
+          "readersCompleted": true,
+          "elapsedMs": 1205
+        },
+        {
+          "name": "output-primary-while-input-blocked",
+          "primaryCode": "PROBE_CHILD_OUTPUT_BOUND",
+          "pid": 32160,
+          "creationFileTime": 134384312872259657,
+          "heldIdentityCaptured": true,
+          "originalReaped": true,
+          "readersCompleted": true,
+          "elapsedMs": 31
+        },
+        {
+          "name": "normal-input-EOF-complete",
+          "primaryCode": "COMPLETE",
+          "pid": 34612,
+          "creationFileTime": 134384312872574680,
+          "heldIdentityCaptured": true,
+          "originalReaped": true,
+          "readersCompleted": true,
+          "elapsedMs": 30
+        }
+      ],
+      "realProxyConsentTaskOrKeyCalled": false
+    },
+    "asInvoker": true
+  },
+  "allSourcePinsUnchanged": true,
+  "sourceManifestSha256": "ee2cd06845074cde2c6249f5f737c6a41b4baf512c9cfea7d5fa52c0606f493a",
+  "sameInstalledIAndCImages": true,
+  "realPrepareVerifyProxyConsentTaskCalled": false,
+  "realKeysOrUacOpened": false,
+  "installedVersionChanged": false,
+  "activeJobsStoppedOrReplayed": false
+}

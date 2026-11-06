@@ -1,0 +1,103 @@
+{
+  "schema": "r80-k-clean-context-native-qualification-v1",
+  "utc": "2026-11-06T09:12:42.515510+00:00",
+  "status": "FAIL_J_QUALIFICATION_NO_RUNTIME_ACTION",
+  "failure": "AssertionError:native-pure-guard-qa",
+  "facts": {
+    "verifiedSharedPackageFiles": 687,
+    "native": {
+      "path": "G:\\CodexWork\\RC1R80FinalizeK\\native\\CommanderOwnerFinalizeK.exe",
+      "sha256": "674e67961afab9577e7ddb30553ac3b844bfa329779161273f0dba685d1bb8c1",
+      "bytes": 4128256,
+      "clrDirectoryZero": true,
+      "dependentLoadFlags": 2048
+    },
+    "diagnostic": {
+      "status": "ORDINARY_DIAGNOSTIC_NO_AUTHORITY_IO",
+      "elevated": false,
+      "administrator": false,
+      "session": 1,
+      "integrityRid": 8192,
+      "protectedPathsOpened": false
+    }
+  },
+  "phases": [
+    {
+      "phase": "native-restore",
+      "exitCode": 0,
+      "expected": 0
+    },
+    {
+      "phase": "native-publish",
+      "exitCode": 0,
+      "expected": 0
+    },
+    {
+      "phase": "ordinary-diagnose",
+      "exitCode": 0,
+      "expected": 0
+    },
+    {
+      "phase": "ordinary-finalize-staged",
+      "exitCode": 2,
+      "expected": 2
+    },
+    {
+      "phase": "ordinary-rollback-finalized",
+      "exitCode": 2,
+      "expected": 2
+    },
+    {
+      "phase": "native-qa-restore",
+      "exitCode": 0,
+      "expected": 0
+    },
+    {
+      "phase": "native-qa-publish",
+      "exitCode": 0,
+      "expected": 0
+    },
+    {
+      "phase": "native-pure-guard-qa",
+      "exitCode": 2,
+      "expected": 0
+    }
+  ],
+  "sourceFiles": [
+    {
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-owner-enrollment-r80\\staged-finalization-k\\src\\IStage.cs",
+      "sha256": "d7b3a9a092b9b8cce230040f74d0b32ca646decfe5a755b42e0573fa81a0b9c7"
+    },
+    {
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-owner-enrollment-r80\\staged-finalization-k\\src\\KContracts.cs",
+      "sha256": "6b94057954b8170719e428b0de2585203cfca8e020fc00a4ae5f60e16e0a5786"
+    },
+    {
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-owner-enrollment-r80\\staged-finalization-k\\src\\KIO.cs",
+      "sha256": "4d6200fdbc70cdc14c5c0c618ada311b74b11a2b268bcba82431a10d6fd8863f"
+    },
+    {
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-owner-enrollment-r80\\staged-finalization-k\\src\\KQA.cs",
+      "sha256": "3a79053d5dff8c81a077bf0053aef3e25093ac98a388e1bda7b6e29e25ac6a92"
+    },
+    {
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-owner-enrollment-r80\\staged-finalization-k\\src\\OwnerFinalizeK.csproj",
+      "sha256": "218a036cd746a104f7690e539586e937a15802768fb3f25d7cc9d6569e220bb0"
+    },
+    {
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-owner-enrollment-r80\\staged-finalization-k\\src\\Program.cs",
+      "sha256": "8ea7d01db7b7c3cacfbc5143bbc169265543343d852cb144dd41495c88c2f046"
+    },
+    {
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-owner-enrollment-r80\\staged-finalization-k\\src\\TaskFinalizerK.ps1",
+      "sha256": "7989e98355d30fd54aa5dea943799282fa21332b8fdb6172515d813b746ff8a3"
+    }
+  ],
+  "uacOpened": false,
+  "protectedStageRead": false,
+  "taskRegisteredStarted": false,
+  "privateKeysOpened": false,
+  "installedCommanderChanged": false,
+  "jobsStoppedOrReplayed": false,
+  "actualFinalization": "UNPROVEN_PARENT_REVIEW_AND_OWNER_UAC_REQUIRED"
+}

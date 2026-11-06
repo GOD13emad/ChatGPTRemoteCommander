@@ -1,0 +1,129 @@
+{
+  "schema": "r80-j-b-frozen-source-and-evidence-manifest-v1",
+  "currentVariant": "B",
+  "qualificationOnly": true,
+  "actualProtectedFinalization": "UNPROVEN_PARENT_UAC_REQUIRED",
+  "files": [
+    {
+      "role": "current-B-source",
+      "path": "src/IStage.cs",
+      "bytes": 8120,
+      "sha256": "d062e12ee8735d7eb61bec63bead344e683be3ffc4e47636bf88f929f8304ce2"
+    },
+    {
+      "role": "current-B-source",
+      "path": "src/JContracts.cs",
+      "bytes": 5652,
+      "sha256": "631593892c5c2286a162f339ef18f6ca57616cb1e36b18de0aa4fa49a50fc725"
+    },
+    {
+      "role": "current-B-source",
+      "path": "src/JIO.cs",
+      "bytes": 7868,
+      "sha256": "cf6cd0fbf8d3b1f956c304640df456d8d306e3e36fc1524384b76c778d8d2eae"
+    },
+    {
+      "role": "current-B-source",
+      "path": "src/JQA.cs",
+      "bytes": 7335,
+      "sha256": "4e65658ce1cfefa28115d2e9fad4f2e02e2e020339a68feba7469f6a092d90a8"
+    },
+    {
+      "role": "current-B-source",
+      "path": "src/OwnerFinalizeJ.csproj",
+      "bytes": 3107,
+      "sha256": "b7f4fe52d4834c2841ea5e127a272ab639b4cda1555ab07ed6fd132c9a0e6a0d"
+    },
+    {
+      "role": "current-B-source",
+      "path": "src/Program.cs",
+      "bytes": 10140,
+      "sha256": "af8ecff4200c8e8843028654ccc49dcbb1f2dda1e53e463e2405f4fa80555480"
+    },
+    {
+      "role": "current-B-source",
+      "path": "src/TaskFinalizerJ.ps1",
+      "bytes": 9081,
+      "sha256": "0e4efc817237afd4d38fd54cfb839161e1da1b3483838fa7f61b7d2dea9051b0"
+    },
+    {
+      "role": "shared-frozen-source-dependency",
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-integration-r78\\reviews\\durable\\local-owner-auth\\native-consent-aot-j\\OwnerConsentCore.cs",
+      "bytes": 8372,
+      "sha256": "684dd5d8efdc9a90c6d00e1ee6adb7a04bdf3563d716fa9e2dc76c8fab28d663"
+    },
+    {
+      "role": "shared-frozen-source-dependency",
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-integration-r78\\reviews\\durable\\local-owner-auth\\native-consent-aot-j\\SystemDllPolicy.cs",
+      "bytes": 255,
+      "sha256": "916e611fd3dfbd23614e774b134f0a5f90fcbecbdc385e53b15d03e32a6d2347"
+    },
+    {
+      "role": "shared-frozen-source-dependency",
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-owner-enrollment-r80\\auth\\src\\WindowsGuard.cs",
+      "bytes": 6944,
+      "sha256": "6ffd5e017ac734572d564ddf4268d02abbee9adecc4e0527081b0b5d0cc331e9"
+    },
+    {
+      "role": "shared-frozen-source-dependency",
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-native-issuer-r79\\src\\HostPolicy.cs",
+      "bytes": 6767,
+      "sha256": "facd7e6d66b8fc280806d997b1063eac312c74861162564a2f9be132bd418302"
+    },
+    {
+      "role": "shared-frozen-source-dependency",
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-owner-enrollment-r80\\bootstrap\\src\\OwnedHelper.cs",
+      "bytes": 2187,
+      "sha256": "98810854525cc82b5a0101639290d4cc5177559fd6e6707ea56c510c43553c03"
+    },
+    {
+      "role": "shared-frozen-source-dependency",
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-owner-enrollment-r80\\bootstrap\\src\\TaskPlan.cs",
+      "bytes": 2278,
+      "sha256": "6af3867efee188d001668c3d8e4cd12ea383885f27520c61498ea9691a53063d"
+    },
+    {
+      "role": "qualification-or-handoff",
+      "path": "QUALIFY_J_B_ONCE.py",
+      "bytes": 6745,
+      "sha256": "e12df3e5e4d68837e91208a73f9965c3e66f79717bbed0003db74ea177ebc768"
+    },
+    {
+      "role": "qualification-or-handoff",
+      "path": "QA_MEMORY_ONLY.ps1",
+      "bytes": 4447,
+      "sha256": "14c9c372d5349f8987ef0730a4b02cc5978065d1937e42e2c61655a16cf81e66"
+    },
+    {
+      "role": "qualification-or-handoff",
+      "path": "HANDOFF.md",
+      "bytes": 7836,
+      "sha256": "5c1695f5a22a7bc4f4a7d150ce9a00f6b9f4b118ed67d3171dd2434a0ae8b4e2"
+    },
+    {
+      "role": "qualification-or-handoff",
+      "path": "SUPERSEDED_A.json",
+      "bytes": 633,
+      "sha256": "02bb3dadfd32edc4b4d665ad3f9aa2534e720d3ebeba5ed7b4ef570218377690"
+    },
+    {
+      "role": "qualification-or-handoff",
+      "path": "qa-b/RECEIPT.json",
+      "bytes": 4912,
+      "sha256": "0b4edf9bec19de7ca0b1cf4f093a39b400a22bf4f45d63b2df14b7c6323423be"
+    },
+    {
+      "role": "qualification-or-handoff",
+      "path": "qa-b/native.manifest",
+      "bytes": 458,
+      "sha256": "def1d462ae6ad3b894f6b477823bba3c604183b919df28716953d30ca34e7708"
+    }
+  ],
+  "artifact": {
+    "path": "G:\\CodexWork\\RC1R80FinalizeJ\\native-b\\CommanderOwnerFinalizeJ.exe",
+    "sha256": "17adf7dad322a21d315bca6941c034b257cacae94205a3e843cc749d1bace574",
+    "bytes": 4116992,
+    "clrDirectoryZero": true,
+    "dependentLoadFlags": 2048
+  }
+}

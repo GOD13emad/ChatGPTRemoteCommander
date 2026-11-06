@@ -1,0 +1,88 @@
+{
+  "schema": "r80-probe-d-context-qualification-v1",
+  "utc": "2026-11-06T09:13:58.448848+00:00",
+  "status": "FAIL_PROBE_D_SOURCE_QA_NO_RETRY",
+  "failure": "AssertionError:factory-qa-publish",
+  "phases": [
+    {
+      "phase": "native-restore",
+      "exitCode": 0,
+      "expected": 0
+    },
+    {
+      "phase": "native-publish",
+      "exitCode": 0,
+      "expected": 0
+    },
+    {
+      "phase": "pure-crypto-privacy-regression",
+      "exitCode": 0,
+      "expected": 0
+    },
+    {
+      "phase": "ordinary-diagnose",
+      "exitCode": 0,
+      "expected": 0
+    },
+    {
+      "phase": "ordinary-uac-denial",
+      "exitCode": 2,
+      "expected": 2
+    },
+    {
+      "phase": "factory-qa-restore",
+      "exitCode": 0,
+      "expected": 0
+    },
+    {
+      "phase": "factory-qa-publish",
+      "exitCode": 1,
+      "expected": 0
+    }
+  ],
+  "facts": {
+    "native": {
+      "path": "G:\\CodexWork\\RC1R80FinalizeK\\probe-d\\native\\CommanderOwnerAcceptance.exe",
+      "sha256": "e9f39900c331d8cd637203e457a54ee7780c8ed6b91d7057bc36aa69b462823f",
+      "bytes": 3970560,
+      "clrDirectoryZero": true,
+      "dependentLoadFlags": 2048
+    },
+    "pureRegression": {
+      "schema": "RC_OWNER_ACCEPTANCE_PURE_QA_V1",
+      "pass": 23,
+      "fail": 0,
+      "failedCases": [],
+      "syntheticKeysInMemoryOnly": true,
+      "realPrivateKeyOpened": false,
+      "actualProxyOrConsentStarted": false,
+      "runtimeGDirectoryCreated": false,
+      "actualOwnerAcceptanceProven": false
+    },
+    "diagnostic": {
+      "status": "DIAGNOSTIC_ONLY",
+      "elevated": false,
+      "interactiveOwnerSession": true,
+      "authorityOpened": false,
+      "privateKeyOpened": false,
+      "taskOrConsentStarted": false,
+      "automaticRetryAllowed": false
+    },
+    "ordinaryNegative": {
+      "status": "STOP_RECONCILE_NO_RETRY",
+      "code": "PROBE_REAL_OWNER_UAC_REQUIRED",
+      "phase": "preflight",
+      "externalEffectMayHaveOccurred": false,
+      "privateKeyOpened": false,
+      "ownedChildCleanupUncertain": false,
+      "automaticRetryAllowed": false
+    }
+  },
+  "allSourcePinsUnchanged": true,
+  "sourceManifestSha256": "eb95f8f4447b43f0b35899ed61845a5ea83d67c921faef5201c24175fc435a5f",
+  "sameInstalledIAndCImages": true,
+  "realPrepareVerifyProxyConsentTaskCalled": false,
+  "realKeysOrUacOpened": false,
+  "installedVersionChanged": false,
+  "activeJobsStoppedOrReplayed": false
+}

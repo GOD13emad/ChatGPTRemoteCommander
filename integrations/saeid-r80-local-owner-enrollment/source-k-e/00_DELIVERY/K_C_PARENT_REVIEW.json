@@ -1,0 +1,21 @@
+{
+  "schema": "r80-parent-independent-k-c-review-v1",
+  "utc": "2026-11-06T09:32:12.064542+00:00",
+  "status": "PASS_SCOPED_SOURCE_FOR_ONE_STAGED_FINALIZATION",
+  "sourceManifestSha256": "5336bea4f390786c84b93d6aa272b01ad5ed7f0cc87b97be61cea27f69691642",
+  "contractSha256": "2d546bdc772d3ffdb2ff63c38e8d7cefe359f874b55a902d47a2620a77e66190",
+  "sourceRowsVerified": 20,
+  "nativeSha256": "92a52bc9f224ace9969ae608546ee81785e44f13fa2150d0c0687cb355c2d780",
+  "nativePeVerified": true,
+  "literalOnlyDeltaIndependentlyCompared": true,
+  "nativeFunctionalCasesInherited": 24,
+  "memoryComCasesInherited": 20,
+  "oldTestsReplayed": false,
+  "knownFolderRootCausalResearchReviewed": true,
+  "taskCreateOnlyNoRunAndExactIdleRollbackReviewed": true,
+  "boundedOwnedChildPrimaryErrorReviewed": true,
+  "privateKeysRead": false,
+  "actualOwnerE2E": "UNPROVEN",
+  "installedCoreChanged": false,
+  "probeDChildPrimaryErrorReview": "E_SOURCE_FIX_PENDING_BEFORE_REAL_PROBE"
+}

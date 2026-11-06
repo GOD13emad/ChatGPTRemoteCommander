@@ -1,0 +1,124 @@
+{
+  "schema": "r80-probe-d-b-context-qualification-v1",
+  "utc": "2026-11-06T09:17:26.497212+00:00",
+  "status": "PASS_PROBE_D_NATIVE_SAME_FACTORY_CONTEXT_PURE_PRIVACY_ONLY",
+  "failure": null,
+  "phases": [
+    {
+      "phase": "native-restore",
+      "exitCode": 0,
+      "expected": 0
+    },
+    {
+      "phase": "native-publish",
+      "exitCode": 0,
+      "expected": 0
+    },
+    {
+      "phase": "pure-crypto-privacy-regression",
+      "exitCode": 0,
+      "expected": 0
+    },
+    {
+      "phase": "ordinary-diagnose",
+      "exitCode": 0,
+      "expected": 0
+    },
+    {
+      "phase": "ordinary-uac-denial",
+      "exitCode": 2,
+      "expected": 2
+    },
+    {
+      "phase": "factory-qa-restore",
+      "exitCode": 0,
+      "expected": 0
+    },
+    {
+      "phase": "factory-qa-publish",
+      "exitCode": 0,
+      "expected": 0
+    },
+    {
+      "phase": "actual-native-same-factory-knownfolders",
+      "exitCode": 0,
+      "expected": 0
+    },
+    {
+      "phase": "native-manifest",
+      "exitCode": 0,
+      "expected": 0
+    }
+  ],
+  "facts": {
+    "native": {
+      "path": "G:\\CodexWork\\RC1R80FinalizeK\\probe-d-b\\native\\CommanderOwnerAcceptance.exe",
+      "sha256": "3470db025b540b5383c71eea47bfde1911a49c9e76f38e21e0b0fd50dc33a40d",
+      "bytes": 3970560,
+      "clrDirectoryZero": true,
+      "dependentLoadFlags": 2048
+    },
+    "pureRegression": {
+      "schema": "RC_OWNER_ACCEPTANCE_PURE_QA_V1",
+      "pass": 23,
+      "fail": 0,
+      "failedCases": [],
+      "syntheticKeysInMemoryOnly": true,
+      "realPrivateKeyOpened": false,
+      "actualProxyOrConsentStarted": false,
+      "runtimeGDirectoryCreated": false,
+      "actualOwnerAcceptanceProven": false
+    },
+    "diagnostic": {
+      "status": "DIAGNOSTIC_ONLY",
+      "elevated": false,
+      "interactiveOwnerSession": true,
+      "authorityOpened": false,
+      "privateKeyOpened": false,
+      "taskOrConsentStarted": false,
+      "automaticRetryAllowed": false
+    },
+    "ordinaryNegative": {
+      "status": "STOP_RECONCILE_NO_RETRY",
+      "code": "PROBE_REAL_OWNER_UAC_REQUIRED",
+      "phase": "preflight",
+      "externalEffectMayHaveOccurred": false,
+      "privateKeyOpened": false,
+      "ownedChildCleanupUncertain": false,
+      "automaticRetryAllowed": false
+    },
+    "factoryQA": {
+      "schema": "RC_PROBE_D_FACTORY_QA_V1",
+      "pass": 2,
+      "fail": 0,
+      "errors": [],
+      "observations": [
+        {
+          "name": "actual-native-same-factory-root-agreement",
+          "pid": 37976,
+          "creationFileTime": 134384302463886989,
+          "withSystemDrive": true,
+          "commonApplicationData": "C:\\ProgramData",
+          "protectedFilesOpened": false
+        },
+        {
+          "name": "actual-native-missing-drive-negative-control",
+          "pid": 46668,
+          "creationFileTime": 134384302464266527,
+          "withSystemDrive": false,
+          "commonApplicationData": "",
+          "protectedFilesOpened": false
+        }
+      ],
+      "productionKeysProxyConsentTaskCalled": false
+    },
+    "asInvoker": true
+  },
+  "allSourcePinsUnchanged": true,
+  "sourceManifestSha256": "d2b41404be9c1e20296e77c53fa7d5f5ca4ef1b65810dacbb7b7258fce6a8a85",
+  "sameInstalledIAndCImages": true,
+  "realPrepareVerifyProxyConsentTaskCalled": false,
+  "realKeysOrUacOpened": false,
+  "installedVersionChanged": false,
+  "activeJobsStoppedOrReplayed": false
+}

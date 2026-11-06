@@ -1,0 +1,35 @@
+{
+  "schema": "r80-k-b-parent-action-contract-v1",
+  "artifact": {
+    "path": "G:\\CodexWork\\RC1R80FinalizeK\\native-b\\CommanderOwnerFinalizeK.exe",
+    "sha256": "678442193a7130a38425b38e5e68a7d1453d91658fe6e02544a71d14961cbf59",
+    "bytes": 4128256,
+    "clrDirectoryZero": true,
+    "dependentLoadFlags": 2048
+  },
+  "finalizeArgs": [
+    "--finalize-staged",
+    "<ownerSid>",
+    "678442193a7130a38425b38e5e68a7d1453d91658fe6e02544a71d14961cbf59"
+  ],
+  "rollbackArgs": [
+    "--rollback-finalized",
+    "<ownerSid>",
+    "678442193a7130a38425b38e5e68a7d1453d91658fe6e02544a71d14961cbf59"
+  ],
+  "newNonceType": "finalize-k:<32hex>",
+  "outcome": "C:\\ProgramData\\ChatGPTRemoteCommander\\owner-auth\\finalization-k.outcome.json",
+  "completion": "C:\\ProgramData\\ChatGPTRemoteCommander\\owner-auth\\finalization-k.complete.json",
+  "successRequires": [
+    "exit0",
+    "fresh matching K COMPLETE outcome",
+    "completion and actual task/client-policy readback"
+  ],
+  "unknownOrExit2": "STOP_RECONCILE_NO_RETRY",
+  "priorJIntentSha256": "00b80f002fc8837e8551502900f86af593bc5696350bcb936b45d0c860fce133",
+  "priorJScriptSha256": "0e4efc817237afd4d38fd54cfb839161e1da1b3483838fa7f61b7d2dea9051b0",
+  "priorJOutcomeSha256": "804f7a69155ffb5d244fc47877b5667a48afdb012a3db981d0766a741d300e23",
+  "manifestSha256": "9cfab38148765905bf32bf54fb575050d48c913fc1d9a1c7cb84aa72e83859a4",
+  "qualificationSha256": "6cca555ce0a8393d6df1e686e893985da154e97b10f5c9920c82d6236e0df196",
+  "actionByChild": false
+}

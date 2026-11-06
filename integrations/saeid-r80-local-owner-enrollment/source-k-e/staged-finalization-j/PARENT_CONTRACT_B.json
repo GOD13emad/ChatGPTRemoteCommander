@@ -1,0 +1,33 @@
+{
+  "schema": "r80-j-b-parent-execution-contract-v1",
+  "artifact": {
+    "path": "G:\\CodexWork\\RC1R80FinalizeJ\\native-b\\CommanderOwnerFinalizeJ.exe",
+    "sha256": "17adf7dad322a21d315bca6941c034b257cacae94205a3e843cc749d1bace574",
+    "bytes": 4116992,
+    "clrDirectoryZero": true,
+    "dependentLoadFlags": 2048
+  },
+  "finalizeArgs": [
+    "--finalize-staged",
+    "<ownerSid>",
+    "17adf7dad322a21d315bca6941c034b257cacae94205a3e843cc749d1bace574"
+  ],
+  "rollbackArgs": [
+    "--rollback-finalized",
+    "<ownerSid>",
+    "17adf7dad322a21d315bca6941c034b257cacae94205a3e843cc749d1bace574"
+  ],
+  "outcome": "C:\\ProgramData\\ChatGPTRemoteCommander\\owner-auth\\finalization-j.outcome.json",
+  "completion": "C:\\ProgramData\\ChatGPTRemoteCommander\\owner-auth\\finalization-j.complete.json",
+  "requiredAcceptance": [
+    "exit0",
+    "fresh-owned-COMPLETE-outcome",
+    "completion-binding",
+    "actual-task-native-system-logon5-idle-SDDL",
+    "exact-selftest-client-policy"
+  ],
+  "noOutputOrExit2": "UNKNOWN_OR_FAILED_NO_RETRY_RECONCILE",
+  "realActionByChild": false,
+  "currentSourceManifestSha256": "184dfebc6b2db80cccd86947fda1a8cc0c646a1c2ba2ca56be0e29f367fc030b",
+  "qualificationReceiptSha256": "0b4edf9bec19de7ca0b1cf4f093a39b400a22bf4f45d63b2df14b7c6323423be"
+}

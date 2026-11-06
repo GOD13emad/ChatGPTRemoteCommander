@@ -1,0 +1,47 @@
+{
+  "schema": "r80-readonly-schtasks-known-environment-context-v1",
+  "utc": "2026-11-06T09:00:18.005559+00:00",
+  "fixedExistingOwnTask": "RemoteCommander-Saeed-SafeRecovery-v100",
+  "operation": "QueryOnly /FO CSV /NH",
+  "rows": [
+    {
+      "name": "exact-client-C-native-launcher",
+      "exitCode": 0,
+      "columns": [
+        [
+          "\\RemoteCommander-Saeed-SafeRecovery-v100",
+          "11/6/2026 12:31:02 PM",
+          "Ready"
+        ],
+        [
+          "\\RemoteCommander-Saeed-SafeRecovery-v100",
+          "11/6/2026 12:31:02 PM",
+          "Ready"
+        ]
+      ],
+      "outputSha256": "66b52a3bf43da21d91590a92d68fa6c03c1663c9987d51a2b7bfc56d98fac1bc",
+      "stderrBytes": 0
+    },
+    {
+      "name": "same-plus-SystemDrive",
+      "exitCode": 0,
+      "columns": [
+        [
+          "\\RemoteCommander-Saeed-SafeRecovery-v100",
+          "11/6/2026 12:31:02 PM",
+          "Ready"
+        ],
+        [
+          "\\RemoteCommander-Saeed-SafeRecovery-v100",
+          "11/6/2026 12:31:02 PM",
+          "Ready"
+        ]
+      ],
+      "outputSha256": "66b52a3bf43da21d91590a92d68fa6c03c1663c9987d51a2b7bfc56d98fac1bc",
+      "stderrBytes": 0
+    }
+  ],
+  "runStopRegisterDelete": false,
+  "otherTaskEnumerated": false,
+  "nativeTaskRunAcceptance": "UNPROVEN"
+}

@@ -1,0 +1,15 @@
+{
+  "schema": "r80-parent-ready-button-and-primary-runas-error-delta-v1",
+  "oldWatcherSha256": "3a554b255a6113d2bac4b8fb1b3004a345c51bfa1a02d4c8dc8a183d3c529d52",
+  "newWatcherSha256": "1f8c3389564ce672a696d8a178e87d177a84d89fc6eecf40bbcd6cb8dc05844f",
+  "priorReconciliationSha256": "e1ea80ea3ca055e2e3608bf3dd435792451a3f08b9ffaa29d1f9937a75dc5dee",
+  "effects": "only new operator UI/log namespace; same reviewed native K C bytes; no UAC until owner locally clicks ready",
+  "nativeImageSha256": "92a52bc9f224ace9969ae608546ee81785e44f13fa2150d0c0687cb355c2d780",
+  "oldParentAttemptConsumed": true,
+  "oldNativeKExecution": "NOT_OBSERVED_NO_ARTIFACT_OR_PROCESS_AT_RECONCILIATION",
+  "originalRunAsInnerError": "UNOBSERVED; not relabeled as canceled/timeout",
+  "newPrimaryExceptionCapture": true,
+  "nativeOrProtectedCodeChanged": false,
+  "taskStarted": false,
+  "newPlanSha256": "e2cfb9e5a325923f0693bc5625e1c4a91f15bb8cf3fb8ae0ae799b5ac5e35a2f"
+}

@@ -1,0 +1,14 @@
+{
+  "schema": "r80-knownfolder-readonly-diagnostic-v1",
+  "scope": "ordinary fixed WinPS read-only known-folder output in exact J-clean/full/controlled-completion environments",
+  "jBActualUacConsumed": true,
+  "parentReportedPrimary": {
+    "phase": "ReadIOwner",
+    "exceptionType": "DirectoryNotFoundException",
+    "hresultHex": "0x80070003"
+  },
+  "productionPatches": false,
+  "taskApis": false,
+  "protectedFilesReadWritten": false,
+  "sourceBHash": "cf6cd0fbf8d3b1f956c304640df456d8d306e3e36fc1524384b76c778d8d2eae"
+}
