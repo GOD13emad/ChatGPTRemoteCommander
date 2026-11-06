@@ -1,0 +1,19 @@
+{
+  "schema": "r78-native-j-source-admission-v1",
+  "owner": "saeed",
+  "project": "Remote Commander Saeed",
+  "role": "derived source/build QA only; no owner enrollment",
+  "sourceRoot": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-integration-r78\\reviews\\durable\\local-owner-auth\\native-consent-aot-j",
+  "staging": "G:\\CodexWork\\RC1R78AuthAot\\j",
+  "sourcePins": {
+    "OwnerConsentCore.cs": "684dd5d8efdc9a90c6d00e1ee6adb7a04bdf3563d716fa9e2dc76c8fab28d663",
+    "WindowsGuard.cs": "30d773de2fde0a50f5519961f0d19ebbeb59bf6f6346f7d3bc9301f4f79ec0b5",
+    "NativeAotOwnerConsent.cs": "64025431c3dda2e66d3598f25d1ed8c3c1efbe7d54137ed451fd7ba325cc6ff4",
+    "JsonOutput.cs": "f81bd82f1745f3469d99db819b405c487e61f8f9aba132267f09111857f28926",
+    "NativeDialog.cs": "b14e5bee603947306b49df72a4353c580b91ae8b11bf571a84104a446cd7207b",
+    "OwnerConsentAot.csproj": "f07586166656dbbc38dcbf76c288cb2295700af2e04fdc3f2ddcc3ab34f7a772",
+    "owner-consent.manifest": "96cda07d19f33adc9a6224b2c1d3fbbfe2462a96074d8e00fd5b1497ec5771a8",
+    "SystemDllPolicy.cs": "916e611fd3dfbd23614e774b134f0a5f90fcbecbdc385e53b15d03e32a6d2347"
+  },
+  "frozenHUnchanged": true
+}

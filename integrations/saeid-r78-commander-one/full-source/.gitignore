@@ -1,0 +1,28 @@
+node_modules/
+/var/
+test/.tmp-*
+test/chatgpt-plugin-e2e*.txt
+.remote-commander-backups/
+tools/tunnel-client-v*/
+.env
+*.log
+PROJECT_BRAIN.md
+config.local.json
+.runtime/
+connections.local.json
+/credentials/
+/downloads/
+/plugin-template/.app.json
+/test/gui-e2e-app/bin/
+/test/gui-e2e-app/obj/
+
+# Local development, deployment evidence and generated Python files
+/work/
+/outputs/
+__pycache__/
+*.pyc
+
+# Remote Commander desktop generated outputs
+/desktop/RemoteCommanderDashboard/bin/
+/desktop/RemoteCommanderDashboard/obj/
+/dist/

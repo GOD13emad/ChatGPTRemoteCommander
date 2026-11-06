@@ -1,0 +1,58 @@
+{
+  "schema": 1,
+  "version": "1.1.2",
+  "scope": "PUBLIC_SOURCE_ONLY_NOT_PRIVATE_EXECUTABLE_OR_INSTALLER",
+  "files": [
+    {
+      "path": "README.md",
+      "bytes": 4362,
+      "sha256": "e4a37763c0ce8aaa4d9babaaff1ed1a294476a9f9e8c1114201702417b71f648",
+      "repositoryPath": "experimental/project-companion-v1.1.2/README.md"
+    },
+    {
+      "path": "package.json",
+      "bytes": 265,
+      "sha256": "13f35a21c728afe46b84cbaef3f6be13d6f9937092c1cd866d47e551408b42a2",
+      "repositoryPath": "experimental/project-companion-v1.1.2/package.json"
+    },
+    {
+      "path": "ci-source.mjs",
+      "bytes": 5853,
+      "sha256": "ced3a700c8cbdde154d3be9b414f0d0fcde4870b5061d29e75045ea4001fa358",
+      "repositoryPath": "experimental/project-companion-v1.1.2/ci-source.mjs"
+    },
+    {
+      "path": "src/project-catalog.mjs",
+      "bytes": 13097,
+      "sha256": "00113ce157f9f01aa4e60ffc2cbb6850012af6397b22028b1ed05594654faee1",
+      "repositoryPath": "experimental/project-companion-v1.1.2/src/project-catalog.mjs"
+    },
+    {
+      "path": "src/durable-project-runner.mjs",
+      "bytes": 34709,
+      "sha256": "731b985d8831adfca20305e81aac99c525a30c3ff68766efe9e74f5fc45e2911",
+      "repositoryPath": "experimental/project-companion-v1.1.2/src/durable-project-runner.mjs"
+    },
+    {
+      "path": "test/generic-project-runner.test.mjs",
+      "bytes": 50338,
+      "sha256": "cdef08121b7ab362d76e759999102c6a19fc2699730416f9a24bd8983fa053f1",
+      "repositoryPath": "experimental/project-companion-v1.1.2/test/generic-project-runner.test.mjs"
+    },
+    {
+      "path": "test/dispatcher-admission.test.mjs",
+      "bytes": 3384,
+      "sha256": "dd07b21416695afb3f118962756baa4a0f5c04601999a05a00128a327bac5214",
+      "repositoryPath": "experimental/project-companion-v1.1.2/test/dispatcher-admission.test.mjs"
+    },
+    {
+      "path": "project-companion-v112-source.yml",
+      "bytes": 937,
+      "sha256": "f39c06bfe6d79e3c827c2e531a4aa645e19fdc44b461ff9d00af7c57e09fcd93",
+      "repositoryPath": ".github/workflows/project-companion-v112-source.yml"
+    }
+  ],
+  "portableSyntheticTests": 94,
+  "sourceNativeAcceptedSeparately": true,
+  "privateDataExcluded": true
+}

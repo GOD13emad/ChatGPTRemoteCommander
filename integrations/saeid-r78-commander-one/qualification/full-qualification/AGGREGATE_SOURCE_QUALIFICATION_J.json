@@ -1,0 +1,905 @@
+{
+  "schema": "R78_FINAL_AGGREGATE_SOURCE_QUALIFICATION_V2",
+  "generatedUtc": "2026-11-06T00:03:19.735735+00:00",
+  "status": "PASS_AGGREGATE_SOURCE_QUALIFICATION",
+  "whole": "NOT_FINAL",
+  "source": {
+    "root": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-integration-r78\\reviews\\independent-final\\full-qualification\\overlay-i",
+    "files": 818,
+    "manifest": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-integration-r78\\reviews\\independent-final\\full-qualification\\SOURCE_MANIFEST_I.json",
+    "manifestFileSha256": "bb0f5e2a4901fc5f1b7a644e75434825d1b3ea5847f3e081eff3a6f7044f03c7",
+    "canonicalManifestContentSha256": "163043144a53b1aac073614e46bd3b267f38b05283800f4da6dd517610c2bdf6",
+    "all818PostPinsVerified": true,
+    "privateGitContext": {
+      "status": "PASS_PRIVATE_REAL_COMMIT_818_SOURCE_BYTES_UNCHANGED",
+      "commit": "9d2366f9586c9919936ed473a5d69e7a41f5d043",
+      "tree": "ef1065fe3046df51efc4164734e66d0cc586c85a",
+      "parents": [],
+      "files": 818,
+      "executableModes": 19,
+      "sourceManifestFileSha256": "bb0f5e2a4901fc5f1b7a644e75434825d1b3ea5847f3e081eff3a6f7044f03c7",
+      "physicalSourceBytesUnchanged": true,
+      "indexBeforeSha256": "32397acbcd3eb632b0074d0f6b5ad849d78f592c56c3f017e1a1b304de439ae9",
+      "indexAfterSha256": "ec3d4d735081285d52a002397665284865fc5cbeb844087d0fe4c92896f9a84b",
+      "routerBlobSha256": "39a962a31f0802b2e5ad36b76f989125edc0c62a4969f82904b6472d7409d170",
+      "routerBlobLF": true,
+      "routerAttribute": "tools/router-commandline-windows.ps1: eol: crlf",
+      "auditSha256": "b8f21cf0e809031e34c6043874706f55387a0fa361b1efdecf5b80eff0c0f68f",
+      "privateFixtureOnly": true,
+      "published": false,
+      "originalOrSharedGitChanged": false,
+      "networkOrHooksOrSigning": false,
+      "installedChanged": false
+    },
+    "privateGitIsNotReleaseIdentity": true
+  },
+  "execution": {
+    "receipt": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-integration-r78\\reviews\\independent-final\\full-qualification\\RUN_J\\FINAL_RECEIPT.json",
+    "sha256": "5de12f4ae70009d175ce80dd8b52ff8f4b8af90d963ca3dcbb9b432c7f4e7cf9",
+    "guard": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-integration-r78\\reviews\\independent-final\\full-qualification\\GUARDED_FULL_QUALIFICATION_J.py",
+    "guardSha256": "36456c5c8337fd457eccb5efc3e7959cdd7e01aa1995ce2d84ca85d65ce63159",
+    "parentAckSha256": "107f9ae5f6a98c435eb52f36b65653372ce31900165ae7b05138778d0151fa00",
+    "qualifiedKernelReceiptSha256": "daeb479ba7f04925668fe4024b49eb96a2b8a46e9adac196e23c86e5341cfb24",
+    "phases": [
+      {
+        "phase": "app-tests",
+        "status": "PASS",
+        "command": [
+          "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-integration-r76\\build-runtime\\node-v26.7.0-win-x64\\node.exe",
+          "--test",
+          "--test-concurrency=2",
+          "test/r78-app/full-access-http-quarantine.test.mjs",
+          "test/r78-app/integration-v1-native-broker-probe.test.mjs",
+          "test/r78-app/integration-v1-v2-owner-auth-router.test.mjs",
+          "test/r78-app/quarantine-proof-shape-r76.test.mjs",
+          "test/r78-app/workflow-budget-accounting-only-r76.test.mjs",
+          "test/r78-app/workflow-root-lease-minimal-r76.test.mjs"
+        ],
+        "counts": {
+          "tests": 30,
+          "pass": 29,
+          "fail": 0,
+          "skipped": 1,
+          "cancelled": 0
+        },
+        "receipt": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-integration-r78\\reviews\\independent-final\\full-qualification\\RUN_J\\app-tests\\RECEIPT.json",
+        "stdoutSha256": "a021f63f2beace5251e94758c93ce549d54299ef0c06ef2da64b65b3c3ee7b0c",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "job": {
+          "active": 0,
+          "total": 8,
+          "terminated": 0
+        },
+        "pid": 18984,
+        "creationFileTime": 134383966619179056,
+        "assignedBeforeResume": true,
+        "elapsedSeconds": 0.703
+      },
+      {
+        "phase": "target-release",
+        "status": "PASS",
+        "command": [
+          "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-integration-r76\\build-runtime\\node-v26.7.0-win-x64\\node.exe",
+          "--test",
+          "--test-concurrency=1",
+          "--test-name-pattern",
+          "^tracked Windows router PowerShell blob uses LF internally while checkout selects CRLF$",
+          "test/release-train-0.11.test.mjs"
+        ],
+        "counts": {
+          "tests": 1,
+          "pass": 1,
+          "fail": 0,
+          "skipped": 0,
+          "cancelled": 0
+        },
+        "receipt": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-integration-r78\\reviews\\independent-final\\full-qualification\\RUN_J\\target-release\\RECEIPT.json",
+        "stdoutSha256": "9b04c4c46f2cdcfa17158b7dac4ba8b81e6cadb4259670f4bc9a826985310001",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "job": {
+          "active": 0,
+          "total": 7,
+          "terminated": 0
+        },
+        "pid": 4760,
+        "creationFileTime": 134383966626360233,
+        "assignedBeforeResume": true,
+        "elapsedSeconds": 0.203
+      },
+      {
+        "phase": "test-020",
+        "status": "PASS",
+        "command": [
+          "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-integration-r76\\build-runtime\\node-v26.7.0-win-x64\\node.exe",
+          "--test",
+          "--test-concurrency=1",
+          "test/delivery-health-readonly.test.mjs"
+        ],
+        "counts": {
+          "tests": 10,
+          "pass": 1,
+          "fail": 0,
+          "skipped": 9,
+          "cancelled": 0
+        },
+        "receipt": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-integration-r78\\reviews\\independent-final\\full-qualification\\RUN_J\\test-020\\RECEIPT.json",
+        "stdoutSha256": "8dc443883f9a68fcb45229934ee3f1752354855ee4d26ad15b7a869adc36cad2",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "job": {
+          "active": 0,
+          "total": 3,
+          "terminated": 0
+        },
+        "pid": 42824,
+        "creationFileTime": 134383966628500839,
+        "assignedBeforeResume": true,
+        "elapsedSeconds": 0.203
+      },
+      {
+        "phase": "test-021",
+        "status": "PASS",
+        "command": [
+          "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-integration-r76\\build-runtime\\node-v26.7.0-win-x64\\node.exe",
+          "--test",
+          "--test-concurrency=1",
+          "test/audit-retained-backends.test.mjs"
+        ],
+        "counts": {
+          "tests": 7,
+          "pass": 5,
+          "fail": 0,
+          "skipped": 2,
+          "cancelled": 0
+        },
+        "receipt": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-integration-r78\\reviews\\independent-final\\full-qualification\\RUN_J\\test-021\\RECEIPT.json",
+        "stdoutSha256": "f882e0a5c2d595c28eb14a8d6da0c50d2c298a1bf8e8f717a1e00cd02c0462a4",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "job": {
+          "active": 0,
+          "total": 8,
+          "terminated": 0
+        },
+        "pid": 51648,
+        "creationFileTime": 134383966630605873,
+        "assignedBeforeResume": true,
+        "elapsedSeconds": 0.406
+      },
+      {
+        "phase": "test-022",
+        "status": "PASS",
+        "command": [
+          "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-integration-r76\\build-runtime\\node-v26.7.0-win-x64\\node.exe",
+          "--test",
+          "--test-concurrency=1",
+          "test/coucou-bridge.test.mjs"
+        ],
+        "counts": {
+          "tests": 15,
+          "pass": 15,
+          "fail": 0,
+          "skipped": 0,
+          "cancelled": 0
+        },
+        "receipt": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-integration-r78\\reviews\\independent-final\\full-qualification\\RUN_J\\test-022\\RECEIPT.json",
+        "stdoutSha256": "62618ccf1d4c1a4a4dedbf3702d7c6efddec65d17693f582db2fabb6c064506c",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "job": {
+          "active": 0,
+          "total": 3,
+          "terminated": 0
+        },
+        "pid": 50440,
+        "creationFileTime": 134383966634739524,
+        "assignedBeforeResume": true,
+        "elapsedSeconds": 0.203
+      },
+      {
+        "phase": "test-023",
+        "status": "PASS",
+        "command": [
+          "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-integration-r76\\build-runtime\\node-v26.7.0-win-x64\\node.exe",
+          "--test",
+          "--test-concurrency=1",
+          "test/browser-companion-monitor.test.mjs",
+          "test/linux-gui-mutter-rd-safety.test.mjs"
+        ],
+        "counts": {
+          "tests": 15,
+          "pass": 14,
+          "fail": 0,
+          "skipped": 1,
+          "cancelled": 0
+        },
+        "receipt": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-integration-r78\\reviews\\independent-final\\full-qualification\\RUN_J\\test-023\\RECEIPT.json",
+        "stdoutSha256": "32f2ebf91e2723f6a68dd062dd2b85c759ac2417fb6a26436b121e7fe614e19a",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "job": {
+          "active": 0,
+          "total": 4,
+          "terminated": 0
+        },
+        "pid": 59328,
+        "creationFileTime": 134383966636856678,
+        "assignedBeforeResume": true,
+        "elapsedSeconds": 0.203
+      },
+      {
+        "phase": "test-024",
+        "status": "PASS",
+        "command": [
+          "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-integration-r76\\build-runtime\\node-v26.7.0-win-x64\\node.exe",
+          "--test",
+          "--test-concurrency=1",
+          "test/operation-child-lifecycle.test.mjs"
+        ],
+        "counts": {
+          "tests": 14,
+          "pass": 14,
+          "fail": 0,
+          "skipped": 0,
+          "cancelled": 0
+        },
+        "receipt": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-integration-r78\\reviews\\independent-final\\full-qualification\\RUN_J\\test-024\\RECEIPT.json",
+        "stdoutSha256": "535be3dc45c8effb0d77cf35a53fe5208f46c53a09ac640cc74c55c47ade74f5",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "job": {
+          "active": 0,
+          "total": 3,
+          "terminated": 0
+        },
+        "pid": 7260,
+        "creationFileTime": 134383966638981268,
+        "assignedBeforeResume": true,
+        "elapsedSeconds": 0.094
+      },
+      {
+        "phase": "test-025",
+        "status": "PASS",
+        "command": [
+          "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-integration-r76\\build-runtime\\node-v26.7.0-win-x64\\node.exe",
+          "test/smoke-v0.3.mjs"
+        ],
+        "counts": {
+          "tests": 0,
+          "pass": 0,
+          "fail": 0,
+          "skipped": 0,
+          "cancelled": 0
+        },
+        "receipt": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-integration-r78\\reviews\\independent-final\\full-qualification\\RUN_J\\test-025\\RECEIPT.json",
+        "stdoutSha256": "3aab7b07b1e4eb91a841aced6951c21a2d9547d87c89ef5c81ca121dc43260e6",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "job": {
+          "active": 0,
+          "total": 4,
+          "terminated": 0
+        },
+        "pid": 37456,
+        "creationFileTime": 134383966640095478,
+        "assignedBeforeResume": true,
+        "elapsedSeconds": 0.203
+      },
+      {
+        "phase": "test-026",
+        "status": "PASS",
+        "command": [
+          "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-integration-r76\\build-runtime\\node-v26.7.0-win-x64\\node.exe",
+          "test/power-smoke-v0.3.mjs"
+        ],
+        "counts": {
+          "tests": 0,
+          "pass": 0,
+          "fail": 0,
+          "skipped": 0,
+          "cancelled": 0
+        },
+        "receipt": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-integration-r78\\reviews\\independent-final\\full-qualification\\RUN_J\\test-026\\RECEIPT.json",
+        "stdoutSha256": "a7809b864d4f49911d008f8399fac87727294ac8d3575355fb64ae96f432ce81",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "job": {
+          "active": 0,
+          "total": 10,
+          "terminated": 0
+        },
+        "pid": 50808,
+        "creationFileTime": 134383966642210658,
+        "assignedBeforeResume": true,
+        "elapsedSeconds": 2.531
+      },
+      {
+        "phase": "test-027",
+        "status": "PASS",
+        "command": [
+          "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-integration-r76\\build-runtime\\node-v26.7.0-win-x64\\node.exe",
+          "--test",
+          "--test-concurrency=1",
+          "test/boot-recovery-diagnostics.test.mjs",
+          "test/backup-retention-windows.test.mjs",
+          "test/device-plugin-builder.test.mjs",
+          "test/setup-wizard-contract.test.mjs",
+          "test/agent-extensions.test.mjs",
+          "test/audit-log.test.mjs",
+          "test/source-ref-peel.test.mjs",
+          "test/doctor.test.mjs",
+          "test/fs-recovery-r1.test.mjs",
+          "test/workflow-store.test.mjs",
+          "test/workflow-tools.test.mjs",
+          "test/workflow-conversation.test.mjs",
+          "test/profile-instances.test.mjs",
+          "test/multi-profile-concurrency.test.mjs",
+          "test/profile-instance-http.test.mjs",
+          "test/profile-isolation-windows-contract.test.mjs",
+          "test/profile-reconfigure.test.mjs",
+          "test/profile-reconfigure-contract.test.mjs",
+          "test/profile-reconfigure-windows-parser.test.mjs",
+          "test/desktop-product-contract.test.mjs",
+          "test/single-installer-contract.test.mjs",
+          "test/capability-profile.test.mjs",
+          "test/project-runner-config.test.mjs",
+          "test/no-codex-policy.test.mjs",
+          "test/codex-maintenance.test.mjs",
+          "test/async-continuation.test.mjs",
+          "test/conversation-continuation.test.mjs",
+          "test/conversation-http.test.mjs",
+          "test/conversation-uia-contract.test.mjs",
+          "test/deferred-path-http.test.mjs",
+          "test/deferred-coverage.test.mjs",
+          "test/linux-host-schema-compat.test.mjs",
+          "test/retry-guard.test.mjs",
+          "test/retry-http.test.mjs",
+          "test/delivery-store.test.mjs",
+          "test/mutation-idempotency.test.mjs",
+          "test/mutation-idempotency-http.test.mjs",
+          "test/paged-io.test.mjs",
+          "test/browser-safety.test.mjs",
+          "test/browser-owned-processes.test.mjs",
+          "test/browser-lease-store.test.mjs",
+          "test/workflow-autonomy-r2.test.mjs",
+          "test/workflow-control.test.mjs",
+          "test/project-planner.test.mjs",
+          "test/project-verifier.test.mjs",
+          "test/file-write-guard.test.mjs",
+          "test/filesystem-enumeration-guard.test.mjs",
+          "test/workflow-owner-roadmap.test.mjs",
+          "test/project-team.test.mjs",
+          "test/stable-router.test.mjs",
+          "test/router-schema-continuity.test.mjs",
+          "test/router-source-bootstrap.test.mjs",
+          "test/router-retire.test.mjs",
+          "test/auto-update-contract.test.mjs",
+          "test/release-latest-origin.test.mjs",
+          "test/updater-route-monotonic-fail-closed.test.mjs",
+          "test/linux-control-promotion-stage-r566.test.mjs",
+          "test/release-retirement-gate-r205.test.mjs",
+          "test/linux-installer-isolation.test.mjs",
+          "test/linux-tunnel-lifecycle.test.mjs"
+        ],
+        "counts": {
+          "tests": 474,
+          "pass": 453,
+          "fail": 0,
+          "skipped": 21,
+          "cancelled": 0
+        },
+        "receipt": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-integration-r78\\reviews\\independent-final\\full-qualification\\RUN_J\\test-027\\RECEIPT.json",
+        "stdoutSha256": "5f137cadf51646db89e80a7cbb46863353ebaddc6f660d2def3a224a0784a619",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "job": {
+          "active": 0,
+          "total": 971,
+          "terminated": 0
+        },
+        "pid": 56624,
+        "creationFileTime": 134383966667484627,
+        "assignedBeforeResume": true,
+        "elapsedSeconds": 120.188
+      },
+      {
+        "phase": "test-028",
+        "status": "PASS",
+        "command": [
+          "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-integration-r76\\build-runtime\\node-v26.7.0-win-x64\\node.exe",
+          "test/concurrency-smoke.mjs"
+        ],
+        "counts": {
+          "tests": 0,
+          "pass": 0,
+          "fail": 0,
+          "skipped": 0,
+          "cancelled": 0
+        },
+        "receipt": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-integration-r78\\reviews\\independent-final\\full-qualification\\RUN_J\\test-028\\RECEIPT.json",
+        "stdoutSha256": "52d89bea8d10e37ff8ae2c7d68e46414ac6b2098a5fc2f5a0925d2050702f5c2",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "job": {
+          "active": 0,
+          "total": 5,
+          "terminated": 0
+        },
+        "pid": 57744,
+        "creationFileTime": 134383967869514845,
+        "assignedBeforeResume": true,
+        "elapsedSeconds": 4.125
+      },
+      {
+        "phase": "test-029",
+        "status": "PASS",
+        "command": [
+          "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-integration-r76\\build-runtime\\node-v26.7.0-win-x64\\node.exe",
+          "tools/run-qualification-smoke-suite.mjs"
+        ],
+        "counts": {
+          "tests": 107,
+          "pass": 107,
+          "fail": 0,
+          "skipped": 0,
+          "cancelled": 0
+        },
+        "receipt": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-integration-r78\\reviews\\independent-final\\full-qualification\\RUN_J\\test-029\\RECEIPT.json",
+        "stdoutSha256": "5ad27d622af2fe0b949900a350842ad827e5420a32b6ba0820228c7d6d037994",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "job": {
+          "active": 0,
+          "total": 187,
+          "terminated": 0
+        },
+        "pid": 14872,
+        "creationFileTime": 134383967910867379,
+        "assignedBeforeResume": true,
+        "elapsedSeconds": 24.562
+      },
+      {
+        "phase": "test-030",
+        "status": "PASS",
+        "command": [
+          "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-integration-r76\\build-runtime\\node-v26.7.0-win-x64\\node.exe",
+          "--test",
+          "--test-concurrency=1",
+          "test/schema-continuity-gate.test.mjs"
+        ],
+        "counts": {
+          "tests": 10,
+          "pass": 10,
+          "fail": 0,
+          "skipped": 0,
+          "cancelled": 0
+        },
+        "receipt": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-integration-r78\\reviews\\independent-final\\full-qualification\\RUN_J\\test-030\\RECEIPT.json",
+        "stdoutSha256": "18d6602af7c673028a18dcd0bd916714a37a9fb5f77a7f1e249769d16e4ef647",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "job": {
+          "active": 0,
+          "total": 3,
+          "terminated": 0
+        },
+        "pid": 59516,
+        "creationFileTime": 134383968156567155,
+        "assignedBeforeResume": true,
+        "elapsedSeconds": 0.204
+      },
+      {
+        "phase": "test-031",
+        "status": "PASS",
+        "command": [
+          "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-integration-r76\\build-runtime\\node-v26.7.0-win-x64\\node.exe",
+          "--test",
+          "--test-concurrency=1",
+          "test/transfer-mesh-native.test.mjs",
+          "tools/commander-transfer-mesh/pilot-cli.test.mjs",
+          "test/commander-transfer-mesh-doctor.test.mjs"
+        ],
+        "counts": {
+          "tests": 24,
+          "pass": 23,
+          "fail": 0,
+          "skipped": 1,
+          "cancelled": 0
+        },
+        "receipt": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-integration-r78\\reviews\\independent-final\\full-qualification\\RUN_J\\test-031\\RECEIPT.json",
+        "stdoutSha256": "1c28d5bf52dbb0ae200b89a67ee229541e22c11693a89ce0676452a4f15fce16",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "job": {
+          "active": 0,
+          "total": 46,
+          "terminated": 0
+        },
+        "pid": 36976,
+        "creationFileTime": 134383968158674197,
+        "assignedBeforeResume": true,
+        "elapsedSeconds": 2.203
+      },
+      {
+        "phase": "test-032",
+        "status": "PASS",
+        "command": [
+          "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-integration-r76\\build-runtime\\node-v26.7.0-win-x64\\node.exe",
+          "--test",
+          "--test-concurrency=1",
+          "test/transfer-mesh-durable-native.test.mjs",
+          "tools/commander-transfer-mesh/durable-send.test.mjs"
+        ],
+        "counts": {
+          "tests": 8,
+          "pass": 8,
+          "fail": 0,
+          "skipped": 0,
+          "cancelled": 0
+        },
+        "receipt": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-integration-r78\\reviews\\independent-final\\full-qualification\\RUN_J\\test-032\\RECEIPT.json",
+        "stdoutSha256": "1e50d5e3084eb89d19241b06c11862f6a55542d65aa5a9f3eb02f76d47a70ecc",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "job": {
+          "active": 0,
+          "total": 43,
+          "terminated": 0
+        },
+        "pid": 45764,
+        "creationFileTime": 134383968180920979,
+        "assignedBeforeResume": true,
+        "elapsedSeconds": 2.219
+      },
+      {
+        "phase": "test-033",
+        "status": "PASS",
+        "command": [
+          "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-integration-r76\\build-runtime\\node-v26.7.0-win-x64\\node.exe",
+          "--test",
+          "--test-concurrency=1",
+          "tools/commander-transfer-mesh/durable-crash.test.mjs"
+        ],
+        "counts": {
+          "tests": 1,
+          "pass": 1,
+          "fail": 0,
+          "skipped": 0,
+          "cancelled": 0
+        },
+        "receipt": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-integration-r78\\reviews\\independent-final\\full-qualification\\RUN_J\\test-033\\RECEIPT.json",
+        "stdoutSha256": "bb1b141f5e0aa59fd9f8ba64d61bcc3d74b68f5825b5a8f4cf0b518f93bd7969",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "job": {
+          "active": 0,
+          "total": 8,
+          "terminated": 0
+        },
+        "pid": 10836,
+        "creationFileTime": 134383968203194154,
+        "assignedBeforeResume": true,
+        "elapsedSeconds": 2.313
+      },
+      {
+        "phase": "test-034",
+        "status": "PASS",
+        "command": [
+          "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-integration-r76\\build-runtime\\node-v26.7.0-win-x64\\node.exe",
+          "--test",
+          "--test-concurrency=1",
+          "tools/commander-transfer-mesh/durable-quota.test.mjs"
+        ],
+        "counts": {
+          "tests": 2,
+          "pass": 2,
+          "fail": 0,
+          "skipped": 0,
+          "cancelled": 0
+        },
+        "receipt": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-integration-r78\\reviews\\independent-final\\full-qualification\\RUN_J\\test-034\\RECEIPT.json",
+        "stdoutSha256": "a1a4bb8676f797ec1e5186c965eac7c55d8eee69e9bd2bdbb996ea374fd23651",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "job": {
+          "active": 0,
+          "total": 12,
+          "terminated": 0
+        },
+        "pid": 44584,
+        "creationFileTime": 134383968226435350,
+        "assignedBeforeResume": true,
+        "elapsedSeconds": 0.797
+      },
+      {
+        "phase": "test-035",
+        "status": "PASS",
+        "command": [
+          "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-integration-r76\\build-runtime\\node-v26.7.0-win-x64\\node.exe",
+          "--test",
+          "--test-concurrency=1",
+          "tools/commander-transfer-mesh/backend-update.test.mjs"
+        ],
+        "counts": {
+          "tests": 14,
+          "pass": 13,
+          "fail": 0,
+          "skipped": 1,
+          "cancelled": 0
+        },
+        "receipt": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-integration-r78\\reviews\\independent-final\\full-qualification\\RUN_J\\test-035\\RECEIPT.json",
+        "stdoutSha256": "ea6305949a909d88340f6ce11e08091c81a5e7b6f1d65a2c4a762425f1bb136e",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "job": {
+          "active": 0,
+          "total": 93,
+          "terminated": 0
+        },
+        "pid": 58420,
+        "creationFileTime": 134383968234589754,
+        "assignedBeforeResume": true,
+        "elapsedSeconds": 2.906
+      },
+      {
+        "phase": "test-036",
+        "status": "PASS",
+        "command": [
+          "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-integration-r76\\build-runtime\\node-v26.7.0-win-x64\\node.exe",
+          "--test",
+          "--test-concurrency=1",
+          "test/release-0.10.26-candidate-identity.test.mjs"
+        ],
+        "counts": {
+          "tests": 7,
+          "pass": 7,
+          "fail": 0,
+          "skipped": 0,
+          "cancelled": 0
+        },
+        "receipt": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-integration-r78\\reviews\\independent-final\\full-qualification\\RUN_J\\test-036\\RECEIPT.json",
+        "stdoutSha256": "1ad10a5e133748e7ada8a5e7f40348f5d4cd4a66941e3deb4a2a4ac45c5e0c84",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "job": {
+          "active": 0,
+          "total": 9,
+          "terminated": 0
+        },
+        "pid": 58620,
+        "creationFileTime": 134383968263871910,
+        "assignedBeforeResume": true,
+        "elapsedSeconds": 2.219
+      },
+      {
+        "phase": "test-037",
+        "status": "PASS",
+        "command": [
+          "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-integration-r76\\build-runtime\\node-v26.7.0-win-x64\\node.exe",
+          "--test",
+          "--test-concurrency=1",
+          "test/release-sync-posttag-guard.test.mjs",
+          "test/agentos-provider-router.test.mjs"
+        ],
+        "counts": {
+          "tests": 70,
+          "pass": 63,
+          "fail": 0,
+          "skipped": 7,
+          "cancelled": 0
+        },
+        "receipt": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-integration-r78\\reviews\\independent-final\\full-qualification\\RUN_J\\test-037\\RECEIPT.json",
+        "stdoutSha256": "42d90dd0230aeb71b11a15ea47afb15e0ee11f2502f16f1100cddbe8762c799f",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "job": {
+          "active": 0,
+          "total": 83,
+          "terminated": 0
+        },
+        "pid": 38236,
+        "creationFileTime": 134383968286117085,
+        "assignedBeforeResume": true,
+        "elapsedSeconds": 1.515
+      }
+    ]
+  },
+  "coverage": {
+    "originalCheckCommands": 103,
+    "checkComplete": true,
+    "priorAggregate": {
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-integration-r78\\reviews\\independent-final\\full-qualification\\AGGREGATE_SOURCE_QUALIFICATION_I.json",
+      "sha256": "a30ca3a6988627adf122513c3f2f17984f5d3f8971bb71d08730ec662957faa2"
+    },
+    "priorCheckCoverage": {
+      "retainedExactUnchanged": [
+        {
+          "receipt": "RUN_G/target/RECEIPT.json",
+          "logSha256": "b7c433e9c5d9b554e1aaaf7f1ce898560a64db0f71ab2e17f5676bbd46ff0c70",
+          "passCasesRetained": 154,
+          "previousFailedConversationCasesNotRetained": 3,
+          "basis": "All10 other target test files and application source byte-identical to current I"
+        },
+        {
+          "receipt": "RUN_H/target/RECEIPT.json",
+          "logSha256": "5b9484e8d4b8650a2f9847e794cae7065e60388bcab30f75ff88c74580cce46c",
+          "passCasesRetained": 3,
+          "basis": "Corrected conversation fixture and app source unchanged in I"
+        },
+        {
+          "receipt": "RUN_F/check/RECEIPT.json",
+          "logSha256": "cdec1f13f496c3595f1cd914937a3be993dc476a2bba7dd2a9244a5b8d4a392c",
+          "passCasesRetained": 1,
+          "basis": "Only first asyncHTTPcase PASS retained; later F failures never counted as passing"
+        },
+        {
+          "receipt": "RUN_H/check-000/RECEIPT.json",
+          "counts": {
+            "tests": 7,
+            "pass": 7,
+            "fail": 0,
+            "skipped": 0,
+            "cancelled": 0
+          },
+          "basis": "Same transport correlation tests and application code"
+        },
+        {
+          "receipt": "RUN_H/check-001/RECEIPT.json",
+          "counts": {
+            "tests": 2,
+            "pass": 2,
+            "fail": 0,
+            "skipped": 0,
+            "cancelled": 0
+          },
+          "basis": "Same browser process tests and helper code"
+        }
+      ],
+      "copyFixtureTarget": {
+        "phase": "target",
+        "status": "PASS",
+        "exitCode": 0,
+        "job": {
+          "active": 0,
+          "total": 12,
+          "terminated": 0
+        },
+        "elapsedSeconds": 6.031,
+        "stdoutSha256": "f9e93a87ce3a1b36f39b8ff9fd62cbd8ada4ef4c4d3a3ae783fe5723e79c3f36",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "counts": {
+          "tests": 2,
+          "pass": 2,
+          "fail": 0,
+          "skipped": 0,
+          "cancelled": 0
+        }
+      },
+      "remainingCheck": {
+        "planned": 98,
+        "executed": 98,
+        "allExecutedPassed": true,
+        "counts": {
+          "tests": 792,
+          "pass": 764,
+          "fail": 0,
+          "skipped": 28,
+          "cancelled": 0
+        }
+      }
+    },
+    "originalFullTestCommands": 38,
+    "fullTestComplete": true,
+    "retainedIPassedCommands": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18
+    ],
+    "retainedIPassedCases": 206,
+    "retainedReleaseTrainOtherCases": 3,
+    "newlyRecoveredExactCase": {
+      "phase": "target-release",
+      "status": "PASS",
+      "command": [
+        "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-integration-r76\\build-runtime\\node-v26.7.0-win-x64\\node.exe",
+        "--test",
+        "--test-concurrency=1",
+        "--test-name-pattern",
+        "^tracked Windows router PowerShell blob uses LF internally while checkout selects CRLF$",
+        "test/release-train-0.11.test.mjs"
+      ],
+      "counts": {
+        "tests": 1,
+        "pass": 1,
+        "fail": 0,
+        "skipped": 0,
+        "cancelled": 0
+      },
+      "receipt": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-integration-r78\\reviews\\independent-final\\full-qualification\\RUN_J\\target-release\\RECEIPT.json",
+      "stdoutSha256": "9b04c4c46f2cdcfa17158b7dac4ba8b81e6cadb4259670f4bc9a826985310001",
+      "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "job": {
+        "active": 0,
+        "total": 7,
+        "terminated": 0
+      },
+      "pid": 4760,
+      "creationFileTime": 134383966626360233,
+      "assignedBeforeResume": true,
+      "elapsedSeconds": 0.203
+    },
+    "newTailCommandIndices": [
+      20,
+      21,
+      22,
+      23,
+      24,
+      25,
+      26,
+      27,
+      28,
+      29,
+      30,
+      31,
+      32,
+      33,
+      34,
+      35,
+      36,
+      37
+    ],
+    "newTailCounts": {
+      "tests": 778,
+      "pass": 736,
+      "fail": 0,
+      "skipped": 42,
+      "cancelled": 0
+    },
+    "acceptedFullTestReportedCounts": {
+      "pass": 943,
+      "skipped": 42,
+      "fail": 0,
+      "cancelled": 0,
+      "tests": 985
+    },
+    "appSubset": {
+      "tests": 30,
+      "pass": 29,
+      "fail": 0,
+      "skipped": 1,
+      "cancelled": 0
+    },
+    "countBoundary": "Aggregate qualification: exact unchanged prior source/test case evidence plus newly executed changed fixtures and unfinished declared commands. Not one monolithic fresh run. Check/full-test/app counters overlap and nested delegated counters are reported counters, not unique scenarios. Never add these categories as unique tests."
+  },
+  "safety": {
+    "all20NewPhaseJobsNaturallyEmpty": true,
+    "jobProcessesTerminated": 0,
+    "activeProjectJobsStoppedOrReplayed": 0,
+    "installedOrRouteOrConfigChanged": false,
+    "guiInput": 0,
+    "realOwnerCredentialsCreated": 0,
+    "productionPortsUsed": false,
+    "nativeOptinsUnset": true
+  },
+  "preservedFailures": [
+    "A manifest representation preflight",
+    "B owned Job count assumption",
+    "E 269-char SQLite path",
+    "F legacy workflow shared-lease fixture config",
+    "G reviewer lexical variable typo",
+    "H dynamic server-source copy drift",
+    "I private fixture index lacks real HEAD commit"
+  ],
+  "testOnlyDeltas": [
+    "fixture-contract-g/FIXTURE_CONTRACT_G_RECEIPT.json",
+    "fixture-contract-h",
+    "fixture-contract-i/DYNAMIC_COPY_AUDIT_I.json",
+    "GIT_EXECUTION_CONTEXT_AUDIT_J.json"
+  ],
+  "productionOpen": [
+    "Real protected local-owner enrollment/login",
+    "Actual native action/witness authority and cold anchor",
+    "Current-source physical GUI acceptance",
+    "R75 live migration/rollback/owner-client delivery",
+    "Boot/endurance and admitted supported-host scope"
+  ],
+  "next": "Parent review/promote exact admitted source only after real local-owner enrollment, native authority, GUI, migration/rollback and endurance gates. Do not rerun consumed QA guardians."
+}

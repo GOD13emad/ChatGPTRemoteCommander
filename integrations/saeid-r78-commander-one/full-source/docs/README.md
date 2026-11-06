@@ -1,0 +1,82 @@
+# Documentation and setup guides
+
+> Canonical AI-assisted workflow: [START_HERE.md](../START_HERE.md). This is the single current source of truth for end-to-end installation and FINAL PASS.
+
+## Current product documentation
+
+- [Current project state](PROJECT_CONTROL_STATE.md) and [development roadmap](PROJECT_ENGINE_ROADMAP.md).
+- [v0.8.35 release qualification](RELEASE_0.8.35.md) and [engineering decisions/evidence](PROJECT_KNOWLEDGE_EVIDENCE.md).
+- [Project execution](PROJECT_ENGINE.md), [adaptive planning](PROJECT_ENGINE_ADAPTIVE.md) and [durable questions/responses](PROJECT_ENGINE_DECISIONS.md).
+- [Durable workflows](DURABLE_WORKFLOWS_R1.md), [profile isolation](PROFILE_ISOLATION_R1.md), [filesystem integrity](FS_INTEGRITY_R1.md) and [GUI acceptance](GUI_ACCEPTANCE.md).
+- [Plugin setup](PLUGIN_SETUP.md) and [Work/Codex setup](../WORK_SETUP.md).
+
+## Setup guides — 10 languages
+
+Choose your language:
+
+- [English](SETUP.en.md)
+- [فارسی / Persian](SETUP.fa.md)
+- [العربية / Arabic](SETUP.ar.md)
+- [Türkçe / Turkish](SETUP.tr.md)
+- [Español / Spanish](SETUP.es.md)
+- [Français / French](SETUP.fr.md)
+- [Deutsch / German](SETUP.de.md)
+- [Русский / Russian](SETUP.ru.md)
+- [简体中文 / Simplified Chinese](SETUP.zh-CN.md)
+- [日本語 / Japanese](SETUP.ja.md)
+
+English and Persian contain the expanded current flow; the other language pages provide the current commands and point back to the canonical workflow. Plugin packaging and icon/app binding are documented in [PLUGIN_SETUP.md](PLUGIN_SETUP.md). ChatGPT Work packaging/install guidance is in [WORK_SETUP.md](../WORK_SETUP.md).
+
+## Historical records
+
+- [Archived project checkpoints](history/PROJECT_CONTROL_STATE_20260924.md) and [E001–E062 engineering records](history/PROJECT_KNOWLEDGE_EVIDENCE_20260924.md).
+- [Project-engine qualification history](PROJECT_ENGINE_VALIDATION.md), [v0.8.34](RELEASE_0.8.34.md), and unpublished candidates [v0.8.32](RELEASE_0.8.32.md) / [v0.8.33](RELEASE_0.8.33.md).
+- Dated [GUI/release audit](AUDIT_R1.md), [expanded audit](AUDIT_AND_ROADMAP_R1.md), [competitive audit](COMPETITIVE_AUDIT_20260921.md) and [chess stress test](CHESS_STRESS_BENCHMARK_20260921.md).
+
+Historical version/status statements apply only to their checkpoint date. Current status comes from the project state and latest release record; deployment-specific handoffs remain private.
+
+## Official references
+
+Official OpenAI references:
+
+- https://developers.openai.com/api/docs/guides/secure-mcp-tunnels
+- https://help.openai.com/en/articles/12584461-developer-mode-and-mcp-apps-in-chatgpt
+- https://platform.openai.com/settings/organization/tunnels
+- https://chatgpt.com/plugins
+
+## One-command install
+
+Standard:
+
+```powershell
+& ([scriptblock]::Create((irm 'https://github.com/GOD13emad/ChatGPTRemoteCommander/releases/latest/download/install.ps1'))) -InstallPrerequisites -StartServer
+```
+
+Power Mode on a trusted PC:
+
+```powershell
+& ([scriptblock]::Create((irm 'https://github.com/GOD13emad/ChatGPTRemoteCommander/releases/latest/download/install.ps1'))) -InstallPrerequisites -PowerMode -StartServer
+```
+
+## Cross-platform persistent startup and plugin onboarding
+
+All guides now also cover Windows + Linux, one account on multiple computers, multiple accounts on one computer, concurrent chats, automatic health-port selection, and zero-reentry startup.
+
+Windows one-time persistent enrollment:
+
+```powershell
+.\enable-autostart.ps1 -Profile chatgpt-remote-commander
+```
+
+Linux install and one-time persistent enrollment:
+
+```bash
+curl -fsSL --connect-timeout 15 --max-time 180 https://github.com/GOD13emad/ChatGPTRemoteCommander/releases/latest/download/install.sh | bash -s -- --install-prerequisites --start-server
+./enable-autostart-linux.sh --profile "$(hostname)"
+```
+
+After enrollment, later logins do not require re-entering the Tunnel ID, MCP address, health port, or Runtime API key.
+
+## Updating
+
+Re-run the same one-command installer you originally used. On Windows v0.4.4+, an active registered installation is detected and updated in place; otherwise new installs keep application source under `%LOCALAPPDATA%\\ChatGPTRemoteCommander\\app` and persistent state in the parent directory. With `-StartServer`, a running v0.3 MCP is upgraded to the installed version without requiring sign-out or reboot.

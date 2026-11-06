@@ -1,0 +1,91 @@
+{
+  "schema": 1,
+  "revision": "R78-C",
+  "files": [
+    {
+      "relative": "legacy-r75-adapter.mjs",
+      "sha256": "6925e8c3574326e787537895211ca23c86cc2be3b56a9531acd29dd720ae784e",
+      "bytes": 9317
+    },
+    {
+      "relative": "terminal-owner-relay.mjs",
+      "sha256": "fc1c6cf526fb7a1307b34f86a8bf001a9c78f1d54913a92d961b34849a4b2476",
+      "bytes": 8289
+    },
+    {
+      "relative": "terminal-id.mjs",
+      "sha256": "ec033a0703a85624e427516f2ed36155cd9ba3d3f86fb2060a0380984c6fba99",
+      "bytes": 1186
+    },
+    {
+      "relative": "terminal-owner-relay.test.mjs",
+      "sha256": "06445b3048c573fd4ae0db68b7002616f42842846226d0171d45934968cfbe63",
+      "bytes": 9818
+    },
+    {
+      "relative": "terminal-id.test.mjs",
+      "sha256": "b08f4a2b03bad9af842ce04aa634e1064aeba8de12a69220917cff784f55b05c",
+      "bytes": 1511
+    },
+    {
+      "relative": "terminal-namespace/src/power-tools-v0.3.mjs",
+      "sha256": "595bb1902a62bf446f15c2f998ae132b3ac5bae938691a1c8505bc4df6d40d42",
+      "bytes": 49472
+    },
+    {
+      "relative": "terminal-namespace/src/terminal-id.mjs",
+      "sha256": "ec033a0703a85624e427516f2ed36155cd9ba3d3f86fb2060a0380984c6fba99",
+      "bytes": 1186
+    },
+    {
+      "relative": "NAMESPACE_B_RECEIPT.json",
+      "sha256": "eee0cae051d3c169a90635fe77dfc704ce3bfa4824b317bdbf150a13e42fcf4b",
+      "bytes": 1176
+    },
+    {
+      "relative": "NAMESPACE_C_SOURCE_RECEIPT.json",
+      "sha256": "f350b761b99e9c75b939e2d2bdb7976ac1bcc066a774c8031b3993b35134e57b",
+      "bytes": 787
+    },
+    {
+      "relative": "LOOPBACK_A_RECEIPT.json",
+      "sha256": "4d50582aa0f1fc391127992e58fb1c32a080f96ecf499f705d77c1bf0bf13739",
+      "bytes": 1600
+    },
+    {
+      "relative": "LOOPBACK_B_RECEIPT.json",
+      "sha256": "29a05ebb793871dd0c3d8e2bbd628f0e60bea3af3b9ac8eb17fb3a899b2b73a3",
+      "bytes": 1666
+    },
+    {
+      "relative": "LOOPBACK_C_RECEIPT.json",
+      "sha256": "2462858cc330d908e9c89b2b23429303048a50745eb083dc2444d0ec23491535",
+      "bytes": 1976
+    },
+    {
+      "relative": "NAMESPACE_B_QA.stdout.log",
+      "sha256": "ab4253249aafcad257478d5d00fcb3d1fdf24465cc0ad40cf2c85e8bebcd15e6",
+      "bytes": 547
+    },
+    {
+      "relative": "RELAY_NAMESPACE_REGRESSION.stdout.log",
+      "sha256": "ebdaf3d006f53e49d96b458263d9ede5d0bd8ac70415ac11fd3be1dfb3e8b3ba",
+      "bytes": 1487
+    },
+    {
+      "relative": "NAMESPACE_INTEGRATION_QA.stdout.log",
+      "sha256": "926a062b742d17be6bd8c41b80e4f44610527b4bb356a7a5b2799fffc2d76ba7",
+      "bytes": 208
+    },
+    {
+      "relative": "LOOPBACK_RELAY_C_ONCE.mjs",
+      "sha256": "4a1f9fd8d8e05bf67e7437cd72eed4afc748d1d520f5af36d2f5a95bff7e94da",
+      "bytes": 13977
+    },
+    {
+      "relative": "PREPARE_LOOPBACK_C_RECEIPT.json",
+      "sha256": "77a0fb32a5471f914fe93e6ae8044031a776d6c8722ea98c95f74885d9f150cf",
+      "bytes": 393
+    }
+  ]
+}

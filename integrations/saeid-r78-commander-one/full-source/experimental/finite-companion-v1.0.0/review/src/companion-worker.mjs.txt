@@ -1,0 +1,52 @@
+REVIEW ONLY — REDACTED, NOT EXECUTABLE, NOT AN INSTALLER, NOT RUNTIME-ACCEPTED.
+import fs from 'node:fs';import path from 'node:path';import os from 'node:os';import {createHash} from 'node:crypto';import {fileURLToPath} from 'node:url';
+import {createBoundedPlanner,writeNew,readBounded} from './bounded-planner.mjs';
+import {createCoreEngineAdapter,collectCoreSourcePins,hostProofContent} from './core-engine-adapter.mjs';
+import {createSaeedStatusTransport} from './saeed-status-transport.mjs';
+import {assertCompanionAcceptance} from './companion-acceptance.mjs';
+import {parseStatusJson} from './strict-status-json.mjs';
+const sha=b=>createHash('sha256').update(b).digest('hex');const fail=code=>{throw Object.assign(new Error(code),{code});};
+const ownRoot=path.dirname(path.dirname(fileURLToPath(import.meta.url)));
+export async function runFiniteCompanion({root,descriptor}){
+ if(process.platform!=='win32'||os.hostname().toLowerCase()!=='saeid'||os.userInfo().username.toLowerCase()!=='saeed')fail('COMPANION_IDENTITY');
+ if(!path.win32.isAbsolute(root)||!fs.lstatSync(root).isDirectory()||fs.readdirSync(root).length!==0)fail('COMPANION_FRESH_WORKSPACE_REQUIRED_NO_RESUME_REPLAY');
+ for(let p=root;p!==path.parse(p).root;p=path.dirname(p))if(fs.lstatSync(p).isSymbolicLink())fail('COMPANION_WORKSPACE_ALIAS');
+ if(fs.existsSync(path.join(ownRoot,'DISABLE_INTENT.json'))||fs.existsSync(path.join(ownRoot,'DISABLE_RECEIPT.json')))fail('COMPANION_DISABLED');
+ if(descriptor.schema!==1||descriptor.version!=='1.0.0'||descriptor.core.version!=='0.10.6'||descriptor.owner!=='saeed'||Object.keys(descriptor).sort().join(',')!==['schema','version','owner','authorizationSha256','core','corePins','helper','codex','sourcePins'].sort().join(','))fail('COMPANION_DESCRIPTOR');
+ const base='<OWNER_HOME>\\AppData\\Local\\ChatGPTRemoteCommander';
+ if(path.dirname(root)!==path.join(base,'companion-runs')||! /^(?:qual|installed)-[a-f0-9]{32}$/.test(path.basename(root)))fail('COMPANION_OWNED_NAMESPACE');
+ const coreRoot=path.join(base,'releases/v0.10.6-3546256e8e7c');
+ if(descriptor.core.path!==coreRoot||descriptor.core.configPath!==path.join(base,'runtimes/3546256e8e7c494d140bc9c33259ddbf345639d3/default/port-48831/config.json')||descriptor.core.routePath!==path.join(base,'routing/default.json')||descriptor.core.configSha256!=='<PRIVATE_CONFIG_SHA256>'||descriptor.core.routeSha256!=='<PRIVATE_ROUTE_SHA256>'||descriptor.helper.path!=='build/Release/commander-job-guard.exe'||descriptor.codex.path!=='<OWNER_HOME>\\AppData\\Local\\OpenAI\\Codex\\bin\\8aaf1547b825b104\\codex.exe'||descriptor.codex.sha256!=='<PRIVATE_CODEX_IMAGE_SHA256>'||!/^[a-f0-9]{64}$/.test(descriptor.authorizationSha256))fail('COMPANION_BASELINE_DESCRIPTOR');
+ if(!Array.isArray(descriptor.sourcePins)||descriptor.sourcePins.length<10||descriptor.sourcePins.length>30)fail('COMPANION_SOURCE_REGISTRY');
+ const seen=new Set();for(const pin of descriptor.sourcePins){if(Object.keys(pin).sort().join(',')!=='bytes,path,sha256'||typeof pin.path!=='string'||! /^(?:src\/[a-z-]+\.mjs|build\/Release\/commander-job-guard\.exe)$/.test(pin.path)||seen.has(pin.path)||! /^[a-f0-9]{64}$/.test(pin.sha256))fail('COMPANION_SOURCE_REGISTRY');seen.add(pin.path);const file=path.join(ownRoot,pin.path),s=fs.lstatSync(file);if(!s.isFile()||s.isSymbolicLink()||s.nlink!==1||s.size!==pin.bytes||sha(fs.readFileSync(file))!==pin.sha256)fail('COMPANION_SOURCE_PIN_DRIFT');}
+ const required=['src/bounded-planner.mjs','src/companion-worker.mjs','src/companion-acceptance.mjs','src/core-engine-adapter.mjs','src/model-contract.mjs','src/native-process.mjs','src/planner-admission.mjs','src/saeed-status-transport.mjs','src/strict-status-json.mjs','build/Release/commander-job-guard.exe'];if(seen.size!==required.length||required.some(p=>!seen.has(p)))fail('COMPANION_SOURCE_REGISTRY');
+ if(sha(fs.readFileSync(descriptor.core.configPath))!==descriptor.core.configSha256||sha(fs.readFileSync(descriptor.core.routePath))!==descriptor.core.routeSha256)fail('COMPANION_CORE_ROUTE_OR_CONFIG_DRIFT');
+ const out=path.join(root,'evidence'),workspace=path.join(root,'workspace'),models=path.join(root,'models');for(const p of[out,workspace,models])fs.mkdirSync(p);
+ const id='saeed_companion',runId='finite_run',grant={id,runId,owner:'saeed',authorizationSha256:descriptor.authorizationSha256,configSha256:descriptor.core.configSha256,planDefinitions:[{id:'observe_status',tool:'system_status',arguments:{}},{id:'write_proof',tool:'write_text',arguments:{path:'HOST_PROOF.json',content:hostProofContent(descriptor.core.configSha256)}}]};
+ writeNew(path.join(out,'OWNER_INTENT.json'),{schema:1,phase:'EXPLICIT_FINITE_ENROLLMENT',root,grant,descriptorSha256:sha(JSON.stringify(descriptor)),at:new Date().toISOString(),scope:'SAEED_STATUS_EXACT_PROOF_ONLY',browser:false,shell:false,game:false,video:false});
+ let engine,planner,primary=null,result;const ticks=[],actions=[];const started=Date.now();
+ try{
+  planner=createBoundedPlanner({recordRoot:models,helper:path.join(ownRoot,descriptor.helper.path),helperSha256:descriptor.helper.sha256,executable:descriptor.codex.path,executableSha256:descriptor.codex.sha256});
+  const readStatus=createSaeedStatusTransport({port:48831,expectedVersion:'0.10.6',expectedConfigSha256:descriptor.core.configSha256,timeoutMs:5000,maxBytes:524288});
+  const pins=collectCoreSourcePins(descriptor.core.path);if(JSON.stringify(pins)!==JSON.stringify(descriptor.corePins))fail('COMPANION_CORE_IMPORT_PIN_DRIFT');
+  engine=await createCoreEngineAdapter({coreRoot:descriptor.core.path,corePins:pins,root:workspace,enrollment:grant,planner,
+   async dispatch(name,args){
+    if(name==='system_status'){const response=await readStatus();writeNew(path.join(out,'REAL_HOST_RESPONSE.json'),response);actions.push({tool:name,responseSha256:response.responseSha256,requestClosed:response.requestClosed});return response;}
+    if(name!=='write_text'||args.path!=='HOST_PROOF.json'||args.content!==hostProofContent(descriptor.core.configSha256))fail('COMPANION_DISPATCH_DENIED');
+    const p=path.join(workspace,'HOST_PROOF.json');const fd=fs.openSync(p,'wx',0o600);try{fs.writeFileSync(fd,args.content);fs.fsyncSync(fd);if(fs.fstatSync(fd).nlink!==1)fail('COMPANION_PROOF_LINK');}finally{fs.closeSync(fd);}const fileSha256=sha(readBounded(p,4096));actions.push({tool:name,path:'HOST_PROOF.json',sha256:fileSha256});return {path:p,bytes:Buffer.byteLength(args.content),sha256:fileSha256};
+   }});
+  await engine.enroll();for(let i=0;i<3;i++){const tick=await engine.tick();ticks.push(tick);writeNew(path.join(out,'TICK_'+(i+1)+'.json'),tick);if(tick.status!==(i===2?'COMPLETED':'QUEUED'))fail(tick.lastCode??'COMPANION_CORE_NOT_ACCEPTED');}
+  const [coreStatus,state,operations,health]=await Promise.all([engine.status(),engine.state(),engine.operations(),engine.health()]);
+  writeNew(path.join(out,'CORE_STATE.json'),{coreStatus,state,operations,health,description:engine.describe()});
+  const proofSha=sha(readBounded(path.join(workspace,'HOST_PROOF.json'),4096));if(proofSha!==sha(hostProofContent(descriptor.core.configSha256)))fail('COMPANION_INDEPENDENT_FILE_HASH');
+  const acceptance=assertCompanionAcceptance({coreStatus,state,operations,ticks,modelRecords:planner.records(),actions,proofSha256:proofSha,expectedProofSha256:sha(hostProofContent(descriptor.core.configSha256))});
+  result={schema:1,status:'PASS_REAL_MODEL_CORE_HOST_AND_DURABLE_PROOF',version:'1.0.0',coreVersion:'0.10.6',model:'gpt-6.1-sol',acceptance,actions,modelCalls:2,proofSha256:proofSha,elapsedMs:Date.now()-started,state,coreStatus,operations,health,whole:'NOT_FINAL',scope:'FINITE_OWNER_ENROLLED_CHECK_ONLY',rebootResume:'NOT_ACCEPTED',sameChatRecovery:'UNPROVEN',canonicalCoreMutation:false};
+ }catch(error){primary=error;result={schema:1,status:'FAIL_FINITE_COMPANION_PRESERVE_NO_RETRY',code:error.code??error.message,actions,modelCalls:planner?.describe().calls??0,elapsedMs:Date.now()-started,whole:'NOT_FINAL',canonicalCoreMutation:false};}
+ finally{if(primary&&engine){try{writeNew(path.join(out,'FAILED_CORE_STATE.json'),{coreStatus:await engine.status(),state:await engine.state(),operations:await engine.operations()});}catch(error){result.secondaryState=error.code??error.message;}}try{await engine?.close();}catch(error){if(!primary){primary=error;result.status='FAIL_CORE_CLOSE';result.code=error.code??error.message;}else result.secondaryClose=error.code??error.message;}}
+ if(sha(fs.readFileSync(descriptor.core.configPath))!==descriptor.core.configSha256||sha(fs.readFileSync(descriptor.core.routePath))!==descriptor.core.routeSha256){result.status='FAIL_CORE_CHANGED_NO_PROMOTION';primary??=Error(result.status);}
+ writeNew(path.join(out,'RETURN.json'),result);if(primary)throw Object.assign(primary,{returnPath:path.join(out,'RETURN.json')});return Object.freeze(result);
+}
+if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url)){
+ try{if(process.argv.length!==4||process.argv[2]!=='--run-owned-check')fail('EXACT_FINITE_COMMAND_REQUIRED');const descriptor=parseStatusJson(readBounded(path.join(ownRoot,'RUNTIME_DESCRIPTOR_R2.json'),262144));const result=await runFiniteCompanion({root:path.resolve(process.argv[3]),descriptor});console.log(JSON.stringify({status:result.status,version:result.version,coreVersion:result.coreVersion,modelCalls:result.modelCalls,elapsedMs:result.elapsedMs,returnPath:path.join(path.resolve(process.argv[3]),'evidence/RETURN.json')}));}
+ catch(error){console.error(JSON.stringify({status:'FAIL_NO_RETRY',code:error.code??error.message,returnPath:error.returnPath??null}));process.exitCode=1;}
+}

@@ -1,0 +1,24 @@
+{
+  "name": "commander-finite-project-companion-source-review",
+  "version": "1.1.1",
+  "private": true,
+  "type": "module",
+  "description": "Frozen finite project library and synthetic source contracts; no live adapters, installation or background chat recovery.",
+  "license": "MIT",
+  "engines": { "node": ">=24" },
+  "exports": {
+    ".": "./src/durable-project-runner.mjs",
+    "./catalog": "./src/project-catalog.mjs"
+  },
+  "files": [
+    "src/project-catalog.mjs",
+    "src/durable-project-runner.mjs",
+    "test/generic-project-runner.test.mjs",
+    "ci-source.mjs",
+    "README.md"
+  ],
+  "scripts": {
+    "check": "node --check src/project-catalog.mjs && node --check src/durable-project-runner.mjs && node --check test/generic-project-runner.test.mjs && node --check ci-source.mjs",
+    "test": "node ci-source.mjs"
+  }
+}

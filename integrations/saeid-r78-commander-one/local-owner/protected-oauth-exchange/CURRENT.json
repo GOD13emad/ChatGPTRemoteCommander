@@ -1,0 +1,30 @@
+{
+  "schema": "r78-protected-oauth-exchange-current-v1",
+  "revision": "R78-auth-exchange-C",
+  "scope": "source/fixture acceptance only",
+  "status": "PASS_SCOPED_EXCHANGE_CRYPTO_RESTART_RESOURCE_INTEROP",
+  "frozen": true,
+  "updatedUtc": "2026-11-06T00:16:54.535045+00:00",
+  "sourceRoot": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-integration-r78\\reviews\\durable\\local-owner-auth\\protected-oauth-exchange",
+  "sourcePins": {
+    "ProtectedOAuthExchange.cs": "277beb1f077289203ee57ab3df55ac64d8e7bfca2d0aa0b31a25aaaf5d208ae0",
+    "ExchangeJournal.cs": "e79149d2cb090771a9705890ae113f32251d69300fcb79f739024aa8e40a91c8",
+    "ExchangeQA.cs": "865c285032a700e45d9d6ba68a67533219aaba1d571789e60c2c1a622a108264",
+    "ProtectedOAuthExchange.csproj": "090faf1c2d753699b2b91d5613c6f0d9b0f3c5ee3721d833c71f2d646baa3e1d",
+    "OAuthExchangeFixtureQA.csproj": "09a21f6619fe2dbc12abba07829a22fba7ca6263d5d01d058707c5b6da32b828"
+  },
+  "nativeStoreSourceSha256": "f9daf6bdc0a641f1527b07efadfd8f9f36cb3047e8e22b574a00fac60435cc82",
+  "resourceVerifierSha256": "69fca49dc6cfd0e885d57aec2bd8c414961c99768c73f6f29196d40344e7adec",
+  "uniqueCases": 33,
+  "nodeResourceInteropCases": 1,
+  "ownedChildExitInstances": 4,
+  "ownedChildFaultPositions": 3,
+  "fixturePrivateKeyMaterialPersisted": false,
+  "fixturePublicPolicyKeysAndSignedArtifactsPersisted": true,
+  "realOwnerEnrollment": false,
+  "httpListening": false,
+  "refreshImplemented": false,
+  "installedCommanderChanged": false,
+  "standaloneStoreBLateExpiryQualified": false,
+  "next": "Parent source review and qualified handoff; real protected deployment and HTTP/client/owner acceptance remain OPEN"
+}

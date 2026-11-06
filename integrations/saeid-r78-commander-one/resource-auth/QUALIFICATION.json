@@ -1,0 +1,11 @@
+{
+  "status": "PASS_20_SCOPED_CRYPTO_AND_REVOCATION_TESTS",
+  "before": "81ddb905bdb3d232bc0752dd2149d173570b36b820886f3760f24af2ea374663",
+  "after": "69fca49dc6cfd0e885d57aec2bd8c414961c99768c73f6f29196d40344e7adec",
+  "tests": 20,
+  "sourceOnly": true,
+  "tokenIssuance": false,
+  "installedChanged": false,
+  "coldRollbackAnchor": false,
+  "priorFailure": "QA_B_FAILURE.json"
+}

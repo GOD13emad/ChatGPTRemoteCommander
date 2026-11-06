@@ -1,0 +1,79 @@
+{
+  "schema": "r78-local-owner-oauth-source-qa-v1",
+  "status": "PASS_SCOPED_15_SOURCE_CONTRACT_CASES_NOT_LOGIN",
+  "createdAtUtc": "2026-11-05T22:27:29.669306+00:00",
+  "uniqueTests": 15,
+  "pass": 15,
+  "fail": 0,
+  "skip": 0,
+  "evidence": "QA_C.stdout.log",
+  "files": [
+    {
+      "path": "oauth-transaction-kernel.mjs",
+      "bytes": 9861,
+      "sha256": "0c4c4046c499528dccf6a9b07bc0fdaf8fafb43044571277935a7cac6131211c"
+    },
+    {
+      "path": "oauth-transaction-kernel.test.mjs",
+      "bytes": 8105,
+      "sha256": "9e21fb2f4577a1f1226eb2104f20e142b33c50f676521dff46950aa468319745"
+    },
+    {
+      "path": "LOCAL_OWNER_FLOW.md",
+      "bytes": 12975,
+      "sha256": "1cff9116dc564ecad0738765d9a5706a7383c32702a7a4b9c2b4d61d92343fcb"
+    },
+    {
+      "path": "HANDOFF.md",
+      "bytes": 2598,
+      "sha256": "5330344584536f9aa136b4c05ec770bae86275f6e595e0fffda33e742e1ee52f"
+    },
+    {
+      "path": "QA_A.stdout.log",
+      "bytes": 3812,
+      "sha256": "16a2e667ce61c35781ea85a26d1af13c4aa29818ee07ae7919a73ff0a4b69ea4"
+    },
+    {
+      "path": "QA_B.stdout.log",
+      "bytes": 1372,
+      "sha256": "67532bcb97087bd91a6420902ce94728ba469aa1c20ca0058a63da7a5cff8077"
+    },
+    {
+      "path": "QA_B.stderr.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "QA_C.stdout.log",
+      "bytes": 1373,
+      "sha256": "b6bab4b43efd48f99d2228080e1d4dfbe68c27a81d7b31d425e8912a3301789f"
+    },
+    {
+      "path": "QA_C.stderr.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ],
+  "ephemeralFixtureKeysOnly": true,
+  "realOwnerEnrollment": false,
+  "realOpenAIClientAssertion": false,
+  "accessTokensIssued": 0,
+  "httpListening": false,
+  "installedMutation": false,
+  "realJobEffects": 0,
+  "firstFailure": {
+    "source": "QA_A.stdout.log",
+    "cause": "Fixture emitted fractional iat after clock increment; integer NumericDate guard correctly rejected it",
+    "fix": "Floor fixture clock seconds without weakening source validation",
+    "collectorNote": "Initial Python output-tail rendering hit Windows cp1256; original file-backed test logs preserved. Final collector uses ASCII JSON."
+  },
+  "authorityBoundary": "Protected code, key enrollment and durable issuer store absent. Caller-supplied public key configuration is not owner authority. No accept callback exists.",
+  "remaining": [
+    "protected broker signed consent and token signer",
+    "real UAC protected helper peer/token checks or explicitly selected Hello ceremony",
+    "durable transaction/rotation/revocation storage",
+    "actual admitted CIMD/JWKS/callback and HTTPS endpoints",
+    "resource-server token verification and real end-to-end login"
+  ],
+  "sourceRefinement": "Token endpoint explicitly admitted; JWT audience compared to that exact endpoint rather than inferred issuer suffix"
+}

@@ -1,0 +1,87 @@
+{
+  "schema": 1,
+  "revision": "R78-F-private-diagnostic",
+  "qualifiedUtc": "2026-11-05T23:27:25.999892+00:00",
+  "status": "PASS_PRIVATE_DIAGNOSTIC_PRESERVATION_WITH_CONFIRMED_NATIVE_REJECTION_CAUSE",
+  "scope": "Diagnostic-source improvement only; browser usability NOT_ACCEPTED and parent candidate unchanged",
+  "manifest": {
+    "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-integration-r78\\reviews\\product\\browser-runtime\\diagnostic-source\\F_CAUSAL_MANIFEST.json",
+    "sha256": "da2a072d095eefc8698fa5175ff62a0d6cebbe022c4cf8362c4eae283b11f2e4"
+  },
+  "source": {
+    "newDiagnosticModuleSha256": "9e2c3dbfcd45e688ca3d2b2b683a0a64f54930188c9fbf9a4ef38f4285c7cab4",
+    "derivedBrowserHelperSha256": "cb48f7060d51ca1ee438aea9870779275b722e61da8d2b6dfe93d0968ab8e2f5",
+    "derivedBrowserClientSha256": "e61332ea5b2d742439c5beac7955427e1d6d56574823f8fa67081af651405745",
+    "privateSourceTests": {
+      "pass": 9,
+      "fail": 0,
+      "skip": 0
+    },
+    "allDerivedSyntaxPass": true,
+    "publicToolSchemaChanged": false,
+    "browserFlagsChanged": false,
+    "candidateFilesEdited": false,
+    "productionAccepted": false,
+    "sourceOpenIssue": "fs.writeSync partial-return handling should explicitly account actual bytes or set persistenceUncertain before production adoption; actual104B witness fsync/hash matched"
+  },
+  "actualF": {
+    "browser": "Existing Chrome156.0.8078.80",
+    "executableSha256": "46461accbdc87dc88a5bdd6d611be095dd6147db009863d794f742ca90662efa",
+    "mainReturnedCode": "BROWSER_DEVTOOLS_TIMEOUT",
+    "confirmedNativeCode": "REMOTE_DEBUGGING_REQUIRES_NONDEFAULT_PROFILE",
+    "stderr": "104bytes persisted+fsynced before cleanup, SHA57a579a9bbb3b7f3edd1c6dbff879d1823eea9a947cde9142c3f8968b0d73b5e; locally readable fixed browser sentence, no URL/chat/project payload",
+    "nativeRootPid": 28116,
+    "nativeRootCreationFileTime": "134383946151758484",
+    "explicitOwnProfileAndHeadlessProved": true,
+    "nativeIdentitiesPersistedBeforeCleanup": true,
+    "firstFailureFileCreatedBeforeCleanup": true,
+    "cleanupUncertain": false,
+    "persistenceUncertain": false,
+    "remainingOwnProfileProcesses": 0,
+    "pageNavigationOrInput": "NOT_RUN",
+    "nativeStderrFilePublicExportAllowed": false
+  },
+  "causalAnalysis": {
+    "confirmed": "Native browser refuses remote debugging under its default-data-directory security check; helper timeout is downstream symptom",
+    "stillUnproven": "Why native browser classifies/rejects the explicitly supplied fresh custom directory in this artificial USERPROFILE/APPDATA redirected QA environment",
+    "notEstablished": "Do not infer installed production browser broken or all nondefault directories rejected from this private fixture",
+    "postRunG": "Readonly SHGetFolderPath(CSIDL_LOCAL_APPDATA) succeeded in normal and sameF redirected environments; does not establish whether initial Chrome knownfolder query failed",
+    "sourceMechanism": "Current Chromiummain IsUsingDefaultDataDirectory can returnnullopt on defaultpathquery failure; remote_debugging_server treatsnullopt as true. This is explanatory source, not an exact Chrome156 binary execution trace."
+  },
+  "primarySources": [
+    {
+      "url": "https://developer.chrome.com/blog/remote-debugging-port",
+      "finding": "Chrome136+ disallows remote-debugging on default profiles; custom user-data-dir required"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/chromium/chromium/main/chrome/browser/devtools/remote_debugging_server.cc",
+      "finding": "IsRemoteDebuggingAllowed uses is_default_user_data_dir.value_or(true)"
+    },
+    {
+      "url": "https://chromium.googlesource.com/chromium/src/+/refs/heads/main/chrome/common/chrome_paths.cc",
+      "finding": "IsUsingDefaultDataDirectory returnsnullopt if user/default path query fails"
+    },
+    {
+      "url": "https://chromium.googlesource.com/chromium/src/+/refs/heads/main/chrome/common/chrome_paths_win.cc",
+      "finding": "Windows defaultuserdata uses DIR_LOCAL_APP_DATA"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/chromium/chromium/main/base/base_paths_win.cc",
+      "finding": "DIR_LOCAL_APP_DATA uses SHGetFolderPath(CSIDL_LOCAL_APPDATA)"
+    }
+  ],
+  "failurePreventionDelta": {
+    "id": "R78_BROWSER_NATIVE_DIAGNOSTIC_FINALIZER_LOSS",
+    "remedy": "Immutable PRIMARY_FAILURE plus bounded fd-backed stderr/fsync before cleanup; cleanup failure has separate code/receipt, sanitized transport prevents raw secret leakage",
+    "witness": "ActualF retained firstnative cause through cleanup and9source/wire cases qualify negativebehavior",
+    "noGuardWeakening": true
+  },
+  "nextAction": "No further browser relaunch in this revision. Parent may use exact native rejection to plan one hypothesis-driven isolated-environment preflight/fix, preserving default-profile protection. Private diagnostic source requires partialwrite hardening and independent review before candidate integration.",
+  "allHistoricalAtoFOnces": "CONSUMED_DO_NOT_RUN",
+  "installedChanged": false,
+  "realJobsStoppedOrReplayed": false,
+  "privateUserProfilesOrChatsRead": false,
+  "policiesChanged": false,
+  "sandboxDisabled": false,
+  "whole": "NOT_FINAL"
+}

@@ -1,0 +1,63 @@
+{
+  "schema": 1,
+  "revision": "R78",
+  "status": "PASS_SCOPED_SOURCE_AUTH_AND_OWN_RUNTIME_FIXTURES",
+  "whole": "NOT_FINAL",
+  "installedChanged": false,
+  "activeJobsStoppedOrReplayed": 0,
+  "primaryGoal": "All11 CommanderOne streams accepted, feature-preserving installed upgrade with rollback and GitHub source publication",
+  "keyResult": "818-source aggregate QA and isolated local-owner/browser/relay gates closed; production enrollment, executable authority, current package and live migration remain unproven.",
+  "sourceAcceptance": {
+    "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-integration-r78\\reviews\\independent-final\\full-qualification\\AGGREGATE_SOURCE_QUALIFICATION_J.json",
+    "bytes": 35202,
+    "sha256": "610307342231af76a974932b9b782eab20e7a9aec927670eb18cd68c2e6f62b1"
+  },
+  "authAcceptance": {
+    "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-integration-r78\\reviews\\durable\\local-owner-auth\\protected-oauth-exchange\\QUALIFICATION.json",
+    "bytes": 9757,
+    "sha256": "e029b4d796b1f4336dc3bb86246c0ae8f93dca2ebba0213a2db2038a1af6d989"
+  },
+  "independentAuthReview": {
+    "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-integration-r78\\reviews\\independent-final\\auth-review\\REVIEW_B.md",
+    "bytes": 4746,
+    "sha256": "ee974afe08d61b5175b697c1d0cec329bfd89eb313513c99fd38d9a2e93e8e00"
+  },
+  "workstreamsFile": {
+    "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-integration-r78\\WORKSTREAMS_R78.json",
+    "bytes": 5055,
+    "sha256": "d6e6d0725f7da6da1f9c35732858ee07d9f60034859685daf7b8377ca8673efa"
+  },
+  "failureBooklet": {
+    "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-integration-r78\\FAILURE_PREVENTION_CURRENT_R78.json",
+    "bytes": 14786,
+    "sha256": "14aea97e8e7ada25e6b19451f3b768e4dceb0cad91a1dd857d11c5e3faee8bdb"
+  },
+  "progress": {
+    "stage": "PASS_SCOPED_SOURCE_AND_OWN_RUNTIME_FIXTURES",
+    "subproject": "PRODUCTION_AUTH_AND_MIGRATION_OPEN",
+    "whole": "NOT_FINAL"
+  },
+  "openGates": [
+    "Same-source final installer and production integration/owner acceptance",
+    "Protected executable/enrollment/HTTP OAuth client bindings and real owner approval; no fixture authority or managed elevated deployment",
+    "Actual SYSTEM-positive protected service/action executor and cold release authority",
+    "Current-source owner-seat click/type/Alt+F4 in a separate fixture; old game exit never replayed",
+    "Owner external browser workflow/upload/download/login/endurance; diagnostic partial-write hardening before product integration; no signed-publisher claim",
+    "Protected producer/executor, cold anchor and real OS-crash/endurance acceptance",
+    "Authenticated intended-client delivery/ACK; chat correlation is not conversation identity",
+    "Production authenticated generation-bound relay/intent and non-disruptive R75 migration/rollback",
+    "Build/qualify new R78 package only after protected auth/migration acceptance; preserve R75+Companion1.1.2+Recovery1.0",
+    "Admit and test existing licensed runtime only if in final agreed scope; do not silently add a model",
+    "Current integrated owner-seat UX/consent, supported-host acceptance and final installer binding"
+  ],
+  "next": "Bind the reviewed local-owner code/state flow to one independently protected native issuer host; qualify the HTTP/client/resource boundary and enrollment transaction in isolation before proposing any UAC/deployment. Then qualify R75 preservation/migration and same-source installer; no consumed runner replay.",
+  "roadmap": "R76 Windows preview -> R77 cold evidence -> R78 integrated source/local-owner crypto/own runtime QA <- current -> protected native owner enrollment + HTTP OAuth -> authenticated executor/delivery + R75 migration -> current-source package/owner GUI/browser/OS endurance -> FINAL",
+  "baseline": "0.11.0-dev.23+R75 / port48935 / generation47; Companion1.1.2 and SafeRecovery1.0 retained",
+  "supportCase": "18412748 permanent Retry/Thinking failed remedy remains UNCONFIRMED; local tests do not prove platform repair",
+  "collectorSha256": "161933a860afd7aeed275dd44286edcfcee379aee0dfd4e32d4ee15efa3c65a1",
+  "sourceFiles": 818,
+  "authPrototypeNotIntegratedIntoCore": true,
+  "browserDiagnosticOverlayNotIntegratedIntoCore": true,
+  "realOwnerKeysEnrolled": 0,
+  "oldIncident": "a031bf59-f594-4db6-9512-b1b3c52240ae UNKNOWN_NO_REPLAY"
+}

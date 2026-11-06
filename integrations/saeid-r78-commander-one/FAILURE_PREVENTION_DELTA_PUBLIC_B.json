@@ -1,0 +1,11 @@
+{
+  "schema": 1,
+  "id": "R78_PUBLIC_ENCODING_ALIAS",
+  "class": "LOCAL_PREFLIGHT_ENCODING_NAME",
+  "cause": "Python codec name utf8-sig is unrecognized; canonical utf-8-sig is required",
+  "beforeMutation": true,
+  "fix": "Fresh derived B uses canonical codec, syntax parse and actual decode preflight",
+  "historicalA": "DO NOT RUN; failure preserved",
+  "installedChanged": false,
+  "whole": "NOT_FINAL"
+}

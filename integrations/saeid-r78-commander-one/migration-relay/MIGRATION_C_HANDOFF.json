@@ -1,0 +1,61 @@
+{
+  "schema": 1,
+  "revision": "R78-C",
+  "status": "PASS_SCOPED_SOURCE_AND_ACTUAL_OWN_LOOPBACK_MIGRATION_RELAY",
+  "qualifiedUtc": "2026-11-05T23:00:12.211801+00:00",
+  "supersedesForContinuation": "MIGRATION_ADAPTER_HANDOFF.json; earlier A/B evidence preserved, all ONCE scripts consumed DO NOT RUN",
+  "manifest": {
+    "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-integration-r78\\reviews\\product\\migration-adapter\\MIGRATION_C_MANIFEST.json",
+    "sha256": "0876557a5b50758295b3bdec5e8799adb7e7a52ad20a1ec0f94fa0fddf0f74eb"
+  },
+  "parentApply": {
+    "originalPathSuffix": "candidate/src/power-tools-v0.3.mjs",
+    "expectedBeforeSha256": "e72808211145a9c66cbccee16c6653c0288e6c9eda4ec71ebf3a56d546b8e792",
+    "derivedPowerSource": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-integration-r78\\reviews\\product\\migration-adapter\\terminal-namespace\\src\\power-tools-v0.3.mjs",
+    "derivedPowerSha256": "595bb1902a62bf446f15c2f998ae132b3ac5bae938691a1c8505bc4df6d40d42",
+    "newHelper": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-integration-r78\\reviews\\product\\migration-adapter\\terminal-namespace\\src\\terminal-id.mjs",
+    "newHelperSha256": "ec033a0703a85624e427516f2ed36155cd9ba3d3f86fb2060a0380984c6fba99",
+    "configurationMutationPerformed": false,
+    "namespaceKey": "powerMode.terminalNamespace",
+    "defaultUndefined": "Exact legacy term-N remains",
+    "hostNamespaceExample": "one-gen48; actual host must bind immutable new generation, not reuse/derive permissions from it"
+  },
+  "evidence": {
+    "sourceHelperTests": 5,
+    "integratedInvalidConfigPreEffectTests": 1,
+    "existingRelayRegressionCasesRepeated": 15,
+    "actualA": "two fresh app fixtures old relay1 + collision deny0",
+    "actualB": "two fresh app fixtures noncolliding old/new relay1 each before concurrency correction",
+    "actualC": "two fresh app fixtures, two concurrent candidate starts distinct term-1/term-2, three counters1 and exact owner input1 each, both metadata cursors unchanged",
+    "actualCReceipt": {
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-integration-r78\\reviews\\product\\migration-adapter\\LOOPBACK_C_RECEIPT.json",
+      "sha256": "2462858cc330d908e9c89b2b23429303048a50745eb083dc2444d0ec23491535"
+    },
+    "ownAppCleanupVerified": true
+  },
+  "failurePrevention": {
+    "id": "R78_NAMESPACE_PRE_AWAIT_ALLOCATION_RACE",
+    "class": "CONCURRENT_IDENTITY_COLLISION",
+    "cause": "Derived B reserved terminal sequence before awaited cwd/policy preflight",
+    "observedPhase": "SOURCE_REVIEW; no actual duplicate witnessed",
+    "remedy": "Validate namespace pre-effect; allocate and increment synchronously after awaited preflight and before spawn",
+    "regression": "C sends concurrent actual start_terminal calls then routes each distinct ID exactly once",
+    "preservedBefore": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-integration-r78\\reviews\\product\\migration-adapter\\terminal-namespace-b-source\\power-tools-v0.3.mjs",
+    "baselineChanged": false,
+    "rollback": "Discard derived C; do not change installed source; parent transactional backup required before candidate apply"
+  },
+  "openGates": [
+    "Real authenticated caller and protected generation-bound transport/intent consumption remain UNPROVEN; synthetic callbacks do not grant production authority",
+    "No public MCP relay registered/wired",
+    "No production config or route changed; R75 retained",
+    "Actual old job/state preservation and managed legacy migration remain separate acceptance",
+    "Namespace is a collision-avoidance label, not authentication/ownership proof; relay still probes both pinned backends",
+    "Kernel broker/real OAuth/native owner grant/install rollback gates remain independent"
+  ],
+  "installedChanged": false,
+  "candidateChangedByThisAgent": false,
+  "realProjectOutputRead": false,
+  "realExistingJobStoppedOrReplayed": false,
+  "whole": "NOT_FINAL",
+  "next": "Parent independently review and transactionally apply only two derived source files, then qualify integrated candidate; retain old core and adjuncts."
+}

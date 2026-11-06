@@ -1,0 +1,99 @@
+{
+  "schema": 1,
+  "revision": "R78-CFT-I",
+  "status": "PASS_EXACT_SUPPORTED_CFT_PRIVATE_BROWSER_RUNTIME_FIXTURE",
+  "qualifiedUtc": "2026-11-05T23:48:30.684494+00:00",
+  "metadataManifest": {
+    "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-integration-r78\\reviews\\product\\browser-runtime\\cft-feasibility\\CFT_I_METADATA_MANIFEST.json",
+    "sha256": "1baa5fa35584936a49ec1d8baa0fa4cd6e2479b4112bc634158649d21fb063b0"
+  },
+  "runtimeReceipt": {
+    "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-integration-r78\\reviews\\product\\browser-runtime\\cft-feasibility\\CFT_I_RUNTIME_RECEIPT.json",
+    "sha256": "8a76138d7d14112818bdd92ba2a6fdf0dbcbc977230f414a7cc9acc4b10cf524"
+  },
+  "artifact": {
+    "dependencyRoot": "G:\\CodexWork\\RCDeps\\cft\\157.0.8103.38-win64",
+    "version": "157.0.8103.38",
+    "chromeExeSha256": "b299662ff2155d34b7aa8475d287940aa9461fc538defecff6fdd566054541b1",
+    "archiveSha256": "ae0deef27d449e1d7529df7705d609bab102de48464da13567ed3dd2ee1a0586",
+    "all305ManifestFilesReverifiedBeforeLaunch": true,
+    "exeArchitecture": "AMD64",
+    "actualVersion": "157.0.8103.38",
+    "noticePreserved": true,
+    "authenticode": "NotSigned",
+    "originalSignedPublisherGate": "NOT_MET_PRESERVED",
+    "newExactPrivateQATrustAdmission": {
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-integration-r78\\reviews\\product\\browser-runtime\\cft-feasibility\\PARENT_UNSIGNED_PRIVATE_QA_ADMISSION.json",
+      "sha256": "1bcbab527669cdc968e5c99eb8855fa7cb198b07f241eca7e97cd22cc7f90d5e",
+      "scope": "Ordinary unprivileged owner-host fresh trusted QA only; not arbitrary unsigned software or public distribution"
+    },
+    "installedBinding": "NOT_CHANGED"
+  },
+  "source": {
+    "controllerSha256": "4272d0b0a3e2897f25b702b1101261faaa9d9d77d3c49d3c2fa5270c14f010a0",
+    "privateDiagnosticOverlays": {
+      "src/browser-launch-diagnostics.mjs": "9e2c3dbfcd45e688ca3d2b2b683a0a64f54930188c9fbf9a4ef38f4285c7cab4",
+      "src/browser-process.mjs": "e61332ea5b2d742439c5beac7955427e1d6d56574823f8fa67081af651405745",
+      "tools/browser-control.mjs": "cb48f7060d51ca1ee438aea9870779275b722e61da8d2b6dfe93d0968ab8e2f5"
+    },
+    "parentCandidateEdited": false,
+    "publicBrowserInputSchemaChanged": false,
+    "nativeFlagsChanged": false
+  },
+  "actualAcceptance": {
+    "headlessNativeBrowserStarted": true,
+    "ordinaryNonAdminNonSystemToken": true,
+    "nativeRootPid": 59120,
+    "nativeRootCreationFileTime": "134383960185602022",
+    "ownedNativeProfileBound": true,
+    "onlyRequestedNavigation": "http://127.0.0.1:61555/",
+    "knownLocalHtmlOnly": true,
+    "persianFillSubmittedCount": 1,
+    "clickSubmittedCount": 1,
+    "DOMObservedClickCount": 1,
+    "persianDOMResultVerified": true,
+    "screenshotOpenedAndInspected": true,
+    "screenshot": {
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-integration-r78\\reviews\\product\\browser-runtime\\cft-feasibility\\witness-private-020ff385-82e1-4dea-a8a4-c710fa500013\\OWN_LOOPBACK_RESULT.png",
+      "bytes": 13368,
+      "sha256": "2dca24ef32206a0555e5a3388cf31312ba00a691e61255922dcb550f1b774280"
+    },
+    "ownedSessionClosed": true,
+    "ownedIsolatedProfileRemoved": true,
+    "remainingOwnBrowserProcesses": 0,
+    "cleanupUncertain": false,
+    "noSandboxDisableFlagUsed": true,
+    "OSActualSandboxAttestation": "NOT_COLLECTED"
+  },
+  "causalFinding": {
+    "confirmed": "Same frozen browser controller/helper behavior can operate through official supported CfT test flavor under the narrow exact-artifact admission, with no browser flag, OS policy or sandbox bypass",
+    "comparison": "Prior existing stable Chrome156 rejected DevTools with default-directory protection; dedicated CfT157 succeeded on same artificial-home/test flow",
+    "limits": "Executable flavor AND version differ, so this does not isolate branding alone as the cause; ordinary installed browser condition, arbitrary sites, real account login and long-term recovery remain unproved",
+    "architecturalImplication": "An explicitly pinned, independently owned test-browser dependency is a supported alternative to ad-hoc security flags or personal profile reuse. It must not silently become the general browsing default."
+  },
+  "retention": {
+    "sharedDependencyVersions": 1,
+    "sharedDependencyBytes": 675849057,
+    "peakBudgetBytes": 1610612736,
+    "browserBinaryCopiesInReturnMasterGit": 0,
+    "sourceAndRawNativeEvidenceRemainLocal": true,
+    "shortSyntheticProfileRootContainerRetainedWithAdmission": true,
+    "unknownDataDeleted": false
+  },
+  "openGates": [
+    "No installation/promotion of CfT or Commander binding occurred; exact managed configuration and rollback integration still need qualification",
+    "Google identifies CfT as trustworthy testing only; untrusted/general browsing is outside this acceptance",
+    "No real ChatGPT/OpenAI account, OAuth login, personal browser, credential store or private chat was read/tested",
+    "CfT no-auto-update/security servicing/redistribution controls remain independent deployment decisions",
+    "Original Windows signed-publisher gate remains NOT_MET; no invented Valid/signature PASS",
+    "Diagnostic-source partial-write accounting hardening remains open before production source integration",
+    "OS sandbox attestation, current-source desktop GUI/game input, Work cross-chat input and whole-product gates remain separate"
+  ],
+  "nextAction": "Parent can register exact private browser runtime acceptance and metadata/PNG references, keep shared dependency once, then plan reversible owned-browser configuration integration or local-owner auth tests. Do not alter installed Commander or make CfT a general browser by this receipt. All consumed H/I runners DO NOT RUN.",
+  "installedChanged": false,
+  "policyChanged": false,
+  "realExistingJobStopOrReplay": false,
+  "personalProfileOrChatRead": false,
+  "externalNavigationRequested": false,
+  "whole": "NOT_FINAL"
+}

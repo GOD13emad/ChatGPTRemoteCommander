@@ -1,0 +1,42 @@
+# Protected OAuth exchange C — source handoff
+
+**PASS_SCOPED_EXCHANGE_CRYPTO_RESTART_RESOURCE_INTEROP**, not installed, listening or a real owner login. Frozen source `ProtectedOAuthExchange.cs` SHA256 `277beb1f077289203ee57ab3df55ac64d8e7bfca2d0aa0b31a25aaaf5d208ae0`; journal source `e79149d2cb090771a9705890ae113f32251d69300fcb79f739024aa8e40a91c8`. Production and separate fixture assemblies compile with0 warnings/errors; `qa-c` records **33 unique cases PASS** and **one additional actual Node resource-verifier interoperability case PASS**. Cases from earlier B are repeated coverage, not extra unique tests.
+
+## Implemented composition
+
+There is one native pending owner: frozen StoreB, linked read-only at SHA `f9daf6bdc0a641f1527b07efadfd8f9f36cb3047e8e22b574a00fac60435cc82`. This exchange does not call the JS prototype's begin or invent a pending-import API. It reads the native producer's exact protected pending record and consumes its verified local consent once. A durable AUTHORIZE_PREPARED record precedes native consumption; an uncertain attempt never issues another code. Successful consent produces a random, short-lived S256-bound authorization code; only its hash is stored. Owner denial cannot issue a code. Lost code responses are deliberately not regenerated; recovery requires an explicit fresh OAuth authorization, not replaying a project operation.
+
+Token exchange accepts only the exact authorization-code schema. Client authentication verifies real ES256 or RS256 private_key_jwt against protected admitted **public** JWKs: exact client iss/sub, explicit pinned token-endpoint aud, allowed alg/kid, current bounded iat/exp and durable jti consumption. It rejects arbitrary jku/x5u/header claims. The endpoint is not inferred from issuer plus `/token`. Invalid/wrong-client proofs cannot grant access. A same-client code is durably fenced before PKCE/callback/resource validation and before signing, so a failed or interrupted exchange cannot use that code again.
+
+Claims are fixed by the validated native owner/client/epoch/resource/profile/root/actions/scopes, never supplied as arbitrary sign data. The protected issuer signs an ES256 `at+jwt` lasting at most300 seconds and a separately signed grant-state envelope lasting at most15 seconds. A persistent state sequence increases across reopen. Revocation updates the native grant and returns only revoked fresh state; an older signed active envelope cannot resurrect it in the parent verifier. Fresh state is bounded observation, not instant revocation push.
+
+`GetFreshGrantState` and invalid exchanges cannot consume terminal capacity. Reservations cover **every nonterminal authorization**, including uncertain/pre-token grants: two rows for revocation before token issuance; four for issued-grant revocation plus its first signed revoked state. Terminal operations spend their own reservations. Near-capacity tests fill via valid public fixture methods, then revoke issued and unredeemed grants successfully. Capacity remains a bounded prototype policy, not an unimplemented silent reset/compaction.
+
+## Expiry review correction and frozen StoreB limit
+
+Validated client-proof/code deadlines are carried through crypto and durable IO and checked again before signing, after signing and before response publication after commit. Deterministic clock advances exist **only** in the fixture assembly, not a production clock callback or authority switch. Expiry after preparation leaves the code consumed and never produces a returned token.
+
+**Standalone StoreB remains unchanged and has an unqualified late-expiry boundary:** its consent deadline was checked before signature verification and durable consumption, not again at the end. This composition holds the exact receipt file without sharing write/delete and checks the minimum native-pending/receipt deadline again after StoreB returns, before CODE_ACTIVE. Thus it prevents downstream code/token issuance after the deadline within this wrapper. It does **not** retroactively fix or qualify standalone StoreB consumption, and must not be described that way. Positive protected enrollment and actual native broker timing remain unproven.
+
+## Authority and persistence boundaries
+
+Default `OpenProtected()` accepts no caller path, identity, key, verifier, clock or approval boolean. It requires the real kernel elevated owner/SYSTEM boundary from the native source, fixed protected ProgramData authority/OAuth directories, protected native/exchange policies, exact issuer-owner-epoch agreement and a pinned protected P-256 signing key. Private key bytes read from PKCS8 are zeroed after import. Production helper/service deployment and actual file-ACL creation have not been performed.
+
+Fixture factory, process-exit switches and clock-offset fields exist only when compiled with the explicit test symbols. A separately compiled production DLL metadata check confirms the fixture entry and crash switch are absent. Public APIs expose only fixed authorization/exchange/state/revoke actions, no arbitrary sign endpoint. The current output is a writable managed source-test DLL: **DO NOT ELEVATE / DO NOT INSTALL**. A future protected NativeAOT broker integration, exact source/artifact admission and owner-approved setup/rollback are separate gates.
+
+The exchange journal has exclusive writer coordination, prepare/terminal records, hash chain, initialized enrollment marker, separate head and fsync/atomic head publication. Missing/partial/mismatched state blocks rather than being repaired or replayed. This does not independently detect joint rollback of every protected file or prove NTFS/OS power-loss durability. Own controlled child exits are application-failure tests only. Native StoreB's128 lifetime requests, exchange1024 records/8MiB and fresh-state capacity need a protected rollover/compaction design before broad production use.
+
+## Evidence and failure learning
+
+* A: production compiled; fixture build failed CS0649 because the frozen native fixture crash field was not explicitly initialized by this separate test assembly. No tests or real operations ran. The fixture now explicitly sets that native crash injection to null; warnings remain errors.
+* B:31 unique cases and resource interoperability passed. Independent review identified terminal capacity and late-expiry boundaries. Source and receipts remain history, DO NOT RUN.
+* C:33 unique cases plus resource interoperability pass. Tests cover actual ES256/RS256 signatures, PKCE/code/client-jti replay across reopen, exact audience, substitutions, owner denial, signed state/revocation, missing/partial state, capacity, four deterministic expiry boundaries, and four actual owned child exits across three fault positions.
+* `verify-resource-interop.mjs` pins and imports parent resource source SHA `69fca49dc6cfd0e885d57aec2bd8c414961c99768c73f6f29196d40344e7adec`. Actual C# fixture JWT/state is accepted there; valid revocation and older active state are rejected. Result remains `nativeActionAuthorized:false` and `conversationIdentityAuthenticated:false`.
+
+`RECEIPT_CLARIFICATION.json` corrects two metadata ambiguities without rewriting consumed evidence: public policy/public keys and signed fixture artifacts **were persisted** in the admitted private fixture root; only private signing keys stayed in memory. The raw child count3 was a stale count of fault positions; four passing cases each launch one controlled child. No real owner key or account credential was created. Fixture token/JWT data is not real-account authorization and must not be copied into Return/GitHub.
+
+## Continuation
+
+Parent should review/merge only these frozen sources with their private qualification evidence. Keep native J and StoreB source pins unchanged. No new HTTP server, advertised OAuth/refresh metadata, CIMD/JWKS network discovery, persistent service, owner UAC/UI, installation, paid API/model, project job, GUI action or legacy command was invoked. Real HTTPS client admission, protected native deployment/rollback, actual owner consent, transport routing and real end-to-end login remain OPEN. Refresh is not implemented and must not be advertised.
+
+All A/B/C and source-edit runners are consumed / DO NOT RUN AGAIN. Parent alone creates the one cumulative Return and registration; do not include NuGet caches, private fixture state, old nested archives or generated token samples. The final `CURRENT.json` and `QUALIFICATION.json` bind exact source and evidence for continuation.

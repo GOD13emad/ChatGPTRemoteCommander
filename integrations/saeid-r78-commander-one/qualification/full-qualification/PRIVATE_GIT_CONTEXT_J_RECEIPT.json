@@ -1,0 +1,21 @@
+{
+  "status": "PASS_PRIVATE_REAL_COMMIT_818_SOURCE_BYTES_UNCHANGED",
+  "commit": "9d2366f9586c9919936ed473a5d69e7a41f5d043",
+  "tree": "ef1065fe3046df51efc4164734e66d0cc586c85a",
+  "parents": [],
+  "files": 818,
+  "executableModes": 19,
+  "sourceManifestFileSha256": "bb0f5e2a4901fc5f1b7a644e75434825d1b3ea5847f3e081eff3a6f7044f03c7",
+  "physicalSourceBytesUnchanged": true,
+  "indexBeforeSha256": "32397acbcd3eb632b0074d0f6b5ad849d78f592c56c3f017e1a1b304de439ae9",
+  "indexAfterSha256": "ec3d4d735081285d52a002397665284865fc5cbeb844087d0fe4c92896f9a84b",
+  "routerBlobSha256": "39a962a31f0802b2e5ad36b76f989125edc0c62a4969f82904b6472d7409d170",
+  "routerBlobLF": true,
+  "routerAttribute": "tools/router-commandline-windows.ps1: eol: crlf",
+  "auditSha256": "b8f21cf0e809031e34c6043874706f55387a0fa361b1efdecf5b80eff0c0f68f",
+  "privateFixtureOnly": true,
+  "published": false,
+  "originalOrSharedGitChanged": false,
+  "networkOrHooksOrSigning": false,
+  "installedChanged": false
+}

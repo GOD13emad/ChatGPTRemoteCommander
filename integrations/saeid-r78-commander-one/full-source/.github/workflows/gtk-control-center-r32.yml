@@ -1,0 +1,23 @@
+name: GTK Control Center R32 tests
+
+on:
+  pull_request:
+    paths:
+      - 'desktop/linux-control-center/**'
+      - '.github/workflows/gtk-control-center-r32.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  pure-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify read-only UI contracts
+        run: python -B -m unittest discover -s desktop/linux-control-center -p 'test*.py' -v

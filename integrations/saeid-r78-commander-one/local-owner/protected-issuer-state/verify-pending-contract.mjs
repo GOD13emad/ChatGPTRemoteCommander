@@ -1,0 +1,10 @@
+import assert from 'node:assert/strict';import{readFileSync}from'node:fs';import{createHash}from'node:crypto';
+const p=JSON.parse(readFileSync(process.argv[2],'utf8'));
+assert.deepEqual(Object.keys(p),['schema','bound','requestDigest']);assert.equal(p.schema,'RC_OWNER_PENDING_V1');
+assert.deepEqual(Object.keys(p.bound),['issuer','resource','ownerId','enrollmentEpoch','requestId','nonce','expiresAt','clientId','redirectUri','challenge','state','grantPolicyId','grant']);
+assert.deepEqual(Object.keys(p.bound.grant),['profileId','rootPolicyId','actions','scopes']);
+assert.equal(p.bound.issuer,'https://issuer.invalid/a&b');
+assert.equal(createHash('sha256').update(JSON.stringify(p.bound)).digest('base64url'),p.requestDigest);
+assert.deepEqual(p.bound.grant.actions,[...p.bound.grant.actions].sort());assert.deepEqual(p.bound.grant.scopes,[...p.bound.grant.scopes].sort());
+assert.match(p.bound.requestId,/^[A-Za-z0-9_-]{43}$/);assert.match(p.bound.nonce,/^[A-Za-z0-9_-]{43}$/);assert.match(p.bound.challenge,/^[A-Za-z0-9_-]{43}$/);
+console.log(JSON.stringify({schema:'r78-protected-native-pending-js-contract-v1',status:'PASS_EXACT_PENDING_JSON_DIGEST_CONTRACT',uniqueCases:1,realOwnerLogin:false,publicPendingImportAdded:false,accessTokensIssued:0}));

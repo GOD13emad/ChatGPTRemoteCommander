@@ -1,0 +1,92 @@
+{
+  "schema": 1,
+  "revision": "R78",
+  "workstreams": [
+    {
+      "id": "V1-00",
+      "scope": "integrated source/CI",
+      "state": "PASS_AGGREGATE_SOURCE_QUALIFICATION_NOT_INSTALLED",
+      "evidence": "818 exact source files; declared full test943 PASS/42 SKIP, app29 PASS/1 native SKIP, all103 check commands covered by exact-source aggregate ledger; private Git fixture context explicitly distinct from release commit",
+      "remaining": "Same-source final installer and production integration/owner acceptance"
+    },
+    {
+      "id": "V1-01",
+      "scope": "identity and privilege",
+      "state": "PASS_SCOPED_LOCAL_OWNER_CRYPTO_SOURCE_PRODUCTION_OPEN",
+      "evidence": "NativeAOT J negative loader/token checks; protected StoreB33 cases; real ES256/RS256/PKCE code exchange and resource interop in isolated fixtures; independent review recorded",
+      "remaining": "Protected executable/enrollment/HTTP OAuth client bindings and real owner approval; no fixture authority or managed elevated deployment"
+    },
+    {
+      "id": "V1-02",
+      "scope": "filesystem/process/apps",
+      "state": "PASS_SCOPED_NATIVE_AND_BROKER_GUARDS",
+      "evidence": "R77 own Job cold evidence retained; R78 broker status16 cases; native peer negative cases send zero request bytes",
+      "remaining": "Actual SYSTEM-positive protected service/action executor and cold release authority"
+    },
+    {
+      "id": "V1-03",
+      "scope": "native GUI/accessibility",
+      "state": "PASS_GUI_SOURCE_UNION_RUNTIME_OPEN",
+      "evidence": "R75 recovery sources and native/PowerShell/JS NOT_APPLIED chain restored;91 PASS/1 native SKIP; source-bound owner consent preserved",
+      "remaining": "Current-source owner-seat click/type/Alt+F4 in a separate fixture; old game exit never replayed"
+    },
+    {
+      "id": "V1-04",
+      "scope": "owner browsers",
+      "state": "PASS_PRIVATE_OWN_BROWSER_QA_ONLY",
+      "evidence": "CfT157 official unsigned artifact separately admitted for ordinary-user loopback QA: actual Persian fill1/click1/screenshot and zero remaining own browser processes",
+      "remaining": "Owner external browser workflow/upload/download/login/endurance; diagnostic partial-write hardening before product integration; no signed-publisher claim"
+    },
+    {
+      "id": "V1-05",
+      "scope": "durable workflow",
+      "state": "PASS_SCOPED_DURABLE_SOURCE_AUTHORITY_OPEN",
+      "evidence": "R67 repairs plus R77 host-only fence preserved; workflow union114 cases; cold reader evidence native0 and no authority resurrection",
+      "remaining": "Protected producer/executor, cold anchor and real OS-crash/endurance acceptance"
+    },
+    {
+      "id": "V1-06",
+      "scope": "continuation/delivery",
+      "state": "PASS_SOURCE_DELIVERY_GUARDS_ONLY",
+      "evidence": "Caller expiry rechecked after awaits; resource verifier20 cases with latched revocation; metadata ACK/idempotency retained",
+      "remaining": "Authenticated intended-client delivery/ACK; chat correlation is not conversation identity"
+    },
+    {
+      "id": "V1-07",
+      "scope": "router/profiles/mesh",
+      "state": "PASS_ACTUAL_OWN_RELAY_FIXTURE_NOT_LIVE_MIGRATION",
+      "evidence": "Router CAS5 cases; actual legacy+two concurrent namespaced own terminal fixtures, three fresh inputs each exactly1; legacy default preserved",
+      "remaining": "Production authenticated generation-bound relay/intent and non-disruptive R75 migration/rollback"
+    },
+    {
+      "id": "V1-08",
+      "scope": "installer/update/rollback",
+      "state": "R76_PREVIEW_QUALIFIED_R78_INSTALLER_NOT_BUILT",
+      "evidence": "R76-H22/22 isolated package phases remain historical acceptance for its exact source; no relabeling as R78",
+      "remaining": "Build/qualify new R78 package only after protected auth/migration acceptance; preserve R75+Companion1.1.2+Recovery1.0"
+    },
+    {
+      "id": "V1-09",
+      "scope": "optional local/offline AI/extensions",
+      "state": "OPTIONAL_RUNTIME_DEFERRED_NO_MODEL_CHANGE",
+      "evidence": "No new model/provider/API/cost; existing owner choices retained",
+      "remaining": "Admit and test existing licensed runtime only if in final agreed scope; do not silently add a model"
+    },
+    {
+      "id": "V1-10",
+      "scope": "Control Center frontend",
+      "state": "R76_FRONTEND_QA_RETAINED_REAL_OWNER_OPEN",
+      "evidence": "R76 production-entry WinForms UI source and isolated desktop receipts preserved; R78 local-owner native prompt source built but never shown",
+      "remaining": "Current integrated owner-seat UX/consent, supported-host acceptance and final installer binding"
+    }
+  ],
+  "previous": {
+    "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-durable-r77\\WORKSTREAMS_R77.json",
+    "bytes": 4311,
+    "sha256": "661ba8f0f1d10f356a9a0f51c5bb2292de11d8a7bf867c993df501bba9790491"
+  },
+  "stage": "PASS_SCOPED_SOURCE_AND_OWN_RUNTIME_FIXTURES",
+  "subproject": "PRODUCTION_AUTH_AND_MIGRATION_OPEN",
+  "whole": "NOT_FINAL",
+  "installedChanged": false
+}

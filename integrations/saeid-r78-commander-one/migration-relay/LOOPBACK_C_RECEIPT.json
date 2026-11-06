@@ -1,0 +1,70 @@
+{
+  "status": "PASS_ACTUAL_CONCURRENT_NAMESPACE_IDS_AND_THREE_EXACT_ONCE_RELAYS",
+  "revision": "R78",
+  "root": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-integration-r78\\reviews\\product\\migration-adapter\\witness-private-2b5f657a-ab7b-408c-9def-971d272249e1",
+  "oldTerminal": "term-1",
+  "candidateTerminals": [
+    "one-gen48-term-2",
+    "one-gen48-term-1"
+  ],
+  "counters": [
+    {
+      "backend": "legacy",
+      "id": "term-1",
+      "count": 1
+    },
+    {
+      "backend": "candidate",
+      "id": "one-gen48-term-2",
+      "count": 1
+    },
+    {
+      "backend": "candidate",
+      "id": "one-gen48-term-1",
+      "count": 1
+    }
+  ],
+  "oldOriginalInputDispatches": 1,
+  "candidateOriginalInputDispatches": 2,
+  "metadataOutputRead": false,
+  "allCursorsUnchanged": true,
+  "concurrentNewIdsDistinct": true,
+  "allFreshInputsOwnedAndExactlyOnce": true,
+  "productionNamespaceConfigured": false,
+  "realProductionPortsCalled": false,
+  "realOAuthProven": false,
+  "installedChanged": false,
+  "existingJobStopOrReplay": 0,
+  "sourceSnapshots": [
+    {
+      "label": "legacy",
+      "sourceSha256": "5c4f9debc766d2f04f5dd16195884b8b3fe698a74eb8933462e0da8282b580d6",
+      "pid": 12856,
+      "birth": "134383931601735400",
+      "port": 52718,
+      "configSha256": "ab3cb1dd0d127c001660f082ab3a3c68cecf26303bff79191bfcc58b35ac1406"
+    },
+    {
+      "label": "candidate",
+      "sourceSha256": "4d350414b43468c76714680a02268effb4fe7a2b973da820d80ddaf467ea3713",
+      "pid": 55964,
+      "birth": "134383931614494531",
+      "port": 52721,
+      "configSha256": "b432a737df2c8b874528037d4f8bf7c1c1386d592c1d680039623798efd2e255"
+    }
+  ],
+  "cleanup": [
+    {
+      "label": "legacy",
+      "pid": 12856,
+      "ownedIdentityVerified": true,
+      "terminatedOwnAppOnly": true
+    },
+    {
+      "label": "candidate",
+      "pid": 55964,
+      "ownedIdentityVerified": true,
+      "terminatedOwnAppOnly": true
+    }
+  ]
+}

@@ -1,0 +1,269 @@
+{
+  "schema": "r78-protected-oauth-exchange-qualification-v1",
+  "revision": "R78-auth-exchange-C",
+  "scope": "source/fixture acceptance only",
+  "status": "PASS_SCOPED_EXCHANGE_CRYPTO_RESTART_RESOURCE_INTEROP",
+  "frozen": true,
+  "updatedUtc": "2026-11-06T00:16:54.535045+00:00",
+  "sourceRoot": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-integration-r78\\reviews\\durable\\local-owner-auth\\protected-oauth-exchange",
+  "sourcePins": {
+    "ProtectedOAuthExchange.cs": "277beb1f077289203ee57ab3df55ac64d8e7bfca2d0aa0b31a25aaaf5d208ae0",
+    "ExchangeJournal.cs": "e79149d2cb090771a9705890ae113f32251d69300fcb79f739024aa8e40a91c8",
+    "ExchangeQA.cs": "865c285032a700e45d9d6ba68a67533219aaba1d571789e60c2c1a622a108264",
+    "ProtectedOAuthExchange.csproj": "090faf1c2d753699b2b91d5613c6f0d9b0f3c5ee3721d833c71f2d646baa3e1d",
+    "OAuthExchangeFixtureQA.csproj": "09a21f6619fe2dbc12abba07829a22fba7ca6263d5d01d058707c5b6da32b828"
+  },
+  "nativeStoreSourceSha256": "f9daf6bdc0a641f1527b07efadfd8f9f36cb3047e8e22b574a00fac60435cc82",
+  "resourceVerifierSha256": "69fca49dc6cfd0e885d57aec2bd8c414961c99768c73f6f29196d40344e7adec",
+  "uniqueCases": 33,
+  "nodeResourceInteropCases": 1,
+  "ownedChildExitInstances": 4,
+  "ownedChildFaultPositions": 3,
+  "fixturePrivateKeyMaterialPersisted": false,
+  "fixturePublicPolicyKeysAndSignedArtifactsPersisted": true,
+  "realOwnerEnrollment": false,
+  "httpListening": false,
+  "refreshImplemented": false,
+  "installedCommanderChanged": false,
+  "standaloneStoreBLateExpiryQualified": false,
+  "next": "Parent source review and qualified handoff; real protected deployment and HTTP/client/owner acceptance remain OPEN",
+  "acceptanceReceipt": "qa-c/RECEIPT.json",
+  "metadataClarification": "RECEIPT_CLARIFICATION.json",
+  "files": [
+    {
+      "path": "CURRENT.json",
+      "bytes": 1717,
+      "sha256": "006d5f00aa04ad333615acc98642afc3baa82f2e9c7cc769ce60a98bc83a00c0"
+    },
+    {
+      "path": "ExchangeJournal.cs",
+      "bytes": 5316,
+      "sha256": "e79149d2cb090771a9705890ae113f32251d69300fcb79f739024aa8e40a91c8"
+    },
+    {
+      "path": "ExchangeQA.cs",
+      "bytes": 24115,
+      "sha256": "865c285032a700e45d9d6ba68a67533219aaba1d571789e60c2c1a622a108264"
+    },
+    {
+      "path": "FINISH_REVIEW_B_SOURCE_ONCE.py",
+      "bytes": 4098,
+      "sha256": "7f2222ede4861ff2b542dfbae0fc8c8e15b2c6fb5137c60abfd5274784f02965"
+    },
+    {
+      "path": "HANDOFF.md",
+      "bytes": 8496,
+      "sha256": "20708b8b885f8e2f46f1a0aaa62c63696a93e3aad1c16ce457a5773f0d4d12ea"
+    },
+    {
+      "path": "OAuthExchangeFixtureQA.csproj",
+      "bytes": 877,
+      "sha256": "09a21f6619fe2dbc12abba07829a22fba7ca6263d5d01d058707c5b6da32b828"
+    },
+    {
+      "path": "ProtectedOAuthExchange.cs",
+      "bytes": 21647,
+      "sha256": "277beb1f077289203ee57ab3df55ac64d8e7bfca2d0aa0b31a25aaaf5d208ae0"
+    },
+    {
+      "path": "ProtectedOAuthExchange.csproj",
+      "bytes": 727,
+      "sha256": "090faf1c2d753699b2b91d5613c6f0d9b0f3c5ee3721d833c71f2d646baa3e1d"
+    },
+    {
+      "path": "QUALIFY_EXCHANGE_A_ONCE.py",
+      "bytes": 4182,
+      "sha256": "457d0be2a766549694d573d42bfb685d730b280423ca8407ec4991f0bdfd0f82"
+    },
+    {
+      "path": "QUALIFY_EXCHANGE_B_ONCE.py",
+      "bytes": 4182,
+      "sha256": "72f975d2125ec8b1491f0f25f9aeec95eea4ebf6a28a2bf1324526dd79200e04"
+    },
+    {
+      "path": "QUALIFY_EXCHANGE_C_ONCE.py",
+      "bytes": 4182,
+      "sha256": "ee93fe5c61d21d1d8d3ba9a9d919b1f425ce416ff360ae25b16f745f4f0a67d5"
+    },
+    {
+      "path": "RECEIPT_CLARIFICATION.json",
+      "bytes": 1139,
+      "sha256": "c3fd7c83171f56e010e2dd971f3d4b4a820b8245ab9d4484b8551d1b26ab2891"
+    },
+    {
+      "path": "REVIEW_B_SOURCE_EDIT.json",
+      "bytes": 224,
+      "sha256": "9dfbe5a8cc4b5ae64865f6e7b0b3a7d3c3aa2c72898de88597a90ae993993aff"
+    },
+    {
+      "path": "verify-resource-interop.mjs",
+      "bytes": 1694,
+      "sha256": "d881be030920e8512ed9b0f08afe35a2ea698c8d5142db8c9aa02bd36a6b940d"
+    },
+    {
+      "path": "history-review-b-edit/ProtectedOAuthExchange.cs",
+      "bytes": 20415,
+      "sha256": "a1a679cd463ed3d908b63ef2dd3af7ae3ec3bcda3dbe6ab31aaea07459f4373f"
+    },
+    {
+      "path": "history-source-a/ExchangeJournal.cs",
+      "bytes": 5316,
+      "sha256": "e79149d2cb090771a9705890ae113f32251d69300fcb79f739024aa8e40a91c8"
+    },
+    {
+      "path": "history-source-a/ExchangeQA.cs",
+      "bytes": 19668,
+      "sha256": "6c75d63587c351fdba78066c233c5a6e5f20816f06e3152012716b0ca1b61242"
+    },
+    {
+      "path": "history-source-a/ProtectedOAuthExchange.cs",
+      "bytes": 18482,
+      "sha256": "385416908969335800837a4bc04341af623fd5a091ce9c00d3c9e6d54f893082"
+    },
+    {
+      "path": "history-source-b/ExchangeJournal.cs",
+      "bytes": 5316,
+      "sha256": "e79149d2cb090771a9705890ae113f32251d69300fcb79f739024aa8e40a91c8"
+    },
+    {
+      "path": "history-source-b/ExchangeQA.cs",
+      "bytes": 22142,
+      "sha256": "ce5bd011ed2684ec7a75659b8c3068780ce919ce5587ddc087b038d841ddb2d2"
+    },
+    {
+      "path": "history-source-b/ProtectedOAuthExchange.cs",
+      "bytes": 21382,
+      "sha256": "79ad9f2f4eead7aa1f6dfae19c0d0b2e99bdbfbba90c069a22a36fba9babebac"
+    },
+    {
+      "path": "qa-a/ADMISSION.json",
+      "bytes": 2560,
+      "sha256": "5063a6298eaa3c4ae21748a5365bb976fc0e822056138fab137efb135c9de23b"
+    },
+    {
+      "path": "qa-a/build-fixture.stderr.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "qa-a/build-fixture.stdout.log",
+      "bytes": 1258,
+      "sha256": "521ed364774a4288004193d38b24c56c232c94904858297d21bf6524703e2dd3"
+    },
+    {
+      "path": "qa-a/build-production.stderr.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "qa-a/build-production.stdout.log",
+      "bytes": 427,
+      "sha256": "c7d2531c593954f77f9e5eab89f9c0e2be9436d1bf5be083382be25c63f54121"
+    },
+    {
+      "path": "qa-a/RECEIPT.json",
+      "bytes": 5138,
+      "sha256": "d91ab74720db270962d44da10498ffdebb8350437e6d8e2e4d95aa7a278db550"
+    },
+    {
+      "path": "qa-b/ADMISSION.json",
+      "bytes": 2560,
+      "sha256": "4c756429affffaa9cfc0c81c8a8e4b19a82288f801df193f92cb9aa15c347097"
+    },
+    {
+      "path": "qa-b/build-fixture.stderr.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "qa-b/build-fixture.stdout.log",
+      "bytes": 433,
+      "sha256": "b05b30fc845c6a523fb984f5d714f9ec75bae0d9c8dfcdbdfc24eeafc1c1cde7"
+    },
+    {
+      "path": "qa-b/build-production.stderr.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "qa-b/build-production.stdout.log",
+      "bytes": 427,
+      "sha256": "1fbdb6560d3da981b73dde9e27f905be8166b6df7c88ba693d1ff85f90cbb92c"
+    },
+    {
+      "path": "qa-b/exchange-fixture-cases.stderr.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "qa-b/exchange-fixture-cases.stdout.log",
+      "bytes": 2572,
+      "sha256": "50c71de3888d2872c95f3e4af8dfa2c13d2bb8de4fc26add795ba41f52386981"
+    },
+    {
+      "path": "qa-b/parent-resource-interop.stderr.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "qa-b/parent-resource-interop.stdout.log",
+      "bytes": 291,
+      "sha256": "c09543fe755110d99333e14ce0476c3d7a79c9ede31355b41e92e92a646188cc"
+    },
+    {
+      "path": "qa-b/RECEIPT.json",
+      "bytes": 5320,
+      "sha256": "4b80c6cec19015c69c027a1e7018bcd4ab07abce29df1dc34d8ccbd3eb7ed33e"
+    },
+    {
+      "path": "qa-c/ADMISSION.json",
+      "bytes": 2560,
+      "sha256": "22fc5f71ca900b14dbae310128f50b8380c66b60a2e41b03ee0c205068a129a5"
+    },
+    {
+      "path": "qa-c/build-fixture.stderr.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "qa-c/build-fixture.stdout.log",
+      "bytes": 433,
+      "sha256": "8df4d2dc59d90e2bf4efb2ddac5298858bf151dba365327e0e034dbb8eedd42d"
+    },
+    {
+      "path": "qa-c/build-production.stderr.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "qa-c/build-production.stdout.log",
+      "bytes": 427,
+      "sha256": "ba6b2267c073d92aa42a9bef3ebbe8401651d496e9e38d54b37b979a819a244c"
+    },
+    {
+      "path": "qa-c/exchange-fixture-cases.stderr.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "qa-c/exchange-fixture-cases.stdout.log",
+      "bytes": 2750,
+      "sha256": "ef16eb1f75db5c3c1728c401201b2ac4d004501540cd12589a27bb19d161507a"
+    },
+    {
+      "path": "qa-c/parent-resource-interop.stderr.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "qa-c/parent-resource-interop.stdout.log",
+      "bytes": 291,
+      "sha256": "c09543fe755110d99333e14ce0476c3d7a79c9ede31355b41e92e92a646188cc"
+    },
+    {
+      "path": "qa-c/RECEIPT.json",
+      "bytes": 5320,
+      "sha256": "50a8c236b534335ed9f6653df96281eb808f2064bf4f781804d79cc7bed45973"
+    }
+  ]
+}

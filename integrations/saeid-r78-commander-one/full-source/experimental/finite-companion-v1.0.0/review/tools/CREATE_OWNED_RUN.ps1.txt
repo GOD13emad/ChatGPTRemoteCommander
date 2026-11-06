@@ -1,0 +1,14 @@
+REVIEW ONLY — REDACTED, NOT EXECUTABLE, NOT AN INSTALLER, NOT RUNTIME-ACCEPTED.
+param([ValidateSet('qual','installed')][string]$Kind='qual')
+$ErrorActionPreference='Stop'
+. (Join-Path $PSScriptRoot 'INSTALL_SIDECAR.ps1') -LibraryOnly
+[void](Assert-CompanionIdentity)
+$handles=[Collections.Generic.List[IDisposable]]::new()
+try {
+ $parent=Join-Path $script:CompanionInstallBase 'companion-runs'
+ Hold-CompanionAncestors (Split-Path -Parent $parent) $handles
+ if (-not (Test-Path -LiteralPath $parent)) {New-CompanionPrivateDirectory $parent $handles} else {Assert-CompanionOwnerAcl $parent}
+ $root=Join-Path $parent ($Kind+'-'+[guid]::NewGuid().ToString('N'))
+ New-CompanionPrivateDirectory $root $handles
+ @{schema=1;status='PASS_NEW_PRIVATE_RUN_NOT_EXECUTED';root=$root;ownerSid=$script:CompanionOwnerSid;type='FINITE_STATUS_PROOF_ONLY';models=0;coreChanged=$false}|ConvertTo-Json -Compress
+} finally {for($i=$handles.Count-1;$i -ge 0;$i--){$handles[$i].Dispose()}}

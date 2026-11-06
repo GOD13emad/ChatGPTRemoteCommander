@@ -1,0 +1,100 @@
+REVIEW ONLY — REDACTED, NOT EXECUTABLE, NOT AN INSTALLER, NOT RUNTIME-ACCEPTED.
+Option Explicit
+Const ExpectedSid = "<OWNER_SID>"
+Const InstallBase = "<OWNER_HOME>\AppData\Local\ChatGPTRemoteCommander"
+Const NodeImage = "C:\Program Files\nodejs\node.exe"
+Dim fs, shell, wmi, releaseRoot, releaseName, runsRoot, grantFile, grantRoot, textStream, env, command, code
+On Error Resume Next
+Set fs = CreateObject("Scripting.FileSystemObject")
+Set shell = CreateObject("WScript.Shell")
+Set wmi = GetObject("winmgmts:{impersonationLevel=impersonate}!\\.\root\cimv2")
+If Err.Number <> 0 Then WScript.Quit 91
+On Error GoTo 0
+If WScript.Arguments.Count <> 0 Then WScript.Quit 92
+Set env = shell.Environment("Process")
+If LCase(env("COMPUTERNAME")) <> "saeid" Or LCase(env("USERNAME")) <> "saeed" Then WScript.Quit 93
+releaseRoot = fs.GetParentFolderName(fs.GetParentFolderName(WScript.ScriptFullName))
+releaseName = fs.GetFileName(releaseRoot)
+If fs.GetParentFolderName(releaseRoot) <> InstallBase & "\companions" Then WScript.Quit 94
+If Not Matches("^v1\.0\.0-[a-f0-9]{12}$", releaseName) Then WScript.Quit 95
+runsRoot = InstallBase & "\companion-runs"
+grantFile = runsRoot & "\" & releaseName & ".launch.txt"
+If Not PrivateFolder(releaseRoot) Or Not PrivateFolder(releaseRoot & "\tools") Or Not PrivateFolder(runsRoot) Then WScript.Quit 96
+If fs.FileExists(releaseRoot & "\DISABLE_INTENT.json") Or fs.FileExists(releaseRoot & "\DISABLE_RECEIPT.json") Then WScript.Quit 97
+If Not PrivateSealedFile(grantFile) Then WScript.Quit 98
+On Error Resume Next
+Set textStream = fs.OpenTextFile(grantFile, 1, False, 0)
+grantRoot = textStream.ReadAll
+textStream.Close
+If Err.Number <> 0 Then WScript.Quit 99
+On Error GoTo 0
+' The entire grant is exactly one ASCII path: no newline, arguments or quotes.
+If InStr(grantRoot, vbCr) <> 0 Or InStr(grantRoot, vbLf) <> 0 Or InStr(grantRoot, Chr(34)) <> 0 Then WScript.Quit 100
+If Not Matches("^" & Replace(runsRoot, "\", "\\") & "\\installed-[a-f0-9]{32}$", grantRoot) Then WScript.Quit 100
+If Not PrivateFolder(grantRoot) Then WScript.Quit 101
+If Not fs.FileExists(NodeImage) Or Not PrivateSealedFile(releaseRoot & "\src\companion-worker.mjs") Then WScript.Quit 102
+If Not PrivateSealedFile(WScript.ScriptFullName) Then WScript.Quit 103
+' Child-only environment changes prevent Node startup-option injection.
+env.Remove "NODE_OPTIONS"
+env.Remove "NODE_PATH"
+command = Quote(NodeImage) & " --disable-warning=ExperimentalWarning " & Quote(releaseRoot & "\src\companion-worker.mjs") & " --run-owned-check " & Quote(grantRoot)
+' One invocation, hidden, synchronous. No retry, trigger, shell or user input.
+On Error Resume Next
+code = shell.Run(command, 0, True)
+If Err.Number <> 0 Then WScript.Quit 104
+On Error GoTo 0
+WScript.Quit code
+
+Function Quote(value)
+  If InStr(value, Chr(34)) <> 0 Or InStr(value, vbCr) <> 0 Or InStr(value, vbLf) <> 0 Then WScript.Quit 105
+  Quote = Chr(34) & value & Chr(34)
+End Function
+Function Matches(pattern, value)
+  Dim re
+  Set re = New RegExp
+  re.Pattern = pattern
+  re.IgnoreCase = False
+  re.Global = False
+  Matches = re.Test(value)
+End Function
+Function PrivateFolder(value)
+  Dim item
+  PrivateFolder = False
+  On Error Resume Next
+  Set item = fs.GetFolder(value)
+  If Err.Number <> 0 Then Err.Clear: Exit Function
+  If (item.Attributes And 1024) <> 0 Then Exit Function
+  PrivateFolder = PrivateAcl(value, False)
+  On Error GoTo 0
+End Function
+Function PrivateSealedFile(value)
+  Dim item
+  PrivateSealedFile = False
+  On Error Resume Next
+  Set item = fs.GetFile(value)
+  If Err.Number <> 0 Then Err.Clear: Exit Function
+  If (item.Attributes And 1024) <> 0 Or (item.Attributes And 1) = 0 Then Exit Function
+  If value = grantFile And (item.Size < 1 Or item.Size > 512) Then Exit Function
+  PrivateSealedFile = PrivateAcl(value, True)
+  On Error GoTo 0
+End Function
+Function PrivateAcl(value, readOnly)
+  Dim setting, descriptor, result, ace, ownerCount, pathValue
+  PrivateAcl = False
+  pathValue = Replace(Replace(value, "\", "\\"), "'", "\'")
+  On Error Resume Next
+  Set setting = wmi.Get("Win32_LogicalFileSecuritySetting.Path='" & pathValue & "'")
+  result = setting.GetSecurityDescriptor(descriptor)
+  If Err.Number <> 0 Or result <> 0 Then Err.Clear: Exit Function
+  If descriptor.Owner.SIDString <> ExpectedSid Then Exit Function
+  If (descriptor.ControlFlags And 4096) = 0 Then Exit Function
+  ownerCount = 0
+  For Each ace In descriptor.DACL
+    If ace.AceType <> 0 Or ace.Trustee.SIDString <> ExpectedSid Then Exit Function
+    If readOnly And (ace.AccessMask And &H500D0156) <> 0 Then Exit Function
+    ownerCount = ownerCount + 1
+  Next
+  If Err.Number <> 0 Then Err.Clear: Exit Function
+  PrivateAcl = (ownerCount > 0)
+  On Error GoTo 0
+End Function

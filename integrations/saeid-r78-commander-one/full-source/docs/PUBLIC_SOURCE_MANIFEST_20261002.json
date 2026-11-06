@@ -1,0 +1,198 @@
+{
+  "schema": 1,
+  "observedAtUtc": "2026-10-02T18:36:46.812Z",
+  "publication": "DRAFT_SOURCE_SNAPSHOT_NO_MERGE_RELEASE_INSTALL",
+  "repo": "GOD13emad/ChatGPTRemoteCommander",
+  "parentCommit": "96ec13d37415c0b60bb4a3f2df12301c229e61e9",
+  "parentTree": "c1c87998d8396a2f7f61f3d510e52855e772d489",
+  "branch": "feature/safe-companion-v01-q2-20261001",
+  "qualification": {
+    "runtime": "v24.19.0",
+    "platform": "win32",
+    "syntaxFiles": 17,
+    "backend": {
+      "tests": 100,
+      "pass": 100,
+      "fail": 0,
+      "skipped": 0,
+      "cancelled": 0,
+      "exitCode": 0,
+      "scope": "ISOLATED_NEW_COPY_INJECTED_PRIVATE_VERIFIERS_NOT_NATIVE_HOST_ACCEPTANCE"
+    },
+    "pausedDomainPolicy": {
+      "pass": 27,
+      "fail": 0,
+      "exitCode": 0,
+      "scope": "PURE_POLICY_NO_GAME_VIDEO_EXECUTION"
+    },
+    "cefSource": {
+      "checks": 1457,
+      "exitCode": 0,
+      "scope": "SOURCE_ONLY_NOT_NATIVE_COMPILATION"
+    },
+    "q5": "SYNTAX_ONLY_DO_NOT_RUN",
+    "operationalAutonomy": "UNPROVEN",
+    "whole": "NOT_FINAL"
+  },
+  "files": [
+    {
+      "path": "experimental/project-operations-v03/src/execution-scope.mjs",
+      "bytes": 4763,
+      "sha256": "bb2b2bbaea6c2788d6d4c3c83bb7bf31b086efab2bc47fb543b0542f2813a5cf",
+      "gitBlobSha": "0d389b18e302ebd8aed2b489510ac6f02b7b07a3",
+      "scope": "BOUNDED_BACKEND_NOT_INSTALLED"
+    },
+    {
+      "path": "experimental/project-operations-v03/src/project-autopilot.mjs",
+      "bytes": 26891,
+      "sha256": "e2bc3c2edf1d17fe7f0533040c63264eabfdc34226d0546a072c5d072a8928de",
+      "gitBlobSha": "ba8d144725c28277d96c45542987661f6a5b0cb6",
+      "scope": "BOUNDED_BACKEND_NOT_INSTALLED"
+    },
+    {
+      "path": "experimental/project-operations-v03/src/project-feature-service.mjs",
+      "bytes": 8334,
+      "sha256": "ce66be697036d15f6cb1a028d64d6f9d9d738f426b5f3d96c5f094a143b47509",
+      "gitBlobSha": "c86727a84ad4a25571186768cc8542171c7f15dc",
+      "scope": "BOUNDED_BACKEND_NOT_INSTALLED"
+    },
+    {
+      "path": "experimental/project-operations-v03/src/project-monitor.mjs",
+      "bytes": 25735,
+      "sha256": "ed7a374c99e5288ddf67eb55c4d46cc00749a177fc802cfa3907d6b58d1ceb7b",
+      "gitBlobSha": "f2ebc4e5da0d890b69dfa78464dbf9e482693b5a",
+      "scope": "BOUNDED_BACKEND_NOT_INSTALLED"
+    },
+    {
+      "path": "experimental/project-operations-v03/test/execution-scope.test.mjs",
+      "bytes": 3639,
+      "sha256": "5c3e082555997ddefd6c340dbb5cf1b8d9e31517508ac6385445dd619c697af5",
+      "gitBlobSha": "7fce9a979be8ccad873e55c1ab1f1e95a4b69f61",
+      "scope": "BOUNDED_BACKEND_NOT_INSTALLED"
+    },
+    {
+      "path": "experimental/project-operations-v03/test/project-autopilot.test.mjs",
+      "bytes": 26531,
+      "sha256": "18a5e700af5dc86904b13ab11ffffb0e9d011e6b156944c90b930a46b157e40e",
+      "gitBlobSha": "3ac8770eebca9147b063fc649709bb88119c7c7e",
+      "scope": "BOUNDED_BACKEND_NOT_INSTALLED"
+    },
+    {
+      "path": "experimental/project-operations-v03/test/project-feature-disk.test.mjs",
+      "bytes": 3634,
+      "sha256": "83497c389ee6a3c5bfa97d4d8d2f9099dbbc5b62ddead19a024e933ecbfe973b",
+      "gitBlobSha": "a81d79cb03ca2a1daab2fb9a4e7fdc6389977460",
+      "scope": "BOUNDED_BACKEND_NOT_INSTALLED"
+    },
+    {
+      "path": "experimental/project-operations-v03/test/project-feature-service.test.mjs",
+      "bytes": 7242,
+      "sha256": "f4d8a17be1c77610fac1cc96e0915a4ee434203b159794b52a228f901dbaa074",
+      "gitBlobSha": "0a339da7c717d7e0997501e00e795164a02a8ec3",
+      "scope": "BOUNDED_BACKEND_NOT_INSTALLED"
+    },
+    {
+      "path": "experimental/project-operations-v03/test/project-monitor.test.mjs",
+      "bytes": 15266,
+      "sha256": "8159ce64468327fc0b5915c8dd7dbc5a3308d128f7d5fecf1183f2a2d77a3c31",
+      "gitBlobSha": "5487dbab5862503108c3907ac4c58cd35cdbe697",
+      "scope": "BOUNDED_BACKEND_NOT_INSTALLED"
+    },
+    {
+      "path": "experimental/control/EXECUTION_SCOPE.json",
+      "bytes": 310,
+      "sha256": "65f4e0a13478bba233c6712dd2abf56fcd66332aa7b24c49073d4b73b53afdfd",
+      "gitBlobSha": "e947d0bcc6bd012e483cab7a5624fe4213e5d0e2",
+      "scope": "ARCHIVED_BUILD_SCOPE_NOT_RUNTIME_AUTHORITY"
+    },
+    {
+      "path": "experimental/paused-domain-policy/src/game-video-policy.mjs",
+      "bytes": 14697,
+      "sha256": "484a32e668f9a1d2e81586d1f49a915de0ab594d0b0d81d558e4bcfb418e651f",
+      "gitBlobSha": "3bbf36d0a03d774b4bf5d503c2592f4ce6bc96da",
+      "scope": "PURE_POLICY_USER_PAUSED"
+    },
+    {
+      "path": "experimental/paused-domain-policy/test/game-video-policy.test.mjs",
+      "bytes": 19177,
+      "sha256": "e2207bc592e5e54f25a9383a8bb5852821d1691f013fc7555f6b82c2e517716b",
+      "gitBlobSha": "22e1f0ab8fe32fc8bb6da11aae3430e9fc513730",
+      "scope": "PURE_POLICY_USER_PAUSED"
+    },
+    {
+      "path": "experimental/windows-private-files-q5/overlay/src/companion-private-create-windows.mjs",
+      "bytes": 22453,
+      "sha256": "b58649c5d84331b5d0b17c534d407a2252d17e33b00c08925f4afbaeac0c2b9d",
+      "gitBlobSha": "a28aa7812bf379efbbfa633bdeab02620dbb2b70",
+      "scope": "SYNTAX_ONLY_DO_NOT_RUN"
+    },
+    {
+      "path": "experimental/windows-private-files-q5/overlay/src/companion-session.mjs",
+      "bytes": 38009,
+      "sha256": "2efcfb308f90d21abbb9372cc4fd75587d6e8222b4627bfb3247f0b925d9aaa1",
+      "gitBlobSha": "06a26b68cdad8f635d773f945f2bdd3179984a90",
+      "scope": "SYNTAX_ONLY_DO_NOT_RUN"
+    },
+    {
+      "path": "experimental/windows-private-files-q5/overlay/test/companion-private-create-windows.test.mjs",
+      "bytes": 31075,
+      "sha256": "9252764ef71bec32461cb984eb72fd4f3573072ec409c12117f10f098d0b245e",
+      "gitBlobSha": "813d80618cff342d079d94f17e5a875bde3d890a",
+      "scope": "SYNTAX_ONLY_DO_NOT_RUN"
+    },
+    {
+      "path": "experimental/windows-private-files-q5/overlay/test/companion-session.test.mjs",
+      "bytes": 31240,
+      "sha256": "ee28a8ac97b0561b4066033f6776b980c9e329a0e26b67a81997eba95c0e3eab",
+      "gitBlobSha": "fc52ef0b1851f9b284a57fe930360e843225a699",
+      "scope": "SYNTAX_ONLY_DO_NOT_RUN"
+    },
+    {
+      "path": "experimental/windows-private-files-q5/overlay/test/companion-export.test.mjs",
+      "bytes": 26669,
+      "sha256": "596bd189f8fa11b9e0ea7641f0207a61686c016dc3a8de770cb1d0cbc6758391",
+      "gitBlobSha": "0ff5eb3a8a9afaf9b74214388c5a46fe402a6405",
+      "scope": "SYNTAX_ONLY_DO_NOT_RUN"
+    },
+    {
+      "path": "experimental/windows-private-files-q5/overlay/package.json",
+      "bytes": 10610,
+      "sha256": "e40e60c8ec460e461300193c35938abd2d368c745a1bd645882d3084b29fd239",
+      "gitBlobSha": "d71a72905d47199cd8d8f3ea668a190b97b528a1",
+      "scope": "SYNTAX_ONLY_DO_NOT_RUN"
+    },
+    {
+      "path": "docs/PROGRESS_20261002_FA.md",
+      "bytes": 7691,
+      "sha256": "5d3d999044c6e2bfb1b71886eb8650ac51b7316478a288dfe33d59cf10489807",
+      "gitBlobSha": "8a411c6b1999f366ab0f97ab57f37f93dfac1843",
+      "scope": "PUBLIC_REPORT"
+    },
+    {
+      "path": "experimental/README.md",
+      "bytes": 1511,
+      "sha256": "b10aa332a977ddc21b3eb6a74f92871f4cfd056c62322f1b3a9e245496f1a3c5",
+      "gitBlobSha": "61d4d01dd36c834f1ea8222288b359ff09b45395",
+      "scope": "PUBLIC_SCOPE"
+    }
+  ],
+  "excluded": [
+    "live configuration",
+    "credentials",
+    "databases",
+    "browser profiles",
+    "real chats",
+    "voice input",
+    "raw machine logs",
+    "local control history",
+    "private installation runners",
+    "Return and Master archives"
+  ],
+  "game": "USER_PAUSED",
+  "video": "USER_PAUSED",
+  "otherHosts": "EXCLUDED",
+  "heartbeat": "CANCELLED_DO_NOT_REACTIVATE",
+  "whole": "NOT_FINAL",
+  "promotion": false,
+  "installedCore": "v0.10.5 separate official source"
+}

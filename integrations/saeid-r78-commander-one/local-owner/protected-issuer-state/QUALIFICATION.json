@@ -1,0 +1,184 @@
+{
+  "schema": "r78-protected-issuer-source-qualification-v1",
+  "utc": "2026-11-05T23:44:22.918514+00:00",
+  "status": "PASS_SCOPED_SOURCE_AND_FIXTURE_RESTART_QA_NOT_PRODUCTION_LOGIN",
+  "sourceUniqueCases": 33,
+  "nodePendingFormatInteropCases": 1,
+  "ownedChildExits": 4,
+  "productionFixtureFactoryAbsent": true,
+  "nativeConsentBinaryChanged": false,
+  "installedCommanderChanged": false,
+  "protectedHostAcceptance": false,
+  "ownerKeysEnrolled": 0,
+  "accessTokensIssued": 0,
+  "sourceSha256": "f9daf6bdc0a641f1527b07efadfd8f9f36cb3047e8e22b574a00fac60435cc82",
+  "files": [
+    {
+      "path": "HANDOFF.md",
+      "bytes": 7036,
+      "sha256": "16d0f03c2171aa524dd5b570e166f707b4a9329e97dec126b43c8259e68c82c2"
+    },
+    {
+      "path": "IssuerStateFixtureQA.csproj",
+      "bytes": 666,
+      "sha256": "2eb34a429e57dc63dc1824ecbc78400a62d6acb99a27e8a927ca683e8c3086d2"
+    },
+    {
+      "path": "PRESERVE_A_SOURCE_HISTORY_ONCE.py",
+      "bytes": 2898,
+      "sha256": "73a05fcc72a51a95b1544aeb423e91b7004040860fefe833c3cfe18727a91584"
+    },
+    {
+      "path": "ProtectedIssuerState.cs",
+      "bytes": 21763,
+      "sha256": "f9daf6bdc0a641f1527b07efadfd8f9f36cb3047e8e22b574a00fac60435cc82"
+    },
+    {
+      "path": "ProtectedIssuerState.csproj",
+      "bytes": 547,
+      "sha256": "3813ace18fe938daf744e5eb63d14832d66fe43b3868da6a4b19193a6f39073e"
+    },
+    {
+      "path": "QUALIFY_STORE_A_ONCE.py",
+      "bytes": 3659,
+      "sha256": "aa0c2c87254aba02218499223c0f43926f044259de12ea5ee23c12e9aa895fd6"
+    },
+    {
+      "path": "QUALIFY_STORE_B_ONCE.py",
+      "bytes": 3659,
+      "sha256": "ca3e0d8154bacacbc47a488af05a24bf5e4d080bbfadb9bdcfde73efb1d1ab31"
+    },
+    {
+      "path": "StoreQA.cs",
+      "bytes": 17340,
+      "sha256": "f6322b73c65fe20669c3d77be9e37122500f9da599b8b4835e677a063e29040e"
+    },
+    {
+      "path": "verify-pending-contract.mjs",
+      "bytes": 1258,
+      "sha256": "33883a3842a34f18226c897f993397364a785e0f085939e474fefd4f0a943b82"
+    },
+    {
+      "path": "VERIFY_CONTRACT_C_ONCE.py",
+      "bytes": 1049,
+      "sha256": "8c49540232c1b75e2ff7e90545ee39ea31fd4928404d05538cb3a6c7d5ebee53"
+    },
+    {
+      "path": "history-source-a/DO_NOT_RUN.json",
+      "bytes": 410,
+      "sha256": "f6d7586cd6757d5ed8fc407e7fcaca081e122ca9b5f3366a372416dd86233fe7"
+    },
+    {
+      "path": "history-source-a/ProtectedIssuerState.cs",
+      "bytes": 18705,
+      "sha256": "5ab573378c469135b8731c4958107845234c679b4f77e0a524794fe48e2c0db4"
+    },
+    {
+      "path": "history-source-a/StoreQA.cs",
+      "bytes": 15065,
+      "sha256": "aea1fc1caec49b8431d7479297c9e936580d9d87ca93b72be27de871f011ed9d"
+    },
+    {
+      "path": "qa-a/ADMISSION.json",
+      "bytes": 1983,
+      "sha256": "9d40007482ce7957749fa0d226acb4461a6be3ab3f220ba698a20de06c26d75e"
+    },
+    {
+      "path": "qa-a/build-fixture.stderr.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "qa-a/build-fixture.stdout.log",
+      "bytes": 422,
+      "sha256": "af82db2f69a272e91d511ad9cd1aa7f4884183405b9c8570c3d4ad9af5aab51a"
+    },
+    {
+      "path": "qa-a/build-production.stderr.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "qa-a/build-production.stdout.log",
+      "bytes": 416,
+      "sha256": "7c804f4a2768e240aa48f01c08ef8510a102402652c0c72171bf634debefc13b"
+    },
+    {
+      "path": "qa-a/RECEIPT.json",
+      "bytes": 3791,
+      "sha256": "fcade933107757468aca4df0d8ea5afac2eeb43b91455638f3e38f702ae13d8e"
+    },
+    {
+      "path": "qa-a/store-fixture-cases.stderr.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "qa-a/store-fixture-cases.stdout.log",
+      "bytes": 2073,
+      "sha256": "b40149312c8c48696c446bf56a0d822d1881240178c9ecf48067cf478f826303"
+    },
+    {
+      "path": "qa-b/ADMISSION.json",
+      "bytes": 1983,
+      "sha256": "f3e300852bb6ea5678e8bf0d132f2ffe74175f638cff766350d1a7ac4ce51ad1"
+    },
+    {
+      "path": "qa-b/build-fixture.stderr.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "qa-b/build-fixture.stdout.log",
+      "bytes": 422,
+      "sha256": "40f58edefeaf0be8a5cbaf8db2810892b93cc80470cd4aca314d7c8d6a1d0102"
+    },
+    {
+      "path": "qa-b/build-production.stderr.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "qa-b/build-production.stdout.log",
+      "bytes": 416,
+      "sha256": "4d761e6d8a37c0befa99f50e9b8880832e30c7eb67d7ac7a28fa598b1338b79c"
+    },
+    {
+      "path": "qa-b/RECEIPT.json",
+      "bytes": 3791,
+      "sha256": "b727b813a518bd6d0ac4ebca43501e7658bc8abfa89403a8febf508ed235595a"
+    },
+    {
+      "path": "qa-b/store-fixture-cases.stderr.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "qa-b/store-fixture-cases.stdout.log",
+      "bytes": 2530,
+      "sha256": "8412ec4090e35800e8ee6de9ae6524fc6245b7720e467c8cc20e412357bcedbc"
+    },
+    {
+      "path": "qa-c/RECEIPT.json",
+      "bytes": 345,
+      "sha256": "353e26e3cc257884c15ef5bc655bb5c42f2a556dd6fbf8245741622ce4316537"
+    },
+    {
+      "path": "qa-c/stderr.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "qa-c/stdout.log",
+      "bytes": 203,
+      "sha256": "14628f54c753fa64c1d74fac317750f7b2a09f8920bcedc2df6d1fe71d7ad486"
+    }
+  ],
+  "open": [
+    "protected native deployment/load-chain and real enrollment",
+    "real HTTP/CIMD/JWKS/callback/code-token integration",
+    "capacity rollover/compaction",
+    "joint rollback witness and OS power-loss acceptance"
+  ],
+  "oneReturn": "Parent cumulative package only; exclude all package caches and fixture state"
+}

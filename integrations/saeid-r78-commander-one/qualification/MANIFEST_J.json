@@ -1,0 +1,116 @@
+[
+  {
+    "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-integration-r78\\reviews\\independent-final\\HANDOFF_J.md",
+    "relativePath": "HANDOFF_J.md",
+    "bytes": 3990,
+    "sha256": "25e4a9c0fa68d46c2df06fb3d9e4ed0ec29861ffb84ff25f13e52593f1d346cd"
+  },
+  {
+    "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-integration-r78\\reviews\\independent-final\\FINALIZE_REVIEW_J_ONCE.py",
+    "relativePath": "FINALIZE_REVIEW_J_ONCE.py",
+    "bytes": 2818,
+    "sha256": "69e8f880197a0a0fc3d22ceaa6e14b225db22a8864d7b871e7cf42751fd6d7c0"
+  },
+  {
+    "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-integration-r78\\reviews\\independent-final\\SOURCE_DELTA.json",
+    "relativePath": "SOURCE_DELTA.json",
+    "bytes": 666,
+    "sha256": "6bc968331cc2038d2074b00f205ec343bfd64a18d00651005952d73078e61d7c"
+  },
+  {
+    "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-integration-r78\\reviews\\independent-final\\ACCEPT_RESOURCE_FIX_B.json",
+    "relativePath": "ACCEPT_RESOURCE_FIX_B.json",
+    "bytes": 1286,
+    "sha256": "975819491f4d511339a6c59c34c55222e01a3bc941a5731029f27508816f9e60"
+  },
+  {
+    "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-integration-r78\\reviews\\independent-final\\caller-await-regression.test.mjs",
+    "relativePath": "caller-await-regression.test.mjs",
+    "bytes": 4230,
+    "sha256": "fc76698bed18b0c675e0f3f521864df48e3d83a0b39685960e64f29c76c86526"
+  },
+  {
+    "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-integration-r78\\reviews\\independent-final\\resource-revocation-regression.test.mjs",
+    "relativePath": "resource-revocation-regression.test.mjs",
+    "bytes": 3741,
+    "sha256": "16c1b535ca2520145f87a8d23222285a1b5e6734af4d68ab251d0ef822cf0f39"
+  },
+  {
+    "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-integration-r78\\reviews\\independent-final\\full-qualification\\AGGREGATE_SOURCE_QUALIFICATION_J.json",
+    "relativePath": "full-qualification/AGGREGATE_SOURCE_QUALIFICATION_J.json",
+    "bytes": 35202,
+    "sha256": "610307342231af76a974932b9b782eab20e7a9aec927670eb18cd68c2e6f62b1"
+  },
+  {
+    "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-integration-r78\\reviews\\independent-final\\full-qualification\\AGGREGATE_SOURCE_QUALIFICATION_I.json",
+    "relativePath": "full-qualification/AGGREGATE_SOURCE_QUALIFICATION_I.json",
+    "bytes": 59146,
+    "sha256": "a30ca3a6988627adf122513c3f2f17984f5d3f8971bb71d08730ec662957faa2"
+  },
+  {
+    "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-integration-r78\\reviews\\independent-final\\full-qualification\\SOURCE_MANIFEST_I.json",
+    "relativePath": "full-qualification/SOURCE_MANIFEST_I.json",
+    "bytes": 177260,
+    "sha256": "bb0f5e2a4901fc5f1b7a644e75434825d1b3ea5847f3e081eff3a6f7044f03c7"
+  },
+  {
+    "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-integration-r78\\reviews\\independent-final\\full-qualification\\GUARDED_FULL_QUALIFICATION_J.py",
+    "relativePath": "full-qualification/GUARDED_FULL_QUALIFICATION_J.py",
+    "bytes": 17160,
+    "sha256": "36456c5c8337fd457eccb5efc3e7959cdd7e01aa1995ce2d84ca85d65ce63159"
+  },
+  {
+    "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-integration-r78\\reviews\\independent-final\\full-qualification\\PARENT_ACK_J.json",
+    "relativePath": "full-qualification/PARENT_ACK_J.json",
+    "bytes": 550,
+    "sha256": "107f9ae5f6a98c435eb52f36b65653372ce31900165ae7b05138778d0151fa00"
+  },
+  {
+    "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-integration-r78\\reviews\\independent-final\\full-qualification\\RUN_J\\FINAL_RECEIPT.json",
+    "relativePath": "full-qualification/RUN_J/FINAL_RECEIPT.json",
+    "bytes": 43823,
+    "sha256": "5de12f4ae70009d175ce80dd8b52ff8f4b8af90d963ca3dcbb9b432c7f4e7cf9"
+  },
+  {
+    "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-integration-r78\\reviews\\independent-final\\full-qualification\\SELFCHECK_E_RECEIPT.json",
+    "relativePath": "full-qualification/SELFCHECK_E_RECEIPT.json",
+    "bytes": 4631,
+    "sha256": "daeb479ba7f04925668fe4024b49eb96a2b8a46e9adac196e23c86e5341cfb24"
+  },
+  {
+    "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-integration-r78\\reviews\\independent-final\\full-qualification\\SQLITE_PATH_PROBE_F_RECEIPT.json",
+    "relativePath": "full-qualification/SQLITE_PATH_PROBE_F_RECEIPT.json",
+    "bytes": 2563,
+    "sha256": "93e45842f5ad688d79d54b1ed67ef2205925e96cfc3133e812e61cddd636f8bc"
+  },
+  {
+    "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-integration-r78\\reviews\\independent-final\\full-qualification\\PRIVATE_GIT_CONTEXT_J_RECEIPT.json",
+    "relativePath": "full-qualification/PRIVATE_GIT_CONTEXT_J_RECEIPT.json",
+    "bytes": 984,
+    "sha256": "2af0f1ad52de79304dfb659fc2d2f496f4ca3a486759a095f4ecdffd0135cca2"
+  },
+  {
+    "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-integration-r78\\reviews\\independent-final\\full-qualification\\GIT_EXECUTION_CONTEXT_AUDIT_J.json",
+    "relativePath": "full-qualification/GIT_EXECUTION_CONTEXT_AUDIT_J.json",
+    "bytes": 5815,
+    "sha256": "b8f21cf0e809031e34c6043874706f55387a0fa361b1efdecf5b80eff0c0f68f"
+  },
+  {
+    "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-integration-r78\\reviews\\independent-final\\full-qualification\\fixture-contract-g\\FIXTURE_CONTRACT_G_RECEIPT.json",
+    "relativePath": "full-qualification/fixture-contract-g/FIXTURE_CONTRACT_G_RECEIPT.json",
+    "bytes": 5787,
+    "sha256": "9c0adce0ade7eafe1c0c06bbe16294ad1fd2bc2db65e6b60ceb289007696c971"
+  },
+  {
+    "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-integration-r78\\reviews\\independent-final\\full-qualification\\fixture-contract-i\\DYNAMIC_COPY_AUDIT_I.json",
+    "relativePath": "full-qualification/fixture-contract-i/DYNAMIC_COPY_AUDIT_I.json",
+    "bytes": 3352,
+    "sha256": "d13f824d2b19dca4e724b74a8334a71a46957c747f0e77392ac4ff5cf244b7b4"
+  },
+  {
+    "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-integration-r78\\reviews\\independent-final\\full-qualification\\SELECTIVE_TEST_PLAN_J.json",
+    "relativePath": "full-qualification/SELECTIVE_TEST_PLAN_J.json",
+    "bytes": 10564,
+    "sha256": "04fda926710c30e8c877d49852e2284fd94e5397fc2bd03e7fbb29c11b3f3657"
+  }
+]

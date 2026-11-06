@@ -1,0 +1,14 @@
+{
+  "schema": "r78-exchange-c-qa-metadata-clarification-v1",
+  "scope": "Clarifies preserved raw QA metadata without rewriting consumed receipts or qualified source",
+  "fixturePrivateSigningKeysPersisted": false,
+  "fixturePublicPolicyAndPublicKeysPersisted": true,
+  "fixtureSignedReceiptsAndTokenInteropArtifactsPersisted": true,
+  "realOwnerKeysOrAccountCredentialsCreated": false,
+  "rawReceiptField": "fixtureKeysInMemoryOnly=true is overbroad; only private signing-key material stayed in memory. Public enrollment-shaped fixture policy/keys and signed test artifacts were saved under the admitted private fixture root.",
+  "controlledChildExitFaultPositions": 3,
+  "controlledChildExitInstances": 4,
+  "childCountBasis": "Four passing cases each start and observe one owned child exiting72. Two cases exercise AFTER_AUTHORIZE_PREPARED; the other positions are AFTER_NATIVE_CONSENT_CONSUMED and AFTER_TOKEN_PREPARED. Raw test output childIntentionalExits=3 was a stale position count, not the instance count.",
+  "privateFixtureRoot": "G:/CodexWork/RC1R78AuthAot/exchange-fixtures-c",
+  "includePrivateFixtureStateInReturn": false
+}

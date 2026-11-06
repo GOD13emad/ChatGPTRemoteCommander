@@ -1,0 +1,162 @@
+{
+  "schema": "r78-native-owner-j-qualified-source-v1",
+  "utc": "2026-11-05T23:49:04.367353+00:00",
+  "status": "PASS_NATIVE_SYSTEM32_SEARCH_SOURCE_AND_NEGATIVES_NOT_DEPLOYED",
+  "binary": {
+    "path": "G:\\CodexWork\\RC1R78AuthAot\\j\\native\\CommanderOwnerConsent.exe",
+    "bytes": 3538432,
+    "sha256": "1ae194557963771ebc0b74d5590542fd3013494985a3a266963da4b0048b84c4"
+  },
+  "binaryPostSha256": "1ae194557963771ebc0b74d5590542fd3013494985a3a266963da4b0048b84c4",
+  "files": [
+    {
+      "path": "DEPLOYMENT_REVIEW.md",
+      "bytes": 5497,
+      "sha256": "5f5e87e50a8142c9cc281e3f5c15cba3aff4b9f2e71d64c97559d4fa5e61eaf3"
+    },
+    {
+      "path": "JsonOutput.cs",
+      "bytes": 1724,
+      "sha256": "f81bd82f1745f3469d99db819b405c487e61f8f9aba132267f09111857f28926"
+    },
+    {
+      "path": "NativeAotOwnerConsent.cs",
+      "bytes": 5763,
+      "sha256": "64025431c3dda2e66d3598f25d1ed8c3c1efbe7d54137ed451fd7ba325cc6ff4"
+    },
+    {
+      "path": "NativeDialog.cs",
+      "bytes": 3728,
+      "sha256": "b14e5bee603947306b49df72a4353c580b91ae8b11bf571a84104a446cd7207b"
+    },
+    {
+      "path": "owner-consent.manifest",
+      "bytes": 633,
+      "sha256": "96cda07d19f33adc9a6224b2c1d3fbbfe2462a96074d8e00fd5b1497ec5771a8"
+    },
+    {
+      "path": "OwnerConsentAot.csproj",
+      "bytes": 1154,
+      "sha256": "f07586166656dbbc38dcbf76c288cb2295700af2e04fdc3f2ddcc3ab34f7a772"
+    },
+    {
+      "path": "OwnerConsentCore.cs",
+      "bytes": 8372,
+      "sha256": "684dd5d8efdc9a90c6d00e1ee6adb7a04bdf3563d716fa9e2dc76c8fab28d663"
+    },
+    {
+      "path": "QUALIFY_J_ONCE.py",
+      "bytes": 7898,
+      "sha256": "b11031c38ee938591450321409e6eccc935c972231fec229562ac18bcc6b9667"
+    },
+    {
+      "path": "SOURCE_ADMISSION.json",
+      "bytes": 1211,
+      "sha256": "5f4f6beac8910ca440fa1a95f07e9c37263a8968ec7d0c99f00352f3dab7a605"
+    },
+    {
+      "path": "SystemDllPolicy.cs",
+      "bytes": 255,
+      "sha256": "916e611fd3dfbd23614e774b134f0a5f90fcbecbdc385e53b15d03e32a6d2347"
+    },
+    {
+      "path": "WindowsGuard.cs",
+      "bytes": 6108,
+      "sha256": "30d773de2fde0a50f5519961f0d19ebbeb59bf6f6346f7d3bc9301f4f79ec0b5"
+    },
+    {
+      "path": "qa-j/embedded.manifest",
+      "bytes": 714,
+      "sha256": "3622df90634a9b19f3a89e23f4ec8771a1216ab3dc32b13e18c77105f4ddf5be"
+    },
+    {
+      "path": "qa-j/extract-embedded-manifest.stderr.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "qa-j/extract-embedded-manifest.stdout.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "qa-j/native-j-filtered-denial.stderr.log",
+      "bytes": 78,
+      "sha256": "d892cc060a319f3f33e9dfef238065d7949ebb63400bab89d6adf0dbcc027aec"
+    },
+    {
+      "path": "qa-j/native-j-filtered-denial.stdout.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "qa-j/native-j-preload-negative.stderr.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "qa-j/native-j-preload-negative.stdout.log",
+      "bytes": 208,
+      "sha256": "bb20dccb5abb602ca48d10b5d2a62d64022727a605eb0e13e510a4980c9fa5d1"
+    },
+    {
+      "path": "qa-j/native-j-token-diagnostic.stderr.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "qa-j/native-j-token-diagnostic.stdout.log",
+      "bytes": 208,
+      "sha256": "bb20dccb5abb602ca48d10b5d2a62d64022727a605eb0e13e510a4980c9fa5d1"
+    },
+    {
+      "path": "qa-j/pe-dependencies.stderr.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "qa-j/pe-dependencies.stdout.log",
+      "bytes": 769,
+      "sha256": "578fa86ecc892ef724ed00026211f025fd40129f26b90742ee4d752991138a7b"
+    },
+    {
+      "path": "qa-j/pe-loadconfig.stderr.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "qa-j/pe-loadconfig.stdout.log",
+      "bytes": 32544,
+      "sha256": "287a5f22159fc06b3aa55842b4ec1522be148be45ea31a9dc9bc62f3fd895fd4"
+    },
+    {
+      "path": "qa-j/publish-j-native.stderr.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "qa-j/publish-j-native.stdout.log",
+      "bytes": 202,
+      "sha256": "b2c365313fc34158cafbc8ec39809c0fc00a5185b755443c3438c164c95627e5"
+    },
+    {
+      "path": "qa-j/RECEIPT.json",
+      "bytes": 5033,
+      "sha256": "e272455a474c76b63d78228b05c4dcb8020d165a297d239e21ae1ee4ff11d2a6"
+    },
+    {
+      "path": "qa-j/restore-j-offline.stderr.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "qa-j/restore-j-offline.stdout.log",
+      "bytes": 119,
+      "sha256": "713ad697195a96e4daa5618c0f8a114bc510c13dc0d2d6818302a31a1d8e7cd3"
+    }
+  ],
+  "realOwnerConsent": false,
+  "actualElevatedLoadChainAccepted": false,
+  "installedCommanderChanged": false,
+  "parentOneReturnOnly": true
+}

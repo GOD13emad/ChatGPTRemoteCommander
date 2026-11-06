@@ -1,0 +1,213 @@
+{
+  "schema": 1,
+  "revision": "R78",
+  "scope": "Remote Commander Saeed; Emad read-only comparison; no OCR/game/video work",
+  "authorityOrder": "source/config > reproducible audit > report > handoff > chat > inference",
+  "installed": "0.11.0-dev.23+R75 unchanged; new source is not installation or FINAL",
+  "historyDependencies": [
+    "00_PROJECT_CONTROL/HISTORY.jsonl append-only",
+    "commander-one-integration-r76/FINAL_RETURN_R76.json and MASTER_HANDOFF_R76.zip",
+    "commander-one-durable-r77/FINAL_RETURN_R77.json and MASTER_HANDOFF_R77.zip",
+    "Historical work/voice-products-20261001/00_PROJECT_CONTROL is not current installed authority"
+  ],
+  "rulesBeforeNextAction": [
+    "Read native CURRENT/HANDOFF plus the current named receipt; reconcile exact source/config/host/owner and consumed intent before any action",
+    "Unknown old GUI outcome stays UNKNOWN_NO_REPLAY; a new app revision or empty lease does not resolve it",
+    "Inspect the shared parent cause before patching individual symptoms; three similar failures require history and primary-source research",
+    "Prefer one admitted short G execution/cache/profile root for Windows native dependencies; keep authority/evidence at the project root",
+    "Use physical file SHA256 separately from explicitly named canonical-content digest",
+    "No installed update until same-source acceptance and rollback/migration readiness; no implicit transfer of source-bound owner approval"
+  ],
+  "lessons": [
+    {
+      "id": "R78_SOURCE_UNION",
+      "class": "UNREVIEWED_MERGE_OR_FEATURE_LOSS",
+      "cause": "R67 workflow repairs conflict with R77 witness protection; One omitted six R75 recovery files and the NOT_APPLIED chain",
+      "evidence": "SOURCE_UNION_APPLIED_RECEIPT.json; workflow union114 tests; GUI union91 PASS/1 native SKIP",
+      "prevention": "Three-way pinned source union, duplicate-method audit, host-only cessation block preserved exactly, native/PowerShell/JS recovery chain reviewed together",
+      "rollback": "Candidate-only backups; R75 source untouched"
+    },
+    {
+      "id": "R78_ROUTER_AUTH_TOCTOU",
+      "class": "MUTABLE_AUTH_CACHE_AND_ROUTE_DRIFT",
+      "cause": "Caller cache and route could change while asynchronous checks awaited",
+      "evidence": "Router baseline1 PASS/3 FAIL; union5 PASS",
+      "prevention": "Immutable scalar caller snapshot, route generation CAS before dispatch; stale/changed context yields zero backend effect"
+    },
+    {
+      "id": "R78_BROKER_SELF_ASSERTION",
+      "class": "UNAUTHENTICATED_NATIVE_PROVENANCE",
+      "cause": "A JSON isSystem/SID field was being treated as peer verification",
+      "evidence": "Broker status16 PASS; independent connected-handle C# client9 negative cases/5 own pipes/zero request bytes",
+      "prevention": "Self-reported identity remains diagnostic only; native operational authority requires actual kernel token/process/image/enrollment proof",
+      "remaining": "Actual SYSTEM-positive protected service acceptance and wiring are OPEN"
+    },
+    {
+      "id": "R78_TERMINAL_OWNER_COLLISION",
+      "class": "CROSS_GENERATION_IDENTITY_COLLISION",
+      "cause": "Both application instances allocate term-1; ambiguous owner cannot safely receive input",
+      "evidence": "Actual A collision denial; actual C legacy term-1 plus two concurrent namespaced terminals each received exactly one fresh sentinel input",
+      "prevention": "New-core optional bounded generation namespace; default legacy ID format unchanged; exact-owner probes remain mandatory and IDs confer no authority"
+    },
+    {
+      "id": "R78_NAMESPACE_PRE_AWAIT_RACE",
+      "class": "CONCURRENT_ALLOCATION",
+      "cause": "Derived B allocated terminal counter before awaited preflight",
+      "evidence": "Source review; C actual concurrent-start test; B source preserved",
+      "prevention": "Validate namespace before effects, allocate/increment synchronously after awaited preflight and before spawn",
+      "remaining": "Production authenticated relay/intent wiring and live migration not accepted"
+    },
+    {
+      "id": "R78_CALLER_ASYNC_EXPIRY",
+      "class": "STALE_AUTHORIZATION_AFTER_AWAIT",
+      "cause": "Signed action or access token could expire/change during native/principal resolution",
+      "evidence": "Independent baseline1 PASS/5 FAIL; integrated fixed6 PASS",
+      "prevention": "Snapshot verified claims/scopes and recheck signature/action/time after asynchronous observers before returning authority"
+    },
+    {
+      "id": "R78_REVOCATION_CACHE_ORDER",
+      "class": "AUTHORIZATION_RESURRECTION",
+      "cause": "Throwing on valid revocation before retaining its sequence allowed replay of an older still-current active envelope",
+      "evidence": "Independent regression then20 combined cases PASS; local-resource-auth/QUALIFICATION.json",
+      "prevention": "Authenticate/bind/time-check state first, reject rollback/equivocation, latch terminal revocation before denial; malformed/forged/stale state cannot poison cache",
+      "remaining": "Memory sequence is not a cold durable anchor; no real issuer enrollment"
+    },
+    {
+      "id": "R78_AUTH_MANAGED_LOAD_CHAIN",
+      "class": "PRE_MAIN_MANAGED_CODE_LOADING",
+      "cause": "Framework-dependent apphost hash alone does not pin companion code or managed startup hooks",
+      "evidence": "Actual harmless managed positive-hook control vs NativeAOT negative; native PE CLR directory absent; native non-admin denial",
+      "prevention": "Framework-dependent variant DO NOT ELEVATE; admitted NativeAOT source direction with independently reviewed protected deployment/load chain",
+      "remaining": "Unmanaged DLL/SxS lookup, positive owner UI, protected issuer and real OAuth still require acceptance"
+    },
+    {
+      "id": "R78_OFFICIAL_AOT_PACKAGE_ADMISSION",
+      "class": "TRUST_AND_BUILD_PREREQUISITE",
+      "cause": "Offline cache missing AOT packages; require-signature mode initially had no trusted signer",
+      "evidence": "Five exact Microsoft10.0.14 packages admitted with official repository certificate/owners, SHA512/SHA256, verify --all PASS",
+      "prevention": "Keep signature requirement, admit exact official repository certificate/owners and source mapping; never replace with unrestricted trust or a paid/new-model dependency"
+    },
+    {
+      "id": "R78_SHARED_WINDOWS_PATH_LIMIT",
+      "class": "NATIVE_MAX_PATH",
+      "cause": "Deep project-relative cache/home paths exceed Windows native library limits",
+      "evidence": "Native build264-character copy failure; actual SQLite55-character success/269-character error14; browser long-cache0xCE contribution",
+      "prevention": "Admitted short G build/cache/private-home roots; no global LongPathsEnabled or installed setting change",
+      "remaining": "Browser short-profile failure proved long path was not its sole cause"
+    },
+    {
+      "id": "R78_PROCESS_LOCAL_PATH",
+      "class": "CHILD_EXECUTABLE_RESOLUTION",
+      "cause": "Sparse/inherited PATH omitted where.exe; Path/PATH alias duplicates and PS7/WinPS5 module inheritance are recurrence risks",
+      "evidence": "R76/R77 history plus R78 official process-environment research and PATH_DIAGNOSTIC reuse; native AOT publish succeeds after child-only correction",
+      "prevention": "One case-normalized process-local PATH with exact Node/Pwsh/Git pins; remove inherited native opt-ins and managed preload variables; never mutate global PATH/PSModulePath"
+    },
+    {
+      "id": "R78_MANIFEST_DIGEST_REPRESENTATION",
+      "class": "EVIDENCE_NAMING_AMBIGUITY",
+      "cause": "Reviewer called a canonical parsed-content digest the manifest SHA; parent correctly rejected it as a physical file SHA",
+      "evidence": "MANIFEST_RECONCILE_C_RECEIPT.json verifies all818 source files and19 executable modes",
+      "prevention": "manifestFileSha256 and canonicalManifestContentSha256 are distinct typed fields with exact canonicalization; preserve the failed preflight"
+    },
+    {
+      "id": "R78_JOB_ACCOUNTING_ASSUMPTION",
+      "class": "QA_ORACLE_FALSE_ASSUMPTION",
+      "cause": "Expected2 processes, while Windows creates two additional console hosts",
+      "evidence": "Actual held-handle PID/FILETIME/image observation of Node parent/child and two protected System32 conhosts; natural empty Job and assignment-denial no-resume proof",
+      "prevention": "Ownership comes from suspended assignment into the private unnamed Job and held handles; diagnostic PID snapshots are not additional authorization and must not race every short-lived child"
+    },
+    {
+      "id": "R78_LEGACY_FIXTURE_SHARED_LEASE",
+      "class": "TEST_SETUP_CONTRACT_DRIFT",
+      "cause": "Older enabled-workflow fixture factories omit the new explicit shared root-lease directory",
+      "evidence": "Full F guard refusal; isolated G factory adaptation is test setup only",
+      "prevention": "Explicit shared lease outside each private memory directory, preserve oneWriterPerRoot and all assertions/deadlines/negative cases; no invented installer failure",
+      "remaining": "Complete aggregate check/test coverage ledger pending final qualification receipt"
+    },
+    {
+      "id": "R78_FIXTURE_LEXICAL_ANCHOR",
+      "class": "QA_ADAPTATION_REFERENCE_ERROR",
+      "cause": "One inserted conversation fixture property used root instead of its existing base/workflowState binding",
+      "evidence": "G154 PASS/3 FAIL before remaining suite; corrected H must run only changed conversation cases",
+      "prevention": "Bind inserted paths to the actual local factory memory variable; preserve G failure and reuse unchanged passed cases with exact source hashes"
+    },
+    {
+      "id": "R78_BROWSER_PRIMARY_ERROR",
+      "class": "DOWNSTREAM_TIMEOUT_AND_DIAGNOSTIC_LOSS",
+      "cause": "Browser helper ignored native stderr; a diagnostic cleanup exception lost an in-memory original error",
+      "evidence": "F file-backed pre-cleanup104-byte native cause: REMOTE_DEBUGGING_REQUIRES_NONDEFAULT_PROFILE; timeout is downstream; nine diagnostic source/wire cases PASS",
+      "prevention": "Durably preserve first error before cleanup; separate cleanup uncertainty; fixed sanitized metadata only; raw stderr stays local",
+      "remaining": "Why stable browser classified the supplied QA directory as default/unknown is UNPROVEN; CfT supported alternative requires separate admission and runtime proof"
+    },
+    {
+      "id": "R78_GITHUB_TREE_INPUT_LIMIT",
+      "class": "API_REQUEST_SIZE",
+      "cause": "Single2.3MB/819-entry tree request returned explicit422 timeout/too-large",
+      "evidence": "TREE_A_FAILURE.json; fresh21-part unreferenced tree build succeeded and all818 server blob identities/modes match",
+      "prevention": "Bound new-content entries and request size; persist incremental tree outcomes; no duplicate commit/ref update or blind full-payload retry"
+    },
+    {
+      "id": "R78_DYNAMIC_FIXTURE_COPY",
+      "class": "QA_MODULE_CLOSURE",
+      "cause": "Two old HTTP fixtures manually copied an incomplete module list",
+      "prevention": "Copy the complete admitted107 source module closure in those normal-server fixtures; retain intentional stubs and negative assertions",
+      "evidence": "Source I two test-only changes; aggregate J all103 command coverage",
+      "installedChanged": false
+    },
+    {
+      "id": "R78_PRIVATE_GIT_CONTEXT",
+      "class": "QA_RELEASE_CONTEXT",
+      "cause": "git show HEAD in a nested non-repository source tree resolved an unrelated outer repository or missing HEAD",
+      "prevention": "Private isolated repository, exact818 sources/19 modes, real parentless fixture commit, explicit LF/CRLF distinctions; never claim it as public release ancestry",
+      "evidence": "J targeted historical failure passes, remaining18 full commands pass",
+      "installedChanged": false
+    },
+    {
+      "id": "R78_CFT_UNSIGNED_ADMISSION",
+      "class": "DEPENDENCY_PROVENANCE",
+      "cause": "Chrome/CfT publisher-signature assumption did not match official unsigned CfT distribution",
+      "prevention": "Preserve original publisher gate NOT_MET; admit exact official immutable TLS/hash artifact only for private ordinary-user loopback QA, no redistribution/security bypass",
+      "evidence": "CfT I actual Persian fill1/click1/screenshot; profile closed and0 remaining own processes",
+      "installedChanged": false
+    },
+    {
+      "id": "R78_TOKEN_REVOCATION_CAPACITY",
+      "class": "AUTH_JOURNAL_CAPACITY",
+      "cause": "State refresh could exhaust the journal before durable revocation",
+      "prevention": "Reserve terminal revocation rows/bytes before issuing or refreshing grants; no refresh can consume them",
+      "evidence": "Independent REVIEW_A and final exchange qualification/review; real deployment remains OPEN",
+      "installedChanged": false
+    },
+    {
+      "id": "R78_EXCHANGE_EXPIRY_BOUNDARY",
+      "class": "STALE_AUTH_AFTER_CRYPTO_IO",
+      "cause": "Code/client/native consent expiry could pass while crypto or durable IO ran",
+      "prevention": "Carry expiry and check again around decisive signing/publish; outer composition denies expired native receipts; frozen standalone StoreB late-consume boundary remains explicitly limited",
+      "evidence": "Final exchange fixture-clock regressions and REVIEW_B; no owner keys enrolled",
+      "installedChanged": false
+    },
+    {
+      "id": "R78_PUBLIC_CHECKER_CONTENT_ENTRY",
+      "class": "EVIDENCE_CHECKER_REPRESENTATION",
+      "cause": "Parent compared absent sha on new-content tree entries",
+      "prevention": "Use physical Git blob hashes from qualified source manifest, not content-entry transport shape",
+      "evidence": "818 published tree source blobs/modes verified; no repository mutation on checker failure",
+      "installedChanged": false
+    }
+  ],
+  "whole": "NOT_FINAL",
+  "installedChanged": false,
+  "noOldJobOrGuiActionReplayed": true,
+  "supersedesForContinuation": "FAILURE_PREVENTION_R78.json; preserved immutable historical snapshot",
+  "sourceQualification": "Aggregate J PASS, not a new monolithic rerun; overlapping test ledgers are not summed",
+  "authenticationQualification": {
+    "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-integration-r78\\reviews\\durable\\local-owner-auth\\protected-oauth-exchange\\QUALIFICATION.json",
+    "bytes": 9757,
+    "sha256": "e029b4d796b1f4336dc3bb86246c0ae8f93dca2ebba0213a2db2038a1af6d989"
+  },
+  "latestIndependentAuthReview": {
+    "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-integration-r78\\reviews\\independent-final\\auth-review\\REVIEW_B.md",
+    "bytes": 4746,
+    "sha256": "ee974afe08d61b5175b697c1d0cec329bfd89eb313513c99fd38d9a2e93e8e00"
+  }
+}

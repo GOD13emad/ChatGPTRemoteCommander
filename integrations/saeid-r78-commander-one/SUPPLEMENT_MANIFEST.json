@@ -1,0 +1,462 @@
+{
+  "schema": 1,
+  "revision": "R78",
+  "status": "SOURCE_ONLY_NOT_INSTALLED_NOT_FINAL",
+  "files": [
+    {
+      "path": "integrations/saeid-r78-commander-one/SOURCE_ACCEPTANCE_R78.json",
+      "mode": "100644",
+      "bytes": 4532,
+      "sha256": "d1892588ca968f5dafb89b0a6e8050d92de88d3a89dc9c24662e275cbe4c4e0d",
+      "gitBlobSha1": "534328f5eb198780e33d87960a71a97ff6b6b9fb"
+    },
+    {
+      "path": "integrations/saeid-r78-commander-one/WORKSTREAMS_R78.json",
+      "mode": "100644",
+      "bytes": 5055,
+      "sha256": "d6e6d0725f7da6da1f9c35732858ee07d9f60034859685daf7b8377ca8673efa",
+      "gitBlobSha1": "837792a052b3b06f849776b9273f16c7ce1bfd4f"
+    },
+    {
+      "path": "integrations/saeid-r78-commander-one/FAILURE_PREVENTION_CURRENT_R78.json",
+      "mode": "100644",
+      "bytes": 14786,
+      "sha256": "14aea97e8e7ada25e6b19451f3b768e4dceb0cad91a1dd857d11c5e3faee8bdb",
+      "gitBlobSha1": "4e0ac83935b53e4b9137791a60b1709966d4da40"
+    },
+    {
+      "path": "integrations/saeid-r78-commander-one/FAILURE_PREVENTION_DELTA_PUBLIC_B.json",
+      "mode": "100644",
+      "bytes": 409,
+      "sha256": "de1b8bb13affc404c8103b8f9017803758841247ca44be50d590cb1e4c343480",
+      "gitBlobSha1": "c303ce0d8588614e90a88cb6f77291802c33c111"
+    },
+    {
+      "path": "integrations/saeid-r78-commander-one/MASTER_HANDOFF_R78.md",
+      "mode": "100644",
+      "bytes": 5727,
+      "sha256": "ef4badbdb45873cb7bc99d9dcf42827da2c68d4e381d344426e98d7a11b6a942",
+      "gitBlobSha1": "8af96f4838b3b15ce8b9ec936636c151e1869a1c"
+    },
+    {
+      "path": "integrations/saeid-r78-commander-one/local-owner/oauth-transaction-kernel.mjs",
+      "mode": "100644",
+      "bytes": 9861,
+      "sha256": "0c4c4046c499528dccf6a9b07bc0fdaf8fafb43044571277935a7cac6131211c",
+      "gitBlobSha1": "ea39cb42606bae03009665667baa86fb77c85d3d"
+    },
+    {
+      "path": "integrations/saeid-r78-commander-one/local-owner/oauth-transaction-kernel.test.mjs",
+      "mode": "100644",
+      "bytes": 8105,
+      "sha256": "9e21fb2f4577a1f1226eb2104f20e142b33c50f676521dff46950aa468319745",
+      "gitBlobSha1": "2c78a3177985367488077b88bb419bcfec0522da"
+    },
+    {
+      "path": "integrations/saeid-r78-commander-one/local-owner/LOCAL_OWNER_FLOW.md",
+      "mode": "100644",
+      "bytes": 12975,
+      "sha256": "1cff9116dc564ecad0738765d9a5706a7383c32702a7a4b9c2b4d61d92343fcb",
+      "gitBlobSha1": "3247ffcc46c876f9d75715af3ab5ef5f4d7494e3"
+    },
+    {
+      "path": "integrations/saeid-r78-commander-one/local-owner/QUALIFICATION.json",
+      "mode": "100644",
+      "bytes": 3029,
+      "sha256": "0d081b005c4dd49613a1d59ddef6f6154f0dfeeb5c2b2aa901cad73021a75f79",
+      "gitBlobSha1": "7e719143fc2f88a7e991f835902d1302f731bab0"
+    },
+    {
+      "path": "integrations/saeid-r78-commander-one/local-owner/native-consent-aot-j/DEPLOYMENT_REVIEW.md",
+      "mode": "100644",
+      "bytes": 5497,
+      "sha256": "5f5e87e50a8142c9cc281e3f5c15cba3aff4b9f2e71d64c97559d4fa5e61eaf3",
+      "gitBlobSha1": "b05276b5856828530f1ef19dea53bc02cdc7c02e"
+    },
+    {
+      "path": "integrations/saeid-r78-commander-one/local-owner/native-consent-aot-j/JsonOutput.cs",
+      "mode": "100644",
+      "bytes": 1724,
+      "sha256": "f81bd82f1745f3469d99db819b405c487e61f8f9aba132267f09111857f28926",
+      "gitBlobSha1": "93f7afdd47a5114ac6952b82255f2f0b702e93de"
+    },
+    {
+      "path": "integrations/saeid-r78-commander-one/local-owner/native-consent-aot-j/NativeAotOwnerConsent.cs",
+      "mode": "100644",
+      "bytes": 5763,
+      "sha256": "64025431c3dda2e66d3598f25d1ed8c3c1efbe7d54137ed451fd7ba325cc6ff4",
+      "gitBlobSha1": "04998f02d0bde237652f1d51dd4d5ca3520c2192"
+    },
+    {
+      "path": "integrations/saeid-r78-commander-one/local-owner/native-consent-aot-j/NativeDialog.cs",
+      "mode": "100644",
+      "bytes": 3728,
+      "sha256": "b14e5bee603947306b49df72a4353c580b91ae8b11bf571a84104a446cd7207b",
+      "gitBlobSha1": "011e95b66ba505d6ba2abcdb5f2d67b3080795dc"
+    },
+    {
+      "path": "integrations/saeid-r78-commander-one/local-owner/native-consent-aot-j/owner-consent.manifest",
+      "mode": "100644",
+      "bytes": 633,
+      "sha256": "96cda07d19f33adc9a6224b2c1d3fbbfe2462a96074d8e00fd5b1497ec5771a8",
+      "gitBlobSha1": "663cbf95b059fc55886bc740a7f2774f7129aa9b"
+    },
+    {
+      "path": "integrations/saeid-r78-commander-one/local-owner/native-consent-aot-j/OwnerConsentAot.csproj",
+      "mode": "100644",
+      "bytes": 1154,
+      "sha256": "f07586166656dbbc38dcbf76c288cb2295700af2e04fdc3f2ddcc3ab34f7a772",
+      "gitBlobSha1": "db1b4462c302d95fcfa1c7393307c8225feafce5"
+    },
+    {
+      "path": "integrations/saeid-r78-commander-one/local-owner/native-consent-aot-j/OwnerConsentCore.cs",
+      "mode": "100644",
+      "bytes": 8372,
+      "sha256": "684dd5d8efdc9a90c6d00e1ee6adb7a04bdf3563d716fa9e2dc76c8fab28d663",
+      "gitBlobSha1": "598333bb3662f4127b3a0ac3a483783188771d2d"
+    },
+    {
+      "path": "integrations/saeid-r78-commander-one/local-owner/native-consent-aot-j/QUALIFICATION.json",
+      "mode": "100644",
+      "bytes": 5492,
+      "sha256": "50a65aa9c43de3b414d7bc65cbd2f28f10e06940c37c890783d3c4ca9d7a6e3b",
+      "gitBlobSha1": "064412cdbfe60089905bc3141bde18305288fda0"
+    },
+    {
+      "path": "integrations/saeid-r78-commander-one/local-owner/native-consent-aot-j/SOURCE_ADMISSION.json",
+      "mode": "100644",
+      "bytes": 1211,
+      "sha256": "5f4f6beac8910ca440fa1a95f07e9c37263a8968ec7d0c99f00352f3dab7a605",
+      "gitBlobSha1": "0db22ead6df2b9627c0691080377d1ed188dd281"
+    },
+    {
+      "path": "integrations/saeid-r78-commander-one/local-owner/native-consent-aot-j/SystemDllPolicy.cs",
+      "mode": "100644",
+      "bytes": 255,
+      "sha256": "916e611fd3dfbd23614e774b134f0a5f90fcbecbdc385e53b15d03e32a6d2347",
+      "gitBlobSha1": "b1aba1b3aea14f7218361075b1e74dfc3fe0016c"
+    },
+    {
+      "path": "integrations/saeid-r78-commander-one/local-owner/native-consent-aot-j/WindowsGuard.cs",
+      "mode": "100644",
+      "bytes": 6108,
+      "sha256": "30d773de2fde0a50f5519961f0d19ebbeb59bf6f6346f7d3bc9301f4f79ec0b5",
+      "gitBlobSha1": "d76870ce9c2d5dd15e1a81f42fdc5d545078d92d"
+    },
+    {
+      "path": "integrations/saeid-r78-commander-one/local-owner/protected-issuer-state/HANDOFF.md",
+      "mode": "100644",
+      "bytes": 7036,
+      "sha256": "16d0f03c2171aa524dd5b570e166f707b4a9329e97dec126b43c8259e68c82c2",
+      "gitBlobSha1": "3a2b2656ebfb162a1e0fd0f738b3563dcca8b132"
+    },
+    {
+      "path": "integrations/saeid-r78-commander-one/local-owner/protected-issuer-state/IssuerStateFixtureQA.csproj",
+      "mode": "100644",
+      "bytes": 666,
+      "sha256": "2eb34a429e57dc63dc1824ecbc78400a62d6acb99a27e8a927ca683e8c3086d2",
+      "gitBlobSha1": "c6fce4c9450457b7ae8d5ccd10172602f5b23b70"
+    },
+    {
+      "path": "integrations/saeid-r78-commander-one/local-owner/protected-issuer-state/ProtectedIssuerState.cs",
+      "mode": "100644",
+      "bytes": 21763,
+      "sha256": "f9daf6bdc0a641f1527b07efadfd8f9f36cb3047e8e22b574a00fac60435cc82",
+      "gitBlobSha1": "b0fde2c3ede137ad4527e5bcfdacd57cf79855e2"
+    },
+    {
+      "path": "integrations/saeid-r78-commander-one/local-owner/protected-issuer-state/ProtectedIssuerState.csproj",
+      "mode": "100644",
+      "bytes": 547,
+      "sha256": "3813ace18fe938daf744e5eb63d14832d66fe43b3868da6a4b19193a6f39073e",
+      "gitBlobSha1": "3e60813f36a6c9a05d18f0c9d962db52b8168210"
+    },
+    {
+      "path": "integrations/saeid-r78-commander-one/local-owner/protected-issuer-state/QUALIFICATION.json",
+      "mode": "100644",
+      "bytes": 6223,
+      "sha256": "47df642b7332a5136f8b51c75661f1e9c4b1dc4f4099b472a8bd53d226d73621",
+      "gitBlobSha1": "392dcdf14ac695c4f2ec10d3758a88f4c5c33b98"
+    },
+    {
+      "path": "integrations/saeid-r78-commander-one/local-owner/protected-issuer-state/StoreQA.cs",
+      "mode": "100644",
+      "bytes": 17340,
+      "sha256": "f6322b73c65fe20669c3d77be9e37122500f9da599b8b4835e677a063e29040e",
+      "gitBlobSha1": "53b46761b5e460e117032e88f674d0fa56296a2b"
+    },
+    {
+      "path": "integrations/saeid-r78-commander-one/local-owner/protected-issuer-state/verify-pending-contract.mjs",
+      "mode": "100644",
+      "bytes": 1258,
+      "sha256": "33883a3842a34f18226c897f993397364a785e0f085939e474fefd4f0a943b82",
+      "gitBlobSha1": "b269eb9dd3549cb1593d29205902c5ae55348532"
+    },
+    {
+      "path": "integrations/saeid-r78-commander-one/local-owner/protected-oauth-exchange/CURRENT.json",
+      "mode": "100644",
+      "bytes": 1717,
+      "sha256": "006d5f00aa04ad333615acc98642afc3baa82f2e9c7cc769ce60a98bc83a00c0",
+      "gitBlobSha1": "37dbc52ed855c9e168863d57b4d817625f597b0e"
+    },
+    {
+      "path": "integrations/saeid-r78-commander-one/local-owner/protected-oauth-exchange/ExchangeJournal.cs",
+      "mode": "100644",
+      "bytes": 5316,
+      "sha256": "e79149d2cb090771a9705890ae113f32251d69300fcb79f739024aa8e40a91c8",
+      "gitBlobSha1": "26ef49138e01fe6a205afd1f6e019569d9838218"
+    },
+    {
+      "path": "integrations/saeid-r78-commander-one/local-owner/protected-oauth-exchange/ExchangeQA.cs",
+      "mode": "100644",
+      "bytes": 24115,
+      "sha256": "865c285032a700e45d9d6ba68a67533219aaba1d571789e60c2c1a622a108264",
+      "gitBlobSha1": "0b0590cb2d728eadd066e697e1e19323763f515d"
+    },
+    {
+      "path": "integrations/saeid-r78-commander-one/local-owner/protected-oauth-exchange/HANDOFF.md",
+      "mode": "100644",
+      "bytes": 8496,
+      "sha256": "20708b8b885f8e2f46f1a0aaa62c63696a93e3aad1c16ce457a5773f0d4d12ea",
+      "gitBlobSha1": "ba897f2d2a850cdd212e52794b22036b4d836224"
+    },
+    {
+      "path": "integrations/saeid-r78-commander-one/local-owner/protected-oauth-exchange/OAuthExchangeFixtureQA.csproj",
+      "mode": "100644",
+      "bytes": 877,
+      "sha256": "09a21f6619fe2dbc12abba07829a22fba7ca6263d5d01d058707c5b6da32b828",
+      "gitBlobSha1": "f4b7874a97b55ad8f54f427c2f2dccef94a65d77"
+    },
+    {
+      "path": "integrations/saeid-r78-commander-one/local-owner/protected-oauth-exchange/ProtectedOAuthExchange.cs",
+      "mode": "100644",
+      "bytes": 21647,
+      "sha256": "277beb1f077289203ee57ab3df55ac64d8e7bfca2d0aa0b31a25aaaf5d208ae0",
+      "gitBlobSha1": "28224e1570b5baf4a6cfac37c7422426073e7065"
+    },
+    {
+      "path": "integrations/saeid-r78-commander-one/local-owner/protected-oauth-exchange/ProtectedOAuthExchange.csproj",
+      "mode": "100644",
+      "bytes": 727,
+      "sha256": "090faf1c2d753699b2b91d5613c6f0d9b0f3c5ee3721d833c71f2d646baa3e1d",
+      "gitBlobSha1": "be6118711c26209e7f27b4033eb400636843b3de"
+    },
+    {
+      "path": "integrations/saeid-r78-commander-one/local-owner/protected-oauth-exchange/QUALIFICATION.json",
+      "mode": "100644",
+      "bytes": 9757,
+      "sha256": "e029b4d796b1f4336dc3bb86246c0ae8f93dca2ebba0213a2db2038a1af6d989",
+      "gitBlobSha1": "a569d24c6173443314f1d9d61a8fcc527d2dfd55"
+    },
+    {
+      "path": "integrations/saeid-r78-commander-one/local-owner/protected-oauth-exchange/RECEIPT_CLARIFICATION.json",
+      "mode": "100644",
+      "bytes": 1139,
+      "sha256": "c3fd7c83171f56e010e2dd971f3d4b4a820b8245ab9d4484b8551d1b26ab2891",
+      "gitBlobSha1": "a551005f42859ff5cb3bad69d87216bf6d7d930d"
+    },
+    {
+      "path": "integrations/saeid-r78-commander-one/local-owner/protected-oauth-exchange/verify-resource-interop.mjs",
+      "mode": "100644",
+      "bytes": 1694,
+      "sha256": "d881be030920e8512ed9b0f08afe35a2ea698c8d5142db8c9aa02bd36a6b940d",
+      "gitBlobSha1": "f1856d177d657d2abf6d12291ff38b5084483765"
+    },
+    {
+      "path": "integrations/saeid-r78-commander-one/local-owner/native-consent-aot/OwnerConsentCore.cs",
+      "mode": "100644",
+      "bytes": 8372,
+      "sha256": "684dd5d8efdc9a90c6d00e1ee6adb7a04bdf3563d716fa9e2dc76c8fab28d663",
+      "gitBlobSha1": "598333bb3662f4127b3a0ac3a483783188771d2d"
+    },
+    {
+      "path": "integrations/saeid-r78-commander-one/local-owner/native-consent-aot/WindowsGuard.cs",
+      "mode": "100644",
+      "bytes": 6108,
+      "sha256": "30d773de2fde0a50f5519961f0d19ebbeb59bf6f6346f7d3bc9301f4f79ec0b5",
+      "gitBlobSha1": "d76870ce9c2d5dd15e1a81f42fdc5d545078d92d"
+    },
+    {
+      "path": "integrations/saeid-r78-commander-one/resource-auth/local-resource-grant.mjs",
+      "mode": "100644",
+      "bytes": 6885,
+      "sha256": "69fca49dc6cfd0e885d57aec2bd8c414961c99768c73f6f29196d40344e7adec",
+      "gitBlobSha1": "851eaea8499dfa2246054f6fae4d7c550989e565"
+    },
+    {
+      "path": "integrations/saeid-r78-commander-one/resource-auth/local-resource-grant.test.mjs",
+      "mode": "100644",
+      "bytes": 6819,
+      "sha256": "c7fd7f8162b44a72e7ce43e9c9aa77b96062c0e37c9f8c6a5aa470d7f0b05165",
+      "gitBlobSha1": "d17b01f6a325aa649f833a61af8c5be403bdc85b"
+    },
+    {
+      "path": "integrations/saeid-r78-commander-one/resource-auth/QUALIFICATION.json",
+      "mode": "100644",
+      "bytes": 393,
+      "sha256": "fef8a2e7d349a9647a205ba945531430a37160ebbb8ea0aa897532dfb276a24d",
+      "gitBlobSha1": "988082c62f65e93b3a884b0a988f04fe083b2616"
+    },
+    {
+      "path": "integrations/saeid-r78-commander-one/resource-auth/README.md",
+      "mode": "100644",
+      "bytes": 2680,
+      "sha256": "29564b23f5ef250c76b539df2348805996277aa4fe9bb419b24a806db01ba208",
+      "gitBlobSha1": "b0519db6f66befec04f2f487e76acfbcf7483e7d"
+    },
+    {
+      "path": "integrations/saeid-r78-commander-one/migration-relay/legacy-r75-adapter.mjs",
+      "mode": "100644",
+      "bytes": 9317,
+      "sha256": "6925e8c3574326e787537895211ca23c86cc2be3b56a9531acd29dd720ae784e",
+      "gitBlobSha1": "34b2b117250dc124afda1dc6d87890c6e24270df"
+    },
+    {
+      "path": "integrations/saeid-r78-commander-one/migration-relay/terminal-owner-relay.mjs",
+      "mode": "100644",
+      "bytes": 8289,
+      "sha256": "fc1c6cf526fb7a1307b34f86a8bf001a9c78f1d54913a92d961b34849a4b2476",
+      "gitBlobSha1": "525cf2620e322b8d4e8395ea2262a95161c34fe1"
+    },
+    {
+      "path": "integrations/saeid-r78-commander-one/migration-relay/terminal-owner-relay.test.mjs",
+      "mode": "100644",
+      "bytes": 9818,
+      "sha256": "06445b3048c573fd4ae0db68b7002616f42842846226d0171d45934968cfbe63",
+      "gitBlobSha1": "ec4716c6681d8ed2f943f2f727952b117cd83fc5"
+    },
+    {
+      "path": "integrations/saeid-r78-commander-one/migration-relay/terminal-id.mjs",
+      "mode": "100644",
+      "bytes": 1186,
+      "sha256": "ec033a0703a85624e427516f2ed36155cd9ba3d3f86fb2060a0380984c6fba99",
+      "gitBlobSha1": "7fe593578325ef64c78bb7f629364c790f49dcf5"
+    },
+    {
+      "path": "integrations/saeid-r78-commander-one/migration-relay/terminal-id.test.mjs",
+      "mode": "100644",
+      "bytes": 1511,
+      "sha256": "b08f4a2b03bad9af842ce04aa634e1064aeba8de12a69220917cff784f55b05c",
+      "gitBlobSha1": "7a5f0aae5ea9792c94b2a202d9303e4298186441"
+    },
+    {
+      "path": "integrations/saeid-r78-commander-one/migration-relay/terminal-namespace-integration.test.mjs",
+      "mode": "100644",
+      "bytes": 758,
+      "sha256": "0012d878e91bc150254c1defef66a034e8e4279008489cd8c7dad2e67149fcb2",
+      "gitBlobSha1": "f7395fe235ba17cfc170af23ca6f97c65cd1e174"
+    },
+    {
+      "path": "integrations/saeid-r78-commander-one/migration-relay/MIGRATION_C_HANDOFF.json",
+      "mode": "100644",
+      "bytes": 4309,
+      "sha256": "cc707577e255faa97bea50c76c80d1125a9bf4774a6fcb31ef2fe9c134eddbce",
+      "gitBlobSha1": "fb2eb7b88fe77c570ee0ea5f3686b978843593ea"
+    },
+    {
+      "path": "integrations/saeid-r78-commander-one/migration-relay/MIGRATION_C_MANIFEST.json",
+      "mode": "100644",
+      "bytes": 2978,
+      "sha256": "0876557a5b50758295b3bdec5e8799adb7e7a52ad20a1ec0f94fa0fddf0f74eb",
+      "gitBlobSha1": "a15a8f6fdc8b4520ba99a9e1766f13cd85b42dcf"
+    },
+    {
+      "path": "integrations/saeid-r78-commander-one/migration-relay/LOOPBACK_C_RECEIPT.json",
+      "mode": "100644",
+      "bytes": 1976,
+      "sha256": "2462858cc330d908e9c89b2b23429303048a50745eb083dc2444d0ec23491535",
+      "gitBlobSha1": "b863c601d73322e5af6c1c323b081233b5a2723c"
+    },
+    {
+      "path": "integrations/saeid-r78-commander-one/qualification/HANDOFF_J.md",
+      "mode": "100644",
+      "bytes": 3990,
+      "sha256": "25e4a9c0fa68d46c2df06fb3d9e4ed0ec29861ffb84ff25f13e52593f1d346cd",
+      "gitBlobSha1": "524e56fd79f948c454c352cf296c1dc88eed7d14"
+    },
+    {
+      "path": "integrations/saeid-r78-commander-one/qualification/CURRENT_REVIEW_J.json",
+      "mode": "100644",
+      "bytes": 1997,
+      "sha256": "466bb9d53217be3d9902294c1d6896ace0f10cc586aaee23cc31cc2766f6e860",
+      "gitBlobSha1": "a870655454717ba0e16680fab84974add3ceab7a"
+    },
+    {
+      "path": "integrations/saeid-r78-commander-one/qualification/MANIFEST_J.json",
+      "mode": "100644",
+      "bytes": 6735,
+      "sha256": "a218a3e730dc4ff9250726493097a6549c93ec0d47f877b7b9534b1322715716",
+      "gitBlobSha1": "2fdc1fa1fe2e2e7ecaa9e0e7484df217f1b9a368"
+    },
+    {
+      "path": "integrations/saeid-r78-commander-one/qualification/auth-review/REVIEW_A.md",
+      "mode": "100644",
+      "bytes": 4559,
+      "sha256": "7eaef5fb53837dbfaff0aacc91fad3b152897c4cf545d79208db8d6ff23e4143",
+      "gitBlobSha1": "26ee25d9d77c6bc998d6581504e76fb621a78205"
+    },
+    {
+      "path": "integrations/saeid-r78-commander-one/qualification/auth-review/REVIEW_B.md",
+      "mode": "100644",
+      "bytes": 4746,
+      "sha256": "ee974afe08d61b5175b697c1d0cec329bfd89eb313513c99fd38d9a2e93e8e00",
+      "gitBlobSha1": "75ab92aa5540bcd9b79945aa1eb67c3bcb9628a1"
+    },
+    {
+      "path": "integrations/saeid-r78-commander-one/qualification/full-qualification/AGGREGATE_SOURCE_QUALIFICATION_J.json",
+      "mode": "100644",
+      "bytes": 35202,
+      "sha256": "610307342231af76a974932b9b782eab20e7a9aec927670eb18cd68c2e6f62b1",
+      "gitBlobSha1": "1188dc8ffc4043949bbd5afc685ea3f70a8ef368"
+    },
+    {
+      "path": "integrations/saeid-r78-commander-one/qualification/full-qualification/SOURCE_MANIFEST_I.json",
+      "mode": "100644",
+      "bytes": 177260,
+      "sha256": "bb0f5e2a4901fc5f1b7a644e75434825d1b3ea5847f3e081eff3a6f7044f03c7",
+      "gitBlobSha1": "ddf6535c06a03e88a20d7dd01e19e38abcddd9bf"
+    },
+    {
+      "path": "integrations/saeid-r78-commander-one/qualification/full-qualification/PRIVATE_GIT_CONTEXT_J_RECEIPT.json",
+      "mode": "100644",
+      "bytes": 984,
+      "sha256": "2af0f1ad52de79304dfb659fc2d2f496f4ca3a486759a095f4ecdffd0135cca2",
+      "gitBlobSha1": "0c511fdade2e0737045f95ad26b197bd61228433"
+    },
+    {
+      "path": "integrations/saeid-r78-commander-one/browser-qa/cft-feasibility/CFT_I_RUNTIME_HANDOFF.json",
+      "mode": "100644",
+      "bytes": 6182,
+      "sha256": "98436ff786ae1ddd633bcafca6c325e62d74653ca7356a10833224dd09478b47",
+      "gitBlobSha1": "1a46e04e2918e704f9c462f11a8236bdf2c2a176"
+    },
+    {
+      "path": "integrations/saeid-r78-commander-one/browser-qa/cft-feasibility/CFT_FEASIBILITY_PLAN.json",
+      "mode": "100644",
+      "bytes": 8285,
+      "sha256": "418335b402df912d4b4ba49323d051e4650a70040917740f1529f12093e94f23",
+      "gitBlobSha1": "194de9a73ca5190f233403d5384567272ceff962"
+    },
+    {
+      "path": "integrations/saeid-r78-commander-one/browser-qa/cft-feasibility/PARENT_UNSIGNED_PRIVATE_QA_ADMISSION.json",
+      "mode": "100644",
+      "bytes": 2100,
+      "sha256": "1bcbab527669cdc968e5c99eb8855fa7cb198b07f241eca7e97cd22cc7f90d5e",
+      "gitBlobSha1": "c63f7926ac5f87976edd15f711eb1512e04bdb93"
+    },
+    {
+      "path": "integrations/saeid-r78-commander-one/browser-qa/diagnostic-source/F_CAUSAL_HANDOFF.json",
+      "mode": "100644",
+      "bytes": 5327,
+      "sha256": "9baf2f6a1991e46ec5dc8851a22f16a93660481c579f4a338d6047ef9a7f40bc",
+      "gitBlobSha1": "7758fa97f49dd5fc4d54175dcb25621589d11a11"
+    },
+    {
+      "path": "integrations/saeid-r78-commander-one/README.md",
+      "mode": "100644",
+      "bytes": 3708,
+      "sha256": "4e30e59d9c826ebe6ebbc3a1d6c4dbf025c90894cccc7c11a9da33670a0629c2",
+      "gitBlobSha1": "1903f2e1e9bbd4b946a75c8cbaaff8ec0f53d98c"
+    }
+  ]
+}
