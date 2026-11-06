@@ -1,0 +1,13 @@
+# R80 acceptance-probe B independent review
+
+**PASS_SCOPED_SOURCE_REVIEW.** No material source blocker found in the frozen B probe. This is source/evidence acceptance, not a live local-login or installed-product result.
+
+The three-phase path preserves owner roles: ordinary begin with private PKCE/state; elevated human native consent plus a fixed 60-second selftest-client assertion; ordinary complete, exchange and fresh-state verification. Exact protected policy pins, pending-request digest, PKCE challenge/state and input hashes bind these phases. The grant is exactly `selftest` on `no-project`; the signer exposes no arbitrary claims or project scope. Exclusive roots and per-phase CreateNew intent files make a consumed/ambiguous attempt non-replayable.
+
+The consent helper and ordinary proxy are opened by held image pins with fixed arguments and a clean child environment. The probe accepts only complete correlated replies, never reconnects or retries, bounds output and lifetime, and can reap only its exact fresh held child. It never stops the SYSTEM host, scheduled task, existing job or project process. Native human approval is signature-checked before the protected selftest client key is read. Tokens/code/assertions stay in memory or the specifically admitted owner-private/protected phase files; the result contains a token hash, not a bearer token. Private key input bytes are zeroed after import.
+
+Verified current pins: 7 source files, 6 frozen dependencies, all 39 delivery entries; source manifest `353eda609d72780b2bda46b210bcbb43798812cad14ddc25d2aec8862eb43399`; receipt `ce8b5b18fc41aa40dc56ba168c04ebb29e76cd1c7aff11b45e39cba05d659cad`; delivery manifest `6f334271a121b5c11d717e92927475ccd353ac3de9528e9a1dfef42e1eb03dea`. Native binary: `fdf040f44b67f04594a8fdba0e067e2db13f338fe31533d27b33dc2f113077fe`, 3,969,024 bytes. The author's receipt reports 23 RAM-only checks, an actual early ordinary UAC denial and an arbitrary-sign-mode denial, with no real authority actions. No tests or runtime modes were rerun by this reviewer.
+
+**Open live acceptance:** parent reports H Apply was consumed once with exit 2. That outcome must be reconciled without replay. Protected enrollment, actual ACL/task/kernel-peer success, human approval and an actual ordinary-owner token/fresh-state receipt remain UNPROVEN. This probe can prove only no-project selftest login, not project/GUI authority or whole-product quality. Review does not authorize another UAC/action, alter installed state, inspect active work or change a guard.
+
+See `PROBE_B_REVIEW.json` for exact paths, scope and acceptance distinctions.

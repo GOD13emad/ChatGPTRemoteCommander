@@ -1,0 +1,12 @@
+{
+  "noTaskRegistration": true,
+  "role": "NativeAOT protected enrollment and rollback source; no actual installation",
+  "noUac": true,
+  "noEnrollment": true,
+  "root": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-owner-enrollment-r80\\bootstrap",
+  "owner": "saeed",
+  "frozenConsentSha256": "1ae194557963771ebc0b74d5590542fd3013494985a3a266963da4b0048b84c4",
+  "frozenHostSha256": "e7b86f31531dc2f2a2afeda3cab5c717726a0eddc852ed27c2114c1f659f4469",
+  "installedCommanderUnchanged": true,
+  "schema": "r80-bootstrap-source-admission-v1"
+}

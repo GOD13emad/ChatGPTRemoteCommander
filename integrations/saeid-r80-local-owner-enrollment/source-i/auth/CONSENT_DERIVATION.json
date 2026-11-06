@@ -1,0 +1,9 @@
+{
+  "schema": "r80-consent-file-acl-derivation-v1",
+  "source": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-integration-r78\\reviews\\durable\\local-owner-auth\\native-consent-aot-j\\NativeAotOwnerConsent.cs",
+  "preSha256": "64025431c3dda2e66d3598f25d1ed8c3c1efbe7d54137ed451fd7ba325cc6ff4",
+  "derived": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-owner-enrollment-r80\\auth\\src\\NativeAotOwnerConsent.cs",
+  "postSha256": "c602c2c13f76a235399a7f65a80bc4c2b582a51e7657ae7c8e944350e6bb096d",
+  "change": "Explicit protected BA/SYSTEM-only DACL+owner, CreateNew/WriteThrough/fsync unchanged, event and receipt only",
+  "noUiOrEnrollment": true
+}

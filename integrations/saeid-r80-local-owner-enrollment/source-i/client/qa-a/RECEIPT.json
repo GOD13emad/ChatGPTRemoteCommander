@@ -1,0 +1,87 @@
+{
+  "schema": "r80-native-client-qa-v1",
+  "utc": "2026-11-06T01:44:32.066321+00:00",
+  "status": "PASS_NATIVE_CLIENT_AND_ORDINARY_NEGATIVES_ONLY",
+  "failure": null,
+  "phases": [
+    {
+      "phase": "restore-offline",
+      "exitCode": 0,
+      "expected": 0
+    },
+    {
+      "phase": "publish-native",
+      "exitCode": 0,
+      "expected": 0
+    },
+    {
+      "phase": "pure-parser-frame-policy",
+      "exitCode": 0,
+      "expected": 0
+    },
+    {
+      "phase": "ordinary-diagnostic",
+      "exitCode": 0,
+      "expected": 0
+    },
+    {
+      "phase": "ordinary-unenrolled-rpc",
+      "exitCode": 2,
+      "expected": 2
+    }
+  ],
+  "facts": {
+    "binary": {
+      "path": "G:\\CodexWork\\RC1R80Client\\native\\CommanderOwnerProxy.exe",
+      "sha256": "157d029a482d5d3db72887c37f293cb0d6ee82664e7d4e9c729dcec996d1c501",
+      "bytes": 3131904
+    },
+    "clrDirectory": [
+      0,
+      0
+    ],
+    "dependentLoadFlags": 2048,
+    "pureQA": {
+      "schema": "RC_NATIVE_CLIENT_PURE_QA_V1",
+      "pass": 34,
+      "fail": 0,
+      "failedCases": [],
+      "actualPipeOpened": false,
+      "taskLaunched": false,
+      "systemPeerPositive": false,
+      "enrollmentInstalled": false
+    },
+    "diagnostic": {
+      "schema": "RC_NATIVE_CLIENT_DIAGNOSTIC_V1",
+      "systemSid": false,
+      "elevated": false,
+      "administrator": false,
+      "integrityRid": 8192,
+      "interactiveSession": true,
+      "policyOpened": false,
+      "pipeConnected": false,
+      "taskStarted": false,
+      "runtimeAuthorityExercised": false
+    },
+    "ordinaryNegative": {
+      "version": 1,
+      "id": "a0000080-bbbb-cccc-dddd-eeeeeeeeeeee",
+      "ok": false,
+      "code": "CLIENT_PROTECTED_ENROLLMENT_NOT_READY",
+      "automaticRetryAllowed": false,
+      "effectMayHaveOccurred": false,
+      "taskLaunchAttempted": false,
+      "taskLaunchConfirmed": false
+    },
+    "binaryPostSha256": "157d029a482d5d3db72887c37f293cb0d6ee82664e7d4e9c729dcec996d1c501"
+  },
+  "sourceManifestSha256": "01d5c0db004c346d347f6d274f499bf1c6f4344d270cfd3e60d4d4da977a71ee",
+  "sourcesUnchanged": true,
+  "taskLaunched": false,
+  "listenerCreated": false,
+  "enrollmentInstalled": false,
+  "systemPositivePeerProven": false,
+  "installedVersionChanged": false,
+  "activeJobsStoppedOrReplayed": false,
+  "automaticRetryAllowed": false
+}

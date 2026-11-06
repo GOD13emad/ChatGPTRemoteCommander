@@ -1,0 +1,97 @@
+{
+  "schema": "r80-client-c-qualification-v1",
+  "utc": "2026-11-06T07:07:29.616587+00:00",
+  "status": "PASS_CLIENT_C_NATIVE_REAL_OS_ANCESTOR_GUARD_AND_PRIVATE_NEGATIVES_ONLY",
+  "failure": null,
+  "phases": [
+    {
+      "phase": "restore-c-offline",
+      "exitCode": 0
+    },
+    {
+      "phase": "publish-c-native",
+      "exitCode": 0
+    },
+    {
+      "phase": "client-c-parser-privacy-regression",
+      "exitCode": 0
+    },
+    {
+      "phase": "client-c-ordinary-diagnostic",
+      "exitCode": 0
+    },
+    {
+      "phase": "publish-readonly-ancestor-fixture",
+      "exitCode": 0
+    },
+    {
+      "phase": "actual-readonly-os-ancestor-and-private-negatives",
+      "exitCode": 0
+    }
+  ],
+  "facts": {
+    "binary": {
+      "path": "G:\\CodexWork\\RC1R80Client\\c\\native\\CommanderOwnerProxy.exe",
+      "sha256": "166d18588a746b0b01da8a606645ff00d2d577eaa5d456792a04f39979f47905",
+      "bytes": 3137536,
+      "clrDirectory": [
+        0,
+        0
+      ],
+      "dependentLoadFlags": 2048
+    },
+    "pureRegression": {
+      "schema": "RC_NATIVE_CLIENT_PURE_QA_V1",
+      "pass": 34,
+      "fail": 0,
+      "failedCases": [],
+      "actualPipeOpened": false,
+      "taskLaunched": false,
+      "systemPeerPositive": false,
+      "enrollmentInstalled": false
+    },
+    "diagnostic": {
+      "schema": "RC_NATIVE_CLIENT_DIAGNOSTIC_V1",
+      "systemSid": false,
+      "elevated": false,
+      "administrator": false,
+      "integrityRid": 8192,
+      "interactiveSession": true,
+      "policyOpened": false,
+      "pipeConnected": false,
+      "taskStarted": false,
+      "runtimeAuthorityExercised": false
+    },
+    "fixtureBinary": {
+      "path": "G:\\CodexWork\\RC1R80Client\\c\\ancestor-qa\\CommanderOsAncestorQA.exe",
+      "sha256": "ccd4b799c5ba85f28768db35e7535576fe18226aaf953d20fd47a9c346c4a629",
+      "bytes": 1547264,
+      "clrDirectory": [
+        0,
+        0
+      ],
+      "dependentLoadFlags": 2048
+    },
+    "actualOsGuard": {
+      "schema": "RC_OS_ANCESTOR_READONLY_GUARD_C_V1",
+      "actualProgramFilesAclRead": true,
+      "actualDeleteChildRules": 1,
+      "actualTrustedInstallerDeleteChildRules": 1,
+      "actualOsAncestorPredicatePassed": true,
+      "untrustedSidDenied": true,
+      "privateAuthorityTiDenied": true,
+      "privateObjectOwnerRemainsSyBa": true,
+      "aclMutated": false,
+      "installedAuthorityPositiveProven": false,
+      "keysOpened": false
+    },
+    "binaryPostSha256": "166d18588a746b0b01da8a606645ff00d2d577eaa5d456792a04f39979f47905"
+  },
+  "sourceManifestSha256": "0cbed4b373c1ca005857f7ad5377a4f811a8d99b4865d02042eb25390a895fab",
+  "bSourcesUnchanged": true,
+  "taskOrProxyRuntimeStarted": false,
+  "uacOrKeysOpened": false,
+  "installedAuthorityPositiveProven": false,
+  "installedVersionChanged": false,
+  "activeJobsStoppedOrReplayed": false
+}

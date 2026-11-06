@@ -1,0 +1,201 @@
+{
+  "schema": "R80_INDEPENDENT_BOOTSTRAP_AUTH_G_REVIEW_V1",
+  "generatedUtc": "2026-11-06T02:05:54.429908+00:00",
+  "status": "PASS_SCOPED_SOURCE_REVIEW",
+  "whole": "NOT_FINAL",
+  "reviewSha256": "7e181f83d6405aa59ed140ef4355e390ed3081bdbf93e4b4fbbfc8d2dec020cb",
+  "sourcePinsVerified": 17,
+  "sourceFiles": [
+    {
+      "path": "bootstrap/src/BootstrapPolicy.cs",
+      "bytes": 5977,
+      "sha256": "80eb56cc8f7f14429e297ef2c03a8100b48373e406bc4d51ba303b8cbf3d9848"
+    },
+    {
+      "path": "bootstrap/src/BootstrapQA.cs",
+      "bytes": 5252,
+      "sha256": "89f9cae7930a2e79b93653bbdc4f31aa4ec81aca5ef5648d8d4873b9e67df3c2"
+    },
+    {
+      "path": "bootstrap/src/Bundle.cs",
+      "bytes": 3842,
+      "sha256": "0bedc7415d30306bca20882964d407e2bd4b28245dbe65c3aebe7f3a9afb723c"
+    },
+    {
+      "path": "bootstrap/src/OwnedHelper.cs",
+      "bytes": 2187,
+      "sha256": "98810854525cc82b5a0101639290d4cc5177559fd6e6707ea56c510c43553c03"
+    },
+    {
+      "path": "bootstrap/src/OwnerBootstrap.csproj",
+      "bytes": 3132,
+      "sha256": "fc2d3cf2618b15ac36d61a61318a3d84aed7c389031d22d26868d6a684b51cbf"
+    },
+    {
+      "path": "bootstrap/src/Program.cs",
+      "bytes": 7708,
+      "sha256": "1bf8b5aeed0c4bd17ceb1ced847df1da03f3de66f780f01f63ee79bf1fc78619"
+    },
+    {
+      "path": "bootstrap/src/ProtectedInstall.cs",
+      "bytes": 10270,
+      "sha256": "7d0803835f4238f5a9449940c9230b161568b54e915e24fa8ef112128c1ec0a2"
+    },
+    {
+      "path": "bootstrap/src/TaskOwner.ps1",
+      "bytes": 5723,
+      "sha256": "86e3d753207375587dc29fc052d7df08165299db686f46491688e0f17e95dda0"
+    },
+    {
+      "path": "auth/src/ConsentPrivateFile.cs",
+      "bytes": 1192,
+      "sha256": "335f940c0d6bbb04cacafb7ff80237813f97a2b56036e7bcd7e95e7cf47860a2"
+    },
+    {
+      "path": "auth/src/ExchangeJournal.cs",
+      "bytes": 5468,
+      "sha256": "53de33fbdb5c37c671c939d0a756e69e555fc35e068ae63a49b89effc31f929e"
+    },
+    {
+      "path": "auth/src/JournalBoundaryQA.cs",
+      "bytes": 6771,
+      "sha256": "bd75d374c3f396a2af4c24a811bc0bcf20b5d13820c5211aef85ab3aa30dc0bd"
+    },
+    {
+      "path": "auth/src/JournalBoundaryQA.csproj",
+      "bytes": 2922,
+      "sha256": "e54eba28fa82bcb8d54fd8ac0fe88e93f4b6b82efdbd32be730d18f18ef6d07d"
+    },
+    {
+      "path": "auth/src/NativeAotOwnerConsent.cs",
+      "bytes": 5747,
+      "sha256": "c602c2c13f76a235399a7f65a80bc4c2b582a51e7657ae7c8e944350e6bb096d"
+    },
+    {
+      "path": "auth/src/OwnerConsentR80.csproj",
+      "bytes": 3432,
+      "sha256": "992ec064311b463948526e879db76f458dac9985b32b7a19bfc69783ec199d34"
+    },
+    {
+      "path": "auth/src/OwnerIssuerR80.csproj",
+      "bytes": 4805,
+      "sha256": "26c5ae4cbfa5351da5919e4db1a113d2120b9359f64679adc0dc2f6b7ec6b1d7"
+    },
+    {
+      "path": "auth/src/ProtectedIssuerState.cs",
+      "bytes": 22096,
+      "sha256": "8e4b52030b7c5fd60d56d2be6c863d9460eb99a20e14c6547681e636f9ac95e6"
+    },
+    {
+      "path": "auth/src/ProtectedJournal.cs",
+      "bytes": 3812,
+      "sha256": "878d933fc73a0e9f277788dafea41eb05f4dba4baadcd25ef7d029e32d0bf456"
+    }
+  ],
+  "artifacts": [
+    {
+      "role": "host",
+      "path": "G:\\CodexWork\\RC1R80Bootstrap\\host\\CommanderNativeIssuer.exe",
+      "sha256": "f4bf84f09cabae3a128d577cc5f4f07f8708a2b5fdf6d67432eccc6bdbdb58f9",
+      "bytes": 4129280,
+      "clrDirectoryZero": true,
+      "dependentLoadFlags": 2048,
+      "reviewerReadPeVerified": true,
+      "manifestPath": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-owner-enrollment-r80\\bootstrap\\qa\\e\\host.manifest",
+      "manifestSha256": "def1d462ae6ad3b894f6b477823bba3c604183b919df28716953d30ca34e7708",
+      "reviewerExecuted": false
+    },
+    {
+      "role": "consent",
+      "path": "G:\\CodexWork\\RC1R80Bootstrap\\consent-b\\CommanderOwnerConsent.exe",
+      "sha256": "599847485c8650740bd59228a4f7629534acf0d85ca84593b81faf38ac990a13",
+      "bytes": 3564544,
+      "clrDirectoryZero": true,
+      "dependentLoadFlags": 2048,
+      "reviewerReadPeVerified": true,
+      "manifestPath": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-owner-enrollment-r80\\bootstrap\\qa\\e\\consent.manifest",
+      "manifestSha256": "3622df90634a9b19f3a89e23f4ec8771a1216ab3dc32b13e18c77105f4ddf5be",
+      "reviewerExecuted": false
+    },
+    {
+      "role": "bootstrap",
+      "path": "G:\\CodexWork\\RC1R80Bootstrap\\bootstrap-native-g\\CommanderOwnerBootstrap.exe",
+      "sha256": "2f38a41423b36e387685062bca824b01d72e2576d0109cde99116290413b4771",
+      "bytes": 3849216,
+      "clrDirectoryZero": true,
+      "dependentLoadFlags": 2048,
+      "reviewerReadPeVerified": true,
+      "manifestPath": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-owner-enrollment-r80\\bootstrap\\qa\\g\\bootstrap.manifest",
+      "manifestSha256": "def1d462ae6ad3b894f6b477823bba3c604183b919df28716953d30ca34e7708",
+      "reviewerExecuted": false
+    }
+  ],
+  "qualification": {
+    "bootstrapCases": 17,
+    "journalCases": 21,
+    "journalProtectedAclPositive": false,
+    "effectivePolicyObserved": "RemoteSigned",
+    "testsRerunByReviewer": 0,
+    "retainedFailedReceiptsNotRelabeled": [
+      "bootstrap/qa/c/RECEIPT.json",
+      "bootstrap/qa/d/RECEIPT.json"
+    ]
+  },
+  "mapping": {
+    "zeroJournalReader": "RESOLVED_DEDICATED_VALIDATED_INITIAL_READ",
+    "inheritedReceiptDacl": "RESOLVED_DERIVED_EXPLICIT_PRIVATE_WRITER",
+    "mutableRollbackInventory": "RESOLVED_PRESERVE_ONLY_MUTABLE_ROLES",
+    "ownedHelperLifetime": "RESOLVED_EXACT_HELD_HANDLE_GENERATION",
+    "primaryErrorPreservation": "RESOLVED_KEEP_ORIGINAL_WITH_SANITIZED_METADATA"
+  },
+  "acceptedDiagnosticLimitation": {
+    "case": "cleanup-only failure code may coexist with false auxiliary boolean",
+    "authoritativeCode": "OWN_HELPER_CLEANUP_UNCERTAIN_NO_RETRY",
+    "parentRule": "ANY nonzero apply outcome requires reconciliation/no retry; never infer cleanup confirmation from boolean",
+    "authorityRelaxed": false
+  },
+  "readyFor": "PARENT_EXACT_BUNDLE_PREFLIGHT_AND_ACTUAL_OWNER_UAC_ACCEPTANCE",
+  "positiveProtectedAcl": "UNPROVEN",
+  "positiveKernelPeer": "UNPROVEN",
+  "realOwnerLogin": "UNPROVEN",
+  "taskRollbackActual": "UNPROVEN",
+  "scope": "NO_PROJECT_SELFTEST_ONLY",
+  "uacOrTaskOrKeysByReviewer": false,
+  "sealedR78R79Changed": false,
+  "installedChanged": false,
+  "activeJobsStoppedOrReplayed": 0,
+  "pins": [
+    {
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-owner-enrollment-r80\\bootstrap\\qa\\g\\RECEIPT.json",
+      "sha256": "d445584d93e5d6936af4b61d643abd7c82b73ac8f0ee097b72cecb91c4e733b8"
+    },
+    {
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-owner-enrollment-r80\\bootstrap\\qa\\e\\RECEIPT.json",
+      "sha256": "6278975b323d47055d73dc2d9c9c743752d973605ed493dd0e262c98eda22be6"
+    },
+    {
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-owner-enrollment-r80\\bootstrap\\qa\\d\\RECEIPT.json",
+      "sha256": "81f8cd53bd0d3d5de6f09653f612ff77f47e07cbca37fec07041e656788b40c7"
+    },
+    {
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-owner-enrollment-r80\\bootstrap\\qa\\c\\RECEIPT.json",
+      "sha256": "4c2d4a3e8bdd64115de4085021a1bfeae99189fa462c78e21aee250c477c865e"
+    },
+    {
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-owner-enrollment-r80\\reviews\\independent\\PRIMARY_CONTRACTS.md",
+      "sha256": "893ab5efa34f432e34c6a47522fbe29dd6a2150592f142e5d6eac6c177dc5d01"
+    },
+    {
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-owner-enrollment-r80\\reviews\\independent\\FILE_LIFECYCLE_AUDIT_A.md",
+      "sha256": "ce28f55f367376c8273b379891079cc81f2cd17aaa91db7e086cab68b4ba966f"
+    },
+    {
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-owner-enrollment-r80\\reviews\\independent\\BOOTSTRAP_REVIEW.md",
+      "sha256": "7e181f83d6405aa59ed140ef4355e390ed3081bdbf93e4b4fbbfc8d2dec020cb"
+    },
+    {
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-owner-enrollment-r80\\reviews\\independent\\FINALIZE_BOOTSTRAP_REVIEW_ONCE.py",
+      "sha256": "75ccc3260a2c644a9f7e0df506ba151eb99df29231add2a57e866e63426fd1c7"
+    }
+  ]
+}

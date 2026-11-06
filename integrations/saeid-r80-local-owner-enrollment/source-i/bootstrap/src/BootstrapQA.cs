@@ -1,0 +1,42 @@
+using CommanderOwnerConsent;using System.Security.Cryptography;using System.Text.Json;
+namespace CommanderOwnerBootstrap;
+internal static class BootstrapQA
+{
+    private static int Main()
+    {
+        var pass=0;var errors=new List<string>();void Test(string n,Action a,bool denied=false){try{a();if(denied)throw new Exception("DENIAL_MISSING");pass++;}catch(Exception e){if(denied&&e.Message!="DENIAL_MISSING")pass++;else errors.Add(n+":"+e.Message);}}
+        using var consent=ECDsa.Create(ECCurve.NamedCurves.nistP256);using var issuer=ECDsa.Create(ECCurve.NamedCurves.nistP256);using var client=ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        var pins=BootstrapPolicy.Images.ToDictionary(x=>x,_=>new string('a',64));var p=BootstrapPolicy.Policies("S-1-5-21-1-2-3-1001",1,"epoch:test",pins,consent,issuer,client);
+        Test("native-policy",()=>{using var d=ConsentCore.Strict(p["policy.json"]);ConsentCore.ValidatePolicy(d.RootElement);});
+        Test("no-project-only",()=>{using var d=ConsentCore.Strict(p["policy.json"]);var g=d.RootElement.GetProperty("grantCatalog")[0];ConsentCore.Need(g.GetProperty("grant").GetProperty("actions")[0].GetString()=="selftest"&&g.GetProperty("grant").GetProperty("rootPolicyId").GetString()=="no-project","GRANT");});
+        Test("host-pins",()=>{using var h=ConsentCore.Strict(p["issuer-host-policy.json"]);ConsentCore.Need(ConsentCore.Text(h.RootElement,"nativePolicySha256")==BootstrapPolicy.Hex(p["policy.json"])&&ConsentCore.Text(h.RootElement,"oauthPolicySha256")==BootstrapPolicy.Hex(p["oauth-policy.json"]),"PINS");});
+        Test("client-schema",()=>{using var c=ConsentCore.Strict(p["client-policy.json"]);ConsentCore.Fields(c.RootElement,"schema","ownerSid","ownerSessionId","hostSha256","proxySha256","adminSha256","nativePolicySha256","oauthPolicySha256","hostPolicySha256","clientId","redirectUri","resource","grantPolicyIds","taskName");ConsentCore.Need(ConsentCore.Text(c.RootElement,"taskName")==BootstrapPolicy.TaskName,"TASK");});
+        Test("key-separation",()=>ConsentCore.Need(!consent.ExportSubjectPublicKeyInfo().SequenceEqual(issuer.ExportSubjectPublicKeyInfo())&&!client.ExportSubjectPublicKeyInfo().SequenceEqual(issuer.ExportSubjectPublicKeyInfo()),"SEPARATION"));
+        Test("sid-denial",()=>BootstrapPolicy.Policies("S-1-5-18",1,"epoch:test",pins,consent,issuer,client),true);
+        Test("session-denial",()=>BootstrapPolicy.Policies("S-1-5-21-1-2-3-1001",0,"epoch:test",pins,consent,issuer,client),true);
+        Test("honest-zero-journals",()=>{var j=BootstrapPolicy.EmptyJournals(p["policy.json"],p["oauth-policy.json"]);ConsentCore.Need(j["issuer.journal"].Length==0&&j["oauth-exchange/exchange.journal"].Length==0,"NO_FAKE_ROWS");});
+        Test("bad-native",()=>Bundle.Pe(new byte[1024]),true);
+        Test("ordinary-elevation-denial",()=>WindowsGuard.RequireOwner(WindowsGuard.Inspect(),"S-1-5-21-1-2-3-1001"),true);
+        Test("mutable-zero-journal-excluded",()=>ConsentCore.Need(Program.MutableState("issuer.journal")&&Program.MutableState("oauth-exchange/exchange.journal"),"MUTABLE_ZERO"));
+        Test("mutable-heads-excluded",()=>ConsentCore.Need(Program.MutableState("issuer.head.json")&&Program.MutableState("oauth-exchange/exchange.head"),"MUTABLE_HEAD"));
+        Test("anchors-immutable",()=>ConsentCore.Need(!Program.MutableState("issuer.initialized")&&!Program.MutableState("oauth-exchange/exchange.initialized"),"ANCHOR_ROLE"));
+        Test("actual-clean-policy-readiness",()=>ProtectedInstall.RequireScriptPolicyReady());
+        Test("cleanup-preserves-original-fault",()=>{var primary=new ConsentFault("ORIGINAL_TIMEOUT_NO_RETRY");OwnedHelper.PreservePrimary(primary,false);ConsentCore.Need(primary.Message=="ORIGINAL_TIMEOUT_NO_RETRY"&&primary.Data["ownedHelperCleanupUncertain"] is true,"PRIMARY_ERROR_REPLACED");});
+        Test("cleanup-fails-without-primary",()=>OwnedHelper.PreservePrimary(null,false),true);
+        Test("prepared-plan-unique-binding",()=>{var one=TaskPlan.Prepared("S-1-5-21-1-2-3-1001",new string('a',64),"enroll:"+new string('1',32));var two=TaskPlan.Prepared("S-1-5-21-1-2-3-1001",new string('a',64),"enroll:"+new string('2',32));using var d=ConsentCore.Strict(one);ConsentCore.Need(!one.SequenceEqual(two)&&ConsentCore.Text(d.RootElement,"xml",16000).Contains(TaskPlan.Description(new string('a',64),"enroll:"+new string('1',32)),StringComparison.Ordinal),"UNIQUE_BINDING");});
+        Test("prepared-plan-strict-schema",()=>{using var d=ConsentCore.Strict(TaskPlan.Prepared("S-1-5-21-1-2-3-1001",new string('a',64),"enroll:"+new string('1',32)));ConsentCore.Fields(d.RootElement,"schema","ownerSid","bundleSha256","enrollmentId","taskName","xml","sddl");});
+        const string ti="S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464";
+        Test("actual-os-ancestor-preflight",()=>ProtectedInstall.PreflightParents());
+        Test("trustedinstaller-os-ancestor",()=>ConsentCore.Need(ProtectedInstall.TrustedAncestor(ti,Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles)),"TI_OS_REJECTED"));
+        Test("trustedinstaller-private-not-admitted",()=>ConsentCore.Need(!ProtectedInstall.TrustedAncestor(ti,ProtectedInstall.ProgramRoot)&&!ProtectedInstall.TrustedAncestor(ti,ProtectedInstall.StateRoot),"TI_PRIVATE_ADMITTED"));
+        Test("actual-private-owner-still-denies-ti",()=>{try{WindowsGuard.Protected(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),true);}catch(ConsentFault e)when(e.Message=="PROTECTED_OWNER_REQUIRED"){return;}throw new Exception("PRIVATE_TI_OWNER_WAS_ADMITTED");});
+        Test("untrusted-user-os-ancestor-denied",()=>ConsentCore.Need(!ProtectedInstall.TrustedAncestor("S-1-5-21-1-2-3-1001",Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles)),"UNTRUSTED_USER_ADMITTED"));
+        Test("untrusted-service-os-ancestor-denied",()=>ConsentCore.Need(!ProtectedInstall.TrustedAncestor("S-1-5-80-1-2-3-4-5",Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles)),"UNTRUSTED_SERVICE_ADMITTED"));
+        Test("outcome-sanitized-fixed-schema",()=>{using var d=ConsentCore.Strict(NativeOutcome.Payload("FAILED_NO_RETRY","PARENT_DELETE_RIGHTS_UNTRUSTED",BootstrapStage.AncestorPreflight));ConsentCore.Fields(d.RootElement,"schema","status","code","phase","automaticRetryAllowed","ownedHelperCleanupUncertain");ConsentCore.Need(ConsentCore.Text(d.RootElement,"phase")=="AncestorPreflight"&&!d.RootElement.GetProperty("automaticRetryAllowed").GetBoolean(),"OUTCOME_SCHEMA");});
+        Test("outcome-raw-error-not-leaked",()=>ConsentCore.Need(NativeOutcome.Code(new Exception("private secret token"))=="BOOTSTRAP_UNAVAILABLE_NO_RETRY"&&NativeOutcome.Code(new ConsentFault("private secret token"))=="BOOTSTRAP_UNAVAILABLE_NO_RETRY","OUTCOME_RAW_ERROR"));
+        Test("no-outcome-write-without-created-root",()=>ConsentCore.Need(!NativeOutcome.TryRecord(false,null,"FAILED_NO_RETRY","PARENT_DELETE_RIGHTS_UNTRUSTED",BootstrapStage.AncestorPreflight),"OUTCOME_UNOWNED_WRITE"));
+        Test("ordinary-apply-failure-no-ui",()=>ConsentCore.Need(!NativeOutcome.ShowApplyFailure(true,"PARENT_DELETE_RIGHTS_UNTRUSTED",BootstrapStage.AncestorPreflight),"ORDINARY_UI_OPENED"));
+        Test("actual-owned-harmless-helper-reaped",()=>{var exe=Path.Combine(Environment.SystemDirectory,"WindowsPowerShell","v1.0","powershell.exe");var s=new System.Diagnostics.ProcessStartInfo(exe){UseShellExecute=false,CreateNoWindow=true,WorkingDirectory=Environment.SystemDirectory};s.Environment.Clear();s.Environment["SystemRoot"]=Environment.GetFolderPath(Environment.SpecialFolder.Windows);s.Environment["windir"]=s.Environment["SystemRoot"];s.Environment["PATH"]=Environment.SystemDirectory;s.Environment["PSModulePath"]=Path.Combine(Environment.SystemDirectory,"WindowsPowerShell","v1.0","Modules");foreach(var arg in new[]{"-NoLogo","-NoProfile","-NonInteractive","-Command","Start-Sleep -Seconds 30"})s.ArgumentList.Add(arg);using var child=System.Diagnostics.Process.Start(s)??throw new Exception("FIXTURE_CHILD_START");var owned=new OwnedHelper(child,exe);ConsentCore.Need(owned.ReapOnlyOriginal()&&child.WaitForExit(2000),"OWN_HELPER_REAP");});
+        Console.WriteLine(System.Text.Encoding.UTF8.GetString(BootstrapPolicy.Json(w=>{w.WriteNumber("pass",pass);w.WriteNumber("fail",errors.Count);BootstrapPolicy.Strings(w,"errors",errors.ToArray());w.WriteBoolean("keysInMemoryOnly",true);w.WriteBoolean("installed",false);w.WriteBoolean("taskRegistered",false);})));return errors.Count==0?0:2;
+    }
+}

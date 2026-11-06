@@ -1,0 +1,20 @@
+{
+  "schema": "r80-bootstrap-h-source-subrevision-v1",
+  "utc": "2026-11-06T06:47:37.093679+00:00",
+  "oneBlocker": "rollback after partial task activation without enrollment completion",
+  "preMetadataSha256": {
+    "HANDOFF.md": "e39c3a9eebe099ba7029beb76a8c527f8937585bf61a35df398325dfe0623cb9",
+    "QUALIFICATION.json": "41852875fa85bd41d680c5a6770e184ef1229ce08694b0ce135cdfdda8fef7d2",
+    "MANIFEST.json": "395317c3a9e9e09e769310da814fcf5c40d5393fc33ef22e563d4198871c0108"
+  },
+  "preservedGSource": "source-history-g",
+  "preservedGMetadata": [
+    "G_QUALIFICATION.json",
+    "G_MANIFEST.json",
+    "G_HANDOFF.md"
+  ],
+  "receiptSha256": "e4b68f9b7d29beb03a4a1260fbd55f2dedef572fc4c995e443fcc19237f1d2b5",
+  "sourceAndNativeOnly": true,
+  "taskOrInstallationMutation": false,
+  "noOldRunnerReplayed": true
+}

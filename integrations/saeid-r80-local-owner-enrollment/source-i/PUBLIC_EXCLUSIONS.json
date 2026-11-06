@@ -1,0 +1,6 @@
+[
+  {
+    "path": "reviews/install-failure/RECONCILIATION.json",
+    "reason": "host-specific metadata kept in local Return; no public instance binding"
+  }
+]

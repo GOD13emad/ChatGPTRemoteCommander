@@ -1,0 +1,51 @@
+<?xml version='1.0' encoding='utf-8'?>
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <PublishAot>true</PublishAot>
+    <SelfContained>true</SelfContained>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <RuntimeFrameworkVersion>10.0.14</RuntimeFrameworkVersion>
+    <IlcPackageVersion>10.0.14</IlcPackageVersion>
+    <DisableTransitiveFrameworkReferenceDownloads>true</DisableTransitiveFrameworkReferenceDownloads>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <AssemblyName>CommanderOwnerProxy</AssemblyName>
+    <ApplicationManifest>G:\CodexWork\RemoteCommander_ConnectionRecovery_20261027\commander-one-owner-enrollment-r80\client\src\client.manifest</ApplicationManifest>
+  </PropertyGroup>
+  <Target Name="RequireFrozenSourceAdmission" BeforeTargets="PrepareForBuild">
+    <Error Condition="'$(FrozenR79Root)'=='' Or '$(FrozenR78Root)'=='' Or '$(DerivedGuardRoot)'==''" Text="Explicit verified frozen source roots required." />
+  </Target>
+  <Target Name="VerifyFrozenSourcePins" BeforeTargets="CoreCompile">
+    <ItemGroup>
+      <_Pinned Include="@(Compile)" Condition="'%(Compile.ExpectedHash)'!=''" />
+    </ItemGroup>
+    <GetFileHash Files="@(_Pinned)" Algorithm="SHA256" MetadataName="ObservedHash">
+      <Output TaskParameter="Items" ItemName="_Observed" />
+    </GetFileHash>
+    <Error Condition="'%(_Observed.ObservedHash)'!='%(_Observed.ExpectedHash)'" Text="Frozen source changed: %(_Observed.Identity)." />
+  </Target>
+  <ItemGroup>
+    <Compile Include="G:\CodexWork\RemoteCommander_ConnectionRecovery_20261027\commander-one-owner-enrollment-r80\client\src\Program.cs" Link="FrozenClientB/Program.cs" ExpectedHash="363EE5EAE66691B37DE4525957310E30702E4FDD8B218E4C16027A8DDDA9897A" />
+    <Compile Include="G:\CodexWork\RemoteCommander_ConnectionRecovery_20261027\commander-one-owner-enrollment-r80\client\src\ClientPolicy.cs" Link="FrozenClientB/ClientPolicy.cs" ExpectedHash="A623A0068F1BC717B04A903070488D772DB7B090CFF3366C2CDDAD0757BD2D72" />
+    <Compile Include="G:\CodexWork\RemoteCommander_ConnectionRecovery_20261027\commander-one-owner-enrollment-r80\client\src\ServerPeer.cs" Link="FrozenClientB/ServerPeer.cs" ExpectedHash="D8DFB4F5866CAE39EBDB458D3B4EE5DDE3ADA2778B3ED094ABF1426C7A557237" />
+    <Compile Include="G:\CodexWork\RemoteCommander_ConnectionRecovery_20261027\commander-one-owner-enrollment-r80\client\src\ClientTransport.cs" Link="FrozenClientB/ClientTransport.cs" ExpectedHash="B4770346955232425F60F9F59424DFB9491BFFD1DC75103BE5EBBD45598DCBF3" />
+    <Compile Include="G:\CodexWork\RemoteCommander_ConnectionRecovery_20261027\commander-one-owner-enrollment-r80\client\src\ClientQA.cs" Link="FrozenClientB/ClientQA.cs" ExpectedHash="C9866450EC96F87FAAAEEB2BF498177888D7B1B2607D0142927BB2ACB6929B2C" />
+    <Compile Include="$(FrozenR79Root)/src/IssuerProtocol.cs" Link="Frozen/IssuerProtocol.cs" ExpectedHash="3E89674ED8590A54FD08B570D897AC0CECA17CEB4E2ED355FB5E5E436D37CB3F" />
+    <Compile Include="$(FrozenR79Root)/src/HostPolicy.cs" Link="Frozen/HostPolicy.cs" ExpectedHash="FACD7E6D66B8FC280806D997B1063EAC312C74861162564A2F9BE132BD418302" />
+    <Compile Include="$(FrozenR78Root)/reviews/durable/local-owner-auth/native-consent-aot-j/OwnerConsentCore.cs" Link="Frozen/OwnerConsentCore.cs" ExpectedHash="684DD5D8EFDC9A90C6D00E1EE6ADB7A04BDF3563D716FA9E2DC76C8FAB28D663" />
+    <Compile Include="$(DerivedGuardRoot)/WindowsGuard.cs" Link="Frozen/WindowsGuard.cs" ExpectedHash="6FFD5E017AC734572D564DDF4268D02ABBEE9ADECC4E0527081B0B5D0CC331E9" />
+    <Compile Include="$(FrozenR78Root)/reviews/durable/local-owner-auth/native-consent-aot-j/SystemDllPolicy.cs" Link="Frozen/SystemDllPolicy.cs" ExpectedHash="916E611FD3DFBD23614E774B134F0A5F90FCBECBDC385E53B15D03E32A6D2347" />
+    <LinkerArg Include="/DEPENDENTLOADFLAG:0x800" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(LauncherFixtureOnly)'=='true'">
+    <Compile Include="G:\CodexWork\RemoteCommander_ConnectionRecovery_20261027\commander-one-owner-enrollment-r80\client\src\LauncherQA.cs" Link="FrozenClientB/LauncherQA.cs" ExpectedHash="FFFF36789A3E59D9BB1601F4BC5FE212C0B051AD40E5ACB1969F2BA898D8137E" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(AncestorFixtureOnly)'=='true'">
+    <Compile Include="AncestorGuardQA.cs" />
+  </ItemGroup>
+</Project>

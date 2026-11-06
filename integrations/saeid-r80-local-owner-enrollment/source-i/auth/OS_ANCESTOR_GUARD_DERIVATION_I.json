@@ -1,0 +1,33 @@
+{
+  "schema": "r80-derived-os-ancestor-guard-v1",
+  "source": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-integration-r78\\reviews\\durable\\local-owner-auth\\native-consent-aot-j\\WindowsGuard.cs",
+  "preSha256": "30d773de2fde0a50f5519961f0d19ebbeb59bf6f6346f7d3bc9301f4f79ec0b5",
+  "derived": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-owner-enrollment-r80\\auth\\src\\WindowsGuard.cs",
+  "postSha256": "6ffd5e017ac734572d564ddf4268d02abbee9adecc4e0527081b0b5d0cc331e9",
+  "change": "ONLY parent DeleteChild trust uses exactTI on existing known OS ancestors; private owner/writer/confidential checks staySY/BA",
+  "projects": [
+    {
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-owner-enrollment-r80\\bootstrap\\src\\OwnerBootstrap.csproj",
+      "preSha256": "1c462196c3bb1a6f5055d35a2a690cddfdad05504beeff0f3e4b567703ad2eaf",
+      "postSha256": "fb044722207e13aa7b3756ea873d024e01937b52b7b7b46f47c52865c5e4f7ad"
+    },
+    {
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-owner-enrollment-r80\\auth\\src\\OwnerIssuerR80.csproj",
+      "preSha256": "26c5ae4cbfa5351da5919e4db1a113d2120b9359f64679adc0dc2f6b7ec6b1d7",
+      "postSha256": "cecd6e241c96cc258f6aeeab4dca2537982e34dcd0dda958de625c9b3919d9c1"
+    },
+    {
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-owner-enrollment-r80\\auth\\src\\OwnerConsentR80.csproj",
+      "preSha256": "992ec064311b463948526e879db76f458dac9985b32b7a19bfc69783ec199d34",
+      "postSha256": "f53957d078b8c834e57cf27465da15e7884ae1f1434f20a328aa5a77ec2a8ad7"
+    },
+    {
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-owner-enrollment-r80\\auth\\src\\JournalBoundaryQA.csproj",
+      "preSha256": "e54eba28fa82bcb8d54fd8ac0fe88e93f4b6b82efdbd32be730d18f18ef6d07d",
+      "postSha256": "fed3914b14c8068dd99d5c38ba8c4740518e7efc0a95fc99e8b230277b394aab"
+    }
+  ],
+  "hApplyConsumed": true,
+  "actualHCode": "UNOBSERVED",
+  "runtimeMutation": false
+}

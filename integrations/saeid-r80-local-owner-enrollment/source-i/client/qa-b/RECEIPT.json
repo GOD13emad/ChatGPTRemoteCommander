@@ -1,0 +1,112 @@
+{
+  "schema": "r80-native-client-qa-b-v1",
+  "utc": "2026-11-06T01:48:11.545809+00:00",
+  "status": "PASS_NATIVE_CLIENT_PARSER_ORDINARY_NEGATIVE_AND_OWN_CHILD_LIFECYCLE",
+  "failure": null,
+  "phases": [
+    {
+      "phase": "publish-native-b",
+      "exitCode": 0,
+      "expected": 0
+    },
+    {
+      "phase": "pure-parser-frame-policy-b",
+      "exitCode": 0,
+      "expected": 0
+    },
+    {
+      "phase": "ordinary-diagnostic-b",
+      "exitCode": 0,
+      "expected": 0
+    },
+    {
+      "phase": "ordinary-unenrolled-rpc-b",
+      "exitCode": 2,
+      "expected": 2
+    },
+    {
+      "phase": "publish-private-launcher-fixture",
+      "exitCode": 0,
+      "expected": 0
+    },
+    {
+      "phase": "actual-owned-launcher-cleanup",
+      "exitCode": 0,
+      "expected": 0
+    }
+  ],
+  "facts": {
+    "binary": {
+      "path": "G:\\CodexWork\\RC1R80Client\\native-b\\CommanderOwnerProxy.exe",
+      "sha256": "95800e1ca4eecd36dfd858f760b0f36d83c0305829c4cc4546a126ff100a8eaa",
+      "bytes": 3136000,
+      "clrDirectory": [
+        0,
+        0
+      ],
+      "dependentLoadFlags": 2048
+    },
+    "pureQA": {
+      "schema": "RC_NATIVE_CLIENT_PURE_QA_V1",
+      "pass": 34,
+      "fail": 0,
+      "failedCases": [],
+      "actualPipeOpened": false,
+      "taskLaunched": false,
+      "systemPeerPositive": false,
+      "enrollmentInstalled": false
+    },
+    "diagnostic": {
+      "schema": "RC_NATIVE_CLIENT_DIAGNOSTIC_V1",
+      "systemSid": false,
+      "elevated": false,
+      "administrator": false,
+      "integrityRid": 8192,
+      "interactiveSession": true,
+      "policyOpened": false,
+      "pipeConnected": false,
+      "taskStarted": false,
+      "runtimeAuthorityExercised": false
+    },
+    "ordinaryNegative": {
+      "version": 1,
+      "id": "b0000080-bbbb-cccc-dddd-eeeeeeeeeeee",
+      "ok": false,
+      "code": "CLIENT_PROTECTED_ENROLLMENT_NOT_READY",
+      "automaticRetryAllowed": false,
+      "effectMayHaveOccurred": false,
+      "taskLaunchAttempted": false,
+      "taskLaunchConfirmed": false,
+      "launcherCleanupConfirmed": true,
+      "launcherCleanupUncertain": false
+    },
+    "fixtureBinary": {
+      "path": "G:\\CodexWork\\RC1R80Client\\launcher-fixture-b\\CommanderOwnerLauncherQA.exe",
+      "sha256": "efc2f8de5455c090ecb375477498daf3aa1ae280732b064c7e6b5c756da98242",
+      "bytes": 1737728,
+      "clrDirectory": [
+        0,
+        0
+      ],
+      "dependentLoadFlags": 2048
+    },
+    "launcherLifecycle": {
+      "schema": "RC_OWN_LAUNCHER_PRIVATE_FIXTURE_V1",
+      "heldOwnChildCleanupConfirmed": true,
+      "alreadyExitedObservationConfirmed": true,
+      "otherPidsOpened": false,
+      "systemTaskStartedOrStopped": false,
+      "pipeOpened": false
+    },
+    "binaryPostSha256": "95800e1ca4eecd36dfd858f760b0f36d83c0305829c4cc4546a126ff100a8eaa"
+  },
+  "sourceManifestSha256": "29a5ab426c32df2dce7052e20c61e29d8059cfdf8abaab14cb73def5883f1b6d",
+  "sourcesUnchanged": true,
+  "systemTaskLaunched": false,
+  "listenerCreated": false,
+  "enrollmentInstalled": false,
+  "systemPositivePeerProven": false,
+  "installedVersionChanged": false,
+  "activeJobsStoppedOrReplayed": false,
+  "automaticRetryAllowed": false
+}

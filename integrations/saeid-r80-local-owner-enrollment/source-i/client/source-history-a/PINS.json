@@ -1,0 +1,17 @@
+[
+  {
+    "original": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-owner-enrollment-r80\\client\\src\\ClientTransport.cs",
+    "backup": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-owner-enrollment-r80\\client\\source-history-a\\ClientTransport.cs",
+    "sha256": "420e85904a14bb103c5de8007387f9769b999f7d90629be791e46c64a2613f37"
+  },
+  {
+    "original": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-owner-enrollment-r80\\client\\src\\Program.cs",
+    "backup": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-owner-enrollment-r80\\client\\source-history-a\\Program.cs",
+    "sha256": "9205f32871533d9b496250b95d16f2e05b28e920f8cad93903686b8f4a8f9cc8"
+  },
+  {
+    "original": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-owner-enrollment-r80\\client\\src\\CommanderOwnerProxy.csproj",
+    "backup": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-owner-enrollment-r80\\client\\source-history-a\\CommanderOwnerProxy.csproj",
+    "sha256": "489c55c47ca79f4172d771cfc6802942807933da6f205ac3311966b46100e609"
+  }
+]

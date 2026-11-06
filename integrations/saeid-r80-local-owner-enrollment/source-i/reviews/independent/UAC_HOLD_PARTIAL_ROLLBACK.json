@@ -1,0 +1,16 @@
+{
+  "schema": "R80_PARENT_UAC_HOLD_V1",
+  "status": "HOLD_ACTUAL_UAC_UNTIL_H_PARTIAL_RETIREMENT_REVIEW",
+  "authority": "Parent direct instruction after G scoped review",
+  "priorReview": "BOOTSTRAP_REVIEW.json",
+  "priorReviewSha256": "2b649b781cb7817c428e6d9c9f7864ecdd79098ed2dd81f2473c5f1934bed7ba",
+  "priorScope": "G source/native/ordinary negative evidence remains historical, not partial-retirement acceptance",
+  "blocker": "Rollback requires enrollment.complete and cannot select a transaction interrupted after task registration or client-policy publication but before complete",
+  "requiredNarrowDelta": "Protected enrollment.intent plus task.prepared before registration, unique bundle/epoch ownership marker and exact registered definition/SDDL/idle selection; missing task deactivated, unknown or active denied without stop/delete; preserve files/keys/state",
+  "clientBReviewChanged": false,
+  "hostOrConsentNativeReviewChanged": false,
+  "uacOrTaskActionsByReviewer": false,
+  "installedChanged": false,
+  "activeJobsStoppedOrReplayed": 0,
+  "whole": "NOT_FINAL"
+}

@@ -1,0 +1,49 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <PublishAot>true</PublishAot>
+    <SelfContained>true</SelfContained>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <RuntimeFrameworkVersion>10.0.14</RuntimeFrameworkVersion>
+    <IlcPackageVersion>10.0.14</IlcPackageVersion>
+    <DisableTransitiveFrameworkReferenceDownloads>true</DisableTransitiveFrameworkReferenceDownloads>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <AssemblyName>CommanderOwnerBootstrap</AssemblyName>
+    <ApplicationManifest>G:\CodexWork\RemoteCommander_ConnectionRecovery_20261027\commander-one-native-issuer-r79\src\host.manifest</ApplicationManifest>
+  </PropertyGroup>
+  <Target Name="RequireFrozenSourceAdmission" BeforeTargets="PrepareForBuild">
+    <Error Condition="'$(FrozenR78SourceRoot)'=='' Or !Exists('$(FrozenR78SourceRoot)/reviews/durable/local-owner-auth/protected-oauth-exchange/ProtectedOAuthExchange.cs')" Text="Explicit build-time FrozenR78SourceRoot and verified source manifest required." />
+  </Target>
+  <Target Name="VerifyFrozenSourcePins" BeforeTargets="CoreCompile">
+    <ItemGroup>
+      <_PinnedFrozen Include="@(Compile)" Condition="'%(Compile.ExpectedHash)'!=''" />
+    </ItemGroup>
+    <GetFileHash Files="@(_PinnedFrozen)" Algorithm="SHA256" MetadataName="ObservedHash">
+      <Output TaskParameter="Items" ItemName="_ObservedFrozen" />
+    </GetFileHash>
+    <Error Condition="'%(_ObservedFrozen.ObservedHash)'!='%(_ObservedFrozen.ExpectedHash)'" Text="Frozen R78 source changed: %(_ObservedFrozen.Identity). Do not compile an unreviewed dependency." />
+  </Target>
+  <ItemGroup>
+    <Compile Include="Program.cs" />
+    <Compile Include="Bundle.cs" />
+    <Compile Include="BootstrapPolicy.cs" />
+    <Compile Include="ProtectedInstall.cs" />
+    <Compile Include="OwnedHelper.cs" />
+    <Compile Include="TaskPlan.cs" />
+    <Compile Include="NativeOutcome.cs" />
+    <Compile Include="OutcomeCodes.cs" />
+    <Compile Include="$(FrozenR78SourceRoot)/reviews/durable/local-owner-auth/native-consent-aot-j/OwnerConsentCore.cs" Link="Frozen/OwnerConsentCore.cs" ExpectedHash="684DD5D8EFDC9A90C6D00E1EE6ADB7A04BDF3563D716FA9E2DC76C8FAB28D663" />
+    <Compile Include="G:\CodexWork\RemoteCommander_ConnectionRecovery_20261027\commander-one-owner-enrollment-r80\auth\src\WindowsGuard.cs" Link="Frozen/WindowsGuard.cs" ExpectedHash="6FFD5E017AC734572D564DDF4268D02ABBEE9ADECC4E0527081B0B5D0CC331E9" />
+    <Compile Include="$(FrozenR78SourceRoot)/reviews/durable/local-owner-auth/native-consent-aot-j/SystemDllPolicy.cs" Link="Frozen/SystemDllPolicy.cs" ExpectedHash="916E611FD3DFBD23614E774B134F0A5F90FCBECBDC385E53B15D03E32A6D2347" />
+    <LinkerArg Include="/DEPENDENTLOADFLAG:0x800" />
+    <EmbeddedResource Include="TaskOwner.ps1" LogicalName="TaskOwner.ps1" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(BootstrapFixtureOnly)'=='true'">
+    <Compile Include="BootstrapQA.cs" />
+  </ItemGroup>
+</Project>

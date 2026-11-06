@@ -1,0 +1,28 @@
+{
+ "schema":"r80-native-owner-acceptance-probe-contract-v1",
+ "revision":"R80-probe-B",
+ "artifact":{"path":"G:/CodexWork/RC1R80ProbeBuild/native-b/CommanderOwnerAcceptance.exe","sha256":"fdf040f44b67f04594a8fdba0e067e2db13f338fe31533d27b33dc2f113077fe","bytes":3969024,"clrDirectory":[0,0],"dependentLoadFlags":2048,"manifest":"asInvoker/uiAccess=false"},
+ "modes":[
+  {"name":"--prepare","token":"actual ordinary admitted owner SID/session, medium non-elevated","effectsAfterParentApproval":"Creates fresh fixed owner-only G directory, private seed with PKCE/state and durable RPC intent; calls verified installed ordinary proxy authorize/begin once; persists only private seed/prepared metadata; prints pending requestId/digest only"},
+  {"name":"--approve-compose","token":"actual same owner SID/session real UAC type2 high token","effectsAfterParentApproval":"Reads/holds owner-private inputs without writing G; validates exact protected no-project policy and protected pending challenge/state/digest; creates new protected fixed acceptance directory+intent; launches pinned installed native consent helper once for actual human consent; verifies signed receipt; opens only fixed protected selftest client PKCS8 key; writes fixed60s private_key_jwt assertion package under protected ProgramData owner-read directory; prints requestId/digest only. NEVER calls elevated oauth-proxy"},
+  {"name":"--exchange-verify","token":"actual ordinary admitted owner SID/session, medium non-elevated","effectsAfterParentApproval":"Writes one-use private verify intent, waits read-only up to90s for protected assertion, verifies exact input/policy binding and assertion signature/lifetime, calls ordinary proxy complete/exchange/fresh-state once each, verifies token and state in memory, writes metadata-only receipt with token SHA256. Never persists/prints token, code, assertion or verifier"}
+ ],
+ "fixedRuntimePrivateRoot":"G:/CodexWork/RC1R80OwnerProbe",
+ "fixedProtectedOutputRoot":"%ProgramData%/ChatGPTRemoteCommander/owner-auth/selftest-acceptance",
+ "protectedOutputAcl":"BA/SYSTEM owner/write only; admitted ordinary owner read/execute only; no admin writes to G",
+ "ownerInputAcl":"owner SID ownership + protected DACL allowing only owner/SYSTEM; held file handles deny write/delete during use; no reparse paths",
+ "publicAuthority":"Protected client-policy.json, native/oauth/host policies and consent-public.pem/oauth-public.pem; full pin and exact no-project admission before runtime effects",
+ "exactScope":{"issuer":"https://commander.invalid/owner","tokenEndpoint":"https://commander.invalid/owner/token","clientId":"commander-owner-selftest","redirectUri":"https://commander.invalid/local-callback","resource":"https://commander.invalid/selftest","ownerId":"local-owner","grantPolicyId":"selftest","profileId":"selftest","rootPolicyId":"no-project","actions":["selftest"],"scopes":["selftest"]},
+ "fixedConsentHelper":{"name":"%ProgramFiles%/ChatGPTRemoteCommander/owner-auth/CommanderOwnerConsent.exe","sha256":"599847485c8650740bd59228a4f7629534acf0d85ca84593b81faf38ac990a13","argv":["--request","strict protected pending request ID"]},
+ "fixedOrdinaryProxy":"%ProgramFiles%/ChatGPTRemoteCommander/owner-auth/CommanderOwnerProxy.exe --rpc; image SHA256 from protected client policy; source unchanged client B",
+ "privateKeyPath":"%ProgramData%/ChatGPTRemoteCommander/owner-auth/selftest-client-key.pk8; DER PKCS8 P-256; BA/SYSTEM confidentiality; only elevated mode2 after actual signed human approval",
+ "assertion":"ES256 header fixed kid selftest-client/typ JWT; claims fixed iss/sub/clientId, fixed audience tokenEndpoint, current iat/exp exactly60s, fresh jti; private public-key binding checked against protected OAuth JWK",
+ "verification":"ES256 P1363 access token against pinned issuer SPKI, exact14 claims, exact selftest/no-project binding and300s lifetime; DER signed grant-state envelope with exact selftest scope, active status,15s freshness and strictly advancing sequence",
+ "limits":{"processDeadlineSeconds":180,"ownerAssertionWaitSeconds":90,"ordinaryProxyWaitSeconds":30,"nativeConsentWaitSeconds":90,"ownChildCleanupReserveSeconds":2,"stdoutJsonBytes":32770},
+ "uncertainPolicy":"Durable create-only markers before external calls; no loops/retries of API/task/consent effects; lost/truncated/timeout response => preserve state and reconcile, never replay. Only original just-created held helper process handle/FILETIME/image can be reaped; no project/host/process-tree stop",
+ "stdout":"Metadata JSON only, pending ID/digest or result token SHA/fresh state sequence; never JWT/private key/PKCE/code/assertion",
+ "stderr":"Sanitized fixed code, phase, conservative externalEffectMayHaveOccurred, privateKeyOpened, ownedChildCleanupUncertain, automaticRetryAllowed=false; no raw exception/request/token/launcher output",
+ "preapprovalQa":"Compile,23 synthetic in-memory crypto/claim/privacy cases, ordinary early UAC and arbitrary-mode negatives only. Prepare/Verify real modes, tasks, UAC, dialogs, real keys and installed proxy never executed",
+ "parentExecutionPrerequisite":"Bootstrap H/next source accepted and deployed by explicit owner approval; parent must verify and hold exact probe artifact through deliberate UAC launch. ClientB/installed Commander active jobs remain unchanged. Start mode3 ordinary waiting after mode1 and before mode2 to minimize assertion expiry",
+ "currentAcceptance":"SOURCE_COMPILE_PURE_PRIVACY_NEGATIVE_ONLY; actual owner E2E unproven"
+}

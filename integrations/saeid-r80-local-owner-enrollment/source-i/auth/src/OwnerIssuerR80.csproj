@@ -1,0 +1,46 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <PublishAot>true</PublishAot>
+    <SelfContained>true</SelfContained>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <RuntimeFrameworkVersion>10.0.14</RuntimeFrameworkVersion>
+    <IlcPackageVersion>10.0.14</IlcPackageVersion>
+    <DisableTransitiveFrameworkReferenceDownloads>true</DisableTransitiveFrameworkReferenceDownloads>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <AssemblyName>CommanderNativeIssuer</AssemblyName>
+    <ApplicationManifest>G:\CodexWork\RemoteCommander_ConnectionRecovery_20261027\commander-one-native-issuer-r79\src\host.manifest</ApplicationManifest>
+  </PropertyGroup>
+  <Target Name="RequireFrozenSourceAdmission" BeforeTargets="PrepareForBuild">
+    <Error Condition="'$(FrozenR78SourceRoot)'=='' Or !Exists('$(FrozenR78SourceRoot)/reviews/durable/local-owner-auth/protected-oauth-exchange/ProtectedOAuthExchange.cs')" Text="Explicit build-time FrozenR78SourceRoot and verified source manifest required." />
+  </Target>
+  <Target Name="VerifyFrozenSourcePins" BeforeTargets="CoreCompile">
+    <ItemGroup>
+      <_PinnedFrozen Include="@(Compile)" Condition="'%(Compile.ExpectedHash)'!=''" />
+    </ItemGroup>
+    <GetFileHash Files="@(_PinnedFrozen)" Algorithm="SHA256" MetadataName="ObservedHash">
+      <Output TaskParameter="Items" ItemName="_ObservedFrozen" />
+    </GetFileHash>
+    <Error Condition="'%(_ObservedFrozen.ObservedHash)'!='%(_ObservedFrozen.ExpectedHash)'" Text="Frozen R78 source changed: %(_ObservedFrozen.Identity). Do not compile an unreviewed dependency." />
+  </Target>
+  <ItemGroup>
+    <Compile Include="G:\CodexWork\RemoteCommander_ConnectionRecovery_20261027\commander-one-native-issuer-r79\src\Program.cs" ExpectedHash="473DE32F68D1901B5C93F741374392D0C2AD5868DD063613141188DE155F9291" />
+    <Compile Include="G:\CodexWork\RemoteCommander_ConnectionRecovery_20261027\commander-one-native-issuer-r79\src\IssuerProtocol.cs" ExpectedHash="3E89674ED8590A54FD08B570D897AC0CECA17CEB4E2ED355FB5E5E436D37CB3F" />
+    <Compile Include="G:\CodexWork\RemoteCommander_ConnectionRecovery_20261027\commander-one-native-issuer-r79\src\HostPolicy.cs" ExpectedHash="FACD7E6D66B8FC280806D997B1063EAC312C74861162564A2F9BE132BD418302" />
+    <Compile Include="G:\CodexWork\RemoteCommander_ConnectionRecovery_20261027\commander-one-native-issuer-r79\src\KernelPeer.cs" ExpectedHash="A0F853192028183B48BD300C693FB4E37390A0E7255DC2CD406EF0F84A483806" />
+    <Compile Include="G:\CodexWork\RemoteCommander_ConnectionRecovery_20261027\commander-one-native-issuer-r79\src\PrivatePipe.cs" ExpectedHash="B2D562701126186013AA9EB295BEC4A8A118456B8277F0A05C3CBDDBF0724281" />
+    <Compile Include="$(FrozenR78SourceRoot)/reviews/durable/local-owner-auth/protected-oauth-exchange/ProtectedOAuthExchange.cs" Link="Frozen/ProtectedOAuthExchange.cs" ExpectedHash="277BEB1F077289203EE57AB3DF55AC64D8E7BFCA2D0AA0B31A25AAAF5D208AE0" />
+    <Compile Include="G:\CodexWork\RemoteCommander_ConnectionRecovery_20261027\commander-one-owner-enrollment-r80\auth\src\ExchangeJournal.cs" Link="Frozen/ExchangeJournal.cs" ExpectedHash="53DE33FBDB5C37C671C939D0A756E69E555FC35E068AE63A49B89EFFC31F929E" />
+    <Compile Include="G:\CodexWork\RemoteCommander_ConnectionRecovery_20261027\commander-one-owner-enrollment-r80\auth\src\ProtectedIssuerState.cs" Link="Frozen/ProtectedIssuerState.cs" ExpectedHash="8E4B52030B7C5FD60D56D2BE6C863D9460EB99A20E14C6547681E636F9AC95E6" />
+    <Compile Include="$(FrozenR78SourceRoot)/reviews/durable/local-owner-auth/native-consent-aot-j/OwnerConsentCore.cs" Link="Frozen/OwnerConsentCore.cs" ExpectedHash="684DD5D8EFDC9A90C6D00E1EE6ADB7A04BDF3563D716FA9E2DC76C8FAB28D663" />
+    <Compile Include="G:\CodexWork\RemoteCommander_ConnectionRecovery_20261027\commander-one-owner-enrollment-r80\auth\src\WindowsGuard.cs" Link="Frozen/WindowsGuard.cs" ExpectedHash="6FFD5E017AC734572D564DDF4268D02ABBEE9ADECC4E0527081B0B5D0CC331E9" />
+    <Compile Include="$(FrozenR78SourceRoot)/reviews/durable/local-owner-auth/native-consent-aot-j/SystemDllPolicy.cs" Link="Frozen/SystemDllPolicy.cs" ExpectedHash="916E611FD3DFBD23614E774B134F0A5F90FCBECBDC385E53B15D03E32A6D2347" />
+    <LinkerArg Include="/DEPENDENTLOADFLAG:0x800" />
+    <Compile Include="G:\CodexWork\RemoteCommander_ConnectionRecovery_20261027\commander-one-owner-enrollment-r80\auth\src\ProtectedJournal.cs" ExpectedHash="878D933FC73A0E9F277788DAFEA41EB05F4DBA4BAADCD25EF7D029E32D0BF456" />
+  </ItemGroup>
+</Project>

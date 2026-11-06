@@ -1,0 +1,58 @@
+using CommanderOwnerConsent;
+using System.Runtime.InteropServices;
+using System.Security.AccessControl;
+using System.Security.Principal;
+using System.Text;
+using System.Text.Json;
+using System.Diagnostics;
+namespace CommanderOwnerBootstrap;
+internal static class ProtectedInstall
+{
+    [StructLayout(LayoutKind.Sequential)]private struct SA{internal int Length;internal nint Descriptor;internal int Inherit;}
+    [DllImport("advapi32.dll",CharSet=CharSet.Unicode,SetLastError=true)]private static extern bool ConvertStringSecurityDescriptorToSecurityDescriptor(string s,int revision,out nint descriptor,out uint size);
+    [DllImport("kernel32.dll",CharSet=CharSet.Unicode,SetLastError=true)]private static extern bool CreateDirectoryW(string path,ref SA sa);
+    [DllImport("kernel32.dll")]private static extern nint LocalFree(nint memory);
+    internal static string ProgramRoot=>Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),"ChatGPTRemoteCommander","owner-auth");
+    internal static string StateRoot=>Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),"ChatGPTRemoteCommander","owner-auth");
+    internal static byte[] TaskScript(){using var stream=typeof(ProtectedInstall).Assembly.GetManifestResourceStream("TaskOwner.ps1")??throw new ConsentFault("TASK_SCRIPT_RESOURCE");using var m=new MemoryStream();stream.CopyTo(m);return m.ToArray();}
+    internal static void RequireAbsent(string path)=>ConsentCore.Need(!File.Exists(path)&&!Directory.Exists(path),"EXISTING_TARGET_STOP_NO_OVERWRITE");
+    internal static void Ancestors(string path)
+    {
+        for(var p=path;!string.IsNullOrEmpty(p);p=Path.GetDirectoryName(p))
+        {WindowsGuard.NoReparse(p);var acl=new DirectoryInfo(p).GetAccessControl(AccessControlSections.Access);foreach(FileSystemAccessRule a in acl.GetAccessRules(true,true,typeof(SecurityIdentifier)))if(a.AccessControlType==AccessControlType.Allow&&(a.FileSystemRights&FileSystemRights.DeleteSubdirectoriesAndFiles)!=0)ConsentCore.Need(a.IdentityReference.Value is "S-1-5-18" or "S-1-5-32-544","PARENT_DELETE_RIGHTS_UNTRUSTED");if(Path.GetPathRoot(p)==p)break;}
+    }
+    internal static void NewDirectory(string path,string owner)
+    {
+        RequireAbsent(path);Ancestors(Path.GetDirectoryName(path)!);var sddl="O:BAG:BAD:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;;GRGX;;;"+owner+")";
+        ConsentCore.Need(ConvertStringSecurityDescriptorToSecurityDescriptor(sddl,1,out var descriptor,out _),"DIRECTORY_DACL_FORMAT");
+        try{var sa=new SA{Length=Marshal.SizeOf<SA>(),Descriptor=descriptor,Inherit=0};ConsentCore.Need(CreateDirectoryW(path,ref sa),"DIRECTORY_CREATE_EXCLUSIVE_FAILED");}finally{LocalFree(descriptor);}
+        WindowsGuard.Protected(path,true);
+    }
+    internal static void Parent(string target,string owner){var p=Path.GetDirectoryName(target)!;if(Directory.Exists(p))WindowsGuard.Protected(p,true);else NewDirectory(p,owner);}
+    internal static void Write(string path,byte[] bytes,string owner,bool publicRead=false)
+    {
+        RequireAbsent(path);WindowsGuard.Protected(Path.GetDirectoryName(path)!,true);var acl=new FileSecurity();var admin=new SecurityIdentifier("S-1-5-32-544");acl.SetOwner(admin);acl.SetAccessRuleProtection(true,false);foreach(var id in new[]{"S-1-5-18","S-1-5-32-544"})acl.AddAccessRule(new FileSystemAccessRule(new SecurityIdentifier(id),FileSystemRights.FullControl,AccessControlType.Allow));if(publicRead)acl.AddAccessRule(new FileSystemAccessRule(new SecurityIdentifier(owner),FileSystemRights.ReadAndExecute,AccessControlType.Allow));
+        using var f=new FileInfo(path).Create(FileMode.CreateNew,FileSystemRights.FullControl,FileShare.None,4096,FileOptions.WriteThrough,acl);f.Write(bytes);f.Flush(true);
+    }
+    internal static string InvokeTaskScript(string operation)
+    {
+        ConsentCore.Need(operation is "apply" or "rollback","TASK_FIXED_OPERATION");var script=Path.Combine(ProgramRoot,"TaskOwner.ps1");using var held=WindowsGuard.OpenProtected(script,32768);ConsentCore.Need(WindowsGuard.Read(held).SequenceEqual(TaskScript()),"TASK_SCRIPT_PIN_CHANGED");
+        var exe=Path.Combine(Environment.SystemDirectory,"WindowsPowerShell","v1.0","powershell.exe");WindowsGuard.NoReparse(exe);
+        var start=new ProcessStartInfo(exe){UseShellExecute=false,WorkingDirectory=Environment.SystemDirectory,CreateNoWindow=true,RedirectStandardOutput=true,RedirectStandardError=true};
+        start.Environment.Clear();foreach(var pair in new[]{("SystemRoot",Environment.GetFolderPath(Environment.SpecialFolder.Windows)),("windir",Environment.GetFolderPath(Environment.SpecialFolder.Windows)),("PATH",Environment.SystemDirectory),("PSModulePath",Path.Combine(Environment.SystemDirectory,"WindowsPowerShell","v1.0","Modules")),("TEMP",Path.Combine(StateRoot,"task-temp")),("TMP",Path.Combine(StateRoot,"task-temp"))})start.Environment[pair.Item1]=pair.Item2;
+        foreach(var value in new[]{"-NoLogo","-NoProfile","-NonInteractive","-File",script,"-Operation",operation})start.ArgumentList.Add(value);
+        using var p=Process.Start(start)??throw new ConsentFault("TASK_HELPER_START_FAILED_NO_RETRY");
+        var stdout=p.StandardOutput.ReadToEndAsync();var stderr=p.StandardError.ReadToEndAsync();ConsentCore.Need(p.WaitForExit(30000),"TASK_HELPER_TIMEOUT_UNCERTAIN_NO_RETRY");
+        var output=stdout.GetAwaiter().GetResult();var error=stderr.GetAwaiter().GetResult();ConsentCore.Need(p.ExitCode==0&&output.Length<32768&&error.Length==0,"TASK_HELPER_FAILED_RECONCILE_NO_RETRY");using var d=ConsentCore.Strict(Encoding.UTF8.GetBytes(output.Trim()));ConsentCore.Fields(d.RootElement,"status");return ConsentCore.Text(d.RootElement,"status");
+    }
+    internal static void Rollback(string owner)
+    {
+        WindowsGuard.RequireOwner(WindowsGuard.Inspect(),owner);WindowsGuard.Protected(ProgramRoot,true);WindowsGuard.Protected(StateRoot,true);
+        using var f=WindowsGuard.OpenProtected(Path.Combine(StateRoot,"enrollment.complete.json"),32768);using var doc=ConsentCore.Strict(WindowsGuard.Read(f));var e=doc.RootElement;ConsentCore.Need(ConsentCore.Text(e,"ownerSid")==owner,"ROLLBACK_OWNER_BINDING");
+        foreach(var row in e.GetProperty("immutableFiles").EnumerateArray())
+        {var root=ConsentCore.Text(row,"root")=="program"?ProgramRoot:StateRoot;var name=ConsentCore.Text(row,"name");ConsentCore.Need(!name.Contains("..")&&!Path.IsPathRooted(name),"ROLLBACK_PATH");using var input=WindowsGuard.OpenProtected(Path.Combine(root,name),64*1024*1024);ConsentCore.Need(BootstrapPolicy.Hex(WindowsGuard.Read(input))==ConsentCore.Text(row,"sha256"),"ROLLBACK_SOURCE_CHANGED_STOP");}
+        // No process stop and no secret/state deletion. Remove only this exact
+        // idle task after attestation equality. Installed Commander is unrelated.
+        var status=InvokeTaskScript("rollback");ConsentCore.Need(status=="TASK_REMOVED_FILES_AND_KEYS_PRESERVED","ROLLBACK_TASK_RESULT");Write(Path.Combine(StateRoot,"rollback.complete.json"),BootstrapPolicy.Json(w=>{w.WriteString("schema","RC_OWNER_BOOTSTRAP_ROLLBACK_V1");w.WriteString("status",status);w.WriteString("ownerSid",owner);w.WriteBoolean("keysAndStatePreserved",true);w.WriteBoolean("commanderUnchanged",true);}),owner);
+    }
+}

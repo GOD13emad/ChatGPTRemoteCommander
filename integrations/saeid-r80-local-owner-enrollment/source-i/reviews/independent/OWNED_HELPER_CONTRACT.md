@@ -1,0 +1,7 @@
+# Bounded helper lifetime — primary-source delta
+
+History: client A cancelled its process wait without owning termination/reap; client B added exact original-handle/FILETIME/image cleanup. Bootstrap F reused that guard but could replace an earlier failure from its `finally`; G now preserves the primary error and attaches cleanup uncertainty. These are the same finite-child lifecycle family, not permission to stop a task/service/project process.
+
+Microsoft documents [WaitForExit](https://learn.microsoft.com/en-us/dotnet/api/system.diagnostics.process.waitforexit?view=net-10.0) as a bounded wait, [Close](https://learn.microsoft.com/en-us/dotnet/api/system.diagnostics.process.close?view=net-10.0) as releasing the component's resources, and [Kill](https://learn.microsoft.com/en-us/dotnet/api/system.diagnostics.process.kill?view=net-10.0) as termination requiring subsequent exit observation. Disposing/wait cancellation is therefore not proof a child has stopped. R80 uses an original held handle, generation and image before terminating only its newly created helper; it observes exit and never enumerates/reopens arbitrary PIDs or targets the SYSTEM issuer.
+
+Actual author private-child fixtures establish that narrow mechanism under ordinary authority. They do not prove elevated task creation or project completion. An uncertain task outcome stays unknown/no-retry even after its launcher was reaped. The parent accepted G's cleanup-only auxiliary boolean limitation with the explicit error code authoritative; every nonzero apply outcome requires reconciliation.

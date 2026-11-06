@@ -1,0 +1,35 @@
+{
+  "schema": "r80-task-schema-actual-memory-com-v1",
+  "utc": "2026-11-06T07:43:39.962676+00:00",
+  "productionGeneratorSourceSha256": "6af3867efee188d001668c3d8e4cd12ea383885f27520c61498ea9691a53063d",
+  "syntheticBindingOnly": true,
+  "facts": {
+    "cases": [
+      {
+        "file": "TASK_XML_SOURCE_FIXTURE.xml",
+        "hresult": -2147216616,
+        "type": "COMException",
+        "accepted": false,
+        "hresultHex": "0x80041318"
+      },
+      {
+        "nativeUser": "SYSTEM",
+        "file": "TASK_XML_NODE_OMITTED_FIXTURE.xml",
+        "nativeLogonType": 5,
+        "accepted": true
+      }
+    ],
+    "setComServiceAccount": {
+      "xmlContainsServiceAccount": false,
+      "nativeLogonType": 5,
+      "xmlContainsLogonType": false
+    },
+    "objectsInMemoryOnly": true,
+    "registeredOrStarted": false
+  },
+  "installedStateReadOrChanged": false,
+  "protectedPrivateFilesOpened": false,
+  "originalIInnerError": "UNOBSERVED; fixture is separate causal reproduction, no original error invented",
+  "officialSchema": "https://learn.microsoft.com/en-us/windows/win32/taskschd/task-scheduler-schema",
+  "noRegisterCall": true
+}

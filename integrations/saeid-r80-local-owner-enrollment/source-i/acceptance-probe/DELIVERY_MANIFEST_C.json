@@ -1,0 +1,49 @@
+{
+  "schema": "r80-c-derived-delivery-manifest-v1",
+  "component": "acceptance-probe",
+  "files": [
+    {
+      "path": "HANDOFF_C.md",
+      "bytes": 2762,
+      "sha256": "5a8daf4bd95a535a249efdcc8dcf71281199414c52cab98d1e477db23db1e830"
+    },
+    {
+      "path": "PREPARE_PROBE_C_PROJECT_ONCE.py",
+      "bytes": 2936,
+      "sha256": "755406127d65d2257c2a7758c3d9b1a0d386571a217555d45ecc68182db3380c"
+    },
+    {
+      "path": "PROBE_CONTRACT_C.json",
+      "bytes": 6222,
+      "sha256": "57f8c7bd160617d49dc91777b39a41193656dc9218ba3b543a18ccb3b71b97ab"
+    },
+    {
+      "path": "qa-c/RECEIPT.json",
+      "bytes": 3542,
+      "sha256": "8f0aa1d59751fb9895dc7d6dd3c9d82afa5e5e43f5b6e173c6634505c0f142f9"
+    },
+    {
+      "path": "QUALIFY_PROBE_C_ONCE.py",
+      "bytes": 6257,
+      "sha256": "e185a8f46604e81701f63313bffb0bed0a4b0e372f1f1159884f1dd9484260f1"
+    },
+    {
+      "path": "SOURCE_INPUT_MANIFEST_C.json",
+      "bytes": 5073,
+      "sha256": "ae464ab1fb922847c9a2833f0c65ca9880eda783e5f5a0e133ec1bd3010db94c"
+    },
+    {
+      "path": "src-c/CommanderOwnerAcceptanceC.csproj",
+      "bytes": 4742,
+      "sha256": "67535fab608dc6c6299794b9c395fb547f4c941ec9eaf0e9cb5b8f557cb8c1f4"
+    },
+    {
+      "path": "src-c/ProbeAuthority.cs",
+      "bytes": 7360,
+      "sha256": "b608c6c6ef2961e46edfe09cc4b8789d9223e943183b8873fc1a2b3a2b090d86"
+    }
+  ],
+  "baseBPreserved": true,
+  "actualOwnerE2EProven": false,
+  "installedChanged": false
+}

@@ -1,0 +1,9 @@
+{
+  "schema": "r80-bootstrap-private-build-admission-v1",
+  "owner": "saeed",
+  "sourceRoot": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-owner-enrollment-r80",
+  "sourceManifestSha256": "3127fec337743af7388798dd5449a48917c44ef7bea13f7fae1dfa1ca553b481",
+  "role": "ordinary native compile/diagnose/denial/boundary QA only; no installation/enrollment/task/UAC",
+  "shortBuildRoot": "G:\\CodexWork\\RC1R80Bootstrap",
+  "sharedPackageCache": "G:\\CodexWork\\RC1R78AuthAot\\packages"
+}

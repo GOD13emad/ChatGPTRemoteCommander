@@ -1,0 +1,86 @@
+{
+  "schema": "r80-owner-acceptance-probe-qa-b-v1",
+  "utc": "2026-11-06T06:48:31.447174+00:00",
+  "status": "PASS_NATIVE_PROBE_SOURCE_PURE_PRIVACY_ORDINARY_NEGATIVES_ONLY",
+  "failure": null,
+  "phases": [
+    {
+      "phase": "publish-native-b",
+      "exitCode": 0,
+      "expected": 0
+    },
+    {
+      "phase": "pure-signature-claims-privacy-b",
+      "exitCode": 0,
+      "expected": 0
+    },
+    {
+      "phase": "ordinary-diagnostic-b",
+      "exitCode": 0,
+      "expected": 0
+    },
+    {
+      "phase": "ordinary-uac-denial-b",
+      "exitCode": 2,
+      "expected": 2
+    },
+    {
+      "phase": "arbitrary-sign-mode-denial-b",
+      "exitCode": 2,
+      "expected": 2
+    }
+  ],
+  "facts": {
+    "binary": {
+      "path": "G:\\CodexWork\\RC1R80ProbeBuild\\native-b\\CommanderOwnerAcceptance.exe",
+      "sha256": "fdf040f44b67f04594a8fdba0e067e2db13f338fe31533d27b33dc2f113077fe",
+      "bytes": 3969024
+    },
+    "nativeClrZero": true,
+    "dependentLoadFlags": 2048,
+    "pureQA": {
+      "schema": "RC_OWNER_ACCEPTANCE_PURE_QA_V1",
+      "pass": 23,
+      "fail": 0,
+      "failedCases": [],
+      "syntheticKeysInMemoryOnly": true,
+      "realPrivateKeyOpened": false,
+      "actualProxyOrConsentStarted": false,
+      "runtimeGDirectoryCreated": false,
+      "actualOwnerAcceptanceProven": false
+    },
+    "jwtNotPrintedInQA": true,
+    "diagnostic": {
+      "status": "DIAGNOSTIC_ONLY",
+      "elevated": false,
+      "interactiveOwnerSession": true,
+      "authorityOpened": false,
+      "privateKeyOpened": false,
+      "taskOrConsentStarted": false,
+      "automaticRetryAllowed": false
+    },
+    "ordinaryNegative": {
+      "status": "STOP_RECONCILE_NO_RETRY",
+      "code": "PROBE_REAL_OWNER_UAC_REQUIRED",
+      "phase": "preflight",
+      "externalEffectMayHaveOccurred": false,
+      "privateKeyOpened": false,
+      "ownedChildCleanupUncertain": false,
+      "automaticRetryAllowed": false
+    },
+    "arbitrarySigningModeDenied": true,
+    "binaryPostSha256": "fdf040f44b67f04594a8fdba0e067e2db13f338fe31533d27b33dc2f113077fe",
+    "noManagedOutputsUnderSource": true
+  },
+  "sourceManifestSha256": "353eda609d72780b2bda46b210bcbb43798812cad14ddc25d2aec8862eb43399",
+  "sourcesUnchanged": true,
+  "realPrepareModeExecuted": false,
+  "realVerifyModeExecuted": false,
+  "ownerUacOrConsentShown": false,
+  "realPrivateKeyOpened": false,
+  "realProxyOrTaskStarted": false,
+  "runtimeGDirectoryCreatedByQA": false,
+  "actualOwnerE2EProven": false,
+  "installedVersionChanged": false,
+  "activeJobsStoppedOrReplayed": false
+}

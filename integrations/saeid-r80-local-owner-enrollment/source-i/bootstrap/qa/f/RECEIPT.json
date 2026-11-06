@@ -1,0 +1,186 @@
+{
+  "schema": "r80-bootstrap-final-native-qa-v1",
+  "utc": "2026-11-06T01:58:26.679953+00:00",
+  "status": "PASS_NATIVE_SOURCE_FINITE_HELPER_AND_NEGATIVES_ONLY",
+  "phases": [
+    {
+      "phase": "bootstrap-f-restore",
+      "exitCode": 0,
+      "expectedExit": 0
+    },
+    {
+      "phase": "bootstrap-f-publish",
+      "exitCode": 0,
+      "expectedExit": 0
+    },
+    {
+      "phase": "bootstrap-f-diagnostic",
+      "exitCode": 0,
+      "expectedExit": 0
+    },
+    {
+      "phase": "bootstrap-f-ordinary-apply",
+      "exitCode": 2,
+      "expectedExit": 2
+    },
+    {
+      "phase": "bootstrap-f-ordinary-rollback",
+      "exitCode": 2,
+      "expectedExit": 2
+    },
+    {
+      "phase": "bootstrap-f-qa-publish",
+      "exitCode": 0,
+      "expectedExit": 0
+    },
+    {
+      "phase": "bootstrap-f-native-qa",
+      "exitCode": 0,
+      "expectedExit": 0
+    },
+    {
+      "phase": "bootstrap-f-manifest",
+      "exitCode": 0,
+      "expectedExit": 0
+    }
+  ],
+  "facts": {
+    "host": {
+      "path": "G:\\CodexWork\\RC1R80Bootstrap\\host\\CommanderNativeIssuer.exe",
+      "sha256": "f4bf84f09cabae3a128d577cc5f4f07f8708a2b5fdf6d67432eccc6bdbdb58f9",
+      "bytes": 4129280,
+      "clrDirectoryZero": true,
+      "dependentLoadFlags": 2048
+    },
+    "consent": {
+      "path": "G:\\CodexWork\\RC1R80Bootstrap\\consent-b\\CommanderOwnerConsent.exe",
+      "sha256": "599847485c8650740bd59228a4f7629534acf0d85ca84593b81faf38ac990a13",
+      "bytes": 3564544,
+      "clrDirectoryZero": true,
+      "dependentLoadFlags": 2048
+    },
+    "journalCasesReused": 21,
+    "journalFailures": 0,
+    "bootstrap": {
+      "path": "G:\\CodexWork\\RC1R80Bootstrap\\bootstrap-native-f\\CommanderOwnerBootstrap.exe",
+      "sha256": "d6624df1b7ddd1d23c3a682edde4d746d80486e37f1444a6d4e9727dface0519",
+      "bytes": 3822592,
+      "clrDirectoryZero": true,
+      "dependentLoadFlags": 2048
+    },
+    "diagnostic": {
+      "status": "DIAGNOSTIC",
+      "elevated": false,
+      "administrator": false,
+      "integrity": 8192,
+      "authorityOpened": false,
+      "taskRegistered": false,
+      "keysGenerated": false
+    },
+    "bootstrapQa": {
+      "pass": 15,
+      "fail": 0,
+      "errors": [],
+      "keysInMemoryOnly": true,
+      "installed": false,
+      "taskRegistered": false
+    }
+  },
+  "failure": null,
+  "sourceFiles": [
+    {
+      "path": "bootstrap/src/BootstrapPolicy.cs",
+      "bytes": 5977,
+      "sha256": "80eb56cc8f7f14429e297ef2c03a8100b48373e406bc4d51ba303b8cbf3d9848"
+    },
+    {
+      "path": "bootstrap/src/BootstrapQA.cs",
+      "bytes": 4857,
+      "sha256": "7d91ff8191e72e2e24a34327b6eeabb19798c69a5539cb18de85d03cdf587502"
+    },
+    {
+      "path": "bootstrap/src/Bundle.cs",
+      "bytes": 3842,
+      "sha256": "0bedc7415d30306bca20882964d407e2bd4b28245dbe65c3aebe7f3a9afb723c"
+    },
+    {
+      "path": "bootstrap/src/OwnedHelper.cs",
+      "bytes": 1949,
+      "sha256": "c5871b92bf2e1b21d6cf8a50efcfceb752eede5115de4a9cc36d4b05c0d17bd1"
+    },
+    {
+      "path": "bootstrap/src/OwnerBootstrap.csproj",
+      "bytes": 3132,
+      "sha256": "fc2d3cf2618b15ac36d61a61318a3d84aed7c389031d22d26868d6a684b51cbf"
+    },
+    {
+      "path": "bootstrap/src/Program.cs",
+      "bytes": 7613,
+      "sha256": "a05f0b6a5c61fd0d183958ed1246e1bf8d4731f9486d64ac4cfeeacbb8902ef3"
+    },
+    {
+      "path": "bootstrap/src/ProtectedInstall.cs",
+      "bytes": 10248,
+      "sha256": "20bae074d1130aee5a99ce393091dd786a1e6b7f75100045d3ce336127cce98e"
+    },
+    {
+      "path": "bootstrap/src/TaskOwner.ps1",
+      "bytes": 5723,
+      "sha256": "86e3d753207375587dc29fc052d7df08165299db686f46491688e0f17e95dda0"
+    },
+    {
+      "path": "auth/src/ConsentPrivateFile.cs",
+      "bytes": 1192,
+      "sha256": "335f940c0d6bbb04cacafb7ff80237813f97a2b56036e7bcd7e95e7cf47860a2"
+    },
+    {
+      "path": "auth/src/ExchangeJournal.cs",
+      "bytes": 5468,
+      "sha256": "53de33fbdb5c37c671c939d0a756e69e555fc35e068ae63a49b89effc31f929e"
+    },
+    {
+      "path": "auth/src/JournalBoundaryQA.cs",
+      "bytes": 6771,
+      "sha256": "bd75d374c3f396a2af4c24a811bc0bcf20b5d13820c5211aef85ab3aa30dc0bd"
+    },
+    {
+      "path": "auth/src/JournalBoundaryQA.csproj",
+      "bytes": 2922,
+      "sha256": "e54eba28fa82bcb8d54fd8ac0fe88e93f4b6b82efdbd32be730d18f18ef6d07d"
+    },
+    {
+      "path": "auth/src/NativeAotOwnerConsent.cs",
+      "bytes": 5747,
+      "sha256": "c602c2c13f76a235399a7f65a80bc4c2b582a51e7657ae7c8e944350e6bb096d"
+    },
+    {
+      "path": "auth/src/OwnerConsentR80.csproj",
+      "bytes": 3432,
+      "sha256": "992ec064311b463948526e879db76f458dac9985b32b7a19bfc69783ec199d34"
+    },
+    {
+      "path": "auth/src/OwnerIssuerR80.csproj",
+      "bytes": 4805,
+      "sha256": "26c5ae4cbfa5351da5919e4db1a113d2120b9359f64679adc0dc2f6b7ec6b1d7"
+    },
+    {
+      "path": "auth/src/ProtectedIssuerState.cs",
+      "bytes": 22096,
+      "sha256": "8e4b52030b7c5fd60d56d2be6c863d9460eb99a20e14c6547681e636f9ac95e6"
+    },
+    {
+      "path": "auth/src/ProtectedJournal.cs",
+      "bytes": 3812,
+      "sha256": "878d933fc73a0e9f277788dafea41eb05f4dba4baadcd25ef7d029e32d0bf456"
+    }
+  ],
+  "priorCompositeReceipt": "qa/e/RECEIPT.json",
+  "productionAclPositive": "UNPROVEN",
+  "uacOpened": false,
+  "taskRegisteredOrStarted": false,
+  "productionKeysCreated": false,
+  "installedCommanderChanged": false,
+  "jobsStoppedOrReplayed": false,
+  "onlyOwnedNewQaHelperMayBeReaped": true,
+  "unknownTaskOutcomeNeverRetried": true
+}

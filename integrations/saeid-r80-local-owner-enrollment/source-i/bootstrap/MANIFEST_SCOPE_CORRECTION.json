@@ -1,0 +1,21 @@
+{
+  "schema": "r80-author-manifest-scope-correction-v1",
+  "utc": "2026-11-06T02:06:41.650084+00:00",
+  "oldManifestSha256": "2c2026bfddbb2268a64612de908539df180e816713126a51cff317d9ffd6f738",
+  "cause": "C bootstrap project source and publish folder shared a name; historical source-only snapshot copied known compiler outputs",
+  "excludedFromReturn": [
+    {
+      "path": "bootstrap/source-history-c/CommanderOwnerBootstrap.exe",
+      "bytes": 3817984,
+      "sha256": "a6943f2f8166c5f3acaa4cfd9fa9fce2c70ba19d551f9462fb296497113febb1"
+    },
+    {
+      "path": "bootstrap/source-history-c/CommanderOwnerBootstrap.pdb",
+      "bytes": 16814080,
+      "sha256": "18623f489f287d8da12bb39f1511e42a89668d77e6725843291f327d825b2b02"
+    }
+  ],
+  "filesDeleted": false,
+  "rebuild": "bootstrap/source-history-c source + shared official NativeAOT package cache; current native binary is separate finalG reference",
+  "preserveHistoricalSource": true
+}

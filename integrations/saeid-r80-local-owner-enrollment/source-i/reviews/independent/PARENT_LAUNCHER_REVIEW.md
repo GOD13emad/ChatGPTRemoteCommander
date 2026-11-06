@@ -1,0 +1,11 @@
+# R80 parent owner-enrollment launcher review
+
+**PASS_SCOPED_SOURCE_REVIEW** for `00_DELIVERY/OPEN_REVIEWED_OWNER_ENROLLMENT_R80_ONCE.ps1` SHA `596f8131a201d32b86a3e8079e712ae3ffdf45284ccaeaccdd41791633d19346`. No UI/UAC/process was executed by reviewer. A concrete LIVE_ENROLLMENT_PLAN and external expected SHA must still be frozen by the parent.
+
+The reviewed revision corrects two admission snapshot gaps: the plan is opened with read-only sharing and hashed from its held bytes before parsing against mandatory externally supplied ExpectedPlanSha256; bootstrap is opened/held and rehashed from that exact stream after opening. The held plan and image persist through preflight/UAC/outcome. Receipt hashes refer to the frozen plan rather than reopening a later pathname. An unpinned self-consistent replacement plan is not accepted.
+
+The runner checks exact plan path/schema and owner SID/session, installed baseline hashes, exact bootstrap/bundle hashes and safe fixed argument forms. It creates one intent, runs one ordinary bootstrap preflight, checks its typed successful status and baseline again, then requests actual owner runas UAC for those exact bootstrap arguments. It never confirms UAC for the owner or launches an arbitrary request-supplied command. Source NativeAOT loader/held image and bootstrap's own bundle validation remain part of the trust chain.
+
+Preflight deadline cleanup targets only the still-held freshly created ordinary preflight Process, records reap/no-apply and does not reopen by PID. The elevated apply child is retained until natural exit; it is never killed or retried. Exit0 is labeled acceptance-pending, not installed-core or real-login success. Any nonzero/uncertain result requires reconciliation; a cleanup-only error code remains authoritative over the accepted auxiliary-boolean limitation. Baseline drift is reported, not repaired. CreateNew receipts prevent silently consuming the same attempt again.
+
+The Persian RTL form explains this is a separate no-project preparation and leaves real UAC to the owner. No current Commander stop/restart or project operation is present. The launcher alone cannot prove a successful task/policy/key installation, real login, rollback or unchanged runtime; parent post-acceptance evidence remains necessary.

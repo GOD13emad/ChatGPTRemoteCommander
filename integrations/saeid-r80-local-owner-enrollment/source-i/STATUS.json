@@ -1,0 +1,25 @@
+{
+  "schema": "r80-i-public-sanitized-status-v1",
+  "utc": "2026-11-06T07:56:02.533971+00:00",
+  "whole": "NOT_FINAL",
+  "activeCore": "0.11.0-dev.23+R75; unchanged",
+  "activeCoreCommit": "51848ade674c7a6e3975fa28f88f882ee53058f0",
+  "companion": "1.1.2 retained",
+  "safeRecovery": "1.0.0 retained",
+  "sourceGate": "Bootstrap I, Client C, Probe C independent scoped source review PASS",
+  "actualH": "exit2 before roots; task absent; consumed no replay",
+  "actualI": "protected separate no-project files staged; TaskRegistration failed; task absent and public client policy unpublished; consumed no replay",
+  "confirmedSourceCauses": [
+    "protected initial empty journal lifecycle",
+    "protected consent receipt creation ACL",
+    "exact OS ancestor TI compatibility",
+    "API ServiceAccount enum is not an XML LogonType; real in-memory COM0x80041318"
+  ],
+  "actualOwnerLogin": "UNPROVEN",
+  "actualSystemPeer": "UNPROVEN",
+  "newCoreInstalled": false,
+  "projectJobsStoppedOrReplayed": false,
+  "oldGuiOutcome": "UNKNOWN_NO_REPLAY",
+  "next": "Fresh reviewed staged finalization with rollback preserving I keys/journals/old intents; never rerun Apply",
+  "privateKeysTokensChatProjectDataPublished": false
+}

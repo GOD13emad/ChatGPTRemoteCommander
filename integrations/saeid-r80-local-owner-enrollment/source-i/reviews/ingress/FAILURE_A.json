@@ -1,0 +1,9 @@
+{
+  "error": "FileNotFoundError: G:/CodexWork/00_PROJECT_CONTROL/CURRENT.json",
+  "phase": "source-metadata-stat",
+  "next": "fresh FREEZE_B with exact project-root binding",
+  "cause": "one extra parent traversal in metadata helper; no source/profile/log read or runtime mutation",
+  "rerunOriginal": false,
+  "metadataWrittenBeforeFailure": false,
+  "schema": "ingress-metadata-preflight-failure-v1"
+}

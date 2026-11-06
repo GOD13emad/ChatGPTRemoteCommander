@@ -1,0 +1,14 @@
+{
+  "schema": "r80-i-source-subrevision-v1",
+  "utc": "2026-11-06T07:09:55.046664+00:00",
+  "oneRootCause": "trusted OS servicing ancestor not distinguished from private application ACL",
+  "preMetadataSha256": {
+    "HANDOFF.md": "95f3f5763102f52e592034ffb10f08332c9d91d6a37622559ab1936811512ea5",
+    "QUALIFICATION.json": "1157391b7751887ad5e498dcd7e61d92e1be39a39814a078176beacb446a4955",
+    "MANIFEST.json": "fac9cb068f47233d915512c8eed111d801ccc8697887cb0f88cbae6bc67cd569",
+    "DEPENDENCIES.json": "43a7a125c72910173bff1fd4ac7712fa56fd216806311b6c5fcd30c92865ebe4"
+  },
+  "preservedH": "H_* metadata and source-history-h",
+  "sourceOnlyInThisChild": true,
+  "hConsumedRealAttemptParentOwned": true
+}

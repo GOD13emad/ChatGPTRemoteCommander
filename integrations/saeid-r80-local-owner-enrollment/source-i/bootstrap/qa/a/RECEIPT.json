@@ -1,0 +1,154 @@
+{
+  "schema": "r80-native-bootstrap-auth-qa-v1",
+  "utc": "2026-11-06T01:46:22.317599+00:00",
+  "status": "PASS_SOURCE_NATIVE_ORDINARY_NEGATIVES_ONLY",
+  "phases": [
+    {
+      "phase": "host-restore",
+      "exitCode": 0,
+      "expectedExit": 0
+    },
+    {
+      "phase": "host-publish",
+      "exitCode": 0,
+      "expectedExit": 0
+    },
+    {
+      "phase": "host-ordinary-denial",
+      "exitCode": 2,
+      "expectedExit": 2
+    },
+    {
+      "phase": "bootstrap-native-restore",
+      "exitCode": 0,
+      "expectedExit": 0
+    },
+    {
+      "phase": "bootstrap-native-publish",
+      "exitCode": 0,
+      "expectedExit": 0
+    },
+    {
+      "phase": "bootstrap-diagnose",
+      "exitCode": 0,
+      "expectedExit": 0
+    },
+    {
+      "phase": "bootstrap-ordinary-apply-denial",
+      "exitCode": 2,
+      "expectedExit": 2
+    },
+    {
+      "phase": "bootstrap-ordinary-rollback-denial",
+      "exitCode": 2,
+      "expectedExit": 2
+    },
+    {
+      "phase": "bootstrap-qa-restore",
+      "exitCode": 0,
+      "expectedExit": 0
+    },
+    {
+      "phase": "bootstrap-qa-publish",
+      "exitCode": 0,
+      "expectedExit": 0
+    },
+    {
+      "phase": "bootstrap-pure-qa",
+      "exitCode": 0,
+      "expectedExit": 0
+    },
+    {
+      "phase": "journal-qa-restore",
+      "exitCode": 0,
+      "expectedExit": 0
+    },
+    {
+      "phase": "journal-qa-publish",
+      "exitCode": 0,
+      "expectedExit": 0
+    },
+    {
+      "phase": "journal-boundary-qa",
+      "exitCode": 0,
+      "expectedExit": 0
+    },
+    {
+      "phase": "task-script-parse",
+      "exitCode": 0,
+      "expectedExit": 0
+    }
+  ],
+  "facts": {
+    "host": {
+      "path": "G:\\CodexWork\\RC1R80Bootstrap\\host\\CommanderNativeIssuer.exe",
+      "sha256": "f4bf84f09cabae3a128d577cc5f4f07f8708a2b5fdf6d67432eccc6bdbdb58f9",
+      "bytes": 4129280,
+      "clrDirectoryZero": true,
+      "dependentLoadFlags": 2048
+    },
+    "bootstrap": {
+      "path": "G:\\CodexWork\\RC1R80Bootstrap\\bootstrap-native\\CommanderOwnerBootstrap.exe",
+      "sha256": "4ba4b428c0d22e481bd7cfe352437e70f1fd849034c71c009312444dce7b1e0e",
+      "bytes": 3814912,
+      "clrDirectoryZero": true,
+      "dependentLoadFlags": 2048
+    },
+    "diagnose": {
+      "status": "DIAGNOSTIC",
+      "elevated": false,
+      "administrator": false,
+      "integrity": 8192,
+      "authorityOpened": false,
+      "taskRegistered": false,
+      "keysGenerated": false
+    },
+    "bootstrapQa": {
+      "pass": 10,
+      "fail": 0,
+      "errors": [],
+      "keysInMemoryOnly": true,
+      "installed": false,
+      "taskRegistered": false
+    },
+    "journalQa": {
+      "pass": 18,
+      "fail": 0,
+      "cases": [
+        "issuer-initial-zero",
+        "exchange-initial-zero",
+        "issuer-noninitial-sequence",
+        "issuer-nonzero-hash",
+        "issuer-wrong-id",
+        "issuer-wrong-enrollment",
+        "issuer-missing-head",
+        "issuer-missing-journal",
+        "issuer-empty-anchor",
+        "issuer-duplicate-head-key",
+        "exchange-noninitial-sequence",
+        "exchange-wrong-marker",
+        "exchange-head-binding",
+        "issuer-truncated-tail",
+        "exchange-truncated-tail",
+        "unknown-role",
+        "ordinary-production-root-denial",
+        "valid-nonzero-tail-reader-only"
+      ],
+      "failures": [],
+      "productionAclPositive": false,
+      "fixtureBypassesOnlyAclAndFixedRoot": true,
+      "keysGenerated": false
+    },
+    "taskScriptParsedOnly": true
+  },
+  "failure": null,
+  "sourcesUnchanged": true,
+  "uacOpened": false,
+  "taskRegisteredOrStarted": false,
+  "productionKeysCreated": false,
+  "ownerEnrolled": false,
+  "installedCommanderChanged": false,
+  "jobsStoppedOrReplayed": false,
+  "realProtectedJournalPositive": "UNPROVEN",
+  "replayAllowed": false
+}

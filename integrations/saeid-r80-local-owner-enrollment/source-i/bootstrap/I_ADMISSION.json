@@ -1,0 +1,58 @@
+{
+  "noDeploymentAuthorizedInI": true,
+  "oneBlocker": "trusted Windows OS-ancestor guard rejects TI before creation plus lost elevated phase diagnostics",
+  "schema": "r80-i-source-admission-v1",
+  "privateAclPolicyUnchanged": true,
+  "parentBaselineUnchanged": true,
+  "hApplyConsumed": true,
+  "hChildPrimaryCode": "UNOBSERVED",
+  "hBinarySha256": "b14c1eea5ded82ca77e679460088d5792b8948f9204ea791bf575450c8a72ac3",
+  "hBlockedPath": "DETERMINISTIC_OS_ANCESTOR_GUARD",
+  "hSourceSnapshot": [
+    {
+      "name": "BootstrapPolicy.cs",
+      "bytes": 5977,
+      "sha256": "80eb56cc8f7f14429e297ef2c03a8100b48373e406bc4d51ba303b8cbf3d9848"
+    },
+    {
+      "name": "BootstrapQA.cs",
+      "bytes": 6025,
+      "sha256": "fd4bb2bc25660043b234a941274cf974910481258603bbea00171d19fab36519"
+    },
+    {
+      "name": "Bundle.cs",
+      "bytes": 3842,
+      "sha256": "0bedc7415d30306bca20882964d407e2bd4b28245dbe65c3aebe7f3a9afb723c"
+    },
+    {
+      "name": "OwnedHelper.cs",
+      "bytes": 2187,
+      "sha256": "98810854525cc82b5a0101639290d4cc5177559fd6e6707ea56c510c43553c03"
+    },
+    {
+      "name": "OwnerBootstrap.csproj",
+      "bytes": 3171,
+      "sha256": "47706f9888224b66f4f148633788c448c8d0a9ae4027bf5c9b20514466bb492f"
+    },
+    {
+      "name": "Program.cs",
+      "bytes": 8077,
+      "sha256": "3dccc305cc75254101f2cd27680af6e93e2d74143b75cd285458729afd4e1771"
+    },
+    {
+      "name": "ProtectedInstall.cs",
+      "bytes": 14128,
+      "sha256": "ae2eedfd8454b89a2df717f90f899e9f04871ccb1ea514bbaaf3a9ebaacf094b"
+    },
+    {
+      "name": "TaskOwner.ps1",
+      "bytes": 7437,
+      "sha256": "b708a8824fedc2983ededa04eee5e84471c09d106ad808c6db2ac12ab0d5dd07"
+    },
+    {
+      "name": "TaskPlan.cs",
+      "bytes": 2278,
+      "sha256": "6af3867efee188d001668c3d8e4cd12ea383885f27520c61498ea9691a53063d"
+    }
+  ]
+}

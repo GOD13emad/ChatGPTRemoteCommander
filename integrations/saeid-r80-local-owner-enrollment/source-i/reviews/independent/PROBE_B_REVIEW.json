@@ -1,0 +1,50 @@
+{
+  "schema": "R80_INDEPENDENT_ACCEPTANCE_PROBE_B_REVIEW_V1",
+  "status": "PASS_SCOPED_SOURCE_REVIEW",
+  "utc": "2026-11-06T06:58:04.609099+00:00",
+  "scope": "Read-only adversarial source and frozen evidence review. No probe runtime mode, task, UAC, installed-state or active-job action executed by reviewer.",
+  "sourceManifest": {
+    "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-owner-enrollment-r80\\acceptance-probe\\SOURCE_INPUT_MANIFEST_B.json",
+    "sha256": "353eda609d72780b2bda46b210bcbb43798812cad14ddc25d2aec8862eb43399",
+    "verifiedSourceFiles": 7,
+    "verifiedFrozenDependencies": 6
+  },
+  "deliveryManifest": {
+    "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-owner-enrollment-r80\\acceptance-probe\\DELIVERY_MANIFEST.json",
+    "sha256": "6f334271a121b5c11d717e92927475ccd353ac3de9528e9a1dfef42e1eb03dea",
+    "verifiedFiles": 39
+  },
+  "nativeArtifact": {
+    "path": "G:\\CodexWork\\RC1R80ProbeBuild\\native-b\\CommanderOwnerAcceptance.exe",
+    "sha256": "fdf040f44b67f04594a8fdba0e067e2db13f338fe31533d27b33dc2f113077fe",
+    "bytes": 3969024
+  },
+  "authorReceipt": {
+    "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-owner-enrollment-r80\\acceptance-probe\\qa-b\\RECEIPT.json",
+    "sha256": "ce8b5b18fc41aa40dc56ba168c04ebb29e76cd1c7aff11b45e39cba05d659cad",
+    "reportedPurePass": 23,
+    "actualOrdinaryEarlyUacDenial": true,
+    "actualArbitrarySignModeDenial": true,
+    "actualOwnerE2EProven": false
+  },
+  "materialSourceBlockers": [],
+  "reviewedBoundaries": [
+    "Three exact modes: ordinary prepare, elevated approve-compose, ordinary exchange-verify; actual owner SID/session/token roles from protected client policy.",
+    "No-project client/resource/redirect/grant and fixed ES256 assertion claims; no arbitrary signing arguments or broad project grant.",
+    "Create-exclusive private/protected roots and per-phase intent records prohibit silent replay; owner input files held read-only and bound to actual protected pending request, PKCE challenge/state, policy hashes and short expiry.",
+    "Native consent helper/image pin and signed human approval verified before protected selftest-client key access; private key bytes zeroed after import.",
+    "Client proxy and helper opened by exact protected image pin, fixed arguments and clean child environment; bounded pipes, correlated replies and no reconnect/retry.",
+    "Only exact newly-created held child identity can be reaped; uncertain launch/capture/timeout preserved as no-retry metadata; no project, SYSTEM host or task is terminated.",
+    "Token, code and assertion do not appear in success/error receipts; acceptance receipt stores only run metadata/token hash. JWT signature, no-project claims and fresh monotonic signed state checked in memory.",
+    "Build explicitly lists source and frozen dependency hashes; NativeAOT and 23 pure checks are author evidence, not actual deployment/login acceptance."
+  ],
+  "openAcceptance": [
+    "Consumed H Apply exit2 requires parent reconciliation; this source review does not authorize replay or assert installed owner enrollment.",
+    "Actual protected paths/ACLs, human native approval, real ordinary-to-SYSTEM peer authentication, task invocation and complete/exchange/fresh-state remain UNPROVEN until one reviewed successful live acceptance.",
+    "Selftest token establishes no-project local login only; it does not grant project/GUI authority, prove quality of project output or prove whole-product readiness."
+  ],
+  "metadataLimitations": [
+    "Error flag externalEffectMayHaveOccurred is deliberately conservative before child dispatch. An exact phase intent and primary code govern reconciliation; never infer safe replay from an auxiliary Boolean.",
+    "No real private key, production state, current jobs or chat/project content was read by this review."
+  ]
+}

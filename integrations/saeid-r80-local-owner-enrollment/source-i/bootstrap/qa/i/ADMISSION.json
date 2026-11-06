@@ -1,0 +1,8 @@
+{
+  "schema": "r80-i-build-admission-v1",
+  "owner": "saeed",
+  "role": "ordinary source/native guard and diagnostic QA only; no deployment",
+  "sharedGuardSha256": "6ffd5e017ac734572d564ddf4268d02abbee9adecc4e0527081b0b5d0cc331e9",
+  "hUacConsumed": true,
+  "oneRootCause": "exact trusted OS ancestor servicing identity missing from shared private-path ancestor guard"
+}

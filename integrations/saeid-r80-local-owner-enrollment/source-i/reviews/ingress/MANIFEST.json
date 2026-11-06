@@ -1,0 +1,30 @@
+{
+  "schema": "r80-ingress-review-manifest-v1",
+  "files": [
+    {
+      "path": "REPORT.md",
+      "bytes": 6390,
+      "sha256": "b9bb74ef186a3cb4af056fe50dd5def3a8e5bf3f16bdecc78b1798b413091c6b"
+    },
+    {
+      "path": "EVIDENCE.json",
+      "bytes": 4252,
+      "sha256": "6c41e1f5b268e8451a414413e2d7162141699c361631d64f1c01886b00d657cc"
+    },
+    {
+      "path": "FREEZE_ONCE.py",
+      "bytes": 2674,
+      "sha256": "79718fc7e23f003d7f5253997dc447c960d24322aaed12ebc1fe73df7f3d7d42"
+    },
+    {
+      "path": "FREEZE_B_ONCE.py",
+      "bytes": 2705,
+      "sha256": "84c813e63cea72b2d99d29d516f65b5068e46f8d1cc83be514f7f60b06248c47"
+    },
+    {
+      "path": "FAILURE_A.json",
+      "bytes": 413,
+      "sha256": "aa5e4e1bb616e66713535d308877db587970cee0ba3ca85dcccbb970ac6f74fe"
+    }
+  ]
+}

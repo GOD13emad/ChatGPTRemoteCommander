@@ -1,0 +1,19 @@
+# R80 client B independent review
+
+**PASS_SCOPED_SOURCE_REVIEW** for frozen client B, with actual protected task/SYSTEM-peer/owner-login acceptance still UNPROVEN. No client/task/listener/native authority was executed by reviewer.
+
+Source input manifest SHA `29a5ab426c32df2dce7052e20c61e29d8059cfdf8abaab14cb73def5883f1b6d`; exact NativeAOT proxy/admin-role bytes SHA `95800e1ca4eecd36dfd858f760b0f36d83c0305829c4cc4546a126ff100a8eaa`,3,136,000 bytes, CLR directory0 and dependent-load flags2048. Same bytes are admitted only at two distinct protected role filenames with different actual token requirements; filename or JSON alone cannot grant admin authority.
+
+The source authenticates a live kernel-reported SYSTEM/session0 server, original process handle/FILETIME/token and exact protected native image before request bytes. Client uses local fixed named pipe, Identification impersonation and no inheritable handle. After writing, it retains the original pipe/process/token/image and permits ordinary one-shot host exit while demanding a complete correlated bounded frame; no endpoint reconnect/PID substitution/retry exists. Exit2 cannot yield success. This closes both pre-read and post-read host-exit races. Exit0 means a typed transport reply, so callers must inspect `ok`, not infer project success.
+
+Only proven pipe absence permits one fixed protected System32 schtasks `/run /TN` invocation for the enrolled task. Requests cannot select program/task/arguments. Busy, access-denied, ambiguous task start or lost response does not cause a retry. Trusted OS-tool ACL/ancestor checks, held tool file and cleared fixed child environment are present. The launcher lifetime issue found in A is corrected in B: only the just-created held launcher handle with exact FILETIME/image is eligible for bounded termination/reap; no task/issuer/project process tree is targeted. Cleanup uncertainty remains explicit alongside the original failure.
+
+Source policy restricts proxy to authorize/exchange/state and actual ordinary owner SID/session/medium token, admin filename to revoke with real same-owner UAC/high token. Exact client/resource/redirect/admitted-grant binding and protected policy snapshots remain checked. The built-in pure selftest does not load authority, open pipes/tasks, access keys or dispatch effects. No fixture can turn a claimed SYSTEM/PID field into kernel authority.
+
+Existing author QA B records34 parser/policy/framing PASS, actual ordinary unenrolled `--rpc` denial with zero task/pipe/request effects, native metadata and a separate actual fresh private owned-child handle/FILETIME cleanup test. The latter is not a SYSTEM task test. Source/binary postpins match. No repeated full943 suite or new reviewer test was needed.
+
+`CLIENT_CONTRACT.json` binds exact `--rpc`, one bounded UTF8 request terminated by EOF, stdout/stderr/correlation and no-replay semantics. Bootstrap must install these exact bytes, use the agreed protected public policy schema and actually attest fixed task principal/action/settings/SDDL before publication. Positive ordinary task invocation and SYSTEM-token query permissions are not presumed from source. An affected query denial must be reconciled without JSON fallback or broad privilege changes.
+
+Initial admission is explicitly `commander-owner-selftest` / no-project resource and grant only. No real ChatGPT/project grant or signing backend is implemented here; do not broaden that scope via a fixture or claim general operational login. Owner enrollment/consent, actual kernel-peer request, task rollback and installed adapter acceptance remain parent gates.
+
+Filtered delivery manifest excludes generated managed `src/bin` intermediates while preserving their exact local exclusion inventory. No binary/source was deleted by reviewer. The parent owns one cumulative Return and release; no separate ZIP is produced here. R78/R79 remain unchanged.

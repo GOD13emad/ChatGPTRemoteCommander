@@ -1,0 +1,12 @@
+{
+  "error": "PermissionError: source bootstrap/bin is a directory",
+  "cause": "glob included compiler-created bin directory; file-only historical copy required",
+  "sourceMutation": false,
+  "phase": "historical-source-copy",
+  "installedMutation": false,
+  "schema": "r80-prebuild-failure-v1",
+  "next": "fresh C generation with is_file filter; B preserved DO NOT RUN",
+  "replayAllowed": false,
+  "status": "FAIL_BEFORE_COMPILATION",
+  "taskMutation": false
+}

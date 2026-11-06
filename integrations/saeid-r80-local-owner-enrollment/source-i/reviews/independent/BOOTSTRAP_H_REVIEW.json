@@ -1,0 +1,126 @@
+{
+  "generatedUtc": "2026-11-06T06:52:40.198463+00:00",
+  "status": "PASS_SCOPED_SOURCE_REVIEW",
+  "whole": "NOT_FINAL",
+  "actualUacOrEnrollmentByReviewer": false,
+  "installedChanged": false,
+  "activeJobsStoppedOrReplayed": 0,
+  "runtimeLogin": "UNPROVEN",
+  "schema": "R80_INDEPENDENT_BOOTSTRAP_H_REVIEW_V1",
+  "sourceFiles": [
+    {
+      "path": "bootstrap/src/BootstrapPolicy.cs",
+      "bytes": 5977,
+      "sha256": "80eb56cc8f7f14429e297ef2c03a8100b48373e406bc4d51ba303b8cbf3d9848"
+    },
+    {
+      "path": "bootstrap/src/BootstrapQA.cs",
+      "bytes": 6025,
+      "sha256": "fd4bb2bc25660043b234a941274cf974910481258603bbea00171d19fab36519"
+    },
+    {
+      "path": "bootstrap/src/Bundle.cs",
+      "bytes": 3842,
+      "sha256": "0bedc7415d30306bca20882964d407e2bd4b28245dbe65c3aebe7f3a9afb723c"
+    },
+    {
+      "path": "bootstrap/src/OwnedHelper.cs",
+      "bytes": 2187,
+      "sha256": "98810854525cc82b5a0101639290d4cc5177559fd6e6707ea56c510c43553c03"
+    },
+    {
+      "path": "bootstrap/src/OwnerBootstrap.csproj",
+      "bytes": 3171,
+      "sha256": "47706f9888224b66f4f148633788c448c8d0a9ae4027bf5c9b20514466bb492f"
+    },
+    {
+      "path": "bootstrap/src/Program.cs",
+      "bytes": 8077,
+      "sha256": "3dccc305cc75254101f2cd27680af6e93e2d74143b75cd285458729afd4e1771"
+    },
+    {
+      "path": "bootstrap/src/ProtectedInstall.cs",
+      "bytes": 14128,
+      "sha256": "ae2eedfd8454b89a2df717f90f899e9f04871ccb1ea514bbaaf3a9ebaacf094b"
+    },
+    {
+      "path": "bootstrap/src/TaskOwner.ps1",
+      "bytes": 7437,
+      "sha256": "b708a8824fedc2983ededa04eee5e84471c09d106ad808c6db2ac12ab0d5dd07"
+    },
+    {
+      "path": "bootstrap/src/TaskPlan.cs",
+      "bytes": 2278,
+      "sha256": "6af3867efee188d001668c3d8e4cd12ea383885f27520c61498ea9691a53063d"
+    },
+    {
+      "path": "auth/src/ConsentPrivateFile.cs",
+      "bytes": 1192,
+      "sha256": "335f940c0d6bbb04cacafb7ff80237813f97a2b56036e7bcd7e95e7cf47860a2"
+    },
+    {
+      "path": "auth/src/ExchangeJournal.cs",
+      "bytes": 5468,
+      "sha256": "53de33fbdb5c37c671c939d0a756e69e555fc35e068ae63a49b89effc31f929e"
+    },
+    {
+      "path": "auth/src/JournalBoundaryQA.cs",
+      "bytes": 6771,
+      "sha256": "bd75d374c3f396a2af4c24a811bc0bcf20b5d13820c5211aef85ab3aa30dc0bd"
+    },
+    {
+      "path": "auth/src/JournalBoundaryQA.csproj",
+      "bytes": 2922,
+      "sha256": "e54eba28fa82bcb8d54fd8ac0fe88e93f4b6b82efdbd32be730d18f18ef6d07d"
+    },
+    {
+      "path": "auth/src/NativeAotOwnerConsent.cs",
+      "bytes": 5747,
+      "sha256": "c602c2c13f76a235399a7f65a80bc4c2b582a51e7657ae7c8e944350e6bb096d"
+    },
+    {
+      "path": "auth/src/OwnerConsentR80.csproj",
+      "bytes": 3432,
+      "sha256": "992ec064311b463948526e879db76f458dac9985b32b7a19bfc69783ec199d34"
+    },
+    {
+      "path": "auth/src/OwnerIssuerR80.csproj",
+      "bytes": 4805,
+      "sha256": "26c5ae4cbfa5351da5919e4db1a113d2120b9359f64679adc0dc2f6b7ec6b1d7"
+    },
+    {
+      "path": "auth/src/ProtectedIssuerState.cs",
+      "bytes": 22096,
+      "sha256": "8e4b52030b7c5fd60d56d2be6c863d9460eb99a20e14c6547681e636f9ac95e6"
+    },
+    {
+      "path": "auth/src/ProtectedJournal.cs",
+      "bytes": 3812,
+      "sha256": "878d933fc73a0e9f277788dafea41eb05f4dba4baadcd25ef7d029e32d0bf456"
+    }
+  ],
+  "sourcePinsVerified": 18,
+  "binary": {
+    "path": "G:\\CodexWork\\RC1R80Bootstrap\\bootstrap-native-h\\CommanderOwnerBootstrap.exe",
+    "sha256": "b14c1eea5ded82ca77e679460088d5792b8948f9204ea791bf575450c8a72ac3",
+    "bytes": 3862528,
+    "clrDirectoryZero": true,
+    "dependentLoadFlags": 2048
+  },
+  "receiptPath": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-owner-enrollment-r80\\bootstrap\\qa\\h\\RECEIPT.json",
+  "receiptSha256": "e4b68f9b7d29beb03a4a1260fbd55f2dedef572fc4c995e443fcc19237f1d2b5",
+  "authorQualificationSha256": "1157391b7751887ad5e498dcd7e61d92e1be39a39814a078176beacb446a4955",
+  "authorManifestSha256": "fac9cb068f47233d915512c8eed111d801ccc8697887cb0f88cbae6bc67cd569",
+  "authorFilesVerified": 217,
+  "bootstrapCases": 19,
+  "productionSelectorAstCases": 15,
+  "actualTaskComExecuted": false,
+  "journalCasesReused": 21,
+  "partialRollbackSelection": "PASS_SOURCE_ONLY",
+  "productionTaskRollbackActual": "UNPROVEN",
+  "supersedesUacHoldSha256": "d19e63188adb42fb162964b8305f340b4ab8eac43c4ce5b5038169ec7654ff15",
+  "priorGReadiness": "HISTORICAL_SUPERSEDED_BY_H",
+  "readyFor": "PARENT_FROZEN_PLAN_PREFLIGHT_AND_OWNER_UAC",
+  "reviewSha256": "40aa88d79c507fb5352f2cdd4e2b9cf36f67de3e23f1c0db8fe718d0aecfe92c",
+  "noProjectScopeOnly": true
+}

@@ -1,0 +1,11 @@
+# Saeed R80 local-owner enrollment — source/evidence, NOT FINAL
+
+This source increment inherits the complete R78 integration and R79 native host from its parent Git history. It preserves the installed R75 core, Companion1.1.2, SafeRecovery1.0, active jobs and old UNKNOWN_NO_REPLAY outcomes. No final core installation or stable promotion is claimed.
+
+Source/native/negative qualification and independent review cover Bootstrap I, Client C and Probe C. All five roles use the same derived OS-ancestor guard; private key/owner/write guards remain strict. Native executables, build caches, credentials, private keys, runtime PKCE/assertions/tokens, raw project logs, chats and owner screenshots are excluded from GitHub.
+
+Actual deployment exposed two separate compatibility failures. H stopped before product roots. I safely staged separate protected no-project auth files, then TaskRegistration failed; the task remained absent and client policy unpublished. Exact original inner stderr is unavailable. A read-only in-memory COM reproduction of the production XML generator confirmed0x80041318 for the invalid XML ServiceAccount value; the node-omitted variant preserved actual SYSTEM/service-account identity5 and parsed. This was not a task registration/start or runtime login test.
+
+**All H/I Apply and QA ONCE runners are consumed DO NOT RUN. Do not run these source candidates as SYSTEM, overwrite staged keys/journals/old intents, weaken guards, or label fixture/source success as an operational product.** A distinct reviewed staged-finalization transaction is next. Actual native owner E2E, authenticated product execution/delivery, non-disruptive migration, current-source installer/owner GUI/browser/endurance remain open. Local private managed tunnels/local owner login do not require an invented paid domain or external IdP; actual ChatGPT OAuth AS reachability is a separate unproven contract.
+
+Author manifests retain complete local evidence mapping; PUBLIC_EXCLUSIONS records host-specific metadata intentionally kept local. Downloads/packages prove transport integrity only. Read FAILURE_BOOKLET and current native project control before continuing; no blind retries or automatic promotion.

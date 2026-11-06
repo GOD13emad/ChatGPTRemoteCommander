@@ -1,0 +1,17 @@
+{
+  "host": {
+    "path": "G:\\CodexWork\\RC1R80Bootstrap\\host-i\\CommanderNativeIssuer.exe",
+    "sha256": "310e0a3f13a4b7dadc71f16df9683915641392d34a15d93d4c3ebd4ec29cbd26",
+    "bytes": 4131328,
+    "clrDirectoryZero": true,
+    "dependentLoadFlags": 2048
+  },
+  "consent": {
+    "path": "G:\\CodexWork\\RC1R80Bootstrap\\consent-i\\CommanderOwnerConsent.exe",
+    "sha256": "b5ff1b8fdc5aea05e338b2a2ff4ec71146136c22b66728e5bf25b108016c4020",
+    "bytes": 3566080,
+    "clrDirectoryZero": true,
+    "dependentLoadFlags": 2048
+  },
+  "guardSha256": "6ffd5e017ac734572d564ddf4268d02abbee9adecc4e0527081b0b5d0cc331e9"
+}

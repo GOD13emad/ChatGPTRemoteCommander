@@ -1,0 +1,96 @@
+{
+  "schema": "r80-bounded-ingress-readonly-review-v1",
+  "checkedUtc": "2026-11-06T06:51:38Z",
+  "status": "READ_ONLY_ARCHITECTURE_CLARIFIED",
+  "sourceFiles": [
+    {
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\00_PROJECT_CONTROL\\CURRENT.json",
+      "bytes": 11063,
+      "sha256": "80dce205bdec5f834c785ef6b87750c2bc878dc8b65747b71ab3f554ce25989d"
+    },
+    {
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\saeed-emad-upgrade-r75\\candidate\\README.md",
+      "bytes": 30008,
+      "sha256": "f524f3decc18c079ead54e0d38f7edb47834ffc3e8cfae7876701893cd0d80a0"
+    },
+    {
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\saeed-emad-upgrade-r75\\candidate\\docs\\SETUP.en.md",
+      "bytes": 3523,
+      "sha256": "36b1627cc0fe08ca1cb8a29d3f532f51659a8d517c0befe03ecfbf08c74c8156"
+    },
+    {
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\saeed-emad-upgrade-r75\\candidate\\docs\\COMMANDER_ARCHITECTURE.md",
+      "bytes": 33926,
+      "sha256": "95d52eb88f954af0857049b0fa3e84c7ec7d65e187b4df751b55ad08faf1528a"
+    },
+    {
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\saeed-emad-upgrade-r75\\candidate\\docs\\COUCOU_BRIDGE.md",
+      "bytes": 4046,
+      "sha256": "55fd2d339f78ad686707788732f6d86337f7f07efdc58fafe9dae8b8b7095f11"
+    },
+    {
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\saeed-emad-upgrade-r75\\candidate\\tools\\tunnel-client-pin.json",
+      "bytes": 222,
+      "sha256": "dc3794eab525519e79c41f60ce14e5b40e94f97d8c297dffafc35bb2a1f637a2"
+    },
+    {
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\saeed-emad-upgrade-r75\\candidate\\src\\server-v0.3.mjs",
+      "bytes": 50317,
+      "sha256": "fafd2151117456b7146fe3dafbe57f5f0507e2ebf8778964ab43562c569387e6"
+    },
+    {
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-integration-r78\\candidate\\src\\v2-oauth-resource-metadata.mjs",
+      "bytes": 2156,
+      "sha256": "191590f8de49e6938ce17357314d256b74df3009340c6abb50c96015570938d3"
+    },
+    {
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-integration-r78\\candidate\\src\\v2-oauth-provider-preflight.mjs",
+      "bytes": 5379,
+      "sha256": "694cdacc63e3754db3a1c9de039ccfe1278fbd8d8fbeb47976586131c27ca9dd"
+    }
+  ],
+  "officialDocs": [
+    {
+      "url": "https://developers.openai.com/api/docs/guides/secure-mcp-tunnels",
+      "sections": [
+        "What is an MCP tunnel",
+        "OAuth",
+        "Where to configure it"
+      ],
+      "supports": "private outbound managed MCP transport; issuer not automatically tunneled; separate public submission boundary"
+    },
+    {
+      "url": "https://developers.openai.com/plugins/build/auth",
+      "sections": [
+        "Authorization server metadata",
+        "Protect callbacks with issuer identification",
+        "Client registration"
+      ],
+      "supports": "actual issuer/endpoints and exact client binding; CIMD public JWKS; metadata not real login"
+    },
+    {
+      "url": "https://developers.openai.com/api/docs/guides/custom-mcp-server",
+      "sections": [
+        "Connect a custom MCP server"
+      ],
+      "supports": "Connection Tunnel distinct from Server URL, authentication separate"
+    }
+  ],
+  "parentSanitizedRuntimeObservationsNotReprobed": {
+    "tunnelClient": "0.0.14",
+    "processId": 29508,
+    "profile": "chatgpt-remote-commander",
+    "canonicalPort": 47831,
+    "readyPort": 47832,
+    "readyStatus": 200,
+    "profileTarget": "loopback only",
+    "coucouBridge": false
+  },
+  "exactExternalOriginDiscovered": false,
+  "unsupportedBlanketGateRemoved": "customer public MCP domain or external IdP as prerequisite for local-owner login",
+  "realChatGptOAuth": "UNPROVEN_AS_CALLER_REACHABILITY_NOT_ESTABLISHED",
+  "credentialsProfilesLogsChatsRead": false,
+  "settingsNetworkListenersTaskCallsChangedOrCreated": false,
+  "otherAppsContacted": false,
+  "reportSha256": "b9bb74ef186a3cb4af056fe50dd5def3a8e5bf3f16bdecc78b1798b413091c6b"
+}

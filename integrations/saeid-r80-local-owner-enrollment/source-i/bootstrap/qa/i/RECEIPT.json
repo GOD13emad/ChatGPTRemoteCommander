@@ -1,0 +1,303 @@
+{
+  "schema": "r80-shared-os-ancestor-native-i-qa-v1",
+  "utc": "2026-11-06T07:07:43.794544+00:00",
+  "status": "PASS_SHARED_OS_ANCESTOR_AND_SANITIZED_DIAGNOSTIC_SOURCE_ONLY",
+  "phases": [
+    {
+      "phase": "host-i-restore",
+      "exitCode": 0,
+      "expectedExit": 0
+    },
+    {
+      "phase": "host-i-publish",
+      "exitCode": 0,
+      "expectedExit": 0
+    },
+    {
+      "phase": "host-i-ordinary-denial",
+      "exitCode": 2,
+      "expectedExit": 2
+    },
+    {
+      "phase": "consent-i-restore",
+      "exitCode": 0,
+      "expectedExit": 0
+    },
+    {
+      "phase": "consent-i-publish",
+      "exitCode": 0,
+      "expectedExit": 0
+    },
+    {
+      "phase": "consent-i-ordinary-denial",
+      "exitCode": 2,
+      "expectedExit": 2
+    },
+    {
+      "phase": "bootstrap-native-i-restore",
+      "exitCode": 0,
+      "expectedExit": 0
+    },
+    {
+      "phase": "bootstrap-native-i-publish",
+      "exitCode": 0,
+      "expectedExit": 0
+    },
+    {
+      "phase": "bootstrap-i-diagnostic",
+      "exitCode": 0,
+      "expectedExit": 0
+    },
+    {
+      "phase": "bootstrap-i-ordinary-apply",
+      "exitCode": 2,
+      "expectedExit": 2
+    },
+    {
+      "phase": "bootstrap-i-ordinary-rollback",
+      "exitCode": 2,
+      "expectedExit": 2
+    },
+    {
+      "phase": "bootstrap-qa-i-restore",
+      "exitCode": 0,
+      "expectedExit": 0
+    },
+    {
+      "phase": "bootstrap-qa-i-publish",
+      "exitCode": 0,
+      "expectedExit": 0
+    },
+    {
+      "phase": "bootstrap-i-native-qa",
+      "exitCode": 0,
+      "expectedExit": 0
+    },
+    {
+      "phase": "journal-qa-i-restore",
+      "exitCode": 0,
+      "expectedExit": 0
+    },
+    {
+      "phase": "journal-qa-i-publish",
+      "exitCode": 0,
+      "expectedExit": 0
+    },
+    {
+      "phase": "journal-i-cases",
+      "exitCode": 0,
+      "expectedExit": 0
+    },
+    {
+      "phase": "host-i-manifest",
+      "exitCode": 0,
+      "expectedExit": 0
+    },
+    {
+      "phase": "consent-i-manifest",
+      "exitCode": 0,
+      "expectedExit": 0
+    },
+    {
+      "phase": "bootstrap-i-manifest",
+      "exitCode": 0,
+      "expectedExit": 0
+    }
+  ],
+  "facts": {
+    "sharedGuardSha256": "6ffd5e017ac734572d564ddf4268d02abbee9adecc4e0527081b0b5d0cc331e9",
+    "partialRollbackCasesReused": 15,
+    "journalCasesReused": 21,
+    "host": {
+      "path": "G:\\CodexWork\\RC1R80Bootstrap\\host-i\\CommanderNativeIssuer.exe",
+      "sha256": "310e0a3f13a4b7dadc71f16df9683915641392d34a15d93d4c3ebd4ec29cbd26",
+      "bytes": 4131328,
+      "clrDirectoryZero": true,
+      "dependentLoadFlags": 2048
+    },
+    "consent": {
+      "path": "G:\\CodexWork\\RC1R80Bootstrap\\consent-i\\CommanderOwnerConsent.exe",
+      "sha256": "b5ff1b8fdc5aea05e338b2a2ff4ec71146136c22b66728e5bf25b108016c4020",
+      "bytes": 3566080,
+      "clrDirectoryZero": true,
+      "dependentLoadFlags": 2048
+    },
+    "bootstrapPinChange": {
+      "preSha256": "80eb56cc8f7f14429e297ef2c03a8100b48373e406bc4d51ba303b8cbf3d9848",
+      "postSha256": "5c211c45180d8c57b29b37123421d7482cd83f53c66fdd277d846f9eed0eddc0"
+    },
+    "bootstrap": {
+      "path": "G:\\CodexWork\\RC1R80Bootstrap\\bootstrap-native-i\\CommanderOwnerBootstrap.exe",
+      "sha256": "318f5c2d05aa841908368be99433d7e3e95235a2e25e8e20422230e511195212",
+      "bytes": 3874304,
+      "clrDirectoryZero": true,
+      "dependentLoadFlags": 2048
+    },
+    "diagnostic": {
+      "status": "DIAGNOSTIC",
+      "elevated": false,
+      "administrator": false,
+      "integrity": 8192,
+      "authorityOpened": false,
+      "taskRegistered": false,
+      "keysGenerated": false
+    },
+    "bootstrapQa": {
+      "pass": 29,
+      "fail": 0,
+      "errors": [],
+      "keysInMemoryOnly": true,
+      "installed": false,
+      "taskRegistered": false
+    },
+    "journalQa": {
+      "pass": 21,
+      "fail": 0,
+      "cases": [
+        "issuer-initial-zero",
+        "exchange-initial-zero",
+        "issuer-noninitial-sequence",
+        "issuer-nonzero-hash",
+        "issuer-wrong-id",
+        "issuer-wrong-enrollment",
+        "issuer-missing-head",
+        "issuer-missing-journal",
+        "issuer-empty-anchor",
+        "issuer-duplicate-head-key",
+        "exchange-noninitial-sequence",
+        "exchange-wrong-marker",
+        "exchange-head-binding",
+        "issuer-truncated-tail",
+        "exchange-truncated-tail",
+        "unknown-role",
+        "ordinary-production-root-denial",
+        "valid-nonzero-tail-reader-only",
+        "production-private-descriptor",
+        "real-fixture-file-protected-dacl",
+        "real-fixture-authority-denied"
+      ],
+      "failures": [],
+      "productionAclPositive": false,
+      "fixtureBypassesOnlyAclAndFixedRoot": true,
+      "keysGenerated": false
+    }
+  },
+  "failure": null,
+  "sourceFiles": [
+    {
+      "path": "bootstrap/src/BootstrapPolicy.cs",
+      "bytes": 6008,
+      "sha256": "5c211c45180d8c57b29b37123421d7482cd83f53c66fdd277d846f9eed0eddc0"
+    },
+    {
+      "path": "bootstrap/src/BootstrapQA.cs",
+      "bytes": 8525,
+      "sha256": "1360fba75e440b2d6140aeaebd1c97aa1fa9853610c02d244954e0e323591e22"
+    },
+    {
+      "path": "bootstrap/src/Bundle.cs",
+      "bytes": 3842,
+      "sha256": "0bedc7415d30306bca20882964d407e2bd4b28245dbe65c3aebe7f3a9afb723c"
+    },
+    {
+      "path": "bootstrap/src/NativeOutcome.cs",
+      "bytes": 2133,
+      "sha256": "bd173baa2168fc2531bc68135e90930fc316618783f47a0c38ccca2bd74144e8"
+    },
+    {
+      "path": "bootstrap/src/OutcomeCodes.cs",
+      "bytes": 5104,
+      "sha256": "6846dd3cd302d9f0f255f6509f0f0e1b4bf914c1f82b84370c2bf3bb8fd2c30a"
+    },
+    {
+      "path": "bootstrap/src/OwnedHelper.cs",
+      "bytes": 2187,
+      "sha256": "98810854525cc82b5a0101639290d4cc5177559fd6e6707ea56c510c43553c03"
+    },
+    {
+      "path": "bootstrap/src/OwnerBootstrap.csproj",
+      "bytes": 3280,
+      "sha256": "fb044722207e13aa7b3756ea873d024e01937b52b7b7b46f47c52865c5e4f7ad"
+    },
+    {
+      "path": "bootstrap/src/Program.cs",
+      "bytes": 9012,
+      "sha256": "9049177c8354ab515345c7aebb3ab242bc948f9a86caca7ffd5c72a92b69d1f1"
+    },
+    {
+      "path": "bootstrap/src/ProtectedInstall.cs",
+      "bytes": 14513,
+      "sha256": "75ba33808e66c5450041b121af5b440c8a5f386b12ba23d3f64f74ed99cce61b"
+    },
+    {
+      "path": "bootstrap/src/TaskOwner.ps1",
+      "bytes": 7437,
+      "sha256": "b708a8824fedc2983ededa04eee5e84471c09d106ad808c6db2ac12ab0d5dd07"
+    },
+    {
+      "path": "bootstrap/src/TaskPlan.cs",
+      "bytes": 2278,
+      "sha256": "6af3867efee188d001668c3d8e4cd12ea383885f27520c61498ea9691a53063d"
+    },
+    {
+      "path": "auth/src/ConsentPrivateFile.cs",
+      "bytes": 1192,
+      "sha256": "335f940c0d6bbb04cacafb7ff80237813f97a2b56036e7bcd7e95e7cf47860a2"
+    },
+    {
+      "path": "auth/src/ExchangeJournal.cs",
+      "bytes": 5468,
+      "sha256": "53de33fbdb5c37c671c939d0a756e69e555fc35e068ae63a49b89effc31f929e"
+    },
+    {
+      "path": "auth/src/JournalBoundaryQA.cs",
+      "bytes": 6771,
+      "sha256": "bd75d374c3f396a2af4c24a811bc0bcf20b5d13820c5211aef85ab3aa30dc0bd"
+    },
+    {
+      "path": "auth/src/JournalBoundaryQA.csproj",
+      "bytes": 2946,
+      "sha256": "fed3914b14c8068dd99d5c38ba8c4740518e7efc0a95fc99e8b230277b394aab"
+    },
+    {
+      "path": "auth/src/NativeAotOwnerConsent.cs",
+      "bytes": 5747,
+      "sha256": "c602c2c13f76a235399a7f65a80bc4c2b582a51e7657ae7c8e944350e6bb096d"
+    },
+    {
+      "path": "auth/src/OwnerConsentR80.csproj",
+      "bytes": 3392,
+      "sha256": "f53957d078b8c834e57cf27465da15e7884ae1f1434f20a328aa5a77ec2a8ad7"
+    },
+    {
+      "path": "auth/src/OwnerIssuerR80.csproj",
+      "bytes": 4829,
+      "sha256": "cecd6e241c96cc258f6aeeab4dca2537982e34dcd0dda958de625c9b3919d9c1"
+    },
+    {
+      "path": "auth/src/ProtectedIssuerState.cs",
+      "bytes": 22096,
+      "sha256": "8e4b52030b7c5fd60d56d2be6c863d9460eb99a20e14c6547681e636f9ac95e6"
+    },
+    {
+      "path": "auth/src/ProtectedJournal.cs",
+      "bytes": 3812,
+      "sha256": "878d933fc73a0e9f277788dafea41eb05f4dba4baadcd25ef7d029e32d0bf456"
+    },
+    {
+      "path": "auth/src/WindowsGuard.cs",
+      "bytes": 6944,
+      "sha256": "6ffd5e017ac734572d564ddf4268d02abbee9adecc4e0527081b0b5d0cc331e9"
+    }
+  ],
+  "hApplyConsumed": true,
+  "hActualCode": "UNOBSERVED",
+  "hCausalBlockedPath": "CONFIRMED_DETERMINISTIC_SOURCE_AND_OS_ACL",
+  "productionUiAndProtectedOutcome": "UNPROVEN",
+  "uacOpened": false,
+  "taskRegisteredOrStarted": false,
+  "productionKeysCreated": false,
+  "installedCommanderChanged": false,
+  "jobsStoppedOrReplayed": false,
+  "newDeploymentAuthorized": false
+}

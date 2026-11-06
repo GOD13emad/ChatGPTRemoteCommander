@@ -1,0 +1,45 @@
+using System.Buffers.Binary;using System.Diagnostics;using System.IO.Pipes;using System.Runtime.InteropServices;using System.Security.AccessControl;using System.Security.Principal;using System.Text.Json;using CommanderOwnerConsent;using CommanderNativeIssuer;
+namespace CommanderOwnerProxy;
+internal sealed class ClientTransport
+{
+    internal bool EffectMayHaveOccurred{get;private set;}internal bool TaskLaunchAttempted{get;private set;}internal bool TaskLaunchConfirmed{get;private set;}
+    [DllImport("kernel32.dll",CharSet=CharSet.Unicode,SetLastError=true)]private static extern bool WaitNamedPipeW(string name,uint timeout);
+    private static bool PipeAbsent()
+    {if(WaitNamedPipeW(@"\\.\pipe\"+ClientPolicy.PipeName,0))return false;var error=Marshal.GetLastWin32Error();ConsentCore.Need(error is 2 or 3,"CLIENT_PIPE_BUSY_OR_UNCERTAIN_NO_RETRY");return true;}
+    private static bool OsTrusted(string sid)=>sid is "S-1-5-18" or "S-1-5-32-544" or "S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464";
+    private static void ProtectSystemTool(string path)
+    {
+        WindowsGuard.NoReparse(path);var file=new FileInfo(path).GetAccessControl(AccessControlSections.Owner|AccessControlSections.Access);ConsentCore.Need(OsTrusted(file.GetOwner(typeof(SecurityIdentifier))?.Value??""),"CLIENT_SYSTEM_TOOL_OWNER");var writes=FileSystemRights.Write|FileSystemRights.Delete|FileSystemRights.ChangePermissions|FileSystemRights.TakeOwnership;
+        foreach(FileSystemAccessRule rule in file.GetAccessRules(true,true,typeof(SecurityIdentifier)))if(rule.AccessControlType==AccessControlType.Allow&&(rule.FileSystemRights&writes)!=0)ConsentCore.Need(OsTrusted(rule.IdentityReference.Value),"CLIENT_SYSTEM_TOOL_WRITABLE");
+        for(var parent=Path.GetDirectoryName(path);!string.IsNullOrEmpty(parent);parent=Path.GetDirectoryName(parent)){var acl=new DirectoryInfo(parent).GetAccessControl(AccessControlSections.Access);foreach(FileSystemAccessRule rule in acl.GetAccessRules(true,true,typeof(SecurityIdentifier)))if(rule.AccessControlType==AccessControlType.Allow&&(rule.FileSystemRights&FileSystemRights.DeleteSubdirectoriesAndFiles)!=0)ConsentCore.Need(OsTrusted(rule.IdentityReference.Value),"CLIENT_SYSTEM_TOOL_PARENT_DELETE");if(Path.GetPathRoot(parent)==parent)break;}
+    }
+    private async Task StartFixedTask(ClientPolicy policy,bool admin,CancellationToken cancellation)
+    {
+        policy.Revalidate(admin);ConsentCore.Need(!TaskLaunchAttempted,"CLIENT_TASK_ONCE_ONLY");var tool=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System),"schtasks.exe");ProtectSystemTool(tool);using var held=new FileStream(tool,FileMode.Open,FileAccess.Read,FileShare.Read);ProtectSystemTool(tool);
+        var info=new ProcessStartInfo(tool){UseShellExecute=false,CreateNoWindow=true,WorkingDirectory=Environment.GetFolderPath(Environment.SpecialFolder.System),RedirectStandardOutput=true,RedirectStandardError=true};foreach(var x in new[]{"/run","/TN",ClientPolicy.TaskName})info.ArgumentList.Add(x);info.Environment.Clear();info.Environment["SystemRoot"]=Environment.GetFolderPath(Environment.SpecialFolder.Windows);info.Environment["WINDIR"]=info.Environment["SystemRoot"];info.Environment["PATH"]=Environment.GetFolderPath(Environment.SpecialFolder.System);info.Environment["PATHEXT"]=".COM;.EXE;.BAT;.CMD";
+        TaskLaunchAttempted=true;using var process=Process.Start(info)??throw new ConsentFault("CLIENT_TASK_START_UNCERTAIN_NO_RETRY");using var timeout=CancellationTokenSource.CreateLinkedTokenSource(cancellation);timeout.CancelAfter(TimeSpan.FromSeconds(6));await Task.WhenAll(process.StandardOutput.BaseStream.CopyToAsync(Stream.Null,timeout.Token),process.StandardError.BaseStream.CopyToAsync(Stream.Null,timeout.Token),process.WaitForExitAsync(timeout.Token));ConsentCore.Need(process.ExitCode==0,"CLIENT_TASK_START_NOT_CONFIRMED_NO_RETRY");TaskLaunchConfirmed=true;
+    }
+    internal async Task<byte[]> Send(ClientPolicy policy,bool admin,Request request,byte[] bytes,CancellationToken cancellation)
+    {
+        policy.DemandRequest(request,admin);policy.Revalidate(admin);
+        // A missing fixed pipe permits one fixed bootstrap-attested task start.
+        // Busy/access-denied/ambiguous states never cause a second launcher or request.
+        if(PipeAbsent())await StartFixedTask(policy,admin,cancellation);
+        using var pipe=new NamedPipeClientStream(".",ClientPolicy.PipeName,PipeDirection.InOut,PipeOptions.Asynchronous,TokenImpersonationLevel.Identification,HandleInheritability.None);
+        using(var timeout=CancellationTokenSource.CreateLinkedTokenSource(cancellation)){timeout.CancelAfter(TimeSpan.FromSeconds(5));await pipe.ConnectAsync(timeout.Token);}
+        using var peer=ServerPeer.Capture(pipe,policy,admin);peer.Revalidate();policy.DemandRequest(request,admin);
+        using(var timeout=CancellationTokenSource.CreateLinkedTokenSource(cancellation)){timeout.CancelAfter(TimeSpan.FromSeconds(5));EffectMayHaveOccurred=true;await WriteFrame(pipe,bytes,timeout.Token);}
+        peer.Revalidate(allowOneShotExit:true);byte[] reply;using(var timeout=CancellationTokenSource.CreateLinkedTokenSource(cancellation)){timeout.CancelAfter(TimeSpan.FromSeconds(5));reply=await ReadFrame(pipe,timeout.Token);}
+        // The one-shot host may exit just after its complete response. Retain the
+        // original authenticated stream/process/token/image; never reconnect.
+        peer.Revalidate(allowOneShotExit:true);ValidateReply(reply,request.Id,peer.ObservedExitCode);return reply;
+    }
+    internal static async Task<byte[]> ReadFrame(Stream stream,CancellationToken token)
+    {var header=new byte[4];await stream.ReadExactlyAsync(header,token);var count=BinaryPrimitives.ReadUInt32LittleEndian(header);ConsentCore.Need(count is >0 and <=IssuerProtocol.MaxFrameBytes,"CLIENT_RESPONSE_FRAME_BOUND");var body=new byte[count];await stream.ReadExactlyAsync(body,token);return body;}
+    internal static async Task WriteFrame(Stream stream,byte[] bytes,CancellationToken token)
+    {ConsentCore.Need(bytes.Length is >0 and <=IssuerProtocol.MaxFrameBytes,"CLIENT_REQUEST_FRAME_BOUND");var h=new byte[4];BinaryPrimitives.WriteUInt32LittleEndian(h,(uint)bytes.Length);await stream.WriteAsync(h,token);await stream.WriteAsync(bytes,token);await stream.FlushAsync(token);}
+    internal static void ValidateReply(byte[] bytes,string id,uint? serverExit=null)
+    {
+        using var d=ConsentCore.Strict(bytes);var e=d.RootElement;ConsentCore.Need(e.GetProperty("version").GetInt32()==1&&ConsentCore.Text(e,"id",36)==id,"CLIENT_RESPONSE_CORRELATION");var ok=e.GetProperty("ok").GetBoolean();ConsentCore.Need(serverExit!=2||!ok,"CLIENT_SERVER_ERROR_EXIT_NOT_SUCCESS");if(ok){ConsentCore.Fields(e,"version","id","ok","result");ConsentCore.Need(e.GetProperty("result").ValueKind==JsonValueKind.Object,"CLIENT_RESPONSE_RESULT");}else{ConsentCore.Fields(e,"version","id","ok","code","automaticRetryAllowed");ConsentCore.Text(e,"code",96);ConsentCore.Need(!e.GetProperty("automaticRetryAllowed").GetBoolean(),"CLIENT_SERVER_RETRY_DENIED");}
+    }
+}

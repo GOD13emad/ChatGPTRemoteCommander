@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType><TargetFramework>net10.0-windows</TargetFramework><RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <PublishAot>true</PublishAot><SelfContained>true</SelfContained><InvariantGlobalization>true</InvariantGlobalization>
+    <RuntimeFrameworkVersion>10.0.14</RuntimeFrameworkVersion><IlcPackageVersion>10.0.14</IlcPackageVersion><DisableTransitiveFrameworkReferenceDownloads>true</DisableTransitiveFrameworkReferenceDownloads>
+    <Nullable>enable</Nullable><ImplicitUsings>enable</ImplicitUsings><TreatWarningsAsErrors>true</TreatWarningsAsErrors><EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <AssemblyName>CommanderOwnerProxy</AssemblyName><ApplicationManifest>client.manifest</ApplicationManifest>
+  </PropertyGroup>
+  <Target Name="RequireFrozenSourceAdmission" BeforeTargets="PrepareForBuild"><Error Condition="'$(FrozenR79Root)'=='' Or '$(FrozenR78Root)'==''" Text="Explicit verified frozen source roots required."/></Target>
+  <Target Name="VerifyFrozenSourcePins" BeforeTargets="CoreCompile"><ItemGroup><_Pinned Include="@(Compile)" Condition="'%(Compile.ExpectedHash)'!=''"/></ItemGroup><GetFileHash Files="@(_Pinned)" Algorithm="SHA256" MetadataName="ObservedHash"><Output TaskParameter="Items" ItemName="_Observed"/></GetFileHash><Error Condition="'%(_Observed.ObservedHash)'!='%(_Observed.ExpectedHash)'" Text="Frozen source changed: %(_Observed.Identity)."/></Target>
+  <ItemGroup>
+    <Compile Include="Program.cs"/><Compile Include="ClientPolicy.cs"/><Compile Include="ServerPeer.cs"/><Compile Include="ClientTransport.cs"/><Compile Include="ClientQA.cs"/>
+    <Compile Include="$(FrozenR79Root)/src/IssuerProtocol.cs" Link="Frozen/IssuerProtocol.cs" ExpectedHash="3E89674ED8590A54FD08B570D897AC0CECA17CEB4E2ED355FB5E5E436D37CB3F"/>
+    <Compile Include="$(FrozenR79Root)/src/HostPolicy.cs" Link="Frozen/HostPolicy.cs" ExpectedHash="FACD7E6D66B8FC280806D997B1063EAC312C74861162564A2F9BE132BD418302"/>
+    <Compile Include="$(FrozenR78Root)/reviews/durable/local-owner-auth/native-consent-aot-j/OwnerConsentCore.cs" Link="Frozen/OwnerConsentCore.cs" ExpectedHash="684DD5D8EFDC9A90C6D00E1EE6ADB7A04BDF3563D716FA9E2DC76C8FAB28D663"/>
+    <Compile Include="$(FrozenR78Root)/reviews/durable/local-owner-auth/native-consent-aot-j/WindowsGuard.cs" Link="Frozen/WindowsGuard.cs" ExpectedHash="30D773DE2FDE0A50F5519961F0D19EBBEB59BF6F6346F7D3BC9301F4F79EC0B5"/>
+    <Compile Include="$(FrozenR78Root)/reviews/durable/local-owner-auth/native-consent-aot-j/SystemDllPolicy.cs" Link="Frozen/SystemDllPolicy.cs" ExpectedHash="916E611FD3DFBD23614E774B134F0A5F90FCBECBDC385E53B15D03E32A6D2347"/>
+    <LinkerArg Include="/DEPENDENTLOADFLAG:0x800"/>
+  </ItemGroup>
+</Project>

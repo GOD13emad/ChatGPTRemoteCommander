@@ -1,0 +1,69 @@
+{
+  "schema": "r80-client-build-admission-v1",
+  "owner": "saeed",
+  "project": "Remote Commander Saeed",
+  "sourceRoot": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-owner-enrollment-r80\\client",
+  "shortRoot": "G:\\CodexWork\\RC1R80Client",
+  "role": "ordinary NativeAOT compile/parser/negative QA; no task start, listener, SYSTEM, enrollment, UAC or install",
+  "sources": [
+    {
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-owner-enrollment-r80\\client\\src\\client.manifest",
+      "sha256": "75af5e73713268d4d4ccd4aa13820099e96f3196e14e4d451f2666ccbea2811e",
+      "bytes": 393
+    },
+    {
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-owner-enrollment-r80\\client\\src\\ClientPolicy.cs",
+      "sha256": "a623a0068f1bc717b04a903070488d772db7b090cff3366c2cddad0757bd2d72",
+      "bytes": 7293
+    },
+    {
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-owner-enrollment-r80\\client\\src\\ClientQA.cs",
+      "sha256": "c9866450ec96f87faaaeeb2bf498177888d7b1b2607d0142927bb2acb6929b2c",
+      "bytes": 7350
+    },
+    {
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-owner-enrollment-r80\\client\\src\\ClientTransport.cs",
+      "sha256": "420e85904a14bb103c5de8007387f9769b999f7d90629be791e46c64a2613f37",
+      "bytes": 7113
+    },
+    {
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-owner-enrollment-r80\\client\\src\\CommanderOwnerProxy.csproj",
+      "sha256": "489c55c47ca79f4172d771cfc6802942807933da6f205ac3311966b46100e609",
+      "bytes": 2775
+    },
+    {
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-owner-enrollment-r80\\client\\src\\Program.cs",
+      "sha256": "9205f32871533d9b496250b95d16f2e05b28e920f8cad93903686b8f4a8f9cc8",
+      "bytes": 3304
+    },
+    {
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-owner-enrollment-r80\\client\\src\\ServerPeer.cs",
+      "sha256": "91e2350321d6245fae9f198305d0df420235b4df8e68edc0d5661a79f9c4ccb6",
+      "bytes": 5951
+    }
+  ],
+  "frozenDependencies": [
+    {
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-native-issuer-r79\\src\\IssuerProtocol.cs",
+      "sha256": "3e89674ed8590a54fd08b570d897ac0ceca17ceb4e2ed355fb5e5e436d37cb3f"
+    },
+    {
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-native-issuer-r79\\src\\HostPolicy.cs",
+      "sha256": "facd7e6d66b8fc280806d997b1063eac312c74861162564a2f9be132bd418302"
+    },
+    {
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-integration-r78\\reviews\\durable\\local-owner-auth\\native-consent-aot-j\\OwnerConsentCore.cs",
+      "sha256": "684dd5d8efdc9a90c6d00e1ee6adb7a04bdf3563d716fa9e2dc76c8fab28d663"
+    },
+    {
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-integration-r78\\reviews\\durable\\local-owner-auth\\native-consent-aot-j\\WindowsGuard.cs",
+      "sha256": "30d773de2fde0a50f5519961f0d19ebbeb59bf6f6346f7d3bc9301f4f79ec0b5"
+    },
+    {
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-integration-r78\\reviews\\durable\\local-owner-auth\\native-consent-aot-j\\SystemDllPolicy.cs",
+      "sha256": "916e611fd3dfbd23614e774b134f0a5f90fcbecbdc385e53b15d03e32a6d2347"
+    }
+  ],
+  "sharedCache": "G:\\CodexWork\\RC1R78AuthAot\\packages",
+  "verifiedSharedFiles": 687
+}

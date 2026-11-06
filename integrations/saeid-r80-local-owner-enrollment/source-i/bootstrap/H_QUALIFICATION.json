@@ -1,0 +1,142 @@
+{
+  "schema": "r80-bootstrap-partial-rollback-source-qualification-v1",
+  "utc": "2026-11-06T06:47:37.093679+00:00",
+  "status": "PASS_SOURCE_PARTIAL_ROLLBACK_SELECTION_AND_NATIVE_NEGATIVES_ONLY",
+  "nativeArtifacts": {
+    "host": {
+      "path": "G:\\CodexWork\\RC1R80Bootstrap\\host\\CommanderNativeIssuer.exe",
+      "sha256": "f4bf84f09cabae3a128d577cc5f4f07f8708a2b5fdf6d67432eccc6bdbdb58f9",
+      "bytes": 4129280,
+      "clrDirectoryZero": true,
+      "dependentLoadFlags": 2048
+    },
+    "consent": {
+      "path": "G:\\CodexWork\\RC1R80Bootstrap\\consent-b\\CommanderOwnerConsent.exe",
+      "sha256": "599847485c8650740bd59228a4f7629534acf0d85ca84593b81faf38ac990a13",
+      "bytes": 3564544,
+      "clrDirectoryZero": true,
+      "dependentLoadFlags": 2048
+    },
+    "bootstrap": {
+      "path": "G:\\CodexWork\\RC1R80Bootstrap\\bootstrap-native-h\\CommanderOwnerBootstrap.exe",
+      "sha256": "b14c1eea5ded82ca77e679460088d5792b8948f9204ea791bf575450c8a72ac3",
+      "bytes": 3862528,
+      "clrDirectoryZero": true,
+      "dependentLoadFlags": 2048
+    }
+  },
+  "bootstrapCases": 19,
+  "partialRollbackProductionAstCases": 15,
+  "journalCasesReused": 21,
+  "sourceFiles": [
+    {
+      "path": "bootstrap/src/BootstrapPolicy.cs",
+      "bytes": 5977,
+      "sha256": "80eb56cc8f7f14429e297ef2c03a8100b48373e406bc4d51ba303b8cbf3d9848"
+    },
+    {
+      "path": "bootstrap/src/BootstrapQA.cs",
+      "bytes": 6025,
+      "sha256": "fd4bb2bc25660043b234a941274cf974910481258603bbea00171d19fab36519"
+    },
+    {
+      "path": "bootstrap/src/Bundle.cs",
+      "bytes": 3842,
+      "sha256": "0bedc7415d30306bca20882964d407e2bd4b28245dbe65c3aebe7f3a9afb723c"
+    },
+    {
+      "path": "bootstrap/src/OwnedHelper.cs",
+      "bytes": 2187,
+      "sha256": "98810854525cc82b5a0101639290d4cc5177559fd6e6707ea56c510c43553c03"
+    },
+    {
+      "path": "bootstrap/src/OwnerBootstrap.csproj",
+      "bytes": 3171,
+      "sha256": "47706f9888224b66f4f148633788c448c8d0a9ae4027bf5c9b20514466bb492f"
+    },
+    {
+      "path": "bootstrap/src/Program.cs",
+      "bytes": 8077,
+      "sha256": "3dccc305cc75254101f2cd27680af6e93e2d74143b75cd285458729afd4e1771"
+    },
+    {
+      "path": "bootstrap/src/ProtectedInstall.cs",
+      "bytes": 14128,
+      "sha256": "ae2eedfd8454b89a2df717f90f899e9f04871ccb1ea514bbaaf3a9ebaacf094b"
+    },
+    {
+      "path": "bootstrap/src/TaskOwner.ps1",
+      "bytes": 7437,
+      "sha256": "b708a8824fedc2983ededa04eee5e84471c09d106ad808c6db2ac12ab0d5dd07"
+    },
+    {
+      "path": "bootstrap/src/TaskPlan.cs",
+      "bytes": 2278,
+      "sha256": "6af3867efee188d001668c3d8e4cd12ea383885f27520c61498ea9691a53063d"
+    },
+    {
+      "path": "auth/src/ConsentPrivateFile.cs",
+      "bytes": 1192,
+      "sha256": "335f940c0d6bbb04cacafb7ff80237813f97a2b56036e7bcd7e95e7cf47860a2"
+    },
+    {
+      "path": "auth/src/ExchangeJournal.cs",
+      "bytes": 5468,
+      "sha256": "53de33fbdb5c37c671c939d0a756e69e555fc35e068ae63a49b89effc31f929e"
+    },
+    {
+      "path": "auth/src/JournalBoundaryQA.cs",
+      "bytes": 6771,
+      "sha256": "bd75d374c3f396a2af4c24a811bc0bcf20b5d13820c5211aef85ab3aa30dc0bd"
+    },
+    {
+      "path": "auth/src/JournalBoundaryQA.csproj",
+      "bytes": 2922,
+      "sha256": "e54eba28fa82bcb8d54fd8ac0fe88e93f4b6b82efdbd32be730d18f18ef6d07d"
+    },
+    {
+      "path": "auth/src/NativeAotOwnerConsent.cs",
+      "bytes": 5747,
+      "sha256": "c602c2c13f76a235399a7f65a80bc4c2b582a51e7657ae7c8e944350e6bb096d"
+    },
+    {
+      "path": "auth/src/OwnerConsentR80.csproj",
+      "bytes": 3432,
+      "sha256": "992ec064311b463948526e879db76f458dac9985b32b7a19bfc69783ec199d34"
+    },
+    {
+      "path": "auth/src/OwnerIssuerR80.csproj",
+      "bytes": 4805,
+      "sha256": "26c5ae4cbfa5351da5919e4db1a113d2120b9359f64679adc0dc2f6b7ec6b1d7"
+    },
+    {
+      "path": "auth/src/ProtectedIssuerState.cs",
+      "bytes": 22096,
+      "sha256": "8e4b52030b7c5fd60d56d2be6c863d9460eb99a20e14c6547681e636f9ac95e6"
+    },
+    {
+      "path": "auth/src/ProtectedJournal.cs",
+      "bytes": 3812,
+      "sha256": "878d933fc73a0e9f277788dafea41eb05f4dba4baadcd25ef7d029e32d0bf456"
+    }
+  ],
+  "finalReceipt": {
+    "path": "qa/h/RECEIPT.json",
+    "sha256": "e4b68f9b7d29beb03a4a1260fbd55f2dedef572fc4c995e443fcc19237f1d2b5"
+  },
+  "priorG": "G_QUALIFICATION.json and source-history-g; source-negative pass only, not UAC-ready due missing partial rollback",
+  "handoffSha256": "95f3f5763102f52e592034ffb10f08332c9d91d6a37622559ab1936811512ea5",
+  "dependenciesSha256": "43a7a125c72910173bff1fd4ac7712fa56fd216806311b6c5fcd30c92865ebe4",
+  "productionRollbackActual": "UNPROVEN",
+  "realProtectedAclPositive": "UNPROVEN",
+  "enrolled": false,
+  "taskRegisteredOrStarted": false,
+  "uacOpened": false,
+  "productionKeysCreated": false,
+  "installedCommanderChanged": false,
+  "activeJobsStoppedOrReplayed": false,
+  "whole": "NOT_FINAL",
+  "next": "parent H review, exact final bundle and readonly preflight, then owner-controlled UAC and independent real acceptance probe",
+  "cleanupOnlyDiagnosticEdge": "authoritative error code; boolean false only cleanup-alone without prior exception Data",
+  "parentOwnsDelivery": true
+}

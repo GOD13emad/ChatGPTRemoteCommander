@@ -1,0 +1,25 @@
+{
+  "schema": "R80_INDEPENDENT_PARENT_LAUNCHER_I_REVIEW_V1",
+  "status": "PASS_SCOPED_SOURCE_REVIEW",
+  "utc": "2026-11-06T07:07:23.302076+00:00",
+  "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-owner-enrollment-r80\\00_DELIVERY\\OPEN_REVIEWED_OWNER_ENROLLMENT_R80_I_ONCE.ps1",
+  "sha256": "ed04517409cd8073f5d845741881440bc31eeeba84895b591d654fbf0d00df16",
+  "scope": "Read-only source delta review; no launcher, form, preflight, UAC or apply execution by reviewer.",
+  "changesAccepted": [
+    "New LIVE_I records leave consumed H attempt immutable.",
+    "Shown explicitly calls ShowWindow on its own form with SW_SHOW=5, ignores previous-visibility return, then requires IsWindowVisible before timer/preflight/UAC.",
+    "Unchanged external ExpectedPlanSha256 and held exact plan bytes, held bootstrap rehash and baseline checks retained.",
+    "Unchanged one-shot intent/process/receipt records, finite exact-owned preflight cleanup, real UAC, held apply child and no-retry reconciliation retained."
+  ],
+  "materialSourceBlockers": [],
+  "open": [
+    "Final I plan and complete cross-role rebuilt artifact closure not present at review; this verdict does not validate any future plan bytes.",
+    "WS_VISIBLE is a style/state observation, not proof of unobscured owner presentation or UAC acceptance.",
+    "H consumed exit2 is not replayed or converted to success. Actual I runtime, enrollment, task, rollback and local login remain UNPROVEN."
+  ],
+  "primarySources": [
+    "https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-showwindow",
+    "https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-iswindowvisible",
+    "https://learn.microsoft.com/en-us/dotnet/api/system.windows.forms.form.shown"
+  ]
+}

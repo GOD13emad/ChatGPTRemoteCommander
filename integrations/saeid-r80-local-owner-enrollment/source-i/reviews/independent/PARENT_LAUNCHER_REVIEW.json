@@ -1,0 +1,19 @@
+{
+  "generatedUtc": "2026-11-06T06:52:40.198463+00:00",
+  "status": "PASS_SCOPED_SOURCE_REVIEW",
+  "whole": "NOT_FINAL",
+  "actualUacOrEnrollmentByReviewer": false,
+  "installedChanged": false,
+  "activeJobsStoppedOrReplayed": 0,
+  "runtimeLogin": "UNPROVEN",
+  "schema": "R80_INDEPENDENT_PARENT_LAUNCHER_REVIEW_V1",
+  "sourcePath": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-owner-enrollment-r80\\00_DELIVERY\\OPEN_REVIEWED_OWNER_ENROLLMENT_R80_ONCE.ps1",
+  "sourceSha256": "596f8131a201d32b86a3e8079e712ae3ffdf45284ccaeaccdd41791633d19346",
+  "planPin": "MANDATORY_EXTERNAL_EXPECTED_SHA_PLUS_HELD_BYTES",
+  "bootstrapPin": "HASH_FROM_HELD_IMAGE_AFTER_OPEN",
+  "parentParserErrorsReported": 0,
+  "reviewerExecuted": false,
+  "concretePlanFrozen": false,
+  "readyFor": "PARENT_FREEZE_EXACT_PLAN_THEN_ONE_OWNER_UAC_ATTEMPT",
+  "reviewSha256": "b843c265db2f0ff161e7e3b4511e4458dbf02a23219cbd62cd80b00a45e7462e"
+}

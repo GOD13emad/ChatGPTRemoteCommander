@@ -1,0 +1,22 @@
+{
+  "schema": "R80_INDEPENDENT_AUTHOR_METADATA_RECONCILIATION_V1",
+  "generatedUtc": "2026-11-06T02:08:17.025360+00:00",
+  "status": "PASS_SCOPED_SOURCE_REVIEW",
+  "authorPins": {
+    "bootstrap/QUALIFICATION.json": "41852875fa85bd41d680c5a6770e184ef1229ce08694b0ce135cdfdda8fef7d2",
+    "bootstrap/HANDOFF.md": "e39c3a9eebe099ba7029beb76a8c527f8937585bf61a35df398325dfe0623cb9",
+    "bootstrap/MANIFEST.json": "395317c3a9e9e09e769310da814fcf5c40d5393fc33ef22e563d4198871c0108",
+    "bootstrap/DEPENDENCIES.json": "43a7a125c72910173bff1fd4ac7712fa56fd216806311b6c5fcd30c92865ebe4"
+  },
+  "authorManifestFilesVerified": 181,
+  "authorManifestBytes": 379296,
+  "bootstrapReviewSha256": "2b649b781cb7817c428e6d9c9f7864ecdd79098ed2dd81f2473c5f1934bed7ba",
+  "clientReviewSha256": "b09d300a13e0eef5941f8b30458af4bd38e689247632af8f409d66d58fdf62d9",
+  "lifecyclePrimaryDeltaSha256": "3634ef7a03df7d2efcbbb8c5c8bbd5388b09af39feead293b624f2bef97cc6bb",
+  "codeOrBinaryChangedAfterReview": false,
+  "readyFor": "PARENT_EXACT_BUNDLE_PREFLIGHT_AND_ACTUAL_OWNER_UAC_ACCEPTANCE",
+  "whole": "NOT_FINAL",
+  "runtimeLogin": "UNPROVEN",
+  "installedChanged": false,
+  "reviewerAuthorityEffects": false
+}

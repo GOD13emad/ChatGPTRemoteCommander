@@ -1,0 +1,33 @@
+{
+  "schema": "R80_INDEPENDENT_CLIENT_C_REVIEW_V1",
+  "status": "PASS_SCOPED_SOURCE_REVIEW",
+  "utc": "2026-11-06T07:11:15.600431+00:00",
+  "sourceManifest": {
+    "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-owner-enrollment-r80\\client\\SOURCE_INPUT_MANIFEST_C.json",
+    "sha256": "0cbed4b373c1ca005857f7ad5377a4f811a8d99b4865d02042eb25390a895fab"
+  },
+  "receipt": {
+    "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-owner-enrollment-r80\\client\\qa-c\\RECEIPT.json",
+    "sha256": "1d4c1f4fbe86bd775561055f5499d69a354d614701fc80ce5ae5ab3898319e76"
+  },
+  "artifact": {
+    "path": "G:\\CodexWork\\RC1R80Client\\c\\native\\CommanderOwnerProxy.exe",
+    "sha256": "166d18588a746b0b01da8a606645ff00d2d577eaa5d456792a04f39979f47905",
+    "bytes": 3137536,
+    "clrDirectory": [
+      0,
+      0
+    ],
+    "dependentLoadFlags": 2048
+  },
+  "sharedGuardSha256": "6ffd5e017ac734572d564ddf4268d02abbee9adecc4e0527081b0b5d0cc331e9",
+  "basePinsVerified": 13,
+  "materialSourceBlockers": [],
+  "acceptedDelta": "New explicit C project links unchanged pinned client B sources; replaces only guard with the same exact R80 OS-ancestor-derived guard. Production protocol, role, cleanup, default deny and no retry behavior are unchanged.",
+  "evidence": "34 native parser/privacy cases; actual read-only ProgramFiles ACL/TI ancestor check, untrusted principal negatives and actual strict private object owner denial. Not a task, SYSTEM peer or installed authority positive.",
+  "limitations": [
+    "Probe C and its new consent I pin remain separately pending.",
+    "No reviewer execution of native runtime, task, UAC, proxy or enrollment.",
+    "Actual ordinary-to-SYSTEM task/pipe positive, local login, protected enrollment and rollback remain UNPROVEN."
+  ]
+}

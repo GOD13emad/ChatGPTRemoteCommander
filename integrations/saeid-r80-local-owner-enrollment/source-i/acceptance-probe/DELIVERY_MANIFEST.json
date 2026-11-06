@@ -1,0 +1,207 @@
+{
+  "schema": "r80-acceptance-probe-delivery-v1",
+  "revision": "R80-probe-B",
+  "artifact": {
+    "path": "G:/CodexWork/RC1R80ProbeBuild/native-b/CommanderOwnerAcceptance.exe",
+    "sha256": "fdf040f44b67f04594a8fdba0e067e2db13f338fe31533d27b33dc2f113077fe"
+  },
+  "files": [
+    {
+      "path": "HANDOFF.md",
+      "bytes": 7406,
+      "sha256": "df407b244fd880b52d0b32189edd6e0ea94d4eb78eaac668c3baf4f1e0263e86"
+    },
+    {
+      "path": "PROBE_CONTRACT.json",
+      "bytes": 5504,
+      "sha256": "e5e29ef2b8382a64f412145c73cfe5093a500ed300e89e08b9fcd00bfe63f74d"
+    },
+    {
+      "path": "qa-a/ordinary-approve-uac-denial.stderr.log",
+      "bytes": 225,
+      "sha256": "97180e2114569c1551988e13b244cfa2450d68555f27466da46b850755a6e19a"
+    },
+    {
+      "path": "qa-a/ordinary-approve-uac-denial.stdout.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "qa-a/ordinary-diagnostic.stderr.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "qa-a/ordinary-diagnostic.stdout.log",
+      "bytes": 186,
+      "sha256": "ba38c0f115deb5b525346a2b499e02c514881beb0c3c461dac98acf2ec02c6b0"
+    },
+    {
+      "path": "qa-a/publish-native.stderr.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "qa-a/publish-native.stdout.log",
+      "bytes": 223,
+      "sha256": "e75a92d11d00aa36975db443976322936ea5ff407990f5cc68ebe0d83be509bc"
+    },
+    {
+      "path": "qa-a/pure-signature-claims-privacy.stderr.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "qa-a/pure-signature-claims-privacy.stdout.log",
+      "bytes": 248,
+      "sha256": "86d02d0be302807543259098d5758c4f8ff3d5fb93aaaa8b584fe136cad00970"
+    },
+    {
+      "path": "qa-a/RECEIPT.json",
+      "bytes": 2721,
+      "sha256": "a60989be2f49070cd0a655bf492d63ac20416c2b27019f034e58891a8ba223c2"
+    },
+    {
+      "path": "qa-a/restore-offline.stderr.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "qa-a/restore-offline.stdout.log",
+      "bytes": 208,
+      "sha256": "91c3c8150b55f32a297625d2027ec90d14196dd78a4b92e85d49b6551fcdbcfe"
+    },
+    {
+      "path": "qa-a/unknown-mode-denial.stderr.log",
+      "bytes": 212,
+      "sha256": "94ca7f543024d88755e86d16e802261e345b9b9da72943e1063f64a7c33e3858"
+    },
+    {
+      "path": "qa-a/unknown-mode-denial.stdout.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "qa-b/arbitrary-sign-mode-denial-b.stderr.log",
+      "bytes": 212,
+      "sha256": "94ca7f543024d88755e86d16e802261e345b9b9da72943e1063f64a7c33e3858"
+    },
+    {
+      "path": "qa-b/arbitrary-sign-mode-denial-b.stdout.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "qa-b/ordinary-diagnostic-b.stderr.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "qa-b/ordinary-diagnostic-b.stdout.log",
+      "bytes": 186,
+      "sha256": "ba38c0f115deb5b525346a2b499e02c514881beb0c3c461dac98acf2ec02c6b0"
+    },
+    {
+      "path": "qa-b/ordinary-uac-denial-b.stderr.log",
+      "bytes": 225,
+      "sha256": "97180e2114569c1551988e13b244cfa2450d68555f27466da46b850755a6e19a"
+    },
+    {
+      "path": "qa-b/ordinary-uac-denial-b.stdout.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "qa-b/publish-native-b.stderr.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "qa-b/publish-native-b.stdout.log",
+      "bytes": 223,
+      "sha256": "54b997ff07188c1004ba3ab448d240eca288a49c0586c86424327120ac1bb0c6"
+    },
+    {
+      "path": "qa-b/pure-signature-claims-privacy-b.stderr.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "qa-b/pure-signature-claims-privacy-b.stdout.log",
+      "bytes": 248,
+      "sha256": "86d02d0be302807543259098d5758c4f8ff3d5fb93aaaa8b584fe136cad00970"
+    },
+    {
+      "path": "qa-b/RECEIPT.json",
+      "bytes": 2637,
+      "sha256": "ce8b5b18fc41aa40dc56ba168c04ebb29e76cd1c7aff11b45e39cba05d659cad"
+    },
+    {
+      "path": "QUALIFY_PROBE_A_ONCE.py",
+      "bytes": 6418,
+      "sha256": "b60057f27f2d8ed31ba8c40e48d388742ee61294f93ef56785daaa0762c10a61"
+    },
+    {
+      "path": "QUALIFY_PROBE_B_ONCE.py",
+      "bytes": 5338,
+      "sha256": "258fb285c8f31feaeed5aabf6958c21893bece93c666137e23ef4bf6edca5167"
+    },
+    {
+      "path": "source-history-a/PINS.json",
+      "bytes": 257,
+      "sha256": "c522d54a01b8b4ee94e380c29ee12fcac62a05e69356965d496c2c58ffbc8b9c"
+    },
+    {
+      "path": "source-history-a/ProbeIO.cs",
+      "bytes": 10621,
+      "sha256": "3a7a150ee444ba0176ef972ac27cebcfae38e2ac652d6fadc177b3d45ee4d8c4"
+    },
+    {
+      "path": "SOURCE_INPUT_MANIFEST_A.json",
+      "bytes": 4101,
+      "sha256": "daff99f90837a2572625837946ef782303709eb0a3f3a2d98fbdf0fb41ed3c7f"
+    },
+    {
+      "path": "SOURCE_INPUT_MANIFEST_B.json",
+      "bytes": 4196,
+      "sha256": "353eda609d72780b2bda46b210bcbb43798812cad14ddc25d2aec8862eb43399"
+    },
+    {
+      "path": "src/CommanderOwnerAcceptance.csproj",
+      "bytes": 2913,
+      "sha256": "af71511b7e21824c6896e272ae4c564f42ecdd1beb2b00e4c2441c2a89772b87"
+    },
+    {
+      "path": "src/probe.manifest",
+      "bytes": 398,
+      "sha256": "3e1ae4469c80a7ffb5c1ff83fb3dde220c63502a3537abdd7c72234b12276485"
+    },
+    {
+      "path": "src/ProbeAuthority.cs",
+      "bytes": 7360,
+      "sha256": "23486a56e9995d7961df3c837617a62d55815245af9bfac5f77f1f96ce6fa4d0"
+    },
+    {
+      "path": "src/ProbeCrypto.cs",
+      "bytes": 5763,
+      "sha256": "d45e50cefebf2327f3b637c293f8da1f0a182d7221e0a8103499f6de551bd8b7"
+    },
+    {
+      "path": "src/ProbeIO.cs",
+      "bytes": 10635,
+      "sha256": "6b41f4548412fe73b0fc287a67c89876a065b44233b5f0dcd60b451eaefbce39"
+    },
+    {
+      "path": "src/ProbeQA.cs",
+      "bytes": 6087,
+      "sha256": "03b04e4a83e729685a9faa7a26b1c9d2bb7ce13d7fea4941235446fad4c160c8"
+    },
+    {
+      "path": "src/Program.cs",
+      "bytes": 16955,
+      "sha256": "9ecbddefeb6b5b8f0700445723fa7d2930e2fe88a3276181af470e28b6b2f54a"
+    }
+  ],
+  "actualOwnerE2EProven": false,
+  "installedChanged": false
+}

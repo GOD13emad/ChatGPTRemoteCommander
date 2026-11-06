@@ -1,0 +1,59 @@
+{
+  "schema": "r80-c-derived-delivery-manifest-v1",
+  "component": "client",
+  "files": [
+    {
+      "path": "CLIENT_CONTRACT_C.json",
+      "bytes": 5376,
+      "sha256": "b3079a476e995de45ba2b5fbaae1f9bef853bf84d121756cfd1d35d61c51b576"
+    },
+    {
+      "path": "HANDOFF_C.md",
+      "bytes": 3033,
+      "sha256": "52c4dd454c49dab047487f4ad5b1ef87e86851e9a5a5dd4b9b58164bfdc6855d"
+    },
+    {
+      "path": "PREPARE_CLIENT_C_PROJECT_ONCE.py",
+      "bytes": 2166,
+      "sha256": "05659fa158faf1c6ce5a1cfc0a2a1a8954bddd3dcaf912158f8ecac9e89610cf"
+    },
+    {
+      "path": "qa-c/RECEIPT.json",
+      "bytes": 2928,
+      "sha256": "1d4c1f4fbe86bd775561055f5499d69a354d614701fc80ce5ae5ab3898319e76"
+    },
+    {
+      "path": "QUALIFY_CLIENT_A_ONCE.py",
+      "bytes": 6498,
+      "sha256": "08e131f0538b90fd9a0413f132ae9892b1174cbc0a438be095dc90f757881900"
+    },
+    {
+      "path": "QUALIFY_CLIENT_B_ONCE.py",
+      "bytes": 5840,
+      "sha256": "267dc91ce8781747ec39316aa9509ca0ef640f898f93b08e765aa4352cd12a27"
+    },
+    {
+      "path": "QUALIFY_CLIENT_C_ONCE.py",
+      "bytes": 5533,
+      "sha256": "65d908986d667f0bd712a5eed86c604b78db767c19a2eb8019a6538eca9c5e3a"
+    },
+    {
+      "path": "SOURCE_INPUT_MANIFEST_C.json",
+      "bytes": 4536,
+      "sha256": "0cbed4b373c1ca005857f7ad5377a4f811a8d99b4865d02042eb25390a895fab"
+    },
+    {
+      "path": "src-c/AncestorGuardQA.cs",
+      "bytes": 2534,
+      "sha256": "655b687e20a77e47623586aeb307edac56bf346243786bf1e9b779970b206e60"
+    },
+    {
+      "path": "src-c/CommanderOwnerProxyC.csproj",
+      "bytes": 4622,
+      "sha256": "c3389aee19ac8f49b2a502a60cff3ca2d68ff8ee9f5bb43d3cf821d7017de444"
+    }
+  ],
+  "baseBPreserved": true,
+  "actualOwnerE2EProven": false,
+  "installedChanged": false
+}

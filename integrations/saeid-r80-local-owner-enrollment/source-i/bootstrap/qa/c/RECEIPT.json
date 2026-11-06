@@ -1,0 +1,226 @@
+{
+  "schema": "r80-bootstrap-auth-corrected-native-qa-v1",
+  "utc": "2026-11-06T01:52:25.185477+00:00",
+  "status": "FAIL_CORRECTED_QA",
+  "phases": [
+    {
+      "phase": "consent-b-restore",
+      "exitCode": 0,
+      "expectedExit": 0
+    },
+    {
+      "phase": "consent-b-publish",
+      "exitCode": 0,
+      "expectedExit": 0
+    },
+    {
+      "phase": "consent-diagnose",
+      "exitCode": 0,
+      "expectedExit": 0
+    },
+    {
+      "phase": "consent-ordinary-request-denial",
+      "exitCode": 2,
+      "expectedExit": 2
+    },
+    {
+      "phase": "bootstrap-b-restore",
+      "exitCode": 0,
+      "expectedExit": 0
+    },
+    {
+      "phase": "bootstrap-b-publish",
+      "exitCode": 0,
+      "expectedExit": 0
+    },
+    {
+      "phase": "bootstrap-b-diagnose",
+      "exitCode": 0,
+      "expectedExit": 0
+    },
+    {
+      "phase": "bootstrap-b-ordinary-apply-denial",
+      "exitCode": 2,
+      "expectedExit": 2
+    },
+    {
+      "phase": "bootstrap-b-ordinary-rollback-denial",
+      "exitCode": 2,
+      "expectedExit": 2
+    },
+    {
+      "phase": "bootstrap-qa-b-restore",
+      "exitCode": 0,
+      "expectedExit": 0
+    },
+    {
+      "phase": "bootstrap-qa-b-publish",
+      "exitCode": 0,
+      "expectedExit": 0
+    },
+    {
+      "phase": "bootstrap-b-pure-qa",
+      "exitCode": 0,
+      "expectedExit": 0
+    },
+    {
+      "phase": "journal-qa-b-restore",
+      "exitCode": 0,
+      "expectedExit": 0
+    },
+    {
+      "phase": "journal-qa-b-publish",
+      "exitCode": 1,
+      "expectedExit": 0
+    }
+  ],
+  "facts": {
+    "hostReusedUnchanged": {
+      "path": "G:\\CodexWork\\RC1R80Bootstrap\\host\\CommanderNativeIssuer.exe",
+      "sha256": "f4bf84f09cabae3a128d577cc5f4f07f8708a2b5fdf6d67432eccc6bdbdb58f9",
+      "bytes": 4129280,
+      "clrDirectoryZero": true,
+      "dependentLoadFlags": 2048
+    },
+    "consent": {
+      "path": "G:\\CodexWork\\RC1R80Bootstrap\\consent-b\\CommanderOwnerConsent.exe",
+      "sha256": "599847485c8650740bd59228a4f7629534acf0d85ca84593b81faf38ac990a13",
+      "bytes": 3564544,
+      "clrDirectoryZero": true,
+      "dependentLoadFlags": 2048
+    },
+    "consentDiagnostic": {
+      "schema": "RC_OWNER_TOKEN_DIAGNOSTIC_V1",
+      "Elevated": false,
+      "ElevationType": 3,
+      "Administrator": false,
+      "IntegrityRid": 8192,
+      "interactiveSession": true,
+      "ownerEnrolled": false,
+      "consentShown": false,
+      "receiptsSigned": 0
+    },
+    "consentPinMutation": {
+      "preSha256": "76b4adce5313b3b8d73ee56ed8a68138a0fcaec7ff89b7c7e7f28852dced7b74",
+      "postSha256": "80eb56cc8f7f14429e297ef2c03a8100b48373e406bc4d51ba303b8cbf3d9848",
+      "helperSha256": "599847485c8650740bd59228a4f7629534acf0d85ca84593b81faf38ac990a13"
+    },
+    "sourceFiles": [
+      {
+        "path": "bootstrap/src/BootstrapPolicy.cs",
+        "bytes": 5977,
+        "sha256": "80eb56cc8f7f14429e297ef2c03a8100b48373e406bc4d51ba303b8cbf3d9848"
+      },
+      {
+        "path": "bootstrap/src/BootstrapQA.cs",
+        "bytes": 3800,
+        "sha256": "bf1e16b901cdf3e83ac98838d2e368a091057b9013e8f9acd5498bf39fe2e975"
+      },
+      {
+        "path": "bootstrap/src/Bundle.cs",
+        "bytes": 3842,
+        "sha256": "0bedc7415d30306bca20882964d407e2bd4b28245dbe65c3aebe7f3a9afb723c"
+      },
+      {
+        "path": "bootstrap/src/OwnerBootstrap.csproj",
+        "bytes": 3088,
+        "sha256": "7e7d3fd28d348e2d43ff9e8a7a649ea81dc19404e33de00920046195c867d838"
+      },
+      {
+        "path": "bootstrap/src/Program.cs",
+        "bytes": 7613,
+        "sha256": "a05f0b6a5c61fd0d183958ed1246e1bf8d4731f9486d64ac4cfeeacbb8902ef3"
+      },
+      {
+        "path": "bootstrap/src/ProtectedInstall.cs",
+        "bytes": 9938,
+        "sha256": "dc2dbf890391702b82d214c1840b28bc0f4addb6d37a4a851cb299dab03999ea"
+      },
+      {
+        "path": "bootstrap/src/TaskOwner.ps1",
+        "bytes": 5723,
+        "sha256": "86e3d753207375587dc29fc052d7df08165299db686f46491688e0f17e95dda0"
+      },
+      {
+        "path": "auth/src/ConsentPrivateFile.cs",
+        "bytes": 1192,
+        "sha256": "335f940c0d6bbb04cacafb7ff80237813f97a2b56036e7bcd7e95e7cf47860a2"
+      },
+      {
+        "path": "auth/src/ExchangeJournal.cs",
+        "bytes": 5468,
+        "sha256": "53de33fbdb5c37c671c939d0a756e69e555fc35e068ae63a49b89effc31f929e"
+      },
+      {
+        "path": "auth/src/JournalBoundaryQA.cs",
+        "bytes": 6763,
+        "sha256": "ec9d6aff3925652c4548bfc466d9fa484a5b198bdb8f0851c9fbd82139bf510b"
+      },
+      {
+        "path": "auth/src/JournalBoundaryQA.csproj",
+        "bytes": 2922,
+        "sha256": "e54eba28fa82bcb8d54fd8ac0fe88e93f4b6b82efdbd32be730d18f18ef6d07d"
+      },
+      {
+        "path": "auth/src/NativeAotOwnerConsent.cs",
+        "bytes": 5747,
+        "sha256": "c602c2c13f76a235399a7f65a80bc4c2b582a51e7657ae7c8e944350e6bb096d"
+      },
+      {
+        "path": "auth/src/OwnerConsentR80.csproj",
+        "bytes": 3432,
+        "sha256": "992ec064311b463948526e879db76f458dac9985b32b7a19bfc69783ec199d34"
+      },
+      {
+        "path": "auth/src/OwnerIssuerR80.csproj",
+        "bytes": 4805,
+        "sha256": "26c5ae4cbfa5351da5919e4db1a113d2120b9359f64679adc0dc2f6b7ec6b1d7"
+      },
+      {
+        "path": "auth/src/ProtectedIssuerState.cs",
+        "bytes": 22096,
+        "sha256": "8e4b52030b7c5fd60d56d2be6c863d9460eb99a20e14c6547681e636f9ac95e6"
+      },
+      {
+        "path": "auth/src/ProtectedJournal.cs",
+        "bytes": 3812,
+        "sha256": "878d933fc73a0e9f277788dafea41eb05f4dba4baadcd25ef7d029e32d0bf456"
+      }
+    ],
+    "bootstrap": {
+      "path": "G:\\CodexWork\\RC1R80Bootstrap\\bootstrap-b\\CommanderOwnerBootstrap.exe",
+      "sha256": "a6943f2f8166c5f3acaa4cfd9fa9fce2c70ba19d551f9462fb296497113febb1",
+      "bytes": 3817984,
+      "clrDirectoryZero": true,
+      "dependentLoadFlags": 2048
+    },
+    "diagnostic": {
+      "status": "DIAGNOSTIC",
+      "elevated": false,
+      "administrator": false,
+      "integrity": 8192,
+      "authorityOpened": false,
+      "taskRegistered": false,
+      "keysGenerated": false
+    },
+    "bootstrapQa": {
+      "pass": 13,
+      "fail": 0,
+      "errors": [],
+      "keysInMemoryOnly": true,
+      "installed": false,
+      "taskRegistered": false
+    }
+  },
+  "failure": "AssertionError:journal-qa-b-publish",
+  "sourcesUnchanged": true,
+  "uacOpened": false,
+  "taskRegisteredOrStarted": false,
+  "productionKeysCreated": false,
+  "ownerEnrolled": false,
+  "installedCommanderChanged": false,
+  "jobsStoppedOrReplayed": false,
+  "realProtectedAclPositive": "UNPROVEN",
+  "replayAllowed": false,
+  "bootstrapA": "superseded: immutable inventory included mutable zero journals; original preserved"
+}

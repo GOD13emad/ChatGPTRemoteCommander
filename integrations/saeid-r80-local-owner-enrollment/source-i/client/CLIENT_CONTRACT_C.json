@@ -1,0 +1,87 @@
+{
+  "schema": "r80-native-owner-client-contract-v1",
+  "revision": "R80-client-C",
+  "mode": "--rpc",
+  "input": "Exactly one bounded UTF8 JSON frozen R79 request on stdin, terminated by EOF; maximum 32768 bytes; duplicate JSON keys rejected; stdin deadline 5 seconds",
+  "output": "Exactly one correlated frozen R79 response JSON plus newline to stdout, no length header; protected named pipe alone uses 4-byte little-endian length framing",
+  "exit0Meaning": "A complete authenticated host reply was received and validated; inspect ok because a typed host error also uses client exit0",
+  "exit2StderrFields": [
+    "version",
+    "id",
+    "ok",
+    "code",
+    "automaticRetryAllowed",
+    "effectMayHaveOccurred",
+    "taskLaunchAttempted",
+    "taskLaunchConfirmed",
+    "launcherCleanupConfirmed",
+    "launcherCleanupUncertain"
+  ],
+  "idBeforeInputParsed": "client",
+  "idAfterValidInputParsed": "Exact supplied canonical lowercase D-format UUID, including protected enrollment/preflight failures",
+  "totalDeadlineSeconds": 25,
+  "ownedLauncherCleanupReserveSeconds": 2,
+  "parentWaitMinimumSeconds": 30,
+  "automaticRetryAllowed": false,
+  "rawLogging": false,
+  "stdoutOnExit2": "Do not accept partial stdout as a host reply; quarantine it and reconcile the same request without replay. Parent validates native exit, bounded bytes, correlation and schema",
+  "fixedProtectedImages": [
+    "%ProgramFiles%/ChatGPTRemoteCommander/owner-auth/CommanderOwnerProxy.exe",
+    "%ProgramFiles%/ChatGPTRemoteCommander/owner-auth/CommanderOwnerAdmin.exe"
+  ],
+  "sameBytesDistinctRoleNames": true,
+  "proxyRole": "Actual ordinary owner SID and admitted session, non-elevated medium-integrity; authorize(begin/complete), exchange, state only",
+  "adminRole": "Actual same owner SID/session with real UAC token type2, enabled administrator and high integrity; revoke only",
+  "signing": "No signing API and no client/private issuer keys opened; exchange assertion supplied by separately admitted fixed client backend, never generated arbitrarily here",
+  "publicClientPolicy": "%ProgramFiles%/ChatGPTRemoteCommander/owner-auth/client-policy.json",
+  "publicClientPolicySchema": "RC_NATIVE_ISSUER_CLIENT_V1",
+  "publicClientPolicyExactFields": [
+    "schema",
+    "ownerSid",
+    "ownerSessionId",
+    "hostSha256",
+    "proxySha256",
+    "adminSha256",
+    "nativePolicySha256",
+    "oauthPolicySha256",
+    "hostPolicySha256",
+    "clientId",
+    "redirectUri",
+    "resource",
+    "grantPolicyIds",
+    "taskName"
+  ],
+  "sourcePolicies": "%ProgramData%/ChatGPTRemoteCommander/owner-auth/{policy.json,oauth-policy.json,issuer-host-policy.json}; held protected handles and SHA256 revalidation",
+  "fixedPipe": "ChatGPTRemoteCommanderNativeIssuerV1",
+  "pipeClient": "Local dot server, asynchronous, Identification impersonation, no inheritable handle; never CurrentUserOnly against SYSTEM",
+  "serverAuthentication": "Actual GetNamedPipeServerProcessId and ServerSessionId; held process handle/FILETIME, query-only token SID SYSTEM/elevated/system-integrity/session0; protected exact CommanderNativeIssuer.exe and hostSha256; native CLR0 and System32 dependent-load flag; no replyJSON identity claims",
+  "oneShotExit": "Live server required before request write; afterward only original pipe/held process token/image/generation permitted, natural held exit0 or2 accepted while requiring complete correlated reply; exit2 cannot be success; never reconnect",
+  "onDemandTask": "\\ChatGPTRemoteCommanderOwnerIssuerV1",
+  "taskLaunch": "Only when WaitNamedPipe proves exact fixed pipe absent; busy/access-denied/ambiguous blocks. One direct protected System32 schtasks.exe /run /TN fixedname, clean environment, no shell/arbitrary args. Bootstrap must attest actual task definition/ACL before public policy publication. schtasks exit0 proves only launch request, server authentication remains mandatory",
+  "launcherCleanup": "Only just-created held schtasks process handle with exact FILETIME+image can be terminated/reaped on deadline; never terminate SYSTEM task/issuer or enumerate/reopen arbitrary PIDs. Uncertain cleanup remains explicit; first failure remains primary",
+  "currentInitialClientAdmission": {
+    "clientId": "commander-owner-selftest",
+    "redirectUri": "https://commander.invalid/local-callback",
+    "resource": "https://commander.invalid/selftest",
+    "grantPolicyIds": [
+      "selftest"
+    ],
+    "realProjectAuthority": false
+  },
+  "qualifiedArtifact": {
+    "path": "G:\\CodexWork\\RC1R80Client\\c\\native\\CommanderOwnerProxy.exe",
+    "sha256": "166d18588a746b0b01da8a606645ff00d2d577eaa5d456792a04f39979f47905",
+    "bytes": 3137536,
+    "clrDirectory": [
+      0,
+      0
+    ],
+    "dependentLoadFlags": 2048
+  },
+  "deploymentAcceptance": "NOT_PERFORMED; protected SYSTEM peer positive, real task launch, local owner enrollment/consent, operational login and installation require parent deployment gates",
+  "derivedGuard": {
+    "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-owner-enrollment-r80\\auth\\src\\WindowsGuard.cs",
+    "sha256": "6ffd5e017ac734572d564ddf4268d02abbee9adecc4e0527081b0b5d0cc331e9",
+    "scope": "Only exact OS ancestor TI deletion compatibility; private owner/key ACL remains SY/BA"
+  }
+}

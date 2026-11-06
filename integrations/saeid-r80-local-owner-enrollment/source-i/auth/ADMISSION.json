@@ -1,0 +1,21 @@
+{
+  "schema": "r80-derived-auth-admission-v1",
+  "owner": "saeed",
+  "role": "source-only first protected journal correction; no enrollment",
+  "sources": [
+    {
+      "source": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-integration-r78\\reviews\\durable\\local-owner-auth\\protected-issuer-state\\ProtectedIssuerState.cs",
+      "preSha256": "f9daf6bdc0a641f1527b07efadfd8f9f36cb3047e8e22b574a00fac60435cc82",
+      "derived": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-owner-enrollment-r80\\auth\\src\\ProtectedIssuerState.cs",
+      "postSha256": "8e4b52030b7c5fd60d56d2be6c863d9460eb99a20e14c6547681e636f9ac95e6",
+      "change": "fixed journal only; empty initial-state bound reader; global protected-file guard unchanged"
+    },
+    {
+      "source": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-integration-r78\\reviews\\durable\\local-owner-auth\\protected-oauth-exchange\\ExchangeJournal.cs",
+      "preSha256": "e79149d2cb090771a9705890ae113f32251d69300fcb79f739024aa8e40a91c8",
+      "derived": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-owner-enrollment-r80\\auth\\src\\ExchangeJournal.cs",
+      "postSha256": "53de33fbdb5c37c671c939d0a756e69e555fc35e068ae63a49b89effc31f929e",
+      "change": "fixed journal only; empty initial-state bound reader; global protected-file guard unchanged"
+    }
+  ]
+}
