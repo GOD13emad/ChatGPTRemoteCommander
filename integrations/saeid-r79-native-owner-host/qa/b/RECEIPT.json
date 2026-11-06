@@ -1,0 +1,60 @@
+{
+  "schema": "r79-frozen-input-pin-qa-v1",
+  "utc": "2026-11-06T00:44:33.650049+00:00",
+  "status": "PASS_EXPECTED_COMPILE_ADMISSION_DENIALS",
+  "cases": [
+    {
+      "name": "missing-frozen-root",
+      "exitCode": 1,
+      "expectedDenialObserved": true
+    },
+    {
+      "name": "changed-frozen-source",
+      "exitCode": 1,
+      "expectedDenialObserved": true
+    }
+  ],
+  "mapping": [
+    {
+      "relativePath": "reviews/durable/local-owner-auth/protected-oauth-exchange/ProtectedOAuthExchange.cs",
+      "sourceSha256": "277beb1f077289203ee57ab3df55ac64d8e7bfca2d0aa0b31a25aaaf5d208ae0",
+      "fixturePreSha256": "277beb1f077289203ee57ab3df55ac64d8e7bfca2d0aa0b31a25aaaf5d208ae0"
+    },
+    {
+      "relativePath": "reviews/durable/local-owner-auth/protected-oauth-exchange/ExchangeJournal.cs",
+      "sourceSha256": "e79149d2cb090771a9705890ae113f32251d69300fcb79f739024aa8e40a91c8",
+      "fixturePreSha256": "e79149d2cb090771a9705890ae113f32251d69300fcb79f739024aa8e40a91c8"
+    },
+    {
+      "relativePath": "reviews/durable/local-owner-auth/protected-issuer-state/ProtectedIssuerState.cs",
+      "sourceSha256": "f9daf6bdc0a641f1527b07efadfd8f9f36cb3047e8e22b574a00fac60435cc82",
+      "fixturePreSha256": "f9daf6bdc0a641f1527b07efadfd8f9f36cb3047e8e22b574a00fac60435cc82"
+    },
+    {
+      "relativePath": "reviews/durable/local-owner-auth/native-consent-aot-j/OwnerConsentCore.cs",
+      "sourceSha256": "684dd5d8efdc9a90c6d00e1ee6adb7a04bdf3563d716fa9e2dc76c8fab28d663",
+      "fixturePreSha256": "684dd5d8efdc9a90c6d00e1ee6adb7a04bdf3563d716fa9e2dc76c8fab28d663"
+    },
+    {
+      "relativePath": "reviews/durable/local-owner-auth/native-consent-aot-j/WindowsGuard.cs",
+      "sourceSha256": "30d773de2fde0a50f5519961f0d19ebbeb59bf6f6346f7d3bc9301f4f79ec0b5",
+      "fixturePreSha256": "30d773de2fde0a50f5519961f0d19ebbeb59bf6f6346f7d3bc9301f4f79ec0b5"
+    },
+    {
+      "relativePath": "reviews/durable/local-owner-auth/native-consent-aot-j/SystemDllPolicy.cs",
+      "sourceSha256": "916e611fd3dfbd23614e774b134f0a5f90fcbecbdc385e53b15d03e32a6d2347",
+      "fixturePreSha256": "916e611fd3dfbd23614e774b134f0a5f90fcbecbdc385e53b15d03e32a6d2347"
+    }
+  ],
+  "fixtureMutation": {
+    "fixture": "G:\\CodexWork\\RC1R79Issuer\\pin-fixture\\reviews\\durable\\local-owner-auth\\protected-oauth-exchange\\ProtectedOAuthExchange.cs",
+    "postSha256": "02111a91db1f6be837cda29a16ea148a82efd4322ba75e0aa19e9bdd1afe6267",
+    "sealedR78Changed": false
+  },
+  "r78SourceUnchanged": true,
+  "hostSourceUnchanged": true,
+  "runtimeExecuted": false,
+  "listenerOpened": false,
+  "installation": false,
+  "automaticRetryAllowed": false
+}

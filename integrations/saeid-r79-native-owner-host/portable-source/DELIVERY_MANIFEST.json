@@ -1,0 +1,43 @@
+{
+  "schema": "r79-portable-source-delivery-manifest-v1",
+  "acceptance": "SOURCE_RECONSTRUCTION_ONLY",
+  "fixture": "G:\\CodexWork\\rc79src-20261106-a",
+  "fixtureSourcesVerified": 6,
+  "files": [
+    {
+      "path": "DIAGNOSTIC_NOTES.json",
+      "bytes": 1522,
+      "sha256": "5bba013d03e295ad91c8b6b34857d85d375ff6218c90a3eaf5f713283309ded7"
+    },
+    {
+      "path": "GUARD_REGRESSION_RECEIPT.json",
+      "bytes": 903,
+      "sha256": "415bc2a9b0daf298f8c201a3daf6fb22fedd7c81e2a8bc585b69206d8d58d429"
+    },
+    {
+      "path": "HANDOFF.md",
+      "bytes": 7077,
+      "sha256": "d8077375e3000f71ab295fa9128ffdb65f459ca86950d078e9630108524ae731"
+    },
+    {
+      "path": "PUBLIC_SOURCE_RECOVERY_MAP.json",
+      "bytes": 6378,
+      "sha256": "6dbf633e2a2921c03f856d5732e840aa03cdfb17e5a9aeaf66b4078d08d346c3"
+    },
+    {
+      "path": "reconstruct_frozen_r78_sources.py",
+      "bytes": 14365,
+      "sha256": "337ec452781a89836b41663750788f4f2ebdb3c880d3e4fc00d0cef8cd6c5a7f"
+    },
+    {
+      "path": "RECONSTRUCTION_RECEIPT.json",
+      "bytes": 4267,
+      "sha256": "f78acaf1dbe5af88e700f273bb8a03d004e6c760c1aa0c662f91c50777dca7e4"
+    },
+    {
+      "path": "verify_reconstruction_guards.py",
+      "bytes": 2271,
+      "sha256": "d41e125fc24e9c351ef13421435bfb5ae99b85d63eb7e0305f2ae9222eb2c800"
+    }
+  ]
+}

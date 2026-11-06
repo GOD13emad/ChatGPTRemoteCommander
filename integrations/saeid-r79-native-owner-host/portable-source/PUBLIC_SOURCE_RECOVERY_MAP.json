@@ -1,0 +1,78 @@
+{
+  "schema": "r79-six-source-public-recovery-v1",
+  "revision": "R79",
+  "repository": "GOD13emad/ChatGPTRemoteCommander",
+  "commit": "5bdbd9c59a761b30d3a1aeda7df2bcdfa85cbccf",
+  "verification": "All six actual connected GitHub fetch_file base64 payloads independently SHA256 verified in memory; no source execution",
+  "archiveSha256": "3e3442499c71a3adcdf5dfc23061a6e7f8be13605747d4b41bf8d834f07c5784",
+  "recoveryMapSha256": "f0a6d7d1dbb27ffcc1a543d79c8d85593ea7a53ff9cf780b525d3f3a0524a138",
+  "automaticDownload": false,
+  "files": [
+    {
+      "targetRelativePath": "reviews/durable/local-owner-auth/protected-oauth-exchange/ProtectedOAuthExchange.cs",
+      "archivePath": "source/supplement/local-owner/protected-oauth-exchange/ProtectedOAuthExchange.cs",
+      "sha256": "277beb1f077289203ee57ab3df55ac64d8e7bfca2d0aa0b31a25aaaf5d208ae0",
+      "bytes": 21647,
+      "githubBlobSha": "28224e1570b5baf4a6cfac37c7422426073e7065",
+      "publicPath": "integrations/saeid-r78-commander-one/local-owner/protected-oauth-exchange/ProtectedOAuthExchange.cs",
+      "rawUrl": "https://raw.githubusercontent.com/GOD13emad/ChatGPTRemoteCommander/5bdbd9c59a761b30d3a1aeda7df2bcdfa85cbccf/integrations/saeid-r78-commander-one/local-owner/protected-oauth-exchange/ProtectedOAuthExchange.cs",
+      "displayUrl": "https://github.com/GOD13emad/ChatGPTRemoteCommander/blob/5bdbd9c59a761b30d3a1aeda7df2bcdfa85cbccf/integrations/saeid-r78-commander-one/local-owner/protected-oauth-exchange/ProtectedOAuthExchange.cs",
+      "publicBytesVerified": true
+    },
+    {
+      "targetRelativePath": "reviews/durable/local-owner-auth/protected-oauth-exchange/ExchangeJournal.cs",
+      "archivePath": "source/supplement/local-owner/protected-oauth-exchange/ExchangeJournal.cs",
+      "sha256": "e79149d2cb090771a9705890ae113f32251d69300fcb79f739024aa8e40a91c8",
+      "bytes": 5316,
+      "githubBlobSha": "26ef49138e01fe6a205afd1f6e019569d9838218",
+      "publicPath": "integrations/saeid-r78-commander-one/local-owner/protected-oauth-exchange/ExchangeJournal.cs",
+      "rawUrl": "https://raw.githubusercontent.com/GOD13emad/ChatGPTRemoteCommander/5bdbd9c59a761b30d3a1aeda7df2bcdfa85cbccf/integrations/saeid-r78-commander-one/local-owner/protected-oauth-exchange/ExchangeJournal.cs",
+      "displayUrl": "https://github.com/GOD13emad/ChatGPTRemoteCommander/blob/5bdbd9c59a761b30d3a1aeda7df2bcdfa85cbccf/integrations/saeid-r78-commander-one/local-owner/protected-oauth-exchange/ExchangeJournal.cs",
+      "publicBytesVerified": true
+    },
+    {
+      "targetRelativePath": "reviews/durable/local-owner-auth/protected-issuer-state/ProtectedIssuerState.cs",
+      "archivePath": "source/supplement/local-owner/protected-issuer-state/ProtectedIssuerState.cs",
+      "sha256": "f9daf6bdc0a641f1527b07efadfd8f9f36cb3047e8e22b574a00fac60435cc82",
+      "bytes": 21763,
+      "githubBlobSha": "b0fde2c3ede137ad4527e5bcfdacd57cf79855e2",
+      "publicPath": "integrations/saeid-r78-commander-one/local-owner/protected-issuer-state/ProtectedIssuerState.cs",
+      "rawUrl": "https://raw.githubusercontent.com/GOD13emad/ChatGPTRemoteCommander/5bdbd9c59a761b30d3a1aeda7df2bcdfa85cbccf/integrations/saeid-r78-commander-one/local-owner/protected-issuer-state/ProtectedIssuerState.cs",
+      "displayUrl": "https://github.com/GOD13emad/ChatGPTRemoteCommander/blob/5bdbd9c59a761b30d3a1aeda7df2bcdfa85cbccf/integrations/saeid-r78-commander-one/local-owner/protected-issuer-state/ProtectedIssuerState.cs",
+      "publicBytesVerified": true
+    },
+    {
+      "targetRelativePath": "reviews/durable/local-owner-auth/native-consent-aot-j/OwnerConsentCore.cs",
+      "archivePath": "source/supplement/local-owner/native-consent-aot-j/OwnerConsentCore.cs",
+      "sha256": "684dd5d8efdc9a90c6d00e1ee6adb7a04bdf3563d716fa9e2dc76c8fab28d663",
+      "bytes": 8372,
+      "githubBlobSha": "598333bb3662f4127b3a0ac3a483783188771d2d",
+      "publicPath": "integrations/saeid-r78-commander-one/local-owner/native-consent-aot-j/OwnerConsentCore.cs",
+      "rawUrl": "https://raw.githubusercontent.com/GOD13emad/ChatGPTRemoteCommander/5bdbd9c59a761b30d3a1aeda7df2bcdfa85cbccf/integrations/saeid-r78-commander-one/local-owner/native-consent-aot-j/OwnerConsentCore.cs",
+      "displayUrl": "https://github.com/GOD13emad/ChatGPTRemoteCommander/blob/5bdbd9c59a761b30d3a1aeda7df2bcdfa85cbccf/integrations/saeid-r78-commander-one/local-owner/native-consent-aot-j/OwnerConsentCore.cs",
+      "publicBytesVerified": true
+    },
+    {
+      "targetRelativePath": "reviews/durable/local-owner-auth/native-consent-aot-j/WindowsGuard.cs",
+      "archivePath": "source/supplement/local-owner/native-consent-aot-j/WindowsGuard.cs",
+      "sha256": "30d773de2fde0a50f5519961f0d19ebbeb59bf6f6346f7d3bc9301f4f79ec0b5",
+      "bytes": 6108,
+      "githubBlobSha": "d76870ce9c2d5dd15e1a81f42fdc5d545078d92d",
+      "publicPath": "integrations/saeid-r78-commander-one/local-owner/native-consent-aot-j/WindowsGuard.cs",
+      "rawUrl": "https://raw.githubusercontent.com/GOD13emad/ChatGPTRemoteCommander/5bdbd9c59a761b30d3a1aeda7df2bcdfa85cbccf/integrations/saeid-r78-commander-one/local-owner/native-consent-aot-j/WindowsGuard.cs",
+      "displayUrl": "https://github.com/GOD13emad/ChatGPTRemoteCommander/blob/5bdbd9c59a761b30d3a1aeda7df2bcdfa85cbccf/integrations/saeid-r78-commander-one/local-owner/native-consent-aot-j/WindowsGuard.cs",
+      "publicBytesVerified": true
+    },
+    {
+      "targetRelativePath": "reviews/durable/local-owner-auth/native-consent-aot-j/SystemDllPolicy.cs",
+      "archivePath": "source/supplement/local-owner/native-consent-aot-j/SystemDllPolicy.cs",
+      "sha256": "916e611fd3dfbd23614e774b134f0a5f90fcbecbdc385e53b15d03e32a6d2347",
+      "bytes": 255,
+      "githubBlobSha": "b1aba1b3aea14f7218361075b1e74dfc3fe0016c",
+      "publicPath": "integrations/saeid-r78-commander-one/local-owner/native-consent-aot-j/SystemDllPolicy.cs",
+      "rawUrl": "https://raw.githubusercontent.com/GOD13emad/ChatGPTRemoteCommander/5bdbd9c59a761b30d3a1aeda7df2bcdfa85cbccf/integrations/saeid-r78-commander-one/local-owner/native-consent-aot-j/SystemDllPolicy.cs",
+      "displayUrl": "https://github.com/GOD13emad/ChatGPTRemoteCommander/blob/5bdbd9c59a761b30d3a1aeda7df2bcdfa85cbccf/integrations/saeid-r78-commander-one/local-owner/native-consent-aot-j/SystemDllPolicy.cs",
+      "publicBytesVerified": true
+    }
+  ]
+}

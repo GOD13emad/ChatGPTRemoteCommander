@@ -1,0 +1,159 @@
+{
+  "schema": "R79_INDEPENDENT_HOST_REVIEW_V1",
+  "generatedUtc": "2026-11-06T00:50:40.468654+00:00",
+  "status": "PASS_SCOPED_SOURCE_REVIEW",
+  "whole": "NOT_FINAL",
+  "sourceManifestSha256": "10c81512377c5034763ffd5016ff83cebf583142f0762915d93e769f987dcae1",
+  "hostSourceFiles": [
+    {
+      "path": "src/CommanderNativeIssuer.csproj",
+      "sha256": "f1adfcc42f1e95e48af09b548bb5e3e18d4648c1224ffcf75610a5be35dd3d56",
+      "bytes": 3521
+    },
+    {
+      "path": "src/host.manifest",
+      "sha256": "d7ae7f3adbdecb783102a9423e57d41f0c1d13075bfbd2b0dde9485804d02103",
+      "bytes": 395
+    },
+    {
+      "path": "src/HostPolicy.cs",
+      "sha256": "facd7e6d66b8fc280806d997b1063eac312c74861162564a2f9be132bd418302",
+      "bytes": 6767
+    },
+    {
+      "path": "src/IssuerProtocol.cs",
+      "sha256": "3e89674ed8590a54fd08b570d897ac0ceca17ceb4e2ed355fb5e5e436d37cb3f",
+      "bytes": 2585
+    },
+    {
+      "path": "src/KernelPeer.cs",
+      "sha256": "a0f853192028183b48bd300c693fb4e37390a0e7255dc2cd406ef0f84a483806",
+      "bytes": 7300
+    },
+    {
+      "path": "src/PrivatePipe.cs",
+      "sha256": "b2d562701126186013aa9eb295bec4a8a118456b8277f0a05c3cbddbf0724281",
+      "bytes": 1978
+    },
+    {
+      "path": "src/Program.cs",
+      "sha256": "473de32f68d1901b5c93f741374392d0c2ad5868dd063613141188de155f9291",
+      "bytes": 5760
+    },
+    {
+      "path": "src/ProtocolQA.cs",
+      "sha256": "899a0a3778151908744221629d2b36fc8a2fe34d904d4281261e84234633809e",
+      "bytes": 5379
+    }
+  ],
+  "frozenR78Dependencies": [
+    {
+      "path": "reviews/durable/local-owner-auth/protected-oauth-exchange/ProtectedOAuthExchange.cs",
+      "sha256": "277beb1f077289203ee57ab3df55ac64d8e7bfca2d0aa0b31a25aaaf5d208ae0"
+    },
+    {
+      "path": "reviews/durable/local-owner-auth/protected-oauth-exchange/ExchangeJournal.cs",
+      "sha256": "e79149d2cb090771a9705890ae113f32251d69300fcb79f739024aa8e40a91c8"
+    },
+    {
+      "path": "reviews/durable/local-owner-auth/protected-issuer-state/ProtectedIssuerState.cs",
+      "sha256": "f9daf6bdc0a641f1527b07efadfd8f9f36cb3047e8e22b574a00fac60435cc82"
+    },
+    {
+      "path": "reviews/durable/local-owner-auth/native-consent-aot-j/OwnerConsentCore.cs",
+      "sha256": "684dd5d8efdc9a90c6d00e1ee6adb7a04bdf3563d716fa9e2dc76c8fab28d663"
+    },
+    {
+      "path": "reviews/durable/local-owner-auth/native-consent-aot-j/WindowsGuard.cs",
+      "sha256": "30d773de2fde0a50f5519961f0d19ebbeb59bf6f6346f7d3bc9301f4f79ec0b5"
+    },
+    {
+      "path": "reviews/durable/local-owner-auth/native-consent-aot-j/SystemDllPolicy.cs",
+      "sha256": "916e611fd3dfbd23614e774b134f0a5f90fcbecbdc385e53b15d03e32a6d2347"
+    }
+  ],
+  "r78SourceCommit": "5bdbd9c",
+  "r78ReturnSha256": "3e3442499c71a3adcdf5dfc23061a6e7f8be13605747d4b41bf8d834f07c5784",
+  "sourcePinsVerified": 14,
+  "binary": {
+    "path": "G:\\CodexWork\\RC1R79Issuer\\native\\CommanderNativeIssuer.exe",
+    "bytes": 4123136,
+    "sha256": "e7b86f31531dc2f2a2afeda3cab5c717726a0eddc852ed27c2114c1f659f4469",
+    "machine": "AMD64",
+    "pe": "PE32+",
+    "clrDirectory": [
+      0,
+      0
+    ],
+    "dependentLoadFlags": 2048,
+    "manifestAsInvoker": true,
+    "reviewerExecuted": false
+  },
+  "qualification": {
+    "status": "PASS_NATIVE_HOST_LOAD_AND_ORDINARY_NEGATIVES_ONLY",
+    "protocolCasesPass": 20,
+    "protocolCasesFail": 0,
+    "buildAdmissionExpectedDenials": 2,
+    "ordinaryServeDenial": "HOST_SYSTEM_TOKEN_REQUIRED",
+    "testRerunByReviewer": 0
+  },
+  "findings": {
+    "A1ReadBeforeImpersonation": "RESOLVED_IN_CORRECTED_SOURCE",
+    "A2HeldPolicySnapshot": "RESOLVED_IN_CORRECTED_SOURCE",
+    "StandaloneStoreBLateExpiry": "OPEN_UNCHANGED_COMPOSITION_ONLY"
+  },
+  "realKernelPeerPositive": "UNPROVEN",
+  "protectedBootstrapIntegrity": "OPEN",
+  "ownerEnrollment": "UNPROVEN",
+  "deployment": "STOP_DO_NOT_INSTALL_OR_RUN_AS_SYSTEM",
+  "safety": {
+    "listenerOpenedByReviewer": false,
+    "nativeAuthorityByReviewer": false,
+    "installedChanged": false,
+    "activeJobsStoppedOrReplayed": 0,
+    "sealedR78Changed": false
+  },
+  "historyAndPrimaryAudit": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-native-issuer-r79\\reviews\\independent-host\\HISTORY_PRIMARY_AUDIT.md",
+  "pins": [
+    {
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-native-issuer-r79\\SOURCE_INPUT_MANIFEST.json",
+      "sha256": "10c81512377c5034763ffd5016ff83cebf583142f0762915d93e769f987dcae1"
+    },
+    {
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-native-issuer-r79\\QUALIFICATION.json",
+      "sha256": "f25011a79e04f144cec838709604a3bfd12b8015448b43012db587b99ff2c0d5"
+    },
+    {
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-native-issuer-r79\\qa\\a\\RECEIPT.json",
+      "sha256": "58e108843d56f58afb6ab5135efcbd9e0097c076935d2bd69b282df79eb3b57f"
+    },
+    {
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-native-issuer-r79\\qa\\b\\RECEIPT.json",
+      "sha256": "a2f21af857d782f0f59f023275bf70863f407a55742dd84dd3187636eafef3da"
+    },
+    {
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-native-issuer-r79\\HANDOFF.md",
+      "sha256": "96718c4a11b56534d8dd80e7c28c147534117561235b275f9f46084197d7e331"
+    },
+    {
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-native-issuer-r79\\MANIFEST.json",
+      "sha256": "e4f8e86b0de231ca552395f9778e3f3b076827a74e190fe15b0e480a78d13532"
+    },
+    {
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-native-issuer-r79\\reviews\\independent-host\\FINDINGS_A.md",
+      "sha256": "28cee5cb8b7a1d98cfb3bd65faae69a2ee98c7e4796eacdc303547a67220cf7b"
+    },
+    {
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-native-issuer-r79\\reviews\\independent-host\\HISTORY_PRIMARY_AUDIT.md",
+      "sha256": "c6902a7bf276342704a8a67ed7ce74867c649380ccd0c75cba690529893befd4"
+    },
+    {
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-native-issuer-r79\\reviews\\independent-host\\REVIEW.md",
+      "sha256": "6062df5d6dac91d0e7501d5b7547fb6ee4f3131618074746b2df7d1821b50182"
+    },
+    {
+      "path": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-native-issuer-r79\\reviews\\independent-host\\FINALIZE_REVIEW_ONCE.py",
+      "sha256": "1e03b3fed25fe89feb37dd461fc8a92b6d83d1c5d5ab8d5abfe25f1acd91eeac"
+    }
+  ]
+}

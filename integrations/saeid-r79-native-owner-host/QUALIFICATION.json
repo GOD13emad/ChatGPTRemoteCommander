@@ -1,0 +1,33 @@
+{
+  "schema": "r79-native-host-source-qualification-v1",
+  "utc": "2026-11-06T00:46:31.751861+00:00",
+  "status": "PASS_NATIVE_HOST_LOAD_AND_ORDINARY_NEGATIVES_ONLY",
+  "oneBlocker": "actual NativeAOT host/load boundary for frozen R78 exchangeC",
+  "sourceManifest": "SOURCE_INPUT_MANIFEST.json",
+  "sourceManifestSha256": "10c81512377c5034763ffd5016ff83cebf583142f0762915d93e769f987dcae1",
+  "r78SourceCommit": "5bdbd9c",
+  "r78ReturnSha256": "3e3442499c71a3adcdf5dfc23061a6e7f8be13605747d4b41bf8d834f07c5784",
+  "binary": {
+    "path": "G:\\CodexWork\\RC1R79Issuer\\native\\CommanderNativeIssuer.exe",
+    "bytes": 4123136,
+    "sha256": "e7b86f31531dc2f2a2afeda3cab5c717726a0eddc852ed27c2114c1f659f4469"
+  },
+  "postBinarySha256": "e7b86f31531dc2f2a2afeda3cab5c717726a0eddc852ed27c2114c1f659f4469",
+  "protocolCasesPass": 20,
+  "protocolCasesFail": 0,
+  "buildAdmissionExpectedDenials": 2,
+  "ordinaryServeDenial": "HOST_SYSTEM_TOKEN_REQUIRED",
+  "nativeReceipt": "qa/a/RECEIPT.json",
+  "pinGuardReceipt": "qa/b/RECEIPT.json",
+  "realKernelPeerPositive": "UNPROVEN",
+  "protectedBootstrapIntegrity": "OPEN",
+  "ownerOrKeyEnrollment": false,
+  "listenerOpened": false,
+  "uacOrServiceInstall": false,
+  "installedCommanderChanged": false,
+  "activeJobsStoppedOrReplayed": false,
+  "sourceHistory": "source-history-a (superseded DO NOT RUN)",
+  "independentReview": "reviews/independent-host (parent finalization owns review registration)",
+  "whole": "NOT_FINAL",
+  "noAutomaticPromotion": true
+}

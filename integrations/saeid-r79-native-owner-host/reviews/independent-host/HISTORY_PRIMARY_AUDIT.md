@@ -1,0 +1,26 @@
+# Recurrent authority snapshot/TOCTOU pattern — R79 bounded audit
+
+Scope: admitted R78/R79 source and compact existing evidence only. No project-output scan, new full suite, native authority or production-file experiment. R79 targets win-x64 NativeAOT/net10.0-windows with runtime/ILC10.0.14; actual positive deployed kernel/ACL/load-chain behavior is not inferred from this audit.
+
+| History | Confirmed evidence | Reusable prevention |
+| --- | --- | --- |
+| R78 asynchronous caller | Existing reviewer QUALIFICATION records baseline1 PASS/5 FAIL, derived6 PASS; immutable claim/scope snapshot and credential recheck after awaited principal/native observer. Exact two-file delta is in sealed R78 `reviews/independent-final/SOURCE_DELTA.json`. | Verification before an asynchronous boundary does not qualify mutable state or an expired credential afterward. Copy the admitted claims and check the current authority at the decisive boundary. |
+| R78 router | Existing bounded reviewer assessment records route pinned across async verification/grant and expiry recheck before upstream. This is related source prevention, not a newly reproduced router failure. | Pin a specific route/generation and compare it after waits; an independently modified route must not inherit an earlier grant. |
+| R78 exchange C | Independent auth REVIEW_B reconciles33 fixture cases plus1 actual resource interop; deterministic clock advances verify denial after client verification/prepare/signing. | Carry the validated proof/code deadline through crypto+durable IO, recheck before publication, and preserve consumed uncertainty instead of replay. Frozen standalone StoreB itself remains unqualified for late-expiry consumption. |
+| R79 first host source | FINDINGS_A identifies native/OAuth files verified then released before separately opening the producer/exchange. Concurrent config update could substitute their snapshot while host policy stayed unchanged. | Hold admitted policy/image read handles for the entire composition, and re-hash the current protected paths against host-admitted pins at revalidation. Keep each R78 object's existing fresh-byte checks. |
+
+These are one architectural family: a decision made on snapshotA is accidentally used with stateB after a wait, file reopen, provider callback or commit. Cryptographic validity, ACL protection and a pathname alone do not make an earlier observation current. The correct boundary is immutable admitted identity/claims/route/file snapshot plus a fresh validity check immediately before effect. This does not justify disabling guards, reconstructing an unknown outcome or replaying a consumed operation.
+
+## Primary-source reconciliation
+
+Microsoft's [FileShare contract](https://learn.microsoft.com/en-us/dotnet/api/system.io.fileshare?view=net-10.0) defines read sharing separately from write and deletion permission. In the corrected host, `OpenProtected` uses read access with `FileShare.Read`; the retained handles permit compatible readers while excluding subsequent incompatible writers. This is a handle lifetime property, not merely a byte-hash convention.
+
+The [CreateFileW share-mode contract](https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-createfilew) says existing handles constrain later opens until those handles close; delete access also covers rename. Omitting write/delete sharing therefore prevents ordinary conflicting file-write/replacement operations while the admitted handles are held. Existing writers/mappings with incompatible access can also make the protected read fail closed. This does not prove resistance to a fully privileged kernel attacker, joint rollback, filesystem power loss or an unreviewed ancestor/load chain.
+
+The [ImpersonateNamedPipeClient contract](https://learn.microsoft.com/en-us/windows/win32/api/namedpipeapi/nf-namedpipeapi-impersonatenamedpipeclient) associates impersonation with the last message read. The [.NET RunAsClient example](https://learn.microsoft.com/en-us/dotnet/api/system.io.pipes.namedpipeserverstream.runasclient?view=net-10.0) reads client input before impersonating. Thus the corrected host captures and holds kernel process identity first, accepts only a finite32KiB/5-second frame, then validates the pipe token before parsing/dispatch. The bytes cannot nominate their own PID, SID, SYSTEM status or approval.
+
+## Boundaries after correction
+
+R79 source resolves A1/A2 composition ordering. Finite pure protocol and ordinary-token negatives can prove denial paths only. Actual positive named-pipe impersonation, protected native peer/process policy, real SYSTEM/session0 service and owner enrollment remain UNPROVEN until separately authorized acceptance. The author confirmed no private-file sharing regression was planned/executed in this bounded gate; file-hold behavior is supported by the primary API contract and source review, not an invented runtime result. No additional experiment or deployment gate was introduced by this audit.
+
+No report converts the R78 StoreB standalone late-expiry primitive into a fixed component: unchanged source is an explicit open boundary; exchangeC's held receipt + postconsume deadline prevents downstream code/token issuance within that wrapper only.

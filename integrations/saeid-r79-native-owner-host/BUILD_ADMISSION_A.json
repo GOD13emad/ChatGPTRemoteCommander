@@ -1,0 +1,12 @@
+{
+  "schema": "r79-native-host-build-admission-v1",
+  "owner": "saeed",
+  "project": "Remote Commander Saeed",
+  "sourceRoot": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-native-issuer-r79",
+  "shortBuildRoot": "G:\\CodexWork\\RC1R79Issuer",
+  "sourceManifestSha256": "10c81512377c5034763ffd5016ff83cebf583142f0762915d93e769f987dcae1",
+  "r78ReturnSha256": "3e3442499c71a3adcdf5dfc23061a6e7f8be13605747d4b41bf8d834f07c5784",
+  "role": "ordinary NativeAOT/protocol negative QA only; no listeners/enrollment/installation",
+  "checkedSharedBuildFiles": 687,
+  "sharedCache": "G:\\CodexWork\\RC1R78AuthAot\\packages"
+}

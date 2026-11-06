@@ -1,0 +1,92 @@
+{
+  "schema": "r79-native-host-source-qa-v1",
+  "utc": "2026-11-06T00:42:21.714371+00:00",
+  "status": "PASS_NATIVE_HOST_LOAD_AND_ORDINARY_NEGATIVES_ONLY",
+  "phases": [
+    {
+      "phase": "restore-offline",
+      "exitCode": 0,
+      "expectedExit": 0
+    },
+    {
+      "phase": "publish-native",
+      "exitCode": 0,
+      "expectedExit": 0
+    },
+    {
+      "phase": "native-imports",
+      "exitCode": 0,
+      "expectedExit": 0
+    },
+    {
+      "phase": "native-loadconfig",
+      "exitCode": 0,
+      "expectedExit": 0
+    },
+    {
+      "phase": "embedded-manifest",
+      "exitCode": 0,
+      "expectedExit": 0
+    },
+    {
+      "phase": "ordinary-diagnostic",
+      "exitCode": 0,
+      "expectedExit": 0
+    },
+    {
+      "phase": "ordinary-serve-denial",
+      "exitCode": 2,
+      "expectedExit": 2
+    },
+    {
+      "phase": "publish-native-protocol-qa",
+      "exitCode": 0,
+      "expectedExit": 0
+    },
+    {
+      "phase": "protocol-qa",
+      "exitCode": 0,
+      "expectedExit": 0
+    }
+  ],
+  "facts": {
+    "binary": {
+      "path": "G:\\CodexWork\\RC1R79Issuer\\native\\CommanderNativeIssuer.exe",
+      "bytes": 4123136,
+      "sha256": "e7b86f31531dc2f2a2afeda3cab5c717726a0eddc852ed27c2114c1f659f4469"
+    },
+    "clrDirectory": [
+      0,
+      0
+    ],
+    "dependentLoadFlags": 2048,
+    "manifestAsInvoker": true,
+    "diagnostic": {
+      "schema": "RC_NATIVE_ISSUER_HOST_DIAGNOSTIC_V1",
+      "systemSid": false,
+      "elevated": false,
+      "administrator": false,
+      "integrityRid": 8192,
+      "sessionZero": false,
+      "policyOpened": false,
+      "keyOpened": false,
+      "pipeCreated": false,
+      "ownerEnrolled": false,
+      "sourceOnly": true
+    },
+    "ordinaryServeDeniedBeforeAuthorityPaths": true,
+    "protocolPass": 20,
+    "protocolFail": 0,
+    "postBinarySha256": "e7b86f31531dc2f2a2afeda3cab5c717726a0eddc852ed27c2114c1f659f4469"
+  },
+  "failure": null,
+  "sourceManifestSha256": "10c81512377c5034763ffd5016ff83cebf583142f0762915d93e769f987dcae1",
+  "sourcesUnchanged": true,
+  "r78Sealed": true,
+  "listenerOpened": false,
+  "keysEnrolledOrOpened": false,
+  "systemPositivePeerProven": false,
+  "hostInstalled": false,
+  "activeJobsStoppedOrReplayed": false,
+  "automaticRetryAllowed": false
+}

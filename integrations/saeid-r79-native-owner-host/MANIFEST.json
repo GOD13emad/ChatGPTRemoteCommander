@@ -1,0 +1,257 @@
+{
+  "schema": "r79-author-source-evidence-manifest-v1",
+  "scope": "author sources, historical source snapshot, finite QA, qualification and handoff; reviewer/delivery registered separately",
+  "files": [
+    {
+      "path": "BUILD_ADMISSION_A.json",
+      "bytes": 656,
+      "sha256": "8a8fcfeeefb31c19a37675d5797f88e13a169432bfa798dc59eab025b1a1c7e2"
+    },
+    {
+      "path": "HANDOFF.md",
+      "bytes": 10373,
+      "sha256": "96718c4a11b56534d8dd80e7c28c147534117561235b275f9f46084197d7e331"
+    },
+    {
+      "path": "QUALIFICATION.json",
+      "bytes": 1530,
+      "sha256": "f25011a79e04f144cec838709604a3bfd12b8015448b43012db587b99ff2c0d5"
+    },
+    {
+      "path": "QUALIFY_PIN_GUARDS_B_ONCE.py",
+      "bytes": 3167,
+      "sha256": "6f6a132fbc2ce9a0bda99defbe859a67e944234d61391f3a887294a20499eb8e"
+    },
+    {
+      "path": "QUALIFY_R79_A_ONCE.py",
+      "bytes": 7350,
+      "sha256": "e4095a5f3fe47d83fb84c7b7ffbba3af27c3ef3a1a2ba222cb265b5f1f1a61bc"
+    },
+    {
+      "path": "SOURCE_ADMISSION.json",
+      "bytes": 842,
+      "sha256": "997de4b0ea77c178c8d2c92369dc780c3e0012df7839cc50b9fb04324cf282fb"
+    },
+    {
+      "path": "SOURCE_INPUT_MANIFEST.json",
+      "bytes": 3054,
+      "sha256": "10c81512377c5034763ffd5016ff83cebf583142f0762915d93e769f987dcae1"
+    },
+    {
+      "path": "source-history-a/CommanderNativeIssuer.csproj",
+      "bytes": 3521,
+      "sha256": "f1adfcc42f1e95e48af09b548bb5e3e18d4648c1224ffcf75610a5be35dd3d56"
+    },
+    {
+      "path": "source-history-a/host.manifest",
+      "bytes": 395,
+      "sha256": "d7ae7f3adbdecb783102a9423e57d41f0c1d13075bfbd2b0dde9485804d02103"
+    },
+    {
+      "path": "source-history-a/HostPolicy.cs",
+      "bytes": 5980,
+      "sha256": "40ab3f35149d37fa796de331669923f34d41904fdd4aa2c37ed87f94dfadff0f"
+    },
+    {
+      "path": "source-history-a/IssuerProtocol.cs",
+      "bytes": 2585,
+      "sha256": "3e89674ed8590a54fd08b570d897ac0ceca17ceb4e2ed355fb5e5e436d37cb3f"
+    },
+    {
+      "path": "source-history-a/KernelPeer.cs",
+      "bytes": 7174,
+      "sha256": "1681c49590273582126063edf3d35da0645a5f5d38a47a9a765f0a070d829fe3"
+    },
+    {
+      "path": "source-history-a/PrivatePipe.cs",
+      "bytes": 1978,
+      "sha256": "b2d562701126186013aa9eb295bec4a8a118456b8277f0a05c3cbddbf0724281"
+    },
+    {
+      "path": "source-history-a/Program.cs",
+      "bytes": 5741,
+      "sha256": "3c576bfe549e364063409568f1f57f61f27796ca13ed4cd33d9c99f379de9ef3"
+    },
+    {
+      "path": "source-history-a/ProtocolQA.cs",
+      "bytes": 5379,
+      "sha256": "899a0a3778151908744221629d2b36fc8a2fe34d904d4281261e84234633809e"
+    },
+    {
+      "path": "source-history-a/SOURCE_INPUT_MANIFEST.json",
+      "bytes": 2783,
+      "sha256": "83c51792656fde69d6c716b31a88d32b4287a3471566c4f1582956c6f59ea763"
+    },
+    {
+      "path": "src/CommanderNativeIssuer.csproj",
+      "bytes": 3521,
+      "sha256": "f1adfcc42f1e95e48af09b548bb5e3e18d4648c1224ffcf75610a5be35dd3d56"
+    },
+    {
+      "path": "src/host.manifest",
+      "bytes": 395,
+      "sha256": "d7ae7f3adbdecb783102a9423e57d41f0c1d13075bfbd2b0dde9485804d02103"
+    },
+    {
+      "path": "src/HostPolicy.cs",
+      "bytes": 6767,
+      "sha256": "facd7e6d66b8fc280806d997b1063eac312c74861162564a2f9be132bd418302"
+    },
+    {
+      "path": "src/IssuerProtocol.cs",
+      "bytes": 2585,
+      "sha256": "3e89674ed8590a54fd08b570d897ac0ceca17ceb4e2ed355fb5e5e436d37cb3f"
+    },
+    {
+      "path": "src/KernelPeer.cs",
+      "bytes": 7300,
+      "sha256": "a0f853192028183b48bd300c693fb4e37390a0e7255dc2cd406ef0f84a483806"
+    },
+    {
+      "path": "src/PrivatePipe.cs",
+      "bytes": 1978,
+      "sha256": "b2d562701126186013aa9eb295bec4a8a118456b8277f0a05c3cbddbf0724281"
+    },
+    {
+      "path": "src/Program.cs",
+      "bytes": 5760,
+      "sha256": "473de32f68d1901b5c93f741374392d0c2ad5868dd063613141188de155f9291"
+    },
+    {
+      "path": "src/ProtocolQA.cs",
+      "bytes": 5379,
+      "sha256": "899a0a3778151908744221629d2b36fc8a2fe34d904d4281261e84234633809e"
+    },
+    {
+      "path": "qa/a/embedded-manifest.stderr.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "qa/a/embedded-manifest.stdout.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "qa/a/embedded.manifest",
+      "bytes": 458,
+      "sha256": "def1d462ae6ad3b894f6b477823bba3c604183b919df28716953d30ca34e7708"
+    },
+    {
+      "path": "qa/a/native-imports.stderr.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "qa/a/native-imports.stdout.log",
+      "bytes": 766,
+      "sha256": "570d507201990b32b29db4604ff53344c364770169613b447e78fe88a1f99aec"
+    },
+    {
+      "path": "qa/a/native-loadconfig.stderr.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "qa/a/native-loadconfig.stdout.log",
+      "bytes": 32494,
+      "sha256": "bb256c4a438470c466c1d2a2a5d7553de9cedccd93e5db9266390152b4960059"
+    },
+    {
+      "path": "qa/a/ordinary-diagnostic.stderr.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "qa/a/ordinary-diagnostic.stdout.log",
+      "bytes": 246,
+      "sha256": "c5dcfdbe2344cd2641d6d95d0c04640687331eefa6051e8ecae651c63b3e15da"
+    },
+    {
+      "path": "qa/a/ordinary-serve-denial.stderr.log",
+      "bytes": 104,
+      "sha256": "94dea0ad9347d6b8e4a041b973901e19e574bcb83fce41146cc56ac9854340b7"
+    },
+    {
+      "path": "qa/a/ordinary-serve-denial.stdout.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "qa/a/protocol-qa.stderr.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "qa/a/protocol-qa.stdout.log",
+      "bytes": 1519,
+      "sha256": "7ec005e9f786d8ec4ee1166565cc25fb320b7aa5478262228bc82e84d9588dd3"
+    },
+    {
+      "path": "qa/a/publish-native-protocol-qa.stderr.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "qa/a/publish-native-protocol-qa.stdout.log",
+      "bytes": 223,
+      "sha256": "54ae7464c4e82209e9bbe055c6f4144668f2cb6c7d5a413290237f9d0fe50253"
+    },
+    {
+      "path": "qa/a/publish-native.stderr.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "qa/a/publish-native.stdout.log",
+      "bytes": 208,
+      "sha256": "4da9f3e97caa6921817ca7496235d47f2e4511560db85d42272b65b7e5818761"
+    },
+    {
+      "path": "qa/a/RECEIPT.json",
+      "bytes": 2356,
+      "sha256": "58e108843d56f58afb6ab5135efcbd9e0097c076935d2bd69b282df79eb3b57f"
+    },
+    {
+      "path": "qa/a/restore-offline.stderr.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "qa/a/restore-offline.stdout.log",
+      "bytes": 122,
+      "sha256": "10d95811aa31318cedb54a8444c91075b21a9b669e7dd275a36afe9db635f992"
+    },
+    {
+      "path": "qa/b/changed-frozen-source.stderr.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "qa/b/changed-frozen-source.stdout.log",
+      "bytes": 266,
+      "sha256": "6f5318d11bf9fd0459a7848096cb1dec2495229da0e191c652ac0a4645a4a22a"
+    },
+    {
+      "path": "qa/b/missing-frozen-root.stderr.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "qa/b/missing-frozen-root.stdout.log",
+      "bytes": 154,
+      "sha256": "22f478964330a3474dbc30926e17877601e81639f086be3509637205e92f482b"
+    },
+    {
+      "path": "qa/b/RECEIPT.json",
+      "bytes": 2708,
+      "sha256": "a2f21af857d782f0f59f023275bf70863f407a55742dd84dd3187636eafef3da"
+    }
+  ],
+  "sharedBinary": {
+    "path": "G:\\CodexWork\\RC1R79Issuer\\native\\CommanderNativeIssuer.exe",
+    "bytes": 4123136,
+    "sha256": "e7b86f31531dc2f2a2afeda3cab5c717726a0eddc852ed27c2114c1f659f4469"
+  },
+  "noNestedPackageOrCache": true
+}

@@ -1,0 +1,75 @@
+{
+  "schema": "r79-frozen-source-input-manifest-v1",
+  "r78SourceCommit": "5bdbd9c",
+  "r78Return": "../commander-one-integration-r78/RETURN_R78.zip",
+  "r78ReturnSha256": "3e3442499c71a3adcdf5dfc23061a6e7f8be13605747d4b41bf8d834f07c5784",
+  "buildTimeRootProperty": "FrozenR78SourceRoot",
+  "dependencies": [
+    {
+      "path": "reviews/durable/local-owner-auth/protected-oauth-exchange/ProtectedOAuthExchange.cs",
+      "sha256": "277beb1f077289203ee57ab3df55ac64d8e7bfca2d0aa0b31a25aaaf5d208ae0"
+    },
+    {
+      "path": "reviews/durable/local-owner-auth/protected-oauth-exchange/ExchangeJournal.cs",
+      "sha256": "e79149d2cb090771a9705890ae113f32251d69300fcb79f739024aa8e40a91c8"
+    },
+    {
+      "path": "reviews/durable/local-owner-auth/protected-issuer-state/ProtectedIssuerState.cs",
+      "sha256": "f9daf6bdc0a641f1527b07efadfd8f9f36cb3047e8e22b574a00fac60435cc82"
+    },
+    {
+      "path": "reviews/durable/local-owner-auth/native-consent-aot-j/OwnerConsentCore.cs",
+      "sha256": "684dd5d8efdc9a90c6d00e1ee6adb7a04bdf3563d716fa9e2dc76c8fab28d663"
+    },
+    {
+      "path": "reviews/durable/local-owner-auth/native-consent-aot-j/WindowsGuard.cs",
+      "sha256": "30d773de2fde0a50f5519961f0d19ebbeb59bf6f6346f7d3bc9301f4f79ec0b5"
+    },
+    {
+      "path": "reviews/durable/local-owner-auth/native-consent-aot-j/SystemDllPolicy.cs",
+      "sha256": "916e611fd3dfbd23614e774b134f0a5f90fcbecbdc385e53b15d03e32a6d2347"
+    }
+  ],
+  "hostSourceFiles": [
+    {
+      "path": "src/CommanderNativeIssuer.csproj",
+      "sha256": "f1adfcc42f1e95e48af09b548bb5e3e18d4648c1224ffcf75610a5be35dd3d56",
+      "bytes": 3521
+    },
+    {
+      "path": "src/host.manifest",
+      "sha256": "d7ae7f3adbdecb783102a9423e57d41f0c1d13075bfbd2b0dde9485804d02103",
+      "bytes": 395
+    },
+    {
+      "path": "src/HostPolicy.cs",
+      "sha256": "40ab3f35149d37fa796de331669923f34d41904fdd4aa2c37ed87f94dfadff0f",
+      "bytes": 5980
+    },
+    {
+      "path": "src/IssuerProtocol.cs",
+      "sha256": "3e89674ed8590a54fd08b570d897ac0ceca17ceb4e2ed355fb5e5e436d37cb3f",
+      "bytes": 2585
+    },
+    {
+      "path": "src/KernelPeer.cs",
+      "sha256": "1681c49590273582126063edf3d35da0645a5f5d38a47a9a765f0a070d829fe3",
+      "bytes": 7174
+    },
+    {
+      "path": "src/PrivatePipe.cs",
+      "sha256": "b2d562701126186013aa9eb295bec4a8a118456b8277f0a05c3cbddbf0724281",
+      "bytes": 1978
+    },
+    {
+      "path": "src/Program.cs",
+      "sha256": "3c576bfe549e364063409568f1f57f61f27796ca13ed4cd33d9c99f379de9ef3",
+      "bytes": 5741
+    },
+    {
+      "path": "src/ProtocolQA.cs",
+      "sha256": "899a0a3778151908744221629d2b36fc8a2fe34d904d4281261e84234633809e",
+      "bytes": 5379
+    }
+  ]
+}

@@ -1,0 +1,31 @@
+{
+  "schema": "r79-portable-source-diagnostic-notes-v1",
+  "scope": "Read-only public source provenance hashing before one source reconstruction",
+  "events": [
+    {
+      "id": "R79-PUBLIC-METADATA-TRANSPORT-A",
+      "phase": "Pre-extraction public provenance SHA calculation",
+      "errorClass": "WINDOWS_PROCESS_COMMAND_LENGTH",
+      "error": "The filename or extension is too long. (os error 206)",
+      "cause": "Six already-read public sources were aggregated into an oversized shell argument",
+      "processCreated": false,
+      "sourceExtractionOccurred": false,
+      "actionReplayOccurred": false
+    },
+    {
+      "id": "R79-PUBLIC-METADATA-TRANSPORT-B",
+      "phase": "Pre-extraction public provenance SHA calculation",
+      "errorClass": "NODE_TOOL_INPUT_REVIEW_LIMIT",
+      "error": "JavaScript execution exceeds the 64000-byte strict auto-review limit",
+      "cause": "Aggregate public source payload exceeded the tool input bound",
+      "javascriptExecuted": false,
+      "sourceExtractionOccurred": false,
+      "actionReplayOccurred": false
+    }
+  ],
+  "resolution": "Inspect exact payload lengths; hash one source per bounded Node in-memory call using the already-fetched public bytes; all six match pinned SHA256",
+  "prevention": "Do not embed aggregated source payloads in shell commands or oversized tool inputs; bound each metadata operation and return only hashes and byte counts",
+  "reconstructionFailure": null,
+  "installedVersionMutation": false,
+  "activeJobMutation": false
+}

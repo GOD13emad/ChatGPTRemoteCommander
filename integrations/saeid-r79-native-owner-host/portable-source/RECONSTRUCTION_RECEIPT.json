@@ -1,0 +1,78 @@
+{
+  "schema": "r79-six-source-reconstruction-v1",
+  "revision": "R79",
+  "status": "PASS_SOURCE_RECONSTRUCTION_ONLY",
+  "startedUtc": "2026-11-06T00:49:54.322154+00:00",
+  "execution": false,
+  "build": false,
+  "installation": false,
+  "deletion": false,
+  "acceptanceScope": "Frozen source reconstruction only; runtime and installed product unchanged",
+  "files": [
+    {
+      "path": "reviews/durable/local-owner-auth/protected-oauth-exchange/ProtectedOAuthExchange.cs",
+      "archivePath": "source/supplement/local-owner/protected-oauth-exchange/ProtectedOAuthExchange.cs",
+      "sha256": "277beb1f077289203ee57ab3df55ac64d8e7bfca2d0aa0b31a25aaaf5d208ae0",
+      "bytes": 21647,
+      "targetPath": "G:\\CodexWork\\rc79src-20261106-a\\reviews\\durable\\local-owner-auth\\protected-oauth-exchange\\ProtectedOAuthExchange.cs",
+      "verified": true
+    },
+    {
+      "path": "reviews/durable/local-owner-auth/protected-oauth-exchange/ExchangeJournal.cs",
+      "archivePath": "source/supplement/local-owner/protected-oauth-exchange/ExchangeJournal.cs",
+      "sha256": "e79149d2cb090771a9705890ae113f32251d69300fcb79f739024aa8e40a91c8",
+      "bytes": 5316,
+      "targetPath": "G:\\CodexWork\\rc79src-20261106-a\\reviews\\durable\\local-owner-auth\\protected-oauth-exchange\\ExchangeJournal.cs",
+      "verified": true
+    },
+    {
+      "path": "reviews/durable/local-owner-auth/protected-issuer-state/ProtectedIssuerState.cs",
+      "archivePath": "source/supplement/local-owner/protected-issuer-state/ProtectedIssuerState.cs",
+      "sha256": "f9daf6bdc0a641f1527b07efadfd8f9f36cb3047e8e22b574a00fac60435cc82",
+      "bytes": 21763,
+      "targetPath": "G:\\CodexWork\\rc79src-20261106-a\\reviews\\durable\\local-owner-auth\\protected-issuer-state\\ProtectedIssuerState.cs",
+      "verified": true
+    },
+    {
+      "path": "reviews/durable/local-owner-auth/native-consent-aot-j/OwnerConsentCore.cs",
+      "archivePath": "source/supplement/local-owner/native-consent-aot-j/OwnerConsentCore.cs",
+      "sha256": "684dd5d8efdc9a90c6d00e1ee6adb7a04bdf3563d716fa9e2dc76c8fab28d663",
+      "bytes": 8372,
+      "targetPath": "G:\\CodexWork\\rc79src-20261106-a\\reviews\\durable\\local-owner-auth\\native-consent-aot-j\\OwnerConsentCore.cs",
+      "verified": true
+    },
+    {
+      "path": "reviews/durable/local-owner-auth/native-consent-aot-j/WindowsGuard.cs",
+      "archivePath": "source/supplement/local-owner/native-consent-aot-j/WindowsGuard.cs",
+      "sha256": "30d773de2fde0a50f5519961f0d19ebbeb59bf6f6346f7d3bc9301f4f79ec0b5",
+      "bytes": 6108,
+      "targetPath": "G:\\CodexWork\\rc79src-20261106-a\\reviews\\durable\\local-owner-auth\\native-consent-aot-j\\WindowsGuard.cs",
+      "verified": true
+    },
+    {
+      "path": "reviews/durable/local-owner-auth/native-consent-aot-j/SystemDllPolicy.cs",
+      "archivePath": "source/supplement/local-owner/native-consent-aot-j/SystemDllPolicy.cs",
+      "sha256": "916e611fd3dfbd23614e774b134f0a5f90fcbecbdc385e53b15d03e32a6d2347",
+      "bytes": 255,
+      "targetPath": "G:\\CodexWork\\rc79src-20261106-a\\reviews\\durable\\local-owner-auth\\native-consent-aot-j\\SystemDllPolicy.cs",
+      "verified": true
+    }
+  ],
+  "archive": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-integration-r78\\RETURN_R78.zip",
+  "sourceManifest": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-native-issuer-r79\\SOURCE_INPUT_MANIFEST.json",
+  "target": "G:\\CodexWork\\rc79src-20261106-a",
+  "owner": "Commander R79 portable-source",
+  "helperSha256": "337ec452781a89836b41663750788f4f2ebdb3c880d3e4fc00d0cef8cd6c5a7f",
+  "phase": "COMPLETE",
+  "archiveSha256": "3e3442499c71a3adcdf5dfc23061a6e7f8be13605747d4b41bf8d834f07c5784",
+  "sourceManifestSha256": "10c81512377c5034763ffd5016ff83cebf583142f0762915d93e769f987dcae1",
+  "recoveryMapSha256": "f0a6d7d1dbb27ffcc1a543d79c8d85593ea7a53ff9cf780b525d3f3a0524a138",
+  "sourceCommit": "5bdbd9c59a761b30d3a1aeda7df2bcdfa85cbccf",
+  "admittedCount": 6,
+  "verifiedCount": 6,
+  "finishedUtc": "2026-11-06T00:49:54.384636+00:00",
+  "baselineChanged": false,
+  "installedVersionChanged": false,
+  "buildTimeRootProperty": "FrozenR78SourceRoot",
+  "buildTimeRootValue": "G:\\CodexWork\\rc79src-20261106-a"
+}

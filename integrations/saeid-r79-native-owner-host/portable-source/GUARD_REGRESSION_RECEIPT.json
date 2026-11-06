@@ -1,0 +1,30 @@
+{
+  "status": "PASS_PURE_GUARD_REGRESSION",
+  "checkCount": 20,
+  "checks": [
+    "syntax",
+    "reject_path:../x.cs",
+    "reject_path:/x.cs",
+    "reject_path:a/../x.cs",
+    "reject_path:a//x.cs",
+    "reject_path:a\\x.cs",
+    "reject_path:a/x.cs:stream",
+    "reject_path:CON.cs",
+    "reject_path:a/NUL",
+    "reject_path:a/x. ",
+    "reject_path:a/./x",
+    "reject_path:a/",
+    "reject_path:C:/x",
+    "admit_exact_frozen_dependencies",
+    "reject_manifest:bad_hash",
+    "reject_manifest:missing_source",
+    "reject_manifest:duplicate_source",
+    "reject_manifest:bad_archive",
+    "reject_manifest:traversal_dependency",
+    "reject_duplicate_json_key"
+  ],
+  "helperSha256": "337ec452781a89836b41663750788f4f2ebdb3c880d3e4fc00d0cef8cd6c5a7f",
+  "filesystemMutationByChecks": false,
+  "sourceExecution": false,
+  "scope": "Syntax/path/manifest guards only"
+}

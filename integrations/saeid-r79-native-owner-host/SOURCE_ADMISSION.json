@@ -1,0 +1,16 @@
+{
+  "schema": "r79-native-issuer-source-admission-v1",
+  "owner": "saeed",
+  "project": "Remote Commander Saeed",
+  "revision": "R79",
+  "blocker": "NativeAOT fixed-action issuer host and kernel peer/load boundary",
+  "sourceRoot": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-native-issuer-r79",
+  "sharedR78Source": "G:\\CodexWork\\RemoteCommander_ConnectionRecovery_20261027\\commander-one-integration-r78",
+  "sharedR78Commit": "5bdbd9c",
+  "sharedR78ReturnSha256": "3e3442499c71a3adcdf5dfc23061a6e7f8be13605747d4b41bf8d834f07c5784",
+  "sharedBuildCache": "G:\\CodexWork\\RC1R78AuthAot\\packages",
+  "proposedShortBuild": "G:\\CodexWork\\RC1R79Issuer",
+  "role": "source and ordinary-token negative qualification only",
+  "noListenersInQualification": true,
+  "noEnrollmentOrInstall": true
+}
