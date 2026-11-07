@@ -6,6 +6,8 @@ import {parseReleaseVersion,compareReleaseVersions} from '../tools/semver-releas
 const manifest=JSON.parse(readFileSync(new URL('../docs/release-train-0.12.json',import.meta.url),'utf8'));
 test('0.12 development train has one valid NoPromote identity and a pinned source base',()=>{
  assert.equal(manifest.train,'0.12');
+ assert.equal(manifest.firstStable,'0.12.0','0.12 is the first target operational stable baseline');
+ assert.equal(manifest.majorTarget,'1.0.0','major product maturity remains a later milestone');
  assert.equal(manifest.sourceVersion,'0.12.0-dev.1');
  assert.equal(manifest.status,'INTEGRATION_CANDIDATE_NOT_FINAL');
  assert.equal(manifest.sourceBaseSha,'40256873627780cc7b62359935e43bac5ef856b3');

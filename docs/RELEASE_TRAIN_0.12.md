@@ -4,6 +4,14 @@
 
 Create one unified development line for the cross-platform Remote Commander suite. This identity supersedes the local-only `0.11.0-dev.105` preview as the current development candidate; it does not erase or rewrite historical releases, branches, tags, or Commander 2 lineage.
 
+## Owner-accepted stable baseline and expansion path — 2026-11-08
+
+The accepted 0.12.0 target is the **first operational Stable Baseline**: all currently accepted core subsystems integrated from one pinned source with secure G1 authorization, owner-approved J01 GUI, durable same-conversation delivery/ACK, Windows/Linux/Headless installation, rollback and capability-scoped fleet acceptance. Later 0.12.x maintenance and incremental 0.13+ capability releases advance toward **1.0.0**, the major-product maturity target. This target decision does **not** promote today's 0.12.0-dev.1; candidate channel, release flags and publication remain NoPromote until evidence passes.
+
+Large model and agent runtimes (e.g. Colibri, larger Ollama/llama.cpp weights, vLLM, optional Browser/Workflow integrations) are **Control-Center-managed opt-in components**, not compulsory Core downloads. Control Center must expose supported OS/hardware requirements, model/provider/license, artifact identity/hash/signature, disk/network size, permissions and expected impact **before** explicit owner installation. The signed per-host install service must support progress, cancel, resumed verified download, isolated per-profile install, health check, update, uninstall and rollback without mutating other profiles. No Cloud fallback, auto-elevation, silent model download or unconditional public package inclusion. Unqualified candidates remain visible as unavailable/planned, not falsely installable. Maintain one Installer/Optional Products Catalog authority; no parallel updater.
+
+Coordination: this conversation is the overall Commander 1 integration/architecture lead; V1-01 (Security), V1-03 (GUI) and V1-04 (Browser) may proceed in separate delegated conversations, delivering SHA-pinned reviewed deltas to the one-writer canonical V1-00 integration branch. Independent lane QA is not integrated Release acceptance. Commander 2 remains distinct.
+
 ## Source authority
 
 - Exact recovered base commit: `40256873627780cc7b62359935e43bac5ef856b3` from the owner-local immutable `0.11.0-dev.23` release checkout.
