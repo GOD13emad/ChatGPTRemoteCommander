@@ -104,8 +104,21 @@ hasAll(handoff, [
   "system-tunnel",
   "ChatGPTRemoteCommander\\app",
   "system-mcp",
-  "USER_SESSION_HANDOFF_PASS"
+  "USER_SESSION_HANDOFF_PASS",
+  "HANDOFF_BUSY_STATE_UNVERIFIED",
+  "HANDOFF_RESOURCE_STATE_UNVERIFIED",
+  "HANDOFF_GUI_STATE_UNVERIFIED",
+  "HANDOFF_BROWSER_STATE_UNVERIFIED",
+  "$ownerCommanderPrefix",
+  "$headlessPreload",
+  "$headlessSupervisorPids",
+  "ParentProcessId -notin $headlessSupervisorPids",
+  "return [pscustomobject]@{active=1;queued=1;leases=1}",
+  "[string]$OwnerUserProfile = $env:USERPROFILE"
 ], 'handoff-user-session-windows.ps1');
+if (handoff.includes("$commanderPattern='ChatGPTRemoteCommander'")) {
+  throw new Error('V1-08 handoff must not kill arbitrary Commander-branded Node processes');
+}
 
 const bootDisable = read('disable-boot-recovery.ps1');
 hasAll(bootDisable, [
@@ -205,6 +218,9 @@ if (process.platform === 'win32') {
   const policy = spawnSync('pwsh.exe',['-NoLogo','-NoProfile','-File','test/supervisor-recovery-policy-windows.ps1'],{encoding:'utf8',windowsHide:true});
   if(policy.status!==0) throw new Error('supervisor recovery policy failed: '+(policy.stderr||policy.stdout));
   if(!policy.stdout.includes('SUPERVISOR_RECOVERY_POLICY_PASS')) throw new Error('supervisor recovery policy marker missing');
+  const handoffNative = spawnSync('pwsh.exe',['-NoLogo','-NoProfile','-NonInteractive','-File','test/handoff-headless-protection-windows.ps1','-SourcePath','handoff-user-session-windows.ps1'],{encoding:'utf8',timeout:15000,windowsHide:true});
+  if(handoffNative.status!==0 || !handoffNative.stdout.includes('HANDOFF_HEADLESS_PROTECTION_PASS'))
+    throw new Error('handoff native protection fixture failed: '+(handoffNative.stderr||handoffNative.stdout));
   const crossSession = spawnSync('pwsh.exe',['-NoLogo','-NoProfile','-NonInteractive','-File','test/supervisor-cross-session-guard.test.ps1'],{encoding:'utf8',timeout:10000,windowsHide:true});
   if(crossSession.status!==0) throw new Error('cross-session supervisor guard failed: '+(crossSession.stderr||crossSession.stdout));
   if(!crossSession.stdout.includes('REGRESSION_PASS cases=7')) throw new Error('cross-session supervisor guard marker missing');
