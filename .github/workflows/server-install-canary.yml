@@ -54,12 +54,16 @@ jobs:
             $installDir=Join-Path $env:RUNNER_TEMP 'rc-server-app'
             & $script -SourceRef $env:RC_SOURCE_REF -ExpectedCommit $env:RC_EXPECTED_COMMIT -InstallDir $installDir -NoStartServer -GuiControl Off
             $manifestPath=Join-Path $env:ProgramData 'ChatGPTRemoteCommander\server-install-allowlist.json'
-            if($expectedVersion -match '^0\.11\.0-dev\.[1-9][0-9]*$'){
+            $devMatch=[regex]::Match($expectedVersion,'^0\.(?<minor>11|12)\.0-dev\.[1-9][0-9]*$')
+            if($devMatch.Success){
               if(Test-Path -LiteralPath $manifestPath){throw 'DEV_PRODUCTION_ALLOWLIST_MUST_NOT_EXIST'}
-              $trainPath=Join-Path $installDir 'docs/release-train-0.11.json'
+              $trainVersion='0.'+$devMatch.Groups['minor'].Value
+              $trainPath=Join-Path $installDir ("docs/release-train-$trainVersion.json")
               if(-not(Test-Path -LiteralPath $trainPath -PathType Leaf)){throw 'DEV_MANIFEST_MISSING'}
               $train=Get-Content -LiteralPath $trainPath -Raw | ConvertFrom-Json
-              if($train.sourceVersion -cne $expectedVersion -or $train.channel -cne 'development' -or
+              if($train.train -cne $trainVersion -or $train.sourceVersion -cne $expectedVersion -or
+                 $train.status -cne 'INTEGRATION_CANDIDATE_NOT_FINAL' -or
+                 $train.channel -cne 'development' -or
                  $train.isStable -ne $false -or $train.publishApproved -ne $false -or
                  $train.autoupdateApproved -ne $false -or $train.installedPromotionApproved -ne $false -or
                  $null -ne $train.releaseTag -or
@@ -68,6 +72,8 @@ jobs:
                    throw 'DEV_MANIFEST_NO_PROMOTION_POLICY_INVALID'
               }
               Write-Output 'WINDOWS_SERVER_DEV_NOPROMOTE_MANIFEST_PASS'
+            } elseif($expectedVersion -notmatch '^\d+\.\d+\.\d+$'){
+              throw 'SERVER_CANARY_UNKNOWN_VERSION_DENIED'
             } else {
               $manifest=Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
               if($manifest.resolvedCommit -ne $env:RC_EXPECTED_COMMIT){throw 'MANIFEST_COMMIT_MISMATCH'}

@@ -293,18 +293,27 @@ try {
   $expectedVersion = [string]$package.version
   if ($expectedVersion -notmatch '^\d+\.\d+\.\d+$') {
     # Development bootstrap is for a SHA-pinned isolated candidate only.
-    $manifestPath = Join-Path $stage 'docs\release-train-0.11.json'
-    if ($expectedVersion -cnotmatch '^0\.11\.0-dev\.[1-9][0-9]*$' -or
-        -not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) { throw 'Staged package version is invalid.' }
+    $devMatch = [regex]::Match($expectedVersion,'^0\.(?<minor>11|12)\.0-dev\.[1-9][0-9]*$')
+    if (-not $devMatch.Success) { throw 'Staged package version is invalid.' }
+    $trainVersion = '0.' + $devMatch.Groups['minor'].Value
+    $manifestPath = Join-Path $stage ("docs\release-train-$trainVersion.json")
+    if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) { throw 'DEV_MANIFEST_MISSING' }
     $train = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
-    if ($train.sourceVersion -cne $expectedVersion -or
+    if ($train.train -cne $trainVersion -or
+        $train.sourceVersion -cne $expectedVersion -or
         $train.status -cne 'INTEGRATION_CANDIDATE_NOT_FINAL' -or
         $train.channel -cne 'development' -or
         $train.isStable -ne $false -or
         $train.publishApproved -ne $false -or
         $train.autoupdateApproved -ne $false -or
         $train.installedPromotionApproved -ne $false -or
-        $null -ne $train.releaseTag) { throw 'Staged development manifest is not fail-closed.' }
+        $null -ne $train.releaseTag -or
+        @($train.components).Count -lt 8 -or
+        @($train.components | Where-Object {$_.required -ne $true -or $_.verified -ne $false}).Count -ne 0 -or
+        $null -eq $train.acceptance -or
+        @($train.acceptance.PSObject.Properties | Where-Object {$_.Value -ne $false}).Count -ne 0) {
+      throw 'Staged development manifest is not fail-closed.'
+    }
   }
 
   $guiEnabled = $false

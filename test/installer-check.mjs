@@ -97,6 +97,21 @@ for (const required of [
 
 if (!linuxServerInstaller.includes('SOURCE_REF="${REMOTE_COMMANDER_SOURCE_REF:-v0.12.0}"')) throw new Error('server-install-linux.sh default SourceRef must match current release');
 if (!linuxServerInstaller.includes('default: v0.12.0')) throw new Error('server-install-linux.sh usage default must match current release');
+for (const [label,script] of [['server-install-windows.ps1',windowsServerInstaller],
+                               ['server-install-canary.yml',serverCanaryWorkflow]]) {
+  for (const token of ['(?<minor>11|12)','release-train-$trainVersion.json',
+                       '$train.train -cne $trainVersion',
+                       "INTEGRATION_CANDIDATE_NOT_FINAL",
+                       '$train.publishApproved -ne $false',
+                       '$train.autoupdateApproved -ne $false',
+                       '$train.installedPromotionApproved -ne $false']) {
+    if (!script.includes(token)) throw new Error('WINDOWS_V012_DEV_SERVER_CANARY_DENIED '+label+' '+token);
+  }
+}
+if (!serverCanaryWorkflow.includes('SERVER_CANARY_UNKNOWN_VERSION_DENIED')) {
+  throw new Error('UNKNOWN_DEVELOPMENT_SERVER_VERSION_MUST_FAIL_CLOSED');
+}
+
 const publicConfig = JSON.parse(readFileSync('config.json','utf8'));
 if (publicConfig.auditMaxBytes !== 8388608 || publicConfig.auditKeepFiles !== 3) {
   throw new Error('config.json missing bounded audit defaults');
