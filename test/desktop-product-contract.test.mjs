@@ -69,6 +69,13 @@ test('desktop access and operations UI is wired to real guarded backends',()=>{
   assert.ok(entry.includes("autostart-windows.ps1"));
 
   const build=read('desktop/build-windows.ps1');
+  for(const marker of ['Convert-DesktopNumericVersion',
+    'DESKTOP_BUILD_SOURCE_VERSION_INVALID','DESKTOP_BUILD_FILE_VERSION_RANGE_INVALID',
+    'DESKTOP_BUILD_OUTPUT_EXISTS_NO_DESTRUCTIVE_CLEANUP',
+    '-p:FileVersion=$FileVersion','-p:AssemblyVersion=$FileVersion'])
+      assert.ok(build.includes(marker),'Windows numeric version safety '+marker);
+  assert.equal(build.includes('Remove-Item -LiteralPath $OutputDir -Recurse -Force'),false);
+  assert.equal(build.includes('-p:FileVersion="$Version.0"'),false);
   for(const file of [
     'profile-manager-windows.ps1','profile-enrollment-windows.ps1',
     'operations-monitor-windows.ps1','admin-runtime-windows.ps1'

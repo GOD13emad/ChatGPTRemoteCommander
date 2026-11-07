@@ -208,7 +208,7 @@ if (!profileManager.includes("throw 'Shared account, headless worker, or unknown
 }
 
 if (process.platform === 'win32') {
-  for (const script of ['autostart-windows.ps1','windows-supervisor-runtime.ps1','enable-boot-recovery.ps1','handoff-user-session-windows.ps1','disable-boot-recovery.ps1','desktop/profile-manager-windows.ps1']) {
+  for (const script of ['autostart-windows.ps1','windows-supervisor-runtime.ps1','enable-boot-recovery.ps1','handoff-user-session-windows.ps1','disable-boot-recovery.ps1','desktop/profile-manager-windows.ps1','desktop/build-windows.ps1']) {
     const parse = spawnSync('pwsh.exe', ['-NoLogo','-NoProfile','-Command',
       '$t=$null;$e=$null;[void][System.Management.Automation.Language.Parser]::ParseFile("'+script+'",[ref]$t,[ref]$e);if($e.Count){$e|ForEach-Object{$_.Message};exit 1}'],
       { encoding:'utf8', windowsHide:true });
@@ -218,6 +218,9 @@ if (process.platform === 'win32') {
   const policy = spawnSync('pwsh.exe',['-NoLogo','-NoProfile','-File','test/supervisor-recovery-policy-windows.ps1'],{encoding:'utf8',windowsHide:true});
   if(policy.status!==0) throw new Error('supervisor recovery policy failed: '+(policy.stderr||policy.stdout));
   if(!policy.stdout.includes('SUPERVISOR_RECOVERY_POLICY_PASS')) throw new Error('supervisor recovery policy marker missing');
+  const desktopNative = spawnSync('pwsh.exe',['-NoLogo','-NoProfile','-NonInteractive','-File','test/desktop-build-version-windows.ps1','-SourcePath','desktop/build-windows.ps1'],{encoding:'utf8',timeout:15000,windowsHide:true});
+  if(desktopNative.status!==0 || !desktopNative.stdout.includes('DESKTOP_BUILD_VERSION_PASS'))
+    throw new Error('desktop build version fixture failed: '+(desktopNative.stderr||desktopNative.stdout));
   const handoffNative = spawnSync('pwsh.exe',['-NoLogo','-NoProfile','-NonInteractive','-File','test/handoff-headless-protection-windows.ps1','-SourcePath','handoff-user-session-windows.ps1'],{encoding:'utf8',timeout:15000,windowsHide:true});
   if(handoffNative.status!==0 || !handoffNative.stdout.includes('HANDOFF_HEADLESS_PROTECTION_PASS'))
     throw new Error('handoff native protection fixture failed: '+(handoffNative.stderr||handoffNative.stdout));
