@@ -10,6 +10,7 @@ Create one unified development line for the cross-platform Remote Commander suit
 - Current candidate worktree: `integration/v108-dev105-dev23-20261107`; it contains the accepted V1-05 integration and V1-08 candidate-version updater fix, alongside uncommitted V1-08 release-train edits. It is a private QA worktree, not a clean signed release commit.
 - The V1-05 accepted source commit is `110f25ceef30c2058a886c04dc2d0d699c549ec0`; it was integrated into this QA candidate as nine paths (+580/-30).
 - Commander 2 / `0.11.0-dev.19` is a separate source lineage. Its capabilities must be selectively reconciled and tested; do not copy its whole repository or merge by directory replacement.
+- V1-07 Windows Handoff ownership guard is adopted from accepted upstream commit `20e5577406644e620d7673fe3ae58d749c64a66a` (upstream worktree SHA-256 `922a55a2909cd3f0d933570adf6c8759ffb7cddeb8c80607a2ae2c52a32ee14f`). The V1-08 portable variant keeps `$env:USERPROFILE` as the default instead of the upstream machine-specific path, while preserving SID-qualified Router/Tunnel listener proof, uncertain-state fail-closed behavior and Headless service exclusion. Native mocked listener ownership was verified on Windows (15/15), not a real signed SYSTEM boot/login cutover.
 - V1-00 retains sole ownership of canonical Main integration. V1-08 owns release metadata, immutable packaging, updater qualification and staged host migration.
 
 ## Integration contract

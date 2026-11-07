@@ -54,10 +54,11 @@ function Get-CommanderBusy {
     }
     return [pscustomobject]@{active=$active;queued=$queued;leases=$leases}
   } catch {
-    # Losing status can never authorize terminating the running SYSTEM core.
+    # Losing status cannot authorize terminating a running SYSTEM core.
     return [pscustomobject]@{active=1;queued=1;leases=1}
   }
 }
+
 function Stop-ExactProcess($Process,[string]$Label){
   if(-not(Test-SystemOwner $Process)){return}
   try {
@@ -110,8 +111,8 @@ $headlessRunScript=[IO.Path]::GetFullPath((Join-Path $env:ProgramData 'ChatGPTRe
 $headlessSupervisorPids=@(Get-CimInstance Win32_Process -Filter "Name='pwsh.exe'" -ErrorAction SilentlyContinue | Where-Object {
   $_.CommandLine -and $_.CommandLine -match [regex]::Escape($headlessRunScript)
 } | ForEach-Object { [int]$_.ProcessId })
-# Keep the separate ProgramData browser-only service alive, including when its
-# Node entrypoint happens to live under this user's release directory.
+# Protect the independent ProgramData browser-only service even if its Node
+# entrypoint belongs to an older Commander release tree under the user profile.
 $nodes=@(Get-CimInstance Win32_Process -Filter "Name='node.exe'" -ErrorAction SilentlyContinue | Where-Object {
   $_.CommandLine -and $_.CommandLine -match $ownerCommanderPrefix -and
   $_.CommandLine -match '(?:server-v0\.3\.mjs|stable-router\.mjs)' -and
@@ -119,6 +120,7 @@ $nodes=@(Get-CimInstance Win32_Process -Filter "Name='node.exe'" -ErrorAction Si
   $_.ParentProcessId -notin $headlessSupervisorPids
 })
 foreach($p in $nodes){Stop-ExactProcess $p 'system-mcp'}
+
 Start-Sleep -Seconds 1
 
 function Test-Ready([int]$Port){
@@ -140,14 +142,60 @@ function ManagedHealthPorts {
   return @($ports|Sort-Object -Unique)
 }
 
+# The recovery check must prove that the *intended user* owns the listening
+# processes. HTTP 200 alone may still be served by an orphaned SYSTEM BootCore.
+function Get-OwnerProfileSid {
+  try {
+    $expected=[IO.Path]::GetFullPath($OwnerUserProfile).TrimEnd('\')
+    $profileList='HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList'
+    $matches=@(
+      foreach($entry in Get-ChildItem -LiteralPath $profileList -ErrorAction Stop){
+        $item=Get-ItemProperty -LiteralPath $entry.PSPath -Name ProfileImagePath -ErrorAction SilentlyContinue
+        if(-not $item -or -not $item.ProfileImagePath){continue}
+        $actual=[IO.Path]::GetFullPath([Environment]::ExpandEnvironmentVariables([string]$item.ProfileImagePath)).TrimEnd('\')
+        if($actual -ieq $expected){[string]$entry.PSChildName}
+      }
+    )
+    if($matches.Count -eq 1){return [string]$matches[0]}
+  } catch {}
+  return $null
+}
+
+function Test-OwnerListener([int]$Port,[string]$OwnerSid,[string]$ProcessName,[string]$CommandPattern) {
+  if($Port -le 0 -or -not $OwnerSid){return $false}
+  try {
+    $listeners=@(Get-NetTCPConnection -LocalAddress '127.0.0.1' -LocalPort $Port -State Listen -ErrorAction Stop)
+    if($listeners.Count -ne 1){return $false}
+    $pidValue=[int]$listeners[0].OwningProcess
+    if($pidValue -le 0){return $false}
+    $process=Get-CimInstance Win32_Process -Filter "ProcessId=$pidValue" -ErrorAction Stop
+    if(-not $process -or $process.Name -ine $ProcessName -or
+       -not $process.CommandLine -or $process.CommandLine -notmatch $CommandPattern){return $false}
+    $owner=Invoke-CimMethod -InputObject $process -MethodName GetOwnerSid -ErrorAction Stop
+    return ($owner.ReturnValue -eq 0 -and [string]$owner.Sid -eq $OwnerSid)
+  } catch {return $false}
+}
+
 $recoverDeadline=(Get-Date).AddSeconds(75)
 $ok=$false
 do{
+  # Resolve from the approved Windows profile registry; a same-name account
+  # in a different domain or SYSTEM must never satisfy this handoff.
+  $ownerSid=Get-OwnerProfileSid
   $mcp=$false
   try{$h=Invoke-RestMethod 'http://127.0.0.1:47831/health' -TimeoutSec 2;$mcp=[bool]($h.ok -and $h.name-eq'chatgpt-remote-commander')}catch{}
+  if($mcp){
+    $mcp=Test-OwnerListener 47831 $ownerSid 'node.exe' '(?:stable-router\.mjs|server-v0\.3\.mjs)'
+  }
   $ports=ManagedHealthPorts
-  $tunnelOk=($ports.Count-gt0)
-  foreach($port in $ports){if(-not(Test-Ready $port)){$tunnelOk=$false;break}}
+  $tunnelOk=($ports.Count-gt0 -and -not [string]::IsNullOrEmpty($ownerSid))
+  foreach($port in $ports){
+    if(-not(Test-Ready $port) -or
+       -not(Test-OwnerListener $port $ownerSid 'tunnel-client.exe' '--profile(?:=|\s+)')){
+      $tunnelOk=$false
+      break
+    }
+  }
   if($mcp -and $tunnelOk){$ok=$true;break}
   Start-Sleep -Seconds 2
 }while((Get-Date)-lt$recoverDeadline)
