@@ -72,11 +72,11 @@ $deadline=(Get-Date).AddSeconds($WaitSeconds)
 do {
   $busy=Get-CommanderBusy
   if($busy.active -eq 0 -and $busy.queued -eq 0 -and $busy.leases -eq 0){break}
-  Write-HandoffLog "WAIT_BUSY active=$($busy.active) leases=$($busy.leases)"
+  Write-HandoffLog "WAIT_BUSY active=$($busy.active) queued=$($busy.queued) leases=$($busy.leases)"
   Start-Sleep -Seconds 5
 } while((Get-Date)-lt$deadline)
 if($busy.active -ne 0 -or $busy.queued -ne 0 -or $busy.leases -ne 0){
-  Write-HandoffLog "HANDOFF_DEFERRED_BUSY active=$($busy.active) leases=$($busy.leases)"
+  Write-HandoffLog "HANDOFF_DEFERRED_BUSY active=$($busy.active) queued=$($busy.queued) leases=$($busy.leases)"
   exit 75
 }
 
