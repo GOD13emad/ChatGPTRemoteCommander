@@ -432,7 +432,10 @@ export function createWorkflowTools({ config, roots, device, configSha256, looku
           if(resumed.blockers.length)fail(resumed.blockers[0]);
           const definition=lookup(name);
           if(!definition||validateSchema(args,definition.inputSchema).length)fail('WORKFLOW_TOOL_ARGUMENTS_INVALID');
-          return dispatch(name,args,resumed.state);
+          const observationArgs=name==='read_text'
+            ? {path:args.path,offset:0,maxBytes:1024}
+            : {path:args.path,depth:1,maxEntries:24};
+          return dispatch(name,observationArgs,resumed.state);
         },lookup,policy:settings.runner});
       queueMicrotask(()=>{reconcileProjectDeliveries();});
       if(settings.runner.autoTick===true)api.definitions=api.definitions.map(d=>d.name==='workflow_scheduler_tick'?{

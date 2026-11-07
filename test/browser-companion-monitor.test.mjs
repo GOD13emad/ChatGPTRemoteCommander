@@ -82,7 +82,7 @@ test('windows fresh user install creates missing monitor root',{skip:process.pla
   const root=path.join(base,'fresh','browser-companion');
   try{
     const receipt=await writeBrowserCompanionMonitor(root,{
-      identity:{deviceName:'host',profile:'default',version:'0.11.0-dev.23',platform:'win32'},
+      identity:{deviceName:'host',profile:'default',version:'0.11.0-dev.105',platform:'win32'},
       gui:{enabled:false,available:false},
       browser:{enabled:false,available:false},
       workflows:{enabled:false,engineEnabled:false,runCount:0},

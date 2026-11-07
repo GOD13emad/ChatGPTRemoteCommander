@@ -30,7 +30,7 @@ const deferred = () => { let resolve; const promise = new Promise(yes => { resol
 function defaultPlanner(context) {
   if (context.currentStep.id === 'needed') return call('read_text', { path: 'source.txt' });
   const source = context.observations.find(item => item.stepId === 'needed');
-  return source ? call('write_text', { path: 'result.txt', content: source.result.text }) : extend();
+  return source ? call('write_text', { path: 'result.txt', content: source.result.preview }) : extend();
 }
 function fixture({ root, planner = defaultPlanner, runner = {} } = {}) {
   root ??= fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'rc-adaptive-')));
@@ -188,10 +188,10 @@ if (['--crash-extension', '--crash-before-extension', '--crash-extension-extra']
       if (context.currentStep.id === 'inspect') return call('read_text', { path: 'requirements.txt' });
       if (context.currentStep.id === 'detail') {
         const requirement = context.observations.find(item => item.stepId === 'inspect');
-        return call('read_text', { path: requirement.result.text });
+        return call('read_text', { path: requirement.result.preview });
       }
       const detail = context.observations.find(item => item.stepId === 'detail');
-      return detail ? call('write_text', { path: 'result.txt', content: detail.result.text })
+      return detail ? call('write_text', { path: 'result.txt', content: detail.result.preview })
         : extend([{ id: 'detail', title: 'Read the source selected by inspected requirements' }]);
     } });
     try {

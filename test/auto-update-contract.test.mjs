@@ -1122,10 +1122,11 @@ test('R254 Linux plugin post-verify failure preserves owner data and quarantines
 test('R157 staged release lookup uses the pinned source version, not a fixed old tag',()=>{
  const workflow=read('.github/workflows/windows-updater-e2e-r157.yml');
  const version=JSON.parse(read('package.json')).version;
- const train=JSON.parse(read('docs/release-train-0.11.json'));
+ const trainPath=version.startsWith('0.12.')?'docs/release-train-0.12.json':'docs/release-train-0.11.json';
+ const train=JSON.parse(read(trainPath));
+ const allowedDevelopment=/^0\.(?:11\.0-dev\.[1-9]\d*|12\.0-dev\.[1-9]\d*)$/.test(version);
  assert.ok(/^\d+\.\d+\.\d+$/.test(version) ||
-   (/^0\.11\.0-dev\.[1-9]\d*$/.test(version) &&
-    train.sourceVersion===version && train.status==='INTEGRATION_CANDIDATE_NOT_FINAL' &&
+   (allowedDevelopment && train.sourceVersion===version && train.status==='INTEGRATION_CANDIDATE_NOT_FINAL' &&
     train.publishApproved===false && train.installedPromotionApproved===false &&
     train.autoupdateApproved===false),'only exact manifest-gated development SemVer is admitted');
  for(const requirement of [
@@ -1368,6 +1369,10 @@ test('R762 Windows candidate cleanup is owner-attested when TCP CIM hides the lo
     'h.instance.profile-eq[string]$Candidate.Profile',
     'CANDIDATE_CLEANUP_OWNERSHIP_MISMATCH'
   ]) assert.ok(guard.includes(fragment), 'missing strict native fallback: '+fragment);
-  assert.ok(win.includes('ConfigPath=$cfg;ProjectDir=$stage.Dir'), 'diagnostic candidate must bind exact source');
-  assert.ok(win.includes('ConfigPath=$finalCfg;ProjectDir=$stage.Dir'), 'final candidate must bind exact source');
+  assert.ok(win.includes('Version=$stage.Version;Process=$p;ConfigPath=$cfg;ProjectDir=$stage.Dir'), 'diagnostic candidate must bind exact version and source');
+  assert.ok(win.includes('Version=$stage.Version;Process=$p;ConfigPath=$finalCfg;ProjectDir=$stage.Dir'), 'final candidate must bind exact version and source');
+  assert.ok(guard.includes('$expectedVersion=[string]$Candidate.Version'), 'cleanup fallback must bind the staged version');
+  assert.ok(guard.includes("if(-not $expectedVersion){throw 'CANDIDATE_EXPECTED_VERSION_MISSING'}"), 'missing candidate version must fail closed');
+  assert.ok(guard.includes('[string]$h.version -eq $expectedVersion'), 'health identity must match the exact candidate version');
+  assert.doesNotMatch(guard,/0\.11\.0-dev\.23/,'cleanup must not hard-code the old dev23 version');
 });

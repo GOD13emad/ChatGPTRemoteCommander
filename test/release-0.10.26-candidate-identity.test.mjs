@@ -9,7 +9,8 @@ const previousTag='v0.10.24';
 
 test('candidate source runtime and plugin identity agree without public release claims',()=>{
  const current=json('package.json').version;
- const train=json('docs/release-train-0.11.json');
+ const trainPath=current.startsWith('0.12.')?'docs/release-train-0.12.json':'docs/release-train-0.11.json';
+ const train=json(trainPath);
  const server=read('src/server-v0.3.mjs');
  const cs=read('desktop/RemoteCommanderDashboard/RemoteCommanderDashboard.csproj');
  for(const p of ['plugin-template/plugin.json','plugin-template/.codex-plugin/plugin.json'])
@@ -20,14 +21,14 @@ test('candidate source runtime and plugin identity agree without public release 
    assert.ok(cs.includes('<FileVersion>0.10.26.0</FileVersion>'));
    assert.ok(cs.includes('<AssemblyVersion>0.10.26.0</AssemblyVersion>'));
  }else{
-   assert.match(current,/^0\.11\.0-dev\.[1-9][0-9]*$/);
+   assert.match(current,/^0\.(?:11\.0-dev|12\.0-dev)\.[1-9][0-9]*$/);
    assert.equal(train.sourceVersion,current);
    assert.equal(train.status,'INTEGRATION_CANDIDATE_NOT_FINAL');
    assert.equal(train.channel,'development');
    for(const gate of ['isStable','publishApproved','autoupdateApproved','installedPromotionApproved'])
      assert.equal(train[gate],false,gate);
    assert.equal(train.releaseTag,null);
-   const fileVersion='0.11.0.'+current.split('.').at(-1);
+   const fileVersion=current.startsWith('0.12.')?'0.12.0.1':'0.11.0.'+current.split('.').at(-1);
    for(const tag of ['FileVersion','AssemblyVersion'])assert.ok(cs.includes('<'+tag+'>'+fileVersion+'</'+tag+'>'));
  }
  assert.match(read('docs/RELEASE_CANDIDATE_0.10.26.md'),/SOURCE CANDIDATE ONLY/);

@@ -6,7 +6,11 @@ const root=new URL('../',import.meta.url);
 const read=p=>readFileSync(new URL(p,root),'utf8');
 test('0.11 development train never masquerades as Stable or approved promotion',()=>{
  const a=JSON.parse(read('docs/release-train-0.11.json'));
- assert.equal(a.train,'0.11');assert.equal(a.sourceVersion,'0.11.0-dev.23');
+ assert.equal(a.train,'0.11');assert.equal(a.sourceVersion,'0.11.0-dev.105');
+ assert.equal(a.sourceBaseSha,'c057494329490257e3d79046ea7599c60dde1e89');
+ assert.equal(a.status,'INTEGRATION_CANDIDATE_NOT_FINAL');
+ assert.match(read('CHANGELOG.md'),/^# 0\.11\.0-dev\.105 .*NoPromote/m);
+ assert.match(read('docs/RELEASE_TRAIN_0.11.md'),/^## 0\.11\.0-dev\.105 .*NoPromote/m);
  assert.match(read('CHANGELOG.md'),/^# 0\.11\.0-dev\.20 .*NoPromote/m);
  assert.match(read('docs/RELEASE_TRAIN_0.11.md'),/^## 0\.11\.0-dev\.20 .*NoPromote/m);
  assert.match(read('CHANGELOG.md'),/^# 0\.11\.0-dev\.19 .*NoPromote/m);
@@ -48,15 +52,15 @@ test('0.11 development train never masquerades as Stable or approved promotion',
 
 });
 test('server, plugin, npm package and Windows Control Center development identity agree',()=>{
- const ver='0.11.0-dev.23';
+ const ver='0.12.0-dev.1';
  assert.equal(JSON.parse(read('package.json')).version,ver);
  assert.equal(JSON.parse(read('plugin-template/plugin.json')).version,ver);
  assert.equal(JSON.parse(read('plugin-template/.codex-plugin/plugin.json')).version,ver);
  assert.ok(read('src/server-v0.3.mjs').includes("const VERSION = '"+ver+"';"));
  const cs=read('desktop/RemoteCommanderDashboard/RemoteCommanderDashboard.csproj');
  assert.ok(cs.includes('<Version>'+ver+'</Version>'));
- assert.ok(cs.includes('<FileVersion>0.11.0.23</FileVersion>'));
- assert.ok(cs.includes('<AssemblyVersion>0.11.0.23</AssemblyVersion>'));
+ assert.ok(cs.includes('<FileVersion>0.12.0.1</FileVersion>'));
+ assert.ok(cs.includes('<AssemblyVersion>0.12.0.1</AssemblyVersion>'));
 });
 test('historical releases are not silently deleted or accepted as product stable',()=>{
  const a=JSON.parse(read('docs/release-train-0.11.json'));

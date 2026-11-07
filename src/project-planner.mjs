@@ -27,6 +27,30 @@ function fail(code) {
   return error;
 }
 
+// The local Ollama adapter emits these fixed codes on stderr. Preserve only
+// an exact allowlisted code; never retain or expose arbitrary provider output.
+const SAFE_LOCAL_OLLAMA_FAILURES = new Set([
+  'LOCAL_OLLAMA_MODEL_NOT_CONFIGURED',
+  'LOCAL_OLLAMA_INPUT_TOO_LARGE',
+  'LOCAL_OLLAMA_INVALID_CONFIG',
+  'LOCAL_OLLAMA_HTTP_UNAVAILABLE',
+  'LOCAL_OLLAMA_REQUEST_TIMEOUT',
+  'LOCAL_OLLAMA_RESPONSE_TOO_LARGE',
+  'LOCAL_OLLAMA_INVALID_HTTP_JSON',
+  'LOCAL_OLLAMA_INVALID_CONTENT',
+  'LOCAL_OLLAMA_INVALID_MODEL_JSON',
+  'LOCAL_OLLAMA_INVALID_PROPOSAL',
+  'LOCAL_OLLAMA_INVALID_ARGUMENTS',
+  'LOCAL_OLLAMA_BLOCK_WITH_TOOL',
+  'LOCAL_OLLAMA_TOOL_NOT_ADMITTED',
+  'LOCAL_OLLAMA_FAILED'
+]);
+
+function safeLocalOllamaFailureCode(line) {
+  const code = String(line ?? '').replace(/\r$/, '');
+  return SAFE_LOCAL_OLLAMA_FAILURES.has(code) ? `PLANNER_${code}` : null;
+}
+
 function boundedInteger(value, fallback, minimum, maximum) {
   const result = value ?? fallback;
   if (!Number.isSafeInteger(result) || result < minimum || result > maximum) throw fail('PLANNER_INVALID_CONFIG');
@@ -121,7 +145,7 @@ async function readFinalFile(finalPath, remainingBytes) {
 
 function runProcess(executable, args, input, { cwd, timeoutMs, maxOutputBytes, signal, allowCodex = false }) {
   return new Promise((resolve, reject) => {
-    let child, timer, killTimer, failure, done = false, bytes = 0;
+    let child, timer, killTimer, failure, done = false, bytes = 0, stderrLine = '', stderrLineComplete = false;
     const chunks = [];
     const settle = (error, value) => {
       if (done) return;
@@ -170,11 +194,26 @@ function runProcess(executable, args, input, { cwd, timeoutMs, maxOutputBytes, s
       if (done || failure) return;
       bytes += chunk.length;
       if (bytes > maxOutputBytes) terminate(fail('PLANNER_OUTPUT_LIMIT'));
-      // Provider diagnostics may contain context or credentials; never retain them.
+      // Retain at most one short first line in memory. It is surfaced only if
+      // it exactly matches a fixed local-adapter code; all other stderr is lost.
+      if (!stderrLineComplete) {
+        const text = chunk.toString('utf8');
+        const newline = text.indexOf('\n');
+        const firstLine = newline >= 0 ? text.slice(0, newline) : text;
+        const remaining = 64 - Buffer.byteLength(stderrLine, 'utf8');
+        if (remaining > 0) {
+          stderrLine += Buffer.from(firstLine, 'utf8').subarray(0, remaining).toString('utf8');
+        }
+        if (newline >= 0 || Buffer.byteLength(stderrLine, 'utf8') >= 64) stderrLineComplete = true;
+      }
     });
     child.once('close', (code, exitSignal) => {
       if (failure) { settle(failure); return; }
-      if (code !== 0 || exitSignal) { settle(fail('PLANNER_EXIT_FAILED')); return; }
+      if (code !== 0 || exitSignal) {
+        const safeCode = exitSignal ? null : safeLocalOllamaFailureCode(stderrLine);
+        settle(fail(safeCode ?? 'PLANNER_EXIT_FAILED'));
+        return;
+      }
       settle(null, { stdout: Buffer.concat(chunks).toString('utf8'), bytes });
     });
     signal?.addEventListener('abort', abort, { once: true });
@@ -191,7 +230,7 @@ function runProcess(executable, args, input, { cwd, timeoutMs, maxOutputBytes, s
 export function createCommandPlanner(config, { allowCodex = false } = {}) {
   if (config?.kind === 'codex' && !allowCodex) throw fail('PLANNER_PROVIDER_FORBIDDEN');
   if (!config || !['codex', 'claude', 'command'].includes(config.kind)) throw fail('PLANNER_INVALID_CONFIG');
-  const { kind, executable, model } = config;
+  const { kind, executable, model, modelFamily, reasoningEffort, executionMode, profileVersion } = config;
   const args = config.args ?? [];
   assertNoCodexExecutable(executable, { allowCodex });
   if (typeof executable !== 'string' || !executable || executable.includes('\0')
@@ -200,18 +239,29 @@ export function createCommandPlanner(config, { allowCodex = false } = {}) {
       || (model !== undefined && (typeof model !== 'string' || !model || model.length > 160 || /[\x00-\x1f]/.test(model)))) {
     throw fail('PLANNER_INVALID_CONFIG');
   }
+  for (const [field, maximum] of Object.entries({modelFamily:128,reasoningEffort:32,executionMode:64,profileVersion:64})) {
+    const value=config[field];
+    if(value!==undefined&&(typeof value!=='string'||!value||value.length>maximum||/[\x00-\x1f]/.test(value))) {
+      throw fail('PLANNER_INVALID_CONFIG');
+    }
+  }
   const launchArgs = [...args];
   const configuredTimeoutMs = boundedInteger(config.timeoutMs, 30000, 10, 600000);
   const timeoutMs = Math.min(configuredTimeoutMs, 30000);
   const maxOutputBytes = boundedInteger(config.maxOutputBytes, 2 * 1024 * 1024, 64, 16 * 1024 * 1024);
   return {
     describe() {
-      return {
+      const description={
         kind, model: model ?? null, timeoutMs, maxOutputBytes,
         mode: 'proposal-only', available: kind !== 'claude',
         controls: kind === 'codex' ? 'read-only-disabled-action-features-and-event-validation'
           : kind === 'command' ? 'trusted-command-process' : 'qualification-required'
       };
+      if(modelFamily!==undefined)description.modelFamily=modelFamily;
+      if(reasoningEffort!==undefined)description.reasoningEffort=reasoningEffort;
+      if(executionMode!==undefined)description.executionMode=executionMode;
+      if(profileVersion!==undefined)description.profileVersion=profileVersion;
+      return description;
     },
     async plan(context, { signal } = {}) {
       if (kind === 'claude') throw fail('PLANNER_PROVIDER_UNAVAILABLE');

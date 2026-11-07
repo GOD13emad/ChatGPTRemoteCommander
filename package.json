@@ -1,6 +1,6 @@
 {
   "name": "chatgpt-remote-commander",
-  "version": "0.11.0-dev.23",
+  "version": "0.12.0-dev.1",
   "description": "Cross-platform MCP remote control server for ChatGPT with multi-account, multi-device and concurrent-chat support",
   "author": "Aliakbar Emadoddin (GOD13emad)",
   "contributors": [
@@ -9,10 +9,10 @@
   "publisherBrand": "TandemVector Labs (GitHub: Usefull-Skills)",
   "type": "module",
   "engines": {
-    "node": ">=22"
+    "node": ">=22.13.0"
   },
   "scripts": {
-    "test:release-train": "node --test test/release-train-0.11.test.mjs",
+    "test:release-train": "node --test test/release-train-0.11.test.mjs test/release-train-0.12.test.mjs",
     "start": "node src/server-v0.3.mjs",
     "start:v0.2": "node src/server-v0.2.1.mjs",
     "start:legacy": "node src/server.mjs",
@@ -22,7 +22,7 @@
     "audit": "node test/security-audit.mjs",
     "test:gui-native": "node test/gui-native-run.mjs",
     "doctor": "node tools/doctor.mjs",
-    "test:workflows": "node --test test/workflow-store.test.mjs test/workflow-tools.test.mjs test/workflow-http.test.mjs test/workflow-autonomy-r2.test.mjs test/workflow-control.test.mjs test/project-planner.test.mjs test/project-verifier.test.mjs test/project-engine.test.mjs test/project-engine-integration.test.mjs test/project-engine-review.test.mjs test/file-write-guard.test.mjs test/workflow-plan.test.mjs test/workflow-owner-roadmap.test.mjs test/project-autotick-noncodex.test.mjs test/project-team.test.mjs test/project-adaptive.test.mjs",
+    "test:workflows": "node --test --test-concurrency=2 test/workflow-store.test.mjs test/workflow-tools.test.mjs test/workflow-http.test.mjs test/workflow-autonomy-r2.test.mjs test/workflow-control.test.mjs test/project-planner.test.mjs test/project-verifier.test.mjs test/project-engine.test.mjs test/project-engine-integration.test.mjs test/project-engine-review.test.mjs test/file-write-guard.test.mjs test/workflow-plan.test.mjs test/workflow-owner-roadmap.test.mjs test/project-autotick-noncodex.test.mjs test/project-team.test.mjs test/project-adaptive.test.mjs",
     "workflow": "node tools/workflow-cli.mjs",
     "test:profiles": "node --test test/profile-instances.test.mjs test/profile-instance-http.test.mjs test/profile-isolation-windows-contract.test.mjs test/profile-reconfigure.test.mjs test/profile-reconfigure-contract.test.mjs test/profile-reconfigure-windows-parser.test.mjs",
     "test:update": "node --test test/capability-profile.test.mjs test/project-runner-config.test.mjs test/no-codex-policy.test.mjs test/codex-maintenance.test.mjs test/stable-router.test.mjs test/router-retire.test.mjs test/auto-update-contract.test.mjs test/release-latest-origin.test.mjs test/updater-route-monotonic-fail-closed.test.mjs test/qualification-failure-summary-r252.test.mjs test/desktop-product-contract.test.mjs test/single-installer-contract.test.mjs && node --test test/mcp-tasks-extension.test.mjs",
@@ -35,7 +35,8 @@
     "test:local-ai": "node --test test/local-ollama-planner.test.mjs",
     "test:owner-workspace": "node --test test/windows-owner-workspace-worker.test.mjs test/workspace-target-tools.test.mjs test/gui-owner-delegation.test.mjs test/owner-workspace-delegation.test.mjs",
     "test:isolated-qa-policy": "node --test test/isolated-qa-policy.test.mjs",
-    "test:gui-universal": "node --test test/agentos-provider-router.test.mjs"
+    "test:gui-universal": "node --test test/agentos-provider-router.test.mjs",
+    "test:release-train-0.12": "node --test test/release-train-0.12.test.mjs"
   },
   "repository": "https://github.com/GOD13emad/ChatGPTRemoteCommander",
   "license": "MIT"

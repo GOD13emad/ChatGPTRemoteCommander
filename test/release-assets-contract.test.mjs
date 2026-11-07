@@ -121,13 +121,14 @@ if (!innoFetcher.includes('9c73c3bae7ed48d44112a0f48e66742c00090bdb5bef71d9d3c05
 if (!workflow.includes(browserVersion) || !workflow.includes(browserSha256)) throw new Error('Browser release pin missing from workflow');
 if (!workflow.includes('docs/RELEASE_${version}.md')) throw new Error('release notes must follow package version');
 if (pkg.version !== '0.10.26') {
-  const dev = /^0\.11\.0-(?:dev|rc)\.[1-9][0-9]*$/.test(pkg.version);
+  const dev = /^(0\.11\.0-dev\.[1-9]\d*|0\.12\.0-dev\.[1-9]\d*)$/.test(pkg.version);
   if (!dev) throw new Error(`unexpected package version ${pkg.version}`);
-  const train = JSON.parse(readFileSync('docs/release-train-0.11.json','utf8'));
+  const trainPath = pkg.version.startsWith('0.12.') ? 'docs/release-train-0.12.json' : 'docs/release-train-0.11.json';
+  const train = JSON.parse(readFileSync(trainPath,'utf8'));
   if (train.sourceVersion !== pkg.version || train.isStable !== false ||
       train.publishApproved !== false || train.autoupdateApproved !== false ||
       train.installedPromotionApproved !== false || train.releaseTag !== null)
-    throw new Error('0.11 prerelease source cannot satisfy a stable publication gate');
+    throw new Error('development source cannot satisfy a stable publication gate');
 }
 
 // R171: Provenance must fail closed before an immutable release can be published.

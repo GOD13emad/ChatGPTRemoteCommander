@@ -422,13 +422,15 @@ function Stop-OwnedCandidate([object]$Candidate,[switch]$Strict){
       $expectedServer=[IO.Path]::GetFullPath((Join-Path ([string]$Candidate.ProjectDir) 'src\server-v0.3.mjs'))
       $actualCmd=[string]$native.CommandLine
       $cfgSha=(Get-FileHash -LiteralPath $Candidate.ConfigPath -Algorithm SHA256 -ErrorAction Stop).Hash.ToLowerInvariant()
+      $expectedVersion=[string]$Candidate.Version
+      if(-not $expectedVersion){throw 'CANDIDATE_EXPECTED_VERSION_MISSING'}
       $h=Invoke-RestMethod -Uri "http://127.0.0.1:$($Candidate.Port)/health" -TimeoutSec 2 -ErrorAction Stop
       $owned=($native -and [int]$native.ProcessId-eq[int]$proc.Id -and
         [string]$native.Name -ieq 'node.exe' -and
         $actualCmd.TrimEnd('"').EndsWith($expectedServer,[StringComparison]::OrdinalIgnoreCase) -and
         [int]$marker.pid-eq[int]$proc.Id -and [int]$marker.port-eq[int]$Candidate.Port -and
         [string]$marker.instance.profile-eq[string]$Candidate.Profile -and
-        $h.ok-eq $true -and [string]$h.version-eq '0.11.0-dev.23' -and
+        $h.ok-eq $true -and ([string]$h.version -eq $expectedVersion) -and
         [string]$h.configSha256-eq $cfgSha -and
         [string]$h.instance.profile-eq[string]$Candidate.Profile)
     }catch{
@@ -1262,7 +1264,7 @@ try{
     if($LASTEXITCODE-ne 0){throw "CANDIDATE_CONFIG_FAIL profile=$($t.Profile)"}
     $sha=(Get-FileHash -LiteralPath $cfg -Algorithm SHA256).Hash.ToLowerInvariant()
     $p=Start-Backend $stage.Dir $cfg $stateDir
-    $currentCandidate=[pscustomobject]@{Profile=$t.Profile;Port=$port;Process=$p;ConfigPath=$cfg;ProjectDir=$stage.Dir}
+    $currentCandidate=[pscustomobject]@{Profile=$t.Profile;Port=$port;Version=$stage.Version;Process=$p;ConfigPath=$cfg;ProjectDir=$stage.Dir}
     $h=Wait-Health $port $stage.Version $sha $t.Profile
     & node.exe (Join-Path $stage.Dir 'tools\doctor.mjs') --url "http://127.0.0.1:$port/mcp" --expected-device $device --expected-version $stage.Version --config $cfg --timeout-ms 15000 --json
     if($LASTEXITCODE-ne 0){throw "CANDIDATE_DOCTOR_FAIL profile=$($t.Profile)"}
@@ -1307,7 +1309,7 @@ try{
     if($LASTEXITCODE-ne 0){throw "FINAL_CONFIG_FAIL profile=$($t.Profile)"}
     $finalSha=(Get-FileHash -LiteralPath $finalCfg -Algorithm SHA256).Hash.ToLowerInvariant()
     $p=Start-Backend $stage.Dir $finalCfg $stateDir
-    $currentCandidate=[pscustomobject]@{Profile=$t.Profile;Port=$port;Process=$p;ConfigPath=$finalCfg;ProjectDir=$stage.Dir}
+    $currentCandidate=[pscustomobject]@{Profile=$t.Profile;Port=$port;Version=$stage.Version;Process=$p;ConfigPath=$finalCfg;ProjectDir=$stage.Dir}
     [void](Wait-Health $port $stage.Version $finalSha $t.Profile)
     & node.exe (Join-Path $stage.Dir 'tools\doctor.mjs') --url "http://127.0.0.1:$port/mcp" --expected-device $device --expected-version $stage.Version --config $finalCfg --timeout-ms 15000 --json
     if($LASTEXITCODE-ne 0){throw "FINAL_CANDIDATE_DOCTOR_FAIL profile=$($t.Profile)"}

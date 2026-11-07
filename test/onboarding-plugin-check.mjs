@@ -7,17 +7,19 @@ const exists = (p) => fs.existsSync(path.join(root, p));
 const fail = (m) => { throw new Error(m); };
 
 const pkg = JSON.parse(read('package.json'));
-// Preserve the exact historical 0.10.26 acceptance gate, while admitting only
-// explicitly marked non-publishable 0.11 development candidates.
+// Preserve the exact historical 0.10.26 acceptance gate, while admitting
+// only development candidates pinned to their own all-false release manifest.
 if (pkg.version !== '0.10.26') {
-  if (!/^0\.11\.0-(?:dev|rc)\.[1-9][0-9]*$/.test(pkg.version) ||
-      !exists('docs/release-train-0.11.json'))
+  const match = /^(0\.11\.0-dev\.[1-9][0-9]*|0\.12\.0-dev\.[1-9][0-9]*)$/.exec(pkg.version);
+  const trainPath = match && match[1].startsWith('0.12.') ? 'docs/release-train-0.12.json' : 'docs/release-train-0.11.json';
+  if (!match || !exists(trainPath))
     fail('source-candidate package version not allowed by release train');
-  const train = JSON.parse(read('docs/release-train-0.11.json'));
-  if (train.sourceVersion !== pkg.version || train.isStable !== false ||
+  const train = JSON.parse(read(trainPath));
+  const expectedTrain = pkg.version.startsWith('0.12.') ? '0.12' : '0.11';
+  if (train.train !== expectedTrain || train.sourceVersion !== pkg.version || train.isStable !== false ||
       train.publishApproved !== false || train.autoupdateApproved !== false ||
       train.installedPromotionApproved !== false || train.releaseTag !== null)
-    fail('0.11 source candidate lacks explicit non-promotion release authority');
+    fail('development candidate lacks explicit non-promotion release authority');
 }
 const serverSource = read('src/server-v0.3.mjs');
 const serverVersion = serverSource.match(/const VERSION = '([^']+)'/u)?.[1];

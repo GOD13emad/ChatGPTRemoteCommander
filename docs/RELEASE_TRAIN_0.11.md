@@ -1,3 +1,14 @@
+## 0.11.0-dev.105 — dev23-based V1-05 source-integration preview (2026-11-07; NoPromote)
+
+- Exact base: `40256873627780cc7b62359935e43bac5ef856b3`, recovered from `/home/aliemad/.local/state/chatgpt-remote-commander/releases/v0.11.0-dev.23-402568736277`. Its package/Core/manifest identify `0.11.0-dev.23`; its `.git` HEAD is detached at this exact commit.
+- V1-05 accepted commit ported in isolated worktree: `110f25ceef30c2058a886c04dc2d0d699c549ec0`; 9 files / 580 insertions / 30 deletions, no cherry-pick conflict. This is the committed V1-05 delta only; its later uncommitted working-tree edits are not silently included.
+- Release identity synchronized to `0.11.0-dev.105`. The train's `sourceBaseSha` remains historical baseline `c057494329490257e3d79046ea7599c60dde1e89`; it is shared by the dev23 base, main and dev19 branch and is not the current source commit.
+- Commander 2 / `mmz/v2-unified-candidate-20261103` (`0.11.0-dev.19`) was inspected but deliberately not merged. V1-00 explicitly selects exact dev23 as the V1-08 base and forbids substituting dev19 RemoteCommanderV2 or artifact-heavy Main. The V2 branch remains unchanged.
+- The dev23 release root has uncommitted V1-03 GUI changes in `src/gui-tools-windows.mjs`, `src/workspace-tools.mjs`, plus untracked `tools/gui-control-x11.py`. They remain preserved in the original root and are excluded from this clean preview pending V1-03 acceptance; this preview therefore does not claim parity with those live GUI overlay changes.
+- Windows updater cleanup now binds both pre-registration candidate objects to `$stage.Version` and checks `$Candidate.Version` during the native owner-attestation fallback, avoiding the previous hard-coded dev23 mismatch.
+- Qualification: `npm run check` PASS; candidate-scoped `npm run audit` PASS after removing only temporary local Commander2 audit refs; `npm test` exit 0 with no failures (main TAP group 637 PASS / 17 platform skips; auxiliary suites also exit 0); workflow 314/314; Release Train 4/4; SemVer 4/4; updater contract 39 PASS / 4 skips; browser monitor 4 PASS / 2 Windows-only skips; Windows PowerShell Parser PASS for updater SHA256 `3ed00e806a17f4852aa8ad6390e8b707ddf8cc5aedcc535708112acf33ffa91b`; staged and unstaged `git diff --check` PASS.
+- No immutable full-product commit, Builder artifact, install, route switch, service restart, public release, autoupdate enablement or Stable promotion is performed. Cross-owner source freeze, current V1-03/V1-01/V1-06/V1-07/V1-09/V1-10 integration, V2 package provenance and real G1/J01/ACK/boot-login/canary/rollback remain open.
+
 ## 0.11.0-dev.23 — isolate owner-session CUA channels (2026-11-01; development / NoPromote)
 
 - Bind each owner broker channel to a separate named CUA pipe: rc-workspace-cua-v038-active versus rc-workspace-cua-v038-candidate. The workspace CUA adapter accepts only those exact channel names and rejects a shared legacy/foreign endpoint.

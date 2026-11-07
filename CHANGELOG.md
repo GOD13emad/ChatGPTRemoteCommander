@@ -1,3 +1,19 @@
+# 0.12.0-dev.1 — unified-suite integration train opened (2026-11-07, NoPromote)
+
+- Opened the next development identity on the recovered exact dev23 source lineage; this is a private integration candidate, not a release.
+- Carries the previously qualified V1-05 source integration and the V1-08 updater candidate-version identity fix from the isolated QA tree. Other owner-owned V1 modules and Commander 2 capability reconciliation are not yet accepted into this source.
+- Windows/Linux packages, current GUI/Browser overlays, real G1/J01/origin-chat ACK, V2 listener, boot/login, signing, protected canary and rollback remain unaccepted.
+- Publish, installed promotion and automatic-update channel approval remain false.
+
+# 0.11.0-dev.105 — dev23-based V1-05 source-integration preview (2026-11-07, NoPromote)
+
+- Recovered exact development base commit `40256873627780cc7b62359935e43bac5ef856b3` from the owner-local `dev.23` release Git repository.
+- Ported the accepted V1-05 commit `110f25ceef30c2058a886c04dc2d0d699c549ec0` into an isolated V1-08 QA worktree; the port applied without Git conflicts. Additional uncommitted V1-05 edits remain outside this preview.
+- Synchronized package, Core, plugin templates, Windows Control Center and release-manifest version identity to `0.11.0-dev.105`; the historical train baseline `sourceBaseSha=c057494329490257e3d79046ea7599c60dde1e89` is intentionally unchanged.
+- Commander 2 branch `mmz/v2-unified-candidate-20261103` (`dev.19`) remains separate and unmerged, per V1-00 source authority. No branch push or remote mutation.
+- Hardened Windows updater candidate cleanup to attest the exact staged candidate version instead of a stale hard-coded `dev.23`.
+- This is a source-integration preview only. The active dev23 release-root GUI overlay remains V1-03-owned and unaccepted; it was preserved outside this clean base. No package artifact, installation, route switch, service restart, publication, autoupdate enablement or Stable promotion.
+
 # 0.11.0-dev.23 — isolate owner-session CUA channels (2026-11-01, NoPromote)
 
 - Separate CUA named pipes by owner broker channel: active and candidate no longer share a driver endpoint.
