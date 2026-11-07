@@ -7,6 +7,7 @@ README-HYBRID-QA.txt
 PROJECT_BRAIN.md
 
 # Generated local test output and Python caches are never part of install packages.
+outputs/
 test/.tmp-*
 tools/__pycache__/
 **/__pycache__/

@@ -16,6 +16,7 @@ test('0.12 development train has one valid NoPromote identity and a pinned sourc
  assert.ok(manifest.components.length>=1);
  assert.ok(manifest.components.every(x=>x.required===true&&x.verified===false));
  assert.ok(Object.values(manifest.acceptance).every(x=>x===false));
+ assert.match(readFileSync(new URL('../.npmignore',import.meta.url),'utf8'),/^outputs\/$/m);
 });
 test('0.12.0-dev.1 advances every 0.11 release and rejects noncanonical leading zero',()=>{
  assert.equal(parseReleaseVersion('0.12.0-dev.1').revision,1n);
