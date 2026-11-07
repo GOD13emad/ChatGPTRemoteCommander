@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {readFileSync} from 'node:fs';
+import {readFileSync,existsSync} from 'node:fs';
 import {parseReleaseVersion,compareReleaseVersions} from '../tools/semver-release.mjs';
 
 const manifest=JSON.parse(readFileSync(new URL('../docs/release-train-0.12.json',import.meta.url),'utf8'));
@@ -16,7 +16,15 @@ test('0.12 development train has one valid NoPromote identity and a pinned sourc
  assert.ok(manifest.components.length>=1);
  assert.ok(manifest.components.every(x=>x.required===true&&x.verified===false));
  assert.ok(Object.values(manifest.acceptance).every(x=>x===false));
- assert.match(readFileSync(new URL('../.npmignore',import.meta.url),'utf8'),/^outputs\/$/m);
+ const sourceCheckout=existsSync(new URL('../.git',import.meta.url));
+ const ignore=new URL('../.npmignore',import.meta.url);
+ const privateOutputs=new URL('../outputs/',import.meta.url);
+ if(sourceCheckout){
+  assert.ok(existsSync(ignore),'Git source must retain the packaging exclusion policy');
+  assert.match(readFileSync(ignore,'utf8'),/^outputs\/$/m);
+ }else{
+  assert.equal(existsSync(privateOutputs),false,'installed package must not carry private QA outputs');
+ }
 });
 test('0.12.0-dev.1 advances every 0.11 release and rejects noncanonical leading zero',()=>{
  assert.equal(parseReleaseVersion('0.12.0-dev.1').revision,1n);
