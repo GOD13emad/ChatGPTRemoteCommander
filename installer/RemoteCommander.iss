@@ -1,11 +1,11 @@
 #ifndef MyVersion
-  #define MyVersion "0.10.18-dev"
+  #error V108_EXPLICIT_PACKAGE_VERSION_REQUIRED
 #endif
 #ifndef MyCommit
-  #define MyCommit "0000000000000000000000000000000000000000"
+  #error V108_EXACT_SOURCE_COMMIT_REQUIRED
 #endif
 #ifndef MySourceRef
-  #define MySourceRef "v0.10.18"
+  #error V108_EXPLICIT_SOURCE_REF_REQUIRED
 #endif
 #ifndef DesktopPayload
   #define DesktopPayload "..\dist\desktop\remote-commander-windows-x64"

@@ -11,6 +11,7 @@ $Root=(Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $Package=Get-Content (Join-Path $Root 'package.json') -Raw|ConvertFrom-Json
 $Version=if($VersionOverride){$VersionOverride}else{[string]$Package.version}
 if($Version -notmatch '^\d+\.\d+\.\d+(?:-[A-Za-z0-9._-]+)?$'){throw "Invalid setup version: $Version"}
+if($Version -cne [string]$Package.version){throw "SETUP_VERSION_MUST_MATCH_SOURCE_PACKAGE"}
 
 $Head=(git -C $Root rev-parse HEAD).Trim()
 if($Head -notmatch '^[0-9a-f]{40}$'){throw 'Could not resolve repository HEAD.'}

@@ -47,10 +47,25 @@ test('both default qualification suites exercise exact post-tag identity guard',
   assert.match(scripts['test:qualification'],/--script test/);
 });
 
-test('installer default remains at prior verified Preview rather than untagged candidate',()=>{
-  for(const p of ['install.ps1','install.sh','server-install-windows.ps1','server-install-linux.sh'])
-    assert.ok(read(p).includes(previousTag),p);
-  assert.ok(read('server-install-windows.ps1').includes('ServerInstaller/0.10.24'));
+test('current installer defaults use the active release target; historical Preview policy stays scoped',()=>{
+  const sourceVersion=json('package.json').version;
+  const future12=sourceVersion.startsWith('0.12.');
+  const defaultTag=future12?'v0.12.0':previousTag;
+  for(const p of ['install.ps1','server-install-windows.ps1'])
+    assert.ok(read(p).includes("[string]$SourceRef = '"+defaultTag+"'"),p);
+  for(const p of ['install.sh','server-install-linux.sh'])
+    assert.ok(read(p).includes('SOURCE_REF="${REMOTE_COMMANDER_SOURCE_REF:-'+defaultTag+'}"'),p);
+  if(future12){
+    const candidate=json('docs/release-train-0.12.json');
+    assert.equal(candidate.status,'INTEGRATION_CANDIDATE_NOT_FINAL');
+    assert.equal(candidate.releaseTag,null);
+    for(const key of ['publishApproved','autoupdateApproved','installedPromotionApproved'])
+      assert.equal(candidate[key],false,key);
+    for(const p of ['install.ps1','install.sh','server-install-windows.ps1','server-install-linux.sh'])
+      assert.equal(read(p).includes('SourceRef = '+String.fromCharCode(39)+previousTag),false,p);
+  }
+  assert.ok(read('server-install-windows.ps1').includes('ServerInstaller/0.10.24'),
+    'historical user agent is not the install target');
   assert.match(read('test/release-assets-contract.test.mjs'),/0\.10\.26/);
 });
 

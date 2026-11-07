@@ -170,3 +170,18 @@ test('Windows Inno archive source files omit build-host file timestamps',()=>{
     assert.match(entry,/\bnotimestamp\b/,'each packaged file must omit source filesystem timestamps');
   }
 });
+
+test('Windows direct ISCC compile refuses historical fallback identity and builder refuses version spoofing',()=>{
+  const iss=read('installer/RemoteCommander.iss');
+  const builder=read('installer/build-setup.ps1');
+  for(const gate of ['V108_EXPLICIT_PACKAGE_VERSION_REQUIRED','V108_EXACT_SOURCE_COMMIT_REQUIRED','V108_EXPLICIT_SOURCE_REF_REQUIRED']){
+    assert.ok(iss.includes('#error '+gate), 'missing hard build-time identity gate: '+gate);
+  }
+  assert.equal(iss.includes('#define MySourceRef "v0.10.18"'),false);
+  assert.equal(iss.includes('#define MyVersion "0.10.18-dev"'),false);
+  assert.equal(iss.includes('#define MyCommit "0000000000000000000000000000000000000000"'),false);
+  assert.ok(builder.includes('SETUP_VERSION_MUST_MATCH_SOURCE_PACKAGE'));
+  assert.ok(builder.includes("('/DMyVersion='+$Version)"));
+  assert.ok(builder.includes("('/DMyCommit='+$ExpectedCommit)"));
+  assert.ok(builder.includes("('/DMySourceRef='+$SourceRef)"));
+});
