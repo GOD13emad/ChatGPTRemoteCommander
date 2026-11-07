@@ -112,6 +112,12 @@ if (!serverCanaryWorkflow.includes('SERVER_CANARY_UNKNOWN_VERSION_DENIED')) {
   throw new Error('UNKNOWN_DEVELOPMENT_SERVER_VERSION_MUST_FAIL_CLOSED');
 }
 
+for (const path of ['docs/release-train-0.11.json','docs/release-train-0.12.json']) {
+  if (!serverCanaryWorkflow.includes("      - '"+path+"'")) {
+    throw new Error('SERVER_CANARY_MUST_RETEST_WHEN_TRAIN_CHANGED '+path);
+  }
+}
+
 const publicConfig = JSON.parse(readFileSync('config.json','utf8'));
 if (publicConfig.auditMaxBytes !== 8388608 || publicConfig.auditKeepFiles !== 3) {
   throw new Error('config.json missing bounded audit defaults');

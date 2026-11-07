@@ -10,6 +10,8 @@ on:
       - 'server-install-linux.sh'
       - 'test/installer-check.mjs'
       - 'package.json'
+      - 'docs/release-train-0.11.json'
+      - 'docs/release-train-0.12.json'
       - '.github/workflows/server-install-canary.yml'
   workflow_dispatch:
 

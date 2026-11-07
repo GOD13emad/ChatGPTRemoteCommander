@@ -158,3 +158,14 @@ test('v0.12 annotated tag cannot bypass NoPromote train in actual release identi
  assert.doesNotMatch(result.stdout,/R171_IMMUTABLE_TAG_AND_ASSETS_PREATTEST_PASS/);
  assert.doesNotMatch(fs.readFileSync(out,'utf8'),/accepted=true/);
 });
+
+
+test('release-sync PR scope includes development-train admission policy and regression test',()=>{
+ const pr=workflow.split('  pull_request:\n')[1]?.split('\npermissions:')[0];
+ assert.ok(pr,'pull_request path filter missing');
+ for(const path of [
+  'docs/release-train-0.11.json','docs/release-train-0.12.json',
+  'tools/verify-v012-publish-readiness.mjs',
+  'test/release-sync-posttag-guard.test.mjs'
+ ])assert.ok(pr.includes("      - '"+path+"'"),'missing release-sync PR trigger '+path);
+});
