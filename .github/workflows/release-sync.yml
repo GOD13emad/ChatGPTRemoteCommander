@@ -212,6 +212,9 @@ jobs:
             echo "::error::R171_TAG_SOURCE_MISMATCH tag=$tag tagged=$tagged_commit head=$checked_out_commit"
             exit 1
           fi
+          if [[ "$version" == 0.12.* ]]; then
+            node tools/verify-v012-publish-readiness.mjs "$version" "$tag"
+          fi
           test -f "docs/RELEASE_$version.md"
           (cd dist/release && sha256sum -c SHA256SUMS.txt)
           count="$(find dist/release -mindepth 1 -maxdepth 1 -type f | wc -l)"
@@ -302,6 +305,9 @@ jobs:
             if [ "$SETUP_SIGNED" = "false" ]; then
               title="$title | UNSIGNED Preview"
             fi
+          fi
+          if [[ "$version" == 0.12.* ]]; then
+            node tools/verify-v012-publish-readiness.mjs "$version" "$tag"
           fi
           gh release create "$tag" "${assets[@]}" \
             --repo "$GH_REPO" \

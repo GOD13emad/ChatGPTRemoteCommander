@@ -6,6 +6,7 @@ import path from 'node:path';
 import {spawnSync,execFileSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import crypto from 'node:crypto';
+import {verifyV012Publication} from '../tools/verify-v012-publish-readiness.mjs';
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const workflow=fs.readFileSync(path.join(root,'.github/workflows/release-sync.yml'),'utf8');
 const start=workflow.indexOf('      - name: Validate matching annotated tag and versioned 20/21-asset manifest');
@@ -69,4 +70,91 @@ test('R171 tag-only publication gate skips post-tag main without re-signing or r
  assert.equal(missing.r.status,0,missing.r.stderr);
  assert.match(missing.r.stdout,/R171_NO_TAG_SKIP/);
  assert.match(missing.output,/accepted=false/);
+});
+
+
+test('V1-08 v0.12 release requires exact accepted train before attestation and draft creation',()=>{
+ const gate='node tools/verify-v012-publish-readiness.mjs "$version" "$tag"';
+ assert.ok(script.includes(gate));
+ assert.ok(script.indexOf(gate)<script.indexOf('accepted=true'));
+ assert.equal(workflow.split(gate).length-1,2,'gate must guard identity and draft publication');
+ const manifest=JSON.parse(fs.readFileSync(path.join(root,'docs/release-train-0.12.json'),'utf8'));
+ assert.throws(()=>verifyV012Publication('0.12.0-dev.1','v0.12.0-dev.1',manifest),
+   /V108_V012_RELEASE_APPROVAL_DENIED/);
+ assert.throws(()=>verifyV012Publication('0.12.0','v0.12.0',manifest),
+   /V108_V012_RELEASE_APPROVAL_DENIED/);
+ const current=spawnSync(process.execPath,
+   [path.join(root,'tools/verify-v012-publish-readiness.mjs'),'0.12.0','v0.12.0'],
+   {cwd:root,encoding:'utf8',timeout:10000});
+ assert.equal(current.status,2,'current development manifest must fail closed');
+ assert.match(current.stderr,/V108_V012_PUBLICATION_DENIED/);
+ const ready={
+   ...manifest,sourceVersion:'0.12.0',status:'RELEASE_APPROVED',
+   channel:'release',isStable:true,publishApproved:true,
+   autoupdateApproved:true,installedPromotionApproved:true,releaseTag:'v0.12.0',
+   components:manifest.components.map(x=>({...x,verified:true})),
+   acceptance:Object.fromEntries(Object.keys(manifest.acceptance).map(k=>[k,true])),
+   distribution:{...manifest.distribution,noPublicStableAccepted:false}
+ };
+ assert.equal(verifyV012Publication('0.12.0','v0.12.0',ready),
+   'V108_V012_RELEASE_APPROVED_MANIFEST_PASS');
+ for(const patch of [
+   {publishApproved:false},{autoupdateApproved:false},
+   {installedPromotionApproved:false},{status:'INTEGRATION_CANDIDATE_NOT_FINAL'},
+   {sourceVersion:'0.12.0-dev.1'},{releaseTag:null},
+   {distribution:{...ready.distribution,noPublicStableAccepted:true}},
+   {acceptance:{...ready.acceptance,authAndGui:false}},
+   {acceptance:{...ready.acceptance,rollback:false}},
+   {components:ready.components.map(x=>x.id==='gui-same-owner'?{...x,verified:false}:x)},
+   {components:ready.components.slice(1)},{fleet:['EmadPC']}
+ ]){
+   assert.throws(()=>verifyV012Publication('0.12.0','v0.12.0',{...ready,...patch}),
+     /V108_V012_RELEASE_APPROVAL_DENIED/);
+ }
+ assert.throws(()=>verifyV012Publication('0.12.0','v0.12.1',ready),
+   /V108_V012_RELEASE_APPROVAL_DENIED/);
+});
+
+
+test('v0.12 annotated tag cannot bypass NoPromote train in actual release identity Bash',t=>{
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'rc-v012-release-gate-'));
+ t.after(()=>{assert.match(path.basename(dir),/^rc-v012-release-gate-/);fs.rmSync(dir,{recursive:true,force:true});});
+ const bash=process.platform==='win32'?'C:\\Program Files\\Git\\bin\\bash.exe':'bash';
+ if(process.platform==='win32'&&!fs.existsSync(bash))return t.skip('Git Bash unavailable');
+ const repo=path.join(dir,'repo');
+ fs.mkdirSync(repo,{recursive:true});
+ git(repo,'init','-q');
+ fs.writeFileSync(path.join(repo,'package.json'),JSON.stringify({version:'0.12.0'})+'\n');
+ fs.mkdirSync(path.join(repo,'docs'));
+ fs.writeFileSync(path.join(repo,'docs','RELEASE_0.12.0.md'),'synthetic release notes\n');
+ fs.copyFileSync(path.join(root,'docs','release-train-0.12.json'),
+   path.join(repo,'docs','release-train-0.12.json'));
+ fs.mkdirSync(path.join(repo,'tools'));
+ fs.copyFileSync(path.join(root,'tools','verify-v012-publish-readiness.mjs'),
+   path.join(repo,'tools','verify-v012-publish-readiness.mjs'));
+ const assets=path.join(repo,'dist','release');
+ fs.mkdirSync(assets,{recursive:true});
+ const sums=[];
+ for(let i=0;i<20;i++){
+   const name='test-asset-'+i+'.txt';
+   fs.writeFileSync(path.join(assets,name),'asset '+i);
+   sums.push(crypto.createHash('sha256').update(fs.readFileSync(path.join(assets,name))).digest('hex')+'  '+name);
+ }
+ fs.writeFileSync(path.join(assets,'SHA256SUMS.txt'),sums.join('\n')+'\n');
+ git(repo,'add','.');
+ git(repo,'-c','user.name=Fixture','-c','user.email=fixture@example.invalid',
+   'commit','-qm','synthetic tag for publication gate regression');
+ git(repo,'-c','user.name=Fixture','-c','user.email=fixture@example.invalid',
+   'tag','-a','v0.12.0','-m','synthetic not-approved tag');
+ const out=path.join(dir,'result.txt');
+ fs.writeFileSync(out,'');
+ const result=spawnSync(bash,['-c',script],{
+   cwd:repo,env:{...process.env,GITHUB_OUTPUT:out,GITHUB_EVENT_NAME:'push',
+     GITHUB_REF:'refs/tags/v0.12.0'},encoding:'utf8',timeout:16000
+ });
+ assert.equal(result.error,undefined,String(result.error));
+ assert.notEqual(result.status,0,'NoPromote tagged source cannot be accepted');
+ assert.match(result.stderr,/V108_V012_PUBLICATION_DENIED/);
+ assert.doesNotMatch(result.stdout,/R171_IMMUTABLE_TAG_AND_ASSETS_PREATTEST_PASS/);
+ assert.doesNotMatch(fs.readFileSync(out,'utf8'),/accepted=true/);
 });
