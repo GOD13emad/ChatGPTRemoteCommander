@@ -32,3 +32,12 @@ Do not delete historical branches, release directories, tags or installed versio
 ## Machine authority
 
 See [release-train-0.12.json](release-train-0.12.json). It is the sole 0.12 release manifest. Update it semantically in place as owner gates close; do not create revision-suffixed competing manifests.
+
+
+## V1-08 direct-installer version 12 defaults — 2026-11-08
+
+The four direct desktop/server installers for Windows and Linux and their existing installer regression assertions have been changed on this 0.12 development candidate from pinned `v0.10.24` to the intended immutable `v0.12.0` Git ref. There is **no published `v0.12.0` tag** yet: an unqualified default direct install must reject/fail closed rather than silently install an older version. Explicit exact-commit source selection remains available for controlled QA and recovery. No installed fleet profile, GUI input permission, rollback evidence, public release or automatic update was changed.
+
+Scope: 5 files, 11 additions / 11 removals; source bytes/readback verified, no unrelated changes. Linux `test/installer-check.mjs`, `bash -n` for both Linux scripts, `git diff --check`, release train + SemVer tests 6/6 PASS, and updater monotonic 1 PASS/7 Windows-only SKIP. Separate Windows QA on the same pre-edit file hashes demonstrated native installer contract PASS, Windows PowerShell parsing and Windows updater monotonic 8/8 PASS. These are scoped contracts, not 0.12 native installed product acceptance.
+
+Next: integrate this exact-source candidate with V1-00 accepted owner deltas, qualify a fresh 0.12 installer on real Windows/Linux/server hosts with user-session mouse/keyboard grant and revocation checks, release immutable version/hash, then stage user-local profile updates with health/rollback readback. Full Power does not supersede OS Administrator/root, SID/UID session bindings or owner consent.

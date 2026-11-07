@@ -10,7 +10,7 @@ param(
   [switch]$StartServer,
   [switch]$SkipTunnelClient,
   [string]$TunnelClientVersion = '0.0.15',
-  [string]$SourceRef = 'v0.10.24',
+  [string]$SourceRef = 'v0.12.0',
   [string]$ExpectedCommit = '',
   [string]$SourceBundle = '',
   [string]$SourceBundleSha256 = ''

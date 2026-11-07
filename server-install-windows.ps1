@@ -1,5 +1,5 @@
 param(
-  [string]$SourceRef = 'v0.10.24',
+  [string]$SourceRef = 'v0.12.0',
   [string]$ExpectedCommit = '',
   [ValidateSet('Power','Standard')][string]$AccessMode = 'Power',
   [ValidateSet('Auto','On','Off')][string]$GuiControl = 'Off',
