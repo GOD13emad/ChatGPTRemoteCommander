@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { createHash, createPublicKey, randomUUID, verify } from 'node:crypto';
+import { isProxy } from 'node:util/types';
 import {
   AUTONOMY_REVISION, AUTONOMY_SCHEMA, normalizeWorkflowState, normalizeExecutionProfile,
   normalizeSchedulerPolicy, normalizeAuthority, authorityCompatible, classifyTool,
@@ -35,8 +36,52 @@ const WORKER_CLAIM_FIELDS = Object.freeze([
   'tunnelProvider','tunnelIdHash','capabilityPolicyDigest','grantRevision',
   'issuedAtMs','expiresAtMs','nonce'
 ]);
+function workerIdentityJson(value,state={nodes:0},depth=0) {
+  if (++state.nodes > 8192 || depth > 24) fail('WORKER_IDENTITY_ENVELOPE_INVALID');
+  if (value === null || typeof value === 'boolean' || typeof value === 'string') return value;
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value !== 'object' || isProxy(value)) fail('WORKER_IDENTITY_ENVELOPE_INVALID');
+  if (Array.isArray(value)) {
+    if (Object.getPrototypeOf(value) !== Array.prototype
+      || Reflect.ownKeys(value).length !== value.length + 1
+      || Object.keys(value).length !== value.length)
+      fail('WORKER_IDENTITY_ENVELOPE_INVALID');
+    const out=[];
+    for (let i=0;i<value.length;i++) {
+      const d=Object.getOwnPropertyDescriptor(value,String(i));
+      if (!d || !Object.hasOwn(d,'value') || d.enumerable !== true)
+        fail('WORKER_IDENTITY_ENVELOPE_INVALID');
+      out.push(workerIdentityJson(d.value,state,depth+1));
+    }
+    return out;
+  }
+  const proto=Object.getPrototypeOf(value);
+  if (proto !== Object.prototype && proto !== null) fail('WORKER_IDENTITY_ENVELOPE_INVALID');
+  const keys=Reflect.ownKeys(value);
+  if (keys.length > 8192 || keys.some(k=>typeof k!=='string'))
+    fail('WORKER_IDENTITY_ENVELOPE_INVALID');
+  const out={};
+  for (const key of keys) {
+    if (['__proto__','constructor','prototype'].includes(key))
+      fail('WORKER_IDENTITY_ENVELOPE_INVALID');
+    const d=Object.getOwnPropertyDescriptor(value,key);
+    if (!d || !Object.hasOwn(d,'value') || d.enumerable !== true)
+      fail('WORKER_IDENTITY_ENVELOPE_INVALID');
+    out[key]=workerIdentityJson(d.value,state,depth+1);
+  }
+  return out;
+}
+function workerIdentityOptions(value,allowed,defaults,code) {
+  let safe;
+  try { safe=workerIdentityJson(value===undefined?{}:value); }
+  catch { fail(code); }
+  if (!safe || typeof safe!=='object' || Array.isArray(safe)
+    || Object.keys(safe).some(k=>!allowed.includes(k))) fail(code);
+  return Object.freeze({...defaults,...safe});
+}
 function workerIdentityEnvelope(value) {
-  const text = canonical(value);
+  const safe=workerIdentityJson(value);
+  const text = canonical(safe);
   if (Buffer.byteLength(text) > 16 * 1024) fail('WORKER_IDENTITY_ENVELOPE_LIMIT');
   const envelope = JSON.parse(text);
   if (!envelope || Object.getPrototypeOf(envelope) !== Object.prototype
@@ -84,6 +129,8 @@ function workerIdentityEnvelope(value) {
   ]),'utf8');
   if (!verify(null,signedBytes,publicKey,Buffer.from(envelope.signature,'base64url')))
     fail('WORKER_IDENTITY_SIGNATURE_INVALID');
+  Object.freeze(claims);
+  Object.freeze(envelope);
   return Object.freeze({
     text, envelope, workerId: claims.workerId, bindingId: claims.bindingId,
     signature: envelope.signature, expiresAtMs: claims.expiresAtMs
@@ -408,24 +455,33 @@ export class WorkflowStore {
       }
     }
 
-    this.#leaseDb.exec(
-      'CREATE TABLE IF NOT EXISTS worker_identity_meta(' +
-      'singleton INTEGER PRIMARY KEY CHECK(singleton=1),schema_version INTEGER NOT NULL,' +
-      'event_count INTEGER NOT NULL,head_digest TEXT NOT NULL);' +
-      "INSERT OR IGNORE INTO worker_identity_meta(singleton,schema_version,event_count,head_digest) VALUES(1,1,0,'" + WORKER_IDENTITY_ZERO + "');" +
-      "CREATE TABLE IF NOT EXISTS worker_identity_events(" +
-      "seq INTEGER PRIMARY KEY AUTOINCREMENT,worker_id TEXT NOT NULL,binding_id TEXT NOT NULL," +
-      "kind TEXT NOT NULL CHECK(kind IN ('REGISTERED','REVOKED')),body TEXT NOT NULL," +
-      "previous_digest TEXT NOT NULL,digest TEXT NOT NULL UNIQUE,created_at TEXT NOT NULL);" +
-      'CREATE INDEX IF NOT EXISTS worker_identity_events_binding ON worker_identity_events(worker_id,binding_id,kind);' +
-      "CREATE TRIGGER IF NOT EXISTS worker_identity_events_no_update BEFORE UPDATE ON worker_identity_events BEGIN SELECT RAISE(ABORT,'APPEND_ONLY'); END;" +
-      "CREATE TRIGGER IF NOT EXISTS worker_identity_events_no_delete BEFORE DELETE ON worker_identity_events BEGIN SELECT RAISE(ABORT,'APPEND_ONLY'); END;" +
-      "CREATE TABLE IF NOT EXISTS worker_identity_registry(" +
-      "worker_id TEXT PRIMARY KEY,binding_id TEXT NOT NULL,signature TEXT NOT NULL,envelope TEXT NOT NULL," +
-      "state TEXT NOT NULL CHECK(state IN ('ACTIVE','REVOKED')),event_seq INTEGER NOT NULL);"
-    );
-    try { this.#verifyWorkerIdentityJournal(); }
-    catch (error) { this.#leaseDb.close(); throw error; }
+    try {
+      this.#leaseDb.exec('BEGIN IMMEDIATE');
+      this.#leaseDb.exec(
+        'CREATE TABLE IF NOT EXISTS worker_identity_meta(' +
+        'singleton INTEGER PRIMARY KEY CHECK(singleton=1),schema_version INTEGER NOT NULL,' +
+        'event_count INTEGER NOT NULL,head_digest TEXT NOT NULL);' +
+        'CREATE TABLE IF NOT EXISTS worker_identity_events(' +
+        'seq INTEGER PRIMARY KEY AUTOINCREMENT,worker_id TEXT NOT NULL,binding_id TEXT NOT NULL,' +
+        "kind TEXT NOT NULL CHECK(kind IN ('REGISTERED','REVOKED')),body TEXT NOT NULL," +
+        'previous_digest TEXT NOT NULL,digest TEXT NOT NULL UNIQUE,created_at TEXT NOT NULL);' +
+        'CREATE INDEX IF NOT EXISTS worker_identity_events_binding ON worker_identity_events(worker_id,binding_id,kind);' +
+        "CREATE TRIGGER IF NOT EXISTS worker_identity_events_no_update BEFORE UPDATE ON worker_identity_events BEGIN SELECT RAISE(ABORT,'APPEND_ONLY'); END;" +
+        "CREATE TRIGGER IF NOT EXISTS worker_identity_events_no_delete BEFORE DELETE ON worker_identity_events BEGIN SELECT RAISE(ABORT,'APPEND_ONLY'); END;" +
+        'CREATE TABLE IF NOT EXISTS worker_identity_registry(' +
+        "worker_id TEXT PRIMARY KEY,binding_id TEXT NOT NULL,signature TEXT NOT NULL,envelope TEXT NOT NULL," +
+        "state TEXT NOT NULL CHECK(state IN ('ACTIVE','REVOKED')),event_seq INTEGER NOT NULL);"
+      );
+      this.#leaseDb.prepare(
+        'INSERT OR IGNORE INTO worker_identity_meta(singleton,schema_version,event_count,head_digest) VALUES(1,1,0,?)'
+      ).run(WORKER_IDENTITY_ZERO);
+      this.#leaseDb.exec('COMMIT');
+      this.#verifyWorkerIdentityJournal();
+    } catch(error) {
+      try { this.#leaseDb.exec('ROLLBACK'); } catch {}
+      try { this.#leaseDb.close(); } catch {}
+      throw error;
+    }
 
     this.#db = new DatabaseSync(this.#dbPath, { allowExtension: false });
     try {
@@ -600,6 +656,11 @@ export class WorkflowStore {
     try { const value = fn(); this.#leaseDb.exec('COMMIT'); return value; }
     catch (e) { try { this.#leaseDb.exec('ROLLBACK'); } catch { /* preserve original exception */ } throw e; }
   }
+  #leaseReadTransaction(fn) {
+    this.#leaseDb.exec('BEGIN');
+    try { const value = fn(); this.#leaseDb.exec('COMMIT'); return value; }
+    catch (e) { try { this.#leaseDb.exec('ROLLBACK'); } catch { /* preserve original exception */ } throw e; }
+  }
   #verifyWorkerIdentityJournal() {
     const meta = this.#leaseDb.prepare(
       'SELECT schema_version AS schemaVersion,event_count AS eventCount,head_digest AS headDigest FROM worker_identity_meta WHERE singleton=1'
@@ -638,7 +699,7 @@ export class WorkflowStore {
           fail('WORKER_IDENTITY_JOURNAL_CORRUPT');
         const prior = latest.get(row.workerId);
         if (prior) {
-          const expiredAtEvent = prior.expiresAtMs <= Date.parse(event.at);
+          const expiredAtEvent = prior.expiresAtMs <= eventAtMs;
           if (prior.bindingId === row.bindingId || (prior.state !== 'REVOKED' && !expiredAtEvent))
             fail('WORKER_IDENTITY_JOURNAL_CORRUPT');
         }
@@ -655,7 +716,7 @@ export class WorkflowStore {
         if (!prior || prior.bindingId !== row.bindingId || prior.signature !== event.expectedSignature
           || prior.state !== 'ACTIVE' || !receipt || Object.getPrototypeOf(receipt) !== Object.prototype
           || Object.keys(receipt).sort().join(',') !== ['reasonCode','revocationId','revokedAtMs'].sort().join(',')
-          || typeof receipt.reasonCode !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(receipt.reasonCode)
+          || typeof receipt.reasonCode !== 'string' || !WORKER_SAFE_ID_RE.test(receipt.reasonCode)
           || typeof receipt.revocationId !== 'string' || !WORKER_REVOCATION_UUID_RE.test(receipt.revocationId)
           || !Number.isSafeInteger(receipt.revokedAtMs) || receipt.revokedAtMs < 0
           || receipt.revokedAtMs > Date.parse(event.at) + 5000)
@@ -699,24 +760,34 @@ export class WorkflowStore {
   }
   workerIdentityGet(workerId) {
     if (typeof workerId !== 'string' || !WORKER_ID_RE.test(workerId)) fail('WORKER_IDENTITY_REGISTRY_ID_INVALID');
-    this.#verifyWorkerIdentityJournal();
-    const row = this.#leaseDb.prepare(
-      'SELECT envelope FROM worker_identity_registry WHERE worker_id=?'
-    ).get(workerId);
-    return row ? JSON.parse(row.envelope) : null;
+    return this.#leaseReadTransaction(() => {
+      this.#verifyWorkerIdentityJournal();
+      const row = this.#leaseDb.prepare(
+        'SELECT envelope FROM worker_identity_registry WHERE worker_id=?'
+      ).get(workerId);
+      return row ? JSON.parse(row.envelope) : null;
+    });
   }
   workerIdentityIsRevoked(workerId, bindingId) {
     if (typeof workerId !== 'string' || !WORKER_ID_RE.test(workerId)
       || typeof bindingId !== 'string' || !WORKER_BINDING_RE.test(bindingId))
       fail('WORKER_IDENTITY_REGISTRY_ID_INVALID');
-    this.#verifyWorkerIdentityJournal();
-    return Boolean(this.#leaseDb.prepare(
-      "SELECT 1 AS found FROM worker_identity_events WHERE worker_id=? AND binding_id=? AND kind='REVOKED' LIMIT 1"
-    ).get(workerId,bindingId));
+    return this.#leaseReadTransaction(() => {
+      this.#verifyWorkerIdentityJournal();
+      return Boolean(this.#leaseDb.prepare(
+        "SELECT 1 AS found FROM worker_identity_events WHERE worker_id=? AND binding_id=? AND kind='REVOKED' LIMIT 1"
+      ).get(workerId,bindingId));
+    });
   }
-  workerIdentityRegister(envelope, { expectedPreviousBindingId = null, expectedPreviousState = 'EMPTY' } = {}) {
+  workerIdentityRegister(envelope, options = {}) {
     const record = workerIdentityEnvelope(envelope);
-    if (record.expiresAtMs <= Date.now() || record.envelope.claims.issuedAtMs > Date.now())
+    const opts = workerIdentityOptions(options,
+      ['expectedPreviousBindingId','expectedPreviousState'],
+      {expectedPreviousBindingId:null,expectedPreviousState:'EMPTY'},
+      'WORKER_IDENTITY_REGISTRY_CAS_INVALID');
+    const {expectedPreviousBindingId,expectedPreviousState}=opts;
+    const now=Date.now();
+    if (record.expiresAtMs <= now || record.envelope.claims.issuedAtMs > now)
       fail('WORKER_IDENTITY_ENVELOPE_EXPIRED');
     if (!['EMPTY','REVOKED','EXPIRED'].includes(expectedPreviousState)
       || (expectedPreviousState === 'EMPTY'
@@ -733,7 +804,7 @@ export class WorkflowStore {
       } else {
         const prior = workerIdentityEnvelope(JSON.parse(old.envelope));
         const state = old.state === 'REVOKED' ? 'REVOKED'
-          : prior.expiresAtMs <= Date.now() ? 'EXPIRED' : 'ACTIVE';
+          : prior.expiresAtMs <= now ? 'EXPIRED' : 'ACTIVE';
         if (old.bindingId !== expectedPreviousBindingId || state !== expectedPreviousState
           || prior.bindingId === record.bindingId) return false;
       }
@@ -749,18 +820,26 @@ export class WorkflowStore {
       return true;
     });
   }
-  workerIdentityRevoke(workerId, bindingId, receipt, { expectedSignature } = {}) {
+  workerIdentityRevoke(workerId, bindingId, receipt, options = {}) {
+    const opts=workerIdentityOptions(options,['expectedSignature'],{expectedSignature:undefined},
+      'WORKER_IDENTITY_REGISTRY_REVOCATION_INVALID');
+    const expectedSignature=opts.expectedSignature;
+    let safeReceipt;
+    try { safeReceipt=workerIdentityJson(receipt); }
+    catch { fail('WORKER_IDENTITY_REGISTRY_REVOCATION_INVALID'); }
     if (typeof workerId !== 'string' || !WORKER_ID_RE.test(workerId)
       || typeof bindingId !== 'string' || !WORKER_BINDING_RE.test(bindingId)
       || typeof expectedSignature !== 'string' || !WORKER_B64URL_RE.test(expectedSignature)
-      || !receipt || Object.getPrototypeOf(receipt) !== Object.prototype
-      || Object.keys(receipt).sort().join(',') !== ['reasonCode','revocationId','revokedAtMs'].sort().join(',')
-      || typeof receipt.reasonCode !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(receipt.reasonCode)
-      || typeof receipt.revocationId !== 'string' || !WORKER_REVOCATION_UUID_RE.test(receipt.revocationId)
-      || !Number.isSafeInteger(receipt.revokedAtMs) || receipt.revokedAtMs < 0
-      || receipt.revokedAtMs > Date.now() + 5000)
+      || Buffer.from(expectedSignature,'base64url').length!==64
+      || Buffer.from(expectedSignature,'base64url').toString('base64url')!==expectedSignature
+      || !safeReceipt || Object.getPrototypeOf(safeReceipt) !== Object.prototype
+      || Object.keys(safeReceipt).sort().join(',') !== ['reasonCode','revocationId','revokedAtMs'].sort().join(',')
+      || typeof safeReceipt.reasonCode !== 'string' || !WORKER_SAFE_ID_RE.test(safeReceipt.reasonCode)
+      || typeof safeReceipt.revocationId !== 'string' || !WORKER_REVOCATION_UUID_RE.test(safeReceipt.revocationId)
+      || !Number.isSafeInteger(safeReceipt.revokedAtMs) || safeReceipt.revokedAtMs < 0
+      || safeReceipt.revokedAtMs > Date.now() + 5000)
       fail('WORKER_IDENTITY_REGISTRY_REVOCATION_INVALID');
-    const receiptText = canonical(receipt);
+    const receiptText = canonical(safeReceipt);
     if (Buffer.byteLength(receiptText) > 2048) fail('WORKER_IDENTITY_REGISTRY_REVOCATION_INVALID');
     return this.#leaseTransaction(() => {
       this.#verifyWorkerIdentityJournal();
@@ -780,7 +859,7 @@ export class WorkflowStore {
     });
   }
   workerIdentityJournalStatus() {
-    return this.#verifyWorkerIdentityJournal();
+    return this.#leaseReadTransaction(() => this.#verifyWorkerIdentityJournal());
   }
   #acquireRootLease(root, workflow, owner, expiresAt, revisionValue) {
     if (this.#schedulerPolicy.oneWriterPerRoot === false) return null;

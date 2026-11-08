@@ -86,7 +86,7 @@ function authorityFor(store,state) {
     resolveOwnerContext:async()=>({
       source:'native-owner-attested',hostId:'host-1',profileId:'emad',
       principalId:'owner-1',conversationId:'chat-1',bindingId:state.bindingId,
-      expiresAtMs:state.now+120000
+      ownerSidHash:B,expiresAtMs:state.now+120000
     }),
     resolveOwnerGrant:async request=>({
       source:'native-owner-attested',hostId:request.hostId,profileId:request.profileId,
@@ -217,6 +217,43 @@ test('durable registry verifies Ed25519 signature and key-derived worker identit
     assert.throws(()=>f.registry.register(badWorker,{expectedPreviousBindingId:null,expectedPreviousState:'EMPTY'}),/WORKER_IDENTITY_CLAIMS_INVALID/);
     assert.equal(f.store.workerIdentityJournalStatus().eventCount,0);
   } finally { f.dispose(); }
+});
+
+test('durable registry rejects proxy and accessor-backed envelopes, options and receipts without invoking getters',()=>{
+  const f=fixture();
+  try{
+    const item=signedEnvelope();
+    let getterCalls=0;
+    const accessorEnvelope={};
+    for(const key of Object.keys(item.envelope)){
+      Object.defineProperty(accessorEnvelope,key,{
+        enumerable:true,get(){getterCalls++;return item.envelope[key];}
+      });
+    }
+    const expected={expectedPreviousBindingId:null,expectedPreviousState:'EMPTY'};
+    assert.throws(()=>f.registry.register(accessorEnvelope,expected),/WORKER_IDENTITY_ENVELOPE_INVALID/);
+    assert.equal(getterCalls,0);
+    assert.throws(()=>f.registry.register(new Proxy(item.envelope,{}),expected),/WORKER_IDENTITY_ENVELOPE_INVALID/);
+    const accessorOptions={};
+    Object.defineProperty(accessorOptions,'expectedPreviousState',{
+      enumerable:true,get(){getterCalls++;return 'EMPTY';}
+    });
+    assert.throws(()=>f.registry.register(item.envelope,accessorOptions),/WORKER_IDENTITY_REGISTRY_CAS_INVALID/);
+    assert.equal(getterCalls,0);
+    assert.equal(f.registry.register(item.envelope,expected),true);
+    const receipt={};
+    Object.defineProperty(receipt,'reasonCode',{
+      enumerable:true,get(){getterCalls++;return 'owner-revoked';}
+    });
+    Object.defineProperty(receipt,'revocationId',{enumerable:true,value:'00000000-0000-4000-8000-000000000000'});
+    Object.defineProperty(receipt,'revokedAtMs',{enumerable:true,value:Date.now()});
+    assert.throws(()=>f.registry.revoke(item.workerId,bindingA,receipt,{
+      expectedSignature:item.envelope.signature
+    }),/WORKER_IDENTITY_REGISTRY_REVOCATION_INVALID/);
+    assert.equal(getterCalls,0);
+    assert.equal(f.store.workerIdentityJournalStatus().eventCount,1);
+    assert.equal(f.registry.isRevoked(item.workerId,bindingA),false);
+  }finally{f.dispose();}
 });
 
 test('durable registry bounds enrollment TTL and validates revocation receipt identity and time',()=>{

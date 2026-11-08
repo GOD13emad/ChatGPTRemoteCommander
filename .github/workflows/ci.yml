@@ -42,6 +42,10 @@ jobs:
         run: node --test test/isolated-qa-policy.test.mjs
       - name: Check prerelease SemVer and updater fail-closed rules
         run: node --test test/semver-release.test.mjs
+      - name: Verify V1-01 worker grants and native owner bridge
+        run: npm run test:v1-01-worker-grants
+      - name: Verify V1-07 signed worker identity and durable registry
+        run: npm run test:v1-07-worker-identity
       - name: Run qualification check with bounded Windows file concurrency
         if: runner.os == 'Windows'
         run: node tools/run-bounded-test-script.mjs --script check --concurrency 1 --prioritize-sensitive 1

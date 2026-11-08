@@ -16,7 +16,7 @@ function fixture(options={}){
     context:{
       source:'native-owner-attested',hostId:'aliemad-labtop',profileId:'emad',
       principalId:'owner-1',conversationId:'chat-1',bindingId:bindingA,
-      expiresAtMs:1_800_000_120_000
+      ownerSidHash:B,expiresAtMs:1_800_000_120_000
     },
     device:{
       source:'native-device-attestor',provider:'native-key-store',deviceIdHash:A,
@@ -195,6 +195,38 @@ test('requires fresh device attestation and same OS owner SID across device and 
   g.state.transport={...g.state.transport,ownerSidHash:E};
   await rejectsCode(g.authority.registerWorker({privateKey:pair().privateKey}),
     'WORKER_IDENTITY_TUNNEL_UNVERIFIED');
+});
+
+test('requires ownerSidHash in native owner context and exact equality with device/tunnel identity',async t=>{
+  await t.test('missing owner SID',async()=>{
+    const f=fixture();
+    delete f.state.context.ownerSidHash;
+    await rejectsCode(f.authority.registerWorker({privateKey:pair().privateKey}),
+      'WORKER_IDENTITY_OWNER_CONTEXT_INVALID');
+  });
+  await t.test('malformed owner SID',async()=>{
+    const f=fixture();
+    f.state.context={...f.state.context,ownerSidHash:'not-a-digest'};
+    await rejectsCode(f.authority.registerWorker({privateKey:pair().privateKey}),
+      'WORKER_IDENTITY_OWNER_CONTEXT_INVALID');
+  });
+  await t.test('owner context SID differs from device SID',async()=>{
+    const f=fixture();
+    f.state.context={...f.state.context,ownerSidHash:E};
+    await rejectsCode(f.authority.registerWorker({privateKey:pair().privateKey}),
+      'WORKER_IDENTITY_OWNER_SID_MISMATCH');
+  });
+});
+
+test('rechecks native owner SID binding after asynchronous worker authorization',async()=>{
+  const f=fixture(),{workerId}=await enroll(f);
+  f.state.onAuthorize=async(_route,invocation)=>{
+    if(invocation.tool==='read_text')
+      f.state.context={...f.state.context,ownerSidHash:E};
+  };
+  await rejectsCode(f.authority.authorizeWorker({
+    workerId,invocation:{tool:'read_text',arguments:{path:'README.md'}}
+  }),'WORKER_IDENTITY_OWNER_SID_MISMATCH');
 });
 
 test('requires authenticated tunnel health and a fresh successful control-plane poll',async()=>{

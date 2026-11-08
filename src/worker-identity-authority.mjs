@@ -142,11 +142,11 @@ function validateInvocation(value){
 }
 function validateContext(value,hostId,profileId,now){
   const c=exact(value,[
-    'source','hostId','profileId','principalId','conversationId','bindingId','expiresAtMs'
+    'source','hostId','profileId','principalId','conversationId','bindingId','ownerSidHash','expiresAtMs'
   ],'WORKER_IDENTITY_OWNER_CONTEXT_INVALID');
   if(c.source!=='native-owner-attested'||c.hostId!==hostId||c.profileId!==profileId
     ||!safeId(c.principalId)||!safeId(c.conversationId)||!safeBindingId(c.bindingId)
-    ||!timestamp(c.expiresAtMs)||c.expiresAtMs<=now)
+    ||!digest(c.ownerSidHash)||!timestamp(c.expiresAtMs)||c.expiresAtMs<=now)
     fail('WORKER_IDENTITY_OWNER_CONTEXT_INVALID');
   return c;
 }
@@ -199,7 +199,8 @@ function validateOwnerGrant(value,context,identity,now){
 function sameContext(a,b){
   return a.source===b.source&&a.hostId===b.hostId&&a.profileId===b.profileId
     &&a.principalId===b.principalId&&a.conversationId===b.conversationId
-    &&a.bindingId===b.bindingId&&a.expiresAtMs===b.expiresAtMs;
+    &&a.bindingId===b.bindingId&&a.ownerSidHash===b.ownerSidHash
+    &&a.expiresAtMs===b.expiresAtMs;
 }
 function sameDevice(a,b){
   return a.provider===b.provider&&a.deviceIdHash===b.deviceIdHash
@@ -299,7 +300,8 @@ export function createWorkerIdentityAuthority({
     const context=validateContext(contextRaw,hostId,profileId,t);
     const device=validateDevice(deviceRaw,t,maxDeviceAgeMs);
     const transport=validateTransport(transportRaw,profileId,device.ownerSidHash,t,maxTransportAgeMs);
-    if(device.ownerSidHash!==transport.ownerSidHash)
+    if(context.ownerSidHash!==device.ownerSidHash
+      ||device.ownerSidHash!==transport.ownerSidHash)
       fail('WORKER_IDENTITY_OWNER_SID_MISMATCH');
     if(!digest(policyRaw))fail('WORKER_IDENTITY_POLICY_DIGEST_INVALID');
     return Object.freeze({context,device,transport,capabilityPolicyDigest:policyRaw});
