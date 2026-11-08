@@ -5,11 +5,13 @@
   "type": "module",
   "dependencies": {
     "playwright-core": "1.65.0",
-    "selenium-webdriver": "4.51.0"
+    "selenium-webdriver": "4.51.0",
+    "@browserbasehq/stagehand": "4.4.0"
   },
   "scripts": {
     "doctor": "node cli.mjs doctor",
     "smoke": "node cli.mjs smoke",
-    "test": "node --test test.mjs"
+    "test": "node --test test.mjs",
+    "ai:smoke": "node stagehand-ollama-smoke.mjs"
   }
 }

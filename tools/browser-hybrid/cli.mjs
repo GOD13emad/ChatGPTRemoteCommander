@@ -11,7 +11,7 @@ import {fileURLToPath,pathToFileURL} from 'node:url';
 import {createRequire} from 'node:module';
 
 const FLAGS=new Set(['--engine','--url','--steps','--screenshot','--profile']);
-const SAFE_ENGINE=new Set(['auto','playwright','chromium','firefox']);
+const SAFE_ENGINE=new Set(['auto','playwright','chromium','firefox','stagehand']);
 const MAX_STEPS=32, MAX_TEXT=4096, MAX_SELECTOR=512;
 const parent=path.dirname(fileURLToPath(import.meta.url));
 const shortError=e=>String(e?.browserCode||e?.code||e?.message||e||'BROWSER_HYBRID_FAILED').slice(0,350);
@@ -71,7 +71,12 @@ async function playwrightAvailable(){
  return null;
 }
 async function seleniumAvailable(){try{return await import('selenium-webdriver');}catch{return null;}}
+async function stagehandAvailable(){try{return await import('@browserbasehq/stagehand');}catch{return null;}}
 function route(requested,available){
+ if(requested==='stagehand'){
+  if(!available.stagehand||!available.chromium)throw Error('STAGEHAND_CHROMIUM_UNAVAILABLE');
+  return 'stagehand-chromium';
+ }
  if(requested==='firefox'){
   if(!available.firefox||!available.geckodriver)throw Error('FIREFOX_WEBDRIVER_UNAVAILABLE');
   return process.platform==='win32'&&available.selenium?'selenium-firefox':'firefox-webdriver';
@@ -124,7 +129,44 @@ function config(executable){
  }
  return {config:{instance:{profile:'hybrid_cli'},powerMode:{enabled:true,browserControl}}};
 }
-async function driver(kind,engines,pw,selenium,options){
+async function driver(kind,engines,pw,selenium,stagehand,options){
+ if(kind==='stagehand-chromium'){
+  const root=fs.mkdtempSync(path.join(os.tmpdir(),'commander-v104-stagehand-'));
+  let browser,sh;
+  try{
+   browser=await stagehand.localBrowser.launch({
+    headless:true,userDataDir:path.join(root,'profile'),executablePath:engines.chromium});
+   sh=await stagehand.Stagehand.create({browser});
+   const [page]=await browser.context.pages();
+   if(!page)throw Error('STAGEHAND_PAGE_UNAVAILABLE');
+   const checkVisible=async selector=>{
+    const start=Date.now();
+    while(Date.now()-start<12000){
+     if(await page.locator(selector).isVisible())return;
+     await new Promise(resolve=>setTimeout(resolve,150));
+    }
+    throw Error('ELEMENT_WAIT_TIMEOUT');
+   };
+   return {
+    kind,async navigate(url){await page.goto(safeUrl(url).href);return reportUrl(await page.url());},
+    async fill(sel,text){await page.locator(sel).fill(text);},
+    async click(sel){await page.locator(sel).click();},
+    async wait(sel){await checkVisible(sel);},
+    async expectText(t){if(!(await page.locator('body').innerText()).includes(t))throw Error('TEXT_NOT_FOUND');},
+    async expectTitle(t){if(!(await page.title()).includes(t))throw Error('TITLE_NOT_FOUND');},
+    async snapshot(){return {title:(await page.title()).slice(0,120),...reportUrl(await page.url()),engine:kind};},
+    async screenshot(file){const bytes=Buffer.from(await page.screenshot({type:'png'}));
+     if(bytes.length>4194304)throw Error('SCREENSHOT_TOO_LARGE');
+     if(file)fs.writeFileSync(file,bytes,{flag:'wx'});return bytes.length;},
+    async close(){try{await sh.close()}finally{try{await browser.close()}finally{fs.rmSync(root,{recursive:true,force:true});}}}
+   };
+  }catch(e){
+   try{await sh?.close()}catch{}
+   try{await browser?.close()}catch{}
+   try{fs.rmSync(root,{recursive:true,force:true})}catch{}
+   throw e;
+  }
+ }
  if(kind==='playwright-chromium'){
   const browser=await pw.chromium.launch({executablePath:engines.chromium,headless:true,timeout:18000,
    args:['--no-first-run','--no-default-browser-check','--disable-sync']});
@@ -206,10 +248,13 @@ async function driver(kind,engines,pw,selenium,options){
 }
 async function runJob({engine,url,steps=[],screenshot=null,profile}){
  safeUrl(url); // Deny invalid schemes and embedded credentials before any browser effect.
- const e=installed(),[pw,selenium]=await Promise.all([playwrightAvailable(),seleniumAvailable()]);
- const capabilities={...e,playwright:!!pw,selenium:!!selenium};
+ const e=installed(),[pw,selenium,stagehand]=await Promise.all([playwrightAvailable(),seleniumAvailable(),stagehandAvailable()]);
+ const capabilities={...e,playwright:!!pw,selenium:!!selenium,stagehand:!!stagehand};
  const kind=route(engine,capabilities),flow=stepsFrom(steps);
- const run=await driver(kind,e,pw,selenium,{profile});let pass=0,shot=null;
+ const requestedUrls=[url,...flow.filter(s=>s.action==='navigate').map(s=>s.url)].map(safeUrl);
+ const requestedQuery=requestedUrls.some(u=>Boolean(u.search));
+ const requestedFragment=requestedUrls.some(u=>Boolean(u.hash));
+ const run=await driver(kind,e,pw,selenium,stagehand,{profile});let pass=0,shot=null;
  try{
   await run.navigate(url);pass++;
   for(const s of flow){
@@ -226,7 +271,9 @@ async function runJob({engine,url,steps=[],screenshot=null,profile}){
   const summary=await run.snapshot();
   return {status:'PASS',engine:kind,operationsPassed:pass,screenshotBytes:shot,
    screenshotPath:screenshot||null,session:'COMMANDER_OWNED_ISOLATED',
-   personalProfileAccess:false,credentialsExtracted:false,userDesktopTouched:false,...summary};
+   personalProfileAccess:false,credentialsExtracted:false,userDesktopTouched:false,...summary,
+   queryRedacted:requestedQuery||summary.queryRedacted===true,
+   fragmentRedacted:requestedFragment||summary.fragmentRedacted===true};
  }finally{await run.close()}
 }
 async function smoke(engine){
@@ -240,19 +287,19 @@ async function smoke(engine){
    steps:[{action:'fill',selector:'#message',text:'COMMANDER-HYBRID-VERIFIED'},
     {action:'click',selector:'#apply'},{action:'expectText',text:'COMMANDER-HYBRID-VERIFIED'}],
    screenshot});
-  if(output.url.includes('REDACT')||output.fragmentRedacted!==true||output.queryRedacted!==true||!fs.statSync(screenshot).size)throw Error('SMOKE_REDACTION_OR_SCREENSHOT_FAILED');
+  if(output.url.includes('REDACT')||output.fragmentRedacted!==true||output.queryRedacted!==true||!fs.statSync(screenshot).size)throw Error('SMOKE_REDACTION_OR_SCREENSHOT_FAILED_'+String(output.queryRedacted)+'_'+String(output.fragmentRedacted)+'_'+String(output.screenshotBytes));
   return {...output,screenshotPath:screenshot};
  }catch(e){try{fs.rmSync(folder,{recursive:true,force:true});}catch{}throw e}
  finally{await new Promise(resolve=>server.close(resolve))}
 }
 async function main(){
  const {command,options}=parse(process.argv.slice(2));
- const engines=installed(),[pw,selenium]=await Promise.all([playwrightAvailable(),seleniumAvailable()]);
+ const engines=installed(),[pw,selenium,stagehand]=await Promise.all([playwrightAvailable(),seleniumAvailable(),stagehandAvailable()]);
  if(command==='doctor'){
-  const capabilities={...engines,playwright:!!pw,selenium:!!selenium},available=[];
-  for(const e of ['auto','chromium','firefox','playwright']){try{available.push({requested:e,selected:route(e,capabilities)})}catch{}}
+  const capabilities={...engines,playwright:!!pw,selenium:!!selenium,stagehand:!!stagehand},available=[];
+  for(const e of ['auto','chromium','firefox','playwright','stagehand']){try{available.push({requested:e,selected:route(e,capabilities)})}catch{}}
   return {status:'PASS',node:process.version,platform:process.platform,backends:available,
-   nativeChromium:!!engines.chromium,nativeFirefox:!!engines.firefox,geckodriver:!!engines.geckodriver,playwrightInstalled:!!pw,seleniumInstalled:!!selenium,
+   nativeChromium:!!engines.chromium,nativeFirefox:!!engines.firefox,geckodriver:!!engines.geckodriver,playwrightInstalled:!!pw,seleniumInstalled:!!selenium,stagehandInstalled:!!stagehand,
    personalSessionAttach:false,ownerConsentRequired:true};
  }
  if(command==='smoke')return smoke(options.engine);
