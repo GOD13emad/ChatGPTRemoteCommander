@@ -555,7 +555,7 @@ async function executeToolEffect(name, args, delegationContext = {}) {
         completionBeacon: deliveryStore.beacon(5),
         mutationIdempotency: mutationIdempotency.status(),
         agentExtensions: agentExtensions.status(),
-        transferMesh: { enabled: transferMesh.enabled },
+        transferMesh: { enabled: transferMesh.enabled, receiptsEnabled: transferMesh.receiptsEnabled === true },
         browserCompanionMonitor: browserCompanionMonitor?.status() ?? { enabled:false, lastWriteAtEpochMs:0, lastError:'' },
         delegationPolicy: { ...NO_CODEX_POLICY, commanderMayLaunchCodex: codexLaunchAuthorized(ctx.config), status: delegationStatus(ctx.config) },
         powerMode: config.powerMode ?? { enabled: false },

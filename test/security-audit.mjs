@@ -13,7 +13,7 @@ function git(args, options = {}) {
 const patterns = [
   ['OpenAI-style secret key', new RegExp('s' + 'k-' + '[A-Za-z0-9_-]{20,}', 'i')],
   ['Tunnel identifier', new RegExp('tunnel' + '_' + '[0-9a-f]{32}')],
-  ['Private key block', new RegExp('-----BEGIN ' + '(?:RSA |EC |OPENSSH )?' + 'PRIVATE KEY-----', 'i')],
+  ['Private key block', new RegExp('-----BEGIN ' + '(?:RSA |EC |OPENSSH |DSA |ENCRYPTED )?' + 'PRIVATE KEY-----', 'i')],
   ['Bearer token literal', new RegExp('Bearer\\s+' + '[A-Za-z0-9._-]{20,}', 'i')],
   ['GitHub token', new RegExp('gh' + '[pousr]_' + '[A-Za-z0-9]{20,}', 'i')],
   ['Developer Windows path', /C:\\Users\\[^\\\r\n]+\\source\\repos\\ChatGPTRemoteCommander/i]
@@ -40,11 +40,21 @@ function lineFingerprint(line) {
   return hash.toString(16).padStart(16,'0');
 }
 function knownInvalidPemFixture(type, line, commit, file) {
-  return type === 'Private key block' &&
-    commit === KNOWN_INVALID_PEM_FIXTURE.commit &&
+  if (type !== 'Private key block') return false;
+  if (commit === KNOWN_INVALID_PEM_FIXTURE.commit &&
     file === KNOWN_INVALID_PEM_FIXTURE.path &&
     line.startsWith('+  privateKeyPem:') &&
-    KNOWN_INVALID_PEM_FIXTURE.fingerprints.has(lineFingerprint(line));
+    KNOWN_INVALID_PEM_FIXTURE.fingerprints.has(lineFingerprint(line))) return true;
+  // Exact jose PKCS#8 parser marker string; source contains no PEM body or key material.
+  return commit === '594e79ff16c66c770446a0a27f38bf1d6bb59191' &&
+    file === 'vendor/jose/dist/webapi/key/import.js' &&
+    line.startsWith('+  if (typeof pkcs8') &&
+    lineFingerprint(line) === '4492a735789c2b74';
+}
+function knownInvalidCurrentPemFixture(type, line, file) {
+  return type === 'Private key block' &&
+    file === 'vendor/jose/dist/webapi/key/import.js' &&
+    lineFingerprint(line) === '04b99721f597c09f';
 }
 
 // Scan complete Git history without buffering the entire potentially multi-GB patch.
@@ -90,6 +100,33 @@ function makeHistoryScanner(rules) {
 }
 // In-memory negative controls: arbitrary key headers are still rejected.
 const privateKeyMarker = '-----BEGIN ' + 'PRIVATE KEY-----';
+const privateKeyPattern = patterns.find(([type]) => type === 'Private key block')[1];
+for (const label of ['', 'RSA ', 'EC ', 'OPENSSH ', 'DSA ', 'ENCRYPTED ']) {
+  if (!privateKeyPattern.test('-----BEGIN ' + label + 'PRIVATE KEY-----')) {
+    throw new Error('SECURITY_AUDIT_PRIVATE_KEY_LABEL_POSITIVE_CONTROL_FAILED:' + (label || 'PRIVATE'));
+  }
+}
+if (privateKeyPattern.test('-----BEGIN PUBLIC KEY-----') ||
+  privateKeyPattern.test('-----BEGIN CERTIFICATE-----')) {
+  throw new Error('SECURITY_AUDIT_PRIVATE_KEY_NEGATIVE_CONTROL_FAILED');
+}
+const vendorMarker = '-----BEGIN ' + 'PRIVATE KEY-----';
+const vendorMarkerLine = '+  if (typeof pkcs8 != "string" || pkcs8.indexOf("' + vendorMarker + '") !== 0)\n';
+if (!knownInvalidPemFixture('Private key block', vendorMarkerLine,
+  '594e79ff16c66c770446a0a27f38bf1d6bb59191', 'vendor/jose/dist/webapi/key/import.js')) {
+  throw new Error('SECURITY_AUDIT_VENDOR_MARKER_EXEMPTION_REGRESSION');
+}
+if (knownInvalidPemFixture('Private key block', vendorMarkerLine,
+  '594e79ff16c66c770446a0a27f38bf1d6bb59191', 'vendor/other.js')) {
+  throw new Error('SECURITY_AUDIT_VENDOR_MARKER_EXEMPTION_TOO_BROAD');
+}
+const alteredVendorLine = vendorMarkerLine.replace('pkcs8','pkcs9');
+if (knownInvalidPemFixture('Private key block', alteredVendorLine,
+  '594e79ff16c66c770446a0a27f38bf1d6bb59191', 'vendor/jose/dist/webapi/key/import.js') ||
+  knownInvalidCurrentPemFixture('Private key block', alteredVendorLine.slice(1).trimEnd(),
+    'vendor/jose/dist/webapi/key/import.js')) {
+  throw new Error('SECURITY_AUDIT_VENDOR_MARKER_EXEMPTION_NOT_EXACT');
+}
 const fakeLine = "+  privateKeyPem:'" + privateKeyMarker + "'\n";
 const negativeScanner = makeHistoryScanner(patterns);
 negativeScanner.write('commit ' + 'f'.repeat(40) + '\n');
@@ -164,7 +201,13 @@ for (const file of tracked) {
   try { text = await readFile(file, 'utf8'); } catch { continue; }
   for (const [type, pattern] of patterns) {
     pattern.lastIndex = 0;
-    if (pattern.test(text)) findings.push({ scope: 'CURRENT', type, location: file });
+    const matched = type === 'Private key block'
+      ? text.split(/\r?\n/).some(line => {
+          pattern.lastIndex = 0;
+          return pattern.test(line) && !knownInvalidCurrentPemFixture(type, line, file);
+        })
+      : pattern.test(text);
+    if (matched) findings.push({ scope: 'CURRENT', type, location: file });
   }
 }
 

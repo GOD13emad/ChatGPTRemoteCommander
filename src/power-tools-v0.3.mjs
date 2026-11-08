@@ -863,7 +863,7 @@ export async function prepareDeferredPowerMutation(ctx, name, input) {
   throw new Error('unsupported deferred power mutation');
 }
 
-export async function executePowerTool(ctx, name, input) {
+async function executePowerToolLocal(ctx, name, input) {
   switch (name) {
     case 'power_status': return powerStatus(ctx);
     case 'file_info': return fileInfo(ctx, input);
@@ -885,4 +885,32 @@ export async function executePowerTool(ctx, name, input) {
     case 'stop_terminal': return stopTerminal(ctx, input);
     default: throw Object.assign(new Error(`Unknown tool: ${name}`), { rpcCode: -32602 });
   }
+}
+
+const V102_PROTECTED_POWER_EFFECTS = new Set([
+  'write_file', 'create_directory', 'copy_path', 'move_path', 'delete_path',
+  'run_shell', 'kill_process', 'start_terminal', 'send_terminal',
+  'stop_terminal', 'codex_plugin_refresh'
+]);
+
+// The trusted Host injects executionAccess.run after verifying the
+// originating caller/owner and exact action. No provider means no mutation.
+// Preserve the legacy interface for profiles not enrolled in this policy.
+export async function executePowerTool(ctx, name, input) {
+  if (ctx?.config?.executionAccess?.required !== true
+      || !V102_PROTECTED_POWER_EFFECTS.has(name)) {
+    return executePowerToolLocal(ctx, name, input);
+  }
+  if (typeof ctx?.executionAccess?.run !== 'function') {
+    throw Object.assign(new Error('V102_EXECUTION_ACCESS_REQUIRED'),
+      { code: 'V102_EXECUTION_ACCESS_REQUIRED' });
+  }
+  const outcome = await ctx.executionAccess.run({ tool: name, args: input },
+    () => executePowerToolLocal(ctx, name, input));
+  if (!outcome || typeof outcome !== 'object'
+      || !Object.hasOwn(outcome, 'result') || !outcome.authorization) {
+    throw Object.assign(new Error('V102_EXECUTION_RECEIPT_REQUIRED'),
+      { code: 'V102_EXECUTION_RECEIPT_REQUIRED' });
+  }
+  return outcome.result;
 }
