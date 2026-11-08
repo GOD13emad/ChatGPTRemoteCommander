@@ -5,7 +5,7 @@ import path from 'node:path';
 import os from 'node:os';
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
-import {catalog,validateCatalog,createPlan,parseArgs} from '../tools/installer-product-plan.mjs';
+import {catalog,validateCatalog,createPlan,parseArgs,listControlCenterAddons} from '../tools/installer-product-plan.mjs';
 
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 
@@ -17,6 +17,37 @@ test('catalog is explicit about platform availability and experimental product s
   assert.equal(catalog.products.find(p=>p.id==='control-center').platforms.linux.status,'unavailable');
   assert.equal(catalog.products.find(p=>p.id==='companion').platforms.windows.status,'unavailable');
 });
+test('Control Center optional catalog is discovery-only and cannot install heavyweight providers',()=>{
+  const windows=listControlCenterAddons({platform:'windows'});
+  const linux=listControlCenterAddons({platform:'linux'});
+  for(const listing of [windows,linux]){
+    assert.equal(listing.surface,'control-center');
+    assert.equal(listing.autoInstall,false);
+    assert.equal(listing.changesApplied,false);
+    assert.equal(listing.items.length,8);
+    assert.ok(listing.items.every(x=>x.admission==='planned'&&x.installable===false));
+    assert.ok(listing.items.every(x=>x.reason));
+  }
+  assert.ok(windows.items.find(x=>x.id==='colibri').eligiblePlatform);
+  assert.equal(windows.items.find(x=>x.id==='vllm').eligiblePlatform,false);
+  assert.equal(linux.items.find(x=>x.id==='ufo2').eligiblePlatform,false);
+  for(const platform of ['windows','linux'])assert.throws(
+    ()=>createPlan({platform,products:['colibri']}),/UNKNOWN_PRODUCT/
+  );
+  const bad=structuredClone(catalog);bad.controlCenterAddons.items[0].admission='available';
+  assert.throws(()=>validateCatalog(bad),/OPTIONAL_CATALOG_ENTRY_INVALID/);
+  bad.controlCenterAddons.items[0].admission='planned';
+  bad.controlCenterAddons.items[0].downloadDefault=true;
+  assert.throws(()=>validateCatalog(bad),/OPTIONAL_CATALOG_ENTRY_INVALID/);
+  const cli=spawnSync(process.execPath,[path.join(root,'tools/installer-product-plan.mjs'),
+    '--platform','linux','--list-addons','--json'],{encoding:'utf8',timeout:5000});
+  assert.equal(cli.status,0,cli.stderr);
+  assert.equal(JSON.parse(cli.stdout).items.length,8);
+  const invalid=spawnSync(process.execPath,[path.join(root,'tools/installer-product-plan.mjs'),
+    '--platform','linux','--list-addons','--all'],{encoding:'utf8',timeout:5000});
+  assert.equal(invalid.status,2);
+});
+
 test('Linux install all selects only available Core and deferred plugin, not unqualified standalone products',()=>{
   const p=createPlan({platform:'linux',all:true});
   assert.deepEqual(p.installNow,['core']);

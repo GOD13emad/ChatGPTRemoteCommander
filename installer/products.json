@@ -98,5 +98,106 @@
         }
       }
     }
-  ]
+  ],
+  "controlCenterAddons": {
+    "schema": 1,
+    "surface": "control-center",
+    "defaultAutoInstall": false,
+    "capability": "DISCOVERY_ONLY_UNTIL_SIGNED_ARTIFACT_AND_OWNER_GRANT",
+    "items": [
+      {
+        "id": "colibri",
+        "name": "Colibri MoE runtime",
+        "category": "model-runtime",
+        "source": "https://github.com/JustVugg/colibri",
+        "platforms": [
+          "windows",
+          "linux"
+        ],
+        "admission": "planned",
+        "downloadDefault": false
+      },
+      {
+        "id": "ollama-models",
+        "name": "Additional Ollama models",
+        "category": "model-weights",
+        "source": "https://github.com/ollama/ollama",
+        "platforms": [
+          "windows",
+          "linux"
+        ],
+        "admission": "planned",
+        "downloadDefault": false
+      },
+      {
+        "id": "llama-cpp-models",
+        "name": "Additional llama.cpp models",
+        "category": "model-weights",
+        "source": "https://github.com/ggml-org/llama.cpp",
+        "platforms": [
+          "windows",
+          "linux"
+        ],
+        "admission": "planned",
+        "downloadDefault": false
+      },
+      {
+        "id": "vllm",
+        "name": "vLLM server runtime",
+        "category": "model-runtime",
+        "source": "https://github.com/vllm-project/vllm",
+        "platforms": [
+          "linux"
+        ],
+        "admission": "planned",
+        "downloadDefault": false
+      },
+      {
+        "id": "browser-use",
+        "name": "Browser Use agent",
+        "category": "browser-agent",
+        "source": "https://github.com/browser-use/browser-use",
+        "platforms": [
+          "windows",
+          "linux"
+        ],
+        "admission": "planned",
+        "downloadDefault": false
+      },
+      {
+        "id": "stagehand",
+        "name": "Stagehand browser agent",
+        "category": "browser-agent",
+        "source": "https://github.com/browserbase/stagehand",
+        "platforms": [
+          "windows",
+          "linux"
+        ],
+        "admission": "planned",
+        "downloadDefault": false
+      },
+      {
+        "id": "ufo2",
+        "name": "UFO2 Windows AppAgent",
+        "category": "desktop-agent",
+        "source": "https://github.com/microsoft/UFO",
+        "platforms": [
+          "windows"
+        ],
+        "admission": "planned",
+        "downloadDefault": false
+      },
+      {
+        "id": "hatchet",
+        "name": "Hatchet workflow service",
+        "category": "workflow-service",
+        "source": "https://github.com/hatchet-dev/hatchet",
+        "platforms": [
+          "linux"
+        ],
+        "admission": "planned",
+        "downloadDefault": false
+      }
+    ]
+  }
 }
