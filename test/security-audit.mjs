@@ -13,7 +13,7 @@ function git(args, options = {}) {
 const patterns = [
   ['OpenAI-style secret key', new RegExp('s' + 'k-' + '[A-Za-z0-9_-]{20,}', 'i')],
   ['Tunnel identifier', new RegExp('tunnel' + '_' + '[0-9a-f]{32}')],
-  ['Private key block', new RegExp('-----BEGIN ' + '(?:RSA |EC |OPENSSH |DSA |ENCRYPTED )?' + 'PRIVATE KEY-----', 'i')],
+  ['Private key block', new RegExp('-----BEGIN ' + '(RSA |EC |OPENSSH |DSA |ENCRYPTED )?' + 'PRIVATE KEY-----\\r?\\n' + '(?:(?:Proc-Type:|DEK-Info:)[^\\r\\n]*\\r?\\n)*' + '(?:[A-Za-z0-9+/=]{8,}\\r?\\n){2,}' + '-----END \\1PRIVATE KEY-----', 'im')],
   ['Bearer token literal', new RegExp('Bearer\\s+' + '[A-Za-z0-9._-]{20,}', 'i')],
   ['GitHub token', new RegExp('gh' + '[pousr]_' + '[A-Za-z0-9]{20,}', 'i')],
   ['Developer Windows path', /C:\\Users\\[^\\\r\n]+\\source\\repos\\ChatGPTRemoteCommander/i]
@@ -22,62 +22,36 @@ const tunnelPattern = patterns.find(([type]) => type === 'Tunnel identifier')[1]
 if (!tunnelPattern.test('tunnel' + '_' + '0123456789abcdef'.repeat(2)) || tunnelPattern.test('tunnel_control_plane_fresh') || tunnelPattern.test('TUNNEL_HEALTH_UNKNOWN_LISTENER')) {
   throw new Error('Tunnel identifier audit pattern regression');
 }
-// A separate V2 test branch contains two known *invalid* PEM header strings
-// with no matching key footer or encoded key. Their exact immutable source
-// lines were inspected without printing any potential credentials.
-// Only these 2 exact added diff lines at this exact Git commit/path are exempt;
-// all other key headers, including other lines in the same file, remain findings.
-const KNOWN_INVALID_PEM_FIXTURE = Object.freeze({
-  commit: 'd890bd978b07aa738ceeef97bd6af2782538bac1',
-  path: 'test/v2-mcp-http-ingress.test.mjs',
-  fingerprints: new Set(['c5a00fec5ba8ec5e','642666ec0adf94ef'])
-});
-function lineFingerprint(line) {
-  let hash = 0xcbf29ce484222325n;
-  for (const byte of Buffer.from(line, 'utf8')) {
-    hash = BigInt.asUintN(64, (hash ^ BigInt(byte)) * 0x100000001b3n);
-  }
-  return hash.toString(16).padStart(16,'0');
-}
-function knownInvalidPemFixture(type, line, commit, file) {
-  if (type !== 'Private key block') return false;
-  if (commit === KNOWN_INVALID_PEM_FIXTURE.commit &&
-    file === KNOWN_INVALID_PEM_FIXTURE.path &&
-    line.startsWith('+  privateKeyPem:') &&
-    KNOWN_INVALID_PEM_FIXTURE.fingerprints.has(lineFingerprint(line))) return true;
-  // Exact jose PKCS#8 parser marker string; source contains no PEM body or key material.
-  return commit === '594e79ff16c66c770446a0a27f38bf1d6bb59191' &&
-    file === 'vendor/jose/dist/webapi/key/import.js' &&
-    line.startsWith('+  if (typeof pkcs8') &&
-    lineFingerprint(line) === '4492a735789c2b74';
-}
-function knownInvalidCurrentPemFixture(type, line, file) {
-  return type === 'Private key block' &&
-    file === 'vendor/jose/dist/webapi/key/import.js' &&
-    lineFingerprint(line) === '04b99721f597c09f';
-}
-
-// Scan complete Git history without buffering the entire potentially multi-GB patch.
-// Lines are bounded; anything above the bound fails closed instead of being skipped.
 function makeHistoryScanner(rules) {
   const hits = new Set();
-  let pending = '', preceding = '', currentCommit = '', currentFile = '';
+  let pending = '', preceding = '', pem = null;
   const limit = 16 * 1024 * 1024;
-  function scanLine(line) {
-    if (/^commit [a-f0-9]{40}(?=\s|$)/.test(line)) {
-      currentCommit = line.slice(7,47);
-      currentFile = '';
-    } else if (line.startsWith('diff --git a/')) {
-      const marker = line.indexOf(' b/');
-      currentFile = marker >= 0 ? line.slice(marker+3).trim() : '';
+  const newline = String.fromCharCode(10);
+  function scanPrivateKeyLine(line) {
+    const raw = line.trimEnd();
+    const side = raw[0];
+    if (!['+', '-', ' '].includes(side)) { pem = null; return; }
+    const content = raw.slice(1).trim();
+    const header = content.match(/^-----BEGIN (RSA |EC |OPENSSH |DSA |ENCRYPTED )?PRIVATE KEY-----$/i);
+    if (header) { pem = { side, label: header[1] ?? '', bodyChars: 0 }; return; }
+    if (!pem || pem.side !== side) { pem = null; return; }
+    const footer = content.match(/^-----END (RSA |EC |OPENSSH |DSA |ENCRYPTED )?PRIVATE KEY-----$/i);
+    if (footer) {
+      if ((footer[1] ?? '') === pem.label && pem.bodyChars >= 32) hits.add('Private key block');
+      pem = null;
+      return;
     }
+    if (/^[A-Za-z0-9+/=]{8,}$/.test(content)) { pem.bodyChars += content.length; return; }
+    if (pem.bodyChars === 0 && /^(?:Proc-Type:|DEK-Info:)/i.test(content)) return;
+    pem = null;
+  }
+  function scanLine(line) {
+    scanPrivateKeyLine(line);
     const sample = preceding + line;
     for (const [name, pattern] of rules) {
+      if (name === 'Private key block') continue;
       pattern.lastIndex = 0;
-      // PEM headers occupy one logical line. Reusing preceding context here
-      // would rediscover an exempt test header on every subsequent line.
-      const candidate = name === 'Private key block' ? line : sample;
-      if (pattern.test(candidate) && !knownInvalidPemFixture(name, line, currentCommit, currentFile)) hits.add(name);
+      if (pattern.test(sample)) hits.add(name);
     }
     preceding = sample.slice(-512);
   }
@@ -85,7 +59,7 @@ function makeHistoryScanner(rules) {
     write(text) {
       pending += text;
       for (;;) {
-        const at = pending.indexOf('\n');
+        const at = pending.indexOf(newline);
         if (at < 0) break;
         scanLine(pending.slice(0, at + 1));
         pending = pending.slice(at + 1);
@@ -98,56 +72,69 @@ function makeHistoryScanner(rules) {
     }
   };
 }
-// In-memory negative controls: arbitrary key headers are still rejected.
+// A PEM header literal is common in parsers and negative fixtures; only a
+// complete, well-formed BEGIN/body/END block is a private-key finding.
+const newline = String.fromCharCode(10);
 const privateKeyMarker = '-----BEGIN ' + 'PRIVATE KEY-----';
-const privateKeyPattern = patterns.find(([type]) => type === 'Private key block')[1];
+const currentTreePrivateKeyPattern = patterns.find(([type]) => type === 'Private key block')[1];
+const syntheticPemBody = [
+  'QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVo=',
+  'QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVo='
+];
+function makeSyntheticPem(label, footerLabel = label, bodyLines = syntheticPemBody, lineEnding = newline) {
+  return '-----BEGIN ' + label + 'PRIVATE KEY-----' + lineEnding +
+    bodyLines.join(lineEnding) + lineEnding +
+    '-----END ' + footerLabel + 'PRIVATE KEY-----';
+}
 for (const label of ['', 'RSA ', 'EC ', 'OPENSSH ', 'DSA ', 'ENCRYPTED ']) {
-  if (!privateKeyPattern.test('-----BEGIN ' + label + 'PRIVATE KEY-----')) {
-    throw new Error('SECURITY_AUDIT_PRIVATE_KEY_LABEL_POSITIVE_CONTROL_FAILED:' + (label || 'PRIVATE'));
+  currentTreePrivateKeyPattern.lastIndex = 0;
+  if (!currentTreePrivateKeyPattern.test(makeSyntheticPem(label))) {
+    throw new Error('SECURITY_AUDIT_CURRENT_TREE_PEM_POSITIVE_CONTROL_FAILED:' + (label || 'PRIVATE'));
   }
 }
-if (privateKeyPattern.test('-----BEGIN PUBLIC KEY-----') ||
-  privateKeyPattern.test('-----BEGIN CERTIFICATE-----')) {
-  throw new Error('SECURITY_AUDIT_PRIVATE_KEY_NEGATIVE_CONTROL_FAILED');
+const currentTreeNegativeControls = [
+  privateKeyMarker,
+  makeSyntheticPem('', 'RSA '),
+  makeSyntheticPem('', '', ['!!!!!!!!!!', '!!!!!!!!!!'])
+];
+for (let index = 0; index < currentTreeNegativeControls.length; index++) {
+  currentTreePrivateKeyPattern.lastIndex = 0;
+  if (currentTreePrivateKeyPattern.test(currentTreeNegativeControls[index])) {
+    throw new Error('SECURITY_AUDIT_CURRENT_TREE_PEM_NEGATIVE_CONTROL_FAILED:' + index);
+  }
 }
-const vendorMarker = '-----BEGIN ' + 'PRIVATE KEY-----';
-const vendorMarkerLine = '+  if (typeof pkcs8 != "string" || pkcs8.indexOf("' + vendorMarker + '") !== 0)\n';
-if (!knownInvalidPemFixture('Private key block', vendorMarkerLine,
-  '594e79ff16c66c770446a0a27f38bf1d6bb59191', 'vendor/jose/dist/webapi/key/import.js')) {
-  throw new Error('SECURITY_AUDIT_VENDOR_MARKER_EXEMPTION_REGRESSION');
+currentTreePrivateKeyPattern.lastIndex = 0;
+if (!currentTreePrivateKeyPattern.test(makeSyntheticPem('OPENSSH ', 'OPENSSH ', syntheticPemBody, '\r\n'))) {
+  throw new Error('SECURITY_AUDIT_CURRENT_TREE_PEM_CRLF_CONTROL_FAILED');
 }
-if (knownInvalidPemFixture('Private key block', vendorMarkerLine,
-  '594e79ff16c66c770446a0a27f38bf1d6bb59191', 'vendor/other.js')) {
-  throw new Error('SECURITY_AUDIT_VENDOR_MARKER_EXEMPTION_TOO_BROAD');
+
+const markerOnlyProbe = makeHistoryScanner(patterns);
+markerOnlyProbe.write('commit ' + 'f'.repeat(40) + newline);
+markerOnlyProbe.write('diff --git a/vendor/jose/import.js b/vendor/jose/import.js' + newline);
+markerOnlyProbe.write("+const marker = '" + privateKeyMarker + "';" + newline);
+if (markerOnlyProbe.finish().has('Private key block')) {
+  throw new Error('SECURITY_AUDIT_PRIVATE_KEY_MARKER_FALSE_POSITIVE');
 }
-const alteredVendorLine = vendorMarkerLine.replace('pkcs8','pkcs9');
-if (knownInvalidPemFixture('Private key block', alteredVendorLine,
-  '594e79ff16c66c770446a0a27f38bf1d6bb59191', 'vendor/jose/dist/webapi/key/import.js') ||
-  knownInvalidCurrentPemFixture('Private key block', alteredVendorLine.slice(1).trimEnd(),
-    'vendor/jose/dist/webapi/key/import.js')) {
-  throw new Error('SECURITY_AUDIT_VENDOR_MARKER_EXEMPTION_NOT_EXACT');
-}
-const fakeLine = "+  privateKeyPem:'" + privateKeyMarker + "'\n";
+const fakeBlock = [
+  '+-----BEGIN PRIVATE KEY-----',
+  '+QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVo=',
+  '+QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVo=',
+  '+-----END PRIVATE KEY-----'
+].join(newline) + newline;
 const negativeScanner = makeHistoryScanner(patterns);
-negativeScanner.write('commit ' + 'f'.repeat(40) + '\n');
-negativeScanner.write('diff --git a/test/other.test.mjs b/test/other.test.mjs\n');
-negativeScanner.write(fakeLine);
+negativeScanner.write('commit ' + 'f'.repeat(40) + newline);
+negativeScanner.write('diff --git a/test/other.test.mjs b/test/other.test.mjs' + newline);
+negativeScanner.write(fakeBlock);
 if (!negativeScanner.finish().has('Private key block')) {
   throw new Error('SECURITY_AUDIT_PRIVATE_KEY_NEGATIVE_CONTROL_FAILED');
 }
-if (knownInvalidPemFixture('Private key block', fakeLine,
-    KNOWN_INVALID_PEM_FIXTURE.commit, KNOWN_INVALID_PEM_FIXTURE.path)) {
-  throw new Error('SECURITY_AUDIT_FIXTURE_EXEMPTION_TOO_BROAD');
-}
 
-// Git log may decorate refs after the commit hash. Preserve source provenance
-// for both decorated and undecorated headers without skipping other key markers.
 for (const decorated of [false,true]) {
   const probe = makeHistoryScanner(patterns);
   probe.write('commit ' + 'f'.repeat(40) +
-    (decorated ? ' (HEAD -> a-feature)\n' : '\n'));
-  probe.write('diff --git a/test/other.test.mjs b/test/other.test.mjs\n');
-  probe.write(fakeLine);
+    (decorated ? ' (HEAD -> a-feature)' + newline : newline));
+  probe.write('diff --git a/test/other.test.mjs b/test/other.test.mjs' + newline);
+  probe.write(fakeBlock);
   if (!probe.finish().has('Private key block')) {
     throw new Error('SECURITY_AUDIT_DECORATED_COMMIT_NEGATIVE_CONTROL_FAILED');
   }
@@ -155,8 +142,8 @@ for (const decorated of [false,true]) {
 
 const boundaryProbe = makeHistoryScanner(patterns);
 boundaryProbe.write('tunnel' + '_0123456789abcdef');
-boundaryProbe.write('0123456789abcdef\nBearer \n');
-boundaryProbe.write('A'.repeat(25) + '\n');
+boundaryProbe.write('0123456789abcdef' + newline + 'Bearer ' + newline);
+boundaryProbe.write('A'.repeat(25) + newline);
 const probed = boundaryProbe.finish();
 if (!probed.has('Tunnel identifier') || !probed.has('Bearer token literal')) {
   throw new Error('SECURITY_AUDIT_STREAM_SCANNER_REGRESSION');
@@ -201,13 +188,7 @@ for (const file of tracked) {
   try { text = await readFile(file, 'utf8'); } catch { continue; }
   for (const [type, pattern] of patterns) {
     pattern.lastIndex = 0;
-    const matched = type === 'Private key block'
-      ? text.split(/\r?\n/).some(line => {
-          pattern.lastIndex = 0;
-          return pattern.test(line) && !knownInvalidCurrentPemFixture(type, line, file);
-        })
-      : pattern.test(text);
-    if (matched) findings.push({ scope: 'CURRENT', type, location: file });
+    if (pattern.test(text)) findings.push({ scope: 'CURRENT', type, location: file });
   }
 }
 
