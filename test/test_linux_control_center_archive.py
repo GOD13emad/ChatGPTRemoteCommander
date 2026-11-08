@@ -13,7 +13,7 @@ from unittest.mock import patch
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 BUILDER = ROOT / "tools/build-linux-control-center-preview.py"
-SOURCES = {"control_center.py", "dashboard_ui.py", "notion_panel.py"}
+SOURCES = {"control_center.py", "dashboard_ui.py", "notion_panel.py", "products.json"}
 OTHER = {"run-control-center.sh", "README.txt", "MANIFEST.json", "SHA256SUMS.txt", "manage-userlocal.py"}
 
 
@@ -44,7 +44,7 @@ class LinuxGtkPreviewArchiveTests(unittest.TestCase):
                                     for n in names))
                 by_name = {pathlib.PurePosixPath(name).name: archive.read(name) for name in names}
                 sha_lines = by_name["SHA256SUMS.txt"].decode().splitlines()
-                self.assertEqual(len(sha_lines), 7)
+                self.assertEqual(len(sha_lines), len(SOURCES | OTHER) - 1)
                 for line in sha_lines:
                     sha, filename = line.split("  ", 1)
                     self.assertEqual(sha, hashlib.sha256(by_name[filename]).hexdigest())
@@ -75,6 +75,8 @@ class LinuxGtkPreviewArchiveTests(unittest.TestCase):
             self.assertEqual(audit["mode"], "READ_ONLY_CANDIDATE")
             self.assertFalse(audit["workflowControlEnabled"])
             self.assertFalse(audit["credentialAccess"])
+            self.assertEqual(audit["optionalAddonsCount"], 8)
+            self.assertIs(audit["optionalAddonInstallationEnabled"], False)
             self.assertEqual(list(home.iterdir()), [])
             self.assertFalse((root / "xdgdata").exists())
             self.assertFalse((root / "xdgconfig").exists())

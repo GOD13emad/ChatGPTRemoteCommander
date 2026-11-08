@@ -117,6 +117,27 @@ def workflow_rows(rows: list[dict]) -> tuple[tuple[str, str, str], ...]:
     return tuple(result)
 
 
+def addon_rows(items):
+    """One-way, nonactionable presentation model for optional products."""
+    if not isinstance(items, list):
+        return ()
+    result = []
+    for item in items[:64]:
+        if (not isinstance(item, dict) or item.get("state") != "PLANNED"
+                or item.get("installable") is not False):
+            continue
+        name = item.get("name")
+        ident = item.get("id")
+        if not isinstance(name, str) or not isinstance(ident, str):
+            continue
+        compatible = item.get("platformSupported") is True
+        result.append((name[:100],
+                       "PLANNED · install disabled · " +
+                       ("Linux candidate" if compatible else "not supported on Linux"),
+                       ident[:60]))
+    return tuple(result)
+
+
 def run_dashboard(app_id: str,
                   monitor_source: Callable,
                   profile_source: Callable,
@@ -124,7 +145,8 @@ def run_dashboard(app_id: str,
                   followup_source: Callable,
                   dark_preference: Callable,
                   argv=None,
-                  native_test_observer=None):
+                  native_test_observer=None,
+                  addons_source=None):
     import gi
     gi.require_version("Gtk", "4.0")
     gi.require_version("Adw", "1")
@@ -157,6 +179,7 @@ def run_dashboard(app_id: str,
             self.nav_buttons = {}
             self._profile_rows = ()
             self._workflow_rows = ()
+            self._addon_rows = ()
             self._task_widgets = []
             self._style_installed = False
             self._timer = 0
@@ -355,6 +378,17 @@ def run_dashboard(app_id: str,
             box.append(self.ai_info)
             self.tasks_page.append(box)
 
+        def _build_addons(self):
+            self.addons_page.append(label("Optional add-ons", "rc-page-head"))
+            self.addons_page.append(label(
+                "Read-only candidates from the signed-preview catalog. No downloads, "
+                "install actions or permission changes are available.",
+                "rc-page-subhead"))
+            self.addon_count = label("Catalog unavailable", "rc-section-caption")
+            self.addons_page.append(self.addon_count)
+            self.addon_list = self._list_box()
+            self.addons_page.append(self.addon_list)
+
         def _build_notion(self):
             from notion_panel import attach_notion_panel
             attach_notion_panel(self.notion_page, Gtk, GLib)
@@ -421,6 +455,7 @@ def run_dashboard(app_id: str,
                 ("overview", "Overview"),
                 ("profiles", "Profiles"),
                 ("tasks", "Workflows"),
+                ("addons", "Add-ons"),
                 ("security", "Security"),
                 ("notion", "Notion"),
             ):
@@ -445,12 +480,14 @@ def run_dashboard(app_id: str,
             self.overview_scroll, self.overview = self._make_page()
             self.profiles_scroll, self.profiles_page = self._make_page()
             self.tasks_scroll, self.tasks_page = self._make_page()
+            self.addons_scroll, self.addons_page = self._make_page()
             self.security_scroll, self.security_page = self._make_page()
             self.notion_scroll, self.notion_page = self._make_page()
             for key, title, page in (
                 ("overview", "Overview", self.overview_scroll),
                 ("profiles", "Profiles", self.profiles_scroll),
                 ("tasks", "Workflows", self.tasks_scroll),
+                ("addons", "Add-ons", self.addons_scroll),
                 ("security", "Security", self.security_scroll),
                 ("notion", "Notion", self.notion_scroll),
             ):
@@ -463,6 +500,7 @@ def run_dashboard(app_id: str,
             self._build_overview()
             self._build_profiles()
             self._build_tasks()
+            self._build_addons()
             self._build_security()
             self._build_notion()
             workspace.append(self.stack)
@@ -539,12 +577,26 @@ def run_dashboard(app_id: str,
                 self._task_widgets.append((row, (ident + " " + detail).casefold()))
             self._filter_tasks()
 
+        def _render_addons(self, rows):
+            if rows == self._addon_rows:
+                return
+            self._addon_rows = rows
+            self._clear(self.addon_list)
+            self.addon_count.set_text(f"{len(rows)} planned candidate(s) · none installable")
+            if not rows:
+                self.addon_list.append(self._list_row(
+                    "Catalog unavailable", "No verified local add-on manifest; install disabled"))
+                return
+            for name, detail, ident in rows:
+                self.addon_list.append(self._list_row(name, detail, ident, "rc-caution"))
+
         def refresh(self):
             try:
                 snapshot = monitor_source()
                 profile_data = profile_rows(profile_source())
                 task_data = workflow_rows(workflow_source())
                 ai = followup_source()
+                addon_data = addon_rows(addons_source() if callable(addons_source) else ())
                 if not isinstance(snapshot, dict):
                     snapshot = {"state": "UNVERIFIED"}
                 if not isinstance(ai, dict):
@@ -554,6 +606,7 @@ def run_dashboard(app_id: str,
                 profile_data = ()
                 task_data = ()
                 ai = {"state": "UNVERIFIED"}
+                addon_data = ()
 
             connection = snapshot.get("state", "UNVERIFIED")
             self._set_status(self._card_labels["Connection"][0], connection)
@@ -577,6 +630,7 @@ def run_dashboard(app_id: str,
                 value.add_css_class("rc-caution")
             self._render_profiles(profile_data)
             self._render_workflows(task_data)
+            self._render_addons(addon_data)
             self.summary_line.set_text(
                 f"{len(profile_data)} verified profile(s)   ·   {len(task_data)} workflow record(s)")
             self.summary_detail.set_text(

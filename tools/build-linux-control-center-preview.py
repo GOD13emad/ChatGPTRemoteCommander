@@ -21,6 +21,7 @@ SOURCES = (
     "desktop/linux-control-center/control_center.py",
     "desktop/linux-control-center/dashboard_ui.py",
     "desktop/linux-control-center/notion_panel.py",
+    "installer/products.json",
 )
 LAUNCHER = """#!/bin/sh
 set -eu

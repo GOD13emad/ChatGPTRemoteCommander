@@ -15,7 +15,7 @@ import sys
 from pathlib import Path
 
 FILES = frozenset({
-    "control_center.py", "dashboard_ui.py", "notion_panel.py",
+    "control_center.py", "dashboard_ui.py", "notion_panel.py", "products.json",
     "run-control-center.sh", "README.txt", "MANIFEST.json",
     "SHA256SUMS.txt", "manage-userlocal.py",
 })

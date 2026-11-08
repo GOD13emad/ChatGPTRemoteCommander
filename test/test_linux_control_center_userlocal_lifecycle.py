@@ -14,7 +14,7 @@ import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
 BUILD = ROOT / "tools/build-linux-control-center-preview.py"
-FILES = {"control_center.py", "dashboard_ui.py", "notion_panel.py",
+FILES = {"control_center.py", "dashboard_ui.py", "notion_panel.py", "products.json",
          "run-control-center.sh", "README.txt", "MANIFEST.json",
          "SHA256SUMS.txt", "manage-userlocal.py"}
 

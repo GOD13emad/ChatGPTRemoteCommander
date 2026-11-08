@@ -9,6 +9,21 @@ ui = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(ui)
 
 class DashboardPresentationTests(unittest.TestCase):
+    def test_addon_cards_are_read_only_and_planned(self):
+        items = [{"id": "colibri", "name": "Colibri MoE",
+                  "state": "PLANNED", "platformSupported": True,
+                  "installable": False},
+                 {"id": "ufo2", "name": "UFO2",
+                  "state": "PLANNED", "platformSupported": False,
+                  "installable": False},
+                 {"id": "untrusted", "name": "Invalid",
+                  "state": "INSTALLED", "installable": True}]
+        rows = ui.addon_rows(items)
+        self.assertEqual(len(rows), 2)
+        self.assertIn("install disabled", rows[0][1])
+        self.assertIn("not supported", rows[1][1])
+        self.assertEqual(ui.addon_rows({}), ())
+
     def test_healthy_state_exact_only(self):
         for v in ("CONNECTED", "READY", "ONLINE", "PASS"):
             self.assertEqual(ui.state_label(v)[1], "rc-success")
