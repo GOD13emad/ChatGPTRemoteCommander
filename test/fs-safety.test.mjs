@@ -61,7 +61,12 @@ try {
 
     const fullCtx = {
       ...ctx,
-      config: { powerMode: { ...ctx.config.powerMode, fullFilesystem: true } }
+      config: {
+        capabilityProfile: {
+          tier: 'FULL_POWER', explicitlyAuthorized: true, disabledCapabilities: []
+        },
+        powerMode: { ...ctx.config.powerMode, fullFilesystem: true }
+      }
     };
     await assert.rejects(
       () => copyPath(fullCtx, { source: outside, destination: path.join(root, 'escape'), overwrite: true }),

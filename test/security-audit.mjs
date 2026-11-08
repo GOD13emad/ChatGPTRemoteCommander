@@ -18,48 +18,135 @@ const patterns = [
   ['GitHub token', new RegExp('gh' + '[pousr]_' + '[A-Za-z0-9]{20,}', 'i')],
   ['Developer Windows path', /C:\\Users\\[^\\\r\n]+\\source\\repos\\ChatGPTRemoteCommander/i]
 ];
+
+// Reject every real private-key marker, except this precisely known V2 test
+// placeholder (a JavaScript string containing the literal backslash-n and
+// the word "fixture"; it is not a PEM or a credential). This exception applies
+// to individual marker occurrences, including those in git history. It must
+// never suppress a separate PEM marker anywhere in the same file or commit.
+const mockPemHeader = '-----BEGIN ' + 'PRIVATE KEY-----';
+const mockPemLiteral = mockPemHeader + String.raw`\\nfixture`;
+const mockPemCodeLiteral = 'pkcs8.indexOf("' + mockPemHeader + '")';
+// Exact synthetic OAuth fixture from the historical V2 QA test; no other bearer is exempt.
+// Exact synthetic bearer-shaped fixtures in historical QA tests; all other
+// bearer values remain detectable, including one-character near-matches.
+const mockBearerLiterals = [
+  'Bearer ' + 'verified-test-bearer',
+  'Bearer ' + 'dummy-super-secret-12345'
+];
+const mockBearerLiteralPatterns = mockBearerLiterals.map(literal=>new RegExp(literal+'(?![A-Za-z0-9._-])','g'));
+function secretPatternMatches(type,pattern,text) {
+  let sample=text;
+  if(type==='Private key block')
+    sample=sample.replaceAll(mockPemLiteral,'[MOCK_V2_TLS_KEY_PLACEHOLDER]');
+  if(type==='Private key block')
+    sample=sample.replaceAll(mockPemCodeLiteral,'[PKCS8_HEADER_PARSER]');
+  if(type==='Bearer token literal') {
+    for(const fixturePattern of mockBearerLiteralPatterns) {
+      fixturePattern.lastIndex=0;
+      sample=sample.replace(fixturePattern,'[SYNTHETIC_BEARER_TEST_FIXTURE]');
+    }
+  }
+  pattern.lastIndex=0;
+  return pattern.test(sample);
+}
+const pemHeaderPattern=patterns.find(([type])=>type==='Private key block')[1];
+const pemNewline=String.fromCharCode(10);
+const pemBody=[
+  'QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVo=',
+  'QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVo='
+];
+function syntheticPem(label,footerLabel=label,body=pemBody,lineEnding=pemNewline){
+  return '-----BEGIN '+label+'PRIVATE KEY-----'+lineEnding+
+    body.join(lineEnding)+lineEnding+
+    '-----END '+footerLabel+'PRIVATE KEY-----';
+}
+// Six real PEM label families, including the previously missed DSA and encrypted forms.
+for(const label of ['', 'RSA ', 'EC ', 'OPENSSH ', 'DSA ', 'ENCRYPTED ']){
+  pemHeaderPattern.lastIndex=0;
+  if(!pemHeaderPattern.test(syntheticPem(label)))
+    throw new Error('SECURITY_AUDIT_CURRENT_TREE_PEM_POSITIVE_CONTROL_FAILED:'+(label||'PRIVATE'));
+}
+const pemNegativeControls=[
+  '-----BEGIN '+'PRIVATE KEY-----',
+  syntheticPem('', 'RSA '),
+  syntheticPem('', '', ['!!!!!!!!!!','!!!!!!!!!!'])
+];
+for(let i=0;i<pemNegativeControls.length;i++){
+  pemHeaderPattern.lastIndex=0;
+  if(pemHeaderPattern.test(pemNegativeControls[i]))
+    throw new Error('SECURITY_AUDIT_CURRENT_TREE_PEM_NEGATIVE_CONTROL_FAILED:'+i);
+}
+if(secretPatternMatches('Private key block',pemHeaderPattern,mockPemLiteral)
+  ||secretPatternMatches('Private key block',pemHeaderPattern,mockPemCodeLiteral)
+  ||!secretPatternMatches('Private key block',pemHeaderPattern,mockPemLiteral+' '+syntheticPem('ENCRYPTED ')))
+  throw new Error('SECURITY_AUDIT_PEM_FIXTURE_EXCEPTION_REGRESSION');
+pemHeaderPattern.lastIndex=0;
+if(!pemHeaderPattern.test(syntheticPem('OPENSSH ','OPENSSH ',pemBody,'\r\n')))
+  throw new Error('SECURITY_AUDIT_CURRENT_TREE_PEM_CRLF_CONTROL_FAILED');
+const bearerPattern=patterns.find(([type])=>type==='Bearer token literal')[1];
+if(mockBearerLiterals.some(literal=>secretPatternMatches('Bearer token literal',bearerPattern,literal))
+  ||!secretPatternMatches('Bearer token literal',bearerPattern,'Bearer '+'A'.repeat(20))
+  ||mockBearerLiterals.some(literal=>!secretPatternMatches('Bearer token literal',bearerPattern,literal+'x')))
+  throw new Error('Bearer pattern exception regression');
+
 const tunnelPattern = patterns.find(([type]) => type === 'Tunnel identifier')[1];
 if (!tunnelPattern.test('tunnel' + '_' + '0123456789abcdef'.repeat(2)) || tunnelPattern.test('tunnel_control_plane_fresh') || tunnelPattern.test('TUNNEL_HEALTH_UNKNOWN_LISTENER')) {
   throw new Error('Tunnel identifier audit pattern regression');
 }
+// Scan complete Git history without buffering the entire potentially multi-GB patch.
+// Lines are bounded; anything above the bound fails closed instead of being skipped.
 function makeHistoryScanner(rules) {
   const hits = new Set();
-  let pending = '', preceding = '', pem = null;
+  let pending = '', preceding = '';
+  let parentPem = null, currentPem = null;
   const limit = 16 * 1024 * 1024;
-  const newline = String.fromCharCode(10);
-  function scanPrivateKeyLine(line) {
-    const raw = line.trimEnd();
-    const side = raw[0];
-    if (!['+', '-', ' '].includes(side)) { pem = null; return; }
-    const content = raw.slice(1).trim();
-    const header = content.match(/^-----BEGIN (RSA |EC |OPENSSH |DSA |ENCRYPTED )?PRIVATE KEY-----$/i);
-    if (header) { pem = { side, label: header[1] ?? '', bodyChars: 0 }; return; }
-    if (!pem || pem.side !== side) { pem = null; return; }
-    const footer = content.match(/^-----END (RSA |EC |OPENSSH |DSA |ENCRYPTED )?PRIVATE KEY-----$/i);
-    if (footer) {
-      if ((footer[1] ?? '') === pem.label && pem.bodyChars >= 32) hits.add('Private key block');
-      pem = null;
-      return;
+  function advancePem(state, content) {
+    const header=content.match(/^-----BEGIN (RSA |EC |OPENSSH |DSA |ENCRYPTED )?PRIVATE KEY-----$/i);
+    if(header){state.active={label:header[1]??'',bodyChars:0};return;}
+    if(!state.active)return;
+    const footer=content.match(/^-----END (RSA |EC |OPENSSH |DSA |ENCRYPTED )?PRIVATE KEY-----$/i);
+    if(footer){
+      if((footer[1]??'')===state.active.label&&state.active.bodyChars>=32)
+        hits.add('Private key block');
+      state.active=null;return;
     }
-    if (/^[A-Za-z0-9+/=]{8,}$/.test(content)) { pem.bodyChars += content.length; return; }
-    if (pem.bodyChars === 0 && /^(?:Proc-Type:|DEK-Info:)/i.test(content)) return;
-    pem = null;
+    if(/^[A-Za-z0-9+/=]{8,}$/.test(content)){state.active.bodyChars+=content.length;return;}
+    if(state.active.bodyChars===0&&/^(?:Proc-Type:|DEK-Info:)/i.test(content))return;
+    state.active=null;
   }
+  function resetPem(){parentPem={active:null};currentPem={active:null};}
+  resetPem();
   function scanLine(line) {
-    scanPrivateKeyLine(line);
-    const sample = preceding + line;
-    for (const [name, pattern] of rules) {
-      if (name === 'Private key block') continue;
-      pattern.lastIndex = 0;
-      if (pattern.test(sample)) hits.add(name);
+    const raw=line.trimEnd();
+    if(/^(?:commit |diff --(?:git|cc|combined) |@@)/.test(line)){
+      preceding='';resetPem();return;
     }
-    preceding = sample.slice(-512);
+    const side=raw[0],content=raw.slice(1).trim();
+    if(side===' '){
+      advancePem(parentPem,content);
+      advancePem(currentPem,content);
+    }else if(side==='+'){
+      parentPem.active=null;
+      advancePem(currentPem,content);
+    }else if(side==='-'){
+      currentPem.active=null;
+      advancePem(parentPem,content);
+    }else{
+      resetPem();
+    }
+    const sample=preceding+line;
+    for(const [name,pattern] of rules){
+      if(name==='Private key block')continue;
+      if(secretPatternMatches(name,pattern,sample))hits.add(name);
+    }
+    preceding=sample.slice(-512);
   }
   return {
     write(text) {
       pending += text;
       for (;;) {
-        const at = pending.indexOf(newline);
+        const at = pending.indexOf('\n');
         if (at < 0) break;
         scanLine(pending.slice(0, at + 1));
         pending = pending.slice(at + 1);
@@ -72,78 +159,37 @@ function makeHistoryScanner(rules) {
     }
   };
 }
-// A PEM header literal is common in parsers and negative fixtures; only a
-// complete, well-formed BEGIN/body/END block is a private-key finding.
-const newline = String.fromCharCode(10);
-const privateKeyMarker = '-----BEGIN ' + 'PRIVATE KEY-----';
-const currentTreePrivateKeyPattern = patterns.find(([type]) => type === 'Private key block')[1];
-const syntheticPemBody = [
-  'QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVo=',
-  'QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVo='
-];
-function makeSyntheticPem(label, footerLabel = label, bodyLines = syntheticPemBody, lineEnding = newline) {
-  return '-----BEGIN ' + label + 'PRIVATE KEY-----' + lineEnding +
-    bodyLines.join(lineEnding) + lineEnding +
-    '-----END ' + footerLabel + 'PRIVATE KEY-----';
-}
-for (const label of ['', 'RSA ', 'EC ', 'OPENSSH ', 'DSA ', 'ENCRYPTED ']) {
-  currentTreePrivateKeyPattern.lastIndex = 0;
-  if (!currentTreePrivateKeyPattern.test(makeSyntheticPem(label))) {
-    throw new Error('SECURITY_AUDIT_CURRENT_TREE_PEM_POSITIVE_CONTROL_FAILED:' + (label || 'PRIVATE'));
-  }
-}
-const currentTreeNegativeControls = [
-  privateKeyMarker,
-  makeSyntheticPem('', 'RSA '),
-  makeSyntheticPem('', '', ['!!!!!!!!!!', '!!!!!!!!!!'])
-];
-for (let index = 0; index < currentTreeNegativeControls.length; index++) {
-  currentTreePrivateKeyPattern.lastIndex = 0;
-  if (currentTreePrivateKeyPattern.test(currentTreeNegativeControls[index])) {
-    throw new Error('SECURITY_AUDIT_CURRENT_TREE_PEM_NEGATIVE_CONTROL_FAILED:' + index);
-  }
-}
-currentTreePrivateKeyPattern.lastIndex = 0;
-if (!currentTreePrivateKeyPattern.test(makeSyntheticPem('OPENSSH ', 'OPENSSH ', syntheticPemBody, '\r\n'))) {
-  throw new Error('SECURITY_AUDIT_CURRENT_TREE_PEM_CRLF_CONTROL_FAILED');
-}
-
-const markerOnlyProbe = makeHistoryScanner(patterns);
-markerOnlyProbe.write('commit ' + 'f'.repeat(40) + newline);
-markerOnlyProbe.write('diff --git a/vendor/jose/import.js b/vendor/jose/import.js' + newline);
-markerOnlyProbe.write("+const marker = '" + privateKeyMarker + "';" + newline);
-if (markerOnlyProbe.finish().has('Private key block')) {
+const markerOnlyProbe=makeHistoryScanner(patterns);
+markerOnlyProbe.write('commit '+'f'.repeat(40)+'\n');
+markerOnlyProbe.write('diff --git a/vendor/parser.mjs b/vendor/parser.mjs\n');
+markerOnlyProbe.write("+const marker = '"+mockPemHeader+"';\n");
+if(markerOnlyProbe.finish().has('Private key block'))
   throw new Error('SECURITY_AUDIT_PRIVATE_KEY_MARKER_FALSE_POSITIVE');
+const fakeBlockLines=[
+  '-----BEGIN PRIVATE KEY-----',
+  'QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVo=',
+  'QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVo=',
+  '-----END PRIVATE KEY-----'
+];
+for(const side of ['+','-']){
+  const block=fakeBlockLines.map(line=>side+line).join('\n')+'\n';
+  const probe=makeHistoryScanner(patterns);
+  probe.write('commit '+'f'.repeat(40)+'\n');
+  probe.write('diff --git a/test/key-fixture.mjs b/test/key-fixture.mjs\n');
+  probe.write(block);
+  if(!probe.finish().has('Private key block'))
+    throw new Error('SECURITY_AUDIT_HISTORY_PEM_POSITIVE_CONTROL_FAILED:'+side);
 }
-const fakeBlock = [
-  '+-----BEGIN PRIVATE KEY-----',
-  '+QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVo=',
-  '+QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVo=',
-  '+-----END PRIVATE KEY-----'
-].join(newline) + newline;
-const negativeScanner = makeHistoryScanner(patterns);
-negativeScanner.write('commit ' + 'f'.repeat(40) + newline);
-negativeScanner.write('diff --git a/test/other.test.mjs b/test/other.test.mjs' + newline);
-negativeScanner.write(fakeBlock);
-if (!negativeScanner.finish().has('Private key block')) {
-  throw new Error('SECURITY_AUDIT_PRIVATE_KEY_NEGATIVE_CONTROL_FAILED');
-}
-
-for (const decorated of [false,true]) {
-  const probe = makeHistoryScanner(patterns);
-  probe.write('commit ' + 'f'.repeat(40) +
-    (decorated ? ' (HEAD -> a-feature)' + newline : newline));
-  probe.write('diff --git a/test/other.test.mjs b/test/other.test.mjs' + newline);
-  probe.write(fakeBlock);
-  if (!probe.finish().has('Private key block')) {
-    throw new Error('SECURITY_AUDIT_DECORATED_COMMIT_NEGATIVE_CONTROL_FAILED');
-  }
-}
-
 const boundaryProbe = makeHistoryScanner(patterns);
 boundaryProbe.write('tunnel' + '_0123456789abcdef');
-boundaryProbe.write('0123456789abcdef' + newline + 'Bearer ' + newline);
-boundaryProbe.write('A'.repeat(25) + newline);
+boundaryProbe.write('0123456789abcdef\nBearer \n');
+boundaryProbe.write('A'.repeat(25) + '\n');
+const boundaryResetProbe = makeHistoryScanner(patterns);
+boundaryResetProbe.write('Bearer \n');
+boundaryResetProbe.write('diff --git a/a b/a\n');
+boundaryResetProbe.write('A'.repeat(25) + '\n');
+if(boundaryResetProbe.finish().has('Bearer token literal'))
+  throw new Error('SECURITY_AUDIT_PATCH_BOUNDARY_REGRESSION');
 const probed = boundaryProbe.finish();
 if (!probed.has('Tunnel identifier') || !probed.has('Bearer token literal')) {
   throw new Error('SECURITY_AUDIT_STREAM_SCANNER_REGRESSION');
@@ -187,8 +233,8 @@ for (const file of tracked) {
   let text;
   try { text = await readFile(file, 'utf8'); } catch { continue; }
   for (const [type, pattern] of patterns) {
-    pattern.lastIndex = 0;
-    if (pattern.test(text)) findings.push({ scope: 'CURRENT', type, location: file });
+    if (secretPatternMatches(type,pattern,text))
+      findings.push({ scope: 'CURRENT', type, location: file });
   }
 }
 

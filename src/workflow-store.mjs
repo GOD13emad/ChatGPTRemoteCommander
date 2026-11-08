@@ -4,7 +4,7 @@ import { DatabaseSync } from 'node:sqlite';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import { createHash, randomUUID } from 'node:crypto';
+import { createHash, createPublicKey, randomUUID, verify } from 'node:crypto';
 import {
   AUTONOMY_REVISION, AUTONOMY_SCHEMA, normalizeWorkflowState, normalizeExecutionProfile,
   normalizeSchedulerPolicy, normalizeAuthority, authorityCompatible, classifyTool,
@@ -20,6 +20,75 @@ const MAX_STATE = 512 * 1024;
 const MAX_EVENTS = 10000;
 const MAX_EXPORT = 4 * 1024 * 1024;
 const MAX_FILE = 16 * 1024 * 1024;
+const WORKER_IDENTITY_ZERO = '0'.repeat(64);
+const WORKER_IDENTITY_MAX_EVENTS = 100_000;
+const WORKER_IDENTITY_MAX_TTL_MS = 86_400_000;
+const WORKER_REVOCATION_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const WORKER_ID_RE = /^cw_[a-f0-9]{64}$/;
+const WORKER_BINDING_RE = /^[a-f0-9]{32,64}$/;
+const WORKER_KEY_ID_RE = /^[a-f0-9]{64}$/;
+const WORKER_B64URL_RE = /^[A-Za-z0-9_-]+$/;
+const WORKER_SAFE_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
+const WORKER_CLAIM_FIELDS = Object.freeze([
+  'issuer','audience','hostId','profileId','principalId','conversationId',
+  'bindingId','workerId','ownerSidHash','deviceProvider','deviceIdHash',
+  'tunnelProvider','tunnelIdHash','capabilityPolicyDigest','grantRevision',
+  'issuedAtMs','expiresAtMs','nonce'
+]);
+function workerIdentityEnvelope(value) {
+  const text = canonical(value);
+  if (Buffer.byteLength(text) > 16 * 1024) fail('WORKER_IDENTITY_ENVELOPE_LIMIT');
+  const envelope = JSON.parse(text);
+  if (!envelope || Object.getPrototypeOf(envelope) !== Object.prototype
+    || Object.keys(envelope).sort().join(',') !== ['claims','keyId','publicKey','schema','signature'].sort().join(',')
+    || envelope.schema !== 1 || !WORKER_KEY_ID_RE.test(envelope.keyId)
+    || typeof envelope.publicKey !== 'string' || !WORKER_B64URL_RE.test(envelope.publicKey)
+    || Buffer.from(envelope.publicKey, 'base64url').length !== 44
+    || Buffer.from(envelope.publicKey, 'base64url').toString('base64url') !== envelope.publicKey
+    || typeof envelope.signature !== 'string' || !WORKER_B64URL_RE.test(envelope.signature)
+    || Buffer.from(envelope.signature, 'base64url').length !== 64
+    || Buffer.from(envelope.signature, 'base64url').toString('base64url') !== envelope.signature)
+    fail('WORKER_IDENTITY_ENVELOPE_INVALID');
+  const claims = envelope.claims;
+  if (!claims || Object.getPrototypeOf(claims) !== Object.prototype
+    || Object.keys(claims).sort().join(',') !== [...WORKER_CLAIM_FIELDS].sort().join(',')
+    || !WORKER_SAFE_ID_RE.test(claims.issuer) || !WORKER_SAFE_ID_RE.test(claims.audience)
+    || !WORKER_SAFE_ID_RE.test(claims.hostId) || !WORKER_SAFE_ID_RE.test(claims.profileId)
+    || !WORKER_SAFE_ID_RE.test(claims.principalId) || !WORKER_SAFE_ID_RE.test(claims.conversationId)
+    || !WORKER_ID_RE.test(claims.workerId) || !WORKER_BINDING_RE.test(claims.bindingId)
+    || !/^[a-f0-9]{64}$/.test(claims.ownerSidHash)
+    || !['tailscale','native-key-store'].includes(claims.deviceProvider)
+    || !/^[a-f0-9]{64}$/.test(claims.deviceIdHash)
+    || claims.tunnelProvider !== 'openai-secure-mcp-tunnel'
+    || !/^[a-f0-9]{64}$/.test(claims.tunnelIdHash)
+    || !/^[a-f0-9]{64}$/.test(claims.capabilityPolicyDigest)
+    || !Number.isSafeInteger(claims.grantRevision) || claims.grantRevision < 1
+    || !Number.isSafeInteger(claims.issuedAtMs) || claims.issuedAtMs < 0
+    || !Number.isSafeInteger(claims.expiresAtMs) || claims.expiresAtMs <= claims.issuedAtMs
+    || claims.expiresAtMs - claims.issuedAtMs > WORKER_IDENTITY_MAX_TTL_MS
+    || typeof claims.nonce !== 'string' || !/^[a-f0-9]{32}$/.test(claims.nonce))
+    fail('WORKER_IDENTITY_CLAIMS_INVALID');
+  let publicKey;
+  try { publicKey = createPublicKey({key:Buffer.from(envelope.publicKey,'base64url'),type:'spki',format:'der'}); }
+  catch { fail('WORKER_IDENTITY_PUBLIC_KEY_INVALID'); }
+  if (publicKey.asymmetricKeyType !== 'ed25519'
+    || hash(Buffer.from(envelope.publicKey,'base64url')) !== envelope.keyId)
+    fail('WORKER_IDENTITY_PUBLIC_KEY_INVALID');
+  const expectedWorkerId = 'cw_' + hash(Buffer.from(JSON.stringify([
+    'commander.worker.identity.v1',claims.hostId,claims.profileId,claims.ownerSidHash,
+    claims.deviceProvider,claims.deviceIdHash,envelope.keyId
+  ]),'utf8'));
+  if (claims.workerId !== expectedWorkerId) fail('WORKER_IDENTITY_CLAIMS_INVALID');
+  const signedBytes = Buffer.from(JSON.stringify([
+    'commander.worker.identity.v1',envelope.keyId,...WORKER_CLAIM_FIELDS.map(key=>claims[key])
+  ]),'utf8');
+  if (!verify(null,signedBytes,publicKey,Buffer.from(envelope.signature,'base64url')))
+    fail('WORKER_IDENTITY_SIGNATURE_INVALID');
+  return Object.freeze({
+    text, envelope, workerId: claims.workerId, bindingId: claims.bindingId,
+    signature: envelope.signature, expiresAtMs: claims.expiresAtMs
+  });
+}
 export const fail = code => { throw Object.assign(new Error(code), { workflowCode: code }); };
 export const hash = data => createHash('sha256').update(data).digest('hex');
 
@@ -339,6 +408,25 @@ export class WorkflowStore {
       }
     }
 
+    this.#leaseDb.exec(
+      'CREATE TABLE IF NOT EXISTS worker_identity_meta(' +
+      'singleton INTEGER PRIMARY KEY CHECK(singleton=1),schema_version INTEGER NOT NULL,' +
+      'event_count INTEGER NOT NULL,head_digest TEXT NOT NULL);' +
+      "INSERT OR IGNORE INTO worker_identity_meta(singleton,schema_version,event_count,head_digest) VALUES(1,1,0,'" + WORKER_IDENTITY_ZERO + "');" +
+      "CREATE TABLE IF NOT EXISTS worker_identity_events(" +
+      "seq INTEGER PRIMARY KEY AUTOINCREMENT,worker_id TEXT NOT NULL,binding_id TEXT NOT NULL," +
+      "kind TEXT NOT NULL CHECK(kind IN ('REGISTERED','REVOKED')),body TEXT NOT NULL," +
+      "previous_digest TEXT NOT NULL,digest TEXT NOT NULL UNIQUE,created_at TEXT NOT NULL);" +
+      'CREATE INDEX IF NOT EXISTS worker_identity_events_binding ON worker_identity_events(worker_id,binding_id,kind);' +
+      "CREATE TRIGGER IF NOT EXISTS worker_identity_events_no_update BEFORE UPDATE ON worker_identity_events BEGIN SELECT RAISE(ABORT,'APPEND_ONLY'); END;" +
+      "CREATE TRIGGER IF NOT EXISTS worker_identity_events_no_delete BEFORE DELETE ON worker_identity_events BEGIN SELECT RAISE(ABORT,'APPEND_ONLY'); END;" +
+      "CREATE TABLE IF NOT EXISTS worker_identity_registry(" +
+      "worker_id TEXT PRIMARY KEY,binding_id TEXT NOT NULL,signature TEXT NOT NULL,envelope TEXT NOT NULL," +
+      "state TEXT NOT NULL CHECK(state IN ('ACTIVE','REVOKED')),event_seq INTEGER NOT NULL);"
+    );
+    try { this.#verifyWorkerIdentityJournal(); }
+    catch (error) { this.#leaseDb.close(); throw error; }
+
     this.#db = new DatabaseSync(this.#dbPath, { allowExtension: false });
     try {
       fs.chmodSync(this.#dbPath, 0o600);
@@ -511,6 +599,188 @@ export class WorkflowStore {
     this.#leaseDb.exec('BEGIN IMMEDIATE');
     try { const value = fn(); this.#leaseDb.exec('COMMIT'); return value; }
     catch (e) { try { this.#leaseDb.exec('ROLLBACK'); } catch { /* preserve original exception */ } throw e; }
+  }
+  #verifyWorkerIdentityJournal() {
+    const meta = this.#leaseDb.prepare(
+      'SELECT schema_version AS schemaVersion,event_count AS eventCount,head_digest AS headDigest FROM worker_identity_meta WHERE singleton=1'
+    ).get();
+    if (!meta || meta.schemaVersion !== 1 || !Number.isSafeInteger(meta.eventCount)
+      || meta.eventCount < 0 || meta.eventCount > WORKER_IDENTITY_MAX_EVENTS
+      || !/^[a-f0-9]{64}$/.test(meta.headDigest))
+      fail('WORKER_IDENTITY_JOURNAL_CORRUPT');
+    const rows = this.#leaseDb.prepare(
+      'SELECT seq,worker_id AS workerId,binding_id AS bindingId,kind,body,previous_digest AS previousDigest,digest,created_at AS createdAt FROM worker_identity_events ORDER BY seq'
+    ).all();
+    if (rows.length !== meta.eventCount) fail('WORKER_IDENTITY_JOURNAL_CORRUPT');
+    let previous = WORKER_IDENTITY_ZERO;
+    const latest = new Map();
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      if (row.seq !== i + 1 || row.previousDigest !== previous
+        || !/^[a-f0-9]{64}$/.test(row.digest)
+        || hash(previous + '\n' + row.body) !== row.digest)
+        fail('WORKER_IDENTITY_JOURNAL_CORRUPT');
+      let event;
+      try { event = JSON.parse(row.body); } catch { fail('WORKER_IDENTITY_JOURNAL_CORRUPT'); }
+      if (canonical(event) !== row.body || event.schema !== 1
+        || event.kind !== row.kind || event.workerId !== row.workerId
+        || event.bindingId !== row.bindingId || typeof event.at !== 'string'
+        || !Number.isFinite(Date.parse(event.at)) || new Date(event.at).toISOString() !== event.at
+        || row.createdAt !== event.at)
+        fail('WORKER_IDENTITY_JOURNAL_CORRUPT');
+      if (row.kind === 'REGISTERED') {
+        if (Object.keys(event).sort().join(',') !== ['at','bindingId','envelope','kind','schema','workerId'].sort().join(','))
+          fail('WORKER_IDENTITY_JOURNAL_CORRUPT');
+        const record = workerIdentityEnvelope(event.envelope);
+        const eventAtMs = Date.parse(event.at);
+        if (record.workerId !== row.workerId || record.bindingId !== row.bindingId
+          || record.envelope.claims.issuedAtMs > eventAtMs || record.expiresAtMs <= eventAtMs)
+          fail('WORKER_IDENTITY_JOURNAL_CORRUPT');
+        const prior = latest.get(row.workerId);
+        if (prior) {
+          const expiredAtEvent = prior.expiresAtMs <= Date.parse(event.at);
+          if (prior.bindingId === row.bindingId || (prior.state !== 'REVOKED' && !expiredAtEvent))
+            fail('WORKER_IDENTITY_JOURNAL_CORRUPT');
+        }
+        latest.set(row.workerId, {
+          bindingId: record.bindingId, signature: record.signature,
+          envelope: record.text, expiresAtMs: record.expiresAtMs,
+          state: 'ACTIVE', eventSeq: row.seq
+        });
+      } else if (row.kind === 'REVOKED') {
+        if (Object.keys(event).sort().join(',') !== ['at','bindingId','expectedSignature','kind','receipt','schema','workerId'].sort().join(','))
+          fail('WORKER_IDENTITY_JOURNAL_CORRUPT');
+        const prior = latest.get(row.workerId);
+        const receipt = event.receipt;
+        if (!prior || prior.bindingId !== row.bindingId || prior.signature !== event.expectedSignature
+          || prior.state !== 'ACTIVE' || !receipt || Object.getPrototypeOf(receipt) !== Object.prototype
+          || Object.keys(receipt).sort().join(',') !== ['reasonCode','revocationId','revokedAtMs'].sort().join(',')
+          || typeof receipt.reasonCode !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(receipt.reasonCode)
+          || typeof receipt.revocationId !== 'string' || !WORKER_REVOCATION_UUID_RE.test(receipt.revocationId)
+          || !Number.isSafeInteger(receipt.revokedAtMs) || receipt.revokedAtMs < 0
+          || receipt.revokedAtMs > Date.parse(event.at) + 5000)
+          fail('WORKER_IDENTITY_JOURNAL_CORRUPT');
+        prior.state = 'REVOKED';
+        prior.eventSeq = row.seq;
+      } else fail('WORKER_IDENTITY_JOURNAL_CORRUPT');
+      previous = row.digest;
+    }
+    if (previous !== meta.headDigest) fail('WORKER_IDENTITY_JOURNAL_CORRUPT');
+    const projected = this.#leaseDb.prepare(
+      'SELECT worker_id AS workerId,binding_id AS bindingId,signature,envelope,state,event_seq AS eventSeq FROM worker_identity_registry ORDER BY worker_id'
+    ).all();
+    if (projected.length !== latest.size) fail('WORKER_IDENTITY_PROJECTION_CORRUPT');
+    for (const row of projected) {
+      const expected = latest.get(row.workerId);
+      if (!expected || row.bindingId !== expected.bindingId || row.signature !== expected.signature
+        || row.envelope !== expected.envelope || row.state !== expected.state || row.eventSeq !== expected.eventSeq)
+        fail('WORKER_IDENTITY_PROJECTION_CORRUPT');
+    }
+    return Object.freeze({ eventCount: rows.length, headDigest: previous, registrations: latest.size });
+  }
+  #appendWorkerIdentityEvent(kind, workerId, bindingId, payload) {
+    const meta = this.#leaseDb.prepare(
+      'SELECT event_count AS eventCount,head_digest AS headDigest FROM worker_identity_meta WHERE singleton=1'
+    ).get();
+    if (!meta || meta.eventCount >= WORKER_IDENTITY_MAX_EVENTS) fail('WORKER_IDENTITY_JOURNAL_LIMIT');
+    const at = new Date().toISOString();
+    const event = { schema:1, kind, workerId, bindingId, ...payload, at };
+    const body = canonical(event);
+    const digest = hash(meta.headDigest + '\n' + body);
+    const inserted = this.#leaseDb.prepare(
+      'INSERT INTO worker_identity_events(worker_id,binding_id,kind,body,previous_digest,digest,created_at) VALUES(?,?,?,?,?,?,?)'
+    ).run(workerId,bindingId,kind,body,meta.headDigest,digest,at);
+    const seq = Number(inserted.lastInsertRowid);
+    if (!Number.isSafeInteger(seq) || seq < 1) fail('WORKER_IDENTITY_JOURNAL_APPEND_FAILED');
+    this.#leaseDb.prepare(
+      'UPDATE worker_identity_meta SET event_count=?,head_digest=? WHERE singleton=1'
+    ).run(meta.eventCount + 1,digest);
+    return seq;
+  }
+  workerIdentityGet(workerId) {
+    if (typeof workerId !== 'string' || !WORKER_ID_RE.test(workerId)) fail('WORKER_IDENTITY_REGISTRY_ID_INVALID');
+    this.#verifyWorkerIdentityJournal();
+    const row = this.#leaseDb.prepare(
+      'SELECT envelope FROM worker_identity_registry WHERE worker_id=?'
+    ).get(workerId);
+    return row ? JSON.parse(row.envelope) : null;
+  }
+  workerIdentityIsRevoked(workerId, bindingId) {
+    if (typeof workerId !== 'string' || !WORKER_ID_RE.test(workerId)
+      || typeof bindingId !== 'string' || !WORKER_BINDING_RE.test(bindingId))
+      fail('WORKER_IDENTITY_REGISTRY_ID_INVALID');
+    this.#verifyWorkerIdentityJournal();
+    return Boolean(this.#leaseDb.prepare(
+      "SELECT 1 AS found FROM worker_identity_events WHERE worker_id=? AND binding_id=? AND kind='REVOKED' LIMIT 1"
+    ).get(workerId,bindingId));
+  }
+  workerIdentityRegister(envelope, { expectedPreviousBindingId = null, expectedPreviousState = 'EMPTY' } = {}) {
+    const record = workerIdentityEnvelope(envelope);
+    if (record.expiresAtMs <= Date.now() || record.envelope.claims.issuedAtMs > Date.now())
+      fail('WORKER_IDENTITY_ENVELOPE_EXPIRED');
+    if (!['EMPTY','REVOKED','EXPIRED'].includes(expectedPreviousState)
+      || (expectedPreviousState === 'EMPTY'
+        ? expectedPreviousBindingId !== null
+        : typeof expectedPreviousBindingId !== 'string' || !WORKER_BINDING_RE.test(expectedPreviousBindingId)))
+      fail('WORKER_IDENTITY_REGISTRY_CAS_INVALID');
+    return this.#leaseTransaction(() => {
+      this.#verifyWorkerIdentityJournal();
+      const old = this.#leaseDb.prepare(
+        'SELECT binding_id AS bindingId,state,envelope FROM worker_identity_registry WHERE worker_id=?'
+      ).get(record.workerId);
+      if (!old) {
+        if (expectedPreviousState !== 'EMPTY' || expectedPreviousBindingId !== null) return false;
+      } else {
+        const prior = workerIdentityEnvelope(JSON.parse(old.envelope));
+        const state = old.state === 'REVOKED' ? 'REVOKED'
+          : prior.expiresAtMs <= Date.now() ? 'EXPIRED' : 'ACTIVE';
+        if (old.bindingId !== expectedPreviousBindingId || state !== expectedPreviousState
+          || prior.bindingId === record.bindingId) return false;
+      }
+      const eventSeq = this.#appendWorkerIdentityEvent('REGISTERED',record.workerId,record.bindingId,{
+        envelope:record.envelope
+      });
+      this.#leaseDb.prepare(
+        "INSERT INTO worker_identity_registry(worker_id,binding_id,signature,envelope,state,event_seq) " +
+        "VALUES(?,?,?,?, 'ACTIVE',?) ON CONFLICT(worker_id) DO UPDATE SET binding_id=excluded.binding_id," +
+        "signature=excluded.signature,envelope=excluded.envelope,state='ACTIVE',event_seq=excluded.event_seq"
+      ).run(record.workerId,record.bindingId,record.signature,record.text,eventSeq);
+      this.#verifyWorkerIdentityJournal();
+      return true;
+    });
+  }
+  workerIdentityRevoke(workerId, bindingId, receipt, { expectedSignature } = {}) {
+    if (typeof workerId !== 'string' || !WORKER_ID_RE.test(workerId)
+      || typeof bindingId !== 'string' || !WORKER_BINDING_RE.test(bindingId)
+      || typeof expectedSignature !== 'string' || !WORKER_B64URL_RE.test(expectedSignature)
+      || !receipt || Object.getPrototypeOf(receipt) !== Object.prototype
+      || Object.keys(receipt).sort().join(',') !== ['reasonCode','revocationId','revokedAtMs'].sort().join(',')
+      || typeof receipt.reasonCode !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(receipt.reasonCode)
+      || typeof receipt.revocationId !== 'string' || !WORKER_REVOCATION_UUID_RE.test(receipt.revocationId)
+      || !Number.isSafeInteger(receipt.revokedAtMs) || receipt.revokedAtMs < 0
+      || receipt.revokedAtMs > Date.now() + 5000)
+      fail('WORKER_IDENTITY_REGISTRY_REVOCATION_INVALID');
+    const receiptText = canonical(receipt);
+    if (Buffer.byteLength(receiptText) > 2048) fail('WORKER_IDENTITY_REGISTRY_REVOCATION_INVALID');
+    return this.#leaseTransaction(() => {
+      this.#verifyWorkerIdentityJournal();
+      const current = this.#leaseDb.prepare(
+        'SELECT binding_id AS bindingId,signature,state FROM worker_identity_registry WHERE worker_id=?'
+      ).get(workerId);
+      if (!current || current.bindingId !== bindingId || current.signature !== expectedSignature
+        || current.state !== 'ACTIVE') return false;
+      const eventSeq = this.#appendWorkerIdentityEvent('REVOKED',workerId,bindingId,{
+        expectedSignature,receipt:JSON.parse(receiptText)
+      });
+      this.#leaseDb.prepare(
+        "UPDATE worker_identity_registry SET state='REVOKED',event_seq=? WHERE worker_id=? AND binding_id=? AND signature=? AND state='ACTIVE'"
+      ).run(eventSeq,workerId,bindingId,expectedSignature);
+      this.#verifyWorkerIdentityJournal();
+      return true;
+    });
+  }
+  workerIdentityJournalStatus() {
+    return this.#verifyWorkerIdentityJournal();
   }
   #acquireRootLease(root, workflow, owner, expiresAt, revisionValue) {
     if (this.#schedulerPolicy.oneWriterPerRoot === false) return null;

@@ -42,8 +42,18 @@ if(-not(Test-Path -LiteralPath $runner -PathType Leaf) -and $Ensure){
 Verify-Hash $runner $manifest.runnerSha256
 $command=Get-Command node -ErrorAction Stop
 # Only a benign read-only version probe; executable hash is checked beforehand.
-$probe=& $runner --timeout-ms 4000 --cwd $root -- node --version 2>&1
-if($LASTEXITCODE -ne 0 -or -not ($probe -match 'RC_JOB_RESULT_JSON:.*"timedOut":false') -or
+$runnerExitCode=-1
+$previousErrorActionPreference=$ErrorActionPreference
+try {
+  # The runner deliberately writes its receipt to stderr; capture it as data,
+  # not as a terminating PowerShell NativeCommandError under Stop mode.
+  $ErrorActionPreference='Continue'
+  $probe=& $runner --timeout-ms 4000 --cwd $root -- node --version 2>&1
+  $runnerExitCode=$LASTEXITCODE
+} finally {
+  $ErrorActionPreference=$previousErrorActionPreference
+}
+if($runnerExitCode -ne 0 -or -not ($probe -match 'RC_JOB_RESULT_JSON:.*"timedOut":false') -or
    -not ($probe -match '^v\d+\.')){
   throw 'WIN_JOB_RUNNER_NATIVE_PROBE_FAILED'
 }
