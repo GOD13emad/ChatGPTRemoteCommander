@@ -1,17 +1,12 @@
 import { requestPrivilegeBroker } from './privilege-client.mjs';
 import { probeWindowsAdministrator } from './windows-admin-token.mjs';
+import { verifyPrivilegedBrokerProof } from './capability-profile.mjs';
+export { verifyPrivilegedBrokerProof } from './capability-profile.mjs';
 
 const BROKER_ACTIONS = Object.freeze({
   linux: Object.freeze(['os.probe', 'system_unit.status', 'system_unit.start']),
   win32: Object.freeze(['os.probe', 'broker.task.status'])
 });
-
-export function verifyPrivilegedBrokerProof(proof, platform = process.platform) {
-  if (proof?.ok !== true || proof.action !== 'os.probe') return false;
-  if (platform === 'linux') return proof.root === true && proof.effectiveUid === 0;
-  if (platform === 'win32') return proof.isSystem === true && proof.sid === 'S-1-5-18';
-  return false;
-}
 
 /**
  * Configured tier expresses owner intent; effective tier is determined at

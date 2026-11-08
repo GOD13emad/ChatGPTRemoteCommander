@@ -1,5 +1,12 @@
 import { createHash } from 'node:crypto';
-import { verifyPrivilegedBrokerProof } from './full-access-status.mjs';
+
+// Standalone enrollment policy: no dependency on native runtime/status modules.
+export function verifyPrivilegedBrokerProof(proof, platform = process.platform) {
+  if (proof?.ok !== true || proof.action !== 'os.probe') return false;
+  if (platform === 'linux') return proof.root === true && proof.effectiveUid === 0;
+  if (platform === 'win32') return proof.isSystem === true && proof.sid === 'S-1-5-18';
+  return false;
+}
 
 export const CAPABILITY_SCHEMA_VERSION = 4;
 export const CAPABILITY_PROFILE_REVISION = 'capability-profile-r4';
