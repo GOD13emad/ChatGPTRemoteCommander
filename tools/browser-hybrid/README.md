@@ -42,6 +42,19 @@ RC_OLLAMA_MODEL=qwen3.5:4b node stagehand-ollama-smoke.mjs
 
 `ollama-provider.mjs` accepts only `127.0.0.1:11434/api/chat`, text-only messages, structured JSON output, bounded prompts and inference timeout. It uses `think:false`, no cloud credentials, and rejects arbitrary remote endpoints. AI observation only *selects* the synthetic fixture's input; deterministic Browser SDK locators verify the selector and result. It does **not** grant autonomous actions against private pages. Successful end-to-end observations were verified on Emad PC with `qwen3.5:4b` and Emad Laptop with `qwen3:4b-instruct`; Emad Server's trial exceeded the inference deadline. Treat slow/unavailable local models as `NOT_READY`, not as a completed Agent. The regular `auto` engine is non-AI.
 
+## Explicit real-site, localhost-model observation
+
+On an explicitly authorized website, run a single-origin Stagehand+Ollama observation through the main CLI. The model only returns a CSS selector; the browser validates that it is unique and visible before any explicitly scripted action. A workflow can reference the selected element using `"selector":"@observed"` for `wait`, `fill`, or `click`. For `fill`, password inputs are not accepted.
+
+```bash
+# Real public website; requires a locally installed, responsive Ollama model.
+node cli.mjs run --engine=stagehand --ai-model=qwen3.5:4b --allow-origin=https://example.com --url=https://example.com --steps=example-ai-workflow.json
+
+# End-to-end AI fixture on localhost (no outside page context).
+RC_OLLAMA_MODEL=qwen3.5:4b npm run ai:cli-smoke
+```
+
+The model mode is **opt-in**: `auto` and `stagehand` without `--ai-model` are deterministic. Both `--ai-model` and exact `--allow-origin` are mandatory; insecure non-loopback HTTP destinations and cross-origin navigation are rejected. The runner checks the active page origin before and after steps, validates observed selectors, and refuses an unresolved selector. This is not a network sandbox: embedded third-party resources are not blocked, and an explicitly scripted click may cause external side effects. Avoid unreviewed workflows on consequential pages. No personal signed-in browser profile is loaded.
 ## Scope and acceptance
 
-This tool is a **source/portable canary**, not the signed Version 12 system installer. The repository's separate `browser_owner_route_plan` and guarded file-transfer APIs remain fail-closed until native V1-01 trusted grants and V1-03 same-owner consent arrive. Stagehand 4.4 is installed as a pinned dependency and has a verified deterministic, local-only backend selected with `--engine=stagehand`. Stagehand `act()` / `extract()` with an AI model is deliberately not activated: no provider key is installed, no page data is sent to a model, and any future model-directed automation must have an explicit trusted provider, bounded origin scope and owner consent. The production V1-08 writer owns release deployment and rollback.
+This tool is a **source/portable canary**, not the signed Version 12 system installer. The repository's separate `browser_owner_route_plan` and guarded file-transfer APIs remain fail-closed until native V1-01 trusted grants and V1-03 same-owner consent arrive. Stagehand 4.4 is installed as a pinned dependency and has a verified deterministic, local-only backend selected with `--engine=stagehand`. Stagehand `observe()` is available on explicitly allowlisted origins using a host-local Ollama model. `act()` / `extract()` and autonomous site navigation remain disabled. Only in opt-in `--ai-model` mode, webpage context relevant to observation is passed to the host-local Ollama daemon. No cloud LLM provider or private user profile is attached. The production V1-08 writer owns release deployment and rollback.

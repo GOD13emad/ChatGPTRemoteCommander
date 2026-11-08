@@ -69,3 +69,43 @@ test('Ollama adapter sends bounded schema to localhost and returns structured co
  assert.equal(called,1);assert.equal(body.model,'qwen3:4b-instruct');assert.deepEqual(body.format,schema);
  assert.equal(x.structuredContent.selector,'#v104-email');
 });
+
+
+test('real AI CLI rejects missing explicit scope, cross-origin or insecure scopes before browser effects',()=>{
+ const cases=[
+  {args:['run','--engine=stagehand','--url=https://example.com','--ai-model=qwen3:4b-instruct'],match:/AI_MODEL_AND_ORIGIN_REQUIRED/},
+  {args:['run','--engine=auto','--url=https://example.com','--ai-model=qwen3:4b-instruct','--allow-origin=https://example.com'],match:/AI_REQUIRES_EXPLICIT_STAGEHAND_RUN/},
+  {args:['run','--engine=stagehand','--url=https://example.com','--ai-model=qwen3:4b-instruct','--allow-origin=https://wrong.example'],match:/AI_NAVIGATION_ORIGIN_DENIED/},
+  {args:['run','--engine=stagehand','--url=http://example.com','--ai-model=qwen3:4b-instruct','--allow-origin=http://example.com'],match:/AI_ORIGIN_REQUIRES_HTTPS_OR_LOOPBACK/}
+ ];
+ for(const {args,match} of cases){
+  const {status,out}=call(args);
+  assert.equal(status,1);
+  assert.match(out.reason,match);
+ }
+});
+test('observed selectors require a prior bounded model observation, fail before session start',()=>{
+ const fs=fsModule,os=osModule;
+ const folder=fs.mkdtempSync(path.join(os.tmpdir(),'v104-ai-selector-deny-'));
+ const workflow=path.join(folder,'invalid.json');
+ try{
+  fs.writeFileSync(workflow,JSON.stringify([{action:'fill',selector:'@observed',text:'test'}]),{flag:'wx'});
+  const {status,out}=call(['run','--engine=stagehand','--url=https://example.com',
+   '--ai-model=qwen3:4b-instruct','--allow-origin=https://example.com','--steps='+workflow]);
+  assert.equal(status,1);
+  assert.match(out.reason,/OBSERVED_SELECTOR_NOT_READY/);
+ }finally{fs.rmSync(folder,{recursive:true,force:true})}
+});
+
+test('only observe steps may carry bounded deterministic selector fallback',()=>{
+ const fs=fsModule,os=osModule;
+ const folder=fs.mkdtempSync(path.join(os.tmpdir(),'v104-ai-fallback-deny-'));
+ const workflow=path.join(folder,'invalid.json');
+ try{
+  fs.writeFileSync(workflow,JSON.stringify([{action:'click',selector:'a',fallbackSelector:'a'}]),{flag:'wx'});
+  const {status,out}=call(['run','--engine=stagehand','--url=https://example.com',
+   '--ai-model=qwen3:4b-instruct','--allow-origin=https://example.com','--steps='+workflow]);
+  assert.equal(status,1);
+  assert.match(out.reason,/OBSERVE_FALLBACK_INVALID/);
+ }finally{fs.rmSync(folder,{recursive:true,force:true})}
+});

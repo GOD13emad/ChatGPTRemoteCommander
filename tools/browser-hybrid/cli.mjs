@@ -10,7 +10,7 @@ import {once} from 'node:events';
 import {fileURLToPath,pathToFileURL} from 'node:url';
 import {createRequire} from 'node:module';
 
-const FLAGS=new Set(['--engine','--url','--steps','--screenshot','--profile']);
+const FLAGS=new Set(['--engine','--url','--steps','--screenshot','--profile','--ai-model','--allow-origin']);
 const SAFE_ENGINE=new Set(['auto','playwright','chromium','firefox','stagehand']);
 const MAX_STEPS=32, MAX_TEXT=4096, MAX_SELECTOR=512;
 const parent=path.dirname(fileURLToPath(import.meta.url));
@@ -28,6 +28,8 @@ function parse(argv){
  if(!SAFE_ENGINE.has(options.engine))throw Error('ENGINE_INVALID');
  if(command==='run'&&!options.url)throw Error('URL_REQUIRED');
  if(options.profile&&!/^[a-z][a-z0-9_-]{0,31}$/.test(options.profile))throw Error('PROFILE_INVALID');
+ if(Boolean(options['ai-model'])!==Boolean(options['allow-origin']))throw Error('AI_MODEL_AND_ORIGIN_REQUIRED');
+ if(options['ai-model']&&(command!=='run'||options.engine!=='stagehand'))throw Error('AI_REQUIRES_EXPLICIT_STAGEHAND_RUN');
  return {command,options};
 }
 function statFile(p){try{return fs.statSync(p).isFile()?p:null;}catch{return null;}}
@@ -99,21 +101,34 @@ function safeUrl(value){
  if(!['http:','https:'].includes(u.protocol)||u.username||u.password)throw Error('HTTP_URL_REQUIRED');
  return u;
 }
+function scopedAiOrigin(input){
+ const u=safeUrl(input);
+ if(input!==u.origin&&input!==u.origin+'/')throw Error('AI_ORIGIN_MUST_BE_EXACT');
+ if(u.protocol!=='https:' && !(u.protocol==='http:'&&['127.0.0.1','localhost','[::1]'].includes(u.hostname)))
+  throw Error('AI_ORIGIN_REQUIRES_HTTPS_OR_LOOPBACK');
+ return u.origin;
+}
 function reportUrl(raw){
  const u=safeUrl(raw);const query=!!u.search,fragment=!!u.hash;u.search='';u.hash='';
  return {url:u.href,queryRedacted:query,fragmentRedacted:fragment};
 }
 function stepsFrom(raw){
  if(!Array.isArray(raw)||raw.length>MAX_STEPS)throw Error('STEP_COUNT_INVALID');
+ let observedSeen=false;
  return raw.map((s,i)=>{
   if(!s||typeof s!=='object'||Array.isArray(s))throw Error('STEP_INVALID_'+i);
-  if(!['navigate','fill','click','wait','expectText','expectTitle','screenshot'].includes(s.action))throw Error('ACTION_DENIED_'+i);
+  if(!['navigate','fill','click','wait','expectText','expectTitle','screenshot','observe'].includes(s.action))throw Error('ACTION_DENIED_'+i);
   if(s.selector!==undefined&&(typeof s.selector!=='string'||!s.selector||s.selector.length>MAX_SELECTOR))throw Error('SELECTOR_INVALID_'+i);
   if(s.text!==undefined&&(typeof s.text!=='string'||s.text.length>MAX_TEXT))throw Error('TEXT_INVALID_'+i);
   if(s.action==='navigate')safeUrl(s.url);
   if(s.action==='fill'&&(typeof s.selector!=='string'||typeof s.text!=='string'))throw Error('FILL_FIELDS_REQUIRED');
   if(['click','wait'].includes(s.action)&&typeof s.selector!=='string')throw Error('SELECTOR_REQUIRED');
   if(['expectText','expectTitle'].includes(s.action)&&typeof s.text!=='string')throw Error('EXPECTED_TEXT_REQUIRED');
+  if(s.action==='observe'&&(typeof s.instruction!=='string'||s.instruction.length<8||s.instruction.length>320))throw Error('OBSERVE_INSTRUCTION_INVALID');
+  if(s.action==='observe'&&s.selector!==undefined)throw Error('OBSERVE_SELECTOR_NOT_ACCEPTED');
+  if(s.fallbackSelector!==undefined&&(s.action!=='observe'||typeof s.fallbackSelector!=='string'||!s.fallbackSelector||s.fallbackSelector.length>MAX_SELECTOR))throw Error('OBSERVE_FALLBACK_INVALID');
+  if(s.selector==='@observed'&&!observedSeen)throw Error('OBSERVED_SELECTOR_NOT_READY_'+i);
+  if(s.action==='observe')observedSeen=true;
   return s;
  });
 }
@@ -136,7 +151,8 @@ async function driver(kind,engines,pw,selenium,stagehand,options){
   try{
    browser=await stagehand.localBrowser.launch({
     headless:true,userDataDir:path.join(root,'profile'),executablePath:engines.chromium});
-   sh=await stagehand.Stagehand.create({browser});
+   const config=options.modelGenerate?{browser,model:{generate:options.modelGenerate}}:{browser};
+   sh=await stagehand.Stagehand.create(config);
    const [page]=await browser.context.pages();
    if(!page)throw Error('STAGEHAND_PAGE_UNAVAILABLE');
    const checkVisible=async selector=>{
@@ -149,6 +165,37 @@ async function driver(kind,engines,pw,selenium,stagehand,options){
    };
    return {
     kind,async navigate(url){await page.goto(safeUrl(url).href);return reportUrl(await page.url());},
+    async observeSelector(instruction,fallbackSelector=null){
+     if(!options.aiModel)throw Error('AI_MODEL_REQUIRED');
+     let candidates=null,reason='AI_SELECTOR_NOT_UNIQUE_VISIBLE';
+     try{
+      const result=await sh.observe(instruction);
+      const rows=result?.data;
+      if(Array.isArray(rows)&&rows.length>0&&rows.length<=8)candidates=rows;
+      else reason='AI_OBSERVATION_INVALID';
+     }catch{reason='AI_OBSERVATION_FAILED';}
+     for(const item of candidates||[]){
+      const selector=item?.selector;
+      if(typeof selector!=='string'||!selector||selector.length>512)continue;
+      try{
+       const locator=page.locator(selector);
+       if(await locator.count()===1&&await locator.isVisible())
+        return {selector,method:'model'};
+      }catch{/* Model selectors are untrusted. Continue. */}
+     }
+     if(fallbackSelector){
+      try{
+       const locator=page.locator(fallbackSelector);
+       if(await locator.count()===1&&await locator.isVisible())
+        return {selector:fallbackSelector,method:'deterministic-fallback',reason};
+      }catch{/* Fall through to safe failure. */}
+     }
+     throw Error(reason);
+    },
+    async canFillObserved(selector){
+     try{return await page.locator(selector+':is(input:not([type=password]),textarea)').count()===1}
+     catch{return false}
+    },
     async fill(sel,text){await page.locator(sel).fill(text);},
     async click(sel){await page.locator(sel).click();},
     async wait(sel){await checkVisible(sel);},
@@ -201,7 +248,8 @@ async function driver(kind,engines,pw,selenium,stagehand,options){
   }
   const web=await new selenium.Builder().forBrowser('firefox')
    .setFirefoxOptions(opts).setFirefoxService(service).build();
-  await web.manage().setTimeouts({pageLoad:18000,script:10000,implicit:0});
+  try{await web.manage().setTimeouts({pageLoad:18000,script:10000,implicit:0})}
+  catch(e){await web.quit().catch(()=>{});throw e}
   return {
    kind,async navigate(url){await web.get(safeUrl(url).href);return reportUrl(await web.getCurrentUrl());},
    async fill(sel,text){const el=await web.findElement(selenium.By.css(sel));await el.clear();await el.sendKeys(text);},
@@ -246,26 +294,51 @@ async function driver(kind,engines,pw,selenium,stagehand,options){
   async close(){try{if(lease)await doTool('browser_session_end',{});}finally{lease=null;ctl.close();}}
  };
 }
-async function runJob({engine,url,steps=[],screenshot=null,profile}){
+async function runJob({engine,url,steps=[],screenshot=null,profile,aiModel=null,allowedOrigin=null}){
  safeUrl(url); // Deny invalid schemes and embedded credentials before any browser effect.
  const e=installed(),[pw,selenium,stagehand]=await Promise.all([playwrightAvailable(),seleniumAvailable(),stagehandAvailable()]);
  const capabilities={...e,playwright:!!pw,selenium:!!selenium,stagehand:!!stagehand};
  const kind=route(engine,capabilities),flow=stepsFrom(steps);
+ const wantsObservation=flow.some(s=>s.action==='observe'||s.selector==='@observed');
+ const hasAi=Boolean(aiModel);
+ if(wantsObservation&&!hasAi)throw Error('AI_MODEL_REQUIRED');
+ if(hasAi&&(kind!=='stagehand-chromium'||!allowedOrigin))throw Error('AI_STAGEHAND_AND_ORIGIN_REQUIRED');
+ if(!hasAi&&allowedOrigin)throw Error('AI_MODEL_AND_ORIGIN_REQUIRED');
+ const origin=hasAi?scopedAiOrigin(allowedOrigin):null;
  const requestedUrls=[url,...flow.filter(s=>s.action==='navigate').map(s=>s.url)].map(safeUrl);
  const requestedQuery=requestedUrls.some(u=>Boolean(u.search));
  const requestedFragment=requestedUrls.some(u=>Boolean(u.hash));
- const run=await driver(kind,e,pw,selenium,stagehand,{profile});let pass=0,shot=null;
+ if(origin&&requestedUrls.some(u=>u.origin!==origin))throw Error('AI_NAVIGATION_ORIGIN_DENIED');
+ const modelGenerate=hasAi?(await import('./ollama-provider.mjs')).createOllamaGenerate({model:aiModel,timeoutMs:25000}):null;
+ const run=await driver(kind,e,pw,selenium,stagehand,{profile,aiModel,modelGenerate});let pass=0,shot=null,selected=null;
+ const observations=[];
+ const verifyOrigin=async()=>{
+  if(!origin)return;
+  const current=await run.snapshot();
+  if(safeUrl(current.url).origin!==origin)throw Error('AI_ACTIVE_ORIGIN_CHANGED');
+ };
  try{
-  await run.navigate(url);pass++;
+  await run.navigate(url);pass++;await verifyOrigin();
   for(const s of flow){
+   await verifyOrigin();
    if(s.action==='navigate')await run.navigate(s.url);
-   if(s.action==='fill')await run.fill(s.selector,s.text);
-   if(s.action==='click')await run.click(s.selector);
-   if(s.action==='wait')await run.wait(s.selector);
+   if(s.action==='observe'){
+    const observed=await run.observeSelector(s.instruction,s.fallbackSelector);
+    selected=observed.selector;
+    observations.push({step:pass,selector:selected,method:observed.method,...(observed.reason?{fallbackReason:observed.reason}:{})});
+   }
+   const selector=s.selector==='@observed'?selected:s.selector;
+   if(['fill','click','wait'].includes(s.action)&&!selector)throw Error('OBSERVED_SELECTOR_NOT_READY');
+   if(s.action==='fill'){
+    if(s.selector==='@observed'&&!(await run.canFillObserved(selected)))throw Error('AI_FILL_TARGET_NOT_ALLOWED');
+    await run.fill(selector,s.text);
+   }
+   if(s.action==='click')await run.click(selector);
+   if(s.action==='wait')await run.wait(selector);
    if(s.action==='expectText')await run.expectText(s.text);
    if(s.action==='expectTitle')await run.expectTitle(s.text);
    if(s.action==='screenshot')shot=await run.screenshot(screenshot);
-   pass++;
+   await verifyOrigin();pass++;
   }
   if(screenshot&&!shot)shot=await run.screenshot(screenshot);
   const summary=await run.snapshot();
@@ -273,7 +346,8 @@ async function runJob({engine,url,steps=[],screenshot=null,profile}){
    screenshotPath:screenshot||null,session:'COMMANDER_OWNED_ISOLATED',
    personalProfileAccess:false,credentialsExtracted:false,userDesktopTouched:false,...summary,
    queryRedacted:requestedQuery||summary.queryRedacted===true,
-   fragmentRedacted:requestedFragment||summary.fragmentRedacted===true};
+   fragmentRedacted:requestedFragment||summary.fragmentRedacted===true,
+   ...(origin?{aiModel,aiOrigin:origin,observations}:{})};
  }finally{await run.close()}
 }
 async function smoke(engine){
@@ -288,9 +362,11 @@ async function smoke(engine){
     {action:'click',selector:'#apply'},{action:'expectText',text:'COMMANDER-HYBRID-VERIFIED'}],
    screenshot});
   if(output.url.includes('REDACT')||output.fragmentRedacted!==true||output.queryRedacted!==true||!fs.statSync(screenshot).size)throw Error('SMOKE_REDACTION_OR_SCREENSHOT_FAILED_'+String(output.queryRedacted)+'_'+String(output.fragmentRedacted)+'_'+String(output.screenshotBytes));
-  return {...output,screenshotPath:screenshot};
- }catch(e){try{fs.rmSync(folder,{recursive:true,force:true});}catch{}throw e}
- finally{await new Promise(resolve=>server.close(resolve))}
+  return {...output,screenshotPath:null,temporaryScreenshotRemoved:true};
+ }finally{
+  await new Promise(resolve=>server.close(resolve));
+  fs.rmSync(folder,{recursive:true,force:true});
+ }
 }
 async function main(){
  const {command,options}=parse(process.argv.slice(2));
@@ -306,7 +382,8 @@ async function main(){
  if(command==='run'){
   const steps=options.steps?JSON.parse(fs.readFileSync(path.resolve(options.steps),'utf8')):[];
   return runJob({engine:options.engine,url:options.url,steps,
-   screenshot:options.screenshot?path.resolve(options.screenshot):null,profile:options.profile});
+   screenshot:options.screenshot?path.resolve(options.screenshot):null,profile:options.profile,
+   aiModel:options['ai-model']||null,allowedOrigin:options['allow-origin']||null});
  }
 }
 try{console.log(JSON.stringify(await main()))}
