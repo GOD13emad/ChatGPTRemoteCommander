@@ -36,14 +36,22 @@ function Get-ItemProperty {
   return [pscustomobject]@{ProfileImagePath=$OwnerUserProfile}
 }
 function Get-NetTCPConnection {
-  [CmdletBinding()]param([string]$LocalAddress,[int]$LocalPort,[string]$State)
-  if($LocalAddress -ne '127.0.0.1' -or $State -ne 'Listen'){throw 'LOOPBACK_SCOPE_FAILED'}
+  [CmdletBinding()]param([string]$LocalAddress,[int]$LocalPort)
+  if($LocalAddress -ne '127.0.0.1'){throw 'LOOPBACK_SCOPE_FAILED'}
   if($script:listenerMode -eq 'missing'){throw 'SYNTHETIC_NO_LISTENER'}
-  if($script:listenerMode -eq 'duplicate'){
-    return @([pscustomobject]@{OwningProcess=4321},[pscustomobject]@{OwningProcess=4322})
-  }
-  if($script:listenerMode -eq 'invalidPid'){return [pscustomobject]@{OwningProcess=0}}
-  return [pscustomobject]@{OwningProcess=4321}
+  $state='Listen'
+  $remote='0.0.0.0'
+  $remotePort=0
+  if($script:listenerMode -eq 'nullState'){$state=$null}
+  if($script:listenerMode -eq 'nullForeign'){$state=$null;$remote='127.0.0.1';$remotePort=1200}
+  if($script:listenerMode -eq 'nullWrongPort'){$state=$null;$remotePort=1200}
+  if($script:listenerMode -eq 'established'){$state='Established';$remote='127.0.0.1';$remotePort=1200}
+  if($script:listenerMode -eq 'timeWait'){$state='TimeWait';$remote='127.0.0.1';$remotePort=1200}
+  if($script:listenerMode -eq 'closedSentinel'){$state='Closed'}
+  $processPid=if($script:listenerMode -eq 'invalidPid'){0}else{4321}
+  $entry=[pscustomobject]@{LocalAddress='127.0.0.1';OwningProcess=$processPid;State=$state;RemoteAddress=$remote;RemotePort=$remotePort}
+  if($script:listenerMode -eq 'duplicate'){return @($entry,$entry)}
+  return $entry
 }
 function Get-CimInstance {
   [CmdletBinding()]param([string]$ClassName,[string]$Filter)
@@ -92,6 +100,18 @@ $script:listenerMode='duplicate'
 Add-Result 'ambiguous_listener' (Test-OwnerListener 47831 $sid 'node.exe' 'stable-router\.mjs') $false
 $script:listenerMode='invalidPid'
 Add-Result 'invalid_pid' (Test-OwnerListener 47831 $sid 'node.exe' 'stable-router\.mjs') $false
+$script:listenerMode='nullState'
+Add-Result 'null_state_wildcard_listener_accepted' (Test-OwnerListener 47831 $sid 'node.exe' 'stable-router\.mjs') $true
+$script:listenerMode='nullForeign'
+Add-Result 'null_state_foreign_remote_denied' (Test-OwnerListener 47831 $sid 'node.exe' 'stable-router\.mjs') $false
+$script:listenerMode='nullWrongPort'
+Add-Result 'null_state_remote_port_denied' (Test-OwnerListener 47831 $sid 'node.exe' 'stable-router\.mjs') $false
+$script:listenerMode='established'
+Add-Result 'established_not_listener' (Test-OwnerListener 47831 $sid 'node.exe' 'stable-router\.mjs') $false
+$script:listenerMode='timeWait'
+Add-Result 'timewait_not_listener' (Test-OwnerListener 47831 $sid 'node.exe' 'stable-router\.mjs') $false
+$script:listenerMode='closedSentinel'
+Add-Result 'closed_wildcard_not_listener' (Test-OwnerListener 47831 $sid 'node.exe' 'stable-router\.mjs') $false
 $script:listenerMode='valid'
 $script:profileMode='wrong'
 Add-Result 'wrong_profile_path' ([bool](Get-OwnerProfileSid)) $false

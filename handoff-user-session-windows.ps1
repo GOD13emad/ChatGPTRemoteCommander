@@ -3,6 +3,19 @@ param(
   [ValidateRange(30,900)][int]$WaitSeconds = 300
 )
 $ErrorActionPreference='Stop'
+# A SYSTEM boot task must name the intended user explicitly; inheriting
+# SYSTEM's environment profile could otherwise target a service account.
+function Assert-HandoffOwnerContext([bool]$SystemContext,[bool]$ExplicitOwner,
+                                    [string]$OwnerProfile,[string]$CurrentProfile) {
+  if([string]::IsNullOrWhiteSpace($OwnerProfile)){throw 'HANDOFF_OWNER_PROFILE_MISSING'}
+  if($SystemContext -and -not $ExplicitOwner){throw 'HANDOFF_OWNER_EXPLICIT_REQUIRED_FOR_SYSTEM'}
+  if($SystemContext -and -not [string]::IsNullOrWhiteSpace($CurrentProfile)){
+    $target=[IO.Path]::GetFullPath($OwnerProfile).TrimEnd('\')
+    $systemProfile=[IO.Path]::GetFullPath($CurrentProfile).TrimEnd('\')
+    if($target -ieq $systemProfile){throw 'HANDOFF_SYSTEM_PROFILE_CANNOT_OWN_USER_SESSION'}
+  }
+}
+Assert-HandoffOwnerContext ([Security.Principal.WindowsIdentity]::GetCurrent().IsSystem) ($PSBoundParameters.ContainsKey('OwnerUserProfile')) $OwnerUserProfile $env:USERPROFILE
 $Root=Split-Path -Parent $MyInvocation.MyCommand.Path
 $OwnerUserProfile=[IO.Path]::GetFullPath($OwnerUserProfile)
 $OwnerLocal=Join-Path $OwnerUserProfile 'AppData\Local'
@@ -130,16 +143,29 @@ function Test-Ready([int]$Port){
     return ($r.StatusCode-eq200 -and $r.Content.Trim()-eq'ready')
   }catch{return $false}
 }
-function ManagedHealthPorts {
-  $ports=@()
-  if(Test-Path -LiteralPath $ProfileDir){
+function ManagedTunnelProfiles {
+  $profiles=@()
+  if(Test-Path -LiteralPath $ProfileDir -PathType Container){
     foreach($f in Get-ChildItem -LiteralPath $ProfileDir -Filter '*.yaml' -File -ErrorAction SilentlyContinue){
-      $text=Get-Content -LiteralPath $f.FullName -Raw
-      $m=[regex]::Match($text,'listen_addr:\s*["'']?127\.0\.0\.1:(\d+)')
-      if($m.Success){$ports += [int]$m.Groups[1].Value}
+      # Never infer success from one valid file while silently skipping an
+      # invalid profile. A missing or duplicate endpoint is not a handoff.
+      if([string]$f.BaseName -cnotmatch '^[A-Za-z0-9._-]+$'){return @()}
+      $config=Get-Content -LiteralPath $f.FullName -Raw
+      # Count every declared listen_addr first, not only valid loopback
+      # matches. Otherwise an extra nonlocal or malformed key is ignored.
+      $declarations=[regex]::Matches($config,'(?m)^[ \t]*listen_addr:[ \t]*([^\r\n]*)')
+      if($declarations.Count -ne 1){return @()}
+      $value=[string]$declarations[0].Groups[1].Value
+      $match=[regex]::Match($value,'^[ \t]*(["'']?)127\.0\.0\.1:(\d+)\1[ \t]*(?:#.*)?$')
+      if(-not $match.Success){return @()}
+      $port=[int]$match.Groups[2].Value
+      if($port -le 0 -or $port -gt 65535){return @()}
+      $profiles += [pscustomobject]@{Name=[string]$f.BaseName;Port=$port}
     }
   }
-  return @($ports|Sort-Object -Unique)
+  $uniquePorts=@($profiles|Select-Object -ExpandProperty Port -Unique)
+  if($uniquePorts.Count -ne $profiles.Count){return @()}
+  return @($profiles)
 }
 
 # The recovery check must prove that the *intended user* owns the listening
@@ -164,7 +190,16 @@ function Get-OwnerProfileSid {
 function Test-OwnerListener([int]$Port,[string]$OwnerSid,[string]$ProcessName,[string]$CommandPattern) {
   if($Port -le 0 -or -not $OwnerSid){return $false}
   try {
-    $listeners=@(Get-NetTCPConnection -LocalAddress '127.0.0.1' -LocalPort $Port -State Listen -ErrorAction Stop)
+    # Some Windows builds report State=$null for a listening endpoint.
+    # Accept that case only with the kernel's explicit wildcard remote
+    # sentinel (0.0.0.0:0), never an Established/TimeWait data socket.
+    $connections=@(Get-NetTCPConnection -LocalAddress '127.0.0.1' -LocalPort $Port -ErrorAction Stop)
+    $listeners=@($connections|Where-Object {
+      [string]$_.LocalAddress -eq '127.0.0.1' -and
+      (($_.State -eq 'Listen') -or
+       ($null -eq $_.State -and [string]$_.RemoteAddress -eq '0.0.0.0' -and
+        $null -ne $_.RemotePort -and [int]$_.RemotePort -eq 0))
+    })
     if($listeners.Count -ne 1){return $false}
     $pidValue=[int]$listeners[0].OwningProcess
     if($pidValue -le 0){return $false}
@@ -187,11 +222,13 @@ do{
   if($mcp){
     $mcp=Test-OwnerListener 47831 $ownerSid 'node.exe' '(?:stable-router\.mjs|server-v0\.3\.mjs)'
   }
-  $ports=ManagedHealthPorts
-  $tunnelOk=($ports.Count-gt0 -and -not [string]::IsNullOrEmpty($ownerSid))
-  foreach($port in $ports){
+  $profiles=@(ManagedTunnelProfiles)
+  $tunnelOk=($profiles.Count-gt0 -and -not [string]::IsNullOrEmpty($ownerSid))
+  foreach($entry in $profiles){
+    $port=[int]$entry.Port
+    $profilePattern='(?:^|\s)--profile(?:=|\s+)"?'+[regex]::Escape([string]$entry.Name)+'"?(?:\s|$)'
     if(-not(Test-Ready $port) -or
-       -not(Test-OwnerListener $port $ownerSid 'tunnel-client.exe' '--profile(?:=|\s+)')){
+       -not(Test-OwnerListener $port $ownerSid 'tunnel-client.exe' $profilePattern)){
       $tunnelOk=$false
       break
     }

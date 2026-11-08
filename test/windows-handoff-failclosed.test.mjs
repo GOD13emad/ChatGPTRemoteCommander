@@ -70,7 +70,8 @@ test('Windows handoff PASS requires SID-qualified user-owned Router and Tunnel l
   for(const required of [
     "HKLM:\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\ProfileList",
     'ProfileImagePath','GetOwnerSid','Get-NetTCPConnection',
-    "LocalAddress '127.0.0.1'","State Listen","$listeners.Count -ne 1",
+    "LocalAddress '127.0.0.1'","$listeners.Count -ne 1",
+    "$_.State -eq 'Listen'","$null -eq $_.State","$_.RemoteAddress -eq '0.0.0.0'","$_.RemotePort -eq 0",
     "$owner.ReturnValue -eq 0","[string]$owner.Sid -eq $OwnerSid"
   ])assert.ok(profile.includes(required),'missing owner proof '+required);
   const recovery=source.slice(source.indexOf('$recoverDeadline='));
@@ -88,5 +89,62 @@ test('Native Windows ownership fixture denies SYSTEM, wrong SID, ambiguous liste
       path.join(repo,'test','windows-handoff-owner-listener-native.ps1')
     ],{cwd:repo,encoding:'utf8',timeout:15000,windowsHide:true});
     assert.equal(result.status,0,result.stderr||result.stdout);
-    assert.match(result.stdout,/HANDOFF_OWNER_NATIVE_PASS cases=15/u);
+    assert.match(result.stdout,/HANDOFF_OWNER_NATIVE_PASS cases=21/u);
+  });
+
+
+test('Handoff binds each tunnel health endpoint to its exact profile argument and denies partial config',()=>{
+  const map=between('function ManagedTunnelProfiles {','# The recovery check must prove');
+  for(const marker of [
+    'BaseName','listen_addr:','$declarations.Count -ne 1',
+    "return @()",'Select-Object -ExpandProperty Port -Unique',
+    '$uniquePorts.Count -ne $profiles.Count'
+  ])assert.ok(map.includes(marker),'missing profile integrity requirement '+marker);
+  assert.match(map,/\$declarations=\[regex\]::Matches/u);
+  assert.match(map,/\$match=\[regex\]::Match\(\$value/u);
+  assert.match(map,/if\(-not \$match\.Success\)\{return @\(\)\}/u);
+  const gate=source.slice(source.indexOf('$recoverDeadline='));
+  assert.match(gate,/\$profiles=@\(ManagedTunnelProfiles\)/u);
+  assert.match(gate,/\$profiles\.Count-gt0/u);
+  assert.match(gate,/--profile\(\?:=\|\\s\+\)/u);
+  assert.match(gate,/\[regex\]::Escape\(\[string\]\$entry\.Name\)/u);
+  assert.match(gate,/Test-OwnerListener \$port \$ownerSid 'tunnel-client\.exe' \$profilePattern/u);
+});
+
+test('Native Windows profile fixture rejects same-port wrong profile and invalid configs',
+  {skip:process.platform!=='win32'},()=>{
+    const result=spawnSync('pwsh.exe',[
+      '-NoLogo','-NoProfile','-NonInteractive','-File',
+      path.join(repo,'test','windows-handoff-profile-match-native.ps1')
+    ],{cwd:repo,encoding:'utf8',timeout:15000,windowsHide:true});
+    assert.equal(result.status,0,result.stderr||result.stdout);
+    assert.match(result.stdout,/HANDOFF_PROFILE_NATIVE_PASS cases=20/u);
+  });
+
+test('SYSTEM handoff must receive an explicit non-SYSTEM owner before any side effects',()=>{
+  assert.match(source,/\$OwnerUserProfile = \$env:USERPROFILE/u);
+  const fn=between('function Assert-HandoffOwnerContext(', '$Root=Split-Path');
+  for(const marker of [
+    'HANDOFF_OWNER_PROFILE_MISSING',
+    'HANDOFF_OWNER_EXPLICIT_REQUIRED_FOR_SYSTEM',
+    'HANDOFF_SYSTEM_PROFILE_CANNOT_OWN_USER_SESSION',
+    "$PSBoundParameters.ContainsKey('OwnerUserProfile')",
+    'WindowsIdentity]::GetCurrent().IsSystem'
+  ])assert.ok(fn.includes(marker),'missing required SYSTEM preflight '+marker);
+  assert.ok(source.indexOf('Assert-HandoffOwnerContext ([Security.Principal.WindowsIdentity]') <
+    source.indexOf('New-Item -ItemType Directory'),
+    'SYSTEM preflight must precede any file writes');
+  assert.ok(source.indexOf('Assert-HandoffOwnerContext ([Security.Principal.WindowsIdentity]') <
+    source.indexOf('Stop-ExactProcess $p'),
+    'SYSTEM preflight must precede stopping processes');
+});
+
+test('Native Windows SYSTEM owner-context guard rejects implicit/mismatched owner',
+  {skip:process.platform!=='win32'},()=>{
+    const result=spawnSync('pwsh.exe',[
+      '-NoLogo','-NoProfile','-NonInteractive','-File',
+      path.join(repo,'test','windows-handoff-owner-context-native.ps1')
+    ],{cwd:repo,encoding:'utf8',timeout:15000,windowsHide:true});
+    assert.equal(result.status,0,result.stderr||result.stdout);
+    assert.match(result.stdout,/HANDOFF_OWNER_CONTEXT_NATIVE_PASS cases=7/u);
   });
