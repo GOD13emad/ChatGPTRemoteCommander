@@ -7,6 +7,7 @@ import { randomBytes } from 'node:crypto';
 import { terminateProcessesUsingBrowserProfile, waitForBrowserDevToolsPort } from '../src/browser-owned-processes.mjs';
 import { createInterface } from 'node:readline';
 import { BrowserChatTargetObserver } from '../src/browser-native-chat-observer.mjs';
+import { uploadStagedFileCdp, downloadSameOriginCdp } from './browser-transfer-native.mjs';
 
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const safeCode=e=>/^[A-Z][A-Z0-9_]{1,79}$/.test(e?.browserCode??e?.message??'')?(e.browserCode??e.message):'BROWSER_NATIVE_FAILED';
@@ -346,6 +347,8 @@ async function handle(req){
    const current=redactUrl(await evaluate('location.href'));
    return {ok:true,data,mimeType:format==='png'?'image/png':'image/jpeg',bytes:bytes.length,url:current.url,urlQueryRedacted:current.queryRedacted,urlFragmentRedacted:current.fragmentRedacted,title:await evaluate('document.title'),background:true};
   }
+  case 'transfer_upload':return uploadStagedFileCdp({req,profileDir:browser?.profileDir,evaluate,send:(method,params)=>browser.cdp.send(method,params,browser.sessionId)});
+  case 'transfer_download':return downloadSameOriginCdp({req,profileDir:browser?.profileDir,evaluate,send:(method,params)=>browser.cdp.send(method,params,browser.sessionId)});
   case 'fill':{
    const sel=serializePageValue(req.selector),txt=serializePageValue(req.text);
    const expr=`(()=>{const el=document.querySelector(${sel});if(!el)return {ok:false,code:'BROWSER_SELECTOR_NOT_FOUND'};if(el.disabled||el.readOnly)return {ok:false,code:'BROWSER_ELEMENT_NOT_EDITABLE'};if(el.tagName==='INPUT'&&(el.type||'').toLowerCase()==='file')return {ok:false,code:'BROWSER_FILE_INPUT_NOT_ALLOWED'};const v=${txt};if(el.isContentEditable){el.textContent=v;}else if(el.tagName==='SELECT'){el.value=v;}else{const proto=el.tagName==='TEXTAREA'?HTMLTextAreaElement.prototype:HTMLInputElement.prototype;const set=Object.getOwnPropertyDescriptor(proto,'value')?.set;if(set)set.call(el,v);else el.value=v;}el.dispatchEvent(new Event('input',{bubbles:true}));el.dispatchEvent(new Event('change',{bubbles:true}));return {ok:true,tag:el.tagName.toLowerCase(),type:(el.type||null)};})()`;
