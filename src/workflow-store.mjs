@@ -81,7 +81,88 @@ function receiptFields(result) {
   if (Buffer.byteLength(raw) > 8 * 1024 * 1024) fail('WORKFLOW_RECEIPT_TOO_LARGE');
   return { ...receipt, resultSha256: hash(raw), outputStored: false };
 }
-function badResult(r) { return r?.timedOut === true || r?.isError === true || r?.ok === false || (typeof r?.exitCode === 'number' && r.exitCode !== 0) || r?.exitCode === null; }
+const NONTERMINAL_EFFECT_STATUS = new Set([
+  'QUEUED','PENDING','RUNNING','IN_PROGRESS','STARTING','SUBMITTED',
+  'ACCEPTED','BACKGROUND','WAITING','WAITING_INPUT','RETRY_SCHEDULED'
+]);
+function deferredEffect(r) {
+  if (!r || typeof r !== 'object') return false;
+  if (r.submitted === true) return true;
+  const candidates=[r.status,r.state?.status,r.task?.status];
+  return candidates.some(value=>typeof value === 'string'
+    && NONTERMINAL_EFFECT_STATUS.has(value.toUpperCase()));
+}
+const NEGATIVE_EFFECT_STATUS = new Set([
+  'FAILED','ERROR','CANCELLED','CANCELED','TIMED_OUT','REJECTED','ABORTED',
+  'UNCERTAIN'
+]);
+const VERIFIED_TERMINAL_EFFECT_STATUS = new Set(['SUCCEEDED','COMPLETED','SUCCESS']);
+function terminalEffectFailure(r) {
+  if (r == null) return true; // No receipt is not proof of completion.
+  if (typeof r !== 'object') return false;
+  const candidates=[r.status,r.state?.status,r.task?.status];
+  if (candidates.some(value=>typeof value === 'string'
+    && NEGATIVE_EFFECT_STATUS.has(value.toUpperCase()))) return true;
+  // New native operation states are not affirmative evidence of completion.
+  // Generic tool content may have a domain-specific "status"; restrict the
+  // default-deny rule to responses carrying a durable operation identity.
+  if (typeof r.operationId === 'string' && r.operationId) {
+    const states=candidates.filter(value=>typeof value === 'string');
+    if (states.length && !states.some(value=>VERIFIED_TERMINAL_EFFECT_STATUS.has(value.toUpperCase()))) {
+      return true;
+    }
+  }
+  return false;
+}
+function nestedOperationFailure(r) {
+  if (!r || typeof r !== 'object' || !r.state || typeof r.state !== 'object'
+    || !Object.hasOwn(r, 'result')) return false;
+  const inner=r.result;
+  if (terminalEffectFailure(inner) || deferredEffect(inner)) return true;
+  return inner?.timedOut === true || inner?.isError === true || inner?.ok === false
+    || inner?.exitCode === null || (typeof inner?.exitCode === 'number' && inner.exitCode !== 0);
+}
+function nativeReceiptIdentityMismatch(r, expectedOperationId) {
+  if (!r || typeof r !== 'object' || !r.state || typeof r.state !== 'object'
+    || !Object.hasOwn(r, 'result')) return false;
+  // Preserve the primary DEFERRED/FAILED reason before checking identity.
+  // An uncompleted nested task cannot be used to release a root lease anyway.
+  if (deferredEffect(r) || terminalEffectFailure(r) || nestedOperationFailure(r)) return false;
+  // A native operation_result belongs to the journaled workflow intent,
+  // not merely to any process that returned exitCode=0.
+  const nativeOperationId=r.state.operationId, innerOperationId=r.result?.operationId;
+  // Any native-shaped receipt needs a complete, consistent identity tuple.
+  // Missing fields must not turn a Native success into an anonymous receipt.
+  const hasIdentity=[r.state.requestId,nativeOperationId,innerOperationId]
+    .some(value=>value !== undefined);
+  // A terminal native-shaped wrapper is never a valid anonymous success,
+  // even if every operation identity field has been stripped by its caller.
+  if (!hasIdentity) return typeof r.state.status === 'string'
+    && VERIFIED_TERMINAL_EFFECT_STATUS.has(r.state.status.toUpperCase());
+  return typeof r.state.requestId !== 'string' || r.state.requestId !== expectedOperationId
+    || typeof nativeOperationId !== 'string' || nativeOperationId.length === 0
+    || typeof innerOperationId !== 'string' || innerOperationId.length === 0
+    || innerOperationId !== nativeOperationId;
+}
+const NATIVE_NO_PROCESS_TOOLS = new Set([
+  'system_status','read_text','read_file','write_text','write_file','list_directory',
+  'file_info','create_directory','copy_path','move_path','delete_path',
+  'search_files'
+]);
+function nativeExecutionNeedsCessationProof(r, invokedTool) {
+  // A process-capable committed tool needs cessation evidence even when a
+  // native adapter flattens or drops all native receipt fields.
+  if (!NATIVE_NO_PROCESS_TOOLS.has(invokedTool)) return true;
+  if (!r || typeof r !== 'object' || !r.state || typeof r.state !== 'object'
+    || !Object.hasOwn(r, 'result') || !r.result || typeof r.result !== 'object'
+    || typeof r.state.status !== 'string'
+    || !VERIFIED_TERMINAL_EFFECT_STATUS.has(r.state.status.toUpperCase())) return false;
+  // A successful native receipt proves the direct operation ended, not that
+  // detached descendants have ceased. A missing/unknown tool fails closed.
+  const tools=[r.state.tool, r.result.tool].filter(t=>typeof t === 'string');
+  return tools.length === 0 || tools.some(t=>!NATIVE_NO_PROCESS_TOOLS.has(t));
+}
+function badResult(r) { return deferredEffect(r) || terminalEffectFailure(r) || nestedOperationFailure(r) || r?.timedOut === true || r?.isError === true || r?.ok === false || (typeof r?.exitCode === 'number' && r.exitCode !== 0) || r?.exitCode === null; }
 
 // Explicit control is independent of scheduling: scheduler-off workflows still
 // permit direct authorized calls. Late receipts must never clear user intent.
@@ -214,8 +295,49 @@ export class WorkflowStore {
     this.#leaseDb.exec(`PRAGMA synchronous=EXTRA;
       CREATE TABLE IF NOT EXISTS root_leases(
         root TEXT PRIMARY KEY, profile TEXT NOT NULL, workflow TEXT NOT NULL,
-        owner TEXT NOT NULL, expires_at TEXT NOT NULL, revision INTEGER NOT NULL
-      );`);
+        owner TEXT NOT NULL, expires_at TEXT NOT NULL, revision INTEGER NOT NULL,
+        fencing_token INTEGER NOT NULL DEFAULT 0
+      );
+      CREATE TABLE IF NOT EXISTS root_lease_counters(
+        root TEXT PRIMARY KEY, last_token INTEGER NOT NULL CHECK(last_token >= 0)
+      );
+      CREATE TRIGGER IF NOT EXISTS root_lease_counters_no_regress
+        BEFORE UPDATE OF last_token ON root_lease_counters WHEN NEW.last_token <= OLD.last_token
+        BEGIN SELECT RAISE(ABORT, 'ROOT_FENCE_TOKEN_REUSE'); END;
+      CREATE TRIGGER IF NOT EXISTS root_lease_counters_no_delete
+        BEFORE DELETE ON root_lease_counters
+        BEGIN SELECT RAISE(ABORT, 'ROOT_FENCE_COUNTER_DELETE'); END;`);
+    // Upgrade existing machine-global lease stores without dropping active leases.
+    // Legacy holders retain token 0 and continue blocking until they release/expire.
+    const leaseColumns=this.#leaseDb.prepare('PRAGMA table_info(root_leases)').all().map(column=>column.name);
+    if(!leaseColumns.includes('fencing_token'))
+      this.#leaseDb.exec('ALTER TABLE root_leases ADD COLUMN fencing_token INTEGER NOT NULL DEFAULT 0;');
+
+    // Older Windows stores may have case-preserving root keys. Normalize both
+    // lease and counter keys atomically before any acquisition; reject aliases
+    // rather than silently dropping an active holder or reusing a fence token.
+    if(process.platform==='win32'){
+      this.#leaseDb.exec('BEGIN IMMEDIATE');
+      try{
+        for(const table of ['root_leases','root_lease_counters']){
+          const rows=this.#leaseDb.prepare(`SELECT root FROM ${table}`).all();
+          const normalized=new Set();
+          for(const row of rows){
+            const key=leaseRootKey(row.root);
+            if(normalized.has(key))fail('WORKFLOW_ROOT_LEASE_ALIAS_COLLISION');
+            normalized.add(key);
+          }
+          for(const row of rows){
+            const key=leaseRootKey(row.root);
+            if(key!==row.root)this.#leaseDb.prepare(`UPDATE ${table} SET root=? WHERE root=?`).run(key,row.root);
+          }
+        }
+        this.#leaseDb.exec('COMMIT');
+      }catch(error){
+        try{this.#leaseDb.exec('ROLLBACK');}catch{}
+        throw error;
+      }
+    }
 
     this.#db = new DatabaseSync(this.#dbPath, { allowExtension: false });
     try {
@@ -391,25 +513,46 @@ export class WorkflowStore {
     catch (e) { try { this.#leaseDb.exec('ROLLBACK'); } catch { /* preserve original exception */ } throw e; }
   }
   #acquireRootLease(root, workflow, owner, expiresAt, revisionValue) {
-    if (this.#schedulerPolicy.oneWriterPerRoot === false) return;
+    if (this.#schedulerPolicy.oneWriterPerRoot === false) return null;
     const key=leaseRootKey(root), now=new Date().toISOString();
-    this.#leaseTransaction(() => {
-      this.#leaseDb.prepare('DELETE FROM root_leases WHERE expires_at <= ?').run(now);
-      const lease=this.#leaseDb.prepare('SELECT profile,workflow,owner FROM root_leases WHERE root=?').get(key);
-      if (lease) fail('WORKFLOW_ROOT_LEASED');
-      this.#leaseDb.prepare('INSERT INTO root_leases(root,profile,workflow,owner,expires_at,revision) VALUES(?,?,?,?,?,?)')
-        .run(key,this.#profileId,workflow,owner,expiresAt,revisionValue);
+    return this.#leaseTransaction(() => {
+      // An expired lease does not prove that the previous external effect has ceased.
+      // Preserve the fencing token and require independent reconciliation.
+      const lease=this.#leaseDb.prepare('SELECT profile,workflow,owner,expires_at,fencing_token FROM root_leases WHERE root=?').get(key);
+      if (lease) fail(lease.expires_at<=now
+        ? 'WORKFLOW_ROOT_LEASE_EXPIRED_RECONCILIATION_REQUIRED'
+        : 'WORKFLOW_ROOT_LEASED');
+      this.#leaseDb.prepare('INSERT INTO root_lease_counters(root,last_token) VALUES(?,0) ON CONFLICT(root) DO NOTHING').run(key);
+      const counter=this.#leaseDb.prepare('SELECT last_token FROM root_lease_counters WHERE root=?').get(key);
+      if(!counter||!Number.isSafeInteger(counter.last_token)||counter.last_token>=Number.MAX_SAFE_INTEGER)
+        fail('WORKFLOW_ROOT_FENCE_EXHAUSTED');
+      const fencingToken=counter.last_token+1;
+      const increment=this.#leaseDb.prepare('UPDATE root_lease_counters SET last_token=? WHERE root=? AND last_token=?')
+        .run(fencingToken,key,counter.last_token);
+      if(increment.changes!==1)fail('WORKFLOW_ROOT_FENCE_CONFLICT');
+      this.#leaseDb.prepare('INSERT INTO root_leases(root,profile,workflow,owner,expires_at,revision,fencing_token) VALUES(?,?,?,?,?,?,?)')
+        .run(key,this.#profileId,workflow,owner,expiresAt,revisionValue,fencingToken);
+      return fencingToken;
     });
   }
-  #renewRootLease(root, workflow, owner, expiresAt) {
-    if (this.#schedulerPolicy.oneWriterPerRoot === false) return;
-    this.#leaseDb.prepare('UPDATE root_leases SET expires_at=? WHERE root=? AND profile=? AND workflow=? AND owner=?')
-      .run(expiresAt,leaseRootKey(root),this.#profileId,workflow,owner);
+  #assertRootLease(root, workflow, owner, fencingToken) {
+    if (this.#schedulerPolicy.oneWriterPerRoot === false) return true;
+    const row=this.#leaseDb.prepare('SELECT fencing_token FROM root_leases WHERE root=? AND profile=? AND workflow=? AND owner=? AND fencing_token=? AND expires_at>?')
+      .get(leaseRootKey(root),this.#profileId,workflow,owner,fencingToken,new Date().toISOString());
+    if(!row)fail('WORKFLOW_ROOT_LEASE_LOST');
+    return true;
   }
-  #releaseRootLease(root, workflow, owner) {
+  #renewRootLease(root, workflow, owner, expiresAt, fencingToken) {
+    if (this.#schedulerPolicy.oneWriterPerRoot === false) return true;
+    const result=this.#leaseDb.prepare('UPDATE root_leases SET expires_at=? WHERE root=? AND profile=? AND workflow=? AND owner=? AND fencing_token=? AND expires_at>?')
+      .run(expiresAt,leaseRootKey(root),this.#profileId,workflow,owner,fencingToken,new Date().toISOString());
+    if(result.changes!==1)fail('WORKFLOW_ROOT_LEASE_LOST');
+    return true;
+  }
+  #releaseRootLease(root, workflow, owner, fencingToken) {
     if (this.#schedulerPolicy.oneWriterPerRoot === false) return;
-    this.#leaseDb.prepare('DELETE FROM root_leases WHERE root=? AND profile=? AND workflow=? AND owner=?')
-      .run(leaseRootKey(root),this.#profileId,workflow,owner);
+    this.#leaseDb.prepare('DELETE FROM root_leases WHERE root=? AND profile=? AND workflow=? AND owner=? AND fencing_token=?')
+      .run(leaseRootKey(root),this.#profileId,workflow,owner,fencingToken);
   }
   #load(id) {
     identifier(id);
@@ -708,7 +851,7 @@ export class WorkflowStore {
     const now = new Date().toISOString();
     const expires = new Date(Date.now()+Math.max(this.#schedulerPolicy.leaseMs,30000)).toISOString();
 
-    this.#acquireRootLease(state.root,id,owner,expires,expectedRevision);
+    const fencingToken=this.#acquireRootLease(state.root,id,owner,expires,expectedRevision);
     let prepared;
     try {
       prepared = this.#mutate(id, expectedRevision, 'intent', s => {
@@ -725,14 +868,16 @@ export class WorkflowStore {
 
       Object.assign(step, {
         status:'running', tool, callHash:fingerprint, operationId, attemptId, idempotencyKey,
-        classification, inputHash, instance:this.#instance, ownerPid:process.pid, ownerHost:os.hostname(), startedAt:now
+        classification, inputHash, instance:this.#instance, ownerPid:process.pid, ownerHost:os.hostname(), startedAt:now,
+        ...(fencingToken===null?{}:{fencingToken})
       });
       s.lifecycleState='RUNNING';
       return { stepId, tool, callHash:fingerprint, operationId, attemptId, idempotencyKey,
-        classification, inputHash, preStateHash:view.headSha256, operationStatus:'PREPARED', rawArgumentsStored:false };
+        classification, inputHash, preStateHash:view.headSha256, operationStatus:'PREPARED', rawArgumentsStored:false,
+        ...(fencingToken===null?{}:{fencingToken}) };
       });
     } catch (error) {
-      try { this.#releaseRootLease(state.root,id,owner); } catch {}
+      try { this.#releaseRootLease(state.root,id,owner,fencingToken); } catch {}
       throw error;
     }
 
@@ -740,24 +885,55 @@ export class WorkflowStore {
     this.#db.prepare("UPDATE scheduler_jobs SET lifecycle='RUNNING',lease_owner=?,lease_until=?,updated_at=? WHERE workflow=?")
       .run(owner,expires,new Date().toISOString(),id);
 
+    let leaseLost=false;
     let renew = setInterval(() => {
+      const until = new Date(Date.now()+Math.max(this.#schedulerPolicy.leaseMs,30000)).toISOString();
       try {
-        const until = new Date(Date.now()+Math.max(this.#schedulerPolicy.leaseMs,30000)).toISOString();
-        this.#renewRootLease(state.root,id,owner,until);
+        this.#renewRootLease(state.root,id,owner,until,fencingToken);
+      } catch {
+        leaseLost=true; /* stale completion is recorded as UNCERTAIN below */
+        return;
+      }
+      try {
         this.#db.prepare('UPDATE scheduler_jobs SET lease_until=?,updated_at=? WHERE workflow=? AND lease_owner=?')
           .run(until,new Date().toISOString(),id,owner);
-      } catch { /* recovery will reconcile if persistence becomes unavailable */ }
+      } catch { /* scheduler projection failure does not invalidate the authoritative root lease */ }
     }, Math.max(2000,Math.floor(Math.max(this.#schedulerPolicy.leaseMs,30000)/3)));
     renew.unref?.();
 
-    let result, receipt, failure = false, finished = null;
+    let result, receipt, failure = false, finished = null, dispatchStarted=false, nativeCessationPending=false;
     try {
-      try { result = await dispatch(tool, args, clone(state)); receipt = receiptFields(result); failure = badResult(result); }
+      try {
+        if(fencingToken!==null) {
+          if(leaseLost)fail('WORKFLOW_ROOT_LEASE_LOST');
+          this.#assertRootLease(state.root,id,owner,fencingToken);
+        }
+        dispatchStarted=true;
+        result = await dispatch(tool, args, clone(prepared.state)); receipt = receiptFields(result); failure = badResult(result);
+        if (nativeReceiptIdentityMismatch(result, operationId)) {
+          failure = true; receipt.errorCode='WORKFLOW_NATIVE_RECEIPT_IDENTITY_MISMATCH';
+        } else if (deferredEffect(result)) receipt.errorCode='WORKFLOW_DEFERRED_EFFECT_UNVERIFIED';
+        else if (terminalEffectFailure(result) || nestedOperationFailure(result)) receipt.errorCode='WORKFLOW_EFFECT_COMPLETION_UNVERIFIED';
+        nativeCessationPending = !failure && this.#schedulerPolicy.oneWriterPerRoot !== false
+          && nativeExecutionNeedsCessationProof(result, tool);
+        if(nativeCessationPending) receipt.nativeCessationProofRequired=true;
+      }
       catch (e) {
         failure = true;
-        receipt = { exception:true, errorCode:/^[A-Z][A-Z0-9_]{1,79}$/.test(e.workflowCode ?? '') ? e.workflowCode : 'TOOL_EXCEPTION', outputStored:false };
+        receipt = { exception:true, errorCode:/^[A-Z][A-Z0-9_]{1,79}$/.test(e.workflowCode ?? '') ? e.workflowCode : 'TOOL_EXCEPTION',
+          outputStored:false, ...(dispatchStarted?{}:{notDispatched:true}) };
       }
-      receipt = { ...receipt, operationId, attemptId, idempotencyKey, classification, inputHash, preStateHash:view.headSha256, postStateHash:null };
+      if(fencingToken!==null) {
+        try {
+          if(leaseLost)fail('WORKFLOW_ROOT_LEASE_LOST');
+          this.#assertRootLease(state.root,id,owner,fencingToken);
+        } catch {
+          failure=true;
+          receipt={...receipt,errorCode:'WORKFLOW_ROOT_LEASE_LOST',leaseLost:true,notDispatched:!dispatchStarted,fencingToken};
+        }
+      }
+      receipt = { ...receipt, operationId, attemptId, idempotencyKey, classification, inputHash, preStateHash:view.headSha256, postStateHash:null,
+        ...(fencingToken===null?{}:{fencingToken}) };
       finished = this.#transaction(() => {
         const { state:s, head } = this.#load(id), step = s.steps.find(x => x.id === stepId);
         if (step.status !== 'running' || step.operationId !== operationId || step.callHash !== fingerprint) fail('WORKFLOW_COMPLETION_CONFLICT');
@@ -788,13 +964,14 @@ export class WorkflowStore {
       });
     } finally {
       clearInterval(renew);
-      if (finished) {
-        try { this.#releaseRootLease(state.root,id,owner); } catch { /* lease expiry remains the safe fallback */ }
+      if (finished && !failure && !nativeCessationPending) {
+        try { this.#releaseRootLease(state.root,id,owner,fencingToken); } catch { /* lease expiry remains the safe fallback */ }
       }
     }
     return { replayed:false,cachedReceipt:false,outcome:failure?'UNCERTAIN':'RECORDED_NOT_VALIDATED',
       revision:finished.state.revision,receipt,result:result??null,acceptanceStatus:'UNVALIDATED',
-      operation:{operationId,attemptId,idempotencyKey,classification,status:failure?'UNCERTAIN':(classification==='READ_ONLY'?'VERIFIED':'EXECUTED')} };
+      operation:{operationId,attemptId,idempotencyKey,classification,status:failure?'UNCERTAIN':(classification==='READ_ONLY'?'VERIFIED':'EXECUTED'),
+        ...(fencingToken===null?{}:{fencingToken})} };
   }
   reconcile({ id, stepId, expectedRevision, outcome, files, explanation }) {
     if (!['applied', 'not_applied'].includes(outcome)) fail('WORKFLOW_RECONCILIATION_OUTCOME');

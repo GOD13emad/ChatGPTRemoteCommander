@@ -266,23 +266,26 @@ test('user revision override revises goal/acceptance and stale worker is rejecte
   }finally{fs.rmSync(root,{recursive:true,force:true});}
 });
 
-test('same root-cause failures exceed retry budget and require reassessment',async()=>{
+test('verified NOT_APPLIED outcome cannot release an uncertain external-effect lease without cessation proof',async()=>{
   const root=temp();try{
     const s=new WorkflowStore(options(root));try{
-      s.create({id:'retry',root,goal:'budget',acceptance:['proof'],retryBudget:1,steps:[
+      s.create({id:'retry',root,goal:'no blind replay',acceptance:['proof'],retryBudget:1,steps:[
         {id:'a',title:'A',dependsOn:[]},{id:'b',title:'B',dependsOn:[]}
       ]});
       const failHost=host(async()=>{throw Object.assign(new Error('same'),{workflowCode:'SAME_ROOT'});});
-      await s.call({id:'retry',stepId:'a',expectedRevision:1,tool:'write_text',arguments:{path:'a.txt',content:'a'}},failHost);
-      let st=s.get('retry').state;
-      await s.reconcileAutomatically('retry',{verify:async()=>({status:'NOT_APPLIED',summary:'absent'})});
-      st=s.get('retry').state;
-      await s.call({id:'retry',stepId:'b',expectedRevision:st.revision,tool:'write_text',arguments:{path:'b.txt',content:'b'}},failHost);
-      st=s.get('retry').state;
-      assert.equal(st.scheduler.repeatedFailureCount,2);
-      assert.equal(st.scheduler.lastRootCauseCode,'SAME_ROOT');
-      assert.equal(st.scheduler.lastFailureCode,'BLOCKED_REQUIRES_REASSESSMENT');
-      assert.equal(st.lifecycleState,'BLOCKED');
+      const first=await s.call({id:'retry',stepId:'a',expectedRevision:1,tool:'write_text',arguments:{path:'a.txt',content:'a'}},failHost);
+      assert.equal(first.outcome,'UNCERTAIN');
+      assert.equal(s.get('retry').state.scheduler.repeatedFailureCount,1);
+      const outcome=await s.reconcileAutomatically('retry',{verify:async()=>({status:'NOT_APPLIED',summary:'absent'})});
+      assert.equal(outcome.status,'NOT_APPLIED');
+      const st=s.get('retry').state;
+      await assert.rejects(s.call({id:'retry',stepId:'b',expectedRevision:st.revision,tool:'write_text',arguments:{path:'b.txt',content:'b'}},failHost),
+        /WORKFLOW_ROOT_LEASED/);
+      const after=s.get('retry').state;
+      assert.equal(after.scheduler.repeatedFailureCount,1);
+      assert.equal(after.scheduler.lastRootCauseCode,'SAME_ROOT');
+      assert.equal(after.scheduler.lastFailureCode,'WORKFLOW_REPLAN_REQUIRED');
+      assert.equal(after.lifecycleState,'BLOCKED');
     }finally{s.close();}
   }finally{fs.rmSync(root,{recursive:true,force:true});}
 });
