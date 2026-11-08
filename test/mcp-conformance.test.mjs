@@ -62,6 +62,7 @@ test('dual-era MCP contract, tool validation, cache hints and risk annotations',
     await fs.cp(new URL('../src/', import.meta.url), path.join(serverRoot, 'src'), { recursive: true });
 
     const config = {
+      capabilityProfile: { tier: 'STANDARD' },
       host: '127.0.0.1',
       port,
       allowedRoots: [dataRoot],
@@ -72,7 +73,7 @@ test('dual-era MCP contract, tool validation, cache hints and risk annotations',
       auditLog: 'var/audit.jsonl',
       durableDelivery: { directory: path.join(root, 'delivery') },
       powerMode: {
-        enabled: true,
+        enabled: false,
         fullFilesystem: false,
         allowShell: true,
         allowProcessControl: true,

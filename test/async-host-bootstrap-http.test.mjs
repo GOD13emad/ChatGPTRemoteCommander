@@ -18,7 +18,7 @@ async function availablePort(){
   return port;
 }
 
-async function isolatedServer(requireHostSignedOrigin){
+async function isolatedServer(requireHostSignedOrigin,{tier='STANDARD',requireTrustedIngress=false,legacyPowerModeEnabled=false}={}){
   const root=await fs.mkdtemp(path.join(os.tmpdir(),'v106-host-bootstrap-'));
   let child=null;
   try{
@@ -29,6 +29,7 @@ async function isolatedServer(requireHostSignedOrigin){
     await fs.cp(new URL('../src/',import.meta.url),path.join(serverRoot,'src'),{recursive:true});
     const port=await availablePort();
     const config={
+      capabilityProfile:{tier},requireTrustedIngress,
       host:'127.0.0.1',port,allowedRoots:[await fs.realpath(dataRoot)],
       allowedPrograms:['node'],maxReadBytes:65536,maxWriteBytes:65536,
       maxCommandMs:10000,auditLog:'var/audit.jsonl',
@@ -37,7 +38,7 @@ async function isolatedServer(requireHostSignedOrigin){
         enabled:true,stateDir:path.join(root,'operations'),
         maxOutputBytes:65536,requireHostSignedOrigin
       },
-      powerMode:{enabled:false,fullFilesystem:false,allowShell:false,
+      powerMode:{enabled:legacyPowerModeEnabled,fullFilesystem:false,allowShell:false,
         allowProcessControl:false,allowPermanentDelete:false,
         guiControl:{enabled:false},browserControl:{enabled:false}}
     };
@@ -126,6 +127,12 @@ test('legacy MCP bootstrap discloses unverified origin and cannot claim ChatGPT 
       body:JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/call',
         params:{name:'system_status',arguments:{}}})
     });
+    const health=await (await fetch(`http://127.0.0.1:${f.port}/health`)).json();
+    if(health.privilegedLegacyHttpQuarantined){
+      assert.equal(r.status,403);
+      assert.equal((await r.json()).error,'trusted_transport_required');
+      return;
+    }
     assert.equal(r.status,200);
     const body=await r.json();
     assert.equal(body.result?.isError,false);
@@ -138,4 +145,42 @@ test('legacy MCP bootstrap discloses unverified origin and cannot claim ChatGPT 
     assert.equal(status.durableDelivery.identityBoundary,
       'TRUSTED_PROFILE_NOT_AUTHENTICATED_CHAT');
   }finally{await stop(f);}
+});
+
+test('strict ingress and privileged tiers deny forged and anonymous legacy RPC in a real listener',async()=>{
+  for(const policy of [
+    {tier:'STANDARD',requireTrustedIngress:true},
+    {tier:'STANDARD',requireTrustedIngress:false,legacyPowerModeEnabled:true},
+    {tier:'FULL_POWER',requireTrustedIngress:false},
+    {tier:'FULL_ACCESS',requireTrustedIngress:false}
+  ]){
+    const f=await isolatedServer(false,policy);
+    try{
+      let health=null;
+      for(let i=0;i<300;i++){
+        if(f.child.exitCode!==null)break;
+        try{
+          const res=await fetch(`http://127.0.0.1:${f.port}/health`);
+          if(res.ok){health=await res.json();break;}
+        }catch{}
+        await sleep(25);
+      }
+      assert.ok(health,f.stderr()||'listener did not start');
+      assert.equal(health.privilegedLegacyHttpQuarantined,true,JSON.stringify(policy));
+      for(const method of ['tools/list','tools/call']){
+        for(const forged of [false,true]){
+          const res=await fetch(`http://127.0.0.1:${f.port}/mcp`,{
+            method:'POST',
+            headers:forged
+              ? {'content-type':'application/json',authorization:'Bearer forged','x-commander-trusted':'true'}
+              : {'content-type':'application/json'},
+            body:JSON.stringify({jsonrpc:'2.0',id:1,method,
+              params:method==='tools/call'?{name:'system_status',arguments:{}}:{}})
+          });
+          assert.equal(res.status,403,`${policy.tier}/${method}/${forged}`);
+          assert.equal((await res.json()).error,'trusted_transport_required');
+        }
+      }
+    }finally{await stop(f);}
+  }
 });

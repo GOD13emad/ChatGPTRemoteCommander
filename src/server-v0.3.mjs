@@ -1,4 +1,6 @@
 import http from 'node:http';
+import { legacyPrivilegedMcpQuarantine, rejectLegacyPrivilegedMcp } from './full-access-http-quarantine.mjs';
+import { probeWindowsAdministrator } from './windows-admin-token.mjs';
 import { createHash } from 'node:crypto';
 import { validateTransport, assertLocalTransport } from './transport-guard.mjs';
 import os from 'node:os';
@@ -56,6 +58,17 @@ if (!process.env.REMOTE_COMMANDER_CONFIG) {
 const configRaw = await readFile(configPath, 'utf8');
 const configSha256 = createHash('sha256').update(configRaw).digest('hex');
 const config = JSON.parse(configRaw);
+const nativeWindowsToken = process.platform === 'win32'
+  ? await probeWindowsAdministrator({ platform: process.platform })
+  : null;
+const privilegedLegacyHttp = legacyPrivilegedMcpQuarantine({
+  platform: process.platform,
+  configuredTier: config?.capabilityProfile?.tier,
+  effectiveUid: process.platform === 'linux' ? process.geteuid?.() : null,
+  windowsAdminToken: nativeWindowsToken,
+  legacyPowerModeEnabled: config.powerMode?.enabled === true,
+  requireTrustedIngress: process.env.COMMANDER_ONE_REQUIRE_TRUSTED_INGRESS === '1' || config.requireTrustedIngress
+});
 assertLocalTransport(config);
 // Optional privacy-safe local display; no new permissions or runtime authority.
 const coucouBridge = createCoucouBridge(config.coucouBridge);
@@ -891,8 +904,10 @@ const server = http.createServer(async (req, res) => {
     const url = new URL(req.url, `http://${req.headers.host || '127.0.0.1'}`);
     if (req.method === 'GET' && url.pathname === '/health') {
       return sendJson(res, 200, { ok: true, name: 'chatgpt-remote-commander', version: VERSION, configSha256,
-        instance: config.instance ?? { profile: 'default', isolated: false } });
+        instance: config.instance ?? { profile: 'default', isolated: false },
+        privilegedLegacyHttpQuarantined: privilegedLegacyHttp.quarantine });
     }
+    if (rejectLegacyPrivilegedMcp(req, res, privilegedLegacyHttp)) return;
     if (req.method !== 'POST' || url.pathname !== '/mcp') {
       return sendJson(res, 404, { error: 'not_found' });
     }
