@@ -103,6 +103,31 @@ test('desktop access and operations UI is wired to real guarded backends',()=>{
   ]) assert.ok(dashboard.includes(marker),marker);
 });
 
+test('Windows Control Center optional add-ons are checksum-embedded and noninstalling',()=>{
+  const project=read('desktop/RemoteCommanderDashboard/RemoteCommanderDashboard.csproj');
+  const form=read('desktop/RemoteCommanderDashboard/OptionalAddonsForm.cs');
+  const program=read('desktop/RemoteCommanderDashboard/Program.cs');
+  const catalog=JSON.parse(read('installer/products.json')).controlCenterAddons;
+  assert.ok(project.includes('EmbeddedResource Include="../../installer/products.json" LogicalName="RemoteCommander.OptionalProducts"'));
+  assert.ok(program.includes('Button("Optional Add-ons"'));
+  for(const marker of [
+    'GetManifestResourceStream(ResourceName)',
+    'defaultAutoInstall',
+    'DISCOVERY_ONLY_UNTIL_SIGNED_ARTIFACT_AND_OWNER_GRANT',
+    'GetProperty("downloadDefault")',
+    'GetProperty("admission")',
+    '"planned"',
+    'Planned — disabled',
+    'Uri.TryCreate',
+    'return Array.Empty<OptionalAddonView>();'
+  ]) assert.ok(form.includes(marker),'noninstalling add-on guard '+marker);
+  for(const forbidden of ['Process.Start','ProcessStartInfo','HttpClient','WebRequest','Registry.SetValue','File.WriteAllBytes'])
+    assert.ok(!form.includes(forbidden),'Control Center add-on dialog cannot install: '+forbidden);
+  assert.equal(catalog.defaultAutoInstall,false);
+  assert.equal(catalog.items.length,8);
+  assert.ok(catalog.items.every(item=>item.admission==='planned'&&item.downloadDefault===false));
+});
+
 test('Windows updater can target one named profile without changing default all-profile semantics',()=>{
   const s=read('auto-update-windows.ps1');
   assert.ok(s.includes('[string[]]$TargetProfile = @()'));
