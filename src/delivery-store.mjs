@@ -166,9 +166,13 @@ export class DeliveryStore {
     if (correlationId !== undefined && item.correlationId !== correlationId) fail('DELIVERY_CORRELATION_MISMATCH');
     return item;
   }
-  publish({ eventKey, correlationId, source, sourceId, kind, code = kind, artifact = null }) {
+  publish({ eventKey, correlationId, source, sourceId, kind, code = kind, artifact = null, bindingId = null, originReceiptHash = null }) {
     opaqueId(eventKey); opaqueId(correlationId); opaqueId(sourceId); opaqueId(code);
     if (!SOURCE_KINDS.has(source) || !KINDS.has(kind)) fail('DELIVERY_INVALID_EVENT');
+    if (bindingId !== null && (typeof bindingId !== 'string' || !/^[a-f0-9]{32,64}$/.test(bindingId)))
+      fail('DELIVERY_INVALID_CONSENT_EPOCH');
+    if (originReceiptHash !== null && (typeof originReceiptHash !== 'string' || !/^[a-f0-9]{64}$/.test(originReceiptHash)))
+      fail('DELIVERY_INVALID_ORIGIN_RECEIPT_HASH');
     if (artifact && (
       !/^[a-f0-9]{64}$/.test(artifact.id) || !/^[a-f0-9]{64}$/.test(artifact.sha256) ||
       artifact.id !== artifact.sha256 || !Number.isSafeInteger(artifact.bytes) ||
@@ -176,6 +180,8 @@ export class DeliveryStore {
     )) fail('DELIVERY_INVALID_ARTIFACT');
     const payload = stableJson({
       correlationId, source, sourceId, kind, code,
+      ...(bindingId === null ? {} : { bindingEpochHash:digest(bindingId) }),
+      ...(originReceiptHash === null ? {} : { originReceiptHash }),
       artifact: artifact ? { id: artifact.id, sha256: artifact.sha256, bytes: artifact.bytes } : null
     });
     const resultHash = digest(payload), now = new Date().toISOString();
@@ -187,12 +193,17 @@ export class DeliveryStore {
     if (row.result_hash !== resultHash) fail('DELIVERY_EVENT_CONFLICT');
     return this.decode(row);
   }
-  list({ after = 0, limit = 20, correlationId, includeDelivered = false } = {}) {
+  list({ after = 0, limit = 20, correlationId, includeDelivered = false, bindingEpochHash } = {}) {
     integer(after, 0, 0, Number.MAX_SAFE_INTEGER); integer(limit, 20, 1, 50);
     if (correlationId !== undefined) opaqueId(correlationId);
+    if (bindingEpochHash !== undefined && (typeof bindingEpochHash !== 'string'
+      || !/^[a-f0-9]{64}$/.test(bindingEpochHash))) fail('DELIVERY_INVALID_CONSENT_EPOCH');
     const rows = this.db.prepare(`SELECT * FROM deliveries WHERE scope=? AND seq>?
-      AND (? IS NULL OR correlation=?) AND (?=1 OR state NOT IN ('DELIVERED','TRANSPORT_RECEIPT')) ORDER BY seq LIMIT ?`)
-      .all(this.scope, after, correlationId ?? null, correlationId ?? null, includeDelivered ? 1 : 0, limit + 1);
+      AND (? IS NULL OR correlation=?)
+      AND (? IS NULL OR json_extract(payload,'$.bindingEpochHash')=?)
+      AND (?=1 OR state NOT IN ('DELIVERED','TRANSPORT_RECEIPT')) ORDER BY seq LIMIT ?`)
+      .all(this.scope, after, correlationId ?? null, correlationId ?? null,
+        bindingEpochHash ?? null, bindingEpochHash ?? null, includeDelivered ? 1 : 0, limit + 1);
     const items = rows.slice(0, limit).map(row => this.decode(row));
     return { items, nextCursor: rows.length > limit ? items.at(-1)?.cursor ?? null : null };
   }
@@ -501,6 +512,17 @@ export class DeliveryStore {
       logicalStateChanged: reclassified > 0, acknowledgementSynthesized: false, artifactsDeleted: 0
     };
   }
+  pendingIdentityCounts() {
+    // Epoch-bound means only that the publisher recorded an immutable consent
+    // epoch. It does NOT imply that the epoch is the currently authorized one.
+    // Keep legacy/unbound backlog visible without making it replay-eligible.
+    const counts=this.db.prepare(`SELECT
+      COALESCE(SUM(CASE WHEN json_type(payload,'$.bindingEpochHash') IS NULL THEN 1 ELSE 0 END),0) AS unbound,
+      COALESCE(SUM(CASE WHEN json_type(payload,'$.bindingEpochHash')='text' THEN 1 ELSE 0 END),0) AS epochBound
+      FROM deliveries WHERE scope=? AND state IN ('COMPLETED_UNDELIVERED','DELIVERY_PENDING')`)
+      .get(this.scope);
+    return Object.freeze({unbound:counts.unbound,epochBound:counts.epochBound});
+  }
   beacon(limit = 5) {
     integer(limit, 5, 1, 10);
     const items = this.db.prepare(`SELECT * FROM deliveries
@@ -528,6 +550,7 @@ export class DeliveryStore {
     return {
       pending: (counts.COMPLETED_UNDELIVERED ?? 0) + (counts.DELIVERY_PENDING ?? 0),
       transportReceipts: counts.TRANSPORT_RECEIPT ?? 0,
+      pendingByBinding: this.pendingIdentityCounts(),
       deadLetter: counts.DEAD_LETTER ?? 0,
       items,
       hostWakeAvailable: false,
@@ -543,6 +566,7 @@ export class DeliveryStore {
       durable: true, schema: 1, scope: this.scope, counts,
       pending: (counts.COMPLETED_UNDELIVERED ?? 0) + (counts.DELIVERY_PENDING ?? 0),
       transportReceipts: counts.TRANSPORT_RECEIPT ?? 0,
+      pendingByBinding: this.pendingIdentityCounts(),
       deadLetter: counts.DEAD_LETTER ?? 0,
       unfinishedRequests: this.db.prepare("SELECT count(*) AS n FROM requests WHERE scope=? AND status='RUNNING'")
         .get(this.scope).n,

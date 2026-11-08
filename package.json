@@ -36,7 +36,10 @@
     "test:owner-workspace": "node --test test/windows-owner-workspace-worker.test.mjs test/workspace-target-tools.test.mjs test/gui-owner-delegation.test.mjs test/owner-workspace-delegation.test.mjs",
     "test:isolated-qa-policy": "node --test test/isolated-qa-policy.test.mjs",
     "test:gui-universal": "node --test test/agentos-provider-router.test.mjs",
-    "test:release-train-0.12": "node --test test/release-train-0.12.test.mjs"
+    "test:release-train-0.12": "node --test test/release-train-0.12.test.mjs",
+    "check:v1-06": "node --check src/async-operations.mjs && node --check src/delivery-authenticated.mjs && node --check src/delivery-chat-context-verified.mjs && node --check src/delivery-mcp-callback-verifier.mjs && node --check src/delivery-mcp-events.mjs && node --check src/delivery-mcp-host-runtime.mjs && node --check src/delivery-mcp-runtime-manager.mjs && node --check src/delivery-mcp-send.mjs && node --check src/delivery-mcp-subscription-store.mjs && node --check src/delivery-mcp-subscriptions.mjs && node --check src/delivery-mcp-verified-https.mjs && node --check src/delivery-mcp-webhook.mjs && node --check src/delivery-origin-publisher.mjs && node --check src/delivery-presentation-verified.mjs && node --check src/delivery-store.mjs",
+    "test:v1-06-origin": "node --test test/async-signed-origin.test.mjs test/async-host-bootstrap-http.test.mjs",
+    "test:v1-06-delivery": "node --test test/delivery-authenticated.test.mjs test/delivery-chat-context-verified.test.mjs test/delivery-mcp-callback-verifier.test.mjs test/delivery-mcp-events.test.mjs test/delivery-mcp-host-runtime.test.mjs test/delivery-mcp-runtime-manager.test.mjs test/delivery-mcp-send.test.mjs test/delivery-mcp-subscription-store.test.mjs test/delivery-mcp-subscriptions-integration.test.mjs test/delivery-mcp-subscriptions.test.mjs test/delivery-mcp-verified-https.test.mjs test/delivery-mcp-webhook.test.mjs test/delivery-origin-publisher.test.mjs test/delivery-presentation-verified.test.mjs test/delivery-store.test.mjs"
   },
   "repository": "https://github.com/GOD13emad/ChatGPTRemoteCommander",
   "license": "MIT"
