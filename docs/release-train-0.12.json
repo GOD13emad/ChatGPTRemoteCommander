@@ -84,5 +84,21 @@
     "noPublicStableAccepted": true,
     "keepAssetsAndTags": true,
     "noLatestChannelRetargetUntilUpdaterMigration": true
+  },
+  "fleetCoverage": {
+    "scope": "all-known-commander1-connectors",
+    "expectedHostIds": [
+      "Emad_PC_Ultimate",
+      "Emad_PC_LIte",
+      "Emad_Labtop",
+      "MMZ_Labtop",
+      "Saeid_PC",
+      "Emad_Server",
+      "Server_103",
+      "Server_Amirreza"
+    ],
+    "acceptedHostIds": [],
+    "mappingVerified": false,
+    "bootLoginAndRollbackVerified": false
   }
 }

@@ -12,6 +12,10 @@ Large model and agent runtimes (e.g. Colibri, larger Ollama/llama.cpp weights, v
 
 Coordination: this conversation is the overall Commander 1 integration/architecture lead; V1-01 (Security), V1-03 (GUI) and V1-04 (Browser) may proceed in separate delegated conversations, delivering SHA-pinned reviewed deltas to the one-writer canonical V1-00 integration branch. Independent lane QA is not integrated Release acceptance. Commander 2 remains distinct.
 
+## Exact known-fleet coverage gate — 2026-11-08
+
+Five generic fleet labels and the historic `fiveHostsRuntime` flag do **not** suffice for the owner requirement to qualify all known Commander 1 devices. The same authoritative release manifest now includes an eight-connector `fleetCoverage` contract: exact connector IDs, `mappingVerified=false`, empty `acceptedHostIds`, and `bootLoginAndRollbackVerified=false`. A release can pass this additional guard only after each connector is mapped to a real distinct host/profile target, authentic installed acceptance is recorded, the expected and accepted sets agree, and reboot/login plus rollback are verified. This is an admission guard, **not** evidence that all eight are deployed or even separate physical machines; explicit mapping resolves aliases before promoting. The pure verifier validates manifest state but cannot replace signature/issuer and live host evidence checks, which remain independent gate responsibilities. No GUI/RDP or host session changes.
+
 ## Source authority
 
 - Exact recovered base commit: `40256873627780cc7b62359935e43bac5ef856b3` from the owner-local immutable `0.11.0-dev.23` release checkout.

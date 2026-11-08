@@ -20,6 +20,7 @@ export function verifyV012Publication(version,tag,manifest) {
  if(!manifest||manifest.schema!=='rc-suite-release-train-v1'||
     manifest.train!=='0.12'||manifest.sourceVersion!==version||
     manifest.targetPrerelease!=='0.12.0'||
+    manifest.firstStable!=='0.12.0'||manifest.majorTarget!=='1.0.0'||
     manifest.status!=='RELEASE_APPROVED'||
     manifest.channel!=='release'||manifest.isStable!==true||
     manifest.publishApproved!==true||
@@ -42,6 +43,19 @@ export function verifyV012Publication(version,tag,manifest) {
     Object.values(manifest.acceptance).some(value=>value!==true))deny();
  if(!Array.isArray(manifest.fleet)||manifest.fleet.length<5||
     new Set(manifest.fleet).size!==manifest.fleet.length)deny();
+ // Historical fiveHostsRuntime alone is insufficient for all known Commander 1 connectors.
+ const coverage=manifest.fleetCoverage;
+ if(!coverage||coverage.scope!=='all-known-commander1-connectors'||
+    coverage.mappingVerified!==true||
+    coverage.bootLoginAndRollbackVerified!==true||
+    !Array.isArray(coverage.expectedHostIds)||coverage.expectedHostIds.length<8||
+    !Array.isArray(coverage.acceptedHostIds)||
+    new Set(coverage.expectedHostIds).size!==coverage.expectedHostIds.length||
+    new Set(coverage.acceptedHostIds).size!==coverage.acceptedHostIds.length||
+    coverage.expectedHostIds.some(id=>typeof id!=='string'||!id.trim())||
+    coverage.acceptedHostIds.some(id=>typeof id!=='string')||
+    coverage.acceptedHostIds.length!==coverage.expectedHostIds.length||
+    coverage.expectedHostIds.some(id=>!coverage.acceptedHostIds.includes(id)))deny();
  if(manifest.distribution?.noPublicStableAccepted!==false||
     manifest.distribution?.keepAssetsAndTags!==true||
     manifest.distribution?.oldReleasesHistorical!==true)deny();

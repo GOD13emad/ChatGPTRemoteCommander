@@ -94,6 +94,9 @@ test('V1-08 v0.12 release requires exact accepted train before attestation and d
    autoupdateApproved:true,installedPromotionApproved:true,releaseTag:'v0.12.0',
    components:manifest.components.map(x=>({...x,verified:true})),
    acceptance:Object.fromEntries(Object.keys(manifest.acceptance).map(k=>[k,true])),
+   fleetCoverage:{...manifest.fleetCoverage,
+     acceptedHostIds:[...manifest.fleetCoverage.expectedHostIds],
+     mappingVerified:true,bootLoginAndRollbackVerified:true},
    distribution:{...manifest.distribution,noPublicStableAccepted:false}
  };
  assert.equal(verifyV012Publication('0.12.0','v0.12.0',ready),
@@ -106,7 +109,12 @@ test('V1-08 v0.12 release requires exact accepted train before attestation and d
    {acceptance:{...ready.acceptance,authAndGui:false}},
    {acceptance:{...ready.acceptance,rollback:false}},
    {components:ready.components.map(x=>x.id==='gui-same-owner'?{...x,verified:false}:x)},
-   {components:ready.components.slice(1)},{fleet:['EmadPC']}
+   {components:ready.components.slice(1)},{fleet:['EmadPC']},
+   {firstStable:'1.0.0'},{majorTarget:'0.12.0'},
+   {fleetCoverage:{...ready.fleetCoverage,mappingVerified:false}},
+   {fleetCoverage:{...ready.fleetCoverage,bootLoginAndRollbackVerified:false}},
+   {fleetCoverage:{...ready.fleetCoverage,acceptedHostIds:ready.fleetCoverage.acceptedHostIds.slice(1)}},
+   {fleetCoverage:{...ready.fleetCoverage,acceptedHostIds:['UNKNOWN',...ready.fleetCoverage.acceptedHostIds.slice(1)]}}
  ]){
    assert.throws(()=>verifyV012Publication('0.12.0','v0.12.0',{...ready,...patch}),
      /V108_V012_RELEASE_APPROVAL_DENIED/);

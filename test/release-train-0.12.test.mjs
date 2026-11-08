@@ -8,6 +8,11 @@ test('0.12 development train has one valid NoPromote identity and a pinned sourc
  assert.equal(manifest.train,'0.12');
  assert.equal(manifest.firstStable,'0.12.0','0.12 is the first target operational stable baseline');
  assert.equal(manifest.majorTarget,'1.0.0','major product maturity remains a later milestone');
+ assert.equal(manifest.fleetCoverage.scope,'all-known-commander1-connectors');
+ assert.equal(manifest.fleetCoverage.expectedHostIds.length,8);
+ assert.deepEqual(manifest.fleetCoverage.acceptedHostIds,[]);
+ assert.equal(manifest.fleetCoverage.mappingVerified,false);
+ assert.equal(manifest.fleetCoverage.bootLoginAndRollbackVerified,false);
  assert.equal(manifest.sourceVersion,'0.12.0-dev.1');
  assert.equal(manifest.status,'INTEGRATION_CANDIDATE_NOT_FINAL');
  assert.equal(manifest.sourceBaseSha,'40256873627780cc7b62359935e43bac5ef856b3');
