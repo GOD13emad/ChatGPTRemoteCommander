@@ -6,7 +6,7 @@ import path from 'node:path';
 import {spawnSync,execFileSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import crypto from 'node:crypto';
-import {verifyV012Publication} from '../tools/verify-v012-publish-readiness.mjs';
+import {verifyV012Publication,summarizeV012Readiness} from '../tools/verify-v012-publish-readiness.mjs';
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const workflow=fs.readFileSync(path.join(root,'.github/workflows/release-sync.yml'),'utf8');
 const start=workflow.indexOf('      - name: Validate matching annotated tag and versioned 20/21-asset manifest');
@@ -72,6 +72,32 @@ test('R171 tag-only publication gate skips post-tag main without re-signing or r
  assert.match(missing.output,/accepted=false/);
 });
 
+
+test('0.12 readiness report exposes all blockers read-only without claiming installed acceptance',()=>{
+ const manifest=JSON.parse(fs.readFileSync(path.join(root,'docs','release-train-0.12.json'),'utf8'));
+ const report=summarizeV012Readiness(manifest);
+ assert.equal(report.schema,'rc-v012-readiness-report-v1');
+ assert.equal(report.manifestEligibilityOnly,false);
+ assert.equal(report.externalEvidenceRequired,true);
+ assert.equal(report.verifiedComponents,0);
+ assert.equal(report.requiredComponents,9);
+ assert.equal(report.verifiedAcceptance,0);
+ assert.equal(report.requiredAcceptance,9);
+ assert.equal(report.expectedHostCount,8);
+ assert.equal(report.acceptedHostCount,0);
+ assert.equal(report.missingHosts.length,8);
+ assert.equal(report.mappingVerified,false);
+ assert.equal(report.bootLoginAndRollbackVerified,false);
+ const cli=spawnSync(process.execPath,[
+   path.join(root,'tools/verify-v012-publish-readiness.mjs'),'--report'
+ ],{cwd:root,encoding:'utf8',timeout:9000});
+ assert.equal(cli.status,0,cli.stderr);
+ assert.deepEqual(JSON.parse(cli.stdout),report);
+ const invalid=spawnSync(process.execPath,[
+   path.join(root,'tools/verify-v012-publish-readiness.mjs'),'--report','v0.12.0'
+ ],{cwd:root,encoding:'utf8',timeout:9000});
+ assert.equal(invalid.status,2);
+});
 
 test('V1-08 v0.12 release requires exact accepted train before attestation and draft creation',()=>{
  const gate='node tools/verify-v012-publish-readiness.mjs "$version" "$tag"';

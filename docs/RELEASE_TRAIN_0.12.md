@@ -16,6 +16,10 @@ Coordination: this conversation is the overall Commander 1 integration/architect
 
 Five generic fleet labels and the historic `fiveHostsRuntime` flag do **not** suffice for the owner requirement to qualify all known Commander 1 devices. The same authoritative release manifest now includes an eight-connector `fleetCoverage` contract: exact connector IDs, `mappingVerified=false`, empty `acceptedHostIds`, and `bootLoginAndRollbackVerified=false`. A release can pass this additional guard only after each connector is mapped to a real distinct host/profile target, authentic installed acceptance is recorded, the expected and accepted sets agree, and reboot/login plus rollback are verified. This is an admission guard, **not** evidence that all eight are deployed or even separate physical machines; explicit mapping resolves aliases before promoting. The pure verifier validates manifest state but cannot replace signature/issuer and live host evidence checks, which remain independent gate responsibilities. No GUI/RDP or host session changes.
 
+## Live read-only release readiness report — 2026-11-08
+
+Invoke `node tools/verify-v012-publish-readiness.mjs --report` from the exact release root to obtain bounded JSON with the 9 required component receipts, 9 acceptance gate receipts, 8 known connector IDs and missing host mapping/boot-login/rollback status. This reporting mode performs no install, tagging, migration, updater or credential operation and is not a publication authority. At the 0.12.0-dev.1 source snapshot all 9 component manifest `verified` flags are false, 9 acceptance flags are false, 0/8 connector admission receipts have been accepted, and the report correctly returns `manifestEligibilityOnly=false`. These numbers describe release acceptance, **not** completion percentages of independently tested development code.
+
 ## Source authority
 
 - Exact recovered base commit: `40256873627780cc7b62359935e43bac5ef856b3` from the owner-local immutable `0.11.0-dev.23` release checkout.
