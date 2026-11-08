@@ -1,5 +1,6 @@
 """Regression suite for source-pinned, non-installing Linux GTK preview archive."""
 import hashlib
+import importlib.util
 import json
 import os
 import pathlib
@@ -8,6 +9,7 @@ import sys
 import tempfile
 import unittest
 import zipfile
+from unittest.mock import patch
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 BUILDER = ROOT / "tools/build-linux-control-center-preview.py"
@@ -53,6 +55,8 @@ class LinuxGtkPreviewArchiveTests(unittest.TestCase):
                 self.assertEqual(manifest["sourceCommit"], expected)
                 self.assertFalse(manifest["installationPerformed"])
                 self.assertFalse(manifest["nativeGuiAccepted"])
+                pkg = json.loads((ROOT / "package.json").read_text())
+                self.assertEqual(manifest["version"], pkg["version"])
                 self.assertEqual(set(manifest["files"]), SOURCES | {"run-control-center.sh", "README.txt", "manage-userlocal.py"})
                 for name, sha in manifest["files"].items():
                     self.assertEqual(sha, hashlib.sha256(by_name[name]).hexdigest())
@@ -74,6 +78,22 @@ class LinuxGtkPreviewArchiveTests(unittest.TestCase):
             self.assertEqual(list(home.iterdir()), [])
             self.assertFalse((root / "xdgdata").exists())
             self.assertFalse((root / "xdgconfig").exists())
+
+    def test_preview_refuses_uncommitted_release_inputs_without_artifact(self):
+        spec = importlib.util.spec_from_file_location("rc_gtk_preview_builder", BUILDER)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        original = module.checked_git
+        with tempfile.TemporaryDirectory(prefix="rc-gtk-dirty-") as t:
+            output = pathlib.Path(t) / "no.zip"
+            def simulated_git(*args):
+                if args[:2] == ("status", "--porcelain"):
+                    return " M tools/build-linux-control-center-preview.py"
+                return original(*args)
+            with patch.object(module, "checked_git", side_effect=simulated_git):
+                with self.assertRaisesRegex(ValueError, "UNCOMMITTED_BUNDLE_INPUTS"):
+                    module.pack(output)
+            self.assertFalse(output.exists())
 
     def test_refuse_existing_output_and_symlink(self):
         with tempfile.TemporaryDirectory(prefix="rc-gtk-negative-") as t:
