@@ -5,6 +5,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { runShell, startTerminal, readTerminal, sendTerminal, stopTerminal } from '../src/power-tools-v0.3.mjs';
+import { withFullPowerAccess } from './helpers/access-mode-fixtures.mjs';
 import { runProjectCommand } from '../src/tools-v0.3.mjs';
 
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -19,7 +20,7 @@ async function fixture(t) {
 }
 
 function powerContext(root) {
-  return {
+  return withFullPowerAccess({
     roots: [root],
     auditLog: path.join(root, 'audit.jsonl'),
     config: {
@@ -36,7 +37,7 @@ function powerContext(root) {
         blockedShellPatterns: []
       }
     }
-  };
+  });
 }
 
 function delayedShellMarker(marker, started = null) {

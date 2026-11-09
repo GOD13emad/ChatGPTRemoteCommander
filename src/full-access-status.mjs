@@ -149,7 +149,13 @@ export function createAccessStatusReader({
   return async function readAccessStatus({ force = false } = {}) {
     const clock = now();
     if (!force && cached && clock < validUntil) return cached;
-    if (pending) return pending;
+    if (pending) {
+      // A forced authorization recheck must not inherit an older in-flight
+      // probe. Wait for it to settle, then start one fresh native observation.
+      if (!force) return pending;
+      await pending.catch(() => {});
+      return readAccessStatus({ force: true });
+    }
     pending = (async () => {
       let result;
       try { result = await probe('os.probe', { platform }); }

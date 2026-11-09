@@ -5,19 +5,24 @@ import os from 'node:os';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { executePowerTool } from '../src/power-tools-v0.3.mjs';
+import { assessAccessStatus } from '../src/full-access-status.mjs';
 
 const digest=value=>createHash('sha256').update(value).digest('hex');
 function fixture({required=true,run}={}){
   const root=fs.mkdtempSync(path.join(os.tmpdir(),'rc-v102-power-access-'));
+  const config={
+    capabilityProfile:{tier:'FULL_POWER',explicitlyAuthorized:true,disabledCapabilities:[]},
+    powerMode:{
+      enabled:true,fullFilesystem:true,allowShell:true,allowProcessControl:true,
+      blockedShellPatterns:[],maxFileBytes:1024,
+      backupRoot:path.join(root,'.backups'),backupRetentionSnapshots:2
+    },
+    executionAccess:{required}
+  };
   const ctx={
     roots:[root],
-    config:{
-      powerMode:{
-        enabled:true,fullFilesystem:false,maxFileBytes:1024,
-        backupRoot:path.join(root,'.backups'),backupRetentionSnapshots:2
-      },
-      executionAccess:{required}
-    }
+    config,
+    accessStatus:assessAccessStatus(config,null,{platform:'linux',effectiveUid:1000})
   };
   if(run)ctx.executionAccess={run};
   return {root,ctx,cleanup:()=>fs.rmSync(root,{recursive:true,force:true})};
@@ -61,6 +66,7 @@ test('missing authorization receipt is rejected when provider does not execute t
 
 test('unprotected read-only status remains available when protected effects require a provider',async t=>{
   const f=fixture({required:true});t.after(f.cleanup);
+  f.ctx.config.powerMode.fullFilesystem=false;
   const result=await executePowerTool(f.ctx,'power_status',{});
   assert.equal(result.enabled,true);
   assert.equal(result.fullFilesystem,false);

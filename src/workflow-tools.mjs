@@ -381,7 +381,7 @@ export function createWorkflowTools({ config, roots, device, configSha256, looku
         }
         case 'workflow_run_status': {
           if(!engine)fail('WORKFLOW_RUNNER_DISABLED');
-          const result=engine.status(args.runId);reconcileProjectDeliveries();return result;
+          return engine.status(args.runId);
         }
         case 'workflow_run_resolve': {
           if(!engine)fail('WORKFLOW_RUNNER_DISABLED');

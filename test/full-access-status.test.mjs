@@ -106,6 +106,37 @@ test('cached successful probe, force refresh and revoked broker fail closed',asy
   assert.equal(count,3);
 });
 
+
+test('forced host-token refresh bypasses an older in-flight probe before returning authorization status', async()=>{
+  const c=base('FULL_ACCESS');
+  Object.assign(c.powerMode,{allowShell:true,allowProcessControl:true,blockedShellPatterns:[]});
+  let resolveFirst;
+  let brokerCalls=0;
+  let tokenCalls=0;
+  const read=createAccessStatusReader({
+    config:c,platform:'win32',ttlMs:15000,
+    probe:async()=>{brokerCalls++;if(brokerCalls===1)return new Promise(resolve=>{resolveFirst=resolve;});return system;},
+    probeWindowsAdmin:async()=>{
+      tokenCalls++;
+      return tokenCalls===1?standardToken:{
+        ok:true,isAdmin:true,isSystem:false,elevation:'high',source:'local-process-token'
+      };
+    }
+  });
+  const first=read();
+  while(!resolveFirst) await Promise.resolve();
+  const forced=read({force:true});
+  resolveFirst({ok:false,code:'BROKER_STALE'});
+  const before=await first;
+  const after=await forced;
+  assert.equal(before.broker.code,'BROKER_STALE');
+  assert.equal(before.effectiveTier,'FULL_POWER');
+  assert.equal(after.broker.verified,true);
+  assert.equal(after.effectiveTier,'FULL_ACCESS');
+  assert.equal(brokerCalls,2);
+  assert.equal(tokenCalls,2);
+});
+
 test('broker client transport errors never make full access active',async()=>{
   const read=createAccessStatusReader({config:base(),platform:'win32',probe:async()=>{throw Error('transport');}});
   const status=await read();

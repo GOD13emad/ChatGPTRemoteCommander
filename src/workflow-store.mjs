@@ -263,7 +263,8 @@ function nativeReceiptIdentityMismatch(r, expectedOperationId) {
 const NATIVE_NO_PROCESS_TOOLS = new Set([
   'system_status','read_text','read_file','write_text','write_file','list_directory',
   'file_info','create_directory','copy_path','move_path','delete_path',
-  'search_files'
+  'search_files','power_status','system_info','list_processes','read_terminal',
+  'gui_status','gui_screenshot','gui_list_windows','gui_cursor_position'
 ]);
 function nativeExecutionNeedsCessationProof(r, invokedTool) {
   // A process-capable committed tool needs cessation evidence even when a

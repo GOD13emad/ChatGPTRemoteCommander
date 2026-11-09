@@ -55,7 +55,7 @@ async function fixture({ authorize = true } = {}) {
     allowedRoots: [root],
     instance: { profile: 'profile-qa' },
     capabilityProfile: { id: 'profile-qa', tier: 'FULL_POWER', explicitlyAuthorized: true, disabledCapabilities: [] },
-    powerMode: { enabled: true, allowShell: true, allowProcessControl: true, allowPermanentDelete: false },
+    powerMode: { enabled: true, fullFilesystem: true, allowShell: true, allowProcessControl: true, allowPermanentDelete: false, blockedShellPatterns: [] },
     executionAccess: { required: true, providerPath, providerSha256 }
   };
   const configRaw = JSON.stringify(config);

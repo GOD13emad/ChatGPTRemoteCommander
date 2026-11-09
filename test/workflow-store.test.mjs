@@ -7,10 +7,17 @@ import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { DatabaseSync } from 'node:sqlite';
 import { WorkflowStore, canonical, hash } from '../src/workflow-store.mjs';
+import { classifyTool, reconciliationPlan } from '../src/workflow-autonomy.mjs';
+import { powerToolDefinitions } from '../src/power-tools-v0.3.mjs';
+import { agentExtensionToolDefinitions } from '../src/agent-extensions.mjs';
 const worker = fileURLToPath(new URL('./workflow-worker.mjs', import.meta.url));
 const fixture = (overrides = {}) => {
   const root = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'rc-memory-')));
-  const options = { directory: path.join(root, 'memory'), allowedRoots: [root], device: 'fixture', configSha256: '1'.repeat(64), ...overrides };
+  // Spawned workers reopen the same workflow with the exact same owner tier.
+  const authority={profileId:'default',tier:'FULL_POWER',
+    capabilities:['filesystem.full','workflow.durable','workflow.scheduler']};
+  const options = { directory: path.join(root, 'memory'), allowedRoots: [root],
+    device: 'fixture', configSha256: '1'.repeat(64), authority, ...overrides };
   const s = new WorkflowStore(options);
   const create = (id='sample') => s.create({ id, root, goal: 'Resume safely', acceptance: ['Validate visible outcome'], steps: [{ id: 'first', title: 'Inspect' }, { id: 'second', title: 'Act' }] });
   return { root, options, s, create, dispose() { s.close(); fs.rmSync(root, { recursive: true, force: true }); } };
@@ -25,6 +32,69 @@ function runWorker(args) {
 }
 const host = dispatch => ({ validate: async()=>{}, dispatch });
 const call = (f, extra={}) => f.s.call({ id:'sample',stepId:'first',expectedRevision:1,tool:'read_text',arguments:{path:'x'},...extra },host(async()=>({ok:true})));
+
+test('host-declared read-only inspection tools have safe-retry receipts and verified workflow status',async()=>{
+  for(const tool of ['search_files','system_info','list_processes']){
+    assert.equal(classifyTool(tool,{}),'READ_ONLY');
+    assert.deepEqual(reconciliationPlan(tool,{}),{strategy:'SAFE_RETRY',classification:'READ_ONLY'});
+    const f=fixture();
+    try{
+      f.create();
+      let dispatches=0;
+      const result=await f.s.call({
+        id:'sample',stepId:'first',expectedRevision:1,tool,arguments:{}
+      },host(async()=>{dispatches++;return {ok:true};}));
+      assert.equal(dispatches,1);
+      assert.equal(result.operation.classification,'READ_ONLY');
+      assert.equal(result.operation.status,'VERIFIED');
+      assert.equal(f.s.get('sample').state.steps[0].status,'verified');
+      assert.equal(f.s.operations('sample')[0].status,'VERIFIED');
+      assert.equal(f.s.schedulerStatus().currentLeases,0);
+    }finally{f.dispose();}
+  }
+});
+
+test('Host catalog and durable effect classifier remain aligned for Power tools',()=>{
+  const names=new Set();
+  for(const definition of powerToolDefinitions){
+    assert.ok(!names.has(definition.name),'duplicate Host tool definition '+definition.name);
+    names.add(definition.name);
+    const readOnly=definition.annotations?.readOnlyHint===true;
+    const actual=classifyTool(definition.name,{});
+    assert.equal(actual==='READ_ONLY',readOnly,
+      'Host annotation and workflow classification disagree for '+definition.name);
+  }
+  const terminal=powerToolDefinitions.find(x=>x.name==='read_terminal');
+  assert.ok(terminal,'read_terminal must remain in the Host catalog');
+  assert.equal(terminal.annotations.readOnlyHint,false,
+    'default read_terminal advances its output cursor and is not safely read-only');
+  assert.equal(classifyTool('read_terminal',{}),'NON_IDEMPOTENT_MUTATION');
+  assert.equal(classifyTool('read_terminal',{consume:true}),'NON_IDEMPOTENT_MUTATION');
+  assert.equal(classifyTool('read_terminal',{consume:false}),'READ_ONLY');
+  assert.deepEqual(reconciliationPlan('read_terminal',{consume:false}),
+    {strategy:'SAFE_RETRY',classification:'READ_ONLY'});
+});
+
+test('whole-token destructive verbs do not mistake agent skill metadata for a kill operation',()=>{
+  const readOnlyAgentTools=agentExtensionToolDefinitions.filter(x=>x.annotations?.readOnlyHint===true);
+  assert.ok(readOnlyAgentTools.some(x=>x.name==='agent_extension_skill'));
+  for(const definition of readOnlyAgentTools){
+    assert.notEqual(classifyTool(definition.name,{}),'DESTRUCTIVE',
+      'read-only Host tool must not be classified destructive: '+definition.name);
+  }
+  assert.equal(classifyTool('agent_extension_skill',{}),'NON_IDEMPOTENT_MUTATION');
+  assert.equal(classifyTool('skill_repository',{}),'NON_IDEMPOTENT_MUTATION');
+  for(const tool of ['delete_path','kill_process','remove_entry','terminate_job','worker_kill_process']){
+    assert.equal(classifyTool(tool,{}),'DESTRUCTIVE',tool+' must remain destructive');
+  }
+});
+
+test('shell execution retains external-effect classification rather than safe retry',()=>{
+  assert.equal(classifyTool('run_shell',{command:'echo hello'}),'EXTERNAL_SIDE_EFFECT');
+  assert.deepEqual(reconciliationPlan('run_shell',{command:'echo hello'}),{
+    strategy:'MANUAL_OR_REMOTE_STATE',classification:'EXTERNAL_SIDE_EFFECT'
+  });
+});
 
 test('creation, restart, typed notes and scoped search retain exact state',()=>{
   const f=fixture();try {

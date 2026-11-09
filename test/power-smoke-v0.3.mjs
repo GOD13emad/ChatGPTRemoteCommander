@@ -37,6 +37,7 @@ await mkdir(legacyOutside, { recursive: true });
 const ctx = {
   roots: [root],
   auditLog: legacyAudit,
+  accessStatus: {configuredTier:'FULL_POWER',effectiveTier:'FULL_POWER',hostExecution:{mode:'FULL_HOST_USER',hostFilesystem:true,shellAvailable:true},nativeRoot:{nonRootTokenVerified:true},nativeAdmin:{nonElevatedTokenVerified:false}},
   config: {
     maxReadBytes: 1024 * 1024,
     maxWriteBytes: 1024 * 1024,

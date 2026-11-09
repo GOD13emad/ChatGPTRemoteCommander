@@ -66,18 +66,21 @@ export async function inspectRuntime(runtimeRoot) {
     windowsToken:path.join(runtimeRoot,'src','windows-admin-token.mjs'),
     effective:path.join(runtimeRoot,'src','effective-power-mode.mjs'),
     powerTools:path.join(runtimeRoot,'src','power-tools-v0.3.mjs'),
-    legacyTools:path.join(runtimeRoot,'src','tools-v0.3.mjs')
+    legacyTools:path.join(runtimeRoot,'src','tools-v0.3.mjs'),
+    executionGuard:path.join(runtimeRoot,'src','execution-access-guard.mjs'),
+    worker:path.join(runtimeRoot,'tools','operation-worker.mjs')
   };
   try {
     for(const [name,file] of Object.entries(files)) {
       const st=await lstat(file);
       if(!st.isFile()||st.isSymbolicLink())return {ready:false,code:'RUNTIME_FILE_INVALID',file:name};
     }
-    const [s,p,q,st,e,pw,tf]=await Promise.all([
+    const [s,p,q,st,e,pw,tf,v102,worker]=await Promise.all([
       readFile(files.server,'utf8'),readFile(files.profile,'utf8'),
       readFile(files.quarantine,'utf8'),readFile(files.status,'utf8'),
       readFile(files.effective,'utf8'),readFile(files.powerTools,'utf8'),
-      readFile(files.legacyTools,'utf8')
+      readFile(files.legacyTools,'utf8'),readFile(files.executionGuard,'utf8'),
+      readFile(files.worker,'utf8')
     ]);
     const guardAt=s.indexOf('if (rejectLegacyPrivilegedMcp(req, res, privilegedLegacyHttp)) return;');
     const dispatchAt=s.indexOf('const message = await readJsonBody(req);');
@@ -93,14 +96,25 @@ export async function inspectRuntime(runtimeRoot) {
       guiFilter:s.includes('effectivePower.guiControl'),
       browserFilter:s.includes('effectivePower.browserControl'),
       serverFilesystemFilter:s.includes('hasEffectiveFullFilesystem(config, { accessStatus: initialAccessStatus })'),
+      serverGuiExecutionGate:s.includes("scopedCtx.config.powerMode?.guiControl?.enabled !== true"),
+      serverBrowserExecutionGate:s.includes("scopedCtx.config.powerMode?.browserControl?.enabled !== true"),
+      transferMeshGate:s.includes('config.transferMesh?.enabled === true && effectivePower.enabled === true'),
       powerToolsFilter:pw.includes('effectivePowerMode(ctx.config, { accessStatus: ctx.accessStatus })'),
-      legacyToolsFilter:tf.includes('hasEffectiveFullFilesystem(ctx.config, { accessStatus: ctx.accessStatus })')
+      legacyToolsFilter:tf.includes('hasEffectiveFullFilesystem(ctx.config, { accessStatus: ctx.accessStatus })'),
+      executionHostTierGate:v102.includes('V102_HOST_EFFECTIVE_TIER_REQUIRED') &&
+        v102.includes('expected.effectiveTier') && v102.includes('V102_EFFECTIVE_TIER_EXCEEDS_HOST_TIER') &&
+        v102.includes('readAccessStatus({force:true})') && v102.includes('V102_HOST_EFFECTIVE_TIER_CHANGED_BEFORE_EFFECT'),
+      workerAccessStatus:worker.includes('createAccessStatusReader') && worker.includes('readAccessStatus') &&
+        worker.includes('loadV102WorkerExecutionAccess({ config, spec, projectDir, accessStatus, readAccessStatus })')
     };
     const checks={
-      statusWired:s.includes('createAccessStatusReader') &&
-        s.includes('const initialAccessStatus = assessAccessStatus(config, null, {') &&
+      statusWired:s.includes('const readAccessStatus = createAccessStatusReader({') &&
+        s.includes('const initialAccessStatus = await readAccessStatus();') &&
         s.includes('ctx.accessStatus = accessStatus;') &&
-        s.includes('        accessStatus,'),
+        s.includes('accessStatus: initialAccessStatus'),
+      statusRefresh:s.includes('const accessStatus = await readAccessStatus();'),
+      windowsTokenRefresh:s.includes('const readWindowsAdminToken = async () => process.platform === \'win32\'') &&
+        s.includes('probeWindowsAdmin: readWindowsAdminToken'),
       quarantineWired:s.includes('legacyPrivilegedMcpQuarantine') &&
         s.includes('const privilegedLegacyHttp = legacyPrivilegedMcpQuarantine({') &&
         guardAt>=0 && dispatchAt>guardAt &&
@@ -108,7 +122,11 @@ export async function inspectRuntime(runtimeRoot) {
       quarantineStrict:q.includes("configuredTier === 'FULL_POWER' || configuredTier === 'FULL_ACCESS'") &&
         q.includes('requireTrustedIngress !== false') &&
         q.includes('export function rejectLegacyPrivilegedMcp'),
-      statusReady:st.includes('export function verifyPrivilegedBrokerProof') &&
+      protectedIngressWired:s.includes('createV2CandidateHttpIngress') &&
+        s.includes('createV101ProtectedRouterBridge') &&
+        s.includes('dispatcherFactory') && s.includes('v2Ingress.handleRequest') &&
+        s.includes("'/v2/mcp'"),
+      statusReady:(st.includes('export function verifyPrivilegedBrokerProof') || st.includes("export { verifyPrivilegedBrokerProof } from './capability-profile.mjs';")) &&
         st.includes('export function createAccessStatusReader'),
       effectivePowerReady:Object.values(effectivePowerChecks).every(Boolean),
       ownerGrantGate:p.includes('FULL_ACCESS_NATIVE_BROKER_PROOF_REQUIRED')

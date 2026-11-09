@@ -10,6 +10,7 @@ import { createProjectEngine } from '../src/project-engine.mjs';
 import { validateJsonSchema } from '../src/schema-validator.mjs';
 import { listDirectory, readText, writeText } from '../src/tools-v0.3.mjs';
 import { writeAnyFile } from '../src/power-tools-v0.3.mjs';
+import { withFullPowerAccess } from './helpers/access-mode-fixtures.mjs';
 
 const proposal = (tool, args) => ({ action: 'call', tool, argumentsJson: JSON.stringify(args), summary: 'Perform one approved project step' });
 const delegate = (artifact = 'worker-draft.txt', brief = 'Create one bounded artifact') => ({ action: 'delegate', tool: '', argumentsJson: JSON.stringify({ artifact, brief }), summary: 'Delegate one bounded artifact worker' });
@@ -47,7 +48,7 @@ function makeFixture({ root, planner, scheduler = false, runner = {}, afterDispa
     dispatch: async (name, args, workflow) => {
       calls++;
       // The same project-root restriction as the real server dispatch adapter.
-      const ctx = { roots: [workflow.root], auditLog: config.auditLog, config: { ...config, allowedRoots: [workflow.root], powerMode: { fullFilesystem: false } } };
+      const ctx = withFullPowerAccess({ roots: [workflow.root], auditLog: config.auditLog, config: { ...config, allowedRoots: [workflow.root], powerMode: { enabled: true, fullFilesystem: false } } });
       const result = name === 'write_text' ? await writeText(ctx, args)
         : name === 'read_text' ? await readText(ctx, args) : await listDirectory(ctx, args);
       if (afterDispatch) await afterDispatch(name, args, result);
@@ -270,7 +271,7 @@ if (process.argv[2] === '--claim-worker') {
       const protectedFile = path.join(external, 'protected.txt');
       const backupRoot = path.join(root, 'power-backups');
       const auditLog = path.join(root, 'audit.jsonl');
-      const ctx = { roots: [root], auditLog, config: { maxWriteBytes: 524288, powerMode: { enabled: true, fullFilesystem, backupRoot, maxFileBytes: 524288 } } };
+      const ctx = withFullPowerAccess({ roots: [root], auditLog, config: { maxWriteBytes: 524288, powerMode: { enabled: true, fullFilesystem, backupRoot, maxFileBytes: 524288 } } });
       try {
         fs.writeFileSync(protectedFile, 'untouched');
         fs.linkSync(protectedFile, path.join(root, 'alias.txt'));

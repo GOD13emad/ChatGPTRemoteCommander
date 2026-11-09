@@ -1,5 +1,7 @@
-// V2-G1: pure validation of an operator-approved OAuth authorization server's
-// RFC8414/OIDC metadata before any ChatGPT MCP activation. No token issuance,
+// V2-G1: pure validation of the single operator-approved Keycloak issuer's
+// RFC8414/OIDC metadata before ChatGPT MCP activation. In hybrid mode Auth0 is
+// federated upstream through Keycloak; its bearer tokens are never accepted here.
+// No token issuance,
 // user consent, HTTP listener, client credentials, or live discovery occurs here.
 // The issuer and expected resource audience MUST be pinned out of band.
 function fail(code){throw Object.assign(new Error(code),{code});}
@@ -20,9 +22,10 @@ const TOKEN_AUTH_METHODS=new Set(['none','private_key_jwt','client_secret_basic'
 /** Returns only the verified public metadata needed by the OAuth JWT boundary. */
 export function validateV2OAuthProvider({
   issuer,resource,metadata,requiredScope='commander.workflow',
-  requiredScopes,clientRegistration='pre-registered'
+  requiredScopes,clientRegistration='pre-registered',tokenType='at+jwt'
 }){
   const trustedIssuer=https(issuer),audience=https(resource);
+  if(!['at+jwt','JWT'].includes(tokenType))fail('V2_PROVIDER_TOKEN_TYPE_INVALID');
   // The dispatcher enforces every advertised scope. Preflight must not accept
   // an IdP advertising only the first scope of a multi-scope V2 tool.
   const requestedScopes=requiredScopes===undefined?[requiredScope]:requiredScopes;
@@ -77,7 +80,7 @@ export function validateV2OAuthProvider({
   const issuerResponseIdentificationAdvertised=
     metadata.authorization_response_iss_parameter_supported===true;
   return Object.freeze({
-    issuer:trustedIssuer,audience,
+    issuer:trustedIssuer,audience,tokenType,
     authorizationEndpoint,tokenEndpoint,jwksUri,
     scope:requestedScopes[0],scopes:Object.freeze([...requestedScopes]),clientRegistration,
     issuerResponseIdentificationAdvertised,

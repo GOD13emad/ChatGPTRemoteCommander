@@ -12,7 +12,7 @@ import {privilegedOperationStatus, startPrivilegedCommanderUnit} from '../src/pr
 // Structural runtime fixture only; the native broker checks below remain real and no server is launched.
 const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
 
-async function writeRuntimeFixture(runtimeRoot,{quarantineModule=true,wireGuard=true,effectiveModule=true,wireEffective=true,wireServerEffective=true,wireServerAccessStatus=true}={}) {
+async function writeRuntimeFixture(runtimeRoot,{quarantineModule=true,wireGuard=true,effectiveModule=true,wireEffective=true,wireServerEffective=true,wireServerAccessStatus=true,wireWindowsTokenRefresh=true,wireProtectedIngress=true}={}) {
   const src=path.join(runtimeRoot,'src');
   await mkdir(src,{recursive:true});
   const guard=wireGuard
@@ -21,14 +21,23 @@ async function writeRuntimeFixture(runtimeRoot,{quarantineModule=true,wireGuard=
   await writeFile(path.join(src,'server-v0.3.mjs'),[
     "import { assessAccessStatus, createAccessStatusReader } from './full-access-status.mjs';",
     "import { legacyPrivilegedMcpQuarantine, rejectLegacyPrivilegedMcp } from './full-access-http-quarantine.mjs';",
+    ...(wireProtectedIngress ? [
+      "import { createV2CandidateHttpIngress } from './v2-mcp-http-ingress.mjs';",
+      "import { createV101ProtectedRouterBridge } from './full-access-protected-router-bridge.mjs';",
+      "const v2Ingress = await createV2CandidateHttpIngress({ attestTransport, dispatcherFactory });",
+      "if (url.pathname === '/v2/mcp') return v2Ingress.handleRequest(req,res);"
+    ] : []),
     ...(wireEffective ? [
       wireServerEffective
         ? "import { effectivePowerMode, hasEffectiveFullFilesystem } from './effective-power-mode.mjs';"
         : "import { hasEffectiveFullFilesystem } from './effective-power-mode.mjs';"
     ] : []),
     ...(wireServerAccessStatus ? [
-      "const readAccessStatus = createAccessStatusReader({ config });",
-      "const initialAccessStatus = assessAccessStatus(config, null, { platform: process.platform });"
+      ...(wireWindowsTokenRefresh ? [
+        "const readWindowsAdminToken = async () => process.platform === 'win32' ? await probeWindowsAdministrator({ platform: process.platform }) : null;",
+        "const readAccessStatus = createAccessStatusReader({ config, probeWindowsAdmin: readWindowsAdminToken });"
+      ] : ["const readAccessStatus = createAccessStatusReader({ config });"]),
+      "const initialAccessStatus = await readAccessStatus();"
     ] : []),
     ...(wireEffective ? [
       ...(wireServerEffective ? [
@@ -36,7 +45,12 @@ async function writeRuntimeFixture(runtimeRoot,{quarantineModule=true,wireGuard=
         "const ctx = { config, accessStatus: initialAccessStatus };",
         "config.powerMode = effectivePower;",
         "const GUI_ENABLED = effectivePower.guiControl?.enabled === true;",
-        "const BROWSER_ENABLED = effectivePower.browserControl?.enabled === true;"
+        "const BROWSER_ENABLED = effectivePower.browserControl?.enabled === true;",
+        "const currentExecutionContext = () => ({config:{...config,powerMode:effectivePowerMode(config,{accessStatus:ctx.accessStatus})}});",
+        "const scopedCtx = currentExecutionContext();",
+        "if (scopedCtx.config.powerMode?.guiControl?.enabled !== true) throw Error('GUI_CONTROL_NOT_EFFECTIVE');",
+        "if (scopedCtx.config.powerMode?.browserControl?.enabled !== true) throw Error('BROWSER_CONTROL_NOT_EFFECTIVE');",
+        "const transferMesh = config.transferMesh?.enabled === true && effectivePower.enabled === true;"
       ] : []),
       "const LEGACY_FULL_FILESYSTEM = hasEffectiveFullFilesystem(config, { accessStatus: initialAccessStatus });"
     ] : []),
@@ -72,6 +86,12 @@ async function writeRuntimeFixture(runtimeRoot,{quarantineModule=true,wireGuard=
     wireEffective ? "import { effectivePowerMode } from './effective-power-mode.mjs';\\nconst scope = effectivePowerMode(ctx.config, { accessStatus: ctx.accessStatus });\\n" : "export const rawPowerFlags = true;\\n");
   await writeFile(path.join(src,'tools-v0.3.mjs'),
     wireEffective ? "import { hasEffectiveFullFilesystem } from './effective-power-mode.mjs';\\nreturn hasEffectiveFullFilesystem(ctx.config, { accessStatus: ctx.accessStatus });\\n" : "export const rawFilesystemFlags = true;\\n");
+  await writeFile(path.join(src,'execution-access-guard.mjs'),
+    "if (TIER_RANK[accessStatus.effectiveTier] < TIER_RANK[policy.minimumTier]) fail('V102_HOST_EFFECTIVE_TIER_REQUIRED');\\nconst fresh = await readAccessStatus({force:true});\\nif (fresh.effectiveTier !== expected.effectiveTier) fail('V102_HOST_EFFECTIVE_TIER_CHANGED_BEFORE_EFFECT');\\nif (TIER_RANK[decision.effectiveTier] > TIER_RANK[expected.effectiveTier]) fail('V102_EFFECTIVE_TIER_EXCEEDS_HOST_TIER');\\n");
+  const toolsRoot=path.join(runtimeRoot,'tools');
+  await mkdir(toolsRoot,{recursive:true});
+  await writeFile(path.join(toolsRoot,'operation-worker.mjs'),
+    "import { createAccessStatusReader } from '../src/full-access-status.mjs';\\nconst readAccessStatus = createAccessStatusReader({config});\\nconst accessStatus = await readAccessStatus();\\nconst loaded = await loadV102WorkerExecutionAccess({ config, spec, projectDir, accessStatus, readAccessStatus });\\n");
   if(quarantineModule) await writeFile(path.join(src,'full-access-http-quarantine.mjs'),[
     "export function legacyPrivilegedMcpQuarantine() {}",
     "export function rejectLegacyPrivilegedMcp() {}",
@@ -119,6 +139,35 @@ test('native broker enrollment preflight: disposable profile and guarded runtime
   } finally {await rm(dir,{recursive:true,force:true});}
 });
 
+test('FULL_ACCESS enrollment remains blocked until the real V2 trusted ingress is wired', {
+  skip:process.env.RC_NATIVE_FULL_ACCESS_QA!=='1'
+},async()=>{
+  const dir=await mkdtemp(path.join(os.tmpdir(),'rc-native-fullaccess-no-v2-'));
+  const runtimeRoot=path.join(dir,'runtime-no-v2');
+  await writeRuntimeFixture(runtimeRoot,{wireProtectedIngress:false});
+  try {
+    const file=path.join(dir,'config.json');
+    const old={instance:{profile:'qa-disposable'},
+      capabilityProfile:{id:'qa-disposable',tier:'FULL_POWER',explicitlyAuthorized:true,
+        persistAcrossUpdates:true,disabledCapabilities:[],source:'explicit-user-authorization'},
+      powerMode:{enabled:true,fullFilesystem:true,allowShell:true,allowProcessControl:true,blockedShellPatterns:[]}};
+    await writeFile(file,JSON.stringify(old,null,2)+'\n');
+    const args=['--config',file,'--runtime-root',runtimeRoot];
+    const pre=await runCli(['--check',...args]);
+    assert.equal(pre.brokerVerified,true);
+    assert.equal(pre.runtimeReady,false);
+    assert.equal(pre.canApply,false);
+    assert.equal(pre.runtimeChecks.protectedIngressWired,false);
+    const sha=createHash('sha256').update(await readFile(file)).digest('hex');
+    await assert.rejects(
+      runCli(['--apply',...args,'--expected-sha',sha]),
+      /FULL_ACCESS_RUNTIME_NOT_DEPLOYED/
+    );
+    const unchanged=JSON.parse(await readFile(file,'utf8'));
+    assert.equal(unchanged.capabilityProfile.tier,'FULL_POWER');
+  } finally { await rm(dir,{recursive:true,force:true}); }
+});
+
 test('native enrollment fails closed when quarantine module or server hook is missing', {
   skip:process.env.RC_NATIVE_FULL_ACCESS_QA!=='1'
 },async()=>{
@@ -136,7 +185,8 @@ test('native enrollment fails closed when quarantine module or server hook is mi
       ['missing-effective-power-module',{effectiveModule:false,wireEffective:true}],
       ['missing-effective-power-wiring',{effectiveModule:true,wireEffective:false}],
       ['missing-server-effective-filter',{effectiveModule:true,wireEffective:true,wireServerEffective:false}],
-      ['missing-current-worker-access-status',{effectiveModule:true,wireEffective:true,wireServerEffective:true,wireServerAccessStatus:false}]
+      ['missing-current-worker-access-status',{effectiveModule:true,wireEffective:true,wireServerEffective:true,wireServerAccessStatus:false}],
+      ['missing-fresh-windows-token-probe',{effectiveModule:true,wireEffective:true,wireServerEffective:true,wireServerAccessStatus:true,wireWindowsTokenRefresh:false}]
     ]) {
       const runtimeRoot=path.join(dir,name);
       await writeRuntimeFixture(runtimeRoot,options);

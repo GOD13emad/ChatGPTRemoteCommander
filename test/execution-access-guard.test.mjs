@@ -18,6 +18,17 @@ import {
 const now = () => Date.now();
 const sha = value => createHash('sha256').update(value).digest('hex');
 
+function accessStatus(configuredTier = 'FULL_POWER', effectiveTier = configuredTier) {
+  const full = effectiveTier === 'FULL_ACCESS';
+  const owner = effectiveTier === 'FULL_POWER';
+  return {
+    configuredTier, effectiveTier, operationalFullAccess: full,
+    hostExecution: {mode:owner?'FULL_HOST_USER':'RESTRICTED',hostFilesystem:owner,shellAvailable:owner},
+    nativeAdmin: {verified:full,nonElevatedTokenVerified:false},
+    nativeRoot: {verified:full,nonRootTokenVerified:owner}
+  };
+}
+
 function config(profileId = 'profile-qa', tier = 'FULL_POWER') {
   return {
     instance: { profile: profileId },
@@ -106,11 +117,13 @@ async function fixture({ tool = 'run_shell', args = { command: 'printf ok', cwd:
     receiptStore.close();
     await rm(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 20 });
   };
-  return { root, route: routeValue, config: cfg, services, authorization, requestId, tool, args, state, dispose };
+  const f = { root, route: routeValue, config: cfg, accessStatus:accessStatus('FULL_POWER'), services, authorization, requestId, tool, args, state, dispose };
+  f.readAccessStatus = async () => f.accessStatus;
+  return f;
 }
 async function run(f, overrides = {}) {
   return executeV102AuthorizedOperation({
-    config: f.config, authorization: f.authorization, services: f.services,
+    config: f.config, accessStatus:f.accessStatus, readAccessStatus:f.readAccessStatus, authorization: f.authorization, services: f.services,
     tool: f.tool, args: f.args, requestId: f.requestId,
     operationId: f.route.operationId,
     execute: overrides.execute ?? (async () => ({ started: true })),
@@ -242,7 +255,7 @@ test('changed action arguments do not match the owner-signed digest', async () =
     });
     const changed = { ...f.args, command: 'printf changed' };
     await assert.rejects(executeV102AuthorizedOperation({
-      config: f.config, authorization: f.authorization, services: f.services,
+      config: f.config, accessStatus:f.accessStatus, readAccessStatus:f.readAccessStatus, authorization: f.authorization, services: f.services,
       tool: f.tool, args: changed, requestId: f.requestId,
       operationId: f.route.operationId,
       execute: async () => { effects++; return { ok: true }; }
@@ -263,7 +276,7 @@ test('explicit caller-supplied digest must match actual arguments before owner-p
     };
     const preapprovedDigest = v102ActionDigest(f.tool, f.args);
     await assert.rejects(executeV102AuthorizedOperation({
-      config: f.config, authorization: f.authorization, services: f.services,
+      config: f.config, accessStatus:f.accessStatus, readAccessStatus:f.readAccessStatus, authorization: f.authorization, services: f.services,
       tool: f.tool, args: { ...f.args, command: 'printf altered' },
       actionDigest: preapprovedDigest, requestId: f.requestId,
       operationId: f.route.operationId,
@@ -291,7 +304,7 @@ test('nested action arguments cannot change after owner admission before effect'
       return original(context);
     };
     const outcome = await executeV102AuthorizedOperation({
-      config: f.config, authorization: f.authorization, services: f.services,
+      config: f.config, accessStatus:f.accessStatus, readAccessStatus:f.readAccessStatus, authorization: f.authorization, services: f.services,
       tool: 'run_shell', args, requestId: f.requestId,
       operationId: f.route.operationId,
       execute: async () => ({
@@ -321,7 +334,7 @@ test('direct operation cannot omit both actual arguments and an exact process-pl
       return original(context);
     };
     await assert.rejects(executeV102AuthorizedOperation({
-      config: f.config, authorization: f.authorization, services: f.services,
+      config: f.config, accessStatus:f.accessStatus, readAccessStatus:f.readAccessStatus, authorization: f.authorization, services: f.services,
       tool: f.tool, actionDigest: v102ActionDigest(f.tool, f.args),
       requestId: f.requestId, operationId: f.route.operationId,
       execute: async () => { effects += 1; return { effect: effects }; }
@@ -338,7 +351,7 @@ test('matching explicit digest and null fallback preserve authorized execution',
     try {
       const digest = mode === 'explicit' ? v102ActionDigest(f.tool, f.args) : null;
       const outcome = await executeV102AuthorizedOperation({
-        config: f.config, authorization: f.authorization, services: f.services,
+        config: f.config, accessStatus:f.accessStatus, readAccessStatus:f.readAccessStatus, authorization: f.authorization, services: f.services,
         tool: f.tool, args: f.args, actionDigest: digest,
         requestId: f.requestId, operationId: f.route.operationId,
         execute: async () => ({ effect: ++effects })
@@ -368,6 +381,7 @@ test('FULL_ACCESS-only privileged service start requires native privilege proof'
   let effects = 0;
   try {
     f.config.capabilityProfile.tier = 'FULL_ACCESS';
+    f.accessStatus = accessStatus('FULL_ACCESS');
     f.state.tier = 'FULL_ACCESS';
     await assert.rejects(run(f, { execute: async () => { effects++; return { ok: true }; } }),
       { code: 'V102_NATIVE_PRIVILEGE_PROOF_REQUIRED' });
@@ -375,12 +389,31 @@ test('FULL_ACCESS-only privileged service start requires native privilege proof'
   } finally { await f.dispose(); }
 });
 
-test('configured FULL_POWER cannot authorize a FULL_ACCESS-only effect even when a provider returns an elevated grant', async () => {
+test('a FULL_POWER host cannot authorize a FULL_ACCESS-only effect even if a provider would claim elevation', async () => {
   const f = await fixture({ tool: 'privileged_system_unit_start', args: {} });
   let effects = 0;
   try {
     // The signed owner decision cannot override the separately configured tier ceiling.
     assert.equal(f.config.capabilityProfile.tier, 'FULL_POWER');
+    f.state.tier = 'FULL_ACCESS';
+    const underlying = f.services.authorizeExecution;
+    f.services.authorizeExecution = async context => ({
+      ...await underlying(context),
+      nativePrivilegeVerified: true
+    });
+    await assert.rejects(
+      run(f, { execute: async () => { effects++; return { ok: true }; } }),
+      { code: 'V102_HOST_EFFECTIVE_TIER_REQUIRED' }
+    );
+    assert.equal(f.state.calls, 0);
+    assert.equal(effects, 0);
+  } finally { await f.dispose(); }
+});
+
+test('configured FULL_POWER rejects an owner decision above its configured tier ceiling', async () => {
+  const f = await fixture({ tool: 'run_shell', args: {command:'printf ok',cwd:os.tmpdir()} });
+  let effects = 0;
+  try {
     f.state.tier = 'FULL_ACCESS';
     const underlying = f.services.authorizeExecution;
     f.services.authorizeExecution = async context => ({
@@ -395,6 +428,60 @@ test('configured FULL_POWER cannot authorize a FULL_ACCESS-only effect even when
   } finally { await f.dispose(); }
 });
 
+test('host effective tier is re-read and a downgrade between admission and effect blocks execution', async () => {
+  const f = await fixture();
+  let reads = 0;
+  let effects = 0;
+  try {
+    f.readAccessStatus = async () => {
+      reads++;
+      return reads === 1 ? accessStatus('FULL_POWER') : accessStatus('FULL_POWER','STANDARD');
+    };
+    await assert.rejects(
+      run(f, { execute: async () => { effects++; return { ok: true }; } }),
+      { code: 'V102_HOST_EFFECTIVE_TIER_CHANGED_BEFORE_EFFECT' }
+    );
+    assert.equal(reads, 2);
+    assert.equal(f.state.calls, 1);
+    assert.equal(effects, 0);
+  } finally { await f.dispose(); }
+});
+
+test('host effective tier is rechecked after owner authorization immediately before the side effect', async () => {
+  const f = await fixture();
+  let reads = 0;
+  let effects = 0;
+  try {
+    f.readAccessStatus = async () => {
+      reads++;
+      return reads < 3 ? accessStatus('FULL_POWER') : accessStatus('FULL_POWER','STANDARD');
+    };
+    await assert.rejects(
+      run(f, { execute: async () => { effects++; return { ok: true }; } }),
+      { code: 'V102_HOST_EFFECTIVE_TIER_CHANGED_BEFORE_EFFECT' }
+    );
+    assert.equal(reads, 3);
+    assert.equal(f.state.calls, 2);
+    assert.equal(effects, 0);
+  } finally { await f.dispose(); }
+});
+
+test('configured FULL_ACCESS cannot run FULL_ACCESS-only effects while this worker is only FULL_POWER', async () => {
+  const f = await fixture({ tool: 'privileged_system_unit_start', args: {} });
+  let effects = 0;
+  try {
+    f.config.capabilityProfile.tier = 'FULL_ACCESS';
+    f.accessStatus = accessStatus('FULL_ACCESS','FULL_POWER');
+    f.state.tier = 'FULL_ACCESS';
+    await assert.rejects(
+      run(f, { execute: async () => { effects++; return { ok: true }; } }),
+      { code: 'V102_HOST_EFFECTIVE_TIER_REQUIRED' }
+    );
+    assert.equal(f.state.calls, 0);
+    assert.equal(effects, 0);
+  } finally { await f.dispose(); }
+});
+
 test('same request is at-most-once and changed arguments conflict in the durable receipt store', async () => {
   const f = await fixture();
   let effects = 0;
@@ -405,7 +492,7 @@ test('same request is at-most-once and changed arguments conflict in the durable
     assert.equal(effects, 1);
     const changedArgs = { ...f.args, command: 'printf different' };
     await assert.rejects(executeV102AuthorizedOperation({
-      config: f.config, authorization: f.authorization, services: f.services,
+      config: f.config, accessStatus:f.accessStatus, readAccessStatus:f.readAccessStatus, authorization: f.authorization, services: f.services,
       tool: f.tool, args: changedArgs, requestId: f.requestId,
       operationId: f.route.operationId,
       execute: async () => { effects++; return { effect: effects }; }
@@ -469,7 +556,7 @@ test('durable worker adapter gates process spawn and verifies the prepared plan 
   let starts = 0;
   try {
     const result = await executeV102WorkerProcess({
-      config: f.config, spec, services: f.services,
+      config: f.config, accessStatus:f.accessStatus, readAccessStatus:f.readAccessStatus, spec, services: f.services,
       startProcess: () => { starts++; return spawn(process.execPath, plan.args, { cwd: f.root, windowsHide: true, stdio: 'ignore' }); }
     });
     assert.ok(result.child.pid > 0);
@@ -497,13 +584,13 @@ test('non-process action cannot borrow the detached process plan lane', async ()
       code: 'V102_PROCESS_TOOL_REQUIRED'
     });
     await assert.rejects(executeV102AuthorizedOperation({
-      config: f.config, authorization: f.authorization, services: f.services,
+      config: f.config, accessStatus:f.accessStatus, readAccessStatus:f.readAccessStatus, authorization: f.authorization, services: f.services,
       tool: 'write_file', actionDigest: 'b'.repeat(64), planDigest: 'c'.repeat(64),
       operationId: f.route.operationId, requestId: f.requestId,
       execute: async () => { effects += 1; return { effect: effects }; }
     }), { code: 'V102_PROCESS_TOOL_REQUIRED' });
     await assert.rejects(executeV102WorkerProcess({
-      config: f.config, spec: {
+      config: f.config, accessStatus:f.accessStatus, readAccessStatus:f.readAccessStatus, spec: {
         kind: 'process', tool: 'write_file', ...plan,
         operationId: f.route.operationId, requestId: f.requestId,
         executionAuthorization: {
@@ -527,7 +614,7 @@ test('worker rejects a process plan altered after authorization', async () => {
   let starts = 0;
   try {
     await assert.rejects(executeV102WorkerProcess({
-      config: f.config, spec, services: f.services,
+      config: f.config, accessStatus:f.accessStatus, readAccessStatus:f.readAccessStatus, spec, services: f.services,
       startProcess: () => { starts++; return { pid: 4242 }; }
     }), { code: 'V102_WORKER_PLAN_AUTHORIZATION_MISMATCH' });
     assert.equal(starts, 0);
@@ -576,7 +663,7 @@ test('worker loader accepts only a hash-pinned provider inside src', async () =>
       capabilities: [], grantRevision: 1, expiresAtMs: Date.now() + 10_000
     };
     const spec = { requestId: f.requestId, operationId: f.route.operationId, executionAuthorization: decision };
-    const loaded = await loadV102WorkerExecutionAccess({ config: cfg, spec, projectDir: f.root });
+    const loaded = await loadV102WorkerExecutionAccess({ config: cfg, spec, projectDir: f.root, accessStatus:f.accessStatus, readAccessStatus:f.readAccessStatus });
     assert.equal(typeof loaded.executionAccess.run, 'function');
     const args = { path: path.join(f.root, 'x'), content: 'x' };
     const output = await loaded.executionAccess.run({
@@ -584,7 +671,7 @@ test('worker loader accepts only a hash-pinned provider inside src', async () =>
     }, async () => ({ accepted: true }));
     assert.deepEqual(output.result, { accepted: true });
     await writeFile(providerPath, providerSource + '// altered\n', { encoding: 'utf8', mode: 0o600 });
-    await assert.rejects(loadV102WorkerExecutionAccess({ config: cfg, spec, projectDir: f.root }),
+    await assert.rejects(loadV102WorkerExecutionAccess({ config: cfg, spec, projectDir: f.root, accessStatus:f.accessStatus, readAccessStatus:f.readAccessStatus }),
       { code: 'V102_WORKER_PROVIDER_HASH_MISMATCH' });
   } finally { await f.dispose(); }
 });
@@ -595,6 +682,7 @@ test('power-tool mutation fails closed when execution access is required but not
   try {
     await assert.rejects(executePowerTool({
       config: f.config,
+      accessStatus:f.accessStatus,
       roots: [os.tmpdir()],
       auditLog: path.join(f.root, 'audit.jsonl')
     }, 'write_file', f.args), /V102_EXECUTION_ACCESS_REQUIRED/);

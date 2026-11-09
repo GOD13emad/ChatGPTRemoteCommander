@@ -118,7 +118,7 @@ function freezeActionArguments(value) {
   catch { fail('V102_ACTION_ARGUMENTS_INVALID'); }
 }
 
-function assertConfiguredProfile(config, tool) {
+function assertConfiguredProfile(config, tool, accessStatus) {
   const profile = config?.capabilityProfile;
   if (!profile || !['FULL_POWER','FULL_ACCESS'].includes(profile.tier)
       || profile.explicitlyAuthorized !== true || config?.powerMode?.enabled !== true) {
@@ -126,6 +126,16 @@ function assertConfiguredProfile(config, tool) {
   }
   const policy = ACTION_POLICY[tool];
   if (!policy) fail('V102_ACTION_UNSUPPORTED');
+  if (!accessStatus || accessStatus.configuredTier !== profile.tier
+      || !Object.hasOwn(TIER_RANK, accessStatus.effectiveTier)) {
+    fail('V102_EFFECTIVE_ACCESS_STATUS_REQUIRED');
+  }
+  if (TIER_RANK[accessStatus.effectiveTier] > TIER_RANK[profile.tier]) {
+    fail('V102_EFFECTIVE_TIER_EXCEEDS_CONFIGURED_TIER');
+  }
+  if (TIER_RANK[accessStatus.effectiveTier] < TIER_RANK[policy.minimumTier]) {
+    fail('V102_HOST_EFFECTIVE_TIER_REQUIRED');
+  }
   for (const flag of policy.flags) {
     if (flag === 'enabled') continue;
     if (config.powerMode?.[flag] !== true) fail('V102_CONFIGURED_CAPABILITY_DISABLED');
@@ -171,6 +181,9 @@ function assertDecision(decision, expected, nowMs) {
   if (TIER_RANK[decision.effectiveTier] > TIER_RANK[expected.configuredTier]) {
     fail('V102_EFFECTIVE_TIER_EXCEEDS_CONFIGURED_TIER');
   }
+  if (TIER_RANK[decision.effectiveTier] > TIER_RANK[expected.effectiveTier]) {
+    fail('V102_EFFECTIVE_TIER_EXCEEDS_HOST_TIER');
+  }
   const capabilities = new Set(decision.capabilities);
   if (capabilities.size !== decision.capabilities.length) fail('V102_AUTHORIZATION_CLAIMS_INVALID');
   for (const capability of policy.capabilities) {
@@ -198,7 +211,7 @@ function sameDecision(a, b) {
  * on every call. withLease MUST be machine-global. V1-06 owns durable receipts.
  */
 export async function executeV102AuthorizedOperation({
-  config, authorization, services, tool, args, actionDigest, planDigest = null,
+  config, accessStatus, readAccessStatus, authorization, services, tool, args, actionDigest, planDigest = null,
   requestId, operationId, execute, now = Date.now
 } = {}) {
   if (typeof execute !== 'function' || typeof now !== 'function'
@@ -233,7 +246,12 @@ export async function executeV102AuthorizedOperation({
     fail('V102_ACTION_DIGEST_INVALID');
   }
   if (requestId !== undefined && !safe(requestId)) fail('V102_REQUEST_ID_INVALID');
-  assertConfiguredProfile(config, tool);
+  const admittedAccessStatus = typeof readAccessStatus === 'function'
+    ? await readAccessStatus({force:true}) : accessStatus;
+  if (config?.executionAccess?.required === true && typeof readAccessStatus !== 'function') {
+    fail('V102_ACCESS_STATUS_READER_REQUIRED');
+  }
+  assertConfiguredProfile(config, tool, admittedAccessStatus);
   const nowMs = now();
   if (!Number.isSafeInteger(nowMs)) fail('V102_CLOCK_INVALID');
   const expected = Object.freeze({
@@ -241,6 +259,7 @@ export async function executeV102AuthorizedOperation({
     operationId,
     profileId: config?.capabilityProfile?.id ?? config?.instance?.profile ?? null,
     configuredTier: config.capabilityProfile.tier,
+    effectiveTier: admittedAccessStatus.effectiveTier,
     hostId: services.hostId ?? null
   });
   if (expected.profileId !== null && !safe(expected.profileId)) fail('V102_PROFILE_ID_INVALID');
@@ -253,10 +272,27 @@ export async function executeV102AuthorizedOperation({
     ...context, phase: 'ADMISSION', nowMs
   }), expected, now());
   const result = await services.withLease(first.ownerScopeId, async () => {
+    const ensureHostAccessStatus = async () => {
+      const latest = typeof readAccessStatus === 'function'
+        ? await readAccessStatus({force:true}) : admittedAccessStatus;
+      if (!latest || latest.configuredTier !== expected.configuredTier
+          || latest.effectiveTier !== expected.effectiveTier) {
+        fail('V102_HOST_EFFECTIVE_TIER_CHANGED_BEFORE_EFFECT');
+      }
+      assertConfiguredProfile(config, tool, latest);
+      return latest;
+    };
+    await ensureHostAccessStatus();
     const current = assertDecision(await services.authorizeExecution({
       ...context, phase: 'EXECUTION', expectedDecision: first, nowMs: now()
     }), expected, now());
     if (!sameDecision(first, current)) fail('V102_AUTHORIZATION_CHANGED_BEFORE_EFFECT');
+    // Re-observe the native process token after the asynchronous owner-provider
+    // round trip and immediately before the side effect/receipt callback.
+    const guardedEffect = async () => {
+      await ensureHostAccessStatus();
+      return execute(Object.freeze({ decision: current, actionDigest: expectedActionDigest, planDigest }));
+    };
     if (services.receiptStore && typeof services.receiptStore.execute === 'function') {
       if (!requestId) fail('V102_DURABLE_REQUEST_ID_REQUIRED');
       return services.receiptStore.execute({
@@ -267,10 +303,10 @@ export async function executeV102AuthorizedOperation({
           bindingId: first.bindingId, nativeSessionId: first.nativeSessionId,
           ownerScopeId: first.ownerScopeId, operationId
         }
-      }, () => execute(Object.freeze({ decision: current, actionDigest: expectedActionDigest, planDigest })));
+      }, guardedEffect);
     }
     if (config?.executionAccess?.requireReceipt === true) fail('V102_DURABLE_RECEIPT_STORE_REQUIRED');
-    return execute(Object.freeze({ decision: current, actionDigest: expectedActionDigest, planDigest }));
+    return guardedEffect();
   });
   return Object.freeze({
     result,
@@ -287,12 +323,12 @@ export async function executeV102AuthorizedOperation({
 }
 
 /** Build the host-injected executionAccess.run surface used by power tools. */
-export function createV102ExecutionAccess({ config, authorization, services, requestId, operationId, now = Date.now } = {}) {
+export function createV102ExecutionAccess({ config, accessStatus, readAccessStatus, authorization, services, requestId, operationId, now = Date.now } = {}) {
   if (!config || !services) fail('V102_TRUSTED_EXECUTION_PROVIDER_REQUIRED');
   return Object.freeze({
     run: ({ tool, args, actionDigest, planDigest = null, requestId: nextRequestId, operationId: nextOperationId } = {}, execute) =>
       executeV102AuthorizedOperation({
-        config, authorization, services, tool, args, actionDigest, planDigest,
+        config, accessStatus, readAccessStatus, authorization, services, tool, args, actionDigest, planDigest,
         requestId: nextRequestId ?? requestId,
         operationId: nextOperationId ?? operationId,
         execute, now
@@ -304,7 +340,7 @@ export function createV102ExecutionAccess({ config, authorization, services, req
  * Load a V1-01 worker provider from a hash-pinned, single-link regular module
  * inside this installation's src directory. RPC data cannot choose executable code.
  */
-export async function loadV102WorkerExecutionAccess({ config, spec, projectDir } = {}) {
+export async function loadV102WorkerExecutionAccess({ config, spec, projectDir, accessStatus, readAccessStatus } = {}) {
   const policy = config?.executionAccess;
   if (!policy || policy.required !== true) {
     if (spec?.executionAuthorization) fail('V102_WORKER_PROVIDER_NOT_ENABLED');
@@ -313,6 +349,10 @@ export async function loadV102WorkerExecutionAccess({ config, spec, projectDir }
   if (!spec?.executionAuthorization || !safe(spec.operationId) || !safe(spec.requestId)) {
     fail('V102_WORKER_AUTHORIZATION_REQUIRED');
   }
+  if (!accessStatus || accessStatus.configuredTier !== config?.capabilityProfile?.tier) {
+    fail('V102_EFFECTIVE_ACCESS_STATUS_REQUIRED');
+  }
+  if (typeof readAccessStatus !== 'function') fail('V102_ACCESS_STATUS_READER_REQUIRED');
   if (typeof policy.providerPath !== 'string' || !path.isAbsolute(policy.providerPath)
       || !HASH.test(policy.providerSha256 ?? '')) fail('V102_WORKER_PROVIDER_CONFIG_REQUIRED');
   const base = path.resolve(projectDir, 'src');
@@ -344,14 +384,14 @@ export async function loadV102WorkerExecutionAccess({ config, spec, projectDir }
   return Object.freeze({
     services,
     executionAccess: createV102ExecutionAccess({
-      config, authorization: spec.executionAuthorization, services,
+      config, accessStatus, readAccessStatus, authorization: spec.executionAuthorization, services,
       requestId: spec.requestId, operationId: spec.operationId
     })
   });
 }
 
 /** Worker helper for a prepared process plan; spawn occurs inside the gate. */
-export async function executeV102WorkerProcess({ config, spec, services, startProcess, now = Date.now } = {}) {
+export async function executeV102WorkerProcess({ config, accessStatus, readAccessStatus, spec, services, startProcess, now = Date.now } = {}) {
   if (!spec || spec.kind !== 'process' || !spec.executionAuthorization
       || typeof startProcess !== 'function') fail('V102_WORKER_AUTHORIZATION_REQUIRED');
   const plan = {
@@ -364,7 +404,7 @@ export async function executeV102WorkerProcess({ config, spec, services, startPr
     fail('V102_WORKER_PLAN_AUTHORIZATION_MISMATCH');
   }
   const executionAccess = createV102ExecutionAccess({
-    config, authorization: spec.executionAuthorization, services,
+    config, accessStatus, readAccessStatus, authorization: spec.executionAuthorization, services,
     requestId: spec.requestId, operationId: spec.operationId, now
   });
   let child = null;

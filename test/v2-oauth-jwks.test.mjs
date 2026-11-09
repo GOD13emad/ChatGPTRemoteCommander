@@ -36,6 +36,44 @@ test('EdDSA, RS256 and ES256 signature + key-type verification',async()=>{
     assert.equal(claims.audience,AUD);
   }
 });
+test('Keycloak access-token typ is explicitly pinned and the exact resource audience is normalized',async()=>{
+  const defaultVerifier=createV2JwksTokenVerifier(config);
+  const jwtTypToken=token('RS256',payload({
+    aud:[AUD,'https://tenant.example.test/userinfo']
+  }),pairs.RS256.privateKey,{typ:'JWT'});
+  await assert.rejects(defaultVerifier(jwtTypToken),{code:'V2_JWT_HEADER_REJECTED'});
+
+  const jwtProfile=createV2JwksTokenVerifier({...config,tokenType:'JWT'});
+  const claims=await jwtProfile(jwtTypToken);
+  assert.equal(claims.issuer,ISS);
+  assert.equal(claims.audience,AUD);
+
+  const wrongAudience=token('RS256',payload({
+    aud:['https://other.example.test/api']
+  }),pairs.RS256.privateKey,{typ:'JWT'});
+  await assert.rejects(jwtProfile(wrongAudience),{
+    code:'V2_JWT_ISSUER_OR_AUDIENCE_MISMATCH'
+  });
+  const duplicateAudience=token('RS256',payload({
+    aud:[AUD,AUD]
+  }),pairs.RS256.privateKey,{typ:'JWT'});
+  await assert.rejects(jwtProfile(duplicateAudience),{
+    code:'V2_JWT_ISSUER_OR_AUDIENCE_MISMATCH'
+  });
+  const wrongTyp=token('RS256',payload(),pairs.RS256.privateKey,{typ:'at+jwt'});
+  await assert.rejects(jwtProfile(wrongTyp),{code:'V2_JWT_HEADER_REJECTED'});
+  assert.throws(()=>createV2JwksTokenVerifier({...config,tokenType:'dpop+jwt'}),
+    {code:'V2_JWKS_CONFIG_REQUIRED'});
+});
+test('Auth0 upstream bearer is not accepted directly by the Commander Keycloak issuer boundary',async()=>{
+  const verify=createV2JwksTokenVerifier(config);
+  const upstream=token('EdDSA',payload({
+    iss:'https://tenant.eu.auth0.com/'
+  }));
+  await assert.rejects(verify(upstream),{
+    code:'V2_JWT_ISSUER_OR_AUDIENCE_MISMATCH'
+  });
+});
 test('signature corruption and wrong JWKS issuer key reject',async()=>{
   const verify=createV2JwksTokenVerifier(config);
   const t=token();

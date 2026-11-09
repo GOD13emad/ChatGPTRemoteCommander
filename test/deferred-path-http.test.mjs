@@ -8,6 +8,7 @@ import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { once } from 'node:events';
 import { executePowerTool,prepareDeferredPowerMutation } from '../src/power-tools-v0.3.mjs';
+import { withFullPowerAccess } from './helpers/access-mode-fixtures.mjs';
 
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
 async function freePort() {
@@ -163,6 +164,7 @@ test('Host-authorized native copy, move and recoverable delete still execute wit
         executionAccess:{required:true}
       }
     };
+    withFullPowerAccess(ctx);
     assert.deepEqual(await prepareDeferredPowerMutation(ctx,'copy_path',{source,destination:copied}),
       {kind:'power-tool',timeoutMs:24*60*60*1000});
     await assert.rejects(executePowerTool(ctx,'copy_path',{source,destination:copied}),

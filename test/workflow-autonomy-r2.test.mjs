@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { DatabaseSync } from 'node:sqlite';
 import { createHash } from 'node:crypto';
 import { WorkflowStore } from '../src/workflow-store.mjs';
+import { authorityCompatible, normalizeAuthority } from '../src/workflow-autonomy.mjs';
 import { createWorkflowTools } from '../src/workflow-tools.mjs';
 import { migrateCapabilityConfig, deriveCapabilitySet } from '../src/capability-profile.mjs';
 
@@ -86,6 +87,50 @@ test('C commander update config hash drift resumes when authority is preserved a
     try{const r=s.resume('sample');assert.equal(r.configDrift,true);assert.deepEqual(r.blockers,[]);}finally{s.close();}
     s=new WorkflowStore(options(root,{configSha256:'3'.repeat(64),authority:{profileId:'default',tier:'STANDARD',capabilities:['workflow.durable']}}));
     try{assert.ok(s.resume('sample').blockers.includes('WORKFLOW_AUTHORITY_REGRESSION'));}finally{s.close();}
+  }finally{fs.rmSync(root,{recursive:true,force:true});}
+});
+
+test('owner tier changes fail closed even when effective capability names stay identical',()=>{
+  for(const [originalTier,currentTier] of [['FULL_POWER','STANDARD'],['STANDARD','FULL_POWER']]){
+    const root=temp();
+    try{
+      const capabilities=['workflow.durable','workflow.scheduler'];
+      let s=new WorkflowStore(options(root,{
+        authority:{profileId:'default',tier:originalTier,capabilities}
+      }));
+      create(s,root);s.close();
+      s=new WorkflowStore(options(root,{
+        configSha256:'4'.repeat(64),
+        authority:{profileId:'default',tier:currentTier,capabilities:[...capabilities]}
+      }));
+      try{
+        const resumed=s.resume('sample');
+        assert.equal(resumed.readyForNextStep,false);
+        assert.ok(resumed.blockers.includes('WORKFLOW_AUTHORITY_TIER_CHANGED'),
+          originalTier+' -> '+currentTier+' must require fresh owner authorization');
+        assert.equal(s.get('sample').state.steps[0].status,'pending');
+      }finally{s.close();}
+    }finally{fs.rmSync(root,{recursive:true,force:true});}
+  }
+});
+
+test('unknown FULL_ACCESS owner tier is never silently coerced to STANDARD during workflow admission',()=>{
+  const capabilities=['workflow.durable'];
+  const valid={profileId:'default',tier:'STANDARD',capabilities};
+  const unsupported={...valid,tier:'FULL_ACCESS'};
+  assert.throws(()=>normalizeAuthority(unsupported),/WORKFLOW_AUTHORITY_TIER_UNSUPPORTED/);
+  assert.deepEqual(authorityCompatible(unsupported,valid),{
+    ok:false,code:'WORKFLOW_AUTHORITY_TIER_UNSUPPORTED',missing:[]
+  });
+  assert.deepEqual(authorityCompatible(valid,unsupported),{
+    ok:false,code:'WORKFLOW_AUTHORITY_TIER_UNSUPPORTED',missing:[]
+  });
+  assert.equal(normalizeAuthority({profileId:'default',capabilities}).tier,'STANDARD',
+    'legacy omitted tier retains explicit STANDARD fallback');
+  const root=temp();
+  try{
+    assert.throws(()=>new WorkflowStore(options(root,{authority:unsupported})),
+      /WORKFLOW_AUTHORITY_TIER_UNSUPPORTED/);
   }finally{fs.rmSync(root,{recursive:true,force:true});}
 });
 

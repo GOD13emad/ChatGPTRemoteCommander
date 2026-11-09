@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { canonicalizeRoots } from '../src/security-v0.3.mjs';
 import { expandPathValue, terminateProcessTree } from '../src/platform.mjs';
 import { executePowerTool } from '../src/power-tools-v0.3.mjs';
+import { createAccessStatusReader } from '../src/full-access-status.mjs';
 import { loadV102WorkerExecutionAccess, v102PreparedPlanDigest } from '../src/execution-access-guard.mjs';
 import { observeOperationChild } from '../src/operation-child-lifecycle.mjs';
 import { spawn } from 'node:child_process';
@@ -106,10 +107,13 @@ async function runPowerToolOperation(spec, prior) {
   config.allowedRoots = config.allowedRoots.map(expandPathValue);
   const roots = await canonicalizeRoots(config.allowedRoots);
   const projectDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-  const loadedAccess = await loadV102WorkerExecutionAccess({ config, spec, projectDir });
+  const readAccessStatus = createAccessStatusReader({config});
+  const accessStatus = await readAccessStatus();
+  const loadedAccess = await loadV102WorkerExecutionAccess({ config, spec, projectDir, accessStatus, readAccessStatus });
   const ctx = {
     config,
     roots,
+    accessStatus,
     auditLog: path.resolve(projectDir, config.auditLog || 'var/audit.jsonl'),
     requestId: spec.requestId,
     operationId: spec.operationId,
@@ -162,10 +166,12 @@ async function main() {
     const configSha256 = createHash('sha256').update(configRaw).digest('hex');
     if (spec.configSha256 && configSha256 !== spec.configSha256) throw new Error('OPERATION_CONFIG_CHANGED');
     const executionConfig = JSON.parse(configRaw);
+    const readAccessStatus = createAccessStatusReader({config:executionConfig});
+    const accessStatus = await readAccessStatus();
     if (executionConfig?.executionAccess?.required === true && !spec.configSha256) {
       throw new Error('V102_WORKER_CONFIG_HASH_REQUIRED');
     }
-    const loaded = await loadV102WorkerExecutionAccess({ config: executionConfig, spec, projectDir });
+    const loaded = await loadV102WorkerExecutionAccess({ config: executionConfig, spec, projectDir, accessStatus, readAccessStatus });
     executionAccess = loaded?.executionAccess ?? null;
   }
   const preparedPlan = {

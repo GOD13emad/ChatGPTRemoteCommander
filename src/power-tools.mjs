@@ -7,6 +7,7 @@ import {
   realpath, rename, rm, stat, writeFile
 } from 'node:fs/promises';
 import { isWithin } from './security.mjs';
+import { effectivePowerMode } from './effective-power-mode.mjs';
 
 const terminals = new Map();
 let terminalCounter = 1;
@@ -16,8 +17,9 @@ function expandEnv(value) {
 }
 
 function power(ctx) {
-  if (ctx.config.powerMode?.enabled !== true) throw new Error('Power Mode is disabled');
-  return ctx.config.powerMode;
+  const scope = effectivePowerMode(ctx.config, { accessStatus: ctx.accessStatus });
+  if (scope.enabled !== true) throw new Error('Power Mode is disabled');
+  return scope;
 }
 
 function resolveTarget(ctx, userPath, base = ctx.roots[0]) {

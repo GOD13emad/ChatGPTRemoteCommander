@@ -6,6 +6,7 @@ import { createPublicKey } from 'node:crypto';
 import { createLocalJWKSet, jwtVerify } from '../vendor/jose/dist/webapi/index.js';
 
 const ALGS=new Set(['RS256','ES256','EdDSA']);
+const TOKEN_TYPES=new Set(['at+jwt','JWT']);
 const UNKNOWN_KID_REFRESH_MIN_MS=30000;
 function fail(code){throw Object.assign(new Error(code),{code});}
 const cleanUri=(s)=>{
@@ -17,6 +18,16 @@ const cleanUri=(s)=>{
   // OAuth issuer/audience are exact identifiers; adding a trailing slash changes aud/iss.
   return s;
 };
+function audienceMatches(value,expected){
+  if(value===expected)return true;
+  if(!Array.isArray(value)||value.length<1||value.length>8)return false;
+  const seen=new Set();
+  for(const item of value){
+    if(typeof item!=='string'||!item||item.length>2048||seen.has(item))return false;
+    seen.add(item);
+  }
+  return seen.has(expected);
+}
 const parse=(part)=>{
   if(typeof part!=='string'||part.length>16384
     ||!/^[A-Za-z0-9_-]+$/.test(part))fail('V2_JWT_MALFORMED');
@@ -82,16 +93,21 @@ export async function fetchV2Jwks(uri,{request=fetch,timeoutMs=5000}={}){
   }catch(e){if(e.code==='V2_JWKS_INVALID')throw e;fail('V2_JWKS_INVALID');}
 }
 /**
- * Verifies a signed RFC9068-style JWT access token using a pinned issuer JWKS.
- * The returned shape plugs into createV2OAuthObservedCaller. Still requires an
- * actual operator-configured OAuth 2.1 authorization server and user consent.
+ * Verifies a signed access-token JWT using one pinned issuer JWKS.
+ * tokenType is an operator-selected exact JOSE typ: at+jwt (preferred) or JWT
+ * (explicit Keycloak compatibility). It never accepts ID tokens by audience:
+ * the configured Commander resource audience and workflow scope remain exact.
+ * The returned shape plugs into createV2OAuthObservedCaller and still requires
+ * the actual OAuth server, trusted chat binding and native owner consent.
  */
 export function createV2JwksTokenVerifier({
-  issuer,audience,jwksUri,request=fetch,now=Date.now,cacheMs=60000
+  issuer,audience,jwksUri,request=fetch,now=Date.now,cacheMs=60000,
+  tokenType='at+jwt'
 }){
   const configuredIssuer=cleanUri(issuer),configuredAudience=cleanUri(audience),
     configuredJwks=cleanUri(jwksUri);
-  if(typeof now!=='function'||!Number.isSafeInteger(cacheMs)||cacheMs<0||cacheMs>300000)
+  if(typeof now!=='function'||!Number.isSafeInteger(cacheMs)||cacheMs<0||cacheMs>300000
+    ||!TOKEN_TYPES.has(tokenType))
     fail('V2_JWKS_CONFIG_REQUIRED');
   let cache=null,loaded=0,inFlight=null,lastUnknownKidRefresh=-Infinity;
   async function keys(force=false){
@@ -111,12 +127,12 @@ export function createV2JwksTokenVerifier({
     if(parts.length!==3||parts.some(p=>!p))fail('V2_JWT_MALFORMED');
     const header=parse(parts[0]),payload=parse(parts[1]);
     if(!ALGS.has(header.alg)||typeof header.kid!=='string'||!header.kid
-      ||header.kid.length>128||header.typ!=='at+jwt'
+      ||header.kid.length>128||header.typ!==tokenType
       ||['crit','b64','jku','jwk','x5u'].some(name=>Object.hasOwn(header,name)))
       fail('V2_JWT_HEADER_REJECTED');
     const nowMs=now();
     if(!Number.isSafeInteger(nowMs))fail('V2_JWT_CLOCK_INVALID');
-    if(payload.iss!==configuredIssuer||payload.aud!==configuredAudience)
+    if(payload.iss!==configuredIssuer||!audienceMatches(payload.aud,configuredAudience))
       fail('V2_JWT_ISSUER_OR_AUDIENCE_MISMATCH');
     if(typeof payload.sub!=='string'||!payload.sub||payload.sub.length>1024)
       fail('V2_JWT_SUBJECT_INVALID');
@@ -158,7 +174,7 @@ export function createV2JwksTokenVerifier({
         keys:[jwks.keys.find(k=>k.kid===header.kid)]
       }),{
         issuer:configuredIssuer,audience:configuredAudience,
-        typ:'at+jwt',algorithms:[header.alg],
+        typ:tokenType,algorithms:[header.alg],
         currentDate:new Date(verifyNowMs)
       });
     }catch{fail('V2_JWT_SIGNATURE_INVALID');}
@@ -168,7 +184,9 @@ export function createV2JwksTokenVerifier({
     if(!Number.isSafeInteger(afterVerifyMs)||payload.exp*1000<=afterVerifyMs
       ||(payload.nbf??0)*1000>afterVerifyMs)fail('V2_JWT_NOT_CURRENT');
     return Object.freeze({
-      issuer:payload.iss,audience:payload.aud,subject:payload.sub,
+      // Normalize an RFC 7519 string-or-array aud claim only after the exact
+      // configured resource audience has been cryptographically verified.
+      issuer:payload.iss,audience:configuredAudience,subject:payload.sub,
       scopes:Object.freeze(scopes),
       expiresAtMs:payload.exp*1000,notBeforeMs:(payload.nbf??0)*1000
     });

@@ -25,7 +25,7 @@ export function sha256(data) {
 }
 
 function legacyPowerFullFilesystem(ctx) {
-  return hasEffectiveFullFilesystem(ctx.config);
+  return hasEffectiveFullFilesystem(ctx.config, { accessStatus: ctx.accessStatus });
 }
 
 async function legacyExistingPath(ctx, userPath, base = ctx.roots[0]) {
