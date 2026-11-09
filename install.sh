@@ -409,7 +409,12 @@ validate_installation() {
     chmod 0700 "$qa_home"
     chown "$qa_user_uid:$qa_user_gid" "$qa_home"
     for qa_script in check:qualification test:qualification audit; do
-      if ! runuser -u nobody -- env HOME="$qa_home" XDG_CACHE_HOME="$qa_home/.cache" PATH="$PATH" npm run "$qa_script"; then
+      # This root-owned, exact staged Git checkout is intentionally read by the
+      # unprivileged QA runner. Permit Git metadata reads for this path only;
+      # do not add a global safe.directory entry or widen OS file permissions.
+      if ! runuser -u nobody -- env HOME="$qa_home" XDG_CACHE_HOME="$qa_home/.cache" PATH="$PATH" \
+        GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=safe.directory GIT_CONFIG_VALUE_0="$(pwd -P)" \
+        npm run "$qa_script"; then
         echo "QUALIFICATION_UNPRIVILEGED_FAILED $qa_script" >&2
         qa_rc=1
         break
