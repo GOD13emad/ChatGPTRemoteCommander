@@ -11,6 +11,7 @@ const AUDIENCE='https://commander.example.invalid/mcp-v2';
 const TOKEN='FAKE_QA_OAUTH_TOKEN_NOT_SIGNED_OR_ENROLLED_1234';
 const TOKEN_SHA256=createHash('sha256').update(TOKEN).digest('hex');
 const T0=1000000000000;
+const OWNER_SID_HASH='b'.repeat(64);
 const invocation=(args={target:'read-only'})=>({
   rpcMethod:'tools/call',tool:'gui_cursor_position',arguments:args
 });
@@ -23,7 +24,7 @@ function scenario(t,overrides={}){
   const state={
     clock:T0,token:TOKEN,route:route(),binding:{
       source:'native-owner-attested',tokenSha256:TOKEN_SHA256,
-      sessionHandle:'qa-chat',bindingId:'a'.repeat(64),expiresAtMs:T0+60000
+      sessionHandle:'qa-chat',bindingId:'a'.repeat(64),ownerSidHash:OWNER_SID_HASH,expiresAtMs:T0+60000
     },grant:true,authorize:true,claims:{
       issuer:ISSUER,audience:AUDIENCE,subject:'qa-subject',
       notBeforeMs:T0-1000,expiresAtMs:T0+80000,
@@ -39,9 +40,19 @@ function scenario(t,overrides={}){
       :subject==='qa-subject'?'qa-principal':null,
     resolveAttestedTokenBinding:async digest=>
       digest===TOKEN_SHA256?state.binding:null,
-    nativeSessionBindings:{resolveNativeRoute:async session=>
-      typeof state.nativeRouteResolver==='function'
-        ?state.nativeRouteResolver(session):state.route},
+    nativeSessionBindings:{
+      resolveNativeRoute:async session=>
+        typeof state.nativeRouteResolver==='function'
+          ?state.nativeRouteResolver(session):state.route,
+      resolveNativeOwnerContext:async session=>{
+        const binding=state.binding,route=state.route;
+        if(!binding||session!==binding.sessionHandle)return null;
+        return {source:'native-owner-attested',hostId:route.hostId,
+          profileId:route.profileId,principalId:route.principalId,
+          conversationId:route.conversationId,bindingId:binding.bindingId,
+          ownerSidHash:binding.ownerSidHash,expiresAtMs:binding.expiresAtMs};
+      }
+    },
     grantRegistry:{isAllowed:()=>state.grant},
     authorizeExactInvocation:async(_r,call)=>typeof state.authorize==='function'
       ?state.authorize(call):state.authorize
@@ -99,6 +110,42 @@ test('owner attestation cannot be inferred from headers, chat strings, or a stal
   }
   assert.equal(bridge.activeTickets,0);
 });
+
+test('native token/session binding requires a valid owner SID hash and rechecks it before ticket admission',async t=>{
+  const valid={source:'native-owner-attested',tokenSha256:TOKEN_SHA256,
+    sessionHandle:'qa-chat',bindingId:'a'.repeat(64),
+    ownerSidHash:OWNER_SID_HASH,expiresAtMs:T0+60000};
+  for(const binding of [
+    {...valid,ownerSidHash:undefined},
+    {...valid,ownerSidHash:'not-a-digest'}
+  ]){
+    const {bridge}=scenario(t,{binding});
+    assert.equal(await bridge.verifyCaller(TOKEN),null);
+    assert.equal(bridge.activeTickets,0);
+  }
+});
+
+test('owner SID change during asynchronous route resolution or exact policy invalidates the ticket',async t=>{
+  await t.test('changed before ticket issuance',async t=>{
+    const {state,bridge}=scenario(t);
+    state.nativeRouteResolver=async()=>{
+      state.binding={...state.binding,ownerSidHash:'f'.repeat(64)};
+      return state.route;
+    };
+    assert.equal(await bridge.verifyCaller(TOKEN),null);
+    assert.equal(bridge.activeTickets,0);
+  });
+  await t.test('changed during exact invocation policy',async t=>{
+    const {state,bridge}=scenario(t);
+    const actor=await bridge.verifyCaller(TOKEN);
+    state.authorize=async()=>{
+      state.binding={...state.binding,ownerSidHash:'f'.repeat(64)};
+      return true;
+    };
+    assert.equal(await bridge.authorizeTool(actor,invocation()),false);
+  });
+});
+
 test('route identity must equal bound host/profile/principal/conversation',async t=>{
   const {state,bridge}=scenario(t);
   for(const bad of [
@@ -130,7 +177,7 @@ test('owner revocation and regrant with new binding epoch immediately invalidate
   assert.equal(await bridge.verifyCaller(TOKEN),null);
   state.binding={
     source:'native-owner-attested',tokenSha256:TOKEN_SHA256,
-    sessionHandle:'qa-chat',bindingId:'b'.repeat(64),expiresAtMs:T0+60000
+    sessionHandle:'qa-chat',bindingId:'b'.repeat(64),ownerSidHash:OWNER_SID_HASH,expiresAtMs:T0+60000
   };
   const newer=await bridge.verifyCaller(TOKEN);
   assert.equal(newer?.verified,true);
@@ -375,4 +422,41 @@ test('shutdown while OAuth principal resolution awaits cannot mint a new ticket'
   };
   assert.equal(await bridge.verifyCaller(TOKEN),null);
   assert.equal(bridge.activeTickets,0);
+});
+
+test('read-only worker owner projection exposes exact native binding epoch and canonical route',async t=>{
+  const {state,bridge}=scenario(t);
+  const actor=await bridge.verifyCaller(TOKEN);
+  const context=await bridge.resolveOwnerContext(TOKEN);
+  const routeValue=await bridge.resolveOwnerRoute(TOKEN);
+  assert.equal(context.source,'native-owner-attested');
+  assert.equal(context.hostId,'qa-host');
+  assert.equal(context.profileId,'qa-profile');
+  assert.equal(context.principalId,'qa-principal');
+  assert.equal(context.conversationId,'qa-chat');
+  assert.equal(context.bindingId,'a'.repeat(64));
+  assert.equal(context.ownerSidHash,OWNER_SID_HASH);
+  assert.equal(context.expiresAtMs,actor.expiresAtMs);
+  assert.equal(JSON.stringify(routeValue),JSON.stringify(state.route));
+  assert.equal(Object.hasOwn(context,'tokenSha256'),false);
+  assert.equal(Object.hasOwn(context,'sessionHandle'),false);
+  assert.equal(Object.hasOwn(context,'accessToken'),false);
+});
+
+test('read-only worker owner projection fails closed after owner epoch revocation or bridge shutdown',async t=>{
+  const {state,bridge}=scenario(t);
+  assert.ok(await bridge.resolveOwnerContext(TOKEN));
+  assert.ok(await bridge.resolveOwnerRoute(TOKEN));
+  state.binding=null;
+  assert.equal(await bridge.resolveOwnerContext(TOKEN),null);
+  assert.equal(await bridge.resolveOwnerRoute(TOKEN),null);
+  state.binding={
+    source:'native-owner-attested',tokenSha256:TOKEN_SHA256,
+    sessionHandle:'qa-chat',bindingId:'b'.repeat(64),
+    ownerSidHash:OWNER_SID_HASH,expiresAtMs:T0+60000
+  };
+  assert.equal((await bridge.resolveOwnerContext(TOKEN)).bindingId,'b'.repeat(64));
+  bridge.close();
+  assert.equal(await bridge.resolveOwnerContext(TOKEN),null);
+  assert.equal(await bridge.resolveOwnerRoute(TOKEN),null);
 });

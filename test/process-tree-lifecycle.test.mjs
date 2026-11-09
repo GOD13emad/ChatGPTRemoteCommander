@@ -23,6 +23,7 @@ function powerContext(root) {
     roots: [root],
     auditLog: path.join(root, 'audit.jsonl'),
     config: {
+      capabilityProfile: { tier: 'FULL_POWER', explicitlyAuthorized: true, disabledCapabilities: [] },
       powerMode: {
         enabled: true,
         fullFilesystem: true,

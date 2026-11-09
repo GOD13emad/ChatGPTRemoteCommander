@@ -7,6 +7,8 @@ import {canonicalJ01Grant, createJ01OwnerGrantVerifier}
   from '../src/gui-j01-owner-grant-verifier.mjs';
 import {createV101ProtectedRouterBridge}
   from '../src/full-access-protected-router-bridge.mjs';
+import {createV2NativeOwnerSessionBindings}
+  from '../src/v2-native-owner-session-bindings.mjs';
 
 test('new signed J01 grant rotates V1-01 trusted binding epoch and retires old ticket',async()=>{
   const keys=generateKeyPairSync('ed25519'); // volatile test keys; never enrolled
@@ -59,7 +61,7 @@ test('new signed J01 grant rotates V1-01 trusted binding epoch and retires old t
   function rotate(v){
     bound.set(tokenSha256,Object.freeze({source:'native-owner-attested',
       tokenSha256,bindingId:v.bindingId,sessionHandle:'qa-chat',
-      expiresAtMs:now+18000}));
+      ownerSidHash:'a'.repeat(64),expiresAtMs:now+18000}));
   }
   rotate(v1);
   const bridge=createV101ProtectedRouterBridge({
@@ -69,7 +71,16 @@ test('new signed J01 grant rotates V1-01 trusted binding epoch and retires old t
       expiresAtMs:now+60000,scopes:['commander.workflow']}:null,
     resolvePrincipal:async sub=>sub==='qa-subject'?principalId:null,
     resolveAttestedTokenBinding:async digest=>bound.get(digest)??null,
-    nativeSessionBindings:{resolveNativeRoute:async()=>route},
+    nativeSessionBindings:{
+      resolveNativeRoute:async()=>route,
+      resolveNativeOwnerContext:async session=>{
+        const current=bound.get(tokenSha256);
+        if(!current||session!==current.sessionHandle)return null;
+        return {source:'native-owner-attested',hostId,profileId,principalId,
+          conversationId:route.conversationId,bindingId:current.bindingId,
+          ownerSidHash:current.ownerSidHash,expiresAtMs:current.expiresAtMs};
+      }
+    },
     grantRegistry:{isAllowed:()=>true},
     authorizeExactInvocation:async()=>true
   });
@@ -98,4 +109,64 @@ test('new signed J01 grant rotates V1-01 trusted binding epoch and retires old t
     assert.equal(Object.hasOwn(replay,'bindingId'),false);
     assert.equal(archive.length,2);
   }finally{bridge.close();}
+});
+
+
+test('native owner-session binding module composes with Router and fails closed on OS owner switch during async tool authorization',async()=>{
+  const now=1_800_000_000_000,owner='a'.repeat(64),other='b'.repeat(64);
+  const hostId='qa-host',profileId='qa-profile',principalId='qa-owner';
+  const issuer='https://qa-idp.invalid',audience='https://qa-resource.invalid/mcp';
+  const token='QA-ONLY-MOCK-OAUTH-NOT-A-TOKEN';
+  const tokenSha256=createHash('sha256').update(token).digest('hex');
+  const state={ownerSidHash:owner,seat:'qa-seat'};
+  const route={hostId,profileId,principalId,conversationId:'qa-chat',
+    operationId:'qa-operation',target:{kind:'desktop-seat',id:'qa-seat'}};
+  const nativeBindings=createV2NativeOwnerSessionBindings({
+    attestPlatformSession:async proof=>proof==='platform-proof'?{
+      source:'native-platform-session',sessionHandle:'qa-chat',tokenSha256
+    }:null,
+    resolveOwnerRoute:async handle=>handle==='qa-chat'?route:null,
+    observedNativeSession:async()=>state.seat,
+    resolveOwnerSidHash:async()=>state.ownerSidHash,
+    authorizeBinding:async request=>request.ownerSidHash===owner,
+    authorizeRevocation:async request=>request.ownerSidHash===owner,
+    now:()=>now,ttlMs:60_000
+  });
+  const admitted=await nativeBindings.bindTrusted('platform-proof');
+  assert.equal(admitted.tokenSha256,tokenSha256);
+  assert.equal(admitted.ownerSidHash,owner);
+  let rotateDuringAuthorization=false;
+  const bridge=createV101ProtectedRouterBridge({
+    hostId,profileId,issuer,audience,now:()=>now,
+    verifyAccessToken:async value=>value===token?{
+      issuer,audience,subject:'qa-subject',notBeforeMs:now-1000,
+      expiresAtMs:now+120_000,scopes:['commander.workflow']
+    }:null,
+    resolvePrincipal:async subject=>subject==='qa-subject'?principalId:null,
+    resolveAttestedTokenBinding:digest=>
+      nativeBindings.resolveAttestedTokenBinding(digest),
+    nativeSessionBindings:nativeBindings,
+    grantRegistry:{isAllowed:()=>true},
+    authorizeExactInvocation:async()=>{
+      if(rotateDuringAuthorization)state.ownerSidHash=other;
+      return true;
+    }
+  });
+  try{
+    const identity=await bridge.verifyCaller(token);
+    assert.equal(identity?.verified,true);
+    const context=await bridge.resolveOwnerContext(token);
+    assert.equal(context?.ownerSidHash,owner);
+    const invocation={rpcMethod:'tools/call',tool:'read_text',
+      arguments:{path:'README.md'}};
+    assert.equal(await bridge.authorizeTool(identity,invocation),true);
+    rotateDuringAuthorization=true;
+    assert.equal(await bridge.authorizeTool(identity,invocation),false);
+    assert.equal(nativeBindings.size,0);
+    assert.equal(await bridge.verifyCaller(token),null);
+    assert.equal(await bridge.resolveOwnerContext(token),null);
+  }finally{
+    bridge.close();
+    nativeBindings.close();
+  }
 });

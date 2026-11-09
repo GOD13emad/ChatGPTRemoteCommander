@@ -42,6 +42,9 @@ const ctx = {
     maxWriteBytes: 1024 * 1024,
     maxCommandMs: 10000,
     allowedPrograms: ['git', 'node'],
+    capabilityProfile: {
+      tier: 'FULL_POWER', explicitlyAuthorized: true, disabledCapabilities: []
+    },
     powerMode: {
       enabled: true, fullFilesystem: true, allowShell: true,
       allowProcessControl: true, allowPermanentDelete: false,

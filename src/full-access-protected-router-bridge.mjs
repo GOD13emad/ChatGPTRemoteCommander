@@ -8,9 +8,10 @@ import {isProxy} from 'node:util/types';
 import {normalizeV2Route} from './v2-routing-contract.mjs';
 
 const ID=/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
-const TOOL=/^[a-z][a-z0-9_]{0,79}$/;
+const TOOL=/^(?=.{1,80}$)[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)*$/;
 // Opaque random owner-issued consent epoch; rotate on EVERY revoke/regrant.
 const BINDING_ID=/^[0-9a-f]{32,64}$/;
+const OWNER_SID_HASH=/^[a-f0-9]{64}$/;
 const fail=code=>{throw Object.assign(new Error(code),{code});};
 const validId=s=>typeof s==='string'&&ID.test(s)&&s!=='.'&&s!=='..';
 const record=x=>x!==null&&typeof x==='object'&&!Array.isArray(x)
@@ -49,6 +50,23 @@ function countJsonBytes(budget,value){
   budget.bytes-=Buffer.byteLength(JSON.stringify(value),'utf8');
   if(budget.bytes<0)fail('V101_ROUTER_ARGUMENTS_BOUNDS');
 }
+function nativeOwnerContextMatches(value,route,bindingId,ownerSidHash,minExpiry,nowMs){
+  const fields=['source','hostId','profileId','principalId','conversationId','bindingId','ownerSidHash','expiresAtMs'];
+  if(!record(value)||isProxy(value)||Reflect.ownKeys(value).length!==fields.length)return false;
+  const context=Object.create(null);
+  for(const field of fields){
+    const descriptor=Object.getOwnPropertyDescriptor(value,field);
+    if(!descriptor||!Object.hasOwn(descriptor,'value')||descriptor.enumerable!==true)return false;
+    context[field]=descriptor.value;
+  }
+  return context.source==='native-owner-attested'
+    &&context.hostId===route.hostId&&context.profileId===route.profileId
+    &&context.principalId===route.principalId&&context.conversationId===route.conversationId
+    &&context.bindingId===bindingId&&context.ownerSidHash===ownerSidHash
+    &&Number.isSafeInteger(context.expiresAtMs)&&context.expiresAtMs>=minExpiry
+    &&context.expiresAtMs>nowMs;
+}
+
 function frozenJsonSnapshot(value,depth=0,budget={left:8192,bytes:MAX_ARGUMENT_BYTES}){
   if(--budget.left<0||depth>32)fail('V101_ROUTER_ARGUMENTS_BOUNDS');
   // Proxies can report safe own descriptors while exposing different values
@@ -125,6 +143,7 @@ export function createV101ProtectedRouterBridge({
     ||[verifyAccessToken,resolvePrincipal,resolveAttestedTokenBinding,
        authorizeExactInvocation,now].some(x=>typeof x!=='function')
     ||typeof nativeSessionBindings?.resolveNativeRoute!=='function'
+    ||typeof nativeSessionBindings?.resolveNativeOwnerContext!=='function'
     ||typeof grantRegistry?.isAllowed!=='function'
     ||!Number.isSafeInteger(maxTickets)||maxTickets<1||maxTickets>4096
     ||!Number.isSafeInteger(ticketTtlMs)||ticketTtlMs<1000||ticketTtlMs>120000)
@@ -173,6 +192,7 @@ export function createV101ProtectedRouterBridge({
       if(!record(binding)||binding.source!=='native-owner-attested'
         ||binding.tokenSha256!==digest||!validId(binding.sessionHandle)
         ||!BINDING_ID.test(binding.bindingId)
+        ||!OWNER_SID_HASH.test(binding.ownerSidHash)
         ||!Number.isSafeInteger(binding.expiresAtMs)
         ||binding.expiresAtMs<=t)return null;
       // Capture the exact owner-attestation epoch BEFORE awaiting native OS
@@ -181,18 +201,28 @@ export function createV101ProtectedRouterBridge({
       const boundSession=binding.sessionHandle;
       const boundExpiry=binding.expiresAtMs;
       const boundId=binding.bindingId;
+      const boundOwnerSidHash=binding.ownerSidHash;
       const route=normalizeV2Route(
         await nativeSessionBindings.resolveNativeRoute(boundSession));
       if(route.hostId!==hostId||route.profileId!==profileId
         ||route.principalId!==principalId
         ||route.conversationId!==boundSession)return null;
-      // Re-read independently trusted consent immediately before issuing any
-      // ticket (including for read-only MCP methods). An exact change to its
-      // expiry requires fresh admission, not revival of the stale snapshot.
+      // The token→session mapping is not itself an OS identity assertion.
+      // Require the separately observed native owner/session provider to
+      // confirm the exact SID hash and consent epoch before minting a ticket.
+      const nativeOwner=await nativeSessionBindings.resolveNativeOwnerContext(boundSession);
+      if(!nativeOwnerContextMatches(nativeOwner,route,boundId,boundOwnerSidHash,boundExpiry,clock()))
+        return null;
+      // Re-read independently trusted transport and native owner consent
+      // immediately before issuing any ticket, including read-only calls.
       const fresh=await resolveAttestedTokenBinding(digest);
       if(!record(fresh)||fresh.source!=='native-owner-attested'
         ||fresh.tokenSha256!==digest||fresh.sessionHandle!==boundSession
-        ||fresh.expiresAtMs!==boundExpiry||fresh.bindingId!==boundId)
+        ||fresh.expiresAtMs!==boundExpiry||fresh.bindingId!==boundId
+        ||fresh.ownerSidHash!==boundOwnerSidHash)
+        return null;
+      const nativeOwnerFresh=await nativeSessionBindings.resolveNativeOwnerContext(boundSession);
+      if(!nativeOwnerContextMatches(nativeOwnerFresh,route,boundId,boundOwnerSidHash,boundExpiry,clock()))
         return null;
       const admittedAt=clock();
       if(closed||signedExpiresAtMs<=admittedAt||boundExpiry<=admittedAt)return null;
@@ -208,6 +238,7 @@ export function createV101ProtectedRouterBridge({
         if(old.tokenSha256!==digest)continue;
         if(old.sessionHandle===boundSession
           &&old.bindingId===boundId
+          &&old.ownerSidHash===boundOwnerSidHash
           &&old.ownerExpiresAtMs===boundExpiry
           &&old.principalId===principalId
           &&old.expiresAtMs<=expiry
@@ -222,7 +253,7 @@ export function createV101ProtectedRouterBridge({
       if(tickets.size>=maxTickets)return null;
       const ticket=randomBytes(32).toString('hex');
       const entry=Object.freeze({ticket,tokenSha256:digest,route,
-        bindingId:boundId,ownerExpiresAtMs:boundExpiry,
+        bindingId:boundId,ownerSidHash:boundOwnerSidHash,ownerExpiresAtMs:boundExpiry,
         sessionHandle:boundSession,principalId,expiresAtMs:expiry});
       tickets.set(ticket,entry);
       return Object.freeze({verified:true,source:'v1-01-trusted-ingress',
@@ -231,18 +262,55 @@ export function createV101ProtectedRouterBridge({
     }catch{return null;}
   }
   async function attestedTokenStillBound(entry){
-    // Ticket creation does NOT grant an irrevocable right to use this chat.
-    // The independent transport/owner token-to-session link must remain
-    // active at every admission boundary, including after async policy calls.
+    // A token mapping is not a native OS identity assertion. Revalidate both
+    // independent sources at every admission boundary, including after awaits.
     const current=await resolveAttestedTokenBinding(entry.tokenSha256);
-    return record(current)
-      &&current.source==='native-owner-attested'
-      &&current.tokenSha256===entry.tokenSha256
-      &&current.sessionHandle===entry.sessionHandle
-      &&current.bindingId===entry.bindingId
-      &&Number.isSafeInteger(current.expiresAtMs)
-      &&current.expiresAtMs===entry.ownerExpiresAtMs
-      &&current.expiresAtMs>clock();
+    if(!record(current)||current.source!=='native-owner-attested'
+      ||current.tokenSha256!==entry.tokenSha256
+      ||current.sessionHandle!==entry.sessionHandle
+      ||current.bindingId!==entry.bindingId
+      ||current.ownerSidHash!==entry.ownerSidHash
+      ||!Number.isSafeInteger(current.expiresAtMs)
+      ||current.expiresAtMs!==entry.ownerExpiresAtMs
+      ||current.expiresAtMs<=clock())return false;
+    const nativeOwner=await nativeSessionBindings.resolveNativeOwnerContext(entry.sessionHandle);
+    return nativeOwnerContextMatches(nativeOwner,entry.route,entry.bindingId,
+      entry.ownerSidHash,entry.ownerExpiresAtMs,clock());
+  }
+  async function readOwnerBinding(token){
+    try{
+      const actor=await verifyCaller(token);
+      if(!actor)return null;
+      const entry=tickets.get(actor.ticket);
+      if(!entry||entry.expiresAtMs<=clock()
+        ||!await attestedTokenStillBound(entry))return null;
+      const route=normalizeV2Route(
+        await nativeSessionBindings.resolveNativeRoute(entry.sessionHandle));
+      if(!same(route,entry.route)||!await attestedTokenStillBound(entry)
+        ||closed||entry.expiresAtMs<=clock()
+        ||tickets.get(entry.ticket)!==entry)return null;
+      return Object.freeze({actor,entry,route});
+    }catch{return null;}
+  }
+  // Read-only projection for V1-07. The binding epoch comes only from the
+  // independent native owner-attestation provider; no MCP/model field can
+  // create or select it. The bearer and raw token digest are never returned.
+  async function resolveOwnerContext(token){
+    const current=await readOwnerBinding(token);
+    if(!current)return null;
+    const {entry,route}=current;
+    return Object.freeze({
+      source:'native-owner-attested',hostId:route.hostId,profileId:route.profileId,
+      principalId:route.principalId,conversationId:route.conversationId,
+      bindingId:entry.bindingId,ownerSidHash:entry.ownerSidHash,
+      expiresAtMs:entry.expiresAtMs
+    });
+  }
+  // Canonical owner-selected route for the exact currently bound conversation.
+  // A caller may not supply an alternate root or operation target.
+  async function resolveOwnerRoute(token){
+    const current=await readOwnerBinding(token);
+    return current?.route??null;
   }
   async function authorizeTool(identity,invocation){
     // This is called by the Router on each operation, not a persistent grant
@@ -320,7 +388,8 @@ export function createV101ProtectedRouterBridge({
     }catch{return false;}
   }
   return Object.freeze({
-    verifyCaller,authorizeTool,
+    verifyCaller,authorizeTool,resolveOwnerContext,resolveOwnerRoute,
+    usesGrantRegistry(candidate){return candidate===grantRegistry;},
     close(){closed=true;tickets.clear();},
     get activeTickets(){
       if(closed)return 0;
