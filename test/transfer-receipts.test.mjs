@@ -241,7 +241,7 @@ test('receipt authority requires trusted identity, signer, owner authorization a
   const f=fixture();t.after(f.cleanup);
   assert.throws(()=>createTransferReceiptAuthority({issuer:ISSUER,audience:AUDIENCE}),errorCode('TRANSFER_RECEIPT_AUTHORITY_REQUIRED'));
   const symlink=path.join(f.root,'ledger-link');
-  fs.symlinkSync(path.join(f.root,'PC','receipt-ledger'),symlink,'dir');
+  fs.symlinkSync(path.join(f.root,'PC','receipt-ledger'),symlink,process.platform==='win32'?'junction':'dir');
   assert.throws(()=>createTransferReceiptAuthority({
     issuer:ISSUER,audience:AUDIENCE,ledgerDirectory:symlink,
     localIdentity:()=>({}),resolvePeerIdentity:()=>({}),signReceipt:()=>'',authorizeTransfer:()=>({granted:true,consentEpoch:SENDER_EPOCH})

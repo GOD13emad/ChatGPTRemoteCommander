@@ -8,6 +8,8 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {createSystemdWorkerKeyProvider} from '../src/native-worker-key-provider-linux.mjs';
 
+const linuxTest = process.platform === 'linux' ? test : test.skip;
+
 async function withCredentialDirectory(fn){
   const directory=await mkdtemp(join(tmpdir(),'rc-v107-systemd-credential-'));
   try{return await fn(directory);}
@@ -47,7 +49,7 @@ test('loads the pinned Ed25519 key from the trusted systemd credential callback'
 });
 
 
-test('loads the pinned Ed25519 seed directly from a read-only systemd credential directory',async()=>{
+linuxTest('loads the pinned Ed25519 seed directly from a read-only systemd credential directory',async()=>{
   const f=keyFixture();
   await withCredentialDirectory(async directory=>{
     const credential=join(directory,'worker-ed25519-seed');
@@ -64,7 +66,7 @@ test('loads the pinned Ed25519 seed directly from a read-only systemd credential
 });
 
 
-test('uses the systemd CREDENTIALS_DIRECTORY environment variable by default',async()=>{
+linuxTest('uses the systemd CREDENTIALS_DIRECTORY environment variable by default',async()=>{
   const f=keyFixture(),previous=process.env.CREDENTIALS_DIRECTORY;
   await withCredentialDirectory(async directory=>{
     const credential=join(directory,'worker-ed25519-seed');
@@ -86,7 +88,7 @@ test('uses the systemd CREDENTIALS_DIRECTORY environment variable by default',as
   });
 });
 
-test('rejects writable systemd credential directories and non-private credential files',async()=>{
+linuxTest('rejects writable systemd credential directories and non-private credential files',async()=>{
   const f=keyFixture();
   await withCredentialDirectory(async directory=>{
     const credential=join(directory,'worker-ed25519-seed');
@@ -109,7 +111,7 @@ test('rejects writable systemd credential directories and non-private credential
   });
 });
 
-test('rejects a symlinked credential file and a symlinked credential directory',async()=>{
+linuxTest('rejects a symlinked credential file and a symlinked credential directory',async()=>{
   const f=keyFixture();
   await withCredentialDirectory(async directory=>{
     const target=join(directory,'target');

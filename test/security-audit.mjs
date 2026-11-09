@@ -32,7 +32,10 @@ const mockPemCodeLiteral = 'pkcs8.indexOf("' + mockPemHeader + '")';
 // bearer values remain detectable, including one-character near-matches.
 const mockBearerLiterals = [
   'Bearer ' + 'verified-test-bearer',
-  'Bearer ' + 'dummy-super-secret-12345'
+  'Bearer ' + 'dummy-super-secret-12345',
+  // Historical G1 negative-login probe only: commit 47e2494f (tools/v1-01/installed-g1-readonly-probe.mjs).
+  // This fixed noncredential value is deliberately rejected by the test Host.
+  'Bearer ' + 'deliberately-invalid-g1-probe'
 ];
 const mockBearerLiteralPatterns = mockBearerLiterals.map(literal=>new RegExp(literal+'(?![A-Za-z0-9._-])','g'));
 function secretPatternMatches(type,pattern,text) {

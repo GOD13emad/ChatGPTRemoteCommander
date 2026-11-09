@@ -24,6 +24,9 @@ async function fixture(enabled){
   assert.equal(createHash('sha256').update(fs.readFileSync(source)).digest('hex'),manifest.runnerSha256);
   const target=path.join(app,'tools','windows-job-runner',...relative);
   fs.mkdirSync(path.dirname(target),{recursive:true});fs.copyFileSync(source,target);
+  const containmentScript=path.join(repo,'tools','run-owned-process-tree-windows.ps1');
+  assert.ok(fs.existsSync(containmentScript),'Windows workflow fixture requires the owned-process-tree PowerShell helper');
+  fs.copyFileSync(containmentScript,path.join(app,'tools','run-owned-process-tree-windows.ps1'));
  }
  const p=await port();const config={host:'127.0.0.1',port:p,deviceName:'WorkflowFixture',allowedRoots:[root],allowedPrograms:['node','git'],maxCommandMs:10000,maxReadBytes:524288,maxWriteBytes:524288,auditLog:'var/audit.jsonl',capabilityProfile:{tier:'STANDARD'},powerMode:{enabled:false,fullFilesystem:false,allowShell:false,allowProcessControl:false,backupRoot:path.join(root,'backups'),guiControl:{enabled:false}}};
  if(enabled)config.durableWorkflows={enabled:true,directory:path.join(root,'memory'),executionTools:['system_status','list_directory','read_text','write_text','run_project_command']};

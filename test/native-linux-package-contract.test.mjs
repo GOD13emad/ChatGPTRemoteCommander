@@ -37,7 +37,9 @@ const valid=(profile='default')=>({
   auditLog:'/home/test/.local/state/chatgpt-remote-commander/profiles/default/audit.jsonl'
 });
 
-test('one native Linux package installs one dpkg-owned code root shared by all owner profiles',()=>{
+const linuxOnlyTest = process.platform === 'linux' ? test : test.skip;
+
+linuxOnlyTest('one native Linux package installs one dpkg-owned code root shared by all owner profiles',()=>{
   assert.equal(spawnSync('bash',['-n',builderPath]).status,0);
   assert.match(source,/dpkg-deb --root-owner-group --build/);
   assert.match(source,/git -C "\$ROOT" archive --format=tar "\$HEAD"/);
@@ -57,7 +59,7 @@ test('one native Linux package installs one dpkg-owned code root shared by all o
   assert.ok(match,'native preflight must be installed in the package');
 });
 
-test('native package output guard rejects symlinked dist and installer parents',()=>{
+linuxOnlyTest('native package output guard rejects symlinked dist and installer parents',()=>{
   const tmp=fs.mkdtempSync(path.join(os.tmpdir(),'rc-package-output-symlink-'));
   try{
     const outside=path.join(tmp,'outside');
@@ -71,7 +73,7 @@ test('native package output guard rejects symlinked dist and installer parents',
   }finally{fs.rmSync(tmp,{recursive:true,force:true});}
 });
 
-test('native package output guard rejects paths outside the canonical package directory',()=>{
+linuxOnlyTest('native package output guard rejects paths outside the canonical package directory',()=>{
   const tmp=fs.mkdtempSync(path.join(os.tmpdir(),'rc-package-output-path-'));
   try{
     assert.throws(()=>resolveNativePackageOutput(tmp,'../outside.deb'),{code:'NATIVE_PACKAGE_OUTPUT_OUTSIDE_ROOT'});
@@ -79,7 +81,7 @@ test('native package output guard rejects paths outside the canonical package di
   }finally{fs.rmSync(tmp,{recursive:true,force:true});}
 });
 
-test('native package output guard enforces no-clobber and staged-to-final SHA parity',()=>{
+linuxOnlyTest('native package output guard enforces no-clobber and staged-to-final SHA parity',()=>{
   const tmp=fs.mkdtempSync(path.join(os.tmpdir(),'rc-package-output-sha-'));
   try{
     const dir=path.join(tmp,'dist','installer');fs.mkdirSync(dir,{recursive:true});
@@ -93,7 +95,7 @@ test('native package output guard enforces no-clobber and staged-to-final SHA pa
   }finally{fs.rmSync(tmp,{recursive:true,force:true});}
 });
 
-test('native package output guard rejects a symlink at the final artifact path',()=>{
+linuxOnlyTest('native package output guard rejects a symlink at the final artifact path',()=>{
   const tmp=fs.mkdtempSync(path.join(os.tmpdir(),'rc-package-output-target-'));
   try{
     const dir=path.join(tmp,'dist','installer');fs.mkdirSync(dir,{recursive:true});
@@ -104,13 +106,13 @@ test('native package output guard rejects a symlink at the final artifact path',
   }finally{fs.rmSync(tmp,{recursive:true,force:true});}
 });
 
-test('native instance preflight accepts a private config bound to its owner profile',()=>{
+linuxOnlyTest('native instance preflight accepts a private config bound to its owner profile',()=>{
   const result=runPreflight(valid());
   assert.equal(result.status,0,result.stderr);
   assert.match(result.stdout,/NATIVE_PROFILE_CONFIG_PREFLIGHT_PASS/);
 });
 
-test('native instance preflight rejects missing trusted ingress and non-loopback endpoints',()=>{
+linuxOnlyTest('native instance preflight rejects missing trusted ingress and non-loopback endpoints',()=>{
   for(const patch of [
     {host:'0.0.0.0'},
     {port:80},
@@ -123,7 +125,7 @@ test('native instance preflight rejects missing trusted ingress and non-loopback
   assert.notEqual(runPreflight(valid(),{trusted:'0'}).status,0);
 });
 
-test('native instance preflight refuses unprivate config and mutable state in managed code',()=>{
+linuxOnlyTest('native instance preflight refuses unprivate config and mutable state in managed code',()=>{
   assert.notEqual(runPreflight(valid(),{mode:0o644}).status,0);
   const inCode='/usr/lib/chatgpt-remote-commander/var/audit.jsonl';
   assert.notEqual(runPreflight({...valid(),auditLog:inCode}).status,0);

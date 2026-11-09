@@ -126,7 +126,7 @@ test('DPAPI loader uses a fixed PowerShell executable, encoded non-shell script 
       assert.equal(options.timeout,8000);
       assert.equal(options.shell,undefined);
       assert.match(options.env.PSModulePath,/WindowsPowerShell/);
-      assert.equal(options.env.SystemRoot,'C:\\Windows');
+      assert.equal(options.env.SystemRoot.toLowerCase(),(process.env.SystemRoot||'C:\\Windows').toLowerCase());
       callback(null,Buffer.from(f.seed),Buffer.alloc(0));
     }
   });

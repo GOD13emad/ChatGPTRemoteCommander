@@ -52,7 +52,7 @@ test('MCP Tasks extension maps durable Commander operations without changing fal
       powerMode:{enabled:false,fullFilesystem:false,allowShell:false,allowProcessControl:false,allowPermanentDelete:false,guiControl:{enabled:false},browserControl:{enabled:false}}};
     const configPath=path.join(serverRoot,'config.json');await fs.writeFile(configPath,JSON.stringify(config,null,2));
     child=spawn(process.execPath,[path.join(serverRoot,'src','server-v0.3.mjs')],{cwd:serverRoot,env:{...process.env,REMOTE_COMMANDER_CONFIG:configPath},stdio:['ignore','pipe','pipe']});
-    let stderr='';child.stderr.on('data',c=>{stderr=(stderr+c.toString('utf8')).slice(-4096);});
+    let stderr='';child.stdout.resume();child.stderr.on('data',c=>{stderr=(stderr+c.toString('utf8')).slice(-4096);});
     // Hosted Windows may delay fixture startup under unrelated CI process load.
     // Use the accepted bounded 30-second readiness window; this is not a
     // production MCP response or worker timeout. Detect early exit explicitly.
