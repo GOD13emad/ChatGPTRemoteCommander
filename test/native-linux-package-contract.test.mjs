@@ -129,3 +129,41 @@ test('native instance preflight refuses unprivate config and mutable state in ma
   assert.notEqual(runPreflight({...valid(),auditLog:inCode}).status,0);
   assert.notEqual(runPreflight({...valid(),runtimeState:'var/runtime.json'}).status,0);
 });
+
+test('native Linux package embeds the previously pinned tunnel client with license and provenance',()=>{
+  assert.match(source,/install-tunnel-client-linux\.sh" --install-dir "\$STAGE\/tunnel-download"/);
+  assert.match(source,/tunnel-client-pin\.json/);
+  assert.match(source,/NATIVE_TUNNEL_UNAPPROVED_PIN/);
+  assert.match(source,/NATIVE_TUNNEL_BINARY_PROVENANCE_MISMATCH/);
+  assert.match(source,/tunnel-client-provenance\.json/);
+  assert.match(source,/for name in tunnel-client cloudflared LICENSE NOTICE/);
+  assert.match(source,/cp -a -- "\$TUNNEL_SRC\/\." "\$TUNNEL\/"/);
+  assert.match(source,/tunnelAutoStart=false/);
+  assert.doesNotMatch(source,/systemctl\s+--user\s+(start|enable|restart)\s+chatgpt-remote-commander-tunnel@/);
+});
+
+test('native per-owner tunnel unit loads existing credentials and never autostarts',()=>{
+  const unit=source.match(/cat > "\$DEB\/usr\/lib\/systemd\/user\/chatgpt-remote-commander-tunnel@\.service" <<'TUNNELUNIT'\n([\s\S]*?)\nTUNNELUNIT/)?.[1];
+  assert.ok(unit,'tunnel unit must be included in the package');
+  assert.match(unit,/LoadCredential=api-key:%h\/\.config\/chatgpt-remote-commander\/credentials\/%i\.key/);
+  assert.match(unit,/ConditionPathExists=%h\/\.config\/tunnel-client\/%i\.yaml/);
+  assert.match(unit,/NoNewPrivileges=yes/);
+  assert.match(unit,/ProtectSystem=full/);
+  assert.doesNotMatch(unit,/ExecStart=.*(curl|install|enroll|sudo|pkexec)/);
+  const launcher=source.match(/cat > "\$DEB\$PACKAGE_DIR\/tunnel\/native-tunnel-launch\.sh" <<'TUNNELLAUNCH'\n([\s\S]*?)\nTUNNELLAUNCH/)?.[1];
+  assert.ok(launcher,'standalone tunnel launcher must be packaged');
+  assert.match(launcher,/CREDENTIALS_DIRECTORY/);
+  assert.match(launcher,/export CONTROL_PLANE_API_KEY/);
+  assert.match(launcher,/unset OPENAI_API_KEY/);
+  assert.doesNotMatch(launcher,/echo "\$CONTROL_PLANE_API_KEY"|printf.*CONTROL_PLANE_API_KEY/);
+  if(process.platform==='linux'){
+    for(const profile of ['../escape','', 'profile with spaces']){
+      const out=spawnSync('sh',['-s','--',profile],{
+        input:launcher,encoding:'utf8',timeout:3000,
+        env:{...process.env,CREDENTIALS_DIRECTORY:''}
+      });
+      assert.notEqual(out.status,0);
+      assert.doesNotMatch(out.stdout+out.stderr,/token|secret-value/i);
+    }
+  }
+});
