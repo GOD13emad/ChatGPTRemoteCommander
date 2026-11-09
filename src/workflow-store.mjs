@@ -6,6 +6,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { createHash, createPublicKey, randomUUID, verify } from 'node:crypto';
 import { isProxy } from 'node:util/types';
+import { isTrustedProcessCessationProof, isSerializedProcessCessationProof, serializeProcessCessationProof } from './process-containment.mjs';
 import {
   AUTONOMY_REVISION, AUTONOMY_SCHEMA, normalizeWorkflowState, normalizeExecutionProfile,
   normalizeSchedulerPolicy, normalizeAuthority, authorityCompatible, classifyTool,
@@ -921,6 +922,58 @@ export class WorkflowStore {
     this.#leaseDb.prepare('DELETE FROM root_leases WHERE root=? AND profile=? AND workflow=? AND owner=? AND fencing_token=?')
       .run(leaseRootKey(root),this.#profileId,workflow,owner,fencingToken);
   }
+  #reconciliationLeaseRow(root, workflow, step, { allowMissing = false, requireExpired = true } = {}) {
+    if (this.#schedulerPolicy.oneWriterPerRoot === false) return null;
+    if (typeof step.operationId !== 'string' || !Number.isSafeInteger(step.leaseRevision)
+      || !Number.isSafeInteger(step.fencingToken) || step.fencingToken < 1) {
+      fail('WORKFLOW_LEASE_RECONCILIATION_IDENTITY_MISSING');
+    }
+    const row=this.#leaseDb.prepare('SELECT profile,workflow,owner,expires_at,revision,fencing_token FROM root_leases WHERE root=?')
+      .get(leaseRootKey(root));
+    if (!row) {
+      if (allowMissing) return null;
+      fail('WORKFLOW_ROOT_LEASE_MISSING');
+    }
+    if (row.profile !== this.#profileId || row.workflow !== workflow
+      || row.revision !== step.leaseRevision || row.fencing_token !== step.fencingToken
+      || typeof row.owner !== 'string' || !row.owner.endsWith(':' + step.operationId)) {
+      fail('WORKFLOW_ROOT_LEASE_IDENTITY_MISMATCH');
+    }
+    const expectedLeaseId=hash(canonical({
+      root:leaseRootKey(root),profile:row.profile,workflow:row.workflow,
+      owner:row.owner,revision:row.revision,fencingToken:row.fencing_token
+    }));
+    const expectedRootFingerprint=hash(canonical({device:this.#device,root:rootWithin(root,this.#roots)}));
+    if (step.leaseId !== expectedLeaseId || step.rootFingerprint !== expectedRootFingerprint) {
+      fail('WORKFLOW_ROOT_LEASE_IDENTITY_MISMATCH');
+    }
+    // Process-capable operations require expiry plus an independently verified
+    // cessation receipt. Non-process tools have already returned to this host;
+    // their uncertain external state still needs reconciliation, but no child
+    // process can continue holding the root.
+    if (requireExpired && row.expires_at > new Date().toISOString()) fail('WORKFLOW_ROOT_LEASE_NOT_EXPIRED');
+    return row;
+  }
+  #releaseReconciledRootLease(root, workflow, step, { requireExpired = true } = {}) {
+    if (this.#schedulerPolicy.oneWriterPerRoot === false) return { status:'NOT_REQUIRED' };
+    return this.#leaseTransaction(() => {
+      const row=this.#reconciliationLeaseRow(root,workflow,step,{allowMissing:true,requireExpired});
+      if (!row) return { status:'ALREADY_RELEASED' };
+      const identity=[leaseRootKey(root),this.#profileId,workflow,row.owner,step.leaseRevision,step.fencingToken];
+      const result=requireExpired
+        ? this.#leaseDb.prepare('DELETE FROM root_leases WHERE root=? AND profile=? AND workflow=? AND owner=? AND revision=? AND fencing_token=? AND expires_at<=?')
+          .run(...identity,new Date().toISOString())
+        : this.#leaseDb.prepare('DELETE FROM root_leases WHERE root=? AND profile=? AND workflow=? AND owner=? AND revision=? AND fencing_token=?')
+          .run(...identity);
+      if (result.changes !== 1) {
+        const current=this.#leaseDb.prepare('SELECT profile,workflow,owner,revision,fencing_token FROM root_leases WHERE root=?')
+          .get(leaseRootKey(root));
+        if (!current) return { status:'ALREADY_RELEASED' };
+        fail('WORKFLOW_ROOT_LEASE_RELEASE_CONFLICT');
+      }
+      return { status:'RELEASED' };
+    });
+  }
   #load(id) {
     identifier(id);
     const row = this.#db.prepare('SELECT * FROM workflows WHERE id=?').get(id);
@@ -1291,19 +1344,47 @@ export class WorkflowStore {
         }
         dispatchStarted=true;
         result = await dispatch(tool, args, clone(prepared.state), workflowScope);
-        receipt = receiptFields(result); failure = badResult(result);
+        receipt = receiptFields(result);
+        failure = badResult(result);
         if (nativeReceiptIdentityMismatch(result, operationId)) {
           failure = true; receipt.errorCode='WORKFLOW_NATIVE_RECEIPT_IDENTITY_MISMATCH';
         } else if (deferredEffect(result)) receipt.errorCode='WORKFLOW_DEFERRED_EFFECT_UNVERIFIED';
         else if (terminalEffectFailure(result) || nestedOperationFailure(result)) receipt.errorCode='WORKFLOW_EFFECT_COMPLETION_UNVERIFIED';
-        nativeCessationPending = !failure && this.#schedulerPolicy.oneWriterPerRoot !== false
+        const cessationRequired = this.#schedulerPolicy.oneWriterPerRoot !== false
           && nativeExecutionNeedsCessationProof(result, tool);
-        if(nativeCessationPending) receipt.nativeCessationProofRequired=true;
+        if (cessationRequired) {
+          const proof = result?.processCessationProof ?? result?.result?.processCessationProof ?? null;
+          if (workflowScope && isTrustedProcessCessationProof(proof,workflowScope)) {
+            const serialized = serializeProcessCessationProof(proof);
+            if (serialized) receipt.processCessationProof = serialized;
+            else {
+              failure = true;
+              nativeCessationPending = true;
+              receipt.nativeCessationProofRequired = true;
+              receipt.errorCode ??= 'WORKFLOW_NATIVE_CESSATION_PROOF_INVALID';
+            }
+          } else {
+            failure = true;
+            nativeCessationPending = true;
+            receipt.nativeCessationProofRequired = true;
+            receipt.errorCode ??= 'WORKFLOW_NATIVE_CESSATION_PROOF_MISSING_OR_UNTRUSTED';
+          }
+        }
       }
       catch (e) {
         failure = true;
-        receipt = { exception:true, errorCode:/^[A-Z][A-Z0-9_]{1,79}$/.test(e.workflowCode ?? '') ? e.workflowCode : 'TOOL_EXCEPTION',
-          outputStored:false, ...(dispatchStarted?{}:{notDispatched:true}) };
+        receipt = {
+          exception:true,
+          errorCode:/^[A-Z][A-Z0-9_]{1,79}$/.test(e.workflowCode ?? '') ? e.workflowCode : 'TOOL_EXCEPTION',
+          outputStored:false,
+          ...(dispatchStarted?{}:{notDispatched:true})
+        };
+        if (this.#schedulerPolicy.oneWriterPerRoot !== false && nativeExecutionNeedsCessationProof(null, tool)
+          && dispatchStarted) {
+          nativeCessationPending = true;
+          receipt.nativeCessationProofRequired = true;
+          receipt.errorCode ??= 'WORKFLOW_NATIVE_CESSATION_PROOF_MISSING';
+        }
       }
       if(fencingToken!==null) {
         try {
@@ -1361,29 +1442,112 @@ export class WorkflowStore {
     if (!['applied', 'not_applied'].includes(outcome)) fail('WORKFLOW_RECONCILIATION_OUTCOME');
     identifier(stepId); safeText(explanation, 4000);
     const { state } = this.get(id); this.#identity(state);
-    const evidence = this.evidence(state.root, files);
+    if (state.revision !== expectedRevision) fail('WORKFLOW_REVISION_CONFLICT');
+    const step = state.steps.find(item => item.id === stepId);
+    if (!step) fail('WORKFLOW_STEP_NOT_FOUND');
+    const targetStatus = 'reconciled_' + outcome;
+    const alreadyReconciled = step.status === targetStatus;
+    if (step.status.startsWith('reconciled_') && !alreadyReconciled) fail('WORKFLOW_RECONCILIATION_OUTCOME_CONFLICT');
+    if (!alreadyReconciled && !['running', 'uncertain'].includes(step.status)) fail('WORKFLOW_NOT_UNCERTAIN');
+    if (step.status === 'running') {
+      if (step.ownerHost !== os.hostname() || !Number.isSafeInteger(step.ownerPid)) fail('WORKFLOW_OWNER_UNKNOWN');
+      let alive = true;
+      try { process.kill(step.ownerPid, 0); } catch (error) { if (error.code === 'ESRCH') alive = false; }
+      if (alive) fail('WORKFLOW_STILL_RUNNING');
+    }
+
+    const needsLeaseRelease = this.#schedulerPolicy.oneWriterPerRoot !== false;
+    const processRequired = needsLeaseRelease && nativeExecutionNeedsCessationProof(step.receipt ?? null,step.tool);
+    if (needsLeaseRelease) this.#reconciliationLeaseRow(state.root,id,step,{
+      allowMissing:alreadyReconciled,requireExpired:processRequired
+    });
+    const cessationProof = step.receipt?.processCessationProof ?? step.reconciliation?.cessationProof ?? null;
+    if (processRequired) {
+      const expectedBinding = {
+        workflowId:id, stepId, operationId:step.operationId,
+        rootFingerprint:step.rootFingerprint, revision:step.leaseRevision,
+        leaseId:step.leaseId, fencingToken:step.fencingToken
+      };
+      if (!isSerializedProcessCessationProof(cessationProof,expectedBinding)) {
+        fail('WORKFLOW_CESSATION_PROOF_REQUIRED_OR_INVALID');
+      }
+    }
+
+    const evidence = this.evidence(state.root,files);
     const evidenceHash = hash(canonical(evidence));
-    return this.#mutate(id, expectedRevision, 'reconciled', s => {
-      const step = s.steps.find(x => x.id === stepId);
-      if (!step || !['running', 'uncertain'].includes(step.status)) fail('WORKFLOW_NOT_UNCERTAIN');
-      if (step.status === 'running') {
-        if (step.ownerHost !== os.hostname() || !Number.isSafeInteger(step.ownerPid)) fail('WORKFLOW_OWNER_UNKNOWN');
-        let alive = true;
-        try { process.kill(step.ownerPid, 0); } catch (e) { if (e.code === 'ESRCH') alive = false; }
-        if (alive) fail('WORKFLOW_STILL_RUNNING');
+    if (alreadyReconciled) {
+      if (step.reconciliation?.outcome !== outcome || step.reconciliation?.evidenceHash !== evidenceHash) {
+        fail('WORKFLOW_RECONCILIATION_REPLAY_MISMATCH');
       }
-      step.status = 'reconciled_' + outcome;
-      step.reconciliation = { outcome, explanation, evidence, source: 'caller-attestation', acceptance: 'UNVALIDATED' };
-      if (step.operationId) {
+      if (processRequired) {
+        const saved = step.reconciliation?.cessationProof ?? step.receipt?.processCessationProof;
+        if (!saved || saved.provider !== cessationProof?.provider || saved.runId !== cessationProof?.runId
+          || saved.proofDigest !== cessationProof?.proofDigest || saved.operationId !== step.operationId
+          || saved.leaseId !== step.leaseId || saved.fencingToken !== step.fencingToken) {
+          fail('WORKFLOW_CESSATION_PROOF_REPLAY_MISMATCH');
+        }
+      }
+      let leaseRelease = { status:'NOT_REQUIRED' };
+      if (needsLeaseRelease) leaseRelease = this.#releaseReconciledRootLease(state.root,id,step,{requireExpired:processRequired});
+      if (needsLeaseRelease && step.reconciliation.leaseReleaseStatus !== 'RELEASED'
+        && ['RELEASED','ALREADY_RELEASED'].includes(leaseRelease.status)) {
+        const updated = this.#mutate(id,expectedRevision,'lease_released',s => {
+          const current=s.steps.find(item=>item.id===stepId);
+          if (!current || current.status!==targetStatus || current.reconciliation?.evidenceHash!==evidenceHash) {
+            fail('WORKFLOW_LEASE_RELEASE_STATE_CONFLICT');
+          }
+          current.reconciliation.leaseReleaseStatus='RELEASED';
+          current.reconciliation.leaseReleasedAt=new Date().toISOString();
+          return {stepId,operationId:current.operationId,evidenceHash,leaseReleaseStatus:'RELEASED'};
+        });
+        return {...updated,replayed:true,leaseRelease};
+      }
+      return {id,revision:state.revision,state,replayed:true,leaseRelease,reconciliation:step.reconciliation};
+    }
+
+    const committed = this.#mutate(id,expectedRevision,'reconciled',s => {
+      const current=s.steps.find(item=>item.id===stepId);
+      if (!current || !['running','uncertain'].includes(current.status)
+        || current.operationId!==step.operationId) fail('WORKFLOW_RECONCILIATION_CONFLICT');
+      current.status=targetStatus;
+      current.reconciliation={
+        outcome, explanation, evidence, evidenceHash,
+        source:processRequired?'host-verified-process-cessation-plus-caller-attestation':'caller-attestation',
+        ...(cessationProof?{cessationProof}:{}),
+        leaseReleaseStatus:needsLeaseRelease?'PENDING':'NOT_REQUIRED',
+        acceptance:'UNVALIDATED'
+      };
+      if (current.operationId) {
         this.#db.prepare('UPDATE operations SET status=?,post_state_hash=?,updated_at=? WHERE operation_id=?')
-          .run(outcome === 'applied' ? 'VERIFIED' : 'NOT_APPLIED', evidenceHash, new Date().toISOString(), step.operationId);
+          .run(outcome==='applied'?'VERIFIED':'NOT_APPLIED',evidenceHash,new Date().toISOString(),current.operationId);
       }
-      setLifecycle(s, outcome === 'applied' ? 'RUNNING' : 'BLOCKED');
-      s.scheduler.lastFailureCode = outcome === 'applied' ? null : 'WORKFLOW_REPLAN_REQUIRED';
+      setLifecycle(s,outcome==='applied'?'RUNNING':'BLOCKED');
+      s.scheduler.lastFailureCode=outcome==='applied'?null:'WORKFLOW_REPLAN_REQUIRED';
       this.#db.prepare('UPDATE scheduler_jobs SET lifecycle=?,last_failure=?,updated_at=? WHERE workflow=?')
         .run(s.lifecycleState,s.scheduler.lastFailureCode,new Date().toISOString(),id);
-      return { stepId, operationId:step.operationId ?? null, evidenceHash, ...step.reconciliation };
+      return {stepId,operationId:current.operationId??null,evidenceHash,...current.reconciliation};
     });
+
+    let leaseRelease = { status:'NOT_REQUIRED' };
+    if (needsLeaseRelease) {
+      try { leaseRelease=this.#releaseReconciledRootLease(state.root,id,committed.state.steps.find(item=>item.id===stepId),{requireExpired:processRequired}); }
+      catch (error) {
+        leaseRelease={status:'PENDING',errorCode:error?.workflowCode??'WORKFLOW_ROOT_LEASE_RELEASE_FAILED'};
+      }
+      if (['RELEASED','ALREADY_RELEASED'].includes(leaseRelease.status)) {
+        const updated=this.#mutate(id,committed.state.revision,'lease_released',s=>{
+          const current=s.steps.find(item=>item.id===stepId);
+          if (!current || current.status!==targetStatus || current.reconciliation?.evidenceHash!==evidenceHash) {
+            fail('WORKFLOW_LEASE_RELEASE_STATE_CONFLICT');
+          }
+          current.reconciliation.leaseReleaseStatus='RELEASED';
+          current.reconciliation.leaseReleasedAt=new Date().toISOString();
+          return {stepId,operationId:current.operationId,evidenceHash,leaseReleaseStatus:'RELEASED'};
+        });
+        return {...updated,revision:updated.state.revision,replayed:false,leaseRelease};
+      }
+    }
+    return {...committed,replayed:false,leaseRelease};
   }
 
   async reconcileAutomatically(id, { verify }) {

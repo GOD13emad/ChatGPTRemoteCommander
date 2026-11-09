@@ -7,6 +7,7 @@ import { createProjectEngine } from './project-engine.mjs';
 import { createCommandPlanner } from './project-planner.mjs';
 import { createTeamPlanner } from './project-team.mjs';
 import { codexLaunchAuthorized } from './no-codex-policy.mjs';
+import { processContainmentAvailable } from './process-containment.mjs';
 
 const text = maxLength => ({ type: 'string', minLength: 1, maxLength });
 const id = { ...text(64), pattern: '^[a-z][a-z0-9_-]{0,63}$' };
@@ -397,6 +398,14 @@ export function createWorkflowTools({ config, roots, device, configSha256, looku
               if (!allowed.has(tool) || tool.startsWith('workflow_')) fail('WORKFLOW_TOOL_NOT_APPROVED');
               if (DIRECT_SESSION_ONLY_GUI.has(tool) || (tool === 'gui_session_begin' && input?.mode === 'takeover')) {
                 fail('WORKFLOW_GUI_TAKEOVER_REQUIRES_DIRECT_USER_SESSION');
+              }
+              if (['kill_process','start_terminal','send_terminal','stop_terminal','gui_session_begin','gui_session_renew','gui_session_end'].includes(tool)) {
+                fail('WORKFLOW_PROCESS_TOOL_NOT_SUPPORTED');
+              }
+              if (['run_project_command','run_shell'].includes(tool)
+                && schedulerPolicy.oneWriterPerRoot !== false
+                && !(await processContainmentAvailable())) {
+                fail('WORKFLOW_CESSATION_PROVIDER_UNAVAILABLE');
               }
               const definition = lookup(tool);
               if (!definition) fail('WORKFLOW_TOOL_UNAVAILABLE');

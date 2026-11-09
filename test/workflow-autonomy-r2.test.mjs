@@ -334,3 +334,26 @@ test('verified NOT_APPLIED outcome cannot release an uncertain external-effect l
     }finally{s.close();}
   }finally{fs.rmSync(root,{recursive:true,force:true});}
 });
+
+
+test('same root-cause failures still exceed retry budget when root leases are disabled',async()=>{
+  const root=temp();try{
+    const opts=options(root);opts.schedulerPolicy.oneWriterPerRoot=false;
+    const s=new WorkflowStore(opts);try{
+      s.create({id:'retry-budget',root,goal:'budget',acceptance:['proof'],retryBudget:1,steps:[
+        {id:'a',title:'A',dependsOn:[]},{id:'b',title:'B',dependsOn:[]}
+      ]});
+      const failHost=host(async()=>{throw Object.assign(new Error('same'),{workflowCode:'SAME_ROOT'});});
+      const first=await s.call({id:'retry-budget',stepId:'a',expectedRevision:1,tool:'write_text',arguments:{path:'a.txt',content:'a'}},failHost);
+      assert.equal(first.outcome,'UNCERTAIN');
+      await s.reconcileAutomatically('retry-budget',{verify:async()=>({status:'NOT_APPLIED',summary:'absent'})});
+      const st=s.get('retry-budget').state;
+      await s.call({id:'retry-budget',stepId:'b',expectedRevision:st.revision,tool:'write_text',arguments:{path:'b.txt',content:'b'}},failHost);
+      const after=s.get('retry-budget').state;
+      assert.equal(after.scheduler.repeatedFailureCount,2);
+      assert.equal(after.scheduler.lastRootCauseCode,'SAME_ROOT');
+      assert.equal(after.scheduler.lastFailureCode,'BLOCKED_REQUIRES_REASSESSMENT');
+      assert.equal(after.lifecycleState,'BLOCKED');
+    }finally{s.close();}
+  }finally{fs.rmSync(root,{recursive:true,force:true});}
+});
