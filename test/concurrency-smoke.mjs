@@ -1,16 +1,17 @@
 import assert from 'node:assert/strict';
 import path from 'node:path';
-import { cp, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import os from 'node:os';
+import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { createHash, randomUUID } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { createServer } from 'node:net';
 
-// Per-run fixture paths avoid collisions between independent qualification invocations.
-const instanceId = randomUUID();
-const root = path.resolve('test', '.tmp-concurrency-root-' + instanceId);
-const isolatedApp = path.resolve('test', '.tmp-concurrency-app-' + instanceId);
+// QA must not write to the installed/root-owned source tree.
+const sandbox = await mkdtemp(path.join(os.tmpdir(), 'rc-concurrency-'));
+const root = path.join(sandbox, 'root');
+const isolatedApp = path.join(sandbox, 'app');
 const isolatedSrc = path.join(isolatedApp, 'src');
-const configPath = path.resolve('test', '.tmp-concurrency-config-' + instanceId + '.json');
+const configPath = path.join(sandbox, 'config.json');
 const liveRuntimeStatePath = path.resolve('var', 'mcp-runtime.json');
 const isolatedRuntimeStatePath = path.join(isolatedApp, 'var', 'mcp-runtime.json');
 const requestPrefix = `concurrency-${randomUUID()}`;
@@ -65,7 +66,7 @@ async function waitForHealth() {
   for (let attempt = 0; attempt < 100; attempt += 1) {
     try {
       const response = await fetch(`http://127.0.0.1:${port}/health`);
-      if (response.ok) return;
+      if (response.ok) return await response.json();
     } catch { /* startup */ }
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
@@ -106,11 +107,22 @@ async function callTool(name, args = {}) {
 }
 
 try {
-  await waitForHealth();
+  const health = await waitForHealth();
   const isolatedState = await waitForRuntimeState();
   assert.equal(isolatedState.port, port);
   assert.equal(path.resolve(isolatedState.projectDir), isolatedApp);
 
+  if (health.privilegedLegacyHttpQuarantined === true) {
+    assert.equal(health.protectedIngress?.required, true);
+    assert.equal(health.protectedIngress?.ready, false);
+    const response = await fetch(endpoint, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ jsonrpc:'2.0', id:1, method:'tools/list', params:{} })
+    });
+    assert.equal(response.status, 403);
+    assert.deepEqual(await response.json(), {error:'trusted_transport_required'});
+    console.log('CONCURRENCY_SMOKE_PRIVILEGED_HTTP_QUARANTINE_PASS');
+  } else {
   const readOnlyCalls = Array.from({ length: 40 }, (_, index) =>
     index % 2 === 0 ? callTool('system_status') : callTool('list_directory', { path: root, depth: 0 })
   );
@@ -142,15 +154,14 @@ try {
   const status = await callTool('system_status');
   assert.equal(status.concurrency.httpConcurrent, true);
   assert.equal(status.concurrency.pathMutationLocks, true);
+  }
 } finally {
   server.kill('SIGTERM');
   await Promise.race([
     new Promise((resolve) => server.once('close', resolve)),
     new Promise((resolve) => setTimeout(resolve, 1500))
   ]);
-  await rm(root, { recursive: true, force: true });
-  await rm(configPath, { force: true });
-  await rm(isolatedApp, { recursive: true, force: true });
+  await rm(sandbox, { recursive: true, force: true });
 
   const liveRuntimeStateAfter = await sha256IfPresent(liveRuntimeStatePath);
   assert.equal(
