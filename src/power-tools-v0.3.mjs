@@ -15,6 +15,7 @@ import { guardFileWrite } from './file-write-guard.mjs';
 import { IS_WINDOWS, defaultBackupRoot, expandPathValue, shellName, shellSpec, spawnShell, terminateProcessTree } from './platform.mjs';
 import { assertEnumerationScope, boundedSearchVisitLimit } from './filesystem-enumeration-guard.mjs';
 import { refreshCodexPluginCache } from './codex-maintenance.mjs';
+import { runContainedProjectCommand } from './process-containment.mjs';
 
 const terminals = new Map();
 let terminalCounter = 1;
@@ -244,14 +245,28 @@ function checkShell(ctx, command) {
   }
   return command;
 }
-async function capture(command, cwd, timeoutMs, outputLimit, { allowCodex = false } = {}) {
-  const child = spawnShell(command, { cwd, stdio: ['ignore', 'pipe', 'pipe'], env: commanderChildEnv(cwd, process.env, { allowCodex }) });
+async function capture(command, cwd, timeoutMs, outputLimit, {
+  allowCodex = false, workflowOperation = null, file = null, args = null
+} = {}) {
+  const env = commanderChildEnv(cwd, process.env, { allowCodex });
+  if (workflowOperation) {
+    if (!file || !Array.isArray(args)) throw Object.assign(new Error('PROCESS_CONTAINMENT_COMMAND_SPEC_REQUIRED'), {
+      workflowCode:'PROCESS_CONTAINMENT_COMMAND_SPEC_REQUIRED'
+    });
+    return runContainedProjectCommand({
+      program:file, args, cwd, timeoutMs, outputLimit, env, binding:workflowOperation
+    });
+  }
+  const child = spawnShell(command, { cwd, stdio: ['ignore', 'pipe', 'pipe'], env });
   let stdout = '';
   let stderr = '';
   let timedOut = false;
   child.stdout.on('data', (chunk) => { if (stdout.length < outputLimit) stdout += chunk.toString('utf8'); });
   child.stderr.on('data', (chunk) => { if (stderr.length < outputLimit) stderr += chunk.toString('utf8'); });
-  const timer = setTimeout(() => { timedOut = true; terminateProcessTree(child.pid, { signal: 'SIGKILL' }); }, timeoutMs);
+  const timer = setTimeout(() => {
+    timedOut = true;
+    terminateProcessTree(child.pid, { signal: 'SIGKILL' });
+  }, timeoutMs);
   const outcome = await new Promise((resolve, reject) => {
     child.once('error', reject);
     child.once('close', (code, signal) => resolve({ code, signal }));
@@ -581,7 +596,7 @@ export async function runShell(ctx, input) {
   const guarded = synchronousCommandInput(input);
   const prepared = await prepareShellCommand(ctx, guarded);
   const outputLimit = Math.min(prepared.outputLimit, 32 * 1024);
-  const result = await capture(input.command, prepared.cwd, prepared.timeoutMs, outputLimit, { allowCodex: prepared.allowCodex });
+  const result = await capture(input.command, prepared.cwd, prepared.timeoutMs, outputLimit, { allowCodex: prepared.allowCodex, workflowOperation: Number.isSafeInteger(ctx.workflowOperation?.fencingToken) ? ctx.workflowOperation : null, file: prepared.file, args: prepared.args });
   return { command: input.command, cwd: prepared.cwd, timeoutMs: prepared.timeoutMs, ...result };
 }
 
@@ -837,7 +852,7 @@ export const powerToolDefinitions = [
   { name: 'list_processes', description: 'List operating-system processes with PID and resource details when available.', inputSchema: { type: 'object', properties: {}, additionalProperties: false }, annotations: ro },
   { name: 'kill_process', description: 'Terminate a process by PID; protected/system PIDs and this server are refused.', inputSchema: { type: 'object', properties: { pid: { type: 'integer' }, signal: { type: 'string' } }, required: ['pid'], additionalProperties: false }, annotations: localDestructive },
   { name: 'start_terminal', description: 'Start a platform terminal session and return immediately. With command and no interactive=true it is a one-shot background fallback for long or high-output work when operation_* tools are unavailable; retrieve output using bounded read_terminal pages. Use interactive=true only when later send_terminal input is genuinely required. With no command it remains interactive.', inputSchema: { type: 'object', properties: { cwd: { type: 'string' }, command: { type: 'string' }, interactive: { type: 'boolean' } }, additionalProperties: false }, annotations: openDestructive },
-  { name: 'read_terminal', description: 'Read a bounded page of buffered terminal stdout/stderr. Default is 32 KiB per stream; maxChars is capped at 64 KiB. Optional waitMs long-polls for new output for at most 5 seconds. Use nextStdoutOffset/nextStderrOffset for absolute paging without skipping unread output.', inputSchema: { type: 'object', properties: { id: { type: 'string' }, consume: { type: 'boolean' }, stdoutOffset: { type: 'integer', minimum: 0 }, stderrOffset: { type: 'integer', minimum: 0 }, maxChars: { type: 'integer', minimum: 1, maximum: 65536 }, waitMs: { type: 'integer', minimum: 0, maximum: 5000 } }, required: ['id'], additionalProperties: false }, annotations: { ...ro, readOnlyHint: false } },
+  { name: 'read_terminal', description: 'Read a bounded page of buffered terminal stdout/stderr. By default consume=true advances session output cursors; use consume=false for a non-consuming observation. Default is 32 KiB per stream; maxChars is capped at 64 KiB. Optional waitMs long-polls for new output for at most 5 seconds. Use nextStdoutOffset/nextStderrOffset for absolute paging without skipping unread output.', inputSchema: { type: 'object', properties: { id: { type: 'string' }, consume: { type: 'boolean' }, stdoutOffset: { type: 'integer', minimum: 0 }, stderrOffset: { type: 'integer', minimum: 0 }, maxChars: { type: 'integer', minimum: 1, maximum: 65536 }, waitMs: { type: 'integer', minimum: 0, maximum: 5000 } }, required: ['id'], additionalProperties: false }, annotations: { ...ro, readOnlyHint: false } },
   { name: 'send_terminal', description: 'Send input to an explicitly interactive terminal session. One-shot command sessions reject input.', inputSchema: { type: 'object', properties: { id: { type: 'string' }, input: { type: 'string' }, newline: { type: 'boolean' } }, required: ['id', 'input'], additionalProperties: false }, annotations: openDestructive },
   { name: 'stop_terminal', description: 'Stop and optionally remove a persistent terminal session.', inputSchema: { type: 'object', properties: { id: { type: 'string' }, signal: { type: 'string' }, remove: { type: 'boolean' } }, required: ['id'], additionalProperties: false }, annotations: localDestructive }
 ];
