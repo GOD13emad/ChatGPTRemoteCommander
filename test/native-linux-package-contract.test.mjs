@@ -3,7 +3,9 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
+import { resolveNativePackageOutput, verifyNativePackageOutput } from '../tools/native-package-output-guard.mjs';
 
 const root=path.resolve(import.meta.dirname,'..');
 const builderPath=path.join(root,'tools/build-native-linux-package.sh');
@@ -40,7 +42,9 @@ test('one native Linux package installs one dpkg-owned code root shared by all o
   assert.match(source,/dpkg-deb --root-owner-group --build/);
   assert.match(source,/git -C "\$ROOT" archive --format=tar "\$HEAD"/);
   assert.match(source,/PACKAGE_DIR=\/usr\/lib\/chatgpt-remote-commander/);
-  assert.match(source,/NATIVE_LINUX_PACKAGE_OUTPUT_ALREADY_EXISTS/);
+  assert.match(source,/native-package-output-guard\.mjs" absent/);
+  assert.match(source,/EXPECTED_PACKAGE_SHA256/);
+  assert.match(source,/native-package-output-guard\.mjs" verify/);
   assert.match(source,/usr\/lib\/systemd\/user\/chatgpt-remote-commander@\.service/);
   assert.match(source,/%h\/\.local\/state\/chatgpt-remote-commander\/profiles\/%i\/config\.json/);
   assert.match(source,/Environment=COMMANDER_ONE_REQUIRE_TRUSTED_INGRESS=1/);
@@ -51,6 +55,53 @@ test('one native Linux package installs one dpkg-owned code root shared by all o
   assert.doesNotMatch(source,/systemctl start/);
   assert.doesNotMatch(source,/DEBIAN\/postinst/);
   assert.ok(match,'native preflight must be installed in the package');
+});
+
+test('native package output guard rejects symlinked dist and installer parents',()=>{
+  const tmp=fs.mkdtempSync(path.join(os.tmpdir(),'rc-package-output-symlink-'));
+  try{
+    const outside=path.join(tmp,'outside');
+    fs.mkdirSync(outside);
+    const rootA=path.join(tmp,'root-a');fs.mkdirSync(rootA);
+    fs.symlinkSync(outside,path.join(rootA,'dist'),'dir');
+    assert.throws(()=>resolveNativePackageOutput(rootA),{code:'NATIVE_PACKAGE_OUTPUT_PARENT_UNSAFE'});
+    const rootB=path.join(tmp,'root-b');fs.mkdirSync(path.join(rootB,'dist'),{recursive:true});
+    fs.symlinkSync(outside,path.join(rootB,'dist','installer'),'dir');
+    assert.throws(()=>resolveNativePackageOutput(rootB),{code:'NATIVE_PACKAGE_OUTPUT_PARENT_UNSAFE'});
+  }finally{fs.rmSync(tmp,{recursive:true,force:true});}
+});
+
+test('native package output guard rejects paths outside the canonical package directory',()=>{
+  const tmp=fs.mkdtempSync(path.join(os.tmpdir(),'rc-package-output-path-'));
+  try{
+    assert.throws(()=>resolveNativePackageOutput(tmp,'../outside.deb'),{code:'NATIVE_PACKAGE_OUTPUT_OUTSIDE_ROOT'});
+    assert.throws(()=>resolveNativePackageOutput(tmp,path.join(tmp,'other','package.deb')),{code:'NATIVE_PACKAGE_OUTPUT_OUTSIDE_ROOT'});
+  }finally{fs.rmSync(tmp,{recursive:true,force:true});}
+});
+
+test('native package output guard enforces no-clobber and staged-to-final SHA parity',()=>{
+  const tmp=fs.mkdtempSync(path.join(os.tmpdir(),'rc-package-output-sha-'));
+  try{
+    const dir=path.join(tmp,'dist','installer');fs.mkdirSync(dir,{recursive:true});
+    const output=path.join(dir,'Remote-Commander-Linux-amd64.deb');
+    const bytes=Buffer.from('native-package-fixture');
+    const sha=createHash('sha256').update(bytes).digest('hex');
+    fs.writeFileSync(output,bytes);
+    assert.throws(()=>resolveNativePackageOutput(tmp),{code:'NATIVE_PACKAGE_OUTPUT_ALREADY_EXISTS'});
+    assert.equal(verifyNativePackageOutput(tmp,output,sha),sha);
+    assert.throws(()=>verifyNativePackageOutput(tmp,output,'0'.repeat(64)),{code:'NATIVE_PACKAGE_OUTPUT_SHA256_MISMATCH'});
+  }finally{fs.rmSync(tmp,{recursive:true,force:true});}
+});
+
+test('native package output guard rejects a symlink at the final artifact path',()=>{
+  const tmp=fs.mkdtempSync(path.join(os.tmpdir(),'rc-package-output-target-'));
+  try{
+    const dir=path.join(tmp,'dist','installer');fs.mkdirSync(dir,{recursive:true});
+    const target=path.join(tmp,'outside.deb');fs.writeFileSync(target,'not the package');
+    const output=path.join(dir,'Remote-Commander-Linux-amd64.deb');fs.symlinkSync(target,output);
+    assert.throws(()=>verifyNativePackageOutput(tmp,output,createHash('sha256').update('not the package').digest('hex')),
+      {code:'NATIVE_PACKAGE_OUTPUT_TARGET_UNSAFE'});
+  }finally{fs.rmSync(tmp,{recursive:true,force:true});}
 });
 
 test('native instance preflight accepts a private config bound to its owner profile',()=>{

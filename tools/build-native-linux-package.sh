@@ -11,6 +11,7 @@ PACKAGE_DIR=/usr/lib/chatgpt-remote-commander
 for executable in git node curl tar sha256sum dpkg-deb python3; do
   command -v "$executable" >/dev/null || { echo "Missing native package build prerequisite $executable" >&2; exit 2; }
 done
+OUT="$(node "$ROOT/tools/native-package-output-guard.mjs" absent "$ROOT" "$OUT")"
 test "$(uname -s)" = Linux && test "$(uname -m)" = x86_64 || {
   echo 'NATIVE_LINUX_PACKAGE_REQUIRES_LINUX_AMD64' >&2; exit 2;
 }
@@ -179,6 +180,9 @@ dpkg-deb --field "$STAGE/Remote-Commander-Linux-amd64.deb" Package Version Archi
 dpkg-deb --contents "$STAGE/Remote-Commander-Linux-amd64.deb" |
   grep -E 'native-config-preflight.mjs|systemd/(system|user)/chatgpt-remote-commander.*service|app/src/server-v0.3.mjs|runtime/node$'
 mkdir -p "$(dirname "$OUT")"
-mv -n "$STAGE/Remote-Commander-Linux-amd64.deb" "$OUT"
-test -s "$OUT"
-echo "NATIVE_LINUX_QA_PACKAGE_PASS commit=$HEAD version=$VERSION package=$OUT sha256=$(sha256sum "$OUT" | cut -d' ' -f1) installed=false nativeServiceStarted=false"
+# Recheck parent components after creation and before the no-clobber move.
+OUT="$(node "$ROOT/tools/native-package-output-guard.mjs" absent "$ROOT" "$OUT")"
+EXPECTED_PACKAGE_SHA256="$(sha256sum "$STAGE/Remote-Commander-Linux-amd64.deb" | cut -d' ' -f1)"
+mv -n -- "$STAGE/Remote-Commander-Linux-amd64.deb" "$OUT"
+FINAL_PACKAGE_SHA256="$(node "$ROOT/tools/native-package-output-guard.mjs" verify "$ROOT" "$OUT" "$EXPECTED_PACKAGE_SHA256")"
+echo "NATIVE_LINUX_QA_PACKAGE_PASS commit=$HEAD version=$VERSION package=$OUT sha256=$FINAL_PACKAGE_SHA256 installed=false nativeServiceStarted=false"
