@@ -62,6 +62,7 @@ test('direct mutation requestId prevents duplicate append across lost ack and re
       auditLog:'var/audit.jsonl',
       durableDelivery:{directory:deliveryRoot},
       asyncOperations:{enabled:false},
+      capabilityProfile:{tier:'STANDARD'},
       powerMode:{enabled:false,fullFilesystem:false,allowShell:false,allowProcessControl:false,allowPermanentDelete:false,
         guiControl:{enabled:false},browserControl:{enabled:false}}
     };
@@ -120,6 +121,7 @@ test('legacy cached client derives durable mutation idempotency from x-request-i
       maxReadBytes:1024*1024, maxWriteBytes:1024*1024, maxCommandMs:300000,
       auditLog:'var/audit.jsonl', durableDelivery:{directory:deliveryRoot},
       asyncOperations:{enabled:false},
+      capabilityProfile:{tier:'STANDARD'},
       powerMode:{enabled:false,fullFilesystem:false,allowShell:false,allowProcessControl:false,allowPermanentDelete:false,
         guiControl:{enabled:false},browserControl:{enabled:false}}
     };
@@ -164,7 +166,7 @@ test('legacy cached client derives durable mutation idempotency from x-request-i
   }
 });
 
-test('full-power direct mutation catalog requires requestId across file/process/terminal/browser/GUI', async () => {
+test('full-power legacy HTTP denies anonymous and forged access before mutation catalog or effects', async () => {
   const root=await fs.mkdtemp(path.join(os.tmpdir(),'rc-mut-catalog-'));
   const serverRoot=path.join(root,'server');
   const dataRoot=path.join(root,'data');
@@ -174,6 +176,7 @@ test('full-power direct mutation catalog requires requestId across file/process/
     await fs.mkdir(serverRoot,{recursive:true}); await fs.mkdir(dataRoot,{recursive:true});
     await fs.cp(new URL('../src/', import.meta.url), path.join(serverRoot,'src'), {recursive:true});
     const canonicalDataRoot=await fs.realpath(dataRoot);
+    const destination=path.join(canonicalDataRoot,'unauthorized.txt');
     const port=await freePort();
     const config={
       host:'127.0.0.1', port, allowedRoots:[canonicalDataRoot], allowedPrograms:['node'],
@@ -182,33 +185,38 @@ test('full-power direct mutation catalog requires requestId across file/process/
       asyncOperations:{enabled:true,backgroundFirst:true},
       powerMode:{enabled:true,fullFilesystem:true,allowShell:true,allowProcessControl:true,allowPermanentDelete:true,
         guiControl:{enabled:true,allowScreenshot:true,allowMouse:true,allowKeyboard:true,allowWindowFocus:true},
-        browserControl:{enabled:true,allowNavigate:true,allowInput:true,allowScreenshot:true}}
+        browserControl:{enabled:true,allowNavigate:true,allowInput:true}}
     };
     const configPath=path.join(serverRoot,'config.json');
     await fs.writeFile(configPath,JSON.stringify(config,null,2));
     running=await startServer(serverRoot,configPath);
-    const response=await fetch(`http://127.0.0.1:${port}/mcp`,{
-      method:'POST',headers:{'content-type':'application/json'},
-      body:JSON.stringify({jsonrpc:'2.0',id:20,method:'tools/list',params:{}})
-    });
-    const body=await response.json();
-    assert.equal(response.status,200);
-    const directMutations=body.result.tools.filter(tool =>
-      tool.annotations?.readOnlyHint === false &&
-      !/^(operation_|delivery_|workflow_)/.test(tool.name)
-    );
-    assert.ok(directMutations.length > 10, 'expected broad Full Power mutation catalog');
-    for (const tool of directMutations) {
-      assert.ok(tool.inputSchema?.properties?.requestId, `missing requestId schema: ${tool.name}`);
+    const health=await (await fetch(`http://127.0.0.1:${port}/health`)).json();
+    assert.equal(health.privilegedLegacyHttpQuarantined,true);
+    const requests=[
+      {method:'tools/list',params:{}},
+      {method:'tools/call',params:{name:'write_text',arguments:{
+        path:destination,content:'forbidden',mode:'overwrite',requestId:'denied-write-1'
+      }}},
+      {method:'tools/call',params:{name:'kill_process',arguments:{pid:process.pid,requestId:'denied-kill-1'}}},
+      {method:'tools/call',params:{name:'send_terminal',arguments:{
+        id:'denied',input:'not-executed',requestId:'denied-terminal-1'
+      }}}
+    ];
+    for(const headers of [
+      {'content-type':'application/json'},
+      {'content-type':'application/json',authorization:'Bearer forged',
+        'x-chat-id':'forged','mcp-session-id':'forged'}
+    ]){
+      for(const [i,request] of requests.entries()){
+        const response=await fetch(`http://127.0.0.1:${port}/mcp`,{
+          method:'POST',headers,
+          body:JSON.stringify({jsonrpc:'2.0',id:i+1,...request})
+        });
+        assert.equal(response.status,403,request.method);
+        assert.deepEqual(await response.json(),{error:'trusted_transport_required'});
+      }
     }
-    const names=new Set(directMutations.map(tool=>tool.name));
-    assert.ok(names.has('write_text'), 'file mutation missing');
-    assert.ok(names.has('kill_process'), 'process mutation missing');
-    assert.ok(names.has('send_terminal'), 'terminal mutation missing');
-    assert.ok([...names].some(name=>name.startsWith('browser_')), 'browser mutation missing');
-    assert.ok([...names].some(name=>name.startsWith('gui_')), 'GUI mutation missing');
-    const readOnly=body.result.tools.filter(tool => tool.annotations?.readOnlyHint === true);
-    assert.ok(readOnly.some(tool=>tool.name==='system_status' && !tool.inputSchema?.properties?.requestId));
+    await assert.rejects(fs.access(destination));
   } finally {
     if (running) await stopServer(running.child);
     await fs.rm(root,{recursive:true,force:true,maxRetries:20,retryDelay:50});

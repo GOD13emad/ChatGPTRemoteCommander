@@ -11,14 +11,14 @@ import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 const wait = ms => new Promise(r=>setTimeout(r,ms));
 
-test('real candidate HTTP dispatcher blocks browser origins and keeps local JSON RPC', async () => {
+test('privileged candidate blocks anonymous/forged legacy JSON RPC and browser-origin attacks', async () => {
   const root=await fs.mkdtemp(path.join(os.tmpdir(),'rc-http-test-'));
   const listener=net.createServer();listener.listen(0,'127.0.0.1');await once(listener,'listening');
   const port=listener.address().port;await new Promise(r=>listener.close(r));
   let child;
   try {
     await fs.mkdir(path.join(root,'src'));
-    for(const f of ['server-v0.3.mjs','transport-guard.mjs','gui-universal-policy.mjs','gui-native-session-provider.mjs','gui-windows-native-provider.mjs','gui-linux-input-capture-provider.mjs','gui-tools-windows.mjs','gui-owner-delegation.mjs','owner-workspace-delegation.mjs','workspace-target-tools.mjs','workspace-accessibility-tools.mjs','owner-workspace-proxy.mjs','workspace-tools.mjs','workspace-routing.mjs','workspace-target-journal.mjs','gui-target-only-policy.mjs','gui-incident-store.mjs','gui-contract.mjs','gui-process.mjs','browser-tools.mjs','browser-contract.mjs','browser-process.mjs','browser-owned-processes.mjs','browser-lease-store.mjs','browser-existing-session-route.mjs','browser-owner-window-inventory.mjs','browser-profile-inventory.mjs','browser-file-transfer-guard.mjs','browser-companion-monitor.mjs','schema-validator.mjs','async-operations.mjs','retry-guard.mjs','agent-extensions.mjs','coucou-bridge.mjs','no-codex-policy.mjs','conversation-store.mjs','conversation-continuation.mjs']) await fs.copyFile(new URL('../src/'+f,import.meta.url),path.join(root,'src',f));
+    for(const f of ['server-v0.3.mjs','transport-guard.mjs','full-access-http-quarantine.mjs','windows-admin-token.mjs','gui-universal-policy.mjs','gui-native-session-provider.mjs','gui-windows-native-provider.mjs','gui-linux-input-capture-provider.mjs','gui-tools-windows.mjs','gui-owner-delegation.mjs','owner-workspace-delegation.mjs','workspace-target-tools.mjs','workspace-accessibility-tools.mjs','owner-workspace-proxy.mjs','workspace-tools.mjs','workspace-routing.mjs','workspace-target-journal.mjs','gui-target-only-policy.mjs','gui-incident-store.mjs','gui-contract.mjs','gui-process.mjs','browser-tools.mjs','browser-contract.mjs','browser-process.mjs','browser-owned-processes.mjs','browser-lease-store.mjs','browser-existing-session-route.mjs','browser-owner-window-inventory.mjs','browser-profile-inventory.mjs','browser-file-transfer-guard.mjs','browser-companion-monitor.mjs','schema-validator.mjs','async-operations.mjs','retry-guard.mjs','agent-extensions.mjs','coucou-bridge.mjs','no-codex-policy.mjs','conversation-store.mjs','conversation-continuation.mjs']) await fs.copyFile(new URL('../src/'+f,import.meta.url),path.join(root,'src',f));
     await fs.writeFile(path.join(root,'src','security-v0.3.mjs'),'export const canonicalizeRoots = async x=>x;');
     await fs.writeFile(path.join(root,'src','tools-v0.3.mjs'),'export const audit=async()=>{}; export const listDirectory=async()=>({stub:true}); export const readText=listDirectory; export const runProjectCommand=listDirectory; export const writeText=listDirectory; export const prepareProjectCommand=async()=>({file:process.execPath,args:[],cwd:process.cwd(),timeoutMs:1000,outputLimit:4096});');
     await fs.writeFile(path.join(root,'src','power-tools-v0.3.mjs'),'export const powerToolDefinitions=[]; export const executePowerTool=async()=>({stub:true}); export const prepareShellCommand=async()=>({file:process.execPath,args:[],cwd:process.cwd(),timeoutMs:1000,outputLimit:4096}); export const prepareDeferredPowerMutation=async()=>({kind:"power-tool",timeoutMs:86400000});');
@@ -35,37 +35,27 @@ test('real candidate HTTP dispatcher blocks browser origins and keeps local JSON
     assert.equal(alive,true,stderr);
     const body=JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/call',params:{name:'system_status',arguments:{}}});
     const send=headers=>fetch(`http://127.0.0.1:${port}/mcp`,{method:'POST',headers,body});
-    const good=await send({'Content-Type':'application/json'});
-    assert.equal(good.status,200);assert.equal(good.headers.get('cache-control'),'no-store');
-    const data=await good.json();assert.equal(data.result.structuredContent.name,'chatgpt-remote-commander');
-    assert.equal(data.result.structuredContent.guiControl.availability,'CHECK_gui_status');
-    assert.equal(data.result.structuredContent.allowedRootsEnforced,false);
-    assert.equal(data.result.structuredContent.effectiveAccess.filesystem,'full-filesystem');
-    assert.equal(data.result.structuredContent.effectiveAccess.legacyFiveToolCompatibility,true);
-
-    const listResponse=await fetch(`http://127.0.0.1:${port}/mcp`,{
-      method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({jsonrpc:'2.0',id:11,method:'tools/list',params:{}})
-    });
-    const listed=await listResponse.json();
-    for(const name of ['workspace_target_list','workspace_target_open','workspace_target_snapshot','workspace_target_focus','workspace_target_click','workspace_target_type','workspace_target_end']){
-      const t=listed.result.tools.find(tool=>tool.name===name);
-      assert.ok(t,name+' must be advertised over real MCP when GUI is enabled');
-      assert.equal(t.inputSchema.additionalProperties,false);
+    const health=await (await fetch(`http://127.0.0.1:${port}/health`)).json();
+    assert.equal(health.privilegedLegacyHttpQuarantined,true);
+    for(const request of [
+      {jsonrpc:'2.0',id:1,method:'tools/call',params:{name:'system_status',arguments:{}}},
+      {jsonrpc:'2.0',id:2,method:'tools/list',params:{}},
+      {jsonrpc:'2.0',id:3,method:'initialize',params:{protocolVersion:'2025-06-18'}}
+    ]){
+      for(const header of [
+        {'Content-Type':'application/json'},
+        {'Content-Type':'application/json',authorization:'Bearer forged','x-chat-id':'forged'}
+      ]){
+        const denied=await send(header);
+        // The request body must match the candidate RPC method under test.
+        const reply=await fetch(`http://127.0.0.1:${port}/mcp`,{
+          method:'POST',headers:header,body:JSON.stringify(request)
+        });
+        assert.equal(reply.status,403);
+        assert.deepEqual(await reply.json(),{error:'trusted_transport_required'});
+        assert.equal(denied.status,403);
+      }
     }
-    assert.equal(listed.result.tools.find(t=>t.name==='workspace_target_type').annotations.destructiveHint,true);
-    const legacyListTool=listed.result.tools.find(tool=>tool.name==='list_directory');
-    const legacyRunTool=listed.result.tools.find(tool=>tool.name==='run_project_command');
-    assert.match(legacyListTool.description,/outside configured allowedRoots/);
-    assert.match(legacyRunTool.description,/outside configured allowedRoots/);
-
-    const initResponse=await fetch(`http://127.0.0.1:${port}/mcp`,{
-      method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({jsonrpc:'2.0',id:12,method:'initialize',params:{protocolVersion:'2025-06-18'}})
-    });
-    const initialized=await initResponse.json();
-    assert.match(initialized.result.instructions,/full-filesystem is enabled/);
-    assert.match(initialized.result.instructions,/not an active filesystem boundary/);
     const evil=await send({'Content-Type':'application/json',Origin:'https://untrusted.invalid'});assert.equal(evil.status,403);
     const form=await send({'Content-Type':'text/plain'});assert.equal(form.status,415);
     // Node fetch normalizes Host; use raw http.request and assert the sent header.
@@ -76,7 +66,8 @@ test('real candidate HTTP dispatcher blocks browser origins and keeps local JSON
     });
     assert.equal(badHost,403);
     const unknown=await fetch(`http://127.0.0.1:${port}/mcp`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:2,method:'tools/call',params:{name:null}})});
-    assert.equal((await unknown.json()).error.code,-32602);
+    assert.equal(unknown.status,403);
+    assert.deepEqual(await unknown.json(),{error:'trusted_transport_required'});
   } finally {
     if(child){child.kill();await Promise.race([once(child,'close'),wait(2000)]);}
     await fs.rm(root,{recursive:true,force:true});

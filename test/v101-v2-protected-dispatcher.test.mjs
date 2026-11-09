@@ -7,6 +7,7 @@ import {createV101V2ProtectedDispatcherFactory} from '../src/v101-v2-protected-d
 
 const token='SYNTHETIC_SIGNED_JWT_QA_ONLY_123456789';
 const tokenSha=createHash('sha256').update(token).digest('hex');
+const ownerSidHash='c'.repeat(64);
 const issuer='https://idp.example.invalid';
 const audience='https://commander.example.invalid/mcp-v2';
 const T=1000000000000;
@@ -36,9 +37,19 @@ function scenario(){
     resolveAttestedTokenBinding:async digest=>
       state.consent&&digest===tokenSha?{
         source:'native-owner-attested',tokenSha256:tokenSha,
-        sessionHandle:'chat-a',bindingId:'b'.repeat(64),expiresAtMs:T+50000
+        sessionHandle:'chat-a',bindingId:'b'.repeat(64),ownerSidHash,expiresAtMs:T+50000
       }:null,
-    nativeSessionBindings:{resolveNativeRoute:async()=>state.route},
+    nativeSessionBindings:{
+      resolveNativeRoute:async()=>state.route,
+      resolveNativeOwnerContext:async session=>{
+        if(!state.consent||session!=='chat-a')return null;
+        const route=state.route;
+        return {source:'native-owner-attested',
+          hostId:route.hostId,profileId:route.profileId,
+          principalId:route.principalId,conversationId:route.conversationId,
+          bindingId:'b'.repeat(64),ownerSidHash,expiresAtMs:T+50000};
+      }
+    },
     grantRegistry:{isAllowed:()=>state.allow},
     authorizeExactInvocation:async(r,c)=>{
       state.ownerCalls++;

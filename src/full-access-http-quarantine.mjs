@@ -13,7 +13,9 @@ export function legacyPrivilegedMcpQuarantine({
   // Additional strict-mode switch for STANDARD legacy clients during cutover.
   // It never disables the unconditional FULL_POWER/FULL_ACCESS quarantine.
   // Invalid values fail closed; absent/false preserves only verified non-elevated STANDARD.
-  requireTrustedIngress = false
+  requireTrustedIngress = false,
+  // Legacy powerMode can still expose privileged tools even if the tier field says STANDARD.
+  legacyPowerModeEnabled = false
 } = {}) {
   // A missing, malformed or unfamiliar capability tier cannot authorize
   // the legacy unauthenticated MCP listener. Preserve compatibility only
@@ -41,7 +43,7 @@ export function legacyPrivilegedMcpQuarantine({
   } else {
     tokenUncertain = true;
   }
-  const quarantine = requireTrustedIngress !== false ||
+  const quarantine = requireTrustedIngress !== false || legacyPowerModeEnabled !== false ||
     privilegedConfig || profileUnverified || privilegedProcess || tokenUncertain;
   return Object.freeze({
     quarantine,

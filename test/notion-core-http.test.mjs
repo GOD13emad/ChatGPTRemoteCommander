@@ -37,6 +37,7 @@ test('native Notion tools are discoverable by real Commander MCP route and fail 
   config.autoUpdate = { enabled: false };
   config.asyncOperations = { enabled: false };
   config.powerMode = { enabled: false, fullFilesystem: false };
+  config.capabilityProfile = { tier: 'STANDARD' };
   config.durableWorkflows = { enabled: false };
   config.notionMcp = { enabled: true, redirectUri: 'http://127.0.0.1:' + callbackPort + '/notion/mcp/callback' };
   config.notion = {

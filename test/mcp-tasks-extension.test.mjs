@@ -47,7 +47,7 @@ test('MCP Tasks extension maps durable Commander operations without changing fal
     await fs.copyFile(new URL('../tools/operation-worker.mjs',import.meta.url),path.join(toolsRoot,'operation-worker.mjs'));
     const fixture=path.join(canonical,'async-fixture.mjs');
     await fs.copyFile(new URL('./async-operation-fixture.mjs',import.meta.url),fixture);
-    const config={host:'127.0.0.1',port,allowedRoots:[canonical],allowedPrograms:['node'],maxReadBytes:1048576,maxWriteBytes:1048576,maxCommandMs:10000,auditLog:'var/audit.jsonl',
+    const config={host:'127.0.0.1',port,capabilityProfile:{tier:'STANDARD'},allowedRoots:[canonical],allowedPrograms:['node'],maxReadBytes:1048576,maxWriteBytes:1048576,maxCommandMs:10000,auditLog:'var/audit.jsonl',
       asyncOperations:{enabled:true,backgroundFirst:true,stateDir:stateRoot,maxOutputBytes:65536},
       powerMode:{enabled:false,fullFilesystem:false,allowShell:false,allowProcessControl:false,allowPermanentDelete:false,guiControl:{enabled:false},browserControl:{enabled:false}}};
     const configPath=path.join(serverRoot,'config.json');await fs.writeFile(configPath,JSON.stringify(config,null,2));

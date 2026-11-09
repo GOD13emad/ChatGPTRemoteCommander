@@ -217,3 +217,17 @@ test('guard does not intercept a verified filtered STANDARD owner process',()=>{
   });
   assert.equal(rejectLegacyPrivilegedMcp({}, {}, safe),false);
 });
+
+test('legacy powerMode enabled rejects a misdeclared STANDARD tier even for non-elevated owner token',()=>{
+  for(const [platform,proof] of [['linux',{effectiveUid:1000}],['win32',{windowsAdminToken:filtered}]]){
+    for(const legacyPowerModeEnabled of [true,null,'true',1]){
+      const r=legacyPrivilegedMcpQuarantine({platform,configuredTier:'STANDARD',...proof,
+        requireTrustedIngress:false,legacyPowerModeEnabled});
+      assert.equal(r.quarantine,true);
+      assert.equal(r.code,'TRUSTED_V2_INGRESS_REQUIRED');
+    }
+    const safe=legacyPrivilegedMcpQuarantine({platform,configuredTier:'STANDARD',...proof,
+      requireTrustedIngress:false,legacyPowerModeEnabled:false});
+    assert.equal(safe.quarantine,false);
+  }
+});

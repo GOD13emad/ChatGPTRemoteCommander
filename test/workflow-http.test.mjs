@@ -15,7 +15,7 @@ async function port(){const s=net.createServer();await new Promise((r,j)=>s.list
 async function fixture(enabled){
  const root=fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(),'rc-wf-http-'))),app=path.join(root,'app'),project=path.join(root,'project');
  fs.mkdirSync(project);fs.mkdirSync(app);fs.cpSync(path.join(repo,'src'),path.join(app,'src'),{recursive:true});
- const p=await port();const config={host:'127.0.0.1',port:p,deviceName:'WorkflowFixture',allowedRoots:[root],allowedPrograms:['node','git'],maxCommandMs:10000,maxReadBytes:524288,maxWriteBytes:524288,auditLog:'var/audit.jsonl',powerMode:{enabled:true,fullFilesystem:true,allowShell:false,allowProcessControl:false,backupRoot:path.join(root,'backups'),guiControl:{enabled:false}}};
+ const p=await port();const config={host:'127.0.0.1',port:p,deviceName:'WorkflowFixture',allowedRoots:[root],allowedPrograms:['node','git'],maxCommandMs:10000,maxReadBytes:524288,maxWriteBytes:524288,auditLog:'var/audit.jsonl',capabilityProfile:{tier:'STANDARD'},powerMode:{enabled:false,fullFilesystem:false,allowShell:false,allowProcessControl:false,backupRoot:path.join(root,'backups'),guiControl:{enabled:false}}};
  if(enabled)config.durableWorkflows={enabled:true,directory:path.join(root,'memory'),executionTools:['system_status','list_directory','read_text','write_text','run_project_command']};
  const cfg=path.join(root,'config.json'),raw=JSON.stringify(config);fs.writeFileSync(cfg,raw);
  const expectedHash=createHash('sha256').update(raw).digest('hex');let child,output='';
