@@ -41,7 +41,7 @@ DEB="$STAGE/pkg"
 APP="$DEB$PACKAGE_DIR/app"
 RUNTIME="$DEB$PACKAGE_DIR/runtime"
 mkdir -p "$APP" "$RUNTIME" "$DEB/DEBIAN" \
-  "$DEB/usr/lib/systemd/system" "$DEB/usr/lib/systemd/user" \
+  "$DEB/usr/lib/systemd/user" \
   "$DEB/usr/share/doc/chatgpt-remote-commander"
 git -C "$ROOT" archive --format=tar "$HEAD" | tar -xf - -C "$APP"
 test "$(node -p 'require(process.argv[1]).version' "$APP/package.json")" = "$VERSION"
@@ -76,63 +76,21 @@ Description: Single native Remote Commander application core (V0.12 QA)
  Native owner admission, authenticated G1/J01 and fleet approval are
  required before any privileged profile is activated.
 EOF
-cat > "$DEB/DEBIAN/postinst" <<'POSTINST'
-#!/bin/sh
-set -e
-if [ "$1" = configure ] && command -v systemctl >/dev/null 2>&1; then
-  systemctl daemon-reload || true
-fi
-# Never enable, restart or migrate active user profiles on package extraction.
-exit 0
-POSTINST
-cat > "$DEB/DEBIAN/postrm" <<'POSTRM'
-#!/bin/sh
-set -e
-if command -v systemctl >/dev/null 2>&1; then
-  systemctl daemon-reload || true
-fi
-# Mutable owner state and history are intentionally preserved.
-exit 0
-POSTRM
-chmod 755 "$DEB/DEBIAN/postinst" "$DEB/DEBIAN/postrm"
-cat > "$DEB/usr/lib/systemd/system/chatgpt-remote-commander.service" <<'SYSTEM'
-[Unit]
-Description=Remote Commander native single-core headless instance
-After=network-online.target
-Wants=network-online.target
-ConditionPathExists=/etc/chatgpt-remote-commander/config.json
-[Service]
-Type=simple
-DynamicUser=yes
-StateDirectory=chatgpt-remote-commander
-WorkingDirectory=/var/lib/chatgpt-remote-commander
-Environment=REMOTE_COMMANDER_CONFIG=/etc/chatgpt-remote-commander/config.json
-Environment=COMMANDER_ONE_REQUIRE_TRUSTED_INGRESS=1
-ExecStartPre=/usr/lib/chatgpt-remote-commander/runtime/node /usr/lib/chatgpt-remote-commander/native-config-preflight.mjs
-ExecStart=/usr/lib/chatgpt-remote-commander/runtime/node /usr/lib/chatgpt-remote-commander/app/src/server-v0.3.mjs
-NoNewPrivileges=yes
-PrivateTmp=yes
-ProtectSystem=strict
-ProtectHome=yes
-UMask=0077
-Restart=on-failure
-RestartSec=5
-[Install]
-WantedBy=multi-user.target
-SYSTEM
 cat > "$DEB/usr/lib/systemd/user/chatgpt-remote-commander@.service" <<'USERUNIT'
 [Unit]
 Description=Remote Commander shared native core for owner profile %i
 After=network-online.target
-ConditionPathExists=%h/.config/chatgpt-remote-commander/%i/config.json
+ConditionPathExists=%h/.local/state/chatgpt-remote-commander/profiles/%i/config.json
 [Service]
 Type=simple
-Environment=REMOTE_COMMANDER_CONFIG=%h/.config/chatgpt-remote-commander/%i/config.json
+Environment=REMOTE_COMMANDER_CONFIG=%h/.local/state/chatgpt-remote-commander/profiles/%i/config.json
 Environment=COMMANDER_ONE_REQUIRE_TRUSTED_INGRESS=1
 WorkingDirectory=%h
 ExecStartPre=/usr/lib/chatgpt-remote-commander/runtime/node /usr/lib/chatgpt-remote-commander/native-config-preflight.mjs
 ExecStart=/usr/lib/chatgpt-remote-commander/runtime/node /usr/lib/chatgpt-remote-commander/app/src/server-v0.3.mjs
 NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=full
 UMask=0077
 Restart=on-failure
 RestartSec=5
@@ -141,28 +99,65 @@ WantedBy=default.target
 USERUNIT
 cat > "$DEB$PACKAGE_DIR/native-config-preflight.mjs" <<'PREFLIGHT'
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
+const fail=code=>{throw Error(code)};
 const file=process.env.REMOTE_COMMANDER_CONFIG;
-if(typeof file!=='string'||!path.isAbsolute(file))throw Error('NATIVE_PROFILE_CONFIG_REQUIRED');
+if(process.env.COMMANDER_ONE_REQUIRE_TRUSTED_INGRESS!=='1')fail('NATIVE_G1_TRUSTED_INGRESS_REQUIRED');
+if(typeof file!=='string'||!path.isAbsolute(file)||path.resolve(file)!==file)
+  fail('NATIVE_PROFILE_CONFIG_REQUIRED');
+const home=fs.realpathSync(os.homedir());
+const profiles=path.join(home,'.local','state','chatgpt-remote-commander','profiles');
+const relative=path.relative(profiles,file);
+if(!relative||relative.startsWith('..')||path.isAbsolute(relative)
+  ||path.basename(file)!=='config.json')
+  fail('NATIVE_PROFILE_CONFIG_LOCATION_INVALID');
+const profile=path.basename(path.dirname(file));
+if(!/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(profile))
+  fail('NATIVE_PROFILE_ID_INVALID');
+const uid=process.getuid?.();
+const parent=path.dirname(file);
+const parentStat=fs.lstatSync(parent);
+const configStat=fs.lstatSync(file);
+if(parentStat.isSymbolicLink()||!parentStat.isDirectory()||parentStat.uid!==uid
+  ||(parentStat.mode&0o077)!==0)
+  fail('NATIVE_PROFILE_DIRECTORY_NOT_PRIVATE');
+if(configStat.isSymbolicLink()||!configStat.isFile()||configStat.uid!==uid
+  ||(configStat.mode&0o077)!==0||fs.realpathSync(file)!==file)
+  fail('NATIVE_PROFILE_CONFIG_NOT_PRIVATE');
 const c=JSON.parse(fs.readFileSync(file,'utf8'));
-if(c.requireTrustedIngress!==true)throw Error('NATIVE_G1_TRUSTED_INGRESS_REQUIRED');
-if(typeof c.port!=='number'||!Number.isSafeInteger(c.port)||c.port<1024||c.port>65535)
-  throw Error('NATIVE_PROFILE_PORT_INVALID');
-if(typeof c.host!=='string'||!['127.0.0.1','::1'].includes(c.host))
-  throw Error('NATIVE_LOOPBACK_REQUIRED');
-for(const key of ['runtimeState','auditLog']){
-  if(typeof c[key]!=='string'||!path.isAbsolute(c[key])
-     ||c[key].startsWith('/usr/lib/chatgpt-remote-commander/'))
-    throw Error('NATIVE_MUTABLE_STATE_PATH_REQUIRED_'+key);
+if(c.instance?.profile!==profile)fail('NATIVE_PROFILE_ID_MISMATCH');
+if(!Number.isSafeInteger(c.port)||c.port<1024||c.port>65535)
+  fail('NATIVE_PROFILE_PORT_INVALID');
+if(!['127.0.0.1','::1'].includes(c.host))
+  fail('NATIVE_LOOPBACK_REQUIRED');
+const managed='/usr/lib/chatgpt-remote-commander';
+function outsideManaged(p,key){
+  if(typeof p!=='string'||!path.isAbsolute(p)||path.resolve(p)!==p)
+    fail('NATIVE_MUTABLE_STATE_PATH_REQUIRED_'+key);
+  const rel=path.relative(managed,p);
+  if(rel===''||(!rel.startsWith('..')&&!path.isAbsolute(rel)))
+    fail('NATIVE_MUTABLE_STATE_INSIDE_MANAGED_CODE_'+key);
 }
-if(typeof c.durableDelivery?.directory!=='string'
-   ||!path.isAbsolute(c.durableDelivery.directory))
-  throw Error('NATIVE_PRIVATE_DELIVERY_DIRECTORY_REQUIRED');
-if(typeof c.asyncOperations?.stateDir!=='string'
-   ||!path.isAbsolute(c.asyncOperations.stateDir))
-  throw Error('NATIVE_OPERATION_STATE_DIRECTORY_REQUIRED');
+for(const key of ['runtimeState','auditLog'])outsideManaged(c[key],key);
+for(const [section,key] of [['durableDelivery','directory'],['asyncOperations','stateDir']]){
+  const value=c[section]?.[key];
+  if(value!==undefined)outsideManaged(value,section+'_'+key);
+}
 console.log('NATIVE_PROFILE_CONFIG_PREFLIGHT_PASS');
 PREFLIGHT
+cat > "$DEB/usr/share/doc/chatgpt-remote-commander/README.txt" <<'DOC'
+One shared, dpkg-managed Remote Commander Core for all owner profiles.
+
+Profile config: ~/.local/state/chatgpt-remote-commander/profiles/PROFILE/config.json
+The included systemd USER template starts the same immutable Core for a profile:
+  systemctl --user daemon-reload
+  systemctl --user enable --now chatgpt-remote-commander@PROFILE.service
+
+The package does not migrate credentials/configuration, stop old services, enable
+any service, grant FULL_POWER, or approve G1/J01. Keep existing profile services
+running until each replacement has an authenticated canary and rollback proof.
+DOC
 cat > "$DEB/usr/share/doc/chatgpt-remote-commander/release-identity.txt" <<EOF
 version=$VERSION
 sourceCommit=$HEAD
@@ -172,6 +167,8 @@ installation=dpkg-managed-single-codebase
 serviceAutoStart=false
 publisherProvenance=not-accepted
 releasePromotion=NoPromote
+profileIsolation=systemd-user-instance-per-owner
+autoStart=false
 EOF
 # One deterministic code installation. All user profiles reuse the same source.
 find "$DEB" -type d -exec chmod 755 {} +
