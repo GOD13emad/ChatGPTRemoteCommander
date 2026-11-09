@@ -11,7 +11,7 @@ const route=Object.freeze({
   target:Object.freeze({kind:'workflow-root',id:'root-a'})
 });
 
-test('Linux V1-01 candidate host composes owner grants, proof admission and direct mTLS without opening a listener',()=>{
+test('Linux V1-01 candidate host composes owner grants, proof admission and direct mTLS without opening a listener',{skip:process.platform!=='linux'},()=>{
   const root=fs.mkdtempSync(path.join(os.tmpdir(),'v101-linux-v2-host-'));
   let nativeCalls=0;
   const host=createLinuxV101V2CandidateHost({
