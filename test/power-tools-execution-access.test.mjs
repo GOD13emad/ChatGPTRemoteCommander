@@ -70,6 +70,9 @@ test('unprotected read-only status remains available when protected effects requ
   const result=await executePowerTool(f.ctx,'power_status',{});
   assert.equal(result.enabled,true);
   assert.equal(result.fullFilesystem,false);
+  assert.equal(result.accessTierContract.id,'V102-OWNER-ACCESS-TIER-SEMANTICS-20261109');
+  assert.equal(result.accessTierContract.policyOnly,true);
+  assert.deepEqual(Object.keys(result.accessTierContract.definitions),['STANDARD','FULL_POWER','FULL_ACCESS']);
 });
 
 test('profiles without required execution grants retain the legacy power-tool path',async t=>{

@@ -1,6 +1,7 @@
 import os from 'node:os';
 import { synchronousCommandInput } from './retry-guard.mjs';
 import { effectivePowerMode } from './effective-power-mode.mjs';
+import { accessTierContractSnapshot } from './access-tier-contract.mjs';
 import { assertNoCodexCommand, assertNoCodexShellDelegation, codexLaunchAuthorized, commanderChildEnv } from './no-codex-policy.mjs';
 import path from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
@@ -283,6 +284,7 @@ export async function powerStatus(ctx) {
   const cfg = power(ctx);
   return {
     enabled: true,
+    accessTierContract: accessTierContractSnapshot(),
     platform: process.platform,
     shell: shellName(),
     fullFilesystem: cfg.fullFilesystem === true,

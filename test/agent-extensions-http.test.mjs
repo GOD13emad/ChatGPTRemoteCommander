@@ -17,7 +17,7 @@ test('agent extension tools are exposed read-only and return validated manifests
   let child;
   try {
     await fs.mkdir(path.join(root,'src'),{recursive:true});
-    for(const f of ['server-v0.3.mjs','transport-guard.mjs','full-access-http-quarantine.mjs','full-access-status.mjs','effective-power-mode.mjs','capability-profile.mjs','privilege-client.mjs','windows-admin-token.mjs','gui-universal-policy.mjs','gui-native-session-provider.mjs','gui-windows-native-provider.mjs','gui-linux-input-capture-provider.mjs','gui-tools-windows.mjs','gui-owner-delegation.mjs','owner-workspace-delegation.mjs','workspace-target-tools.mjs','workspace-accessibility-tools.mjs','owner-workspace-proxy.mjs','workspace-tools.mjs','workspace-routing.mjs','workspace-target-journal.mjs','gui-target-only-policy.mjs','gui-incident-store.mjs','gui-contract.mjs','gui-process.mjs','browser-tools.mjs','browser-contract.mjs','browser-process.mjs','browser-owned-processes.mjs','browser-lease-store.mjs','browser-existing-session-route.mjs','browser-owner-window-inventory.mjs','browser-profile-inventory.mjs','browser-file-transfer-guard.mjs','browser-companion-monitor.mjs','schema-validator.mjs','async-operations.mjs','retry-guard.mjs','agent-extensions.mjs','coucou-bridge.mjs','no-codex-policy.mjs','conversation-store.mjs','conversation-continuation.mjs']) {
+    for(const f of ['server-v0.3.mjs','access-tier-contract.mjs','transport-guard.mjs','full-access-http-quarantine.mjs','full-access-status.mjs','effective-power-mode.mjs','capability-profile.mjs','privilege-client.mjs','windows-admin-token.mjs','gui-universal-policy.mjs','gui-native-session-provider.mjs','gui-windows-native-provider.mjs','gui-linux-input-capture-provider.mjs','gui-tools-windows.mjs','gui-owner-delegation.mjs','owner-workspace-delegation.mjs','workspace-target-tools.mjs','workspace-accessibility-tools.mjs','owner-workspace-proxy.mjs','workspace-tools.mjs','workspace-routing.mjs','workspace-target-journal.mjs','gui-target-only-policy.mjs','gui-incident-store.mjs','gui-contract.mjs','gui-process.mjs','browser-tools.mjs','browser-contract.mjs','browser-process.mjs','browser-owned-processes.mjs','browser-lease-store.mjs','browser-existing-session-route.mjs','browser-owner-window-inventory.mjs','browser-profile-inventory.mjs','browser-file-transfer-guard.mjs','browser-companion-monitor.mjs','schema-validator.mjs','async-operations.mjs','retry-guard.mjs','agent-extensions.mjs','coucou-bridge.mjs','no-codex-policy.mjs','conversation-store.mjs','conversation-continuation.mjs']) {
       await fs.copyFile(new URL('../src/'+f,import.meta.url),path.join(root,'src',f));
     }
     await fs.writeFile(path.join(root,'src','security-v0.3.mjs'),'export const canonicalizeRoots = async x=>x;');
@@ -70,6 +70,9 @@ test('agent extension tools are exposed read-only and return validated manifests
     }
     const status=(await call('system_status')).result.structuredContent;
     assert.equal(status.configSchema.agentExtensions,1);
+    assert.equal(status.accessTierContract.id,'V102-OWNER-ACCESS-TIER-SEMANTICS-20261109');
+    assert.equal(status.accessTierContract.policyOnly,true);
+    assert.deepEqual(Object.keys(status.accessTierContract.definitions),['STANDARD','FULL_POWER','FULL_ACCESS']);
     assert.equal(status.effectiveTier,'STANDARD');
     assert.equal(status.powerMode.effective.enabled,false);
     assert.equal(status.powerMode.enabled,false);
