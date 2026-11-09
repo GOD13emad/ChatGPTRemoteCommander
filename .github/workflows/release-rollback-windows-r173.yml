@@ -9,6 +9,7 @@ on:
       - 'auto-update-windows.ps1'
       - 'tools/router-switch.mjs'
       - 'tools/run-owned-process-tree-windows.ps1'
+      - 'tools/windows-job-runner/**'
   workflow_dispatch:
 
 permissions:
@@ -30,6 +31,15 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # pinned
         with:
           node-version: '24'
+      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5, pinned
+        with:
+          dotnet-version: '8.0.427'
+      - name: Build and verify exact pinned Windows Job Object runner for promotion and rollback
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          & pwsh.exe -NoLogo -NoProfile -NonInteractive -File tools/windows-job-runner/verify-windows-job-runner.ps1 -Ensure
+          if($LASTEXITCODE -ne 0){throw 'R173_PINNED_NATIVE_RUNNER_BUILD_FAILED'}
       - name: Static parser, exact source and temporary host guard
         shell: pwsh
         run: |
