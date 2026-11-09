@@ -37,6 +37,21 @@ const valid=(profile='default')=>({
   auditLog:'/home/test/.local/state/chatgpt-remote-commander/profiles/default/audit.jsonl'
 });
 
+test('root Linux installer never runs synthetic MCP qualification with an elevated token',()=>{
+  const installer=fs.readFileSync(path.join(root,'install.sh'),'utf8');
+  const block=installer.slice(installer.indexOf('validate_installation() {'),installer.indexOf('start_server() {'));
+  assert.ok(block.startsWith('validate_installation() {'));
+  assert.match(block,/if \[\[ "\$\(id -u\)" == 0 \]\]/);
+  assert.match(block,/command -v runuser/);
+  assert.match(block,/id -u nobody/);
+  assert.match(block,/runuser -u nobody -- env HOME=/);
+  assert.match(block,/check:qualification test:qualification audit/);
+  assert.ok(block.indexOf('runuser -u nobody -- env')<block.indexOf('npm run check:qualification'));
+  assert.doesNotMatch(block,/COMMANDER_ONE_REQUIRE_TRUSTED_INGRESS=0/);
+  const parse=spawnSync('bash',['-n',path.join(root,'install.sh')],{encoding:'utf8'});
+  assert.equal(parse.status,0,parse.stderr);
+});
+
 const linuxOnlyTest = process.platform === 'linux' ? test : test.skip;
 
 linuxOnlyTest('one native Linux package installs one dpkg-owned code root shared by all owner profiles',()=>{

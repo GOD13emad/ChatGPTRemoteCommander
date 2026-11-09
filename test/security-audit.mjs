@@ -11,7 +11,10 @@ function git(args, options = {}) {
 }
 
 const patterns = [
-  ['OpenAI-style secret key', new RegExp('s' + 'k-' + '[A-Za-z0-9_-]{20,}', 'i')],
+  // Match a standalone key prefix, never the trailing "sk-" inside identifiers
+  // such as "task-" in historical file paths and Microsoft API identifiers.
+  // A genuine key after whitespace, quotes, colon or '=' is still detected.
+  ['OpenAI-style secret key', new RegExp('(?<![A-Za-z0-9])' + 's' + 'k-' + '[A-Za-z0-9_-]{20,}', 'i')],
   ['Tunnel identifier', new RegExp('tunnel' + '_' + '[0-9a-f]{32}')],
   ['Private key block', new RegExp('-----BEGIN ' + '(RSA |EC |OPENSSH |DSA |ENCRYPTED )?' + 'PRIVATE KEY-----\\r?\\n' + '(?:(?:Proc-Type:|DEK-Info:)[^\\r\\n]*\\r?\\n)*' + '(?:[A-Za-z0-9+/=]{8,}\\r?\\n){2,}' + '-----END \\1PRIVATE KEY-----', 'im')],
   ['Bearer token literal', new RegExp('Bearer\\s+' + '[A-Za-z0-9._-]{20,}', 'i')],
@@ -52,6 +55,25 @@ function secretPatternMatches(type,pattern,text) {
   }
   pattern.lastIndex=0;
   return pattern.test(sample);
+}
+const openAiPattern=patterns.find(([type])=>type==='OpenAI-style secret key')[1];
+const syntheticOpenAiKey='s'+'k-'+'A'.repeat(32);
+for(const context of [
+  syntheticOpenAiKey, 'Authorization: Bearer '+syntheticOpenAiKey,
+  'token="'+syntheticOpenAiKey+'"', 'key='+syntheticOpenAiKey,
+  '('+syntheticOpenAiKey+')'
+]){
+  if(!secretPatternMatches('OpenAI-style secret key',openAiPattern,context))
+    throw new Error('SECURITY_AUDIT_KEY_BOUNDARY_POSITIVE_CONTROL_FAILED');
+}
+for(const context of [
+  'ta'+syntheticOpenAiKey,
+  'registeredta'+syntheticOpenAiKey,
+  'x'+syntheticOpenAiKey,
+  'service_task-'+('A'.repeat(26))
+]){
+  if(secretPatternMatches('OpenAI-style secret key',openAiPattern,context))
+    throw new Error('SECURITY_AUDIT_KEY_BOUNDARY_FALSE_POSITIVE');
 }
 const pemHeaderPattern=patterns.find(([type])=>type==='Private key block')[1];
 const pemNewline=String.fromCharCode(10);

@@ -8,6 +8,7 @@ import path from 'node:path';
 import { runShell, startTerminal, readTerminal, sendTerminal, stopTerminal } from '../src/power-tools-v0.3.mjs';
 import { withFullPowerAccess } from './helpers/access-mode-fixtures.mjs';
 import { runProjectCommand } from '../src/tools-v0.3.mjs';
+import { processContainmentAvailable } from '../src/process-containment.mjs';
 
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const exists = (target) => fs.existsSync(target);
@@ -238,6 +239,12 @@ test('workflow-bound run_project_command uses the cessation-proof provider', { t
   };
   const script=path.join(root,'workflow-command.mjs');
   await writeFile(script,"process.stdout.write('WORKFLOW_PROJECT_COMMAND_OK')\n");
+  if(!(await processContainmentAvailable())){
+    await assert.rejects(runProjectCommand(ctx,{
+      program:'node',args:[script],cwd:root,timeoutMs:5000
+    }),/PROCESS_CONTAINMENT_UNAVAILABLE/);
+    return t.skip('native containment unavailable; fail-closed refusal verified');
+  }
   const result=await runProjectCommand(ctx,{
     program:'node',args:[script],
     cwd:root,timeoutMs:5000
@@ -257,6 +264,11 @@ test('workflow-bound run_shell uses the cessation-proof provider', { timeout: 15
   const ctx=powerContext(root);
   ctx.workflowOperation=workflowBinding('shell');
   const command=process.platform==='win32'?"Write-Output 'WORKFLOW_SHELL_OK'":"printf 'WORKFLOW_SHELL_OK\n'";
+  if(!(await processContainmentAvailable())){
+    await assert.rejects(runShell(ctx,{command,cwd:root,timeoutMs:5000}),
+      /PROCESS_CONTAINMENT_UNAVAILABLE/);
+    return t.skip('native containment unavailable; fail-closed refusal verified');
+  }
   const result=await runShell(ctx,{command,cwd:root,timeoutMs:5000});
   assert.equal(result.exitCode,0);
   assert.equal(result.isError,false);
