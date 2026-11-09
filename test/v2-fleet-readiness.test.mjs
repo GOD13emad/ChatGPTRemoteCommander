@@ -1,0 +1,160 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {createV2FleetReadiness} from '../src/v2-fleet-readiness.mjs';
+const hosts=[
+ {hostId:'win-owner',platform:'win32'},{hostId:'win-server',platform:'win32'},
+ {hostId:'linux-owner',platform:'linux'},{hostId:'offline',platform:'linux'}
+];
+test('fleet snapshot shows connected transport but never invents ChatGPT auth or V2 deployment',async()=>{
+ const f=createV2FleetReadiness({hosts,now:()=>50000,
+  observeHost:async hostId=>{
+   if(hostId==='offline')throw Error('socket timeout / key details should be redacted');
+   return {hostId,observedAtMs:49000,transport:'CONNECTED',
+    version:'0.11.0-dev.18',chatIdentity:'TRUSTED_PROFILE_NOT_AUTHENTICATED_CHAT',
+    guiOwner:{configured:true,accepted:false},v2:{installed:false}};
+  }});
+ const r=await f.snapshot();
+ assert.equal(r.connected,3);
+ assert.equal(r.allHostsOperational,false);
+ assert.equal(r.nodes[0].chatIdentity,'NOT_VERIFIED');
+ assert.equal(r.nodes[0].guiOwner,'NOT_VERIFIED');
+ assert.equal(r.nodes[0].v2Installed,'NOT_VERIFIED');
+ assert.equal(r.nodes[3].reason,'OBSERVATION_UNAVAILABLE');
+ assert.equal(JSON.stringify(r).includes('socket timeout'),false);
+});
+test('authenticated chat alone does not imply owner GUI or installed version',async()=>{
+ const f=createV2FleetReadiness({hosts:[hosts[0]],now:()=>10000,
+  observeHost:async hostId=>({hostId,transport:'CONNECTED',observedAtMs:9900,
+   version:'1.0.0',chatIdentity:'AUTHENTICATED_CHAT',chatIdentityAttested:true,
+   ownerSessionAttested:true,guiOwner:{configured:true,accepted:true,driverReady:false},
+   v2:{installed:true,exactBuildVerified:true}})});
+ const r=await f.snapshot();
+ assert.equal(r.nodes[0].chatIdentity,'VERIFIED');
+ assert.equal(r.nodes[0].guiOwner,'NOT_VERIFIED');
+ assert.equal(r.nodes[0].v2Installed,'NOT_VERIFIED');
+ assert.equal(r.allHostsOperational,false);
+});
+test('stale and cross-host spoofed evidence never permits readiness',async()=>{
+ const f=createV2FleetReadiness({hosts:[hosts[0],hosts[1]],now:()=>50000,
+  staleAfterMs:3000,observeHost:async hostId=>({hostId:hostId==='win-owner'?'other':hostId,
+  transport:'CONNECTED',observedAtMs:1000,chatIdentity:'AUTHENTICATED_CHAT',
+  chatIdentityAttested:true,ownerSessionAttested:true,
+  guiOwner:{configured:true,accepted:true,ownerSessionAttested:true,driverReady:true},
+  v2:{installed:true,exactBuildVerified:true,liveAcceptancePassed:true}})});
+ const r=await f.snapshot();
+ assert.ok(r.nodes.every(x=>x.transport==='UNKNOWN'));
+ assert.equal(r.allHostsOperational,false);
+});
+test('full acceptance needs independent exact build, chat, GUI, and transport evidence',async()=>{
+ const f=createV2FleetReadiness({hosts:[hosts[0]],now:()=>20000,
+  observeHost:async hostId=>({hostId,transport:'CONNECTED',observedAtMs:20000,
+   version:'2.0.0',chatIdentity:'AUTHENTICATED_CHAT',chatIdentityAttested:true,
+   ownerSessionAttested:true,
+   guiOwner:{configured:true,accepted:true,ownerSessionAttested:true,driverReady:true},
+   v2:{installed:true,exactBuildVerified:true,liveAcceptancePassed:true},
+   enrollment:{structuralStatus:'STRUCTURAL_MATCH',scope:'ALL_HOST_OS_USERS',
+    allNativeUsersEnumerated:true,allProfilesEnumerated:true,
+    credentialReferencesPreserved:true,credentialUsabilityAttested:true,
+    nativeOwnerAttested:true}})});
+ const r=await f.snapshot();
+ assert.equal(r.allHostsOperational,true);
+ assert.equal(r.nodes[0].enrollment,'VERIFIED');
+ assert.equal(r.nodes[0].guiOwner,'READY');
+ assert.equal(r.nodes[0].v2Installed,'VERIFIED');
+});
+test('unknown and duplicate hosts, untrusted callbacks and bad clock fail closed',async()=>{
+ assert.throws(()=>createV2FleetReadiness({hosts,observeHost:null}),{code:'V2_FLEET_TRUSTED_BOOTSTRAP_REQUIRED'});
+ assert.throws(()=>createV2FleetReadiness({hosts:[hosts[0],hosts[0]],observeHost:async()=>({})}),
+  {code:'V2_FLEET_INVENTORY_INVALID'});
+ const f=createV2FleetReadiness({hosts:[hosts[0]],now:()=>NaN,observeHost:async()=>({})});
+ await assert.rejects(f.snapshot(),{code:'V2_FLEET_CLOCK_INVALID'});
+});
+
+test('single owner-local census cannot promote whole-host R0/R9 even with other gates passing',async()=>{
+ const f=createV2FleetReadiness({hosts:[hosts[0]],now:()=>1000,
+  observeHost:async hostId=>({hostId,transport:'CONNECTED',observedAtMs:1000,
+   version:'2.0.0',chatIdentity:'AUTHENTICATED_CHAT',chatIdentityAttested:true,
+   ownerSessionAttested:true,
+   guiOwner:{configured:true,accepted:true,ownerSessionAttested:true,driverReady:true},
+   v2:{installed:true,exactBuildVerified:true,liveAcceptancePassed:true},
+   enrollment:{structuralStatus:'STRUCTURAL_MATCH',scope:'ONE_OS_USER_NOT_WHOLE_HOST',
+    allNativeUsersEnumerated:false,allProfilesEnumerated:true,
+    credentialReferencesPreserved:true,credentialUsabilityAttested:false,
+    nativeOwnerAttested:true}})});
+ const result=await f.snapshot();
+ assert.equal(result.nodes[0].enrollment,'NOT_VERIFIED');
+ assert.equal(result.nodes[0].chatIdentity,'VERIFIED');
+ assert.equal(result.nodes[0].guiOwner,'READY');
+ assert.equal(result.nodes[0].v2Installed,'VERIFIED');
+ assert.equal(result.allHostsOperational,false);
+});
+test('missing or revoked native credential evidence blocks promotion after structural match',async()=>{
+ const create=(enrollment)=>createV2FleetReadiness({hosts:[hosts[0]],now:()=>1000,
+  observeHost:async hostId=>({hostId,transport:'CONNECTED',observedAtMs:1000,
+   version:'2.0.0',chatIdentity:'AUTHENTICATED_CHAT',chatIdentityAttested:true,
+   ownerSessionAttested:true,
+   guiOwner:{configured:true,accepted:true,ownerSessionAttested:true,driverReady:true},
+   v2:{installed:true,exactBuildVerified:true,liveAcceptancePassed:true},
+   enrollment})});
+ const base={structuralStatus:'STRUCTURAL_MATCH',scope:'ALL_HOST_OS_USERS',
+  allNativeUsersEnumerated:true,allProfilesEnumerated:true,
+  credentialReferencesPreserved:true,credentialUsabilityAttested:true,
+  nativeOwnerAttested:true};
+ for(const bad of [
+  {...base,credentialUsabilityAttested:false},
+  {...base,structuralStatus:'BLOCKED_RECONCILIATION'},
+  {...base,allProfilesEnumerated:false},
+  {...base,nativeOwnerAttested:false},
+  {...base,scope:'ONE_OS_USER_NOT_WHOLE_HOST'}]){
+  const s=await create(bad).snapshot();
+  assert.equal(s.nodes[0].enrollment,'NOT_VERIFIED');
+  assert.equal(s.allHostsOperational,false);
+ }
+});
+
+test('offline nonsettling host cannot block independent healthy host; abort is scoped',async()=>{
+ let aborted=false;
+ const f=createV2FleetReadiness({
+  hosts:[hosts[0],hosts[3]],now:()=>200000,
+  observationTimeoutMs:120,
+  observeHost:async(hostId,{signal})=>{
+   if(hostId==='offline')return new Promise(()=>{signal.addEventListener('abort',()=>{aborted=true;},{once:true});});
+   return {hostId,observedAtMs:199990,transport:'CONNECTED',version:'0.11.0-dev.18'};
+  }
+ });
+ const result=await f.snapshot();
+ assert.equal(aborted,true);
+ assert.equal(result.connected,1);
+ assert.equal(result.nodes[0].transport,'CONNECTED');
+ assert.equal(result.nodes[1].transport,'UNKNOWN');
+ assert.equal(result.nodes[1].reason,'OBSERVATION_TIMEOUT');
+ assert.equal(result.allHostsOperational,false);
+});
+test('unexpected attestor rejection and malformed negative timestamp remain fail-closed',async()=>{
+ const f=createV2FleetReadiness({
+  hosts:[hosts[0],hosts[1]],now:()=>2000,
+  observeHost:async id=>{
+   if(id==='win-owner')throw Error('owner-private-secret');
+   return {hostId:id,observedAtMs:-1,transport:'CONNECTED',version:'2.0.0',
+    chatIdentity:'AUTHENTICATED_CHAT',chatIdentityAttested:true,ownerSessionAttested:true,
+    guiOwner:{configured:true,accepted:true,ownerSessionAttested:true,driverReady:true},
+    v2:{installed:true,exactBuildVerified:true,liveAcceptancePassed:true},
+    enrollment:{structuralStatus:'STRUCTURAL_MATCH',scope:'ALL_HOST_OS_USERS',
+     allNativeUsersEnumerated:true,allProfilesEnumerated:true,
+     credentialReferencesPreserved:true,credentialUsabilityAttested:true,nativeOwnerAttested:true}
+   };
+  }
+ });
+ const out=await f.snapshot();
+ assert.equal(out.connected,0);
+ assert.equal(out.nodes[0].reason,'OBSERVATION_UNAVAILABLE');
+ assert.equal(out.nodes[1].reason,'EVIDENCE_STALE_OR_UNBOUND');
+ assert.equal(JSON.stringify(out).includes('owner-private-secret'),false);
+ assert.equal(out.allHostsOperational,false);
+});
+test('reject invalid observation deadlines at bootstrap',()=>{
+ for(const observationTimeoutMs of [-1,0,99,30001,1.5,NaN])
+  assert.throws(()=>createV2FleetReadiness({
+   hosts:[hosts[0]],observeHost:async()=>({}),observationTimeoutMs
+  }),{code:'V2_FLEET_TRUSTED_BOOTSTRAP_REQUIRED'});
+});

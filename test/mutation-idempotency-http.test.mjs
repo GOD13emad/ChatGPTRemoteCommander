@@ -30,14 +30,25 @@ async function startServer(serverRoot, configPath) {
   const child = spawn(process.execPath, [path.join(serverRoot, 'src', 'server-v0.3.mjs')], {
     cwd: serverRoot, env: { ...process.env, REMOTE_COMMANDER_CONFIG: configPath }, stdio:['ignore','pipe','pipe']
   });
-  let stderr=''; child.stderr.on('data', c => { stderr += c.toString('utf8'); });
+  let stderr='';
+  child.stderr.on('data', c => { stderr=(stderr+c.toString('utf8')).slice(-12000); });
   const config = JSON.parse(await fs.readFile(configPath, 'utf8'));
-  for (let i=0;i<400;i+=1) {
-    try { const r=await fetch(`http://127.0.0.1:${config.port}/health`); if (r.ok) return { child, stderr:()=>stderr }; } catch {}
-    await wait(25);
+  // Hosted Windows NoPromote runs this beside many other tests. Poll by elapsed
+  // time instead of a fixed 400x25ms budget, which can be too short under load.
+  // Keep request timeouts, fail immediately on process exit, and cap diagnostics.
+  const startupDeadline = Date.now() + 30000;
+  while (Date.now() < startupDeadline) {
+    if (child.exitCode !== null)
+      throw new Error('server exited before healthy: exitCode='+child.exitCode+' stderr='+stderr);
+    try {
+      const r=await fetch(`http://127.0.0.1:${config.port}/health`,
+        { signal: AbortSignal.timeout(300) });
+      if (r.ok) return { child, stderr:()=>stderr };
+    } catch {}
+    await wait(50);
   }
   child.kill();
-  throw new Error('server did not become healthy: '+stderr);
+  throw new Error('server did not become healthy within 30000ms: '+stderr);
 }
 async function stopServer(child) {
   if (child && child.exitCode === null) { child.kill(); await Promise.race([once(child,'close'), wait(4000)]); }

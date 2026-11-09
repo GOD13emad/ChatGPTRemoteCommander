@@ -84,7 +84,11 @@ async function claimWorker(root) {
 if (process.argv[2] === '--claim-worker') {
   await claimWorker(process.argv[3]);
 } else {
-  test('automatic scheduler never plans an unenrolled workflow and completes only after explicit enrollment', { timeout: 9000 }, async t => {
+  // Hosted Windows scheduler timers can be delayed by runner contention.
+  // Preserve all enrollment, plan, durable evidence and call assertions.
+  const SCHEDULER_CI_TEST_MS = process.platform==='win32' ? 30000 : 9000;
+  const SCHEDULER_CI_POLL_MS = process.platform==='win32' ? 22000 : 6000;
+  test('automatic scheduler never plans an unenrolled workflow and completes only after explicit enrollment', { timeout: SCHEDULER_CI_TEST_MS }, async t => {
     const fixture = makeFixture({ scheduler: true, runner: { autoTick: true }, planner: async () => proposal('write_text', { path: 'result.txt', content: 'verified output' }) });
     try {
       await fixture.create();
@@ -97,7 +101,7 @@ if (process.argv[2] === '--claim-worker') {
       t.diagnostic('SCHEDULER_PHASE=unenrolled_not_planned');
       await fixture.start();
       t.diagnostic('SCHEDULER_PHASE=enrolled_waiting_for_completion');
-      const final = await until(async () => { const current = await fixture.status(); return current.status === 'COMPLETED' ? current : null; });
+      const final = await until(async () => { const current = await fixture.status(); return current.status === 'COMPLETED' ? current : null; }, SCHEDULER_CI_POLL_MS);
       assert.equal(final.actions, 1);
       assert.equal(fixture.plans, 1);
       assert.equal(fixture.calls, 1);
@@ -283,7 +287,12 @@ if (process.argv[2] === '--claim-worker') {
     });
   }
 
-  test('separate Node processes cannot claim the same project run concurrently', { timeout: 12000 }, async () => {
+  // On Windows hosted CI, process startup and SQLite lease admission can be delayed
+  // by unrelated runner load. Keep the same fencing/receipt assertions and bounded
+  // worker cleanup; only relax this specific cross-process harness watchdog.
+  const CLAIM_TEST_TIMEOUT_MS = process.platform === 'win32' ? 40000 : 12000;
+  const CLAIM_WORKER_TIMEOUT_MS = process.platform === 'win32' ? 30000 : 8000;
+  test('separate Node processes cannot claim the same project run concurrently', { timeout: CLAIM_TEST_TIMEOUT_MS }, async () => {
     const fixture = makeFixture({ planner: async () => { throw new Error('Competing parent must not plan'); } });
     const entered = deferred(), completed = deferred();
     // Attach rejection handlers immediately; a worker startup failure must not
@@ -293,7 +302,7 @@ if (process.argv[2] === '--claim-worker') {
     try {
       await fixture.create(); await fixture.start();
       child = spawn(process.execPath, [fileURLToPath(import.meta.url), '--claim-worker', fixture.root], { stdio: ['ignore', 'pipe', 'pipe', 'ipc'], windowsHide: true });
-      workerTimer = setTimeout(() => child.kill(), 8000);
+      workerTimer = setTimeout(() => child.kill(), CLAIM_WORKER_TIMEOUT_MS);
       let stderr = '';
       child.stderr.on('data', chunk => { stderr += chunk.toString(); });
       child.on('message', message => {

@@ -86,7 +86,10 @@ function fixture(t,{stepId='inspect',stepTitle='Read exact owner-approved scratc
   get api(){return api;},async restart(){await api.close();api=build();}
  };
 }
-async function awaitTerminal(api,runId,timeoutMs=17000){
+// This is an observation deadline, not a workflow duration or effect budget.
+// The admitted run allows 24s plus scheduling/worker finalization overhead;
+// hosted Windows qualification can be slower than an unloaded local fixture.
+async function awaitTerminal(api,runId,timeoutMs=31000){
  const until=Date.now()+timeoutMs;
  let last;
  while(Date.now()<until){
@@ -95,11 +98,13 @@ async function awaitTerminal(api,runId,timeoutMs=17000){
    return last;
   await delay(225);
  }
- throw Error('RUNNER_NO_TERMINAL_WITHIN_BUDGET:'+(last?.status??'UNKNOWN'));
+ throw Error('RUNNER_NO_TERMINAL_WITHIN_BUDGET:'+(last?.status??'UNKNOWN')+
+   ' attempts='+(Number.isFinite(last?.attempts)?last.attempts:'unknown')+
+   ' plannerCalls='+(Number.isFinite(last?.plannerCalls)?last.plannerCalls:'unknown'));
 }
 
 test('native non-Codex command provider auto-ticks exactly one read-only step and preserves receipt after restart',
- {timeout:45000},async t=>{
+ {timeout:65000},async t=>{
  const f=fixture(t);
  const s=await f.api.execute('workflow_status');
  assert.equal(s.runnerConfigured,true);
@@ -140,7 +145,7 @@ test('native non-Codex command provider auto-ticks exactly one read-only step an
 });
 
 test('unrecognized natural-language task is suspended for owner instead of executed',
- {timeout:35000},async t=>{
+ {timeout:65000},async t=>{
  // Allow one unused proposal/action budget while the owner request is pending.
  // Separate engine budget tests still verify fail-closed EXHAUSTED on an overrun.
  const f=fixture(t,{stepId:'unknown',stepTitle:'Run a broad unspecified command',maxActions:2,maxPlannerCalls:4});

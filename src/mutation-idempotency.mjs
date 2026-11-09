@@ -96,5 +96,42 @@ export class MutationIdempotencyStore {
       throw error;
     }
   }
+  // Trusted owner-worker reconciliation of an already recorded UNCERTAIN result.
+  // No physical action is repeated, and a transport-uncertain row cannot be promoted.
+  async reconcileVerifiedObservation({requestId,tool,input,expectedIdentityDigest,verify}) {
+    if(typeof requestId!=='string'||!REQUEST_ID.test(requestId)||
+       typeof tool!=='string'||typeof verify!=='function'||
+       typeof expectedIdentityDigest!=='string'||!/^[a-f0-9]{64}$/.test(expectedIdentityDigest))
+      fail('MUTATION_RECONCILIATION_TRUSTED_INPUT_REQUIRED');
+    const inputHash=digest(stableJson({tool,input}));
+    const original=this.db.prepare(
+      'SELECT * FROM mutations WHERE scope=? AND request_id=?').get(this.scope,requestId);
+    if(!original||original.tool!==tool||original.input_hash!==inputHash)
+      fail('MUTATION_RECONCILIATION_BINDING_INVALID');
+    if(original.state!=='SUCCEEDED')fail('MUTATION_RECONCILIATION_STATE_INVALID');
+    let previous;
+    try{previous=JSON.parse(original.result_json);}catch{
+      fail('MUTATION_RECONCILIATION_STATE_INVALID');
+    }
+    if(previous?.status!=='UNCERTAIN'||previous.identityDigest!==expectedIdentityDigest||
+       typeof previous.targetId!=='string')
+      fail('MUTATION_RECONCILIATION_STATE_INVALID');
+    // Only a trusted native observation callback can attest a physical effect.
+    if(await verify()!==true)fail('MUTATION_RECONCILIATION_PROOF_REQUIRED');
+    const result=Object.freeze({status:'EFFECT_OBSERVED',targetId:previous.targetId,
+      identityDigest:expectedIdentityDigest,userGoalVerified:false,replayed:false});
+    return this.transaction(()=>{
+      const fresh=this.db.prepare('SELECT * FROM mutations WHERE scope=? AND request_id=?')
+        .get(this.scope,requestId);
+      if(!fresh||fresh.state!=='SUCCEEDED'||fresh.tool!==tool||
+         fresh.input_hash!==inputHash||fresh.result_json!==original.result_json)
+        fail('MUTATION_RECONCILIATION_RACE');
+      const encoded=stableJson(result);
+      this.db.prepare("UPDATE mutations SET result_json=?,result_hash=?,updated_at=?"+
+        " WHERE scope=? AND request_id=? AND state='SUCCEEDED'").run(
+         encoded,digest(encoded),new Date().toISOString(),this.scope,requestId);
+      return result;
+    });
+  }
   close() { this.db.close(); }
 }

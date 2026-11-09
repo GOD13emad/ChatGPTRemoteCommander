@@ -48,10 +48,10 @@ function detectBrowser(explicit){
    candidates.push(path.join(base,'Microsoft','Edge','Application','msedge.exe'));
   }
  }else{
-  for(const n of ['google-chrome','google-chrome-stable','chromium','chromium-browser','microsoft-edge','msedge']){
+  for(const n of ['google-chrome','google-chrome-stable','chromium','chromium-browser','brave-browser','brave-browser-stable','microsoft-edge','msedge']){
    const p=which(n);if(p)candidates.push(p);
   }
-  candidates.push('/usr/bin/google-chrome','/usr/bin/chromium','/usr/bin/chromium-browser','/usr/bin/microsoft-edge');
+  candidates.push('/usr/bin/google-chrome','/usr/bin/chromium','/usr/bin/chromium-browser','/usr/bin/brave-browser','/opt/brave.com/brave/brave-browser','/usr/bin/microsoft-edge');
  }
  return candidates.find(exists)??null;
 }

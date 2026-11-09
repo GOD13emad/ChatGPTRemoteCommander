@@ -11,7 +11,7 @@ const safeName=value=>{
 };
 function run(filename, digest) {
   if(typeof filename!=='string'||!path.isAbsolute(filename)
-    || !/^qualification-output-qualification-test-[A-Za-z0-9-]+\.stdout\.log$/i.test(path.basename(filename))
+    || !/^qualification-output-qualification-(?:check|test)-[A-Za-z0-9-]+\.stdout\.log$/i.test(path.basename(filename))
     || !/^[A-Fa-f0-9]{64}$/.test(digest||''))throw Error('INVALID_INPUT');
   const meta=fs.lstatSync(filename);
   if(!meta.isFile()||meta.isSymbolicLink()||meta.size<1||meta.size>2097152)throw Error('INVALID_FILE');
