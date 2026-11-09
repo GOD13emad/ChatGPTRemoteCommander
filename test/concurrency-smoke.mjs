@@ -42,6 +42,7 @@ const port = reservation.address()?.port;
 assert.ok(Number.isInteger(port) && port > 0, 'OS_ASSIGNED_PORT_REQUIRED');
 const endpoint = `http://127.0.0.1:${port}/mcp`;
 const config = {
+  capabilityProfile: { tier: 'STANDARD' },
   host: '127.0.0.1', port, allowedRoots: [root],
   allowedPrograms: ['git', 'node'], maxReadBytes: 524288,
   maxWriteBytes: 524288, maxCommandMs: 30000,
