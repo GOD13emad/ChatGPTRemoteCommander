@@ -344,12 +344,12 @@ test('Windows check gate isolates native HTTP startup groups without removing co
   const original=command.split(' && ');
   const result=isolateWindowsStartupReadinessRegressions(command);
   const after=result.split(' && ');
-  const cold=['test/workflow-http.test.mjs','test/browser-process.test.mjs',
+  const cold=['test/conversation-http.test.mjs','test/workflow-http.test.mjs','test/browser-process.test.mjs',
     'test/transport-correlation-http.test.mjs'];
-  assert.deepEqual(after.slice(0,3),cold.map(file=>
+  assert.deepEqual(after.slice(0,4),cold.map(file=>
     'node --test --test-concurrency=1 '+file));
   for(const file of cold)assert.equal(result.split(file).length-1,1);
-  assert.equal(after.length,original.length+2);
+  assert.equal(after.length,original.length+3);
   for(const section of original)if(!cold.some(file=>section.includes(' '+file)))
     assert.ok(after.includes(section),'preserve every other check group');
   const runner=read('tools/run-bounded-test-script.mjs');
@@ -644,7 +644,7 @@ test('Windows startup-sensitive HTTP fixtures stay exact, early, and individuall
   before=isolateWindowsTimingSensitiveRegressions(before);
   before=isolateWindowsWorkflowPlanRegression(before);
   before=isolateWindowsMcpConformanceRegression(before);
-  const names=['test/workflow-http.test.mjs','test/browser-process.test.mjs','test/transport-correlation-http.test.mjs'];
+  const names=['test/conversation-http.test.mjs','test/workflow-http.test.mjs','test/browser-process.test.mjs','test/transport-correlation-http.test.mjs'];
   const after=isolateWindowsStartupReadinessRegressions(before);
   const expected=names.map(file=>'node --test --test-concurrency=1 '+file).join(' && ')+' && ';
   assert.ok(after.startsWith(expected));
@@ -659,7 +659,9 @@ test('Windows startup-sensitive HTTP fixtures stay exact, early, and individuall
   }
   const cold=prioritizeWindowsAdaptiveCold(after).split(' && ');
   assert.equal(cold[0],'node --test --test-concurrency=1 test/project-adaptive.test.mjs');
-  assert.deepEqual(cold.slice(1,4),names.map(file=>'node --test --test-concurrency=1 '+file));
+  assert.deepEqual(cold.slice(1,5),names.map(file=>'node --test --test-concurrency=1 '+file));
+  assert.ok(read('test/conversation-http.test.mjs').includes('for(let i=0;i<400;i++)'),
+    'conversation HTTP keeps its original 400x25ms readiness budget');
   assert.ok(read('test/transport-correlation-http.test.mjs').includes('30000'),
     'host regression preserves the original 30-second readiness deadline');
   assert.ok(read('tools/run-bounded-test-script.mjs').includes(
