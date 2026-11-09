@@ -101,7 +101,12 @@ test('legacy FULL_POWER HTTP cannot mint transport retries, execute file mutatio
     await fs.mkdir(serverRoot,{recursive:true});
     await fs.mkdir(dataRoot,{recursive:true});
     await fs.cp(new URL('../src/',import.meta.url),path.join(serverRoot,'src'),{recursive:true});
-    await fs.cp(new URL('../tools/',import.meta.url),path.join(serverRoot,'tools'),{recursive:true});
+    // This HTTP quarantine fixture only needs the durable worker script.
+    // Do not traverse unrelated installer-private files under tools/:
+    // a root-owned installed tunnel/license artifact may be intentionally 0600.
+    await fs.mkdir(path.join(serverRoot,'tools'),{recursive:true});
+    await fs.copyFile(new URL('../tools/operation-worker.mjs',import.meta.url),
+      path.join(serverRoot,'tools','operation-worker.mjs'));
     const canonical=await fs.realpath(dataRoot);
     const source=path.join(canonical,'source.txt');
     const destination=path.join(canonical,'copy.txt');

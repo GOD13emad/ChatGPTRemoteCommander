@@ -33,6 +33,11 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 1
+      # The bootstrap must build a pinned native Job Object binary when
+      # no installed runner exists; Node/Git are the tools intentionally hidden.
+      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
+        with:
+          dotnet-version: '8.0.427'
       - name: Exercise Windows Server bootstrap with Node/Git absent from PATH
         shell: pwsh
         env:
@@ -47,7 +52,7 @@ jobs:
           $oldMachine=[Environment]::GetEnvironmentVariable('Path','Machine')
           $oldUser=[Environment]::GetEnvironmentVariable('Path','User')
           try {
-            $minimal="$env:ProgramFiles\PowerShell\7;$env:windir\System32;$env:windir;$env:windir\System32\Wbem"
+            $minimal="$env:ProgramFiles\PowerShell\7;$env:ProgramFiles\dotnet;$env:windir\System32;$env:windir;$env:windir\System32\Wbem"
             [Environment]::SetEnvironmentVariable('Path',$minimal,'Machine')
             [Environment]::SetEnvironmentVariable('Path',$null,'User')
             $env:Path=$minimal

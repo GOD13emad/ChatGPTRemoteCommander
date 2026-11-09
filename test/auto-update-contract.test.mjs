@@ -1163,6 +1163,18 @@ test('Windows candidate stage receives only the pinned native Job Object runner 
   assert.equal((updater.match(/Promote-Control \$stage\.Commit \$ref \$stage\.Dir/g)||[]).length,4);
 });
 
+test('server canary retains pinned SDK while hiding Node and Git from bootstrapping PATH',()=>{
+ const workflow=read('.github/workflows/server-install-canary.yml');
+ const windows=workflow.slice(workflow.indexOf('windows-server-bootstrap:'),workflow.indexOf('linux-clean-container:'));
+ assert.ok(windows.includes('actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1'));
+ assert.ok(windows.includes("dotnet-version: '8.0.427'"));
+ assert.ok(windows.includes('$env:ProgramFiles\\dotnet'));
+ assert.ok(windows.includes('NODE_SHOULD_BE_HIDDEN_FOR_CANARY'));
+ assert.ok(windows.includes('GIT_SHOULD_BE_HIDDEN_FOR_CANARY'));
+ assert.ok(!windows.includes('$env:ProgramFiles\\nodejs;'));
+ assert.ok(!windows.includes('Git\\cmd;'));
+});
+
 test('pinned native Windows Job runner sources keep LF bytes across Windows Git checkout',async()=>{
  const attr=read('.gitattributes');
  for(const name of ['*.cs','*.csproj']){
