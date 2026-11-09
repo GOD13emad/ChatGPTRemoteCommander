@@ -123,6 +123,15 @@ if (!tunnelPattern.test('tunnel' + '_' + '0123456789abcdef'.repeat(2)) || tunnel
 // Lines are bounded; anything above the bound fails closed instead of being skipped.
 function makeHistoryScanner(rules) {
   const hits = new Set();
+  const firstLocations = new Map();
+  let currentCommit = '', currentPath = '';
+  function markFinding(name) {
+    hits.add(name);
+    if (!firstLocations.has(name)) firstLocations.set(name, {
+      commit: currentCommit || 'UNKNOWN',
+      path: currentPath || 'UNKNOWN'
+    });
+  }
   let pending = '', preceding = '';
   let parentPem = null, currentPem = null;
   const limit = 16 * 1024 * 1024;
@@ -133,7 +142,7 @@ function makeHistoryScanner(rules) {
     const footer=content.match(/^-----END (RSA |EC |OPENSSH |DSA |ENCRYPTED )?PRIVATE KEY-----$/i);
     if(footer){
       if((footer[1]??'')===state.active.label&&state.active.bodyChars>=32)
-        hits.add('Private key block');
+        markFinding('Private key block');
       state.active=null;return;
     }
     if(/^[A-Za-z0-9+/=]{8,}$/.test(content)){state.active.bodyChars+=content.length;return;}
@@ -144,6 +153,10 @@ function makeHistoryScanner(rules) {
   resetPem();
   function scanLine(line) {
     const raw=line.trimEnd();
+    const commitMatch = /^commit ([0-9a-f]{40})(?:\r?\n)?$/.exec(line);
+    if (commitMatch) { currentCommit = commitMatch[1]; currentPath = ''; }
+    const pathMatch = /^diff --git a\/(.+) b\/(.+)(?:\r?\n)?$/.exec(line);
+    if (pathMatch) currentPath = pathMatch[1] === pathMatch[2] ? pathMatch[1] : '';
     if(/^(?:commit |diff --(?:git|cc|combined) |@@)/.test(line)){
       preceding='';resetPem();return;
     }
@@ -163,7 +176,7 @@ function makeHistoryScanner(rules) {
     const sample=preceding+line;
     for(const [name,pattern] of rules){
       if(name==='Private key block')continue;
-      if(secretPatternMatches(name,pattern,sample))hits.add(name);
+      if(secretPatternMatches(name,pattern,sample)) markFinding(name);
     }
     preceding=sample.slice(-512);
   }
@@ -180,6 +193,8 @@ function makeHistoryScanner(rules) {
     },
     finish() {
       if (pending) { scanLine(pending); pending = ''; }
+      // Preserve the historical Set API for all existing regression probes.
+      Object.defineProperty(hits, 'firstLocations', { value: firstLocations });
       return hits;
     }
   };
@@ -204,6 +219,14 @@ for(const side of ['+','-']){
   probe.write(block);
   if(!probe.finish().has('Private key block'))
     throw new Error('SECURITY_AUDIT_HISTORY_PEM_POSITIVE_CONTROL_FAILED:'+side);
+}
+const provenanceProbe = makeHistoryScanner(patterns);
+provenanceProbe.write('commit ' + 'f'.repeat(40) + '\n');
+provenanceProbe.write('diff --git a/test/synthetic-fixture b/test/synthetic-fixture\n');
+provenanceProbe.write('+Bearer ' + 'A'.repeat(20) + '\n');
+const provenance = provenanceProbe.finish().firstLocations.get('Bearer token literal');
+if (provenance?.commit !== 'f'.repeat(40) || provenance?.path !== 'test/synthetic-fixture') {
+  throw new Error('SECURITY_AUDIT_FINDING_PROVENANCE_REGRESSION');
 }
 const boundaryProbe = makeHistoryScanner(patterns);
 boundaryProbe.write('tunnel' + '_0123456789abcdef');
@@ -273,7 +296,13 @@ for (const expectedIgnored of ['config.local.json', '.env', 'connections.local.j
 
 const historyScan = await scanCompleteHistory();
 for (const type of historyScan.hits) {
-  findings.push({ scope: 'HISTORY', type, location: 'git log --all -p' });
+  // Log only provenance metadata. Never print matched lines or secret bytes.
+  const origin = historyScan.hits.firstLocations.get(type);
+  findings.push({
+    scope: 'HISTORY', type, location: 'git log --all -p',
+    commit: origin?.commit || 'UNKNOWN',
+    path: origin?.path || 'UNKNOWN'
+  });
 }
 console.log('SECURITY_AUDIT_HISTORY_BYTES ' + historyScan.bytes);
 const emails = [...new Set(git(['log', '--all', '--format=%ae%n%ce']).split(/\r?\n/).filter(Boolean))].sort();
