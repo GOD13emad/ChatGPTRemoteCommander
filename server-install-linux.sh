@@ -95,13 +95,20 @@ fi
 git -C "$stage" checkout --detach "$resolved" >/dev/null
 expected_version="$(sed -nE 's/.*"version"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p' "$stage/package.json" | head -n1)"
 if ! [[ "$expected_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-  # No extra dependency on clean hosts: python3 is already a bootstrap prerequisite.
-  # Only explicit non-promotable 0.11 dev source is valid in this isolated path.
-  if ! [[ "$expected_version" =~ ^0\.11\.0-dev\.[1-9][0-9]*$ ]] ||
-     ! python3 - "$stage/docs/release-train-0.11.json" "$expected_version" <<'PY'
+  # Development source requires a matching local, non-promotable release train.
+  # Do not accept an arbitrary tag or mark the development source as Stable.
+  dev_minor=''
+  if [[ "$expected_version" =~ ^0\.(11|12)\.0-dev\.[1-9][0-9]*$ ]]; then
+    dev_minor="${BASH_REMATCH[1]}"
+  else
+    echo 'Unknown development source version.' >&2
+    exit 1
+  fi
+  if ! python3 - "$stage/docs/release-train-0.${dev_minor}.json" "$expected_version" "0.${dev_minor}" <<'PY'
 import json,sys
 try:
     with open(sys.argv[1],encoding='utf-8') as f: train=json.load(f)
+    assert train['train']==sys.argv[3]
     assert train['sourceVersion']==sys.argv[2]
     assert train['status']=='INTEGRATION_CANDIDATE_NOT_FINAL'
     assert train['channel']=='development'

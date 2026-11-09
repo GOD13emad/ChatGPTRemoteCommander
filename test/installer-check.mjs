@@ -97,6 +97,26 @@ for (const required of [
 
 if (!linuxServerInstaller.includes('SOURCE_REF="${REMOTE_COMMANDER_SOURCE_REF:-v0.12.0}"')) throw new Error('server-install-linux.sh default SourceRef must match current release');
 if (!linuxServerInstaller.includes('default: v0.12.0')) throw new Error('server-install-linux.sh usage default must match current release');
+for (const token of [
+  String.raw`^0\.(11|12)\.0-dev\.[1-9][0-9]*$`,
+  'release-train-0.${dev_minor}.json',
+  "assert train['train']==sys.argv[3]",
+  "assert train['sourceVersion']==sys.argv[2]",
+  "assert train['releaseTag'] is None",
+  "'isStable','publishApproved','autoupdateApproved','installedPromotionApproved'"
+]) if (!linuxServerInstaller.includes(token)) throw new Error('Linux V0.12 dev bootstrap must match a non-promotable release train: '+token);
+const linuxDevTrainValidator = linuxServerInstaller.match(/<<'PY'\n([\s\S]*?)\nPY/);
+if (!linuxDevTrainValidator) throw new Error('Linux staged release-train validator not found');
+for (const [minor, version, accepted] of [
+  ['11','0.11.0-dev.105',true],
+  ['12','0.12.0-dev.1',true],
+  ['12','0.12.0-dev.2',false],
+  ['11','0.12.0-dev.1',false]
+]) {
+  const result = spawnSync('python3', ['-',`docs/release-train-0.${minor}.json`,version,`0.${minor}`],
+    {input:linuxDevTrainValidator[1]+'\n',encoding:'utf8',windowsHide:true});
+  if ((result.status===0)!==accepted) throw new Error('Linux V0.12 train/source match admission wrong: '+minor+' '+version);
+}
 for (const [label,script] of [['server-install-windows.ps1',windowsServerInstaller],
                                ['server-install-canary.yml',serverCanaryWorkflow]]) {
   for (const token of ['(?<minor>11|12)','release-train-$trainVersion.json',
