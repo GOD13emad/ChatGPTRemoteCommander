@@ -170,6 +170,8 @@ const conversationController = createConversationController({
 });
 const asyncOperationTools = createAsyncOperationTools({
   config,
+  workerConfigPath: path.resolve(configPath),
+  workerConfigSha256: configSha256,
   deliveryStore,
   onTerminal: state => conversationController.signalOperation(state),
   validateContinuation: continuation => conversationController.validateContinuation(continuation),
