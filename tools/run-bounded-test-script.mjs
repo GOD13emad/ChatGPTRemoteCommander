@@ -185,13 +185,23 @@ export function isolateWindowsStartupReadinessRegressions(command) {
 export function markIsolatedQualificationPhases(command) {
   if(typeof command!=='string'||!command)throw new Error('R157_PHASE_COMMAND_INVALID');
   const parts=command.split(' && ');
-  if(parts.length<2||parts.length>90||parts.some(p=>!p.startsWith('node ')))
+  // These exact package-script delegations are part of the checked-in
+  // qualification chains; mark them as one phase without allowing arbitrary shell.
+  const approvedNestedScripts=new Set([
+    'npm run test:v1-01-worker-grants',
+    'npm run check:v1-01-hybrid-oauth',
+    'npm run test:v1-01-hybrid-oauth'
+  ]);
+  if(parts.length<2||parts.length>90
+    ||parts.some(part=>!part.startsWith('node ')&&!approvedNestedScripts.has(part)))
     throw new Error('R157_PHASE_COMMAND_SHAPE_INVALID');
   const marked=parts.map((part,index)=>{
     const number=String(index).padStart(2,'0');
-    return 'echo RC_QUAL_PHASE_START_'+number+' && '+part+' && echo RC_QUAL_PHASE_PASS_'+number;
-  }).join(' && ');
-  if(marked.length>7500)throw new Error('R157_PHASE_WINDOWS_CMD_LENGTH');
+    return 'echo RC_QUAL_PHASE_START_'+number+'&&'+part+'&&echo RC_QUAL_PHASE_PASS_'+number;
+  }).join('&&');
+  // Keep the command below cmd.exe's 8191-character limit with headroom for
+  // the ComSpec wrapper and its quoted /c argument.
+  if(marked.length>7550)throw new Error('R157_PHASE_WINDOWS_CMD_LENGTH');
   return marked;
 }
 

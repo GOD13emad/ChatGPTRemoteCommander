@@ -296,9 +296,14 @@ test('Windows async HTTP startup is isolated exactly once in both check and test
 test('R157 qualifier markers are opt-in, index-only, and preserve all original commands',()=>{
   const sample='node --test test/a.test.mjs && node test/b.mjs';
   assert.equal(markIsolatedQualificationPhases(sample),
-    'echo RC_QUAL_PHASE_START_00 && node --test test/a.test.mjs && echo RC_QUAL_PHASE_PASS_00 && '+
-    'echo RC_QUAL_PHASE_START_01 && node test/b.mjs && echo RC_QUAL_PHASE_PASS_01');
+    'echo RC_QUAL_PHASE_START_00&&node --test test/a.test.mjs&&echo RC_QUAL_PHASE_PASS_00&&'+
+    'echo RC_QUAL_PHASE_START_01&&node test/b.mjs&&echo RC_QUAL_PHASE_PASS_01');
   assert.throws(()=>markIsolatedQualificationPhases('echo untrusted command'),/R157_PHASE_COMMAND_SHAPE_INVALID/);
+  const nested='node --test test/a.test.mjs && npm run test:v1-01-hybrid-oauth';
+  assert.ok(markIsolatedQualificationPhases(nested).includes(
+    'RC_QUAL_PHASE_START_01&&npm run test:v1-01-hybrid-oauth&&echo RC_QUAL_PHASE_PASS_01'));
+  assert.throws(()=>markIsolatedQualificationPhases('node --test test/a.test.mjs && npm run arbitrary'),
+    /R157_PHASE_COMMAND_SHAPE_INVALID/);
   const pkg=JSON.parse(read('package.json'));
   const bounded=boundNodeTestConcurrency(pkg.scripts.test,1);
   let command=prioritizeSensitiveQualificationCommands(bounded.command);
@@ -319,11 +324,11 @@ test('R157 qualifier markers are opt-in, index-only, and preserve all original c
   for(const file of ['test/project-adaptive.test.mjs','test/async-http.test.mjs'])
     assert.equal(command.split(file).length-1,1,'exactly one regression '+file);
   const marked=markIsolatedQualificationPhases(command);
-  assert.ok(marked.length<7500,'preserve Windows cmd.exe length limit');
+  assert.ok(marked.length<7550,'preserve Windows cmd.exe length limit');
   assert.equal((marked.match(/RC_QUAL_PHASE_START_\d{2}/g)||[]).length,groups.length);
   assert.equal((marked.match(/RC_QUAL_PHASE_PASS_\d{2}/g)||[]).length,groups.length);
   for(const [index,part] of groups.entries()){
-    assert.ok(marked.includes('RC_QUAL_PHASE_START_'+String(index).padStart(2,'0')+' && '+part+' && echo RC_QUAL_PHASE_PASS_'+String(index).padStart(2,'0')),
+    assert.ok(marked.includes('RC_QUAL_PHASE_START_'+String(index).padStart(2,'0')+'&&'+part+'&&echo RC_QUAL_PHASE_PASS_'+String(index).padStart(2,'0')),
       'each exact original command is preserved in its own observed phase');
   }
   const wrapper=read('tools/run-bounded-test-script.mjs');
@@ -449,7 +454,7 @@ test('Windows runs exact workflow-plan races before loaded CI; strict adaptive t
   assert.ok(command.includes('test/boot-recovery-diagnostics.test.mjs'));
   assert.throws(()=>isolateWindowsWorkflowPlanRegression(prior.replace(' '+file,'')),/CI_WORKFLOW_PLAN_CARDINALITY/);
   const marked=markIsolatedQualificationPhases(command);
-  assert.ok(marked.length<7500,'bounded R157 Windows shell command with phase markers');
+  assert.ok(marked.length<7550,'bounded R157 Windows shell command with phase markers');
   const source=read('test/project-adaptive.test.mjs');
   const first=source.indexOf("  test('inspect, extend, read prerequisite");
   const team=source.indexOf("  test('team reserves all calls before workers");
@@ -553,7 +558,7 @@ test('R157 Windows dual-era MCP server conformance executes once early, unchange
   assert.ok(isolated.includes('test/workflow-plan.test.mjs'));
   assert.ok(isolated.includes('test/agent-extensions.test.mjs'),
     'preserve unrelated existing bulk qualification coverage');
-  assert.ok(markIsolatedQualificationPhases(isolated).length<7500,
+  assert.ok(markIsolatedQualificationPhases(isolated).length<7550,
     'R157 Windows cmd.exe phase-marked bound stays unchanged');
   assert.throws(()=>isolateWindowsMcpConformanceRegression(before.replace(' '+file,'')),
     /CI_MCP_CONFORMANCE_CARDINALITY/);
