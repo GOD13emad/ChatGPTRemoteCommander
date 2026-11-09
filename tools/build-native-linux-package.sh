@@ -15,9 +15,36 @@ OUT="$(node "$ROOT/tools/native-package-output-guard.mjs" absent "$ROOT" "$OUT")
 test "$(uname -s)" = Linux && test "$(uname -m)" = x86_64 || {
   echo 'NATIVE_LINUX_PACKAGE_REQUIRES_LINUX_AMD64' >&2; exit 2;
 }
-test -z "$(git -C "$ROOT" status --porcelain)" || {
-  echo 'NATIVE_LINUX_PACKAGE_REQUIRES_CLEAN_SOURCE' >&2; exit 3;
-}
+# Git can report a dirty worktree when an older CRLF blob is checked out
+# under a newer eol=lf attribute despite exact on-disk blob parity.
+# Accept ONLY byte-for-byte identity with HEAD; never permit staged changes,
+# added/untracked files, renames, symlinks or actual dirty source.
+python3 - "$ROOT" <<'SOURCE_GUARD'
+import os, pathlib, subprocess, sys
+root=pathlib.Path(sys.argv[1]).resolve()
+def deny():
+    print('NATIVE_LINUX_PACKAGE_REQUIRES_CLEAN_SOURCE',file=sys.stderr)
+    sys.exit(3)
+try:
+    state=subprocess.check_output(
+        ['git','-C',str(root),'status','--porcelain=v1','-z','--untracked-files=all'],
+        timeout=12
+    )
+    records=[r for r in state.split(b'\0') if r]
+    if len(records)>16: deny()
+    for item in records:
+        if len(item)<4 or item[:2]!=b' M' or item[2:3]!=b' ': deny()
+        rel=os.fsdecode(item[3:])
+        target=root/rel
+        if not target.is_file() or target.is_symlink() or target.stat().st_size>1048576: deny()
+        if not target.resolve().is_relative_to(root): deny()
+        raw=subprocess.check_output(['git','-C',str(root),'show','HEAD:'+rel],timeout=12)
+        if raw!=target.read_bytes(): deny()
+    if records:
+        print('NATIVE_GIT_ATTRIBUTES_EXACT_BLOB_PASS files='+str(len(records)))
+except (OSError,ValueError,subprocess.CalledProcessError,subprocess.TimeoutExpired):
+    deny()
+SOURCE_GUARD
 HEAD="$(git -C "$ROOT" rev-parse HEAD^{commit})"
 EPOCH="$(git -C "$ROOT" show -s --format=%ct HEAD)"
 VERSION="$(node -p 'require(process.argv[1]).version' "$ROOT/package.json")"
