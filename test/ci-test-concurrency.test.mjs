@@ -367,11 +367,46 @@ test('R157 isolates every owned Windows phase so total command length cannot def
   assert.deepEqual(phases,original.split(' && '));
   assert.ok(phases.every(part=>part.length<7000));
   assert.throws(()=>splitWindowsQualificationCommands('node test/a.mjs && echo untrusted'),/R157_PHASE_COMMAND_SHAPE_INVALID/);
+  assert.throws(()=>splitWindowsQualificationCommands('node test/a.mjs && npm run arbitrary'),/R157_PHASE_COMMAND_SHAPE_INVALID/);
   assert.throws(()=>splitWindowsQualificationCommands('node test/a.mjs && node '+ 'a'.repeat(7200)),/R157_PHASE_COMMAND_SHAPE_INVALID/);
+  assert.throws(()=>splitWindowsQualificationCommands(Array.from({length:161},()=> 'node test/a.mjs').join(' && ')),
+    /R157_PHASE_COMMAND_SHAPE_INVALID/);
   const wrapper=read('tools/run-bounded-test-script.mjs');
-  assert.ok(wrapper.includes("console.log('RC_QUAL_PHASE_START_'+marker)"));
-  assert.ok(wrapper.includes("console.log('RC_QUAL_PHASE_PASS_'+marker)"));
+  assert.ok(wrapper.includes("const phases=process.platform==='win32'?splitWindowsQualificationCommands(command):null;"),
+    'both Windows check and test chains are split automatically');
+  assert.ok(wrapper.includes("if(process.env.RC_QUALIFICATION_RUN_ID)console.log('RC_QUAL_PHASE_START_'+marker);"),
+    'numeric phase markers remain opt-in');
+  assert.ok(wrapper.includes("if(process.env.RC_QUALIFICATION_RUN_ID)console.log('RC_QUAL_PHASE_PASS_'+marker);"));
   assert.ok(wrapper.includes("if(phase.status!==0){process.exitCode="),'failure must stop subsequent tests');
+});
+
+test('Windows check and test command chains accept only the exact nested package-script delegations',()=>{
+  const pkg=JSON.parse(read('package.json'));
+  let check=prioritizeSensitiveQualificationCommands(boundNodeTestConcurrency(pkg.scripts.check,1).command);
+  check=isolateWindowsAgentHttpRegression(check);
+  check=isolateWindowsStartupReadinessRegressions(check);
+  check=isolateWindowsAsyncHttpRegression(check);
+  const checkPhases=splitWindowsQualificationCommands(check);
+  assert.equal(checkPhases.length,check.split(' && ').length);
+  assert.ok(checkPhases.length>90,'Windows check chain exceeds the old single-test 90-phase ceiling');
+  assert.ok(checkPhases.length<=160,'Windows check chain stays within the explicit phase bound');
+  assert.ok(checkPhases.includes('npm run test:v1-01-worker-grants'));
+  assert.ok(checkPhases.includes('npm run check:v1-01-hybrid-oauth'));
+  let test=prioritizeSensitiveQualificationCommands(boundNodeTestConcurrency(pkg.scripts.test,1).command);
+  test=isolateWindowsAgentHttpRegression(test);
+  test=isolateWindowsProcessTreeRegression(test);
+  test=isolateWindowsTransferMeshHttpRegression(test);
+  test=isolateWindowsLeaseRegression(test);
+  test=isolateWindowsAsyncHttpRegression(test);
+  test=isolateWindowsTimingSensitiveRegressions(test);
+  test=isolateWindowsWorkflowPlanRegression(test);
+  test=isolateWindowsMcpConformanceRegression(test);
+  test=isolateWindowsStartupReadinessRegressions(test);
+  test=prioritizeWindowsAdaptiveCold(test);
+  test=isolateWindowsAutotickRegression(test);
+  const testPhases=splitWindowsQualificationCommands(test);
+  assert.equal(testPhases.length,test.split(' && ').length);
+  assert.ok(testPhases.includes('npm run test:v1-01-hybrid-oauth'));
 });
 
 test('R470 does not misreport a non-TAP failure as a TAP summary; identifies only numeric phase',t=>{
