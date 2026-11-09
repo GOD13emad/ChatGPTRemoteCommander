@@ -375,6 +375,26 @@ test('FULL_ACCESS-only privileged service start requires native privilege proof'
   } finally { await f.dispose(); }
 });
 
+test('configured FULL_POWER cannot authorize a FULL_ACCESS-only effect even when a provider returns an elevated grant', async () => {
+  const f = await fixture({ tool: 'privileged_system_unit_start', args: {} });
+  let effects = 0;
+  try {
+    // The signed owner decision cannot override the separately configured tier ceiling.
+    assert.equal(f.config.capabilityProfile.tier, 'FULL_POWER');
+    f.state.tier = 'FULL_ACCESS';
+    const underlying = f.services.authorizeExecution;
+    f.services.authorizeExecution = async context => ({
+      ...await underlying(context),
+      nativePrivilegeVerified: true
+    });
+    await assert.rejects(
+      run(f, { execute: async () => { effects++; return { ok: true }; } }),
+      { code: 'V102_EFFECTIVE_TIER_EXCEEDS_CONFIGURED_TIER' }
+    );
+    assert.equal(effects, 0);
+  } finally { await f.dispose(); }
+});
+
 test('same request is at-most-once and changed arguments conflict in the durable receipt store', async () => {
   const f = await fixture();
   let effects = 0;

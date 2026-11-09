@@ -166,6 +166,11 @@ function assertDecision(decision, expected, nowMs) {
   if (TIER_RANK[decision.effectiveTier] < TIER_RANK[policy.minimumTier]) {
     fail('V102_EFFECTIVE_TIER_REQUIRED');
   }
+  // A trusted grant cannot increase the configured profile's authorization ceiling.
+  // FULL_ACCESS must be independently enrolled, not inferred from an elevated decision.
+  if (TIER_RANK[decision.effectiveTier] > TIER_RANK[expected.configuredTier]) {
+    fail('V102_EFFECTIVE_TIER_EXCEEDS_CONFIGURED_TIER');
+  }
   const capabilities = new Set(decision.capabilities);
   if (capabilities.size !== decision.capabilities.length) fail('V102_AUTHORIZATION_CLAIMS_INVALID');
   for (const capability of policy.capabilities) {
@@ -235,6 +240,7 @@ export async function executeV102AuthorizedOperation({
     tool, actionDigest: expectedActionDigest, planDigest,
     operationId,
     profileId: config?.capabilityProfile?.id ?? config?.instance?.profile ?? null,
+    configuredTier: config.capabilityProfile.tier,
     hostId: services.hostId ?? null
   });
   if (expected.profileId !== null && !safe(expected.profileId)) fail('V102_PROFILE_ID_INVALID');
