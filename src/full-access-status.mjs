@@ -26,15 +26,14 @@ export function assessAccessStatus(config, proof, {
   const nativeBrokerVerified = verifyPrivilegedBrokerProof(proof, platform);
   const grantedByOwner = profile.explicitlyAuthorized === true;
   const fullPowerEnabled = config?.powerMode?.enabled === true;
-  // Native SYSTEM/root broker identity does not imply a shell grant.
-  // On Windows, an actual elevated token on this *same worker* does.
-  // Restricted shell policy or restricted filesystem still disqualifies it.
+  // Native SYSTEM/root broker identity does not imply a shell grant. Even
+  // elevation of this Worker is not proof of the V102 persistent owner grant.
   const nativeAdminTokenVerified = platform === 'win32' &&
     adminToken?.ok === true && adminToken?.isAdmin === true &&
     adminToken?.isSystem !== true && adminToken?.elevation === 'high' &&
     adminToken?.source === 'local-process-token';
-  // This worker must itself be root. A root broker with a UID 1000 worker
-  // is only a fixed-action helper, never an unrestricted root shell.
+  // Keep the actual Worker token observable; Root is not a substitute for
+  // a broker-bound, revocable V102 owner grant.
   const nativeRootTokenVerified = platform === 'linux' && effectiveUid === 0;
   // FULL_POWER is owner-token execution, never an elevated Administrator,
   // SYSTEM or root process. A standard/non-elevated token is sufficient; an
@@ -62,24 +61,33 @@ export function assessAccessStatus(config, proof, {
   const adminShellScope = pm.allowShell === true && pm.fullFilesystem === true &&
     pm.allowProcessControl === true && Array.isArray(pm.blockedShellPatterns) &&
     pm.blockedShellPatterns.length === 0;
-  // Elevated host capability is operational only when this profile explicitly enrolled FULL_ACCESS.
-  // A STANDARD/FULL_POWER profile must not acquire the tier by running under an elevated OS token.
+  // V102 cannot be satisfied by elevation of this Worker. The installed native
+  // broker only exposes fixed status/start actions and its OS probe does not
+  // authenticate an owner/profile or authorize general protected actions.
+  // No interactive same-owner worker attestation exists at this boundary yet.
+  // Do not infer these grants from config flags, process UID, or os.probe.
+  const brokerOwnerBindingVerified = false;
+  const brokerPrivilegedActionRouteVerified = false;
+  const ownerInteractiveSessionVerified = false;
   const operationalFullAccess = configuredTier === 'FULL_ACCESS' && grantedByOwner &&
-    fullPowerEnabled && (nativeAdminTokenVerified || nativeRootTokenVerified) && adminShellScope;
+    fullPowerEnabled && adminShellScope && nativeBrokerVerified &&
+    brokerOwnerBindingVerified && brokerPrivilegedActionRouteVerified &&
+    ownerInteractiveSessionVerified;
   const fullAccessActive = operationalFullAccess;
   const effectiveTier = !fullPowerEnabled || configuredTier === 'STANDARD' ? 'STANDARD'
     : fullAccessActive ? 'FULL_ACCESS' : hostUserAccess ? 'FULL_POWER' : 'STANDARD';
-  // Report the first real enrollment prerequisite, including missing owner
-  // consent and disabled Power Mode. Do not treat a healthy broker as an OS
-  // privilege grant on the current worker.
+  // Report concrete missing V102 prerequisites, not a misleading instruction
+  // to run the whole Worker as Administrator/Root. Native broker/owner binding
+  // and a same-owner interactive session must be independently attested.
   const fullAccessBlocker = configuredTier !== 'FULL_ACCESS' || fullAccessActive ? null
     : !grantedByOwner ? 'FULL_ACCESS_OWNER_GRANT_REQUIRED'
     : !fullPowerEnabled ? 'POWER_MODE_DISABLED'
-    : platform === 'win32' ? (!nativeAdminTokenVerified
-      ? 'WINDOWS_ADMIN_TOKEN_NOT_ELEVATED' : 'FULL_ACCESS_SHELL_SCOPE_REQUIRED')
-    : platform === 'linux' ? (!nativeRootTokenVerified
-      ? 'LINUX_ROOT_PROCESS_NOT_ELEVATED' : 'FULL_ACCESS_SHELL_SCOPE_REQUIRED')
-    : 'PRIVILEGED_ACTION_SCOPE_NOT_READY';
+    : !nativeBrokerVerified ? 'V102_PRIVILEGED_BROKER_NOT_VERIFIED'
+    : !brokerOwnerBindingVerified || !brokerPrivilegedActionRouteVerified
+      ? 'V102_OWNER_BOUND_PRIVILEGE_ROUTE_NOT_READY'
+    : !ownerInteractiveSessionVerified ? 'V102_INTERACTIVE_OWNER_SESSION_NOT_VERIFIED'
+    : !adminShellScope ? 'FULL_ACCESS_SHELL_SCOPE_REQUIRED'
+    : 'V102_FULL_ACCESS_NOT_READY';
   return {
     configuredTier,
     effectiveTier,
@@ -100,6 +108,19 @@ export function assessAccessStatus(config, proof, {
     operationalFullAccess,
     fullAccessBlocker,
     enrollmentRequired: configuredTier === 'FULL_ACCESS' && !fullAccessActive,
+    effectiveOsPrivilege: {
+      workerToken: nativeRootTokenVerified ? 'root'
+        : nativeAdminTokenVerified ? 'elevated-administrator'
+        : hostUserTokenVerified ? 'ordinary-owner' : 'unverified',
+      brokerIdentity: nativeBrokerVerified ? (platform === 'win32' ? 'SYSTEM' : 'root') : null,
+      ownerBoundPrivilegeRouteVerified: brokerOwnerBindingVerified && brokerPrivilegedActionRouteVerified,
+      privilegedOperationsAuthorized: operationalFullAccess
+    },
+    ownerSession: {
+      verified: ownerInteractiveSessionVerified,
+      code: ownerInteractiveSessionVerified ? 'V102_OWNER_SESSION_VERIFIED'
+        : 'V102_INTERACTIVE_OWNER_SESSION_NOT_VERIFIED'
+    },
     nativeAdmin: {
       verified: nativeAdminTokenVerified,
       nonElevatedTokenVerified: nativeNonElevatedTokenVerified,
@@ -129,7 +150,8 @@ export function assessAccessStatus(config, proof, {
         ? (BROKER_ACTIONS[platform] ?? []).filter(a => a !== 'system_unit.start') : [],
       allowedMutations: [],
       nativeGrantRequiredActions: platform === 'linux' ? ['system_unit.start'] : [],
-      nativeProfileBindingVerified: false,
+      nativeProfileBindingVerified: brokerOwnerBindingVerified,
+      privilegedActionRouteVerified: brokerPrivilegedActionRouteVerified,
       unrestrictedAdminShell: false
     }
   };

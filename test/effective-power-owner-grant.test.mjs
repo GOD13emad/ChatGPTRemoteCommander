@@ -61,7 +61,7 @@ test('explicit capability revocation restricts filesystem, process and browser i
   assert.equal(effective.browserControl.allowInput, false);
 });
 
-test('STANDARD and FULL_POWER never inherit an elevated host token; FULL_ACCESS requires it', () => {
+test('STANDARD and FULL_POWER never inherit elevated host tokens; V102 FULL_ACCESS requires broker/session proof', () => {
   const power = config('FULL_POWER', true);
   const full = config('FULL_ACCESS', true);
   const standard = config('STANDARD', true);
@@ -73,8 +73,10 @@ test('STANDARD and FULL_POWER never inherit an elevated host token; FULL_ACCESS 
   assert.equal(fullAsOwner.effectiveTier, 'FULL_POWER');
   assert.equal(effectivePowerMode(full, {accessStatus:fullAsOwner}).enabled, true);
   assert.equal(effectivePowerMode(full, {accessStatus:fullAsOwner}).allowShell, true);
-  assert.equal(fullAsRoot.effectiveTier, 'FULL_ACCESS');
-  assert.equal(effectivePowerMode(full, {accessStatus:fullAsRoot}).enabled, true);
+  assert.equal(fullAsRoot.effectiveTier, 'STANDARD');
+  assert.equal(fullAsRoot.nativeRoot.verified, true);
+  assert.equal(fullAsRoot.fullAccessBlocker, 'V102_PRIVILEGED_BROKER_NOT_VERIFIED');
+  assert.equal(effectivePowerMode(full, {accessStatus:fullAsRoot}).enabled, false);
   assert.equal(effectivePowerMode(standard, {accessStatus:accessStatus(standard)}).enabled, false);
 });
 
@@ -92,8 +94,10 @@ test('Windows token tiers are distinct and STANDARD never inherits an elevated A
   assert.equal(powerStatus.effectiveTier, 'FULL_POWER');
   assert.equal(powerAsAdmin.effectiveTier, 'STANDARD');
   assert.equal(effectivePowerMode(power, {accessStatus:powerAsAdmin}).enabled, false);
-  assert.equal(fullStatus.effectiveTier, 'FULL_ACCESS');
-  assert.equal(fullStatus.fullAccessActive, true);
+  assert.equal(fullStatus.effectiveTier, 'STANDARD');
+  assert.equal(fullStatus.nativeAdmin.verified, true);
+  assert.equal(fullStatus.fullAccessActive, false);
+  assert.equal(fullStatus.fullAccessBlocker, 'V102_PRIVILEGED_BROKER_NOT_VERIFIED');
   assert.equal(standardStatus.effectiveTier, 'STANDARD');
   assert.equal(effectivePowerMode(standard, {accessStatus:standardStatus}).enabled, false);
 });
@@ -103,8 +107,44 @@ test('FULL_ACCESS cannot fall back to FULL_POWER when its shell policy is restri
   cfg.powerMode.blockedShellPatterns = ['rm'];
   const status = accessStatus(cfg, 0);
   assert.equal(status.effectiveTier, 'STANDARD');
-  assert.equal(status.fullAccessBlocker, 'FULL_ACCESS_SHELL_SCOPE_REQUIRED');
+  assert.equal(status.fullAccessBlocker, 'V102_PRIVILEGED_BROKER_NOT_VERIFIED');
   assert.equal(effectivePowerMode(cfg, {accessStatus:status}).enabled, false);
+});
+
+
+test('V102 recognizes only complete broker plus owner-session attestation on an ordinary owner Worker', () => {
+  // This is a mocked future attestation shape, NOT evidence that the host
+  // currently has this broker or can authorize privileged operations.
+  const cfg=config('FULL_ACCESS', true);
+  const userStatus=accessStatus(cfg, 1000);
+  assert.equal(userStatus.effectiveTier, 'FULL_POWER');
+  const accepted={
+    ...userStatus,
+    configuredTier:'FULL_ACCESS',
+    effectiveTier:'FULL_ACCESS',
+    operationalFullAccess:true,
+    broker:{
+      verified:true,
+      operationalFullAccess:true,
+      nativeProfileBindingVerified:true,
+      privilegedActionRouteVerified:true
+    },
+    ownerSession:{verified:true}
+  };
+  assert.equal(effectivePowerMode(cfg,{accessStatus:accepted}).enabled,true);
+  assert.equal(effectivePowerMode(cfg,{accessStatus:accepted}).allowShell,true);
+  for(const field of [
+    ['broker','verified'],['broker','operationalFullAccess'],
+    ['broker','nativeProfileBindingVerified'],['broker','privilegedActionRouteVerified'],
+    ['ownerSession','verified']
+  ]){
+    const invalid=structuredClone(accepted);
+    invalid[field[0]][field[1]]=false;
+    assert.equal(effectivePowerMode(cfg,{accessStatus:invalid}).enabled,false,
+      field.join('.')+' cannot be omitted');
+  }
+  const noGrant=config('FULL_ACCESS', false);
+  assert.equal(effectivePowerMode(noGrant,{accessStatus:accepted}).enabled,false);
 });
 
 test('missing, mismatched or stale host access status fails closed', () => {
