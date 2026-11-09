@@ -257,11 +257,27 @@ begin
     Params :=
       '-NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "' + PrereqScript + '"' +
       ' -SourceRef "{#MySourceRef}" -ExpectedCommit "{#MyCommit}" -PrerequisitesOnly';
-    WizardForm.StatusLabel.Caption := 'Verifying machine prerequisites...';
-    if not ShellExec('runas', PwshPath, Params, '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
-      RaiseException('Could not elevate prerequisite installation.');
-    if ResultCode <> 0 then
-      RaiseException('Remote Commander prerequisite installer failed with exit code ' + IntToStr(ResultCode) + '.');
+    // Previously verified machine prerequisites need no new UAC. A fresh
+    // installation or a missing protected receipt still takes the native UAC path.
+    WizardForm.StatusLabel.Caption := 'Checking existing machine prerequisites...';
+    Params :=
+      '-NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "' + PrereqScript + '"' +
+      ' -SourceRef "{#MySourceRef}" -ExpectedCommit "{#MyCommit}" -PrerequisitesProbe';
+    if not Exec(PwshPath, Params, '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
+      RaiseException('Could not inspect existing prerequisites.');
+    if ResultCode = 42 then
+    begin
+      Params :=
+        '-NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "' + PrereqScript + '"' +
+        ' -SourceRef "{#MySourceRef}" -ExpectedCommit "{#MyCommit}" -PrerequisitesOnly';
+      WizardForm.StatusLabel.Caption := 'Installing missing machine prerequisites with Windows approval...';
+      if not ShellExec('runas', PwshPath, Params, '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
+        RaiseException('Could not elevate prerequisite installation.');
+      if ResultCode <> 0 then
+        RaiseException('Remote Commander prerequisite installer failed with exit code ' + IntToStr(ResultCode) + '.');
+    end
+    else if ResultCode <> 0 then
+      RaiseException('Remote Commander prerequisite inspection failed with exit code ' + IntToStr(ResultCode) + '.');
 
 #ifdef CoreSourceBundle
     ExtractTemporaryFile('{#CoreBundleName}');

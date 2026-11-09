@@ -6,6 +6,7 @@ param(
   [string]$InstallDir = '',
   [switch]$NoStartServer,
   [switch]$PrerequisitesOnly,
+  [switch]$PrerequisitesProbe,
   [switch]$KeepDownloads
 )
 
@@ -250,10 +251,53 @@ function Write-AllowlistManifest([string]$Commit,[object]$Server,[object]$Defend
   [IO.File]::WriteAllText($ManifestPath,($doc | ConvertTo-Json -Depth 12)+[Environment]::NewLine,[Text.UTF8Encoding]::new($false))
 }
 
-if (-not (Test-Administrator)) { throw 'Run this server installer from an elevated Administrator shell.' }
+# Read-only, unprivileged probe used by Inno before requesting UAC.
+# Exit code 42 means the verified prerequisite installation path is necessary.
+# Never create ProgramData, persist PATH, use network or grant privileges here.
+function Test-ExistingLocalPrerequisites {
+  try {
+    # A fresh installation still requires the original protected machine receipt
+    # and native approval. Only a previously completed bootstrap may skip UAC.
+    $receipt = Get-Item -LiteralPath $ManifestPath -ErrorAction Stop
+    if ($receipt.PSIsContainer -or
+        ($receipt.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0 -or
+        $receipt.Length -lt 20 -or $receipt.Length -gt 131072) { return $false }
+    $prior = Get-Content -LiteralPath $ManifestPath -Raw -Encoding UTF8 |
+      ConvertFrom-Json -ErrorAction Stop
+    if ($prior.schema -ne 1 -or $prior.antivirusExclusionsAdded -ne $false -or
+        -not $prior.server -or
+        [string]$prior.resolvedCommit -cnotmatch '^(?:PREREQUISITES_ONLY|[0-9a-f]{40})$') { return $false }
+    $shell = Get-Command pwsh.exe -ErrorAction Stop
+    $node = Get-Command node.exe -ErrorAction Stop
+    $git = Get-Command git.exe -ErrorAction Stop
+    if (-not $shell.Source -or -not $node.Source -or -not $git.Source) { return $false }
+    $shellVersion = (& $shell.Source -NoLogo -NoProfile -NonInteractive -Command '$PSVersionTable.PSVersion.Major').Trim()
+    $nodeVersion = (& $node.Source --version).Trim()
+    $gitVersion = (& $git.Source --version).Trim()
+    if ($shellVersion -notmatch '^[0-9]+$' -or [int]$shellVersion -lt 7) { return $false }
+    if ($nodeVersion -notmatch '^v([0-9]+)\.' -or [int]$Matches[1] -lt 22) { return $false }
+    if ($gitVersion -notmatch '^git version [0-9]+\.') { return $false }
+    return $true
+  } catch {
+    return $false
+  }
+}
 if ($SourceRef -notmatch '^[A-Za-z0-9._/-]{1,128}$') { throw 'Invalid SourceRef.' }
 if ($ExpectedCommit -and $ExpectedCommit -notmatch '^[0-9a-fA-F]{40}$') { throw 'ExpectedCommit must be a 40-hex SHA.' }
 if ($AccessMode -eq 'Standard' -and $GuiControl -eq 'On') { throw 'GuiControl On requires AccessMode Power.' }
+
+if ($PrerequisitesProbe) {
+  if ($PrerequisitesOnly -or $NoStartServer -or $InstallDir) {
+    throw 'PREREQUISITES_PROBE_EXCLUSIVE_MODE_REQUIRED'
+  }
+  if (Test-ExistingLocalPrerequisites) {
+    Write-Host 'SERVER_PREREQUISITES_LOCAL_PROBE_PASS'
+    exit 0
+  }
+  Write-Host 'SERVER_PREREQUISITES_LOCAL_PROBE_MISSING'
+  exit 42
+}
+if (-not (Test-Administrator)) { throw 'Run this server installer from an elevated Administrator shell.' }
 
 New-Item -ItemType Directory -Force -Path $Downloads | Out-Null
 $server = Get-ServerCoreState
