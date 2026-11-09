@@ -1,5 +1,12 @@
 # Project Brain — ChatGPT Remote Commander
 
+### COMMANDER1-STABLE-TRAIN-20261110 — Owner accepted release progression (documentation only)
+
+The owner superseded the October 2026 pre-v1 public dev-train release policy: starting at `v0.12.0`, **every published numbered minor (0.12, 0.13, ... 0.20, 1.0) must pass its own full Stable gates**. Internal `-dev/-rc` candidates are not public Stable. The immutable signed 0.12 candidate must first verify all nine components and core G1/J01/FULL_ACCESS, Browser/GUI, Delivery, Personal/Server install, rollback, and the accepted eight-host / nineteen-profile migration. Later minors add reliability, GUI/Browser depth, fleet, automation, AI, observability, security and platform coverage without removing 0.12's required baseline. **This section is a continuity pointer, not another release authority or a claim of passing tests.**
+
+Canonical owner-reviewed private roadmap/host mapping: https://app.notion.com/p/410d5b4a86f6813c88dcd3e68ed10833. Normative release gating for this product is in [RELEASE_AUTHORITY.md](RELEASE_AUTHORITY.md) and component architecture in [COMMANDER_ARCHITECTURE.md](COMMANDER_ARCHITECTURE.md). Preserve old release evidence and current live services, coordinate with the separate deployment writer, and update the existing release-train manifest only with actual validation receipts.
+
+
 ## HISTORICAL AUDIT — 2026-10-27: cross-product evidence and architecture
 
 ### RC011-WINDOWS-PARSER-20261027 — dev.8 fail-closed repair
