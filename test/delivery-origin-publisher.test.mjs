@@ -13,13 +13,20 @@ const caller=Object.freeze({
 });
 const bindingId='b'.repeat(32),inputHash='a'.repeat(64),nativeKey=Buffer.alloc(32,73);
 const originAdmissionId='admit:job1';
+const workerIdentity=Object.freeze({workerId:'cw_'+'c'.repeat(64),workerKeyId:'d'.repeat(64),workerGrantRevision:7});
+const workflowScope=Object.freeze({
+  workflowId:'sample',stepId:'first',
+  operationId:'123e4567-e89b-42d3-a456-426614174000',
+  rootFingerprint:'b'.repeat(64),revision:1,
+  leaseId:'c'.repeat(64),fencingToken:2
+});
 const event=Object.freeze({
   eventKey:'operation:job1:complete',source:'operation',sourceId:'job1',
   kind:'COMPLETED',code:'SUCCEEDED',artifact:null,receiptId:'native-receipt1'
 });
 const originalBody=Object.freeze({
   receiptId:event.receiptId,sourceId:event.sourceId,
-  ...caller,correlationId:'route-a',bindingId,inputHash,originAdmissionId
+  ...caller,correlationId:'route-a',bindingId,inputHash,originAdmissionId,...workerIdentity
 });
 const expected=Object.freeze({inputHash,correlationId:'route-a',originAdmissionId});
 const sign=body=>createHmac('sha256',nativeKey).update(stableJson(body)).digest('hex');
@@ -76,9 +83,11 @@ test('verified original receipt binds durable source result to originating conse
     assert.equal(result.bindingEpochHash,createHash('sha256').update(bindingId).digest('hex'));
     assert.equal(result.originReceiptHash,digest(Object.fromEntries([
       'receiptId','eventDigest','hostId','principalId','profileId',
-      'conversationId','correlationId','bindingId','inputHash','sourceId','originAdmissionId'
+      'conversationId','correlationId','bindingId','inputHash','sourceId','originAdmissionId',
+      'workerId','workerKeyId','workerGrantRevision'
     ].map(k=>[k,f.originalRecords.get(event.receiptId)[k]]))));
     assert.equal(result.correlationId,'route-a');
+    assert.deepEqual(result.workerIdentity,workerIdentity);
     assert.equal(JSON.stringify(result).includes(bindingId),false);
     assert.equal(f.checks,1);
     const list=await f.protectedDelivery.execute('delivery_list',{limit:3});
@@ -110,6 +119,19 @@ test('forged, absent or altered signed native execution receipt never publishes'
     assert.equal(f.store.health().pending,0);
   }finally{f.close();}
 });
+test('original execution receipt must bind a well-formed worker identity and grant revision',async()=>{
+  const f=fixture();
+  try{
+    const original=f.originalRecords.get(event.receiptId);
+    const invalid={...original,workerId:'cw_invalid'};
+    f.originalRecords.set(event.receiptId,invalid);
+    f.signatures.set(event.receiptId,sign(invalid));
+    await assert.rejects(()=>f.publisher.publish(event,expected),
+      /DELIVERY_ORIGIN_RECEIPT_MISMATCH/);
+    assert.equal(f.store.health().pending,0);
+  }finally{f.close();}
+});
+
 test('untrusted client-supplied identity or consent fields are denied before verifier',async()=>{
   const f=fixture();
   try{
@@ -214,5 +236,74 @@ test('host must provide exact origin expectation; caller fields are not accepted
         /DELIVERY_ORIGIN_EXPECTED_CONTEXT_REQUIRED/);
       assert.equal(f.store.health().pending,0);
     }
+  }finally{f.close();}
+});
+
+test('signed Host origin binds exact WorkflowStore lease scope to durable result and ACK hash',async()=>{
+  const f=fixture();let reopened=null;
+  try{
+    const record={...f.originalRecords.get(event.receiptId),workflowScope};
+    f.originalRecords.set(event.receiptId,record);
+    f.signatures.set(event.receiptId,sign(record));
+    const expectedScope={...expected,workflowScope};
+    const row=await f.publisher.publish(event,expectedScope);
+    assert.deepEqual(row.workflowScope,workflowScope);
+    assert.equal(row.originReceiptHash,digest(Object.fromEntries([
+      'receiptId','eventDigest','hostId','principalId','profileId',
+      'conversationId','correlationId','bindingId','inputHash','sourceId',
+      'originAdmissionId','workerId','workerKeyId','workerGrantRevision',
+      'workflowScope'
+    ].map(k=>[k,record[k]]))));
+    assert.equal((await f.publisher.publish(event,expectedScope)).deliveryId,row.deliveryId);
+    assert.equal(f.store.get(row.deliveryId,'route-a').resultHash,row.resultHash);
+    await f.protectedDelivery.execute('delivery_claim',{
+      deliveryId:row.deliveryId,attemptId:'scoped-attempt'
+    });
+    const ack=await f.protectedDelivery.execute('delivery_ack',{
+      deliveryId:row.deliveryId,attemptId:'scoped-attempt'
+    });
+    assert.equal(ack.state,'DELIVERED');
+    reopened=new DeliveryStore({directory:path.join(f.root,'delivery'),scope:'owner-a'});
+    const durable=reopened.get(row.deliveryId,'route-a');
+    assert.deepEqual(durable.workflowScope,workflowScope);
+    assert.equal(durable.originReceiptHash,row.originReceiptHash);
+    assert.equal(durable.resultHash,row.resultHash);
+    assert.equal(durable.receiptId,ack.receiptId);
+  }finally{reopened?.close();f.close();}
+});
+
+test('signed workflow receipt fails closed on absent, mismatched or malformed Host lease context',async()=>{
+  const f=fixture();
+  try{
+    const original=f.originalRecords.get(event.receiptId);
+    const scoped={...original,workflowScope};
+    f.originalRecords.set(event.receiptId,scoped);
+    f.signatures.set(event.receiptId,sign(scoped));
+    await assert.rejects(()=>f.publisher.publish(event,expected),
+      /DELIVERY_ORIGIN_OPERATION_MISMATCH/);
+    await assert.rejects(()=>f.publisher.publish(event,{...expected,
+      workflowScope:{...workflowScope,fencingToken:3}}),
+      /DELIVERY_ORIGIN_OPERATION_MISMATCH/);
+    const getter={...workflowScope};
+    Object.defineProperty(getter,'leaseId',{enumerable:true,get(){throw Error('UNTRUSTED_GETTER');}});
+    await assert.rejects(()=>f.publisher.publish(event,{...expected,workflowScope:getter}),
+      /DELIVERY_WORKFLOW_SCOPE_INVALID/);
+    for(const bad of [
+      {...workflowScope,rootFingerprint:'bad'},
+      {...workflowScope,revision:-1},
+      {...workflowScope,operationId:'not-an-operation-id'},
+      {...workflowScope,extra:'injected'}
+    ]){
+      const forged={...original,workflowScope:bad};
+      f.originalRecords.set(event.receiptId,forged);
+      f.signatures.set(event.receiptId,sign(forged));
+      await assert.rejects(()=>f.publisher.publish(event,{...expected,workflowScope}),
+        /DELIVERY_WORKFLOW_SCOPE_INVALID/);
+    }
+    f.originalRecords.set(event.receiptId,original);
+    f.signatures.set(event.receiptId,sign(original));
+    await assert.rejects(()=>f.publisher.publish(event,{...expected,workflowScope}),
+      /DELIVERY_ORIGIN_OPERATION_MISMATCH/);
+    assert.equal(f.store.health().pending,0);
   }finally{f.close();}
 });

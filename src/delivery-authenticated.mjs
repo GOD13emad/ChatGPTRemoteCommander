@@ -37,6 +37,25 @@ const UNTRUSTED_FIELDS = new Set([
 ]);
 const fail = code => { throw Object.assign(new Error(code), {deliveryCode:code}); };
 const record = x => x !== null && typeof x === 'object' && !Array.isArray(x);
+const WORKER_ID=/^cw_[a-f0-9]{64}$/;
+const WORKER_KEY_ID=/^[a-f0-9]{64}$/;
+function workerIdentity(value) {
+  if (!record(value) || Object.getPrototypeOf(value)!==Object.prototype
+    || Reflect.ownKeys(value).length!==3) fail('DELIVERY_AUTH_WORKER_IDENTITY_INVALID');
+  const read=key=>{
+    const d=Object.getOwnPropertyDescriptor(value,key);
+    if(!d||!d.enumerable||!Object.hasOwn(d,'value'))
+      fail('DELIVERY_AUTH_WORKER_IDENTITY_INVALID');
+    return d.value;
+  };
+  const workerId=read('workerId'),workerKeyId=read('workerKeyId');
+  const workerGrantRevision=read('workerGrantRevision');
+  if(typeof workerId!=='string'||!WORKER_ID.test(workerId)
+    ||typeof workerKeyId!=='string'||!WORKER_KEY_ID.test(workerKeyId)
+    ||!Number.isSafeInteger(workerGrantRevision)||workerGrantRevision<1)
+    fail('DELIVERY_AUTH_WORKER_IDENTITY_INVALID');
+  return Object.freeze({workerId,workerKeyId,workerGrantRevision});
+}
 function identity(value, code) {
   if (!record(value) || FIELDS.some(k => typeof value[k] !== 'string' || !ID.test(value[k]))) fail(code);
   const sessionId=trustedSessionId(value);
@@ -156,15 +175,20 @@ export function createAuthenticatedDeliveryTools({
         if (item.attemptId !== scopedArgs.attemptId
           || (item.state !== 'DELIVERY_PENDING' && item.state !== 'DELIVERED'))
           fail('DELIVERY_AUTH_PRESENTATION_MISMATCH');
+        const worker = item.workerIdentity == null ? null : workerIdentity(item.workerIdentity);
+        if (item.originReceiptHash != null && !worker)
+          fail('DELIVERY_AUTH_WORKER_IDENTITY_REQUIRED');
         const receiptRequest = Object.freeze({
           ...caller, bindingId, deliveryId:scopedArgs.deliveryId, correlationId:scopedArgs.correlationId,
-          attemptId:scopedArgs.attemptId, resultHash:item.resultHash
+          attemptId:scopedArgs.attemptId, resultHash:item.resultHash,
+          ...(worker ? worker : {})
         });
         const proof = await attestPresentation(receiptRequest);
         if (!record(proof) || proof.verified !== true
           || typeof proof.presentationId !== 'string' || !ID.test(proof.presentationId)
           || FIELDS.some(k=>proof[k] !== caller[k])
-          || ['bindingId','deliveryId','correlationId','attemptId','resultHash']
+          || ['bindingId','deliveryId','correlationId','attemptId','resultHash',
+             ...(worker ? ['workerId','workerKeyId','workerGrantRevision'] : [])]
             .some(k=>proof[k] !== receiptRequest[k]))
           fail('DELIVERY_AUTH_PRESENTATION_MISMATCH');
         // A user can switch tabs/accounts while a native receipt is checked.

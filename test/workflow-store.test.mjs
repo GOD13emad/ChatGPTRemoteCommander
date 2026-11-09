@@ -97,6 +97,50 @@ test('scheduler store installs indexes for bounded large-history recovery',()=>{
 }finally{f.dispose();}});
 
 test('stale revision cannot overwrite new memory',()=>{const f=fixture();try{f.create();f.s.note({id:'sample',expectedRevision:1,kind:'decision',text:'A'});assert.throws(()=>f.s.note({id:'sample',expectedRevision:1,kind:'decision',text:'B'}),/REVISION_CONFLICT/);}finally{f.dispose();}});
+test('workflow call binds canonical root lease and step identity to Host dispatch and durable receipts',async()=>{
+ const f=fixture();try{
+  f.create();let dispatched=null;
+  const result=await f.s.call({
+    id:'sample',stepId:'first',expectedRevision:1,tool:'read_text',arguments:{path:'x'}
+  },host(async(_tool,_args,_state,scope)=>{
+    dispatched=scope;
+    assert.ok(Object.isFrozen(scope));
+    return {ok:true};
+  }));
+  const scope=result.receipt.workflowScope;
+  assert.ok(scope);
+  assert.deepEqual(Object.keys(scope).sort(),[
+    'fencingToken','leaseId','operationId','revision','rootFingerprint','stepId','workflowId'
+  ]);
+  assert.deepEqual(dispatched,scope);
+  assert.deepEqual(result.operation.workflowScope,scope);
+  const step=f.s.get('sample').state.steps[0];
+  assert.deepEqual(step.workflowScope,scope);
+  assert.equal(step.leaseRevision,1);
+  assert.equal(step.leaseId,scope.leaseId);
+  assert.equal(step.rootFingerprint,scope.rootFingerprint);
+  assert.equal(scope.workflowId,'sample');
+  assert.equal(scope.stepId,'first');
+  assert.equal(scope.operationId,result.operation.operationId);
+  assert.equal(scope.revision,1);
+  assert.equal(scope.fencingToken,result.operation.fencingToken);
+  assert.equal(scope.rootFingerprint,hash(canonical({device:'fixture',root:f.root})));
+  assert.match(scope.leaseId,/^[a-f0-9]{64}$/);
+  assert.notEqual(scope.leaseId,scope.operationId);
+ }finally{f.dispose();}
+});
+test('workflow calls omit lease-bound scope when one-writer-per-root is explicitly disabled',async()=>{
+ const f=fixture({schedulerPolicy:{oneWriterPerRoot:false}});try{
+  f.create();let dispatched='unset';
+  const result=await f.s.call({
+    id:'sample',stepId:'first',expectedRevision:1,tool:'read_text',arguments:{path:'x'}
+  },host(async(_tool,_args,_state,scope)=>{dispatched=scope;return{ok:true};}));
+  assert.equal(dispatched,null);
+  assert.equal(Object.hasOwn(result.receipt,'workflowScope'),false);
+  assert.equal(Object.hasOwn(result.operation,'workflowScope'),false);
+  assert.equal(Object.hasOwn(f.s.get('sample').state.steps[0],'workflowScope'),false);
+ }finally{f.dispose();}
+});
 test('exact duplicate returns receipt and never executes twice',async()=>{const f=fixture();try{
  f.create();let n=0;const h=host(async()=>{n++;return{ok:true};});const a={id:'sample',stepId:'first',expectedRevision:1,tool:'read_text',arguments:{path:'x'}};
  await f.s.call(a,h); const b=await f.s.call(a,h);assert.equal(b.cachedReceipt,true);assert.equal(n,1);assert.equal(f.s.get('sample').state.revision,3);

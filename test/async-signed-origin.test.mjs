@@ -15,6 +15,7 @@ const fixture=path.join(path.dirname(fileURLToPath(import.meta.url)),
   'async-operation-fixture.mjs');
 const worker=fileURLToPath(new URL('../tools/operation-worker.mjs',import.meta.url));
 const bindingId='a'.repeat(32);
+const workerIdentity=Object.freeze({workerId:'cw_'+'c'.repeat(64),workerKeyId:'d'.repeat(64),workerGrantRevision:7});
 const caller=Object.freeze({
   hostId:'host1',principalId:'principal1',profileId:'profile1',conversationId:'chat1'
 });
@@ -153,7 +154,8 @@ async function setup(){
         receiptId:'receipt:'+request.operationId,
         eventDigest:digest(request.event),sourceId:request.operationId,
         inputHash:admitted.inputHash,...caller,correlationId:admitted.correlationId,
-        bindingId:admitted.bindingId,originAdmissionId:request.originAdmissionId
+        bindingId:admitted.bindingId,originAdmissionId:request.originAdmissionId,
+        ...workerIdentity
       };
       issued.set(original.receiptId,{value:original,signature:sign(original)});
       ctx.issueCount++;
@@ -1658,10 +1660,9 @@ test('stalled original execution receipt issuer cannot publish unsigned terminal
     });
     // A detached worker may still be RUNNING after 550ms on a loaded host.
     // Check the Host timeout only once the worker actually becomes terminal.
-    await Promise.race([
+    await boundedTestWait(
       f.waitFor(manager,started.operationId,12000),
-      sleep(14500).then(()=>{throw Error('ISSUER_TERMINAL_WAIT_UNBOUNDED');})
-    ]);
+      'ISSUER_TERMINAL_WAIT_UNBOUNDED',14500);
     const state=await Promise.race([
       manager.execute('operation_status',{operationId:started.operationId}),
       sleep(2200).then(()=>{throw Error('ISSUER_WAIT_UNBOUNDED');})

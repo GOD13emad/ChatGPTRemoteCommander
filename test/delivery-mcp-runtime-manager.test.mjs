@@ -71,6 +71,7 @@ function fixture(){
     presentationIssuer:'native-owner-service',
     presentationAudience:'commander-delivery',
     presentationPublicKeys:trustedKeys,
+    assertWorkerIdentityCurrent:async()=>true,
     fetchSignedPresentationReceipt:async request=>{
       if(proofGate)await proofGate(request);
       return signProof(request,signer.keyPair,signer.keyId);

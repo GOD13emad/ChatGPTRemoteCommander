@@ -247,6 +247,17 @@ test('MCP wrapper preserves successful results and converts callback failures to
 });
 
 
+test('worker-current revocation failures map to a bounded MCP error',()=>{
+  const result=toProtectedDeliveryMcpErrorResult(Object.assign(
+    new Error('private worker registry details'),
+    {code:'DELIVERY_PRESENTATION_WORKER_NOT_CURRENT'}
+  ));
+  assert.equal(result.isError,true);
+  assert.deepEqual(result.structuredContent,{
+    ok:false,code:'WORKER_IDENTITY_NOT_CURRENT'
+  });
+  assert.equal(JSON.stringify(result).includes('private worker registry details'),false);
+});
 test('MCP error contract preserves consent-epoch and authenticated-caller failure classes',()=>{
   const epoch=toProtectedDeliveryMcpErrorResult(Object.assign(new Error('private'),{
     code:'DELIVERY_AUTH_RESULT_EPOCH_MISMATCH'

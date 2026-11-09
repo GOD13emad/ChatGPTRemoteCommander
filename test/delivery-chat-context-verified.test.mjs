@@ -263,6 +263,7 @@ test('signed identity and presentation compose into the protected MCP Host runti
       presentationIssuer:'host-issuer',
       presentationAudience:'commander-delivery',
       presentationPublicKeys:trustedKeys,
+      assertWorkerIdentityCurrent:async()=>true,
       fetchSignedPresentationReceipt:async()=>{throw Error('NATIVE_PRESENTATION_UNAVAILABLE');},
       now:()=>f.state.now
     });
@@ -367,6 +368,7 @@ test('signed caller key rotation rejects retired signatures and forbids downgrad
     verifiedHttpsTransport:{postVerifiedHttps:async()=>({status:200,body:'{}'})},
     presentationIssuer:'host-issuer',presentationAudience:'commander-delivery',
     presentationPublicKeys:trustedKeys,
+    assertWorkerIdentityCurrent:async()=>true,
     fetchSignedPresentationReceipt:async()=>{throw Error('NOT_NATIVE');},
     now:()=>NOW
   });
@@ -511,6 +513,7 @@ test('signed Host current-chat subscriptions register and session swap during ca
     },
     presentationIssuer:'host-issuer',presentationAudience:'commander-delivery',
     presentationPublicKeys:trustedKeys,
+      assertWorkerIdentityCurrent:async()=>true,
     fetchSignedPresentationReceipt:async()=>{throw Error('NATIVE_DISPLAY_UNAVAILABLE');},
     now:()=>f.state.now
   });

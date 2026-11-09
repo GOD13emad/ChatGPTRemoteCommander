@@ -318,3 +318,16 @@ This increment is intentionally narrow: one private text artifact at a time, one
 - https://learn.chatgpt.com/docs/config-file/config-reference
 - https://code.claude.com/docs/en/cli-reference
 - https://code.claude.com/docs/en/headless
+
+
+## 2026-11-08 — V1-05 root-lease scope binding in the 0.12 integration candidate (NoPromote)
+
+The canonical `integration/v012-core-20261108` worktree now carries the minimal V1-05 workflow-scope binding needed by the V1-06 receipt handoff:
+
+- `WorkflowStore.call` derives a canonical `rootFingerprint` and deterministic `leaseId` from the same active root lease and step admission, alongside `workflowId`, `stepId`, `operationId`, workflow `revision` and `fencingToken`.
+- The frozen scope is stored in the durable step and receipt, returned in operation metadata, and passed as the fourth internal Host-dispatch argument. `server-v0.3` exposes it as `ctx.workflowOperation`. The store recomputes the lease identity and root fingerprint before and after dispatch; disabling one-writer-per-root intentionally emits no lease-bound scope.
+- Focused workflow store/tools tests: **42/42 PASS**; complete workflow suite: **468/468 PASS**; full check qualification: **186/186 PASS**; full test qualification: **207/207 PASS**; security audit: `SECURITY_AUDIT_PASS`; `git diff --check` PASS.
+
+**Still open:** the scope is not yet signed into V1-06's original Host execution receipt. The V1-05 feature worktree `integration/v105-hybrid-engine-20261107` contains broader process-containment and proof-based reconciliation changes, but it remains dirty/unintegrated. Its focused four-suite run was **58 PASS / 3 Windows-only skips / 0 failures** and its security audit passed. Do not merge that entire worktree: it includes overlapping V1-01/V1-07 worker identity changes and older release/planner changes. V1-00 must selectively review and integrate the process-containment/reconciliation delta, then qualify native Windows Job Object and Linux process-scope behavior. No installed runtime, production owner/provider, J01 consent, or fleet acceptance is claimed.
+
+The release manifest remains `INTEGRATION_CANDIDATE_NOT_FINAL` with publication, autoupdate and installed-promotion approvals false. No commit, push, install, service restart or production enrollment occurred.

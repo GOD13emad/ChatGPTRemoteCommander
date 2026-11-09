@@ -132,14 +132,17 @@ export function createProtectedDeliveryMcpEventsRuntime({
  */
 export function createProtectedDeliveryMcpEventsRuntimeWithSignedPresentation({
   presentationIssuer,presentationAudience,presentationPublicKeys,
-  fetchSignedPresentationReceipt,...runtimeOptions
+  fetchSignedPresentationReceipt,assertWorkerIdentityCurrent,...runtimeOptions
 }={}){
   if(Object.hasOwn(runtimeOptions,'attestPresentation'))
     fail('DELIVERY_EVENTS_PRESENTATION_CONFIG_AMBIGUOUS');
+  if(typeof assertWorkerIdentityCurrent!=='function')
+    fail('DELIVERY_PRESENTATION_TRUST_REQUIRED');
   const attestPresentation=createSignedDeliveryPresentationAttestor({
     issuer:presentationIssuer,audience:presentationAudience,
     publicKeys:presentationPublicKeys,
     fetchSignedReceipt:fetchSignedPresentationReceipt,
+    assertWorkerIdentityCurrent,
     now:runtimeOptions.now??Date.now
   });
   return createProtectedDeliveryMcpEventsRuntime({
@@ -251,6 +254,7 @@ const MCP_FAILURES = Object.freeze({
   DELIVERY_PRESENTATION_EXPIRED: ['PRESENTATION_PROOF_EXPIRED','The host presentation receipt is expired or outside the allowed time window.'],
   DELIVERY_PRESENTATION_KEY_UNTRUSTED: ['PRESENTATION_KEY_UNTRUSTED','The host presentation signing key is not trusted.'],
   DELIVERY_PRESENTATION_ISSUER_MISMATCH: ['PRESENTATION_ISSUER_MISMATCH','The host presentation issuer or audience did not match.'],
+  DELIVERY_PRESENTATION_WORKER_NOT_CURRENT: ['WORKER_IDENTITY_NOT_CURRENT','The originating worker is no longer active for this delivery.'],
   DELIVERY_ORIGIN_TRUSTED_HOST_REQUIRED: ['ORIGINAL_HOST_RECEIPT_REQUIRED','The original execution host could not attest this result.'],
   DELIVERY_ORIGIN_RECEIPT_INVALID: ['ORIGINAL_HOST_RECEIPT_INVALID','The original execution receipt is invalid.'],
   DELIVERY_ORIGIN_RECEIPT_MISMATCH: ['ORIGINAL_HOST_RECEIPT_MISMATCH','The original execution receipt did not match this result.'],

@@ -13,13 +13,21 @@ import {createProtectedDeliveryMcpEventsRuntimeWithSignedPresentation} from '../
 import {DELIVERY_MCP_EVENT} from '../src/delivery-mcp-events.mjs';
 
 const TIME=Date.UTC(2026,10,7,3,0,0);
-const DOMAIN='commander.delivery.presentation.v1';
-const FIELDS=[
+const DOMAIN_V1='commander.delivery.presentation.v1';
+const DOMAIN_V2='commander.delivery.presentation.v2';
+const FIELDS_V1=[
   'issuer','audience','hostId','principalId','profileId','conversationId',
   'bindingId','deliveryId','correlationId','attemptId','resultHash',
   'presentationId','issuedAtMs','expiresAtMs','nonce'
 ];
+const FIELDS_V2=[
+  'issuer','audience','hostId','principalId','profileId','conversationId',
+  'bindingId','workerId','workerKeyId','workerGrantRevision',
+  'deliveryId','correlationId','attemptId','resultHash',
+  'presentationId','issuedAtMs','expiresAtMs','nonce'
+];
 const EPOCH='b'.repeat(32);
+const WORKER_IDENTITY=Object.freeze({workerId:'cw_'+'c'.repeat(64),workerKeyId:'d'.repeat(64),workerGrantRevision:7});
 const CALLER=Object.freeze({
   hostId:'host-one',principalId:'owner-one',
   profileId:'profile-one',conversationId:'chat-one'
@@ -29,10 +37,11 @@ function fixture(){
   const store=new DeliveryStore({directory:path.join(root,'db'),scope:'profile-one'});
   const keys=generateKeyPairSync('ed25519');
   const trust=new Map([['host-key-1',keys.publicKey]]);
-  const state={caller:CALLER,correlationId:'route-one',bindingId:EPOCH,grant:true,proof:null};
+  const state={caller:CALLER,correlationId:'route-one',bindingId:EPOCH,grant:true,workerCurrent:true,workerChecks:[],proof:null};
   const item=store.publish({
     eventKey:'operation:job-one:complete',correlationId:'route-one',
-    source:'operation',sourceId:'job-one',kind:'COMPLETED',bindingId:EPOCH
+    source:'operation',sourceId:'job-one',kind:'COMPLETED',bindingId:EPOCH,
+    originReceiptHash:'e'.repeat(64),workerIdentity:WORKER_IDENTITY
   });
   const signProof=(request,change={},privateKey=keys.privateKey,keyId='host-key-1')=>{
     const claims={
@@ -40,15 +49,22 @@ function fixture(){
       ...request,presentationId:'host-display-1',
       issuedAtMs:TIME-1000,expiresAtMs:TIME+10000,nonce:'nonce-1',...change
     };
+    const workerBound=Object.hasOwn(request,'workerId');
+    const fields=workerBound?FIELDS_V2:FIELDS_V1;
+    const domain=workerBound?DOMAIN_V2:DOMAIN_V1;
     const message=Buffer.from(JSON.stringify([
-      DOMAIN,keyId,...FIELDS.map(k=>claims[k])
+      domain,keyId,...fields.map(k=>claims[k])
     ]));
-    return {schema:1,keyId,claims,signature:sign(null,message,privateKey).toString('base64url')};
+    return {schema:workerBound?2:1,keyId,claims,
+      signature:sign(null,message,privateKey).toString('base64url')};
   };
   let signer=({request})=>signProof(request);
   const verifier=createSignedDeliveryPresentationAttestor({
     issuer:'native-owner-service',audience:'commander-delivery',
     publicKeys:trust,now:()=>TIME,
+    assertWorkerIdentityCurrent:async identity=>{
+      state.workerChecks.push(identity);return state.workerCurrent;
+    },
     fetchSignedReceipt:async request=>state.proof??signer({request})
   });
   const adapter=createAuthenticatedDeliveryTools({
@@ -73,7 +89,116 @@ test('signed Host presentation is required to ACK, and a lost ACK response is id
     assert.equal(first.state,'DELIVERED');
     assert.equal(retry.receiptId,first.receiptId);
     assert.equal(retry.attempts,1);
+    assert.equal(f.state.workerChecks.length,2);
+    assert.equal(f.state.workerChecks[0].workerId,WORKER_IDENTITY.workerId);
+    assert.equal(f.state.workerChecks[0].workerKeyId,WORKER_IDENTITY.workerKeyId);
+    assert.equal(f.state.workerChecks[0].workerGrantRevision,WORKER_IDENTITY.workerGrantRevision);
     assert.equal(f.store.get(f.item.deliveryId,'route-one').receiptId,first.receiptId);
+  }finally{f.close();}
+});
+test('legacy pre-identity delivery rows retain the isolated v1 presentation protocol',async()=>{
+  const f=fixture();
+  try{
+    const legacy=f.store.publish({
+      eventKey:'operation:legacy-presentation',correlationId:'route-one',
+      source:'operation',sourceId:'legacy-presentation',kind:'COMPLETED',bindingId:EPOCH
+    });
+    let received;
+    const verifier=createSignedDeliveryPresentationAttestor({
+      issuer:'native-owner-service',audience:'commander-delivery',
+      publicKeys:f.trust,now:()=>TIME,
+      fetchSignedReceipt:async request=>{
+        received=request;
+        assert.equal(Object.hasOwn(request,'workerId'),false);
+        return f.signProof(request);
+      }
+    });
+    const adapter=createAuthenticatedDeliveryTools({
+      store:f.store,observeCaller:async()=>f.state.caller,
+      resolveBinding:async()=>({...f.state.caller,
+        correlationId:f.state.correlationId,bindingId:EPOCH}),
+      authorizeDelivery:async()=>f.state.grant,attestPresentation:verifier
+    });
+    await adapter.execute('delivery_claim',{
+      deliveryId:legacy.deliveryId,attemptId:'legacy-attempt'
+    });
+    const ack=await adapter.execute('delivery_ack',{
+      deliveryId:legacy.deliveryId,attemptId:'legacy-attempt'
+    });
+    assert.equal(ack.state,'DELIVERED');
+    assert.equal(received.workerId,undefined);
+    assert.equal(f.store.get(legacy.deliveryId,'route-one').receiptId,ack.receiptId);
+  }finally{f.close();}
+});
+test('legacy v1 presentation signatures cannot ACK a worker-bound v2 result',async()=>{
+  const f=fixture();
+  try{
+    await claim(f);
+    f.setSigner(({request})=>{
+      const legacyRequest=Object.fromEntries(FIELDS_V1.map(k=>[k,request[k]]));
+      return f.signProof(legacyRequest);
+    });
+    await assert.rejects(()=>f.adapter.execute('delivery_ack',ackInput(f)),
+      /DELIVERY_PRESENTATION_ENVELOPE_INVALID/);
+    assert.equal(f.store.get(f.item.deliveryId,'route-one').state,'DELIVERY_PENDING');
+    assert.equal(f.store.get(f.item.deliveryId,'route-one').receiptId,null);
+  }finally{f.close();}
+});
+test('revoked or regranted worker identity cannot ACK a worker-bound result',async()=>{
+  const f=fixture();
+  try{
+    await claim(f);
+    f.state.workerCurrent=false;
+    await assert.rejects(()=>f.adapter.execute('delivery_ack',ackInput(f)),
+      /DELIVERY_PRESENTATION_WORKER_NOT_CURRENT/);
+    const after=f.store.get(f.item.deliveryId,'route-one');
+    assert.equal(after.state,'DELIVERY_PENDING');
+    assert.equal(after.receiptId,null);
+    assert.equal(f.state.workerChecks.length,1);
+  }finally{f.close();}
+});
+test('worker-bound v2 presentation fails closed when the Host omits its live registry check',async()=>{
+  const f=fixture();
+  try{
+    await claim(f);
+    const verifier=createSignedDeliveryPresentationAttestor({
+      issuer:'native-owner-service',audience:'commander-delivery',
+      publicKeys:f.trust,now:()=>TIME,
+      fetchSignedReceipt:async request=>f.signProof(request)
+    });
+    const adapter=createAuthenticatedDeliveryTools({
+      store:f.store,observeCaller:async()=>f.state.caller,
+      resolveBinding:async()=>({...f.state.caller,
+        correlationId:f.state.correlationId,bindingId:EPOCH}),
+      authorizeDelivery:async()=>f.state.grant,attestPresentation:verifier
+    });
+    await assert.rejects(()=>adapter.execute('delivery_ack',ackInput(f)),
+      /DELIVERY_PRESENTATION_WORKER_NOT_CURRENT/);
+    assert.equal(f.store.get(f.item.deliveryId,'route-one').state,'DELIVERY_PENDING');
+    assert.equal(f.store.get(f.item.deliveryId,'route-one').receiptId,null);
+  }finally{f.close();}
+});
+test('presentation that expires during the asynchronous worker-current check cannot ACK',async()=>{
+  const f=fixture();
+  try{
+    await claim(f);
+    let clock=TIME;
+    const verifier=createSignedDeliveryPresentationAttestor({
+      issuer:'native-owner-service',audience:'commander-delivery',
+      publicKeys:f.trust,now:()=>clock,
+      fetchSignedReceipt:async request=>f.signProof(request),
+      assertWorkerIdentityCurrent:async()=>{clock=TIME+10001;return true;}
+    });
+    const adapter=createAuthenticatedDeliveryTools({
+      store:f.store,observeCaller:async()=>f.state.caller,
+      resolveBinding:async()=>({...f.state.caller,
+        correlationId:f.state.correlationId,bindingId:EPOCH}),
+      authorizeDelivery:async()=>f.state.grant,attestPresentation:verifier
+    });
+    await assert.rejects(()=>adapter.execute('delivery_ack',ackInput(f)),
+      /DELIVERY_PRESENTATION_EXPIRED/);
+    assert.equal(f.store.get(f.item.deliveryId,'route-one').state,'DELIVERY_PENDING');
+    assert.equal(f.store.get(f.item.deliveryId,'route-one').receiptId,null);
   }finally{f.close();}
 });
 test('forged signature cannot ACK even with valid-looking Host claims',async()=>{
@@ -95,7 +220,9 @@ test('properly signed wrong original chat, attempt, result or consent epoch cann
       {conversationId:'chat-other'}, {principalId:'owner-other'},
       {attemptId:'attempt-other'}, {resultHash:'f'.repeat(64)},
       {bindingId:'c'.repeat(32)}, {deliveryId:'f'.repeat(36)},
-      {correlationId:'route-other'}
+      {correlationId:'route-other'},
+      {workerId:'cw_'+'f'.repeat(64)}, {workerKeyId:'f'.repeat(64)},
+      {workerGrantRevision:99}
     ]){
       f.setSigner(({request})=>f.signProof(request,change));
       await assert.rejects(()=>f.adapter.execute('delivery_ack',ackInput(f)),
@@ -169,7 +296,8 @@ test('owner grant revoked while native proof awaits cannot commit ACK',async()=>
     let cached;
     const signed=createSignedDeliveryPresentationAttestor({
       issuer:'native-owner-service',audience:'commander-delivery',
-      publicKeys:f.trust,now:()=>TIME,fetchSignedReceipt:async request=>{
+      publicKeys:f.trust,now:()=>TIME,assertWorkerIdentityCurrent:async()=>true,
+      fetchSignedReceipt:async request=>{
         cached=f.signProof(request);
         f.state.grant=false;
         return cached;
@@ -208,7 +336,8 @@ test('trusted Host key rotation supports overlap and revocation removes the reti
     const rotated=generateKeyPairSync('ed25519');
     const overlapItem=f.store.publish({
       eventKey:'operation:key-rotation-overlap',correlationId:'route-one',
-      source:'operation',sourceId:'key-rotation-overlap',kind:'COMPLETED',bindingId:EPOCH
+      source:'operation',sourceId:'key-rotation-overlap',kind:'COMPLETED',bindingId:EPOCH,
+       originReceiptHash:'e'.repeat(64),workerIdentity:WORKER_IDENTITY
     });
     await f.adapter.execute('delivery_claim',{
       deliveryId:overlapItem.deliveryId,attemptId:'attempt-overlap'
@@ -218,7 +347,7 @@ test('trusted Host key rotation supports overlap and revocation removes the reti
       publicKeys:new Map([
         ['host-key-1',f.keys.publicKey],['host-key-2',rotated.publicKey]
       ]),
-      now:()=>TIME,
+      now:()=>TIME,assertWorkerIdentityCurrent:async()=>true,
       fetchSignedReceipt:async request=>
         f.signProof(request,{},rotated.privateKey,'host-key-2')
     });
@@ -237,7 +366,8 @@ test('trusted Host key rotation supports overlap and revocation removes the reti
 
     const revokedItem=f.store.publish({
       eventKey:'operation:key-rotation-revoked',correlationId:'route-one',
-      source:'operation',sourceId:'key-rotation-revoked',kind:'COMPLETED',bindingId:EPOCH
+      source:'operation',sourceId:'key-rotation-revoked',kind:'COMPLETED',bindingId:EPOCH,
+       originReceiptHash:'e'.repeat(64),workerIdentity:WORKER_IDENTITY
     });
     await f.adapter.execute('delivery_claim',{
       deliveryId:revokedItem.deliveryId,attemptId:'attempt-revoked'
@@ -270,6 +400,12 @@ test('runtime composition refuses injected presentation attestators and missing 
   }),/DELIVERY_EVENTS_PRESENTATION_CONFIG_AMBIGUOUS/);
   assert.throws(()=>createProtectedDeliveryMcpEventsRuntimeWithSignedPresentation({}),
     /DELIVERY_PRESENTATION_TRUST_REQUIRED/);
+  const key=generateKeyPairSync('ed25519');
+  assert.throws(()=>createProtectedDeliveryMcpEventsRuntimeWithSignedPresentation({
+    presentationIssuer:'native-owner-service',presentationAudience:'commander-delivery',
+    presentationPublicKeys:new Map([['host-key-1',key.publicKey]]),
+    fetchSignedPresentationReceipt:async()=>({})
+  }),/DELIVERY_PRESENTATION_TRUST_REQUIRED/);
 });
 
 test('runtime composes the signed Host verifier; webhook 2xx never ACKs presentation',async()=>{
@@ -285,7 +421,8 @@ test('runtime composes the signed Host verifier; webhook 2xx never ACKs presenta
   const sealed=new Map(),requests=[];
   const item=deliveryStore.publish({
     bindingId,eventKey:'operation:runtime:complete',source:'operation',
-    sourceId:'runtime',correlationId,kind:'COMPLETED'
+    sourceId:'runtime',correlationId,kind:'COMPLETED',
+     originReceiptHash:'e'.repeat(64),workerIdentity:WORKER_IDENTITY
   });
   const runtime=createProtectedDeliveryMcpEventsRuntimeWithSignedPresentation({
     deliveryStore,subscriptionStore,
@@ -312,17 +449,21 @@ test('runtime composes the signed Host verifier; webhook 2xx never ACKs presenta
     presentationIssuer:'native-owner-service',
     presentationAudience:'commander-delivery',
     presentationPublicKeys:new Map([['host-key-1',keys.publicKey]]),
+    assertWorkerIdentityCurrent:async()=>true,
     fetchSignedPresentationReceipt:async request=>{
       const claims={
         issuer:'native-owner-service',audience:'commander-delivery',
         ...request,presentationId:'native-display-runtime',
         issuedAtMs:TIME-1000,expiresAtMs:TIME+10000,nonce:'runtime-nonce'
       };
+      const workerBound=Object.hasOwn(request,'workerId');
+      const fields=workerBound?FIELDS_V2:FIELDS_V1;
+      const domain=workerBound?DOMAIN_V2:DOMAIN_V1;
       const keyId='host-key-1';
       const bytes=Buffer.from(JSON.stringify([
-        DOMAIN,keyId,...FIELDS.map(k=>claims[k])
+        domain,keyId,...fields.map(k=>claims[k])
       ]));
-      return {schema:1,keyId,claims,
+      return {schema:workerBound?2:1,keyId,claims,
         signature:sign(null,bytes,keys.privateKey).toString('base64url')};
     }
   });

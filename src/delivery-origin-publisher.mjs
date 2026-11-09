@@ -4,7 +4,7 @@
 // issuer, owner consent epoch and originating ChatGPT identity. This module
 // never trusts caller-supplied correlation, identity, binding or signatures.
 import {createHash} from 'node:crypto';
-import {stableJson} from './delivery-store.mjs';
+import {stableJson,trustedWorkflowScope} from './delivery-store.mjs';
 
 const fail=code=>{throw Object.assign(new Error(code),{code});};
 const ID=/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
@@ -18,7 +18,7 @@ const KINDS=new Set([
 const FIELDS=[
   'verified','source','receiptId','eventDigest','hostId','principalId',
   'profileId','conversationId','correlationId','bindingId','inputHash','sourceId',
-  'originAdmissionId'
+  'originAdmissionId','workerId','workerKeyId','workerGrantRevision'
 ];
 const data=value=>value!==null&&typeof value==='object'
   &&!Array.isArray(value)&&Object.getPrototypeOf(value)===Object.prototype;
@@ -30,8 +30,8 @@ const value=(record,key)=>{
 };
 const hash=record=>createHash('sha256').update(stableJson(record)).digest('hex');
 function expectedOriginal(input){
-  if(!data(input)||Reflect.ownKeys(input).length!==3
-    ||!Reflect.ownKeys(input).every(k=>['correlationId','inputHash','originAdmissionId'].includes(k)))
+  if(!data(input)||Reflect.ownKeys(input).length!==(Object.hasOwn(input,'workflowScope')?4:3)
+    ||!Reflect.ownKeys(input).every(k=>['correlationId','inputHash','originAdmissionId','workflowScope'].includes(k)))
     fail('DELIVERY_ORIGIN_EXPECTED_CONTEXT_REQUIRED');
   const inputHash=value(input,'inputHash');
   const correlationId=value(input,'correlationId');
@@ -41,7 +41,9 @@ function expectedOriginal(input){
   if(typeof inputHash!=='string'||!SHA.test(inputHash)
     ||typeof correlationId!=='string'||!ID.test(correlationId))
     fail('DELIVERY_ORIGIN_EXPECTED_CONTEXT_REQUIRED');
-  return Object.freeze({inputHash,correlationId,originAdmissionId});
+  return Object.freeze({inputHash,correlationId,originAdmissionId,
+    ...(Object.hasOwn(input,'workflowScope')
+      ? {workflowScope:trustedWorkflowScope(value(input,'workflowScope'))}: {})});
 }
 function safeEvent(input){
   if(!data(input))fail('DELIVERY_ORIGIN_EVENT_INVALID');
@@ -73,9 +75,11 @@ function safeEvent(input){
 }
 function trustedReceipt(input,request){
   if(!data(input)||FIELDS.some(field=>!Object.hasOwn(input,field))
-    ||Reflect.ownKeys(input).some(k=>!FIELDS.includes(k)))
+    ||Reflect.ownKeys(input).some(k=>!FIELDS.includes(k)&&k!=='workflowScope'))
     fail('DELIVERY_ORIGIN_RECEIPT_INVALID');
   const proof=Object.fromEntries(FIELDS.map(k=>[k,value(input,k)]));
+  if(Object.hasOwn(input,'workflowScope'))
+    proof.workflowScope=trustedWorkflowScope(value(input,'workflowScope'));
   if(proof.verified!==true||proof.source!=='HOST_SIGNED_ORIGINAL_EXECUTION'
     ||proof.receiptId!==request.receiptId
     ||proof.eventDigest!==request.eventDigest
@@ -83,6 +87,9 @@ function trustedReceipt(input,request){
     ||typeof proof.inputHash!=='string'||!SHA.test(proof.inputHash)
     ||typeof proof.originAdmissionId!=='string'||!ID.test(proof.originAdmissionId)
     ||typeof proof.bindingId!=='string'||!EPOCH.test(proof.bindingId)
+     ||typeof proof.workerId!=='string'||!/^cw_[a-f0-9]{64}$/.test(proof.workerId)
+     ||typeof proof.workerKeyId!=='string'||!SHA.test(proof.workerKeyId)
+     ||!Number.isSafeInteger(proof.workerGrantRevision)||proof.workerGrantRevision<1
     ||['hostId','principalId','profileId','conversationId','correlationId']
       .some(k=>typeof proof[k]!=='string'||!ID.test(proof[k])))
     fail('DELIVERY_ORIGIN_RECEIPT_MISMATCH');
@@ -112,16 +119,25 @@ export function createTrustedDeliveryOriginPublisher({store,verifyExecutionRecei
       const proof=trustedReceipt(await verifyExecutionReceipt(request),request);
       if(proof.inputHash!==original.inputHash
         ||proof.correlationId!==original.correlationId
-        ||proof.originAdmissionId!==original.originAdmissionId)
+        ||proof.originAdmissionId!==original.originAdmissionId
+        ||Object.hasOwn(proof,'workflowScope')!==Object.hasOwn(original,'workflowScope')
+        ||(Object.hasOwn(original,'workflowScope')
+          &&stableJson(proof.workflowScope)!==stableJson(original.workflowScope)))
         fail('DELIVERY_ORIGIN_OPERATION_MISMATCH');
       // All values reach storage exclusively from the immutable event snapshot
       // and independently verified original Host receipt, never MCP arguments.
-      const originReceiptHash=hash(Object.fromEntries([
+      const signedLineage=Object.fromEntries([
         'receiptId','eventDigest','hostId','principalId','profileId',
-        'conversationId','correlationId','bindingId','inputHash','sourceId','originAdmissionId'
-      ].map(key=>[key,proof[key]])));
+        'conversationId','correlationId','bindingId','inputHash','sourceId','originAdmissionId','workerId','workerKeyId','workerGrantRevision'
+      ].map(key=>[key,proof[key]]));
+      if(Object.hasOwn(proof,'workflowScope'))signedLineage.workflowScope=proof.workflowScope;
+      const originReceiptHash=hash(signedLineage);
       return store.publish({...event,correlationId:proof.correlationId,
-        bindingId:proof.bindingId,originReceiptHash});
+        bindingId:proof.bindingId,originReceiptHash,workerIdentity:Object.freeze({
+          workerId:proof.workerId,workerKeyId:proof.workerKeyId,
+          workerGrantRevision:proof.workerGrantRevision
+        }),...(Object.hasOwn(proof,'workflowScope')
+          ? {workflowScope:proof.workflowScope}: {})});
     }
   });
 }

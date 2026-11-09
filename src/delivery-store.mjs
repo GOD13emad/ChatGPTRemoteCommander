@@ -14,7 +14,59 @@ const SOURCE_KINDS = new Set(['tool', 'operation', 'project']);
 const MAX_ARTIFACT_BYTES = 16 * 1024 * 1024;
 const MAX_CHUNK_BYTES = 16 * 1024;
 const MAX_DELIVERY_ATTEMPTS = 10;
+const WORKER_ID = /^cw_[a-f0-9]{64}$/;
+const WORKER_KEY_ID = /^[a-f0-9]{64}$/;
 const fail = code => { throw Object.assign(new Error(code), { deliveryCode: code }); };
+function trustedWorkerIdentity(input) {
+  if (input === null || input === undefined) return null;
+  if (!input || typeof input !== 'object' || Array.isArray(input)
+    || Object.getPrototypeOf(input) !== Object.prototype
+    || Reflect.ownKeys(input).length !== 3)
+    fail('DELIVERY_INVALID_WORKER_IDENTITY');
+  const read = key => {
+    const d = Object.getOwnPropertyDescriptor(input,key);
+    if (!d || !d.enumerable || !Object.hasOwn(d,'value'))
+      fail('DELIVERY_INVALID_WORKER_IDENTITY');
+    return d.value;
+  };
+  const workerId=read('workerId'),workerKeyId=read('workerKeyId');
+  const workerGrantRevision=read('workerGrantRevision');
+  if (typeof workerId !== 'string' || !WORKER_ID.test(workerId)
+    || typeof workerKeyId !== 'string' || !WORKER_KEY_ID.test(workerKeyId)
+    || !Number.isSafeInteger(workerGrantRevision) || workerGrantRevision < 1)
+    fail('DELIVERY_INVALID_WORKER_IDENTITY');
+  return Object.freeze({workerId,workerKeyId,workerGrantRevision});
+}
+
+// Exact, source-only V1-05 root-lease scope carried across V1-06 receipts.
+// A syntactically valid scope is not authority: the original Host must compare
+// it against a live WorkflowStore lease before signing and publishing a receipt.
+const ID=/^[a-z][a-z0-9_-]{0,63}$/;
+const UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
+const SHA=/^[a-f0-9]{64}$/;
+const FIELDS=Object.freeze([
+  'workflowId','stepId','operationId','rootFingerprint',
+  'revision','leaseId','fencingToken'
+]);
+const invalidScope=()=>fail('DELIVERY_WORKFLOW_SCOPE_INVALID');
+export function trustedWorkflowScope(input){
+  if(!input||typeof input!=='object'||Array.isArray(input)
+    ||Object.getPrototypeOf(input)!==Object.prototype
+    ||Reflect.ownKeys(input).length!==FIELDS.length)invalidScope();
+  const output={};
+  for(const key of FIELDS){
+    const descriptor=Object.getOwnPropertyDescriptor(input,key);
+    if(!descriptor||descriptor.enumerable!==true
+      ||!Object.hasOwn(descriptor,'value'))invalidScope();
+    output[key]=descriptor.value;
+  }
+  if(!ID.test(output.workflowId)||!ID.test(output.stepId)
+    ||!UUID.test(output.operationId)
+    ||!SHA.test(output.rootFingerprint)||!SHA.test(output.leaseId)
+    ||!Number.isSafeInteger(output.revision)||output.revision<1
+    ||!Number.isSafeInteger(output.fencingToken)||output.fencingToken<1)invalidScope();
+  return Object.freeze(output);
+}
 
 export function opaqueId(value) {
   if (typeof value !== 'string' || !OPAQUE_ID.test(value)) fail('DELIVERY_INVALID_ID');
@@ -166,13 +218,21 @@ export class DeliveryStore {
     if (correlationId !== undefined && item.correlationId !== correlationId) fail('DELIVERY_CORRELATION_MISMATCH');
     return item;
   }
-  publish({ eventKey, correlationId, source, sourceId, kind, code = kind, artifact = null, bindingId = null, originReceiptHash = null }) {
+  publish({ eventKey, correlationId, source, sourceId, kind, code = kind, artifact = null, bindingId = null, originReceiptHash = null, workerIdentity = null, workflowScope = null }) {
     opaqueId(eventKey); opaqueId(correlationId); opaqueId(sourceId); opaqueId(code);
     if (!SOURCE_KINDS.has(source) || !KINDS.has(kind)) fail('DELIVERY_INVALID_EVENT');
     if (bindingId !== null && (typeof bindingId !== 'string' || !/^[a-f0-9]{32,64}$/.test(bindingId)))
       fail('DELIVERY_INVALID_CONSENT_EPOCH');
     if (originReceiptHash !== null && (typeof originReceiptHash !== 'string' || !/^[a-f0-9]{64}$/.test(originReceiptHash)))
       fail('DELIVERY_INVALID_ORIGIN_RECEIPT_HASH');
+    const verifiedWorkerIdentity = trustedWorkerIdentity(workerIdentity);
+    const verifiedWorkflowScope=workflowScope===null?null:trustedWorkflowScope(workflowScope);
+    if(verifiedWorkflowScope!==null && originReceiptHash===null)
+      fail('DELIVERY_WORKFLOW_SCOPE_REQUIRES_ORIGIN_RECEIPT');
+    if (originReceiptHash !== null && !verifiedWorkerIdentity)
+      fail('DELIVERY_WORKER_IDENTITY_REQUIRED');
+    if (originReceiptHash === null && verifiedWorkerIdentity)
+      fail('DELIVERY_WORKER_IDENTITY_REQUIRES_ORIGIN_RECEIPT');
     if (artifact && (
       !/^[a-f0-9]{64}$/.test(artifact.id) || !/^[a-f0-9]{64}$/.test(artifact.sha256) ||
       artifact.id !== artifact.sha256 || !Number.isSafeInteger(artifact.bytes) ||
@@ -182,6 +242,8 @@ export class DeliveryStore {
       correlationId, source, sourceId, kind, code,
       ...(bindingId === null ? {} : { bindingEpochHash:digest(bindingId) }),
       ...(originReceiptHash === null ? {} : { originReceiptHash }),
+      ...(verifiedWorkerIdentity === null ? {} : { workerIdentity:verifiedWorkerIdentity }),
+      ...(verifiedWorkflowScope === null ? {} : {workflowScope:verifiedWorkflowScope}),
       artifact: artifact ? { id: artifact.id, sha256: artifact.sha256, bytes: artifact.bytes } : null
     });
     const resultHash = digest(payload), now = new Date().toISOString();

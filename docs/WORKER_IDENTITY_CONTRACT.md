@@ -86,7 +86,7 @@ The host adapter is still a required external integration. The current Commander
 
 - V1-01: the current candidate exposes the native owner context and canonical owner route from the existing native token/session binding, adds durable per-worker enrollment and exact per-task grants to the existing v2-access.sqlite, and composes those grants with the native authorizeTool path. It still requires a real host-supplied resolveCurrentAccessToken and native owner/admin approval provider.
 - V1-00: the candidate adds the signed public worker registry to the existing machine-global root-leases.sqlite through WorkflowStore, with append-only hash-chained events, projection verification, read/write transactions and cross-process CAS. It is not yet merged into the canonical integration branch.
-- V1-06: add stable workerId and keyId to signed delivery receipt claims so a delivery ACK is attributable to the enrolled worker. Current receipt source does not yet bind these claims.
+- V1-06: the `integration/v012-core-20261108` candidate propagates the signed worker tuple (`workerId`, `workerKeyId`, exact `workerGrantRevision`) from the original execution receipt through the durable delivery item into presentation protocol v2. Legacy pre-identity rows remain isolated on protocol v1; v1 cannot ACK a worker-bound v2 result. Every v2 ACK requires the Host-only `assertWorkerIdentityCurrent` callback. The same candidate now derives and persists `workflowScope` from the active root lease and passes the frozen scope to Host dispatch; the scope is not yet included in the signed original execution receipt. Source-only; no production callback or issuer is wired.
 - V1-08: package, install, and rollback the integrated adapters only after source qualification and native-provider acceptance.
 - Platform adapters: implement Windows DPAPI/TPM and Linux protected-key loading without exposing private key bytes; Tailscale identity remains an optional additional device attestor. The tunnel adapter is dependency-injected and has no live production process/provider binding in this candidate.
 
@@ -111,7 +111,7 @@ The focused tests use ephemeral Ed25519 keys, synthetic owner/device/tunnel atte
 - WorkflowStore now stores the signed public worker registration in the existing machine-global root-leases.sqlite; it does not create a second identity database and never receives a private key. The adapter verifies Ed25519 signatures, key-derived worker IDs, bounded claims, CAS state, append-only hash-chain journal and projection consistency. Read operations use a SQLite read transaction; registration/revocation use BEGIN IMMEDIATE.
 - native-tunnel-attestor.mjs supplies the dependency-injected transport projection and rejects ambiguous/stale/replaced/unowned process evidence. It does not invoke the tunnel CLI, access credentials, or claim a live poll.
 - The cross-layer integration test uses the real V1-01 native bridge, V2GrantRegistry, V1-07 authority, WorkflowStore-backed registry and synthetic attestors. It proves registration, signed grantRevision, exact tool authorization, durable readback, revocation, wrong-target denial, task-grant denial and owner-binding rotation denial.
-- Production blockers remain: native device-key/owner-SID attestation, real owner/admin approval for grant issuance/revocation, live authenticated tunnel provider, actual host bootstrap wiring, V1-06 receipt binding to workerId/keyId, and V1-08 packaging/install/rollback. No production worker was enrolled and no runtime key was accessed.
+- Production blockers remain: native device-key/owner-SID attestation, real owner/admin approval for grant issuance/revocation, live authenticated tunnel provider, actual host bootstrap wiring, V1-06 live `assertWorkerIdentityCurrent` provider and paired-host ACK, Host-signed binding of `workflowScope` into the original execution receipt, V1-05 process-containment/proof-based reconciliation integration, and V1-08 packaging/install/rollback. No production worker was enrolled and no runtime key was accessed.
 - release-train-0.12.json acceptance flags remain false. Source QA does not satisfy G1/J01, release, or production enrollment.
 
 
@@ -122,3 +122,20 @@ The V1-01 source candidate now requires the native session-binding provider to e
 The Linux isolated source candidate passed 143/143 focused V1-01/V1-07 tests and the all-ref security audit over 33,431,568 history bytes. The integrated NoPromote worktree must repeat the focused and full qualification after this selective merge.
 
 Still not production acceptance: no host-native resolveOwnerSidHash implementation is wired, no real native owner-grant/administration provider is bootstrapped, no Linux protected-key provider is approved, no production worker key is enrolled, and no authenticated tunnel/Host wiring is active. The source remains fail-closed. Do not enroll workers or enable executionAccess/receiptAuthority until those providers are independently qualified.
+
+
+## 2026-11-08 V1-06 worker-bound delivery receipt integration (NoPromote)
+
+The 0.12 integration candidate now binds the V1-07 worker identity into the delivery trust chain:
+
+- The original execution receipt must carry `workerId`, `workerKeyId`, and `workerGrantRevision` under the Host signature.
+- `DeliveryStore` rejects an origin receipt hash without a valid worker tuple, and rejects a worker tuple without an origin receipt hash.
+- The authenticated ACK path passes that exact tuple into signed presentation protocol v2. The v2 domain and schema are signed; a v1 legacy proof cannot be reinterpreted as a worker-bound proof.
+- V2 ACK now fails closed unless the owner Host supplies `assertWorkerIdentityCurrent`. The callback must verify the exact durable worker registration, key ID, owner binding, current grant revision, expiry and revocation against the V1-07 registry. The callback is an identity-current check only; it does not authorize execution or replace the V1-01 owner grant.
+- The Host runtime composition helper rejects missing callback wiring. The standalone verifier still permits protocol v1 for pre-identity legacy rows; those rows do not invoke the worker callback.
+
+The 0.12 integration worktree now derives a frozen `workflowScope` from the same active root-lease/step admission: `workflowId`, `stepId`, `operationId`, `rootFingerprint`, workflow `revision`, deterministic `leaseId`, and `fencingToken`. It persists the scope in the workflow step and durable receipt, returns it in operation metadata, passes it as the fourth internal Host-dispatch argument, and revalidates the fingerprint and lease ID against the live lease row before and after dispatch. The root-lease SQLite table still has no dedicated `lease_id` or `root_fingerprint` columns; the values are deterministic hashes and are persisted in the append-only workflow record.
+
+This does not yet make the scope a signed execution receipt: V1-06's original Host receipt/presentation claims still bind the worker tuple only, and the production Host issuer does not consume `ctx.workflowOperation`. The separate V1-05 worktree contains a broader process-containment/proof-based reconciliation implementation, but it remains dirty and unintegrated; selective integration is required, excluding duplicate V1-01/V1-07 worker-identity code. Do not substitute an operation ID for a lease ID or a raw project path for a fingerprint.
+
+This is a source-only NoPromote candidate. It does not establish a production worker key, native owner/session provider, authenticated tunnel provider, Host callback, J01 consent, originating-chat presentation, installed ACK or fleet acceptance.

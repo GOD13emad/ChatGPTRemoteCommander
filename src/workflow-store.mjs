@@ -884,11 +884,28 @@ export class WorkflowStore {
       return fencingToken;
     });
   }
-  #assertRootLease(root, workflow, owner, fencingToken) {
+  #assertRootLease(root, workflow, owner, fencingToken, workflowScope = null) {
     if (this.#schedulerPolicy.oneWriterPerRoot === false) return true;
-    const row=this.#leaseDb.prepare('SELECT fencing_token FROM root_leases WHERE root=? AND profile=? AND workflow=? AND owner=? AND fencing_token=? AND expires_at>?')
+    const row=this.#leaseDb.prepare('SELECT profile,workflow,owner,revision,fencing_token FROM root_leases WHERE root=? AND profile=? AND workflow=? AND owner=? AND fencing_token=? AND expires_at>?')
       .get(leaseRootKey(root),this.#profileId,workflow,owner,fencingToken,new Date().toISOString());
     if(!row)fail('WORKFLOW_ROOT_LEASE_LOST');
+    if(workflowScope!==null){
+      const expectedLeaseId=hash(canonical({
+        root:leaseRootKey(root),profile:row.profile,workflow:row.workflow,
+        owner:row.owner,revision:row.revision,fencingToken:row.fencing_token
+      }));
+      const expectedRootFingerprint=hash(canonical({
+        device:this.#device,root:rootWithin(root,this.#roots)
+      }));
+      if(workflowScope.workflowId!==workflow
+        ||typeof workflowScope.stepId!=='string'||!ID.test(workflowScope.stepId)
+        ||!owner.endsWith(':'+workflowScope.operationId)
+        ||workflowScope.revision!==row.revision
+        ||workflowScope.leaseId!==expectedLeaseId
+        ||workflowScope.rootFingerprint!==expectedRootFingerprint
+        ||workflowScope.fencingToken!==row.fencing_token)
+        fail('WORKFLOW_ROOT_LEASE_IDENTITY_MISMATCH');
+    }
     return true;
   }
   #renewRootLease(root, workflow, owner, expiresAt, fencingToken) {
@@ -1201,6 +1218,16 @@ export class WorkflowStore {
     const expires = new Date(Date.now()+Math.max(this.#schedulerPolicy.leaseMs,30000)).toISOString();
 
     const fencingToken=this.#acquireRootLease(state.root,id,owner,expires,expectedRevision);
+    const workflowScope=fencingToken===null?null:Object.freeze({
+      workflowId:id,stepId,operationId,
+      rootFingerprint:hash(canonical({device:this.#device,root:rootWithin(state.root,this.#roots)})),
+      revision:expectedRevision,
+      leaseId:hash(canonical({
+        root:leaseRootKey(state.root),profile:this.#profileId,workflow:id,
+        owner,revision:expectedRevision,fencingToken
+      })),
+      fencingToken
+    });
     let prepared;
     try {
       prepared = this.#mutate(id, expectedRevision, 'intent', s => {
@@ -1218,7 +1245,11 @@ export class WorkflowStore {
       Object.assign(step, {
         status:'running', tool, callHash:fingerprint, operationId, attemptId, idempotencyKey,
         classification, inputHash, instance:this.#instance, ownerPid:process.pid, ownerHost:os.hostname(), startedAt:now,
-        ...(fencingToken===null?{}:{fencingToken})
+        ...(workflowScope===null?{}:{
+          leaseRevision:expectedRevision,fencingToken,
+          leaseId:workflowScope.leaseId,rootFingerprint:workflowScope.rootFingerprint,
+          workflowScope:clone(workflowScope)
+        })
       });
       s.lifecycleState='RUNNING';
       return { stepId, tool, callHash:fingerprint, operationId, attemptId, idempotencyKey,
@@ -1255,10 +1286,11 @@ export class WorkflowStore {
       try {
         if(fencingToken!==null) {
           if(leaseLost)fail('WORKFLOW_ROOT_LEASE_LOST');
-          this.#assertRootLease(state.root,id,owner,fencingToken);
+          this.#assertRootLease(state.root,id,owner,fencingToken,workflowScope);
         }
         dispatchStarted=true;
-        result = await dispatch(tool, args, clone(prepared.state)); receipt = receiptFields(result); failure = badResult(result);
+        result = await dispatch(tool, args, clone(prepared.state), workflowScope);
+        receipt = receiptFields(result); failure = badResult(result);
         if (nativeReceiptIdentityMismatch(result, operationId)) {
           failure = true; receipt.errorCode='WORKFLOW_NATIVE_RECEIPT_IDENTITY_MISMATCH';
         } else if (deferredEffect(result)) receipt.errorCode='WORKFLOW_DEFERRED_EFFECT_UNVERIFIED';
@@ -1275,14 +1307,16 @@ export class WorkflowStore {
       if(fencingToken!==null) {
         try {
           if(leaseLost)fail('WORKFLOW_ROOT_LEASE_LOST');
-          this.#assertRootLease(state.root,id,owner,fencingToken);
-        } catch {
+          this.#assertRootLease(state.root,id,owner,fencingToken,workflowScope);
+        } catch (error) {
           failure=true;
-          receipt={...receipt,errorCode:'WORKFLOW_ROOT_LEASE_LOST',leaseLost:true,notDispatched:!dispatchStarted,fencingToken};
+          const errorCode=error?.workflowCode==='WORKFLOW_ROOT_LEASE_IDENTITY_MISMATCH'
+            ? error.workflowCode : 'WORKFLOW_ROOT_LEASE_LOST';
+          receipt={...receipt,errorCode,leaseLost:true,notDispatched:!dispatchStarted,fencingToken};
         }
       }
       receipt = { ...receipt, operationId, attemptId, idempotencyKey, classification, inputHash, preStateHash:view.headSha256, postStateHash:null,
-        ...(fencingToken===null?{}:{fencingToken}) };
+        ...(workflowScope===null?{}:{workflowScope:clone(workflowScope),fencingToken}) };
       finished = this.#transaction(() => {
         const { state:s, head } = this.#load(id), step = s.steps.find(x => x.id === stepId);
         if (step.status !== 'running' || step.operationId !== operationId || step.callHash !== fingerprint) fail('WORKFLOW_COMPLETION_CONFLICT');
@@ -1320,7 +1354,7 @@ export class WorkflowStore {
     return { replayed:false,cachedReceipt:false,outcome:failure?'UNCERTAIN':'RECORDED_NOT_VALIDATED',
       revision:finished.state.revision,receipt,result:result??null,acceptanceStatus:'UNVALIDATED',
       operation:{operationId,attemptId,idempotencyKey,classification,status:failure?'UNCERTAIN':(classification==='READ_ONLY'?'VERIFIED':'EXECUTED'),
-        ...(fencingToken===null?{}:{fencingToken})} };
+        ...(workflowScope===null?{}:{workflowScope:clone(workflowScope),fencingToken})} };
   }
   reconcile({ id, stepId, expectedRevision, outcome, files, explanation }) {
     if (!['applied', 'not_applied'].includes(outcome)) fail('WORKFLOW_RECONCILIATION_OUTCOME');

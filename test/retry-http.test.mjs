@@ -46,6 +46,7 @@ test('HTTP retry hardening rejects long sync work before effect and bounds overs
     await fs.writeFile(largeSafe, 'x'.repeat(5 * 1024 * 1024));
     await fs.writeFile(largeOversize, 'x'.repeat(9 * 1024 * 1024));
     const config = {
+      capabilityProfile: { tier: 'STANDARD' },
       host: '127.0.0.1', port, allowedRoots: [canonicalDataRoot], allowedPrograms: ['node'],
       maxReadBytes: 16 * 1024 * 1024, maxWriteBytes: 1024 * 1024, maxCommandMs: 300000,
       auditLog: 'var/audit.jsonl', asyncOperations: { enabled: true, backgroundFirst: true },
