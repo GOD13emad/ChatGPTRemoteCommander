@@ -43,6 +43,7 @@ test('HTTP conversation continuation binds without opening a tab and queues term
     const fixture=path.join(canonical,'fixture.mjs');
     await fs.copyFile(new URL('./async-operation-fixture.mjs',import.meta.url),fixture);
     const config={
+      capabilityProfile:{tier:'STANDARD'},
       host:'127.0.0.1',port,allowedRoots:[canonical],allowedPrograms:['node'],
       maxReadBytes:1024*1024,maxWriteBytes:1024*1024,maxCommandMs:10000,auditLog:'var/audit.jsonl',
       asyncOperations:{enabled:true,backgroundFirst:true,stateDir:stateRoot,maxOutputBytes:65536},

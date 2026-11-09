@@ -67,6 +67,7 @@ test('HTTP async operation returns immediately, retry is idempotent, and output 
     await fs.copyFile(new URL('./async-operation-fixture.mjs', import.meta.url), fixture);
 
     const config = {
+      capabilityProfile: { tier: 'STANDARD' },
       host: '127.0.0.1',
       port,
       allowedRoots: [canonicalDataRoot],
