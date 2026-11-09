@@ -27,7 +27,7 @@ async function rawPost(port, id, name, args) {
   return { response, text, body: JSON.parse(text), elapsedMs: Date.now() - started };
 }
 
-test('HTTP retry hardening rejects long sync work before effect and bounds oversized responses', async () => {
+test('HTTP retry hardening rejects long sync work before effect and bounds oversized responses', async t => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'rc-retry-http-'));
   const serverRoot = path.join(root, 'server');
   const dataRoot = path.join(root, 'data');
@@ -64,6 +64,17 @@ test('HTTP retry hardening rejects long sync work before effect and bounds overs
       await wait(25);
     }
     assert.equal(healthy, true, `retry fixture server did not become healthy within 30000ms; stderr=${stderr}`);
+    const health=await (await fetch(`http://127.0.0.1:${port}/health`)).json();
+    if(health.privilegedLegacyHttpQuarantined===true){
+      assert.equal(health.protectedIngress?.required,true);
+      assert.equal(health.protectedIngress?.ready,false);
+      const denied=await rawPost(port,1,'read_text',{path:largeSafe});
+      assert.equal(denied.response.status,403);
+      assert.deepEqual(denied.body,{error:'trusted_transport_required'});
+      await assert.rejects(fs.stat(effect),{code:'ENOENT'});
+      t.skip('Elevated CI token denies legacy HTTP; nonprivileged CI retains paging/timeout positive assertions.');
+      return;
+    }
 
     const direct = await rawPost(port, 1, 'run_project_command', { program: 'node', args: [fixture], cwd: canonicalDataRoot, timeoutMs: 15001 });
     assert.equal(direct.response.status, 200);

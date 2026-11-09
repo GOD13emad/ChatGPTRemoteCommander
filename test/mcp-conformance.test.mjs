@@ -49,7 +49,7 @@ function modernHeaders(method, name, version = MODERN) {
   return headers;
 }
 
-test('dual-era MCP contract, tool validation, cache hints and risk annotations', async () => {
+test('dual-era MCP contract, tool validation, cache hints and risk annotations', async t => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'rc-mcp-conformance-'));
   const serverRoot = path.join(root, 'server');
   const dataRoot = path.join(root, 'data');
@@ -107,6 +107,16 @@ test('dual-era MCP contract, tool validation, cache hints and risk annotations',
       await wait(25);
     }
     assert.equal(healthy, true, stderr);
+    const health = await (await fetch(`http://127.0.0.1:${port}/health`)).json();
+    if (health.privilegedLegacyHttpQuarantined === true) {
+      assert.equal(health.protectedIngress?.required, true);
+      assert.equal(health.protectedIngress?.ready, false);
+      const denied = await post(port, {jsonrpc:'2.0',id:1,method:'tools/list',params:{}});
+      assert.equal(denied.status, 403);
+      assert.deepEqual(denied.body, {error:'trusted_transport_required'});
+      t.skip('Native elevated CI identity rejects all unauthenticated legacy MCP; protocol success path runs with owner-token fixtures.');
+      return;
+    }
 
     const legacyInit = await post(port, {
       jsonrpc: '2.0', id: 1, method: 'initialize',
