@@ -96,14 +96,14 @@ function fixture(){
     registry:workerRegistry,now:()=>state.now,
     maxEnrollmentTtlMs:900_000,maxDeviceAgeMs:300_000,maxTransportAgeMs:120_000
   });
-  function addBaseGrants(tools=WORKER_TOOLS){
-    for(const tool of tools)registry.change({
+  async function addBaseGrants(tools=WORKER_TOOLS){
+    for(const tool of tools)await registry.change({
       route:state.route,tool,status:'ENABLED',expectedRevision:0,
       actor:'qa-owner',reason:'owner approved worker action'
     });
   }
-  function addWorkerGrants(context,tools=WORKER_TOOLS,expiresAtMs=state.now+110_000){
-    for(const tool of tools)registry.changeWorkerToolGrant({
+  async function addWorkerGrants(context,tools=WORKER_TOOLS,expiresAtMs=state.now+110_000){
+    for(const tool of tools)await registry.changeWorkerToolGrant({
       route:state.route,workerContext:context,tool,status:'ENABLED',
       expectedRevision:0,actor:'qa-owner',reason:'owner approved exact worker tool',
       expiresAtMs
@@ -136,13 +136,13 @@ test('V1-07 enrollment, exact action, grant revision and revocation compose with
   const f=fixture();
   try{
     const identity=makeIdentity();
-    f.registry.changeWorkerGrant({
+    await f.registry.changeWorkerGrant({
       workerContext:identity.context,status:'ACTIVE',expectedRevision:0,
       actor:'qa-owner',reason:'owner approved worker identity',
       expiresAtMs:f.state.now+110_000
     });
-    f.addBaseGrants();
-    f.addWorkerGrants(identity.context);
+    await f.addBaseGrants();
+    await f.addWorkerGrants(identity.context);
     const owner=await f.adapter.resolveOwnerContext();
     assert.equal(owner.source,'native-owner-attested');
     assert.equal(owner.bindingId,BINDING);
@@ -181,7 +181,7 @@ test('V1-01 grant adapter binds worker identity to the independently native owne
     const f=fixture();
     try{
       const identity=makeIdentity();
-      f.registry.changeWorkerGrant({
+      await f.registry.changeWorkerGrant({
         workerContext:identity.context,status:'ACTIVE',expectedRevision:0,
         actor:'qa-owner',reason:'owner approved worker identity',
         expiresAtMs:f.state.now+110_000
@@ -200,12 +200,12 @@ test('V1-01 grant adapter binds worker identity to the independently native owne
     const f=fixture();
     try{
       const identity=makeIdentity();
-      f.registry.changeWorkerGrant({
+      await f.registry.changeWorkerGrant({
         workerContext:identity.context,status:'ACTIVE',expectedRevision:0,
         actor:'qa-owner',reason:'owner approved worker identity',
         expiresAtMs:f.state.now+110_000
       });
-      f.addBaseGrants();f.addWorkerGrants(identity.context);
+      await f.addBaseGrants();await f.addWorkerGrants(identity.context);
       f.state.ownerAuthorization=async()=>{
         f.state.ownerSidHash='f'.repeat(64);
         return true;
@@ -224,18 +224,18 @@ test('V1-01 denies worker calls when the exact worker grant, base route grant, o
   const f=fixture();
   try{
     const identity=makeIdentity();
-    f.registry.changeWorkerGrant({
+    await f.registry.changeWorkerGrant({
       workerContext:identity.context,status:'ACTIVE',expectedRevision:0,
       actor:'qa-owner',reason:'owner approved worker identity',
       expiresAtMs:f.state.now+110_000
     });
-    f.addBaseGrants();f.addWorkerGrants(identity.context);
+    await f.addBaseGrants();await f.addWorkerGrants(identity.context);
     await f.authority.registerWorker({privateKey:identity.pair.privateKey});
     const request={workerId:identity.workerId,
       invocation:{tool:'read_text',arguments:{path:'README.md'}}};
     assert.equal((await f.authority.authorizeWorker(request)).authorized,true);
     const taskGrant=f.registry.readWorkerToolGrant(f.state.route,identity.context,'read_text');
-    f.registry.changeWorkerToolGrant({
+    await f.registry.changeWorkerToolGrant({
       route:f.state.route,workerContext:identity.context,tool:'read_text',
       status:'REVOKED',expectedRevision:taskGrant.revision,actor:'qa-owner',
       reason:'owner revoked worker tool'
@@ -245,12 +245,12 @@ test('V1-01 denies worker calls when the exact worker grant, base route grant, o
     const fresh=fixture();
     try{
       const id=makeIdentity();
-      fresh.registry.changeWorkerGrant({
+      await fresh.registry.changeWorkerGrant({
         workerContext:id.context,status:'ACTIVE',expectedRevision:0,
         actor:'qa-owner',reason:'owner approved worker identity',
         expiresAtMs:fresh.state.now+110_000
       });
-      fresh.addBaseGrants();fresh.addWorkerGrants(id.context);
+      await fresh.addBaseGrants();await fresh.addWorkerGrants(id.context);
       await fresh.authority.registerWorker({privateKey:id.pair.privateKey});
       fresh.state.route={...fresh.state.route,target:{kind:'workflow-root',id:'root-b'}};
       await assert.rejects(fresh.authority.authorizeWorker({
@@ -264,12 +264,12 @@ test('V1-01 owner binding rotation invalidates the old signed worker epoch and o
   const f=fixture();
   try{
     const identity=makeIdentity();
-    f.registry.changeWorkerGrant({
+    await f.registry.changeWorkerGrant({
       workerContext:identity.context,status:'ACTIVE',expectedRevision:0,
       actor:'qa-owner',reason:'owner approved worker identity',
       expiresAtMs:f.state.now+110_000
     });
-    f.addBaseGrants();f.addWorkerGrants(identity.context);
+    await f.addBaseGrants();await f.addWorkerGrants(identity.context);
     await f.authority.registerWorker({privateKey:identity.pair.privateKey});
     f.state.bindingId='f'.repeat(64);
     const result=await f.authority.authorizeWorker({

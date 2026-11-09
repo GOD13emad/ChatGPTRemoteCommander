@@ -232,13 +232,13 @@ export class V2GrantRegistry {
    * injected trusted principal/session provider, not actor strings or OS admin
    * membership inferred from a Commander FULL_POWER profile.
    */
-  change({ route, tool, status, expectedRevision, actor, reason }) {
+  async change({ route, tool, status, expectedRevision, actor, reason }) {
     const scope = scopeOf(route, tool);
     if (!ALLOWED.has(status)) fail('V2_GRANT_STATUS_INVALID');
     if (!Number.isSafeInteger(expectedRevision) || expectedRevision < 0) fail('V2_GRANT_EXPECTED_REVISION_REQUIRED');
     safeId(actor);
     if (typeof reason !== 'string' || reason.trim().length < 5 || reason.length > 400) fail('V2_GRANT_REASON_REQUIRED');
-    if (this.authorizeAdministration({ actor, route, tool, status }) !== true) fail('V2_GRANT_ADMIN_AUTH_REQUIRED');
+    if (await this.authorizeAdministration({ actor, route, tool, status }) !== true) fail('V2_GRANT_ADMIN_AUTH_REQUIRED');
     this.db.exec('BEGIN IMMEDIATE');
     try {
       const current = this.db.prepare(`SELECT status,revision FROM v2_grants WHERE host=? AND principal=?
@@ -270,7 +270,7 @@ export class V2GrantRegistry {
       .get(c.hostId,c.principalId,c.profileId,c.conversationId,c.workerId);
     return toWorkerGrant(row);
   }
-  changeWorkerGrant({workerContext,status,expectedRevision,actor,reason,expiresAtMs}) {
+  async changeWorkerGrant({workerContext,status,expectedRevision,actor,reason,expiresAtMs}) {
     const c=workerContextOf(workerContext);
     if(!WORKER_STATUSES.has(status))fail('V2_WORKER_GRANT_STATUS_INVALID');
     if(!Number.isSafeInteger(expectedRevision)||expectedRevision<0)
@@ -283,7 +283,7 @@ export class V2GrantRegistry {
     if(status==='ACTIVE'&&(!Number.isSafeInteger(expiresAtMs)||expiresAtMs<=now
       ||expiresAtMs-now>MAX_WORKER_GRANT_TTL_MS))
       fail('V2_WORKER_GRANT_EXPIRY_INVALID');
-    if(this.authorizeAdministration({
+    if(await this.authorizeAdministration({
       kind:'worker-enrollment-grant',action:status,status,actor,workerContext:c,
       reason:reason.trim(),expiresAtMs:status==='ACTIVE'?expiresAtMs:null
     })!==true)fail('V2_WORKER_GRANT_ADMIN_AUTH_REQUIRED');
@@ -350,7 +350,7 @@ export class V2GrantRegistry {
       'AND operation_id=? AND kind=? AND target=? AND tool=? AND worker_id=?').get(...scope,c.workerId);
     return toWorkerToolGrant(row);
   }
-  changeWorkerToolGrant({route,workerContext,tool,status,expectedRevision,actor,reason,expiresAtMs}) {
+  async changeWorkerToolGrant({route,workerContext,tool,status,expectedRevision,actor,reason,expiresAtMs}) {
     const c=workerContextOf(workerContext);
     const r=normalizeV2Route(route);routeMatchesWorker(r,c);
     const scope=workerToolScope(r,tool);
@@ -368,7 +368,7 @@ export class V2GrantRegistry {
     if(status==='ENABLED'&&(!Number.isSafeInteger(expiresAtMs)||expiresAtMs<=now
       ||expiresAtMs>enrollment.expiresAtMs))
       fail('V2_WORKER_TOOL_GRANT_EXPIRY_INVALID');
-    if(this.authorizeAdministration({
+    if(await this.authorizeAdministration({
       kind:'worker-tool-grant',action:status,status,actor,route:r,tool,
       workerContext:c,reason:reason.trim(),expiresAtMs:status==='ENABLED'?expiresAtMs:null
     })!==true)fail('V2_WORKER_TOOL_GRANT_ADMIN_AUTH_REQUIRED');

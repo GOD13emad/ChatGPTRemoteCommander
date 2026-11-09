@@ -165,10 +165,57 @@ test('Windows Inno archive source files omit build-host file timestamps',()=>{
   const section=read('installer/RemoteCommander.iss').split('[Files]')[1]?.split('[Icons]')[0];
   assert.ok(section,'Inno [Files] section required');
   const entries=section.split(/\r?\n/).map(x=>x.trim()).filter(x=>x.startsWith('Source:'));
-  assert.equal(entries.length,9,'validate Core bundle plus exact pinned installer file inventory');
+  assert.equal(entries.length,10,'validate Core bundle, pinned Windows runner and exact installer file inventory');
   for(const entry of entries){
     assert.match(entry,/\bnotimestamp\b/,'each packaged file must omit source filesystem timestamps');
   }
+});
+
+test('pinned Windows Job Object runner is built, embedded, installed and staged before candidate qualification',()=>{
+  const builder=read('installer/build-setup.ps1');
+  const iss=read('installer/RemoteCommander.iss');
+  const install=read('install.ps1');
+  const linuxInstall=read('install.sh');
+  const runnerInstaller=read('tools/windows-job-runner/install-windows-job-runner.ps1');
+  const updater=read('auto-update-windows.ps1');
+  const releaseSync=read('.github/workflows/release-sync.yml');
+  const ci=read('.github/workflows/ci.yml');
+  assert.ok(builder.includes('verify-windows-job-runner.ps1'),'setup build must verify or build the pinned runner');
+  assert.ok(builder.includes('-Ensure'),'setup build must produce the self-contained runner when absent');
+  assert.ok(builder.includes("('/DWindowsJobRunner='+$RunnerPath)"),'Inno receives the verified runner path');
+  assert.ok(builder.includes('windowsJobRunnerSha256=$RunnerSha'));
+  assert.ok(iss.includes('#error V102_PINNED_WINDOWS_JOB_RUNNER_REQUIRED'));
+  assert.ok(iss.includes('Source: "{#WindowsJobRunner}"; DestName: "CommanderWindowsJobRunner.exe"'));
+  assert.ok(iss.includes("ExtractTemporaryFile('CommanderWindowsJobRunner.exe')"));
+  assert.ok(iss.includes('-WindowsJobRunnerPath '));
+  assert.ok(install.includes('function Install-WindowsJobRunner'));
+  assert.ok(install.includes('install-windows-job-runner.ps1'));
+  assert.ok(install.includes('V012_INSTALL_RELEASE_TRAIN_NOT_APPROVED'));
+  assert.ok(install.includes('verify-v012-publish-readiness.mjs'));
+  assert.ok(linuxInstall.includes('V012_INSTALL_RELEASE_TRAIN_NOT_APPROVED'));
+  assert.ok(linuxInstall.includes('verify-v012-publish-readiness.mjs'));
+  assert.ok(runnerInstaller.includes('function Install-CommanderWindowsJobRunner'));
+  assert.ok(runnerInstaller.includes('WINDOWS_JOB_RUNNER_SOURCE_SHA_MISMATCH'));
+  assert.ok(runnerInstaller.includes('WINDOWS_JOB_RUNNER_INSTALL_OR_VERIFY_FAILED'));
+  assert.ok(runnerInstaller.includes('WINDOWS_JOB_RUNNER_INSTALL_TEMP_SHA_MISMATCH'));
+  assert.ok(runnerInstaller.includes('Move-Item -LiteralPath $installTemp -Destination $installedTarget -Force'));
+  assert.ok(install.includes('Install-WindowsJobRunner -SourcePath $WindowsJobRunnerPath'));
+  assert.ok(install.includes('Install-WindowsJobRunner -SourcePath $WindowsJobRunnerPath -ManifestRoot $temp'));
+  assert.ok(install.indexOf('candidate-first update failed:')<install.indexOf('Install-WindowsJobRunner -SourcePath $WindowsJobRunnerPath -ManifestRoot $temp'),
+    'existing install runner is replaced only after candidate update succeeds');
+  assert.ok(updater.includes('function Copy-WindowsJobRunner'));
+  assert.ok(updater.includes('WINDOWS_JOB_RUNNER_NOT_INSTALLED'));
+  assert.ok(updater.includes('Copy-WindowsJobRunner $stage.Dir'));
+  assert.ok(updater.includes('[string]$WindowsJobRunnerPath ='));
+  assert.ok(updater.includes('Install-ControlWindowsJobRunner $StageDir'));
+  assert.ok(updater.includes('Promote-Control $stage.Commit $ref $stage.Dir'));
+  assert.ok(updater.indexOf('Copy-WindowsJobRunner $stage.Dir')<updater.indexOf('$script:QualificationCommit=$stage.Commit'),
+    'candidate native runner must be verified before qualification and routing');
+  assert.ok(releaseSync.includes('git bundle create $bundle $bundleRef'));
+  assert.ok(releaseSync.includes('git check-ref-format $bundleRef'));
+  assert.ok(releaseSync.includes('-SourceBundle $bundle'),'the published setup embeds the exact Core source bundle');
+  assert.ok(ci.includes('verify-windows-job-runner.ps1 -Ensure'));
+  assert.ok(ci.includes("dotnet-version: '8.0.427'"));
 });
 
 test('Windows direct ISCC compile refuses historical fallback identity and builder refuses version spoofing',()=>{

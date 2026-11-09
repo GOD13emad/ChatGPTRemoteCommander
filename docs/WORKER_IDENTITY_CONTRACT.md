@@ -84,11 +84,11 @@ The host adapter is still a required external integration. The current Commander
 
 ## Cross-workstream dependencies
 
-- V1-01: the current candidate exposes the native owner context and canonical owner route from the existing native token/session binding, adds durable per-worker enrollment and exact per-task grants to the existing v2-access.sqlite, and composes those grants with the native authorizeTool path. It still requires a real host-supplied resolveCurrentAccessToken and native owner/admin approval provider.
+- V1-01: the candidate now includes a Linux native owner-session provider, visible default-deny owner/admin authorizer, one-shot OpenAI-session proof capability, OAuth preflight/owner-binding admission path, and async grant-registry approval callbacks. These are source-integrated only. The host must still wire a real OpenAI ChatGPT mTLS session attestor, current OAuth verifier/principal route, and the actual interactive owner session; no approval prompt was run in this qualification.
 - V1-00: the candidate adds the signed public worker registry to the existing machine-global root-leases.sqlite through WorkflowStore, with append-only hash-chained events, projection verification, read/write transactions and cross-process CAS. It is not yet merged into the canonical integration branch.
 - V1-06: the `integration/v012-core-20261108` candidate propagates the signed worker tuple (`workerId`, `workerKeyId`, exact `workerGrantRevision`) from the original execution receipt through the durable delivery item into presentation protocol v2. Legacy pre-identity rows remain isolated on protocol v1; v1 cannot ACK a worker-bound v2 result. Every v2 ACK requires the Host-only `assertWorkerIdentityCurrent` callback. The same candidate now derives and persists `workflowScope` from the active root lease and passes the frozen scope to Host dispatch; the scope is not yet included in the signed original execution receipt. Source-only; no production callback or issuer is wired.
 - V1-08: package, install, and rollback the integrated adapters only after source qualification and native-provider acceptance.
-- Platform adapters: implement Windows DPAPI/TPM and Linux protected-key loading without exposing private key bytes; Tailscale identity remains an optional additional device attestor. The tunnel adapter is dependency-injected and has no live production process/provider binding in this candidate.
+- Platform source adapters are now present: Linux systemd credential loading, Windows DPAPI CurrentUser seed loading and SID hashing, a fixed-argument native process probe, and a Tailscale device attestor. They are not yet wired to a production host bootstrap; TPM-backed key storage, live Linux systemd credential service, live Windows DPAPI/TPM owner proof, and an allowlisted live Tailscale probe remain unqualified.
 
 ## Source QA
 
@@ -121,7 +121,7 @@ The V1-01 source candidate now requires the native session-binding provider to e
 
 The Linux isolated source candidate passed 143/143 focused V1-01/V1-07 tests and the all-ref security audit over 33,431,568 history bytes. The integrated NoPromote worktree must repeat the focused and full qualification after this selective merge.
 
-Still not production acceptance: no host-native resolveOwnerSidHash implementation is wired, no real native owner-grant/administration provider is bootstrapped, no Linux protected-key provider is approved, no production worker key is enrolled, and no authenticated tunnel/Host wiring is active. The source remains fail-closed. Do not enroll workers or enable executionAccess/receiptAuthority until those providers are independently qualified.
+Still not production acceptance: the Linux native owner/session and administration providers are source-integrated but have not been activated against a real interactive owner seat; no current-chat owner consent was granted, and the owner-visible prompt was deliberately not reissued. The Windows native owner-session/consent path is not implemented here. The Linux systemd and Windows DPAPI key providers are source-level only; no production worker key is enrolled, no live tunnel identity has been attested, and no trusted Host callback/issuer is wired. Do not enroll workers or enable executionAccess/receiptAuthority until those providers are independently qualified.
 
 
 ## 2026-11-08 V1-06 worker-bound delivery receipt integration (NoPromote)
@@ -139,3 +139,25 @@ The 0.12 integration worktree now derives a frozen `workflowScope` from the same
 This does not yet make the scope a signed execution receipt: V1-06's original Host receipt/presentation claims still bind the worker tuple only, and the production Host issuer does not consume `ctx.workflowOperation`. The separate V1-05 worktree contains a broader process-containment/proof-based reconciliation implementation, but it remains dirty and unintegrated; selective integration is required, excluding duplicate V1-01/V1-07 worker-identity code. Do not substitute an operation ID for a lease ID or a raw project path for a fingerprint.
 
 This is a source-only NoPromote candidate. It does not establish a production worker key, native owner/session provider, authenticated tunnel provider, Host callback, J01 consent, originating-chat presentation, installed ACK or fleet acceptance.
+
+
+## 2026-11-09 V1-01 Linux native owner/session and platform-session admission (NoPromote)
+
+The 0.12 integration candidate now selectively includes the latest V1-01 owner-admission source delta, while preserving the pre-existing V1-00 installer and installer/update changes:
+
+- native-owner-session-provider-linux.mjs derives the owner hash from the current process UID and user namespace, checks the exact active local logind seat/session, and uses pinned root-owned /usr/bin/loginctl and /usr/bin/zenity executables with execFile (no shell). The owner-binding dialog defaults to Deny, verifies the owner/session before and after the visible decision, and grants no OS elevation.
+- native-owner-administration-authorizer.mjs binds worker enrollment, per-task grants and revocation to the exact native owner context and route. V2GrantRegistry administration mutations now await the trusted approval callback before their durable CAS/event write.
+- v2-platform-session-proof.mjs provides an in-process, one-shot capability bound to the ChatGPT mTLS peer, openai/session handle and bearer digest. The V2 HTTPS ingress carries that capability to v101-v2-protected-dispatcher.mjs, which preflights OAuth, validates the exact session/route and then requires native owner binding before protected calls.
+- v101-linux-owner-security-bootstrap.mjs composes the Linux owner provider, owner-administration authorizer, V2 grant registry, platform-session proof authority and candidate direct HTTPS gateway. It opens no listener, performs no enrollment, and does not create an elevated process.
+- The existing V2 native owner-session binding now rechecks token-digest uniqueness after asynchronous consent, preventing two concurrent owner dialogs from binding the same bearer to different sessions.
+
+### Candidate source QA receipts
+
+- V1-01 focused suite: 244/244 PASS (operation 10a44d9c-ba79-47d2-b519-e6572331c6f7).
+- V1-07 focused suite, including the native process/Tailscale/Linux systemd/Windows DPAPI source tests: 67/67 PASS (operation 4ba586be-1b8a-4f2f-a945-50935d06118c).
+- Workflow suite after both integrations: 584/584 PASS (operation c83d3eb0-117e-4c7e-8436-91f081b8f794).
+- V1-06 signed-origin tests: 69/69 PASS (operation c275c933-1016-431b-a6a5-16c98af31f5c); delivery/ACK tests: 292/292 PASS (operation 847ad6ff-6594-4aaf-a2c2-4b592fd6df69).
+- Full check:qualification: exit 0 (operation f83b160d-385c-48d9-ae49-b50a51864fa3); full test:qualification: exit 0 (operation b9ba58e2-7571-4774-9021-ba356f1d4c79).
+- All-ref security audit: SECURITY_AUDIT_PASS, 34,634,561 Git-history bytes (operation 29195c92-40fd-4d18-9aa6-6a41347706e9); git diff --check PASS.
+
+These are source/test receipts only. No real OpenAI mTLS current-chat attestation, production OAuth issuer/verifier, owner consent, Linux systemd credential mount, Windows DPAPI/TPM host probe, live Tailscale CLI probe, Host issuer/registry callback, worker enrollment, signed ACK, cross-host transfer, install, canary or rollback was exercised. The candidate remains NoPromote; the existing staged Windows installer and all unrelated dirty files remain preserved.

@@ -107,13 +107,15 @@ for (const token of [
 ]) if (!linuxServerInstaller.includes(token)) throw new Error('Linux V0.12 dev bootstrap must match a non-promotable release train: '+token);
 const linuxDevTrainValidator = linuxServerInstaller.match(/<<'PY'\n([\s\S]*?)\nPY/);
 if (!linuxDevTrainValidator) throw new Error('Linux staged release-train validator not found');
+const pythonCommand = process.platform === 'win32' ? 'py' : 'python3';
+const pythonPrefixArgs = process.platform === 'win32' ? ['-3'] : [];
 for (const [minor, version, accepted] of [
   ['11','0.11.0-dev.105',true],
   ['12','0.12.0-dev.1',true],
   ['12','0.12.0-dev.2',false],
   ['11','0.12.0-dev.1',false]
 ]) {
-  const result = spawnSync('python3', ['-',`docs/release-train-0.${minor}.json`,version,`0.${minor}`],
+  const result = spawnSync(pythonCommand, [...pythonPrefixArgs,'-',`docs/release-train-0.${minor}.json`,version,`0.${minor}`],
     {input:linuxDevTrainValidator[1]+'\n',encoding:'utf8',windowsHide:true});
   if ((result.status===0)!==accepted) throw new Error('Linux V0.12 train/source match admission wrong: '+minor+' '+version);
 }

@@ -57,12 +57,12 @@ function routeContext(context){
   });
 }
 
-test('worker enrollment grants are durable, exact, default-deny and stored in the existing host registry',()=>{
+test('worker enrollment grants are durable, exact, default-deny and stored in the existing host registry',async()=>{
   const f=fixture();
   try{
     assert.equal(f.registry.readWorkerGrant(f.context),null);
     assert.equal(f.registry.isWorkerAllowed(route(),f.context,'read_text'),false);
-    const grant=grantEnrollment(f);
+    const grant=await grantEnrollment(f);
     assert.equal(f.state.adminCalls[0].kind,'worker-enrollment-grant');
     assert.equal(f.state.adminCalls[0].status,'ACTIVE');
     assert.equal(f.state.adminCalls[0].workerContext.workerId,WORKER);
@@ -88,21 +88,21 @@ test('worker enrollment grants are durable, exact, default-deny and stored in th
   }finally{f.close();}
 });
 
-test('worker enrollment CAS prevents active replacement and requires a fresh owner binding after revoke',()=>{
+test('worker enrollment CAS prevents active replacement and requires a fresh owner binding after revoke',async()=>{
   const f=fixture();
   try{
-    grantEnrollment(f);
-    assert.throws(()=>grantEnrollment(f,workerContext(B2),1),/V2_WORKER_GRANT_ACTIVE_EPOCH_CONFLICT/);
-    assert.throws(()=>grantEnrollment(f,f.context,0),/V2_WORKER_GRANT_REVISION_CONFLICT/);
-    const revoked=f.registry.changeWorkerGrant({
+    await grantEnrollment(f);
+    await assert.rejects(grantEnrollment(f,workerContext(B2),1),/V2_WORKER_GRANT_ACTIVE_EPOCH_CONFLICT/);
+    await assert.rejects(grantEnrollment(f,f.context,0),/V2_WORKER_GRANT_REVISION_CONFLICT/);
+    const revoked=await f.registry.changeWorkerGrant({
       workerContext:f.context,status:'REVOKED',expectedRevision:1,
       actor:'owner-1',reason:'owner revoked worker'
     });
     assert.equal(revoked.status,'REVOKED');
     assert.equal(revoked.revision,2);
     assert.equal(f.registry.isWorkerAllowed(route(),f.context,'read_text'),false);
-    assert.throws(()=>grantEnrollment(f,f.context,2),/V2_WORKER_GRANT_EPOCH_REUSE/);
-    const regrant=grantEnrollment(f,workerContext(B2),2);
+    await assert.rejects(grantEnrollment(f,f.context,2),/V2_WORKER_GRANT_EPOCH_REUSE/);
+    const regrant=await grantEnrollment(f,workerContext(B2),2);
     assert.equal(regrant.status,'ACTIVE');
     assert.equal(regrant.revision,3);
     assert.equal(regrant.bindingId,B2);
@@ -111,16 +111,16 @@ test('worker enrollment CAS prevents active replacement and requires a fresh own
   }finally{f.close();}
 });
 
-test('worker enrollment requires the exact key/device owner tuple and bounded expiry',()=>{
+test('worker enrollment requires the exact key/device owner tuple and bounded expiry',async()=>{
   const f=fixture();
   try{
     f.state.adminAllowed=false;
-    assert.throws(()=>grantEnrollment(f),/V2_WORKER_GRANT_ADMIN_AUTH_REQUIRED/);
+    await assert.rejects(grantEnrollment(f),/V2_WORKER_GRANT_ADMIN_AUTH_REQUIRED/);
     f.state.adminAllowed=true;
-    assert.throws(()=>grantEnrollment(f,f.context,0,f.state.now+86_400_001),
+    await assert.rejects(grantEnrollment(f,f.context,0,f.state.now+86_400_001),
       /V2_WORKER_GRANT_EXPIRY_INVALID/);
-    grantEnrollment(f);
-    assert.throws(()=>grantEnrollment(f,workerContext(B2,{deviceIdHash:'9'.repeat(64)}),1),
+    await grantEnrollment(f);
+    await assert.rejects(grantEnrollment(f,workerContext(B2,{deviceIdHash:'9'.repeat(64)}),1),
       /V2_WORKER_GRANT_WORKER_IDENTITY_CHANGED/);
     const getter=Object.create(null);
     for(const [k,v] of Object.entries(f.context))Object.defineProperty(getter,k,{
@@ -133,16 +133,16 @@ test('worker enrollment requires the exact key/device owner tuple and bounded ex
   }finally{f.close();}
 });
 
-test('per-worker tool grants bind exact chat, root, tool, key, device, tunnel, policy and binding',()=>{
+test('per-worker tool grants bind exact chat, root, tool, key, device, tunnel, policy and binding',async()=>{
   const f=fixture();
   try{
-    grantEnrollment(f);
+    await grantEnrollment(f);
     assert.equal(f.registry.isWorkerAllowed(route(),f.context,'read_text'),false);
-    grantTool(f);
+    await grantTool(f);
     assert.equal(f.registry.isWorkerAllowed(route(),f.context,'read_text'),true);
     assert.equal(f.registry.workerToolGrantEvents(route(),f.context,'read_text').length,1);
     assert.equal(f.registry.isWorkerAllowed(route('root-a','chat-1','other-step'),f.context,'read_text'),false);
-    assert.throws(()=>grantTool(f,workerContext(B1,{keyId:'9'.repeat(64)})),
+    await assert.rejects(grantTool(f,workerContext(B1,{keyId:'9'.repeat(64)})),
       /V2_WORKER_GRANT_NOT_ACTIVE/);
     assert.equal(f.registry.isWorkerAllowed(route(),workerContext(B1,{keyId:'9'.repeat(64)}),'read_text'),false);
     assert.equal(f.registry.isWorkerAllowed(route('root-b'),f.context,'read_text'),false);
@@ -156,29 +156,29 @@ test('per-worker tool grants bind exact chat, root, tool, key, device, tunnel, p
   }finally{f.close();}
 });
 
-test('per-worker tool grants require active enrollment, bounded expiry, CAS and revocation',()=>{
+test('per-worker tool grants require active enrollment, bounded expiry, CAS and revocation',async()=>{
   const f=fixture();
   try{
-    assert.throws(()=>grantTool(f),/V2_WORKER_GRANT_NOT_ACTIVE/);
-    grantEnrollment(f);
-    assert.throws(()=>grantTool(f,f.context,route(),'read_text',0,f.state.now+60_001),
+    await assert.rejects(grantTool(f),/V2_WORKER_GRANT_NOT_ACTIVE/);
+    await grantEnrollment(f);
+    await assert.rejects(grantTool(f,f.context,route(),'read_text',0,f.state.now+60_001),
       /V2_WORKER_TOOL_GRANT_EXPIRY_INVALID/);
-    grantTool(f);
+    await grantTool(f);
     const toolAdmin=f.state.adminCalls.find(x=>x.kind==='worker-tool-grant');
     assert.equal(toolAdmin.status,'ENABLED');
     assert.equal(toolAdmin.tool,'read_text');
     assert.equal(toolAdmin.route.operationId,'write-step');
     assert.equal(toolAdmin.workerContext.workerId,WORKER);
     assert.equal(f.registry.isWorkerAllowed(route(),f.context,'read_text'),true);
-    assert.throws(()=>grantTool(f,f.context,route(),'read_text',0),
+    await assert.rejects(grantTool(f,f.context,route(),'read_text',0),
       /V2_WORKER_TOOL_GRANT_REVISION_CONFLICT/);
-    const revoked=f.registry.changeWorkerToolGrant({
+    const revoked=await f.registry.changeWorkerToolGrant({
       route:route(),workerContext:f.context,tool:'read_text',status:'REVOKED',
       expectedRevision:1,actor:'owner-1',reason:'owner revoked tool'
     });
     assert.equal(revoked.status,'REVOKED');
     assert.equal(f.registry.isWorkerAllowed(route(),f.context,'read_text'),false);
-    const renewed=grantTool(f,f.context,route(),'read_text',2,f.state.now+25_000);
+    const renewed=await grantTool(f,f.context,route(),'read_text',2,f.state.now+25_000);
     assert.equal(renewed.status,'ENABLED');
     assert.equal(renewed.revision,3);
     assert.equal(f.registry.isWorkerAllowed(route(),f.context,'read_text'),true);
@@ -187,32 +187,32 @@ test('per-worker tool grants require active enrollment, bounded expiry, CAS and 
   }finally{f.close();}
 });
 
-test('expired worker enrollment invalidates old task grants and re-enrollment needs a new binding',()=>{
+test('expired worker enrollment invalidates old task grants and re-enrollment needs a new binding',async()=>{
   const f=fixture();
   try{
-    grantEnrollment(f,f.context,0,f.state.now+1000);
-    grantTool(f,f.context,route(),'read_text',0,f.state.now+1000);
+    await grantEnrollment(f,f.context,0,f.state.now+1000);
+    await grantTool(f,f.context,route(),'read_text',0,f.state.now+1000);
     assert.equal(f.registry.isWorkerAllowed(route(),f.context,'read_text'),true);
     f.state.now+=1001;
     assert.equal(f.registry.isWorkerAllowed(route(),f.context,'read_text'),false);
-    assert.throws(()=>grantEnrollment(f,f.context,1,f.state.now+30_000),
+    await assert.rejects(grantEnrollment(f,f.context,1,f.state.now+30_000),
       /V2_WORKER_GRANT_EPOCH_REUSE/);
     const next=workerContext(B2);
-    grantEnrollment(f,next,1,f.state.now+30_000);
+    await grantEnrollment(f,next,1,f.state.now+30_000);
     assert.equal(f.registry.isWorkerAllowed(route(),next,'read_text'),false);
-    grantTool(f,next,route(),'read_text',1,f.state.now+20_000);
+    await grantTool(f,next,route(),'read_text',1,f.state.now+20_000);
     assert.equal(f.registry.isWorkerAllowed(route(),next,'read_text'),true);
   }finally{f.close();}
 });
 
-test('worker grant event history is append-only and owner admin rejection has no side effects',()=>{
+test('worker grant event history is append-only and owner admin rejection has no side effects',async()=>{
   const f=fixture();
   try{
     f.state.adminAllowed=false;
-    assert.throws(()=>grantEnrollment(f),/V2_WORKER_GRANT_ADMIN_AUTH_REQUIRED/);
+    await assert.rejects(grantEnrollment(f),/V2_WORKER_GRANT_ADMIN_AUTH_REQUIRED/);
     f.state.adminAllowed=true;
-    grantEnrollment(f);
-    grantTool(f);
+    await grantEnrollment(f);
+    await grantTool(f);
     const db=new DatabaseSync(path.join(f.root,'secure','v2-access.sqlite'));
     try{
       assert.throws(()=>db.exec('DELETE FROM v2_worker_grant_events'),/APPEND_ONLY/);
@@ -227,10 +227,10 @@ test('worker grant event history is append-only and owner admin rejection has no
 test('V1-07 adapter returns the exact owner grant and composes owner, base and worker grants',async()=>{
   const f=fixture();
   try{
-    grantEnrollment(f);
-    grantTool(f);
-    grantTool(f,f.context,route(),'worker.register');
-    grantTool(f,f.context,route(),'worker.revoke');
+    await grantEnrollment(f);
+    await grantTool(f);
+    await grantTool(f,f.context,route(),'worker.register');
+    await grantTool(f,f.context,route(),'worker.revoke');
     let target='root-a';
     const bridge={
       verifyCaller:async()=>Object.freeze({verified:true,source:'v1-01-trusted-ingress'}),
@@ -266,7 +266,7 @@ test('V1-07 adapter returns the exact owner grant and composes owner, base and w
       invocation,Object.freeze({...f.context,conversationId:'chat-other',grantRevision:resolved.revision})),false);
     assert.equal(await adapter.resolveOwnerGrant(ownerRequest(f.context,f.state.now-1)),null);
     assert.equal(await adapter.resolveOwnerGrant({...ownerRequest(f.context,f.state.now+1),extra:true}),null);
-    f.registry.changeWorkerGrant({
+    await f.registry.changeWorkerGrant({
       workerContext:f.context,status:'REVOKED',expectedRevision:1,
       actor:'owner-1',reason:'owner revoked worker'
     });
@@ -275,7 +275,7 @@ test('V1-07 adapter returns the exact owner grant and composes owner, base and w
   }finally{f.close();}
 });
 
-test('unsupported V2 grant schemas fail closed without rewriting the database',()=>{
+test('unsupported V2 grant schemas fail closed without rewriting the database',async()=>{
   for(const version of [1,4]){
     const root=fs.mkdtempSync(path.join(os.tmpdir(),'v2-worker-grants-schema-'));
     const directory=path.join(root,'secure');fs.mkdirSync(directory,{recursive:true});
@@ -289,7 +289,7 @@ test('unsupported V2 grant schemas fail closed without rewriting the database',(
   }
 });
 
-test('V2 schema v2 upgrades additively to v3 and preserves existing route grants',()=>{
+test('V2 schema v2 upgrades additively to v3 and preserves existing route grants',async()=>{
   const root=fs.mkdtempSync(path.join(os.tmpdir(),'v2-worker-grants-migrate-'));
   const directory=path.join(root,'secure');fs.mkdirSync(directory,{recursive:true});
   const location=path.join(directory,'v2-access.sqlite');
@@ -339,7 +339,7 @@ test('separate Node processes cannot both win the same initial worker-grant revi
   }finally{f.close();}
 });
 
-test('V1-07 adapter rejects a grant registry different from the native bridge registry',()=>{
+test('V1-07 adapter rejects a grant registry different from the native bridge registry',async()=>{
   const f=fixture();
   try{
     const bridge={
@@ -358,8 +358,8 @@ test('V1-07 adapter rejects a grant registry different from the native bridge re
 test('V1-07 adapter requires exact current grantRevision and rechecks after asynchronous host authorization',async()=>{
   const f=fixture();
   try{
-    grantEnrollment(f);
-    grantTool(f);
+    await grantEnrollment(f);
+    await grantTool(f);
     const base=f.registry.readWorkerGrant(f.context);
     let observedRevision=base.revision,changeDuringAuthorize=false;
     const grantRegistry={

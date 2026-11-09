@@ -124,9 +124,17 @@ export function createV2NativeOwnerSessionBindings({
       if(!same(first.route,second.route)||first.seat!==second.seat
         ||first.ownerSidHash!==second.ownerSidHash)
         fail('V2_SESSION_BINDING_CHANGED_DURING_CONSENT');
-      if(active.has(handle))fail('V2_SESSION_BINDING_EXISTS');
       for(const [oldHandle,oldRecord] of active)
         if(oldRecord.expiresAtMs<=end)active.delete(oldHandle);
+      // Consent is asynchronous: another distinct session may have completed
+      // a binding for this same bearer while this owner prompt was open.
+      // Enforce digest uniqueness again at the commit point, not only before
+      // asking for consent, so a bearer cannot resolve ambiguously.
+      for(const [otherHandle,otherRecord] of active)
+        if(otherHandle!==handle&&otherRecord.tokenSha256===tokenSha256
+          &&otherRecord.expiresAtMs>end)
+          fail('V2_SESSION_TOKEN_BINDING_EXISTS');
+      if(active.has(handle))fail('V2_SESSION_BINDING_EXISTS');
       if(active.size>=maxBindings)fail('V2_SESSION_CAPACITY_REACHED');
       if(!Number.isSafeInteger(end+ttlMs))fail('V2_SESSION_CLOCK_INVALID');
       const record=Object.freeze({

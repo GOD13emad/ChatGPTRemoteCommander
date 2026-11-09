@@ -59,6 +59,46 @@ test('native owner session binding resolves only the exact verified token digest
   }finally{f.close();}
 });
 
+test('concurrent owner approvals cannot bind one bearer digest to two native sessions',async()=>{
+  const tokenSha256='e'.repeat(64);
+  const now=1_800_000_000_000;
+  let approvals=0,release;
+  const barrier=new Promise(resolve=>{release=resolve;});
+  const bindings=createV2NativeOwnerSessionBindings({
+    attestPlatformSession:async sessionHandle=>({
+      source:'native-platform-session',sessionHandle,tokenSha256
+    }),
+    resolveOwnerRoute:async sessionHandle=>({
+      ...route,conversationId:sessionHandle,
+      target:{kind:'desktop-seat',id:'qa-seat'}
+    }),
+    observedNativeSession:async()=> 'qa-seat',
+    resolveOwnerSidHash:async()=>OWNER,
+    authorizeBinding:async()=>{
+      approvals++;
+      if(approvals===2)release();
+      await barrier;
+      return true;
+    },
+    authorizeRevocation:async()=>true,
+    now:()=>now,ttlMs:60_000,maxBindings:2
+  });
+  try{
+    const results=await Promise.allSettled([
+      bindings.bindTrusted('qa-chat-one'),
+      bindings.bindTrusted('qa-chat-two')
+    ]);
+    assert.equal(results.filter(x=>x.status==='fulfilled').length,1);
+    assert.equal(results.filter(x=>x.status==='rejected').length,1);
+    const denied=results.find(x=>x.status==='rejected');
+    assert.match(denied.reason?.message??'',/V2_SESSION_TOKEN_BINDING_EXISTS/);
+    assert.equal(bindings.size,1);
+    const resolved=await bindings.resolveAttestedTokenBinding(tokenSha256);
+    assert.ok(resolved);
+    assert.ok(['qa-chat-one','qa-chat-two'].includes(resolved.sessionHandle));
+  }finally{bindings.close();}
+});
+
 test('owner identity loss removes the token-to-session binding before Router admission',async()=>{
   const f=fixture();
   try{

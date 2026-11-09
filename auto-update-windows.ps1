@@ -14,6 +14,7 @@ param(
   [switch]$NoPromote,
   [string]$SourceBundle = '',
   [string]$SourceBundleSha256 = '',
+  [string]$WindowsJobRunnerPath = '',
   [ValidateRange(5,300)][int]$DrainTimeoutSeconds = 60
 )
 $ErrorActionPreference='Stop'
@@ -349,6 +350,59 @@ function Stage-Release([string]$Ref){
     Move-Item $tmp $final
   }
   return [pscustomobject]@{Ref=$Ref;Commit=$commit;Version=$version;Dir=$final}
+}
+function Copy-WindowsJobRunner([string]$StageDir){
+  $runnerRoot=Join-Path $StageDir 'tools\windows-job-runner'
+  $manifestPath=Join-Path $runnerRoot 'release-manifest.json'
+  if(-not(Test-Path -LiteralPath $manifestPath -PathType Leaf)){throw 'WINDOWS_JOB_RUNNER_MANIFEST_MISSING'}
+  $manifest=Read-Json $manifestPath
+  if($manifest.schema -ne 1 -or $manifest.platform -ne 'win32' -or
+     $manifest.arch -ne 'x64' -or $manifest.runtime -ne 'self-contained' -or
+     $manifest.singleFile -ne $true -or
+     $manifest.runner -cne 'dist/win-x64/CommanderWindowsJobRunner.exe' -or
+     [string]$manifest.runnerSha256 -cnotmatch '^[a-f0-9]{64}$'){
+    throw 'WINDOWS_JOB_RUNNER_RELEASE_MANIFEST_INVALID'
+  }
+  $relative='tools\windows-job-runner\dist\win-x64\CommanderWindowsJobRunner.exe'
+  $source=if($WindowsJobRunnerPath){[IO.Path]::GetFullPath($WindowsJobRunnerPath)}else{Join-Path $InstallDir $relative}
+  if(-not(Test-Path -LiteralPath $source -PathType Leaf)){throw 'WINDOWS_JOB_RUNNER_NOT_INSTALLED'}
+  $sourceFile=Get-Item -LiteralPath $source -Force
+  if(($sourceFile.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0){throw 'WINDOWS_JOB_RUNNER_SOURCE_REPARSE_REJECTED'}
+  $sourceSha=(Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash.ToLowerInvariant()
+  if($sourceSha -cne [string]$manifest.runnerSha256){throw 'WINDOWS_JOB_RUNNER_SOURCE_SHA_MISMATCH'}
+  $target=Join-Path $StageDir $relative
+  New-Item -ItemType Directory -Force -Path (Split-Path -Parent $target) | Out-Null
+  Copy-Item -LiteralPath $source -Destination $target -Force
+  $targetSha=(Get-FileHash -LiteralPath $target -Algorithm SHA256).Hash.ToLowerInvariant()
+  if($targetSha -cne [string]$manifest.runnerSha256){throw 'WINDOWS_JOB_RUNNER_STAGE_SHA_MISMATCH'}
+  $verifier=Join-Path $runnerRoot 'verify-windows-job-runner.ps1'
+  & pwsh.exe -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $verifier -VerifyOnly
+  if($LASTEXITCODE -ne 0){throw 'WINDOWS_JOB_RUNNER_STAGE_VERIFY_FAILED'}
+  Log ('WINDOWS_JOB_RUNNER_STAGE_VERIFIED sha256='+$targetSha)
+}
+function Install-ControlWindowsJobRunner([string]$StageDir){
+  $runnerRoot=Join-Path $StageDir 'tools\windows-job-runner'
+  $manifest=Read-Json (Join-Path $runnerRoot 'release-manifest.json')
+  $relative='tools\windows-job-runner\dist\win-x64\CommanderWindowsJobRunner.exe'
+  $source=Join-Path $StageDir $relative
+  $target=Join-Path $InstallDir $relative
+  $expected=[string]$manifest.runnerSha256
+  if($expected -cnotmatch '^[a-f0-9]{64}$'){throw 'WINDOWS_JOB_RUNNER_PROMOTION_MANIFEST_INVALID'}
+  $sourceSha=(Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash.ToLowerInvariant()
+  if($sourceSha -cne $expected){throw 'WINDOWS_JOB_RUNNER_PROMOTION_SOURCE_SHA_MISMATCH'}
+  $temp=$target+'.stage-'+$PID
+  New-Item -ItemType Directory -Force -Path (Split-Path -Parent $target) | Out-Null
+  try{
+    Copy-Item -LiteralPath $source -Destination $temp -Force
+    $tempSha=(Get-FileHash -LiteralPath $temp -Algorithm SHA256).Hash.ToLowerInvariant()
+    if($tempSha -cne $expected){throw 'WINDOWS_JOB_RUNNER_PROMOTION_TEMP_SHA_MISMATCH'}
+    Move-Item -LiteralPath $temp -Destination $target -Force
+    $installedSha=(Get-FileHash -LiteralPath $target -Algorithm SHA256).Hash.ToLowerInvariant()
+    if($installedSha -cne $expected){throw 'WINDOWS_JOB_RUNNER_PROMOTION_SHA_MISMATCH'}
+    Log ('WINDOWS_JOB_RUNNER_CONTROL_PROMOTED sha256='+$installedSha)
+  }finally{
+    if(Test-Path -LiteralPath $temp){Remove-Item -LiteralPath $temp -Force -ErrorAction SilentlyContinue}
+  }
 }
 function Run-Gate([string]$Candidate,[string]$Name,[string[]]$CommandArgs){
   Log "GATE_START $Name"
@@ -901,7 +955,7 @@ function Has-SupersededRelease {
   }
   return $false
 }
-function Promote-Control([string]$Commit,[string]$Ref){
+function Promote-Control([string]$Commit,[string]$Ref,[string]$StageDir){
   $dirty=& git.exe -C $InstallDir status --porcelain --untracked-files=no
   if($LASTEXITCODE-ne 0){throw 'CONTROL_GIT_STATUS_FAIL'}
   if($dirty){
@@ -917,6 +971,7 @@ function Promote-Control([string]$Commit,[string]$Ref){
   if($resolved-ne $Commit){throw 'CONTROL_COMMIT_MISMATCH'}
   & git.exe -C $InstallDir checkout --detach --force $Commit | Out-Null
   if($LASTEXITCODE-ne 0){throw 'CONTROL_CHECKOUT_FAIL'}
+  Install-ControlWindowsJobRunner $StageDir
 }
 function Recycle-ControlSupervisor {
   $runKey='HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
@@ -1034,6 +1089,17 @@ try{
   $primaryConfig=Read-Json (Get-PrimaryConfig)
   if(-not $Force -and $primaryConfig.autoUpdate.enabled-ne $true){Log 'AUTO_UPDATE_DISABLED';$report.status='DISABLED';Atomic-Json $ResultFile $report;exit 0}
   $ref=Get-LatestTag
+  # Do not stage old public Stable tags while v0.12.0 remains unapproved.
+  # -NoPromote keeps its explicit isolated qualification semantics.
+  if(-not $Force -and -not $NoPromote -and $ref -cne 'v0.12.0'){
+    $report.ref=$ref
+    $report.status='BLOCKED_RELEASE_TRAIN'
+    $report.reason='V012_RELEASE_TRAIN_NOT_APPROVED'
+    $report.completedAt=(Get-Date).ToUniversalTime().ToString('o')
+    Atomic-Json $ResultFile $report
+    Log "AUTO_UPDATE_RELEASE_TRAIN_REF_BLOCK ref=$ref"
+    exit 0
+  }
   # Skip staging obsolete Stable checkouts while a newer approved Preview route runs.
   # Explicit -Force and SHA refs keep their existing qualification semantics.
   if(-not $Force -and $ref -match '^v(\d+\.\d+\.\d+)$'){
@@ -1061,6 +1127,26 @@ try{
     }
   }
   $stage=Stage-Release $ref
+  if(-not $Force -and -not $NoPromote){
+    $approved=$false
+    if($ref -ceq 'v0.12.0' -and $stage.Version -ceq '0.12.0'){
+      Push-Location $stage.Dir
+      try{
+        & node.exe '.\tools\verify-v012-publish-readiness.mjs' $stage.Version $ref | Out-Null
+        $approved=($LASTEXITCODE -eq 0)
+      }finally{Pop-Location}
+    }
+    if(-not $approved){
+      $report.ref=$ref;$report.commit=$stage.Commit;$report.version=$stage.Version
+      $report.status='BLOCKED_RELEASE_TRAIN'
+      $report.reason='V012_RELEASE_TRAIN_NOT_APPROVED'
+      $report.completedAt=(Get-Date).ToUniversalTime().ToString('o')
+      Atomic-Json $ResultFile $report
+      Log "AUTO_UPDATE_RELEASE_TRAIN_BLOCK version=$($stage.Version) ref=$ref"
+      exit 0
+    }
+  }
+  Copy-WindowsJobRunner $stage.Dir
   $report.ref=$ref;$report.commit=$stage.Commit;$report.version=$stage.Version
   $script:QualificationCommit=$stage.Commit
   # R-fleet: An accepted newer route is a durable version authority even when
@@ -1146,7 +1232,7 @@ try{
         if($pendingDrains.Count-gt 0){
           if($controlHead-ne $stage.Commit){
             Log "AUTO_UPDATE_MAINTENANCE controlHead=$controlHead target=$($stage.Commit)"
-            Promote-Control $stage.Commit $ref
+            Promote-Control $stage.Commit $ref $stage.Dir
           }
           $report.status='DRAIN_PENDING';$report.pendingDrains=@($pendingDrains);$report.completedAt=(Get-Date).ToUniversalTime().ToString('o')
           Atomic-Json $ResultFile $report
@@ -1168,7 +1254,7 @@ try{
               }
             }catch{throw}
           }
-          Promote-Control $stage.Commit $ref
+          Promote-Control $stage.Commit $ref $stage.Dir
           Recycle-ControlSupervisor
           $cleanupPending=@(Cleanup-Releases)
           $report.status=if($cleanupPending.Count-gt0){'MAINTENANCE_REPAIRED_CLEANUP_PENDING'}else{'MAINTENANCE_REPAIRED'}
@@ -1417,7 +1503,7 @@ try{
     }
   }
   if($pendingDrains.Count-gt 0 -or $deferredProfiles.Count-gt 0){
-    Promote-Control $stage.Commit $ref
+    Promote-Control $stage.Commit $ref $stage.Dir
     $allPending=@($pendingDrains)+@($deferredProfiles)|Select-Object -Unique
     $report.pendingDrains=@($allPending)
     $report.deferredProfiles=@($deferredProfiles)
@@ -1438,7 +1524,7 @@ try{
     }
   }
 
-  Promote-Control $stage.Commit $ref
+  Promote-Control $stage.Commit $ref $stage.Dir
   Recycle-ControlSupervisor
   Cleanup-Releases
   $report.status='PROMOTED';$report.completedAt=(Get-Date).ToUniversalTime().ToString('o')

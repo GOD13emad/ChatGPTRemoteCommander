@@ -15,6 +15,16 @@ async function port(){const s=net.createServer();await new Promise((r,j)=>s.list
 async function fixture(enabled){
  const root=fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(),'rc-wf-http-'))),app=path.join(root,'app'),project=path.join(root,'project');
  fs.mkdirSync(project);fs.mkdirSync(app);fs.cpSync(path.join(repo,'src'),path.join(app,'src'),{recursive:true});
+ if(process.platform==='win32'){
+  const runnerRoot=path.join(repo,'tools','windows-job-runner');
+  const manifest=JSON.parse(fs.readFileSync(path.join(runnerRoot,'release-manifest.json'),'utf8'));
+  const relative=manifest.runner.split('/');
+  const source=path.join(runnerRoot,...relative);
+  assert.ok(fs.existsSync(source),'Windows workflow fixture requires the pinned native Job Object runner');
+  assert.equal(createHash('sha256').update(fs.readFileSync(source)).digest('hex'),manifest.runnerSha256);
+  const target=path.join(app,'tools','windows-job-runner',...relative);
+  fs.mkdirSync(path.dirname(target),{recursive:true});fs.copyFileSync(source,target);
+ }
  const p=await port();const config={host:'127.0.0.1',port:p,deviceName:'WorkflowFixture',allowedRoots:[root],allowedPrograms:['node','git'],maxCommandMs:10000,maxReadBytes:524288,maxWriteBytes:524288,auditLog:'var/audit.jsonl',capabilityProfile:{tier:'STANDARD'},powerMode:{enabled:false,fullFilesystem:false,allowShell:false,allowProcessControl:false,backupRoot:path.join(root,'backups'),guiControl:{enabled:false}}};
  if(enabled)config.durableWorkflows={enabled:true,directory:path.join(root,'memory'),executionTools:['system_status','list_directory','read_text','write_text','run_project_command']};
  const cfg=path.join(root,'config.json'),raw=JSON.stringify(config);fs.writeFileSync(cfg,raw);

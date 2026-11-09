@@ -43,6 +43,16 @@ if(-not $AllowDirty){
   }
 }
 
+$RunnerVerifier=Join-Path $Root 'tools\windows-job-runner\verify-windows-job-runner.ps1'
+if(-not(Test-Path -LiteralPath $RunnerVerifier -PathType Leaf)){throw 'WINDOWS_JOB_RUNNER_VERIFIER_MISSING'}
+& pwsh.exe -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $RunnerVerifier -Ensure
+if($LASTEXITCODE -ne 0){throw 'WINDOWS_JOB_RUNNER_BUILD_OR_VERIFY_FAILED'}
+$RunnerManifest=Get-Content -LiteralPath (Join-Path $Root 'tools\windows-job-runner\release-manifest.json') -Raw | ConvertFrom-Json
+$RunnerPath=Join-Path $Root 'tools\windows-job-runner\dist\win-x64\CommanderWindowsJobRunner.exe'
+if(-not(Test-Path -LiteralPath $RunnerPath -PathType Leaf)){throw 'WINDOWS_JOB_RUNNER_BUILD_OUTPUT_MISSING'}
+$RunnerSha=(Get-FileHash -LiteralPath $RunnerPath -Algorithm SHA256).Hash.ToLowerInvariant()
+if($RunnerSha -cne [string]$RunnerManifest.runnerSha256){throw 'WINDOWS_JOB_RUNNER_BUILD_HASH_MISMATCH'}
+
 & (Join-Path $Root 'desktop\build-windows.ps1')
 if($LASTEXITCODE -ne 0){throw 'Desktop payload build failed.'}
 
@@ -69,7 +79,8 @@ if(-not $Iscc){throw 'Inno Setup 6 compiler (ISCC.exe) is required to build the 
 $args=@(
   ('/DMyVersion='+$Version),
   ('/DMyCommit='+$ExpectedCommit),
-  ('/DMySourceRef='+$SourceRef)
+  ('/DMySourceRef='+$SourceRef),
+  ('/DWindowsJobRunner='+$RunnerPath)
 )
 $BrowserSha=$null
 if($BrowserInstaller){
@@ -115,6 +126,7 @@ $result=[ordered]@{
   signatureStatus=[string]$Signature.Status
   browserBundled=[bool]$BrowserInstaller
   browserSha256=$BrowserSha
+  windowsJobRunnerSha256=$RunnerSha
   coreBundled=[bool]$SourceBundle
   coreSourceBundleSha256=$BundleSha
 }

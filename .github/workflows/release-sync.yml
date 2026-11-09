@@ -24,6 +24,12 @@ on:
       - 'scripts/install-inno-setup.ps1'
       - 'desktop/**'
       - 'install.ps1'
+      - 'auto-update-windows.ps1'
+      - 'tools/windows-job-runner/**'
+      - 'test/workflow-http.test.mjs'
+      - 'test/single-installer-contract.test.mjs'
+      - 'test/auto-update-contract.test.mjs'
+      - '.github/workflows/ci.yml'
       - 'server-install-windows.ps1'
       - 'test/release-assets-contract.test.mjs'
       - 'test/unsigned-windows-release-policy.test.mjs'
@@ -46,7 +52,9 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
         with:
-          dotnet-version: '10.0.x'
+          dotnet-version: |
+            8.0.427
+            10.0.x
       - name: Test exact-version unsigned release policy
         shell: pwsh
         run: node --test test/unsigned-windows-release-policy.test.mjs
@@ -68,12 +76,24 @@ jobs:
           $version = node -p "require('./package.json').version"
           $commit=(git rev-parse HEAD).Trim()
           $sourceRef=if('${{ github.event_name }}' -eq 'pull_request'){'${{ github.head_ref }}'}else{'${{ github.ref_name }}'}
+          if($sourceRef -notmatch '^[A-Za-z0-9._/-]{1,128}$'){throw 'CORE_BUNDLE_SOURCE_REF_INVALID'}
+          $bundle=Join-Path $env:RUNNER_TEMP 'remote-commander-core.bundle'
+          $bundleRef='refs/heads/'+$sourceRef
+          git check-ref-format $bundleRef
+          if($LASTEXITCODE -ne 0){throw 'CORE_BUNDLE_REF_FORMAT_INVALID'}
+          git update-ref $bundleRef $commit
+          if($LASTEXITCODE -ne 0){throw 'CORE_BUNDLE_REF_CREATE_FAILED'}
+          git bundle create $bundle $bundleRef
+          if($LASTEXITCODE -ne 0){throw 'CORE_BUNDLE_CREATE_FAILED'}
+          git bundle verify $bundle
+          if($LASTEXITCODE -ne 0){throw 'CORE_BUNDLE_VERIFY_FAILED'}
           $browser=Join-Path $env:RUNNER_TEMP 'Remote-Commander-Browser-Setup-v0.8.1.exe'
           pwsh.exe -NoLogo -NoProfile -File .\installer\build-setup.ps1 `
             -VersionOverride $version `
             -SourceRef $sourceRef `
             -ExpectedCommit $commit `
-            -BrowserInstaller $browser
+            -BrowserInstaller $browser `
+            -SourceBundle $bundle
       - name: Record final setup Authenticode verification
         id: verify_installer_signature
         shell: pwsh

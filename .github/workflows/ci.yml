@@ -25,6 +25,14 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: '22'
+      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
+        if: runner.os == 'Windows'
+        with:
+          dotnet-version: '8.0.427'
+      - name: Build and verify the pinned Windows Job Object runner
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./tools/windows-job-runner/verify-windows-job-runner.ps1 -Ensure
       - name: Verify exactly one required CI context per pull request
         run: node --test test/ci-single-required-context.test.mjs
       - name: Verify large-file transfer preflight safety on both platforms

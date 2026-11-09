@@ -1,11 +1,13 @@
 // V2-G1 candidate HTTP ingress for the existing MCP/WorkflowStore dispatcher.
 // This is NOT wired to the live V1 listener. Importing it opens no port.
-// The caller must supply a trusted transport attestor (mTLS or an authenticated
-// reverse-proxy channel) and a factory that binds the verified platform session
-// to an owner-issued, independently signed, action-bound invocation. NEVER derive
-// such authority from user JSON, x-chat-id headers, or openai/session alone.
+// The caller must supply a trusted transport attestor and protected dispatcher.
+// In owner-admission mode, direct mTLS plus a bearer digest and the documented
+// openai/session correlator produce a one-shot in-process capability; the dispatcher
+// verifies OAuth and the canonical route before requesting native owner consent.
+// NEVER treat user JSON, x-chat-id headers, or openai/session alone as identity proof.
 import http from 'node:http';
 import https from 'node:https';
+import {createHash} from 'node:crypto';
 import { createV2ProtectedResourceMetadata } from './v2-oauth-resource-metadata.mjs';
 import { createV2DirectMtlsTransportAttestor } from './v2-direct-mtls-attestor.mjs';
 import { createV2OpenAiClientTlsOptions, V2_OPENAI_CONNECTORS_CA_PIN } from './v2-openai-mtls-trust.mjs';
@@ -59,10 +61,13 @@ async function boundedJson(req,maxBodyBytes){
 /** Build but do not start an isolated candidate HTTP listener. */
 export function createV2CandidateHttpIngress({
   resource,authorizationServers,scopes=['commander.workflow'],
-  attestTransport,dispatcherFactory,maxBodyBytes=65536
+  attestTransport,dispatcherFactory,platformSessionProofAuthority,maxBodyBytes=65536
 }){
   if(typeof attestTransport!=='function'||typeof dispatcherFactory!=='function')
     fail('V2_HTTP_TRUSTED_BOOTSTRAP_REQUIRED');
+  if(platformSessionProofAuthority!==undefined
+    &&typeof platformSessionProofAuthority?.issue!=='function')
+    fail('V2_HTTP_PLATFORM_PROOF_AUTHORITY_REQUIRED');
   if(!Number.isSafeInteger(maxBodyBytes)||maxBodyBytes<1024||maxBodyBytes>262144)
     fail('V2_HTTP_BODY_LIMIT_INVALID');
   const discovery=createV2ProtectedResourceMetadata({resource,authorizationServers,scopes});
@@ -151,8 +156,25 @@ export function createV2CandidateHttpIngress({
       // Trusted callback produces a preconfigured dispatcher bound to the
       // attested transport session from the server-side verification process.
       // Avoid giving it the raw user message or authorization header.
+      // The OpenAI session field is only a conversation correlator, never
+      // identity proof. Issue an in-process capability only after this request
+      // has passed direct mTLS, carries that exact session, and has one bearer
+      // token whose digest is bound to the owner-consent operation.
+      let platformSessionProof;
+      if(trustedMeta&&msg.method==='tools/call'
+        &&msg.params?.name==='v2_workflow_step'
+        &&sessionHandle===metaSession&&platformSessionProofAuthority){
+        const bearer=/^Bearer ([A-Za-z0-9._~+\/=:-]{16,16384})$/.exec(authorization??'');
+        if(bearer){
+          platformSessionProof=platformSessionProofAuthority.issue({
+            peerType:attested.peerType,sessionSource:attested.sessionSource,
+            sessionHandle,tokenSha256:createHash('sha256').update(bearer[1]).digest('hex')
+          });
+        }
+      }
       const dispatcher=await dispatcherFactory(Object.freeze({
-        authenticated:true,sessionHandle
+        authenticated:true,sessionHandle,
+        ...(platformSessionProof?{platformSessionProof}:{})
       }));
       if(!dispatcher||typeof dispatcher.handleRpc!=='function'
         ||dispatcher.protectedResource?.metadataUrl!==discovery.metadataUrl){
@@ -185,14 +207,14 @@ export function createV2CandidateHttpIngress({
  * Compose the existing candidate MCP HTTP handler behind a direct OpenAI mTLS
  * HTTPS listener, without opening a port or downgrading to plaintext HTTP.
  * It remains a candidate: the owner supplies protected server key/cert,
- * configured OAuth identity, and a dispatcher factory which independently
- * validates access tokens, native signed route assertions and grants.
- * A TLS-authenticated client alone cannot authorize a workflow operation.
+ * configured OAuth identity, canonical route resolver and V2 dispatcher. The
+ * first protected call must pass OAuth validation and explicit native owner
+ * consent; mTLS alone cannot authorize a workflow operation.
  */
 export function createV2CandidateDirectHttpsGateway({
   resource,authorizationServers,scopes=['commander.workflow'],
   certificatePem,privateKeyPem,dispatcherFactory,
-  sessionSource='openai/session',resolveTrustedSession,
+  sessionSource='openai/session',resolveTrustedSession,platformSessionProofAuthority,
   now=Date.now,maxBodyBytes=65536
 }={}){
   if(typeof now!=='function')fail('V2_HTTPS_TRUSTED_CLOCK_REQUIRED');
@@ -205,7 +227,7 @@ export function createV2CandidateDirectHttpsGateway({
   });
   const ingress=createV2CandidateHttpIngress({
     resource,authorizationServers,scopes,attestTransport,
-    dispatcherFactory,maxBodyBytes
+    dispatcherFactory,platformSessionProofAuthority,maxBodyBytes
   });
   return Object.freeze({
     protectedResource:ingress.protectedResource,

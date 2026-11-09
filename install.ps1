@@ -13,7 +13,8 @@ param(
   [string]$SourceRef = 'v0.12.0',
   [string]$ExpectedCommit = '',
   [string]$SourceBundle = '',
-  [string]$SourceBundleSha256 = ''
+  [string]$SourceBundleSha256 = '',
+  [string]$WindowsJobRunnerPath = ''
 )
 $ErrorActionPreference = 'Stop'
 
@@ -35,20 +36,50 @@ if ($ExpectedCommit -and $ExpectedCommit -notmatch '^[0-9a-fA-F]{40}$') {
   throw 'Invalid -ExpectedCommit SHA.'
 }
 
-# An embedded exact-commit Git bundle is an alternate local source, never a credential.
-# Reject mismatched or indirect bundles before prerequisites or any installation mutation.
+# Persist an exact-commit source bundle at one stable per-user path. The installer
+# temp directory is ephemeral; the Git remote must remain usable for later updates.
 if($SourceBundle){
   if($SourceBundleSha256 -notmatch '^[0-9a-fA-F]{64}$'){throw 'Source bundle SHA-256 is required.'}
+  if(-not $ExpectedCommit -or $ExpectedCommit -notmatch '^[0-9a-fA-F]{40}$'){throw 'Source bundle requires an exact ExpectedCommit.'}
   if(-not [IO.Path]::IsPathFullyQualified($SourceBundle)){throw 'Source bundle path must be absolute.'}
+  if(-not(Get-Command git.exe -ErrorAction SilentlyContinue)){throw 'GIT_REQUIRED_FOR_SOURCE_BUNDLE'}
   $file=Get-Item -LiteralPath $SourceBundle -ErrorAction Stop
-  if(-not $file.PSIsContainer -and ($file.Attributes -band [IO.FileAttributes]::ReparsePoint) -eq 0 -and
-      [IO.Path]::GetExtension($file.FullName) -eq '.bundle'){
-    $digest=(Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
-    if($digest -ne $SourceBundleSha256.ToLowerInvariant()){throw 'SOURCE_BUNDLE_SHA256_MISMATCH'}
-    $Repo=$file.FullName
-  }else{throw 'SOURCE_BUNDLE_PATH_UNTRUSTED'}
+  if($file.PSIsContainer -or ($file.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0 -or
+      [IO.Path]::GetExtension($file.FullName) -ne '.bundle'){throw 'SOURCE_BUNDLE_PATH_UNTRUSTED'}
+  $digest=(Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+  if($digest -ne $SourceBundleSha256.ToLowerInvariant()){throw 'SOURCE_BUNDLE_SHA256_MISMATCH'}
+  $heads=@(& git.exe bundle list-heads $file.FullName)
+  if($LASTEXITCODE -ne 0 -or -not($heads|Where-Object{$_ -match ('^'+[regex]::Escape($ExpectedCommit.ToLowerInvariant())+'\s+refs/heads/')})){
+    throw 'SOURCE_BUNDLE_EXPECTED_COMMIT_MISSING'
+  }
+  $bundleRoot=Join-Path $env:LOCALAPPDATA 'ChatGPTRemoteCommander\source-bundles'
+  if(-not(Test-Path -LiteralPath $bundleRoot)){New-Item -ItemType Directory -Force -Path $bundleRoot|Out-Null}
+  $bundleRootItem=Get-Item -LiteralPath $bundleRoot -Force
+  if(($bundleRootItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0){throw 'SOURCE_BUNDLE_STORE_REPARSE_REJECTED'}
+  $persistentBundle=Join-Path $bundleRoot 'core.bundle'
+  $storedSha=''
+  if(Test-Path -LiteralPath $persistentBundle -PathType Leaf){
+    $stored=Get-Item -LiteralPath $persistentBundle -Force
+    if(($stored.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0){throw 'SOURCE_BUNDLE_STORE_FILE_REPARSE_REJECTED'}
+    $storedSha=(Get-FileHash -LiteralPath $persistentBundle -Algorithm SHA256).Hash.ToLowerInvariant()
+  }
+  if($storedSha -cne $digest){
+    $bundleTemp=$persistentBundle+'.stage-'+$PID
+    if(Test-Path -LiteralPath $bundleTemp){throw 'SOURCE_BUNDLE_STAGE_COLLISION'}
+    try{
+      Copy-Item -LiteralPath $file.FullName -Destination $bundleTemp
+      $stagedSha=(Get-FileHash -LiteralPath $bundleTemp -Algorithm SHA256).Hash.ToLowerInvariant()
+      if($stagedSha -cne $digest){throw 'SOURCE_BUNDLE_STAGE_SHA_MISMATCH'}
+      Move-Item -LiteralPath $bundleTemp -Destination $persistentBundle -Force
+    }finally{
+      if(Test-Path -LiteralPath $bundleTemp){Remove-Item -LiteralPath $bundleTemp -Force -ErrorAction SilentlyContinue}
+    }
+  }
+  $storedSha=(Get-FileHash -LiteralPath $persistentBundle -Algorithm SHA256).Hash.ToLowerInvariant()
+  if($storedSha -cne $digest){throw 'SOURCE_BUNDLE_PERSISTED_SHA_MISMATCH'}
+  $Repo=$persistentBundle
+  Write-Host ('SOURCE_BUNDLE_PERSISTED path='+$Repo+' sha256='+$digest)
 }elseif($SourceBundleSha256){throw 'SOURCE_BUNDLE_SHA_WITHOUT_FILE'}
-
 function Refresh-Path {
   $machine = [Environment]::GetEnvironmentVariable('Path','Machine')
   $user = [Environment]::GetEnvironmentVariable('Path','User')
@@ -154,11 +185,21 @@ function Invoke-ExistingSafeUpdate {
     }
     & git.exe -C $temp checkout --detach $commit | Out-Null
     if ($LASTEXITCODE -ne 0) { throw 'updater checkout failed' }
+    $candidatePackage=Get-Content -LiteralPath (Join-Path $temp 'package.json') -Raw | ConvertFrom-Json
+    if([string]$candidatePackage.version -like '0.12.*'){
+      Push-Location $temp
+      try{
+        & node.exe '.\tools\verify-v012-publish-readiness.mjs' ([string]$candidatePackage.version) $SourceRef | Out-Null
+        $admissionExit=$LASTEXITCODE
+        if($admissionExit -ne 0){throw 'V012_INSTALL_RELEASE_TRAIN_NOT_APPROVED'}
+      }finally{Pop-Location}
+    }
 
     $updater = Join-Path $temp 'auto-update-windows.ps1'
     if (-not (Test-Path -LiteralPath $updater -PathType Leaf)) { throw 'candidate auto-update-windows.ps1 missing' }
     $args = @('-NoLogo','-NoProfile','-ExecutionPolicy','Bypass','-File',$updater,'-InstallDir',$InstallDir,'-SourceRef',$SourceRef,'-ExpectedCommit',$commit,'-Force')
     if ($SourceBundle) { $args += @('-SourceBundle',$Repo,'-SourceBundleSha256',$SourceBundleSha256) }
+    if ($WindowsJobRunnerPath) { $args += @('-WindowsJobRunnerPath',$WindowsJobRunnerPath) }
     if ($PowerMode) { $args += '-PowerMode' }
     if ($StandardMode) { $args += '-StandardMode' }
     if ($GuiControl) { $args += '-GuiControl' }
@@ -168,6 +209,11 @@ function Invoke-ExistingSafeUpdate {
 
     & pwsh.exe @args
     if ($LASTEXITCODE -ne 0) { throw "candidate-first update failed: $LASTEXITCODE" }
+    & git.exe -C $InstallDir remote set-url origin $Repo
+    if ($LASTEXITCODE -ne 0) { throw 'SOURCE_REMOTE_UPDATE_FAILED' }
+    if ($WindowsJobRunnerPath) {
+      Install-WindowsJobRunner -SourcePath $WindowsJobRunnerPath -ManifestRoot $temp
+    }
     Write-Host "SAFE_UPDATE_PASS commit=$commit"
   } finally {
     if (Test-Path -LiteralPath $temp) {
@@ -263,6 +309,13 @@ function Install-Source {
     throw "Installed HEAD $head does not match ExpectedCommit $ExpectedCommit."
   }
   Write-Host "Source commit: $head"
+}
+
+function Install-WindowsJobRunner([string]$SourcePath = '', [string]$ManifestRoot = $InstallDir) {
+  $helper=Join-Path $ManifestRoot 'tools\windows-job-runner\install-windows-job-runner.ps1'
+  if(-not(Test-Path -LiteralPath $helper -PathType Leaf)){throw 'WINDOWS_JOB_RUNNER_INSTALL_HELPER_MISSING'}
+  . $helper
+  Install-CommanderWindowsJobRunner -InstallDir $InstallDir -SourcePath $SourcePath -ManifestRoot $ManifestRoot
 }
 
 function Write-TunnelClientState([string]$ExePath) {
@@ -523,6 +576,18 @@ if ($existingInstall -and $isCanonicalLiveInstall) {
   }
   if ($GuiControl -and -not $PowerMode) { throw '-GuiControl requires -PowerMode for a fresh installation.' }
   Install-Source
+  if($StartServer){
+    $candidatePackage=Get-Content -LiteralPath (Join-Path $InstallDir 'package.json') -Raw | ConvertFrom-Json
+    if([string]$candidatePackage.version -like '0.12.*'){
+      Push-Location $InstallDir
+      try{
+        & node.exe '.\tools\verify-v012-publish-readiness.mjs' ([string]$candidatePackage.version) $SourceRef | Out-Null
+        $admissionExit=$LASTEXITCODE
+        if($admissionExit -ne 0){throw 'V012_INSTALL_RELEASE_TRAIN_NOT_APPROVED'}
+      }finally{Pop-Location}
+    }
+  }
+  Install-WindowsJobRunner -SourcePath $WindowsJobRunnerPath
   Install-TunnelClient
   Ensure-ProjectProvider
   Configure-LocalPolicy

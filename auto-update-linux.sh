@@ -108,7 +108,7 @@ write_update_result(){
 import fs from 'node:fs';
 import path from 'node:path';
 const [, , file, status, version, commit, sourceRef] = process.argv;
-if (!/^(?:pass|maintenance_pass)$/.test(status)) process.exit(2);
+if (!/^(?:pass|maintenance_pass|blocked_release_train)$/.test(status)) process.exit(2);
 if (!/^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-(?:dev|rc)\.[1-9]\d*)?$/.test(version)) process.exit(3);
 if (!/^[0-9a-fA-F]{40}$/.test(commit)) process.exit(4);
 if (sourceRef.length > 128 || !/^[A-Za-z0-9._/-]+$/.test(sourceRef)) process.exit(5);
@@ -745,7 +745,27 @@ fi
 
 REF="$(latest_ref)"
 # A newer approved Preview route makes an older published Stable tag obsolete.
-# Reject it before stage_release creates another old source checkout.
+# Direct installs without a route must use the live health version as authority;
+# otherwise an older GitHub Stable tag could replace a newer direct runtime.
+if [[ "$FORCE" != 1 && "$REF" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ && ! -f "$ROUTING_ROOT/default.json" ]]; then
+  TAG_VERSION="$(printf '%s' "$REF" | cut -c2-)"
+  LIVE_VERSION="$(curl -fsS --connect-timeout 1 --max-time 2 http://127.0.0.1:47831/health 2>/dev/null | node -e 'const h=JSON.parse(require("node:fs").readFileSync(0,"utf8")); if(h?.ok!==true || typeof h.version!=="string" || !/^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-(?:dev|rc)\.[1-9]\d*)?$/.test(h.version) || h.instance?.profile!=="default" || !/^[0-9a-f]{64}$/.test(String(h.configSha256??""))) process.exit(2); process.stdout.write(h.version);' 2>/dev/null)" || {
+    log 'AUTO_UPDATE_DIRECT_HEALTH_UNVERIFIED'
+    exit 2
+  }
+  if version_gt "$LIVE_VERSION" "$TAG_VERSION"; then
+    log "AUTO_UPDATE_NEWER_DIRECT_VERSION current=$LIVE_VERSION target=$TAG_VERSION"
+    exit 0
+  fi
+fi
+
+# Until the signed/approved v0.12.0 release exists, unattended updates must
+# not stage or promote an older published Stable tag.
+if [[ "$FORCE" != 1 && "$NO_PROMOTE" != 1 && "$REF" != 'v0.12.0' ]]; then
+  log "AUTO_UPDATE_RELEASE_TRAIN_REF_BLOCK ref=$REF"
+  exit 0
+fi
+
 if [[ "$FORCE" != 1 && "$REF" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ && -f "$ROUTING_ROOT/default.json" ]]; then
   TAG_VERSION="$(printf '%s' "$REF" | cut -c2-)"
   ROUTED_PREVIEW_VERSION="$(node --input-type=module - "$ROUTING_ROOT/default.json" <<'NODE'
@@ -770,6 +790,15 @@ IFS=$'\t' read -r COMMIT VERSION STAGE_DIR < <(stage_release "$REF")
 ACTIVE_CFG="$(active_config "$STAGE_DIR")"
 AUTO_ENABLED="$(json_field "$STAGE_DIR" "$ACTIVE_CFG" autoUpdate.enabled)"
 if [[ "$FORCE" != 1 && "$AUTO_ENABLED" != true ]]; then log 'AUTO_UPDATE_DISABLED'; exit 0; fi
+
+if [[ "$FORCE" != 1 && "$NO_PROMOTE" != 1 ]]; then
+  if [[ "$REF" != 'v0.12.0' || "$VERSION" != '0.12.0' ]] ||
+     ! (cd "$STAGE_DIR" && node tools/verify-v012-publish-readiness.mjs "$VERSION" "$REF" >/dev/null 2>&1); then
+    write_update_result blocked_release_train "$VERSION" "$COMMIT" "$REF"
+    log "AUTO_UPDATE_RELEASE_TRAIN_BLOCK version=$VERSION ref=$REF"
+    exit 0
+  fi
+fi
 
 ROUTE="$ROUTING_ROOT/default.json"
 if [[ "$FORCE" != 1 && -f "$ROUTE" ]]; then

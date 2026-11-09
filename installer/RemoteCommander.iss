@@ -7,6 +7,9 @@
 #ifndef MySourceRef
   #error V108_EXPLICIT_SOURCE_REF_REQUIRED
 #endif
+#ifndef WindowsJobRunner
+  #error V102_PINNED_WINDOWS_JOB_RUNNER_REQUIRED
+#endif
 #ifndef DesktopPayload
   #define DesktopPayload "..\dist\desktop\remote-commander-windows-x64"
 #endif
@@ -68,6 +71,7 @@ Source: "{#DesktopPayload}\operations-monitor-windows.ps1"; DestDir: "{app}"; Co
 Source: "{#DesktopPayload}\admin-runtime-windows.ps1"; DestDir: "{app}"; Components: controlmonitor; Flags: ignoreversion notimestamp
 Source: "..\server-install-windows.ps1"; Flags: dontcopy noencryption notimestamp
 Source: "..\install.ps1"; Flags: dontcopy noencryption notimestamp
+Source: "{#WindowsJobRunner}"; DestName: "CommanderWindowsJobRunner.exe"; Flags: dontcopy noencryption notimestamp
 #ifdef BrowserSetup
 Source: "{#BrowserSetup}"; DestName: "{#BrowserSetupName}"; Flags: dontcopy noencryption notimestamp
 #endif
@@ -233,7 +237,7 @@ end;
 
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 var
-  PrereqScript, CoreScript, Params, ExistingCoreGit, CoreBundle: String;
+  PrereqScript, CoreScript, Params, ExistingCoreGit, CoreBundle, WindowsJobRunnerPath: String;
   ExistingCore: Boolean;
   ResultCode: Integer;
 begin
@@ -246,6 +250,8 @@ begin
     ExistingCore := DirExists(ExistingCoreGit) or FileExists(ExistingCoreGit);
     EnsurePowerShell7;
 
+    ExtractTemporaryFile('CommanderWindowsJobRunner.exe');
+    WindowsJobRunnerPath := ExpandConstant('{tmp}\CommanderWindowsJobRunner.exe');
     ExtractTemporaryFile('server-install-windows.ps1');
     PrereqScript := ExpandConstant('{tmp}\server-install-windows.ps1');
     Params :=
@@ -265,7 +271,8 @@ begin
     CoreScript := ExpandConstant('{tmp}\install.ps1');
     Params :=
       '-NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "' + CoreScript + '"' +
-      ' -StartServer -SourceRef "{#MySourceRef}" -ExpectedCommit "{#MyCommit}"';
+      ' -StartServer -SourceRef "{#MySourceRef}" -ExpectedCommit "{#MyCommit}"' +
+      ' -WindowsJobRunnerPath "' + WindowsJobRunnerPath + '"';
 #ifdef CoreSourceBundle
     Params := Params + ' -SourceBundle "' + CoreBundle + '" -SourceBundleSha256 "{#CoreSourceBundleSHA256}"';
 #endif

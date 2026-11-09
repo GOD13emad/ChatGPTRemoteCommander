@@ -101,6 +101,13 @@ invoke_existing_safe_update() {
     return 1
   fi
   git -C "$temp" checkout --detach "$resolved" >/dev/null
+  candidate_version="$(node -e 'process.stdout.write(require(process.argv[1]).version || "")' "$temp/package.json")"
+  if [[ "$candidate_version" == 0.12.* ]] &&
+     ! (cd "$temp" && node tools/verify-v012-publish-readiness.mjs "$candidate_version" "$SOURCE_REF" >/dev/null 2>&1); then
+    rm -rf "$temp"
+    echo 'V012_INSTALL_RELEASE_TRAIN_NOT_APPROVED' >&2
+    return 1
+  fi
   updater="$temp/auto-update-linux.sh"
   [[ -f "$updater" ]] || { rm -rf "$temp"; echo 'Candidate auto-update-linux.sh is missing.' >&2; return 1; }
   chmod +x "$updater"
@@ -497,6 +504,14 @@ else
   fi
   install_portable_node
   ensure_node_path
+  if [[ "$START_SERVER" == 1 ]]; then
+    candidate_version="$(node -e 'process.stdout.write(require(process.argv[1]).version || "")' "$INSTALL_DIR/package.json")"
+    if [[ "$candidate_version" == 0.12.* ]] &&
+       ! (cd "$INSTALL_DIR" && node tools/verify-v012-publish-readiness.mjs "$candidate_version" "$SOURCE_REF" >/dev/null 2>&1); then
+      echo 'V012_INSTALL_RELEASE_TRAIN_NOT_APPROVED' >&2
+      exit 1
+    fi
+  fi
   install_tunnel_client
   ensure_project_provider
   ensure_browser_backend

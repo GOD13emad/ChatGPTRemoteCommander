@@ -253,11 +253,11 @@ test('auto updater is candidate-first, hardware-gated and commit-point aware',()
   const deferred=s.slice(s.indexOf('function Complete-DeferredDrains'),s.indexOf('function Has-SupersededRelease'));
   assert.ok(deferred.indexOf('Get-PersistentTerminalChildren $old') < deferred.indexOf('Stop-OldBackend $old'),'Windows deferred retirement must check persistent terminals before every old-backend stop path');
   assert.ok(deferred.indexOf('Get-RetainableLongCommandRoots $old $canonical') < deferred.indexOf('Stop-OldBackend $old'),'Windows deferred retirement must preserve verified long command trees before any old-backend stop path');
-  const currentFastPath=s.slice(s.indexOf("if(-not $Force -and $currentStatus -and [string]$currentStatus.version-eq $stage.Version)"),s.indexOf('Push-Location $stage.Dir'));
+  const currentFastPath=s.slice(s.indexOf("if(-not $Force -and $currentStatus -and [string]$currentStatus.version-eq $stage.Version)"),s.lastIndexOf('Push-Location $stage.Dir'));
   assert.ok(currentFastPath.includes('Complete-RetainedBackends'),'already-current Windows maintenance must reconcile retained backends');
   assert.ok(currentFastPath.indexOf('Complete-RetainedBackends') < currentFastPath.indexOf('Complete-DeferredDrains'),'retained-backend reconciliation must precede deferred-drain handling in current fast path');
   assert.ok(currentFastPath.indexOf('Complete-RetainedBackends') < currentFastPath.lastIndexOf('$cleanupPending=@(Cleanup-Releases)'),'retained-backend reconciliation must precede release cleanup so dead retained releases are not protected forever');
-  const maintenance=s.slice(s.indexOf('$controlMismatch=($controlHead-ne $stage.Commit)'),s.indexOf('Push-Location $stage.Dir'));
+  const maintenance=s.slice(s.indexOf('$controlMismatch=($controlHead-ne $stage.Commit)'),s.lastIndexOf('Push-Location $stage.Dir'));
   assert.ok(maintenance.includes("if($controlMismatch)") && maintenance.includes('Recycle-ControlSupervisor'),'control-code promotion may recycle the supervisor');
   const cleanupOnly=maintenance.slice(maintenance.lastIndexOf('$cleanupPending=@(Cleanup-Releases)'));
   assert.ok(cleanupOnly.includes("AUTO_UPDATE_CLEANUP_PENDING") && !cleanupOnly.includes('Recycle-ControlSupervisor'),'release cleanup alone must never recycle a healthy supervisor');
@@ -1117,6 +1117,50 @@ test('R254 Linux plugin post-verify failure preserves owner data and quarantines
  assert.notEqual(retry.status,0);
  assert.match(retry.stdout,/prior-snapshot-or-quarantine-awaiting-owner/);
  assert.equal(fs.readdirSync(parent).filter(n=>n.startsWith('.chatgpt-remote-commander.failed-')).length,1);
+});
+
+test('unattended update promotion requires exact approved v0.12.0 release-train admission',()=>{
+  const linux=read('auto-update-linux.sh');
+  const windows=read('auto-update-windows.ps1');
+  const linuxStage=linux.indexOf('stage_release "$REF"');
+  const linuxRefGuard=linux.indexOf('AUTO_UPDATE_RELEASE_TRAIN_REF_BLOCK');
+  const linuxDirectGuard=linux.indexOf('AUTO_UPDATE_NEWER_DIRECT_VERSION');
+  const linuxGuard=linux.indexOf('AUTO_UPDATE_RELEASE_TRAIN_BLOCK');
+  const linuxPromotion=linux.indexOf('node "$STAGE_DIR/tools/router-switch.mjs"');
+  assert.ok(linuxStage>=0 && linuxRefGuard>0 && linuxRefGuard<linuxStage);
+  assert.ok(linuxDirectGuard>0 && linuxDirectGuard<linuxStage);
+  assert.ok(linux.includes('AUTO_UPDATE_DIRECT_HEALTH_UNVERIFIED'));
+  assert.ok(linux.includes('http://127.0.0.1:47831/health'));
+  assert.ok(linux.includes('verify-v012-publish-readiness.mjs'));
+  assert.ok(linux.includes('blocked_release_train'));
+  assert.ok(linux.includes('if [[ "$FORCE" != 1 && "$NO_PROMOTE" != 1 ]]'));
+  assert.ok(linuxGuard>linuxStage && linuxGuard<linuxPromotion);
+  const windowsStage=windows.indexOf('$stage=Stage-Release $ref');
+  const windowsRefGuard=windows.indexOf('AUTO_UPDATE_RELEASE_TRAIN_REF_BLOCK');
+  const windowsGuard=windows.indexOf('AUTO_UPDATE_RELEASE_TRAIN_BLOCK');
+  const windowsPromotion=windows.indexOf('Promote-Control $stage.Commit $ref $stage.Dir');
+  assert.ok(windowsStage>=0 && windowsRefGuard>0 && windowsRefGuard<windowsStage);
+  assert.ok(windowsGuard>windowsStage && windowsGuard<windowsPromotion);
+  assert.ok(windows.includes('verify-v012-publish-readiness.mjs'));
+  assert.ok(windows.includes('if(-not $Force -and -not $NoPromote)'));
+  assert.ok(windows.includes("$report.status='BLOCKED_RELEASE_TRAIN'"));
+});
+
+test('Windows candidate stage receives only the pinned native Job Object runner before qualification',()=>{
+  const updater=read('auto-update-windows.ps1');
+  const stage=updater.indexOf('function Copy-WindowsJobRunner');
+  const invocation=updater.indexOf('Copy-WindowsJobRunner $stage.Dir');
+  const qualification=updater.indexOf('$script:QualificationCommit=$stage.Commit');
+  assert.ok(stage>=0);
+  assert.ok(invocation>stage);
+  assert.ok(qualification>invocation);
+  assert.ok(updater.includes("'tools\\windows-job-runner\\dist\\win-x64\\CommanderWindowsJobRunner.exe'"));
+  assert.ok(updater.includes('WINDOWS_JOB_RUNNER_SOURCE_SHA_MISMATCH'));
+  assert.ok(updater.includes('WINDOWS_JOB_RUNNER_STAGE_VERIFY_FAILED'));
+  const promote=updater.slice(updater.indexOf('function Promote-Control'),updater.indexOf('function Recycle-ControlSupervisor'));
+  assert.ok(promote.indexOf('checkout --detach --force')<promote.indexOf('Install-ControlWindowsJobRunner $StageDir'),
+    'control runner changes only after the candidate commit is promoted');
+  assert.equal((updater.match(/Promote-Control \$stage\.Commit \$ref \$stage\.Dir/g)||[]).length,4);
 });
 
 test('R157 staged release lookup uses the pinned source version, not a fixed old tag',()=>{
