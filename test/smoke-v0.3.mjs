@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import os from 'node:os';
-import { mkdir, mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, realpath, rm } from 'node:fs/promises';
 import {
   canonicalizeRoots, isWithin, safeWritablePath,
   validateCommandArgs, validateProgram
@@ -10,7 +10,11 @@ import {
   listDirectory, readText, runProjectCommand, writeText
 } from '../src/tools-v0.3.mjs';
 
-const root = await mkdtemp(path.join(os.tmpdir(), 'rc-v03-smoke-'));
+// Windows CI's temporary folder can be an alias/junction. The existing
+// security layer intentionally validates canonical allowed roots, so the
+// fixture must use the same physical path for its subsequent operations.
+const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), 'rc-v03-smoke-'));
+const root = await realpath(temporaryRoot);
 await mkdir(root, { recursive: true });
 const roots = await canonicalizeRoots([root]);
 const ctx = {
