@@ -3,8 +3,9 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {execFileSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
+import {resolve} from 'node:path';
 const root=new URL('../',import.meta.url);
-const rootPath=fileURLToPath(root);
+const rootPath=resolve(fileURLToPath(root));
 const git=(args,options={})=>execFileSync('git',['-c',`safe.directory=${rootPath}`,'-C',rootPath,...args],options);
 const read=p=>readFileSync(new URL(p,root),'utf8');
 test('0.11 development train never masquerades as Stable or approved promotion',()=>{

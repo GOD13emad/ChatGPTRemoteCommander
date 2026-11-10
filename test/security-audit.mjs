@@ -2,8 +2,9 @@ import { readFile } from 'node:fs/promises';
 import { spawn, spawnSync } from 'node:child_process';
 import { StringDecoder } from 'node:string_decoder';
 import { fileURLToPath } from 'node:url';
+import { resolve } from 'node:path';
 
-const repoRoot = fileURLToPath(new URL('../', import.meta.url));
+const repoRoot = resolve(fileURLToPath(new URL('../', import.meta.url)));
 function git(args, options = {}) {
   const result = spawnSync('git', ['-c',`safe.directory=${repoRoot}`,'-C',repoRoot,...args], {
     cwd:repoRoot, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, ...options

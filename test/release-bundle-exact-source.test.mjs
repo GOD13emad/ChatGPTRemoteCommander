@@ -3,10 +3,10 @@ import assert from 'node:assert/strict';
 import { spawnSync, execFileSync } from 'node:child_process';
 import { mkdtempSync, rmSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const repoRoot=fileURLToPath(new URL('../',import.meta.url));
+const repoRoot=resolve(fileURLToPath(new URL('../',import.meta.url)));
 
 test('versioned ZIP wizards use exact source tag+commit rather than stale default', {
   skip: process.platform !== 'linux' ? 'Linux release packaging requires Bash/Python' : false,
