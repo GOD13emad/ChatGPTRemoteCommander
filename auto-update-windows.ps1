@@ -242,14 +242,31 @@ function Invoke-Mcp([int]$Port,[string]$Name,[hashtable]$Arguments=@{}){
   if($r.result.isError){ throw "MCP_TOOL_ERROR $Name $($r.result.content[0].text)" }
   return $r.result.structuredContent
 }
-function Wait-Health([int]$Port,[string]$Version,[string]$ConfigSha,[string]$Profile,[int]$Seconds=30){
+function Wait-Health([int]$Port,[string]$Version,[string]$ConfigSha,[string]$Profile,[int]$Seconds=30,[object]$Process=$null){
+  $observed='UNREACHABLE'
   foreach($i in 1..($Seconds*2)){
     try{
       $h=Invoke-RestMethod "http://127.0.0.1:$Port/health" -TimeoutSec 2
       if($h.ok -and [string]$h.version -eq $Version -and [string]$h.configSha256 -eq $ConfigSha -and [string]$h.instance.profile -eq $Profile){ return $h }
+      $observed=if(-not $h.ok){'HTTP_NOT_OK'}elseif([string]$h.version -ne $Version){'VERSION_MISMATCH'}elseif([string]$h.configSha256 -ne $ConfigSha){'CONFIG_MISMATCH'}else{'PROFILE_MISMATCH'}
     }catch{}
     Start-Sleep -Milliseconds 500
   }
+  # R157: an allowlisted diagnostic only; never log raw health, config, process
+  # command line, user path, credentials or unrelated machine processes.
+  $processState='UNAVAILABLE'
+  try{
+    if($Process){
+      $Process.Refresh()
+      $processState=if($Process.HasExited){'EXITED_'+[int]$Process.ExitCode}else{'RUNNING'}
+    }
+  }catch{$processState='UNAVAILABLE'}
+  $listenerState='UNAVAILABLE'
+  try{
+    $listeners=@(Get-NetTCPConnection -State Listen -LocalPort $Port -ErrorAction SilentlyContinue)
+    $listenerState=if($listeners.Count -eq 0){'NONE'}elseif($Process -and @($listeners|Where-Object{[int]$_.OwningProcess -eq [int]$Process.Id}).Count -gt 0){'CANDIDATE'}else{'OTHER'}
+  }catch{$listenerState='UNAVAILABLE'}
+  Log "R157_CANDIDATE_HEALTH_DIAG observed=$observed process=$processState listener=$listenerState"
   throw "CANDIDATE_HEALTH_TIMEOUT profile=$Profile port=$Port"
 }
 function Get-FreePort([System.Collections.Generic.HashSet[int]]$Used){
@@ -1426,7 +1443,7 @@ try{
     $sha=(Get-FileHash -LiteralPath $cfg -Algorithm SHA256).Hash.ToLowerInvariant()
     $p=Start-Backend $stage.Dir $cfg $stateDir
     $currentCandidate=[pscustomobject]@{Profile=$t.Profile;Port=$port;Version=$stage.Version;Process=$p;ConfigPath=$cfg;ProjectDir=$stage.Dir}
-    $h=Wait-Health $port $stage.Version $sha $t.Profile
+    $h=Wait-Health $port $stage.Version $sha $t.Profile 30 $p
     & node.exe (Join-Path $stage.Dir 'tools\doctor.mjs') --url "http://127.0.0.1:$port/mcp" --expected-device $device --expected-version $stage.Version --config $cfg --timeout-ms 15000 --json
     if($LASTEXITCODE-ne 0){throw "CANDIDATE_DOCTOR_FAIL profile=$($t.Profile)"}
     $status=Invoke-Mcp $port 'system_status'
@@ -1471,7 +1488,7 @@ try{
     $finalSha=(Get-FileHash -LiteralPath $finalCfg -Algorithm SHA256).Hash.ToLowerInvariant()
     $p=Start-Backend $stage.Dir $finalCfg $stateDir
     $currentCandidate=[pscustomobject]@{Profile=$t.Profile;Port=$port;Version=$stage.Version;Process=$p;ConfigPath=$finalCfg;ProjectDir=$stage.Dir}
-    [void](Wait-Health $port $stage.Version $finalSha $t.Profile)
+    [void](Wait-Health $port $stage.Version $finalSha $t.Profile 30 $p)
     & node.exe (Join-Path $stage.Dir 'tools\doctor.mjs') --url "http://127.0.0.1:$port/mcp" --expected-device $device --expected-version $stage.Version --config $finalCfg --timeout-ms 15000 --json
     if($LASTEXITCODE-ne 0){throw "FINAL_CANDIDATE_DOCTOR_FAIL profile=$($t.Profile)"}
     if((Read-Json $finalCfg).durableWorkflows.enabled-eq $true){

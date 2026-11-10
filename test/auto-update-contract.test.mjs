@@ -1205,6 +1205,10 @@ test('R157 isolated Windows updater supplies the verified native runner and pres
  assert.ok(workflow.includes("'tools/run-r157-standard-user.ps1'"));
  assert.ok(updater.includes('WINDOWS_JOB_RUNNER_SOURCE_SHA_MISMATCH'));
  assert.ok(updater.includes('WINDOWS_JOB_RUNNER_STAGE_SHA_MISMATCH'));
+ assert.ok(updater.includes('R157_CANDIDATE_HEALTH_DIAG observed='),'failed candidate startup must report only a bounded failure classification');
+ assert.ok(updater.includes('listener=$listenerState'),'health diagnostic should distinguish free/busy/owned port');
+ assert.ok(updater.includes('Wait-Health $port $stage.Version $sha $t.Profile 30 $p'),'diagnostic wait tracks the exact candidate process');
+ assert.ok(updater.includes('Wait-Health $port $stage.Version $finalSha $t.Profile 30 $p'),'final-store health verifies its own candidate');
  assert.ok(workflow.includes('R157_UNEXPECTED_ROUTE_PROMOTION'));
  assert.ok(workflow.includes('R157_STANDARD_USER_CLEANUP_RECEIPT_MISSING'));
  assert.ok(workflow.includes('R157_STANDARD_USER_CLEANUP_NOT_ACCEPTED'));
