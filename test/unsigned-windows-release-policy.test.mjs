@@ -169,3 +169,42 @@ test('native release verifier admits this exact unsigned version and disallows a
   encoding:'utf8',env:{...base,RELEASE_VERSION:'0.10.27',RELEASE_TAG:'v0.10.27',SETUP_SIGNED:'false'}});
  assert.notEqual(future.status,0);
 });
+
+test('v0.12.0 unsigned Stable distribution is approved by owner but does not waive release admission',()=>{
+ const candidate=JSON.parse(readFileSync('docs/UNSIGNED_WINDOWS_RELEASE_POLICY_0.12.0.json','utf8'));
+ const notes=readFileSync('docs/RELEASE_0.12.0.md','utf8');
+ const args={signed:'false',version:'0.12.0',tag:'v0.12.0',policy:candidate,releaseNotes:notes};
+ assert.equal(candidate.ownerApproval.includes('2026-11-10'),true);
+ assert.equal(candidate.scope,'only-this-version');
+ assert.equal(candidate.releaseChannel,'public-stable-after-independent-acceptance');
+ assert.equal(candidate.stableAutoUpdateAllowed,false);
+ assert.equal(candidate.releaseEligibility,'NO_PROMOTE_UNTIL_RELEASE_TRAIN_AND_HOSTED_CI_PASS');
+ assert.equal(candidate.publishedInstallerSignature,'NotSigned');
+ for(const required of ['Windows installer: UNSIGNED','Unknown publisher','SmartScreen','Smart App Control','GitHub attestation','do not replace Authenticode','NoPromote'])
+  assert.ok(notes.includes(required),required);
+ assert.deepEqual(evaluateWindowsRelease(args),{mode:'UNSIGNED_WITH_REQUIRED_SIGSTORE_PROVENANCE',allowed:true});
+ for(const version of ['0.10.26','0.12.1','0.13.0'])
+  assert.throws(()=>evaluateWindowsRelease({...args,version,tag:'v'+version}),/WINDOWS_UNSIGNED_RELEASE_NOT_AUTHORIZED/);
+ for(const changes of [
+  {scope:'all-versions'},
+  {releaseChannel:'public-prerelease-not-stable'},
+  {stableAutoUpdateAllowed:true},
+  {releaseEligibility:'RELEASE_APPROVED'},
+  {publishedInstallerSignature:'Valid'},
+  {ownerApproval:'no consent'},
+  {evidenceSourceCommit:'unknown'},
+  {riskAcknowledgement:'SmartScreen only'}
+ ]) assert.throws(()=>evaluateWindowsRelease({...args,policy:{...candidate,...changes}}),/WINDOWS_UNSIGNED/);
+ assert.throws(()=>evaluateWindowsRelease({...args,releaseNotes:'Windows installer: UNSIGNED; SmartScreen; GitHub attestation'}),
+  /WINDOWS_UNSIGNED_STABLE_RELEASE_ADMISSION_NOT_READY/);
+ const env={...process.env,RELEASE_VERSION:'0.12.0',RELEASE_TAG:'v0.12.0',SETUP_SIGNED:'false'};
+ const allowed=spawnSync(process.execPath,['tools/verify-windows-release-policy.mjs'],{encoding:'utf8',env,windowsHide:true,timeout:15000});
+ assert.equal(allowed.status,0,allowed.stderr);
+ assert.match(allowed.stdout,/UNSIGNED_WITH_REQUIRED_SIGSTORE_PROVENANCE/);
+ const wrong=spawnSync(process.execPath,['tools/verify-windows-release-policy.mjs'],{encoding:'utf8',env:{...env,RELEASE_VERSION:'0.12.1',RELEASE_TAG:'v0.12.1'},windowsHide:true,timeout:15000});
+ assert.notEqual(wrong.status,0);
+ const train=JSON.parse(readFileSync('docs/release-train-0.12.json','utf8'));
+ assert.equal(train.isStable,false);
+ assert.equal(train.publishApproved,false);
+ assert.equal(train.fleetCoverage.acceptedHostIds.length,0);
+});
