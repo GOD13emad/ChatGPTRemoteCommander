@@ -7,7 +7,7 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {isVersionAtLeast} from './run-pinned-v2-interop.mjs';
 
-export const V101_ACCEPTED_ADAPTER_SHA256='58b70ec50bbf8de0ab8b51600aee243c3bc8fbb33b10cce6fd2c99629fded27c';
+export const V101_ACCEPTED_ADAPTER_SHA256='44da2260e28051a515d0ff5ff63d34adebd841ca3724736101e09c49051f3f37';
 export const V102_ACCEPTED_WIN_JOB_SHA256='57b50598798c328ee6fb06c926e8eb16b4da71dc83ac76344e41952383a848d4';
 // Independently tested V1-03/J01 verifier modules, NOT a protected signer or enrolled credential.
 export const J01_VERIFIER_SHA256=Object.freeze({
