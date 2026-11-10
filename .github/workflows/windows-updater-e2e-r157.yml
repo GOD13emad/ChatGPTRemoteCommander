@@ -6,6 +6,7 @@ on:
       - '.github/workflows/windows-updater-e2e-r157.yml'
       - 'auto-update-windows.ps1'
       - 'tools/run-owned-process-tree-windows.ps1'
+      - 'tools/run-r157-standard-user.ps1'
       - 'src/**'
       - 'test/**'
       - 'package.json'
@@ -53,7 +54,7 @@ jobs:
           $root=Join-Path $env:RUNNER_TEMP 'remote-commander-updater-r157'
           if(Test-Path $root){throw 'R157_NO_BLIND_RERUN'}
           if(Test-Path (Join-Path $env:LOCALAPPDATA 'ChatGPTRemoteCommander')){throw 'R157_EXISTING_USER_INSTALL'}
-          foreach($area in @('INSTALL','STATE','ROAMING')){
+          foreach($area in @('INSTALL','STATE','ROAMING','TEMP')){
             New-Item -ItemType Directory -Path (Join-Path $root $area) -ErrorAction Stop | Out-Null
           }
           $c=Get-Content 'config.json' -Raw -Encoding UTF8|ConvertFrom-Json
@@ -75,6 +76,8 @@ jobs:
           $tokens=$null;$errors=$null
           [Management.Automation.Language.Parser]::ParseFile((Join-Path $env:GITHUB_WORKSPACE 'auto-update-windows.ps1'),[ref]$tokens,[ref]$errors)|Out-Null
           if(@($errors).Count -ne 0){throw 'R157_UPDATER_PARSER'}
+          [Management.Automation.Language.Parser]::ParseFile((Join-Path $env:GITHUB_WORKSPACE 'tools\run-r157-standard-user.ps1'),[ref]$tokens,[ref]$errors)|Out-Null
+          if(@($errors).Count -ne 0){throw 'R157_STANDARD_USER_HELPER_PARSER'}
           Add-Content -LiteralPath $env:GITHUB_ENV -Value "RC_E2E_ROOT=$root"
           Add-Content -LiteralPath $env:GITHUB_ENV -Value "RC_E2E_SHA=$expected"
           Write-Output ('R157_PREFLIGHT_PASS_HEAD='+$head)
@@ -88,14 +91,14 @@ jobs:
           $root=[string]$env:RC_E2E_ROOT
           $sha=[string]$env:RC_E2E_SHA
           if(-not $root -or $sha -notmatch '^[0-9a-f]{40}$'){throw 'R157_MISSING_PRESTATE'}
-          $env:LOCALAPPDATA=Join-Path $root 'STATE'
-          $env:APPDATA=Join-Path $root 'ROAMING'
           $install=Join-Path $root 'INSTALL'
           # The exact-head updater independently verifies the native source hash.
+          # Run the STANDARD candidate under a real non-elevated token; the server
+          # correctly quarantines legacy MCP when its process token is elevated or unknown.
           $runner=Join-Path $env:GITHUB_WORKSPACE 'tools\windows-job-runner\dist\win-x64\CommanderWindowsJobRunner.exe'
           if(-not(Test-Path -LiteralPath $runner -PathType Leaf)){throw 'R157_PINNED_JOB_RUNNER_MISSING'}
-          & pwsh.exe -NoLogo -NoProfile -NonInteractive -File .\auto-update-windows.ps1 -InstallDir $install -SourceRef $sha -ExpectedCommit $sha -TargetProfile default -WindowsJobRunnerPath $runner -NoPromote
-          if($LASTEXITCODE -ne 0){throw ('R157_UPDATER_FAILED_'+$LASTEXITCODE)}
+          & pwsh.exe -NoLogo -NoProfile -NonInteractive -File .\tools\run-r157-standard-user.ps1 -Root $root -Workspace $env:GITHUB_WORKSPACE -ExpectedCommit $sha -InstallDir $install -WindowsJobRunnerPath $runner
+          if($LASTEXITCODE -ne 0){throw ('R157_STANDARD_USER_UPDATER_FAILED_'+$LASTEXITCODE)}
 
       - name: Independently verify exact Job receipts and no promotion
         if: ${{ always() }}
@@ -106,6 +109,10 @@ jobs:
           $root=[string]$env:RC_E2E_ROOT
           $sha=[string]$env:RC_E2E_SHA
           if(-not $root -or $sha -notmatch '^[0-9a-f]{40}$'){throw 'R157_VERIFY_PRESTATE_MISSING'}
+          $cleanupPath=Join-Path $root 'R157_STANDARD_USER_CLEANUP.json'
+          if(-not(Test-Path -LiteralPath $cleanupPath -PathType Leaf)){throw 'R157_STANDARD_USER_CLEANUP_RECEIPT_MISSING'}
+          $cleanup=Get-Content -LiteralPath $cleanupPath -Raw -Encoding UTF8|ConvertFrom-Json
+          if($cleanup.schema -ne 1 -or $cleanup.revision -ne 'R157_STANDARD_USER_CLEANUP' -or $cleanup.status -notin @('PASS','NOT_REQUIRED_STANDARD_PARENT') -or $cleanup.ownedProcesses -ne 0 -or ($cleanup.accountCreated -and -not $cleanup.userRemoved) -or (-not $cleanup.accountCreated -and $cleanup.userRemoved)){throw 'R157_STANDARD_USER_CLEANUP_NOT_ACCEPTED'}
           $state=Join-Path $root 'STATE\ChatGPTRemoteCommander'
           $marker=Join-Path $state 'tools\codex-cli\R161-PRESERVE.txt'
           if(-not(Test-Path -LiteralPath $marker -PathType Leaf) -or [IO.File]::ReadAllText($marker) -cne 'R161-NO-PROMOTE-PRESERVE'){throw 'R161_LEGACY_PROVIDER_MUTATED_IN_NOPROMOTE'}
@@ -138,6 +145,7 @@ jobs:
           if(-not(Test-Path $stage) -or (git -C $stage rev-parse HEAD).Trim() -ne $sha){throw 'R157_EXACT_STAGE_MISSING'}
           $receipt=[ordered]@{schema=1;revision='R157';status='PASS_HOSTED_WINDOWS_UPDATER_NOPROMOTE'
             exactCommit=$sha;qualifierReceipts=3;doctor='PASS';shadowStore='PASS'
+            standardUserCleanup=$cleanup.status;standardUserAccountRemoved=[bool]$cleanup.userRemoved;standardUserOwnedProcesses=[int]$cleanup.ownedProcesses
             liveStoreCompatibility='PASS';ownedChildren=0;promoted=$false;stableBrowserUntouched=$true
             verifiedUtc=[DateTime]::UtcNow.ToString('o')}
           $dest=Join-Path $root 'RETURN_R157.json'
