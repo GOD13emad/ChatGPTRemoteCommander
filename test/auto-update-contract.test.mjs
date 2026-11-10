@@ -1256,6 +1256,10 @@ test('R173 Windows rollback source qualification allows only explicitly reviewed
   assert.ok(workflow.includes('R173_UNSUPPORTED_VERSION'),'preflight must fail closed');
   assert.ok(qa.includes('R173_CANDIDATE_VERSION'),'native updater test must fail closed');
   assert.ok(workflow.includes('github.event.pull_request.head.sha || github.sha'),'exact SHA');
+  assert.ok(workflow.includes("dotnet-version: '8.0.427'"),'R173 must build the pinned native job runner before update');
+  assert.ok(workflow.includes('verify-windows-job-runner.ps1 -Ensure'),'R173 must verify the native job runner source and binary');
+  assert.ok(qa.includes('R173_JOB_RUNNER_SHA_MISMATCH'),'R173 must verify exact job runner hash');
+  assert.ok(qa.includes("'-WindowsJobRunnerPath',$JobRunner"),'updater must receive the verified runner explicitly');
   assert.ok(!workflow.includes('gh release create'),'QA workflow is not release authority');
 });
 

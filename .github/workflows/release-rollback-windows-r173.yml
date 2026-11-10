@@ -30,6 +30,12 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # pinned
         with:
           node-version: '24'
+      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
+        with:
+          dotnet-version: '8.0.427'
+      - name: Build and verify pinned native Job Object runner for R173
+        shell: pwsh
+        run: ./tools/windows-job-runner/verify-windows-job-runner.ps1 -Ensure
       - name: Static parser, exact source and temporary host guard
         shell: pwsh
         run: |
@@ -47,13 +53,15 @@ jobs:
           $p=Join-Path $env:RUNNER_TEMP 'remote-commander-rollback-r173'
           if(Test-Path $p){throw 'R173_NO_BLIND_RERUN'}
           if(Test-Path (Join-Path $env:LOCALAPPDATA 'ChatGPTRemoteCommander')){throw 'R173_PREEXISTING_INSTALL'}
+          $runner=Join-Path $env:GITHUB_WORKSPACE 'tools\windows-job-runner\dist\win-x64\CommanderWindowsJobRunner.exe'
+          if(-not(Test-Path -LiteralPath $runner -PathType Leaf)){throw 'R173_PINNED_JOB_RUNNER_MISSING'}
           Write-Output 'R173_STATIC_EXACT_HEAD_PRESTATE_PASS'
       - name: Real supported candidate promotion then stable v0.10.20 rollback
         shell: pwsh
         timeout-minutes: 53
         run: |
           $ErrorActionPreference='Stop'
-          & pwsh.exe -NoLogo -NoProfile -NonInteractive -File test/release-rollback-windows-r173.ps1 -ExpectedCommit '${{ github.event.pull_request.head.sha || github.sha }}'
+          & pwsh.exe -NoLogo -NoProfile -NonInteractive -File test/release-rollback-windows-r173.ps1 -ExpectedCommit '${{ github.event.pull_request.head.sha || github.sha }}' -WindowsJobRunnerPath (Join-Path $env:GITHUB_WORKSPACE 'tools\windows-job-runner\dist\win-x64\CommanderWindowsJobRunner.exe')
           if($LASTEXITCODE -ne 0){throw ('R173_NONZERO_'+$LASTEXITCODE)}
       - name: Upload scoped CI-only evidence
         if: ${{ always() }}

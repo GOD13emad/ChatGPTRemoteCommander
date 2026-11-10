@@ -1,5 +1,8 @@
 #requires -Version 7.0
-param([Parameter(Mandatory=$true)][string]$ExpectedCommit)
+param(
+ [Parameter(Mandatory=$true)][string]$ExpectedCommit,
+ [Parameter(Mandatory=$true)][string]$WindowsJobRunnerPath
+)
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
 if(-not $IsWindows -or $env:CI -ne 'true' -or -not $env:RUNNER_TEMP -or -not $env:GITHUB_WORKSPACE){throw 'R173_WINDOWS_CI_ONLY'}
@@ -12,6 +15,14 @@ $OldLocal=[string]$env:LOCALAPPDATA
 $OldRoaming=[string]$env:APPDATA
 $Started=[DateTime]::UtcNow
 $Ports=[System.Collections.Generic.HashSet[int]]::new()
+$JobRunner=[IO.Path]::GetFullPath($WindowsJobRunnerPath)
+$JobRunnerManifest=Join-Path $Source 'tools\windows-job-runner\release-manifest.json'
+if(-not(Test-Path -LiteralPath $JobRunner -PathType Leaf) -or -not(Test-Path -LiteralPath $JobRunnerManifest -PathType Leaf)){throw 'R173_JOB_RUNNER_REQUIRED'}
+$runnerMetadata=Get-Content -LiteralPath $JobRunnerManifest -Raw|ConvertFrom-Json
+if($runnerMetadata.runner -cne 'dist/win-x64/CommanderWindowsJobRunner.exe' -or $runnerMetadata.runtime -cne 'self-contained' -or $runnerMetadata.arch -cne 'x64') {throw 'R173_JOB_RUNNER_MANIFEST_INVALID'}
+$runnerHash=(Get-FileHash -LiteralPath $JobRunner -Algorithm SHA256).Hash.ToLowerInvariant()
+if($runnerHash -cne [string]$runnerMetadata.runnerSha256){throw 'R173_JOB_RUNNER_SHA_MISMATCH'}
+$JobRunnerVerified=$true
 [void]$Ports.Add(47831)
 $script:Stages=@()
 $Failure=$null
@@ -42,7 +53,7 @@ function Update([string]$Name,[string]$Sha){
   $stderr=Join-Path $Root ($Name+'.stderr.log')
   if((Test-Path $stdout) -or (Test-Path $stderr)){throw ('R185_NO_BLIND_RERUN_'+$Name)}
   if($Source -match '\s' -or $Install -match '\s'){throw 'R185_UNSAFE_ARGUMENT_PATH_WHITESPACE'}
-  $args=@('-NoLogo','-NoProfile','-NonInteractive','-File',(Join-Path $Source 'auto-update-windows.ps1'),'-InstallDir',$Install,'-SourceRef',$Sha,'-ExpectedCommit',$Sha,'-TargetProfile','default','-Force')
+  $args=@('-NoLogo','-NoProfile','-NonInteractive','-File',(Join-Path $Source 'auto-update-windows.ps1'),'-InstallDir',$Install,'-SourceRef',$Sha,'-ExpectedCommit',$Sha,'-TargetProfile','default','-WindowsJobRunnerPath',$JobRunner,'-Force')
   $updater=Start-Process -FilePath 'pwsh.exe' -ArgumentList $args -NoNewWindow -PassThru -RedirectStandardOutput $stdout -RedirectStandardError $stderr -ErrorAction Stop
   if($null -eq $updater -or $updater.Id -le 0){throw 'R185_UPDATER_PID_UNAVAILABLE'}
   Write-Output ('R185_'+$Name+'_UPDATER_PID='+$updater.Id)
