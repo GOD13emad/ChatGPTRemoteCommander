@@ -6,6 +6,7 @@ import os from 'node:os';
 import net from 'node:net';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
+import { requireNonElevatedLegacyHttp } from './fixtures/legacy-http-token-admission.mjs';
 
 const MODERN='2026-07-28';
 const TASKS='io.modelcontextprotocol/tasks';
@@ -35,7 +36,7 @@ async function rpc(port,id,method,params,name,signal){
   return {status:response.status,body:await response.json()};
 }
 
-test('MCP Tasks extension maps durable Commander operations without changing fallback behavior',async()=>{
+test('MCP Tasks extension maps durable Commander operations without changing fallback behavior',async t=>{
   const root=await fs.mkdtemp(path.join(os.tmpdir(),'rc-mcp-tasks-'));
   const serverRoot=path.join(root,'server'),dataRoot=path.join(root,'data'),toolsRoot=path.join(serverRoot,'tools');
   const stateRoot=path.join(root,'operations'),port=await freePort();
@@ -67,6 +68,7 @@ test('MCP Tasks extension maps durable Commander operations without changing fal
       await wait(50);
     }
     assert.equal(healthy,true,`MCP_TASKS_FIXTURE_HEALTH_NOT_READY_WITHIN_30000MS exitCode=${child.exitCode} signal=${child.signalCode}; stderr=${stderr}`);
+    if(!(await requireNonElevatedLegacyHttp(t,port)))return;
 
     const discover=await rpc(port,1,'server/discover',{_meta:meta(true)},undefined);
     assert.equal(discover.status,200);
