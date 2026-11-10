@@ -1226,7 +1226,9 @@ assert.ok(workflow.includes('CANDIDATE_QUARANTINE_ONLY_PASS') && workflow.includ
 assert.ok(workflow.includes("g1Authorization='BLOCKED_NOT_CONFIGURED'") && workflow.includes('promoted=$false'),
   'the hosted negative test cannot authorize a stable release');
 assert.ok(workflow.includes('R157_UNEXPECTED_ROUTE_PROMOTION'));
- assert.ok(workflow.includes('R157_STANDARD_USER_CLEANUP_RECEIPT_MISSING'));
+ assert.ok(workflow.includes("$c.allowedRoots=@((Join-Path $root 'INSTALL'))"), 'isolated candidate can read only INSTALL; Delivery state must be outside allowed roots');
+assert.ok(workflow.includes("R157_DELIVERY_STATE_INSIDE_ALLOWED_ROOT") && !workflow.includes("$c.allowedRoots=@($root)"), 'R157 disallows project-scoped durable Delivery state');
+assert.ok(workflow.includes('R157_STANDARD_USER_CLEANUP_RECEIPT_MISSING'));
  assert.ok(workflow.includes('R157_STANDARD_USER_CLEANUP_NOT_ACCEPTED'));
  assert.ok(workflow.includes('standardUserAccountRemoved'));
  for(const marker of [

@@ -61,7 +61,7 @@ jobs:
           }
           $c=Get-Content 'config.json' -Raw -Encoding UTF8|ConvertFrom-Json
           if($null -eq $c.autoUpdate -or $null -eq $c.powerMode){throw 'R157_CONFIG_SCHEMA'}
-          $c.allowedRoots=@($root)
+          $c.allowedRoots=@((Join-Path $root 'INSTALL'))
           $c.autoUpdate.enabled=$true
           $c.powerMode.enabled=$false
           $c.powerMode.guiControl.enabled=$false
@@ -74,7 +74,14 @@ jobs:
           $path=Join-Path $root 'INSTALL\config.json'
           [IO.File]::WriteAllText($path,(ConvertTo-Json -InputObject $c -Depth 30)+[Environment]::NewLine,[Text.UTF8Encoding]::new($false))
           $r=Get-Content $path -Raw|ConvertFrom-Json
-          if(@($r.allowedRoots).Count -ne 1 -or $r.allowedRoots[0] -ne $root -or $r.powerMode.enabled -ne $false){throw 'R157_CONFIG_ISOLATION'}
+          if(@($r.allowedRoots).Count -ne 1 -or $r.allowedRoots[0] -ne (Join-Path $root 'INSTALL') -or $r.powerMode.enabled -ne $false){throw 'R157_CONFIG_ISOLATION'}
+          # Delivery and live state are siblings of INSTALL, never writable project roots.
+          $privateHome=Join-Path $root 'USERPROFILE'
+          $state=Join-Path $root 'STATE'
+          if($privateHome.StartsWith(([IO.Path]::GetFullPath($r.allowedRoots[0]).TrimEnd('\\')+'\\'),[StringComparison]::OrdinalIgnoreCase) -or
+             $state.StartsWith(([IO.Path]::GetFullPath($r.allowedRoots[0]).TrimEnd('\\')+'\\'),[StringComparison]::OrdinalIgnoreCase)){
+            throw 'R157_DELIVERY_STATE_INSIDE_ALLOWED_ROOT'
+          }
           $tokens=$null;$errors=$null
           [Management.Automation.Language.Parser]::ParseFile((Join-Path $env:GITHUB_WORKSPACE 'auto-update-windows.ps1'),[ref]$tokens,[ref]$errors)|Out-Null
           if(@($errors).Count -ne 0){throw 'R157_UPDATER_PARSER'}
