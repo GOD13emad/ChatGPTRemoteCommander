@@ -552,9 +552,24 @@ test('CI Windows runs the Transfer Mesh HTTP fixture alone without weakening rea
     /CI_TRANSFER_HTTP_CARDINALITY/);
   const wrapper=read('tools/run-bounded-test-script.mjs');
   assert.ok(wrapper.includes("command=isolateWindowsTransferMeshHttpRegression(command);"));
-  assert.ok(wrapper.indexOf('command=isolateWindowsLeaseRegression(command);')>
-    wrapper.indexOf('command=isolateWindowsTransferMeshHttpRegression(command);'),
-    'last composed prefix is scheduled first; no additional test runs or deadlines');
+  assert.ok(wrapper.indexOf('command=isolateWindowsTransferMeshHttpRegression(command);')>
+    wrapper.indexOf('command=isolateWindowsStartupReadinessRegressions(command);'),
+    'Transfer Mesh is isolated after the loaded Windows startup groups have been reordered');
+  assert.ok(wrapper.indexOf('command=isolateWindowsTransferMeshHttpRegression(command);')<
+    wrapper.indexOf('command=prioritizeWindowsAdaptiveCold(command);'),
+    'strict adaptive and autotick deadlines must run before Transfer Mesh');
+  let actual=original;
+  for(const schedule of [isolateWindowsAgentHttpRegression,
+    isolateWindowsProcessTreeRegression,isolateWindowsLeaseRegression,
+    isolateWindowsAsyncHttpRegression,isolateWindowsTimingSensitiveRegressions,
+    isolateWindowsWorkflowPlanRegression,isolateWindowsMcpConformanceRegression,
+    isolateWindowsStartupReadinessRegressions,isolateWindowsTransferMeshHttpRegression,
+    prioritizeWindowsAdaptiveCold,isolateWindowsAutotickRegression]) actual=schedule(actual);
+  assert.deepEqual(actual.split(' && ').slice(0,3),[
+    'node --test --test-concurrency=1 test/project-autotick-noncodex.test.mjs',
+    'node --test --test-concurrency=1 test/project-adaptive.test.mjs',
+    leader.trimEnd().slice(0,-3)
+  ],'Transfer Mesh must actually run second, before heavy Windows load');
   const fixture=read('test/transfer-mesh-http.test.mjs');
   assert.ok(fixture.includes('for(let i=0;i<200;i++)'),'same bounded readiness budget');
   assert.ok(fixture.includes('await wait(25)'),'same server-readiness poll');

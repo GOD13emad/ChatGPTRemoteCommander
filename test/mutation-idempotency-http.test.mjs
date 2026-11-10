@@ -33,7 +33,7 @@ async function startServer(serverRoot, configPath) {
   let stderr=''; child.stderr.on('data', c => { stderr += c.toString('utf8'); });
   const config = JSON.parse(await fs.readFile(configPath, 'utf8'));
   for (let i=0;i<400;i+=1) {
-    try { const r=await fetch(`http://127.0.0.1:${config.port}/health`); if (r.ok) return { child, stderr:()=>stderr }; } catch {}
+    try { const r=await fetch(`http://127.0.0.1:${config.port}/health`); if (r.ok) return { child, stderr:()=>stderr, health:await r.json() }; } catch {}
     await wait(25);
   }
   child.kill();
@@ -43,7 +43,7 @@ async function stopServer(child) {
   if (child && child.exitCode === null) { child.kill(); await Promise.race([once(child,'close'), wait(4000)]); }
 }
 
-test('direct mutation requestId prevents duplicate append across lost ack and restart', async () => {
+test('direct mutation requestId deduplicates in permitted sessions and elevated legacy HTTP stays closed', async () => {
   const root=await fs.mkdtemp(path.join(os.tmpdir(),'rc-mut-http-'));
   const serverRoot=path.join(root,'server');
   const dataRoot=path.join(root,'data');
@@ -69,6 +69,21 @@ test('direct mutation requestId prevents duplicate append across lost ack and re
     const configPath=path.join(serverRoot,'config.json');
     await fs.writeFile(configPath,JSON.stringify(config,null,2));
     running=await startServer(serverRoot,configPath);
+    if (running.health.privilegedLegacyHttpQuarantined === true) {
+      assert.equal(running.health.protectedIngress?.required, true);
+      assert.equal(running.health.protectedIngress?.ready, false);
+      const denied = await fetch(`http://127.0.0.1:${port}/mcp`, {
+        method:'POST', headers:{'content-type':'application/json'},
+        body:JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/call',
+          params:{name:'write_text',arguments:{requestId:'mut-http-1',path:target,content:'x',mode:'append'}}})
+      });
+      assert.equal(denied.status,403);
+      assert.deepEqual(await denied.json(),{error:'trusted_transport_required'});
+      assert.equal(await fs.readFile(target,'utf8'),'');
+      // Positive HTTP idempotency remains exercised on nonprivileged CI and
+      // will require a separate trusted authenticated Windows Owner E2E gate.
+      return;
+    }
 
     const missing=await post(port,1,'write_text',{path:target,content:'x',mode:'append'});
     assert.equal(missing.result.isError,true);
@@ -103,7 +118,7 @@ test('direct mutation requestId prevents duplicate append across lost ack and re
 });
 
 
-test('legacy cached client derives durable mutation idempotency from x-request-id', async () => {
+test('legacy x-request-id deduplicates in permitted sessions and elevated legacy HTTP stays closed', async () => {
   const root=await fs.mkdtemp(path.join(os.tmpdir(),'rc-mut-legacy-xreq-'));
   const serverRoot=path.join(root,'server');
   const dataRoot=path.join(root,'data');
@@ -128,6 +143,19 @@ test('legacy cached client derives durable mutation idempotency from x-request-i
     const configPath=path.join(serverRoot,'config.json');
     await fs.writeFile(configPath,JSON.stringify(config,null,2));
     running=await startServer(serverRoot,configPath);
+    if (running.health.privilegedLegacyHttpQuarantined === true) {
+      assert.equal(running.health.protectedIngress?.required, true);
+      assert.equal(running.health.protectedIngress?.ready, false);
+      const denied=await fetch(`http://127.0.0.1:${port}/mcp`,{
+        method:'POST', headers:{'content-type':'application/json','x-request-id':'legacy-client-call-1'},
+        body:JSON.stringify({jsonrpc:'2.0',id:10,method:'tools/call',
+          params:{name:'write_text',arguments:{path:target,content:'x',mode:'append'}}})
+      });
+      assert.equal(denied.status,403);
+      assert.deepEqual(await denied.json(),{error:'trusted_transport_required'});
+      assert.equal(await fs.readFile(target,'utf8'),'');
+      return;
+    }
 
     const legacyHeaders={'x-request-id':'legacy-client-call-1'};
     const first=await post(port,10,'write_text',{path:target,content:'x',mode:'append'},legacyHeaders);

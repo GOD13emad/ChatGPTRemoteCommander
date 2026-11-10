@@ -362,7 +362,6 @@ function run(){
     command=isolateWindowsStartupReadinessRegressions(command);
   if(args.script==='test'&&process.platform==='win32'){
     command=isolateWindowsProcessTreeRegression(command);
-    command=isolateWindowsTransferMeshHttpRegression(command);
     command=isolateWindowsLeaseRegression(command);
   }
   if(process.platform==='win32') command=isolateWindowsAsyncHttpRegression(command);
@@ -375,6 +374,10 @@ function run(){
     command=isolateWindowsWorkflowPlanRegression(command);
     command=isolateWindowsMcpConformanceRegression(command);
     command=isolateWindowsStartupReadinessRegressions(command);
+    // Transfer must run before loaded Windows groups, but after the strict
+    // six-second adaptive reservation and cold autotick regression.
+    // Preserve the existing 200x25ms readiness budget and every assertion.
+    command=isolateWindowsTransferMeshHttpRegression(command);
     command=prioritizeWindowsAdaptiveCold(command);
     command=isolateWindowsAutotickRegression(command);
   }
