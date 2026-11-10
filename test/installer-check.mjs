@@ -179,6 +179,9 @@ for (const required of [
   'SERVER_INSTALL_LINUX_PASS',
   'Alpine/musl is not qualified'
 ]) if (!linuxServerInstaller.includes(required)) throw new Error(`server-install-linux.sh missing server bootstrap behavior: ${required}`);
+for (const required of ['attempt <= 3','Acquire::Retries=3 update','Acquire::Retries=3 install','APT_BOOTSTRAP_PREREQUISITES_FAILED_AFTER_3_ATTEMPTS']) {
+  if (!linuxServerInstaller.includes(required)) throw new Error(`server-install-linux.sh missing bounded apt retry behavior: ${required}`);
+}
 for (const required of [
   'SOURCE_REF="${REMOTE_COMMANDER_SOURCE_REF:-v0.12.0}"',
   '--source-ref',

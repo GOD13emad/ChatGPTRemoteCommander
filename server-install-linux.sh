@@ -48,8 +48,23 @@ as_root() {
 
 install_bootstrap_packages() {
   if need apt-get; then
-    as_root apt-get update
-    as_root apt-get install -y git curl unzip tar xz-utils ca-certificates python3
+    # Ubuntu archive/security mirrors can publish a newer package index while a
+    # runner is fetching packages. Retry the complete update+install transaction
+    # so a transient index/package 404 cannot strand a fresh server bootstrap.
+    local attempt=1
+    while (( attempt <= 3 )); do
+      if as_root apt-get -o Acquire::Retries=3 update &&
+         as_root apt-get -o Acquire::Retries=3 install -y git curl unzip tar xz-utils ca-certificates python3; then
+        return 0
+      fi
+      if (( attempt == 3 )); then
+        echo 'APT_BOOTSTRAP_PREREQUISITES_FAILED_AFTER_3_ATTEMPTS' >&2
+        return 1
+      fi
+      echo "APT_BOOTSTRAP_RETRY attempt=$attempt/3" >&2
+      sleep "$((attempt * 4))"
+      attempt=$((attempt + 1))
+    done
   elif need dnf; then
     as_root dnf install -y git curl unzip tar xz ca-certificates python3
   elif need yum; then
