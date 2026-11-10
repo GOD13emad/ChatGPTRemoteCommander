@@ -70,8 +70,22 @@ install_os_packages() {
     sudo_cmd="sudo"
   fi
   if need apt-get; then
-    $sudo_cmd apt-get update
-    $sudo_cmd apt-get install -y git curl unzip tar xz-utils ca-certificates python3
+    # Refresh package metadata between bounded retries when archive/security
+    # mirrors change package versions after the current index was fetched.
+    local attempt=1
+    while (( attempt <= 3 )); do
+      if $sudo_cmd apt-get -o Acquire::Retries=3 update &&
+         $sudo_cmd apt-get -o Acquire::Retries=3 install -y git curl unzip tar xz-utils ca-certificates python3; then
+        return 0
+      fi
+      if (( attempt == 3 )); then
+        echo 'APT_BOOTSTRAP_PREREQUISITES_FAILED_AFTER_3_ATTEMPTS' >&2
+        return 1
+      fi
+      echo "APT_BOOTSTRAP_RETRY attempt=$attempt/3" >&2
+      sleep "$((attempt * 4))"
+      attempt=$((attempt + 1))
+    done
   elif need dnf; then
     $sudo_cmd dnf install -y git curl unzip tar xz ca-certificates python3
   elif need yum; then

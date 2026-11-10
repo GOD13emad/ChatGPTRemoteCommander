@@ -180,6 +180,9 @@ for (const required of [
   'Alpine/musl is not qualified'
 ]) if (!linuxServerInstaller.includes(required)) throw new Error(`server-install-linux.sh missing server bootstrap behavior: ${required}`);
 for (const required of ['attempt <= 3','Acquire::Retries=3 update','Acquire::Retries=3 install','APT_BOOTSTRAP_PREREQUISITES_FAILED_AFTER_3_ATTEMPTS']) {
+  if (!linuxInstaller.includes(required)) throw new Error(`install.sh missing bounded apt retry behavior: ${required}`);
+}
+for (const required of ['attempt <= 3','Acquire::Retries=3 update','Acquire::Retries=3 install','APT_BOOTSTRAP_PREREQUISITES_FAILED_AFTER_3_ATTEMPTS']) {
   if (!linuxServerInstaller.includes(required)) throw new Error(`server-install-linux.sh missing bounded apt retry behavior: ${required}`);
 }
 for (const required of [
