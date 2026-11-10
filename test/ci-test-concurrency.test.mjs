@@ -582,8 +582,13 @@ test('concurrency smoke reserves an OS-assigned port per run with unique owned r
  const src=read('test/concurrency-smoke.mjs');
  assert.match(src,/reservation\.listen\(0,'127\.0\.0\.1',resolve\)/);
  assert.match(src,/const instanceId = randomUUID\(\);/);
- assert.match(src,/\.tmp-concurrency-root-' \+ instanceId/);
- assert.match(src,/\.tmp-concurrency-app-' \+ instanceId/);
+ assert.match(src,/const tempRoot = await mkdtemp\(path\.join\(tmpdir\(\), 'rc-concurrency-smoke-'\)\);/);
+ assert.match(src,/const root = path\.join\(tempRoot, 'root-' \+ instanceId\);/);
+ assert.match(src,/const isolatedApp = path\.join\(tempRoot, 'app-' \+ instanceId\);/);
+ assert.match(src,/const configPath = path\.join\(tempRoot, 'config-' \+ instanceId \+ '\.json'\);/);
+ assert.match(src,/await rm\(tempRoot, \{ recursive: true, force: true \}\);/);
+ assert.ok(src.includes("process.once('exit'"));
+ assert.ok(src.includes("rmSync(tempRoot, { recursive: true, force: true })"));
  assert.match(src,/reservation\.close\(err=>err\?reject\(err\):resolve\(\)\)/);
  assert.doesNotMatch(src,/const port\s*=\s*47931/);
  assert.match(src,/liveRuntimeStateAfter,[\s\S]*liveRuntimeStateBefore/);
