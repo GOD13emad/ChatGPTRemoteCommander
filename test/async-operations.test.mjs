@@ -1,4 +1,4 @@
-import test from 'node:test';
+import test, { after } from 'node:test';
 import assert from 'node:assert/strict';
 import os from 'node:os';
 import path from 'node:path';
@@ -11,6 +11,18 @@ import { DeliveryStore } from '../src/delivery-store.mjs';
 const here = path.dirname(fileURLToPath(import.meta.url));
 const fixture = path.join(here, 'async-operation-fixture.mjs');
 const worker = path.join(here, '..', 'tools', 'operation-worker.mjs');
+
+// This suite exercises the detached worker without a Host execution grant.
+// Do not let a package-level config.json (present in clean installs but absent
+// from source checkouts) silently become the worker's ambient authority.
+const priorWorkerConfig = process.env.REMOTE_COMMANDER_CONFIG;
+const isolatedWorkerConfigDir = await mkdtemp(path.join(os.tmpdir(), 'rc-async-worker-config-'));
+process.env.REMOTE_COMMANDER_CONFIG = path.join(isolatedWorkerConfigDir, 'intentionally-absent.json');
+after(async () => {
+  if (priorWorkerConfig === undefined) delete process.env.REMOTE_COMMANDER_CONFIG;
+  else process.env.REMOTE_COMMANDER_CONFIG = priorWorkerConfig;
+  await rm(isolatedWorkerConfigDir, { recursive: true, force: true });
+});
 
 async function waitFor(manager, operationId, terminal = ['SUCCEEDED', 'FAILED', 'TIMED_OUT', 'CANCELLED', 'UNCERTAIN'], timeoutMs = 30000) {
   const deadline = Date.now() + timeoutMs;
