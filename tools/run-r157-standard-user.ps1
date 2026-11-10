@@ -143,7 +143,7 @@ try{
   $passwordText=[Convert]::ToBase64String([Security.Cryptography.RandomNumberGenerator]::GetBytes(32))+'Aa1!'
   $securePassword=ConvertTo-SecureString $passwordText -AsPlainText -Force
   $passwordText=$null
-  $user=New-LocalUser -Name $userName -Password $securePassword -Description 'Ephemeral non-elevated Commander R157 qualification identity' -AccountNeverExpires -PasswordNeverExpires -UserMayNotChangePassword -ErrorAction Stop
+  $user=New-LocalUser -Name $userName -Password $securePassword -Description 'Ephemeral R157 non-admin test identity' -AccountNeverExpires -PasswordNeverExpires -UserMayNotChangePassword -ErrorAction Stop
   $created=$true
   $account="$env:COMPUTERNAME\$userName"
   $admins=@(Get-LocalGroupMember -Group 'Administrators' -ErrorAction Stop)

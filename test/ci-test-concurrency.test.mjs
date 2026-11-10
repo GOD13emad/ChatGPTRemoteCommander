@@ -217,7 +217,8 @@ test('R470 sanitized diagnostic workflow persists no raw qualification log and k
     'workflow expression context cannot trust a runtime-generated GITHUB_ENV value');
   assert.ok(workflow.indexOf('R470 derive a bounded')>workflow.indexOf('Independently verify exact Job receipts'));
   assert.ok(!workflow.includes('upload-artifact@v3'));
-  assert.ok(workflow.includes('-NoPromote'),'keep original tested production path unchanged');
+  const helper=read('tools/run-r157-standard-user.ps1');
+  assert.ok(workflow.includes('run-r157-standard-user.ps1') && helper.includes('-NoPromote'),'keep original tested production path unchanged');
 });
 
 test('R470 Windows fixture extracts failing test and counters without persisting secrets, and refuses ambiguous logs', t=>{
