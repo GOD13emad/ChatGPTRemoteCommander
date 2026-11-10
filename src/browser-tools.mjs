@@ -13,19 +13,29 @@ const chromiumHelper=path.join(project,'tools','browser-control.mjs');
 const firefoxHelper=path.join(project,'tools','browser-control-firefox.mjs');
 const chromiumClient=createBrowserProcessClient({file:process.execPath,args:[chromiumHelper,'--server']});
 const firefoxClient=createBrowserProcessClient({file:process.execPath,args:[firefoxHelper,'--server']});
-let defaultBrowserBackend=null;
 const isFirefoxExecutable=value=>typeof value==='string'&&/firefox/i.test(path.basename(value));
-const defaultInvoke=async req=>{
- const kind=req.action==='status'
-  ? (isFirefoxExecutable(req.executable)?'firefox':'chromium')
-  : req.action==='start'
-    ? (defaultBrowserBackend=isFirefoxExecutable(req.executable)?'firefox':'chromium')
-    : (defaultBrowserBackend??'chromium');
- const client=kind==='firefox'?firefoxClient:chromiumClient;
- try{return await client.invoke(req);}
- finally{if(req.action==='end')defaultBrowserBackend=null;}
-};
-const defaultClose=()=>{defaultBrowserBackend=null;chromiumClient.close();firefoxClient.close();};
+export function createBrowserBackendRouter({chromiumClient,firefoxClient}){
+ let activeBackend=null;
+ const invoke=async req=>{
+  const kind=req.action==='status'
+   ? (isFirefoxExecutable(req.executable)?'firefox':'chromium')
+   : req.action==='start'
+     ? (activeBackend=isFirefoxExecutable(req.executable)?'firefox':'chromium')
+     : (activeBackend??'chromium');
+  const client=kind==='firefox'?firefoxClient:chromiumClient;
+  const result=await client.invoke(req);
+  // An unconfirmed or timed-out end must retain the helper routing affinity.
+  // Otherwise retry can be sent to the other, inactive browser backend,
+  // falsely confirming release of an owned Firefox/Chromium profile.
+  if(req.action==='end'&&result?.ok===true&&result.closed===true)activeBackend=null;
+  return result;
+ };
+ const close=()=>{activeBackend=null;chromiumClient.close();firefoxClient.close();};
+ return {invoke,close};
+}
+const defaultRouter=createBrowserBackendRouter({chromiumClient,firefoxClient});
+const defaultInvoke=defaultRouter.invoke;
+const defaultClose=defaultRouter.close;
 const sameToken=(a,b)=>typeof a==='string'&&typeof b==='string'&&Buffer.byteLength(a)===Buffer.byteLength(b)&&timingSafeEqual(Buffer.from(a),Buffer.from(b));
 const safeSegment=value=>typeof value==='string'&&/^[a-z][a-z0-9_-]{0,31}$/.test(value)?value:'default';
 const instanceSegment=value=>{const raw=typeof value==='string'&&value?value:'default';return raw==='default'?'default':'instance-'+Buffer.from(raw,'utf8').toString('hex');};
