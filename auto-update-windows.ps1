@@ -15,6 +15,7 @@ param(
   [string]$SourceBundle = '',
   [string]$SourceBundleSha256 = '',
   [string]$WindowsJobRunnerPath = '',
+  [switch]$PinnedLegacyRunnerOverlay,
   [ValidateRange(5,300)][int]$DrainTimeoutSeconds = 60
 )
 $ErrorActionPreference='Stop'
@@ -354,7 +355,81 @@ function Stage-Release([string]$Ref){
 function Copy-WindowsJobRunner([string]$StageDir){
   $runnerRoot=Join-Path $StageDir 'tools\windows-job-runner'
   $manifestPath=Join-Path $runnerRoot 'release-manifest.json'
-  if(-not(Test-Path -LiteralPath $manifestPath -PathType Leaf)){throw 'WINDOWS_JOB_RUNNER_MANIFEST_MISSING'}
+  if(-not(Test-Path -LiteralPath $manifestPath -PathType Leaf)){
+    if(-not $PinnedLegacyRunnerOverlay){throw 'WINDOWS_JOB_RUNNER_MANIFEST_MISSING'}
+    # R173: explicitly opted-in, isolated GitHub-hosted rollback only.
+    # dev23 predates the SHA-verified native runner; this overlays exact runner
+    # support files from the checked out candidate, never changing Git HEAD.
+    $legacy='8ccf0fd16355a4ab79844feec6c295366763df0d'
+    if(-not $IsWindows -or $env:GITHUB_ACTIONS -ne 'true' -or
+       $env:CI -ne 'true' -or $env:RUNNER_OS -ne 'Windows' -or
+       $env:RUNNER_ENVIRONMENT -ne 'github-hosted' -or
+       -not $env:RUNNER_TEMP -or -not $env:GITHUB_WORKSPACE -or
+       $NoPromote -or $SourceBundle -or $SourceRef -cne $legacy -or
+       $ExpectedCommit -cne $legacy -or
+       @($TargetProfile).Count -ne 1 -or $TargetProfile[0] -cne 'default'){
+      throw 'R173_PINNED_LEGACY_RUNNER_SCOPE_REJECTED'
+    }
+    $isolatedRoot=[IO.Path]::GetFullPath((Join-Path $env:RUNNER_TEMP 'remote-commander-rollback-r173'))
+    $expectedInstall=[IO.Path]::GetFullPath((Join-Path $isolatedRoot 'INSTALL'))
+    $expectedState=[IO.Path]::GetFullPath((Join-Path $isolatedRoot 'STATE\ChatGPTRemoteCommander'))
+    $candidateSource=[IO.Path]::GetFullPath($PSScriptRoot)
+    if(-not $InstallDir.Equals($expectedInstall,[StringComparison]::OrdinalIgnoreCase) -or
+       -not $StateRoot.Equals($expectedState,[StringComparison]::OrdinalIgnoreCase) -or
+       -not $candidateSource.Equals([IO.Path]::GetFullPath($env:GITHUB_WORKSPACE),[StringComparison]::OrdinalIgnoreCase) -or
+       -not $WindowsJobRunnerPath -or
+       -not ([IO.Path]::GetFullPath($WindowsJobRunnerPath)).StartsWith($candidateSource+([IO.Path]::DirectorySeparatorChar),[StringComparison]::OrdinalIgnoreCase)){
+      throw 'R173_PINNED_LEGACY_RUNNER_PATH_SCOPE_REJECTED'
+    }
+    $identity=[Security.Principal.WindowsIdentity]::GetCurrent()
+    if([Security.Principal.WindowsPrincipal]::new($identity).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)){
+      throw 'R173_PINNED_LEGACY_RUNNER_ELEVATED_TOKEN_REJECTED'
+    }
+    $stageFull=[IO.Path]::GetFullPath($StageDir)
+    $releases=[IO.Path]::GetFullPath($ReleaseRoot)
+    if(-not $stageFull.StartsWith($releases+([IO.Path]::DirectorySeparatorChar),[StringComparison]::OrdinalIgnoreCase)){
+      throw 'R173_PINNED_LEGACY_RUNNER_STAGE_SCOPE_REJECTED'
+    }
+    $stageHead=(& git.exe -C $StageDir rev-parse HEAD).Trim().ToLowerInvariant()
+    $stagePackage=Read-Json (Join-Path $StageDir 'package.json')
+    $gitStatus=@(& git.exe -C $StageDir status --porcelain=v1 --untracked-files=normal)
+    $gitStatusExit=[int]$LASTEXITCODE
+    $sourcePristine=($gitStatus.Count -eq 0 -or
+      ($gitStatus.Count -eq 1 -and $gitStatus[0] -ceq ' M desktop/RemoteCommanderDashboard/Program.cs'))
+    if($gitStatus.Count -eq 1 -and $sourcePristine){
+      $historicBlob=(& git.exe -C $StageDir rev-parse 'HEAD:desktop/RemoteCommanderDashboard/Program.cs').Trim().ToLowerInvariant()
+      & git.exe -C $StageDir diff --ignore-space-at-eol --quiet -- desktop/RemoteCommanderDashboard/Program.cs
+      if($LASTEXITCODE -ne 0 -or $historicBlob -cne '4e80265f23f523d6c44ec0e415c432c86b166c2e'){
+        $sourcePristine=$false
+      }
+    }
+    if($gitStatusExit -ne 0 -or $stageHead -cne $legacy -or
+       [string]$stagePackage.version -cne '0.11.0-dev.23' -or
+       -not $sourcePristine -or (Test-Path -LiteralPath $runnerRoot)){
+      throw 'R173_PINNED_LEGACY_RUNNER_SOURCE_NOT_PRISTINE'
+    }
+    $trustedRoot=Join-Path $candidateSource 'tools\windows-job-runner'
+    $trustedVerifier=Join-Path $trustedRoot 'verify-windows-job-runner.ps1'
+    if(-not(Test-Path -LiteralPath $trustedVerifier -PathType Leaf)){
+      throw 'R173_PINNED_LEGACY_RUNNER_VERIFIER_MISSING'
+    }
+    & pwsh.exe -NoLogo -NoProfile -NonInteractive -File $trustedVerifier -VerifyOnly
+    if($LASTEXITCODE -ne 0){throw 'R173_PINNED_LEGACY_RUNNER_VERIFIER_FAILED'}
+    New-Item -ItemType Directory -Path $runnerRoot -ErrorAction Stop|Out-Null
+    foreach($relative in @('release-manifest.json','Program.cs','CommanderWindowsJobRunner.csproj','verify-windows-job-runner.ps1')){
+      $src=Join-Path $trustedRoot $relative
+      $dest=Join-Path $runnerRoot $relative
+      if(-not(Test-Path -LiteralPath $src -PathType Leaf) -or
+         ((Get-Item -LiteralPath $src -Force).Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0 -or
+         (Test-Path -LiteralPath $dest)){throw 'R173_PINNED_LEGACY_RUNNER_OVERLAY_SOURCE_UNSAFE'}
+      Copy-Item -LiteralPath $src -Destination $dest -ErrorAction Stop
+      if((Get-FileHash -LiteralPath $src -Algorithm SHA256).Hash -cne
+         (Get-FileHash -LiteralPath $dest -Algorithm SHA256).Hash){
+        throw 'R173_PINNED_LEGACY_RUNNER_OVERLAY_SHA_MISMATCH'
+      }
+    }
+    Log 'R173_PINNED_LEGACY_RUNNER_OVERLAY_VERIFIED exactBaseline=8ccf0fd1'
+  }
   $manifest=Read-Json $manifestPath
   if($manifest.schema -ne 1 -or $manifest.platform -ne 'win32' -or
      $manifest.arch -ne 'x64' -or $manifest.runtime -ne 'self-contained' -or

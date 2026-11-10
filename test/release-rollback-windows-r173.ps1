@@ -58,6 +58,7 @@ function Update([string]$Name,[string]$Sha){
   if((Test-Path $stdout) -or (Test-Path $stderr)){throw ('R185_NO_BLIND_RERUN_'+$Name)}
   if($Source -match '\s' -or $Install -match '\s'){throw 'R185_UNSAFE_ARGUMENT_PATH_WHITESPACE'}
   $args=@('-NoLogo','-NoProfile','-NonInteractive','-File',(Join-Path $Source 'auto-update-windows.ps1'),'-InstallDir',$Install,'-SourceRef',$Sha,'-ExpectedCommit',$Sha,'-TargetProfile','default','-WindowsJobRunnerPath',$JobRunner,'-Force')
+  if($Name -eq 'ROLLBACK'){$args+= '-PinnedLegacyRunnerOverlay'}
   $updater=Start-Process -FilePath 'pwsh.exe' -ArgumentList $args -NoNewWindow -PassThru -RedirectStandardOutput $stdout -RedirectStandardError $stderr -ErrorAction Stop
   if($null -eq $updater -or $updater.Id -le 0){throw 'R185_UPDATER_PID_UNAVAILABLE'}
   Write-Output ('R185_'+$Name+'_UPDATER_PID='+$updater.Id)
@@ -172,6 +173,8 @@ try {
   Assert-Head $Install $ExpectedCommit
   Readback 'PROMOTE' $ExpectedCommit $CandidateVersion
   Update 'ROLLBACK' $RollbackBaseline
+  $overlayMarkers=@(Select-String -LiteralPath (Join-Path $Root 'ROLLBACK.stdout.log') -SimpleMatch 'R173_PINNED_LEGACY_RUNNER_OVERLAY_VERIFIED exactBaseline=8ccf0fd1')
+  if($overlayMarkers.Count -ne 1){throw 'R173_LEGACY_RUNNER_OVERLAY_NOT_ATTESTED'}
   Assert-Head $Install $RollbackBaseline
   Readback 'ROLLBACK' $RollbackBaseline $RollbackVersion
 }catch{$Failure=$_.Exception.Message}

@@ -1281,6 +1281,16 @@ test('R173 Windows rollback source qualification allows only explicitly reviewed
   assert.ok(workflow.includes('verify-windows-job-runner.ps1 -Ensure'),'R173 must verify the native job runner source and binary');
   assert.ok(qa.includes('R173_JOB_RUNNER_SHA_MISMATCH'),'R173 must verify exact job runner hash');
   assert.ok(qa.includes("'-WindowsJobRunnerPath',$JobRunner"),'updater must receive the verified runner explicitly');
+  const windowsUpdater=read('auto-update-windows.ps1');
+  assert.ok(qa.includes("if($Name -eq 'ROLLBACK'){$args+= '-PinnedLegacyRunnerOverlay'}"),'only rollback may enable historical runner compatibility');
+  assert.ok(qa.includes('R173_LEGACY_RUNNER_OVERLAY_NOT_ATTESTED'),'rollback must prove the verified compatibility receipt');
+  assert.ok(windowsUpdater.includes('if(-not $PinnedLegacyRunnerOverlay){throw \'WINDOWS_JOB_RUNNER_MANIFEST_MISSING\'}'),'default updater must fail closed on missing native manifest');
+  assert.ok(windowsUpdater.includes("8ccf0fd16355a4ab79844feec6c295366763df0d"),'compatibility overlay is exact dev23 predecessor only');
+  assert.ok(windowsUpdater.includes("RUNNER_ENVIRONMENT -ne 'github-hosted'") && windowsUpdater.includes('R173_PINNED_LEGACY_RUNNER_SCOPE_REJECTED'),'historical exception is hosted-only and explicit');
+  assert.ok(windowsUpdater.includes('R173_PINNED_LEGACY_RUNNER_ELEVATED_TOKEN_REJECTED'),'compatibility must retain standard-user token');
+  assert.ok(windowsUpdater.includes('R173_PINNED_LEGACY_RUNNER_OVERLAY_SHA_MISMATCH'),'compatibility files must retain exact source hashes');
+  assert.ok(windowsUpdater.includes('R173_PINNED_LEGACY_RUNNER_OVERLAY_VERIFIED'),'compatibility receipt must remain identifiable');
+
   assert.ok(!workflow.includes('gh release create'),'QA workflow is not release authority');
   const helper=read('tools/run-r157-standard-user.ps1');
   assert.ok(qa.includes("$RollbackBaseline='8ccf0fd16355a4ab79844feec6c295366763df0d'"),'R173 must roll back to schema-compatible fleet baseline');
