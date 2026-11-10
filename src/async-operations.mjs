@@ -147,7 +147,18 @@ export const asyncOperationDefinitions = [
   }
 ];
 
-export function createAsyncOperationTools({ config, prepare, workerPath, deliveryStore = null, onTerminal = null, validateContinuation = null, protectedDeliveryOrigin = null }) {
+export function createAsyncOperationTools({ config, prepare, workerPath, workerConfigPath = null, workerConfigSha256 = null, deliveryStore = null, onTerminal = null, validateContinuation = null, protectedDeliveryOrigin = null }) {
+  if (workerConfigPath !== null && (typeof workerConfigPath !== 'string' || !workerConfigPath || workerConfigPath.includes('\0'))) {
+    throw new Error('ASYNC_WORKER_CONFIG_INVALID');
+  }
+  const resolvedWorkerConfigPath = workerConfigPath === null ? null : path.resolve(expandPathValue(workerConfigPath));
+  if ((resolvedWorkerConfigPath === null) !== (workerConfigSha256 === null)
+      || (resolvedWorkerConfigPath && !/^[a-f0-9]{64}$/.test(workerConfigSha256))) {
+    throw new Error('ASYNC_WORKER_CONFIG_INVALID');
+  }
+  if (config?.executionAccess?.required === true && !resolvedWorkerConfigPath) {
+    throw new Error('ASYNC_WORKER_CONFIG_REQUIRED');
+  }
   // Only trusted Host bootstrap may supply these callbacks; operation_start
   // inputs are never allowed to select an owner/chat/grant or signed receipt.
   const declaredOriginRequirement=config.asyncOperations?.requireHostSignedOrigin;
@@ -1142,7 +1153,11 @@ export function createAsyncOperationTools({ config, prepare, workerPath, deliver
       } : {
         file: prepared.file,
         args: prepared.args,
-        cwd: prepared.cwd
+        cwd: prepared.cwd,
+        ...(resolvedWorkerConfigPath ? {
+          configPath: resolvedWorkerConfigPath,
+          configSha256: workerConfigSha256
+        } : {})
       }),
       timeoutMs: operationTimeoutMs,
       outputLimit,

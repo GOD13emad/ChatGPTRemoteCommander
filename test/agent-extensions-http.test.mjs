@@ -8,7 +8,7 @@ import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 const wait=ms=>new Promise(r=>setTimeout(r,ms));
 
-test('agent extension tools are exposed read-only and return validated manifests',async()=>{
+test('agent extension tools are exposed read-only and return validated manifests',async t=>{
   const root=await fs.mkdtemp(path.join(os.tmpdir(),'rc-agent-http-'));
   const extensionRoot=path.join(root,'extensions');
   const extensionDir=path.join(extensionRoot,'fixture-extension');
@@ -51,6 +51,19 @@ test('agent extension tools are exposed read-only and return validated manifests
     let alive=false;
     for(let i=0;i<400;i++){try{if((await fetch(`http://127.0.0.1:${port}/health`)).ok){alive=true;break;}}catch{}await wait(25);}
     assert.equal(alive,true,stderr);
+    const health=await (await fetch(`http://127.0.0.1:${port}/health`)).json();
+    if(health.privilegedLegacyHttpQuarantined===true){
+      assert.equal(health.protectedIngress?.required,true);
+      assert.equal(health.protectedIngress?.ready,false);
+      const rejected=await fetch(`http://127.0.0.1:${port}/mcp`,{
+        method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/list',params:{}})
+      });
+      assert.equal(rejected.status,403);
+      assert.deepEqual(await rejected.json(),{error:'trusted_transport_required'});
+      t.skip('Elevated CI token correctly quarantines unauthenticated legacy HTTP; owner-token test covers extension catalog.');
+      return;
+    }
     const call=async(name,args={})=>{
       const res=await fetch(`http://127.0.0.1:${port}/mcp`,{
         method:'POST',headers:{'Content-Type':'application/json'},

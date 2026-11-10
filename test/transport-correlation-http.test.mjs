@@ -21,14 +21,14 @@ async function startServer(serverRoot,configPath){
   const startupDeadline=Date.now()+30000;
   while(Date.now()<startupDeadline){
     if(child.exitCode!==null)throw new Error(`server exited before healthy: exitCode=${child.exitCode}; stderr=${stderr}`);
-    try{const r=await fetch(`http://127.0.0.1:${config.port}/health`);if(r.ok)return {child,stderr:()=>stderr};}catch{}
+    try{const r=await fetch(`http://127.0.0.1:${config.port}/health`);if(r.ok)return {child,stderr:()=>stderr,health:await r.json()};}catch{}
     await wait(25);
   }
   child.kill();throw new Error(`server did not become healthy within 30000ms: stderr=${stderr}`);
 }
 async function stop(child){if(child&&child.exitCode===null){child.kill();await Promise.race([once(child,'exit'),wait(2000)]);}}
 
-test('accepted tool audit maps forwarded transport request ID to durable correlation identity without raw arguments',async()=>{
+test('accepted tool audit maps forwarded transport request ID to durable correlation identity without raw arguments',async t=>{
   const root=await fs.mkdtemp(path.join(os.tmpdir(),'rc-transport-correlation-'));
   const serverRoot=path.join(root,'server'),dataRoot=path.join(root,'data'),deliveryRoot=path.join(root,'delivery');
   let running;
@@ -43,7 +43,6 @@ test('accepted tool audit maps forwarded transport request ID to durable correla
       maxReadBytes:1024*1024,maxWriteBytes:1024*1024,maxCommandMs:300000,
       auditLog:'var/audit.jsonl',durableDelivery:{directory:deliveryRoot},
       asyncOperations:{enabled:false},
-      capabilityProfile:{tier:'STANDARD'},
       capabilityProfile:{tier:'STANDARD'},
       powerMode:{enabled:false,fullFilesystem:false,allowShell:false,allowProcessControl:false,allowPermanentDelete:false,
         guiControl:{enabled:false},browserControl:{enabled:false}}
@@ -63,6 +62,15 @@ test('accepted tool audit maps forwarded transport request ID to durable correla
       body:JSON.stringify({jsonrpc:'2.0',id:'rpc-42',method:'tools/call',params:{name:'write_text',arguments:{requestId,path:target,content:secret,mode:'overwrite'}}})
     });
     const body=await response.json();
+    if(running.health.privilegedLegacyHttpQuarantined===true){
+      assert.equal(running.health.protectedIngress?.required,true);
+      assert.equal(running.health.protectedIngress?.ready,false);
+      assert.equal(response.status,403);
+      assert.deepEqual(body,{error:'trusted_transport_required'});
+      await assert.rejects(fs.access(target));
+      t.skip('Elevated Windows CI token correctly quarantines unauthenticated legacy MCP; positive correlation runs under nonprivileged host.');
+      return;
+    }
     assert.equal(response.status,200);
     assert.equal(body.result.isError,false);
     assert.equal(await fs.readFile(target,'utf8'),secret);

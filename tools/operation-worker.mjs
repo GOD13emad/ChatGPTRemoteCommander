@@ -156,21 +156,21 @@ async function main() {
   const stdout = collector(spec.outputLimit);
   const stderr = collector(spec.outputLimit);
   const projectDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-  const localConfigPath = path.join(projectDir, 'config.local.json');
-  const defaultConfigPath = path.join(projectDir, 'config.json');
-  const configPath = path.resolve(spec.configPath || process.env.REMOTE_COMMANDER_CONFIG
-    || (existsSync(localConfigPath) ? localConfigPath : defaultConfigPath));
+  // The Host must bind the exact configuration that admitted this operation.
+  // Never let a detached worker discover a private profile config by ambient
+  // environment or package-directory fallback (especially across OS users).
+  const configPath = typeof spec.configPath === 'string' && spec.configPath.length > 0
+    ? path.resolve(spec.configPath) : null;
   let executionAccess = null;
-  if (spec.executionAuthorization || existsSync(configPath)) {
+  if (spec.executionAuthorization && !configPath) throw new Error('V102_WORKER_CONFIG_REQUIRED');
+  if (configPath) {
+    if (!/^[a-f0-9]{64}$/.test(spec.configSha256 ?? '')) throw new Error('OPERATION_CONFIG_HASH_REQUIRED');
     const configRaw = await readFile(configPath, 'utf8');
-    const configSha256 = createHash('sha256').update(configRaw).digest('hex');
-    if (spec.configSha256 && configSha256 !== spec.configSha256) throw new Error('OPERATION_CONFIG_CHANGED');
+    const actualConfigSha256 = createHash('sha256').update(configRaw).digest('hex');
+    if (actualConfigSha256 !== spec.configSha256) throw new Error('OPERATION_CONFIG_CHANGED');
     const executionConfig = JSON.parse(configRaw);
     const readAccessStatus = createAccessStatusReader({config:executionConfig});
     const accessStatus = await readAccessStatus();
-    if (executionConfig?.executionAccess?.required === true && !spec.configSha256) {
-      throw new Error('V102_WORKER_CONFIG_HASH_REQUIRED');
-    }
     const loaded = await loadV102WorkerExecutionAccess({ config: executionConfig, spec, projectDir, accessStatus, readAccessStatus });
     executionAccess = loaded?.executionAccess ?? null;
   }

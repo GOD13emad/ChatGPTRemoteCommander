@@ -6,16 +6,16 @@ import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 import { randomUUID, createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
-import { mkdtemp, rm, writeFile, readFile, realpath } from 'node:fs/promises';
+import { mkdtemp, mkdir, cp, rm, writeFile, readFile, realpath } from 'node:fs/promises';
 import { v102ActionDigest, v102PreparedPlanDigest } from '../src/execution-access-guard.mjs';
 
 const projectDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const workerPath = path.join(projectDir, 'tools', 'operation-worker.mjs');
+const sourceWorkerPath = path.join(projectDir, 'tools', 'operation-worker.mjs');
 const sha = value => createHash('sha256').update(value).digest('hex');
 
-async function runWorker(spec) {
+async function runWorker(spec, workerPath) {
   const child = spawn(process.execPath, [workerPath], {
-    cwd: projectDir, windowsHide: true, shell: false,
+    cwd: path.dirname(path.dirname(workerPath)), windowsHide: true, shell: false,
     stdio: ['pipe','ignore','pipe']
   });
   const stderr = [];
@@ -29,7 +29,15 @@ async function fixture({ authorize = true } = {}) {
   const createdRoot = await mkdtemp(path.join(os.tmpdir(), 'rc-v102-worker-'));
   // canonicalize before serializing the allowed root; Windows TEMP may be an 8.3 alias.
   const root = await realpath(createdRoot);
-  const providerPath = path.join(projectDir, 'src', 'worker-provider-' + randomUUID() + '.mjs');
+  // Keep the package source immutable even under an unprivileged QA account.
+  // The worker discovers its own installation root from import.meta.url, so
+  // stage a private runtime that preserves the production src-only provider gate.
+  const runtimeDir = path.join(root, 'runtime');
+  await mkdir(path.join(runtimeDir, 'tools'), {recursive:true});
+  await cp(path.join(projectDir, 'src'), path.join(runtimeDir, 'src'), {recursive:true});
+  const workerPath = path.join(runtimeDir, 'tools', 'operation-worker.mjs');
+  await cp(sourceWorkerPath, workerPath);
+  const providerPath = path.join(runtimeDir, 'src', 'worker-provider-' + randomUUID() + '.mjs');
   const providerSource = [
     'import { appendFile } from "node:fs/promises";',
     'export async function createWorkerExecutionAccess({ spec }) {',
@@ -103,16 +111,15 @@ async function fixture({ authorize = true } = {}) {
     statePath, resultPath, stdoutPath, stderrPath, cancelPath
   };
   const dispose = async () => {
-    await rm(providerPath, { force: true });
     await rm(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 20 });
   };
-  return { root, marker, leaseTracePath, spec, dispose };
+  return { root, marker, leaseTracePath, workerPath, spec, dispose };
 }
 
 test('detached operation worker authorizes exact plan before spawning a real child', async () => {
   const f = await fixture();
   try {
-    const result = await runWorker(f.spec);
+    const result = await runWorker(f.spec, f.workerPath);
     assert.equal(result.code, 0, result.stderr);
     const state = JSON.parse(await readFile(f.spec.statePath, 'utf8'));
     const receipt = JSON.parse(await readFile(f.spec.resultPath, 'utf8'));
@@ -133,7 +140,7 @@ test('power-tool worker uses the same owner gate before a real filesystem write'
     f.spec.toolArguments = args;
     f.spec.executionAuthorization.actionDigest = v102ActionDigest('write_file', args);
     f.spec.executionAuthorization.planDigest = null;
-    const result = await runWorker(f.spec);
+    const result = await runWorker(f.spec, f.workerPath);
     const state = JSON.parse(await readFile(f.spec.statePath, 'utf8'));
     assert.equal(result.code, 0, JSON.stringify({ stderr: result.stderr, state }));
     const receipt = JSON.parse(await readFile(f.spec.resultPath, 'utf8'));
@@ -147,7 +154,7 @@ test('detached operation worker rejects a missing or malformed owner consent epo
   const f = await fixture();
   try {
     f.spec.executionAuthorization.bindingId = 'invalid-epoch';
-    const result = await runWorker(f.spec);
+    const result = await runWorker(f.spec, f.workerPath);
     assert.equal(result.code, 1);
     const state = JSON.parse(await readFile(f.spec.statePath, 'utf8'));
     assert.equal(state.status, 'UNCERTAIN');
@@ -164,7 +171,7 @@ test('power-tool worker does not write when required owner authorization is abse
     f.spec.kind = 'power-tool';
     f.spec.tool = 'write_file';
     f.spec.toolArguments = args;
-    const result = await runWorker(f.spec);
+    const result = await runWorker(f.spec, f.workerPath);
     assert.equal(result.code, 1);
     const state = JSON.parse(await readFile(f.spec.statePath, 'utf8'));
     assert.equal(state.status, 'UNCERTAIN');
@@ -176,7 +183,7 @@ test('power-tool worker does not write when required owner authorization is abse
 test('detached operation worker does not spawn when required owner authorization is absent', async () => {
   const f = await fixture({ authorize: false });
   try {
-    const result = await runWorker(f.spec);
+    const result = await runWorker(f.spec, f.workerPath);
     assert.equal(result.code, 1);
     const state = JSON.parse(await readFile(f.spec.statePath, 'utf8'));
     assert.equal(state.status, 'UNCERTAIN');

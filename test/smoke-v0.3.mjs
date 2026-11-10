@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import path from 'node:path';
-import { mkdir, readFile, rm } from 'node:fs/promises';
+import os from 'node:os';
+import { mkdir, mkdtemp, readFile, realpath, rm } from 'node:fs/promises';
 import {
   canonicalizeRoots, isWithin, safeWritablePath,
   validateCommandArgs, validateProgram
@@ -9,8 +10,9 @@ import {
   listDirectory, readText, runProjectCommand, writeText
 } from '../src/tools-v0.3.mjs';
 
-const root = path.resolve('test', '.tmp-v03-root');
-await rm(root, { recursive: true, force: true });
+// Canonicalize temp roots because hosted Windows TEMP may be a junction alias.
+const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), 'rc-v03-smoke-'));
+const root = await realpath(temporaryRoot);
 await mkdir(root, { recursive: true });
 const roots = await canonicalizeRoots([root]);
 const ctx = {
@@ -19,7 +21,7 @@ const ctx = {
     maxReadBytes: 1024 * 1024, maxWriteBytes: 1024 * 1024,
     maxCommandMs: 10000, allowedPrograms: ['git', 'node']
   },
-  auditLog: path.resolve('test', '.tmp-v03-audit.jsonl')
+  auditLog: path.join(root, 'audit.jsonl')
 };
 
 assert.equal(isWithin(path.join(root, 'a.txt'), roots), true);
@@ -58,4 +60,3 @@ assert.match(command.stdout, /^v\d+/);
 
 console.log('SMOKE_V03_PASS');
 await rm(root, { recursive: true, force: true });
-await rm(path.resolve('test', '.tmp-v03-audit.jsonl'), { force: true });

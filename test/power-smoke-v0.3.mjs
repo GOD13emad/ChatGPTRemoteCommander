@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import path from 'node:path';
-import { mkdir, readFile, rm } from 'node:fs/promises';
+import os from 'node:os';
+import { mkdir, mkdtemp, readFile, rm } from 'node:fs/promises';
 import {
   copyPath, createDirectory, deletePath, fileInfo, movePath,
   powerStatus, readAnyFile, runShell, searchFiles,
@@ -13,10 +14,11 @@ import {
   writeText as legacyWriteText
 } from '../src/tools-v0.3.mjs';
 
-const root = path.resolve('test', '.tmp-power-v03-root');
-const backups = path.resolve('test', '.tmp-power-v03-backups');
-const legacyOutside = path.resolve('test', '.tmp-legacy-power-v03-outside');
-const legacyAudit = path.resolve('test', '.tmp-legacy-power-v03-audit.jsonl');
+const sandbox = await mkdtemp(path.join(os.tmpdir(), 'rc-v03-power-smoke-'));
+const root = path.join(sandbox, 'root');
+const backups = path.join(sandbox, 'backups');
+const legacyOutside = path.join(sandbox, 'outside');
+const legacyAudit = path.join(sandbox, 'audit.jsonl');
 const cleanup = async (target) => {
   for (let attempt = 0; attempt < 5; attempt += 1) {
     try { await rm(target, { recursive: true, force: true }); return; }
@@ -165,5 +167,4 @@ await assert.rejects(
 );
 console.log('LEGACY_POWER_COMPAT_V03_PASS');
 console.log('POWER_SMOKE_V03_PASS');
-await cleanup(root);
-await cleanup(backups);
+await cleanup(sandbox);

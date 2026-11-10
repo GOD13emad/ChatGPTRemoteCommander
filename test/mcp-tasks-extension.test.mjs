@@ -35,7 +35,7 @@ async function rpc(port,id,method,params,name,signal){
   return {status:response.status,body:await response.json()};
 }
 
-test('MCP Tasks extension maps durable Commander operations without changing fallback behavior',async()=>{
+test('MCP Tasks extension maps durable Commander operations without changing fallback behavior',async t=>{
   const root=await fs.mkdtemp(path.join(os.tmpdir(),'rc-mcp-tasks-'));
   const serverRoot=path.join(root,'server'),dataRoot=path.join(root,'data'),toolsRoot=path.join(serverRoot,'tools');
   const stateRoot=path.join(root,'operations'),port=await freePort();
@@ -67,6 +67,16 @@ test('MCP Tasks extension maps durable Commander operations without changing fal
       await wait(50);
     }
     assert.equal(healthy,true,`MCP_TASKS_FIXTURE_HEALTH_NOT_READY_WITHIN_30000MS exitCode=${child.exitCode} signal=${child.signalCode}; stderr=${stderr}`);
+    const health=await (await fetch(`http://127.0.0.1:${port}/health`)).json();
+    if(health.privilegedLegacyHttpQuarantined===true){
+      assert.equal(health.protectedIngress?.required,true);
+      assert.equal(health.protectedIngress?.ready,false);
+      const rejected=await rpc(port,1,'server/discover',{_meta:meta(true)});
+      assert.equal(rejected.status,403);
+      assert.deepEqual(rejected.body,{error:'trusted_transport_required'});
+      t.skip('Elevated CI token correctly quarantines legacy HTTP Tasks; owner-token E2E runs separately.');
+      return;
+    }
 
     const discover=await rpc(port,1,'server/discover',{_meta:meta(true)},undefined);
     assert.equal(discover.status,200);

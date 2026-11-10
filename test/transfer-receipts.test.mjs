@@ -16,7 +16,8 @@ const sha=value=>createHash('sha256').update(value).digest('hex');
 const errorCode=code=>error=>error?.code===code;
 
 function fixture({now=1_800_000_000_000}={}){
-  const root=fs.mkdtempSync(path.join(os.tmpdir(),'rc-transfer-receipts-'));
+  // Receipt path validation rejects aliases; fixtures must use the canonical temp root.
+  const root=fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(),'rc-transfer-receipts-')));
   const pcPair=generateKeyPairSync('ed25519');
   const linuxPair=generateKeyPairSync('ed25519');
   const pc={alias:'PC',hostId:'host-pc-01',profileId:'profile-pc-01',keyId:'pc-key-01',
