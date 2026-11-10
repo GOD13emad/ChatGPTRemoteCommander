@@ -18,6 +18,11 @@ $specTotals=@{}
 $phaseStarted=@()
 $phasePassed=@()
 $failedPhaseIndex=$null
+$nativeTokenProbe=$null
+$httpQuarantine=$null
+$asyncHttpFailurePhase=$null
+$asyncHttpFailureName=$null
+$asyncHttpFailureCode=$null
 $sourceSha=$null
 $sourceBytes=0
 $status='LOG_MISSING'
@@ -44,6 +49,27 @@ if(Test-Path -LiteralPath $logRoot -PathType Container){
       $sourceSha=(Get-FileHash -LiteralPath $source.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
       $status='NON_TAP_FAILURE_UNCLASSIFIED'
       foreach($line in [IO.File]::ReadLines($source.FullName)){
+        if($line -match '^R157_ASYNC_HTTP_FAILURE_PHASE=([a-z0-9-]{1,64})$'){
+          $asyncHttpFailurePhase=[string]$Matches[1]
+        } elseif($line -match '^R157_ASYNC_HTTP_FAILURE_NAME=([A-Za-z0-9_]{1,48})$'){
+          $asyncHttpFailureName=[string]$Matches[1]
+        } elseif($line -match '^R157_ASYNC_HTTP_FAILURE_CODE=([A-Z0-9_]{1,64})$'){
+          $asyncHttpFailureCode=[string]$Matches[1]
+        } elseif($line -match '^R157_ASYNC_HTTP_TOKEN_PROBE=(\{.*\})$'){
+          try{
+            $token=ConvertFrom-Json -InputObject $Matches[1] -ErrorAction Stop
+            $nativeTokenProbe=[ordered]@{
+              ok=[bool]$token.ok
+              isAdmin=[bool]$token.isAdmin
+              isSystem=[bool]$token.isSystem
+              elevation=if($token.elevation -in @('standard','high','system')){[string]$token.elevation}else{$null}
+              source=if($token.source -eq 'local-process-token'){[string]$token.source}else{$null}
+              code=if($token.code -match '^WINDOWS_TOKEN_PROBE_[A-Z_]+$'){[string]$token.code}else{$null}
+            }
+          }catch{$nativeTokenProbe=$null}
+        } elseif($line -match '^R157_ASYNC_HTTP_QUARANTINE=(true|false)$'){
+          $httpQuarantine=([string]$Matches[1] -eq 'true')
+        }
         if($line -match '^RC_QUAL_PHASE_START_([0-9]{2})\s*$'){
           if($phaseStarted.Count -lt 90){$phaseStarted+=([int]$Matches[1])}
         } elseif($line -match '^RC_QUAL_PHASE_PASS_([0-9]{2})\s*$'){
@@ -99,6 +125,8 @@ $report=[ordered]@{
   scope='READ_ONLY_HOSTED_NOPROMOTE_QUALIFICATION_FAILURE'
   matchingLogCount=$count;sourceBytes=$sourceBytes;sourceSha256=$sourceSha
   failureTests=$failures;failureTypes=$types;tapCounts=$totals
+  nativeTokenProbe=$nativeTokenProbe;httpPrivilegedLegacyHttpQuarantined=$httpQuarantine
+  asyncHttpFailurePhase=$asyncHttpFailurePhase;asyncHttpFailureName=$asyncHttpFailureName;asyncHttpFailureCode=$asyncHttpFailureCode
   specFailureTests=$specNames;specCounts=$specTotals
   phaseMarkersObserved=$phaseStarted.Count;phasePassMarkersObserved=$phasePassed.Count
   failurePhaseIndex=$failedPhaseIndex

@@ -56,6 +56,7 @@ test('HTTP async operation returns immediately, retry is idempotent, and output 
   const stateRoot = path.join(root, 'operation-state');
   const port = await freePort();
   let child;
+  let phase='fixture-setup';
 
   try {
     await fs.mkdir(serverRoot, { recursive: true });
@@ -104,6 +105,7 @@ test('HTTP async operation returns immediately, retry is idempotent, and output 
     let stderr = '';
     child.stderr.on('data', (chunk) => { stderr += chunk.toString('utf8'); });
 
+    phase='server-startup';
     let healthy = false;
     // Release qualification runs test files in parallel. Keep startup bounded,
     // but give the copied fixture server 10s of process-start headroom; this is
@@ -118,10 +120,18 @@ test('HTTP async operation returns immediately, retry is idempotent, and output 
     }
     assert.equal(healthy, true, stderr || `server failed to become healthy; exitCode=${child.exitCode}`);
 
+    phase='native-token-and-quarantine';
     const nativeToken = process.platform === 'win32'
       ? await probeWindowsAdministrator() : null;
+    if(process.platform==='win32'){
+      const safeToken={ok:nativeToken?.ok===true,isAdmin:nativeToken?.isAdmin===true,
+        isSystem:nativeToken?.isSystem===true,elevation:nativeToken?.elevation??null,
+        source:nativeToken?.source??null,code:nativeToken?.code??null};
+      console.log('R157_ASYNC_HTTP_TOKEN_PROBE='+JSON.stringify(safeToken));
+    }
     const url='http://127.0.0.1:'+port;
     const health = await (await fetch(url+'/health')).json();
+    if(process.platform==='win32') console.log('R157_ASYNC_HTTP_QUARANTINE='+String(health.privilegedLegacyHttpQuarantined===true));
     if(nativeToken?.ok === true && nativeToken.isAdmin === true) {
       // Hosted Windows Actions may use an elevated Administrator token.
       // A legacy unauthenticated MCP path must remain quarantined.
@@ -148,18 +158,22 @@ test('HTTP async operation returns immediately, retry is idempotent, and output 
         timeoutMs: 5000
       }
     };
+    phase='operation-start';
     const startedAt = Date.now();
     const first = await post(port, 1, 'operation_start', request);
     const elapsed = Date.now() - startedAt;
     assert.ok(elapsed < 1000, `operation_start stayed open for ${elapsed}ms`);
+    phase='idempotent-retry';
     const retry = await post(port, 2, 'operation_start', request);
     assert.equal(retry.operationId, first.operationId);
     assert.equal(retry.duplicate, true);
 
+    phase='operation-terminal';
     const final = await waitTerminal(port, first.operationId);
     assert.equal(final.status, 'SUCCEEDED');
     assert.equal(await fs.readFile(effect, 'utf8'), 'x');
 
+    phase='file-backed-result';
     const result = await post(port, 3, 'operation_result', { operationId: first.operationId, tailBytes: 1024 });
     assert.equal(result.state.status, 'SUCCEEDED');
     assert.equal(result.stdoutTail, 'effect-done');
@@ -169,6 +183,7 @@ test('HTTP async operation returns immediately, retry is idempotent, and output 
     assert.equal(durableState.includes(effect), false);
     assert.equal(durableState.includes(fixture), false);
 
+    phase='large-output-start';
     const large = await post(port, 4, 'operation_start', {
       requestId: 'http-large-1',
       tool: 'run_project_command',
@@ -179,13 +194,29 @@ test('HTTP async operation returns immediately, retry is idempotent, and output 
         timeoutMs: 5000
       }
     });
+    phase='large-output-terminal';
     await waitTerminal(port, large.operationId);
+    phase='large-output-result';
     const largeResult = await post(port, 5, 'operation_result', { operationId: large.operationId, tailBytes: 512 });
     assert.equal(largeResult.result.stdout.totalBytes, 200000);
     assert.equal(largeResult.result.stdout.capturedBytes, 65536);
     assert.equal(largeResult.result.stdout.truncated, true);
     assert.equal(Buffer.byteLength(largeResult.stdoutTail), 512);
     assert.ok(JSON.stringify(largeResult).length < 10000);
+  } catch (error) {
+    const safeName=typeof error?.name==='string' && /^[A-Za-z0-9_]{1,48}$/.test(error.name) ? error.name : 'Error';
+    const safeCode=typeof error?.code==='string' && /^[A-Z0-9_]{1,64}$/.test(error.code) ? error.code : null;
+    const safeScalar=value=>typeof value==='boolean'||(typeof value==='number'&&Number.isFinite(value))||
+      (typeof value==='string'&&/^[A-Za-z0-9_ .:-]{1,64}$/.test(value)) ? value : null;
+    const assertion=error?.code==='ERR_ASSERTION' ? {
+      operator:typeof error.operator==='string'&&/^[A-Za-z]{1,24}$/.test(error.operator)?error.operator:null,
+      actual:safeScalar(error.actual),expected:safeScalar(error.expected)
+    } : null;
+    console.log('R157_ASYNC_HTTP_FAILURE_PHASE='+phase);
+    console.log('R157_ASYNC_HTTP_FAILURE_NAME='+safeName);
+    if(safeCode)console.log('R157_ASYNC_HTTP_FAILURE_CODE='+safeCode);
+    if(assertion)console.log('R157_ASYNC_HTTP_FAILURE_ASSERTION='+JSON.stringify(assertion));
+    throw error;
   } finally {
     if (child && child.exitCode === null) {
       child.kill();

@@ -14,9 +14,9 @@ TARGET="$(git -C "$WORKSPACE" rev-parse HEAD)"
 EXPECTED="$1"
 BASELINE='362375c464948be3001b307650c13fc3353ed05b'
 # Preserve the legacy migration test; rollback must target a schema-compatible
-# accepted dev.18 predecessor, not the pre-Workspace immutable 0.10.20 tag.
-ROLLBACK_BASELINE='af18cbdce3cc106842adebde912fea079094deb1'
-ROLLBACK_VERSION='0.11.0-dev.18'
+# accepted dev.23 predecessor, not the pre-Workspace immutable 0.10.20 tag.
+ROLLBACK_BASELINE='8ccf0fd16355a4ab79844feec6c295366763df0d'
+ROLLBACK_VERSION='0.11.0-dev.23'
 [[ "$TARGET" == "$EXPECTED" && "$TARGET" =~ ^[a-f0-9]{40}$ ]] || { echo R170_SOURCE_SHA_MISMATCH >&2; exit 62; }
 SOURCE_VERSION="$(node -p "require('$WORKSPACE/package.json').version")"
 node "$WORKSPACE/tools/isolated-qa-policy.mjs" || { echo R170_SOURCE_VERSION_NOT_QUALIFIED >&2; exit 63; }
@@ -129,7 +129,7 @@ assert s['active']['commit']==sys.argv[2], 'legacy refusal altered promoted rout
 print('R170_LEGACY_INCOMPATIBLE_ROLLBACK_REJECTED_SAFELY')
 PY_CHECK
 
-# Verify an actual rollback to a previously qualified, schema-compatible dev.18
+# Verify an actual rollback to a previously qualified, schema-compatible dev.23
 # predecessor without disabling the schema continuity gate.
 set +e
 timeout --signal=TERM --kill-after=10s 800s bash "$WORKSPACE/auto-update-linux.sh" \

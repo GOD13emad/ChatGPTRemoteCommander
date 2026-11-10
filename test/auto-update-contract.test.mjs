@@ -1262,6 +1262,9 @@ test('R170 isolated rollback qualification is version-scoped, not a release auth
   assert.ok(workflow.includes('isolated-qa-policy.mjs'));
   assert.ok(!workflow.includes("'0.10.27'"),'future candidate requires explicit review');
   assert.ok(linux.includes('R170_GITHUB_HOSTED_LINUX_ONLY'),'CI-only, not owner host');
+  assert.ok(linux.includes("ROLLBACK_BASELINE='8ccf0fd16355a4ab79844feec6c295366763df0d'"),'rollback must target the last fleet-accepted dev23 baseline');
+  assert.ok(linux.includes("ROLLBACK_VERSION='0.11.0-dev.23'"),'rollback version and exact commit must agree');
+  assert.ok(!linux.includes('af18cbdce3cc106842adebde912fea079094deb1'),'obsolete incompatible dev18 rollback is not accepted');
 });
 
 test('R173 Windows rollback source qualification allows only explicitly reviewed versions',()=>{
@@ -1279,6 +1282,15 @@ test('R173 Windows rollback source qualification allows only explicitly reviewed
   assert.ok(qa.includes('R173_JOB_RUNNER_SHA_MISMATCH'),'R173 must verify exact job runner hash');
   assert.ok(qa.includes("'-WindowsJobRunnerPath',$JobRunner"),'updater must receive the verified runner explicitly');
   assert.ok(!workflow.includes('gh release create'),'QA workflow is not release authority');
+  const helper=read('tools/run-r157-standard-user.ps1');
+  assert.ok(qa.includes("$RollbackBaseline='8ccf0fd16355a4ab79844feec6c295366763df0d'"),'R173 must roll back to schema-compatible fleet baseline');
+  assert.ok(qa.includes("$RollbackVersion='0.11.0-dev.23'"),'R173 rollback version must match exact baseline');
+  assert.ok(qa.includes('R173_STANDARD_USER_SANDBOX_MARKER_REQUIRED'),'R173 sandbox must be helper-created and fresh');
+  assert.ok(workflow.includes('run-r157-standard-user.ps1 -RunR173Rollback'),'R173 updater must run under a verified standard token');
+  assert.ok(workflow.includes('R173_STANDARD_USER_CLEANUP_NOT_ACCEPTED'),'R173 requires account removal and zero owned processes');
+  assert.ok(workflow.includes("cleanup.revision -ne 'R173_STANDARD_USER_CLEANUP'"),'R173 cleanup evidence has its own revision identity');
+  assert.ok(!workflow.includes('-File test/release-rollback-windows-r173.ps1'),'workflow must not run the promotion script directly as elevated');
+  assert.ok(helper.includes('R173_STANDARD_USER_GITHUB_HOSTED_ONLY') && helper.includes('R173_STANDARD_USER_ROOT_SCOPE_MISMATCH'),'standard-token promotion mode is GitHub-hosted and exact-root scoped');
 });
 
 test('Linux tunnel-client is required before release promotion and profile enrollment',()=>{

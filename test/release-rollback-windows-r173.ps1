@@ -11,8 +11,12 @@ $Source=[IO.Path]::GetFullPath($env:GITHUB_WORKSPACE)
 $Root=Join-Path ([IO.Path]::GetFullPath($env:RUNNER_TEMP)) 'remote-commander-rollback-r173'
 $Install=Join-Path $Root 'INSTALL'
 $Baseline='362375c464948be3001b307650c13fc3353ed05b'
+$RollbackBaseline='8ccf0fd16355a4ab79844feec6c295366763df0d'
+$RollbackVersion='0.11.0-dev.23'
 $OldLocal=[string]$env:LOCALAPPDATA
 $OldRoaming=[string]$env:APPDATA
+$OldTemp=[string]$env:TEMP
+$OldTmp=[string]$env:TMP
 $Started=[DateTime]::UtcNow
 $Ports=[System.Collections.Generic.HashSet[int]]::new()
 $JobRunner=[IO.Path]::GetFullPath($WindowsJobRunnerPath)
@@ -73,7 +77,7 @@ function Update([string]$Name,[string]$Sha){
   if(($Name -eq 'PROMOTE' -or $Name -eq 'ROLLBACK') -and ($exitCode -ne 0 -or $status -ne 'PROMOTED')){
     try{
       $lines=Get-Content -LiteralPath $stdout -ErrorAction Stop
-      $diagnosticCommit=if($Name -eq 'PROMOTE'){$ExpectedCommit}else{$Baseline}
+      $diagnosticCommit=if($Name -eq 'PROMOTE'){$ExpectedCommit}else{$RollbackBaseline}
       $rx='^GATE_OUTPUT_FILES runId=(qualification-test-'+$diagnosticCommit.Substring(0,12)+'-[0-9a-f]{32}) stdout=([^\r\n]+?) stderr='
       $matches=@($lines|Where-Object {$_ -match $rx})
       if($matches.Count -ne 1){throw 'NO_UNIQUE_TEST_OUTPUT'}
@@ -131,12 +135,16 @@ function Cleanup {
   return @{pass=($rem.Count -eq 0);remaining=$rem.Count;stoppedPids=$killed;guardedPorts=@($Ports)}
 }
 if((Get-NetTCPConnection -State Listen -LocalPort 47831 -ErrorAction SilentlyContinue)){throw 'R173_CANONICAL_PORT_IN_USE'}
-if((Test-Path -LiteralPath $Root) -or (Test-Path -LiteralPath (Join-Path $OldLocal 'ChatGPTRemoteCommander'))){throw 'R173_NOT_ISOLATED'}
+$sandboxMarker=Join-Path $Root 'R173_STANDARD_USER_SANDBOX.txt'
+if(-not(Test-Path -LiteralPath $Root -PathType Container) -or -not(Test-Path -LiteralPath $sandboxMarker -PathType Leaf) -or [IO.File]::ReadAllText($sandboxMarker) -cne 'R173_STANDARD_USER_SANDBOX_V1'){throw 'R173_STANDARD_USER_SANDBOX_MARKER_REQUIRED'}
+$unexpectedRootItems=@(Get-ChildItem -LiteralPath $Root -Force|Where-Object{$_.Name -notin @('TEMP','R173_STANDARD_USER_SANDBOX.txt','R157_STANDARD_USER.path','R157_STANDARD_USER.stdout.log','R157_STANDARD_USER.stderr.log')})
+if($unexpectedRootItems.Count -ne 0 -or -not(Test-Path -LiteralPath (Join-Path $Root 'TEMP') -PathType Container)){throw 'R173_STANDARD_USER_ROOT_NOT_FRESH'}
+if(Test-Path -LiteralPath (Join-Path $OldLocal 'ChatGPTRemoteCommander')){throw 'R173_PREEXISTING_INSTALL'}
 Assert-Head $Source $ExpectedCommit
 $CandidateVersion=[string]((Get-Content (Join-Path $Source 'package.json') -Raw|ConvertFrom-Json).version)
 & node.exe (Join-Path $Source 'tools/isolated-qa-policy.mjs')
  if($LASTEXITCODE -ne 0){throw 'R173_CANDIDATE_VERSION_POLICY'}
-New-Item -ItemType Directory -Path (Join-Path $Root 'STATE'),(Join-Path $Root 'ROAMING') -ErrorAction Stop|Out-Null
+New-Item -ItemType Directory -Path (Join-Path $Root 'STATE'),(Join-Path $Root 'ROAMING'),(Join-Path $Root 'TEMP') -Force -ErrorAction Stop|Out-Null
 & git.exe -c core.autocrlf=false clone --depth 1 --branch v0.10.20 https://github.com/GOD13emad/ChatGPTRemoteCommander.git $Install | Out-Host
 if($LASTEXITCODE -ne 0){throw 'R173_CLONE_FAIL'}
 Assert-Head $Install $Baseline
@@ -157,23 +165,27 @@ $c.asyncOperations.enabled=$true
 [IO.File]::WriteAllText((Join-Path $Install 'config.local.json'),(ConvertTo-Json $c -Depth 30)+[Environment]::NewLine)
 $env:LOCALAPPDATA=Join-Path $Root 'STATE'
 $env:APPDATA=Join-Path $Root 'ROAMING'
+$env:TEMP=Join-Path $Root 'TEMP'
+$env:TMP=$env:TEMP
 try {
   Update 'PROMOTE' $ExpectedCommit
   Assert-Head $Install $ExpectedCommit
   Readback 'PROMOTE' $ExpectedCommit $CandidateVersion
-  Update 'ROLLBACK' $Baseline
-  Assert-Head $Install $Baseline
-  Readback 'ROLLBACK' $Baseline '0.10.20'
+  Update 'ROLLBACK' $RollbackBaseline
+  Assert-Head $Install $RollbackBaseline
+  Readback 'ROLLBACK' $RollbackBaseline $RollbackVersion
 }catch{$Failure=$_.Exception.Message}
 finally{
   $env:LOCALAPPDATA=$OldLocal
   $env:APPDATA=$OldRoaming
+  $env:TEMP=$OldTemp
+  $env:TMP=$OldTmp
   $clean=$null
   try{$clean=Cleanup}catch{$Failure=if($Failure){$Failure+' | '+$_.Exception.Message}else{$_.Exception.Message}}
   $pass=($null -eq $Failure -and $script:Stages.Count -eq 2 -and $null -ne $clean -and $clean.pass)
   $rec=[ordered]@{
     schema=1;revision='R173';status=if($pass){'PASS_WINDOWS_REAL_PROMOTION_ROLLBACK_ZERO_OWNED'}else{'FAIL_CLOSED_WINDOWS_RELEASE_ROLLBACK'}
-    candidateHead=$ExpectedCommit;baselineHead=$Baseline;stages=$script:Stages;cleanup=$clean
+    candidateHead=$ExpectedCommit;baselineHead=$Baseline;rollbackHead=$RollbackBaseline;rollbackVersion=$RollbackVersion;stages=$script:Stages;cleanup=$clean
     error=$Failure;isolatedGithubRunner=$true;ownerMachineTouched=$false
     startedUtc=$Started.ToString('o');finishedUtc=[DateTime]::UtcNow.ToString('o')
     nativeOwnerUIAndSigning='OPEN'

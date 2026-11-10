@@ -232,7 +232,7 @@ test('R470 Windows fixture extracts failing test and counters without persisting
       const folder=path.join(tmp,'STATE','ChatGPTRemoteCommander','update-logs');
       fs.mkdirSync(folder,{recursive:true});
       for(const name of names)fs.writeFileSync(path.join(folder,name),
-        ['TAP version 13','not ok 245 - team reserves all calls before workers and executes only the coordinator proposal',
+        ['TAP version 13','R157_ASYNC_HTTP_TOKEN_PROBE={"ok":false,"isAdmin":false,"isSystem":false,"elevation":null,"source":null,"code":"WINDOWS_TOKEN_PROBE_FAILED"}','R157_ASYNC_HTTP_QUARANTINE=true','R157_ASYNC_HTTP_FAILURE_PHASE=operation-start','R157_ASYNC_HTTP_FAILURE_NAME=AssertionError','R157_ASYNC_HTTP_FAILURE_CODE=ERR_ASSERTION','not ok 245 - team reserves all calls before workers and executes only the coordinator proposal',
         "failureType: 'testTimeoutFailure'",'code: ERR_TEST_FAILURE','# tests 521','# pass 520',
         '# fail 1','# cancelled 0','# duration_ms 25000','Authorization: Bearer '+secret].join('\n'),'utf8');
       const proc=spawnSync('pwsh.exe',['-NoProfile','-NonInteractive','-File',script,
@@ -255,6 +255,12 @@ test('R470 Windows fixture extracts failing test and counters without persisting
   assert.equal(one.tapCounts.pass,'520');
   assert.ok(one.failureTypes.includes('testTimeoutFailure'));
   assert.equal(one.rawLogIncluded,false);
+  assert.equal(one.nativeTokenProbe.ok,false);
+  assert.equal(one.nativeTokenProbe.code,'WINDOWS_TOKEN_PROBE_FAILED');
+  assert.equal(one.httpPrivilegedLegacyHttpQuarantined,true);
+  assert.equal(one.asyncHttpFailurePhase,'operation-start');
+  assert.equal(one.asyncHttpFailureName,'AssertionError');
+  assert.equal(one.asyncHttpFailureCode,'ERR_ASSERTION');
   // In hosted R157, the first failing gate can be check with no test log.
   const checkOnly=run([file.replace('qualification-test-','qualification-check-')]);
   assert.equal(checkOnly.failedGate,'check');
