@@ -112,20 +112,31 @@ function Ensure-PowerShell7([string]$Arch) {
   return $candidate
 }
 
+function Test-PatchedNodeVersion([string]$Version) {
+  if ($Version -notmatch '^v(22|24|26)\.[0-9]{1,3}\.[0-9]{1,3}$') { return $false }
+  try { $parsed = [version]::Parse($Version.Substring(1)) } catch { return $false }
+  switch ($parsed.Major) {
+    22 { return ($parsed -ge [version]'22.23.4') }
+    24 { return ($parsed -ge [version]'24.22.1') }
+    26 { return ($parsed -ge [version]'26.12.1') }
+    default { return $false }
+  }
+}
+
 function Ensure-Node([string]$Arch) {
   $cmd = Get-Command node.exe -ErrorAction SilentlyContinue
   if ($cmd) {
     try {
-      $major = [int]((& $cmd.Source --version).Trim().TrimStart('v').Split('.')[0])
-      if ($major -ge 22) { return $cmd.Source }
+      $version = (& $cmd.Source --version).Trim()
+      if (Test-PatchedNodeVersion $version) { return $cmd.Source }
     } catch {}
   }
 
   $existing = Join-Path $env:ProgramFiles 'nodejs\node.exe'
   if (Test-Path -LiteralPath $existing -PathType Leaf) {
     try {
-      $major = [int]((& $existing --version).Trim().TrimStart('v').Split('.')[0])
-      if ($major -ge 22) {
+      $version = (& $existing --version).Trim()
+      if (Test-PatchedNodeVersion $version) {
         $sha = (Get-FileHash -LiteralPath $existing -Algorithm SHA256).Hash.ToLowerInvariant()
         $signer = Assert-Authenticode $existing
         Add-ArtifactEvidence 'Node.js' $existing 'existing-installation' $sha $signer
@@ -137,7 +148,7 @@ function Ensure-Node([string]$Arch) {
     }
   }
 
-  $version = '22.23.3'
+  $version = '22.23.4'
   $asset = if ($Arch -eq 'x64') { "node-v$version-x64.msi" } else { "node-v$version-arm64.msi" }
   $base = "https://nodejs.org/dist/v$version"
   $sumsPath = Join-Path $Downloads 'node-SHASUMS256.txt'

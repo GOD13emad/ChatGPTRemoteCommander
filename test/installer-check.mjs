@@ -276,3 +276,56 @@ if (process.platform === 'linux') {
 if (windowsInstaller.includes('throw "SkipTunnelClient was requested but expected executable is missing')) {
   throw new Error('SkipTunnelClient missing-client path must not throw');
 }
+
+
+// Security regression: October 2026 Node.js LTS patch floors must apply across
+// both Windows installers and the Linux source installer. Evaluate only the pure
+// helper function; never execute an installer or grant a new capability here.
+for (const file of ['install.ps1','server-install-windows.ps1']) {
+  const code = readFileSync(file,'utf8');
+  for (const required of ["function Test-PatchedNodeVersion([string]$Version)","22.23.4","24.22.1","26.12.1","Test-PatchedNodeVersion $nodeVersion"]) {
+    if (!code.includes(required) && !(file==='server-install-windows.ps1' && required==='Test-PatchedNodeVersion $nodeVersion')) {
+      throw new Error('Missing patched Node LTS floor in '+file+': '+required);
+    }
+  }
+  if (code.includes('if ($major -ge 22)') || code.includes('if ($nodeMajor -lt 22)')) {
+    throw new Error('Unsafe major-only Node runtime gate in '+file);
+  }
+}
+if (!readFileSync('server-install-windows.ps1','utf8').includes("$version = '22.23.4'")) {
+  throw new Error('Windows server bootstrap must download patched Node 22');
+}
+const linuxNodePolicy=readFileSync('install.sh','utf8');
+for (const required of ['node_version_patched() {','node_version_patched ||','node_version_patched "$version"']) {
+  if (!linuxNodePolicy.includes(required)) throw new Error('Linux installer missing patched Node guard: '+required);
+}
+if (process.platform === 'win32') {
+  const ps=[
+    "$ErrorActionPreference='Stop'",
+    "$allowed=@('v22.23.4','v22.23.5','v24.22.1','v24.22.2','v26.12.1','v26.13.0')",
+    "$denied=@('v22.23.3','v22.22.99','v24.22.0','v26.12.0','v23.99.99','v25.99.99','v27.0.0','v22.23.4-rc.1','22.23.4','v22.23.4.1')",
+    "foreach($path in @('install.ps1','server-install-windows.ps1')) {",
+    "  $errors=$null;$tokens=$null;$ast=[Management.Automation.Language.Parser]::ParseFile($path,[ref]$tokens,[ref]$errors)",
+    "  if($errors.Count){exit 51}",
+    "  $fn=@($ast.FindAll({param($n)$n -is [Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Test-PatchedNodeVersion'},$true))",
+    "  if($fn.Count -ne 1){exit 52}",
+    "  . ([scriptblock]::Create($fn[0].Extent.Text))",
+    "  foreach($v in $allowed){if(!(Test-PatchedNodeVersion $v)){exit 53}}",
+    "  foreach($v in $denied){if(Test-PatchedNodeVersion $v){exit 54}}",
+    "}"
+  ].join('; ');
+  const result=spawnSync('pwsh.exe',['-NoProfile','-NonInteractive','-Command',ps],{encoding:'utf8',timeout:12000});
+  if(result.status!==0) throw new Error('Windows patched Node runtime predicate failed: '+result.stderr);
+}
+if (process.platform === 'linux') {
+  const fn=linuxNodePolicy.replaceAll('\r\n','\n').match(/^node_version_patched\(\) \{[\s\S]*?^\}/m)?.[0];
+  if(!fn) throw new Error('Missing isolated Linux patched-node version predicate');
+  const shell=[
+    fn,
+    'for v in v22.23.4 v22.23.5 v24.22.1 v24.22.2 v26.12.1 v26.13.0; do node_version_patched "$v" || exit 61; done',
+    'for v in v22.23.3 v22.22.99 v24.22.0 v26.12.0 v23.99.99 v25.99.99 v27.0.0 v22.23.4-rc.1 22.23.4 v22.23.4.1; do node_version_patched "$v" && exit 62; done'
+  ].join('\n');
+  const result=spawnSync('bash',['-c',shell],{encoding:'utf8',timeout:12000});
+  if(result.status!==0) throw new Error('Linux patched Node runtime predicate failed: '+result.stderr);
+}
+console.log('PATCHED_NODE_LTS_POLICY_PASS');

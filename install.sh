@@ -189,16 +189,25 @@ install_source() {
   echo "Source ref: $SOURCE_REF"
   echo "Source commit: $head"
 }
-node_major() {
-  node -p "process.versions.node.split('.')[0]" 2>/dev/null || echo 0
+node_version_patched() {
+  local version="${1:-}"
+  if [[ -z "$version" ]]; then version="$(node --version 2>/dev/null)" || return 1; fi
+  [[ "$version" =~ ^v(22|24|26)\.([0-9]{1,3})\.([0-9]{1,3})$ ]] || return 1
+  local major="${BASH_REMATCH[1]}"
+  local minor=$((10#${BASH_REMATCH[2]}))
+  local patch=$((10#${BASH_REMATCH[3]}))
+  case "$major" in
+    22) (( minor > 23 || (minor == 23 && patch >= 4) )) ;;
+    24) (( minor > 22 || (minor == 22 && patch >= 1) )) ;;
+    26) (( minor > 12 || (minor == 12 && patch >= 1) )) ;;
+    *) return 1 ;;
+  esac
 }
 
 install_portable_node() {
-  local current=0
-  if need node; then current="$(node_major)"; fi
-  if [[ "$current" -ge 22 ]]; then return 0; fi
+  if need node && node_version_patched; then return 0; fi
   [[ "$INSTALL_PREREQS" == "1" ]] || {
-    echo "Node.js 22+ is required. Re-run with --install-prerequisites or install Node 22+." >&2
+    echo "Patched supported Node.js LTS is required (22.23.4+, 24.22.1+, 26.12.1+). Re-run with --install-prerequisites or update Node." >&2
     exit 1
   }
   local machine node_arch
@@ -212,6 +221,7 @@ install_portable_node() {
   index="$(curl_fetch https://nodejs.org/dist/index.json)"
   version="$(printf '%s' "$index" | grep -oE '"version"[[:space:]]*:[[:space:]]*"v22\.[^"]+"' | head -n1 | sed -E 's/.*"(v22\.[^"]+)"/\1/')"
   [[ -n "$version" ]] || { echo "Could not resolve latest Node 22 release" >&2; exit 1; }
+  node_version_patched "$version" || { echo "Upstream Node 22 release is below the minimum security patch" >&2; exit 1; }
   asset="node-${version}-linux-${node_arch}.tar.xz"
   base="https://nodejs.org/dist/${version}"
   tmp="$(mktemp -d)"
@@ -233,9 +243,7 @@ ensure_node_path() {
   if [[ -x "$INSTALL_DIR/.runtime/node-current/bin/node" ]]; then
     export PATH="$INSTALL_DIR/.runtime/node-current/bin:$PATH"
   fi
-  local major
-  major="$(node_major)"
-  [[ "$major" -ge 22 ]] || { echo "Node.js 22+ not available" >&2; exit 1; }
+  node_version_patched || { echo "Patched supported Node.js LTS is not available" >&2; exit 1; }
   need npm || { echo "npm is required" >&2; exit 1; }
 }
 ensure_project_provider() {

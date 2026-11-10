@@ -157,14 +157,25 @@ function Ensure-Command([string]$Name, [string]$WingetId) {
   }
 }
 
+function Test-PatchedNodeVersion([string]$Version) {
+  if ($Version -notmatch '^v(22|24|26)\.[0-9]{1,3}\.[0-9]{1,3}$') { return $false }
+  try { $parsed = [version]::Parse($Version.Substring(1)) } catch { return $false }
+  switch ($parsed.Major) {
+    22 { return ($parsed -ge [version]'22.23.4') }
+    24 { return ($parsed -ge [version]'24.22.1') }
+    26 { return ($parsed -ge [version]'26.12.1') }
+    default { return $false }
+  }
+}
+
 function Ensure-Prerequisites {
   Ensure-Command 'git.exe' 'Git.Git'
   Ensure-Command 'node.exe' 'OpenJS.NodeJS.LTS'
   Ensure-Command 'pwsh.exe' 'Microsoft.PowerShell'
 
-  $nodeMajor = [int]((& node.exe --version).Trim().TrimStart('v').Split('.')[0])
-  if ($nodeMajor -lt 22) {
-    throw "Node.js 22+ is required; found $nodeMajor."
+  $nodeVersion = (& node.exe --version).Trim()
+  if (-not (Test-PatchedNodeVersion $nodeVersion)) {
+    throw "Patched supported Node.js LTS is required (22.23.4+, 24.22.1+, or 26.12.1+); found $nodeVersion."
   }
 }
 

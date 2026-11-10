@@ -186,3 +186,13 @@ test('native per-owner tunnel unit loads existing credentials and never autostar
     }
   }
 });
+
+
+test('native Linux QA package pins Node 22 October 2026 security release',()=>{
+  assert.match(source,/^NODE_VERSION=22\.23\.4$/m);
+  assert.match(source,/^NODE_SHA256=1805bcd35e6815559bd2eb97db438d3fdb0eb3a5e6a977b7c1badca76337e9ce$/m);
+  assert.match(source,/^NODE_ASSET="node-v\$NODE_VERSION-linux-x64\.tar\.xz"$/m);
+  assert.match(source,/actual_manifest_line/);
+  assert.match(source,/sha256sum -c --status/);
+  assert.doesNotMatch(source,/^NODE_VERSION=22\.23\.3$/m);
+});

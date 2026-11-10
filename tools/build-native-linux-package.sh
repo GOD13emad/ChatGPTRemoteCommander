@@ -4,9 +4,9 @@
 set -euo pipefail
 ROOT="$(cd -- "$(dirname -- "$0")/.." && pwd -P)"
 OUT="$ROOT/dist/installer/Remote-Commander-Linux-amd64.deb"
-NODE_VERSION=22.23.3
+NODE_VERSION=22.23.4
 NODE_ASSET="node-v$NODE_VERSION-linux-x64.tar.xz"
-NODE_SHA256=df450af89261115ef9f9e3830c3eeb2cc9213b63c720b1af623cb5dcbe2e02de
+NODE_SHA256=1805bcd35e6815559bd2eb97db438d3fdb0eb3a5e6a977b7c1badca76337e9ce
 PACKAGE_DIR=/usr/lib/chatgpt-remote-commander
 for executable in git node curl tar unzip sha256sum dpkg-deb python3; do
   command -v "$executable" >/dev/null || { echo "Missing native package build prerequisite $executable" >&2; exit 2; }
