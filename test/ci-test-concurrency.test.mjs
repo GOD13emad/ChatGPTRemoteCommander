@@ -246,6 +246,7 @@ test('R470 Windows fixture extracts failing test and counters without persisting
   const file='qualification-output-qualification-test-'+sha.slice(0,12)+'-r470-fixture.stdout.log';
   const one=run([file]);
   assert.equal(one.status,'TAP_SUMMARY_EXTRACTED');
+  assert.equal(one.failedGate,'test');
   assert.equal(one.matchingLogCount,1);
   assert.equal(one.failureTests[0].index,245);
   assert.ok(one.failureTests[0].publicTestName.startsWith('team reserves all calls'));
@@ -253,6 +254,16 @@ test('R470 Windows fixture extracts failing test and counters without persisting
   assert.equal(one.tapCounts.pass,'520');
   assert.ok(one.failureTypes.includes('testTimeoutFailure'));
   assert.equal(one.rawLogIncluded,false);
+  // In hosted R157, the first failing gate can be check with no test log.
+  const checkOnly=run([file.replace('qualification-test-','qualification-check-')]);
+  assert.equal(checkOnly.failedGate,'check');
+  assert.equal(checkOnly.status,'TAP_SUMMARY_EXTRACTED');
+  assert.equal(checkOnly.matchingLogCount,1);
+  assert.equal(checkOnly.failureTests[0].index,245);
+  assert.equal(checkOnly.rawLogIncluded,false);
+  const completedCheckPlusFailedTest=run([file,file.replace('qualification-test-','qualification-check-')]);
+  assert.equal(completedCheckPlusFailedTest.failedGate,'test');
+  assert.equal(completedCheckPlusFailedTest.matchingLogCount,1);
   assert.equal(one.secretsIncluded,false);
   const many=run([file,file.replace('fixture','duplicate')]);
   assert.equal(many.status,'AMBIGUOUS_MULTIPLE_MATCHING_LOGS');

@@ -22,12 +22,19 @@ $sourceSha=$null
 $sourceBytes=0
 $status='LOG_MISSING'
 $count=0
+$failedGate=$null
 if(Test-Path -LiteralPath $logRoot -PathType Container){
   $rootAttributes=(Get-Item -LiteralPath $logRoot -Force).Attributes
   if(($rootAttributes -band [IO.FileAttributes]::ReparsePoint) -ne 0){throw 'R470_LOG_ROOT_REPARSE_REFUSED'}
   $prefix=$ExpectedCommit.Substring(0,12)
-  $sources=@(Get-ChildItem -LiteralPath $logRoot -File -Filter "qualification-output-qualification-test-$prefix-*.stdout.log" -ErrorAction Stop)
-  $count=$sources.Count
+  # A failed updater can stop at 'check' without producing any test log.
+  # Prefer a unique exact-head test log, else a unique exact-head check log.
+  # Multiple logs in the chosen gate are ambiguous and must never be guessed.
+  $testSources=@(Get-ChildItem -LiteralPath $logRoot -File -Filter "qualification-output-qualification-test-$prefix-*.stdout.log" -ErrorAction Stop)
+  $checkSources=@(Get-ChildItem -LiteralPath $logRoot -File -Filter "qualification-output-qualification-check-$prefix-*.stdout.log" -ErrorAction Stop)
+  $failedGate=if($testSources.Count -gt 0){'test'}elseif($checkSources.Count -gt 0){'check'}else{$null}
+  $sources=if($failedGate -eq 'test'){$testSources}else{$checkSources}
+  $count=@($sources).Count
   if($count -eq 1){
     $source=$sources[0]
     if(($source.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0){throw 'R470_LOG_REPARSE_REFUSED'}
@@ -88,7 +95,7 @@ if(Test-Path -LiteralPath $logRoot -PathType Container){
   } elseif($count -gt 1) {$status='AMBIGUOUS_MULTIPLE_MATCHING_LOGS'}
 }
 $report=[ordered]@{
-  schema=1;revision='R470';status=$status;commit=$ExpectedCommit
+  schema=1;revision='R470';status=$status;commit=$ExpectedCommit;failedGate=$failedGate
   scope='READ_ONLY_HOSTED_NOPROMOTE_QUALIFICATION_FAILURE'
   matchingLogCount=$count;sourceBytes=$sourceBytes;sourceSha256=$sourceSha
   failureTests=$failures;failureTypes=$types;tapCounts=$totals
