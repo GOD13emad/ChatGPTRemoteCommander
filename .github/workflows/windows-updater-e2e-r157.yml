@@ -125,9 +125,9 @@ jobs:
           $reportPath=Join-Path $state 'last-update.json'
           if(-not(Test-Path $reportPath)){throw 'R157_NO_RESULT'}
           $report=Get-Content $reportPath -Raw -Encoding UTF8|ConvertFrom-Json
-          if($report.status -ne 'CANDIDATE_PASS' -or [string]$report.commit -ne $sha){throw ('R157_BAD_RESULT_'+$report.status)}
+          if($report.status -ne 'CANDIDATE_QUARANTINE_ONLY_PASS' -or [string]$report.commit -ne $sha){throw ('R157_BAD_RESULT_'+$report.status)}
           $profiles=@($report.profiles)
-          if($profiles.Count -ne 1 -or $profiles[0].profile -ne 'default' -or $profiles[0].doctor -ne 'PASS' -or $profiles[0].hardware -ne 'PASS' -or $profiles[0].shadowStore -ne 'PASS' -or $profiles[0].liveStoreCompatibility -ne 'PASS'){throw 'R157_PROFILE_GATE_FAIL'}
+          if($profiles.Count -ne 1 -or $profiles[0].profile -ne 'default' -or $profiles[0].doctor -ne 'ANONYMOUS_QUARANTINE_ONLY_PASS' -or $profiles[0].hardware -ne 'PASS' -or $profiles[0].shadowStore -ne 'PASS' -or $profiles[0].liveStoreCompatibility -ne 'NOT_VERIFIED_G1'){throw 'R157_PROFILE_GATE_FAIL'}
           $jobs=@(Get-ChildItem (Join-Path $state 'update-logs') -File -Filter 'qualification-job-*.json')
           if($jobs.Count -ne 3){throw ('R157_JOB_COUNT_'+$jobs.Count)}
           foreach($file in $jobs){
@@ -149,15 +149,15 @@ jobs:
           if($LASTEXITCODE -ne 0){throw 'R157_SOURCE_NOPROMOTE_POLICY_INVALID'}
           $stage=Join-Path $state ('releases\v'+$sourceVersion+'-'+$sha.Substring(0,12))
           if(-not(Test-Path $stage) -or (git -C $stage rev-parse HEAD).Trim() -ne $sha){throw 'R157_EXACT_STAGE_MISSING'}
-          $receipt=[ordered]@{schema=1;revision='R157';status='PASS_HOSTED_WINDOWS_UPDATER_NOPROMOTE'
-            exactCommit=$sha;qualifierReceipts=3;doctor='PASS';shadowStore='PASS'
+          $receipt=[ordered]@{schema=1;revision='R157';status='PASS_HOSTED_WINDOWS_QUARANTINE_ONLY_NOPROMOTE'
+            exactCommit=$sha;qualifierReceipts=3;doctor='ANONYMOUS_QUARANTINE_ONLY_PASS';shadowStore='PASS'
             standardUserCleanup=$cleanup.status;standardUserAccountRemoved=[bool]$cleanup.userRemoved;standardUserOwnedProcesses=[int]$cleanup.ownedProcesses
-            liveStoreCompatibility='PASS';ownedChildren=0;promoted=$false;stableBrowserUntouched=$true
+            liveStoreCompatibility='NOT_VERIFIED_G1';g1Authorization='BLOCKED_NOT_CONFIGURED';ownedChildren=0;promoted=$false;stableBrowserUntouched=$true
             verifiedUtc=[DateTime]::UtcNow.ToString('o')}
           $dest=Join-Path $root 'RETURN_R157.json'
           [IO.File]::WriteAllText($dest,(ConvertTo-Json -InputObject $receipt -Depth 5)+[Environment]::NewLine,[Text.UTF8Encoding]::new($false))
-          Write-Output ('R157_PASS source='+$sha+' receiptSha='+(Get-FileHash $dest -Algorithm SHA256).Hash)
-          Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value '**R157 PASS:** Exact-head Windows candidate-first NoPromote E2E, 3 owned qualification suites, Doctor/Store PASS, no route promotion or owned child leaks.'
+          Write-Output ('R157_QUARANTINE_ONLY_PASS source='+$sha+' receiptSha='+(Get-FileHash $dest -Algorithm SHA256).Hash)
+          Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value '**R157 QUARANTINE-ONLY PASS:** exact-head isolated Windows NoPromote, 3 qualification suites, expected anonymous MCP denial, no route promotion or owned child leaks. G1 authorization and protected store remain NOT VERIFIED; this is NOT release acceptance.'
       - name: R470 derive a bounded, allowlisted failure diagnostic (no raw logs)
         if: ${{ failure() }}
         shell: pwsh
