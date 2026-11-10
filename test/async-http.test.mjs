@@ -56,6 +56,8 @@ test('HTTP async operation returns immediately, retry is idempotent, and output 
   const stateRoot = path.join(root, 'operation-state');
   const port = await freePort();
   let child;
+  let stderr='';
+  let stdoutBytes=0;
   let phase='fixture-setup';
 
   try {
@@ -102,8 +104,8 @@ test('HTTP async operation returns immediately, retry is idempotent, and output 
       env: { ...process.env, REMOTE_COMMANDER_CONFIG: configPath },
       stdio: ['ignore', 'pipe', 'pipe']
     });
-    let stderr = '';
-    child.stderr.on('data', (chunk) => { stderr += chunk.toString('utf8'); });
+    child.stderr.on('data', (chunk) => { if (stderr.length < 8192) stderr += chunk.toString('utf8').slice(0,8192-stderr.length); });
+    child.stdout.on('data', (chunk) => { stdoutBytes += chunk.length; });
 
     phase='server-startup';
     let healthy = false;
@@ -215,6 +217,14 @@ test('HTTP async operation returns immediately, retry is idempotent, and output 
     console.log('R157_ASYNC_HTTP_FAILURE_PHASE='+phase);
     console.log('R157_ASYNC_HTTP_FAILURE_NAME='+safeName);
     if(safeCode)console.log('R157_ASYNC_HTTP_FAILURE_CODE='+safeCode);
+    if(phase==='server-startup'){
+      const known=['ERR_MODULE_NOT_FOUND','ERR_INVALID_ARG_TYPE','ERR_UNKNOWN_FILE_EXTENSION','EACCES','EPERM','ENOENT','EADDRINUSE','SyntaxError','ReferenceError','TypeError','Error'];
+      const stderrClass=known.find(kind=>stderr.includes(kind))??'UNCLASSIFIED';
+      const serverDiag={exitCode:Number.isInteger(child?.exitCode)?child.exitCode:null,
+        signalCode:['SIGTERM','SIGINT','SIGKILL'].includes(child?.signalCode)?child.signalCode:null,
+        stderrClass,stderrBytes:Buffer.byteLength(stderr),stdoutBytes};
+      console.log('R157_ASYNC_HTTP_SERVER_STARTUP='+JSON.stringify(serverDiag));
+    }
     if(assertion)console.log('R157_ASYNC_HTTP_FAILURE_ASSERTION='+JSON.stringify(assertion));
     throw error;
   } finally {

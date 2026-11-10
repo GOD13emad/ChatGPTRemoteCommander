@@ -23,6 +23,7 @@ $httpQuarantine=$null
 $asyncHttpFailurePhase=$null
 $asyncHttpFailureName=$null
 $asyncHttpFailureCode=$null
+$asyncHttpServerStartup=$null
 $sourceSha=$null
 $sourceBytes=0
 $status='LOG_MISSING'
@@ -55,6 +56,16 @@ if(Test-Path -LiteralPath $logRoot -PathType Container){
           $asyncHttpFailureName=[string]$Matches[1]
         } elseif($line -match '^R157_ASYNC_HTTP_FAILURE_CODE=([A-Z0-9_]{1,64})$'){
           $asyncHttpFailureCode=[string]$Matches[1]
+        } elseif($line -match '^R157_ASYNC_HTTP_SERVER_STARTUP=(\{.*\})$'){
+          try{
+            $raw=ConvertFrom-Json -InputObject $Matches[1] -ErrorAction Stop
+            $known=@('ERR_MODULE_NOT_FOUND','ERR_INVALID_ARG_TYPE','ERR_UNKNOWN_FILE_EXTENSION','EACCES','EPERM','ENOENT','EADDRINUSE','SyntaxError','ReferenceError','TypeError','Error','UNCLASSIFIED')
+            $kind=if([string]$raw.stderrClass -cin $known){[string]$raw.stderrClass}else{'UNCLASSIFIED'}
+            $exit=if($null -ne $raw.exitCode -and [int]$raw.exitCode -ge 0 -and [int]$raw.exitCode -le 255){[int]$raw.exitCode}else{$null}
+            $stderrBytes=if([int64]$raw.stderrBytes -ge 0 -and [int64]$raw.stderrBytes -le 8192){[int64]$raw.stderrBytes}else{$null}
+            $stdoutBytes=if([int64]$raw.stdoutBytes -ge 0 -and [int64]$raw.stdoutBytes -le 100000000){[int64]$raw.stdoutBytes}else{$null}
+            $asyncHttpServerStartup=[ordered]@{exitCode=$exit;stderrClass=$kind;stderrBytes=$stderrBytes;stdoutBytes=$stdoutBytes}
+          }catch{$asyncHttpServerStartup=$null}
         } elseif($line -match '^R157_ASYNC_HTTP_TOKEN_PROBE=(\{.*\})$'){
           try{
             $token=ConvertFrom-Json -InputObject $Matches[1] -ErrorAction Stop
@@ -127,6 +138,7 @@ $report=[ordered]@{
   failureTests=$failures;failureTypes=$types;tapCounts=$totals
   nativeTokenProbe=$nativeTokenProbe;httpPrivilegedLegacyHttpQuarantined=$httpQuarantine
   asyncHttpFailurePhase=$asyncHttpFailurePhase;asyncHttpFailureName=$asyncHttpFailureName;asyncHttpFailureCode=$asyncHttpFailureCode
+  asyncHttpServerStartup=$asyncHttpServerStartup
   specFailureTests=$specNames;specCounts=$specTotals
   phaseMarkersObserved=$phaseStarted.Count;phasePassMarkersObserved=$phasePassed.Count
   failurePhaseIndex=$failedPhaseIndex
