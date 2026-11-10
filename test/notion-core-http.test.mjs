@@ -6,6 +6,7 @@ import path from 'node:path';
 import net from 'node:net';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { requireNonElevatedLegacyHttp } from './fixtures/legacy-http-token-admission.mjs';
 
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 async function freePort() {
@@ -24,7 +25,7 @@ async function rpc(port, method, params = undefined) {
   assert.equal(result.status, 200);
   return result.json();
 }
-test('native Notion tools are discoverable by real Commander MCP route and fail closed without credentials', { timeout: 22000 }, async () => {
+test('native Notion tools are discoverable by real Commander MCP route and fail closed without credentials', { timeout: 22000 }, async t => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'rc-notion-http-'));
   const port = await freePort();
   const callbackPort = await freePort();
@@ -56,6 +57,16 @@ test('native Notion tools are discoverable by real Commander MCP route and fail 
   delete env.REMOTE_COMMANDER_NOTION_CLIENT_SECRET;
   const child = spawn(process.execPath, [path.join(repo, 'src', 'server-v0.3.mjs')], { cwd: repo, env, windowsHide: true, stdio: 'ignore' });
   try {
+    // Elevated hosted Windows cannot enter the legacy unauthenticated MCP route.
+    let healthReady=false;
+    for(let attempt=0;attempt<45;attempt++){
+      if(child.exitCode!==null)break;
+      try{const response=await fetch(`http://127.0.0.1:${port}/health`,{signal:AbortSignal.timeout(400)});
+        if(response.ok){healthReady=true;break;}}catch{}
+      await new Promise(resolve=>setTimeout(resolve,160));
+    }
+    assert.equal(healthReady,true,'Notion fixture must start before admission verification');
+    if(!(await requireNonElevatedLegacyHttp(t,port)))return;
     let listing, ready = false;
     for (let attempt = 0; attempt < 45; attempt++) {
       if (child.exitCode !== null) throw new Error('server exited before readiness: ' + child.exitCode);

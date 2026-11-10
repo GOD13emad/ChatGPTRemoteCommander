@@ -6,6 +6,7 @@ import os from 'node:os';
 import net from 'node:net';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
+import { probeWindowsAdministrator } from '../src/windows-admin-token.mjs';
 
 const wait=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 async function freePort(){
@@ -28,7 +29,7 @@ async function startServer(serverRoot,configPath){
 }
 async function stop(child){if(child&&child.exitCode===null){child.kill();await Promise.race([once(child,'exit'),wait(2000)]);}}
 
-test('accepted tool audit maps forwarded transport request ID to durable correlation identity without raw arguments',async()=>{
+test('accepted tool audit maps forwarded transport request ID to durable correlation identity without raw arguments',async t=>{
   const root=await fs.mkdtemp(path.join(os.tmpdir(),'rc-transport-correlation-'));
   const serverRoot=path.join(root,'server'),dataRoot=path.join(root,'data'),deliveryRoot=path.join(root,'delivery');
   let running;
@@ -63,6 +64,27 @@ test('accepted tool audit maps forwarded transport request ID to durable correla
       body:JSON.stringify({jsonrpc:'2.0',id:'rpc-42',method:'tools/call',params:{name:'write_text',arguments:{requestId,path:target,content:secret,mode:'overwrite'}}})
     });
     const body=await response.json();
+    // Hosted Windows Actions can run an elevated token. The unauthenticated
+    // loopback dispatcher must then reject writes regardless of forged headers.
+    const nativeToken=process.platform==='win32'
+      ? await probeWindowsAdministrator() : null;
+    if(process.platform==='win32' &&
+       !(nativeToken?.ok===true && nativeToken.isAdmin===false &&
+         nativeToken.isSystem===false && nativeToken.elevation==='standard')){
+      const health=await (await fetch(`http://127.0.0.1:${port}/health`)).json();
+      assert.equal(health.privilegedLegacyHttpQuarantined,true);
+      assert.equal(response.status,403);
+      assert.deepEqual(body,{error:'trusted_transport_required'});
+      await assert.rejects(fs.access(target));
+      const auditPath=path.join(serverRoot,'var','audit.jsonl');
+      try{
+        const auditText=await fs.readFile(auditPath,'utf8');
+        assert.equal(auditText.includes('tool_accept'),false,'no audit should record an accepted write');
+        assert.equal(auditText.includes(secret),false);
+        assert.equal(auditText.includes(authMarker),false);
+      }catch(error){if(error.code!=='ENOENT')throw error;}
+      return t.skip('elevated/unverified Windows token: safe 403 verified; positive requires non-admin process');
+    }
     assert.equal(response.status,200);
     assert.equal(body.result.isError,false);
     assert.equal(await fs.readFile(target,'utf8'),secret);
