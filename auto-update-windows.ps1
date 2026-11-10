@@ -358,12 +358,25 @@ function Ensure-ProjectProvider([string]$ConfigPath){
   }
   Log 'PROJECT_PROVIDER_DISABLED policy=NO_CODEX_VIA_COMMANDER'
 }
+function Assert-StageCheckoutComplete([string]$GitRoot){
+  # A successful checkout command is not proof that every Windows long path was
+  # materialized. Reject partial trees before using or reusing a staged release.
+  # Some committed C# fixtures have CRLF bytes while .gitattributes requests LF.
+  # Validate required tracked files independently of Git's CRLF-only diff noise.
+  $missing=@(& git.exe -c core.longpaths=true -C $GitRoot ls-files --deleted)
+  if($LASTEXITCODE-ne 0 -or $missing.Count-gt0){throw 'STAGE_CHECKOUT_INCOMPLETE'}
+  $modified=@(& git.exe -c core.longpaths=true -C $GitRoot diff --ignore-space-at-eol --name-only)
+  if($LASTEXITCODE-ne 0 -or $modified.Count-gt0){throw 'STAGE_CHECKOUT_INCOMPLETE'}
+}
 function Stage-Release([string]$Ref){
   $tmp=Join-Path $ReleaseRoot ("stage-{0}-{1}" -f ($Ref -replace '[^A-Za-z0-9._-]','_'),$PID)
   if(Test-Path $tmp){Remove-Item $tmp -Recurse -Force}
   New-Item -ItemType Directory -Path $tmp|Out-Null
   & git.exe -C $tmp init | Out-Null
   if($LASTEXITCODE-ne 0){throw 'STAGE_GIT_INIT'}
+  # Windows per-stage Git setting, NEVER global Git or OS security policy.
+  & git.exe -C $tmp config --local core.longpaths true
+  if($LASTEXITCODE-ne 0){throw 'STAGE_GIT_LONGPATH_CONFIG'}
   & git.exe -C $tmp remote add origin $Repo
   & git.exe -C $tmp fetch --depth 1 --no-tags origin $Ref
   if($LASTEXITCODE-ne 0){throw 'STAGE_GIT_FETCH'}
@@ -372,6 +385,7 @@ function Stage-Release([string]$Ref){
   if($ExpectedCommit -and $commit-ne $ExpectedCommit.ToLowerInvariant()){throw 'STAGE_EXPECTED_COMMIT_MISMATCH'}
   & git.exe -C $tmp checkout --detach $commit | Out-Null
   if($LASTEXITCODE-ne 0){throw 'STAGE_CHECKOUT'}
+  Assert-StageCheckoutComplete $tmp
   $pkg=Read-Json (Join-Path $tmp 'package.json')
   $version=[string]$pkg.version
   if($Ref -match '^v(\d+\.\d+\.\d+)$' -and $Matches[1]-ne $version){throw 'STAGE_TAG_VERSION_MISMATCH'}
@@ -379,10 +393,12 @@ function Stage-Release([string]$Ref){
   if(Test-Path $final){
     $head=(& git.exe -C $final rev-parse HEAD 2>$null).Trim().ToLowerInvariant()
     if($head-ne $commit){throw 'RELEASE_DIRECTORY_COLLISION'}
+    Assert-StageCheckoutComplete $final
     Remove-Item $tmp -Recurse -Force
   }else{
     Move-Item $tmp $final
   }
+  Assert-StageCheckoutComplete $final
   return [pscustomobject]@{Ref=$Ref;Commit=$commit;Version=$version;Dir=$final}
 }
 function Copy-WindowsJobRunner([string]$StageDir){
