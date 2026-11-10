@@ -2,7 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {execFileSync} from 'node:child_process';
+import {fileURLToPath} from 'node:url';
 const root=new URL('../',import.meta.url);
+const rootPath=fileURLToPath(root);
+const git=(args,options={})=>execFileSync('git',['-c',`safe.directory=${rootPath}`,'-C',rootPath,...args],options);
 const read=p=>readFileSync(new URL(p,root),'utf8');
 test('0.11 development train never masquerades as Stable or approved promotion',()=>{
  const a=JSON.parse(read('docs/release-train-0.11.json'));
@@ -72,10 +75,9 @@ test('historical releases are not silently deleted or accepted as product stable
 
 
 test('tracked Windows router PowerShell blob uses LF internally while checkout selects CRLF',()=>{
- const cwd=new URL('../',import.meta.url);
- const source=execFileSync('git',['show','HEAD:tools/router-commandline-windows.ps1'],{cwd,encoding:null});
+ const source=git(['show','HEAD:tools/router-commandline-windows.ps1'],{encoding:null});
  assert.ok(source.length>0);
  assert.equal(source.includes(Buffer.from('\r\n')),false,'tracked git blob must be LF normalized');
- const eol=execFileSync('git',['check-attr','eol','--','tools/router-commandline-windows.ps1'],{cwd,encoding:'utf8'});
+ const eol=git(['check-attr','eol','--','tools/router-commandline-windows.ps1'],{encoding:'utf8'});
  assert.match(eol,/eol: crlf/);
 });
