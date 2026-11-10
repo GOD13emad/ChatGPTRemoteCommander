@@ -323,7 +323,8 @@ if (process.platform === 'linux') {
   const shell=[
     fn,
     'for v in v22.23.4 v22.23.5 v24.22.1 v24.22.2 v26.12.1 v26.13.0; do node_version_patched "$v" || exit 61; done',
-    'for v in v22.23.3 v22.22.99 v24.22.0 v26.12.0 v23.99.99 v25.99.99 v27.0.0 v22.23.4-rc.1 22.23.4 v22.23.4.1; do node_version_patched "$v" && exit 62; done'
+    'for v in v22.23.3 v22.22.99 v24.22.0 v26.12.0 v23.99.99 v25.99.99 v27.0.0 v22.23.4-rc.1 22.23.4 v22.23.4.1; do node_version_patched "$v" && exit 62; done',
+    'true'
   ].join('\n');
   const result=spawnSync('bash',['-c',shell],{encoding:'utf8',timeout:12000});
   if(result.status!==0) throw new Error('Linux patched Node runtime predicate failed: '+result.stderr);
