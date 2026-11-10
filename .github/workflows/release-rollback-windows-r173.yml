@@ -9,6 +9,9 @@ on:
       - 'auto-update-windows.ps1'
       - 'tools/router-switch.mjs'
       - 'tools/run-owned-process-tree-windows.ps1'
+  push:
+    tags:
+      - 'v1.0.0'
   workflow_dispatch:
 
 permissions:
@@ -20,6 +23,9 @@ concurrency:
 
 jobs:
   windows-real-rollback:
+    # Owner dev-train policy 2026-10-28: legacy R173 rollback is not a pre-v1.0 gate.
+    # Retain the full rollback qualification for v1.0.0 or an explicit manual run.
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/tags/v1.0.0') }}
     runs-on: windows-latest
     timeout-minutes: 60
     steps:

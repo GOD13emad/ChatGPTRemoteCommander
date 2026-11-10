@@ -8,10 +8,30 @@ import { randomUUID, createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { mkdtemp, rm, writeFile, readFile, realpath } from 'node:fs/promises';
 import { v102ActionDigest, v102PreparedPlanDigest } from '../src/execution-access-guard.mjs';
+import { assessAccessStatus } from '../src/full-access-status.mjs';
+import { probeWindowsAdministrator } from '../src/windows-admin-token.mjs';
 
 const projectDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const workerPath = path.join(projectDir, 'tools', 'operation-worker.mjs');
 const sha = value => createHash('sha256').update(value).digest('hex');
+const hostAccessConfig = {
+  capabilityProfile: { tier: 'FULL_POWER', explicitlyAuthorized: true },
+  powerMode: {
+    enabled: true, fullFilesystem: true, allowShell: true,
+    allowProcessControl: true, blockedShellPatterns: []
+  }
+};
+const hostAdminToken = process.platform === 'win32'
+  ? await probeWindowsAdministrator({ platform: process.platform })
+  : null;
+const hostAccessTier = assessAccessStatus(hostAccessConfig, null, {
+  platform: process.platform,
+  adminToken: hostAdminToken,
+  effectiveUid: process.platform === 'linux' ? process.geteuid?.() : null
+}).effectiveTier;
+const canRunFullPowerWorker = hostAccessTier === 'FULL_POWER';
+const fullPowerSkip = canRunFullPowerWorker ? false
+  : `host effective tier is ${hostAccessTier}; positive FULL_POWER worker execution requires a non-elevated owner token`;
 
 async function runWorker(spec) {
   const child = spawn(process.execPath, [workerPath], {
@@ -109,7 +129,7 @@ async function fixture({ authorize = true } = {}) {
   return { root, marker, leaseTracePath, spec, dispose };
 }
 
-test('detached operation worker authorizes exact plan before spawning a real child', async () => {
+test('detached operation worker authorizes exact plan before spawning a real child', { skip: fullPowerSkip }, async () => {
   const f = await fixture();
   try {
     const result = await runWorker(f.spec);
@@ -124,7 +144,7 @@ test('detached operation worker authorizes exact plan before spawning a real chi
   } finally { await f.dispose(); }
 });
 
-test('power-tool worker uses the same owner gate before a real filesystem write', async () => {
+test('power-tool worker uses the same owner gate before a real filesystem write', { skip: fullPowerSkip }, async () => {
   const f = await fixture();
   const args = { path: path.join(f.root, 'guarded-write.txt'), content: 'owner-approved' };
   try {
@@ -143,7 +163,7 @@ test('power-tool worker uses the same owner gate before a real filesystem write'
   } finally { await f.dispose(); }
 });
 
-test('detached operation worker rejects a missing or malformed owner consent epoch before spawning', async () => {
+test('detached operation worker rejects a missing or malformed owner consent epoch before spawning', { skip: fullPowerSkip }, async () => {
   const f = await fixture();
   try {
     f.spec.executionAuthorization.bindingId = 'invalid-epoch';
@@ -156,6 +176,21 @@ test('detached operation worker rejects a missing or malformed owner consent epo
     await assert.rejects(readFile(f.marker, 'utf8'), { code: 'ENOENT' });
   } finally { await f.dispose(); }
 });
+
+if (!canRunFullPowerWorker) {
+  test('host without effective FULL_POWER rejects an otherwise valid owner ticket before spawning', async () => {
+    const f = await fixture();
+    try {
+      const result = await runWorker(f.spec);
+      assert.equal(result.code, 1);
+      const state = JSON.parse(await readFile(f.spec.statePath, 'utf8'));
+      assert.equal(state.status, 'UNCERTAIN');
+      assert.equal(state.childPid, null);
+      assert.equal(state.error, 'V102_HOST_EFFECTIVE_TIER_REQUIRED');
+      await assert.rejects(readFile(f.marker, 'utf8'), { code: 'ENOENT' });
+    } finally { await f.dispose(); }
+  });
+}
 
 test('power-tool worker does not write when required owner authorization is absent', async () => {
   const f = await fixture({ authorize: false });

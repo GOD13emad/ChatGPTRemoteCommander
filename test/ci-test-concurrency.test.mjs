@@ -567,9 +567,14 @@ test('CI Windows runs the Transfer Mesh HTTP fixture alone without weakening rea
     wrapper.indexOf('command=isolateWindowsTransferMeshHttpRegression(command);'),
     'last composed prefix is scheduled first; no additional test runs or deadlines');
   const fixture=read('test/transfer-mesh-http.test.mjs');
-  assert.ok(fixture.includes('for(let i=0;i<200;i++)'),'same bounded readiness budget');
-  assert.ok(fixture.includes('await wait(25)'),'same server-readiness poll');
-  assert.ok(fixture.includes('assert.equal(healthy,true,stderr)'),'still fail closed if server cannot start');
+  assert.ok(fixture.includes('const startupDeadline=Date.now()+30000;'),'30-second wall-clock startup deadline');
+  assert.ok(fixture.includes('signal:AbortSignal.timeout(300)'),'each health request remains bounded');
+  assert.ok(fixture.includes('child.exitCode!==null||child.signalCode!==null'),'early child exit is diagnosed');
+  assert.ok(fixture.includes(".slice(-8000)"),'stderr diagnostics remain bounded');
+  assert.ok(fixture.includes('assert.equal(healthy,true,`transfer-mesh fixture did not become healthy within 30000ms; last=${lastHealthError}; stderr=${stderr}`)'),
+    'still fail closed with bounded diagnostics if server cannot start');
+  assert.ok(fixture.includes("assert.equal(health.instance.profile,'transfer-mesh-http-test')"),
+    'readiness is tied to the exact isolated fixture, not another listener');
 });
 
 

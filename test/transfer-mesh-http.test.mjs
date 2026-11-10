@@ -21,18 +21,31 @@ test('privileged MCP transfer tools reject anonymous and forged transport before
   await fs.copyFile(new URL('../tools/commander-transfer-mesh/durable-send.mjs',import.meta.url),path.join(pilot,'durable-send.mjs'));
   await fs.writeFile(path.join(pilot,'node.json'),JSON.stringify({alias:'PC',schema:'ctmesh-node-v1'}));
   const dataRoot=path.join(home,'data');await fs.mkdir(dataRoot);
-  const cfg={host:'127.0.0.1',port:serverPort,allowedRoots:[dataRoot],allowedPrograms:['node'],maxReadBytes:1048576,maxWriteBytes:1048576,maxCommandMs:10000,
+  const cfg={host:'127.0.0.1',port:serverPort,deviceName:'transfer-mesh-http-test',instance:{profile:'transfer-mesh-http-test',isolated:true},allowedRoots:[dataRoot],allowedPrograms:['node'],maxReadBytes:1048576,maxWriteBytes:1048576,maxCommandMs:10000,
    auditLog:'var/audit.jsonl',durableDelivery:{directory:path.join(home,'delivery')},
    powerMode:{enabled:true,fullFilesystem:false,allowShell:false,allowProcessControl:false,allowPermanentDelete:false,backupRoot:path.join(home,'backups'),maxFileBytes:1048576,maxCommandMs:10000,maxOutputBytes:1048576,maxTerminalBufferBytes:1048576,blockedShellPatterns:[],guiControl:{enabled:false}},
    transferMesh:{enabled:true,durableEnabled:true,root:pilot,sourceRoots:[input],destinationRoots:[received]}};
   const configPath=path.join(server,'config.json');
   await fs.writeFile(configPath,JSON.stringify(cfg));
   child=spawn(process.execPath,[path.join(server,'src/server-v0.3.mjs')],{cwd:server,env:{...process.env,REMOTE_COMMANDER_CONFIG:configPath},stdio:['ignore','pipe','pipe']});
-  child.stderr.on('data',x=>stderr+=x);
-  let healthy=false;
-  for(let i=0;i<200;i++){try{const r=await fetch('http://127.0.0.1:'+serverPort+'/health');if(r.ok){healthy=true;break;}}catch{}await wait(25);}
-  assert.equal(healthy,true,stderr);
-  const health=await (await fetch('http://127.0.0.1:'+serverPort+'/health')).json();
+  child.stderr.on('data',x=>{stderr=(stderr+Buffer.from(x).toString('utf8')).slice(-8000);});
+  let healthy=false,lastHealthError='not_attempted';
+  const startupDeadline=Date.now()+30000;
+  while(Date.now()<startupDeadline){
+    if(child.exitCode!==null||child.signalCode!==null)throw new Error(`transfer-mesh fixture exited before health: exitCode=${child.exitCode}; signal=${child.signalCode}; stderr=${stderr}`);
+    try{
+      const response=await fetch('http://127.0.0.1:'+serverPort+'/health',{signal:AbortSignal.timeout(300)});
+      if(response.ok){healthy=true;break;}
+      lastHealthError='HTTP_'+response.status;
+    }catch(error){lastHealthError=String(error?.cause?.code??error?.name??error).slice(0,160);}
+    await wait(50);
+  }
+  assert.equal(healthy,true,`transfer-mesh fixture did not become healthy within 30000ms; last=${lastHealthError}; stderr=${stderr}`);
+  assert.equal(child.exitCode,null,'transfer-mesh fixture exited after health readiness');
+  const health=await (await fetch('http://127.0.0.1:'+serverPort+'/health',{signal:AbortSignal.timeout(1000)})).json();
+  assert.equal(health.version,'0.12.0-dev.1');
+  assert.equal(health.instance.profile,'transfer-mesh-http-test');
+  assert.equal(health.instance.isolated,true);
   assert.equal(health.privilegedLegacyHttpQuarantined,true);
   const file=path.join(input,'fixture.txt');await fs.writeFile(file,'transfer suite hello');
   const blocked=[
