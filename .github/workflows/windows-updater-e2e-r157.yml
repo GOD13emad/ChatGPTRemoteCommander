@@ -61,7 +61,7 @@ jobs:
           }
           $c=Get-Content 'config.json' -Raw -Encoding UTF8|ConvertFrom-Json
           if($null -eq $c.autoUpdate -or $null -eq $c.powerMode){throw 'R157_CONFIG_SCHEMA'}
-          $c.allowedRoots=@($root)
+          $c.allowedRoots=@((Join-Path $root 'INSTALL'))
           $c.autoUpdate.enabled=$true
           $c.powerMode.enabled=$false
           $c.powerMode.guiControl.enabled=$false
@@ -74,7 +74,15 @@ jobs:
           $path=Join-Path $root 'INSTALL\config.json'
           [IO.File]::WriteAllText($path,(ConvertTo-Json -InputObject $c -Depth 30)+[Environment]::NewLine,[Text.UTF8Encoding]::new($false))
           $r=Get-Content $path -Raw|ConvertFrom-Json
-          if(@($r.allowedRoots).Count -ne 1 -or $r.allowedRoots[0] -ne $root -or $r.powerMode.enabled -ne $false){throw 'R157_CONFIG_ISOLATION'}
+          if(@($r.allowedRoots).Count -ne 1 -or $r.allowedRoots[0] -ne (Join-Path $root 'INSTALL') -or $r.powerMode.enabled -ne $false){throw 'R157_CONFIG_ISOLATION'}
+          # Delivery and live state are siblings of INSTALL, never writable project roots.
+          $privateHome=Join-Path $root 'USERPROFILE'
+          $state=Join-Path $root 'STATE'
+          $allowedWithSep=[IO.Path]::GetFullPath($r.allowedRoots[0]).TrimEnd([char[]]@([IO.Path]::DirectorySeparatorChar)) + [IO.Path]::DirectorySeparatorChar
+          if($privateHome.StartsWith($allowedWithSep,[StringComparison]::OrdinalIgnoreCase) -or
+             $state.StartsWith($allowedWithSep,[StringComparison]::OrdinalIgnoreCase)){
+            throw 'R157_DELIVERY_STATE_INSIDE_ALLOWED_ROOT'
+          }
           $tokens=$null;$errors=$null
           [Management.Automation.Language.Parser]::ParseFile((Join-Path $env:GITHUB_WORKSPACE 'auto-update-windows.ps1'),[ref]$tokens,[ref]$errors)|Out-Null
           if(@($errors).Count -ne 0){throw 'R157_UPDATER_PARSER'}
@@ -149,15 +157,15 @@ jobs:
           if($LASTEXITCODE -ne 0){throw 'R157_SOURCE_NOPROMOTE_POLICY_INVALID'}
           $stage=Join-Path $state ('releases\v'+$sourceVersion+'-'+$sha.Substring(0,12))
           if(-not(Test-Path $stage) -or (git -C $stage rev-parse HEAD).Trim() -ne $sha){throw 'R157_EXACT_STAGE_MISSING'}
-          $receipt=[ordered]@{schema=1;revision='R157';status='PASS_HOSTED_WINDOWS_UPDATER_NOPROMOTE'
+          $receipt=[ordered]@{schema=1;revision='R157';status='PASS_HOSTED_WINDOWS_STANDARD_NOPROMOTE'
             exactCommit=$sha;qualifierReceipts=3;doctor='PASS';shadowStore='PASS'
             standardUserCleanup=$cleanup.status;standardUserAccountRemoved=[bool]$cleanup.userRemoved;standardUserOwnedProcesses=[int]$cleanup.ownedProcesses
-            liveStoreCompatibility='PASS';ownedChildren=0;promoted=$false;stableBrowserUntouched=$true
+            liveStoreCompatibility='PASS';g1Authorization='BLOCKED_NOT_CONFIGURED';ownedChildren=0;promoted=$false;stableBrowserUntouched=$true
             verifiedUtc=[DateTime]::UtcNow.ToString('o')}
           $dest=Join-Path $root 'RETURN_R157.json'
           [IO.File]::WriteAllText($dest,(ConvertTo-Json -InputObject $receipt -Depth 5)+[Environment]::NewLine,[Text.UTF8Encoding]::new($false))
           Write-Output ('R157_PASS source='+$sha+' receiptSha='+(Get-FileHash $dest -Algorithm SHA256).Hash)
-          Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value '**R157 PASS:** Exact-head Windows candidate-first NoPromote E2E, 3 owned qualification suites, Doctor/Store PASS, no route promotion or owned child leaks.'
+          Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value '**R157 STANDARD CANARY PASS:** exact-head isolated Windows NoPromote, 3 qualification suites, positive Standard MCP Doctor and state checks, no route promotion or owned child leaks. G1 protected FULL_POWER/FULL_ACCESS authentication remains NOT VERIFIED; this is NOT Stable release acceptance.'
       - name: R470 derive a bounded, allowlisted failure diagnostic (no raw logs)
         if: ${{ failure() }}
         shell: pwsh

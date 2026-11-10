@@ -236,7 +236,8 @@ test('auto updater is candidate-first, hardware-gated and commit-point aware',()
   assert.ok(s.includes('Stop-OwnedCandidate $currentCandidate'), 'failure cleanup must include the current pre-registration candidate');
   assert.ok(s.indexOf('$currentCandidate=[pscustomobject]') > s.indexOf('$p=Start-Backend'), 'candidate ownership tracking must start immediately after spawn');
   const startBackend=s.slice(s.indexOf('function Start-Backend'),s.indexOf('function Stop-OwnedCandidate'));
-  assert.ok(startBackend.includes('Start-Process') && !startBackend.includes('-RedirectStandardOutput') && !startBackend.includes('-RedirectStandardError'),'Windows staged backends must detach from updater run_shell stdio handles');
+  const productionBackend=startBackend.slice(startBackend.indexOf('# Production retains no redirected stdio'));
+  assert.ok(startBackend.includes('# Production retains no redirected stdio') && productionBackend.includes('return Start-Process') && !productionBackend.includes('-RedirectStandardOutput') && !productionBackend.includes('-RedirectStandardError'),'Production Windows staged backends must detach from updater run_shell stdio handles');
   const stale=s.slice(s.indexOf('function Get-StaleDrainEvidence'),s.indexOf('function Get-DrainStatus'));
   for(const marker of ['activeOperations','queued','unexpectedConnections','Get-NetTCPConnection -State Established','Get-BackendDescendants','guiBusy','guiLeased','browserActive','browserBusy','browserLeased','browserUncertain','browser_status','DEFER_PROCESS_TREE'])assert.ok(stale.includes(marker),marker);
   assert.ok(stale.includes("tools\\browser-control.mjs --server") && stale.includes('$isBrowserHelper') && stale.includes('-not$result.browserActive') && stale.includes('-not$result.browserUncertain'),'idle browser helper is safe only after explicit fail-closed browser_status evidence');
@@ -1214,8 +1215,19 @@ test('R157 isolated Windows updater supplies the verified native runner and pres
  assert.ok(updater.includes('listener=$listenerState'),'health diagnostic should distinguish free/busy/owned port');
  assert.ok(updater.includes('Wait-Health $port $stage.Version $sha $t.Profile 30 $p'),'diagnostic wait tracks the exact candidate process');
  assert.ok(updater.includes('Wait-Health $port $stage.Version $finalSha $t.Profile 30 $p'),'final-store health verifies its own candidate');
+ assert.ok(!updater.includes('Test-R157HostedNoPromoteQuarantine') && !updater.includes('--expect-anonymous-quarantine'),
+   'a verified STANDARD token must use the normal positive Doctor, not the quarantine-only diagnostic');
+ assert.ok(updater.includes("if($LASTEXITCODE-ne 0){throw \"CANDIDATE_DOCTOR_FAIL profile=$($t.Profile)\"}") &&
+   updater.includes("$status=Invoke-Mcp $port 'system_status'"),
+   'R157 must verify actual STANDARD MCP access after health');
+ assert.ok(workflow.includes("CANDIDATE_PASS") && workflow.includes("liveStoreCompatibility='PASS'"),
+   'isolated NoPromote receipts must require actual Doctor and state compatibility success');
+ assert.ok(workflow.includes("g1Authorization='BLOCKED_NOT_CONFIGURED'") && workflow.includes('promoted=$false'),
+   'a positive STANDARD test never authorizes protected G1 or stable release');
  assert.ok(workflow.includes('R157_UNEXPECTED_ROUTE_PROMOTION'));
- assert.ok(workflow.includes('R157_STANDARD_USER_CLEANUP_RECEIPT_MISSING'));
+ assert.ok(workflow.includes("$c.allowedRoots=@((Join-Path $root 'INSTALL'))"), 'isolated candidate can read only INSTALL; Delivery state must be outside allowed roots');
+assert.ok(workflow.includes("R157_DELIVERY_STATE_INSIDE_ALLOWED_ROOT") && !workflow.includes("$c.allowedRoots=@($root)"), 'R157 disallows project-scoped durable Delivery state');
+assert.ok(workflow.includes('R157_STANDARD_USER_CLEANUP_RECEIPT_MISSING'));
  assert.ok(workflow.includes('R157_STANDARD_USER_CLEANUP_NOT_ACCEPTED'));
  assert.ok(workflow.includes('standardUserAccountRemoved'));
  for(const marker of [
