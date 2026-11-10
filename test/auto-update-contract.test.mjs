@@ -1535,3 +1535,30 @@ test('R762 Windows candidate cleanup is owner-attested when TCP CIM hides the lo
   assert.ok(guard.includes('[string]$h.version -eq $expectedVersion'), 'health identity must match the exact candidate version');
   assert.doesNotMatch(guard,/0\.11\.0-dev\.23/,'cleanup must not hard-code the old dev23 version');
 });
+
+test('Windows updater keeps Git long-path support repository-local and rejects incomplete staged releases',()=>{
+  const win=read('auto-update-windows.ps1');
+  const start=win.indexOf('function Assert-StageCheckoutComplete(');
+  const stage=win.indexOf('function Stage-Release(',start);
+  const next=win.indexOf('function Copy-WindowsJobRunner(',stage);
+  assert.ok(start>=0&&stage>start&&next>stage);
+  const guard=win.slice(start,stage);
+  const body=win.slice(stage,next);
+  assert.ok(guard.includes('ls-files --deleted'), 'missing tracked Windows long paths must fail');
+  assert.ok(guard.includes('diff --ignore-space-at-eol --name-only'),
+    'substantive changes must fail without treating Git CRLF conversion as missing files');
+  assert.ok(guard.includes("throw 'STAGE_CHECKOUT_INCOMPLETE'"));
+  const init=body.indexOf('git.exe -C $tmp init');
+  const localLongPaths=body.indexOf('git.exe -C $tmp config --local core.longpaths true');
+  const fetch=body.indexOf('git.exe -C $tmp fetch --depth 1');
+  const checkout=body.indexOf('git.exe -C $tmp checkout --detach $commit');
+  const initialProof=body.indexOf('Assert-StageCheckoutComplete $tmp');
+  const manifestRead=body.indexOf("Read-Json (Join-Path $tmp 'package.json')");
+  assert.ok(init>=0&&localLongPaths>init&&fetch>localLongPaths&&checkout>fetch);
+  assert.ok(initialProof>checkout&&manifestRead>initialProof,
+    'tracked tree must be fully materialized before the release manifest is accepted');
+  assert.ok(body.includes('Assert-StageCheckoutComplete $final'),
+    'both reused and newly moved releases must reject missing tracked files');
+  assert.ok(!body.includes('git config --global')&&!body.includes('LongPathsEnabled'),
+    'do not mutate global Git or Windows path/security policy');
+});
