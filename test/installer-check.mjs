@@ -1,4 +1,5 @@
 import { spawnSync } from 'node:child_process';
+import { resolvePython3Runner } from '../tools/resolve-python3-runner.mjs';
 import { readFileSync } from 'node:fs';
 
 const windowsInstaller = readFileSync('install.ps1', 'utf8');
@@ -107,8 +108,7 @@ for (const token of [
 ]) if (!linuxServerInstaller.includes(token)) throw new Error('Linux V0.12 dev bootstrap must match a non-promotable release train: '+token);
 const linuxDevTrainValidator = linuxServerInstaller.match(/<<'PY'\n([\s\S]*?)\nPY/);
 if (!linuxDevTrainValidator) throw new Error('Linux staged release-train validator not found');
-const pythonCommand = process.platform === 'win32' ? 'py' : 'python3';
-const pythonPrefixArgs = process.platform === 'win32' ? ['-3'] : [];
+const {command:pythonCommand,prefixArgs:pythonPrefixArgs}=resolvePython3Runner();
 for (const [minor, version, accepted] of [
   ['11','0.11.0-dev.105',true],
   ['12','0.12.0-dev.1',true],
