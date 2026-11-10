@@ -24,6 +24,10 @@ $asyncHttpFailurePhase=$null
 $asyncHttpFailureName=$null
 $asyncHttpFailureCode=$null
 $asyncHttpServerStartup=$null
+$mcpTasksFailurePhase=$null
+$mcpTasksFailureName=$null
+$mcpTasksFailureCode=$null
+$mcpTasksFailureAssertion=$null
 $sourceSha=$null
 $sourceBytes=0
 $status='LOG_MISSING'
@@ -66,6 +70,28 @@ if(Test-Path -LiteralPath $logRoot -PathType Container){
             $stdoutBytes=if([int64]$raw.stdoutBytes -ge 0 -and [int64]$raw.stdoutBytes -le 100000000){[int64]$raw.stdoutBytes}else{$null}
             $asyncHttpServerStartup=[ordered]@{exitCode=$exit;stderrClass=$kind;stderrBytes=$stderrBytes;stdoutBytes=$stdoutBytes}
           }catch{$asyncHttpServerStartup=$null}
+        } elseif($line -match '^R157_MCP_TASKS_FAILURE_PHASE=([a-z0-9-]{1,64})$'){
+          $mcpTasksFailurePhase=[string]$Matches[1]
+        } elseif($line -match '^R157_MCP_TASKS_FAILURE_NAME=([A-Za-z0-9_]{1,48})$'){
+          $mcpTasksFailureName=[string]$Matches[1]
+        } elseif($line -match '^R157_MCP_TASKS_FAILURE_CODE=([A-Z0-9_]{1,64})$'){
+          $mcpTasksFailureCode=[string]$Matches[1]
+        } elseif($line -match '^R157_MCP_TASKS_FAILURE_ASSERTION=(\{.*\})$'){
+          try{
+            $raw=ConvertFrom-Json -InputObject $Matches[1] -ErrorAction Stop
+            $operator=if([string]$raw.operator -match '^[A-Za-z]{1,24}$'){[string]$raw.operator}else{$null}
+            $actual=$raw.actual;$expected=$raw.expected
+            foreach($key in @('actual','expected')){
+              $value=if($key -eq 'actual'){$actual}else{$expected}
+              if($value -is [string]){
+                if($value -notmatch '^[A-Za-z0-9_ .:-]{1,64}$'){$value=$null}
+              }elseif($value -isnot [bool] -and $value -isnot [byte] -and $value -isnot [int16] -and $value -isnot [int32] -and $value -isnot [int64] -and $value -isnot [double]){
+                $value=$null
+              }
+              if($key -eq 'actual'){$actual=$value}else{$expected=$value}
+            }
+            $mcpTasksFailureAssertion=[ordered]@{operator=$operator;actual=$actual;expected=$expected}
+          }catch{$mcpTasksFailureAssertion=$null}
         } elseif($line -match '^R157_ASYNC_HTTP_TOKEN_PROBE=(\{.*\})$'){
           try{
             $token=ConvertFrom-Json -InputObject $Matches[1] -ErrorAction Stop
@@ -139,6 +165,8 @@ $report=[ordered]@{
   nativeTokenProbe=$nativeTokenProbe;httpPrivilegedLegacyHttpQuarantined=$httpQuarantine
   asyncHttpFailurePhase=$asyncHttpFailurePhase;asyncHttpFailureName=$asyncHttpFailureName;asyncHttpFailureCode=$asyncHttpFailureCode
   asyncHttpServerStartup=$asyncHttpServerStartup
+  mcpTasksFailurePhase=$mcpTasksFailurePhase;mcpTasksFailureName=$mcpTasksFailureName;mcpTasksFailureCode=$mcpTasksFailureCode
+  mcpTasksFailureAssertion=$mcpTasksFailureAssertion
   specFailureTests=$specNames;specCounts=$specTotals
   phaseMarkersObserved=$phaseStarted.Count;phasePassMarkersObserved=$phasePassed.Count
   failurePhaseIndex=$failedPhaseIndex
