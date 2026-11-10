@@ -1215,17 +1215,16 @@ test('R157 isolated Windows updater supplies the verified native runner and pres
  assert.ok(updater.includes('listener=$listenerState'),'health diagnostic should distinguish free/busy/owned port');
  assert.ok(updater.includes('Wait-Health $port $stage.Version $sha $t.Profile 30 $p'),'diagnostic wait tracks the exact candidate process');
  assert.ok(updater.includes('Wait-Health $port $stage.Version $finalSha $t.Profile 30 $p'),'final-store health verifies its own candidate');
- assert.ok(updater.includes('Test-R157HostedNoPromoteQuarantine') && updater.includes('R157_NEGATIVE_PROBE_REQUIRES_STANDARD'),
-  'only isolated hosted NoPromote STANDARD may qualify anonymous protection');
-assert.ok(updater.includes('@doctorModeArgs') && updater.includes('--expect-anonymous-quarantine'),
-  'quarantine-only Doctor must be explicit rather than weakening the normal Doctor');
-assert.ok(updater.includes("if(-not $isolatedQuarantineProbe){") && updater.includes('ANONYMOUS_QUARANTINE_ONLY_PASS'),
-  'protected MCP checks must not be declared successful in quarantine-only QA');
-assert.ok(workflow.includes('CANDIDATE_QUARANTINE_ONLY_PASS') && workflow.includes("liveStoreCompatibility='NOT_VERIFIED_G1'"),
-  'NoPromote quarantine evidence must never masquerade as G1 or durable-store runtime acceptance');
-assert.ok(workflow.includes("g1Authorization='BLOCKED_NOT_CONFIGURED'") && workflow.includes('promoted=$false'),
-  'the hosted negative test cannot authorize a stable release');
-assert.ok(workflow.includes('R157_UNEXPECTED_ROUTE_PROMOTION'));
+ assert.ok(!updater.includes('Test-R157HostedNoPromoteQuarantine') && !updater.includes('--expect-anonymous-quarantine'),
+   'a verified STANDARD token must use the normal positive Doctor, not the quarantine-only diagnostic');
+ assert.ok(updater.includes("if($LASTEXITCODE-ne 0){throw \"CANDIDATE_DOCTOR_FAIL profile=$($t.Profile)\"}") &&
+   updater.includes("$status=Invoke-Mcp $port 'system_status'"),
+   'R157 must verify actual STANDARD MCP access after health');
+ assert.ok(workflow.includes("CANDIDATE_PASS") && workflow.includes("liveStoreCompatibility='PASS'"),
+   'isolated NoPromote receipts must require actual Doctor and state compatibility success');
+ assert.ok(workflow.includes("g1Authorization='BLOCKED_NOT_CONFIGURED'") && workflow.includes('promoted=$false'),
+   'a positive STANDARD test never authorizes protected G1 or stable release');
+ assert.ok(workflow.includes('R157_UNEXPECTED_ROUTE_PROMOTION'));
  assert.ok(workflow.includes("$c.allowedRoots=@((Join-Path $root 'INSTALL'))"), 'isolated candidate can read only INSTALL; Delivery state must be outside allowed roots');
 assert.ok(workflow.includes("R157_DELIVERY_STATE_INSIDE_ALLOWED_ROOT") && !workflow.includes("$c.allowedRoots=@($root)"), 'R157 disallows project-scoped durable Delivery state');
 assert.ok(workflow.includes('R157_STANDARD_USER_CLEANUP_RECEIPT_MISSING'));

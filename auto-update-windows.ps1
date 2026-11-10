@@ -580,17 +580,6 @@ function Start-Backend([string]$ProjectDir,[string]$ConfigPath,[string]$StateDir
     if($hadConfig){$env:REMOTE_COMMANDER_CONFIG=$previousConfig}else{Remove-Item Env:REMOTE_COMMANDER_CONFIG -ErrorAction SilentlyContinue}
   }
 }
-function Test-R157HostedNoPromoteQuarantine {
-  # An isolated negative admission test; NEVER authorizes production MCP calls or promotion.
-  if(-not ($NoPromote -and $env:CI -eq 'true' -and
-      $env:GITHUB_ACTIONS -eq 'true' -and
-      $env:RUNNER_ENVIRONMENT -eq 'github-hosted' -and
-      $env:RUNNER_OS -eq 'Windows' -and $env:RUNNER_TEMP)){return $false}
-  try{
-    $expectedState=[IO.Path]::GetFullPath((Join-Path $env:RUNNER_TEMP 'remote-commander-updater-r157\STATE\ChatGPTRemoteCommander'))
-    return $StateRoot.Equals($expectedState,[StringComparison]::OrdinalIgnoreCase)
-  }catch{return $false}
-}
 function Stop-OwnedCandidate([object]$Candidate,[switch]$Strict){
   if(-not $Candidate){return}
   $proc=$Candidate.Process
@@ -1489,16 +1478,8 @@ try{
     $p=Start-Backend $stage.Dir $cfg $stateDir
     $currentCandidate=[pscustomobject]@{Profile=$t.Profile;Port=$port;Version=$stage.Version;Process=$p;ConfigPath=$cfg;ProjectDir=$stage.Dir}
     $h=Wait-Health $port $stage.Version $sha $t.Profile 30 $p
-    $isolatedQuarantineProbe=Test-R157HostedNoPromoteQuarantine
-    if($isolatedQuarantineProbe){
-      $negativeCfg=Read-Json $cfg
-      if([string]$negativeCfg.capabilityProfile.tier -cne 'STANDARD' -or $negativeCfg.powerMode.enabled -ne $false){throw 'R157_NEGATIVE_PROBE_REQUIRES_STANDARD'}
-    }
-    $doctorModeArgs=@()
-    if($isolatedQuarantineProbe){$doctorModeArgs=@('--expect-anonymous-quarantine')}
-    & node.exe (Join-Path $stage.Dir 'tools\doctor.mjs') --url "http://127.0.0.1:$port/mcp" --expected-device $device --expected-version $stage.Version --config $cfg --timeout-ms 15000 --json @doctorModeArgs
+    & node.exe (Join-Path $stage.Dir 'tools\doctor.mjs') --url "http://127.0.0.1:$port/mcp" --expected-device $device --expected-version $stage.Version --config $cfg --timeout-ms 15000 --json
     if($LASTEXITCODE-ne 0){throw "CANDIDATE_DOCTOR_FAIL profile=$($t.Profile)"}
-    if(-not $isolatedQuarantineProbe){
     $status=Invoke-Mcp $port 'system_status'
     $expected=Read-Json $cfg
     if($expected.capabilityProfile.tier-eq 'FULL_POWER'){
@@ -1523,9 +1504,6 @@ try{
       $wf=Invoke-Mcp $port 'workflow_health'
       if($wf.ok-ne $true -or [string]$wf.databaseIntegrity-ne 'ok'){throw "WORKFLOW_HEALTH_FAIL profile=$($t.Profile)"}
     }
-    }else{
-      Log "R157_ANONYMOUS_QUARANTINE_PASS profile=$($t.Profile) phase=shadow protectedTools=DENIED"
-    }
 
     # Diagnostic backend passed on a shadow store. Rebuild against the live durable
     # store while its DB is still v1-compatible, then run identity/doctor once more.
@@ -1545,26 +1523,23 @@ try{
     $p=Start-Backend $stage.Dir $finalCfg $stateDir
     $currentCandidate=[pscustomobject]@{Profile=$t.Profile;Port=$port;Version=$stage.Version;Process=$p;ConfigPath=$finalCfg;ProjectDir=$stage.Dir}
     [void](Wait-Health $port $stage.Version $finalSha $t.Profile 30 $p)
-    & node.exe (Join-Path $stage.Dir 'tools\doctor.mjs') --url "http://127.0.0.1:$port/mcp" --expected-device $device --expected-version $stage.Version --config $finalCfg --timeout-ms 15000 --json @doctorModeArgs
+    & node.exe (Join-Path $stage.Dir 'tools\doctor.mjs') --url "http://127.0.0.1:$port/mcp" --expected-device $device --expected-version $stage.Version --config $finalCfg --timeout-ms 15000 --json
     if($LASTEXITCODE-ne 0){throw "FINAL_CANDIDATE_DOCTOR_FAIL profile=$($t.Profile)"}
-    if(-not $isolatedQuarantineProbe -and (Read-Json $finalCfg).durableWorkflows.enabled-eq $true){
+    if((Read-Json $finalCfg).durableWorkflows.enabled-eq $true){
       $wf=Invoke-Mcp $port 'workflow_health'
       if($wf.ok-ne $true -or [string]$wf.databaseIntegrity-ne 'ok'){throw "FINAL_WORKFLOW_HEALTH_FAIL profile=$($t.Profile)"}
     }
     $c=[pscustomobject]@{Profile=$t.Profile;CanonicalPort=$t.CanonicalPort;Port=$port;Version=$stage.Version;Commit=$stage.Commit;ConfigSha=$finalSha;ConfigPath=$finalCfg;ProjectDir=$stage.Dir;Process=$p;Target=$t;WorkflowDir=$liveWorkflowDir;BackupDir=$backupDir}
     $candidates+=$c
     $currentCandidate=$null
-    $doctorReceipt=if($isolatedQuarantineProbe){'ANONYMOUS_QUARANTINE_ONLY_PASS'}else{'PASS'}
-    $storeReceipt=if($isolatedQuarantineProbe){'NOT_VERIFIED_G1'}else{'PASS'}
-    $report.profiles+=@{profile=$t.Profile;candidatePort=$port;configSha256=$finalSha;doctor=$doctorReceipt;hardware='PASS';shadowStore='PASS';liveStoreCompatibility=$storeReceipt}
+    $report.profiles+=@{profile=$t.Profile;candidatePort=$port;configSha256=$finalSha;doctor='PASS';hardware='PASS';shadowStore='PASS';liveStoreCompatibility='PASS'}
   }
 
   if($NoPromote){
     foreach($c in $candidates){Stop-OwnedCandidate $c -Strict}
-    $report.status=if($isolatedQuarantineProbe){'CANDIDATE_QUARANTINE_ONLY_PASS'}else{'CANDIDATE_PASS'}
-    $report.completedAt=(Get-Date).ToUniversalTime().ToString('o')
+    $report.status='CANDIDATE_PASS';$report.completedAt=(Get-Date).ToUniversalTime().ToString('o')
     Atomic-Json $ResultFile $report
-    if($isolatedQuarantineProbe){Log 'AUTO_UPDATE_QUARANTINE_ONLY_PASS G1=NOT_VERIFIED noPromotion=true'}else{Log 'AUTO_UPDATE_CANDIDATE_PASS'}
+    Log 'AUTO_UPDATE_CANDIDATE_PASS'
     exit 0
   }
 
