@@ -314,7 +314,7 @@ if (process.platform === 'win32') {
     "  foreach($v in $denied){if(Test-PatchedNodeVersion $v){exit 54}}",
     "}"
   ].join('; ');
-  const result=spawnSync('pwsh.exe',['-NoProfile','-NonInteractive','-Command',ps],{encoding:'utf8',timeout:12000});
+  const result=spawnSync('pwsh.exe',['-NoProfile','-NonInteractive','-Command',ps],{encoding:'utf8',timeout:12000,windowsHide:true});
   if(result.status!==0) throw new Error('Windows patched Node runtime predicate failed: '+result.stderr);
 }
 if (process.platform === 'linux') {
