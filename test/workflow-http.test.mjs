@@ -10,10 +10,11 @@ import { once } from 'node:events';
 import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { probeWindowsAdministrator } from '../src/windows-admin-token.mjs';
+import { processContainmentAvailable } from '../src/process-containment.mjs';
 const repo=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const pause=ms=>new Promise(r=>setTimeout(r,ms));
 async function port(){const s=net.createServer();await new Promise((r,j)=>s.listen(0,'127.0.0.1',r).once('error',j));const p=s.address().port;await new Promise(r=>s.close(r));return p;}
-async function fixture(enabled){
+async function fixture(enabled,{forceNoCessation=false}={}){
  const root=fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(),'rc-wf-http-'))),app=path.join(root,'app'),project=path.join(root,'project');
  fs.mkdirSync(project);fs.mkdirSync(app);fs.cpSync(path.join(repo,'src'),path.join(app,'src'),{recursive:true});
  if(process.platform==='win32'){
@@ -34,7 +35,7 @@ async function fixture(enabled){
  const cfg=path.join(root,'config.json'),raw=JSON.stringify(config);fs.writeFileSync(cfg,raw);
  const expectedHash=createHash('sha256').update(raw).digest('hex');let child,output='';
  const start=async()=>{
-  output='';child=spawn(process.execPath,[path.join(app,'src','server-v0.3.mjs')],{cwd:app,env:{...process.env,REMOTE_COMMANDER_CONFIG:cfg},stdio:['ignore','pipe','pipe']});
+  output='';child=spawn(process.execPath,[path.join(app,'src','server-v0.3.mjs')],{cwd:app,env:{...process.env,...(forceNoCessation?{XDG_RUNTIME_DIR:''}:{}),REMOTE_COMMANDER_CONFIG:cfg},stdio:['ignore','pipe','pipe']});
   child.stdout.on('data',d=>output=(output+d).slice(-20000));child.stderr.on('data',d=>output=(output+d).slice(-20000));
   const deadline=Date.now()+30000;while(Date.now()<deadline){if(child.exitCode!==null)throw Error(output);try{const r=await fetch(`http://127.0.0.1:${p}/health`,{signal:AbortSignal.timeout(500)});const b=await r.json();assert.equal(b.configSha256,expectedHash);return;}catch(e){if(e.code==='ERR_ASSERTION')throw e;}await pause(50);}throw Error('health timeout '+output);
  };
@@ -68,11 +69,39 @@ test('live MCP create/write/read/checkpoint/restart/resume without repeating sid
   const request={id:'e2e',stepId:'write',expectedRevision:1,tool:'write_text',arguments:{path:'proof.txt',mode:'append',content:'one'}};
   let r=await f.invoke('workflow_call',request);assert.equal(r.outcome,'RECORDED_NOT_VALIDATED');assert.equal(r.revision,3);
   r=await f.invoke('workflow_call',{id:'e2e',stepId:'read',expectedRevision:3,tool:'read_text',arguments:{path:'proof.txt'}});assert.equal(r.result.text,'one');
-  r=await f.invoke('workflow_call',{id:'e2e',stepId:'command',expectedRevision:5,tool:'run_project_command',arguments:{program:'node',args:['--version'],cwd:f.project}});assert.equal(r.result.exitCode,0);
+  const commandRequest={id:'e2e',stepId:'command',expectedRevision:5,
+    tool:'run_project_command',arguments:{program:'node',args:['--version'],cwd:f.project}};
+  if(!(await processContainmentAvailable())){
+    // A rootless/ephemeral Linux container without a real systemd user cgroup
+    // is not qualified to prove owned process cessation. Assert the production
+    // fail-closed result instead of weakening oneWriterPerRoot or forging a
+    // command success. Full positive execution runs on a qualified host.
+    const denied=await f.rpc('workflow_call',commandRequest);
+    assert.equal(denied.result?.isError,true,JSON.stringify(denied));
+    assert.equal(denied.result.content?.[0]?.text,'WORKFLOW_CESSATION_PROVIDER_UNAVAILABLE');
+    assert.equal(fs.readFileSync(path.join(f.project,'proof.txt'),'utf8'),'one');
+    return t.skip('native process cessation unavailable; exact fail-closed refusal verified');
+  }
+  r=await f.invoke('workflow_call',commandRequest);assert.equal(r.result.exitCode,0);
   await f.invoke('workflow_checkpoint',{id:'e2e',expectedRevision:7,files:['proof.txt'],nextAction:'Review acceptance',summary:'Readback matches'});
   await f.stop();await f.start();r=await f.invoke('workflow_call',request);assert.equal(r.cachedReceipt,true);assert.equal(fs.readFileSync(path.join(f.project,'proof.txt'),'utf8'),'one');
   const resume=await f.invoke('workflow_resume',{id:'e2e'});assert.deepEqual(resume.blockers,[]);assert.equal(resume.acceptanceStatus,'UNVALIDATED');
   const exported=await f.invoke('workflow_export',{id:'e2e'});assert.equal(exported.bundle.state.revision,8);
+ }finally{await f.dispose();}
+});
+test('Linux MCP denies workflow process launch without native cessation proof',async t=>{
+ if(process.platform!=='linux')return t.skip('Linux native process containment only');
+ const f=await fixture(true,{forceNoCessation:true});
+ try{
+  await f.start();
+  await f.invoke('workflow_create',{id:'uncontained',root:f.project,goal:'Fail closed without a cgroup provider',
+    acceptance:['no child process started'],steps:[{id:'command',title:'Do not execute'}]});
+  const result=await f.rpc('workflow_call',{id:'uncontained',stepId:'command',expectedRevision:1,
+    tool:'run_project_command',arguments:{program:'node',args:['--version'],cwd:f.project}});
+  assert.equal(result.result?.isError,true,JSON.stringify(result));
+  assert.equal(result.result?.content?.[0]?.text,'WORKFLOW_CESSATION_PROVIDER_UNAVAILABLE');
+  const state=await f.invoke('workflow_get',{id:'uncontained'});
+  assert.equal(state.state.steps[0].status,'pending','denied command must not reserve or execute a step');
  }finally{await f.dispose();}
 });
 test('host-approved wrapper does not inherit full-filesystem access outside workflow root',async t=>{
