@@ -266,7 +266,23 @@ function Wait-Health([int]$Port,[string]$Version,[string]$ConfigSha,[string]$Pro
     $listeners=@(Get-NetTCPConnection -State Listen -LocalPort $Port -ErrorAction SilentlyContinue)
     $listenerState=if($listeners.Count -eq 0){'NONE'}elseif($Process -and @($listeners|Where-Object{[int]$_.OwningProcess -eq [int]$Process.Id}).Count -gt 0){'CANDIDATE'}else{'OTHER'}
   }catch{$listenerState='UNAVAILABLE'}
-  Log "R157_CANDIDATE_HEALTH_DIAG observed=$observed process=$processState listener=$listenerState"
+  $stderrClass='NOT_CAPTURED';$stderrBytes=0
+  try{
+    $diagPath=if($Process){$script:R157BackendDiagFiles[[string]$Process.Id]}else{$null}
+    if($diagPath -and (Test-Path -LiteralPath $diagPath -PathType Leaf)){
+      $file=Get-Item -LiteralPath $diagPath -Force -ErrorAction Stop
+      if(($file.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0){throw 'R157_SERVER_DIAG_REPARSE_REJECTED'}
+      $stderrBytes=[Math]::Min(65535,[int64]$file.Length)
+      if($file.Length -gt 32768){$stderrClass='OVERSIZE'}else{
+        $raw=[IO.File]::ReadAllText($diagPath)
+        $classes=@('ERR_MODULE_NOT_FOUND','MODULE_NOT_FOUND','ERR_DLOPEN_FAILED','ERR_INVALID_ARG_TYPE','ERR_REQUIRE_ESM','EACCES','EPERM','ENOENT','EADDRINUSE','SQLITE_CANTOPEN','SyntaxError','TypeError','ReferenceError','RangeError','Error')
+        $stderrClass='UNCLASSIFIED'
+        foreach($kind in $classes){if($raw.Contains($kind)){$stderrClass=$kind;break}}
+      }
+    }
+  }catch{$stderrClass='READ_UNAVAILABLE'}
+  # Bounded allowlist only; never echo the raw stderr, file path or user data.
+  Log "R157_CANDIDATE_HEALTH_DIAG observed=$observed process=$processState listener=$listenerState stderrClass=$stderrClass stderrBytes=$stderrBytes"
   throw "CANDIDATE_HEALTH_TIMEOUT profile=$Profile port=$Port"
 }
 function Get-FreePort([System.Collections.Generic.HashSet[int]]$Used){
@@ -531,6 +547,7 @@ function Run-GuiNativeSelfTest([string]$Candidate){
   if($LASTEXITCODE-ne 0){throw 'GATE_FAIL gui-native-selftest'}
   Log "GATE_PASS gui-native-selftest"
 }
+$script:R157BackendDiagFiles=@{}
 function Start-Backend([string]$ProjectDir,[string]$ConfigPath,[string]$StateDir){
   New-Item -ItemType Directory -Force -Path $StateDir|Out-Null
   $node=(Get-Command node.exe -ErrorAction Stop).Source
@@ -538,9 +555,26 @@ function Start-Backend([string]$ProjectDir,[string]$ConfigPath,[string]$StateDir
   $previousConfig=$env:REMOTE_COMMANDER_CONFIG
   try{
     $env:REMOTE_COMMANDER_CONFIG=$ConfigPath
-    # Use Start-Process without stdio redirection. In a piped MCP run_shell parent,
-    # redirected long-lived children can retain inherited pipe handles and prevent
-    # the caller from observing EOF after the updater itself exits.
+    # Only the isolated, disposable, GitHub-hosted NoPromote R157 fixture may
+    # capture short-lived backend stderr. Never enable this in a live deployment.
+    $isR157Hosted=$false
+    if($NoPromote -and $env:CI -eq 'true' -and
+       $env:GITHUB_ACTIONS -eq 'true' -and
+       $env:RUNNER_ENVIRONMENT -eq 'github-hosted' -and
+       $env:RUNNER_OS -eq 'Windows' -and $env:RUNNER_TEMP){
+      $expectedState=[IO.Path]::GetFullPath((Join-Path $env:RUNNER_TEMP 'remote-commander-updater-r157\STATE\ChatGPTRemoteCommander'))
+      $isR157Hosted=$StateRoot.Equals($expectedState,[StringComparison]::OrdinalIgnoreCase)
+    }
+    if($isR157Hosted){
+      $name='r157-node-start-'+[Guid]::NewGuid().ToString('N')
+      $stderrPath=Join-Path $LogDir ($name+'.stderr.log')
+      $stdoutPath=Join-Path $LogDir ($name+'.stdout.log')
+      $p=Start-Process -FilePath $node -ArgumentList @((Join-Path $ProjectDir 'src\server-v0.3.mjs')) -WorkingDirectory $ProjectDir -WindowStyle Hidden -PassThru -RedirectStandardError $stderrPath -RedirectStandardOutput $stdoutPath
+      $script:R157BackendDiagFiles[[string]$p.Id]=$stderrPath
+      return $p
+    }
+    # Production retains no redirected stdio; descendants cannot hold an
+    # MCP parent's pipe open when this updater returns.
     return Start-Process -FilePath $node -ArgumentList @((Join-Path $ProjectDir 'src\server-v0.3.mjs')) -WorkingDirectory $ProjectDir -WindowStyle Hidden -PassThru
   }finally{
     if($hadConfig){$env:REMOTE_COMMANDER_CONFIG=$previousConfig}else{Remove-Item Env:REMOTE_COMMANDER_CONFIG -ErrorAction SilentlyContinue}

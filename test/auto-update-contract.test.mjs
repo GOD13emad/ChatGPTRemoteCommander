@@ -1206,6 +1206,11 @@ test('R157 isolated Windows updater supplies the verified native runner and pres
  assert.ok(updater.includes('WINDOWS_JOB_RUNNER_SOURCE_SHA_MISMATCH'));
  assert.ok(updater.includes('WINDOWS_JOB_RUNNER_STAGE_SHA_MISMATCH'));
  assert.ok(updater.includes('R157_CANDIDATE_HEALTH_DIAG observed='),'failed candidate startup must report only a bounded failure classification');
+ assert.ok(updater.includes("if($NoPromote -and $env:CI -eq 'true'") && updater.includes("RUNNER_ENVIRONMENT -eq 'github-hosted'"),'Node startup stderr may only be captured in isolated hosted NoPromote');
+ assert.ok(updater.includes("remote-commander-updater-r157\\STATE\\ChatGPTRemoteCommander"),'R157 stderr diagnostic must be confined to private disposable CI state');
+ assert.ok(updater.includes('-RedirectStandardError $stderrPath') && updater.includes("stderrClass=$stderrClass stderrBytes=$stderrBytes"),'R157 reports only an allowlisted backend startup failure class');
+ assert.ok(updater.includes("if($file.Length -gt 32768){$stderrClass='OVERSIZE'}"),'stderr diagnostic must be bounded without raw output');
+
  assert.ok(updater.includes('listener=$listenerState'),'health diagnostic should distinguish free/busy/owned port');
  assert.ok(updater.includes('Wait-Health $port $stage.Version $sha $t.Profile 30 $p'),'diagnostic wait tracks the exact candidate process');
  assert.ok(updater.includes('Wait-Health $port $stage.Version $finalSha $t.Profile 30 $p'),'final-store health verifies its own candidate');
