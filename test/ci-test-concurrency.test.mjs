@@ -130,7 +130,7 @@ test('R468 dedicated Windows timing-sensitive project fixtures run once before b
   const ordered=prioritizeSensitiveQualificationCommands(boundNodeTestConcurrency(pkg.scripts.test,1).command);
   const lease=isolateWindowsLeaseRegression(ordered);
   const result=isolateWindowsTimingSensitiveRegressions(lease);
-  const files=['test/project-adaptive.test.mjs','test/project-delivery-correlation.test.mjs','test/project-engine-review.test.mjs','test/project-engine.test.mjs'];
+  const files=['test/project-adaptive.test.mjs','test/project-delivery-correlation.test.mjs','test/project-engine-review.test.mjs','test/project-engine.test.mjs','test/project-autotick-noncodex.test.mjs'];
   const prefix=files.map(f=>'node --test --test-concurrency=1 '+f).join(' && ')+' && ';
   const expected=prefix+files.reduce((command,file)=>command.replace(' '+file,''),lease);
   assert.equal(result,expected,'only scheduling changes; full original tests retained');
@@ -152,6 +152,8 @@ test('R468 dedicated Windows timing-sensitive project fixtures run once before b
     projectEngineSource.indexOf("test('real filesystem operation"), 'WAITING_INPUT timer must run before loaded fixture tests');
   assert.ok(projectEngineSource.includes('durationMs:1000') && projectEngineSource.includes('setTimeout(resolve,1100)'),
     'strict original short execution duration and waiting interval must remain unchanged');
+  assert.ok(read('test/project-autotick-noncodex.test.mjs').includes('{timeout:45000}'),
+    'preserve original auto scheduler workflow timeout and assertions');
   assert.ok(read('test/project-adaptive.test.mjs').includes("{ timeout: 6000 }"));
   assert.ok(read('test/project-delivery-correlation.test.mjs').includes('maxDurationMs:10000'));
 });
@@ -315,17 +317,15 @@ test('R157 qualifier markers are opt-in, index-only, and preserve all original c
   assert.ok(groups[2].includes('test/project-delivery-correlation.test.mjs'));
   assert.ok(groups[3].includes('test/project-engine-review.test.mjs'));
   assert.ok(groups[4].includes('test/project-engine.test.mjs'),'WAITING_INPUT deadline regression runs in its own early process');
-  assert.ok(groups[5].includes('test/async-http.test.mjs'),'async HTTP still runs ahead of high-volume batch');
+  assert.ok(groups[5].includes('test/project-autotick-noncodex.test.mjs'),'native auto-tick runs isolated before loaded batch');
+  assert.ok(groups[6].includes('test/async-http.test.mjs'),'async HTTP still runs ahead of high-volume batch');
   for(const file of ['test/project-adaptive.test.mjs','test/async-http.test.mjs'])
     assert.equal(command.split(file).length-1,1,'exactly one regression '+file);
-  const marked=markIsolatedQualificationPhases(command);
-  assert.ok(marked.length<7500,'preserve Windows cmd.exe length limit');
-  assert.equal((marked.match(/RC_QUAL_PHASE_START_\d{2}/g)||[]).length,groups.length);
-  assert.equal((marked.match(/RC_QUAL_PHASE_PASS_\d{2}/g)||[]).length,groups.length);
-  for(const [index,part] of groups.entries()){
-    assert.ok(marked.includes('RC_QUAL_PHASE_START_'+String(index).padStart(2,'0')+' && '+part+' && echo RC_QUAL_PHASE_PASS_'+String(index).padStart(2,'0')),
-      'each exact original command is preserved in its own observed phase');
-  }
+  const phases=splitWindowsQualificationCommands(command);
+  assert.deepEqual(phases,groups,'the Windows runner preserves every ordered command');
+  assert.ok(phases.every(part=>part.length<7000),'each Windows invocation is bounded');
+  // Legacy aggregate wrappers remain separately tested; actual R157 executes
+  // this verified list as individually bounded commands, never one cmd.exe line.
   const wrapper=read('tools/run-bounded-test-script.mjs');
   assert.ok(wrapper.includes("process.env.RC_QUALIFICATION_RUN_ID"),'R157 opt-in is guarded');
   assert.ok(wrapper.includes('splitWindowsQualificationCommands(command)'));
@@ -553,8 +553,8 @@ test('R157 Windows dual-era MCP server conformance executes once early, unchange
   assert.ok(isolated.includes('test/workflow-plan.test.mjs'));
   assert.ok(isolated.includes('test/agent-extensions.test.mjs'),
     'preserve unrelated existing bulk qualification coverage');
-  assert.ok(markIsolatedQualificationPhases(isolated).length<7500,
-    'R157 Windows cmd.exe phase-marked bound stays unchanged');
+  assert.deepEqual(splitWindowsQualificationCommands(isolated),isolated.split(' && '),
+    'Windows qualification now invokes bounded original command groups independently');
   assert.throws(()=>isolateWindowsMcpConformanceRegression(before.replace(' '+file,'')),
     /CI_MCP_CONFORMANCE_CARDINALITY/);
   assert.throws(()=>isolateWindowsMcpConformanceRegression(prefix+before),
@@ -584,7 +584,8 @@ test('strict Windows adaptive fixture is scheduled cold with all original groups
   assert.equal(next[0],target);
   assert.deepEqual(next.slice(1),old.filter(c=>c!==target),'no other group order or body changes');
   for(const c of old)assert.equal(next.filter(x=>x===c).length,old.filter(x=>x===c).length);
-  assert.equal(markIsolatedQualificationPhases(result).match(/RC_QUAL_PHASE_START_/g).length,next.length);
+  assert.deepEqual(splitWindowsQualificationCommands(result),next,
+    'all original phases remain present once in the length-bounded Windows runner');
   assert.throws(()=>prioritizeWindowsAdaptiveCold(result+' && '+target),/CI_COLD_ADAPTIVE_CARDINALITY/);
   assert.throws(()=>prioritizeWindowsAdaptiveCold('node --test test/project-adaptive.test.mjs'),/CI_COLD_ADAPTIVE_NOT_ISOLATED/);
   assert.throws(()=>prioritizeWindowsAdaptiveCold('node --test test/other.test.mjs'),/CI_COLD_ADAPTIVE_CARDINALITY/);
