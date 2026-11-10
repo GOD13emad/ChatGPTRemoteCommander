@@ -1236,6 +1236,8 @@ test('R170 isolated rollback qualification is version-scoped, not a release auth
   for(const expected of [
     'SOURCE_VERSION=', 'isolated-qa-policy.mjs', 'R170_SOURCE_VERSION_NOT_QUALIFIED',
     'R170_ISOLATED_SOURCE_VERSION=', 'releaseAuthorization=false',
+    'ROOT="$TEMPBASE/remote-commander-rollback-r170"', '--source-ref "$TARGET" --expected-commit "$TARGET" --force',
+    'disposable RUNNER_TEMP integration test',
     'AUTO_UPDATE_PASS version=$SOURCE_VERSION',
     "assert r['active']['version']==sys.argv[3]"
   ])assert.ok(linux.includes(expected),'missing isolated qualification constraint: '+expected);

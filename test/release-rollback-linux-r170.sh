@@ -78,8 +78,11 @@ START="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 echo "SOURCE=$TARGET BASELINE=$BASELINE" > "$ROOT/START_R170.txt"
 
 set +e
+# Force is confined to this disposable RUNNER_TEMP integration test: the release train
+# remains NoPromote for every installed/user host. Preconditions above prove a fresh
+# GitHub-hosted runner, exact source SHA, private config roots and no owner install.
 timeout --signal=TERM --kill-after=10s 800s bash "$WORKSPACE/auto-update-linux.sh" \
-  --install-dir "$ROOT/install" --source-ref "$TARGET" --expected-commit "$TARGET" \
+  --install-dir "$ROOT/install" --source-ref "$TARGET" --expected-commit "$TARGET" --force \
   > "$ROOT/PROMOTE_R170.log" 2>&1
 PROMOTE_CODE=$?
 set -e
