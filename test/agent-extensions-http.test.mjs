@@ -6,9 +6,10 @@ import os from 'node:os';
 import net from 'node:net';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
+import { requireNonElevatedLegacyHttp } from './fixtures/legacy-http-token-admission.mjs';
 const wait=ms=>new Promise(r=>setTimeout(r,ms));
 
-test('agent extension tools are exposed read-only and return validated manifests',async()=>{
+test('agent extension tools are exposed read-only and return validated manifests',async t=>{
   const root=await fs.mkdtemp(path.join(os.tmpdir(),'rc-agent-http-'));
   const extensionRoot=path.join(root,'extensions');
   const extensionDir=path.join(extensionRoot,'fixture-extension');
@@ -51,6 +52,7 @@ test('agent extension tools are exposed read-only and return validated manifests
     let alive=false;
     for(let i=0;i<400;i++){try{if((await fetch(`http://127.0.0.1:${port}/health`)).ok){alive=true;break;}}catch{}await wait(25);}
     assert.equal(alive,true,stderr);
+    if(!(await requireNonElevatedLegacyHttp(t,port)))return;
     const call=async(name,args={})=>{
       const res=await fetch(`http://127.0.0.1:${port}/mcp`,{
         method:'POST',headers:{'Content-Type':'application/json'},
