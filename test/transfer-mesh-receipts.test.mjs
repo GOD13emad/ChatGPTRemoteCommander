@@ -58,7 +58,8 @@ const durableScript=[
 ].join('\n');
 
 function fixture({receiptsEnabled=true,durableEnabled=true,authority}={}){
-  const root=fs.mkdtempSync(path.join(os.tmpdir(),'rc-transfer-mesh-receipts-'));
+  // Receipt path validation rejects aliases; fixtures must use the canonical temp root.
+  const root=fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(),'rc-transfer-mesh-receipts-')));
   const source=path.join(root,'source');const dest=path.join(root,'dest');
   fs.mkdirSync(source);fs.mkdirSync(dest);
   const sourceFile=path.join(source,'payload.bin');fs.writeFileSync(sourceFile,'hello world');
