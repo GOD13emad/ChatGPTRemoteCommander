@@ -134,9 +134,15 @@ test('MCP Tasks extension maps durable Commander operations without changing fal
     const before=Date.now();
     let followed=await rpc(port,101,'tools/call',{name:'operation_status',arguments:{operationId:followId,waitMs:1500},_meta:meta(false)},'operation_status',AbortSignal.timeout(4500));
     const elapsed=Date.now()-before;
-    assert.ok(['RUNNING','SUCCEEDED'].includes(followed.body.result.structuredContent.status));
+    const followStatus=followed.body?.result?.structuredContent?.status;
+    const allowedFollowStatus=['QUEUED','RUNNING','SUCCEEDED','FAILED','TIMED_OUT','CANCELLED','UNCERTAIN'];
+    console.log('R157_MCP_TASKS_LONG_POLL_STATUS='+ (allowedFollowStatus.includes(followStatus)?followStatus:'UNVERIFIED'));
+    console.log('R157_MCP_TASKS_LONG_POLL_ELAPSED_MS='+Math.min(99999,Math.max(0,Math.round(elapsed))));
+    // statusWithWait can return a still-queued operation at its bounded timeout;
+    // do not confuse an in-queue worker with a failed operation.
+    assert.ok(['QUEUED','RUNNING','SUCCEEDED'].includes(followStatus));
     assert.ok(elapsed<4500 && (elapsed>=100 || followed.body.result.structuredContent.status==='SUCCEEDED'),`bounded follow elapsed=${elapsed}`);
-    for(let i=0;followed.body.result.structuredContent.status!=='SUCCEEDED'&&i<120;i++){
+    for(let i=0;followed.body.result.structuredContent.status!=='SUCCEEDED'&&i<200;i++){
       await wait(50);
       followed=await rpc(port,102+i,'tools/call',{name:'operation_status',arguments:{operationId:followId,waitMs:0},_meta:meta(false)},'operation_status');
     }

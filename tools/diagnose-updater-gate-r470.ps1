@@ -28,6 +28,8 @@ $mcpTasksFailurePhase=$null
 $mcpTasksFailureName=$null
 $mcpTasksFailureCode=$null
 $mcpTasksFailureAssertion=$null
+$mcpTasksLongPollStatus=$null
+$mcpTasksLongPollElapsedMs=$null
 $sourceSha=$null
 $sourceBytes=0
 $status='LOG_MISSING'
@@ -70,6 +72,10 @@ if(Test-Path -LiteralPath $logRoot -PathType Container){
             $stdoutBytes=if([int64]$raw.stdoutBytes -ge 0 -and [int64]$raw.stdoutBytes -le 100000000){[int64]$raw.stdoutBytes}else{$null}
             $asyncHttpServerStartup=[ordered]@{exitCode=$exit;stderrClass=$kind;stderrBytes=$stderrBytes;stdoutBytes=$stdoutBytes}
           }catch{$asyncHttpServerStartup=$null}
+        } elseif($line -match '^R157_MCP_TASKS_LONG_POLL_STATUS=(QUEUED|RUNNING|SUCCEEDED|FAILED|TIMED_OUT|CANCELLED|UNCERTAIN|UNVERIFIED)$'){
+          $mcpTasksLongPollStatus=[string]$Matches[1]
+        } elseif($line -match '^R157_MCP_TASKS_LONG_POLL_ELAPSED_MS=([0-9]{1,5})$'){
+          $mcpTasksLongPollElapsedMs=[int]$Matches[1]
         } elseif($line -match '^R157_MCP_TASKS_FAILURE_PHASE=([a-z0-9-]{1,64})$'){
           $mcpTasksFailurePhase=[string]$Matches[1]
         } elseif($line -match '^R157_MCP_TASKS_FAILURE_NAME=([A-Za-z0-9_]{1,48})$'){
@@ -167,6 +173,7 @@ $report=[ordered]@{
   asyncHttpServerStartup=$asyncHttpServerStartup
   mcpTasksFailurePhase=$mcpTasksFailurePhase;mcpTasksFailureName=$mcpTasksFailureName;mcpTasksFailureCode=$mcpTasksFailureCode
   mcpTasksFailureAssertion=$mcpTasksFailureAssertion
+  mcpTasksLongPollStatus=$mcpTasksLongPollStatus;mcpTasksLongPollElapsedMs=$mcpTasksLongPollElapsedMs
   specFailureTests=$specNames;specCounts=$specTotals
   phaseMarkersObserved=$phaseStarted.Count;phasePassMarkersObserved=$phasePassed.Count
   failurePhaseIndex=$failedPhaseIndex

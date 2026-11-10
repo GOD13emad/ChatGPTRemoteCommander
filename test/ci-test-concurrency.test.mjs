@@ -232,7 +232,8 @@ test('R470 Windows fixture extracts failing test and counters without persisting
       const folder=path.join(tmp,'STATE','ChatGPTRemoteCommander','update-logs');
       fs.mkdirSync(folder,{recursive:true});
       for(const name of names)fs.writeFileSync(path.join(folder,name),
-        ['TAP version 13','R157_ASYNC_HTTP_TOKEN_PROBE={"ok":false,"isAdmin":false,"isSystem":false,"elevation":null,"source":null,"code":"WINDOWS_TOKEN_PROBE_FAILED"}','R157_ASYNC_HTTP_QUARANTINE=true','R157_ASYNC_HTTP_FAILURE_PHASE=operation-start','R157_ASYNC_HTTP_FAILURE_NAME=AssertionError','R157_ASYNC_HTTP_FAILURE_CODE=ERR_ASSERTION','R157_ASYNC_HTTP_SERVER_STARTUP={"exitCode":1,"signalCode":null,"stderrClass":"ERR_MODULE_NOT_FOUND","stderrBytes":120,"stdoutBytes":0}','R157_MCP_TASKS_FAILURE_PHASE=task-terminal',
+        ['TAP version 13','R157_ASYNC_HTTP_TOKEN_PROBE={"ok":false,"isAdmin":false,"isSystem":false,"elevation":null,"source":null,"code":"WINDOWS_TOKEN_PROBE_FAILED"}','R157_ASYNC_HTTP_QUARANTINE=true','R157_ASYNC_HTTP_FAILURE_PHASE=operation-start','R157_ASYNC_HTTP_FAILURE_NAME=AssertionError','R157_ASYNC_HTTP_FAILURE_CODE=ERR_ASSERTION','R157_ASYNC_HTTP_SERVER_STARTUP={"exitCode":1,"signalCode":null,"stderrClass":"ERR_MODULE_NOT_FOUND","stderrBytes":120,"stdoutBytes":0}','R157_MCP_TASKS_LONG_POLL_STATUS=QUEUED',
+        'R157_MCP_TASKS_LONG_POLL_ELAPSED_MS=1500','R157_MCP_TASKS_FAILURE_PHASE=task-terminal',
         'R157_MCP_TASKS_FAILURE_NAME=AssertionError',
         'R157_MCP_TASKS_FAILURE_CODE=ERR_ASSERTION',
         'R157_MCP_TASKS_FAILURE_ASSERTION={"operator":"strictEqual","actual":"FAILED","expected":"SUCCEEDED"}','not ok 245 - team reserves all calls before workers and executes only the coordinator proposal',
@@ -268,6 +269,8 @@ test('R470 Windows fixture extracts failing test and counters without persisting
   assert.equal(one.asyncHttpServerStartup.exitCode,1);
   assert.equal(one.asyncHttpServerStartup.stderrBytes,120);
   assert.equal(one.mcpTasksFailurePhase,'task-terminal');
+  assert.equal(one.mcpTasksLongPollStatus,'QUEUED');
+  assert.equal(one.mcpTasksLongPollElapsedMs,1500);
   assert.equal(one.mcpTasksFailureName,'AssertionError');
   assert.equal(one.mcpTasksFailureCode,'ERR_ASSERTION');
   assert.equal(one.mcpTasksFailureAssertion.operator,'strictEqual');

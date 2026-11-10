@@ -1416,11 +1416,15 @@ test('R170 isolated rollback retries only an explicit router-bootstrap receipt o
   assert.ok(r170.includes('R170_LEGACY_INCOMPATIBLE_ROLLBACK_REJECTED_SAFELY'),'legacy refusal must retain promoted route');
   assert.ok(r170.includes('ROLLBACK_BASELINE=\'8ccf0fd16355a4ab79844feec6c295366763df0d\''),'compatible rollback commit must be exact and pinned');
   assert.ok(r170.includes('R170_LINUX_ROLLBACK_ROUTE_PASS'),'route readback must remain mandatory');
-  assert.ok(r170.includes('git -C "$WORKSPACE" diff --ignore-space-at-eol --quiet --'),'source only permits bounded EOL drift');
+  assert.ok(r170.includes('git -C "$WORKSPACE" diff --cached --quiet --'),'staged changes remain prohibited before byte-exact normalized EOL comparison');
   assert.ok(r170.includes('R170_SOURCE_CHANGED'),'any semantic source change must block');
   assert.ok(r170.includes('R170_KNOWN_DASHBOARD_EOL_CONFLICT_CHECKED'),'only the exact dashboard EOL conflict can be tolerated');
+  assert.ok(r170.includes('"$eolmeta" == *w/crlf*'),'worktree CRLF Git index anomaly must be covered by scoped bytes-equal check');
   assert.ok(r170.includes('d67eeb4bc6eb72f98bfbc3c286c2e70b0bb8a246'),'dashboard CRLF-index source blob must be pinned');
   assert.ok(r170.includes('R170_SOURCE_BOUNDED_EOL_ONLY_ACCEPTED'),'source cleanliness receipt must distinguish bounded EOL drift');
+  assert.ok(r170.includes("value.replace(b'\\r\\n',b'\\n')"),'the rollback source guard may normalize CRLF only');
+  assert.ok(r170.includes('normalize(current) != normalize(baseline)'),'rollback must prove semantic byte parity, not bypass source integrity');
+  assert.ok(r170.includes('R170_EOL_BYTES_MISMATCH'),'semantic mutation must remain fail closed');
 });
 
 

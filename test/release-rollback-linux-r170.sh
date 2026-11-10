@@ -173,7 +173,7 @@ if [[ -n "$source_status" ]]; then
   printf '%s\n' "$source_status" > "$ROOT/SOURCE_STATUS_R170.txt"
   source_safe=true
   git -C "$WORKSPACE" diff --cached --quiet -- || source_safe=false
-  git -C "$WORKSPACE" diff --ignore-space-at-eol --quiet -- || source_safe=false
+  # Byte-exact semantic parity is checked below: normalize CRLF only, never other whitespace.
   while IFS= read -r line; do
     [[ "$line" == ' M '* ]] || source_safe=false
     file="$(printf '%s' "$line" | cut -c4-)"
@@ -185,12 +185,35 @@ if [[ -n "$source_status" ]]; then
         # Known source blob has CRLF in the Git index but eol=lf in .gitattributes.
         # Linux checkout may report this one path dirty despite an EOL-only diff.
         eolmeta="$(git -C "$WORKSPACE" ls-files --eol -- "$file")"
-        [[ "$eolmeta" == i/crlf* && "$eolmeta" == *w/lf* && "$eolmeta" == *"attr/text eol=lf"* ]] || source_safe=false
+        [[ "$eolmeta" == i/crlf* && ( "$eolmeta" == *w/lf* || "$eolmeta" == *w/crlf* ) && "$eolmeta" == *"attr/text eol=lf"* ]] || source_safe=false
         [[ "$(git -C "$WORKSPACE" rev-parse "HEAD:$file")" == d67eeb4bc6eb72f98bfbc3c286c2e70b0bb8a246 ]] || source_safe=false
         echo R170_KNOWN_DASHBOARD_EOL_CONFLICT_CHECKED
         ;;
       *) source_safe=false ;;
     esac
+    # Refuse any semantic change, including whitespace edits other than CRLF/LF.
+    # This is stricter than 'git diff --ignore-space-at-eol --quiet'.
+    if ! python3 - "$WORKSPACE" "$file" <<'PY'
+import pathlib, subprocess, sys
+repo, rel = sys.argv[1:3]
+target = pathlib.Path(repo) / rel
+if not target.is_file() or target.is_symlink():
+    raise SystemExit(1)
+baseline = subprocess.check_output(['git','-C',repo,'show','HEAD:'+rel])
+current = target.read_bytes()
+def normalize(value):
+    normalized = value.replace(b'\r\n',b'\n')
+    if b'\r' in normalized:
+        raise ValueError('lone CR byte')
+    return normalized
+if normalize(current) != normalize(baseline):
+    raise SystemExit(1)
+print('R170_EOL_BYTES_EQUAL')
+PY
+    then
+      source_safe=false
+      echo R170_EOL_BYTES_MISMATCH
+    fi
   done <<< "$source_status"
   if [[ "$source_safe" != true ]]; then echo R170_SOURCE_CHANGED >&2; exit 77; fi
   echo R170_SOURCE_BOUNDED_EOL_ONLY_ACCEPTED
