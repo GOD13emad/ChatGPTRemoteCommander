@@ -48,8 +48,14 @@ test('root Linux installer never runs synthetic MCP qualification with an elevat
   assert.match(block,/check:qualification test:qualification audit/);
   assert.ok(block.indexOf('runuser -u nobody -- env')<block.indexOf('npm run check:qualification'));
   assert.doesNotMatch(block,/COMMANDER_ONE_REQUIRE_TRUSTED_INGRESS=0/);
-  const parse=spawnSync('bash',['-n',path.join(root,'install.sh')],{encoding:'utf8'});
-  assert.equal(parse.status,0,parse.stderr);
+  // The script is Linux-only; bash on Windows (including WSL/Git Bash)
+  // cannot parse a native Windows drive path as its own filesystem path.
+  // Keep all source safety assertions cross-platform, and parse syntax on
+  // the supported Linux host, where the installer can actually execute.
+  if (process.platform === 'linux') {
+    const parse=spawnSync('bash',['-n',path.join(root,'install.sh')],{encoding:'utf8'});
+    assert.equal(parse.status,0,parse.stderr);
+  }
 });
 
 const linuxOnlyTest = process.platform === 'linux' ? test : test.skip;
