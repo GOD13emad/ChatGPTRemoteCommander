@@ -10,6 +10,7 @@ import { WorkflowStore, canonical, hash } from '../src/workflow-store.mjs';
 import { classifyTool, reconciliationPlan } from '../src/workflow-autonomy.mjs';
 import { powerToolDefinitions } from '../src/power-tools-v0.3.mjs';
 import { agentExtensionToolDefinitions } from '../src/agent-extensions.mjs';
+import { browserToolDefinitions } from '../src/browser-contract.mjs';
 import { runContainedProjectCommand, processContainmentAvailable } from '../src/process-containment.mjs';
 const worker = fileURLToPath(new URL('./workflow-worker.mjs', import.meta.url));
 const fixture = (overrides = {}) => {
@@ -85,6 +86,37 @@ test('Host catalog and durable effect classifier remain aligned for Power tools'
   assert.deepEqual(reconciliationPlan('read_terminal',{consume:false}),
     {strategy:'SAFE_RETRY',classification:'READ_ONLY'});
 });
+
+test('Browser tool effects follow the declared contract and never silently become safe-to-retry',()=>{
+  assert.ok(browserToolDefinitions.length>=15,'owned-browser contract must be enumerated');
+  for(const definition of browserToolDefinitions){
+    const readOnly=definition.annotations?.readOnlyHint===true;
+    const expected=readOnly?'READ_ONLY':'EXTERNAL_SIDE_EFFECT';
+    assert.equal(classifyTool(definition.name,{}),expected,definition.name);
+    assert.deepEqual(reconciliationPlan(definition.name,{}),{
+      strategy:readOnly?'SAFE_RETRY':'MANUAL_OR_REMOTE_STATE',classification:expected
+    },definition.name);
+  }
+  assert.equal(classifyTool('browser_future_unknown_action',{}),'EXTERNAL_SIDE_EFFECT');
+});
+
+for(const tool of ['browser_click','browser_fill','browser_navigate']){
+  test('uncertain '+tool+' is not dispatched twice without reconciliation',async()=>{
+    const f=fixture();
+    try{
+      f.create();
+      let dispatches=0;
+      const a={id:'sample',stepId:'first',expectedRevision:1,tool,
+        arguments:{lease:'fixture',selector:'#submit',url:'https://example.com'}};
+      const h=host(async()=>{dispatches++;throw new Error('simulated acknowledgement loss');});
+      const result=await f.s.call(a,h);
+      assert.equal(result.outcome,'UNCERTAIN');
+      assert.equal(result.operation.classification,'EXTERNAL_SIDE_EFFECT');
+      await assert.rejects(f.s.call(a,h),/REQUIRES_RECONCILIATION/);
+      assert.equal(dispatches,1);
+    }finally{f.dispose();}
+  });
+}
 
 test('whole-token destructive verbs do not mistake agent skill metadata for a kill operation',()=>{
   const readOnlyAgentTools=agentExtensionToolDefinitions.filter(x=>x.annotations?.readOnlyHint===true);
