@@ -156,6 +156,102 @@ test('owner binding requires explicit Zenity approval and never displays the OAu
   assert.equal(dialog.options.env.PATH,'/usr/bin:/bin');
 });
 
+test('KDE KDialog fallback requires an explicitly typed one-time code and retains native session checks',async()=>{
+  const calls=[], KDIALOG='/usr/bin/kdialog';
+  let challenge='';
+  const provider=createLinuxNativeOwnerSessionProvider(providerOptions({
+    verifyExecutable:file=>{
+      if(file===ZENITY)throw Object.assign(new Error('missing'),{code:'NATIVE_OWNER_EXECUTABLE_UNAVAILABLE'});
+      assert.ok([LOGINCTL,KDIALOG].includes(file));
+    },
+    execFileImpl:(file,args,options,callback)=>{
+      calls.push({file,args,options});
+      if(file===LOGINCTL)return callback(null,logind(),'');
+      assert.equal(file,KDIALOG);
+      assert.ok(args.includes('--inputbox'));
+      assert.equal(args.at(-1),'','approval input must initially be blank');
+      const display=args.at(-2);
+      const match=/Type this one-time code to approve:\n(\d{8})$/.exec(display);
+      assert.ok(match,'fresh confirmation code must be shown');
+      challenge=match[1];
+      callback(null,challenge+'\n','');
+    }
+  }));
+  const before=await provider.getOwnerSessionSnapshot();
+  const accepted=await provider.requestConsent({
+    title:'Owner approval QA',message:'Consent for exact local UI QA; no access grant.',
+    expectedOwnerSidHash:before.ownerSidHash,expectedOsSessionId:before.osSessionId
+  });
+  assert.equal(accepted,true);
+  assert.match(challenge,/^\d{8}$/);
+  assert.equal(calls.filter(x=>x.file===KDIALOG).length,1);
+  assert.equal(calls.filter(x=>x.file===LOGINCTL).length,3);
+  assert.equal(calls.find(x=>x.file===KDIALOG).options.env.PATH,'/usr/bin:/bin');
+});
+
+test('KDialog fallback never authorizes empty/wrong/cancelled input or an untrusted Zenity executable',async t=>{
+  for(const [caseName,dialogResult] of [
+    ['blank',{code:0,stdout:'\n'}],['incorrect',{code:0,stdout:'00000000\n'}],
+    ['cancelled',{code:1,stdout:''}],['timed out',{code:null,stdout:''}]
+  ]){
+    await t.test(caseName,async()=>{
+      let calls=0;
+      const provider=createLinuxNativeOwnerSessionProvider(providerOptions({
+        verifyExecutable:file=>{
+          if(file===ZENITY)throw Object.assign(new Error('missing'),{code:'NATIVE_OWNER_EXECUTABLE_UNAVAILABLE'});
+          assert.ok([LOGINCTL,'/usr/bin/kdialog'].includes(file));
+        },
+        execFileImpl:(file,args,options,callback)=>{
+          if(file===LOGINCTL)return callback(null,logind(),'');
+          calls++;
+          const error=dialogResult.code===0?null:Object.assign(new Error('not approved'),{code:dialogResult.code});
+          callback(error,dialogResult.stdout,'');
+        }
+      }));
+      const before=await provider.getOwnerSessionSnapshot();
+      const ok=await provider.requestConsent({title:'QA',message:'Exact QA only',
+        expectedOwnerSidHash:before.ownerSidHash,expectedOsSessionId:before.osSessionId});
+      assert.equal(ok,false);assert.equal(calls,1);
+    });
+  }
+  await t.test('owner desktop seat changes after valid KDialog input',async()=>{
+    let loginCalls=0;
+    const provider=createLinuxNativeOwnerSessionProvider(providerOptions({
+      verifyExecutable:file=>{
+        if(file===ZENITY)throw Object.assign(new Error('missing'),{code:'NATIVE_OWNER_EXECUTABLE_UNAVAILABLE'});
+      },
+      execFileImpl:(file,args,options,callback)=>{
+        if(file===LOGINCTL){
+          loginCalls++;
+          return callback(null,logind(loginCalls>=3?{Leader:'3520'}:{}),'');
+        }
+        const match=/Type this one-time code to approve:\n(\d{8})$/.exec(args.at(-2));
+        assert.ok(match);
+        callback(null,match[1]+'\n','');
+      }
+    }));
+    const snap=await provider.getOwnerSessionSnapshot();
+    assert.equal(await provider.requestConsent({title:'QA',message:'No owner grant',
+      expectedOwnerSidHash:snap.ownerSidHash,expectedOsSessionId:snap.osSessionId}),false);
+  });
+  await t.test('untrusted Zenity cannot fall back to KDialog',async()=>{
+    let dialogCalls=0;
+    const provider=createLinuxNativeOwnerSessionProvider(providerOptions({
+      verifyExecutable:file=>{
+        if(file===ZENITY)throw Object.assign(new Error('untrusted'),{code:'NATIVE_OWNER_EXECUTABLE_UNTRUSTED'});
+      },
+      execFileImpl:(file,args,options,callback)=>{
+        if(file!==LOGINCTL)dialogCalls++;
+        callback(null,logind(),'');
+      }
+    }));
+    const snap=await provider.getOwnerSessionSnapshot();
+    assert.equal(await provider.requestConsent({title:'QA',message:'No owner grant',
+      expectedOwnerSidHash:snap.ownerSidHash,expectedOsSessionId:snap.osSessionId}),false);
+    assert.equal(dialogCalls,0);
+  });
+});
+
 test('denial, display loss and session rotation never authorize owner binding',async t=>{
   await t.test('explicit deny',async()=>{
     const provider=createLinuxNativeOwnerSessionProvider(providerOptions({
