@@ -236,7 +236,8 @@ test('auto updater is candidate-first, hardware-gated and commit-point aware',()
   assert.ok(s.includes('Stop-OwnedCandidate $currentCandidate'), 'failure cleanup must include the current pre-registration candidate');
   assert.ok(s.indexOf('$currentCandidate=[pscustomobject]') > s.indexOf('$p=Start-Backend'), 'candidate ownership tracking must start immediately after spawn');
   const startBackend=s.slice(s.indexOf('function Start-Backend'),s.indexOf('function Stop-OwnedCandidate'));
-  assert.ok(startBackend.includes('Start-Process') && !startBackend.includes('-RedirectStandardOutput') && !startBackend.includes('-RedirectStandardError'),'Windows staged backends must detach from updater run_shell stdio handles');
+  const productionBackend=startBackend.slice(startBackend.indexOf('# Production retains no redirected stdio'));
+  assert.ok(startBackend.includes('# Production retains no redirected stdio') && productionBackend.includes('return Start-Process') && !productionBackend.includes('-RedirectStandardOutput') && !productionBackend.includes('-RedirectStandardError'),'Production Windows staged backends must detach from updater run_shell stdio handles');
   const stale=s.slice(s.indexOf('function Get-StaleDrainEvidence'),s.indexOf('function Get-DrainStatus'));
   for(const marker of ['activeOperations','queued','unexpectedConnections','Get-NetTCPConnection -State Established','Get-BackendDescendants','guiBusy','guiLeased','browserActive','browserBusy','browserLeased','browserUncertain','browser_status','DEFER_PROCESS_TREE'])assert.ok(stale.includes(marker),marker);
   assert.ok(stale.includes("tools\\browser-control.mjs --server") && stale.includes('$isBrowserHelper') && stale.includes('-not$result.browserActive') && stale.includes('-not$result.browserUncertain'),'idle browser helper is safe only after explicit fail-closed browser_status evidence');
