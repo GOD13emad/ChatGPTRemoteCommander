@@ -1,4 +1,4 @@
-import {createHash} from 'node:crypto';
+import {createHash,randomInt} from 'node:crypto';
 import {isProxy} from 'node:util/types';
 import {execFile as execFileDefault} from 'node:child_process';
 import fs from 'node:fs';
@@ -6,6 +6,7 @@ import {normalizeV2Route} from './v2-routing-contract.mjs';
 
 const LOGINCTL='/usr/bin/loginctl';
 const ZENITY='/usr/bin/zenity';
+const KDIALOG='/usr/bin/kdialog';
 const SESSION_ID=/^[0-9]{1,12}$/;
 const HASH=/^[a-f0-9]{64}$/;
 const BINDING=/^[a-f0-9]{32,64}$/;
@@ -190,18 +191,35 @@ export function createLinuxNativeOwnerSessionProvider({
       const before=await getOwnerSessionSnapshot();
       if(before.ownerSidHash!==request.expectedOwnerSidHash
         ||before.osSessionId!==request.expectedOsSessionId)return false;
-      verifyExecutable(ZENITY);
-      const result=await execute(execFileImpl,ZENITY,[
+      let dialog=ZENITY;
+      try{verifyExecutable(ZENITY);}
+      catch(error){
+        // Missing Zenity on KDE is not a reason to relax native owner checks.
+        // An untrusted or replaced Zenity binary must fail closed, not fall back.
+        if(error?.code!=='NATIVE_OWNER_EXECUTABLE_UNAVAILABLE')return false;
+        verifyExecutable(KDIALOG);
+        dialog=KDIALOG;
+      }
+      let challenge=null;
+      const args=dialog===ZENITY?[
         '--question','--title',request.title,'--text',request.message,
         '--ok-label=Approve','--cancel-label=Deny','--default-cancel',
         '--no-markup','--no-wrap'
-      ],{
+      ]:(()=>{
+        // KDialog does not provide Zenity's default-cancel contract.
+        // Require deliberate typing of a fresh code in an initially empty input.
+        challenge=String(randomInt(10_000_000,100_000_000));
+        return ['--title',request.title,'--inputbox',
+          request.message+'\n\nType this one-time code to approve:\n'+challenge,
+          ''];
+      })();
+      const result=await execute(execFileImpl,dialog,args,{
         encoding:'utf8',timeout:dialogTimeoutMs,maxBuffer:4096,
         windowsHide:true,env:dialogEnvironment(env)
       });
-      // Zenity exits 0 only for explicit approval. Deny, close, timeout,
-      // unavailable display, malformed response and process errors all deny.
-      if(result.code!==0)return false;
+      // Deny, close, timeout, absent display and wrong or empty code all deny.
+      if(result.code!==0||(challenge!==null&&result.stdout.trim()!==challenge))
+        return false;
       const after=await getOwnerSessionSnapshot();
       return sameSnapshot(before,after);
     }catch{return false;}
