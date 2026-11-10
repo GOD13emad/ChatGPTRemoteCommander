@@ -16,7 +16,17 @@ const files = [
   "test/native-tunnel-attestor.test.mjs"
 ];
 
-const batches = [files.slice(0, 5), files.slice(5, 9), files.slice(9)];
+// Preserve 13 exact tests and the original 30-second limit per child process.
+// The loaded Windows CI runner timed out when it bundled the WorkflowStore
+// process-heavy suite with three further files. Give WorkflowStore its own
+// bounded cold phase and split the former near-timeout first group as well.
+const batches = [files.slice(0, 3), files.slice(3, 5), files.slice(5, 9), files.slice(9, 10), files.slice(10)];
+if (new Set(files).size !== files.length ||
+    batches.some(batch => batch.length === 0) ||
+    batches.flat().length !== files.length ||
+    batches.flat().some((file, index) => file !== files[index])) {
+  throw new Error('V012_SOURCE_REGRESSION_BATCH_COVERAGE_INVALID');
+}
 for (let index = 0; index < batches.length; index++) {
   const batch = batches[index];
   if (!batch.length) continue;

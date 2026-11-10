@@ -684,3 +684,16 @@ test('Windows startup-sensitive HTTP fixtures stay exact, early, and individuall
   assert.ok(read('tools/run-bounded-test-script.mjs').includes(
     'command=isolateWindowsStartupReadinessRegressions(command);'));
 });
+
+test('V012 source regression packs every test once into cold bounded Windows batches',()=>{
+  const runner=read('tools/run-v012-source-regression.mjs');
+  const names=[...runner.matchAll(/^  "(test\/[A-Za-z0-9._-]+\.test\.mjs)",?$/gm)].map(x=>x[1]);
+  assert.equal(names.length,13,'fixed V012 source-qualification test inventory');
+  assert.equal(new Set(names).size,names.length,'duplicates must not silently pass');
+  assert.match(runner,/const batches = \[files\.slice\(0, 3\), files\.slice\(3, 5\), files\.slice\(5, 9\), files\.slice\(9, 10\), files\.slice\(10\)\];/,
+    'short cold phases isolate high-load workflow-store without widening deadlines');
+  assert.match(runner,/V012_SOURCE_REGRESSION_BATCH_COVERAGE_INVALID/,'runtime fail-closed coverage check');
+  assert.match(runner,/timeout: 30000/,'all phase deadlines remain exactly 30 seconds');
+  assert.match(runner,/'--test-concurrency=1'/,'serial test files and deterministic results');
+  assert.match(runner,/if \(result\.signal \|\| result\.status !== 0\)/,'failed phase stops qualification');
+});
