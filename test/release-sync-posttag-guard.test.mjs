@@ -8,7 +8,8 @@ import {fileURLToPath} from 'node:url';
 import crypto from 'node:crypto';
 import {verifyV012Publication,summarizeV012Readiness} from '../tools/verify-v012-publish-readiness.mjs';
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
-const workflow=fs.readFileSync(path.join(root,'.github/workflows/release-sync.yml'),'utf8');
+const normalizeNewlines=text=>text.replace(/\r\n?/g,'\n');
+const workflow=normalizeNewlines(fs.readFileSync(path.join(root,'.github/workflows/release-sync.yml'),'utf8'));
 const start=workflow.indexOf('      - name: Validate matching annotated tag and versioned 20/21-asset manifest');
 const end=workflow.indexOf('      - name: Authorize Windows distribution mode for this exact version',start);
 assert.ok(start>0&&end>start,'release identity step not found');
@@ -194,6 +195,14 @@ test('v0.12 annotated tag cannot bypass NoPromote train in actual release identi
 });
 
 
+test('release-sync PR path guard tolerates hosted Windows CRLF checkout',()=>{
+ const windowsText=workflow.replace(/\n/g,'\r\n');
+ const normalized=normalizeNewlines(windowsText);
+ const pr=normalized.split('  pull_request:\n')[1]?.split('\npermissions:')[0];
+ assert.ok(pr,'Windows CRLF must not hide release-sync pull_request triggers');
+ for(const f of ['docs/release-train-0.12.json','tools/verify-v012-publish-readiness.mjs','test/release-sync-posttag-guard.test.mjs'])
+   assert.ok(pr.includes("      - '"+f+"'"),f);
+});
 test('release-sync PR scope includes development-train admission policy and regression test',()=>{
  const pr=workflow.split('  pull_request:\n')[1]?.split('\npermissions:')[0];
  assert.ok(pr,'pull_request path filter missing');
