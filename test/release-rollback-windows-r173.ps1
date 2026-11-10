@@ -137,7 +137,7 @@ function Cleanup {
 if((Get-NetTCPConnection -State Listen -LocalPort 47831 -ErrorAction SilentlyContinue)){throw 'R173_CANONICAL_PORT_IN_USE'}
 $sandboxMarker=Join-Path $Root 'R173_STANDARD_USER_SANDBOX.txt'
 if(-not(Test-Path -LiteralPath $Root -PathType Container) -or -not(Test-Path -LiteralPath $sandboxMarker -PathType Leaf) -or [IO.File]::ReadAllText($sandboxMarker) -cne 'R173_STANDARD_USER_SANDBOX_V1'){throw 'R173_STANDARD_USER_SANDBOX_MARKER_REQUIRED'}
-$unexpectedRootItems=@(Get-ChildItem -LiteralPath $Root -Force|Where-Object{$_.Name -notin @('TEMP','R173_STANDARD_USER_SANDBOX.txt','R157_STANDARD_USER.path','R157_STANDARD_USER.stdout.log','R157_STANDARD_USER.stderr.log')})
+$unexpectedRootItems=@(Get-ChildItem -LiteralPath $Root -Force|Where-Object{$_.Name -notin @('TEMP','USERPROFILE','R173_STANDARD_USER_SANDBOX.txt','R157_STANDARD_USER.path','R157_STANDARD_USER.stdout.log','R157_STANDARD_USER.stderr.log')})
 if($unexpectedRootItems.Count -ne 0 -or -not(Test-Path -LiteralPath (Join-Path $Root 'TEMP') -PathType Container)){throw 'R173_STANDARD_USER_ROOT_NOT_FRESH'}
 if(Test-Path -LiteralPath (Join-Path $OldLocal 'ChatGPTRemoteCommander')){throw 'R173_PREEXISTING_INSTALL'}
 Assert-Head $Source $ExpectedCommit

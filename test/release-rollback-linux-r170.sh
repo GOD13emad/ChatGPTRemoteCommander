@@ -177,11 +177,23 @@ if [[ -n "$source_status" ]]; then
   while IFS= read -r line; do
     [[ "$line" == ' M '* ]] || source_safe=false
     file="$(printf '%s' "$line" | cut -c4-)"
-    [[ "$file" == *.ps1 ]] || source_safe=false
-    [[ "$(git -C "$WORKSPACE" check-attr eol -- "$file")" == *': eol: crlf' ]] || source_safe=false
+    case "$file" in
+      *.ps1)
+        [[ "$(git -C "$WORKSPACE" check-attr eol -- "$file")" == *': eol: crlf' ]] || source_safe=false
+        ;;
+      desktop/RemoteCommanderDashboard/Program.cs)
+        # Known source blob has CRLF in the Git index but eol=lf in .gitattributes.
+        # Linux checkout may report this one path dirty despite an EOL-only diff.
+        eolmeta="$(git -C "$WORKSPACE" ls-files --eol -- "$file")"
+        [[ "$eolmeta" == i/crlf* && "$eolmeta" == *w/lf* && "$eolmeta" == *"attr/text eol=lf"* ]] || source_safe=false
+        [[ "$(git -C "$WORKSPACE" rev-parse "HEAD:$file")" == d67eeb4bc6eb72f98bfbc3c286c2e70b0bb8a246 ]] || source_safe=false
+        echo R170_KNOWN_DASHBOARD_EOL_CONFLICT_CHECKED
+        ;;
+      *) source_safe=false ;;
+    esac
   done <<< "$source_status"
   if [[ "$source_safe" != true ]]; then echo R170_SOURCE_CHANGED >&2; exit 77; fi
-  echo R170_SOURCE_DECLARED_PS1_EOL_ONLY_ACCEPTED
+  echo R170_SOURCE_BOUNDED_EOL_ONLY_ACCEPTED
 else
   echo R170_SOURCE_CLEAN_PASS
 fi

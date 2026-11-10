@@ -79,6 +79,24 @@ function Assert-R173StandardUserScope {
   if($ExpectedCommit -notmatch '^[0-9a-f]{40}$'){throw 'R173_STANDARD_USER_COMMIT_INVALID'}
   if(-not(Test-Path -LiteralPath (Join-Path $Workspace 'test\release-rollback-windows-r173.ps1') -PathType Leaf)){throw 'R173_STANDARD_USER_SCRIPT_MISSING'}
 }
+function Set-R157PrivateHome {
+  $homePath=Join-Path $Root 'USERPROFILE'
+  if(Test-Path -LiteralPath $homePath){
+    $item=Get-Item -LiteralPath $homePath -Force -ErrorAction Stop
+    if(-not $item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)){throw 'R157_PRIVATE_HOME_UNSAFE'}
+  }else{
+    New-Item -ItemType Directory -Path $homePath -ErrorAction Stop|Out-Null
+  }
+  $privateHome=[IO.Path]::GetFullPath($homePath)
+  $drive=[IO.Path]::GetPathRoot($privateHome).TrimEnd([char[]]@('\','/'))
+  if(-not $drive -or $privateHome.Length -le $drive.Length){throw 'R157_PRIVATE_HOME_INVALID'}
+  $env:USERPROFILE=$privateHome
+  $env:HOME=$privateHome
+  $env:HOMEDRIVE=$drive
+  $env:HOMEPATH=$privateHome.Substring($drive.Length)
+  if(-not(Test-Path -LiteralPath $env:USERPROFILE -PathType Container)){throw 'R157_PRIVATE_HOME_NOT_WRITABLE'}
+}
+
 function Invoke-R173RollbackScript {
   $env:RUNNER_TEMP=[IO.Path]::GetDirectoryName([IO.Path]::GetFullPath($Root))
   Assert-R173StandardUserScope
@@ -86,6 +104,7 @@ function Invoke-R173RollbackScript {
   if(-not(Test-Path -LiteralPath $script -PathType Leaf)){throw 'R173_STANDARD_USER_SCRIPT_MISSING'}
   $pathFile=Join-Path $Root 'R157_STANDARD_USER.path'
   if(Test-Path -LiteralPath $pathFile -PathType Leaf){$env:PATH=[IO.File]::ReadAllText($pathFile)}
+  Set-R157PrivateHome
   $env:GITHUB_WORKSPACE=$Workspace
   $env:LOCALAPPDATA=Join-Path $Root 'STATE'
   $env:APPDATA=Join-Path $Root 'ROAMING'
@@ -104,6 +123,7 @@ function Invoke-R157Updater {
   foreach($dir in @((Join-Path $Root 'STATE'),(Join-Path $Root 'ROAMING'),(Join-Path $Root 'TEMP'))){
     if(-not(Test-Path -LiteralPath $dir -PathType Container)){throw 'R157_STANDARD_PRIVATE_STATE_MISSING'}
   }
+  Set-R157PrivateHome
   $env:LOCALAPPDATA=Join-Path $Root 'STATE'
   $env:APPDATA=Join-Path $Root 'ROAMING'
   $env:TEMP=Join-Path $Root 'TEMP'
