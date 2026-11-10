@@ -129,3 +129,25 @@ Source-only update: the JWKS verifier now accepts the operator-pinned `at+jwt` o
 Production setup remains BLOCKED: no Keycloak runtime, Auth0 tenant/client details, public HTTPS issuer hostname, protected upstream client secret, server mTLS certificate/private key or native owner-consent provider is configured. Read-only checks found no Keycloak/PostgreSQL/reverse-proxy/tunnel stack on the inspected server hosts; the existing Secure MCP Tunnel is documented as private/testing, not a public identity endpoint. No production service/profile/fleet/release changes occurred. The full qualification run from the preceding tier-forward-port still timed out and is not a PASS. Release remains `INTEGRATION_CANDIDATE_NOT_FINAL`.
 
 **Next gate:** establish the public HTTPS identity hostname and secret store, configure the Keycloak realm/client plus Auth0 upstream OIDC connection, then verify live discovery/JWKS and real access tokens. Only afterward wire the trusted Host bootstrap and staged direct-mTLS listener; retain NoPromote until end-to-end and owner-consent acceptance.
+
+
+## 2026-11-10 — exact-head release qualification continuation (NoPromote)
+
+Exact candidate source: `integration/v012-final-acceptance`, HEAD `0a1f6cf6f2e8ffd505eedb5a11dcd7daf6617243`, tracking `origin/integration/v012-unsigned-approval-20261110`. Draft PR [#449](https://github.com/GOD13emad/ChatGPTRemoteCommander/pull/449) remains open and mergeable. It has no submitted reviews or inline review threads. No merge, release tag, public publication, automatic-update enablement or installed fleet mutation occurred.
+
+**Exact-head hosted evidence:**
+- CI: Windows and Ubuntu jobs both completed SUCCESS on this exact SHA.
+- Server Install Canary: clean Linux container and Windows Server bootstrap both completed SUCCESS on this exact SHA.
+- Release Sync: Windows Setup and Linux single-file Bootstrap builds both completed SUCCESS. The publish job was SKIPPED for the pull request under NoPromote; no published release artifact is implied.
+- R170 Linux real promotion/rollback and R173 Windows real promotion/rollback were intentionally SKIPPED by the pre-v1.0 policy. SKIPPED is not PASS and supplies no installed rollback receipt.
+- R157 isolated Windows candidate-first updater: still IN PROGRESS at the time of this checkpoint; only the pinned native Job Object runner build/verification and exact-head private-state preflight had completed successfully.
+
+**Local exact-checkout evidence:** `node test/security-audit.mjs` exit 0, `SECURITY_AUDIT_PASS`, 62,913,932 Git-history bytes scanned, no detected secret-key/tunnel-id/private-key/bearer/GitHub-token/tracked-local-config/developer-path finding. `git diff --check` exit 0. Read-only `node tools/verify-v012-publish-readiness.mjs --report` reports 0/9 verified components, 0/9 verified acceptance gates and 0/8 accepted known connectors, with external evidence required. This is intentionally a fail-closed release-evidence report; source/CI PASS must not set manifest acceptance bits or host receipts.
+
+**Read-only connected-host inventory:** 7 of 8 expected Commander connectors responded; all seven report installed Core `0.11.0-dev.23`, capability tier `FULL_POWER`, and `disabledCapabilities=[]`. None reports the 0.12 candidate as installed or a `FULL_ACCESS` tier. `Saeid_PC` is unreachable because its tunnel-client has not been seen for 300 seconds. This inventory is observation only; no host, profile, service, GUI, tunnel or permission was changed. The seven reachable connectors are not eight-host acceptance and do not establish OS Administrator/Root, same-owner GUI consent, broker persistence or rollback.
+
+**Root-cause fixes included in the candidate:** exact checkout-scoped Git safe-directory handling for root-owned Linux QA and security history scanning; smoke/concurrency temporary fixtures moved outside root-owned source checkout; worker-provider test fixture isolated into a disposable temporary project. The resulting exact-head Windows/Ubuntu CI and both Server Install Canary jobs now pass. Earlier failed attempts remain historical evidence and are not rewritten as PASS.
+
+**Release blockers remain:** production G1/J01 authenticated same-chat authorization and same-owner GUI consent; multi-user permission and three-tier FULL_ACCESS/broker acceptance; all-product Windows/Linux/headless builds and native Control Center/Browser acceptance; stable install roots; protected installed rollback; per-host boot/login and eight-connector mapping/receipts; signing or independently approved artifact provenance. Keep all existing hosts on their current installation until each exact candidate has an authorized reversible canary, health readback and rollback proof. Keep manifest status `INTEGRATION_CANDIDATE_NOT_FINAL`, all acceptance flags false, `acceptedHostIds=[]`, and publication/autoupdate/installed-promotion approvals false.
+
+**Next action:** finish R157 and inspect its exact result; then continue only with independently provable acceptance work. Do not promote, merge the Draft, create `v0.12.0`, or enable fleet updates while the external evidence gates remain open.
