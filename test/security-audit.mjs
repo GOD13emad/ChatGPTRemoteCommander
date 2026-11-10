@@ -225,8 +225,8 @@ if (!probed.has('Tunnel identifier') || !probed.has('Bearer token literal')) {
   throw new Error('SECURITY_AUDIT_STREAM_SCANNER_REGRESSION');
 }
 async function scanCompleteHistory() {
-  const args = ['log', '--all', '-p', '--no-color', '--no-ext-diff'];
-  const child = spawn('git', args, { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
+  const args = ['-c',`safe.directory=${repoRoot}`,'-C',repoRoot,'log', '--all', '-p', '--no-color', '--no-ext-diff'];
+  const child = spawn('git', args, { cwd:repoRoot, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
   const closed = new Promise((resolve, reject) => {
     child.once('error', reject);
     child.once('close', (code, signal) => resolve({ code, signal }));
