@@ -92,6 +92,7 @@ for (const required of [
   "contents: read",
   "github.event.pull_request.head.repo.full_name == github.repository",
   "RC_GITHUB_API_TOKEN: ${{ github.token }}",
+  "RC_SOURCE_REF: ${{ github.event.pull_request.head.sha || github.sha }}",
 ]) if (!serverCanaryWorkflow.includes(required)) throw new Error('server canary missing least-privilege same-repo token guard: '+required);
 
 if (!linuxServerInstaller.includes('SOURCE_REF="${REMOTE_COMMANDER_SOURCE_REF:-v0.10.24}"')) throw new Error('server-install-linux.sh default SourceRef must match current release');

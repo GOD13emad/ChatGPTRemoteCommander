@@ -75,8 +75,12 @@ function normalizedExplicitRunner(existing) {
     ...(current.team == null ? {} : { team: current.team }),
     worker: {
       enabled: current.worker?.enabled !== false,
-      maxArtifactBytes: Number.isSafeInteger(Number(current.worker?.maxArtifactBytes))
-        ? Number(current.worker.maxArtifactBytes) : 65_536
+      // Preserve an omitted optional limit exactly. Adding a new default here
+      // changes an authorized running policy and blocks candidate continuity.
+      ...(Object.hasOwn(current.worker ?? {}, 'maxArtifactBytes')
+        ? {maxArtifactBytes:Number.isSafeInteger(current.worker.maxArtifactBytes)
+          ? current.worker.maxArtifactBytes : 65_536}
+        : {})
     }
   };
 }

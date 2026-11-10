@@ -30,7 +30,7 @@ async function limitedBody(response){
  }
  try{return JSON.parse(Buffer.concat(chunks).toString('utf8'));}catch{fail('INVALID_HTTP_JSON');}
 }
-export async function proposeWithLocalOllama(context,{model,fetchImpl=globalThis.fetch,timeoutMs=12000}={}){
+export async function proposeWithLocalOllama(context,{model,fetchImpl=globalThis.fetch,timeoutMs=24000}={}){
  modelName(model);
  const input=JSON.stringify(context);
  if(!input||Buffer.byteLength(input,'utf8')>MAX_INPUT)fail('INPUT_TOO_LARGE');

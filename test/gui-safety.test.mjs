@@ -122,6 +122,43 @@ test('disabled screenshot capability is enforced before invoking helper', async 
   const s=setup(); const {lease}=await s.run('gui_session_begin'); s.ctx.config.powerMode.guiControl.allowScreenshot=false;
   await assert.rejects(s.run('gui_screenshot',{lease}),/GUI_CAPABILITY_DISABLED/); assert.equal(s.calls.length,1);
 });
+test('read-only window enumeration is independent of focus and input permissions',async()=>{
+  const s=setup();
+  const gui=s.ctx.config.powerMode.guiControl;
+  gui.allowWindowEnumeration=true;
+  gui.allowWindowFocus=false;
+  gui.allowMouse=false;
+  gui.allowKeyboard=false;
+  const policy=await s.run('gui_status');
+  assert.equal(policy.policy.allowWindowEnumeration,true);
+  assert.equal(policy.policy.allowWindowFocus,false);
+  const {lease}=await s.run('gui_session_begin',{mode:'observe'});
+  const windows=await s.run('gui_list_windows',{lease});
+  assert.equal(windows.ok,true);
+  assert.deepEqual(s.calls.map(c=>c.action),['status','status','listWindows']);
+  await assert.rejects(s.run('gui_focus_window',{lease,frame:'unused',handle:'1'}),/GUI_CAPABILITY_DISABLED/);
+  await assert.rejects(s.run('gui_mouse_click',{lease,frame:'unused',x:1,y:1}),/GUI_CAPABILITY_DISABLED/);
+  assert.deepEqual(s.calls.map(c=>c.action),['status','status','listWindows']);
+  await s.run('gui_session_end',{lease});
+});
+test('window enumeration must be explicitly permitted without legacy focus grant',async()=>{
+  const s=setup();
+  const gui=s.ctx.config.powerMode.guiControl;
+  gui.allowWindowEnumeration=false;
+  gui.allowWindowFocus=false;
+  const {lease}=await s.run('gui_session_begin',{mode:'observe'});
+  await assert.rejects(s.run('gui_list_windows',{lease}),/GUI_CAPABILITY_DISABLED/);
+  assert.deepEqual(s.calls.map(c=>c.action),['status']);
+  await s.run('gui_session_end',{lease});
+});
+test('legacy allowWindowFocus true preserves read-only window listing while migration is pending',async()=>{
+  const s=setup();
+  delete s.ctx.config.powerMode.guiControl.allowWindowEnumeration;
+  const {lease}=await s.run('gui_session_begin',{mode:'observe'});
+  assert.equal((await s.run('gui_list_windows',{lease})).ok,true);
+  assert.equal((await s.run('gui_status')).policy.allowWindowEnumeration,true);
+  await s.run('gui_session_end',{lease});
+});
 test('mouse permission cannot be escalated to keyboard via extra action', async () => {
   const s=setup(); const a=await prepared(s); s.ctx.config.powerMode.guiControl.allowKeyboard=false;
   await assert.rejects(s.run('gui_mouse_move',{...a,x:0,y:0,action:'typeText',text:'NO'}),/GUI_INVALID/);
@@ -250,6 +287,7 @@ test('Linux attested pre-dispatch click rejection preserves no-effect without re
 for(const [platform,tool,code,attested] of [
   ['win32','gui_focus_window','GUI_FOCUS_NOT_CONFIRMED',true],
   ['linux','gui_mouse_click','GUI_FOREGROUND_OR_GEOMETRY_CHANGED',false],
+  ['linux','gui_mouse_click','GUI_POINT_OUTSIDE_MONITOR',false],
   ['linux','gui_key_press','GUI_FOREGROUND_OR_GEOMETRY_CHANGED',true],
   ['linux','gui_mouse_click','GUI_SENDINPUT_FAILED',true]
 ])test('unknown input is still fail-closed on '+platform+'/'+tool+'/'+code+'/'+attested,async()=>{
@@ -271,6 +309,26 @@ for(const [platform,tool,code,attested] of [
   await s.run('gui_session_end',{lease:readOnly.lease});
 });
 
+test('exact GNOME off-monitor native click preflight clears its own incident without input replay',async()=>{
+  let nativeCalls=0;
+  const s=setup({platform:'linux',invoke:async r=>{
+    if(r.action==='status')return {ok:true,available:true};
+    if(r.action==='screenshot')return image();
+    if(r.action==='click'){nativeCalls++;throw Object.assign(
+      new Error('GUI_POINT_OUTSIDE_MONITOR'),
+      {guiCode:'GUI_POINT_OUTSIDE_MONITOR',guiNotApplied:true}
+    );}
+    throw Error('UNEXPECTED_NATIVE_REQUEST');
+  }});
+  const a=await prepared(s);
+  await assert.rejects(s.run('gui_mouse_click',{...a,x:65000,y:65000}),/GUI_POINT_OUTSIDE_MONITOR/);
+  assert.equal(nativeCalls,1);
+  assert.notEqual((await s.run('gui_status')).uncertain,true);
+  const next=await s.run('gui_session_begin',{mode:'observe'});
+  assert.equal(next.mode,'observe');
+  await s.run('gui_session_end',{lease:next.lease});
+});
+
 test('Linux native no-effect attestation occurs before MutterInput dispatch',async()=>{
   const source=await fs.readFile(new URL('../tools/gui-control-linux.py',import.meta.url),'utf8');
   const begin=source.indexOf('def handle_input(req):');
@@ -280,6 +338,10 @@ test('Linux native no-effect attestation occurs before MutterInput dispatch',asy
   assert.ok(body.includes("if action=='click' and e.code=='GUI_FOREGROUND_OR_GEOMETRY_CHANGED'"));
   assert.ok(body.includes("'effect':'NOT_APPLIED','phase':'PRE_DISPATCH_GUARD'"));
   assert.ok(body.indexOf('observed=guard(req,deadline)')<body.indexOf('with MutterInput(req,deadline)'));
+  assert.ok(body.indexOf('guarded_click_point=point(req,observed)')<
+            body.indexOf('with MutterInput(req,deadline)'));
+  assert.ok(body.includes("if e.code=='GUI_POINT_OUTSIDE_MONITOR'"));
+
 });
 
 test('persistent helper propagates exact pre-dispatch no-effect receipt without auto retry',async()=>{
@@ -441,4 +503,33 @@ test('helper process JSON lifecycle, malformed JSON and output bounds',async()=>
     await assert.rejects(runGuiProcess({mode:'hang'},{...options,timeoutMs:200}),/GUI_HELPER_TIMEOUT/);
     await assert.rejects(runGuiProcess({}, {file:path.join(root,'not-an-executable'),args:[],timeoutMs:200}),/GUI_HELPER_START_FAILED/);
   } finally { await fs.rm(root,{recursive:true,force:true}); }
+});
+
+
+test('KDE portal exact pre-dispatch attestation is accepted but extra fields are not',async()=>{
+  const folder=await fs.mkdtemp(path.join(os.tmpdir(),'rc-gui-kde-noeffect-'));
+  let client;
+  try {
+    const helper=path.join(folder,'helper.cjs');
+    const source=[
+      "process.stdout.write(JSON.stringify({ok:true,ready:true,protocol:1})+'\\n');",
+      "let buf='';let count=0;process.stdin.setEncoding('utf8');",
+      "process.stdin.on('data',part=>{buf+=part;while(buf.includes('\\n')){const p=buf.indexOf('\\n');const line=buf.slice(0,p);buf=buf.slice(p+1);const req=JSON.parse(line);count++;const receipt={ok:false,error:'GUI_KDE_PRECHECK_FAILED',effect:'NOT_APPLIED',phase:'PRE_DISPATCH_GUARD',backend:'kde-wayland-xdg-portal'};if(req.extra)receipt.arbitraryField=true;process.stdout.write(JSON.stringify(receipt)+'\\n');}});"
+    ].join('');
+    await fs.writeFile(helper,source);
+    client=createGuiProcessClient({file:process.execPath,args:[helper],startupTimeoutMs:2500,timeoutMs:2500});
+    await assert.rejects(client.invoke({extra:false}),e=>e.guiKdePreDispatch===true&&e.guiNotApplied===true&&e.guiCode==='GUI_KDE_PRECHECK_FAILED');
+    await assert.rejects(client.invoke({extra:true}),e=>e.guiKdePreDispatch!==true&&e.guiCode==='GUI_KDE_PRECHECK_FAILED');
+  }finally{client?.close();await fs.rm(folder,{recursive:true,force:true});}
+});
+test('KDE native helper is bundled and dispatch stays bound to KDE session and explicit runtime flag',async()=>{
+  for(const file of ['gui-control-kde-portal.py','kde_portal_runtime.py','kde_workspace_observer.py','kde_emergency_stop.py']){
+    assert.ok((await fs.stat(new URL('../tools/'+file,import.meta.url))).isFile());
+  }
+  const source=await fs.readFile(new URL('../src/gui-tools-windows.mjs',import.meta.url),'utf8');
+  assert.ok(source.includes("execFileSync('/usr/bin/loginctl'"));
+  assert.ok(source.includes("'gui-control-kde-portal.py' : 'gui-control-linux.py'"));
+  assert.ok(source.includes("cfg.kdePortalRuntime===true"));
+  assert.ok(source.includes('request.nativeOperationId=pendingHandle.id'));
+  assert.ok(source.includes('error?.guiKdePreDispatch === true'));
 });

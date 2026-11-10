@@ -1,3 +1,19 @@
+# 0.11.0-dev.18 — PID-verified Firefox AT-SPI semantic control (2026-10-29, NoPromote)
+
+- New explicit short-lived Workspace Accessibility tools on Linux: exact Firefox PID/HWND, focused target, owner takeover lease, fresh single-use labeled element tokens; native AT-SPI role/name/action validation. No pointer coordinates, monitor bypass, browser profile access, cookies or credential reads.
+- Dual-monitor Workspace Target's coordinate guard remains fail-closed. Release, installation and GUI input acceptance are separate from source qualification. No Stable or auto-update promotion approved.
+
+# 0.11.0-dev.17 — GNOME multi-monitor Workspace Target bounds (2026-10-29; development / NoPromote)
+
+- Firefox/P12 blocker: GNOME Meta.Window inventory now reports verified monitor index and window-frame bounds. Workspace Target binds to the exact owner window+monitor and refuses missing multi-monitor metadata, changed geometry or coordinates outside its rectangle. Native screenshot uses the target monitor instead of assuming display 0; no generic GUI injection or credential extraction.
+- Prior dev.16 route is the pilot baseline; this dev.17 source is not Stable or installed until exact-commit native installation and actual frame/click/type tests. Existing original Firefox profile remains untouched.
+
+# 0.11.0-dev.16 — owner-session Workspace Target + bounded local Runner (2026-10-28; development / NoPromote)
+
+- Add a new exact-window Workspace Target MCP contract for the owner's **already-running** Firefox and other GUI windows, without copying cookies/profiles or relaunching the browser. Native GUI leases, fresh frames, explicit takeover, and focused-window checks remain mandatory.
+- Increase bounded local Ollama proposal timeout from 12 to 24 seconds (below the parent 30-second deadline). On Emad Linux the qwen3:4b-instruct offline runner completed one enrolled read-only step, independently verified SHA-256, and reached `PROJECT_ACCEPTANCE_VERIFIED` after a prior 12-second timeout negative result. No implicit project enrollment.
+- Cross-host GUI ownership, fifth Core connector, signed artifacts and installed promotion remain NoPromote pending exact-commit tests and independent acceptance.
+
 # 0.11.0-dev.15 — reconcile fifth MMZ transfer peer into unified Core (2026-10-28; development / NoPromote)
 
 - Direct comparison of installed Windows Emad + MMZ Linux transfer candidates to canonical dev.14 found one missing enum member: MMZ. Merge missing peer into existing Core transfer-tools, with no duplicate transfer engine or legacy candidate file.
