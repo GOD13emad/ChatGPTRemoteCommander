@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {spawnSync} from 'node:child_process';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {assessMigration,inspectLocalPlatform} from '../packaging/unified/migration-preflight.mjs';
+import {assessMigration,inspectLocalPlatform,parseMainTunnelBinding} from '../packaging/unified/migration-preflight.mjs';
 
 const repo=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const modulePath=path.join(repo,'packaging/unified/migration-preflight.mjs');
@@ -67,4 +67,46 @@ test('read-only Linux CLI prints only sanitized count/flags, never source secret
  assert.equal(parsed.promotionAuthority,'EXTERNAL_REQUIRED');
  assert.equal(r.stdout.includes('api-key'),false);
  assert.equal(r.stdout.includes('CREDENTIALS_DIRECTORY'),false);
+});
+
+test('main tunnel profile binding is loopback-only, exact and credential-redacted',()=>{
+ const profile=[
+   'config_version: 1','control_plane:',
+   '  tunnel_id: tunnel_abc123fake','  api_key: secret-test-DO-NOT-LEAK',
+   'mcp:','  server_urls:','    - channel: main',
+   '      url: "http://127.0.0.1:47831/mcp"'
+ ].join('\n');
+ const valid=parseMainTunnelBinding(profile);
+ assert.deepEqual(valid,{port:47831,channel:'main',path:'/mcp'});
+ assert.doesNotMatch(JSON.stringify(valid),/secret|tunnel_abc|api_key/i);
+ for(const target of [
+   'http://127.0.0.1:47831/mcp?token=bad',
+   'http://127.0.0.1:47831/other',
+   'http://127.0.0.1:47831@mcp.evil.example/mcp',
+   'https://127.0.0.1:47831/mcp','http://localhost:47831/mcp',
+   'http://127.0.0.2:47831/mcp','http://127.0.0.1:80/mcp'
+ ])assert.equal(parseMainTunnelBinding(profile.replace(
+   'http://127.0.0.1:47831/mcp',target)),null,target);
+ assert.equal(parseMainTunnelBinding(profile+'\n    - channel: main\n      url: "http://127.0.0.1:49912/mcp"'),null);
+ assert.equal(parseMainTunnelBinding('mcp:\n  server_urls:\n    - channel: main\n      url: "http://127.0.0.1:47831/mcp"\n'.repeat(400)),null);
+});
+test('Windows tunnel target on old Core is explicit NoPromote even if other gates self-report true',()=>{
+ const base={platform:'win32',inventoryReliable:true,legacyInnoPresent:true,
+   tunnelProfilePresent:true,tunnelProfileValid:true,tunnelTargetPort:47831,
+   tunnelTargetVersion:'0.11.0-dev.23',
+   profileBackupReceiptVerified:true,featureParityVerified:true,
+   g1AuthenticatedCurrentSession:true,j01OwnerNativeConsent:true,
+   revocableFullAccessProven:true,trustedPublisherSignature:true,
+   signedUpdateRollbackAccepted:true,installedCanaryAccepted:true};
+ const old=assessMigration(base);
+ assert.equal(old.ownerTunnelTargetPort,47831);
+ assert.equal(old.ownerTunnelTargetRuntimeVersion,'0.11.0-dev.23');
+ assert.ok(old.blocked.includes('OWNER_TUNNEL_STILL_TARGETS_LEGACY_OR_UNKNOWN_CORE'));
+ const unknown=assessMigration({...base,tunnelProfileValid:false});
+ assert.ok(unknown.blocked.includes('OWNER_TUNNEL_MAIN_BINDING_UNVERIFIED'));
+ assert.equal(unknown.ownerTunnelTargetPort,null);
+ const latest=assessMigration({...base,tunnelTargetVersion:'0.12.0-dev.1'});
+ assert.ok(!latest.blocked.includes('OWNER_TUNNEL_STILL_TARGETS_LEGACY_OR_UNKNOWN_CORE'));
+ assert.equal(latest.decision,'NO_PROMOTE');
+ assert.ok(latest.blocked.includes('LEGACY_INNO_TO_NSIS_TRANSACTION_MISSING'));
 });

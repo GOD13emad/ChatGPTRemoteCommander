@@ -1,6 +1,7 @@
 // Read-only deployment preflight. Never installs, uninstalls, grants access,
 // reads credentials, or authorizes release. One shared path for Windows/Linux.
 import {spawnSync} from 'node:child_process';
+import fs from 'node:fs';
 import {createHash} from 'node:crypto';
 import os from 'node:os';
 import path from 'node:path';
@@ -9,6 +10,91 @@ import {pathToFileURL} from 'node:url';
 const expectedPackage='chatgpt-remote-commander';
 const safeUnit=/^chatgpt-remote-commander[a-z0-9@._:-]*\.service$/i;
 const sha=s=>createHash('sha256').update(s).digest('hex').slice(0,16);
+// The owner-selected tunnel profile is input, not a ChatGPT identity proof.
+// Never print/retain the YAML: it may contain the runtime API key.
+export function parseMainTunnelBinding(yaml){
+  if(typeof yaml!=='string'||Buffer.byteLength(yaml,'utf8')>16384)return null;
+  const lines=yaml.split(/\r?\n/);
+  let inMcp=false,inUrls=false,inMain=false,seenMain=0;
+  const targets=[];
+  for(const line of lines){
+    if(/^(?:#.*|\s*)$/.test(line))continue;
+    if(/^\S/.test(line)){
+      inMcp=/^mcp:\s*(?:#.*)?$/.test(line);
+      inUrls=false;inMain=false;continue;
+    }
+    if(!inMcp)continue;
+    if(/^ {2}server_urls:\s*(?:#.*)?$/.test(line)){
+      inUrls=true;inMain=false;continue;
+    }
+    if(/^ {2}[a-zA-Z][\w.-]*:/.test(line)){
+      inUrls=false;inMain=false;continue;
+    }
+    if(!inUrls)continue;
+    const channel=/^ {4}- channel:\s*([a-zA-Z0-9._-]+)\s*$/.exec(line);
+    if(channel){
+      inMain=channel[1]==='main';
+      if(inMain)seenMain++;
+      continue;
+    }
+    if(inMain){
+      const raw=/^ {6}url:\s*(?:"([^"]+)"|'([^']+)'|([^\s#]+))\s*$/.exec(line);
+      if(raw)targets.push(raw[1]??raw[2]??raw[3]);
+    }
+  }
+  if(seenMain!==1||targets.length!==1)return null;
+  let url;
+  try{url=new URL(targets[0]);}catch{return null;}
+  const port=Number(url.port);
+  if(url.protocol!=='http:'||url.hostname!=='127.0.0.1'
+    ||url.pathname!=='/mcp'||url.search||url.hash
+    ||url.username||url.password||!Number.isSafeInteger(port)
+    ||port<1024||port>65535)return null;
+  return Object.freeze({port,channel:'main',path:'/mcp'});
+}
+function readOwnerTunnelBinding(){
+  const appData=process.env.APPDATA;
+  if(typeof appData!=='string'||!path.isAbsolute(appData))
+    return {profilePresent:false,valid:false};
+  const file=path.join(appData,'tunnel-client','chatgpt-remote-commander.yaml');
+  try{
+    const stat=fs.lstatSync(file);
+    if(!stat.isFile()||stat.isSymbolicLink()||stat.size>16384)
+      return {profilePresent:true,valid:false};
+    const binding=parseMainTunnelBinding(fs.readFileSync(file,'utf8'));
+    return {profilePresent:true,valid:!!binding,port:binding?.port??null};
+  }catch(error){
+    if(error?.code==='ENOENT')return {profilePresent:false,valid:false};
+    return {profilePresent:true,valid:false};
+  }
+}
+function probeLoopbackCoreVersion(port){
+  if(!Number.isSafeInteger(port)||port<1024||port>65535)return null;
+  // Isolated bounded local GET. Never forwards the tunnel credential.
+  const script=String.raw`
+const http=require('node:http');
+const port=Number(process.argv[1]);
+let body='';
+const req=http.get({hostname:'127.0.0.1',port,path:'/health',timeout:1200},res=>{
+  if(res.statusCode!==200){res.resume();process.exitCode=2;return;}
+  res.setEncoding('utf8');
+  res.on('data',chunk=>{body+=chunk;if(body.length>2048)req.destroy();});
+  res.on('end',()=>{try{
+    const obj=JSON.parse(body);
+    if(typeof obj.version==='string'&&/^0\.(?:11|12)\.[A-Za-z0-9.-]+$/.test(obj.version))
+      process.stdout.write(obj.version);
+    else process.exitCode=2;
+  }catch{process.exitCode=2;}});
+});
+req.on('timeout',()=>req.destroy());
+req.on('error',()=>{process.exitCode=2;});
+`;
+  const result=exec(process.execPath,['-e',script,String(port)]);
+  const version=result.stdout.trim();
+  return result.ok && /^0\.(?:11|12)\.[A-Za-z0-9.-]+$/.test(version)
+    ?version:null;
+}
+
 function exec(program,args){
   try{
     const r=spawnSync(program,args,{encoding:'utf8',windowsHide:true,timeout:7000,
@@ -22,6 +108,13 @@ export function assessMigration(facts){
   const oldPresent=facts.platform==='win32'?facts.legacyInnoPresent===true:facts.nativePackageInstalled===true;
   const units=Array.isArray(facts.units)?facts.units:[];
   if(!facts.inventoryReliable)blocked.push('INVENTORY_UNAVAILABLE');
+  if(facts.platform==='win32'&&facts.tunnelProfilePresent===true){
+    if(facts.tunnelProfileValid!==true)
+      blocked.push('OWNER_TUNNEL_MAIN_BINDING_UNVERIFIED');
+    else if(typeof facts.tunnelTargetVersion!=='string'
+      ||!facts.tunnelTargetVersion.startsWith('0.12.'))
+      blocked.push('OWNER_TUNNEL_STILL_TARGETS_LEGACY_OR_UNKNOWN_CORE');
+  }
   if(facts.platform==='win32' && oldPresent)blocked.push('LEGACY_INNO_TO_NSIS_TRANSACTION_MISSING');
   if(facts.platform==='linux' && oldPresent && !facts.allNativePayloadPathsAvailable)
     blocked.push('NATIVE_RUNTIME_TUNNEL_SERVICE_CONTINUITY_UNPROVEN');
@@ -45,6 +138,9 @@ export function assessMigration(facts){
   // evidence needs the independent release authority and owner acceptance.
   return Object.freeze({schema:1,decision:'NO_PROMOTE',readOnly:true,
     platform:facts.platform,existingInstalled:oldPresent,
+    ownerTunnelProfileDetected:facts.tunnelProfilePresent===true,
+    ownerTunnelTargetPort:facts.tunnelProfileValid===true?facts.tunnelTargetPort??null:null,
+    ownerTunnelTargetRuntimeVersion:facts.tunnelProfileValid===true?facts.tunnelTargetVersion??null:null,
     activeCoreUnits:units.filter(u=>u.kind==='core'&&u.active).length,
     activeTunnelUnits:units.filter(u=>u.kind==='tunnel'&&u.active).length,
     enabledCoreUnits:units.filter(u=>u.kind==='core'&&u.enabled).length,
@@ -98,8 +194,12 @@ function windowsFacts(){
   const checks=paths.map(p=>exec('reg.exe',['query',p,'/v','UninstallString']));
   // reg.exe exit 1 means precisely that a fixed key/value is absent.
   const bad=checks.some(c=>c.stdout.length>50000);
+  const tunnel=readOwnerTunnelBinding();
+  const targetVersion=tunnel.valid?probeLoopbackCoreVersion(tunnel.port):null;
   return {platform:'win32',legacyInnoPresent:checks.some(c=>c.ok),
-    inventoryReliable:!bad&&checks.length===3,units:[]};
+    inventoryReliable:!bad&&checks.length===3,
+    tunnelProfilePresent:tunnel.profilePresent,tunnelProfileValid:tunnel.valid,
+    tunnelTargetPort:tunnel.port??null,tunnelTargetVersion:targetVersion,units:[]};
 }
 export function inspectLocalPlatform(platform=process.platform){
   if(platform==='linux')return linuxFacts();
