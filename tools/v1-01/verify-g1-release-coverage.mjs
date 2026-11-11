@@ -27,6 +27,7 @@ export const G1_MODULES=Object.freeze([
   'src/v101-linux-owner-security-bootstrap.mjs',
   'src/v101-windows-owner-security-bootstrap.mjs',
   'src/v101-g1-loopback-runtime.mjs',
+  'src/v101-g1-canonical-workflow-runtime.mjs',
   'src/v101-private-tunnel-owner-host.mjs',
   'src/v2-private-tunnel-https-gateway.mjs',
   'src/v2-private-tunnel-mtls-attestor.mjs',

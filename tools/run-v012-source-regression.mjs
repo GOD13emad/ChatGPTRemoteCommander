@@ -17,7 +17,8 @@ const files = [
   "test/native-owner-session-provider-windows.test.mjs",
   "test/v101-g1-loopback-runtime.test.mjs",
   "test/v2-private-tunnel-mtls-attestor.test.mjs",
-  "test/v2-private-tunnel-https-gateway.test.mjs"
+  "test/v2-private-tunnel-https-gateway.test.mjs",
+  "test/v101-g1-canonical-workflow-runtime.test.mjs"
 ];
 
 // Keep every file once while bounding expensive Windows native process/SQLite
@@ -32,7 +33,8 @@ const batches = [
   files.slice(10, 12),
   files.slice(12, 13),
   files.slice(13, 15),
-  files.slice(15, 17)
+  files.slice(15, 17),
+  files.slice(17, 18) // Canonical G1/WorkflowStore composition and mTLS denial
 ];
 if(batches.flat().length!==files.length
   ||new Set(batches.flat()).size!==files.length
