@@ -13,10 +13,24 @@ const files = [
   "test/workflow-store.test.mjs",
   "test/worker-identity-authority.test.mjs",
   "test/worker-identity-store.test.mjs",
-  "test/native-tunnel-attestor.test.mjs"
+  "test/native-tunnel-attestor.test.mjs",
+  "test/native-owner-session-provider-windows.test.mjs",
+  "test/v101-g1-loopback-runtime.test.mjs",
+  "test/v2-private-tunnel-mtls-attestor.test.mjs",
+  "test/v2-private-tunnel-https-gateway.test.mjs"
 ];
 
-const batches = [files.slice(0, 5), files.slice(5, 9), files.slice(9)];
+const batches = [
+  files.slice(0, 5),
+  files.slice(5, 9),
+  files.slice(9, 10), // WorkflowStore: separate bounded DB/process regression
+  files.slice(10, 13),
+  files.slice(13)
+];
+if(batches.flat().length!==files.length
+  ||new Set(batches.flat()).size!==files.length
+  ||batches.some(batch=>batch.length===0))
+  throw new Error('V012_SOURCE_REGRESSION_COVERAGE_INVALID');
 for (let index = 0; index < batches.length; index++) {
   const batch = batches[index];
   if (!batch.length) continue;

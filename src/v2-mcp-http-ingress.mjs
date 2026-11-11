@@ -96,14 +96,15 @@ export function createV2CandidateHttpIngress({
       const attested=await attestTransport(req);
       // Distinct allowed transport modes:
       // 1. Native owner has already established a trusted session binding.
-      // 2. Direct mTLS verified ChatGPT's official client CA + SAN + EKU,
+      // 2. Direct OpenAI mTLS or owner-pinned private tunnel-client mTLS
+      //    with fresh native tunnel process verification.'s official client CA + SAN + EKU,
       //    allowing its documented tool-call metadata to name the namespace.
       const known=record(attested)&&attested.authenticated===true
         &&attested.sessionSource!=='openai/session'
         &&typeof attested.sessionHandle==='string'
         &&SESSION.test(attested.sessionHandle);
       const trustedMeta=record(attested)&&attested.authenticated===true
-        &&attested.peerType==='openai-chatgpt-mtls'
+        &&['openai-chatgpt-mtls','openai-tunnel-client-mtls'].includes(attested.peerType)
         &&attested.sessionSource==='openai/session';
       if(!known&&!trustedMeta){
         json(res,403,{error:'trusted_transport_required'});return;

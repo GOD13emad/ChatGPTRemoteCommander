@@ -23,7 +23,8 @@ function exactRecord(value,fields,code){
 
 /**
  * In-process capability for the exact transport proof created by the trusted
- * V2 HTTP ingress after successful OpenAI mTLS verification. A JSON clone,
+ * V2 HTTP ingress after direct OpenAI mTLS or pinned private tunnel-client
+ * mTLS and native process verification. A JSON clone,
  * model argument, request header or caller-created object cannot reproduce
  * WeakMap identity. Consumption is one-shot.
  */
@@ -34,7 +35,7 @@ export function createV2PlatformSessionProofAuthority(){
     const record=exactRecord(value,
       ['peerType','sessionSource','sessionHandle','tokenSha256'],
       'V2_PLATFORM_SESSION_PROOF_INVALID');
-    if(record.peerType!=='openai-chatgpt-mtls'
+    if(!['openai-chatgpt-mtls','openai-tunnel-client-mtls'].includes(record.peerType)
       ||record.sessionSource!=='openai/session'
       ||typeof record.sessionHandle!=='string'
       ||!SESSION.test(record.sessionHandle)
