@@ -745,3 +745,47 @@ test('V012 source regression retains every pinned test exactly once with bounded
   assert.ok(runner.includes('timeout: 30000'),'no extension of the per-process timeout');
   assert.ok(runner.includes('result.signal || result.status !== 0'),'nonzero tests fail closed');
 });
+
+
+test('Linux qualification preserves a pinned user-local Node PATH instead of launching a login shell',{
+  skip:process.platform!=='linux'
+},()=>{
+  const temp=fs.mkdtempSync(path.join(os.tmpdir(),'rc-v012-qualification-path-'));
+  try{
+    for(const dir of ['tools','test','bin'])fs.mkdirSync(path.join(temp,dir));
+    fs.copyFileSync(path.join(root,'tools/run-bounded-test-script.mjs'),
+      path.join(temp,'tools/run-bounded-test-script.mjs'));
+    fs.writeFileSync(path.join(temp,'package.json'),JSON.stringify({
+      type:'module',scripts:{
+        test:'node --test test/fixture-a.test.mjs && node --test test/fixture-b.test.mjs'
+      }
+    }));
+    for(const name of ['fixture-a','fixture-b']){
+      fs.writeFileSync(path.join(temp,'test',name+'.test.mjs'),
+        "import test from 'node:test';\ntest('fixture',()=>{});\n");
+    }
+    const marker=path.join(temp,'node-invocations');
+    const shim=path.join(temp,'bin','node');
+    fs.writeFileSync(shim,[
+      '#!/bin/sh',
+      'printf x >> "$RC_PATCHED_NODE_MARKER"',
+      'exec "$RC_REAL_NODE" "$@"',
+      ''
+    ].join('\n'),{mode:0o755});
+    const out=spawnSync(process.execPath,[
+      path.join(temp,'tools','run-bounded-test-script.mjs'),
+      '--script','test','--concurrency','1'
+    ],{
+      cwd:temp,encoding:'utf8',timeout:20000,
+      env:{...process.env,
+        PATH:path.join(temp,'bin')+path.delimiter+(process.env.PATH??''),
+        RC_PATCHED_NODE_MARKER:marker,RC_REAL_NODE:process.execPath}
+    });
+    assert.equal(out.error,undefined,out.error?.message);
+    assert.equal(out.status,0,(out.stderr??'')+' '+(out.stdout??''));
+    assert.equal(fs.readFileSync(marker,'utf8'),'xx',
+      'both qualification phases must invoke the inherited explicit Node');
+  }finally{
+    fs.rmSync(temp,{recursive:true,force:true});
+  }
+});
