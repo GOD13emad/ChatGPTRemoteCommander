@@ -212,3 +212,26 @@ test('release-sync PR scope includes development-train admission policy and regr
   'test/release-sync-posttag-guard.test.mjs'
  ])assert.ok(pr.includes("      - '"+path+"'"),'missing release-sync PR trigger '+path);
 });
+
+test('v0.12 development QA provenance uses a separate trusted integration-only job and cannot publish Stable',()=>{
+ assert.match(workflow,/branches: \[main, integration\/v012-unsigned-approval-20261110\]/);
+ const qa=workflow.split('  qa-provenance:\n')[1]?.split('\n  publish:\n')[0];
+ assert.ok(qa,'QA attestation job must be independently scoped');
+ assert.match(qa,/if: github\.event_name == 'push' && github\.ref == 'refs\/heads\/integration\/v012-unsigned-approval-20261110'/);
+ assert.match(qa,/needs: \[build-windows-setup, build-linux-bootstrap\]/);
+ for(const field of ['contents: read','id-token: write','attestations: write',
+   "remote-commander-windows-setup","remote-commander-linux-onefile-QA",
+   "test \"$(git rev-parse HEAD)\" = \"$GITHUB_SHA\"",
+   "test \"$version\" = '0.12.0-dev.1'",
+   "test \"$expected\" = \"$actual\"",
+   'actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6',
+   'create-storage-record: false','--source-digest "$GITHUB_SHA"',
+   '--signer-workflow "$GH_REPO/.github/workflows/release-sync.yml"',
+   'V012_QA_GITHUB_ATTESTATION_VERIFIED_NO_PROMOTE'])
+   assert.ok(qa.includes(field),'missing QA attestation safety gate: '+field);
+ const publish=workflow.split('  publish:\n')[1];
+ assert.ok(publish?.includes("if: github.event_name != 'pull_request' && github.ref != 'refs/heads/integration/v012-unsigned-approval-20261110'"),
+   'publishing job must refuse the development integration branch');
+ assert.ok(publish.includes("steps.release_identity.outputs.accepted == 'true'"),
+   'Stable tag-only publication gate must remain intact');
+});
