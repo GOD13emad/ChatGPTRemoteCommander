@@ -10,7 +10,8 @@
   },
   "devDependencies": {
     "electron": "45.3.0",
-    "electron-builder": "26.18.1"
+    "electron-builder": "26.18.1",
+    "playwright-core": "1.65.0"
   },
   "description": "Cross-platform Remote Commander pilot with source-pinned isolated Core",
   "author": "Aliakbar Emadoddin <94546844+GOD13emad@users.noreply.github.com>",

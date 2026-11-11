@@ -40,6 +40,11 @@ jobs:
         run: npm run build:win
       - name: Test exact source, privilege boundaries and embedded runtime
         run: node --test test/unified-packaging.test.mjs test/unified-electron-runtime.test.mjs
+      - name: Real Windows Electron GUI and restricted Core Start/Stop
+        if: runner.os == 'Windows'
+        env:
+          RC_TEST_PACKAGED_GUI: '1'
+        run: node --test test/unified-electron-gui.test.mjs
       - name: Artifact fingerprint (Linux)
         if: runner.os == 'Linux'
         run: sha256sum dist/unified/*.deb
