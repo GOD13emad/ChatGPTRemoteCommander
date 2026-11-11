@@ -46,11 +46,11 @@ export function parseMainTunnelBinding(yaml){
   let url;
   try{url=new URL(targets[0]);}catch{return null;}
   const port=Number(url.port);
-  if(url.protocol!=='http:'||url.hostname!=='127.0.0.1'
+  if(!['http:','https:'].includes(url.protocol)||url.hostname!=='127.0.0.1'
     ||url.pathname!=='/mcp'||url.search||url.hash
     ||url.username||url.password||!Number.isSafeInteger(port)
     ||port<1024||port>65535)return null;
-  return Object.freeze({port,channel:'main',path:'/mcp'});
+  return Object.freeze({port,channel:'main',path:'/mcp',tls:url.protocol==='https:'});
 }
 function readOwnerTunnelBinding(){
   const appData=process.env.APPDATA;
@@ -62,7 +62,7 @@ function readOwnerTunnelBinding(){
     if(!stat.isFile()||stat.isSymbolicLink()||stat.size>16384)
       return {profilePresent:true,valid:false};
     const binding=parseMainTunnelBinding(fs.readFileSync(file,'utf8'));
-    return {profilePresent:true,valid:!!binding,port:binding?.port??null};
+    return {profilePresent:true,valid:!!binding,port:binding?.port??null,tls:binding?.tls??false};
   }catch(error){
     if(error?.code==='ENOENT')return {profilePresent:false,valid:false};
     return {profilePresent:true,valid:false};
@@ -140,6 +140,7 @@ export function assessMigration(facts){
     platform:facts.platform,existingInstalled:oldPresent,
     ownerTunnelProfileDetected:facts.tunnelProfilePresent===true,
     ownerTunnelTargetPort:facts.tunnelProfileValid===true?facts.tunnelTargetPort??null:null,
+    ownerTunnelHttpsConfigured:facts.tunnelProfileValid===true&&facts.tunnelTargetTls===true,
     ownerTunnelTargetRuntimeVersion:facts.tunnelProfileValid===true?facts.tunnelTargetVersion??null:null,
     activeCoreUnits:units.filter(u=>u.kind==='core'&&u.active).length,
     activeTunnelUnits:units.filter(u=>u.kind==='tunnel'&&u.active).length,
@@ -199,7 +200,8 @@ function windowsFacts(){
   return {platform:'win32',legacyInnoPresent:checks.some(c=>c.ok),
     inventoryReliable:!bad&&checks.length===3,
     tunnelProfilePresent:tunnel.profilePresent,tunnelProfileValid:tunnel.valid,
-    tunnelTargetPort:tunnel.port??null,tunnelTargetVersion:targetVersion,units:[]};
+    tunnelTargetPort:tunnel.port??null,tunnelTargetTls:tunnel.tls===true,
+    tunnelTargetVersion:targetVersion,units:[]};
 }
 export function inspectLocalPlatform(platform=process.platform){
   if(platform==='linux')return linuxFacts();

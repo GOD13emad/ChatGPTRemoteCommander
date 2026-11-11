@@ -77,16 +77,19 @@ test('main tunnel profile binding is loopback-only, exact and credential-redacte
    '      url: "http://127.0.0.1:47831/mcp"'
  ].join('\n');
  const valid=parseMainTunnelBinding(profile);
- assert.deepEqual(valid,{port:47831,channel:'main',path:'/mcp'});
+ assert.deepEqual(valid,{port:47831,channel:'main',path:'/mcp',tls:false});
  assert.doesNotMatch(JSON.stringify(valid),/secret|tunnel_abc|api_key/i);
  for(const target of [
    'http://127.0.0.1:47831/mcp?token=bad',
    'http://127.0.0.1:47831/other',
    'http://127.0.0.1:47831@mcp.evil.example/mcp',
-   'https://127.0.0.1:47831/mcp','http://localhost:47831/mcp',
+   'http://localhost:47831/mcp',
    'http://127.0.0.2:47831/mcp','http://127.0.0.1:80/mcp'
  ])assert.equal(parseMainTunnelBinding(profile.replace(
    'http://127.0.0.1:47831/mcp',target)),null,target);
+ assert.deepEqual(parseMainTunnelBinding(profile.replace(
+   'http://127.0.0.1:47831/mcp','https://127.0.0.1:49912/mcp')),
+   {port:49912,channel:'main',path:'/mcp',tls:true});
  assert.equal(parseMainTunnelBinding(profile+'\n    - channel: main\n      url: "http://127.0.0.1:49912/mcp"'),null);
  assert.equal(parseMainTunnelBinding('mcp:\n  server_urls:\n    - channel: main\n      url: "http://127.0.0.1:47831/mcp"\n'.repeat(400)),null);
 });
@@ -100,12 +103,14 @@ test('Windows tunnel target on old Core is explicit NoPromote even if other gate
    signedUpdateRollbackAccepted:true,installedCanaryAccepted:true};
  const old=assessMigration(base);
  assert.equal(old.ownerTunnelTargetPort,47831);
+ assert.equal(old.ownerTunnelHttpsConfigured,false);
  assert.equal(old.ownerTunnelTargetRuntimeVersion,'0.11.0-dev.23');
  assert.ok(old.blocked.includes('OWNER_TUNNEL_STILL_TARGETS_LEGACY_OR_UNKNOWN_CORE'));
  const unknown=assessMigration({...base,tunnelProfileValid:false});
  assert.ok(unknown.blocked.includes('OWNER_TUNNEL_MAIN_BINDING_UNVERIFIED'));
  assert.equal(unknown.ownerTunnelTargetPort,null);
- const latest=assessMigration({...base,tunnelTargetVersion:'0.12.0-dev.1'});
+ const latest=assessMigration({...base,tunnelTargetVersion:'0.12.0-dev.1',tunnelTargetTls:true});
+ assert.equal(latest.ownerTunnelHttpsConfigured,true);
  assert.ok(!latest.blocked.includes('OWNER_TUNNEL_STILL_TARGETS_LEGACY_OR_UNKNOWN_CORE'));
  assert.equal(latest.decision,'NO_PROMOTE');
  assert.ok(latest.blocked.includes('LEGACY_INNO_TO_NSIS_TRANSACTION_MISSING'));
