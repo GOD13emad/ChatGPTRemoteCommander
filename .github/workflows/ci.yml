@@ -42,6 +42,7 @@ jobs:
         run: |
           # Limit index updates to signed Ubuntu sources; unrelated vendor feeds can return 403.
           test -f /etc/apt/sources.list.d/ubuntu.sources
+          bash tools/ci-ubuntu-apt-dns-recover.sh
           sudo apt-get update \
             -o Dir::Etc::sourcelist=sources.list.d/ubuntu.sources \
             -o Dir::Etc::sourceparts=-
