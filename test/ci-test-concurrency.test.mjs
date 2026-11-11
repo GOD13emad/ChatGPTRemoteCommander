@@ -710,3 +710,38 @@ test('Windows startup-sensitive HTTP fixtures stay exact, early, and individuall
   assert.ok(read('tools/run-bounded-test-script.mjs').includes(
     'command=isolateWindowsStartupReadinessRegressions(command);'));
 });
+
+
+test('V1-01 identity lifecycle runs cold exactly once before the loaded source acceptance batch',()=>{
+  const script=JSON.parse(read('package.json')).scripts['test:v1-01-worker-grants'];
+  const target='test/v101-worker-identity-grant-adapter.test.mjs';
+  const parts=script.split(' && ');
+  const exact='node --test '+target;
+  assert.equal(parts.filter(part=>part===exact).length,1,
+    'the lifecycle fixture must have one independent Node test process');
+  assert.equal(parts.filter(part=>part.startsWith('node --test ')&&part.includes(' '+target)&&part!==exact).length,0,
+    'the loaded batch must not execute the fixture a second time');
+  const coldIndex=parts.indexOf(exact);
+  const bulkIndex=parts.findIndex(part=>part.startsWith('node --test ')&&part.includes('test/workflow-store.test.mjs'));
+  assert.ok(coldIndex>=0&&bulkIndex>coldIndex,
+    'lifecycle enrollment must be isolated before the large SQLite/worker batch');
+  assert.ok(parts[bulkIndex].includes('test/worker-identity-authority.test.mjs'),
+    'other worker authorization tests must retain their full coverage');
+  assert.ok(parts[bulkIndex].includes('test/v101-owner-bound-router-bridge.test.mjs'),
+    'native owner bridge authorization coverage must remain included');
+});
+
+
+test('V012 source regression retains every pinned test exactly once with bounded Windows phases',()=>{
+  const runner=read('tools/run-v012-source-regression.mjs');
+  const files=[...runner.matchAll(/^\s+"(test\/[^"]+\.mjs)",?$/gm)].map(match=>match[1]);
+  const ranges=[...runner.matchAll(/files\.slice\((\d+),\s*(\d+)\)/g)]
+    .map(match=>[Number(match[1]),Number(match[2])]);
+  const scheduled=ranges.flatMap(([from,to])=>files.slice(from,to));
+  assert.equal(files.length,17,'the complete source QA list is unchanged');
+  assert.equal(new Set(files).size,files.length,'no duplicate source fixture');
+  assert.ok(ranges.length>=6,'native Windows fixture groups must remain bounded');
+  assert.deepEqual(scheduled,files,'each fixture must execute exactly once and in original order');
+  assert.ok(runner.includes('timeout: 30000'),'no extension of the per-process timeout');
+  assert.ok(runner.includes('result.signal || result.status !== 0'),'nonzero tests fail closed');
+});
