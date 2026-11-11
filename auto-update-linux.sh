@@ -887,6 +887,25 @@ build_cfg(){
   node "${args[@]}"
 }
 
+# A FULL_POWER/FULL_ACCESS development candidate necessarily quarantines legacy
+# unauthenticated MCP. Do not demand anonymous tools/list from Doctor and label
+# its 403 response a crash. Negative-only NoPromote is NOT authorization.
+qualify_candidate_dispatch(){
+  local cfg="$1" tier power trust
+  tier="$(json_field "$STAGE_DIR" "$cfg" capabilityProfile.tier)"
+  power="$(json_field "$STAGE_DIR" "$cfg" powerMode.enabled)"
+  trust="$(json_field "$STAGE_DIR" "$cfg" requireTrustedIngress)"
+  if [[ "$NO_PROMOTE" == 1 && (
+      "$tier" == FULL_POWER || "$tier" == FULL_ACCESS ||
+      "$power" == true || "$trust" == true
+     ) ]]; then
+    node "$STAGE_DIR/tools/qa-v012-no-promote-ingress.mjs" "--port=$PORT"
+    log 'V012_NOPROMOTE_PROTECTED_NEGATIVE_ONLY_PASS G1_J01_POSITIVE_UNPROVED'
+  else
+    node "$STAGE_DIR/tools/doctor.mjs" --url "http://127.0.0.1:$PORT/mcp" --expected-version "$VERSION" --config "$cfg" --json
+    node "$STAGE_DIR/tools/hardware-selftest.mjs" --url "http://127.0.0.1:$PORT/mcp" --config "$cfg" --expected-version "$VERSION"
+  fi
+}
 DIAG_CFG="$STATE_DIR/diagnostic-config.json"
 build_cfg "$DIAG_CFG" "$SHADOW_WF" shadow >/dev/null
 # Use the previously installed source as authority when available; during first
@@ -901,8 +920,7 @@ fi
 DIAG_SHA="$(sha256sum "$DIAG_CFG" | awk '{print $1}')"
 CANDIDATE_PID="$(start_backend "$STAGE_DIR" "$DIAG_CFG" "$STATE_DIR/diagnostic.log")"
 wait_health "$PORT" "$VERSION" "$DIAG_SHA" default || { stop_pid "$CANDIDATE_PID"; echo 'diagnostic health failed' >&2; exit 1; }
-node "$STAGE_DIR/tools/doctor.mjs" --url "http://127.0.0.1:$PORT/mcp" --expected-version "$VERSION" --config "$DIAG_CFG" --json
-node "$STAGE_DIR/tools/hardware-selftest.mjs" --url "http://127.0.0.1:$PORT/mcp" --config "$DIAG_CFG" --expected-version "$VERSION"
+qualify_candidate_dispatch "$DIAG_CFG"
 stop_owned_candidate "$CANDIDATE_PID" "$STAGE_DIR"
 CANDIDATE_PID=""
 
@@ -915,8 +933,7 @@ fi
 FINAL_SHA="$(sha256sum "$FINAL_CFG" | awk '{print $1}')"
 CANDIDATE_PID="$(start_backend "$STAGE_DIR" "$FINAL_CFG" "$STATE_DIR/server.log")"
 wait_health "$PORT" "$VERSION" "$FINAL_SHA" default || { stop_pid "$CANDIDATE_PID"; echo 'final candidate health failed' >&2; exit 1; }
-node "$STAGE_DIR/tools/doctor.mjs" --url "http://127.0.0.1:$PORT/mcp" --expected-version "$VERSION" --config "$FINAL_CFG" --json
-node "$STAGE_DIR/tools/hardware-selftest.mjs" --url "http://127.0.0.1:$PORT/mcp" --config "$FINAL_CFG" --expected-version "$VERSION"
+qualify_candidate_dispatch "$FINAL_CFG"
 
 if [[ "$NO_PROMOTE" == 1 ]]; then stop_owned_candidate "$CANDIDATE_PID" "$STAGE_DIR"; CANDIDATE_PID=""; trap - ERR; log 'AUTO_UPDATE_CANDIDATE_PASS'; exit 0; fi
 
