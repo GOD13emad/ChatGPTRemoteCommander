@@ -61,37 +61,133 @@ function validateCore(coreDir){
   if(pkg.version!=='0.12.0-dev.1')throw Error('UNIFIED_SOURCE_VERSION_MISMATCH');
   return m;
 }
+// Preview runtime data are bounded and isolated from production profiles.
+// Upgrade only validated Core source, with one retained rollback slot.
+const MAX_PREVIEW_RUNTIME_BYTES=4*1024*1024;
+const MAX_PREVIEW_CORE_BYTES=48*1024*1024;
+function boundedCoreBytes(dir,manifest){
+  let bytes=0;
+  for(const rel of Object.keys(manifest.files)){
+    bytes+=fs.lstatSync(path.join(dir,...rel.split('/'))).size;
+    if(bytes>MAX_PREVIEW_CORE_BYTES)throw Error('UNIFIED_PREVIEW_CORE_TOO_LARGE_FOR_AUTOMATIC_COPY');
+  }
+  return bytes;
+}
+function ownedCore(dir){
+  const manifest=validateCore(dir);
+  boundedCoreBytes(dir,manifest);
+  const marker=JSON.parse(fs.readFileSync(path.join(dir,'.unified-source.json'),'utf8'));
+  if(marker.head!==manifest.head || marker.tree!==manifest.tree)
+    throw Error('UNIFIED_CORE_MARKER_MISMATCH');
+  return manifest;
+}
+function boundedPreviewRuntime(oldCore){
+  const root=path.join(oldCore,'var');
+  if(!fs.existsSync(root))return null;
+  let bytes=0;
+  function measure(dir){
+    expectDirectory(dir);
+    for(const entry of fs.readdirSync(dir,{withFileTypes:true})){
+      const at=path.join(dir,entry.name);
+      if(entry.isSymbolicLink())throw Error('UNIFIED_RUNTIME_SYMLINK_REFUSED');
+      if(entry.isDirectory())measure(at);
+      else if(entry.isFile()){
+        const size=fs.lstatSync(at).size;
+        bytes+=size;
+        if(bytes>MAX_PREVIEW_RUNTIME_BYTES)
+          throw Error('UNIFIED_RUNTIME_DATA_TOO_LARGE_FOR_AUTOMATIC_UPGRADE');
+      }else throw Error('UNIFIED_RUNTIME_SPECIAL_FILE_REFUSED');
+    }
+  }
+  measure(root);
+  return root;
+}
+function recoverPreviewSlots(target,rollback,retired,incoming){
+  const exists=p=>fs.existsSync(p);
+  if(exists(retired)){
+    ownedCore(retired);
+    if(exists(target)&&exists(rollback)){
+      ownedCore(target);ownedCore(rollback);
+      fs.rmSync(retired,{recursive:true,force:false});
+    }else if(exists(target)&&!exists(rollback)){
+      ownedCore(target);
+      fs.renameSync(retired,rollback);
+    }else if(!exists(target)&&exists(rollback)){
+      ownedCore(rollback);
+      fs.renameSync(rollback,target);
+      fs.renameSync(retired,rollback);
+    }else throw Error('UNIFIED_UPGRADE_RECOVERY_AMBIGUOUS');
+  }
+  if(!exists(target)&&exists(rollback)){
+    ownedCore(rollback);
+    fs.renameSync(rollback,target);
+  }
+  if(exists(incoming)){
+    ownedCore(incoming);
+    fs.rmSync(incoming,{recursive:true,force:false});
+  }
+}
 function preparePreviewCore(source,userData){
   safeTree(source);
   const manifest=validateCore(source);
+  boundedCoreBytes(source,manifest);
   fs.mkdirSync(userData,{recursive:true,mode:0o700});
   expectDirectory(userData);
   const parent=path.join(userData,'runtime');
   fs.mkdirSync(parent,{recursive:true,mode:0o700});
   expectDirectory(parent);
   const target=path.join(parent,'core');
-  const marker=path.join(target,'.unified-source.json');
-  if(fs.existsSync(target)){
-    expectDirectory(target);
-    const old=JSON.parse(fs.readFileSync(marker,'utf8'));
-    if(old.head!==manifest.head||old.tree!==manifest.tree)
-      throw Error('UNIFIED_CORE_DIFFERENT_SOURCE_REQUIRES_CONTROLLED_UPGRADE');
-    validateCore(target);
-    return {target,head:manifest.head,existing:true};
-  }
-  const tmp=path.join(parent,'.core-incoming-'+process.pid);
-  if(fs.existsSync(tmp))throw Error('UNIFIED_STAGING_ALREADY_EXISTS');
+  const rollback=path.join(parent,'core.rollback');
+  const retired=path.join(parent,'.core-rollback-retired');
+  const incoming=path.join(parent,'.core-incoming');
+  recoverPreviewSlots(target,rollback,retired,incoming);
+  const previous=fs.existsSync(target)?ownedCore(target):null;
+  if(previous && previous.head===manifest.head && previous.tree===manifest.tree)
+    return {target,head:manifest.head,existing:true,upgraded:false};
+  // Preserve the existing tree and runtime data until a complete replacement
+  // is validated. These are small preview fixtures, not live owner profiles.
+  const oldRuntime=previous?boundedPreviewRuntime(target):null;
+  if(fs.existsSync(rollback))ownedCore(rollback);
   try{
-    fs.cpSync(source,tmp,{recursive:true,force:false,errorOnExist:true});
-    fs.writeFileSync(path.join(tmp,'.unified-source.json'),
+    fs.cpSync(source,incoming,{recursive:true,force:false,errorOnExist:true});
+    fs.writeFileSync(path.join(incoming,'.unified-source.json'),
       JSON.stringify({head:manifest.head,tree:manifest.tree})+'\n',{flag:'wx',mode:0o600});
-    validateCore(tmp);
-    fs.renameSync(tmp,target);
-    return {target,head:manifest.head,existing:false};
+    if(oldRuntime)fs.cpSync(oldRuntime,path.join(incoming,'var'),
+      {recursive:true,force:false,errorOnExist:true});
+    ownedCore(incoming);
   }catch(e){
-    if(fs.existsSync(tmp))fs.rmSync(tmp,{recursive:true,force:true});
+    if(fs.existsSync(incoming))fs.rmSync(incoming,{recursive:true,force:true});
     throw e;
   }
+  if(!previous){
+    fs.renameSync(incoming,target);
+    return {target,head:manifest.head,existing:false,upgraded:false};
+  }
+  let archivedRollback=false,archivedCurrent=false;
+  try{
+    if(fs.existsSync(rollback)){
+      fs.renameSync(rollback,retired);
+      archivedRollback=true;
+    }
+    fs.renameSync(target,rollback);
+    archivedCurrent=true;
+    fs.renameSync(incoming,target);
+  }catch(e){
+    // A failed rename must never strand the old valid current Core.
+    if(archivedCurrent && !fs.existsSync(target) && fs.existsSync(rollback))
+      fs.renameSync(rollback,target);
+    if(archivedRollback && !fs.existsSync(rollback) && fs.existsSync(retired))
+      fs.renameSync(retired,rollback);
+    if(fs.existsSync(incoming))ownedCore(incoming);
+    throw e;
+  }
+  let cleanupPending=false;
+  if(archivedRollback){
+    try{ownedCore(retired);fs.rmSync(retired,{recursive:true,force:false});}
+    catch{cleanupPending=true;}
+  }
+  return {target,head:manifest.head,existing:false,upgraded:true,
+    previousHead:previous.head,rollbackRetained:true,cleanupPending};
 }
 function previewConfig(coreDir,userData,port){
   if(!Number.isInteger(port)||port<1024||port>65535)throw Error('UNIFIED_PREVIEW_PORT');

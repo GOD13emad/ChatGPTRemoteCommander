@@ -108,3 +108,57 @@ test('preview rejects paths outside controlled port range',()=>{
  try{assert.throws(()=>previewConfig(resource,dir,0),/UNIFIED_PREVIEW_PORT/);}
  finally{fs.rmSync(dir,{recursive:true,force:true});}
 });
+
+function makeUpgradeFixture(from,to,head,tree){
+  fs.cpSync(from,to,{recursive:true,force:false,errorOnExist:true});
+  const cfg=path.join(to,'config.json');
+  fs.appendFileSync(cfg,'\n');
+  const marker=path.join(to,'source-manifest.json');
+  const m=JSON.parse(fs.readFileSync(marker,'utf8'));
+  m.head=head;m.tree=tree;m.files['config.json']=sha(cfg);
+  fs.writeFileSync(marker,JSON.stringify(m,null,2)+'\n');
+  assert.equal(validateCore(to).head,head);
+}
+test('preview upgrade is atomic, retains bounded runtime data and only one previous Core',()=>{
+  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'rc-unified-upgrade-'));
+  try{
+    const source2=path.join(dir,'source-2'),source3=path.join(dir,'source-3');
+    const data=path.join(dir,'user');
+    makeUpgradeFixture(resource,source2,'1'.repeat(40),'2'.repeat(40));
+    makeUpgradeFixture(source2,source3,'3'.repeat(40),'4'.repeat(40));
+    const first=preparePreviewCore(resource,data);
+    const previous=validateCore(first.target);
+    const varDir=path.join(first.target,'var');
+    fs.mkdirSync(varDir,{recursive:true});
+    fs.writeFileSync(path.join(varDir,'owner-preview-state.json'),JSON.stringify({preserved:true}));
+    const second=preparePreviewCore(source2,data);
+    assert.equal(second.upgraded,true);
+    assert.equal(second.previousHead,previous.head);
+    assert.equal(validateCore(second.target).head,'1'.repeat(40));
+    assert.equal(validateCore(path.join(data,'runtime','core.rollback')).head,previous.head);
+    assert.deepEqual(JSON.parse(fs.readFileSync(path.join(second.target,'var','owner-preview-state.json'),'utf8')),{preserved:true});
+    const third=preparePreviewCore(source3,data);
+    assert.equal(third.upgraded,true);
+    assert.equal(validateCore(third.target).head,'3'.repeat(40));
+    assert.equal(validateCore(path.join(data,'runtime','core.rollback')).head,'1'.repeat(40));
+    assert.ok(!fs.existsSync(path.join(data,'runtime','.core-rollback-retired')));
+    assert.ok(!fs.existsSync(path.join(data,'runtime','.core-incoming')));
+    assert.equal(preparePreviewCore(source3,data).existing,true);
+    assert.equal(validateCore(resource).head,previous.head);
+  }finally{fs.rmSync(dir,{recursive:true,force:true});}
+});
+test('preview upgrade refuses oversized runtime data without replacing current Core',()=>{
+  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'rc-unified-upgrade-limit-'));
+  try{
+    const source2=path.join(dir,'source-2'),data=path.join(dir,'user');
+    makeUpgradeFixture(resource,source2,'5'.repeat(40),'6'.repeat(40));
+    const first=preparePreviewCore(resource,data);
+    const old=validateCore(first.target);
+    const varDir=path.join(first.target,'var');
+    fs.mkdirSync(varDir,{recursive:true});
+    fs.writeFileSync(path.join(varDir,'too-large.bin'),Buffer.alloc(4*1024*1024+1));
+    assert.throws(()=>preparePreviewCore(source2,data),/UNIFIED_RUNTIME_DATA_TOO_LARGE_FOR_AUTOMATIC_UPGRADE/);
+    assert.equal(validateCore(first.target).head,old.head);
+    assert.ok(!fs.existsSync(path.join(data,'runtime','core.rollback')));
+  }finally{fs.rmSync(dir,{recursive:true,force:true});}
+});
