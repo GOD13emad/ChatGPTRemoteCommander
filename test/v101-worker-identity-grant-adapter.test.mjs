@@ -22,6 +22,8 @@ const TUNNEL_ID='d'.repeat(64);
 const POLICY='e'.repeat(64);
 const WORKER_TOOLS=['worker.register','read_text','worker.revoke'];
 
+// Use generous synthetic grant lifetimes because WorkflowStore checks the real wall clock
+// while the surrounding grant/identity fixtures use an injected clock under loaded CI.
 function fixture(){
   const root=fs.mkdtempSync(path.join(os.tmpdir(),'v101-v107-worker-adapter-'));
   const state={
@@ -50,21 +52,21 @@ function fixture(){
     now:()=>state.now,
     verifyAccessToken:async token=>token===state.token?{
       issuer:ISSUER,audience:AUDIENCE,subject:'qa-subject',
-      notBeforeMs:state.now-1000,expiresAtMs:state.now+120_000,
+      notBeforeMs:state.now-1000,expiresAtMs:state.now+600_000,
       scopes:['commander.workflow']
     }:null,
     resolvePrincipal:async subject=>subject==='qa-subject'?'qa-principal':null,
     resolveAttestedTokenBinding:async digest=>digest===tokenHash?{
       source:'native-owner-attested',tokenSha256:tokenHash,
       sessionHandle:'qa-chat',bindingId:state.bindingId,ownerSidHash:state.ownerSidHash,
-      expiresAtMs:state.now+120_000
+      expiresAtMs:state.now+600_000
     }:null,
     nativeSessionBindings:{
       resolveNativeRoute:async session=>session==='qa-chat'?state.route:null,
       resolveNativeOwnerContext:async session=>session==='qa-chat'?{
         source:'native-owner-attested',hostId:'qa-host',profileId:'qa-profile',
         principalId:'qa-principal',conversationId:'qa-chat',bindingId:state.bindingId,
-        ownerSidHash:state.ownerSidHash,expiresAtMs:state.now+120_000
+        ownerSidHash:state.ownerSidHash,expiresAtMs:state.now+600_000
       }:null
     },
     grantRegistry:registry,
@@ -83,13 +85,13 @@ function fixture(){
     resolveDeviceIdentity:async()=>({
       source:'native-device-attestor',provider:'native-key-store',
       deviceIdHash:DEVICE_ID,ownerSidHash:OWNER_SID,verified:true,
-      attestedAtMs:state.now-1000,expiresAtMs:state.now+120_000
+      attestedAtMs:state.now-1000,expiresAtMs:state.now+600_000
     }),
     resolveTransportIdentity:async()=>({
       source:'native-tunnel-attestor',provider:'openai-secure-mcp-tunnel',
       profileId:'qa-profile',tunnelIdHash:TUNNEL_ID,ownerSidHash:OWNER_SID,
       authenticated:true,controlPlanePollOk:true,healthzStatus:200,readyzStatus:200,
-      lastPollAtMs:state.now-1000,expiresAtMs:state.now+60_000
+      lastPollAtMs:state.now-1000,expiresAtMs:state.now+600_000
     }),
     resolveCapabilityPolicyDigest:async()=>POLICY,
     authorizeExactInvocation:adapter.authorizeExactInvocation,
@@ -102,7 +104,7 @@ function fixture(){
       actor:'qa-owner',reason:'owner approved worker action'
     });
   }
-  async function addWorkerGrants(context,tools=WORKER_TOOLS,expiresAtMs=state.now+110_000){
+  async function addWorkerGrants(context,tools=WORKER_TOOLS,expiresAtMs=state.now+540_000){
     for(const tool of tools)await registry.changeWorkerToolGrant({
       route:state.route,workerContext:context,tool,status:'ENABLED',
       expectedRevision:0,actor:'qa-owner',reason:'owner approved exact worker tool',
@@ -139,7 +141,7 @@ test('V1-07 enrollment, exact action, grant revision and revocation compose with
     await f.registry.changeWorkerGrant({
       workerContext:identity.context,status:'ACTIVE',expectedRevision:0,
       actor:'qa-owner',reason:'owner approved worker identity',
-      expiresAtMs:f.state.now+110_000
+      expiresAtMs:f.state.now+540_000
     });
     await f.addBaseGrants();
     await f.addWorkerGrants(identity.context);
@@ -184,7 +186,7 @@ test('V1-01 grant adapter binds worker identity to the independently native owne
       await f.registry.changeWorkerGrant({
         workerContext:identity.context,status:'ACTIVE',expectedRevision:0,
         actor:'qa-owner',reason:'owner approved worker identity',
-        expiresAtMs:f.state.now+110_000
+        expiresAtMs:f.state.now+540_000
       });
       f.state.ownerSidHash='f'.repeat(64);
       assert.equal(await f.adapter.resolveOwnerGrant({
@@ -192,7 +194,7 @@ test('V1-01 grant adapter binds worker identity to the independently native owne
         hostId:identity.context.hostId,profileId:identity.context.profileId,
         principalId:identity.context.principalId,conversationId:identity.context.conversationId,
         bindingId:identity.context.bindingId,ownerSidHash:identity.context.ownerSidHash,
-        expiresAtMs:f.state.now+120_000,...identity.context
+        expiresAtMs:f.state.now+600_000,...identity.context
       }),null);
     }finally{f.close();}
   });
@@ -203,7 +205,7 @@ test('V1-01 grant adapter binds worker identity to the independently native owne
       await f.registry.changeWorkerGrant({
         workerContext:identity.context,status:'ACTIVE',expectedRevision:0,
         actor:'qa-owner',reason:'owner approved worker identity',
-        expiresAtMs:f.state.now+110_000
+        expiresAtMs:f.state.now+540_000
       });
       await f.addBaseGrants();await f.addWorkerGrants(identity.context);
       f.state.ownerAuthorization=async()=>{
@@ -227,7 +229,7 @@ test('V1-01 denies worker calls when the exact worker grant, base route grant, o
     await f.registry.changeWorkerGrant({
       workerContext:identity.context,status:'ACTIVE',expectedRevision:0,
       actor:'qa-owner',reason:'owner approved worker identity',
-      expiresAtMs:f.state.now+110_000
+      expiresAtMs:f.state.now+540_000
     });
     await f.addBaseGrants();await f.addWorkerGrants(identity.context);
     await f.authority.registerWorker({privateKey:identity.pair.privateKey});
@@ -248,7 +250,7 @@ test('V1-01 denies worker calls when the exact worker grant, base route grant, o
       await fresh.registry.changeWorkerGrant({
         workerContext:id.context,status:'ACTIVE',expectedRevision:0,
         actor:'qa-owner',reason:'owner approved worker identity',
-        expiresAtMs:fresh.state.now+110_000
+        expiresAtMs:fresh.state.now+540_000
       });
       await fresh.addBaseGrants();await fresh.addWorkerGrants(id.context);
       await fresh.authority.registerWorker({privateKey:id.pair.privateKey});
@@ -267,7 +269,7 @@ test('V1-01 owner binding rotation invalidates the old signed worker epoch and o
     await f.registry.changeWorkerGrant({
       workerContext:identity.context,status:'ACTIVE',expectedRevision:0,
       actor:'qa-owner',reason:'owner approved worker identity',
-      expiresAtMs:f.state.now+110_000
+      expiresAtMs:f.state.now+540_000
     });
     await f.addBaseGrants();await f.addWorkerGrants(identity.context);
     await f.authority.registerWorker({privateKey:identity.pair.privateKey});
