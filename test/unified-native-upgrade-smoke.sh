@@ -27,8 +27,7 @@ if dpkg-query -W -f='${Status}' chatgpt-remote-commander 2>/dev/null | grep -q '
 fi
 command -v xvfb-run >/dev/null || { echo RC012_XVFB_PREFETCH_MISSING >&2; exit 4; }
 dpkg-query -W -f='${Status}\n' libnotify4 libsecret-1-0 2>/dev/null | grep -c '^install ok installed$' | grep -qx 2 || { echo RC012_SIGNED_GUI_DEPENDENCIES_NOT_PREFETCHED >&2; exit 4; }
-sudo apt-get --no-download install -y -qq --no-install-recommends "$OLD" || {
-  # Relative paths below must be evaluated in the repository root.
+sudo dpkg --install "$OLD" || {
   echo RC012_NATIVE_OLD_INSTALL_FAILED >&2; exit 4;
 }
 NATIVE=/usr/lib/chatgpt-remote-commander
@@ -42,7 +41,7 @@ trap 'rm -rf -- "$TMP"' EXIT
 for rel in runtime/node tunnel/native-tunnel-launch.sh tunnel/tunnel-client tunnel/cloudflared; do
   sha256sum "$NATIVE/$rel" | sed "s|$NATIVE/|$TMP/|" >> "$TMP/pre-upgrade-sha256.txt"
 done
-sudo apt-get --no-download install -y -qq --no-install-recommends "$NEW"
+sudo dpkg --install "$NEW"
 test "$(dpkg-query -W -f='${Status}' chatgpt-remote-commander)" = 'install ok installed'
 test "$(dpkg-query -W -f='${Version}' chatgpt-remote-commander)" = "$(dpkg-deb --field "$NEW" Version)"
 for rel in runtime/node tunnel/native-tunnel-launch.sh tunnel/tunnel-client tunnel/cloudflared; do
@@ -55,7 +54,7 @@ test -x '/opt/Remote Commander/remote-commander-unified'
 test "$(stat -c %u '/opt/Remote Commander/chrome-sandbox')" -eq 0
 cd "$ROOT"
 xvfb-run -a env RC_TEST_INSTALLED_GUI=1 node --test test/unified-electron-gui.test.mjs
-sudo apt-get --no-download install -y -qq --allow-downgrades --no-install-recommends "$OLD"
+sudo dpkg --install "$OLD"
 test "$(dpkg-query -W -f='${Version}' chatgpt-remote-commander)" = "$(dpkg-deb --field "$OLD" Version)"
 test -f "$NATIVE/tunnel/native-tunnel-launch.sh"
 test ! -e '/opt/Remote Commander/remote-commander-unified'
