@@ -18,7 +18,17 @@ const files = [
   "test/v101-g1-loopback-runtime.test.mjs"
 ];
 
-const batches = [files.slice(0, 5), files.slice(5, 10), files.slice(10)];
+const batches = [
+  files.slice(0, 5),
+  files.slice(5, 9),
+  files.slice(9, 10), // WorkflowStore: separate bounded DB/process regression
+  files.slice(10, 13),
+  files.slice(13)
+];
+if(batches.flat().length!==files.length
+  ||new Set(batches.flat()).size!==files.length
+  ||batches.some(batch=>batch.length===0))
+  throw new Error('V012_SOURCE_REGRESSION_COVERAGE_INVALID');
 for (let index = 0; index < batches.length; index++) {
   const batch = batches[index];
   if (!batch.length) continue;
