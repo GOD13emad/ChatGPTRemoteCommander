@@ -30,23 +30,22 @@ jobs:
       - name: Install pinned packaging tools
         working-directory: packaging/unified
         run: npm ci --no-audit --no-fund
+      - name: Build pinned native Linux Core, Node and Tunnel DEB
+        if: runner.os == 'Linux'
+        shell: bash
+        run: bash tools/build-native-linux-package.sh
       - name: Build package (Linux)
         if: runner.os == 'Linux'
         working-directory: packaging/unified
         run: npm run build:linux
-      - name: Install native Linux package and test sandboxed GUI on ephemeral runner
+      - name: Merge native Core, Tunnel and GUI into a single DEB
         if: runner.os == 'Linux'
         shell: bash
-        run: |
-          set -euo pipefail
-          deb=(dist/unified/*.deb)
-          test "${#deb[@]}" -eq 1
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq --no-install-recommends xvfb xauth "./${deb[0]}"
-          test "$(dpkg-query -W -f='${Status}' chatgpt-remote-commander)" = 'install ok installed'
-          test -x '/opt/Remote Commander/remote-commander-unified'
-          test "$(stat -c %u '/opt/Remote Commander/chrome-sandbox')" -eq 0
-          xvfb-run -a env RC_TEST_INSTALLED_GUI=1 node --test test/unified-electron-gui.test.mjs
+        run: bash packaging/unified/merge-native-deb.sh
+      - name: Upgrade same-name native package, test GUI, then rollback on disposable Ubuntu
+        if: runner.os == 'Linux'
+        shell: bash
+        run: bash test/unified-native-upgrade-smoke.sh
       - name: Build package (Windows)
         if: runner.os == 'Windows'
         working-directory: packaging/unified
