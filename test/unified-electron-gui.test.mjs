@@ -8,19 +8,23 @@ import {fileURLToPath} from 'node:url';
 
 const here=path.dirname(fileURLToPath(import.meta.url));
 const root=path.resolve(here,'..');
-const exe=path.join(root,'dist','unified','win-unpacked','Remote Commander.exe');
-const enabled=process.platform==='win32' && process.env.RC_TEST_PACKAGED_GUI==='1';
+const exe=process.platform==='linux'
+  ? '/opt/Remote Commander/remote-commander-unified'
+  : path.join(root,'dist','unified','win-unpacked','Remote Commander.exe');
+const enabled=(process.platform==='win32' && process.env.RC_TEST_PACKAGED_GUI==='1')
+  ||(process.platform==='linux' && process.env.RC_TEST_INSTALLED_GUI==='1');
 const require=createRequire(path.join(root,'packaging','unified','package.json'));
 
-test('real Windows GUI: sandboxed renderer and preview Start/Stop, isolated from active Commander',
+test('real packaged GUI: sandboxed renderer and preview Start/Stop, isolated from active Commander',
   {skip:!enabled,timeout:45000},async()=>{
-    assert.ok(fs.existsSync(exe),'built Windows executable is missing');
+    assert.ok(fs.existsSync(exe),'native OS executable is missing');
     const {_electron}=require('playwright-core');
     const isolated=fs.mkdtempSync(path.join(os.tmpdir(),'rc-unified-e2e-'));
+    const launchEnv={...process.env,APPDATA:isolated,XDG_CONFIG_HOME:isolated};
     let app=null;
     try{
       app=await _electron.launch({executablePath:exe,args:[],
-        env:{...process.env,APPDATA:isolated},timeout:25000});
+        env:launchEnv,timeout:25000});
       const page=await app.firstWindow({timeout:20000});
       assert.match(await page.title(),/Remote Commander/);
       await page.waitForFunction(()=>document.querySelector('#status')?.textContent?.includes('stopped'),
