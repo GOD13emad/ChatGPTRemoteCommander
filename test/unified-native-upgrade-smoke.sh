@@ -27,7 +27,7 @@ if dpkg-query -W -f='${Status}' chatgpt-remote-commander 2>/dev/null | grep -q '
 fi
 command -v xvfb-run >/dev/null || { echo RC012_XVFB_PREFETCH_MISSING >&2; exit 4; }
 dpkg-query -W -f='${Status}\n' libnotify4 libsecret-1-0 2>/dev/null | grep -c '^install ok installed$' | grep -qx 2 || { echo RC012_SIGNED_GUI_DEPENDENCIES_NOT_PREFETCHED >&2; exit 4; }
-sudo apt-get --no-download install -y -qq --no-install-recommends "./${OLD#"$ROOT/"}" || {
+sudo apt-get --no-download install -y -qq --no-install-recommends "$OLD" || {
   # Relative paths below must be evaluated in the repository root.
   echo RC012_NATIVE_OLD_INSTALL_FAILED >&2; exit 4;
 }
