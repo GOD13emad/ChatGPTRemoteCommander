@@ -5,7 +5,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { boundNodeTestConcurrency, parseQualificationArgs, prioritizeSensitiveQualificationCommands, isolateWindowsLeaseRegression, isolateWindowsTimingSensitiveRegressions, isolateWindowsProcessTreeRegression, isolateWindowsAgentHttpRegression, isolateWindowsTransferMeshHttpRegression, isolateWindowsWorkflowPlanRegression, isolateWindowsAsyncHttpRegression, isolateWindowsMcpConformanceRegression, isolateWindowsAutotickRegression, isolateWindowsStartupReadinessRegressions, prioritizeWindowsAdaptiveCold, markIsolatedQualificationPhases, splitWindowsQualificationCommands } from '../tools/run-bounded-test-script.mjs';
+import { boundNodeTestConcurrency, parseQualificationArgs, prioritizeSensitiveQualificationCommands, isolateWindowsLeaseRegression, isolateWindowsTimingSensitiveRegressions, isolateWindowsProcessTreeRegression, isolateWindowsAgentHttpRegression, isolateWindowsTransferMeshHttpRegression, isolateWindowsWorkflowPlanRegression, isolateWindowsAsyncHttpRegression, isolateWindowsMcpConformanceRegression, isolateWindowsAutotickRegression, isolateWindowsStartupReadinessRegressions, prioritizeWindowsAdaptiveCold, prioritizeWindowsSourceRegression, markIsolatedQualificationPhases, splitWindowsQualificationCommands } from '../tools/run-bounded-test-script.mjs';
 
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const read=rel=>fs.readFileSync(path.join(root,rel),'utf8');
@@ -732,6 +732,38 @@ test('V1-01 identity lifecycle runs cold exactly once before the loaded source a
 });
 
 
+test('Windows moves complete V012 source regression ahead of loaded fixture batches without duplicate or timeout extension',()=>{
+ const pkg=JSON.parse(read('package.json'));
+ const base=boundNodeTestConcurrency(pkg.scripts.test,1).command;
+ const cold='node --test --test-concurrency=1 test/project-adaptive.test.mjs';
+ const parts=base.split(' && ');
+ const index=parts.findIndex(p=>p.includes('test/project-adaptive.test.mjs'));
+ assert.ok(index>=0);
+ parts[index]=parts[index].replace(' test/project-adaptive.test.mjs','');
+ const prepared=[cold,...parts].join(' && ');
+ const prior=prioritizeWindowsSourceRegression(prepared);
+ const result=prior.split(' && ');
+ assert.equal(result[0],cold);
+ assert.equal(result[1],'node tools/run-v012-source-regression.mjs');
+ assert.equal(result.filter(x=>x.includes('run-v012-source-regression')).length,1);
+ const expected=prepared.split(' && ').filter(p=>p!=='node tools/run-v012-source-regression.mjs');
+ expected.splice(1,0,'node tools/run-v012-source-regression.mjs');
+ assert.deepEqual(result,expected);
+ const prefixed='node --test --test-concurrency=1 test/project-autotick-noncodex.test.mjs && '+prepared;
+ const autostart=prioritizeWindowsSourceRegression(prefixed).split(' && ');
+ assert.deepEqual(autostart.slice(0,3),[
+   'node --test --test-concurrency=1 test/project-autotick-noncodex.test.mjs',
+   cold,'node tools/run-v012-source-regression.mjs'
+ ]);
+ assert.throws(()=>prioritizeWindowsSourceRegression(prepared.replace('node tools/run-v012-source-regression.mjs','')),
+   /CI_SOURCE_REGRESSION_CARDINALITY/);
+ assert.throws(()=>prioritizeWindowsSourceRegression(prepared+' && node tools/run-v012-source-regression.mjs'),
+   /CI_SOURCE_REGRESSION_CARDINALITY/);
+ const runner=read('tools/run-bounded-test-script.mjs');
+ assert.ok(runner.includes('command=prioritizeWindowsSourceRegression(command);'));
+ assert.ok(read('tools/run-v012-source-regression.mjs').includes('timeout: 30000'));
+});
+
 test('V012 source regression retains every pinned test exactly once with bounded Windows phases',()=>{
   const runner=read('tools/run-v012-source-regression.mjs');
   const files=[...runner.matchAll(/^\s+"(test\/[^"]+\.mjs)",?$/gm)].map(match=>match[1]);
@@ -742,6 +774,11 @@ test('V012 source regression retains every pinned test exactly once with bounded
   assert.equal(new Set(files).size,files.length,'no duplicate source fixture');
   assert.ok(ranges.length>=6,'native Windows fixture groups must remain bounded');
   assert.deepEqual(scheduled,files,'each fixture must execute exactly once and in original order');
+  const a=files.indexOf('test/v101-owner-bound-router-bridge.test.mjs');
+  const b=files.indexOf('test/v101-worker-identity-grant-adapter.test.mjs');
+  assert.ok(a>=0&&b>=0);
+  assert.ok(ranges.every(([from,to])=>!(from<=a&&a<to&&from<=b&&b<to)),
+    'native bridge and worker grant must occupy separate Node processes to avoid loaded-host open-handle timeout');
   assert.ok(runner.includes('timeout: 30000'),'no extension of the per-process timeout');
   assert.ok(runner.includes('result.signal || result.status !== 0'),'nonzero tests fail closed');
 });
