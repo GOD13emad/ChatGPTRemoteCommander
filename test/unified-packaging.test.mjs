@@ -20,6 +20,12 @@ test('one installer definition uses Windows NSIS per user and Linux DEB, not old
  assert.match(y,/perMachine: false/);
  assert.match(y,/allowElevation: false/);
  assert.match(y,/target: deb/);
+ assert.match(y,/packageName: chatgpt-remote-commander/);
+ assert.match(y,/include: legacy-inno-guard[.]nsh/);
+ const nsis=fs.readFileSync(path.join(repo,'packaging/unified/legacy-inno-guard.nsh'),'utf8');
+ assert.match(nsis,/!macro customInit/);
+ assert.equal((nsis.match(/Uninstall\\RemoteCommander/g)||[]).length,3);
+ assert.equal((nsis.match(/Abort "RC012_LEGACY_INNO_PRESENT/g)||[]).length,3);
  assert.match(y,/from: .stage\/core/);
 });
 test('immutable packaged source and restricted preview boot',async()=>{

@@ -38,6 +38,10 @@ jobs:
         if: runner.os == 'Windows'
         working-directory: packaging/unified
         run: npm run build:win
+      - name: Reject legacy Inno installation on ephemeral Windows runner
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./test/unified-nsis-migration-guard.ps1
       - name: Test exact source, privilege boundaries and embedded runtime
         run: node --test test/unified-packaging.test.mjs test/unified-electron-runtime.test.mjs
       - name: Real Windows Electron GUI and restricted Core Start/Stop
@@ -45,6 +49,15 @@ jobs:
         env:
           RC_TEST_PACKAGED_GUI: '1'
         run: node --test test/unified-electron-gui.test.mjs
+      - name: Verify Linux package replaces legacy identity
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          deb=(dist/unified/*.deb)
+          test "${#deb[@]}" -eq 1
+          test "$(dpkg-deb --field "${deb[0]}" Package)" = "chatgpt-remote-commander"
+          dpkg --compare-versions "$(dpkg-deb --field "${deb[0]}" Version)" gt "0.12.0~dev1-2"
       - name: Artifact fingerprint (Linux)
         if: runner.os == 'Linux'
         run: sha256sum dist/unified/*.deb

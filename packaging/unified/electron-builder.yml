@@ -17,6 +17,9 @@ win:
   target: nsis
   requestedExecutionLevel: asInvoker
 nsis:
+  # Different installer family from the legacy Inno product. Refuse coexistence
+  # until a validated, owner-authorized transactional migration is available.
+  include: legacy-inno-guard.nsh
   oneClick: true
   perMachine: false
   allowElevation: false
@@ -26,4 +29,8 @@ linux:
   target: deb
   executableName: remote-commander-unified
   artifactName: Remote-Commander-Unified-${version}-Linux-${arch}.${ext}
+deb:
+  # Keep dpkg identity equal to existing package; fail closed on migration until
+  # rollback and owner admission are separately validated.
+  packageName: chatgpt-remote-commander
 publish: null
