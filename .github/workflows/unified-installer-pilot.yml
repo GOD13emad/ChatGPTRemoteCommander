@@ -1,0 +1,119 @@
+name: Unified Installer Pilot (NoPromote)
+on:
+  pull_request:
+    paths:
+      - "packaging/unified/**"
+      - "test/unified-*"
+      - ".github/workflows/unified-installer-pilot.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: unified-pilot-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  package:
+    name: ${{ matrix.os }} — source-pinned installer
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Prepare exact committed Core
+        run: node packaging/unified/prepare.mjs
+      - name: Install pinned packaging tools
+        working-directory: packaging/unified
+        run: npm ci --no-audit --no-fund
+      - name: Prefetch signed Ubuntu GUI dependencies before long packaging build
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f /usr/share/keyrings/ubuntu-archive-keyring.gpg
+          test -n "${RUNNER_TEMP:-}"
+          cat > "$RUNNER_TEMP/rc012-official-ubuntu.sources" <<'SOURCES'
+          Types: deb
+          URIs: https://archive.ubuntu.com/ubuntu
+          Suites: noble noble-updates noble-backports
+          Components: main restricted universe multiverse
+          Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg
+
+          Types: deb
+          URIs: https://security.ubuntu.com/ubuntu
+          Suites: noble-security
+          Components: main restricted universe multiverse
+          Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg
+          SOURCES
+          sudo apt-get -o Dir::Etc::sourcelist="$RUNNER_TEMP/rc012-official-ubuntu.sources" -o Dir::Etc::sourceparts=- -o Acquire::Retries=3 update -qq
+          sudo apt-get -o Dir::Etc::sourcelist="$RUNNER_TEMP/rc012-official-ubuntu.sources" -o Dir::Etc::sourceparts=- -o Acquire::Retries=3 install -y -qq --no-install-recommends xvfb xauth libnotify4 libsecret-1-0
+      - name: Build pinned native Linux Core, Node and Tunnel DEB
+        if: runner.os == 'Linux'
+        shell: bash
+        run: bash tools/build-native-linux-package.sh
+      - name: Build package (Linux)
+        if: runner.os == 'Linux'
+        working-directory: packaging/unified
+        run: npm run build:linux
+      - name: Merge native Core, Tunnel and GUI into a single DEB
+        if: runner.os == 'Linux'
+        shell: bash
+        run: bash packaging/unified/merge-native-deb.sh
+      - name: Upgrade same-name native package, test GUI, then rollback on disposable Ubuntu
+        if: runner.os == 'Linux'
+        shell: bash
+        run: bash test/unified-native-upgrade-smoke.sh
+      - name: Build package (Windows)
+        if: runner.os == 'Windows'
+        working-directory: packaging/unified
+        run: npm run build:win
+      - name: Reject legacy Inno installation on ephemeral Windows runner
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./test/unified-nsis-migration-guard.ps1
+      - name: Test exact source, privilege boundaries and embedded runtime
+        run: node --test test/unified-packaging.test.mjs test/unified-electron-runtime.test.mjs test/unified-migration-preflight.test.mjs test/unified-profile-recovery.test.mjs
+      - name: Real Windows Electron GUI and restricted Core Start/Stop
+        if: runner.os == 'Windows'
+        env:
+          RC_TEST_PACKAGED_GUI: '1'
+        run: node --test test/unified-electron-gui.test.mjs
+      - name: Verify Linux package replaces legacy identity
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          deb=(dist/unified/*.deb)
+          test "${#deb[@]}" -eq 1
+          test "$(dpkg-deb --field "${deb[0]}" Package)" = "chatgpt-remote-commander"
+          dpkg --compare-versions "$(dpkg-deb --field "${deb[0]}" Version)" gt "0.12.0~dev1-2"
+      - name: Artifact fingerprint (Linux)
+        if: runner.os == 'Linux'
+        run: sha256sum dist/unified/*.deb
+      - name: Artifact fingerprint (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Get-ChildItem dist/unified/*.exe | ForEach-Object {
+            Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256 |
+              Select-Object Path,Hash | Format-List
+          }
+      - uses: actions/upload-artifact@v4
+        if: runner.os == 'Linux'
+        with:
+          name: rc-unified-linux-deb-qa
+          path: dist/unified/*.deb
+          retention-days: 7
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: runner.os == 'Windows'
+        with:
+          name: rc-unified-windows-nsis-qa
+          path: dist/unified/*.exe
+          retention-days: 7
+          if-no-files-found: error

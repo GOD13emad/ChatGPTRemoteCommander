@@ -208,11 +208,11 @@ test('unknown RPC method cannot invoke future unreviewed V2 methods',async()=>{
 test('only reviewed protocol bootstrap RPC methods reach trusted V2 dispatcher',async()=>{
   const {state,factory}=scenario();
   const d=await factory({authenticated:true,sessionHandle:'chat-a'});
-  for(const method of ['initialize','notifications/initialized','ping','tools/list']){
+  for(const method of ['initialize','notifications/initialized','ping','tools/list','server/discover']){
     const message={jsonrpc:'2.0',id:17,method,params:{}};
     const result=await send(d,undefined,message);
     assert.equal(result.result.bootstrap,true);
   }
-  assert.equal(state.callCount,4);
+  assert.equal(state.callCount,5);
   assert.equal(state.ownerCalls,0);
 });
