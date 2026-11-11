@@ -1,0 +1,67 @@
+name: Unified Installer Pilot (NoPromote)
+on:
+  pull_request:
+    paths:
+      - "packaging/unified/**"
+      - "test/unified-*.test.mjs"
+      - ".github/workflows/unified-installer-pilot.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: unified-pilot-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  package:
+    name: ${{ matrix.os }} — source-pinned installer
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Prepare exact committed Core
+        run: node packaging/unified/prepare.mjs
+      - name: Install pinned packaging tools
+        working-directory: packaging/unified
+        run: npm ci --no-audit --no-fund
+      - name: Build package (Linux)
+        if: runner.os == 'Linux'
+        working-directory: packaging/unified
+        run: npm run build:linux
+      - name: Build package (Windows)
+        if: runner.os == 'Windows'
+        working-directory: packaging/unified
+        run: npm run build:win
+      - name: Test exact source, privilege boundaries and embedded runtime
+        run: node --test test/unified-packaging.test.mjs test/unified-electron-runtime.test.mjs
+      - name: Artifact fingerprint (Linux)
+        if: runner.os == 'Linux'
+        run: sha256sum dist/unified/*.deb
+      - name: Artifact fingerprint (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Get-ChildItem dist/unified/*.exe | ForEach-Object {
+            Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256 |
+              Select-Object Path,Hash | Format-List
+          }
+      - uses: actions/upload-artifact@v4
+        if: runner.os == 'Linux'
+        with:
+          name: rc-unified-linux-deb-qa
+          path: dist/unified/*.deb
+          retention-days: 7
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: runner.os == 'Windows'
+        with:
+          name: rc-unified-windows-nsis-qa
+          path: dist/unified/*.exe
+          retention-days: 7
+          if-no-files-found: error
