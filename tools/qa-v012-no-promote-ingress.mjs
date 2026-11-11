@@ -23,12 +23,20 @@ export function qualifyNoPromoteQuarantine(result) {
     result.code==='ANONYMOUS_AND_FORGED_DENIAL_ONLY' &&
     denied.v2Anonymous?.status===403 && denied.v2Forged?.status===403 &&
     denied.metadata?.status===200;
-  if(!v2Absent&&!v2Negative)throw Error('V012_NOPROMOTE_G1_NEGATIVE_ADMISSION_UNVERIFIED');
+  // On the actual 0.12 privileged Core, quarantine precedes route dispatch,
+  // so even missing V2 metadata and /mcp-v2 return the same 403 denial.
+  // This is strictly a negative-only NoPromote preflight, not OAuth readiness.
+  const globallyQuarantined=result.status==='BLOCKED' &&
+    result.code==='V2_RESOURCE_METADATA_UNVERIFIED' &&
+    denied.v2Anonymous?.status===403 && denied.v2Forged?.status===403 &&
+    denied.metadata?.status===403;
+  if(!v2Absent&&!v2Negative&&!globallyQuarantined)
+    throw Error('V012_NOPROMOTE_G1_NEGATIVE_ADMISSION_UNVERIFIED');
   return Object.freeze({
     status:'V012_NOPROMOTE_NEGATIVE_ONLY_PASS',
     legacyAnonymousDenied:true,
     legacyForgedDenied:true,
-    protectedV2State:v2Absent?'NOT_WIRED':'NEGATIVE_DENIAL_ONLY',
+    protectedV2State:v2Absent?'NOT_WIRED':(globallyQuarantined?'ALL_ROUTES_QUARANTINED':'NEGATIVE_DENIAL_ONLY'),
     positiveG1Proved:false,
     ownerJ01Proved:false,
     privilegedExecutionProved:false,

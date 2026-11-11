@@ -28,6 +28,23 @@ test('NoPromote accepts fully negative v2 readiness separately from actual owner
  a.observations.metadata.status=200;
  assert.equal(qualifyNoPromoteQuarantine(a).protectedV2State,'NEGATIVE_DENIAL_ONLY');
 });
+test('real protected v0.12 runtime denies every non-health route before V2 is wired',()=>{
+ const a=baseline();
+ a.code='V2_RESOURCE_METADATA_UNVERIFIED';
+ a.observations.v2Anonymous.status=403;
+ a.observations.v2Forged.status=403;
+ a.observations.metadata.status=403;
+ const out=qualifyNoPromoteQuarantine(a);
+ assert.equal(out.protectedV2State,'ALL_ROUTES_QUARANTINED');
+ assert.equal(out.positiveG1Proved,false);
+ assert.equal(out.publicReleaseApproved,false);
+ for(const [field,status] of [['metadata',404],['v2Anonymous',200],['v2Forged',200]]){
+   const bad=structuredClone(a);
+   bad.observations[field].status=status;
+   assert.throws(()=>qualifyNoPromoteQuarantine(bad),/V012_NOPROMOTE_/);
+ }
+});
+
 test('NoPromote rejects anonymous discovery, missing 403, missing health and inconsistent v2 metadata',()=>{
  for(const [field,value] of [
    ['legacyAnonymous',200],['legacyAnonymous',401],['legacyForged',200],
