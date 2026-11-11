@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {spawnSync} from 'node:child_process';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {assessMigration,inspectLocalPlatform,parseMainTunnelBinding} from '../packaging/unified/migration-preflight.mjs';
+import {assessMigration,inspectLocalPlatform,parseMainTunnelBinding,classifyObservedRouterStatus} from '../packaging/unified/migration-preflight.mjs';
 
 const repo=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const modulePath=path.join(repo,'packaging/unified/migration-preflight.mjs');
@@ -114,4 +114,47 @@ test('Windows tunnel target on old Core is explicit NoPromote even if other gate
  assert.ok(!latest.blocked.includes('OWNER_TUNNEL_STILL_TARGETS_LEGACY_OR_UNKNOWN_CORE'));
  assert.equal(latest.decision,'NO_PROMOTE');
  assert.ok(latest.blocked.includes('LEGACY_INNO_TO_NSIS_TRANSACTION_MISSING'));
+});
+
+test('stable-router backend mapping reports chain without trusting mutable owner profile fields',()=>{
+ const status={router:true,listenPort:47831,sourceSha256:'f'.repeat(64),
+   schema:1,profile:'default',generation:43,
+   activePort:48834,activeVersion:'0.11.0-dev.23',
+   token:'DO_NOT_EMIT',configPath:'C:/secret'};
+ const observed=classifyObservedRouterStatus(status,47831,'0.11.0-dev.23');
+ assert.deepEqual(observed,{detected:true,mappingMatches:true,
+   backendPort:48834,backendVersion:'0.11.0-dev.23',generation:43});
+ assert.doesNotMatch(JSON.stringify(observed),/token|secret|config/i);
+ const mismatched=classifyObservedRouterStatus(status,47831,'0.12.0-dev.1');
+ assert.equal(mismatched.detected,true);
+ assert.equal(mismatched.mappingMatches,false);
+ const rejected=[
+   {...status,listenPort:49912},
+   {...status,router:false},
+   {...status,activePort:47831},
+   {...status,activePort:80},
+   {...status,sourceSha256:'bad'},
+   {...status,generation:0},
+   {...status,profile:'other'},
+   {...status,activeVersion:'0.13.0-dev.1'}
+ ];
+ for(const entry of rejected)assert.deepEqual(
+   classifyObservedRouterStatus(entry,47831,'0.11.0-dev.23'),
+   {detected:false,mappingMatches:false});
+});
+test('router mismatch adds its own hard blocker even with synthetic successful booleans',()=>{
+ const f={platform:'win32',inventoryReliable:true,legacyInnoPresent:true,
+   tunnelProfilePresent:true,tunnelProfileValid:true,tunnelTargetPort:47831,
+   tunnelTargetVersion:'0.11.0-dev.23',routerDetected:true,
+   routerMappingMatches:false,routerBackendPort:48834,
+   routerBackendVersion:'0.11.0-dev.23'};
+ const blocked=assessMigration(f);
+ assert.equal(blocked.ownerStableRouterBackendPort,48834);
+ assert.equal(blocked.ownerStableRouterBackendVersion,'0.11.0-dev.23');
+ assert.equal(blocked.ownerStableRouterMappingMatches,false);
+ assert.ok(blocked.blocked.includes('OWNER_STABLE_ROUTER_BACKEND_MISMATCH'));
+ const consistent=assessMigration({...f,routerMappingMatches:true});
+ assert.equal(consistent.ownerStableRouterMappingMatches,true);
+ assert.ok(!consistent.blocked.includes('OWNER_STABLE_ROUTER_BACKEND_MISMATCH'));
+ assert.equal(consistent.decision,'NO_PROMOTE');
 });

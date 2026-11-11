@@ -108,6 +108,9 @@ export function assessMigration(facts){
   const oldPresent=facts.platform==='win32'?facts.legacyInnoPresent===true:facts.nativePackageInstalled===true;
   const units=Array.isArray(facts.units)?facts.units:[];
   if(!facts.inventoryReliable)blocked.push('INVENTORY_UNAVAILABLE');
+  if(facts.platform==='win32'&&facts.routerDetected===true
+    &&facts.routerMappingMatches!==true)
+    blocked.push('OWNER_STABLE_ROUTER_BACKEND_MISMATCH');
   if(facts.platform==='win32'&&facts.tunnelProfilePresent===true){
     if(facts.tunnelProfileValid!==true)
       blocked.push('OWNER_TUNNEL_MAIN_BINDING_UNVERIFIED');
@@ -141,6 +144,10 @@ export function assessMigration(facts){
     ownerTunnelProfileDetected:facts.tunnelProfilePresent===true,
     ownerTunnelTargetPort:facts.tunnelProfileValid===true?facts.tunnelTargetPort??null:null,
     ownerTunnelHttpsConfigured:facts.tunnelProfileValid===true&&facts.tunnelTargetTls===true,
+    ownerStableRouterDetected:facts.routerDetected===true,
+    ownerStableRouterBackendPort:facts.routerDetected===true?facts.routerBackendPort:null,
+    ownerStableRouterBackendVersion:facts.routerDetected===true?facts.routerBackendVersion:null,
+    ownerStableRouterMappingMatches:facts.routerDetected===true&&facts.routerMappingMatches===true,
     ownerTunnelTargetRuntimeVersion:facts.tunnelProfileValid===true?facts.tunnelTargetVersion??null:null,
     activeCoreUnits:units.filter(u=>u.kind==='core'&&u.active).length,
     activeTunnelUnits:units.filter(u=>u.kind==='tunnel'&&u.active).length,
@@ -186,6 +193,60 @@ function linuxFacts(){
     nativePackageInstalled:exists,allNativePayloadPathsAvailable:nativeVersionOK&&knownNative.ok,
     units};
 }
+/** Router mapping is an observation, not authorization to change routing. */
+export function classifyObservedRouterStatus(report,listenPort,backendHealthVersion){
+  if(!report||typeof report!=='object'||Array.isArray(report)
+    ||report.router!==true||report.listenPort!==listenPort
+    ||typeof report.sourceSha256!=='string'
+    ||!/^[a-f0-9]{64}$/.test(report.sourceSha256)
+    ||report.profile!=='default'||report.schema!==1
+    ||!Number.isSafeInteger(report.generation)||report.generation<1
+    ||!Number.isSafeInteger(report.activePort)
+    ||report.activePort<1024||report.activePort>65535
+    ||report.activePort===listenPort
+    ||typeof report.activeVersion!=='string'
+    ||!/^0\.(?:11|12)\.[A-Za-z0-9.-]+$/.test(report.activeVersion))
+    return Object.freeze({detected:false,mappingMatches:false});
+  const match=backendHealthVersion===report.activeVersion;
+  return Object.freeze({detected:true,mappingMatches:match,
+    backendPort:report.activePort,backendVersion:report.activeVersion,
+    generation:report.generation});
+}
+function probeLoopbackRouterStatus(port){
+  if(!Number.isSafeInteger(port)||port<1024||port>65535)return null;
+  // Constrain reading to the local router and emit only whitelisted fields.
+  const script=String.raw`
+const http=require('node:http');
+const port=Number(process.argv[1]);
+let body='',bytes=0;
+const req=http.get({hostname:'127.0.0.1',port,path:'/router/status',timeout:1200},res=>{
+ if(res.statusCode!==200){res.resume();process.exitCode=2;return;}
+ res.setEncoding('utf8');
+ res.on('data',chunk=>{
+   bytes+=Buffer.byteLength(chunk);
+   if(bytes>8192){req.destroy();return;}
+   body+=chunk;
+ });
+ res.on('end',()=>{try{
+   const raw=JSON.parse(body);
+   if(raw.router!==true||!raw.state)throw Error('not_router');
+   const state=raw.state;
+   process.stdout.write(JSON.stringify({
+     router:raw.router,listenPort:raw.listenPort,
+     sourceSha256:raw.sourceSha256,
+     profile:state.profile,schema:state.schema,
+     generation:state.generation,
+     activePort:state.active?.port,activeVersion:state.active?.version
+   }));
+ }catch{process.exitCode=2;}});
+});
+req.on('timeout',()=>req.destroy());
+req.on('error',()=>{process.exitCode=2;});
+`;
+  const observed=exec(process.execPath,['-e',script,String(port)]);
+  if(!observed.ok||observed.stdout.length>1024)return null;
+  try{return JSON.parse(observed.stdout);}catch{return null;}
+}
 function windowsFacts(){
   const paths=[
     'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\RemoteCommander',
@@ -197,11 +258,19 @@ function windowsFacts(){
   const bad=checks.some(c=>c.stdout.length>50000);
   const tunnel=readOwnerTunnelBinding();
   const targetVersion=tunnel.valid?probeLoopbackCoreVersion(tunnel.port):null;
+  const routerReport=tunnel.valid?probeLoopbackRouterStatus(tunnel.port):null;
+  const backendVersion=routerReport?.activePort
+    ?probeLoopbackCoreVersion(routerReport.activePort):null;
+  const route=classifyObservedRouterStatus(routerReport,tunnel.port,backendVersion);
   return {platform:'win32',legacyInnoPresent:checks.some(c=>c.ok),
     inventoryReliable:!bad&&checks.length===3,
     tunnelProfilePresent:tunnel.profilePresent,tunnelProfileValid:tunnel.valid,
     tunnelTargetPort:tunnel.port??null,tunnelTargetTls:tunnel.tls===true,
-    tunnelTargetVersion:targetVersion,units:[]};
+    tunnelTargetVersion:targetVersion,
+    routerDetected:route.detected,routerMappingMatches:route.mappingMatches,
+    routerBackendPort:route.detected?route.backendPort:null,
+    routerBackendVersion:route.detected?route.backendVersion:null,
+    units:[]};
 }
 export function inspectLocalPlatform(platform=process.platform){
   if(platform==='linux')return linuxFacts();
