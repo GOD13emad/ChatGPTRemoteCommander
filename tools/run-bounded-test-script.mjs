@@ -310,6 +310,31 @@ export function prioritizeWindowsAdaptiveCold(command) {
 }
 
 /**
+ * Run the pinned V012 WorkflowStore/worker regression before host-loading
+ * Windows test batches. On hosted Windows, workflow-store batch 6 hit its
+ * unchanged 30s process cap after other fixture processes, while an isolated
+ * native Windows run of exactly the same 41 assertions passed in 6.48s.
+ * Move the unchanged source regression once immediately after the first
+ * cold adaptive fixture. No timeout, assertion, coverage or release gate
+ * is relaxed; any ambiguous/duplicate invocation fails closed.
+ */
+export function prioritizeWindowsSourceRegression(command){
+  if(typeof command!=='string'||!command)throw Error('CI_SOURCE_REGRESSION_COMMAND_INVALID');
+  const parts=command.split(' && ');
+  const exact='node tools/run-v012-source-regression.mjs';
+  if(parts.filter(p=>p.includes('run-v012-source-regression.mjs')).length!==1)
+    throw Error('CI_SOURCE_REGRESSION_CARDINALITY');
+  const idx=parts.indexOf(exact);
+  if(idx<0)throw Error('CI_SOURCE_REGRESSION_NOT_EXACT');
+  parts.splice(idx,1);
+  const cold='node --test --test-concurrency=1 test/project-adaptive.test.mjs';
+  const index=parts.indexOf(cold);
+  if(index<0 || index>2)throw Error('CI_SOURCE_REGRESSION_COLD_PREFIX');
+  parts.splice(index+1,0,exact);
+  return parts.join(' && ');
+}
+
+/**
  * R157: an inline cmd.exe command has a small Windows length limit. Splitting
  * only at the source-controlled && boundaries preserves strict order, exact
  * test invocations and fail-fast behavior while allowing indexed receipts.
@@ -377,6 +402,7 @@ function run(){
     command=isolateWindowsStartupReadinessRegressions(command);
     command=prioritizeWindowsAdaptiveCold(command);
     command=isolateWindowsAutotickRegression(command);
+    command=prioritizeWindowsSourceRegression(command);
   }
   // Windows cmd.exe cannot accept the complete check/test chain as one /c
   // command. Split both scripts at their source-controlled && boundaries;
