@@ -14,6 +14,29 @@ VERSION="$(node -p 'require(process.argv[1]).version' "$ROOT/package.json")"
 # PR builds may produce QA archives; only matching release tags can install.
 SOURCE_COMMIT="$(git -C "$ROOT" rev-parse 'HEAD^{commit}')"
 [[ "$SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]] || { echo 'Missing exact build source commit' >&2; exit 2; }
+SOURCE_REF="v$VERSION"
+QA_ONLY=0
+if [[ "$VERSION" =~ ^0\.12\.0-(dev|rc)\.[1-9][0-9]*$ ]]; then
+  # A development package has no immutable release tag. Reference the
+  # trusted integration branch and compare the exact source SHA separately.
+  # This is a read-only QA provenance path, NOT an installation exception.
+  node - "$ROOT/docs/release-train-0.12.json" "$VERSION" <<'NODE'
+const fs=require('node:fs');
+const manifest=JSON.parse(fs.readFileSync(process.argv[2],'utf8'));
+if(manifest.sourceVersion!==process.argv[3]||
+   manifest.status!=='INTEGRATION_CANDIDATE_NOT_FINAL'||
+   manifest.channel!=='development'||manifest.isStable!==false||
+   manifest.publishApproved!==false||
+   manifest.autoupdateApproved!==false||
+   manifest.installedPromotionApproved!==false||
+   manifest.releaseTag!==null) {
+  console.error('V012_QA_NO_PROMOTE_MANIFEST_REQUIRED');
+  process.exit(2);
+}
+NODE
+  SOURCE_REF='integration/v012-unsigned-approval-20261110'
+  QA_ONLY=1
+fi
 STAGE="$(mktemp -d)"
 trap 'rm -rf -- "$STAGE"' EXIT
 mkdir -p "$STAGE/payload/installer" "$STAGE/payload/tools"
@@ -31,10 +54,39 @@ HERE="$(cd "$(dirname "$0")" && pwd -P)"
 # a new single-file installer from silently installing an older Core.
 export REMOTE_COMMANDER_SOURCE_REF='__RC_BUILD_SOURCE_REF__'
 export REMOTE_COMMANDER_EXPECTED_COMMIT='__RC_BUILD_SOURCE_COMMIT__'
+# Development QA may inspect available products and the exact source pointer.
+# It may never install into an owner account or replace a live Core.
+if [[ '__RC_BUILD_QA_ONLY__' == 1 ]]; then
+  if [[ "$#" == 1 && "$1" == '--verify-source' ]]; then
+    command -v git >/dev/null || { echo 'V012_QA_SOURCE_GIT_REQUIRED' >&2; exit 4; }
+    command -v timeout >/dev/null || { echo 'V012_QA_SOURCE_TIMEOUT_REQUIRED' >&2; exit 4; }
+    ref="refs/heads/$REMOTE_COMMANDER_SOURCE_REF"
+    resolved="$(GIT_TERMINAL_PROMPT=0 timeout 20s git ls-remote --exit-code --heads \
+      https://github.com/GOD13emad/ChatGPTRemoteCommander.git "$ref" 2>/dev/null \
+      | awk -v exact="$ref" '$2 == exact {print $1}')" || {
+      echo 'V012_QA_SOURCE_UNREACHABLE' >&2; exit 4;
+    }
+    [[ "$resolved" =~ ^[0-9a-f]{40}$ && "$resolved" == "$REMOTE_COMMANDER_EXPECTED_COMMIT" ]] || {
+      echo 'V012_QA_SOURCE_REF_MOVED_OR_MISMATCH' >&2; exit 4;
+    }
+    printf 'V012_QA_EXACT_SOURCE_REACHABLE commit=%s changesApplied=false\n' "$resolved"
+    exit 0
+  fi
+  for arg in "$@"; do
+    case "$arg" in
+      --plan-only|--list-products|--help|-h)
+        exec /bin/bash "$HERE/setup-wizard.sh" "$@"
+        ;;
+    esac
+  done
+  echo 'V012_DEV_QA_INSTALL_NOT_APPROVED' >&2
+  exit 3
+fi
 exec /bin/bash "$HERE/setup-wizard.sh" "$@"
 LAUNCH
-sed -i -e "s/__RC_BUILD_SOURCE_REF__/v$VERSION/" \
-       -e "s/__RC_BUILD_SOURCE_COMMIT__/$SOURCE_COMMIT/" "$STAGE/payload/SETUP.sh"
+sed -i -e "s|__RC_BUILD_SOURCE_REF__|$SOURCE_REF|" \
+       -e "s|__RC_BUILD_SOURCE_COMMIT__|$SOURCE_COMMIT|" \
+       -e "s|__RC_BUILD_QA_ONLY__|$QA_ONLY|" "$STAGE/payload/SETUP.sh"
 cat > "$STAGE/payload/README.txt" <<'DOC'
 Remote Commander Linux single-file bootstrap (online)
 Run: bash Remote-Commander-Linux-Setup.run --list-products
@@ -46,6 +98,16 @@ Browser requires X11, Linux x86_64 and interactive sudo to configure Chromium sa
 The GTK Control Center preview and experimental companion are not qualified.
 Runtime API keys and tunnel IDs must be enrolled after installation, not baked into the file.
 DOC
+if [[ "$QA_ONLY" == 1 ]]; then
+  # The QA .run is never a live installer while Release Train is NoPromote.
+  sed -i '/^     bash Remote-Commander-Linux-Setup.run --all$/d' "$STAGE/payload/README.txt"
+  cat >> "$STAGE/payload/README.txt" <<'QADOC'
+Development QA, NoPromote: only --list-products, --plan-only and --verify-source.
+--verify-source checks the exact pinned integration Git commit without installs.
+This file cannot install or replace an active Core; no v0.12-dev release tag
+is created and native owner/ChatGPT G1+J01 admission remains mandatory.
+QADOC
+fi
 chmod 700 "$STAGE/payload/SETUP.sh" "$STAGE/payload/install.sh" "$STAGE/payload/setup-wizard.sh" "$STAGE/payload/tools/install-browser-linux.sh"
 # Pin tar member metadata and order to the exact Git commit, not mktemp creation time.
 # GNU tar is an explicit Linux builder prerequisite; gzip -n drops input names/times.
