@@ -1455,6 +1455,19 @@ try{
       }
     }
   }
+  # Protected 0.12 NoPromote diagnostics check G1 quarantine only.
+  # A 403 is not evidence of current-chat authentication or native J01.
+  function Test-ProtectedNoPromoteCandidate([string]$Version,[object]$Config){
+    if(-not $NoPromote -or $Version -notmatch '^0\.12\.0-(?:dev|rc)\.[1-9][0-9]*$'){return $false}
+    $tier=[string]$Config.capabilityProfile.tier
+    return ($tier -in @('FULL_POWER','FULL_ACCESS') -or
+      $Config.powerMode.enabled -eq $true -or $Config.requireTrustedIngress -eq $true)
+  }
+  function Assert-ProtectedNoPromoteNegativeOnly([string]$StageDir,[int]$Port,[string]$Profile){
+    & node.exe (Join-Path $StageDir 'tools\qa-v012-no-promote-ingress.mjs') "--port=$Port"
+    if($LASTEXITCODE -ne 0){throw "V012_NOPROMOTE_NEGATIVE_GATE_FAILED profile=$Profile"}
+    Log "V012_NOPROMOTE_PROTECTED_NEGATIVE_ONLY_PASS profile=$Profile G1_J01_POSITIVE_UNPROVED"
+  }
   $device=if($currentStatus){[string]$currentStatus.deviceName}else{$env:COMPUTERNAME}
   $explicitProfileMutation=[bool]($Force -or $PowerMode -or $StandardMode -or $GuiControl -or $DisableGuiControl -or @($DisableCapability).Count-gt0 -or @($EnableCapability).Count-gt0)
   foreach($t in $targets){
@@ -1494,6 +1507,11 @@ try{
     $p=Start-Backend $stage.Dir $cfg $stateDir
     $currentCandidate=[pscustomobject]@{Profile=$t.Profile;Port=$port;Version=$stage.Version;Process=$p;ConfigPath=$cfg;ProjectDir=$stage.Dir}
     $h=Wait-Health $port $stage.Version $sha $t.Profile 30 $p
+    $expected=Read-Json $cfg
+    $protectedCandidate=Test-ProtectedNoPromoteCandidate $stage.Version $expected
+    if($protectedCandidate){
+      Assert-ProtectedNoPromoteNegativeOnly $stage.Dir $port $t.Profile
+    }else{
     & node.exe (Join-Path $stage.Dir 'tools\doctor.mjs') --url "http://127.0.0.1:$port/mcp" --expected-device $device --expected-version $stage.Version --config $cfg --timeout-ms 15000 --json
     if($LASTEXITCODE-ne 0){throw "CANDIDATE_DOCTOR_FAIL profile=$($t.Profile)"}
     $status=Invoke-Mcp $port 'system_status'
@@ -1520,6 +1538,7 @@ try{
       $wf=Invoke-Mcp $port 'workflow_health'
       if($wf.ok-ne $true -or [string]$wf.databaseIntegrity-ne 'ok'){throw "WORKFLOW_HEALTH_FAIL profile=$($t.Profile)"}
     }
+    }
 
     # Diagnostic backend passed on a shadow store. Rebuild against the live durable
     # store while its DB is still v1-compatible, then run identity/doctor once more.
@@ -1539,16 +1558,21 @@ try{
     $p=Start-Backend $stage.Dir $finalCfg $stateDir
     $currentCandidate=[pscustomobject]@{Profile=$t.Profile;Port=$port;Version=$stage.Version;Process=$p;ConfigPath=$finalCfg;ProjectDir=$stage.Dir}
     [void](Wait-Health $port $stage.Version $finalSha $t.Profile 30 $p)
+    if($protectedCandidate){
+      Assert-ProtectedNoPromoteNegativeOnly $stage.Dir $port $t.Profile
+    }else{
     & node.exe (Join-Path $stage.Dir 'tools\doctor.mjs') --url "http://127.0.0.1:$port/mcp" --expected-device $device --expected-version $stage.Version --config $finalCfg --timeout-ms 15000 --json
     if($LASTEXITCODE-ne 0){throw "FINAL_CANDIDATE_DOCTOR_FAIL profile=$($t.Profile)"}
     if((Read-Json $finalCfg).durableWorkflows.enabled-eq $true){
       $wf=Invoke-Mcp $port 'workflow_health'
       if($wf.ok-ne $true -or [string]$wf.databaseIntegrity-ne 'ok'){throw "FINAL_WORKFLOW_HEALTH_FAIL profile=$($t.Profile)"}
     }
+    }
     $c=[pscustomobject]@{Profile=$t.Profile;CanonicalPort=$t.CanonicalPort;Port=$port;Version=$stage.Version;Commit=$stage.Commit;ConfigSha=$finalSha;ConfigPath=$finalCfg;ProjectDir=$stage.Dir;Process=$p;Target=$t;WorkflowDir=$liveWorkflowDir;BackupDir=$backupDir}
     $candidates+=$c
     $currentCandidate=$null
-    $report.profiles+=@{profile=$t.Profile;candidatePort=$port;configSha256=$finalSha;doctor='PASS';hardware='PASS';shadowStore='PASS';liveStoreCompatibility='PASS'}
+    $validation=if($protectedCandidate){'NEGATIVE_ONLY_G1_J01_UNPROVED'}else{'PASS'}
+    $report.profiles+=@{profile=$t.Profile;candidatePort=$port;configSha256=$finalSha;doctor=$validation;hardware=$validation;shadowStore='PASS';liveStoreCompatibility='PASS'}
   }
 
   if($NoPromote){
