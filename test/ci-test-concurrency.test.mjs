@@ -738,8 +738,9 @@ test('V012 source regression retains every pinned test exactly once with bounded
   const ranges=[...runner.matchAll(/files\.slice\((\d+),\s*(\d+)\)/g)]
     .map(match=>[Number(match[1]),Number(match[2])]);
   const scheduled=ranges.flatMap(([from,to])=>files.slice(from,to));
-  assert.equal(files.length,19,'G1 canonical workflows and the NoPromote negative candidate guard are pinned to source QA');
+  assert.equal(files.length,20,'G1 canonical workflows and the NoPromote negative candidate guard are pinned to source QA');
   assert.ok(files.includes('test/qa-v012-no-promote-ingress.test.mjs'),'NoPromote negative-only qualification must run in CI');
+  assert.ok(files.includes('test/v012-windows-no-promote-negative-qa.test.mjs'),'Windows protected NoPromote regression must remain in the mandatory source gate');
   assert.equal(new Set(files).size,files.length,'no duplicate source fixture');
   assert.ok(ranges.length>=6,'native Windows fixture groups must remain bounded');
   assert.deepEqual(scheduled,files,'each fixture must execute exactly once and in original order');
