@@ -19,7 +19,8 @@ const files = [
   "test/v2-private-tunnel-mtls-attestor.test.mjs",
   "test/v2-private-tunnel-https-gateway.test.mjs",
   "test/v101-g1-canonical-workflow-runtime.test.mjs",
-  "test/qa-v012-no-promote-ingress.test.mjs"
+  "test/qa-v012-no-promote-ingress.test.mjs",
+  "test/v012-windows-no-promote-negative-qa.test.mjs"
 ];
 
 // Keep every file once while bounding expensive Windows native process/SQLite
@@ -36,7 +37,7 @@ const batches = [
   files.slice(13, 15),
   files.slice(15, 17),
   files.slice(17, 18), // Canonical G1/WorkflowStore composition and mTLS denial
-  files.slice(18, 19) // NoPromote quarantine-only QA admission is never G1/J01 approval
+  files.slice(18, 20) // NoPromote quarantine-only and native Windows QA, never G1/J01 approval
 ];
 if(batches.flat().length!==files.length
   ||new Set(batches.flat()).size!==files.length
