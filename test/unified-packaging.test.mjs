@@ -38,6 +38,7 @@ test('hosted Ubuntu prefetches signed dependencies before expensive packaging; n
  assert.match(y,/libnotify4 libsecret-1-0/);
  assert.match(script,/dpkg-query -W -f='[^']+\\n' libnotify4 libsecret-1-0/);
  assert.match(script,/apt-get --no-download install/);
+ assert.doesNotMatch(script,/apt-get --no-download install[^\n]*2>\/dev\/null/);
  assert.doesNotMatch(script,/apt-get update/);
 });
 
