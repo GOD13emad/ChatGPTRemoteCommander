@@ -67,6 +67,19 @@ test('immutable packaged source and restricted preview boot',async()=>{
      child.kill();
      await new Promise(resolve=>{if(child.exitCode!==null)return resolve();child.once('exit',resolve);setTimeout(resolve,1500).unref();});
    }
+   // Runtime data in the isolated var dir must not invalidate the immutable source.
+   fs.mkdirSync(path.join(one.target,'var'),{recursive:true});
+   fs.writeFileSync(path.join(one.target,'var','runtime-state.json'),'{}');
+   assert.equal(validateCore(one.target).count,manifest.count);
+   // Unmanifested executable code and a changed helper module must both fail closed.
+   const unexpected=path.join(one.target,'src','extra.mjs');
+   fs.writeFileSync(unexpected,'export const injected=true;');
+   assert.throws(()=>validateCore(one.target),/UNIFIED_CORE_UNEXPECTED_FILE/);
+   fs.rmSync(unexpected);
+   const helper=path.join(one.target,'src','tools-v0.3.mjs');
+   fs.appendFileSync(helper,'\\n// deliberately tampered helper\\n');
+   assert.throws(()=>preparePreviewCore(resource,dir),/UNIFIED_SOURCE_HASH_MISMATCH/);
+   fs.copyFileSync(path.join(resource,'src','tools-v0.3.mjs'),helper);
    const bad=path.join(one.target,'src/server-v0.3.mjs');
    fs.appendFileSync(bad,'\n// tampered\n');
    assert.throws(()=>preparePreviewCore(resource,dir),/UNIFIED_SOURCE_HASH_MISMATCH/);

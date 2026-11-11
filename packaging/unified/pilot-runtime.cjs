@@ -19,16 +19,44 @@ const safeTree=p=>{
 function validateCore(coreDir){
   expectDirectory(coreDir);
   const m=JSON.parse(fs.readFileSync(path.join(coreDir,'source-manifest.json'),'utf8'));
-  if(m.schema!==1 || !/^[a-f0-9]{40}$/.test(m.head||'') ||
-      !/^[a-f0-9]{40}$/.test(m.tree||'')) throw Error('UNIFIED_SOURCE_IDENTITY_INVALID');
-  for(const [rel,hash] of Object.entries(m.files||{})){
-    if(!['src/server-v0.3.mjs','package.json','config.json'].includes(rel) ||
-       !/^[a-f0-9]{64}$/.test(hash))throw Error('UNIFIED_SOURCE_MANIFEST_INVALID');
-    const p=path.join(coreDir,rel);
-    if(!fs.lstatSync(p).isFile() || sha256(p)!==hash)
+  if(m.schema!==2 || !/^[a-f0-9]{40}$/.test(m.head||'') ||
+      !/^[a-f0-9]{40}$/.test(m.tree||'') ||
+      !Number.isInteger(m.count) || m.count<10 ||
+      !m.files || typeof m.files!=='object' || Array.isArray(m.files))
+    throw Error('UNIFIED_SOURCE_IDENTITY_INVALID');
+  const fileNames=Object.keys(m.files);
+  if(fileNames.length!==m.count ||
+     !['src/server-v0.3.mjs','package.json','config.json'].every(f=>fileNames.includes(f)))
+    throw Error('UNIFIED_SOURCE_MANIFEST_INCOMPLETE');
+  const expected=new Set();
+  for(const [rel,hash] of Object.entries(m.files)){
+    if(typeof rel!=='string' || rel.includes('\\') ||
+      rel.startsWith('/') || rel.split('/').some(x=>!x||x==='.'||x==='..') ||
+      !/^[a-f0-9]{64}$/.test(hash))
+      throw Error('UNIFIED_SOURCE_MANIFEST_INVALID');
+    const p=path.join(coreDir,...rel.split('/'));
+    const stat=fs.lstatSync(p);
+    if(!stat.isFile() || stat.isSymbolicLink() || sha256(p)!==hash)
       throw Error('UNIFIED_SOURCE_HASH_MISMATCH '+rel);
+    expected.add(rel);
   }
-  if(Object.keys(m.files).length!==3)throw Error('UNIFIED_SOURCE_MANIFEST_INCOMPLETE');
+  function checkTree(dir,rel=''){
+    for(const e of fs.readdirSync(dir,{withFileTypes:true})){
+      const current=rel?rel+'/'+e.name:e.name;
+      if(e.isSymbolicLink())throw Error('UNIFIED_CORE_SYMLINK '+current);
+      if(!rel && current==='var'){
+        if(!e.isDirectory())throw Error('UNIFIED_CORE_VAR_NOT_DIRECTORY');
+        continue; // Core writes only runtime data here; never execute from this directory.
+      }
+      if(e.isDirectory())checkTree(path.join(dir,e.name),current);
+      else if(e.isFile()){
+        if(current==='source-manifest.json' || current==='.unified-source.json')continue;
+        if(!expected.delete(current))throw Error('UNIFIED_CORE_UNEXPECTED_FILE '+current);
+      }else throw Error('UNIFIED_CORE_SPECIAL '+current);
+    }
+  }
+  checkTree(coreDir);
+  if(expected.size)throw Error('UNIFIED_CORE_MISSING_FILES '+[...expected].slice(0,2).join(','));
   const pkg=JSON.parse(fs.readFileSync(path.join(coreDir,'package.json'),'utf8'));
   if(pkg.version!=='0.12.0-dev.1')throw Error('UNIFIED_SOURCE_VERSION_MISMATCH');
   return m;
