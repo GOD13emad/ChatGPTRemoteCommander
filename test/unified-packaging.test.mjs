@@ -26,6 +26,7 @@ test('one installer definition uses Windows NSIS per user and Linux DEB, not old
  assert.match(nsis,/!macro customInit/);
  assert.equal((nsis.match(/Uninstall\\RemoteCommander/g)||[]).length,3);
  assert.equal((nsis.match(/Abort "RC012_LEGACY_INNO_PRESENT/g)||[]).length,3);
+ assert.match(y,/migration-preflight[.]mjs/);
  assert.match(y,/from: .stage\/core/);
 });
 test('immutable packaged source and restricted preview boot',async()=>{

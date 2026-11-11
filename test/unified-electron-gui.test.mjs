@@ -34,6 +34,14 @@ test('real packaged GUI: sandboxed renderer and preview Start/Stop, isolated fro
       assert.match(before,/[0-9a-f]{40}/);
       assert.equal(await page.evaluate(()=>typeof require==='undefined' && typeof process==='undefined'),true,
         'Renderer must not expose Node integration');
+      await page.waitForFunction(()=>{
+        const t=document.querySelector('#migration')?.textContent||'';
+        return t.includes('NO_PROMOTE')||t.includes('LOCAL_PREFLIGHT_UNAVAILABLE');
+      },null,{timeout:12000});
+      const check=await page.locator('#migration').innerText();
+      assert.match(check,/NO_PROMOTE/);
+      assert.match(check,/"readOnly": true/);
+      assert.doesNotMatch(check,/api[_-]?key|password|bearer/i);
       await page.getByRole('button',{name:'Start isolated preview'}).click();
       await page.waitForFunction(()=>document.querySelector('#status')?.textContent?.includes('running'),
         null,{timeout:18000});

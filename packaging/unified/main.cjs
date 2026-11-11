@@ -4,12 +4,20 @@ const {spawn}=require('node:child_process');
 const {createServer}=require('node:net');
 const http=require('node:http');
 const path=require('node:path');
+const {pathToFileURL}=require('node:url');
 const fs=require('node:fs');
 const {validateCore,preparePreviewCore,previewConfig}=require('./pilot-runtime.cjs');
 
 let window=null, child=null, previewPort=null, starting=false, lastError=null;
 const packagedCore=()=>path.join(app.isPackaged?process.resourcesPath:__dirname,
   app.isPackaged?'core':'.stage/core');
+
+async function migrationPreflight(){
+  // Fixed local module only, no user-supplied command, path, or privilege.
+  const target=pathToFileURL(path.join(__dirname,'migration-preflight.mjs')).href;
+  const {localReport}=await import(target);
+  return localReport(process.platform);
+}
 
 function status(){
   let source='unavailable', error=null;
@@ -111,6 +119,7 @@ else{
   app.on('second-instance',()=>{if(window){if(window.isMinimized())window.restore();window.focus();}});
   app.whenReady().then(()=>{
     ipcMain.handle('commander:status',()=>status());
+    ipcMain.handle('commander:migration:preflight',()=>migrationPreflight());
     ipcMain.handle('commander:preview:start',()=>startPreview());
     ipcMain.handle('commander:preview:stop',()=>stopPreview());
     createWindow();
