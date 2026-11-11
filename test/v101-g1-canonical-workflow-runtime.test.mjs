@@ -168,9 +168,11 @@ test('integrated G1 opens only an owner-scoped mTLS TLS listener with no anonymo
   let runtime;
   try{
     const cert=path.join(directory,'tls.crt'),key=path.join(directory,'tls.key');
+    const config=path.join(directory,'openssl.cnf');
+    fs.writeFileSync(config,'');
     const generated=spawnSync('openssl',[
       'req','-x509','-newkey','rsa:2048','-nodes','-sha256',
-      '-config',process.platform==='win32'?'NUL':'/dev/null',
+      '-config',config,
       '-keyout',key,'-out',cert,'-days','1','-subj','/CN=localhost'
     ],{encoding:'utf8',windowsHide:true,timeout:8000});
     if(generated.error||generated.status!==0)
