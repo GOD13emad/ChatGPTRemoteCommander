@@ -35,7 +35,9 @@ test('Linux native root broker permits effective tier only for explicitly enroll
   assert.equal(staged.broker.verified,true);
   assert.equal(staged.fullAccessActive,false);
   assert.equal(staged.operationalFullAccess,false);
-  assert.equal(staged.fullAccessBlocker,'LINUX_ROOT_PROCESS_NOT_ELEVATED');
+  assert.equal(staged.fullAccessBlocker,'V102_OWNER_BOUND_PRIVILEGE_ROUTE_NOT_READY');
+  assert.equal(staged.ownerSession.verified,false);
+  assert.equal(staged.effectiveOsPrivilege.workerToken,'ordinary-owner');
   assert.equal(assessAccessStatus(base(), root, {platform:'linux'}).broker.unrestrictedAdminShell,false);
   assert.equal(assessAccessStatus(base('FULL_POWER'), root, {platform:'linux',effectiveUid:0}).effectiveTier,'STANDARD');
   assert.equal(assessAccessStatus(base('STANDARD'), root, {platform:'linux'}).effectiveTier,'STANDARD');
@@ -132,7 +134,10 @@ test('forced host-token refresh bypasses an older in-flight probe before returni
   assert.equal(before.broker.code,'BROKER_STALE');
   assert.equal(before.effectiveTier,'FULL_POWER');
   assert.equal(after.broker.verified,true);
-  assert.equal(after.effectiveTier,'FULL_ACCESS');
+  assert.equal(after.effectiveTier,'STANDARD');
+  assert.equal(after.effectiveOsPrivilege.workerToken,'elevated-administrator');
+  assert.equal(after.fullAccessBlocker,'V102_OWNER_BOUND_PRIVILEGE_ROUTE_NOT_READY');
+  assert.equal(after.ownerSession.verified,false);
   assert.equal(brokerCalls,2);
   assert.equal(tokenCalls,2);
 });
@@ -173,38 +178,42 @@ test('Windows elevated admin remains separate from fixed broker and host-user mo
   const c=base();Object.assign(c.powerMode,{allowShell:true,allowProcessControl:true,blockedShellPatterns:[]});
   const admin={ok:true,isAdmin:true,elevation:'high',source:'local-process-token'};
   const status=assessAccessStatus(c,null,{platform:'win32',adminToken:admin});
-  assert.equal(status.effectiveTier,'FULL_ACCESS');
+  assert.equal(status.effectiveTier,'STANDARD');
   assert.equal(status.hostExecution.mode,'RESTRICTED');
+  assert.equal(status.effectiveOsPrivilege.workerToken,'elevated-administrator');
+  assert.equal(status.fullAccessBlocker,'V102_PRIVILEGED_BROKER_NOT_VERIFIED');
   assert.equal(status.broker.operationalFullAccess,false);
   assert.equal(status.broker.unrestrictedAdminShell,false);
-  assert.equal(status.nativeAdmin.unrestrictedAdminShell,true);
+  assert.equal(status.nativeAdmin.unrestrictedAdminShell,false);
   assert.equal(status.broker.verified,false);
   assert.equal(assessAccessStatus(c,system,{platform:'win32',adminToken:standardToken}).effectiveTier,'FULL_POWER');
 });
 
-test('Linux current-process root token qualifies only with unrestricted approved shell scope',()=>{
+test('Linux root Worker token is observable but insufficient for V102 persistent FULL_ACCESS',()=>{
   const c=base();
   Object.assign(c.powerMode,{allowShell:true,allowProcessControl:true,blockedShellPatterns:[]});
   const owner=assessAccessStatus(c,null,{platform:'linux',effectiveUid:0});
   assert.equal(owner.configuredTier,'FULL_ACCESS');
-  assert.equal(owner.effectiveTier,'FULL_ACCESS');
-  assert.equal(owner.operationalFullAccess,true);
-  assert.equal(owner.fullAccessActive,true);
+  assert.equal(owner.effectiveTier,'STANDARD');
+  assert.equal(owner.operationalFullAccess,false);
+  assert.equal(owner.fullAccessActive,false);
+  assert.equal(owner.effectiveOsPrivilege.workerToken,'root');
+  assert.equal(owner.fullAccessBlocker,'V102_PRIVILEGED_BROKER_NOT_VERIFIED');
   assert.equal(owner.nativeRoot.verified,true);
   assert.equal(owner.nativeRoot.scope,'current-process-effective-uid');
-  assert.equal(owner.nativeRoot.unrestrictedRootShell,true);
+  assert.equal(owner.nativeRoot.unrestrictedRootShell,false);
   assert.equal(owner.nativeAdmin.verified,false);
   assert.equal(owner.broker.verified,false);
   const regular=assessAccessStatus(c,root,{platform:'linux',effectiveUid:1000});
   assert.equal(regular.nativeRoot.verified,false);
   assert.equal(regular.effectiveTier,'FULL_POWER');
-  assert.equal(regular.fullAccessBlocker,'LINUX_ROOT_PROCESS_NOT_ELEVATED');
+  assert.equal(regular.fullAccessBlocker,'V102_OWNER_BOUND_PRIVILEGE_ROUTE_NOT_READY');
   for (const field of ['allowShell','allowProcessControl','fullFilesystem']) {
     const restricted=structuredClone(c);
     restricted.powerMode[field]=false;
     const result=assessAccessStatus(restricted,root,{platform:'linux',effectiveUid:0});
     assert.equal(result.fullAccessActive,false);
-    assert.equal(result.fullAccessBlocker,'FULL_ACCESS_SHELL_SCOPE_REQUIRED');
+    assert.equal(result.fullAccessBlocker,'V102_OWNER_BOUND_PRIVILEGE_ROUTE_NOT_READY');
   }
   const denyPatterns=structuredClone(c);denyPatterns.powerMode.blockedShellPatterns=['restricted'];
   assert.equal(assessAccessStatus(denyPatterns,root,{platform:'linux',effectiveUid:0}).effectiveTier,'STANDARD');

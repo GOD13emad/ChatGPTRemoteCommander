@@ -552,9 +552,24 @@ test('CI Windows runs the Transfer Mesh HTTP fixture alone without weakening rea
     /CI_TRANSFER_HTTP_CARDINALITY/);
   const wrapper=read('tools/run-bounded-test-script.mjs');
   assert.ok(wrapper.includes("command=isolateWindowsTransferMeshHttpRegression(command);"));
-  assert.ok(wrapper.indexOf('command=isolateWindowsLeaseRegression(command);')>
-    wrapper.indexOf('command=isolateWindowsTransferMeshHttpRegression(command);'),
-    'last composed prefix is scheduled first; no additional test runs or deadlines');
+  assert.ok(wrapper.indexOf('command=isolateWindowsTransferMeshHttpRegression(command);')>
+    wrapper.indexOf('command=isolateWindowsStartupReadinessRegressions(command);'),
+    'Transfer Mesh is isolated after the loaded Windows startup groups have been reordered');
+  assert.ok(wrapper.indexOf('command=isolateWindowsTransferMeshHttpRegression(command);')<
+    wrapper.indexOf('command=prioritizeWindowsAdaptiveCold(command);'),
+    'strict adaptive and autotick deadlines must run before Transfer Mesh');
+  let actual=original;
+  for(const schedule of [isolateWindowsAgentHttpRegression,
+    isolateWindowsProcessTreeRegression,isolateWindowsLeaseRegression,
+    isolateWindowsAsyncHttpRegression,isolateWindowsTimingSensitiveRegressions,
+    isolateWindowsWorkflowPlanRegression,isolateWindowsMcpConformanceRegression,
+    isolateWindowsStartupReadinessRegressions,isolateWindowsTransferMeshHttpRegression,
+    prioritizeWindowsAdaptiveCold,isolateWindowsAutotickRegression]) actual=schedule(actual);
+  assert.deepEqual(actual.split(' && ').slice(0,3),[
+    'node --test --test-concurrency=1 test/project-autotick-noncodex.test.mjs',
+    'node --test --test-concurrency=1 test/project-adaptive.test.mjs',
+    leader.trimEnd().slice(0,-3)
+  ],'Transfer Mesh must actually run second, before heavy Windows load');
   const fixture=read('test/transfer-mesh-http.test.mjs');
   assert.ok(fixture.includes('for(let i=0;i<200;i++)'),'same bounded readiness budget');
   assert.ok(fixture.includes('await wait(25)'),'same server-readiness poll');
@@ -565,9 +580,11 @@ test('CI Windows runs the Transfer Mesh HTTP fixture alone without weakening rea
 test('concurrency smoke reserves an OS-assigned port per run with unique owned roots',()=>{
  const src=read('test/concurrency-smoke.mjs');
  assert.match(src,/reservation\.listen\(0,'127\.0\.0\.1',resolve\)/);
- assert.match(src,/const instanceId = randomUUID\(\);/);
- assert.match(src,/\.tmp-concurrency-root-' \+ instanceId/);
- assert.match(src,/\.tmp-concurrency-app-' \+ instanceId/);
+ assert.match(src,/const sandbox = await mkdtemp\(path\.join\(os\.tmpdir\(\), 'rc-concurrency-'\)\);/);
+ assert.match(src,/const root = path\.join\(sandbox, 'root'\);/);
+ assert.match(src,/const isolatedApp = path\.join\(sandbox, 'app'\);/);
+ assert.match(src,/await rm\(sandbox, \{ recursive: true, force: true \}\);/);
+ assert.doesNotMatch(src,/path\.resolve\('test', '\.tmp-concurrency-/);
  assert.match(src,/reservation\.close\(err=>err\?reject\(err\):resolve\(\)\)/);
  assert.doesNotMatch(src,/const port\s*=\s*47931/);
  assert.match(src,/liveRuntimeStateAfter,[\s\S]*liveRuntimeStateBefore/);
@@ -666,4 +683,17 @@ test('Windows startup-sensitive HTTP fixtures stay exact, early, and individuall
     'host regression preserves the original 30-second readiness deadline');
   assert.ok(read('tools/run-bounded-test-script.mjs').includes(
     'command=isolateWindowsStartupReadinessRegressions(command);'));
+});
+
+test('V012 source regression packs every test once into cold bounded Windows batches',()=>{
+  const runner=read('tools/run-v012-source-regression.mjs');
+  const names=[...runner.matchAll(/^  "(test\/[A-Za-z0-9._-]+\.test\.mjs)",?$/gm)].map(x=>x[1]);
+  assert.equal(names.length,13,'fixed V012 source-qualification test inventory');
+  assert.equal(new Set(names).size,names.length,'duplicates must not silently pass');
+  assert.match(runner,/const batches = \[files\.slice\(0, 3\), files\.slice\(3, 5\), files\.slice\(5, 9\), files\.slice\(9, 10\), files\.slice\(10\)\];/,
+    'short cold phases isolate high-load workflow-store without widening deadlines');
+  assert.match(runner,/V012_SOURCE_REGRESSION_BATCH_COVERAGE_INVALID/,'runtime fail-closed coverage check');
+  assert.match(runner,/timeout: 30000/,'all phase deadlines remain exactly 30 seconds');
+  assert.match(runner,/'--test-concurrency=1'/,'serial test files and deterministic results');
+  assert.match(runner,/if \(result\.signal \|\| result\.status !== 0\)/,'failed phase stops qualification');
 });

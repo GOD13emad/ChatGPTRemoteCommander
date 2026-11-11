@@ -396,6 +396,34 @@ install_linux_gui_backend() {
 
 validate_installation() {
   cd "$INSTALL_DIR"
+  # The test suites start synthetic unauthenticated MCP servers. When the
+  # bootstrapper runs as root, those suites must run under a non-root OS token.
+  # Never loosen the authenticated-ingress quarantine to make root tests pass.
+  if [[ "$(id -u)" == 0 ]]; then
+    command -v runuser >/dev/null 2>&1 || { echo 'QUALIFICATION_UNPRIVILEGED_RUNNER_REQUIRED' >&2; return 1; }
+    id -u nobody >/dev/null 2>&1 || { echo 'QUALIFICATION_UNPRIVILEGED_USER_REQUIRED' >&2; return 1; }
+    local qa_home qa_user_uid qa_user_gid qa_rc=0 qa_script
+    qa_user_uid="$(id -u nobody)"
+    qa_user_gid="$(id -g nobody)"
+    qa_home="$(mktemp -d -t rc-install-qa-XXXXXXXX)" || return 1
+    chmod 0700 "$qa_home"
+    chown "$qa_user_uid:$qa_user_gid" "$qa_home"
+    for qa_script in check:qualification test:qualification audit; do
+      # This root-owned, exact staged Git checkout is intentionally read by the
+      # unprivileged QA runner. Permit Git metadata reads for this path only;
+      # do not add a global safe.directory entry or widen OS file permissions.
+      if ! runuser -u nobody -- env HOME="$qa_home" XDG_CACHE_HOME="$qa_home/.cache" PATH="$PATH" \
+        GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=safe.directory GIT_CONFIG_VALUE_0="$(pwd -P)" \
+        npm run "$qa_script"; then
+        echo "QUALIFICATION_UNPRIVILEGED_FAILED $qa_script" >&2
+        qa_rc=1
+        break
+      fi
+    done
+    # This per-run temporary home contains only synthetic QA artifacts.
+    rm -rf -- "$qa_home"
+    return "$qa_rc"
+  fi
   npm run check:qualification
   npm run test:qualification
   npm run audit

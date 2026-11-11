@@ -1163,6 +1163,47 @@ test('Windows candidate stage receives only the pinned native Job Object runner 
   assert.equal((updater.match(/Promote-Control \$stage\.Commit \$ref \$stage\.Dir/g)||[]).length,4);
 });
 
+test('server canary retains pinned SDK while hiding Node and Git from bootstrapping PATH',()=>{
+ const workflow=read('.github/workflows/server-install-canary.yml');
+ const windows=workflow.slice(workflow.indexOf('windows-server-bootstrap:'),workflow.indexOf('linux-clean-container:'));
+ assert.ok(windows.includes('actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1'));
+ assert.ok(windows.includes("dotnet-version: '8.0.427'"));
+ assert.ok(windows.includes('$env:ProgramFiles\\dotnet'));
+ assert.ok(windows.includes('NODE_SHOULD_BE_HIDDEN_FOR_CANARY'));
+ assert.ok(windows.includes('GIT_SHOULD_BE_HIDDEN_FOR_CANARY'));
+ assert.ok(!windows.includes('$env:ProgramFiles\\nodejs;'));
+ assert.ok(!windows.includes('Git\\cmd;'));
+});
+
+test('pinned native Windows Job runner sources keep LF bytes across Windows Git checkout',async()=>{
+ const attr=read('.gitattributes');
+ for(const name of ['*.cs','*.csproj']){
+   assert.ok(attr.includes(name+' text eol=lf'),name+' must never become CRLF');
+ }
+ const manifest=JSON.parse(read('tools/windows-job-runner/release-manifest.json'));
+ const crypto=await import('node:crypto');
+ const digest=name=>crypto.createHash('sha256').update(read(name)).digest('hex');
+ assert.equal(digest('tools/windows-job-runner/Program.cs'),manifest.sourceSha256);
+ assert.equal(digest('tools/windows-job-runner/CommanderWindowsJobRunner.csproj'),manifest.projectSha256);
+});
+
+test('R157 isolated Windows updater supplies the verified native runner and preserves NoPromote',()=>{
+ const workflow=read('.github/workflows/windows-updater-e2e-r157.yml');
+ const updater=read('auto-update-windows.ps1');
+ const setup=workflow.indexOf('actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1');
+ const compile=workflow.indexOf('Build and verify the pinned native Job Object runner for the isolated updater');
+ const verify=workflow.indexOf('verify-windows-job-runner.ps1 -Ensure');
+ const stage=workflow.indexOf('Actual candidate-first updater in isolated state (NoPromote)');
+ const explicit=workflow.indexOf('-WindowsJobRunnerPath $runner -NoPromote');
+ assert.ok(setup>0 && compile>setup && verify>compile && stage>verify && explicit>stage);
+ assert.ok(workflow.includes("dotnet-version: '8.0.427'"));
+ assert.ok(workflow.includes("R157_PINNED_JOB_RUNNER_MISSING"));
+ assert.ok(workflow.includes("Join-Path $env:GITHUB_WORKSPACE 'tools\\windows-job-runner\\dist\\win-x64\\CommanderWindowsJobRunner.exe'"));
+ assert.ok(updater.includes('WINDOWS_JOB_RUNNER_SOURCE_SHA_MISMATCH'));
+ assert.ok(updater.includes('WINDOWS_JOB_RUNNER_STAGE_SHA_MISMATCH'));
+ assert.ok(workflow.includes('R157_UNEXPECTED_ROUTE_PROMOTION'));
+});
+
 test('R157 staged release lookup uses the pinned source version, not a fixed old tag',()=>{
  const workflow=read('.github/workflows/windows-updater-e2e-r157.yml');
  const version=JSON.parse(read('package.json')).version;

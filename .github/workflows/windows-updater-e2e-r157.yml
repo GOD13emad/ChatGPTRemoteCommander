@@ -33,6 +33,15 @@ jobs:
         with:
           node-version: '24'
 
+      # Reuse the pinned native build and SHA verification from CI.
+      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
+        with:
+          dotnet-version: '8.0.427'
+
+      - name: Build and verify the pinned native Job Object runner for the isolated updater
+        shell: pwsh
+        run: ./tools/windows-job-runner/verify-windows-job-runner.ps1 -Ensure
+
       - name: Exact-head preflight and private disposable state
         shell: pwsh
         run: |
@@ -82,7 +91,10 @@ jobs:
           $env:LOCALAPPDATA=Join-Path $root 'STATE'
           $env:APPDATA=Join-Path $root 'ROAMING'
           $install=Join-Path $root 'INSTALL'
-          & pwsh.exe -NoLogo -NoProfile -NonInteractive -File .\auto-update-windows.ps1 -InstallDir $install -SourceRef $sha -ExpectedCommit $sha -TargetProfile default -NoPromote
+          # The exact-head updater independently verifies the native source hash.
+          $runner=Join-Path $env:GITHUB_WORKSPACE 'tools\windows-job-runner\dist\win-x64\CommanderWindowsJobRunner.exe'
+          if(-not(Test-Path -LiteralPath $runner -PathType Leaf)){throw 'R157_PINNED_JOB_RUNNER_MISSING'}
+          & pwsh.exe -NoLogo -NoProfile -NonInteractive -File .\auto-update-windows.ps1 -InstallDir $install -SourceRef $sha -ExpectedCommit $sha -TargetProfile default -WindowsJobRunnerPath $runner -NoPromote
           if($LASTEXITCODE -ne 0){throw ('R157_UPDATER_FAILED_'+$LASTEXITCODE)}
 
       - name: Independently verify exact Job receipts and no promotion

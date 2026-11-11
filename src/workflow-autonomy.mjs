@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
+import { BROWSER_RULES } from './browser-contract.mjs';
 
 export const AUTONOMY_REVISION = 'durable-workflows-r2';
 export const AUTONOMY_SCHEMA = 2;
@@ -95,6 +96,12 @@ export function classifyTool(tool, args = {}) {
   // read_terminal consumes its output cursor by default; only an explicit
   // non-consuming observation can be safely retried after uncertain delivery.
   if (tool === 'read_terminal') return args.consume === false ? 'READ_ONLY' : 'NON_IDEMPOTENT_MUTATION';
+  // Browser contract annotations are the authority for read-only operations.
+  // Unrecognized browser operations must fail closed as external effects;
+  // never infer a safe retry or idempotence from a tool name.
+  if (typeof tool === 'string' && tool.startsWith('browser_'))
+    return BROWSER_RULES.get(tool)?.annotations?.readOnlyHint === true
+      ? 'READ_ONLY' : 'EXTERNAL_SIDE_EFFECT';
   if (READ_ONLY.has(tool)) return 'READ_ONLY';
   if (tool === 'write_text') return args.mode === 'append' ? 'NON_IDEMPOTENT_MUTATION' : 'IDEMPOTENT_MUTATION';
   if (tool === 'write_file') return args.mode === 'append' ? 'NON_IDEMPOTENT_MUTATION' : 'IDEMPOTENT_MUTATION';

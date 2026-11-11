@@ -29,7 +29,7 @@ async function call(port,id,name,args){
   return result.structuredContent;
 }
 
-test('HTTP conversation continuation binds without opening a tab and queues terminal handoff safely',async()=>{
+test('HTTP conversation continuation is owner-token gated and queues handoff only on eligible workers',async()=>{
   const root=await fs.mkdtemp(path.join(os.tmpdir(),'rc-conversation-http-'));
   const serverRoot=path.join(root,'server'),dataRoot=path.join(root,'data'),toolsRoot=path.join(serverRoot,'tools');
   const stateRoot=path.join(root,'operations');
@@ -62,6 +62,19 @@ test('HTTP conversation continuation binds without opening a tab and queues term
       await wait(25);
     }
     assert.equal(healthy,true,stderr||`server exit=${child.exitCode}`);
+
+    const health=await (await fetch(`http://127.0.0.1:${port}/health`)).json();
+    if(health.privilegedLegacyHttpQuarantined===true){
+      assert.equal(health.protectedIngress?.required,true);
+      assert.equal(health.protectedIngress?.ready,false);
+      const denied=await fetch(`http://127.0.0.1:${port}/mcp`,{
+        method:'POST',headers:{'content-type':'application/json'},
+        body:JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/list',params:{}})
+      });
+      assert.equal(denied.status,403);
+      assert.deepEqual(await denied.json(),{error:'trusted_transport_required'});
+      return;
+    }
 
     const listed=await rpc(port,1,'tools/list',{});
     const names=listed.tools.map(x=>x.name);

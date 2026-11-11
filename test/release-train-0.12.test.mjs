@@ -39,3 +39,27 @@ test('0.12.0-dev.1 advances every 0.11 release and rejects noncanonical leading 
   assert.equal(compareReleaseVersions('0.12.0-dev.1',old),1,old);
  assert.throws(()=>parseReleaseVersion('0.12.0-dev.01'),/RC_VERSION_INVALID/);
 });
+
+
+test('owner-confirmed fleet migration names exactly 19 ChatGPT account profiles on eight hosts without cross-account collisions',()=>{
+ const m=manifest.migration;
+ assert.equal(m.id,'V012-FLEET-ACCOUNT-MAPPING-20261110');
+ assert.equal(m.ownerConfirmed,true);
+ assert.equal(m.noCrossAccountCredentialMoves,true);
+ assert.equal(m.noProfileDataOverwrite,true);
+ assert.equal(m.deploymentStatus,'NOT_DEPLOYED');
+ assert.equal(m.hosts.length,8);
+ assert.equal(m.hosts.reduce((n,h)=>n+h.profiles.length,0),19);
+ assert.deepEqual(new Set(m.hosts.map(h=>h.host)),new Set(manifest.fleetCoverage.expectedHostIds));
+ for(const host of m.hosts){
+   assert.equal(new Set(host.profiles.map(p=>p.account)).size,host.profiles.length,host.host);
+   assert.ok(host.profiles.every(p=>['Emad','MMZ','Saeid'].includes(p.account)),host.host);
+   assert.ok(host.profiles.every(p=>p.targetProfile===p.account),host.host);
+   if(host.mode==='headless')assert.ok(['Emad_Server','Server_Amirreza','Server_103'].includes(host.host));
+ }
+ const byHost=new Map(m.hosts.map(h=>[h.host,h]));
+ assert.equal(byHost.get('MMZ_Labtop').profiles.find(p=>p.legacyProfile==='default').account,'MMZ');
+ assert.equal(byHost.get('Saeid_PC').profiles.find(p=>p.legacyProfile==='default').account,'Saeid');
+ for(const h of ['Emad_Labtop','Emad_PC_LIte','Emad_PC_Ultimate','Emad_Server','Server_Amirreza','Server_103'])
+   assert.equal(byHost.get(h).profiles.find(p=>p.legacyProfile==='default').account,'Emad');
+});

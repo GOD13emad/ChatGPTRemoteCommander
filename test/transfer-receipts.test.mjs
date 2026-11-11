@@ -16,7 +16,8 @@ const sha=value=>createHash('sha256').update(value).digest('hex');
 const errorCode=code=>error=>error?.code===code;
 
 function fixture({now=1_800_000_000_000}={}){
-  const root=fs.mkdtempSync(path.join(os.tmpdir(),'rc-transfer-receipts-'));
+  // Receipt path validation rejects aliases; fixtures must use the canonical temp root.
+  const root=fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(),'rc-transfer-receipts-')));
   const pcPair=generateKeyPairSync('ed25519');
   const linuxPair=generateKeyPairSync('ed25519');
   const pc={alias:'PC',hostId:'host-pc-01',profileId:'profile-pc-01',keyId:'pc-key-01',
@@ -241,7 +242,7 @@ test('receipt authority requires trusted identity, signer, owner authorization a
   const f=fixture();t.after(f.cleanup);
   assert.throws(()=>createTransferReceiptAuthority({issuer:ISSUER,audience:AUDIENCE}),errorCode('TRANSFER_RECEIPT_AUTHORITY_REQUIRED'));
   const symlink=path.join(f.root,'ledger-link');
-  fs.symlinkSync(path.join(f.root,'PC','receipt-ledger'),symlink,'dir');
+  fs.symlinkSync(path.join(f.root,'PC','receipt-ledger'),symlink,process.platform==='win32'?'junction':'dir');
   assert.throws(()=>createTransferReceiptAuthority({
     issuer:ISSUER,audience:AUDIENCE,ledgerDirectory:symlink,
     localIdentity:()=>({}),resolvePeerIdentity:()=>({}),signReceipt:()=>'',authorizeTransfer:()=>({granted:true,consentEpoch:SENDER_EPOCH})

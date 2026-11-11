@@ -5,10 +5,17 @@
  * or J01 consent.
  */
 function fullAccessIsOperational(accessStatus) {
-  return accessStatus?.effectiveTier === 'FULL_ACCESS'
+  // V102: the ordinary owner Worker need NOT run as SYSTEM/root. Instead the
+  // privileged broker and interactive owner-session worker must both prove
+  // their own authorization. Reject any fabricated status lacking either.
+  return accessStatus?.configuredTier === 'FULL_ACCESS'
+    && accessStatus?.effectiveTier === 'FULL_ACCESS'
     && accessStatus?.operationalFullAccess === true
-    && (accessStatus?.nativeAdmin?.verified === true
-      || accessStatus?.nativeRoot?.verified === true);
+    && accessStatus?.broker?.verified === true
+    && accessStatus?.broker?.operationalFullAccess === true
+    && accessStatus?.broker?.nativeProfileBindingVerified === true
+    && accessStatus?.broker?.privilegedActionRouteVerified === true
+    && accessStatus?.ownerSession?.verified === true;
 }
 
 function hostUserTokenVerified(accessStatus) {

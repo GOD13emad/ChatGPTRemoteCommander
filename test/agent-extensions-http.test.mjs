@@ -8,7 +8,7 @@ import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 const wait=ms=>new Promise(r=>setTimeout(r,ms));
 
-test('agent extension tools are exposed read-only and return validated manifests',async()=>{
+test('agent extension tools are exposed read-only and return validated manifests',async t=>{
   const root=await fs.mkdtemp(path.join(os.tmpdir(),'rc-agent-http-'));
   const extensionRoot=path.join(root,'extensions');
   const extensionDir=path.join(extensionRoot,'fixture-extension');
@@ -17,7 +17,7 @@ test('agent extension tools are exposed read-only and return validated manifests
   let child;
   try {
     await fs.mkdir(path.join(root,'src'),{recursive:true});
-    for(const f of ['server-v0.3.mjs','transport-guard.mjs','full-access-http-quarantine.mjs','full-access-status.mjs','effective-power-mode.mjs','capability-profile.mjs','privilege-client.mjs','windows-admin-token.mjs','gui-universal-policy.mjs','gui-native-session-provider.mjs','gui-windows-native-provider.mjs','gui-linux-input-capture-provider.mjs','gui-tools-windows.mjs','gui-owner-delegation.mjs','owner-workspace-delegation.mjs','workspace-target-tools.mjs','workspace-accessibility-tools.mjs','owner-workspace-proxy.mjs','workspace-tools.mjs','workspace-routing.mjs','workspace-target-journal.mjs','gui-target-only-policy.mjs','gui-incident-store.mjs','gui-contract.mjs','gui-process.mjs','browser-tools.mjs','browser-contract.mjs','browser-process.mjs','browser-owned-processes.mjs','browser-lease-store.mjs','browser-existing-session-route.mjs','browser-owner-window-inventory.mjs','browser-profile-inventory.mjs','browser-file-transfer-guard.mjs','browser-companion-monitor.mjs','schema-validator.mjs','async-operations.mjs','retry-guard.mjs','agent-extensions.mjs','coucou-bridge.mjs','no-codex-policy.mjs','conversation-store.mjs','conversation-continuation.mjs']) {
+    for(const f of ['server-v0.3.mjs','access-tier-contract.mjs','transport-guard.mjs','full-access-http-quarantine.mjs','full-access-status.mjs','effective-power-mode.mjs','capability-profile.mjs','privilege-client.mjs','windows-admin-token.mjs','gui-universal-policy.mjs','gui-native-session-provider.mjs','gui-windows-native-provider.mjs','gui-linux-input-capture-provider.mjs','gui-tools-windows.mjs','gui-owner-delegation.mjs','owner-workspace-delegation.mjs','workspace-target-tools.mjs','workspace-accessibility-tools.mjs','owner-workspace-proxy.mjs','workspace-tools.mjs','workspace-routing.mjs','workspace-target-journal.mjs','gui-target-only-policy.mjs','gui-incident-store.mjs','gui-contract.mjs','gui-process.mjs','browser-tools.mjs','browser-contract.mjs','browser-process.mjs','browser-owned-processes.mjs','browser-lease-store.mjs','browser-existing-session-route.mjs','browser-owner-window-inventory.mjs','browser-profile-inventory.mjs','browser-file-transfer-guard.mjs','browser-companion-monitor.mjs','schema-validator.mjs','async-operations.mjs','retry-guard.mjs','agent-extensions.mjs','coucou-bridge.mjs','no-codex-policy.mjs','conversation-store.mjs','conversation-continuation.mjs']) {
       await fs.copyFile(new URL('../src/'+f,import.meta.url),path.join(root,'src',f));
     }
     await fs.writeFile(path.join(root,'src','security-v0.3.mjs'),'export const canonicalizeRoots = async x=>x;');
@@ -51,6 +51,19 @@ test('agent extension tools are exposed read-only and return validated manifests
     let alive=false;
     for(let i=0;i<400;i++){try{if((await fetch(`http://127.0.0.1:${port}/health`)).ok){alive=true;break;}}catch{}await wait(25);}
     assert.equal(alive,true,stderr);
+    const health=await (await fetch(`http://127.0.0.1:${port}/health`)).json();
+    if(health.privilegedLegacyHttpQuarantined===true){
+      assert.equal(health.protectedIngress?.required,true);
+      assert.equal(health.protectedIngress?.ready,false);
+      const rejected=await fetch(`http://127.0.0.1:${port}/mcp`,{
+        method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/list',params:{}})
+      });
+      assert.equal(rejected.status,403);
+      assert.deepEqual(await rejected.json(),{error:'trusted_transport_required'});
+      t.skip('Elevated CI token correctly quarantines unauthenticated legacy HTTP; owner-token test covers extension catalog.');
+      return;
+    }
     const call=async(name,args={})=>{
       const res=await fetch(`http://127.0.0.1:${port}/mcp`,{
         method:'POST',headers:{'Content-Type':'application/json'},
@@ -70,6 +83,9 @@ test('agent extension tools are exposed read-only and return validated manifests
     }
     const status=(await call('system_status')).result.structuredContent;
     assert.equal(status.configSchema.agentExtensions,1);
+    assert.equal(status.accessTierContract.id,'V102-OWNER-ACCESS-TIER-SEMANTICS-20261109');
+    assert.equal(status.accessTierContract.policyOnly,true);
+    assert.deepEqual(Object.keys(status.accessTierContract.definitions),['STANDARD','FULL_POWER','FULL_ACCESS']);
     assert.equal(status.effectiveTier,'STANDARD');
     assert.equal(status.powerMode.effective.enabled,false);
     assert.equal(status.powerMode.enabled,false);

@@ -2,6 +2,7 @@ import http from 'node:http';
 import { legacyPrivilegedMcpQuarantine, rejectLegacyPrivilegedMcp } from './full-access-http-quarantine.mjs';
 import { probeWindowsAdministrator } from './windows-admin-token.mjs';
 import { createAccessStatusReader } from './full-access-status.mjs';
+import { accessTierContractSnapshot } from './access-tier-contract.mjs';
 import { effectivePowerMode, hasEffectiveFullFilesystem } from './effective-power-mode.mjs';
 import { createHash } from 'node:crypto';
 import { validateTransport, assertLocalTransport } from './transport-guard.mjs';
@@ -170,6 +171,8 @@ const conversationController = createConversationController({
 });
 const asyncOperationTools = createAsyncOperationTools({
   config,
+  workerConfigPath: path.resolve(configPath),
+  workerConfigSha256: configSha256,
   deliveryStore,
   onTerminal: state => conversationController.signalOperation(state),
   validateContinuation: continuation => conversationController.validateContinuation(continuation),
@@ -549,6 +552,7 @@ async function executeToolEffect(name, args, delegationContext = {}) {
         allowedRootsEnforced: !currentEffectivePower.fullFilesystem,
         effectiveTier: ctx.accessStatus?.effectiveTier ?? 'STANDARD',
         accessStatus: ctx.accessStatus,
+        accessTierContract: accessTierContractSnapshot(),
         effectiveAccess: {
           filesystem: currentEffectivePower.fullFilesystem ? 'full-filesystem' : 'allowed-roots',
           legacyFiveToolCompatibility: currentEffectivePower.fullFilesystem,

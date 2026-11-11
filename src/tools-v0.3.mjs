@@ -6,6 +6,7 @@ import { appendFile, copyFile, mkdir, opendir, readFile, rename, rm, stat, write
 import { createHash, randomUUID } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { terminateProcessTree } from './platform.mjs';
+import { runContainedProjectCommand } from './process-containment.mjs';
 import { withPathLocks } from './locks.mjs';
 import { guardFileWrite } from './file-write-guard.mjs';
 import {
@@ -257,6 +258,22 @@ export async function runProjectCommand(ctx, input) {
   const prepared = await prepareProjectCommand(ctx, synchronousCommandInput(input));
   const { file: program, args, cwd, timeoutMs, fullFilesystem } = prepared;
   const outputLimit = Math.min(prepared.outputLimit, 32 * 1024);
+  const env = commanderChildEnv(cwd, process.env, { allowCodex: codexLaunchAuthorized(ctx) });
+  const workflowBinding = Number.isSafeInteger(ctx.workflowOperation?.fencingToken)
+    ? ctx.workflowOperation : null;
+  if (workflowBinding) {
+    const result = await runContainedProjectCommand({
+      program, args, cwd, timeoutMs, outputLimit, env, binding:workflowBinding
+    });
+    await audit(ctx, {
+      action:'run_project_command', program, args, cwd,
+      ok:!result.isError && !result.timedOut && result.exitCode===0,
+      exitCode:result.exitCode, timedOut:result.timedOut,
+      powerModeFullFilesystem:fullFilesystem,
+      containment:result.containment
+    });
+    return result;
+  }
   const windowsJob = process.platform === 'win32';
   const runner = path.resolve(path.dirname(fileURLToPath(import.meta.url)),
     '../tools/windows-job-runner/dist/win-x64/CommanderWindowsJobRunner.exe');

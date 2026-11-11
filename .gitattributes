@@ -3,3 +3,6 @@
 *.mjs text eol=lf
 *.json text eol=lf
 *.md text eol=lf
+# Pin the bytes signed by the native Windows Job Runner manifest on every checkout.
+*.cs text eol=lf
+*.csproj text eol=lf

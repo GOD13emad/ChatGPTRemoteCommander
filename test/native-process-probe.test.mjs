@@ -7,6 +7,9 @@ import {join} from 'node:path';
 import {createAllowlistedNativeProcessProbe} from '../src/native-process-probe.mjs';
 import {createNativeTailscaleDeviceAttestor} from '../src/native-tailscale-device-attestor.mjs';
 
+const PLATFORM = process.platform === 'win32' ? 'win32' : 'linux';
+const INVALID_EXECUTABLE = PLATFORM === 'win32' ? join(tmpdir(),'invalid-native-test.exe') : '/usr/bin/false';
+
 const OWNER='a'.repeat(64);
 const OTHER='b'.repeat(64);
 const STATUS=JSON.stringify({
@@ -25,7 +28,7 @@ function fixture(options={}){
     args:['status','--json'],timeoutMs:4000,maxBufferBytes:2048
   };
   const p=createAllowlistedNativeProcessProbe({
-    platform:'linux',allowedProgram:options.allowedProgram??program,
+    platform:PLATFORM,allowedProgram:options.allowedProgram??program,
     resolveOwnerSidHash:async()=>{owner=options.ownerSequence?.length?options.ownerSequence.shift():owner;return owner;},
     verifyExecutable:async input=>{verifyCalls++;observed=input;return options.verifyResult??true;},
     now:()=>options.clock?options.clock():clockValue++,
@@ -71,18 +74,22 @@ test('native process probe supplies a minimal environment and explicit shell=fal
     assert.equal(opts.timeout,4000);
     assert.equal(opts.maxBuffer,2048);
     assert.equal(opts.env.RC_V107_TEST_SECRET,undefined);
-    assert.equal(opts.env.HOME,process.env.HOME);
+    if(PLATFORM==='linux') assert.equal(opts.env.HOME,process.env.HOME);
+    else {
+      assert.equal(opts.env.USERPROFILE,process.env.USERPROFILE);
+      assert.equal(opts.env.HOME,undefined);
+    }
   }});
   try{await f.p.run();}finally{delete process.env.RC_V107_TEST_SECRET;f.cleanup();}
 });
 
 test('native process probe rejects a different program ID or argument vector before execution',async()=>{
   for(const allowedProgram of [
-    {programId:'arbitrary-command',executablePath:'/usr/bin/false',executableSha256:'a'.repeat(64),args:['-c','whoami'],timeoutMs:1000,maxBufferBytes:1024},
-    {programId:'tailscale-status',executablePath:'/usr/bin/false',executableSha256:'a'.repeat(64),args:['status','--json','--verbose'],timeoutMs:1000,maxBufferBytes:1024}
+    {programId:'arbitrary-command',executablePath:INVALID_EXECUTABLE,executableSha256:'a'.repeat(64),args:['-c','whoami'],timeoutMs:1000,maxBufferBytes:1024},
+    {programId:'tailscale-status',executablePath:INVALID_EXECUTABLE,executableSha256:'a'.repeat(64),args:['status','--json','--verbose'],timeoutMs:1000,maxBufferBytes:1024}
   ]){
     assert.throws(()=>createAllowlistedNativeProcessProbe({
-      platform:'linux',allowedProgram,resolveOwnerSidHash:async()=>OWNER,
+      platform:PLATFORM,allowedProgram,resolveOwnerSidHash:async()=>OWNER,
       verifyExecutable:async()=>true
     }),e=>e.code==='NATIVE_PROCESS_ALLOWLIST_ENTRY_INVALID');
   }
@@ -91,7 +98,7 @@ test('native process probe rejects a different program ID or argument vector bef
 test('native process probe rejects an executable fingerprint mismatch before launch',async()=>{
   const f=fixture();
   const p=createAllowlistedNativeProcessProbe({
-    platform:'linux',allowedProgram:{...f.program,executableSha256:'c'.repeat(64)},
+    platform:PLATFORM,allowedProgram:{...f.program,executableSha256:'c'.repeat(64)},
     resolveOwnerSidHash:async()=>OWNER,verifyExecutable:async()=>true,
     execFileImpl:()=>{f.execCalls++;throw new Error('must not execute');}
   });
@@ -120,17 +127,17 @@ test('native process probe rejects executable mutation during the process call',
 test('native process probe rejects symlinked executables and invalid path normalization',async()=>{
   const f=fixture();
   const link=join(f.directory,'tailscale-link');
-  symlinkSync(f.file,link);
-  const linked={...f.program,executablePath:link};
+  symlinkSync(f.directory,link,PLATFORM==='win32'?'junction':'dir');
+  const linked={...f.program,executablePath:join(link,'tailscale-native-test')};
   const p=createAllowlistedNativeProcessProbe({
-    platform:'linux',allowedProgram:linked,resolveOwnerSidHash:async()=>OWNER,
+    platform:PLATFORM,allowedProgram:linked,resolveOwnerSidHash:async()=>OWNER,
     verifyExecutable:async()=>true,execFileImpl:()=>{throw new Error('must not execute');}
   });
   try{
     await assert.rejects(p.run(),e=>e.code==='NATIVE_PROCESS_EXECUTABLE_UNTRUSTED');
     const bad={...f.program,executablePath:f.directory+'/../bad'};
     assert.throws(()=>createAllowlistedNativeProcessProbe({
-      platform:'linux',allowedProgram:bad,resolveOwnerSidHash:async()=>OWNER,
+      platform:PLATFORM,allowedProgram:bad,resolveOwnerSidHash:async()=>OWNER,
       verifyExecutable:async()=>true
     }),e=>e.code==='NATIVE_PROCESS_PATH_INVALID');
   }finally{f.cleanup();}

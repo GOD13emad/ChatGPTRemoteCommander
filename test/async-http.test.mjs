@@ -6,6 +6,7 @@ import os from 'node:os';
 import net from 'node:net';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
+import { probeWindowsAdministrator } from '../src/windows-admin-token.mjs';
 
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -47,7 +48,7 @@ async function waitTerminal(port, operationId) {
   throw new Error('operation did not reach terminal state');
 }
 
-test('HTTP async operation returns immediately, retry is idempotent, and output stays file-backed', async () => {
+test('HTTP async operation returns immediately, retry is idempotent, and output stays file-backed', async t => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'rc-async-http-'));
   const serverRoot = path.join(root, 'server');
   const dataRoot = path.join(root, 'data');
@@ -116,6 +117,25 @@ test('HTTP async operation returns immediately, retry is idempotent, and output 
       await wait(25);
     }
     assert.equal(healthy, true, stderr || `server failed to become healthy; exitCode=${child.exitCode}`);
+
+    const nativeToken = process.platform === 'win32'
+      ? await probeWindowsAdministrator() : null;
+    const url='http://127.0.0.1:'+port;
+    const health = await (await fetch(url+'/health')).json();
+    if(nativeToken?.ok === true && nativeToken.isAdmin === true) {
+      // Hosted Windows Actions may use an elevated Administrator token.
+      // A legacy unauthenticated MCP path must remain quarantined.
+      assert.equal(health.privilegedLegacyHttpQuarantined,true);
+      const blocked=await fetch(url+'/mcp',{
+        method:'POST',headers:{'content-type':'application/json'},
+        body:JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/list',params:{}})
+      });
+      assert.equal(blocked.status,403);
+      assert.deepEqual(await blocked.json(),{error:'trusted_transport_required'});
+      return t.skip('elevated native Windows token: fail-closed admission verified; positive STANDARD requires non-admin host');
+    }
+    assert.equal(health.privilegedLegacyHttpQuarantined,false,
+      'STANDARD loopback fixture must be reachable by a verified non-elevated host token');
 
     const effect = path.join(canonicalDataRoot, 'effect.txt');
     const request = {

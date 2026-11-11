@@ -8,6 +8,12 @@ import { fileURLToPath } from 'node:url';
 import { createLinuxGuiInputCaptureAdapter, classifyLinuxOwnerApprovalResult } from '../src/gui-linux-input-capture-provider.mjs';
 
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
+// Headless server environments do not require PyGObject. These three native
+// D-Bus binding tests run only where the real GLib provider is importable;
+// GUI session acceptance on a desktop-equipped host remains a separate gate.
+const giReady=process.platform==='linux' &&
+  spawnSync('python3',['-c',"import gi;gi.require_version('GLib','2.0');from gi.repository import GLib"],
+    {encoding:'utf8',timeout:3000}).status===0;
 const session={ownerPrincipal:'uid:1000',sessionId:'test-session',seatId:'seat0',
   displayId:'wayland:wayland-0',interactive:true,ownerAuthenticated:true};
 const descriptor={providerId:'linux-xdg-input-capture-v1',platform:'linux',
@@ -126,7 +132,7 @@ test('Linux adapter grants and revokes on Portal Deactivated', {skip:process.pla
   await adapter.close();
 });
 
-test('Linux Portal and EIS capability scopes exactly match requested pointer/keyboard access', {skip:process.platform!=='linux'}, ()=>{
+test('Linux Portal and EIS capability scopes exactly match requested pointer/keyboard access', {skip:!giReady}, ()=>{
   const python = "import importlib.machinery,importlib.util,sys\n" +
     "loader=importlib.machinery.SourceFileLoader('rc_capture',sys.argv[1]);spec=importlib.util.spec_from_loader(loader.name,loader);m=importlib.util.module_from_spec(spec);loader.exec_module(m)\n" +
     "assert m.resolve_capture_scope({'pointer':True,'keyboard':False},3)==(2,35)\n" +
@@ -150,7 +156,7 @@ test('Linux Portal and EIS capability scopes exactly match requested pointer/key
   assert.match(result.stdout,/EXACT_SCOPE_PASS/);
 });
 
-test('Linux Portal barrier dictionaries marshal exact D-Bus a{sv} variant types', {skip:process.platform!=='linux'}, ()=>{
+test('Linux Portal barrier dictionaries marshal exact D-Bus a{sv} variant types', {skip:!giReady}, ()=>{
   const python = "import importlib.machinery,importlib.util,sys\n" +
     "from gi.repository import GLib\n" +
     "loader=importlib.machinery.SourceFileLoader('rc_capture',sys.argv[1]);spec=importlib.util.spec_from_loader(loader.name,loader);m=importlib.util.module_from_spec(spec);loader.exec_module(m)\n" +
@@ -165,7 +171,7 @@ test('Linux Portal barrier dictionaries marshal exact D-Bus a{sv} variant types'
   assert.match(result.stdout,/PORTAL_DBUS_MARSHAL_PASS/);
 });
 
-test('Linux barrier geometry excludes monitor seams and rejects malformed zones', {skip:process.platform!=='linux'}, ()=>{
+test('Linux barrier geometry excludes monitor seams and rejects malformed zones', {skip:!giReady}, ()=>{
   const python = "import importlib.machinery, importlib.util, sys\n" +
     "p=sys.argv[1]\n" +
     "loader=importlib.machinery.SourceFileLoader('rc_capture',p)\n" +

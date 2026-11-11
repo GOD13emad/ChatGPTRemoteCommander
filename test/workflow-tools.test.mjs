@@ -35,6 +35,20 @@ test('durable workflows cannot perform or acquire interactive desktop takeover',
  await assert.rejects(tool.execute('workflow_call',{id:'x',stepId:'a',expectedRevision:1,tool:'gui_mouse_click',arguments:{}}),/GUI_TAKEOVER_REQUIRES_DIRECT_USER_SESSION/);
  assert.equal((await tool.execute('workflow_get',{id:'x'})).state.revision,1);
 }finally{tool?.close();f.dispose();}});
+test('process management tools are denied even when explicitly allowlisted',async()=>{
+ const f=fixture();let tool;
+ try{
+  tool=createWorkflowTools({...f.base,config:{durableWorkflows:{
+   enabled:true,directory:path.join(f.root,'process-tools'),
+   executionTools:['kill_process','start_terminal','send_terminal','stop_terminal']
+  }}});
+  await tool.execute('workflow_create',{id:'x',root:f.root,goal:'No process control',acceptance:['No unmanaged processes'],steps:[{id:'a',title:'Step'}]});
+  for(const name of ['kill_process','start_terminal','send_terminal','stop_terminal']){
+   await assert.rejects(tool.execute('workflow_call',{id:'x',stepId:'a',expectedRevision:1,tool:name,arguments:{}}),/WORKFLOW_PROCESS_TOOL_NOT_SUPPORTED/);
+  }
+  assert.equal((await tool.execute('workflow_get',{id:'x'})).state.revision,1);
+ }finally{tool?.close();f.dispose();}
+});
 test('underlying schema is mandatory before invocation',async()=>{const f=fixture();let tool;try{
  tool=createWorkflowTools({...f.base,validateSchema:()=>['invalid']});await tool.execute('workflow_create',{id:'x',root:f.root,goal:'Goal',acceptance:['Observe'],steps:[{id:'a',title:'Step'}]});
  await assert.rejects(tool.execute('workflow_call',{id:'x',stepId:'a',expectedRevision:1,tool:'read_text',arguments:{}}),/ARGUMENTS_INVALID/);

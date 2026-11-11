@@ -100,5 +100,184 @@
     "acceptedHostIds": [],
     "mappingVerified": false,
     "bootLoginAndRollbackVerified": false
+  },
+  "migration": {
+    "id": "V012-FLEET-ACCOUNT-MAPPING-20261110",
+    "schema": 1,
+    "ownerConfirmed": true,
+    "source": "owner-corrected mapping confirmed on 2026-11-10",
+    "scope": "chatgpt-account-profile-identities-across-eight-known-hosts",
+    "targetVersion": "0.12.0-dev.1",
+    "targetTier": "FULL_ACCESS",
+    "tierEnrollmentStatus": "requires-native-os-acceptance-per-host",
+    "noCrossAccountCredentialMoves": true,
+    "noProfileDataOverwrite": true,
+    "serverMode": "headless-no-browser-or-gui-required",
+    "identityProofNote": "Existing route identity and secrets must be matched locally before in-place renaming, never inferred from a label alone.",
+    "deploymentStatus": "NOT_DEPLOYED",
+    "hosts": [
+      {
+        "host": "Emad_Labtop",
+        "mode": "desktop",
+        "profiles": [
+          {
+            "legacyProfile": "default",
+            "account": "Emad",
+            "targetProfile": "Emad",
+            "sourcePort": 48831
+          },
+          {
+            "legacyProfile": "MMZ",
+            "account": "MMZ",
+            "targetProfile": "MMZ",
+            "sourcePort": 47910
+          },
+          {
+            "legacyProfile": "saeed-emad",
+            "account": "Saeid",
+            "targetProfile": "Saeid",
+            "sourcePort": 47920
+          }
+        ]
+      },
+      {
+        "host": "Emad_PC_LIte",
+        "mode": "desktop",
+        "profiles": [
+          {
+            "legacyProfile": "default",
+            "account": "Emad",
+            "targetProfile": "Emad",
+            "sourcePort": 47831
+          }
+        ]
+      },
+      {
+        "host": "MMZ_Labtop",
+        "mode": "desktop",
+        "profiles": [
+          {
+            "legacyProfile": "default",
+            "account": "MMZ",
+            "targetProfile": "MMZ",
+            "sourcePort": 47831
+          },
+          {
+            "legacyProfile": "emad-mmz",
+            "account": "Emad",
+            "targetProfile": "Emad",
+            "sourcePort": 47921
+          },
+          {
+            "legacyProfile": "saeid-mmz",
+            "account": "Saeid",
+            "targetProfile": "Saeid",
+            "sourcePort": 47922
+          }
+        ]
+      },
+      {
+        "host": "Emad_PC_Ultimate",
+        "mode": "desktop",
+        "profiles": [
+          {
+            "legacyProfile": "default",
+            "account": "Emad",
+            "targetProfile": "Emad",
+            "sourcePort": 48834
+          },
+          {
+            "legacyProfile": "MMZ",
+            "account": "MMZ",
+            "targetProfile": "MMZ",
+            "sourcePort": 47836
+          },
+          {
+            "legacyProfile": "saeed-emad",
+            "account": "Saeid",
+            "targetProfile": "Saeid",
+            "sourcePort": 47834
+          }
+        ]
+      },
+      {
+        "host": "Emad_Server",
+        "mode": "headless",
+        "profiles": [
+          {
+            "legacyProfile": "default",
+            "account": "Emad",
+            "targetProfile": "Emad",
+            "sourcePort": 48833
+          },
+          {
+            "legacyProfile": "MMZ",
+            "account": "MMZ",
+            "targetProfile": "MMZ",
+            "sourcePort": 47835
+          },
+          {
+            "legacyProfile": "saeid-secondary",
+            "account": "Saeid",
+            "targetProfile": "Saeid",
+            "sourcePort": 48931
+          }
+        ]
+      },
+      {
+        "host": "Server_Amirreza",
+        "mode": "headless",
+        "profiles": [
+          {
+            "legacyProfile": "default",
+            "account": "Emad",
+            "targetProfile": "Emad",
+            "sourcePort": 48831
+          },
+          {
+            "legacyProfile": "MMZ",
+            "account": "MMZ",
+            "targetProfile": "MMZ",
+            "sourcePort": 47835
+          },
+          {
+            "legacyProfile": "saeid-secondary",
+            "account": "Saeid",
+            "targetProfile": "Saeid",
+            "sourcePort": 48931
+          }
+        ]
+      },
+      {
+        "host": "Saeid_PC",
+        "mode": "desktop",
+        "profiles": [
+          {
+            "legacyProfile": "default",
+            "account": "Saeid",
+            "targetProfile": "Saeid",
+            "sourcePort": 47831
+          },
+          {
+            "legacyProfile": "Emad",
+            "account": "Emad",
+            "targetProfile": "Emad",
+            "sourcePort": 47834
+          }
+        ]
+      },
+      {
+        "host": "Server_103",
+        "mode": "headless",
+        "profiles": [
+          {
+            "legacyProfile": "default",
+            "account": "Emad",
+            "targetProfile": "Emad",
+            "sourcePort": 48831
+          }
+        ]
+      }
+    ]
   }
 }

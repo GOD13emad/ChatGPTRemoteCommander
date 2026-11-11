@@ -10,6 +10,8 @@ import { WorkflowStore, canonical, hash } from '../src/workflow-store.mjs';
 import { classifyTool, reconciliationPlan } from '../src/workflow-autonomy.mjs';
 import { powerToolDefinitions } from '../src/power-tools-v0.3.mjs';
 import { agentExtensionToolDefinitions } from '../src/agent-extensions.mjs';
+import { browserToolDefinitions } from '../src/browser-contract.mjs';
+import { runContainedProjectCommand, processContainmentAvailable } from '../src/process-containment.mjs';
 const worker = fileURLToPath(new URL('./workflow-worker.mjs', import.meta.url));
 const fixture = (overrides = {}) => {
   const root = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'rc-memory-')));
@@ -31,6 +33,16 @@ function runWorker(args) {
   });
 }
 const host = dispatch => ({ validate: async()=>{}, dispatch });
+function expireRootLease(f){
+  const db=new DatabaseSync(path.join(f.options.directory,'root-leases.sqlite'));
+  try{
+    const key=process.platform==='win32'?path.resolve(f.root).toLowerCase():path.resolve(f.root);
+    const row=db.prepare('SELECT root FROM root_leases WHERE root=?').get(key);
+    assert.ok(row,'uncertain operation must retain its exact root lease');
+    db.prepare('UPDATE root_leases SET expires_at=? WHERE root=?').run('2000-01-01T00:00:00.000Z',row.root);
+  }finally{db.close();}
+}
+
 const call = (f, extra={}) => f.s.call({ id:'sample',stepId:'first',expectedRevision:1,tool:'read_text',arguments:{path:'x'},...extra },host(async()=>({ok:true})));
 
 test('host-declared read-only inspection tools have safe-retry receipts and verified workflow status',async()=>{
@@ -74,6 +86,37 @@ test('Host catalog and durable effect classifier remain aligned for Power tools'
   assert.deepEqual(reconciliationPlan('read_terminal',{consume:false}),
     {strategy:'SAFE_RETRY',classification:'READ_ONLY'});
 });
+
+test('Browser tool effects follow the declared contract and never silently become safe-to-retry',()=>{
+  assert.ok(browserToolDefinitions.length>=15,'owned-browser contract must be enumerated');
+  for(const definition of browserToolDefinitions){
+    const readOnly=definition.annotations?.readOnlyHint===true;
+    const expected=readOnly?'READ_ONLY':'EXTERNAL_SIDE_EFFECT';
+    assert.equal(classifyTool(definition.name,{}),expected,definition.name);
+    assert.deepEqual(reconciliationPlan(definition.name,{}),{
+      strategy:readOnly?'SAFE_RETRY':'MANUAL_OR_REMOTE_STATE',classification:expected
+    },definition.name);
+  }
+  assert.equal(classifyTool('browser_future_unknown_action',{}),'EXTERNAL_SIDE_EFFECT');
+});
+
+for(const tool of ['browser_click','browser_fill','browser_navigate']){
+  test('uncertain '+tool+' is not dispatched twice without reconciliation',async()=>{
+    const f=fixture();
+    try{
+      f.create();
+      let dispatches=0;
+      const a={id:'sample',stepId:'first',expectedRevision:1,tool,
+        arguments:{lease:'fixture',selector:'#submit',url:'https://example.com'}};
+      const h=host(async()=>{dispatches++;throw new Error('simulated acknowledgement loss');});
+      const result=await f.s.call(a,h);
+      assert.equal(result.outcome,'UNCERTAIN');
+      assert.equal(result.operation.classification,'EXTERNAL_SIDE_EFFECT');
+      await assert.rejects(f.s.call(a,h),/REQUIRES_RECONCILIATION/);
+      assert.equal(dispatches,1);
+    }finally{f.dispose();}
+  });
+}
 
 test('whole-token destructive verbs do not mistake agent skill metadata for a kill operation',()=>{
   const readOnlyAgentTools=agentExtensionToolDefinitions.filter(x=>x.annotations?.readOnlyHint===true);
@@ -247,6 +290,91 @@ test('history triggers enforce append-only and projection tampering fails closed
  assert.throws(()=>f.s.get('sample'),/CORRUPT/);
 }finally{f.dispose();}});
 test('export has verifiable canonical digest and excludes foreign project',()=>{const f=fixture();try{f.create();f.create('other');const b=f.s.export('sample');assert.equal(b.sha256,hash(canonical(b.bundle)));assert.equal(b.bundle.state.id,'sample');assert.equal(b.bundle.events.length,1);assert.equal(f.s.list().length,2);}finally{f.dispose();}});
+test('WorkflowStore accepts only the contained runner proof bound to its acquired root lease',async t=>{
+  if(!(await processContainmentAvailable())) return t.skip('host-local process containment provider unavailable');
+  const f=fixture();
+  try{
+    f.create();
+    const result=await f.s.call({
+      id:'sample',stepId:'first',expectedRevision:1,tool:'run_project_command',
+      arguments:{program:process.execPath,args:['-e',"process.stdout.write('workflow-bound')"]}
+    },{
+      validate:async()=>{},
+      dispatch:async(_name,_args,_state,binding)=>runContainedProjectCommand({
+        program:process.execPath,args:['-e',"process.stdout.write('workflow-bound')"],cwd:f.root,
+        timeoutMs:10000,outputLimit:4096,env:process.env,binding
+      })
+    });
+    assert.equal(result.outcome,'RECORDED_NOT_VALIDATED');
+    assert.equal(result.receipt.processCessationProof.workflowId,'sample');
+    assert.equal(result.receipt.processCessationProof.stepId,'first');
+    assert.equal(result.receipt.processCessationProof.operationId,result.operation.operationId);
+    assert.equal(result.receipt.processCessationProof.fencingToken,result.operation.fencingToken);
+    assert.equal(result.receipt.processCessationProof.leaseId.length,64);
+    assert.equal(f.s.get('sample').state.steps[0].status,'recorded');
+    assert.equal(f.s.schedulerStatus().currentLeases,0);
+  }finally{f.dispose();}
+});
+
+test('process-capable operation without a native cessation proof remains uncertain and cannot release its root lease',async()=>{
+  const f=fixture();
+  try{
+    f.create();
+    const result=await f.s.call({
+      id:'sample',stepId:'first',expectedRevision:1,tool:'run_project_command',
+      arguments:{program:process.execPath,args:['-e','process.exit(0)']}
+    },host(async()=>({exitCode:0,stdout:'not-contained',stderr:''})));
+    assert.equal(result.outcome,'UNCERTAIN');
+    assert.equal(result.receipt.nativeCessationProofRequired,true);
+    assert.equal(result.receipt.errorCode,'WORKFLOW_NATIVE_CESSATION_PROOF_MISSING_OR_UNTRUSTED');
+    assert.equal(Object.hasOwn(result.receipt,'processCessationProof'),false);
+    const db=new DatabaseSync(path.join(f.options.directory,'root-leases.sqlite'));
+    try{assert.equal(db.prepare('SELECT count(*) AS n FROM root_leases').get().n,1);}finally{db.close();}
+    expireRootLease(f);
+    assert.throws(()=>f.s.reconcile({
+      id:'sample',stepId:'first',expectedRevision:f.s.get('sample').state.revision,
+      outcome:'not_applied',files:[],explanation:'No host-verified cessation proof exists.'
+    }),/WORKFLOW_CESSATION_PROOF_REQUIRED_OR_INVALID/);
+    const verify=new DatabaseSync(path.join(f.options.directory,'root-leases.sqlite'));
+    try{assert.equal(verify.prepare('SELECT count(*) AS n FROM root_leases').get().n,1);}finally{verify.close();}
+  }finally{f.dispose();}
+});
+
+test('trusted process-cessation receipt reconciles and releases only the expired matching root lease',async t=>{
+  if(!(await processContainmentAvailable())) return t.skip('host-local process containment provider unavailable');
+  const f=fixture();
+  try{
+    f.create();
+    fs.writeFileSync(path.join(f.root,'observed.txt'),'no side effect');
+    const args=['-e','process.exit(17)'];
+    const result=await f.s.call({
+      id:'sample',stepId:'first',expectedRevision:1,tool:'run_project_command',
+      arguments:{program:process.execPath,args}
+    },host(async(_name,_args,_state,binding)=>runContainedProjectCommand({
+      program:process.execPath,args,cwd:f.root,timeoutMs:10000,
+      outputLimit:4096,env:process.env,binding
+    })));
+    assert.equal(result.outcome,'UNCERTAIN');
+    assert.equal(result.receipt.processCessationProof.operationId,result.operation.operationId);
+    assert.equal(result.receipt.processCessationProof.leaseId.length,64);
+    assert.equal(result.receipt.processCessationProof.fencingToken,result.operation.fencingToken);
+    expireRootLease(f);
+    const reconciled=f.s.reconcile({
+      id:'sample',stepId:'first',expectedRevision:f.s.get('sample').state.revision,outcome:'not_applied',
+      files:['observed.txt'],explanation:'Contained process tree ceased; independent inspection found no effect.'
+    });
+    assert.equal(reconciled.state.steps[0].status,'reconciled_not_applied');
+    assert.equal(reconciled.state.steps[0].reconciliation.leaseReleaseStatus,'RELEASED');
+    const db=new DatabaseSync(path.join(f.options.directory,'root-leases.sqlite'));
+    try{assert.equal(db.prepare('SELECT count(*) AS n FROM root_leases').get().n,0);}finally{db.close();}
+    const replay=f.s.reconcile({
+      id:'sample',stepId:'first',expectedRevision:reconciled.revision,outcome:'not_applied',
+      files:['observed.txt'],explanation:'Contained process tree ceased; independent inspection found no effect.'
+    });
+    assert.equal(replay.replayed,true);
+    assert.equal(replay.leaseRelease.status,'ALREADY_RELEASED');
+  }finally{f.dispose();}
+});
 test('second live process cannot reconcile another process in-flight',async()=>{const f=fixture();try{
  f.create();fs.writeFileSync(path.join(f.root,'proof.txt'),'inspect');let release;const wait=new Promise(r=>release=r);
  const action=f.s.call({id:'sample',stepId:'first',expectedRevision:1,tool:'read_text',arguments:{}},host(async()=>{await wait;return{ok:true};}));
@@ -270,7 +398,7 @@ test('crash inside an uncommitted transaction is rolled back on reopen',async()=
 }finally{f.dispose();}});
 test('large and deeply nested inputs are bounded',()=>{const f=fixture();try{f.create();assert.throws(()=>f.s.note({id:'sample',expectedRevision:1,kind:'fact',text:'x'.repeat(9000)}),/INVALID_TEXT/);let v={};for(let i=0;i<30;i++)v={nested:v};assert.throws(()=>canonical(v),/DEPTH/);}finally{f.dispose();}});
 test('not-applied attestation does not create an automatic retry',async()=>{const f=fixture();try{
- f.create();fs.writeFileSync(path.join(f.root,'proof.txt'),'not applied');await f.s.call({id:'sample',stepId:'first',expectedRevision:1,tool:'x',arguments:{}},host(async()=>{throw Error('failed');}));
+ f.create();fs.writeFileSync(path.join(f.root,'proof.txt'),'not applied');await f.s.call({id:'sample',stepId:'first',expectedRevision:1,tool:'write_text',arguments:{path:'proof.txt',content:'unused'}},host(async()=>{throw Error('failed');}));
  f.s.reconcile({id:'sample',stepId:'first',expectedRevision:3,outcome:'not_applied',files:['proof.txt'],explanation:'Independent target inspection'});
  assert.ok(f.s.resume('sample').blockers.includes('WORKFLOW_REPLAN_REQUIRED'));await assert.rejects(call(f),/REQUIRES_RECONCILIATION/);
 }finally{f.dispose();}});
