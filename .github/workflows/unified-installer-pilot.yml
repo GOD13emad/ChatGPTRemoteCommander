@@ -55,7 +55,7 @@ jobs:
         shell: pwsh
         run: ./test/unified-nsis-migration-guard.ps1
       - name: Test exact source, privilege boundaries and embedded runtime
-        run: node --test test/unified-packaging.test.mjs test/unified-electron-runtime.test.mjs test/unified-migration-preflight.test.mjs
+        run: node --test test/unified-packaging.test.mjs test/unified-electron-runtime.test.mjs test/unified-migration-preflight.test.mjs test/unified-profile-recovery.test.mjs
       - name: Real Windows Electron GUI and restricted Core Start/Stop
         if: runner.os == 'Windows'
         env:
