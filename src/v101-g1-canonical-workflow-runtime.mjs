@@ -82,7 +82,9 @@ export function createV101CanonicalWorkflowDispatcherFactory({
 export function createV101G1CanonicalWorkflowRuntime({
   port,platform=process.platform,transport,hostOptions,workflow
 }={}){
-  const makeRuntime=TRANSPORTS[transport];
+  // Reject inherited Object.prototype entries as runtime factories.
+  const makeRuntime=typeof transport==='string'
+    &&Object.hasOwn(TRANSPORTS,transport)?TRANSPORTS[transport]:null;
   const workflowKeys=new Set(['assertionTrust','observedNativeSession',
     'resolveTrustedInvocation','workflowStore','grantRegistry','authorizeTool',
     'dispatch','loadAuthenticatedProfile']);
