@@ -12,7 +12,11 @@ test('single-file Linux launcher is byte-reproducible, supports offline plan and
  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'rc-linux-single-file-'));
  const out=path.join(dir,'Remote-Commander-Linux-Setup.run');
  try{
-  const call=(...args)=>spawnSync('bash',args,{encoding:'utf8',timeout:15000,env:{...process.env,DISPLAY:'',WAYLAND_DISPLAY:''}});
+  const callEnv=(extra,...args)=>spawnSync('bash',args,{
+    encoding:'utf8',timeout:15000,
+    env:{...process.env,DISPLAY:'',WAYLAND_DISPLAY:'',...extra}
+  });
+  const call=(...args)=>callEnv({},...args);
   let result=call(path.join(root,'tools/build-linux-single-file.sh'),out);
   assert.equal(result.status,0,result.stderr||result.stdout);
   assert.match(result.stdout,/LINUX_SINGLE_FILE_BUILD_PASS/);
@@ -37,7 +41,10 @@ test('single-file Linux launcher is byte-reproducible, supports offline plan and
   const expectedVersion=JSON.parse(fs.readFileSync(path.join(root,'package.json'),'utf8')).version;
   const source=spawnSync('git',['-c',`safe.directory=${root}`,'-C',root,'rev-parse','HEAD'],{encoding:'utf8'});
   assert.equal(source.status,0,source.stderr);
-  assert.match(extracted.stdout,new RegExp("export REMOTE_COMMANDER_SOURCE_REF='v"+expectedVersion.replaceAll('.','\\.')+"'"));
+  const qaDev=expectedVersion==='0.12.0-dev.1';
+  const expectedRef=qaDev?'integration/v012-unsigned-approval-20261110':'v'+expectedVersion;
+  assert.ok(extracted.stdout.includes("export REMOTE_COMMANDER_SOURCE_REF='"+expectedRef+"'"));
+  if(qaDev)assert.ok(extracted.stdout.includes("if [[ '1' == 1 ]]"));
   assert.ok(extracted.stdout.includes("export REMOTE_COMMANDER_EXPECTED_COMMIT='"+source.stdout.trim()+"'"));
 
   result=call(out,'--list-products');
@@ -51,6 +58,29 @@ test('single-file Linux launcher is byte-reproducible, supports offline plan and
   assert.equal(result.status,0,result.stderr);
   assert.match(result.stdout,/selected=core,browser changesApplied=false/);
   assert.match(result.stdout,/BROWSER_REQUIRES_LINUX_X86_64_X11_INTERACTIVE_SUDO_ONLINE_367MB/);
+  if(qaDev){
+    // Product preview may not become a live owner install when NoPromote.
+    result=call(out,'--all');
+    assert.equal(result.status,3,result.stderr||result.stdout);
+    assert.match(result.stderr,/V012_DEV_QA_INSTALL_NOT_APPROVED/);
+    const bin=path.join(dir,'fake-bin');
+    fs.mkdirSync(bin);
+    const git=path.join(bin,'git');
+    fs.writeFileSync(git,[
+      '#!/bin/sh',
+      'test "$1" = ls-remote && test "$2" = --exit-code && test "$3" = --heads || exit 8',
+      'printf "%s\\trefs/heads/integration/v012-unsigned-approval-20261110\\n" "$RC_QA_TEST_SHA"',
+      ''
+    ].join('\n'));
+    fs.chmodSync(git,0o755);
+    const stubEnv={PATH:bin+path.delimiter+(process.env.PATH??''),RC_QA_TEST_SHA:source.stdout.trim()};
+    result=callEnv(stubEnv,out,'--verify-source');
+    assert.equal(result.status,0,result.stderr||result.stdout);
+    assert.match(result.stdout,/V012_QA_EXACT_SOURCE_REACHABLE.*changesApplied=false/);
+    result=callEnv({...stubEnv,RC_QA_TEST_SHA:'0'.repeat(40)},out,'--verify-source');
+    assert.equal(result.status,4,result.stderr||result.stdout);
+    assert.match(result.stderr,/V012_QA_SOURCE_REF_MOVED_OR_MISMATCH/);
+  }
   fs.appendFileSync(out,Buffer.from('tampered'));
   result=call(out,'--plan-only','--all');
   assert.equal(result.status,3);
