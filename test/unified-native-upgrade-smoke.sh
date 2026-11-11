@@ -2,11 +2,19 @@
 # Disposable hosted Linux runner only. Exercises actual same-name Debian upgrade,
 # native tunnel persistence, sandboxed GUI and downgrade rollback.
 set -euo pipefail
-[[ "${GITHUB_ACTIONS:-}" == true && "${RUNNER_OS:-}" == Linux ]] || {
+[[ "${GITHUB_ACTIONS:-}" == true && "${RUNNER_OS:-}" == Linux &&
+   "${RUNNER_ENVIRONMENT:-}" == github-hosted &&
+   "${CI:-}" == true && -n "${GITHUB_WORKSPACE:-}" && -n "${RUNNER_TEMP:-}" ]] || {
   echo 'RC012_NATIVE_UPGRADE_TEST_HOSTED_RUNNER_ONLY' >&2; exit 2;
 }
 [[ "$(id -u)" != 0 ]] || { echo RC012_NATIVE_UPGRADE_TEST_NONROOT_EXPECTED >&2; exit 2; }
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)"
+[[ "$ROOT" == "$(realpath "$GITHUB_WORKSPACE")" &&
+   "$HOME" != "$GITHUB_WORKSPACE" &&
+   ! -e "$HOME/.local/share/ChatGPTRemoteCommander" &&
+   ! -e "$HOME/.local/share/chatgpt-remote-commander" ]] || {
+  echo RC012_NATIVE_UPGRADE_TEST_OWNER_INSTALL_REFUSED >&2;exit 3;
+}
 cd "$ROOT"
 OLD="$ROOT/dist/installer/Remote-Commander-Linux-amd64.deb"
 NEW="$ROOT/dist/unified/Remote-Commander-Unified-0.12.0-dev.1-Linux-amd64.deb"
