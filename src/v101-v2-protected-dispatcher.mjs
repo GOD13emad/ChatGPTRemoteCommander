@@ -157,7 +157,7 @@ export function createV101V2ProtectedDispatcherFactory({
 
   async function ensureOwnerBinding(platformProof,sessionHandle,tokenSha256){
     const proof=platformSessionProofAuthority.inspect(platformProof);
-    if(!record(proof)||proof.peerType!=='openai-chatgpt-mtls'
+    if(!record(proof)||!['openai-chatgpt-mtls','openai-tunnel-client-mtls'].includes(proof.peerType)
       ||proof.sessionSource!=='openai/session'
       ||proof.sessionHandle!==sessionHandle||proof.tokenSha256!==tokenSha256)
       return false;

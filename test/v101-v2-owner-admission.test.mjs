@@ -28,7 +28,7 @@ function action(content='approved'){
   };
 }
 
-function scenario(){
+function scenario(peerType='openai-chatgpt-mtls'){
   const state={
     clock:NOW,oauthValid:true,oauthErrorCode:null,oauthScopes:['commander.workflow'],consent:true,grantAllowed:true,
     route:ROUTE,binding:null,bindCalls:0,ownerCalls:0,callCount:0,
@@ -111,7 +111,7 @@ function scenario(){
   });
   function platformProof(sessionHandle='chat-a',tokenSha256=TOKEN_SHA){
     return authority.issue({
-      peerType:'openai-chatgpt-mtls',sessionSource:'openai/session',
+      peerType,sessionSource:'openai/session',
       sessionHandle,tokenSha256
     });
   }
@@ -235,4 +235,30 @@ test('concurrent calls for one token/session share one owner-consent operation',
   assert.equal(results.every(x=>x.result.ok===true),true);
   assert.equal(s.state.bindCalls,1);
   assert.equal(s.state.callCount,2);
+});
+
+test('private-tunnel client mTLS is admitted only with verified OAuth and owner binding',async()=>{
+  const s=scenario('openai-tunnel-client-mtls');
+  const proof=s.platformProof();
+  const response=await dispatch(s,proof);
+  assert.equal(response.result.ok,true);
+  assert.equal(s.state.bindCalls,1);
+  assert.equal(s.state.ownerCalls,1);
+  assert.equal(s.state.callCount,1);
+  assert.equal(s.state.lastAttested.source,'native-platform-session');
+  assert.equal(s.authority.inspect(proof),null);
+});
+test('private-tunnel mTLS never skips denied J01 owner or invalid token',async()=>{
+  const denied=scenario('openai-tunnel-client-mtls');
+  denied.state.consent=false;
+  const r=await dispatch(denied,denied.platformProof());
+  assert.equal(r.result.isError,true);
+  assert.equal(denied.state.callCount,0);
+  assert.equal(denied.state.binding,null);
+  const invalid=scenario('openai-tunnel-client-mtls');
+  invalid.state.oauthValid=false;
+  const z=await dispatch(invalid,invalid.platformProof());
+  assert.equal(z.result.isError,true);
+  assert.equal(invalid.state.bindCalls,0);
+  assert.equal(invalid.state.callCount,0);
 });

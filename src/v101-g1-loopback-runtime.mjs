@@ -4,24 +4,25 @@
 // Trusted OAuth, native owner, dispatcher and TLS callbacks are local-only.
 import {createWindowsV101V2CandidateHost} from './v101-windows-owner-security-bootstrap.mjs';
 import {createLinuxV101V2CandidateHost} from './v101-linux-owner-security-bootstrap.mjs';
+import {createV101PrivateTunnelOwnerHost} from './v101-private-tunnel-owner-host.mjs';
 
 const fail=code=>{throw Object.assign(new Error(code),{code});};
 const LOOPBACK='127.0.0.1';
 
-export function createV101G1LoopbackRuntime({
+function createV101G1Runtime({
   port,hostOptions,platform=process.platform
-}={}){
+}={}, {resolveHost,protectedTransport}={}){
   if(platform!==process.platform||!['win32','linux'].includes(platform)
     ||!Number.isInteger(port)||port<0||port>65535
     ||!hostOptions||typeof hostOptions!=='object'||Array.isArray(hostOptions))
     fail('V101_G1_LOOPBACK_BOOTSTRAP_REQUIRED');
 
-  // The factory fails closed if trusted OAuth/route/dispatch dependencies or
-  // pinned OpenAI mTLS trust roots are absent. No port is opened in bootstrap.
-  const factory=platform==='win32'
-    ?createWindowsV101V2CandidateHost
-    :createLinuxV101V2CandidateHost;
-  const candidate=factory(hostOptions);
+  if(typeof resolveHost!=='function'
+    ||!['direct-openai-mtls','private-tunnel-client-mtls'].includes(protectedTransport))
+    fail('V101_G1_TRUSTED_FACTORY_REQUIRED');
+  // Owner host composition checks TLS keys, issuer, route callbacks and
+  // independent native session grant dependencies before a socket is opened.
+  const candidate=resolveHost({...hostOptions,platform},platform);
   let server,phase='CONSTRUCTED',starting=null,closing=null,closeRequested=false;
   try{
     server=candidate.createUnboundTlsServer();
@@ -45,7 +46,7 @@ export function createV101G1LoopbackRuntime({
         phase,bindAddress:LOOPBACK,
         port:phase==='LISTENING'?server.address()?.port??null:null,
         tlsClientCertificateRequired:true,
-        protectedTransport:'direct-openai-mtls',
+        protectedTransport,
         authenticatedCurrentChatAccepted:false,
         fullAccessActive:false,
         releaseAccepted:false
@@ -99,4 +100,19 @@ export function createV101G1LoopbackRuntime({
     }
   };
   return Object.freeze(runtime);
+}
+
+export function createV101G1LoopbackRuntime(options={}){
+  return createV101G1Runtime(options,{
+    protectedTransport:'direct-openai-mtls',
+    resolveHost:(host,platform)=>(platform==='win32'
+      ?createWindowsV101V2CandidateHost
+      :createLinuxV101V2CandidateHost)(host)
+  });
+}
+export function createV101G1PrivateTunnelRuntime(options={}){
+  return createV101G1Runtime(options,{
+    protectedTransport:'private-tunnel-client-mtls',
+    resolveHost:host=>createV101PrivateTunnelOwnerHost(host)
+  });
 }

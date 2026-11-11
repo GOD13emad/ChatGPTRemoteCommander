@@ -7,7 +7,7 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {isVersionAtLeast} from './run-pinned-v2-interop.mjs';
 
-export const V101_ACCEPTED_ADAPTER_SHA256='44da2260e28051a515d0ff5ff63d34adebd841ca3724736101e09c49051f3f37';
+export const V101_ACCEPTED_ADAPTER_SHA256='2b9793250e4a537f19890a3865d05238d6ccb46cb735c88677cb4daba6f00445';
 export const V102_ACCEPTED_WIN_JOB_SHA256='57b50598798c328ee6fb06c926e8eb16b4da71dc83ac76344e41952383a848d4';
 // Independently tested V1-03/J01 verifier modules, NOT a protected signer or enrolled credential.
 export const J01_VERIFIER_SHA256=Object.freeze({
@@ -27,6 +27,9 @@ export const G1_MODULES=Object.freeze([
   'src/v101-linux-owner-security-bootstrap.mjs',
   'src/v101-windows-owner-security-bootstrap.mjs',
   'src/v101-g1-loopback-runtime.mjs',
+  'src/v101-private-tunnel-owner-host.mjs',
+  'src/v2-private-tunnel-https-gateway.mjs',
+  'src/v2-private-tunnel-mtls-attestor.mjs',
   'src/v2-platform-session-proof.mjs',
   'src/v2-oauth-provider-discovery.mjs',
   'src/full-access-http-quarantine.mjs',

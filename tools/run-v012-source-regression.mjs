@@ -15,7 +15,9 @@ const files = [
   "test/worker-identity-store.test.mjs",
   "test/native-tunnel-attestor.test.mjs",
   "test/native-owner-session-provider-windows.test.mjs",
-  "test/v101-g1-loopback-runtime.test.mjs"
+  "test/v101-g1-loopback-runtime.test.mjs",
+  "test/v2-private-tunnel-mtls-attestor.test.mjs",
+  "test/v2-private-tunnel-https-gateway.test.mjs"
 ];
 
 const batches = [

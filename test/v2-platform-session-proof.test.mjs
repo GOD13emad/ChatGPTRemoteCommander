@@ -42,3 +42,21 @@ test('platform proof issuer rejects non-mTLS, untrusted namespaces and malformed
   assert.throws(()=>authority.issue(getter));
   assert.throws(()=>authority.issue(new Proxy(base,{})));
 });
+
+test('private tunnel has distinct in-process proof and one-time consumption',()=>{
+  const authority=createV2PlatformSessionProofAuthority();
+  const proof=authority.issue({
+    peerType:'openai-tunnel-client-mtls',sessionSource:'openai/session',
+    sessionHandle:'chat-tunnel-1',tokenSha256:SHA
+  });
+  assert.equal(authority.inspect(proof).peerType,'openai-tunnel-client-mtls');
+  assert.deepEqual(authority.consume(proof),{
+    source:'native-platform-session',
+    sessionHandle:'chat-tunnel-1',tokenSha256:SHA
+  });
+  assert.equal(authority.inspect(proof),null);
+  assert.throws(()=>authority.issue({
+    peerType:'openai-tunnel-unknown-proxy',sessionSource:'openai/session',
+    sessionHandle:'chat-tunnel-1',tokenSha256:SHA
+  }),{code:'V2_PLATFORM_SESSION_PROOF_INVALID'});
+});
