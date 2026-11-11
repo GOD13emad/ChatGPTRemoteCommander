@@ -20,12 +20,19 @@ const files = [
   "test/v2-private-tunnel-https-gateway.test.mjs"
 ];
 
+// Keep every file once while bounding expensive Windows native process/SQLite
+// fixtures inside the unchanged 30-second per-batch execution budget.
 const batches = [
-  files.slice(0, 5),
-  files.slice(5, 9),
+  files.slice(0, 2),
+  files.slice(2, 4),
+  files.slice(4, 5),
+  files.slice(5, 7),
+  files.slice(7, 9),
   files.slice(9, 10), // WorkflowStore: separate bounded DB/process regression
-  files.slice(10, 13),
-  files.slice(13)
+  files.slice(10, 12),
+  files.slice(12, 13),
+  files.slice(13, 15),
+  files.slice(15, 17)
 ];
 if(batches.flat().length!==files.length
   ||new Set(batches.flat()).size!==files.length
