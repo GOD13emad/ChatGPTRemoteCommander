@@ -41,6 +41,7 @@ const LOCAL=new Set([
  'src/full-access-http-quarantine.mjs',
  'src/full-access-protected-router-bridge.mjs',
  'src/v101-v2-protected-dispatcher.mjs',
+ 'src/v101-g1-canonical-workflow-runtime.mjs',
  'src/v2-routing-contract.mjs',
  ...Object.keys(J01_VERIFIER_SHA256),
  ...Object.keys(SOURCE_PINS).filter(x=>x.startsWith('assets/')),
