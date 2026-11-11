@@ -69,6 +69,30 @@ test('canonical G1 composition rejects missing trust, mismatched audience and ca
   }),/V101_G1_CANONICAL_RUNTIME_BOOTSTRAP_REQUIRED/);
 });
 
+
+test('canonical G1 transport selector rejects inherited Object.prototype keys before startup',()=>{
+  const {deps}=fixture();
+  const {hostId,profileId,resource,authorizationServers,issuer,audience,
+    verifyAccessToken,resolvePrincipal}=deps;
+  const hostOptions={hostId,profileId,resource,authorizationServers,issuer,
+    audience,verifyAccessToken,resolvePrincipal};
+  const workflow={
+    assertionTrust:deps.assertionTrust,
+    observedNativeSession:deps.observedNativeSession,
+    resolveTrustedInvocation:deps.resolveTrustedInvocation,
+    workflowStore:deps.workflowStore,grantRegistry:deps.grantRegistry,
+    authorizeTool:deps.authorizeTool,dispatch:deps.dispatch
+  };
+  for(const transport of ['constructor','toString','__proto__',
+    'hasOwnProperty','valueOf',null,1,{},Symbol('invalid-transport')]){
+    assert.throws(()=>createV101G1CanonicalWorkflowRuntime({
+      port:0,transport,hostOptions,workflow
+    }),/V101_G1_CANONICAL_RUNTIME_BOOTSTRAP_REQUIRED/,
+    String(transport));
+  }
+});
+
+
 test('canonical V2 descriptor is discoverable only inside authenticated transport and has no direct dispatch',async()=>{
   const {deps,calls}=fixture();
   const create=createV101CanonicalWorkflowDispatcherFactory(deps);
