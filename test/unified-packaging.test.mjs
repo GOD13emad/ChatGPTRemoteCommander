@@ -36,6 +36,7 @@ test('hosted Ubuntu prefetches signed dependencies before expensive packaging; n
  assert.match(y,/Signed-By: \/usr\/share\/keyrings\/ubuntu-archive-keyring[.]gpg/);
  assert.match(y,/Acquire::Retries=3/);
  assert.match(y,/libnotify4 libsecret-1-0/);
+ assert.match(script,/dpkg-query -W -f='[^']+\\n' libnotify4 libsecret-1-0/);
  assert.match(script,/apt-get --no-download install/);
  assert.doesNotMatch(script,/apt-get update/);
 });
