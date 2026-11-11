@@ -29,6 +29,17 @@ test('one installer definition uses Windows NSIS per user and Linux DEB, not old
  assert.match(y,/migration-preflight[.]mjs/);
  assert.match(y,/from: .stage\/core/);
 });
+test('hosted Ubuntu prefetches signed dependencies before expensive packaging; native upgrade consumes local cache',()=>{
+ const y=fs.readFileSync(path.join(repo,'.github/workflows/unified-installer-pilot.yml'),'utf8');
+ const script=fs.readFileSync(path.join(repo,'test/unified-native-upgrade-smoke.sh'),'utf8');
+ assert.match(y,/Prefetch signed Ubuntu GUI dependencies/);
+ assert.match(y,/Signed-By: \/usr\/share\/keyrings\/ubuntu-archive-keyring[.]gpg/);
+ assert.match(y,/Acquire::Retries=3/);
+ assert.match(y,/libnotify4 libsecret-1-0/);
+ assert.match(script,/apt-get --no-download install/);
+ assert.doesNotMatch(script,/apt-get update/);
+});
+
 test('immutable packaged source and restricted preview boot',async()=>{
  const manifest=validateCore(resource);
  assert.match(manifest.head,/^[0-9a-f]{40}$/);

@@ -30,6 +30,28 @@ jobs:
       - name: Install pinned packaging tools
         working-directory: packaging/unified
         run: npm ci --no-audit --no-fund
+      - name: Prefetch signed Ubuntu GUI dependencies before long packaging build
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f /usr/share/keyrings/ubuntu-archive-keyring.gpg
+          test -n "${RUNNER_TEMP:-}"
+          cat > "$RUNNER_TEMP/rc012-official-ubuntu.sources" <<'SOURCES'
+          Types: deb
+          URIs: https://archive.ubuntu.com/ubuntu
+          Suites: noble noble-updates noble-backports
+          Components: main restricted universe multiverse
+          Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg
+
+          Types: deb
+          URIs: https://security.ubuntu.com/ubuntu
+          Suites: noble-security
+          Components: main restricted universe multiverse
+          Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg
+          SOURCES
+          sudo apt-get -o Dir::Etc::sourcelist="$RUNNER_TEMP/rc012-official-ubuntu.sources" -o Dir::Etc::sourceparts=- -o Acquire::Retries=3 update -qq
+          sudo apt-get -o Dir::Etc::sourcelist="$RUNNER_TEMP/rc012-official-ubuntu.sources" -o Dir::Etc::sourceparts=- -o Acquire::Retries=3 install -y -qq --no-install-recommends xvfb xauth libnotify4 libsecret-1-0
       - name: Build pinned native Linux Core, Node and Tunnel DEB
         if: runner.os == 'Linux'
         shell: bash
