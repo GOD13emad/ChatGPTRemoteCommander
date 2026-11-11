@@ -23,7 +23,7 @@ const REAUTH_ERRORS=new Set([
 // Additional MCP method families (including resources, prompts or tasks)
 // require an explicit scoped policy review, not a future V2 default passthrough.
 const UNPRIVILEGED_RPC_METHODS=new Set([
-  'initialize','notifications/initialized','ping','tools/list'
+  'initialize','notifications/initialized','ping','tools/list','server/discover'
 ]);
 function fail(code){throw Object.assign(new Error(code),{code});}
 function record(x){return x!==null&&typeof x==='object'&&!Array.isArray(x)

@@ -1,0 +1,170 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import http from 'node:http';
+import {spawn} from 'node:child_process';
+import {createHash} from 'node:crypto';
+import {createRequire} from 'node:module';
+import {fileURLToPath} from 'node:url';
+const require=createRequire(import.meta.url);
+const {validateCore,preparePreviewCore,previewConfig}=require('../packaging/unified/pilot-runtime.cjs');
+const repo=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
+const resource=path.join(repo,'packaging/unified/.stage/core');
+const sha=p=>createHash('sha256').update(fs.readFileSync(p)).digest('hex');
+
+test('one installer definition uses Windows NSIS per user and Linux DEB, not old host repairs',()=>{
+ const y=fs.readFileSync(path.join(repo,'packaging/unified/electron-builder.yml'),'utf8');
+ assert.match(y,/target: nsis/);
+ assert.match(y,/perMachine: false/);
+ assert.match(y,/allowElevation: false/);
+ assert.match(y,/target: deb/);
+ assert.match(y,/packageName: chatgpt-remote-commander/);
+ assert.match(y,/include: legacy-inno-guard[.]nsh/);
+ const nsis=fs.readFileSync(path.join(repo,'packaging/unified/legacy-inno-guard.nsh'),'utf8');
+ assert.match(nsis,/!macro customInit/);
+ assert.equal((nsis.match(/Uninstall\\RemoteCommander/g)||[]).length,3);
+ assert.equal((nsis.match(/Abort "RC012_LEGACY_INNO_PRESENT/g)||[]).length,3);
+ assert.match(y,/migration-preflight[.]mjs/);
+ assert.match(y,/from: .stage\/core/);
+});
+test('hosted Ubuntu prefetches signed dependencies before expensive packaging; native upgrade consumes local cache',()=>{
+ const y=fs.readFileSync(path.join(repo,'.github/workflows/unified-installer-pilot.yml'),'utf8');
+ const script=fs.readFileSync(path.join(repo,'test/unified-native-upgrade-smoke.sh'),'utf8');
+ assert.match(y,/Prefetch signed Ubuntu GUI dependencies/);
+ assert.match(y,/Signed-By: \/usr\/share\/keyrings\/ubuntu-archive-keyring[.]gpg/);
+ assert.match(y,/Acquire::Retries=3/);
+ assert.match(y,/libnotify4 libsecret-1-0/);
+ assert.match(script,/dpkg-query -W -f='[^']+\\n' libnotify4 libsecret-1-0/);
+ assert.match(script,/sudo dpkg --install "\$OLD"/);
+ assert.match(script,/sudo dpkg --install "\$NEW"/);
+ assert.doesNotMatch(script,/apt-get --no-download install/);
+
+
+
+ assert.doesNotMatch(script,/apt-get update/);
+});
+
+test('immutable packaged source and restricted preview boot',async()=>{
+ const manifest=validateCore(resource);
+ assert.match(manifest.head,/^[0-9a-f]{40}$/);
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'rc-unified-'));
+ try{
+   const one=preparePreviewCore(resource,dir);
+   assert.equal(one.existing,false);
+   const again=preparePreviewCore(resource,dir);
+   assert.equal(again.existing,true);
+   assert.equal(again.head,manifest.head);
+   assert.equal(sha(path.join(one.target,'src/server-v0.3.mjs')),manifest.files['src/server-v0.3.mjs']);
+   const cfg=previewConfig(one.target,dir,59315);
+   const obj=JSON.parse(fs.readFileSync(cfg.file,'utf8'));
+   assert.equal(obj.host,'127.0.0.1');
+   assert.equal(obj.capabilityProfile.tier,'STANDARD');
+   assert.equal(obj.powerMode.enabled,false);
+   assert.equal(obj.powerMode.fullFilesystem,false);
+   assert.equal(obj.powerMode.allowShell,false);
+   assert.equal(obj.autoUpdate.enabled,false);
+   assert.deepEqual(obj.allowedPrograms,[]);
+   assert.deepEqual(obj.allowedRoots,[cfg.root]);
+   const entry=path.join(one.target,'src/server-v0.3.mjs');
+   const child=spawn(process.execPath,[entry],{
+      cwd:one.target,stdio:['ignore','pipe','pipe'],
+      env:{...process.env,REMOTE_COMMANDER_CONFIG:cfg.file,
+        COMMANDER_ONE_REQUIRE_TRUSTED_INGRESS:'0'}
+   });
+   let log='';
+   for(const s of [child.stdout,child.stderr])s.on('data',x=>{log=(log+x.toString()).slice(-2400);});
+   try{
+     const started=Date.now();let ok=false;
+     while(Date.now()-started<9000){
+       if(child.exitCode!==null)break;
+       ok=await new Promise(resolve=>{
+         const req=http.get('http://127.0.0.1:59315/health',res=>{res.resume();resolve(res.statusCode===200);});
+         req.on('error',()=>resolve(false));req.setTimeout(700,()=>{req.destroy();resolve(false);});
+       });
+       if(ok)break;
+       await new Promise(r=>setTimeout(r,150));
+     }
+     assert.ok(ok,'real isolated 0.12 core should expose /health; '+log);
+   }finally{
+     child.kill();
+     await new Promise(resolve=>{if(child.exitCode!==null)return resolve();child.once('exit',resolve);setTimeout(resolve,1500).unref();});
+   }
+   // Runtime data in the isolated var dir must not invalidate the immutable source.
+   fs.mkdirSync(path.join(one.target,'var'),{recursive:true});
+   fs.writeFileSync(path.join(one.target,'var','runtime-state.json'),'{}');
+   assert.equal(validateCore(one.target).count,manifest.count);
+   // Unmanifested executable code and a changed helper module must both fail closed.
+   const unexpected=path.join(one.target,'src','extra.mjs');
+   fs.writeFileSync(unexpected,'export const injected=true;');
+   assert.throws(()=>validateCore(one.target),/UNIFIED_CORE_UNEXPECTED_FILE/);
+   fs.rmSync(unexpected);
+   const helper=path.join(one.target,'src','tools-v0.3.mjs');
+   fs.appendFileSync(helper,'\\n// deliberately tampered helper\\n');
+   assert.throws(()=>preparePreviewCore(resource,dir),/UNIFIED_SOURCE_HASH_MISMATCH/);
+   fs.copyFileSync(path.join(resource,'src','tools-v0.3.mjs'),helper);
+   const bad=path.join(one.target,'src/server-v0.3.mjs');
+   fs.appendFileSync(bad,'\n// tampered\n');
+   assert.throws(()=>preparePreviewCore(resource,dir),/UNIFIED_SOURCE_HASH_MISMATCH/);
+ }finally{fs.rmSync(dir,{recursive:true,force:true});}
+});
+test('preview rejects paths outside controlled port range',()=>{
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'rc-unified-invalid-'));
+ try{assert.throws(()=>previewConfig(resource,dir,0),/UNIFIED_PREVIEW_PORT/);}
+ finally{fs.rmSync(dir,{recursive:true,force:true});}
+});
+
+function makeUpgradeFixture(from,to,head,tree){
+  fs.cpSync(from,to,{recursive:true,force:false,errorOnExist:true});
+  const cfg=path.join(to,'config.json');
+  fs.appendFileSync(cfg,'\n');
+  const marker=path.join(to,'source-manifest.json');
+  const m=JSON.parse(fs.readFileSync(marker,'utf8'));
+  m.head=head;m.tree=tree;m.files['config.json']=sha(cfg);
+  fs.writeFileSync(marker,JSON.stringify(m,null,2)+'\n');
+  assert.equal(validateCore(to).head,head);
+}
+test('preview upgrade is atomic, retains bounded runtime data and only one previous Core',()=>{
+  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'rc-unified-upgrade-'));
+  try{
+    const source2=path.join(dir,'source-2'),source3=path.join(dir,'source-3');
+    const data=path.join(dir,'user');
+    makeUpgradeFixture(resource,source2,'1'.repeat(40),'2'.repeat(40));
+    makeUpgradeFixture(source2,source3,'3'.repeat(40),'4'.repeat(40));
+    const first=preparePreviewCore(resource,data);
+    const previous=validateCore(first.target);
+    const varDir=path.join(first.target,'var');
+    fs.mkdirSync(varDir,{recursive:true});
+    fs.writeFileSync(path.join(varDir,'owner-preview-state.json'),JSON.stringify({preserved:true}));
+    const second=preparePreviewCore(source2,data);
+    assert.equal(second.upgraded,true);
+    assert.equal(second.previousHead,previous.head);
+    assert.equal(validateCore(second.target).head,'1'.repeat(40));
+    assert.equal(validateCore(path.join(data,'runtime','core.rollback')).head,previous.head);
+    assert.deepEqual(JSON.parse(fs.readFileSync(path.join(second.target,'var','owner-preview-state.json'),'utf8')),{preserved:true});
+    const third=preparePreviewCore(source3,data);
+    assert.equal(third.upgraded,true);
+    assert.equal(validateCore(third.target).head,'3'.repeat(40));
+    assert.equal(validateCore(path.join(data,'runtime','core.rollback')).head,'1'.repeat(40));
+    assert.ok(!fs.existsSync(path.join(data,'runtime','.core-rollback-retired')));
+    assert.ok(!fs.existsSync(path.join(data,'runtime','.core-incoming')));
+    assert.equal(preparePreviewCore(source3,data).existing,true);
+    assert.equal(validateCore(resource).head,previous.head);
+  }finally{fs.rmSync(dir,{recursive:true,force:true});}
+});
+test('preview upgrade refuses oversized runtime data without replacing current Core',()=>{
+  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'rc-unified-upgrade-limit-'));
+  try{
+    const source2=path.join(dir,'source-2'),data=path.join(dir,'user');
+    makeUpgradeFixture(resource,source2,'5'.repeat(40),'6'.repeat(40));
+    const first=preparePreviewCore(resource,data);
+    const old=validateCore(first.target);
+    const varDir=path.join(first.target,'var');
+    fs.mkdirSync(varDir,{recursive:true});
+    fs.writeFileSync(path.join(varDir,'too-large.bin'),Buffer.alloc(4*1024*1024+1));
+    assert.throws(()=>preparePreviewCore(source2,data),/UNIFIED_RUNTIME_DATA_TOO_LARGE_FOR_AUTOMATIC_UPGRADE/);
+    assert.equal(validateCore(first.target).head,old.head);
+    assert.ok(!fs.existsSync(path.join(data,'runtime','core.rollback')));
+  }finally{fs.rmSync(dir,{recursive:true,force:true});}
+});
