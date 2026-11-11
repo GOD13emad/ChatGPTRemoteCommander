@@ -38,6 +38,12 @@ jobs:
       - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
         with:
           dotnet-version: '8.0.427'
+      # The installation canary deliberately hides Node/Git from PATH. Retain
+      # only a pinned Python 3 fixture interpreter to validate Linux release
+      # train semantics from the Windows-installed candidate; no system install.
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: '3.12'
       - name: Exercise Windows Server bootstrap with Node/Git absent from PATH
         shell: pwsh
         env:
@@ -52,7 +58,14 @@ jobs:
           $oldMachine=[Environment]::GetEnvironmentVariable('Path','Machine')
           $oldUser=[Environment]::GetEnvironmentVariable('Path','User')
           try {
-            $minimal="$env:ProgramFiles\PowerShell\7;$env:ProgramFiles\dotnet;$env:windir\System32;$env:windir;$env:windir\System32\Wbem"
+            $pythonHome=[string]$env:pythonLocation
+            $pythonExe=Join-Path $pythonHome 'python.exe'
+            if(-not $pythonHome -or -not(Test-Path -LiteralPath $pythonExe -PathType Leaf)){
+              throw 'HOSTED_PYTHON3_FIXTURE_NOT_PROVISIONED'
+            }
+            & $pythonExe -c 'import sys; raise SystemExit(0 if sys.version_info.major == 3 else 1)'
+            if($LASTEXITCODE -ne 0){throw 'HOSTED_PYTHON3_FIXTURE_INVALID'}
+            $minimal="$pythonHome;$env:ProgramFiles\PowerShell\7;$env:ProgramFiles\dotnet;$env:windir\System32;$env:windir;$env:windir\System32\Wbem"
             [Environment]::SetEnvironmentVariable('Path',$minimal,'Machine')
             [Environment]::SetEnvironmentVariable('Path',$null,'User')
             $env:Path=$minimal
