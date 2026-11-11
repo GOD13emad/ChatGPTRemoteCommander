@@ -774,6 +774,11 @@ test('V012 source regression retains every pinned test exactly once with bounded
   assert.equal(new Set(files).size,files.length,'no duplicate source fixture');
   assert.ok(ranges.length>=6,'native Windows fixture groups must remain bounded');
   assert.deepEqual(scheduled,files,'each fixture must execute exactly once and in original order');
+  const a=files.indexOf('test/v101-owner-bound-router-bridge.test.mjs');
+  const b=files.indexOf('test/v101-worker-identity-grant-adapter.test.mjs');
+  assert.ok(a>=0&&b>=0);
+  assert.ok(ranges.every(([from,to])=>!(from<=a&&a<to&&from<=b&&b<to)),
+    'native bridge and worker grant must occupy separate Node processes to avoid loaded-host open-handle timeout');
   assert.ok(runner.includes('timeout: 30000'),'no extension of the per-process timeout');
   assert.ok(runner.includes('result.signal || result.status !== 0'),'nonzero tests fail closed');
 });

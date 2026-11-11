@@ -27,7 +27,8 @@ const batches = [
   files.slice(2, 4),
   files.slice(4, 5),
   files.slice(5, 7),
-  files.slice(7, 9),
+  files.slice(7, 8), // Native owner bridge: own Node process, no cross-fixture open handles
+  files.slice(8, 9), // Worker identity grants: separate Node process
   files.slice(9, 10), // WorkflowStore: separate bounded DB/process regression
   files.slice(10, 12),
   files.slice(12, 13),
