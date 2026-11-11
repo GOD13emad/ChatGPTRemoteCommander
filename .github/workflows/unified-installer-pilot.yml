@@ -3,7 +3,7 @@ on:
   pull_request:
     paths:
       - "packaging/unified/**"
-      - "test/unified-*.test.mjs"
+      - "test/unified-*"
       - ".github/workflows/unified-installer-pilot.yml"
   workflow_dispatch:
 permissions:
