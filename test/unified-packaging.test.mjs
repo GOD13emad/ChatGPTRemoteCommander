@@ -5,6 +5,8 @@ import os from 'node:os';
 import path from 'node:path';
 import http from 'node:http';
 import {spawn} from 'node:child_process';
+import {Readable} from 'node:stream';
+import {createV2PrivatePairMcpIngress} from '../src/v2-private-pair-mcp-http-ingress.mjs';
 import {createHash} from 'node:crypto';
 import {createRequire} from 'node:module';
 import {fileURLToPath} from 'node:url';
@@ -105,6 +107,50 @@ test('immutable packaged source and restricted preview boot',async()=>{
        await new Promise(r=>setTimeout(r,150));
      }
      assert.ok(ok,'real isolated 0.12 core should expose /health; '+log);
+     // The native owner-controlled PRIVATE catalog must represent the ACTUAL
+     // installed Core definitions, not just a few manually selected stubs.
+     // This is only discovery parity; no native owner or tool grant is issued.
+     const real=await fetch('http://127.0.0.1:59315/mcp',{
+       method:'POST',headers:{'content-type':'application/json'},
+       body:JSON.stringify({jsonrpc:'2.0',id:3,method:'tools/list',params:{}})
+     });
+     assert.equal(real.status,200);
+     const body=await real.json();
+     const realCatalog=body.result?.tools;
+     assert.ok(Array.isArray(realCatalog)&&realCatalog.length>40,
+       'real Core catalog was not discoverable on isolated STANDARD preview');
+     let attemptedEffects=0;
+     const ingress=createV2PrivatePairMcpIngress({
+       attestTransport:async()=>({
+         authenticated:true,peerType:'owner-pinned-private-tunnel-mtls',
+         sessionSource:'native-owner-private-pair'
+       }),
+       ownerStack:{requestOwnerBinding:async()=>{attemptedEffects++;},
+         nativeSessionBindings:{resolveNativeRoute:async()=>{
+           throw Error('no real J01 binding in discovery-only QA');
+         }}},
+       operationGate:{execute:async()=>{attemptedEffects++;throw Error('not granted');}},
+       trustedToolCatalog:realCatalog,
+       validateToolInput:async()=>false,
+       resolveTrustedToolRoute:async()=>{throw Error('not admitted');}
+     });
+     const req=Readable.from([Buffer.from(JSON.stringify({
+       jsonrpc:'2.0',id:4,method:'tools/list',params:{}
+     }))]);
+     req.socket={encrypted:true,authorized:true};req.url='/mcp';req.method='POST';
+     req.rawHeaders=['Content-Type','application/json'];
+     let responseStatus=null,responseBytes=null;
+     const res={writeHead(status){responseStatus=status;},
+       end(data){responseBytes=data;}};
+     await ingress.handle(req,res);
+     assert.equal(responseStatus,200,
+       'private one-tunnel discovery cannot represent actual Core catalog');
+     const privateCatalog=JSON.parse(String(responseBytes)).result.tools.slice(2);
+     assert.deepEqual(privateCatalog,realCatalog,
+       'private catalog must preserve every actual Core tool definition');
+     assert.equal(attemptedEffects,0,
+       'discovery must not request native owner consent or execute a tool');
+     console.log('RC012_REAL_CORE_CATALOG_PARITY_COUNT='+realCatalog.length);
    }finally{
      child.kill();
      await new Promise(resolve=>{if(child.exitCode!==null)return resolve();child.once('exit',resolve);setTimeout(resolve,1500).unref();});
