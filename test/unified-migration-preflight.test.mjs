@@ -186,6 +186,61 @@ test('plaintext stable router never qualifies as G1 mTLS ingress after synthetic
  assert.equal(httpsToOldRouter.decision,'NO_PROMOTE');
 });
 
+test('private account-device Tunnel requires local pair and owner proof, not optional public OAuth',()=>{
+ const f={platform:'win32',inventoryReliable:true,legacyInnoPresent:true,
+   ownerRegisteredInstallerFamily:'owner-managed-powershell',
+   tunnelProfilePresent:true,tunnelProfileValid:true,tunnelTargetPort:47831,
+   tunnelTargetVersion:'0.11.0-dev.23',tunnelTargetTls:false,
+   routerDetected:true,routerMappingMatches:true,
+   routerBackendPort:48834,routerBackendVersion:'0.11.0-dev.23'};
+ const r=assessMigration({...f,connectionMode:'private-tunnel'});
+ assert.equal(r.connectionMode,'private-tunnel');
+ assert.equal(r.decision,'NO_PROMOTE');
+ assert.doesNotMatch(JSON.stringify(r),/api[_-]?key|password|bearer/i,
+   'renderer-visible report must contain no credential-shaped keys or values');
+ for(const legacy of ['G1_STABLE_ROUTER_PLAINTEXT_MTLS_INCOMPATIBLE',
+   'G1_TUNNEL_HTTPS_MTLS_ROUTE_REQUIRED','G1_CURRENT_SESSION_UNVERIFIED',
+   'LEGACY_INNO_TO_NSIS_TRANSACTION_MISSING'])
+   assert.ok(!r.blocked.includes(legacy),legacy);
+ for(const required of [
+   'PRIVATE_PLUGIN_TUNNEL_PAIR_BINDING_UNVERIFIED',
+   'PRIVATE_TUNNEL_LOOPBACK_ISOLATION_UNVERIFIED',
+   'PRIVATE_RUNTIME_CREDENTIAL_OWNERSHIP_UNVERIFIED',
+   'PRIVATE_PRIVILEGED_INGRESS_NOT_WIRED',
+   'OWNER_MANAGED_TO_UNIFIED_NSIS_TRANSACTION_MISSING',
+   'OWNER_TUNNEL_STILL_TARGETS_LEGACY_OR_UNKNOWN_CORE',
+   'J01_NATIVE_OWNER_CONSENT_UNVERIFIED',
+   'PROFILE_BACKUP_NOT_VERIFIED','NATIVE_INSTALLED_CANARY_NOT_ACCEPTED'
+ ])assert.ok(r.blocked.includes(required),required);
+ const strict=assessMigration({...f,connectionMode:'managed-oauth'});
+ assert.equal(strict.connectionMode,'managed-oauth');
+ assert.ok(strict.blocked.includes('G1_CURRENT_SESSION_UNVERIFIED'));
+ assert.ok(strict.blocked.includes('G1_STABLE_ROUTER_PLAINTEXT_MTLS_INCOMPATIBLE'));
+ assert.ok(strict.blocked.includes('G1_TUNNEL_HTTPS_MTLS_ROUTE_REQUIRED'));
+ assert.ok(!strict.blocked.includes('PRIVATE_PLUGIN_TUNNEL_PAIR_BINDING_UNVERIFIED'));
+ assert.throws(()=>assessMigration({...f,connectionMode:'anonymous-public'}),
+   /RC012_MIGRATION_CONNECTION_MODE_INVALID/);
+});
+test('synthetic fully positive private flags never authorize install or bypass J01',()=>{
+ const f={platform:'linux',connectionMode:'private-tunnel',
+   inventoryReliable:true,nativePackageInstalled:false,allNativePayloadPathsAvailable:true,
+   units:[],privatePairBindingVerified:true,privateLocalIngressIsolated:true,
+   privateCredentialOwnershipVerified:true,privatePrivilegedIngressReady:true,
+   activeServiceRestoreTested:true,
+   profileBackupReceiptVerified:true,featureParityVerified:true,j01OwnerNativeConsent:true,
+   revocableFullAccessProven:true,trustedPublisherSignature:true,
+   signedUpdateRollbackAccepted:true,installedCanaryAccepted:true};
+ const r=assessMigration(f);
+ assert.deepEqual(r.blocked,[]);
+ assert.equal(r.decision,'NO_PROMOTE');
+ assert.equal(r.promotionAuthority,'EXTERNAL_REQUIRED');
+ assert.equal(r.connectionMode,'private-tunnel');
+ assert.ok(assessMigration({...f,j01OwnerNativeConsent:false}).blocked.includes(
+   'J01_NATIVE_OWNER_CONSENT_UNVERIFIED'));
+ assert.ok(assessMigration({...f,privatePrivilegedIngressReady:false}).blocked.includes(
+   'PRIVATE_PRIVILEGED_INGRESS_NOT_WIRED'));
+});
+
 test('registered owner PowerShell uninstaller is distinct from Inno and cannot trigger blind removal',()=>{
  const registryCommand='    UninstallString    REG_SZ    "C:\\Program Files\\PowerShell\\7\\pwsh.exe" -NoProfile -File "C:\\Users\\Owner\\Remote Commander\\uninstall.ps1"';
  assert.equal(classifyWindowsUninstallRegistryResponse(registryCommand),'owner-managed-powershell');
@@ -203,8 +258,8 @@ test('registered owner PowerShell uninstaller is distinct from Inno and cannot t
  const actual=assessMigration({platform:'win32',inventoryReliable:true,
    legacyInnoPresent:true,ownerRegisteredInstallerFamily:'owner-managed-powershell'});
  assert.equal(actual.ownerRegisteredInstallerFamily,'owner-managed-powershell');
- assert.ok(actual.blocked.includes('OWNER_MANAGED_UNINSTALL_REQUIRES_IN_PLACE_TRANSACTION'));
- assert.ok(actual.blocked.includes('LEGACY_INNO_TO_NSIS_TRANSACTION_MISSING'));
+ assert.ok(actual.blocked.includes('OWNER_MANAGED_TO_UNIFIED_NSIS_TRANSACTION_MISSING'));
+ assert.ok(!actual.blocked.includes('LEGACY_INNO_TO_NSIS_TRANSACTION_MISSING'));
  assert.equal(actual.decision,'NO_PROMOTE');
  assert.doesNotMatch(JSON.stringify(actual),/C:\\Users\\Owner|uninstall\.ps1/);
  const weird=assessMigration({platform:'win32',inventoryReliable:true,
