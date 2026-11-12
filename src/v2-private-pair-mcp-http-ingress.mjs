@@ -95,6 +95,20 @@ function header(req,name){
   }
   return found;
 }
+function browserOriginPresent(req){
+  // The owner-pinned private Tunnel uses native mTLS, not browser CORS.
+  // Any Origin (including null, empty or duplicated) is untrusted.
+  // Reject before transport callbacks, discovery, native J01 or effects.
+  const raw=req.rawHeaders;
+  if(!Array.isArray(raw)||raw.length%2!==0)
+    fail('PRIVATE_MCP_HEADERS_INVALID');
+  for(let i=0;i<raw.length;i+=2){
+    if(typeof raw[i]!=='string'||typeof raw[i+1]!=='string')
+      fail('PRIVATE_MCP_HEADERS_INVALID');
+    if(raw[i].toLowerCase()==='origin')return true;
+  }
+  return false;
+}
 function classifyProtocol(req,message){
   const hv=header(req,'mcp-protocol-version');
   const meta=message?.params?._meta;
@@ -238,6 +252,9 @@ export function createV2PrivatePairMcpIngress({
       }
       if(req.method!=='POST'){
         json(res,405,{error:'method_not_allowed'});return;
+      }
+      if(browserOriginPresent(req)){
+        json(res,403,{error:'origin_not_allowed'});return;
       }
       const attested=await attestTransport(req);
       if(attested?.authenticated!==true

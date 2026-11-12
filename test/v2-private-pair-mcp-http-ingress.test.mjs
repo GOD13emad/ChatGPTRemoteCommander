@@ -73,6 +73,25 @@ test('PRIVATE MCP exposes discovery only over independently trusted mTLS',async(
   assert.equal(list.headers['cache-control'],'no-store');
 });
 
+test('PRIVATE MCP rejects all browser Origin headers and duplicates before attestation',async()=>{
+  const f=fixture();
+  for(const headers of [
+    ['Origin','https://evil.example'],
+    ['Origin','https://localhost:48831'],
+    ['origin','null'],
+    ['ORIGIN',''],
+    ['Origin','https://evil.example','origin','https://evil.example']
+  ]){
+    const result=await f.send(envelope('tools/list'),{headers});
+    assert.equal(result.status,403,JSON.stringify(headers));
+    assert.equal(f.state.attested,0,'reject before trusted transport provider');
+    assert.equal(f.state.bound,0);
+    assert.equal(f.state.operations,0);
+  }
+  const ordinary=await f.send(envelope('tools/list'));
+  assert.equal(ordinary.status,200);
+  assert.equal(f.state.attested,1);
+});
 test('PRIVATE MCP only explicitly prompts J01 on owner_bind and does not leak the native token',async()=>{
   const f=fixture();
   const denied=await f.send(tool('v2_private_owner_bind',{extra:1}));
