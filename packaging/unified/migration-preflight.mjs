@@ -292,8 +292,13 @@ export function inspectLinuxNativeCorePayload(
   for(const rel of NATIVE_V012_RUNTIME_FILES){
    const file=path.join(nativeRoot,rel);
    const stat=fs.lstatSync(file);
+   // Official bundled Node is ~125 MB; source modules are far smaller.
+   // Do not mistake an intact embedded runtime for missing protected Core.
+   const maxBytes=rel==='runtime/node'?256*1024*1024
+     :rel==='tunnel/tunnel-client'?128*1024*1024
+     :48*1024*1024;
    if(!stat.isFile()||stat.isSymbolicLink()||stat.size<1
-     ||stat.size>48*1024*1024
+     ||stat.size>maxBytes
      ||(process.platform==='linux'&&fs.realpathSync(file)!==file))return false;
   }
   const pkg=JSON.parse(fs.readFileSync(path.join(nativeRoot,'app','package.json'),'utf8'));

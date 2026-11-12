@@ -91,6 +91,14 @@ test('single native Linux package must contain the actual v0.12 protected Core, 
      ?'{"version":"0.12.0-dev.1"}':'NONPRODUCTION_QA_MODULE_ONLY');
   }
   assert.equal(inspectLinuxNativeCorePayload(root),true);
+  // The SHA-pinned official Node v22 executable is ~125 MB. Sparse sizes
+  // exercise real size admission without copying 125 MB in CI fixtures.
+  const runtime=path.join(root,'runtime/node');
+  fs.truncateSync(runtime,125*1024*1024);
+  assert.equal(inspectLinuxNativeCorePayload(root),true);
+  fs.truncateSync(runtime,257*1024*1024);
+  assert.equal(inspectLinuxNativeCorePayload(root),false);
+  fs.truncateSync(runtime,125*1024*1024);
   const probe=path.join(root,'app/src/v012-private-core-runtime.mjs');
   fs.unlinkSync(probe);
   assert.equal(inspectLinuxNativeCorePayload(root),false);
