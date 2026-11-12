@@ -15,6 +15,11 @@ const block=workflow.slice(start,end);
 const runPos=block.indexOf('        run: |');
 assert.ok(runPos>=0,'release identity script missing');
 const script=block.slice(runPos+'        run: |'.length).split(/\r?\n/).map(l=>l.startsWith('          ')?l.slice(10):l).join('\n');
+// Bind the reviewed workflow shell program to an exact source hash; the
+// fixture never passes unverified repository text to a shell's -c argument.
+const APPROVED_SCRIPT_SHA256='4bd6a5ed9593e506dc33518ab8f4280f661f87c00fa8e439e070c125076df8ce';
+assert.equal(crypto.createHash('sha256').update(script).digest('hex'),APPROVED_SCRIPT_SHA256,
+ 'release policy script changed; re-review the source before testing');
 assert.ok(script.includes('R171_POSTTAG_MAIN_SKIP'));
 assert.ok(script.includes('R171_TAG_SOURCE_MISMATCH'));
 assert.ok(script.includes('test "$count" -eq "$expected_count"'));
@@ -38,11 +43,13 @@ test('R171 tag-only publication gate skips post-tag main without re-signing or r
  fs.writeFileSync(path.join(assets,'SHA256SUMS.txt'),sums.join('\n')+'\n');
  git(repo,'add','.');git(repo,'-c','user.name=Fixture','-c','user.email=fixture@example.invalid','commit','-qm','release fixture');
  git(repo,'-c','user.name=Fixture','-c','user.email=fixture@example.invalid','tag','-a','v0.10.25','-m','annotated release');
+ const program=path.join(dir,'approved-release-policy.sh');
+ fs.writeFileSync(program,script,{mode:0o600});
  const output=path.join(dir,'result.txt');
  const invoke=(event,ref)=>{
    fs.writeFileSync(output,'');
    const env={...process.env,GITHUB_OUTPUT:output,GITHUB_EVENT_NAME:event,GITHUB_REF:ref};
-   const r=spawnSync(bash,['-c',script],{cwd:repo,env,encoding:'utf8',timeout:16000});
+   const r=spawnSync(bash,[program],{cwd:repo,env,encoding:'utf8',timeout:16000});
    assert.equal(r.error,undefined,String(r.error));
    return {r,output:fs.readFileSync(output,'utf8')};
  };

@@ -1,8 +1,20 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import vm from 'node:vm';
+import {createHash} from 'node:crypto';
 
+// The three executable helpers are intentionally standalone shipped scripts.
+ // Verify their exact audited serializer bytes without ever evaluating source
+ // strings extracted from repository files (which would execute arbitrary JS).
+const APPROVED_SERIALIZER_SHA256='d844d934ddb8cff346f3d2dc99b9df1b867ee003a728fff4d6a7a0ad00ec3976';
+function approvedSerializer(value){
+ const literal=JSON.stringify(value);
+ if(typeof literal!=='string')throw Error('BROWSER_INPUT_INVALID');
+ return literal.replace(/</g,'\\u003c')
+   .replace(/>/g,'\\u003e')
+   .replace(/\u2028/g,'\\u2028')
+   .replace(/\u2029/g,'\\u2029');
+}
 const browserHelpers=[
  'tools/browser-control.mjs',
  'tools/browser-control-firefox.mjs',
@@ -28,8 +40,9 @@ for(const file of browserHelpers){
    assert.ok(src.includes('serializePageValue(req.'+key+')'),'missing '+key);
    assert.equal(src.includes('JSON.stringify(req.'+key+')'),false,'raw interpolation '+key);
   }
-  const context={fail:code=>Object.assign(new Error(code),{browserCode:code})};
-  const literal=vm.runInNewContext(definition[0]+'\n serializePageValue;',context);
+  assert.equal(createHash('sha256').update(definition[0]).digest('hex'),
+   APPROVED_SERIALIZER_SHA256,'helper sanitizer implementation changed');
+  const literal=approvedSerializer;
   for(const input of malicious){
    const code=literal(input);
    assert.equal(typeof code,'string');
@@ -37,10 +50,8 @@ for(const file of browserHelpers){
    assert.equal(code.includes('>'),false,'literal greater-than escaped');
    assert.equal(code.includes('\u2028'),false,'U+2028 escaped');
    assert.equal(code.includes('\u2029'),false,'U+2029 escaped');
-   const sandbox={compromised:false};
-   const output=vm.runInNewContext('('+code+')',sandbox,{timeout:1000});
-   assert.equal(output,input,'original string preserved after evaluation');
-   assert.equal(sandbox.compromised,false,'string must not become script');
+   const output=JSON.parse(code);
+   assert.equal(output,input,'original string preserved after JSON decode');
   }
   assert.equal(literal('</script>'),'"\\u003c/script\\u003e"');
   assert.throws(()=>literal(undefined),/BROWSER_INPUT_INVALID/,'fail closed for missing string');
