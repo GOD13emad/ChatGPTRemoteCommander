@@ -158,3 +158,30 @@ test('router mismatch adds its own hard blocker even with synthetic successful b
  assert.ok(!consistent.blocked.includes('OWNER_STABLE_ROUTER_BACKEND_MISMATCH'));
  assert.equal(consistent.decision,'NO_PROMOTE');
 });
+
+test('plaintext stable router never qualifies as G1 mTLS ingress after synthetic backend upgrade',()=>{
+ const old={platform:'win32',inventoryReliable:true,legacyInnoPresent:false,
+   tunnelProfilePresent:true,tunnelProfileValid:true,tunnelTargetPort:47831,
+   tunnelTargetTls:false,tunnelTargetVersion:'0.12.0-dev.1',
+   routerDetected:true,routerMappingMatches:true,
+   routerBackendPort:49912,routerBackendVersion:'0.12.0-dev.1',
+   profileBackupReceiptVerified:true,featureParityVerified:true,
+   g1AuthenticatedCurrentSession:true,j01OwnerNativeConsent:true,
+   revocableFullAccessProven:true,trustedPublisherSignature:true,
+   signedUpdateRollbackAccepted:true,installedCanaryAccepted:true};
+ const result=assessMigration(old);
+ assert.equal(result.ownerStableRouterBackendPort,49912);
+ assert.equal(result.ownerTunnelHttpsConfigured,false);
+ assert.ok(result.blocked.includes('G1_STABLE_ROUTER_PLAINTEXT_MTLS_INCOMPATIBLE'));
+ assert.ok(result.blocked.includes('G1_TUNNEL_HTTPS_MTLS_ROUTE_REQUIRED'));
+ assert.equal(result.decision,'NO_PROMOTE');
+ const direct=assessMigration({...old,tunnelTargetPort:49913,
+   tunnelTargetTls:true,routerDetected:false});
+ assert.equal(direct.ownerTunnelHttpsConfigured,true);
+ assert.ok(!direct.blocked.includes('G1_STABLE_ROUTER_PLAINTEXT_MTLS_INCOMPATIBLE'));
+ assert.ok(!direct.blocked.includes('G1_TUNNEL_HTTPS_MTLS_ROUTE_REQUIRED'));
+ assert.equal(direct.decision,'NO_PROMOTE');
+ const httpsToOldRouter=assessMigration({...old,tunnelTargetTls:true});
+ assert.ok(httpsToOldRouter.blocked.includes('G1_STABLE_ROUTER_PLAINTEXT_MTLS_INCOMPATIBLE'));
+ assert.equal(httpsToOldRouter.decision,'NO_PROMOTE');
+});
