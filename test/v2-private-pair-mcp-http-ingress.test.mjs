@@ -185,7 +185,8 @@ test('one private Tunnel advertises multiple Core tools and resolves native rout
     },
     operationGate:{execute:async command=>{
       log.executed++;
-      assert.deepEqual(command.route,route());
+      assert.equal(command.route.operationId,'exact-read-1');
+      assert.equal(command.route.conversationId,'chat1');
       assert.equal(command.tool,'read_text');
       assert.equal(command.arguments.path,'README.md');
       return {content:'ok'};
@@ -194,6 +195,11 @@ test('one private Tunnel advertises multiple Core tools and resolves native rout
     validateToolInput:async(name,args)=>{
       log.validated++;
       return name==='read_text'&&args?.path==='README.md';
+    },
+    resolveTrustedToolRoute:async({sessionHandle,nativeRoute,tool})=>{
+      assert.equal(sessionHandle,'chat1');
+      assert.equal(tool,'read_text');
+      return {...nativeRoute,operationId:'exact-read-1'};
     }
   });
   const send=async msg=>{
@@ -234,6 +240,9 @@ test('a full Core catalog requires a trusted native route and input validator',(
   assert.throws(()=>createV2PrivatePairMcpIngress(deps),
     {code:'V2_PRIVATE_MCP_INPUT_VALIDATOR_REQUIRED'});
   deps.validateToolInput=async()=>true;
+  assert.throws(()=>createV2PrivatePairMcpIngress(deps),
+    {code:'V2_PRIVATE_MCP_TRUSTED_OPERATION_ROUTE_REQUIRED'});
+  deps.resolveTrustedToolRoute=async({nativeRoute})=>({...nativeRoute,operationId:'action-1'});
   for(const invalid of [
     [{...trustedToolCatalog[0],name:'v2_workflow_step'}],
     [trustedToolCatalog[0],trustedToolCatalog[0]],
@@ -264,7 +273,8 @@ test('native resolver cannot redirect a private Core tool to a different chat',a
       name:'read_text',description:'owner read',
       inputSchema:{type:'object',properties:{path:{type:'string'}}}
     }],
-    validateToolInput:async()=>true
+    validateToolInput:async()=>true,
+    resolveTrustedToolRoute:async({nativeRoute})=>({...nativeRoute,operationId:'action-1'})
   });
   const res=response();
   await ingress.handle(makeRequest(tool('read_text',{path:'README.md'})),res);
@@ -285,11 +295,68 @@ test('large owner-approved Core catalog remains available on one PRIVATE Tunnel'
     ownerStack:{requestOwnerBinding:async()=>{},
       nativeSessionBindings:{resolveNativeRoute:async()=>route()}},
     operationGate:{execute:async()=>({ok:true})},
-    trustedToolCatalog:catalog,validateToolInput:async()=>false
+    trustedToolCatalog:catalog,validateToolInput:async()=>false,
+    resolveTrustedToolRoute:async({nativeRoute})=>({...nativeRoute,operationId:'action-1'})
   });
   const res=response();
   await ingress.handle(makeRequest(envelope('tools/list')),res);
   assert.equal(res.status,200);
   assert.ok(Number(res.headers['content-length'])>65536);
   assert.equal(JSON.parse(String(res.buffer)).result.tools.length,50);
+});
+
+test('direct operations require distinct owner-issued routes, not a reused J01 enrollment or JSON-RPC id',async()=>{
+  const seen=[];
+  const ingress=createV2PrivatePairMcpIngress({
+    attestTransport:async()=>({authenticated:true,
+      peerType:'owner-pinned-private-tunnel-mtls',sessionSource:'native-owner-private-pair'}),
+    ownerStack:{requestOwnerBinding:async()=>{},
+      nativeSessionBindings:{resolveNativeRoute:async()=>route()}},
+    operationGate:{execute:async({route:r})=>{
+      seen.push(r.operationId);return {done:r.operationId};
+    }},
+    trustedToolCatalog:[{name:'read_text',description:'owner read',
+      inputSchema:{type:'object',properties:{requestId:{type:'string'}}}}],
+    validateToolInput:async(_tool,args)=>args?.requestId==='action1'||args?.requestId==='action2',
+    // Only a trusted owner worker can select the exact operation route.
+    resolveTrustedToolRoute:async({nativeRoute,tool,arguments:args})=>{
+      assert.equal(tool,'read_text');assert.equal(nativeRoute.operationId,'step1');
+      return {...nativeRoute,operationId:args.requestId};
+    }
+  });
+  for(const action of ['action1','action2']){
+    const res=response();
+    // Deliberately same JSON-RPC ID on both completed requests:
+    // the current MCP specification does not promise lifetime uniqueness.
+    await ingress.handle(makeRequest(tool('read_text',{requestId:action})),res);
+    assert.equal(res.status,200);
+    assert.equal(JSON.parse(String(res.buffer)).result.isError,false);
+  }
+  assert.deepEqual(seen,['action1','action2']);
+});
+
+test('trusted operation route cannot change native owner host, profile or chat',async()=>{
+  for(const changed of [
+    {hostId:'otherHost'},{profileId:'otherProfile'},
+    {principalId:'otherPrincipal'},{conversationId:'otherChat'}
+  ]){
+    let effects=0;
+    const ingress=createV2PrivatePairMcpIngress({
+      attestTransport:async()=>({authenticated:true,
+        peerType:'owner-pinned-private-tunnel-mtls',sessionSource:'native-owner-private-pair'}),
+      ownerStack:{requestOwnerBinding:async()=>{},
+        nativeSessionBindings:{resolveNativeRoute:async()=>route()}},
+      operationGate:{execute:async()=>{effects++;return {ok:true};}},
+      trustedToolCatalog:[{name:'read_text',description:'owner read',
+        inputSchema:{type:'object',properties:{path:{type:'string'}}}}],
+      validateToolInput:async()=>true,
+      resolveTrustedToolRoute:async({nativeRoute})=>({...nativeRoute,
+        operationId:'action1',...changed})
+    });
+    const res=response();
+    await ingress.handle(makeRequest(tool('read_text',{path:'README.md'})),res);
+    assert.equal(res.status,403);
+    assert.equal(JSON.parse(String(res.buffer)).error,'private_operation_route_mismatch');
+    assert.equal(effects,0);
+  }
 });

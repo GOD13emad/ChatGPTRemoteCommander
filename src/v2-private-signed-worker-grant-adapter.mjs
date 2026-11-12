@@ -79,9 +79,9 @@ export function createV2PrivateSignedWorkerGrantAdapter({
         ||!/^[a-f0-9]{32,64}$/.test(owner.bindingId)
         ||!Number.isSafeInteger(owner.expiresAtMs)
         ||owner.expiresAtMs<=now())return false;
-      const current=normalizeV2Route(await resolveCurrentOwnerRoute());
+      const current=normalizeV2Route(await resolveCurrentOwnerRoute(owner));
       if(!sameRoute(r,current))return false;
-      const workerId=await resolveCurrentWorkerId();
+      const workerId=await resolveCurrentWorkerId(owner);
       if(typeof workerId!=='string'||!WORKER.test(workerId))return false;
       const signed=await workerRegistry.get(workerId);
       const verified=verifyWorkerRegistration(signed,{issuer,audience,now});
@@ -105,8 +105,8 @@ export function createV2PrivateSignedWorkerGrantAdapter({
         ||d.grantRevision!==c.grantRevision
         ||d.expiresAtMs!==c.expiresAtMs||d.expiresAtMs<=now())return false;
       // Rule out route/worker switches while native authorization awaited.
-      const finalRoute=normalizeV2Route(await resolveCurrentOwnerRoute());
-      const finalWorker=await resolveCurrentWorkerId();
+      const finalRoute=normalizeV2Route(await resolveCurrentOwnerRoute(owner));
+      const finalWorker=await resolveCurrentWorkerId(owner);
       const finalSigned=await workerRegistry.get(workerId);
       return sameRoute(r,finalRoute)&&finalWorker===workerId
         &&finalSigned?.signature===signed.signature

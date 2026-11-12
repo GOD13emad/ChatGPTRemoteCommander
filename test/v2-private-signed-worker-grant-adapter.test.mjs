@@ -134,3 +134,27 @@ test('signed private worker verifier requires trusted authority and canonical re
   ])assert.throws(()=>createV2PrivateSignedWorkerGrantAdapter({...f.dependency,...p}),
     {code:'V2_PRIVATE_SIGNED_WORKER_BOOTSTRAP_REQUIRED'});
 });
+
+test('current worker and owner route callbacks receive the independently verified native chat context',async()=>{
+  const f=fixture();
+  let routeChecks=0,workerChecks=0;
+  const check=createV2PrivateSignedWorkerGrantAdapter({
+    ...f.dependency,
+    resolveCurrentOwnerRoute:async native=>{
+      routeChecks++;
+      assert.equal(native.source,'native-owner-attested');
+      assert.equal(native.conversationId,'chat1');
+      assert.equal(native.bindingId,BINDING);
+      return route();
+    },
+    resolveCurrentWorkerId:async native=>{
+      workerChecks++;
+      assert.equal(native.conversationId,'chat1');
+      assert.equal(native.bindingId,BINDING);
+      return f.workerId;
+    }
+  });
+  assert.equal(await check(f.request()),true);
+  assert.equal(routeChecks,2);
+  assert.equal(workerChecks,2);
+});

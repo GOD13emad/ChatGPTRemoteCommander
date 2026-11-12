@@ -252,7 +252,11 @@ test('PRIVATE pair HTTPS authenticates a pinned tunnel without OAuth and still r
         operationGate:{execute:async()=>{actions.work++;return {ok:true};}},
         trustedToolCatalog:[{name:'read_text',description:'Read an owner-approved file',
           inputSchema:{type:'object',required:['path'],properties:{path:{type:'string'}}}}],
-        validateToolInput:async(name,args)=>name==='read_text'&&args?.path==='README.md'
+        validateToolInput:async(name,args)=>name==='read_text'&&args?.path==='README.md',
+        resolveTrustedToolRoute:async({sessionHandle,nativeRoute,tool})=>{
+          assert.equal(sessionHandle,'chat-1');assert.equal(tool,'read_text');
+          return {...nativeRoute,operationId:'exact-read-1'};
+        }
       }
     });
     assert.equal(gateway.requiredTransport,'owner-pinned-private-tunnel-mtls');

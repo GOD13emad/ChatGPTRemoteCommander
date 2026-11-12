@@ -259,3 +259,47 @@ test('at-most-once receipt detects changed native action arguments on identical 
     fs.rmSync(dir,{recursive:true,force:true});
   }
 });
+
+test('two PRIVATE conversations on one pair resolve independent live owner bindings without a global current chat',async()=>{
+  const visited=[],grants=[];
+  const {gate,state}=setup({
+    resolveOwnerContext:async selected=>{
+      assert.equal(selected.hostId,'pc1');
+      assert.equal(selected.profileId,'profileA');
+      const chat=selected.conversationId;
+      assert.ok(chat==='chat1'||chat==='chat2');
+      visited.push(chat);
+      return {...context(),conversationId:chat,
+        bindingId:(chat==='chat1'?'c':'d').repeat(64)};
+    },
+    verifyExactNativeGrant:async ({route:selection,ownerContext:owner})=>{
+      grants.push([selection.conversationId,owner.conversationId]);
+      return selection.conversationId===owner.conversationId&&
+        owner.bindingId===(selection.conversationId==='chat1'?'c':'d').repeat(64);
+    },
+    withLease:async(_key,work)=>work(),
+    execute:async r=>({chat:r.conversationId})
+  });
+  const first=route();
+  const second={...route(),conversationId:'chat2'};
+  assert.deepEqual(await Promise.all([
+    gate.execute(call({r:first})),
+    gate.execute(call({r:second}))
+  ]),[{chat:'chat1'},{chat:'chat2'}]);
+  assert.ok(visited.includes('chat1')&&visited.includes('chat2'));
+  assert.ok(grants.every(([requested,native])=>requested===native));
+  assert.equal(state.ownerChecks,state.attestations*2);
+});
+
+test('a stale native owner resolver cannot grant a second chat on the same PRIVATE tunnel',async()=>{
+  const {gate,state}=setup({
+    resolveOwnerContext:async selected=>{
+      assert.equal(selected.conversationId,'chat2');
+      return context();
+    }
+  });
+  await assert.rejects(gate.execute(call({
+    r:{...route(),conversationId:'chat2'}
+  })),{code:'V2_PRIVATE_OPERATION_BINDING_REQUIRED'});
+  assert.equal(state.effects,0);
+});

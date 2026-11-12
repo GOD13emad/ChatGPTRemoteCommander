@@ -15,7 +15,7 @@ const fail=code=>{throw Object.assign(new Error(code),{code});};
 function exactPrivateOwnerPair(value){
   const fields=['expectedTunnelIdHash','expectedOwnerSidHash',
     'resolveCurrentOwnerSidHash','ownerStack','operationGate'];
-  const optional=['trustedToolCatalog','validateToolInput'];
+  const optional=['trustedToolCatalog','validateToolInput','resolveTrustedToolRoute'];
   if(!value||typeof value!=='object'||Array.isArray(value)||isProxy(value)
     ||![Object.prototype,null].includes(Object.getPrototypeOf(value)))
     fail('V2_TUNNEL_PRIVATE_PAIR_BOOTSTRAP_REQUIRED');
@@ -92,7 +92,8 @@ export function createV2CandidatePrivateTunnelHttpsGateway({
     attestTransport,ownerStack:privatePair.ownerStack,
     operationGate:privatePair.operationGate,
     trustedToolCatalog:privatePair.trustedToolCatalog??[],
-    validateToolInput:privatePair.validateToolInput,maxBodyBytes
+    validateToolInput:privatePair.validateToolInput,
+    resolveTrustedToolRoute:privatePair.resolveTrustedToolRoute,maxBodyBytes
   }):createV2CandidateHttpIngress({
     resource,authorizationServers,scopes,attestTransport,
     dispatcherFactory,platformSessionProofAuthority,maxBodyBytes

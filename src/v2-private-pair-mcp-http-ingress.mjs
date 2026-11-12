@@ -1,5 +1,6 @@
 // Private per-(account,host) MCP source candidate. Does NOT bind a port.
 import {isProxy} from 'node:util/types';
+import {normalizeV2Route} from './v2-routing-contract.mjs';
 // On a protected TLS/mTLS host the exact pair is independently attested.
 // No Authorization bearer, public OAuth issuer, per-service tunnel or legacy
 // privileged HTTP fallback. Never grants OS rights: Native J01 and exact signed
@@ -123,7 +124,7 @@ const TOOLS=Object.freeze([
 
 export function createV2PrivatePairMcpIngress({
   attestTransport,ownerStack,operationGate,trustedToolCatalog=[],
-  validateToolInput,maxBodyBytes=65536
+  validateToolInput,resolveTrustedToolRoute,maxBodyBytes=65536
 }={}){
   if(typeof attestTransport!=='function'
     ||typeof ownerStack?.requestOwnerBinding!=='function'
@@ -136,6 +137,8 @@ export function createV2PrivatePairMcpIngress({
     fail('V2_PRIVATE_MCP_CANONICAL_ROUTE_REQUIRED');
   if(catalog.length>0&&typeof validateToolInput!=='function')
     fail('V2_PRIVATE_MCP_INPUT_VALIDATOR_REQUIRED');
+  if(catalog.length>0&&typeof resolveTrustedToolRoute!=='function')
+    fail('V2_PRIVATE_MCP_TRUSTED_OPERATION_ROUTE_REQUIRED');
   const names=new Set([...RESERVED,...catalog.map(x=>x.name)]);
   const availableTools=Object.freeze([...TOOLS,...catalog]);
   async function handle(req,res){
@@ -209,11 +212,25 @@ export function createV2PrivatePairMcpIngress({
         if(await validateToolInput(name,message.params.arguments)!==true){
           json(res,200,error(id));return;
         }
-        const route=await ownerStack.nativeSessionBindings.resolveNativeRoute(session);
-        // A native resolver may be stale or misconfigured. Never forward a
-        // route bound to another ChatGPT conversation into the action gate.
-        if(route?.conversationId!==session){
+        const nativeRoute=normalizeV2Route(
+          await ownerStack.nativeSessionBindings.resolveNativeRoute(session));
+        // Native J01 establishes only the owner pair and conversation.
+        // It is NOT a reusable operationId for multiple distinct tools.
+        if(nativeRoute.conversationId!==session){
           json(res,403,{error:'private_session_route_mismatch'});return;
+        }
+        // Owner-controlled worker creates the exact operation route for THIS
+        // invocation. Never infer a durable operation ID from JSON-RPC id:
+        // MCP 2026-07-28 only forbids reuse while a request is outstanding.
+        const route=normalizeV2Route(await resolveTrustedToolRoute(Object.freeze({
+          sessionHandle:session,nativeRoute,tool:name,
+          arguments:structuredClone(message.params.arguments)
+        })));
+        if(route.hostId!==nativeRoute.hostId
+          ||route.profileId!==nativeRoute.profileId
+          ||route.principalId!==nativeRoute.principalId
+          ||route.conversationId!==nativeRoute.conversationId){
+          json(res,403,{error:'private_operation_route_mismatch'});return;
         }
         const result=await operationGate.execute({
           request:req,route,tool:name,arguments:message.params.arguments

@@ -100,7 +100,9 @@ export function createV2PrivatePairOperationGate({
     if(before!==expectedOwnerSidHash)
       fail('V2_PRIVATE_OPERATION_OWNER_CHANGED');
     let ownerContext;
-    try{ownerContext=await resolveOwnerContext();}
+    // Native owner resolver selects by the independently normalized route;
+    // never a mutable global current-chat pointer shared across sessions.
+    try{ownerContext=await resolveOwnerContext(route);}
     catch{fail('V2_PRIVATE_OPERATION_OWNER_CONTEXT_REQUIRED');}
     const c=exact(ownerContext,
       ['source','hostId','profileId','principalId','conversationId',
