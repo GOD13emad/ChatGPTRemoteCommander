@@ -3,6 +3,18 @@
 ## Purpose
 
 Create one unified development line for the cross-platform Remote Commander suite. This identity supersedes the local-only `0.11.0-dev.105` preview as the current development candidate; it does not erase or rewrite historical releases, branches, tags, or Commander 2 lineage.
+## Owner-accepted private connectivity correction — 2026-11-12
+
+**This is the current 0.12 PRIVATE enrollment architecture and supersedes older release-gate language below where it treated public OAuth/G1 as compulsory for existing private tunnels. Historical G1/J01 research and negative tests remain evidence; they do not become private-connection prerequisites solely because their candidate exists.**
+
+For each distinct **(ChatGPT account, target host)** pair, create **exactly one independent ChatGPT Plugin/App and exactly one unique Secure MCP Tunnel**. No Tunnel ID is shared across accounts or hosts. A new pair normally gets its own Runtime API key; optional reuse of **the same user's own key** across their devices is supported without merging the Plugins/Tunnels or borrowing another person's credentials. Each host runs **one Commander installation** serving its authorized per-pair profiles. All enabled Core, Shell, GUI/Desktop, Browser, Workflow, Plugin and Full Access tools appear under **that pair's same Plugin/Tunnel**; creating separate tunnels for individual subsystems is outside the accepted design.
+
+**No compulsory Keycloak/Auth0/Tailscale Funnel, second OAuth login, public MCP endpoint, or paid identity service** is needed for the normal private Secure MCP Tunnel connection. The V2 OAuth/JWKS/mTLS-protected G1 profile may be developed and qualified separately for an explicitly selected managed/public identity mode; do not silently disable existing protected-mode guards or assert that a healthy tunnel proves ChatGPT human identity. For Full Access, preserve the host owner's effective access policy, native OS privilege limits, GUI consent, audit and independent revocation. Operating-system administrator rights are not conferred by Full Access configuration, a Tunnel or an API key.
+
+**Explicit acceptance:** Account A→PC1, A→Laptop2, B→PC1 means **three distinct ChatGPT Plugins and three distinct Tunnel IDs**, with one Commander installation on PC1. Default to separate Runtime keys; A may reuse its own key on both hosts. Prove per-pair isolation, unshared tunnel identity, complete eligible tool catalog on the one connection, preserved existing enrollments/credential references and reversible updates. Installed G1 alternative admission, native owner consent, source/provenance, package compatibility, rollback and fleet migration require their own positive evidence. **`0.12.0-dev.1` remains NoPromote** until the selected private product acceptance actually passes.
+
+See the canonical `docs/PROJECT_BRAIN.md` record `RC012-PRIVATE-TUNNEL-NO-EXTRA-OAUTH-20261112`, source onboarding `README.md` and `START_HERE.md`, and the separate Commander 2 local product-intent Brain `RemoteCommanderV2/docs/PROJECT_BRAIN.md` (one active authority per project). Documentation changes and source tests are not installed acceptance.
+
 
 ## Owner-accepted stable baseline and expansion path — 2026-11-08
 
