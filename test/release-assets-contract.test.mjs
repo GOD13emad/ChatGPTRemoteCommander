@@ -17,6 +17,23 @@ const releaseSyncPathSection = workflow.replace(/\r\n/g, '\n').split('  pull_req
 if (!releaseSyncPathSection.includes("      - 'install.sh'"))
   throw new Error('RELEASE_SYNC_LINUX_INSTALL_SOURCE_TRIGGER_MISSING');
 
+// PRs still build/verify the unsigned Windows installer, but should not
+// persist the ~171MB artifact. Non-PR publish must retain its exact artifact.
+const releaseWorkflowLF = workflow.replace(/\r\n/g, '\n');
+const windowsBuild = releaseWorkflowLF.split('  build-windows-setup:\n')[1]?.split('  build-linux-bootstrap:\n')[0];
+const windowsUploadMarker =
+  '      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1\n';
+const windowsUploadParts = windowsBuild?.split(windowsUploadMarker);
+if (!windowsUploadParts || windowsUploadParts.length !== 2 ||
+    !windowsUploadParts[1].startsWith(
+      "        if: github.event_name != 'pull_request'\n        with:\n" +
+      '          name: remote-commander-windows-setup\n') ||
+    !windowsUploadParts[1].includes('          retention-days: 7\n') ||
+    !releaseWorkflowLF.includes("  publish:\n    if: github.event_name != 'pull_request'\n") ||
+    !releaseWorkflowLF.includes('          name: remote-commander-windows-setup\n          path: dist/windows-setup')) {
+  throw new Error('RELEASE_SYNC_PR_MUST_NOT_STORE_WINDOWS_SETUP_OR_BREAK_PUBLICATION');
+}
+
 const browserFetcher = readFileSync('scripts/fetch-browser-setup.ps1','utf8');
 const innoFetcher = readFileSync('scripts/install-inno-setup.ps1','utf8');
 const browserVersion = '0.8.1';
