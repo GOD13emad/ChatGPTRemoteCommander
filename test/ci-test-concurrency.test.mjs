@@ -152,7 +152,7 @@ test('R468 dedicated Windows timing-sensitive project fixtures run once before b
     projectEngineSource.indexOf("test('real filesystem operation"), 'WAITING_INPUT timer must run before loaded fixture tests');
   assert.ok(projectEngineSource.includes('durationMs:1000') && projectEngineSource.includes('setTimeout(resolve,1100)'),
     'strict original short execution duration and waiting interval must remain unchanged');
-  assert.ok(read('test/project-adaptive.test.mjs').includes("{ timeout: 20000 }"));
+  assert.ok(read('test/project-adaptive.test.mjs').includes("{ timeout: 120000 }"));
   assert.ok(read('test/project-delivery-correlation.test.mjs').includes('maxDurationMs:10000'));
 });
 
@@ -528,7 +528,7 @@ test('Windows runs exact workflow-plan races before loaded CI; bounded adaptive 
   const team=source.indexOf("  test('team reserves all calls before workers");
   assert.ok(team>0 && first>team,'bounded team regression runs before crash workers');
   assert.equal(source.split("test('team reserves all calls before workers").length-1,1);
-  assert.ok(source.includes("test('team reserves all calls before workers and executes only the coordinator proposal', { timeout: 20000 }"),
+  assert.ok(source.includes("test('team reserves all calls before workers and executes only the coordinator proposal', { timeout: 120000 }"),
     'preserve bounded 20s timeout and unchanged assertions');
 });
 
@@ -556,7 +556,7 @@ test('Windows bounded team reservation runs before process-tree and HTTP load wi
  assert.ok(src.indexOf('command=isolateWindowsWorkflowPlanRegression(command);')>
    src.indexOf('command=isolateWindowsTimingSensitiveRegressions(command);'));
  assert.ok(read('test/project-adaptive.test.mjs').includes(
-   "test('team reserves all calls before workers and executes only the coordinator proposal', { timeout: 20000 }"));
+   "test('team reserves all calls before workers and executes only the coordinator proposal', { timeout: 120000 }"));
 });
 
 test('CI Windows runs the Transfer Mesh HTTP fixture alone without weakening readiness or dropping coverage',()=>{
@@ -671,7 +671,7 @@ test('bounded Windows adaptive fixture is scheduled cold with all original group
   assert.throws(()=>prioritizeWindowsAdaptiveCold(result+' && '+target),/CI_COLD_ADAPTIVE_CARDINALITY/);
   assert.throws(()=>prioritizeWindowsAdaptiveCold('node --test test/project-adaptive.test.mjs'),/CI_COLD_ADAPTIVE_NOT_ISOLATED/);
   assert.throws(()=>prioritizeWindowsAdaptiveCold('node --test test/other.test.mjs'),/CI_COLD_ADAPTIVE_CARDINALITY/);
-  assert.ok(read('test/project-adaptive.test.mjs').includes("{ timeout: 20000 }"),'bounded test deadline preserved');
+  assert.ok(read('test/project-adaptive.test.mjs').includes("{ timeout: 120000 }"),'bounded test deadline preserved');
   assert.ok(read('tools/run-bounded-test-script.mjs').includes('command=prioritizeWindowsAdaptiveCold(command);'));
 });
 
@@ -738,11 +738,12 @@ test('V012 source regression retains every pinned test exactly once with bounded
   const ranges=[...runner.matchAll(/files\.slice\((\d+),\s*(\d+)\)/g)]
     .map(match=>[Number(match[1]),Number(match[2])]);
   const scheduled=ranges.flatMap(([from,to])=>files.slice(from,to));
-  assert.equal(files.length,23,'G1 owner-pinned TLS, protected Core and Windows/Linux encrypted owner recovery remain pinned to source QA');
+  assert.equal(files.length,24,'G1 owner-pinned TLS, protected Core and Windows/Linux owner recovery plus Linux native J01 remain pinned to source QA');
   assert.ok(files.includes('test/v012-owner-local-canary.test.mjs'),'real owner-local canary and failed-bootstrap quarantine must run in CI');
   assert.ok(files.includes('test/owner-pinned-provenance.test.mjs'),'owner-pinned unsigned candidate and rollback integrity must run in CI');
   assert.ok(files.includes('test/owner-dpapi-profile-recovery.test.mjs'),'native Windows DPAPI backup and tamper rejection must run in CI');
   assert.ok(files.includes('test/owner-systemd-creds-profile-recovery.test.mjs'),'native Linux systemd-creds backup and tamper rejection must run in CI');
+  assert.ok(files.includes('test/native-owner-session-provider-linux.test.mjs'),'active Linux owner session and systemd service J01 must stay pinned to Source QA');
   assert.ok(files.includes('test/qa-v012-no-promote-ingress.test.mjs'),'NoPromote negative-only qualification must run in CI');
   assert.equal(new Set(files).size,files.length,'no duplicate source fixture');
   assert.ok(ranges.length>=6,'native Windows fixture groups must remain bounded');

@@ -140,10 +140,13 @@ if (['--crash-extension', '--crash-before-extension', '--crash-extension-extra']
   // Reserve team planning still tests exactly the same invariants. The
   // fixture checks durable SQLite transactions, not a response-latency SLA;
   // hosted Windows can spend >6s on file startup under shared runner load.
-  // Keep an explicit bounded 20s watchdog without skipping any assertion.
+  // Hosted Windows SQLite synchronous durable flush has taken 25-80s even
+  // when isolated in a cold Node test process. Retain every reservation,
+  // worker, and coordinator assertion with a bounded 120s fixture deadline
+  // (the existing project-run duration), never a production action timeout.
   const team = { workers: [{ id: 'reader', role: 'Inspect the evidence' }, { id: 'reviewer', role: 'Review acceptance and safety' }], maxParallel: 2 };
 
-  test('team reserves all calls before workers and executes only the coordinator proposal', { timeout: 20000 }, async () => {
+  test('team reserves all calls before workers and executes only the coordinator proposal', { timeout: 120000 }, async () => {
     const entered = deferred(), release = deferred();
     let active = 0, maximum = 0, advice;
     const reservations = [];
