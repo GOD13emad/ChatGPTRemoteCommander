@@ -161,7 +161,10 @@ export function createV2PrivatePairOperationGate({
         // At-most-once must detect changed arguments for the SAME operationId.
         // Existing MutationIdempotencyStore retains only its input digest.
         receiptInput:Object.freeze({route:r,arguments:frozenArgs}),
-        execute:r=>execute(r,frozenArgs)
+        // The exact verified tool identity must reach the real Core effect
+        // after admission; a mutable shared "currentTool" is never authority.
+        // Third argument preserves existing (route,args) callbacks.
+        execute:r=>execute(r,frozenArgs,tool)
       },tool);
     }
   });

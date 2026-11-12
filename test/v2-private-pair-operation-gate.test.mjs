@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {MutationIdempotencyStore} from '../src/mutation-idempotency.mjs';
+import {readText} from '../src/tools-v0.3.mjs';
 
 import assert from 'node:assert/strict';
 import {createV2PrivatePairOperationGate} from '../src/v2-private-pair-operation-gate.mjs';
@@ -302,4 +303,49 @@ test('a stale native owner resolver cannot grant a second chat on the same PRIVA
     r:{...route(),conversationId:'chat2'}
   })),{code:'V2_PRIVATE_OPERATION_BINDING_REQUIRED'});
   assert.equal(state.effects,0);
+});
+
+test('actual read-only Core readText executes only with the exact signed-gate tool identity',async()=>{
+  const root=fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(),'rc012-private-real-core-')));
+  const file=path.join(root,'approved.txt');
+  fs.writeFileSync(file,'source-bridge-evidence\n');
+  const receipts=new MutationIdempotencyStore({
+    directory:path.join(root,'receipt-store'),scope:'rc012-private-real-core'
+  });
+  const ctx={roots:[root],auditLog:path.join(root,'audit.jsonl'),
+    config:{allowedRoots:[root],maxReadBytes:524288,
+      powerMode:{enabled:false,fullFilesystem:false}}};
+  let effects=0;
+  try{
+    const {gate}=setup({
+      receiptStore:receipts,
+      verifyExactNativeGrant:async({tool,arguments:validated,ownerContext})=>{
+        assert.equal(ownerContext.bindingId,BINDING);
+        assert.equal(Object.isFrozen(validated),true);
+        return tool==='read_text'&&validated.path===file;
+      },
+      execute:async (_route,args,tool)=>{
+        assert.equal(tool,'read_text',
+          'real Core effect must receive the SAME tool verified by the grant');
+        assert.equal(Object.isFrozen(args),true);
+        effects++;
+        return readText(ctx,args);
+      }
+    });
+    const action={...call({tool:'read_text'}),arguments:{path:file}};
+    const first=await gate.execute(action);
+    assert.equal(first.text,'source-bridge-evidence\n');
+    assert.equal(first.path,file);
+    assert.equal(effects,1);
+    const replay=await gate.execute(action);
+    assert.deepEqual(replay,first);
+    assert.equal(effects,1,'durable replay must not re-run real readText');
+    await assert.rejects(gate.execute({...action,tool:'write_text'}),
+      {code:'V2_GRANT_REQUIRED'});
+    assert.equal(effects,1,'the grant-denied tool cannot call real Core');
+    assert.equal(receipts.status().states.SUCCEEDED,1);
+  }finally{
+    receipts.close();
+    fs.rmSync(root,{recursive:true,force:true});
+  }
 });
