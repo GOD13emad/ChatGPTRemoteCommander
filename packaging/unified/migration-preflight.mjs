@@ -111,6 +111,14 @@ export function assessMigration(facts){
   if(facts.platform==='win32'&&facts.routerDetected===true
     &&facts.routerMappingMatches!==true)
     blocked.push('OWNER_STABLE_ROUTER_BACKEND_MISMATCH');
+  // The existing Stable Router uses HTTP input and HTTP forwarding. It cannot
+  // terminate tunnel-client mTLS or pass verified TLS peer identity to G1.
+  // Changing only its backend port would silently preserve legacy plaintext.
+  if(facts.platform==='win32'&&facts.routerDetected===true)
+    blocked.push('G1_STABLE_ROUTER_PLAINTEXT_MTLS_INCOMPATIBLE');
+  if(facts.platform==='win32'&&facts.tunnelProfilePresent===true
+    &&facts.tunnelProfileValid===true&&facts.tunnelTargetTls!==true)
+    blocked.push('G1_TUNNEL_HTTPS_MTLS_ROUTE_REQUIRED');
   if(facts.platform==='win32'&&facts.tunnelProfilePresent===true){
     if(facts.tunnelProfileValid!==true)
       blocked.push('OWNER_TUNNEL_MAIN_BINDING_UNVERIFIED');
