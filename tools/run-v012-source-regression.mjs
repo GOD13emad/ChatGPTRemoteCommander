@@ -22,7 +22,8 @@ const files = [
   "test/qa-v012-no-promote-ingress.test.mjs",
   "test/owner-pinned-provenance.test.mjs",
   "test/v012-owner-local-canary.test.mjs",
-  "test/owner-dpapi-profile-recovery.test.mjs"
+  "test/owner-dpapi-profile-recovery.test.mjs",
+  "test/owner-systemd-creds-profile-recovery.test.mjs"
 ];
 
 // Keep every file once while bounding expensive Windows native process/SQLite
@@ -39,7 +40,7 @@ const batches = [
   files.slice(13, 15),
   files.slice(15, 17),
   files.slice(17, 18), // Canonical G1/WorkflowStore composition and mTLS denial
-  files.slice(18, 22) // NoPromote, unsigned digest, protected Core and owner DPAPI backup
+  files.slice(18, 23) // NoPromote, provenance, protected Core and owner Windows/Linux encrypted recovery
 ];
 if(batches.flat().length!==files.length
   ||new Set(batches.flat()).size!==files.length
