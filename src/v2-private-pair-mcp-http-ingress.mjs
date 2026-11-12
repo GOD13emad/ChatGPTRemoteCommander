@@ -1,6 +1,7 @@
 // Private per-(account,host) MCP source candidate. Does NOT bind a port.
 import {isProxy} from 'node:util/types';
 import {normalizeV2Route} from './v2-routing-contract.mjs';
+import {validateJsonSchema} from './schema-validator.mjs';
 // On a protected TLS/mTLS host the exact pair is independently attested.
 // No Authorization bearer, public OAuth issuer, per-service tunnel or legacy
 // privileged HTTP fallback. Never grants OS rights: Native J01 and exact signed
@@ -187,6 +188,7 @@ export function createV2PrivatePairMcpIngress({
     fail('V2_PRIVATE_MCP_INPUT_VALIDATOR_REQUIRED');
   if(catalog.length>0&&typeof resolveTrustedToolRoute!=='function')
     fail('V2_PRIVATE_MCP_TRUSTED_OPERATION_ROUTE_REQUIRED');
+  const schemas=new Map(catalog.map(item=>[item.name,item.inputSchema]));
   const names=new Set([...RESERVED,...catalog.map(x=>x.name)]);
   const availableTools=Object.freeze([...TOOLS,...catalog]);
   async function handle(req,res){
@@ -270,7 +272,13 @@ export function createV2PrivatePairMcpIngress({
       if(!RESERVED.has(name)){
         // A direct Core tool never receives a caller-supplied routing target.
         // Native J01 independently resolves the CURRENT exact owner route.
-        if(await validateToolInput(name,message.params.arguments)!==true){
+        // Use the SAME source Core JSON-schema validator before native route,
+        // worker-grant lookup or any execution callback. Never trust an
+        // optional owner callback alone to enforce the advertised schema.
+        const args=message.params.arguments??{};
+        if(!args||typeof args!=='object'||Array.isArray(args)
+          ||validateJsonSchema(args,schemas.get(name)).length!==0
+          ||await validateToolInput(name,args)!==true){
           json(res,200,error(id,modern));return;
         }
         const nativeRoute=normalizeV2Route(
@@ -285,7 +293,7 @@ export function createV2PrivatePairMcpIngress({
         // MCP 2026-07-28 only forbids reuse while a request is outstanding.
         const route=normalizeV2Route(await resolveTrustedToolRoute(Object.freeze({
           sessionHandle:session,nativeRoute,tool:name,
-          arguments:structuredClone(message.params.arguments)
+          arguments:structuredClone(args)
         })));
         if(route.hostId!==nativeRoute.hostId
           ||route.profileId!==nativeRoute.profileId
@@ -294,7 +302,7 @@ export function createV2PrivatePairMcpIngress({
           json(res,403,{error:'private_operation_route_mismatch'});return;
         }
         const result=await operationGate.execute({
-          request:req,route,tool:name,arguments:message.params.arguments
+          request:req,route,tool:name,arguments:args
         });
         json(res,200,rpc(id,{isError:false,content:[
           {type:'text',text:JSON.stringify(result)}

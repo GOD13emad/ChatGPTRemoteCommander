@@ -143,7 +143,9 @@ test('immutable packaged source and restricted preview boot',async()=>{
            }}},
          operationGate:{execute:async()=>{attemptedEffects++;throw Error('not granted');}},
          trustedToolCatalog:realCatalog,
-         validateToolInput:async()=>false,
+         // Even a misconfigured permissive callback must not admit bad
+         // arguments that the real Core's immutable schema rejects.
+         validateToolInput:async()=>true,
          resolveTrustedToolRoute:async()=>{throw Error('not admitted');}
        });
        const req=Readable.from([Buffer.from(JSON.stringify({
@@ -160,6 +162,25 @@ test('immutable packaged source and restricted preview boot',async()=>{
        const privateCatalog=JSON.parse(String(responseBytes)).result.tools.slice(2);
        assert.deepEqual(privateCatalog,realCatalog,
          'private catalog must preserve every actual Core tool definition');
+       const coreRead=realCatalog.find(t=>t.name==='read_text');
+       assert.ok(coreRead?.inputSchema?.required?.includes('path'),
+         'source Core must require a path for read_text');
+       const invalid=Readable.from([Buffer.from(JSON.stringify({
+         jsonrpc:'2.0',id:5,method:'tools/call',
+         params:{name:'read_text',arguments:{},
+           _meta:{'openai/session':'chat1'}}
+       }))]);
+       invalid.socket={encrypted:true,authorized:true};
+       invalid.url='/mcp';invalid.method='POST';
+       invalid.rawHeaders=['Content-Type','application/json'];
+       let denialStatus=null,denialBytes=null;
+       await ingress.handle(invalid,{
+         writeHead(status){denialStatus=status;},
+         end(data){denialBytes=data;}
+       });
+       assert.equal(denialStatus,200,
+         'real Core schema invalid input must be rejected before J01 lookup');
+       assert.equal(JSON.parse(String(denialBytes)).result.isError,true);
        assert.equal(attemptedEffects,0,
          'discovery must not request native owner consent or execute a tool');
        console.log('RC012_REAL_CORE_CATALOG_PARITY_COUNT='+realCatalog.length);

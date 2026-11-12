@@ -441,3 +441,82 @@ test('modern version, mirrored headers and capabilities fail closed with typed J
   assert.equal(f.state.bound,0);
   assert.equal(f.state.operations,0);
 });
+
+test('direct Core tools validate actual advertised schema even if host validator blindly approves',async()=>{
+  const calls={validation:0,native:0,operation:0,effect:0};
+  const ingress=createV2PrivatePairMcpIngress({
+    attestTransport:async()=>({
+      authenticated:true,peerType:'owner-pinned-private-tunnel-mtls',
+      sessionSource:'native-owner-private-pair'
+    }),
+    ownerStack:{requestOwnerBinding:async()=>{},
+      nativeSessionBindings:{resolveNativeRoute:async()=>{
+        calls.native++;return route();
+      }}},
+    operationGate:{execute:async ({arguments:args})=>{
+      calls.effect++;assert.equal(args.path,'README.md');return {ok:true};
+    }},
+    trustedToolCatalog:[{
+      name:'read_text',description:'Read file via Core',
+      inputSchema:{type:'object',additionalProperties:false,
+        required:['path'],properties:{
+          path:{type:'string',minLength:2},
+          maxBytes:{type:'integer',minimum:1,maximum:4096}
+        }}
+    }],
+    // This callback alone MUST NOT bypass the source Core schema.
+    validateToolInput:async()=>{calls.validation++;return true;},
+    resolveTrustedToolRoute:async({nativeRoute})=>{
+      calls.operation++;return {...nativeRoute,operationId:'schema-test-1'};
+    }
+  });
+  for(const bad of [
+    {},{path:3},{path:'x'},{path:'README.md',other:'not-allowed'},
+    {path:'README.md',maxBytes:0},{path:'README.md',maxBytes:4097},
+    {path:'README.md',maxBytes:'1024'},[],false
+  ]){
+    const res=response();
+    await ingress.handle(makeRequest(tool('read_text',bad)),res);
+    assert.equal(res.status,200);
+    assert.equal(JSON.parse(String(res.buffer)).result.isError,true);
+  }
+  assert.deepEqual(calls,{validation:0,native:0,operation:0,effect:0});
+  const valid=response();
+  await ingress.handle(makeRequest(tool('read_text',{
+    path:'README.md',maxBytes:100
+  })),valid);
+  assert.equal(valid.status,200);
+  assert.equal(JSON.parse(String(valid.buffer)).result.isError,false);
+  assert.deepEqual(calls,{validation:1,native:1,operation:1,effect:1});
+});
+
+test('direct Core no-argument tool canonicalizes absent arguments before both callbacks',async()=>{
+  let validated=null,received=null;
+  const ingress=createV2PrivatePairMcpIngress({
+    attestTransport:async()=>({
+      authenticated:true,peerType:'owner-pinned-private-tunnel-mtls',
+      sessionSource:'native-owner-private-pair'
+    }),
+    ownerStack:{requestOwnerBinding:async()=>{},
+      nativeSessionBindings:{resolveNativeRoute:async()=>route()}},
+    operationGate:{execute:async ({arguments:args})=>{
+      received=args;return {ok:true};
+    }},
+    trustedToolCatalog:[{
+      name:'system_status',description:'read-only',
+      inputSchema:{type:'object',additionalProperties:false,properties:{}}
+    }],
+    validateToolInput:async(_name,args)=>{
+      validated=args;return true;
+    },
+    resolveTrustedToolRoute:async({nativeRoute})=>({
+      ...nativeRoute,operationId:'status-test-1'
+    })
+  });
+  const res=response();
+  await ingress.handle(makeRequest(tool('system_status',undefined)),res);
+  assert.equal(res.status,200);
+  assert.equal(JSON.parse(String(res.buffer)).result.isError,false);
+  assert.deepEqual(validated,{});
+  assert.deepEqual(received,{});
+});
