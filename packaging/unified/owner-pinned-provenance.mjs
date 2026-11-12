@@ -3,7 +3,7 @@
 // owner/release authority. A hash found inside its own download is NOT trust.
 // No Authenticode, installation, network access, permission grant or promotion.
 import path from 'node:path';
-import {open,realpath} from 'node:fs/promises';
+import {open,realpath,lstat} from 'node:fs/promises';
 import {constants as fsConstants} from 'node:fs';
 import {createHash} from 'node:crypto';
 
@@ -20,6 +20,14 @@ function exact(value,keys){
 async function fingerprint(file,maxBytes){
   if(typeof file!=='string'||!path.isAbsolute(file)||file.includes('\0'))
     fail('RC012_PROVENANCE_LOCAL_FILE_REQUIRED');
+  // Windows can ignore O_NOFOLLOW: reject symlinks/reparse points both
+  // before and after opening. A resolver alias is not an owner-pinned file.
+  const firstLink=await lstat(file);
+  if(!firstLink.isFile()||firstLink.isSymbolicLink()||firstLink.nlink!==1)
+    fail('RC012_PROVENANCE_FILE_UNTRUSTED');
+  const firstReal=await realpath(file);
+  if(path.resolve(firstReal).toLowerCase()!==path.resolve(file).toLowerCase())
+    fail('RC012_PROVENANCE_FILE_ALIAS');
   let handle;
   try{
     handle=await open(file,fsConstants.O_RDONLY|(fsConstants.O_NOFOLLOW||0));
@@ -36,7 +44,12 @@ async function fingerprint(file,maxBytes){
       if(maxBytes===MAX_MANIFEST)chunks.push(chunk);
     }
     const after=await handle.stat();
-    if(bytes!==before.size||after.size!==before.size
+    const lastLink=await lstat(file);
+    const lastReal=await realpath(file);
+    if(!lastLink.isFile()||lastLink.isSymbolicLink()||lastLink.nlink!==1
+      ||lastLink.ino!==firstLink.ino||lastLink.dev!==firstLink.dev
+      ||path.resolve(lastReal).toLowerCase()!==path.resolve(file).toLowerCase()
+      ||bytes!==before.size||after.size!==before.size
       ||after.dev!==before.dev||after.ino!==before.ino
       ||after.mtimeMs!==before.mtimeMs||after.ctimeMs!==before.ctimeMs)
       fail('RC012_PROVENANCE_FILE_CHANGED');
