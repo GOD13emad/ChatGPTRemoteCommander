@@ -104,6 +104,9 @@ function exec(program,args){
 }
 export function assessMigration(facts){
   if(!facts||!['linux','win32'].includes(facts.platform))throw Error('RC012_MIGRATION_PLATFORM_INVALID');
+  if(facts.connectionMode!==undefined&&!['private-tunnel','managed-oauth'].includes(facts.connectionMode))
+    throw Error('RC012_MIGRATION_CONNECTION_MODE_INVALID');
+  const privateTunnel=facts.connectionMode==='private-tunnel';
   const blocked=[];
   const oldPresent=facts.platform==='win32'?facts.legacyInnoPresent===true:facts.nativePackageInstalled===true;
   const units=Array.isArray(facts.units)?facts.units:[];
@@ -114,9 +117,9 @@ export function assessMigration(facts){
   // The existing Stable Router uses HTTP input and HTTP forwarding. It cannot
   // terminate tunnel-client mTLS or pass verified TLS peer identity to G1.
   // Changing only its backend port would silently preserve legacy plaintext.
-  if(facts.platform==='win32'&&facts.routerDetected===true)
+  if(!privateTunnel&&facts.platform==='win32'&&facts.routerDetected===true)
     blocked.push('G1_STABLE_ROUTER_PLAINTEXT_MTLS_INCOMPATIBLE');
-  if(facts.platform==='win32'&&facts.tunnelProfilePresent===true
+  if(!privateTunnel&&facts.platform==='win32'&&facts.tunnelProfilePresent===true
     &&facts.tunnelProfileValid===true&&facts.tunnelTargetTls!==true)
     blocked.push('G1_TUNNEL_HTTPS_MTLS_ROUTE_REQUIRED');
   if(facts.platform==='win32'&&facts.tunnelProfilePresent===true){
@@ -127,11 +130,13 @@ export function assessMigration(facts){
       blocked.push('OWNER_TUNNEL_STILL_TARGETS_LEGACY_OR_UNKNOWN_CORE');
   }
   if(facts.platform==='win32' && oldPresent){
-    blocked.push('LEGACY_INNO_TO_NSIS_TRANSACTION_MISSING');
     if(facts.ownerRegisteredInstallerFamily==='owner-managed-powershell')
-      blocked.push('OWNER_MANAGED_UNINSTALL_REQUIRES_IN_PLACE_TRANSACTION');
-    else if(['unverified','multiple-or-unverified'].includes(facts.ownerRegisteredInstallerFamily))
-      blocked.push('OWNER_INSTALLER_IDENTITY_UNVERIFIED');
+      blocked.push('OWNER_MANAGED_TO_UNIFIED_NSIS_TRANSACTION_MISSING');
+    else {
+      blocked.push('LEGACY_INNO_TO_NSIS_TRANSACTION_MISSING');
+      if(['unverified','multiple-or-unverified'].includes(facts.ownerRegisteredInstallerFamily))
+        blocked.push('OWNER_INSTALLER_IDENTITY_UNVERIFIED');
+    }
   }
   if(facts.platform==='linux' && oldPresent && !facts.allNativePayloadPathsAvailable)
     blocked.push('NATIVE_RUNTIME_TUNNEL_SERVICE_CONTINUITY_UNPROVEN');
@@ -145,7 +150,23 @@ export function assessMigration(facts){
     blocked.push('ACTIVE_SERVICE_ROLLBACK_NOT_TESTED');
   if(!facts.profileBackupReceiptVerified)blocked.push('PROFILE_BACKUP_NOT_VERIFIED');
   if(!facts.featureParityVerified)blocked.push('LEGACY_CAPABILITY_PARITY_NOT_PROVEN');
-  if(!facts.g1AuthenticatedCurrentSession)blocked.push('G1_CURRENT_SESSION_UNVERIFIED');
+  if(privateTunnel){
+    // Per-user Plugin/Tunnel ownership and native ingress boundaries must be
+    // positively proven; a loopback URL or a successful tunnel readiness check
+    // is not an authenticated pair or an OS Full Access grant.
+    if(facts.privatePairBindingVerified!==true)
+      blocked.push('PRIVATE_PLUGIN_TUNNEL_PAIR_BINDING_UNVERIFIED');
+    if(facts.privateLocalIngressIsolated!==true)
+      blocked.push('PRIVATE_TUNNEL_LOOPBACK_ISOLATION_UNVERIFIED');
+    if(facts.privateCredentialOwnershipVerified!==true)
+      blocked.push('PRIVATE_RUNTIME_CREDENTIAL_OWNERSHIP_UNVERIFIED');
+    // The v0.12 worker quarantines privileged /mcp unless an independently
+    // authenticated owner-bound ingress is actually wired. Selecting private
+    // mode does NOT bypass that runtime guard or grant Full Access.
+    if(facts.privatePrivilegedIngressReady!==true)
+      blocked.push('PRIVATE_PRIVILEGED_INGRESS_NOT_WIRED');
+  }else if(!facts.g1AuthenticatedCurrentSession)
+    blocked.push('G1_CURRENT_SESSION_UNVERIFIED');
   if(!facts.j01OwnerNativeConsent)blocked.push('J01_NATIVE_OWNER_CONSENT_UNVERIFIED');
   if(!facts.revocableFullAccessProven)blocked.push('FULL_ACCESS_REVOCATION_UNVERIFIED');
   if(!facts.trustedPublisherSignature)blocked.push('TRUSTED_RELEASE_SIGNATURE_MISSING');
@@ -155,6 +176,7 @@ export function assessMigration(facts){
   // evidence needs the independent release authority and owner acceptance.
   return Object.freeze({schema:1,decision:'NO_PROMOTE',readOnly:true,
     platform:facts.platform,existingInstalled:oldPresent,
+    connectionMode:facts.connectionMode??'managed-oauth',
     ownerRegisteredInstallerFamily:facts.platform==='win32'
       ?facts.ownerRegisteredInstallerFamily??'unknown':null,
     ownerTunnelProfileDetected:facts.tunnelProfilePresent===true,
@@ -205,7 +227,8 @@ function linuxFacts(){
   }
   const nativeVersionOK=exists&&/^0\.12\.0~dev/.test(version||'');
   const knownNative=exec('test',['-f','/usr/lib/chatgpt-remote-commander/tunnel/native-tunnel-launch.sh']);
-  return {platform:'linux',inventoryReliable:packageQuery.ok&&listing.ok&&files.ok,
+  return {platform:'linux',connectionMode:'private-tunnel',
+    inventoryReliable:packageQuery.ok&&listing.ok&&files.ok,
     nativePackageInstalled:exists,allNativePayloadPathsAvailable:nativeVersionOK&&knownNative.ok,
     units};
 }
@@ -305,7 +328,8 @@ function windowsFacts(){
   const backendVersion=routerReport?.activePort
     ?probeLoopbackCoreVersion(routerReport.activePort):null;
   const route=classifyObservedRouterStatus(routerReport,tunnel.port,backendVersion);
-  return {platform:'win32',legacyInnoPresent:checks.some(c=>c.ok),
+  return {platform:'win32',connectionMode:'private-tunnel',
+    legacyInnoPresent:checks.some(c=>c.ok),
     ownerRegisteredInstallerFamily:installerFamily,
     inventoryReliable:!bad&&checks.length===3,
     tunnelProfilePresent:tunnel.profilePresent,tunnelProfileValid:tunnel.valid,
