@@ -221,6 +221,37 @@ test('private account-device Tunnel requires local pair and owner proof, not opt
  assert.throws(()=>assessMigration({...f,connectionMode:'anonymous-public'}),
    /RC012_MIGRATION_CONNECTION_MODE_INVALID/);
 });
+
+test('private URL MCP binding cannot pass privileged cutover through plaintext or legacy Router',()=>{
+ const yes={platform:'win32',connectionMode:'private-tunnel',
+   inventoryReliable:true,legacyInnoPresent:false,
+   ownerRegisteredInstallerFamily:'none',
+   tunnelProfilePresent:true,tunnelProfileValid:true,tunnelTargetPort:49912,
+   tunnelTargetVersion:'0.12.0-dev.1',tunnelTargetTls:false,
+   privatePairBindingVerified:true,privateLocalIngressIsolated:true,
+   privateCredentialOwnershipVerified:true,privatePrivilegedIngressReady:true,
+   profileBackupReceiptVerified:true,featureParityVerified:true,
+   g1AuthenticatedCurrentSession:true,j01OwnerNativeConsent:true,
+   activeServiceRestoreTested:true,revocableFullAccessProven:true,
+   trustedPublisherSignature:true,signedUpdateRollbackAccepted:true,
+   installedCanaryAccepted:true,units:[]};
+ const plaintext=assessMigration(yes);
+ assert.ok(plaintext.blocked.includes('PRIVATE_TUNNEL_HTTPS_MTLS_ROUTE_REQUIRED'));
+ assert.equal(plaintext.decision,'NO_PROMOTE');
+ const router=assessMigration({...yes,tunnelTargetTls:true,
+   routerDetected:true,routerMappingMatches:true,
+   routerBackendPort:49913,routerBackendVersion:'0.12.0-dev.1'});
+ assert.ok(router.blocked.includes('PRIVATE_STABLE_ROUTER_MTLS_INCOMPATIBLE'));
+ assert.equal(router.decision,'NO_PROMOTE');
+ const protectedDirect=assessMigration({...yes,tunnelTargetTls:true});
+ assert.equal(protectedDirect.ownerTunnelHttpsConfigured,true);
+ assert.ok(!protectedDirect.blocked.includes('PRIVATE_TUNNEL_HTTPS_MTLS_ROUTE_REQUIRED'));
+ assert.ok(!protectedDirect.blocked.includes('PRIVATE_STABLE_ROUTER_MTLS_INCOMPATIBLE'));
+ assert.deepEqual(protectedDirect.blocked,[]);
+ assert.equal(protectedDirect.decision,'NO_PROMOTE',
+   'only external native acceptance can promote even when all facts self-report true');
+});
+
 test('synthetic fully positive private flags never authorize install or bypass J01',()=>{
  const f={platform:'linux',connectionMode:'private-tunnel',
    inventoryReliable:true,nativePackageInstalled:false,allNativePayloadPathsAvailable:true,

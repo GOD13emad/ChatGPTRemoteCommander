@@ -122,6 +122,16 @@ export function assessMigration(facts){
   if(!privateTunnel&&facts.platform==='win32'&&facts.tunnelProfilePresent===true
     &&facts.tunnelProfileValid===true&&facts.tunnelTargetTls!==true)
     blocked.push('G1_TUNNEL_HTTPS_MTLS_ROUTE_REQUIRED');
+  // PRIVATE mode uses the SAME exclusive Tunnel with an owner-pinned local
+  // HTTPS/mTLS server. A healthy plaintext Router or an upgraded backend
+  // version does not authenticate the local tunnel client or J01 owner.
+  // This describes URL-based main-channel bindings, not the separate stdio
+  // transport, which requires its own admission contract.
+  if(privateTunnel&&facts.tunnelProfilePresent===true
+    &&facts.tunnelProfileValid===true&&facts.tunnelTargetTls!==true)
+    blocked.push('PRIVATE_TUNNEL_HTTPS_MTLS_ROUTE_REQUIRED');
+  if(privateTunnel&&facts.routerDetected===true)
+    blocked.push('PRIVATE_STABLE_ROUTER_MTLS_INCOMPATIBLE');
   if(facts.platform==='win32'&&facts.tunnelProfilePresent===true){
     if(facts.tunnelProfileValid!==true)
       blocked.push('OWNER_TUNNEL_MAIN_BINDING_UNVERIFIED');
