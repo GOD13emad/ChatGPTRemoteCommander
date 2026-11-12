@@ -4,6 +4,7 @@ import {createHash} from 'node:crypto';
 import {createV2PrivateTunnelMtlsAttestor,createV2OwnerPinnedPrivatePairAttestor} from '../src/v2-private-tunnel-mtls-attestor.mjs';
 // Mandatory v0.12 private mTLS source gate must also exercise exact-action owner/lease/receipt admission.
 import './v2-private-pair-operation-gate.test.mjs';
+import './v2-private-signed-worker-grant-adapter.test.mjs';
 
 const NOW=1794390000000;
 const certBytes=Buffer.from('test-local-tunnel-certificate-opaque-bytes');

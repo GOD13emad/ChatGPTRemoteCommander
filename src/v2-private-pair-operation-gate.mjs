@@ -10,6 +10,46 @@ const ID=/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const HASH=/^[a-f0-9]{64}$/;
 const BINDING=/^[a-f0-9]{32,64}$/;
 const fail=code=>{throw Object.assign(new Error(code),{code});};
+function snapshotJson(value,state={nodes:0,bytes:0,seen:new WeakSet()},depth=0){
+  if(++state.nodes>10000||depth>32)fail('V2_PRIVATE_OPERATION_ARGS_INVALID');
+  if(value===null||typeof value==='boolean')return value;
+  if(typeof value==='string'){
+    state.bytes+=Buffer.byteLength(value,'utf8');
+    if(state.bytes>65536)fail('V2_PRIVATE_OPERATION_ARGS_INVALID');
+    return value;
+  }
+  if(typeof value==='number'){
+    if(!Number.isFinite(value))fail('V2_PRIVATE_OPERATION_ARGS_INVALID');
+    return value;
+  }
+  if(typeof value!=='object'||isProxy(value)||state.seen.has(value))
+    fail('V2_PRIVATE_OPERATION_ARGS_INVALID');
+  state.seen.add(value);
+  if(Array.isArray(value)){
+    if(Object.getPrototypeOf(value)!==Array.prototype||value.length>10000
+      ||Reflect.ownKeys(value).length!==value.length+1)
+      fail('V2_PRIVATE_OPERATION_ARGS_INVALID');
+    const clone=[];
+    for(let i=0;i<value.length;i++){
+      const d=Object.getOwnPropertyDescriptor(value,String(i));
+      if(!d||!Object.hasOwn(d,'value')||d.enumerable!==true)
+        fail('V2_PRIVATE_OPERATION_ARGS_INVALID');
+      clone.push(snapshotJson(d.value,state,depth+1));
+    }
+    return Object.freeze(clone);
+  }
+  const out=exact(value,Object.keys(value),'V2_PRIVATE_OPERATION_ARGS_INVALID');
+  const clone=Object.create(null);
+  for(const key of Object.keys(out)){
+    if(['__proto__','constructor','prototype'].includes(key))
+      fail('V2_PRIVATE_OPERATION_ARGS_INVALID');
+    state.bytes+=Buffer.byteLength(key,'utf8');
+    if(state.bytes>65536)fail('V2_PRIVATE_OPERATION_ARGS_INVALID');
+    clone[key]=snapshotJson(out[key],state,depth+1);
+  }
+  return Object.freeze(clone);
+}
+
 
 function exact(value,fields,code){
   if(!value||typeof value!=='object'||Array.isArray(value)||isProxy(value)
@@ -83,7 +123,10 @@ export function createV2PrivatePairOperationGate({
   }
 
   return Object.freeze({
-    async execute({request,route,tool}={}){
+    async execute({request,route,tool,arguments:args={}}={}){
+      const frozenArgs=snapshotJson(args);
+      if(!frozenArgs||typeof frozenArgs!=='object'||Array.isArray(frozenArgs))
+        fail('V2_PRIVATE_OPERATION_ARGS_INVALID');
       const r=strictRoute(route);
       if(r.hostId!==hostId||r.profileId!==profileId
         ||r.principalId!==principalId)
@@ -102,10 +145,10 @@ export function createV2PrivatePairOperationGate({
           // This callback must check native signature, exact route/action,
           // binding epoch, grant revision, expiry and revocation at each call.
           return await verifyExactNativeGrant(Object.freeze({
-            route:grantRoute,tool:grantTool,ownerContext:c
+            route:grantRoute,tool:grantTool,arguments:frozenArgs,ownerContext:c
           }))===true;
         },
-        withLease,receiptStore,execute
+        withLease,receiptStore,execute:r=>execute(r,frozenArgs)
       },tool);
     }
   });

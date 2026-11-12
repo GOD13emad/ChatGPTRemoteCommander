@@ -173,3 +173,53 @@ test('bootstrap fails closed without trusted native grant verifier',()=>{
     {receiptStore:null}
   ])assert.throws(()=>setup(patch),{code:'V2_PRIVATE_OPERATION_BOOTSTRAP_REQUIRED'});
 });
+
+test('grant and effect receive the same immutable exact arguments even across awaits',async()=>{
+  let original={command:'echo safe',nested:{flag:'initial'}};
+  let grantView, effectView,reads=0;
+  const {gate,state}=setup({
+    verifyExactNativeGrant:async decision=>{
+      grantView=decision.arguments;
+      assert.equal(Object.isFrozen(grantView.nested),true);
+      return true;
+    },
+    withLease:async(_key,work)=>{
+      original.nested.flag='changed-after-admission';
+      original.command='other';
+      return work();
+    },
+    execute:async(_route,args)=>{
+      reads++;
+      effectView=args;
+      return {completed:'step1'};
+    }
+  });
+  assert.deepEqual(await gate.execute({...call(),arguments:original}),{completed:'step1'});
+  assert.equal(state.receipts,1);
+  assert.equal(reads,1);
+  assert.equal(grantView,effectView);
+  assert.equal(effectView.command,'echo safe');
+  assert.equal(effectView.nested.flag,'initial');
+  assert.equal(original.nested.flag,'changed-after-admission');
+});
+
+test('untrusted getter, Proxy, cycles, and non-JSON action arguments reject before transport',async()=>{
+  let touched=0;
+  const invalid=[
+    Object.defineProperty({command:'x'},'danger',{enumerable:true,get(){touched++;throw Error('getter');}}),
+    new Proxy({command:'x'},{get(){touched++;throw Error('proxy');}}),
+    {a:Infinity},
+    {a:undefined},
+    {a:new Date()},
+    {a:{__proto__:null,constructor:'forged'}}
+  ];
+  const cyclic={};cyclic.self=cyclic;invalid.push(cyclic);
+  for(const args of invalid){
+    const {gate,state}=setup();
+    await assert.rejects(gate.execute({...call(),arguments:args}),
+      {code:'V2_PRIVATE_OPERATION_ARGS_INVALID'});
+    assert.equal(state.attestations,0);
+    assert.equal(state.effects,0);
+  }
+  assert.equal(touched,0);
+});
