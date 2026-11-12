@@ -7,6 +7,7 @@ import https from 'node:https';
 import {createHash} from 'node:crypto';
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
+import {createWindowsNativeOwnerSessionProvider} from '../src/native-owner-session-provider-windows.mjs';
 import {createV2CandidatePrivateTunnelHttpsGateway} from '../src/v2-private-tunnel-https-gateway.mjs';
 import {createV2PlatformSessionProofAuthority} from '../src/v2-platform-session-proof.mjs';
 import {createV101G1PrivateTunnelRuntime,createV101G1PrivatePairRuntime} from '../src/v101-g1-loopback-runtime.mjs';
@@ -814,6 +815,14 @@ test('v0.12 protected Core composition uses J01 and signed worker before real re
 test('real full-catalog 0.12 owner-local protected boot stays fail-closed without native grants',{
   timeout:30000
 },async t=>{
+  // Probe a real interactive WTS seat from this test process. The
+  // standard-user isolated updater may deliberately drop GitHub environment
+  // flags, so environment variables cannot classify headless CI reliably.
+  let nativeWindowsSeatAvailable=true;
+  if(process.platform==='win32'){
+    try{await createWindowsNativeOwnerSessionProvider().getOwnerSessionSnapshot();}
+    catch{nativeWindowsSeatAvailable=false;}
+  }
   let f;
   try{f=fixture();}catch{return t.skip('OpenSSL fixture generator unavailable');}
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),'rc012-real-core-tls-ci-'));
@@ -832,6 +841,19 @@ test('real full-catalog 0.12 owner-local protected boot stays fail-closed withou
     ],{cwd:root,encoding:'utf8',windowsHide:true,timeout:20000,
       maxBuffer:8192});
     assert.equal(result.error,undefined,result.error?.message);
+    // A Windows process without an OS-confirmed interactive WTS seat MUST
+    // reject native J01 bootstrap before any private tool can run. This is a
+    // negative host acceptance test, never a simulated owner grant.
+    const headlessWindows=process.platform==='win32'
+      &&!nativeWindowsSeatAvailable
+      &&result.status!==0;
+    if(headlessWindows){
+      assert.equal(result.status,1);
+      assert.equal((result.stderr||'').trim(),
+        'RC012_PROTECTED_INGRESS_FAILED_NATIVE_OWNER_WINDOWS_SNAPSHOT_FAILED');
+      assert.equal((result.stdout||'').trim(),'');
+      return;
+    }
     assert.equal(result.status,0,(result.stderr||'').slice(-1024));
     const proof=JSON.parse((result.stdout||'').trim());
     assert.equal(proof.result,'RC012_OWNER_LOCAL_PROTECTED_SOURCE_CANARY_PASS');

@@ -1,9 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {spawnSync} from 'node:child_process';
+import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {assessMigration,inspectLocalPlatform,parseMainTunnelBinding,classifyObservedRouterStatus,classifyWindowsUninstallRegistryResponse} from '../packaging/unified/migration-preflight.mjs';
+import {planOwnerPrivateTunnelCutover} from '../tools/plan-owner-private-tunnel-cutover.mjs';
 
 const repo=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const modulePath=path.join(repo,'packaging/unified/migration-preflight.mjs');
@@ -314,4 +317,111 @@ test('independently owner-pinned SHA-256 can replace commercial signer, but not 
   assert.equal(approved.promotionAuthority,'EXTERNAL_REQUIRED');
   const half=assessMigration({...facts,ownerPinnedNativeReleaseVerified:true});
   assert.ok(half.blocked.includes('UPDATE_ROLLBACK_PROVENANCE_UNVERIFIED'));
+});
+
+test('owner-private exact one-tunnel plan preserves existing account ID/key and changes only the local MCP hop',()=>{
+  const source=[
+    'config_version: 1',
+    'control_plane:',
+    '  tunnel_id: local-tunnel-fixture-id',
+    '  api_key: env:EXCLUSIVE_OWNER_FIXTURE_KEY',
+    'health:',
+    '  listen_addr: 127.0.0.1:47832',
+    'mcp:',
+    '  server_urls:',
+    '    - channel: main',
+    '      url: http://127.0.0.1:47831/mcp',
+    ''
+  ].join('\n');
+  const p=process.platform==='win32'?'C:\\Owner\\private':'/home/owner/private';
+  const options={currentYaml:source,protectedPort:47999,
+    clientCertPath:path.join(p,'client.crt'),
+    clientKeyPath:path.join(p,'client.key'),
+    clientCaPath:path.join(p,'ca.crt')};
+  const plan=planOwnerPrivateTunnelCutover(options);
+  assert.equal(plan.mode,'OFFLINE_PLAN_NO_CUTOVER');
+  assert.equal(plan.sourcePort,47831);
+  assert.equal(plan.protectedPort,47999);
+  assert.equal(plan.activeTunnelChanged,false);
+  assert.equal(plan.ownerNativeConsentRequired,true);
+  assert.equal(plan.originalTunnelControlPlanePreserved,true);
+  assert.equal(plan.originalApiKeyReferencePreserved,true);
+  assert.equal(parseMainTunnelBinding(plan.candidateYaml).tls,true);
+  assert.equal(parseMainTunnelBinding(plan.candidateYaml).port,47999);
+  assert.ok(plan.candidateYaml.includes('  tunnel_id: local-tunnel-fixture-id'));
+  assert.ok(plan.candidateYaml.includes('  api_key: env:EXCLUSIVE_OWNER_FIXTURE_KEY'));
+  assert.ok(plan.candidateYaml.includes('  listen_addr: 127.0.0.1:47832'));
+  assert.equal(plan.candidateYaml.split('  tunnel_id:').length,2);
+  assert.equal(plan.candidateYaml.split('  api_key:').length,2);
+  assert.ok(!JSON.stringify({...plan,candidateYaml:undefined}).includes('EXCLUSIVE_OWNER_FIXTURE_KEY'));
+  assert.throws(()=>planOwnerPrivateTunnelCutover({...options,protectedPort:47831}),
+    /RC012_OWNER_TUNNEL_SINGLE_PLAINTEXT_MAIN_REQUIRED/);
+  assert.throws(()=>planOwnerPrivateTunnelCutover({...options,currentYaml:plan.candidateYaml}),
+    /RC012_OWNER_TUNNEL_SINGLE_PLAINTEXT_MAIN_REQUIRED/);
+  assert.throws(()=>planOwnerPrivateTunnelCutover({...options,
+    currentYaml:source.replace('  server_urls:','  client_key: malicious\n  server_urls:')}),
+    /RC012_OWNER_TUNNEL_ALREADY_HAS_TLS_IDENTITY/);
+  assert.throws(()=>planOwnerPrivateTunnelCutover({...options,
+    currentYaml:source+'ca_bundle: /tmp/other\n'}),
+    /RC012_OWNER_TUNNEL_EXISTING_CA_CONFLICT/);
+  assert.throws(()=>planOwnerPrivateTunnelCutover({...options,
+    currentYaml:source.replace('  server_urls:',
+      '  server_urls:\n    - channel: main\n      url: http://127.0.0.1:47831/mcp')}),
+    /RC012_OWNER_TUNNEL_SINGLE_PLAINTEXT_MAIN_REQUIRED|RC012_OWNER_TUNNEL_MAIN_URL_AMBIGUOUS/);
+  assert.throws(()=>planOwnerPrivateTunnelCutover({...options,
+    clientKeyPath:'../secret'}),
+    /RC012_TUNNEL_CERT_PATH_INVALID/);
+});
+
+test('offline one-Tunnel owner inspection never emits profile contents or writes source',()=>{
+  const isolated=fs.mkdtempSync(path.join(os.tmpdir(),'rc012-owner-tunnel-plan-'));
+  const windows=process.platform==='win32';
+  const profileName=windows?'chatgpt-remote-commander':'Emad';
+  try{
+    const profileDir=windows?path.join(isolated,'tunnel-client')
+      :path.join(isolated,'.config','tunnel-client');
+    const certDir=windows?path.join(isolated,'ChatGPTRemoteCommander','private-pair','default')
+      :path.join(isolated,'.config','chatgpt-remote-commander','private-pair','default');
+    fs.mkdirSync(profileDir,{recursive:true,mode:0o700});
+    fs.mkdirSync(certDir,{recursive:true,mode:0o700});
+    fs.chmodSync(profileDir,0o700);fs.chmodSync(certDir,0o700);
+    const profileFile=path.join(profileDir,profileName+'.yaml');
+    const source=[
+      'config_version: 1',
+      'control_plane:',
+      '  tunnel_id: qa-nonproduction-owner-label',
+      '  api_key: env:LOCAL_QA_FIXTURE_ONLY',
+      'mcp:',
+      '  server_urls:',
+      '    - channel: main',
+      '      url: http://127.0.0.1:47831/mcp',
+      ''
+    ].join('\n');
+    fs.writeFileSync(profileFile,source,{mode:0o600});
+    for(const name of ['client.crt','client.key','ca.crt'])
+      fs.writeFileSync(path.join(certDir,name),'noncredential-fixture\n',{mode:0o600});
+    const script=path.join(repo,'tools','inspect-owner-private-tunnel-cutover.mjs');
+    const options={cwd:repo,encoding:'utf8',timeout:6000,
+      env:{...process.env,APPDATA:isolated,HOME:isolated}};
+    const result=spawnSync(process.execPath,[script,'--target-port=47999',
+      '--profile-name='+profileName],options);
+    assert.equal(result.status,0,(result.stderr||'').slice(-1000));
+    const summary=JSON.parse(result.stdout.trim());
+    assert.equal(summary.mode,'OFFLINE_PLAN_NO_CUTOVER');
+    assert.equal(summary.profileName,profileName);
+    assert.equal(summary.sourcePort,47831);
+    assert.equal(summary.protectedPort,47999);
+    assert.equal(summary.candidateYamlIncluded,false);
+    assert.equal(summary.ownerCredentialsInOutput,false);
+    assert.equal(summary.activeTunnelChanged,false);
+    assert.equal(summary.rollbackRequired,true);
+    assert.ok(!JSON.stringify(summary).includes('LOCAL_QA_FIXTURE_ONLY'));
+    assert.ok(!JSON.stringify(summary).includes('qa-nonproduction-owner-label'));
+    assert.equal(fs.readFileSync(profileFile,'utf8'),source);
+    const invalid=spawnSync(process.execPath,[script,'--target-port=47999',
+      '--profile-name=../../escape'],options);
+    assert.notEqual(invalid.status,0);
+    assert.match(invalid.stderr,/RC012_OWNER_EXACT_PROFILE_REQUIRED/);
+    assert.equal(fs.readFileSync(profileFile,'utf8'),source);
+  }finally{fs.rmSync(isolated,{recursive:true,force:true});}
 });
