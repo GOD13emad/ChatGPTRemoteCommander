@@ -2,6 +2,7 @@
 // This is an unbound, owner-controlled source candidate; it does not listen,
 // enable Full Access, issue system privileges or modify installed services.
 import path from 'node:path';
+import {createHash} from 'node:crypto';
 import {createWindowsV101OwnerSecurityStack}
   from './v101-windows-owner-security-bootstrap.mjs';
 import {createLinuxV101OwnerSecurityStack}
@@ -37,6 +38,13 @@ export function createV101PrivatePairNativeOwnerStack({
     ||typeof now!=='function'||!ownerSessionOptions
     ||typeof ownerSessionOptions!=='object'||Array.isArray(ownerSessionOptions))
     fail('V101_PRIVATE_OWNER_STACK_BOOTSTRAP_REQUIRED');
+  // Stable owner-controlled authorization scope for the ONE exclusive
+  // account+host Tunnel. The hash is a non-secret routing label, never a
+  // bearer token, ChatGPT identity assertion or grant.
+  const pairHandle='pair-'+createHash('sha256')
+    .update(JSON.stringify(['commander.private.pair-scope.v1',profileId,
+      expectedTunnelIdHash,expectedOwnerSidHash]))
+    .digest('hex').slice(0,32);
   let stack;
   const proof=createV2PrivateOwnerSessionProofAuthority({
     profileId,expectedTunnelIdHash,expectedOwnerSidHash,attestTransport,now,
@@ -52,13 +60,53 @@ export function createV101PrivatePairNativeOwnerStack({
     stack=factory({directory,attestPlatformSession:proof.consume,
       resolveOwnerRoute,now,ownerSessionOptions});
     let closed=false;
+    let pendingPairBinding=null;
+    const issueBinding=async(request,sessionHandle)=>{
+      const capability=await proof.issue({request,sessionHandle});
+      // Existing single-use Native J01 and OS SID checks remain authoritative.
+      return stack.nativeSessionBindings.bindTrusted(capability);
+    };
     return Object.freeze({
+      async resolveTrustedConversation(transport){
+        if(closed)fail('V101_PRIVATE_OWNER_STACK_CLOSED');
+        // Called only AFTER the gateway's independently pinned mTLS
+        // attestation of the exclusive pair. Re-sample the native owner:
+        // pair session labels must never outlive an OS owner switch.
+        if(transport?.authenticated!==true
+          ||transport.peerType!=='owner-pinned-private-tunnel-mtls'
+          ||transport.sessionSource!=='native-owner-private-pair')
+          fail('V101_PRIVATE_OWNER_PAIR_TRANSPORT_REQUIRED');
+        const owner=await stack.ownerSession.resolveOwnerSidHash();
+        if(owner!==expectedOwnerSidHash)
+          fail('V101_PRIVATE_OWNER_PAIR_OWNER_CHANGED');
+        return Object.freeze({
+          source:'native-owner-pair-attested',sessionHandle:pairHandle
+        });
+      },
       async requestOwnerBinding({request,sessionHandle}={}){
         if(closed)fail('V101_PRIVATE_OWNER_STACK_CLOSED');
-        const capability=await proof.issue({request,sessionHandle});
-        // bindTrusted consumes the in-process proof exactly once, then
-        // independently inspects the live OS owner and requests native consent.
-        return stack.nativeSessionBindings.bindTrusted(capability);
+        if(sessionHandle!==pairHandle)return issueBinding(request,sessionHandle);
+        // Multiple ChatGPT chats on the SAME account+host pair share the
+        // owner-approved pair binding. Never re-prompt while its native OS
+        // owner, route, binding epoch and expiry still validate.
+        try{
+          const current=await stack.nativeSessionBindings
+            .resolveNativeOwnerContext(pairHandle);
+          return Object.freeze({
+            sessionHandle:pairHandle,bindingId:current.bindingId,
+            expiresAtMs:current.expiresAtMs,alreadyBound:true
+          });
+        }catch(error){
+          if(!['V2_SESSION_NOT_BOUND','V2_SESSION_BINDING_EXPIRED']
+            .includes(error?.code))throw error;
+        }
+        // A concurrent chat may be awaiting the native consent dialog; keep
+        // one owner prompt and one binding insertion for this pair.
+        if(pendingPairBinding)return pendingPairBinding;
+        const work=issueBinding(request,pairHandle);
+        pendingPairBinding=work;
+        try{return await work;}
+        finally{if(pendingPairBinding===work)pendingPairBinding=null;}
       },
       async resolveOwnerContext(sessionHandle){
         if(closed)fail('V101_PRIVATE_OWNER_STACK_CLOSED');

@@ -14,9 +14,9 @@ const SHA=/^[a-f0-9]{64}$/;
 const fail=code=>{throw Object.assign(new Error(code),{code});};
 function exactPrivateOwnerPair(value){
   const fields=['expectedTunnelIdHash','expectedOwnerSidHash',
-    'resolveCurrentOwnerSidHash','resolveTrustedConversation',
-    'ownerStack','operationGate'];
-  const optional=['trustedToolCatalog','validateToolInput','resolveTrustedToolRoute'];
+    'resolveCurrentOwnerSidHash','ownerStack','operationGate'];
+  const optional=['resolveTrustedConversation','trustedToolCatalog',
+    'validateToolInput','resolveTrustedToolRoute'];
   if(!value||typeof value!=='object'||Array.isArray(value)||isProxy(value)
     ||![Object.prototype,null].includes(Object.getPrototypeOf(value)))
     fail('V2_TUNNEL_PRIVATE_PAIR_BOOTSTRAP_REQUIRED');
@@ -34,10 +34,16 @@ function exactPrivateOwnerPair(value){
   if(![obj.expectedTunnelIdHash,obj.expectedOwnerSidHash].every(x=>
     typeof x==='string'&&SHA.test(x))
     ||typeof obj.resolveCurrentOwnerSidHash!=='function'
-    ||typeof obj.resolveTrustedConversation!=='function'
+    ||typeof (obj.resolveTrustedConversation
+      ??obj.ownerStack?.resolveTrustedConversation)!=='function'
     ||typeof obj.ownerStack?.requestOwnerBinding!=='function'
     ||typeof obj.operationGate?.execute!=='function')
     fail('V2_TUNNEL_PRIVATE_PAIR_BOOTSTRAP_REQUIRED');
+  // The canonical owner stack can provide the trusted pair-scope resolver
+  // directly; external per-conversation resolvers remain opt-in and must be
+  // independently authenticated. Neither reads MCP _meta as authority.
+  obj.resolveTrustedConversation=obj.resolveTrustedConversation
+    ??obj.ownerStack.resolveTrustedConversation;
   return Object.freeze(obj);
 }
 function certificate(pem,code){

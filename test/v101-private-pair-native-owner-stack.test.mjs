@@ -98,3 +98,68 @@ test('private native stack rejects invalid platform and missing pinned trust',()
     resolveOwnerRoute:async()=>route('chat1'),...p
   }),{code:'V101_PRIVATE_OWNER_STACK_BOOTSTRAP_REQUIRED'});
 });
+
+test('owner-pinned pair session is deterministic, OS-scoped and supports one consent for all chats',{
+  skip:process.platform!=='win32'
+},async()=>{
+  const f=fixture();
+  const peer={authenticated:true,
+    peerType:'owner-pinned-private-tunnel-mtls',
+    sessionSource:'native-owner-private-pair'};
+  try{
+    const p1=await f.stack.resolveTrustedConversation(peer);
+    const p2=await f.stack.resolveTrustedConversation(peer);
+    assert.deepEqual(p1,p2);
+    assert.equal(p1.source,'native-owner-pair-attested');
+    assert.match(p1.sessionHandle,/^pair-[a-f0-9]{32}$/);
+    const approved=await f.stack.requestOwnerBinding({
+      request:{},sessionHandle:p1.sessionHandle
+    });
+    assert.equal(approved.sessionHandle,p1.sessionHandle);
+    const native=await f.stack.nativeSessionBindings.resolveNativeRoute(p1.sessionHandle);
+    assert.equal(native.conversationId,p1.sessionHandle);
+    assert.equal(f.calls.filter(args=>args.includes('Consent')).length,1);
+    await assert.rejects(f.stack.resolveTrustedConversation({
+      ...peer,authenticated:false
+    }),{code:'V101_PRIVATE_OWNER_PAIR_TRANSPORT_REQUIRED'});
+    await assert.rejects(f.stack.resolveTrustedConversation({
+      ...peer,sessionSource:'openai/session'
+    }),{code:'V101_PRIVATE_OWNER_PAIR_TRANSPORT_REQUIRED'});
+  }finally{f.close();}
+});
+
+test('concurrent chats cannot issue duplicate Native J01 prompts on the same owner pair',{
+  skip:process.platform!=='win32'
+},async()=>{
+  const f=fixture();
+  const peer={authenticated:true,peerType:'owner-pinned-private-tunnel-mtls',
+    sessionSource:'native-owner-private-pair'};
+  try{
+    const pair=await f.stack.resolveTrustedConversation(peer);
+    const [first,second]=await Promise.all([
+      f.stack.requestOwnerBinding({request:{},sessionHandle:pair.sessionHandle}),
+      f.stack.requestOwnerBinding({request:{},sessionHandle:pair.sessionHandle})
+    ]);
+    assert.equal(first.bindingId,second.bindingId);
+    assert.equal(f.stack.nativeSessionBindings.size,1);
+    assert.equal(f.calls.filter(args=>args.includes('Consent')).length,1);
+    const third=await f.stack.requestOwnerBinding({
+      request:{},sessionHandle:pair.sessionHandle
+    });
+    assert.equal(third.alreadyBound,true);
+    assert.equal(third.bindingId,first.bindingId);
+    assert.equal(f.calls.filter(args=>args.includes('Consent')).length,1);
+    await f.stack.nativeSessionBindings.revokeTrusted({
+      sessionHandle:pair.sessionHandle,adminProof:null
+    });
+    assert.equal(f.calls.filter(args=>args.includes('Consent')).length,2,
+      'revocation itself has a distinct native approval');
+    const regrant=await f.stack.requestOwnerBinding({
+      request:{},sessionHandle:pair.sessionHandle
+    });
+    assert.notEqual(regrant.bindingId,first.bindingId,
+      'revocation must never reuse an earlier owner consent epoch');
+    assert.equal(f.calls.filter(args=>args.includes('Consent')).length,3,
+      'new owner epoch requires another native approval after revocation');
+  }finally{f.close();}
+});

@@ -661,3 +661,77 @@ test('resolver result must be independently authenticated, not a forged object o
   assert.equal(binds,0);
   assert.equal(effects,0);
 });
+
+test('owner-pinned pair consent is shared safely across multiple ChatGPT chat hints',async()=>{
+  const pairHandle='owner-pair-1';
+  const saved=[],effect=[];
+  const ownerRoute=()=>({
+    hostId:'pc1',profileId:'profileA',principalId:'accountA',
+    conversationId:pairHandle,operationId:'enroll',
+    target:{kind:'workflow-root',id:'project1'}
+  });
+  let grants=0;
+  const ingress=createV2PrivatePairMcpIngress({
+    attestTransport:async()=>({authenticated:true,
+      peerType:'owner-pinned-private-tunnel-mtls',
+      sessionSource:'native-owner-private-pair'}),
+    resolveTrustedConversation:async()=>({
+      source:'native-owner-pair-attested',sessionHandle:pairHandle
+    }),
+    ownerStack:{requestOwnerBinding:async ({sessionHandle})=>{
+      assert.equal(sessionHandle,pairHandle);grants++;return {ok:true};
+    },nativeSessionBindings:{resolveNativeRoute:async sessionHandle=>{
+      assert.equal(sessionHandle,pairHandle);return ownerRoute();
+    }}},
+    operationGate:{execute:async({route:r,tool,arguments:args})=>{
+      assert.equal(r.conversationId,pairHandle);
+      assert.equal(tool,'read_text');
+      effect.push(args.path);return {ok:true};
+    }},
+    trustedToolCatalog:[{name:'read_text',description:'read exact file',
+      inputSchema:{type:'object',required:['path'],
+        properties:{path:{type:'string',enum:['README.md']}},
+        additionalProperties:false}}],
+    validateToolInput:async()=>true,
+    resolveTrustedToolRoute:async({sessionHandle,nativeRoute,tool})=>{
+      assert.equal(sessionHandle,pairHandle);
+      assert.equal(tool,'read_text');
+      const operationId='pair-op-'+(saved.length+1);
+      saved.push(operationId);
+      return {...nativeRoute,operationId};
+    }
+  });
+  const ownerBind=tool('v2_private_owner_bind',{});
+  ownerBind.params._meta['openai/session']='chatC';
+  const consent=response();
+  await ingress.handle(makeRequest(ownerBind),consent);
+  assert.equal(consent.status,200);
+  assert.equal(grants,1);
+  for(const chatHint of ['chatA','chatB']){
+    const request=tool('read_text',{path:'README.md'});
+    request.params._meta['openai/session']=chatHint;
+    const res=response();
+    await ingress.handle(makeRequest(request),res);
+    assert.equal(res.status,200);
+    assert.equal(JSON.parse(String(res.buffer)).result.isError,false);
+  }
+  assert.deepEqual(saved,['pair-op-1','pair-op-2']);
+  assert.deepEqual(effect,['README.md','README.md']);
+});
+
+test('pair-attested identity still denies an invalid owner-side binding',async()=>{
+  let effects=0;
+  const ingress=createV2PrivatePairMcpIngress({
+    attestTransport:async()=>({authenticated:true,
+      peerType:'owner-pinned-private-tunnel-mtls',sessionSource:'native-owner-private-pair'}),
+    resolveTrustedConversation:async()=>({
+      source:'native-owner-pair-attested',sessionHandle:'invalid/host'
+    }),
+    ownerStack:{requestOwnerBinding:async()=>{effects++;}},
+    operationGate:{execute:async()=>{effects++;}}
+  });
+  const res=response();
+  await ingress.handle(makeRequest(tool('v2_private_owner_bind',{})),res);
+  assert.equal(res.status,403);
+  assert.equal(effects,0);
+});

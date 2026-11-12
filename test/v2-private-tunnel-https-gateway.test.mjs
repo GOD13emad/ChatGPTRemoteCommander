@@ -241,12 +241,11 @@ test('PRIVATE pair HTTPS authenticates a pinned tunnel without OAuth and still r
       clientCaPem:f.ca,expectedClientLeafDerSha256:f.clientSha,
       profileId:'emad',resolveTransportIdentity:async()=>tdata(now),now:()=>now,
       privateOwnerPair:{
-        resolveTrustedConversation:async()=>({
-          source:'native-conversation-attested',sessionHandle:'chat-1'
-        }),
         expectedTunnelIdHash:'a'.repeat(64),expectedOwnerSidHash:'b'.repeat(64),
         resolveCurrentOwnerSidHash:async()=> 'b'.repeat(64),
-        ownerStack:{requestOwnerBinding:async()=>{actions.bind++;},
+        ownerStack:{resolveTrustedConversation:async()=>({
+          source:'native-conversation-attested',sessionHandle:'chat-1'
+        }),requestOwnerBinding:async()=>{actions.bind++;},
           nativeSessionBindings:{resolveNativeRoute:async session=>{
             assert.equal(session,'chat-1');
             return {hostId:'host-1',profileId:'emad',principalId:'owner-1',
@@ -349,7 +348,9 @@ test('PRIVATE tunnel mTLS rejects mismatched native owner or unusable pair boots
         }),
         expectedTunnelIdHash:'a'.repeat(64),expectedOwnerSidHash:'b'.repeat(64),
         resolveCurrentOwnerSidHash:async()=> 'f'.repeat(64),
-        ownerStack:{requestOwnerBinding:async()=>{throw Error('not authorized');}},
+        ownerStack:{resolveTrustedConversation:async()=>({
+          source:'native-conversation-attested',sessionHandle:'chat-1'
+        }),requestOwnerBinding:async()=>{throw Error('not authorized');}},
         operationGate:{execute:async()=>{throw Error('not authorized');}}
       }
     };
@@ -358,7 +359,9 @@ test('PRIVATE tunnel mTLS rejects mismatched native owner or unusable pair boots
     }),{code:'V2_TUNNEL_PRIVATE_PAIR_MODE_CONFLICT'});
     assert.throws(()=>createV2CandidatePrivateTunnelHttpsGateway({
       ...options,privateOwnerPair:{
-        ...options.privateOwnerPair,resolveTrustedConversation:undefined
+        ...options.privateOwnerPair,resolveTrustedConversation:undefined,
+        ownerStack:{...options.privateOwnerPair.ownerStack,
+          resolveTrustedConversation:undefined}
       }
     }),{code:'V2_TUNNEL_PRIVATE_PAIR_BOOTSTRAP_REQUIRED'});
 
@@ -390,7 +393,9 @@ test('PRIVATE pair runtime opens only on explicit owner start and retains NO_PRO
         }),
         expectedTunnelIdHash:'a'.repeat(64),expectedOwnerSidHash:'b'.repeat(64),
         resolveCurrentOwnerSidHash:async()=> 'b'.repeat(64),
-        ownerStack:{requestOwnerBinding:async()=>{},close:()=>{closed++;}},
+        ownerStack:{resolveTrustedConversation:async()=>({
+          source:'native-conversation-attested',sessionHandle:'chat-1'
+        }),requestOwnerBinding:async()=>{},close:()=>{closed++;}},
         operationGate:{execute:async()=>{throw Error('no owner grants');}}
       }
     };

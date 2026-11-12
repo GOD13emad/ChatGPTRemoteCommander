@@ -144,11 +144,19 @@ function exactTrustedConversation(value){
     if(!d||!d.enumerable||!Object.hasOwn(d,'value'))return null;
     out[field]=d.value;
   }
-  if(out.source!=='native-conversation-attested'
+  // Either a true owner-attested per-conversation handle, OR the stable
+  // owner-attested account+host PAIR scope. A pair cannot claim to authenticate
+  // its individual ChatGPT chats; only signed native per-action grants authorize
+  // effects for every chat using that same exclusive Tunnel.
+  if(!['native-conversation-attested','native-owner-pair-attested']
+    .includes(out.source)
     ||typeof out.sessionHandle!=='string'||!SESSION.test(out.sessionHandle)
     ||out.sessionHandle==='.'||out.sessionHandle==='..'
     ||out.sessionHandle.startsWith('mcp-'))return null;
-  return out.sessionHandle;
+  return Object.freeze({
+    sessionHandle:out.sessionHandle,
+    scope:out.source==='native-owner-pair-attested'?'pair':'conversation'
+  });
 }
 async function payload(req,limit){
   const type=header(req,'content-type');
@@ -278,17 +286,20 @@ export function createV2PrivatePairMcpIngress({
       // The mTLS cert authenticates the PAIR, not a particular ChatGPT chat.
       // This owner-controlled resolver gets ONLY the independently attested
       // transport, never the MCP body or the user-selected session hint.
-      let session=null;
-      try{session=exactTrustedConversation(
+      let trustedSession=null;
+      try{trustedSession=exactTrustedConversation(
         await resolveTrustedConversation(attested));}
-      catch{session=null;}
-      if(!session){
+      catch{trustedSession=null;}
+      if(!trustedSession){
         json(res,403,{error:'private_session_required'});return;
       }
-      // Legacy openai/session is only an untrusted optional assertion.
-      // If present it MUST match the separately attested conversation.
+      // The caller hint only selects a correlation label. Under the owner
+      // PAIR scope, no ChatGPT chat becomes an authorization principal; all
+      // chats share independently approved pair-binding + signed action grants.
+      const session=trustedSession.sessionHandle;
       const hinted=message.params._meta?.['openai/session'];
-      if(hinted!==undefined&&hinted!==session){
+      if(trustedSession.scope==='conversation'
+        &&hinted!==undefined&&hinted!==session){
         json(res,403,{error:'private_session_mismatch'});return;
       }
       if(name==='v2_private_owner_bind'){
