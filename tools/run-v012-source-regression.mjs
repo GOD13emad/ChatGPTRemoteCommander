@@ -25,7 +25,8 @@ const files = [
   "test/owner-dpapi-profile-recovery.test.mjs",
   "test/owner-systemd-creds-profile-recovery.test.mjs",
   "test/native-owner-session-provider-linux.test.mjs",
-  "test/local-ollama-planner.test.mjs"
+  "test/local-ollama-planner.test.mjs",
+  "test/native-tunnel-client-observer-linux.test.mjs"
 ];
 
 // Keep every file once while bounding expensive Windows native process/SQLite
@@ -42,7 +43,7 @@ const batches = [
   files.slice(13, 15),
   files.slice(15, 17),
   files.slice(17, 18), // Canonical G1/WorkflowStore composition and mTLS denial
-  files.slice(18, 25) // NoPromote, protected Core, encrypted recovery, local J01 owner, and optional local model planner
+  files.slice(18, 26) // NoPromote, protected Core, encrypted recovery, local J01 and owner-pinned tunnel
 ];
 if(batches.flat().length!==files.length
   ||new Set(batches.flat()).size!==files.length
