@@ -126,7 +126,13 @@ export function assessMigration(facts){
       ||!facts.tunnelTargetVersion.startsWith('0.12.'))
       blocked.push('OWNER_TUNNEL_STILL_TARGETS_LEGACY_OR_UNKNOWN_CORE');
   }
-  if(facts.platform==='win32' && oldPresent)blocked.push('LEGACY_INNO_TO_NSIS_TRANSACTION_MISSING');
+  if(facts.platform==='win32' && oldPresent){
+    blocked.push('LEGACY_INNO_TO_NSIS_TRANSACTION_MISSING');
+    if(facts.ownerRegisteredInstallerFamily==='owner-managed-powershell')
+      blocked.push('OWNER_MANAGED_UNINSTALL_REQUIRES_IN_PLACE_TRANSACTION');
+    else if(['unverified','multiple-or-unverified'].includes(facts.ownerRegisteredInstallerFamily))
+      blocked.push('OWNER_INSTALLER_IDENTITY_UNVERIFIED');
+  }
   if(facts.platform==='linux' && oldPresent && !facts.allNativePayloadPathsAvailable)
     blocked.push('NATIVE_RUNTIME_TUNNEL_SERVICE_CONTINUITY_UNPROVEN');
   if(units.some(u=>u.active && !u.knownExecutable))
@@ -149,6 +155,8 @@ export function assessMigration(facts){
   // evidence needs the independent release authority and owner acceptance.
   return Object.freeze({schema:1,decision:'NO_PROMOTE',readOnly:true,
     platform:facts.platform,existingInstalled:oldPresent,
+    ownerRegisteredInstallerFamily:facts.platform==='win32'
+      ?facts.ownerRegisteredInstallerFamily??'unknown':null,
     ownerTunnelProfileDetected:facts.tunnelProfilePresent===true,
     ownerTunnelTargetPort:facts.tunnelProfileValid===true?facts.tunnelTargetPort??null:null,
     ownerTunnelHttpsConfigured:facts.tunnelProfileValid===true&&facts.tunnelTargetTls===true,
@@ -255,6 +263,29 @@ req.on('error',()=>{process.exitCode=2;});
   if(!observed.ok||observed.stdout.length>1024)return null;
   try{return JSON.parse(observed.stdout);}catch{return null;}
 }
+/**
+ * Registry output is operator-managed untrusted text. Never report the
+ * uninstall command, install path, username or arguments; only the family.
+ * A script-based uninstaller is NOT proven safe to invoke automatically.
+ */
+export function classifyWindowsUninstallRegistryResponse(raw){
+  if(typeof raw!=='string'||Buffer.byteLength(raw,'utf8')>50000)
+    return 'unverified';
+  const lines=raw.split(/\r?\n/);
+  const matches=lines.map(line=>
+    /^\s*UninstallString\s+REG_(?:SZ|EXPAND_SZ)\s+(.+?)\s*$/i.exec(line))
+    .filter(Boolean);
+  if(matches.length!==1)return 'unverified';
+  const command=matches[0][1];
+  if(command.length>8192||/[\u0000-\u001f]/.test(command))
+    return 'unverified';
+  if(/(?:^|[\\/"\s])(?:pwsh|powershell)\.exe"?\s/i.test(command)
+    &&/(?:^|\s)-File\s+(?:"[^"]*\\uninstall\.ps1"|[^\s"]*\\uninstall\.ps1)(?:\s|$)/i.test(command))
+    return 'owner-managed-powershell';
+  if(/(?:^|[\\/"\s])unins\d+\.exe"?\s*$/i.test(command))
+    return 'inno-unverified';
+  return 'unverified';
+}
 function windowsFacts(){
   const paths=[
     'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\RemoteCommander',
@@ -264,6 +295,10 @@ function windowsFacts(){
   const checks=paths.map(p=>exec('reg.exe',['query',p,'/v','UninstallString']));
   // reg.exe exit 1 means precisely that a fixed key/value is absent.
   const bad=checks.some(c=>c.stdout.length>50000);
+  const present=checks.filter(c=>c.ok);
+  const installerFamily=present.length===1
+    ?classifyWindowsUninstallRegistryResponse(present[0].stdout)
+    :present.length===0?'none':'multiple-or-unverified';
   const tunnel=readOwnerTunnelBinding();
   const targetVersion=tunnel.valid?probeLoopbackCoreVersion(tunnel.port):null;
   const routerReport=tunnel.valid?probeLoopbackRouterStatus(tunnel.port):null;
@@ -271,6 +306,7 @@ function windowsFacts(){
     ?probeLoopbackCoreVersion(routerReport.activePort):null;
   const route=classifyObservedRouterStatus(routerReport,tunnel.port,backendVersion);
   return {platform:'win32',legacyInnoPresent:checks.some(c=>c.ok),
+    ownerRegisteredInstallerFamily:installerFamily,
     inventoryReliable:!bad&&checks.length===3,
     tunnelProfilePresent:tunnel.profilePresent,tunnelProfileValid:tunnel.valid,
     tunnelTargetPort:tunnel.port??null,tunnelTargetTls:tunnel.tls===true,
