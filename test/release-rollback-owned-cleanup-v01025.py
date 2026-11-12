@@ -48,31 +48,41 @@ def list_owned(root: Path):
     return sorted(set(found))
 
 
-def validated_sandbox(raw_root: str, raw_temp: str) -> Path:
-    """Accept exactly one disposable Linux CI child, rejecting traversal and symlinks.
+def validated_sandbox(raw_root: str, raw_temp: str, *, trusted_temp: Path | None = None) -> Path:
+    """Ignore external path strings as filesystem authority.
 
-    Validate external path strings lexically and canonically *before* any file
-    access, process enumeration or receipt write. The CLI argument is only an
-    identity claim, never the authority for choosing a cleanup directory.
+    Production derives the runner temp root from the located source checkout:
+    /.../work/<repo>/<repo>/test/script.py -> /.../work/_temp.
+    The CLI and environment values must match this independently built path.
+    A self-test may inject a new disposable temporary root, never user input.
     """
     if not raw_root or not raw_temp or not os.path.isabs(raw_root) or not os.path.isabs(raw_temp):
         raise SystemExit("V025C_SANDBOX_IDENTITY_FAILURE")
     if ".." in Path(raw_root).parts or ".." in Path(raw_temp).parts:
         raise SystemExit("V025C_SANDBOX_IDENTITY_FAILURE")
-    requested = os.path.normpath(raw_root)
-    temp = os.path.normpath(raw_temp)
-    expected = os.path.join(temp, "remote-commander-rollback-v025l")
-    if requested != expected:
+    if trusted_temp is None:
+        source = Path(__file__).resolve(strict=True)
+        workspace = source.parents[1]
+        # Fail closed if the expected GitHub work/repo/repo checkout shape moves.
+        if workspace.name != workspace.parent.name:
+            raise SystemExit("V025C_CI_LAYOUT_INVALID")
+        temp = workspace.parent.parent / "_temp"
+        if os.environ["GITHUB_WORKSPACE"] != str(workspace):
+            raise SystemExit("V025C_CI_LAYOUT_INVALID")
+    else:
+        temp = trusted_temp
+    expected = temp / "remote-commander-rollback-v025l"
+    if os.path.normpath(raw_temp) != str(temp) or os.path.normpath(raw_root) != str(expected):
         raise SystemExit("V025C_SANDBOX_IDENTITY_FAILURE")
     try:
-        if os.path.realpath(temp) != temp or os.path.realpath(expected) != expected:
-            raise SystemExit("V025C_SANDBOX_IDENTITY_FAILURE")
-        if not os.path.isdir(temp) or not os.path.isdir(expected):
+        if (not temp.is_dir() or temp.is_symlink()
+                or not expected.is_dir() or expected.is_symlink()
+                or temp.resolve(strict=True) != temp
+                or expected.resolve(strict=True) != expected):
             raise SystemExit("V025C_SANDBOX_IDENTITY_FAILURE")
     except (OSError, ValueError):
         raise SystemExit("V025C_SANDBOX_IDENTITY_FAILURE") from None
-    return Path(expected)
-
+    return expected
 
 def main():
     parser = argparse.ArgumentParser()
@@ -90,7 +100,7 @@ def main():
             assert not matches(r, str(r / "release"), b"python3\0src/server-v0.3.mjs\0")
             sandbox = r / "remote-commander-rollback-v025l"
             sandbox.mkdir()
-            assert validated_sandbox(str(sandbox), str(r)) == sandbox
+            assert validated_sandbox(str(sandbox), str(r), trusted_temp=r) == sandbox
             other = r / "other"
             other.mkdir()
             alias = r / "symlinked-sandbox"
@@ -105,11 +115,43 @@ def main():
             ]
             for candidate, temp_root in rejected:
                 try:
-                    validated_sandbox(candidate, temp_root)
+                    validated_sandbox(candidate, temp_root, trusted_temp=r)
                 except SystemExit as failure:
                     assert str(failure) == "V025C_SANDBOX_IDENTITY_FAILURE"
                 else:
                     raise AssertionError("unsafe CI cleanup path accepted")
+        # Simulate the GitHub work/repo/repo checkout without touching a host
+        # or trusting real RUNNER_TEMP. This checks the production authority
+        # derivation, not only the injectable synthetic test helper.
+        with tempfile.TemporaryDirectory(prefix="rc-v025c-layout-") as testing:
+            work = Path(testing) / "work"
+            checkout = work / "sample" / "sample"
+            test_dir = checkout / "test"
+            test_dir.mkdir(parents=True)
+            fake_script = test_dir / "cleanup.py"
+            fake_script.write_text("# isolated source layout\n")
+            runner = work / "_temp"
+            root = runner / "remote-commander-rollback-v025l"
+            root.mkdir(parents=True)
+            current_file = globals()["__file__"]
+            old_workspace = os.environ.get("GITHUB_WORKSPACE")
+            try:
+                globals()["__file__"] = str(fake_script)
+                os.environ["GITHUB_WORKSPACE"] = str(checkout)
+                assert validated_sandbox(str(root), str(runner)) == root
+                os.environ["GITHUB_WORKSPACE"] = str(checkout / "other")
+                try:
+                    validated_sandbox(str(root), str(runner))
+                except SystemExit as failure:
+                    assert str(failure) == "V025C_CI_LAYOUT_INVALID"
+                else:
+                    raise AssertionError("untrusted CI workspace accepted")
+            finally:
+                globals()["__file__"] = current_file
+                if old_workspace is None:
+                    os.environ.pop("GITHUB_WORKSPACE", None)
+                else:
+                    os.environ["GITHUB_WORKSPACE"] = old_workspace
         print("V025C_IDENTITY_PURE_TEST_PASS")
         return
     if os.getenv("CI") != "true" or not os.getenv("RUNNER_TEMP") or not os.getenv("GITHUB_WORKSPACE"):
