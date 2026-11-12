@@ -53,6 +53,8 @@ jobs:
         run: node --test test/semver-release.test.mjs
       - name: Verify V1-01 worker grants and native owner bridge
         run: npm run test:v1-01-worker-grants
+      - name: Verify pinned G1 source digest and negative release admission
+        run: node --test test/v101-g1-release-coverage.test.mjs
       - name: Verify V1-07 signed worker identity and durable registry
         run: npm run test:v1-07-worker-identity
       - name: Run qualification check with bounded Windows file concurrency
