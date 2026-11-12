@@ -31,6 +31,8 @@ test('disabled by default', () => assert.equal(createOwnerGuiReadOnlyProxy({ con
 test('invalid destination and credential path fail at construction', () => {
   let c = cfg(); c.ownerGuiDelegation.port = 80;
   assert.throws(() => createOwnerGuiReadOnlyProxy({config:c, primaryStatus:primary}), /PORT_INVALID/);
+  c = cfg(); c.ownerGuiDelegation.port = 48838;
+  assert.throws(() => createOwnerGuiReadOnlyProxy({config:c, primaryStatus:primary}), /PORT_INVALID/);
   c = cfg(); c.ownerGuiDelegation.authFile = 'relative.txt';
   assert.throws(() => createOwnerGuiReadOnlyProxy({config:c, primaryStatus:primary}), /AUTH_PATH_INVALID/);
 });

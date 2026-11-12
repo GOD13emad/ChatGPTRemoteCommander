@@ -22,7 +22,7 @@ export function mergeExplicitOwnerGuiPolicy(active, local) {
     return {config: {...active, ownerGuiDelegation: {enabled: false}}, merged: true};
   }
   if (active.powerMode?.guiControl?.enabled !== true) fail('CORE_GUI_DISABLED');
-  if (!Number.isSafeInteger(requested.port) || requested.port < 1024 || requested.port > 65535)
+  if (!Number.isSafeInteger(requested.port) || requested.port !== 48837)
     fail('INVALID_PORT');
   const file = requested.authFile;
   if (typeof file !== 'string' || !path.isAbsolute(file) || file.startsWith('\\\\') || file.startsWith('//'))

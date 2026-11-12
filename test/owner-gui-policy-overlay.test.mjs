@@ -37,6 +37,7 @@ test('invalid or unauthorized policy fails closed before any overlay',()=>{
     const key=path.join(root,'auth.key');fs.writeFileSync(key,'a'.repeat(64),{mode:0o600});
     const candidates=[
       {ownerGuiDelegation:{enabled:true,port:80,authFile:key}},
+      {ownerGuiDelegation:{enabled:true,port:48838,authFile:key}},
       {ownerGuiDelegation:{enabled:true,port:48837,authFile:'relative.txt'}},
       {ownerGuiDelegation:{enabled:true,port:48837,authFile:path.join(root,'absent.key')}},
       {ownerGuiDelegation:{enabled:true,port:48837,authFile:key,mode:'takeover'}},

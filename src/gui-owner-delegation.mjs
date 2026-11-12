@@ -9,6 +9,10 @@ const TOOL_NAMES = new Set([
 const PROFILE = 'owner-gui-v1';
 const AUTH_PATTERN = /^[a-f0-9]{64}$/;
 const REQUEST_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
+// The delegation credential must never be sent to an arbitrary local port.
+// This reviewed owner-GUI v0.10 profile is the sole authorized HTTP origin.
+const OWNER_GUI_PINNED_PORT=48837;
+const OWNER_GUI_ENDPOINT='http://127.0.0.1:48837/mcp';
 
 export function createOwnerGuiReadOnlyProxy({
   config, primaryStatus, fetchImpl = globalThis.fetch, readFileImpl = readFile
@@ -18,15 +22,14 @@ export function createOwnerGuiReadOnlyProxy({
   if (config?.powerMode?.guiControl?.enabled !== true) throw Error('OWNER_GUI_CORE_GUI_DISABLED');
   const port = policy.port;
   const authFile = policy.authFile;
-  if (!Number.isSafeInteger(port) || port < 1024 || port > 65535) throw Error('OWNER_GUI_PORT_INVALID');
+  if (!Number.isSafeInteger(port) || port !== OWNER_GUI_PINNED_PORT) throw Error('OWNER_GUI_PORT_INVALID');
   if (typeof authFile !== 'string' || !path.isAbsolute(authFile)) throw Error('OWNER_GUI_AUTH_PATH_INVALID');
   if (typeof primaryStatus !== 'function' || typeof fetchImpl !== 'function') throw Error('OWNER_GUI_DEPENDENCIES_MISSING');
-  const base = `http://127.0.0.1:${port}`;
   const timeoutMs = 4000;
   async function rpc(tool, args) {
     const secret = (await readFileImpl(authFile, 'utf8')).trim();
     if (!AUTH_PATTERN.test(secret)) throw Error('OWNER_GUI_CREDENTIAL_INVALID');
-    const response = await fetchImpl(`${base}/mcp`, {
+    const response = await fetchImpl(OWNER_GUI_ENDPOINT, {
       method: 'POST',
       redirect: 'error',
       headers: { 'content-type': 'application/json', 'x-rc-owner-gui-auth': secret },
