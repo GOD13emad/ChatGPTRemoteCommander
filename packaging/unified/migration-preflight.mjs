@@ -68,6 +68,47 @@ function readOwnerTunnelBinding(){
     return {profilePresent:true,valid:false};
   }
 }
+/**
+ * Read only the one owner-local Linux Tunnel main-channel profile, whatever
+ * its chosen name. Profile bytes, names and credentials never leave this
+ * process. Ambiguous/misowned/linked profiles are not authorized evidence.
+ */
+export function readLinuxOwnerTunnelBinding({
+  home=process.env.HOME,ownerUid=process.getuid?.()
+}={}){
+  if(typeof home!=='string'||!path.isAbsolute(home))
+    return {profilePresent:false,valid:false};
+  const directory=path.join(home,'.config','tunnel-client');
+  let names;
+  try{
+    const dir=fs.lstatSync(directory);
+    if(!dir.isDirectory()||dir.isSymbolicLink()
+      ||(ownerUid!==undefined&&(dir.uid!==ownerUid||(dir.mode&0o077)!==0)))
+      return {profilePresent:true,valid:false};
+    names=fs.readdirSync(directory).filter(v=>/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}\.yaml$/.test(v));
+  }catch(error){
+    if(error?.code==='ENOENT')return {profilePresent:false,valid:false};
+    return {profilePresent:true,valid:false};
+  }
+  if(names.length===0)return {profilePresent:false,valid:false};
+  if(names.length!==1)return {profilePresent:true,valid:false};
+  const file=path.join(directory,names[0]);
+  try{
+    const stat=fs.lstatSync(file);
+    if(!stat.isFile()||stat.isSymbolicLink()||stat.nlink!==1
+      ||stat.size<1||stat.size>16384
+      ||(ownerUid!==undefined&&(stat.uid!==ownerUid||(stat.mode&0o077)!==0)))
+      return {profilePresent:true,valid:false};
+    const yaml=fs.readFileSync(file,'utf8');
+    const after=fs.lstatSync(file);
+    if(after.ino!==stat.ino||after.dev!==stat.dev||after.size!==stat.size
+      ||after.mtimeMs!==stat.mtimeMs)
+      return {profilePresent:true,valid:false};
+    const binding=parseMainTunnelBinding(yaml);
+    return {profilePresent:true,valid:!!binding,
+      port:binding?.port??null,tls:binding?.tls??false};
+  }catch{return {profilePresent:true,valid:false};}
+}
 function probeLoopbackCoreVersion(port){
   if(!Number.isSafeInteger(port)||port<1024||port>65535)return null;
   // Isolated bounded local GET. Never forwards the tunnel credential.
@@ -127,6 +168,9 @@ export function assessMigration(facts){
   // version does not authenticate the local tunnel client or J01 owner.
   // This describes URL-based main-channel bindings, not the separate stdio
   // transport, which requires its own admission contract.
+  if(privateTunnel&&facts.tunnelProfilePresent===true
+    &&facts.tunnelProfileValid!==true)
+    blocked.push('OWNER_TUNNEL_MAIN_BINDING_UNVERIFIED');
   if(privateTunnel&&facts.tunnelProfilePresent===true
     &&facts.tunnelProfileValid===true&&facts.tunnelTargetTls!==true)
     blocked.push('PRIVATE_TUNNEL_HTTPS_MTLS_ROUTE_REQUIRED');
@@ -245,10 +289,15 @@ function linuxFacts(){
   }
   const nativeVersionOK=exists&&/^0\.12\.0~dev/.test(version||'');
   const knownNative=exec('test',['-f','/usr/lib/chatgpt-remote-commander/tunnel/native-tunnel-launch.sh']);
+  const tunnel=readLinuxOwnerTunnelBinding();
+  const targetVersion=tunnel.valid&&!tunnel.tls
+    ?probeLoopbackCoreVersion(tunnel.port):null;
   return {platform:'linux',connectionMode:'private-tunnel',
     inventoryReliable:packageQuery.ok&&listing.ok&&files.ok,
     nativePackageInstalled:exists,allNativePayloadPathsAvailable:nativeVersionOK&&knownNative.ok,
-    units};
+    tunnelProfilePresent:tunnel.profilePresent,tunnelProfileValid:tunnel.valid,
+    tunnelTargetPort:tunnel.port??null,tunnelTargetTls:tunnel.tls===true,
+    tunnelTargetVersion:targetVersion,units};
 }
 /** Router mapping is an observation, not authorization to change routing. */
 export function classifyObservedRouterStatus(report,listenPort,backendHealthVersion){

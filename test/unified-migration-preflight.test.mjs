@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {assessMigration,inspectLocalPlatform,parseMainTunnelBinding,classifyObservedRouterStatus,classifyWindowsUninstallRegistryResponse} from '../packaging/unified/migration-preflight.mjs';
+import {assessMigration,inspectLocalPlatform,readLinuxOwnerTunnelBinding,parseMainTunnelBinding,classifyObservedRouterStatus,classifyWindowsUninstallRegistryResponse} from '../packaging/unified/migration-preflight.mjs';
 import {planOwnerPrivateTunnelCutover} from '../tools/plan-owner-private-tunnel-cutover.mjs';
 
 const repo=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
@@ -28,6 +28,46 @@ test('read-only Linux inventory preserves Native Tunnel and old live service blo
  assert.ok(r.blocked.includes('UPDATE_ROLLBACK_PROVENANCE_UNVERIFIED'));
  assert.equal(JSON.stringify(r).includes('apikey'),false);
 });
+test('Linux preflight inventories the one exact owner-private Tunnel without disclosing its API key',{
+ skip:process.platform!=='linux'
+},()=>{
+ const home=fs.mkdtempSync(path.join(os.tmpdir(),'rc012-linux-owner-profile-'));
+ const folder=path.join(home,'.config','tunnel-client');
+ const profile=path.join(folder,'Emad.yaml');
+ const key='TEST_ONLY_DO_NOT_LOG_SECRET_TOKEN';
+ const yaml=[
+  'config_version: 1','control_plane:','  api_key: '+key,
+  'mcp:','  server_urls:','    - channel: main',
+  '      url: "http://127.0.0.1:47831/mcp"'
+ ].join('\n');
+ try{
+  fs.mkdirSync(folder,{recursive:true,mode:0o700});
+  fs.chmodSync(folder,0o700);
+  fs.writeFileSync(profile,yaml,{mode:0o600});
+  const read=()=>readLinuxOwnerTunnelBinding({home,ownerUid:process.getuid()});
+  const good=read();
+  assert.deepEqual(good,{profilePresent:true,valid:true,port:47831,tls:false});
+  assert.doesNotMatch(JSON.stringify(good),/DO_NOT_LOG|Emad|api_key/);
+  const report=assessMigration({platform:'linux',connectionMode:'private-tunnel',
+   inventoryReliable:true,nativePackageInstalled:true,
+   allNativePayloadPathsAvailable:true,units:[],tunnelProfilePresent:true,
+   tunnelProfileValid:good.valid,tunnelTargetPort:good.port,
+   tunnelTargetTls:good.tls,tunnelTargetVersion:'0.11.0-dev.23'});
+  assert.equal(report.ownerTunnelTargetPort,47831);
+  assert.ok(report.blocked.includes('PRIVATE_TUNNEL_HTTPS_MTLS_ROUTE_REQUIRED'));
+  fs.chmodSync(profile,0o644);
+  assert.deepEqual(read(),{profilePresent:true,valid:false});
+  fs.chmodSync(profile,0o600);
+  fs.writeFileSync(path.join(folder,'Other.yaml'),yaml,{mode:0o600});
+  assert.deepEqual(read(),{profilePresent:true,valid:false});
+  const bad=assessMigration({platform:'linux',connectionMode:'private-tunnel',
+    inventoryReliable:true,nativePackageInstalled:true,
+    allNativePayloadPathsAvailable:true,units:[],tunnelProfilePresent:true,
+    tunnelProfileValid:false});
+  assert.ok(bad.blocked.includes('OWNER_TUNNEL_MAIN_BINDING_UNVERIFIED'));
+ }finally{fs.rmSync(home,{recursive:true,force:true});}
+});
+
 test('Windows Inno→NSIS remains blocked without proven reversible cutover',()=>{
  const r=assessMigration({platform:'win32',legacyInnoPresent:true,inventoryReliable:true});
  assert.equal(r.existingInstalled,true);
