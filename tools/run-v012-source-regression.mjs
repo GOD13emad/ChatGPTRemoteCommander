@@ -24,7 +24,8 @@ const files = [
   "test/v012-owner-local-canary.test.mjs",
   "test/owner-dpapi-profile-recovery.test.mjs",
   "test/owner-systemd-creds-profile-recovery.test.mjs",
-  "test/native-owner-session-provider-linux.test.mjs"
+  "test/native-owner-session-provider-linux.test.mjs",
+  "test/local-ollama-planner.test.mjs"
 ];
 
 // Keep every file once while bounding expensive Windows native process/SQLite
@@ -41,7 +42,7 @@ const batches = [
   files.slice(13, 15),
   files.slice(15, 17),
   files.slice(17, 18), // Canonical G1/WorkflowStore composition and mTLS denial
-  files.slice(18, 24) // NoPromote, provenance, protected Core, encrypted recovery and local Linux J01 owner
+  files.slice(18, 25) // NoPromote, protected Core, encrypted recovery, local J01 owner, and optional local model planner
 ];
 if(batches.flat().length!==files.length
   ||new Set(batches.flat()).size!==files.length
