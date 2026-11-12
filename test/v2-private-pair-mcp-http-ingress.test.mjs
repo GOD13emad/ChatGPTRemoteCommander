@@ -360,3 +360,84 @@ test('trusted operation route cannot change native owner host, profile or chat',
     assert.equal(effects,0);
   }
 });
+
+const currentMeta=()=>({
+  'io.modelcontextprotocol/protocolVersion':'2026-07-28',
+  'io.modelcontextprotocol/clientCapabilities':{},
+  'io.modelcontextprotocol/clientInfo':{name:'private-qa',version:'1.0.0'},
+  'openai/session':'chat1'
+});
+function modernMessage(method,params={},id=1){
+  return envelope(method,{...params,_meta:{...currentMeta(),...params._meta}},id);
+}
+function modernOptions(message){
+  return {headers:[
+    'MCP-Protocol-Version','2026-07-28',
+    'Mcp-Method',message.method,
+    ...(message.method==='tools/call'?['Mcp-Name',message.params.name]:[])
+  ]};
+}
+
+test('PRIVATE MCP supports stateless modern 2026-07-28 discovery, list and exact owner-authorized tools',async()=>{
+  const f=fixture();
+  const discovery=modernMessage('server/discover');
+  const found=await f.send(discovery,modernOptions(discovery));
+  assert.equal(found.status,200);
+  assert.equal(found.data.result.resultType,'complete');
+  assert.ok(found.data.result.supportedVersions.includes('2026-07-28'));
+  assert.equal(found.data.result.cacheScope,'private');
+  assert.equal(found.data.result._meta['io.modelcontextprotocol/serverInfo'].version,'0.12.0-dev.1');
+  assert.equal(f.state.bound,0);
+  const list=modernMessage('tools/list');
+  const tools=await f.send(list,modernOptions(list));
+  assert.equal(tools.status,200);
+  assert.equal(tools.data.result.resultType,'complete');
+  assert.equal(tools.data.result.tools.length,2);
+  assert.equal(tools.data.result.cacheScope,'private');
+  assert.equal(f.state.bound,0);
+  const bind=modernMessage('tools/call',{name:'v2_private_owner_bind',arguments:{}});
+  const bound=await f.send(bind,modernOptions(bind));
+  assert.equal(bound.status,200);
+  assert.equal(bound.data.result.resultType,'complete');
+  assert.equal(bound.data.result.isError,false);
+  assert.equal(f.state.bound,1);
+  assert.doesNotMatch(JSON.stringify(bound.data),/bindingId|secret/);
+  const action=modernMessage('tools/call',{name:'v2_workflow_step',
+    arguments:{route:route(),tool:'run_shell',arguments:{command:'echo safe'}}});
+  const effect=await f.send(action,modernOptions(action));
+  assert.equal(effect.status,200);
+  assert.equal(effect.data.result.resultType,'complete');
+  assert.equal(effect.data.result.isError,false);
+  assert.equal(f.state.operations,1);
+});
+
+test('modern version, mirrored headers and capabilities fail closed with typed JSON-RPC errors',async()=>{
+  const f=fixture();
+  const valid=modernMessage('tools/list');
+  const cases=[
+    [valid,{headers:['Mcp-Method','tools/list']},-32020],
+    [valid,{headers:['MCP-Protocol-Version','2025-11-25','Mcp-Method','tools/list']},-32020],
+    [modernMessage('tools/list',{_meta:{
+      'io.modelcontextprotocol/protocolVersion':'2040-01-01'
+    }}),{headers:['MCP-Protocol-Version','2040-01-01','Mcp-Method','tools/list']},-32022],
+    [modernMessage('tools/list',{_meta:{
+      'io.modelcontextprotocol/clientCapabilities':null
+    }}),modernOptions(valid),-32021],
+    [modernMessage('tools/call',{name:'v2_private_owner_bind',arguments:{}}),
+      {headers:['MCP-Protocol-Version','2026-07-28','Mcp-Method','tools/call',
+        'Mcp-Name','v2_workflow_step']},-32020]
+  ];
+  for(const [message,config,code] of cases){
+    const result=await f.send(message,config);
+    assert.equal(result.status,400);
+    assert.equal(result.data.jsonrpc,'2.0');
+    assert.equal(result.data.error.code,code);
+    assert.equal(result.data.result,undefined);
+  }
+  const unsupported=modernMessage('resources/list');
+  const unknown=await f.send(unsupported,modernOptions(unsupported));
+  assert.equal(unknown.status,404);
+  assert.equal(unknown.data.error.code,-32601);
+  assert.equal(f.state.bound,0);
+  assert.equal(f.state.operations,0);
+});

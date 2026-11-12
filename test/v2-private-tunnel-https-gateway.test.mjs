@@ -213,7 +213,7 @@ test('full owner-scoped tunnel Runtime stays closed until explicit start and can
   }
 });
 
-async function privatePairRequest(port,cert,key,message){
+async function privatePairRequest(port,cert,key,message,extraHeaders={}){
   return new Promise(resolve=>{
     const bytes=Buffer.from(JSON.stringify(message));
     const req=https.request({
@@ -225,6 +225,7 @@ async function privatePairRequest(port,cert,key,message){
         body:data?JSON.parse(data):null}));
     });
     req.setHeader('content-type','application/json');
+    for(const [field,value] of Object.entries(extraHeaders))req.setHeader(field,value);
     req.on('error',error=>resolve({code:error.code??'TLS_DENIED'}));
     req.setTimeout(2500,()=>req.destroy());
     req.end(bytes);
@@ -278,6 +279,22 @@ test('PRIVATE pair HTTPS authenticates a pinned tunnel without OAuth and still r
     assert.equal(known.status,200);
     assert.deepEqual(known.body.result.tools.map(x=>x.name),
       ['v2_private_owner_bind','v2_workflow_step','read_text']);
+    assert.equal(actions.bind,0);
+    assert.equal(actions.work,0);
+    const discovery={
+      jsonrpc:'2.0',id:'discover',method:'server/discover',
+      params:{_meta:{
+        'io.modelcontextprotocol/protocolVersion':'2026-07-28',
+        'io.modelcontextprotocol/clientInfo':{name:'qa',version:'1.0.0'},
+        'io.modelcontextprotocol/clientCapabilities':{}
+      }}
+    };
+    const modern=await privatePairRequest(port,f.clientCert,f.clientKey,discovery,{
+      'MCP-Protocol-Version':'2026-07-28','Mcp-Method':'server/discover'
+    });
+    assert.equal(modern.status,200);
+    assert.equal(modern.body.result.resultType,'complete');
+    assert.ok(modern.body.result.supportedVersions.includes('2026-07-28'));
     assert.equal(actions.bind,0);
     assert.equal(actions.work,0);
     const binding=await privatePairRequest(port,f.clientCert,f.clientKey,{

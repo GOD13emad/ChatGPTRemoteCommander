@@ -8,6 +8,10 @@ import {normalizeV2Route} from './v2-routing-contract.mjs';
 const SESSION=/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const TOOL=/^[a-z][a-z0-9_]{0,79}$/;
 const RESERVED=new Set(['v2_private_owner_bind','v2_workflow_step']);
+const MODERN_VERSION='2026-07-28';
+const LEGACY_VERSIONS=Object.freeze(['2025-11-25']);
+const SERVER_INFO=Object.freeze({name:'commander-v012-private-candidate',version:'0.12.0-dev.1'});
+const SERVER_META=Object.freeze({'io.modelcontextprotocol/serverInfo':SERVER_INFO});
 function snapshotTrustedCatalog(value){
   if(!Array.isArray(value)||isProxy(value)||value.length>512)
     fail('V2_PRIVATE_MCP_CATALOG_INVALID');
@@ -59,10 +63,19 @@ function json(res,status,data,maxBytes=65536){
     'cache-control':'no-store','content-length':bytes.length});
   res.end(bytes);
 }
-function rpc(id,result){return {jsonrpc:'2.0',id,result};}
-function error(id){return rpc(id,{isError:true,content:[
+function rpc(id,result,modern=false){
+  return {jsonrpc:'2.0',id,result:modern
+    ?{resultType:'complete',...result,_meta:SERVER_META}
+    :result};
+}
+function error(id,modern=false){return rpc(id,{isError:true,content:[
   {type:'text',text:'Native owner and exact-action authorization required.'}
-]});}
+]},modern);}
+function protocolFailure(status,code,message,data){
+  const e=Object.assign(new Error(message),{httpStatus:status,rpcCode:code});
+  if(data!==undefined)e.rpcData=data;
+  throw e;
+}
 function header(req,name){
   let found=null;
   const raw=req.rawHeaders;
@@ -78,6 +91,41 @@ function header(req,name){
     }
   }
   return found;
+}
+function classifyProtocol(req,message){
+  const hv=header(req,'mcp-protocol-version');
+  const meta=message?.params?._meta;
+  const bv=meta?.['io.modelcontextprotocol/protocolVersion'];
+  // 2026-07-28 requires matching per-request versions and mirrored headers;
+  // only the old explicit handshake remains for legacy clients.
+  if(bv!==undefined||hv===MODERN_VERSION){
+    if(hv!==bv)
+      protocolFailure(400,-32020,'MCP protocol header/body mismatch');
+    if(bv!==MODERN_VERSION)
+      protocolFailure(400,-32022,'Unsupported MCP protocol version',
+        {supported:[MODERN_VERSION,...LEGACY_VERSIONS],requested:String(bv)});
+    if(!meta||typeof meta!=='object'||Array.isArray(meta))
+      protocolFailure(400,-32021,'Missing required modern MCP client capabilities');
+    const caps=meta['io.modelcontextprotocol/clientCapabilities'];
+    if(!caps||typeof caps!=='object'||Array.isArray(caps))
+      protocolFailure(400,-32021,'Missing required modern MCP client capabilities');
+    const info=meta['io.modelcontextprotocol/clientInfo'];
+    if(info!==undefined&&(!info||typeof info!=='object'||Array.isArray(info)
+        ||typeof info.name!=='string'||typeof info.version!=='string'))
+      protocolFailure(400,-32602,'Malformed modern MCP clientInfo');
+    if(header(req,'mcp-method')!==message.method)
+      protocolFailure(400,-32020,'Mcp-Method header/body mismatch');
+    if(message.method==='tools/call'
+      &&header(req,'mcp-name')!==message.params?.name)
+      protocolFailure(400,-32020,'Mcp-Name header/body mismatch');
+    if(typeof message.id!=='string'&&!Number.isSafeInteger(message.id))
+      protocolFailure(400,-32600,'Invalid JSON-RPC request id');
+    return true;
+  }
+  if(hv!==null&&!LEGACY_VERSIONS.includes(hv))
+    protocolFailure(400,-32022,'Unsupported MCP protocol version',
+      {supported:[MODERN_VERSION,...LEGACY_VERSIONS],requested:String(hv)});
+  return false;
 }
 async function payload(req,limit){
   const type=header(req,'content-type');
@@ -142,6 +190,7 @@ export function createV2PrivatePairMcpIngress({
   const names=new Set([...RESERVED,...catalog.map(x=>x.name)]);
   const availableTools=Object.freeze([...TOOLS,...catalog]);
   async function handle(req,res){
+    let rpcId=null;
     try{
       // There is intentionally no createUnboundServer, plaintext fallback,
       // proxy scheme or OAuth route in this source candidate.
@@ -162,29 +211,41 @@ export function createV2PrivatePairMcpIngress({
         json(res,403,{error:'trusted_transport_required'});return;
       }
       const message=await payload(req,maxBodyBytes);
-      const id=typeof message.id==='string'
+      const id=(typeof message.id==='string'&&message.id.length<=256)
         ||Number.isSafeInteger(message.id)?message.id:null;
-      if(message.method==='initialize'){
+      rpcId=id;
+      const modern=classifyProtocol(req,message);
+      if(modern&&message.method==='server/discover'){
+        json(res,200,rpc(id,{
+          supportedVersions:[MODERN_VERSION,...LEGACY_VERSIONS],
+          capabilities:{tools:{listChanged:false}},
+          ttlMs:30000,cacheScope:'private'
+        },true));return;
+      }
+      if(message.method==='initialize'&&!modern){
         json(res,200,rpc(id,{
           protocolVersion:'2025-11-25',
           capabilities:{tools:{listChanged:false}},
-          serverInfo:{name:'commander-v012-private-candidate',version:'0.12.0'}
+          serverInfo:SERVER_INFO
         }));return;
       }
-      if(message.method==='notifications/initialized'){
+      if(message.method==='notifications/initialized'&&!modern){
         res.writeHead(202,{'cache-control':'no-store'});res.end();return;
       }
       if(message.method==='tools/list'){
         // Discovery can legitimately exceed a single tool-result limit when
         // the one private Tunnel exposes the installed Core catalog.
         // Request/effect bodies retain the original smaller bound.
-        json(res,200,rpc(id,{tools:availableTools}),262144);return;
+        json(res,200,rpc(id,{tools:availableTools,ttlMs:30000,cacheScope:'private'},modern),262144);return;
       }
-      if(message.method!=='tools/call'
-        ||!message.params||typeof message.params!=='object'
-        ||Array.isArray(message.params)
-        ||!names.has(message.params.name)){
-        json(res,200,error(id));return;
+      if(message.method!=='tools/call'){
+        if(modern)protocolFailure(404,-32601,'Method not found');
+        json(res,200,error(id,modern));return;
+      }
+      if(!message.params||typeof message.params!=='object'
+        ||Array.isArray(message.params)||!names.has(message.params.name)){
+        if(modern)protocolFailure(200,-32602,'Unknown or invalid tool');
+        json(res,200,error(id,modern));return;
       }
       const name=message.params.name;
       const session=message.params._meta?.['openai/session'];
@@ -199,18 +260,18 @@ export function createV2PrivatePairMcpIngress({
           ||typeof message.params.arguments!=='object'
           ||Array.isArray(message.params.arguments)
           ||Object.keys(message.params.arguments).length!==0){
-          json(res,200,error(id));return;
+          json(res,200,error(id,modern));return;
         }
         await ownerStack.requestOwnerBinding({request:req,sessionHandle:session});
         json(res,200,rpc(id,{isError:false,content:[
           {type:'text',text:'Native owner session approved. Exact tool grants are still required.'}
-        ]}));return;
+        ]},modern));return;
       }
       if(!RESERVED.has(name)){
         // A direct Core tool never receives a caller-supplied routing target.
         // Native J01 independently resolves the CURRENT exact owner route.
         if(await validateToolInput(name,message.params.arguments)!==true){
-          json(res,200,error(id));return;
+          json(res,200,error(id,modern));return;
         }
         const nativeRoute=normalizeV2Route(
           await ownerStack.nativeSessionBindings.resolveNativeRoute(session));
@@ -237,7 +298,7 @@ export function createV2PrivatePairMcpIngress({
         });
         json(res,200,rpc(id,{isError:false,content:[
           {type:'text',text:JSON.stringify(result)}
-        ]}));return;
+        ]},modern));return;
       }
       const action=message.params.arguments;
       if(!action||typeof action!=='object'||Array.isArray(action)
@@ -245,7 +306,7 @@ export function createV2PrivatePairMcpIngress({
         ||!Object.hasOwn(action,'route')||!Object.hasOwn(action,'tool')
         ||!Object.hasOwn(action,'arguments')
         ||action.route?.conversationId!==session){
-        json(res,200,error(id));return;
+        json(res,200,error(id,modern));return;
       }
       const result=await operationGate.execute({
         request:req,route:action.route,tool:action.tool,
@@ -253,8 +314,14 @@ export function createV2PrivatePairMcpIngress({
       });
       json(res,200,rpc(id,{isError:false,content:[
         {type:'text',text:JSON.stringify(result)}
-      ]}));
-    }catch{
+      ]},modern));
+    }catch(e){
+      if(Number.isSafeInteger(e?.rpcCode)){
+        json(res,e.httpStatus??400,{jsonrpc:'2.0',id:rpcId,error:{
+          code:e.rpcCode,message:e.message,
+          ...(e.rpcData!==undefined?{data:e.rpcData}:{})
+        }});return;
+      }
       // No stack traces, access keys, raw arguments, native dialogs or
       // Windows owner paths are reflected to remote callers.
       json(res,503,{error:'private_owner_admission_unavailable'});
