@@ -30,7 +30,6 @@ import { DeliveryStore, deliveryLocation } from './delivery-store.mjs';
 import { createDeliveryTools } from './delivery-tools.mjs';
 import { compactToolSuccessPayload, serializeBoundedJsonResponse, synchronousCommandInput } from './retry-guard.mjs';
 import { MutationIdempotencyStore } from './mutation-idempotency.mjs';
-import { createV012PrivateCoreRuntime } from './v012-private-core-runtime.mjs';
 import { createAgentExtensionRegistry } from './agent-extensions.mjs';
 import { createCoucouBridge } from './coucou-bridge.mjs';
 import { startBrowserCompanionMonitor } from './browser-companion-monitor.mjs';
@@ -368,6 +367,9 @@ if(ownerBootstrapModule){
       ||!options.security||typeof options.security!=='object')
       throw Object.assign(new Error('V012_PRIVATE_BOOTSTRAP_INVALID'),
         {code:'V012_PRIVATE_BOOTSTRAP_INVALID'});
+    // Load only for an explicitly configured owner bootstrap. STANDARD fixture
+    // copies of the Core never need this optional protected module.
+    const {createV012PrivateCoreRuntime}=await import('./v012-private-core-runtime.mjs');
     candidate=createV012PrivateCoreRuntime({
       ...options,
       security:{
