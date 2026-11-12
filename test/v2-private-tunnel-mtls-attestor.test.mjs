@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
-import {createV2PrivateTunnelMtlsAttestor} from '../src/v2-private-tunnel-mtls-attestor.mjs';
+import {createV2PrivateTunnelMtlsAttestor,createV2OwnerPinnedPrivatePairAttestor} from '../src/v2-private-tunnel-mtls-attestor.mjs';
 
 const NOW=1794390000000;
 const certBytes=Buffer.from('test-local-tunnel-certificate-opaque-bytes');
@@ -78,4 +78,73 @@ test('missing pinned certificate or native identity provider fails startup close
     {now:null}
   ])assert.throws(()=>createV2PrivateTunnelMtlsAttestor(config(patch)),
     {code:'V2_TUNNEL_MTLS_TRUSTED_BOOTSTRAP_REQUIRED'});
+});
+
+
+test('private pair mTLS pins exact enrolled tunnel, native owner and current OS seat',async()=>{
+  let sidChecks=0;
+  const a=createV2OwnerPinnedPrivatePairAttestor({
+    ...config(),expectedTunnelIdHash:'b'.repeat(64),
+    expectedOwnerSidHash:'c'.repeat(64),
+    resolveCurrentOwnerSidHash:async()=>{sidChecks++;return 'c'.repeat(64);}
+  });
+  assert.deepEqual(await a({socket:socket()}),{
+    authenticated:true,peerType:'owner-pinned-private-tunnel-mtls',
+    sessionSource:'native-owner-private-pair'
+  });
+  assert.equal(sidChecks,2);
+});
+
+test('private pair identity cannot be borrowed from another tunnel or owner',async t=>{
+  for(const [name,overrides] of [
+    ['different tunnel',{expectedTunnelIdHash:'d'.repeat(64)}],
+    ['different enrolled owner',{expectedOwnerSidHash:'e'.repeat(64)}],
+    ['changed live tunnel',{resolveTransportIdentity:async()=>({...tunnel(),tunnelIdHash:'d'.repeat(64)})}],
+    ['changed live owner',{resolveTransportIdentity:async()=>({...tunnel(),ownerSidHash:'e'.repeat(64)})}],
+    ['expired tunnel',{resolveTransportIdentity:async()=>({...tunnel(),expiresAtMs:NOW})}],
+    ['wrong profile',{profileId:'another'}],
+    ['wrong mTLS client',{expectedClientLeafDerSha256:'a'.repeat(64)}]
+  ])await t.test(name,async()=>{
+    const a=createV2OwnerPinnedPrivatePairAttestor({
+      ...config(),expectedTunnelIdHash:'b'.repeat(64),
+      expectedOwnerSidHash:'c'.repeat(64),
+      resolveCurrentOwnerSidHash:async()=> 'c'.repeat(64),...overrides
+    });
+    assert.deepEqual(await a({socket:socket()}),{authenticated:false});
+  });
+});
+
+test('private pair owner switching mid-admission and malicious native getters fail closed',async()=>{
+  let checks=0;
+  const sw=createV2OwnerPinnedPrivatePairAttestor({
+    ...config(),expectedTunnelIdHash:'b'.repeat(64),
+    expectedOwnerSidHash:'c'.repeat(64),
+    resolveCurrentOwnerSidHash:async()=> (++checks===1?'c':'e').repeat(64)
+  });
+  assert.deepEqual(await sw({socket:socket()}),{authenticated:false});
+  for(const observed of [
+    Object.defineProperty(tunnel(),'tunnelIdHash',{get(){throw Error('untrusted getter');}}),
+    new Proxy(tunnel(),{get(){throw Error('untrusted proxy');}})
+  ]){
+    const a=createV2OwnerPinnedPrivatePairAttestor({
+      ...config(),expectedTunnelIdHash:'b'.repeat(64),
+      expectedOwnerSidHash:'c'.repeat(64),
+      resolveCurrentOwnerSidHash:async()=> 'c'.repeat(64),
+      resolveTransportIdentity:async()=>observed
+    });
+    assert.deepEqual(await a({socket:socket()}),{authenticated:false});
+  }
+});
+
+test('private pair bootstrap requires independently pinned hashes and native owner callback',()=>{
+  for(const patch of [
+    {expectedTunnelIdHash:undefined},{expectedTunnelIdHash:'x'.repeat(64)},
+    {expectedOwnerSidHash:undefined},{expectedOwnerSidHash:'x'.repeat(64)},
+    {resolveCurrentOwnerSidHash:undefined},
+    {resolveTransportIdentity:undefined}
+  ])assert.throws(()=>createV2OwnerPinnedPrivatePairAttestor({
+    ...config(),expectedTunnelIdHash:'b'.repeat(64),
+    expectedOwnerSidHash:'c'.repeat(64),
+    resolveCurrentOwnerSidHash:async()=> 'c'.repeat(64),...patch
+  }),{code:/^(V2_PRIVATE_PAIR_TRUSTED_BOOTSTRAP_REQUIRED|V2_TUNNEL_MTLS_TRUSTED_BOOTSTRAP_REQUIRED)$/});
 });
