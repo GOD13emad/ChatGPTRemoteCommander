@@ -272,3 +272,24 @@ test('native resolver cannot redirect a private Core tool to a different chat',a
   assert.equal(JSON.parse(String(res.buffer)).error,'private_session_route_mismatch');
   assert.equal(executed,0);
 });
+
+test('large owner-approved Core catalog remains available on one PRIVATE Tunnel',async()=>{
+  const catalog=Array.from({length:48},(_,i)=>({
+    name:'core_tool_'+i,description:'owner scoped '+('x'.repeat(1600)),
+    inputSchema:{type:'object',additionalProperties:false,properties:{}}
+  }));
+  const ingress=createV2PrivatePairMcpIngress({
+    attestTransport:async()=>({authenticated:true,
+      peerType:'owner-pinned-private-tunnel-mtls',
+      sessionSource:'native-owner-private-pair'}),
+    ownerStack:{requestOwnerBinding:async()=>{},
+      nativeSessionBindings:{resolveNativeRoute:async()=>route()}},
+    operationGate:{execute:async()=>({ok:true})},
+    trustedToolCatalog:catalog,validateToolInput:async()=>false
+  });
+  const res=response();
+  await ingress.handle(makeRequest(envelope('tools/list')),res);
+  assert.equal(res.status,200);
+  assert.ok(Number(res.headers['content-length'])>65536);
+  assert.equal(JSON.parse(String(res.buffer)).result.tools.length,50);
+});

@@ -46,11 +46,11 @@ function snapshotTrustedCatalog(value){
 }
 
 const fail=code=>{throw Object.assign(new Error(code),{code});};
-function json(res,status,data){
+function json(res,status,data,maxBytes=65536){
   let bytes;
   try{bytes=Buffer.from(JSON.stringify(data));}
   catch{bytes=Buffer.from('{"error":"candidate_unavailable"}');status=503;}
-  if(bytes.length>65536){
+  if(bytes.length>maxBytes){
     bytes=Buffer.from('{"error":"result_too_large"}');
     status=503;
   }
@@ -172,7 +172,10 @@ export function createV2PrivatePairMcpIngress({
         res.writeHead(202,{'cache-control':'no-store'});res.end();return;
       }
       if(message.method==='tools/list'){
-        json(res,200,rpc(id,{tools:availableTools}));return;
+        // Discovery can legitimately exceed a single tool-result limit when
+        // the one private Tunnel exposes the installed Core catalog.
+        // Request/effect bodies retain the original smaller bound.
+        json(res,200,rpc(id,{tools:availableTools}),262144);return;
       }
       if(message.method!=='tools/call'
         ||!message.params||typeof message.params!=='object'
