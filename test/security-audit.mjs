@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { spawn, spawnSync } from 'node:child_process';
 import { StringDecoder } from 'node:string_decoder';
+import {isVerifiedSyntheticNotionBearer} from '../tools/security-audit-history.mjs';
 
 function git(args, options = {}) {
   const result = spawnSync('git', args, {
@@ -59,8 +60,13 @@ function makeHistoryScanner(rules) {
     if (filtered.excepted) exceptions += 1;
     const sample = preceding + filtered.line;
     for (const [name, pattern] of rules) {
-      pattern.lastIndex = 0;
-      if (pattern.test(sample)) hits.add(name);
+      const flags = pattern.flags.includes('g') ? pattern.flags : pattern.flags + 'g';
+      const finder = new RegExp(pattern.source, flags);
+      for (const match of sample.matchAll(finder)) {
+        if (isVerifiedSyntheticNotionBearer(name, match[0],
+            { commit: currentCommit, file: currentPath })) continue;
+        hits.add(name);
+      }
     }
     preceding = sample.slice(-512);
   }
