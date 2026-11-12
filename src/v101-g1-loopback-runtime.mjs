@@ -5,6 +5,7 @@
 import {createWindowsV101V2CandidateHost} from './v101-windows-owner-security-bootstrap.mjs';
 import {createLinuxV101V2CandidateHost} from './v101-linux-owner-security-bootstrap.mjs';
 import {createV101PrivateTunnelOwnerHost} from './v101-private-tunnel-owner-host.mjs';
+import {createV2CandidatePrivateTunnelHttpsGateway} from './v2-private-tunnel-https-gateway.mjs';
 
 const fail=code=>{throw Object.assign(new Error(code),{code});};
 const LOOPBACK='127.0.0.1';
@@ -18,7 +19,8 @@ function createV101G1Runtime({
     fail('V101_G1_LOOPBACK_BOOTSTRAP_REQUIRED');
 
   if(typeof resolveHost!=='function'
-    ||!['direct-openai-mtls','private-tunnel-client-mtls'].includes(protectedTransport))
+    ||!['direct-openai-mtls','private-tunnel-client-mtls',
+      'owner-pinned-private-tunnel-mtls'].includes(protectedTransport))
     fail('V101_G1_TRUSTED_FACTORY_REQUIRED');
   // Owner host composition checks TLS keys, issuer, route callbacks and
   // independent native session grant dependencies before a socket is opened.
@@ -114,5 +116,25 @@ export function createV101G1PrivateTunnelRuntime(options={}){
   return createV101G1Runtime(options,{
     protectedTransport:'private-tunnel-client-mtls',
     resolveHost:host=>createV101PrivateTunnelOwnerHost(host)
+  });
+}
+/**
+ * Explicitly owner-started, source-only PRIVATE pair candidate.
+ * It reuses the existing loopback runtime and exact pinned TLS gateway.
+ * Native J01 consent and signed per-action worker grants remain mandatory;
+ * a listening socket never flips the current installed Core or Stable Router.
+ */
+export function createV101G1PrivatePairRuntime(options={}){
+  return createV101G1Runtime(options,{
+    protectedTransport:'owner-pinned-private-tunnel-mtls',
+    resolveHost:host=>{
+      if(typeof host.privateOwnerPair?.ownerStack?.close!=='function')
+        fail('V101_PRIVATE_PAIR_OWNER_STACK_REQUIRED');
+      const gateway=createV2CandidatePrivateTunnelHttpsGateway(host);
+      return Object.freeze({
+        createUnboundTlsServer:gateway.createUnboundTlsServer,
+        close:()=>host.privateOwnerPair.ownerStack.close()
+      });
+    }
   });
 }

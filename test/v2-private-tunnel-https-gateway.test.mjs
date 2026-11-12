@@ -8,7 +8,8 @@ import {createHash} from 'node:crypto';
 import {spawnSync} from 'node:child_process';
 import {createV2CandidatePrivateTunnelHttpsGateway} from '../src/v2-private-tunnel-https-gateway.mjs';
 import {createV2PlatformSessionProofAuthority} from '../src/v2-platform-session-proof.mjs';
-import {createV101G1PrivateTunnelRuntime} from '../src/v101-g1-loopback-runtime.mjs';
+import {createV101G1PrivateTunnelRuntime,createV101G1PrivatePairRuntime} from '../src/v101-g1-loopback-runtime.mjs';
+import './v2-private-pair-mcp-http-ingress.test.mjs';
 
 const RESOURCE='https://commander.example.invalid/mcp-v2';
 const ISSUER='https://idp.example.invalid';
@@ -209,5 +210,157 @@ test('full owner-scoped tunnel Runtime stays closed until explicit start and can
     await runtime?.close();
     f.dispose();
     fs.rmSync(directory,{recursive:true,force:true});
+  }
+});
+
+async function privatePairRequest(port,cert,key,message){
+  return new Promise(resolve=>{
+    const bytes=Buffer.from(JSON.stringify(message));
+    const req=https.request({
+      host:'127.0.0.1',port,path:'/mcp',method:'POST',
+      rejectUnauthorized:false,...(cert?{cert,key}:{})
+    },res=>{
+      let data='';res.on('data',c=>data+=c);
+      res.on('end',()=>resolve({status:res.statusCode,
+        body:data?JSON.parse(data):null}));
+    });
+    req.setHeader('content-type','application/json');
+    req.on('error',error=>resolve({code:error.code??'TLS_DENIED'}));
+    req.setTimeout(2500,()=>req.destroy());
+    req.end(bytes);
+  });
+}
+test('PRIVATE pair HTTPS authenticates a pinned tunnel without OAuth and still requires native owner action',async t=>{
+  let f;try{f=fixture();}catch{return t.skip('OpenSSL fixture generator unavailable');}
+  const now=Date.now();
+  let server;const actions={bind:0,work:0};
+  try{
+    const gateway=createV2CandidatePrivateTunnelHttpsGateway({
+      certificatePem:f.serverCert,privateKeyPem:f.serverKey,
+      clientCaPem:f.ca,expectedClientLeafDerSha256:f.clientSha,
+      profileId:'emad',resolveTransportIdentity:async()=>tdata(now),now:()=>now,
+      privateOwnerPair:{
+        expectedTunnelIdHash:'a'.repeat(64),expectedOwnerSidHash:'b'.repeat(64),
+        resolveCurrentOwnerSidHash:async()=> 'b'.repeat(64),
+        ownerStack:{requestOwnerBinding:async()=>{actions.bind++;}},
+        operationGate:{execute:async()=>{actions.work++;return {ok:true};}}
+      }
+    });
+    assert.equal(gateway.requiredTransport,'owner-pinned-private-tunnel-mtls');
+    assert.equal(gateway.protectedResource,null,'PRIVATE has no OAuth issuer');
+    server=gateway.createUnboundTlsServer();
+    assert.equal(server.listening,false);
+    assert.equal(server.requestCert,true);
+    assert.equal(server.rejectUnauthorized,true);
+    await new Promise((resolve,reject)=>
+      server.listen(0,'127.0.0.1',resolve).once('error',reject));
+    const port=server.address().port;
+    const listMessage={jsonrpc:'2.0',id:1,method:'tools/list',params:{}};
+    const noCert=await privatePairRequest(port,null,null,listMessage);
+    assert.equal(noCert.status,undefined);
+    assert.ok(noCert.code);
+    const other=await privatePairRequest(port,f.alienCert,f.alienKey,listMessage);
+    assert.equal(other.status,403);
+    const known=await privatePairRequest(port,f.clientCert,f.clientKey,listMessage);
+    assert.equal(known.status,200);
+    assert.deepEqual(known.body.result.tools.map(x=>x.name),
+      ['v2_private_owner_bind','v2_workflow_step']);
+    assert.equal(actions.bind,0);
+    assert.equal(actions.work,0);
+    const binding=await privatePairRequest(port,f.clientCert,f.clientKey,{
+      jsonrpc:'2.0',id:2,method:'tools/call',
+      params:{name:'v2_private_owner_bind',arguments:{},
+        _meta:{'openai/session':'chat-1'}}
+    });
+    assert.equal(binding.status,200);
+    assert.equal(actions.bind,1);
+    assert.equal(actions.work,0);
+    const work=await privatePairRequest(port,f.clientCert,f.clientKey,{
+      jsonrpc:'2.0',id:3,method:'tools/call',
+      params:{name:'v2_workflow_step',arguments:{
+        route:{hostId:'host-1',profileId:'emad',principalId:'owner-1',
+          conversationId:'chat-1',operationId:'step-1',
+          target:{kind:'workflow-root',id:'root-1'}},
+        tool:'read_text',arguments:{path:'README.md'}
+      },_meta:{'openai/session':'chat-1'}}
+    });
+    assert.equal(work.status,200);
+    assert.equal(actions.work,1);
+  }finally{
+    if(server?.listening)await new Promise(resolve=>server.close(resolve));
+    f.dispose();
+  }
+});
+
+test('PRIVATE tunnel mTLS rejects mismatched native owner or unusable pair bootstrap',async t=>{
+  let f;try{f=fixture();}catch{return t.skip('OpenSSL fixture generator unavailable');}
+  let server;
+  try{
+    const now=Date.now();
+    const options={
+      certificatePem:f.serverCert,privateKeyPem:f.serverKey,
+      clientCaPem:f.ca,expectedClientLeafDerSha256:f.clientSha,
+      profileId:'emad',resolveTransportIdentity:async()=>tdata(now),
+      now:()=>now,
+      privateOwnerPair:{
+        expectedTunnelIdHash:'a'.repeat(64),expectedOwnerSidHash:'b'.repeat(64),
+        resolveCurrentOwnerSidHash:async()=> 'f'.repeat(64),
+        ownerStack:{requestOwnerBinding:async()=>{throw Error('not authorized');}},
+        operationGate:{execute:async()=>{throw Error('not authorized');}}
+      }
+    };
+    assert.throws(()=>createV2CandidatePrivateTunnelHttpsGateway({
+      ...options,dispatcherFactory:async()=>({})
+    }),{code:'V2_TUNNEL_PRIVATE_PAIR_MODE_CONFLICT'});
+    server=createV2CandidatePrivateTunnelHttpsGateway(options)
+      .createUnboundTlsServer();
+    await new Promise((resolve,reject)=>
+      server.listen(0,'127.0.0.1',resolve).once('error',reject));
+    const reply=await privatePairRequest(server.address().port,
+      f.clientCert,f.clientKey,{jsonrpc:'2.0',id:1,method:'tools/list'});
+    assert.equal(reply.status,403);
+  }finally{
+    if(server?.listening)await new Promise(resolve=>server.close(resolve));
+    f.dispose();
+  }
+});
+
+test('PRIVATE pair runtime opens only on explicit owner start and retains NO_PROMOTE status',async t=>{
+  let f;try{f=fixture();}catch{return t.skip('OpenSSL fixture unavailable');}
+  let runtime,closed=0;
+  const now=Date.now();
+  try{
+    const hostOptions={
+      certificatePem:f.serverCert,privateKeyPem:f.serverKey,clientCaPem:f.ca,
+      expectedClientLeafDerSha256:f.clientSha,profileId:'emad',
+      resolveTransportIdentity:async()=>tdata(now),now:()=>now,
+      privateOwnerPair:{
+        expectedTunnelIdHash:'a'.repeat(64),expectedOwnerSidHash:'b'.repeat(64),
+        resolveCurrentOwnerSidHash:async()=> 'b'.repeat(64),
+        ownerStack:{requestOwnerBinding:async()=>{},close:()=>{closed++;}},
+        operationGate:{execute:async()=>{throw Error('no owner grants');}}
+      }
+    };
+    runtime=createV101G1PrivatePairRuntime({port:0,hostOptions});
+    assert.equal(runtime.status.phase,'CONSTRUCTED');
+    assert.equal(runtime.status.port,null);
+    assert.equal(runtime.status.fullAccessActive,false);
+    assert.equal(runtime.status.releaseAccepted,false);
+    const live=await runtime.start();
+    assert.equal(live.phase,'LISTENING');
+    assert.equal(live.protectedTransport,'owner-pinned-private-tunnel-mtls');
+    const noCertificate=await privatePairRequest(live.port,null,null,
+      {jsonrpc:'2.0',id:1,method:'tools/list'});
+    assert.ok(noCertificate.code);
+    const known=await privatePairRequest(live.port,f.clientCert,f.clientKey,
+      {jsonrpc:'2.0',id:1,method:'tools/list'});
+    assert.equal(known.status,200);
+    assert.equal(runtime.status.fullAccessActive,false);
+    await runtime.close();
+    assert.equal(runtime.status.phase,'CLOSED');
+    assert.equal(closed,1);
+  }finally{
+    await runtime?.close();
+    f.dispose();
   }
 });
