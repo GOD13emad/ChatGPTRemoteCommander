@@ -21,7 +21,8 @@ const files = [
   "test/v101-g1-canonical-workflow-runtime.test.mjs",
   "test/qa-v012-no-promote-ingress.test.mjs",
   "test/owner-pinned-provenance.test.mjs",
-  "test/v012-owner-local-canary.test.mjs"
+  "test/v012-owner-local-canary.test.mjs",
+  "test/owner-dpapi-profile-recovery.test.mjs"
 ];
 
 // Keep every file once while bounding expensive Windows native process/SQLite
@@ -38,7 +39,7 @@ const batches = [
   files.slice(13, 15),
   files.slice(15, 17),
   files.slice(17, 18), // Canonical G1/WorkflowStore composition and mTLS denial
-  files.slice(18, 21) // NoPromote quarantine, digest provenance and guarded real Core canary
+  files.slice(18, 22) // NoPromote, unsigned digest, protected Core and owner DPAPI backup
 ];
 if(batches.flat().length!==files.length
   ||new Set(batches.flat()).size!==files.length
