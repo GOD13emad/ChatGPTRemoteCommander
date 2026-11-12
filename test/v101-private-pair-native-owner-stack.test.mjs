@@ -19,15 +19,16 @@ const route=conversationId=>({
   target:{kind:'workflow-root',id:'project1'}
 });
 function fixture(approve=true){
+  const state={now:Date.now(),approve,ownerSid:SID};
   const calls=[],root=fs.mkdtempSync(path.join(os.tmpdir(),'rc-private-native-stack-'));
   const fakeExec=(file,args,_options,callback)=>{
     calls.push(args);
     assert.equal(file,WIN_PS);
     const mode=args.at(args.indexOf('-Mode')+1);
     if(mode==='Snapshot')return callback(null,JSON.stringify({
-      schema:1,ownerSid:SID,sessionId:7,active:true,interactive:true
+      schema:1,ownerSid:state.ownerSid,sessionId:7,active:true,interactive:true
     })+'\n','');
-    if(mode==='Consent')return callback(null,JSON.stringify({approved:approve})+'\n','');
+    if(mode==='Consent')return callback(null,JSON.stringify({approved:state.approve})+'\n','');
     callback(new Error('unknown mode'),'','');
   };
   const stack=createV101PrivatePairNativeOwnerStack({
@@ -37,13 +38,14 @@ function fixture(approve=true){
       peerType:'owner-pinned-private-tunnel-mtls',
       sessionSource:'native-owner-private-pair'}),
     resolveOwnerRoute:async session=>route(session),
+    now:()=>state.now,
     ownerSessionOptions:{
       platform:'win32',powershell:WIN_PS,script:WIN_SCRIPT,
       verifyFile:()=>{},execFileImpl:fakeExec,
       snapshotTimeoutMs:1000,dialogTimeoutMs:5000
     }
   });
-  return {calls,root,stack,close(){
+  return {calls,root,stack,state,close(){
     stack.close();fs.rmSync(root,{recursive:true,force:true});
   }};
 }
@@ -149,6 +151,9 @@ test('concurrent chats cannot issue duplicate Native J01 prompts on the same own
     assert.equal(third.alreadyBound,true);
     assert.equal(third.bindingId,first.bindingId);
     assert.equal(f.calls.filter(args=>args.includes('Consent')).length,1);
+    assert.equal(f.stack.grantRegistry.read(
+      route(pair.sessionHandle),'run_shell'),null,
+      'reusing J01 must not issue an automatic tool grant');
     await f.stack.nativeSessionBindings.revokeTrusted({
       sessionHandle:pair.sessionHandle,adminProof:null
     });
@@ -161,5 +166,87 @@ test('concurrent chats cannot issue duplicate Native J01 prompts on the same own
       'revocation must never reuse an earlier owner consent epoch');
     assert.equal(f.calls.filter(args=>args.includes('Consent')).length,3,
       'new owner epoch requires another native approval after revocation');
+  }finally{f.close();}
+});
+
+test('pair binding validity expires and requires a new owner consent epoch',{
+  skip:process.platform!=='win32'
+},async()=>{
+  const f=fixture();
+  const attested={authenticated:true,peerType:'owner-pinned-private-tunnel-mtls',
+    sessionSource:'native-owner-private-pair'};
+  try{
+    const pair=await f.stack.resolveTrustedConversation(attested);
+    const first=await f.stack.requestOwnerBinding({
+      request:{},sessionHandle:pair.sessionHandle
+    });
+    assert.equal(f.calls.filter(args=>args.includes('Consent')).length,1);
+    f.state.now=first.expiresAtMs-1;
+    const reused=await f.stack.requestOwnerBinding({
+      request:{},sessionHandle:pair.sessionHandle
+    });
+    assert.equal(reused.bindingId,first.bindingId);
+    assert.equal(reused.alreadyBound,true);
+    assert.equal(f.calls.filter(args=>args.includes('Consent')).length,1);
+    // No external expiry cleanup: requestOwnerBinding itself must detect
+    // and retire an expired pair epoch before opening a NEW native dialog.
+    f.state.now=first.expiresAtMs;
+    const second=await f.stack.requestOwnerBinding({
+      request:{},sessionHandle:pair.sessionHandle
+    });
+    assert.notEqual(second.bindingId,first.bindingId);
+    assert.equal(f.calls.filter(args=>args.includes('Consent')).length,2);
+    assert.equal(second.alreadyBound,undefined);
+  }finally{f.close();}
+});
+
+test('failed pair consent may be retried but never creates a cached positive binding',{
+  skip:process.platform!=='win32'
+},async()=>{
+  const f=fixture(false);
+  const attested={authenticated:true,peerType:'owner-pinned-private-tunnel-mtls',
+    sessionSource:'native-owner-private-pair'};
+  try{
+    const pair=await f.stack.resolveTrustedConversation(attested);
+    const requests=[{request:{},sessionHandle:pair.sessionHandle},
+      {request:{},sessionHandle:pair.sessionHandle}];
+    const attempts=await Promise.allSettled(
+      requests.map(x=>f.stack.requestOwnerBinding(x))
+    );
+    assert.equal(attempts.filter(x=>x.status==='rejected').length,2);
+    assert.equal(f.calls.filter(args=>args.includes('Consent')).length,1);
+    assert.equal(f.stack.nativeSessionBindings.size,0);
+    f.state.approve=true;
+    const newBinding=await f.stack.requestOwnerBinding(requests[0]);
+    assert.match(newBinding.bindingId,/^[a-f0-9]{64}$/);
+    assert.equal(f.calls.filter(args=>args.includes('Consent')).length,2);
+  }finally{f.close();}
+});
+
+test('pair owner switch revokes existing session and cannot reuse consent',{
+  skip:process.platform!=='win32'
+},async()=>{
+  const f=fixture();
+  const attested={authenticated:true,peerType:'owner-pinned-private-tunnel-mtls',
+    sessionSource:'native-owner-private-pair'};
+  try{
+    const pair=await f.stack.resolveTrustedConversation(attested);
+    const bound=await f.stack.requestOwnerBinding({
+      request:{},sessionHandle:pair.sessionHandle
+    });
+    f.state.ownerSid='S-1-5-21-111-222-333-2002';
+    await assert.rejects(f.stack.resolveTrustedConversation(attested),
+      {code:'V101_PRIVATE_OWNER_PAIR_OWNER_CHANGED'});
+    await assert.rejects(f.stack.requestOwnerBinding({
+      request:{},sessionHandle:pair.sessionHandle
+    }),{code:'V2_SESSION_TRUST_LOST'});
+    assert.equal(f.stack.nativeSessionBindings.size,0);
+    assert.equal(f.calls.filter(args=>args.includes('Consent')).length,1);
+    f.state.ownerSid=SID;
+    const fresh=await f.stack.requestOwnerBinding({
+      request:{},sessionHandle:pair.sessionHandle
+    });
+    assert.notEqual(fresh.bindingId,bound.bindingId);
+    assert.equal(f.calls.filter(args=>args.includes('Consent')).length,2);
   }finally{f.close();}
 });
