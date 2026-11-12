@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {spawnSync} from 'node:child_process';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {assessMigration,inspectLocalPlatform,parseMainTunnelBinding,classifyObservedRouterStatus} from '../packaging/unified/migration-preflight.mjs';
+import {assessMigration,inspectLocalPlatform,parseMainTunnelBinding,classifyObservedRouterStatus,classifyWindowsUninstallRegistryResponse} from '../packaging/unified/migration-preflight.mjs';
 
 const repo=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const modulePath=path.join(repo,'packaging/unified/migration-preflight.mjs');
@@ -184,4 +184,30 @@ test('plaintext stable router never qualifies as G1 mTLS ingress after synthetic
  const httpsToOldRouter=assessMigration({...old,tunnelTargetTls:true});
  assert.ok(httpsToOldRouter.blocked.includes('G1_STABLE_ROUTER_PLAINTEXT_MTLS_INCOMPATIBLE'));
  assert.equal(httpsToOldRouter.decision,'NO_PROMOTE');
+});
+
+test('registered owner PowerShell uninstaller is distinct from Inno and cannot trigger blind removal',()=>{
+ const registryCommand='    UninstallString    REG_SZ    "C:\\Program Files\\PowerShell\\7\\pwsh.exe" -NoProfile -File "C:\\Users\\Owner\\Remote Commander\\uninstall.ps1"';
+ assert.equal(classifyWindowsUninstallRegistryResponse(registryCommand),'owner-managed-powershell');
+ assert.equal(classifyWindowsUninstallRegistryResponse(
+   '    UninstallString    REG_SZ    "C:\\Users\\Owner\\Remote Commander\\unins000.exe"'),
+   'inno-unverified');
+ for(const raw of [
+   'UninstallString REG_SZ powershell.exe -EncodedCommand something',
+   'UninstallString REG_SZ "C:\\Not-Installer\\pwsh.exe" -File "C:\\elsewhere\\other.ps1"',
+   'UninstallString REG_SZ "C:\\Program Files\\Any\\Uninstall.exe"',
+   registryCommand+'\n'+registryCommand,
+   '',
+   'x'.repeat(50001)
+ ])assert.equal(classifyWindowsUninstallRegistryResponse(raw),'unverified');
+ const actual=assessMigration({platform:'win32',inventoryReliable:true,
+   legacyInnoPresent:true,ownerRegisteredInstallerFamily:'owner-managed-powershell'});
+ assert.equal(actual.ownerRegisteredInstallerFamily,'owner-managed-powershell');
+ assert.ok(actual.blocked.includes('OWNER_MANAGED_UNINSTALL_REQUIRES_IN_PLACE_TRANSACTION'));
+ assert.ok(actual.blocked.includes('LEGACY_INNO_TO_NSIS_TRANSACTION_MISSING'));
+ assert.equal(actual.decision,'NO_PROMOTE');
+ assert.doesNotMatch(JSON.stringify(actual),/C:\\Users\\Owner|uninstall\.ps1/);
+ const weird=assessMigration({platform:'win32',inventoryReliable:true,
+   legacyInnoPresent:true,ownerRegisteredInstallerFamily:'multiple-or-unverified'});
+ assert.ok(weird.blocked.includes('OWNER_INSTALLER_IDENTITY_UNVERIFIED'));
 });
