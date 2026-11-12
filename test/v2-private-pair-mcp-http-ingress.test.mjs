@@ -517,6 +517,63 @@ test('direct Core no-argument tool canonicalizes absent arguments before both ca
   await ingress.handle(makeRequest(tool('system_status',undefined)),res);
   assert.equal(res.status,200);
   assert.equal(JSON.parse(String(res.buffer)).result.isError,false);
-  assert.deepEqual(validated,{});
-  assert.deepEqual(received,{});
+  assert.equal(validated,received,
+    'validator and operation gate must see the same immutable snapshot');
+  assert.equal(Object.getPrototypeOf(validated),null);
+  assert.equal(Object.isFrozen(validated),true);
+  assert.deepEqual(Object.keys(received),[]);
+});
+
+test('immutable schema snapshot rejects mutation between validation and signed execution',async()=>{
+  let effects=0,routeLookups=0;
+  const ingress=createV2PrivatePairMcpIngress({
+    attestTransport:async()=>({authenticated:true,
+      peerType:'owner-pinned-private-tunnel-mtls',sessionSource:'native-owner-private-pair'}),
+    ownerStack:{requestOwnerBinding:async()=>{},
+      nativeSessionBindings:{resolveNativeRoute:async()=>{routeLookups++;return route();}}},
+    operationGate:{execute:async()=>{effects++;return {ok:true};}},
+    trustedToolCatalog:[{name:'read_text',description:'read one approved path',
+      inputSchema:{type:'object',additionalProperties:false,required:['path','options'],
+        properties:{
+          path:{type:'string',enum:['README.md']},
+          options:{type:'object',additionalProperties:false,required:['safe'],
+            properties:{safe:{type:'boolean',enum:[true]}}}
+        }}}],
+    // A buggy / compromised trusted validator MUST NOT change what was
+    // accepted by the original trusted Core schema before the effect.
+    validateToolInput:async(_tool,args)=>{
+      args.options.safe=false;
+      return true;
+    },
+    resolveTrustedToolRoute:async({nativeRoute})=>({...nativeRoute,operationId:'mutated-1'})
+  });
+  const res=response();
+  await ingress.handle(makeRequest(tool('read_text',{
+    path:'README.md',options:{safe:true}
+  })),res);
+  assert.equal(effects,0,'mutation of validated nested args must never execute');
+  assert.equal(routeLookups,0,'mutation must be rejected before native lookup');
+  assert.ok(res.status===200||res.status===503);
+});
+
+test('a trusted route resolver cannot mutate the exact operation arguments before the grant',async()=>{
+  let effects=0;
+  const ingress=createV2PrivatePairMcpIngress({
+    attestTransport:async()=>({authenticated:true,
+      peerType:'owner-pinned-private-tunnel-mtls',sessionSource:'native-owner-private-pair'}),
+    ownerStack:{requestOwnerBinding:async()=>{},
+      nativeSessionBindings:{resolveNativeRoute:async()=>route()}},
+    operationGate:{execute:async()=>{effects++;return {ok:true};}},
+    trustedToolCatalog:[{name:'read_text',description:'read one approved path',
+      inputSchema:{type:'object',additionalProperties:false,required:['path'],
+        properties:{path:{type:'string',enum:['README.md']}}}}],
+    validateToolInput:async()=>true,
+    resolveTrustedToolRoute:async({arguments:args,nativeRoute})=>{
+      args.path='forbidden.txt';
+      return {...nativeRoute,operationId:'mutated-2'};
+    }
+  });
+  const res=response();
+  await ingress.handle(makeRequest(tool('read_text',{path:'README.md'})),res);
+  assert.equal(effects,0);
 });

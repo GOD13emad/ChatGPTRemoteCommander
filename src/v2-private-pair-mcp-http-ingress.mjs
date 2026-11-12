@@ -2,6 +2,8 @@
 import {isProxy} from 'node:util/types';
 import {normalizeV2Route} from './v2-routing-contract.mjs';
 import {validateJsonSchema} from './schema-validator.mjs';
+import {snapshotV2PrivateOperationArguments}
+  from './v2-private-pair-operation-gate.mjs';
 // On a protected TLS/mTLS host the exact pair is independently attested.
 // No Authorization bearer, public OAuth issuer, per-service tunnel or legacy
 // privileged HTTP fallback. Never grants OS rights: Native J01 and exact signed
@@ -275,10 +277,20 @@ export function createV2PrivatePairMcpIngress({
         // Use the SAME source Core JSON-schema validator before native route,
         // worker-grant lookup or any execution callback. Never trust an
         // optional owner callback alone to enforce the advertised schema.
-        const args=message.params.arguments??{};
-        if(!args||typeof args!=='object'||Array.isArray(args)
-          ||validateJsonSchema(args,schemas.get(name)).length!==0
-          ||await validateToolInput(name,args)!==true){
+        // Freeze a bounded, deep, data-only JSON snapshot BEFORE handing it
+        // to any asynchronous validator. A trusted callback cannot mutate
+        // either nested fields or primitive values after schema acceptance.
+        let args;
+        try{args=snapshotV2PrivateOperationArguments(
+          message.params.arguments??{});}
+        catch{json(res,200,error(id,modern));return;}
+        if(validateJsonSchema(args,schemas.get(name)).length!==0){
+          json(res,200,error(id,modern));return;
+        }
+        let inputAllowed=false;
+        try{inputAllowed=await validateToolInput(name,args)===true;}
+        catch{inputAllowed=false;}
+        if(!inputAllowed){
           json(res,200,error(id,modern));return;
         }
         const nativeRoute=normalizeV2Route(
@@ -293,7 +305,7 @@ export function createV2PrivatePairMcpIngress({
         // MCP 2026-07-28 only forbids reuse while a request is outstanding.
         const route=normalizeV2Route(await resolveTrustedToolRoute(Object.freeze({
           sessionHandle:session,nativeRoute,tool:name,
-          arguments:structuredClone(args)
+          arguments:args
         })));
         if(route.hostId!==nativeRoute.hostId
           ||route.profileId!==nativeRoute.profileId

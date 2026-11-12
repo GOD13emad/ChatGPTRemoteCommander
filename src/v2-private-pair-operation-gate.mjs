@@ -51,6 +51,15 @@ function snapshotJson(value,state={nodes:0,bytes:0,seen:new WeakSet()},depth=0){
 }
 
 
+// Shared by PRIVATE ingress and operation gate: no mutation is possible
+// between the source Core schema check, signed grant and effect invocation.
+export function snapshotV2PrivateOperationArguments(value){
+  const immutable=snapshotJson(value);
+  if(!immutable||typeof immutable!=='object'||Array.isArray(immutable))
+    fail('V2_PRIVATE_OPERATION_ARGS_INVALID');
+  return immutable;
+}
+
 function exact(value,fields,code){
   if(!value||typeof value!=='object'||Array.isArray(value)||isProxy(value)
     ||![Object.prototype,null].includes(Object.getPrototypeOf(value)))
@@ -126,9 +135,7 @@ export function createV2PrivatePairOperationGate({
 
   return Object.freeze({
     async execute({request,route,tool,arguments:args={}}={}){
-      const frozenArgs=snapshotJson(args);
-      if(!frozenArgs||typeof frozenArgs!=='object'||Array.isArray(frozenArgs))
-        fail('V2_PRIVATE_OPERATION_ARGS_INVALID');
+      const frozenArgs=snapshotV2PrivateOperationArguments(args);
       const r=strictRoute(route);
       if(r.hostId!==hostId||r.profileId!==profileId
         ||r.principalId!==principalId)

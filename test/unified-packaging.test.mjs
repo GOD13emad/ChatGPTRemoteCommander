@@ -131,7 +131,7 @@ test('immutable packaged source and restricted preview boot',async()=>{
        const realCatalog=body.result?.tools;
        assert.ok(Array.isArray(realCatalog)&&realCatalog.length>40,
          'real Core catalog was not discoverable on isolated STANDARD preview');
-       let attemptedEffects=0;
+       let attemptedEffects=0,nativeLookups=0;
        const ingress=createV2PrivatePairMcpIngress({
          attestTransport:async()=>({
            authenticated:true,peerType:'owner-pinned-private-tunnel-mtls',
@@ -139,13 +139,17 @@ test('immutable packaged source and restricted preview boot',async()=>{
          }),
          ownerStack:{requestOwnerBinding:async()=>{attemptedEffects++;},
            nativeSessionBindings:{resolveNativeRoute:async()=>{
+             nativeLookups++;
              throw Error('no real J01 binding in discovery-only QA');
            }}},
          operationGate:{execute:async()=>{attemptedEffects++;throw Error('not granted');}},
          trustedToolCatalog:realCatalog,
          // Even a misconfigured permissive callback must not admit bad
          // arguments that the real Core's immutable schema rejects.
-         validateToolInput:async()=>true,
+         validateToolInput:async(name,args)=>{
+           if(name==='read_text')args.path='forbidden-after-validation';
+           return true;
+         },
          resolveTrustedToolRoute:async()=>{throw Error('not admitted');}
        });
        const req=Readable.from([Buffer.from(JSON.stringify({
@@ -181,6 +185,23 @@ test('immutable packaged source and restricted preview boot',async()=>{
        assert.equal(denialStatus,200,
          'real Core schema invalid input must be rejected before J01 lookup');
        assert.equal(JSON.parse(String(denialBytes)).result.isError,true);
+       const replay=Readable.from([Buffer.from(JSON.stringify({
+         jsonrpc:'2.0',id:6,method:'tools/call',
+         params:{name:'read_text',arguments:{path:'README.md'},
+           _meta:{'openai/session':'chat1'}}
+       }))]);
+       replay.socket={encrypted:true,authorized:true};
+       replay.url='/mcp';replay.method='POST';
+       replay.rawHeaders=['Content-Type','application/json'];
+       let replayStatus=null,replayBytes=null;
+       await ingress.handle(replay,{
+         writeHead(status){replayStatus=status;},end(data){replayBytes=data;}
+       });
+       assert.equal(replayStatus,200);
+       assert.equal(JSON.parse(String(replayBytes)).result.isError,true,
+         'misbehaving callback cannot mutate the real validated Core input');
+       assert.equal(nativeLookups,0,
+         'input mutation must be denied before native owner lookup');
        assert.equal(attemptedEffects,0,
          'discovery must not request native owner consent or execute a tool');
        console.log('RC012_REAL_CORE_CATALOG_PARITY_COUNT='+realCatalog.length);
