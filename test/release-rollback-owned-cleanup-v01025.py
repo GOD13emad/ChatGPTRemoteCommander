@@ -183,7 +183,9 @@ def main():
         "schema": 1, "revision": "V025C", "host": "isolated-linux-github-runner",
         "status": "PASS_ZERO_OWNED_NODE_AFTER_ROLLBACK" if not after else "FAIL_OWNED_NODE_REMAIN",
         "ownedBefore": before, "ownedAfter": after, "cleanupUsed": bool(before),
-        "externalNodeProcessesTouched": False, "root": str(sandbox)
+        # Persist a non-sensitive scope label, never the runner's absolute path.
+        "externalNodeProcessesTouched": False,
+        "sandboxLabel": "remote-commander-rollback-v025l"
     }
     payload = json.dumps(record, indent=2) + "\n"
     with receipt.open("x", encoding="utf-8") as output:
