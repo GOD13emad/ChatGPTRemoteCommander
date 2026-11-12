@@ -179,8 +179,16 @@ export function assessMigration(facts){
     blocked.push('G1_CURRENT_SESSION_UNVERIFIED');
   if(!facts.j01OwnerNativeConsent)blocked.push('J01_NATIVE_OWNER_CONSENT_UNVERIFIED');
   if(!facts.revocableFullAccessProven)blocked.push('FULL_ACCESS_REVOCATION_UNVERIFIED');
-  if(!facts.trustedPublisherSignature)blocked.push('TRUSTED_RELEASE_SIGNATURE_MISSING');
-  if(!facts.signedUpdateRollbackAccepted)blocked.push('SIGNED_UPDATE_ROLLBACK_UNVERIFIED');
+  // Commercial code-signing is optional for the first owner-approved
+  // release. An independently pinned manifest AND candidate/rollback hashes
+  // provide a verifiable alternative; never accept an artifact's own hash
+  // without an owner-pinned trust anchor.
+  if(facts.trustedPublisherSignature!==true
+    &&facts.ownerPinnedNativeReleaseVerified!==true)
+    blocked.push('TRUSTED_RELEASE_PROVENANCE_UNVERIFIED');
+  if(facts.signedUpdateRollbackAccepted!==true
+    &&facts.ownerPinnedRollbackVerified!==true)
+    blocked.push('UPDATE_ROLLBACK_PROVENANCE_UNVERIFIED');
   if(!facts.installedCanaryAccepted)blocked.push('NATIVE_INSTALLED_CANARY_NOT_ACCEPTED');
   // No positive "promotion" operation exists in this tool. Even complete
   // evidence needs the independent release authority and owner acceptance.

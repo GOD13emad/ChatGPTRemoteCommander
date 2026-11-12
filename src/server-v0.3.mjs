@@ -68,6 +68,9 @@ const readAccessStatus = createAccessStatusReader({
   config, probeWindowsAdmin: readWindowsAdminToken
 });
 const initialAccessStatus = await readAccessStatus();
+// An explicitly requested protected pair must never silently fall back to
+// anonymous legacy MCP, including in a STANDARD worker fixture.
+const ownerBootstrapModule=process.env.REMOTE_COMMANDER_PRIVATE_BOOTSTRAP_MODULE;
 const effectivePower = effectivePowerMode(config, { accessStatus: initialAccessStatus });
 const privilegedLegacyHttp = legacyPrivilegedMcpQuarantine({
   platform: process.platform,
@@ -75,7 +78,7 @@ const privilegedLegacyHttp = legacyPrivilegedMcpQuarantine({
   effectiveUid: process.platform === 'linux' ? process.geteuid?.() : null,
   windowsAdminToken: nativeWindowsToken,
   legacyPowerModeEnabled: config.powerMode?.enabled === true,
-  requireTrustedIngress: process.env.COMMANDER_ONE_REQUIRE_TRUSTED_INGRESS === '1' || config.requireTrustedIngress
+  requireTrustedIngress: process.env.COMMANDER_ONE_REQUIRE_TRUSTED_INGRESS === '1' || config.requireTrustedIngress || Boolean(ownerBootstrapModule)
 });
 assertLocalTransport(config);
 // Optional privacy-safe local display; no new permissions or runtime authority.
@@ -348,7 +351,6 @@ if (config.durableWorkflows?.enabled === true) {
 // module. A listening TLS socket means transport wiring, NOT J01 acceptance.
 let protectedPrivateRuntime=null;
 let protectedIngressFailure=null;
-const ownerBootstrapModule=process.env.REMOTE_COMMANDER_PRIVATE_BOOTSTRAP_MODULE;
 if(ownerBootstrapModule){
   let candidate=null;
   try{

@@ -22,7 +22,7 @@ test('read-only Linux inventory preserves Native Tunnel and old live service blo
  assert.ok(r.blocked.includes('ACTIVE_SERVICE_ROLLBACK_NOT_TESTED'));
  assert.ok(r.blocked.includes('G1_CURRENT_SESSION_UNVERIFIED'));
  assert.ok(r.blocked.includes('PROFILE_BACKUP_NOT_VERIFIED'));
- assert.ok(r.blocked.includes('SIGNED_UPDATE_ROLLBACK_UNVERIFIED'));
+ assert.ok(r.blocked.includes('UPDATE_ROLLBACK_PROVENANCE_UNVERIFIED'));
  assert.equal(JSON.stringify(r).includes('apikey'),false);
 });
 test('Windows Inno→NSIS remains blocked without proven reversible cutover',()=>{
@@ -296,4 +296,22 @@ test('registered owner PowerShell uninstaller is distinct from Inno and cannot t
  const weird=assessMigration({platform:'win32',inventoryReliable:true,
    legacyInnoPresent:true,ownerRegisteredInstallerFamily:'multiple-or-unverified'});
  assert.ok(weird.blocked.includes('OWNER_INSTALLER_IDENTITY_UNVERIFIED'));
+});
+
+test('independently owner-pinned SHA-256 can replace commercial signer, but not migration acceptance',()=>{
+  const facts={platform:'linux',inventoryReliable:true,nativePackageInstalled:false,
+    allNativePayloadPathsAvailable:true,units:[],activeServiceRestoreTested:true,
+    profileBackupReceiptVerified:true,featureParityVerified:true,
+    g1AuthenticatedCurrentSession:true,j01OwnerNativeConsent:true,
+    revocableFullAccessProven:true,installedCanaryAccepted:true};
+  const absent=assessMigration(facts);
+  assert.ok(absent.blocked.includes('TRUSTED_RELEASE_PROVENANCE_UNVERIFIED'));
+  assert.ok(absent.blocked.includes('UPDATE_ROLLBACK_PROVENANCE_UNVERIFIED'));
+  const approved=assessMigration({...facts,
+    ownerPinnedNativeReleaseVerified:true,ownerPinnedRollbackVerified:true});
+  assert.equal(approved.blocked.length,0);
+  assert.equal(approved.decision,'NO_PROMOTE');
+  assert.equal(approved.promotionAuthority,'EXTERNAL_REQUIRED');
+  const half=assessMigration({...facts,ownerPinnedNativeReleaseVerified:true});
+  assert.ok(half.blocked.includes('UPDATE_ROLLBACK_PROVENANCE_UNVERIFIED'));
 });
