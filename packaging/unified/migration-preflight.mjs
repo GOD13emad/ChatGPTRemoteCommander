@@ -159,7 +159,7 @@ export function assessMigration(facts){
     if(facts.privateLocalIngressIsolated!==true)
       blocked.push('PRIVATE_TUNNEL_LOOPBACK_ISOLATION_UNVERIFIED');
     if(facts.privateCredentialOwnershipVerified!==true)
-      blocked.push('PRIVATE_API_KEY_OWNERSHIP_UNVERIFIED');
+      blocked.push('PRIVATE_RUNTIME_CREDENTIAL_OWNERSHIP_UNVERIFIED');
     // The v0.12 worker quarantines privileged /mcp unless an independently
     // authenticated owner-bound ingress is actually wired. Selecting private
     // mode does NOT bypass that runtime guard or grant Full Access.

@@ -196,6 +196,8 @@ test('private account-device Tunnel requires local pair and owner proof, not opt
  const r=assessMigration({...f,connectionMode:'private-tunnel'});
  assert.equal(r.connectionMode,'private-tunnel');
  assert.equal(r.decision,'NO_PROMOTE');
+ assert.doesNotMatch(JSON.stringify(r),/api[_-]?key|password|bearer/i,
+   'renderer-visible report must contain no credential-shaped keys or values');
  for(const legacy of ['G1_STABLE_ROUTER_PLAINTEXT_MTLS_INCOMPATIBLE',
    'G1_TUNNEL_HTTPS_MTLS_ROUTE_REQUIRED','G1_CURRENT_SESSION_UNVERIFIED',
    'LEGACY_INNO_TO_NSIS_TRANSACTION_MISSING'])
@@ -203,7 +205,7 @@ test('private account-device Tunnel requires local pair and owner proof, not opt
  for(const required of [
    'PRIVATE_PLUGIN_TUNNEL_PAIR_BINDING_UNVERIFIED',
    'PRIVATE_TUNNEL_LOOPBACK_ISOLATION_UNVERIFIED',
-   'PRIVATE_API_KEY_OWNERSHIP_UNVERIFIED',
+   'PRIVATE_RUNTIME_CREDENTIAL_OWNERSHIP_UNVERIFIED',
    'PRIVATE_PRIVILEGED_INGRESS_NOT_WIRED',
    'OWNER_MANAGED_TO_UNIFIED_NSIS_TRANSACTION_MISSING',
    'OWNER_TUNNEL_STILL_TARGETS_LEGACY_OR_UNKNOWN_CORE',
