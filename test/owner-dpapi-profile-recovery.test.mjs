@@ -66,6 +66,19 @@ test('Windows owner DPAPI recovery capsule stages and verifies only encrypted ow
    const rejected=execute(owner,'Verify');
    assert.notEqual(rejected.status,0);
    assert.match(rejected.stderr,/RC012_DPAPI_RECEIPT_INVALID/);
+   // A previous capsule directory with an extra explicit group Allow ACE
+   // must NEVER be "fixed" silently. Native owner re-enrollment is required.
+   // This is a disposable QA fixture, not the installed owner's backup.
+   const extraAce=spawnSync('icacls.exe',[
+     recovery,'/grant','*S-1-5-32-545:(OI)(CI)RX'
+   ],{encoding:'utf8',windowsHide:true,timeout:5000,maxBuffer:4096});
+   assert.equal(extraAce.status,0,extraAce.stderr?.slice(-400));
+   const broad=execute(owner,'Verify');
+   assert.notEqual(broad.status,0);
+   assert.match(broad.stderr,/RC012_DPAPI_BACKUP_EXTRA_ACL/);
+   const repeatBroad=execute(owner,'Stage');
+   assert.notEqual(repeatBroad.status,0);
+   assert.match(repeatBroad.stderr,/RC012_DPAPI_BACKUP_EXTRA_ACL/);
  }finally{
    fs.rmSync(owner,{recursive:true,force:true});
  }

@@ -43,17 +43,27 @@ function Ensure-PrivateDirectory([string]$File,[bool]$Create){
  if(-not $item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)){
    throw 'RC012_DPAPI_DIRECTORY_ALIAS'
  }
- $icacls=(Get-Command icacls.exe -ErrorAction Stop).Source
  if($Create){
-   # Elevated Windows CI tokens can create directories with Administrators
-   # as the default owner. Set the exact CurrentUser SID *before* validating
-   # owner-only ACL; never relax acceptance to the Administrators group.
-   & $icacls $File /setowner ("*"+$sid) *> $null
-   if($LASTEXITCODE -ne 0){throw 'RC012_DPAPI_SET_OWNER_FAILED'}
-   & $icacls $File /inheritance:r *> $null
-   if($LASTEXITCODE -ne 0){throw 'RC012_DPAPI_INHERITANCE_DISABLE_FAILED'}
-   & $icacls $File /grant:r ("*"+$sid+":(OI)(CI)F") *> $null
-   if($LASTEXITCODE -ne 0){throw 'RC012_DPAPI_OWNER_ONLY_ACL_FAILED'}
+   # Windows CI/admin tokens can create a new directory with Administrators
+   # as its owner AND with explicit non-owner Allow ACEs. icacls /grant:r
+   # replaces only the owner ACE and does not remove those existing ACEs.
+   # Rebuild the DACL on this *new* capsule directory only. For a previously
+   # existing directory, the strict checks below reject it without mutation.
+   $privateAcl=Get-Acl -LiteralPath $File
+   $ownerSid=[Security.Principal.SecurityIdentifier]::new($sid)
+   $privateAcl.SetOwner($ownerSid)
+   $privateAcl.SetAccessRuleProtection($true,$false)
+   foreach($rule in @($privateAcl.Access)){
+     [void]$privateAcl.RemoveAccessRuleSpecific($rule)
+   }
+   $inherit=[Security.AccessControl.InheritanceFlags]::ContainerInherit -bor
+     [Security.AccessControl.InheritanceFlags]::ObjectInherit
+   $rule=[Security.AccessControl.FileSystemAccessRule]::new(
+     $ownerSid,[Security.AccessControl.FileSystemRights]::FullControl,
+     $inherit,[Security.AccessControl.PropagationFlags]::None,
+     [Security.AccessControl.AccessControlType]::Allow)
+   $privateAcl.AddAccessRule($rule)
+   Set-Acl -LiteralPath $File -AclObject $privateAcl -ErrorAction Stop
  }
  $acl=Get-Acl -LiteralPath $File
  $ownerSid=$acl.GetOwner([Security.Principal.SecurityIdentifier]).Value
