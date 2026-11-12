@@ -33,6 +33,7 @@ function response(){
 function fixture(){
   const state={attested:0,bound:0,operations:0};
   const ingress=createV2PrivatePairMcpIngress({
+    resolveTrustedConversation:async()=>({source:'native-conversation-attested',sessionHandle:'chat1'}),
     attestTransport:async()=>{state.attested++;return {
       authenticated:true,peerType:'owner-pinned-private-tunnel-mtls',
       sessionSource:'native-owner-private-pair'
@@ -103,8 +104,9 @@ test('PRIVATE MCP workflow calls pass exact route and arguments only to native o
       route:route(),tool:'run_shell',arguments:{command:'echo safe'}
     }
   }));
-  assert.equal(missingSession.status,403);
-  assert.equal(f.state.operations,1);
+  assert.equal(missingSession.status,200);
+  assert.equal(f.state.operations,2,
+    'an absent caller session hint is valid when native sideband independently attests the chat');
 });
 
 test('private gateway refuses Authorization bearer, duplicate header, plain HTTP and unknown tools',async()=>{
@@ -127,6 +129,7 @@ test('private gateway refuses Authorization bearer, duplicate header, plain HTTP
 
 test('failed native grant or consent must not become a successful MCP result',async()=>{
   const ingress=createV2PrivatePairMcpIngress({
+    resolveTrustedConversation:async()=>({source:'native-conversation-attested',sessionHandle:'chat1'}),
     attestTransport:async()=>({authenticated:true,
       peerType:'owner-pinned-private-tunnel-mtls',
       sessionSource:'native-owner-private-pair'}),
@@ -171,6 +174,7 @@ test('one private Tunnel advertises multiple Core tools and resolves native rout
     }}
   }));
   const ingress=createV2PrivatePairMcpIngress({
+    resolveTrustedConversation:async()=>({source:'native-conversation-attested',sessionHandle:'chat1'}),
     attestTransport:async()=>({
       authenticated:true,peerType:'owner-pinned-private-tunnel-mtls',
       sessionSource:'native-owner-private-pair'
@@ -230,6 +234,7 @@ test('a full Core catalog requires a trusted native route and input validator',(
     inputSchema:{type:'object',properties:{path:{type:'string'}}}
   }];
   const deps={
+    resolveTrustedConversation:async()=>({source:'native-conversation-attested',sessionHandle:'chat1'}),
     attestTransport:async()=>({authenticated:true}),
     ownerStack:{requestOwnerBinding:async()=>{}},
     operationGate:{execute:async()=>({})},trustedToolCatalog
@@ -259,6 +264,7 @@ test('a full Core catalog requires a trusted native route and input validator',(
 test('native resolver cannot redirect a private Core tool to a different chat',async()=>{
   let executed=0;
   const ingress=createV2PrivatePairMcpIngress({
+    resolveTrustedConversation:async()=>({source:'native-conversation-attested',sessionHandle:'chat1'}),
     attestTransport:async()=>({authenticated:true,
       peerType:'owner-pinned-private-tunnel-mtls',
       sessionSource:'native-owner-private-pair'}),
@@ -289,6 +295,7 @@ test('large owner-approved Core catalog remains available on one PRIVATE Tunnel'
     inputSchema:{type:'object',additionalProperties:false,properties:{}}
   }));
   const ingress=createV2PrivatePairMcpIngress({
+    resolveTrustedConversation:async()=>({source:'native-conversation-attested',sessionHandle:'chat1'}),
     attestTransport:async()=>({authenticated:true,
       peerType:'owner-pinned-private-tunnel-mtls',
       sessionSource:'native-owner-private-pair'}),
@@ -308,6 +315,7 @@ test('large owner-approved Core catalog remains available on one PRIVATE Tunnel'
 test('direct operations require distinct owner-issued routes, not a reused J01 enrollment or JSON-RPC id',async()=>{
   const seen=[];
   const ingress=createV2PrivatePairMcpIngress({
+    resolveTrustedConversation:async()=>({source:'native-conversation-attested',sessionHandle:'chat1'}),
     attestTransport:async()=>({authenticated:true,
       peerType:'owner-pinned-private-tunnel-mtls',sessionSource:'native-owner-private-pair'}),
     ownerStack:{requestOwnerBinding:async()=>{},
@@ -342,6 +350,7 @@ test('trusted operation route cannot change native owner host, profile or chat',
   ]){
     let effects=0;
     const ingress=createV2PrivatePairMcpIngress({
+      resolveTrustedConversation:async()=>({source:'native-conversation-attested',sessionHandle:'chat1'}),
       attestTransport:async()=>({authenticated:true,
         peerType:'owner-pinned-private-tunnel-mtls',sessionSource:'native-owner-private-pair'}),
       ownerStack:{requestOwnerBinding:async()=>{},
@@ -445,6 +454,7 @@ test('modern version, mirrored headers and capabilities fail closed with typed J
 test('direct Core tools validate actual advertised schema even if host validator blindly approves',async()=>{
   const calls={validation:0,native:0,operation:0,effect:0};
   const ingress=createV2PrivatePairMcpIngress({
+    resolveTrustedConversation:async()=>({source:'native-conversation-attested',sessionHandle:'chat1'}),
     attestTransport:async()=>({
       authenticated:true,peerType:'owner-pinned-private-tunnel-mtls',
       sessionSource:'native-owner-private-pair'
@@ -493,6 +503,7 @@ test('direct Core tools validate actual advertised schema even if host validator
 test('direct Core no-argument tool canonicalizes absent arguments before both callbacks',async()=>{
   let validated=null,received=null;
   const ingress=createV2PrivatePairMcpIngress({
+    resolveTrustedConversation:async()=>({source:'native-conversation-attested',sessionHandle:'chat1'}),
     attestTransport:async()=>({
       authenticated:true,peerType:'owner-pinned-private-tunnel-mtls',
       sessionSource:'native-owner-private-pair'
@@ -527,6 +538,7 @@ test('direct Core no-argument tool canonicalizes absent arguments before both ca
 test('immutable schema snapshot rejects mutation between validation and signed execution',async()=>{
   let effects=0,routeLookups=0;
   const ingress=createV2PrivatePairMcpIngress({
+    resolveTrustedConversation:async()=>({source:'native-conversation-attested',sessionHandle:'chat1'}),
     attestTransport:async()=>({authenticated:true,
       peerType:'owner-pinned-private-tunnel-mtls',sessionSource:'native-owner-private-pair'}),
     ownerStack:{requestOwnerBinding:async()=>{},
@@ -559,6 +571,7 @@ test('immutable schema snapshot rejects mutation between validation and signed e
 test('a trusted route resolver cannot mutate the exact operation arguments before the grant',async()=>{
   let effects=0;
   const ingress=createV2PrivatePairMcpIngress({
+    resolveTrustedConversation:async()=>({source:'native-conversation-attested',sessionHandle:'chat1'}),
     attestTransport:async()=>({authenticated:true,
       peerType:'owner-pinned-private-tunnel-mtls',sessionSource:'native-owner-private-pair'}),
     ownerStack:{requestOwnerBinding:async()=>{},
@@ -575,5 +588,76 @@ test('a trusted route resolver cannot mutate the exact operation arguments befor
   });
   const res=response();
   await ingress.handle(makeRequest(tool('read_text',{path:'README.md'})),res);
+  assert.equal(effects,0);
+});
+
+test('caller metadata never establishes the real conversation without trusted sideband',async()=>{
+  let effects=0,bindings=0,selected=0;
+  const ingress=createV2PrivatePairMcpIngress({
+    attestTransport:async()=>({authenticated:true,peerType:'owner-pinned-private-tunnel-mtls',
+      sessionSource:'native-owner-private-pair'}),
+    resolveTrustedConversation:async()=>{selected++;return {
+      source:'native-conversation-attested',sessionHandle:'chat2'
+    };},
+    ownerStack:{requestOwnerBinding:async()=>{bindings++;},
+      nativeSessionBindings:{resolveNativeRoute:async()=>route()}},
+    operationGate:{execute:async()=>{effects++;return {ok:true};}}
+  });
+  // The existing pair client can claim another chat in JSON, but cannot
+  // change a different owner-side independently attested conversation.
+  for(const request of [
+    tool('v2_private_owner_bind',{}),
+    tool('v2_workflow_step',{route:route(),tool:'run_shell',
+      arguments:{command:'echo unauthorized'}})
+  ]){
+    const res=response();
+    await ingress.handle(makeRequest(request),res);
+    assert.equal(res.status,403);
+    assert.equal(JSON.parse(String(res.buffer)).error,'private_session_mismatch');
+  }
+  assert.equal(effects,0);
+  assert.equal(bindings,0);
+  assert.equal(selected,2);
+});
+
+test('a missing independently trusted conversation resolver cannot be masked by MCP metadata',()=>{
+  assert.throws(()=>createV2PrivatePairMcpIngress({
+    attestTransport:async()=>({authenticated:true,
+      peerType:'owner-pinned-private-tunnel-mtls',sessionSource:'native-owner-private-pair'}),
+    ownerStack:{requestOwnerBinding:async()=>{}},
+    operationGate:{execute:async()=>{}}
+  }),{code:'V2_PRIVATE_MCP_TRUSTED_CONVERSATION_REQUIRED'});
+});
+
+test('resolver result must be independently authenticated, not a forged object or optional MCP hint',async()=>{
+  let effects=0,binds=0;
+  const invalid=[
+    null,{},'chat1',
+    {source:'mcp-body',sessionHandle:'chat1'},
+    {source:'native-conversation-attested',sessionHandle:'mcp-forged'},
+    {source:'native-conversation-attested',sessionHandle:'chat1',extra:true},
+    new Proxy({source:'native-conversation-attested',sessionHandle:'chat1'},{}),
+    Object.defineProperty({source:'native-conversation-attested'},'sessionHandle',{
+      enumerable:true,get(){throw Error('must not call accessors');}
+    })
+  ];
+  for(const observed of invalid){
+    const ingress=createV2PrivatePairMcpIngress({
+      attestTransport:async()=>({authenticated:true,
+        peerType:'owner-pinned-private-tunnel-mtls',
+        sessionSource:'native-owner-private-pair'}),
+      resolveTrustedConversation:async transport=>{
+        assert.equal(transport.peerType,'owner-pinned-private-tunnel-mtls');
+        return observed;
+      },
+      ownerStack:{requestOwnerBinding:async()=>{binds++;}},
+      operationGate:{execute:async()=>{effects++;return {ok:true};}}
+    });
+    const res=response();
+    await ingress.handle(makeRequest(tool('v2_private_owner_bind',{})),res);
+    assert.equal(res.status,403);
+    assert.equal(JSON.parse(String(res.buffer)).error,'private_session_required');
+  }
+  assert.equal(binds,0);
   assert.equal(effects,0);
 });

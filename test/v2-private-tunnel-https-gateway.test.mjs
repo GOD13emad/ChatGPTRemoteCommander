@@ -241,6 +241,9 @@ test('PRIVATE pair HTTPS authenticates a pinned tunnel without OAuth and still r
       clientCaPem:f.ca,expectedClientLeafDerSha256:f.clientSha,
       profileId:'emad',resolveTransportIdentity:async()=>tdata(now),now:()=>now,
       privateOwnerPair:{
+        resolveTrustedConversation:async()=>({
+          source:'native-conversation-attested',sessionHandle:'chat-1'
+        }),
         expectedTunnelIdHash:'a'.repeat(64),expectedOwnerSidHash:'b'.repeat(64),
         resolveCurrentOwnerSidHash:async()=> 'b'.repeat(64),
         ownerStack:{requestOwnerBinding:async()=>{actions.bind++;},
@@ -341,6 +344,9 @@ test('PRIVATE tunnel mTLS rejects mismatched native owner or unusable pair boots
       profileId:'emad',resolveTransportIdentity:async()=>tdata(now),
       now:()=>now,
       privateOwnerPair:{
+        resolveTrustedConversation:async()=>({
+          source:'native-conversation-attested',sessionHandle:'chat-1'
+        }),
         expectedTunnelIdHash:'a'.repeat(64),expectedOwnerSidHash:'b'.repeat(64),
         resolveCurrentOwnerSidHash:async()=> 'f'.repeat(64),
         ownerStack:{requestOwnerBinding:async()=>{throw Error('not authorized');}},
@@ -350,6 +356,12 @@ test('PRIVATE tunnel mTLS rejects mismatched native owner or unusable pair boots
     assert.throws(()=>createV2CandidatePrivateTunnelHttpsGateway({
       ...options,dispatcherFactory:async()=>({})
     }),{code:'V2_TUNNEL_PRIVATE_PAIR_MODE_CONFLICT'});
+    assert.throws(()=>createV2CandidatePrivateTunnelHttpsGateway({
+      ...options,privateOwnerPair:{
+        ...options.privateOwnerPair,resolveTrustedConversation:undefined
+      }
+    }),{code:'V2_TUNNEL_PRIVATE_PAIR_BOOTSTRAP_REQUIRED'});
+
     server=createV2CandidatePrivateTunnelHttpsGateway(options)
       .createUnboundTlsServer();
     await new Promise((resolve,reject)=>
@@ -373,6 +385,9 @@ test('PRIVATE pair runtime opens only on explicit owner start and retains NO_PRO
       expectedClientLeafDerSha256:f.clientSha,profileId:'emad',
       resolveTransportIdentity:async()=>tdata(now),now:()=>now,
       privateOwnerPair:{
+        resolveTrustedConversation:async()=>({
+          source:'native-conversation-attested',sessionHandle:'chat-1'
+        }),
         expectedTunnelIdHash:'a'.repeat(64),expectedOwnerSidHash:'b'.repeat(64),
         resolveCurrentOwnerSidHash:async()=> 'b'.repeat(64),
         ownerStack:{requestOwnerBinding:async()=>{},close:()=>{closed++;}},

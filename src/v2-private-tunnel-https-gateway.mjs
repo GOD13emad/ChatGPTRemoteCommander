@@ -14,7 +14,8 @@ const SHA=/^[a-f0-9]{64}$/;
 const fail=code=>{throw Object.assign(new Error(code),{code});};
 function exactPrivateOwnerPair(value){
   const fields=['expectedTunnelIdHash','expectedOwnerSidHash',
-    'resolveCurrentOwnerSidHash','ownerStack','operationGate'];
+    'resolveCurrentOwnerSidHash','resolveTrustedConversation',
+    'ownerStack','operationGate'];
   const optional=['trustedToolCatalog','validateToolInput','resolveTrustedToolRoute'];
   if(!value||typeof value!=='object'||Array.isArray(value)||isProxy(value)
     ||![Object.prototype,null].includes(Object.getPrototypeOf(value)))
@@ -33,6 +34,7 @@ function exactPrivateOwnerPair(value){
   if(![obj.expectedTunnelIdHash,obj.expectedOwnerSidHash].every(x=>
     typeof x==='string'&&SHA.test(x))
     ||typeof obj.resolveCurrentOwnerSidHash!=='function'
+    ||typeof obj.resolveTrustedConversation!=='function'
     ||typeof obj.ownerStack?.requestOwnerBinding!=='function'
     ||typeof obj.operationGate?.execute!=='function')
     fail('V2_TUNNEL_PRIVATE_PAIR_BOOTSTRAP_REQUIRED');
@@ -89,8 +91,9 @@ export function createV2CandidatePrivateTunnelHttpsGateway({
       expectedClientLeafDerSha256,profileId,resolveTransportIdentity,now
     });
   const ingress=privatePair?createV2PrivatePairMcpIngress({
-    attestTransport,ownerStack:privatePair.ownerStack,
-    operationGate:privatePair.operationGate,
+    attestTransport,
+    resolveTrustedConversation:privatePair.resolveTrustedConversation,
+    ownerStack:privatePair.ownerStack,operationGate:privatePair.operationGate,
     trustedToolCatalog:privatePair.trustedToolCatalog??[],
     validateToolInput:privatePair.validateToolInput,
     resolveTrustedToolRoute:privatePair.resolveTrustedToolRoute,maxBodyBytes

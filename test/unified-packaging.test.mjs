@@ -133,6 +133,9 @@ test('immutable packaged source and restricted preview boot',async()=>{
          'real Core catalog was not discoverable on isolated STANDARD preview');
        let attemptedEffects=0,nativeLookups=0;
        const ingress=createV2PrivatePairMcpIngress({
+         resolveTrustedConversation:async()=>({
+           source:'native-conversation-attested',sessionHandle:'chat1'
+         }),
          attestTransport:async()=>({
            authenticated:true,peerType:'owner-pinned-private-tunnel-mtls',
            sessionSource:'native-owner-private-pair'

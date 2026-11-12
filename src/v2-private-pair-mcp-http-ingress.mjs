@@ -130,6 +130,26 @@ function classifyProtocol(req,message){
       {supported:[MODERN_VERSION,...LEGACY_VERSIONS],requested:String(hv)});
   return false;
 }
+function exactTrustedConversation(value){
+  // Only the owner-side transport/session provider may supply this value.
+  // MCP body _meta and caller-controlled headers are NEVER identity proofs.
+  const fields=['source','sessionHandle'];
+  if(!value||typeof value!=='object'||Array.isArray(value)||isProxy(value)
+    ||![Object.prototype,null].includes(Object.getPrototypeOf(value))
+    ||Reflect.ownKeys(value).length!==fields.length)
+    return null;
+  const out=Object.create(null);
+  for(const field of fields){
+    const d=Object.getOwnPropertyDescriptor(value,field);
+    if(!d||!d.enumerable||!Object.hasOwn(d,'value'))return null;
+    out[field]=d.value;
+  }
+  if(out.source!=='native-conversation-attested'
+    ||typeof out.sessionHandle!=='string'||!SESSION.test(out.sessionHandle)
+    ||out.sessionHandle==='.'||out.sessionHandle==='..'
+    ||out.sessionHandle.startsWith('mcp-'))return null;
+  return out.sessionHandle;
+}
 async function payload(req,limit){
   const type=header(req,'content-type');
   if(!/^application\/json(?:;\s*charset=utf-8)?$/i.test(type??''))
@@ -174,8 +194,9 @@ const TOOLS=Object.freeze([
 ]);
 
 export function createV2PrivatePairMcpIngress({
-  attestTransport,ownerStack,operationGate,trustedToolCatalog=[],
-  validateToolInput,resolveTrustedToolRoute,maxBodyBytes=65536
+  attestTransport,resolveTrustedConversation,ownerStack,operationGate,
+  trustedToolCatalog=[],validateToolInput,resolveTrustedToolRoute,
+  maxBodyBytes=65536
 }={}){
   if(typeof attestTransport!=='function'
     ||typeof ownerStack?.requestOwnerBinding!=='function'
@@ -183,6 +204,8 @@ export function createV2PrivatePairMcpIngress({
     ||!Number.isSafeInteger(maxBodyBytes)||maxBodyBytes<1024
     ||maxBodyBytes>262144)
     fail('V2_PRIVATE_MCP_TRUSTED_BOOTSTRAP_REQUIRED');
+  if(typeof resolveTrustedConversation!=='function')
+    fail('V2_PRIVATE_MCP_TRUSTED_CONVERSATION_REQUIRED');
   const catalog=snapshotTrustedCatalog(trustedToolCatalog);
   if(catalog.length>0&&typeof ownerStack?.nativeSessionBindings?.resolveNativeRoute!=='function')
     fail('V2_PRIVATE_MCP_CANONICAL_ROUTE_REQUIRED');
@@ -252,10 +275,21 @@ export function createV2PrivatePairMcpIngress({
         json(res,200,error(id,modern));return;
       }
       const name=message.params.name;
-      const session=message.params._meta?.['openai/session'];
-      if(typeof session!=='string'||!SESSION.test(session)
-        ||session==='.'||session==='..'||session.startsWith('mcp-')){
+      // The mTLS cert authenticates the PAIR, not a particular ChatGPT chat.
+      // This owner-controlled resolver gets ONLY the independently attested
+      // transport, never the MCP body or the user-selected session hint.
+      let session=null;
+      try{session=exactTrustedConversation(
+        await resolveTrustedConversation(attested));}
+      catch{session=null;}
+      if(!session){
         json(res,403,{error:'private_session_required'});return;
+      }
+      // Legacy openai/session is only an untrusted optional assertion.
+      // If present it MUST match the separately attested conversation.
+      const hinted=message.params._meta?.['openai/session'];
+      if(hinted!==undefined&&hinted!==session){
+        json(res,403,{error:'private_session_mismatch'});return;
       }
       if(name==='v2_private_owner_bind'){
         // Explicit native owner action, never automatic on tools/list.
