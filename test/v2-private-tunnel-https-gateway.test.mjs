@@ -17,6 +17,7 @@ import {createV2PrivatePairOperationGate} from '../src/v2-private-pair-operation
 import {createV2PrivateSignedWorkerGrantAdapter} from '../src/v2-private-signed-worker-grant-adapter.mjs';
 import {MutationIdempotencyStore} from '../src/mutation-idempotency.mjs';
 import {readText} from '../src/tools-v0.3.mjs';
+import {createV012PrivateCoreRuntime} from '../src/v012-private-core-runtime.mjs';
 import {deriveWorkerId} from '../src/worker-identity-authority.mjs';
 import {generateKeyPairSync,sign} from 'node:crypto';
 
@@ -649,6 +650,161 @@ test('full isolated mTLS to signed Worker and real Core readText denies replays 
     if(server?.listening)await new Promise(resolve=>server.close(resolve));
     receiptStore.close();
     nativeStack?.close();
+    f.dispose();
+    fs.rmSync(root,{recursive:true,force:true});
+  }
+});
+
+test('v0.12 protected Core composition uses J01 and signed worker before real readText',{
+  skip:process.platform!=='win32'
+},async t=>{
+  let fixtureFiles;
+  try{fixtureFiles=fixture();}catch{return t.skip('OpenSSL fixture unavailable');}
+  const f=fixtureFiles;
+  const root=fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(),'rc012-private-core-compose-')));
+  const approved=path.join(root,'approved.txt');
+  fs.writeFileSync(approved,'private-core-composition-verified\n');
+  const OWNER_SID='S-1-5-21-111-222-333-1001';
+  const ownerHash=createHash('sha256').update(
+    'commander.os-owner.sid.v1\0win32\0sid='+OWNER_SID).digest('hex');
+  const tunnelHash='a'.repeat(64),now=Date.now();
+  const {privateKey,publicKey}=generateKeyPairSync('ed25519');
+  const der=publicKey.export({type:'spki',format:'der'});
+  const keyId=createHash('sha256').update(der).digest('hex');
+  const workerId=deriveWorkerId({
+    hostId:'host-1',profileId:'emad',ownerSidHash:ownerHash,
+    deviceProvider:'native-key-store',deviceIdHash:'d'.repeat(64),keyId
+  });
+  const policy='e'.repeat(64);
+  const fields=['issuer','audience','hostId','profileId','principalId',
+    'conversationId','bindingId','workerId','ownerSidHash','deviceProvider',
+    'deviceIdHash','tunnelProvider','tunnelIdHash','capabilityPolicyDigest',
+    'grantRevision','issuedAtMs','expiresAtMs','nonce'];
+  const route=conversationId=>({
+    hostId:'host-1',profileId:'emad',principalId:'account-1',
+    conversationId,operationId:'bind-1',
+    target:{kind:'workflow-root',id:'root-1'}
+  });
+  const liveRoute=conversationId=>({...route(conversationId),operationId:'read-1'});
+  const state={consents:0,effects:0,allow:true,worker:null};
+  const receiptStore=new MutationIdempotencyStore({
+    directory:path.join(root,'receipts'),scope:'private-composition'
+  });
+  const context={roots:[root],auditLog:path.join(root,'audit.jsonl'),
+    config:{allowedRoots:[root],maxReadBytes:524288,
+      powerMode:{enabled:false,fullFilesystem:false}}};
+  const nativeExec=(_file,args,_opts,callback)=>{
+    const mode=args[args.indexOf('-Mode')+1];
+    if(mode==='Snapshot')return callback(null,JSON.stringify({
+      schema:1,ownerSid:OWNER_SID,sessionId:7,active:true,interactive:true
+    })+'\n','');
+    if(mode==='Consent'){
+      state.consents++;
+      return callback(null,JSON.stringify({approved:true})+'\n','');
+    }
+    return callback(Error('unknown fixture mode'),'','');
+  };
+  let runtime;
+  try{
+    runtime=createV012PrivateCoreRuntime({
+      port:0,now:()=>now,
+      identity:{
+        hostId:'host-1',profileId:'emad',principalId:'account-1',
+        expectedOwnerSidHash:ownerHash,expectedTunnelIdHash:tunnelHash,
+        resolveTransportIdentity:async()=>({
+          ...tdata(now),ownerSidHash:ownerHash,tunnelIdHash:tunnelHash
+        })
+      },
+      tls:{certificatePem:f.serverCert,privateKeyPem:f.serverKey,
+        clientCaPem:f.ca,expectedClientLeafDerSha256:f.clientSha},
+      security:{
+        directory:path.join(root,'owner-grants'),
+        issuer:'commander.local',audience:'remote-commander',
+        resolveOwnerRoute:async handle=>route(handle),
+        resolveTrustedToolRoute:async({nativeRoute})=>({
+          ...nativeRoute,operationId:'read-1'
+        }),
+        resolveCurrentOwnerRoute:async owner=>liveRoute(owner.conversationId),
+        resolveCurrentWorkerId:async owner=>{
+          if(state.worker?.claims?.bindingId!==owner.bindingId){
+            const claims={
+              issuer:'commander.local',audience:'remote-commander',
+              hostId:'host-1',profileId:'emad',principalId:'account-1',
+              conversationId:owner.conversationId,bindingId:owner.bindingId,
+              workerId,ownerSidHash:ownerHash,deviceProvider:'native-key-store',
+              deviceIdHash:'d'.repeat(64),
+              tunnelProvider:'openai-secure-mcp-tunnel',tunnelIdHash:tunnelHash,
+              capabilityPolicyDigest:policy,grantRevision:1,
+              issuedAtMs:now-1000,expiresAtMs:now+60000,
+              nonce:'f'.repeat(32)
+            };
+            const bytes=Buffer.from(JSON.stringify([
+              'commander.worker.identity.v1',keyId,
+              ...fields.map(field=>claims[field])
+            ]));
+            state.worker={schema:1,keyId,publicKey:der.toString('base64url'),
+              claims,signature:sign(null,bytes,privateKey).toString('base64url')};
+          }
+          return workerId;
+        },
+        workerRegistry:{get:async()=>state.worker},
+        workerAuthority:{authorizeWorker:async({workerId:id,invocation})=>{
+          if(!state.allow||id!==workerId||invocation.tool!=='read_text'
+            ||invocation.arguments.path!==approved)return null;
+          const claims=state.worker.claims;
+          return {authorized:true,workerId,keyId,bindingId:claims.bindingId,
+            capabilityPolicyDigest:policy,grantRevision:1,
+            expiresAtMs:claims.expiresAtMs};
+        }},
+        // Disposable one-file QA only; production supplies a machine-global lease.
+        withLease:async(_resource,work)=>work(),receiptStore,
+        ownerSessionOptions:{
+          platform:'win32',
+          powershell:'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe',
+          script:'C:\\Commander\\src\\native-owner-session-windows.ps1',
+          execFileImpl:nativeExec,verifyFile:()=>{},
+          snapshotTimeoutMs:1000,dialogTimeoutMs:5000
+        }
+      },
+      core:{
+        catalog:[{name:'read_text',description:'Real Core readText',
+          inputSchema:{type:'object',additionalProperties:false,
+            required:['path'],properties:{path:{type:'string',minLength:1}}}}],
+        dispatch:async(name,args)=>{
+          assert.equal(name,'read_text');
+          state.effects++;
+          return readText(context,args);
+        }
+      }
+    });
+    assert.equal(runtime.status.phase,'CONSTRUCTED');
+    const live=await runtime.start();
+    const send=(id,name,args)=>privatePairRequest(live.port,
+      f.clientCert,f.clientKey,{jsonrpc:'2.0',id,method:'tools/call',
+        params:{name,arguments:args}}, {},f.ca);
+    const before=await send(1,'read_text',{path:approved});
+    assert.equal(before.status,503);
+    assert.equal(state.effects,0);
+    const bound=await send(2,'v2_private_owner_bind',{});
+    assert.equal(bound.status,200);
+    assert.equal(state.consents,1);
+    const first=await send(3,'read_text',{path:approved});
+    assert.equal(first.status,200);
+    assert.equal(first.body.result.isError,false);
+    assert.equal(JSON.parse(first.body.result.content[0].text).text,
+      'private-core-composition-verified\n');
+    assert.equal(state.effects,1);
+    const replay=await send(4,'read_text',{path:approved});
+    assert.equal(replay.status,200);
+    assert.equal(state.effects,1,'same operation must be at-most-once');
+    state.allow=false;
+    const revoked=await send(5,'read_text',{path:approved});
+    assert.equal(revoked.status,503);
+    assert.equal(state.effects,1);
+    assert.equal(runtime.status.releaseAccepted,false);
+  }finally{
+    await runtime?.close();
+    receiptStore.close();
     f.dispose();
     fs.rmSync(root,{recursive:true,force:true});
   }

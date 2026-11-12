@@ -8,7 +8,7 @@ import { validateTransport, assertLocalTransport } from './transport-guard.mjs';
 import os from 'node:os';
 import path from 'node:path';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { canonicalizeRoots } from './security-v0.3.mjs';
 import { audit, listDirectory, prepareProjectCommand, readText, runProjectCommand, writeText } from './tools-v0.3.mjs';
 import { executePowerTool, powerToolDefinitions, prepareDeferredPowerMutation, prepareShellCommand } from './power-tools-v0.3.mjs';
@@ -30,6 +30,7 @@ import { DeliveryStore, deliveryLocation } from './delivery-store.mjs';
 import { createDeliveryTools } from './delivery-tools.mjs';
 import { compactToolSuccessPayload, serializeBoundedJsonResponse, synchronousCommandInput } from './retry-guard.mjs';
 import { MutationIdempotencyStore } from './mutation-idempotency.mjs';
+import { createV012PrivateCoreRuntime } from './v012-private-core-runtime.mjs';
 import { createAgentExtensionRegistry } from './agent-extensions.mjs';
 import { createCoucouBridge } from './coucou-bridge.mjs';
 import { startBrowserCompanionMonitor } from './browser-companion-monitor.mjs';
@@ -343,6 +344,77 @@ if (config.durableWorkflows?.enabled === true) {
     }
   });
   TOOLS.push(...workflowTools.definitions);
+}
+// Private HTTPS/mTLS ingress is strictly opt-in through an owner-local startup
+// module. A listening TLS socket means transport wiring, NOT J01 acceptance.
+let protectedPrivateRuntime=null;
+let protectedIngressFailure=null;
+const ownerBootstrapModule=process.env.REMOTE_COMMANDER_PRIVATE_BOOTSTRAP_MODULE;
+if(ownerBootstrapModule){
+  let candidate=null;
+  try{
+    if(!path.isAbsolute(ownerBootstrapModule))
+      throw Object.assign(new Error('V012_PRIVATE_BOOTSTRAP_PATH_REQUIRED'),
+        {code:'V012_PRIVATE_BOOTSTRAP_PATH_REQUIRED'});
+    const provider=await import(pathToFileURL(ownerBootstrapModule).href);
+    if(typeof provider.createOwnerPrivatePairBootstrap!=='function')
+      throw Object.assign(new Error('V012_PRIVATE_BOOTSTRAP_FACTORY_REQUIRED'),
+        {code:'V012_PRIVATE_BOOTSTRAP_FACTORY_REQUIRED'});
+    const options=await provider.createOwnerPrivatePairBootstrap(Object.freeze({
+      profileId:config.instance?.profile??'default',
+      configSha256,projectDir
+    }));
+    if(!options||typeof options!=='object'||Array.isArray(options)
+      ||!options.security||typeof options.security!=='object')
+      throw Object.assign(new Error('V012_PRIVATE_BOOTSTRAP_INVALID'),
+        {code:'V012_PRIVATE_BOOTSTRAP_INVALID'});
+    candidate=createV012PrivateCoreRuntime({
+      ...options,
+      security:{
+        ...options.security,
+        // Production always uses the current Core's durable receipt store and
+        // the real OS native-consent provider, never a bootstrap test double.
+        receiptStore:mutationIdempotency,ownerSessionOptions:{}
+      },
+      core:{
+        catalog:TOOLS,
+        dispatch:async(name,args,route)=>{
+          const definition=toolDefinition(name);
+          if(!definition
+            ||validateJsonSchema(args,definition.inputSchema).length!==0)
+            throw Error('V012_PRIVATE_CORE_TOOL_DENIED');
+          ctx.accessStatus=await readAccessStatus();
+          const runtimeArgs=isDirectMutationTool(name)
+            &&args.requestId===undefined
+            ?{...args,requestId:route.operationId}:args;
+          if(isDirectMutationTool(name)&&runtimeArgs.requestId!==route.operationId)
+            throw Error('V012_PRIVATE_OPERATION_ID_MISMATCH');
+          const result=await executeTool(name,runtimeArgs);
+          await audit(ctx,{action:'private_pair_tool',tool:name,ok:true});
+          coucouBridge.emitTool(name,{failed:result?.ok===false});
+          return result;
+        }
+      }
+    });
+    await candidate.start();
+    protectedPrivateRuntime=candidate;
+  }catch(error){
+    await candidate?.close().catch(()=>{});
+    protectedIngressFailure=error?.code??'V012_PRIVATE_BOOTSTRAP_FAILED';
+    console.error('V012_PRIVATE_INGRESS_BOOTSTRAP_FAILED',protectedIngressFailure);
+  }
+}
+function protectedIngressStatus(){
+  const wired=protectedPrivateRuntime?.status?.phase==='LISTENING';
+  return {
+    required:privilegedLegacyHttp.quarantine,
+    ready:false,
+    wired,
+    bindAddress:wired?'127.0.0.1':null,
+    code:wired?'V2_G1_J01_ACTION_ACCEPTANCE_PENDING'
+      :(protectedIngressFailure??(privilegedLegacyHttp.quarantine
+        ?'V2_G1_INGRESS_NOT_WIRED':null))
+  };
 }
 function serverMeta() {
   return { 'io.modelcontextprotocol/serverInfo': { name: 'chatgpt-remote-commander', version: VERSION } };
@@ -955,11 +1027,7 @@ const server = http.createServer(async (req, res) => {
           fullAccessActive: initialAccessStatus.fullAccessActive,
           fullAccessBlocker: initialAccessStatus.fullAccessBlocker
         },
-        protectedIngress: {
-          required: privilegedLegacyHttp.quarantine,
-          ready: false,
-          code: privilegedLegacyHttp.quarantine ? 'V2_G1_INGRESS_NOT_WIRED' : null
-        },
+        protectedIngress: protectedIngressStatus(),
         privilegedLegacyHttpQuarantined: privilegedLegacyHttp.quarantine });
     }
     if (rejectLegacyPrivilegedMcp(req, res, privilegedLegacyHttp)) return;
