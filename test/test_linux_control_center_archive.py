@@ -1,8 +1,10 @@
 """Regression suite for source-pinned, non-installing Linux GTK preview archive."""
 import hashlib
+import importlib.util
 import json
 import os
 import pathlib
+from unittest.mock import patch
 import subprocess
 import sys
 import tempfile
@@ -74,6 +76,40 @@ class LinuxGtkPreviewArchiveTests(unittest.TestCase):
             self.assertEqual(list(home.iterdir()), [])
             self.assertFalse((root / "xdgdata").exists())
             self.assertFalse((root / "xdgconfig").exists())
+
+    def test_refuse_output_outside_owned_qa_destinations(self):
+        with tempfile.TemporaryDirectory(prefix="rc-unmanaged-") as folder:
+            requested = pathlib.Path(folder) / "asset.zip"
+            result = build(requested)
+            self.assertEqual(result.returncode, 2)
+            self.assertIn("OUTPUT_PATH_NOT_APPROVED", result.stderr)
+            self.assertFalse(requested.exists())
+
+    def test_runner_temp_is_derived_from_trusted_checkout_not_environment(self):
+        spec = importlib.util.spec_from_file_location("gtk_builder", BUILDER)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        with tempfile.TemporaryDirectory(prefix="rc-gtk-qa-") as scratch:
+            work = pathlib.Path(scratch) / "work"
+            checkout = work / "example" / "example"
+            checkout.mkdir(parents=True)
+            candidate = work / "_temp"
+            candidate.mkdir()
+            good = candidate / "Remote-Commander-Linux-Control-Center-QA.zip"
+            with patch.object(module, "ROOT", checkout), patch.dict(
+                os.environ,
+                {"GITHUB_WORKSPACE": str(checkout), "RUNNER_TEMP": "/tmp/attacker"},
+            ):
+                self.assertEqual(module.approved_output_path(str(good)), good)
+                with self.assertRaisesRegex(ValueError, "OUTPUT_PATH_NOT_APPROVED"):
+                    module.approved_output_path(str(candidate / "payload.zip"))
+                with self.assertRaisesRegex(ValueError, "OUTPUT_PATH_NOT_APPROVED"):
+                    module.approved_output_path(str(checkout / "other.zip"))
+            with patch.object(module, "ROOT", checkout), patch.dict(
+                os.environ, {"GITHUB_WORKSPACE": str(checkout / "foreign")},
+            ):
+                with self.assertRaisesRegex(ValueError, "OUTPUT_PATH_NOT_APPROVED"):
+                    module.approved_output_path(str(good))
 
     def test_refuse_existing_output_and_symlink(self):
         with tempfile.TemporaryDirectory(prefix="rc-gtk-negative-") as t:

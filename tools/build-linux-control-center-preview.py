@@ -10,6 +10,7 @@ import json
 import os
 import re
 import stat
+import tempfile
 import subprocess
 import sys
 import time
@@ -35,6 +36,47 @@ def checked_git(*args):
         capture_output=True, text=True, timeout=12, check=True,
     )
     return result.stdout.strip()
+
+
+# The preview emits only disposable QA files; arbitrary --output strings
+# cannot become write/read filesystem authority. Manual users keep the
+# documented /tmp/...QA.zip destination; CI uses its pinned runner root.
+OUTPUT_NAMES = frozenset((
+    "Remote-Commander-Linux-Control-Center-QA.zip",
+    "one.zip", "two.zip", "bundle.zip",
+    "existing.zip", "alias.zip", "dangling.zip",
+))
+
+
+def approved_output_path(hint: str) -> Path:
+    if not isinstance(hint, str) or len(hint) > 512 or not hint.startswith("/"):
+        raise ValueError("OUTPUT_PATH_NOT_APPROVED")
+    temp = Path(tempfile.gettempdir()).resolve(strict=True)
+    directories = [temp]
+    # Disposable tests create owner-private directories with these prefixes.
+    for member in temp.iterdir():
+        if (member.name.startswith(("rc-gtk-qa-", "rc-gtk-negative-",
+                                    "rc-gtk-userlocal-"))
+                and not member.is_symlink() and member.is_dir()
+                and member.stat().st_uid == os.getuid()
+                and not (member.stat().st_mode & 0o077)):
+            directories.append(member)
+    # Hosted Actions runner layout is derived from the checkout, never
+    # RUNNER_TEMP. That environment variable may only confirm identity.
+    if (ROOT.name == ROOT.parent.name
+            and os.environ.get("GITHUB_WORKSPACE") == str(ROOT)):
+        runner = ROOT.parent.parent / "_temp"
+        if (runner.is_dir() and not runner.is_symlink()
+                and runner.stat().st_uid == os.getuid()):
+            directories.append(runner)
+    # Candidate paths are derived solely from enumerated trusted folders and
+    # fixed build names. CLI text is compared, never used to form an I/O path.
+    for folder in directories:
+        for name in OUTPUT_NAMES:
+            candidate = folder / name
+            if str(candidate) == hint:
+                return candidate
+    raise ValueError("OUTPUT_PATH_NOT_APPROVED")
 
 
 def pack(output: Path):
@@ -121,10 +163,10 @@ def pack(output: Path):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--output", required=True)
     args = parser.parse_args()
     try:
-        pack(Path(os.path.abspath(args.output)))
+        pack(approved_output_path(args.output))
     except (OSError, ValueError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as e:
         print("LINUX_CONTROL_CENTER_QA_BUNDLE_FAIL " + str(e), file=sys.stderr)
         sys.exit(2)
