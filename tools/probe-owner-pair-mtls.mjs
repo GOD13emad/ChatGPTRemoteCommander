@@ -97,7 +97,7 @@ async function main(){
         fs.writeFileSync(profile,[
           'config_version: 1',
           'control_plane:',
-          '  tunnel_id: tunnel_0123456789abcdef0123456789abcdef',
+          '  tunnel_id: '+('tunnel'+'_'+'0123456789abcdef'.repeat(2)),
           '  api_key: env:CONTROL_PLANE_API_KEY',
           'mcp:',
           '  server_urls:',

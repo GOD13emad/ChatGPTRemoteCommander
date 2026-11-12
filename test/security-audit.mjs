@@ -36,6 +36,12 @@ const mockPemCodeLiteral = 'pkcs8.indexOf("' + mockPemHeader + '")';
 // Exact synthetic OAuth fixture from the historical V2 QA test; no other bearer is exempt.
 // Exact synthetic bearer-shaped fixtures in historical QA tests; all other
 // bearer values remain detectable, including one-character near-matches.
+// Only historical QA's fixed synthetic tunnel label is exempt. Its
+// exact bytes were committed in an isolated doctor fixture and are not
+// a live tunnel ID. All other 32-hex tunnel IDs remain audit findings.
+// Preserve committed history; never rewrite it to silence a scanner.
+const knownSyntheticTunnelLabel='tunnel'+'_'+'0123456789abcdef'.repeat(2);
+const syntheticTunnelPattern=new RegExp(knownSyntheticTunnelLabel+'(?![0-9a-f])','g');
 const mockBearerLiterals = [
   'Bearer ' + 'verified-test-bearer',
   'Bearer ' + 'dummy-super-secret-12345',
@@ -52,6 +58,10 @@ function secretPatternMatches(type,pattern,text) {
     sample=sample.replaceAll(mockPemLiteral,'[MOCK_V2_TLS_KEY_PLACEHOLDER]');
   if(type==='Private key block')
     sample=sample.replaceAll(mockPemCodeLiteral,'[PKCS8_HEADER_PARSER]');
+  if(type==='Tunnel identifier'){
+    syntheticTunnelPattern.lastIndex=0;
+    sample=sample.replace(syntheticTunnelPattern,'[NONPRODUCTION_TUNNEL_FIXTURE]');
+  }
   if(type==='Bearer token literal') {
     for(const fixturePattern of mockBearerLiteralPatterns) {
       fixturePattern.lastIndex=0;
@@ -122,8 +132,18 @@ if(mockBearerLiterals.some(literal=>secretPatternMatches('Bearer token literal',
 
 const tunnelPattern = patterns.find(([type]) => type === 'Tunnel identifier')[1];
 if (!tunnelPattern.test('tunnel' + '_' + '0123456789abcdef'.repeat(2)) || tunnelPattern.test('tunnel_control_plane_fresh') || tunnelPattern.test('TUNNEL_HEALTH_UNKNOWN_LISTENER')) {
+  // Pure matcher control, before the sole known QA fixture exception.
+
   throw new Error('Tunnel identifier audit pattern regression');
 }
+if(secretPatternMatches('Tunnel identifier',tunnelPattern,knownSyntheticTunnelLabel)
+  ||!secretPatternMatches('Tunnel identifier',tunnelPattern,knownSyntheticTunnelLabel+'a')
+  ||!secretPatternMatches('Tunnel identifier',tunnelPattern,
+      'tunnel'+'_'+'f'.repeat(32))
+  ||!secretPatternMatches('Tunnel identifier',tunnelPattern,
+      knownSyntheticTunnelLabel+' '+('tunnel'+'_'+'e'.repeat(32))))
+  throw new Error('SECURITY_AUDIT_SYNTHETIC_TUNNEL_EXCEPTION_REGRESSION');
+
 // Scan complete Git history without buffering the entire potentially multi-GB patch.
 // Lines are bounded; anything above the bound fails closed instead of being skipped.
 function makeHistoryScanner(rules) {
@@ -211,8 +231,8 @@ for(const side of ['+','-']){
     throw new Error('SECURITY_AUDIT_HISTORY_PEM_POSITIVE_CONTROL_FAILED:'+side);
 }
 const boundaryProbe = makeHistoryScanner(patterns);
-boundaryProbe.write('tunnel' + '_0123456789abcdef');
-boundaryProbe.write('0123456789abcdef\nBearer \n');
+boundaryProbe.write('tunnel' + '_' + 'f'.repeat(16));
+boundaryProbe.write('f'.repeat(16)+'\nBearer \n');
 boundaryProbe.write('A'.repeat(25) + '\n');
 const boundaryResetProbe = makeHistoryScanner(patterns);
 boundaryResetProbe.write('Bearer \n');
