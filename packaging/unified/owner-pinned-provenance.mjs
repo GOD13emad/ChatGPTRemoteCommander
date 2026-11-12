@@ -20,14 +20,14 @@ function exact(value,keys){
 async function fingerprint(file,maxBytes){
   if(typeof file!=='string'||!path.isAbsolute(file)||file.includes('\0'))
     fail('RC012_PROVENANCE_LOCAL_FILE_REQUIRED');
-  // Windows can ignore O_NOFOLLOW: reject symlinks/reparse points both
-  // before and after opening. A resolver alias is not an owner-pinned file.
+  // Windows can ignore O_NOFOLLOW. Reject a linked *leaf* with lstat,
+  // then check canonical target stability across the read. The supplied path
+  // can spell the same trusted file differently (Windows extended paths or
+  // a stable parent junction); that spelling difference is not a link attack.
   const firstLink=await lstat(file);
   if(!firstLink.isFile()||firstLink.isSymbolicLink()||firstLink.nlink!==1)
     fail('RC012_PROVENANCE_FILE_UNTRUSTED');
   const firstReal=await realpath(file);
-  if(path.resolve(firstReal).toLowerCase()!==path.resolve(file).toLowerCase())
-    fail('RC012_PROVENANCE_FILE_ALIAS');
   let handle;
   try{
     handle=await open(file,fsConstants.O_RDONLY|(fsConstants.O_NOFOLLOW||0));
@@ -48,7 +48,9 @@ async function fingerprint(file,maxBytes){
     const lastReal=await realpath(file);
     if(!lastLink.isFile()||lastLink.isSymbolicLink()||lastLink.nlink!==1
       ||lastLink.ino!==firstLink.ino||lastLink.dev!==firstLink.dev
-      ||path.resolve(lastReal).toLowerCase()!==path.resolve(file).toLowerCase()
+      ||(process.platform==='win32'
+        ?path.resolve(lastReal).toLowerCase()!==path.resolve(firstReal).toLowerCase()
+        :path.resolve(lastReal)!==path.resolve(firstReal))
       ||bytes!==before.size||after.size!==before.size
       ||after.dev!==before.dev||after.ino!==before.ino
       ||after.mtimeMs!==before.mtimeMs||after.ctimeMs!==before.ctimeMs)

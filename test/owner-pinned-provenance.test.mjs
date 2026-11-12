@@ -36,6 +36,19 @@ test('owner-pinned unsigned candidate and rollback verify real file bytes withou
    assert.equal(result.ownerPinnedRollbackVerified,true);
    assert.equal(result.releaseProvenance,'owner-pinned-sha256');
    assert.equal(result.promoteAllowed,false);
+   // Same regular files through Windows extended-length spelling must remain
+   // valid. This is distinct from symbolic *leaf* links, which are denied.
+   if(process.platform==='win32'){
+     const extended=p=>p.startsWith('\\\\?\\')?p:'\\\\?\\'+p;
+     const equivalent=await verifyOwnerPinnedNativeRelease({
+       ...opts,manifestPath:extended(manifestPath),
+       candidatePath:extended(candidatePath),
+       rollbackPath:extended(rollbackPath)
+     });
+     assert.equal(equivalent.ownerPinnedNativeReleaseVerified,true);
+     assert.equal(equivalent.promoteAllowed,false);
+   }
+
    assert.ok(!JSON.stringify(result).includes(dir));
    await assert.rejects(verifyOwnerPinnedNativeRelease({
      ...opts,ownerPinnedHead:'b'.repeat(40)
