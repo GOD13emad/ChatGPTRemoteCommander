@@ -11,6 +11,15 @@ import {createV2PlatformSessionProofAuthority} from '../src/v2-platform-session-
 import {createV101G1PrivateTunnelRuntime,createV101G1PrivatePairRuntime} from '../src/v101-g1-loopback-runtime.mjs';
 import './v2-private-pair-mcp-http-ingress.test.mjs';
 
+import {createV101PrivatePairNativeOwnerStack} from '../src/v101-private-pair-native-owner-stack.mjs';
+import {createV2OwnerPinnedPrivatePairAttestor} from '../src/v2-private-tunnel-mtls-attestor.mjs';
+import {createV2PrivatePairOperationGate} from '../src/v2-private-pair-operation-gate.mjs';
+import {createV2PrivateSignedWorkerGrantAdapter} from '../src/v2-private-signed-worker-grant-adapter.mjs';
+import {MutationIdempotencyStore} from '../src/mutation-idempotency.mjs';
+import {readText} from '../src/tools-v0.3.mjs';
+import {deriveWorkerId} from '../src/worker-identity-authority.mjs';
+import {generateKeyPairSync,sign} from 'node:crypto';
+
 const RESOURCE='https://commander.example.invalid/mcp-v2';
 const ISSUER='https://idp.example.invalid';
 const QA_TOKEN=['synthetic','tunnel','qa','token','1234'].join('-');
@@ -31,7 +40,19 @@ function fixture(){
       '-subj','/CN='+name,...(ca?['-addext','basicConstraints=critical,CA:TRUE',
       '-addext','keyUsage=critical,keyCertSign,cRLSign']:[])
     ],dir);
-    req('ca',true);req('server',false);
+    req('ca',true);
+    // The e2e client also validates its server certificate, not merely the
+    // incoming tunnel-client leaf. Sign server with the fixture CA and pin
+    // its loopback IP subjectAltName rather than disabling TLS verification.
+    openssl(['req','-newkey','rsa:2048','-nodes','-sha256',
+      '-config',cfg,'-keyout','server.key','-out','server.csr',
+      '-subj','/CN=127.0.0.1'],dir);
+    fs.writeFileSync(path.join(dir,'server.ext'),
+      'basicConstraints=critical,CA:FALSE\nkeyUsage=digitalSignature,keyEncipherment\n'
+      +'extendedKeyUsage=serverAuth\nsubjectAltName=IP:127.0.0.1\n');
+    openssl(['x509','-req','-in','server.csr','-CA','ca.crt',
+      '-CAkey','ca.key','-CAcreateserial','-out','server.crt',
+      '-days','1','-sha256','-extfile','server.ext'],dir);
     function client(name){
       openssl(['req','-newkey','rsa:2048','-nodes','-sha256',
         '-config',cfg,'-keyout',name+'.key','-out',name+'.csr',
@@ -213,12 +234,14 @@ test('full owner-scoped tunnel Runtime stays closed until explicit start and can
   }
 });
 
-async function privatePairRequest(port,cert,key,message,extraHeaders={}){
+async function privatePairRequest(port,cert,key,message,extraHeaders={},serverCa=null){
   return new Promise(resolve=>{
     const bytes=Buffer.from(JSON.stringify(message));
     const req=https.request({
       host:'127.0.0.1',port,path:'/mcp',method:'POST',
-      rejectUnauthorized:false,...(cert?{cert,key}:{})
+      rejectUnauthorized:serverCa!==null,
+      ...(serverCa?{ca:serverCa}:{}),
+      ...(cert?{cert,key}:{})
     },res=>{
       let data='';res.on('data',c=>data+=c);
       res.on('end',()=>resolve({status:res.statusCode,
@@ -420,5 +443,213 @@ test('PRIVATE pair runtime opens only on explicit owner start and retains NO_PRO
   }finally{
     await runtime?.close();
     f.dispose();
+  }
+});
+
+test('full isolated mTLS to signed Worker and real Core readText denies replays after J01 revoke',{
+  skip:process.platform!=='win32'
+},async t=>{
+  let f;try{f=fixture();}catch{return t.skip('OpenSSL fixture unavailable');}
+  const root=fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(),'rc012-mtls-real-core-')));
+  const approvedFile=path.join(root,'approved.txt');
+  fs.writeFileSync(approvedFile,'private-core-mtls-read-only\n');
+  const OWNER_SID='S-1-5-21-111-222-333-1001';
+  const OWNER_HASH=createHash('sha256').update(
+    'commander.os-owner.sid.v1\0win32\0sid='+OWNER_SID).digest('hex');
+  const TUNNEL_HASH='a'.repeat(64);
+  const context={roots:[root],auditLog:path.join(root,'audit.jsonl'),config:{
+    allowedRoots:[root],maxReadBytes:524288,
+    powerMode:{enabled:false,fullFilesystem:false}
+  }};
+  const now=Date.now(),state={effects:0,consents:0,allow:true,worker:null};
+  const receiptStore=new MutationIdempotencyStore({
+    directory:path.join(root,'receipts'),scope:'rc012-mtls-to-real-core'
+  });
+  let nativeStack,server;
+  const route=conversationId=>({
+    hostId:'host-1',profileId:'emad',principalId:'account-1',
+    conversationId,operationId:'owner-enroll',
+    target:{kind:'workflow-root',id:'project-1'}
+  });
+  const liveRoute=conversationId=>({
+    ...route(conversationId),operationId:'read-1'
+  });
+  const nativeExec=(file,args,_options,callback)=>{
+    assert.equal(file,'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe');
+    const mode=args[args.indexOf('-Mode')+1];
+    if(mode==='Snapshot')return callback(null,JSON.stringify({
+      schema:1,ownerSid:OWNER_SID,sessionId:7,active:true,interactive:true
+    })+'\n','');
+    if(mode==='Consent'){
+      state.consents++;
+      return callback(null,JSON.stringify({approved:true})+'\n','');
+    }
+    return callback(Error('unknown mode'),'','');
+  };
+  const transportIdentity=()=>({
+    ...tdata(now),ownerSidHash:OWNER_HASH,tunnelIdHash:TUNNEL_HASH
+  });
+  const peerAttestor=createV2OwnerPinnedPrivatePairAttestor({
+    expectedClientLeafDerSha256:f.clientSha,
+    profileId:'emad',expectedTunnelIdHash:TUNNEL_HASH,
+    expectedOwnerSidHash:OWNER_HASH,
+    resolveCurrentOwnerSidHash:async()=>nativeStack.readCurrentOwnerSidHash(),
+    resolveTransportIdentity:async()=>transportIdentity(),now:()=>now
+  });
+  const FIELDS=['issuer','audience','hostId','profileId','principalId',
+    'conversationId','bindingId','workerId','ownerSidHash','deviceProvider',
+    'deviceIdHash','tunnelProvider','tunnelIdHash','capabilityPolicyDigest',
+    'grantRevision','issuedAtMs','expiresAtMs','nonce'];
+  try{
+    nativeStack=createV101PrivatePairNativeOwnerStack({
+      directory:path.join(root,'owner-grants'),profileId:'emad',
+      expectedTunnelIdHash:TUNNEL_HASH,expectedOwnerSidHash:OWNER_HASH,
+      attestTransport:peerAttestor,resolveOwnerRoute:async h=>route(h),
+      now:()=>now,
+      ownerSessionOptions:{
+        platform:'win32',
+        powershell:'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe',
+        script:'C:\\Commander\\src\native-owner-session-windows.ps1',
+        execFileImpl:nativeExec,verifyFile:()=>{},
+        snapshotTimeoutMs:1000,dialogTimeoutMs:5000
+      }
+    });
+    const {privateKey,publicKey}=generateKeyPairSync('ed25519');
+    const der=publicKey.export({type:'spki',format:'der'});
+    const keyId=createHash('sha256').update(der).digest('hex');
+    const workerId=deriveWorkerId({
+      hostId:'host-1',profileId:'emad',ownerSidHash:OWNER_HASH,
+      deviceProvider:'native-key-store',deviceIdHash:'d'.repeat(64),keyId
+    });
+    const POLICY='e'.repeat(64);
+    const workerRegistry={get:async()=>state.worker};
+    const workerAuthority={authorizeWorker:async({workerId:id,invocation})=>{
+      if(!state.allow||id!==workerId||invocation.tool!=='read_text'
+        ||invocation.arguments.path!==approvedFile)return null;
+      const claims=state.worker?.claims;
+      return {authorized:true,workerId,keyId,
+        bindingId:claims.bindingId,capabilityPolicyDigest:POLICY,
+        grantRevision:1,expiresAtMs:claims.expiresAtMs};
+    }};
+    const verifyExactNativeGrant=createV2PrivateSignedWorkerGrantAdapter({
+      hostId:'host-1',profileId:'emad',principalId:'account-1',
+      expectedTunnelIdHash:TUNNEL_HASH,expectedOwnerSidHash:OWNER_HASH,
+      issuer:'commander.local',audience:'remote-commander',
+      workerRegistry,workerAuthority,
+      resolveCurrentWorkerId:async()=>workerId,
+      resolveCurrentOwnerRoute:async owner=>liveRoute(owner.conversationId),
+      now:()=>now
+    });
+    const gate=createV2PrivatePairOperationGate({
+      hostId:'host-1',profileId:'emad',principalId:'account-1',
+      expectedTunnelIdHash:TUNNEL_HASH,expectedOwnerSidHash:OWNER_HASH,
+      attestTransport:peerAttestor,
+      resolveOwnerContext:async r=>nativeStack.resolveOwnerContext(r.conversationId),
+      readCurrentOwnerSidHash:async()=>nativeStack.readCurrentOwnerSidHash(),
+      verifyExactNativeGrant,now:()=>now,receiptStore,
+      // No live server locks in this disposable one-file QA; production must
+      // replace this with the machine-global WorkflowStore lease.
+      withLease:async(_resource,work)=>work(),
+      execute:async(_r,args,tool)=>{
+        assert.equal(tool,'read_text');
+        state.effects++;
+        return readText(context,args);
+      }
+    });
+    const gateway=createV2CandidatePrivateTunnelHttpsGateway({
+      certificatePem:f.serverCert,privateKeyPem:f.serverKey,clientCaPem:f.ca,
+      expectedClientLeafDerSha256:f.clientSha,
+      profileId:'emad',resolveTransportIdentity:async()=>transportIdentity(),
+      now:()=>now,privateOwnerPair:{
+        expectedTunnelIdHash:TUNNEL_HASH,expectedOwnerSidHash:OWNER_HASH,
+        resolveCurrentOwnerSidHash:()=>nativeStack.readCurrentOwnerSidHash(),
+        ownerStack:nativeStack,operationGate:gate,
+        trustedToolCatalog:[{name:'read_text',description:'Exact approved Core read',
+          inputSchema:{type:'object',required:['path'],additionalProperties:false,
+            properties:{path:{type:'string',minLength:1}}}}],
+        validateToolInput:async(name,args)=>
+          name==='read_text'&&args.path===approvedFile,
+        resolveTrustedToolRoute:async({nativeRoute})=>({
+          ...nativeRoute,operationId:'read-1'
+        })
+      }
+    });
+    server=gateway.createUnboundTlsServer();
+    await new Promise((resolve,reject)=>
+      server.listen(0,'127.0.0.1',resolve).once('error',reject));
+    const port=server.address().port;
+    const list={jsonrpc:'2.0',id:0,method:'tools/list',params:{}};
+    const untrustedServer=await privatePairRequest(port,f.clientCert,
+      f.clientKey,list,{},f.clientCert);
+    assert.ok(untrustedServer.code,
+      'the client must reject a server not signed by its pinned server CA');
+    const alienPair=await privatePairRequest(port,f.alienCert,
+      f.alienKey,list,{},f.ca);
+    assert.equal(alienPair.status,403,
+      'a client signed by the CA but with the wrong leaf is not the tunnel');
+    assert.equal(state.effects,0);
+    const send=(id,name,args,hint='chat-a')=>privatePairRequest(
+      port,f.clientCert,f.clientKey,{jsonrpc:'2.0',id,method:'tools/call',
+        params:{name,arguments:args,
+          _meta:{'openai/session':hint}}},{},f.ca);
+    const before=await send(1,'read_text',{path:approvedFile});
+    assert.equal(before.status,503);
+    assert.equal(state.effects,0);
+    const binding=await send(2,'v2_private_owner_bind',{});
+    assert.equal(binding.status,200);
+    assert.equal(binding.body.result.isError,false);
+    assert.equal(state.consents,1);
+    const pair=await nativeStack.resolveTrustedConversation({
+      authenticated:true,peerType:'owner-pinned-private-tunnel-mtls',
+      sessionSource:'native-owner-private-pair'
+    });
+    const owner=await nativeStack.resolveOwnerContext(pair.sessionHandle);
+    const claims={issuer:'commander.local',audience:'remote-commander',
+      hostId:'host-1',profileId:'emad',principalId:'account-1',
+      conversationId:pair.sessionHandle,bindingId:owner.bindingId,
+      workerId,ownerSidHash:OWNER_HASH,deviceProvider:'native-key-store',
+      deviceIdHash:'d'.repeat(64),tunnelProvider:'openai-secure-mcp-tunnel',
+      tunnelIdHash:TUNNEL_HASH,capabilityPolicyDigest:POLICY,
+      grantRevision:1,issuedAtMs:now-1000,expiresAtMs:now+60000,
+      nonce:'f'.repeat(32)};
+    const bytes=Buffer.from(JSON.stringify([
+      'commander.worker.identity.v1',keyId,...FIELDS.map(field=>claims[field])
+    ]));
+    state.worker={schema:1,keyId,publicKey:der.toString('base64url'),
+      claims,signature:sign(null,bytes,privateKey).toString('base64url')};
+    const first=await send(3,'read_text',{path:approvedFile});
+    assert.equal(first.status,200);
+    assert.equal(first.body.result.isError,false);
+    assert.equal(JSON.parse(first.body.result.content[0].text).text,
+      'private-core-mtls-read-only\n');
+    assert.equal(state.effects,1);
+    const second=await send(4,'read_text',{path:approvedFile},'chat-b');
+    assert.equal(second.status,200);
+    assert.equal(second.body.result.isError,false);
+    assert.equal(state.effects,1,'durable repeat must NOT rerun Core');
+    const bad=await send(5,'read_text',{path:path.join(root,'other.txt')});
+    assert.equal(bad.status,200);
+    assert.equal(bad.body.result.isError,true);
+    assert.equal(state.effects,1);
+    assert.equal(await nativeStack.nativeSessionBindings.revokeTrusted({
+      sessionHandle:pair.sessionHandle,adminProof:null
+    }),true);
+    const revoked=await send(6,'read_text',{path:approvedFile});
+    assert.equal(revoked.status,503);
+    assert.equal(state.effects,1);
+    const rebind=await send(7,'v2_private_owner_bind',{},'chat-c');
+    assert.equal(rebind.status,200);
+    const refreshed=await nativeStack.resolveOwnerContext(pair.sessionHandle);
+    assert.notEqual(refreshed.bindingId,owner.bindingId);
+    const staleWorker=await send(8,'read_text',{path:approvedFile});
+    assert.equal(staleWorker.status,503);
+    assert.equal(state.effects,1);
+    assert.equal(state.consents,3,'bind + revoke + rebind need separate prompts');
+  }finally{
+    if(server?.listening)await new Promise(resolve=>server.close(resolve));
+    receiptStore.close();
+    nativeStack?.close();
+    f.dispose();
+    fs.rmSync(root,{recursive:true,force:true});
   }
 });
