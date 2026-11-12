@@ -45,7 +45,14 @@ function Ensure-PrivateDirectory([string]$File,[bool]$Create){
  }
  $icacls=(Get-Command icacls.exe -ErrorAction Stop).Source
  if($Create){
-   & $icacls $File /inheritance:r /grant:r ("*"+$sid+":(OI)(CI)F") *> $null
+   # Elevated Windows CI tokens can create directories with Administrators
+   # as the default owner. Set the exact CurrentUser SID *before* validating
+   # owner-only ACL; never relax acceptance to the Administrators group.
+   & $icacls $File /setowner ("*"+$sid) *> $null
+   if($LASTEXITCODE -ne 0){throw 'RC012_DPAPI_SET_OWNER_FAILED'}
+   & $icacls $File /inheritance:r *> $null
+   if($LASTEXITCODE -ne 0){throw 'RC012_DPAPI_INHERITANCE_DISABLE_FAILED'}
+   & $icacls $File /grant:r ("*"+$sid+":(OI)(CI)F") *> $null
    if($LASTEXITCODE -ne 0){throw 'RC012_DPAPI_OWNER_ONLY_ACL_FAILED'}
  }
  $acl=Get-Acl -LiteralPath $File
