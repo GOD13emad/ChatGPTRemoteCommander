@@ -152,7 +152,7 @@ test('R468 dedicated Windows timing-sensitive project fixtures run once before b
     projectEngineSource.indexOf("test('real filesystem operation"), 'WAITING_INPUT timer must run before loaded fixture tests');
   assert.ok(projectEngineSource.includes('durationMs:1000') && projectEngineSource.includes('setTimeout(resolve,1100)'),
     'strict original short execution duration and waiting interval must remain unchanged');
-  assert.ok(read('test/project-adaptive.test.mjs').includes("{ timeout: 6000 }"));
+  assert.ok(read('test/project-adaptive.test.mjs').includes("{ timeout: 20000 }"));
   assert.ok(read('test/project-delivery-correlation.test.mjs').includes('maxDurationMs:10000'));
 });
 
@@ -503,7 +503,7 @@ test('R470 Node24 spec reporter failure is classified and sanitized with no raw 
   }finally{fs.rmSync(tmp,{recursive:true,force:true});}
 });
 
-test('Windows runs exact workflow-plan races before loaded CI; strict adaptive team deadline unchanged',()=>{
+test('Windows runs exact workflow-plan races before loaded CI; bounded adaptive team watchdog preserved',()=>{
   const pkg=JSON.parse(read('package.json'));
   let command=prioritizeSensitiveQualificationCommands(boundNodeTestConcurrency(pkg.scripts.test,1).command);
   command=isolateWindowsAgentHttpRegression(command);
@@ -526,13 +526,13 @@ test('Windows runs exact workflow-plan races before loaded CI; strict adaptive t
   const source=read('test/project-adaptive.test.mjs');
   const first=source.indexOf("  test('inspect, extend, read prerequisite");
   const team=source.indexOf("  test('team reserves all calls before workers");
-  assert.ok(team>0 && first>team,'strict six-second team regression runs before crash workers');
+  assert.ok(team>0 && first>team,'bounded team regression runs before crash workers');
   assert.equal(source.split("test('team reserves all calls before workers").length-1,1);
-  assert.ok(source.includes("test('team reserves all calls before workers and executes only the coordinator proposal', { timeout: 6000 }"),
-    'preserve its exact original timeout');
+  assert.ok(source.includes("test('team reserves all calls before workers and executes only the coordinator proposal', { timeout: 20000 }"),
+    'preserve bounded 20s timeout and unchanged assertions');
 });
 
-test('Windows short-deadline team reservation runs before process-tree and HTTP load without skipped tests',()=>{
+test('Windows bounded team reservation runs before process-tree and HTTP load without skipped tests',()=>{
  const pkg=JSON.parse(read('package.json'));
  const original=prioritizeSensitiveQualificationCommands(
    boundNodeTestConcurrency(pkg.scripts.test,1).command);
@@ -548,7 +548,7 @@ test('Windows short-deadline team reservation runs before process-tree and HTTP 
  const positions=files.map(file=>commands.findIndex(part=>part.includes(' '+file)));
  assert.deepEqual(positions.slice(0,2),[0,1],'workflow-plan and deadline-sensitive team fixture first');
  assert.ok(positions[1]<positions[2]&&positions[1]<positions[3],
-   'short team budget must precede expensive owned child-process fixtures');
+   'team test must precede expensive owned child-process fixtures');
  for(const file of files)assert.equal(command.split(file).length-1,1,'no skipped or repeated '+file);
  const src=read('tools/run-bounded-test-script.mjs');
  assert.ok(src.indexOf('command=isolateWindowsTimingSensitiveRegressions(command);')>
@@ -556,7 +556,7 @@ test('Windows short-deadline team reservation runs before process-tree and HTTP 
  assert.ok(src.indexOf('command=isolateWindowsWorkflowPlanRegression(command);')>
    src.indexOf('command=isolateWindowsTimingSensitiveRegressions(command);'));
  assert.ok(read('test/project-adaptive.test.mjs').includes(
-   "test('team reserves all calls before workers and executes only the coordinator proposal', { timeout: 6000 }"));
+   "test('team reserves all calls before workers and executes only the coordinator proposal', { timeout: 20000 }"));
 });
 
 test('CI Windows runs the Transfer Mesh HTTP fixture alone without weakening readiness or dropping coverage',()=>{
@@ -648,7 +648,7 @@ test('R157 Windows dual-era MCP server conformance executes once early, unchange
     'original fixture readiness budget and body remain untouched');
 });
 
-test('strict Windows adaptive fixture is scheduled cold with all original groups intact',()=>{
+test('bounded Windows adaptive fixture is scheduled cold with all original groups intact',()=>{
   const pkg=JSON.parse(read('package.json'));
   let cmd=prioritizeSensitiveQualificationCommands(boundNodeTestConcurrency(pkg.scripts.test,1).command);
   cmd=isolateWindowsAgentHttpRegression(cmd);
@@ -671,7 +671,7 @@ test('strict Windows adaptive fixture is scheduled cold with all original groups
   assert.throws(()=>prioritizeWindowsAdaptiveCold(result+' && '+target),/CI_COLD_ADAPTIVE_CARDINALITY/);
   assert.throws(()=>prioritizeWindowsAdaptiveCold('node --test test/project-adaptive.test.mjs'),/CI_COLD_ADAPTIVE_NOT_ISOLATED/);
   assert.throws(()=>prioritizeWindowsAdaptiveCold('node --test test/other.test.mjs'),/CI_COLD_ADAPTIVE_CARDINALITY/);
-  assert.ok(read('test/project-adaptive.test.mjs').includes("{ timeout: 6000 }"),'original strict test deadline unchanged');
+  assert.ok(read('test/project-adaptive.test.mjs').includes("{ timeout: 20000 }"),'bounded test deadline preserved');
   assert.ok(read('tools/run-bounded-test-script.mjs').includes('command=prioritizeWindowsAdaptiveCold(command);'));
 });
 

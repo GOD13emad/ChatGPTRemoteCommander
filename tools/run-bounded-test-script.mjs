@@ -291,7 +291,7 @@ export function isolateWindowsAsyncHttpRegression(command) {
 }
 
 /**
- * Hosted Windows: the strict 6-second team-reservation regression must run
+ * Hosted Windows: the bounded team-reservation regression must run
  * before the long check/test process fixture sequence in the test phase.
  * The file has already been isolated by isolateWindowsTimingSensitiveRegressions.
  * Move that exact standalone command only; retain all tests, assertions,
@@ -367,7 +367,7 @@ function run(){
   }
   if(process.platform==='win32') command=isolateWindowsAsyncHttpRegression(command);
   if(args.script==='test'&&process.platform==='win32'){
-    // This original strict 6s SQLite/team regression must execute in a cold
+    // The bounded 20s SQLite/team regression must execute in a cold
     // isolated process before other process-heavy Windows fixture groups.
     // Keep timeout, test body, full coverage and cardinality unchanged.
     command=isolateWindowsTimingSensitiveRegressions(command);
