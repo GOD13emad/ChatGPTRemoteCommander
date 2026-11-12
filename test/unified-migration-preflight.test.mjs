@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {assessMigration,inspectLocalPlatform,readLinuxOwnerTunnelBinding,parseMainTunnelBinding,classifyObservedRouterStatus,classifyWindowsUninstallRegistryResponse} from '../packaging/unified/migration-preflight.mjs';
+import {assessMigration,inspectLocalPlatform,readLinuxOwnerTunnelBinding,inspectLinuxNativeCorePayload,parseMainTunnelBinding,classifyObservedRouterStatus,classifyWindowsUninstallRegistryResponse} from '../packaging/unified/migration-preflight.mjs';
 import {planOwnerPrivateTunnelCutover} from '../tools/plan-owner-private-tunnel-cutover.mjs';
 
 const repo=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
@@ -66,6 +66,64 @@ test('Linux preflight inventories the one exact owner-private Tunnel without dis
     tunnelProfileValid:false});
   assert.ok(bad.blocked.includes('OWNER_TUNNEL_MAIN_BINDING_UNVERIFIED'));
  }finally{fs.rmSync(home,{recursive:true,force:true});}
+});
+
+test('single native Linux package must contain the actual v0.12 protected Core, native J01 and worker grant modules',()=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'rc012-installed-private-core-'));
+ const files=[
+  'runtime/node','tunnel/native-tunnel-launch.sh','tunnel/tunnel-client',
+  'native-config-preflight.mjs','app/src/server-v0.3.mjs',
+  'app/src/v012-private-core-runtime.mjs',
+  'app/src/v2-private-pair-mcp-http-ingress.mjs',
+  'app/src/v2-private-tunnel-https-gateway.mjs',
+  'app/src/v2-private-pair-operation-gate.mjs',
+  'app/src/v2-private-signed-worker-grant-adapter.mjs',
+  'app/src/v101-private-pair-native-owner-stack.mjs',
+  'app/src/native-owner-session-provider-linux.mjs',
+  'app/src/native-tunnel-attestor.mjs','app/package.json'
+ ];
+ try{
+  assert.equal(inspectLinuxNativeCorePayload(root),false);
+  for(const rel of files){
+   const f=path.join(root,rel);
+   fs.mkdirSync(path.dirname(f),{recursive:true});
+   fs.writeFileSync(f,rel==='app/package.json'
+     ?'{"version":"0.12.0-dev.1"}':'NONPRODUCTION_QA_MODULE_ONLY');
+  }
+  assert.equal(inspectLinuxNativeCorePayload(root),true);
+  const probe=path.join(root,'app/src/v012-private-core-runtime.mjs');
+  fs.unlinkSync(probe);
+  assert.equal(inspectLinuxNativeCorePayload(root),false);
+  // Ordinary Windows CI does not have SeCreateSymbolicLinkPrivilege;
+  // exercise type rejection there without requiring Developer Mode/admin.
+  if(process.platform==='win32'){
+    fs.mkdirSync(probe);
+    assert.equal(inspectLinuxNativeCorePayload(root),false);
+    fs.rmdirSync(probe);
+  }else{
+    fs.symlinkSync(path.join(root,'app/src/server-v0.3.mjs'),probe);
+    assert.equal(inspectLinuxNativeCorePayload(root),false);
+    fs.unlinkSync(probe);
+  }
+  fs.writeFileSync(probe,'NONPRODUCTION_QA_MODULE_ONLY');
+  fs.writeFileSync(path.join(root,'app/package.json'),'{"version":"0.11.0-dev.23"}');
+  assert.equal(inspectLinuxNativeCorePayload(root),false);
+  fs.writeFileSync(path.join(root,'app/package.json'),'{"version":"0.12.0-dev.1"}');
+  assert.equal(inspectLinuxNativeCorePayload(root),true);
+  const native=assessMigration({platform:'linux',connectionMode:'private-tunnel',
+    inventoryReliable:true,nativePackageInstalled:true,
+    allNativePayloadPathsAvailable:false,nativeProtectedCoreFilesPresent:false,
+    nativePackageIntegrityVerified:false,units:[]});
+  assert.ok(native.blocked.includes('NATIVE_PROTECTED_CORE_FILES_NOT_INSTALLED'));
+  assert.ok(native.blocked.includes('NATIVE_RUNTIME_TUNNEL_SERVICE_CONTINUITY_UNPROVEN'));
+  assert.ok(native.blocked.includes('NATIVE_INSTALLED_PACKAGE_INTEGRITY_UNVERIFIED'));
+  assert.equal(native.nativeProtectedCoreFilesPresent,false);
+  assert.equal(native.nativePackageIntegrityVerified,false);
+  const packageBuild=fs.readFileSync(path.join(repo,'tools/build-native-linux-package.sh'),'utf8');
+  for(const rel of files.filter(x=>x.startsWith('app/src/')))
+    assert.ok(packageBuild.includes(rel.replace('app/','')),
+      'dpkg builder must verify protected module '+rel);
+ }finally{fs.rmSync(root,{recursive:true,force:true});}
 });
 
 test('Windows Inno→NSIS remains blocked without proven reversible cutover',()=>{

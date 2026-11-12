@@ -176,11 +176,12 @@ export function assessMigration(facts){
     blocked.push('PRIVATE_TUNNEL_HTTPS_MTLS_ROUTE_REQUIRED');
   if(privateTunnel&&facts.routerDetected===true)
     blocked.push('PRIVATE_STABLE_ROUTER_MTLS_INCOMPATIBLE');
-  if(facts.platform==='win32'&&facts.tunnelProfilePresent===true){
+  if(facts.tunnelProfilePresent===true){
     if(facts.tunnelProfileValid!==true)
       blocked.push('OWNER_TUNNEL_MAIN_BINDING_UNVERIFIED');
-    else if(typeof facts.tunnelTargetVersion!=='string'
-      ||!facts.tunnelTargetVersion.startsWith('0.12.'))
+    else if(facts.tunnelTargetTls!==true
+      &&(typeof facts.tunnelTargetVersion!=='string'
+        ||!facts.tunnelTargetVersion.startsWith('0.12.')))
       blocked.push('OWNER_TUNNEL_STILL_TARGETS_LEGACY_OR_UNKNOWN_CORE');
   }
   if(facts.platform==='win32' && oldPresent){
@@ -194,6 +195,12 @@ export function assessMigration(facts){
   }
   if(facts.platform==='linux' && oldPresent && !facts.allNativePayloadPathsAvailable)
     blocked.push('NATIVE_RUNTIME_TUNNEL_SERVICE_CONTINUITY_UNPROVEN');
+  if(facts.platform==='linux' && oldPresent
+    &&facts.nativeProtectedCoreFilesPresent===false)
+    blocked.push('NATIVE_PROTECTED_CORE_FILES_NOT_INSTALLED');
+  if(facts.platform==='linux' && oldPresent
+    &&facts.nativePackageIntegrityVerified===false)
+    blocked.push('NATIVE_INSTALLED_PACKAGE_INTEGRITY_UNVERIFIED');
   if(units.some(u=>u.active && !u.knownExecutable))
     blocked.push('ACTIVE_SERVICE_EXECUTABLE_UNMAPPED');
   if(units.some(u=>u.enabled && !u.knownExecutable))
@@ -249,12 +256,49 @@ export function assessMigration(facts){
     ownerStableRouterBackendVersion:facts.routerDetected===true?facts.routerBackendVersion:null,
     ownerStableRouterMappingMatches:facts.routerDetected===true&&facts.routerMappingMatches===true,
     ownerTunnelTargetRuntimeVersion:facts.tunnelProfileValid===true?facts.tunnelTargetVersion??null:null,
+    nativeProtectedCoreFilesPresent:facts.platform==='linux'
+      ?facts.nativeProtectedCoreFilesPresent===true:null,
+    nativePackageIntegrityVerified:facts.platform==='linux'
+      ?facts.nativePackageIntegrityVerified===true:null,
     activeCoreUnits:units.filter(u=>u.kind==='core'&&u.active).length,
     activeTunnelUnits:units.filter(u=>u.kind==='tunnel'&&u.active).length,
     enabledCoreUnits:units.filter(u=>u.kind==='core'&&u.enabled).length,
     enabledTunnelUnits:units.filter(u=>u.kind==='tunnel'&&u.enabled).length,
     unmappedUnits:units.filter(u=>(u.active||u.enabled)&&!u.knownExecutable).length,
     blocked:[...new Set(blocked)],promotionAuthority:'EXTERNAL_REQUIRED'});
+}
+// Check actual dpkg-owned runtime capability, not just "0.12" package
+// metadata. Earlier 0.12 QA packages shipped before Private Core/J01 wiring.
+const NATIVE_V012_RUNTIME_FILES=Object.freeze([
+ 'runtime/node','tunnel/native-tunnel-launch.sh','tunnel/tunnel-client',
+ 'native-config-preflight.mjs','app/src/server-v0.3.mjs',
+ 'app/src/v012-private-core-runtime.mjs',
+ 'app/src/v2-private-pair-mcp-http-ingress.mjs',
+ 'app/src/v2-private-tunnel-https-gateway.mjs',
+ 'app/src/v2-private-pair-operation-gate.mjs',
+ 'app/src/v2-private-signed-worker-grant-adapter.mjs',
+ 'app/src/v101-private-pair-native-owner-stack.mjs',
+ 'app/src/native-owner-session-provider-linux.mjs',
+ 'app/src/native-tunnel-attestor.mjs',
+ 'app/package.json'
+]);
+export function inspectLinuxNativeCorePayload(
+ nativeRoot='/usr/lib/chatgpt-remote-commander'
+){
+ if(typeof nativeRoot!=='string'||!path.isAbsolute(nativeRoot))return false;
+ try{
+  const base=fs.lstatSync(nativeRoot);
+  if(!base.isDirectory()||base.isSymbolicLink())return false;
+  for(const rel of NATIVE_V012_RUNTIME_FILES){
+   const file=path.join(nativeRoot,rel);
+   const stat=fs.lstatSync(file);
+   if(!stat.isFile()||stat.isSymbolicLink()||stat.size<1
+     ||stat.size>48*1024*1024
+     ||(process.platform==='linux'&&fs.realpathSync(file)!==file))return false;
+  }
+  const pkg=JSON.parse(fs.readFileSync(path.join(nativeRoot,'app','package.json'),'utf8'));
+  return pkg?.version==='0.12.0-dev.1';
+ }catch{return false;}
 }
 function linuxFacts(){
   const packageQuery=exec('dpkg-query',['-W','-f=${Package}|${Version}|${Status}',expectedPackage]);
@@ -289,12 +333,22 @@ function linuxFacts(){
   }
   const nativeVersionOK=exists&&/^0\.12\.0~dev/.test(version||'');
   const knownNative=exec('test',['-f','/usr/lib/chatgpt-remote-commander/tunnel/native-tunnel-launch.sh']);
+  const nativeProtectedCoreFilesPresent=nativeVersionOK
+    &&inspectLinuxNativeCorePayload();
+  // Existing dpkg metadata is not proof that installed bytes are intact.
+  // Never trust a self-consistent user-edited "v0.12" directory.
+  const integrity=exists?exec('dpkg',['-V',expectedPackage]):{ok:false,stdout:''};
+  const nativePackageIntegrityVerified=exists&&integrity.ok
+    &&integrity.stdout.trim()==='';
   const tunnel=readLinuxOwnerTunnelBinding();
   const targetVersion=tunnel.valid&&!tunnel.tls
     ?probeLoopbackCoreVersion(tunnel.port):null;
   return {platform:'linux',connectionMode:'private-tunnel',
     inventoryReliable:packageQuery.ok&&listing.ok&&files.ok,
-    nativePackageInstalled:exists,allNativePayloadPathsAvailable:nativeVersionOK&&knownNative.ok,
+    nativePackageInstalled:exists,
+    nativeProtectedCoreFilesPresent,nativePackageIntegrityVerified,
+    allNativePayloadPathsAvailable:nativeVersionOK&&knownNative.ok
+      &&nativeProtectedCoreFilesPresent,
     tunnelProfilePresent:tunnel.profilePresent,tunnelProfileValid:tunnel.valid,
     tunnelTargetPort:tunnel.port??null,tunnelTargetTls:tunnel.tls===true,
     tunnelTargetVersion:targetVersion,units};
