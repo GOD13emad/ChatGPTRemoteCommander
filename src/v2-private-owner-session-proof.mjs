@@ -43,10 +43,16 @@ export function createV2PrivateOwnerSessionProofAuthority({
     if(closed||before!==after||after!==expectedOwnerSidHash
       ||!Number.isSafeInteger(timestamp)||timestamp<0)
       fail('V2_PRIVATE_OWNER_PROOF_OWNER_CHANGED');
+    // A single-use capability needs a fresh digest for EACH owner-consent
+    // attempt. A deterministic digest for one chat would ambiguously identify
+    // an earlier revoked binding after re-enrollment of that same chat.
+    const nonce=randomBytes(32);
     const tokenSha256=createHmac('sha256',secret)
-      .update(JSON.stringify(['commander.private.owner.session.v1',
+      .update(JSON.stringify(['commander.private.owner.session.v2',
         profileId,expectedTunnelIdHash,expectedOwnerSidHash,sessionHandle]))
+      .update(nonce)
       .digest('hex');
+    nonce.fill(0);
     const capability=Object.freeze(Object.create(null));
     issued.set(capability,Object.freeze({source:'native-platform-session',
       sessionHandle,tokenSha256}));

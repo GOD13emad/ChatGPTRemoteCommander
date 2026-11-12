@@ -46,6 +46,29 @@ test('PRIVATE pair mTLS proof is opaque, one-shot and cannot be forged or copied
   f.bindings.close();f.authority.close();
 });
 
+test('each PRIVATE owner consent attempt mints a distinct attested digest for the same chat',async()=>{
+  const f=setup();
+  try{
+    const first=await f.authority.issue({request:{},sessionHandle:'chat1'});
+    const second=await f.authority.issue({request:{},sessionHandle:'chat1'});
+    assert.notEqual(f.authority.inspect(first).tokenSha256,
+      f.authority.inspect(second).tokenSha256);
+    const one=await f.bindings.bindTrusted(first);
+    assert.equal(f.state.ownerPrompt,1);
+    assert.equal(await f.bindings.revokeTrusted({
+      sessionHandle:'chat1',adminProof:'qa-owner'
+    }),true);
+    const reissued=await f.authority.issue({request:{},sessionHandle:'chat1'});
+    const two=await f.bindings.bindTrusted(reissued);
+    assert.notEqual(one.tokenSha256,two.tokenSha256);
+    assert.notEqual(one.bindingId,two.bindingId);
+    assert.equal(await f.bindings.resolveAttestedTokenBinding(one.tokenSha256),null);
+    const current=await f.bindings.resolveAttestedTokenBinding(two.tokenSha256);
+    assert.equal(current?.bindingId,two.bindingId);
+    assert.equal(f.state.ownerPrompt,2);
+  }finally{f.bindings.close();f.authority.close();}
+});
+
 test('explicit Native J01 owner consent binds and revokes PRIVATE session without public OAuth',async()=>{
   const f=setup();
   try{
