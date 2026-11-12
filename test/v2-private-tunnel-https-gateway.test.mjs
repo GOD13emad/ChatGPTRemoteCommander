@@ -6,6 +6,7 @@ import path from 'node:path';
 import https from 'node:https';
 import {createHash} from 'node:crypto';
 import {spawnSync} from 'node:child_process';
+import {fileURLToPath} from 'node:url';
 import {createV2CandidatePrivateTunnelHttpsGateway} from '../src/v2-private-tunnel-https-gateway.mjs';
 import {createV2PlatformSessionProofAuthority} from '../src/v2-platform-session-proof.mjs';
 import {createV101G1PrivateTunnelRuntime,createV101G1PrivatePairRuntime} from '../src/v101-g1-loopback-runtime.mjs';
@@ -807,5 +808,44 @@ test('v0.12 protected Core composition uses J01 and signed worker before real re
     receiptStore.close();
     f.dispose();
     fs.rmSync(root,{recursive:true,force:true});
+  }
+});
+
+test('real full-catalog 0.12 owner-local protected boot stays fail-closed without native grants',{
+  timeout:30000
+},async t=>{
+  let f;
+  try{f=fixture();}catch{return t.skip('OpenSSL fixture generator unavailable');}
+  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'rc012-real-core-tls-ci-'));
+  try{
+    fs.chmodSync(dir,0o700);
+    const data={
+      'ca.crt':f.ca,'server.crt':f.serverCert,
+      'server.key':f.serverKey,'client.crt':f.clientCert,
+      'client.key':f.clientKey
+    };
+    for(const [name,value] of Object.entries(data))
+      fs.writeFileSync(path.join(dir,name),value,{mode:0o600});
+    const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
+    const result=spawnSync(process.execPath,[
+      path.join(root,'tools/owner-pair-private-source-canary.mjs'),dir
+    ],{cwd:root,encoding:'utf8',windowsHide:true,timeout:20000,
+      maxBuffer:8192});
+    assert.equal(result.error,undefined,result.error?.message);
+    assert.equal(result.status,0,(result.stderr||'').slice(-1024));
+    const proof=JSON.parse((result.stdout||'').trim());
+    assert.equal(proof.result,'RC012_OWNER_LOCAL_PROTECTED_SOURCE_CANARY_PASS');
+    assert.equal(proof.version,'0.12.0-dev.1');
+    assert.equal(proof.protectedIngressWired,true);
+    assert.equal(proof.protectedIngressReady,false);
+    assert.equal(proof.tlsClientAuthenticated,true);
+    assert.equal(proof.anonymousClientDenied,true);
+    assert.equal(proof.legacyHttpQuarantined,true);
+    assert.equal(proof.nativeGrantIssued,false);
+    assert.equal(proof.existingTunnelChanged,false);
+    assert.equal(proof.installedCoreChanged,false);
+  }finally{
+    fs.rmSync(dir,{recursive:true,force:true});
+    f.dispose();
   }
 });
