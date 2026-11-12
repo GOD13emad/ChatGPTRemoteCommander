@@ -8,6 +8,7 @@ import argparse
 import hashlib
 import json
 import os
+import pwd
 import re
 import secrets
 import stat
@@ -42,9 +43,13 @@ def ordinary(path: Path, directory=False):
 
 def home_root():
     home_text = os.environ.get("HOME")
-    if not home_text or not Path(home_text).is_absolute() or home_text == "/":
+    # Owner account database is the authority, never a mutable HOME variable.
+    # HOME is an identity hint only and must match the OS account home.
+    account_home = pwd.getpwuid(os.getuid()).pw_dir
+    if (not home_text or home_text != account_home
+            or not Path(account_home).is_absolute() or account_home == "/"):
         refuse("NO_PRIVATE_HOME")
-    home = Path(home_text)
+    home = Path(account_home)
     # Reject aliases along the absolute HOME path, not only the final path.
     for parent in reversed((home, *home.parents)):
         if parent.is_symlink():

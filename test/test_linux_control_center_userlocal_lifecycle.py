@@ -2,6 +2,8 @@
 import hashlib
 import json
 import os
+import pwd
+from types import SimpleNamespace
 import importlib.util
 from unittest.mock import patch
 from pathlib import Path
@@ -36,9 +38,19 @@ class UserLocalLifecycleTests(unittest.TestCase):
         (self.source,) = list((self.base / "unpacked").iterdir())
         self.cli = self.source / "manage-userlocal.py"
         self.env = {**os.environ, "HOME": str(self.home)}
+        # Native account identity is injected only inside this disposable
+        # Python fixture; production never accepts env HOME as path authority.
+        self._pwd = patch.object(pwd, "getpwuid", return_value=SimpleNamespace(pw_dir=str(self.home)))
+        self._pwd.start()
+        self.addCleanup(self._pwd.stop)
 
     def run_manager(self, flag, *, source=None, ack=True):
-        args = [sys.executable, str((source or self.source) / "manage-userlocal.py"), flag]
+        bootstrap = (
+            "import os,pwd,runpy,sys,types;"
+            "pwd.getpwuid=lambda _uid:types.SimpleNamespace(pw_dir=os.environ.get('HOME',''));"
+            "sys.argv=sys.argv[1:];runpy.run_path(sys.argv[0],run_name='__main__')"
+        )
+        args = [sys.executable, "-c", bootstrap, str((source or self.source) / "manage-userlocal.py"), flag]
         if ack:
             args.append("--ack-qa-only")
         return subprocess.run(args, env=self.env, capture_output=True, text=True, timeout=8)
@@ -101,6 +113,16 @@ class UserLocalLifecycleTests(unittest.TestCase):
         self.assertEqual(r.returncode, 2)
         self.assertEqual(p.read_text(), "user data must remain")
         self.assertTrue(c.exists())
+
+    def test_owned_but_nonaccount_home_is_refused_without_mutation(self):
+        # This test deliberately invokes the actual interpreter without
+        # the isolated passwd fixture: HOME alone cannot grant write/delete.
+        result = subprocess.run(
+            [sys.executable, str(self.cli), "--install", "--ack-qa-only"],
+            env=self.env, capture_output=True, text=True, timeout=8)
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("QA_FAIL_CLOSED_NO_PRIVATE_HOME", result.stderr)
+        self.assertFalse(self.scope.exists())
 
     def test_home_missing_or_symlink_is_rejected_before_any_write(self):
         no_home = dict(self.env)
