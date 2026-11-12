@@ -160,6 +160,11 @@ export function assessMigration(facts){
       blocked.push('PRIVATE_TUNNEL_LOOPBACK_ISOLATION_UNVERIFIED');
     if(facts.privateCredentialOwnershipVerified!==true)
       blocked.push('PRIVATE_API_KEY_OWNERSHIP_UNVERIFIED');
+    // The v0.12 worker quarantines privileged /mcp unless an independently
+    // authenticated owner-bound ingress is actually wired. Selecting private
+    // mode does NOT bypass that runtime guard or grant Full Access.
+    if(facts.privatePrivilegedIngressReady!==true)
+      blocked.push('PRIVATE_PRIVILEGED_INGRESS_NOT_WIRED');
   }else if(!facts.g1AuthenticatedCurrentSession)
     blocked.push('G1_CURRENT_SESSION_UNVERIFIED');
   if(!facts.j01OwnerNativeConsent)blocked.push('J01_NATIVE_OWNER_CONSENT_UNVERIFIED');

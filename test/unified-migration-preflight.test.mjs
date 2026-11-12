@@ -204,6 +204,7 @@ test('private account-device Tunnel requires local pair and owner proof, not opt
    'PRIVATE_PLUGIN_TUNNEL_PAIR_BINDING_UNVERIFIED',
    'PRIVATE_TUNNEL_LOOPBACK_ISOLATION_UNVERIFIED',
    'PRIVATE_API_KEY_OWNERSHIP_UNVERIFIED',
+   'PRIVATE_PRIVILEGED_INGRESS_NOT_WIRED',
    'OWNER_MANAGED_TO_UNIFIED_NSIS_TRANSACTION_MISSING',
    'OWNER_TUNNEL_STILL_TARGETS_LEGACY_OR_UNKNOWN_CORE',
    'J01_NATIVE_OWNER_CONSENT_UNVERIFIED',
@@ -222,7 +223,8 @@ test('synthetic fully positive private flags never authorize install or bypass J
  const f={platform:'linux',connectionMode:'private-tunnel',
    inventoryReliable:true,nativePackageInstalled:false,allNativePayloadPathsAvailable:true,
    units:[],privatePairBindingVerified:true,privateLocalIngressIsolated:true,
-   privateCredentialOwnershipVerified:true,activeServiceRestoreTested:true,
+   privateCredentialOwnershipVerified:true,privatePrivilegedIngressReady:true,
+   activeServiceRestoreTested:true,
    profileBackupReceiptVerified:true,featureParityVerified:true,j01OwnerNativeConsent:true,
    revocableFullAccessProven:true,trustedPublisherSignature:true,
    signedUpdateRollbackAccepted:true,installedCanaryAccepted:true};
@@ -233,6 +235,8 @@ test('synthetic fully positive private flags never authorize install or bypass J
  assert.equal(r.connectionMode,'private-tunnel');
  assert.ok(assessMigration({...f,j01OwnerNativeConsent:false}).blocked.includes(
    'J01_NATIVE_OWNER_CONSENT_UNVERIFIED'));
+ assert.ok(assessMigration({...f,privatePrivilegedIngressReady:false}).blocked.includes(
+   'PRIVATE_PRIVILEGED_INGRESS_NOT_WIRED'));
 });
 
 test('registered owner PowerShell uninstaller is distinct from Inno and cannot trigger blind removal',()=>{
