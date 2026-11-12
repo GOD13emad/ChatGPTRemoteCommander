@@ -46,6 +46,24 @@ test('hosted Ubuntu prefetches signed dependencies before expensive packaging; n
  assert.doesNotMatch(script,/apt-get update/);
 });
 
+test('PRIVATE ingress source changes trigger both native package jobs at the exact PR head',()=>{
+ const y=fs.readFileSync(path.join(repo,'.github/workflows/unified-installer-pilot.yml'),'utf8');
+ for(const target of [
+   'src/server-v0.3.mjs','src/v2-private-*.mjs',
+   'src/v101-private-*.mjs','src/v101-g1-loopback-runtime.mjs',
+   'src/v2-native-owner-session-bindings.mjs',
+   'src/worker-identity-authority.mjs',
+   'test/v2-private-*.test.mjs'
+ ])assert.ok(y.includes('"'+target+'"'),'missing source-triggered installer QA: '+target);
+ assert.ok(y.includes('ref: ${{ github.event.pull_request.head.sha || github.sha }}'),
+   'packaging must build the exact proposed source SHA, not the synthetic PR merge');
+ assert.ok(y.includes('test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha || github.sha }}"'));
+ assert.ok(y.includes('os: [ubuntu-latest, windows-latest]'));
+ assert.match(y,/Build package \(Linux\)/);
+ assert.match(y,/Build package \(Windows\)/);
+ assert.match(y,/upload-artifact@v4/);
+});
+
 test('immutable packaged source and restricted preview boot',async()=>{
  const manifest=validateCore(resource);
  assert.match(manifest.head,/^[0-9a-f]{40}$/);
