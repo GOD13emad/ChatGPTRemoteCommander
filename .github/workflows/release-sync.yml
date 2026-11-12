@@ -83,10 +83,12 @@ jobs:
           "signed=$(([string]$valid).ToLowerInvariant())" >> $env:GITHUB_OUTPUT
           Write-Output ("FINAL_SETUP_AUTHENTICODE_STATUS=" + $signature.Status)
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: github.event_name != 'pull_request'
         with:
           name: remote-commander-windows-setup
           path: dist/installer/Remote-Commander-Setup-v*.exe
           if-no-files-found: error
+          retention-days: 7
 
   build-linux-bootstrap:
     runs-on: ubuntu-latest
