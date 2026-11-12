@@ -15,6 +15,7 @@ param(
   [string]$SourceBundle = '',
   [string]$SourceBundleSha256 = '',
   [string]$WindowsJobRunnerPath = '',
+  [switch]$PinnedLegacyRunnerOverlay,
   [ValidateRange(5,300)][int]$DrainTimeoutSeconds = 60
 )
 $ErrorActionPreference='Stop'
@@ -241,14 +242,47 @@ function Invoke-Mcp([int]$Port,[string]$Name,[hashtable]$Arguments=@{}){
   if($r.result.isError){ throw "MCP_TOOL_ERROR $Name $($r.result.content[0].text)" }
   return $r.result.structuredContent
 }
-function Wait-Health([int]$Port,[string]$Version,[string]$ConfigSha,[string]$Profile,[int]$Seconds=30){
+function Wait-Health([int]$Port,[string]$Version,[string]$ConfigSha,[string]$Profile,[int]$Seconds=30,[object]$Process=$null){
+  $observed='UNREACHABLE'
   foreach($i in 1..($Seconds*2)){
     try{
       $h=Invoke-RestMethod "http://127.0.0.1:$Port/health" -TimeoutSec 2
       if($h.ok -and [string]$h.version -eq $Version -and [string]$h.configSha256 -eq $ConfigSha -and [string]$h.instance.profile -eq $Profile){ return $h }
+      $observed=if(-not $h.ok){'HTTP_NOT_OK'}elseif([string]$h.version -ne $Version){'VERSION_MISMATCH'}elseif([string]$h.configSha256 -ne $ConfigSha){'CONFIG_MISMATCH'}else{'PROFILE_MISMATCH'}
     }catch{}
     Start-Sleep -Milliseconds 500
   }
+  # R157: an allowlisted diagnostic only; never log raw health, config, process
+  # command line, user path, credentials or unrelated machine processes.
+  $processState='UNAVAILABLE'
+  try{
+    if($Process){
+      $Process.Refresh()
+      $processState=if($Process.HasExited){'EXITED_'+[int]$Process.ExitCode}else{'RUNNING'}
+    }
+  }catch{$processState='UNAVAILABLE'}
+  $listenerState='UNAVAILABLE'
+  try{
+    $listeners=@(Get-NetTCPConnection -State Listen -LocalPort $Port -ErrorAction SilentlyContinue)
+    $listenerState=if($listeners.Count -eq 0){'NONE'}elseif($Process -and @($listeners|Where-Object{[int]$_.OwningProcess -eq [int]$Process.Id}).Count -gt 0){'CANDIDATE'}else{'OTHER'}
+  }catch{$listenerState='UNAVAILABLE'}
+  $stderrClass='NOT_CAPTURED';$stderrBytes=0
+  try{
+    $diagPath=if($Process){$script:R157BackendDiagFiles[[string]$Process.Id]}else{$null}
+    if($diagPath -and (Test-Path -LiteralPath $diagPath -PathType Leaf)){
+      $file=Get-Item -LiteralPath $diagPath -Force -ErrorAction Stop
+      if(($file.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0){throw 'R157_SERVER_DIAG_REPARSE_REJECTED'}
+      $stderrBytes=[Math]::Min(65535,[int64]$file.Length)
+      if($file.Length -gt 32768){$stderrClass='OVERSIZE'}else{
+        $raw=[IO.File]::ReadAllText($diagPath)
+        $classes=@('ERR_MODULE_NOT_FOUND','MODULE_NOT_FOUND','ERR_DLOPEN_FAILED','ERR_INVALID_ARG_TYPE','ERR_REQUIRE_ESM','EACCES','EPERM','ENOENT','EADDRINUSE','SQLITE_CANTOPEN','SyntaxError','TypeError','ReferenceError','RangeError','Error')
+        $stderrClass='UNCLASSIFIED'
+        foreach($kind in $classes){if($raw.Contains($kind)){$stderrClass=$kind;break}}
+      }
+    }
+  }catch{$stderrClass='READ_UNAVAILABLE'}
+  # Bounded allowlist only; never echo the raw stderr, file path or user data.
+  Log "R157_CANDIDATE_HEALTH_DIAG observed=$observed process=$processState listener=$listenerState stderrClass=$stderrClass stderrBytes=$stderrBytes"
   throw "CANDIDATE_HEALTH_TIMEOUT profile=$Profile port=$Port"
 }
 function Get-FreePort([System.Collections.Generic.HashSet[int]]$Used){
@@ -324,12 +358,25 @@ function Ensure-ProjectProvider([string]$ConfigPath){
   }
   Log 'PROJECT_PROVIDER_DISABLED policy=NO_CODEX_VIA_COMMANDER'
 }
+function Assert-StageCheckoutComplete([string]$GitRoot){
+  # A successful checkout command is not proof that every Windows long path was
+  # materialized. Reject partial trees before using or reusing a staged release.
+  # Some committed C# fixtures have CRLF bytes while .gitattributes requests LF.
+  # Validate required tracked files independently of Git's CRLF-only diff noise.
+  $missing=@(& git.exe -c core.longpaths=true -C $GitRoot ls-files --deleted)
+  if($LASTEXITCODE-ne 0 -or $missing.Count-gt0){throw 'STAGE_CHECKOUT_INCOMPLETE'}
+  $modified=@(& git.exe -c core.longpaths=true -C $GitRoot diff --ignore-space-at-eol --name-only)
+  if($LASTEXITCODE-ne 0 -or $modified.Count-gt0){throw 'STAGE_CHECKOUT_INCOMPLETE'}
+}
 function Stage-Release([string]$Ref){
   $tmp=Join-Path $ReleaseRoot ("stage-{0}-{1}" -f ($Ref -replace '[^A-Za-z0-9._-]','_'),$PID)
   if(Test-Path $tmp){Remove-Item $tmp -Recurse -Force}
   New-Item -ItemType Directory -Path $tmp|Out-Null
   & git.exe -C $tmp init | Out-Null
   if($LASTEXITCODE-ne 0){throw 'STAGE_GIT_INIT'}
+  # Windows per-stage Git setting, NEVER global Git or OS security policy.
+  & git.exe -C $tmp config --local core.longpaths true
+  if($LASTEXITCODE-ne 0){throw 'STAGE_GIT_LONGPATH_CONFIG'}
   & git.exe -C $tmp remote add origin $Repo
   & git.exe -C $tmp fetch --depth 1 --no-tags origin $Ref
   if($LASTEXITCODE-ne 0){throw 'STAGE_GIT_FETCH'}
@@ -338,6 +385,7 @@ function Stage-Release([string]$Ref){
   if($ExpectedCommit -and $commit-ne $ExpectedCommit.ToLowerInvariant()){throw 'STAGE_EXPECTED_COMMIT_MISMATCH'}
   & git.exe -C $tmp checkout --detach $commit | Out-Null
   if($LASTEXITCODE-ne 0){throw 'STAGE_CHECKOUT'}
+  Assert-StageCheckoutComplete $tmp
   $pkg=Read-Json (Join-Path $tmp 'package.json')
   $version=[string]$pkg.version
   if($Ref -match '^v(\d+\.\d+\.\d+)$' -and $Matches[1]-ne $version){throw 'STAGE_TAG_VERSION_MISMATCH'}
@@ -345,16 +393,92 @@ function Stage-Release([string]$Ref){
   if(Test-Path $final){
     $head=(& git.exe -C $final rev-parse HEAD 2>$null).Trim().ToLowerInvariant()
     if($head-ne $commit){throw 'RELEASE_DIRECTORY_COLLISION'}
+    Assert-StageCheckoutComplete $final
     Remove-Item $tmp -Recurse -Force
   }else{
     Move-Item $tmp $final
   }
+  Assert-StageCheckoutComplete $final
   return [pscustomobject]@{Ref=$Ref;Commit=$commit;Version=$version;Dir=$final}
 }
 function Copy-WindowsJobRunner([string]$StageDir){
   $runnerRoot=Join-Path $StageDir 'tools\windows-job-runner'
   $manifestPath=Join-Path $runnerRoot 'release-manifest.json'
-  if(-not(Test-Path -LiteralPath $manifestPath -PathType Leaf)){throw 'WINDOWS_JOB_RUNNER_MANIFEST_MISSING'}
+  if(-not(Test-Path -LiteralPath $manifestPath -PathType Leaf)){
+    if(-not $PinnedLegacyRunnerOverlay){throw 'WINDOWS_JOB_RUNNER_MANIFEST_MISSING'}
+    # R173: explicitly opted-in, isolated GitHub-hosted rollback only.
+    # dev23 predates the SHA-verified native runner; this overlays exact runner
+    # support files from the checked out candidate, never changing Git HEAD.
+    $legacy='8ccf0fd16355a4ab79844feec6c295366763df0d'
+    if(-not $IsWindows -or $env:GITHUB_ACTIONS -ne 'true' -or
+       $env:CI -ne 'true' -or $env:RUNNER_OS -ne 'Windows' -or
+       $env:RUNNER_ENVIRONMENT -ne 'github-hosted' -or
+       -not $env:RUNNER_TEMP -or -not $env:GITHUB_WORKSPACE -or
+       $NoPromote -or $SourceBundle -or $SourceRef -cne $legacy -or
+       $ExpectedCommit -cne $legacy -or
+       @($TargetProfile).Count -ne 1 -or $TargetProfile[0] -cne 'default'){
+      throw 'R173_PINNED_LEGACY_RUNNER_SCOPE_REJECTED'
+    }
+    $isolatedRoot=[IO.Path]::GetFullPath((Join-Path $env:RUNNER_TEMP 'remote-commander-rollback-r173'))
+    $expectedInstall=[IO.Path]::GetFullPath((Join-Path $isolatedRoot 'INSTALL'))
+    $expectedState=[IO.Path]::GetFullPath((Join-Path $isolatedRoot 'STATE\ChatGPTRemoteCommander'))
+    $candidateSource=[IO.Path]::GetFullPath($PSScriptRoot)
+    if(-not $InstallDir.Equals($expectedInstall,[StringComparison]::OrdinalIgnoreCase) -or
+       -not $StateRoot.Equals($expectedState,[StringComparison]::OrdinalIgnoreCase) -or
+       -not $candidateSource.Equals([IO.Path]::GetFullPath($env:GITHUB_WORKSPACE),[StringComparison]::OrdinalIgnoreCase) -or
+       -not $WindowsJobRunnerPath -or
+       -not ([IO.Path]::GetFullPath($WindowsJobRunnerPath)).StartsWith($candidateSource+([IO.Path]::DirectorySeparatorChar),[StringComparison]::OrdinalIgnoreCase)){
+      throw 'R173_PINNED_LEGACY_RUNNER_PATH_SCOPE_REJECTED'
+    }
+    $identity=[Security.Principal.WindowsIdentity]::GetCurrent()
+    if([Security.Principal.WindowsPrincipal]::new($identity).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)){
+      throw 'R173_PINNED_LEGACY_RUNNER_ELEVATED_TOKEN_REJECTED'
+    }
+    $stageFull=[IO.Path]::GetFullPath($StageDir)
+    $releases=[IO.Path]::GetFullPath($ReleaseRoot)
+    if(-not $stageFull.StartsWith($releases+([IO.Path]::DirectorySeparatorChar),[StringComparison]::OrdinalIgnoreCase)){
+      throw 'R173_PINNED_LEGACY_RUNNER_STAGE_SCOPE_REJECTED'
+    }
+    $stageHead=(& git.exe -C $StageDir rev-parse HEAD).Trim().ToLowerInvariant()
+    $stagePackage=Read-Json (Join-Path $StageDir 'package.json')
+    $gitStatus=@(& git.exe -C $StageDir status --porcelain=v1 --untracked-files=normal)
+    $gitStatusExit=[int]$LASTEXITCODE
+    $sourcePristine=($gitStatus.Count -eq 0 -or
+      ($gitStatus.Count -eq 1 -and $gitStatus[0] -ceq ' M desktop/RemoteCommanderDashboard/Program.cs'))
+    if($gitStatus.Count -eq 1 -and $sourcePristine){
+      $historicBlob=(& git.exe -C $StageDir rev-parse 'HEAD:desktop/RemoteCommanderDashboard/Program.cs').Trim().ToLowerInvariant()
+      & git.exe -C $StageDir diff --ignore-space-at-eol --quiet -- desktop/RemoteCommanderDashboard/Program.cs
+      if($LASTEXITCODE -ne 0 -or $historicBlob -cne '4e80265f23f523d6c44ec0e415c432c86b166c2e'){
+        $sourcePristine=$false
+      }
+    }
+    if($gitStatusExit -ne 0 -or $stageHead -cne $legacy -or
+       [string]$stagePackage.version -cne '0.11.0-dev.23' -or
+       -not $sourcePristine -or (Test-Path -LiteralPath $runnerRoot)){
+      throw 'R173_PINNED_LEGACY_RUNNER_SOURCE_NOT_PRISTINE'
+    }
+    $trustedRoot=Join-Path $candidateSource 'tools\windows-job-runner'
+    $trustedVerifier=Join-Path $trustedRoot 'verify-windows-job-runner.ps1'
+    if(-not(Test-Path -LiteralPath $trustedVerifier -PathType Leaf)){
+      throw 'R173_PINNED_LEGACY_RUNNER_VERIFIER_MISSING'
+    }
+    & pwsh.exe -NoLogo -NoProfile -NonInteractive -File $trustedVerifier -VerifyOnly
+    if($LASTEXITCODE -ne 0){throw 'R173_PINNED_LEGACY_RUNNER_VERIFIER_FAILED'}
+    New-Item -ItemType Directory -Path $runnerRoot -ErrorAction Stop|Out-Null
+    foreach($relative in @('release-manifest.json','Program.cs','CommanderWindowsJobRunner.csproj','verify-windows-job-runner.ps1')){
+      $src=Join-Path $trustedRoot $relative
+      $dest=Join-Path $runnerRoot $relative
+      if(-not(Test-Path -LiteralPath $src -PathType Leaf) -or
+         ((Get-Item -LiteralPath $src -Force).Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0 -or
+         (Test-Path -LiteralPath $dest)){throw 'R173_PINNED_LEGACY_RUNNER_OVERLAY_SOURCE_UNSAFE'}
+      Copy-Item -LiteralPath $src -Destination $dest -ErrorAction Stop
+      if((Get-FileHash -LiteralPath $src -Algorithm SHA256).Hash -cne
+         (Get-FileHash -LiteralPath $dest -Algorithm SHA256).Hash){
+        throw 'R173_PINNED_LEGACY_RUNNER_OVERLAY_SHA_MISMATCH'
+      }
+    }
+    Log 'R173_PINNED_LEGACY_RUNNER_OVERLAY_VERIFIED exactBaseline=8ccf0fd1'
+  }
   $manifest=Read-Json $manifestPath
   if($manifest.schema -ne 1 -or $manifest.platform -ne 'win32' -or
      $manifest.arch -ne 'x64' -or $manifest.runtime -ne 'self-contained' -or
@@ -439,6 +563,7 @@ function Run-GuiNativeSelfTest([string]$Candidate){
   if($LASTEXITCODE-ne 0){throw 'GATE_FAIL gui-native-selftest'}
   Log "GATE_PASS gui-native-selftest"
 }
+$script:R157BackendDiagFiles=@{}
 function Start-Backend([string]$ProjectDir,[string]$ConfigPath,[string]$StateDir){
   New-Item -ItemType Directory -Force -Path $StateDir|Out-Null
   $node=(Get-Command node.exe -ErrorAction Stop).Source
@@ -446,9 +571,26 @@ function Start-Backend([string]$ProjectDir,[string]$ConfigPath,[string]$StateDir
   $previousConfig=$env:REMOTE_COMMANDER_CONFIG
   try{
     $env:REMOTE_COMMANDER_CONFIG=$ConfigPath
-    # Use Start-Process without stdio redirection. In a piped MCP run_shell parent,
-    # redirected long-lived children can retain inherited pipe handles and prevent
-    # the caller from observing EOF after the updater itself exits.
+    # Only the isolated, disposable, GitHub-hosted NoPromote R157 fixture may
+    # capture short-lived backend stderr. Never enable this in a live deployment.
+    $isR157Hosted=$false
+    if($NoPromote -and $env:CI -eq 'true' -and
+       $env:GITHUB_ACTIONS -eq 'true' -and
+       $env:RUNNER_ENVIRONMENT -eq 'github-hosted' -and
+       $env:RUNNER_OS -eq 'Windows' -and $env:RUNNER_TEMP){
+      $expectedState=[IO.Path]::GetFullPath((Join-Path $env:RUNNER_TEMP 'remote-commander-updater-r157\STATE\ChatGPTRemoteCommander'))
+      $isR157Hosted=$StateRoot.Equals($expectedState,[StringComparison]::OrdinalIgnoreCase)
+    }
+    if($isR157Hosted){
+      $name='r157-node-start-'+[Guid]::NewGuid().ToString('N')
+      $stderrPath=Join-Path $LogDir ($name+'.stderr.log')
+      $stdoutPath=Join-Path $LogDir ($name+'.stdout.log')
+      $p=Start-Process -FilePath $node -ArgumentList @((Join-Path $ProjectDir 'src\server-v0.3.mjs')) -WorkingDirectory $ProjectDir -WindowStyle Hidden -PassThru -RedirectStandardError $stderrPath -RedirectStandardOutput $stdoutPath
+      $script:R157BackendDiagFiles[[string]$p.Id]=$stderrPath
+      return $p
+    }
+    # Production retains no redirected stdio; descendants cannot hold an
+    # MCP parent's pipe open when this updater returns.
     return Start-Process -FilePath $node -ArgumentList @((Join-Path $ProjectDir 'src\server-v0.3.mjs')) -WorkingDirectory $ProjectDir -WindowStyle Hidden -PassThru
   }finally{
     if($hadConfig){$env:REMOTE_COMMANDER_CONFIG=$previousConfig}else{Remove-Item Env:REMOTE_COMMANDER_CONFIG -ErrorAction SilentlyContinue}
@@ -1313,6 +1455,19 @@ try{
       }
     }
   }
+  # Protected 0.12 NoPromote diagnostics check G1 quarantine only.
+  # A 403 is not evidence of current-chat authentication or native J01.
+  function Test-ProtectedNoPromoteCandidate([string]$Version,[object]$Config){
+    if(-not $NoPromote -or $Version -notmatch '^0\.12\.0-(?:dev|rc)\.[1-9][0-9]*$'){return $false}
+    $tier=[string]$Config.capabilityProfile.tier
+    return ($tier -in @('FULL_POWER','FULL_ACCESS') -or
+      $Config.powerMode.enabled -eq $true -or $Config.requireTrustedIngress -eq $true)
+  }
+  function Assert-ProtectedNoPromoteNegativeOnly([string]$StageDir,[int]$Port,[string]$Profile){
+    & node.exe (Join-Path $StageDir 'tools\qa-v012-no-promote-ingress.mjs') "--port=$Port"
+    if($LASTEXITCODE -ne 0){throw "V012_NOPROMOTE_NEGATIVE_GATE_FAILED profile=$Profile"}
+    Log "V012_NOPROMOTE_PROTECTED_NEGATIVE_ONLY_PASS profile=$Profile G1_J01_POSITIVE_UNPROVED"
+  }
   $device=if($currentStatus){[string]$currentStatus.deviceName}else{$env:COMPUTERNAME}
   $explicitProfileMutation=[bool]($Force -or $PowerMode -or $StandardMode -or $GuiControl -or $DisableGuiControl -or @($DisableCapability).Count-gt0 -or @($EnableCapability).Count-gt0)
   foreach($t in $targets){
@@ -1351,7 +1506,12 @@ try{
     $sha=(Get-FileHash -LiteralPath $cfg -Algorithm SHA256).Hash.ToLowerInvariant()
     $p=Start-Backend $stage.Dir $cfg $stateDir
     $currentCandidate=[pscustomobject]@{Profile=$t.Profile;Port=$port;Version=$stage.Version;Process=$p;ConfigPath=$cfg;ProjectDir=$stage.Dir}
-    $h=Wait-Health $port $stage.Version $sha $t.Profile
+    $h=Wait-Health $port $stage.Version $sha $t.Profile 30 $p
+    $expected=Read-Json $cfg
+    $protectedCandidate=Test-ProtectedNoPromoteCandidate $stage.Version $expected
+    if($protectedCandidate){
+      Assert-ProtectedNoPromoteNegativeOnly $stage.Dir $port $t.Profile
+    }else{
     & node.exe (Join-Path $stage.Dir 'tools\doctor.mjs') --url "http://127.0.0.1:$port/mcp" --expected-device $device --expected-version $stage.Version --config $cfg --timeout-ms 15000 --json
     if($LASTEXITCODE-ne 0){throw "CANDIDATE_DOCTOR_FAIL profile=$($t.Profile)"}
     $status=Invoke-Mcp $port 'system_status'
@@ -1378,6 +1538,7 @@ try{
       $wf=Invoke-Mcp $port 'workflow_health'
       if($wf.ok-ne $true -or [string]$wf.databaseIntegrity-ne 'ok'){throw "WORKFLOW_HEALTH_FAIL profile=$($t.Profile)"}
     }
+    }
 
     # Diagnostic backend passed on a shadow store. Rebuild against the live durable
     # store while its DB is still v1-compatible, then run identity/doctor once more.
@@ -1396,17 +1557,22 @@ try{
     $finalSha=(Get-FileHash -LiteralPath $finalCfg -Algorithm SHA256).Hash.ToLowerInvariant()
     $p=Start-Backend $stage.Dir $finalCfg $stateDir
     $currentCandidate=[pscustomobject]@{Profile=$t.Profile;Port=$port;Version=$stage.Version;Process=$p;ConfigPath=$finalCfg;ProjectDir=$stage.Dir}
-    [void](Wait-Health $port $stage.Version $finalSha $t.Profile)
+    [void](Wait-Health $port $stage.Version $finalSha $t.Profile 30 $p)
+    if($protectedCandidate){
+      Assert-ProtectedNoPromoteNegativeOnly $stage.Dir $port $t.Profile
+    }else{
     & node.exe (Join-Path $stage.Dir 'tools\doctor.mjs') --url "http://127.0.0.1:$port/mcp" --expected-device $device --expected-version $stage.Version --config $finalCfg --timeout-ms 15000 --json
     if($LASTEXITCODE-ne 0){throw "FINAL_CANDIDATE_DOCTOR_FAIL profile=$($t.Profile)"}
     if((Read-Json $finalCfg).durableWorkflows.enabled-eq $true){
       $wf=Invoke-Mcp $port 'workflow_health'
       if($wf.ok-ne $true -or [string]$wf.databaseIntegrity-ne 'ok'){throw "FINAL_WORKFLOW_HEALTH_FAIL profile=$($t.Profile)"}
     }
+    }
     $c=[pscustomobject]@{Profile=$t.Profile;CanonicalPort=$t.CanonicalPort;Port=$port;Version=$stage.Version;Commit=$stage.Commit;ConfigSha=$finalSha;ConfigPath=$finalCfg;ProjectDir=$stage.Dir;Process=$p;Target=$t;WorkflowDir=$liveWorkflowDir;BackupDir=$backupDir}
     $candidates+=$c
     $currentCandidate=$null
-    $report.profiles+=@{profile=$t.Profile;candidatePort=$port;configSha256=$finalSha;doctor='PASS';hardware='PASS';shadowStore='PASS';liveStoreCompatibility='PASS'}
+    $validation=if($protectedCandidate){'NEGATIVE_ONLY_G1_J01_UNPROVED'}else{'PASS'}
+    $report.profiles+=@{profile=$t.Profile;candidatePort=$port;configSha256=$finalSha;doctor=$validation;hardware=$validation;shadowStore='PASS';liveStoreCompatibility='PASS'}
   }
 
   if($NoPromote){

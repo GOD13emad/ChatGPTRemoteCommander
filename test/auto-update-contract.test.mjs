@@ -236,7 +236,8 @@ test('auto updater is candidate-first, hardware-gated and commit-point aware',()
   assert.ok(s.includes('Stop-OwnedCandidate $currentCandidate'), 'failure cleanup must include the current pre-registration candidate');
   assert.ok(s.indexOf('$currentCandidate=[pscustomobject]') > s.indexOf('$p=Start-Backend'), 'candidate ownership tracking must start immediately after spawn');
   const startBackend=s.slice(s.indexOf('function Start-Backend'),s.indexOf('function Stop-OwnedCandidate'));
-  assert.ok(startBackend.includes('Start-Process') && !startBackend.includes('-RedirectStandardOutput') && !startBackend.includes('-RedirectStandardError'),'Windows staged backends must detach from updater run_shell stdio handles');
+  const productionBackend=startBackend.slice(startBackend.indexOf('# Production retains no redirected stdio'));
+  assert.ok(startBackend.includes('# Production retains no redirected stdio') && productionBackend.includes('return Start-Process') && !productionBackend.includes('-RedirectStandardOutput') && !productionBackend.includes('-RedirectStandardError'),'Production Windows staged backends must detach from updater run_shell stdio handles');
   const stale=s.slice(s.indexOf('function Get-StaleDrainEvidence'),s.indexOf('function Get-DrainStatus'));
   for(const marker of ['activeOperations','queued','unexpectedConnections','Get-NetTCPConnection -State Established','Get-BackendDescendants','guiBusy','guiLeased','browserActive','browserBusy','browserLeased','browserUncertain','browser_status','DEFER_PROCESS_TREE'])assert.ok(stale.includes(marker),marker);
   assert.ok(stale.includes("tools\\browser-control.mjs --server") && stale.includes('$isBrowserHelper') && stale.includes('-not$result.browserActive') && stale.includes('-not$result.browserUncertain'),'idle browser helper is safe only after explicit fail-closed browser_status evidence');
@@ -1187,21 +1188,59 @@ test('pinned native Windows Job runner sources keep LF bytes across Windows Git 
  assert.equal(digest('tools/windows-job-runner/CommanderWindowsJobRunner.csproj'),manifest.projectSha256);
 });
 
-test('R157 isolated Windows updater supplies the verified native runner and preserves NoPromote',()=>{
+test('R157 isolated Windows updater supplies the verified native runner and preserves NoPromote under a real standard token',()=>{
  const workflow=read('.github/workflows/windows-updater-e2e-r157.yml');
  const updater=read('auto-update-windows.ps1');
+ const helper=read('tools/run-r157-standard-user.ps1');
  const setup=workflow.indexOf('actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1');
  const compile=workflow.indexOf('Build and verify the pinned native Job Object runner for the isolated updater');
  const verify=workflow.indexOf('verify-windows-job-runner.ps1 -Ensure');
  const stage=workflow.indexOf('Actual candidate-first updater in isolated state (NoPromote)');
- const explicit=workflow.indexOf('-WindowsJobRunnerPath $runner -NoPromote');
+ const explicit=workflow.lastIndexOf('tools\\run-r157-standard-user.ps1');
  assert.ok(setup>0 && compile>setup && verify>compile && stage>verify && explicit>stage);
  assert.ok(workflow.includes("dotnet-version: '8.0.427'"));
  assert.ok(workflow.includes("R157_PINNED_JOB_RUNNER_MISSING"));
  assert.ok(workflow.includes("Join-Path $env:GITHUB_WORKSPACE 'tools\\windows-job-runner\\dist\\win-x64\\CommanderWindowsJobRunner.exe'"));
+ assert.ok(workflow.includes("tools\\run-r157-standard-user.ps1"));
+ assert.ok(workflow.includes("R157_STANDARD_USER_HELPER_PARSER"));
+ assert.ok(workflow.includes("'tools/run-r157-standard-user.ps1'"));
  assert.ok(updater.includes('WINDOWS_JOB_RUNNER_SOURCE_SHA_MISMATCH'));
  assert.ok(updater.includes('WINDOWS_JOB_RUNNER_STAGE_SHA_MISMATCH'));
+ assert.ok(updater.includes('R157_CANDIDATE_HEALTH_DIAG observed='),'failed candidate startup must report only a bounded failure classification');
+ assert.ok(updater.includes("if($NoPromote -and $env:CI -eq 'true'") && updater.includes("RUNNER_ENVIRONMENT -eq 'github-hosted'"),'Node startup stderr may only be captured in isolated hosted NoPromote');
+ assert.ok(updater.includes("remote-commander-updater-r157\\STATE\\ChatGPTRemoteCommander"),'R157 stderr diagnostic must be confined to private disposable CI state');
+ assert.ok(updater.includes('-RedirectStandardError $stderrPath') && updater.includes("stderrClass=$stderrClass stderrBytes=$stderrBytes"),'R157 reports only an allowlisted backend startup failure class');
+ assert.ok(updater.includes("if($file.Length -gt 32768){$stderrClass='OVERSIZE'}"),'stderr diagnostic must be bounded without raw output');
+
+ assert.ok(updater.includes('listener=$listenerState'),'health diagnostic should distinguish free/busy/owned port');
+ assert.ok(updater.includes('Wait-Health $port $stage.Version $sha $t.Profile 30 $p'),'diagnostic wait tracks the exact candidate process');
+ assert.ok(updater.includes('Wait-Health $port $stage.Version $finalSha $t.Profile 30 $p'),'final-store health verifies its own candidate');
+ assert.ok(!updater.includes('Test-R157HostedNoPromoteQuarantine') && !updater.includes('--expect-anonymous-quarantine'),
+   'a verified STANDARD token must use the normal positive Doctor, not the quarantine-only diagnostic');
+ assert.ok(updater.includes("if($LASTEXITCODE-ne 0){throw \"CANDIDATE_DOCTOR_FAIL profile=$($t.Profile)\"}") &&
+   updater.includes("$status=Invoke-Mcp $port 'system_status'"),
+   'R157 must verify actual STANDARD MCP access after health');
+ assert.ok(workflow.includes("CANDIDATE_PASS") && workflow.includes("liveStoreCompatibility='PASS'"),
+   'isolated NoPromote receipts must require actual Doctor and state compatibility success');
+ assert.ok(workflow.includes("g1Authorization='BLOCKED_NOT_CONFIGURED'") && workflow.includes('promoted=$false'),
+   'a positive STANDARD test never authorizes protected G1 or stable release');
  assert.ok(workflow.includes('R157_UNEXPECTED_ROUTE_PROMOTION'));
+ assert.ok(workflow.includes("$c.allowedRoots=@((Join-Path $root 'INSTALL'))"), 'isolated candidate can read only INSTALL; Delivery state must be outside allowed roots');
+assert.ok(workflow.includes("R157_DELIVERY_STATE_INSIDE_ALLOWED_ROOT") && !workflow.includes("$c.allowedRoots=@($root)"), 'R157 disallows project-scoped durable Delivery state');
+assert.ok(workflow.includes('R157_STANDARD_USER_CLEANUP_RECEIPT_MISSING'));
+ assert.ok(workflow.includes('R157_STANDARD_USER_CLEANUP_NOT_ACCEPTED'));
+ assert.ok(workflow.includes('standardUserAccountRemoved'));
+ for(const marker of [
+   'RC_NON_ELEVATED_USER_TOKEN','R157_STANDARD_TOKEN_ASSERTION_FAILED',
+   'R157_PARENT_TOKEN_UNVERIFIED','New-LocalUser',
+   "Get-LocalGroupMember -Group 'Administrators'",
+   "Add-LocalGroupMember -Group 'Users'",
+   'icacls.exe','-Credential $credential','-LoadUserProfile',
+   '-NoPromote','Write-R157CleanupReceipt','R157_STANDARD_USER_CLEANUP.json','R157_STANDARD_USER_CLEANUP_PASS',
+   'R157_STANDARD_USER_CLEANUP_DEFERRED_NODE_PROCESS_REMAINS'
+ ]) assert.ok(helper.includes(marker),'missing standard-token isolation safeguard: '+marker);
+ assert.ok(helper.includes("$probe='C:\\Program Files\\PowerShell\\7\\pwsh.exe'"),
+   'token probe must use the same machine PowerShell path as the server');
 });
 
 test('R157 staged release lookup uses the pinned source version, not a fixed old tag',()=>{
@@ -1236,12 +1275,17 @@ test('R170 isolated rollback qualification is version-scoped, not a release auth
   for(const expected of [
     'SOURCE_VERSION=', 'isolated-qa-policy.mjs', 'R170_SOURCE_VERSION_NOT_QUALIFIED',
     'R170_ISOLATED_SOURCE_VERSION=', 'releaseAuthorization=false',
+    'ROOT="$TEMPBASE/remote-commander-rollback-r170"', '--source-ref "$TARGET" --expected-commit "$TARGET" --force',
+    'disposable RUNNER_TEMP integration test',
     'AUTO_UPDATE_PASS version=$SOURCE_VERSION',
     "assert r['active']['version']==sys.argv[3]"
   ])assert.ok(linux.includes(expected),'missing isolated qualification constraint: '+expected);
   assert.ok(workflow.includes('isolated-qa-policy.mjs'));
   assert.ok(!workflow.includes("'0.10.27'"),'future candidate requires explicit review');
   assert.ok(linux.includes('R170_GITHUB_HOSTED_LINUX_ONLY'),'CI-only, not owner host');
+  assert.ok(linux.includes("ROLLBACK_BASELINE='8ccf0fd16355a4ab79844feec6c295366763df0d'"),'rollback must target the last fleet-accepted dev23 baseline');
+  assert.ok(linux.includes("ROLLBACK_VERSION='0.11.0-dev.23'"),'rollback version and exact commit must agree');
+  assert.ok(!linux.includes('af18cbdce3cc106842adebde912fea079094deb1'),'obsolete incompatible dev18 rollback is not accepted');
 });
 
 test('R173 Windows rollback source qualification allows only explicitly reviewed versions',()=>{
@@ -1254,7 +1298,30 @@ test('R173 Windows rollback source qualification allows only explicitly reviewed
   assert.ok(workflow.includes('R173_UNSUPPORTED_VERSION'),'preflight must fail closed');
   assert.ok(qa.includes('R173_CANDIDATE_VERSION'),'native updater test must fail closed');
   assert.ok(workflow.includes('github.event.pull_request.head.sha || github.sha'),'exact SHA');
+  assert.ok(workflow.includes("dotnet-version: '8.0.427'"),'R173 must build the pinned native job runner before update');
+  assert.ok(workflow.includes('verify-windows-job-runner.ps1 -Ensure'),'R173 must verify the native job runner source and binary');
+  assert.ok(qa.includes('R173_JOB_RUNNER_SHA_MISMATCH'),'R173 must verify exact job runner hash');
+  assert.ok(qa.includes("'-WindowsJobRunnerPath',$JobRunner"),'updater must receive the verified runner explicitly');
+  const windowsUpdater=read('auto-update-windows.ps1');
+  assert.ok(qa.includes("if($Name -eq 'ROLLBACK'){$args+= '-PinnedLegacyRunnerOverlay'}"),'only rollback may enable historical runner compatibility');
+  assert.ok(qa.includes('R173_LEGACY_RUNNER_OVERLAY_NOT_ATTESTED'),'rollback must prove the verified compatibility receipt');
+  assert.ok(windowsUpdater.includes('if(-not $PinnedLegacyRunnerOverlay){throw \'WINDOWS_JOB_RUNNER_MANIFEST_MISSING\'}'),'default updater must fail closed on missing native manifest');
+  assert.ok(windowsUpdater.includes("8ccf0fd16355a4ab79844feec6c295366763df0d"),'compatibility overlay is exact dev23 predecessor only');
+  assert.ok(windowsUpdater.includes("RUNNER_ENVIRONMENT -ne 'github-hosted'") && windowsUpdater.includes('R173_PINNED_LEGACY_RUNNER_SCOPE_REJECTED'),'historical exception is hosted-only and explicit');
+  assert.ok(windowsUpdater.includes('R173_PINNED_LEGACY_RUNNER_ELEVATED_TOKEN_REJECTED'),'compatibility must retain standard-user token');
+  assert.ok(windowsUpdater.includes('R173_PINNED_LEGACY_RUNNER_OVERLAY_SHA_MISMATCH'),'compatibility files must retain exact source hashes');
+  assert.ok(windowsUpdater.includes('R173_PINNED_LEGACY_RUNNER_OVERLAY_VERIFIED'),'compatibility receipt must remain identifiable');
+
   assert.ok(!workflow.includes('gh release create'),'QA workflow is not release authority');
+  const helper=read('tools/run-r157-standard-user.ps1');
+  assert.ok(qa.includes("$RollbackBaseline='8ccf0fd16355a4ab79844feec6c295366763df0d'"),'R173 must roll back to schema-compatible fleet baseline');
+  assert.ok(qa.includes("$RollbackVersion='0.11.0-dev.23'"),'R173 rollback version must match exact baseline');
+  assert.ok(qa.includes('R173_STANDARD_USER_SANDBOX_MARKER_REQUIRED'),'R173 sandbox must be helper-created and fresh');
+  assert.ok(workflow.includes('run-r157-standard-user.ps1 -RunR173Rollback'),'R173 updater must run under a verified standard token');
+  assert.ok(workflow.includes('R173_STANDARD_USER_CLEANUP_NOT_ACCEPTED'),'R173 requires account removal and zero owned processes');
+  assert.ok(workflow.includes("cleanup.revision -ne 'R173_STANDARD_USER_CLEANUP'"),'R173 cleanup evidence has its own revision identity');
+  assert.ok(!workflow.includes('-File test/release-rollback-windows-r173.ps1'),'workflow must not run the promotion script directly as elevated');
+  assert.ok(helper.includes('R173_STANDARD_USER_GITHUB_HOSTED_ONLY') && helper.includes('R173_STANDARD_USER_ROOT_SCOPE_MISMATCH'),'standard-token promotion mode is GitHub-hosted and exact-root scoped');
 });
 
 test('Linux tunnel-client is required before release promotion and profile enrollment',()=>{
@@ -1378,10 +1445,17 @@ test('R170 isolated rollback retries only an explicit router-bootstrap receipt o
   assert.ok(r170.includes("grep -q \"AUTO_UPDATE_PASS version=$ROLLBACK_VERSION\""),'full compatible rollback acceptance cannot be bypassed');
   assert.ok(r170.includes("grep -q '^SCHEMA_CONTINUITY_GATE_FAIL profile=default$'"),'legacy incompatible rollback must fail closed');
   assert.ok(r170.includes('R170_LEGACY_INCOMPATIBLE_ROLLBACK_REJECTED_SAFELY'),'legacy refusal must retain promoted route');
-  assert.ok(r170.includes('ROLLBACK_BASELINE=\'af18cbdce3cc106842adebde912fea079094deb1\''),'compatible rollback commit must be exact and pinned');
+  assert.ok(r170.includes('ROLLBACK_BASELINE=\'8ccf0fd16355a4ab79844feec6c295366763df0d\''),'compatible rollback commit must be exact and pinned');
   assert.ok(r170.includes('R170_LINUX_ROLLBACK_ROUTE_PASS'),'route readback must remain mandatory');
-  assert.ok(r170.includes('git -C "$WORKSPACE" diff --ignore-space-at-eol --quiet --'),'source only permits bounded EOL drift');
+  assert.ok(r170.includes('git -C "$WORKSPACE" diff --cached --quiet --'),'staged changes remain prohibited before byte-exact normalized EOL comparison');
   assert.ok(r170.includes('R170_SOURCE_CHANGED'),'any semantic source change must block');
+  assert.ok(r170.includes('R170_KNOWN_DASHBOARD_EOL_CONFLICT_CHECKED'),'only the exact dashboard EOL conflict can be tolerated');
+  assert.ok(r170.includes('"$eolmeta" == *w/crlf*'),'worktree CRLF Git index anomaly must be covered by scoped bytes-equal check');
+  assert.ok(r170.includes('d67eeb4bc6eb72f98bfbc3c286c2e70b0bb8a246'),'dashboard CRLF-index source blob must be pinned');
+  assert.ok(r170.includes('R170_SOURCE_BOUNDED_EOL_ONLY_ACCEPTED'),'source cleanliness receipt must distinguish bounded EOL drift');
+  assert.ok(r170.includes("value.replace(b'\\r\\n',b'\\n')"),'the rollback source guard may normalize CRLF only');
+  assert.ok(r170.includes('normalize(current) != normalize(baseline)'),'rollback must prove semantic byte parity, not bypass source integrity');
+  assert.ok(r170.includes('R170_EOL_BYTES_MISMATCH'),'semantic mutation must remain fail closed');
 });
 
 
@@ -1460,4 +1534,31 @@ test('R762 Windows candidate cleanup is owner-attested when TCP CIM hides the lo
   assert.ok(guard.includes("if(-not $expectedVersion){throw 'CANDIDATE_EXPECTED_VERSION_MISSING'}"), 'missing candidate version must fail closed');
   assert.ok(guard.includes('[string]$h.version -eq $expectedVersion'), 'health identity must match the exact candidate version');
   assert.doesNotMatch(guard,/0\.11\.0-dev\.23/,'cleanup must not hard-code the old dev23 version');
+});
+
+test('Windows updater keeps Git long-path support repository-local and rejects incomplete staged releases',()=>{
+  const win=read('auto-update-windows.ps1');
+  const start=win.indexOf('function Assert-StageCheckoutComplete(');
+  const stage=win.indexOf('function Stage-Release(',start);
+  const next=win.indexOf('function Copy-WindowsJobRunner(',stage);
+  assert.ok(start>=0&&stage>start&&next>stage);
+  const guard=win.slice(start,stage);
+  const body=win.slice(stage,next);
+  assert.ok(guard.includes('ls-files --deleted'), 'missing tracked Windows long paths must fail');
+  assert.ok(guard.includes('diff --ignore-space-at-eol --name-only'),
+    'substantive changes must fail without treating Git CRLF conversion as missing files');
+  assert.ok(guard.includes("throw 'STAGE_CHECKOUT_INCOMPLETE'"));
+  const init=body.indexOf('git.exe -C $tmp init');
+  const localLongPaths=body.indexOf('git.exe -C $tmp config --local core.longpaths true');
+  const fetch=body.indexOf('git.exe -C $tmp fetch --depth 1');
+  const checkout=body.indexOf('git.exe -C $tmp checkout --detach $commit');
+  const initialProof=body.indexOf('Assert-StageCheckoutComplete $tmp');
+  const manifestRead=body.indexOf("Read-Json (Join-Path $tmp 'package.json')");
+  assert.ok(init>=0&&localLongPaths>init&&fetch>localLongPaths&&checkout>fetch);
+  assert.ok(initialProof>checkout&&manifestRead>initialProof,
+    'tracked tree must be fully materialized before the release manifest is accepted');
+  assert.ok(body.includes('Assert-StageCheckoutComplete $final'),
+    'both reused and newly moved releases must reject missing tracked files');
+  assert.ok(!body.includes('git config --global')&&!body.includes('LongPathsEnabled'),
+    'do not mutate global Git or Windows path/security policy');
 });

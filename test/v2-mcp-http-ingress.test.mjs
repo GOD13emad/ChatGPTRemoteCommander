@@ -81,3 +81,25 @@ test('ingress never gives the raw bearer token to the dispatcher factory',async(
   assert.equal(Object.hasOwn(result.received,'token'),false);
   assert.equal(Object.hasOwn(result.received.platformSessionProof,'tokenSha256'),false);
 });
+
+test('private tunnel mTLS attestation can mint one-shot owner proof for exact chat and bearer',async()=>{
+  const x=await invoke({
+    attestation:{authenticated:true,peerType:'openai-tunnel-client-mtls',
+      sessionSource:'openai/session'}
+  });
+  assert.equal(x.res.status,200);
+  const proof=x.authority.inspect(x.received.platformSessionProof);
+  assert.deepEqual({...proof},{
+    peerType:'openai-tunnel-client-mtls',sessionSource:'openai/session',
+    sessionHandle:SESSION,
+    tokenSha256:createHash('sha256').update(TOKEN).digest('hex')
+  });
+});
+test('unsupported tunnel/proxy identity cannot introduce a platform session',async()=>{
+  const x=await invoke({
+    attestation:{authenticated:true,peerType:'unverified-proxy',
+      sessionSource:'openai/session'}
+  });
+  assert.equal(x.res.status,403);
+  assert.equal(x.received,null);
+});

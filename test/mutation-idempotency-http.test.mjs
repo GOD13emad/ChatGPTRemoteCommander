@@ -6,6 +6,7 @@ import os from 'node:os';
 import net from 'node:net';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
+import { requireNonElevatedLegacyHttp } from './fixtures/legacy-http-token-admission.mjs';
 
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
 async function freePort() {
@@ -43,7 +44,7 @@ async function stopServer(child) {
   if (child && child.exitCode === null) { child.kill(); await Promise.race([once(child,'close'), wait(4000)]); }
 }
 
-test('direct mutation requestId prevents duplicate append across lost ack and restart', async () => {
+test('direct mutation requestId prevents duplicate append across lost ack and restart', async t => {
   const root=await fs.mkdtemp(path.join(os.tmpdir(),'rc-mut-http-'));
   const serverRoot=path.join(root,'server');
   const dataRoot=path.join(root,'data');
@@ -69,6 +70,10 @@ test('direct mutation requestId prevents duplicate append across lost ack and re
     const configPath=path.join(serverRoot,'config.json');
     await fs.writeFile(configPath,JSON.stringify(config,null,2));
     running=await startServer(serverRoot,configPath);
+    if(!(await requireNonElevatedLegacyHttp(t,port))){
+      assert.equal(await fs.readFile(target,'utf8'),'');
+      return;
+    }
 
     const missing=await post(port,1,'write_text',{path:target,content:'x',mode:'append'});
     assert.equal(missing.result.isError,true);
@@ -103,7 +108,7 @@ test('direct mutation requestId prevents duplicate append across lost ack and re
 });
 
 
-test('legacy cached client derives durable mutation idempotency from x-request-id', async () => {
+test('legacy cached client derives durable mutation idempotency from x-request-id', async t => {
   const root=await fs.mkdtemp(path.join(os.tmpdir(),'rc-mut-legacy-xreq-'));
   const serverRoot=path.join(root,'server');
   const dataRoot=path.join(root,'data');
@@ -128,6 +133,10 @@ test('legacy cached client derives durable mutation idempotency from x-request-i
     const configPath=path.join(serverRoot,'config.json');
     await fs.writeFile(configPath,JSON.stringify(config,null,2));
     running=await startServer(serverRoot,configPath);
+    if(!(await requireNonElevatedLegacyHttp(t,port))){
+      assert.equal(await fs.readFile(target,'utf8'),'');
+      return;
+    }
 
     const legacyHeaders={'x-request-id':'legacy-client-call-1'};
     const first=await post(port,10,'write_text',{path:target,content:'x',mode:'append'},legacyHeaders);

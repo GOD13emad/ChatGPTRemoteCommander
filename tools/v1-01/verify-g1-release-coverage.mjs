@@ -7,15 +7,32 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {isVersionAtLeast} from './run-pinned-v2-interop.mjs';
 
-export const V101_ACCEPTED_ADAPTER_SHA256='58b70ec50bbf8de0ab8b51600aee243c3bc8fbb33b10cce6fd2c99629fded27c';
+export const V101_ACCEPTED_ADAPTER_SHA256='2b9793250e4a537f19890a3865d05238d6ccb46cb735c88677cb4daba6f00445';
 export const V102_ACCEPTED_WIN_JOB_SHA256='57b50598798c328ee6fb06c926e8eb16b4da71dc83ac76344e41952383a848d4';
 // Independently tested V1-03/J01 verifier modules, NOT a protected signer or enrolled credential.
 export const J01_VERIFIER_SHA256=Object.freeze({
   'src/gui-j01-owner-grant-verifier.mjs':'07c1969c11d2eaffd90bcb7d11b6b4fb0133dd1cb50f8b6af8fb49d047e2a34a',
   'src/gui-j01-webauthn-verifier.mjs':'1614dbfc7627dfd7aa38f5676716e9a00787f3984f2f8ed45197eb70d89127be'
 });
+export const G1_TRUST_ASSETS_SHA256=Object.freeze({
+  'assets/trust/openai/root-ca.pem':'3a565b5c83c83ba2de085de28733e3c6af01af9b347322b93caf3a03d42c5cbe',
+  'assets/trust/openai/connectors-mtls-intermediate-ca.pem':'7485f98dfbb7db119ca99d5748ac7a86baa73ddede878d3263a50cba2c4f6dd8'
+});
 export const G1_MODULES=Object.freeze([
   'src/server-v0.3.mjs',
+  'src/native-owner-administration-authorizer.mjs',
+  'src/native-owner-session-provider-linux.mjs',
+  'src/native-owner-session-provider-windows.mjs',
+  'src/native-owner-session-windows.ps1',
+  'src/v101-linux-owner-security-bootstrap.mjs',
+  'src/v101-windows-owner-security-bootstrap.mjs',
+  'src/v101-g1-loopback-runtime.mjs',
+  'src/v101-g1-canonical-workflow-runtime.mjs',
+  'src/v101-private-tunnel-owner-host.mjs',
+  'src/v2-private-tunnel-https-gateway.mjs',
+  'src/v2-private-tunnel-mtls-attestor.mjs',
+  'src/v2-platform-session-proof.mjs',
+  'src/v2-oauth-provider-discovery.mjs',
   'src/full-access-http-quarantine.mjs',
   'src/full-access-protected-router-bridge.mjs',
   'src/gui-j01-owner-grant-verifier.mjs',
@@ -95,6 +112,13 @@ export function assessG1ReleaseBundle({root,minimumVersion='0.11.0-dev.23',platf
   const missing=G1_MODULES.filter(rel=>!safeFile(root,rel));
   if(missing.length)return denied('G1_MODULES_OMITTED_FROM_RELEASE',{
     version,missing,countRequired:G1_MODULES.length});
+  // Presence is not enough: Windows text-mode checkout or packaging may
+  // rewrite the exact public mTLS trust anchors, invalidating their pin.
+  for(const [relative,expected] of Object.entries(G1_TRUST_ASSETS_SHA256)){
+    const bytes=safeFile(root,relative);
+    if(!bytes||digest(bytes)!==expected)
+      return denied('G1_TRUST_ASSET_NOT_PINNED',{version,asset:relative});
+  }
   const adapter=safeFile(root,'src/v101-v2-protected-dispatcher.mjs');
   if(digest(adapter)!==V101_ACCEPTED_ADAPTER_SHA256)
     return denied('V101_ADAPTER_NOT_PINNED',{version});

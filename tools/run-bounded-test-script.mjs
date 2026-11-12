@@ -397,7 +397,9 @@ function run(){
   }
   const child=process.platform==='win32'
     ? spawnSync(process.env.ComSpec||'cmd.exe',['/d','/s','/c',command],{cwd:root,env:process.env,stdio:'inherit'})
-    : spawnSync('/bin/sh',['-lc',command],{cwd:root,env:process.env,stdio:'inherit'});
+    // Use a non-login shell: -l resets the caller's tested user-local
+    // Node PATH to a stale system runtime and makes exact-source QA fail.
+    : spawnSync('/bin/sh',['-c',command],{cwd:root,env:process.env,stdio:'inherit'});
   if(child.error)throw child.error;
   if(child.signal)throw new Error(`CI_TEST_SIGNAL_${child.signal}`);
   process.exitCode=Number.isInteger(child.status)?child.status:1;

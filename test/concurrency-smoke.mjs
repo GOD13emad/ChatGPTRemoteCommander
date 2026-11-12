@@ -1,16 +1,21 @@
 import assert from 'node:assert/strict';
 import path from 'node:path';
-import { cp, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { cp, mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { createHash, randomUUID } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { createServer } from 'node:net';
+import { requireNonElevatedLegacyHttp } from './fixtures/legacy-http-token-admission.mjs';
 
 // Per-run fixture paths avoid collisions between independent qualification invocations.
 const instanceId = randomUUID();
-const root = path.resolve('test', '.tmp-concurrency-root-' + instanceId);
-const isolatedApp = path.resolve('test', '.tmp-concurrency-app-' + instanceId);
+const tempRoot = await mkdtemp(path.join(tmpdir(), 'rc-concurrency-smoke-'));
+const root = path.join(tempRoot, 'root-' + instanceId);
+const isolatedApp = path.join(tempRoot, 'app-' + instanceId);
 const isolatedSrc = path.join(isolatedApp, 'src');
-const configPath = path.resolve('test', '.tmp-concurrency-config-' + instanceId + '.json');
+const configPath = path.join(tempRoot, 'config-' + instanceId + '.json');
+process.once('exit', () => { try { rmSync(tempRoot, { recursive: true, force: true }); } catch {} });
 const liveRuntimeStatePath = path.resolve('var', 'mcp-runtime.json');
 const isolatedRuntimeStatePath = path.join(isolatedApp, 'var', 'mcp-runtime.json');
 const requestPrefix = `concurrency-${randomUUID()}`;
@@ -110,6 +115,16 @@ try {
   const isolatedState = await waitForRuntimeState();
   assert.equal(isolatedState.port, port);
   assert.equal(path.resolve(isolatedState.projectDir), isolatedApp);
+  // Hosted Windows runners use an elevated token. The legacy HTTP listener
+  // must refuse every unauthenticated MCP operation instead of exercising
+  // parallel mutations through a protected interface.
+  const positiveAllowed=await requireNonElevatedLegacyHttp({
+    skip: reason=>console.log('CONCURRENCY_SMOKE_PROTECTED_HTTP_DENIAL_PASS: '+reason)
+  },port);
+  if(!positiveAllowed){
+    await assert.rejects(stat(path.join(root,'parallel-0.txt')),{code:'ENOENT'});
+    await assert.rejects(stat(path.join(root,'shared-append.txt')),{code:'ENOENT'});
+  }else{
 
   const readOnlyCalls = Array.from({ length: 40 }, (_, index) =>
     index % 2 === 0 ? callTool('system_status') : callTool('list_directory', { path: root, depth: 0 })
@@ -142,15 +157,15 @@ try {
   const status = await callTool('system_status');
   assert.equal(status.concurrency.httpConcurrent, true);
   assert.equal(status.concurrency.pathMutationLocks, true);
+  console.log('CONCURRENCY_SMOKE_PASS');
+  }
 } finally {
   server.kill('SIGTERM');
   await Promise.race([
     new Promise((resolve) => server.once('close', resolve)),
     new Promise((resolve) => setTimeout(resolve, 1500))
   ]);
-  await rm(root, { recursive: true, force: true });
-  await rm(configPath, { force: true });
-  await rm(isolatedApp, { recursive: true, force: true });
+  await rm(tempRoot, { recursive: true, force: true });
 
   const liveRuntimeStateAfter = await sha256IfPresent(liveRuntimeStatePath);
   assert.equal(
@@ -159,5 +174,3 @@ try {
     'concurrency smoke must never modify or restore the live runtime ownership marker'
   );
 }
-
-console.log('CONCURRENCY_SMOKE_PASS');

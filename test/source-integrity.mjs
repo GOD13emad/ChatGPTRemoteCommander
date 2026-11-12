@@ -8,6 +8,11 @@ const exact = (text, needle, expected, label) => {
   if (actual !== expected) throw new Error(`${label}: expected ${expected} occurrence(s) of ${needle}, found ${actual}`);
 };
 
+// Linux install qualification runs as an unprivileged user while the immutable source checkout is root-owned.
+// Scope Git's ownership exception to this exact canonical path and read-only index queries only.
+const projectRoot = fs.realpathSync(process.cwd());
+const trustedGit = ['-c', 'safe.directory=' + projectRoot, '-C', projectRoot];
+
 const install = read('install.ps1');
 if (!install.startsWith('param(') || install.split(/\r?\n/).length > 650) throw new Error('install.ps1 structural envelope invalid');
 for (const fn of ['function Install-Source {','function Install-TunnelClient {','function Configure-LocalPolicy {','function Start-LocalServer {']) exact(install, fn, 1, 'install.ps1');
@@ -50,7 +55,7 @@ const trackedRuntimeFiles = [
 ];
 for (const file of trackedRuntimeFiles) {
   if (!fs.existsSync(file)) throw new Error('required runtime file missing: ' + file);
-  const r = spawnSync('git',['ls-files','--error-unmatch',file],{encoding:'utf8'});
+  const r = spawnSync('git',[...trustedGit,'ls-files','--error-unmatch',file],{encoding:'utf8'});
   if (r.status !== 0) throw new Error('required runtime file is not Git-tracked: ' + file);
 }
 
@@ -61,7 +66,7 @@ const linuxExecFiles = [
   'tools/gui-control-linux.py','tools/install-gnome-gui-extension.sh'
 ];
 for (const file of linuxExecFiles) {
-  const r = spawnSync('git',['ls-files','--stage',file],{encoding:'utf8'});
+  const r = spawnSync('git',[...trustedGit,'ls-files','--stage',file],{encoding:'utf8'});
   if (r.status !== 0 || !/^100755\s/.test(r.stdout)) {
     throw new Error('Linux runtime script must be Git-tracked executable (100755): ' + file);
   }

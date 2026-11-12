@@ -217,7 +217,8 @@ test('R470 sanitized diagnostic workflow persists no raw qualification log and k
     'workflow expression context cannot trust a runtime-generated GITHUB_ENV value');
   assert.ok(workflow.indexOf('R470 derive a bounded')>workflow.indexOf('Independently verify exact Job receipts'));
   assert.ok(!workflow.includes('upload-artifact@v3'));
-  assert.ok(workflow.includes('-NoPromote'),'keep original tested production path unchanged');
+  const helper=read('tools/run-r157-standard-user.ps1');
+  assert.ok(workflow.includes('run-r157-standard-user.ps1') && helper.includes('-NoPromote'),'keep original tested production path unchanged');
 });
 
 test('R470 Windows fixture extracts failing test and counters without persisting secrets, and refuses ambiguous logs', t=>{
@@ -231,7 +232,11 @@ test('R470 Windows fixture extracts failing test and counters without persisting
       const folder=path.join(tmp,'STATE','ChatGPTRemoteCommander','update-logs');
       fs.mkdirSync(folder,{recursive:true});
       for(const name of names)fs.writeFileSync(path.join(folder,name),
-        ['TAP version 13','not ok 245 - team reserves all calls before workers and executes only the coordinator proposal',
+        ['TAP version 13','R157_ASYNC_HTTP_TOKEN_PROBE={"ok":false,"isAdmin":false,"isSystem":false,"elevation":null,"source":null,"code":"WINDOWS_TOKEN_PROBE_FAILED"}','R157_ASYNC_HTTP_QUARANTINE=true','R157_ASYNC_HTTP_FAILURE_PHASE=operation-start','R157_ASYNC_HTTP_FAILURE_NAME=AssertionError','R157_ASYNC_HTTP_FAILURE_CODE=ERR_ASSERTION','R157_ASYNC_HTTP_SERVER_STARTUP={"exitCode":1,"signalCode":null,"stderrClass":"ERR_MODULE_NOT_FOUND","stderrBytes":120,"stdoutBytes":0}','R157_MCP_TASKS_LONG_POLL_STATUS=QUEUED',
+        'R157_MCP_TASKS_LONG_POLL_ELAPSED_MS=1500','R157_MCP_TASKS_FAILURE_PHASE=task-terminal',
+        'R157_MCP_TASKS_FAILURE_NAME=AssertionError',
+        'R157_MCP_TASKS_FAILURE_CODE=ERR_ASSERTION',
+        'R157_MCP_TASKS_FAILURE_ASSERTION={"operator":"strictEqual","actual":"FAILED","expected":"SUCCEEDED"}','not ok 245 - team reserves all calls before workers and executes only the coordinator proposal',
         "failureType: 'testTimeoutFailure'",'code: ERR_TEST_FAILURE','# tests 521','# pass 520',
         '# fail 1','# cancelled 0','# duration_ms 25000','Authorization: Bearer '+secret].join('\n'),'utf8');
       const proc=spawnSync('pwsh.exe',['-NoProfile','-NonInteractive','-File',script,
@@ -246,6 +251,7 @@ test('R470 Windows fixture extracts failing test and counters without persisting
   const file='qualification-output-qualification-test-'+sha.slice(0,12)+'-r470-fixture.stdout.log';
   const one=run([file]);
   assert.equal(one.status,'TAP_SUMMARY_EXTRACTED');
+  assert.equal(one.failedGate,'test');
   assert.equal(one.matchingLogCount,1);
   assert.equal(one.failureTests[0].index,245);
   assert.ok(one.failureTests[0].publicTestName.startsWith('team reserves all calls'));
@@ -253,6 +259,33 @@ test('R470 Windows fixture extracts failing test and counters without persisting
   assert.equal(one.tapCounts.pass,'520');
   assert.ok(one.failureTypes.includes('testTimeoutFailure'));
   assert.equal(one.rawLogIncluded,false);
+  assert.equal(one.nativeTokenProbe.ok,false);
+  assert.equal(one.nativeTokenProbe.code,'WINDOWS_TOKEN_PROBE_FAILED');
+  assert.equal(one.httpPrivilegedLegacyHttpQuarantined,true);
+  assert.equal(one.asyncHttpFailurePhase,'operation-start');
+  assert.equal(one.asyncHttpFailureName,'AssertionError');
+  assert.equal(one.asyncHttpFailureCode,'ERR_ASSERTION');
+  assert.equal(one.asyncHttpServerStartup.stderrClass,'ERR_MODULE_NOT_FOUND');
+  assert.equal(one.asyncHttpServerStartup.exitCode,1);
+  assert.equal(one.asyncHttpServerStartup.stderrBytes,120);
+  assert.equal(one.mcpTasksFailurePhase,'task-terminal');
+  assert.equal(one.mcpTasksLongPollStatus,'QUEUED');
+  assert.equal(one.mcpTasksLongPollElapsedMs,1500);
+  assert.equal(one.mcpTasksFailureName,'AssertionError');
+  assert.equal(one.mcpTasksFailureCode,'ERR_ASSERTION');
+  assert.equal(one.mcpTasksFailureAssertion.operator,'strictEqual');
+  assert.equal(one.mcpTasksFailureAssertion.actual,'FAILED');
+  assert.equal(one.mcpTasksFailureAssertion.expected,'SUCCEEDED');
+  // In hosted R157, the first failing gate can be check with no test log.
+  const checkOnly=run([file.replace('qualification-test-','qualification-check-')]);
+  assert.equal(checkOnly.failedGate,'check');
+  assert.equal(checkOnly.status,'TAP_SUMMARY_EXTRACTED');
+  assert.equal(checkOnly.matchingLogCount,1);
+  assert.equal(checkOnly.failureTests[0].index,245);
+  assert.equal(checkOnly.rawLogIncluded,false);
+  const completedCheckPlusFailedTest=run([file,file.replace('qualification-test-','qualification-check-')]);
+  assert.equal(completedCheckPlusFailedTest.failedGate,'test');
+  assert.equal(completedCheckPlusFailedTest.matchingLogCount,1);
   assert.equal(one.secretsIncluded,false);
   const many=run([file,file.replace('fixture','duplicate')]);
   assert.equal(many.status,'AMBIGUOUS_MULTIPLE_MATCHING_LOGS');
@@ -556,9 +589,14 @@ test('CI Windows runs the Transfer Mesh HTTP fixture alone without weakening rea
     wrapper.indexOf('command=isolateWindowsTransferMeshHttpRegression(command);'),
     'last composed prefix is scheduled first; no additional test runs or deadlines');
   const fixture=read('test/transfer-mesh-http.test.mjs');
-  assert.ok(fixture.includes('for(let i=0;i<200;i++)'),'same bounded readiness budget');
-  assert.ok(fixture.includes('await wait(25)'),'same server-readiness poll');
-  assert.ok(fixture.includes('assert.equal(healthy,true,stderr)'),'still fail closed if server cannot start');
+  assert.ok(fixture.includes('const startupDeadline=Date.now()+30000;'),'30-second wall-clock startup deadline');
+  assert.ok(fixture.includes('signal:AbortSignal.timeout(300)'),'each health request remains bounded');
+  assert.ok(fixture.includes('child.exitCode!==null||child.signalCode!==null'),'early child exit is diagnosed');
+  assert.ok(fixture.includes(".slice(-8000)"),'stderr diagnostics remain bounded');
+  assert.ok(fixture.includes('assert.equal(healthy,true,`transfer-mesh fixture did not become healthy within 30000ms; last=${lastHealthError}; stderr=${stderr}`)'),
+    'still fail closed with bounded diagnostics if server cannot start');
+  assert.ok(fixture.includes("assert.equal(health.instance.profile,'transfer-mesh-http-test')"),
+    'readiness is tied to the exact isolated fixture, not another listener');
 });
 
 
@@ -566,8 +604,13 @@ test('concurrency smoke reserves an OS-assigned port per run with unique owned r
  const src=read('test/concurrency-smoke.mjs');
  assert.match(src,/reservation\.listen\(0,'127\.0\.0\.1',resolve\)/);
  assert.match(src,/const instanceId = randomUUID\(\);/);
- assert.match(src,/\.tmp-concurrency-root-' \+ instanceId/);
- assert.match(src,/\.tmp-concurrency-app-' \+ instanceId/);
+ assert.match(src,/const tempRoot = await mkdtemp\(path\.join\(tmpdir\(\), 'rc-concurrency-smoke-'\)\);/);
+ assert.match(src,/const root = path\.join\(tempRoot, 'root-' \+ instanceId\);/);
+ assert.match(src,/const isolatedApp = path\.join\(tempRoot, 'app-' \+ instanceId\);/);
+ assert.match(src,/const configPath = path\.join\(tempRoot, 'config-' \+ instanceId \+ '\.json'\);/);
+ assert.match(src,/await rm\(tempRoot, \{ recursive: true, force: true \}\);/);
+ assert.ok(src.includes("process.once('exit'"));
+ assert.ok(src.includes("rmSync(tempRoot, { recursive: true, force: true })"));
  assert.match(src,/reservation\.close\(err=>err\?reject\(err\):resolve\(\)\)/);
  assert.doesNotMatch(src,/const port\s*=\s*47931/);
  assert.match(src,/liveRuntimeStateAfter,[\s\S]*liveRuntimeStateBefore/);
@@ -666,4 +709,84 @@ test('Windows startup-sensitive HTTP fixtures stay exact, early, and individuall
     'host regression preserves the original 30-second readiness deadline');
   assert.ok(read('tools/run-bounded-test-script.mjs').includes(
     'command=isolateWindowsStartupReadinessRegressions(command);'));
+});
+
+
+test('V1-01 identity lifecycle runs cold exactly once before the loaded source acceptance batch',()=>{
+  const script=JSON.parse(read('package.json')).scripts['test:v1-01-worker-grants'];
+  const target='test/v101-worker-identity-grant-adapter.test.mjs';
+  const parts=script.split(' && ');
+  const exact='node --test '+target;
+  assert.equal(parts.filter(part=>part===exact).length,1,
+    'the lifecycle fixture must have one independent Node test process');
+  assert.equal(parts.filter(part=>part.startsWith('node --test ')&&part.includes(' '+target)&&part!==exact).length,0,
+    'the loaded batch must not execute the fixture a second time');
+  const coldIndex=parts.indexOf(exact);
+  const bulkIndex=parts.findIndex(part=>part.startsWith('node --test ')&&part.includes('test/workflow-store.test.mjs'));
+  assert.ok(coldIndex>=0&&bulkIndex>coldIndex,
+    'lifecycle enrollment must be isolated before the large SQLite/worker batch');
+  assert.ok(parts[bulkIndex].includes('test/worker-identity-authority.test.mjs'),
+    'other worker authorization tests must retain their full coverage');
+  assert.ok(parts[bulkIndex].includes('test/v101-owner-bound-router-bridge.test.mjs'),
+    'native owner bridge authorization coverage must remain included');
+});
+
+
+test('V012 source regression retains every pinned test exactly once with bounded Windows phases',()=>{
+  const runner=read('tools/run-v012-source-regression.mjs');
+  const files=[...runner.matchAll(/^\s+"(test\/[^"]+\.mjs)",?$/gm)].map(match=>match[1]);
+  const ranges=[...runner.matchAll(/files\.slice\((\d+),\s*(\d+)\)/g)]
+    .map(match=>[Number(match[1]),Number(match[2])]);
+  const scheduled=ranges.flatMap(([from,to])=>files.slice(from,to));
+  assert.equal(files.length,19,'G1 canonical workflows and the NoPromote negative candidate guard are pinned to source QA');
+  assert.ok(files.includes('test/qa-v012-no-promote-ingress.test.mjs'),'NoPromote negative-only qualification must run in CI');
+  assert.equal(new Set(files).size,files.length,'no duplicate source fixture');
+  assert.ok(ranges.length>=6,'native Windows fixture groups must remain bounded');
+  assert.deepEqual(scheduled,files,'each fixture must execute exactly once and in original order');
+  assert.ok(runner.includes('timeout: 30000'),'no extension of the per-process timeout');
+  assert.ok(runner.includes('result.signal || result.status !== 0'),'nonzero tests fail closed');
+});
+
+
+test('Linux qualification preserves a pinned user-local Node PATH instead of launching a login shell',{
+  skip:process.platform!=='linux'
+},()=>{
+  const temp=fs.mkdtempSync(path.join(os.tmpdir(),'rc-v012-qualification-path-'));
+  try{
+    for(const dir of ['tools','test','bin'])fs.mkdirSync(path.join(temp,dir));
+    fs.copyFileSync(path.join(root,'tools/run-bounded-test-script.mjs'),
+      path.join(temp,'tools/run-bounded-test-script.mjs'));
+    fs.writeFileSync(path.join(temp,'package.json'),JSON.stringify({
+      type:'module',scripts:{
+        test:'node --test test/fixture-a.test.mjs && node --test test/fixture-b.test.mjs'
+      }
+    }));
+    for(const name of ['fixture-a','fixture-b']){
+      fs.writeFileSync(path.join(temp,'test',name+'.test.mjs'),
+        "import test from 'node:test';\ntest('fixture',()=>{});\n");
+    }
+    const marker=path.join(temp,'node-invocations');
+    const shim=path.join(temp,'bin','node');
+    fs.writeFileSync(shim,[
+      '#!/bin/sh',
+      'printf x >> "$RC_PATCHED_NODE_MARKER"',
+      'exec "$RC_REAL_NODE" "$@"',
+      ''
+    ].join('\n'),{mode:0o755});
+    const out=spawnSync(process.execPath,[
+      path.join(temp,'tools','run-bounded-test-script.mjs'),
+      '--script','test','--concurrency','1'
+    ],{
+      cwd:temp,encoding:'utf8',timeout:20000,
+      env:{...process.env,
+        PATH:path.join(temp,'bin')+path.delimiter+(process.env.PATH??''),
+        RC_PATCHED_NODE_MARKER:marker,RC_REAL_NODE:process.execPath}
+    });
+    assert.equal(out.error,undefined,out.error?.message);
+    assert.equal(out.status,0,(out.stderr??'')+' '+(out.stdout??''));
+    assert.equal(fs.readFileSync(marker,'utf8'),'xx',
+      'both qualification phases must invoke the inherited explicit Node');
+  }finally{
+    fs.rmSync(temp,{recursive:true,force:true});
+  }
 });

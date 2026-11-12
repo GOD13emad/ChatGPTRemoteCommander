@@ -23,7 +23,7 @@ const REAUTH_ERRORS=new Set([
 // Additional MCP method families (including resources, prompts or tasks)
 // require an explicit scoped policy review, not a future V2 default passthrough.
 const UNPRIVILEGED_RPC_METHODS=new Set([
-  'initialize','notifications/initialized','ping','tools/list'
+  'initialize','notifications/initialized','ping','tools/list','server/discover'
 ]);
 function fail(code){throw Object.assign(new Error(code),{code});}
 function record(x){return x!==null&&typeof x==='object'&&!Array.isArray(x)
@@ -157,7 +157,7 @@ export function createV101V2ProtectedDispatcherFactory({
 
   async function ensureOwnerBinding(platformProof,sessionHandle,tokenSha256){
     const proof=platformSessionProofAuthority.inspect(platformProof);
-    if(!record(proof)||proof.peerType!=='openai-chatgpt-mtls'
+    if(!record(proof)||!['openai-chatgpt-mtls','openai-tunnel-client-mtls'].includes(proof.peerType)
       ||proof.sessionSource!=='openai/session'
       ||proof.sessionHandle!==sessionHandle||proof.tokenSha256!==tokenSha256)
       return false;

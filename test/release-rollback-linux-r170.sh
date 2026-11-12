@@ -14,9 +14,9 @@ TARGET="$(git -C "$WORKSPACE" rev-parse HEAD)"
 EXPECTED="$1"
 BASELINE='362375c464948be3001b307650c13fc3353ed05b'
 # Preserve the legacy migration test; rollback must target a schema-compatible
-# accepted dev.18 predecessor, not the pre-Workspace immutable 0.10.20 tag.
-ROLLBACK_BASELINE='af18cbdce3cc106842adebde912fea079094deb1'
-ROLLBACK_VERSION='0.11.0-dev.18'
+# accepted dev.23 predecessor, not the pre-Workspace immutable 0.10.20 tag.
+ROLLBACK_BASELINE='8ccf0fd16355a4ab79844feec6c295366763df0d'
+ROLLBACK_VERSION='0.11.0-dev.23'
 [[ "$TARGET" == "$EXPECTED" && "$TARGET" =~ ^[a-f0-9]{40}$ ]] || { echo R170_SOURCE_SHA_MISMATCH >&2; exit 62; }
 SOURCE_VERSION="$(node -p "require('$WORKSPACE/package.json').version")"
 node "$WORKSPACE/tools/isolated-qa-policy.mjs" || { echo R170_SOURCE_VERSION_NOT_QUALIFIED >&2; exit 63; }
@@ -78,8 +78,11 @@ START="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 echo "SOURCE=$TARGET BASELINE=$BASELINE" > "$ROOT/START_R170.txt"
 
 set +e
+# Force is confined to this disposable RUNNER_TEMP integration test: the release train
+# remains NoPromote for every installed/user host. Preconditions above prove a fresh
+# GitHub-hosted runner, exact source SHA, private config roots and no owner install.
 timeout --signal=TERM --kill-after=10s 800s bash "$WORKSPACE/auto-update-linux.sh" \
-  --install-dir "$ROOT/install" --source-ref "$TARGET" --expected-commit "$TARGET" \
+  --install-dir "$ROOT/install" --source-ref "$TARGET" --expected-commit "$TARGET" --force \
   > "$ROOT/PROMOTE_R170.log" 2>&1
 PROMOTE_CODE=$?
 set -e
@@ -126,7 +129,7 @@ assert s['active']['commit']==sys.argv[2], 'legacy refusal altered promoted rout
 print('R170_LEGACY_INCOMPATIBLE_ROLLBACK_REJECTED_SAFELY')
 PY_CHECK
 
-# Verify an actual rollback to a previously qualified, schema-compatible dev.18
+# Verify an actual rollback to a previously qualified, schema-compatible dev.23
 # predecessor without disabling the schema continuity gate.
 set +e
 timeout --signal=TERM --kill-after=10s 800s bash "$WORKSPACE/auto-update-linux.sh" \
@@ -170,15 +173,50 @@ if [[ -n "$source_status" ]]; then
   printf '%s\n' "$source_status" > "$ROOT/SOURCE_STATUS_R170.txt"
   source_safe=true
   git -C "$WORKSPACE" diff --cached --quiet -- || source_safe=false
-  git -C "$WORKSPACE" diff --ignore-space-at-eol --quiet -- || source_safe=false
+  # Byte-exact semantic parity is checked below: normalize CRLF only, never other whitespace.
   while IFS= read -r line; do
     [[ "$line" == ' M '* ]] || source_safe=false
     file="$(printf '%s' "$line" | cut -c4-)"
-    [[ "$file" == *.ps1 ]] || source_safe=false
-    [[ "$(git -C "$WORKSPACE" check-attr eol -- "$file")" == *': eol: crlf' ]] || source_safe=false
+    case "$file" in
+      *.ps1)
+        [[ "$(git -C "$WORKSPACE" check-attr eol -- "$file")" == *': eol: crlf' ]] || source_safe=false
+        ;;
+      desktop/RemoteCommanderDashboard/Program.cs)
+        # Known source blob has CRLF in the Git index but eol=lf in .gitattributes.
+        # Linux checkout may report this one path dirty despite an EOL-only diff.
+        eolmeta="$(git -C "$WORKSPACE" ls-files --eol -- "$file")"
+        [[ "$eolmeta" == i/crlf* && ( "$eolmeta" == *w/lf* || "$eolmeta" == *w/crlf* ) && "$eolmeta" == *"attr/text eol=lf"* ]] || source_safe=false
+        [[ "$(git -C "$WORKSPACE" rev-parse "HEAD:$file")" == d67eeb4bc6eb72f98bfbc3c286c2e70b0bb8a246 ]] || source_safe=false
+        echo R170_KNOWN_DASHBOARD_EOL_CONFLICT_CHECKED
+        ;;
+      *) source_safe=false ;;
+    esac
+    # Refuse any semantic change, including whitespace edits other than CRLF/LF.
+    # This is stricter than 'git diff --ignore-space-at-eol --quiet'.
+    if ! python3 - "$WORKSPACE" "$file" <<'PY'
+import pathlib, subprocess, sys
+repo, rel = sys.argv[1:3]
+target = pathlib.Path(repo) / rel
+if not target.is_file() or target.is_symlink():
+    raise SystemExit(1)
+baseline = subprocess.check_output(['git','-C',repo,'show','HEAD:'+rel])
+current = target.read_bytes()
+def normalize(value):
+    normalized = value.replace(b'\r\n',b'\n')
+    if b'\r' in normalized:
+        raise ValueError('lone CR byte')
+    return normalized
+if normalize(current) != normalize(baseline):
+    raise SystemExit(1)
+print('R170_EOL_BYTES_EQUAL')
+PY
+    then
+      source_safe=false
+      echo R170_EOL_BYTES_MISMATCH
+    fi
   done <<< "$source_status"
   if [[ "$source_safe" != true ]]; then echo R170_SOURCE_CHANGED >&2; exit 77; fi
-  echo R170_SOURCE_DECLARED_PS1_EOL_ONLY_ACCEPTED
+  echo R170_SOURCE_BOUNDED_EOL_ONLY_ACCEPTED
 else
   echo R170_SOURCE_CLEAN_PASS
 fi

@@ -110,8 +110,27 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          docker run --rm             -e RC_SOURCE_REF="$RC_SOURCE_REF"             -e RC_EXPECTED_COMMIT="$RC_EXPECTED_COMMIT"             -v "$GITHUB_WORKSPACE:/src:ro"             ubuntu:24.04 bash -lc '
+          dns_args=()
+          if ! docker run --rm ubuntu:24.04 bash -lc 'timeout 8s getent ahostsv4 archive.ubuntu.com >/dev/null && timeout 8s getent ahostsv4 security.ubuntu.com >/dev/null'; then
+            # Only GitHub-hosted ephemeral Ubuntu. HTTPS DNS bootstraps the
+            # public Ubuntu/github/nodejs hostnames; apt signatures remain on.
+            bash tools/ci-ubuntu-apt-dns-recover.sh
+            for hostname in archive.ubuntu.com security.ubuntu.com github.com nodejs.org; do
+              address="$(getent ahostsv4 "$hostname" | awk 'NR==1{print $1}')"
+              [[ "$address" =~ ^[0-9.]{7,15}$ ]] || exit 4
+              dns_args+=(--add-host "$hostname:$address")
+            done
+            docker run --rm "${dns_args[@]}" ubuntu:24.04 bash -lc 'timeout 8s getent ahostsv4 archive.ubuntu.com >/dev/null && timeout 8s getent ahostsv4 security.ubuntu.com >/dev/null'
+            echo RC_CI_DOCKER_DOH_UBUNTU_HOSTS_PASS
+          fi
+          docker run --rm "${dns_args[@]}"             -e RC_SOURCE_REF="$RC_SOURCE_REF"             -e RC_EXPECTED_COMMIT="$RC_EXPECTED_COMMIT"             -v "$GITHUB_WORKSPACE:/src:ro"             ubuntu:24.04 bash -lc '
               set -euo pipefail
+              # Mirror the Linux CI helper dependency used by the D-Bus/Portal
+              # contract tests. This is isolated QA-only setup, not a desktop
+              # permission grant or a production GUI activation.
+              apt-get update
+              DEBIAN_FRONTEND=noninteractive apt-get install --yes --no-install-recommends python3-gi gir1.2-glib-2.0
+              python3 -c "import gi; from gi.repository import Gio, GLib; print(\"LINUX_PORTAL_GI_QA_PREREQUISITE_PASS\")"
               bash /src/server-install-linux.sh                 --source-ref "$RC_SOURCE_REF"                 --expected-commit "$RC_EXPECTED_COMMIT"                 --install-dir /opt/chatgpt-remote-commander/app                 --no-start
               test "$(git -C /opt/chatgpt-remote-commander/app rev-parse HEAD)" = "$RC_EXPECTED_COMMIT"
               command -v python3 >/dev/null

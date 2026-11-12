@@ -1,10 +1,13 @@
 import { readFile } from 'node:fs/promises';
 import { spawn, spawnSync } from 'node:child_process';
 import { StringDecoder } from 'node:string_decoder';
+import { fileURLToPath } from 'node:url';
+import { resolve } from 'node:path';
 
+const repoRoot = resolve(fileURLToPath(new URL('../', import.meta.url)));
 function git(args, options = {}) {
-  const result = spawnSync('git', args, {
-    encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, ...options
+  const result = spawnSync('git', ['-c',`safe.directory=${repoRoot}`,'-C',repoRoot,...args], {
+    cwd:repoRoot, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, ...options
   });
   if (result.status !== 0) throw new Error(result.stderr || `git ${args.join(' ')} failed`);
   return result.stdout;
@@ -222,8 +225,8 @@ if (!probed.has('Tunnel identifier') || !probed.has('Bearer token literal')) {
   throw new Error('SECURITY_AUDIT_STREAM_SCANNER_REGRESSION');
 }
 async function scanCompleteHistory() {
-  const args = ['log', '--all', '-p', '--no-color', '--no-ext-diff'];
-  const child = spawn('git', args, { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
+  const args = ['-c',`safe.directory=${repoRoot}`,'-C',repoRoot,'log', '--all', '-p', '--no-color', '--no-ext-diff'];
+  const child = spawn('git', args, { cwd:repoRoot, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
   const closed = new Promise((resolve, reject) => {
     child.once('error', reject);
     child.once('close', (code, signal) => resolve({ code, signal }));
@@ -269,7 +272,7 @@ for (const forbidden of ['config.local.json', '.env', 'connections.local.json'])
   if (tracked.includes(forbidden)) findings.push({ scope: 'CURRENT', type: 'Forbidden tracked file', location: forbidden });
 }
 for (const expectedIgnored of ['config.local.json', '.env', 'connections.local.json', 'credentials/example.dpapi', 'downloads/example.zip']) {
-  const ignored = spawnSync('git', ['check-ignore', '-q', '--', expectedIgnored]);
+  const ignored = spawnSync('git', ['-c',`safe.directory=${repoRoot}`,'-C',repoRoot,'check-ignore', '-q', '--', expectedIgnored], {cwd:repoRoot});
   if (ignored.status !== 0) findings.push({ scope: 'CURRENT', type: 'Expected ignore missing', location: expectedIgnored });
 }
 

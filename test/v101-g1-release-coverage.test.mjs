@@ -7,7 +7,7 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {spawnSync} from 'node:child_process';
 import {
-  assessG1ReleaseBundle,parseArgs,G1_MODULES,
+  assessG1ReleaseBundle,parseArgs,G1_MODULES,G1_TRUST_ASSETS_SHA256,
   V101_ACCEPTED_ADAPTER_SHA256,V102_ACCEPTED_WIN_JOB_SHA256,J01_VERIFIER_SHA256
 } from '../tools/v1-01/verify-g1-release-coverage.mjs';
 
@@ -24,6 +24,11 @@ function fixture(){
     }else{
       fs.writeFileSync(dest,'// source coverage fixture, not production runtime\n');
     }
+  }
+  for(const rel of Object.keys(G1_TRUST_ASSETS_SHA256)){
+    const dest=path.join(root,rel);
+    fs.mkdirSync(path.dirname(dest),{recursive:true});
+    fs.copyFileSync(path.join(base,rel),dest);
   }
   return root;
 }
@@ -54,6 +59,14 @@ test('release omitting one V2 or owner adapter module is always blocked',()=>{
   const root=fixture();
   try{
     for(const relative of [
+      'src/native-owner-session-provider-windows.mjs',
+      'src/native-owner-session-windows.ps1',
+      'src/v101-windows-owner-security-bootstrap.mjs',
+      'src/v101-g1-loopback-runtime.mjs',
+      'src/v101-g1-canonical-workflow-runtime.mjs',
+      'src/v101-private-tunnel-owner-host.mjs',
+      'src/v2-private-tunnel-https-gateway.mjs',
+      'src/v2-private-tunnel-mtls-attestor.mjs',
       'src/v2-mcp-http-ingress.mjs','src/v2-oauth-jwks.mjs',
       'src/v2-native-owner-session-bindings.mjs',
       'src/v101-v2-protected-dispatcher.mjs',
@@ -161,5 +174,28 @@ test('V0.12 stable source admission rejects dev23 and pre-release variants',()=>
     assert.equal(qualified.status,'SOURCE_COVERAGE_PASS_NOT_G1_ACCEPTANCE');
     assert.equal(qualified.productionG1Accepted,false);
     assert.equal(qualified.j01CredentialEnrolled,false);
+  }finally{fs.rmSync(root,{recursive:true,force:true});}
+});
+
+test('G1 trust anchors cannot be missing, re-encoded or replaced in release source',()=>{
+  const root=fixture();
+  try{
+    for(const relative of Object.keys(G1_TRUST_ASSETS_SHA256)){
+      const file=path.join(root,relative);
+      const original=fs.readFileSync(file);
+      fs.rmSync(file);
+      let verdict=assess(root);
+      assert.equal(verdict.code,'G1_TRUST_ASSET_NOT_PINNED');
+      assert.equal(verdict.asset,relative);
+      fs.writeFileSync(file,Buffer.from(original.toString('utf8').replaceAll('\n','\r\n')));
+      verdict=assess(root);
+      assert.equal(verdict.code,'G1_TRUST_ASSET_NOT_PINNED');
+      assert.equal(verdict.asset,relative);
+      fs.writeFileSync(file,Buffer.from(original.toString('utf8').replace('CERTIFICATE','CERTIFICATX')));
+      verdict=assess(root);
+      assert.equal(verdict.code,'G1_TRUST_ASSET_NOT_PINNED');
+      fs.writeFileSync(file,original);
+      assert.equal(assess(root).status,'SOURCE_COVERAGE_PASS_NOT_G1_ACCEPTANCE');
+    }
   }finally{fs.rmSync(root,{recursive:true,force:true});}
 });

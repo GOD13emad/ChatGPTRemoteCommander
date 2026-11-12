@@ -106,7 +106,7 @@ if (process.argv[2] === '--claim-worker') {
     } finally { await fixture.dispose(); }
   });
 
-  for (const earlyWake of [false,true]) test(`deadline aborts an abort-aware planner before any filesystem effect (early wake=${earlyWake})`, { timeout: 6000 }, async t => {
+  for (const earlyWake of [false,true]) test(`deadline aborts an abort-aware planner before any filesystem effect (early wake=${earlyWake})`, { timeout: 12000 }, async t => {
     let aborted = false;
     const fixture = makeFixture({ planner: async (_, { signal }) => new Promise((resolve, reject) => {
       const stop = () => { aborted = true; reject(Object.assign(new Error('Planner interrupted'), { code: 'PLANNER_ABORTED' })); };
@@ -119,7 +119,9 @@ if (process.argv[2] === '--claim-worker') {
         const nativeTimeout=globalThis.setTimeout;
         t.mock.method(globalThis,'setTimeout',(callback,delay,...args)=>{
           timerCalls++;
-          return nativeTimeout(callback,Math.min(delay,5),...args);
+          // Advance only long deadline waits. Accelerating short backoff/
+          // SQLite timers into a 5 ms storm starves slow Windows CI workers.
+          return nativeTimeout(callback,delay>=250?5:delay,...args);
         });
       }
       const result = await fixture.tick();

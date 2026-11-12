@@ -1,4 +1,5 @@
 import { spawnSync } from 'node:child_process';
+import { resolvePython3Runner } from '../tools/resolve-python3-runner.mjs';
 import { readFileSync } from 'node:fs';
 
 const windowsInstaller = readFileSync('install.ps1', 'utf8');
@@ -107,17 +108,37 @@ for (const token of [
 ]) if (!linuxServerInstaller.includes(token)) throw new Error('Linux V0.12 dev bootstrap must match a non-promotable release train: '+token);
 const linuxDevTrainValidator = linuxServerInstaller.match(/<<'PY'\n([\s\S]*?)\nPY/);
 if (!linuxDevTrainValidator) throw new Error('Linux staged release-train validator not found');
-const pythonCommand = process.platform === 'win32' ? 'py' : 'python3';
-const pythonPrefixArgs = process.platform === 'win32' ? ['-3'] : [];
-for (const [minor, version, accepted] of [
+const pythonRunner=process.platform==='linux'?resolvePython3Runner():null;
+function validateTrainInNode(minor,version){
+  let train;
+  try{train=JSON.parse(readFileSync('docs/release-train-0.'+minor+'.json','utf8'));}
+  catch{return false;}
+  return train!==null&&typeof train==='object'&&!Array.isArray(train)
+    &&train.train==='0.'+minor&&train.sourceVersion===version
+    &&train.status==='INTEGRATION_CANDIDATE_NOT_FINAL'
+    &&train.channel==='development'&&train.releaseTag===null
+    &&['isStable','publishApproved','autoupdateApproved','installedPromotionApproved']
+      .every(key=>train[key]===false);
+}
+// On Windows the installer bootstraps portable Node/Git but not Python. Validate
+// the Linux-only release-train predicates in Node without another dependency.
+// Linux additionally executes the actual embedded Python validator, preserving
+// its independent runtime admission check.
+for (const [minor,version,accepted] of [
   ['11','0.11.0-dev.105',true],
   ['12','0.12.0-dev.1',true],
   ['12','0.12.0-dev.2',false],
   ['11','0.12.0-dev.1',false]
-]) {
-  const result = spawnSync(pythonCommand, [...pythonPrefixArgs,'-',`docs/release-train-0.${minor}.json`,version,`0.${minor}`],
-    {input:linuxDevTrainValidator[1]+'\n',encoding:'utf8',windowsHide:true});
-  if ((result.status===0)!==accepted) throw new Error('Linux V0.12 train/source match admission wrong: '+minor+' '+version);
+]){
+  if(validateTrainInNode(minor,version)!==accepted)
+    throw new Error('Linux V0.12 train/source Node parity wrong: '+minor+' '+version);
+  if(pythonRunner){
+    const result=spawnSync(pythonRunner.command,
+      [...pythonRunner.prefixArgs,'-','docs/release-train-0.'+minor+'.json',version,'0.'+minor],
+      {input:linuxDevTrainValidator[1]+'\n',encoding:'utf8',windowsHide:true,timeout:8000});
+    if((result.status===0)!==accepted)
+      throw new Error('Linux V0.12 embedded Python admission wrong: '+minor+' '+version);
+  }
 }
 for (const [label,script] of [['server-install-windows.ps1',windowsServerInstaller],
                                ['server-install-canary.yml',serverCanaryWorkflow]]) {
@@ -179,6 +200,12 @@ for (const required of [
   'SERVER_INSTALL_LINUX_PASS',
   'Alpine/musl is not qualified'
 ]) if (!linuxServerInstaller.includes(required)) throw new Error(`server-install-linux.sh missing server bootstrap behavior: ${required}`);
+for (const required of ['attempt <= 3','Acquire::Retries=3 update','Acquire::Retries=3 install','APT_BOOTSTRAP_PREREQUISITES_FAILED_AFTER_3_ATTEMPTS']) {
+  if (!linuxInstaller.includes(required)) throw new Error(`install.sh missing bounded apt retry behavior: ${required}`);
+}
+for (const required of ['attempt <= 3','Acquire::Retries=3 update','Acquire::Retries=3 install','APT_BOOTSTRAP_PREREQUISITES_FAILED_AFTER_3_ATTEMPTS']) {
+  if (!linuxServerInstaller.includes(required)) throw new Error(`server-install-linux.sh missing bounded apt retry behavior: ${required}`);
+}
 for (const required of [
   'SOURCE_REF="${REMOTE_COMMANDER_SOURCE_REF:-v0.12.0}"',
   '--source-ref',

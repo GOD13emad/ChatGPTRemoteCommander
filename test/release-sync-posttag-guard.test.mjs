@@ -8,7 +8,8 @@ import {fileURLToPath} from 'node:url';
 import crypto from 'node:crypto';
 import {verifyV012Publication,summarizeV012Readiness} from '../tools/verify-v012-publish-readiness.mjs';
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
-const workflow=fs.readFileSync(path.join(root,'.github/workflows/release-sync.yml'),'utf8');
+const normalizeNewlines=text=>text.replace(/\r\n?/g,'\n');
+const workflow=normalizeNewlines(fs.readFileSync(path.join(root,'.github/workflows/release-sync.yml'),'utf8'));
 const start=workflow.indexOf('      - name: Validate matching annotated tag and versioned 20/21-asset manifest');
 const end=workflow.indexOf('      - name: Authorize Windows distribution mode for this exact version',start);
 assert.ok(start>0&&end>start,'release identity step not found');
@@ -194,6 +195,14 @@ test('v0.12 annotated tag cannot bypass NoPromote train in actual release identi
 });
 
 
+test('release-sync PR path guard tolerates hosted Windows CRLF checkout',()=>{
+ const windowsText=workflow.replace(/\n/g,'\r\n');
+ const normalized=normalizeNewlines(windowsText);
+ const pr=normalized.split('  pull_request:\n')[1]?.split('\npermissions:')[0];
+ assert.ok(pr,'Windows CRLF must not hide release-sync pull_request triggers');
+ for(const f of ['docs/release-train-0.12.json','tools/verify-v012-publish-readiness.mjs','test/release-sync-posttag-guard.test.mjs'])
+   assert.ok(pr.includes("      - '"+f+"'"),f);
+});
 test('release-sync PR scope includes development-train admission policy and regression test',()=>{
  const pr=workflow.split('  pull_request:\n')[1]?.split('\npermissions:')[0];
  assert.ok(pr,'pull_request path filter missing');
@@ -202,4 +211,27 @@ test('release-sync PR scope includes development-train admission policy and regr
   'tools/verify-v012-publish-readiness.mjs',
   'test/release-sync-posttag-guard.test.mjs'
  ])assert.ok(pr.includes("      - '"+path+"'"),'missing release-sync PR trigger '+path);
+});
+
+test('v0.12 development QA provenance uses a separate trusted integration-only job and cannot publish Stable',()=>{
+ assert.match(workflow,/branches: \[main, integration\/v012-unsigned-approval-20261110\]/);
+ const qa=workflow.split('  qa-provenance:\n')[1]?.split('\n  publish:\n')[0];
+ assert.ok(qa,'QA attestation job must be independently scoped');
+ assert.match(qa,/if: github\.event_name == 'push' && github\.ref == 'refs\/heads\/integration\/v012-unsigned-approval-20261110'/);
+ assert.match(qa,/needs: \[build-windows-setup, build-linux-bootstrap\]/);
+ for(const field of ['contents: read','id-token: write','attestations: write',
+   "remote-commander-windows-setup","remote-commander-linux-onefile-QA",
+   "test \"$(git rev-parse HEAD)\" = \"$GITHUB_SHA\"",
+   "test \"$version\" = '0.12.0-dev.1'",
+   "test \"$expected\" = \"$actual\"",
+   'actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6',
+   'create-storage-record: false','--source-digest "$GITHUB_SHA"',
+   '--signer-workflow "$GH_REPO/.github/workflows/release-sync.yml"',
+   'V012_QA_GITHUB_ATTESTATION_VERIFIED_NO_PROMOTE'])
+   assert.ok(qa.includes(field),'missing QA attestation safety gate: '+field);
+ const publish=workflow.split('  publish:\n')[1];
+ assert.ok(publish?.includes("if: github.event_name != 'pull_request' && github.ref != 'refs/heads/integration/v012-unsigned-approval-20261110'"),
+   'publishing job must refuse the development integration branch');
+ assert.ok(publish.includes("steps.release_identity.outputs.accepted == 'true'"),
+   'Stable tag-only publication gate must remain intact');
 });
