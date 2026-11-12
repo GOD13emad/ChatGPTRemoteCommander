@@ -1,4 +1,9 @@
 import test from 'node:test';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import {MutationIdempotencyStore} from '../src/mutation-idempotency.mjs';
+
 import assert from 'node:assert/strict';
 import {createV2PrivatePairOperationGate} from '../src/v2-private-pair-operation-gate.mjs';
 
@@ -222,4 +227,35 @@ test('untrusted getter, Proxy, cycles, and non-JSON action arguments reject befo
     assert.equal(state.effects,0);
   }
   assert.equal(touched,0);
+});
+
+test('at-most-once receipt detects changed native action arguments on identical operationId',async()=>{
+  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'v012-private-receipts-'));
+  const receipts=new MutationIdempotencyStore({directory:dir,scope:'private-pair-qa'});
+  let effects=0;
+  try{
+    const {gate}=setup({
+      receiptStore:receipts,
+      execute:async(_route,args)=>{
+        effects++;
+        return {completed:'step1',value:args.command};
+      }
+    });
+    const same=()=>({...call(),arguments:{command:'echo safe'}});
+    assert.deepEqual(await gate.execute(same()),{
+      completed:'step1',value:'echo safe'
+    });
+    assert.deepEqual(await gate.execute(same()),{
+      completed:'step1',value:'echo safe'
+    });
+    assert.equal(effects,1,'replay must return durable receipt, not repeat effect');
+    await assert.rejects(gate.execute({
+      ...call(),arguments:{command:'echo unsafe'}
+    }),e=>e?.mutationIdempotencyCode==='MUTATION_REQUEST_ID_CONFLICT');
+    assert.equal(effects,1,'changed arguments may never reuse previous receipt');
+    assert.equal(receipts.status().states.SUCCEEDED,1);
+  }finally{
+    receipts.close();
+    fs.rmSync(dir,{recursive:true,force:true});
+  }
 });

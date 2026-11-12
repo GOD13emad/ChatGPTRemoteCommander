@@ -15,12 +15,16 @@ const fail=code=>{throw Object.assign(new Error(code),{code});};
 function exactPrivateOwnerPair(value){
   const fields=['expectedTunnelIdHash','expectedOwnerSidHash',
     'resolveCurrentOwnerSidHash','ownerStack','operationGate'];
+  const optional=['trustedToolCatalog','validateToolInput'];
   if(!value||typeof value!=='object'||Array.isArray(value)||isProxy(value)
-    ||![Object.prototype,null].includes(Object.getPrototypeOf(value))
-    ||Reflect.ownKeys(value).length!==fields.length)
+    ||![Object.prototype,null].includes(Object.getPrototypeOf(value)))
+    fail('V2_TUNNEL_PRIVATE_PAIR_BOOTSTRAP_REQUIRED');
+  const keys=Reflect.ownKeys(value);
+  if(keys.some(k=>typeof k!=='string'||![...fields,...optional].includes(k))
+    ||fields.some(k=>!keys.includes(k)))
     fail('V2_TUNNEL_PRIVATE_PAIR_BOOTSTRAP_REQUIRED');
   const obj=Object.create(null);
-  for(const field of fields){
+  for(const field of keys){
     const d=Object.getOwnPropertyDescriptor(value,field);
     if(!d||!Object.hasOwn(d,'value')||!d.enumerable)
       fail('V2_TUNNEL_PRIVATE_PAIR_BOOTSTRAP_REQUIRED');
@@ -86,7 +90,9 @@ export function createV2CandidatePrivateTunnelHttpsGateway({
     });
   const ingress=privatePair?createV2PrivatePairMcpIngress({
     attestTransport,ownerStack:privatePair.ownerStack,
-    operationGate:privatePair.operationGate,maxBodyBytes
+    operationGate:privatePair.operationGate,
+    trustedToolCatalog:privatePair.trustedToolCatalog??[],
+    validateToolInput:privatePair.validateToolInput,maxBodyBytes
   }):createV2CandidateHttpIngress({
     resource,authorizationServers,scopes,attestTransport,
     dispatcherFactory,platformSessionProofAuthority,maxBodyBytes

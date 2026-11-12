@@ -148,7 +148,11 @@ export function createV2PrivatePairOperationGate({
             route:grantRoute,tool:grantTool,arguments:frozenArgs,ownerContext:c
           }))===true;
         },
-        withLease,receiptStore,execute:r=>execute(r,frozenArgs)
+        withLease,receiptStore,
+        // At-most-once must detect changed arguments for the SAME operationId.
+        // Existing MutationIdempotencyStore retains only its input digest.
+        receiptInput:Object.freeze({route:r,arguments:frozenArgs}),
+        execute:r=>execute(r,frozenArgs)
       },tool);
     }
   });

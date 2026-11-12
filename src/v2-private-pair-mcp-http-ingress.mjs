@@ -1,10 +1,50 @@
 // Private per-(account,host) MCP source candidate. Does NOT bind a port.
+import {isProxy} from 'node:util/types';
 // On a protected TLS/mTLS host the exact pair is independently attested.
 // No Authorization bearer, public OAuth issuer, per-service tunnel or legacy
 // privileged HTTP fallback. Never grants OS rights: Native J01 and exact signed
 // worker action grants remain mandatory at every protected tools/call.
 const SESSION=/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
-const HEADER_TYPES=new Set(['content-type','authorization','mcp-protocol-version']);
+const TOOL=/^[a-z][a-z0-9_]{0,79}$/;
+const RESERVED=new Set(['v2_private_owner_bind','v2_workflow_step']);
+function snapshotTrustedCatalog(value){
+  if(!Array.isArray(value)||isProxy(value)||value.length>512)
+    fail('V2_PRIVATE_MCP_CATALOG_INVALID');
+  const names=new Set([...RESERVED]);
+  let bytes=0;
+  const items=[];
+  for(const item of value){
+    if(!item||typeof item!=='object'||Array.isArray(item)||isProxy(item)
+      ||![Object.prototype,null].includes(Object.getPrototypeOf(item)))
+      fail('V2_PRIVATE_MCP_CATALOG_INVALID');
+    for(const field of Reflect.ownKeys(item)){
+      if(typeof field!=='string'||!['name','description','inputSchema',
+        'annotations','outputSchema'].includes(field))
+        fail('V2_PRIVATE_MCP_CATALOG_INVALID');
+      const d=Object.getOwnPropertyDescriptor(item,field);
+      if(!d||!d.enumerable||!Object.hasOwn(d,'value'))
+        fail('V2_PRIVATE_MCP_CATALOG_INVALID');
+    }
+    if(typeof item.name!=='string'||!TOOL.test(item.name)
+      ||names.has(item.name)||typeof item.description!=='string'
+      ||item.description.length>4000
+      ||!item.inputSchema||typeof item.inputSchema!=='object'
+      ||Array.isArray(item.inputSchema)||isProxy(item.inputSchema)
+      ||item.inputSchema.type!=='object')
+      fail('V2_PRIVATE_MCP_CATALOG_INVALID');
+    let serialized;
+    try{serialized=JSON.stringify(item);}catch{fail('V2_PRIVATE_MCP_CATALOG_INVALID');}
+    if(typeof serialized!=='string'||serialized.length>16384)
+      fail('V2_PRIVATE_MCP_CATALOG_INVALID');
+    bytes+=Buffer.byteLength(serialized);
+    if(bytes>240000)fail('V2_PRIVATE_MCP_CATALOG_INVALID');
+    const descriptor=JSON.parse(serialized);
+    items.push(Object.freeze(descriptor));
+    names.add(item.name);
+  }
+  return Object.freeze(items);
+}
+
 const fail=code=>{throw Object.assign(new Error(code),{code});};
 function json(res,status,data){
   let bytes;
@@ -82,7 +122,8 @@ const TOOLS=Object.freeze([
 ]);
 
 export function createV2PrivatePairMcpIngress({
-  attestTransport,ownerStack,operationGate,maxBodyBytes=65536
+  attestTransport,ownerStack,operationGate,trustedToolCatalog=[],
+  validateToolInput,maxBodyBytes=65536
 }={}){
   if(typeof attestTransport!=='function'
     ||typeof ownerStack?.requestOwnerBinding!=='function'
@@ -90,6 +131,13 @@ export function createV2PrivatePairMcpIngress({
     ||!Number.isSafeInteger(maxBodyBytes)||maxBodyBytes<1024
     ||maxBodyBytes>262144)
     fail('V2_PRIVATE_MCP_TRUSTED_BOOTSTRAP_REQUIRED');
+  const catalog=snapshotTrustedCatalog(trustedToolCatalog);
+  if(catalog.length>0&&typeof ownerStack?.nativeSessionBindings?.resolveNativeRoute!=='function')
+    fail('V2_PRIVATE_MCP_CANONICAL_ROUTE_REQUIRED');
+  if(catalog.length>0&&typeof validateToolInput!=='function')
+    fail('V2_PRIVATE_MCP_INPUT_VALIDATOR_REQUIRED');
+  const names=new Set([...RESERVED,...catalog.map(x=>x.name)]);
+  const availableTools=Object.freeze([...TOOLS,...catalog]);
   async function handle(req,res){
     try{
       // There is intentionally no createUnboundServer, plaintext fallback,
@@ -124,12 +172,12 @@ export function createV2PrivatePairMcpIngress({
         res.writeHead(202,{'cache-control':'no-store'});res.end();return;
       }
       if(message.method==='tools/list'){
-        json(res,200,rpc(id,{tools:TOOLS}));return;
+        json(res,200,rpc(id,{tools:availableTools}));return;
       }
       if(message.method!=='tools/call'
         ||!message.params||typeof message.params!=='object'
         ||Array.isArray(message.params)
-        ||!['v2_private_owner_bind','v2_workflow_step'].includes(message.params.name)){
+        ||!names.has(message.params.name)){
         json(res,200,error(id));return;
       }
       const name=message.params.name;
@@ -150,6 +198,25 @@ export function createV2PrivatePairMcpIngress({
         await ownerStack.requestOwnerBinding({request:req,sessionHandle:session});
         json(res,200,rpc(id,{isError:false,content:[
           {type:'text',text:'Native owner session approved. Exact tool grants are still required.'}
+        ]}));return;
+      }
+      if(!RESERVED.has(name)){
+        // A direct Core tool never receives a caller-supplied routing target.
+        // Native J01 independently resolves the CURRENT exact owner route.
+        if(await validateToolInput(name,message.params.arguments)!==true){
+          json(res,200,error(id));return;
+        }
+        const route=await ownerStack.nativeSessionBindings.resolveNativeRoute(session);
+        // A native resolver may be stale or misconfigured. Never forward a
+        // route bound to another ChatGPT conversation into the action gate.
+        if(route?.conversationId!==session){
+          json(res,403,{error:'private_session_route_mismatch'});return;
+        }
+        const result=await operationGate.execute({
+          request:req,route,tool:name,arguments:message.params.arguments
+        });
+        json(res,200,rpc(id,{isError:false,content:[
+          {type:'text',text:JSON.stringify(result)}
         ]}));return;
       }
       const action=message.params.arguments;
@@ -175,6 +242,6 @@ export function createV2PrivatePairMcpIngress({
   }
   return Object.freeze({
     requiredTransport:'owner-pinned-private-tunnel-mtls',
-    handle,allowedTools:TOOLS.map(t=>t.name)
+    handle,allowedTools:availableTools.map(t=>t.name)
   });
 }

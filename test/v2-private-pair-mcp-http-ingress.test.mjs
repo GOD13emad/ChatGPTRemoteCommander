@@ -161,3 +161,114 @@ test('malformed bodies, oversized requests, unknown methods and missing TLS fail
   assert.throws(()=>createV2PrivatePairMcpIngress({}),
     {code:'V2_PRIVATE_MCP_TRUSTED_BOOTSTRAP_REQUIRED'});
 });
+
+test('one private Tunnel advertises multiple Core tools and resolves native route independently',async()=>{
+  const log={canonical:0,validated:0,executed:0};
+  const catalog=['read_text','gui_click','browser_navigate'].map(name=>({
+    name,description:'Owner-scoped '+name,
+    inputSchema:{type:'object',additionalProperties:false,properties:{
+      path:{type:'string'},url:{type:'string'}
+    }}
+  }));
+  const ingress=createV2PrivatePairMcpIngress({
+    attestTransport:async()=>({
+      authenticated:true,peerType:'owner-pinned-private-tunnel-mtls',
+      sessionSource:'native-owner-private-pair'
+    }),
+    ownerStack:{
+      requestOwnerBinding:async()=>{},
+      nativeSessionBindings:{resolveNativeRoute:async session=>{
+        log.canonical++;
+        assert.equal(session,'chat1');
+        return route();
+      }}
+    },
+    operationGate:{execute:async command=>{
+      log.executed++;
+      assert.deepEqual(command.route,route());
+      assert.equal(command.tool,'read_text');
+      assert.equal(command.arguments.path,'README.md');
+      return {content:'ok'};
+    }},
+    trustedToolCatalog:catalog,
+    validateToolInput:async(name,args)=>{
+      log.validated++;
+      return name==='read_text'&&args?.path==='README.md';
+    }
+  });
+  const send=async msg=>{
+    const res=response();
+    await ingress.handle(makeRequest(msg),res);
+    return {status:res.status,data:JSON.parse(String(res.buffer))};
+  };
+  const listed=await send(envelope('tools/list'));
+  assert.equal(listed.status,200);
+  assert.deepEqual(listed.data.result.tools.map(t=>t.name),[
+    'v2_private_owner_bind','v2_workflow_step',
+    'read_text','gui_click','browser_navigate'
+  ]);
+  assert.equal(log.canonical,0);
+  const invalid=await send(tool('read_text',{path:'/invalid'}));
+  assert.equal(invalid.data.result.isError,true);
+  assert.equal(log.executed,0);
+  const accepted=await send(tool('read_text',{path:'README.md'}));
+  assert.equal(accepted.data.result.isError,false);
+  assert.equal(log.canonical,1);
+  assert.equal(log.executed,1);
+  assert.equal(log.validated,2);
+});
+
+test('a full Core catalog requires a trusted native route and input validator',()=>{
+  const trustedToolCatalog=[{
+    name:'read_text',description:'read one file',
+    inputSchema:{type:'object',properties:{path:{type:'string'}}}
+  }];
+  const deps={
+    attestTransport:async()=>({authenticated:true}),
+    ownerStack:{requestOwnerBinding:async()=>{}},
+    operationGate:{execute:async()=>({})},trustedToolCatalog
+  };
+  assert.throws(()=>createV2PrivatePairMcpIngress(deps),
+    {code:'V2_PRIVATE_MCP_CANONICAL_ROUTE_REQUIRED'});
+  deps.ownerStack.nativeSessionBindings={resolveNativeRoute:async()=>route()};
+  assert.throws(()=>createV2PrivatePairMcpIngress(deps),
+    {code:'V2_PRIVATE_MCP_INPUT_VALIDATOR_REQUIRED'});
+  deps.validateToolInput=async()=>true;
+  for(const invalid of [
+    [{...trustedToolCatalog[0],name:'v2_workflow_step'}],
+    [trustedToolCatalog[0],trustedToolCatalog[0]],
+    [{...trustedToolCatalog[0],name:'ReadText'}],
+    [new Proxy(trustedToolCatalog[0],{})],
+    [Object.defineProperty({...trustedToolCatalog[0]},'name',{
+      enumerable:true,get(){throw Error('getter');}
+    })]
+  ])assert.throws(()=>createV2PrivatePairMcpIngress({
+    ...deps,trustedToolCatalog:invalid
+  }),{code:'V2_PRIVATE_MCP_CATALOG_INVALID'});
+});
+
+test('native resolver cannot redirect a private Core tool to a different chat',async()=>{
+  let executed=0;
+  const ingress=createV2PrivatePairMcpIngress({
+    attestTransport:async()=>({authenticated:true,
+      peerType:'owner-pinned-private-tunnel-mtls',
+      sessionSource:'native-owner-private-pair'}),
+    ownerStack:{
+      requestOwnerBinding:async()=>{},
+      nativeSessionBindings:{resolveNativeRoute:async()=>({
+        ...route(),conversationId:'other-chat'
+      })}
+    },
+    operationGate:{execute:async()=>{executed++;return {ok:true};}},
+    trustedToolCatalog:[{
+      name:'read_text',description:'owner read',
+      inputSchema:{type:'object',properties:{path:{type:'string'}}}
+    }],
+    validateToolInput:async()=>true
+  });
+  const res=response();
+  await ingress.handle(makeRequest(tool('read_text',{path:'README.md'})),res);
+  assert.equal(res.status,403);
+  assert.equal(JSON.parse(String(res.buffer)).error,'private_session_route_mismatch');
+  assert.equal(executed,0);
+});

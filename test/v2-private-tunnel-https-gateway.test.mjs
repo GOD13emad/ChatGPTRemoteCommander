@@ -242,8 +242,17 @@ test('PRIVATE pair HTTPS authenticates a pinned tunnel without OAuth and still r
       privateOwnerPair:{
         expectedTunnelIdHash:'a'.repeat(64),expectedOwnerSidHash:'b'.repeat(64),
         resolveCurrentOwnerSidHash:async()=> 'b'.repeat(64),
-        ownerStack:{requestOwnerBinding:async()=>{actions.bind++;}},
-        operationGate:{execute:async()=>{actions.work++;return {ok:true};}}
+        ownerStack:{requestOwnerBinding:async()=>{actions.bind++;},
+          nativeSessionBindings:{resolveNativeRoute:async session=>{
+            assert.equal(session,'chat-1');
+            return {hostId:'host-1',profileId:'emad',principalId:'owner-1',
+              conversationId:'chat-1',operationId:'step-2',
+              target:{kind:'workflow-root',id:'root-1'}};
+          }}},
+        operationGate:{execute:async()=>{actions.work++;return {ok:true};}},
+        trustedToolCatalog:[{name:'read_text',description:'Read an owner-approved file',
+          inputSchema:{type:'object',required:['path'],properties:{path:{type:'string'}}}}],
+        validateToolInput:async(name,args)=>name==='read_text'&&args?.path==='README.md'
       }
     });
     assert.equal(gateway.requiredTransport,'owner-pinned-private-tunnel-mtls');
@@ -264,7 +273,7 @@ test('PRIVATE pair HTTPS authenticates a pinned tunnel without OAuth and still r
     const known=await privatePairRequest(port,f.clientCert,f.clientKey,listMessage);
     assert.equal(known.status,200);
     assert.deepEqual(known.body.result.tools.map(x=>x.name),
-      ['v2_private_owner_bind','v2_workflow_step']);
+      ['v2_private_owner_bind','v2_workflow_step','read_text']);
     assert.equal(actions.bind,0);
     assert.equal(actions.work,0);
     const binding=await privatePairRequest(port,f.clientCert,f.clientKey,{
@@ -286,6 +295,14 @@ test('PRIVATE pair HTTPS authenticates a pinned tunnel without OAuth and still r
     });
     assert.equal(work.status,200);
     assert.equal(actions.work,1);
+    const direct=await privatePairRequest(port,f.clientCert,f.clientKey,{
+      jsonrpc:'2.0',id:4,method:'tools/call',
+      params:{name:'read_text',arguments:{path:'README.md'},
+        _meta:{'openai/session':'chat-1'}}
+    });
+    assert.equal(direct.status,200);
+    assert.equal(direct.body.result.isError,false);
+    assert.equal(actions.work,2);
   }finally{
     if(server?.listening)await new Promise(resolve=>server.close(resolve));
     f.dispose();
