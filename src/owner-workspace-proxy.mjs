@@ -48,7 +48,11 @@ export function createOwnerWorkspaceProxy({config,fetchImpl=globalThis.fetch,rea
       name==='workspace_browser_inspect'?21000:
       name==='workspace_browser_click'?15000:
       name==='workspace_native_ui_observe'?14000:
-      (name==='workspace_native_ui_set_value'||name==='workspace_native_ui_invoke')?22000:6500)});}
+      // The native owner prompt allows 45s (54s subprocess budget); only after
+      // consent does the exact-window CUA action run (up to 12s). Keep the
+      // protected owner decision and action within one broker RPC.
+      (name==='workspace_window_click'||name==='workspace_native_ui_set_value'||
+       name==='workspace_native_ui_invoke')?70000:6500)});}
   catch{throw fail('WORKSPACE_OWNER_AGENT_UNAVAILABLE');}
   if(response.status!==200)throw fail('WORKSPACE_OWNER_AGENT_DENIED');
   const txt=await response.text();
