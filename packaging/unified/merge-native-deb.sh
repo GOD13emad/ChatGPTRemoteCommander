@@ -94,6 +94,19 @@ for src,rel in iter_entries(gui):
             shutil.copy2(src,dest)
     else:
         raise SystemExit('RC012_MERGE_SPECIAL_FILE '+str(rel))
+# electron-builder may stage private (0700) application directories. An installed
+# desktop program must be traversable by the OS owner without root privileges;
+# normalize only this static, public application tree, never owner credentials.
+opt_root=native/'opt'
+desktop_root=opt_root/'Remote Commander'
+if not opt_root.is_dir() or opt_root.is_symlink() or not desktop_root.is_dir() or desktop_root.is_symlink():
+    raise SystemExit('RC012_MERGED_DESKTOP_DIRECTORY_INVALID')
+opt_root.chmod(0o755)
+for base,dirs,files in os.walk(desktop_root,followlinks=False):
+    current=pathlib.Path(base)
+    if not current.is_dir() or current.is_symlink():
+        raise SystemExit('RC012_MERGED_DESKTOP_DIRECTORY_UNSAFE')
+    current.chmod(0o755)
 native_control=(native/'DEBIAN/control').read_text()
 gui_control=(gui/'DEBIAN/control').read_text()
 def field(s,name):
@@ -133,6 +146,14 @@ for f in   'usr/lib/chatgpt-remote-commander/tunnel/native-tunnel-launch.sh'   '
     echo "RC012_MERGED_PACKAGE_MISSING $f" >&2; exit 5;
   }
 done
+# Fail the release build if any installed GUI directory is inaccessible to
+# regular users; this catches future electron-builder mode regressions.
+dpkg-deb --contents "$TARGET" | awk '
+  /^d/ && /\.\/opt\/Remote Commander\// && substr($1,2,9)!="rwxr-xr-x" {
+    print "RC012_MERGED_GUI_DIRECTORY_NOT_TRAVERSABLE" > "/dev/stderr"; bad=1
+  }
+  END { exit bad }
+' || exit 5
 [[ "$(pkg "$TARGET" Package)" == chatgpt-remote-commander ]] || exit 5
 [[ "$(pkg "$TARGET" Version)" == "$(pkg "$GUI" Version)" ]] || exit 5
 BEFORE="$(sha256sum "$GUI"|cut -d' ' -f1)"

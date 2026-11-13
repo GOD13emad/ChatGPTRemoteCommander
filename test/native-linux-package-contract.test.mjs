@@ -76,6 +76,17 @@ linuxOnlyTest('one native Linux package installs one dpkg-owned code root shared
   assert.ok(match,'native preflight must be installed in the package');
 });
 
+linuxOnlyTest('unified native Linux merge guarantees owner-readable GUI directories',()=>{
+  const merge=fs.readFileSync(path.join(root,'packaging/unified/merge-native-deb.sh'),'utf8');
+  assert.equal(spawnSync('bash',['-n',path.join(root,'packaging/unified/merge-native-deb.sh')]).status,0);
+  assert.match(merge,/desktop_root=opt_root\/'Remote Commander'/);
+  assert.match(merge,/opt_root\.chmod\(0o755\)/);
+  assert.match(merge,/current\.chmod\(0o755\)/);
+  assert.match(merge,/current\.is_symlink\(\)/);
+  assert.match(merge,/RC012_MERGED_GUI_DIRECTORY_NOT_TRAVERSABLE/);
+  assert.doesNotMatch(merge,/chmod\(0o777\)/);
+});
+
 linuxOnlyTest('native package output guard rejects symlinked dist and installer parents',()=>{
   const tmp=fs.mkdtempSync(path.join(os.tmpdir(),'rc-package-output-symlink-'));
   try{
