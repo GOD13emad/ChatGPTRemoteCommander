@@ -99,14 +99,25 @@ for src,rel in iter_entries(gui):
 # normalize only this static, public application tree, never owner credentials.
 opt_root=native/'opt'
 desktop_root=opt_root/'Remote Commander'
-if not opt_root.is_dir() or opt_root.is_symlink() or not desktop_root.is_dir() or desktop_root.is_symlink():
+share_root=native/'usr/share'
+if (not opt_root.is_dir() or opt_root.is_symlink()
+        or not desktop_root.is_dir() or desktop_root.is_symlink()
+        or not share_root.is_dir() or share_root.is_symlink()):
     raise SystemExit('RC012_MERGED_DESKTOP_DIRECTORY_INVALID')
 opt_root.chmod(0o755)
-for base,dirs,files in os.walk(desktop_root,followlinks=False):
-    current=pathlib.Path(base)
-    if not current.is_dir() or current.is_symlink():
-        raise SystemExit('RC012_MERGED_DESKTOP_DIRECTORY_UNSAFE')
-    current.chmod(0o755)
+# Normalize the installed public GUI and desktop integration files, including
+# app.asar, AppArmor template, .desktop/icon files. Never touch per-owner data.
+for static_root in (desktop_root,share_root):
+    for base,dirs,files in os.walk(static_root,followlinks=False):
+        current=pathlib.Path(base)
+        if not current.is_dir() or current.is_symlink():
+            raise SystemExit('RC012_MERGED_DESKTOP_DIRECTORY_UNSAFE')
+        current.chmod(0o755)
+        for basename in files:
+            asset=current/basename
+            if asset.is_symlink():continue
+            if not asset.is_file():raise SystemExit('RC012_MERGED_GUI_FILE_UNSAFE')
+            asset.chmod(0o755 if asset.stat().st_mode&0o111 else 0o644)
 native_control=(native/'DEBIAN/control').read_text()
 gui_control=(gui/'DEBIAN/control').read_text()
 def field(s,name):
@@ -149,8 +160,13 @@ done
 # Fail the release build if any installed GUI directory is inaccessible to
 # regular users; this catches future electron-builder mode regressions.
 dpkg-deb --contents "$TARGET" | awk '
-  /^d/ && /\.\/opt\/Remote Commander\// && substr($1,2,9)!="rwxr-xr-x" {
-    print "RC012_MERGED_GUI_DIRECTORY_NOT_TRAVERSABLE" > "/dev/stderr"; bad=1
+  /\.\/opt\/Remote Commander\// || /\.\/usr\/share\// {
+    if (substr($1,1,1)=="d" && $1!="drwxr-xr-x") {
+      print "RC012_MERGED_GUI_DIRECTORY_NOT_TRAVERSABLE" > "/dev/stderr"; bad=1
+    }
+    if (substr($1,1,1)=="-" && $1!="-rw-r--r--" && $1!="-rwxr-xr-x") {
+      print "RC012_MERGED_GUI_FILE_NOT_READABLE" > "/dev/stderr"; bad=1
+    }
   }
   END { exit bad }
 ' || exit 5

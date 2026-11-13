@@ -82,6 +82,9 @@ linuxOnlyTest('unified native Linux merge guarantees owner-readable GUI director
   assert.match(merge,/desktop_root=opt_root\/'Remote Commander'/);
   assert.match(merge,/opt_root\.chmod\(0o755\)/);
   assert.match(merge,/current\.chmod\(0o755\)/);
+  assert.match(merge,/asset\.chmod\(0o755 if asset\.stat\(\)\.st_mode&0o111 else 0o644\)/);
+  assert.match(merge,/share_root=native\/'usr\/share'/);
+  assert.match(merge,/RC012_MERGED_GUI_FILE_NOT_READABLE/);
   assert.match(merge,/current\.is_symlink\(\)/);
   assert.match(merge,/RC012_MERGED_GUI_DIRECTORY_NOT_TRAVERSABLE/);
   assert.doesNotMatch(merge,/chmod\(0o777\)/);
