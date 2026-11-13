@@ -247,14 +247,14 @@ export function createV2PrivatePairMcpIngress({
         ||req.socket.authorized!==true){
         json(res,403,{error:'trusted_transport_required'});return;
       }
+      if(browserOriginPresent(req)){
+        json(res,403,{error:'origin_not_allowed'});return;
+      }
       if(req.url!=='/mcp'){
         json(res,404,{error:'not_found'});return;
       }
       if(req.method!=='POST'){
         json(res,405,{error:'method_not_allowed'});return;
-      }
-      if(browserOriginPresent(req)){
-        json(res,403,{error:'origin_not_allowed'});return;
       }
       const attested=await attestTransport(req);
       if(attested?.authenticated!==true
