@@ -91,6 +91,72 @@ test('Linux provider hashes the current OS UID and resolves an active local logi
   assert.equal(calls[0].options.timeout,1000);
 });
 
+test('Linux systemd owner service without XDG_SESSION_ID resolves only an active local logind auto seat',async()=>{
+  const calls=[];
+  const environment=env();delete environment.XDG_SESSION_ID;
+  const provider=createLinuxNativeOwnerSessionProvider(providerOptions({
+    envValue:environment,
+    execFileImpl:(file,args,opts,callback)=>{
+      calls.push({file,args});callback(null,logind(),'');
+    }
+  }));
+  const snapshot=await provider.getOwnerSessionSnapshot();
+  assert.equal(snapshot.osSessionId,'linux-logind-4');
+  assert.equal(snapshot.seatId,'seat0');
+  assert.equal(calls.length,1);
+  assert.deepEqual(calls[0].args.slice(0,3),['show-session','auto','--no-pager']);
+  assert.match(snapshot.ownerSidHash,/^[0-9a-f]{64}$/);
+});
+
+test('Linux systemd logind auto fallback cannot select a foreign, remote or spoofed seat',async t=>{
+  const invalid=[
+    ['wrong-owner',{User:'1001'}],
+    ['remote',{Remote:'yes'}],
+    ['inactive',{Active:'no'}],
+    ['greeter',{Class:'greeter'}],
+    ['non-graphical',{Type:'tty'}],
+    ['invalid-session-id',{Id:'evil'}],
+    ['wrong-display',{Display:':7'}]
+  ];
+  for(const [label,overrides] of invalid){
+    await t.test(label,async()=>{
+      const environment=env();delete environment.XDG_SESSION_ID;
+      const provider=createLinuxNativeOwnerSessionProvider(providerOptions({
+        envValue:environment,
+        execFileImpl:(file,args,options,callback)=>callback(null,logind(overrides),'')
+      }));
+      await assert.rejects(provider.getOwnerSessionSnapshot());
+    });
+  }
+  for(const [label,mutate] of [
+    ['missing-user-bus',e=>delete e.DBUS_SESSION_BUS_ADDRESS],
+    ['foreign-user-bus',e=>e.DBUS_SESSION_BUS_ADDRESS='unix:path=/run/user/1001/bus'],
+    ['wrong-runtime-directory',e=>e.XDG_RUNTIME_DIR='/run/user/1001'],
+    ['missing-session-type',e=>delete e.XDG_SESSION_TYPE],
+    ['spoofed-session-id',e=>e.XDG_SESSION_ID='not-numeric']
+  ]){
+    await t.test(label,async()=>{
+      const environment=env();delete environment.XDG_SESSION_ID;mutate(environment);
+      let executed=0;
+      const provider=createLinuxNativeOwnerSessionProvider(providerOptions({
+        envValue:environment,
+        execFileImpl:(file,args,options,callback)=>{executed++;callback(null,logind(),'');}
+      }));
+      await assert.rejects(provider.getOwnerSessionSnapshot());
+      assert.equal(executed,0,'must deny before calling loginctl');
+    });
+  }
+  await t.test('foreign cgroup user service cannot resolve another owner session',async()=>{
+    const environment=env();delete environment.XDG_SESSION_ID;
+    const provider=createLinuxNativeOwnerSessionProvider(providerOptions({
+      envValue:environment,
+      readFileImpl:()=>'/user.slice/user-1000.slice/session-4.scope'
+    }));
+    await assert.rejects(provider.getOwnerSessionSnapshot(),
+      e=>e?.code==='NATIVE_OWNER_LOGIND_SESSION_REQUIRED');
+  });
+});
+
 test('Linux provider rejects inactive, remote, foreign-user and mismatched-display sessions',async t=>{
   const cases=[
     ['inactive',{Active:'no'}],

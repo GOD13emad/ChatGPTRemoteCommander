@@ -74,6 +74,21 @@ mkdir -p "$APP" "$RUNTIME" "$DEB/DEBIAN" \
   "$DEB$PACKAGE_DIR/tunnel"
 git -C "$ROOT" archive --format=tar "$HEAD" | tar -xf - -C "$APP"
 test "$(node -p 'require(process.argv[1]).version' "$APP/package.json")" = "$VERSION"
+# Every build of the single v0.12 Linux product MUST contain the real protected
+# Core + J01 + signed Worker implementation. Version strings alone are not proof.
+for rel in \
+ src/server-v0.3.mjs src/v012-private-core-runtime.mjs \
+ src/v2-private-pair-mcp-http-ingress.mjs \
+ src/v2-private-tunnel-https-gateway.mjs \
+ src/v2-private-pair-operation-gate.mjs \
+ src/v2-private-signed-worker-grant-adapter.mjs \
+ src/v101-private-pair-native-owner-stack.mjs \
+ src/native-owner-session-provider-linux.mjs \
+ src/native-tunnel-attestor.mjs; do
+  [[ -f "$APP/$rel" && ! -L "$APP/$rel" && -s "$APP/$rel" ]] || {
+    echo "RC012_PROTECTED_NATIVE_CORE_REQUIRED_FILE_MISSING $rel" >&2; exit 4;
+  }
+done
 BASE="https://nodejs.org/dist/v$NODE_VERSION"
 curl --fail --silent --show-error --location --retry 2 \
   --connect-timeout 6 --max-time 75 "$BASE/SHASUMS256.txt" -o "$STAGE/SHASUMS256.txt"

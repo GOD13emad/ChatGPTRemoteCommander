@@ -132,8 +132,14 @@ export function createLinuxNativeOwnerSessionProvider({
   async function getOwnerSessionSnapshot(){
     const uid=getuid();
     if(!Number.isSafeInteger(uid)||uid<0)fail('NATIVE_OWNER_UID_UNAVAILABLE');
-    const sessionId=env.XDG_SESSION_ID;
-    if(typeof sessionId!=='string'||!SESSION_ID.test(sessionId))
+    // A persistent *same-user* systemd service usually has no
+    // XDG_SESSION_ID, even when that owner is logged in at the local desktop.
+    // systemd loginctl 'auto' safely selects that user's graphical session.
+    // Only use this for the verified user manager and its exact user bus;
+    // never infer a remote session, another UID, or an arbitrary desktop.
+    const envSession=env.XDG_SESSION_ID;
+    const hasDirectSession=typeof envSession==='string'&&SESSION_ID.test(envSession);
+    if(envSession!==undefined&&envSession!==''&&!hasDirectSession)
       fail('NATIVE_OWNER_LOGIND_SESSION_REQUIRED');
     if(!clean(env.DBUS_SESSION_BUS_ADDRESS,2048))
       fail('NATIVE_OWNER_SESSION_BUS_REQUIRED');
@@ -142,9 +148,17 @@ export function createLinuxNativeOwnerSessionProvider({
     catch{fail('NATIVE_OWNER_PROCESS_CGROUP_UNAVAILABLE');}
     if(typeof cgroup!=='string'||!cgroup.includes('/user.slice/user-'+uid+'.slice/'))
       fail('NATIVE_OWNER_PROCESS_USER_SCOPE_MISMATCH');
+    const serviceSessionFallback=!hasDirectSession
+      &&cgroup.includes('/user@'+uid+'.service/')
+      &&env.XDG_RUNTIME_DIR==='/run/user/'+uid
+      &&env.DBUS_SESSION_BUS_ADDRESS==='unix:path=/run/user/'+uid+'/bus'
+      &&['wayland','x11'].includes(env.XDG_SESSION_TYPE);
+    if(!hasDirectSession&&!serviceSessionFallback)
+      fail('NATIVE_OWNER_LOGIND_SESSION_REQUIRED');
+    const sessionSelector=hasDirectSession?envSession:'auto';
 
     verifyExecutable(LOGINCTL);
-    const args=['show-session',sessionId,'--no-pager'];
+    const args=['show-session',sessionSelector,'--no-pager'];
     for(const property of PROPERTIES)args.push('-p',property);
     const result=await execute(execFileImpl,LOGINCTL,args,{
       encoding:'utf8',timeout:commandTimeoutMs,maxBuffer:8192,
@@ -153,7 +167,8 @@ export function createLinuxNativeOwnerSessionProvider({
     if(result.code!==0||result.stderr.trim()!=='')
       fail('NATIVE_OWNER_LOGIND_UNAVAILABLE');
     const p=parseLogindProperties(result.stdout);
-    if(p.Id!==sessionId||p.User!==String(uid)||!SAFE_ID.test(p.Seat)
+    if(!SESSION_ID.test(p.Id)||(hasDirectSession&&p.Id!==envSession)
+      ||p.User!==String(uid)||!SAFE_ID.test(p.Seat)
       ||p.Active!=='yes'||p.Remote!=='no'||p.Class!=='user'||p.State!=='active'
       ||!['x11','wayland'].includes(p.Type)
       ||!/^\d{1,12}$/.test(p.Leader)||Number(p.Leader)<1)
@@ -173,7 +188,7 @@ export function createLinuxNativeOwnerSessionProvider({
     const ownerHash=ownerSidHash();
     return Object.freeze({
       source:'native-linux-owner-session',ownerSidHash:ownerHash,
-      osSessionId:'linux-logind-'+sessionId,seatId:p.Seat,displayId,
+      osSessionId:'linux-logind-'+p.Id,seatId:p.Seat,displayId,
       sessionType:p.Type,leaderPid:Number(p.Leader)
     });
   }

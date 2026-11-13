@@ -19,7 +19,14 @@ const files = [
   "test/v2-private-tunnel-mtls-attestor.test.mjs",
   "test/v2-private-tunnel-https-gateway.test.mjs",
   "test/v101-g1-canonical-workflow-runtime.test.mjs",
-  "test/qa-v012-no-promote-ingress.test.mjs"
+  "test/qa-v012-no-promote-ingress.test.mjs",
+  "test/owner-pinned-provenance.test.mjs",
+  "test/v012-owner-local-canary.test.mjs",
+  "test/owner-dpapi-profile-recovery.test.mjs",
+  "test/owner-systemd-creds-profile-recovery.test.mjs",
+  "test/native-owner-session-provider-linux.test.mjs",
+  "test/local-ollama-planner.test.mjs",
+  "test/native-tunnel-client-observer-linux.test.mjs"
 ];
 
 // Keep every file once while bounding expensive Windows native process/SQLite
@@ -36,13 +43,27 @@ const batches = [
   files.slice(13, 15),
   files.slice(15, 17),
   files.slice(17, 18), // Canonical G1/WorkflowStore composition and mTLS denial
-  files.slice(18, 19) // NoPromote quarantine-only QA admission is never G1/J01 approval
+  files.slice(18, 26) // NoPromote, protected Core, encrypted recovery, local J01 and owner-pinned tunnel
 ];
 if(batches.flat().length!==files.length
   ||new Set(batches.flat()).size!==files.length
   ||batches.some(batch=>batch.length===0))
   throw new Error('V012_SOURCE_REGRESSION_COVERAGE_INVALID');
-for (let index = 0; index < batches.length; index++) {
+// Durable Commander operations have a 30-second transport deadline, not a
+// release-test deadline. Independently replayable ranges avoid losing all
+// test evidence when this suite approaches that cap. CI runs the full suite.
+function selectedRange(argv){
+  if(argv.length===0)return {first:1,last:batches.length};
+  if(argv.length!==1||!/^--batch-range=[0-9]{1,2}-[0-9]{1,2}$/.test(argv[0]))
+    throw new Error('V012_SOURCE_REGRESSION_BATCH_RANGE_INVALID');
+  const [,numbers]=argv[0].split('=');
+  const [first,last]=numbers.split('-').map(Number);
+  if(first<1||last<first||last>batches.length)
+    throw new Error('V012_SOURCE_REGRESSION_BATCH_RANGE_INVALID');
+  return {first,last};
+}
+const range=selectedRange(process.argv.slice(2));
+for (let index = range.first-1; index < range.last; index++) {
   const batch = batches[index];
   if (!batch.length) continue;
   process.stdout.write('V012_SOURCE_REGRESSION_BATCH_START_' + (index + 1) + '/' + batches.length + ' files=' + batch.length + '\n');

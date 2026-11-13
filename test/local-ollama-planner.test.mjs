@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {proposeWithLocalOllama,validateLocalProposal} from '../tools/local-ollama-planner.mjs';
+import {proposeWithLocalOllama,proposeWithLocalLlamaCpp,validateLocalProposal} from '../tools/local-ollama-planner.mjs';
 const context={workflowId:'owner-approved-fixture',currentStep:{id:'inspect'},tools:[{name:'read_text'}]};
 const call={action:'call',tool:'read_text',argumentsJson:'{"path":"proof.txt"}',summary:'Inspect only'};
 const block={action:'block',tool:'',argumentsJson:'{}',summary:'Needs owner approval'};
@@ -37,4 +37,53 @@ test('oversized model body and unauthorized JSON fail closed',async()=>{
 test('proposal is one bounded scope-owned action, not execution',async()=>{
  const r=await proposeWithLocalOllama(context,{model:'test',fetchImpl:async()=>response(block)});
  assert.equal(r.action,'block');assert.equal(r.tool,'');
+});
+
+test('existing local llama.cpp OpenAI-compatible server returns only validated proposals',async()=>{
+ let sent;const fakeKey='NONPRODUCTION_QA_KEY_12345678';
+ const p=await proposeWithLocalLlamaCpp(context,{model:'qwen3-06b-q8',
+  readOwnerKey:async()=>fakeKey,fetchImpl:async(url,options)=>{
+    assert.equal(url,'http://127.0.0.1:8080/v1/chat/completions');
+    assert.equal(options.headers.authorization,'Bearer '+fakeKey);
+    sent=JSON.parse(options.body);
+    return new Response(JSON.stringify({choices:[{message:{content:JSON.stringify(call)}}]}),{status:200});
+  }
+ });
+ assert.deepEqual(p,call);
+ assert.equal(sent.stream,false);
+ assert.deepEqual(sent.response_format,{type:'json_object'});
+ assert.equal(Object.hasOwn(sent,'tools'),false);
+ assert.equal(Object.hasOwn(sent,'tool_choice'),false);
+ assert.equal(sent.messages.length,2);
+});
+test('llama.cpp owner key, network and untrusted model output fail closed',async()=>{
+ let used=false;
+ await assert.rejects(proposeWithLocalLlamaCpp(context,{
+  model:'qwen3-06b-q8',readOwnerKey:async()=>'short',fetchImpl:async()=>{
+    used=true;return new Response('{}',{status:200});
+  }
+ }),/OWNER_KEY_INVALID/);
+ assert.equal(used,false);
+ await assert.rejects(proposeWithLocalLlamaCpp(context,{
+  model:'qwen3-06b-q8',readOwnerKey:async()=>'NONPRODUCTION_QA_KEY_12345678',
+  fetchImpl:async()=>new Response(JSON.stringify({choices:[{message:{content:JSON.stringify({...call,tool:'run_shell'})}}]}),{status:200})
+ }),/TOOL_NOT_ADMITTED/);
+ await assert.rejects(proposeWithLocalLlamaCpp(context,{
+  model:'qwen3-06b-q8',readOwnerKey:async()=>'NONPRODUCTION_QA_KEY_12345678',
+  fetchImpl:async()=>new Response('{}',{status:401})
+ }),/HTTP_UNAVAILABLE/);
+ await assert.rejects(proposeWithLocalLlamaCpp(context,{
+  model:'qwen3-06b-q8',readOwnerKey:async()=>'NONPRODUCTION_QA_KEY_12345678',
+  fetchImpl:async()=>new Response(JSON.stringify({choices:[{message:{content:'not-json'}}]}))
+ }),/INVALID_MODEL_JSON/);
+});
+
+test('llama.cpp refusal drops any suggested tool and arguments before validation',async()=>{
+ const p=await proposeWithLocalLlamaCpp(context,{
+  model:'qwen3-06b-q8',readOwnerKey:async()=>'NONPRODUCTION_QA_KEY_12345678',
+  fetchImpl:async()=>new Response(JSON.stringify({choices:[{message:{content:JSON.stringify({
+   action:'block',tool:'run_shell',argumentsJson:'{"command":"must never run"}',summary:'Need more evidence'
+  })}}]}))
+ });
+ assert.deepEqual(p,{action:'block',tool:'',argumentsJson:'{}',summary:'Need more evidence'});
 });

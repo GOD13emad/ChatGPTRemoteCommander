@@ -23,6 +23,7 @@ if (mode === 'array') console.log(JSON.stringify({...proposal,argumentsJson:'[]'
 if (mode === 'exit') { console.error('PRIVATE_CREDENTIAL'); process.exitCode=7; }
 if (mode === 'local-ollama-error') { console.error('LOCAL_OLLAMA_HTTP_UNAVAILABLE'); process.exitCode=1; }
 if (mode === 'local-ollama-timeout') { console.error('LOCAL_OLLAMA_REQUEST_TIMEOUT'); process.exitCode=1; }
+if (mode === 'local-ollama-owner-key') { console.error('LOCAL_OLLAMA_OWNER_KEY_UNAVAILABLE'); process.exitCode=1; }
 if (mode === 'local-ollama-secret') { console.error('LOCAL_OLLAMA_HTTP_UNAVAILABLE token=PRIVATE_CREDENTIAL'); process.exitCode=1; }
 if (mode === 'local-ollama-unknown') { console.error('LOCAL_OLLAMA_UNEXPECTED'); process.exitCode=1; }
 if (mode === 'stderr') { console.error('x'.repeat(10000)); setInterval(()=>{},1000); }
@@ -87,6 +88,7 @@ for (const [mode, code] of [
   ['bad','PLANNER_INVALID_JSON'],['schema','PLANNER_INVALID_PROPOSAL'],['array','PLANNER_INVALID_PROPOSAL'],
   ['exit','PLANNER_EXIT_FAILED'],['local-ollama-error','PLANNER_LOCAL_OLLAMA_HTTP_UNAVAILABLE'],
   ['local-ollama-timeout','PLANNER_LOCAL_OLLAMA_REQUEST_TIMEOUT'],
+   ['local-ollama-owner-key','PLANNER_LOCAL_OLLAMA_OWNER_KEY_UNAVAILABLE'],
   ['local-ollama-secret','PLANNER_EXIT_FAILED'],['local-ollama-unknown','PLANNER_EXIT_FAILED'],
   ['flood','PLANNER_OUTPUT_LIMIT'],['stderr','PLANNER_OUTPUT_LIMIT']
 ]) {
