@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { spawn, spawnSync } from 'node:child_process';
 import { StringDecoder } from 'node:string_decoder';
+import {isVerifiedSyntheticPrivatePem} from '../tools/security-audit-history.mjs';
 
 function git(args, options = {}) {
   const result = spawnSync('git', args, {
@@ -55,12 +56,21 @@ function makeHistoryScanner(rules) {
     if (commitMatch) { currentCommit = commitMatch[1]; currentPath = ''; }
     const pathMatch = /^diff --git a\/(.+) b\/(.+)\r?\n?$/.exec(line);
     if (pathMatch) currentPath = pathMatch[1] === pathMatch[2] ? pathMatch[1] : '';
+    // Preserve the mainline exact-line historical fixture exception and its
+    // regression count. This is not a generic PEM exclusion.
     const filtered = scanSyntheticFixtureException(line, currentCommit, currentPath);
     if (filtered.excepted) exceptions += 1;
     const sample = preceding + filtered.line;
     for (const [name, pattern] of rules) {
-      pattern.lastIndex = 0;
-      if (pattern.test(sample)) hits.add(name);
+      const flags = pattern.flags.includes('g') ? pattern.flags : pattern.flags + 'g';
+      for (const match of sample.matchAll(new RegExp(pattern.source, flags))) {
+        // The previous 512-byte tail has already been scanned. Re-check only
+        // matches that extend into this new line; preserve boundary-spanning hits.
+        if (match.index + match[0].length <= preceding.length) continue;
+        if (isVerifiedSyntheticPrivatePem(name, match[0], sample, match.index,
+              {commit:currentCommit, file:currentPath})) continue;
+        hits.add(name);
+      }
     }
     preceding = sample.slice(-512);
   }
