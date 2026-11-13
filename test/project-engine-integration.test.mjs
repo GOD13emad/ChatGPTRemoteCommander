@@ -84,7 +84,12 @@ async function claimWorker(root) {
 if (process.argv[2] === '--claim-worker') {
   await claimWorker(process.argv[3]);
 } else {
-  test('automatic scheduler never plans an unenrolled workflow and completes only after explicit enrollment', { timeout: 9000 }, async t => {
+  // Preserve the real scheduler cycle and every assertion, but bound loaded Windows CI
+  // to the already-qualified 30s/22s fixture budget from the stacked G1 source.
+  // Linux retains its original 9s outer / 6s completion budgets.
+  const SCHEDULER_CI_TEST_MS = process.platform === 'win32' ? 30000 : 9000;
+  const SCHEDULER_CI_POLL_MS = process.platform === 'win32' ? 22000 : 6000;
+  test('automatic scheduler never plans an unenrolled workflow and completes only after explicit enrollment', { timeout: SCHEDULER_CI_TEST_MS }, async t => {
     const fixture = makeFixture({ scheduler: true, runner: { autoTick: true }, planner: async () => proposal('write_text', { path: 'result.txt', content: 'verified output' }) });
     try {
       await fixture.create();
@@ -97,7 +102,7 @@ if (process.argv[2] === '--claim-worker') {
       t.diagnostic('SCHEDULER_PHASE=unenrolled_not_planned');
       await fixture.start();
       t.diagnostic('SCHEDULER_PHASE=enrolled_waiting_for_completion');
-      const final = await until(async () => { const current = await fixture.status(); return current.status === 'COMPLETED' ? current : null; });
+      const final = await until(async () => { const current = await fixture.status(); return current.status === 'COMPLETED' ? current : null; }, SCHEDULER_CI_POLL_MS);
       assert.equal(final.actions, 1);
       assert.equal(fixture.plans, 1);
       assert.equal(fixture.calls, 1);
