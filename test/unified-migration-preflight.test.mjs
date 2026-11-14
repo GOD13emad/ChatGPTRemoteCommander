@@ -2,11 +2,13 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {spawnSync} from 'node:child_process';
 import fs from 'node:fs';
+import {mkdtemp,writeFile,mkdir,rm} from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {assessMigration,inspectLocalPlatform,readLinuxOwnerTunnelBinding,inspectLinuxNativeCorePayload,parseMainTunnelBinding,classifyObservedRouterStatus,classifyWindowsUninstallRegistryResponse} from '../packaging/unified/migration-preflight.mjs';
 import {planOwnerPrivateTunnelCutover} from '../tools/plan-owner-private-tunnel-cutover.mjs';
+import {resolveLocalOwnerClientPair} from '../tools/owner-pair-private-source-canary.mjs';
 
 const repo=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const modulePath=path.join(repo,'packaging/unified/migration-preflight.mjs');
@@ -531,3 +533,38 @@ test('offline one-Tunnel owner inspection never emits profile contents or writes
     assert.equal(fs.readFileSync(profileFile,'utf8'),source);
   }finally{fs.rmSync(isolated,{recursive:true,force:true});}
 });
+
+
+// The installed native Tunnel client uses tunnel.crt/key, unlike older client.crt/key QA.
+async function fixture(run){
+  const dir=await mkdtemp(path.join(os.tmpdir(),'rc012-client-pair-'));
+  try{await run(dir);}finally{await rm(dir,{recursive:true,force:true});}
+}
+
+test('real native Tunnel Client certificate names qualify as a complete pair',async()=>fixture(async dir=>{
+  await assert.rejects(resolveLocalOwnerClientPair(dir),/RC012_PROTECTED_CANARY_CLIENT_PAIR_MISSING/);
+  await writeFile(path.join(dir,'tunnel.crt'),'fixture-cert');
+  await assert.rejects(resolveLocalOwnerClientPair(dir),/RC012_PROTECTED_CANARY_CLIENT_PAIR_INVALID/);
+  await writeFile(path.join(dir,'tunnel.key'),'fixture-key');
+  assert.deepEqual(await resolveLocalOwnerClientPair(dir),{
+    cert:path.join(dir,'tunnel.crt'),key:path.join(dir,'tunnel.key')});
+}));
+
+test('legacy client certificate names remain preferred if both complete pairs exist',async()=>fixture(async dir=>{
+  for(const f of ['tunnel.crt','tunnel.key','client.crt','client.key'])
+    await writeFile(path.join(dir,f),'fixture');
+  assert.deepEqual(await resolveLocalOwnerClientPair(dir),{
+    cert:path.join(dir,'client.crt'),key:path.join(dir,'client.key')});
+}));
+
+test('partial client identity fails closed even if native Tunnel identity exists',async()=>fixture(async dir=>{
+  for(const f of ['tunnel.crt','tunnel.key','client.crt'])
+    await writeFile(path.join(dir,f),'fixture');
+  await assert.rejects(resolveLocalOwnerClientPair(dir),/RC012_PROTECTED_CANARY_CLIENT_PAIR_INVALID/);
+}));
+
+test('directories cannot masquerade as credential files',async()=>fixture(async dir=>{
+  await writeFile(path.join(dir,'tunnel.crt'),'fixture');
+  await mkdir(path.join(dir,'tunnel.key'));
+  await assert.rejects(resolveLocalOwnerClientPair(dir),/RC012_PROTECTED_CANARY_CLIENT_PAIR_INVALID/);
+}));

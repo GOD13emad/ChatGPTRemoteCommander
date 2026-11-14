@@ -5,7 +5,7 @@
 import os from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {mkdtemp,readFile,writeFile,rm} from 'node:fs/promises';
+import {mkdtemp,readFile,writeFile,rm,lstat} from 'node:fs/promises';
 import {spawn} from 'node:child_process';
 import net from 'node:net';
 import https from 'node:https';
@@ -27,6 +27,22 @@ function ownerProvider(){
 function validPath(v){
   return typeof v==='string'&&path.isAbsolute(v)&&!v.includes('\0');
 }
+// Local Tunnel Client certificates use tunnel.crt/key; older QA uses client.crt/key.
+// Accept only a complete exact-name pair, rejecting partial or linked entries.
+export async function resolveLocalOwnerClientPair(dir){
+  for(const [certName,keyName] of [['client.crt','client.key'],['tunnel.crt','tunnel.key']]){
+    const [certStat,keyStat]=await Promise.all([certName,keyName].map(async name=>{
+      try{return await lstat(path.join(dir,name));}
+      catch(error){if(error?.code==='ENOENT')return null;throw error;}
+    }));
+    if(!certStat&&!keyStat)continue;
+    if(!certStat||!keyStat||!certStat.isFile()||!keyStat.isFile()
+      ||certStat.isSymbolicLink()||keyStat.isSymbolicLink())
+      fail('RC012_PROTECTED_CANARY_CLIENT_PAIR_INVALID');
+    return Object.freeze({cert:path.join(dir,certName),key:path.join(dir,keyName)});
+  }
+  fail('RC012_PROTECTED_CANARY_CLIENT_PAIR_MISSING');
+}
 async function configState(){
   if(process.env.RC012_PROTECTED_CANARY_SCOPE!=='OWNER_LOCAL_NO_GRANT'
      ||!validPath(process.env.RC012_PROTECTED_CANARY_STATE))
@@ -42,11 +58,12 @@ async function configState(){
 // by the temporary owner-controlled test child process.
 export async function createOwnerPrivatePairBootstrap({profileId}={}){
   const s=await configState();
+  const clientPair=await resolveLocalOwnerClientPair(s.ownerCertDir);
   const [certificatePem,privateKeyPem,clientCaPem,clientPem]=await Promise.all([
     readFile(path.join(s.ownerCertDir,'server.crt'),'utf8'),
     readFile(path.join(s.ownerCertDir,'server.key'),'utf8'),
     readFile(path.join(s.ownerCertDir,'ca.crt'),'utf8'),
-    readFile(path.join(s.ownerCertDir,'client.crt'),'utf8')
+    readFile(clientPair.cert,'utf8')
   ]);
   const expectedClientLeafDerSha256=createHash('sha256')
     .update(new X509Certificate(clientPem).raw).digest('hex');
@@ -87,9 +104,10 @@ async function freePort(){
 }
 async function probeTls(port,ownerCertDir,withClient=true){
   const ca=await readFile(path.join(ownerCertDir,'ca.crt'));
+  const clientPair=withClient?await resolveLocalOwnerClientPair(ownerCertDir):null;
   const credentials=withClient?{
-    cert:await readFile(path.join(ownerCertDir,'client.crt')),
-    key:await readFile(path.join(ownerCertDir,'client.key'))
+    cert:await readFile(clientPair.cert),
+    key:await readFile(clientPair.key)
   }:{};
   return new Promise(resolve=>{
     const req=https.request({
