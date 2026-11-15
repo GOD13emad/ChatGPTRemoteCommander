@@ -108,6 +108,52 @@ test('Linux systemd owner service without XDG_SESSION_ID resolves only an active
   assert.match(snapshot.ownerSidHash,/^[0-9a-f]{64}$/);
 });
 
+test('Linux owner user service without DISPLAY uses only logind-verified local X11 for consent',async()=>{
+  const environment=env();
+  delete environment.XDG_SESSION_ID;
+  delete environment.DISPLAY;
+  const calls=[];
+  const provider=createLinuxNativeOwnerSessionProvider(providerOptions({
+    envValue:environment,
+    execFileImpl:(file,args,options,callback)=>{
+      calls.push({file,args,options});
+      if(file===LOGINCTL)return callback(null,logind(),'');
+      assert.equal(file,ZENITY);
+      assert.equal(options.env.DISPLAY,':0','dialog must use verified native seat display');
+      assert.equal(options.env.DBUS_SESSION_BUS_ADDRESS,'unix:path=/run/user/1000/bus');
+      callback(null,'','');
+    }
+  }));
+  const snapshot=await provider.getOwnerSessionSnapshot();
+  assert.equal(snapshot.displayId,':0');
+  assert.equal(snapshot.osSessionId,'linux-logind-4');
+  const approved=await provider.requestConsent({
+    title:'Native owner QA',message:'Local owner confirmation',
+    expectedOwnerSidHash:snapshot.ownerSidHash,expectedOsSessionId:snapshot.osSessionId
+  });
+  assert.equal(approved,true,'test double explicitly approved; no real grant is issued');
+  assert.equal(calls.filter(x=>x.file===ZENITY).length,1);
+  assert.equal(calls.filter(x=>x.file===LOGINCTL).length,3);
+});
+
+test('only genuine user-manager fallback may resolve an absent X11 DISPLAY',async()=>{
+  const direct=env();delete direct.DISPLAY;
+  await assert.rejects(
+    createLinuxNativeOwnerSessionProvider(providerOptions({envValue:direct})).getOwnerSessionSnapshot(),
+    error=>error?.code==='NATIVE_OWNER_DISPLAY_MISMATCH');
+  const empty=env();delete empty.XDG_SESSION_ID;empty.DISPLAY='';
+  await assert.rejects(
+    createLinuxNativeOwnerSessionProvider(providerOptions({envValue:empty})).getOwnerSessionSnapshot(),
+    error=>error?.code==='NATIVE_OWNER_DISPLAY_MISMATCH');
+  const foreign=env();delete foreign.XDG_SESSION_ID;delete foreign.DISPLAY;
+  await assert.rejects(
+    createLinuxNativeOwnerSessionProvider(providerOptions({
+      envValue:foreign,
+      execFileImpl:(file,args,options,callback)=>callback(null,logind({User:'1001'}),'')
+    })).getOwnerSessionSnapshot(),
+    error=>error?.code==='NATIVE_OWNER_SESSION_NOT_ACTIVE');
+});
+
 test('Linux systemd logind auto fallback cannot select a foreign, remote or spoofed seat',async t=>{
   const invalid=[
     ['wrong-owner',{User:'1001'}],

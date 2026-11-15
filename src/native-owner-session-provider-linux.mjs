@@ -178,7 +178,13 @@ export function createLinuxNativeOwnerSessionProvider({
 
     let displayId;
     if(p.Type==='x11'){
-      if(!clean(p.Display,128)||!clean(env.DISPLAY,128)||env.DISPLAY!==p.Display)
+      // The same-owner systemd user manager can omit DISPLAY even when
+      // logind independently proves its active, local X11 seat. Only that
+      // strictly-verified service fallback may use logind's exact display;
+      // an explicitly supplied but wrong/empty DISPLAY still fails closed.
+      if(!clean(p.Display,128)
+        ||(env.DISPLAY===undefined? !serviceSessionFallback
+          : !clean(env.DISPLAY,128)||env.DISPLAY!==p.Display))
         fail('NATIVE_OWNER_DISPLAY_MISMATCH');
       displayId=p.Display;
     }else{
@@ -230,7 +236,9 @@ export function createLinuxNativeOwnerSessionProvider({
       })();
       const result=await execute(execFileImpl,dialog,args,{
         encoding:'utf8',timeout:dialogTimeoutMs,maxBuffer:4096,
-        windowsHide:true,env:dialogEnvironment(env)
+        windowsHide:true,env:dialogEnvironment({
+          ...env,...(before.sessionType==='x11'?{DISPLAY:before.displayId}:{})
+        })
       });
       // Deny, close, timeout, absent display and wrong or empty code all deny.
       if(result.code!==0||(challenge!==null&&result.stdout.trim()!==challenge))
