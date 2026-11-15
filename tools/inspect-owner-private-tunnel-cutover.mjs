@@ -32,17 +32,29 @@ async function main(){
     fail('RC012_OWNER_EXACT_PROFILE_REQUIRED');
   if(!Number.isSafeInteger(port)||port<1024||port>65535)
     fail('RC012_OWNER_CUTOVER_PORT_INVALID');
+  // A different ChatGPT account/profile may NEVER inherit the primary
+  // Tunnel's mTLS client identity just because "default" credentials exist.
+  // Historical single-profile Emad is compatible with default only while
+  // the new canonical profile does not also exist.
+  const exactPairNamespace=profileDir=>{
+    if(profileName==='chatgpt-remote-commander')return 'default';
+    if(profileName==='Emad'&&!fs.existsSync(
+      path.join(profileDir,'chatgpt-remote-commander.yaml')))return 'default';
+    return profileName;
+  };
   let profile,certDir;
   if(process.platform==='win32'){
     if(!path.isAbsolute(process.env.APPDATA??''))fail('RC012_OWNER_APPDATA_REQUIRED');
     profile=path.join(process.env.APPDATA,'tunnel-client',profileName+'.yaml');
-    certDir=path.join(process.env.APPDATA,'ChatGPTRemoteCommander','private-pair','default');
+    certDir=path.join(process.env.APPDATA,'ChatGPTRemoteCommander','private-pair',
+      exactPairNamespace(path.dirname(profile)));
   }else if(process.platform==='linux'){
     const home=process.env.HOME;
     if(typeof home!=='string'||!path.isAbsolute(home))
       fail('RC012_OWNER_HOME_REQUIRED');
     profile=path.join(home,'.config','tunnel-client',profileName+'.yaml');
-    certDir=path.join(home,'.config','chatgpt-remote-commander','private-pair','default');
+    certDir=path.join(home,'.config','chatgpt-remote-commander','private-pair',
+      exactPairNamespace(path.dirname(profile)));
   }else fail('RC012_OWNER_CUTOVER_OS_UNSUPPORTED');
   regular(profile);
   const ownerUid=process.getuid?.();
@@ -52,6 +64,8 @@ async function main(){
   if(!parent.isDirectory()||parent.isSymbolicLink()
     ||(ownerUid!==undefined&&(parent.uid!==ownerUid||(parent.mode&0o077)!==0)))
     fail('RC012_OWNER_PROFILE_DIR_NOT_PRIVATE');
+  if(!fs.existsSync(certDir))
+    fail('RC012_OWNER_PAIR_PROFILE_ISOLATION_REQUIRED');
   const dir=fs.lstatSync(certDir);
   if(!dir.isDirectory()||dir.isSymbolicLink()
     ||(ownerUid!==undefined&&(dir.uid!==ownerUid||(dir.mode&0o077)!==0)))

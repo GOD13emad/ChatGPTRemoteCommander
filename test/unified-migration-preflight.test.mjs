@@ -547,6 +547,28 @@ test('offline one-Tunnel owner inspection never emits profile contents or writes
     assert.ok(!JSON.stringify(summary).includes('LOCAL_QA_FIXTURE_ONLY'));
     assert.ok(!JSON.stringify(summary).includes('qa-nonproduction-owner-label'));
     assert.equal(fs.readFileSync(profileFile,'utf8'),source);
+    // A second account must never silently re-use the primary default mTLS
+    // certificate pair, even if the profile is legitimate and well formed.
+    const otherProfile='mmz-emad-laptop';
+    const otherFile=path.join(profileDir,otherProfile+'.yaml');
+    fs.writeFileSync(otherFile,source.replace('47831','47910'),{mode:0o600});
+    const noPair=spawnSync(process.execPath,[script,'--target-port=47999',
+      '--profile-name='+otherProfile],options);
+    assert.notEqual(noPair.status,0);
+    assert.match(noPair.stderr,/RC012_OWNER_PAIR_PROFILE_ISOLATION_REQUIRED/);
+    const privateDir=path.join(path.dirname(certDir),otherProfile);
+    fs.mkdirSync(privateDir,{mode:0o700});
+    for(const name of ['client.crt','client.key','ca.crt'])
+      fs.writeFileSync(path.join(privateDir,name),
+        'separate-account-noncredential-fixture-'+name+'\n',{mode:0o600});
+    const ownPair=spawnSync(process.execPath,[script,'--target-port=47999',
+      '--profile-name='+otherProfile],options);
+    assert.equal(ownPair.status,0,ownPair.stderr);
+    const ownSummary=JSON.parse(ownPair.stdout);
+    assert.equal(ownSummary.profileName,otherProfile);
+    assert.equal(ownSummary.sourcePort,47910);
+    assert.equal(ownSummary.ownerCredentialsInOutput,false);
+    assert.equal(fs.readFileSync(otherFile,'utf8'),source.replace('47831','47910'));
     const invalid=spawnSync(process.execPath,[script,'--target-port=47999',
       '--profile-name=../../escape'],options);
     assert.notEqual(invalid.status,0);
