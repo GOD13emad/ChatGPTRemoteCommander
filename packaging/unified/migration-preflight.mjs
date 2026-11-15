@@ -74,8 +74,13 @@ function readOwnerTunnelBinding(){
  * process. Ambiguous/misowned/linked profiles are not authorized evidence.
  */
 export function readLinuxOwnerTunnelBinding({
-  home=process.env.HOME,ownerUid=process.getuid?.()
+  home=process.env.HOME,ownerUid=process.getuid?.(),profileName=null
 }={}){
+  // A profile selector is observation only, never evidence of owner identity
+  // or authorization for the active Tunnel, J01 or release promotion.
+  if(profileName!==null&&(!/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(profileName)
+    ||profileName==='.'||profileName==='..'))
+    return {profilePresent:false,valid:false};
   if(typeof home!=='string'||!path.isAbsolute(home))
     return {profilePresent:false,valid:false};
   const directory=path.join(home,'.config','tunnel-client');
@@ -91,8 +96,11 @@ export function readLinuxOwnerTunnelBinding({
     return {profilePresent:true,valid:false};
   }
   if(names.length===0)return {profilePresent:false,valid:false};
-  if(names.length!==1)return {profilePresent:true,valid:false};
-  const file=path.join(directory,names[0]);
+  if(profileName===null&&names.length!==1)
+    return {profilePresent:true,valid:false};
+  const selected=profileName===null?names[0]:profileName+'.yaml';
+  if(!names.includes(selected))return {profilePresent:true,valid:false};
+  const file=path.join(directory,selected);
   try{
     const stat=fs.lstatSync(file);
     if(!stat.isFile()||stat.isSymbolicLink()||stat.nlink!==1
@@ -305,7 +313,7 @@ export function inspectLinuxNativeCorePayload(
   return pkg?.version==='0.12.0-dev.1';
  }catch{return false;}
 }
-function linuxFacts(){
+function linuxFacts({profileName=null}={}){
   const packageQuery=exec('dpkg-query',['-W','-f=${Package}|${Version}|${Status}',expectedPackage]);
   const [name,version,status]=packageQuery.stdout.trim().split('|');
   const exists=packageQuery.ok&&name===expectedPackage&&status==='install ok installed';
@@ -345,7 +353,7 @@ function linuxFacts(){
   const integrity=exists?exec('dpkg',['-V',expectedPackage]):{ok:false,stdout:''};
   const nativePackageIntegrityVerified=exists&&integrity.ok
     &&integrity.stdout.trim()==='';
-  const tunnel=readLinuxOwnerTunnelBinding();
+  const tunnel=readLinuxOwnerTunnelBinding({profileName});
   const targetVersion=tunnel.valid&&!tunnel.tls
     ?probeLoopbackCoreVersion(tunnel.port):null;
   return {platform:'linux',connectionMode:'private-tunnel',
@@ -466,20 +474,29 @@ function windowsFacts(){
     routerBackendVersion:route.detected?route.backendVersion:null,
     units:[]};
 }
-export function inspectLocalPlatform(platform=process.platform){
-  if(platform==='linux')return linuxFacts();
-  if(platform==='win32')return windowsFacts();
+export function inspectLocalPlatform(platform=process.platform,{profileName=null}={}){
+  if(platform==='linux')return linuxFacts({profileName});
+  if(platform==='win32'&&profileName===null)return windowsFacts();
   throw Error('RC012_MIGRATION_UNSUPPORTED_PLATFORM');
 }
-export function localReport(platform=process.platform){
-  const f=inspectLocalPlatform(platform);
+export function localReport(platform=process.platform,options={}){
+  const f=inspectLocalPlatform(platform,options);
   return assessMigration(f);
 }
 if(process.argv[1]&&import.meta.url===pathToFileURL(path.resolve(process.argv[1])).href){
   const argv=process.argv.slice(2);
-  if(argv.length!==1||argv[0]!=='--read-only')
+  if(argv.length<1||argv.length>2||argv[0]!=='--read-only')
     throw Error('RC012_MIGRATION_PREFLIGHT_READ_ONLY_ONLY');
-  const report=localReport(os.platform());
+  let profileName=null;
+  if(argv.length===2){
+    if(os.platform()!=='linux'||!argv[1].startsWith('--profile-name='))
+      throw Error('RC012_MIGRATION_PREFLIGHT_PROFILE_INVALID');
+    profileName=argv[1].slice('--profile-name='.length);
+    if(!/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(profileName)
+      ||profileName==='.'||profileName==='..')
+      throw Error('RC012_MIGRATION_PREFLIGHT_PROFILE_INVALID');
+  }
+  const report=localReport(os.platform(),{profileName});
   process.stdout.write(JSON.stringify(report,null,2)+'\n');
   if(report.blocked.length)process.exitCode=2;
 }

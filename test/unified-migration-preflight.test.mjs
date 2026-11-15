@@ -60,14 +60,35 @@ test('Linux preflight inventories the one exact owner-private Tunnel without dis
   fs.chmodSync(profile,0o644);
   assert.deepEqual(read(),{profilePresent:true,valid:false});
   fs.chmodSync(profile,0o600);
-  fs.writeFileSync(path.join(folder,'Other.yaml'),yaml,{mode:0o600});
+  fs.writeFileSync(path.join(folder,'Other.yaml'),yaml.replace('47831','47832'),{mode:0o600});
   assert.deepEqual(read(),{profilePresent:true,valid:false});
+  const selected=profileName=>readLinuxOwnerTunnelBinding({home,ownerUid:process.getuid(),profileName});
+  assert.deepEqual(selected('Emad'),{profilePresent:true,valid:true,port:47831,tls:false});
+  assert.deepEqual(selected('Other'),{profilePresent:true,valid:true,port:47832,tls:false});
+  assert.deepEqual(selected('Missing'),{profilePresent:true,valid:false});
+  for(const badName of ['../Emad','', '.', '..','profile/escape'])
+    assert.deepEqual(selected(badName),{profilePresent:false,valid:false});
+  assert.doesNotMatch(JSON.stringify(selected('Other')),/DO_NOT_LOG|Other|api_key/);
   const bad=assessMigration({platform:'linux',connectionMode:'private-tunnel',
     inventoryReliable:true,nativePackageInstalled:true,
     allNativePayloadPathsAvailable:true,units:[],tunnelProfilePresent:true,
     tunnelProfileValid:false});
   assert.ok(bad.blocked.includes('OWNER_TUNNEL_MAIN_BINDING_UNVERIFIED'));
  }finally{fs.rmSync(home,{recursive:true,force:true});}
+});
+
+test('Linux CLI requires a bounded exact profile name and remains read-only',{
+  skip:process.platform!=='linux'
+},()=>{
+  const script=path.join(repo,'packaging','unified','migration-preflight.mjs');
+  for(const argv of [['--profile-name=Emad'],['--read-only','--profile-name=../Other'],
+    ['--read-only','--profile-name='],['--read-only','--profile-name=Other','more'],
+    ['--read-only','--profile-name=./foo']]){
+    const result=spawnSync(process.execPath,[script,...argv],{
+      cwd:repo,encoding:'utf8',timeout:6000});
+    assert.notEqual(result.status,0,argv.join(' '));
+    assert.match(result.stderr,/RC012_MIGRATION_PREFLIGHT_(?:READ_ONLY_ONLY|PROFILE_INVALID)/);
+  }
 });
 
 test('single native Linux package must contain the actual v0.12 protected Core, native J01 and worker grant modules',()=>{
