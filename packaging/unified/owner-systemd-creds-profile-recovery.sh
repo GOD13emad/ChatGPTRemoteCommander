@@ -30,12 +30,23 @@ if [ "$profileName" != Emad ];then
  target="$backupParent/rc012-native-pair-systemd-creds-$profileName"
  credentialName="rc012-native-pair-$profileName"
 fi
+# Keep exactly the same identity rule as inspect-owner-private-tunnel-cutover:
+# canonical owner and historical *single* Emad may use default; another
+# account MUST have its own named private certificate directory. Changing
+# the ciphertext name alone never isolates the underlying TLS identity.
+pairNamespace='default'
+if [ "$profileName" != 'chatgpt-remote-commander' ];then
+ if [ "$profileName" != 'Emad' ] ||
+    [ -e "$config/tunnel-client/chatgpt-remote-commander.yaml" ];then
+  pairNamespace="$profileName"
+ fi
+fi
 files="tunnel-client/$profileName.yaml
-chatgpt-remote-commander/private-pair/default/ca.crt
-chatgpt-remote-commander/private-pair/default/client.crt
-chatgpt-remote-commander/private-pair/default/client.key
-chatgpt-remote-commander/private-pair/default/server.crt
-chatgpt-remote-commander/private-pair/default/server.key"
+chatgpt-remote-commander/private-pair/$pairNamespace/ca.crt
+chatgpt-remote-commander/private-pair/$pairNamespace/client.crt
+chatgpt-remote-commander/private-pair/$pairNamespace/client.key
+chatgpt-remote-commander/private-pair/$pairNamespace/server.crt
+chatgpt-remote-commander/private-pair/$pairNamespace/server.key"
 stage=""
 restore=""
 clean(){ if [ -n "$restore" ] && [ -d "$restore" ];then rm -rf -- "$restore";fi
@@ -110,7 +121,11 @@ if [ "$mode" = Verify ] || [ "$mode" = TestRestore ];then
 fi
 safe_dir "$config"
 safe_dir "$config/tunnel-client"
-safe_dir "$config/chatgpt-remote-commander/private-pair/default"
+if [ "$pairNamespace" != default ] &&
+  [ ! -d "$config/chatgpt-remote-commander/private-pair/$pairNamespace" ];then
+ echo RC012_USER_CREDS_PROFILE_PAIR_REQUIRED >&2;exit 2
+fi
+safe_dir "$config/chatgpt-remote-commander/private-pair/$pairNamespace"
 baseline="$(digest_tree "$config")"
 for d in "$HOME/.local" "$HOME/.local/state" "$HOME/.local/state/chatgpt-remote-commander";do
  safe_dir "$d"
