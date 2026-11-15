@@ -235,8 +235,12 @@ USERUNIT
 # a valid same-owner profile and credential and explicitly enable its user unit.
 cat > "$DEB/usr/lib/systemd/user/chatgpt-remote-commander-tunnel@.service" <<'TUNNELUNIT'
 [Unit]
-Description=Remote Commander private tunnel for owner profile %i
-After=network-online.target chatgpt-remote-commander@%i.service
+Description=Remote Commander private tunnel for owner Tunnel profile %i
+# The owner's Tunnel profile identifier is NOT necessarily the native Core
+# profile id. An implicit @%i Core dependency can order the WRONG service.
+# Pair-to-Core mapping is owner-pinned via the Tunnel main-channel target,
+# independently verified and approved before either unit is activated.
+After=network-online.target
 Wants=network-online.target
 ConditionPathExists=%h/.config/tunnel-client/%i.yaml
 ConditionPathExists=%h/.config/chatgpt-remote-commander/credentials/%i.key

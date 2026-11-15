@@ -180,6 +180,11 @@ test('native per-owner tunnel unit loads existing credentials and never autostar
   assert.ok(unit,'tunnel unit must be included in the package');
   assert.match(unit,/LoadCredential=api-key:%h\/\.config\/chatgpt-remote-commander\/credentials\/%i\.key/);
   assert.match(unit,/ConditionPathExists=%h\/\.config\/tunnel-client\/%i\.yaml/);
+  // Real owner-host profiles can be named "MMZ" in the Core and
+  // "mmz-emad-laptop" in the Tunnel. Never order against a different
+  // or non-existing same-name native Core unit.
+  assert.match(unit,/After=network-online\.target/);
+  assert.doesNotMatch(unit,/^(?:After|Wants|Requires|BindsTo)=.*chatgpt-remote-commander@%i\.service/m);
   assert.match(unit,/NoNewPrivileges=yes/);
   assert.match(unit,/ProtectSystem=full/);
   assert.doesNotMatch(unit,/ExecStart=.*(curl|install|enroll|sudo|pkexec)/);
