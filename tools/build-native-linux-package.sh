@@ -335,15 +335,22 @@ PREFLIGHT
 cat > "$DEB/usr/share/doc/chatgpt-remote-commander/README.txt" <<'DOC'
 One shared, dpkg-managed Remote Commander Core for all owner profiles.
 
-Profile config: ~/.local/state/chatgpt-remote-commander/profiles/PROFILE/config.json
-The included systemd USER template starts the same immutable Core for a profile:
+Native Core profile config:
+  ~/.local/state/chatgpt-remote-commander/profiles/CORE_PROFILE/config.json
+The included systemd USER template starts the same immutable Core for that id:
   systemctl --user daemon-reload
-  systemctl --user enable --now chatgpt-remote-commander@PROFILE.service
+  systemctl --user enable --now chatgpt-remote-commander@CORE_PROFILE.service
 
 The package also includes the SHA-pinned tunnel-client and its license, NOTICE
 and SBOM. It does not create tunnel credentials or enable the tunnel user service.
-After separate same-owner profile enrollment and native G1/J01 acceptance:
-  systemctl --user enable --now chatgpt-remote-commander-tunnel@PROFILE.service
+Tunnel profile identifiers may differ from native Core profile identifiers:
+  ~/.config/tunnel-client/TUNNEL_PROFILE.yaml
+  ~/.config/chatgpt-remote-commander/credentials/TUNNEL_PROFILE.key
+After verified owner-controlled pair-to-Core HTTPS/mTLS routing, native G1/J01
+binding, per-action signed Worker grant and reversible per-unit cutover:
+  systemctl --user enable --now chatgpt-remote-commander-tunnel@TUNNEL_PROFILE.service
+Do not use CORE_PROFILE as TUNNEL_PROFILE by inference, share any credentials,
+or start either service before exact profile ownership, route and rollback pass.
 Both user units stay disabled until the owner explicitly enables them.
 
 The package does not migrate credentials/configuration, stop old services, enable

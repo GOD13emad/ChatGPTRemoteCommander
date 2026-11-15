@@ -188,6 +188,14 @@ test('native per-owner tunnel unit loads existing credentials and never autostar
   assert.match(unit,/NoNewPrivileges=yes/);
   assert.match(unit,/ProtectSystem=full/);
   assert.doesNotMatch(unit,/ExecStart=.*(curl|install|enroll|sudo|pkexec)/);
+  // Installer documentation must not silently bind two different owner
+  // identifiers to the same systemd instance.
+  const nativeHelp=source.match(/cat > "\$DEB\/usr\/share\/doc\/chatgpt-remote-commander\/README\.txt" <<'DOC'\n([\s\S]*?)\nDOC/)?.[1];
+  assert.ok(nativeHelp);
+  assert.match(nativeHelp,/chatgpt-remote-commander@CORE_PROFILE\.service/);
+  assert.match(nativeHelp,/chatgpt-remote-commander-tunnel@TUNNEL_PROFILE\.service/);
+  assert.match(nativeHelp,/Tunnel profile identifiers may differ from native Core profile identifiers/);
+  assert.doesNotMatch(nativeHelp,/@PROFILE\.service/);
   const launcher=source.match(/cat > "\$DEB\$PACKAGE_DIR\/tunnel\/native-tunnel-launch\.sh" <<'TUNNELLAUNCH'\n([\s\S]*?)\nTUNNELLAUNCH/)?.[1];
   assert.ok(launcher,'standalone tunnel launcher must be packaged');
   assert.match(launcher,/CREDENTIALS_DIRECTORY/);
