@@ -91,6 +91,21 @@ test('Linux CLI requires a bounded exact profile name and remains read-only',{
   }
 });
 
+test('native Linux offline build requires an explicitly pinned local archive and verified dpkg binary',()=>{
+  const script=path.join(repo,'tools','build-native-linux-package.sh');
+  const source=fs.readFileSync(script,'utf8');
+  for(const guard of ['--offline-verified-installed','RC012_OFFLINE_NODE_ARCHIVE',
+    'RC012_OFFLINE_TUNNEL_BINARY_SHA_MISMATCH','dpkg -V chatgpt-remote-commander',
+    'RC012_OFFLINE_TUNNEL_PIN_MISMATCH','NODE_RUNTIME_SHA_MISMATCH'])
+      assert.ok(source.includes(guard),'missing immutable offline guard '+guard);
+  if(process.platform==='linux'){
+    const r=spawnSync('bash',[script,'--offline-verified-installed'],{
+      cwd:repo,encoding:'utf8',timeout:5000,env:{...process.env,RC012_OFFLINE_NODE_ARCHIVE:''}});
+    assert.equal(r.status,2);
+    assert.match(r.stderr,/RC012_OFFLINE_PINNED_NODE_ARCHIVE_REQUIRED/);
+  }
+});
+
 test('single native Linux package must contain the actual v0.12 protected Core, native J01 and worker grant modules',()=>{
  const root=fs.mkdtempSync(path.join(os.tmpdir(),'rc012-installed-private-core-'));
  const files=[

@@ -4,7 +4,7 @@ Builds **one native installer per OS** from a single pinned Git commit: electron
 
 ## Build (not a Stable promotion)
 
-From the repository root: `node packaging/unified/prepare.mjs`. From this directory: `npm ci` and `npm run build:linux` on Linux, or `npm run build:win` on Windows. Build manifests pin the exact `git HEAD` and tree. Uncommitted changes to the embedded Core/tool paths cause failure. Artifacts go to `dist/unified/`.
+From the repository root: `node packaging/unified/prepare.mjs`. From this directory: `npm ci` and `npm run build:linux` on Linux, or `npm run build:win` on Windows. For a Linux host already holding the exact pinned Node archive and an unmodified, dpkg-owned `tunnel-client v0.0.15` binary, the native source-only package can instead be built with `RC012_OFFLINE_NODE_ARCHIVE=/absolute/owner-cached/node-v22.23.4-linux-x64.tar.xz bash tools/build-native-linux-package.sh --offline-verified-installed`. This explicit offline option requires the fixed official Node SHA-256, `dpkg -V` without modifications, root-owned installed static Tunnel files and hard-pinned asset/tunnel/cloudflared hashes and metadata; it never touches the installed package, starts a service or reuses another profile's keys. If anything differs it fails rather than downloading or using unverified bytes. Build manifests pin the exact `git HEAD` and tree. Uncommitted changes to the embedded Core/tool paths cause failure. Artifacts go to `dist/unified/`.
 
 ## Read-only fleet migration preflight
 
