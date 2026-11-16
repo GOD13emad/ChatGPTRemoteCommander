@@ -6,13 +6,20 @@ import {mkdtemp,writeFile,mkdir,rm} from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {assessMigration,inspectLocalPlatform,readLinuxOwnerTunnelBinding,inspectLinuxNativeCorePayload,parseMainTunnelBinding,classifyObservedRouterStatus,classifyWindowsUninstallRegistryResponse} from '../packaging/unified/migration-preflight.mjs';
+import {assessMigration,inspectLocalPlatform,readLinuxOwnerTunnelBinding,isLinuxMigrationUnit,inspectLinuxNativeCorePayload,parseMainTunnelBinding,classifyObservedRouterStatus,classifyWindowsUninstallRegistryResponse} from '../packaging/unified/migration-preflight.mjs';
 import {planOwnerPrivateTunnelCutover} from '../tools/plan-owner-private-tunnel-cutover.mjs';
 import {resolveLocalOwnerClientPair} from '../tools/owner-pair-private-source-canary.mjs';
 
 const repo=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const modulePath=path.join(repo,'packaging/unified/migration-preflight.mjs');
 
+test('exact selected independent Linux Tunnel is inventoried without adopting other owners',()=>{
+ assert.equal(isLinuxMigrationUnit('mmz-emad-laptop-tunnel.service','mmz-emad-laptop'),true);
+ assert.equal(isLinuxMigrationUnit('saeed-emad-laptop-tunnel.service','mmz-emad-laptop'),false);
+ assert.equal(isLinuxMigrationUnit('mmz-emad-laptop-tunnel.service',null),false);
+ assert.equal(isLinuxMigrationUnit('mmz-emad-laptop-tunnel.service','../mmz-emad-laptop'),false);
+ assert.equal(isLinuxMigrationUnit('chatgpt-remote-commander-mmz.service',null),true);
+});
 test('read-only Linux inventory preserves Native Tunnel and old live service blockers',()=>{
  const r=assessMigration({platform:'linux',inventoryReliable:true,
     nativePackageInstalled:true,allNativePayloadPathsAvailable:true,

@@ -9,6 +9,14 @@ import {pathToFileURL} from 'node:url';
 
 const expectedPackage='chatgpt-remote-commander';
 const safeUnit=/^chatgpt-remote-commander[a-z0-9@._:-]*\.service$/i;
+export function isLinuxMigrationUnit(unit,profileName=null){
+  if(typeof unit!=='string')return false;
+  if(safeUnit.test(unit))return true;
+  return typeof profileName==='string'
+    &&/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(profileName)
+    &&profileName!=='.'&&profileName!=='..'
+    &&unit===profileName+'-tunnel.service';
+}
 const sha=s=>createHash('sha256').update(s).digest('hex').slice(0,16);
 // The owner-selected tunnel profile is input, not a ChatGPT identity proof.
 // Never print/retain the YAML: it may contain the runtime API key.
@@ -318,18 +326,23 @@ function linuxFacts({profileName=null}={}){
   const [name,version,status]=packageQuery.stdout.trim().split('|');
   const exists=packageQuery.ok&&name===expectedPackage&&status==='install ok installed';
   const units=[];
-  const listing=exec('systemctl',['--user','list-units','--all','--no-legend','--plain','chatgpt-remote-commander*.service']);
-  const files=exec('systemctl',['--user','list-unit-files','--no-legend','--plain','chatgpt-remote-commander*.service']);
+  const profileTunnelUnit=typeof profileName==='string'
+    &&isLinuxMigrationUnit(profileName+'-tunnel.service',profileName)
+      ?profileName+'-tunnel.service':null;
+  const selectors=['chatgpt-remote-commander*.service',
+    ...(profileTunnelUnit?[profileTunnelUnit]:[])];
+  const listing=exec('systemctl',['--user','list-units','--all','--no-legend','--plain',...selectors]);
+  const files=exec('systemctl',['--user','list-unit-files','--no-legend','--plain',...selectors]);
   if(listing.ok&&files.ok){
     const names=new Set();
     const enabled=new Set();
     for(const line of listing.stdout.split(/\r?\n/)){
       const unit=line.trim().split(/\s+/)[0];
-      if(unit&&safeUnit.test(unit))names.add(unit);
+      if(unit&&isLinuxMigrationUnit(unit,profileName))names.add(unit);
     }
     for(const line of files.stdout.split(/\r?\n/)){
       const [unit,state]=line.trim().split(/\s+/);
-      if(!unit||!safeUnit.test(unit))continue;
+      if(!unit||!isLinuxMigrationUnit(unit,profileName))continue;
       names.add(unit);
       if(['enabled','enabled-runtime','linked','linked-runtime'].includes(state))enabled.add(unit);
     }
