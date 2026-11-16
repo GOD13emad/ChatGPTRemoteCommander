@@ -358,8 +358,10 @@ function run(){
   if(process.platform==='win32') command=isolateWindowsAgentHttpRegression(command);
   // Check-gate HTTP startup tests require cold standalone Windows processes.
   // Preserve exact invocation, timeouts, cardinality and fail-fast behavior.
-  if(process.platform==='win32'&&args.script==='check')
+  if(process.platform==='win32'&&args.script==='check'){
     command=isolateWindowsStartupReadinessRegressions(command);
+    command=isolateWindowsMcpConformanceRegression(command);
+  }
   if(args.script==='test'&&process.platform==='win32'){
     command=isolateWindowsProcessTreeRegression(command);
     command=isolateWindowsTransferMeshHttpRegression(command);

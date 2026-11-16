@@ -648,6 +648,25 @@ test('R157 Windows dual-era MCP server conformance executes once early, unchange
     'original fixture readiness budget and body remain untouched');
 });
 
+test('Windows check qualification isolates MCP conformance before loaded server tests',()=>{
+  const pkg=JSON.parse(read('package.json'));
+  let before=prioritizeSensitiveQualificationCommands(
+    boundNodeTestConcurrency(pkg.scripts.check,1).command);
+  before=isolateWindowsAgentHttpRegression(before);
+  before=isolateWindowsStartupReadinessRegressions(before);
+  const after=isolateWindowsMcpConformanceRegression(before);
+  const file='test/mcp-conformance.test.mjs';
+  const prefix='node --test --test-concurrency=1 '+file;
+  assert.equal(after.split(' && ')[0],prefix);
+  assert.equal(after.split(file).length-1,1,'one and only one MCP conformance fixture');
+  const files=cmd=>(cmd.match(/test\/[A-Za-z0-9_.-]+\.test\.mjs/g)||[]).sort();
+  assert.deepEqual(files(after),files(before),'preserve the exact original check file set');
+  assert.ok(read('tools/run-bounded-test-script.mjs').includes(
+    "if(process.platform==='win32'&&args.script==='check'){\n    command=isolateWindowsStartupReadinessRegressions(command);\n    command=isolateWindowsMcpConformanceRegression(command);\n  }"));
+  assert.throws(()=>isolateWindowsMcpConformanceRegression(prefix+' && '+before),
+    /CI_MCP_CONFORMANCE_CARDINALITY/);
+});
+
 test('bounded Windows adaptive fixture is scheduled cold with all original groups intact',()=>{
   const pkg=JSON.parse(read('package.json'));
   let cmd=prioritizeSensitiveQualificationCommands(boundNodeTestConcurrency(pkg.scripts.test,1).command);
