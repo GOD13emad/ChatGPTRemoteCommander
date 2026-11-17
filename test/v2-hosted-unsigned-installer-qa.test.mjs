@@ -167,3 +167,21 @@ test('native FPM packaging stage is anchored to exact vendor QA and verified hoo
  assert.match(integration,/nativePackageBuilt:false/);
  assert.doesNotMatch(integration,/sudo|rm -rf|PUBLIC_RELEASE_CREATED/);
 });
+
+
+test('public native DEB verification is separate manual hosted-only QA and SHA-pinned',()=>{
+ const wf=load('.github/workflows/v2-unsigned-installer-qa.yml');
+ assert.match(wf,/qa-published-native-deb-prerm:/);
+ assert.match(wf,/if: github\.event_name == 'workflow_dispatch'/);
+ assert.match(wf,/run: bash tools\/v2-public-deb-prerm-hosted-qa.sh/);
+ const source=load('tools/v2-public-deb-prerm-hosted-qa.sh');
+ for(const part of ['GITHUB_ACTIONS','RUNNER_ENVIRONMENT','GITHUB_REPOSITORY','RUNNER_OS',
+   'commander-v2.1.50-unsigned-qa.debprermfix.20261105',
+   '176682a41abb332e830b69f210a5e77f0c0561d526cae342094ed17b7d8ebc15',
+   'a2fb497525e7383e82b2040c455caf04fe15adfcd13bdb86502a82332a7e3b82',
+   'V2_PUBLIC_NATIVE_PRERM_INSTALL_PURGE_WARNING_FREE_PASS',
+   'V2_PUBLIC_NATIVE_PRERM_SYNTHETIC_USERDATA_PRESERVED_PASS']){
+    assert.ok(source.includes(part),part);
+ }
+ assert.doesNotMatch(source,/secrets\.|GITHUB_TOKEN|self-hosted|\bsudo\s+rm\b/);
+});

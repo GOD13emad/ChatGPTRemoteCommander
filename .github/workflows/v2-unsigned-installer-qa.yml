@@ -10,6 +10,7 @@ on:
       - 'tools/v2-unsigned-installer-inplace-windows.ps1'
       - 'tools/v2-deb-alternatives-prerm.sh'
       - 'tools/v2-deb-prerm-hosted-qa.sh'
+      - 'tools/v2-public-deb-prerm-hosted-qa.sh'
   workflow_dispatch:
 permissions:
   contents: read
@@ -77,3 +78,16 @@ jobs:
         shell: bash
         timeout-minutes: 28
         run: bash tools/v2-deb-prerm-hosted-qa.sh
+  qa-published-native-deb-prerm:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 22
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Actually install exact public native DEB and purge with no alternatives warning
+        shell: bash
+        timeout-minutes: 20
+        run: bash tools/v2-public-deb-prerm-hosted-qa.sh
