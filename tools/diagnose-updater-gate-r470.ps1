@@ -183,3 +183,30 @@ $report=[ordered]@{
 [IO.File]::WriteAllText($out,($report|ConvertTo-Json -Depth 9),[Text.UTF8Encoding]::new($false))
 Write-Output ('R470_DIAG_RESULT='+$status+' failureTests='+$failures.Count+' sourceBytes='+$sourceBytes)
 Write-Output ('R470_DIAG_SHA256='+(Get-FileHash -LiteralPath $out -Algorithm SHA256).Hash)
+# The hosted updater hides raw qualification output to avoid leaking keys.
+# Report only the already redacted bounded test names and numerical counts,
+# so a fresh CI failure has a decision-grade, non-secret root-cause signal.
+if($failedGate -eq 'test'){
+  Write-Output ('R470_SAFE_TEST_SUMMARY_KIND='+$status)
+  if($specTotals.ContainsKey('fail')){
+    Write-Output ('R470_SAFE_SPEC_FAIL_COUNT='+$specTotals['fail'])
+  }
+  if($totals.ContainsKey('fail')){
+    Write-Output ('R470_SAFE_TAP_FAIL_COUNT='+$totals['fail'])
+  }
+  $limit=0
+  foreach($name in $specNames){
+    if($limit -ge 12){break}
+    Write-Output ('R470_SAFE_SPEC_FAILURE_'+$limit+'='+$name)
+    $limit++
+  }
+  $limit=0
+  foreach($failed in $failures){
+    if($limit -ge 12){break}
+    Write-Output ('R470_SAFE_TAP_FAILURE_'+$limit+'='+$failed.publicTestName)
+    $limit++
+  }
+  if($null -ne $failedPhaseIndex){
+    Write-Output ('R470_SAFE_FAILURE_PHASE='+$failedPhaseIndex)
+  }
+}

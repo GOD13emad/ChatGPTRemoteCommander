@@ -132,8 +132,14 @@ export function createLinuxNativeOwnerSessionProvider({
   async function getOwnerSessionSnapshot(){
     const uid=getuid();
     if(!Number.isSafeInteger(uid)||uid<0)fail('NATIVE_OWNER_UID_UNAVAILABLE');
-    const sessionId=env.XDG_SESSION_ID;
-    if(typeof sessionId!=='string'||!SESSION_ID.test(sessionId))
+    // A persistent *same-user* systemd service usually has no
+    // XDG_SESSION_ID, even when that owner is logged in at the local desktop.
+    // systemd loginctl 'auto' safely selects that user's graphical session.
+    // Only use this for the verified user manager and its exact user bus;
+    // never infer a remote session, another UID, or an arbitrary desktop.
+    const envSession=env.XDG_SESSION_ID;
+    const hasDirectSession=typeof envSession==='string'&&SESSION_ID.test(envSession);
+    if(envSession!==undefined&&envSession!==''&&!hasDirectSession)
       fail('NATIVE_OWNER_LOGIND_SESSION_REQUIRED');
     if(!clean(env.DBUS_SESSION_BUS_ADDRESS,2048))
       fail('NATIVE_OWNER_SESSION_BUS_REQUIRED');
@@ -142,9 +148,21 @@ export function createLinuxNativeOwnerSessionProvider({
     catch{fail('NATIVE_OWNER_PROCESS_CGROUP_UNAVAILABLE');}
     if(typeof cgroup!=='string'||!cgroup.includes('/user.slice/user-'+uid+'.slice/'))
       fail('NATIVE_OWNER_PROCESS_USER_SCOPE_MISMATCH');
+    const serviceSessionFallback=!hasDirectSession
+      &&cgroup.includes('/user@'+uid+'.service/')
+      &&env.XDG_RUNTIME_DIR==='/run/user/'+uid
+      &&env.DBUS_SESSION_BUS_ADDRESS==='unix:path=/run/user/'+uid+'/bus'
+      // User managers omit the graphical type on some real owner desktops.
+      // Only a verified local logind X11 seat may supply a missing type.
+      // Explicit types still have to match the native seat exactly.
+      &&(env.XDG_SESSION_TYPE===undefined
+        ||['wayland','x11'].includes(env.XDG_SESSION_TYPE));
+    if(!hasDirectSession&&!serviceSessionFallback)
+      fail('NATIVE_OWNER_LOGIND_SESSION_REQUIRED');
+    const sessionSelector=hasDirectSession?envSession:'auto';
 
     verifyExecutable(LOGINCTL);
-    const args=['show-session',sessionId,'--no-pager'];
+    const args=['show-session',sessionSelector,'--no-pager'];
     for(const property of PROPERTIES)args.push('-p',property);
     const result=await execute(execFileImpl,LOGINCTL,args,{
       encoding:'utf8',timeout:commandTimeoutMs,maxBuffer:8192,
@@ -153,17 +171,28 @@ export function createLinuxNativeOwnerSessionProvider({
     if(result.code!==0||result.stderr.trim()!=='')
       fail('NATIVE_OWNER_LOGIND_UNAVAILABLE');
     const p=parseLogindProperties(result.stdout);
-    if(p.Id!==sessionId||p.User!==String(uid)||!SAFE_ID.test(p.Seat)
+    if(!SESSION_ID.test(p.Id)||(hasDirectSession&&p.Id!==envSession)
+      ||p.User!==String(uid)||!SAFE_ID.test(p.Seat)
       ||p.Active!=='yes'||p.Remote!=='no'||p.Class!=='user'||p.State!=='active'
       ||!['x11','wayland'].includes(p.Type)
       ||!/^\d{1,12}$/.test(p.Leader)||Number(p.Leader)<1)
       fail('NATIVE_OWNER_SESSION_NOT_ACTIVE');
     if(env.XDG_SESSION_TYPE!==undefined&&env.XDG_SESSION_TYPE!==p.Type)
       fail('NATIVE_OWNER_SESSION_TYPE_MISMATCH');
+    // An untyped systemd user manager may display the logind-pinned X11 seat,
+    // but must never guess a Wayland socket or trust a different user/session.
+    if(serviceSessionFallback&&env.XDG_SESSION_TYPE===undefined&&p.Type!=='x11')
+      fail('NATIVE_OWNER_SESSION_TYPE_REQUIRED');
 
     let displayId;
     if(p.Type==='x11'){
-      if(!clean(p.Display,128)||!clean(env.DISPLAY,128)||env.DISPLAY!==p.Display)
+      // The same-owner systemd user manager can omit DISPLAY even when
+      // logind independently proves its active, local X11 seat. Only that
+      // strictly-verified service fallback may use logind's exact display;
+      // an explicitly supplied but wrong/empty DISPLAY still fails closed.
+      if(!clean(p.Display,128)
+        ||(env.DISPLAY===undefined? !serviceSessionFallback
+          : !clean(env.DISPLAY,128)||env.DISPLAY!==p.Display))
         fail('NATIVE_OWNER_DISPLAY_MISMATCH');
       displayId=p.Display;
     }else{
@@ -173,7 +202,7 @@ export function createLinuxNativeOwnerSessionProvider({
     const ownerHash=ownerSidHash();
     return Object.freeze({
       source:'native-linux-owner-session',ownerSidHash:ownerHash,
-      osSessionId:'linux-logind-'+sessionId,seatId:p.Seat,displayId,
+      osSessionId:'linux-logind-'+p.Id,seatId:p.Seat,displayId,
       sessionType:p.Type,leaderPid:Number(p.Leader)
     });
   }
@@ -215,7 +244,9 @@ export function createLinuxNativeOwnerSessionProvider({
       })();
       const result=await execute(execFileImpl,dialog,args,{
         encoding:'utf8',timeout:dialogTimeoutMs,maxBuffer:4096,
-        windowsHide:true,env:dialogEnvironment(env)
+        windowsHide:true,env:dialogEnvironment({
+          ...env,...(before.sessionType==='x11'?{DISPLAY:before.displayId}:{})
+        })
       });
       // Deny, close, timeout, absent display and wrong or empty code all deny.
       if(result.code!==0||(challenge!==null&&result.stdout.trim()!==challenge))

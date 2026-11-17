@@ -30,6 +30,9 @@ function fail(code) {
 // The local Ollama adapter emits these fixed codes on stderr. Preserve only
 // an exact allowlisted code; never retain or expose arbitrary provider output.
 const SAFE_LOCAL_OLLAMA_FAILURES = new Set([
+  'LOCAL_OLLAMA_OWNER_KEY_UNAVAILABLE',
+  'LOCAL_OLLAMA_OWNER_KEY_UNTRUSTED',
+  'LOCAL_OLLAMA_OWNER_KEY_INVALID',
   'LOCAL_OLLAMA_MODEL_NOT_CONFIGURED',
   'LOCAL_OLLAMA_INPUT_TOO_LARGE',
   'LOCAL_OLLAMA_INVALID_CONFIG',

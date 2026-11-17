@@ -5,6 +5,8 @@ import os from 'node:os';
 import path from 'node:path';
 import http from 'node:http';
 import {spawn} from 'node:child_process';
+import {Readable} from 'node:stream';
+import {createV2PrivatePairMcpIngress} from '../src/v2-private-pair-mcp-http-ingress.mjs';
 import {createHash} from 'node:crypto';
 import {createRequire} from 'node:module';
 import {fileURLToPath} from 'node:url';
@@ -46,6 +48,24 @@ test('hosted Ubuntu prefetches signed dependencies before expensive packaging; n
  assert.doesNotMatch(script,/apt-get update/);
 });
 
+test('PRIVATE ingress source changes trigger both native package jobs at the exact PR head',()=>{
+ const y=fs.readFileSync(path.join(repo,'.github/workflows/unified-installer-pilot.yml'),'utf8');
+ for(const target of [
+   'src/server-v0.3.mjs','src/v2-private-*.mjs',
+   'src/v101-private-*.mjs','src/v101-g1-loopback-runtime.mjs',
+   'src/v2-native-owner-session-bindings.mjs',
+   'src/worker-identity-authority.mjs',
+   'test/v2-private-*.test.mjs'
+ ])assert.ok(y.includes('"'+target+'"'),'missing source-triggered installer QA: '+target);
+ assert.ok(y.includes('ref: ${{ github.event.pull_request.head.sha || github.sha }}'),
+   'packaging must build the exact proposed source SHA, not the synthetic PR merge');
+ assert.ok(y.includes('test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha || github.sha }}"'));
+ assert.ok(y.includes('os: [ubuntu-latest, windows-latest]'));
+ assert.match(y,/Build package \(Linux\)/);
+ assert.match(y,/Build package \(Windows\)/);
+ assert.match(y,/upload-artifact@v4/);
+});
+
 test('immutable packaged source and restricted preview boot',async()=>{
  const manifest=validateCore(resource);
  assert.match(manifest.head,/^[0-9a-f]{40}$/);
@@ -71,7 +91,7 @@ test('immutable packaged source and restricted preview boot',async()=>{
    const child=spawn(process.execPath,[entry],{
       cwd:one.target,stdio:['ignore','pipe','pipe'],
       env:{...process.env,REMOTE_COMMANDER_CONFIG:cfg.file,
-        COMMANDER_ONE_REQUIRE_TRUSTED_INGRESS:'0'}
+        COMMANDER_ONE_REQUIRE_TRUSTED_INGRESS:process.env.RC_TEST_PRIVILEGED_QUARANTINE==='1'?'1':'0'}
    });
    let log='';
    for(const s of [child.stdout,child.stderr])s.on('data',x=>{log=(log+x.toString()).slice(-2400);});
@@ -87,6 +107,108 @@ test('immutable packaged source and restricted preview boot',async()=>{
        await new Promise(r=>setTimeout(r,150));
      }
      assert.ok(ok,'real isolated 0.12 core should expose /health; '+log);
+     // The native owner-controlled PRIVATE catalog must represent the ACTUAL
+     // installed Core definitions, not just a few manually selected stubs.
+     // This is only discovery parity; no native owner or tool grant is issued.
+     const real=await fetch('http://127.0.0.1:59315/mcp',{
+       method:'POST',headers:{'content-type':'application/json'},
+       body:JSON.stringify({jsonrpc:'2.0',id:3,method:'tools/list',params:{}})
+     });
+     if(real.status===403){
+       // An elevated GitHub Windows runner has an administrator token.
+       // The legacy Core correctly quarantines ALL /mcp traffic in that
+       // context. Never disable the quarantine just to make QA green.
+       const healthResponse=await fetch('http://127.0.0.1:59315/health');
+       assert.equal(healthResponse.status,200);
+       const health=await healthResponse.json();
+       assert.equal(health.privilegedLegacyHttpQuarantined,true);
+       assert.equal(health.protectedIngress?.required,true);
+       assert.equal(health.protectedIngress?.code,'V2_G1_INGRESS_NOT_WIRED');
+       console.log('RC012_REAL_CORE_CATALOG_PARITY_QUARANTINED_NO_BYPASS');
+     }else{
+       assert.equal(real.status,200);
+       const body=await real.json();
+       const realCatalog=body.result?.tools;
+       assert.ok(Array.isArray(realCatalog)&&realCatalog.length>40,
+         'real Core catalog was not discoverable on isolated STANDARD preview');
+       let attemptedEffects=0,nativeLookups=0;
+       const ingress=createV2PrivatePairMcpIngress({
+         resolveTrustedConversation:async()=>({
+           source:'native-conversation-attested',sessionHandle:'chat1'
+         }),
+         attestTransport:async()=>({
+           authenticated:true,peerType:'owner-pinned-private-tunnel-mtls',
+           sessionSource:'native-owner-private-pair'
+         }),
+         ownerStack:{requestOwnerBinding:async()=>{attemptedEffects++;},
+           nativeSessionBindings:{resolveNativeRoute:async()=>{
+             nativeLookups++;
+             throw Error('no real J01 binding in discovery-only QA');
+           }}},
+         operationGate:{execute:async()=>{attemptedEffects++;throw Error('not granted');}},
+         trustedToolCatalog:realCatalog,
+         // Even a misconfigured permissive callback must not admit bad
+         // arguments that the real Core's immutable schema rejects.
+         validateToolInput:async(name,args)=>{
+           if(name==='read_text')args.path='forbidden-after-validation';
+           return true;
+         },
+         resolveTrustedToolRoute:async()=>{throw Error('not admitted');}
+       });
+       const req=Readable.from([Buffer.from(JSON.stringify({
+         jsonrpc:'2.0',id:4,method:'tools/list',params:{}
+       }))]);
+       req.socket={encrypted:true,authorized:true};req.url='/mcp';req.method='POST';
+       req.rawHeaders=['Content-Type','application/json'];
+       let responseStatus=null,responseBytes=null;
+       const res={writeHead(status){responseStatus=status;},
+         end(data){responseBytes=data;}};
+       await ingress.handle(req,res);
+       assert.equal(responseStatus,200,
+         'private one-tunnel discovery cannot represent actual Core catalog');
+       const privateCatalog=JSON.parse(String(responseBytes)).result.tools.slice(2);
+       assert.deepEqual(privateCatalog,realCatalog,
+         'private catalog must preserve every actual Core tool definition');
+       const coreRead=realCatalog.find(t=>t.name==='read_text');
+       assert.ok(coreRead?.inputSchema?.required?.includes('path'),
+         'source Core must require a path for read_text');
+       const invalid=Readable.from([Buffer.from(JSON.stringify({
+         jsonrpc:'2.0',id:5,method:'tools/call',
+         params:{name:'read_text',arguments:{},
+           _meta:{'openai/session':'chat1'}}
+       }))]);
+       invalid.socket={encrypted:true,authorized:true};
+       invalid.url='/mcp';invalid.method='POST';
+       invalid.rawHeaders=['Content-Type','application/json'];
+       let denialStatus=null,denialBytes=null;
+       await ingress.handle(invalid,{
+         writeHead(status){denialStatus=status;},
+         end(data){denialBytes=data;}
+       });
+       assert.equal(denialStatus,200,
+         'real Core schema invalid input must be rejected before J01 lookup');
+       assert.equal(JSON.parse(String(denialBytes)).result.isError,true);
+       const replay=Readable.from([Buffer.from(JSON.stringify({
+         jsonrpc:'2.0',id:6,method:'tools/call',
+         params:{name:'read_text',arguments:{path:'README.md'},
+           _meta:{'openai/session':'chat1'}}
+       }))]);
+       replay.socket={encrypted:true,authorized:true};
+       replay.url='/mcp';replay.method='POST';
+       replay.rawHeaders=['Content-Type','application/json'];
+       let replayStatus=null,replayBytes=null;
+       await ingress.handle(replay,{
+         writeHead(status){replayStatus=status;},end(data){replayBytes=data;}
+       });
+       assert.equal(replayStatus,200);
+       assert.equal(JSON.parse(String(replayBytes)).result.isError,true,
+         'misbehaving callback cannot mutate the real validated Core input');
+       assert.equal(nativeLookups,0,
+         'input mutation must be denied before native owner lookup');
+       assert.equal(attemptedEffects,0,
+         'discovery must not request native owner consent or execute a tool');
+       console.log('RC012_REAL_CORE_CATALOG_PARITY_COUNT='+realCatalog.length);
+     }
    }finally{
      child.kill();
      await new Promise(resolve=>{if(child.exitCode!==null)return resolve();child.once('exit',resolve);setTimeout(resolve,1500).unref();});

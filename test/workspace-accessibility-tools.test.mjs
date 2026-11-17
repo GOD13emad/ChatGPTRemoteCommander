@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
- createWorkspaceAccessibilityTools,workspaceAccessibilityDefinitions
+ createWorkspaceAccessibilityTools,workspaceAccessibilityDefinitions,ownerAtspiEnvironment
 } from '../src/workspace-accessibility-tools.mjs';
 
 const OWNER={processId:10369,handle:'4205340062'};
@@ -166,4 +166,28 @@ test('unrecognized same-session app cannot impersonate browser semantic route',a
  };
  const ctl=createWorkspaceAccessibilityTools({gui,transport:async()=>{throw Error('MUST_NOT_REACH_TRANSPORT')}});
  await assert.rejects(ctl.execute('workspace_accessibility_open',{processId:7711,handle:'5599',mode:'observe'}),/OWNER_BROWSER_UNVERIFIED/);
+});
+
+
+test('AT-SPI helper inherits only owner-session display identifiers, not credentials',()=>{
+ const env=ownerAtspiEnvironment({
+  HOME:'/home/aliakbar',USER:'aliakbar',DBUS_SESSION_BUS_ADDRESS:'unix:path=/run/user/1000/bus',
+  XDG_RUNTIME_DIR:'/run/user/1000',DISPLAY:':0',WAYLAND_DISPLAY:'wayland-0',
+  XDG_SESSION_TYPE:'wayland',LANG:'en_US.UTF-8',
+  API_KEY:'a-private-test-key',LD_PRELOAD:'/tmp/not-allowed',XAUTHORITY:'/tmp/secret'
+ });
+ assert.equal(env.DISPLAY,':0');
+ assert.equal(env.WAYLAND_DISPLAY,'wayland-0');
+ assert.equal(env.XDG_SESSION_TYPE,'wayland');
+ assert.equal(env.LANG,'en_US.UTF-8');
+ assert.equal(env.PATH,'/usr/bin:/bin');
+ assert.equal(env.DBUS_SESSION_BUS_ADDRESS,'unix:path=/run/user/1000/bus');
+ assert.equal(Object.keys(env).length,9);
+ for(const key of ['API_KEY','LD_PRELOAD','XAUTHORITY'])assert.equal(Object.hasOwn(env,key),false);
+ const bad=ownerAtspiEnvironment({DISPLAY:'host.example:0',WAYLAND_DISPLAY:'../../private',
+  XDG_SESSION_TYPE:'not-desktop',LANG:'en_US.UTF-8;unsafe'});
+ assert.equal(bad.DISPLAY,'');
+ assert.equal(bad.WAYLAND_DISPLAY,'');
+ assert.equal(bad.XDG_SESSION_TYPE,'');
+ assert.equal(bad.LANG,'C.UTF-8');
 });
