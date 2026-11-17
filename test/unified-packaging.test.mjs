@@ -29,15 +29,17 @@ test('one installer definition uses Windows NSIS per user and Linux DEB, not old
  assert.match(y,/migration-preflight[.]mjs/);
  assert.match(y,/from: .stage\/core/);
 });
-test('hosted Ubuntu prefetches signed dependencies before expensive packaging; native upgrade consumes local cache',()=>{
+test('hosted Ubuntu prefetches signed dependencies; native upgrade installs exact local DEBs offline',()=>{
  const y=fs.readFileSync(path.join(repo,'.github/workflows/unified-installer-pilot.yml'),'utf8');
  const script=fs.readFileSync(path.join(repo,'test/unified-native-upgrade-smoke.sh'),'utf8');
  assert.match(y,/Prefetch signed Ubuntu GUI dependencies/);
  assert.match(y,/Signed-By: \/usr\/share\/keyrings\/ubuntu-archive-keyring[.]gpg/);
  assert.match(y,/Acquire::Retries=3/);
  assert.match(y,/libnotify4 libsecret-1-0/);
- assert.match(script,/apt-get --no-download install/);
- assert.ok(script.includes('sudo apt-get --no-download install -y -qq --no-install-recommends "$OLD"'), 'first native old install must use absolute OLD path');
+ assert.ok(script.includes('sudo dpkg --install "$OLD"'), 'hosted old install must use local dpkg path');
+ assert.ok(script.includes('sudo dpkg --install "$NEW"'), 'hosted upgrade must use local dpkg path');
+ assert.equal(script.split('sudo dpkg --install "$OLD"').length-1,2, 'old package must be used for install and rollback');
+ assert.doesNotMatch(script,/apt-get --no-download install/);
  assert.doesNotMatch(script,/apt-get update/);
 });
 
