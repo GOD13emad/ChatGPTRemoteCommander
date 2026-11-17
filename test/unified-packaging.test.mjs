@@ -37,6 +37,7 @@ test('hosted Ubuntu prefetches signed dependencies before expensive packaging; n
  assert.match(y,/Acquire::Retries=3/);
  assert.match(y,/libnotify4 libsecret-1-0/);
  assert.match(script,/apt-get --no-download install/);
+ assert.ok(script.includes('sudo apt-get --no-download install -y -qq --no-install-recommends "$OLD"'), 'first native old install must use absolute OLD path');
  assert.doesNotMatch(script,/apt-get update/);
 });
 
