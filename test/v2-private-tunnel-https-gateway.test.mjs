@@ -35,8 +35,10 @@ function openssl(args,cwd){
 }
 function fixture(){
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),'rc-v012-tunnel-mtls-'));
-  const cfg=process.platform==='win32'?'NUL':'/dev/null';
+  const cfg=process.platform==='win32'?path.join(dir,'openssl-fixture.cnf'):'/dev/null';
   try{
+    if(process.platform==='win32')
+      fs.writeFileSync(cfg,'# isolated Windows OpenSSL fixture');
     const req=(name,ca)=>openssl([
       'req','-x509','-newkey','rsa:2048','-nodes','-sha256',
       '-config',cfg,'-days','1','-keyout',name+'.key','-out',name+'.crt',
@@ -303,6 +305,12 @@ test('PRIVATE pair HTTPS authenticates a pinned tunnel without OAuth and still r
     assert.ok(noCert.code);
     const other=await privatePairRequest(port,f.alienCert,f.alienKey,listMessage);
     assert.equal(other.status,403);
+    const originDenied=await privatePairRequest(port,f.clientCert,f.clientKey,
+      listMessage,{Origin:'https://untrusted.example.invalid'},f.ca);
+    assert.equal(originDenied.status,403);
+    assert.equal(originDenied.body.error,'origin_not_allowed');
+    assert.equal(actions.bind,0);
+    assert.equal(actions.work,0);
     const known=await privatePairRequest(port,f.clientCert,f.clientKey,listMessage);
     assert.equal(known.status,200);
     assert.deepEqual(known.body.result.tools.map(x=>x.name),

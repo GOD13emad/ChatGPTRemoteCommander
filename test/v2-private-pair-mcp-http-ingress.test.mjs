@@ -73,6 +73,42 @@ test('PRIVATE MCP exposes discovery only over independently trusted mTLS',async(
   assert.equal(list.headers['cache-control'],'no-store');
 });
 
+test('PRIVATE MCP rejects all browser Origin headers and duplicates before attestation',async()=>{
+  const f=fixture();
+  for(const headers of [
+    ['Origin','https://evil.example'],
+    ['Origin','https://localhost:48831'],
+    ['origin','null'],
+    ['ORIGIN',''],
+    ['Origin','https://evil.example','origin','https://evil.example']
+  ]){
+    const result=await f.send(envelope('tools/list'),{headers});
+    assert.equal(result.status,403,JSON.stringify(headers));
+    assert.equal(f.state.attested,0,'reject before trusted transport provider');
+    assert.equal(f.state.bound,0);
+    assert.equal(f.state.operations,0);
+  }
+  const ordinary=await f.send(envelope('tools/list'));
+  assert.equal(ordinary.status,200);
+  assert.equal(f.state.attested,1);
+});
+test('PRIVATE MCP Origin denial precedes method and path routing',async()=>{
+  const f=fixture();
+  for(const options of [
+    {method:'GET',url:'/mcp',headers:['Origin','https://evil.example']},
+    {method:'DELETE',url:'/mcp',headers:['origin','null']},
+    {method:'POST',url:'/not-mcp',headers:['Origin','https://evil.example']}
+  ]){
+    const result=await f.send(envelope('tools/list'),options);
+    assert.equal(result.status,403,JSON.stringify(options));
+    assert.equal(result.data.error,'origin_not_allowed');
+    assert.equal(f.state.attested,0);
+    assert.equal(f.state.bound,0);
+    assert.equal(f.state.operations,0);
+  }
+  assert.equal((await f.send(envelope('tools/list'),{method:'GET'})).status,405);
+  assert.equal((await f.send(envelope('tools/list'),{url:'/not-mcp'})).status,404);
+});
 test('PRIVATE MCP only explicitly prompts J01 on owner_bind and does not leak the native token',async()=>{
   const f=fixture();
   const denied=await f.send(tool('v2_private_owner_bind',{extra:1}));
