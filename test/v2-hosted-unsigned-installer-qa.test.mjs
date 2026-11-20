@@ -47,9 +47,10 @@ test('real installer lifecycle cannot begin on an ordinary owner session',()=>{
   assert.match(s,/RUNNER_OS/);
   assert.match(s,/HOSTED_.*ONLY_DENY/);
  }
- assert.match(linux,/apt-get install -y/);
+ assert.match(linux,/v2-universal-native-install\.mjs/);
+ assert.match(load('tools/v2-universal-native-install.mjs'),/apt-get/);
  assert.match(linux,/apt-get purge -y/);
- assert.match(win,/RunOwned \$download '\/S'/);
+ assert.match(win,/v2-universal-native-install\.mjs/);
  assert.match(win,/RunOwned \$uninstaller '\/S'/);
  assert.match(win,/InstallEntries/);
 });

@@ -26,7 +26,7 @@ plan="$(node "$(dirname "$0")/v2-universal-native-plan.mjs" --artifact "$work/in
 node -e 'const p=JSON.parse(process.argv[1]);if(p.status!=="NATIVE_FRESH_HOST_PREFLIGHT_READY"||p.packageFormat!=="deb"||p.changesApplied!==false||p.canInstall!==false)process.exit(45)' "$plan"
 echo V2_UNIVERSAL_NATIVE_PLAN_PASS
 # All OS mutations below are restricted to this fresh GitHub-hosted VM.
-sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y "$work/installer.deb"
+node "$(dirname "$0")/v2-universal-native-install.mjs" --artifact "$work/installer.deb" --sha256 "$sha" --version 2.1.50 --profile desktop --apply --allow-unsigned-qa
 dpkg-query -W commander-v2 | grep -F '2.1.50'
 test -x '/opt/Commander V2/commander-v2'
 test "$(sha256sum '/opt/Commander V2/resources/commander-v2-workspace/MANIFEST.json' | cut -d' ' -f1)" = 1202e46e59162946452a255b03db98de77bd7bf81b978e3a1c867d2490937c64

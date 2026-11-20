@@ -10,6 +10,8 @@ on:
       - 'test/v2-universal-bundle-build.test.mjs'
       - 'tools/v2-universal-native-plan.mjs'
       - 'test/v2-universal-native-plan.test.mjs'
+      - 'tools/v2-universal-native-install.mjs'
+      - 'test/v2-universal-native-install.test.mjs'
   workflow_dispatch:
 permissions:
   contents: read
@@ -32,7 +34,8 @@ jobs:
           node --check tools/v2-universal-install-engine.mjs
           node --check tools/v2-universal-bundle-build.mjs
           node --check tools/v2-universal-native-plan.mjs
-          node --test test/v2-universal-install-engine.test.mjs test/v2-universal-bundle-build.test.mjs test/v2-universal-native-plan.test.mjs
+          node --check tools/v2-universal-native-install.mjs
+          node --test test/v2-universal-install-engine.test.mjs test/v2-universal-bundle-build.test.mjs test/v2-universal-native-plan.test.mjs test/v2-universal-native-install.test.mjs
   universal-windows:
     runs-on: windows-2022
     timeout-minutes: 8
@@ -51,5 +54,7 @@ jobs:
           if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
           node --check tools/v2-universal-native-plan.mjs
           if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
-          node --test test/v2-universal-install-engine.test.mjs test/v2-universal-bundle-build.test.mjs test/v2-universal-native-plan.test.mjs
+          node --check tools/v2-universal-native-install.mjs
+          if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
+          node --test test/v2-universal-install-engine.test.mjs test/v2-universal-bundle-build.test.mjs test/v2-universal-native-plan.test.mjs test/v2-universal-native-install.test.mjs
           if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
