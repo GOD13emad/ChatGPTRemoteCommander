@@ -145,6 +145,11 @@ internal sealed class DashboardForm : Form
         if (ToolInstalled("admin-runtime-windows.ps1"))
             actions.Controls.Add(Button("Admin Runtime", (_, _) => LaunchPowerShellTool("admin-runtime-windows.ps1", "Admin Runtime")));
         actions.Controls.Add(Button("Browser", (_, _) => LaunchBrowser()));
+        actions.Controls.Add(Button("Optional Add-ons", (_, _) =>
+        {
+            using var dialog = new OptionalAddonsForm();
+            dialog.ShowDialog(this);
+        }));
         actions.Controls.Add(Button("Notion Connection", (_, _) =>
         {
             using var wizard = new NotionSetupForm();

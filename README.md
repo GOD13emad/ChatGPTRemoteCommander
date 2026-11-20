@@ -1,6 +1,6 @@
 # ChatGPT Remote Commander
 
-> **Release reset (2026-10-27):** `0.11.0-dev.15` is the integrated-development train. The suite has **no currently accepted Stable**. Prior GitHub releases remain historical artifacts; a GitHub `Latest` badge is not full-product acceptance. `1.0.0` is reserved as the first fully verified Stable. See [0.11 release train](docs/RELEASE_TRAIN_0.11.md).
+> **Current development identity (2026-11-07):** `0.12.0-dev.1` is the next dev23-based integration candidate (NoPromote), not an accepted release or Stable. Commander 2 / `dev19` remains a separate source lineage until its capabilities are reconciled and accepted into the unified tree. The suite has **no currently accepted Stable**. Prior GitHub releases remain historical artifacts; a GitHub `Latest` badge is not full-product acceptance. `1.0.0` remains reserved for the first fully verified Stable. See [0.12 release train](docs/RELEASE_TRAIN_0.12.md).
 
 > **Official project brand:** **[TandemVector Labs](https://github.com/Usefull-Skills)**. Lead source/release maintainer: [Aliakbar Emadoddin](https://github.com/GOD13emad); supporting collaborator: [MMZ](https://github.com/mohammadmohammadzadeh19960-code). [Maintainer credits](docs/PUBLISHER_AND_MAINTAINERS.md). Windows v0.10.24 preview is **UNSIGNED**; checksums and GitHub provenance do not replace Authenticode or remove SmartScreen warnings. The previous historically published Core release was v0.10.20 (not accepted as integrated-suite Stable).
 
@@ -249,7 +249,7 @@ Enroll another Linux account once:
 ./enable-autostart-linux.sh --profile friend-pro
 ```
 
-Each account must use its own tunnel and Runtime API key. The supervisor automatically starts every enrolled profile that points to this local MCP. For one account controlling multiple computers, repeat the installation/enrollment on each computer with a distinct tunnel so each device appears separately in ChatGPT.
+**Canonical per-account/per-system connection (Commander 1 and 2):** For each `(ChatGPT account, target computer)` pair, create **one distinct ChatGPT Plugin/App connection and one exclusively dedicated Secure MCP Tunnel**. No Tunnel ID may be reused by a different user or for another computer. Enroll a **separate Runtime API key by default**; the same user may deliberately reuse **their own** Runtime API key across their own computers, but every pair still has its own Plugin/App and Tunnel. Never reuse another person's key. The local supervisor keeps these account/device profiles separate and forwards each authorized tunnel to **one shared Commander installation on that host**. **Core, Desktop/GUI, Browser, Plugin functionality, and other MCP tools all use that same per-pair connection**; do not create additional tunnels for individual capabilities. The same Plugin can expose enabled Full Access tools when explicitly authorized by the local owner and policy; a Tunnel/API key alone does not grant OS Administrator privileges or bypass GUI consent. **Separate Keycloak/Auth0/public OAuth is not mandatory for the ordinary private-tunnel setup.**
 
 v0.8.25 fixes Windows multi-account update isolation: a drain or persistent terminal owned by one ChatGPT profile defers only that profile, while independently healthy profiles can promote without terminating the blocked profile's workload.
 

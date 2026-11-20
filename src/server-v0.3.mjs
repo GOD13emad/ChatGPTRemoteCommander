@@ -1,15 +1,25 @@
 import http from 'node:http';
+import { legacyPrivilegedMcpQuarantine, rejectLegacyPrivilegedMcp } from './full-access-http-quarantine.mjs';
+import { probeWindowsAdministrator } from './windows-admin-token.mjs';
+import { createAccessStatusReader } from './full-access-status.mjs';
+import { effectivePowerMode, hasEffectiveFullFilesystem } from './effective-power-mode.mjs';
 import { createHash } from 'node:crypto';
 import { validateTransport, assertLocalTransport } from './transport-guard.mjs';
 import os from 'node:os';
 import path from 'node:path';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { canonicalizeRoots } from './security-v0.3.mjs';
 import { audit, listDirectory, prepareProjectCommand, readText, runProjectCommand, writeText } from './tools-v0.3.mjs';
 import { executePowerTool, powerToolDefinitions, prepareDeferredPowerMutation, prepareShellCommand } from './power-tools-v0.3.mjs';
 import { executeGuiTool, guiToolDefinitions } from './gui-tools-windows.mjs';
+import { createWorkspaceTargetTools, workspaceTargetDefinitions, workspaceOwnerRequestContext } from './workspace-target-tools.mjs';
+import { createWorkspaceAccessibilityTools, workspaceAccessibilityDefinitions } from './workspace-accessibility-tools.mjs';
 import { createOwnerGuiReadOnlyProxy } from './gui-owner-delegation.mjs';
+import { createOwnerWorkspaceReadOnlyProxy } from './owner-workspace-delegation.mjs';
+import { createOwnerWorkspaceProxy } from './owner-workspace-proxy.mjs';
+import { executeWorkspaceTool, assertWorkspaceToolPolicy, workspaceToolDefinitions } from './workspace-tools.mjs';
+import { exposedGuiTools, assertLegacyGuiPermitted } from './gui-target-only-policy.mjs';
 import { executeBrowserTool, browserToolDefinitions, reapBrowserOrphans } from './browser-tools.mjs';
 import { lockStats } from './locks.mjs';
 import { expandPathValue, shellName } from './platform.mjs';
@@ -29,7 +39,7 @@ import {
 
 let workflowTools = null;
 let browserCompanionMonitor = null;
-const VERSION = '0.11.0-dev.15';
+const VERSION = '0.12.0-dev.1';
 const MODERN_VERSION = '2026-07-28';
 const LEGACY_VERSIONS = ['2025-11-25', '2025-06-18', '2025-03-26'];
 const TASKS_EXTENSION = 'io.modelcontextprotocol/tasks';
@@ -50,6 +60,26 @@ if (!process.env.REMOTE_COMMANDER_CONFIG) {
 const configRaw = await readFile(configPath, 'utf8');
 const configSha256 = createHash('sha256').update(configRaw).digest('hex');
 const config = JSON.parse(configRaw);
+const readWindowsAdminToken = async () => process.platform === 'win32'
+  ? await probeWindowsAdministrator({ platform: process.platform })
+  : null;
+const nativeWindowsToken = await readWindowsAdminToken();
+const readAccessStatus = createAccessStatusReader({
+  config, probeWindowsAdmin: readWindowsAdminToken
+});
+const initialAccessStatus = await readAccessStatus();
+// An explicitly requested protected pair must never silently fall back to
+// anonymous legacy MCP, including in a STANDARD worker fixture.
+const ownerBootstrapModule=process.env.REMOTE_COMMANDER_PRIVATE_BOOTSTRAP_MODULE;
+const effectivePower = effectivePowerMode(config, { accessStatus: initialAccessStatus });
+const privilegedLegacyHttp = legacyPrivilegedMcpQuarantine({
+  platform: process.platform,
+  configuredTier: config?.capabilityProfile?.tier,
+  effectiveUid: process.platform === 'linux' ? process.geteuid?.() : null,
+  windowsAdminToken: nativeWindowsToken,
+  legacyPowerModeEnabled: config.powerMode?.enabled === true,
+  requireTrustedIngress: process.env.COMMANDER_ONE_REQUIRE_TRUSTED_INGRESS === '1' || config.requireTrustedIngress || Boolean(ownerBootstrapModule)
+});
 assertLocalTransport(config);
 // Optional privacy-safe local display; no new permissions or runtime authority.
 const coucouBridge = createCoucouBridge(config.coucouBridge);
@@ -63,17 +93,37 @@ const runtimeStatePath = config.runtimeState
 const ctx = {
   config,
   roots,
+  accessStatus: initialAccessStatus,
   auditLog: path.resolve(projectDir, config.auditLog || 'var/audit.jsonl')
 };
+function currentExecutionContext() {
+  return {
+    ...ctx,
+    config: { ...config, powerMode: effectivePowerMode(config, { accessStatus: ctx.accessStatus }) }
+  };
+}
+// Process-scoped window/lease bindings are shared across HTTP requests; never share across users or hosts.
+const workspaceTargetBindings = new Map();
+const workspaceAccessibilitySessions = new Map();
+const legacyWorkspaceProxy = createOwnerWorkspaceProxy({config});
+let ownerWorkspaceReadOnlyProxy = null;
+let ownerWorkspaceProxyConfigError = null;
 let ownerGuiProxy = null;
 let ownerGuiProxyConfigError = null;
 try {
   ownerGuiProxy = createOwnerGuiReadOnlyProxy({
-    config, primaryStatus: () => executeGuiTool(ctx, 'gui_status', {})
+    config, primaryStatus: () => executeGuiTool(currentExecutionContext(), 'gui_status', {})
   });
 } catch (error) {
   // Optional GUI routing must not prevent the primary Core from starting.
   ownerGuiProxyConfigError = String(error?.message ?? error);
+}
+try {
+  ownerWorkspaceReadOnlyProxy = createOwnerWorkspaceReadOnlyProxy({
+    config, primaryStatus: () => executeGuiTool(currentExecutionContext(),'gui_status',{})
+  });
+} catch(error) {
+  ownerWorkspaceProxyConfigError = String(error?.message ?? error);
 }
 const configuredAgentExtensionDirectories = config.agentExtensions?.enabled === false
   ? []
@@ -97,22 +147,22 @@ const notionMcpTools = config.notionMcp?.enabled === true
       config: config.notionMcp, profile: config.instance?.profile ?? 'default'
     })
   : { definitions: [], execute: async () => { throw new Error('NOTION_MCP_DISABLED'); } };
-const transferMesh = config.transferMesh?.enabled === true && config.powerMode?.enabled === true
-  ? (await import('./transfer-tools.mjs')).createTransferMeshTools({config})
+const transferMesh = config.transferMesh?.enabled === true && effectivePower.enabled === true
+  ? (await import('./transfer-tools.mjs')).createTransferMeshTools({config:{...config,powerMode:effectivePower}})
   : { enabled: false, definitions: [], execute: async () => { throw new Error('TRANSFER_MESH_DISABLED'); } };
 const GUI_BACKEND_SUPPORTED = process.platform === 'win32' || process.platform === 'linux';
-const GUI_ENABLED = GUI_BACKEND_SUPPORTED && config.powerMode?.enabled === true && config.powerMode?.guiControl?.enabled === true;
-const BROWSER_ENABLED = config.powerMode?.enabled === true && config.powerMode?.browserControl?.enabled === true;
+const GUI_ENABLED = GUI_BACKEND_SUPPORTED && effectivePower.guiControl?.enabled === true;
+const BROWSER_ENABLED = effectivePower.browserControl?.enabled === true;
 let browserStartupReap = { attempted:false, ok:true, scanned:0, reaped:0, skippedActive:0, invalid:0, profiles:[] };
 if (BROWSER_ENABLED) {
-  try { browserStartupReap = { attempted:true, ok:true, ...reapBrowserOrphans(ctx) }; }
+  try { browserStartupReap = { attempted:true, ok:true, ...reapBrowserOrphans(currentExecutionContext()) }; }
   catch (error) {
     browserStartupReap = { attempted:true, ok:false, scanned:0, reaped:0, skippedActive:0, invalid:0, profiles:[],
       error:String(error?.code ?? error?.message ?? error) };
     console.error('BROWSER_STARTUP_REAP_FAILED '+browserStartupReap.error);
   }
 }
-const LEGACY_FULL_FILESYSTEM = config.powerMode?.enabled === true && config.powerMode?.fullFilesystem === true;
+const LEGACY_FULL_FILESYSTEM = hasEffectiveFullFilesystem(config, { accessStatus: initialAccessStatus });
 const deliveryStore = new DeliveryStore(deliveryLocation(config, configPath));
 const deliveryTools = createDeliveryTools(deliveryStore);
 const mutationIdempotency = new MutationIdempotencyStore({ directory: deliveryStore.directory, scope: deliveryStore.scope });
@@ -239,7 +289,10 @@ const TOOLS = [
   ...notionMcpTools.definitions,
   ...powerToolDefinitions,
   ...(BROWSER_ENABLED ? browserToolDefinitions : []),
-  ...(GUI_ENABLED ? guiToolDefinitions : [])
+  ...(GUI_ENABLED ? exposedGuiTools(config,guiToolDefinitions) : []),
+  ...workspaceToolDefinitions,
+  ...(GUI_ENABLED ? workspaceTargetDefinitions : []),
+  ...(GUI_ENABLED && process.platform==='linux' ? workspaceAccessibilityDefinitions : [])
 ];
 
 const AUTO_DEFERRED_MUTATIONS = new Set(['copy_path', 'move_path', 'delete_path']);
@@ -272,10 +325,12 @@ if (config.durableWorkflows?.enabled === true) {
     config, roots, device: config.deviceName || os.hostname(), configSha256,
     deliveryStore, conversationController,
     lookup: toolDefinition, validateSchema: validateJsonSchema,
-    dispatch: async (name, args, workflow) => {
+    dispatch: async (name, args, workflow, workflowOperation = null) => {
+      // This immutable scope is generated by WorkflowStore from the acquired root lease.
+      // It is internal Host context, never a caller-supplied tool argument.
       // Further restrict file operations to the project, even in full Power Mode.
       // Executed programs remain OS processes, NOT sandboxed by these path checks.
-      const scoped = { ...ctx, roots: [workflow.root], config: {
+      const scoped = { ...ctx, workflowOperation, roots: [workflow.root], config: {
         ...config, allowedRoots: [workflow.root],
         powerMode: { ...config.powerMode, fullFilesystem: false }
       } };
@@ -291,6 +346,85 @@ if (config.durableWorkflows?.enabled === true) {
     }
   });
   TOOLS.push(...workflowTools.definitions);
+}
+// Private HTTPS/mTLS ingress is strictly opt-in through an owner-local startup
+// module. A listening TLS socket means transport wiring, NOT J01 acceptance.
+let protectedPrivateRuntime=null;
+let protectedIngressFailure=null;
+if(ownerBootstrapModule){
+  let candidate=null;
+  try{
+    if(!path.isAbsolute(ownerBootstrapModule))
+      throw Object.assign(new Error('V012_PRIVATE_BOOTSTRAP_PATH_REQUIRED'),
+        {code:'V012_PRIVATE_BOOTSTRAP_PATH_REQUIRED'});
+    const provider=await import(pathToFileURL(ownerBootstrapModule).href);
+    if(typeof provider.createOwnerPrivatePairBootstrap!=='function')
+      throw Object.assign(new Error('V012_PRIVATE_BOOTSTRAP_FACTORY_REQUIRED'),
+        {code:'V012_PRIVATE_BOOTSTRAP_FACTORY_REQUIRED'});
+    const options=await provider.createOwnerPrivatePairBootstrap(Object.freeze({
+      profileId:config.instance?.profile??'default',
+      configSha256,projectDir
+    }));
+    if(!options||typeof options!=='object'||Array.isArray(options)
+      ||!options.security||typeof options.security!=='object')
+      throw Object.assign(new Error('V012_PRIVATE_BOOTSTRAP_INVALID'),
+        {code:'V012_PRIVATE_BOOTSTRAP_INVALID'});
+    // Load only for an explicitly configured owner bootstrap. STANDARD fixture
+    // copies of the Core never need this optional protected module.
+    const {createV012PrivateCoreRuntime}=await import('./v012-private-core-runtime.mjs');
+    candidate=createV012PrivateCoreRuntime({
+      ...options,
+      security:{
+        ...options.security,
+        // Production uses the installed Core receipt store and native OS
+        // owner provider, never bootstrap-supplied test adapters. Preserve
+        // ONLY the explicit, allowlisted stable Linux identity mode needed
+        // for a kernel-isolated systemd user service.
+        receiptStore:mutationIdempotency,
+        ownerSessionOptions:process.platform==='linux'
+          &&options.security.ownerSessionOptions?.ownerIdentityMode==='host-uid-v2'
+          ?Object.freeze({ownerIdentityMode:'host-uid-v2'})
+          :Object.freeze({})
+      },
+      core:{
+        catalog:TOOLS,
+        dispatch:async(name,args,route)=>{
+          const definition=toolDefinition(name);
+          if(!definition
+            ||validateJsonSchema(args,definition.inputSchema).length!==0)
+            throw Error('V012_PRIVATE_CORE_TOOL_DENIED');
+          ctx.accessStatus=await readAccessStatus();
+          const runtimeArgs=isDirectMutationTool(name)
+            &&args.requestId===undefined
+            ?{...args,requestId:route.operationId}:args;
+          if(isDirectMutationTool(name)&&runtimeArgs.requestId!==route.operationId)
+            throw Error('V012_PRIVATE_OPERATION_ID_MISMATCH');
+          const result=await executeTool(name,runtimeArgs);
+          await audit(ctx,{action:'private_pair_tool',tool:name,ok:true});
+          coucouBridge.emitTool(name,{failed:result?.ok===false});
+          return result;
+        }
+      }
+    });
+    await candidate.start();
+    protectedPrivateRuntime=candidate;
+  }catch(error){
+    await candidate?.close().catch(()=>{});
+    protectedIngressFailure=error?.code??'V012_PRIVATE_BOOTSTRAP_FAILED';
+    console.error('V012_PRIVATE_INGRESS_BOOTSTRAP_FAILED',protectedIngressFailure);
+  }
+}
+function protectedIngressStatus(){
+  const wired=protectedPrivateRuntime?.status?.phase==='LISTENING';
+  return {
+    required:privilegedLegacyHttp.quarantine,
+    ready:false,
+    wired,
+    bindAddress:wired?'127.0.0.1':null,
+    code:wired?'V2_G1_J01_ACTION_ACCEPTANCE_PENDING'
+      :(protectedIngressFailure??(privilegedLegacyHttp.quarantine
+        ?'V2_G1_INGRESS_NOT_WIRED':null))
+  };
 }
 function serverMeta() {
   return { 'io.modelcontextprotocol/serverInfo': { name: 'chatgpt-remote-commander', version: VERSION } };
@@ -398,7 +532,10 @@ async function executeTool(name, args, executionContext = {}) {
     // execution remains hard-bounded to 15 seconds at runtime.
     if (name === 'run_project_command') await prepareProjectCommand(ctx, synchronousCommandInput(effectArgs));
     if (name === 'run_shell') await prepareShellCommand(ctx, synchronousCommandInput(effectArgs));
-    return mutationIdempotency.execute({ requestId, tool: name, input: effectArgs }, () => executeToolEffect(name, effectArgs, { requestId }));
+    // Preserve the same idempotency key in the per-target journal.
+    const forwarded = name==='workspace_window_click'||name==='workspace_window_type'||name==='workspace_browser_click'||name==='workspace_native_ui_set_value'||name==='workspace_native_ui_invoke'
+      ? {...effectArgs,requestId} : effectArgs;
+    return mutationIdempotency.execute({ requestId, tool: name, input: effectArgs }, () => executeToolEffect(name, forwarded, { requestId }));
   }
   return executeToolEffect(name, args);
 }
@@ -413,17 +550,20 @@ async function executeDelegationTool(name, args) {
 }
 
 async function buildBrowserMonitorSnapshot() {
+  const accessStatus = await readAccessStatus();
+  ctx.accessStatus = accessStatus;
+  const scopedCtx = currentExecutionContext();
   const workflowStatus = workflowTools
     ? await workflowTools.execute('workflow_status', {})
     : { enabled:false, engineEnabled:false, projectEngine:{ runs:[] } };
   let gui = { enabled:GUI_ENABLED, available:false, backend:'', sessionType:'', reason:GUI_ENABLED?'UNAVAILABLE':'DISABLED', capabilities:{} };
   if (GUI_ENABLED) {
-    try { gui = { enabled:true, ...(await executeGuiTool(ctx, 'gui_status', {})) }; }
+    try { gui = { enabled:true, ...(await executeGuiTool(scopedCtx, 'gui_status', {})) }; }
     catch (error) { gui = { enabled:true, available:false, backend:'', sessionType:'', reason:String(error?.code ?? error?.message ?? error), capabilities:{} }; }
   }
   let browser = { enabled:BROWSER_ENABLED, available:false, backend:'', reason:BROWSER_ENABLED?'UNAVAILABLE':'DISABLED' };
   if (BROWSER_ENABLED) {
-    try { browser = { enabled:true, ...(await executeBrowserTool(ctx, 'browser_status', {})) }; }
+    try { browser = { enabled:true, ...(await executeBrowserTool(scopedCtx, 'browser_status', {})) }; }
     catch (error) { browser = { enabled:true, available:false, backend:'', reason:String(error?.code ?? error?.message ?? error) }; }
   }
   let extensionItems = [];
@@ -474,6 +614,7 @@ async function executeToolEffect(name, args, delegationContext = {}) {
   if (name.startsWith('notion_')) return notionTools.execute(name, args);
   switch (name) {
     case 'system_status': {
+      const currentEffectivePower = effectivePowerMode(config, { accessStatus: ctx.accessStatus });
       await audit(ctx, { action: 'system_status', ok: true });
       const workflowStatus = workflowTools
         ? await workflowTools.execute('workflow_status', {})
@@ -487,12 +628,14 @@ async function executeToolEffect(name, args, delegationContext = {}) {
         host: config.host, port: config.port,
         allowedRoots: roots,
         configuredRoots: roots,
-        allowedRootsEnforced: !LEGACY_FULL_FILESYSTEM,
+        allowedRootsEnforced: !currentEffectivePower.fullFilesystem,
+        effectiveTier: ctx.accessStatus?.effectiveTier ?? 'STANDARD',
+        accessStatus: ctx.accessStatus,
         effectiveAccess: {
-          filesystem: LEGACY_FULL_FILESYSTEM ? 'full-filesystem' : 'allowed-roots',
-          legacyFiveToolCompatibility: LEGACY_FULL_FILESYSTEM,
-          legacyFileTools: LEGACY_FULL_FILESYSTEM ? 'full-filesystem' : 'allowed-roots',
-          runProjectCommandCwd: LEGACY_FULL_FILESYSTEM ? 'full-filesystem' : 'allowed-roots',
+          filesystem: currentEffectivePower.fullFilesystem ? 'full-filesystem' : 'allowed-roots',
+          legacyFiveToolCompatibility: currentEffectivePower.fullFilesystem,
+          legacyFileTools: currentEffectivePower.fullFilesystem ? 'full-filesystem' : 'allowed-roots',
+          runProjectCommandCwd: currentEffectivePower.fullFilesystem ? 'full-filesystem' : 'allowed-roots',
           programPolicy: 'allowlist',
           evalPolicy: 'python-c-and-node-eval-print-blocked',
           osPermissionsApply: true
@@ -512,7 +655,7 @@ async function executeToolEffect(name, args, delegationContext = {}) {
         },
         capabilityProfile: config.capabilityProfile ?? {
           id: config.instance?.profile ?? 'default',
-          tier: config.powerMode?.enabled && config.powerMode?.fullFilesystem ? 'FULL_POWER' : 'STANDARD',
+          tier: 'STANDARD',
           explicitlyAuthorized: false,
           persistAcrossUpdates: false
         },
@@ -530,19 +673,31 @@ async function executeToolEffect(name, args, delegationContext = {}) {
         completionBeacon: deliveryStore.beacon(5),
         mutationIdempotency: mutationIdempotency.status(),
         agentExtensions: agentExtensions.status(),
-        transferMesh: { enabled: transferMesh.enabled },
+        transferMesh: { enabled: transferMesh.enabled, receiptsEnabled: transferMesh.receiptsEnabled === true },
         browserCompanionMonitor: browserCompanionMonitor?.status() ?? { enabled:false, lastWriteAtEpochMs:0, lastError:'' },
         delegationPolicy: { ...NO_CODEX_POLICY, commanderMayLaunchCodex: codexLaunchAuthorized(ctx.config), status: delegationStatus(ctx.config) },
-        powerMode: config.powerMode ?? { enabled: false },
-        browserControl: { availability: BROWSER_ENABLED ? 'CHECK_browser_status' : 'DISABLED', enabled: BROWSER_ENABLED,
+        powerMode: {
+          ...(config.powerMode ?? { enabled: false }),
+          configuredEnabled: config.powerMode?.enabled === true,
+          enabled: currentEffectivePower.enabled,
+          fullFilesystem: currentEffectivePower.fullFilesystem,
+          allowShell: currentEffectivePower.allowShell,
+          allowProcessControl: currentEffectivePower.allowProcessControl,
+          allowPermanentDelete: currentEffectivePower.allowPermanentDelete,
+          effective: currentEffectivePower
+        },
+        browserControl: { availability: currentEffectivePower.browserControl?.enabled === true ? 'CHECK_browser_status' : 'DISABLED', enabled: currentEffectivePower.browserControl?.enabled === true,
           startupReap: browserStartupReap,
-          policy: { ...(config.powerMode?.browserControl ?? { enabled:false }), backgroundFirst:true,
+          policy: { ...(currentEffectivePower.browserControl ?? { enabled:false }), backgroundFirst:true,
             foregroundFallback:'explicit-current-request-only', workflowBrowserAllowed:false,
             userBrowserProfileReuse:false, savedPasswordExtraction:false, foregroundInterferenceByDefault:false } },
-        guiControl: { backendSupported: GUI_BACKEND_SUPPORTED, availability: 'CHECK_gui_status', enabled: GUI_ENABLED,
+        guiControl: { backendSupported: GUI_BACKEND_SUPPORTED, availability: currentEffectivePower.guiControl?.enabled === true ? 'CHECK_gui_status' : 'DISABLED', enabled: currentEffectivePower.guiControl?.enabled === true,
+          ownerWorkspaceDelegation: { configured:config.ownerWorkspaceDelegation?.enabled === true,
+            accepted:!!ownerWorkspaceReadOnlyProxy,mode:'read-only-list',
+            ...(ownerWorkspaceProxyConfigError?{error:ownerWorkspaceProxyConfigError}:{}) },
           ownerDelegation: { configured:config.ownerGuiDelegation?.enabled === true,
             accepted:!!ownerGuiProxy, mode:'observe-only', ...(ownerGuiProxyConfigError ? { error:ownerGuiProxyConfigError } : {}) },
-          policy: { ...(config.powerMode?.guiControl ?? { enabled:false }), interactionPolicy:'explicit-current-request-only',
+          policy: { ...(currentEffectivePower.guiControl ?? { enabled:false }), interactionPolicy:'explicit-current-request-only',
             defaultSessionMode:'observe', backgroundPreferred:true, workflowTakeoverAllowed:false, foregroundInterferenceByDefault:false } }
       };
     }
@@ -556,13 +711,74 @@ async function executeToolEffect(name, args, delegationContext = {}) {
       return runProjectCommand(ctx, args);
     default: {
       if (name.startsWith('browser_')) {
-        const result = await executeBrowserTool(ctx, name, args);
+        const scopedCtx = currentExecutionContext();
+        if (scopedCtx.config.powerMode?.browserControl?.enabled !== true) throw Error('BROWSER_CONTROL_NOT_EFFECTIVE');
+        const result = await executeBrowserTool(scopedCtx, name, args);
         await audit(ctx, { action: name, ok: true, powerMode: true, browserControl: true });
         return result;
       }
+      if (name.startsWith('workspace_accessibility_')) {
+        const scopedCtx = currentExecutionContext();
+        if (scopedCtx.config.powerMode?.guiControl?.enabled !== true) throw Error('GUI_CONTROL_NOT_EFFECTIVE');
+        if(process.platform!=='linux')throw Error('WORKSPACE_ACCESSIBILITY_LINUX_ONLY');
+        const ownerRequestContext=workspaceOwnerRequestContext(delegationContext,args);
+        const adapter=createWorkspaceAccessibilityTools({
+          sessions:workspaceAccessibilitySessions,
+          gui:async(tool,input)=>{
+            const proxy=ownerGuiProxy ? await ownerGuiProxy.execute(tool,input,ownerRequestContext) : {handled:false};
+            return proxy.handled ? proxy.value : executeGuiTool(scopedCtx,tool,input);
+          }
+        });
+        const result=await adapter.execute(name,args);
+        await audit(ctx,{action:name,ok:result?.ok===true,workspaceAccessibility:true,
+          semanticOnly:true,powerMode:true});
+        return result;
+      }
+      if (name.startsWith('workspace_') && !name.startsWith('workspace_target_')) {
+        const scopedCtx = currentExecutionContext();
+        assertWorkspaceToolPolicy(scopedCtx.config,name,args);
+        const delegated=legacyWorkspaceProxy
+          ? await legacyWorkspaceProxy.execute(name,args,delegationContext)
+          : {handled:false};
+        const result=delegated.handled
+          ? delegated.value
+          : await executeWorkspaceTool(scopedCtx,name,args);
+        await audit(ctx,{action:name,ok:result?.ok!==false,workspace:true,
+          delegatedOwnerWorkspace:delegated.handled});
+        return result;
+      }
+      if (name.startsWith('workspace_target_')) {
+        const scopedCtx = currentExecutionContext();
+        assertWorkspaceToolPolicy(scopedCtx.config,name,args);
+        // Prefer the existing same-owner CUA broker for explicit read-only inventory.
+        // Never pass focus, input, browser contents or arbitrary RPC names to this bridge.
+        if(name==='workspace_target_list' && ownerWorkspaceReadOnlyProxy){
+          const delegated=await ownerWorkspaceReadOnlyProxy.execute(name,args);
+          if(delegated.handled){
+            await audit(ctx,{action:name,ok:true,workspaceTarget:true,delegatedOwnerWorkspace:true});
+            return delegated.value;
+          }
+        }
+        // A read-only list still opens/closes the owner's short-lived observe lease.
+        // Give both delegated subcalls one request-scoped id; never reuse a fixed id across chats.
+        const ownerRequestContext=workspaceOwnerRequestContext(delegationContext,args);
+        const adapter=createWorkspaceTargetTools({
+          bindings:workspaceTargetBindings,
+          gui:async(tool,input)=>{
+            const proxy=ownerGuiProxy ? await ownerGuiProxy.execute(tool,input,ownerRequestContext) : {handled:false};
+            return proxy.handled ? proxy.value : executeGuiTool(scopedCtx,tool,input);
+          }
+        });
+        const result=await adapter.execute(name,args);
+        await audit(ctx,{action:name,ok:true,workspaceTarget:true,powerMode:true});
+        return result;
+      }
       if (name.startsWith('gui_')) {
+        const scopedCtx = currentExecutionContext();
+        if (scopedCtx.config.powerMode?.guiControl?.enabled !== true) throw Error('GUI_CONTROL_NOT_EFFECTIVE');
+        assertLegacyGuiPermitted(scopedCtx.config,name,args);
         const proxy = ownerGuiProxy ? await ownerGuiProxy.execute(name, args, delegationContext) : { handled: false };
-        const result = proxy.handled ? proxy.value : await executeGuiTool(ctx, name, args);
+        const result = proxy.handled ? proxy.value : await executeGuiTool(scopedCtx, name, args);
         await audit(ctx, { action: name, ok: true, powerMode: true, guiControl: true,
           ...(proxy.handled ? { delegatedOwnerGui: true } : {}) });
         return result;
@@ -751,6 +967,8 @@ async function handleMessage(req, message) {
       }
       await audit(ctx, { ...acceptedTrace(req, message, executionArgs, name), ...(requestIdSource ? { requestIdSource } : {}) });
       try {
+        const accessStatus = await readAccessStatus();
+        ctx.accessStatus = accessStatus;
         const result = await executeTool(name, executionArgs, { requestIdSource });
         // Best-effort display-only telemetry after accepted tool completion.
         coucouBridge.emitTool(name, { failed: result?.ok === false || result?.isError === true });
@@ -811,8 +1029,18 @@ const server = http.createServer(async (req, res) => {
     const url = new URL(req.url, `http://${req.headers.host || '127.0.0.1'}`);
     if (req.method === 'GET' && url.pathname === '/health') {
       return sendJson(res, 200, { ok: true, name: 'chatgpt-remote-commander', version: VERSION, configSha256,
-        instance: config.instance ?? { profile: 'default', isolated: false } });
+        instance: config.instance ?? { profile: 'default', isolated: false },
+        access: {
+          configuredTier: initialAccessStatus.configuredTier,
+          effectiveTier: initialAccessStatus.effectiveTier,
+          fullAccessConfigured: initialAccessStatus.fullAccessConfigured,
+          fullAccessActive: initialAccessStatus.fullAccessActive,
+          fullAccessBlocker: initialAccessStatus.fullAccessBlocker
+        },
+        protectedIngress: protectedIngressStatus(),
+        privilegedLegacyHttpQuarantined: privilegedLegacyHttp.quarantine });
     }
+    if (rejectLegacyPrivilegedMcp(req, res, privilegedLegacyHttp)) return;
     if (req.method !== 'POST' || url.pathname !== '/mcp') {
       return sendJson(res, 404, { error: 'not_found' });
     }

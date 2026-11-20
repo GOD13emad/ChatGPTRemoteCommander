@@ -12,7 +12,8 @@ trap 'rm -rf "$TMP"' EXIT
 for f in \
   install.ps1 install.sh install-work-plugin.ps1 install-work-plugin.sh \
   setup-wizard.ps1 setup-wizard.sh build-device-plugin.ps1 build-device-plugin.sh tools/generate-device-plugin.mjs \
-  server-install-windows.ps1 server-install-linux.sh START_HERE.md WORK_SETUP.md \
+  server-install-windows.ps1 server-install-linux.sh tools/workspace-owner-broker.mjs \
+  tools/launch-owner-workspace.ps1 tools/prepare-owner-workspace-candidate.ps1 START_HERE.md WORK_SETUP.md \
   assets/plugin-icon.png assets/plugin-icon.svg assets/plugin-logo.png \
   plugin-template/plugin.json plugin-template/.codex-plugin/plugin.json
 do
@@ -65,7 +66,7 @@ cp "$OUT/plugin-template.zip" "$OUT/plugin-template-v$VERSION.zip"
 
 installer_stage="$TMP/installer"
 mkdir -p "$installer_stage/tools"
-for f in install.ps1 install.sh install-work-plugin.ps1 install-work-plugin.sh setup-wizard.ps1 setup-wizard.sh build-device-plugin.ps1 build-device-plugin.sh server-install-windows.ps1 server-install-linux.sh START_HERE.md WORK_SETUP.md; do
+for f in install.ps1 install.sh install-work-plugin.ps1 install-work-plugin.sh setup-wizard.ps1 setup-wizard.sh build-device-plugin.ps1 build-device-plugin.sh server-install-windows.ps1 server-install-linux.sh tools/workspace-owner-broker.mjs tools/launch-owner-workspace.ps1 tools/prepare-owner-workspace-candidate.ps1 START_HERE.md WORK_SETUP.md; do
   cp "$ROOT/$f" "$installer_stage/$f"
 done
 cp "$ROOT/tools/generate-device-plugin.mjs" "$installer_stage/tools/generate-device-plugin.mjs"

@@ -104,6 +104,36 @@ test('browser component is compile-time optional until a standalone Browser inst
   assert.ok(iss.includes('Filename: "{tmp}\\{#BrowserSetupName}"'));
 });
 
+test('bundled Browser preserves an existing owner-installed Browser, including a newer preview',()=>{
+  const iss=read('installer/RemoteCommander.iss');
+  const run=iss.split('[Run]')[1]?.split('[Code]')[0];
+  assert.ok(run);
+  assert.match(run,/Components: browser;.*Check: ShouldInstallBundledBrowser/);
+  const guard=iss.split('function ShouldInstallBundledBrowser(): Boolean;')[1]?.split('function JsonBool')[0];
+  assert.ok(guard);
+  assert.match(guard,/RegQueryStringValue\(HKCU,/);
+  assert.match(guard,/RemoteCommanderBrowser/);
+  assert.match(guard,/product-install\.json/);
+  assert.match(guard,/Result := not RegQueryStringValue/);
+});
+test('private exact Core source Git bundle is pinned through native Inno, fresh install and update',()=>{
+  const iss=read('installer/RemoteCommander.iss');
+  const builder=read('installer/build-setup.ps1');
+  const install=read('install.ps1');
+  const updater=read('auto-update-windows.ps1');
+  assert.match(iss,/#ifdef CoreSourceBundle/);
+  assert.match(iss,/Source: "{#CoreSourceBundle}"/);
+  assert.match(iss,/ExtractTemporaryFile\('\{#CoreBundleName\}'\)/);
+  assert.match(iss,/SourceBundleSha256/);
+  assert.match(builder,/bundle verify \$SourceBundle/);
+  assert.match(builder,/bundle list-heads \$SourceBundle/);
+  assert.match(builder,/DCoreSourceBundleSHA256/);
+  assert.match(install,/SOURCE_BUNDLE_SHA256_MISMATCH/);
+  assert.match(install,/if \(\$SourceBundle\) \{ \$args \+= @\('-SourceBundle',\$Repo,'-SourceBundleSha256'/);
+  assert.match(updater,/SOURCE_BUNDLE_SHA256_MISMATCH/);
+  assert.match(updater,/\$Repo=\$file.FullName/);
+});
+
 test('product icon is a standards-compliant multi-image ICO asset',()=>{
   const p=path.join(root,'desktop','RemoteCommanderDashboard','remote-commander.ico');
   const b=fs.readFileSync(p);
@@ -129,4 +159,76 @@ test('native Desktop upgrade preserves authorized existing Core tier instead of 
     'installer forwards explicit Standard only when supplied');
   assert.ok(install.includes('Invoke-ExistingSafeUpdate'),
     'existing Core still routes through the qualified updater');
+});
+
+test('Windows Inno archive source files omit build-host file timestamps',()=>{
+  const section=read('installer/RemoteCommander.iss').split('[Files]')[1]?.split('[Icons]')[0];
+  assert.ok(section,'Inno [Files] section required');
+  const entries=section.split(/\r?\n/).map(x=>x.trim()).filter(x=>x.startsWith('Source:'));
+  assert.equal(entries.length,10,'validate Core bundle, pinned Windows runner and exact installer file inventory');
+  for(const entry of entries){
+    assert.match(entry,/\bnotimestamp\b/,'each packaged file must omit source filesystem timestamps');
+  }
+});
+
+test('pinned Windows Job Object runner is built, embedded, installed and staged before candidate qualification',()=>{
+  const builder=read('installer/build-setup.ps1');
+  const iss=read('installer/RemoteCommander.iss');
+  const install=read('install.ps1');
+  const linuxInstall=read('install.sh');
+  const runnerInstaller=read('tools/windows-job-runner/install-windows-job-runner.ps1');
+  const updater=read('auto-update-windows.ps1');
+  const releaseSync=read('.github/workflows/release-sync.yml');
+  const ci=read('.github/workflows/ci.yml');
+  assert.ok(builder.includes('verify-windows-job-runner.ps1'),'setup build must verify or build the pinned runner');
+  assert.ok(builder.includes('-Ensure'),'setup build must produce the self-contained runner when absent');
+  assert.ok(builder.includes("('/DWindowsJobRunner='+$RunnerPath)"),'Inno receives the verified runner path');
+  assert.ok(builder.includes('windowsJobRunnerSha256=$RunnerSha'));
+  assert.ok(iss.includes('#error V102_PINNED_WINDOWS_JOB_RUNNER_REQUIRED'));
+  assert.ok(iss.includes('Source: "{#WindowsJobRunner}"; DestName: "CommanderWindowsJobRunner.exe"'));
+  assert.ok(iss.includes("ExtractTemporaryFile('CommanderWindowsJobRunner.exe')"));
+  assert.ok(iss.includes('-WindowsJobRunnerPath '));
+  assert.ok(install.includes('function Install-WindowsJobRunner'));
+  assert.ok(install.includes('install-windows-job-runner.ps1'));
+  assert.ok(install.includes('V012_INSTALL_RELEASE_TRAIN_NOT_APPROVED'));
+  assert.ok(install.includes('verify-v012-publish-readiness.mjs'));
+  assert.ok(linuxInstall.includes('V012_INSTALL_RELEASE_TRAIN_NOT_APPROVED'));
+  assert.ok(linuxInstall.includes('verify-v012-publish-readiness.mjs'));
+  assert.ok(runnerInstaller.includes('function Install-CommanderWindowsJobRunner'));
+  assert.ok(runnerInstaller.includes('WINDOWS_JOB_RUNNER_SOURCE_SHA_MISMATCH'));
+  assert.ok(runnerInstaller.includes('WINDOWS_JOB_RUNNER_INSTALL_OR_VERIFY_FAILED'));
+  assert.ok(runnerInstaller.includes('WINDOWS_JOB_RUNNER_INSTALL_TEMP_SHA_MISMATCH'));
+  assert.ok(runnerInstaller.includes('Move-Item -LiteralPath $installTemp -Destination $installedTarget -Force'));
+  assert.ok(install.includes('Install-WindowsJobRunner -SourcePath $WindowsJobRunnerPath'));
+  assert.ok(install.includes('Install-WindowsJobRunner -SourcePath $WindowsJobRunnerPath -ManifestRoot $temp'));
+  assert.ok(install.indexOf('candidate-first update failed:')<install.indexOf('Install-WindowsJobRunner -SourcePath $WindowsJobRunnerPath -ManifestRoot $temp'),
+    'existing install runner is replaced only after candidate update succeeds');
+  assert.ok(updater.includes('function Copy-WindowsJobRunner'));
+  assert.ok(updater.includes('WINDOWS_JOB_RUNNER_NOT_INSTALLED'));
+  assert.ok(updater.includes('Copy-WindowsJobRunner $stage.Dir'));
+  assert.ok(updater.includes('[string]$WindowsJobRunnerPath ='));
+  assert.ok(updater.includes('Install-ControlWindowsJobRunner $StageDir'));
+  assert.ok(updater.includes('Promote-Control $stage.Commit $ref $stage.Dir'));
+  assert.ok(updater.indexOf('Copy-WindowsJobRunner $stage.Dir')<updater.indexOf('$script:QualificationCommit=$stage.Commit'),
+    'candidate native runner must be verified before qualification and routing');
+  assert.ok(releaseSync.includes('git bundle create $bundle $bundleRef'));
+  assert.ok(releaseSync.includes('git check-ref-format $bundleRef'));
+  assert.ok(releaseSync.includes('-SourceBundle $bundle'),'the published setup embeds the exact Core source bundle');
+  assert.ok(ci.includes('verify-windows-job-runner.ps1 -Ensure'));
+  assert.ok(ci.includes("dotnet-version: '8.0.427'"));
+});
+
+test('Windows direct ISCC compile refuses historical fallback identity and builder refuses version spoofing',()=>{
+  const iss=read('installer/RemoteCommander.iss');
+  const builder=read('installer/build-setup.ps1');
+  for(const gate of ['V108_EXPLICIT_PACKAGE_VERSION_REQUIRED','V108_EXACT_SOURCE_COMMIT_REQUIRED','V108_EXPLICIT_SOURCE_REF_REQUIRED']){
+    assert.ok(iss.includes('#error '+gate), 'missing hard build-time identity gate: '+gate);
+  }
+  assert.equal(iss.includes('#define MySourceRef "v0.10.18"'),false);
+  assert.equal(iss.includes('#define MyVersion "0.10.18-dev"'),false);
+  assert.equal(iss.includes('#define MyCommit "0000000000000000000000000000000000000000"'),false);
+  assert.ok(builder.includes('SETUP_VERSION_MUST_MATCH_SOURCE_PACKAGE'));
+  assert.ok(builder.includes("('/DMyVersion='+$Version)"));
+  assert.ok(builder.includes("('/DMyCommit='+$ExpectedCommit)"));
+  assert.ok(builder.includes("('/DMySourceRef='+$SourceRef)"));
 });

@@ -7,6 +7,7 @@ import { createProjectEngine } from './project-engine.mjs';
 import { createCommandPlanner } from './project-planner.mjs';
 import { createTeamPlanner } from './project-team.mjs';
 import { codexLaunchAuthorized } from './no-codex-policy.mjs';
+import { processContainmentAvailable } from './process-containment.mjs';
 
 const text = maxLength => ({ type: 'string', minLength: 1, maxLength });
 const id = { ...text(64), pattern: '^[a-z][a-z0-9_-]{0,63}$' };
@@ -381,7 +382,7 @@ export function createWorkflowTools({ config, roots, device, configSha256, looku
         }
         case 'workflow_run_status': {
           if(!engine)fail('WORKFLOW_RUNNER_DISABLED');
-          const result=engine.status(args.runId);reconcileProjectDeliveries();return result;
+          return engine.status(args.runId);
         }
         case 'workflow_run_resolve': {
           if(!engine)fail('WORKFLOW_RUNNER_DISABLED');
@@ -397,6 +398,14 @@ export function createWorkflowTools({ config, roots, device, configSha256, looku
               if (!allowed.has(tool) || tool.startsWith('workflow_')) fail('WORKFLOW_TOOL_NOT_APPROVED');
               if (DIRECT_SESSION_ONLY_GUI.has(tool) || (tool === 'gui_session_begin' && input?.mode === 'takeover')) {
                 fail('WORKFLOW_GUI_TAKEOVER_REQUIRES_DIRECT_USER_SESSION');
+              }
+              if (['kill_process','start_terminal','send_terminal','stop_terminal','gui_session_begin','gui_session_renew','gui_session_end'].includes(tool)) {
+                fail('WORKFLOW_PROCESS_TOOL_NOT_SUPPORTED');
+              }
+              if (['run_project_command','run_shell'].includes(tool)
+                && schedulerPolicy.oneWriterPerRoot !== false
+                && !(await processContainmentAvailable())) {
+                fail('WORKFLOW_CESSATION_PROVIDER_UNAVAILABLE');
               }
               const definition = lookup(tool);
               if (!definition) fail('WORKFLOW_TOOL_UNAVAILABLE');
@@ -432,7 +441,10 @@ export function createWorkflowTools({ config, roots, device, configSha256, looku
           if(resumed.blockers.length)fail(resumed.blockers[0]);
           const definition=lookup(name);
           if(!definition||validateSchema(args,definition.inputSchema).length)fail('WORKFLOW_TOOL_ARGUMENTS_INVALID');
-          return dispatch(name,args,resumed.state);
+          const observationArgs=name==='read_text'
+            ? {path:args.path,offset:0,maxBytes:1024}
+            : {path:args.path,depth:1,maxEntries:24};
+          return dispatch(name,observationArgs,resumed.state);
         },lookup,policy:settings.runner});
       queueMicrotask(()=>{reconcileProjectDeliveries();});
       if(settings.runner.autoTick===true)api.definitions=api.definitions.map(d=>d.name==='workflow_scheduler_tick'?{

@@ -1,6 +1,6 @@
 # Remote Commander Control Center — R32 GTK4/Adwaita
 
-This is a **read-only native** Control Center candidate for Linux. It does not replace a running Commander release, install a service, elevate privileges, access browser profiles, or execute workflows.
+This is a **read-only native** Control Center candidate for Linux. The 0.12 candidate adds a read-only **Add-ons** page consuming the single checksum-pinned `installer/products.json` catalog, with all heavy providers shown as planned and with no install actions. It does not replace a running Commander release, install a service, elevate privileges, access browser profiles, or execute workflows.
 
 The original owner-private telemetry readers remain in `control_center.py`: bounded JSON, exact owner and file-mode guards, canonical routing runtime pairs, and SQLite `mode=ro` + `PRAGMA query_only=ON`. `dashboard_ui.py` is presentation-only and receives sanitized callbacks.
 

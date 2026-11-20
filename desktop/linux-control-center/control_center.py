@@ -290,6 +290,48 @@ def autofollow_status(root=None, unit_dir=None):
     except (OSError, ValueError, TypeError):
         return fallback
 
+def optional_addons():
+    """Read the same signed-bundle/source catalogue, but never infer install rights.
+
+    A missing or changed catalogue must produce an unavailable view, not an
+    install button. This is intentionally independent of any Core IPC.
+    """
+    paths = [Path(__file__).with_name("products.json"),
+             Path(__file__).resolve().parents[2] / "installer/products.json"]
+    for candidate in paths:
+        doc = bounded_json(candidate, 16384)
+        area = doc.get("controlCenterAddons") if isinstance(doc, dict) else None
+        if (not isinstance(area, dict) or area.get("schema") != 1 or
+                area.get("surface") != "control-center" or
+                area.get("defaultAutoInstall") is not False or
+                area.get("capability") != "DISCOVERY_ONLY_UNTIL_SIGNED_ARTIFACT_AND_OWNER_GRANT"):
+            continue
+        items = area.get("items")
+        if not isinstance(items, list) or len(items) > 64:
+            continue
+        output = []
+        valid = True
+        for item in items:
+            if not isinstance(item, dict):
+                valid = False
+                break
+            ident, name, state = item.get("id"), item.get("name"), item.get("admission")
+            platforms = item.get("platforms")
+            if (not isinstance(ident, str) or not re.fullmatch(r"[a-z][a-z0-9-]{1,48}", ident)
+                    or not isinstance(name, str) or not (0 < len(name) <= 100)
+                    or state != "planned" or item.get("downloadDefault") is not False
+                    or not isinstance(platforms, list) or
+                    not set(platforms).issubset({"linux", "windows"})):
+                valid = False
+                break
+            output.append({"id": ident, "name": name, "state": "PLANNED",
+                           "platformSupported": "linux" in platforms,
+                           "installable": False})
+        if valid and len({x["id"] for x in output}) == len(output):
+            return output
+    return []
+
+
 def audit():
     data = monitor_status()
     result = {
@@ -305,6 +347,8 @@ def audit():
         "credentialAccess": False,
         "localAIFollowup": autofollow_status()["state"],
         "localAIWorkflowMutation": False,
+        "optionalAddonsCount": len(optional_addons()),
+        "optionalAddonInstallationEnabled": False,
     }
     print(json.dumps(result, ensure_ascii=False))
     return 0
@@ -315,7 +359,8 @@ def run_gui():
     from dashboard_ui import run_dashboard
 
     return run_dashboard(APP_ID, monitor_status, profiles, workflows,
-                         autofollow_status, effective_system_dark, sys.argv)
+                         autofollow_status, effective_system_dark, sys.argv,
+                         addons_source=optional_addons)
 
 
 if __name__ == "__main__":
