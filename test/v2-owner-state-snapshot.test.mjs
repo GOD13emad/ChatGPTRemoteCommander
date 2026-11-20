@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import {fileURLToPath} from 'node:url';
 import {execFileSync,spawnSync} from 'node:child_process';
 import {snapshotV012OwnerState} from '../tools/v2-owner-state-snapshot.mjs';
 
@@ -85,7 +86,7 @@ test('source roots absent or unsupported are not silently treated as a backup',(
 });
 test('CLI refuses implicit backup or unknown snapshot kinds',()=>{
   const script=new URL('../tools/v2-owner-state-snapshot.mjs',import.meta.url);
-  const file=script.pathname;
+  const file=fileURLToPath(script);
   const noArgs=spawnSync(process.execPath,[file],{encoding:'utf8'});
   const browser=spawnSync(process.execPath,[file,'--snapshot','brave-userdata'],{encoding:'utf8'});
   assert.equal(noArgs.status,2);assert.match(noArgs.stderr,/EXPLICIT_SNAPSHOT/);
