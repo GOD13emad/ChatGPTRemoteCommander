@@ -1,0 +1,42 @@
+name: V012 owner-state snapshot scoped QA
+on:
+  push:
+    branches: [mmz/v2-unified-candidate-20261103]
+    paths:
+      - '.github/workflows/v012-owner-state-snapshot-qa.yml'
+      - 'tools/v2-owner-state-snapshot.mjs'
+      - 'test/v2-owner-state-snapshot.test.mjs'
+      - 'package.json'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: v012-owner-state-qa-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  linux-private-copy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Linux owner-private fixture backup and independent offline restore
+        shell: bash
+        run: |
+          node --version
+          node --check tools/v2-owner-state-snapshot.mjs
+          node --test test/v2-owner-state-snapshot.test.mjs
+  windows-fail-closed:
+    runs-on: windows-2022
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Windows refuses snapshot without CurrentUserOnly ACL proof
+        shell: pwsh
+        run: |
+          node --version
+          node --check tools/v2-owner-state-snapshot.mjs
+          node --test --test-name-pattern="Windows snapshot refuses|CLI refuses implicit" test/v2-owner-state-snapshot.test.mjs
