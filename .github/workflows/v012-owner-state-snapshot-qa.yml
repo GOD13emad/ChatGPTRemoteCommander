@@ -6,6 +6,8 @@ on:
       - '.github/workflows/v012-owner-state-snapshot-qa.yml'
       - 'tools/v2-owner-state-snapshot.mjs'
       - 'test/v2-owner-state-snapshot.test.mjs'
+      - 'tools/v2-owner-state-snapshot-windows.ps1'
+      - 'test/v2-owner-state-snapshot-windows.test.ps1'
       - 'package.json'
   workflow_dispatch:
 permissions:
@@ -40,3 +42,16 @@ jobs:
           node --version
           node --check tools/v2-owner-state-snapshot.mjs
           node --test --test-name-pattern="Windows snapshot refuses|CLI refuses implicit" test/v2-owner-state-snapshot.test.mjs
+  windows-native-owner-acl:
+    runs-on: windows-2022
+    timeout-minutes: 7
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Native Windows owner-private DACL and scoped offline restore fixtures
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          & pwsh -NoProfile -File ./test/v2-owner-state-snapshot-windows.test.ps1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
