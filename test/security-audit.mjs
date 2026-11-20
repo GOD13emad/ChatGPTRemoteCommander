@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { spawn, spawnSync } from 'node:child_process';
 import { StringDecoder } from 'node:string_decoder';
+import { createHash } from 'node:crypto';
 
 function git(args, options = {}) {
   const result = spawnSync('git', args, {
@@ -33,6 +34,24 @@ const mockBearerLiteral = 'Bearer ' + 'verified-' + 'test-bearer';
 // string. Preserve immutable Git provenance while excluding *only* that exact
 // generated fixture, never arbitrary credentials, suffixes or adjacent tokens.
 const mockGapTestBearerLiteral = 'Bearer ' + 'dummy-' + 'super-' + 'secret-12345';
+
+// Nine exact, historically committed source-code *literals*, not PEM payloads.
+// Independently reviewed: synthetic non-base64 test values, scanner fixtures and
+// a vendor PKCS8 header comparison. Pin commit, Git path AND whole diff line.
+// Never suppress a modified line, another commit/file or a second marker.
+const HISTORY_NONKEY_SOURCE_LINE_PINS=new Set([
+ "f31392c127e682762988b5bee70164752208b176|test/v101-linux-v2-candidate-host.test.mjs|7cebd60574fa2d40fdf124f8fdc3814daae2067f40f26e3f905d1d5281f6e6fc",
+ "f31392c127e682762988b5bee70164752208b176|test/v101-linux-v2-candidate-host.test.mjs|fa4687719919ae2be8e863786f86d72e619add8ee647cc85e08c7799fd373586",
+ "07ce35da16a63b6d77883671320bccfb5b97c398|test/security-audit.mjs|6ddf937084740cde5222705897656ac2c41fdc84e77f6baec6533668e4a3e029",
+ "0bd13b5c443171e2829d84358a82c8af09f60c1d|test/security-audit.mjs|6ddf937084740cde5222705897656ac2c41fdc84e77f6baec6533668e4a3e029",
+ "0bd13b5c443171e2829d84358a82c8af09f60c1d|test/security-audit.mjs|ea3616cd33653fb14a2ed2b2de2a2eabb97b0ffc6bd588cfb69363a4bb4dec7a",
+ "c4978731c897a755f55b8610fc58be0497a636c4|test/security-audit.mjs|6cb159b32535fb8bf9e4416ac8d24b52e0f7353b7b3ef15a4797d5019117a794",
+ "594e79ff16c66c770446a0a27f38bf1d6bb59191|vendor/jose/dist/webapi/key/import.js|ab506fa93dea915497ad0dec31c667a6802c4335f56c80bb55dfc3f11e5c5959",
+ "6e83e5b1c807b1b7dcbb6a56aa56f2966e984d8b|test/v2-mcp-http-ingress.test.mjs|c49aa9b0b75874639e877d5e93309645d7a707cfa424e7bc21625f44b666dcd1",
+ "6e83e5b1c807b1b7dcbb6a56aa56f2966e984d8b|test/v2-mcp-http-ingress.test.mjs|9f84d8855fd0961d29ec6543bcae795c8fb36816ac68102dd029424068a450a1",
+]);
+const PEM_HEADER_HISTORICAL='-----BEGIN '+'PRIVATE KEY-----';
+
 function secretPatternMatches(type,pattern,text) {
   let sample=text;
   if(type==='Private key block')
@@ -70,11 +89,22 @@ if (!tunnelPattern.test('tunnel' + '_' + '0123456789abcdef'.repeat(2)) || tunnel
 }
 // Scan complete Git history without buffering the entire potentially multi-GB patch.
 // Lines are bounded; anything above the bound fails closed instead of being skipped.
-function makeHistoryScanner(rules) {
+function makeHistoryScanner(rules,historyContext=false) {
   const hits = new Set();
-  let pending = '', preceding = '';
+  let pending = '', preceding = '', commit = '', file = '';
   const limit = 16 * 1024 * 1024;
   function scanLine(line) {
+    if(historyContext) {
+      const cm=/^commit ([a-f0-9]{40})\r?\n?$/.exec(line);
+      if(cm){commit=cm[1];file='';}
+      const fm=/^diff --git a\/[^\n]+ b\/([^\n]+)\r?\n?$/.exec(line);
+      if(fm)file=fm[1].replace(/\r$/,'');
+      if(line.includes(PEM_HEADER_HISTORICAL)){
+        const digest=createHash('sha256').update(line).digest('hex');
+        if(HISTORY_NONKEY_SOURCE_LINE_PINS.has(commit+'|'+file+'|'+digest))
+          line=line.replaceAll(PEM_HEADER_HISTORICAL,'[KNOWN_NONKEY_SOURCE_LITERAL]');
+      }
+    }
     const sample = preceding + line;
     for (const [name, pattern] of rules) {
       if (secretPatternMatches(name,pattern,sample)) hits.add(name);
@@ -98,6 +128,13 @@ function makeHistoryScanner(rules) {
     }
   };
 }
+// Reuse of any pinned source line outside its exact patch context still flags.
+const hostileHistoryProbe=makeHistoryScanner(patterns,true);
+hostileHistoryProbe.write('commit '+'f31392c127e682762988b5bee70164752208b176'+'\n');
+hostileHistoryProbe.write('diff --git a/test/unrelated.mjs b/test/unrelated.mjs\\n');
+hostileHistoryProbe.write('+  privateKeyPem:\''+PEM_HEADER_HISTORICAL+'\nACTUAL-KEY\n');
+if(!hostileHistoryProbe.finish().has('Private key block'))
+  throw new Error('HISTORY_NONKEY_SOURCE_PIN_SCOPE_REGRESSION');
 const boundaryProbe = makeHistoryScanner(patterns);
 boundaryProbe.write('tunnel' + '_0123456789abcdef');
 boundaryProbe.write('0123456789abcdef\nBearer \n');
@@ -113,7 +150,7 @@ async function scanCompleteHistory() {
     child.once('error', reject);
     child.once('close', (code, signal) => resolve({ code, signal }));
   });
-  const scanner = makeHistoryScanner(patterns);
+  const scanner = makeHistoryScanner(patterns,true);
   const decoder = new StringDecoder('utf8');
   let stderr = '', bytes = 0;
   const errors = (async () => {
