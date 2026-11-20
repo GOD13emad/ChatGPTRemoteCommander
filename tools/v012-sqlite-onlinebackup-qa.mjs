@@ -121,7 +121,11 @@ async function run(){
   }finally{
     if(fixtureWriter){fixtureWriter.exec('ROLLBACK');fixtureWriter.close();}
     if(mode==='fixture'){
-      for(const x of ['fake-source.sqlite','fake-source.sqlite-wal','fake-source.sqlite-shm','online-snapshot.sqlite']){
+      // SQLite read-only verification may create transient WAL/SHM sidecars on
+      // some native SQLite builds. Retire only these exact fixture-owned files.
+      for(const x of ['fake-source.sqlite','fake-source.sqlite-wal','fake-source.sqlite-shm',
+                      'online-snapshot.sqlite','online-snapshot.sqlite-wal','online-snapshot.sqlite-shm',
+                      'disposable-restored.sqlite','disposable-restored.sqlite-wal','disposable-restored.sqlite-shm']){
         try{fs.unlinkSync(path.join(output,x));}catch(e){if(e.code!=='ENOENT')throw e;}
       }
     }
