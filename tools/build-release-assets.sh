@@ -203,6 +203,8 @@ EOF
 zip_tree "$linux_stage" "$OUT/ChatGPT-Remote-Commander-Linux-Setup-v$VERSION.zip"
 cp "$OUT/ChatGPT-Remote-Commander-Linux-Setup-v$VERSION.zip" "$OUT/ChatGPT-Remote-Commander-Linux-Setup.zip"
 
+python3 "$ROOT/tools/check-public-release-boundary.py" "$OUT"
+
 (
   cd "$OUT"
   find . -maxdepth 1 -type f ! -name SHA256SUMS.txt -printf '%f\n' \
