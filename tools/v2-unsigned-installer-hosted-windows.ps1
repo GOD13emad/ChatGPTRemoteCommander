@@ -38,6 +38,15 @@ if((Get-FileHash -LiteralPath $download -Algorithm SHA256).Hash.ToLowerInvariant
  throw 'V2_QA_DOWNLOAD_SHA_MISMATCH'
 }
 Write-Output 'V2_WINDOWS_INSTALLER_SHA_PASS'
+# OS-neutral admission step before this host's existing native installer.
+$nativePlanRaw=@(& node (Join-Path $PSScriptRoot 'v2-universal-native-plan.mjs') --artifact $download --sha256 $sha --version '2.1.50' --profile desktop)
+if($LASTEXITCODE -ne 0){throw 'V2_UNIVERSAL_NATIVE_PLAN_FAILED'}
+$nativePlan=($nativePlanRaw -join '') | ConvertFrom-Json
+if($nativePlan.status -ne 'NATIVE_FRESH_HOST_PREFLIGHT_READY' -or
+   $nativePlan.packageFormat -ne 'nsis' -or
+   $nativePlan.changesApplied -ne $false -or
+   $nativePlan.canInstall -ne $false){throw 'V2_UNIVERSAL_NATIVE_PLAN_INCONSISTENT'}
+Write-Output 'V2_UNIVERSAL_NATIVE_PLAN_PASS'
 RunOwned $download '/S' 240000
 $records=@()
 for($i=0;$i -lt 36;$i++){

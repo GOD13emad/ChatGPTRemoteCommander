@@ -20,6 +20,11 @@ test "$(dpkg-deb --field "$work/installer.deb" Package)" = commander-v2
 test "$(dpkg-deb --field "$work/installer.deb" Version)" = 2.1.50
 test "$(dpkg-deb --field "$work/installer.deb" Architecture)" = amd64
 echo V2_LINUX_INSTALLER_SHA_PASS
+# The SAME universal native package-admission engine used for Windows and
+# Linux must accept this pinned artifact and observe a fresh OS identity.
+plan="$(node "$(dirname "$0")/v2-universal-native-plan.mjs" --artifact "$work/installer.deb" --sha256 "$sha" --version "2.1.50" --profile desktop)"
+node -e 'const p=JSON.parse(process.argv[1]);if(p.status!=="NATIVE_FRESH_HOST_PREFLIGHT_READY"||p.packageFormat!=="deb"||p.changesApplied!==false||p.canInstall!==false)process.exit(45)' "$plan"
+echo V2_UNIVERSAL_NATIVE_PLAN_PASS
 # All OS mutations below are restricted to this fresh GitHub-hosted VM.
 sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y "$work/installer.deb"
 dpkg-query -W commander-v2 | grep -F '2.1.50'
