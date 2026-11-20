@@ -1,0 +1,50 @@
+name: Commander V2 universal owner-state migration QA
+on:
+  push:
+    branches: [mmz/v2-unified-candidate-20261103]
+    paths:
+      - '.github/workflows/v2-universal-state-migration-qa.yml'
+      - 'tools/v2-universal-state-migration.mjs'
+      - 'tools/v2-universal-owner-acl.ps1'
+      - 'test/v2-universal-state-migration.test.mjs'
+      - 'tools/v2-universal-install-engine.mjs'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: universal-owner-state-migration-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  snapshot-linux:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Test one generic offline owner-state import / rollback on Linux
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check tools/v2-universal-state-migration.mjs
+          node --test test/v2-universal-state-migration.test.mjs
+  snapshot-windows:
+    runs-on: windows-2022
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Test exactly the same engine with private Windows owner SID ACL
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $errors=$null
+          $tokens=$null
+          [void][System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path 'tools/v2-universal-owner-acl.ps1').Path,[ref]$tokens,[ref]$errors)
+          if($errors.Count -gt 0){throw 'WINDOWS_OWNER_ACL_PARSE_FAILURE'}
+          node --check tools/v2-universal-state-migration.mjs
+          if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
+          node --test test/v2-universal-state-migration.test.mjs
+          if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
