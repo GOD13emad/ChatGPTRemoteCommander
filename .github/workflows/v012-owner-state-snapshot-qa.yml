@@ -8,6 +8,7 @@ on:
       - 'test/v2-owner-state-snapshot.test.mjs'
       - 'tools/v2-owner-state-snapshot-windows.ps1'
       - 'test/v2-owner-state-snapshot-windows.test.ps1'
+      - 'test/v012-windows-task-recreation-native.test.ps1'
       - 'package.json'
   workflow_dispatch:
 permissions:
@@ -54,4 +55,17 @@ jobs:
         run: |
           $ErrorActionPreference='Stop'
           & pwsh -NoProfile -File ./test/v2-owner-state-snapshot-windows.test.ps1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+  windows-disposable-task-recreate:
+    runs-on: windows-2022
+    timeout-minutes: 7
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Disposable disabled Task Scheduler registration, XML export, restore and cleanup
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          & pwsh -NoProfile -File ./test/v012-windows-task-recreation-native.test.ps1
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
