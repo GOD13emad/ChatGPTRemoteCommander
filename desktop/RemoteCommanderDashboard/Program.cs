@@ -19,7 +19,8 @@ internal sealed record ProfileRow(
     string ProjectDir,
     string BackendConfigSha256,
     string RouterSourceSha256,
-    bool IsolatedInstance = false);
+    bool IsolatedInstance = false,
+    string DisplayName = "");
 
 internal sealed class DashboardForm : Form
 {
@@ -250,6 +251,36 @@ internal sealed class DashboardForm : Form
         }
     }
 
+    private Dictionary<string, string> ReadDisplayNames()
+    {
+        var labels = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var file = Path.Combine(stateRoot, "profile-display-names.json");
+        try
+        {
+            if (!File.Exists(file) ||
+                (File.GetAttributes(file) & FileAttributes.ReparsePoint) != 0 ||
+                new FileInfo(file).Length > 32768) return labels;
+            using var doc = JsonDocument.Parse(File.ReadAllText(file));
+            var root = doc.RootElement;
+            if (!root.TryGetProperty("schema", out var schema) || schema.GetInt32() != 1 ||
+                !root.TryGetProperty("profiles", out var profiles) ||
+                profiles.ValueKind != JsonValueKind.Object) return labels;
+            foreach (var item in profiles.EnumerateObject())
+            {
+                var name = item.Name;
+                if (name.Length is < 1 or > 64 || name.Contains("..") ||
+                    name.Any(c => !(char.IsAsciiLetterOrDigit(c) || c is '.' or '_' or '-')) ||
+                    item.Value.ValueKind != JsonValueKind.String) return new(StringComparer.OrdinalIgnoreCase);
+                var label = item.Value.GetString();
+                if (string.IsNullOrWhiteSpace(label) || label.Length > 80 ||
+                    label.Trim() != label || label.Any(char.IsControl)) return new(StringComparer.OrdinalIgnoreCase);
+                labels[name] = label;
+            }
+        }
+        catch { return new(StringComparer.OrdinalIgnoreCase); }
+        return labels;
+    }
+
     private List<ProfileRow> LoadProfiles()
     {
         var routing = Path.Combine(stateRoot, "routing");
@@ -313,7 +344,12 @@ internal sealed class DashboardForm : Form
             result.Add(new ProfileRow(item.Name, 0, "unknown", "", item.Port, 0, 0,
                 null, "", item.ConfigSha256, "", true));
         }
-        return result.OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase).ToList();
+        var labels = ReadDisplayNames();
+        return result.OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase)
+            .Select(p => p with
+            {
+                DisplayName = labels.TryGetValue(p.Name, out var display) ? display : p.Name
+            }).ToList();
     }
 
     private async Task<Control> ProfileCardAsync(ProfileRow p)
@@ -325,7 +361,7 @@ internal sealed class DashboardForm : Form
             Margin = new Padding(0, 0, 0, 12),
             Padding = new Padding(18),
             BackColor = Color.FromArgb(12, 34, 65),
-            Tag = p.Name
+            Tag = p.Name + " " + p.DisplayName
         };
 
         DashboardChrome.RoundCard(card, 16);
@@ -342,8 +378,9 @@ internal sealed class DashboardForm : Form
         };
         var name = new Label
         {
-            Text = p.Name,
-            AutoSize = true,
+            Text = string.IsNullOrWhiteSpace(p.DisplayName) ? p.Name : p.DisplayName,
+            AutoSize = false, AutoEllipsis = true,
+            Size = new Size(Math.Max(570, card.Width - 40), 30),
             Font = new Font("Segoe UI Semibold", 14f),
             ForeColor = Color.White,
             Location = new Point(18, 44)
@@ -351,8 +388,8 @@ internal sealed class DashboardForm : Form
         var version = new Label
         {
             Text = p.IsolatedInstance
-                ? $"Isolated instance • MCP {p.BackendPort} • No router"
-                : $"v{p.Version} • generation {p.Generation} • backend {p.BackendPort} • router {p.RouterPort}",
+                ? $"Profile ID: {p.Name} • Isolated instance • MCP {p.BackendPort}"
+                : $"Profile ID: {p.Name} • v{p.Version} • generation {p.Generation} • backend {p.BackendPort} • router {p.RouterPort}",
             AutoSize = true,
             ForeColor = Color.FromArgb(190, 207, 229),
             Location = new Point(20, 75)

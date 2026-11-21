@@ -77,7 +77,7 @@ test('desktop access and operations UI is wired to real guarded backends',()=>{
   assert.equal(build.includes('Remove-Item -LiteralPath $OutputDir -Recurse -Force'),false);
   assert.equal(build.includes('-p:FileVersion="$Version.0"'),false);
   for(const file of [
-    'profile-manager-windows.ps1','profile-enrollment-windows.ps1',
+    'profile-manager-windows.ps1','profile-enrollment-windows.ps1','profile-display-names.ps1',
     'operations-monitor-windows.ps1','admin-runtime-windows.ps1'
   ]) assert.ok(build.includes(file),file);
 
@@ -181,7 +181,7 @@ test('workflow CLI opens a real store from full Commander config and expands env
 test('new Windows desktop/admin scripts parse without execution',t=>{
   if(process.platform!=='win32'){t.skip('Windows-only parser gate');return;}
   for(const script of [
-    'desktop/profile-manager-windows.ps1','desktop/profile-enrollment-windows.ps1',
+    'desktop/profile-manager-windows.ps1','desktop/profile-enrollment-windows.ps1','desktop/profile-display-names.ps1',
     'desktop/operations-monitor-windows.ps1','desktop/admin-runtime-windows.ps1',
     'desktop/build-windows.ps1','desktop/install-windows.ps1','installer/build-setup.ps1',
     'server-install-windows.ps1','install.ps1','enable-autostart.ps1',

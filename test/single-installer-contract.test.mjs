@@ -165,7 +165,7 @@ test('Windows Inno archive source files omit build-host file timestamps',()=>{
   const section=read('installer/RemoteCommander.iss').split('[Files]')[1]?.split('[Icons]')[0];
   assert.ok(section,'Inno [Files] section required');
   const entries=section.split(/\r?\n/).map(x=>x.trim()).filter(x=>x.startsWith('Source:'));
-  assert.equal(entries.length,10,'validate Core bundle, pinned Windows runner and exact installer file inventory');
+  assert.equal(entries.length,11,'validate Core bundle, pinned Windows runner, display labels and exact installer file inventory');
   for(const entry of entries){
     assert.match(entry,/\bnotimestamp\b/,'each packaged file must omit source filesystem timestamps');
   }

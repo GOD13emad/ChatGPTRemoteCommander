@@ -67,6 +67,7 @@ Source: "{#CoreSourceBundle}"; DestName: "{#CoreBundleName}"; Flags: dontcopy no
 Source: "{#DesktopPayload}\RemoteCommander.exe"; DestDir: "{app}"; Components: core; Flags: ignoreversion notimestamp
 Source: "{#DesktopPayload}\profile-manager-windows.ps1"; DestDir: "{app}"; Components: core; Flags: ignoreversion notimestamp
 Source: "{#DesktopPayload}\profile-enrollment-windows.ps1"; DestDir: "{app}"; Components: core; Flags: ignoreversion notimestamp
+Source: "{#DesktopPayload}\profile-display-names.ps1"; DestDir: "{app}"; Components: core; Flags: ignoreversion notimestamp
 Source: "{#DesktopPayload}\operations-monitor-windows.ps1"; DestDir: "{app}"; Components: controlmonitor; Flags: ignoreversion notimestamp
 Source: "{#DesktopPayload}\admin-runtime-windows.ps1"; DestDir: "{app}"; Components: controlmonitor; Flags: ignoreversion notimestamp
 Source: "..\server-install-windows.ps1"; Flags: dontcopy noencryption notimestamp

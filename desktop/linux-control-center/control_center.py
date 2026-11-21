@@ -1,11 +1,14 @@
 #!/usr/bin/python3
 """Remote Commander Control Center: native GNOME/Adwaita 1, safe owner-only monitoring UI.
-No network / shell / credential access. Management mutations disabled until an
-authenticated, revision-checked Core IPC is independently accepted.
+No network / shell / credential access. Core management mutations remain disabled;
+only owner-local display-name metadata may be edited, never Core or Tunnel state.
 """
+import fcntl
 import json
 import os
 import re
+import tempfile
+import unicodedata
 import sqlite3
 import stat
 import sys
@@ -18,6 +21,7 @@ STATE = HOME / ".local/state/chatgpt-remote-commander"
 MONITOR = STATE / "browser-companion/commander-monitor.json"
 ROUTING = STATE / "routing"
 WORKFLOWS = STATE / "instances/default/workflows/workflows.sqlite"
+DISPLAY_NAMES = STATE / "profile-display-names.json"
 PROFILE_RE = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
 MAX_BYTES = 64 * 1024
 AUTOFOLLOW_ROOT = HOME / "source/repos/RC_AUTOFOLLOW_R1"
@@ -67,6 +71,92 @@ def bounded_json(path: Path, limit=MAX_BYTES):
         return value if isinstance(value, dict) else None
     except (OSError, ValueError, TypeError, UnicodeError):
         return None
+
+
+def _valid_display_label(label):
+    return (isinstance(label, str) and label == label.strip()
+            and 1 <= len(label) <= 80
+            and not any(unicodedata.category(c) in ("Cc", "Cf") for c in label))
+
+
+def _parse_display_labels(doc):
+    if (not isinstance(doc, dict) or set(doc) != {"schema", "profiles"}
+            or type(doc["schema"]) is not int or doc["schema"] != 1
+            or not isinstance(doc["profiles"], dict) or len(doc["profiles"]) > 128):
+        return None
+    labels, seen = {}, set()
+    for name, label in doc["profiles"].items():
+        if (not isinstance(name, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}", name)
+                or ".." in name or not _valid_display_label(label)
+                or label.casefold() in seen or name.casefold() in labels):
+            return None
+        labels[name.casefold()] = label
+        seen.add(label.casefold())
+    return labels
+
+
+def read_display_labels(store=None):
+    file = Path(store) if store is not None else DISPLAY_NAMES
+    if not file.exists() and not file.is_symlink():
+        return {}
+    return _parse_display_labels(bounded_json(file, 32768)) or {}
+
+
+def save_profile_display_name(profile, display_name, store=None, known_profiles=None):
+    """Presentation-only owner-local write. Never touches a Tunnel or Core config."""
+    if (not isinstance(profile, str)
+            or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}", profile)
+            or ".." in profile or not _valid_display_label(display_name)):
+        raise ValueError("PROFILE_DISPLAY_INPUT_INVALID")
+    existing = known_profiles if known_profiles is not None else profiles()
+    if profile not in {item.get("id") for item in existing
+                       if isinstance(item, dict) and item.get("type") != "GUI_WORKER"}:
+        raise ValueError("PROFILE_DISPLAY_NOT_DISCOVERED")
+    file = Path(store) if store is not None else DISPLAY_NAMES
+    folder = file.parent
+    folder.mkdir(mode=0o700, parents=True, exist_ok=True)
+    info = folder.lstat()
+    if (not stat.S_ISDIR(info.st_mode) or info.st_uid != os.getuid()
+            or info.st_mode & 0o022):
+        raise ValueError("PROFILE_DISPLAY_ROOT_UNTRUSTED")
+    lock_path = file.with_name(file.name + ".lock")
+    fd = os.open(lock_path, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        exists = file.exists() or file.is_symlink()
+        if exists:
+            current = _parse_display_labels(bounded_json(file, 32768))
+            if current is None:
+                raise ValueError("PROFILE_DISPLAY_STORE_UNTRUSTED")
+        else:
+            current = {}
+        for key, label in current.items():
+            if key != profile.casefold() and label.casefold() == display_name.casefold():
+                raise ValueError("PROFILE_DISPLAY_LABEL_COLLISION")
+        current[profile.casefold()] = display_name
+        tmp_fd, tmp_name = tempfile.mkstemp(prefix=".profile-display-", suffix=".tmp", dir=folder)
+        try:
+            with os.fdopen(tmp_fd, "w", encoding="utf-8") as output:
+                json.dump({"schema": 1, "profiles": current}, output, ensure_ascii=False,
+                          sort_keys=True, separators=(",", ":"))
+                output.write("\n")
+                output.flush()
+                os.fsync(output.fileno())
+            os.chmod(tmp_name, 0o600)
+            os.replace(tmp_name, file)
+            directory_fd = os.open(folder, os.O_RDONLY | os.O_DIRECTORY)
+            try:
+                os.fsync(directory_fd)
+            finally:
+                os.close(directory_fd)
+        finally:
+            if os.path.exists(tmp_name):
+                os.unlink(tmp_name)
+        if read_display_labels(file).get(profile.casefold()) != display_name:
+            raise ValueError("PROFILE_DISPLAY_READBACK_FAILED")
+        return "PROFILE_DISPLAY_NAME_SAVED"
+    finally:
+        os.close(fd)
 
 
 def monitor_status():
@@ -192,6 +282,10 @@ def profiles():
             })
     except (OSError, ValueError, UnicodeError):
         pass
+    labels = read_display_labels()
+    for item in records:
+        ident = item["id"]
+        item["displayName"] = labels.get(ident.casefold(), ident)
     return records
 
 
@@ -360,7 +454,8 @@ def run_gui():
 
     return run_dashboard(APP_ID, monitor_status, profiles, workflows,
                          autofollow_status, effective_system_dark, sys.argv,
-                         addons_source=optional_addons)
+                         addons_source=optional_addons,
+                         display_name_updater=save_profile_display_name)
 
 
 if __name__ == "__main__":

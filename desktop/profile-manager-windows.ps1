@@ -3,6 +3,7 @@ Add-Type -AssemblyName System.Drawing
 [System.Windows.Forms.Application]::EnableVisualStyles()
 
 $ErrorActionPreference='Stop'
+. (Join-Path $PSScriptRoot 'profile-display-names.ps1')
 $StateRoot=Join-Path $env:LOCALAPPDATA 'ChatGPTRemoteCommander'
 $CoreRoot=Join-Path $StateRoot 'app'
 $RoutingRoot=Join-Path $StateRoot 'routing'
@@ -69,7 +70,7 @@ function Get-Profiles{
     $type=if($name -eq 'default'){'Primary'}elseif($instance){'Isolated'}elseif($isInherited){'Shared (inherited)'}else{'Shared (unverified)'}
     $caps=@($cfg.capabilityProfile.grantedCapabilities)
     [pscustomobject]@{
-      Profile=$name;Type=$type;McpPort=$port;HealthPort=$health;Version=$version;Generation=$gen
+      DisplayName=(Get-ProfileDisplayName $name);Profile=$name;Type=$type;McpPort=$port;HealthPort=$health;Version=$version;Generation=$gen
       Access=if(-not $cfg){'UNVERIFIED'}elseif($isInherited){if($cfg.powerMode.enabled){'Inherited Full Power'}else{'Inherited Standard'}}elseif($cfg.powerMode.enabled){'Full Power'}else{'Standard'}
       Gui=[bool]$cfg.powerMode.guiControl.enabled
       Capabilities=($caps -join ',')
@@ -87,7 +88,7 @@ function Get-Profiles{
     $worker=Read-Json $config
     if($worker -and $worker.instance.profile -eq 'server-headless' -and [int]$worker.port -eq 48971){
       [pscustomobject]@{
-        Profile='server-headless';Type='Headless worker (read-only)'
+        DisplayName='server-headless';Profile='server-headless';Type='Headless worker (read-only)'
         McpPort=48971;HealthPort=0;Version='INDEPENDENT';Generation=0
         Access=if($worker.powerMode.enabled){'Worker Full Power'}else{'Worker Restricted'}
         Gui=$false;Capabilities=(@($worker.capabilityProfile.grantedCapabilities) -join ',')
@@ -129,8 +130,8 @@ function Assert-EditableSelection([object]$Selection,[object[]]$Rows,[string]$Ex
 $form=New-Object Windows.Forms.Form
 $form.Text='Remote Commander — Profiles & Access'
 $form.StartPosition='CenterScreen'
-$form.Size=New-Object Drawing.Size(1180,780)
-$form.MinimumSize=New-Object Drawing.Size(1040,680)
+$form.Size=New-Object Drawing.Size(1180,835)
+$form.MinimumSize=New-Object Drawing.Size(1040,745)
 $form.BackColor=[Drawing.Color]::FromArgb(16,23,34)
 $form.ForeColor=[Drawing.Color]::Gainsboro
 $form.Font=New-Object Drawing.Font('Segoe UI',10)
@@ -163,11 +164,17 @@ $grid.GridColor=[Drawing.Color]::FromArgb(60,75,93)
 $form.Controls.Add($grid)
 
 $access=New-Object Windows.Forms.GroupBox
-$access.Text='Selected profile access';$access.Location=New-Object Drawing.Point(24,350);$access.Size=New-Object Drawing.Size(760,300)
+$access.Text='Selected profile access';$access.Location=New-Object Drawing.Point(24,350);$access.Size=New-Object Drawing.Size(760,340)
 $access.Anchor='Top,Left,Right';$form.Controls.Add($access)
 
-$power=New-Object Windows.Forms.CheckBox;$power.Text='Full Power';$power.Location=New-Object Drawing.Point(20,34);$power.AutoSize=$true;$access.Controls.Add($power)
-$gui=New-Object Windows.Forms.CheckBox;$gui.Text='GUI control';$gui.Location=New-Object Drawing.Point(150,34);$gui.AutoSize=$true;$access.Controls.Add($gui)
+$displayLabel=New-Object Windows.Forms.Label
+$displayLabel.Text='Display name';$displayLabel.AutoSize=$true
+$displayLabel.Location=New-Object Drawing.Point(20,35);$access.Controls.Add($displayLabel)
+$display=New-Object Windows.Forms.TextBox
+$display.Location=New-Object Drawing.Point(150,30);$display.Size=New-Object Drawing.Size(575,30)
+$display.MaxLength=80;$access.Controls.Add($display)
+$power=New-Object Windows.Forms.CheckBox;$power.Text='Full Power';$power.Location=New-Object Drawing.Point(20,72);$power.AutoSize=$true;$access.Controls.Add($power)
+$gui=New-Object Windows.Forms.CheckBox;$gui.Text='GUI control';$gui.Location=New-Object Drawing.Point(150,72);$gui.AutoSize=$true;$access.Controls.Add($gui)
 
 $defs=@(
   @('Full filesystem','filesystem.full'),
@@ -188,15 +195,15 @@ for($i=0;$i -lt $defs.Count;$i++){
   $box=New-Object Windows.Forms.CheckBox
   $box.Text=$defs[$i][0];$box.Tag=$defs[$i][1];$box.AutoSize=$true
   $col=$i%3;$row=[math]::Floor($i/3)
-  $box.Location=New-Object Drawing.Point((20+$col*235),(76+$row*38))
+  $box.Location=New-Object Drawing.Point((20+$col*235),(114+$row*38))
   $access.Controls.Add($box);$capBoxes[$defs[$i][1]]=$box
 }
 
-$rootsLabel=New-Object Windows.Forms.Label;$rootsLabel.Text='Allowed roots (one per line)';$rootsLabel.AutoSize=$true;$rootsLabel.Location=New-Object Drawing.Point(20,230);$access.Controls.Add($rootsLabel)
-$roots=New-Object Windows.Forms.TextBox;$roots.Multiline=$true;$roots.ScrollBars='Vertical';$roots.Location=New-Object Drawing.Point(210,226);$roots.Size=New-Object Drawing.Size(525,55);$access.Controls.Add($roots)
+$rootsLabel=New-Object Windows.Forms.Label;$rootsLabel.Text='Allowed roots (one per line)';$rootsLabel.AutoSize=$true;$rootsLabel.Location=New-Object Drawing.Point(20,270);$access.Controls.Add($rootsLabel)
+$roots=New-Object Windows.Forms.TextBox;$roots.Multiline=$true;$roots.ScrollBars='Vertical';$roots.Location=New-Object Drawing.Point(210,266);$roots.Size=New-Object Drawing.Size(525,55);$access.Controls.Add($roots)
 
 $actions=New-Object Windows.Forms.GroupBox
-$actions.Text='Actions';$actions.Location=New-Object Drawing.Point(800,350);$actions.Size=New-Object Drawing.Size(344,300);$actions.Anchor='Top,Right';$form.Controls.Add($actions)
+$actions.Text='Actions';$actions.Location=New-Object Drawing.Point(800,350);$actions.Size=New-Object Drawing.Size(344,340);$actions.Anchor='Top,Right';$form.Controls.Add($actions)
 function Add-Button([string]$Text,[int]$Y){
   $b=New-Object Windows.Forms.Button;$b.Text=$Text;$b.Location=New-Object Drawing.Point(20,$Y);$b.Size=New-Object Drawing.Size(304,36);$b.FlatStyle='Flat'
   $b.BackColor=[Drawing.Color]::FromArgb(34,48,70);$b.ForeColor=[Drawing.Color]::White;$actions.Controls.Add($b);return $b
@@ -207,9 +214,10 @@ $open=Add-Button 'Open profile data' 118
 $monitor=Add-Button 'Operations monitor' 162
 $admin=Add-Button 'Admin runtime' 206
 $refresh=Add-Button 'Refresh' 250
+$saveName=Add-Button 'Save display name' 290
 
 $status=New-Object Windows.Forms.Label
-$status.Text='Ready';$status.AutoSize=$false;$status.Location=New-Object Drawing.Point(24,668);$status.Size=New-Object Drawing.Size(1120,60);$status.Anchor='Left,Right,Bottom'
+$status.Text='Ready';$status.AutoSize=$false;$status.Location=New-Object Drawing.Point(24,707);$status.Size=New-Object Drawing.Size(1120,60);$status.Anchor='Left,Right,Bottom'
 $status.ForeColor=[Drawing.Color]::FromArgb(140,190,245);$form.Controls.Add($status)
 
 $script:selected=$null
@@ -223,8 +231,11 @@ function Update-Editor{
   $gui.Checked=[bool]$cfg.powerMode.guiControl.enabled
   foreach($cap in $capBoxes.Keys){$capBoxes[$cap].Checked=Test-Cap $cfg $cap}
   $roots.Text=(@($cfg.allowedRoots)-join [Environment]::NewLine)
+  $display.Text=[string]$script:selected.DisplayName
   $canEdit=$script:selected.IsPrimary -or $script:selected.IsIsolated
   $power.Enabled=$canEdit;$gui.Enabled=$canEdit;$roots.Enabled=$canEdit;$apply.Enabled=$canEdit
+  $display.Enabled=([string]$script:selected.Profile -ne 'server-headless')
+  $saveName.Enabled=$display.Enabled
   foreach($b in $capBoxes.Values){$b.Enabled=$canEdit -and $power.Checked}
   $status.Text="Selected $($script:selected.Profile) [$($script:selected.Type)] — $($script:selected.Access), v$($script:selected.Version), generation $($script:selected.Generation)"
 }
@@ -248,6 +259,18 @@ function Refresh-Grid{
     $status.Text="Profiles discovered: $($items.Count). Live profile inventory is authoritative; stale version labels are not treated as profiles."
   }catch{$status.Text="Refresh failed: $($_.Exception.Message)"}
 }
+$saveName.Add_Click({
+  if(-not $script:selected){return}
+  try{
+    $technical=[string]$script:selected.Profile
+    if($technical -eq 'server-headless'){throw 'Headless worker is not an account profile.'}
+    $fresh=@(Get-Profiles|Where-Object{$_.Profile -eq $technical})
+    if($fresh.Count -ne 1){throw 'Profile inventory changed. Refresh first.'}
+    [void](Set-ProfileDisplayName $technical $display.Text)
+    Refresh-Grid
+    $status.Text="Display name saved for technical profile $technical. Runtime and permissions unchanged."
+  }catch{$status.Text="Display name save failed: $($_.Exception.Message)"}
+})
 $grid.Add_SelectionChanged({Update-Editor})
 
 function Build-CapabilityChanges([object]$Cfg){
@@ -333,6 +356,10 @@ $add.Add_Click({
     $name=[Microsoft.VisualBasic.Interaction]::InputBox('Existing enrolled tunnel profile name to isolate:','Add / isolate profile','')
     if([string]::IsNullOrWhiteSpace($name)){return}
     if($name -eq 'default'){throw 'The primary profile is already managed.'}
+    $displayName=[Microsoft.VisualBasic.Interaction]::InputBox(
+      'Display name (editable later in Profiles & Access):','Profile display name',$name)
+    if([string]::IsNullOrWhiteSpace($displayName)){return}
+    [void](Assert-ProfileDisplayAvailable $name $displayName)
     $script=Join-Path $CoreRoot 'configure-profile-instance.ps1'
     if(-not(Test-Path $script)){throw 'Isolation script is unavailable.'}
     $args=@('-Profile',$name)
@@ -340,6 +367,7 @@ $add.Add_Click({
     if($gui.Checked){$args+='-GuiControl'}
     $rc=Invoke-HiddenPwsh $script $args
     if($rc -ne 0){throw "Isolation failed (exit $rc)."}
+    [void](Set-ProfileDisplayName $name $displayName)
     Refresh-Grid
   }catch{$status.Text="Isolation failed: $($_.Exception.Message)"}
 })

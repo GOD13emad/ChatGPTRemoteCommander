@@ -26,6 +26,9 @@ test('Linux setup wizard preserves secret boundary and produces device plugin co
     'rebootPerformed:false'
   ]) assert.equal(t.includes(required),true,'missing '+required);
   assert.equal(/--runtime-api-key|CONTROL_PLANE_API_KEY=/u.test(t),false,'wizard must not accept/persist Runtime API key');
+  for(const marker of ['--display-name','PROFILE_DISPLAY_NAME_SAVED',
+                       'PROFILE_DISPLAY_LABEL_COLLISION','TUNNEL_READY']) assert.ok(t.includes(marker));
+
 });
 
 test('device builders use stable local machine identity and require app id',()=>{
