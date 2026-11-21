@@ -1,5 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import {createHash} from 'node:crypto';
+import {uploadStagedFileCdp} from '../tools/browser-transfer-native.mjs';
 import {createBrowserController} from '../src/browser-tools.mjs';
 import {browserToolDefinitions,validateBrowserInput} from '../src/browser-contract.mjs';
 const origin='https://example.test';
@@ -84,4 +89,74 @@ test('STANDARD browser policy rejects transfer before native effect',async()=>{
  const f=fixture({config:{config:{instance:{profile:'owner'},powerMode:{enabled:false,browserControl:{enabled:false}}}}});
  await assert.rejects(f.ctl.execute(f.ctx,'browser_upload_file',upload('fakelease')),/BROWSER_DISABLED/);
  assert.equal(f.calls.length,0);f.ctl.close();
+});
+
+test('CDP upload takes CSS selectors as protocol data, never as JavaScript source',async()=>{
+  const root=fs.mkdtempSync(path.join(os.tmpdir(),'rc-browser-cdp-selector-'));
+  try {
+    fs.mkdirSync(path.join(root,'uploads'));
+    const bytes=Buffer.from('trusted staged document');
+    fs.writeFileSync(path.join(root,'uploads','fixture.txt'),bytes);
+    const digest=createHash('sha256').update(bytes).digest('hex');
+    const selector='#upload"][onclick=alert(1)]'; // no interpolation into JS
+    const evaluated=[], calls=[];
+    let checks=0;
+    const send=async(method,params)=>{
+      calls.push({method,params});
+      if(method==='DOM.getDocument')return {root:{nodeId:1}};
+      if(method==='DOM.querySelector')return {nodeId:9};
+      if(method==='DOM.resolveNode')return {object:{objectId:'bound-input'}};
+      if(method==='Runtime.callFunctionOn')
+        return ++checks===1?{result:{value:true}}:
+          {result:{value:{name:'fixture.txt',size:bytes.length,length:1}}};
+      if(method==='DOM.setFileInputFiles'||method==='Runtime.releaseObject')return {};
+      throw Error('unexpected command');
+    };
+    const result=await uploadStagedFileCdp({
+      req:{selector,filename:'fixture.txt',sha256:digest,origin:'https://example.test'},
+      profileDir:root,evaluate:async expression=>{
+        evaluated.push(expression);
+        if(expression==='location.origin')return 'https://example.test';
+        throw Error('untrusted JavaScript generated');
+      },send
+    });
+    assert.equal(result.attached,true);
+    assert.deepEqual(evaluated,['location.origin','location.origin']);
+    assert.equal(calls.find(x=>x.method==='DOM.querySelector').params.selector,selector);
+    assert.equal(calls.filter(x=>x.method==='Runtime.callFunctionOn').length,2);
+    assert.equal(calls.filter(x=>x.method==='DOM.setFileInputFiles').length,1);
+    assert.equal(calls.filter(x=>x.method==='Runtime.releaseObject').length,1);
+    for(const {method,params} of calls){
+      if(method==='Runtime.callFunctionOn'){
+        assert.equal(params.objectId,'bound-input');
+        assert.ok(!params.functionDeclaration.includes(selector));
+      }
+    }
+  }finally{fs.rmSync(root,{recursive:true,force:true});}
+});
+
+test('CDP upload refuses a disabled or non-file input before any file attachment',async()=>{
+  const root=fs.mkdtempSync(path.join(os.tmpdir(),'rc-browser-cdp-deny-'));
+  try{
+    fs.mkdirSync(path.join(root,'uploads'));
+    const bytes=Buffer.from('fixture');
+    fs.writeFileSync(path.join(root,'uploads','fixture.txt'),bytes);
+    const digest=createHash('sha256').update(bytes).digest('hex');
+    const calls=[];
+    await assert.rejects(uploadStagedFileCdp({
+      req:{selector:'#disabled',filename:'fixture.txt',sha256:digest,origin:'https://example.test'},
+      profileDir:root,evaluate:async()=> 'https://example.test',
+      send:async(method)=>{
+        calls.push(method);
+        if(method==='DOM.getDocument')return {root:{nodeId:1}};
+        if(method==='DOM.querySelector')return {nodeId:9};
+        if(method==='DOM.resolveNode')return {object:{objectId:'disabled-input'}};
+        if(method==='Runtime.callFunctionOn')return {result:{value:false}};
+        if(method==='Runtime.releaseObject')return {};
+        throw Error('Unexpected transfer command');
+      }
+    }),{browserCode:'BROWSER_TRANSFER_FILE_INPUT_REQUIRED'});
+    assert.equal(calls.includes('DOM.setFileInputFiles'),false);
+    assert.equal(calls.includes('Runtime.releaseObject'),true);
+  }finally{fs.rmSync(root,{recursive:true,force:true});}
 });

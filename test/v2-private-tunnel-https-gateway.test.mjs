@@ -106,7 +106,7 @@ function createGateway(f,identity){
   });
   return {gateway,authority,seen};
 }
-async function request(port,cert,key){
+async function request(port,cert,key,ca){
   return new Promise(resolve=>{
     const body=Buffer.from(JSON.stringify({
       jsonrpc:'2.0',id:1,method:'tools/call',
@@ -114,7 +114,7 @@ async function request(port,cert,key){
     }));
     const req=https.request({
       host:'127.0.0.1',port,path:'/mcp-v2',method:'POST',
-      rejectUnauthorized:false,
+      ca,
       ...(cert?{cert,key}:{})
     },res=>{
       let data='';res.on('data',c=>data+=c);
@@ -139,12 +139,12 @@ test('tunnel HTTPS endpoint is unbound, client-cert-only and rejects unknown cli
     assert.equal(server.rejectUnauthorized,true);
     await new Promise((resolve,reject)=>server.listen(0,'127.0.0.1',resolve).once('error',reject));
     const port=server.address().port;
-    const none=await request(port,null,null);
+    const none=await request(port,null,null,f.ca);
     assert.equal(none.status,undefined);
     assert.ok(none.code,'No client certificate must not complete TLS');
-    const alien=await request(port,f.alienCert,f.alienKey);
+    const alien=await request(port,f.alienCert,f.alienKey,f.ca);
     assert.equal(alien.status,403,'Other CA-signed clients are not the pinned tunnel process');
-    const ok=await request(port,f.clientCert,f.clientKey);
+    const ok=await request(port,f.clientCert,f.clientKey,f.ca);
     assert.equal(ok.status,200);
     assert.equal(x.seen.length,1);
     assert.deepEqual({...x.authority.inspect(x.seen[0].platformSessionProof)},{
@@ -164,7 +164,7 @@ test('stale tunnel control-plane identity rejects authenticated TLS requests',as
     const now=Date.now();const x=createGateway(f,{...tdata(now),controlPlanePollOk:false});
     server=x.gateway.createUnboundTlsServer();
     await new Promise((resolve,reject)=>server.listen(0,'127.0.0.1',resolve).once('error',reject));
-    const reply=await request(server.address().port,f.clientCert,f.clientKey);
+    const reply=await request(server.address().port,f.clientCert,f.clientKey,f.ca);
     assert.equal(reply.status,403);
     assert.equal(x.seen.length,0);
   }finally{
@@ -221,9 +221,9 @@ test('full owner-scoped tunnel Runtime stays closed until explicit start and can
     assert.equal(runtime.status.authenticatedCurrentChatAccepted,false);
     const live=await runtime.start();
     assert.equal(live.phase,'LISTENING');
-    const bad=await request(live.port,f.alienCert,f.alienKey);
+    const bad=await request(live.port,f.alienCert,f.alienKey,f.ca);
     assert.equal(bad.status,403);
-    const acceptedClient=await request(live.port,f.clientCert,f.clientKey);
+    const acceptedClient=await request(live.port,f.clientCert,f.clientKey,f.ca);
     assert.equal(acceptedClient.status,200);
     assert.equal(JSON.parse(acceptedClient.body).result?.isError,true);
     assert.equal(attempts.dispatch,0);

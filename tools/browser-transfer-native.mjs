@@ -36,22 +36,41 @@ export async function uploadStagedFileCdp({req,profileDir,evaluate,send}) {
   let staged;
   try{staged=resolveBrowserStagedUpload({profileDir,filename:req.filename,expectedSha256:req.sha256});}
   catch(e){throw fail(e.code ?? 'BROWSER_TRANSFER_STAGE_DENIED');}
-  const selector=JSON.stringify(req.selector);
-  const acceptable=await evaluate(`(()=>{const x=document.querySelector(${selector});return !!x && x.tagName==='INPUT'&&x.type==='file'&&!x.disabled;})()`);
-  if(!acceptable)throw fail('BROWSER_TRANSFER_FILE_INPUT_REQUIRED');
-  await confirmOrigin(origin,evaluate);
-  // Target the existing DOM input; do not try to set the browser's password store or profile.
-  let nodeId;
+  // Selector input is CDP data and never interpolated into JavaScript.
+  // Bind one selected DOM node for both preflight and attachment verification.
+  let objectId;
   try {
     const doc=await send('DOM.getDocument',{depth:-1,pierce:false});
     const found=await send('DOM.querySelector',{nodeId:doc.root.nodeId,selector:req.selector});
-    nodeId=found.nodeId;
+    const nodeId=found?.nodeId;
     if(!nodeId)throw fail('BROWSER_TRANSFER_INPUT_NOT_FOUND');
+    const resolved=await send('DOM.resolveNode',{nodeId});
+    objectId=resolved?.object?.objectId;
+    if(typeof objectId!=='string'||!objectId)
+      throw fail('BROWSER_TRANSFER_INPUT_NOT_FOUND');
+    const checked=await send('Runtime.callFunctionOn',{
+      objectId,
+      functionDeclaration:'function(){return this.tagName==="INPUT" && this.type==="file" && !this.disabled;}',
+      returnByValue:true
+    });
+    if(checked?.exceptionDetails||checked?.result?.value!==true)
+      throw fail('BROWSER_TRANSFER_FILE_INPUT_REQUIRED');
+    await confirmOrigin(origin,evaluate);
     await send('DOM.setFileInputFiles',{files:[staged.absolutePath],nodeId});
-  }catch(error){throw fail(error.browserCode || 'BROWSER_TRANSFER_CDP_UPLOAD_FAILED');}
-  const observed=await evaluate(`(()=>{const x=document.querySelector(${selector});return {name:x?.files?.[0]?.name??null,size:x?.files?.[0]?.size??null,length:x?.files?.length??0};})()`);
-  if(observed?.name!==staged.filename||observed?.size!==staged.bytes||observed?.length!==1)
-    throw fail('BROWSER_TRANSFER_UPLOAD_NOT_CONFIRMED');
+    const inspected=await send('Runtime.callFunctionOn',{
+      objectId,
+      functionDeclaration:'function(){return {name:this.files?.[0]?.name??null,size:this.files?.[0]?.size??null,length:this.files?.length??0};}',
+      returnByValue:true
+    });
+    if(inspected?.exceptionDetails)throw fail('BROWSER_TRANSFER_UPLOAD_NOT_CONFIRMED');
+    const observed=inspected?.result?.value;
+    if(observed?.name!==staged.filename||observed?.size!==staged.bytes||observed?.length!==1)
+      throw fail('BROWSER_TRANSFER_UPLOAD_NOT_CONFIRMED');
+  }catch(error){
+    throw fail(error.browserCode || 'BROWSER_TRANSFER_CDP_UPLOAD_FAILED');
+  }finally{
+    if(objectId)try{await send('Runtime.releaseObject',{objectId});}catch{}
+  }
   // Never include the real host path or file contents in the MCP result.
   return {ok:true,attached:true,filename:staged.filename,bytes:staged.bytes,
     sha256:staged.sha256,background:true,verificationRequired:true};

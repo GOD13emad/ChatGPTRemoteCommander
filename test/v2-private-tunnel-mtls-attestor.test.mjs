@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
+import {createV2DirectMtlsTransportAttestor} from '../src/v2-direct-mtls-attestor.mjs';
 import {createV2PrivateTunnelMtlsAttestor,createV2OwnerPinnedPrivatePairAttestor} from '../src/v2-private-tunnel-mtls-attestor.mjs';
 // Mandatory v0.12 private mTLS source gate must also exercise exact-action owner/lease/receipt admission.
 import './v2-private-pair-operation-gate.test.mjs';
@@ -152,4 +153,32 @@ test('private pair bootstrap requires independently pinned hashes and native own
     expectedOwnerSidHash:'c'.repeat(64),
     resolveCurrentOwnerSidHash:async()=> 'c'.repeat(64),...patch
   }),{code:/^(V2_PRIVATE_PAIR_TRUSTED_BOOTSTRAP_REQUIRED|V2_TUNNEL_MTLS_TRUSTED_BOOTSTRAP_REQUIRED)$/});
+});
+
+test('direct ChatGPT mTLS SAN accepts only exact DNS entry, never a substring',async()=>{
+  const issuerRaw=Buffer.from('isolated-test-issuer-der');
+  const issuerDigest=createHash('sha256').update(issuerRaw).digest('hex');
+  const attest=createV2DirectMtlsTransportAttestor({
+    intermediateDerSha256:issuerDigest,sessionSource:'openai/session',now:()=>NOW
+  });
+  const request=san=>({socket:{
+    encrypted:true,authorized:true,getPeerCertificate:()=>({
+      raw:Buffer.from('isolated-test-leaf-der'),
+      issuerCertificate:{raw:issuerRaw},
+      subjectaltname:san,ext_key_usage:['1.3.6.1.5.5.7.3.2'],
+      valid_from:'Nov  1 00:00:00 2026 GMT',
+      valid_to:'Dec  1 00:00:00 2026 GMT'
+    })
+  }});
+  const exact='mtls.prod.connectors.openai.com';
+  assert.equal((await attest(request('DNS:'+exact))).authenticated,true);
+  assert.equal((await attest(request('DNS:other.invalid, DNS:'+exact))).authenticated,true);
+  for(const malformed of [
+    'DNS:x.'+exact,'DNS:'+exact+'.attacker.invalid',
+    'DNS:*.'+exact,'URI:https://'+exact,
+    'DNS:evil.invalid, URI:https://'+exact,
+    'DNS:other.invalid'
+  ]){
+    assert.deepEqual(await attest(request(malformed)),{authenticated:false},malformed);
+  }
 });

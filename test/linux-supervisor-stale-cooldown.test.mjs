@@ -9,7 +9,9 @@ import {fileURLToPath} from 'node:url';
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const source=fs.readFileSync(path.join(root,'autostart-linux.sh'),'utf8');
 function block(name) {
-  const escaped=name.replace(/[.*+?^$()|[\]{}]/g,'\\$&');
+  if(typeof name!=='string'||!/^[A-Za-z_][A-Za-z_0-9]*$/.test(name))
+    throw Error('INVALID_BASH_FUNCTION_NAME');
+  const escaped=name;
   const match=source.match(new RegExp('^'+escaped+'\\(\\) \\{[\\s\\S]*?^\\}', 'm'));
   assert.ok(match, 'missing function '+name);
   return match[0];

@@ -181,7 +181,7 @@ test('integrated G1 opens only an owner-scoped mTLS TLS listener with no anonymo
     const answer=await new Promise(resolve=>{
       const req=https.get({host:'127.0.0.1',port:live.port,
         path:'/.well-known/oauth-protected-resource/mcp-v2',
-        rejectUnauthorized:false,timeout:1500},res=>{
+        ca:fs.readFileSync(cert,'utf8'),servername:'localhost',timeout:1500},res=>{
         res.resume();res.on('end',()=>resolve({status:res.statusCode}));
       });
       req.on('error',error=>resolve({error:error.code||'SSL_DENIED'}));

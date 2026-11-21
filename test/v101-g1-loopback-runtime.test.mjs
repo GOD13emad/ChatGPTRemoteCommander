@@ -89,7 +89,7 @@ test('G1 loopback opens only a client-authenticated TLS listener and never grant
       const req=https.get({
         host:'127.0.0.1',port:live.port,
         path:'/.well-known/oauth-protected-resource/mcp-v2',
-        rejectUnauthorized:false,timeout:1500
+        ca:f.cert,servername:'localhost',timeout:1500
       },response=>{
         response.resume();
         response.on('end',()=>resolve({status:response.statusCode}));
