@@ -240,7 +240,7 @@ test('v0.12 development QA provenance uses a separate trusted integration-only j
    'V012_QA_GITHUB_ATTESTATION_VERIFIED_NO_PROMOTE'])
    assert.ok(qa.includes(field),'missing QA attestation safety gate: '+field);
  const publish=workflow.split('  publish:\n')[1];
- assert.ok(publish?.includes("if: github.event_name != 'pull_request' && github.ref != 'refs/heads/integration/v012-unsigned-approval-20261110'"),
+ assert.ok(publish?.includes("if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')"),
    'publishing job must refuse the development integration branch');
  assert.ok(publish.includes("steps.release_identity.outputs.accepted == 'true'"),
    'Stable tag-only publication gate must remain intact');
