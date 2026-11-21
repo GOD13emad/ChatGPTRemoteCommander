@@ -19,18 +19,17 @@ if($parent.StartsWith(($SourceRoot.TrimEnd('\')+'\'),[StringComparison]::Ordinal
 }
 if(-not(Test-Path -LiteralPath (Join-Path $SourceRoot '.git'))){throw 'V012_NSI_GIT_SOURCE_REQUIRED'}
 $node=(Get-Command node -ErrorAction Stop).Source
-$nodeVersion=(& node -p 'JSON.stringify({major:Number(process.versions.node.split(".")[0]),platform:process.platform,arch:process.arch})')|ConvertFrom-Json
+$nodeVersion=(& node -p 'JSON.stringify({major:Number(process.versions.node.split(".")[0]),version:process.versions.node,platform:process.platform,arch:process.arch})')|ConvertFrom-Json
 if($nodeVersion.platform -ne 'win32' -or $nodeVersion.arch -ne 'x64' -or $nodeVersion.major -lt 22){
   throw 'V012_NSI_NODE22_X64_REQUIRED'
 }
-$nodeDir=Split-Path -Parent $node
-$licenseCandidates=@(
-  (Join-Path $nodeDir 'LICENSE'),
-  (Join-Path (Split-Path -Parent $nodeDir) 'LICENSE'),
-  (Join-Path (Split-Path -Parent (Split-Path -Parent $nodeDir)) 'LICENSE')
-)
-$license=@($licenseCandidates|Where-Object{Test-Path -LiteralPath $_ -PathType Leaf}|Select-Object -First 1)
-if($license.Count -ne 1){throw 'V012_NSI_NODE_LICENSE_MISSING'}
+if(@('22.23.2','22.23.5') -notcontains $nodeVersion.version){throw 'V012_NSI_NODE_RUNTIME_UNQUALIFIED'}
+$license=Join-Path $SourceRoot 'assetsuntime-license
+ode-v22-LICENSE.txt'
+if(-not(Test-Path -LiteralPath $license -PathType Leaf) -or
+  (Get-FileHash -LiteralPath $license -Algorithm SHA256).Hash.ToLowerInvariant() -ne 'c738ae413cf561f174e34f6961f8ca458aae2369a73640dda6234c629b98bcc4'){
+  throw 'V012_NSI_NODE_LICENSE_MISSING_OR_CHANGED'
+}
 $nsisOptions=@(
   (Get-Command makensis.exe -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source),
   'C:\Program Files (x86)\NSIS\makensis.exe',
@@ -61,7 +60,7 @@ try{
   Copy-Item -LiteralPath $node -Destination (Join-Path $runtime 'node.exe') -ErrorAction Stop
   $licenses=Join-Path $payload 'licenses'
   [void](New-Item -ItemType Directory -Path $licenses -ErrorAction Stop)
-  Copy-Item -LiteralPath $license[0] -Destination (Join-Path $licenses 'Node-LICENSE') -ErrorAction Stop
+  Copy-Item -LiteralPath $license -Destination (Join-Path $licenses 'Node-LICENSE') -ErrorAction Stop
   Copy-Item -LiteralPath (Join-Path $SourceRoot 'LICENSE') -Destination (Join-Path $licenses 'Commander-LICENSE') -ErrorAction Stop
   $tempExe=Join-Path $work 'candidate-installer.exe'
   $parameters=@('/V2',('/DV012_STAGE='+$payload),('/DV012_OUTPUT='+$tempExe),$template)

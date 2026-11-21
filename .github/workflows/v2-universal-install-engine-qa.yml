@@ -18,6 +18,7 @@ on:
       - 'tools/v012-native-build-deb-qa.sh'
       - 'tools/v012-native-build-nsis-qa.ps1'
       - 'tools/v012-candidate-windows-nsis.nsi'
+      - 'assets/runtime-license/node-v22-LICENSE.txt'
   workflow_dispatch:
 permissions:
   contents: read

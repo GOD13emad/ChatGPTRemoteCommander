@@ -17,8 +17,11 @@ command -v node >/dev/null || fail NODE_MISSING
 [[ $(node -p 'Number(process.versions.node.split(".")[0])') -ge 22 ]] || fail NODE22_REQUIRED
 nodebin=$(node -p 'process.execPath')
 [[ -f $nodebin && ! -L $nodebin ]] || fail NODE_BINARY_ALIAS
-noderoot=$(dirname -- "$(dirname -- "$nodebin")")
-[[ -f $noderoot/LICENSE && ! -L $noderoot/LICENSE ]] || fail NODE_LICENSE_NOT_VERIFIED
+nodeVersion=$(node -p 'process.versions.node')
+[[ $nodeVersion == 22.23.2 || $nodeVersion == 22.23.5 ]] || fail UNQUALIFIED_NODE_RUNTIME
+license="$repo/assets/runtime-license/node-v22-LICENSE.txt"
+[[ -f $license && ! -L $license ]] || fail NODE_LICENSE_NOT_VERIFIED
+[[ $(sha256sum -- "$license"|cut -d' ' -f1) == c738ae413cf561f174e34f6961f8ca458aae2369a73640dda6234c629b98bcc4 ]] || fail NODE_LICENSE_CHANGED
 [[ $parent != "$repo" && "$parent" != "$repo/"* ]] || fail SOURCE_OUTPUT_OVERLAP
 umask 077
 stage=$(mktemp -d "$parent/.v012-native-qa-XXXXXXXX")
@@ -42,7 +45,7 @@ mkdir -p "$pkg/opt/Commander V2" "$pkg/usr/bin" "$pkg/usr/share/doc/commander-v2
 cp -a -- "$bundle/." "$pkg/opt/Commander V2/"
 mkdir -p "$pkg/opt/Commander V2/runtime"
 cp -- "$nodebin" "$pkg/opt/Commander V2/runtime/node"
-cp -- "$noderoot/LICENSE" "$pkg/usr/share/doc/commander-v2/Node22-LICENSE"
+cp -- "$license" "$pkg/usr/share/doc/commander-v2/Node22-LICENSE"
 cp -- "$repo/LICENSE" "$pkg/usr/share/doc/commander-v2/Commander-LICENSE"
 cat > "$pkg/usr/bin/commander-v2" <<'ENTRY'
 #!/bin/sh
