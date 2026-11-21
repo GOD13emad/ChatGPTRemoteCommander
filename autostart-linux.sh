@@ -158,6 +158,23 @@ control_plane_fresh() {
   awk -v n="$now" -v b="$base" -v l="$limit" 'BEGIN{age=n-b; exit !((age>=0)&&(age<=l))}'
 }
 
+# A peer is trusted only with a RECENT actual successful Control Plane poll.
+# Missing metrics, readyz or mere process-start timestamps must not permit a kill.
+control_plane_recent_success() {
+  local port="$1" limit="${2:-120}" metrics last now
+  [[ "$port" =~ ^[0-9]{4,5}$ ]] || return 1
+  [[ "$limit" =~ ^[1-9][0-9]{1,3}$ ]] || return 1
+  metrics="$(curl -fsS --max-time 2 "http://127.0.0.1:$port/metrics" 2>/dev/null)" || return 1
+  [[ -n "$metrics" ]] || return 1
+  last="$(printf '%s\n' "$metrics" | awk '/^commands_poll_last_successful_timestamp_seconds([{ ]|$)/{print $NF;exit}')"
+  now="$(date +%s)"
+  awk -v v="$last" -v n="$now" -v l="$limit" 'BEGIN {
+    numeric=(v ~ /^[0-9]+([.][0-9]+)?([eE][+-]?[0-9]+)?$/);
+    age=n-(v+0);
+    exit !(numeric && (v+0)>0 && age>=0 && age<=l)
+  }'
+}
+
 # Only an isolated, prolonged stall can justify recycling a live Tunnel.
 # If the shared LTE/VPN uplink is degraded, all local profiles lose polls
 # together; a default route and a local /readyz response do NOT prove WAN health.
@@ -175,7 +192,7 @@ fresh_owner_peer_tunnels() {
     port="$(profile_health_port "$file" 2>/dev/null || true)"
     [[ "$port" =~ ^[0-9]{4,5}$ && "$port" != "$current_port" ]] || continue
     tunnel_ready "$port" || continue
-    control_plane_fresh "$port" || continue
+    control_plane_recent_success "$port" || continue
     count=$((count+1))
     ((count >= 2)) && return 0
   done
@@ -269,7 +286,7 @@ start_tunnel() {
     if [[ "$exe" == "$desired" ]] && tunnel_ready "$health"; then
       # A 30s long-poll, WAN backoff and VPN churn make a 90s age
       # inadequate evidence for an irreversible process replacement.
-      if control_plane_fresh "$health" "${REMOTE_COMMANDER_TUNNEL_ISOLATED_STALE_SECONDS:-600}"; then
+      if control_plane_fresh "$health" "${REMOTE_COMMANDER_TUNNEL_ISOLATED_STALE_SECONDS:-180}"; then
         # Preserve rejected candidate quarantine while fallback is healthy.
         return 0
       fi
@@ -287,7 +304,7 @@ start_tunnel() {
 
   # Do NOT kill all owner-private tunnels because their shared LTE link is
   # stale. The tunnel client retries failed long-polls with backoff internally.
-  # Recycle only a single isolated >600s stall while two independent peers are
+  # Recycle only a single isolated >180s stall while two independent peers are
   # actively polling the control plane. Dead/missing children remain recoverable.
   if (( stale_owned > 0 )); then
     if ! fresh_owner_peer_tunnels "$profile" "$health"; then

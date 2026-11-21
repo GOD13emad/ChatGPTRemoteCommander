@@ -102,12 +102,13 @@ profile_tunnel_rows(){
 owned_tunnel_exe(){ return 0; }
 tunnel_ready(){ return 0; }
 control_plane_fresh(){
- if [[ "$#" -ge 2 && "$2" == 600 ]];then return 1;fi
+ if [[ "$#" -ge 2 && "$2" == 180 ]];then return 1;fi
  case "$SCENARIO:$1" in
   isolated:47833|isolated:47834|onepeer:47833) return 0 ;;
   *) return 1 ;;
  esac
 }
+control_plane_recent_success(){ control_plane_fresh "$1"; }
 network_route_present(){ return 0; }
 stop_owned_profile_tunnels(){ echo "$1" >> "$VAR_DIR/stop-record"; }
 launch_tunnel_with_exe(){ STARTED_TUNNEL_PID=777;return 0; }
@@ -185,5 +186,32 @@ if control_plane_fresh 47832 600;then echo BEYOND_READY;else echo BEYOND_STALE;f
   assert.equal(r.status,0,r.stderr);
   assert.deepEqual(r.stdout.trim().split('\n'),[
     'DEFAULT_STALE','LTE_GRACE_READY','BORDER_READY','BEYOND_STALE'
+  ]);
+});
+
+test('independent peer requires an actual recent successful poll; missing and startup-only metrics fail closed',()=>{
+  const script=[
+    block('control_plane_recent_success'),
+    'set -euo pipefail',
+    'NOW=1700001000; LAST=1700000950; MODE=normal',
+    'date(){ if [[ "$1" == "+%s" ]];then echo "$NOW"; else command date "$@"; fi; }',
+    'curl(){ if [[ "$MODE" == down ]];then return 7;fi; if [[ "$MODE" == boot ]];then echo "process_start_time_seconds 1700000990";return;fi; if [[ "$MODE" == corrupt ]];then echo "commands_poll_last_successful_timestamp_seconds invalid";return;fi; printf "commands_poll_last_successful_timestamp_seconds{scope=controlplane} %s\\n" "$LAST"; }',
+    'if control_plane_recent_success 47833;then echo FRESH;else echo BAD_FRESH;fi',
+    'LAST=1700000800',
+    'if control_plane_recent_success 47833;then echo BAD_STALE;else echo STALE;fi',
+    'MODE=boot',
+    'if control_plane_recent_success 47833;then echo BAD_BOOT;else echo BOOT_ONLY;fi',
+    'MODE=corrupt',
+    'if control_plane_recent_success 47833;then echo BAD_MALFORMED;else echo MALFORMED;fi',
+    'MODE=down',
+    'if control_plane_recent_success 47833;then echo BAD_DOWN;else echo UNAVAILABLE;fi',
+    'MODE=normal;LAST=1700001100',
+    'if control_plane_recent_success 47833;then echo BAD_FUTURE;else echo FUTURE;fi'
+  ].join('\n');
+  const r=spawnSync('bash',['-c',script],{encoding:'utf8',timeout:4000,
+    env:{PATH:process.env.PATH,HOME:process.env.HOME}});
+  assert.equal(r.status,0,r.stderr);
+  assert.deepEqual(r.stdout.trim().split('\n'),[
+    'FRESH','STALE','BOOT_ONLY','MALFORMED','UNAVAILABLE','FUTURE'
   ]);
 });
