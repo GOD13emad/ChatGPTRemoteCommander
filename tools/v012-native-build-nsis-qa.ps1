@@ -24,8 +24,7 @@ if($nodeVersion.platform -ne 'win32' -or $nodeVersion.arch -ne 'x64' -or $nodeVe
   throw 'V012_NSI_NODE22_X64_REQUIRED'
 }
 if(@('22.23.2','22.23.5') -notcontains $nodeVersion.version){throw 'V012_NSI_NODE_RUNTIME_UNQUALIFIED'}
-$license=Join-Path $SourceRoot 'assetsuntime-license
-ode-v22-LICENSE.txt'
+$license=Join-Path $SourceRoot 'assets/runtime-license/node-v22-LICENSE.txt'
 if(-not(Test-Path -LiteralPath $license -PathType Leaf) -or
   (Get-FileHash -LiteralPath $license -Algorithm SHA256).Hash.ToLowerInvariant() -ne 'c738ae413cf561f174e34f6961f8ca458aae2369a73640dda6234c629b98bcc4'){
   throw 'V012_NSI_NODE_LICENSE_MISSING_OR_CHANGED'
