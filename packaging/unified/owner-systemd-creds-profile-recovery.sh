@@ -30,6 +30,12 @@ if [ "$explicitProfile" -eq 1 ];then
 else
  target="$backupParent/rc012-native-pair-systemd-creds"
 fi
+# The credential encryption key name is owner-profile scoped as well as
+# the capsule directory. Legacy one-argument archives retain their old name.
+credentialName="rc012-native-pair"
+if [ "$explicitProfile" -eq 1 ];then
+ credentialName="rc012-native-pair-$profileName"
+fi
 pairName="$profileName"
 if [ "$profileName" = chatgpt-remote-commander ] ||
    { [ "$profileName" = Emad ] &&
@@ -93,12 +99,12 @@ function verify_capsule(){
  { echo RC012_USER_CREDS_CIPHERTEXT_TAMPERED >&2;exit 2; }
  restore="$(mktemp -d "$backupParent/.dry-restore-XXXXXXXX")"
  chmod 700 "$restore"
- listing="$(systemd-creds decrypt --user --name=rc012-native-pair \
+ listing="$(systemd-creds decrypt --user --name="$credentialName" \
     "$dir/owner-pair.cred" - 2>/dev/null | tar -tf - | sha256sum | cut -d' ' -f1)" ||
  { echo RC012_USER_CREDS_ARCHIVE_CORRUPT >&2;exit 2; }
  [ "$listing" = "$(printf '%s\n' $files | sha256sum | cut -d' ' -f1)" ] ||
  { echo RC012_USER_CREDS_ARCHIVE_PATH_INVALID >&2;exit 2; }
- systemd-creds decrypt --user --name=rc012-native-pair \
+ systemd-creds decrypt --user --name="$credentialName" \
      "$dir/owner-pair.cred" - 2>/dev/null | tar -xf - -C "$restore"
  [ "$(digest_tree "$restore")" = "$baseline" ] ||
  { echo RC012_USER_CREDS_DRY_RESTORE_MISMATCH >&2;exit 2; }
@@ -136,7 +142,7 @@ stage="$(mktemp -d "$backupParent/.stage-XXXXXXXX")"
 chmod 700 "$stage"
 # Plaintext tar stays in the pipe; the only persistent archive is encrypted.
 tar -cf - -C "$config" -- $files |
- systemd-creds encrypt --user --with-key=host --name=rc012-native-pair \
+ systemd-creds encrypt --user --with-key=host --name="$credentialName" \
   - "$stage/owner-pair.cred" >/dev/null
 chmod 600 "$stage/owner-pair.cred"
 cipher="$(sha256sum "$stage/owner-pair.cred"|cut -d' ' -f1)"

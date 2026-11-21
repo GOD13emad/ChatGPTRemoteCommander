@@ -122,6 +122,12 @@ test('profile-specific owner recovery capsules never share a Tunnel or private T
     const b=run(['Stage','--profile-name='+profileB],input);
     assert.equal(b.status,0,b.stderr);
     assert.notEqual(capsule(profileA),capsule(profileB));
+    const wrongCredentialName=spawnSync('systemd-creds',[
+      'decrypt','--user','--refuse-null','--name=rc012-native-pair-'+profileB,
+      path.join(capsule(profileA),'owner-pair.cred'),'-'
+    ],{stdio:['ignore','ignore','pipe'],timeout:6000});
+    assert.notEqual(wrongCredentialName.status,0,
+      'a profile-B credential name must never decrypt the profile-A capsule');
     for(const profile of [profileA,profileB]){
       assert.equal(run(['Verify','--profile-name='+profile],input).status,0);
       const restore=run(['TestRestore','--profile-name='+profile],input);
