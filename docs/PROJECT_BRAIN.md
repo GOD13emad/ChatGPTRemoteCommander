@@ -1477,7 +1477,36 @@ Source-regression roster now pins this new fixture exactly once (28 files,
 both protected Core and this private owner/worker adapter. Existing installed
 Emad Laptop protected Core, actual API key, active Tunnel, profiles and owner
 credential store were not modified by this source-only validation.
+Actual Linux native owner PIN migration (2026-11-21):
+The existing general tools/migrate-owner-tunnel-pin-linux-v2.mjs verified
+that the two separately active owner-Tunnel profiles mmz-emad-laptop and
+saeed-emad-laptop had intact namespace-v1 pins. Both real native graphical
+owner consents APPROVED; the two pins migrated to host-UID v2 with original
+private owner-recovery baselines. Durable operations:
+68c0e1bb-ef67-4766-833f-5343620221df (MMZ);
+47d41eca-bd1c-4ea2-af9b-00246529ead9 (Saeed).
+Three independent read-only preflights, then three native actual
+PID/control-plane Tunnel re-attestations PASS, including already-v2
+chatgpt-remote-commander. Live service PID 1566984, API keys and all Tunnel
+processes unchanged. This closes ONLY the 3-profile Linux owner PIN gate.
+
+Native Linux Ed25519 key provider passed actual transient systemd-creds
+--user LoadCredentialEncrypted proof, with original Core untouched.
+The source-only general tools/provision-owner-worker-key-linux.mjs is
+an owner-GUI-gated, per-existing-profile encrypted Worker key capsule engine.
+It requires the LIVE stable host-UID-v2 Tunnel and native owner session,
+rechecks before/after consent, writes an owner-only encrypted Ed25519 seed
+and bounded key ID receipt atomically, verifies decryption/read-back, and
+rejects bad ACLs, symlinks, different owner/Tunnel, key mismatch and duplicate
+or changed capsules. Preflight on all 3 real Linux profiles PASS with
+credentialProvisioned=false; isolated synthetic verifier and CLI negative
+tests PASS. This tool is NOT automatically run by installer, grants NO
+Worker access or OS privilege, and cannot re-create keys over an existing
+capsule. Source regression roster now 29 pinned fixtures and both the
+script and tests trigger the native cross-OS installer pilot.
+Real persistent key enrollment still needs positive native owner approval.
+
 Next independent acceptance: provision owner-held real Ed25519 key through
-native credential provider, approve exact machine-global Worker grants under
-real J01, establish durable lease+real Plugin ingress, verify a genuine
-protected Core effect and reversible one-install cutover per host.
+native credential provider, approve exact machine-global Worker grants
+under real J01, establish durable lease+real Plugin ingress, verify a
+genuine protected Core effect and reversible one-install cutover per host.

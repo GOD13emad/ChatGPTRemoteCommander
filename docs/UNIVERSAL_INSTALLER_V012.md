@@ -116,3 +116,26 @@ requires live owner-key credential provisioning, native approval, machine
 lease and actual protected Core tool verification. The canonical source QA
 runner includes the fixture exactly once and the native package PR filter
 includes the new module.
+
+
+## Real owner-local encrypted Worker key stage (Linux, explicit consent)
+
+An independently verified host-UID-v2 Linux native owner and the already
+enrolled existing per-account Tunnel are mandatory. The one generic
+tools/provision-owner-worker-key-linux.mjs supports:
+- --preflight PROFILE: read-only current native owner seat and exact pinned
+  Tunnel proof; all three Emad Laptop owner profiles PASS.
+- --enroll PROFILE: deliberate, visible native OS owner consent, exact
+  current owner/Tunnel epoch recheck, host/user systemd-creds encryption
+  of a fresh 32-byte Ed25519 seed, atomic publication of ONLY an encrypted
+  blob and its bounded owner-local public key ID/hash receipt. The seed is
+  never written to an unencrypted file or emitted. Existing validated keys
+  are reused and never overwritten. Wrong owner/profile, tampering, symlinks,
+  weak permissions, and partial capsules are rejected.
+
+The existing owner-private pair security directory is reused, not a second
+Tunnel/Core installation. This stage issues no Worker identity registration,
+no exact action grant and no OS elevation. Production activation requires a
+real owner consent, durable signed-worker registry, native exact grants,
+machine-global lease and genuine protected Core tool admission.
+The new source paths are pinned into the single native installer QA.

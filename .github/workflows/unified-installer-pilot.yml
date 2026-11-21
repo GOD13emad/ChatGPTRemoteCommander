@@ -13,6 +13,7 @@ on:
       - "src/v012-private-core-runtime.mjs"
       - "src/v012-private-*.mjs"
       - "test/v012-private-*.test.mjs"
+      - "tools/provision-owner-worker-key-linux.mjs"
       - "src/v2-native-owner-session-bindings.mjs"
       - "src/v2-authorized-operation.mjs"
       - "src/worker-identity-authority.mjs"
