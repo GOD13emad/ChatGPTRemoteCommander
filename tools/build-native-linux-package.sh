@@ -48,7 +48,7 @@ SOURCE_GUARD
 HEAD="$(git -C "$ROOT" rev-parse HEAD^{commit})"
 EPOCH="$(git -C "$ROOT" show -s --format=%ct HEAD)"
 VERSION="$(node -p 'require(process.argv[1]).version' "$ROOT/package.json")"
-if [[ "$VERSION" != 0.12.0-dev.1 ]]; then
+if [[ ! "$VERSION" =~ ^0\.12\.0-dev\.[1-9][0-9]*$ ]]; then
   echo 'NATIVE_LINUX_QA_VERSION_NOT_APPROVED' >&2; exit 4
 fi
 node - "$ROOT/docs/release-train-0.12.json" "$VERSION" <<'NODE'

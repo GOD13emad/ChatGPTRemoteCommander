@@ -17,7 +17,13 @@ ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)"
 }
 cd "$ROOT"
 OLD="$ROOT/dist/installer/Remote-Commander-Linux-amd64.deb"
-NEW="$ROOT/dist/unified/Remote-Commander-Unified-0.12.0-dev.1-Linux-amd64.deb"
+command -v node >/dev/null || { echo RC012_SOURCE_VERSION_NODE_MISSING >&2; exit 3; }
+VERSION="$(node -p 'require(process.argv[1]).version' "$ROOT/package.json")"
+GUI_VERSION="$(node -p 'require(process.argv[1]).version' "$ROOT/packaging/unified/package.json")"
+[[ "$VERSION" =~ ^0\.12\.0-dev\.[1-9][0-9]*$ && "$VERSION" == "$GUI_VERSION" ]] || {
+  echo RC012_NATIVE_UPGRADE_SOURCE_VERSION_MISMATCH >&2;exit 3;
+}
+NEW="$ROOT/dist/unified/Remote-Commander-Unified-${VERSION}-Linux-amd64.deb"
 test -f "$OLD" && test -f "$NEW"
 test "$(dpkg-deb --field "$OLD" Package)" = chatgpt-remote-commander
 test "$(dpkg-deb --field "$NEW" Package)" = chatgpt-remote-commander

@@ -16,6 +16,36 @@ const repo=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const resource=path.join(repo,'packaging/unified/.stage/core');
 const sha=p=>createHash('sha256').update(fs.readFileSync(p)).digest('hex');
 
+test('native Linux and Electron builder derive one exact prerelease version from Core, GUI, and release train',()=>{
+ const core=JSON.parse(fs.readFileSync(path.join(repo,'package.json'),'utf8'));
+ const gui=JSON.parse(fs.readFileSync(path.join(repo,'packaging/unified/package.json'),'utf8'));
+ const train=JSON.parse(fs.readFileSync(path.join(repo,'docs/release-train-0.12.json'),'utf8'));
+ assert.match(core.version,/^0\.12\.0-dev\.[1-9][0-9]*$/);
+ assert.equal(core.version,gui.version);
+ assert.equal(train.sourceVersion,core.version);
+ assert.equal(train.status,'INTEGRATION_CANDIDATE_NOT_FINAL');
+ assert.equal(train.publishApproved,false);
+ assert.equal(train.installedPromotionApproved,false);
+ const native=fs.readFileSync(path.join(repo,'tools/build-native-linux-package.sh'),'utf8');
+ const prepare=fs.readFileSync(path.join(repo,'packaging/unified/prepare.mjs'),'utf8');
+ const merged=fs.readFileSync(path.join(repo,'packaging/unified/merge-native-deb.sh'),'utf8');
+ const upgrade=fs.readFileSync(path.join(repo,'test/unified-native-upgrade-smoke.sh'),'utf8');
+ assert.match(native,/data\.sourceVersion!==process\.argv\[3\]/);
+ assert.match(native,/VERSION.*=~.*0\\\.12\\\.0-dev/);
+ assert.match(prepare,/pkg\.version!==guiPkg\.version/);
+ assert.match(prepare,/train\.sourceVersion!==pkg\.version/);
+ assert.match(prepare,/UNIFIED_VERSION_IDENTITY_UNCOMMITTED/);
+ for(const script of [merged,upgrade]){
+   assert.match(script,/Remote-Commander-Unified-\$\{VERSION\}-Linux-amd64\.deb/);
+   assert.doesNotMatch(script,/Remote-Commander-Unified-0\.12\.0-dev\.1-Linux-amd64\.deb/);
+ }
+ assert.match(merged,/VERSION.*==.*CORE_VERSION/);
+ assert.match(upgrade,/VERSION.*==.*GUI_VERSION/);
+ for(const program of [native,prepare,merged,upgrade])
+   assert.doesNotMatch(program,/[\x22\x27]0\.12\.0-dev\.1[\x22\x27]/,
+     'native build and delivery must not pin one stale candidate revision');
+});
+
 test('one installer definition uses Windows NSIS per user and Linux DEB, not old host repairs',()=>{
  const y=fs.readFileSync(path.join(repo,'packaging/unified/electron-builder.yml'),'utf8');
  assert.match(y,/target: nsis/);

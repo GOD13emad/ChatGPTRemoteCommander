@@ -4,10 +4,15 @@
 set -euo pipefail
 BASE="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
 NATIVE="$BASE/dist/installer/Remote-Commander-Linux-amd64.deb"
-GUI="$BASE/dist/unified/Remote-Commander-Unified-0.12.0-dev.1-Linux-amd64.deb"
-for tool in dpkg-deb python3 sha256sum mktemp; do
+for tool in node dpkg-deb python3 sha256sum mktemp; do
   command -v "$tool" >/dev/null || { echo "RC012_MERGE_MISSING_TOOL $tool" >&2; exit 2; }
 done
+VERSION="$(node -p 'require(process.argv[1]).version' "$BASE/packaging/unified/package.json")"
+CORE_VERSION="$(node -p 'require(process.argv[1]).version' "$BASE/package.json")"
+[[ "$VERSION" =~ ^0\.12\.0-dev\.[1-9][0-9]*$ && "$VERSION" == "$CORE_VERSION" ]] || {
+  echo RC012_MERGE_CORE_GUI_VERSION_MISMATCH >&2; exit 2;
+}
+GUI="$BASE/dist/unified/Remote-Commander-Unified-${VERSION}-Linux-amd64.deb"
 [[ "$(uname -s)" == Linux && "$(uname -m)" == x86_64 ]] || { echo RC012_MERGE_LINUX_AMD64_ONLY >&2; exit 2; }
 [[ -f "$NATIVE" && -f "$GUI" && ! -L "$NATIVE" && ! -L "$GUI" ]] || {
   echo RC012_MERGE_INPUT_MISSING >&2; exit 2;

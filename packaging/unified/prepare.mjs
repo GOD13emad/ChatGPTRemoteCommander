@@ -17,6 +17,10 @@ if(!/^[0-9a-f]{40}$/.test(head)||!/^[0-9a-f]{40}$/.test(tree))
   throw Error('UNIFIED_GIT_SOURCE_INVALID');
 const touched=runGit(['status','--porcelain=v1','--','src','tools','assets','vendor','extensions','config.json','package.json']);
 if(touched)throw Error('UNIFIED_SOURCE_UNCOMMITTED: '+touched.slice(0,300));
+const versionIdentityDirty=runGit(['status','--porcelain=v1','--',
+  'docs/release-train-0.12.json','packaging/unified/package.json',
+  'packaging/unified/package-lock.json']);
+if(versionIdentityDirty)throw Error('UNIFIED_VERSION_IDENTITY_UNCOMMITTED');
 if(fs.existsSync(core)){
   const marker=path.join(core,'source-manifest.json');
   if(!fs.existsSync(marker)||![1,2].includes(JSON.parse(fs.readFileSync(marker,'utf8')).schema))
@@ -54,5 +58,14 @@ const manifest={schema:2,head,tree,count:entries.length,
   packaging:'unified-pilot-no-promotion'};
 fs.writeFileSync(path.join(core,'source-manifest.json'),JSON.stringify(manifest,null,2)+'\n',{flag:'wx'});
 const pkg=JSON.parse(fs.readFileSync(path.join(core,'package.json'),'utf8'));
-if(pkg.version!=='0.12.0-dev.1')throw Error('UNIFIED_WRONG_CORE_VERSION');
+const guiPkg=JSON.parse(fs.readFileSync(path.join(dir,'package.json'),'utf8'));
+const train=JSON.parse(fs.readFileSync(path.join(repo,'docs/release-train-0.12.json'),'utf8'));
+if(!/^0\.12\.0-dev\.[1-9][0-9]*$/.test(pkg.version)
+   ||pkg.version!==guiPkg.version||train.sourceVersion!==pkg.version
+   ||train.train!=='0.12'||train.channel!=='development'
+   ||train.status!=='INTEGRATION_CANDIDATE_NOT_FINAL'
+   ||train.isStable!==false||train.publishApproved!==false
+   ||train.autoupdateApproved!==false||train.installedPromotionApproved!==false
+   ||train.releaseTag!==null)
+  throw Error('UNIFIED_WRONG_CORE_OR_RELEASE_TRAIN_VERSION');
 console.log('UNIFIED_SOURCE_PREPARED',JSON.stringify({head,tree,count:entries.length,version:pkg.version}));
