@@ -116,9 +116,25 @@ for spec in (field(native_control,'Depends')+', '+field(gui_control,'Depends')).
     if spec and spec not in deps:deps.append(spec)
 gui_control=gui_control.replace('Depends: '+field(gui_control,'Depends'),
    'Depends: '+', '.join(deps),1)
-for p in (gui/'DEBIAN').iterdir():
-    if p.name not in ('control','md5sums'):
-        shutil.copy2(p,native/'DEBIAN'/p.name)
+# The Electron GUI DEB is an input payload, not an authority to install
+# root-running maintainer scripts into the single Native Commander package.
+# The canonical Native DEB deliberately has no maintainer hooks. Fail on
+# unexpected controls rather than silently inheriting global OS mutations.
+allowed_gui_scripts={'preinst','postinst','prerm','postrm'}
+allowed_control={'control','md5sums'}
+for p in sorted((gui/'DEBIAN').iterdir()):
+    if p.name in allowed_control:
+        if not p.is_file() or p.is_symlink():
+            raise SystemExit('RC012_MERGE_GUI_CONTROL_UNSAFE '+p.name)
+    elif p.name in allowed_gui_scripts:
+        if not p.is_file() or p.is_symlink():
+            raise SystemExit('RC012_MERGE_GUI_MAINTAINER_UNSAFE '+p.name)
+        print('RC012_GUI_MAINTAINER_SCRIPT_OMITTED '+p.name)
+    else:
+        raise SystemExit('RC012_MERGE_UNEXPECTED_GUI_CONTROL '+p.name)
+for p in (native/'DEBIAN').iterdir():
+    if p.name not in allowed_control:
+        raise SystemExit('RC012_MERGE_NATIVE_CONTROL_UNEXPECTED '+p.name)
 (native/'DEBIAN/control').write_text(gui_control)
 # Build one truthful inventory of every installed regular file.
 md5=[]
@@ -140,6 +156,11 @@ for f in   'usr/lib/chatgpt-remote-commander/tunnel/native-tunnel-launch.sh'   '
 done
 [[ "$(pkg "$TARGET" Package)" == chatgpt-remote-commander ]] || exit 5
 [[ "$(pkg "$TARGET" Version)" == "$(pkg "$GUI" Version)" ]] || exit 5
+# Independently inspect the built archive as well as the staging tree.
+CONTROL_NAMES="$(dpkg-deb --ctrl-tarfile "$TARGET" | tar -tf - | sed 's#^\./##' | grep -v '^$' | sort)"
+[[ "$CONTROL_NAMES" == $'control\nmd5sums' ]] || {
+  echo RC012_MERGED_PACKAGE_UNEXPECTED_MAINTAINER >&2; exit 5;
+}
 BEFORE="$(sha256sum "$GUI"|cut -d' ' -f1)"
 AFTER="$(sha256sum "$TARGET"|cut -d' ' -f1)"
 mv -f -- "$TARGET" "$GUI"

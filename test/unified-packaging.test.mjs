@@ -40,6 +40,11 @@ test('native Linux and Electron builder derive one exact prerelease version from
    assert.doesNotMatch(script,/Remote-Commander-Unified-0\.12\.0-dev\.1-Linux-amd64\.deb/);
  }
  assert.match(merged,/VERSION.*==.*CORE_VERSION/);
+ assert.match(merged,/RC012_GUI_MAINTAINER_SCRIPT_OMITTED/);
+ assert.match(merged,/RC012_MERGE_UNEXPECTED_GUI_CONTROL/);
+ assert.match(merged,/RC012_MERGE_NATIVE_CONTROL_UNEXPECTED/);
+ assert.match(merged,/RC012_MERGED_PACKAGE_UNEXPECTED_MAINTAINER/);
+ assert.doesNotMatch(merged,/shutil\.copy2\(p,native\/'DEBIAN'\/p\.name\)/);
  assert.match(upgrade,/VERSION.*==.*GUI_VERSION/);
  for(const program of [native,prepare,merged,upgrade])
    assert.doesNotMatch(program,/[\x22\x27]0\.12\.0-dev\.1[\x22\x27]/,
