@@ -62,7 +62,8 @@ function Read-OldRegistration {
 function Find-NewRegistration {
  $matches=@(Get-ItemProperty -Path ($uninstallRoot+'\*') -ErrorAction SilentlyContinue |
   Where-Object {$_.PSObject.Properties['DisplayName'] -and $_.PSObject.Properties['DisplayVersion'] -and
-   $_.DisplayName -eq 'Remote Commander' -and $_.DisplayVersion -eq $ExpectedVersion})
+   $_.DisplayName -in @('Remote Commander',('Remote Commander '+$ExpectedVersion)) -and
+   $_.DisplayVersion -eq $ExpectedVersion})
  if($matches.Count -gt 1){Fail 'RC012_DUPLICATE_NEW_REGISTRATIONS'}
  if($matches.Count -eq 0){return $null}
  return $matches[0]
@@ -112,14 +113,21 @@ function Restore-Legacy($r){
  $r.phase='ROLLED_BACK';Save-Receipt $r
 }
 function Assert-NewInstalled($new){
- if(-not $new -or -not $new.PSObject.Properties['InstallLocation'] -or
-  -not $new.InstallLocation -or -not(Test-Path -LiteralPath $new.InstallLocation -PathType Container)){
+ if(-not $new){Fail 'RC012_NSIS_INSTALL_NOT_REGISTERED'}
+ # electron-builder v26 per-user NSIS sets the GUID uninstall key and
+ # DisplayName='Remote Commander <version>', but omits InstallLocation.
+ # Resolve only the package-name-derived owner-local installer directory.
+ $expected=[IO.Path]::GetFullPath((Join-Path $local 'Programs\remote-commander-unified'))
+ $folder=$expected
+ if($new.PSObject.Properties['InstallLocation'] -and $new.InstallLocation){
+  $folder=[IO.Path]::GetFullPath([string]$new.InstallLocation)
+ }
+ if(-not(SamePath $folder $expected)){Fail 'RC012_NSIS_INSTALL_PATH_MISMATCH'}
+ if(-not(Test-Path -LiteralPath $folder -PathType Container)){
   Fail 'RC012_NSIS_INSTALL_LOCATION_NOT_READY'
  }
- $folder=[IO.Path]::GetFullPath([string]$new.InstallLocation)
- $base=[IO.Path]::GetFullPath((Join-Path $local 'Programs'))
- if(-not $folder.StartsWith($base+'\',[StringComparison]::OrdinalIgnoreCase)){
-  Fail 'RC012_NSIS_INSTALL_PATH_OUTSIDE_USER_ROOT'
+ if((Get-Item -LiteralPath $folder -Force).Attributes.HasFlag([IO.FileAttributes]::ReparsePoint)){
+  Fail 'RC012_NSIS_INSTALL_SYMLINK_REFUSED'
  }
  $resources=Join-Path $folder 'resources'
  if(-not(Test-Path -LiteralPath (Join-Path $resources 'app.asar')) -or
@@ -128,14 +136,14 @@ function Assert-NewInstalled($new){
  }
  return $folder
 }
-function Assert-NewUninstaller($new){
+function Assert-NewUninstaller($new,[string]$ownerInstallRoot){
  if(-not $new.PSObject.Properties['UninstallString']){Fail 'RC012_NSIS_UNINSTALLER_NOT_REGISTERED'}
  $command=[string]$new.UninstallString
  if($command -notmatch '^"(?<file>[A-Za-z]:\\[^"]+\.exe)"(?:\s+.*)?$'){
   Fail 'RC012_NSIS_UNINSTALLER_COMMAND_UNRECOGNIZED'
  }
  $file=[IO.Path]::GetFullPath($Matches['file'])
- $dir=[IO.Path]::GetFullPath([string]$new.InstallLocation)
+ $dir=[IO.Path]::GetFullPath($ownerInstallRoot)
  if(-not $file.StartsWith($dir+'\',[StringComparison]::OrdinalIgnoreCase) -or
   [IO.Path]::GetFileName($file) -notmatch '^(Uninstall|unins).*\.exe$' -or
   -not(Test-Path -LiteralPath $file -PathType Leaf)){
@@ -158,7 +166,7 @@ if($Mode -eq 'Recover'){
    Fail 'RC012_UNEXPECTED_NEW_INSTALL_REGISTERED'
   }
   $root=Assert-NewInstalled $new
-  $uninstaller=Assert-NewUninstaller $new
+  $uninstaller=Assert-NewUninstaller $new $root
   Assert-NoOwnerGui
   $p=Start-Process -FilePath $uninstaller -ArgumentList '/S' -PassThru -Wait
   if($p.ExitCode -ne 0){Fail ('RC012_NSIS_ROLLBACK_UNINSTALL_FAILED_'+$p.ExitCode)}
