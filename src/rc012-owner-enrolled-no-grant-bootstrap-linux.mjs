@@ -1,6 +1,8 @@
 // Owner-local staged HTTPS/mTLS bootstrap for the existing Linux account+tunnel.
-// NO_GRANT mode: proves real enrolled transport and wires private TLS, but can
-// never issue J01 bindings, worker grants or privileged Core tool effects.
+// NO_GRANT mode: proves owner-enrolled transport and permits only the actual
+// OS-owner's explicit, revocable J01 pair-session approval. It can NEVER
+// enroll signed Workers, issue exact action grants or execute Core effects.
+// A pair scope does NOT independently authenticate any individual ChatGPT chat.
 // Do not use this staging bootstrap as the final Full Access promotion.
 import fs from 'node:fs';
 import os from 'node:os';
@@ -12,6 +14,8 @@ import {readLinuxOwnerTunnelPin}
   from './linux-private-tunnel-owner-pin.mjs';
 import {createLinuxSignedBrokerTransport}
   from './linux-native-tunnel-broker-client.mjs';
+import {deriveV101PrivatePairSessionHandle}
+  from './v101-private-pair-native-owner-stack.mjs';
 
 const ID=/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 const fail=code=>{throw Object.assign(new Error(code),{code});};
@@ -29,6 +33,39 @@ function privateFile(p,uid,maxBytes=65536){
   return fs.readFileSync(p,'utf8');
 }
 const denied=async()=>fail('RC012_OWNER_BOOTSTRAP_NO_GRANT');
+
+/**
+ * The existing exact owner-pinned Tunnel and current OS-owner hash determine
+ * ONE stable, independently derived pair handle. An incoming MCP _meta value
+ * cannot change host/profile/seat; every nonmatching session is rejected.
+ * This is a native J01 binding route, NEVER a tool execution route/grant.
+ */
+export function createV012OwnerPairBindingRoute({
+  hostId,profileId,ownerSidHash,tunnelIdHash
+}={}){
+  if(typeof hostId!=='string'||!ID.test(hostId)
+    ||typeof profileId!=='string'||!ID.test(profileId)
+    ||typeof ownerSidHash!=='string'||!/^[a-f0-9]{64}$/.test(ownerSidHash)
+    ||typeof tunnelIdHash!=='string'||!/^[a-f0-9]{64}$/.test(tunnelIdHash))
+    fail('RC012_OWNER_PAIR_BINDING_SCOPE_INVALID');
+  const sessionHandle=deriveV101PrivatePairSessionHandle({
+    profileId,expectedTunnelIdHash:tunnelIdHash,
+    expectedOwnerSidHash:ownerSidHash
+  });
+  const route=Object.freeze({
+    hostId,profileId,principalId:'owner-not-enrolled',
+    conversationId:sessionHandle,operationId:'owner-bind',
+    target:Object.freeze({kind:'desktop-seat',id:'current-owner'})
+  });
+  return Object.freeze({
+    sessionHandle,
+    async resolveOwnerRoute(handle){
+      if(handle!==sessionHandle)fail('RC012_OWNER_PAIR_BINDING_ROUTE_MISMATCH');
+      return route;
+    }
+  });
+}
+
 export async function createOwnerPrivatePairBootstrap({profileId,configSha256}={}){
   if(process.platform!=='linux'
     ||process.env.RC012_OWNER_BOOTSTRAP_SCOPE!=='OWNER_ENROLLED_NO_GRANT'
@@ -79,6 +116,11 @@ export async function createOwnerPrivatePairBootstrap({profileId,configSha256}={
     publicKeyPath:process.env.RC012_OWNER_WITNESS_PUBLIC_KEY_PATH,
     resolveOwnerSidHash:owner.resolveOwnerSidHash
   });
+  const pairBinding=createV012OwnerPairBindingRoute({
+    hostId:enrolled.hostId,profileId:enrolled.profileId,
+    ownerSidHash:ownerV2Hash,
+    tunnelIdHash:signedBroker.expectedTunnelIdHash
+  });
   const securityParent=path.join(home,'.local','state','chatgpt-remote-commander');
   const securityDir=path.join(securityParent,'private-pair-security-'+selected);
   fs.mkdirSync(securityDir,{recursive:true,mode:0o700});
@@ -102,7 +144,8 @@ export async function createOwnerPrivatePairBootstrap({profileId,configSha256}={
       directory:securityDir,
       ownerSessionOptions:{ownerIdentityMode:'host-uid-v2'},
       issuer:'commander.local',audience:'remote-commander',
-      resolveOwnerRoute:denied,resolveTrustedToolRoute:denied,
+      resolveOwnerRoute:pairBinding.resolveOwnerRoute,
+      resolveTrustedToolRoute:denied,
       resolveCurrentOwnerRoute:denied,resolveCurrentWorkerId:denied,
       workerAuthority:{authorizeWorker:denied},
       workerRegistry:{get:denied},withLease:denied

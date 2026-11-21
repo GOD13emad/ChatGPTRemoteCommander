@@ -4,8 +4,10 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {createHash} from 'node:crypto';
-import {createV101PrivatePairNativeOwnerStack}
+import {createV101PrivatePairNativeOwnerStack,deriveV101PrivatePairSessionHandle}
   from '../src/v101-private-pair-native-owner-stack.mjs';
+import {createV012OwnerPairBindingRoute}
+  from '../src/rc012-owner-enrolled-no-grant-bootstrap-linux.mjs';
 
 const SID='S-1-5-21-111-222-333-1001';
 const OWNER=createHash('sha256').update(
@@ -249,4 +251,59 @@ test('pair owner switch revokes existing session and cannot reuse consent',{
     assert.notEqual(fresh.bindingId,bound.bindingId);
     assert.equal(f.calls.filter(args=>args.includes('Consent')).length,2);
   }finally{f.close();}
+});
+
+
+test('one real owner-pair session maps to one native J01 route; never binds another account or chat',async()=>{
+  const enrolled={
+    hostId:'labtop-owner',profileId:'mmz-emad-laptop',
+    tunnelIdHash:'b'.repeat(64),ownerSidHash:'c'.repeat(64)
+  };
+  const r=createV012OwnerPairBindingRoute(enrolled);
+  const expected=deriveV101PrivatePairSessionHandle({
+    profileId:enrolled.profileId,
+    expectedTunnelIdHash:enrolled.tunnelIdHash,
+    expectedOwnerSidHash:enrolled.ownerSidHash
+  });
+  assert.equal(r.sessionHandle,expected);
+  assert.match(expected,/^pair-[a-f0-9]{32}$/);
+  const route=await r.resolveOwnerRoute(expected);
+  assert.deepEqual(route,{
+    hostId:'labtop-owner',profileId:'mmz-emad-laptop',
+    principalId:'owner-not-enrolled',conversationId:expected,
+    operationId:'owner-bind',
+    target:{kind:'desktop-seat',id:'current-owner'}
+  });
+  assert.equal(Object.isFrozen(route),true);
+  assert.equal(Object.isFrozen(route.target),true);
+  const alternate=createV012OwnerPairBindingRoute({
+    ...enrolled,profileId:'saeed-emad-laptop'
+  });
+  assert.notEqual(alternate.sessionHandle,expected);
+  await assert.rejects(r.resolveOwnerRoute(alternate.sessionHandle),
+    {code:'RC012_OWNER_PAIR_BINDING_ROUTE_MISMATCH'});
+  await assert.rejects(r.resolveOwnerRoute('chat-one'),
+    {code:'RC012_OWNER_PAIR_BINDING_ROUTE_MISMATCH'});
+  await assert.rejects(r.resolveOwnerRoute(null),
+    {code:'RC012_OWNER_PAIR_BINDING_ROUTE_MISMATCH'});
+  assert.throws(()=>createV012OwnerPairBindingRoute({
+    ...enrolled,tunnelIdHash:'unverified'
+  }),{code:'RC012_OWNER_PAIR_BINDING_SCOPE_INVALID'});
+});
+test('owner-pair J01 binding does not enable signed Worker, native lease or Core effect',()=>{
+  const fsText=fs.readFileSync(new URL('../src/rc012-owner-enrolled-no-grant-bootstrap-linux.mjs',
+    import.meta.url),'utf8');
+  for(const sink of [
+    'resolveTrustedToolRoute:denied','resolveCurrentOwnerRoute:denied',
+    'resolveCurrentWorkerId:denied','workerAuthority:{authorizeWorker:denied}',
+    'workerRegistry:{get:denied}','withLease:denied'
+  ])assert.ok(fsText.includes(sink),sink);
+  assert.ok(fsText.includes('resolveOwnerRoute:pairBinding.resolveOwnerRoute'));
+  for(const file of ['src/native-owner-session-provider-windows.mjs',
+    'src/native-owner-session-provider-linux.mjs']){
+    const source=fs.readFileSync(new URL('../'+file,import.meta.url),'utf8');
+    assert.ok(source.includes('Individual ChatGPT chats')||
+      source.includes('individual ChatGPT chats'));
+    assert.ok(source.includes('Pair session:'));
+  }
 });

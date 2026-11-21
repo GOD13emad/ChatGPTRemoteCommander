@@ -1374,3 +1374,57 @@ A second, owner-local **genuine** Linux J01 proof used the *existing* one Tunnel
 **RC012_CURRENT_UNIFIED_PRIVATE_MIGRATION_20261121 (same active migration gate, SOURCE QA, NO_PROMOTE):** On Emad Laptop, currently installed Debian identity `0.12.0~dev.6` exceeds historical candidate `0.12.0~dev.1`, so old candidate install is a downgrade and was refused. One canonical v0.12 source train now advances to `0.12.0-dev.7` in Core, GUI/lock, private Plugin templates, desktop identity, and runtime; hosted source-pinned native/GUI packaging derives version from that authority. `dpkg --compare-versions` confirms newer candidate than dev.6. Exact user-local real-host read-only migration preflight reports `candidateNativePackageVersionVerified=true`, `candidateNativePackageDowngrade=false`, `candidateNativePackageSameVersion=false` but still `NO_PROMOTE` for protected live Tunnel/Core route, owner J01 and full installed rollback. Linux/Windows three-profile private encrypted six-file backup and TestRestore checks previously passed; these are not full Core rollback. Private topology remains exactly one exclusive Plugin/Tunnel per account+host pair with one host install and no mandatory public OAuth. No real services, credentials, profile bindings or fleet entries changed by this source-level version advance. Acceptance remains zero installed fleet promotions; require new exact-dev7 CI package and reversible canary, not dev1 build re-labeling.
 
 Same active 2026-11-21 gate delta: source v0.12.0-dev.8 now corrects the shared preflight's outdated YAML-only backup acceptance: it validates the existing same-owner encrypted six-file per-(account,host) native systemd-creds capsule with source hashes, sealed ciphertext/receipt, owned ACLs and the original native disposable Verify/restore procedure; no replacement recovery authority or duplicate backup is created. On real Emad Laptop all three profiles (chatgpt-remote-commander, mmz-emad-laptop, saeed-emad-laptop) were independently Verify + TestRestore PASS, live source preflight profileBackupCurrentVerified=true for all three and still NO_PROMOTE on the remaining *real* protected live-route/J01/installed rollback blockers. Full native Debian dev6 rollback package was copied once into the existing owner-only recovery directory, SHA256 52c587a8994b1b2aa9adebe6cb7f9d42511230850fec6cb3b98eed7753effc7d validated, and active service/package remained dev23 Core / dev6 dpkg with unchanged PID. Three actual owner-local dev7 private TLS full-Catalog canaries, unique cert doctor and trusted current native owner Tunnel process attestations PASS; three ephemeral signed Unix-socket witness packets bound each current Tunnel PID/poll/owner session and were verified with no grants or process/profile mutations. Native owner J01 logind seat0/X11 readiness PASS, but a real diagnostic native dialog did NOT receive owner approval; do not infer a signed Worker grant or actual ChatGPT conversation identity. Prior dev7 PR486 24/24 hosted CI SUCCESS, one-composed DEB old/new/old rollback sandbox, native Linux dev6 -> dev7 APT simulation, SHA-pinned Windows NSIS and Linux DEB artifacts remain exact-commit historical evidence. All new dev8/source-Preflight qualifications require their own hosted SHA-pinned CI before any distribution or live deployment. This is ONE universal installer train, not per-machine installer patching; stable publication, auto-promotion, privileged cutover and fleet acceptance remain false/open.
+
+
+### RC012-OWNER-PAIR-J01-THREE-PROFILES-20261121 — owner-local J01 positive gate, no production grant
+
+Primary user order is v0.12 single native installer and all-host migration,
+then v0.13 through v1.0, then Commander 2. Source reference: PR #486,
+baseline 30456c279ae78ba9e2d0f9f3889f4fc32fd7afb8 (the CI fix that
+moved universal-install tests into a single standalone CI step). The exact
+baseline hosted Unified Installer Pilot completed three required jobs:
+Ubuntu native source-pinned installer PASS, Windows native source-pinned
+installer PASS, dependent exact Windows/Linux Core-file hash parity PASS.
+These prove packaging parity ONLY; existing active services remain older.
+
+Real shared root-cause: the otherwise verified Linux private mTLS
+OWNER_ENROLLED_NO_GRANT bootstrap deliberately set resolveOwnerRoute to
+DENY, preventing legitimate owner-visible J01 consent, even with a signed
+live Tunnel-owner witness. Implemented one canonical private pair handle
+derivation in the existing native owner stack and reused it to map precisely
+one verified owner/tunnel pair to a native desktop-seat/current-owner binding.
+No MCP body, arbitrary conversation label, second Tunnel, worker or shell
+may invent that identity. Updated Windows/Linux native owner prompts to
+say when the request authenticates an account+host pair, NOT an individual
+ChatGPT conversation. Signed Worker, exact tool-route, registry, lease and
+Core dispatch remain DENY in this staging bootstrap. Added an opt-in,
+not default, actual owner-visible J01 probe in the transient Linux canary.
+
+Measured owner-host evidence, 2026-11-21: Emad Laptop preserved unchanged
+production chatgpt-remote-commander.service and exact owner-private
+certificates/Tunnel. Three independent transient systemd-run canaries passed
+on Core profile / Tunnel profile / QA-only port:
+- default-v012 / chatgpt-remote-commander / 59919
+- MMZ-v012 / mmz-emad-laptop / 59920
+- saeed-emad-v012 / saeed-emad-laptop / 59921
+
+For each: pinned TLS 1.3 client MCP tools/list = 200; anonymous TLS
+handshake rejected; explicit native v2_private_owner_bind through mTLS
+returned HTTP 200; ungranted Core tool rejected HTTP 503; receipt
+RC012_ACTUAL_V012_PRIVATE_CORE_TLS_NO_GRANT_PASS with
+workerGrantIssued=false and installedCoreToolDispatched=false.
+Original owner MainPID remained 1566984 across all three. Durable ops:
+2ec06501-fe3d-48d4-acf3-85e4c8485015,
+cfc8c866-e668-4fea-99e2-40db0e902cfe,
+8af3296c-e39a-466a-84f2-363c5159386d.
+No-consent no-grant baseline op f1de8d77-8595-4a35-b033-3876be2bbb47
+PASS. Source focused Linux tests: 47 PASS, 7 OS skips, zero failures;
+bash and JS syntax checks passed.
+
+Next gate OPEN: independently owner-approved durable Ed25519 Signed Worker
+registration, exact revocable tool grants, machine-global execution lease,
+protected ingress in actually installed Core with real ChatGPT Plugin route;
+then independently witnessed single native installer migration, full Core
+restoration, boot/login and fleet cutover. Transient owner-binding expires
+at Core teardown. No v0.12 Stable tag/release, service restart, active Tunnel
+remap, credential change or deployment is authorized by these QA receipts.

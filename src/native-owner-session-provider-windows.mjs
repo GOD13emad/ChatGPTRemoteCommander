@@ -147,16 +147,20 @@ export function createWindowsNativeOwnerSessionProvider({
       const snapshot=await getOwnerSessionSnapshot();
       if(snapshot.osSessionId!==r.osSessionId
         ||snapshot.ownerSidHash!==r.ownerSidHash)return false;
+      const pairScope=/^pair-[a-f0-9]{32}$/.test(route.conversationId);
       const message=[
-        'Bind this exact ChatGPT conversation to the current Windows owner?',
+        pairScope
+          ? 'Bind this exclusive Commander account+host pair to the current Windows owner? This does NOT identify individual ChatGPT chats.'
+          : 'Bind this exact ChatGPT conversation to the current Windows owner?',
         'Host: '+route.hostId,'Profile: '+route.profileId,
-        'Principal: '+route.principalId,'Conversation: '+route.conversationId,
+        'Principal: '+route.principalId,
+        (pairScope?'Pair session: ':'Conversation: ')+route.conversationId,
         'Operation: '+route.operationId,
         'Target: '+route.target.kind+'/'+route.target.id,
         'OS session: '+snapshot.osSessionId+' / '+snapshot.seatId,
         'Owner identity: '+snapshot.ownerSidHash.slice(0,12),
         'Binding epoch: '+r.bindingId.slice(0,12),'',
-        'This app-level grant is revocable and never elevates OS privileges.'
+        'This revocable owner binding does not authorize tool calls or elevate OS privileges.'
       ].join('\n');
       return requestConsent({title:'Commander - Bind Windows owner session',
         message,expectedOwnerSidHash:r.ownerSidHash,

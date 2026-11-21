@@ -14,6 +14,22 @@ const ID=/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const HASH=/^[a-f0-9]{64}$/;
 const fail=code=>{throw Object.assign(new Error(code),{code});};
 
+/** Canonical signed-out pair correlation only; NOT an individual ChatGPT chat. */
+export function deriveV101PrivatePairSessionHandle({
+  profileId,expectedTunnelIdHash,expectedOwnerSidHash
+}={}){
+  if(typeof profileId!=='string'||!ID.test(profileId)
+    ||profileId==='.'||profileId==='..'
+    ||![expectedTunnelIdHash,expectedOwnerSidHash].every(v=>
+      typeof v==='string'&&HASH.test(v)))
+    fail('V101_PRIVATE_PAIR_SCOPE_INVALID');
+  return 'pair-'+createHash('sha256')
+    .update(JSON.stringify(['commander.private.pair-scope.v1',profileId,
+      expectedTunnelIdHash,expectedOwnerSidHash]))
+    .digest('hex').slice(0,32);
+}
+
+
 /**
  * This composes mTLS-to-J01 proof with the actual Windows/Linux native
  * owner-session provider, existing V2NativeOwnerSessionBindings and the
@@ -41,10 +57,9 @@ export function createV101PrivatePairNativeOwnerStack({
   // Stable owner-controlled authorization scope for the ONE exclusive
   // account+host Tunnel. The hash is a non-secret routing label, never a
   // bearer token, ChatGPT identity assertion or grant.
-  const pairHandle='pair-'+createHash('sha256')
-    .update(JSON.stringify(['commander.private.pair-scope.v1',profileId,
-      expectedTunnelIdHash,expectedOwnerSidHash]))
-    .digest('hex').slice(0,32);
+  const pairHandle=deriveV101PrivatePairSessionHandle({
+    profileId,expectedTunnelIdHash,expectedOwnerSidHash
+  });
   let stack;
   const proof=createV2PrivateOwnerSessionProofAuthority({
     profileId,expectedTunnelIdHash,expectedOwnerSidHash,attestTransport,now,

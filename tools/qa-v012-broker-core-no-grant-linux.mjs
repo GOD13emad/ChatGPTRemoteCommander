@@ -1,6 +1,7 @@
 // Staged source acceptance only: uses the INSTALLED v0.12 private Core runtime
 // and a short-lived owner-signed broker to prove HTTPS/mTLS LIST vs DENY.
-// Never calls the actual installed Core tool dispatcher or grants J01.
+// Opt-in owner-visible native J01 is permitted, but NO signed Worker, tool
+// route, privileged effect or live service/tunnel can be granted or changed.
 import fs from 'node:fs';
 import https from 'node:https';
 import {createHash} from 'node:crypto';
@@ -10,12 +11,12 @@ import {createV012PrivateCoreRuntime}
   from '/usr/lib/chatgpt-remote-commander/app/src/v012-private-core-runtime.mjs';
 
 const fail=code=>{throw Object.assign(new Error(code),{code});};
-function post({port,ca,cert,key,method,name}){
+function post({port,ca,cert,key,method,name,timeoutMs=5000}){
   return new Promise(resolve=>{
     const req=https.request({
       host:'127.0.0.1',port,path:'/mcp',method:'POST',
       ca,cert,key,rejectUnauthorized:true,minVersion:'TLSv1.3',
-      maxVersion:'TLSv1.3',timeout:5000,
+      maxVersion:'TLSv1.3',timeout:timeoutMs,
       headers:{'content-type':'application/json'}
     },res=>{
       let bytes=0,body='';
@@ -77,6 +78,23 @@ async function main(){
         ||(call.status===503&&call.errorCode==='PRIVATE_OWNER_ADMISSION_UNAVAILABLE'))
       ||(anonymous.kind==='http'&&anonymous.status<400))
       fail('RC012_PRIVATE_CORE_QA_AUTH_DENIAL_MISMATCH');
+    // Explicit one-time owner-visible diagnostic; no prompt by default.
+    if(process.env.RC012_CORE_BROKER_J01_BIND_REQUEST==='OWNER_VISIBLE_J01_BIND_ONLY'){
+      const bind=await post({port:opts.port,ca,cert,key,
+        method:'tools/call',name:'v2_private_owner_bind',timeoutMs:40000});
+      console.log('RC012_NATIVE_OWNER_J01_PAIR_BIND_PROBE',JSON.stringify({
+        status:bind.kind==='http'?bind.status:null,
+        tlsAuthorized:bind.authorized===true,
+        pairScopeOnly:true,workerGrantIssued:false,coreToolDispatched:false
+      }));
+      if(bind.kind!=='http'||bind.status!==200||bind.authorized!==true)
+        fail('RC012_NATIVE_OWNER_J01_NOT_APPROVED');
+      const afterBind=await post({port:opts.port,ca,cert,key,
+        method:'tools/call',name});
+      if(afterBind.kind!=='http'||afterBind.status!==503
+        ||afterBind.errorCode!=='PRIVATE_OWNER_ADMISSION_UNAVAILABLE')
+        fail('RC012_NATIVE_OWNER_J01_BYPASSED_NO_GRANT');
+    }
     try{await opts.security.withLease();fail('RC012_UNEXPECTED_GRANT');}
     catch(e){if(e.code!=='RC012_OWNER_BOOTSTRAP_NO_GRANT')throw e;}
     console.log(JSON.stringify({

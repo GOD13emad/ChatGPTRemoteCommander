@@ -49,11 +49,17 @@ systemd-run --user --quiet --unit="$brokerUnit" -p NoNewPrivileges=yes \
  "$profile" "$dir" "$qa/proof.sock" "$qa/private.pem"
 for i in $(seq 1 40);do [ -S "$qa/proof.sock" ] && break;sleep 0.1;done
 [ -S "$qa/proof.sock" ] || { echo RC012_QA_BROKER_NOT_READY;exit 2;}
+# Native consent only after explicit user opt-in.
+extraEnv=()
+if [ "${RC012_QA_J01_OWNER_BIND:-0}" = 1 ];then
+ extraEnv=(-E RC012_CORE_BROKER_J01_BIND_REQUEST=OWNER_VISIBLE_J01_BIND_ONLY)
+fi
 systemd-run --user --quiet --pipe --wait --collect --unit="$qaUnit" \
  -p PrivateTmp=yes -p ProtectSystem=full -p NoNewPrivileges=yes \
  -E REMOTE_COMMANDER_CONFIG="$config" \
  -E RC012_OWNER_BOOTSTRAP_SCOPE=OWNER_ENROLLED_NO_GRANT \
  -E RC012_CORE_BROKER_QA_SCOPE=NO_EFFECTS \
+ "${extraEnv[@]}" \
  -E RC012_OWNER_TUNNEL_PROFILE="$profile" \
  -E RC012_OWNER_PRIVATE_HTTPS_PORT="$port" \
  -E RC012_OWNER_WITNESS_SOCKET_PATH="$qa/proof.sock" \

@@ -60,3 +60,24 @@ embedded Core path and SHA-256 against the exact PR HEAD and Git tree.
 A single mismatch fails the PR gate. It does NOT claim identical rendered
 font pixels, identical native permissions or activated Full Power; these are
 separate acceptance gates. The job does not install or promote on owner hosts.
+
+
+## Native owner-pair J01 validation without a signed Worker grant
+
+The Linux owner-enrolled mTLS bootstrap now derives the canonical account-host
+pair session handle from the owner-pinned Tunnel and OS-owner hash using the same
+function as the protected runtime. Only that exact handle can reach the native
+desktop-seat/current-owner J01 consent. A pair handle does not prove the
+individual identity of any ChatGPT conversation; the owner prompt says so.
+
+The no-effect Core/broker canary retains signed Worker, tool-route, lease and
+dispatcher callbacks in permanent DENY mode. When the owner is present,
+an explicit RC012_QA_J01_OWNER_BIND=1 on the existing
+tools/qa-v012-protected-broker-run-linux.sh command requests a single real
+native J01 consent over pinned mTLS. The prompt is never shown by default.
+Denial or timeout does not pass. Even an approved binding is rechecked by a
+denied Core tool call. No live Tunnel, service, OS privilege, credential or
+installed Core is replaced by this diagnostic.
+
+This proves only the native owner-pair binding seam, not a signed Worker,
+live privileged tool effect, full Core restoration, or production cutover.

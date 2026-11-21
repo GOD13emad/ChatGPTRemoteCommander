@@ -329,19 +329,22 @@ export function createLinuxNativeOwnerSessionProvider({
       const snapshot=await getOwnerSessionSnapshot();
       if(snapshot.ownerSidHash!==r.ownerSidHash||snapshot.osSessionId!==r.osSessionId)
         return false;
+      const pairScope=/^pair-[a-f0-9]{32}$/.test(route.conversationId);
       const message=[
-        'Approve binding this exact ChatGPT conversation to the current Linux owner session?',
+        pairScope
+          ? 'Approve binding this exclusive Commander account+host pair to the Linux owner session? Individual ChatGPT chats remain unverified.'
+          : 'Approve binding this exact ChatGPT conversation to the current Linux owner session?',
         'Host: '+route.hostId,
         'Profile: '+route.profileId,
         'Principal: '+route.principalId,
-        'Conversation: '+route.conversationId,
+        (pairScope?'Pair session: ':'Conversation: ')+route.conversationId,
         'Operation: '+route.operationId,
         'Target: '+route.target.kind+'/'+route.target.id,
         'OS session: '+snapshot.osSessionId+' / '+snapshot.seatId,
         'Owner identity: '+snapshot.ownerSidHash.slice(0,12),
         'Binding epoch: '+r.bindingId.slice(0,12),
         '',
-        'This binding is short-lived and in-memory. It does not grant Administrator or Root privileges.'
+        'This short-lived owner binding does not grant tool execution or Administrator/Root privileges.'
       ].join('\n');
       return requestConsent({
         title:'Commander — Bind ChatGPT owner session',message,
