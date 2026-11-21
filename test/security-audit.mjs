@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { spawn, spawnSync } from 'node:child_process';
 import { StringDecoder } from 'node:string_decoder';
+import { createHash } from 'node:crypto';
 
 function git(args, options = {}) {
   const result = spawnSync('git', args, {
@@ -49,15 +50,47 @@ const knownSyntheticHostFixtureLines = new Set([
   "+    privateKeyPem:'" + syntheticPemHeader + literalNewline +
     "synthetic" + literalNewline + "-----END PRIVATE KEY-----',"
 ]);
+// Exact historical non-secret marker lines, keyed by immutable commit + path
+// and SHA-256 of the entire diff line. These are synthetic fixture values,
+// literal scanner code or a vendored PEM parser delimiter, never PEM payloads.
+// A changed byte, different commit, or other path is NOT exempted.
+const knownHistoricalLiteralDigests = new Map([
+  ['e178bf9b4b4daa6bc2916c106d02b2ac8cf2fa91:tools/probe-owner-pair-mtls.mjs',
+    new Set(['8a5ca2619de853c3de2425a35ddb6da0ebb0d0c19a307325113cabfac8ced74c'])],
+  ['633acfa7d5251538bea86e9e2464820c37de50f8:tools/probe-owner-pair-mtls.mjs',
+    new Set(['ced33ff6f5f0634aa3c38870bf116ec78e949d28a98131da7f9322e0dbf20ad9'])],
+  ['07ce35da16a63b6d77883671320bccfb5b97c398:test/security-audit.mjs',
+    new Set(['142b22e7160ef720e82c82a9836230b43027c590fab1e08297ce65525c8e411d'])],
+  ['0bd13b5c443171e2829d84358a82c8af09f60c1d:test/security-audit.mjs',
+    new Set(['142b22e7160ef720e82c82a9836230b43027c590fab1e08297ce65525c8e411d',
+      '973aa672b7a5e891977e4fb9cc188aefa3ba25770f34254a7cbe7e095a78109e'])],
+  ['c4978731c897a755f55b8610fc58be0497a636c4:test/security-audit.mjs',
+    new Set(['5a498e6198fbf81554859c4cacf937ad72301adddcf214de6b580eea822a38b9'])],
+  ['594e79ff16c66c770446a0a27f38bf1d6bb59191:vendor/jose/dist/webapi/key/import.js',
+    new Set(['eddc42eb6b4e168d1ca5b05a8a6504e202295ce1b94a38cff6d97ad20acf189d'])],
+  ['9d3808595c1795ad6f261369050bd51bbcef0f3d:test/security-audit.mjs',
+    new Set(['12bac2d0f51dfbf0890fc8386970c961ee303e1138b720d19c20487b335d21db'])],
+  ['a89f4815aef76fdc6631104f96b025123e955160:tools/v1-01/installed-g1-readonly-probe.mjs',
+    new Set(['32d77491c9ad0b608aba7d04116b0cc3ca1721b303ebdd372395ddebf5bb791c'])],
+  ['47e2494fd12c6512d197f78f04b375fa2ed41100:tools/v1-01/installed-g1-readonly-probe.mjs',
+    new Set(['91ae298d777dd42bb29e483665c24d92de257590678239fa2f696341e9113e0f'])],
+  ['7602330376070ca3681838e49bf7f932179a04d9:test/notion-mcp-engine.test.mjs',
+    new Set(['a906565280785b337117ab1e99d3c8e434fc46b45ec1a880545da4e1bb1bc79d'])],
+  ['7b28ae4ffbfc3094c70647fd1ad8c4c491ba7bf5:test/notion-mcp-engine.test.mjs',
+    new Set(['78a9e0660822161db13e986bb101ac0fe7cf07eda1ba575af36149f6b7e7f6f0'])]
+]);
 function scanSyntheticFixtureException(line, commit, path) {
+  const trimmed = line.replace(/\r?\n$/, '');
   const allowed = commit === knownSyntheticTlsFixture.commit &&
       path === knownSyntheticTlsFixture.path ? knownSyntheticFixtureLines :
     commit === knownSyntheticHostFixture.commit &&
       path === knownSyntheticHostFixture.path ? knownSyntheticHostFixtureLines : null;
-  if (!allowed) return { line, excepted: false };
-  const trimmed = line.replace(/\r?\n$/, '');
-  if (!allowed.has(trimmed)) return { line, excepted: false };
-  return { line: line.replace(syntheticPemHeader, '[SYNTHETIC_TLS_FIXTURE]'), excepted: true };
+  if (allowed?.has(trimmed))
+    return { line: line.replace(syntheticPemHeader, '[SYNTHETIC_TLS_FIXTURE]'), excepted: true };
+  const digest=createHash('sha256').update(trimmed,'utf8').digest('hex');
+  if (knownHistoricalLiteralDigests.get(commit+':'+path)?.has(digest))
+    return { line: '[PINNED_NON_SECRET_HISTORY_LITERAL]\n', excepted: true };
+  return { line, excepted: false };
 }
 
 // Scan complete Git history without buffering the entire potentially multi-GB patch.
@@ -203,6 +236,21 @@ forgedHostPayload.write([...knownSyntheticHostFixtureLines][0].replace('syntheti
 if (!forgedHostPayload.finish().hits.has('Private key block')) {
   throw new Error('SECURITY_AUDIT_HOST_PAYLOAD_MUST_FAIL');
 }
+
+// No path-wide or commit-wide exception: unknown values must still fail
+// even when planted beside an otherwise approved historical line.
+const scopedUnexpectedProbe=makeHistoryScanner(patterns);
+scopedUnexpectedProbe.write('commit e178bf9b4b4daa6bc2916c106d02b2ac8cf2fa91\n');
+scopedUnexpectedProbe.write('diff --git a/tools/probe-owner-pair-mtls.mjs b/tools/probe-owner-pair-mtls.mjs\n');
+scopedUnexpectedProbe.write('+  ' + 'tunnel' + '_' + 'f'.repeat(32) + '\n');
+scopedUnexpectedProbe.write('+  ' + 'Bearer ' + 'Z'.repeat(32) + '\n');
+scopedUnexpectedProbe.write('+  ' + syntheticPemHeader + '\n');
+const unexpectedHits=scopedUnexpectedProbe.finish();
+if (!unexpectedHits.hits.has('Tunnel identifier') ||
+    !unexpectedHits.hits.has('Bearer token literal') ||
+    !unexpectedHits.hits.has('Private key block') ||
+    unexpectedHits.exceptions!==0)
+  throw Error('SECURITY_AUDIT_SCOPED_HISTORY_ALLOWLIST_MUST_FAIL_CLOSED');
 
 const wrongCommitProbe = makeHistoryScanner(patterns);
 wrongCommitProbe.write('commit ' + '0'.repeat(40) + '\n');
