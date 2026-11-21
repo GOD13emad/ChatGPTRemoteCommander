@@ -9,6 +9,8 @@ on:
       - 'tools/v2-owner-state-snapshot-windows.ps1'
       - 'test/v2-owner-state-snapshot-windows.test.ps1'
       - 'test/v012-windows-task-recreation-native.test.ps1'
+      - 'tools/v012-windows-local-state-inventory.ps1'
+      - 'test/v012-windows-local-state-inventory-native.test.ps1'
       - 'package.json'
   workflow_dispatch:
 permissions:
@@ -55,6 +57,12 @@ jobs:
         run: |
           $ErrorActionPreference='Stop'
           & pwsh -NoProfile -File ./test/v2-owner-state-snapshot-windows.test.ps1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Native Windows local state metadata-only inventory and fail-closed fixtures
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          & pwsh -NoProfile -File ./test/v012-windows-local-state-inventory-native.test.ps1
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
   windows-disposable-task-recreate:
     runs-on: windows-2022
