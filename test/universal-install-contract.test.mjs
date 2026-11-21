@@ -53,6 +53,7 @@ test('native Windows/Linux matrix requires exact-file equality before installer 
     assert.ok(y.includes(marker), marker);
   }
   assert.match(y,/os: \[ubuntu-latest, windows-latest\]/);
+  assert.ok(y.includes('include-hidden-files: true'));
   const deps=read('package.json');
   assert.ok(deps.includes('test/universal-native-parity.test.mjs'));
 });

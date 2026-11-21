@@ -52,6 +52,9 @@ jobs:
         with:
           name: rc012-native-core-${{ runner.os }}
           path: packaging/unified/.stage/core/source-manifest.json
+          # Explicit single-file path lives inside hidden .stage; upload-artifact
+          # v4.4+ ignores it without this opt-in. No secrets or other files sent.
+          include-hidden-files: true
           retention-days: 7
           if-no-files-found: error
       - name: Install pinned packaging tools
