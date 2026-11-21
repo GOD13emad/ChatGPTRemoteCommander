@@ -189,5 +189,7 @@ equal hostLabel exactly. All hosts, accounts, aliases, and display labels
 must be collision-free; wrong account/profile/host combinations fail closed.
 The map is **owner-provided metadata, not authenticated conversation proof**.
 Generated Plugin ZIPs must still be imported or refreshed in the correct
-account separately, with authorized consent. Older builds without a map
-retain legacy behavior for compatibility; they are not implicitly renamed.
+account separately, with authorized consent. For mapped builds, the per-host Plugin fingerprint is derived from the stable
+accountId rather than the legacy filename, so historical profile aliases do not
+create extra Plugin identities. Older builds without a map retain legacy
+behavior for compatibility; they are not implicitly renamed.

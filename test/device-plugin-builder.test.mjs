@@ -126,3 +126,34 @@ test('explicit owner-local identity map formats the Plugin name without renaming
     }
   } finally {fs.rmSync(tmp,{recursive:true,force:true});}
 });
+
+test('mapped technical aliases retain one stable per-account plugin identity',()=>{
+  const tmp=fs.mkdtempSync(path.join(os.tmpdir(),'rc-device-plugin-alias-'));
+  const idFile=path.join(tmp,'map.json');
+  const map={schema:1,hosts:[{hostId:'host-demo',hostLabel:'Example Device',profiles:[
+    {accountId:'acct-demo',profileId:'default',
+     tunnelProfile:'chatgpt-remote-commander',
+     displayName:'Remote Commander · Example · Device',
+     aliases:['older-technical-alias']}
+  ]}]};
+  fs.writeFileSync(idFile,JSON.stringify(map));
+  const generate=(technical,suffix)=>{
+    const out=path.join(tmp,suffix),zip=path.join(tmp,suffix+'.zip');
+    const args=[generator,'--template',template,'--output',out,'--zip',zip,
+      '--app-id','asdk_app_TESTDEVICE123','--identity-map',idFile,
+      '--host-id','host-demo','--account-id','acct-demo','--profile',technical];
+    const r=spawnSync(process.execPath,args,{encoding:'utf8'});
+    assert.equal(r.status,0,r.stderr);
+    return JSON.parse(r.stdout);
+  };
+  try{
+    const a=generate('default','a');
+    const b=generate('chatgpt-remote-commander','b');
+    const c=generate('older-technical-alias','c');
+    assert.equal(a.pluginName,b.pluginName);
+    assert.equal(b.pluginName,c.pluginName);
+    assert.equal(a.fingerprint,b.fingerprint);
+    assert.equal(b.fingerprint,c.fingerprint);
+    assert.equal(a.displayName,c.displayName);
+  }finally{fs.rmSync(tmp,{recursive:true,force:true});}
+});

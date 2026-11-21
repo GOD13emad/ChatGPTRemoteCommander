@@ -30,7 +30,8 @@ try{$machineGuid=[string](Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Cryptograph
 if([string]::IsNullOrWhiteSpace($machineGuid)){$machineGuid="$env:COMPUTERNAME|$env:PROCESSOR_IDENTIFIER"}
 $sha=[Security.Cryptography.SHA256]::Create()
 try{
-  $seedText=([string]$machineGuid)+[char]0+([string]$Profile)
+  $fingerprintSeed=if($IdentityMap){$AccountId}else{$Profile}
+  $seedText=([string]$machineGuid)+[char]0+([string]$fingerprintSeed)
   $bytes=[Text.Encoding]::UTF8.GetBytes($seedText)
   $digest=$sha.ComputeHash($bytes)
   $fingerprint=([Convert]::ToHexString($digest)).ToLowerInvariant().Substring(0,10)

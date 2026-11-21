@@ -253,7 +253,7 @@ const deviceName = cleanDisplay(args['device-name'] || identity?.hostLabel || os
 if (identity && deviceName !== identity.hostLabel) fail('identity-map device-name mismatch');
 let fingerprint = String(args.fingerprint || '').toLowerCase();
 if (fingerprint && !/^[a-f0-9]{8,24}$/u.test(fingerprint)) fail('fingerprint must be 8-24 lowercase hex characters');
-if (!fingerprint) fingerprint = sha256Hex([deviceName, profile, process.platform, process.arch].join('\0')).slice(0, 10);
+if (!fingerprint) fingerprint = sha256Hex([deviceName, identity?.bindingHash ?? profile, process.platform, process.arch].join('\0')).slice(0, 10);
 const digest = crypto.createHash('sha256').update(fingerprint).digest();
 const slug = slugify(deviceName);
 const pluginName = ('remote-commander-' + slug + '-' + fingerprint).slice(0, 63).replace(/-+$/u, '');

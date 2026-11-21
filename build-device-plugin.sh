@@ -41,7 +41,9 @@ OUTPUT_DIR="$(cd "$OUTPUT_DIR" && pwd -P)"
 MACHINE_ID=""
 [[ -r /etc/machine-id ]] && MACHINE_ID="$(tr -d '\r\n' </etc/machine-id)"
 [[ -n "$MACHINE_ID" ]] || MACHINE_ID="$(hostname 2>/dev/null || echo unknown)-$(uname -m 2>/dev/null || echo arch)"
-FINGERPRINT="$(printf '%s\0%s' "$MACHINE_ID" "$PROFILE" | sha256sum | awk '{print substr($1,1,10)}')"
+FINGERPRINT_SEED="$PROFILE"
+[[ -z "$IDENTITY_MAP" ]] || FINGERPRINT_SEED="$ACCOUNT_ID"
+FINGERPRINT="$(printf '%s\0%s' "$MACHINE_ID" "$FINGERPRINT_SEED" | sha256sum | awk '{print substr($1,1,10)}')"
 
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
