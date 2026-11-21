@@ -1,0 +1,158 @@
+name: Commander V2 universal install engine QA
+on:
+  push:
+    branches: [mmz/v2-unified-candidate-20261103]
+    paths:
+      - '.github/workflows/v2-universal-install-engine-qa.yml'
+      - '.gitattributes'
+      - 'tools/v2-universal-install-engine.mjs'
+      - 'tools/v2-universal-bundle-build.mjs'
+      - 'test/v2-universal-install-engine.test.mjs'
+      - 'test/v2-universal-bundle-build.test.mjs'
+      - 'tools/v2-universal-native-plan.mjs'
+      - 'test/v2-universal-native-plan.test.mjs'
+      - 'tools/v2-universal-native-install.mjs'
+      - 'test/v2-universal-native-install.test.mjs'
+      - 'tools/v012-unified-release-entry.mjs'
+      - 'tools/v012-unified-release-assemble.mjs'
+      - 'test/v012-unified-release-candidate.test.mjs'
+      - 'test/v012-packaged-headless-runtime.test.mjs'
+      - 'tools/v012-native-build-deb-qa.sh'
+      - 'tools/v012-native-build-nsis-qa.ps1'
+      - 'tools/v012-candidate-windows-nsis.nsi'
+      - 'assets/runtime-license/node-v22-LICENSE.txt'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: v2-universal-install-engine-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  universal-linux:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Verify offline release planning, install, upgrade and rollback on Linux
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --version
+          node --check tools/v2-universal-install-engine.mjs
+          node --check tools/v2-universal-bundle-build.mjs
+          node --check tools/v2-universal-native-plan.mjs
+          node --check tools/v2-universal-native-install.mjs
+          node --check tools/v012-unified-release-assemble.mjs
+          node --check tools/v012-unified-release-entry.mjs
+          node --test test/v2-universal-install-engine.test.mjs test/v2-universal-bundle-build.test.mjs test/v2-universal-native-plan.test.mjs test/v2-universal-native-install.test.mjs test/v012-unified-release-candidate.test.mjs test/v012-packaged-headless-runtime.test.mjs
+  universal-windows:
+    runs-on: windows-2022
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Verify the same exact engine on Windows with no production install
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          node --version
+          node --check tools/v2-universal-install-engine.mjs
+          if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
+          node --check tools/v2-universal-bundle-build.mjs
+          if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
+          node --check tools/v2-universal-native-plan.mjs
+          if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
+          node --check tools/v2-universal-native-install.mjs
+          if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
+          node --check tools/v012-unified-release-assemble.mjs
+          if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
+          node --check tools/v012-unified-release-entry.mjs
+          if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
+          node --test test/v2-universal-install-engine.test.mjs test/v2-universal-bundle-build.test.mjs test/v2-universal-native-plan.test.mjs test/v2-universal-native-install.test.mjs test/v012-unified-release-candidate.test.mjs test/v012-packaged-headless-runtime.test.mjs
+          if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
+  v012-native-candidate-linux:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Build, install, inspect and purge exact-source v0.12 candidate DEB
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          test "$GITHUB_REPOSITORY" = GOD13emad/ChatGPTRemoteCommander
+          test "$RUNNER_OS" = Linux
+          test "$(sha256sum assets/runtime-license/node-v22-LICENSE.txt|awk '{print $1}')" = c738ae413cf561f174e34f6961f8ca458aae2369a73640dda6234c629b98bcc4
+          pkg="$RUNNER_TEMP/Commander-V2-v0.12.0-rc1-linux-x64.deb"
+          bash tools/v012-native-build-deb-qa.sh "$PWD" "$pkg"
+          sudo dpkg -i "$pkg"
+          dpkg-query -W commander-v2 | grep -F '0.12.0~rc1'
+          /usr/bin/commander-v2 inspect > "$RUNNER_TEMP/v012-inspect.json"
+          node -e 'const f=require("node:fs"),s=JSON.parse(f.readFileSync(process.argv[1],"utf8"));if(s.version!=="0.12.0-rc.1"||s.stableRelease!==false||s.fullPowerReady!==false)process.exit(1)' "$RUNNER_TEMP/v012-inspect.json"
+          sudo dpkg --purge commander-v2
+          if dpkg-query -W commander-v2 >/dev/null 2>&1; then echo NATIVE_PACKAGE_REGISTRATION_REMAINS; exit 30; fi
+          test ! -e '/opt/Commander V2/bin/commander-v2.mjs'
+          echo V012_UNIFIED_REAL_SOURCE_NATIVE_LINUX_INSTALL_PURGE_PASS
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: Commander-V2-v0.12.0-rc1-linux-x64-qa
+          path: ${{ runner.temp }}/Commander-V2-v0.12.0-rc1-linux-x64.deb
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
+  v012-native-candidate-windows:
+    runs-on: windows-2022
+    timeout-minutes: 23
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Build, install, inspect and uninstall exact-source v0.12 candidate NSIS
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if($env:RUNNER_ENVIRONMENT -ne 'github-hosted' -or
+            $env:GITHUB_REPOSITORY -ne 'GOD13emad/ChatGPTRemoteCommander' -or
+            $env:RUNNER_OS -ne 'Windows'){throw 'DISPOSABLE_HOSTED_WINDOWS_REQUIRED'}
+          if(-not(Get-Command makensis.exe -ErrorAction SilentlyContinue) -and
+            -not(Test-Path -LiteralPath 'C:\Program Files (x86)\NSIS\makensis.exe')){
+            & choco install nsis --version=3.11 -y --no-progress
+            if($LASTEXITCODE -ne 0){throw 'NSIS_QA_COMPILER_INSTALL_FAILED'}
+          }
+          if((Get-FileHash -LiteralPath 'assets/runtime-license/node-v22-LICENSE.txt' -Algorithm SHA256).Hash.ToLowerInvariant() -ne 'c738ae413cf561f174e34f6961f8ca458aae2369a73640dda6234c629b98bcc4'){throw 'NODE_LICENSE_CHECKOUT_BYTES_CHANGED'}
+          $output=Join-Path $env:RUNNER_TEMP 'Commander-V2-v0.12.0-rc1-windows-x64.exe'
+          & ./tools/v012-native-build-nsis-qa.ps1 -SourceRoot (Get-Location).Path -Output $output
+          if($LASTEXITCODE -ne 0){throw 'V012_NSI_BUILD_NONZERO'}
+          $p=Start-Process -FilePath $output -ArgumentList '/S' -NoNewWindow -Wait -PassThru
+          if($p.ExitCode -ne 0){throw "V012_NSI_INSTALL_EXIT_$($p.ExitCode)"}
+          $root=Join-Path $env:LOCALAPPDATA 'Programs\Commander V2'
+          $bin=Join-Path $root 'runtime\node.exe'
+          $entry=Join-Path $root 'bin\commander-v2.mjs'
+          if(-not(Test-Path -LiteralPath $bin -PathType Leaf) -or
+            -not(Test-Path -LiteralPath $entry -PathType Leaf)){throw 'V012_NSI_PAYLOAD_MISSING'}
+          $outputJson=(& $bin $entry inspect)
+          if($LASTEXITCODE -ne 0){throw 'V012_NSI_RUNTIME_INSPECT_FAILED'}
+          $state=($outputJson -join '') | ConvertFrom-Json
+          if($state.version -ne '0.12.0-rc.1' -or $state.stableRelease -ne $false -or
+            $state.fullPowerReady -ne $false){throw 'V012_NSI_PRODUCT_SCOPE_INVALID'}
+          $reg='HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\Commander V2'
+          $r=Get-ItemProperty -LiteralPath $reg -ErrorAction Stop
+          if($r.DisplayVersion -ne '0.12.0-rc.1'){throw 'V012_NSI_SINGLE_REGISTRATION_MISMATCH'}
+          $uninstall=Join-Path $root 'Uninstall.exe'
+          $u=Start-Process -FilePath $uninstall -ArgumentList '/S' -NoNewWindow -Wait -PassThru
+          if($u.ExitCode -ne 0){throw "V012_NSI_UNINSTALL_EXIT_$($u.ExitCode)"}
+          if(Test-Path -LiteralPath $reg){throw 'V012_NSI_REGISTRATION_REMAINS'}
+          if(Test-Path -LiteralPath $entry){throw 'V012_NSI_EXECUTABLE_REMAINS'}
+          'V012_UNIFIED_REAL_SOURCE_NATIVE_WINDOWS_INSTALL_UNINSTALL_PASS'
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: Commander-V2-v0.12.0-rc1-windows-x64-qa
+          path: ${{ runner.temp }}/Commander-V2-v0.12.0-rc1-windows-x64.exe
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7

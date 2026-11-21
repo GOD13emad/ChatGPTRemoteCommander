@@ -6,6 +6,8 @@ on:
       - '.github/workflows/v2-unsigned-installer-qa.yml'
       - 'tools/v2-unsigned-installer-hosted-linux.sh'
       - 'tools/v2-unsigned-installer-hosted-windows.ps1'
+      - 'tools/v2-universal-native-plan.mjs'
+      - 'tools/v2-universal-native-install.mjs'
       - 'tools/v2-unsigned-installer-inplace-linux.sh'
       - 'tools/v2-unsigned-installer-inplace-windows.ps1'
       - 'tools/v2-deb-alternatives-prerm.sh'
