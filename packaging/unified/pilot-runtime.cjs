@@ -58,7 +58,7 @@ function validateCore(coreDir){
   checkTree(coreDir);
   if(expected.size)throw Error('UNIFIED_CORE_MISSING_FILES '+[...expected].slice(0,2).join(','));
   const pkg=JSON.parse(fs.readFileSync(path.join(coreDir,'package.json'),'utf8'));
-  if(pkg.version!=='0.12.0-dev.1')throw Error('UNIFIED_SOURCE_VERSION_MISMATCH');
+  if(!/^0\.12\.0-dev\.[1-9][0-9]*$/.test(pkg.version))throw Error('UNIFIED_SOURCE_VERSION_MISMATCH');
   return m;
 }
 // Preview runtime data are bounded and isolated from production profiles.

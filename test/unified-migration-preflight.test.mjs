@@ -623,6 +623,37 @@ test('one native DEB derives its version from the exact same source and GUI trai
   ]) assert.equal(candidateNativeDebianVersion(source,gui),null,
     String(source)+' / '+String(gui));
 });
+test('Debian dev.7 candidate is strictly ahead of dev.6 without implying installed admission',{skip:process.platform!=='linux'},()=>{
+ const app=JSON.parse(fs.readFileSync(path.join(repo,'package.json'),'utf8'));
+ const gui=JSON.parse(fs.readFileSync(path.join(repo,'packaging/unified/package.json'),'utf8'));
+ const train=JSON.parse(fs.readFileSync(path.join(repo,'docs/release-train-0.12.json'),'utf8'));
+ assert.equal(app.version,'0.12.0-dev.7');
+ assert.equal(app.version,gui.version);
+ assert.equal(train.sourceVersion,app.version);
+ assert.equal(train.installedPromotionApproved,false);
+ assert.equal(train.publishApproved,false);
+ const cand=candidateNativeDebianVersion(app.version,gui.version);
+ assert.equal(cand,'0.12.0~dev.7');
+ for(const [lower,relation,upper,expected] of [
+   ['0.12.0~dev.6','lt',cand,0],
+   [cand,'gt','0.12.0~dev.6',0],
+   [cand,'eq',cand,0],
+   [cand,'lt','0.12.0',0],
+   ['0.12.0~dev.6','gt',cand,1]
+ ]){
+   const r=spawnSync('dpkg',['--compare-versions',lower,relation,upper],{encoding:'utf8'});
+   assert.equal(r.status,expected,lower+' '+relation+' '+upper+' '+r.stderr);
+ }
+ const preflight=assessMigration({platform:'linux',inventoryReliable:true,
+   connectionMode:'private-tunnel',nativePackageInstalled:true,
+   allNativePayloadPathsAvailable:true,candidateNativePackageVersionVerified:true,
+   candidateNativePackageDowngrade:false,candidateNativePackageSameVersion:false,
+   units:[]});
+ assert.equal(preflight.decision,'NO_PROMOTE','forward package version is never owner admission');
+ assert.ok(preflight.blocked.includes('PRIVATE_PLUGIN_TUNNEL_PAIR_BINDING_UNVERIFIED'));
+ assert.ok(preflight.blocked.includes('J01_NATIVE_OWNER_CONSENT_UNVERIFIED'));
+ assert.ok(preflight.blocked.includes('UPDATE_ROLLBACK_PROVENANCE_UNVERIFIED'));
+});
 test('native owner Installer migration rejects downgrade, same-version and unverifiable identity',()=>{
   const base={platform:'linux',connectionMode:'private-tunnel',
     inventoryReliable:true,nativePackageInstalled:true,

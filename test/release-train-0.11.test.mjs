@@ -56,15 +56,16 @@ test('0.11 development train never masquerades as Stable or approved promotion',
 
 });
 test('server, plugin, npm package and Windows Control Center development identity agree',()=>{
- const ver='0.12.0-dev.1';
+ const ver=JSON.parse(read('docs/release-train-0.12.json')).sourceVersion;
  assert.equal(JSON.parse(read('package.json')).version,ver);
  assert.equal(JSON.parse(read('plugin-template/plugin.json')).version,ver);
  assert.equal(JSON.parse(read('plugin-template/.codex-plugin/plugin.json')).version,ver);
  assert.ok(read('src/server-v0.3.mjs').includes("const VERSION = '"+ver+"';"));
  const cs=read('desktop/RemoteCommanderDashboard/RemoteCommanderDashboard.csproj');
  assert.ok(cs.includes('<Version>'+ver+'</Version>'));
- assert.ok(cs.includes('<FileVersion>0.12.0.1</FileVersion>'));
- assert.ok(cs.includes('<AssemblyVersion>0.12.0.1</AssemblyVersion>'));
+ const numericVersion='0.12.0.'+ver.split('.').at(-1);
+ assert.ok(cs.includes('<FileVersion>'+numericVersion+'</FileVersion>'));
+ assert.ok(cs.includes('<AssemblyVersion>'+numericVersion+'</AssemblyVersion>'));
 });
 test('historical releases are not silently deleted or accepted as product stable',()=>{
  const a=JSON.parse(read('docs/release-train-0.11.json'));

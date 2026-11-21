@@ -1,4 +1,9 @@
-# Release Train 0.12 — `0.12.0-dev.1` (NoPromote)
+# Release Train 0.12 — `0.12.0-dev.7` candidate (NoPromote)
+
+## Current candidate checkpoint — 2026-11-21
+
+The unified Linux native+GUI and Windows NSIS source candidate advances from the historical `0.12.0-dev.1` snapshot to `0.12.0-dev.7` in the canonical Core, Electron lockfile, plugin templates, desktop version, runtime version and release-train manifest. This is a source-level update with separately testable changes, not a binary relabel. Emad Laptop has an installed Debian package `0.12.0~dev.6`; the new combined candidate must be built from the exact source commit and separately pass `dpkg` monotonicity, owner approval, installation and rollback tests. Status remains `INTEGRATION_CANDIDATE_NOT_FINAL`; publication, installed promotion and auto-update approvals remain false and accepted fleet hosts remain zero. Later sections describing `dev.1` preserve historical evidence and are not current release claims.
+
 
 ## Purpose
 

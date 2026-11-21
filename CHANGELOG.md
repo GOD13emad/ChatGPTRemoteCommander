@@ -1,3 +1,9 @@
+# 0.12.0-dev.7 — source-pinned unified Installer candidate (2026-11-21, NoPromote)
+
+- Advance source Core, GUI, lockfile, private plugin templates, desktop identity, Runtime version and release-train version together beyond the installed Debian `dev.6` baseline; do not relabel an old package.
+- Retain one source-driven Linux native/GUI merge and Windows NSIS build path, and keep each account/host Tunnel, API key and recovery profile independent.
+- Do not promote: current ChatGPT identity/J01 owner authorization, native rollback and fleet admission require separate positive evidence. Earlier `dev.1` build artifacts and tests are historical and cannot qualify the new version.
+
 # 0.12.0-dev.1 — unified-suite integration train opened (2026-11-07, NoPromote)
 
 - Opened the next development identity on the recovered exact dev23 source lineage; this is a private integration candidate, not a release.

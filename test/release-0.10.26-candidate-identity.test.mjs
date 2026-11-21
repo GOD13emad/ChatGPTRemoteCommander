@@ -28,7 +28,7 @@ test('candidate source runtime and plugin identity agree without public release 
    for(const gate of ['isStable','publishApproved','autoupdateApproved','installedPromotionApproved'])
      assert.equal(train[gate],false,gate);
    assert.equal(train.releaseTag,null);
-   const fileVersion=current.startsWith('0.12.')?'0.12.0.1':'0.11.0.'+current.split('.').at(-1);
+   const fileVersion=current.startsWith('0.12.')?'0.12.0.'+current.split('.').at(-1):'0.11.0.'+current.split('.').at(-1);
    for(const tag of ['FileVersion','AssemblyVersion'])assert.ok(cs.includes('<'+tag+'>'+fileVersion+'</'+tag+'>'));
  }
  assert.match(read('docs/RELEASE_CANDIDATE_0.10.26.md'),/SOURCE CANDIDATE ONLY/);

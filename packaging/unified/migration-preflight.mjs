@@ -438,7 +438,7 @@ export function inspectLinuxNativeCorePayload(
      ||(process.platform==='linux'&&fs.realpathSync(file)!==file))return false;
   }
   const pkg=JSON.parse(fs.readFileSync(path.join(nativeRoot,'app','package.json'),'utf8'));
-  return pkg?.version==='0.12.0-dev.1';
+  return /^0\.12\.0-dev\.[1-9][0-9]*$/.test(pkg?.version??'');
  }catch{return false;}
 }
 function linuxFacts({profileName=null}={}){

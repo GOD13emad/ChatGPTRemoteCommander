@@ -178,7 +178,10 @@ jobs:
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           version="$(node -p "require('./package.json').version")"
-          test "$version" = '0.12.0-dev.1'
+          train_version="$(node -p "require('./docs/release-train-0.12.json').sourceVersion")"
+          test "$version" = "$train_version"
+          [[ "$version" =~ ^0\.12\.0-dev\.[1-9][0-9]*$ ]]
+          node tools/isolated-qa-policy.mjs > /dev/null
           win="dist/qa-provenance/windows/Remote-Commander-Setup-v$version.exe"
           linux="dist/qa-provenance/linux/Remote-Commander-Linux-Setup.run"
           test -s "$win" && test -s "$linux" && test -s "$linux.sha256"

@@ -30,10 +30,10 @@ const files = [
   "test/native-tunnel-client-observer-linux.test.mjs"
 ];
 
-// Keep each test executable once. Two slow native process fixtures in the
-// WorkflowStore file run in distinct name-filtered processes, while its other
-// tests run in a complementary skip-filtered process. Every process retains
-// the original 30-second deadline on both Windows and Linux.
+// Keep each test executable once. WorkflowStore's two slow process fixtures
+// and the Linux owner-credential tests use exact name-filtered processes.
+// Ordinary batches keep a 30-second deadline; owner recovery gets its own
+// declared test timeout plus bounded spawn overhead.
 const batches = [
   files.slice(0, 2),
   files.slice(2, 4),
@@ -46,7 +46,10 @@ const batches = [
   files.slice(13, 15),
   files.slice(15, 17),
   files.slice(17, 18), // Canonical G1/WorkflowStore composition and mTLS denial
-  files.slice(18, 27) // NoPromote, protected Core, encrypted recovery, local J01 and owner-pinned tunnel
+  files.slice(18, 20), // NoPromote and owner-pinned provenance
+  files.slice(20, 22), // Protected Core and Windows encrypted recovery
+  files.slice(22, 23), // Linux encrypted recovery: two expensive fixtures
+  files.slice(23, 27) // Native owner session, dialog, planner and Tunnel observer
 ];
 if(batches.flat().length!==files.length
   ||new Set(batches.flat()).size!==files.length
@@ -70,6 +73,10 @@ const slowWorkflowTests = [
   'WorkflowStore accepts only the contained runner proof bound to its acquired root lease',
   'trusted process-cessation receipt reconciles and releases only the expired matching root lease'
 ];
+const linuxOwnerRecoveryTests = [
+  'Linux native owner credential recovery stages idempotently, verifies isolated restore and rejects tampering',
+  'profile-specific owner recovery capsules never share a Tunnel or private TLS pair'
+];
 for (let index = range.first-1; index < range.last; index++) {
   const batch = batches[index];
   if (!batch.length) continue;
@@ -79,7 +86,8 @@ for (let index = range.first-1; index < range.last; index++) {
   const partitions = index === 5 ? [
     ...slowWorkflowTests.map(name => ['--test-name-pattern=^' + name + '$']),
     ['--test-skip-pattern=' + slowPattern]
-  ] : [[]];
+  ] : index === 13 ? linuxOwnerRecoveryTests.map(name =>
+    ['--test-name-pattern=^' + name + '$']) : [[]];
   for (let part = 0; part < partitions.length; part++) {
     process.stdout.write('V012_SOURCE_REGRESSION_BATCH_START_' + (index + 1) + '/' + batches.length +
       ' files=' + batch.length + ' partition=' + (part + 1) + '/' + partitions.length + '\n');
@@ -88,7 +96,9 @@ for (let index = range.first-1; index < range.last; index++) {
     ], {
       stdio: 'inherit',
       windowsHide: true,
-      timeout: 30000
+      // Native owner recovery declares 30s/60s test timeouts and must not
+      // share one 30s wall-time budget with unrelated test files.
+      timeout: index === 13 ? (part === 0 ? 35000 : 65000) : 30000
     });
     if (result.error) {
       process.stderr.write('V012_SOURCE_REGRESSION_RUNNER_FAILED batch=' + (index + 1) +

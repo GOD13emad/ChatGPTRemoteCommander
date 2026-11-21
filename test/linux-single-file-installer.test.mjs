@@ -41,7 +41,7 @@ test('single-file Linux launcher is byte-reproducible, supports offline plan and
   const expectedVersion=JSON.parse(fs.readFileSync(path.join(root,'package.json'),'utf8')).version;
   const source=spawnSync('git',['-c',`safe.directory=${root}`,'-C',root,'rev-parse','HEAD'],{encoding:'utf8'});
   assert.equal(source.status,0,source.stderr);
-  const qaDev=expectedVersion==='0.12.0-dev.1';
+  const qaDev=/^0\.12\.0-dev\.[1-9][0-9]*$/.test(expectedVersion);
   const expectedRef=qaDev?'integration/v012-unsigned-approval-20261110':'v'+expectedVersion;
   assert.ok(extracted.stdout.includes("export REMOTE_COMMANDER_SOURCE_REF='"+expectedRef+"'"));
   if(qaDev)assert.ok(extracted.stdout.includes("if [[ '1' == 1 ]]"));
